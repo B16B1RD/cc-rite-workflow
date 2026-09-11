@@ -578,7 +578,7 @@ echo ""
 # TC-203: past false-positive commands → allow (AC-4)
 # Commands that historically required bypass/false-positive patches against the
 # removed verb denylist (quote-boundary echoes, grep pattern args, branch names
-# embedding flag substrings, worktree-add arg-loop noglob #1866). With the verb
+# embedding flag substrings, worktree-add arg-loop noglob). With the verb
 # machinery gone these must all pass with zero mis-detection.
 # --------------------------------------------------------------------------
 echo "TC-203: past false-positive command set → allow (no mis-detection)"
@@ -1506,7 +1506,7 @@ rm -rf "$tc125_noglob_dir"
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-127: reviewer native .git-writing git subcommands (sub-block (N), #1879)
+# TC-127: reviewer native.git-writing git subcommands (sub-block (N))
 # `git config <key> <value>` / mutating `git remote` / `git update-ref` /
 # `git symbolic-ref` write .git/config or .git refs directly — no redirect and
 # no file verb, so (H) cannot see them. `git config core.hooksPath` is the exact
@@ -1986,7 +1986,7 @@ echo ""
 # Why: variable-form PR token must not fall back to flow-state
 # --------------------------------------------------------------------------
 
-echo "TC-138 / T-01 (#2173): variable-form \"\$PR\" denies even when flow-state has qualifying other PR"
+echo "TC-138 / T-01: variable-form \"\$PR\" denies even when flow-state has qualifying other PR"
 _mrg_tmp=$(mktemp -d)
 _mrg_setup_state "$_mrg_tmp"
 _mrg_set_flow_pr "$_mrg_tmp" 77
@@ -2015,7 +2015,7 @@ fi
 rm -rf "$_mrg_tmp"
 echo ""
 
-echo "TC-139 / T-02 (#2173): literal numeric form still allowed (non-regression of TC-128 path)"
+echo "TC-139 / T-02: literal numeric form still allowed (non-regression of TC-128 path)"
 _mrg_tmp=$(mktemp -d)
 _mrg_setup_state "$_mrg_tmp"
 _mrg_write_json "$_mrg_tmp" "99-good.json" "$(_mrg_qualifying_json)"
@@ -2037,7 +2037,7 @@ fi
 rm -rf "$_mrg_tmp"
 echo ""
 
-echo "TC-140 / T-03 (#2173): flag-only tail still uses flow-state fallback (pin limited retention)"
+echo "TC-140 / T-03: flag-only tail still uses flow-state fallback (pin limited retention)"
 _mrg_tmp=$(mktemp -d)
 _mrg_setup_state "$_mrg_tmp"
 _mrg_set_flow_pr "$_mrg_tmp" 77
@@ -2060,7 +2060,7 @@ fi
 rm -rf "$_mrg_tmp"
 echo ""
 
-echo "TC-140a / T-04 (#2269): verified develop -> main promotion with pinned head is allowed"
+echo "TC-140a / T-04: verified develop -> main promotion with pinned head is allowed"
 _mrg_tmp=$(mktemp -d)
 _mrg_setup_state "$_mrg_tmp"
 mkdir -p "$_mrg_tmp/.rite/release-promotions"
@@ -2078,7 +2078,7 @@ fi
 rm -rf "$_mrg_tmp"
 echo ""
 
-echo "TC-140b / T-05 (#2269): stale or unpinned promotion attestation denies fail-loud"
+echo "TC-140b / T-05: stale or unpinned promotion attestation denies fail-loud"
 _mrg_tmp=$(mktemp -d)
 _mrg_setup_state "$_mrg_tmp"
 mkdir -p "$_mrg_tmp/.rite/release-promotions"
@@ -2099,7 +2099,7 @@ fi
 rm -rf "$_mrg_tmp"
 echo ""
 
-echo "TC-140c / T-06 (#2269): pin in a later shell command cannot authenticate the merge"
+echo "TC-140c / T-06: pin in a later shell command cannot authenticate the merge"
 _mrg_tmp=$(mktemp -d)
 _mrg_setup_state "$_mrg_tmp"
 mkdir -p "$_mrg_tmp/.rite/release-promotions"
@@ -2123,7 +2123,7 @@ echo ""
 # Why: persist deny-only audit records
 # --------------------------------------------------------------------------
 
-echo "TC-141 / T-01 (#2174): deny appends the stderr event to bash-guard.log"
+echo "TC-141 / T-01: deny appends the stderr event to bash-guard.log"
 _audit_tmp=$(mktemp -d)
 rc=0
 RITE_STATE_ROOT="$_audit_tmp" jq -n --arg cmd "gh pr diff 99 --stat" \
@@ -2157,7 +2157,7 @@ fi
 rm -rf "$_audit_tmp"
 echo ""
 
-echo "TC-142 / T-02 (#2174): audit write failure preserves deny JSON and warns"
+echo "TC-142 / T-02: audit write failure preserves deny JSON and warns"
 _audit_tmp=$(mktemp -d)
 mkdir -p "$_audit_tmp/.rite"
 printf 'not-a-directory\n' > "$_audit_tmp/.rite/logs"
@@ -2174,7 +2174,7 @@ fi
 rm -rf "$_audit_tmp"
 echo ""
 
-echo "TC-143 / T-03 (#2174): allow does not create an audit log"
+echo "TC-143 / T-03: allow does not create an audit log"
 _audit_tmp=$(mktemp -d)
 jq -n --arg cmd "printf safe" '{tool_name:"Bash",tool_input:{command:$cmd}}' \
   | RITE_STATE_ROOT="$_audit_tmp" bash "$HOOK" >/dev/null 2>"$_audit_tmp/stderr" || true
@@ -2184,6 +2184,135 @@ else
   fail "TC-143 allow path unexpectedly created bash-guard.log"
 fi
 rm -rf "$_audit_tmp"
+echo ""
+
+# --------------------------------------------------------------------------
+# Pattern 6: Direct gh issue create guard
+# --------------------------------------------------------------------------
+
+echo "TC-144 / T-01,T-05: direct gh issue create → deny with approved-path guidance"
+for tc144_cmd in \
+  'gh issue create -R owner/repo --title x --body-file /tmp/body.md' \
+  '/usr/bin/gh issue create --title x' \
+  'printf safe; gh issue create --title x' \
+  "bash -c 'gh issue create --title x'" \
+  'g""h issue create --title x' \
+  $'gh issue \\\ncreate --title x' \
+  $'cat <<EOF | gh issue create --title x\nbody\nEOF' \
+  $'echo \'<<EOF\'\ngh issue create --title x\nEOF' \
+  $'# <<EOF\ngh issue create --title x' \
+  $': <<END-1\nbody\nEND-1\ngh issue create --title x' \
+  $': <<E\\OF\nbody\nEOF\ngh issue create --title x'; do
+  rc=0
+  output=$(run_guard "Bash" "$tc144_cmd") || rc=$?
+  decision=$(extract_hook_field "$output" permissionDecision)
+  reason=$(extract_hook_field "$output" permissionDecisionReason)
+  if [ "$rc" = "0" ] && [ "$decision" = "deny" ] \
+    && [[ "$reason" == *"direct-gh-issue-create"* ]] \
+    && [[ "$reason" == *"create-issue-with-projects.sh"* ]] \
+    && [[ "$reason" == *"/rite:issue-create"* ]]; then
+    pass "TC-144 direct create form denied with helper guidance: $tc144_cmd"
+  else
+    fail "TC-144 expected direct create deny, got rc=$rc decision=$decision reason=$reason cmd=$tc144_cmd"
+  fi
+done
+echo ""
+
+echo "TC-144: gh issue create text inside a heredoc body → allow"
+tc144_heredoc_text=$'printf %s <<\'EOF\'\ngh issue create --title x\nEOF'
+rc=0
+output=$(run_guard "Bash" "$tc144_heredoc_text") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-144 heredoc body text allowed"
+else
+  fail "TC-144 expected heredoc body text allow, got rc=$rc output=$output"
+fi
+echo ""
+
+echo "TC-145 / T-02,T-03: approved Issue helpers → allow"
+for tc145_cmd in \
+  'bash plugins/rite/scripts/create-issue-with-projects.sh "$args_json"' \
+  'bash plugins/rite/scripts/decompose-issues.sh "$args_json"'; do
+  rc=0
+  output=$(run_guard "Bash" "$tc145_cmd") || rc=$?
+  if [ "$rc" = "0" ] && [ -z "$output" ]; then
+    pass "TC-145 approved helper allowed: $tc145_cmd"
+  else
+    fail "TC-145 expected helper allow, got rc=$rc output=$output cmd=$tc145_cmd"
+  fi
+done
+echo ""
+
+echo "TC-146 / T-04: non-create gh issue commands → allow"
+for tc146_cmd in \
+  'gh issue list --label follow-up --state all' \
+  'gh issue view 2591 --json body' \
+  'gh issue edit 2591 --title updated' \
+  'gh label create follow-up --color ededed'; do
+  rc=0
+  output=$(run_guard "Bash" "$tc146_cmd") || rc=$?
+  if [ "$rc" = "0" ] && [ -z "$output" ]; then
+    pass "TC-146 non-create command allowed: $tc146_cmd"
+  else
+    fail "TC-146 expected non-create allow, got rc=$rc output=$output cmd=$tc146_cmd"
+  fi
+done
+echo ""
+
+echo "TC-147 / T-06,T-07: Pattern 6 crash → fail-closed without weakening Pattern 1"
+tc147_input=$(jq -n --arg cmd 'gh issue create --title x' \
+  '{tool_name:"Bash",tool_input:{command:$cmd}}')
+rc=0
+output=$(printf '%s' "$tc147_input" | RITE_BTG_TEST_CRASH=pattern6 bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
+stderr_log=$(cat "$STDERR_FILE")
+if [ "$rc" = "2" ] && [ "$decision" = "deny" ] \
+  && [[ "$reason" == *"direct-gh-issue-create"* ]] \
+  && [[ "$stderr_log" == *"Pattern 6"* ]]; then
+  pass "TC-147 Pattern 6 crash denies and leaves stderr context"
+else
+  fail "TC-147 expected Pattern 6 fail-closed deny, got rc=$rc decision=$decision reason=$reason stderr=$stderr_log"
+fi
+rc=0
+output=$(run_guard "Bash" 'gh pr diff 1 --stat') || rc=$?
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
+if [ "$rc" = "0" ] && [ "$decision" = "deny" ] && [[ "$reason" == *"gh-pr-diff-stat"* ]]; then
+  pass "TC-147 Pattern 1 deny remains intact after Pattern 6"
+else
+  fail "TC-147 expected Pattern 1 non-regression, got rc=$rc decision=$decision reason=$reason"
+fi
+echo ""
+
+echo "TC-148: git commit --allow-empty → deny; ordinary commit and --allow-empty-message → allow"
+rc=0
+output=$(run_guard "Bash" 'git commit --allow-empty -m "x"') || rc=$?
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
+if [ "$decision" = "deny" ] \
+  && [[ "$reason" == *"git-commit-allow-empty"* ]] \
+  && [[ "$reason" == *"Leave the changes as files"* ]]; then
+  pass "git commit --allow-empty denied with pattern name and alternative"
+else
+  fail "Expected deny with git-commit-allow-empty and alternative, got decision=$decision reason=$reason"
+fi
+rc=0
+output=$(run_guard "Bash" 'git commit -m "x"') || rc=$?
+decision=$(extract_hook_field "$output" permissionDecision)
+if [ "$rc" = "0" ] && [ -z "$output" ] && [ -z "$decision" ]; then
+  pass "ordinary git commit -m is not denied"
+else
+  fail "Expected allow for git commit -m, got rc=$rc decision=$decision output=$output"
+fi
+rc=0
+output=$(run_guard "Bash" 'git commit --allow-empty-message -m ""') || rc=$?
+decision=$(extract_hook_field "$output" permissionDecision)
+if [ "$rc" = "0" ] && [ -z "$output" ] && [ -z "$decision" ]; then
+  pass "git commit --allow-empty-message is not denied"
+else
+  fail "Expected allow for --allow-empty-message, got rc=$rc decision=$decision output=$output"
+fi
 echo ""
 
 # --------------------------------------------------------------------------

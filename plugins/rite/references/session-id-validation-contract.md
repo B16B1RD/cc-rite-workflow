@@ -1,78 +1,79 @@
 # Session ID Validation Contract (SoT)
 
-> rite workflow には session_id を検証する validator が **2 つ** 存在し、それぞれ
-> **異なる契約**を持つ。本ドキュメントは、その責務分担と「両者を乖離させたまま維持する」
-> 契約の Source of Truth (SoT) である。判定ロジックそのものの SoT は各実装ファイルだが、
-> **なぜ 2 つに分かれているか / 統一してはいけない理由**の SoT は本書とする。
-
----
+Session ID の **選択**と**検証**を分ける。`session-identity.sh` がホストの実 ID を選び、
+利用箇所の責務に応じて次の 2 層で検証する。
 
 ## 2 つの validator、2 つの関心事
 
 | | Layer 1: security boundary | Layer 2: format / identity |
 |---|---|---|
-| 実装 | `flow-state.sh` の `_validate_session_id` | `_resolve-session-id.sh` |
-| 検証内容 | path-traversal (`..` / `/`) と制御文字 (C0 / DEL / C1 8-bit) のみ拒否。**形式は問わない** | 厳格 RFC 4122（`8-4-4-4-12` hex、case-lenient、lowercase 正規化） |
-| 通すもの | 任意の opaque token（例: `session-aaaa-1371`） | canonical UUID のみ |
-| 関心事 | session_id が**ファイルパス構築・ログ出力に流れる chokepoint** を安全に保つこと（path-traversal / log-injection 遮断） | 候補文字列が **canonical UUID かどうか**を判定し、per-session state file と legacy 単一ファイル fallback を切り分けること |
-| 適用経路 | `flow-state.sh` の `_resolve_session_id`（override / `.rite/session-id` with legacy `.rite-session-id` read fallback / `CLAUDE_CODE_SESSION_ID` / `CLAUDE_SESSION_ID`）→ `path` / `set` / `get` 各サブコマンド | `_resolve-session-id-from-file.sh`（new then legacy file 読込 → strict 検証 → 失敗時空文字復帰。新ファイルが不正なら旧 valid へは倒れない）経由で `issue-claim.sh` / `scripts/wiki-ingest-lock.sh`、および cross-session guard（`_resolve-cross-session-guard.sh` が `_resolve-session-id.sh` を直接呼び legacy sid を UUID 検証） |
+| 実装 | `session-identity.sh` の `validate_session_id_path`（`flow-state.sh` の `_validate_session_id` からも呼ぶ） | `_resolve-session-id.sh` |
+| 検証 | path-traversal (`..` / `/`) と制御文字 (C0 / DEL / C1 8-bit) を拒否。形式は問わない | 厳格 RFC 4122 形（`8-4-4-4-12` hex、case-lenient、lowercase 正規化） |
+| 受理 | 安全な opaque token | canonical UUID のみ |
+| 利用 | runtime adapter、`flow-state.sh` の `path` / `set` / `get` 等 | `issue-claim.sh`、`scripts/wiki-ingest-lock.sh`、cross-session guard |
 
-## なぜ乖離しているか（drift ではなく意図的）
+Layer 1 はファイルパスと診断出力の安全性、Layer 2 は所有者識別の形式を扱う。
+**両者を統一してはならない。** `flow-state.sh` を strict UUID 必須にすると、opaque SID を
+使う hook/tooling が per-session 経路を使えなくなる。既存の `flow-state.test.sh` の
+opaque SID round-trip を正の契約として維持する。
 
-- **Layer 1** は session_id が「filesystem path の一部」または「stderr のログ行」になる単一の
-  chokepoint を守る。その唯一の仕事はその操作を**安全**にすること（`.rite/sessions/{sid}.flow-state`
-  の外へ書き込ませない、偽の `WARNING:` 行を注入させない）。UUID 形式を**あえて強制しない**ことで、
-  - hook test / tooling が可読な opaque sid を使える
-  - UUID 形ではない非 Code クライアント由来 / 将来の runtime 識別子でも動作する
+## ホスト ID の選択
 
-- **Layer 2** は、ある文字列が「本物の session id か、ゴミか」を判定して per-session state file を
-  選ぶか legacy 単一ファイルへ fallback するかを決める箇所で使う
-  (`_resolve-session-id-from-file.sh` → `issue-claim.sh` / `scripts/wiki-ingest-lock.sh`)。ここでの厳格さこそが、その判定を
-  decidable にしている。検証失敗時は空文字を返し、caller は「session 不在」相当として legacy 経路へ
-  降格する。
+`session-identity.sh` は配布プラグインだけで動作し、開発環境の bootstrap を要求しない。
 
-両者は**異なるレイヤー**（安全な path 構築 vs 同一性 / 形式判定）で、**異なる問い**に答える。
-見た目が似た「session_id validator」だからといって統一すると、安全な path 構築が UUID 形に
-結合し、下記の silent-vacuous リスクを再導入する。
+| 入力 | 選択する実 ID |
+|---|---|
+| `RITE_HOST=claude` | `CLAUDE_CODE_SESSION_ID`、空なら `CLAUDE_SESSION_ID` |
+| `RITE_HOST=codex` | `CODEX_THREAD_ID` |
+| `RITE_HOST=grok` | `GROK_SESSION_ID` |
 
-## 契約（SoT）
+- 明示 `--session` がある state/claim/lock コマンドは、その値を最優先する。
+  runtime の有無や別ホストの環境変数に左右されず、呼出先の Layer 1 / Layer 2 で検証する。
+- `RITE_HOST` は ID の**選択入力**であり、hook 機能の有無を宣言しない。明示選択時は
+  他ホストの環境変数が異なる ID でも無視する。選択先が空・欠落・不正なら停止する。
+- `RITE_HOST` 未指定では、環境変数が存在するホスト群が 1 つなら自動選択する。
+  Claude の 2 変数は同じ群で、従来の `CLAUDE_CODE_SESSION_ID` 優先を維持する。
+  Codex/Grok の変数が明示的に空の場合もそのホストを検出し、欠落 ID として停止する。
+- 複数のホスト群が存在すれば、同じ ID であっても曖昧として停止し、`RITE_HOST` の
+  指定を診断に示す。不明な `RITE_HOST` もエラーとする。
+- ホスト名による ID の加工・固定 ID の代入・共有ファイルからの借用は行わない。
+  UUID の大文字は Layer 2 と同じ小文字表記に正規化し、opaque ID はそのまま使う。
 
-1. **`flow-state.sh` の path validation は format-agnostic を維持する MUST。**
-   `flow-state.sh` の `_resolve_session_id` を `_resolve-session-id.sh`（strict UUID）経由に
-   切り替えたり、Layer 1 validator に UUID 形式チェックを追加してはならない。
+実行形式 `bash session-identity.sh` と source 後の `resolve_runtime_session_id` は、
+成功時に実 ID を stdout へ出力する。rc=0 は選択成功、rc=1 は診断付きエラー、
+rc=2 は runtime context 不在（既存 file / Claude payload 互換経路を使用可能）を表す。
+エラー時の stdout は空。rc=1 を rc=2 と同じ fallback に変換してはならない。
 
-   - **理由**: 複数の hook test が非 UUID opaque sid を `flow-state.sh` に直接渡し、その受理に
-     依存している。代表例として `pre-compact.test.sh` の TC-per-session-compact-independence-AC1 は
-     `CLAUDE_CODE_SESSION_ID="session-aaaa-1371"` / `"session-bbbb-1371"` を設定し、
-     `pre-compact.sh` 内の `flow-state.sh path`（Layer 1 経由）が
-     `.rite/sessions/session-aaaa-1371.compact-state` 等へ解決することを期待する。
-     もし Layer 1 が strict UUID 検証を採用すると、これらの sid は解決に失敗 / legacy 経路へ
-     降格し、test は **loud に失敗するのではなく silent に vacuous 化**する（意図した per-session
-     経路ではなく legacy 単一ファイル経路を検証してしまう）。
+## 共有ファイルとの互換性と失敗時の境界
 
-2. **2 つの validator を統一（DRY 化）してはならない。** 上記のとおり別レイヤー・別関心事であり、
-   統一は safe-path-construction を UUID-shape に結合させ silent-vacuous リスクを再導入する。
+runtime context がない場合に限り、`flow-state.sh` は `.rite/session-id`、なければ
+旧 `.rite-session-id` を読み Layer 1 で検証する。新ファイルが存在して不正な場合は、
+有効な旧ファイルへ倒れない。claim / wiki lock は同じ選択順で
+`_resolve-session-id-from-file.sh` の Layer 2 検証を使う。
 
-3. **正の契約は executable test で pin する。** `flow-state.test.sh` の TC-24 が、非 UUID opaque
-   sid が `flow-state.sh` の `path` / `set` / `get` を round-trip することを assert する。将来 Layer 1
-   を strict 化すると TC-24 が loud に落ち、silent-vacuous リスクを **CI 失敗に変換**する。
+`resolve_strict_session_id <state_root> [override]` はこの順序を ownership consumer に
+提供する。選択された runtime / override が UUID でなければエラーで停止し、共有の
+session-id を試さない。旧 file helper 単体の「不在 / 不正なら空文字」の契約は維持する。
 
-## Layer 1（緩い契約）に依存するテスト
+flow-state、run queue（`path` の basename）、claim、work memory の state 読取、wiki lock は
+同じ選択された ID を使う。同じ実 ID で再開すれば既存の所有権を再利用できる。
+`flow-state.sh get` は runtime の選択・検証エラーを nonzero で伝播する。
+従来の runtime 不在かつ stored ID 不在の場合だけは、診断と `--default` を返す互換動作を維持する。
 
-以下のテストは非 UUID sid を使い、`flow-state.sh` がそれを受理することに依存する:
+`issue-comment-wm-sync.sh` / `cleanup-work-memory.sh` の legacy fallback は runtime 不在に
+限定する。runtime identity の失敗時は、legacy state の書込、WM の更新・削除、claim / lock の
+取得・解放を行わない。runtime を持つ cleanup は自身の state に記録された Issue の WM のみ削除する。
 
-- `pre-compact.test.sh` — `session-aaaa-1371` / `session-bbbb-1371`（TC-per-session-compact-independence-AC1 が使う非 UUID opaque sid fixture）
-- `pre-compact.test.sh` / `post-compact.test.sh` / `session-start.test.sh` —
-  test helper の default sid `test-sid-<dir>`（非 UUID 形）
-- `flow-state.test.sh` — TC-24（本契約を pin する正のテスト）
+## 検証
 
-> 将来これらを UUID sid へ移行する場合は、本一覧を更新し、Layer 1 契約を format-agnostic に
-> 保つ必要が依然あるかを再評価すること。
+- `runtime-session-identity.test.sh`: 3 ホストの同時 state / claim / queue / WM、lock の排他、
+  同一 ID 再開、選択優先、欠落・不正・競合時に foreign / legacy が不変であること。
+- `flow-state.test.sh`: opaque ID の path / set / get round-trip（Layer 1 を strict にしない）。
+- `issue-claim.test.sh` / `wiki-ingest-lock.test.sh`: UUID ownership と env-first / file fallback 互換。
+- `run-tests.sh` は ambient な Claude / Codex / Grok ID、`RITE_HOST`、runtime mode / state root を解除する。
 
 ## 関連
 
-- `flow-state.sh` `_validate_session_id` — Layer 1 validator（判定ロジック自体の SoT）
-- `_resolve-session-id.sh` — Layer 2 validator（strict RFC 4122）
-- `_resolve-session-id-from-file.sh` — Layer 2 consumer（file 読込 → strict 検証 → legacy fallback）
-- [state-read.sh Evolution History](./state-read-evolution.md) — helper 集約の経緯（cycle 34 F-01 で UUID validation を DRY 化）
-- [multi-session-state.md](../../../docs/designs/multi-session-state.md) — per-session state file 構造
+- [Host Runtime Contract](./host-runtime-contract.md)
+- [State Read Contracts](./state-read-evolution.md)
+- `_resolve-cross-session-guard.sh` — legacy state 内の SID の strict 検証

@@ -6,6 +6,8 @@ rite workflow 独自の主張 (Contract Rigour / Output Contract / Naming is doc
 
 > **前提**: 業界標準のコメント規律（WHY > WHAT、comment rot の害、密度調整など）はモデルの既知として本ファイルでは再教育しない。各原則は Summary + Rules のみを記す。rite 固有の契約 — 禁止句リスト (SoT)・廃止判定ルール・§C Detection Heuristics（parity test 対象）・§D・Whitelist — は機械検証・外部参照の対象のため全文を保持する。reviewer 側の Detection Checklist 統合は後続 Issue (Issue 2a) の責務。
 
+比喩や気取った言い回し（mannered prose）を避け、直叙できる語があればそれを使う。
+
 ## 適用スコープ
 
 本 SoT が扱う「説明・ジャーナル目的の Issue/PR/commit 番号参照」の廃止は、コード内コメントに限らず**永続成果物全般**を対象とする。具体的には次を含む。
@@ -16,7 +18,7 @@ rite workflow 独自の主張 (Contract Rigour / Output Contract / Naming is doc
 | ドキュメント散文 | `docs/`（SPEC ほか）・command/skill markdown の手順書本文・各種 reference・成果物テンプレート |
 | Wiki ページ | `.rite/wiki/` の経験則ページ・テンプレート |
 
-「番号を辿っても得るものが少なく、辿る手間に見合わない」ため、永続成果物には番号を残さず、残すべき背景（Why）は**散文として成果物そのものに書く**。番号リンクは commit message / PR description（git/PR メタデータ）にのみ残す。どの参照を削除し、どれを維持するかは次節「廃止判定ルール」で分類する。
+「番号を辿っても得るものが少なく、辿る手間に見合わない」ため、永続成果物には番号を残さず、残すべき背景（Why）は**散文として成果物そのものに書く**。番号リンクは commit message / PR description（git/PR メタデータ）にのみ残す。永続成果物の裸の `#NNN` は一律禁止（次節）。
 
 ## 適用フェーズ
 
@@ -43,16 +45,16 @@ rite workflow 独自の主張 (Contract Rigour / Output Contract / Naming is doc
 
 ## 廃止判定ルール (説明的参照 vs 前方ポインタ)
 
-番号参照は一律に削除するのではなく、次のルールで分類して扱う。各参照について「説明的か（削除）／前方ポインタか（維持）」を**個別判定**する。判定は文脈読解を要するため、機械的な一括 grep 置換にはできない。
+永続成果物の裸の番号トークン（`#NNN`）は一律禁止。検出器は `number-reference-check.sh`。
 
 | 参照の種類 | 判定 | 理由 |
 |-----------|------|------|
 | **説明的参照**（「詳細は #N 参照」「PR #N で対応」「(refs #N)」等、Why の代替として貼られたもの） | **削除** → Why を散文化 | 番号を辿っても背景は得られず、辿る手間に見合わない。背景が必要なら Why を散文で残す |
-| **TODO / FIXME に添えた追跡番号** | **維持** | 未来の取り扱い経路を示す前方ポインタ。これから来る読み手が次の作業を辿るための実用情報であり、過去の説明ではない |
-| **test 契約・semantic アンカーとしてのファイル名参照**（`xxx.test.sh` 等） | **維持** | 番号ではない。drift-check や test 契約のアンカーとして機能し、rename 追従可能 |
+| **TODO / FIXME に添えた追跡番号** | **禁止**（例外ではない） | TODO 行に Issue 番号を維持しない。TODO/FIXME は番号なしで存在してよい |
+| **test 契約・semantic アンカーとしてのファイル名参照**（`xxx.test.sh` 等） | **維持** | `#NNN` トークンではない。drift-check や test 契約のアンカーとして機能し、rename 追従可能 |
 | **commit message / PR description 内の番号** | **対象外**（許可） | git/PR メタデータは番号の正しい受け皿。永続成果物（コード・ドキュメント・Wiki）ではない |
 
-この分類が全 Sub-Issue 共通の契約となる。検出機構（lint / reviewer）は本ルールに**従うべきであり**、「説明的参照=検出対象」「TODO/FIXME 追跡番号・ファイル名アンカー=検出除外」を区別することを目標とする（検出側の regex 同期・誤検出除外の具体実装は検出機械化タスクの責務であり、本 SoT 改訂時点では §C Detection Heuristics の正規表現は未同期）。なお parity test は禁止句リスト（SoT）と §C Detection Heuristics の forward 包含（SoT ⊆ Heuristics）を検証するリスト整合テストであり、コメントの検出対象/除外そのものを区別する機構ではない。
+検出機構は本ルールに従う。TODO/FIXME 追跡番号を検出除外とする番号例外は置かない。ファイル名アンカーは `#NNN` ではないので対象外。parity test は禁止句リスト（SoT）と §C Detection Heuristics の forward 包含（SoT ⊆ Heuristics）を検証するリスト整合テストであり、検出対象/除外そのものを区別する機構ではない。
 
 ## A. 6 原則 (Principle Details)
 
@@ -158,7 +160,7 @@ rite workflow 独自の主張 (Contract Rigour / Output Contract / Naming is doc
 
 1. コードを変更したら、影響範囲のコメントも同 commit 内で更新する (commit に閉じる)
 2. 削除されたコードへのコメント参照を残してはならない
-3. 「TODO」「FIXME」を書くなら必ず関連 Issue / PR 番号を添えて未来の取り扱い経路を明示する。野良 TODO は禁止。この追跡番号は廃止判定ルールの**前方追跡ポインタ（維持）**に該当し、Why の代替として貼る説明的参照（削除対象）とは区別される — 番号廃止方針と矛盾しない（過去の説明ではなく、これから来る読み手が次の作業を辿るための前方ポインタだから維持する）
+3. 「TODO」「FIXME」は追跡番号なしで存在してよい。Issue/PR 番号（`#NNN`）を添えるよう指示しない
 4. レビュー時、コメントが現コードと整合しているかを必ず確認する (severity: CRITICAL)
 
 ---
@@ -171,7 +173,7 @@ reviewer (人間 + LLM) が原則違反を機械的に検出するためのヒ�
 | 原則 | Heuristic | 検出例 |
 |------|-----------|--------|
 | 1. why_over_what | 関数名・変数名と docstring summary が同義語 | `get_user_id` の docstring に「user id を取得」 |
-| 2. no_journal_comment | コメント内に以下いずれかが含まれる (whitelist 例外あり): **cycle / finding ID 参照** (`cycle\s*\d+`, `F-\d+`, `verified-review`, `サイクル\s*\d+`), **Issue / PR 参照** (`Issue\s*#\d+`, `PR\s*#\d+`, `(See\|Refs\|Related\s+to\|Closes\|Fixes)\s+#\d+`), **commit 参照** (`(Fixed\|Resolved)\s+in(\s+commit)?\s+\S+`, `In\s+commit\s+\S+`, `Pushed\s+as\s+\S+`), **日本語版** (`コミット\s*\S+\s*で対応`, `#\d+\s*で(別途)?対応`), **旧版表現** (`旧実装は`, `旧コードでは`, `In\s+the\s+old\s+code`) | `# verified-review cycle 35 fix (F-04 HIGH)` / `# Fixed in commit abc1234` / `# Closes #456` / `# コミット abc1234 で対応` / `# 旧実装は ～` |
+| 2. no_journal_comment | コメント内に以下いずれかが含まれる (whitelist 例外あり): **cycle / finding ID 参照** (`cycle\s*\d+`, `F-\d+`, `verified-review`, `サイクル\s*\d+`), **Issue / PR 参照** (`Issue\s*#\d+`, `PR\s*#\d+`, `(See\|Refs\|Related\s+to\|Closes\|Fixes)\s+#\d+`), **commit 参照** (`(Fixed\|Resolved)\s+in(\s+commit)?\s+\S+`, `In\s+commit\s+\S+`, `Pushed\s+as\s+\S+`), **日本語版** (`コミット\s*\S+\s*で対応`, `#\d+\s*で(別途)?対応`), **旧版表現** (`旧実装は`, `旧コードでは`, `In\s+the\s+old\s+code`) | `# verified-review cycle 35 fix (F-04 HIGH)` / `# Fixed in commit abc1234` / `# Closes ` / `# コミット abc1234 で対応` / `# 旧実装は ～` |
 | 3. no_line_or_cycle_reference | コメント内に `[a-zA-Z0-9_./-]+\.\w+:\d+` (file:line) パターン (ハイフン含むファイル名 例: `work-memory-update.sh:42` を取りこぼさないため `-` も許容) | `# state-read.sh:93 と同じ` / `# work-memory-update.sh:42 と同型` |
 | 4. no_jargon_abuse | コメント内のトークンが whitelist にも辞書にも存在しない造語 | (LLM 判定。プロジェクト内 3 回以上の独立登場の有無) |
 | 5. density_by_audience | 公開 API のコメント密度 < 内部 helper のコメント密度 | docstring 0 行の export 関数 + docstring 5 行の static helper |

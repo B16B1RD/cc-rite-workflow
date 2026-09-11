@@ -154,7 +154,7 @@ When Projects-related API calls fail, display a warning and continue. Projects o
 
 <a id="jq-required-fields-snippet-canonical"></a>
 
-`review-result-schema.md` で定義される JSON スキーマの必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) を検証する canonical jq snippet。ステップ 6.1.a (pr-review.md) と ステップ 1.2.0 Priority 0 / 2 / 3 (fix.md) の 4 箇所から参照される (verified-review cycle 8 M-8 対応で canonicalize)。
+`review-result-schema.md` で定義される JSON スキーマの必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) を検証する canonical jq snippet。ステップ 6.1.a (pr-review.md) と ステップ 1.2.0 Priority 0 / 2 / 3 (fix.md) の 4 箇所から参照される。
 
 **Canonical snippet** (jq 式):
 
@@ -181,31 +181,33 @@ and (.findings | type == "array")
 
 **Finding ID validation (ステップ 6.1.a のみ追加検証)**: 本 canonical snippet に加えて ステップ 6.1.a では finding id の書式 (`^F-[0-9]{2,}$`) と一意性も検証する。これは write 側 (pr-review.md) でのみ enforce される「生成規則」であり、read 側 (fix.md) では既に書き込まれた JSON を信頼するため検証不要。
 
-検証は **2 段**に分かれる。`findings[]` 側の欠陥のみが hard fail (`JSON_SAVED=false`) で、`non_blocking_findings[]` 側に閉じた欠陥は非ブロッキング marker に落とす — advisory な監査記録の欠陥を理由に blocking findings ごと保存を失う fail-unsafe を避けるため (review-result-schema.md §non_blocking_findings 配列)。
+検証は **2 段**に分かれる。**書式は 2 配列の和集合で hard fail** (`JSON_SAVED=false`)、**一意性は `findings[]` 側のみ hard fail** で和集合に閉じた重複は非ブロッキング marker に落とす — 書式外 id は cleanup 6.0.V の `--exclude-ids` 経路そのものを壊すため発生源で止めるが、advisory な重複を理由に blocking findings ごと保存を失う fail-unsafe は避ける (review-result-schema.md §non_blocking_findings 配列)。
 
 ```jq
-# (1) findings[] 側 — hard fail (reason=finding_id_format_or_uniqueness_violation)
+# (1) 書式 (和集合) + 一意性 (findings[] のみ) — hard fail
+#     reason=finding_id_format_or_uniqueness_violation
+# 非配列は空配列に畳む ($nb)。畳まないと length が非 0 になる型 ("abc"→3 / 3→3 / {"a":1}→1) が
+# 件数を水増しし、型によって判定が化ける
 # 左辺は括弧で束縛する。`[.findings[].id] | unique | length == (.findings | length)` と書くと
 # パイプ後の `.` が unique 済み配列になり "Cannot index array with string findings" で rc=5 になる
-(.findings | length == 0)
+# `contains("\n") | not` は必須 — Oniguruma の `$` は末尾改行の直前にも一致し、単体では "F-05\n" を通す
+((if (.non_blocking_findings | type) == "array" then .non_blocking_findings else [] end)) as $nb
+| (((.findings | length) + ($nb | length)) == 0)
 or (
-  (.findings | all(.id? // "" | test("^F-[0-9]{2,}$")))
-  and (([.findings[].id] | unique | length) == (.findings | length))
+  ([(.findings[]?, $nb[])] | all((.id? // "") | (test("^F-[0-9]{2,}$") and (contains("\n") | not))))
+  and ((.findings | length == 0)
+       or (([.findings[].id] | unique | length) == (.findings | length)))
 )
 ```
 
 ```jq
-# (2) 和集合 (findings[] ∪ non_blocking_findings[]) — 非ブロッキング
+# (2) 和集合の一意性 — 非ブロッキング
 #     marker: NON_BLOCKING_FINDINGS_ID_UNION_VIOLATION
-# 非配列は空配列に畳む ($nb)。畳まないと length が非 0 になる型 ("abc"→3 / 3→3 / {"a":1}→1) が
-# $total を水増しし、非ブロッキングと宣言した経路が型によって hard fail に化ける
+# 書式は (1) で担保済みのため、ここでは一意性だけを見る
 ((if (.non_blocking_findings | type) == "array" then .non_blocking_findings else [] end)) as $nb
 | ((.findings | length) + ($nb | length)) as $total
 | ($total == 0)
-or (
-  ([(.findings[]?, $nb[])] | all(.id? // "" | test("^F-[0-9]{2,}$")))
-  and (([(.findings[]?, $nb[]) | .id] | unique | length) == $total)
-)
+or ((([(.findings[]?, $nb[]) | .id] | unique | length) == $total))
 ```
 
 Failure reason: `finding_id_format_or_uniqueness_violation` ((1) のみ。(2) は reason ではなく observability marker)
@@ -214,7 +216,7 @@ Failure reason: `finding_id_format_or_uniqueness_violation` ((1) のみ。(2) �
 
 <a id="hook-lock-contention-classification-canonical"></a>
 
-`local-wm-update.sh` / `issue-comment-wm-sync.sh` などの hook が stderr に出力するメッセージから「lock contention (best-effort skip 許容)」と「non-lock failure (WARNING + stderr 表示義務)」を分類する canonical pattern。`pr-review.md` ステップ 6.2 / 6.4 と `fix.md` ステップ 5.1 の 3 箇所から参照される (verified-review cycle 12 H-1 対応で canonicalize)。
+`local-wm-update.sh` / `issue-comment-wm-sync.sh` などの hook が stderr に出力するメッセージから「lock contention (best-effort skip 許容)」と「non-lock failure (WARNING + stderr 出力 + 完了報告への転記義務)」を分類する canonical pattern。`pr-review.md` ステップ 6.2 / 6.4 と `fix.md` ステップ 5.1 の 3 箇所から参照される。
 
 **Canonical pattern** (grep 式):
 
@@ -238,4 +240,4 @@ grep -qiE '(file is locked|lock contention|resource busy)' "$err_file"
 
 これらを防ぐため、exact phrase match の厳格化された regex に統一する (cycle 10 S-1 で `pr-review.md` の Step 2 以外には適用されたが、本 cycle 12 H-1 で 4 箇所全てに波及)。
 
-**Non-lock failure (本 pattern が match しない) 時の責務**: WARNING + hook stderr 先頭 5 行の表示 (`head -5 "$err_file" | sed 's/^/  /' >&2`)、および「対処: hook の存在 / 実行権限 / 内容を確認してください」の案内を追加する。詳細は各 Usage site の実装例を参照。
+**Non-lock failure (本 pattern が match しない) 時の責務**: WARNING + hook stderr 先頭 5 行の表示 (`head -5 "$err_file" | sed 's/^/  /' >&2`)、および「対処: hook の存在 / 実行権限 / 内容を確認してください」の案内を追加する。stderr はユーザーの端末に届く保証がないため、orchestrator は同じ 1 行を完了報告の `要対応:` 欄へ転記する ([autonomous-execution.md](../skills/rite-workflow/references/autonomous-execution.md))。詳細は各 Usage site の実装例を参照。

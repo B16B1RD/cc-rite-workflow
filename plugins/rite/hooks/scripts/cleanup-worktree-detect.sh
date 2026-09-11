@@ -43,7 +43,7 @@
 #                           (resume / main checkout)
 #   in_worktree             flow-state records a worktree and cwd is in it
 #   in_worktree_unrecorded  flow-state empty, but cwd is physically this issue's
-#                           rite session worktree (#1622 derivation)
+# rite session worktree (derivation)
 set -euo pipefail
 
 ms_enabled=""
@@ -75,7 +75,7 @@ if [ "$ms_enabled" = "true" ]; then
   if [ -n "$flow_wt" ] && [ "$flow_wt" = "$cur_top" ]; then
     state="in_worktree"
   elif [ -z "$flow_wt" ] && [ -n "$cur_top" ] && [ -n "$issue" ]; then
-    # Physical derivation (#1622): cwd IS this issue's rite session worktree even
+    # Physical derivation: cwd IS this issue's rite session worktree even
     # though flow-state never recorded it. Match the FULL configured tail
     # `<worktree_base>/issue-<issue>`, NOT just the leaf — so an unrelated parent
     # dir that merely shares the base leaf (e.g. `/x/UNRELATED/worktrees/issue-N`)

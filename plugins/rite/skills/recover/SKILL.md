@@ -9,6 +9,8 @@ argument-hint: ""
 
 # /rite:recover
 
+> 実行入口と工程境界は [Host Runtime Contract](../../references/host-runtime-contract.md#入口と工程境界)、native Skill / Task がない場合の実行は [Host workflow operations](../../references/host-workflow-operations.md) に従う。nested 呼出しは caller の runtime 選択を引き継ぐ。
+
 中断した rite ワークフローを再開する。flow-state (phase enum v3 SoT) と commit 数 / PR 状態 / work memory を cross-check して再開点を決める。
 
 **Use cases:** クラッシュ / セッション切断 / 手動中断 / **Context 枯渇**（`/clear` 後に本コマンド。これが **唯一の正規経路**。[workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md)）。
@@ -45,7 +47,7 @@ argument-hint: ""
 | `{pr_state}` | Phase 3.3: `gh pr view` の `.state` (NONE/OPEN/MERGED/CLOSED) |
 | `{pr_is_draft}` | Phase 3.3: `gh pr view` の `.isDraft` |
 | `{pr_mergeable}` | Phase 3.3: `[CONTEXT] PR_MERGEABLE` marker (`gh pr view` の `.mergeable`: MERGEABLE/CONFLICTING/UNKNOWN)。Phase 3.4.5 で CONFLICTING をコンフリクト状態として扱う |
-| `{wm_next}` | Phase 3.4: work memory (`.rite/work-memory/issue-{n}.md`) の `next_action:` |
+| `{wm_next}` | Phase 3.4: work memory (`{state_root}/.rite/work-memory/issue-{n}.md`) の `next_action:` |
 | `{resolved_phase}` | Phase 3.5: cross-check 確定 phase (`[CONTEXT] RESOLVED_PHASE` marker)。Phase 4.2 で user が phase 変更を選んだ場合は `[CONTEXT] FINAL_PHASE` marker を優先 |
 | `{type}` / `{slug}` | ブランチ名 `{type}/issue-{number}-{slug}` の構成要素 |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
@@ -156,21 +158,24 @@ echo "[CONTEXT] STATE_PARENT_DISPLAY=$parent_issue_display"
 worktree 再入場は Phase 3.2 / 3.3 の **前** に行う。**issue 番号 → worktree パス導出が正規の対応**。flow-state `worktree` field は同一セッション内のヒント。
 rationale: references/rationale.md#worktree-before-crosscheck
 
+[共通作業先契約](../../references/git-worktree-patterns.md#host-worktree-execution) の現在 session ID と保存 state / claim の所有権を照合し、**helper による再構築の前に** `issue-claim.sh claim --issue {issue_number}` を実行する。`rc=10` は open の他 live セッション確認ゲート、その他の非ゼロは停止。保存 branch / worktree が導出値と矛盾した場合も再構築せず停止する。別セッションの state を現在セッションとして上書きしない。
+
 検出・再構築は `ensure_session_worktree`（[`lib/worktree-git.sh`](../../hooks/scripts/lib/worktree-git.sh)）に委譲する。helper は `multi_session` 読取・パス導出・branch 解決・**再構築**まで完結し、`[CONTEXT] WT_ENSURE=` を emit する:
 
 ```bash
 bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --issue "$issue_arg"
 ```
 
-> **本ブロックは WT_ENSURE 分岐表の SoT**（review / iterate / fix の入場ゲートが参照する）。EnterWorktree は LLM が実行する。下表は **case 値ごとのアクション**のみ。
+> **本ブロックは WT_ENSURE 分岐表の SoT**（review / iterate / fix の入場ゲートが参照する）。入場と変更前検証は共通作業先契約に従い LLM が実行する。下表は **case 値ごとのアクション**のみ。
 > rationale: references/rationale.md#worktree-before-crosscheck
 
 `WT_ENSURE` で分岐する:
 
 | `WT_ENSURE` | アクション |
 |---|---|
-| `disabled` / `already_in` | no-op（従来フロー / 既に worktree 内）。Phase 3.2 へ |
-| `reenter` / `reconstructed` | `EnterWorktree` ツールを `path: {path}` で呼び出してから Phase 3.2 へ（`{path}` は marker の `path=` 値。`reconstructed` は helper が `git worktree add` 済み） |
+| `disabled` | no-op（従来フロー）。Phase 3.2 へ |
+| `already_in` | 下記の state 確定・変更前検証を実行して Phase 3.2 へ（入場操作だけ不要） |
+| `reenter` / `reconstructed` | 共通作業先契約の native / 検証済み代替で `{path}` へ入場してから Phase 3.2 へ（`{path}` は marker の `path=` 値。`reconstructed` は helper が `git worktree add` 済み） |
 | `residue` | パスは存在するが worktree 未登録（prune 後も残存）→ AskUserQuestion（削除 `rm -rf {path}` して再実行 / 中止） |
 | `branch_other_worktree` | branch が**別の worktree** で checkout 中（並行セッションの可能性）→ **中止**。`other=` のパスを表示する（git が構造的に保証する二重着手ガード） |
 | `branch_absent` | branch がローカル・リモートどこにも無い → **矛盾サマリ + AskUserQuestion**（新規セッション扱い / 中止）。helper は再構築しない（silent に新規扱いもしない） |
@@ -178,14 +183,14 @@ bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --i
 
 > **caller-local marker `skip` について**: `review` / `fix` の入場ゲートは PR の `headRefName` が issue ブランチ（`issue-N` 命名）でないとき、helper を呼ばず caller 自身が `[CONTEXT] WT_ENSURE=skip` を emit する（session worktree の対象外＝従来どおり単一ツリーで続行する no-op）。`skip` は helper の出力 case ではなく **caller 固有拡張**であり、`disabled` / `already_in` と同じく no-op として扱う。recover は引数 / branch / 候補列挙で issue を確定してから本 helper を呼ぶため、recover 経路で `skip` は emit されない。
 
-> **sandbox 有効環境での state 書込拒否（#1896）**: `reenter` / `reconstructed` で worktree に入場した直後、後続フェーズの `flow-state.sh set` 等 main checkout 配下への state 書込が「読み込み専用ファイルシステムです」で失敗することがある（sandbox の write 許可リストが cwd 依存の相対パスのため）。対処は [git-worktree-patterns.md](../../references/git-worktree-patterns.md#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる) を参照。
+> **sandbox 有効環境での state 書込拒否**: `reenter` / `reconstructed` で worktree に入場した直後、後続フェーズの `flow-state.sh set` 等 main checkout 配下への state 書込が「読み込み専用ファイルシステムです」で失敗することがある（sandbox の write 許可リストが cwd 依存の相対パスのため）。対処は [git-worktree-patterns.md](../../references/git-worktree-patterns.md#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる) を参照。
 
 **EnterWorktree が失敗した場合**（`reenter` / `reconstructed` 経路の `EnterWorktree(path)` がエラー）: open Step 2.3-W と同じ切り分けを行い、**silent に新規セッション扱いしない**。
 
 - **harness の git 誤判定**（`.git` が存在し `git -C "{path}" rev-parse` は成功するのに、起動コンテキストが `Is a git repository: false` で EnterWorktree が「not in a git repository」エラーを返す）→ **推奨**。診断とともに「**リポジトリ root から Claude Code を再起動**し、`/rite:recover {issue_number}` を再実行すれば、登録済み worktree が `WT_ENSURE=reenter` で再入場される」と案内する。worktree は保持済みのため破壊しない。
 - **worktree path 消失などの別要因** → 再度本ヘルパーを実行すれば `branch_absent` 以外なら再構築される。再起動案内へ誤誘導しない。
 
-再入場後、claim に worktree path を再記録してもよい（`issue-claim.sh claim --issue {issue_number} --worktree "{path}"`、best-effort）。
+`already_in` / `reenter` / `reconstructed` はいずれも共通作業先契約の変更前検証を実行する。現在 session の state 不在時は、所有権照合済みの復旧 phase / PR を `entry_phase` / `pr_number` に渡す。phase がまだ不明なら `init` / PR 未判明なら `0` として入場を記録し、Phase 3.3 の既存クロスチェックで復旧 phase を確定する。実体・claim 照合後だけ初回 state を作り、既存 state は上書きしない。成功後に claim の worktree path を記録し、Phase 3.2 以降を同じ作業先で実行する。
 
 ### 3.2 git 状態取得
 
@@ -197,7 +202,7 @@ git fetch origin "$base_branch" >/dev/null 2>&1 || true
 git_commit_count=$(git rev-list --count "origin/${base_branch}..HEAD" 2>/dev/null || echo "0")
 git_has_uncommitted=$(bash {plugin_root}/hooks/scripts/lib/git-status-filtered.sh) || git_has_uncommitted="?? (dirty-check failed — assume uncommitted for safety)"; git_has_uncommitted="${git_has_uncommitted%%$'\n'*}"
 
-# コンフリクト / rebase 状態検出 (#1705): Phase 3.4.5 が phase 推定より優先させる signal。
+# コンフリクト / rebase 状態検出: Phase 3.4.5 が phase 推定より優先させる signal。
 # worktree 運用でも正しい作業ツリーを判定するため .git/... を直書きせず git rev-parse --git-path で
 # 解決する (worktree の MERGE_HEAD / rebase 状態は .git/worktrees/<name>/ 配下にあり、直書きは常に
 # 不在扱いとなって merge/rebase 中断を取りこぼす)。
@@ -229,8 +234,9 @@ echo "[CONTEXT] PR_MERGEABLE=$pr_mergeable"
 ### 3.4 Work Memory 状態取得
 
 ```bash
-LOCAL_WM=".rite/work-memory/issue-${issue_arg}.md"
-[ -f "$LOCAL_WM" ] || [ ! -f ".rite-work-memory/issue-${issue_arg}.md" ] || LOCAL_WM=".rite-work-memory/issue-${issue_arg}.md"
+state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
+LOCAL_WM="$state_root/.rite/work-memory/issue-${issue_arg}.md"
+[ -f "$LOCAL_WM" ] || [ ! -f "$state_root/.rite-work-memory/issue-${issue_arg}.md" ] || LOCAL_WM="$state_root/.rite-work-memory/issue-${issue_arg}.md"
 wm_phase=""
 wm_next=""
 if [ -f "$LOCAL_WM" ]; then
@@ -239,7 +245,7 @@ if [ -f "$LOCAL_WM" ]; then
 fi
 ```
 
-### 3.4.5 コンフリクト / rebase 状態の優先判定 (#1705)
+### 3.4.5 コンフリクト / rebase 状態の優先判定
 
 Phase 3.2 / 3.3 の marker を読み、**いずれかがコンフリクト / rebase 中断なら Phase 3.5 より本判定を優先する**。
 rationale: references/rationale.md#conflict-priority
@@ -445,7 +451,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 ### 5.4 invoke
 
-確定した phase に応じて Skill ツール経由で対応コマンドを呼ぶ。引数として `{issue_arg}` (`open`) または `{pr_number}` (`iterate` / `ready` / `cleanup`) を渡す。
+確定した phase に応じて native Skill または共通契約の本文実行で対応コマンドを呼ぶ。引数として `{issue_arg}` (`open`) または `{pr_number}` (`iterate` / `ready` / `cleanup`) を渡す。
 
 `/rite:open` は内部の Resume Dispatch (ステップ 0) で `[CONTEXT] RESUME_DISPATCH=1; phase=$resolved_phase; issue=$issue_arg` を観測し、適切な step にジャンプする。`/rite:iterate` は phase に応じて review / fix のどちら側からループを始めるかを自動判定する。
 
@@ -530,13 +536,13 @@ Phase 5.4 で resume した個別スキルの終端状態を、[`skills/batch-ru
 
 <!-- run orchestration: after invoking per the table above and observing the terminal sentinel, do NOT stop — proceed to the failed-record / stop-policy paragraph below (same routing as batch-run ステップ 3-8). -->
 
-**failed 記録 / 停止方針の委譲**: サーキットブレーカー（`[iterate:max-cycles-reached]`）は batch-run [ステップ 6](../batch-run/SKILL.md) の failed 記録 bash と同じ操作で `run-queue-{session_id}.json` の `failed[]` に記録してからカーソル前進へ進む（即停止しない）。それ以外の失敗 sentinel（`[pr-create-failed]` / `[fix:error]` / `[ready:error]` / `[merge:error]` / `[merge:not-ready]` / sentinel 不在 等）は batch-run [ステップ 8](../batch-run/SKILL.md) と同じ「即停止して報告」方針に従う（AC-5）。停止時は `run-queue-{session_id}.json` の `active` を `false` にする（batch-run ステップ 8 と同一操作。キュー本体は削除しない）。
+**failed 記録 / 停止方針の委譲**: サーキットブレーカー（`[iterate:max-cycles-reached]`）を含む失敗 sentinel は、batch-run [ステップ 8](../batch-run/SKILL.md) の停止処理へ直行する（`{breaker_failed}` は同ステップの規則で置換）。`active=false` にし、ブレーカーなら `failed[]` に記録する。cursor は当該 Issue に保持し、ready/merge/cleanup と後続 Issue を実行しない。それ以外の sentinel の成否も batch-run ステップ 3-6 の表に従う。
 
-<!-- run orchestration: 直前の paragraph の2分岐のうち「即停止して報告」側に分岐した場合は STOP — 以降の「active 維持」「カーソル前進とループ」paragraph には進まない（cursor advance を経由しない）。同 paragraph 内でカーソル前進に進むのはサーキットブレーカー分岐のみ（batch-run ステップ 6/8 と同じ非対称性）。当該 Issue が正常完了した場合は本 STOP の対象外で、下記「カーソル前進とループ」paragraph からカーソル前進に進む（通常経路）。 -->
+<!-- run orchestration: サーキットブレーカーを含む失敗は STOP — batch-run ステップ 8 へ直行し、以降の active 維持 / カーソル前進は実行しない。前進可能な終端 sentinel の場合のみ下記へ進む。 -->
 
 **active 維持**: 継続処理中は `run-queue-{session_id}.json` の `active=true` を維持する（`/rite:iterate` ステップ 6 の既存 batch 判定が `active` を参照するため — 変更禁止の非対象ファイル）。`active=false` にするのは上記の失敗停止時のみ。
 
-**カーソル前進とループ**: サーキットブレーカーで failed 記録した場合、または当該 Issue が正常に完了した場合、batch-run [ステップ 6](../batch-run/SKILL.md) のカーソル前進 bash（`updated_at` も更新）を実行する（即停止経路はこの bash を経由しない）。`cursor < total` なら batch-run [ステップ 1](../batch-run/SKILL.md) と同じ「次の Issue を取り出す」ループに入る（以降は通常の `/rite:batch-run` 実行と同一）。`cursor >= total` なら batch-run [ステップ 7](../batch-run/SKILL.md) の全完了通知を出す。
+**カーソル前進とループ**: 当該 Issue が batch-run ステップ 3-6 の表で前進可能と判定された場合のみ、batch-run [ステップ 6](../batch-run/SKILL.md) のカーソル前進 bash（`updated_at` も更新）を実行する（即停止経路はこの bash を経由しない）。`cursor < total` なら batch-run [ステップ 1](../batch-run/SKILL.md) と同じ「次の Issue を取り出す」ループに入る（以降は通常の `/rite:batch-run` 実行と同一）。`cursor >= total` なら batch-run [ステップ 7](../batch-run/SKILL.md) の全完了通知を出す。
 
 <!-- run orchestration: after this cursor advance, do NOT stop — loop back to batch-run ステップ 1 (次の Issue) or go to batch-run ステップ 7 (全完了通知)。即停止（ステップ8）はこの cursor advance を経由しない — 上の「failed 記録 / 停止方針の委譲」paragraph で即停止と判定した時点で直接ステップ8へ遷移し、本カーソル前進 bash は実行しない。 -->
 

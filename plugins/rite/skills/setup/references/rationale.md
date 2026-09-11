@@ -189,6 +189,15 @@ sandbox + multi_session では初回から marker `failed` になるのが既定
 
 `already_present` で無表示なのは `--upgrade` 再実行毎のノイズを出さないため。
 
+## status-option-union-provision
+
+`updateProjectV2Field` の `singleSelectOptions` は渡した配列で option 集合を全置換する。
+4 件リテラル（`Todo` / `In Progress` / `In Review` / `Done`）を毎回送ると (1) `Cancelled`
+が永久に作られず (2) 手で足した option が setup 再実行で消える。既存を GraphQL で読み、
+rite 管理 5 つとの和集合を送り、既存には `id` を付けて identity を保つ。読み取り失敗時に
+4 件リテラルへフォールバックするとユーザー定義 option が無言で消えるため、mutation せず
+fail-loud する。
+
 ## ssh-alias-sandbox
 
 本問題は SSH alias remote + sandbox の組合せだけで起きる。`multi_session` の有無には依存

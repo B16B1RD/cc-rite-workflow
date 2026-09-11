@@ -249,9 +249,9 @@ The `Scope` column accepts `current-pr` / `follow-up` / `nit-noted` (schema 1.1.
 
 ```
 If `rite:{reviewer_type}-reviewer` cannot be resolved (named subagent missing):
-  1. Log warning
-  2. Skip that reviewer
-  3. Continue with remaining reviewers
+  1. Record the resolution error and the fixed selected roster
+  2. Mark that reviewer incomplete and retain successful results
+  3. Return [review:error]; do not consolidate a reduced roster
 ```
 
 ### Reviewer Timeout
@@ -262,8 +262,8 @@ If `rite:{reviewer_type}-reviewer` cannot be resolved (named subagent missing):
 If reviewer task exceeds internal timeout:
   1. Task tool returns an error
   2. Mark the reviewer as "incomplete"
-  3. Continue with other reviewers' results
-  4. Note "{reviewer_type}: タイムアウト" in unified report
+  3. Apply pr-review's one retry; retain other reviewers' results
+  4. If retry fails, return [review:error] with "{reviewer_type}: タイムアウト"
 ```
 
 ### No Reviewers Match

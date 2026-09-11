@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Issue #2431: setup Phase 4.6 shrink, --upgrade migrate, health-check 3-line SoT.
+#: setup Phase 4.6 shrink, --upgrade migrate, health-check 3-line SoT.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_test-helpers.sh"
@@ -200,4 +200,4 @@ case "$T08_OUT" in
 esac
 
 print_summary "$(basename "$0")" \
-  "setup nested gitignore generation, --upgrade migrate, health-check 3-line SoT (#2431)"
+  "setup nested gitignore generation, --upgrade migrate, health-check 3-line SoT"

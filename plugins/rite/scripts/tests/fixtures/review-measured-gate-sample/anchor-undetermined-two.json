@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.1.0",
+  "pr_number": 99,
+  "timestamp": "2026-01-01T00:00:00Z",
+  "commit_sha": "0123456789abcdef0123456789abcdef01234567",
+  "overall_assessment": "fix-needed",
+  "findings": [
+    {
+      "id": "F-03",
+      "reviewer": "test",
+      "category": "test-quality",
+      "severity": "HIGH",
+      "file": "plugins/rite/hooks/sample.sh",
+      "line": 1,
+      "description": "同上を独立検出。sandbox 起因の環境失敗 1 件が無関係なブロックの偽 FAIL に化ける。Likelihood-Evidence: existing_call_site。Verification: helper を source して不在ファイルへ assert_grep => PASS=0 FAIL=1 SKIP=0",
+      "suggestion": "生成元と同じブロックへ移す",
+      "status": "fixed",
+      "scope": "current-pr"
+    },
+    {
+      "id": "F-07",
+      "reviewer": "application-reviewer",
+      "category": "error_handling",
+      "severity": "HIGH",
+      "file": "plugins/rite/hooks/sample.sh",
+      "line": 1,
+      "description": "対象 Issue の worktree 回収が「発見」ではなく「detect が返したカレントセッションのパスを拒否する」だけになっている。ブランチは git branch --list で Issue 番号に束縛して探す一方、worktree には git worktree list も規約パス {worktree_base}/issue-{N} の lookup も無い。main の新規セッションから中止すると CANCEL_WT_BOUND=none で worktree 削除を飛ばす。対象 worktree 内の path 入場（in_worktree_unrecorded）は undetermined で ExitWorktree/remove/branch delete を止めつつ Phase 6 で Issue を NOT_PLANNED クローズする。復旧を main での /rite:sample 再実行に委譲するが、閉じたあとの再実行は CLOSED+NOT_PLANNED が Phase 4 をスキップする。AC-2 Then「ブランチ・worktree が残らない」が、Issue 番号を引数で受ける主経路で破れる。Flagged by multiple reviewers (application, prompt-engineer).<br>Likelihood-Evidence: new_call_site plugins/rite/skills/sample/SKILL.md:292<br>Verification: repro git show HEAD:plugins/rite/skills/sample/SKILL.md grep -nE 'git branch --list|CANCEL_WT_BOUND=none|Phase 3 / Phase 4 / Phase 6 をすべてスキップ' => L126 にブランチの Issue 束縛検索あり、L273 は none で worktree 削除スキップ、L292 は undetermined で Phase 6 を通常実行して再実行へ委譲、L105 は CLOSED+NOT_PLANNED で Phase 4 をスキップ",
+      "suggestion": "4.1 のあとに git worktree list --porcelain または規約パス {worktree_base}/issue-{N} で対象 worktree を発見し、末尾セグメント完全一致の既存ガードをそのパスへ掛ける。cwd がその中で ExitWorktree 不能なら Phase 5/6 の前に fail-loud で止め、Issue が OPEN のまま main から再実行できるようにする。L292 の「閉じてから同じスキルを再実行」は削除する。",
+      "status": "open",
+      "scope": "current-pr"
+    }
+  ],
+  "non_blocking_findings": []
+}

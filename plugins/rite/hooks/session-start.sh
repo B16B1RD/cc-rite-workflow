@@ -1,6 +1,9 @@
 #!/bin/bash
 # rite workflow - Session Start Hook
-# Re-injects flow state after compact or resume
+# Re-injects flow state after compact or resume.
+# source=compact: recovery text (Issue/Phase/Branch/Next/Loop/PR + auto continue)
+# is emitted here because SessionStart stdout is injected into model context.
+# startup/resume/clear keep the interruption / recover notice.
 set -euo pipefail
 
 # Double-execution guard (hooks.json + settings.local.json migration)
@@ -31,27 +34,46 @@ source "$SCRIPT_DIR/relocated-state-migrate.sh"
 # cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
 
-# Plugin dual-load collision guard
-# Only warn when this script is running from a local plugin-dir (not from
-# the marketplace cache). Normal marketplace users should have it enabled.
-# SCRIPT_DIR already set in preamble block above (replaces SCRIPT_PATH)
-if [[ "$SCRIPT_DIR" != *"/.claude/plugins/cache/"* ]] && command -v jq &>/dev/null; then
-  settings_file="$HOME/.claude/settings.json"
-  if [ -f "$settings_file" ]; then
-    rite_marketplace=$(jq -r '.enabledPlugins["rite@rite-marketplace"] // false' "$settings_file" 2>/dev/null)
-    if [ "$rite_marketplace" = "true" ]; then
-      echo "[rite] WARNING: rite@rite-marketplace が有効です。ローカル開発版が無視されます。" >&2
-      echo "[rite] ~/.claude/settings.json で rite@rite-marketplace を false に設定してください。" >&2
-    fi
-  fi
-fi
-
 CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || CWD=""
 SOURCE=$(echo "$INPUT" | jq -r '.source // "startup"' 2>/dev/null) || SOURCE="startup"
 
 # Pass extract_session_id stderr through so corrupt hook payload WARNINGs reach
 # triage; suppressing them would hide cross-session classification failures.
 SESSION_ID=$(extract_session_id "$INPUT") || SESSION_ID=""
+# Runtime identity is authoritative before any migration or shared marker write.
+source "$SCRIPT_DIR/session-identity.sh"
+validate_session_id_path "$SESSION_ID" "SessionStart payload" || exit 1
+if [[ "$SESSION_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+  SESSION_ID=$(printf '%s' "$SESSION_ID" | tr 'A-F' 'a-f')
+fi
+# A Claude SessionStart payload is the native identity channel when the shell
+# has not received its environment yet. Other selected hosts require their own ID.
+if [ "${RITE_HOST:-}" = "claude" ] && [ -z "${CLAUDE_CODE_SESSION_ID:-}${CLAUDE_SESSION_ID:-}" ] && [ -n "$SESSION_ID" ]; then
+  export CLAUDE_CODE_SESSION_ID="$SESSION_ID"
+  if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
+    printf -v _session_export 'export CLAUDE_CODE_SESSION_ID=%q' "$SESSION_ID"
+    if ! grep -Fxq -- "$_session_export" "$CLAUDE_ENV_FILE" 2>/dev/null; then
+      printf '%s\n' "$_session_export" >> "$CLAUDE_ENV_FILE" || {
+        echo "ERROR: session-start: cannot persist Claude session identity to CLAUDE_ENV_FILE" >&2
+        exit 1
+      }
+    fi
+  fi
+fi
+_runtime_rc=0
+_runtime_sid=$(resolve_runtime_session_id) || _runtime_rc=$?
+case "$_runtime_rc" in
+  0)
+    if [ -n "$SESSION_ID" ] && [ "$SESSION_ID" != "$_runtime_sid" ]; then
+      echo "ERROR: session-start: payload session_id does not match runtime identity" >&2
+      exit 1
+    fi
+    SESSION_ID="$_runtime_sid"
+    ;;
+  2) ;; # Claude payload-only hosts retain their existing compatibility path.
+  *) exit 1 ;;
+esac
+validate_session_id_path "$SESSION_ID" "SessionStart payload" || exit 1
 if [ -z "$CWD" ]; then
   exit 0
 fi
@@ -91,7 +113,42 @@ else
 fi
 
 # Move root `.rite-*` runtime state under `.rite/` once.
-_rite_run_relocated_state_migrate "$STATE_ROOT"
+if [ "$SOURCE" != "explicit" ]; then
+  _rite_run_relocated_state_migrate "$STATE_ROOT"
+fi
+
+# Plugin dual-load collision guard: warn only when the hook that fired disagrees
+# with the project's expected plugin root. Settings-based guesses
+# (enabledPlugins["rite@rite-marketplace"]) fire false positives under
+# `claude --plugin-dir`. Missing expected path: stay silent — contradiction is
+# fail-loud, estimation is not. Compare before overwriting plugin-root below.
+if [ "${RITE_RUNTIME_EXPLICIT:-0}" != "1" ]; then
+  _expected=""
+  if [ -f "$STATE_ROOT/.rite/plugin-root" ]; then
+    _expected=$(cat "$STATE_ROOT/.rite/plugin-root" 2>/dev/null) || _expected=""
+  elif [ -f "$STATE_ROOT/.rite-plugin-root" ]; then
+    _expected=$(cat "$STATE_ROOT/.rite-plugin-root" 2>/dev/null) || _expected=""
+  fi
+  _actual="${CLAUDE_PLUGIN_ROOT:-}"
+  if [ -z "$_actual" ]; then
+    _actual="$(dirname "$SCRIPT_DIR")"
+  fi
+  if [ -n "$_expected" ] && [ -n "$_actual" ] && [ "$_expected" != "$_actual" ]; then
+    _expected_c="$_expected"
+    _actual_c="$_actual"
+    if [ -d "$_expected" ]; then
+      _expected_c=$(cd "$_expected" && pwd -P 2>/dev/null) || _expected_c="$_expected"
+    fi
+    if [ -d "$_actual" ]; then
+      _actual_c=$(cd "$_actual" && pwd -P 2>/dev/null) || _actual_c="$_actual"
+    fi
+    if [ "$_expected_c" != "$_actual_c" ]; then
+      echo "[rite] WARNING: 読み込まれた plugin が .rite/plugin-root と一致しません。" >&2
+      echo "[rite] expected: $(printf '%s' "$_expected_c" | neutralize_ctrl)" >&2
+      echo "[rite] actual: $(printf '%s' "$_actual_c" | neutralize_ctrl)" >&2
+    fi
+  fi
+fi
 
 # Write plugin root for command-file consumption (version-independent)
 _plugin_root="$(dirname "$SCRIPT_DIR")"
@@ -107,11 +164,19 @@ fi
 # mis-reap. Skipping the write when env is present stops every session start from
 # overwriting the shared file; env-absent runtimes (CI / headless / non-Code clients)
 # still get the file as their sole resolution channel, preserving backward compat.
-if [ -n "$SESSION_ID" ] && [ -z "${CLAUDE_CODE_SESSION_ID:-}" ] && [ -z "${CLAUDE_SESSION_ID:-}" ]; then
+if [ -n "$SESSION_ID" ] && [ "$_runtime_rc" = "2" ]; then
   (umask 077; printf '%s' "$SESSION_ID" > "$STATE_ROOT/.rite/session-id") 2>/dev/null || {
     [ -n "${RITE_DEBUG:-}" ] && echo "[rite] WARNING: Failed to write .rite/session-id" >&2
     true
   }
+fi
+
+# Explicit initialization owns only plugin discovery and nested state ignores.
+# Automatic migration, worktree reap and interruption recovery remain host events.
+if [ "$SOURCE" = "explicit" ]; then
+  [ -f "$STATE_ROOT/.rite/.gitignore" ] &&
+    [ "$(cat "$STATE_ROOT/.rite/plugin-root")" = "$_plugin_root" ] || exit 1
+  exit 0
 fi
 
 # Helper: remove stale compact-state when no active flow
@@ -399,7 +464,7 @@ RITE_STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/flow-state.sh" migrate >/dev/nul
 # Output is redirected to a log file (overwritten each run — no rotation) rather
 # than discarded, since silent skip reasons (dirty/liveness/corpse-age-guard/
 # manifest-bypass WARNINGs) were previously unobservable and slowed diagnosis
-# (#1966's investigation). A self-contained `.gitignore` (`*`) is written into
+# ('s investigation). A self-contained `.gitignore` (`*`) is written into
 # the log dir on first creation so it never leaks into the repo even in
 # downstream consuming repos. Nested `$STATE_ROOT/.rite/.gitignore` (`*` plus
 # wiki negations) also covers `.rite/sessions/`, `.rite/worktrees/`,
@@ -424,6 +489,13 @@ if [ "$CWD" = "$STATE_ROOT" ]; then
     ( cd "$CWD" && bash "$SCRIPT_DIR/scripts/pr-cycle-cleanup.sh" ) >/dev/null 2>&1 || true
   fi
 fi
+
+# Other-session run-queue files live on the shared state root and cannot be
+# resumed (same-session only). Unlike worktree reap, this must run from a
+# worktree-rooted CWD as well — standing in a worktree does not make the
+# queue files unsafe to delete. stdout/stderr stay on the hook (not the
+# pr-cycle-cleanup log) so leftover failed/outstanding lines remain visible.
+STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/scripts/run-queue-reap.sh" --session "$SESSION_ID" || true
 
 # Resolve active flow-state file path.
 # `flow-state.sh path` always returns the per-session file
@@ -512,7 +584,7 @@ if [ "$ACTIVE" != "true" ]; then
   exit 0
 fi
 
-# --- Stop-reason phrasing (#2045) ---
+# --- Stop-reason phrasing ---
 # flow-state の `stop_reason` は「ワークフローが失敗として止まった」ことの durable な記録
 # (`skills/iterate/SKILL.md` ステップ 6 共有前段が書く)。キーが無い state は「単なる中断」
 # (Ctrl+C / セッション終了) を意味する。両者はキー不在のとき phase=review / active=true という
@@ -667,10 +739,16 @@ find "$STATE_ROOT" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite
 # partial write). It is not reachable by normal unit tests.
 _tsv_err=$(mktemp 2>/dev/null) || _tsv_err=""
 _tsv_rc=0
+# gsub collapses newline / CR / unit-separator so `read` cannot split the
+# recovery record. next_action is SPEC free-text and may contain a newline.
 _tsv_output=$(jq -r '[
-  (.issue_number // "" | tostring),
-  (.phase // "unknown"),
-  (.stop_reason // "")
+  (.issue_number // "" | tostring | gsub("[\n\r\u001f]"; " ")),
+  (.phase // "unknown" | tostring | gsub("[\n\r\u001f]"; " ")),
+  (.stop_reason // "" | tostring | gsub("[\n\r\u001f]"; " ")),
+  (.next_action // "" | tostring | gsub("[\n\r\u001f]"; " ")),
+  (.loop_count // 0 | tostring | gsub("[\n\r\u001f]"; " ")),
+  (.pr_number // 0 | tostring | gsub("[\n\r\u001f]"; " ")),
+  (.branch // "" | tostring | gsub("[\n\r\u001f]"; " "))
 ] | join("\u001f")' "$STATE_FILE" 2>"${_tsv_err:-/dev/null}") || _tsv_rc=$?
 if [ "$_tsv_rc" -ne 0 ]; then
   echo "rite: Warning - state file contains invalid JSON. Use /rite:recover to recover." >&2
@@ -679,7 +757,13 @@ if [ "$_tsv_rc" -ne 0 ]; then
   exit 0
 fi
 [ -n "$_tsv_err" ] && rm -f "$_tsv_err"
-IFS=$'\x1f' read -r ISSUE PHASE STOP_REASON <<< "$_tsv_output"
+_na_check=$(jq -r '.next_action // empty' "$STATE_FILE" 2>/dev/null) || _na_check=""
+case "$_na_check" in
+  *$'\n'*|*$'\r'*)
+    echo "[rite] WARNING: session-start: next_action contained a newline; collapsed to a single recovery line" >&2
+    ;;
+esac
+IFS=$'\x1f' read -r ISSUE PHASE STOP_REASON NEXT_ACTION LOOP PR BRANCH <<< "$_tsv_output"
 
 # Validate that critical fields are not null/empty
 if [ -z "$ISSUE" ]; then
@@ -693,7 +777,78 @@ fi
 # inform the user ... Use bash {plugin_root}/...") was removed in v0.7 because it
 # contaminated unrelated /goal turns whenever a session started in a rite-active cwd.
 STOP_PHRASE=$(_rite_stop_reason_phrase "$STOP_REASON")
-if [ -n "$STOP_PHRASE" ]; then
+# batch 稼働中は recover 誘導を出さず /rite:batch-run 継続を案内する（非稼働時は現行 1 行を無変更）。
+_ss_sid=$(basename "$STATE_FILE" .flow-state)
+_ss_qf="$STATE_ROOT/.rite/state/run-queue-${_ss_sid}.json"
+_ss_batch=false
+_ss_queue_unreadable=false
+if [ -n "$_ss_sid" ] && [ -f "$_ss_qf" ]; then
+  if jq -e . "$_ss_qf" >/dev/null 2>&1; then
+    _ss_ba=$(jq -r '.active // false' "$_ss_qf")
+    _ss_bc=$(jq -r '.cursor // 0' "$_ss_qf")
+    _ss_bt=$(jq -r '.issues | length' "$_ss_qf")
+    if [ "$_ss_ba" = "true" ] && [ "${_ss_bc:-0}" -lt "${_ss_bt:-0}" ] 2>/dev/null; then
+      _ss_batch=true
+    fi
+  else
+    echo "WARNING: run-queue が破損しています ($_ss_qf)" >&2
+    _ss_queue_unreadable=true
+  fi
+fi
+if [ "$SOURCE" = "compact" ]; then
+  # SessionStart stdout is injected into model context. Auto vs manual comes from
+  # compact-state.trigger (written by pre-compact, preserved by post-compact).
+  # Missing field (old compact-state) is expected absence → auto.
+  _ss_cs="${STATE_FILE%.flow-state}.compact-state"
+  _ss_trigger="auto"
+  if [ -f "$_ss_cs" ]; then
+    # Missing .trigger is expected absence → auto (`// "auto"`). jq failure
+    # (corrupt file) is not absence: warn like post-compact.sh .compact_state
+    # parse, then keep auto so SessionStart still injects recovery.
+    _ss_trig_err=$(mktemp 2>/dev/null) || _ss_trig_err=""
+    _ss_trig_rc=0
+    _ss_trigger=$(jq -r '.trigger // "auto"' "$_ss_cs" 2>"${_ss_trig_err:-/dev/null}") || _ss_trig_rc=$?
+    if [ "$_ss_trig_rc" -ne 0 ]; then
+      _ss_trig_tag=""
+      [ -z "$_ss_trig_err" ] && _ss_trig_tag=" stderr_capture=disabled"
+      echo "[rite] WARNING: session-start: jq parse of compact-state.trigger failed (rc=$_ss_trig_rc${_ss_trig_tag})" >&2
+      [ -n "$_ss_trig_err" ] && [ -s "$_ss_trig_err" ] && head -3 "$_ss_trig_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+      _ss_trigger="auto"
+    fi
+    [ -n "$_ss_trig_err" ] && rm -f "$_ss_trig_err"
+  fi
+  case "$_ss_trigger" in
+    manual) ;;
+    *) _ss_trigger="auto" ;;
+  esac
+  if [ "$_ss_trigger" = "auto" ]; then
+    cat <<EOF
+[rite] Auto-compact recovery: Issue #${ISSUE}, Phase: ${PHASE}, Branch: ${BRANCH}
+Next action: ${NEXT_ACTION}
+Loop: ${LOOP} | PR: #${PR}
+Use \`bash {plugin_root}/hooks/flow-state.sh get --field <field>\` for full state details. Also consult .rite/work-memory/issue-${ISSUE}.md, then continue.
+EOF
+  else
+    cat <<EOF
+[rite] Compact recovery: Issue #${ISSUE}, Phase: ${PHASE}, Branch: ${BRANCH}
+Next action: ${NEXT_ACTION}
+Loop: ${LOOP} | PR: #${PR}
+EOF
+  fi
+  if [ "$_ss_batch" = "true" ]; then
+    _ss_mode=$(jq -r '.mode // "default"' "$_ss_qf")
+    _ss_issue=$(jq -r --argjson c "${_ss_bc:-0}" '.issues[$c] // empty' "$_ss_qf" 2>/dev/null) || _ss_issue=""
+    [ -n "$_ss_issue" ] || _ss_issue="$ISSUE"
+    echo "[rite] Batch: run-queue active — mode=${_ss_mode} cursor=${_ss_bc}/${_ss_bt} current_issue=#${_ss_issue} pr=#${PR} queue_file=${_ss_qf}"
+    echo "Continue /rite:batch-run from the step matching Phase above."
+  elif [ "$_ss_queue_unreadable" = "true" ]; then
+    echo "[rite] Batch: run-queue unreadable — cannot decide batch continuation. queue_file=${_ss_qf}"
+  fi
+elif [ "$_ss_batch" = "true" ]; then
+  echo "rite: /rite:batch-run が稼働中です (Issue #${ISSUE}, phase: ${PHASE})。停止せず /rite:batch-run を該当ステップから続行してください。Do not run /rite:recover while the batch is active."
+elif [ "$_ss_queue_unreadable" = "true" ]; then
+  echo "rite: run-queue が破損しているため batch 稼働判定ができません (Issue #${ISSUE}, phase: ${PHASE})。queue を直すまで batch を再開しないでください。"
+elif [ -n "$STOP_PHRASE" ]; then
   echo "rite: 失敗停止した rite workflow を検出しました (Issue #${ISSUE}, phase: ${PHASE}, 理由: ${STOP_PHRASE})。再開前に状態を確認するには /rite:recover を実行してください。"
 else
   echo "rite: 中断した rite workflow を検出しました (Issue #${ISSUE}, phase: ${PHASE})。再開するには /rite:recover を実行してください。"

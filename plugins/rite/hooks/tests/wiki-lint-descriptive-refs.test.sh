@@ -6,30 +6,32 @@
 # bodies and emits a marker block + WIKI_DESCRIPTIVE_REFS total + read_ok enum.
 #
 # Coverage:
-#   TC-1   裸の `PR #N` / `Issue #N` が hit する (拡張の本体)
-#   TC-2   `## ソース` 節の provenance ラベルが hit しない
+#   TC-1   裸の番号トークンが hit する (委譲文法はキーワードを要求しない)
+#   TC-2   (AC-3) `## ソース` 節の bullet も hit する (E2 撤廃)
 #   TC-3   TODO / FIXME 行が hit しない
 #   TC-4   インラインコードスパン内の literal 引用が hit しない
 #   TC-5   コードフェンス内が hit しない / フェンス閉じ後は再び検出される
-#   TC-6   語境界が文字クラスで表現されている (静的 pin。件数では測れないため)
+#   TC-6   委譲文法のスコープ (3-4 桁のみ / プレースホルダ・アンカー・opt-out の除外)
 #   TC-7   旧 4 形 (括弧付き / see PR / #N で対応 / 詳細は #N) の検出が保たれる
 #   TC-8   frontmatter は `sources:` ブロックのみ除外 (description 散文は hit する)
 #   TC-9   marker block / WIKI_DESCRIPTIVE_REFS / read_ok の stdout 契約
 #   TC-10  空 pages_list → hits 0, read_ok=true (Wiki 初期化直後の legitimate no-op)
 #   TC-11  全ページ読出失敗 → read_ok=io_error (偽の 0 件を「解消済み」と読ませない)
 #   TC-12  placeholder residue ({branch_strategy} / {wiki_branch} / {pages_list}) → exit 1
-#   TC-13  partial pollution (.rite/wiki/raw/ 行混入) → exit 1
+#   TC-13  partial pollution (.rite/wiki/raw/ 行混入) → exit 1 / log.md は完全一致で受理
+#   TC-13b (AC-4) log.md を自力 discovery して走査する
+#   TC-13c (AC-5) raw は gate と委譲先の二重で走査対象外
 #   TC-14  unknown branch_strategy → exit 1 / separate_branch + 空 --wiki-branch → exit 2
-#   TC-15  MUTATION 拡張 regex を旧 4 形へ戻すと TC-1 が落ちる (拡張の識別力)
+#   TC-15  MUTATION 委譲先を無出力 stub にすると hits が 0 になる (計数の出どころ)
+#          + 1 ページの複数 hit を行数として数える (rc の二値へ潰さない)
 #   TC-16  MUTATION 本文フィルタを外すと TC-2 / TC-5 が落ちる (除外の識別力。E1 は TC-8、
-#          E4 / E5 は終端アクション側にあり本 mutant の到達範囲外で TC-3 / TC-4 / TC-17 が pin)
-#   TC-17  MUTATION 語境界を `\b` にすると gawk では never-match になる (silent 沈黙の実証)
+#          E4 / E5 は終端アクション側にあり本 mutant の到達範囲外で TC-3 / TC-4 が pin)
 #   TC-18  SKILL.md ステップ 7.5 が helper 委譲 + helper 不在 fallback を持つ (静的回帰)
 #   TC-19  separate_branch (本番既定経路、git show) の positive path
-#   TC-20  `## ソース` 除外が節スコープ (見出し以降 EOF まで打ち切らない)
+#   TC-20  (AC-3) `## ソース` 節に除外が残っていない / (AC-2) リンク先パスは hit しない
 #   TC-21  informational 契約の非回帰 (T-06 / T-07: n_warnings 不加算 / canonical Lint: 行不変)
 #   TC-19b separate_branch の読出に cat fallback が無い (ブランチ分離の pin)
-#   TC-22  2 検出器の R1 regex が literal 一致 (語彙 drift の検出)
+#   TC-22  helper が検出文法のコピーを持たず委譲先を名指しで呼ぶ
 #   TC-23  検出器の破損が read_errors / io_error へ伝播する (0 件を実測済みと名乗らない)
 #   TC-24  traversal gate / 読出・検出失敗の WARNING / E1 ブロック終端
 #   TC-11b 部分読出失敗は read_ok=true のまま read_errors だけ立つ
@@ -52,13 +54,15 @@
 #   TC-45  本文フィルタ (E3 コードフェンス等) が index.md にも適用される
 #   TC-46  index.md が読めれば pages 全件失敗でも io_error ではなく部分失敗になる
 #   TC-47  リンク行はあるが entries 0 件の index.md は検出失敗として計上する (stdin に依存しない)
-#   TC-48  index.md 終端アクションの戻り値 arity (4 値) を pin する (フィールドを減らす変異を弾く)
+#   TC-48  index.md 終端アクションの診断 arity (3 値) を pin する (フィールドを減らす変異を弾く)
 #   TC-19c separate_branch (既定) でも index.md 不在は read_errors に数えない (#2069 T-06)
 #   TC-50  index-template.md 前文を entries に数えず、テーブル行は列解釈まで通る (配布テンプレート回帰)
 #   TC-50b 記法例コメントを持つ index.md でコメント除去規則そのものを pin する (literal fixture)
 #   TC-51  除外ブロック (コメント / フェンス) の未閉鎖を END で検出失敗へ倒す (部分欠損形も含む)
 #   TC-49  表と箇条書きが混在する index.md でも行単位で形式を判別する (移行期の必然形状)
 #   TC-52  index.md のリンク regex が orphans.sh と literal 一致 (共有定義の drift 検出)
+#   TC-53  陳腐化 (stale) が lint_action / n_warnings の判定要素から外れ続ける
+#          (散文 / bash if / residue gate / ingest 加算式・等式・内訳の 6 箇所を突合)
 #
 # NOT covered (environment-dependent): mktemp failure on a read-only /tmp.
 set -uo pipefail
@@ -160,12 +164,13 @@ assert "TC-9 該当ページ数=2 (定数でも全件数でもない)" "2" "$(pr
 assert "TC-9 marker block の page= 行数=2" "2" "$(printf '%s' "$out9b" | grep -c '^page=')"
 rm -f "$SBX/.rite/wiki/pages/anti-patterns/fixture2.md" "$SBX/.rite/wiki/pages/anti-patterns/clean.md"
 
-# fixture の本文で hit すべき行は 8 行:
+# fixture で hit すべき行は 10 行 — 本文 8 行:
 #   PR #1300 / Issue #1284 / (refs #1150) / See PR #1149 / 詳細は #1151 /
 #   #1152 で別途対応 / PR #2047 / PR #1301
+# と `## ソース` 節の bullet 2 行 (E2 撤廃後は表示テキストも走査対象)。
 # 除外が 1 つでも外れるとこの数を超える (TODO/FIXME 2 行・コードスパン 1 行・
-# フェンス 1 行・ソース節 2 行が混入するため)。
-assert "TC-1/2/3/4/5 hits=8 (対象のみ)" "8" "$hits"
+# フェンス 1 行が混入するため)。
+assert "TC-1/2/3/4/5 hits=10 (対象のみ)" "10" "$hits"
 
 # ---- MUTATION の前提: mutant が実際に元と違うことを先に確かめる ---------------
 # 生成が no-op のまま「差が出なかった」と読むと mutation test が無言で vacuous になる。
@@ -173,17 +178,32 @@ assert_mutated() {
   assert_mutant_changed "$1" "$SCRIPT" "$2"
 }
 
+# mutant は sandbox へ置かれるため、helper が `dirname "$BASH_SOURCE"` で解決する委譲先
+# (number-reference-check.sh) が引けず fail-fast の exit 2 で死ぬ。委譲そのものを変異させる
+# mutant 以外は、生成後に委譲先を実体の絶対パスへ固定してから走らせる。
+# 固定しないと mutant が「出力なし」で終わり、mutation test が測るべき差分ではなく
+# 起動失敗を見ることになる (無言で vacuous になる)。
+REAL_NUMREF="$PLUGIN_ROOT/hooks/scripts/number-reference-check.sh"
+pin_delegate() {
+  # $1 = mutant path
+  local m="$1" tmp="$1.pinned"
+  awk -v real="$REAL_NUMREF" '
+    /^_RITE_NUMREF_CHECK=/ { print "_RITE_NUMREF_CHECK=\"" real "\""; next }
+    { print }
+  ' "$m" > "$tmp" && mv "$tmp" "$m"
+}
+
 # ---- 除外の識別力を「フィルタを外した版」との差で測る (TC-16 の測定基盤) -------
 # helper 内のフィルタを外した mutant を作り、除外が無いと hits が跳ね上がることを実証する。
 # **本 mutant で到達不能な除外**: E1 (frontmatter 除去) は mutant が残す設計のため測れず、TC-8 の
 # fixture (description 散文 / sources ブロックの両方) が担う。E4 (コードスパン) と E5 (TODO/FIXME) は
 # 終端アクション側にあり本 mutant が差し替える本文フィルタに含まれないため測れず、E4 は TC-4、
-# E5 は TC-3 / TC-17 が pin する。mutant を拡張する際は「どの除外がその mutant で到達不能か」を
+# E5 は TC-3 が pin する。mutant を拡張する際は「どの除外がその mutant で到達不能か」を
 # 先に列挙すること。
 MUT_NOFILTER="$SBX/mutant-nofilter.sh"
 # フィルタ本体 (_RITE_BODY_FILTER) を「frontmatter 除去のみ」に差し替える。
-# 終端アクション (マスク + 計数) は _RITE_COUNT_ACTION が別に持つため、ここでは
-# 落とす行の規則だけを置く (末尾に print を足すと計数用 awk の出力に混ざる)。
+# 終端アクション (マスク + 出力) は _RITE_EMIT_ACTION が別に持つため、ここでは
+# 落とす行の規則だけを置く (末尾に print を足すと抽出結果に二重出力が混ざる)。
 awk '
   /^_RITE_BODY_FILTER=.$/ { print "_RITE_BODY_FILTER='"'"'"; infilter=1; next }
   infilter && /^.$/ { print "NR==1 && /^---[[:space:]]*$/ { infm=1; next }"
@@ -193,7 +213,11 @@ awk '
   infilter { next }
   { print }
 ' "$SCRIPT" > "$MUT_NOFILTER"
+# `pin_delegate` は必ず 1 行を書き換えるため、`assert_mutated` より先に呼ぶと
+# 「変異セレクタが何にも一致しなかった」を検出する vacuity ガードが常に通ってしまう。
+# 変異の有無を先に測ってから委譲先を固定する。
 if assert_mutated "TC-16 MUTATION mutant 生成" "$MUT_NOFILTER"; then
+  pin_delegate "$MUT_NOFILTER"
   mut_hits=$(printf '%s\n' "$FIXTURE_REL" | ( cd "$SBX" && bash "$MUT_NOFILTER" --branch-strategy same_branch --repo-root "$SBX" ) 2>/dev/null | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p')
   if [ "${mut_hits:-0}" -gt "$hits" ] 2>/dev/null; then
     pass "TC-16 MUTATION 除外フィルタ除去で hits が増える (${hits} → ${mut_hits}; 除外に識別力あり)"
@@ -202,20 +226,23 @@ if assert_mutated "TC-16 MUTATION mutant 生成" "$MUT_NOFILTER"; then
   fi
 fi
 
-# ---- 拡張 regex の識別力 (TC-15) -------------------------------------------
-# 検出 regex を旧 4 形へ戻した mutant では、裸の PR #N / Issue #N が落ちて hits が減る。
-MUT_OLDRE="$SBX/mutant-oldre.sh"
-OLD_RE='[（(](Issue|PR|refs|Refs)[^)）]*#[0-9]+|(refs|Refs|see PR|See PR) #[0-9]+|(PR )?#[0-9]+ ?で(別途)?対応|詳細は ?#[0-9]+'
-awk -v old_re="$OLD_RE" '
-  /^_RITE_DESCRIPTIVE_RE=/ { print "_RITE_DESCRIPTIVE_RE='"'"'" old_re "'"'"'"; next }
+# ---- 委譲が実体であることの識別力 (TC-15) -----------------------------------
+# hits は委譲先が emit した findings 行数であって、本 helper 内の判定ではない。
+# 委譲先を「何も出さない stub」へ差し替えた mutant で hits が 0 へ落ちることで、
+# 計数の出どころが委譲先であることを実証する。落ちなければ helper 内に判定が残っている。
+MUT_NODELEG="$SBX/mutant-nodelegate.sh"
+STUB_CHECK="$SBX/stub-numref.sh"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB_CHECK"
+awk -v stub="$STUB_CHECK" '
+  /^_RITE_NUMREF_CHECK=/ { print "_RITE_NUMREF_CHECK=\"" stub "\""; next }
   { print }
-' "$SCRIPT" > "$MUT_OLDRE"
-if assert_mutated "TC-15 MUTATION mutant 生成" "$MUT_OLDRE"; then
-  old_hits=$(printf '%s\n' "$FIXTURE_REL" | ( cd "$SBX" && bash "$MUT_OLDRE" --branch-strategy same_branch --repo-root "$SBX" ) 2>/dev/null | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p')
-  if [ "${old_hits:-0}" -lt "$hits" ] 2>/dev/null; then
-    pass "TC-15 MUTATION 旧 4 形へ戻すと hits が減る (${hits} → ${old_hits}; 拡張に識別力あり)"
+' "$SCRIPT" > "$MUT_NODELEG"
+if assert_mutated "TC-15 MUTATION mutant 生成" "$MUT_NODELEG"; then
+  stub_hits=$(printf '%s\n' "$FIXTURE_REL" | ( cd "$SBX" && bash "$MUT_NODELEG" --branch-strategy same_branch --repo-root "$SBX" ) 2>/dev/null | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p')
+  if [ "${stub_hits:-99}" -eq 0 ] 2>/dev/null && [ "$hits" -gt 0 ]; then
+    pass "TC-15 MUTATION 委譲先を無出力 stub にすると hits が 0 になる (${hits} → ${stub_hits}; 計数は委譲先由来)"
   else
-    fail "TC-15 MUTATION 旧 4 形へ戻しても hits が変わらない (${hits} → ${old_hits}) — 拡張が何も広げていない"
+    fail "TC-15 MUTATION 委譲先を stub にしても hits が残る (${hits} → ${stub_hits}) — helper 内に判定のコピーがある"
   fi
 fi
 
@@ -227,6 +254,11 @@ single_hits() {
   printf '%s\n' "$rel" | ( cd "$SBX" && bash "$SCRIPT" --branch-strategy same_branch --repo-root "$SBX" ) 2>/dev/null \
     | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p'
 }
+# 1 ページに 2 hit 以上を数えられること。委譲先の exit code (0/1 の二値) を件数として
+# 使う実装では、どのページも hits が最大 1 に潰れ、WIKI_DESCRIPTIVE_REFS の意味が
+# 「hit 行数の合計」から「hit を持つページ数」へ無言で変わる。
+multi=$(printf '# t\n\nPR #1300 の一行目\nIssue #1284 の二行目\n詳細は #1151 の三行目\n')
+assert "TC-15 1 ページの複数 hit を行数として数える (rc の二値へ潰さない)" "3" "$(single_hits "$multi")"
 assert "TC-1 裸の PR #N が hit"            "1" "$(single_hits 'PR #1300 は フォーマットを統一した')"
 assert "TC-1 裸の Issue #N が hit"         "1" "$(single_hits 'Issue #1284 系譜の継続')"
 assert "TC-7 括弧付き (refs #N) が hit"     "1" "$(single_hits '(refs #1150) の括弧形')"
@@ -236,13 +268,12 @@ assert "TC-7 #N で別途対応 が hit"          "1" "$(single_hits '#1152 で�
 assert "TC-3 TODO 行は hit しない"          "0" "$(single_hits 'TODO: #9999 で対応予定')"
 assert "TC-3 FIXME 行は hit しない"         "0" "$(single_hits 'FIXME PR #9998 を追う')"
 assert "TC-4 コードスパン内は hit しない"    "0" "$(single_hits '`refs #204` が `refs #2047` に一致する')"
-# span マスクは削除ではなく `_` 置換。削除するとキーワードと番号が隣接して**誤検出を製造する**
-# 方向に倒れる (comment-journal-check.test.sh TC-4 と対称)。
-assert "TC-4 span マスクがキーワードと番号を連結しない" "0" "$(single_hits 'PR `x` #1234')"
-# 左語境界 (^|[^A-Za-z]): `refs` を語尾に持つ別語を弾く。cjc TC-16 と対称。
-assert "TC-6 prefs #N は hit しない (左語境界)" "0" "$(single_hits 'prefs #12 を設定')"
-assert "TC-6 hrefs #N は hit しない (左語境界)" "0" "$(single_hits 'hrefs #13 を確認')"
-assert "TC-1 キーワードなし裸 #N は hit しない" "0" "$(single_hits '#1234 の単独形は対象外')"
+# span マスクは削除ではなく `_` 置換。削除するとスパンの前後が隣接して行の意味が変わる
+# (comment-journal-check.test.sh TC-4 と対称)。委譲文法は番号トークン単独を見るため、
+# `PR `x` #1234` はマスク後も番号が残って hit する — マスクの識別力はスパン**内側**の
+# 番号 (上の assert) が測る。
+assert "TC-4 span の外にある番号はマスク後も残る" "1" "$(single_hits 'PR `x` #1234')"
+assert "TC-1 キーワードなし裸 #N も hit する (委譲文法はトークンを見る)" "1" "$(single_hits '#1234 の単独形')"
 # E1 は frontmatter 全体ではなく `sources:` ブロックのみを落とす。ref 値はファイルパスで
 # 番号規則に一致しないため除外は防御的だが、`description:` / `title:` の散文は本物の
 # 説明的参照を含む (実 wiki で 22 件)。両方を 1 つの fixture で測る。
@@ -253,9 +284,14 @@ assert "TC-8 frontmatter description の番号参照は hit する" "1" "$(singl
 tc8_src=$(printf -- '---\ntitle: "t"\nsources:\n  - type: "reviews"\n    resource: "raw/reviews/PR #1300.md"\n---\n\n# t\n\n本文に番号なし\n')
 assert "TC-8 frontmatter sources ブロックは hit しない" "0" "$(single_hits "$tc8_src")"
 
-# TC-2: `## ソース` 節のみを持つページ (本文に対象なし) は 0 件
+# TC-2 (AC-3): `## ソース` 節の bullet も走査対象 (E2 撤廃)。表示テキストは読者が読む散文で、
+# 番号の受け皿は隣のリンク先である。
 src_only=$(printf '# t\n\n## ソース\n\n- [PR #1300 review results](../../raw/reviews/a.md)\n- [Issue #1284 fix results](../../raw/fixes/b.md)\n')
-assert "TC-2 ソース節配下のラベル 2 行も hit しない" "0" "$(single_hits "$src_only")"
+assert "TC-2 (AC-3) ソース節配下のラベル 2 行が hit する" "2" "$(single_hits "$src_only")"
+# 番号を落とした bullet は hit しない — retrofit 後の形が clean であることを対にして測る
+# (「節を丸ごと数えている」実装と「番号を数えている」実装を分ける)。
+src_clean=$(printf '# t\n\n## ソース\n\n- [レビュー結果](../../raw/reviews/a.md)\n- [fix 結果](../../raw/fixes/b.md)\n')
+assert "TC-2 (AC-3) 番号を落としたソース bullet は hit しない" "0" "$(single_hits "$src_clean")"
 
 # TC-5: フェンス内は 0、フェンス閉じ後の行は検出される
 fence_only=$(printf '# t\n\n```bash\ngrep -E "PR #7777" f.md\n```\n')
@@ -263,32 +299,25 @@ assert "TC-5 コードフェンス内は hit しない" "0" "$(single_hits "$fen
 fence_then=$(printf '# t\n\n```bash\ngrep -E "PR #7777" f.md\n```\n\nPR #1301 フェンス後\n')
 assert "TC-5 フェンス閉じ後は再び検出される" "1" "$(single_hits "$fence_then")"
 
-# TC-6: 語境界。貪欲な `[0-9]+` により語境界の有無は件数メトリクスに現れないため、件数ベースでは
-# 原理的に検出できない (実装から `([^0-9]|$)` を消しても hits は不変)。よって helper の regex 定義を
-# 静的に pin する。行内容ベースの識別力は comment-journal-check.test.sh の TC-6 が担う。
-# R1 側と R2 の `詳細は` 側にそれぞれ `([^0-9]|$)` があるため、単一の assert では片方だけで
-# 充足してしまう。守りたい R1 側を語彙の末尾 (`[Rr]esolves`) から続く文脈込みで pin する。
-assert_grep "TC-6 R1 の語境界が文字クラスで表現される" \
-  "$SCRIPT" '_RITE_DESCRIPTIVE_RE=.*\[Rr\]esolves\) \*#\[0-9\]\+\(\[\^0-9\]\|\$\)'
-assert_grep "TC-6 R2 詳細は 側の語境界も文字クラス" \
-  "$SCRIPT" '_RITE_DESCRIPTIVE_RE=.*詳細は \?#\[0-9\]\+\(\[\^0-9\]\|\$\)'
-assert_not_grep "TC-6 検出 regex に \\b を使っていない" "$SCRIPT" '_RITE_DESCRIPTIVE_RE=.*\[0-9\]\+.b'
+# TC-6: 委譲文法のスコープ。番号トークンは 3-4 桁のみが対象で、その外は Wiki 散文の
+# 正当な用途 (上流トラッカ id・列挙条件・箇条番号) として残る。helper 側にコピーを置かず
+# 委譲先の文法をそのまま受けていることを、境界の両側で測る。
+assert "TC-6 2 桁の番号は対象外" "0" "$(single_hits '発生条件 #12 を満たす')"
+assert "TC-6 1 桁の番号は対象外" "0" "$(single_hits 'CFIC #6 の系列')"
+assert "TC-6 5 桁の番号は対象外 (上流トラッカ id)" "0" "$(single_hits 'upstream bug #10412 を追う')"
+assert "TC-6 3 桁の番号は対象" "1" "$(single_hits 'PR #939 で導入')"
+assert "TC-6 4 桁の番号は対象" "1" "$(single_hits 'PR #1939 で導入')"
+# 委譲先の行レベル除外がそのまま効く。プレースホルダと見出しアンカーは番号参照ではない。
+assert "TC-6 プレースホルダ #123 は対象外" "0" "$(single_hits 'Issue #123 はプレースホルダ')"
+assert "TC-6 見出しアンカー (#NNN-letter) は対象外" "0" "$(single_hits '[節](doc.md#1234-heading) を参照')"
+# 委譲先の opt-out マーカーは Wiki 本文にも効いてしまう。意図した挙動として pin し、
+# Wiki ページで使ってはならない旨は helper header と rationale に書く。
+assert "TC-6 drift-check-ignore 行は Wiki 本文でも免除される (Wiki では使わない)" \
+  "0" "$(single_hits 'PR #1300 は統一した  drift-check-ignore')"
 
-# TC-17: 終端アクション (_RITE_COUNT_ACTION / _RITE_INDEX_COUNT_ACTION) は awk で走るため、
-# そこに `\b` を持ち込むと gawk がバックスペースとして読んで永久に一致しなくなる。
-# 終端アクションの TODO/FIXME 除外を `\b` 付きに変異させ (sed が 2 箇所を同時に叩く)、
-# 除外が沈黙する (= hits が増える) ことで危険を実証する。
-# awk 経路を実際に変異させるので、被テスト対象を実行しない always-pass にはならない。
-MUT_AWKB="$SBX/mutant-awk-backslash-b.sh"
-sed 's%/(TODO|FIXME)%/(TODO\\b|FIXME\\b)%' "$SCRIPT" > "$MUT_AWKB"
-if assert_mutated "TC-17 MUTATION mutant 生成" "$MUT_AWKB"; then
-  awkb_hits=$(printf '%s\n' "$FIXTURE_REL" | ( cd "$SBX" && bash "$MUT_AWKB" --branch-strategy same_branch --repo-root "$SBX" ) 2>/dev/null | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p')
-  if [ "${awkb_hits:-0}" -gt "$hits" ] 2>/dev/null; then
-    pass "TC-17 MUTATION awk フィルタに \\b を持ち込むと除外が沈黙する (${hits} → ${awkb_hits}; 文字クラス必須の実証)"
-  else
-    fail "TC-17 MUTATION awk フィルタの \\b 変異で hits が変わらない (${hits} → ${awkb_hits})"
-  fi
-fi
+# TC-22 (旧 TC-6 静的 pin / 旧 TC-17 の `\b` 変異) は本 helper が regex を持たなくなったため
+# 廃止した。文法の健全性は委譲先の number-reference-check.test.sh が測り、本ファイルは
+# 「コピーを持たないこと」(下の TC-22) と「委譲の結果を数えていること」(下の TC-15) を測る。
 
 # ---- 契約・エラー経路 -------------------------------------------------------
 
@@ -330,6 +359,41 @@ assert_grep "TC-12 {pages_list} 残留 → gate 固有 marker" "$p12_err" 'LINT_
 # TC-13: partial pollution
 printf '%s\n%s\n' "$FIXTURE_REL" ".rite/wiki/raw/reviews/x.md" | ( cd "$SBX" && bash "$SCRIPT" --branch-strategy same_branch --repo-root "$SBX" ) >/dev/null 2>&1
 assert "TC-13 raw/ 行混入 → exit 1" "1" "$?"
+# log.md は index.md と同じく完全一致で受理する (自力 discovery があるので渡す必要はないが、
+# 渡しても gate が弾かない・重複計上しない)。prefix 一致へ緩めると raw 行も通ってしまうため、
+# 受理は完全一致のままであることを raw 側の fail-fast と対にして測る。
+printf '%s\n%s\n' "$FIXTURE_REL" ".rite/wiki/log.md" | ( cd "$SBX" && bash "$SCRIPT" --branch-strategy same_branch --repo-root "$SBX" ) >/dev/null 2>&1
+assert "TC-13 log.md 完全一致は gate を通る" "0" "$?"
+printf '%s\n%s\n' "$FIXTURE_REL" ".rite/wiki/log.md.bak" | ( cd "$SBX" && bash "$SCRIPT" --branch-strategy same_branch --repo-root "$SBX" ) >/dev/null 2>&1
+assert "TC-13 log.md への prefix 一致は gate に弾かれる (完全一致のまま)" "1" "$?"
+
+# ---- TC-13b (AC-4): log.md を走査対象にする --------------------------------
+# ステップ 2.2 の pages_list は pages/ 配下しか列挙しないため、log.md は helper が自力で
+# discovery しなければ届かない。stdin に渡さない状態で hit することを測る。
+printf '# Directory Update Log\n\n## 2026-01-01\n* **Create**: [t](pages/x/a.md) — PR #686 cycle 1 review\n' > "$SBX/.rite/wiki/log.md"
+log_out="$SBX/log.out"; tmp_files+=("$log_out")
+printf '' | ( cd "$SBX" && bash "$SCRIPT" --branch-strategy same_branch --repo-root "$SBX" ) > "$log_out" 2>/dev/null
+assert "TC-13b (AC-4) log.md の番号を hits に計上する (stdin に無くても discovery する)" \
+  "1" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$log_out")"
+assert_grep "TC-13b (AC-4) marker block に log.md 行が出る" "$log_out" '^page=\.rite/wiki/log\.md; hits=1$'
+# 番号を落とした log 行は hit しない (「log.md を丸ごと数えている」実装と分ける)
+printf '# Directory Update Log\n\n## 2026-01-01\n* **Create**: [t](pages/x/a.md) — raw/reviews/20260101T000000Z-pr-686.md を新規ページ化\n' > "$SBX/.rite/wiki/log.md"
+assert "TC-13b (AC-4) 番号を落とした log 行は hit しない (raw パスの番号は `#` を持たない)" \
+  "0" "$(printf '' | ( cd "$SBX" && bash "$SCRIPT" --branch-strategy same_branch --repo-root "$SBX" ) 2>/dev/null | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p')"
+rm -f "$SBX/.rite/wiki/log.md"
+
+# ---- TC-13c (AC-5): raw は走査対象外 ---------------------------------------
+# 二重の保証を両方測る。(1) stdin に raw パスが現れたら gate が exit 1 で弾く (TC-13、
+# 取り違えの検出なので「静かに 0 件」にしない)。(2) 仮に gate を越えても委譲先が同じパスを
+# 除外するため findings は 0 になる。(2) を測らないと、gate を緩めた変異が
+# 「raw の番号を数え始める」方向へ倒れても気付けない。
+raw_probe=$(printf 'PR #1234 の生ログ\n' | bash "$PLUGIN_ROOT/hooks/scripts/number-reference-check.sh" \
+  --stdin --label ".rite/wiki/raw/reviews/x-pr-1234.md" --quiet 2>/dev/null; echo "rc=$?")
+assert "TC-13c (AC-5) 委譲先は raw パスの label を findings 0 で返す" "rc=0" "$raw_probe"
+# 対照: 同じ本文でも pages/ の label なら hit する (label 除外が効いていることの識別力)
+pages_probe=$(printf 'PR #1234 の本文\n' | bash "$PLUGIN_ROOT/hooks/scripts/number-reference-check.sh" \
+  --stdin --label ".rite/wiki/pages/x/a.md" --quiet 2>/dev/null; echo "rc=$?")
+assert "TC-13c (AC-5) 対照: pages/ の label なら同じ本文が hit する" "rc=1" "$(printf '%s' "$pages_probe" | tail -1)"
 
 # TC-14: invocation errors
 printf '' | ( cd "$SBX" && bash "$SCRIPT" --branch-strategy bogus --repo-root "$SBX" ) >/dev/null 2>&1
@@ -344,6 +408,144 @@ assert "TC-14 --branch-strategy 欠落 → exit 2" "2" "$?"
 assert_grep "TC-18 SKILL.md が helper へ委譲している" "$LINT_MD" 'wiki-lint-descriptive-refs\.sh'
 assert_grep "TC-18 helper 不在 fallback が marker block を出す" "$LINT_MD" '"---descriptive_refs_begin---"'
 assert_grep "TC-18 helper 不在 fallback が WIKI_DESCRIPTIVE_REFS=0 を出す" "$LINT_MD" 'WIKI_DESCRIPTIVE_REFS=0'
+# 撤廃した除外が SKILL.md の記述に残っていないこと。helper だけ直して記述が古いままだと、
+# 次の作業者は「ソース節は除外される」を前提に読む。
+assert_not_grep "TC-18 SKILL.md が log.md を走査対象外と書いていない" "$LINT_MD" '走査しないファイル（意図的除外）: `log.md`'
+assert_grep "TC-18 SKILL.md が委譲先を名指ししている" "$LINT_MD" '検出文法は `number-reference-check.sh` に委譲する'
+
+# ---- TC-18b (AC-6): wiki-ingest が commit 前に検査するレールを持つ -----------
+# wiki-lint は informational (n_warnings 不加算) で書き込みを止めない。混入を止めるゲートは
+# 書き込み側にしか置けないため、ingest の commit 前にあることを pin する。
+# 静的 grep だけでは heredoc 終端 / case の esac / fi が壊れる変異を素通しするので、TC-53 と同型に
+# ブロックを抽出して `bash -n` にかけ、placeholder を実値へ置換して実際に走らせる。
+INGEST_MD_RAIL="$PLUGIN_ROOT/skills/wiki-ingest/SKILL.md"
+assert_grep "TC-18b (AC-6) ingest が commit 前検査ステップを持つ" "$INGEST_MD_RAIL" '^### 5\.0\.n commit 前の番号参照検査'
+assert_grep "TC-18b (AC-6) 5.0.n は wiki-numref-precommit.sh を呼ぶ" "$INGEST_MD_RAIL" 'wiki-numref-precommit\.sh'
+assert_grep "TC-18b (AC-6) 検査対象は .rite/wiki 配下の未 commit 差分" "$INGEST_MD_RAIL" '検査対象は `\.rite/wiki` 配下の未 commit 差分'
+assert_grep "TC-18b (AC-6) 対象もラベルも LLM が選ばない" "$INGEST_MD_RAIL" '対象の列挙もラベルも LLM が選ばない'
+assert_grep "TC-18b (AC-6) hit は書き直してから再検査する (直せなければ停止)" "$INGEST_MD_RAIL" '再実行で `clean` にできなければ commit せず停止'
+assert_grep "TC-18b (AC-6) index.md の行は Edit せず helper を呼び直す" "$INGEST_MD_RAIL" '`index\.md` の行は Edit しない'
+assert_grep "TC-18b (AC-6) helper 不在は fail-loud で停止する" "$INGEST_MD_RAIL" 'WIKI_INGEST_NUMREF=error; reason=helper_missing'
+assert_grep "TC-18b (AC-6) placeholder 残留は fail-loud で停止する" "$INGEST_MD_RAIL" 'WIKI_INGEST_NUMREF=error; reason=placeholder_residue'
+assert_grep "TC-18b (AC-6) hit は 5.0.n を tool 失敗に倒さない" "$INGEST_MD_RAIL" '1\) exit 0 ;;'
+assert_grep "TC-18b (AC-6) routing 表に stage_failed が残る" "$INGEST_MD_RAIL" 'error` \(`reason=stage_failed`\)'
+assert_grep "TC-18b (AC-6) routing 表に ignored_paths が残る" "$INGEST_MD_RAIL" 'error` \(`reason=ignored_paths`\)'
+assert_grep "TC-18b (AC-6) routing 表に check_failed が残る" "$INGEST_MD_RAIL" 'reason=helper_missing` / `check_failed'
+assert "TC-18b (AC-6) ゲートは hit を commit させない (canonical + 5.1 + 5.2 の 3 箇所)" "3" \
+  "$(grep -c '番号参照が残ったままです。commit しません' "$INGEST_MD_RAIL")"
+
+# --- 5.0.n 薄い bash の placeholder 実行 (検査本体の 8 経路は wiki-numref-precommit.test.sh) ---
+p18b_dir=$(mktemp -d "${TMPDIR:-/tmp}/rite-tc18b-XXXXXX")
+cleanup_dirs+=("$p18b_dir")
+awk '
+  /^### 5\.0\.n commit 前の番号参照検査/ { insec=1; next }
+  insec && /^```bash$/ { infence=1; next }
+  infence && /^```$/ { exit }
+  infence { print }
+' "$INGEST_MD_RAIL" > "$p18b_dir/block.sh"
+if [ ! -s "$p18b_dir/block.sh" ]; then
+  fail "TC-18b (AC-6) 5.0.n の bash ブロックを抽出できなかった (見出し / fence の drift)"
+  skip "TC-18b (AC-6) placeholder 実行 assert をブロック抽出失敗により gate"
+else
+  if bash -n "$p18b_dir/block.sh" 2>/dev/null; then
+    pass "TC-18b (AC-6) 5.0.n の bash ブロックが構文的に妥当"
+  else
+    fail "TC-18b (AC-6) 5.0.n の bash ブロックが bash -n を通らない"
+  fi
+  p18b_render() {
+    local sed_args=()
+    [ -n "$2" ] && sed_args+=(-e "s#{plugin_root}#$2#g")
+    [ -n "$1" ] && sed_args+=(-e "s#{numref_tree}#$1#g")
+    if [ ${#sed_args[@]} -eq 0 ]; then cat "$p18b_dir/block.sh"; else sed "${sed_args[@]}" "$p18b_dir/block.sh"; fi
+  }
+  p18b_tree=$(mktemp -d "${TMPDIR:-/tmp}/rite-tc18b-tree-XXXXXX")
+  cleanup_dirs+=("$p18b_tree")
+  ( cd "$p18b_tree" && git init -q . && git config user.email t@e.st && git config user.name t \
+      && mkdir -p .rite/wiki/pages && printf 'x\n' > .rite/wiki/pages/p.md \
+      && git add -A && git commit -qm init ) >/dev/null 2>&1 || true
+  p18b_render "" "$PLUGIN_ROOT" | bash > "$p18b_dir/residue-tree.out" 2>&1
+  assert_not_grep "TC-18b (AC-6) numref_tree 未置換は clean を名乗らない" "$p18b_dir/residue-tree.out" 'WIKI_INGEST_NUMREF=clean'
+  assert_grep "TC-18b (AC-6) numref_tree 未置換は placeholder_residue で止まる" "$p18b_dir/residue-tree.out" 'reason=placeholder_residue'
+  p18b_render "$p18b_tree" "" | bash > "$p18b_dir/residue-root.out" 2>&1
+  assert_grep "TC-18b (AC-6) plugin_root 未置換も placeholder_residue で止まる (helper_missing に誤診しない)" \
+    "$p18b_dir/residue-root.out" 'reason=placeholder_residue'
+  assert_not_grep "TC-18b (AC-6) plugin_root 未置換は helper_missing に誤診しない" \
+    "$p18b_dir/residue-root.out" 'reason=helper_missing'
+fi
+# --- TC-18c (AC-6): commit ステップの numref_verdict ゲートを実行で pin する ---
+# 出現回数 (grep -c = 3) は順序も意味論も測らない。`clean) exit 1` や、ゲートを commit 呼び出しの
+# 後ろへ移す変異はカウントを変えないため、抽出して実際に走らせる。
+p18c_dir=$(mktemp -d "${TMPDIR:-/tmp}/rite-tc18c-XXXXXX")
+cleanup_dirs+=("$p18c_dir")
+# canonical gate 節の fenced bash を取り出す (5.1 / 5.2 は literal 一致が規約)
+awk '
+  /^#### canonical numref_verdict gate/ { insec=1; next }
+  insec && /^```bash$/ { infence=1; next }
+  infence && /^```$/ { exit }
+  infence { print }
+' "$INGEST_MD_RAIL" > "$p18c_dir/gate.sh"
+if [ ! -s "$p18c_dir/gate.sh" ]; then
+  fail "TC-18c (AC-6) canonical numref_verdict gate の bash ブロックを抽出できなかった"
+  skip "TC-18c (AC-6) ゲート実行 assert 群 (4 値) を抽出失敗により gate"
+else
+  p18c_run() { sed "s#{numref_verdict}#$1#g" "$p18c_dir/gate.sh" | bash > "$p18c_dir/out" 2>&1; }
+  p18c_run clean; p18c_rc=$?
+  assert "TC-18c (AC-6) clean は commit へ進む (exit 0)" "0" "$p18c_rc"
+  p18c_run hit; p18c_rc=$?
+  assert "TC-18c (AC-6) hit は commit させない (exit 1)" "1" "$p18c_rc"
+  assert_grep "TC-18c (AC-6) hit は理由を名指しする" "$p18c_dir/out" '番号参照が残ったままです。commit しません'
+  # 未置換 (placeholder のまま) は「判定を受け取れていない」= 検査を飛ばした実行
+  bash "$p18c_dir/gate.sh" > "$p18c_dir/out" 2>&1; p18c_rc=$?
+  assert "TC-18c (AC-6) numref_verdict 未置換は commit させない (exit 1)" "1" "$p18c_rc"
+  assert_grep "TC-18c (AC-6) 未置換は判定不在として止まる" "$p18c_dir/out" '判定を受け取れていません'
+  p18c_run bogus; p18c_rc=$?
+  assert "TC-18c (AC-6) 未知値は commit させない (exit 1)" "1" "$p18c_rc"
+fi
+# canonical / 5.1 / 5.2 の 3 ブロックを byte 一致で比較する。件数 (grep -c) は意味論を測らず、
+# 片側の case arm を弱める変異 (`clean|hit) ;;` 等) を素通しする。
+# ブロックごとに awk が直接ファイルへ書き出す。csplit -z は GNU 固有で、coreutils を入れない
+# macOS leg では pin ごと失われる。境界 sentinel も不要になる。
+# 比較範囲は canonical 節が「literal 一致させる」と宣言する fenced block 全体に合わせ、
+# ゲート冒頭のコメント行から `esac` までを取る (コメントだけ片側で乖離する変更も弾く)。
+p18c_gate_count=$(awk -v outdir="$p18c_dir" '
+  BEGIN { n = 0 }
+  /^# ステップ 5\.0\.n の判定を機械的に受ける/ { ing=1; f=outdir "/gate-" n ".txt" }
+  ing { print > f }
+  ing && /^esac$/ { ing=0; n++; close(f) }
+  END { print n }
+' "$INGEST_MD_RAIL")
+assert "TC-18c (AC-6) canonical + 5.1 + 5.2 の 3 箇所にゲート case ブロックがある" "3" "$p18c_gate_count"
+# count を印字する awk 自身が gate-N.txt を書くので、count=3 は 3 ファイルの存在を含意する
+# (出力ファイルを開けなければ awk は fatal 終了し END に到達せず count が出ない = 上の assert が赤)
+if [ "$p18c_gate_count" = "3" ]; then
+  if cmp -s "$p18c_dir/gate-0.txt" "$p18c_dir/gate-1.txt"; then
+    pass "TC-18c (AC-6) 5.1 のゲートが canonical と byte 一致"
+  else
+    fail "TC-18c (AC-6) 5.1 のゲートが canonical と一致しない"
+  fi
+  if cmp -s "$p18c_dir/gate-0.txt" "$p18c_dir/gate-2.txt"; then
+    pass "TC-18c (AC-6) 5.2 のゲートが canonical と byte 一致"
+  else
+    fail "TC-18c (AC-6) 5.2 のゲートが canonical と一致しない"
+  fi
+fi
+# ゲートは commit 呼び出しより**前**になければ意味を持たない。存在数は順序を測らないので、
+# 5.1 / 5.2 それぞれで「ゲートの行番号 < commit を起動する行番号」を pin する。
+p18c_line_gate_51=$(awk '/^### 5\.1 separate_branch/ { s=1 } s && /^numref_verdict="\{numref_verdict\}"$/ { print NR; exit }' "$INGEST_MD_RAIL")
+p18c_line_commit_51=$(awk '/^### 5\.1 separate_branch/ { s=1 } s && /^  commit_out=\$\(bash /  { print NR; exit }' "$INGEST_MD_RAIL")
+p18c_line_gate_52=$(awk '/^### 5\.2 same_branch/ { s=1 } s && /^numref_verdict="\{numref_verdict\}"$/ { print NR; exit }' "$INGEST_MD_RAIL")
+p18c_line_commit_52=$(awk '/^### 5\.2 same_branch/ { s=1 } s && /^  if ! git add \.rite\/wiki\/ / { print NR; exit }' "$INGEST_MD_RAIL")
+for _pair in "5.1:$p18c_line_gate_51:$p18c_line_commit_51" "5.2:$p18c_line_gate_52:$p18c_line_commit_52"; do
+  _site=${_pair%%:*}; _rest=${_pair#*:}; _g=${_rest%%:*}; _c=${_rest#*:}
+  if [ -z "$_g" ] || [ -z "$_c" ]; then
+    fail "TC-18c (AC-6) ステップ $_site のゲート / commit 行を特定できなかった (gate='$_g' commit='$_c')"
+  elif [ "$_g" -lt "$_c" ]; then
+    pass "TC-18c (AC-6) ステップ $_site のゲートが commit 呼び出しより前にある"
+  else
+    fail "TC-18c (AC-6) ステップ $_site のゲートが commit 呼び出しより後ろにある (gate=$_g commit=$_c)"
+  fi
+done
+
 assert_grep "TC-18 helper 不在 fallback の read_ok" "$LINT_MD" 'descriptive_refs_read_ok=skipped_helper_missing'
 assert_grep "TC-18 helper 不在 fallback が read_errors=0 を出す" "$LINT_MD" 'descriptive_refs_read_errors=0'
 # stdout 契約は本 PR で 5 フィールドになった。fallback が片方だけ追随しないと
@@ -400,7 +602,7 @@ if (
 else
   git_rc=$?
   fail "TC-19 git sandbox の準備に失敗 (rc=$git_rc)"
-  [ -n "$git_err" ] && [ -s "$git_err" ] && head -5 "$git_err" | sed 's/^/    /' >&2
+  [ -n "$git_err" ] && [ -s "$git_err" ] && head -5 "$git_err" | sed 's/^/    /'
 fi
 sb_hits=$(printf '%s\n' "$FIXTURE_REL" | ( cd "$GITSBX" && bash "$SCRIPT" --branch-strategy separate_branch --wiki-branch wiki --repo-root "$GITSBX" ) 2>/dev/null | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p')
 assert "TC-19 separate_branch (git show) で same_branch と同じ hits" "$hits" "$sb_hits"
@@ -420,19 +622,21 @@ assert "TC-19c (#2069 T-06) separate_branch で index.md 不在なら read_error
 assert_not_grep "TC-19c index.md 不在なら marker block に index 行が出ない" "$sb_noidx_out" 'index\.md'
 assert_not_grep "TC-19c index.md 不在を読出失敗として WARNING しない" "$sb_noidx_err" 'index\.md の読出に失敗'
 
-# ---- TC-20: `## ソース` 除外の節スコープ ------------------------------------
-# 見出し以降 EOF まで打ち切ると、wiki-ingest が後ろに追記する `## 補強:` 等の本文が盲点になる。
+# ---- TC-20 (AC-3): `## ソース` 節に除外が残っていないこと --------------------
+# 節の内側も外側も同じ規則で数える。見出しの表記ゆれ
+# (`## ソース（追記分）` / 半角括弧) に依らず数えることを同じページ内で検証する。
 post_src=$(printf '# t\n\n## ソース\n\n- [PR #1400 review results](../../raw/reviews/a.md)\n\n## 補強: 節\n\nPR #1500 はソース節の後の本文\n')
-assert "TC-20 ソース節の後に続く本文は hit する (節スコープ)" "1" "$(single_hits "$post_src")"
-# wiki-ingest は `## ソース（追記分）` / `## ソース（追記分 N）` を生成する (実測 13 箇所)。
-# 見出しを厳密一致にすると、これらが節の開始として認識されないまま「次の見出し」としては
-# 認識され、直前の節の除外を打ち切って provenance ラベルを走査対象に戻す。
+assert "TC-20 (AC-3) ソース節の内側と後続本文をどちらも数える" "2" "$(single_hits "$post_src")"
 appendix_src=$(printf '# t\n\n## ソース\n\n- [PR #1400 review results](../../raw/a.md)\n\n## ソース（追記分）\n\n- [PR #1500 review results](../../raw/b.md)\n\n## ソース(追記分 2)\n\n- [PR #1600 review results](../../raw/c.md)\n')
-assert "TC-20 追記分ソース節の provenance ラベルも hit しない (全角・半角括弧)" "0" "$(single_hits "$appendix_src")"
+assert "TC-20 (AC-3) 追記分ソース節の bullet も全て数える (全角・半角括弧)" "3" "$(single_hits "$appendix_src")"
 appendix_then=$(printf '# t\n\n## ソース（追記分）\n\n- [PR #1500 review results](../../raw/b.md)\n\n## 補強: 節\n\nPR #1700 は追記分ソース節の後の本文\n')
-assert "TC-20 追記分ソース節の後の本文は hit する" "1" "$(single_hits "$appendix_then")"
-assert "TC-20 ソース節内の provenance ラベルは hit しない" "0" \
+assert "TC-20 (AC-3) 追記分ソース節とその後続本文をどちらも数える" "2" "$(single_hits "$appendix_then")"
+assert "TC-20 (AC-3) ソース節内の provenance ラベル単独でも数える" "1" \
   "$(single_hits "$(printf '# t\n\n## ソース\n\n- [PR #1400 review results](../../raw/reviews/a.md)\n')")"
+# リンク先パスは走査対象に残る。raw ファイル名の `-pr-1400` は `#` を持たないため
+# 委譲文法に一致せず、bullet を clean にしてもリンク先を書き換える必要はない (AC-2)。
+assert "TC-20 (AC-2) リンク先パスの番号は hit しない (href を書き換える必要がない)" "0" \
+  "$(single_hits "$(printf '# t\n\n## ソース\n\n- [レビュー結果](../../raw/reviews/20260101T000000Z-pr-1400.md)\n')")"
 
 # ---- TC-21: informational 契約の非回帰 (Issue の T-06 / T-07) ---------------
 # 実測で確認しただけでは非回帰は担保されない。SKILL.md 側を静的に pin する。
@@ -446,9 +650,16 @@ assert_not_grep "TC-21 (T-07) Lint: 行に descriptive フィールドが混入�
 # ---- TC-23: 検出器の破損が read_errors へ伝播すること -----------------------
 # 本 helper の read_ok enum は「0 件が実体を反映していない」状況を surface するためにある。
 # 検出器そのものが壊れた場合だけがその enum をすり抜けると、完了レポートに「実測済みの 0 件」
-# として載る。検出 regex を不正にした mutant で、0 件ではなく io_error に倒れることを測る。
+# として載る。委譲先が実行エラー (rc=2) を返した場合に、0 件ではなく io_error に倒れる
+# ことを測る。委譲先を「常に rc=2 を返す stub」へ差し替える。rc 2 は検出できなかった
+# 証拠であり、0 件として計上してはならない。
 MUT_BADRE="$SBX/mutant-badre.sh"
-sed "s%^_RITE_DESCRIPTIVE_RE='.*'$%_RITE_DESCRIPTIVE_RE='([unclosed'%" "$SCRIPT" > "$MUT_BADRE"
+BADCHECK="$SBX/bad-numref.sh"
+printf '#!/usr/bin/env bash\necho "ERROR: scanner exploded" >&2\nexit 2\n' > "$BADCHECK"
+awk -v bad="$BADCHECK" '
+  /^_RITE_NUMREF_CHECK=/ { print "_RITE_NUMREF_CHECK=\"" bad "\""; next }
+  { print }
+' "$SCRIPT" > "$MUT_BADRE"
 if assert_mutated "TC-23 MUTATION mutant 生成" "$MUT_BADRE"; then
   mut_out=$(printf '%s\n' "$FIXTURE_REL" | ( cd "$SBX" && bash "$MUT_BADRE" --branch-strategy same_branch --repo-root "$SBX" ) 2>/dev/null)
   mut_hits=$(printf '%s' "$mut_out" | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p')
@@ -457,6 +668,28 @@ if assert_mutated "TC-23 MUTATION mutant 生成" "$MUT_BADRE"; then
   assert "TC-23 検出器破損時は read_ok=io_error (0 件を実測済みと名乗らない)" "io_error" "$mut_ok"
   assert "TC-23 検出器破損時は read_errors が立つ" "1" "$mut_err"
   assert "TC-23 検出器破損時の hits は 0" "0" "$mut_hits"
+fi
+
+# ---- TC-23b: rc と件数の矛盾が検出失敗へ倒れること --------------------------
+# 委譲先の exit code は clean/hit/error の信号であって件数ではない。件数側だけを見ると、
+# hit (rc=1) を主張しながら findings を 1 行も出さない状態 (計数経路の破損 — たとえば
+# findings の出力先が stdout から外れる) が「実測済みの 0 件」として read_ok=true で通る。
+# TC-23 の stub は rc=2 で直上の arm に捕まるため、この象限は rc=1 + 空 stdout でしか踏めない。
+MUT_SILENT="$SBX/mutant-silent0.sh"
+SILENTCHECK="$SBX/silent-numref.sh"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$SILENTCHECK"
+awk -v bad="$SILENTCHECK" '
+  /^_RITE_NUMREF_CHECK=/ { print "_RITE_NUMREF_CHECK=\"" bad "\""; next }
+  { print }
+' "$SCRIPT" > "$MUT_SILENT"
+if assert_mutated "TC-23b MUTATION mutant 生成" "$MUT_SILENT"; then
+  s0_out=$(printf '%s\n' "$FIXTURE_REL" | ( cd "$SBX" && bash "$MUT_SILENT" --branch-strategy same_branch --repo-root "$SBX" ) 2>/dev/null)
+  s0_ok=$(printf '%s' "$s0_out" | sed -n 's/^descriptive_refs_read_ok=//p')
+  s0_err=$(printf '%s' "$s0_out" | sed -n 's/^descriptive_refs_read_errors=//p')
+  s0_hits=$(printf '%s' "$s0_out" | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p')
+  assert "TC-23b rc=1 かつ findings 空は read_ok=io_error (0 件を実測済みと名乗らない)" "io_error" "$s0_ok"
+  assert "TC-23b rc=1 かつ findings 空で read_errors が立つ" "1" "$s0_err"
+  assert "TC-23b rc=1 かつ findings 空の hits は 0" "0" "$s0_hits"
 fi
 
 # ---- TC-19b: separate_branch の読出に cat fallback が無いこと ----------------
@@ -517,8 +750,8 @@ cat > "$IDXSBX/.rite/wiki/index.md" <<'IDXEOF'
 
 | ページ | ドメイン | サマリー | 更新日 | 確信度 |
 |--------|---------|---------|--------|--------|
-| [PR #77 の教訓](pages/patterns/a.md) | patterns | 番号を持たない説明文 | 2026-01-01 | high |
-| [番号なし](pages/patterns/b.md) | patterns | Issue #88 系譜の継続 | 2026-01-01 | high |
+| [PR #770 の教訓](pages/patterns/a.md) | patterns | 番号を持たない説明文 | 2026-01-01 | high |
+| [番号なし](pages/patterns/b.md) | patterns | Issue #880 系譜の継続 | 2026-01-01 | high |
 | [grep -c || echo 0 の罠](pages/patterns/c.md) | patterns | 詳細は #1151 | 2026-01-01 | high |
 | [番号なし](pages/patterns/d.md) | patterns | 詳細は #1152 \| 補足あり | 2026-01-01 | high |
 IDXEOF
@@ -532,7 +765,7 @@ assert "TC-27 (T-01) descriptive_refs_pages は hits を持つ対象ファイル
 assert "TC-28 (T-03) サマリー列の番号を数える (通常 1 + 素パイプ行 1 + エスケープ行 1)" "3" "$(sed -n 's/^page=\.rite\/wiki\/index\.md; hits=//p' "$tbl_out")"
 # マスクが効いていれば列崩れは 0 件。どちらかを外すと該当行が skip されて値が立つ
 assert "TC-28 2 種のマスクが効いて列崩れ 0 件" "0" "$(sed -n 's/^descriptive_refs_skipped_rows=//p' "$tbl_out")"
-onlylink=$(printf '# Wiki Index\n\n| ページ | ドメイン | サマリー | 更新日 | 確信度 |\n|---|---|---|---|---|\n| [PR #77 の教訓](pages/patterns/a.md) | patterns | 番号を持たない説明文 | 2026-01-01 | high |\n')
+onlylink=$(printf '# Wiki Index\n\n| ページ | ドメイン | サマリー | 更新日 | 確信度 |\n|---|---|---|---|---|\n| [PR #770 の教訓](pages/patterns/a.md) | patterns | 番号を持たない説明文 | 2026-01-01 | high |\n')
 printf '%s' "$onlylink" > "$IDXSBX/.rite/wiki/index.md"
 assert "TC-29 (T-02) リンクテキスト列のみの番号は hits に数えない" "1" "$(idx_hits "$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>/dev/null)")"
 
@@ -547,7 +780,7 @@ assert "TC-29 (T-02) リンクテキスト列のみの番号は hits に数え�
 #     「パイプを含む行」= テーブル行と誤判定され、ヘッダー不在で skipped へ倒れる (hits が無言で減る)
 #   4 行目 (リンクテキストにコードスパン): summary 抽出の match をマスク前の行へ向ける変異。
 #     マスクで行長が縮むため RSTART がずれ、substr の切り出し位置が後ろへ飛んで番号を取り落とす
-printf '# Wiki Index\n\n* [Issue #99 を含むタイトル](pages/patterns/a.md) - 番号を持たない説明文\n* [番号なし](pages/patterns/b.md) - 詳細は #1151\n* [番号なし2](pages/patterns/c.md) - 詳細は #1234 | 補足あり\n* [`grep -c` の罠](pages/patterns/d.md) - 詳細は #1789\n' > "$IDXSBX/.rite/wiki/index.md"
+printf '# Wiki Index\n\n* [Issue #990 を含むタイトル](pages/patterns/a.md) - 番号を持たない説明文\n* [番号なし](pages/patterns/b.md) - 詳細は #1151\n* [番号なし2](pages/patterns/c.md) - 詳細は #1234 | 補足あり\n* [`grep -c` の罠](pages/patterns/d.md) - 詳細は #1789\n' > "$IDXSBX/.rite/wiki/index.md"
 bul_out="$IDXSBX/bul.out"; tmp_files+=("$bul_out")
 printf '%s\n' "$IDX_PAGE_REL" | idx_run > "$bul_out" 2>/dev/null
 assert "TC-30 OKF 箇条書き形式でもサマリーだけを検出する" "3" "$(sed -n 's/^page=\.rite\/wiki\/index\.md; hits=//p' "$bul_out")"
@@ -566,7 +799,7 @@ cat > "$IDXSBX/.rite/wiki/index.md" <<'IDXEOF'
 |---|---|---|---|---|
 | [番号なし](pages/patterns/a.md) | patterns | 詳細は #1151 | 2026-01-01 | high |
 
-* [PR #77 のタイトル](pages/patterns/b.md) - Issue #88 系譜の継続
+* [PR #770 のタイトル](pages/patterns/b.md) - Issue #880 系譜の継続
 IDXEOF
 mix_out="$IDXSBX/mix.out"; tmp_files+=("$mix_out")
 printf '%s\n' "$IDX_PAGE_REL" | idx_run > "$mix_out" 2>/dev/null
@@ -649,7 +882,7 @@ if (
 else
   git_rc=$?
   fail "TC-36 git sandbox (wiki-with-index) の準備に失敗 (rc=$git_rc)"
-  [ -n "$git_err" ] && [ -s "$git_err" ] && head -5 "$git_err" | sed 's/^/    /' >&2
+  [ -n "$git_err" ] && [ -s "$git_err" ] && head -5 "$git_err" | sed 's/^/    /'
 fi
 
 # ---- TC-37: サマリー列の位置をヘッダーから決めていること ---------------------
@@ -712,7 +945,9 @@ badref_out="$IDXSBX/badref.out"; tmp_files+=("$badref_out")
 badref_err="$IDXSBX/badref.err"; tmp_files+=("$badref_err")
 printf '' | ( cd "$IDXSBX" && bash "$SCRIPT" --branch-strategy separate_branch --wiki-branch no-such-branch-xyz --repo-root "$IDXSBX" ) > "$badref_out" 2>"$badref_err"
 assert "TC-41 壊れた wiki ref は io_error に倒れる (静かな 0 件にしない)" "io_error" "$(sed -n 's/^descriptive_refs_read_ok=//p' "$badref_out")"
-assert "TC-41 壊れた wiki ref は read_errors に計上される" "1" "$(sed -n 's/^descriptive_refs_read_errors=//p' "$badref_out")"
+# 自力 discovery の対象は index.md と log.md の 2 件。ref が引けないと存在を判定できないため
+# 両方が読出失敗として計上される (不在なら 0 件に落ちるので、この 2 は「不在に畳んでいない」証拠)。
+assert "TC-41 壊れた wiki ref は自力 discovery の 2 件を read_errors に計上する" "2" "$(sed -n 's/^descriptive_refs_read_errors=//p' "$badref_out")"
 assert_grep "TC-41 ref 解決失敗を WARNING で明示する" "$badref_err" 'wiki ブランチ ref .* を解決できません'
 
 # ---- TC-42: ヘッダー判定がエントリ行を飲み込まない ---------------------------
@@ -751,12 +986,17 @@ printf '' | idx_run > "$e5unit_out" 2>/dev/null
 assert "TC-43 index 側の E5 はサマリー単位で判定する (リンクテキストの TODO で行を落とさない)" "1" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$e5unit_out")"
 assert "TC-43 リンクテキスト TODO の行は抽出失敗でもない (skipped_rows 0)" "0" "$(sed -n 's/^descriptive_refs_skipped_rows=//p' "$e5unit_out")"
 
-# index 側の E4 マスクが「削除ではなく `_` 置換」であることを pin する (ページ側 TC-4 と対称)。
-# 削除するとキーワードと番号が隣接し、R1 が許容する空白 2 個以内に収まって**誤検出を製造する**。
-printf '# Wiki Index\n\n* [t](pages/patterns/a.md) - PR `x` #1234 で導入\n' > "$IDXSBX/.rite/wiki/index.md"
+# index 側の E4 マスクが効いていることを pin する (ページ側 TC-4 と対称)。委譲文法は番号
+# トークン単独を見るため、識別力を持つのはスパン**内側**の番号 — マスクを外すとこれが hit する。
+printf '# Wiki Index\n\n* [t](pages/patterns/a.md) - `詳細は #1234` を参照\n' > "$IDXSBX/.rite/wiki/index.md"
 e4mask_out="$IDXSBX/e4mask.out"; tmp_files+=("$e4mask_out")
 printf '' | idx_run > "$e4mask_out" 2>/dev/null
-assert "TC-43 index 側の span マスクがキーワードと番号を連結しない" "0" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$e4mask_out")"
+assert "TC-43 index 側のコードスパン内の番号は hit しない" "0" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$e4mask_out")"
+# マスクは削除ではなく `_` 置換。削除するとスパンの前後が連結して列構造が崩れる。
+printf '# Wiki Index\n\n* [t](pages/patterns/a.md) - PR `x` #1234 で導入\n' > "$IDXSBX/.rite/wiki/index.md"
+e4keep_out="$IDXSBX/e4keep.out"; tmp_files+=("$e4keep_out")
+printf '' | idx_run > "$e4keep_out" 2>/dev/null
+assert "TC-43 index 側の span の外にある番号はマスク後も残る" "1" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$e4keep_out")"
 
 # ---- TC-44: 診断に外部入力の制御文字を素通ししない --------------------------
 # ref 解決失敗 WARNING は外部入力 (--wiki-branch) を埋め込む。中和しないと
@@ -813,30 +1053,24 @@ else
   pass "TC-35 (T-09) same_branch の pages_list は pages/ 配下のみ (他カテゴリの入力が不変)"
 fi
 
-# ---- TC-22: 2 検出器の検出 regex が literal 一致すること -------------------
-# 同じ規則を 2 実装に持つため、語彙を 1 語足すたび両方の同期が要る。実装の共通化は
-# しない (読出元も計数単位も違う) 代わりに、literal のバイト一致を pin して drift を検出する。
-CJC="$PLUGIN_ROOT/hooks/scripts/comment-journal-check.sh"
-# 語彙の alternation (`[Ii]ssues?|…|[Rr]esolves`) だけを両ファイルから抜き、一致を見る。
-# regex 全体を突き合わせるとエスケープが複雑になり、抽出側の破損と drift を混同しやすい。
-# 語彙 alternation だけを抜くと両端 (先頭への挿入・末尾への追記) の drift を取り逃がす。
-# R1 全体 (左境界 + 語彙 + 番号規則 + 右境界) を 1 単位として比較する。
-# コメント行を落としてから抽出する。ヘッダコメントは語彙を `…` で省略した同形を持つため、
-# 素で grep すると 2 ファイルの**コメント同士**を比較して drift を 1 クラスも検出しなくなる。
-vocab_of() { grep -v '^[[:space:]]*#' "$1" | grep -oE '\(\^\|\[\^A-Za-z\]\)\([^)]*\) \*#\[0-9\]\+\(\[\^0-9\]\|\$\)' | head -1; }
-helper_vocab=$(vocab_of "$SCRIPT")
-cjc_vocab=$(vocab_of "$CJC")
-if [ -z "$helper_vocab" ]; then
-  fail "TC-22 helper から R1 regex を抽出できなかった (実装構造が変わった可能性)"
-elif [ -z "$cjc_vocab" ]; then
-  fail "TC-22 comment-journal-check.sh から R1 regex を抽出できなかった"
-elif [ "$helper_vocab" = "$cjc_vocab" ]; then
-  pass "TC-22 2 検出器の R1 regex が一致 (drift なし)"
+# ---- TC-22: helper が検出文法のコピーを持たないこと -------------------------
+# 文法の SoT は number-reference-check.sh。helper 側に番号パターンが再出現したら、
+# 二重管理が復活していて片方が黙って古くなる。コメント行を落とした live コードだけを見る
+# (ヘッダは委譲の説明で `#[0-9]` 相当の表記を持ちうる)。
+helper_live=$(grep -v '^[[:space:]]*#' "$SCRIPT")
+if printf '%s' "$helper_live" | grep -q '#\[0-9\]'; then
+  fail "TC-22 helper の live コードに番号パターンが再出現している (検出文法は number-reference-check.sh のみが持つ)
+$(printf '%s' "$helper_live" | grep -n '#\[0-9\]' | head -3)"
 else
-  fail "TC-22 2 検出器の R1 regex が drift している
-    helper: $helper_vocab
-    cjc   : $cjc_vocab"
+  pass "TC-22 helper の live コードに番号パターンのコピーが無い"
 fi
+assert_not_grep "TC-22 旧 _RITE_DESCRIPTIVE_RE が残っていない" "$SCRIPT" '^_RITE_DESCRIPTIVE_RE='
+# 委譲先を名指しで呼んでいること。呼び出しが消えれば上の否定 pin だけでは全ページ 0 件の
+# silent-clean を素通しする (否定 pin と肯定 pin を対にする)。
+assert_grep "TC-22 委譲先 number-reference-check.sh を --stdin --label で呼ぶ" \
+  "$SCRIPT" 'bash "\$_RITE_NUMREF_CHECK" --stdin --label "\$page"'
+assert_grep "TC-22 委譲先が不在なら fail-fast する (0 件を clean と読ませない)" \
+  "$SCRIPT" 'ERROR: 検出文法の委譲先'
 
 # ---- TC-52: index.md のリンク regex が orphans.sh と literal 一致すること ----
 # helper のコメントが「`wiki-lint-orphans.sh` と同一定義にする」と宣言している共有 regex を
@@ -966,13 +1200,29 @@ unc_a=$(unc_run '# Wiki Index
 assert "TC-51 (a) 未閉鎖 HTML コメントは検出失敗として read_errors に計上する" "1" "$(printf '%s' "$unc_a" | sed -n 's/^descriptive_refs_read_errors=//p')"
 assert_grep "TC-51 (a) 未閉鎖は専用 WARNING で原因を名指しする" "$unc_err" 'HTML コメントが閉じられないままファイル終端'
 assert "TC-51 (a) 落ちた index.md 分は hits に混ぜない (本文側の 1 件のみ)" "1" "$(idx_hits "$unc_a")"
-# END の `exit` を pin する。`exit` を外すと 4 値 print が 2 回走って awk が 8 フィールドを返し、
-# 呼出側は arity 検査に捕まる。stdout も read_errors も同値のままなので上の 3 assert は緑を維持し、
-# 変わるのは診断だけ — 検出失敗ガードの WARNING が消え、作者が破っていない arity 契約を名指しする
-# 2 行に化ける。原因を名指しする WARNING を価値として掲げる本 TC 群としては、その診断連鎖の後半も
-# pin する必要がある。
+# END の `exit` を pin する。`exit` を外すと診断の printf が 2 回走り、2 回目が 1 回目に追記されて
+# 診断ファイルが 6 フィールドになる。呼出側は arity 検査 (3 値ちょうど) に捕まり、検出失敗ガードの
+# WARNING の代わりに arity 契約違反を名指しする診断へ化ける。stdout も read_errors も同値のままなので
+# 上の 3 assert は緑を維持し、変わるのは診断だけ。原因を名指しする WARNING を価値として掲げる本 TC 群
+# としては、その診断連鎖の後半も pin する必要がある。
 assert_grep "TC-51 (a) 検出失敗ガードの WARNING まで到達する (END の exit を pin)" "$unc_err" 'エントリ行を 1 件も認識できませんでした'
-assert_not_grep "TC-51 (a) arity 契約違反として誤診されない" "$unc_err" '4 値を返しませんでした'
+assert_not_grep "TC-51 (a) arity 契約違反として誤診されない" "$unc_err" '3 値を返しませんでした'
+
+# TC-51d: ページ本文側の未閉鎖フェンス。index.md と同じくラッチが立ったまま EOF に達すると
+# 以降の全行が委譲先へ渡らず、実在する参照が「実測済みの 0 件」として通る。END ガードが
+# 無いとこの fixture は hits=0 / read_errors=0 / read_ok=true で緑になる
+uncp_dir=$(mktemp -d "${TMPDIR:-/tmp}/rite-tc51d-XXXXXX")
+cleanup_dirs+=("$uncp_dir")
+uncp_err="$uncp_dir/uncp.err"; tmp_files+=("$uncp_err")
+mkdir -p "$uncp_dir/.rite/wiki/pages/x"
+printf '# t\n\n```bash\n未閉鎖のフェンス\n\nPR #1301 を参照\n' > "$uncp_dir/.rite/wiki/pages/x/p.md"
+uncp_out=$(printf '%s\n' ".rite/wiki/pages/x/p.md" \
+  | ( cd "$uncp_dir" && bash "$SCRIPT" --branch-strategy same_branch --repo-root "$uncp_dir" ) 2>"$uncp_err")
+assert "TC-51d 未閉鎖フェンスのページは検出失敗として read_errors に計上する" "1" \
+  "$(printf '%s' "$uncp_out" | sed -n 's/^descriptive_refs_read_errors=//p')"
+assert "TC-51d 未閉鎖フェンスのページを実測済みの 0 件として通さない" "io_error" \
+  "$(printf '%s' "$uncp_out" | sed -n 's/^descriptive_refs_read_ok=//p')"
+
 
 # (b) 対照: 閉じていれば通常どおり数える (ラッチ検査が過剰発火していないこと)
 unc_b=$(unc_run '# Wiki Index
@@ -1018,7 +1268,7 @@ unc_e=$(unc_run '# Wiki Index
 assert "TC-51 (e) 未閉鎖コードフェンスも検出失敗として計上する" "1" "$(printf '%s' "$unc_e" | sed -n 's/^descriptive_refs_read_errors=//p')"
 assert_grep "TC-51 (e) フェンス側は原因をフェンスと名指しする" "$unc_err" 'コードフェンスが閉じられないままファイル終端'
 
-# ---- TC-48: index.md 終端アクションの戻り値 arity (4 値) を pin する ---------
+# ---- TC-48: index.md 終端アクションの診断 arity (3 値) を pin する ---------
 # 終端アクションのフィールドを減らす変異は、フィールド数がずれたまま個別値の case サニタイザが
 # 未束縛を 0 / -1 へ正規化するため、TC-47 の検出失敗ガードを無言で殺す。
 # 位置依存パースの規約 (`/rite:wiki-query positional-parse-row-count-guard`) が要求する
@@ -1030,15 +1280,185 @@ cp "$PLUGIN_ROOT/hooks/control-char-neutralize.sh" "$IDXSBX/control-char-neutral
   fail "TC-48 control-char-neutralize.sh の複製に失敗 (mutant の source が解決できず assert が無効化される)"
 }
 MUT_ARITY="$IDXSBX/mut/mutant-arity.sh"
-sed 's/print n+0, skipped+0, entries+0, linkrows+0/print n+0, skipped+0, entries+0/' "$SCRIPT" > "$MUT_ARITY"
+sed 's/printf "%d %d %d\\n", skipped+0, entries+0, linkrows+0 > diagfile/printf "%d %d\\n", skipped+0, entries+0 > diagfile/' "$SCRIPT" > "$MUT_ARITY"
+# pin_delegate は TC-16 と同じ理由で assert_mutated の後に呼ぶ (vacuity ガードを潰さない)
 if assert_mutated "TC-48 MUTATION mutant 生成" "$MUT_ARITY"; then
+  pin_delegate "$MUT_ARITY"
   printf '# Wiki Index\n\n* [t](pages/patterns/a.md) - 詳細は #1151\n' > "$IDXSBX/.rite/wiki/index.md"
   arity_err="$IDXSBX/arity.err"; tmp_files+=("$arity_err")
   arity_out=$(printf '%s\n' "$IDX_PAGE_REL" \
     | ( cd "$IDXSBX" && bash "$MUT_ARITY" --branch-strategy same_branch --repo-root "$IDXSBX" ) 2>"$arity_err")
-  assert "TC-48 戻り値が 4 値でなければ検出失敗として計上する" "1" "$(printf '%s' "$arity_out" | sed -n 's/^descriptive_refs_read_errors=//p')"
-  assert_grep "TC-48 arity 不一致は WARNING で観測できる" "$arity_err" '検出アクションが 4 値を返しませんでした'
+  assert "TC-48 戻り値が 3 値でなければ検出失敗として計上する" "1" "$(printf '%s' "$arity_out" | sed -n 's/^descriptive_refs_read_errors=//p')"
+  assert_grep "TC-48 arity 不一致は WARNING で観測できる" "$arity_err" '検出アクションが 3 値を返しませんでした'
   assert "TC-48 arity 不一致の index.md 分は hits に混ぜない" "1" "$(idx_hits "$arity_out")"
+fi
+
+# ---- TC-53: staleness の informational 降格が判定経路から外れ続けること -------
+# 陳腐化は「経過時間の計上」であって構造的欠陥ではないため lint_action / n_warnings の
+# 判定要素から外した。否定 pin だけでは 8.1 の節ごと消滅で空振りするので、残る 4 変数の集合を
+# 6 箇所 (wiki-lint の散文 / bash if / residue gate、wiki-ingest の加算式 / 等式 / 内訳文言)
+# から抽出して相互一致も測る。片側だけに n_stale が残る drift と、判定ロジックごと消す変異の
+# 両方を弾く。
+INGEST_MD="$PLUGIN_ROOT/skills/wiki-ingest/SKILL.md"
+
+# --- 否定 pin: 判定サイトから n_stale が消えている (件数表示・Lint: 行の n_stale は対象外) ---
+assert_not_grep "TC-53 residue gate ループに n_stale が残っていない" "$LINT_MD" \
+  '^for _n_var in .*n_stale'
+assert_not_grep "TC-53 bash の if 条件に n_stale が残っていない" "$LINT_MD" \
+  '\[ "\$n_stale" -gt 0 \]'
+assert_not_grep "TC-53 判定基準散文が 5 種のままになっていない" "$LINT_MD" \
+  'ブロッキングカテゴリ 5 種'
+assert_not_grep "TC-53 (AC-5) generated.at の手動更新案内が残っていない" "$LINT_MD" \
+  '手動で generated.at フィールドを更新'
+
+# --- positive pin: 除外が意図的であることと 4 種への縮小が明示されている ---
+assert_grep "TC-53 判定基準散文がブロッキング 4 種になっている" "$LINT_MD" \
+  'ブロッキングカテゴリ 4 種'
+assert_grep "TC-53 n_stale は参考コメントとして意図的除外が明示されている" "$LINT_MD" \
+  '# 参考: n_stale=\{n_stale\} — informational のため判定式から意図的に除外'
+
+# --- 6 箇所の変数集合が一致する (片側だけ改変すると落ちる) ---
+# 抽出は開いた regex にする。whitelist の alternation にすると「whitelist ∩ 各サイト」しか
+# 測れず、whitelist 外の名前を 1 箇所にだけ足す変異が全 assert を素通りする (AC-7 が要求する
+# 「3 箇所が同一の変数集合を指す」が成立しなくなる)。
+EXPECT_VARS='n_broken_refs n_contradictions n_missing_concept n_orphans'
+# 左境界を要求して `min_count` のような語からの偽収穫を防ぎ、末尾に数字を許して
+# `n_orphans2` のような数字サフィックス改名が `n_orphans` へ丸まらないようにする。
+extract_sorted() {
+  grep -oE '(^|[^a-z0-9_])n_[a-z0-9_]+' | grep -oE 'n_[a-z0-9_]+' | sort -u | tr '\n' ' ' | sed 's/ $//'
+}
+
+# 散文の「4 種」は数詞なので数字ワイルドカードで受ける。literal を要求すると語が変わったとき
+# capture が空になり、集合不一致ではなく「空 vs 4 種」として落ちて診断が原因を指さない。
+prose_vars=$(sed -n 's/^- `lint:clean`: ブロッキングカテゴリ [0-9] 種 (\(.*\)) \*\*すべてが 0\*\*.*/\1/p' "$LINT_MD" | extract_sorted)
+assert "TC-53 判定基準散文の変数集合が 4 種ちょうど" "$EXPECT_VARS" "$prose_vars"
+
+if_vars=$(sed -n '/^if \[ "\$n_contradictions" -gt 0 \]/,/^  lint_action="lint:warning"$/p' "$LINT_MD" | extract_sorted)
+assert "TC-53 bash if 条件の変数集合が散文と一致" "$EXPECT_VARS" "$if_vars"
+
+gate_vars=$(sed -n 's/^for _n_var in \(.*\); do$/\1/p' "$LINT_MD" | extract_sorted)
+assert "TC-53 residue gate の変数集合が散文と一致" "$EXPECT_VARS" "$gate_vars"
+
+# AC-6 の canonical `Lint:` 6 フィールド行不変は TC-21 (T-07) が pin 済み (重複させない)。
+
+# --- ingest 側: 加算式 / 等式 / 内訳文言の 3 箇所が同じ 4 項集合で一致する ---
+assert_not_grep "TC-53 (AC-4) ingest の n_warnings 加算式に n_stale がない" "$INGEST_MD" \
+  '^n_warnings \+= .*n_stale'
+assert_not_grep "TC-53 (AC-4) ingest の n_warnings 等式に n_stale がない" "$INGEST_MD" \
+  '\*\*等式\*\*: `n_warnings = .*n_stale'
+
+add_vars=$(sed -n 's/^n_warnings += \(.*\)$/\1/p' "$INGEST_MD" | extract_sorted)
+assert "TC-53 ingest 加算式の項集合が 4 種ちょうど" "$EXPECT_VARS" "$add_vars"
+
+# 等式・内訳とも n_lint_anomaly は加算式に無い項なので capture 範囲から落とす。開いた regex に
+# したため、除去しないと集合に混ざる。
+# 非項の除去は**位置ではなく名指し**で行う。位置で範囲を狭めると、狭めた外側に counter が
+# 混入した変異を素通しする (実測: 内訳文言で「（内訳:」以降へ絞ると、その左に n_stale を
+# 挿入した変異が検出されない)。
+eq_vars=$(sed -n 's/^\*\*等式\*\*: `n_warnings = \([^`]*\)`.*/\1/p' "$INGEST_MD" \
+  | sed 's/n_lint_anomaly//' | extract_sorted)
+assert "TC-53 ingest 等式の項集合が加算式と一致" "$EXPECT_VARS" "$eq_vars"
+
+# 内訳文言は `{n_warnings} 件（内訳: ...）` の形。左辺の n_warnings は当該行に 1 回しか
+# 現れないので名指しで落とす。
+breakdown_vars=$(grep -F 'Wiki 品質警告: {n_warnings} 件（内訳:' "$INGEST_MD" \
+  | sed -e 's/{n_warnings}//' -e 's/n_lint_anomaly//' | extract_sorted)
+assert "TC-53 ingest 内訳文言の項集合が加算式と一致" "$EXPECT_VARS" "$breakdown_vars"
+
+# --- ステップ 8.1 bash の実行時挙動 (T-01 / T-02 / T-05) ---
+# 静的 pin だけでは block の構文健全性を測れない。判定は継続行を含む if-chain なので、
+# `; then` を落とすような変異は集合一致 assert を素通りする。抽出して構文検査し実行する。
+extract_phase81() {
+  awk '/^# ステップ 8.1 canonical lint_action decision logic/{f=1} f{print} f && /^echo "\[CONTEXT\] lint_action=\$lint_action"$/{exit}' "$LINT_MD"
+}
+PHASE81_RAW="$SBX/phase81-raw.sh"
+extract_phase81 > "$PHASE81_RAW"
+
+# 抽出結果の検査は 2 群に分け、**診断文面を分ける**。抽出の破損と契約の消失は原因も対処も
+# 別物で、後者を「アンカーが変更された可能性」と報じると、本テストが検出すべき退行そのものを
+# テスト側の問題へ誤帰属させる。
+phase81_block_ok=1
+
+# 群 1: 抽出の構造健全性。block 冒頭と awk の終了パターンが揃っているかを見る。
+# 終端行は awk の終了条件と lint_action emit 契約を兼ねており、抽出結果からは両者を判別
+# できない。文面はどちらの原因も名乗る (片方に決め打つと、残った方の退行がテスト側の
+# 問題として報じられる)。開始アンカーは awk の開始条件と同一文字列で、出力が非空なら必ず
+# 一致するため検査しない — 空出力は set -o pipefail 側が捕捉する。
+for _required in '^set -o pipefail$' '^echo "\[CONTEXT\] lint_action=\$lint_action"$'; do
+  if ! grep -q "$_required" "$PHASE81_RAW"; then
+    fail "TC-53 ステップ 8.1 bash の抽出に失敗 ('$_required' 不在。抽出アンカーが変更されたか、SKILL.md 側の該当行が削除された可能性)"
+    phase81_block_ok=0
+  fi
+done
+
+# 群 2: 契約行の存在。**群 1 が通ったときだけ**評価する — 抽出が壊れていれば契約行も当然
+# 見つからず、「削除された」と名乗るのは偽の主張になる。
+if [ "$phase81_block_ok" = 1 ]; then
+  if ! grep -q '^for _n_var in ' "$PHASE81_RAW"; then
+    fail "TC-53 ステップ 8.1 の契約が消失 (residue gate の for ループが削除された)"
+    phase81_block_ok=0
+  fi
+fi
+
+if [ "$phase81_block_ok" = 1 ]; then
+  # placeholder を実値へ差し替えて実行可能にする。置換対象は placeholder 文字列なので
+  # 集合変数からは組めず counter 名を literal で並べるが、その列挙は phase81_write の 1 箇所に
+  # 集約する (構文検査・実行・residue のどれもここを通す)。gate ループとの一致は上の集合突合
+  # assert が別途担保しており、そちらが落ちればここの列挙ずれも表面化する。
+  phase81_write() {
+    # $1..$4: n_contradictions n_orphans n_missing_concept n_broken_refs の値
+    # $5: n_stale の値 (参考コメント側。判定に影響しないことを測る)
+    # $6: 出力先
+    sed -e "s/{n_contradictions}/$1/g" -e "s/{n_orphans}/$2/g" \
+        -e "s/{n_missing_concept}/$3/g" -e "s/{n_broken_refs}/$4/g" \
+        -e "s/{n_stale}/$5/g" -e "s/{n_unregistered_raw}/0/g" \
+        "$PHASE81_RAW" > "$6"
+  }
+  phase81_run() {
+    phase81_write "$1" "$2" "$3" "$4" "$5" "$SBX/phase81.sh"
+    bash "$SBX/phase81.sh" 2>&1
+  }
+
+  # 構文健全性 (`; then` 落ち等の変異を検出する)
+  phase81_write 0 0 0 0 0 "$SBX/phase81-syntax.sh"
+  if bash -n "$SBX/phase81-syntax.sh" 2>"$SBX/phase81-syntax.err"; then
+    pass "TC-53 ステップ 8.1 bash が構文的に妥当"
+  else
+    fail "TC-53 ステップ 8.1 bash の構文検査に失敗: $(head -1 "$SBX/phase81-syntax.err")"
+  fi
+
+  # T-01: n_stale > 0 かつ他 4 変数 0 → lint:clean (AC-1)
+  assert "TC-53 (T-01/AC-1) n_stale=41・他 4 変数 0 で lint:clean" \
+    "[CONTEXT] lint_action=lint:clean" "$(phase81_run 0 0 0 0 41)"
+
+  # T-02: 4 変数それぞれが > 0 のとき lint:warning (AC-2)
+  assert "TC-53 (T-02/AC-2) n_contradictions=1 で lint:warning" \
+    "[CONTEXT] lint_action=lint:warning" "$(phase81_run 1 0 0 0 0)"
+  assert "TC-53 (T-02/AC-2) n_orphans=1 で lint:warning" \
+    "[CONTEXT] lint_action=lint:warning" "$(phase81_run 0 1 0 0 0)"
+  assert "TC-53 (T-02/AC-2) n_missing_concept=1 で lint:warning" \
+    "[CONTEXT] lint_action=lint:warning" "$(phase81_run 0 0 1 0 0)"
+  assert "TC-53 (T-02/AC-2) n_broken_refs=1 で lint:warning" \
+    "[CONTEXT] lint_action=lint:warning" "$(phase81_run 0 0 0 1 0)"
+
+  # T-05: residue gate は 4 変数それぞれの未置換で exit 1 (AC-7 / 4.5)
+  # 全置換したうえで当該変数の代入行だけ placeholder へ戻す
+  for _name in n_contradictions n_orphans n_missing_concept n_broken_refs; do
+    phase81_write 0 0 0 0 0 "$SBX/phase81-residue-base.sh"
+    sed "s/^${_name}=0\$/${_name}={${_name}}/" "$SBX/phase81-residue-base.sh" > "$SBX/phase81-residue.sh"
+    _residue_out=$(bash "$SBX/phase81-residue.sh" 2>&1); _residue_rc=$?
+    assert "TC-53 (T-05) ${_name} 未置換で exit 1" "1" "$_residue_rc"
+    case "$_residue_out" in
+      *"LINT_PHASE_8_1_PLACEHOLDER_RESIDUE=1; variable=${_name}"*)
+        pass "TC-53 (T-05) ${_name} 未置換で residue marker を emit" ;;
+      *)
+        fail "TC-53 (T-05) ${_name} 未置換で residue marker が出ない: $(printf '%s' "$_residue_out" | head -1)" ;;
+    esac
+  done
+else
+  # 実行 assert 群を丸ごと落とすので計上する。無計上で消すと、baseline との PASS 差だけが
+  # 残り「何が走らなかったか」がサマリから読めない (_test-helpers.sh の skip 規約)。
+  skip "TC-53 ステップ 8.1 の実行 assert 群 (構文検査 / T-01 / T-02 / T-05) を抽出失敗または契約消失により gate"
 fi
 
 if ! print_summary "$(basename "$0")" \

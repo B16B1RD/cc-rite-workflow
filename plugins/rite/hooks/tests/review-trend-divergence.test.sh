@@ -13,13 +13,13 @@
 #
 #   - `3,6,5,3,0` / `3,7,7,4` / `2,3,6` : 受入基準が Given 節に literal に書いた契約値。
 #     受入基準はこの数列に束縛されるため契約 fixture として扱う
-#   - `10,8,8`                          : 起票時の Open Question に記載された観測値 (#2081)
-#   - `12,5,3,2,2`                      : scripts/tests/fixtures/pr-2070 の実測 JSON から復元した
+#   - `10,8,8`                          : 起票時の Open Question に記載された観測値
+#   - `12,5,3,2,2`                      : scripts/tests/fixtures/review-measured-gate-sample の実測 JSON から復元した
 #                                         補助 fixture。契約値 `3,6,5,3,0` とは一致しないが、
 #                                         当該 cycle の実行時期は中間サイクル JSON の無音欠落を
 #                                         塞いだ修正より前で、保存済み 9 件が連続 9 cycle である
 #                                         保証がない。どちらも他方を反証できないため両方を pin する
-#   - `10,11,11,13`                     : ループ打ち切り時に記録された 3 run 目の実測 (#2052)
+#   - `10,11,11,13`                     : ループ打ち切り時に記録された 3 run 目の実測
 #   - `10,9,8,7,6`                      : 漸減非収束の合成列。AC-3 の escape 節 (下降中なら見逃す) を
 #                                         非空虚に保つために作成したもので、実 run 由来ではない
 #
@@ -108,6 +108,52 @@ run_trend() {
   bash "$SCRIPT" --pr "$pr" --cycle-count "$#" --results-dir "$dir" > "$OUT" 2>/dev/null
 }
 
+# fix の記録が各 review の後ろに並ぶ通常の Priority 1 保存列。
+paired_dir="$SANDBOX/paired"; mkdir -p "$paired_dir"
+i=0
+for n in 5 2 4 2 2; do
+  i=$((i + 1))
+  seq=$(printf '%02d' "$i")
+  make_result "$paired_dir" 950 "$seq" "$n"
+  jq '.producer = "fix"' "$paired_dir/950-202601010000${seq}.json" \
+    > "$paired_dir/950-202601010000${seq}~copy.json"
+  bash "$SCRIPT" --pr 950 --cycle-count "$i" --results-dir "$paired_dir" > "$OUT" 2>/dev/null
+  assert_not_grep "paired cycle $i: fix copy does not invalidate boundary" "$OUT" "run_boundary_unresolved"
+  assert_grep "paired cycle $i: one element per review" "$OUT" "cycles=$i; lost=0"
+done
+assert_grep "paired: review ordering and counts survive" "$OUT" "trend=5,2,4,2,2;"
+assert "paired: all records remain" "10" "$(find "$paired_dir" -name '*.json' | wc -l | tr -d ' ')"
+
+# fix basename を前 run の pin にしても、review の位置で切り出せる。
+bash "$SCRIPT" --pr 950 --cycle-count 3 --since 950-20260101000002~copy.json \
+  --results-dir "$paired_dir" > "$OUT" 2>/dev/null
+assert_grep "paired: fix pin preserves run boundary" "$OUT" "trend=4,2,2; cycles=3; lost=0"
+bash "$SCRIPT" --pr 950 --cycle-count 3 --results-dir "$paired_dir" > "$OUT" 2>/dev/null
+assert_grep "paired: extra reviews without pin still rejected" "$OUT" "reason=run_boundary_unresolved"
+
+# pin 後に fix しかない場合もレビューを作り出さず、構文不正は黙って除外しない。
+for cc in 0 1; do
+  bash "$SCRIPT" --pr 950 --cycle-count "$cc" --since 950-20260101000005.json \
+    --results-dir "$paired_dir" > "$OUT" 2>/dev/null
+  assert_grep "paired: only fix after pin ($cc) has no trend" "$OUT" "trend=; cycles=0; reason=no_file_after_pin"
+done
+printf '{"producer":"fix",' > "$paired_dir/950-20260101000006.json"
+bash "$SCRIPT" --pr 950 --cycle-count 6 --results-dir "$paired_dir" > "$OUT" 2>/dev/null
+assert_grep "paired: broken fix JSON is not silently skipped" "$OUT" "reason=json_parse_failure"
+
+# 除外は文字列 fix との完全一致だけ。旧形式と未知値も従来の検証へ渡す。
+producer_dir="$SANDBOX/producers"; mkdir -p "$producer_dir"
+i=0
+for producer_json in 'null' '"other"' '"fix\\n"' '["fix"]'; do
+  i=$((i + 1)); seq=$(printf '%02d' "$i")
+  make_result "$producer_dir" 951 "$seq" 2
+  jq --argjson producer "$producer_json" '.producer = $producer' \
+    "$producer_dir/951-202601010000${seq}.json" > "$SANDBOX/producer.json"
+  mv "$SANDBOX/producer.json" "$producer_dir/951-202601010000${seq}.json"
+done
+bash "$SCRIPT" --pr 951 --cycle-count 4 --results-dir "$producer_dir" > "$OUT" 2>/dev/null
+assert_grep "producer: other values are not fix copies" "$OUT" "trend=2,2,2,2; cycles=4; lost=0"
+
 # ---------------------------------------------------------------------------
 # T-01: 収束トラジェクトリで不発火 (AC-1)
 # ---------------------------------------------------------------------------
@@ -121,10 +167,10 @@ assert_grep "T-01a: トレンドが通知用に出力される" "$OUT" "trend=3,
 assert_grep "T-01a: 判定が下りた ok の reason を固定する" "$OUT" "reason=converging_or_descending"
 
 run_trend 101 10 8 8
-assert_grep "T-01b: #2081 実測の 10,8,8 は発火しない" "$OUT" "TREND_DIVERGENCE=ok"
+assert_grep "T-01b: 実測の 10,8,8 は発火しない" "$OUT" "TREND_DIVERGENCE=ok"
 
 run_trend 102 12 5 3 2 2
-assert_grep "T-01c: #2070 実測の 12,5,3,2,2 は発火しない (残 2 件で予算切れの保護対象)" "$OUT" "TREND_DIVERGENCE=ok"
+assert_grep "T-01c: 実測の 12,5,3,2,2 は発火しない (残 2 件で予算切れの保護対象)" "$OUT" "TREND_DIVERGENCE=ok"
 
 # AC-1 は「どの時点でも発火しない」を要求する。各 prefix を独立に評価する。
 run_trend 103 3 6 5
@@ -138,15 +184,15 @@ assert_grep "T-01e: 先頭 4 cycle 時点でも発火しない" "$OUT" "TREND_DI
 echo "--- T-02: 発散 run の早期検出 (AC-2) ---"
 
 run_trend 200 3 7 7 4
-assert_grep "T-02a: #2052 run1 の 3,7,7,4 は発火する" "$OUT" "TREND_DIVERGENCE=fire"
+assert_grep "T-02a: run1 の 3,7,7,4 は発火する" "$OUT" "TREND_DIVERGENCE=fire"
 assert_grep "T-02a: 既定上限 15 より早い cycle 3 で発火する" "$OUT" "fire_at=3"
 
 run_trend 201 2 3 6
-assert_grep "T-02b: #2052 run3 の 2,3,6 は発火する" "$OUT" "TREND_DIVERGENCE=fire"
+assert_grep "T-02b: run3 の 2,3,6 は発火する" "$OUT" "TREND_DIVERGENCE=fire"
 assert_grep "T-02b: cycle 3 で発火する" "$OUT" "fire_at=3"
 
 run_trend 202 10 11 11 13
-assert_grep "T-02c: #2052 run2 の 10,11,11,13 は発火する" "$OUT" "TREND_DIVERGENCE=fire"
+assert_grep "T-02c: run2 の 10,11,11,13 は発火する" "$OUT" "TREND_DIVERGENCE=fire"
 assert_grep "T-02c: cycle 3 で発火する" "$OUT" "fire_at=3"
 
 # escape 節 (直近 2 値が狭義単調減少なら見逃す) が「永久に見逃す」形へ退行していないこと。
@@ -317,7 +363,7 @@ printf '[1,2]' > "$arr_dir/617-20260101000003.json"
 bash "$SCRIPT" --pr 617 --cycle-count 3 --results-dir "$arr_dir" > "$OUT" 2>"$SANDBOX/arr-err.txt"
 assert_grep "T-06r: フィールド抽出 jq の失敗は json_parse_failure で不発火" "$OUT" "reason=json_parse_failure"
 assert_grep "T-06r: 抽出 jq の診断本文が stderr へ届く (空値からの推測で握り潰さない)" "$SANDBOX/arr-err.txt" "jq: error"
-assert_grep "T-06r: 抽出 gate が帰属を名乗る (T-06f と対)" "$SANDBOX/arr-err.txt" "schema_version を読み出せません"
+assert_grep "T-06r: 抽出 gate が帰属を名乗る (T-06f と対)" "$SANDBOX/arr-err.txt" "producer を読み出せません"
 
 ver_dir="$SANDBOX/ver"; mkdir -p "$ver_dir"
 make_result "$ver_dir" 606 01 2
@@ -803,11 +849,11 @@ assert "正常終了: EXIT trap が診断 tempfile を回収する (EXIT trap �
   "$(find "$exit_tmp" -maxdepth 1 -name 'rite-trend-diag-*' | wc -l | tr -d '[:space:]')"
 
 # ---------------------------------------------------------------------------
-# 実 fixture (scripts/tests/fixtures/pr-2070) に対する回帰
+# 実 fixture (scripts/tests/fixtures/review-measured-gate-sample) に対する回帰
 # ---------------------------------------------------------------------------
-echo "--- 実 fixture 回帰 (pr-2070) ---"
+echo "--- 実 fixture 回帰 (review-measured-gate-sample) ---"
 
-REAL_FIXTURE="$SCRIPT_DIR/../../scripts/tests/fixtures/pr-2070"
+REAL_FIXTURE="$SCRIPT_DIR/../../scripts/tests/fixtures/review-measured-gate-sample"
 if [ -d "$REAL_FIXTURE" ]; then
   # pin = 4 件目。それより新しい 5 件が「現 run」に相当する。
   bash "$SCRIPT" --pr 2070 --cycle-count 5 --since "2070-20260731150058.json" --results-dir "$REAL_FIXTURE" > "$OUT" 2>/dev/null
@@ -818,15 +864,15 @@ if [ -d "$REAL_FIXTURE" ]; then
   assert_grep "実 fixture: 全 9 件の blocking 列を実 JSON から復元できる" "$OUT" "trend=12,5,3,2,2,4,6,7,4"
   assert_grep "実 fixture: 全 9 件の列に対する判定結果を固定する" "$OUT" "fire_at=7"
 else
-  # fixture は同一リポジトリの tracked ファイル (#2074 で commit 済) のため、不在 = 削除された
+  # fixture は同一リポジトリの tracked ファイル (commit 済) のため、不在 = 削除された
   # ことを意味する。skip すると唯一の実データ回帰 2 件が消えてもスイートは緑のまま通るため、
   # 上部の jq floor と同じ形で Linux では hard fail させる。
   if [ -d /proc ]; then
-    echo "  ❌ FAIL: 実 fixture pr-2070 が存在しない ($REAL_FIXTURE) — tracked fixture の欠落は実データ回帰の消失を意味するため skip しない"
+    echo "  ❌ FAIL: 実 fixture review-measured-gate-sample が存在しない ($REAL_FIXTURE) — tracked fixture の欠落は実データ回帰の消失を意味するため skip しない"
     echo "Results: 0 passed, 1 failed"
     exit 1
   fi
-  skip "実 fixture pr-2070 が存在しない"
+  skip "実 fixture review-measured-gate-sample が存在しない"
 fi
 
 # ---------------------------------------------------------------------------

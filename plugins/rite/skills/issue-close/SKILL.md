@@ -25,7 +25,7 @@ Check the completion status of an Issue and guide necessary actions.
 
 ## Shared: Projects Status → Done (delegate pattern)
 
-Phase 1.3.2 / 4.2 / 4.6.3 / `skip_already_closed`（全子 CLOSED）は Projects Status を **Done** に更新する。`projects-status-update.sh` に委譲する（`skills/open/SKILL.md` ステップ 2.4 / `skills/ready/SKILL.md` Phase 4 と同一）。冪等。API 詳細は [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update)。
+Phase 1.3.2 / 4.2 / 4.6.3 / `skip_already_closed` + `proceed_to_confirmation`（全子 CLOSED かつ `NOT_PLANNED` なし）は Projects Status を **Done** に更新する。`projects-status-update.sh` に委譲する（`skills/open/SKILL.md` ステップ 2.4 / `skills/ready/SKILL.md` Phase 4 と同一）。冪等。API 詳細は [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update)。
 rationale: references/rationale.md#projects-status-delegate
 
 **委譲呼び出し**（`{issue}` は対象 Issue 番号、`auto_add false`・`non_blocking true`）:
@@ -45,6 +45,7 @@ bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args"
 |-----------|------|
 | `"updated"` | `Projects Status を "Done" に更新しました`（冪等のため既 Done も updated になる） |
 | `"skipped_not_in_project"` | `警告: Issue #{issue} は Project に登録されていません` |
+| `"skipped_terminal_conflict"` | `警告: Issue #{issue} は既に終端 Status (Cancelled) のため Done への上書きをスキップしました`（`.warnings[]` も stderr に出す。item-edit 復旧は案内しない） |
 | `"failed"` | `.warnings[]` を stderr に出し、`警告: Projects Status の "Done" 更新に失敗。手動: GitHub Projects 画面で Status を Done に変更、または gh project item-edit ...` |
 
 ---
@@ -93,27 +94,88 @@ rationale: references/rationale.md#auto-add-false-closed
 
 ## Phase 2: Search for Linked PRs
 
-### 2.1 Search for Related PRs
+### 2.1 作業ブランチの解決（PR 検索より先）
+
+**ブランチの解決を PR 検索より先に行う**。`gh pr list` の `--search` / `--head` はどちらも Issue 番号でスコープできないため、実ブランチ名を確定させてから exact `--head` で引くのが唯一の確実な経路になる。
+rationale: references/rationale.md#branch-first-pr-lookup
+
+flow-state の記録は**現在のセッション**のものであり `--issue` を取らない。対象 Issue と一致するときだけ採用する:
 
 ```bash
-gh pr list -R {owner_repo} --state all --search "linked:issue:{issue_number}" --json number,title,state,mergedAt,url
+state_issue=$(bash {plugin_root}/hooks/flow-state.sh get --field issue_number --default "")
+state_branch=$(bash {plugin_root}/hooks/flow-state.sh get --field branch --default "")
+echo "[CONTEXT] CLOSE_STATE_ISSUE=$state_issue; CLOSE_STATE_BRANCH=$state_branch"
 ```
 
-見つからなければ PR body の close キーワードを検索する:
+`state_issue` が `{issue_number}` と**一致しない、または空**なら flow-state 由来の値は捨て、Issue 番号でスコープされたローカルブランチ検索だけを使う:
 
 ```bash
-gh pr list -R {owner_repo} --state all --json number,title,state,body,mergedAt,url
+git branch --list "*issue-{issue_number}-*" --format '%(refname:short)'
 ```
 
-body が `Closes/Fixes/Resolves #{issue_number}`（大文字小文字とも）を含むか確認する。
+| 観測 | `{branch_name}` |
+|---|---|
+| `state_issue == {issue_number}` かつ `state_branch` が非空 | `state_branch`（対象 Issue の作業ブランチとして flow-state が記録済み）。**代入の直前に下記 charset 述語を適用する** |
+| 上記に該当せず、ローカル候補が **ちょうど 1 件** | その値。**代入の直前に下記 charset 述語を適用する** |
+| 上記に該当せず、候補が 0 件 | 未確定。2.2 は timeline へ倒す |
+| 上記に該当せず、候補が 2 件以上 | 未確定。候補を表示し、2.2 は timeline へ倒す |
 
-### 2.2 Search PRs by Branch Name
+**charset 述語（値を `{branch_name}` に代入する時点で適用する）**: 上表の採用行で、採用しようとする値が `^[A-Za-z0-9._/-]+$` に全体一致しないときは採用せず、WARNING を出して `{branch_name}` を未確定に倒す（2.2 は `--head` を使わず timeline へ倒す）。二重引用符と `--` は argv 分割にしか効かず `$(...)` は引用符の内側でも展開されるため、束縛は consumer より前になければならない。**consumer は 2.2 の `--head "{branch_name}"` のみ**。
+rationale: references/rationale.md#headref-charset-binding
+
+### 2.2 関連 PR の検索
+
+`{branch_name}` が確定しているときは実ブランチ名で **exact match** の `--head` を使う。`--head` はワイルドカードを解釈しないため glob を渡してはならない:
 
 ```bash
-gh pr list -R {owner_repo} --state all --head "*issue-{issue_number}*" --json number,title,state,mergedAt,url
+gh pr list -R {owner_repo} --head "{branch_name}" --state all --json number,title,state,headRefName,mergedAt,url,body
 ```
+
+ブランチが未確定、または上記が 0 件のときは **Issue の timeline から候補 PR を引く**。`gh pr list` には Issue でスコープする手段が無い — `--search "linked:issue:{issue_number}"` は GitHub が `linked:issue` を boolean qualifier として解釈して `:{N}` を無視するため任意の Issue で同じ集合を返し、`--state all --limit N` は最新 N 件の取得**窓**でしかない。
+rationale: references/rationale.md#issue-scoped-pr-lookup
+
+`gh api` は**単体コマンドとして rc を確定させてから**整形へ渡す。パイプの末尾に置くと `$?` は最終段のものになり、取得失敗の rc が消えて直下の fail-loud ガードが到達不能になる。`select` は truthiness で書く — `!= null` は `hooks/pre-tool-bash-guard.sh` が実行前に deny するため、記述どおりに走らない。
+rationale: references/rationale.md#timeline-rc-capture-first
+
+```bash
+_tl_rc=0
+_tl_err=$(mktemp "${TMPDIR:-/tmp}/rite-close-timeline-err-XXXXXX") || {
+  echo "ERROR: timeline 取得用の stderr 退避ファイルを作成できません。関連 PR の有無を確認できないため停止します" >&2
+  exit 1
+}
+_tl_raw=$(gh api "repos/{owner}/{repo}/issues/{issue_number}/timeline" --paginate \
+  --jq '.[] | select(.event=="cross-referenced" or .event=="connected") | .source.issue | select(.pull_request) | .number' \
+  2>"$_tl_err") || _tl_rc=$?
+if [ "$_tl_rc" -ne 0 ]; then
+  echo "ERROR: Issue timeline を取得できません (rc=${_tl_rc})。関連 PR の有無を確認できないため停止します" >&2
+  head -5 "$_tl_err" | sed 's/^/  /' >&2
+  rm -f "$_tl_err"
+  exit 1
+fi
+rm -f "$_tl_err"
+pr_candidates=$(printf '%s\n' "$_tl_raw" | sort -un)
+echo "[CONTEXT] CLOSE_PR_CANDIDATES=$(printf '%s' "$pr_candidates" | tr '\n' ',')"
+```
+
+timeline は Issue にスコープされ取得窓を持たないため、**絞り込み結果 0 件は「関連 PR が無い」と読んでよい**。停止するのは取得自体が失敗したときだけで、0 件と取得失敗を同じ値へ畳まない。取得失敗を Phase 3 の Pattern D に倒さない。
+
+候補ごとに詳細を引く（候補は通常 0〜3 件）:
+
+```bash
+gh pr view {candidate_pr_number} -R {owner_repo} --json number,title,state,headRefName,mergedAt,url,body
+```
+
+timeline は closing keyword を伴わない単なる言及（cross-reference）も返すため、`body` が `Closes/Fixes/Resolves #{issue_number}`（大文字小文字を問わない、`#{issue_number}` の直後が数字でない）にマッチする PR、または `headRefName` が `issue-{issue_number}-` を含む PR **だけ**を残す。exact `--head` で得た集合にも同じ絞り込みを適用する。**絞り込み前の集合を 2.3 の集約表に載せてはならない** — 無関係な MERGED PR が Phase 3 Pattern A を誤誘導する。絞り込み後集合だけを 2.3 と Phase 3 の Pattern A/B/C/D に渡す。
+
+| 観測 | アクション |
+|---|---|
+| timeline 取得失敗（上の ERROR） | **fail-loud で停止する**。Phase 3 の Pattern D に倒さない |
+| 絞り込み後 0 件 | 2.3 は空表。Phase 3 Pattern D（AskUserQuestion） |
+| 絞り込み後 1 件以上 | 2.3 に載せて Phase 3 へ（Pattern A / B / C） |
 
 ### 2.3 Aggregate Search Results
+
+絞り込み後の集合だけを載せる。
 
 | # | タイトル | 状態 | マージ日時 |
 |---|---------|------|----------|
@@ -228,11 +290,50 @@ lock 失敗は WARNING して続行（best-effort）。Issue comment backup は�
 
 ### 4.4 Completion Report
 
+Phase 4.2 が retain した Shared `.result` で Status 行を分岐する。`projects.enabled: false` で 4.2 を skip したときは Status 行を省略する。
+
+| 4.2 `.result` | Status 行 |
+|---------------|-----------|
+| `updated` | `Status: Done` |
+| `skipped_terminal_conflict` | `Status: Cancelled` |
+| `failed` | `Status: 更新失敗` |
+| `skipped_not_in_project` | Status 行なし（Done を主張しない） |
+
+`.result=updated`:
 ```
 Issue #{number} をクローズしました
 
 タイトル: {title}
 Status: Done
+
+関連 PR: #{pr_number} (Merged)
+```
+
+`.result=skipped_terminal_conflict`:
+```
+Issue #{number} をクローズしました
+
+タイトル: {title}
+Status: Cancelled
+
+関連 PR: #{pr_number} (Merged)
+```
+
+`.result=failed`:
+```
+Issue #{number} をクローズしました
+
+タイトル: {title}
+Status: 更新失敗
+
+関連 PR: #{pr_number} (Merged)
+```
+
+`.result=skipped_not_in_project`:
+```
+Issue #{number} をクローズしました
+
+タイトル: {title}
 
 関連 PR: #{pr_number} (Merged)
 ```
@@ -319,7 +420,7 @@ else
   bash {plugin_root}/hooks/wiki-ingest-trigger.sh \
     --type retrospectives --source-ref "issue-{issue_number}" \
     --content-file "$tmpfile" --issue-number {issue_number} \
-    --title "Issue #{issue_number} close retrospective" \
+    --title "{title}（close retrospective）" \
     2>"$trigger_stderr"
   trigger_exit=$?
   echo "trigger_exit=$trigger_exit"
@@ -487,7 +588,7 @@ exit 0 で成功（`--diff-check` で変更不要時は skip）。非 0 なら�
 
 ## Phase 4.6: Parent Auto-Close (All Children Completed)
 
-親の全子が closed なら auto-close を提案する。
+親の全子が CLOSED かつ `stateReason != NOT_PLANNED` なら auto-close を提案する。Cancelled（NOT_PLANNED）の子が居る、または CLOSED 子の `stateReason` が判定不能なら提案しない。
 
 **実行条件**: Phase 4.5.1 で `{parent_number}` が検出された場合のみ。未検出なら Phase 4.6 全体をスキップして Phase 5 へ。**直接の親のみ処理**し、祖父母には再帰しない。
 rationale: references/rationale.md#parent-direct-only
@@ -546,10 +647,10 @@ children_json=""
 if children_json=$(gh api graphql -f query='
 query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
-    issue(number: $number) { trackedIssues(first: 100) { nodes { number state } } }
+    issue(number: $number) { trackedIssues(first: 100) { nodes { number state stateReason } } }
   }
 }' -f owner="$owner" -f repo="$repo" -F number="$parent_number" \
-  --jq '[.data.repository.issue.trackedIssues.nodes[]? | {number, state}]' 2>"${p46_err:-/dev/null}"); then
+  --jq '[.data.repository.issue.trackedIssues.nodes[]? | {number, state, stateReason}]' 2>"${p46_err:-/dev/null}"); then
   echo "[DEBUG] method_a: $(printf '%s' "$children_json" | jq 'length' 2>/dev/null || echo 0) children via trackedIssues"
 else
   echo "[DEBUG] method_a failed (rc=$?) — trying Method B" >&2
@@ -567,17 +668,29 @@ if [ -z "$children_json" ] || [ "$(printf '%s' "$children_json" | jq 'length' 2>
   else
     children_json="["; first=1
     for n in $child_numbers; do
-      # state 取得失敗は fail-closed (OPEN 扱い) で auto-close を抑止する
-      child_state=$(gh issue view "$n" -R "$owner_repo_slash" --json state --jq '.state' 2>/dev/null || echo "OPEN")
-      [ -z "$child_state" ] && child_state="OPEN"
+      # state 取得失敗は fail-closed (OPEN 扱い) で auto-close を抑止する。
+      # stateReason は CLOSED 子に限って fail-loud（欠落を非 NOT_PLANNED とみなさない）。
+      # OPEN 子の stateReason null は正常で欠落扱いしない。
+      child_view=$(gh issue view "$n" -R "$owner_repo_slash" --json state,stateReason 2>/dev/null || echo "")
+      if [ -z "$child_view" ]; then
+        child_state="OPEN"
+        child_reason="null"
+      else
+        child_state=$(printf '%s' "$child_view" | jq -r '.state // "OPEN"' 2>/dev/null || echo "OPEN")
+        [ -z "$child_state" ] && child_state="OPEN"
+        child_reason=$(printf '%s' "$child_view" | jq -c '.stateReason' 2>/dev/null || echo "null")
+        [ -n "$child_reason" ] || child_reason="null"
+      fi
       [ "$first" -eq 1 ] && first=0 || children_json+=","
-      children_json+="{\"number\":$n,\"state\":\"$child_state\"}"
+      children_json+="{\"number\":$n,\"state\":\"$child_state\",\"stateReason\":$child_reason}"
     done
     children_json+="]"
   fi
 fi
 
 # --- all_closed 判定 (空配列は「判定不能」= auto-close 不可の safe default) ---
+# CLOSED 子の stateReason 欠落は fail-loud（非 NOT_PLANNED とみなして proceed しない）。
+# OPEN 子の stateReason null は正常なので欠落カウントに入れない。
 final_length=$(printf '%s' "$children_json" | jq 'length' 2>/dev/null || echo 0)
 if [ "$final_length" -eq 0 ]; then
   echo "all_closed=false open_count=0 children_total=0"
@@ -585,11 +698,18 @@ if [ "$final_length" -eq 0 ]; then
 else
   all_closed=$(printf '%s' "$children_json" | jq -r 'all(.[]; .state == "CLOSED") | tostring' 2>/dev/null || echo "false")
   open_count=$(printf '%s' "$children_json" | jq -r '[.[] | select(.state != "CLOSED")] | length' 2>/dev/null || echo 0)
-  echo "all_closed=$all_closed open_count=$open_count children_total=$final_length"
-  if [ "$all_closed" = "true" ]; then
-    echo "[CONTEXT] P461_DECISION=proceed_to_confirmation"
-  else
+  cancelled_count=$(printf '%s' "$children_json" | jq -r '[.[] | select(.stateReason == "NOT_PLANNED")] | length' 2>/dev/null || echo 0)
+  cancelled_nums=$(printf '%s' "$children_json" | jq -r '[.[] | select(.stateReason == "NOT_PLANNED") | .number] | map(tostring) | join(",")' 2>/dev/null || echo "")
+  reason_unavailable_count=$(printf '%s' "$children_json" | jq -r '[.[] | select(.state == "CLOSED" and (.stateReason == null or .stateReason == ""))] | length' 2>/dev/null || echo 0)
+  echo "all_closed=$all_closed open_count=$open_count cancelled_count=$cancelled_count reason_unavailable_count=$reason_unavailable_count children_total=$final_length"
+  if [ "$all_closed" != "true" ]; then
     echo "[CONTEXT] P461_DECISION=skip_open_children; open_count=$open_count"
+  elif [ "$reason_unavailable_count" -gt 0 ] 2>/dev/null; then
+    echo "[CONTEXT] P461_DECISION=skip_reason_unavailable; count=$reason_unavailable_count"
+  elif [ "$cancelled_count" -gt 0 ] 2>/dev/null; then
+    echo "[CONTEXT] P461_DECISION=skip_cancelled_children; numbers=$cancelled_nums"
+  else
+    echo "[CONTEXT] P461_DECISION=proceed_to_confirmation"
   fi
 fi
 ```
@@ -602,9 +722,13 @@ fi
 | `P460_DECISION=skip_retrieval_failed` | 親 state 取得失敗。Phase 4.6 を抜けて Phase 5 へ（non-blocking） |
 | `P460_DECISION=skip_already_closed` + `P461_DECISION=proceed_to_confirmation` | close は skip。Shared: Status → Done（`{issue}` = `{parent_number}`）。4.6.2 / 4.6.3 は実行しない。Phase 5 へ |
 | `P460_DECISION=skip_already_closed` + `P461_DECISION=skip_open_children` | Phase 5 へ（Status も Done にしない） |
+| `P460_DECISION=skip_already_closed` + `P461_DECISION=skip_cancelled_children` | Phase 5 へ（Status も Done にしない）。`Cancelled の子 #{numbers} を含むため親 #{parent_number} は未完了扱いです（Status → Done / auto-close しません）。親の中止は /rite:issue-cancel の明示指示。` を表示 |
+| `P460_DECISION=skip_already_closed` + `P461_DECISION=skip_reason_unavailable` | Phase 5 へ（Status も Done にしない）。`親 Issue #{parent_number} は子の stateReason を判定できないため auto-close をスキップしました。` を表示 |
 | `P460_DECISION=skip_already_closed` + `P461_DECISION=skip_empty_children` | 子一覧取得不可。`親 Issue #{parent_number} の子 Issue 一覧が取得できませんでした。自動クローズをスキップします。` を表示し Phase 5 へ |
 | `P461_DECISION=skip_empty_children`（`P460=proceed_to_enumeration`） | 子一覧取得不可。`親 Issue #{parent_number} の子 Issue 一覧が取得できませんでした。自動クローズをスキップします。` を表示し Phase 5 へ |
 | `P461_DECISION=skip_open_children; open_count=N`（`P460=proceed_to_enumeration`） | `親 Issue #{parent_number} にはまだ N 件の未完了子 Issue があります。自動クローズはスキップします。` を表示し Phase 5 へ |
+| `P461_DECISION=skip_cancelled_children; numbers=...`（`P460=proceed_to_enumeration`） | `Cancelled の子 #{numbers} を含むため親 #{parent_number} は未完了扱いです（Status → Done / auto-close しません）。親の中止は /rite:issue-cancel の明示指示。` を表示し Phase 5 へ |
+| `P461_DECISION=skip_reason_unavailable`（`P460=proceed_to_enumeration`） | `親 Issue #{parent_number} は子の stateReason を判定できないため auto-close をスキップしました。` を表示し Phase 5 へ |
 | `P461_DECISION=proceed_to_confirmation`（`P460=proceed_to_enumeration`） | 4.6.2 へ |
 
 ### 4.6.2 User Confirmation
@@ -641,7 +765,7 @@ projects_enabled="{projects_enabled}"
 project_number="{project_number}"
 issue_number="{issue_number}"
 
-status_update_result="projects_disabled"   # success | not_registered | update_failed | projects_disabled
+status_update_result="projects_disabled"   # success | not_registered | update_failed | projects_disabled | skipped_terminal
 status_warning_lines=""
 issue_close_result="pending"                # success | failed | pending
 script_item_id=""; script_project_id=""; script_status_field_id=""; script_option_id=""
@@ -675,6 +799,10 @@ if [ "$projects_enabled" = "true" ]; then
   case "$status_result" in
     updated) status_update_result="success"; echo "親 Issue #${parent_number} の Status を 'Done' に更新しました" ;;
     skipped_not_in_project) status_update_result="not_registered"; echo "警告: 親 Issue #${parent_number} は Project #${project_number} に未登録。Status 更新をスキップします。" >&2 ;;
+    skipped_terminal_conflict)
+      status_update_result="skipped_terminal"
+      echo "警告: 親 Issue #${parent_number} は既に終端 Status (Cancelled) のため Done への上書きをスキップしました。" >&2
+      [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  p463 Step 1 warning: /' >&2 ;;
     *) status_update_result="update_failed"
        [ "$status_result" != "failed" ] && echo "[DEBUG] 未知の .result='$status_result' — update_failed 扱い" >&2
        echo "警告: 親 Issue #${parent_number} の Status 更新に失敗。後続の gh issue close は続行します。" >&2
@@ -698,7 +826,7 @@ echo "=== 親 Issue #${parent_number} 処理結果 ==="
 echo "  Issue close: $issue_close_result"
 echo "  Status update: $status_update_result"
 case "${issue_close_result}:${status_update_result}" in
-  "success:success"|"success:projects_disabled"|"success:not_registered") echo "  状態: 整合性 OK" ;;
+  "success:success"|"success:projects_disabled"|"success:not_registered"|"success:skipped_terminal") echo "  状態: 整合性 OK" ;;
   "success:update_failed")
     echo ""; echo "⚠️ state 不整合: 親 Issue は CLOSED ですが Projects Status が Done に更新されていません。"
     if [ -n "${script_item_id:-}" ] && [ -n "${script_project_id:-}" ] && [ -n "${script_status_field_id:-}" ] && [ -n "${script_option_id:-}" ]; then
@@ -710,6 +838,7 @@ case "${issue_close_result}:${status_update_result}" in
   "failed:success") echo ""; echo "⚠️ state 不整合: Projects Status は Done ですが親 Issue が OPEN のままです。"; echo "  復旧コマンド: gh issue close ${parent_number} -R ${owner_repo_slash}" >&2 ;;
   "failed:projects_disabled") echo ""; echo "⚠️ 親 Issue のクローズに失敗 (Projects は config で無効)。手動: gh issue close ${parent_number} -R ${owner_repo_slash}" >&2 ;;
   "failed:not_registered") echo ""; echo "⚠️ 親 Issue のクローズに失敗 (Project 未登録)。手動: gh issue close ${parent_number} -R ${owner_repo_slash}" >&2 ;;
+  "failed:skipped_terminal") echo ""; echo "⚠️ 親 Issue のクローズに失敗 (board Status は Cancelled のまま Done へ上書きしていない)。手動: gh issue close ${parent_number} -R ${owner_repo_slash}" >&2 ;;
   "failed:"*) echo ""; echo "⚠️ 親 Issue の処理が両方失敗 (close / status)。手動対応: gh issue close ${parent_number} -R ${owner_repo_slash}" >&2 ;;
 esac
 trap - EXIT INT TERM HUP

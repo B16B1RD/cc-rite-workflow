@@ -233,7 +233,7 @@ TIMEOUT_SEARCH_ROOTS=(
 for _root in "${TIMEOUT_SEARCH_ROOTS[@]}"; do
   [ -d "$_root" ] || fail "TC-7 discovery root missing: $_root (layout changed?)"
 done
-# ERE rather than a literal: a seventh copy written as `function _timeout {` or
+# ERE rather than a literal: an additional copy written as `function _timeout {` or
 # with leading whitespace would otherwise be invisible to both TC-7 and TC-8.
 mapfile -t TIMEOUT_COPIES < <(grep -rlE '^[[:space:]]*(function[[:space:]]+)?_timeout[[:space:]]*(\(\))?[[:space:]]*\{' "${TIMEOUT_SEARCH_ROOTS[@]}" 2>/dev/null | sort)
 REFERENCE_COPY="$PLUGIN_ROOT/hooks/tests/_test-helpers.sh"
@@ -242,8 +242,8 @@ REFERENCE_COPY="$PLUGIN_ROOT/hooks/tests/_test-helpers.sh"
 # vacuously green over an empty or truncated set. The floor only does that job while it
 # equals the real copy count — leaving it below the count buys slack that hides exactly the
 # reformatted-definition case, so a PR that ADDS a copy must raise it in the same change.
-if [ "${#TIMEOUT_COPIES[@]}" -lt 7 ]; then
-  fail "TC-7 discovery found only ${#TIMEOUT_COPIES[@]} _timeout definition(s) (expected >= 7) — either the grep pattern or the layout changed, or copies were deliberately consolidated, in which case lower this floor and TC-8's; conversely, raise both when you add a copy: ${TIMEOUT_COPIES[*]-<none>}"
+if [ "${#TIMEOUT_COPIES[@]}" -lt 6 ]; then
+  fail "TC-7 discovery found only ${#TIMEOUT_COPIES[@]} _timeout definition(s) (expected >= 6) — either the grep pattern or the layout changed, or copies were deliberately consolidated, in which case lower this floor and TC-8's; conversely, raise both when you add a copy: ${TIMEOUT_COPIES[*]-<none>}"
 elif ! printf '%s\n' "${TIMEOUT_COPIES[@]}" | grep -qxF "$REFERENCE_COPY"; then
   fail "TC-7 discovery did not include the reference copy $REFERENCE_COPY"
 else
@@ -275,7 +275,7 @@ fi
 echo "=== TC-8: every _timeout definition carries the fail-closed guard ==="
 # Without the guard a host lacking both backends falls through to rc 127, which
 # every caller reads as "no hang" — the exact silent pass the shim exists to stop.
-if [ "${#TIMEOUT_COPIES[@]}" -lt 7 ]; then
+if [ "${#TIMEOUT_COPIES[@]}" -lt 6 ]; then
   fail "TC-8 skipped because discovery failed (see TC-7)"
 else
   missing_guard=()

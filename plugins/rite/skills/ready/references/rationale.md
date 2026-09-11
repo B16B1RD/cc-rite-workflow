@@ -24,13 +24,13 @@ Ready は mergeable 判定後の追加 commit を見ていなかった。配布�
 schema のキーは `commit_sha`（Issue 文の `reviewed_commit` は PR コメント marker 名）。
 `--force` フラグは作らない。強行はユーザーの明示指示で helper 呼び出しを除く。
 
-NB sweep が `fixed ≥ 1` で push した commit は例外とする（#2439）。#2347 は
-`commit_sha == HEAD` を要求するが、#2409 / #2433 は sweep を再フルレビューの
+NB sweep が `fixed ≥ 1` で push した commit は例外とする。reviewed-head ゲートは
+`commit_sha == HEAD` を要求するが、sweep 経路は sweep を再フルレビューの
 引き金にしない。sweep は review JSON を更新しないため、`--merge` は構造的に
 ready を通過できなかった。受理するのは done-file 2 行目が指す **その 1 commit
 だけ**。JSON 一致を先に評価し（`via=json`、done-file 非読取）、不一致かつ 2 行目
 SHA == HEAD のときだけ `via=sweep`。2 行目不正は既存判定へ縮退せず fail-loud。
-1 行のみ / ファイル不在は #2347 の mismatch 文言を変えない。
+1 行のみ / ファイル不在は mismatch 文言を変えない。
 
 ## bang-backtick-hard-gate
 

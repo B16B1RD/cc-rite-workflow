@@ -18,6 +18,9 @@ PR #{number}: {title} の検証レビューを {reviewer_type} として実行�
 
 {previous_findings_table}
 
+対応表:
+{fix_change_map}
+
 各指摘について以下のいずれかで判定:
 - **FIXED**: 推奨対応（または同等の修正）が正しく適用された
 - **NOT_FIXED**: 指摘が対応されていない、または修正が不正確
@@ -61,6 +64,11 @@ PR #{number}: {title} の検証レビューを {reviewer_type} として実行�
 | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
 |--------|----------|------------|------|----------|
 | {severity} | {scope} | {file:line} | {description} | {recommendation} |
+
+## CI 状態
+{ci_status}
+
+失敗 job が本 PR の変更ファイルに対応する場合は詳細 URL のログを確認し、変更に起因する failing test を `Verification: failing_test <path> => <失敗出力>` と call site の根拠付きで指摘する。job 名・赤い check だけでは実測アンカーにしない。無関係な flaky や allowed failure を一律 blocking にせず、既存の採否基準に従う。pending は待たず、CI の rerun は実行しない。
 
 ## 制約
 [READ-ONLY RULE] このレビューは読み取り専用。`Edit`/`Write` 禁止、問題は指摘事項として報告し修正は `/rite:fix` に委譲する。許可/禁止コマンドの完全一覧は上記「共通レビュー原則」に注入済みの `_reviewer-base.md` `## READ-ONLY Enforcement` を SoT として参照。

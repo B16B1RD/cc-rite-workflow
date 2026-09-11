@@ -19,7 +19,7 @@
 
 - **Self-only judgment を明示フラグにする理由**: 「分子から除外、分母には含める」方式では rite plugin self-only PR でも数学的には doc_lines == 0 (= ratio 0) になり「ratio 未満」と区別不能になるため、判定根拠の要約に明示的に記録する。
 - **全経路で `[CONTEXT]` を対称 emit する理由**: skip 経路のみ emit する非対称設計だと、後続 phase (ステップ 2.2.1 / 5.1.3 / 5.4) が「`[CONTEXT]` 行が会話履歴に存在しない = 正常」という negative inference に依存し、Claude の context grep が前 session の `[CONTEXT] doc_heavy_pr=true` を誤拾いするリスクを生む。全経路対称 emit なら grep は常に最新行を decisive に拾える。
-- **`gh pr view` 再呼び出しを撤去した理由**: 旧実装は `all_files_excluded` 判定用に path 配列を独立取得していたが、目的文判断はステップ 1.1 の `files` 配列（`additions`/`deletions` 付き）のみで完結するため、追加 API 呼び出し・mktemp/trap・bash 配列 hydration が不要になった。
+- **`files` 配列を再利用する理由**: 目的文判断はステップ 1.1 の `files` 配列（`additions`/`deletions` 付き）のみで完結するため、追加 API 呼び出し・mktemp/trap・bash 配列 hydration は不要。
 
 ## code-block-scan-notes
 
@@ -37,7 +37,7 @@
 - **detached HEAD edge case**: orchestrator が `git worktree add --detach` で起動された場合や reviewer ループ中の特殊な checkout で HEAD が detached になると `git branch --show-current` は空文字列を返す。空文字列のままステップ 5.0.A に渡すと verifier が `[ -z "$ORIGINAL_BRANCH" ]` で exit 2 (invalid args) になるため、`DETACHED:<short-hash>` sentinel に置換する。verifier 側で `DETACHED:*` は branch drift check を skip する経路に乗る。
 - **md5sum portability**: Linux は `md5sum`、macOS は `shasum` を fallback として使う。両方とも stdout の先頭 token が hash であるため `awk '{print $1}'` で portable に取り出せる。
 - **ステップ 5.0.A の placeholder 残留 gate**: `{orig_br}` が `{...}` 形状のまま渡されると verifier が non-empty 文字列として branch 比較し silent false-positive cascade を起こすため、形状検査で早期 reject する (ステップ 6.1.b と同 pattern)。
-- **生の `git status --porcelain` ではなく `git-status-filtered.sh` を使う理由**: このスナップショットと ステップ 5.0.A の verify は異なる sandbox 実行コンテキストで走りうるため、bwrap sandbox が overlay する ghost-mount `??` エントリ が両側で食い違い、実変更が無くても hash 不一致 (false-positive drift) が起きる。フィルタを両側に適用するとその ghost-mount 差分が打ち消され、実際の working-tree 変更のみが hash に反映される。
+- **tracked 差分で snapshot / verify を揃える理由**: 両側で `git-status-filtered.sh --tracked-only` を使い、sandbox 実行コンテキストごとに変わりうる untracked を hash から除く。環境固有のファイル名やサイズには依存しない。reviewer の新規ファイル作成を黙って見逃さないよう、untracked の件数と名前は WARNING に残す。tracked の staged / unstaged 差分は従来どおり drift 検出対象とする。
 - **フィルタの exit code を明示チェックする理由 (capture-first)**: 生の `git status --porcelain` と異なりフィルタは `mktemp` に依存するため、sandbox の TMPDIR 制限下では plain `git status` が成功してもフィルタは失敗しうる。かつ SKILL.md の bash block は Bash tool の 1 回の呼び出しとして新規シェルで実行され pipefail は既定 off (呼び出し間でシェル状態は引き継がれない) なので、`filter | hash | awk` の `$?` は pipefail に依存させられない。フィルタ自身の出力を先に非パイプで capture してから exit code を判定する。`post-review-state-verify.sh` 側は単一スクリプト全体に `set -uo pipefail` がかかるため pipefail 経由の `$?` チェックで足りるが、SKILL.md block はそれとは独立した実行コンテキストのため同じ前提を流用できない。
 
 ## verification-post-condition-notes
@@ -65,7 +65,7 @@
 
 ステップ 7 の名称・推奨決定方式の再設計（自動 Issue 化 → スコープ外指摘のトリアージ）の設計理由。
 
-- **3 つのバイアスの積み重ね**: 旧「自動 Issue 化」には (1) 起票をゴールとする命名、(2) `AskUserQuestion` の選択肢列挙で「別 Issue 作成」が先頭（本 tool の規約上、先頭 = 推奨と解釈されやすい）、(3) 推奨決定の指示不在（エージェント裁量）、の 3 バイアスが積み重なっていた。エージェントには「指摘を先送りすれば fix ループが早く収束する」という構造的な先延ばし動機があり、この 3 バイアスが揃うと保険的な follow-up Issue が増殖する。fix ループ側の別 Issue 化経路は既に「先延ばしの抜け穴」として廃止済み（`skills/iterate/SKILL.md`）であり、ステップ 7 だけが取り残されていた。
+- **3 つのバイアスの積み重ね**: 旧「自動 Issue 化」には (1) 起票をゴールとする命名、(2) `AskUserQuestion` の選択肢列挙で「別 Issue 作成」が先頭（本 tool の規約上、先頭 = 推奨と解釈されやすい）、(3) 推奨決定の指示不在（エージェント裁量）、の 3 バイアスが積み重なっていた。エージェントには「指摘を先送りすれば fix ループが早く収束する」という構造的な先延ばし動機があり、この 3 バイアスが揃うと保険的な follow-up Issue が増殖する。fix ループ側で人間が skip → 別 Issue で loop 終了する経路は「先延ばしの抜け穴」として閉じた（`skills/iterate/SKILL.md`。残存 non-blocking の消化は機械 routing が担う）。ステップ 7 だけが同じ先延ばし動機を残していた。
 - **先延ばし禁止の設計原則**: 仮説的な将来リスクに先手を打つ Issue は大半が無駄に終わる。スコープ内の実指摘は本 PR で解決し（fix ループで強制済み）、スコープ外候補は「起票せず記録して終わり」をデフォルトにする方が、Issue の増殖を防ぎ実際に着手される確率を上げる。
 - **推奨機械決定表を裁量の代わりに置く理由**: 「裁量で決めてよい」とすると上記の構造的動機により実質的に「別 Issue 作成」へ誘導される。Likelihood（Observed/Demonstrable vs Hypothetical）と Source（A/B）という機械的に判定可能な軸だけで推奨を決定することで、エージェントの意思が介在する余地を無くす。
 - **Decision Log 記録を「追加」の経路とする理由**: fix ループの nit-noted 返信経路・acknowledged suppression（PR コメント / JSON ベースの再指摘抑制）は Decision Log 記録では代替されない。両者は別の目的（前者は次サイクルでの再指摘抑制、後者は仕様変更の記録）を持つため、置き換えではなく追加とした。
@@ -163,7 +163,7 @@ E2E で削るのはステップ 5–7 の人間向け表示だけ。ステップ
 
 ## e2e-askuser-split
 
-AskUserQuestion を 2 種に分ける理由（#1861）。
+AskUserQuestion を 2 種に分ける理由。
 
 ステップ 7 のトリアージは未解決指摘・スコープ外指摘の握り潰し防止なので E2E でも処理自体は skip 禁止。Decision Log への可逆記録は question_resolution の推奨自律処理。ステップ 3.3 の構成確認は iterate の自律ループと矛盾するため E2E で skip 可。サマリ行と省略 reviewer 表示は両経路で残す（silent capping 禁止）。
 
@@ -207,11 +207,11 @@ iterate は mergeable まで自律的に回す設計で、cycle ごとに構成�
 
 ## named-subagent-and-foreground
 
-named subagent (`rite:{type}-reviewer`) と `run_in_background: false` 必須の理由。
+named subagent (`rite:{type}-reviewer`) を使う理由と、結果回収を completion notification に置く理由。
 
 Phase B 以降、agent body を system prompt として載せる方が reviewer discipline の強制が強い。bare `{type}-reviewer` は plugin 配布で解決に失敗する。
 
-harness は省略時 default で background 起動する。background は起動確認だけ返して caller が turn を終え、結果回収と `error_count` が壊れる。同一メッセージ内の foreground Task は既に並列で、Claude は全結果を待ってから次へ進む。
+現行 harness（fork mode 既定 on）は spawn した subagent を background で走らせ、foreground 要求を受け付けない。`run_in_background` は Agent tool に引数が無く、指定しても無効。結果は completion notification として後続 turn に届く。orchestrator は起動確認だけでは 5.1 に進まず、全 reviewer の通知が揃うまで待ち、未着の結果を推測・補完しない。同一メッセージ内の複数 Task は並列発行のまま（4.6 の spawn 時刻は Task 発行時刻）。
 
 inline / 手動 verification は Detection Process・Confidence・Cross-File を迂回する rubber-stamp になるため禁止。
 
@@ -255,7 +255,7 @@ JSON 本文の書き手を 5.3.0.M step 1 に一本化する理由。
 
 5.3.0.C を 5.3.0.M の後・5.3.1 の前に置く理由。
 
-実測付き blocking を class A（実行時挙動が変わる）/ class B（検出網・可読性・文書整合）に分け、A=0 の cycle で exclusion なし B を non-blocking にして churn 尾部を自然終了させる。exclusion 付き B（既存記述の削除/弱体化）は blocking 維持。実測未判定は分類対象外で class A 固定 — 判定不能を降格に丸めない 3 値モデル。不確実なら class B（攻め側既定）。ファイルパスで機械分類しない。
+実測付き blocking を class A（実行時挙動が変わる）/ class B（検出網・可読性・文書整合）に分け、A=0 の cycle で exclusion なし B を non-blocking にして churn 尾部を自然終了させる。exclusion 付き B（既存記述の削除/弱体化）は blocking 維持。gated finding の `verification.measured` が boolean でない入力は classification map で修復できないため、分類と書き換えの前に `measured_undetermined` で停止する。成功した実測ゲート出力の gated finding は boolean を持つ。不確実なら class B（攻め側既定）。ファイルパスで機械分類しない。
 
 classification map のパスに commit SHA を入れる理由: `${TMPDIR}` はセッション内不変で、含めないと前 cycle の map が同一パスに残り、step 1 を飛ばして step 2 だけ実行すると stale map を無音適用する。
 

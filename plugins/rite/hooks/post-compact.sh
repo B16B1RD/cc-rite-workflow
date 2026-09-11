@@ -1,7 +1,9 @@
 #!/bin/bash
 # rite workflow - Post-Compact Hook
-# Restores workflow context after compaction by outputting state to stdout.
-# stdout is injected into the model's context, enabling automatic workflow continuation.
+# Side effects after compaction: compact-state normalize (recovering→normal),
+# PR/Projects Status reconciliation. Recovery text for the model is emitted by
+# session-start.sh (source=compact); PostCompact plain stdout is not injected
+# into model context (Claude Code docs).
 set -euo pipefail
 
 # Double-execution guard (hooks.json + settings.local.json migration)
@@ -172,15 +174,25 @@ trap cleanup EXIT TERM INT
 
 if acquire_wm_lock "$LOCKDIR"; then
   TMP_COMPACT=$(mktemp "${COMPACT_STATE}.XXXXXX" 2>/dev/null) || TMP_COMPACT="${COMPACT_STATE}.tmp.$$"
+  # Preserve trigger so SessionStart(compact) can distinguish auto vs manual
+  # after this normalize. Missing field (old compact-state) falls back to this
+  # hook's SOURCE (auto|manual), then to auto.
+  _pc_trigger=$(jq -r '.trigger // empty' "$COMPACT_STATE" 2>/dev/null) || _pc_trigger=""
+  [ -n "$_pc_trigger" ] || _pc_trigger="$SOURCE"
+  case "$_pc_trigger" in
+    manual) ;;
+    *) _pc_trigger="auto" ;;
+  esac
   # jq stderr is captured so a binary-missing / locale-broken date / disk-full
   # failure surfaces as a diagnosable WARNING. Silent fall-through here would
   # leave compact_state stuck at "recovering" forever and trigger an infinite
-  # auto-recovery loop on every subsequent PostCompact.
+  # PostCompact side-effect loop on every subsequent compact.
   _jq_norm_err=$(mktemp 2>/dev/null) || _jq_norm_err=""
   if jq -n \
     --arg state "normal" \
     --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
-    '{compact_state: $state, compact_state_set_at: $ts}' \
+    --arg trigger "$_pc_trigger" \
+    '{compact_state: $state, compact_state_set_at: $ts, trigger: $trigger}' \
     > "$TMP_COMPACT" 2>"${_jq_norm_err:-/dev/null}"; then
     _mv_err=$(mktemp 2>/dev/null) || _mv_err=""
     if mv "$TMP_COMPACT" "$COMPACT_STATE" 2>"${_mv_err:-/dev/null}"; then
@@ -275,7 +287,7 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
     # pass `--repo` explicitly. `gh pr view` is a shorthand command that
     # resolves the target repo from `origin` the same way `gh repo view`
     # does — under an SSH Host alias origin this fails with the exact error
-    # #1899 fixes elsewhere, gating this whole reconciliation block shut
+    # fixes elsewhere, gating this whole reconciliation block shut
     # before PR_IS_DRAFT can even be determined.
     #
     # git-remote parse first: works even when `origin` is an SSH Host alias
@@ -468,7 +480,11 @@ query($owner: String!, $repo: String!, $number: Int!) {
           CURRENT_STATUS=""
         fi
 
-        if [ -n "$CURRENT_STATUS" ] && [ "$CURRENT_STATUS" != "In Review" ] && [ "$CURRENT_STATUS" != "Done" ]; then
+        # Done / Cancelled are the terminal Status set (references/projects-integration.md,
+        # "Terminal Status Set"). A terminal row is finished, so pulling it back to
+        # In Review would undo a deliberate decision — Cancelled is excluded for exactly
+        # the same reason Done always has been.
+        if [ -n "$CURRENT_STATUS" ] && [ "$CURRENT_STATUS" != "In Review" ] && [ "$CURRENT_STATUS" != "Done" ] && [ "$CURRENT_STATUS" != "Cancelled" ]; then
           echo "[rite] ⚠️ post-compact mismatch detected: Issue #$ISSUE PR=#$PR isDraft=false Status=\"$CURRENT_STATUS\" (expected In Review)" >&2
           # STATE_ROOT existence is already enforced at the top of the sub-shell
           # (early state_root_inaccessible WARNING + exit 0), so this reconciliation
@@ -521,22 +537,6 @@ query($owner: String!, $repo: String!, $number: Int!) {
   )
 fi
 
-# --- stderr: user-facing notification ---
+# --- stderr: user-facing notification (not injected into model context) ---
 echo "[rite] compact 後の自動復帰を実行中 (Issue #${ISSUE}, Phase: ${PHASE})" >&2
-
-# --- stdout: injected into model context ---
-if [ "$SOURCE" = "auto" ]; then
-  cat <<EOF
-[rite] Auto-compact recovery: Issue #${ISSUE}, Phase: ${PHASE}, Branch: ${BRANCH}
-Next action: ${NEXT_ACTION}
-Loop: ${LOOP} | PR: #${PR}
-Use \`bash {plugin_root}/hooks/flow-state.sh get --field <field>\` for full state details. Also consult .rite/work-memory/issue-${ISSUE}.md, then continue.
-EOF
-else
-  # Manual compact: state re-injection only, no auto-continue instruction
-  cat <<EOF
-[rite] Compact recovery: Issue #${ISSUE}, Phase: ${PHASE}, Branch: ${BRANCH}
-Next action: ${NEXT_ACTION}
-Loop: ${LOOP} | PR: #${PR}
-EOF
-fi
+# Recovery text and batch frame are emitted by session-start.sh (source=compact).

@@ -12,11 +12,14 @@ user-invocable: false
 
 ## 5.1 Implementation Work
 
+> 実行入口と工程境界は [Host Runtime Contract](../../references/host-runtime-contract.md#入口と工程境界)、native Skill / Task がない場合の実行は [Host workflow operations](../../references/host-workflow-operations.md) に従う。nested 呼出しは caller の runtime 選択を引き継ぐ。
+
 `skills/open/SKILL.md` ステップ 3 で承認した計画に従って実装する。
 
 > **Reference**: Apply the Phase 5.1 checklist from [AI Coding Principles](../../skills/rite-workflow/references/coding-principles.md).
 > In particular, check `simplicity_enforcement`, `scope_discipline`, `dead_code_hygiene`, and `knowledge_routing` — route each finding to its durable medium (How → code, What → tests, Why → commit log, Why not → comments).
 > Also follow [Comment Best Practices](../../skills/rite-workflow/references/comment-best-practices.md) for WHY > WHAT, journal/line-number/cycle-number prohibition, jargon whitelist, and density-by-audience rules.
+> **MUST**: 生成するコメント・ドキュメント・SKILL 散文に Issue/PR 番号・AC番号を書かない。残す背景は現在形の制約文。ジャーナル/経緯文は禁止。
 
 > **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) before executing bash hook commands in this file.
 
@@ -27,6 +30,15 @@ user-invocable: false
 契約外の必要性に気付いた場合は実装せず、既存の Issue コメントへ必要性と根拠を記録して差し戻す。拡張は実需を記した別 Issue の契約として扱い、現在の実装へ先回りして含めない。
 
 本 mandate は **XS / S / M / L / XL の全 Complexity に適用する**。Complexity レーンは儀式コストと生産量制約だけを変え、本 mandate の適用有無を変えない。
+
+### 5.0.F テスト規律（全 Complexity 共通）
+
+task が求める挙動 1 つにテスト 1 つ。隣接するテストファイルと同規模。scratch の検証スクリプトを permanent test にしない。既存 suite がある種別は新規ファイルより追記する。テスト数の上限は設けない。
+rationale: references/rationale.md#test-file-discipline
+
+既存 suite が無い種別は新規テストファイルを認め、規模は隣接テストファイルに合わせる。**XS/S では 5.1.0.8 の新規テストファイル禁止が優先**し、既存 suite が無くても新規ファイルは作らない。
+
+削った scratch と残したテストの判断は work memory の決定事項に記録する（silent 削除禁止）。本規律は **XS / S / M / L / XL の全 Complexity に適用する**。レーンは 5.1.0.8 の抑制表だけを変え、本規律の適用有無を変えない。
 
 ### 5.0.C Complexity Lane Determination (XS/S 軽量レーン)
 
@@ -94,7 +106,7 @@ fi
 
 ### 5.0.T Canon TDD Cycle (Conditional)
 
-> **Reference**: Canon TDD (Kent Beck) — test list → pick one behavior → Red (write a failing test) → Green (minimal implementation) → Refactor → repeat until the list is empty. The `tdd:` config key is documented in [CONFIGURATION.md](../../../../docs/CONFIGURATION.md) (`### tdd`).
+> **Reference**: Canon TDD (Kent Beck) — test list → pick one behavior → Red (write a failing test) → Green (minimal implementation) → Refactor → repeat until the list is empty. The `tdd:` config key is documented in the bundled [rite-config.yml template](../../templates/config/rite-config.yml) (`tdd:` section).
 
 `tdd.enabled: true`（既定、opt-out）なら 5.1 の各挙動を Canon TDD で進める。
 
@@ -418,7 +430,7 @@ E2E では結果を context に残す（`/rite:lint` Phase 3.4 が再利用で�
 | Pattern | Examples |
 |---------|---------|
 | `## 受入条件` | Exact match (Japanese) |
-| `## Acceptance Criteria` | Exact match (English) |
+| `## Acceptance Criteria` / `## 5. Acceptance Criteria` | Exact match (English, unnumbered or template heading) |
 | `## 受け入れ条件` | Alternative Japanese form |
 
 The section extends from the matched heading to the next `##` heading or end of body.
@@ -521,7 +533,7 @@ rationale: references/rationale.md#production-constraint-churn
 
 **Commit procedure:**
 
-1. `git status` で変更ファイルを確認
+1. `git status --porcelain` で変更ファイルを確認。出力が空なら stderr に `ERROR: コミット対象の変更がありません` を出して停止する。commit / push / pr-create へ進まない。`git status` 自体が失敗したら既存の bash 失敗処理に従い `ERROR` で停止する。変更がある場合は手順 2 以降を従来どおり進め、この分岐からの追加出力は出さない。
 2. `git add {changed_files}` で明示 stage（**not** `git add .`）
 3. Conventional Commits でメッセージ生成
 4. `git commit`
@@ -531,9 +543,14 @@ rationale: references/rationale.md#push-no-upstream
 
 > **⚠️ CRITICAL**: commit message の `description` は `language` 設定に従う。例の言語をコピーしない。
 
-形式 `{type}({scope}): {description}`。言語は `rite-config.yml` の `language`（`auto` は日本語文字の有無）。type/scope は常に英語。body は why を自由形式。description との間に空行。trivial は省略可。
+形式 `{type}({scope}): {description}`。言語は `rite-config.yml` の `language`（`auto` は日本語文字の有無）。type/scope は常に英語。body は why を自由形式（必須。typo 以外も含め省略しない）。description との間に空行。
 
 ```bash
+status_out=$(git status --porcelain) || { echo "ERROR: git status に失敗しました" >&2; exit 1; }
+if [ -z "$status_out" ]; then
+  echo "ERROR: コミット対象の変更がありません" >&2
+  exit 1
+fi
 git add {changed_files}
 git commit -m "$(cat <<'EOF'
 {commit_message}

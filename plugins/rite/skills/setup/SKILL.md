@@ -20,7 +20,7 @@ Initial setup wizard for rite workflow
 |----------|-------------|
 | `--upgrade` | Upgrade existing rite-config.yml to the latest schema version |
 
-When `--upgrade` is specified, skip to [Phase 4.1.3 (Upgrade)](#413-upgrade-existing-configuration). Otherwise, run the following phases in order.
+When `--upgrade` is specified, skip to [Phase 4.1.3 (Upgrade)](#upgrade-existing-configuration). Otherwise, run the following phases in order.
 
 ## Phase 1: Environment Check
 
@@ -207,14 +207,14 @@ gh repo create "$owner/$repo_name" --source . "$visibility_flag" --remote origin
 The visibility flag is mandatory; never invoke the interactive form. If the command fails, display gh's stderr and probe both `gh repo view "$owner/$repo_name"` and `git remote get-url origin` before choosing recovery:
 
 - If neither repository nor origin exists, the create step failed before side effects. Use AskUserQuestion to offer retrying the create command or stopping.
-- If the repository and origin exist, treat this as a partial success in the push step. Resolve `current_branch=$(git branch --show-current)` and fail loudly if it is empty. Use AskUserQuestion to offer retrying only `git push -u origin "$current_branch"` or stopping; never rerun `gh repo create` on this path.
+- If the repository and origin exist, treat this as a partial success in the push step. Resolve `current_branch=$(git branch --show-current)` and fail loudly if it is empty. Use AskUserQuestion to offer retrying only `git push origin "$current_branch"` or stopping; never rerun `gh repo create` on this path.
 - If only one of repository/origin exists, show the observed state and stop for manual recovery rather than guessing.
 
 For a name collision, resolve `current_branch=$(git branch --show-current)` and the existing repository URL with `gh repo view "$owner/$repo_name" --json url --jq .url`. Fail loudly if either is empty. Then stop after showing these commands with the resolved values; do not execute them automatically:
 
 ```text
 git remote add origin {resolved-existing-repository-url}
-git push -u origin {resolved-current-branch}
+git push origin {resolved-current-branch}
 ```
 
 After successful creation, always display:
@@ -299,24 +299,95 @@ gh project field-create {project-number} --owner {owner} --name "Priority" --dat
 gh project field-create {project-number} --owner {owner} --name "Complexity" --data-type "SINGLE_SELECT" --single-select-options "XS,S,M,L,XL"
 ```
 
-If the Status field does not have "In Review", add it via GraphQL:
+Status field に rite 管理 5 option（`Todo` / `In Progress` / `In Review` / `Done` / `Cancelled`）を和集合で provisioning する。既存 option を GraphQL で読み、不足分だけ足して `updateProjectV2Field` に送る（既存は `id` 付きで保持）。読み取り失敗時は mutation を発行せず fail-loud。既に 5 つ揃っていれば noop。
+rationale: references/rationale.md#status-option-union-provision
 
 ```bash
-gh api graphql -f query='
-mutation {
-  updateProjectV2Field(input: {
-    fieldId: "{status-field-id}"
-    singleSelectOptions: [
-      {name: "Todo", color: GRAY, description: "Not started"}
-      {name: "In Progress", color: YELLOW, description: "Work in progress"}
-      {name: "In Review", color: BLUE, description: "Under review"}
-      {name: "Done", color: GREEN, description: "Completed"}
-    ]
-  }) {
-    projectV2Field { ... on ProjectV2SingleSelectField { name } }
+# STATUS_OPTION_UNION_PROVISION
+owner="{owner}"
+project_number="{project-number}"
+
+field_list_json=$(gh project field-list "$project_number" --owner "$owner" --format json) || {
+  echo "ERROR: Status field-list failed; refusing to mutate options" >&2
+  echo "[CONTEXT] STATUS_OPTIONS_PROVISION=error; reason=field_list_failed"
+  exit 1
+}
+status_field_id=$(printf '%s' "$field_list_json" | jq -r '.fields[]? | select(.name=="Status") | .id' | head -1)
+if [ -z "$status_field_id" ] || [ "$status_field_id" = "null" ]; then
+  echo "ERROR: Status field not found; refusing to mutate options" >&2
+  echo "[CONTEXT] STATUS_OPTIONS_PROVISION=error; reason=status_field_missing"
+  exit 1
+fi
+
+options_json=$(gh api graphql -f query='
+query($id: ID!) {
+  node(id: $id) {
+    ... on ProjectV2SingleSelectField {
+      options { id name color description }
+    }
   }
-}'
+}' -f id="$status_field_id") || {
+  echo "ERROR: Status options query failed; refusing to mutate options" >&2
+  echo "[CONTEXT] STATUS_OPTIONS_PROVISION=error; reason=options_query_failed"
+  exit 1
+}
+
+existing=$(printf '%s' "$options_json" | jq -c '.data.node.options // empty')
+if [ -z "$existing" ] || [ "$existing" = "null" ] || ! printf '%s' "$existing" | jq -e 'type=="array"' >/dev/null 2>&1; then
+  echo "ERROR: Status options JSON invalid or missing; refusing to mutate options" >&2
+  echo "[CONTEXT] STATUS_OPTIONS_PROVISION=error; reason=options_json_invalid"
+  exit 1
+fi
+if printf '%s' "$existing" | jq -e '.[] | select((.name|type)!="string" or .name=="" or (.color|type)!="string" or .color=="")' >/dev/null 2>&1; then
+  echo "ERROR: Status option missing name or color; refusing to mutate options" >&2
+  echo "[CONTEXT] STATUS_OPTIONS_PROVISION=error; reason=option_fields_incomplete"
+  exit 1
+fi
+
+required='[
+  {"name":"Todo","color":"GRAY","description":"Not started"},
+  {"name":"In Progress","color":"YELLOW","description":"Work in progress"},
+  {"name":"In Review","color":"BLUE","description":"Under review"},
+  {"name":"Done","color":"GREEN","description":"Completed"},
+  {"name":"Cancelled","color":"GRAY","description":"Cancelled (not planned)"}
+]'
+
+missing=$(jq -n --argjson existing "$existing" --argjson required "$required" \
+  '($existing | map(.name)) as $names | [$required[] | select(.name as $n | ($names | index($n) | not)) | .name]')
+if [ "$(printf '%s' "$missing" | jq 'length')" -eq 0 ]; then
+  echo "[CONTEXT] STATUS_OPTIONS_PROVISION=noop; reason=already_complete"
+  exit 0
+fi
+
+union_input=$(jq -n --argjson existing "$existing" --argjson required "$required" '
+  ($existing | map({id, name, color, description: (.description // "")})) as $keep
+  | ($keep | map(.name)) as $names
+  | $keep + [$required[] | select(.name as $n | ($names | index($n) | not))]
+  | map(if .id then {id, name, color, description} else {name, color, description} end)
+')
+
+payload=$(jq -n --arg fieldId "$status_field_id" --argjson opts "$union_input" '{
+  query: "mutation($input: UpdateProjectV2FieldInput!) { updateProjectV2Field(input: $input) { projectV2Field { ... on ProjectV2SingleSelectField { name options { id name } } } } }",
+  variables: { input: { fieldId: $fieldId, singleSelectOptions: $opts } }
+}')
+
+if ! printf '%s' "$payload" | gh api graphql --input -; then
+  echo "ERROR: updateProjectV2Field failed; Status options not provisioned" >&2
+  echo "[CONTEXT] STATUS_OPTIONS_PROVISION=error; reason=mutation_failed"
+  exit 1
+fi
+echo "[CONTEXT] STATUS_OPTIONS_PROVISION=updated; added=$(printf '%s' "$missing" | jq -c '.')"
 ```
+
+| `STATUS_OPTIONS_PROVISION` | アクション |
+|---|---|
+| `updated` / `noop` | Phase 3.5 へ |
+| `error` / marker 不在 / bash 非 0 | setup を完了扱いにせず停止。option が揃っていない状態で完了報告しない |
+
+検証（本ブロック実行後）:
+1. `gh project field-list` の Status options に `Cancelled` がある
+2. setup 実行前からあった rite 管理外 option が残っている
+3. 既に 5 option がある board への再実行は `STATUS_OPTIONS_PROVISION=noop`（mutation なし）
 
 ---
 
@@ -465,7 +536,7 @@ Generate `rite-config.yml` from the template config file.
 > **Note on wiki section**: 新規生成は Advanced 境界より上を抽出するだけ。追加 append は不要。
 rationale: references/rationale.md#wiki-section-new-gen
 
-#### 4.1.3 Upgrade Existing Configuration
+#### Upgrade Existing Configuration
 
 > `--upgrade` 指定時に実行。既存 `rite-config.yml` を最新 schema へ上げ、ユーザーカスタム値は保持する。
 
@@ -631,7 +702,7 @@ Step 7 has two sub-steps:
 
 **Step 7a: Invoke Phase 4.7**
 
-Execute [Phase 4.7: Wiki Initialization](#phase-47-wiki-initialization-491) to bring existing users up to Wiki-initialized state. This is non-blocking; Phase 4.7 failure does not affect `--upgrade` success.
+Execute [Phase 4.7: Wiki Initialization](#phase-47-wiki-initialization) to bring existing users up to Wiki-initialized state. This is non-blocking; Phase 4.7 failure does not affect `--upgrade` success.
 
 Phase 4.7 内部の「次のステップ」は **Step 7b へ戻る**（7a への再入ではない）。
 rationale: references/rationale.md#upgrade-step7
@@ -645,7 +716,7 @@ After Phase 4.7.1/4.7.2/4.7.4 returns control to Step 7, display a Wiki status l
 - Else if `wiki_status == "skipped_disabled"` → `Wiki: スキップ（無効）`
 - Else if `wiki_status == "failed"` → `Wiki: 失敗`
 
-Before exiting, execute [Phase 4.8: Sandbox Write-Allowlist 自動設定](#phase-48-sandbox-write-allowlist-自動設定multi_session-有効時1896--1942) and then [Phase 4.9: SSH Host Alias Remote の Sandbox 事前案内](#phase-49-ssh-host-alias-remote-の-sandbox-事前案内1907) (both non-blocking, each self-gated — invoke unconditionally). Then display the status line and exit.
+Before exiting, execute [Phase 4.8: Sandbox Write-Allowlist 自動設定](#phase-48-sandbox-write-allowlist-自動設定multi_session-有効時) and then [Phase 4.9: SSH Host Alias Remote の Sandbox 事前案内](#phase-49-ssh-host-alias-remote-の-sandbox-事前案内) (both non-blocking, each self-gated — invoke unconditionally). Then display the status line and exit.
 rationale: references/rationale.md#upgrade-step7
 
 If the user cancels: Display "アップグレードをキャンセルしました" and exit.
@@ -706,11 +777,12 @@ do
     echo "WARNING: GitHub template source not found: $source_path" >&2
     continue
   fi
-  if ! mkdir -p "$(dirname "$destination_path")"; then
-    echo "WARNING: GitHub template directory could not be created: $(dirname "$destination_path")" >&2
+  destination_dir=$(dirname "$destination_path")
+  if ! mkdir -p "$destination_dir"; then
+    echo "WARNING: GitHub template directory could not be created: $destination_dir" >&2
     continue
   fi
-  destination_parent=$(cd "$(dirname "$destination_path")" 2>/dev/null && pwd -P) || destination_parent=""
+  destination_parent=$(cd "$destination_dir" 2>/dev/null && pwd -P) || destination_parent=""
   case "$destination_parent/" in
     "$project_root/"*) ;;
     *) echo "WARNING: GitHub template destination escapes project root: $destination_path" >&2; continue ;;
@@ -1052,8 +1124,8 @@ rationale: references/rationale.md#hook-path-absolute
 | Hook Event | Script | Matcher | Purpose |
 |------------|--------|---------|---------|
 | PreCompact | `pre-compact.sh` | `""` | Save state before compaction |
-| PostCompact | `post-compact.sh` | `""` | Auto-recover workflow after compaction |
-| SessionStart | `session-start.sh` | `""` | Re-inject state on startup/resume |
+| PostCompact | `post-compact.sh` | `""` | Normalize compact-state and reconcile PR/Projects Status after compaction |
+| SessionStart | `session-start.sh` | `""` | Re-inject state on startup/resume; on compact, emit recovery text |
 | SessionEnd | `session-end.sh` | `""` | Reset flow state on session end |
 | Stop | `stop-loop-continuation.sh` | `""` | Consume one-shot handoff and re-inject the next review↔fix loop / cleanup chain command |
 | PreToolUse | `pre-tool-bash-guard.sh` | `"Bash"` | Block known-bad Bash command patterns |
@@ -1091,8 +1163,8 @@ Add the following hooks to `.claude/settings.local.json`:
 | Hook Event | Script | Purpose |
 |------------|--------|---------|
 | PreCompact | `bash {hooks_dir}/pre-compact.sh` | Save state before compaction |
-| PostCompact | `bash {hooks_dir}/post-compact.sh` | Auto-recover workflow after compaction |
-| SessionStart | `bash {hooks_dir}/session-start.sh` | Re-inject state on startup/resume |
+| PostCompact | `bash {hooks_dir}/post-compact.sh` | Normalize compact-state and reconcile PR/Projects Status after compaction |
+| SessionStart | `bash {hooks_dir}/session-start.sh` | Re-inject state on startup/resume; on compact, emit recovery text |
 | PreToolUse (Bash) | `bash {hooks_dir}/pre-tool-bash-guard.sh` | Block known-bad Bash command patterns |
 | PreToolUse (Edit\|Write\|MultiEdit\|NotebookEdit) | `bash {hooks_dir}/pre-tool-edit-guard.sh` | Deny reviewer-subagent writes into a parent working tree |
 | SessionEnd | `bash {hooks_dir}/session-end.sh` | Reset flow state on session end |
@@ -1434,7 +1506,7 @@ Then:
 
 ---
 
-## Phase 4.8: Sandbox Write-Allowlist 自動設定（multi_session 有効時、#1896 / #1942）
+## Phase 4.8: Sandbox Write-Allowlist 自動設定（multi_session 有効時）
 
 `multi_session.enabled: true`（Phase 4.1 で決定済み。新規生成・back-add いずれでも既定 ON）**かつ** Claude 自身の Bash tool 定義（sandbox セクション）が filesystem write 制限付き sandbox で動作している場合のみ実行する。いずれか一方でも該当しない場合は本節を完全に silent skip する（案内・warning 共に一切出さない — AC-3）。
 
@@ -1504,7 +1576,7 @@ rationale: references/rationale.md#sandbox-allowlist
    sandbox.filesystem.allowWrite へ自動追加しました。
    反映は次回セッションからになる場合があります（現在のセッションで反映されない場合は
    Claude Code を再起動してください）。
-   詳細: git-worktree-patterns.md の #1896 対処節を参照
+   詳細: git-worktree-patterns.md の 対処節を参照
 ```
 
 **フォールバック時のメッセージ**（自動設定に失敗した場合のみ、従来どおり手動設定を案内）。以下のテンプレートをそのまま出力し、要約・言い換え（「〜旨を案内」等の間接話法を含む）をしないこと:
@@ -1516,12 +1588,12 @@ rationale: references/rationale.md#sandbox-allowlist
    .claude/settings.local.json への自動設定に失敗したため、手動で以下を追加してください:
    恒久対処: /sandbox コマンド、または settings の sandbox 設定で、write 許可リストへ
      main checkout root の絶対パス（{repo_root}）を追加してください
-   詳細: git-worktree-patterns.md の #1896 対処節を参照
+   詳細: git-worktree-patterns.md の 対処節を参照
 ```
 
 **→ Proceed to Phase 4.9 (both new-install and `--upgrade` reach Phase 4.9 the same way they reach this Phase).**
 
-## Phase 4.9: SSH Host Alias Remote の Sandbox 事前案内（#1907）
+## Phase 4.9: SSH Host Alias Remote の Sandbox 事前案内
 
 `origin` が SSH host alias 経由（例: `git@github.com-work:owner/repo.git`）**かつ** Claude 自身の Bash tool 定義がネットワーク制限付き sandbox のときのみ表示する。いずれか一方でも該当しない場合は本節を完全に silent skip する（案内・warning 共に一切出さない）。`multi_session` の有無には依存しない。
 

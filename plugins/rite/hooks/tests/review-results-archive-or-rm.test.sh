@@ -326,11 +326,19 @@ assert "TC-7 prefix 拡張 (90-) も無傷" "kept-in-place" "$(where "$r" 90-oth
 # どこにも無い (記録コメントが全文を持たなくなった後にこれが起きると、merge 直後に非実測
 # CRITICAL の詳細がどこにも残らない)。SKILL.md ⇄ helper の coupling を静的に pin する
 # 既存の規律 (review-helpers-gate-behavior.test.sh の TC-5c / TC-5g 等) と同型。
-echo "--- TC-8: cleanup ステップ 6 が helper を呼んでいる (caller coupling) ---"
+echo "--- TC-8: cleanup の state purge helper が本 helper を呼んでいる (caller coupling) ---"
+# 呼び出し元は cleanup ステップ 6 のインライン bash から cleanup-pr-state-purge.sh へ移った。
+# coupling は 2 段になったので両方を pin する: SKILL.md → state purge helper → 本 helper。
+# 片方だけだと、SKILL.md が purge 呼び出しを落としても helper 内の行だけで通り続ける。
 CLEANUP_MD="$SCRIPT_DIR/../../skills/cleanup/SKILL.md"
+STATE_PURGE="$SCRIPT_DIR/../scripts/cleanup-pr-state-purge.sh"
 if [ ! -f "$CLEANUP_MD" ]; then
   fail "TC-8 cleanup/SKILL.md が見つからない: $CLEANUP_MD"
+elif [ ! -f "$STATE_PURGE" ]; then
+  fail "TC-8 cleanup-pr-state-purge.sh が見つからない: $STATE_PURGE"
 else
+  assert "TC-8 cleanup ステップ 6 が state purge helper を実行位置で呼ぶ" "1" \
+    "$(grep -cE '^[[:space:]]*bash [^[:space:]]*hooks/scripts/cleanup-pr-state-purge\.sh' "$CLEANUP_MD" || true)"
   # pattern に行継続バックスラッシュを含めない。含めると呼び出しを 1 行へ畳む無害な整形で
   # 「呼び出しが実在するのに FAIL」する偽陽性になり、診断文が事実と逆を主張する。
   # 一方でパス文字列の literal 一致だけにすると、**呼び出し行をコメントアウトしても 1 のまま通る**
@@ -339,14 +347,14 @@ else
   # プラグインルート部分は `[^[:space:]]*` で受ける ({plugin_root} の literal を pattern に
   # 持ち込むと ERE の `{}` が区間量指定子と衝突する)。
   assert "TC-8 helper 呼び出しが実行される位置に 1 本存在する" "1" \
-    "$(grep -cE '^[[:space:]]*bash [^[:space:]]*hooks/scripts/review-results-archive-or-rm\.sh' "$CLEANUP_MD" || true)"
+    "$(grep -cE '^[[:space:]]*bash [^[:space:]]*review-results-archive-or-rm\.sh' "$STATE_PURGE" || true)"
   # 旧形 (無条件削除) への差し戻しを落とす。`rite_rm` の第 1 引数が `review_results` の行が
   # 復活したら退避機構が bypass されている。
   assert "TC-8 旧 rite_rm review_results 形が復活していない" "0" \
-    "$(grep -cE '^rite_rm[[:space:]]+review_results([[:space:]]|$)' "$CLEANUP_MD" || true)"
+    "$(grep -cE '^rite_rm[[:space:]]+review_results([[:space:]]|$)' "$STATE_PURGE" || true)"
   # rc を捨てていないこと (helper が起動できなかった cycle が「完了」と報告されるのを防ぐ)
   assert "TC-8 helper の rc を捕捉している" "1" \
-    "$(grep -cF '|| _rrar_rc=$?' "$CLEANUP_MD" || true)"
+    "$(grep -cF '|| _rrar_rc=$?' "$STATE_PURGE" || true)"
 fi
 
 print_summary "review-results-archive-or-rm.test.sh"

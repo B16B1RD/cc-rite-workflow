@@ -25,7 +25,8 @@ SESSION_DIR="$STATE_ROOT/.rite/sessions"
 # one behind. Two paths can still write it, and neither is read-only:
 #   1. cmd_migrate below, which rewrites the schema to v3.
 #   2. issue-comment-wm-sync.sh / cleanup-work-memory.sh, which fall back to this
-#      path when `flow-state.sh path` cannot resolve a session id.
+#      path only when no runtime is selected and legacy session resolution fails.
+#      Selected runtime failures never authorize legacy writes.
 # Every other reader (e.g. pre/post-compact, post-tool-wm-sync, session-start,
 # session-end) resolves to an empty path on resolver failure rather than falling back
 # here, so it cannot resurrect the file.
@@ -61,39 +62,11 @@ _phase_migrate() {
   esac
 }
 
-# Reject path-traversal characters and control characters (log injection vector).
-# All session_id sources (override, SESSION_ID_FILE content, env vars) MUST pass through
-# this validator before being printed or used in path construction. Control-character
-# rejection prevents attackers from injecting fake "WARNING:" lines into stderr by setting
-# env var to e.g. $'innocent\nWARNING: fake injected'. Path-traversal rejection prevents
-# CLAUDE_CODE_SESSION_ID="../../tmp/owned" from writing state files outside .rite/sessions/.
-#
-# Contract (SoT: references/session-id-validation-contract.md): this is the Layer 1
-# security-boundary validator and is **format-agnostic by design** — it does NOT enforce
-# UUID form. Non-UUID opaque sids (e.g. `session-aaaa-1371`) MUST keep passing. Do NOT
-# route this through `_resolve-session-id.sh` (strict RFC 4122 / Layer 2) or add UUID-shape
-# checks here: hook tests pass non-UUID sids directly to flow-state.sh and would silently
-# go vacuous if this validator were tightened. The acceptance side is pinned by
-# flow-state.test.sh TC-24.
-_validate_session_id() {
-  # `origin` (引数 2) は session_id の出所 (override / SESSION_ID_FILE / env var) を識別する
-  # エラーメッセージ用ラベル。bash builtin `source` の shadow を避けるため `origin` を採用。
-  local sid="$1" origin="$2"
-  case "$sid" in
-    *..*|*/*)
-      echo "ERROR: invalid session_id from $origin: contains path-traversal characters ('..' or '/')" >&2
-      return 1
-      ;;
-  esac
-  # contains_ctrl (control-char-neutralize.sh) は C0 + DEL + C1 8-bit (0x80-0x9f)
-  # をバイト単位で検出する。旧 `=~ [[:cntrl:]]` は glibc が C1 を cntrl と分類しない
-  # ため 0x9b (8-bit CSI) 入り session_id を素通ししていた。
-  if contains_ctrl "$sid"; then
-    echo "ERROR: invalid session_id from $origin: contains control characters (newline / tab / C1 8-bit bytes / etc.)" >&2
-    return 1
-  fi
-  return 0
-}
+# Layer 1 remains format-agnostic; the shared identity helper also protects
+# runtime adapters that select an ID before invoking flow-state.
+# shellcheck source=session-identity.sh
+source "$SCRIPT_DIR/session-identity.sh"
+_validate_session_id() { validate_session_id_path "$@"; }
 
 _resolve_session_id() {
   local override="${1:-}"
@@ -101,32 +74,13 @@ _resolve_session_id() {
     _validate_session_id "$override" "--session override" || return 1
     printf '%s\n' "$override"; return 0
   fi
-  # Priority: override → env CLAUDE_CODE_SESSION_ID → env
-  # CLAUDE_SESSION_ID → `.rite-session-id` file (env-absent fallback).
-  #
-  # The env var is per-session, so it isolates concurrent Claude sessions that
-  # share one state root (the main checkout). The `.rite-session-id` file is a
-  # single shared path that every session-start hook used to overwrite, so
-  # preferring it (the previous order) let the last session's id "leak" into the
-  # others — flow-state was written to a foreign `{sid}.flow-state` and an in-use
-  # worktree could be mis-reaped. Demoting the file to the env-absent fallback
-  # keeps backward compatibility for CI / headless / non-Code runtimes (which set
-  # no env var) while making the env var authoritative whenever it is present.
-  #
-  # Claude Code exposes CLAUDE_CODE_SESSION_ID; older / non-Code clients used
-  # CLAUDE_SESSION_ID — accept both. Every source (override / env / file) passes
-  # through _validate_session_id before reaching _state_path, blocking the
-  # unvalidated path-traversal / log-injection vector (§4.4 MUST NOT).
-  if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
-    _validate_session_id "$CLAUDE_CODE_SESSION_ID" "CLAUDE_CODE_SESSION_ID env" || return 1
-    printf '%s\n' "$CLAUDE_CODE_SESSION_ID"
-    return 0
-  fi
-  if [ -n "${CLAUDE_SESSION_ID:-}" ]; then
-    _validate_session_id "$CLAUDE_SESSION_ID" "CLAUDE_SESSION_ID env" || return 1
-    printf '%s\n' "$CLAUDE_SESSION_ID"
-    return 0
-  fi
+  local runtime_sid runtime_rc=0
+  runtime_sid=$(resolve_runtime_session_id) || runtime_rc=$?
+  case "$runtime_rc" in
+    0) printf '%s\n' "$runtime_sid"; return 0 ;;
+    2) ;; # No runtime context: retain the Claude/legacy file compatibility path.
+    *) return 1 ;;
+  esac
   if [ -f "$SESSION_ID_FILE" ]; then
     local sid; sid=$(tr -d '[:space:]' < "$SESSION_ID_FILE" 2>/dev/null) || sid=""
     if [ -n "$sid" ]; then
@@ -135,7 +89,7 @@ _resolve_session_id() {
       return 0
     fi
   fi
-  echo "ERROR: cannot resolve session_id" >&2; return 1
+  echo "ERROR: cannot resolve session_id" >&2; return 2
 }
 
 _state_path() {
@@ -203,7 +157,7 @@ _emit_jq_err_snippet() {
 }
 
 # Append one JSON Lines record per **performed** `set` write so per-phase
-# durations can be derived offline (#2115). flow-state itself is overwritten in
+# durations can be derived offline. flow-state itself is overwritten in
 # place, so without this the workflow left no phase history and the only way to
 # get a stage breakdown was reading file mtimes by hand.
 #
@@ -325,7 +279,7 @@ cmd_set() {
   # 空文字に縮退する (空 vs 非空 を別値として扱う wm-sync の diff guard と整合)。
   # `cur_wm_comment_id` も同型: issue-comment-wm-sync.sh の cache_comment_id() が
   # flow-state ファイルへ直接書き込む runtime-only field。lsp と同様に merge-preserve しないと
-  # 直後の他 skill の set 呼び出しで無警告に消える (#1810)。
+  # 直後の他 skill の set 呼び出しで無警告に消える。
   # `cur_wm_replica` も同型 (CLI flag なし): issue-comment-wm-sync.sh が no_comment 時に
   # `"absent"` だけを書く negative cache。preserve するのはその値のみ。init / cache_comment_id
   # 成功側は del(.wm_replica) するので、ここへ他の値を通す必要はない。
@@ -335,7 +289,7 @@ cmd_set() {
   # される。1 回の composite jq + stderr capture に集約し、jq 失敗時に WARNING を stderr emit
   # して operator が corrupt overwrite を検出できるようにする。Unit separator () で field
   # を分割し、IFS で安全に split (whitespace collapse 防止)。
-  # `cur_phase` (#2115) rides along on this composite read purely to supply the
+  # `cur_phase` rides along on this composite read purely to supply the
   # phase-transition log's `from` value — it is NOT merged into the write (the
   # new phase is always the caller's `--phase`). It stays "" when no state file
   # exists yet (fresh session) or when the read below failed (corrupt JSON), and
@@ -371,10 +325,10 @@ cmd_set() {
   # **Issue 単位** の値 (前者は当該 Issue の replica comment id、後者はその replica 不在の
   # negative cache)。Issue を跨いで merge-preserve すると、次 Issue の同期が前 Issue の
   # comment を Issue 非依存エンドポイント経由で PATCH し、negative cache も解除されないまま
-  # 引き継がれる (#2463)。Issue が実際に切り替わる set でだけ両者を落とす。
+  # 引き継がれる。Issue が実際に切り替わる set でだけ両者を落とす。
   #
   # 判定は「書き込む Issue が既存と一致するときだけ保持」。`--issue` 省略時は直前の
-  # `issue=$cur_issue` で一致するため、通常の phase transition は #1810 の merge-preserve 契約を
+  # `issue=$cur_issue` で一致するため、通常の phase transition は merge-preserve 契約を
   # そのまま満たす。`skills/cleanup/SKILL.md` の `--issue 0` fallback では落ちる。cleanup も
   # replica を同期する (ステップ 11 が `references/archive-procedures.md` の `append-eof` /
   # `merge-checklist` を実行する) が、その 2 呼び出しは `--issue` を明示するため、キャッシュを
@@ -392,13 +346,13 @@ cmd_set() {
   # in the jq below so non-worktree sessions never gain the key (additive → no
   # schema bump, byte-identical state file for single-session use).
   [ -z "$worktree" ] && worktree=$cur_worktree
-  # `cycle_count` (#1701 review⇄fix サーキットブレーカー): merge-preserve like `branch`/`worktree`.
+  # `cycle_count` (review⇄fix サーキットブレーカー): merge-preserve like `branch`/`worktree`.
   # /rite:iterate がループ頭で increment し `--cycle-count N` で書き込む review⇄fix cycle カウンタ。
   # `--cycle-count` を伴わない他 skill の set (review/fix/open/ready 等) が毎 phase transition で
   # 値を wipe しないよう既存値を merge preserve する。iterate は fresh entry で 0 を明示指定して
   # stale 値をリセットし、resume 時は既存値を継承してカウンタを継続する (AC-3)。
   [ -z "$cycle_count" ] && cycle_count=$cur_cycle
-  # --require-worktree (#1595): データ層で「multi_session 有効経路の set は worktree path を伴う」
+  # --require-worktree: データ層で「multi_session 有効経路の set は worktree path を伴う」
   # invariant を検知する。merge-preserve 後も worktree が空 = open の worktree 化漏れ
   # (Step 1.4 marker 欠落 → legacy `git switch -c` への silent fallback) の兆候。loud に
   # WARNING + `[CONTEXT] WORKTREE_INVARIANT=` marker を stderr へ emit する (orchestrator の
@@ -406,7 +360,7 @@ cmd_set() {
   # caller (open.md の hard gate) 側に委ねる (flow-state は state 記録の SoT であり制御層ではない)。
   if [ "$require_worktree" -eq 1 ]; then
     if [ -z "$worktree" ]; then
-      echo "WARNING: flow-state.sh cmd_set: --require-worktree set but worktree path is empty (phase=$phase; multi_session worktree 化漏れの可能性 — #1595)" >&2
+      echo "WARNING: flow-state.sh cmd_set: --require-worktree set but worktree path is empty (phase=$phase; multi_session worktree 化漏れの可能性)" >&2
       echo "[CONTEXT] WORKTREE_INVARIANT=missing; phase=$phase" >&2
     else
       echo "[CONTEXT] WORKTREE_INVARIANT=ok; phase=$phase; worktree=$worktree" >&2
@@ -432,7 +386,7 @@ cmd_set() {
   # Stop hook が `consume-handoff` で読み取り + 削除し、prefix で reason を分岐して block する
   # (block 可否は handoff 非空かどうかで決まり、prefix は再注入する reason の選択にのみ影響する)。
   #
-  # `stop_reason` (#2045) は `handoff` と**同じ default-clear** (merge-read に含めず、
+  # `stop_reason` は `handoff` と**同じ default-clear** (merge-read に含めず、
   # `--stop-reason` 明示時だけ書く)。`cycle_count` の merge-preserve とは逆なので取り違えないこと。
   # 用途はワークフローが「失敗として止まった」ことの durable な記録で、`session-start.sh` の再開案内が
   # ブレーカー失敗停止と Ctrl+C 中断を区別するために読む。default-clear である必要があるのは、
@@ -446,7 +400,7 @@ cmd_set() {
   # `tonumber` conversion below can fail on a corrupt on-disk `wm_comment_id`, and jq's
   # own error text quotes the offending raw value. Without capturing stderr here it went
   # straight to the terminal unneutralized, bypassing the `_emit_jq_err_snippet` control-char
-  # convention every other diagnostic site in this file uses (#1810 cycle 2 security finding).
+  # convention every other diagnostic site in this file uses (cycle 2 security finding).
   local _new_jq_err="" _new_rc=0
   _new_jq_err=$(mktemp 2>/dev/null) || _new_jq_err=""
   new=$(jq -n \
@@ -542,7 +496,12 @@ cmd_get() {
   # Do not silence _resolve_session_id stderr: when neither `.rite-session-id` nor
   # the env vars are usable, the helper's ERROR message must surface so the silent
   # "empty + rc=0" failure path becomes diagnosable.
-  sid=$(_resolve_session_id "$session") || { printf '%s\n' "$default"; return 0; }
+  local resolve_rc=0
+  sid=$(_resolve_session_id "$session") || resolve_rc=$?
+  if [ "$resolve_rc" -ne 0 ]; then
+    [ "$resolve_rc" -eq 2 ] || return 1
+    printf '%s\n' "$default"; return 0
+  fi
   path=$(_state_path "$sid")
   if [ ! -f "$path" ]; then
     # Stale `.rite-session-id` pointing to a nonexistent state file is a drift signal —

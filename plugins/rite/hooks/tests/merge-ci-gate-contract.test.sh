@@ -11,6 +11,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_test-helpers.sh"
 
 MERGE="$SCRIPT_DIR/../../skills/merge/SKILL.md"
+CLASSIFIER="$SCRIPT_DIR/../scripts/pr-checks-classify.sh"
+PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 
 echo "=== merge CI gate routing (T-08 / existing pins) ==="
 assert_grep "canonical PR query includes the complete CI gate input" "$MERGE" \
@@ -23,18 +25,20 @@ assert_grep "MERGEABLE plus UNSTABLE is still not ready" "$MERGE" 'mergeStateSta
 assert_grep "unhealthy default path forbids gh pr merge" "$MERGE" 'ステップ 2 の `gh pr merge` は実行しない'
 assert_not_grep "pending checks no longer stop without a wait loop" "$MERGE" \
   '待機・自動 retry はしない'
-assert_grep "pending CheckRun is classified before nullable conclusion validation" "$MERGE" '__typename == "CheckRun".*\.status != "COMPLETED"'
-assert_grep "legacy StatusContext pending states are supported" "$MERGE" '__typename == "StatusContext".*\.state == "PENDING" or \.state == "EXPECTED"'
-assert_grep "mixed pending plus unknown uses unknown precedence" "$MERGE" 'mixed pending\+unknown.*unknown を先に判定する'
-unknown_line=$(grep -n 'elif any(.statusCheckRollup\[\];' "$MERGE" | sed -n '1p' | cut -d: -f1)
-pending_line=$(grep -n 'elif any(.statusCheckRollup\[\];' "$MERGE" | sed -n '2p' | cut -d: -f1)
+assert_grep "pending CheckRun is classified before nullable conclusion validation" "$CLASSIFIER" '__typename == "CheckRun".*\.status != "COMPLETED"'
+assert_grep "legacy StatusContext pending states are supported" "$CLASSIFIER" '__typename == "StatusContext".*\.state == "PENDING" or \.state == "EXPECTED"'
+assert_grep "mixed pending plus unknown uses unknown precedence" "$CLASSIFIER" 'mixed pending\+unknown.*unknown を先に判定する'
+unknown_line=$(grep -n 'elif any(.statusCheckRollup\[\];' "$CLASSIFIER" | sed -n '1p' | cut -d: -f1)
+pending_line=$(grep -n 'elif any(.statusCheckRollup\[\];' "$CLASSIFIER" | sed -n '2p' | cut -d: -f1)
 if [ -n "$unknown_line" ] && [ -n "$pending_line" ] && [ "$unknown_line" -lt "$pending_line" ]; then
   pass "unknown aggregate branch precedes pending (mixed fixture cannot be overridden)"
 else
   fail "unknown aggregate branch must precede pending (unknown=$unknown_line pending=$pending_line)"
 fi
 assert_grep "explicit override can continue a pending PR" "$MERGE" 'checks が pending \+ `force_ci == true`'
-assert_grep "healthy conclusions are an allowlist" "$MERGE" '\["SUCCESS", "NEUTRAL", "SKIPPED"\]'
+assert_grep "merge calls the shared classifier" "$MERGE" 'bash "\{plugin_root\}/hooks/scripts/pr-checks-classify.sh"'
+assert_not_grep "merge no longer owns aggregate classification" "$MERGE" 'elif any\(.statusCheckRollup'
+assert_grep "healthy conclusions are an allowlist" "$CLASSIFIER" '\["SUCCESS", "NEUTRAL", "SKIPPED"\]'
 assert_grep "malformed and unknown states fail closed" "$MERGE" 'checks_state == "unknown".*\[merge:not-ready\]'
 assert_grep "unknown cannot use force override" "$MERGE" '`--force-ci` でも unknown は override しない'
 assert_grep "classification failure is surfaced" "$MERGE" '分類不能.*原因を表示'
@@ -162,7 +166,7 @@ STUB
   chmod +x "$stub_dir/gh" "$stub_dir/sleep"
   script="$sandbox/step1.sh"
   extract_step1_bash \
-    | sed -e "s|{pr_number}|1|g" -e "s|{owner_repo}|owner/repo|g" -e "s|{arguments}|$arguments|g" \
+    | sed -e "s|{pr_number}|1|g" -e "s|{owner_repo}|owner/repo|g" -e "s|{arguments}|$arguments|g" -e "s|{plugin_root}|$PLUGIN_ROOT|g" \
     > "$script"
   local rc
   MERGE_CI_SANDBOX="$sandbox" PATH="$stub_dir:$PATH" \

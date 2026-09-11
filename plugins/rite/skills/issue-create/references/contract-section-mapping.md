@@ -72,11 +72,11 @@ Rich template (Section 1-9) を生成する場合の 4 step 構成:
 | 探索サマリのセクション | マップ先 | 備考 |
 |----------------------|---------|------|
 | 出発点 | 1 Goal (Why) | ステップ 1.3 の Why 抽出結果として扱う |
-| 確定したこと | 1 Goal (What) / 4.5 Constraints | 仮定解決済み扱い。ステップ 4.0/5.0 の仮定列挙（手順 1）から除外し再質問しない |
+| 確定したこと | 1 Goal (What) / 4.5 Constraints / 4.1 Target Files（実パスがあるとき） | 仮定解決済み扱い。ステップ 4.0/5.0 の仮定列挙（手順 1）から除外し再質問しない。実パスは Section 4.1 にも載せる |
 | 却下した代替案 | 9 Decision Log | Section 9 が SHOULD/MUST になる Complexity（M 以上、[`templates/issue/default.md`](../../../templates/issue/default.md) Complexity Gate 参照）で生成時、`- {date} D-0N: {案}を不採用 / Reason: {却下理由} / Impact: {影響 Section}` 形式で記載する |
 | 未解決の問い | ステップ 4.0/5.0 手順 3 の 3 分類 (b)/(c) | 手順 1（仮定列挙）を経由せず直接 (b) または (c) へ合流させる |
 | 発見した盲点 | ステップ 4.0/5.0 手順 2（盲点列挙） | 手順 2 自体をスキップする（unknowns で実施済み扱い。前提とスキップの妥当範囲は [`unknowns-boundary-rationale.md#なぜ探索サマリ検出で-4050-を丸ごとスキップしないか`](./unknowns-boundary-rationale.md#なぜ探索サマリ検出で-4050-を丸ごとスキップしないか) 参照） |
-| 成果物 | 1 Goal 本文 | 新規サブセクションは設けず `{what_to_achieve}` 内の参考リンクとして地の文に含める（`templates/issue/template-structure.md` の Section 構造は変更しない） |
+| 成果物 | 1 Goal 本文 / 4.1 Target Files（実パスがあるとき） | 新規サブセクションは設けず `{what_to_achieve}` 内の参考リンクとして地の文に含める（`templates/issue/template-structure.md` の Section 構造は変更しない）。実パスは Section 4.1 にも載せる |
 
 **セクション欠落時のフォールバック**: 見出しのみ・一部セクション欠落の入力では、存在するセクションのみ本表でマップし、欠落したセクションに対応する情報は通常の Step 1.3 抽出（What/Why/Where）へフォールバックする（エラーにしない）。サマリ外の追加テキストが入力に混在する場合も、そのテキストは通常の What/Why 抽出へ合流させる。
 
@@ -88,7 +88,8 @@ Step 2 で Section 3 を確定し、Step 3 で input を section に mapping し
 |-----------|----------|
 | Perspective に対応する情報が input から取得できなかった | Target sections を omit (Complexity Gate で MUST 指定でない限り) |
 | Perspective に対応する情報が input から取得できた | Target sections に input 結果を populate |
-| Section が MUST だが input data なし | Section に placeholder comment (`<!-- 情報未収集 -->`) を含めて include |
+| Section が MUST だが input data なし | Section に placeholder comment (`<!-- 情報未収集 -->`) を含めて include。Section 4.1 File 列は例外（次行） |
+| Section 4.1 File 列が MUST だが実パスなし | プレースホルダを置かず、4.2 実パス検査の「実パス 0 行」として扱う（作成せず案内して本文生成をやり直す） |
 | Sub-Issue decompose path で `docs/designs/{slug}.md` が生成された場合 | 該当 design doc の内容を Section 4 (Implementation Details) の design context として include |
 
 **MUST/SHOULD/OMIT の判定基準**: [`complexity-gate.md#complexity-heuristics-scoring`](./complexity-gate.md#complexity-heuristics-scoring) と [`templates/issue/template-structure.md`](../../../templates/issue/template-structure.md) の Complexity Gate 表を参照。Complexity (XS/S/M/L/XL) ごとに各 section の include 必須度が決定される。

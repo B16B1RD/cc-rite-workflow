@@ -45,6 +45,14 @@ README を取りこぼす。
 説明的散文が 2 サイクル分の指摘を生んだ）。follow-up Issue へ回すと削られず残る。削除を
 silent にすると「なぜ説明が無いのか」を追えなくなる。
 
+## test-file-discipline
+
+5.1.0.8 の新規テストファイル抑制は light レーン（XS/S）の生産量制約であり、M+ では新規
+ファイルを禁じない。抑制を M+ に広げると「新規テストファイルは M+ の装備」というレーン
+境界の二値を壊す。全レーンに置くのは規模規律（1 挙動 1 テスト・隣接と同規模・scratch を
+残さない・既存 suite 追記優先）であり、light レーンの抑制表は不変。scratch 削除を silent
+にすると「なぜそのテストが無いのか」を追えなくなる。
+
 ## git-add-dot-sandbox
 
 sandbox 有効環境では read-deny 対象の home dotfile が character-special device としてマスクされ

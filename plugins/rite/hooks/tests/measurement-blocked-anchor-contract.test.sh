@@ -2,7 +2,7 @@
 # T-01〜T-05: 静的検証済み指摘のアンカー添付必須 + 実測阻害 fail-loud surface
 #
 # reviewer / 統合層は散文駆動のため、cycle-scope-contract.test.sh と同じ
-# static-contract 方式で literal を grep-pin する。実測必須ゲートの 3 値判定そのものは
+# static-contract 方式で literal を grep-pin する。実測必須ゲートの成功値と形式エラーそのものは
 # scripts/tests/review-measured-gate.test.sh が挙動を検証する（T-05 非回帰）。
 set -uo pipefail
 
@@ -37,8 +37,8 @@ assert_grep "prompt 自問 5 routes blocked commands to Measurement-Blocked:" "$
   '回避不能なら `Measurement-Blocked: <cmd> => <reason>` を添付する'
 assert_grep "prompt example includes Measurement-Blocked: row" "$PROMPT_GEN" \
   'Measurement-Blocked: bash hooks/foo.sh && bash hooks/bar.sh => worktree isolation denied compound command'
-assert_grep "severity-levels.md documents Measurement-Blocked: without changing 3-value logic" "$SEVERITY" \
-  'helper はこの marker を実測アンカーとして読まない（3 値判定に介入しない）'
+assert_grep "severity-levels.md documents Measurement-Blocked: without changing measurement logic" "$SEVERITY" \
+  'helper はこの marker を実測アンカーとして読まない（実測判定に介入しない）'
 
 echo "=== T-03: 統合層が実測阻害の件数・内訳を surface する ==="
 assert_grep "E2E minimization table exempts 実測阻害 as 例外 6" "$PR_REVIEW" \
@@ -64,13 +64,35 @@ assert_grep "prompt 自問 5 keeps unverifiable findings marker-less" "$PROMPT_G
 assert_grep "severity-levels.md keeps unverifiable findings on the legacy record path" "$SEVERITY" \
   '原理的に検証不能（認証付き実環境が必要等）な指摘は本 marker も付けず、従来どおり non-blocking 記録経路へ倒す'
 
-echo "=== T-05: 3 値モデル非回帰（helper は Measurement-Blocked: を実測アンカーとして読まない） ==="
+echo "=== T-05: 実測 marker の解釈非回帰（helper は Measurement-Blocked: を実測アンカーとして読まない） ==="
 assert_not_grep "measured-gate detect regex does not mention Measurement-Blocked" "$MEASURED_GATE" \
   'Measurement-Blocked'
 assert_grep "measured-gate still detects Verification: repro|failing_test only" "$MEASURED_GATE" \
   'Verification:\[\[:space:\]\]\*\(repro\|failing_test\)'
 assert_grep "pr-review still says helper does not read Measurement-Blocked as a measured anchor" "$PR_REVIEW" \
   'helper は本 marker を実測アンカーとして読まない'
+
+echo "=== T-06: anchor_undetermined は reviewer 再生成へ同 cycle 内で差し戻す ==="
+# routing 行を切り出す。同じ文言が別 phase にあるだけでは契約を満たさない。
+routing_file=$(mktemp)
+trap 'rm -f "$routing_file"' EXIT
+grep '^| .*reason=verification_preset_by_caller.*anchor_undetermined' "$PR_REVIEW" > "$routing_file" || true
+assert_grep "routing targets only diagnostic finding IDs" "$routing_file" \
+  '診断の対象 finding IDs のみ'
+assert_grep "routing uses reviewer reject and reroll" "$routing_file" \
+  'Reviewer reject \+ reroll'
+assert_grep "routing preserves other findings" "$routing_file" \
+  '他 finding は保持する'
+assert_grep "routing retries JSON generation and helper in the same cycle" "$routing_file" \
+  '同 cycle 内.*step 1 の JSON を作り直し step 2 を再実行する'
+assert_grep "routing does not hand format repair to fix or increment the review cycle" "$routing_file" \
+  '/rite:fix.*形式修正を渡さず、review cycle を増やさない'
+assert_grep "routing stops with review:error when the shared retry is spent" "$routing_file" \
+  'measured_gate_retry_count.*1.*\[review:error\].*停止'
+assert_grep "shared retry count increments before helper and allows only one retry" "$PR_REVIEW" \
+  '^\*\*`measured_gate_retry_count`.*step 2 再実行の直前に \+1.*上記 3 reason.*1 回まで'
+assert_grep "failure diagnostic lists the count and target IDs" "$PR_REVIEW" \
+  'MEASURED_GATE_FAILED=1; reason=anchor_undetermined; count=N; findings=F-xx'
 
 if ! print_summary "$(basename "$0")"; then
   exit 1

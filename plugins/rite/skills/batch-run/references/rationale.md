@@ -12,12 +12,12 @@
 人間のレビューを待つ。`ready→merge→cleanup` は `--merge` の明示オプトインに限る。merge→cleanup
 の意図が名前で明示されることを重視した（D-01）。
 
-## breaker-not-stop
+## breaker-stop
 
 iterate は収束トレンドの発散検出、または `safety.max_review_cycles` 到達（backstop）で
 `[iterate:max-cycles-reached]` を emit する。**sentinel は発火理由に依らず同一の literal**。run 側
 は理由を区別しない — 理由別に sentinel を分けると grep 契約が壊れる（名称の `max-cycles` は発散
-発火に対しては misnomer だが、契約の安定を優先）。非収束 1 件でバッチ全体がストールするのを防ぐ。
+発火に対しては misnomer だが、契約の安定を優先）。発火は当該 Issue を完了できなかった失敗であり、後続へ進む根拠にはならない。cursor を保持してバッチを停止し、明示再開で当該 Issue から復帰する。
 
 ## no-handoff
 
@@ -26,6 +26,11 @@ flow-state の `handoff` は単一フィールド + default-clear で、iterate 
 に委ねる。デフォルトモードは ready を経由しないため、iterate の残存 FINALIZE は次 Issue の open
 （`flow-state.sh set`）が default-clear し、最後の Issue 分のみステップ 7 の `consume-handoff` で
 消費する。
+
+Stop hook の batch watchdog は handoff フィールドではなく自セッションの run-queue を読む別軸
+である。handoff が非空なら既存の prefix 分岐が先に block し、watchdog は評価しない。handoff が
+空で run-queue が `active:true` かつ未完了のときだけ停止を差し戻す。batch-run は handoff を
+set しない契約のまま。
 
 ## session-scoped-queue
 
@@ -60,5 +65,5 @@ atomic は `jq → 一時ファイル → mv` で十分。
 
 ## cursor-not-success
 
-`RUN_ADVANCE` の件数は「キューを進めた件数」であり成功件数ではない。サーキットブレーカーや
-`[fix:replied-only]` もこの前進 bash を通る。内訳はステップ 7 の完了通知。
+`RUN_ADVANCE` の件数は「キューを進めた件数」であり成功件数ではない。デフォルトモードの
+`[fix:replied-only]` もこの前進 bash を通る。サーキットブレーカーは前進しない。内訳はステップ 7 の完了通知。

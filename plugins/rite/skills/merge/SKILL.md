@@ -2,14 +2,16 @@
 name: merge
 description: |
   rite workflow の PR squash merge ステップ。指定 PR を `gh pr merge --squash` でマージする
-  （cleanup は走らせない → 別途 /rite:cleanup）。/rite:iterate・/rite:ready・/rite:batch-run から
-  programmatic に呼ばれる sub-step、または手動 /rite:merge <pr>。汎用の「PR をマージ」
+  （cleanup は走らせない → 別途 /rite:cleanup）。/rite:batch-run から programmatic に呼ばれる
+  sub-step、または手動 /rite:merge <pr>。汎用の「PR をマージ」
   ヘルパーではなく、その語では auto-activate しない。
   起動: /rite:merge <pr_number>
 argument-hint: "[--force-ci] <pr_number>"
 ---
 
 # /rite:merge
+
+> 実行入口と工程境界は [Host Runtime Contract](../../references/host-runtime-contract.md#入口と工程境界)、native Skill / Task がない場合の実行は [Host workflow operations](../../references/host-workflow-operations.md) に従う。nested 呼出しは caller の runtime 選択を引き継ぐ。
 
 > **質問規律**: すべての質問・再判定判断は [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) に従う。merge 自体は不可逆操作として既存の承認境界を維持する。
 
@@ -63,34 +65,9 @@ _rite_fetch_pr_json() {
 # statusCheckRollup を排他的に機械分類する。既知の成功 conclusion 以外を healthy にしない。
 # malformed / 未知値は unknown として fail-closed にする。
 _rite_classify_checks() {
-  printf '%s' "$1" | jq -r '
-  if (.statusCheckRollup | type) != "array" then "unknown"
-  elif (.statusCheckRollup | length) == 0 then "none"
-  # 集約 precedence は unknown > pending > unhealthy > healthy。
-  # mixed pending+unknown を pending に落とすと --force-ci で unknown を迂回できるため unknown を先に判定する。
-  elif any(.statusCheckRollup[];
-      (.__typename == "CheckRun" and
-        ((.status | type) != "string" or
-         (.status as $s | (["QUEUED", "IN_PROGRESS", "WAITING", "REQUESTED", "PENDING", "COMPLETED"] | index($s)) == null) or
-         (.status == "COMPLETED" and (.conclusion | type) != "string"))) or
-      (.__typename == "StatusContext" and
-        ((.state | type) != "string" or
-         (.state as $s | (["PENDING", "EXPECTED", "SUCCESS", "ERROR", "FAILURE"] | index($s)) == null))) or
-      (.__typename != "CheckRun" and .__typename != "StatusContext")) then "unknown"
-  elif any(.statusCheckRollup[];
-      (.__typename == "CheckRun" and .status != "COMPLETED") or
-      (.__typename == "StatusContext" and (.state == "PENDING" or .state == "EXPECTED"))) then "pending"
-  elif any(.statusCheckRollup[];
-      (.__typename == "CheckRun" and
-        (.conclusion as $c | (["SUCCESS", "NEUTRAL", "SKIPPED"] | index($c)) == null)) or
-      (.__typename == "StatusContext" and (.state == "ERROR" or .state == "FAILURE"))) then "unhealthy"
-  elif all(.statusCheckRollup[];
-      (.__typename == "CheckRun" and .status == "COMPLETED" and
-        (.conclusion as $c | (["SUCCESS", "NEUTRAL", "SKIPPED"] | index($c)) != null)) or
-      (.__typename == "StatusContext" and .state == "SUCCESS")) then "healthy"
-  else "unknown"
-  end
-'
+  local classified
+  classified=$(printf '%s' "$1" | bash "{plugin_root}/hooks/scripts/pr-checks-classify.sh") || return 1
+  printf '%s' "$classified" | jq -er '.state'
 }
 
 pr_json=$(_rite_fetch_pr_json) \
@@ -241,7 +218,7 @@ fi
 
 ## 設計判断
 
-- **`--delete-branch=false` 明示**: `gh` の default 挙動に任せてクライアント側から削除 API を呼ぶことを抑止し、ブランチ削除を `/rite:cleanup` の責務に寄せる。ただし**抑止できるのは gh クライアント側の削除だけ**で、リポジトリ設定 `delete_branch_on_merge: true` の環境では GitHub がマージ完了時にサーバサイドで head ブランチを削除する。このフラグはそれを止められないため、「マージ後もブランチが必ず残る」ことは保証されない（#2016）。`/rite:cleanup` のリモート削除ステップは、この既削除を正常系として扱う（`skills/cleanup/SKILL.md` ステップ 5 の `git ls-remote --exit-code` ガード）
+- **`--delete-branch=false` 明示**: `gh` の default 挙動に任せてクライアント側から削除 API を呼ぶことを抑止し、ブランチ削除を `/rite:cleanup` の責務に寄せる。ただし**抑止できるのは gh クライアント側の削除だけ**で、リポジトリ設定 `delete_branch_on_merge: true` の環境では GitHub がマージ完了時にサーバサイドで head ブランチを削除する。このフラグはそれを止められないため、「マージ後もブランチが必ず残る」ことは保証されない。`/rite:cleanup` のリモート削除ステップは、この既削除を正常系として扱う（`skills/cleanup/SKILL.md` ステップ 5 の `git ls-remote --exit-code` ガード）
 - その他（責務は merge のみ / flow-state は触らない / squash ハードコード / stderr 分離 / CI gate は merge 直前だけ）:
   rationale: references/rationale.md#merge-only
   rationale: references/rationale.md#squash-hardcoded

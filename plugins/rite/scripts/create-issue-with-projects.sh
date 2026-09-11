@@ -12,7 +12,8 @@
 #       "title": "string",
 #       "body_file": "string (path to tmpfile with body markdown)",
 #       "labels": ["string"],       # optional
-#       "assignees": ["string"]      # optional
+#       "assignees": ["string"],     # optional
+#       "attachments": ["string"]   # optional: local file paths (gh >= 2.99.0)
 #     },
 #     "projects": {
 #       "enabled": true|false,
@@ -51,13 +52,15 @@
 #     "warnings": ["string"]
 #   }
 #
-# Note: All output (success and error) is written to stdout as JSON.
+# Note: Results (success and error) are written to stdout as JSON.
+# Attachment and Projects failures also surface their error on stderr.
 # The caller captures stdout via result=$(bash ...) and checks the exit code.
 # Exit 0 = success or non-blocking failure. Exit 1 = fatal error.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(dirname "$SCRIPT_DIR")"
+source "$PLUGIN_ROOT/hooks/control-char-neutralize.sh"
 
 # --- Centralized tmpfile management ---
 # All temporary files live under TMPDIR_WORK; a single EXIT trap cleans them all.
@@ -170,6 +173,7 @@ eval "$(printf '%s\n' "$INPUT_JSON" | jq -r '
   @sh "BODY_FILE=\(.issue.body_file // "")",
   @sh "LABELS_JSON=\(.issue.labels // [] | @json)",
   @sh "ASSIGNEES_JSON=\(.issue.assignees // [] | @json)",
+  @sh "ATTACHMENTS_JSON=\(.issue.attachments // [] | @json)",
   @sh "PROJECTS_ENABLED=\(.projects.enabled // false)",
   @sh "PROJECT_NUMBER=\(.projects.project_number // 0)",
   @sh "OWNER=\(.projects.owner // "")",
@@ -196,6 +200,17 @@ if [ -n "$BODY_FILE" ] && [ ! -f "$BODY_FILE" ]; then
   output_result "" 0 "" "" "failed"
   exit 1
 fi
+
+# Validate all attachments before any gh call, so missing files cannot create an Issue.
+mapfile -t ATTACHMENTS < <(printf '%s\n' "$ATTACHMENTS_JSON" | jq -r '.[]')
+for attachment in "${ATTACHMENTS[@]}"; do
+  if [ ! -f "$attachment" ]; then
+    printf 'ERROR: attachment not found: %s\n' "$attachment" >&2
+    add_warning "attachment not found: $attachment"
+    output_result "" 0 "" "" "failed"
+    exit 1
+  fi
+done
 
 # --- Phase 1: Create Issue ---
 # SSH host alias remote (git@github.com-work:owner/repo.git 等) では --repo 未指定の
@@ -236,10 +251,20 @@ if [ ${#ASSIGNEES[@]} -gt 0 ]; then
   done
 fi
 
+for attachment in "${ATTACHMENTS[@]}"; do
+  GH_ARGS+=("--attach" "$attachment")
+done
+
 ISSUE_URL=$(gh "${GH_ARGS[@]}" 2>"$GH_ERR_FILE") || {
   gh_err=$(cat "$GH_ERR_FILE")
   add_warning "gh issue create failed: $gh_err"
-  output_result "" 0 "" "" "failed"
+  if [ ${#ATTACHMENTS[@]} -gt 0 ]; then
+    neutralize_ctrl --keep-newline < "$GH_ERR_FILE" >&2
+  fi
+  # gh may create the Issue and print its URL before an attachment upload fails.
+  # Keep that identity for recovery; never retry creation and duplicate the Issue.
+  ISSUE_NUMBER=$(grep -oE '[0-9]+$' <<< "$ISSUE_URL" || true)
+  output_result "$ISSUE_URL" "${ISSUE_NUMBER:-0}" "" "" "failed"
   exit 1
 }
 

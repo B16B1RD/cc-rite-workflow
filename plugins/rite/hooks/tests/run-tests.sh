@@ -5,14 +5,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Run the suite with a clean session-id env. flow-state.sh now
-# resolves session_id env-first (CLAUDE_CODE_SESSION_ID / CLAUDE_SESSION_ID) and
-# only falls back to each sandbox's `.rite-session-id` file when env is absent.
-# Most tests simulate a session by writing that file, so the dogfooding session's
-# own ambient CLAUDE_CODE_SESSION_ID must not leak into the sandboxes (it would
-# point every hook at a foreign per-session state file). Tests that exercise env
-# resolution set the vars explicitly per-command, overriding this unset.
-unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
+# Runtime identity and state-root inputs must come only from each fixture.
+# This runner also runs from live Claude, Codex, and Grok dogfooding sessions.
+# Ambient host selection must not divert sandbox operations to a foreign owner.
+unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID CODEX_THREAD_ID GROK_SESSION_ID RITE_HOST CLAUDE_PLUGIN_ROOT
+unset CLAUDE_ENV_FILE RITE_STATE_ROOT RITE_RUNTIME_EXPLICIT _RITE_HOOK_REDIRECTED
 
 TOTAL=0
 PASSED=0
@@ -58,6 +55,17 @@ for test_file in "${test_files[@]}"; do
   # `=== Running: X ===` line still identifies which file hung, but its output is
   # lost if the CI job times out.
   test_out=$(bash "$test_file" 2>&1) || test_rc=$?
+  # Valid UTF-8 (Japanese, emoji) is unchanged. Invalid sequences (raw C1
+  # 0x80-0x9f, orphaned lead bytes) become U+FFFD so BSD sed/grep and the
+  # GHA macos Worker log flush do not die with EILSEQ (no uploaded logs).
+  _raw=$test_out
+  if command -v python3 >/dev/null 2>&1 \
+     && test_out=$(printf '%s' "$_raw" | python3 -c 'import sys; sys.stdout.buffer.write(sys.stdin.buffer.read().decode("utf-8", "replace").encode("utf-8"))'); then
+    :
+  else
+    test_out=$(printf '%s' "$_raw" | LC_ALL=C tr '\000-\010\013-\037\177\200-\237' '[?*]')
+  fi
+  unset _raw
   printf '%s\n' "$test_out"
   if [ "$test_rc" -eq 0 ]; then
     PASSED=$((PASSED + 1))

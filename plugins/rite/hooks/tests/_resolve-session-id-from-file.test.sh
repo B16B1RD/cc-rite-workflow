@@ -172,9 +172,8 @@ assert_eq "TC-10.2: stdout is empty (whitespace stripped → no UUID)" "" "$out"
 # ================================================================
 echo "TC-11 (NEW API verification): UPPERCASE UUID input → lowercase normalized output"
 # ================================================================
-# _resolve-session-id.sh が cycle 44 F-10 で導入した case-insensitive accept + lowercase
-# normalize の transitive 動作を helper 経由で verify する (caller 経由の indirect カバレッジ
-# を補強する direct test)。
+# _resolve-session-id.sh の case-insensitive accept + lowercase normalize を
+# helper の戻り値で検証する。
 sbx=$(setup_session_id_sandbox); cleanup_dirs+=("$sbx")
 echo "550E8400-E29B-41D4-A716-446655440000" > "$sbx/.rite-session-id"
 out=$(bash "$HELPER" "$sbx" 2>&1) && rc=0 || rc=$?

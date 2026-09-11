@@ -78,7 +78,6 @@
 
 set -euo pipefail
 
-# verified-review cycle 4 LOW (devops): suppress credential prompts.
 # In CI / hook contexts this script runs non-interactively; a git push
 # requiring auth prompts would otherwise hang the hook forever. Force
 # git to fail fast on missing credentials instead of prompting.
@@ -146,17 +145,9 @@ cd "$repo_root"
 # stale /tmp lock from a crashed process still points back to the project.
 #
 # flock may not be available (macOS without util-linux, minimal containers).
-# When absent we skip the lock acquisition entirely and accept the race —
-# this matches the pre-fix behaviour, so parallel callers are no worse off
-# than they were before this guard was added.
-# verified-review cycle 5 MEDIUM (F-03): `mkdir -p .rite/state 2>/dev/null || true`
-# followed by an unchecked `exec 9>.rite/state/wiki-ingest-commit.lock` aborted
-# under `set -euo pipefail` with a cryptic "No such file or directory" when the
-# mkdir actually failed (permission denied / `.rite` exists as a regular file /
-# read-only filesystem). Split the two steps so mkdir failure produces an
-# explicit WARNING and the lock acquisition is skipped (best-effort, matching
-# the `flock` not available branch) instead of terminating the script with a
-# native bash error.
+# When absent, lock acquisition is skipped and concurrent calls may race.
+# Directory creation is checked separately so failure emits a WARNING and
+# skips locking instead of aborting at the lock-file redirection under set -e.
 if command -v flock >/dev/null 2>&1; then
  if mkdir -p .rite/state 2>/dev/null; then
  exec 9>.rite/state/wiki-ingest-commit.lock
@@ -556,18 +547,9 @@ if [[ -z "$current_branch" ]]; then
  exit 1
 fi
 
-# verified-review cycle 4 HIGH #2: scope-limited mini-trap for stage_dir.
-# Same class of bug as the ref_err leak fixed in cycle 3 LOW #3 (lines
-# 269-270, 282-283). stage_dir is created at this line but the main
-# cleanup_body trap is not installed until line ~400. A signal arriving
-# between mktemp and trap install would orphan ${TMPDIR:-/tmp}/rite-wiki-stage-XXXXXX.
-# Install a scope-limited mini-trap immediately after mktemp and disarm it
-# right before the main trap is installed, so the orphan race window is
-# closed without double-cleanup with cleanup_body.
-#
-# Also add explicit error handling for mktemp -d failure (cycle 4 devops LOW).
-# set -euo pipefail would abort but the user would see only the mktemp
-# message with no context — emit an explicit ERROR first.
+# Protect stage_dir from signals until cleanup_body takes ownership of it.
+# Install the temporary trap before mktemp so no created directory is unguarded.
+# Report mktemp failure with context before exiting.
 stage_dir=""
 trap 'rm -rf "${stage_dir:-}" 2>/dev/null || true' EXIT INT TERM HUP
 if ! stage_dir=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-stage-XXXXXX" 2>/dev/null); then
@@ -704,19 +686,10 @@ done
 # -----------------------------------------------------------------------
 # Git stderr capture + helpers (git_err / dump_git_err / surface_git_warnings)
 #
-# verified-review cycle 5 CRITICAL (F-01): この初期化ブロックと関数定義は以前
-# **Step 3 冒頭 (stash push の直前)** に配置されており (before commit 5212573)、
-# Step 3 以降でのみ必要と想定されていた。しかし Step 2 の
-# `rm -f "$f" 2>"${git_err:-/dev/null}"` と直後の `dump_git_err "rm -f $f"`
-# 呼び出しが前方参照していた。rm 失敗時に (1) stderr が常に /dev/null に routing
-# され rm の OS エラーが失われ、(2) `dump_git_err` は `command not found` で set -e
-# 配下で rc=127 abort し `exit 3` に到達しない — cycle 4 で cherry-pick した「rm
-# stderr を propagate する」修正が構造的に無効化されていた。Step 1 は git_err を
-# 参照しないため Step 1/Step 2 の境界に helper block を配置することで、Step 2 の
-# rm 失敗経路が正しく診断情報を出せるようにし、cycle 4 の error-handling contract
-# を再び有効にする。
+# Step 2 の rm 失敗経路も git_err と dump_git_err を使うため、
+# stderr capture と関数定義は削除処理より前に配置する。
 #
-# Cycle 2 MEDIUM (noise reduction): only dump stderr on failure paths.
+# Only dump stderr on failure paths.
 # Calling `dump_git_err` after **every** git command, including successful ones,
 # surfaces git informational messages like `Switched to branch 'wiki'` on stderr —
 # noise that drowns out real error signals. So the helper is failure-only; success
@@ -724,17 +697,10 @@ done
 # `^(warning|hint|error):`.
 #
 # git_err cleanup is delegated to `cleanup_body` (see the EXIT/INT/TERM/HUP
-# traps below). A separate trap would overwrite cleanup_body's and break the
-# HIGH #1/#2 rollback-safety rewrites from cycle 1.
+# traps below). A separate trap would overwrite cleanup_body's and break rollback.
 #
-# verified-review cycle 4 HIGH #4: mktemp failure must NOT silently swallow
-# all git stderr. The previous `|| echo ""` fallback made dump_git_err and
-# surface_git_warnings no-op (guarded on `[[ -n "$git_err" ]]`) while the
-# stderr redirect `2>"${git_err:-/dev/null}"` kept routing git errors to
-# /dev/null. Net effect: every real git failure on a /tmp-broken host was
-# diagnosable only by re-running the script without this wrapper. Emit an
-# explicit WARNING so the operator understands why git stderr disappears,
-# and set git_err="" so the no-op path is obvious from the warning trail.
+# Empty git_err disables diagnostic helpers and sends captured stderr to
+# /dev/null, so mktemp failure must emit a WARNING explaining the lost details.
 if ! git_err=$(mktemp "${TMPDIR:-/tmp}/rite-wic-git-err-XXXXXX" 2>/dev/null); then
  echo "WARNING: mktemp failed for git stderr capture — git error details will be suppressed" >&2
  echo " hint: check /tmp permission / disk space / inode exhaustion" >&2
@@ -908,10 +874,7 @@ while IFS= read -r -d '' staged; do
 done < <(find "$stage_dir" -type f -print0)
 
 # Step 6: git add / commit / push.
-# verified-review cycle 4 LOW (security): use `--` separator to prevent
-# git option interpretation of the path argument. Even though .rite/wiki/raw
-# is hardcoded here, use the same defence-in-depth pattern as the
-# same_branch path above (line 216) for consistency.
+# The `--` separator prevents git option interpretation of path arguments.
 if ! git add -- .rite/wiki/raw >/dev/null 2>"${git_err:-/dev/null}"; then
  echo "ERROR: git add .rite/wiki/raw failed on '$wiki_branch'" >&2
  dump_git_err "add .rite/wiki/raw"

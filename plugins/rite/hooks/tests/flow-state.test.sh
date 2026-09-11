@@ -1295,7 +1295,7 @@ assert "TC-26: present → write completes (phase recorded, symmetric with case 
 out_plain=$( (cd "$d" && bash "$HOOK" set --phase branch --issue 1595 --branch "fix/issue-1595" --pr 0 --next "n") 2>&1 )
 assert "TC-26: backward compat → no WORKTREE_INVARIANT marker without flag" "0" "$(echo "$out_plain" | grep -c 'WORKTREE_INVARIANT')"
 
-# --- TC-27: cycle_count is a merge-preserved additive field (#1701 review⇄fix circuit breaker) ---
+# --- TC-27: cycle_count is a merge-preserved additive field (review⇄fix circuit breaker) ---
 echo ""
 echo "=== TC-27: --cycle-count merge-preserve + reset (review⇄fix circuit breaker) ==="
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
@@ -1327,7 +1327,7 @@ sfile2="$d2/.rite/sessions/${sid2}.flow-state"
 (cd "$d2" && bash "$HOOK" set --phase branch --issue 701 --branch "feat/701" --pr 0 --next "n") >/dev/null
 assert "TC-27: backward compat → no cycle_count key without --cycle-count" "false" "$(jq -r 'has("cycle_count")' "$sfile2")"
 
-# --- TC-27b: stop_reason is default-cleared additive failure state (#2045) ---
+# --- TC-27b: stop_reason is default-cleared additive failure state ---
 echo ""
 echo "=== TC-27b: --stop-reason writes and an ordinary set default-clears ==="
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
@@ -1339,7 +1339,7 @@ assert "TC-27b: get returns stop_reason" "circuit-breaker:divergence" "$(cd "$d"
 (cd "$d" && bash "$HOOK" set --phase review --issue 2045 --branch "fix/2045" --pr 99 --next "resumed") >/dev/null
 assert "TC-27b: ordinary set default-clears stop_reason" "false" "$(jq -r 'has("stop_reason")' "$sfile")"
 
-# --- TC-27c: iterate producer persists the breaker reason in the reset set (#2045) ---
+# --- TC-27c: iterate producer persists the breaker reason in the reset set ---
 echo ""
 echo "=== TC-27c: iterate breaker preamble owns the stop_reason producer contract ==="
 iterate_skill="$PLUGIN_ROOT/skills/iterate/SKILL.md"
@@ -1366,7 +1366,7 @@ assert "TC-27c: failed atomic set diagnoses counter reset" "1" \
 assert "TC-27c: failed atomic set diagnoses missing reason persistence" "1" \
   "$(printf '%s\n' "$breaker_failure_block" | grep -cF -- 'stop_reason 永続化に失敗' || true)"
 
-# --- TC-28: wm_comment_id is merge-preserved across cmd_set (#1810) ---
+# --- TC-28: wm_comment_id is merge-preserved across cmd_set ---
 # wm_comment_id has NO --flag — it's written directly by issue-comment-wm-sync.sh's
 # cache_comment_id() via `jq '. + {wm_comment_id: ...}'`, mirroring how post-tool-wm-sync.sh
 # writes last_synced_phase. Repro: cache_comment_id writes the field, then any other skill's
@@ -1397,7 +1397,7 @@ jq '. + {wm_comment_id: "not-a-number"}' "$sfile3" > "$sfile3.tmp" && mv "$sfile
 corrupt_set_rc=0
 (cd "$d3" && bash "$HOOK" set --phase branch --issue 1812 --branch "fix/issue-1812" --pr 0 --next "n2") >/dev/null 2>&1 || corrupt_set_rc=$?
 assert "TC-28: corrupt non-numeric wm_comment_id makes unrelated set fail (rc!=0)" "1" "$corrupt_set_rc"
-# security fix (cycle 2 #1810): the write-side jq stderr (which quotes the corrupt raw value)
+# security fix (cycle 2): the write-side jq stderr (which quotes the corrupt raw value)
 # must go through the same _emit_jq_err_snippet / neutralize_ctrl convention as the read side,
 # not straight to the terminal unneutralized. Same TC-23.2 pattern: inject an ESC byte and
 # assert it never reaches stderr raw.
@@ -1414,7 +1414,7 @@ else
 fi
 
 # --- TC-29: wm_comment_id / wm_replica are Issue-scoped — preserved only when the written Issue
-# --- equals the stored one, with the cleanup `--issue 0` clear included in the drop (#2463) ---
+# --- equals the stored one, with the cleanup `--issue 0` clear included in the drop ---
 # Both fields are session-file resident yet Issue-scoped in meaning, so a set that switches to a
 # different Issue must drop them (otherwise the next Issue PATCHes the previous Issue's replica via
 # the Issue-independent comments endpoint, and the negative cache is inherited too).

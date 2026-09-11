@@ -551,6 +551,8 @@ Markdown 本文の literal sentinel は保存される: $SENTINEL
   "schema_version": "1.1.0",
   "pr_number": 123,
   "timestamp": "$SENTINEL",
+  "commit_sha": "abc1234",
+  "measured_gate": {"commit_sha":"abc1234","applied_at":"2026-01-01T00:00:00.000000000Z","blocking":0,"demoted":0,"anchor_undetermined":0},
   "findings": []
 }
 \`\`\`
@@ -603,6 +605,8 @@ cat > "$JSON_OK" <<EOF
   "schema_version": "1.1.0",
   "pr_number": 123,
   "timestamp": "$SENTINEL",
+  "commit_sha": "abc1234",
+  "measured_gate": {"commit_sha":"abc1234","applied_at":"2026-01-01T00:00:00.000000000Z","blocking":0,"demoted":0,"anchor_undetermined":0},
   "verdict": "mergeable",
   "reviewers": ["code-quality-reviewer", "security-reviewer"],
   "findings": [],
@@ -637,7 +641,7 @@ assert_grep "TC-3.5 reason=schema_required_fields_missing emit" "$ERR" 'LOCAL_SA
 _save_fixture() {  # $1=path, 残りは JSON 本体に差し込むトップレベル行
   local _p="$1"; shift
   {
-    printf '{\n  "schema_version": "1.1.0",\n  "pr_number": 123,\n  "timestamp": "%s",\n' "$SENTINEL"
+    printf '{\n  "schema_version": "1.1.0",\n  "pr_number": 123,\n  "timestamp": "%s",\n  "commit_sha": "abc1234",\n  "measured_gate": {"commit_sha":"abc1234","applied_at":"2026-01-01T00:00:00.000000000Z","blocking":0,"demoted":0,"anchor_undetermined":0},\n' "$SENTINEL"
     printf '%s\n' "$@"
     printf '  "findings": [],\n  "guardrail_audit_log": []\n}\n'
   } > "$_p"
@@ -873,6 +877,7 @@ for _cyc in 1 2 3; do
   "pr_number": 123,
   "timestamp": "$SENTINEL",
   "commit_sha": "sha-cycle-$_cyc",
+  "measured_gate": {"commit_sha":"sha-cycle-$_cyc","applied_at":"2026-01-01T00:00:00.000000000Z","blocking":0,"demoted":0,"anchor_undetermined":0},
   "verdict": "mergeable",
   "reviewers": ["code-quality-reviewer", "security-reviewer"],
   "findings": [],
@@ -896,7 +901,7 @@ EOF
 done
 _cycle_files=$(find "$RESULTS_CYCLES" -name '123-*.json' 2>/dev/null | grep -c . || true)
 assert "TC-3.11e 3 サイクル実行で 3 本の JSON が永続化される (1 cycle = 1 JSON)" "3" "$_cycle_files"
-_cycle_shas=$(cat "$RESULTS_CYCLES"/123-*.json 2>/dev/null | grep -c 'sha-cycle-' || true)
+_cycle_shas=$(cat "$RESULTS_CYCLES"/123-*.json 2>/dev/null | grep -c '^  "commit_sha": "sha-cycle-' || true)
 assert "TC-3.11e 各 JSON が自 cycle の commit_sha を保持する (上書きされていない)" "3" "$_cycle_shas"
 
 # TC-3.11f signal 中断 (TERM) でも LOCAL_SAVE_FAILED を emit する。
@@ -1253,7 +1258,7 @@ NBR_PRBODY_PLAIN="$TMP_ROOT/nbr-prbody-plain.md"
 printf '## 概要\n\nPR の説明本文\n' > "$NBR_PRBODY_PLAIN"
 # **散文中に marker と同形の文字列を持つ** 関連 Issue body。read/write の両式が行アンカー (`^`/`$`) を
 # 要求しないと、(a) 抽出が散文行から偽の id を拾い、(b) 除去がその一節を 関連 Issue 本文から無音で消す。
-# 本 PR (#2112) の説明文自身がこの形をしているため、helper を自分自身に対して走らせると発火する。
+# 本 PR の説明文自身がこの形をしているため、helper を自分自身に対して走らせると発火する。
 # 2 つの fixture で marker 行と散文行の**順序を入れ替える** — 抽出は `tail -1` で最後のマッチを採る
 # ため、散文が後ろにある方 (INLINE_LAST) でしか抽出側の欠陥は観測できない。
 NBR_PRBODY_INLINE_FIRST="$TMP_ROOT/nbr-prbody-inline-first.md"
@@ -2858,7 +2863,7 @@ else
   # `assert_grep_in_section` は内部で awk の range 形を使うため、cycle 4 で
   # 「全廃した」と表明した `sed -n "/a/,/b/p"` と機能的に同一で、新節を 8.0.x と 8.1 の間へ
   # 挿入すると区間が新節を飲み込む (presence-only なので false green にはならないが、表明と実装が
-  # 食い違う #2030 F-09 型)。区間は `_sec_610d` / `_sec_803` の動的解決に統一し、あわせて
+  # 食い違う F-09 型)。区間は `_sec_610d` / `_sec_803` の動的解決に統一し、あわせて
   # presence ではなく**件数 1 の等値**で固定する (区間が広がって新節の Check 行を拾えば 2 になる)。
   # 終端 anchor の存在 assert は `_section_of` が「次の同レベル以上の見出しで閉じる」ため不要になった
   # (閉じ損ねは区間解決の健全性 assert が行数レンジで捕捉する)。
@@ -3163,7 +3168,7 @@ else
       #     置かれた指示は読み手が本文生成を終えた後に現れるので用をなさない。
       # [test-reviewer F-04 指摘, cycle 2]: 第 1 版はファイル全体の件数しか数えておらず、ラベルが
       # 表明する scope (6.1.d) と検査範囲が食い違っていた。指示文を 6.1.d から約 2370 行離れた
-      # 無関係な節へ移しても、位置条件 (rule < variant A) が成立するため素通りする (#2030 F-09 と
+      # 無関係な節へ移しても、位置条件 (rule < variant A) が成立するため素通りする (F-09 と
       # 同型)。TC-5b と同じ区間限定 idiom に揃え、ラベルの表明どおり 6.1.d 区間内で数える。
       _indent_rule_line=$(grep -n '本文は列 0 から書き出すこと' "$REVIEW_MD" | head -1 | cut -d: -f1)
       _indent_rule_count=$(_sec_610d | grep -c '本文は列 0 から書き出すこと' || true)
@@ -3246,7 +3251,7 @@ else
   #        配線 drift が構造的に起こり得ないが、本 helper は id を受け取るのでここが単一障害点。
   _sec_610a() { _section_of '^bash \{plugin_root\}/hooks/review-result-save\.sh' '^```$'; }
   assert "TC-5h 6.1.a の helper 呼び出しが --pending-id を渡す (配線 drift の検出)" "1" \
-    "$(_sec_610a | grep -cE '^[[:space:]]*--pending-id "\{save_pending_id\}"$' || true)"
+    "$(_sec_610a | grep -cE '^[[:space:]]*--pending-id "\{save_pending_id\}" \|\| \{$' || true)"
   # 生成側の変数名と caller placeholder 名が一致すること (片側改名で silent に空文字が渡る)
   assert "TC-5h 6.1.a が渡す placeholder 名が 5.3.0.M step 2 の変数名と一致する" "1" \
     "$(_sec_530m_step2 | grep -cE '^[[:space:]]*save_pending_id="' || true)"
@@ -3413,7 +3418,7 @@ EOF
   # 本 cycle の commit SHA を持つ JSON が実在する state root (正常系の arm 用)
   _804_json_ok=$(mktemp -d "$TMP_ROOT/gate804ok-XXXXXX")
   mkdir -p "$_804_json_ok/.rite/review-results"
-  printf '%s\n' "{\"schema_version\":\"1.1.0\",\"pr_number\":$_804_pr,\"timestamp\":\"2026-01-01T00:00:00+09:00\",\"commit_sha\":\"$_804_sha\",\"overall_assessment\":\"mergeable\",\"findings\":[],\"non_blocking_findings\":[]}" \
+  printf '%s\n' "{\"schema_version\":\"1.1.0\",\"pr_number\":$_804_pr,\"timestamp\":\"2026-01-01T00:00:00+09:00\",\"commit_sha\":\"$_804_sha\",\"measured_gate\":{\"commit_sha\":\"$_804_sha\",\"applied_at\":\"2026-01-01T00:00:00.000000000Z\",\"blocking\":0,\"demoted\":0,\"anchor_undetermined\":0},\"overall_assessment\":\"mergeable\",\"findings\":[],\"non_blocking_findings\":[]}" \
     > "$_804_json_ok/.rite/review-results/$_804_pr-20260101000001.json"
   # 区間ごと skip の再現: results dir はあるが本 cycle の JSON が無い state root
   _804_json_missing=$(mktemp -d "$TMP_ROOT/gate804miss-XXXXXX")
@@ -3609,7 +3614,7 @@ EOF
     # 【層 3 / gate ごとの実在性と hand-off】層 1・層 2 はいずれも「行の削除」に無反応である。
     # 層 2 の等値判定は _data_row_count と _conforming を同一集合 (_data_rows) から導出するため、
     # 行を消しても両辺が同時に減って等値が保たれる。合計下限 (旧 `-ge 3`) も 3 gate 合算のため、
-    # 1 gate 分の表 (4 行) が丸ごと消えても残り 7 本で閾値を満たして通る (#2030 F-09 の
+    # 1 gate 分の表 (4 行) が丸ごと消えても残り 7 本で閾値を満たして通る (F-09 の
     # 「pin コメントが謳う保証を実装が持たない」/ F-10 の「合計下限が個別削除を吸収する」と同型)。
     # 実測: 8.0.2 の pass 行 2 本を削除して 8.0.3 を到達不能にしても suite は緑のままだった。
     # これは AC-6 が守ると宣言している当の failure mode (先行 PR の F-04) そのもの。

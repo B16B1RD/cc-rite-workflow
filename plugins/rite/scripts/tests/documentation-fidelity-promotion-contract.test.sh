@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)
-audit="$ROOT/plugins/rite/skills/pr-review/references/promotion-audit-2166.md"
+audit="$ROOT/plugins/rite/skills/pr-review/references/promotion-audit-documentation-fidelity.md"
 reviewer="$ROOT/plugins/rite/agents/_reviewer-base.md"
 principles="$ROOT/plugins/rite/skills/rite-workflow/references/coding-principles.md"
 failures=0
@@ -21,7 +21,8 @@ assert_not_grep() {
   local label=$1
   local file=$2
   local pattern=$3
-  if grep -Fq -- "$pattern" "$file"; then
+  shift 3
+  if grep -Fq -- "$pattern" "$file" "$@"; then
     printf 'not ok - %s\n' "$label" >&2
     failures=$((failures + 1))
   else
@@ -32,7 +33,8 @@ assert_not_grep() {
 assert_grep_count() {
   local label=$1 file=$2 pattern=$3 expected=$4
   local actual
-  actual=$(grep -Fc -- "$pattern" "$file" || true)
+  shift 4
+  actual=$( { grep -hF -- "$pattern" "$file" "$@" || true; } | wc -l | tr -d ' ')
   if [ "$actual" = "$expected" ]; then
     printf 'ok - %s\n' "$label"
   else
@@ -117,23 +119,23 @@ assert_grep 'merge preserves irreversible approval boundary' \
 assert_grep 'cleanup preserves destructive confirmation' \
   "$ROOT/plugins/rite/skills/cleanup/SKILL.md" '削除・close・新規 Issue 公開は不可逆操作として確認を維持する'
 assert_grep 'review auto-records reversible recommendations' \
-  "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'Decision Log への記録である候補は可逆なので質問せず推奨で処理'
+  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" 'Decision Log への記録である候補は可逆なので質問せず推奨で処理'
 assert_grep 'review legacy gate covers automatic disposition' \
-  "$ROOT/plugins/rite/skills/pr-review/SKILL.md" '自動 Decision Log 経路でも emit する'
+  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" '自動 Decision Log 経路でも emit する'
 assert_grep 'review interactive triage waits for confirmation before write' \
-  "$ROOT/plugins/rite/skills/pr-review/SKILL.md" '回答を得るまで 7.4（Decision Log 追記・Issue 作成）を実行しない'
+  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" '回答を得るまで 7.4（Decision Log 追記・Issue 作成）を実行しない'
 assert_grep 'review e2e missing marker fail-safes to ask' \
-  "$ROOT/plugins/rite/skills/pr-review/SKILL.md" '欠落は `false`（確認を出す側）'
+  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" '欠落は `false`（確認を出す側）'
 assert_grep 'review undecidable triage fail-safes to ask' \
-  "$ROOT/plugins/rite/skills/pr-review/SKILL.md" '判定不能時は確認を出す側へ倒す'
+  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" '判定不能時は確認を出す側へ倒す'
 assert_grep 'review phase7 producer echo records confirmation evidence' \
-  "$ROOT/plugins/rite/skills/pr-review/SKILL.md" \
+  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" \
   'echo "[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={iteration_id}; mode={mode}; choice={choice}; reason={reason}"'
 assert_grep 'review phase7 consumer greps confirmation evidence' \
-  "$ROOT/plugins/rite/skills/pr-review/SKILL.md" \
+  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" \
   '[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={ID}; mode={mode}; choice={choice}; reason={reason}'
 assert_grep 'review phase7 gate rejects emit-before-evidence' \
-  "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'sentinel が確認証跡を欠く（emit-before-evidence）'
+  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" 'sentinel が確認証跡を欠く（emit-before-evidence）'
 assert_grep 'review 8.0.2 emit-before-evidence ACTION returns to 7.2 only' \
   "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'Return to ステップ 7.2 only'
 assert_grep 'review 8.0.2 ACTION limits 7.1 re-extract to absent or stale' \
@@ -145,20 +147,27 @@ assert_not_grep 'iterate overview does not restore fix error questions' \
 assert_not_grep 'fix fallback does not offer a second review run' \
   "$ROOT/plugins/rite/skills/fix/SKILL.md" '- レビュー実行: /rite:pr-review を起動してレビュー結果を生成する'
 assert_not_grep 'review overview does not require recommendation questions' \
-  "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'recommendations AskUserQuestion 等の処理本体'
+  "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'recommendations AskUserQuestion 等の処理本体' \
+  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md"
 assert_not_grep 'fix handoff does not restore caller questions' \
   "$ROOT/plugins/rite/skills/fix/SKILL.md" 'after AskUserQuestion'
 assert_not_grep 'review retryable errors are not user prompts' \
-  "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'Retries are not performed automatically'
+  "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'Retries are not performed automatically' \
+  "$ROOT/plugins/rite/skills/pr-review/references/output-diagnostics.md"
 
 # 対象 6 スキルの質問点を棚卸した inventory。新しい AskUserQuestion を追加すると
 # 文言が異なっても fail し、2 類型のどちらかへの分類と inventory 更新を必須化する。
 assert_grep_count 'iterate question inventory is unchanged' "$ROOT/plugins/rite/skills/iterate/SKILL.md" 'AskUserQuestion' 5
-assert_grep_count 'fix question inventory is unchanged' "$ROOT/plugins/rite/skills/fix/SKILL.md" 'AskUserQuestion' 13
+# Count relocated procedures together with the entrypoint; keep the original totals.
+assert_grep_count 'fix question inventory is unchanged' "$ROOT/plugins/rite/skills/fix/SKILL.md" 'AskUserQuestion' 13 \
+  "$ROOT/plugins/rite/skills/fix/references/"{target-comment,nb-sweep,accept-finding,wiki-recording}.md
 assert_grep_count 'ready question inventory is unchanged' "$ROOT/plugins/rite/skills/ready/SKILL.md" 'AskUserQuestion' 2
 assert_grep_count 'merge question inventory is unchanged' "$ROOT/plugins/rite/skills/merge/SKILL.md" 'AskUserQuestion' 2
 assert_grep_count 'cleanup question inventory is unchanged' "$ROOT/plugins/rite/skills/cleanup/SKILL.md" 'AskUserQuestion' 4
-assert_grep_count 'pr-review question inventory is unchanged' "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'AskUserQuestion' 35
+# Reviewer resolution failures now stop with [review:error]; the three
+# references to bypassing missing reviewers through user confirmation are removed.
+assert_grep_count 'pr-review question inventory is unchanged' "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'AskUserQuestion' 32 \
+  "$ROOT/plugins/rite/skills/pr-review/references/"{doc-heavy-reviewers,doc-heavy-validation,output-diagnostics,scope-triage,wiki-recording}.md
 
 if [ "$failures" -ne 0 ]; then
   printf '%s contract assertion(s) failed\n' "$failures" >&2

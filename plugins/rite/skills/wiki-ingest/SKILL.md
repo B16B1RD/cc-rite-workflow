@@ -233,12 +233,12 @@ fi
 | `n_pages_created` | 0 | ステップ 4 で「新規ページ作成」決定ごとに +1 |
 | `n_pages_updated` | 0 | ステップ 4 で「既存ページ更新」決定ごとに +1 |
 | `n_skipped` | 0 | ステップ 4 で「スキップ」決定ごとに +1 |
-| `n_warnings` | 0 | ステップ 8.5 で Lint の検出件数合計（`n_unregistered_raw` を除く 5 カテゴリ）を加算。加えて ステップ 8.3 の Lint 実行異常検出時 `n_warnings += 1` と `n_lint_anomaly += 1` を並行加算 |
+| `n_warnings` | 0 | ステップ 8.5 で Lint の検出件数合計（`n_stale` / `n_unregistered_raw` を除く 4 カテゴリ）を加算。加えて ステップ 8.3 の Lint 実行異常検出時 `n_warnings += 1` と `n_lint_anomaly += 1` を並行加算 |
 | `n_lint_anomaly` | 0 | ステップ 8.3 step 1/3/4 (ERROR 行検出 / stdout 空 / regex mismatch) でそれぞれ +1。`n_warnings` と並行加算 |
 | `n_dedup_removed` | 0 | ステップ 6 の各 helper 呼び出しが出力する `dedup_removed=` の値を加算 |
 | `n_contradictions` / `n_stale` / `n_orphans` / `n_missing_concept` / `n_unregistered_raw` / `n_broken_refs` | 0 | ステップ 8.3 step 2 (6 フィールド regex match) で Lint stdout から抽出 |
 
-`n_unregistered_raw` と `n_dedup_removed` は informational で `n_warnings` には加算しない。`auto_lint=false` で 8.2-8.5 が skip されても、本ステップの 0 初期化でステップ 9 の placeholder 残留は起きない。
+`n_stale` と `n_unregistered_raw` と `n_dedup_removed` は informational で `n_warnings` には加算しない。`auto_lint=false` で 8.2-8.5 が skip されても、本ステップの 0 初期化でステップ 9 の placeholder 残留は起きない。
 rationale: references/rationale.md#informational-counters
 
 ### 2.2 候補 Raw Source の列挙 (worktree ベース)
@@ -390,7 +390,7 @@ LLM は Read ツールで `$wiki_index_path` を直接開き、既存ページ�
 
 1. **読解**: Raw Source 本文から抽出可能な経験則を特定
 2. **ドメイン判定**: `patterns` / `heuristics` / `anti-patterns` に分類
-2.5. **昇格分類**: 本経験則が rite workflow 自体の挙動・スキル記述法に関するものなら、環境非依存性も判定する。環境非依存なら frontmatter に `promote: rite-plugin` を付け、環境固有なら一般化してから昇格するか、一般化できない domain 知見として Wiki に残す。**機械検出可能（2.6）と両方に該当する場合は 2.6 が優先**し、ページを作らない（`promote` はページ作成時のみ）
+2.5. **昇格分類**: 本経験則が rite workflow 自体の挙動・スキル記述法に関するものなら、[配布境界](../../references/distribution-boundary.md)に従って環境非依存性も判定する。環境非依存なら frontmatter に `promote: rite-plugin` を付け、環境固有なら一般化してから昇格するか、一般化できない domain 知見として Wiki に残す。**機械検出可能（2.6）と両方に該当する場合は 2.6 が優先**し、ページを作らない（`promote` はページ作成時のみ）
    rationale: references/rationale.md#knowledge-routing
 2.6. **検出器化候補の分類**: grep / lint / lib 関数で機械的に強制できるかフラグ付けするのみ（アクション決定はしない）。できるなら `detector_candidate=true`、できないなら `false`
    rationale: references/rationale.md#detector-candidate
@@ -414,10 +414,16 @@ LLM は Read ツールで `$wiki_index_path` を直接開き、既存ページ�
 |-----------|-------------|
 | `title` | 経験則を 1 行で表現（30-60 字推奨） |
 | `domain` | `patterns` / `heuristics` / `anti-patterns` |
-| `summary` | 1-2 文の Why 要約（page frontmatter `description` と index.md のサマリー列へ同一文言を掲載する）。Issue / PR 番号は出典の識別子であって概念の理由を説明しないため、`Issue #NNN` / `PR #NNN` / `refs #NNN` 等の説明的番号参照を書かず、番号が担っていた観測事実・条件・因果を自己完結した散文で記述する。provenance は `sources` に分離して保持する |
-| `details` | 背景・具体例・根拠を含む詳細 |
+| `summary` | 1-2 文の Why 要約（page frontmatter `description` と index.md のサマリー列へ同一文言を掲載する）。Issue / PR 番号は出典の識別子であって概念の理由を説明しないため、`Issue #NNN` / `PR #NNN` / `refs #NNN` 等の番号参照を書かず、番号が担っていた観測事実・条件・因果を自己完結した散文で記述する。provenance は `sources` に分離して保持する |
+| `details` | 背景・具体例・根拠を含む詳細。経験則は自分の言葉で言い換え、Raw Source の文を逐語で使うときは引用符で示す |
 | `confidence` | `high` / `medium` / `low`（根拠の強さ） |
 | `promote` | ステップ 4 の昇格分類で rite 挙動・スキル記述法かつ環境非依存（または一般化済み）と判定した場合のみ `rite-plugin`。それ以外はフィールド自体を付けない |
+
+正しい応答の例:
+
+- **要求**: Raw Source に「timeout は fail-open である」とある。経験則の details を書け。
+- **応答**: 制限時間に達すると検査は通過扱いになる。出典は「timeout は fail-open である」と述べている。
+- **正しい理由**: 因果は自分の言葉に直し、出典の断定だけを引用符で残す。全文を出典どおりに写さない。
 
 ファイル名は `pages/{domain}/{slug}.md`、`slug` は `title` を kebab-case 化（最大 60 文字）。
 
@@ -477,6 +483,8 @@ rationale: references/rationale.md#related-page-literal
 
 ### 5.0 LLM が実行すべき具体的手順 (worktree ベース)
 
+構造と難所は reasoning で決め、本文は output で 1 回だけ書く。
+下書きを reasoning で全文作ってから再出力しない。
 `separate_branch` では `{wiki_worktree_abs}/`（ステップ 1.3 の絶対パス）、`same_branch` では dev ツリーに直接 Write/Edit する。順に実施する:
 
 1. **Raw Source 本文の確保**: ステップ 2.3 末尾で取得した本文を作業メモリに展開
@@ -521,14 +529,107 @@ esac
 
 ステップ 5.1 / 5.2 では `commit_msg=` 行を上記 canonical と literal 一致させ、placeholder-residue gate のサイト識別子 (`ステップ 5.{X}`) のみを 5.1 / 5.2 で置換する。template を変更する際は本セクション + ステップ 5.1 + ステップ 5.2 の **3 箇所を必ず同時に更新する**。
 
+### 5.0.n commit 前の番号参照検査 (両戦略共通)
+
+ステップ 5.0 手順 1-7（`index.md` の helper 呼び出しと `log.md` 追記を含む。実行順序の SoT はステップ 5.0 手順 6/7 であって、後方の `## ステップ 6` / `## ステップ 7` 見出しではない）を終えたら、**commit の前に**書いた分を検査する。Raw Source の本文には番号が載っており（raw は出典なので正しい）、そこから読解して書く過程で番号が Wiki 側へ転記される。ここで止めないと混入は ingest のたびに増える。
+rationale: references/rationale.md#numref-precommit
+
+**検査対象は `.rite/wiki` 配下の未 commit 差分**。ページだけでなく `index.md` のエントリ行も `log.md` の bullet も同じ 1 回で通る（`{skip_reason}` や Update の説明文に載る番号を素通りさせないため）。**対象の列挙もラベルも LLM が選ばない** — `git diff` が未 commit の追加行を渡し、パスは git が返す実体をそのまま使う。
+
+走査範囲は commit 範囲（`.rite/wiki`）と一致させ、新規ページは走査直前に `git add -N` で差分へ載せる。この 2 つを外すと新規ページが検査されないまま `clean` になる。`raw/**` は委譲先が除外する（raw は出典なので番号を持つ）。
+
+`{numref_tree}` は `separate_branch` では `{wiki_worktree_abs}`（ステップ 1.3 の絶対パス。空なら 5.1 と同じく `.rite/wiki-worktree` へ縮退する）、`same_branch` では `.`（本ステップは dev ツリー root を cwd とする）を literal substitute する。別の木を掴むと検査は素通りして `clean` を返すので、値は必ずこの 2 つのどちらかにする。
+
+検査本体は `wiki-numref-precommit.sh`（`git add -N`、ignore 残存、`number-reference-check.sh --diff HEAD --path .rite/wiki`）。本ステップは placeholder 残留ゲートと helper 呼び出しだけを持つ。hit は helper が rc=1 で marker を出したあと **本ステップは exit 0** にする（書き換え再実行を tool 失敗へ倒さない）。error だけ exit 1。
+
+```bash
+plugin_root="{plugin_root}"
+numref_tree="{numref_tree}"
+# 残留検査はブレースの**形状**で行う（`"{"*"}"`）。placeholder 名そのものをパターンに書くと、
+# substitute がパターン側まで書き換えて検査が自分を無効化する。sibling の同型 gate と同じ形。
+for _v in "$plugin_root" "$numref_tree"; do
+  case "$_v" in
+    ""|"{"*"}")
+      echo "ERROR: ステップ 5.0.n の placeholder が literal substitute されていません (plugin_root='$plugin_root' numref_tree='$numref_tree')" >&2
+      echo "[CONTEXT] WIKI_INGEST_NUMREF=error; reason=placeholder_residue" >&2
+      exit 1
+      ;;
+  esac
+done
+precommit="$plugin_root/hooks/scripts/wiki-numref-precommit.sh"
+if [ ! -f "$precommit" ]; then
+  echo "ERROR: wiki-numref-precommit.sh が見つかりません (path='$precommit')。検査せずに commit すると番号混入を止められないため中止します" >&2
+  echo "[CONTEXT] WIKI_INGEST_NUMREF=error; reason=helper_missing" >&2
+  exit 1
+fi
+# helper の hit (rc=1) は書き換え再実行の対象であり、本ステップを tool 失敗にしてはならない。
+# error (rc=2) だけ exit 1。marker は helper が既に出している。
+numref_rc=0
+bash "$precommit" --repo-root "$numref_tree" || numref_rc=$?
+case "$numref_rc" in
+  0) ;;
+  1) exit 0 ;;
+  *) exit 1 ;;
+esac
+```
+
+| `WIKI_INGEST_NUMREF` | アクション |
+|---|---|
+| `clean` | ステップ 5.1 / 5.2 へ進む |
+| `hit` | stdout の `file:line: 内容` が指す行を書き直してから**本ステップを再実行**する。書き直しは番号を落として現在形の Why にすること — 番号を消した跡に経緯文を置き換えない。ソース bullet は説明だけを表示テキストにし、説明が無ければ種別語（「レビュー結果」「fix 結果」「close retrospective」）にする（リンク先パスは変えない）。**`index.md` の行は Edit しない** — ステップ 6 の `wiki-index-update.sh` を修正した `--description` で呼び直す（index.md への書き換えは helper が atomic に行う契約のため）。この禁止は ingest 実行中（helper を呼べる文脈）の話で、lint 指摘の事後手当ては `/rite:wiki-lint` の手順に従う。 `log.md` の bullet は該当行の散文から番号を落とす（出典は同じ行の raw パスが持つ）。`{skip_reason}` は raw frontmatter 側の値を変えず、log bullet の表示分だけを書き直す。再実行で `clean` にできなければ commit せず停止し、残った行と `/rite:recover` を案内する |
+| `error` (`reason=stage_failed`) | bash が `exit 1` で停止済み。`same_branch` では root `.gitignore` に `!.rite/wiki/` と `!.rite/wiki/**` を**`.rite/wiki/` 除外行より後ろ**へ追記してから**本ステップを再実行**する（`# <<< gitignore-wiki-section-end` anchor があればその直後、無ければ末尾。前に置くと後勝ちで効かない）。`separate_branch` では root `.gitignore` を持たないので、`{numref_tree}` が wiki worktree の絶対パスに substitute されているか（ステップ 1.3）を先に疑う |
+| `error` (`reason=ignored_paths`) | bash が `exit 1` で停止済み。stderr が `check-ignore -v` で名指しした `.gitignore` を直してから**本ステップを再実行**する。nested `.rite/.gitignore` なら 3 行構成 '*' / '!wiki/' / '!wiki/**' へ戻す（root への negation では nested の '*' は解除できない）。source は `.gitignore` とは限らない（`.git/info/exclude` / `core.excludesFile` も同じ欄に出る）ので、名指しされた source をそのまま直す。「一致を返しませんでした」が出た場合は stderr の git 診断を確認し、stderr にも何も無ければ `check-ignore` を手動実行して原因を特定してから対処する |
+| `error` (`reason=placeholder_residue`) | bash が `exit 1` で停止済み。`{plugin_root}` / `{numref_tree}` を literal substitute して**本ステップを再実行**する |
+| `error` (`reason=helper_missing` / `check_failed` / `ignored_check_failed`) | bash が `exit 1` で停止済み。commit せず停止し、stderr の原因と `/rite:recover` を案内する |
+
+> 番号の定義は `number-reference-check.sh` が持つ（3-4 桁の番号トークン）。本ステップは文法を書き下さない。1-2 桁 / 5 桁以上（上流トラッカ id 等）は**本検査の検出対象外**であり、検出されないことは規則上書いてよいことを意味しない（規則の SoT は `SCHEMA.md` の「番号ではなく Why 散文」）。
+
+#### canonical numref_verdict gate (唯一の真実源)
+
+ステップ 5.1 / 5.2 の bash 冒頭に置く commit ゲートは以下を **literal 一致**させる。`{numref_verdict}` はステップ 5.0.n の `[CONTEXT] WIKI_INGEST_NUMREF=` の最新値を literal substitute する。片側だけ直すと 2 経路で commit ゲートの強さが割れるため、変更時は本節 + ステップ 5.1 + ステップ 5.2 の **3 箇所を必ず同時に更新する**（ステップ 5.0.c の commit message 契約と同じ規約）。
+
+```bash
+# ステップ 5.0.n の判定を機械的に受ける。`{numref_verdict}` は同ステップの
+# [CONTEXT] WIKI_INGEST_NUMREF= の最新値を literal substitute する。
+# 未置換 / 未知値 / hit のいずれも commit しない（検査を飛ばした実行を素通しさせないため）。
+numref_verdict="{numref_verdict}"
+case "$numref_verdict" in
+  clean) ;;
+  hit)
+    echo "ERROR: 番号参照が残ったままです。commit しません (ステップ 5.0.n の hit 行を書き直してから再実行してください)" >&2
+    exit 1
+    ;;
+  *)
+    echo "ERROR: ステップ 5.0.n の判定を受け取れていません (numref_verdict='$numref_verdict')。commit しません" >&2
+    exit 1
+    ;;
+esac
+```
+
 ### 5.1 separate_branch 戦略 (worktree ベース)
 
-ステップ 5.0 手順 1-7 を Write/Edit した後、以下で worktree 内の変更を commit する。**push はここでは行わない**。commit は `wiki-worktree-commit.sh --commit-only` に委譲する:
+ステップ 5.0 手順 1-7 を Write/Edit し、ステップ 5.0.n の検査を通した後、以下で worktree 内の変更を commit する。**下の bash 冒頭のゲートは canonical numref_verdict gate 節の literal 複製**で、変更時は同節の 3 箇所同時更新規約に従う。値はステップ 5.0.n の `[CONTEXT] WIKI_INGEST_NUMREF=` の最新値（`clean` / `hit`）を literal substitute する。散文で 5.0.n を名指しするだけでは、5.0.n を飛ばしても commit が成功してしまう。**push はここでは行わない**。commit は `wiki-worktree-commit.sh --commit-only` に委譲する:
 rationale: references/rationale.md#push-defer-1941
 
 ```bash
 # ステップ 5.2 と対称に set -euo pipefail を宣言する (strict mode)
 set -euo pipefail
+
+# ステップ 5.0.n の判定を機械的に受ける。`{numref_verdict}` は同ステップの
+# [CONTEXT] WIKI_INGEST_NUMREF= の最新値を literal substitute する。
+# 未置換 / 未知値 / hit のいずれも commit しない（検査を飛ばした実行を素通しさせないため）。
+numref_verdict="{numref_verdict}"
+case "$numref_verdict" in
+  clean) ;;
+  hit)
+    echo "ERROR: 番号参照が残ったままです。commit しません (ステップ 5.0.n の hit 行を書き直してから再実行してください)" >&2
+    exit 1
+    ;;
+  *)
+    echo "ERROR: ステップ 5.0.n の判定を受け取れていません (numref_verdict='$numref_verdict')。commit しません" >&2
+    exit 1
+    ;;
+esac
 
 branch_strategy="{branch_strategy}"
 wiki_branch="{wiki_branch}"
@@ -565,6 +666,20 @@ if [ "$branch_strategy" = "separate_branch" ]; then
 
   case "$commit_rc" in
     0) echo "[CONTEXT] WIKI_INGEST_COMMIT=ok" ;;
+    1)
+      commit_reason=$(printf '%s\n' "$commit_out" | sed -n 's/.*reason=\([^;[:space:]]*\).*/\1/p' | tail -1)
+      case "$commit_reason" in
+        numref-hit|numref-error)
+          echo "ERROR: wiki-worktree-commit.sh が番号参照の commit 前検査で拒否しました (rc=1, reason=$commit_reason)" >&2
+          echo "  対処: stdout の reason= と ステップ 5.0.n の hit 行を確認し、書き直してから再実行" >&2
+          ;;
+        *)
+          echo "ERROR: wiki-worktree-commit.sh が環境または引数エラーで停止しました (rc=1)" >&2
+          echo "  対処: 直前の stderr を確認し、worktree・設定・引数の原因を解消してから再実行" >&2
+          ;;
+      esac
+      exit 1
+      ;;
     2) echo "[CONTEXT] WIKI_INGEST_COMMIT=skipped; reason=wiki-disabled" >&2 ;;
     3)
       echo "ERROR: wiki-worktree-commit.sh 内部で git 操作失敗 (rc=3)" >&2
@@ -590,10 +705,27 @@ fi
 
 ### 5.2 same_branch 戦略
 
-`same_branch` では Raw Source / ページ / index.md / log.md はすべて dev ブランチ上。ステップ 5.0 手順 1-7 の後、以下で一括 commit する（ブランチ切り替え・worktree 不要）:
+`same_branch` では Raw Source / ページ / index.md / log.md はすべて dev ブランチ上。ステップ 5.0 手順 1-7 とステップ 5.0.n の検査の後、以下で一括 commit する（ブランチ切り替え・worktree 不要）。**canonical numref_verdict gate 節の literal 複製を bash 冒頭に置く**（変更時は同節の 3 箇所同時更新規約に従う）:
 
 ```bash
 set -euo pipefail
+
+# ステップ 5.0.n の判定を機械的に受ける。`{numref_verdict}` は同ステップの
+# [CONTEXT] WIKI_INGEST_NUMREF= の最新値を literal substitute する。
+# 未置換 / 未知値 / hit のいずれも commit しない（検査を飛ばした実行を素通しさせないため）。
+numref_verdict="{numref_verdict}"
+case "$numref_verdict" in
+  clean) ;;
+  hit)
+    echo "ERROR: 番号参照が残ったままです。commit しません (ステップ 5.0.n の hit 行を書き直してから再実行してください)" >&2
+    exit 1
+    ;;
+  *)
+    echo "ERROR: ステップ 5.0.n の判定を受け取れていません (numref_verdict='$numref_verdict')。commit しません" >&2
+    exit 1
+    ;;
+esac
+
 branch_strategy="{branch_strategy}"
 
 if [ "$branch_strategy" = "same_branch" ]; then
@@ -606,8 +738,8 @@ if [ "$branch_strategy" = "same_branch" ]; then
   trap '_cleanup; exit 143' TERM
   trap '_cleanup; exit 129' HUP
 
-  # same_branch 戦略では .gitignore に `!.rite/wiki/` negation が必要。
-  # 失敗時は anchor marker (gitignore-wiki-section-start) を案内する。
+  # same_branch 戦略では .gitignore の `.rite/wiki/` 除外を打ち消す negation が必要。
+  # 除外行より前の negation は後勝ちで無効になる。
   add_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-ingest-add-err-XXXXXX" 2>/dev/null) || add_err=""
   if ! git add .rite/wiki/ 2>"${add_err:-/dev/null}"; then
     echo "ERROR: git add .rite/wiki/ failed" >&2
@@ -617,8 +749,8 @@ if [ "$branch_strategy" = "same_branch" ]; then
     fi
     echo "  原因候補: same_branch 戦略で .gitignore に '!.rite/wiki/' negation が未設定の可能性" >&2
     echo "  対処:" >&2
-    echo "    1. grep -n 'gitignore-wiki-section-start' .gitignore で anchor 位置を特定" >&2
-    echo "    2. 同ブロック内の手順に従い '!.rite/wiki/' negation を追加し、git add --dry-run で verification してから再実行" >&2
+    echo "    1. '.rite/wiki/' 除外行より後ろへ '!.rite/wiki/' と '!.rite/wiki/**' を追記する (除外行が無ければ末尾。anchor が除外行の後ろにあればその直後。前に置くと後勝ちで効かない)" >&2
+    echo "    2. git add --dry-run で verification してから再実行" >&2
     echo "    3. それ以外の原因 (permission / disk full / corrupt index 等) は上記 stderr の詳細を確認" >&2
     [ -n "$add_err" ] && rm -f "$add_err"
     exit 1
@@ -677,7 +809,7 @@ fi
 | `{summary}` | ステップ 4.1 のサマリー |
 | `{details}` | ステップ 4.1 の詳細 |
 | `{related_page_title}` / `{related_page_path}` | ステップ 4.3 で決定した値。**該当ページがない場合は `## 関連ページ` セクション全体を `- （関連ページなし）` の平文 1 行に Edit で書き換える** (空 placeholder のままにすると Markdown link `[]()` が破綻) |
-| `{source_description}` | Raw Source の `title` フィールド (空なら `source_ref` を使用)。`## ソース` セクションのリンク表示テキストに使われ、URL には `{source_ref}` が使われることで両者を分離する |
+| `{source_description}` | Raw Source の `title` から**番号・日付を落とした説明文**。説明が取れない場合は種別語（「レビュー結果」「fix 結果」「close retrospective」）。`title` をそのまま転記してはならない（規則の SoT は `SCHEMA.md` の「番号ではなく Why 散文」。日付はリンク先パスにあるので重ねない）。`## ソース` セクションのリンク表示テキストに使われ、URL には `{source_ref}` が使われることで両者を分離する |
 
 **confidence フィールド**: page-template.md の `confidence: medium` はリテラル。Write 後に Edit でステップ 4 の判定値 (`high` / `medium` / `low`) に置換する。
 rationale: references/rationale.md#confidence-literal
@@ -707,30 +839,21 @@ if [ "$branch_strategy" = "separate_branch" ]; then
 else
   wiki_root=".rite/wiki"
 fi
-wiu_title=$(cat <<'WIU_EOF'
+{
+  IFS= read -r wiu_title
+  IFS= read -r wiu_description
+  IFS= read -r wiu_domain
+  IFS= read -r wiu_slug
+  IFS= read -r wiu_updated
+  IFS= read -r wiu_confidence
+} <<'WIU_EOF'
 {title}
-WIU_EOF
-)
-wiu_description=$(cat <<'WIU_EOF'
 {description}
-WIU_EOF
-)
-wiu_domain=$(cat <<'WIU_EOF'
 {domain}
-WIU_EOF
-)
-wiu_slug=$(cat <<'WIU_EOF'
 {slug}
-WIU_EOF
-)
-wiu_updated=$(cat <<'WIU_EOF'
 {updated}
-WIU_EOF
-)
-wiu_confidence=$(cat <<'WIU_EOF'
 {confidence}
 WIU_EOF
-)
 bash "{plugin_root}/hooks/scripts/wiki-index-update.sh" \
   --index "$wiki_root/index.md" --pages-root "$wiki_root/pages" \
   --title "$wiu_title" --description "$wiu_description" \
@@ -776,7 +899,7 @@ rationale: references/rationale.md#log-human-only
 
 ## ステップ 8: 自動 Lint
 
-Ingest 直後、Wiki 全体の品質チェックを `/rite:wiki-lint --auto` として実行する。**5 ブロッキング観点** (矛盾・陳腐化・孤児ページ・欠落概念・壊れた相互参照) + **1 informational 指標** (未登録 raw、`ingest_status: skipped` 済み) で計 6 フィールドを検査する。
+Ingest 直後、Wiki 全体の品質チェックを `/rite:wiki-lint --auto` として実行する。**4 ブロッキング観点** (矛盾・孤児ページ・欠落概念・壊れた相互参照) + **2 informational 指標** (陳腐化、未登録 raw（`ingest_status: skipped` 済み）) で計 6 フィールドを検査する。
 
 ### 8.1 auto_lint 設定の確認
 
@@ -896,7 +1019,7 @@ LLM は Skill 応答テキスト (= `lint.md` ステップ 9.2 の最終 stdout)
 Lint 結果: 矛盾 {n_contradictions} 件 / 陳腐化 {n_stale} 件 / 孤児 {n_orphans} 件 / 欠落 {n_missing_concept} 件（未登録 skip {n_unregistered_raw} 件）/ 壊れた相互参照 {n_broken_refs} 件
 ```
 
-**全カテゴリが 0 件の場合** (`n_contradictions + n_stale + n_orphans + n_missing_concept + n_unregistered_raw + n_broken_refs == 0`): 「Lint 結果: 問題なし」とのみ表示する。1 件以上検出された場合は必ず全カテゴリを表示する (`n_unregistered_raw` は informational だが表示判定には含める)。
+**全カテゴリが 0 件の場合** (`n_contradictions + n_stale + n_orphans + n_missing_concept + n_unregistered_raw + n_broken_refs == 0`): 「Lint 結果: 問題なし」とのみ表示する。1 件以上検出された場合は必ず全カテゴリを表示する (`n_stale` / `n_unregistered_raw` は informational だが表示判定には含める)。
 
 ERROR / stdout 空 / regex mismatch 経路では「Lint 結果: 実行失敗（{原因}）」と表示する。
 
@@ -905,15 +1028,15 @@ ERROR / stdout 空 / regex mismatch 経路では「Lint 結果: 実行失敗（{
 **ステップ 8.3 step 2 (6 フィールド regex match 成功) 経路でのみ実行する**。step 1/3/4 は 8.3 内で加算済みのため skip。step 2 経路のみ `n_warnings` に Lint 検出件数合計を加算する:
 
 ```
-n_warnings += n_contradictions + n_stale + n_orphans + n_missing_concept + n_broken_refs
+n_warnings += n_contradictions + n_orphans + n_missing_concept + n_broken_refs
 ```
 
-**`n_unregistered_raw` は加算しない**。informational 指標として完了レポートの内訳にのみ表示する。
+**`n_stale` と `n_unregistered_raw` は加算しない**。informational 指標として `n_warnings` には算入せず、完了レポートに件数のみ表示する — `n_stale` は `Lint 結果:` 行（ステップ 8.4 で定義）に、`n_unregistered_raw` は同行と未登録 raw 専用行に現れる。どちらも `{wiki_warnings_line}` の内訳には含めない。
 rationale: references/rationale.md#n-unregistered-not-warning
 
 **詳細な修正対応**: 検出結果の詳細確認は、Ingest 完了後に `/rite:wiki-lint`（`--auto` なし）で再実行して取得する。
 
-### 8.6 Wiki push の集約（#1941 wiki push batch/defer）
+### 8.6 Wiki push の集約（wiki push batch/defer）
 
 **`auto_lint` の値に関わらず必ず実行する**（ステップ 8.1 参照）。蓄積されたローカル commit（0 件のこともある）をまとめて 1 回だけ push する。`same_branch` では本ステップは no-op:
 rationale: references/rationale.md#push-defer-1941
@@ -1007,12 +1130,12 @@ Wiki Ingest が完了しました。
 
 | `auto_lint` | 「Wiki 品質警告:」行の展開 |
 |-------------|-----------------------|
-| `true` (通常経路) | `Wiki 品質警告: {n_warnings} 件（内訳: 矛盾 {n_contradictions} / 陳腐化 {n_stale} / 孤児 {n_orphans} / 欠落 {n_missing_concept} / 壊れた相互参照 {n_broken_refs} / Lint 異常経路 {n_lint_anomaly}）` |
+| `true` (通常経路) | `Wiki 品質警告: {n_warnings} 件（内訳: 矛盾 {n_contradictions} / 孤児 {n_orphans} / 欠落 {n_missing_concept} / 壊れた相互参照 {n_broken_refs} / Lint 異常経路 {n_lint_anomaly}）` |
 | `false` (skip 経路) | `Wiki 品質警告: スキップ (auto_lint disabled)` (内訳は表示しない) |
 
 「未登録 raw」行は `auto_lint=false` の場合も `0` 件として展開する (ステップ 2.1 で 0 初期化済みの値)。
 
-**等式**: `n_warnings = n_contradictions + n_stale + n_orphans + n_missing_concept + n_broken_refs + n_lint_anomaly`。step 2 成功時は `n_lint_anomaly=0`。step 1/3/4 では 5 カテゴリは 0 fallback だが `n_lint_anomaly >= 1` のため `n_warnings >= 1`。
+**等式**: `n_warnings = n_contradictions + n_orphans + n_missing_concept + n_broken_refs + n_lint_anomaly`。step 2 成功時は `n_lint_anomaly=0`。step 1/3/4 では 4 カテゴリは 0 fallback だが `n_lint_anomaly >= 1` のため `n_warnings >= 1`。
 
 `{wiki_push_line}` の展開ルール (ステップ 8.6 の `[CONTEXT] WIKI_INGEST_PUSH=` を上から評価し最初の一致を採用):
 
@@ -1058,6 +1181,8 @@ rationale: references/rationale.md#returned-to-caller
 | `lib/wiki-config.sh` 読込失敗 (helper 不在 / 解決失敗) | exit 1 で fail-fast（`[CONTEXT] WIKI_CONFIG_HELPER_UNAVAILABLE=1`。設定を判定できないまま無効扱いへ倒さない。plugin のインストール状態を確認するか `/rite:setup` を再実行、ステップ 1.1） |
 | Wiki 未初期化 / worktree セットアップ失敗 | `/rite:wiki-init` を案内、または `wiki-worktree-setup.sh` のエラー出力を確認して `git worktree prune` / `git fetch origin wiki:wiki` で復旧 (ステップ 1.3) |
 | 処理対象 0 件 | 静かに終了し情報メッセージのみ表示（ステップ 2.3） |
+| `wiki-worktree-commit.sh --commit-only` exit 1 + stdout `reason=numref-hit` / `numref-error`（ステップ 5.1） | exit 1 で fail-fast。番号参照の commit 前検査が拒否した。5.0.n の hit 行を書き直すか、stderr の error reason を直して再実行 |
+| `wiki-worktree-commit.sh --commit-only` exit 1 + stdout に `reason=numref-hit` / `numref-error` なし（ステップ 5.1） | exit 1 で fail-fast。環境 / 引数エラーとして、直前の stderr が示す worktree・設定・引数の原因を解消して再実行 |
 | `wiki-worktree-commit.sh --commit-only` exit 3 (git add/commit 失敗、ステップ 5.1) | exit 1 で fail-fast。`git -C .rite/wiki-worktree status` で worktree の状態を確認 |
 | `wiki-worktree-commit.sh --push-only` exit 4 (push 失敗、ステップ 8.6) | 非 fatal で継続。commit は local wiki branch に保持される。`git -C .rite/wiki-worktree push origin {wiki_branch}` で手動回復、または次回 ingest の ステップ 8.6 が自動で flush を試みる |
 | `wiki-worktree-commit.sh` 未知の exit code | exit 1 で fail-fast |

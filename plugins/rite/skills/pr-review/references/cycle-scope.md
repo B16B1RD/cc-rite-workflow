@@ -69,7 +69,7 @@ helper が **marker を 1 つも出さずに非ゼロ終了した場合**（引�
 
 既存の verification mode（`review.loop.verification_mode`、既定 `false`）は **PR コメント**から前回レビューを検出し、ステップ 4.5.1 の検証テンプレートを通常テンプレートに**追加**注入する。本機能は**永続 JSON** から検出する。検出源が 2 つあるため、合成規則を明示する。
 
-**規則**: `cycle_scope == incremental` のとき、ステップ 4.5.1 の検証テンプレートは**追加注入しない**。
+**規則**: `cycle_scope == incremental` のとき、ステップ 4.5.1 の検証テンプレートは**追加注入しない**（`{fix_change_map}` も 4.5.1 専用のため、incremental では展開しない）。
 
 理由は包含関係にある。4.5.1 の Part 1（前回指摘の修正検証）と Part 2（修正差分のリグレッションチェック）は、差分スコープ mandate の (1) 前回 blocking の解消検証 と (2) fix diff のフルレビュー にそれぞれ包含される。両方を注入すると reviewer に相反する 3 つのスコープ指示（通常テンプレートの「全体をレビュー」／ 4.5.1 の「フルレビューも別途実施されます」／ 差分スコープの「未変更部は再監査しない」）が同時に届き、どれが権威か決まらない。
 
@@ -97,7 +97,7 @@ cap 後のフィルタにすると、これらのフロアと `mandatory` 保護
 
 昇格は既存の昇格 priority（`detected < recommended < mandatory`）に従い、より高い側へのみ動かす。既に `mandatory` の reviewer に対しては no-op。
 
-前サイクル finder は永続 JSON の **`findings[]` と `non_blocking_findings[]` の和**から、gated scope（`current-pr` / `follow-up`）の finding だけを取る。2 つの配列を跨ぐのは、実測必須ゲートが両方向に要素を動かすためである:
+前サイクル finder は永続 JSON の **`findings[]` と `non_blocking_findings[]` の和**から、gated scope（`current-pr` / `follow-up`）かつ `demotion_reason != "non_fatal"` の finding だけを取る。非 fatal 移送分は記録・sweep 対象として保持し、解消検証による reviewer 再起動には使わない。2 つの配列を跨ぐのは、実測必須ゲートが両方向に要素を動かすためである:
 
 - `findings[]` には `scope == "nit-noted"` がゲート対象外として非実測でも残る → **絞らないと余分が入る**
 - 非実測の gated 指摘は `non_blocking_findings[]` へ**移送**され `findings[]` から消える → **`findings[]` だけ見ると足りない**

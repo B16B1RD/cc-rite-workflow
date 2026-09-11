@@ -40,14 +40,15 @@
 #                   8.0.4 が恒久的に落ちる」非収束を生む。内部導出はその失敗クラスを構造的に消す。
 #
 # 契約 (pr-review.md ステップ 6.1.a / D-04 と verbatim 一致):
-#   - 非ブロッキング: 失敗経路では `[CONTEXT] LOCAL_SAVE_FAILED=1; reason=...` を stderr に emit する。
-#     reason 語彙は 16 種で、**うち 15 種は exit 0** (ステップ 6 全体を fail させない)。
+#   - 失敗経路では `[CONTEXT] LOCAL_SAVE_FAILED=1; reason=...` を stderr に emit する。
+#     通常の永続化失敗は非ブロッキングだが provenance 契約違反 3 種は exit 1 で停止する。
 #     `signal_aborted` のみ signal trap 由来で rc=130/143/129 を返す (reason emit と marker 削除は
 #     他 15 種と同一。ステップ 6 の exit code は 6.1.c が決める)。
 #   - reason 語彙: pr_number_placeholder_residue / date_command_failure / mkdir_failure /
 #     mktemp_failure / write_failure / timestamp_injection_mv_failure / json_invalid /
 #     schema_required_fields_missing / guardrail_audit_log_keys_violation /
-#     finding_id_format_or_uniqueness_violation /
+#     finding_id_format_or_uniqueness_violation / timestamp_not_injected / gate_not_applied /
+#     gate_record_mismatch /
 #     scope_enum_violation / critical_high_scope_nit_noted_invariant /
 #     collision_resolution_exhausted / mktemp_failure_mv_err / mv_failure / signal_aborted
 #   - 上記とは別 namespace の観測 marker として `[CONTEXT] LOCAL_SAVE_GITIGNORE_FAILED=1; dir=...`
@@ -76,8 +77,8 @@
 #   - [CONTEXT] / WARNING は全て stderr。stdout は使わない (observability とデータの境界保持)。
 #
 # Exit codes:
-#   0: 常に (success / 非ブロッキング失敗どちらも)。caller は LOCAL_SAVE_FAILED / JSON_SAVED で判定。
-#   1: caller 契約違反 (--content-file 未指定 / unknown option — いずれも trap 設置前)。
+#   0: success / 非ブロッキング失敗。caller は LOCAL_SAVE_FAILED / JSON_SAVED で判定。
+#   1: caller 契約違反（引数不正、および gate/timestamp provenance 不成立）。
 #      注: --pr 欠落 / 非数値 と --content-file 不在 は trap 設置後の exit 0 (非ブロッキング)。
 #   130/143/129: signal 中断 (INT / TERM / HUP)。
 set -uo pipefail
@@ -350,6 +351,19 @@ if [ ! -s "$json_tmp" ]; then
   exit 0
 fi
 
+# The save boundary is the last place where the gate record and the payload can
+# still be checked as one atomic document.  Refuse to manufacture a timestamp
+# for an input that did not carry the exact helper placeholder, and refuse
+# results which cannot prove that the measured gate was applied to this same
+# commit.  These are blocking caller-contract failures: allowing the normal
+# non-blocking save fallback here would let an ungated/stale result continue to
+# the merge gate.
+timestamp_placeholder_ok="false"
+if jq -e --arg placeholder "__RITE_TS_PLACEHOLDER_7f3a9b2c__" \
+    'type == "object" and .timestamp == $placeholder' "$json_tmp" >/dev/null 2>&1; then
+  timestamp_placeholder_ok="true"
+fi
+
 # Approach C: bash-internal jq timestamp injection。
 # caller が `"timestamp": "__RITE_TS_PLACEHOLDER_7f3a9b2c__"` を書き込み、ここで $iso_timestamp に
 # 置換する。JSON body / ファイル名 / [CONTEXT] emit の 3 値が helper 内で完全同期する。
@@ -511,35 +525,52 @@ fi
 # 非配列は上段の type check で marker 済みなので、ここでは `$nb` に空配列として畳んで
 # 判定から外す (型崩れを id 欠陥として誤診断せず、かつ hard fail に化けさせない)。
 #
-# **hard fail の対象は `findings[]` 側の id 欠陥に限る**。`non_blocking_findings[]` 側に閉じた
-# id 欠陥 (独立採番による和集合重複 / id 欠落) で save 全体を落とすと、上段と同じ fail-unsafe
-# (advisory な記録の欠陥を理由に blocking findings を失う) になるため、marker のみ emit する。
+# **書式違反は和集合で hard fail、一意性違反は `findings[]` 側に限って hard fail**。
+#
+# 書式 (`^F-[0-9]{2,}$`) は id が identity として使えるかどうかそのものであり、`non_blocking_findings[]`
+# 側の書式外 id は advisory な記録の瑕疵では済まない — cleanup ステップ 6.0.V は id を除外指定
+# (`--exclude-ids`) の唯一の受け渡し経路として使うため、書式外 id は再検証層で null へ写され、
+# 全件が undecidable へ倒れて解消済みの指摘まで follow-up に転記される。発生源を止めないと
+# 読み側の回避策が増え続けるので fail-loud にする (書式外 id の永続化を止める)。
+#
+# 一方 `non_blocking_findings[]` 側に閉じた**一意性**違反 (独立採番による和集合重複) は id 自体が
+# 使える形をしており、下段の非ブロッキング marker で報告するに留める。save を落とすと
+# advisory な記録の重複を理由に blocking findings まで JSON 経路から失う fail-unsafe になる。
+#
+# reason 語彙は既存の `finding_id_format_or_uniqueness_violation` を流用し増やさない
+# (`pr-review/SKILL.md` の 6.1.a reason 列挙 15 件 / rc=1 provenance 3 種は closed list で、
+#  当該ファイルは本変更の Non-Target。新 token を足すとその列挙を stale にする)。
+# 既存経路と同じく `exit 0` + `JSON_SAVED=false` で「保存せずに止める」= 本 codebase の hard fail。
+# `contains("\n") | not` は必須。jq (Oniguruma) の `$` は「文字列末尾**または末尾改行の直前**」に
+# 一致するため、`test("^F-[0-9]{2,}$")` 単体では "F-05\n" が書式検査を通り、書式外 id を発生源で
+# 止めるという本 gate の存在理由が成立しない。read 側 (cleanup 6.0.V の射影) と同一述語に保つこと —
+# 片側だけ緩いと write を通った値が read で null へ写り、恒久的に undecidable の過剰転記が生まれる。
 if ! jq -e '
-  (.findings | length == 0)
+  ((if (.non_blocking_findings | type) == "array" then .non_blocking_findings else [] end)) as $nb
+  | (((.findings | length) + ($nb | length)) == 0)
   or (
-    (.findings | all(.id? // "" | test("^F-[0-9]{2,}$")))
-    and (([.findings[].id] | unique | length) == (.findings | length))
+    ([(.findings[]?, $nb[])] | all((.id? // "") | (test("^F-[0-9]{2,}$") and (contains("\n") | not))))
+    and ((.findings | length == 0)
+         or (([.findings[].id] | unique | length) == (.findings | length)))
   )
   ' "$json_tmp" >/dev/null 2>&1; then
-  echo "WARNING: JSON の findings[].id が書式 (F-NN) または一意性の要件を満たしていません" >&2
-  echo "  期待: 全 finding が ^F-[0-9]{2,}\$ に match し、かつ全 id が一意" >&2
-  echo "  対処: review-result-schema.md の findings[] id 仕様を確認してください" >&2
+  echo "WARNING: JSON の finding id が書式 (F-NN) または findings[] 内の一意性の要件を満たしていません" >&2
+  echo "  期待: findings[] と non_blocking_findings[] の全 finding が ^F-[0-9]{2,}\$ に match し (末尾改行を含まない)、かつ findings[] 内で id が一意" >&2
+  echo "  対処: review-result-schema.md の findings[] / non_blocking_findings[] id 仕様を確認してください" >&2
   echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=finding_id_format_or_uniqueness_violation" >&2
   exit 0
 fi
 
-# 和集合一意性 (non_blocking_findings[] 側を含む) は非ブロッキング marker で報告する
+# 和集合**一意性** (non_blocking_findings[] 側を含む) は非ブロッキング marker で報告する
+# (書式は上段の hard fail で既に担保済み)
 if ! jq -e '
   ((if (.non_blocking_findings | type) == "array" then .non_blocking_findings else [] end)) as $nb
   | ((.findings | length) + ($nb | length)) as $total
   | ($total == 0)
-  or (
-    ([(.findings[]?, $nb[])] | all(.id? // "" | test("^F-[0-9]{2,}$")))
-    and (([(.findings[]?, $nb[]) | .id] | unique | length) == $total)
-  )
+  or ((([(.findings[]?, $nb[]) | .id] | unique | length) == $total))
   ' "$json_tmp" >/dev/null 2>&1; then
-  echo "WARNING: findings[] と non_blocking_findings[] の id が和集合で一意でないか、書式 (F-NN) 違反があります (保存は続行します)" >&2
-  echo "  期待: 5.3.0.M の降格時に id を振り直さず、2 配列の和集合で ^F-[0-9]{2,}\$ かつ一意" >&2
+  echo "WARNING: findings[] と non_blocking_findings[] の id が和集合で一意ではありません (保存は続行します)" >&2
+  echo "  期待: 5.3.0.M の降格時に id を振り直さず、2 配列の和集合で一意" >&2
   echo "  対処: review-result-schema.md §non_blocking_findings 配列 の id 規則を確認してください" >&2
   echo "[CONTEXT] NON_BLOCKING_FINDINGS_ID_UNION_VIOLATION=1; pr=$PR_NUMBER" >&2
 fi
@@ -566,6 +597,34 @@ if [ "$_schema_ver" = "1.1.0" ] && ! jq -e '
   echo "  対処: reviewer が severity を MEDIUM/LOW へ自己降格し、original_severity フィールドに元値を保持する経路を使う" >&2
   echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=critical_high_scope_nit_noted_invariant; count=$violation_count_review" >&2
   exit 0
+fi
+
+# Preserve the established validation reasons above for malformed/schema-invalid
+# input, then enforce provenance at the final persistence boundary.
+if [ "$timestamp_placeholder_ok" != "true" ]; then
+  echo "ERROR: review-result-save: input timestamp が helper の exact placeholder ではありません" >&2
+  echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=timestamp_not_injected" >&2
+  exit 1
+fi
+if ! jq -e '
+    type == "object"
+    and (.measured_gate | type == "object")
+    and (.measured_gate.commit_sha | type == "string") and (.measured_gate.commit_sha | length > 0)
+    and (.measured_gate.applied_at | type == "string")
+    and (.measured_gate.applied_at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"))
+    and ([.measured_gate.blocking, .measured_gate.demoted, .measured_gate.anchor_undetermined]
+         | all(type == "number" and . >= 0 and . == floor))
+  ' \
+    "$json_tmp" >/dev/null 2>&1; then
+  echo "ERROR: review-result-save: measured_gate の完全な適用記録がありません" >&2
+  echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=gate_not_applied" >&2
+  exit 1
+fi
+if ! jq -e '(.commit_sha | type == "string") and (.commit_sha | length > 0) and (.commit_sha == .measured_gate.commit_sha)' \
+    "$json_tmp" >/dev/null 2>&1; then
+  echo "ERROR: review-result-save: top-level commit_sha と measured_gate.commit_sha が一致しません" >&2
+  echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=gate_record_mismatch" >&2
+  exit 1
 fi
 
 # --- 同一秒衝突回避 + atomic mv ---

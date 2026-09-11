@@ -10,6 +10,8 @@ argument-hint: "<title or description>"
 
 # /rite:issue-create
 
+> 実行入口と工程境界は [Host Runtime Contract](../../references/host-runtime-contract.md#入口と工程境界)、native Skill / Task がない場合の実行は [Host workflow operations](../../references/host-workflow-operations.md) に従う。nested 呼出しは caller の runtime 選択を引き継ぐ。
+
 新規 Issue を作成し、GitHub Projects に登録する。重複検出・親 Issue 候補検出・XL 自動分解を含む。
 
 **途中で止まったらユーザーは `/rite:recover` で再開する**。
@@ -179,10 +181,12 @@ rationale: references/rationale.md#ask-only-user-unique
 
 5. **質問の発行**: (b) のみを AskUserQuestion で確認し、各問に推奨案を付ける（第 1 選択肢を推奨とする）。
 
-**制約**:
+**制約**（成果物パスの条件を、仮定 0 件・全仮定解決による省略より先に評価する。確認は手順 5 の質問に含め、質問上限の枠を増やさない）:
 
 | 条件 | 挙動 |
 |------|------|
+| Where が空 かつ What が計測・判断・調査の記録 かつ 探索サマリに実パスなし | 対象ファイルのパスを (b) とし、`docs/designs/{slug}.md` を推奨案として確認する。承諾または別パス → Section 4.1 File 列。中止 → workflow 終了 |
+| 探索サマリの「成果物」または「確定したこと」に実パスあり | そのパスを Section 4.1 に載せ、再質問しない |
 | 仮定 0 件 | 質問せず 4.1 へ進む（空の AskUserQuestion を出さない） |
 | (b) が 4 件以上（従来仮定 + 盲点由来の合計） | 影響の大きい順に 3 問へ絞り、溢れた分は (c) として body に明文化する |
 | 見込み XS / S | 質問は最大 1 問に抑制する。盲点列挙（手順 2）はスキップする |
@@ -219,11 +223,26 @@ Read tool で以下を読み込む:
 1. **Complexity Gate 適用**: 確定 Complexity の列で `M`(MUST) を必ず含め、`S`(SHOULD) は Step 1.3 で情報が得られた場合のみ含め、`O`(OMIT) は省略
 2. **Type Core Section (Section 3) 選択**: Step 4.1 で確定した値は **Commit Type**（feat/fix/...）。[`default.md` Type Definitions](../../templates/issue/default.md#type-definitions) の crosswalk で **Contract Type**（Feature/BugFix/...）へ対応付け、その Contract Type に対応する Section 3 を [Step 2 mapping](./references/contract-section-mapping.md#step-2-type--type-core-section-section-3-mapping) で 1 つ選択する。Section 0 Meta の `**Type**` には Step 4.1 で確定した Commit Type をそのまま記載し、Step 4.4 完了レポートの Type と一致させる（crosswalk は Section 3 選択のためにのみ用い、Meta 値は変換しない）
 3. **入力のマッピング**: Step 1.3 で抽出した What/Why/Where/Scope/Constraints を [Step 3 mapping](./references/contract-section-mapping.md#step-3-perspective--target-sections-mapping) と [Section Inclusion Rules](./references/contract-section-mapping.md#section-inclusion-rules) に従って各 Section へ反映（What → Section 1 Goal / Why → Section 1-2 / Where → Section 4.1 Target Files / Scope → Section 2 Scope(In/Out) / Constraints → Section 4.5 / Section 7）。あわせて Step 4.0 で **defer** された仮定があれば Section 1 の `Assumptions / Open Questions` サブセクションへ記載する（仮定が無ければ当該サブセクションは省略）。ステップ 1.3.1 で探索サマリを検出した場合は [Step 3.1 mapping](./references/contract-section-mapping.md#step-31-探索サマリ-section--contract-section-mapping-riteunknowns-連携時) を併用し、「却下した代替案」を Section 9 Decision Log の素材として反映する
-4. **MUST だが情報未収集の Section**: 空見出しを残さず `<!-- 情報未収集 -->` プレースホルダーを挿入
+4. **MUST だが情報未収集の Section**: 空見出しを残さず `<!-- 情報未収集 -->` プレースホルダーを挿入。ただし Section 4.1 File 列は例外とし、プレースホルダーを置かず後段の実パス検査の「実パス 0 行」として扱う
 
 **Step 3: AC / Test 数の整合**
 
 `template-structure.md` の AC count guideline と Minimum test rows に従い、確定 Complexity に応じた AC・T-xx 行数を満たす。各 AC は最低 1 つの T-xx に対応させ、Output Validation Checklist で検証する。
+
+**Step 4: 上段・タイトル・図**
+
+`template-structure.md` の「上段要約」「図の選択規則」「契約層の折りたたみ」を適用する。タイトルは内部機構名より変更の効果を示す。What / Why・Scope・AC から3ブロックを生成し、用語は必要なときだけ説明する。経緯識別子禁止と Output Validation Checklist を作成前に検査する。
+
+**Target Files 実パス検査**（単一 Issue と Sub-Issue body。ステップ 5 の親仕様書は対象外）:
+
+File 列のセルが実パス ⇔ (`/` を含む、または `.` + 英数字の拡張子を含む) かつ `なし` / `N/A` / `n/a` / `（コード変更なし）` / 括弧書きのみ / `<!-- 情報未収集 -->` ではない。
+
+| 判定 | アクション |
+|------|-----------|
+| 実パス 1 行以上 | 非パス行が混在しても通過。経緯識別子禁止と Checklist 他行を続けて実施する |
+| 実パス 0 行 | 当該 body を Write せず、Issue 作成 helper を呼ばない（単一: 4.3 の `create-issue-with-projects.sh`、分解: 5.3 (C) の `decompose-issues.sh`）。成果物をファイルにする案内を 1〜2 行出し、単一は 4.2、分解は 5.3 (B) の当該 Sub-Issue body 生成へ戻って再検査する。中止以外は workflow 終了しない |
+
+図の選択表に従い、`svg_allowed=true` なら SVG を第一候補として Write tool で `.svg` を生成する。図なしは上段に `<!-- 図なし: {理由} -->` を残す。**Write tool** で添付パス配列を JSON ファイルへ保存する（添付なしは `[]`）。その絶対パスを `{ATTACHMENTS_JSON_FILE}` として 4.3 へ渡す。添付 SVG は作成コマンドの終了まで保持する。
 
 生成した body はそのまま Step 4.2.1 の検証を経て Step 4.3 で `create-issue-with-projects.sh` に tmpfile 経由で渡す。
 
@@ -280,6 +299,7 @@ args_json=$(jq -n \
   --arg title "{title}" \
   --arg body_file "$tmpfile" \
   --argjson labels "$labels_json" \
+  --slurpfile attachments "{ATTACHMENTS_JSON_FILE}" \
   --argjson enabled true \
   --argjson project_number {project_number} \
   --arg owner "{owner}" \
@@ -292,7 +312,7 @@ args_json=$(jq -n \
   --arg iter_mode "none" \
   --arg source "interactive" \
   '{
-    issue: { title: $title, body_file: $body_file, labels: $labels },
+    issue: { title: $title, body_file: $body_file, labels: $labels, attachments: $attachments[0] },
     projects: {
       enabled: $enabled,
       project_number: $project_number,
@@ -331,6 +351,8 @@ if [ "$project_reg" = "failed" ]; then
 fi
 ```
 
+添付ありの作成後は body を取得して添付 URL への置換を確認する。helper が非ゼロでも `issue_url` があれば作成済みなので create を再試行しない。元 stderr を表示し、報告に「添付失敗」と作成済み URL、`gh issue edit --attach` による再添付の案内を含める。
+
 ### 4.4 完了レポート
 
 完了レポートの最終 2 行は `<!-- skill return signal: caller must continue next step -->` + `<!-- [create:returned-to-caller:{issue_number}] -->`。user-visible な末端は `✅ ...`。
@@ -368,6 +390,8 @@ rationale: references/rationale.md#no-flow-state
 
 ### 5.1 仕様書生成
 
+構造と難所は reasoning で決め、本文は output で 1 回だけ書く。
+下書きを reasoning で全文作ってから再出力しない。
 大型 Issue から「設計仕様書」を生成する。以下のセクションを含む:
 
 ```markdown
@@ -421,15 +445,18 @@ echo "[CONTEXT] DECOMPOSE_WORKDIR=$workdir"
 
 **(B) body / spec の生成（Write tool）**
 
+分解経路の親も共通選択表に従う。親に SVG を付けるときは spec.json の `parent.attachments` に絶対パスを書く（省略時は `[]`）。Sub-Issue は親の図を再掲せず「親 Issue の図の {部分} を担当」と一文で指す。Step 4.2 の上段要約・契約層は適用する。
+
 直前の `[CONTEXT] DECOMPOSE_WORKDIR=` から `{DECOMPOSE_WORKDIR}` を読み取り、以下を **Write tool** で書く（heredoc を使わない）:
 
-1. `{DECOMPOSE_WORKDIR}/parent_body.md` ← §5.1 で生成し §5.1.1 の検査結果を反映した設計仕様書（`{spec_document}`）の raw 内容
+1. `{DECOMPOSE_WORKDIR}/parent_body.md` ← Step 4.2 Step 4 の上段（要約 3 ブロックと図スロット。SVG なら `![説明]({DECOMPOSE_WORKDIR}/diagram.svg)` 参照、Mermaid なら fence、図なしなら `<!-- 図なし: {理由} -->`）を前置し、続けて §5.1 で生成し §5.1.1 の検査結果を反映した設計仕様書（`{spec_document}`）の raw 内容
 2. 各 Sub-Issue について `{DECOMPOSE_WORKDIR}/sub_{i}_body.md`（i = 1..{sub_count}）← 各 Sub-Issue body の raw 内容（Step 4.2 の Implementation Contract フォーマットで生成する。各 Sub-Issue の確定 Complexity に応じて Complexity Gate を適用）
-3. `{DECOMPOSE_WORKDIR}/spec.json` ← 下記スキーマ。`body_file` は上記で書いた絶対パスを指す:
+3. `{DECOMPOSE_WORKDIR}/diagram.svg`（SVG 時のみ）← テーマ中立の図。parent_body の参照と spec の `attachments` は同じ絶対パスを使う。Mermaid・図なしでは書かない
+4. `{DECOMPOSE_WORKDIR}/spec.json` ← 下記スキーマ。`body_file` は上記で書いた絶対パスを指す:
 
 ```json
 {
-  "parent": { "title": "{parent_title}", "body_file": "{DECOMPOSE_WORKDIR}/parent_body.md" },
+  "parent": { "title": "{parent_title}", "body_file": "{DECOMPOSE_WORKDIR}/parent_body.md", "attachments": ["{DECOMPOSE_WORKDIR}/diagram.svg"] },
   "sub_issues": [
     { "title": "{sub_1_title}", "body_file": "{DECOMPOSE_WORKDIR}/sub_1_body.md", "complexity": "{sub_1_complexity}" }
   ],
@@ -446,7 +473,7 @@ echo "[CONTEXT] DECOMPOSE_WORKDIR=$workdir"
 }
 ```
 
-> `sub_issues` 配列は Sub-Issue 件数 `{sub_count}` だけ要素を持たせる（各反復で `{sub_N_title}` / `{sub_N_complexity}` と body ファイルパスを実値置換）。親 labels には helper が `epic` を自動付与する（spec へ付与不要）。親 complexity は helper 内で `XL` 固定。
+> `sub_issues` 配列は Sub-Issue 件数 `{sub_count}` だけ要素を持たせる（各反復で `{sub_N_title}` / `{sub_N_complexity}` と body ファイルパスを実値置換）。親 labels には helper が `epic` を自動付与する（spec へ付与不要）。親 complexity は helper 内で `XL` 固定。`parent.attachments` は例の SVG パスを実値置換し、親に SVG を付けないとき（Mermaid・図なし）は `[]` にする（省略時も `[]`）。Sub-Issue には載せない。
 
 **(C) helper 呼び出し（単一 bash block）**
 
@@ -463,7 +490,7 @@ bash {plugin_root}/scripts/decompose-issues.sh --spec "{DECOMPOSE_WORKDIR}/spec.
 
 LLM は以下を実行する:
 1. CONTEXT marker (`PARENT_ISSUE_NUMBER`, `SUB_ISSUE_NUMBERS`) を直前の bash 出力から読み取る
-2. `tmpfile_read` の内容を Read tool で取得し、Sub-Issues セクション追記版を `tmpfile_write` へ Write tool で書く
+2. `tmpfile_read` の内容を Read tool で取得し、Sub-Issues セクション追記版を `tmpfile_write` へ Write tool で書く。`parent.attachments` が非空のときは `tmpfile_read` の本文で `![` 参照が添付 URL に置換済みかを確認し、未置換なら 4.3 と同じ「添付失敗」報告（作成済み URL と、本文に残った参照と同じ絶対パスに一時 SVG を再生成し（`mkdir -p` で作業ディレクトリを再作成）、そのパスを `gh issue edit --attach` に渡して再添付する案内）を出す
 
 ### 5.5 Step 3: apply（別 bash block）
 

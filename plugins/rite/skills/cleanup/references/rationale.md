@@ -37,13 +37,13 @@ marker 皆無は「節ごと未実行 or 判定未到達」として fail-loud �
 
 GitHub code search は `[` / `]` を無視しほぼ全 Issue を返す。`--jq '.[0]'` で先頭を盲目採用すると
 standalone closing Issue が自分自身や無関係 Issue を親と誤検出する。複数候補 + 自己除外 + body
-再検証は #1629 で close.md / projects-integration.md §2.4.7.1 に入ったループと同じ方針。
+再検証は close.md / projects-integration.md §2.4.7.1 に入ったループと同じ方針。
 
 ## wm-source-content
 
 PostToolUse hook が作る空 stub（`phase: init`・進捗セクションなし）はファイルとして存在する。
 存在検査だけだと stub を採用してしまい Issue コメント側 fallback が発火しない（存在と成功を同一視
-しないため）。#2141。
+しないため）。
 
 ## cleanup-source-label
 
@@ -52,20 +52,30 @@ PostToolUse hook が作る空 stub（`phase: init`・進捗セクションなし
 
 ## exitworktree-delegation
 
-分岐の基準を「worktree 内か」ではなく ExitWorktree 可否にしたのは #2133。path 入場
-（`in_worktree_unrecorded`）では ExitWorktree が no-op になり、main checkout 操作が harness の
-worktree 隔離ガードに拒否される（実測）。ガードが拒否するのは Bash ツール呼び出しのコマンド文字列
-に直接 `cd` / `git -C` を書く形であり、helper 内部の `cd` は拒否されない（ステップ 7 の
-`pr-cycle-cleanup.sh` は内部で main checkout へ `cd` できている）。helper へ閉じ込めれば自動化
-できる余地は残るが、それは「worktree 内から全項目を完走させる」という現行設計の Non-goal。
-ガード迂回は設計違反 — ガードは正当に機能している。
+保存 state の無い path 入場では所有する worktree と退出能力を確定できない。Claude の隔離ガードで main checkout 操作が拒否される経路もあるため、`in_worktree_unrecorded` は従来の委譲を保つ。保存 state のある入場は共通作業先契約で native / 検証済み作業先指定を選び、退出結果を確認する。分類 marker はツール能力の証拠にはならない。拒否を helper 内の `cd` に移して回避しない。
+
+## helper-rc-capture
+
+ステップ 4-W の 2 呼び出し（detect / remove）とステップ 6 の state purge —— 計 3 つの helper
+境界は、いずれも「marker が出なければ完了扱い」に倒れる消費側と対になっている（ステップ 12 の `{session_worktree_check}` は
+`WORKTREE_REMOVE_*` 不在を削除成功と読み、`{review_cleanup_check}` の state 削除側も同様）。この
+規約は helper が**起動すらしなかった**場合に破れる — `{plugin_root}` の未解決置換・helper 欠落
+（rc=127）、helper 非可読（rc=126）、引数不正（rc=2）ではプロセスが marker を 1 本も出さない。
+抽出前はインライン bash だったためこの経路自体が存在せず、必ず marker を出すか実際に処理するかの
+どちらかだった。よって呼び出し側で rc を捕捉し、既存の失敗 marker へ変換する。helper が内側の
+archive helper に対して既に採っている形を、抽出で新設した外側の境界にも適用しているだけで、
+判定表そのものは変えない。
+
+ステップ 6.0（follow-up Issue 起票、`_fu_rc`）も同じ rc → marker の形を採るが、本 anchor の
+対象には数えない。消費側が marker 不在を「完了」と読まないため、上記の規約破れが起きないため。
+なお `cleanup-session-worktree-teardown.sh` 内で内側の分類 helper を呼ぶ境界も同型の扱いにして
+あり（失敗を `none` ではなく `CLEANUP_WT=unknown` へ寄せる）、外側と内側で「分類不能」の表現を
+揃えている — `none` は消費側が唯一「行ごと省略」に routing する値なので、そこへ落とすと検出失敗が
+報告から消える。
 
 ## live-cwd-self-exclusion
 
-自セッションを live-cwd から除外しないと、ステップ 2 の `ExitWorktree(keep)` が no-op / 失敗に
-終わった経路で自セッションを「live」と誤検出し、cleanup 自身を理由に削除をブロックする。
-全プロセスを列挙する `worktree-live-cwd.sh` 自体は変えず、self-exclusion は
-`worktree-foreign-cwd.sh` に閉じる。
+削除の前提は main checkout への退出検証成功である。その後の他セッション在席判定だけを `worktree-foreign-cwd.sh` の self-exclusion が担う。退出失敗を無視するためには使わない。
 
 ## session-worktree-reap
 
@@ -77,16 +87,13 @@ reap せず、消滅済みなら stale 参照を drop し、存在すれば verb
 実 reap の消費は Step 5 の gated bypass のみ。
 
 admin dir 半壊（corpse）では checkout 中 branch を git で解決できず、pr-cycle-cleanup.sh Step 5
-のブランチ名 manifest bypass（#1966）が構造的に効かない。パス自体を事前記録すれば corpse age
+のブランチ名 manifest bypassが構造的に効かない。パス自体を事前記録すれば corpse age
 guard が 24h 待ちをバイパスできる。記録は `{pr_merged}=true` のときのみ（AC-4: 未マージ PR の
 強制 cleanup では記録しない）。record 自体は non-blocking 契約（rite-tmp-artifact.sh）。
 
 ## main-root-cd
 
-worktree 自己削除後は harness の cwd 追跡のみが main へ移り、この Bash 永続シェルの cwd は削除
-済み worktree に残る。ステップ 4 の base 更新はこの main_root へ明示的に cd して実行する必要が
-ある。`git worktree list --porcelain` の先頭 worktree entry は常に main checkout（git の仕様上
-保証）なので、削除がまだ起きていない 4-W 時点で取得すれば cwd の状態に関わらず正しい値が取れる。
+削除済み worktree を後続 shell が再使用しないよう、削除前に main root を確定し、退出を検証する。各 shell の作業先を明示しておけば、cwd の永続化や harness の内部追跡に依存せず base 更新以降を実行できる。
 
 ## base-update-classify
 
@@ -97,7 +104,7 @@ dirty な基点ブランチを黙って上書きしないため。破棄・stash
 
 ## remote-delete-markers
 
-成功側も positive marker を出すのは、marker 不在を「削除成功」の符号化に使わないため（#2016）。
+成功側も positive marker を出すのは、marker 不在を「削除成功」の符号化に使わないため。
 不在を成功と読むと、本ブロックがそもそも実行されなかった経路・出力が compact で失われた経路と
 削除成功が区別できず、consumer が不在を根拠に完了と断定する。全経路が marker を持てば、marker
 不在は「実行結果を確認できていない」という別の意味だけを持つ（`{base_update_check}` と同形）。
@@ -118,8 +125,8 @@ dirty な基点ブランチを黙って上書きしないため。破棄・stash
 ## nb-sweep-done-sweep
 
 `nb-sweep-done-{pr}.txt` は 5.S 再入の権威（会話 marker は観測用）。寿命は本 run — 0.6 の
-`fresh || cur_cc == 0` で消し、cleanup でも回収する。cleanup まで残すと再 iterate と
-post-breaker 5.S が skip され、未消化 0 の再保証が死ぬ。
+`fresh || cur_cc == 0` で消し、cleanup でも回収する。cleanup まで残すと再 iterate の
+5.S が skip され、未消化 0 の再保証が死ぬ。
 
 ## wiki-worktree-persist
 
@@ -134,7 +141,7 @@ silent skip する事象が確認されている（`skills/ready/SKILL.md` Phase
 ## wiki-push-batch
 
 ingest.md はページ更新のたびに push していた旧挙動を、raw source ごとに commit のみ行い ingest
-フロー末尾で 1 回だけ push する方式に変更した（#1941 / AC-1）。`push=failed` 部分文字列検出は
+フロー末尾で 1 回だけ push する方式に変更した（AC-1）。`push=failed` 部分文字列検出は
 そのまま機能する — 集約 push が失敗した場合も、その 1 回の push 結果として ingest の stdout に
 同じ文字列が現れるため、本ステップの検出ロジック自体の変更は不要（ローカル commit は保持され、
 次回 ingest が自動で flush を試みる — AC-2 / SHOULD）。

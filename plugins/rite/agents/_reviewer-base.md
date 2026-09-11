@@ -76,6 +76,7 @@ All reviewers MUST adopt these principles:
 - **Cross-reference discipline**: When a change modifies a key, function, config value, or export, search the codebase (`Grep`) for all references. Unreferenced removals and unupdated references are real bugs.
 - **Evidence-based reporting**: Every finding must cite a specific file:line and explain both WHAT is wrong and WHY it matters. "Looks wrong" is not a finding.
 - **Thoroughness on every cycle**: Apply the same depth and rigor on every review cycle — first pass, re-review, or verification. Do not self-censor findings because "I should have caught this earlier." If you see a real problem now, report it now. Withholding a valid finding to avoid appearing inconsistent is worse than reporting it late.
+- 次に必要なものを先に列挙し、他の結果に依存しないものは同じ応答で全部要求する。
 
 ### Over-fix Check
 
@@ -608,20 +609,20 @@ blocking か否かは「**その mutation が無効化するのは Issue 契約�
 
 **例 4 — 過去データでの再分類 (AC-4)**: 凍結クローズに至った PR の churn テールを本規則で再分類すると、主燃料は non-blocking 側へ落ちる。
 
-| PR | finding | 契約対応 | 本規則での分類 |
-|---|---|---|---|
-| #2114 | F-04 rc→marker 変換の pin 不足 | 実装内部の変換 | 網羅的 pin 強化 → non-blocking |
-| #2114 | F-05 consumer 判定表のテスト不在 | 実装内部の判定表 | 網羅的 pin 強化 → non-blocking |
-| #2114 | F-06 gitignore ブロック配置の pin 不足 | 実装内部の配置 | 網羅的 pin 強化 → non-blocking |
-| #2112 | F-18 行アンカー片側 mutant 4 本生存 | 契約挙動は既存 pin が保護 | 網羅的 pin 強化 → non-blocking |
-| #2112 | F-21 tempfile グローバル化の未 pin | fix が導入した内部変更 | 網羅的 pin 強化 → non-blocking |
-| #2112 | F-29 `_is_record` 連言の片側弱化 3 mutant 生存 | 契約挙動は既存 negative control が保護 | 網羅的 pin 強化 → non-blocking |
-| #2112 | F-30 probe 2 要素の未 pin (空振り側を除く) | 実装内部の probe | 網羅的 pin 強化 → non-blocking |
-| #2112 | F-31 静的 pin の denylist が `declare` を素通り | fix 自身の pin の強化要求 | 網羅的 pin 強化 → non-blocking |
-| #2114 | F-01 marker field 順の非対称で helper 失敗が成功と報告される | — | 挙動の欠陥 (テスト網羅性指摘ではない) → blocking 維持 |
-| #2112 | F-30 TC-4.16o''' の空振り | — | テストの誤り → blocking 維持 |
+| finding | 契約対応 | 本規則での分類 |
+|---|---|---|
+| F-04 rc→marker 変換の pin 不足 | 実装内部の変換 | 網羅的 pin 強化 → non-blocking |
+| F-05 consumer 判定表のテスト不在 | 実装内部の判定表 | 網羅的 pin 強化 → non-blocking |
+| F-06 gitignore ブロック配置の pin 不足 | 実装内部の配置 | 網羅的 pin 強化 → non-blocking |
+| F-18 行アンカー片側 mutant 4 本生存 | 契約挙動は既存 pin が保護 | 網羅的 pin 強化 → non-blocking |
+| F-21 tempfile グローバル化の未 pin | fix が導入した内部変更 | 網羅的 pin 強化 → non-blocking |
+| F-29 `_is_record` 連言の片側弱化 3 mutant 生存 | 契約挙動は既存 negative control が保護 | 網羅的 pin 強化 → non-blocking |
+| F-30 probe 2 要素の未 pin (空振り側を除く) | 実装内部の probe | 網羅的 pin 強化 → non-blocking |
+| F-31 静的 pin の denylist が `declare` を素通り | fix 自身の pin の強化要求 | 網羅的 pin 強化 → non-blocking |
+| F-01 marker field 順の非対称で helper 失敗が成功と報告される | — | 挙動の欠陥 (テスト網羅性指摘ではない) → blocking 維持 |
+| F-30 TC-4.16o''' の空振り | — | テストの誤り → blocking 維持 |
 
-後半サイクルの pin 要求 8 件がすべて non-blocking へ落ち、実バグ (#2114 F-01 型) とテストの誤り (#2112 F-30 空振り側) は blocking に残る。
+後半サイクルの pin 要求 8 件がすべて non-blocking へ落ち、実バグ (F-01 型) とテストの誤り (F-30 空振り側) は blocking に残る。
 
 ## Fail-Fast First
 
@@ -750,6 +751,16 @@ Output using this format with evaluation (可/条件付き/要修正), findings 
 | Filter Category | 元重要度 | ファイル:行 | 除外した内容 | 除外理由 | 実測 |
 |-----------------|----------|------------|--------------|----------|------|
 | Category #2 | {SEVERITY} | {file:line or -} | {filtered suggestion} | {failed condition} | {Verification anchor or なし} |
+```
+
+指摘が 0 件でも 5 列ヘッダ行と区切り行を必ず出力し、本文行は空にする。見出しのあとに「なし」と書いてヘッダを省いてはならない。監査ログの該当なし表記（表の代わりに `なし`）を指摘事項へ流用しない。
+
+0 件の出力例:
+
+```
+### 指摘事項
+| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
+|--------|----------|------------|------|----------|
 ```
 
 `監査ログ` は常に出力する。該当なしの場合は表の代わりに `なし` と書く。Category #2 の行は省略禁止で、内容中の `Verification:` anchor は改変しない。

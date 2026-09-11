@@ -158,7 +158,7 @@ trap '_rite_watchdog_cleanup; exit 129' HUP
 
 # --- Repo info ---
 # git-remote parse first: works even when `origin` is an SSH Host alias
-# unrecognized by gh's host allowlist (#1899). Falls through to
+# unrecognized by gh's host allowlist. Falls through to
 # `gh repo view` (stderr captured to repo_view_err per the 2-site contract
 # declared above) whenever the parse fails (no origin remote, unparseable
 # URL, charset-rejected) — its stderr is captured so a two-sided failure

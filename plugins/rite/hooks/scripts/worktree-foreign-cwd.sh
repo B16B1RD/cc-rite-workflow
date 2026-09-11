@@ -12,14 +12,14 @@
 #   first calls ExitWorktree(keep), which retreats the harness cwd back to the
 #   main checkout — after that, the plain worktree-live-cwd.sh probe reports rc=1
 #   and removal proceeds. But when ExitWorktree was a no-op (the worktree was
-#   path-entered WITHOUT an EnterWorktree session record — the #1622
+# path-entered WITHOUT an EnterWorktree session record — the
 #   in_worktree_unrecorded case — or a resume re-entry), the harness cwd stays
 #   inside the worktree, so the plain probe reports rc=0 and cleanup DEFERS the
 #   removal — blocking on the very session that is running cleanup (self-blocking).
 #   pr-cycle-cleanup.sh Step 5 already avoids this for the lazy reaper via its
 #   Gate 0 self-exclusion; this helper gives cleanup.md the same self-exclusion
 #   WITHOUT modifying worktree-live-cwd.sh (its OS detection method is unchanged —
-#   #1670 Non-Target §4.2). The caller passes --self-root (its harness pid); every
+# Non-Target §4.2). The caller passes --self-root (its harness pid); every
 #   process in that pid subtree is "self" and ignored, so only a genuine OTHER
 #   session standing in the tree defers the removal (AC-3).
 #
@@ -30,7 +30,7 @@
 #   0 = a FOREIGN live process has cwd == <dir> or nested under it → caller DEFERS
 #   1 = no foreign live cwd (only the self pid-subtree, or nobody) → caller REMOVES
 #   2 = cannot determine (no /proc, or bad arguments) → caller decides. cleanup.md
-#       removes on rc=2, matching the pre-#1670 worktree-live-cwd.sh rc=2
+# removes on rc=2, matching the pre- worktree-live-cwd.sh rc=2
 #       backward-compat behavior (so non-/proc hosts behave exactly as before).
 #
 # Portability: /proc only (Linux). Without /proc (e.g. macOS) returns 2 — the
@@ -77,7 +77,7 @@ fi
 [ -n "$target_canon" ] || target_canon="$target"
 
 # Without /proc we cannot read per-process cwd → undeterminable (rc 2). The caller
-# removes on rc=2 (pre-#1670 backward-compat, same as worktree-live-cwd.sh).
+# removes on rc=2 (pre- backward-compat, same as worktree-live-cwd.sh).
 [ -d /proc ] || exit 2
 
 # Robust PPID read from /proc/<pid>/stat. The `comm` field is wrapped in parens and

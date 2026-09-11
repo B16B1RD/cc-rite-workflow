@@ -336,6 +336,33 @@ tc9() {
 }
 run_case_on_both tc9
 
+# --- TC-10: raw C1 in a passing file must not reach runner stdout ---
+
+echo ""
+echo "=== TC-10: 生 C1 (0x9b) を含むテスト出力は再印刷時に不正 UTF-8 のまま残らない ==="
+tc10() {
+  local runner="$1" tag="$2" _fail_marker="$3" success_marker="$4" _entry_fmt="$5" _count_line="$6" dir
+  dir=$(stage_runner "$runner" "tc10-$tag")
+  {
+    echo '#!/bin/bash'
+    echo 'echo before-c1'
+    printf 'printf '"'"'\\x9b\\n'"'"'\n'
+    echo 'echo after-c1'
+    echo 'exit 0'
+  } > "$dir/c1.test.sh"
+  run_staged "$dir"
+  assert_rc "TC-10/$tag raw-C1 file still exits 0" 0 "$RUN_RC"
+  assert_contains "TC-10/$tag surrounding lines survive" "before-c1"
+  assert_contains "TC-10/$tag trailing line survives" "after-c1"
+  assert_contains "TC-10/$tag success line is printed" "$success_marker"
+  if printf '%s' "$RUN_OUT" | LC_ALL=C grep -qF "$(printf '\x9b')"; then
+    fail "TC-10/$tag runner reprinted raw C1 (0x9b)"
+  else
+    pass "TC-10/$tag runner did not reprint raw C1 (0x9b)"
+  fi
+}
+run_case_on_both tc10
+
 # --- Summary ---
 echo ""
 echo "Results: $PASS passed, $FAIL failed$( [ "$SKIP" -gt 0 ] && printf ", %s skipped" "$SKIP" )"

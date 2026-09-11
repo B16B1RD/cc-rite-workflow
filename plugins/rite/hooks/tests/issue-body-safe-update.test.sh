@@ -115,7 +115,7 @@ printf 'b%.0s' $(seq 1 250) > "$tmp_write"
 rc=0
 out=$(PATH="$mock_bin:$PATH" MOCK_LOG="$mock_log" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 200 2>&1) || rc=$?
 assert_exit "TC-14 apply happy-path → exit 0" 0 "$rc"
-# The `--repo` flag sits between the issue number and --body-file since #1914, so
+# The `--repo` flag sits between the issue number and --body-file since, so
 # this must not re-tighten into an adjacency match on 'issue edit 999 --body-file'.
 if grep -qE 'issue edit 999 .*--body-file' "$mock_log"; then
   pass "TC-15 apply called gh issue edit with --body-file"
@@ -123,7 +123,7 @@ else
   fail "TC-15 mock gh log missing 'issue edit ... --body-file': $(cat "$mock_log")"
 fi
 # Without an explicit --repo, gh infers the repo from git remotes and fails when
-# `origin` is an SSH Host alias it cannot expand (#1914). The test process runs
+# `origin` is an SSH Host alias it cannot expand. The test process runs
 # inside this repo, so git-remote resolution succeeds and the flag must be present.
 if grep -qE 'issue edit 999 --repo [^ ]+/[^ ]+ --body-file' "$mock_log"; then
   pass "TC-15b apply passes --repo owner/repo explicitly (SSH host alias safety)"
@@ -483,7 +483,7 @@ GHEOF
 done
 
 echo ""
-echo "=== Phase 16: owner/repo resolution → explicit --repo, with degrade fallback (#1914) ==="
+echo "=== Phase 16: owner/repo resolution → explicit --repo, with degrade fallback ==="
 # fetch mode must carry the same --repo flag as apply: the SSH-host-alias failure
 # hit `gh issue view` first, and fixing only one mode leaves the checklist-update
 # path (implement 5.1.1.1) broken while apply looks healthy.
@@ -547,7 +547,7 @@ printf '%s\n' "$out" | sed -n 's/^tmpfile_[a-z]*=//p' | xargs -r rm -f
 rm -f "$mock_log7"
 
 # Tier 3 (degrade): neither path yields an owner/repo. The script must fall back
-# to the pre-#1914 invocation shape rather than aborting — and must say so,
+# to the pre- invocation shape rather than aborting — and must say so,
 # because a silent fallback is indistinguishable from the bug this fix removes.
 cat > "$mock_bin7/gh" <<'MOCK_NO_REPO'
 #!/bin/bash
@@ -578,4 +578,4 @@ printf '%s\n' "$out" | sed -n 's/^tmpfile_[a-z]*=//p' | xargs -r rm -f
 rm -f "$mock_log7"
 rm -rf "$mock_bin7" "$norepo_dir"
 
-print_summary "$(basename "$0")" "If you weaken or remove the 50% shrinkage guard / empty-write rejection / missing-args check / gh-edit error capture / _emit_body_update_incident fallback in issue-body-safe-update.sh, body truncation or silent auth-failure regressions become invisible. Dropping the explicit --repo flag likewise re-breaks every body update under an SSH host alias (#1914). Keep the guards intact and update the test if the guards intentionally change."
+print_summary "$(basename "$0")" "If you weaken or remove the 50% shrinkage guard / empty-write rejection / missing-args check / gh-edit error capture / _emit_body_update_incident fallback in issue-body-safe-update.sh, body truncation or silent auth-failure regressions become invisible. Dropping the explicit --repo flag likewise re-breaks every body update under an SSH host alias. Keep the guards intact and update the test if the guards intentionally change."

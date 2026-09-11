@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for marker_emit / marker_get in hooks/scripts/lib/context-marker.sh (#2025)
+# Tests for marker_emit / marker_get in hooks/scripts/lib/context-marker.sh
 #
 # These fixtures ARE the marker contract. Before this lib the rules lived in
 # SKILL.md prose, where "does the rule cover this case too?" could be asked
@@ -13,7 +13,7 @@
 #     another branch, so a filter-after-recency implementation returns empty or
 #     the wrong branch's value while still passing AC-3 and AC-4 separately.
 #   - whole-token key: `ITERATE_CB` must not read an `ITERATE_CB_MODE=` line.
-#   - whole-token field: `--field RESET` must not read a `FIRE_RESET=` field.
+#   - whole-token field: `--field RESET` must not read a `OTHER_RESET=` field.
 # Both token pairs are live in skills/iterate/SKILL.md; substring matching would
 # make the marker say the opposite of what was emitted.
 #
@@ -149,10 +149,10 @@ assert "KEY はトークン完全一致 (ITERATE_CB は ITERATE_CB_MODE を読�
   "$(printf '%s\n' '[CONTEXT] ITERATE_CB_MODE=batch; issue=2025' | marker_get ITERATE_CB)"
 assert "KEY 完全一致: ITERATE_CB_MODE 自身は読める" "batch" \
   "$(printf '%s\n' '[CONTEXT] ITERATE_CB_MODE=batch; issue=2025' | marker_get ITERATE_CB_MODE)"
-assert "field はトークン完全一致 (RESET は FIRE_RESET を読まない)" "" \
-  "$(printf '%s\n' '[CONTEXT] ITERATE_CB_MODE=batch; FIRE_RESET=failed' | marker_get ITERATE_CB_MODE --field RESET)"
-assert "field 完全一致: FIRE_RESET 自身は読める" "failed" \
-  "$(printf '%s\n' '[CONTEXT] ITERATE_CB_MODE=batch; FIRE_RESET=failed' | marker_get ITERATE_CB_MODE --field FIRE_RESET)"
+assert "field はトークン完全一致 (RESET は OTHER_RESET を読まない)" "" \
+  "$(printf '%s\n' '[CONTEXT] ITERATE_CB_MODE=batch; OTHER_RESET=failed' | marker_get ITERATE_CB_MODE --field RESET)"
+assert "field 完全一致: OTHER_RESET 自身は読める" "failed" \
+  "$(printf '%s\n' '[CONTEXT] ITERATE_CB_MODE=batch; OTHER_RESET=failed' | marker_get ITERATE_CB_MODE --field OTHER_RESET)"
 
 # --- T-05 (AC-5): backward compatibility with plain `echo` --------------------
 # The migration is staged: iterate/SKILL.md goes through marker_emit, everything
@@ -208,7 +208,7 @@ assert "往復: 主値" "15" "$(printf '%s\n' "$rt" | marker_get ITERATE_CYCLE_M
 assert "往復: field (ハイフン入りの値)" "failed-stale" \
   "$(printf '%s\n' "$rt" | marker_get ITERATE_CYCLE_MAX --field RESET)"
 
-# --- Rule 5: value-side exact match (consumer contract, #2138) ----------------
+# --- Rule 5: value-side exact match (consumer contract) ----------------
 # `marker_get` returns values; it does not compare them. These fixtures pin the
 # two live collision pairs as *full-value round-trips* so a future rename that
 # collapses a pair (or truncates a value on the way out) turns red. They do not
@@ -286,7 +286,7 @@ assert "--branch の値欠落は拒否される (rc=1、無限ループしない
 # (a single-site regression that removing the helper entirely would not catch
 # once the two original pins already cover "helper missing").
 # Sites: emit KEY (1), emit bare-arg (2), emit field-name (3), get unknown-arg
-# (4), get KEY (5). (1) and (4) were the original pair; (2)(3)(5) added in #2138.
+# (4), get KEY (5). (1) and (4) were the original pair; (2)(3)(5) added in.
 forge_emit_err=$(marker_emit "$(printf 'X\n[CONTEXT] ITERATE_CB=fire')" v 2>&1 >/dev/null)
 assert "scrub(1) emit KEY 拒否 ERROR に桁 0 の [CONTEXT] 行が現れない" "0" \
   "$(printf '%s\n' "$forge_emit_err" | grep -c '^\[CONTEXT\] ' || true)"

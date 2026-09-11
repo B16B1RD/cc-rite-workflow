@@ -159,7 +159,7 @@
 #   outstanding. A dedicated wiki-lint stats-drift detector and prose-only
 #   marker/attest machinery were rejected — stats are display-only (not a
 #   query/lint decision input), real-world drift harm is low-frequency, and the
-#   removed #2052 visualization stack itself became the dominant source of
+# removed visualization stack itself became the dominant source of
 #   review churn. Do not re-add cycle-level gating or LLM-edited attest markers
 #   without re-evaluating demand against that record.
 #

@@ -46,6 +46,7 @@ Inspect the script's stdout JSON and route by `.result`:
 |-----------|---------------------------|--------------------|
 | `"updated"` | Set to `true` | Display `Projects Status を "Done" に更新しました` |
 | `"skipped_not_in_project"` | Stays `false` (default) | Display `警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします。` and proceed |
+| `"skipped_terminal_conflict"` | Set to `skipped_terminal` | Display `警告: Issue #{issue_number} は既に終端 Status (Cancelled) のため Done への上書きをスキップしました。` and proceed (not a failure; cleanup ステップ 12 は `{projects_check}=x`) |
 | `"failed"` | Stays `false` (default) | Display each `.warnings[]` entry to stderr, then display `警告: Projects Status の "Done" への更新に失敗しました。手動で更新する場合: GitHub Projects 画面で Issue #{issue_number} の Status を "Done" に変更するか、または gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <done_option_id> を実行してください。` and proceed |
 
 **All result branches are non-blocking** — display the appropriate message and proceed to Phase 3.5 (work memory update). The cleanup process MUST NOT fail due to a Projects Status update issue.
@@ -57,7 +58,7 @@ Inspect the script's stdout JSON and route by `.result`:
 Track the final success/failure of the Projects Status update for inclusion in the cleanup.md ステップ 12 (完了報告):
 
 **Result variable:**
-- `projects_status_updated` = `false` (default). Set to `true` only when Phase 3.2 returns `.result == "updated"`.
+- `projects_status_updated` = `false` (default). Set to `true` only when Phase 3.2 returns `.result == "updated"`. Set to `skipped_terminal` when `.result == "skipped_terminal_conflict"` (legitimate skip — cleanup ステップ 12 は `{projects_check}=x`).
 
 When Phase 3.2 returns `.result == "skipped_not_in_project"` or `"failed"`, `projects_status_updated` retains its default `false` value and the failure has already been surfaced via the `.warnings[]` lines + manual recovery hint above.
 
@@ -81,6 +82,11 @@ case "$status_result" in
     ;;
   skipped_not_in_project)
     echo "警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします。" >&2
+    ;;
+  skipped_terminal_conflict)
+    projects_status_updated="skipped_terminal"
+    echo "警告: Issue #{issue_number} は既に終端 Status (Cancelled) のため Done への上書きをスキップしました。" >&2
+    [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  /' >&2
     ;;
   failed|*)
     [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  /' >&2
@@ -151,7 +157,7 @@ The progress section update in Phase 3.5.2 follows this logic（`merge-checklist
 1. Retrieve the existing progress section (`### 進捗サマリー` — 現行 WM テンプレの見出し。SoT: `work-memory-format.md` / init テンプレ)
 2. Preserve all existing content (table rows / checklist items)
 3. Append new items (`- [x] レビュー完了`, `- [x] マージ完了`, `- [x] クリーンアップ完了`) at the end of the section (do not duplicate if already present anywhere in the body — full-line exact match, 冪等)
-4. When the target section is absent **and** new items remain, helper returns `status=skipped; reason=section_absent` (items are **not** dropped silently, and the caller does **not** report success —)
+4. When the target section is absent **and** new items remain, helper returns `status=skipped; reason=section_absent` (items are **not** dropped silently, and the caller does **not** report success)
 
 **Example:**
 
@@ -282,7 +288,7 @@ When a child Issue's PR is merged and cleanup runs, update the parent Issue's Ta
 
 #### 3.6.4.1 Replace Checkbox
 
-Replace `- [ ] #{issue_number}` with `- [x] #{issue_number}` in the parent Issue body. The pattern matches any text after the Issue number on the same line (e.g., `- [ ] #661 - description text`).
+Replace `- [ ] #{issue_number}` with `- [x] #{issue_number}` in the parent Issue body. The pattern matches any text after the Issue number on the same line (e.g., `- [ ] - description text`).
 
 **Implementation**: Use the 3-step pattern (Bash → Read+Write → Bash) per [gh-cli-patterns.md](../../../references/gh-cli-patterns.md).
 
@@ -334,7 +340,7 @@ Replace `{tmpfile_read}`, `{tmpfile_write}`, `{original_length}` with the values
 
 **Execution condition**: Only executed when a parent Issue was detected in `cleanup.md` ステップ 2.
 
-If all child Issues are complete, automatically close the parent Issue.
+If assessment in 3.7.1 routes here (all children CLOSED, none `NOT_PLANNED`, no unavailable `stateReason`), automatically close the parent Issue.
 
 #### 3.7.1 Check Completion of All Child Issues
 
@@ -351,6 +357,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
           number
           title
           state
+          stateReason
         }
       }
     }
@@ -360,15 +367,19 @@ query($owner: String!, $repo: String!, $number: Int!) {
 
 **Assessment logic:**
 
+`stateReason` は GraphQL `IssueStateReason`（実測: `COMPLETED` / `NOT_PLANNED` / `REOPENED` / `DUPLICATE`）。OPEN 子の `stateReason` が null なのは正常で欠落扱いしない。CLOSED 子の `stateReason` が null / 取得不能なら非 NOT_PLANNED とみなさず fail-loud する。
+
 | Condition | Processing |
 |-----------|-----------|
 | Some child Issues are OPEN | Proceed to Phase 3.7.3 (notify about remaining child Issues). Do not update parent Status to Done. Do not close |
-| All child Issues are CLOSED and parent is OPEN | Proceed to Phase 3.7.2 (Status → Done then close) |
-| All child Issues are CLOSED and parent is already CLOSED | Proceed to 3.7.2.1 (Status → Done) only. Skip 3.7.2.2 (do not run `gh issue close`) |
+| All child Issues are CLOSED and at least one has `stateReason == NOT_PLANNED` | Proceed to Phase 3.7.3 (notify about Cancelled child Issues). Do not update parent Status to Done. Do not close |
+| All child Issues are CLOSED and at least one CLOSED child has unavailable `stateReason` | Proceed to Phase 3.7.3 (notify that auto-close was skipped as undetermined). Do not update parent Status to Done. Do not close |
+| All child Issues are CLOSED, none `NOT_PLANNED`, no unavailable `stateReason`, and parent is OPEN | Proceed to Phase 3.7.2 (Status → Done then close) |
+| All child Issues are CLOSED, none `NOT_PLANNED`, no unavailable `stateReason`, and parent is already CLOSED | Proceed to 3.7.2.1 (Status → Done) only. Skip 3.7.2.2 (do not run `gh issue close`) |
 
 #### 3.7.2 Auto-Close Parent Issue
 
-If all child Issues are complete, auto-close the parent Issue without user confirmation. If the parent is already CLOSED, skip 3.7.2.2 (close) but still run 3.7.2.1 (Status → Done).
+Reached only after 3.7.1 assessment (all CLOSED, no `NOT_PLANNED`, no unavailable `stateReason`). Auto-close the parent Issue without user confirmation. If the parent is already CLOSED, skip 3.7.2.2 (close) but still run 3.7.2.1 (Status → Done).
 
 ##### 3.7.2.1 Update Parent Issue's Projects Status to "Done"
 
@@ -393,6 +404,7 @@ Inspect the script's stdout JSON:
 |-----------|--------|
 | `"updated"` | Display `親 Issue #{parent_issue_number} の Projects Status を "Done" に更新しました` and proceed to 3.7.2.2 |
 | `"skipped_not_in_project"` | Display `警告: 親 Issue #{parent_issue_number} は Project に登録されていません。Status 更新をスキップしてクローズ処理を続行します` and proceed to 3.7.2.2 |
+| `"skipped_terminal_conflict"` | Display `警告: 親 Issue #{parent_issue_number} は既に終端 Status (Cancelled) のため Done への上書きをスキップしました` and proceed to 3.7.2.2（item-edit 復旧は案内しない） |
 | `"failed"` | Display each `.warnings[]` entry to stderr, then display `警告: 親 Issue #{parent_issue_number} の Projects Status 更新に失敗しました。手動更新が必要な場合があります。クローズ処理は続行します` and proceed to 3.7.2.2 |
 
 **All result branches are non-blocking** — the parent Issue close (3.7.2.2) MUST proceed regardless of Status update outcome.
@@ -408,6 +420,7 @@ Inspect the script's stdout JSON:
 > case "$status_result" in
 >   updated) echo "親 Issue #${parent_issue_number} の Projects Status を \"Done\" に更新しました" ;;
 >   skipped_not_in_project) echo "警告: 親 Issue #${parent_issue_number} は Project に登録されていません。Status 更新をスキップしてクローズ処理を続行します" >&2 ;;
+>   skipped_terminal_conflict) echo "警告: 親 Issue #${parent_issue_number} は既に終端 Status (Cancelled) のため Done への上書きをスキップしました" >&2 ;;
 >   failed|*)
 >     [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  warning: /' >&2
 >     echo "警告: 親 Issue #${parent_issue_number} の Projects Status 更新に失敗しました。クローズ処理は続行します" >&2 ;;
@@ -458,20 +471,30 @@ gh issue close {parent_issue_number} -R {owner_repo} --comment "すべての子 
 Generated from `trackedIssues.nodes` retrieved in Phase 3.7.1:
 
 ```markdown
-- #123 子 Issue タイトル 1
-- #124 子 Issue タイトル 2
-- #125 子 Issue タイトル 3
+- 子 Issue タイトル 1
+- 子 Issue タイトル 2
+- 子 Issue タイトル 3
 ```
 
 ##### 3.7.2.3 Close Completion Message
 
-親が既 CLOSED で 3.7.2.2 を skip した場合:
+3.7.2.1 が retain した `.result` で分岐する。Done 同期成功は `updated` のときだけ出す。3.7.2.1 を skip した（`projects.enabled: false`）ときは Done 同期を主張しない。
+
+| 3.7.2.1 `.result` | 既 CLOSED（3.7.2.2 skip）の末尾 | close 時の Status 行 |
+|-------------------|--------------------------------|----------------------|
+| `updated` | Projects Status を Done に同期しました | `Status: Done に更新` |
+| `skipped_terminal_conflict` | Cancelled のため Done 上書きをスキップしました | `Status: Cancelled のため Done 上書きをスキップ` |
+| `failed` | Projects Status の更新に失敗しました | `Status: 更新失敗` |
+| `skipped_not_in_project` | Project 未登録のため Status は未更新です | `Status: Project 未登録のため未更新` |
+| 3.7.2.1 skip（`projects.enabled: false`） | Status 行なし | Status 行なし |
+
+`.result=updated`（親が既 CLOSED、3.7.2.2 skip）:
 
 ```
 親 Issue #{parent_issue_number} は既に CLOSED です。Projects Status を Done に同期しました
 ```
 
-それ以外（3.7.2.2 で close した場合）:
+`.result=updated`（3.7.2.2 で close）:
 
 ```
 親 Issue #{parent_issue_number} を自動クローズしました
@@ -482,9 +505,76 @@ Generated from `trackedIssues.nodes` retrieved in Phase 3.7.1:
 - 完了した子 Issue: {completed_count} 件
 ```
 
-#### 3.7.3 Notification When Remaining Child Issues Exist
+`.result=skipped_terminal_conflict`（親が既 CLOSED、3.7.2.2 skip）:
 
-If some child Issues are still OPEN:
+```
+親 Issue #{parent_issue_number} は既に CLOSED です。Cancelled のため Done 上書きをスキップしました
+```
+
+`.result=skipped_terminal_conflict`（3.7.2.2 で close）:
+
+```
+親 Issue #{parent_issue_number} を自動クローズしました
+
+完了サマリ:
+- 親 Issue: #{parent_issue_number} - {parent_issue_title}
+- Status: Cancelled のため Done 上書きをスキップ
+- 完了した子 Issue: {completed_count} 件
+```
+
+`.result=failed`（親が既 CLOSED、3.7.2.2 skip）:
+
+```
+親 Issue #{parent_issue_number} は既に CLOSED です。Projects Status の更新に失敗しました
+```
+
+`.result=failed`（3.7.2.2 で close）:
+
+```
+親 Issue #{parent_issue_number} を自動クローズしました
+
+完了サマリ:
+- 親 Issue: #{parent_issue_number} - {parent_issue_title}
+- Status: 更新失敗
+- 完了した子 Issue: {completed_count} 件
+```
+
+`.result=skipped_not_in_project`（親が既 CLOSED、3.7.2.2 skip）:
+
+```
+親 Issue #{parent_issue_number} は既に CLOSED です。Project 未登録のため Status は未更新です
+```
+
+`.result=skipped_not_in_project`（3.7.2.2 で close）:
+
+```
+親 Issue #{parent_issue_number} を自動クローズしました
+
+完了サマリ:
+- 親 Issue: #{parent_issue_number} - {parent_issue_title}
+- Status: Project 未登録のため未更新
+- 完了した子 Issue: {completed_count} 件
+```
+
+3.7.2.1 skip（`projects.enabled: false`）（親が既 CLOSED、3.7.2.2 skip）:
+
+```
+親 Issue #{parent_issue_number} は既に CLOSED です。
+```
+
+3.7.2.1 skip（`projects.enabled: false`）（3.7.2.2 で close）:
+
+```
+親 Issue #{parent_issue_number} を自動クローズしました
+
+完了サマリ:
+- 親 Issue: #{parent_issue_number} - {parent_issue_title}
+- 完了した子 Issue: {completed_count} 件
+```
+
+#### 3.7.3 Notification When Parent Auto-Close Is Skipped
+
+**OPEN remaining** (Assessment: some child Issues are OPEN):
 
 ```
 親 Issue #{parent_issue_number} には残りの子 Issue があります:
@@ -496,6 +586,30 @@ If some child Issues are still OPEN:
 | ... | ... | ... |
 
 残りの子 Issue が完了すると、親 Issue は自動的にクローズされます。
+```
+
+**Cancelled children** (Assessment: all CLOSED, at least one `stateReason == NOT_PLANNED`). Do not use the OPEN-remaining closing sentence — Cancelled 残存では親は自動クローズしない:
+
+```
+Cancelled の子 #{cancelled_child_numbers} を含むため親 #{parent_issue_number} は未完了扱いです（Status → Done / auto-close しません）:
+
+| # | タイトル | 状態 |
+|---|---------|------|
+| #{cancelled_sub_number_1} | {cancelled_sub_title_1} | Cancelled (NOT_PLANNED) |
+| ... | ... | ... |
+
+親をどう扱うかは人間の判断です。親の中止は `/rite:issue-cancel` の明示指示。
+```
+
+**stateReason unavailable** (Assessment: all CLOSED, at least one CLOSED child has unavailable `stateReason`):
+
+```
+親 Issue #{parent_issue_number} は子の stateReason を判定できないため auto-close をスキップしました:
+
+| # | タイトル | 状態 |
+|---|---------|------|
+| #{undetermined_sub_number_1} | {undetermined_sub_title_1} | stateReason 判定不能 |
+| ... | ... | ... |
 ```
 
 #### 3.7.4 Error Handling

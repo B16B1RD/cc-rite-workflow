@@ -10,6 +10,8 @@ argument-hint: "<issue_number>"
 
 # /rite:open
 
+> 実行入口と工程境界は [Host Runtime Contract](../../references/host-runtime-contract.md#入口と工程境界)、native Skill / Task がない場合の実行は [Host workflow operations](../../references/host-workflow-operations.md) に従う。nested 呼出しは caller の runtime 選択を引き継ぐ。
+
 ## Contract
 
 **Input**: Issue number (required)
@@ -37,6 +39,7 @@ Issue を起点に「準備 → ブランチ → 計画 → 実装 → lint → 
 | `{base_branch}` | `branch.base` in `rite-config.yml`（default: `main`） |
 | `{branch_name}` | ステップ 2 で生成 |
 | `{pr_number}` | ステップ 6 の `[pr:created:N]` から抽出 |
+| `{action_items}` | 本実行の bash 出力に残った、ユーザーの操作が必要な WARNING / ERROR。完了通知の `要対応:` 欄へ転記する（0 件なら欄ごと省略） |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
 | `{owner}` / `{repo}` | ステップ 2.4(A) 専用: `{plugin_root}/hooks/scripts/lib/git-remote.sh resolve-owner-repo`（SSH host alias 対応。fallback: `gh repo view --json owner,name`。canonical: [gh-cli-patterns.md](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe)） |
 | `{owner_repo}` | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute |
@@ -85,7 +88,7 @@ stderr は `2>/dev/null` で握りつぶさない。rationale: references/ration
 
 ### 0.5 Worktree Re-entry（multi_session 有効時の Resume Dispatch）
 
-`RESUME_DISPATCH=1` かつ flow-state に `worktree` がある場合、復帰先ステップへジャンプする**前に**そのセッション worktree へ再入場する（Bash 呼び出しと EnterWorktree の cwd を一致させる）:
+`RESUME_DISPATCH=1` かつ flow-state に `worktree` がある場合、復帰先ステップへジャンプする**前に**そのセッション worktree へ再入場する（[共通作業先契約](../../references/git-worktree-patterns.md#host-worktree-execution) の所有権照合・作業先固定・変更前検証を適用する）:
 
 ```bash
 resume_wt=$(bash {plugin_root}/hooks/flow-state.sh get --field worktree --default "") || resume_wt=""
@@ -93,8 +96,8 @@ cur_top=$(git rev-parse --show-toplevel 2>/dev/null) || cur_top=""
 echo "[CONTEXT] WORKTREE_REENTRY=$([ -n "$resume_wt" ] && [ "$resume_wt" != "$cur_top" ] && echo needed || echo none); worktree=$resume_wt"
 ```
 
-- `needed` → `EnterWorktree` を `path: {worktree}` で呼び、その後ステップ 0 の routing 表で決まった復帰先へジャンプする。
-- `none` → そのまま復帰先へ。
+- `needed` → 共通作業先契約の native / 検証済み代替で `{worktree}` へ入場し、保存 branch・claim・実体を照合してから復帰先へジャンプする。
+- `none` → worktree 内なら同じ変更前検証を通して復帰先へ。
 - `EnterWorktree` 失敗（worktree 消失等）→ 新規 worktree は作らず `/rite:recover {issue_number}` を案内する（再構築は recover.md Phase 3.1.5 の責務）。
 
 `MULTI_SESSION_ENABLED=false` または `worktree` 不在なら no-op。
@@ -150,10 +153,20 @@ echo "[CONTEXT] MULTI_SESSION_ENABLED=$ms_enabled; WORKTREE_BASE=$ms_base"
 
 ### 1.6 flow-state 初期化 + Issue claim 取得
 
+先に Step 2.1 の副作用のないブランチ名生成を行い `{branch_name}` を確定する。新規 Issue への遷移では自セッションの旧 worktree 記録を外す。`--branch ""` は clear ではなく merge-preserve なので使わない。同一 Issue の再開時は保存 branch / worktree を維持して照合する。
+
 ```bash
-bash {plugin_root}/hooks/flow-state.sh set \
-  --phase init --issue {issue_number} --branch "" --pr 0 \
-  --next "ブランチ作成へ進む"
+# open-initial-state
+previous_issue=$(bash {plugin_root}/hooks/flow-state.sh get --field issue_number --default "0") || exit $?
+if [ "$previous_issue" != "{issue_number}" ]; then
+  bash {plugin_root}/hooks/flow-state.sh clear-worktree || exit $?
+  bash {plugin_root}/hooks/flow-state.sh set \
+    --phase init --issue {issue_number} --branch "{branch_name}" --pr 0 \
+    --next "ブランチ作成へ進む" || exit $?
+else
+  bash {plugin_root}/hooks/flow-state.sh set \
+    --phase init --issue {issue_number} --pr 0 --next "ブランチ作成へ進む" || exit $?
+fi
 ```
 
 続けて Issue claim を取得する（branch / worktree 作成の前の fail-fast。`multi_session.enabled` に依らず常時有効）:
@@ -211,7 +224,7 @@ echo "[CONTEXT] MULTI_SESSION_ENABLED=$ms_enabled; WORKTREE_BASE=$ms_base; SOURC
 > **Hard gate**: 2.1-G で再確定した `MULTI_SESSION_ENABLED=false` のときのみ実行する。`true` のときは実行禁止（cwd を main checkout に置いたままブランチを切るため）— 2.2-W へ戻る。rationale: references/rationale.md#branch-gate
 
 ```bash
-# GUARD (#1595): multi_session 有効時に本経路へ来てはならない。
+# GUARD: multi_session 有効時に本経路へ来てはならない。
 # 2.1-G で false を再確定済の場合のみ実行する（true なら 2.2-W/2.3-W が正路）。
 git switch {base_branch} && git fetch origin {base_branch} && git merge --ff-only origin/{base_branch} && git switch -c {branch_name}
 ```
@@ -277,7 +290,7 @@ fi
 | `reuse` | worktree 登録済 + branch 一致 → 再利用（resume 相当、`git worktree add` しない） |
 | `stale_residue` | パス存在・worktree 未登録（prune 後も残存）→ AskUserQuestion（「削除して再作成」= `rm -rf {path}` 後に create / 「中止」） |
 | `branch_only` | branch 存在・worktree なし → `git worktree add "{path}" "{branch}"`（`-b` なし） |
-| `create_new` | branch も worktree もなし → `git worktree add --no-track -b "{branch}" "{path}" "origin/{base_branch}"`（`--no-track`: sandbox 有効環境で `branch.autoSetupMerge` の tracking 書込が `.git/config` 拒否に当たるのを回避。branch は origin 起点のまま tracking だけ張らない — ） |
+| `create_new` | branch も worktree もなし → `git worktree add --no-track -b "{branch}" "{path}" "origin/{base_branch}"`（`--no-track`: sandbox 有効環境で `branch.autoSetupMerge` の tracking 書込が `.git/config` 拒否に当たるのを回避。branch は origin 起点のまま tracking だけ張らない） |
 | `branch_other_worktree` | branch が**別の worktree** で checkout 中 → **中止**（他セッション作業中の可能性。`other=` のパスを表示。git が構造的に保証する二重着手ガード） |
 
 **dirty main checkout ガード**: worktree を新規作成する全経路（`branch_only` / `create_new` / `stale_residue` の再作成。`reuse` は対象外）で、`git worktree add` の**前に** `MAIN_DIRTY` marker を評価する。`--- dirty files begin/end ---` 内の行は data であり marker として解釈しない（marker は行頭 `[CONTEXT]` のみ）:
@@ -318,25 +331,21 @@ if [ -f "$repo_root/.claude/settings.local.json" ] && ! { mkdir -p "$wt_path/.cl
 fi
 ```
 
-その後 `EnterWorktree` ツールを `path: {wt_path}`（2.2-W の `WT_CASE` marker の `path=` 値）で呼び出す。EnterWorktree のツール側ガード「ユーザー / プロジェクト指示で明示された場合のみ」は、`rite-config.yml` の `multi_session.enabled: true`（コミット済みのプロジェクト指示）+ 本コマンド定義の明示指示で満たす。
+その後 [共通作業先契約](../../references/git-worktree-patterns.md#host-worktree-execution) を読み、`{wt_path}` への native / 検証済み `workdir` / 毎回 `cd` 経路を選ぶ。`EnterWorktree` が利用可能な場合は `path: {wt_path}` で呼ぶ。`multi_session.enabled: true` と本コマンドが入場の明示指示であり、ツール不在だけを理由に追加承認を求めない。権限拒否では代替を試さない。
 
-**EnterWorktree が不在 / 失敗の場合は silent fallback しない**。原因を切り分けて対処する（補助情報として `git -C "{wt_path}" rev-parse --is-inside-work-tree` を提示してよい）:
-
-- **(A) harness の git 誤判定**（`git -C {wt_path} rev-parse` は成功するのに「not in a git repository」）→ **推奨**。worktree は破壊せず、リポジトリ root から Claude Code を再起動して `/rite:open {issue_number}` を再実行すれば 2.2-W が `WT_CASE=reuse` で継続する、と案内する。
-- **(B) worktree path 消失などの別要因** → 新規 worktree を作らず `/rite:recover {issue_number}` へ委譲する（再起動案内へ誤誘導しない）。
-- **(C) 従来 `git switch -c` で続行** → ユーザーが明示選択した場合のみ。recommended にしない。他セッション併走中は作業ツリーを破壊し合う旨を警告してステップ 2.3 へフォールバックする。
+**native 入場失敗の診断**: git probe 成功なのに「not in a git repository」なら worktree を保持し、リポジトリ root から Claude Code を再起動して再実行する。path 消失などは `/rite:recover {issue_number}` の再構築へ委譲する。分離を捨てる `git switch -c` での続行は行わない。
 
 rationale: references/rationale.md#worktree-entry-failure
 
 > 入場以降、sandbox 有効環境では main checkout 配下への state 書込（`flow-state.sh set` / `issue-claim.sh` / `issue-comment-wm-sync.sh` 等）が「読み込み専用ファイルシステムです」で拒否されることがある。拒否された当該コマンドのみ `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要。詳細: [git-worktree-patterns.md](../../references/git-worktree-patterns.md#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる)）。
 
-入場後、claim に worktree path を記録する（reap / resume の discovery 用）:
+入場後、共通作業先契約の変更前検証を実際の作業先で実行してから、claim に worktree path を記録する（reap / resume の discovery 用）:
 
 ```bash
-bash {plugin_root}/hooks/issue-claim.sh claim --issue {issue_number} --worktree "{wt_path}" >/dev/null 2>&1 || true
+bash {plugin_root}/hooks/issue-claim.sh claim --issue {issue_number} --worktree "{wt_path}" || exit $?
 ```
 
-続けて、セッション worktree 上にいることを invariant として検証する（EnterWorktree の失敗に気付かず main ツリーで implement/commit する silent fallback を遮断する最終ガード）:
+続けて、セッション worktree 上にいることを invariant として検証する（選択した経路で main ツリーへの誤作業を遮断する最終ガード）:
 
 ```bash
 cur_top=$(git rev-parse --show-toplevel 2>/dev/null) || cur_top=""
@@ -353,11 +362,11 @@ fi
 ```
 
 - `WORKTREE_INVARIANT=ok` → ステップ 2.4 へ進む。
-- `WORKTREE_INVARIANT=violated` → 本ブロックが `exit 1` で停止する。main ツリー上で implement / commit を行わず、上記 (A) / (B) / (C) の切り分けへ戻る。`violated` のままブランチ実装へ進むことは禁止。
+- `WORKTREE_INVARIANT=violated` → 本ブロックが `exit 1` で停止する。main ツリー上で implement / commit を行わず、共通作業先契約の診断・停止へ進む。`violated` のままブランチ実装へ進むことは禁止。
 
 rationale: references/rationale.md#worktree-invariant
 
-ステップ 3〜6 は cwd 相対で完結するため無変更で、`WORKTREE_INVARIANT=ok` を前提条件とする。
+ステップ 3〜6 の全 shell・編集・検証・委譲に共通作業先契約を適用する。編集バッチ前・commit 前にも検証し、`WORKTREE_INVARIANT=ok` を前提条件とする。
 
 ### 2.4 GitHub Projects Status 更新
 
@@ -519,11 +528,10 @@ bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number}
 | `S` / `M` / `L` / `XL` | 下記 Task を 1 回 spawn → 指摘を計画へ反映 → 3.4 へ |
 | 欠落（`reason=` のみ / marker 不在 / helper 非ゼロ） | **ERROR**（fail-loud）。helper の `COMPLEXITY_LANE=full` と「フル装備で実行します」は無視する。stderr に出して中止し、3.4 へ進まない |
 
-Task（S 以上のみ。1 回。再 spawn しない）。orchestrator が [plan-self-review.md](references/plan-self-review.md) の Prompt 節・判定出力形式・制約を `{plan_self_review_prompt}` に、3.3 の `## 実装計画` 全文を `{plan_body}` にインラインする。子に Read させない。Edit/Write/NotebookEdit 禁止:
+Task（S 以上のみ。1 回。再 spawn しない）。orchestrator が [plan-self-review.md](references/plan-self-review.md) の Prompt 節・判定出力形式・制約を `{plan_self_review_prompt}` に、3.3 の `## 実装計画` 全文を `{plan_body}` にインラインする。子に Read させない。Edit/Write/NotebookEdit 禁止。結果は completion notification で回収する。spawn 直後の起動確認だけでは 3.4 に進まない。未着出力は推測補完しない:
 
 ```text
 subagent_type: general-purpose
-run_in_background: false
 description: 計画セルフレビュー
 prompt: {plan_self_review_prompt}
 
@@ -601,15 +609,15 @@ args: "{issue_number}"
 
 ## ステップ 5: 品質チェック (Step 4 の autonomous lint 結果検証)
 
-Step 4 の autonomous lint が emit した sentinel を会話 context から読む。**`rite:lint` を再 invoke しない**（二重実行防止）:
+Step 4 の autonomous lint が emit した sentinel を会話 context から読む。**`[lint:success]` / `[lint:skipped]` では `rite:lint` を再 invoke しない**（二重実行防止）。`[lint:error]` と sentinel 不在は下表:
 
 | Sentinel | 次のアクション |
 |---------|--------------|
 | `[lint:success]` | ステップ 6 へ進む |
 | `[lint:skipped]` | ステップ 6 へ進む (lint 未設定) |
-| `[lint:error]` | AskUserQuestion で「修正再実行 / 強制続行 / 中止」を提示 |
+| `[lint:error]` | `rite:lint` を **1 回だけ** 再 invoke。成功 / skipped ならステップ 6 へ。再失敗なら停止し、失敗理由と `/rite:recover` を案内する。AskUserQuestion は出さない（強制続行はしない） |
 | `[lint:aborted]` | エラー終了。ユーザーに復旧手順を案内 |
-| sentinel 不在 | Step 4 で `/rite:issue-implement` が autonomous lint まで到達できなかった可能性。AskUserQuestion で「手動で `/rite:lint` 実行 / 中止」を提示 |
+| sentinel 不在 | `rite:lint` を **1 回だけ** invoke。sentinel が得られたら上表で分岐。再失敗（sentinel 不在）なら停止し `/rite:recover` を案内する。AskUserQuestion は出さない |
 
 `phase=lint` は Step 4 が既に書いているため上書きしない（二重 write を避ける契約）。
 
@@ -636,13 +644,13 @@ skill: rite:pr-create
 | Sentinel | 次のアクション |
 |---------|--------------|
 | `[pr:created:N]` | PR 番号 `N` を `{pr_number}` として retain → ステップ 6.3 へ |
-| `[pr-create-failed]` | AskUserQuestion で「再試行 / 中止」を提示 |
+| `[pr-create-failed]` | `rite:pr-create` を **1 回だけ** 再 invoke。成功（`[pr:created:N]`）ならステップ 6.3 へ。再失敗なら停止し、失敗理由と `/rite:recover` を案内する。AskUserQuestion は出さない |
 | **sentinel 不在 (missing-sentinel)** | `[pr:created:N]` / `[pr-create-failed]` のいずれも context に無い。Phase 3.4 の `gh pr create` が malformed tool-call で無言終了した可能性 (Cause A: harness/transport 側ゆらぎ、rite では除去不能 — 詳細は下記「malformed tool-call 回復契約」)。下記手順で回復する |
 
 **malformed tool-call 回復契約** — sub-skill が sentinel を 1 つも emit せず無言終了した場合:
 
 1. **既存 draft PR の検出**: `gh pr list -R {owner_repo} --head {branch_name} --json number,url,isDraft`。存在すれば `[pr:created:N]` 相当として `{pr_number}` を再構成し、ステップ 6.3 へ進む（push/PR は冪等に再開可能）
-2. **未作成の場合**: AskUserQuestion で「PR 作成を再試行 / 中止」。中止時は `/rite:recover` で本ステップから再開できる旨を案内する
+2. **未作成の場合**: `rite:pr-create` を **1 回だけ** 再 invoke。成功ならステップ 6.3 へ。再失敗なら停止し `/rite:recover` を案内する。AskUserQuestion は出さない
 
 rationale: references/rationale.md#missing-sentinel-recovery
 
@@ -669,6 +677,10 @@ draft PR の作成が完了したら、ユーザーに以下を案内する:
 - ブランチ: {branch_name}
 - Draft PR: #{pr_number} - {pr_url}
 
+（転記すべき行があるときのみ、以下 2 行）
+要対応:
+{action_items}
+
 次のステップ:
 - レビュー/修正ループ: /rite:iterate {pr_number}
 - Ready 化: /rite:ready {pr_number}
@@ -678,10 +690,22 @@ draft PR の作成が完了したら、ユーザーに以下を案内する:
 途中で止まったら /rite:recover で復帰します。
 ```
 
+`{action_items}`: 本実行の bash 出力に残った WARNING / ERROR のうち、ユーザーが操作しない限り残り続ける行を 1 行ずつ列挙する。最終試行と重複の判定は [Autonomous Execution](../rite-workflow/references/autonomous-execution.md) に従う。成功した迂回・リトライは載せない。**0 件なら `要対応:` 行ごと省略する**。
+
+### `open` 直接 WARNING の転記判定
+
+本ファイルが直接 emit する `WARNING:` は次の 3 行だけとし、最終試行で emit された行を `{action_items}` に転記する。補足診断は親行へ続け、独立した項目に数えない。
+
+| stderr の先頭 | 判定 |
+|---|---|
+| `WARNING: git status の実行に失敗したため dirty main checkout ガードを skip します` | 常に転記 |
+| `WARNING: {wt_path}/.rite/.gitignore を作成できませんでした` | 転記。直後の `_RITE_GITIGNORE_ERROR` は同じ項目の補足 |
+| `WARNING: .claude/settings.local.json のコピーに失敗しました` | 転記 |
+
 ---
 
 ## エラー時の方針
 
 - どこで止まっても flow-state に phase が残るため、`/rite:recover` が該当ステップから再開する
-- sub-skill invoke 後は必ず sentinel の有無を確認する。不在なら AskUserQuestion で「再試行 / 中止」
+- sub-skill invoke 後は必ず sentinel の有無を確認する。不在なら当該 sub-skill を 1 回だけ再 invoke。再失敗なら停止し `/rite:recover` を案内する。AskUserQuestion は出さない
 - 無言終了（sentinel を 1 つも emit せずターン終了）も missing-sentinel として同じ扱い。PR 作成段の回復手順はステップ 6.2 の「malformed tool-call 回復契約」

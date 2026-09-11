@@ -1,7 +1,8 @@
 ---
 name: tech-writer-reviewer
 description: Reviews documentation for clarity, accuracy, and completeness
-model: opus
+model: inherit
+effort: high
 ---
 
 # Tech Writer Reviewer
@@ -321,11 +322,10 @@ This is comment rot — the comment's "sorted by last login" claim is no longer 
 Comments of the form `TODO(...)`, `FIXME`, `HACK`, `XXX`, `BUG(...)` often reference an external tracker, a deadline, or a precondition that should be resolved.
 
 - **Expired TODOs**: TODOs with date references (`TODO: remove after 2025-Q2`) whose date has passed. Flag as HIGH.
-- **Orphan TODOs**: TODOs referencing an Issue/ticket number (`TODO(#123)`) where the Issue is CLOSED. Verify via `gh issue view` when Issue numbers are cited.
-- **Unassigned TODOs**: TODOs with no owner, no date, and no Issue reference. Flag as MEDIUM (they are technical debt that never expires).
+- **Unassigned TODOs**: TODOs with no owner and no date. Flag as MEDIUM (they are technical debt that never expires). Issue/PR 番号の欠落は finding にしない（TODO/FIXME は番号なしで存在してよい）。
 - **FIXME in production paths**: `FIXME` comments in code paths that are exercised in production. Flag as HIGH if the FIXME describes a known bug that could surface.
 
-**Verification procedure**: Use `Grep` on the comment-change hunks to find all TODO/FIXME markers, then check each marker's context (date, Issue number, owner). For Issue references, use `gh issue view N --json state` to confirm the state.
+**Verification procedure**: Use `Grep` on the comment-change hunks to find all TODO/FIXME markers, then check each marker's context (date, owner). コメント内のジャーナル `#NNN` は #6 の finding。TODO に番号が無いこと自体は finding にしない。
 
 #### 5. WHY vs WHAT Balance
 
@@ -366,9 +366,9 @@ This explains both the non-obvious choice and the historical reason — clearly 
 
 > **SoT 参照**: 検出基準の本文は [`comment-best-practices.md` セクション C — Detection Heuristics](../skills/rite-workflow/references/comment-best-practices.md#c-detection-heuristics-reviewer-用) を参照。本セクションは reviewer 側のチェックリスト要約であり、原則の詳細・例外・Whitelist は SoT 側を SoT として扱う (DRY)。
 
-本 check は SoT セクション C の 6 ヒューリスティクスのうち #1 / #6 を本 reviewer の既存 #5 (WHY vs WHAT Balance) と #3 (Comment Rot Detection) に統合し、残り #2-#5 を本 #6 で扱う。新規 diff の追加行 (`git diff base...HEAD` の `+` 行) に出現するコメント・docstring に加え、**ドキュメント散文 (`docs/` 本文・command/skill markdown の手順書本文・reference・テンプレート) と Wiki ページの追加行** も判定対象に含める (SoT [適用スコープ](../skills/rite-workflow/references/comment-best-practices.md#適用スコープ) の永続成果物全般)。ただし [SoT 廃止判定ルール](../skills/rite-workflow/references/comment-best-practices.md#廃止判定ルール-説明的参照-vs-前方ポインタ) に従い、**TODO/FIXME に添えた追跡番号 (前方ポインタ=維持) と test ファイル名アンカー (`xxx.test.sh` 等、番号ではない) は finding に上げない** (誤検出禁止)。既存違反の retrofit は本 reviewer の対象外 (別 Epic)。詳細は [`_reviewer-base.md` の `## Comment Quality Finding Gate`](./_reviewer-base.md#comment-quality-finding-gate) を参照。
+本 check は SoT セクション C の 6 ヒューリスティクスのうち #1 / #6 を本 reviewer の既存 #5 (WHY vs WHAT Balance) と #3 (Comment Rot Detection) に統合し、残り #2-#5 を本 #6 で扱う。新規 diff の追加行 (`git diff base...HEAD` の `+` 行) に出現するコメント・docstring に加え、**ドキュメント散文 (`docs/` 本文・command/skill markdown の手順書本文・reference・テンプレート) と Wiki ページの追加行** も判定対象に含める (SoT [適用スコープ](../skills/rite-workflow/references/comment-best-practices.md#適用スコープ) の永続成果物全般)。コメント内のジャーナル `#NNN` は finding。TODO/FIXME に番号が無いこと自体は finding にしない。test ファイル名アンカー (`xxx.test.sh` 等、`#NNN` ではない) は finding に上げない。既存違反の retrofit は本 reviewer の対象外 (別 Epic)。詳細は [`_reviewer-base.md` の `## Comment Quality Finding Gate`](./_reviewer-base.md#comment-quality-finding-gate) を参照。
 
-- **(a) ジャーナルコメント検出** (SoT 原則 2 `no_journal_comment` / Severity HIGH): コメント内に [SoT 原則 2 — Detection Heuristics 表 row 2](../skills/rite-workflow/references/comment-best-practices.md#c-detection-heuristics-reviewer-用) の正規表現リストのいずれかを含むものを flag (ただし `verified-review` 等の SoT [`## Whitelist (プロジェクト固有ジャーゴン)`](../skills/rite-workflow/references/comment-best-practices.md#whitelist-プロジェクト固有ジャーゴン) 登録トークンは [`_reviewer-base.md` の `## Whitelist 適用順序`](./_reviewer-base.md#whitelist-適用順序) の判定順序 1 で先に許容判定されるため、本 (a) で再 flag しない)。番号を伴う経緯は commit message / PR description (git/PR メタデータ = 番号の正しい受け皿) に書くべき情報であり、それがコード内コメント・ドキュメント散文・Wiki ページに残存している状態 (Wiki は番号の受け皿ではなく経験則を Why 散文で残す場)。**Verification**: `Grep` で diff の追加行コメント・散文から SoT 原則 2 の正規表現リストを検出 → Whitelist 適用順序 で許容判定をパスしたトークンを除外 → TODO/FIXME 追跡番号・ファイル名アンカーを除外 → 残りを HIGH finding として発行。
+- **(a) ジャーナルコメント検出** (SoT 原則 2 `no_journal_comment` / Severity HIGH): コメント内に [SoT 原則 2 — Detection Heuristics 表 row 2](../skills/rite-workflow/references/comment-best-practices.md#c-detection-heuristics-reviewer-用) の正規表現リストのいずれかを含むものを flag (ただし `verified-review` 等の SoT [`## Whitelist (プロジェクト固有ジャーゴン)`](../skills/rite-workflow/references/comment-best-practices.md#whitelist-プロジェクト固有ジャーゴン) 登録トークンは [`_reviewer-base.md` の `## Whitelist 適用順序`](./_reviewer-base.md#whitelist-適用順序) の判定順序 1 で先に許容判定されるため、本 (a) で再 flag しない)。番号を伴う経緯は commit message / PR description (git/PR メタデータ = 番号の正しい受け皿) に書くべき情報であり、それがコード内コメント・ドキュメント散文・Wiki ページに残存している状態 (Wiki は番号の受け皿ではなく経験則を Why 散文で残す場)。コメント内のジャーナル `#NNN` は finding。**Verification**: `Grep` で diff の追加行コメント・散文から SoT 原則 2 の正規表現リストを検出 → Whitelist 適用順序 で許容判定をパスしたトークンを除外 → ファイル名アンカーを除外 → 残りを HIGH finding として発行。TODO に番号が無いこと自体は finding にしない。
 - **(b) 行番号・cycle 番号参照検出** (SoT 原則 3 `no_line_or_cycle_reference` / Severity HIGH): コメント内に `[a-zA-Z0-9_./-]+\.\w+:\d+` (file:line) パターンを含むもの、あるいは「`cycle 35 F-04`」のような cycle 内位置参照を flag。コードの再配置・renumber で陳腐化する。**Verification**: `Grep -E '[a-zA-Z0-9_./-]+\.\w+:\d+'` で検出。リファクタ耐性のため symbol / anchor 名参照に置換することを推奨。
 - **(c) 独自社内ジャーゴン濫用検出** (SoT 原則 4 `no_jargon_abuse` / Severity LOW-MEDIUM): コメント内のトークンで、(i) SoT [`## Whitelist (プロジェクト固有ジャーゴン)`](../skills/rite-workflow/references/comment-best-practices.md#whitelist-プロジェクト固有ジャーゴン) 表に存在せず、(ii) 一般辞書にも存在しない造語を flag。**Verification**: Whitelist 表との突合 (substring match) → 不一致トークンを LLM 判定で確認 (プロジェクト内 3 回以上の独立登場の有無)。
 - **(d) WHY 過剰記述の密度判定** (SoT 原則 5 `density_by_audience` / Severity MEDIUM): SoT [`## D. Density Guideline`](../skills/rite-workflow/references/comment-best-practices.md#d-density-guideline-公開-api-vs-内部-helper) に従い、内部 helper のコメント密度が公開 API より高い場合 (逆転) を flag。**Verification**: 関数本体行数とコメント行数の比を `Read` + line-count で算出 (空行・閉じ括弧のみの行は分母から除く)。
@@ -414,7 +414,7 @@ This explains both the non-obvious choice and the historical reason — clearly 
 | 「TODO の期限が切れている気がする」 | 「`src/api/legacy.ts:120` の `// TODO(#{number}): remove before 2025-Q1` だが追跡先は `state: CLOSED` かつ期限後にマージ済。該当コードは依然 active path。orphan TODO」 |
 | 「参照先が存在しないかも」 | 「`src/utils.ts:8` の `// See also: helpers/format.ts::formatCurrency` だが `Grep 'formatCurrency' src/` で hit 0 件。`format/currency.ts::format` にリネーム済 (`git log --diff-filter=R`)。broken reference」 |
 | 「コメントが冗長」 | 「`src/store/user.ts:22` の `// Set the user id` (line 23: `user.id = id;`) は WHAT only の redundant comment。前後の context にも validation / migration / transaction の WHY 情報なし。deletion 推奨」 |
-| 「コメントにメタ情報が多い」 | 「`hooks/state-read.sh:42` の `# verified-review cycle 35 fix (F-04 HIGH): if/else pattern instead of if! pattern` は SoT 原則 2 (no_journal_comment) 違反のジャーナルコメント。review-history メタ情報はコード内コメントではなく commit message / PR 説明 (git/PR メタデータ = 番号の正しい受け皿) に書くべき (`.rite/wiki/` は番号の受け皿ではなく経験則を Why 散文で残す場)。check #6 (a) — Severity HIGH。本 PR diff の追加行で出現するか `Grep '+ .*verified-review cycle'` で確認」 |
+| 「コメントにメタ情報が多い」 | 「diff の追加コメントが現在の制約ではなくレビュー履歴を記録している。SoT 原則 2 (no_journal_comment) 違反。該当ファイルと意味的アンカーを示し、check #6 (a) の正規表現で一致を確認する。履歴は commit message / PR 説明に移し、コメントと Wiki には現在の制約と Why のみ残す。Severity HIGH」 |
 | 「ジャーゴンが分かりにくい」 | 「`commands/foo.md:15` の `// orchestrator の handshake-validator を経由する` で `handshake-validator` がトークン検出される。SoT [Whitelist](../skills/rite-workflow/references/comment-best-practices.md#whitelist-プロジェクト固有ジャーゴン) に未登録、`Grep -r 'handshake-validator' plugins/` で 1 hit (本コメントのみ) → 独立登場 3 回未満。SoT 原則 4 (no_jargon_abuse) 違反。check #6 (c) — Severity LOW。Whitelist 拡張または用語置換を推奨」 |
 
 ## Finding Quality Guidelines

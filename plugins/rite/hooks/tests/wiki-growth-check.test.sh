@@ -129,4 +129,46 @@ else
   fail "findings summary line missing: $findings_out"
 fi
 
+# Exercise the production functions with streams larger than a pipe buffer.
+source <(sed -n '/^check_pr_raw_correspondence() {$/,/^}$/p; /^_count_pending_from_list() {$/,/^}$/p' "$SCRIPT")
+assert "PR correspondence function is loaded" "0" "$(declare -F check_pr_raw_correspondence >/dev/null; echo $?)"
+assert "pending raw function is loaded" "0" "$(declare -F _count_pending_from_list >/dev/null; echo $?)"
+
+large_raw_files=$(awk 'BEGIN { for (i=1; i<=50000; i++) print ".rite/wiki/raw/pr-" i ".md" }')
+large_body=$(awk 'BEGIN { for (i=1; i<=10000; i++) printf "%0100d\n", i }')
+git() {
+  case "$1" in
+    ls-tree) printf '%s\n' "$large_raw_files" ;;
+    show) printf '%s\n' "$pending_body" ;;
+    *) return 2 ;;
+  esac
+}
+gh() { printf '%s\n' "$GH_STUB_PRS"; }
+log_info() { printf '%s\n' "$*"; }
+PR_RAW_THRESHOLD_OVERRIDE=1
+threshold=5
+base_branch=develop
+wiki_branch=wiki
+git_log_target=wiki
+
+GH_STUB_PRS='[{"number":1}]'
+large_out=$(check_pr_raw_correspondence); large_rc=$?
+assert "early PR match survives a large raw list" "0" "$large_rc"
+assert "early PR match reports no missing raw" "1" "$(printf '%s\n' "$large_out" | grep -c 'healthy (0 of 1 recent PRs missing raw' || true)"
+GH_STUB_PRS='[{"number":999999}]'
+large_out=$(check_pr_raw_correspondence); large_rc=$?
+assert "absent PR still produces a correspondence finding" "1" "$large_rc"
+assert "absent PR is identified" "1" "$(printf '%s\n' "$large_out" | grep -c 'Missing PRs: #999999' || true)"
+
+pending_body=$(printf 'ingested: false\n%s\n' "$large_body")
+assert "early false marker in large raw source is pending" "1" "$(_count_pending_from_list 'raw.md')"
+pending_body=$(printf 'ingested: no\n%s\n' "$large_body")
+assert "early no marker in large raw source is pending" "1" "$(_count_pending_from_list 'raw.md')"
+pending_body=$(printf 'ingested: true\n%s\n' "$large_body")
+assert "large raw source without pending marker is not pending" "0" "$(_count_pending_from_list 'raw.md')"
+pending_body=$(printf '%s\n' "$large_body" | awk 'NR == 20 { print "ingested: false" } { print }')
+assert "pending marker on twentieth line is included" "1" "$(_count_pending_from_list 'raw.md')"
+pending_body=$(printf '%s\n' "$large_body" | awk 'NR == 21 { print "ingested: false" } { print }')
+assert "pending marker after twentieth line is excluded" "0" "$(_count_pending_from_list 'raw.md')"
+
 print_summary "wiki-growth-check.sh"

@@ -21,7 +21,7 @@ stderr は WARNING channel として残し `2>/dev/null` で握りつぶさな�
 旧版はステップ 2.2 / 2.3 の分岐を、ステップ 1.4 が emit した `[CONTEXT] MULTI_SESSION_ENABLED=`
 marker の**会話 context 残存**に依存させていた。resume / context 圧縮 / フロー途中入場で marker が
 失われると「marker 欠落 → 従来 2.2/2.3」に倒れ、`multi_session.enabled: true` でも main ツリーへ
-`git switch -c` する silent fallback が起きた（#1595）。
+`git switch -c` する silent fallback が起きた。
 
 対策がステップ 2.1-G で、ブランチ作成という副作用の直前に `multi_session` を rate-config.yml から
 Bash で再取得する。パースはステップ 1.4 と同一のものを再利用するだけで、変更していない。
@@ -49,11 +49,7 @@ branch 分岐を Bash で hard 化したのと対称の措置で、git-worktree-
   すれば 2.2-W が `WT_CASE=reuse` と判定して継続できる。
 - **(B) worktree path 消失などの別要因** — recover.md Phase 3.1.5 の再構築経路に委譲する。本
   コマンドでは新規 worktree を作らず、再起動案内へ誤誘導もしない。
-- **(C) 従来 `git switch -c` へのフォールバック** — ユーザーが明示選択した場合のみ。worktree 分離を
-  破棄するため、他セッション併走中は作業ツリーを破壊し合う。recommended にはしない。
-
-cwd を main checkout に残したまま絶対パスで操作する「Bash 永続 cwd 駆動」は、main tree を誤更新する
-リスクがあるため導入しない。
+native 不在と native 失敗は別の観測である。不在時は共通作業先契約で検証した `workdir` / 毎回 `cd` と絶対パス編集を使える。前の shell の cwd が永続するという仮定や、権限拒否を別経路で迂回する実行は採らない。
 
 ## projects-status-inline
 
@@ -86,7 +82,7 @@ exit 0 を返す。status 行の有無は投稿・検証段が決める — 投�
 ## plan-auto-approval
 
 旧仕様はステップ 3.4 を無条件 AskUserQuestion にしていたため、`/rite:batch-run` が宣言する
-「完全自律（無確認）」に反して Issue ごとに必ず 1 回停止していた（#1861）。batch 時の自動承認で
+「完全自律（無確認）」に反して Issue ごとに必ず 1 回停止していた。batch 時の自動承認で
 宣言と実挙動を一致させる。
 
 安全側の担保は batch-run のデフォルトモードが draft PR をレビュー待ちで残すこと・`--merge` が明示
@@ -97,9 +93,10 @@ batch 判定と同型で read-only。helper 失敗 / session_id 解決不可 / �
 ## autonomous-lint
 
 `/rite:issue-implement` は全 step 完了後に `rite:lint` を自身で invoke する（旧 `start.md` の flat
-設計を継承した内蔵動作）。そのため本コマンドのステップ 5 は sentinel を読むだけの no-op であり、
-`rite:lint` を再 invoke しない（二重実行防止）。`phase=lint` も implement が既に書いているため、
-本コマンドから上書きしない（二重 write を避ける契約）。
+設計を継承した内蔵動作）。そのため本コマンドのステップ 5 は `[lint:success]` / `[lint:skipped]` では sentinel を読むだけの
+no-op であり、`rite:lint` を再 invoke しない（二重実行防止）。`[lint:error]` と sentinel 不在は
+1 回だけ invoke する。`phase=lint` も implement が既に書いているため、本コマンドから上書きしない
+（二重 write を避ける契約）。
 
 `/rite:issue-implement` 自体は固有 sentinel（`[implement:*]`）を emit しない設計のため、ステップ 4
 では `[lint:*]` の context 投入のみを期待し、判定はステップ 5 に委譲する。
@@ -114,8 +111,8 @@ emit せず無言で終了することがある。原因は 2 つに分かれる
   Write tool 委譲がこれを除去して発生確率を下げる。
 
 Cause A は消せないため、ステップ 6.2 の回復契約（既存 draft PR 検出 → `{pr_number}` 再構成、
-未作成なら再試行 / 中止）が最終的な堅牢化の担保となる。flow-state には直前 phase が保持されている
-ため、いずれの経路でも作業は失われない。
+未作成なら 1 回自動再試行し、再失敗で停止して `/rite:recover` を案内する）が最終的な堅牢化の
+担保となる。flow-state には直前 phase が保持されているため、いずれの経路でも作業は失われない。
 
 ## push-no-upstream
 
