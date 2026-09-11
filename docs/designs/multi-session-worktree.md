@@ -146,7 +146,7 @@ multi_session:
   1. `git status --porcelain` で dirty 確認。dirty なら AskUserQuestion（stash して続行 / 中止）。stash は common git dir 格納のため worktree 削除後も `git stash pop` 可能。
   2. `ExitWorktree(action: "keep")` で main checkout に復帰（path 入場 worktree は remove でも消えない仕様のため常に keep）。
   3. main から `git worktree remove {path}` → `git worktree prune`。
-  4. 削除失敗時は `WORKTREE_REMOVE_FAILED` を表示して**続行**（non-blocking。遅延 reap §8 へ委譲）。sandbox が admin dir の `config.worktree` / `commondir` にマスクマウントを張っている場合は remove 試行自体が admin dir を半壊させるため、削除前に検知して remove を**一切実行せず** `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` を表示して遅延 reap へ委譲する。マスクは `/dev/null` を重ねる character device 形と、実ファイルを read-only で bind mount する形の 2 種があり、前者は `test -c`、後者は通常ファイルに見えるため `/proc/self/mountinfo` の mount point との完全一致で判定する（mountinfo を読めない環境でのみ `mountpoint -q` へ代替する）。
+  4. 削除失敗時は `WORKTREE_REMOVE_FAILED` を表示して**続行**（non-blocking。遅延 reap §8 へ委譲）。sandbox が admin dir の `config.worktree` / `commondir` にマスクマウントを張っている場合は remove 試行自体が admin dir を半壊させるため、削除前に検知して remove を**一切実行せず** `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` を表示して遅延 reap へ委譲する。マスクは `/dev/null` を重ねる character device 形と、実ファイルを read-only で bind mount する形の 2 種があり、前者は `test -c`、後者は通常ファイルに見えるため `/proc/self/mountinfo` の mount point との完全一致で判定する（mountinfo を読めない環境でのみ `mountpoint -q` へ代替する）。両方とも使えない環境では bind mount 形を判定できないため、character device 形の判定だけで削除経路へ進む（Linux は `sandbox マスクの mountpoint 判定ができません` の WARNING 付き、Darwin は /proc も `mountpoint` も無いのが常態のため無言）。
   5. 冪等性: main から再実行された場合は cwd 判定で 1〜2 をスキップ。worktree 既削除なら 3 もスキップ。
 - **Step 4（base pull）の安全化**: main checkout が `{base}` 上にある場合のみ `git pull --ff-only origin {base}`（index.lock 競合 3 回リトライ）。
   別 branch 上なら **switch せず WARNING + skip**（WARNING 文面に「main checkout を {base} に戻す」復旧手順を含める）。従来モード（enabled=false）は現行動作を維持。
