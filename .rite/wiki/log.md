@@ -1,5 +1,7 @@
 ## 2026-09-11
 
+* **lint:clean** — contradictions=0 (pages unchanged; previous baseline), stale=68, orphans=0, missing_concept=0, unregistered_raw=469, broken_refs=0
+
 * **Skip**: [レビュー結果](raw/reviews/20260911T095826Z-pr-2677.md) — 指摘0件。再添付の絶対パス同値とディレクトリ再作成は既存ページに記録済み。
 
 * **Skip**: [20260911T073050Z-pr-2674.md](raw/reviews/20260911T073050Z-pr-2674.md) — 指摘 0 の 1 行文体規則追加。原則表同期と生成面到達は MUST 外の推奨で、新規経験則は抽出できない
