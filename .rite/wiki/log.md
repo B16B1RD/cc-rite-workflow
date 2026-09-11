@@ -1,5 +1,6 @@
 ## 2026-09-12
 
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=474, broken_refs=0
 * **Create**: [同一箇所への逐語 pin が連続したら記述の分割を検討する](pages/heuristics/repeated-verbatim-pin-signals-structural-split.md) — [設計文書の記述を実装分岐と同じ広さへ揃えたレビュー結果](raw/reviews/20260911T183502Z-pr-2702.md) を新規ページ化
 * **Update**: [否定条件の分岐を文書へ転記するとき else 側集合を肯定的な具体名に置き換えない](pages/heuristics/negated-condition-branch-transcribed-as-positive-name.md) — [設計文書の記述を実装分岐と同じ広さへ揃えたレビュー結果](raw/reviews/20260911T183502Z-pr-2702.md) を統合。正しい文の存在を強制する肯定 assert 1 本で肯定的具体名への revert は落ちる（対の否定 assert は言い換えを捕まえない防御の重ね）。sweep 範囲は SoT 実装のコメントまで含める
 * **Update**: [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](pages/anti-patterns/test-pin-protection-theater.md) — [設計文書の記述を実装分岐と同じ広さへ揃えたレビュー結果](raw/reviews/20260911T183502Z-pr-2702.md) を統合。文書側の字面 pin は「文書が実装より狭くなる」方向だけを守り、実装を狭める変異は全通過する（ヘッダが両側関係を名乗ると誤読を生む）
