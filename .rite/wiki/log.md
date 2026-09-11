@@ -1,5 +1,6 @@
 ## 2026-09-11
 
+* **Skip**: [20260911T073050Z-pr-2674.md](raw/reviews/20260911T073050Z-pr-2674.md) — 指摘 0 の 1 行文体規則追加。原則表同期と生成面到達は MUST 外の推奨で、新規経験則は抽出できない
 * **Update**: [無音失敗を可視化する防御コードには、その防御コード自体を守る失敗パステストを追加する](pages/heuristics/defensive-code-needs-its-own-failure-path-test.md) — [レビュー結果](raw/reviews/20260911T061535Z-pr-2673.md) を統合。fail 直後の詳細ダンプは成功パスでは到達しないため、出力チャネル契約は静的 grep と失敗経路で pin する
 * **Skip**: [20260911T043932Z-pr-2672.md](raw/reviews/20260911T043932Z-pr-2672.md) — レビュー指摘なし。括弧内スラッシュ残骸形は scanner の arm とテストへ実装済み。awk リテラル非一致は既存 negative assertion で pin 済み
 * **Update**: [契約を一意化する変更は、参照文書だけでなく実行手順書の placeholder と同節の旧語彙まで同時に揃える](pages/heuristics/contract-unification-sweeps-execution-docs-and-same-section-vocabulary.md) — [レビュー結果](raw/reviews/20260911T023121Z-pr-2669.md) を統合。参照側の例外を足しても手順書の複製が未更新だと挿入と拒否が併存し、拒否アクションの helper 名固定と独立表の配置も同じクラス。
