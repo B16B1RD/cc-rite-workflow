@@ -17,11 +17,14 @@ sources:
     resource: "raw/fixes/20260806T055534Z-pr-2124.md"
   - type: "reviews"
     resource: "raw/reviews/20260907T233525Z-pr-2614.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260911T154811Z-pr-2694.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-07T23:54:45Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-11T16:00:00Z" }
 verified:
   - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-07T23:54:45Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-11T16:00:00Z" }
 ---
 
 # `set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる
@@ -112,6 +115,14 @@ if [ -n "$hit" ]; then ...
 
 **proxy で判定するなら、proxy が成立する条件を文書に書く。** 書かないと、次の書き手が proxy を真の軸だと信じ、根拠が成立しない入力まで無警告で通す。
 
+### `grep -c . >/dev/null` は述語を変えずに SIGPIPE 経路だけを消す
+
+契約テストの「フェンス内行が非空か」assert で `awk ¦ grep -q .` を `awk ¦ grep -c . >/dev/null` に置き換えた事例。`grep -c` は件数を出すために stdin を EOF まで消費するので上流 awk が EPIPE を受ける経路が構造的に無く、0 一致では rc=1、1 件以上では rc=0 を返すため真偽の述語は `grep -q .` と同一である。同じ入力で旧形は 300 回中 23〜24 回 `no` に転じ、新形は 0 回。大入力での `PIPESTATUS` は旧形 `141 141 0`、新形 `0 0 0` と、rc 141 の消失を直接観測できる。
+
+発火確率は上流の出力行数に比例する（同一スイート内で 125 行のフェンスを持つステップだけが落ち、9〜26 行のステップはほぼ落ちなかった）。**同型 3 箇所は同じ形に揃える** — 1 箇所だけ `-q` が残ると、そこだけがサイズ依存で将来 flaky 化する。
+
+「旧形式を復元すると決定的に落ちる回帰 pin」は要求しない。実データ規模では失敗が scheduler race のため決定的に再現できず、決定的に落とすには MB 級の合成 fixture が要る。判別力（`_fenced` を空出力に変異させて `no` で FAIL する）と 300 回連続 PASS の 2 点で十分と判断する。
+
 ### 全量読取と抽出境界を同時に検証する
 
 全量を消費する修正では、一致・非一致だけでなく抽出範囲の境界も固定する。先頭20行だけを判定する処理なら、大容量本文を維持したまま20行目の marker を採用し21行目を除外する正負ケースを検証する。抽出を `sed -n '1,20p'` にすると、表示範囲を保ちつつ残りの入力も消費できる。
@@ -125,6 +136,7 @@ if [ -n "$hit" ]; then ...
 ## ソース
 
 - [全量読取と大容量・範囲境界の回帰検証](../../raw/reviews/20260907T233525Z-pr-2614.md)
+- [契約テストのフェンス抽出 assert を grep -c で全量消費に置換（レビュー結果）](../../raw/reviews/20260911T154811Z-pr-2694.md)
 
 - [fix 結果](../../raw/fixes/20260803T052647Z-pr-2094.md)
 - [`sed -n | grep -q` でバッファ境界を超えた地点の挙動反転を検出](../../raw/reviews/20260805T043752Z-pr-2112.md)

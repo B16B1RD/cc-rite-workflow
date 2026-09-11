@@ -1,3 +1,7 @@
+## 2026-09-12
+
+* **Update**: [`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) — [レビュー結果](raw/reviews/20260911T154811Z-pr-2694.md) を統合。`grep -c . >/dev/null` は述語を変えず SIGPIPE 経路だけを消す。発火確率は上流の出力行数に比例し、同型箇所は同じ形に揃える
+
 ## 2026-09-11
 
 * **Create**: [sandbox の書込防止マスクは char device 形と ro bind mount 形の 2 形状があり、bind mount 形は mountinfo の mount point 完全一致で検知する](pages/patterns/sandbox-mask-two-shapes-mountinfo-detection.md) — raw/reviews/20260911T135916Z-pr-2690.md を新規ページ化。test -c は前者のみ検知、mountpoint -q は rc が揺れ st_dev は親と同値。char device fixture は /dev/null への symlink で作れる

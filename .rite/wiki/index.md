@@ -368,7 +368,7 @@ okf_version: "0.2"
 | [fail-closed ガードは「異常を検出したら止める」ではなく「正常を確認できなければ止める」で書く](pages/patterns/fail-closed-confirms-normal-not-detects-abnormal.md) | patterns | cross-Issue の値転写を遮断する fail-closed ガードが、「identity が**食い違う**」ときにしか発火しない実装になっていた。 | 2026-08-03T07:46:56Z | high |
 | [特定の 1 バイト・1 条件で書いた防御は、defect class 全体を覆うか修正直後に自問する](pages/heuristics/single-condition-defense-vs-defect-class.md) | heuristics | レビュー指摘は具体的な 1 ケースで届く。 | 2026-08-03T07:46:56Z | high |
 | [bash の算術比較は非数値入力で rc=2 を返し、fail-closed の意図が else 側へ倒れる](pages/anti-patterns/bash-numeric-test-fail-open-on-nonnumeric.md) | anti-patterns | `[ "$x" -eq 0 ]` は `$x` が非数値のとき「偽」ではなく **rc=2（エラー）** を返す。 | 2026-08-03T07:46:56Z | high |
-| [`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) | anti-patterns | `grep -q` は最初の一致で即座に終了する。 | 2026-09-07T23:54:45Z | high |
+| [`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) | anti-patterns | `grep -q` は最初の一致で即座に終了する。 | 2026-09-11T16:00:00Z | high |
 | [mutation は適用前に一致件数を、適用後に構文を検証してから結論に使う](pages/heuristics/mutation-validate-before-and-after-application.md) | heuristics | mutation テストの結論（「このアサーションは守れている / 守れていない」）は、mutation 自体が正しく適用されて初めて意味を持つ。 | 2026-08-03T07:46:56Z | high |
 | [自身の検出を避けるために崩した書式は、読者に「こう書け」と読まれる](pages/anti-patterns/self-detection-evasion-format-read-as-prescription.md) | anti-patterns | 検出ゲートの仕様を記述する文書は、その仕様が検出する文字列を本文に書いた瞬間に自分自身が検出対象になる。 | 2026-08-03T23:41:26+09:00 | medium |
 | [テストの gate 条件がプラットフォーム事実を環境 capability の代理にすると恒常 red 化する](pages/anti-patterns/test-gate-proxy-indicator-drift.md) | anti-patterns | テストの floor（skip を禁じて fail させるガード）が、守りたい性質そのものではなく「プラットフォーム事実」を代理指標にしていると、代理の成立しない環境で恒常的に赤くなりスイート全体の signal を劣化させる。 | 2026-08-04T00:55:00+09:00 | medium |
@@ -489,4 +489,4 @@ okf_version: "0.2"
 
 - 総ページ数: 475
 - ドメイン別: patterns=111, heuristics=211, anti-patterns=153
-- 最終更新: 2026-09-11T15:07:49Z
+- 最終更新: 2026-09-11T16:00:00Z
