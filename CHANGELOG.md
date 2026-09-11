@@ -32,6 +32,18 @@ Past version sections carry none either — they have already been stripped.
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-09-12
+
+### Fixed
+
+- **Worktree teardown detects a read-only bind mount mask before it damages the admin directory** — a sandbox masks `config.worktree` / `commondir` either as a `/dev/null` character device or as a read-only bind mount of the real file. Detection covered only the character-device form, so under a bind mount the forced worktree removal unlinked `HEAD` and then stopped with `EBUSY`, leaving an admin directory missing `HEAD` that `git worktree prune` could no longer clear. Detection now lives in one place (`_sandbox_mask_present`) and recognises both forms: the character device, plus an exact mount-point match read from `mountinfo` with `mountpoint -q` as the fallback. An `st_dev` comparison is deliberately not used, because a bind mount shares its parent's device number.
+- **The mask-undetermined WARNING is limited to Linux hosts that lost both detection means, and the live-cwd skip path no longer probes** — macOS has neither `/proc` nor util-linux `mountpoint` and never carries the bind-mount form, so the warning fired on every removal whether or not a sandbox was present. The probe now runs only after the live-cwd decision, and the undetermined warning is emitted unless `uname -s` reports Darwin; a failed or unknown `uname` falls to the warning side.
+- **The cleanup contract test's non-empty fence assertion no longer depends on a SIGPIPE race** — under `set -o pipefail`, `awk | grep -q .` let `grep -q` exit on its first match while `awk` kept writing to the closed pipe, making the whole pipeline non-zero intermittently. `grep -c . >/dev/null` consumes all input, so no early exit occurs, while a zero match still returns a non-zero status.
+
+### Changed
+
+- **The multi-session worktree design documents follow the implemented mask detection** — both files now describe the two mask shapes, the two detection means, the third outcome when neither is available, and the WARNING condition at the same breadth as the helper's branches.
+
 ## [0.15.0] - 2026-09-11
 
 ### Added
@@ -1047,6 +1059,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.15.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.13.2...v0.14.0
 [0.13.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.13.1...v0.13.2
