@@ -268,7 +268,7 @@ cmd_remove() {
     echo "WARNING: 別のセッションがこの作業ツリー（${flow_wt}）を使用中のため、削除を見送りました。そのセッションが終了したあと、次回のセッション開始時に作業ツリーとローカルブランチが自動で回収されます。" >&2
     echo "[CONTEXT] WORKTREE_REMOVE_SKIPPED_LIVE_CWD=1; path=$flow_wt" >&2
   elif [ -n "$_masked_file" ]; then
-    echo "WARNING: sandbox が作業ツリーの管理ディレクトリ（$_wt_admin/$_masked_file）にマスクマウントを張っているため、削除を見送りました。この状態で git worktree remove を実行すると管理ディレクトリが半壊するため、削除自体を試行しません。次回のセッション開始時（sandbox 外）に作業ツリーとローカルブランチが自動で回収されます。実行エージェントはこの場で sandbox を無効化して remove を再試行しないこと。" >&2
+    echo "WARNING: sandbox が作業ツリーの管理ディレクトリ（${_wt_admin}/${_masked_file}）にマスクマウントを張っているため、削除を見送りました。この状態で git worktree remove を実行すると管理ディレクトリが半壊するため、削除自体を試行しません。次回のセッション開始時（sandbox 外）に作業ツリーとローカルブランチが自動で回収されます。実行エージェントはこの場で sandbox を無効化して remove を再試行しないこと。" >&2
     echo "[CONTEXT] WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1; path=$flow_wt" >&2
     # admin dir 半壊では、このマスク検知は次に control が渡る側（corpse）の直接の前兆であり、
     # corpse は checkout 中 branch を git で解決できないため pr-cycle-cleanup.sh Step 5 の
