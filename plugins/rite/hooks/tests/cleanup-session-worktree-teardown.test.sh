@@ -9,6 +9,7 @@
 #   M-02 マスク検知は mountinfo の mount point と完全一致で判定する（prefix / 親ディレクトリの near-miss は不発）
 #   M-03 空白を含むパスは mountinfo の \040 エスケープと照合できる
 #   M-04 mountinfo 読取不可かつ mountpoint コマンド不在では WARNING を出したうえで削除経路へ進む
+#   M-05 character device 形（/dev/null symlink で再現）の検知結果と emit 内容は不変
 #
 # marker は行まるごと固定する。呼び出し側（cleanup/SKILL.md ステップ 12）は marker 名 +
 # フィールドで判定するため、フィールドが 1 つ落ちても helper 単体では動いて見える。
@@ -364,12 +365,21 @@ assert_contains "mask(no-probe): 判定不能の WARNING を出す" "$out" "WARN
 assert_not_contains "mask(no-probe): SANDBOX_MASK marker を出さない" "$out" "WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK"
 [ ! -d "$wt" ] && ok "mask(no-probe): character device 判定のみで削除経路へ進む" || bad "mask(no-probe): working tree が残った (出力: $out)"
 
-# character device 形の検知は関数内に残る（mknod は非 root で張れないため source pin）。
-if sed -n '/^_sandbox_mask_present()/,/^}/p' "$HELPER" | grep -q '\[ -c "\$_admin/\$_f" \]'; then
-  ok "mask(chardev): character device 判定が検知関数内に残る"
-else
-  bad "mask(chardev): character device 判定が検知関数から消えた"
-fi
+# character device 形（/dev/null マスク）の検知と emit は不変。mknod は root/CAP_MKNOD 必須で
+# 張れないが、/dev/null への symlink で `test -c` は真になる（symlink を辿る）。mountinfo を不在に
+# し mountpoint も無い stub PATH で実行し、通過が `-c` 分岐だけに帰属するようにする。
+r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
+admin=$(sed -n 's/^gitdir: //p' "$wt/.git" | head -1)
+rm -f "$admin/config.worktree"; ln -s /dev/null "$admin/config.worktree"
+[ -c "$admin/config.worktree" ] && ok "mask(chardev): fixture の config.worktree が character device に見える" || bad "mask(chardev): fixture が character device にならない"
+out=$(cd "$r" && RITE_MOUNTINFO="$TMP_ROOT/nonexistent-mountinfo" PATH="$stub_bin" bash "$HELPER" remove --worktree "$wt" --pr-merged true --self-root "$$" 2>&1); rc=$?
+assert_eq "mask(chardev): exit 0" "$rc" "0"
+assert_contains "mask(chardev): SANDBOX_MASK marker で見送る" "$out" \
+  "[CONTEXT] WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1; path=$wt"
+assert_contains "mask(chardev): WARNING は config.worktree を名指しする（従来文言）" "$out" "（$admin/config.worktree）にマスクマウントを張っているため、削除を見送りました"
+assert_not_contains "mask(chardev): 判定不能の WARNING を出さない（-c で先に確定）" "$out" "WARNING: sandbox マスクの mountpoint 判定ができません"
+[ -f "$admin/HEAD" ] && ok "mask(chardev): admin HEAD が残る" || bad "mask(chardev): admin HEAD が消えた"
+[ -d "$wt" ] && ok "mask(chardev): working tree が残る" || bad "mask(chardev): working tree が消えた"
 
 prune_ln=$(grep -n 'git worktree prune' "$HELPER" | head -1 | cut -d: -f1)
 fail_ln=$(grep -n 'echo "\[CONTEXT\] WORKTREE_REMOVE_FAILED=1' "$HELPER" | tail -1 | cut -d: -f1)
