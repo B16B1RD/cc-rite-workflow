@@ -4,10 +4,15 @@ title: "否定条件の分岐を文書へ転記するとき else 側集合を肯
 domain: "heuristics"
 description: "実装が `[ \"$os\" != \"Darwin\" ]` のような否定条件で分岐しているとき、文書側に「Linux は〜」と肯定的な具体名で書くと、否定条件が拾う残りのケース（判定コマンドの失敗・未知の値）が記述から落ち、文書が実装より狭くなる。"
 created: "2026-09-11T18:04:28Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-11T18:04:28Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-11T18:35:02Z" }
+verified:
+  - by: "rite-wiki-ingest/claude-opus-5[1m]"
+    at: "2026-09-11T18:35:02Z"
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260911T175801Z-pr-2700.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260911T183502Z-pr-2702.md"
 tags: []
 confidence: medium
 ---
@@ -26,11 +31,17 @@ confidence: medium
 
 転記の際は、実装の条件式が肯定形か否定形かを確認し、否定形なら文書も「〜以外」の形で書く。具体名を出すなら、否定条件が拾う残りのケースを括弧で補う（例:「特定 OS 以外（判定コマンドの失敗・未知の値を含む）」）。この種の指摘は文書のテキスト差分を示すだけで挙動的帰結を持たないため実測アンカーが付かず、non-blocking として記録されてマージを止めない。止まらないからこそ、書く時点で意識する必要がある。
 
+この欠陥を pin するテストを足すとき、正しい文（「〜以外は」）の存在を強制する肯定 assert 1 本で、肯定的な具体名への revert は落ちる。対になる否定 assert（旧文面の不在を検査するもの）が単独で効くのは新旧両方の文が同時に存在する編集に限られ、しかも literal 一致なので言い換え（「Linux では」「Linux/BSD は」）は捕まえない。2 本目は防御の重ねであって検出範囲の拡張ではない。
+
+sweep の範囲は文書に閉じない。同じ欠陥クラスは SoT 実装自身のコメントにも現れる。文書側を 2 度直した後でも、helper 内の別のコメント行に「呼び出し側が特定 OS でのみ WARNING を出す」という無補正の狭い記述が残っていた。文書ファイルだけを grep 対象にすると取りこぼす。否定条件の else 側集合を扱う記述は、実装コメントまで含めて洗う。
+
 ## 関連ページ
 
 - [SoT-reviewer 表現 drift: pos/neg 方向の差で派生記述が silent drift する](../anti-patterns/sot-reviewer-expression-drift.md)
+- [同一箇所への逐語 pin が連続したら記述の分割を検討する](./repeated-verbatim-pin-signals-structural-split.md)
 - [state machine を 2 箇所で記述する場合は動作の文字列レベルで同期する](../patterns/state-machine-dual-location-sync.md)
 
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20260911T175801Z-pr-2700.md)
+- [設計文書の記述を実装分岐と同じ広さへ揃えたレビュー結果](../../raw/reviews/20260911T183502Z-pr-2702.md)

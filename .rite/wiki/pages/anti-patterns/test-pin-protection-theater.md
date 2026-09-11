@@ -74,10 +74,13 @@ sources:
     resource: "raw/fixes/20260830T082306Z-pr-2482.md"
   - type: "fixes"
     resource: "raw/fixes/20260830T083939Z-pr-2482.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260911T183502Z-pr-2702.md"
 tags: [test-pin, mutation-test, drift-check, protection-theater, canonical-phrase, same-file-3-site-sync, subsidiary-claim-empirical-verification, cross-file-cross-site-coverage, multi-axis-mutation-verification, channel-collision, negative-control, twin-site-satisfaction, anchor-uniqueness, occurrence-count-pin]
 confidence: high
-generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-09-05T12:10:29.806932+00:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-11T18:35:02Z" }
 verified:
+  - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-11T18:35:02Z" }
   - { by: "rite-wiki-ingest/gpt-6", at: "2026-09-05T12:10:29.806932+00:00" }
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-25T16:50:12Z" }
 ---
@@ -575,6 +578,19 @@ producer と validator で被演算子の変数名だけが違う（`$body` / `$
 
 `fail()` が FAIL カウントを加算するだけで停止しない設計だと、先行 assert が落ちた実行でも後続の抽出処理まで到達する。そのため「先行 assert が保証しているから不要」に見える防御（抽出の `head -1` 等）が、実際には診断値を壊さないための保険として必要になる。この前提はコード上に現れないため、読み手が「冗長」と判断して消す余地が残る。
 
+## 変種: 字面 pin は片方向しか守らないのに、ヘッダが両側関係を名乗る
+
+文書と実装の一致を守るつもりで文書側の字面だけを `assert_grep` で固定すると、守れるのは「文書が実装より狭くなる」方向だけになる。逆向き——実装のほうを狭めて文書が実装より広くなる drift——は、文書側の字面が変わらないので通る。
+
+起点事例では設計文書の記述を実装の否定条件（`[ "$_os" != "Darwin" ]`）と同じ広さに直し、その文書行を pin する assert を足した。テストファイルのヘッダ項目はそれを「設計文書の記述が helper の分岐と同じ広さ」と名乗った。実測: 隔離 worktree で helper の分岐を `[ "$_os" != "Darwin" ] && [ "$_os" != "FreeBSD" ]` へ狭める変異を加えたところ、helper 側の挙動テスト（判定コマンド不在 = WARNING / 該当 OS = 無言）も文書側 pin も全通過した。ヘッダが名乗る「同じ広さ」という関係は、実際には片側の字面しか見ていない。
+
+| 主張 | 実測 |
+|---|---|
+| 「文書の記述が実装の分岐と同じ広さ」 | ❌ 実装を狭める変異で全テスト緑 |
+| 「文書が実装より狭くなる drift を検出する」 | ✅ 文書行を旧文面へ戻すと落ちる |
+
+最小コストの是正はヘッダを**実際に pin している側だけを名乗る文**へ狭めること（「設計文書側の記述が〜と書いている」）。両方向を本当に守るなら、実装の分岐そのものを読む assert が別に要る。テストの自己記述が実態より広い関係を名乗ると、読み手は片側 drift に対する保護を両側への保護と誤読する。
+
 ## ソース（追記分）
 
 - [静的 pin が行継続文字を照合せず 1 文字 drift を素通り](../../raw/reviews/20260803T004941Z-pr-2094.md)
@@ -589,3 +605,4 @@ producer と validator で被演算子の変数名だけが違う（`$body` / `$
 - [count=2 部分文字列 pin を一意 pin に置換し decoy mutation で緑経路を塞ぐ](../../raw/fixes/20260825T162042Z-pr-2361.md)
 - [期待値を片側抽出する symmetry pin の同時 drift 限界、正規化が隠した被演算子同一性の前提](../../raw/fixes/20260830T082306Z-pr-2482.md)
 - [(NB sweep) — 停止しない fail() 前提のもとで head -1 が診断値固定の保険として要る](../../raw/fixes/20260830T083939Z-pr-2482.md)
+- [文書側の字面 pin が片方向しか守らず、ヘッダが両側関係を名乗っていた](../../raw/reviews/20260911T183502Z-pr-2702.md)
