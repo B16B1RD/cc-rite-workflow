@@ -218,6 +218,22 @@ class WorkflowContracts(unittest.TestCase):
             self.assertIn(clause, reviewer_part)
         self.assertNotIn("本文・制約・差分・仕様・絶対 workdir を native 子の prompt へ明示", reviewer_part)
         self.assertIn("読取完了申告が渡した全パスと一致", reviewer_part.split("### 回収ゲート\n", 1)[1])
+        # The recovery claim is limited to what the design record attests; the
+        # generic "同じ本文を渡す" wording must not resurface next to the path contract.
+        for stale in ["同じ本文を渡す", "複数ホストで選定全員の回収を完走"]:
+            self.assertNotIn(stale, reviewer_part)
+        for clause in ["同じ絶対パス集合と読取義務を渡す", "計画/実装子の起動と完了回収を完走",
+                       "選定 reviewer 全員の回収は未検証"]:
+            self.assertIn(clause, reviewer_part)
+        # The placeholder substitution rule lives in the handoff subsection and at the
+        # independent-child entry of pr-review, so both call sites agree on it.
+        handoff_part = reviewer_part.split("### 本文の引き渡し\n", 1)[1]
+        pr_review = (plugin / "skills/pr-review/SKILL.md").read_text(encoding="utf-8")
+        entry_part = pr_review.split("### 4.3.1 Task Tool Sub-Agent Invocation\n", 1)[1].split("\n### 4.4 ", 1)[0]
+        for clause in ["`{shared_reviewer_principles}` は inline せず", "絶対パス行（読取義務付き）に置き換える",
+                       "その他の placeholder", "4.5 のまま"]:
+            self.assertIn(clause, handoff_part)
+            self.assertIn(clause, entry_part)
         self.assertIn("reviewer 本文の絶対パスと読取義務を子の指示へ明示", runtime)
         for skill_name in ["rite-workflow", "batch-run", "open", "issue-implement", "pr-create", "iterate",
                            "pr-review", "fix", "ready", "recover", "issue-create"]:
