@@ -9,6 +9,7 @@
 * **Skip**: [20260911T032611Z-pr-2671.md](raw/reviews/20260911T032611Z-pr-2671.md) — cycle artifact: 0 findings; rationale と実装の同期は asymmetric-fix-transcription / stale-historical-comment で、rationale をテスト pin しない判断は comment-rationale-widens-review-surface で既存カバー
 * **lint:clean** — contradictions=0, stale=68, orphans=0, missing_concept=0, unregistered_raw=466, broken_refs=0
 * **lint:clean** — contradictions=0, stale=68, orphans=0, missing_concept=0, unregistered_raw=472, broken_refs=0
+* **lint:clean** — contradictions=0, stale=68, orphans=0, missing_concept=0, unregistered_raw=467, broken_refs=0
 
 ## 2026-09-10
 
