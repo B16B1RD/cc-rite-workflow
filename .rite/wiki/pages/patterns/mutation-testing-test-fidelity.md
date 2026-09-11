@@ -6,6 +6,10 @@ promote: rite-plugin
 created: "2026-04-27T23:01:24+00:00"
 sources:
   - type: "reviews"
+    resource: "raw/reviews/20260911T135916Z-pr-2690.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260911T140326Z-pr-2690.md"
+  - type: "reviews"
     resource: "raw/reviews/20260829T153702Z-pr-2466.md"
   - type: "reviews"
     resource: "raw/reviews/20260725T032345Z-pr-2013.md"
@@ -145,7 +149,7 @@ sources:
     resource: "raw/reviews/20260806T120815Z-pr-2124.md"
 tags: ["test", "mutation-testing", "false-positive", "dead-code", "verification", "bytes-exact-pin", "trailing-newline-strip", "self-grep-tautology", "count-threshold-mutation-evasion", "path-filter-coverage-gap", "load-bearing-whitespace-pin", "regex-alternation-per-branch-coverage", "regex-quantifier-semantic-coverage", "symmetry-claim-bidirectional-pin", "negative-assert", "non-blocking-contract-mutation"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-29T15:42:53Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-11T15:07:49Z" }
 ---
 
 # Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する
@@ -910,6 +914,10 @@ clean tree での PASS と mutant での FAIL は、**それぞれ別の欠陥�
 
 bash は untrapped な INT/TERM/HUP で死ぬときも EXIT trap を実行するため、lib から signal trap 3 行を削除した mutant に対してテストが**全件 green のまま**通った。rc と副作用だけを見る assertion では handler の存在を判別できない。詳細は [bash の signal 挙動は「誰が送るか」「何をしている最中か」で反転する — 条件を揃えない実測は正しい記述を誤りと判定する](../heuristics/bash-signal-verification-requires-matched-conditions.md) を参照。
 
+### 判定を literal 条件から関数へ抽出すると emit 段の保証が source-grep pin から消える
+
+base では `[ -c "$dir/config.worktree" ]` の literal がそのまま分岐条件で、literal を残したまま emit を消すことはできなかった。判定を関数へ抽出して「述語 → 戻り値 → 変数 → marker」の多段にすると、置換後の source-grep pin は述語段の文字列しか固定せず、`return 0`→`return 1` の 1 語変異が両スイート green で生存する。抽出のたびに emit 段の runtime テストを同時に足し、同じ変異を再適用して新 assert が落ちることを実測する。修正検証は複数 reviewer が同じ変異を独立に再適用して差分 assert 数を数えると確定でき、削除した静的 pin と同等のものが兄弟テストに残るかを Cross-File で確認して静的ガードの純減が無いことも記録する。
+
 ## 関連ページ
 
 - [否定形の assert は前提条件が崩れると fail-silent になる](../anti-patterns/negative-assertion-vacuous-without-precondition-floor.md)
@@ -927,6 +935,8 @@ bash は untrapped な INT/TERM/HUP で死ぬときも EXIT trap を実行する
 
 ## ソース
 
+- [レビュー結果](../../raw/reviews/20260911T135916Z-pr-2690.md)
+- [fix 結果](../../raw/fixes/20260911T140326Z-pr-2690.md)
 - [閾値の存在と値を別々に pin する](../../raw/fixes/20260725T101401Z-pr-2017-cycle2.md)
 - [D-03 fixture が manifest 消費分岐に未到達で空虚テスト、HIGH 1件](../../raw/reviews/20260722T020659Z-pr-1967.md)
 - [D-04/D-05 の mutation 実証](../../raw/reviews/20260722T022920Z-pr-1967.md)

@@ -5,6 +5,8 @@ description: "SoT 散文 / 設計ドキュメントが実装 (正規表現リテ
 created: "2026-06-02T00:07:23Z"
 sources:
   - type: "reviews"
+    resource: "raw/reviews/20260911T123634Z-pr-2686.md"
+  - type: "reviews"
     resource: "raw/reviews/20260601T185616Z-pr-1238.md"
   - type: "reviews"
     resource: "raw/reviews/20260601T191319Z-pr-1238.md"
@@ -12,7 +14,7 @@ sources:
     resource: "raw/fixes/20260601T190814Z-pr-1238.md"
 tags: ["verification-protocol", "prose-implementation-sync", "regex", "behavioral-test", "attribution"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-02T00:07:23Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-11T15:07:49Z" }
 ---
 
 # 散文が引用する実装 (regex literal / 帰属ファイル / 挙動) は文字一致・帰属・behavioral test の 3 点で裏取りする
@@ -62,6 +64,7 @@ canonical: helper を散文参照するときは「regex 実体ファイル (`.p
 - SoT 散文 / 設計ドキュメントが regex・閾値・path 形状など実装の挙動を要約参照する PR
 - helper が wrapper → 実体へ委譲する二層 (以上) 構造をもつ実装を散文が参照するケース
 - substring → segment-anchored への正規表現厳格化 ([path セグメントの substring マッチが look-alike を誤マッチし対象を silent に over-remove する](../anti-patterns/path-segment-substring-over-match.md) の検証手法として直結)
+- CHANGELOG のエントリが機能の帰属先ファイルを名指しする場合。commit subject と PR 要約から書き起こすと、複数のファイルが同じ機能名を共有するときに帰属を取り違える（表の所在・版付き能力表・呼出し手順書がそれぞれ別ファイルで、配布物外の設計文書を配布物内として書いた例）。エントリが名指しするファイルの役割は Read で確認してから書く
 
 ## 関連ページ
 
@@ -71,6 +74,7 @@ canonical: helper を散文参照するときは「regex 実体ファイル (`.p
 
 ## ソース
 
+- [レビュー結果](../../raw/reviews/20260911T123634Z-pr-2686.md)
 - [レビュー結果](../../raw/reviews/20260601T185616Z-pr-1238.md)
 - [レビュー結果](../../raw/reviews/20260601T191319Z-pr-1238.md)
 - [fix 結果](../../raw/fixes/20260601T190814Z-pr-1238.md)

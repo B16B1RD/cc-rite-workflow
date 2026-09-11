@@ -8,9 +8,11 @@ created: "2026-07-09T00:40:00+09:00"
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260708T153610Z-pr-1802.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260911T135916Z-pr-2690.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-09T00:40:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-11T15:07:49Z" }
 ---
 
 # 境界での無害化は下流ツールの別エスケープ意味論までは保証しない（quoted heredoc → awk -v 伝播）
@@ -39,10 +41,13 @@ quoted heredoc は「シェルの」展開・置換を防ぐスコープに限�
 
 この失敗モードは [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) が記録する「fix の対称化レイヤーごとの byte-exact 一致検証契約が未確立だと recursive recurrence が発火する」パターンの一種であり、対称位置の伝播漏れではなく「異なる層（シェル層 → インタプリタ層）での再解釈」という axis で発生する点が特徴的。
 
+**逆方向の再現（エスケープ表記を保ちたい値）**: mountinfo は mount point 内の空白を `\040` として格納するため、照合側もパスの空白を `\040` へ寄せてから比較する。この照合値を `awk -v p="$escaped"` で渡すと、`-v` の C 風エスケープ解釈が `\040` を空白へ**戻してしまい**、field 5 の literal `\040` と一致しなくなる（空白入りディレクトリ配下の worktree で検知が外れる）。修正は同じく `ENVIRON` 経由。「値の破損を防ぐ」だけでなく「値の表記を保つ」必要がある場面でも `-v` は境界の意味論を変えるため、下流ツールへ渡す値にバックスラッシュが含まれるなら受け渡し機構を先に固定する。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
 
 ## ソース
 
+- [レビュー結果](../../raw/reviews/20260911T135916Z-pr-2690.md)
 - [レビュー結果](../../raw/reviews/20260708T153610Z-pr-1802.md)

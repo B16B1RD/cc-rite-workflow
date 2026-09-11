@@ -1,5 +1,12 @@
 ## 2026-09-11
 
+* **Create**: [sandbox の書込防止マスクは char device 形と ro bind mount 形の 2 形状があり、bind mount 形は mountinfo の mount point 完全一致で検知する](pages/patterns/sandbox-mask-two-shapes-mountinfo-detection.md) — raw/reviews/20260911T135916Z-pr-2690.md を新規ページ化。test -c は前者のみ検知、mountpoint -q は rc が揺れ st_dev は親と同値。char device fixture は /dev/null への symlink で作れる
+* **Create**: [実測ゲートで降格した文書指摘でも、grep で確認できる事実誤りはリリース転記前に修正で消化する](pages/heuristics/demoted-doc-factual-error-fix-before-release-transcription.md) — raw/reviews/20260911T124654Z-pr-2686.md を新規ページ化。記録に回すと CHANGELOG の誤記が Release へ転記され後から直す経路が無い
+* **Update**: [境界での無害化は下流ツールの別エスケープ意味論までは保証しない（quoted heredoc → awk -v 伝播）](pages/anti-patterns/sanitization-gap-downstream-tool-escape-semantics.md) — raw/reviews/20260911T135916Z-pr-2690.md を統合。awk -v は \040 を空白へ戻し mountinfo 照合を外す。表記を保つ値も ENVIRON 経由
+* **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/reviews/20260911T135916Z-pr-2690.md, raw/fixes/20260911T140326Z-pr-2690.md を統合。判定の関数抽出で emit 段の保証が source-grep pin から消える。runtime テストを同時に足し変異再適用で確定する
+* **Update**: [散文が引用する実装 (regex literal / 帰属ファイル / 挙動) は文字一致・帰属・behavioral test の 3 点で裏取りする](pages/heuristics/prose-cited-implementation-behavioral-verification.md) — raw/reviews/20260911T123634Z-pr-2686.md を統合。CHANGELOG エントリが名指しするファイルの役割は Read で確認してから書く
+* **Skip**: [20260911T143125Z-pr-2690.md](raw/reviews/20260911T143125Z-pr-2690.md) — 同 PR の先行 raw と同内容。統合済みページに追記済みで新規経験則なし
+* **Skip**: [20260911T150140Z-pr-2690.md](raw/reviews/20260911T150140Z-pr-2690.md) — 同 PR の先行 raw と同内容。統合済みページに追記済みで新規経験則なし
 * **Update**: [pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する](pages/patterns/pin-literal-uniqueness-verified-by-mutation.md) — [レビュー結果](raw/reviews/20260911T120212Z-pr-2684.md) を統合。部分文字列 pin は限定句の削除や旧文言への差し戻しを検出しないため文全体で pin し旧文言は stale 側へ。旧 pin が真部分文字列なら置換で検証力は落ちない
 * **lint:clean** — contradictions=0, stale=68, orphans=0, missing_concept=0, unregistered_raw=471, broken_refs=0
 * **Update**: [契約を一意化する変更は、参照文書だけでなく実行手順書の placeholder と同節の旧語彙まで同時に揃える](pages/heuristics/contract-unification-sweeps-execution-docs-and-same-section-vocabulary.md) — [レビュー結果](raw/reviews/20260911T111719Z-pr-2682.md) を統合。証跡限定の書き直しで提案文を分割すると末尾文の目的語が暗黙化する。配布物内で設計記録の所在を名指ししない
