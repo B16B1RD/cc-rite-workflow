@@ -483,6 +483,8 @@ rationale: references/rationale.md#related-page-literal
 
 ### 5.0 LLM が実行すべき具体的手順 (worktree ベース)
 
+構造と難所は reasoning で決め、本文は output で 1 回だけ書く。
+下書きを reasoning で全文作ってから再出力しない。
 `separate_branch` では `{wiki_worktree_abs}/`（ステップ 1.3 の絶対パス）、`same_branch` では dev ツリーに直接 Write/Edit する。順に実施する:
 
 1. **Raw Source 本文の確保**: ステップ 2.3 末尾で取得した本文を作業メモリに展開

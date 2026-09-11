@@ -396,6 +396,8 @@ rationale: references/rationale.md#no-flow-state
 
 ### 5.1 仕様書生成
 
+構造と難所は reasoning で決め、本文は output で 1 回だけ書く。
+下書きを reasoning で全文作ってから再出力しない。
 大型 Issue から「設計仕様書」を生成する。以下のセクションを含む:
 
 ```markdown
