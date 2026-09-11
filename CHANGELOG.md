@@ -40,10 +40,6 @@ Past version sections carry none either — they have already been stripped.
 - **The mask-undetermined WARNING is limited to Linux hosts that lost both detection means, and the live-cwd skip path no longer probes** — macOS has neither `/proc` nor util-linux `mountpoint` and never carries the bind-mount form, so the warning fired on every removal whether or not a sandbox was present. The probe now runs only after the live-cwd decision, and the undetermined warning is emitted unless `uname -s` reports Darwin; a failed or unknown `uname` falls to the warning side.
 - **The cleanup contract test's non-empty fence assertion no longer depends on a SIGPIPE race** — under `set -o pipefail`, `awk | grep -q .` let `grep -q` exit on its first match while `awk` kept writing to the closed pipe, making the whole pipeline non-zero intermittently. `grep -c . >/dev/null` consumes all input, so no early exit occurs, while a zero match still returns a non-zero status.
 
-### Changed
-
-- **The multi-session worktree design documents follow the implemented mask detection** — both files now describe the two mask shapes, the two detection means, the third outcome when neither is available, and the WARNING condition at the same breadth as the helper's branches.
-
 ## [0.15.0] - 2026-09-11
 
 ### Added

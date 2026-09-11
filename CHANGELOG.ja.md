@@ -38,10 +38,6 @@ blocking gate として実行する。
 - **マスク判定不能の WARNING を判定手段を失った Linux に限定し、live-cwd skip 経路では probe しない** — macOS は `/proc` も util-linux の `mountpoint` も持たず bind mount 形のマスクも張られないため、sandbox の有無に関係なく削除のたびに WARNING が出ていた。probe を live-cwd 判定の後に限定し、判定不能の WARNING は `uname -s` が Darwin を返さないときだけ出す（`uname` 失敗・未知 OS は WARNING を出す側に倒す）。
 - **cleanup 契約テストのフェンス非空 assert が SIGPIPE レースに依存しなくなった** — `set -o pipefail` 下で `awk | grep -q .` を使うと、`grep -q` が初回一致で終了した後に `awk` が閉じたパイプへ書き続け、パイプ全体が断続的に非ゼロ扱いになっていた。`grep -c . >/dev/null` は入力を全消費するため早期終了が起きず、一致 0 で非ゼロを返す判別力は維持される。
 
-### 変更
-
-- **マルチセッション worktree の設計文書が実装のマスク検知に追従する** — 2 ファイルにマスクの 2 形状・判定手段 2 つ・両方無い環境の第 3 の結果・WARNING の条件を、helper の分岐と同じ広さで記述した。
-
 ## [0.15.0] - 2026-09-11
 
 ### 追加
