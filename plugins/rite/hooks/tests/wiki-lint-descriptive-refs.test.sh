@@ -602,7 +602,7 @@ if (
 else
   git_rc=$?
   fail "TC-19 git sandbox の準備に失敗 (rc=$git_rc)"
-  [ -n "$git_err" ] && [ -s "$git_err" ] && head -5 "$git_err" | sed 's/^/    /' >&2
+  [ -n "$git_err" ] && [ -s "$git_err" ] && head -5 "$git_err" | sed 's/^/    /'
 fi
 sb_hits=$(printf '%s\n' "$FIXTURE_REL" | ( cd "$GITSBX" && bash "$SCRIPT" --branch-strategy separate_branch --wiki-branch wiki --repo-root "$GITSBX" ) 2>/dev/null | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p')
 assert "TC-19 separate_branch (git show) で same_branch と同じ hits" "$hits" "$sb_hits"
@@ -882,7 +882,7 @@ if (
 else
   git_rc=$?
   fail "TC-36 git sandbox (wiki-with-index) の準備に失敗 (rc=$git_rc)"
-  [ -n "$git_err" ] && [ -s "$git_err" ] && head -5 "$git_err" | sed 's/^/    /' >&2
+  [ -n "$git_err" ] && [ -s "$git_err" ] && head -5 "$git_err" | sed 's/^/    /'
 fi
 
 # ---- TC-37: サマリー列の位置をヘッダーから決めていること ---------------------
