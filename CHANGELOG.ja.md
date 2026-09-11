@@ -28,17 +28,48 @@ Fixed/Changed/Removed エントリは修正対象の旧挙動を述べてよい�
 blocking gate として実行する。
 -->
 
-## [Unreleased]
+## [0.15.0] - 2026-09-11
 
 ### 追加
 
 - **`/rite:issue-cancel` で「やらないと決めた Issue」を中止できる** — `--reason "not planned"` でクローズし、board Status を終端の `Cancelled` にして、必須の中止理由をクローズコメントに残す。PR・ブランチ・セッション worktree・作業メモリを持つ着手後の Issue は既存の cleanup helper 経由で片付ける（PR をマージせずクローズし、worktree・ブランチ・PR-specific state・ローカル作業メモリを削除）。「PR クローズ → Status → Issue クローズ」の順序は機構として効いており、PR クローズが失敗した場合は board を進めずフロー全体を止める。子 Issue を中止しても親へ `Done` は伝播しない。起動は人間の明示指示に限る。
+- **複数ホスト runtime 契約** — `host-workflow-operations.md` が、状態分離・worktree 入場・子スキル継続・hook 互換・レビュー回収・明示実行など 8 領域の共通操作を配布物内で定義し、Claude Code / Codex CLI / Grok Build の版・根拠付き能力表を持つ。`session-identity.sh` は現在ホストの実セッション ID を解決し、欠落・不定なら共有状態へ降格せず停止する。`host-runtime.sh` は初期化・操作前後の guard・checkpoint・次工程読取りを明示コマンドとして提供し、`reviewer-completion-check.sh` は選定した全 reviewer の実行 ID と完了出力が揃ったときだけ結果統合へ進める。
+- **`EnterWorktree` の無いホストでも worktree の入場・再開・退出ができる** — 利用可能な native 操作か shell ごとの明示 `cd` を共通契約から選ぶ。編集・commit 前に作業先・branch・保存 state・claim を照合し、`/rite:cleanup` は main checkout への退出確認後にだけ対象 worktree を削除する。`/rite:open` / `/rite:recover` / `/rite:iterate` / `/rite:pr-review` / `/rite:fix` は同じ入場経路を共有する。
+- **3 ホストの実機検証ツール** — `tests/runtime-e2e/prepare.sh` がオフライン fixture リポジトリを作りソース版を記録し、`results.py` が同一 commit・導入経路の証跡をホストごとに集計する（スタブ成功と実機成功を混同しない）。ランチャーの失敗伝播テストと検証道具の契約 suite を CI に接続した。
+- **`/rite:pr-review` が CI の結果を reviewer とレポートに渡す** — `/rite:merge` と共有する `pr-checks-classify.sh` が対象 commit の checks を分類し job を列挙する。各 reviewer プロンプト・統合レポート・E2E 終了行に表示し、失敗 job は変更に起因する証拠がある場合だけ指摘する。CI 未完了はレビューを待たせない。
+- **Issue と PR の本文が要約で始まり詳細を折りたたむ** — テンプレートは問題・変更・見てほしい点を先頭に置き、Implementation Contract と検証は `<details>` に畳む。図は SVG 添付を第一候補にし（GitHub CLI が添付非対応のときだけ Mermaid）、図なしの理由は HTML コメントに残し、PR は Issue の図を再掲して構造が変わったときだけ描き直す。分解した親 Issue にも SVG を添付でき、Issue なし PR でも図を描ける。
+- **`/rite:fix` が修正するのは実測済み CRITICAL/HIGH だけ** — helper が致命性を決めて review JSON を原子的に更新し、それ以外は severity を保ったまま非ブロッキング記録へ移送して以後の解消検証から除外する。mergeable 到達後の NB sweep は各指摘を `issued`（実測あり MEDIUM → Issue 化）か `recorded` に機械振り分けし、コード修正・commit・push をしない。
+- **`/rite:fix` の完了報告を差分と突合する** — 指摘 ID → 変更箇所の対応表を必須にし、`fix-report-diff-gate.sh` が各行を本 cycle の `git diff -U0` に照合する。差分に無い指摘は「未対応」として残り、次 cycle の verification は解消済みを前提にしない。
+- **番号参照検出を 1 文法・3 モードに統合** — `number-reference-check.sh --all | --diff | --stdin --label` を唯一の定義とし、`/rite:lint` の blocking 前文、`/rite:pr-review` の毎 cycle 差分走査（class A の blocking finding、description を Verification 先頭に固定）、`/rite:fix` の commit 前自己検査（intent-to-add で新規ファイルも同 cycle で書き直す）を同じ検出に配線した。配布物・docs・Wiki・両 CHANGELOG から Issue / PR 番号を除去し、CI の全面走査を blocking にし、deletion-damage scanner に番号除去の残骸形を追加した。
+- **Bash guard が直接の `gh issue create` を拒否する** — PreToolUse guard は承認済みの Issue 作成 helper と、作成以外の `gh issue` 操作だけを許可する。パターン評価の失敗も拒否とし、復旧手順を仕様書に置いた。
+- **`/rite:issue-create` は Target Files に実パスが無い Issue を作成しない** — 計測・判断・調査のみの入力には起票前に `docs/designs/{slug}.md` を成果物パスとして提案する。実パス検査と質問順序は直接入力と探索サマリ経由で同じで、親 Issue の仕様書は対象外。
+- **正規確認ゲートの列挙** — `autonomous-execution.md` に rite が意図して止まる箇所（計画承認・Issue 状態・dirty 衝突・強制取得・破壊的操作）を 1 表で列挙し、表外の一時失敗は質問せず 1 回自動再試行してから `/rite:recover` に寄せる。`[lint:error]` の強制続行は廃止。
+- **行動が必要な WARNING を完了報告へ転記する** — bash 出力は LLM 向け診断であるため、`/rite:open` / `/rite:iterate` / `/rite:batch-run` の完了報告に `要対応:` 欄を設け、人の操作が必要な行を 1 行ずつ転記する（0 件なら省略）。「stderr は必ず見える」という誤った前提の記述を是正した。
+- **共有原則の追加** — `coding-principles.md` の `prefer_partial_edit`（結果が変わらないなら対象箇所だけ編集する）、reviewer 共通原則と `autonomous-execution.md` の「独立 tool call は同一応答でまとめる」1 文、`/rite:issue-implement` の全 Complexity 共通テスト規律（1 挙動 1 テスト・隣接と同規模・scratch を残さない・既存 suite 追記優先）、`/rite:pr-review` / `/rite:issue-create` / `/rite:wiki-ingest` の長文生成ステップに置いた「構造は reasoning、本文は output で 1 回」の 2 行注記、生成散文で mannered prose を避ける規則、`/rite:wiki-ingest` の Raw Source 逐語転記を避ける指示と例。
+- **`SessionStart` が他セッションの stale run-queue を回収する** — `run-queue-reap.sh` をセッション開始時に実行し、死んだセッションが残した batch が後続を塞がない。
 
 ### 修正
 
-- **マーケットプレイス配布の plugin markdown が開発リポジトリの `docs/` を相対リンクしなくなった** — `plugins/rite` から `docs/` への相対リンク 6 件は、そのツリーを同梱しない配布先で 404 になる。リンクは plugin 内に収めるか 1 行ポインタへ置換し、`/rite:lint` Phase 3.5 が `distribution-docs-link-check.sh` で再発を止める。
-
+- **`/rite:batch-run` が sub-skill 完了直後に沈黙停止しない** — Stop hook の run-queue watchdog が handoff 空のとき自セッションの queue を読んで差し戻す（進捗なし 3 回で停止許可）。compaction 後の復帰文は batch frame を載せ、稼働中は `/rite:recover` へ誘導しない。サーキットブレーカー発火時は batch も停止する。
+- **`/rite:iterate` はブレーカー発火後に停止する** — 発散・cycle 上限で追加レビューを走らせず、停止理由と counter リセットを同時に記録し、明示的な再実行で full scope から再開する。非致命指摘の移送後は NB sweep を経由し、返信のみの終了理由は sweep 後も保持され、fix の保存記録は収束トレンドから除外される。
+- **`/rite:pr-review` の出力契約** — Decision Log 採番を 10 進固定、形式崩れの実測アンカーと実測未判定は分類前に error で停止、review-result の実測ゲート適用を強制、指摘 0 件でも 5 列ヘッダを出力、reviewer は一括起動して timing を全件記録、untracked をレビュー差分と commit guard から分離。
 - **`/rite:pr-review` が reviewer Task の結果を `run_in_background: false` 必須ではなく completion notification で回収する** — fork mode 既定では spawn した subagent は background で走り、Agent tool に `run_in_background` 引数が無い。orchestrator は全 reviewer の通知が揃うまで結果収集を開始せず、未着結果を推測せず、待ち中に進めてよいのは `REVIEW_TMP_DIR` emit と spawn-timings パス組み立てだけ。`/rite:open` ステップ 3.3.1 も同じ回収契約。
+- **独立 reviewer への本文引き渡しを絶対パス方式に一意化** — `host-workflow-operations.md`・placeholder 表・設計記録・入口スキルで 1 つの契約にし、限定句をテストで pin した。
+- **Projects の `Cancelled` を終端 Status として一貫させる** — `/rite:setup` が option を和集合で provisioning し、Status helper は `Cancelled` への `Done` 上書きを拒否し、reconcile は `stateReason` で分岐（DUPLICATE クローズは `Cancelled`）、`Cancelled` の子を含む親は `Done` に auto-close しない。`/rite:issue-close` は `skipped_terminal_conflict` 後の完了報告で `Done` を固定せず、PR 検索を Issue 番号でスコープする。
+- **`/rite:cleanup`** — follow-up 起票を全 cycle の非実測指摘から取りこぼしなく行い、follow-up の報告と失敗時の件数を正し、作業メモリを `state_root` 絶対パスで読み、worktree 退出・ブランチ削除・state 削除を 1 つの helper にまとめた。
+- **`/rite:wiki-ingest` と Wiki 書き込み** — commit 失敗の案内を原因別に分け `git add` 失敗案内を anchor 非依存にし、index-quoted-heredoc を単一 heredoc と 6 read に同期し、Wiki の書き込み口すべてで番号参照の commit 前検査を通し、`/rite:wiki-lint` の陳腐化(stale)を blocking から informational へ降格し、カタログの解析警告と欠落 Raw Source を整理した。
+- **hooks** — compaction 後の復帰文は Pre/PostCompact の stdout が model に届かないため `SessionStart`（`source=compact`）から注入する。session-start の plugin 衝突警告は実ロード経路で判定し、作業メモリの書込先を state root に固定し、sandbox 下の worktree 削除失敗で半端な残骸を残さず、state 書き込みの一時ファイルを安全化し、session-start テストの sandbox に `run-queue-reap.sh` をコピーする。
+- **`/rite:issue-implement` が空コミットで fail-loud に停止する** — 差分のないブランチでコミットを作らない。
+- **`/rite:fix` が文書の主張を文字どおり扱う** — Simplification-First の一般化を散文の指摘に適用せず、推奨対応を候補として実装と突き合わせる。
+- **マーケットプレイス配布の plugin markdown が開発リポジトリの `docs/` を相対リンクしなくなった** — `plugins/rite` から `docs/` への相対リンク 6 件は、そのツリーを同梱しない配布先で 404 になる。リンクは plugin 内に収めるか 1 行ポインタへ置換し、`/rite:lint` Phase 3.5 が `distribution-docs-link-check.sh` で再発を止め、検出器に helper-level テストを付けた。
+- **未解決警告の転記を決定的にし**、スキルと helper の残存契約ずれを解消し、reviewer agent に `effort` を明示して `model: inherit` にした。
+- **作業メモリ** — 数字だけの SHA でも重複更新を防ぎ、解析失敗の原因を表示し、replica 不在時の停止検証とセッション ID の説明を補った。
+
+### 変更
+
+- **レビュー・修正手順は必要時にだけ読み込む** — `/rite:iterate` と `/rite:fix` はサブ手順（`/rite:fix` から抽出した作業メモリ更新を含む）を使うステップで読み、呼び出しごとのコンテキストを減らす。
+- **`/rite:pr-review` の reviewer を一括起動し**、全 reviewer の spawn timing を記録する。
+- **テストと lint** — fixture rewrite helper を共通化し、失敗詳細ダンプを stdout に揃え、path 除外リストを一元化し、全件検査の既存警告を解消した。review-loop 文書の撤回した判断の記述を実装に揃えた。
 
 ## [0.14.0] - 2026-08-30
 
@@ -1011,6 +1042,7 @@ v0.4.0 では値は silent に無視されます。機能的な代替はあり�
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.15.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.13.2...v0.14.0
 [0.13.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.13.1...v0.13.2
 [0.13.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.13.0...v0.13.1
