@@ -1,6 +1,7 @@
 ## 2026-09-11
 
 * **Update**: [pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する](pages/patterns/pin-literal-uniqueness-verified-by-mutation.md) — [レビュー結果](raw/reviews/20260911T120212Z-pr-2684.md) を統合。部分文字列 pin は限定句の削除や旧文言への差し戻しを検出しないため文全体で pin し旧文言は stale 側へ。旧 pin が真部分文字列なら置換で検証力は落ちない
+* **lint:clean** — contradictions=0, stale=68, orphans=0, missing_concept=0, unregistered_raw=471, broken_refs=0
 * **Update**: [契約を一意化する変更は、参照文書だけでなく実行手順書の placeholder と同節の旧語彙まで同時に揃える](pages/heuristics/contract-unification-sweeps-execution-docs-and-same-section-vocabulary.md) — [レビュー結果](raw/reviews/20260911T111719Z-pr-2682.md) を統合。証跡限定の書き直しで提案文を分割すると末尾文の目的語が暗黙化する。配布物内で設計記録の所在を名指ししない
 * **lint:clean** — contradictions=0, stale=68, orphans=0, missing_concept=0, unregistered_raw=471, broken_refs=0
 * **lint:clean** — contradictions=0 (pages unchanged; previous baseline), stale=68, orphans=0, missing_concept=0, unregistered_raw=469, broken_refs=0
