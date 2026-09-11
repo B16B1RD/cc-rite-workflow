@@ -82,7 +82,7 @@ RITE_MOUNTINFO=${RITE_MOUNTINFO:-/proc/self/mountinfo}
 # `mountpoint -q` は util-linux の版で「非 mountpoint の通常ファイル」の rc が 1 と 32 で揺れ、
 # 「不在」の rc=1 と区別できないため、mountinfo が読めないときだけ rc=0 のみを信じる代替に回す。
 # `stat` の st_dev 比較は使わない: bind mount は親と同じデバイス番号を持ち判別できない。
-# 判定手段が両方ない環境では rc 2 で「判定不能」を返す（呼び出し側が WARNING を出す）。
+# 判定手段が両方ない環境では rc 2 で「判定不能」を返す（呼び出し側が Linux でのみ WARNING を出す）。
 _is_mountpoint() {
   local _path=$1 _escaped
   if [ -r "$RITE_MOUNTINFO" ]; then
@@ -104,9 +104,11 @@ _is_mountpoint() {
 # すり抜ける）。どちらの形でも、この状態で `git worktree remove` を実行すると admin dir が半壊する。
 # 検知したファイル名を stdout に出し rc 0。マスク無しは rc 1。
 # 判定手段が両方ない環境（/proc も mountpoint も無い）では WARNING を出して `-c` 判定だけで続行する
-# — silent に「マスク無し」と扱わない。
+# — silent に「マスク無し」と扱わない。ただし Darwin は /proc も util-linux の mountpoint も
+# 持たないのが常態で、bind mount 形のマスクも張られないため、判定不能を無言で `-c` 判定に落とす。
+# `uname` の失敗・未知 OS は Linux 側（WARNING を出す側）に倒す。
 _sandbox_mask_present() {
-  local _admin=$1 _f _rc _warned=false
+  local _admin=$1 _f _rc _warned=false _os
   for _f in config.worktree commondir; do
     if [ -c "$_admin/$_f" ]; then
       printf '%s\n' "$_f"
@@ -117,7 +119,10 @@ _sandbox_mask_present() {
       printf '%s\n' "$_f"
       return 0
     elif [ "$_rc" -eq 2 ] && [ "$_warned" = "false" ]; then
-      echo "WARNING: sandbox マスクの mountpoint 判定ができません（$RITE_MOUNTINFO が読めず mountpoint コマンドも無い）。character device 形の検知だけで続行します。" >&2
+      _os=$(uname -s 2>/dev/null) || _os=""
+      if [ "$_os" != "Darwin" ]; then
+        echo "WARNING: sandbox マスクの mountpoint 判定ができません（$RITE_MOUNTINFO が読めず mountpoint コマンドも無い）。character device 形の検知だけで続行します。" >&2
+      fi
       _warned=true
     fi
   done
@@ -256,9 +261,11 @@ cmd_remove() {
   # remove を一切実行せず遅延 reap（corpse 回収経路を持つ pr-cycle-cleanup.sh Step 5）へ委譲する。
   # admin dir は worktree 側 .git ファイルの gitdir: 行から解決する（解決不能・マスク無しなら
   # 従来どおり remove を試行 = 非 sandbox 環境で挙動不変の後方互換）。
+  # probe は live-cwd skip（_fc_rc=0）では結果に無関係なので走らせない — 判定不能 WARNING が
+  # 見送り経路にまで出るのを防ぐ。dry-run の action= 判定には必要なので、それ以外の経路では維持する。
   local _wt_admin _masked_file=""
   _wt_admin=$(sed -n 's/^gitdir: //p' "$flow_wt/.git" 2>/dev/null | head -1) || _wt_admin=""
-  if [ -n "$_wt_admin" ]; then
+  if [ "$_fc_rc" -ne 0 ] && [ -n "$_wt_admin" ]; then
     _masked_file=$(_sandbox_mask_present "$_wt_admin") || _masked_file=""
   fi
   if [ "$_fc_rc" -eq 0 ]; then
