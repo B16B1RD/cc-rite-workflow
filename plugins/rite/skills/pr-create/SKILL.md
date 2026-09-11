@@ -751,7 +751,7 @@ done < "$pr_workdir/attachment-paths"
 gh pr create -R {owner_repo} --draft --base "{base_branch}" --head "{branch_name}" --title "$pr_title" --body-file "$pr_workdir/pr_body.md" "${attach_args[@]}"
 ```
 
-添付ありの成功後は `gh pr view --json body` で参照の添付 URL への置換を確認する。gh が非ゼロでも stdout に PR URL が出た場合は作成済みなので create を再試行しない。stderr を保持し、報告に「添付失敗」と PR URL、削除された一時 SVG を再生成して `gh pr edit --attach` で再添付する案内を含める。成功 sentinel は返さず `[pr-create-failed]` を返す。
+添付ありの成功後は `gh pr view --json body` で参照の添付 URL への置換を確認する。gh が非ゼロでも stdout に PR URL が出た場合は作成済みなので create を再試行しない。stderr を保持し、報告に「添付失敗」と PR URL、本文に残った参照と同じ絶対パスに一時 SVG を再生成し（`mkdir -p` で作業ディレクトリを再作成）、そのパスを `gh pr edit --attach` に渡して再添付する案内を含める。成功 sentinel は返さず `[pr-create-failed]` を返す。
 
 ### 3.5 Update Work Memory Phase
 
