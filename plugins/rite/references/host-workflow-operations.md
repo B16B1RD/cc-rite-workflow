@@ -35,14 +35,14 @@ Codex の `spawn_agent` では named reviewer の frontmatter `model: inherit` �
 
 ### 本文の引き渡し
 
-named agent が公開されないホストでは、reviewer 本文を prompt へ全文 inline せず、絶対パス方式だけを契約とする。`_reviewer-base.md` だけで約 90KB あり、選定人数分を inline すると prompt が起動できる上限を超えて reviewer を回収できない。絶対パス方式は Codex の実機セッションで計画/実装子の起動と完了回収を完走している。他ホストでの選定 reviewer 全員の回収は未検証である。
+named agent が公開されないホストでは、reviewer 本文を prompt へ全文 inline せず、絶対パス方式だけを契約とする。`_reviewer-base.md` だけで約 90KB あり、選定人数分を inline すると prompt が起動できる上限を超えて reviewer を回収できない。Codex の実機セッションでは独立した計画/実装子の起動と完了回収を観測している。絶対パス方式による選定 reviewer 全員の回収は未検証である。Codex を含むどのホストでも設計記録は裏付けていない。
 
 親が子の prompt へ明示する項目:
 
 - 解決済み plugin root 配下の `agents/{type}-reviewer.md` と `agents/_reviewer-base.md` の絶対パス。profile 内の相対参照に頼らず個別に列挙する。他に読ませる参照も同様に絶対パスで列挙する
 - 列挙した全ファイルを着手前に全文読み取り、raw 出力の先頭行に `読取完了: {絶対パス}; {絶対パス}` の形式で列挙した全パスを申告する義務
 - 制約（読取専用・時刻記録・結果形式）、差分、仕様、絶対 workdir
-- pr-review 4.5 テンプレートの `{shared_reviewer_principles}` は inline せず、`_reviewer-base.md` の絶対パス行（読取義務付き）に置き換える。その他の placeholder（差分 / 仕様 / 制約 / workdir）は 4.5 のまま渡す
+- pr-review 4.5 の placeholder 表が定義する `{shared_reviewer_principles}`（4.5 テンプレートと 4.5.1 検証テンプレートの双方の出現箇所）は inline せず、`_reviewer-base.md` の絶対パス行（読取義務付き）に置き換える。その他の placeholder（差分・仕様・CI 状態・Wiki 等）は 4.5 のまま渡す。制約・絶対 workdir は上記の項目として別途明示する
 
 親は回収ゲートで申告行を読み、渡したパス集合と一致することを確認する。申告行が無い、または 1 件でも欠ける raw 出力は未読とみなし、当該 reviewer を失敗として既存の 1 回再試行を適用する。再失敗は incomplete として停止する。申告は helper ではなく親が確認する。named agent 経路の子は本文を system prompt で受け取りファイルを読まないため、申告の対象外とする。
 
