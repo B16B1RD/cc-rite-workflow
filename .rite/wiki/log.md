@@ -21,6 +21,7 @@
 * **lint:clean** — contradictions=0, stale=68, orphans=0, missing_concept=0, unregistered_raw=469, broken_refs=0
 * **Skip**: [レビュー結果](raw/reviews/20260911T102416Z-pr-2681.md) — 指摘なしの仕様整合レビュー。拒否経路・質問順序・File列例外は既存の契約一意化ページに記録済み。
 * **Skip**: [レビュー結果](raw/reviews/20260911T102152Z-pr-2679.md) — 指摘なしのテスト依存helper追加レビュー。既存箇所の調査推奨は未検証で、新しい経験則の根拠にはしない。
+* **lint:clean** — contradictions=0 (pages unchanged; previous baseline), stale=68, orphans=0, missing_concept=0, unregistered_raw=471, broken_refs=0
 
 ## 2026-09-10
 
