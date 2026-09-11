@@ -120,12 +120,16 @@ page-template.md の `confidence: medium` はリテラル値。placeholder 走�
 
 frontmatter は LLM 生成テキストで引用符・バックスラッシュ・`$(...)` を含みうる。double-quote
 されたシェル語へ直接置換すると値の `"` でクォートが閉じ、後続がコマンドとして実行される
-（fix スキルと同旨）。quoted heredoc は終端子行と一致しない限りシェル解釈を抑制するが、値が
-複数行、またはある行が終端子 `WIU_EOF` と完全一致すると heredoc が早期終了する。6 つの
-heredoc が同じ終端子を共有するため後続の `wiu_*=$(cat <<'WIU_EOF'` が再度開き、helper 呼び出し
-行も正常に走って rc=0 + 3 marker 揃いの成功に見える。block 内のシェルは parse 済みで手遅れ
-なので、ゲートは substitute 時点の LLM 責務。helper 側 C0 検査は「この bash を実行できた場合」
-にしか効かない。
+（fix スキルと同旨）。quoted heredoc は終端子行と一致しない限りシェル解釈を抑制する。
+
+6 値は単一の `<<'WIU_EOF'` を 6 個の `IFS= read -r` で title、description、domain、slug、
+updated、confidence の順に受ける。read は改行でフィールドを区切るため、いずれかが複数行だと
+後続フィールドがずれ、helper は誤対応のまま rc=0 で成功し得る。単一行制約はこの 6 read の
+フィールド対応を維持するためであり、値の整形ではない。
+
+いずれかの行が終端子 `WIU_EOF` と完全一致すると heredoc が早期終了し、残りがコマンドとして
+実行されるか、後続 read が空になる。block 内のシェルは parse 済みで手遅れなので、ゲートは
+substitute 時点の LLM 責務。helper 側 C0 検査は「この bash を実行できた場合」にしか効かない。
 
 ## index-axes-independent
 
