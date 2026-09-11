@@ -4,10 +4,11 @@ title: "契約を一意化する変更は、参照文書だけでなく実行手
 domain: "heuristics"
 description: "二義的だった契約文を一意に定める変更は、契約を書いた参照文書を直すだけでは足りない。実行者が実際に読む手順書側の placeholder 表やテンプレートが旧方式を無条件に命じたまま残ると曖昧さの発生源が解消せず、同一節に残った旧語彙は除去したはずの二義性を再生産する。主張は証跡が裏付ける範囲に限定する。"
 created: "2026-09-10T17:09:46Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-11T10:18:45Z" }
+generated: { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-11T11:25:00Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-11T02:42:44Z" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-11T10:18:45Z" }
+  - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-11T11:25:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260910T170301Z-pr-2662.md"
@@ -15,6 +16,8 @@ sources:
     resource: "raw/reviews/20260911T023121Z-pr-2669.md"
   - type: "reviews"
     resource: "raw/reviews/20260911T101122Z-pr-2678.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260911T111719Z-pr-2682.md"
 tags: []
 confidence: high
 promote: rite-plugin
@@ -43,6 +46,8 @@ promote: rite-plugin
 - **証跡限定では主語と観測対象を分ける**: 「絶対パス方式は Codex で計画/実装子の起動と完了回収を完走している」は範囲を子の種別に狭めたが、方式を主語に残したため、設計記録が観測していない「絶対パス方式による回収」の帰属を主張し続ける。設計記録が観測した対象（子の種別・回収の事実）と、その観測がどの方式によるものかは別の主張であり、記録に無い側を主語にしない
 - **区間 pin は上限も切る**: 節スコープの pin を `split(見出し)[1]` の下限だけで作ると、後続節まで区間に含まれ、規則文が隣の節へ移動しても assert が通る。reference 側と skill 側で同じ切り方（下限と上限）に揃えないと「節スコープ pin」の主張をテストが保証しない
 
+証跡限定の書き直しを適用した follow-up では、修正そのものは 3 reviewer が独立に裏付けを確認して blocking 0 で通ったが、書き直しの形が新しい取りこぼしを生んだ。提案文（1 文）を「観測した事実」「未検証の主張」「設計記録は裏付けていない」の 3 文へ分割すると、末尾文の目的語が暗黙化して直前文に係ることが文脈依存になり、単独で読むと第 1 文の観測まで打ち消すように読める。証跡限定の書き直しは主語と目的語を各文に明示するか、提案文の 1 文形を保つ。また配布物の散文に「設計記録」の語を置くと参照先（`docs/designs/`）が配布物外にあり、配布先の読者はその語を解決できない。証跡の所在を名指しするより「未検証である」で止める方が配布物として自己完結する。新規散文を追加したときは既存 pin の部分文字列に埋もれる細粒度の変異（限定句の削除・末尾文の削除）が残るため、追加した句ごとに pin を足す。
+
 ## 関連ページ
 
 - [Identity / reference document の用語統一は『単語 X』ではなく『文脈類義語群全体』を対象にする](./identity-reference-documentation-unification.md)
@@ -52,3 +57,4 @@ promote: rite-plugin
 
 - [レビュー結果](../../raw/reviews/20260910T170301Z-pr-2662.md)
 - [レビュー結果](../../raw/reviews/20260911T101122Z-pr-2678.md)
+- [レビュー結果](../../raw/reviews/20260911T111719Z-pr-2682.md)
