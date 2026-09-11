@@ -221,10 +221,12 @@ class WorkflowContracts(unittest.TestCase):
         # The recovery claim is limited to what the design record attests; the
         # generic "同じ本文を渡す" wording must not resurface next to the path contract.
         for stale in ["同じ本文を渡す", "複数ホストで選定全員の回収を完走",
-                      "計画/実装子の起動と完了回収を完走"]:
+                      "計画/実装子の起動と完了回収を完走",
+                      "他ホストでの選定 reviewer 全員の回収は未検証"]:
             self.assertNotIn(stale, reviewer_part)
         for clause in ["同じ絶対パス集合と読取義務を渡す", "計画/実装子の起動と完了回収を観測",
-                       "選定 reviewer 全員の回収は未検証"]:
+                       "絶対パス方式による選定 reviewer 全員の回収は未検証",
+                       "Codex を含むどのホストでも設計記録は裏付けていない"]:
             self.assertIn(clause, reviewer_part)
         # The placeholder substitution rule lives in the handoff subsection and at the
         # independent-child entry of pr-review, so both call sites agree on it.
