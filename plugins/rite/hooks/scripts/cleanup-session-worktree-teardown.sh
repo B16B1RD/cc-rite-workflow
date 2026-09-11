@@ -39,6 +39,9 @@
 #   {session_worktree_check} は「marker family が無い = 削除成功」で判定する):
 #   [CONTEXT] WORKTREE_REMOVE_SKIPPED_LIVE_CWD=1; path=<path>
 #   [CONTEXT] WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1; path=<path>
+#     (admin dir の config.worktree / commondir が sandbox にマスクされている。マスクは
+#      /dev/null の character device 形と、実ファイルの read-only bind mount 形の 2 形状があり、
+#      後者は通常ファイルに見えるため mountinfo / mountpoint で判定する)
 #   [CONTEXT] WORKTREE_REMOVE_FAILED=1; path=<path>
 #   --dry-run では削除せず [CONTEXT] DRY_RUN_WORKTREE_REMOVE=1; path=<path>; action=<...> を
 #   **stdout** に出す（対象の報告であって失敗診断ではないため）。marker 名を `DRY_RUN_` 前置に
@@ -70,6 +73,55 @@ usage() {
 require_value() {
   # $1 = option name, $2 = remaining arg count
   [ "$2" -gt 0 ] || usage "$1 requires a value"
+}
+
+# mount 表の参照先。テストは実 mount を張れないため、偽の mountinfo を指せるように 1 変数へ集約する。
+RITE_MOUNTINFO=${RITE_MOUNTINFO:-/proc/self/mountinfo}
+
+# $1 がマウントポイントなら rc 0。mountinfo の field 5（mount point）との完全一致を一次判定にする —
+# `mountpoint -q` は util-linux の版で「非 mountpoint の通常ファイル」の rc が 1 と 32 で揺れ、
+# 「不在」の rc=1 と区別できないため、mountinfo が読めないときだけ rc=0 のみを信じる代替に回す。
+# `stat` の st_dev 比較は使わない: bind mount は親と同じデバイス番号を持ち判別できない。
+# 判定手段が両方ない環境では rc 2 で「判定不能」を返す（呼び出し側が WARNING を出す）。
+_is_mountpoint() {
+  local _path=$1 _escaped
+  if [ -r "$RITE_MOUNTINFO" ]; then
+    # mountinfo は空白を \040 でエスケープして格納する。照合側を同じ表記に寄せ、awk へは ENVIRON で
+    # 渡す（`-v` は C 風エスケープを解釈し、\040 を空白へ戻してしまう）
+    _escaped=$(printf '%s' "$_path" | sed 's/ /\\040/g')
+    RITE_MOUNT_PROBE="$_escaped" awk '$5 == ENVIRON["RITE_MOUNT_PROBE"] { found = 1; exit } END { exit !found }' "$RITE_MOUNTINFO"
+    return $?
+  fi
+  if command -v mountpoint >/dev/null 2>&1; then
+    mountpoint -q "$_path" 2>/dev/null && return 0
+    return 1
+  fi
+  return 2
+}
+
+# sandbox が admin dir に張るマスクの検知。マスクは 2 形状ある: `/dev/null` を重ねる character
+# device 形と、実ファイルを read-only で bind mount する形（後者は通常ファイルに見え `-c` を
+# すり抜ける）。どちらの形でも、この状態で `git worktree remove` を実行すると admin dir が半壊する。
+# 検知したファイル名を stdout に出し rc 0。マスク無しは rc 1。
+# 判定手段が両方ない環境（/proc も mountpoint も無い）では WARNING を出して `-c` 判定だけで続行する
+# — silent に「マスク無し」と扱わない。
+_sandbox_mask_present() {
+  local _admin=$1 _f _rc _warned=false
+  for _f in config.worktree commondir; do
+    if [ -c "$_admin/$_f" ]; then
+      printf '%s\n' "$_f"
+      return 0
+    fi
+    _is_mountpoint "$_admin/$_f"; _rc=$?
+    if [ "$_rc" -eq 0 ]; then
+      printf '%s\n' "$_f"
+      return 0
+    elif [ "$_rc" -eq 2 ] && [ "$_warned" = "false" ]; then
+      echo "WARNING: sandbox マスクの mountpoint 判定ができません（$RITE_MOUNTINFO が読めず mountpoint コマンドも無い）。character device 形の検知だけで続行します。" >&2
+      _warned=true
+    fi
+  done
+  return 1
 }
 
 cmd_detect() {
@@ -196,24 +248,27 @@ cmd_remove() {
   # --self-root で呼び出し側ハーネスの process subtree を self として除外する。
   local _fc_rc=0
   bash "$SCRIPT_DIR/worktree-foreign-cwd.sh" "$flow_wt" --self-root "$self_root" >/dev/null 2>&1 || _fc_rc=$?
-  # sandbox マスク検知: sandbox が admin dir の config.worktree に /dev/null マスクマウントを
-  # 張っている（= character device に見える）状態で `git worktree remove`（--force 含む）を
-  # 実行すると、working tree 削除失敗後の admin dir 再帰削除が HEAD を unlink した直後に
-  # マスクの EBUSY で中断し、HEAD のみ欠けた半壊 admin dir（corpse）が残る。削除試行自体が
-  # 半壊を作るため、busy 失敗後の対処では防げない — 検知したら remove を一切実行せず遅延 reap
-  # （corpse 回収経路を持つ pr-cycle-cleanup.sh Step 5）へ委譲する。admin dir は worktree 側
-  # .git ファイルの gitdir: 行から解決する（解決不能・マスク無しなら従来どおり remove を試行 =
-  # 非 sandbox 環境で挙動不変の後方互換）。
-  local _wt_admin
+  # sandbox マスク検知: sandbox が admin dir の config.worktree / commondir にマスクマウント
+  # （/dev/null の character device 形、または実ファイルの read-only bind mount 形）を張っている
+  # 状態で `git worktree remove`（--force 含む）を実行すると、working tree 削除失敗後の admin dir
+  # 再帰削除が HEAD を unlink した直後にマスクの EBUSY で中断し、HEAD のみ欠けた半壊 admin dir
+  # （corpse）が残る。削除試行自体が半壊を作るため、busy 失敗後の対処では防げない — 検知したら
+  # remove を一切実行せず遅延 reap（corpse 回収経路を持つ pr-cycle-cleanup.sh Step 5）へ委譲する。
+  # admin dir は worktree 側 .git ファイルの gitdir: 行から解決する（解決不能・マスク無しなら
+  # 従来どおり remove を試行 = 非 sandbox 環境で挙動不変の後方互換）。
+  local _wt_admin _masked_file=""
   _wt_admin=$(sed -n 's/^gitdir: //p' "$flow_wt/.git" 2>/dev/null | head -1) || _wt_admin=""
+  if [ -n "$_wt_admin" ]; then
+    _masked_file=$(_sandbox_mask_present "$_wt_admin") || _masked_file=""
+  fi
   if [ "$_fc_rc" -eq 0 ]; then
     # 多バイト文字に隣接する変数展開は必ず brace で閉じる。`$flow_wt）` と書くと bash が
     # `）` の先頭バイトを変数名に取り込み、非 UTF-8 ロケールで変数が未定義化する
     # （invariant: hooks/tests/flow-state.test.sh TC-8b-h）。
     echo "WARNING: 別のセッションがこの作業ツリー（${flow_wt}）を使用中のため、削除を見送りました。そのセッションが終了したあと、次回のセッション開始時に作業ツリーとローカルブランチが自動で回収されます。" >&2
     echo "[CONTEXT] WORKTREE_REMOVE_SKIPPED_LIVE_CWD=1; path=$flow_wt" >&2
-  elif [ -n "$_wt_admin" ] && [ -c "$_wt_admin/config.worktree" ]; then
-    echo "WARNING: sandbox が作業ツリーの管理ディレクトリ（$_wt_admin/config.worktree）にマスクマウントを張っているため、削除を見送りました。この状態で git worktree remove を実行すると管理ディレクトリが半壊するため、削除自体を試行しません。次回のセッション開始時（sandbox 外）に作業ツリーとローカルブランチが自動で回収されます。実行エージェントはこの場で sandbox を無効化して remove を再試行しないこと。" >&2
+  elif [ -n "$_masked_file" ]; then
+    echo "WARNING: sandbox が作業ツリーの管理ディレクトリ（${_wt_admin}/${_masked_file}）にマスクマウントを張っているため、削除を見送りました。この状態で git worktree remove を実行すると管理ディレクトリが半壊するため、削除自体を試行しません。次回のセッション開始時（sandbox 外）に作業ツリーとローカルブランチが自動で回収されます。実行エージェントはこの場で sandbox を無効化して remove を再試行しないこと。" >&2
     echo "[CONTEXT] WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1; path=$flow_wt" >&2
     # admin dir 半壊では、このマスク検知は次に control が渡る側（corpse）の直接の前兆であり、
     # corpse は checkout 中 branch を git で解決できないため pr-cycle-cleanup.sh Step 5 の
