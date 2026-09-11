@@ -533,7 +533,7 @@ rationale: references/rationale.md#production-constraint-churn
 
 **Commit procedure:**
 
-1. `git status` で変更ファイルを確認
+1. `git status --porcelain` で変更ファイルを確認。出力が空なら stderr に `ERROR: コミット対象の変更がありません` を出して停止する。commit / push / pr-create へ進まない。`git status` 自体が失敗したら既存の bash 失敗処理に従い `ERROR` で停止する。変更がある場合は手順 2 以降を従来どおり進め、この分岐からの追加出力は出さない。
 2. `git add {changed_files}` で明示 stage（**not** `git add .`）
 3. Conventional Commits でメッセージ生成
 4. `git commit`
@@ -546,6 +546,11 @@ rationale: references/rationale.md#push-no-upstream
 形式 `{type}({scope}): {description}`。言語は `rite-config.yml` の `language`（`auto` は日本語文字の有無）。type/scope は常に英語。body は why を自由形式（必須。typo 以外も含め省略しない）。description との間に空行。
 
 ```bash
+status_out=$(git status --porcelain) || { echo "ERROR: git status に失敗しました" >&2; exit 1; }
+if [ -z "$status_out" ]; then
+  echo "ERROR: コミット対象の変更がありません" >&2
+  exit 1
+fi
 git add {changed_files}
 git commit -m "$(cat <<'EOF'
 {commit_message}

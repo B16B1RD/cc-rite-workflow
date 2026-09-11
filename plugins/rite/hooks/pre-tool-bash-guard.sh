@@ -27,6 +27,9 @@
 #      procedure-omission bypass of /rite:pr-review, not adversarial forgery.
 #   6. Direct `gh issue create` — denied unless Issue creation is delegated to
 #      create-issue-with-projects.sh or decompose-issues.sh.
+#   7. `git commit --allow-empty` — denied. `--allow-empty-message` and ordinary
+#      commits are not this pattern. Alternative: leave file changes, or revisit
+#      the Issue. Do not create an empty commit.
 #
 # Reviewer working-tree mutations (git checkout / reset / commit / branch / ...)
 # are deliberately NOT machine-gated here. They are visible and
@@ -921,6 +924,17 @@ if [ -z "$BLOCKED_PATTERN" ]; then
     BLOCKED_ALTERNATIVE="Use create-issue-with-projects.sh or /rite:issue-create so the Issue is created through the approved helper."
   fi
   trap '_rite_btg_pattern13_fail_open' ERR
+fi
+
+# Pattern 7: git commit --allow-empty. Token match so --allow-empty-message
+# is not denied. Detection is CMD_CHECK (heredoc-stripped).
+if [ -z "$BLOCKED_PATTERN" ]; then
+  if [[ "$CMD_CHECK" =~ (^|[^[:alnum:]_])git[[:space:]]+commit([^[:alnum:]_-]|$) ]] \
+     && [[ "$CMD_CHECK" =~ (^|[[:space:]])--allow-empty([^[:alnum:]_-]|$) ]]; then
+    BLOCKED_PATTERN="git-commit-allow-empty"
+    BLOCKED_REASON="git commit --allow-empty creates a commit with no file changes."
+    BLOCKED_ALTERNATIVE="Leave the changes as files, or revisit the Issue. Do not create an empty commit."
+  fi
 fi
 
 # --- Result ---
