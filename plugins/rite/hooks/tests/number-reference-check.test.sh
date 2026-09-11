@@ -757,6 +757,7 @@ deletion_residue_patterns=(
   '—[[:space:]]?[)）]'
   '[[:alnum:]][[:space:]]\([[:space:]][a-z][^)]*[[:alnum:]/][)]'
   '[(（]で導入'
+  '(^|[^\\])[(（][[:space:]]*/[[:space:]]*[)）]'
 )
 deletion_residue_samples=(
   'context (で rationale'
@@ -797,6 +798,7 @@ deletion_residue_samples=(
   'multi_session worktree 化漏れの可能性 —)'
   '# Responsibility 2 ( source OR standalone): provide'
   '# Wiki branch を checkout した永続 git worktree (で導入)。'
+  '# production bugs (/). Counting keeps "green" honest and'
 )
 deletion_residue_pattern=$(IFS='|'; printf '%s' "${deletion_residue_patterns[*]}")
 scan_deletion_residue() {
@@ -843,6 +845,19 @@ if ! printf '%s\n' 'if ( set -C; printf "%s" "$json" > "$file" ) 2>/dev/null; th
   pass "deletion-damage matcher accepts bash subshells"
 else
   fail "deletion-damage matcher rejected a bash subshell"
+fi
+# Slash-only parens leftover after a number pair is stripped. awk/sed regex
+# literals write `\(/` (backslash before the open paren); the arm must leave
+# those alone or the tree scan fails closed on working code.
+slash_only_arm="${deletion_residue_patterns[$((${#deletion_residue_patterns[@]} - 1))]}"
+if ! printf '%s\n' \
+  '  if (s ~ /\]\(/) linkrows++' \
+  '    if (match(link, /^\[.*\]\(/)) t = substr(link, 2, RLENGTH - 3)' \
+  '  if (line ~ /\$\([^)]*\$\(/) nested = 1' \
+  | grep -Eq "$slash_only_arm"; then
+  pass "deletion-damage matcher accepts awk regex literals"
+else
+  fail "deletion-damage matcher rejected an awk regex literal"
 fi
 scan_rc=0
 # .gitignore also carries prose that a number removal can damage, and it lives
