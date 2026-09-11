@@ -6,6 +6,8 @@ rite workflow 独自の主張 (Contract Rigour / Output Contract / Naming is doc
 
 > **前提**: 業界標準のコメント規律（WHY > WHAT、comment rot の害、密度調整など）はモデルの既知として本ファイルでは再教育しない。各原則は Summary + Rules のみを記す。rite 固有の契約 — 禁止句リスト (SoT)・廃止判定ルール・§C Detection Heuristics（parity test 対象）・§D・Whitelist — は機械検証・外部参照の対象のため全文を保持する。reviewer 側の Detection Checklist 統合は後続 Issue (Issue 2a) の責務。
 
+比喩や気取った言い回し（mannered prose）を避け、直叙できる語があればそれを使う。
+
 ## 適用スコープ
 
 本 SoT が扱う「説明・ジャーナル目的の Issue/PR/commit 番号参照」の廃止は、コード内コメントに限らず**永続成果物全般**を対象とする。具体的には次を含む。
