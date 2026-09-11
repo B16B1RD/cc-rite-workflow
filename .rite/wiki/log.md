@@ -1,3 +1,8 @@
+## 2026-09-11
+
+* **Skip**: [20260911T011012Z-pr-2668.md](raw/reviews/20260911T011012Z-pr-2668.md) — 指摘ゼロの mergeable 観測のみ。空コミット停止はプラグインへ実装済みで、新しい経験則は抽出できない
+* **Skip**: [20260911T000022Z-pr-2665.md](raw/reviews/20260911T000022Z-pr-2665.md) — 指摘ゼロのレビュー記録。empty commit 観測のみで新しい経験則は抽出できない
+
 ## 2026-09-10
 
 * **lint:clean** — contradictions=0, stale=68, orphans=0, missing_concept=0, unregistered_raw=468, broken_refs=0
