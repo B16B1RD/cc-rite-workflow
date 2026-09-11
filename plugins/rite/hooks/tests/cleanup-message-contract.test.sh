@@ -269,11 +269,11 @@ _strip_comments() { grep -v '^[[:space:]]*#'; }
 # フェンス抽出そのものの空振りも固定する (セクション抽出と同じ理由。こちらは節が非空でも
 # フェンス判定が外れた瞬間に 0 行になるため、上の section 非空 assert では守れない)。
 assert "T-09 4-W bash-fence extraction is non-empty" "yes" \
-  "$(printf '%s\n' "$_s4w" | _fenced | grep -q . && echo yes || echo no)"
+  "$(printf '%s\n' "$_s4w" | _fenced | grep -c . >/dev/null && echo yes || echo no)"
 assert "T-09 step 5 bash-fence extraction is non-empty" "yes" \
-  "$(printf '%s\n' "$_s5" | _fenced | grep -q . && echo yes || echo no)"
+  "$(printf '%s\n' "$_s5" | _fenced | grep -c . >/dev/null && echo yes || echo no)"
 assert "T-09 step 6 bash-fence extraction is non-empty" "yes" \
-  "$(printf '%s\n' "$_s6" | _fenced | grep -q . && echo yes || echo no)"
+  "$(printf '%s\n' "$_s6" | _fenced | grep -c . >/dev/null && echo yes || echo no)"
 # 4-W: worktree の削除・prune の実行行が無く、teardown helper を呼んでいる。
 assert "T-09 4-W has no inline worktree removal" "0" \
   "$(printf '%s\n' "$_s4w" | _fenced | _strip_comments | grep -cE '(^|[;&|[:space:]])git worktree (remove|prune)')"
