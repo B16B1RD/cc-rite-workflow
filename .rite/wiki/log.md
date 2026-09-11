@@ -1,6 +1,7 @@
 ## 2026-09-11
 
 * **Update**: [契約を一意化する変更は、参照文書だけでなく実行手順書の placeholder と同節の旧語彙まで同時に揃える](pages/heuristics/contract-unification-sweeps-execution-docs-and-same-section-vocabulary.md) — [レビュー結果](raw/reviews/20260911T111719Z-pr-2682.md) を統合。証跡限定の書き直しで提案文を分割すると末尾文の目的語が暗黙化する。配布物内で設計記録の所在を名指ししない
+* **lint:clean** — contradictions=0, stale=68, orphans=0, missing_concept=0, unregistered_raw=471, broken_refs=0
 * **lint:clean** — contradictions=0 (pages unchanged; previous baseline), stale=68, orphans=0, missing_concept=0, unregistered_raw=469, broken_refs=0
 
 * **Skip**: [レビュー結果](raw/reviews/20260911T095826Z-pr-2677.md) — 指摘0件。再添付の絶対パス同値とディレクトリ再作成は既存ページに記録済み。
