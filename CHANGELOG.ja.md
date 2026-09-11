@@ -28,12 +28,14 @@ Fixed/Changed/Removed エントリは修正対象の旧挙動を述べてよい�
 blocking gate として実行する。
 -->
 
+## [Unreleased]
+
 ## [0.15.0] - 2026-09-11
 
 ### 追加
 
 - **`/rite:issue-cancel` で「やらないと決めた Issue」を中止できる** — `--reason "not planned"` でクローズし、board Status を終端の `Cancelled` にして、必須の中止理由をクローズコメントに残す。PR・ブランチ・セッション worktree・作業メモリを持つ着手後の Issue は既存の cleanup helper 経由で片付ける（PR をマージせずクローズし、worktree・ブランチ・PR-specific state・ローカル作業メモリを削除）。「PR クローズ → Status → Issue クローズ」の順序は機構として効いており、PR クローズが失敗した場合は board を進めずフロー全体を止める。子 Issue を中止しても親へ `Done` は伝播しない。起動は人間の明示指示に限る。
-- **複数ホスト runtime 契約** — `host-workflow-operations.md` が、状態分離・worktree 入場・子スキル継続・hook 互換・レビュー回収・明示実行など 8 領域の共通操作を配布物内で定義し、Claude Code / Codex CLI / Grok Build の版・根拠付き能力表を持つ。`session-identity.sh` は現在ホストの実セッション ID を解決し、欠落・不定なら共有状態へ降格せず停止する。`host-runtime.sh` は初期化・操作前後の guard・checkpoint・次工程読取りを明示コマンドとして提供し、`reviewer-completion-check.sh` は選定した全 reviewer の実行 ID と完了出力が揃ったときだけ結果統合へ進める。
+- **複数ホスト runtime 契約** — `host-runtime-contract.md` が、コマンド・ファイル操作、作業先指定、スキル読込・継続、委譲、質問、hook、セッション識別、承認・権限の 8 つの共通操作と、Claude Code / Codex CLI / Grok Build ごとの実行経路表を配布物内で定義する。`host-workflow-operations.md` はスキル・タスク・独立 reviewer・質問の具体的な呼出し手順を担う。`session-identity.sh` は現在ホストの実セッション ID を解決し、欠落・不定なら共有状態へ降格せず停止する。`host-runtime.sh` は初期化・操作前後の guard・checkpoint・次工程読取りを明示コマンドとして提供し、`reviewer-completion-check.sh` は選定した全 reviewer の実行 ID と完了出力が揃ったときだけ結果統合へ進める。
 - **`EnterWorktree` の無いホストでも worktree の入場・再開・退出ができる** — 利用可能な native 操作か shell ごとの明示 `cd` を共通契約から選ぶ。編集・commit 前に作業先・branch・保存 state・claim を照合し、`/rite:cleanup` は main checkout への退出確認後にだけ対象 worktree を削除する。`/rite:open` / `/rite:recover` / `/rite:iterate` / `/rite:pr-review` / `/rite:fix` は同じ入場経路を共有する。
 - **3 ホストの実機検証ツール** — `tests/runtime-e2e/prepare.sh` がオフライン fixture リポジトリを作りソース版を記録し、`results.py` が同一 commit・導入経路の証跡をホストごとに集計する（スタブ成功と実機成功を混同しない）。ランチャーの失敗伝播テストと検証道具の契約 suite を CI に接続した。
 - **`/rite:pr-review` が CI の結果を reviewer とレポートに渡す** — `/rite:merge` と共有する `pr-checks-classify.sh` が対象 commit の checks を分類し job を列挙する。各 reviewer プロンプト・統合レポート・E2E 終了行に表示し、失敗 job は変更に起因する証拠がある場合だけ指摘する。CI 未完了はレビューを待たせない。
