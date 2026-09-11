@@ -485,8 +485,9 @@ okf_version: "0.2"
 | [同一指摘が複数 Issue に分かれたら対応 PR は該当する全 Issue を Closes で列挙する](pages/heuristics/duplicate-issues-for-one-finding-close-all-in-pr-body.md) | heuristics | レビュー由来の指摘は単独 Issue と follow-up Issue（同じ PR の残存指摘の集約）の 2 経路で起票されうる。対応 PR が片方だけを Closes すると、もう片方は実装済みのまま open で残り孤児化する。timeline に cross-reference が無い Issue は close スキルも関連 PR を検出できないため、PR 本文で該当する全 Issue を Closes で列挙する。 | 2026-09-11T10:18:45Z | medium |
 | [sandbox の書込防止マスクは char device 形と ro bind mount 形の 2 形状があり、bind mount 形は mountinfo の mount point 完全一致で検知する](pages/patterns/sandbox-mask-two-shapes-mountinfo-detection.md) | patterns | Claude Code の sandbox が保護対象パスへ張る書込防止マスクには、`/dev/null` を重ねる character device 形と、既存の実ファイルを read-only で bind mount する形の 2 形状がある。後者は `ls` でも `test -c` でも通常ファイルに見えるため、`/proc/self/mountinfo` の field 5（mount point）との完全一致で判定する。`mountpoint -q` は版で rc が揺れ、`stat` の st_dev は親と同じ番号になるため一次判定に使えない。 | 2026-09-11T16:25:48Z | high |
 | [実測ゲートで降格した文書指摘でも、grep で確認できる事実誤りはリリース転記前に修正で消化する](pages/heuristics/demoted-doc-factual-error-fix-before-release-transcription.md) | heuristics | 実測必須ゲートが non-blocking へ降格した文書指摘のうち、reviewer が Grep で裏取りした事実誤り（機能の帰属先ファイルの取り違え等）は、記録台帳へ載せて次サイクルの再報告を抑止するのではなく、その場で修正して消化する。記録に回すと CHANGELOG の誤記述がそのまま GitHub Release へ転記され、後から修正する経路が無い。 | 2026-09-11T15:07:49Z | medium |
+| [否定条件の分岐を文書へ転記するとき else 側集合を肯定的な具体名に置き換えない](pages/heuristics/negated-condition-branch-transcribed-as-positive-name.md) | heuristics | 実装が `[ "$os" != "Darwin" ]` のような否定条件で分岐しているとき、文書側に「Linux は〜」と肯定的な具体名で書くと、否定条件が拾う残りのケース（判定コマンドの失敗・未知の値）が記述から落ち、文書が実装より狭くなる。 | 2026-09-11T18:04:28Z | medium |
 ## 統計
 
-- 総ページ数: 475
-- ドメイン別: patterns=111, heuristics=211, anti-patterns=153
-- 最終更新: 2026-09-11T17:24:24Z
+- 総ページ数: 476
+- ドメイン別: patterns=111, heuristics=212, anti-patterns=153
+- 最終更新: 2026-09-11T18:04:28Z

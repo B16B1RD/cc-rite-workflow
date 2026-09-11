@@ -1,5 +1,6 @@
 ## 2026-09-12
 
+* **Create**: [否定条件の分岐を文書へ転記するとき else 側集合を肯定的な具体名に置き換えない](pages/heuristics/negated-condition-branch-transcribed-as-positive-name.md) — [レビュー結果](raw/reviews/20260911T175801Z-pr-2700.md) を新規ページ化
 * **Update**: [Issue body 内 `Scope 外指摘ハンドリングポリシー` 宣言で reviewer advisory finding を Issue 化なし recommendation に降格する](pages/heuristics/issue-body-scope-out-policy-demotes-advisory-finding.md) — [レビュー結果](raw/reviews/20260911T171840Z-pr-2699.md) を統合。follow-up Issue では Issue 本文の範囲外注記 + 別 Issue 起票済みの明示で reviewer が隣接点を再指摘しない（S/XS でも有効な例外として追記）
 * **Skip**: [レビュー結果](raw/reviews/20260911T164045Z-pr-2696.md) — 設計文書 1 項目の追従で新規経験則なし。実装側 grep 照合の要点は既存ページ（docs-review-implementation-grep-verification）に記録済み
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=474, broken_refs=0
