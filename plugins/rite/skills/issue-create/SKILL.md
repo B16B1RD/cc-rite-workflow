@@ -496,7 +496,7 @@ bash {plugin_root}/scripts/decompose-issues.sh --spec "{DECOMPOSE_WORKDIR}/spec.
 
 LLM は以下を実行する:
 1. CONTEXT marker (`PARENT_ISSUE_NUMBER`, `SUB_ISSUE_NUMBERS`) を直前の bash 出力から読み取る
-2. `tmpfile_read` の内容を Read tool で取得し、Sub-Issues セクション追記版を `tmpfile_write` へ Write tool で書く。`parent.attachments` が非空のときは `tmpfile_read` の本文で `![` 参照が添付 URL に置換済みかを確認し、未置換なら 4.3 と同じ「添付失敗」報告（作成済み URL と、削除された一時 SVG を再生成して `gh issue edit --attach` で再添付する案内）を出す
+2. `tmpfile_read` の内容を Read tool で取得し、Sub-Issues セクション追記版を `tmpfile_write` へ Write tool で書く。`parent.attachments` が非空のときは `tmpfile_read` の本文で `![` 参照が添付 URL に置換済みかを確認し、未置換なら 4.3 と同じ「添付失敗」報告（作成済み URL と、本文に残った参照と同じ絶対パスに一時 SVG を再生成し（`mkdir -p` で作業ディレクトリを再作成）、そのパスを `gh issue edit --attach` に渡して再添付する案内）を出す
 
 ### 5.5 Step 3: apply（別 bash block）
 
