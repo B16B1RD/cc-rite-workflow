@@ -1,6 +1,7 @@
 ## 2026-09-12
 
 * **Update**: [`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) — [レビュー結果](raw/reviews/20260911T154811Z-pr-2694.md) を統合。`grep -c . >/dev/null` は述語を変えず SIGPIPE 経路だけを消す。発火確率は上流の出力行数に比例し、同型箇所は同じ形に揃える
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=473, broken_refs=0
 
 ## 2026-09-11
 
