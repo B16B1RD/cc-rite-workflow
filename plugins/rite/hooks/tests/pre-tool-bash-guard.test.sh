@@ -2285,6 +2285,36 @@ else
 fi
 echo ""
 
+echo "TC-148: git commit --allow-empty → deny; ordinary commit and --allow-empty-message → allow"
+rc=0
+output=$(run_guard "Bash" 'git commit --allow-empty -m "x"') || rc=$?
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
+if [ "$decision" = "deny" ] \
+  && [[ "$reason" == *"git-commit-allow-empty"* ]] \
+  && [[ "$reason" == *"Leave the changes as files"* ]]; then
+  pass "git commit --allow-empty denied with pattern name and alternative"
+else
+  fail "Expected deny with git-commit-allow-empty and alternative, got decision=$decision reason=$reason"
+fi
+rc=0
+output=$(run_guard "Bash" 'git commit -m "x"') || rc=$?
+decision=$(extract_hook_field "$output" permissionDecision)
+if [ "$rc" = "0" ] && [ -z "$output" ] && [ -z "$decision" ]; then
+  pass "ordinary git commit -m is not denied"
+else
+  fail "Expected allow for git commit -m, got rc=$rc decision=$decision output=$output"
+fi
+rc=0
+output=$(run_guard "Bash" 'git commit --allow-empty-message -m ""') || rc=$?
+decision=$(extract_hook_field "$output" permissionDecision)
+if [ "$rc" = "0" ] && [ -z "$output" ] && [ -z "$decision" ]; then
+  pass "git commit --allow-empty-message is not denied"
+else
+  fail "Expected allow for --allow-empty-message, got rc=$rc decision=$decision output=$output"
+fi
+echo ""
+
 # --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
