@@ -5,6 +5,13 @@
 #   AC-1 worktree teardown helper が単独で動作する（削除 + main checkout パスの marker）
 #   AC-2 対象外の cwd で何もせず exit 0
 #   AC-6 --dry-run が削除しない
+#   M-01 sandbox の read-only bind mount 形マスク（mountinfo に載る通常ファイル）を検知して削除を見送る
+#   M-02 マスク検知は mountinfo の mount point と完全一致で判定する（prefix / 親ディレクトリの near-miss は不発）
+#   M-03 空白を含むパスは mountinfo の \040 エスケープと照合できる
+#   M-04 mountinfo 読取不可かつ mountpoint コマンド不在（uname も不在 = Linux 側に倒す）では WARNING を出したうえで削除経路へ進む
+#   M-05 別セッションが使用中（live-cwd skip 経路）ではマスク probe を走らせず、判定不能 WARNING も出ない
+#   M-06 Darwin（uname stub）では判定不能を無言で -c 判定に落とす
+#   M-07 character device 形（/dev/null symlink で再現）の検知結果と emit 内容は不変
 #
 # marker は行まるごと固定する。呼び出し側（cleanup/SKILL.md ステップ 12）は marker 名 +
 # フィールドで判定するため、フィールドが 1 つ落ちても helper 単体では動いて見える。
@@ -28,7 +35,8 @@ assert_eq(){ if [ "$2" = "$3" ]; then ok "$1"; else bad "$1 (expected='$3' actua
 # multi_session 有効なリポジトリ + セッション worktree を作る。
 # worktree パスは helper が物理判定に使う `<worktree_base leaf>/issue-{N}` の形にする。
 make_repo(){
-  d=$(mktemp -d "$TMP_ROOT/repo.XXXXXX")
+  # $1 = 親ディレクトリ（省略時 TMP_ROOT。空白入りパスの fixture 用）
+  d=$(mktemp -d "${1:-$TMP_ROOT}/repo.XXXXXX")
   # run-tests.sh は suite 実行時に CLAUDE_CODE_SESSION_ID / CLAUDE_SESSION_ID を unset し、
   # 各 sandbox の session-id ファイルへフォールバックさせる。これを置かないと flow-state の
   # set と get が別の session_id を解決しうる（単体では env 由来で一致するため suite でだけ落ちる）。
@@ -277,6 +285,158 @@ assert_eq "remove success: exit 0" "$rc" "0"
 assert_not_contains "remove success: FAILED marker を出さない" "$out" "WORKTREE_REMOVE_"
 [ ! -d "$wt" ] && ok "remove success: working tree を削除する" || bad "remove success: working tree が残った"
 [ ! -d "$admin" ] && ok "remove success: prune で admin dir を回収する" || bad "remove success: admin dir が残った"
+
+echo "=== cleanup-session-worktree-teardown: sandbox mask (bind mount shape) ==="
+
+# sandbox は admin dir の config.worktree / commondir に 2 形状のマスクを張る: /dev/null の
+# character device 形と、実ファイルの read-only bind mount 形。後者は通常ファイルに見えるため
+# helper は mountinfo の mount point（field 5）との完全一致で判定する。テストから実 mount は
+# 張れないので、helper が参照する RITE_MOUNTINFO を偽の mountinfo に向けて両形状を再現する。
+# 行の形は /proc/self/mountinfo と同じ（ID PARENT MAJ:MIN ROOT MOUNTPOINT OPTS - FSTYPE SRC OPTS）。
+mountinfo_line(){ printf '99 1 8:1 %s %s ro,relatime - ext4 /dev/sda1 rw\n' "$1" "$1"; }
+
+# M-01: config.worktree が bind mount 形でマスクされていると、remove を試行せず SANDBOX_MASK で
+# 見送り、admin HEAD / working tree が無傷のまま reap manifest に記録される。
+r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
+admin=$(sed -n 's/^gitdir: //p' "$wt/.git" | head -1)
+[ -f "$admin/config.worktree" ] || : > "$admin/config.worktree"
+fake_mi="$TMP_ROOT/mountinfo.m01"
+mountinfo_line "$admin/config.worktree" > "$fake_mi"
+out=$(cd "$r" && RITE_MOUNTINFO="$fake_mi" bash "$HELPER" remove --worktree "$wt" --pr-merged true --self-root "$$" 2>&1); rc=$?
+assert_eq "mask(bind): exit 0" "$rc" "0"
+assert_contains "mask(bind): SANDBOX_MASK marker で見送る" "$out" \
+  "[CONTEXT] WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1; path=$wt"
+assert_contains "mask(bind): WARNING は検知したファイルを名指しする" "$out" "（$admin/config.worktree）にマスクマウント"
+assert_not_contains "mask(bind): FAILED marker を出さない（remove を試行していない）" "$out" "WORKTREE_REMOVE_FAILED"
+[ -f "$admin/HEAD" ] && ok "mask(bind): admin HEAD が残る" || bad "mask(bind): admin HEAD が消えた"
+[ -d "$wt" ] && ok "mask(bind): working tree が残る" || bad "mask(bind): working tree が消えた"
+if grep -qxF "session_worktree	$wt" "$r/.rite/tmp-artifacts.tsv" 2>/dev/null; then
+  ok "mask(bind): reap manifest へ記録する（--pr-merged true）"
+else
+  bad "mask(bind): reap manifest に session_worktree エントリが無い"
+fi
+
+# M-01 派生（dry-run）: マスク有りの dry-run でも probe は走り、action=record_session_worktree を
+# 報告する（削除も manifest 記録もしない）。probe を live-cwd skip 後へ遅延させても dry-run 経路
+# で維持されていることの直接観測。
+r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
+admin=$(sed -n 's/^gitdir: //p' "$wt/.git" | head -1)
+[ -f "$admin/config.worktree" ] || : > "$admin/config.worktree"
+fake_mi="$TMP_ROOT/mountinfo.m01d"
+mountinfo_line "$admin/config.worktree" > "$fake_mi"
+out=$(cd "$r" && RITE_MOUNTINFO="$fake_mi" bash "$HELPER" remove --worktree "$wt" --pr-merged true --self-root "$$" --dry-run 2>/dev/null); rc=$?
+assert_eq "mask(bind, dry-run): exit 0" "$rc" "0"
+assert_eq "mask(bind, dry-run): action=record_session_worktree を報告する（probe を維持）" "$out" \
+  "[CONTEXT] DRY_RUN_WORKTREE_REMOVE=1; path=$wt; action=record_session_worktree"
+[ -d "$wt" ] && ok "mask(bind, dry-run): working tree が残る" || bad "mask(bind, dry-run): working tree が消えた"
+[ -f "$admin/HEAD" ] && ok "mask(bind, dry-run): admin HEAD が残る" || bad "mask(bind, dry-run): admin HEAD が消えた"
+if grep -qxF "session_worktree	$wt" "$r/.rite/tmp-artifacts.tsv" 2>/dev/null; then
+  bad "mask(bind, dry-run): dry-run なのに reap manifest へ記録した"
+else
+  ok "mask(bind, dry-run): reap manifest へ記録しない"
+fi
+
+# M-01 派生: commondir 側だけがマスクされていても検知する（WARNING はそのファイルを名指しする）。
+r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
+admin=$(sed -n 's/^gitdir: //p' "$wt/.git" | head -1)
+fake_mi="$TMP_ROOT/mountinfo.m01b"
+mountinfo_line "$admin/commondir" > "$fake_mi"
+out=$(cd "$r" && RITE_MOUNTINFO="$fake_mi" bash "$HELPER" remove --worktree "$wt" --pr-merged true --self-root "$$" 2>&1); rc=$?
+assert_contains "mask(bind, commondir): SANDBOX_MASK marker で見送る" "$out" \
+  "[CONTEXT] WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1; path=$wt"
+assert_contains "mask(bind, commondir): WARNING は commondir を名指しする" "$out" "（$admin/commondir）にマスクマウント"
+[ -d "$wt" ] && ok "mask(bind, commondir): working tree が残る" || bad "mask(bind, commondir): working tree が消えた"
+
+# M-02: 判定は mount point の完全一致。admin dir 自体や prefix を共有する隣接パスが mountinfo に
+# 載っていても（sandbox は .git/worktrees 自体も bind mount する）マスクとは見なさず削除経路へ進む。
+r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
+admin=$(sed -n 's/^gitdir: //p' "$wt/.git" | head -1)
+fake_mi="$TMP_ROOT/mountinfo.m02"
+{ mountinfo_line "$admin"; mountinfo_line "$admin/config.worktree.bak"; mountinfo_line "$(dirname "$admin")"; } > "$fake_mi"
+out=$(cd "$r" && RITE_MOUNTINFO="$fake_mi" bash "$HELPER" remove --worktree "$wt" --pr-merged true --self-root "$$" 2>&1); rc=$?
+assert_eq "mask(near-miss): exit 0" "$rc" "0"
+assert_not_contains "mask(near-miss): SANDBOX_MASK marker を出さない" "$out" "WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK"
+assert_not_contains "mask(near-miss): 成功時は WORKTREE_REMOVE_* marker を出さない" "$out" "WORKTREE_REMOVE_"
+[ ! -d "$wt" ] && ok "mask(near-miss): 削除経路へ進み working tree を削除する" || bad "mask(near-miss): working tree が残った"
+
+# M-03: mountinfo は空白を \040 でエスケープして格納する。空白入りパスの admin dir でも照合できる。
+space_parent="$TMP_ROOT/with space"; mkdir -p "$space_parent"
+r=$(make_repo "$space_parent"); wt="$r/.rite/worktrees/issue-1"
+admin=$(sed -n 's/^gitdir: //p' "$wt/.git" | head -1)
+case "$admin" in *" "*) ok "mask(space): fixture の admin dir に空白が含まれる" ;; *) bad "mask(space): fixture の admin dir に空白が無い ($admin)" ;; esac
+fake_mi="$TMP_ROOT/mountinfo.m03"
+mountinfo_line "$(printf '%s' "$admin/config.worktree" | sed 's/ /\\040/g')" > "$fake_mi"
+out=$(cd "$r" && RITE_MOUNTINFO="$fake_mi" bash "$HELPER" remove --worktree "$wt" --pr-merged true --self-root "$$" 2>&1); rc=$?
+assert_contains "mask(space): \\040 エスケープを解いて SANDBOX_MASK で見送る" "$out" \
+  "[CONTEXT] WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1; path=$wt"
+[ -d "$wt" ] && ok "mask(space): working tree が残る" || bad "mask(space): working tree が消えた"
+
+# M-04: 判定手段が両方ない（mountinfo 読取不可 + mountpoint コマンド不在）環境では、silent に
+# 「マスク無し」と扱わず WARNING を出したうえで、従来の character device 判定だけで削除経路へ進む。
+# PATH は helper が使う実行体だけを symlink した stub bin に差し替え、mountpoint を置かない。
+stub_bin="$TMP_ROOT/stub-bin"; mkdir -p "$stub_bin"
+for _cmd in bash sh git sed awk grep head mktemp rm dirname basename cat ps tr sort uniq readlink; do
+  _p=$(command -v "$_cmd" 2>/dev/null) && ln -sf "$_p" "$stub_bin/$_cmd"
+done
+[ -e "$stub_bin/mountpoint" ] && bad "mask(no-probe): stub bin に mountpoint が混入" || ok "mask(no-probe): stub bin に mountpoint が無い"
+# uname も置かない: uname 失敗（空文字）は Linux 側 = WARNING を出す側へ倒れる契約を本ケースが pin する。
+[ -e "$stub_bin/uname" ] && bad "mask(no-probe): stub bin に uname が混入（uname 失敗 = Linux 側へ倒す前提が崩れる）" || ok "mask(no-probe): stub bin に uname が無い"
+r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
+admin=$(sed -n 's/^gitdir: //p' "$wt/.git" | head -1)
+out=$(cd "$r" && RITE_MOUNTINFO="$TMP_ROOT/nonexistent-mountinfo" PATH="$stub_bin" bash "$HELPER" remove --worktree "$wt" --pr-merged true --self-root "$$" 2>&1); rc=$?
+assert_eq "mask(no-probe): exit 0" "$rc" "0"
+assert_contains "mask(no-probe): 判定不能の WARNING を出す" "$out" "WARNING: sandbox マスクの mountpoint 判定ができません"
+assert_not_contains "mask(no-probe): SANDBOX_MASK marker を出さない" "$out" "WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK"
+[ ! -d "$wt" ] && ok "mask(no-probe): character device 判定のみで削除経路へ進む" || bad "mask(no-probe): working tree が残った (出力: $out)"
+
+# M-05: 判定手段不在でも、別セッションが worktree を使用中（live-cwd skip 経路）なら probe を
+# 走らせない。見送りの結果にマスク判定は無関係なので、判定不能 WARNING も出ない。
+# 自セッションを除外する --self-root に実在しない pid を渡し、worktree に cwd を置いた
+# background プロセスを「別セッション」として見せる（/proc の無いホストでは probe が rc 2 を
+# 返し live-cwd skip に入らないため、その場合は本ケースを skip する）。
+if [ -d /proc ]; then
+  r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
+  ( cd "$wt" && exec sleep 30 ) &
+  live_pid=$!
+  sleep 0.2
+  out=$(cd "$r" && RITE_MOUNTINFO="$TMP_ROOT/nonexistent-mountinfo" PATH="$stub_bin" bash "$HELPER" remove --worktree "$wt" --pr-merged true --self-root 4194303 2>&1); rc=$?
+  kill "$live_pid" 2>/dev/null; wait "$live_pid" 2>/dev/null
+  assert_eq "mask(live-cwd skip): exit 0" "$rc" "0"
+  assert_contains "mask(live-cwd skip): LIVE_CWD marker で見送る" "$out" \
+    "[CONTEXT] WORKTREE_REMOVE_SKIPPED_LIVE_CWD=1; path=$wt"
+  assert_not_contains "mask(live-cwd skip): 見送り経路では判定不能の WARNING を出さない（probe を走らせない）" "$out" "WARNING: sandbox マスクの mountpoint 判定ができません"
+  [ -d "$wt" ] && ok "mask(live-cwd skip): working tree が残る" || bad "mask(live-cwd skip): working tree が消えた"
+else
+  ok "mask(live-cwd skip): /proc 不在のため skip"
+fi
+
+# M-06: Darwin では判定手段不在が常態（/proc も util-linux mountpoint も無い）なので、判定不能を
+# 無言で `-c` 判定に落とす。uname を stub して OS 名だけ差し替える。
+darwin_bin="$TMP_ROOT/stub-bin-darwin"; mkdir -p "$darwin_bin"
+for _f in "$stub_bin"/*; do ln -sf "$(readlink -f "$_f")" "$darwin_bin/$(basename "$_f")"; done
+printf '#!/bin/sh\necho Darwin\n' > "$darwin_bin/uname"; chmod +x "$darwin_bin/uname"
+r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
+out=$(cd "$r" && RITE_MOUNTINFO="$TMP_ROOT/nonexistent-mountinfo" PATH="$darwin_bin" bash "$HELPER" remove --worktree "$wt" --pr-merged true --self-root "$$" 2>&1); rc=$?
+assert_eq "mask(darwin): exit 0" "$rc" "0"
+assert_not_contains "mask(darwin): 判定不能の WARNING を出さない（Darwin は無言）" "$out" "WARNING: sandbox マスクの mountpoint 判定ができません"
+assert_not_contains "mask(darwin): SANDBOX_MASK marker を出さない" "$out" "WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK"
+[ ! -d "$wt" ] && ok "mask(darwin): 削除経路へ進み working tree を削除する" || bad "mask(darwin): working tree が残った (出力: $out)"
+
+# character device 形（/dev/null マスク）の検知と emit は不変。mknod は root/CAP_MKNOD 必須で
+# 張れないが、/dev/null への symlink で `test -c` は真になる（symlink を辿る）。mountinfo を不在に
+# し mountpoint も無い stub PATH で実行し、通過が `-c` 分岐だけに帰属するようにする。
+r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
+admin=$(sed -n 's/^gitdir: //p' "$wt/.git" | head -1)
+rm -f "$admin/config.worktree"; ln -s /dev/null "$admin/config.worktree"
+[ -c "$admin/config.worktree" ] && ok "mask(chardev): fixture の config.worktree が character device に見える" || bad "mask(chardev): fixture が character device にならない"
+out=$(cd "$r" && RITE_MOUNTINFO="$TMP_ROOT/nonexistent-mountinfo" PATH="$stub_bin" bash "$HELPER" remove --worktree "$wt" --pr-merged true --self-root "$$" 2>&1); rc=$?
+assert_eq "mask(chardev): exit 0" "$rc" "0"
+assert_contains "mask(chardev): SANDBOX_MASK marker で見送る" "$out" \
+  "[CONTEXT] WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1; path=$wt"
+assert_contains "mask(chardev): WARNING は config.worktree を名指しする（従来文言）" "$out" "（$admin/config.worktree）にマスクマウントを張っているため、削除を見送りました"
+assert_not_contains "mask(chardev): 判定不能の WARNING を出さない（-c で先に確定）" "$out" "WARNING: sandbox マスクの mountpoint 判定ができません"
+[ -f "$admin/HEAD" ] && ok "mask(chardev): admin HEAD が残る" || bad "mask(chardev): admin HEAD が消えた"
+[ -d "$wt" ] && ok "mask(chardev): working tree が残る" || bad "mask(chardev): working tree が消えた"
 
 prune_ln=$(grep -n 'git worktree prune' "$HELPER" | head -1 | cut -d: -f1)
 fail_ln=$(grep -n 'echo "\[CONTEXT\] WORKTREE_REMOVE_FAILED=1' "$HELPER" | tail -1 | cut -d: -f1)

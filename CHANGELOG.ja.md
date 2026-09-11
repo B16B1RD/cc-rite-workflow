@@ -30,6 +30,14 @@ blocking gate として実行する。
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-09-12
+
+### 修正
+
+- **worktree 削除前に read-only bind mount 形の sandbox マスクを検知し admin dir の半壊を防ぐ** — sandbox が `config.worktree` / `commondir` に張るマスクには `/dev/null` の character device 形と、実ファイルを read-only で bind mount する形がある。検知は前者だけだったため、後者では強制削除が `HEAD` を unlink した直後に `EBUSY` で止まり、`HEAD` だけ欠けた admin dir が残って `git worktree prune` も通らなくなっていた。検知を `_sandbox_mask_present` に集約し、character device に加えて `mountinfo` の mount point 完全一致（読めなければ `mountpoint -q`）で bind mount 形も捕まえる。bind mount は親と同じデバイス番号になるため `st_dev` 比較は使わない。
+- **マスク判定不能の WARNING を判定手段を失った Linux に限定し、live-cwd skip 経路では probe しない** — macOS は `/proc` も util-linux の `mountpoint` も持たず bind mount 形のマスクも張られないため、sandbox の有無に関係なく削除のたびに WARNING が出ていた。probe を live-cwd 判定の後に限定し、判定不能の WARNING は `uname -s` が Darwin を返さないときだけ出す（`uname` 失敗・未知 OS は WARNING を出す側に倒す）。
+- **cleanup 契約テストのフェンス非空 assert が SIGPIPE レースに依存しなくなった** — `set -o pipefail` 下で `awk | grep -q .` を使うと、`grep -q` が初回一致で終了した後に `awk` が閉じたパイプへ書き続け、パイプ全体が断続的に非ゼロ扱いになっていた。`grep -c . >/dev/null` は入力を全消費するため早期終了が起きず、一致 0 で非ゼロを返す判別力は維持される。
+
 ## [0.15.0] - 2026-09-11
 
 ### 追加
@@ -1044,6 +1052,7 @@ v0.4.0 では値は silent に無視されます。機能的な代替はあり�
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.15.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.13.2...v0.14.0
 [0.13.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.13.1...v0.13.2

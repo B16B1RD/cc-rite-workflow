@@ -7,6 +7,7 @@
 #   1. ステップ 4-W が self-exclusion 付き worktree-foreign-cwd.sh に --self-root を渡している
 #   2. ステップ 5 が squash-merge 確認済みブランチを強制削除し、遅延ブランチを manifest 記録する
 #   3. ユーザー向け遅延メッセージが平易・正確（内部実装語が無く、branch の自動回収を明記）
+#   4. 設計文書 (docs/designs/multi-session-worktree.md) の Step 4-W 記述が helper の分岐と同じ広さ
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,6 +20,7 @@ DEFERRED_HELPER="$SCRIPT_DIR/../scripts/cleanup-deferred-branch-recovery.sh"
 # する pin は SKILL.md を見る。
 TEARDOWN_HELPER="$SCRIPT_DIR/../scripts/cleanup-session-worktree-teardown.sh"
 BRANCH_DELETE_HELPER="$SCRIPT_DIR/../scripts/cleanup-branch-delete.sh"
+DESIGN_DOC="$SCRIPT_DIR/../../../../docs/designs/multi-session-worktree.md"
 
 echo "=== ステップ 4-W: self-exclusion 付き live-cwd guard の配線 ==="
 assert_grep "4-W uses worktree-foreign-cwd.sh (not the bare live-cwd probe)" "$TEARDOWN_HELPER" "worktree-foreign-cwd\.sh"
@@ -90,13 +92,24 @@ echo "=== ステップ 4-W: sandbox マスク検知による remove 抑止 (AC-1
 # remove (--force 含む) を一切実行せず遅延 reap (pr-cycle-cleanup.sh Step 5 corpse 回収) へ
 # 委譲する。behavioral 検証 (corpse 回収側) は pr-cycle-cleanup-session-reap.test.sh C-01..C-04。
 assert_grep "4-W resolves the admin dir from the worktree's .git file" "$TEARDOWN_HELPER" '_wt_admin=\$\(sed -n .s/.gitdir: //p. "\$flow_wt/\.git"'
-assert_grep "4-W detects the mask as a character device on config.worktree" "$TEARDOWN_HELPER" '\-c "\$_wt_admin/config\.worktree"'
+# マスクは character device 形と read-only bind mount 形の 2 形状。検知は関数に集約し、cmd_remove は
+# その結果だけで分岐する（char device 判定が関数から消えると前者の形を見失う）。
+assert_grep "4-W delegates mask detection to _sandbox_mask_present on the admin dir" "$TEARDOWN_HELPER" '_masked_file=\$\(_sandbox_mask_present "\$_wt_admin"\)'
+assert_grep "4-W mask detection keeps the character device check" "$TEARDOWN_HELPER" '\[ -c "\$_admin/\$_f" \]'
+assert_grep "4-W mask detection matches the mountinfo mount point exactly" "$TEARDOWN_HELPER" '\$5 == ENVIRON\["RITE_MOUNT_PROBE"\]'
 assert_grep "4-W emits the sandbox-mask skip marker" "$TEARDOWN_HELPER" "WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1"
 assert_grep "4-W mask WARNING states removal is not attempted at all" "$TEARDOWN_HELPER" "削除自体を試行しません"
 assert_grep "4-W mask WARNING forbids in-place sandbox-disable retry" "$TEARDOWN_HELPER" "実行エージェントはこの場で sandbox を無効化して remove を再試行しないこと"
 # AC-2 (非回帰): マスク非検知時の従来 remove 経路 (LC_ALL=C 固定の remove → --force fallback)
 # が残存している — 検知ガードが常時抑止に化けたらこの pin ごと落ちる。
 assert_grep "4-W keeps the conventional remove path for unmasked worktrees" "$TEARDOWN_HELPER" 'LC_ALL=C git worktree remove "\$flow_wt"'
+# 設計文書側の Step 4-W 記述は、判定手段が両方無い場合の WARNING 条件を helper の
+# `[ "$_os" != "Darwin" ]` と同じ広さで書く。WARNING 側を「Linux は」と肯定的な具体名で書くと
+# `uname` の失敗・未知 OS が記述から落ち、文書が実装より狭くなる。
+assert_grep "design doc scopes the no-probe WARNING as Darwin-only silence" "$DESIGN_DOC" \
+  "Darwin 以外は .sandbox マスクの mountpoint 判定ができません. の WARNING 付き"
+assert_not_grep "design doc does not narrow the WARNING side to Linux" "$DESIGN_DOC" \
+  "Linux は .sandbox マスクの mountpoint 判定ができません. の WARNING 付き"
 # ステップ 12 報告: SANDBOX_MASK skip の分岐が存在し、sandbox 外での手動回収コマンドを示す。
 assert_grep "Step 12 has a SANDBOX_MASK branch in {session_worktree_check}" "$CLEANUP" 'WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1. のとき'
 assert_grep "Step 12 mask message points to a sandbox-outside manual removal" "$CLEANUP" "sandbox 外のシェルで git worktree remove --force"
@@ -265,11 +278,11 @@ _strip_comments() { grep -v '^[[:space:]]*#'; }
 # フェンス抽出そのものの空振りも固定する (セクション抽出と同じ理由。こちらは節が非空でも
 # フェンス判定が外れた瞬間に 0 行になるため、上の section 非空 assert では守れない)。
 assert "T-09 4-W bash-fence extraction is non-empty" "yes" \
-  "$(printf '%s\n' "$_s4w" | _fenced | grep -q . && echo yes || echo no)"
+  "$(printf '%s\n' "$_s4w" | _fenced | grep -c . >/dev/null && echo yes || echo no)"
 assert "T-09 step 5 bash-fence extraction is non-empty" "yes" \
-  "$(printf '%s\n' "$_s5" | _fenced | grep -q . && echo yes || echo no)"
+  "$(printf '%s\n' "$_s5" | _fenced | grep -c . >/dev/null && echo yes || echo no)"
 assert "T-09 step 6 bash-fence extraction is non-empty" "yes" \
-  "$(printf '%s\n' "$_s6" | _fenced | grep -q . && echo yes || echo no)"
+  "$(printf '%s\n' "$_s6" | _fenced | grep -c . >/dev/null && echo yes || echo no)"
 # 4-W: worktree の削除・prune の実行行が無く、teardown helper を呼んでいる。
 assert "T-09 4-W has no inline worktree removal" "0" \
   "$(printf '%s\n' "$_s4w" | _fenced | _strip_comments | grep -cE '(^|[;&|[:space:]])git worktree (remove|prune)')"
