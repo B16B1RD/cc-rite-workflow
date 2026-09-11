@@ -59,7 +59,7 @@ Legend: `M` = MUST (required), `S` = SHOULD (recommended), `O` = OMIT (skip)
 | 9. Decision Log | O | O | S | M | M |
 
 **Gate rules**:
-- `M`: Always include. Use placeholder comment if information unavailable.
+- `M`: Always include. Use placeholder comment if information unavailable. Exception: Section 4.1 File column must contain at least one real path; placeholder or non-path text is not a pass.
 - `S`: Include if information gathered during interview. Omit silently if not discussed.
 - `O`: Do not include unless user explicitly requests.
 
@@ -109,7 +109,7 @@ After generating the Issue body, verify all items:
 - [ ] All MUST sections for the complexity level are present
 - [ ] AC count matches complexity guideline
 - [ ] Each AC has a corresponding Test Case ID (T-xx)
-- [ ] Target Files list exists with file paths
+- [ ] Target Files の File 列に実パスが 1 行以上ある（「（コード変更なし）」「なし」「N/A」等の非パスのみは不可）
 - [ ] All MUST requirements are testable (no vague verbs)
 - [ ] No empty headings (remove section if no content)
 - [ ] 上段に「何が起きているか / 何をするか / 見てほしい点」があり、用語は内部用語があるときだけ含む（本文言語に合わせて翻訳）
