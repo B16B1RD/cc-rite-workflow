@@ -1,5 +1,6 @@
 ## 2026-09-12
 
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=482, broken_refs=0
 * **Create**: [新しい経路を足したら、その出力を既存処理へ再入力して既存処理の暗黙の入力前提を確かめる](pages/heuristics/new-path-output-fed-back-into-existing-process.md) — [記録セクション新設経路のレビュー結果](raw/reviews/20260912T182103Z-pr-2751.md) を新規ページ化
 * **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — [全呼び出しを失敗させる mock の検出網不足のレビュー結果](raw/reviews/20260912T182103Z-pr-2751.md) を統合。同じコマンドを複数回呼ぶ手順の失敗注入を呼び出し回数ごとに分ける節を追記
 * **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — [失敗注入を呼び出し回数ごとに分けた修正](raw/fixes/20260912T182702Z-pr-2751.md) を統合
