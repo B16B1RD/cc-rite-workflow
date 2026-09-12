@@ -199,7 +199,7 @@ printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do ec
 
 #### 7.4.3 Decision Log Append
 
-「Decision Log に記録」は元 Issue の Section 9 へ 1 行 append。無ければ作業メモリ「決定事項・メモ」。
+「Decision Log に記録」は元 Issue の Section 9 へ 1 行 append。無ければ本文に Section 9 を新設して `D-01` を記録する。
 `{decision}` / `{reason}` / `{impact}` を生成前に埋める。**候補ごとに単一 Bash invocation**。
 rationale: design-rationale.md#decision-log-per-candidate
 
@@ -261,43 +261,48 @@ elif printf '%s' "$body" | grep -q '^## 9\. Decision Log'; then
     echo "[CONTEXT] DECISION_LOG_APPEND_FAILED=1; reason=gh_edit_failure; issue={source_issue_number}" >&2
   fi
 else
-  # Section 9 が無い Issue → 作業メモリ「決定事項・メモ」へフォールバック。
-  # issue-comment-wm-sync.sh は non_comment/失敗時も exit 0 を返し、成否は stdout の
-  # status=/reason= 行でのみ通知する契約（helper 冒頭コメント参照）。exit code のみでの成否判定は
-  # false-success を招くため、fix/SKILL.md の正典 shim パターン（status=/reason= パース）に揃える。
-  memo_tmp=$(mktemp)
-  trap 'rm -f "$memo_tmp"' EXIT
-  printf '%s' "- ${today}: ${line_content}" > "$memo_tmp"
-  wm_sync_err=$(mktemp 2>/dev/null) || wm_sync_err=""
-  wm_sync_out=$(bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
-    --issue {source_issue_number} \
-    --transform append-section \
-    --section "決定事項・メモ" --content-file "$memo_tmp" 2>"${wm_sync_err:-/dev/null}")
-  wm_state=$(printf '%s\n' "$wm_sync_out" | sed -n 's/^status=\([a-z]*\).*/\1/p' | head -1)
+  # Section 9 が無い Issue → 本文に Section 9 を新設して D-01 を記録する。
+  # 置き場所は Implementation Contract の </details> の直前（pr-create が読む契約層の内側）。
+  # 無ければ署名行だけが後に続くフッター区切り `---` の直前、どちらも無ければ本文末尾。
+  # 本文の自由記述に混ざる `---` / `</details>` は境界とみなさない。挿入行以外は 1 文字も変えない。
+  new_line="- ${today} D-01: ${line_content}"
 
-  if [ "$wm_state" = "success" ]; then
-    echo "[CONTEXT] DECISION_LOG_APPENDED=1; issue={source_issue_number}; fallback=work_memory"
+  tmpfile=$(mktemp)
+  trap 'rm -f "$tmpfile"' EXIT
+  awk_rc=0
+  # 1 回目で挿入する行番号を決め（0 は本文末尾）、2 回目でその行の直前に挿入する
+  insert_at=$(printf '%s\n' "$body" | awk '
+    /^<summary>Implementation Contract/ { contract = 1 }
+    contract && /^<\/details>/ { details = NR }
+    /^---[[:space:]]*$/ { rule = NR; footer = 1; next }
+    rule && !/^[[:space:]]*$/ && !/^🤖 / { footer = 0 }
+    END { print (details ? details : ((rule && footer) ? rule : 0)) }
+  ') || awk_rc=$?
+  printf '%s\n' "$body" | NEW_LINE="$new_line" INSERT_AT="$insert_at" awk '
+    NR == ENVIRON["INSERT_AT"] + 0 { print "## 9. Decision Log"; print ""; print ENVIRON["NEW_LINE"]; print "" }
+    { print }
+    END { if (ENVIRON["INSERT_AT"] + 0 == 0) { print ""; print "## 9. Decision Log"; print ""; print ENVIRON["NEW_LINE"] } }
+  ' > "$tmpfile" || awk_rc=$?
+
+  # 既存 Section 9 分岐と同じく、awk の異常終了（部分出力）と空出力のどちらでも書き戻さない。
+  if [ "$awk_rc" -eq 0 ] && [ -s "$tmpfile" ] && gh issue edit {source_issue_number} -R {owner_repo} --body-file "$tmpfile"; then
+    echo "[CONTEXT] DECISION_LOG_APPENDED=1; issue={source_issue_number}; entry=D-01; section=created"
+    echo "記録: $new_line"
   else
-    echo "WARNING: 元 Issue #{source_issue_number} の作業メモリ「決定事項・メモ」への記録に失敗しました (helper status: $wm_sync_out)" >&2
-    if [ -n "$wm_sync_err" ] && [ -s "$wm_sync_err" ]; then
-      echo "  helper stderr (root-cause、先頭 5 行):" >&2
-      head -5 "$wm_sync_err" | sed 's/^/    /' >&2
-    fi
-    echo "手動追記してください: - ${today}: ${line_content}" >&2
-    echo "[CONTEXT] DECISION_LOG_APPEND_FAILED=1; reason=wm_sync_failure; issue={source_issue_number}" >&2
+    echo "WARNING: 元 Issue #{source_issue_number} への Decision Log append に失敗しました" >&2
+    echo "手動追記してください: $new_line" >&2
+    echo "[CONTEXT] DECISION_LOG_APPEND_FAILED=1; reason=gh_edit_failure; issue={source_issue_number}" >&2
   fi
-  [ -n "$wm_sync_err" ] && rm -f "$wm_sync_err"
 fi
 ```
 
-Decision Log append failure reasons: (`line_content_write_failure` / `body_fetch_failure` / `gh_edit_failure` / `wm_sync_failure`)
+Decision Log append failure reasons: (`line_content_write_failure` / `body_fetch_failure` / `gh_edit_failure`)
 
 | reason | Description |
 |--------|-------------|
 | `line_content_write_failure` | Decision Log 行テンプレートの一時ファイル書き込みに失敗 |
 | `body_fetch_failure` | 元 Issue の body 取得（`gh issue view`）に失敗 |
-| `gh_edit_failure` | Section 9 への行挿入（awk）の異常終了、または `gh issue edit` 適用に失敗 |
-| `wm_sync_failure` | Section 9 不在時の作業メモリ「決定事項・メモ」への sync に失敗 |
+| `gh_edit_failure` | Section 9 への行挿入、または Section 9 新設時の本文組み立て（awk）の異常終了 / 空出力、または `gh issue edit` 適用に失敗 |
 
 失敗は non-blocking。WARNING + 記録予定行を出し、7.5-7.6 の completion report にも転記する（AC-5）。
 
