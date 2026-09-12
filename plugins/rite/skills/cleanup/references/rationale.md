@@ -15,6 +15,28 @@ WARNING から手動復旧できるから (D-03)。helper は API 失敗でも e
 `FOLLOW_UP_ISSUE` だけである。完了報告がこれを見ず `REVIEW_CLEANUP_PARTIAL_FAILURE` だけを見ると、
 起票失敗が「なし」に倒れる。marker 不在を成功と読まない規約はステップ 5 と同型。
 
+## follow-up-sweep-issued-dedup
+
+sweep の起票 Issue に follow-up ラベルと先頭行 marker を付けて既存判定に乗せる方式は採らない。
+既存判定は「同一 PR 由来の marker を持つ Issue が 1 件でもあれば `already_exists` で全件 skip」
+するため、sweep 起票が 1 件あるだけで recorded 指摘まで転記されなくなる。除外は finding 単位で
+行う必要があり、その単位の記録は台帳にしか無い。
+
+台帳の取得を SKILL 側でなく helper 内で行うのは、除外 key が file パスを含むため。6.0.V の
+`{resolved_ids_csv}` を `F-NN` トークンに限っているのと同じ理由で、パス入りの値を二重引用符内へ
+リテラル置換で渡す経路を増やさない。
+
+除外するのは、sweep が読んだ最新 JSON 由来の finding のうち、台帳の issued 行 `[finding_id, file:line]`
+と組が一致するものだけ。組は `nb-sweep-collect.sh` が台帳と照合する identity で、最新 JSON と一致すれば
+本 PR の sweep が起票した行だと言える（同じ関連 Issue には別 PR の台帳行も並びうる）。
+
+先行 cycle の finding は、id や位置が最新 JSON の起票済み指摘と同じでも除外しない。重複防止
+（id が振り直された同じ指摘を二重に起票しない）と欠落防止（sweep 未実施の指摘は転記する）は、台帳が
+cycle 属性も指摘の内容も持たない現状では機械的に両立しない。同じ位置には cycle を跨いで別の指摘が
+並ぶことも多く、位置や id で推定して除外するとその本文がどの Issue にも残らない。欠落は共有経路から
+本文が消える取り返しのつかない損失で、重複は人が閉じれば済む損失なので、**欠落防止を優先する**。
+重複しうる件数と位置は WARNING で出し、黙って重複させない。
+
 ## reverify-no-extract-marker
 
 6.0.V の抽出が成功しても marker を出さないのは、抽出だけを示す marker が「判定に到達しなかった」
