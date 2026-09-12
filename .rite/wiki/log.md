@@ -1,5 +1,6 @@
 ## 2026-09-12
 
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=477, broken_refs=0
 * **Create**: [取り消し処理を fail-loud 化するときは、取り消す対象が無い no-op 経路を先に分けないと存在しない操作の失敗として止まる](pages/anti-patterns/fail-loud-undo-without-noop-path-stops-on-nothing-to-undo.md) — [復旧手順の dry-run 取り消し失敗検出に対するレビュー結果](raw/reviews/20260912T053835Z-pr-2719.md) を新規ページ化
 * **Skip**: [20260912T054124Z-pr-2719.md](raw/fixes/20260912T054124Z-pr-2719.md) — fix triage の routing ログのみ。取り消し処理の誤停止の観測は同じ PR のレビュー結果 raw に記録済みで、新しい経験則なし
 * **Update**: [静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く](pages/heuristics/static-pin-semantic-allowlist-not-notation-denylist.md) — [退路本文への negative pin で禁止文を除外してから照合したレビュー結果](raw/reviews/20260912T040912Z-pr-2715.md) を統合。禁止文を含む本文への negative grep は禁止文を除外した別変数で照合し、除外後本文の非空も pin する
