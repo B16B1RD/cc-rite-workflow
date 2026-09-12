@@ -337,6 +337,8 @@ Decision Log append を候補ごとに単一 Bash invocation にする理由。
 
 記録先を元 Issue 本文の Section 9 に一本化する理由: Section 9 が無いときに作業メモリへ逃がすと、作業メモリも無い Issue（Complexity S 以下で Section 9 を省いた Issue や cleanup の follow-up Issue）で記録先が尽き、人間の手動追記が定常経路になる。Section 9 を新設すれば記録は作業メモリの有無に依存せず、PR 作成時の Implementation Notes も同じ Section 9 から判断を読める。Issue 作成時に S 以下で Section 9 を省く規則は生成時のテンプレート規則であり、後から実際の判断を記録するための新設とは衝突しない。
 
+採番を Section 9 の内側に限る理由: Section 9 は判断の記録がない本文にも新設されるため、本文の散文に D-NN を含む Issue（レビュー指摘の文面をそのまま転記する follow-up Issue 等）にも Section 9 ができる。本文全体を数えると散文の番号に 1 を足した値へ飛び、新設時の D-01 と連番にならない。境界は追記位置を決める awk と同じにし、数える範囲と書き込む範囲を一致させる。
+
 ## 5.3-execution-order-why
 
 5.3.0 → 5.3.0.M → 5.3.0.C → 5.3.1 の順を守る理由。
