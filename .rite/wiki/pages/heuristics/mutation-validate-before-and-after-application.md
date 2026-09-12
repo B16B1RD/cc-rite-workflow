@@ -17,9 +17,13 @@ sources:
     resource: "raw/reviews/20260803T012646Z-pr-2094.md"
   - type: "fixes"
     resource: "raw/fixes/20260803T013513Z-pr-2094.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260912T124606Z-pr-2737.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-03T07:46:56Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-12T12:57:28Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-12T12:57:28Z" }
 ---
 
 # mutation は適用前に一致件数を、適用後に構文を検証してから結論に使う
@@ -81,6 +85,12 @@ mutation で生存した防御コードに対して不要な TC を増やす前�
 
 外部コマンドを全面的に失敗させる shim は、そのコマンドに依存する無関係な TC を巻き込む。対象の呼び出しを引数で見分けて、それだけを失敗させる。
 
+### 故障注入 shim は「実処理をしてから失敗を返す」mode も持つ
+
+shim が失敗を返すだけで実処理をしないと、後段に置かれた冗長ガードが前段と同じ停止を出す。たとえば取り消し操作の失敗で止まる処理のあとに「取り消し後の状態をもう一度確かめて止まる」ガードがあると、取り消しが何もしなかった状態は後段ガードでも止まる。このため前段の停止処理を削除する mutation が生存し、テストは前段を守っていない。
+
+前段の停止経路を単独で pin するには、shim に「実処理を行ってから失敗を返す」mode を用意する。こうして後段ガードが発火しない状態を作り、その入力で前段の停止だけが残ることを確認する。どちらの mode でも同じ停止が出るなら、その停止を出しているのは後段ガードであり、前段は検証されていない。
+
 ## 関連ページ
 
 - [アサーションの検証強度は「該当行を壊して赤くなるか」でしか測れない](./mutation-testing-measures-assertion-strength.md)
@@ -90,3 +100,4 @@ mutation で生存した防御コードに対して不要な TC を増やす前�
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20260802T173849Z-pr-2094.md)
+- [故障注入 shim と冗長ガードの重なりを指摘したレビュー結果](../../raw/reviews/20260912T124606Z-pr-2737.md)
