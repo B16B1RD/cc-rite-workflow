@@ -341,10 +341,11 @@ fi
 # iterate の NB sweep が既に Issue 化した指摘 (関連 Issue 記録コメントの却下台帳で判定=issued) を
 # 転記から除く。sweep の起票には follow-up ラベルも先頭行 marker も付かないため、下の既存判定では
 # 見分けられず同じ指摘が二重に Issue 化される。recorded / rejected 行は従来どおり転記する。
-# 除外 key は nb-sweep-collect.sh が台帳照合に使う [finding_id, file:line] の組と同じ形にする。
-# --exclude-ids のような「同じ key が複数 finding に一致したら除外拒否」は行わない: 未解消の指摘は
-# cycle ごとに同じ位置で再報告されるため、拒否すると重複起票がそのまま残る。id 単体と違い
-# 位置まで一致した別の指摘は実質生じない。
+# 台帳の issued 行 [finding_id, file:line] は、sweep が読んだ最新 JSON (nb-sweep-collect.sh と同じ
+# 選び方) の non_blocking_findings[] に同じ組があるときだけ採用する。id は cycle ごとに振り直され、
+# 別 PR の台帳行も同じ関連 Issue に並ぶため、組が最新 JSON と一致した行だけが本 PR の sweep 起票と言える。
+# 採用した行の file:line を持つ finding は cycle を問わず全件除外する: 未解消の指摘は cycle ごとに
+# 別の id で同じ位置に再報告されるため、id まで照合すると先行 cycle の分が重複起票される。
 # 台帳を読めないときは除外を適用せず全件を転記し、WARNING と marker で surface する
 # (黙って全件除外にも全件転記にも倒さない)。
 sweep_issued_unavailable() {
@@ -374,8 +375,15 @@ else
         | [.[1], .[2]] ] | unique' 2>"$comments_err"); then
     sweep_issued_unavailable ledger_invalid "関連 Issue #${SOURCE_ISSUE} の却下台帳を解析できません"
     [ -s "$comments_err" ] && head -3 "$comments_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-  elif ! issued_filtered=$(printf '%s' "$findings_json" | jq -c --argjson keys "$issued_keys" '
-    [.[] | select([(.id // ""), ((.file // "") + ":" + (.line | tostring))] as $k | any($keys[]; . == $k) | not)]'); then
+  elif ! latest_json=$(find "$results_dir" -maxdepth 1 -type f -name "${PR_NUMBER}-*.json" | LC_ALL=C sort | tail -1) \
+    || [ -z "$latest_json" ] \
+    || ! issued_locations=$(jq -c --argjson keys "$issued_keys" '
+      [.non_blocking_findings[]? | [(.id // ""), ((.file // "") + ":" + (.line | tostring))]
+       | select(. as $k | any($keys[]; . == $k)) | .[1]] | unique' "$latest_json" 2>"$comments_err"); then
+    sweep_issued_unavailable apply_failed "sweep 起票済みの指摘を最新のレビュー結果 JSON と照合できません"
+    [ -s "$comments_err" ] && head -3 "$comments_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+  elif ! issued_filtered=$(printf '%s' "$findings_json" | jq -c --argjson locs "$issued_locations" '
+    [.[] | select(((.file // "") + ":" + (.line | tostring)) as $l | any($locs[]; . == $l) | not)]'); then
     sweep_issued_unavailable apply_failed "sweep 起票済みの除外適用に失敗しました"
   else
     _issued_before=$(printf '%s' "$findings_json" | jq 'length')

@@ -54,7 +54,7 @@
 #   T-30 issued だけを除き recorded は転記する / 記録コメント以外・issued 以外の行では除外しない
 #   T-31 台帳を読めない (API 失敗 / 解析不能 / 関連 Issue 無し) ときは WARNING + marker で全件転記
 #   T-32 台帳が無い PR は従来どおり全件転記
-#   T-33 除外 key は [finding_id, file:line] の組 (cycle を跨ぐ同じ組は全件除外)
+#   T-33 台帳行は最新 JSON と組が一致したときだけ採用し、その file:line を cycle と id を問わず除外する
 #   T-34 cleanup SKILL.md が all_issued と除外不能 note を完了報告へ配線する
 #   T-35 台帳の選別述語が nb-sweep-collect.sh と揃っている
 set -uo pipefail
@@ -1071,7 +1071,7 @@ assert_grep "T-32 a.md を転記" "$STUB_DIR/body.md" 'a.md:3'
 assert_grep "T-32 b.md を転記" "$STUB_DIR/body.md" 'b.md:9'
 assert_not_grep "T-32 除外不能に倒さない" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable'
 
-echo "--- T-33: 除外 key は [finding_id, file:line] の組 ---"
+echo "--- T-33: 台帳行は最新 JSON と組が一致したときだけ採用する ---"
 reset_stubs
 r=$(new_root t33)
 put_json "$r" "9-20260101120000.json" "$TWO_FINDING_JSON"
@@ -1091,6 +1091,26 @@ assert_grep "T-33b 別 key の finding は転記" "$STUB_DIR/body.md" 'c.md:1'
 assert_not_grep "T-33b 同じ組の再報告は全 cycle 分を除外" "$STUB_DIR/body.md" 'a.md:3'
 assert_grep "T-33b 除外件数 2" "$ERR" 'sweep_issued: pr=9; excluded=2$'
 assert_not_grep "T-33b 曖昧 marker を出さない" "$ERR" 'FOLLOW_UP_EXCLUDE_AMBIGUOUS'
+
+reset_stubs
+r=$(new_root t33c)
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-03","file":"a.md","line":3,"description":"cycle1 の同じ指摘"}]}'
+put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-01","file":"a.md","line":3,"description":"cycle2 の同じ指摘"}]}'
+jq -n --argjson c "$(comment_obj "$(record_body "$ISSUED_A")")" '[[$c]]' > "$GH_API_JSON"
+run_target "$r"
+assert "T-33c id が振り直された先行 cycle の分も起票しない" "0" "$(create_count)"
+assert_grep "T-33c all_issued" "$ERR" 'reason=all_issued; pr=9'
+assert_grep "T-33c 除外件数 2" "$ERR" 'sweep_issued: pr=9; excluded=2$'
+
+reset_stubs
+r=$(new_root t33d)
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-01","file":"a.md","line":3,"description":"cycle1 の指摘"}]}'
+put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-02","file":"c.md","line":1,"description":"最新 cycle の指摘"}]}'
+jq -n --argjson c "$(comment_obj "$(record_body "$ISSUED_A")")" '[[$c]]' > "$GH_API_JSON"
+run_target "$r"
+assert_grep "T-33d 最新 JSON に組が無い台帳行は採用しない" "$STUB_DIR/body.md" 'a.md:3'
+assert_grep "T-33d 最新 cycle の指摘も転記" "$STUB_DIR/body.md" 'c.md:1'
+assert_grep "T-33d 除外件数 0" "$ERR" 'sweep_issued: pr=9; excluded=0$'
 
 echo "--- T-34: cleanup SKILL.md が sweep 起票済み除外の結果を完了報告へ配線する ---"
 assert_grep "T-34 all_issued を x 相当に置く" "$CLEANUP_MD" '^  \| `created` .*`skipped; reason=all_issued` .*\| x 相当 \|'

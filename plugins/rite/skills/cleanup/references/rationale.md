@@ -26,10 +26,12 @@ sweep の起票 Issue に follow-up ラベルと先頭行 marker を付けて既
 `{resolved_ids_csv}` を `F-NN` トークンに限っているのと同じ理由で、パス入りの値を二重引用符内へ
 リテラル置換で渡す経路を増やさない。
 
-除外 key を `[finding_id, file:line]` の組にするのは、`nb-sweep-collect.sh` が台帳と照合する
-identity そのものだから。id 単体は cycle 内の連番で衝突するが、id と位置の組が一致する別の指摘は
-実質生じない。一方で未解消の指摘は cycle ごとに同じ組で再報告されるため、`--exclude-ids` のような
-曖昧拒否をすると重複起票がそのまま残る。
+台帳の issued 行 `[finding_id, file:line]` は、sweep が読んだ最新 JSON に同じ組があるときだけ採用する。
+組は `nb-sweep-collect.sh` が台帳と照合する identity で、最新 JSON と一致すれば本 PR の sweep が
+起票した行だと言える（同じ関連 Issue には別 PR の台帳行も並びうる）。除外そのものは採用した行の
+`file:line` で行い、id は照合しない。id は cycle ごとに振り直されるため、未解消の指摘は先行 cycle に
+別の id で同じ位置に載っており、id まで照合するとその分が follow-up に再転記される。同じ位置に載る
+別の指摘まで除外しうるが、sweep が起票した Issue がその位置を指しているため、指摘の所在は失われない。
 
 ## reverify-no-extract-marker
 
