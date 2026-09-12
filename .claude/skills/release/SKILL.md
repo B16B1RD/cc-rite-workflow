@@ -620,7 +620,7 @@ fi
 
 ### R.2 マージ結果の事前確認（ローカル dry-run）
 
-復旧後の develop のツリーが復旧前と変わらないことを、push する前にローカルで確かめる。R.3 の GitHub マージと同じ 3-way merge を dry-run する。`before_tree` は後続ブロックへリテラルで渡す。
+復旧後の develop のツリーが復旧前と変わらないことを、push する前にローカルで確かめる。R.3 の GitHub マージと同じ 3-way merge を dry-run する。R.4 へは `RECOVERY_DRYRUN=ok` が出した `before_tree=` をリテラルで渡す。
 
 squash 昇格後に develop 側でリリース範囲内の行を再編集していると、この 3-way merge は衝突する（merge-base が前回リリース前まで後退するため）。衝突は R.3 の PR でも同じく起きるので、衝突分岐は「停止して人間へ渡す」経路になる。
 
@@ -632,7 +632,7 @@ before_tree=$(git rev-parse "develop^{tree}")
 abort_error="dry-run の merge を取り消せていません。git merge --abort（失敗する場合は git reset --merge）を手動で実行し、git rev-parse -q --verify MERGE_HEAD が失敗することを確かめてから R.2 をやり直してください"
 # 取り込み済みの merge は「Already up to date」で MERGE_HEAD を作らず、後段の取り消しが必ず失敗するため先に止める
 if git merge-base --is-ancestor origin/main develop; then
-  echo "[CONTEXT] RECOVERY_DRYRUN=already-contained; before_head=$before_head; before_tree=$before_tree"
+  echo "[CONTEXT] RECOVERY_DRYRUN=already-contained; before_head=$before_head"
   exit 1
 fi
 if ! git merge --no-ff --no-commit origin/main; then
@@ -659,7 +659,7 @@ fi
 | `RECOVERY_DRYRUN` | アクション |
 |---|---|
 | `ok` | R.3 へ |
-| `already-contained` | **履歴を変更せず停止する**。ローカル develop が既に origin/main を含んでいて、取り込むものが無い。`git log origin/develop..develop --oneline` の出力で案内を分ける: (1) 出力あり → origin/develop に無いローカルコミット（未 push の back-merge 等）が、origin 同士で比べる §1.0 の判定とずれている。そのコミットを残すか捨てるかを人間が決め、ローカル develop を origin/develop に揃えてから §1.0 からやり直す。(2) 出力なし → origin/develop 自体が origin/main を含んでおり、R.3 までの復旧は済んでいる。R.4 を実行して `RECOVERY=ok` を確かめてからリリースを Phase 1 の最初からやり直す（`{BEFORE_TREE}` には R.3 の前に R.2 で得た `before_tree=` を使う） |
+| `already-contained` | **履歴を変更せず停止する**。ローカル develop が既に origin/main を含んでいて、取り込むものが無い。`git log origin/develop..develop --oneline` の出力で案内を分ける: (1) 出力あり → origin/develop に無いローカルコミット（未 push の back-merge 等）が、origin 同士で比べる §1.0 の判定とずれている。そのコミットを残すか捨てるかを人間が決め、ローカル develop を origin/develop に揃えてから §1.0 からやり直す。(2) 出力なし → origin/develop 自体が origin/main を含んでおり、R.3 までの復旧は済んでいる。R.4 を実行して `RECOVERY=ok` を確かめてからリリースを Phase 1 の最初からやり直す（`{BEFORE_TREE}` には R.3 の前に R.2 が `RECOVERY_DRYRUN=ok` で出した `before_tree=` を使う。`already-contained` の marker は `before_tree=` を持たない。この時点で取れるのは back-merge 後のツリーで、R.4 が自分自身との比較になるため。R.3 の前の値が手元に無ければ R.4 を実行せずに止まり、復旧でツリーが変わっていないことを検証できないと人間に伝える） |
 | `tree-changed` | 停止し、`git diff "$before_tree" "$merged_tree" --stat` で変化する内容を提示する（履歴は変更していない） |
 | `conflict` | **本手順では復旧できない**。R.3 の PR も同じ衝突で GitHub 上で unmergeable になる。R.1 が通っているので正しい合流結果は develop のツリーそのもの（`git merge -s ours origin/main` 相当）だが、そのコミットは GitHub の PR マージでは作れず、ローカルで作って PR 経由で取り込むと Phase 3.2 の検証（昇格差分の各コミットが merged PR の merge commit であること）が拒否する。develop は `$before_head` のまま変更していないことを伝え、次の 2 択を人間に提示して終了する: (1) 昇格ゲートの検証条件に「第 2 親が origin/main の tip であるマージコミット」だけを許す例外を設ける（検証条件の変更なので別 Issue の契約とする）、(2) 復旧を諦めて次回の昇格までこの乖離を持ち越す（その昇格は Phase 3.2 で必ず止まる） |
 
@@ -681,7 +681,7 @@ gh pr merge {RECOVERY_PR_NUMBER} --merge
 
 ### R.4 復旧後の検証
 
-`{BEFORE_TREE}` は R.2 の `before_tree=` をリテラル置換する。
+`{BEFORE_TREE}` は R.3 の前に実行した R.2 の `RECOVERY_DRYRUN=ok` が出した `before_tree=` をリテラル置換する。その値が手元に無ければ本ブロックを実行せずに止まり、復旧でツリーが変わっていないことを検証できないと人間に伝える。
 
 ```bash
 git fetch origin main develop || exit 1
