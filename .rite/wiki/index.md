@@ -489,8 +489,9 @@ okf_version: "0.2"
 | [同一箇所への逐語 pin が連続したら記述の分割を検討する](pages/heuristics/repeated-verbatim-pin-signals-structural-split.md) | heuristics | 同じ 1 文に対する drift 修正が 3 回続いたら、次も逐語 pin を足すのではなく、その 1 文に複数の事項が詰め込まれた構造そのものを疑う。限定句がどれに掛かるかの読み違いが再発の原因になる。 | 2026-09-11T18:35:02Z | medium |
 | [契約の判定表に退路の行を足すときは、適用条件を観測の時点だけでなく対象の内容で限定する](pages/heuristics/contract-table-row-scoped-by-subject-content-not-timing.md) | heuristics | ガードに拒否されたコマンドをスクリプト化して通す退路を判定表に足すと、「拒否された時点」だけを条件にした行はガードの真陽性（実際に隔離境界を越えるコマンド）まで同じ行に吸い込む。行の適用条件には拒否された対象の内容（作業先を外へ移すか）を判別子として含め、真陽性は既存の停止行へ振り分ける。 | 2026-09-12T05:05:00Z | medium |
 | [squash 昇格後の back-merge は衝突を前提に、復旧手順の衝突分岐を人間への引き渡し経路として書く](pages/heuristics/squash-promotion-back-merge-conflict-handoff.md) | heuristics | develop→main の昇格を squash でマージすると次の back-merge は merge-base が前回リリース前まで後退し、develop 側でリリース範囲の行を再編集していると 3-way merge が衝突する。ツリー不変の合流は ours 戦略でしか作れず GitHub の PR マージでは生成できないため、復旧手順は衝突分岐を『本手順では復旧できない理由と人間が選ぶ選択肢』として明記し、PR 経由で条件を満たすという主張は衝突しない場合に限定する。 | 2026-09-12T03:16:24Z | high |
+| [取り消し処理を fail-loud 化するときは、取り消す対象が無い no-op 経路を先に分けないと存在しない操作の失敗として止まる](pages/anti-patterns/fail-loud-undo-without-noop-path-stops-on-nothing-to-undo.md) | anti-patterns | dry-run の後始末（git merge --abort など）の失敗を検出して止めるように直すと、元の操作が no-op で終わり取り消す対象が最初から無い経路でも取り消しが失敗し、事実と逆の診断と復旧案内を出して止まる。前段の判定と実行対象が別の参照を見ている手順では、この no-op 経路が実際に到達する。 | 2026-09-12T06:12:24Z | high |
 ## 統計
 
-- 総ページ数: 479
-- ドメイン別: patterns=111, heuristics=215, anti-patterns=153
-- 最終更新: 2026-09-12T05:05:00Z
+- 総ページ数: 480
+- ドメイン別: patterns=111, heuristics=215, anti-patterns=154
+- 最終更新: 2026-09-12T06:12:24Z
