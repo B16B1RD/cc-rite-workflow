@@ -382,7 +382,7 @@ okf_version: "0.2"
 | [シェル層で閉じられない注入防御は値を substitute する側（LLM）の実行前ゲートとして書く](pages/heuristics/shell-unclosable-defense-goes-to-substituting-side.md) | heuristics | LLM が値を literal substitute する bash block では、**防御の層を 1 つ塞ぐたびに同じ機構の中の「次の層」が露出する**。 | 2026-08-05T09:26:00+09:00 | medium |
 | [抽出述語の厳格化は「壊れた入力」と「入力なし」を同一経路へ畳み、fail-loud を構造的に壊す](pages/anti-patterns/strict-predicate-collapses-broken-into-absent.md) | anti-patterns | 「散文中の同形文字列を誤検出しない」ために抽出述語へアンカーや厳密条件を足すと、**正規の入力でも表記の揺れ（行末 CR・字下げ・末尾空白）があれば不一致になる**。 | 2026-08-05T05:30:00+00:00 | high |
 | [同定手段の取得経路を差し替えるときは、旧経路が構造的に保証していた述語を先に全部列挙する](pages/heuristics/identity-path-swap-enumerate-old-invariants.md) | heuristics | 同定子・キー・参照を取りに行く経路（API エンドポイント・クエリ・検索式）を差し替えると、**旧経路がパスやクエリの形で暗黙に保証していた制約が落ちる**。 | 2026-08-05T05:30:00+00:00 | high |
-| [静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く](pages/heuristics/static-pin-semantic-allowlist-not-notation-denylist.md) | heuristics | 静的 pin（ソースの文字列を grep して構造を固定するテスト）を「この表記が出現しないこと」として書くと、**同じ意味を持つ別表記が pin を素通りする**。 | 2026-08-05T05:30:00+00:00 | high |
+| [静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く](pages/heuristics/static-pin-semantic-allowlist-not-notation-denylist.md) | heuristics | 静的 pin（ソースの文字列を grep して構造を固定するテスト）を「この表記が出現しないこと」として書くと、**同じ意味を持つ別表記が pin を素通りする**。 | 2026-09-12T04:13:09Z | high |
 | [診断退避用の tempfile は診断が最も要る場面でだけ消える — command substitution へ畳む](pages/heuristics/diagnostic-tempfile-fails-when-diagnosis-needed-most.md) | heuristics | stderr を退避して WARNING に載せるために tempfile を確保する定型（`err=$(mktemp ... 2>/dev/null) \|\| err=""` に続けて `cmd 2>"${err:-/dev/null}"`）は、mktemp が失敗したときに後続コマンドの診断を丸ごと `/dev/null` へ捨てる。 | 2026-08-06T00:40:00+09:00 | high |
 | [保護は「設定ファイルの内容」ではなく「保護対象と同じ場所」に置く](pages/heuristics/protection-colocated-with-target-not-config-state.md) | heuristics | 「機密を含むファイルが公開リポジトリに入らないようにする」ような保護を、セットアップが生成する設定ファイル（`.gitignore` など）へ 1 行追記する形で実装すると、その保護は 3 つの状態に同時に依存する — セットアップをいつ実行したか、アップグレード経路が追記ブロックに到達するか、ユーザーが設定を手で編集していないか。 | 2026-08-06T00:40:00+09:00 | high |
 | [ガードの述語は「守りたい状態」そのものを測る — 存在ではなく内容を測る](pages/heuristics/guard-predicate-measures-the-protected-state.md) | heuristics | 冪等性のためにガードを置くとき、述語が「守りたい不変量」ではなく「その代理指標」を測っていると、代理と実体が乖離した瞬間にガードが恒久的な無音 skip へ変わる。 | 2026-08-06T00:40:00+09:00 | high |
@@ -493,4 +493,4 @@ okf_version: "0.2"
 
 - 総ページ数: 479
 - ドメイン別: patterns=111, heuristics=215, anti-patterns=153
-- 最終更新: 2026-09-12T03:16:24Z
+- 最終更新: 2026-09-12T04:13:09Z

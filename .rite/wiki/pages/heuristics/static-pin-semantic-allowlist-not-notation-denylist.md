@@ -9,9 +9,13 @@ sources:
     resource: "raw/reviews/20260805T043752Z-pr-2112.md"
   - type: "fixes"
     resource: "raw/fixes/20260805T050456Z-pr-2112.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260912T040912Z-pr-2715.md"
 tags: ["test", "static-pin", "allowlist", "mutation", "bash"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-05T05:30:00+00:00" }
+generated: { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-12T04:13:09Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-12T04:13:09Z" }
 ---
 
 # 静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く
@@ -51,6 +55,14 @@ pin の文面は正しく、意図も正しかった。誤っていたのは、�
 
 同じ cycle で、`grep -q` を pin する assertion が「値は含むが位置が違う」形の入力で落ちなかった例も出た。denylist / allowlist の軸とは別に、**位置固定（前方一致 / 最終行の等値）を持つ述語は、位置だけを崩す mutation で識別力を確認する**必要がある。
 
+### 禁止文を含む本文への negative pin は、禁止文を除外してから照合する
+
+契約文書の退路パラグラフに「迂回を許す語彙が出現しないこと」を pin する場面で、本文には既に「helper 内の cd や main checkout への退避で拒否を迂回する経路ではない」という**禁止文そのもの**が含まれていた。禁止文は否定形で許可語彙を名指しするため、本文全体に negative grep を当てると禁止文自身に当たって偽陽性になる。
+
+対処は、禁止文を `sed` で除いた別変数に対して照合し、元の変数と既存の存在 pin は触らないこと。除外が本文全体を消していないことも同時に pin する（除外後に残るべき文言の存在確認）。除外を怠ると negative pin はそもそも置けず、「存在 pin だけで対の負側が無い」状態に戻る。
+
+この場面でも denylist が言い換えを素通りする性質は変わらない。レビューでは「迂回しても構わない」「main checkout 側で実行し直す」といった言い換えが green のまま生存することが実測された。契約側が denylist 方式と限界のコメント化を明示的に要求している場合はそのまま可としつつ、言い換えが実際に混入した時点で語彙を足すのではなく、退路で許容する行動（停止・復旧案内・承認手順）を allowlist として pin する方向へ切り替える。
+
 ## 関連ページ
 
 - [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](./fixture-mutation-isolates-invariants.md)
@@ -61,3 +73,4 @@ pin の文面は正しく、意図も正しかった。誤っていたのは、�
 
 - [`declare` / `typeset` で pin を素通りできることを検出](../../raw/reviews/20260805T043752Z-pr-2112.md)
 - [静的 pin を allowlist へ反転](../../raw/fixes/20260805T050456Z-pr-2112.md)
+- [退路本文への negative pin で禁止文を除外してから照合したレビュー結果](../../raw/reviews/20260912T040912Z-pr-2715.md)
