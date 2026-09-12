@@ -172,9 +172,11 @@ parallel:
 # ran the review — rite writes a `*` .gitignore alongside it, so it stays untracked regardless of the
 # host repository's root .gitignore, and checking out the PR's branch does not produce it. At merge,
 # remaining findings are re-verified against the merged HEAD and the ones already resolved are
-# dropped, as are the ones the iterate sweep already filed as Issues; whatever remains is
-# transcribed in full into one follow-up Issue (none if nothing remains; public on a public
-# repository). `/rite:cleanup` archives that JSON instead of deleting it when
+# dropped, as are the ones the iterate sweep already filed as Issues (if the sweep ledger or the
+# latest review result cannot be read, nothing is excluded and a warning is surfaced); whatever
+# remains is transcribed in full into one follow-up Issue (none if zero, if re-verification resolves
+# every finding, or if every remaining finding was already filed by the iterate sweep; public on a
+# public repository). `/rite:cleanup` archives that JSON instead of deleting it when
 # `non_blocking_findings[]` is non-empty, as a local fallback if the follow-up Issue is not created.
 pr_review:
   post_comment: false   # true to post the integrated review report as a PR comment (equivalent to --post-comment, default: false; this key does not control the related-Issue non-measured record comment)
