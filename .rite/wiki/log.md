@@ -1,5 +1,6 @@
 ## 2026-09-12
 
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=479, broken_refs=0
 * **Create**: [identity を持たない判定台帳で複数 cycle の和集合を重複除外すると、重複防止と欠落防止を同時には満たせない](pages/anti-patterns/identity-less-ledger-union-dedup-cannot-prevent-both-duplicate-and-loss.md) — [sweep 起票済み指摘の follow-up 除外に対するレビュー結果](raw/reviews/20260912T135538Z-pr-2741.md) を新規ページ化（同じ変更の後続 cycle のレビュー結果・fix 結果 4 件も統合）
 * **Create**: [jq の `[]?` は型不正を空の結果に変えて rc=0 で終わり、呼び出し側の fail-loud 分岐を迂回する](pages/anti-patterns/jq-optional-iterator-swallows-type-error-before-fail-loud-branch.md) — [照合 jq の型検査に対するレビュー結果](raw/reviews/20260912T142140Z-pr-2741.md) を新規ページ化（対応する fix 結果も統合）
 * **Update**: [実装が Issue の MUST と原則の両方に挟まれたら、実装を戻さず契約側（Decision Log と AC の例外）を更新する](pages/heuristics/contract-update-over-revert-on-must-conflict.md) — [重複防止と欠落防止の優先順位を決めた fix 結果](raw/fixes/20260912T145412Z-pr-2741.md) を統合。MUST 同士が両立しないときは実装を振り直す前に優先順位を契約とレビュー依頼に書く節を追記
