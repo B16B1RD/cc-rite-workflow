@@ -1,5 +1,7 @@
 ## 2026-09-12
 
+* **Update**: [Exit code semantic preservation: caller は case で語彙を保持する](pages/patterns/exit-code-semantic-preservation.md) — [sandbox マスク検知用の exit code 追加に対するレビュー結果](raw/reviews/20260912T105243Z-pr-2732.md) を統合。exit code を足すときは script 名で全呼び出し元を grep して case を揃える節を追記
+* **Skip**: [20260912T105613Z-pr-2732.md](raw/fixes/20260912T105613Z-pr-2732.md) — 非 fatal 指摘の移送経過のみで、レビュー結果 raw と別の経験則を含まない
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=478, broken_refs=0
 * **Update**: [停止後の案内を振り分ける判定に補助的な一覧の有無を使うと、案内が主張する状態を取り違える](pages/anti-patterns/guidance-branch-proxy-predicate-misroutes-state.md) — [停止案内の振り分け判定を ancestry 判定へ差し替えた修正のレビュー結果](raw/reviews/20260912T085522Z-pr-2730.md) を統合。判定の差し替えで行き先が変わる状態に、元の枝が与えていた保証を新しい枝でも持たせる確認を追記
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=478, broken_refs=0
@@ -38,6 +40,7 @@
 * **Update**: [契約の判定表に退路の行を足すときは、適用条件を観測の時点だけでなく対象の内容で限定する](pages/heuristics/contract-table-row-scoped-by-subject-content-not-timing.md) — [退路の除外文の終端節が未 pin だったレビュー結果](raw/reviews/20260912T045212Z-pr-2717.md) を統合。除外文の pin は入口の 1 文だけでなく行き先と禁止を述べる終端節まで伸ばす
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=476, broken_refs=0
 * **Update**: [LLM substitute placeholder は bash residue gate で fail-fast 化する](pages/patterns/placeholder-residue-gate-bash-fail-fast.md) — [run 開始点 pin の PR 番号 guard に対するレビュー結果](raw/reviews/20260912T094630Z-pr-2731.md) を統合。ファイルパスに入る placeholder を一度だけ変数で受けて数値検証し、テストでは gate 行だけを置換して抽出実行する形を追記
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=478, broken_refs=0
 
 ## 2026-09-11
 

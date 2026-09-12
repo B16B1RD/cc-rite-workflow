@@ -22,9 +22,13 @@ sources:
     resource: "raw/reviews/20260713T045650Z-pr-1847-cycle2.md"
   - type: "fixes"
     resource: "raw/fixes/20260713T045756Z-pr-1847-cycle2.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260912T105243Z-pr-2732.md"
 tags: ["bash", "exit-code", "api-contract", "sentinel"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-13T14:35:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T11:30:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T11:30:00Z" }
 ---
 
 # Exit code semantic preservation: caller は case で語彙を保持する
@@ -115,6 +119,14 @@ caller 側の case routing だけでなく、**script 自身のすべての内�
 - **canonical fix**: sentinel 不在を単純に failure 扱いにするのではなく、「上から評価し最初に一致したものを採用する」明示的な多分岐（`{projects_enabled}=false` → informational skip / Issue 未識別 → informational skip / sentinel=true → 成功 / それ以外 → 真の失敗）に再設計した。同ファイル内の `{wiki_ingest_check}`（`reason=disabled` を区別する既存パターン）を参照して一貫性を持たせた
 - **教訓**: 「sentinel absent → 失敗扱い」という設計を導入するときは、そのステップ自体が正当にスキップされうる条件を必ず洗い出し、既存の類似パターンを参照して一貫性のある区別ロジックにすること。bash の exit-code 語彙と同型の問題が、markdown 記述の sentinel-presence 語彙でも発生しうる
 
+### exit code を足すときは script 名で全呼び出し元を洗う
+
+共有 script に新しい exit code（例: sandbox が管理ディレクトリを read-only にしていることを示す専用 code）を足した変更で、変更対象として挙げた呼び出し元（ingest / lint）には分岐を追加したが、同じ script を呼ぶ別の skill（wiki-init の移行 commit）の `case` は旧来の code だけを持ったまま残った。新しい code はその caller では `*)` に落ち、専用の再実行案内が出ない。
+
+- **原因**: 呼び出し元の洗い出しを「今回の症状が出た経路」から始めたため、症状の出ていない caller が対象から外れた
+- **canonical fix**: exit code 契約を変える変更では、script のファイル名で repo 全体を grep し、ヒットした全 caller の `case` を同じ語彙に揃える。揃えないと判断した caller は理由を残す
+- **`*)` の役割との関係**: 上の「双方向契約」で置く `*)` は未知の code を silent OK にしないための保険であり、新しい code 固有の案内を届ける手段ではない。`*)` があるから追加漏れは安全、とは読まない
+
 ## 関連ページ
 
 - [`if ! cmd; then rc=$?` は常に 0 を捕捉する](../anti-patterns/bash-if-bang-rc-capture.md)
@@ -130,3 +142,4 @@ caller 側の case routing だけでなく、**script 自身のすべての内�
 - [`[ "$#" -lt 2 ]` gate で欠落時 exit 2 へ統一](../../raw/fixes/20260608T112705Z-pr-1306.md)
 - [markdown 表示ロジックでの legitimate-skip/failure 混同を cross-validation で検出](../../raw/reviews/20260713T045650Z-pr-1847-cycle2.md)
 - [`{wiki_ingest_check}` パターンを参照した多分岐への再設計](../../raw/fixes/20260713T045756Z-pr-1847-cycle2.md)
+- [新しい exit code を一部の caller にしか反映しなかったレビュー結果](../../raw/reviews/20260912T105243Z-pr-2732.md)
