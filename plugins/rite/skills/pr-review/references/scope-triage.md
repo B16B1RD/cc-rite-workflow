@@ -199,7 +199,7 @@ printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do ec
 
 #### 7.4.3 Decision Log Append
 
-「Decision Log に記録」は元 Issue の Section 9 へ 1 行 append。無ければ本文に Section 9 を新設して `D-01` を記録する。
+「Decision Log に記録」は元 Issue の Section 9 へ 1 行 append。番号は Section 9 の内側（見出しの次行から `## ` / `---` / `</details>` まで）の最大 D-NN に 1 を足す。無ければ本文に Section 9 を新設して `D-01` を記録する。
 `{decision}` / `{reason}` / `{impact}` を生成前に埋める。**候補ごとに単一 Bash invocation**。
 rationale: design-rationale.md#decision-log-per-candidate
 
@@ -229,17 +229,27 @@ if [ -z "$body" ]; then
   echo "手動追記してください: - ${today} D-NN: ${line_content}" >&2
   echo "[CONTEXT] DECISION_LOG_APPEND_FAILED=1; reason=body_fetch_failure; issue={source_issue_number}" >&2
 elif printf '%s' "$body" | grep -q '^## 9\. Decision Log'; then
-  # `(^|[^A-Za-z])D-[0-9]+` で先頭境界を要求し、prose 中の `CARD-12` 等の部分文字列誤マッチを防ぐ
-  max_d=$(printf '%s' "$body" | grep -oE '(^|[^A-Za-z])D-[0-9]+' | grep -oE '[0-9]+' | sort -n | tail -1)
+  # 採番は Section 9 の内側だけを数える。本文の散文（転記されたレビュー指摘等）にある D-NN を
+  # 数えると番号が飛ぶ。境界は下の追記 awk と同じ。awk の後ろにパイプを繋ぐと終了コードが
+  # 失われるため、awk 単体の出力と終了コードを取ってから D-NN を抽出する。
+  awk_rc=0
+  section9=$(printf '%s\n' "$body" | awk '
+    /^## 9\. Decision Log/ { in_section=1; next }
+    in_section && (/^## / || /^---[[:space:]]*$/ || /^<\/details>/) { in_section=0 }
+    in_section { print }
+  ') || awk_rc=$?
+  # `(^|[^A-Za-z])D-[0-9]+` で先頭境界を要求し、`CARD-12` 等の部分文字列誤マッチを防ぐ
+  max_d=$(printf '%s\n' "$section9" | grep -oE '(^|[^A-Za-z])D-[0-9]+' | grep -oE '[0-9]+' | sort -n | tail -1)
   [ -n "$max_d" ] || max_d=0
   # 10# で 10 進固定。先頭ゼロ付き 08/09 を 8 進と解釈させない
   next_num=$((10#$max_d + 1))
   next_d=$(printf 'D-%02d' "$next_num")
+  # 走査が異常終了した番号は信用できないため、手動追記の案内でも番号を確定させない
+  [ "$awk_rc" -eq 0 ] || next_d=D-NN
   new_line="- ${today} ${next_d}: ${line_content}"
 
   tmpfile=$(mktemp)
   trap 'rm -f "$tmpfile"' EXIT
-  awk_rc=0
   # `awk -v` はバックスラッシュエスケープを解釈するため（`\n`→改行, `\t`→タブ, `\d`→`d` 等）、
   # $new_line に正規表現例・Windows パス等 backslash を含む free-text が入ると「1 行 append」
   # 不変条件（AC-3）を破って複数行に分割されうる。ENVIRON はエスケープ解釈しないため経由する。
@@ -302,7 +312,7 @@ Decision Log append failure reasons: (`line_content_write_failure` / `body_fetch
 |--------|-------------|
 | `line_content_write_failure` | Decision Log 行テンプレートの一時ファイル書き込みに失敗 |
 | `body_fetch_failure` | 元 Issue の body 取得（`gh issue view`）に失敗 |
-| `gh_edit_failure` | Section 9 への行挿入、または Section 9 新設時の本文組み立て（awk）の異常終了 / 空出力、または `gh issue edit` 適用に失敗 |
+| `gh_edit_failure` | Section 9 の採番走査・行挿入、または Section 9 新設時の本文組み立て（awk）の異常終了 / 空出力、または `gh issue edit` 適用に失敗 |
 
 失敗は non-blocking。WARNING + 記録予定行を出し、7.5-7.6 の completion report にも転記する（AC-5）。
 
