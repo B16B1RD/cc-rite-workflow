@@ -91,6 +91,25 @@ assert_route "similar numref token" \
   '[wiki-worktree-commit] committed=0; branch=wiki; reason=numref-hit-extra' \
   '環境または引数エラー' '番号参照の commit 前検査で拒否'
 
+# rc=6 (admin dir not writable) must reach its own branch rather than the unknown-rc
+# fallback, and tell the agent to retry the block once outside the sandbox.
+mask_route_rc=0
+bash -c 'commit_rc=6; commit_out=$1; source "$2"' _ \
+  '[wiki-worktree-commit] committed=0; branch=wiki; reason=sandbox-mask' "$route_case" \
+  >"$route_tmp/mask.out" 2>"$route_tmp/mask.err" || mask_route_rc=$?
+assert "rc=6 exits 1" "1" "$mask_route_rc"
+assert_grep "rc=6 emits the sandbox-mask marker" "$route_tmp/mask.out" '\[CONTEXT\] WIKI_INGEST_COMMIT=sandbox-mask'
+assert_grep "rc=6 tells the agent to retry once outside the sandbox" "$route_tmp/mask.err" \
+  'dangerouslyDisableSandbox: true を付けて 1 回だけ再実行'
+assert_not_grep "rc=6 does not fall through to the unknown exit code branch" "$route_tmp/mask.err" '予期しない exit code'
+
+assert_grep_in_section "ingest.md 5.0.n: sandbox-mask row retries the step once outside the sandbox" \
+  "$INGEST_MD" '^### 5\.0\.n ' '^### 5\.1 ' \
+  'reason=sandbox-mask.*dangerouslyDisableSandbox: true.*1 回だけ再実行'
+assert_grep_in_section "ingest.md error table routes exit 6 to the one-shot sandbox retry" \
+  "$INGEST_MD" '^## エラーハンドリング' '^---$' \
+  'exit 6.*reason=sandbox-mask.*dangerouslyDisableSandbox: true.*1 回だけ再実行'
+
 assert_grep_in_section "ingest.md error table limits numref recovery to matching stdout reason" \
   "$INGEST_MD" '^## エラーハンドリング' '^---$' \
   'exit 1.*stdout `reason=numref-hit` / `numref-error`'
@@ -118,5 +137,10 @@ assert_grep_in_section "lint.md 8.3: --commit-only call exists in the section" \
 assert_grep_in_section "lint.md 8.3: standalone (non-auto) branch still commits + pushes immediately" \
   "$LINT_MD" '^### 8\.3 書き込み手順' '^## ステップ 9' \
   'wiki-worktree-commit\.sh" --message "\$commit_msg"\)$'
+assert_grep_in_section "lint.md 8.3: rc=6 warns and points to the one-shot sandbox retry" \
+  "$LINT_MD" '^### 8\.3 書き込み手順' '^## ステップ 9' \
+  '^      6\) echo "WARNING: .*reason=sandbox-mask.*dangerouslyDisableSandbox: true を付けて 1 回だけ再実行.*" >&2 ;;$'
+assert_not_grep "lint.md 8.3: rc=6 stays non-blocking (no exit 1 on the branch)" \
+  "$LINT_MD" '^      6\).*exit 1'
 
 print_summary "wiki-push-batch-defer-static-pin.test.sh"

@@ -1384,7 +1384,7 @@ Non-hook helper scripts invoked either directly from orchestrator skills or by o
 
 | Script | Purpose | Notes |
 |--------|---------|-------|
-| `wiki-ingest-commit.sh` / `wiki-worktree-commit.sh` / `wiki-worktree-setup.sh` / `wiki-numref-precommit.sh` | Wiki worktree setup + commit/push of `.rite/wiki`. `wiki-worktree-commit.sh` refuses to commit on number-reference hit/error (rc=1, `reason=numref-hit` / `numref-error`). `wiki-numref-precommit.sh` is the check body (`git add -N` + ignore residue + `number-reference-check.sh --diff HEAD --path .rite/wiki`) | — |
+| `wiki-ingest-commit.sh` / `wiki-worktree-commit.sh` / `wiki-worktree-setup.sh` / `wiki-numref-precommit.sh` | Wiki worktree setup + commit/push of `.rite/wiki`. `wiki-worktree-commit.sh` refuses to commit on number-reference hit/error (rc=1, `reason=numref-hit` / `numref-error`). `wiki-numref-precommit.sh` is the check body (`git add -N` + ignore residue + `number-reference-check.sh --diff HEAD --path .rite/wiki`). Both probe the tree's git dir before the first index write and stop without staging when it is not writable (`reason=sandbox-mask`; `wiki-worktree-commit.sh` rc=6, not probed on `--push-only` / `--dry-run` / no-pending) | — |
 | `wiki-growth-check.sh` | `/rite:lint` Phase 3.8 layer-3 warn when `wiki.growth_check.threshold_prs` PRs accumulate without a wiki commit | — |
 | `backlink-format-check.sh` | Bidirectional backlink format verification for Wiki pages | — |
 | `bang-backtick-check.sh` | Detect bash history-expansion pitfalls in generated content | — |

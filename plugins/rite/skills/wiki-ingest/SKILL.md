@@ -578,6 +578,7 @@ esac
 | `clean` | ステップ 5.1 / 5.2 へ進む |
 | `hit` | stdout の `file:line: 内容` が指す行を書き直してから**本ステップを再実行**する。書き直しは番号を落として現在形の Why にすること — 番号を消した跡に経緯文を置き換えない。ソース bullet は説明だけを表示テキストにし、説明が無ければ種別語（「レビュー結果」「fix 結果」「close retrospective」）にする（リンク先パスは変えない）。**`index.md` の行は Edit しない** — ステップ 6 の `wiki-index-update.sh` を修正した `--description` で呼び直す（index.md への書き換えは helper が atomic に行う契約のため）。この禁止は ingest 実行中（helper を呼べる文脈）の話で、lint 指摘の事後手当ては `/rite:wiki-lint` の手順に従う。 `log.md` の bullet は該当行の散文から番号を落とす（出典は同じ行の raw パスが持つ）。`{skip_reason}` は raw frontmatter 側の値を変えず、log bullet の表示分だけを書き直す。再実行で `clean` にできなければ commit せず停止し、残った行と `/rite:recover` を案内する |
 | `error` (`reason=stage_failed`) | bash が `exit 1` で停止済み。`same_branch` では root `.gitignore` に `!.rite/wiki/` と `!.rite/wiki/**` を**`.rite/wiki/` 除外行より後ろ**へ追記してから**本ステップを再実行**する（`# <<< gitignore-wiki-section-end` anchor があればその直後、無ければ末尾。前に置くと後勝ちで効かない）。`separate_branch` では root `.gitignore` を持たないので、`{numref_tree}` が wiki worktree の絶対パスに substitute されているか（ステップ 1.3）を先に疑う |
+| `error` (`reason=sandbox-mask`) | bash が `exit 1` で停止済み。git の管理ディレクトリが read-only（sandbox マスク）で intent-to-add できない。**本ステップを別の Bash tool call で `dangerouslyDisableSandbox: true` を付けて 1 回だけ再実行する**（確認不要）。再実行でも `sandbox-mask` なら sandbox 起因ではないため再試行せず、stderr が名指しした管理ディレクトリの権限・容量を確認して停止し `/rite:recover` を案内する |
 | `error` (`reason=ignored_paths`) | bash が `exit 1` で停止済み。stderr が `check-ignore -v` で名指しした `.gitignore` を直してから**本ステップを再実行**する。nested `.rite/.gitignore` なら 3 行構成 '*' / '!wiki/' / '!wiki/**' へ戻す（root への negation では nested の '*' は解除できない）。source は `.gitignore` とは限らない（`.git/info/exclude` / `core.excludesFile` も同じ欄に出る）ので、名指しされた source をそのまま直す。「一致を返しませんでした」が出た場合は stderr の git 診断を確認し、stderr にも何も無ければ `check-ignore` を手動実行して原因を特定してから対処する |
 | `error` (`reason=placeholder_residue`) | bash が `exit 1` で停止済み。`{plugin_root}` / `{numref_tree}` を literal substitute して**本ステップを再実行**する |
 | `error` (`reason=helper_missing` / `check_failed` / `ignored_check_failed`) | bash が `exit 1` で停止済み。commit せず停止し、stderr の原因と `/rite:recover` を案内する |
@@ -684,6 +685,12 @@ if [ "$branch_strategy" = "separate_branch" ]; then
     3)
       echo "ERROR: wiki-worktree-commit.sh 内部で git 操作失敗 (rc=3)" >&2
       echo "  対処: git -C \"$wiki_wt_abs\" status で worktree の状態を確認" >&2
+      exit 1
+      ;;
+    6)
+      echo "ERROR: wiki worktree の管理ディレクトリに書き込めないため commit しませんでした (rc=6, reason=sandbox-mask)" >&2
+      echo "  対処: 実行エージェントはこの bash block を別の Bash tool call で dangerouslyDisableSandbox: true を付けて 1 回だけ再実行する (確認不要)。再実行でも rc=6 なら sandbox 起因ではないため再試行せず、stderr の管理ディレクトリの権限・容量を確認して停止する" >&2
+      echo "[CONTEXT] WIKI_INGEST_COMMIT=sandbox-mask"
       exit 1
       ;;
     *)
@@ -1184,6 +1191,7 @@ rationale: references/rationale.md#returned-to-caller
 | `wiki-worktree-commit.sh --commit-only` exit 1 + stdout `reason=numref-hit` / `numref-error`（ステップ 5.1） | exit 1 で fail-fast。番号参照の commit 前検査が拒否した。5.0.n の hit 行を書き直すか、stderr の error reason を直して再実行 |
 | `wiki-worktree-commit.sh --commit-only` exit 1 + stdout に `reason=numref-hit` / `numref-error` なし（ステップ 5.1） | exit 1 で fail-fast。環境 / 引数エラーとして、直前の stderr が示す worktree・設定・引数の原因を解消して再実行 |
 | `wiki-worktree-commit.sh --commit-only` exit 3 (git add/commit 失敗、ステップ 5.1) | exit 1 で fail-fast。`git -C .rite/wiki-worktree status` で worktree の状態を確認 |
+| `wiki-worktree-commit.sh --commit-only` exit 6 + stdout `reason=sandbox-mask`（管理ディレクトリ書込不可、ステップ 5.1） | exit 1 で停止。5.1 の bash block を `dangerouslyDisableSandbox: true` で 1 回だけ再実行する。再実行でも exit 6 なら管理ディレクトリの権限・容量を確認して停止 |
 | `wiki-worktree-commit.sh --push-only` exit 4 (push 失敗、ステップ 8.6) | 非 fatal で継続。commit は local wiki branch に保持される。`git -C .rite/wiki-worktree push origin {wiki_branch}` で手動回復、または次回 ingest の ステップ 8.6 が自動で flush を試みる |
 | `wiki-worktree-commit.sh` 未知の exit code | exit 1 で fail-fast |
 | `wiki-index-update.sh` 非ゼロ exit（exit 1 / exit 2 / 127 / signal 130・143・129 等、ステップ 6） | 当該 Raw Source の index 更新をスキップして続行（非 fatal）。分岐と対処はステップ 6 の結果 marker 表が SoT |
