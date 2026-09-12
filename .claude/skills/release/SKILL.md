@@ -558,7 +558,8 @@ git pull origin develop
 | PR マージ衝突 | 衝突を解消してから再試行 |
 | §1.0 の事前チェックで停止（main が develop に含まれない） | 前回の昇格が squash / rebase でマージされている。[復旧手順](#復旧手順-main-が-develop-の祖先でない場合) を実行してからリリースを最初からやり直す |
 | 復旧手順 R.2 が `conflict` で停止 | back-merge が 3-way merge で衝突し、PR 経由でも取り込めない。R.2 の `conflict` 行の 2 択（検証条件の例外を別 Issue で契約する / 乖離を持ち越す）を人間が選ぶ。履歴は変更されていない |
-| 復旧手順 R.2 が dry-run の取り消し失敗で停止（`RECOVERY_DRYRUN` が出ていない） | MERGE_HEAD と merge 途中の index が残っている。`git merge --abort`（失敗する場合は `git reset --merge`）を手動で実行し、`git rev-parse -q --verify MERGE_HEAD` が失敗することを確かめてから R.2 をやり直す |
+| 復旧手順 R.2 が `already-contained` で停止 | ローカル develop が既に origin/main を含み、取り込むものが無い。R.2 の `already-contained` 行に従う。履歴は変更されていない |
+| 復旧手順 R.2 が dry-run の取り消し失敗で停止（`ERROR: dry-run の merge を取り消せていません` を出し、`RECOVERY_DRYRUN` が出ていない） | dry-run の取り込みを取り消せず、MERGE_HEAD と merge 途中の index が残っている。`git merge --abort`（失敗する場合は `git reset --merge`）を手動で実行し、`git rev-parse -q --verify MERGE_HEAD` が失敗することを確かめてから R.2 をやり直す |
 | 昇格コミットの PR 検証失敗 | 直接 push を取り除くか、対象 commit を通常 PR 経由で develop に取り込み直してから検証を再実行。差分に前回リリースまでの出荷済みコミットが含まれるなら原因は前回の昇格方式にあるので、§1.0 と復旧手順を参照 |
 | Projects 登録失敗 | `gh project item-add` を再実行。`--limit` を増やして Item ID を再取得 |
 | ステータス更新失敗 | Field ID / Option ID を再取得して `gh project item-edit` を再実行 |
@@ -629,6 +630,11 @@ git pull origin develop || exit 1
 before_head=$(git rev-parse develop)
 before_tree=$(git rev-parse "develop^{tree}")
 abort_error="dry-run の merge を取り消せていません。git merge --abort（失敗する場合は git reset --merge）を手動で実行し、git rev-parse -q --verify MERGE_HEAD が失敗することを確かめてから R.2 をやり直してください"
+# 取り込み済みの merge は「Already up to date」で MERGE_HEAD を作らず、後段の取り消しが必ず失敗するため先に止める
+if git merge-base --is-ancestor origin/main develop; then
+  echo "[CONTEXT] RECOVERY_DRYRUN=already-contained; before_head=$before_head; before_tree=$before_tree"
+  exit 1
+fi
 if ! git merge --no-ff --no-commit origin/main; then
   if git rev-parse -q --verify MERGE_HEAD >/dev/null; then
     git merge --abort || { echo "ERROR: $abort_error" >&2; exit 1; }
@@ -653,6 +659,7 @@ fi
 | `RECOVERY_DRYRUN` | アクション |
 |---|---|
 | `ok` | R.3 へ |
+| `already-contained` | **履歴を変更せず停止する**。ローカル develop が既に origin/main を含んでいて、取り込むものが無い。`git log origin/develop..develop --oneline` の出力で案内を分ける: (1) 出力あり → origin/develop に無いローカルコミット（未 push の back-merge 等）が、origin 同士で比べる §1.0 の判定とずれている。そのコミットを残すか捨てるかを人間が決め、ローカル develop を origin/develop に揃えてから §1.0 からやり直す。(2) 出力なし → origin/develop 自体が origin/main を含んでおり、R.3 までの復旧は済んでいる。R.4 を実行して `RECOVERY=ok` を確かめてからリリースを Phase 1 の最初からやり直す（`{BEFORE_TREE}` には R.3 の前に R.2 で得た `before_tree=` を使う） |
 | `tree-changed` | 停止し、`git diff "$before_tree" "$merged_tree" --stat` で変化する内容を提示する（履歴は変更していない） |
 | `conflict` | **本手順では復旧できない**。R.3 の PR も同じ衝突で GitHub 上で unmergeable になる。R.1 が通っているので正しい合流結果は develop のツリーそのもの（`git merge -s ours origin/main` 相当）だが、そのコミットは GitHub の PR マージでは作れず、ローカルで作って PR 経由で取り込むと Phase 3.2 の検証（昇格差分の各コミットが merged PR の merge commit であること）が拒否する。develop は `$before_head` のまま変更していないことを伝え、次の 2 択を人間に提示して終了する: (1) 昇格ゲートの検証条件に「第 2 親が origin/main の tip であるマージコミット」だけを許す例外を設ける（検証条件の変更なので別 Issue の契約とする）、(2) 復旧を諦めて次回の昇格までこの乖離を持ち越す（その昇格は Phase 3.2 で必ず止まる） |
 
