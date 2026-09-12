@@ -21,7 +21,7 @@ okf_version: "0.2"
 | [mkdir 成功のみの判定漏れと brace group 未使用によるリダイレクト診断メッセージ漏洩](pages/anti-patterns/mkdir-success-only-check-and-redirect-diagnostic-leak.md) | anti-patterns | `if mkdir -p DIR 2>/dev/null; then <実際に書く> else <破棄> fi` のように、フォールバック判定を先頭コマンド (mkdir) の終了コードだけに頼ると、DIR が既存の読み取り専用ディレクトリの場合でも mkdir -p は rc=0 を返すため、後続のファイル open 失敗（権限不一致・パス衝突・ディスクフル）を判定できない。 | 2026-08-06T00:40:00+09:00 | high |
 | [新設 logged ガードの上流に同一判定の silent 経路が残ると支配的入力で可視化が無効化される](pages/anti-patterns/upstream-silent-path-defeats-new-logged-guard.md) | anti-patterns | 「silent skip 禁止 — スキップは WARNING で可視化する」という MUST 要件に対して logged ガードを新設しても、**同じ判定条件（例: 24h age guard）を持つ既存の silent continue が制御フロー上流に残っている**と、実運用で最も起きやすい入力がそちらに先に吸われ、新設ガードは到達不能になる。 | 2026-07-21T18:30:00Z | high |
 | [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) | heuristics | 「本経路に来るのは別 live セッション在席時のみ」「3 gates all pass のときのみ reap」のような**全称主張（排他性・網羅性）を含む散文**は、新しい到達経路やゲート例外が追加されると、**その行自体は未変更のまま偽になる**（comment rot: 周辺コードの変更が未変更行を偽化する）。 | 2026-09-05T12:14:41.011525+00:00 | high |
-| [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](pages/patterns/absence-pin-base-present-head-absent-single-line.md) | patterns | 旧文面の除去を drift ガードとして固定する `assert_not_grep` pin には 2 つの構造的な罠がある。 | 2026-08-28T13:10:00+09:00 | high |
+| [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](pages/patterns/absence-pin-base-present-head-absent-single-line.md) | patterns | 旧文面の除去を drift ガードとして固定する `assert_not_grep` pin には 2 つの構造的な罠がある。 | 2026-09-12T00:25:00Z | high |
 | [rationale ポインタ形式は bare `rationale:` 形式に統一する](pages/heuristics/rationale-pointer-format-unification.md) | heuristics | 実行パスの設計解説(rationale)を references へ退避する際、元位置に残すポインタの形式が 3 種類(bare `rationale: <path>#<anchor>` / markdown link `[text](path#anchor)` / hybrid `rationale: [text](path#anchor)`)に分裂しやすい。 | 2026-07-17 | medium |
 | [`cmd=$(...) || cmd=""` は非ゼロ終了時に stdout 済みの診断 JSON を空文字列で上書きする](pages/anti-patterns/command-substitution-fallback-discards-diagnostic-json.md) | anti-patterns | `status_json=$(bash script.sh args) \|\| status_json=""` という一見安全な defensive fallback は、`script.sh` が非ゼロ終了したときに **既に stdout へ出力済みの診断 JSON（失敗理由を含む）を空文字列で上書き・破棄する**。 | 2026-07-13T14:30:00+09:00 | high |
 | [pathspec 不一致の git diff --quiet は exit 0 を返し「差分なし」ガードを無効化する](pages/anti-patterns/pathspec-miss-exit-zero-defeats-diff-guard.md) | anti-patterns | `git diff --quiet <rev> -- <pathspec>` は pathspec がどのファイルにも一致しないとき「比較対象なし = 差分なし = exit 0」を返す。 | 2026-07-13T09:15:00+00:00 | high |
@@ -487,8 +487,9 @@ okf_version: "0.2"
 | [実測ゲートで降格した文書指摘でも、grep で確認できる事実誤りはリリース転記前に修正で消化する](pages/heuristics/demoted-doc-factual-error-fix-before-release-transcription.md) | heuristics | 実測必須ゲートが non-blocking へ降格した文書指摘のうち、reviewer が Grep で裏取りした事実誤り（機能の帰属先ファイルの取り違え等）は、記録台帳へ載せて次サイクルの再報告を抑止するのではなく、その場で修正して消化する。記録に回すと CHANGELOG の誤記述がそのまま GitHub Release へ転記され、後から修正する経路が無い。 | 2026-09-11T15:07:49Z | medium |
 | [否定条件の分岐を文書へ転記するとき else 側集合を肯定的な具体名に置き換えない](pages/heuristics/negated-condition-branch-transcribed-as-positive-name.md) | heuristics | 実装が `[ "$os" != "Darwin" ]` のような否定条件で分岐しているとき、文書側に「Linux は〜」と肯定的な具体名で書くと、否定条件が拾う残りのケース（判定コマンドの失敗・未知の値）が記述から落ち、文書が実装より狭くなる。 | 2026-09-11T18:35:02Z | medium |
 | [同一箇所への逐語 pin が連続したら記述の分割を検討する](pages/heuristics/repeated-verbatim-pin-signals-structural-split.md) | heuristics | 同じ 1 文に対する drift 修正が 3 回続いたら、次も逐語 pin を足すのではなく、その 1 文に複数の事項が詰め込まれた構造そのものを疑う。限定句がどれに掛かるかの読み違いが再発の原因になる。 | 2026-09-11T18:35:02Z | medium |
+| [契約の判定表に退路の行を足すときは、適用条件を観測の時点だけでなく対象の内容で限定する](pages/heuristics/contract-table-row-scoped-by-subject-content-not-timing.md) | heuristics | ガードに拒否されたコマンドをスクリプト化して通す退路を判定表に足すと、「拒否された時点」だけを条件にした行はガードの真陽性（実際に隔離境界を越えるコマンド）まで同じ行に吸い込む。行の適用条件には拒否された対象の内容（作業先を外へ移すか）を判別子として含め、真陽性は既存の停止行へ振り分ける。 | 2026-09-12T00:25:00Z | medium |
 ## 統計
 
-- 総ページ数: 477
-- ドメイン別: patterns=111, heuristics=213, anti-patterns=153
-- 最終更新: 2026-09-11T18:35:02Z
+- 総ページ数: 478
+- ドメイン別: patterns=111, heuristics=214, anti-patterns=153
+- 最終更新: 2026-09-12T00:25:00Z

@@ -17,12 +17,16 @@ sources:
     resource: "raw/fixes/20260828T035827Z-pr-2426.md"
   - type: "reviews"
     resource: "raw/reviews/20260828T040534Z-pr-2426.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260912T001903Z-pr-2709.md"
 tags: ["assert-not-grep", "vacuous-pin", "ere-portability", "test-pin", "fixture-scope", "count-zero-assertion"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-28T13:10:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-12T00:25:00Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-28T13:10:00+09:00"
+  - by: "rite-wiki-ingest/claude-fable-5-1"
+    at: "2026-09-12T00:25:00Z"
 ---
 
 # absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する
@@ -80,6 +84,12 @@ mutation の実施者は**主張する側と独立**であることが望まし�
 
 正規表現の pin は**実バイト列**でも突き合わせる。`cat -A` 等で実際の出力を見て、意図した文字列に本当にマッチするかを確認しないと、regex そのものが空振りしていても mutation テストは「検出できた」と誤って報告しうる。
 
+### 「禁止文が在る」pin は「許可文が無い」を守らない
+
+契約が「〜を許す記述が存在しないこと」を求めるとき、禁止文（「迂回する経路ではない」）の**存在**を grep する肯定 pin だけでは片方向しか固定できない。禁止文を残したまま矛盾する許可文（「helper 内で cd して再実行してよい」）を**追記**する変異は、肯定 pin を素通りして suite が green のまま通る。mutation で実測すると、禁止文の削除は検出できるが許可文の共存は検出できない。
+
+対処は「在ることの正の表明」と「許可語彙が無いことの負の表明」を対で置くことだが、負側は語彙 denylist にしかならず、言い換えで素通りする。防御価値は限定的だと承知した上で、契約の「存在しない」条項と assert の対応関係をテストのコメントに 1 行残しておく。次回以降の reviewer が同じ mutation を再走させて同じ結論に至る往復を省ける。
+
 ## 関連ページ
 
 - [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](../anti-patterns/test-pin-protection-theater.md)
@@ -96,3 +106,4 @@ mutation の実施者は**主張する側と独立**であることが望まし�
 - [件数 0 検証が「正しく在る」と「丸ごと無い」を区別できない](../../raw/reviews/20260828T035444Z-pr-2426.md)
 - [正負の対で pin + ミューテーション実測 + 先例探索](../../raw/fixes/20260828T035827Z-pr-2426.md)
 - [解消検証の独立再現と実バイト列の確認](../../raw/reviews/20260828T040534Z-pr-2426.md)
+- [禁止文の存在 pin が許可文の追記を捕まえない mutation 実測](../../raw/reviews/20260912T001903Z-pr-2709.md)
