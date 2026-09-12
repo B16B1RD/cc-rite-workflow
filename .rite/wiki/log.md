@@ -45,6 +45,7 @@
 * **Update**: [LLM substitute placeholder は bash residue gate で fail-fast 化する](pages/patterns/placeholder-residue-gate-bash-fail-fast.md) — [run 開始点 pin の PR 番号 guard に対するレビュー結果](raw/reviews/20260912T094630Z-pr-2731.md) を統合。ファイルパスに入る placeholder を一度だけ変数で受けて数値検証し、テストでは gate 行だけを置換して抽出実行する形を追記
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=478, broken_refs=0
 * **Update**: [mutation は適用前に一致件数を、適用後に構文を検証してから結論に使う](pages/heuristics/mutation-validate-before-and-after-application.md) — [復旧手順の取り消し失敗停止を固定したテストのレビュー結果](raw/reviews/20260912T124606Z-pr-2737.md) を統合。故障注入 shim が実処理をせず失敗だけ返すと後段の冗長ガードが同じ停止を出し、前段の停止削除が生存するため、実処理後に失敗を返す mode を持たせる節を追記
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=479, broken_refs=0
 
 ## 2026-09-11
 
