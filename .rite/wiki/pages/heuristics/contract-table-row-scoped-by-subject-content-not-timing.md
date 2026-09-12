@@ -4,11 +4,15 @@ title: "契約の判定表に退路の行を足すときは、適用条件を観
 domain: "heuristics"
 description: "ガードに拒否されたコマンドをスクリプト化して通す退路を判定表に足すと、「拒否された時点」だけを条件にした行はガードの真陽性（実際に隔離境界を越えるコマンド）まで同じ行に吸い込む。行の適用条件には拒否された対象の内容（作業先を外へ移すか）を判別子として含め、真陽性は既存の停止行へ振り分ける。"
 created: "2026-09-12T00:25:00Z"
-generated: { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-12T00:25:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T05:05:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T05:05:00Z" }
 promote: rite-plugin
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260912T001903Z-pr-2709.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260912T045212Z-pr-2717.md"
 tags: ["contract-table", "guard-bypass", "worktree-isolation", "discriminator", "retreat-path"]
 confidence: medium
 ---
@@ -37,6 +41,14 @@ security reviewer が指摘したのは、追加行の適用条件が**拒否の
 - 判別子は観測可能な形（ブロック内の作業先指定）にする。「意図が正しいこと」を条件にすると実行者の自己申告になり判定表として機能しない
 - 追加行と既存の停止行の境界は、両者の観測結果が**互いに排他**になるまで書く。「入場そのものが拒否された場合に限る」を停止行に足しただけでは、入場後の真陽性が退路側に残る
 
+### 除外文の pin は終端節まで伸ばす
+
+除外文を足した段落は「該当しない」という入口の 1 文だけでは完結しない。除外したブロックの行き先（退出節・委譲経路・定めがなければ停止）と「スクリプト化しない」という禁止が同じ段落に続き、退路の迂回を実際に塞いでいるのはこの終端節である。契約テストが除外文の 1 文目と直後の書き出しだけを pin すると、終端節を削除しても「経路の定めがなければ退路を適用する」へ反転しても suite は緑のまま通る（変異 2 本がいずれも生存した）。
+
+- pin は入口の文だけでなく、行き先と禁止を述べる終端節まで固定する
+- 許可語彙の denylist による否定 assert は言い換えで回避できるため、禁止文そのものの存在 pin の代わりにならない
+- 帰結は実行時の破損ではなく検出網の精度に留まるため、レビューでは non-blocking に分類されうる。それでも同じ段落の追加文を部分的にしか pin しない非対称は、次に段落を編集する人が禁止を消しても気づけない状態を残す
+
 ### 一般化
 
 退路（fallback route）を契約に足すときは、退路が無効化しうるガードの検出クラスを列挙し、そのうち退路で通してよいクラス（偽陽性）と通してはならないクラス（真陽性）を、ガードが両者を区別できない前提で**契約側の判別子**として書き分ける。ガードが区別できないからこそ、退路を使う側が区別を引き受ける。
@@ -45,8 +57,10 @@ security reviewer が指摘したのは、追加行の適用条件が**拒否の
 
 - [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](../heuristics/universal-claim-prose-invalidated-by-path-addition.md)
 - [新設 logged ガードの上流に同一判定の silent 経路が残ると支配的入力で可視化が無効化される](../anti-patterns/upstream-silent-path-defeats-new-logged-guard.md)
+- [散文契約の静的 pin には weakened probe による positive control を課す（見出しラベルで充足する pin を構造的に排除する）](../patterns/prose-pin-requires-positive-control.md)
 - [セッション worktree + sandbox 環境の 3 つの罠: cwd 相対 write-allowlist・`.rite-plugin-root` のブランチ相違・`--show-toplevel` の誤解決](../heuristics/worktree-cwd-write-allowlist-and-plugin-root-staleness.md)
 
 ## ソース
 
 - [作業先実行契約への退路追加に対するレビュー結果](../../raw/reviews/20260912T001903Z-pr-2709.md)
+- [退路の除外文の終端節が未 pin だったレビュー結果](../../raw/reviews/20260912T045212Z-pr-2717.md)

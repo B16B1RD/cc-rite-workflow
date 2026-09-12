@@ -487,10 +487,10 @@ okf_version: "0.2"
 | [実測ゲートで降格した文書指摘でも、grep で確認できる事実誤りはリリース転記前に修正で消化する](pages/heuristics/demoted-doc-factual-error-fix-before-release-transcription.md) | heuristics | 実測必須ゲートが non-blocking へ降格した文書指摘のうち、reviewer が Grep で裏取りした事実誤り（機能の帰属先ファイルの取り違え等）は、記録台帳へ載せて次サイクルの再報告を抑止するのではなく、その場で修正して消化する。記録に回すと CHANGELOG の誤記述がそのまま GitHub Release へ転記され、後から修正する経路が無い。 | 2026-09-11T15:07:49Z | medium |
 | [否定条件の分岐を文書へ転記するとき else 側集合を肯定的な具体名に置き換えない](pages/heuristics/negated-condition-branch-transcribed-as-positive-name.md) | heuristics | 実装が `[ "$os" != "Darwin" ]` のような否定条件で分岐しているとき、文書側に「Linux は〜」と肯定的な具体名で書くと、否定条件が拾う残りのケース（判定コマンドの失敗・未知の値）が記述から落ち、文書が実装より狭くなる。 | 2026-09-11T18:35:02Z | medium |
 | [同一箇所への逐語 pin が連続したら記述の分割を検討する](pages/heuristics/repeated-verbatim-pin-signals-structural-split.md) | heuristics | 同じ 1 文に対する drift 修正が 3 回続いたら、次も逐語 pin を足すのではなく、その 1 文に複数の事項が詰め込まれた構造そのものを疑う。限定句がどれに掛かるかの読み違いが再発の原因になる。 | 2026-09-11T18:35:02Z | medium |
-| [契約の判定表に退路の行を足すときは、適用条件を観測の時点だけでなく対象の内容で限定する](pages/heuristics/contract-table-row-scoped-by-subject-content-not-timing.md) | heuristics | ガードに拒否されたコマンドをスクリプト化して通す退路を判定表に足すと、「拒否された時点」だけを条件にした行はガードの真陽性（実際に隔離境界を越えるコマンド）まで同じ行に吸い込む。行の適用条件には拒否された対象の内容（作業先を外へ移すか）を判別子として含め、真陽性は既存の停止行へ振り分ける。 | 2026-09-12T00:25:00Z | medium |
+| [契約の判定表に退路の行を足すときは、適用条件を観測の時点だけでなく対象の内容で限定する](pages/heuristics/contract-table-row-scoped-by-subject-content-not-timing.md) | heuristics | ガードに拒否されたコマンドをスクリプト化して通す退路を判定表に足すと、「拒否された時点」だけを条件にした行はガードの真陽性（実際に隔離境界を越えるコマンド）まで同じ行に吸い込む。行の適用条件には拒否された対象の内容（作業先を外へ移すか）を判別子として含め、真陽性は既存の停止行へ振り分ける。 | 2026-09-12T05:05:00Z | medium |
 | [squash 昇格後の back-merge は衝突を前提に、復旧手順の衝突分岐を人間への引き渡し経路として書く](pages/heuristics/squash-promotion-back-merge-conflict-handoff.md) | heuristics | develop→main の昇格を squash でマージすると次の back-merge は merge-base が前回リリース前まで後退し、develop 側でリリース範囲の行を再編集していると 3-way merge が衝突する。ツリー不変の合流は ours 戦略でしか作れず GitHub の PR マージでは生成できないため、復旧手順は衝突分岐を『本手順では復旧できない理由と人間が選ぶ選択肢』として明記し、PR 経由で条件を満たすという主張は衝突しない場合に限定する。 | 2026-09-12T03:16:24Z | high |
 ## 統計
 
 - 総ページ数: 479
 - ドメイン別: patterns=111, heuristics=215, anti-patterns=153
-- 最終更新: 2026-09-12T04:13:09Z
+- 最終更新: 2026-09-12T05:05:00Z
