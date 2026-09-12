@@ -1,5 +1,6 @@
 ## 2026-09-12
 
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=478, broken_refs=0
 * **Create**: [停止後の案内を振り分ける判定に補助的な一覧の有無を使うと、案内が主張する状態を取り違える](pages/anti-patterns/guidance-branch-proxy-predicate-misroutes-state.md) — [取り込み済み develop の停止分岐に対するレビュー結果](raw/reviews/20260912T065238Z-pr-2722.md) を新規ページ化
 * **Create**: [停止 marker に現在値を載せると、後段の不変検証がその値を基準に使って自己比較で必ず通る](pages/anti-patterns/stop-marker-current-value-reused-as-verification-baseline.md) — [取り込み済み develop の停止分岐に対するレビュー結果](raw/reviews/20260912T065238Z-pr-2722.md) を新規ページ化
 * **Skip**: [20260912T065538Z-pr-2722.md](raw/fixes/20260912T065538Z-pr-2722.md) — 非 fatal 指摘の移送経過のみで、レビュー結果 raw と別の経験則を含まない
