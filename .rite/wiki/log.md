@@ -1,3 +1,7 @@
+## 2026-09-13
+
+* **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — [複製した境界条件式の同一性がテストで固定されていないことを検出したレビュー結果](raw/reviews/20260912T225833Z-pr-2753.md) を統合。複製された定義の一致を assert する節を追記
+
 ## 2026-09-12
 
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=482, broken_refs=0

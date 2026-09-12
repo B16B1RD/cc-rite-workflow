@@ -25,11 +25,14 @@ sources:
     resource: "raw/fixes/20260912T182702Z-pr-2751.md"
   - type: "reviews"
     resource: "raw/reviews/20260912T183826Z-pr-2751.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260912T225833Z-pr-2753.md"
 tags: ["test", "fixture", "mutation", "invariant", "coverage"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T18:43:00+00:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T23:20:00+00:00" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T18:43:00+00:00" }
+  - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T23:20:00+00:00" }
 ---
 
 # テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する
@@ -76,6 +79,11 @@ verified:
 
 同一の形状定義を read 側（抽出）と write 側（除去）で共有している場合、read 側の TC だけでは write 側を狭める mutation が落ちない。write 側が別経路（fallback 等）を通らないと発火しないためである。**形状定義を共有しているなら、pin も両方の経路で張る。**
 
+定義が共有ではなく**複製**されている場合はさらに弱い。手順書の fenced bash で、同じ境界の条件式を「番号を数える範囲を切り出す awk」と「追記位置を決める awk」の 2 か所に書いた例では、「数える範囲と書き込む範囲が一致する」という不変条件をコメントと設計理由の文でしか支えていなかった。テストの境界ループは追記側の awk しか通しておらず、新しい fixture にもその境界の種類が無かったため、切り出し側から境界を 1 つ消す変異を当ててもスイートは緑のままだった。
+
+- 複製した条件式は、文書から両方を抜き出して**件数と内容の一致を assert する**か、**両方の awk を同じ境界 fixture で回す**
+- 境界 fixture は、条件式が列挙する境界の種類をすべて 1 つずつ含める（1 種類でも欠けると、その境界を消す変異が生き残る）
+
 ### 6. negative control は「到達したうえで発火しない」ことを確認する
 
 「誤検出しないこと」を assert する TC が、fixture の都合で目的の分岐へ一度も到達していないケースが同 PR で 2 件見つかった。正規の入力を併記した fixture では前段の判定が成功してしまい、検証したい分岐に入らない。assert は常に真になり識別力はゼロ。
@@ -116,3 +124,4 @@ guard・不変量の TC を追加したら、worktree-only mutation（当該 gua
 - [全呼び出しを失敗させる mock が 2 つ目の終了コード捕捉を固定していないことを検出](../../raw/reviews/20260912T182103Z-pr-2751.md)
 - [失敗注入を呼び出し回数ごとに分けた修正](../../raw/fixes/20260912T182702Z-pr-2751.md)
 - [各捕捉の単独固定を変異表で確認したレビュー結果](../../raw/reviews/20260912T183826Z-pr-2751.md)
+- [複製した境界条件式の同一性がテストで固定されていないことを検出したレビュー結果](../../raw/reviews/20260912T225833Z-pr-2753.md)

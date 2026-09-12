@@ -202,7 +202,7 @@ okf_version: "0.2"
 | [path を返す test fixture ヘルパーの cleanup 登録は $() サブシェルではなく親シェルで行う](pages/patterns/test-fixture-helper-parent-shell-cleanup-registration.md) | patterns | path を `echo`/`printf` で返す fixture ヘルパーを `X="$(new_repo ...)"` の **コマンド置換 (`$()`)** 経由で呼ぶと、そのヘルパーは **subshell** で実行される。 | 2026-07-03T06:00:00+09:00 | high |
 | [位置依存の表パースには検査行数ガードを対にする（silent false-pass 遮断）](pages/patterns/positional-parse-row-count-guard.md) | patterns | `awk -F'\|' '{ slug = $2; agent = $4 }'` のような位置依存の列パースは、表形式変更（Agent 列より前へのカラム挿入等）でトークンが期待列からずれる。 | 2026-07-03T18:30:00+00:00 | high |
 | [検証ツールの保証文言は検証される不変量と非検出 gap に正確に対応させる](pages/heuristics/verification-doc-guarantee-matches-invariants.md) | heuristics | 機械検証ツール（drift-check / lint）を追加する PR では、手順書側の保証文言が実装の検証範囲を超えて「漏れは必ず検出される」と全称的に書かれやすい。 | 2026-09-12T15:25:00+00:00 | high |
-| [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) | heuristics | 複数の不変量（集合差分 I1/I2 + 行内整合 I3 等）を持つ検証スクリプトのテストでは、fixture 変異の設計を誤ると「テストは green だが特定の不変量・guard を削除しても green のまま」という vacuous coverage が生まれる。 | 2026-09-12T18:43:00+00:00 | high |
+| [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) | heuristics | 複数の不変量（集合差分 I1/I2 + 行内整合 I3 等）を持つ検証スクリプトのテストでは、fixture 変異の設計を誤ると「テストは green だが特定の不変量・guard を削除しても green のまま」という vacuous coverage が生まれる。 | 2026-09-12T23:20:00+00:00 | high |
 | [提示順ルールを計画テンプレートに追加する際は depends_on 列の有無を確認する](pages/heuristics/presentation-order-rule-requires-depends-on-column-check.md) | heuristics | 実装計画テンプレートに「ユーザーの判断で変わりやすい項目を先頭に提示する」ような提示順ルールを追加する際、対象テンプレートが `depends_on` 列を持つ依存グラフ形式か、`depends_on` 列を持たないプレーン番号リスト形式かで、そのルールが「実行順」にまで波及するかどうかが変わる。 | 2026-07-06T02:34:59Z | high |
 | [Orchestrator は reviewer 間の反証と reviewer 自身の自己矛盾（指摘記載 vs 結論）を解決してから blocking 判定する](pages/heuristics/orchestrator-resolves-reviewer-self-contradiction-and-counter-evidence.md) | heuristics | 過去のレビュー事例の 2 cycle レビューで、orchestrator（consolidation 担当）が単純な「指摘事項テーブルの件数 = blocking 件数」という機械的合算をせず、(1) 複数 reviewer 間の反証関係、(2) reviewer 自身の総合評価と個別指摘の矛盾、の 2 つを見て blocking findings を確定させた 2 つの実例。 | 2026-08-08T14:00:41+09:00 | medium |
 | [@tsv+IFS read の field-shift hazard 横断監査は cut-f免除と空フィールド可否の2条件で判定する](pages/heuristics/tsv-ifs-field-shift-hazard-audit-criteria.md) | heuristics | `jq '[...] \| @tsv'` の出力を `IFS=$'\\t' read -r a b c` で読む実装は、POSIX の IFS whitespace 規則により、tab を含む IFS では連続する区切り文字が1個に圧縮される。 | 2026-07-06T23:20:00+09:00 | high |
@@ -500,4 +500,4 @@ okf_version: "0.2"
 
 - 総ページ数: 486
 - ドメイン別: patterns=112, heuristics=216, anti-patterns=158
-- 最終更新: 2026-09-12T18:43:00+00:00
+- 最終更新: 2026-09-12T23:20:00+00:00
