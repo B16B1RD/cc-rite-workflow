@@ -23,8 +23,8 @@
 # Exit codes:
 #   0 clean
 #   1 hit (number token in the uncommitted wiki diff)
-#   2 error (stage_failed / ignored_paths / helper_missing / check_failed /
-#     ignored_check_failed / usage)
+#   2 error (sandbox-mask / stage_failed / ignored_paths / helper_missing /
+#     check_failed / ignored_check_failed / usage)
 # --- END HEADER ---
 
 set -uo pipefail
@@ -62,6 +62,28 @@ if [ ! -f "$check" ]; then
 fi
 
 numref_tree="$REPO_ROOT"
+
+# intent-to-add は git dir の index.lock を要する。sandbox が管理ディレクトリだけを read-only で
+# マスクしていると stage_failed に落ち、その案内（.gitignore の negation）が原因と食い違うため先に判定する。
+# git dir を解決できない木は解決失敗の診断を出したうえで、下の intent-to-add の失敗として報告する。
+worktree_lib="$_SCRIPT_DIR/lib/worktree-git.sh"
+if [ ! -f "$worktree_lib" ]; then
+  echo "ERROR: lib/worktree-git.sh が見つかりません (path='$worktree_lib')。管理ディレクトリの書込可否を判定できないため中止します" >&2
+  echo "[CONTEXT] WIKI_INGEST_NUMREF=error; reason=helper_missing" >&2
+  exit 2
+fi
+# shellcheck source=lib/worktree-git.sh
+source "$worktree_lib"
+numref_admin_rc=0
+numref_admin_err=$(worktree_admin_writable "$numref_tree" 2>&1) || numref_admin_rc=$?
+if [ "$numref_admin_rc" -ne 0 ]; then
+  printf '%s\n' "$numref_admin_err" >&2
+fi
+if [ "$numref_admin_rc" -eq 1 ]; then
+  echo "  原因候補: sandbox が git の管理ディレクトリを read-only でマスクしている" >&2
+  echo "[CONTEXT] WIKI_INGEST_NUMREF=error; reason=sandbox-mask" >&2
+  exit 2
+fi
 
 # 新規ページ (untracked) を差分へ載せる。内容は stage しない intent-to-add で、
 # index にはエントリだけが載り `git diff --cached` は空のまま。
