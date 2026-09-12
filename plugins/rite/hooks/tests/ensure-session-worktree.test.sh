@@ -403,13 +403,17 @@ assert "retreat keeps fixation, ownership and pre-change checks" "yes" "$(printf
 assert "retreat stops when the script cannot be written" "yes" "$(printf '%s\n' "$retreat" | grep -q 'スクリプトファイルを書き出せない（スクラッチ領域が書込不可）場合は退路を採らず停止' && echo yes || echo no)"
 assert "retreat stops without further variants when the single command is rejected" "yes" "$(printf '%s\n' "$retreat" | grep -q 'スクリプトファイル化した単一コマンドもガードに拒否される場合は退路が成立しない。さらなる代替形を試さず停止' && echo yes || echo no)"
 assert "retreat routes entry denial back to the stop row" "yes" "$(printf '%s\n' "$retreat" | grep -q '入場そのものが拒否された場合はこの行ではなく「native が権限拒否 / 隔離ガードで失敗」行を適用する' && echo yes || echo no)"
+retreat_exclusion='拒否されたブロック自身が `cd` / `git -C` / `workdir` で `{wt_path}` 外（main checkout を含む）を作業先にする場合も本行に該当しない。'
+assert "retreat excludes blocks that target outside the worktree, between the entry-denial sentence and the route list" "yes" \
+  "$(printf '%s\n' "$retreat" | sed -n '1p' | grep -qF '入場そのものが拒否された場合はこの行ではなく「native が権限拒否 / 隔離ガードで失敗」行を適用する。'"$retreat_exclusion" && printf '%s\n' "$retreat" | sed -n '1p' | grep -qF "${retreat_exclusion}"'退出は' && printf '%s\n' "$retreat" | sed -n '1p' | grep -q '退路は次のとおり。$' && echo yes || echo no)"
+assert "retreat exclusion is limited to working-directory targeting" "yes" "$(printf '%s\n' "$retreat" | sed -n '1p' | grep -q '既存 helper による main root の共有 state 更新や、作業先を worktree に保ったまま絶対パスで行う読み書きはこの除外に含まない。' && echo yes || echo no)"
 assert "retreat does not permit helper-cd or main-checkout evasion" "yes" "$(printf '%s\n' "$retreat" | grep -q 'helper 内の `cd` や main checkout への退避で拒否を迂回する経路ではない' && echo yes || echo no)"
 # Negative pair for the prohibition pin above: the prohibition sentence itself names the evasion
 # routes, so strip only that sentence (keeping the rest of its line and $retreat untouched) and
 # fail if permissive vocabulary remains. A vocabulary denylist is bypassable by paraphrase; it
 # pins the known phrasings, not every possible wording.
 retreat_rest=$(printf '%s\n' "$retreat" | sed 's/helper 内の `cd` や main checkout への退避で拒否を迂回する経路ではない//')
-assert "retreat remains after excluding the prohibition sentence" "yes" "$(printf '%s\n' "$retreat_rest" | grep -q 'bash {script_path}' && echo yes || echo no)"
+assert "retreat remains after excluding the prohibition sentence" "yes" "$(printf '%s\n' "$retreat_rest" | grep -q 'bash {script_path}' && printf '%s\n' "$retreat_rest" | grep -qF "$retreat_exclusion" && echo yes || echo no)"
 assert "retreat contains no permission to evade the guard" "yes" "$(printf '%s\n' "$retreat_rest" | grep -qE '迂回して(も)?(よい|良い)|退避して(よい|良い|再実行)|main checkout へ(退避|切り替え)|helper 内で `?cd|cd "?\$?main_root|再実行してよい' && echo no || echo yes)"
 assert "retreat does not move the documented guard block" "yes" "$(printf '%s\n' "$retreat" | grep -q 'worktree-execution-check\|worktree-exit-check\|^```' && echo no || echo yes)"
 
