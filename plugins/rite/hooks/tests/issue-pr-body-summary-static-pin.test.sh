@@ -217,6 +217,48 @@ if awk '/ D-01: / { a=NR } / D-02: / { b=NR } /^<\/details>/ { c=NR } END { exit
   pass 'D-02 follows D-01 inside details'
 else fail 'D-02 position'; fi
 
+# Numbering counts only Section 9; D-NN in prose before or after the section is not a decision.
+cat > "$work/prose-body.md" <<'BODY'
+**Type**: fix
+
+## 残存非実測指摘
+
+- 説明: 2 件目が D-04 に飛ぶ
+
+<details>
+<summary>Implementation Contract（契約）</summary>
+
+## 8. Definition of Done
+
+- [ ] done
+
+</details>
+
+- 提案: D-09 を参照
+BODY
+run_decision_log prose-created "$work/prose-body.md"
+assert_grep 'prose body creates D-01' "$work/prose-created.out" 'entry=D-01; section=created'
+run_decision_log prose-appended "$work/prose-created.edited"
+assert_grep 'prose body appends D-02' "$work/prose-appended.out" 'entry=D-02$'
+assert_grep 'prose body records D-02' "$work/prose-appended.edited" ' D-02: decided'
+assert_not_grep 'prose body skips no number' "$work/prose-appended.edited" ' D-(05|10): '
+printf '## 要約\n\n- 説明: D-07 を参照\n\n## 9. Decision Log\n\n- 2026-01-01 D-03: earlier / CARD-12 は別物\n\n---\n\n- 提案: D-08 を参照\n' > "$work/max-body.md"
+run_decision_log max "$work/max-body.md"
+assert_grep 'Section 9 maximum D-03 appends D-04' "$work/max.out" 'entry=D-04$'
+
+# A failing numbering scan or append awk on an existing Section 9 never writes back.
+for fail in partial:1 partial:2; do
+  at=${fail##*:}
+  name="existing-awk-$at"
+  AWK_FAIL_MODE=partial AWK_FAIL_AT=$at run_decision_log "$name" "$work/contract.edited" "$work/awk-fail"
+  if [ "$(wc -l < "$work/$name.awklog" | tr -d ' ')" -ge "$at" ]; then pass "$name mock reached the failing call"; else fail "$name mock did not reach the failing call"; fi
+  assert "$name does not edit" 0 "$(edit_count "$name")"
+  assert_not_grep "$name reports no append" "$work/$name.out" 'DECISION_LOG_APPENDED'
+  assert_grep "$name reports gh_edit_failure" "$work/$name.err" 'DECISION_LOG_APPEND_FAILED=1; reason=gh_edit_failure'
+done
+assert_grep 'failed scan leaves the pending number open' "$work/existing-awk-1.err" 'D-NN: decided'
+assert_grep 'failed append prints the pending D-02' "$work/existing-awk-2.err" 'D-02: decided'
+
 # A failing or empty body build never writes back, whichever awk call fails.
 for fail in partial:1 partial:2 empty:2; do
   mode=${fail%%:*}
