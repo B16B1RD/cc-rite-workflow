@@ -1,5 +1,6 @@
 ## 2026-09-12
 
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=479, broken_refs=0
 * **Update**: [Exit code semantic preservation: caller は case で語彙を保持する](pages/patterns/exit-code-semantic-preservation.md) — [sandbox マスク検知用の exit code 追加に対するレビュー結果](raw/reviews/20260912T105243Z-pr-2732.md) を統合。exit code を足すときは script 名で全呼び出し元を grep して case を揃える節を追記
 * **Skip**: [20260912T105613Z-pr-2732.md](raw/fixes/20260912T105613Z-pr-2732.md) — 非 fatal 指摘の移送経過のみで、レビュー結果 raw と別の経験則を含まない
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=478, broken_refs=0
