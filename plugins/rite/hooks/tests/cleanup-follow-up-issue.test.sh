@@ -1112,6 +1112,34 @@ assert_grep "T-33d 最新 JSON に組が無い台帳行は採用しない" "$STU
 assert_grep "T-33d 最新 cycle の指摘も転記" "$STUB_DIR/body.md" 'c.md:1'
 assert_grep "T-33d 除外件数 0" "$ERR" 'sweep_issued: pr=9; excluded=0$'
 
+reset_stubs
+r=$(new_root t33e)
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-04","file":"a.md","line":3,"description":"cycle1 の起票済み指摘"}]}'
+put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-01","file":"a.md","line":3,"description":"起票済みの指摘"},{"id":"F-02","file":"a.md","line":3,"description":"同じ位置の記録のみの指摘"}]}'
+jq -n --argjson c "$(comment_obj "$(record_body "$(printf '%s\n%s' "$ISSUED_A" '| F-02 | a.md:3 | recorded | severity=LOW; measured=false |')")")" '[[$c]]' > "$GH_API_JSON"
+run_target "$r"
+assert_grep "T-33e 同じ位置の recorded は転記" "$STUB_DIR/body.md" '同じ位置の記録のみの指摘'
+assert_not_grep "T-33e 採用した組の指摘は転記しない" "$STUB_DIR/body.md" '説明: 起票済みの指摘$'
+assert_grep "T-33e 曖昧な位置では先行 cycle を位置で除外しない" "$STUB_DIR/body.md" 'cycle1 の起票済み指摘'
+assert_grep "T-33e 除外件数 1" "$ERR" 'sweep_issued: pr=9; excluded=1$'
+
+for variant in broken not_array; do
+  reset_stubs
+  r=$(new_root "t33f-$variant")
+  put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-01","file":"a.md","line":3,"description":"起票済みの指摘"}]}'
+  case "$variant" in
+    broken)    put_json "$r" "9-20260102120000.json" '{broken' ;;
+    not_array) put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":"x"}' ;;
+  esac
+  jq -n --argjson c "$(comment_obj "$(record_body "$ISSUED_A")")" '[[$c]]' > "$GH_API_JSON"
+  run_target "$r"
+  assert "T-33f $variant exit 0" "0" "$RC"
+  assert_grep "T-33f $variant 照合できない WARNING" "$ERR" 'WARNING: sweep 起票済みの指摘を最新のレビュー結果 JSON と照合できません'
+  assert_grep "T-33f $variant apply_failed marker" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=apply_failed; pr=9'
+  assert_grep "T-33f $variant 除外せず転記" "$STUB_DIR/body.md" 'a.md:3'
+  assert_not_grep "T-33f $variant 除外件数を出さない" "$ERR" 'sweep_issued:'
+done
+
 echo "--- T-34: cleanup SKILL.md が sweep 起票済み除外の結果を完了報告へ配線する ---"
 assert_grep "T-34 all_issued を x 相当に置く" "$CLEANUP_MD" '^  \| `created` .*`skipped; reason=all_issued` .*\| x 相当 \|'
 assert_grep "T-34 sweep note の定義" "$CLEANUP_MD" '^- `\{follow_up_sweep_note\}`:'

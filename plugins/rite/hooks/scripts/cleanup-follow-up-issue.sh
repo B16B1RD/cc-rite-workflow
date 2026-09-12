@@ -63,7 +63,7 @@
 #       reason=no_source_issue : --source-issue が空
 #       reason=comments_api    : 関連 Issue のコメント取得に失敗
 #       reason=ledger_invalid  : 取得したコメントから却下台帳を解析できない
-#       reason=apply_failed    : 除外適用の jq が失敗
+#       reason=apply_failed    : 最新のレビュー結果 JSON を選べない / 照合できない、または除外適用の jq が失敗
 #
 # Emitted summary (stdout, 1 行):
 #   [cleanup-follow-up-issue] result=<created|skipped|failed>; ...
@@ -344,9 +344,10 @@ fi
 # 台帳の issued 行 [finding_id, file:line] は、sweep が読んだ最新 JSON (nb-sweep-collect.sh と同じ
 # 選び方) の non_blocking_findings[] に同じ組があるときだけ採用する。id は cycle ごとに振り直され、
 # 別 PR の台帳行も同じ関連 Issue に並ぶため、組が最新 JSON と一致した行だけが本 PR の sweep 起票と言える。
-# 採用した行の file:line を持つ finding は cycle を問わず全件除外する: 未解消の指摘は cycle ごとに
-# 別の id で同じ位置に再報告されるため、id まで照合すると先行 cycle の分が重複起票される。
-# 台帳を読めないときは除外を適用せず全件を転記し、WARNING と marker で surface する
+# 採用した組の finding を除外する。加えて、最新 JSON でその file:line の finding が全件採用済みなら、
+# 先行 cycle の同じ位置の finding も id を問わず除外する (未解消の指摘は cycle ごとに別の id で同じ位置に
+# 再報告される)。同じ位置に採用されていない finding が並ぶ位置は曖昧なので位置では除外しない。
+# 台帳や最新 JSON を読めないときは除外を適用せず全件を転記し、WARNING と marker で surface する
 # (黙って全件除外にも全件転記にも倒さない)。
 sweep_issued_unavailable() {
   echo "WARNING: $2。sweep 起票済みの指摘を除外せず転記します (PR #${PR_NUMBER})" >&2
@@ -377,13 +378,19 @@ else
     [ -s "$comments_err" ] && head -3 "$comments_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   elif ! latest_json=$(find "$results_dir" -maxdepth 1 -type f -name "${PR_NUMBER}-*.json" | LC_ALL=C sort | tail -1) \
     || [ -z "$latest_json" ] \
-    || ! issued_locations=$(jq -c --argjson keys "$issued_keys" '
-      [.non_blocking_findings[]? | [(.id // ""), ((.file // "") + ":" + (.line | tostring))]
-       | select(. as $k | any($keys[]; . == $k)) | .[1]] | unique' "$latest_json" 2>"$comments_err"); then
+    || ! issued_match=$(jq -c --argjson keys "$issued_keys" '
+      if (.non_blocking_findings | type) != "array" then error("non_blocking_findings is not an array") else . end
+      | [.non_blocking_findings[] | [(.id // ""), ((.file // "") + ":" + (.line | tostring))]] as $latest
+      | [$latest[] | select(. as $k | any($keys[]; . == $k))] as $pairs
+      | {pairs: $pairs,
+         locations: ([$pairs[] | .[1]] | unique
+           | map(select(. as $l | all($latest[] | select(.[1] == $l); . as $k | any($pairs[]; . == $k)))))}' \
+      "$latest_json" 2>"$comments_err"); then
     sweep_issued_unavailable apply_failed "sweep 起票済みの指摘を最新のレビュー結果 JSON と照合できません"
     [ -s "$comments_err" ] && head -3 "$comments_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-  elif ! issued_filtered=$(printf '%s' "$findings_json" | jq -c --argjson locs "$issued_locations" '
-    [.[] | select(((.file // "") + ":" + (.line | tostring)) as $l | any($locs[]; . == $l) | not)]'); then
+  elif ! issued_filtered=$(printf '%s' "$findings_json" | jq -c --argjson m "$issued_match" '
+    [.[] | [(.id // ""), ((.file // "") + ":" + (.line | tostring))] as $k
+     | select((any($m.pairs[]; . == $k) or any($m.locations[]; . == $k[1])) | not)]'); then
     sweep_issued_unavailable apply_failed "sweep 起票済みの除外適用に失敗しました"
   else
     _issued_before=$(printf '%s' "$findings_json" | jq 'length')
