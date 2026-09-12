@@ -69,7 +69,7 @@
 - **先延ばし禁止の設計原則**: 仮説的な将来リスクに先手を打つ Issue は大半が無駄に終わる。スコープ内の実指摘は本 PR で解決し（fix ループで強制済み）、スコープ外候補は「起票せず記録して終わり」をデフォルトにする方が、Issue の増殖を防ぎ実際に着手される確率を上げる。
 - **推奨機械決定表を裁量の代わりに置く理由**: 「裁量で決めてよい」とすると上記の構造的動機により実質的に「別 Issue 作成」へ誘導される。Likelihood（Observed/Demonstrable vs Hypothetical）と Source（A/B）という機械的に判定可能な軸だけで推奨を決定することで、エージェントの意思が介在する余地を無くす。
 - **Decision Log 記録を「追加」の経路とする理由**: fix ループの nit-noted 返信経路・acknowledged suppression（PR コメント / JSON ベースの再指摘抑制）は Decision Log 記録では代替されない。両者は別の目的（前者は次サイクルでの再指摘抑制、後者は仕様変更の記録）を持つため、置き換えではなく追加とした。
-- **元 Issue が特定できない PR での「選択肢非表示」**: PR コメント記録という代替スキーマを新設すると、記録先が「Section 9」「作業メモリ」「PR コメント」の 3 種に増え「シンプルさを死守」原則に反する。本リポジトリはブランチ命名規則上ほぼ全 PR が issue 番号を含むため、この縮退経路の実発生頻度は低いと判断し、選択肢非表示（3 択化）で単純に倒した（対象 Issue の Decision Log D-04 参照）。
+- **元 Issue が特定できない PR での「選択肢非表示」**: PR コメント記録という代替スキーマを新設すると、記録先が「Section 9」「PR コメント」の 2 種に増え「シンプルさを死守」原則に反する。本リポジトリはブランチ命名規則上ほぼ全 PR が issue 番号を含むため、この縮退経路の実発生頻度は低いと判断し、選択肢非表示（3 択化）で単純に倒した（対象 Issue の Decision Log D-04 参照）。
 
 ## phase7-gate-notes
 
@@ -334,6 +334,8 @@ incremental diff が小さい / context 圧が高いときに inline すると�
 Decision Log append を候補ごとに単一 Bash invocation にする理由。
 
 複数候補を 1 呼び出しでループすると `trap` が候補間で上書きされ tmpfile がリークする。
+
+記録先を元 Issue 本文の Section 9 に一本化する理由: Section 9 が無いときに作業メモリへ逃がすと、作業メモリも無い Issue（Complexity S 以下で Section 9 を省いた Issue や cleanup の follow-up Issue）で記録先が尽き、人間の手動追記が定常経路になる。Section 9 を新設すれば記録は作業メモリの有無に依存せず、PR 作成時の Implementation Notes も同じ Section 9 から判断を読める。Issue 作成時に S 以下で Section 9 を省く規則は生成時のテンプレート規則であり、後から実際の判断を記録するための新設とは衝突しない。
 
 ## 5.3-execution-order-why
 
