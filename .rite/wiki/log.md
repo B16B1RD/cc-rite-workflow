@@ -1,6 +1,7 @@
 ## 2026-09-12
 
 * **Update**: [静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く](pages/heuristics/static-pin-semantic-allowlist-not-notation-denylist.md) — [退路本文への negative pin で禁止文を除外してから照合したレビュー結果](raw/reviews/20260912T040912Z-pr-2715.md) を統合。禁止文を含む本文への negative grep は禁止文を除外した別変数で照合し、除外後本文の非空も pin する
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=476, broken_refs=0
 * **Create**: [契約の判定表に退路の行を足すときは、適用条件を観測の時点だけでなく対象の内容で限定する](pages/heuristics/contract-table-row-scoped-by-subject-content-not-timing.md) — [作業先実行契約への退路追加に対するレビュー結果](raw/reviews/20260912T001903Z-pr-2709.md) を新規ページ化
 * **Update**: [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](pages/patterns/absence-pin-base-present-head-absent-single-line.md) — [作業先実行契約への退路追加に対するレビュー結果](raw/reviews/20260912T001903Z-pr-2709.md) を統合。禁止文の存在 pin は許可文の追記を捕まえない（対の負側は denylist 止まりで防御価値は限定的、契約対応をコメントに残す）
 * **Skip**: [NB sweep 結果](raw/fixes/20260912T002125Z-pr-2709-nb-sweep.md) — sweep の routing ログのみで、退路の観測は同 PR のレビュー結果 raw に記録済み。新規経験則なし
