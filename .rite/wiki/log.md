@@ -1,5 +1,6 @@
 ## 2026-09-12
 
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=479, broken_refs=0
 * **Create**: [契約文書の段落を固定するテストは、対象節の前の文から後続文の書き出しまでを 1 本の連続文字列で pin する](pages/patterns/contract-paragraph-adjacent-pin-through-following-sentence.md) — [退路段落の停止節とスクリプト化禁止を固定したテスト変更のレビュー結果](raw/reviews/20260912T114337Z-pr-2736.md) を新規ページ化
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=479, broken_refs=0
 * **Update**: [Exit code semantic preservation: caller は case で語彙を保持する](pages/patterns/exit-code-semantic-preservation.md) — [sandbox マスク検知用の exit code 追加に対するレビュー結果](raw/reviews/20260912T105243Z-pr-2732.md) を統合。exit code を足すときは script 名で全呼び出し元を grep して case を揃える節を追記
