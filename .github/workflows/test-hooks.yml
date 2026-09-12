@@ -16,6 +16,7 @@ on:
       - 'README.md'
       - 'README.ja.md'
       - '.github/workflows/test-hooks.yml'
+      - '.claude/skills/release/**'
   pull_request:
     paths:
       - 'plugins/rite/hooks/**'
@@ -24,6 +25,7 @@ on:
       - 'README.md'
       - 'README.ja.md'
       - '.github/workflows/test-hooks.yml'
+      - '.claude/skills/release/**'
 
 # F-11: least-privilege permissions — workflow only reads the repo,
 # never writes back. Restricts GITHUB_TOKEN to read-only contents access so a
