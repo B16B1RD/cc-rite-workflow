@@ -136,9 +136,16 @@ bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --i
 ループに入る前に、review⇄fix サーキットブレーカーの cycle counter を初期化し、上限値を検証する。counter は flow-state の `cycle_count` に永続化され、resume を跨いで継続する（AC-3）。
 rationale: references/rationale.md#cycle-counter-init
 
-`{issue_number}` / `{branch_name}` は ステップ 0 の `ITERATE_ISSUE` / `ITERATE_BRANCH` marker の値をリテラル置換する:
+`{issue_number}` / `{branch_name}` は ステップ 0 の `ITERATE_ISSUE` / `ITERATE_BRANCH` marker の値、`{pr_number}` は引数をリテラル置換する:
 
 ```bash
+# PR 番号は state ファイル名に直接入る。未置換のまま進むと字面どおりの名前のファイル同士で辻褄が
+# 合ってしまうため、数値でなければファイルに触れる前に止める（ステップ 1 も同じ）。
+pr_number="{pr_number}"
+case "$pr_number" in
+  ''|*[!0-9]*) echo "ERROR: iterate ステップ 0.6: pr_number が数値に置換されていません (値: '$pr_number')。PR 番号を確認して再実行してください" >&2; exit 1 ;;
+esac
+
 # (0) 診断スニペット用 helper を読み込む。SoT は control-char-neutralize.sh の header
 # （`head -N ... | neutralize_ctrl --keep-newline | sed ... >&2` が全 emission site の canonical idiom）。
 # capture 側の helper 呼び出しには `LC_ALL=C` を付ける（本ブロック / ステップ 1 / ステップ 6 共有前段の
@@ -262,11 +269,11 @@ if [ "$cb_mode_init" = fresh ] || [ "$cur_cc" -eq 0 ] 2>/dev/null; then
     echo "WARNING: state-path-resolve.sh を実行できませんでした（プラグインの破損 / 版 skew）。run 開始点 pin を記録できないため、発散判定は前 run の JSON を含んだ列を読んで判定を降ろします" >&2
     run_since_status=unresolved-root
   else
-    rm -f "$pin_root/.rite/state/nb-sweep-done-{pr_number}.txt"
-    pin_file="$pin_root/.rite/state/review-run-since-{pr_number}.txt"
+    rm -f "$pin_root/.rite/state/nb-sweep-done-${pr_number}.txt"
+    pin_file="$pin_root/.rite/state/review-run-since-${pr_number}.txt"
     # 現時点で最新の結果ファイル basename（1 件も無ければ空 = pin 無し = 全件が現 run）。
     # ソート順は helper 側の選別と揃える（LC_ALL=C 昇順 = 時系列昇順）。
-    pin_value=$(find "$pin_root/.rite/review-results" -maxdepth 1 -type f -name "{pr_number}-*.json" 2>/dev/null \
+    pin_value=$(find "$pin_root/.rite/review-results" -maxdepth 1 -type f -name "${pr_number}-*.json" 2>/dev/null \
       | LC_ALL=C sort | tail -1)
     [ -n "$pin_value" ] && pin_value=$(basename "$pin_value")
     if mkdir -p "$pin_root/.rite/state" 2>/dev/null && printf '%s\n' "$pin_value" > "$pin_file" 2>/dev/null; then
@@ -356,6 +363,12 @@ rationale: references/rationale.md#lost-repair-gate
 `max_review_cycles` は marker 依存を避けるため config から silent 再読込する（検証・WARNING はステップ 0.6 で実施済）:
 
 ```bash
+# ステップ 0.6 と同じ pr_number guard（未置換のパスで pin を読まない）。
+pr_number="{pr_number}"
+case "$pr_number" in
+  ''|*[!0-9]*) echo "ERROR: iterate ステップ 1: pr_number が数値に置換されていません (値: '$pr_number')。PR 番号を確認して再実行してください" >&2; exit 1 ;;
+esac
+
 # 診断スニペット用 helper（ステップ 0.6 (0) と同型 — 縮退時の WARNING 告知まで含めて同じ。
 # Bash tool 呼び出し間でシェル状態は引き継がれないため、fire_out を表示する本ブロックでも
 # 独立に読み込む）。
@@ -391,11 +404,11 @@ run_since_used=pin
 if [ -z "$pin_root" ]; then
   run_since_used=unresolved-root
   echo "WARNING: state-path-resolve.sh を実行できませんでした（プラグインの破損 / 版 skew）。run 開始点 pin を読めないため、発散判定は run 境界を確定できず判定を降ろします（max_review_cycles の backstop のみが働きます）" >&2
-elif [ ! -f "$pin_root/.rite/state/review-run-since-{pr_number}.txt" ]; then
+elif [ ! -f "$pin_root/.rite/state/review-run-since-${pr_number}.txt" ]; then
   run_since_used=absent
   echo "WARNING: run 開始点 pin が未記録です（ステップ 0.6 の書き込み失敗、または pin 導入前から継続中の run）。前 run の結果が同居していれば発散判定は判定を降ろします" >&2
 else
-  run_since=$(head -1 "$pin_root/.rite/state/review-run-since-{pr_number}.txt" | tr -d '[:space:]')
+  run_since=$(head -1 "$pin_root/.rite/state/review-run-since-${pr_number}.txt" | tr -d '[:space:]')
   if [ -z "$run_since" ]; then
     # pin ファイルはあるが中身が空（結果 0 件の新規 PR で記録された pin）。helper へ渡る値は
     # 不在時と同一（全件読み）なので、marker も `absent` と同義にして「pin を使えている」と
@@ -1176,6 +1189,7 @@ handoff 迂回のリスクは (b) には含めない。迂回が成立するの�
 ## エラー時の方針
 
 - ユーザーが Ctrl+C で中断した場合: flow-state に現 phase (review or fix) が残るので `/rite:recover` で本コマンドが再起動する (詳細な phase → command routing は [skills/recover/SKILL.md](../recover/SKILL.md) Phase 5.3 を参照)
+- ステップ 0.6 / 1 が `pr_number が数値に置換されていません` の ERROR で止まった場合: marker を待たずに停止し、PR 番号を数値で置換して当該ステップから再実行する
 - `[fix:error]` 時: [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) に従い 1 回だけ自動再試行し、再失敗時は停止する
 - reviewer が non-deterministic に振動する場合: 収束トレンドの発散または `safety.max_review_cycles`（既定 15）到達でステップ 6 に進み、人間に問わず停止する。batch は `[iterate:max-cycles-reached]` で当該 Issue を failed 扱いにしてバッチを停止し、対話は `[iterate:max-cycles-stopped]` で終了する。再開は `/rite:iterate {pr_number}` の明示的な再実行で行う。
 
