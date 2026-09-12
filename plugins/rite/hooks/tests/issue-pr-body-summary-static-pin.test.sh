@@ -96,6 +96,9 @@ done
 # Extract the real Decision Log awk program, including its historical boundaries.
 awk '/NEW_LINE="\$new_line" awk '\''/ { active=1; next } active && /^  '\''/ { exit } active { print }' \
   "$PLUGIN_ROOT/skills/pr-review/references/scope-triage.md" > "$work/append.awk"
+# The extraction anchors on one call site; pin that it is unique and is the Section 9 append, not the creation awk.
+assert 'Decision Log append awk call site is unique' 1 "$(grep -cF 'NEW_LINE="$new_line" awk '"'" "$PLUGIN_ROOT/skills/pr-review/references/scope-triage.md")"
+assert_grep 'extracted awk is the Section 9 append' "$work/append.awk" 'END \{ if \(in_section\)'
 for boundary in '</details>' '## Following section' '---' ''; do
   printf '## 9. Decision Log\n- D-01: existing\n' > "$work/log.md"
   [ -z "$boundary" ] || printf '%s\n' "$boundary" >> "$work/log.md"
@@ -104,6 +107,136 @@ for boundary in '</details>' '## Following section' '---' ''; do
   [ -z "$boundary" ] || printf '%s\n' "$boundary" >> "$work/expected.md"
   if cmp -s "$work/expected.md" "$work/appended.md"; then pass "append before boundary: ${boundary:-EOF}"; else fail "append boundary: ${boundary:-EOF}"; fi
 done
+
+# Execute the real Decision Log Append block; gh / date / awk failures are local mocks, never the CLI.
+triage="$PLUGIN_ROOT/skills/pr-review/references/scope-triage.md"
+awk '/^#### 7\.4\.3 / { sec=1 } sec && /^```bash$/ { active=1; next } active && /^```$/ { exit } active { print }' "$triage" > "$work/dl-block.sh"
+assert_grep 'Decision Log block extracted' "$work/dl-block.sh" 'section=created'
+dl_code=$(cat "$work/dl-block.sh")
+dl_code=${dl_code//\{decision\}/decided}
+dl_code=${dl_code//\{reason\}/why}
+dl_code=${dl_code//\{impact\}/what}
+dl_code=${dl_code//\{source_issue_number\}/7}
+dl_code=${dl_code//\{owner_repo\}/example\/repo}
+printf '%s\n' "$dl_code" > "$work/dl.sh"
+assert_not_grep 'Decision Log block has no placeholder residue' "$work/dl.sh" '(^|[^$])\{[a-z_]+\}'
+mkdir "$work/dl-bin" "$work/awk-fail"
+cat > "$work/dl-bin/gh" <<'MOCK'
+#!/bin/bash
+jq -cn --args '$ARGS.positional' -- "$@" >> "$MOCK_LOG"
+if [ "$1 $2" = 'issue view' ]; then cat "$MOCK_BODY"; fi
+if [ "$1 $2" = 'issue edit' ]; then
+  while [ $# -gt 0 ]; do [ "$1" = --body-file ] && cp "$2" "$MOCK_EDITED"; shift; done
+fi
+MOCK
+printf '#!/bin/bash\necho 2026-01-02\n' > "$work/dl-bin/date"
+# Only the AWK_FAIL_AT-th awk call fails, so each exit-status capture in the block is pinned on its own.
+cat > "$work/awk-fail/awk" <<'MOCK'
+#!/bin/bash
+echo call >> "$AWK_LOG"
+if [ "$(wc -l < "$AWK_LOG" | tr -d ' ')" -ne "$AWK_FAIL_AT" ]; then exec "$REAL_AWK" "$@"; fi
+if [ "$AWK_FAIL_MODE" = partial ]; then IFS= read -r first; printf '%s\n' "$first"; exit 2; fi
+cat > /dev/null
+exit 0
+MOCK
+chmod +x "$work/dl-bin/gh" "$work/dl-bin/date" "$work/awk-fail/awk"
+REAL_AWK=$(command -v awk)
+export REAL_AWK
+dl_line='- 2026-01-02 D-01: decided / Reason: why / Impact: what'
+run_decision_log() {
+  local name="$1" body="$2" extra_path="${3:-}" rc=0
+  : > "$work/$name.argv"; : > "$work/$name.awklog"
+  AWK_LOG="$work/$name.awklog" MOCK_LOG="$work/$name.argv" MOCK_BODY="$body" MOCK_EDITED="$work/$name.edited" \
+    PATH="${extra_path:+$extra_path:}$work/dl-bin:$PATH" bash "$work/dl.sh" > "$work/$name.out" 2> "$work/$name.err" || rc=$?
+  assert "Decision Log $name exit status" 0 "$rc"
+}
+edit_count() { jq -s '[.[] | select(.[0:2] == ["issue", "edit"] and index("--body-file") != null)] | length' "$work/$1.argv"; }
+heading_count() { grep -c '^## 9\. Decision Log' "$work/$1.edited" || true; }
+
+# Section 9 is created inside the contract details, before </details> and not before the footer rule.
+cat > "$work/contract-body.md" <<'BODY'
+**Type**: fix
+
+## 要約
+
+free text
+---
+
+<details>
+<summary>Implementation Contract（契約）</summary>
+
+## 8. Definition of Done
+
+- [ ] done
+
+</details>
+
+---
+
+🤖 Generated with rite
+BODY
+details_at=$(grep -n '^</details>$' "$work/contract-body.md" | cut -d: -f1)
+{ head -n $((details_at - 1)) "$work/contract-body.md"; printf '## 9. Decision Log\n\n%s\n\n' "$dl_line"; tail -n +"$details_at" "$work/contract-body.md"; } > "$work/contract-expected.md"
+run_decision_log contract "$work/contract-body.md"
+assert_grep 'created marker names D-01 and section=created' "$work/contract.out" 'DECISION_LOG_APPENDED=1; issue=7; entry=D-01; section=created'
+assert 'created section edits once' 1 "$(edit_count contract)"
+if cmp -s "$work/contract-expected.md" "$work/contract.edited"; then pass 'created section keeps every other line'; else fail 'created section changed other lines'; fi
+assert 'created section heading appears once' 1 "$(heading_count contract)"
+if awk -v l="$dl_line" '/^<details>/ { o=NR } $0 == l { d=NR } /^<\/details>/ { c=NR } END { exit !(o && o < d && d < c) }' "$work/contract.edited"; then
+  pass 'created D-01 sits inside details'
+else fail 'created D-01 outside details'; fi
+assert 'pr-create reads one decision from created section' 1 \
+  "$(awk '/^## 9\. Decision Log/ { s=1; next } s && (/^## / || /^<\/details>/) { exit } s && /D-[0-9]+:/ { n++ } END { print n+0 }' "$work/contract.edited")"
+
+# CRLF bodies keep their bytes; only the inserted lines are added.
+sed 's/$/\r/' "$work/contract-body.md" > "$work/crlf-body.md"
+{ head -n $((details_at - 1)) "$work/crlf-body.md"; printf '## 9. Decision Log\n\n%s\n\n' "$dl_line"; tail -n +"$details_at" "$work/crlf-body.md"; } > "$work/crlf-expected.md"
+run_decision_log crlf "$work/crlf-body.md"
+if cmp -s "$work/crlf-expected.md" "$work/crlf.edited"; then pass 'CRLF body gets section before </details>'; else fail 'CRLF body insertion'; fi
+
+# No details: a footer rule followed only by the signature is the boundary.
+printf '<!-- rite:marker -->\n**Type**: fix\n\n## 概要\n\ntext\n\n---\n\n🤖 Generated with rite\n' > "$work/footer-body.md"
+printf '<!-- rite:marker -->\n**Type**: fix\n\n## 概要\n\ntext\n\n## 9. Decision Log\n\n%s\n\n---\n\n🤖 Generated with rite\n' "$dl_line" > "$work/footer-expected.md"
+run_decision_log footer "$work/footer-body.md"
+if cmp -s "$work/footer-expected.md" "$work/footer.edited"; then pass 'marker body gets section before footer rule'; else fail 'marker body footer insertion'; fi
+assert 'footer body heading appears once' 1 "$(heading_count footer)"
+
+# Free-text rule / </details> lines are not boundaries; the section goes to the end.
+printf '<!-- rite:follow-up -->\n## 残存非実測指摘\n\n- 説明: before\n---\n</details>\n- 提案: after\n' > "$work/freetext-body.md"
+{ cat "$work/freetext-body.md"; printf '\n## 9. Decision Log\n\n%s\n' "$dl_line"; } > "$work/freetext-expected.md"
+run_decision_log freetext "$work/freetext-body.md"
+if cmp -s "$work/freetext-expected.md" "$work/freetext.edited"; then pass 'free-text rule body gets section at end'; else fail 'free-text rule body insertion'; fi
+assert 'free-text body heading appears once' 1 "$(heading_count freetext)"
+
+# The created section is the Section 9 of the next append.
+run_decision_log existing "$work/contract.edited"
+assert_grep 'existing section appends D-02' "$work/existing.out" 'DECISION_LOG_APPENDED=1; issue=7; entry=D-02$'
+assert_not_grep 'existing section is not reported as created' "$work/existing.out" 'section=created'
+assert 'existing section heading stays single' 1 "$(heading_count existing)"
+if awk '/ D-01: / { a=NR } / D-02: / { b=NR } /^<\/details>/ { c=NR } END { exit !(a && a < b && b < c) }' "$work/existing.edited"; then
+  pass 'D-02 follows D-01 inside details'
+else fail 'D-02 position'; fi
+
+# A failing or empty body build never writes back, whichever awk call fails.
+for fail in partial:1 partial:2 empty:2; do
+  mode=${fail%%:*}
+  at=${fail##*:}
+  name="awk-$mode-$at"
+  AWK_FAIL_MODE=$mode AWK_FAIL_AT=$at run_decision_log "$name" "$work/footer-body.md" "$work/awk-fail"
+  if [ "$(wc -l < "$work/$name.awklog" | tr -d ' ')" -ge "$at" ]; then pass "$name mock reached the failing call"; else fail "$name mock did not reach the failing call"; fi
+  assert "$name does not edit" 0 "$(edit_count "$name")"
+  assert_not_grep "$name reports no append" "$work/$name.out" 'DECISION_LOG_APPENDED'
+  assert_grep "$name reports gh_edit_failure" "$work/$name.err" 'DECISION_LOG_APPEND_FAILED=1; reason=gh_edit_failure'
+  assert_grep "$name prints the pending line" "$work/$name.err" 'D-01: decided'
+done
+
+# The work-memory fallback is gone from the Decision Log contract.
+for gone in 'issue-comment-wm-sync' 'wm_sync_failure' 'fallback=work_memory' '決定事項・メモ'; do
+  if grep -qF -- "$gone" "$triage"; then fail "scope-triage still mentions $gone"; else pass "scope-triage has no $gone"; fi
+done
+awk '/^#### 7\.4\.3 / { s=1; print; next } s && /^#### / { exit } s { print }' "$triage" > "$work/dl-section.md"
+assert_not_grep 'Decision Log section has no work memory route' "$work/dl-section.md" '作業メモリ'
+assert 'Decision Log failure table has three reasons' 3 "$(grep -cE '^\| `[a-z_]+_failure` \|' "$work/dl-section.md" || true)"
 
 # Consumer headings/checklist syntax remains observable through a details wrapper.
 cat > "$work/contract.md" <<'BODY'
