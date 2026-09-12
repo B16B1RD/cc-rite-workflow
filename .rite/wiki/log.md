@@ -1,5 +1,6 @@
 ## 2026-09-12
 
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=481, broken_refs=0
 * **Skip**: [20260912T165427Z-pr-2749.md](raw/reviews/20260912T165427Z-pr-2749.md) — 文書の限定表現を実装に揃えるだけの変更で指摘 0 件のまま 1 cycle で収束しており、繰り返し使える domain 経験則を含まない。推奨事項は rite 自身の文書とテストの運用に関するもので Wiki の対象外
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=480, broken_refs=0
 * **Skip**: [20260912T160010Z-pr-2745.md](raw/reviews/20260912T160010Z-pr-2745.md) — 文書同期だけの変更で指摘 0 件のまま 1 cycle で収束しており、繰り返し使える経験則を含まない。推奨事項は rite 自身の文書の言い回しに関するもので Wiki の対象外
