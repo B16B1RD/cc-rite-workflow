@@ -18,6 +18,9 @@
 * **Update**: [`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) — [レビュー結果](raw/reviews/20260911T154811Z-pr-2694.md) を統合。`grep -c . >/dev/null` は述語を変えず SIGPIPE 経路だけを消す。発火確率は上流の出力行数に比例し、同型箇所は同じ形に揃える
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=473, broken_refs=0
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=474, broken_refs=0
+* **Create**: [squash 昇格後の back-merge は衝突を前提に、復旧手順の衝突分岐を人間への引き渡し経路として書く](pages/heuristics/squash-promotion-back-merge-conflict-handoff.md) — [昇格履歴の乖離検出に対するレビュー結果](raw/reviews/20260912T030029Z-pr-2712.md) を新規ページ化
+* **Update**: [squash 昇格後の back-merge は衝突を前提に、復旧手順の衝突分岐を人間への引き渡し経路として書く](pages/heuristics/squash-promotion-back-merge-conflict-handoff.md) — [昇格履歴の乖離検出の fix 結果](raw/fixes/20260912T030431Z-pr-2712-fix1.md) を統合
+* **Skip**: [20260912T030759Z-pr-2712-c2.md](raw/reviews/20260912T030759Z-pr-2712-c2.md) — 差分スコープ再レビューの収束記録のみで、前サイクルの raw に記録済みの経験則以外は含まれない
 
 ## 2026-09-11
 
