@@ -238,8 +238,9 @@ elif printf '%s' "$body" | grep -q '^## 9\. Decision Log'; then
     in_section && (/^## / || /^---[[:space:]]*$/ || /^<\/details>/) { in_section=0 }
     in_section { print }
   ') || awk_rc=$?
-  # `(^|[^A-Za-z])D-[0-9]+` で先頭境界を要求し、`CARD-12` 等の部分文字列誤マッチを防ぐ
-  max_d=$(printf '%s\n' "$section9" | grep -oE '(^|[^A-Za-z])D-[0-9]+' | grep -oE '[0-9]+' | sort -n | tail -1)
+  # `(^|[^A-Za-z])D-[0-9]+` で先頭境界を要求し、`CARD-12` 等の部分文字列誤マッチを防ぐ。
+  # 境界の 1 文字も match に含まれるため、`D-[0-9]+` だけを取り出してから数字を読む（`9D-02` の 9 を数えない）
+  max_d=$(printf '%s\n' "$section9" | grep -oE '(^|[^A-Za-z])D-[0-9]+' | grep -oE 'D-[0-9]+' | grep -oE '[0-9]+' | sort -n | tail -1)
   [ -n "$max_d" ] || max_d=0
   # 10# で 10 進固定。先頭ゼロ付き 08/09 を 8 進と解釈させない
   next_num=$((10#$max_d + 1))

@@ -245,6 +245,10 @@ assert_not_grep 'prose body skips no number' "$work/prose-appended.edited" ' D-(
 printf '## 要約\n\n- 説明: D-07 を参照\n\n## 9. Decision Log\n\n- 2026-01-01 D-03: earlier / CARD-12 は別物\n\n---\n\n- 提案: D-08 を参照\n' > "$work/max-body.md"
 run_decision_log max "$work/max-body.md"
 assert_grep 'Section 9 maximum D-03 appends D-04' "$work/max.out" 'entry=D-04$'
+# A digit directly before D-NN in a record is not part of the number.
+printf '## 9. Decision Log\n\n- 2026-01-01 D-01: a\n- 2026-01-01 D-02: b\n- 2026-01-01 D-03: c\n- 2026-01-01 D-04: see 9D-02\n' > "$work/digit-body.md"
+run_decision_log digit "$work/digit-body.md"
+assert_grep 'digit before D-NN still appends D-05' "$work/digit.out" 'entry=D-05$'
 
 # A failing numbering scan or append awk on an existing Section 9 never writes back.
 for fail in partial:1 partial:2; do
