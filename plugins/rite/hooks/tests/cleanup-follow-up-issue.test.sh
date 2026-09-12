@@ -48,6 +48,15 @@
 #   T-25b 除外処理の jq 失敗でも件数付き marker を出し全 finding を保持する
 #   T-27 除外拒否後の検索・起票失敗を成功として報告しない
 #   T-28 再検証用一時ファイルの確保失敗を明示する
+#
+# Coverage (sweep 起票済み除外):
+#   T-29 全件が sweep で issued なら all_issued で起票しない (--exclude-ids との合成を含む)
+#   T-30 issued だけを除き recorded は転記する / 記録コメント以外・issued 以外の行では除外しない
+#   T-31 台帳を読めない (API 失敗 / 解析不能 / 関連 Issue 無し) ときは WARNING + marker で全件転記
+#   T-32 台帳が無い PR は従来どおり全件転記
+#   T-33 除外 key は [finding_id, file:line] の組 (cycle を跨ぐ同じ組は全件除外)
+#   T-34 cleanup SKILL.md が all_issued と除外不能 note を完了報告へ配線する
+#   T-35 台帳の選別述語が nb-sweep-collect.sh と揃っている
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -111,6 +120,15 @@ case "$cmd" in
     echo "gh $*" >> "${GH_COMMENT_LOG:-/dev/null}"
     exit "${GH_COMMENT_RC:-0}"
     ;;
+  # 却下台帳の取得元は関連 Issue のコメント全ページ。取得先と pagination 指定まで一致したときだけ応答する
+  "api --paginate --slurp repos/acme/demo/issues/42/comments")
+    if [ -n "${GH_API_RC:-}" ] && [ "${GH_API_RC}" != "0" ]; then
+      echo "gh: simulated api failure" >&2
+      exit "$GH_API_RC"
+    fi
+    cat "${GH_API_JSON:-/dev/null}"
+    exit 0
+    ;;
 esac
 echo "unexpected gh: $*" >&2
 exit 1
@@ -161,6 +179,9 @@ reset_stubs() {
   export GH_LIST_JSON="$STUB_DIR/list.json"
   export GH_LIST_RC=0
   export GH_COMMENT_RC=0
+  export GH_API_JSON="$STUB_DIR/comments.json"
+  export GH_API_RC=0
+  printf '%s\n' '[[]]' > "$GH_API_JSON"
   unset CREATE_RC
   unset CREATE_REG
   unset RITE_TEST_JQ_FAIL
@@ -212,6 +233,7 @@ assert_grep "T-01 projects enabled true" "$STUB_DIR/args.json" '"enabled": true'
 assert_grep "T-01 gh --label follow-up" "$GH_LOG" 'label follow-up'
 assert_not_grep "T-01 gh は Search API を使わない" "$GH_LOG" 'rite-follow-up-from-pr'
 assert_grep "T-02 元 Issue へコメント" "$GH_COMMENT_LOG" 'issue comment 42'
+assert_not_grep "T-01 台帳取得は成功経路" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable'
 
 echo "--- T-03: 起票 API 失敗は WARNING + exit 0 ---"
 reset_stubs
@@ -265,6 +287,7 @@ run_target "$r"
 assert "T-04 exit 0" "0" "$RC"
 assert_grep "T-04 skipped no_findings" "$ERR" 'reason=no_findings; pr=9'
 assert "T-04 create 0 回" "0" "$(create_count)"
+assert_not_grep "T-04 台帳取得 (gh api) を叩かない" "$GH_LOG" '^gh api '
 
 echo "--- T-05: 既存 marker なら重複起票しない ---"
 reset_stubs
@@ -388,6 +411,7 @@ assert "T-06 exit 0" "0" "$RC"
 assert_grep "T-06 skipped no_json" "$ERR" 'reason=no_json; pr=9'
 assert_grep "T-06 WARNING" "$ERR" 'レビュー結果 JSON が見つかりません'
 assert "T-06 create 0 回" "0" "$(create_count)"
+assert_not_grep "T-06 台帳取得 (gh api) を叩かない" "$GH_LOG" '^gh api '
 
 echo "--- T-07: 同定 API 失敗は起票しない ---"
 reset_stubs
@@ -491,6 +515,7 @@ assert_grep "T-12 stdout summary も all_resolved" "$OUT" 'result=skipped; reaso
 assert "T-12 create 0 回" "0" "$(create_count)"
 # 除外判定が already_exists lookup より前に立つことの観測条件 (全件除外ケース限定)
 assert_not_grep "T-12 gh issue list を叩かない" "$GH_LOG" 'issue list'
+assert_not_grep "T-12 台帳取得 (gh api) を叩かない" "$GH_LOG" '^gh api '
 assert_not_grep "T-12 no_findings には倒さない" "$ERR" 'reason=no_findings'
 
 echo "--- T-13: 未知 id は WARNING + 既知分だけ除外して起票継続 (AC-3) ---"
@@ -933,6 +958,153 @@ else
   assert_grep "T-28 unavailable marker" "$OUT" 'FOLLOW_UP_REVERIFY=unavailable; reason=parse_failed'
   assert_not_grep "T-28 JSON 破損と断定しない" "$ERR" '1 本も解析できません'
 fi
+
+# $1=本文。関連 Issue 記録コメント 1 件分の JSON object を出す
+comment_obj() { jq -n --arg b "$1" '{body: $b}'; }
+# $1=台帳行 (改行区切り)。見出し + 却下台帳 + 最終行 sentinel を持つ記録コメント本文
+record_body() {
+  printf '%s\n' '## 📜 rite 非実測指摘の記録 (non-blocking)' '' '本 cycle の非実測指摘: 2 件' '' \
+    '### 却下台帳' '' '| finding_id | file:line | 判定 | 判定文 |' '|------------|-----------|------|--------|' \
+    "$1" '' '📎 non_blocking_count: 2' '📎 reviewed_commit: abc' '' '<!-- rite:nbr:v1 -->'
+}
+ISSUED_A='| F-01 | a.md:3 | issued | #77 https://example.test/issues/77 |'
+
+echo "--- T-29: sweep 起票済みだけが残るなら起票しない ---"
+reset_stubs
+r=$(new_root t29)
+put_json "$r" "9-20260101120000.json" "$FINDING_JSON"
+jq -n --argjson c "$(comment_obj "$(record_body '| F-01 | plugins/rite/skills/cleanup/SKILL.md:12 | issued | #77 https://example.test/issues/77 |')")" '[[$c]]' > "$GH_API_JSON"
+run_target "$r"
+assert "T-29 exit 0" "0" "$RC"
+assert_grep "T-29 all_issued marker" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=all_issued; pr=9'
+assert_grep "T-29 stdout summary も all_issued" "$OUT" 'result=skipped; reason=all_issued; pr=9'
+assert "T-29 create 0 回" "0" "$(create_count)"
+assert_grep "T-29 除外件数を出す" "$ERR" '^\[cleanup-follow-up-issue\] sweep_issued: pr=9; excluded=1$'
+assert_not_grep "T-29 gh issue list を叩かない" "$GH_LOG" 'issue list'
+assert_not_grep "T-29 除外不能に倒さない" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable'
+
+reset_stubs
+r=$(new_root t29b)
+put_json "$r" "9-20260101120000.json" "$TWO_FINDING_JSON"
+jq -n --argjson c "$(comment_obj "$(record_body "$ISSUED_A")")" '[[$c]]' > "$GH_API_JSON"
+run_target "$r" --exclude-ids "F-05"
+assert "T-29b 解消済み + 起票済みで 0 件は起票しない" "0" "$(create_count)"
+assert_grep "T-29b 最後の除外で 0 件なら all_issued" "$ERR" 'reason=all_issued; pr=9'
+assert_not_grep "T-29b all_resolved に倒さない" "$ERR" 'reason=all_resolved'
+
+echo "--- T-30: issued だけを除き recorded は転記する (2 ページ目の台帳) ---"
+reset_stubs
+r=$(new_root t30)
+put_json "$r" "9-20260101120000.json" "$TWO_FINDING_JSON"
+jq -n --argjson u "$(comment_obj '作業メモリ')" \
+  --argjson c "$(comment_obj "$(record_body "$(printf '%s\n%s' "$ISSUED_A" '| F-05 | b.md:9 | recorded | severity=LOW; measured=false |')")")" \
+  '[[$u],[$c]]' > "$GH_API_JSON"
+run_target "$r"
+assert "T-30 exit 0" "0" "$RC"
+assert_grep "T-30 created" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
+assert "T-30 create 1 回" "1" "$(create_count)"
+assert_grep "T-30 recorded の finding は転記する" "$STUB_DIR/body.md" 'b.md:9'
+assert_not_grep "T-30 issued の finding は転記しない" "$STUB_DIR/body.md" 'a.md:3'
+assert_not_grep "T-30 issued の description も載らない" "$STUB_DIR/body.md" '残存する指摘の本文'
+assert_grep "T-30 除外件数 1" "$ERR" 'sweep_issued: pr=9; excluded=1$'
+assert_grep "T-30 取得先は関連 Issue の全ページ" "$GH_LOG" '^gh api --paginate --slurp repos/acme/demo/issues/42/comments$'
+
+for variant in no_heading no_sentinel not_issued; do
+  reset_stubs
+  r=$(new_root "t30-$variant")
+  put_json "$r" "9-20260101120000.json" "$TWO_FINDING_JSON"
+  case "$variant" in
+    no_heading)  _body=$(record_body "$ISSUED_A" | sed '1s/.*/## 別のコメント/') ;;
+    no_sentinel) _body=$(record_body "$ISSUED_A" | sed '$s/.*/末尾は別の行/') ;;
+    not_issued)  _body=$(record_body "$(printf '%s\n%s' '| F-01 | a.md:3 | recorded | severity=LOW; measured=false |' '| F-05 | b.md:9 | rejected | 旧形式 |')") ;;
+  esac
+  jq -n --argjson c "$(comment_obj "$_body")" '[[$c]]' > "$GH_API_JSON"
+  run_target "$r"
+  assert_grep "T-30 $variant は除外しない (a.md)" "$STUB_DIR/body.md" 'a.md:3'
+  assert_grep "T-30 $variant は除外しない (b.md)" "$STUB_DIR/body.md" 'b.md:9'
+  assert_grep "T-30 $variant の除外件数 0" "$ERR" 'sweep_issued: pr=9; excluded=0$'
+done
+
+echo "--- T-31: 台帳を読めないときは除外せず転記し WARNING + marker ---"
+reset_stubs
+export GH_API_RC=1
+r=$(new_root t31)
+put_json "$r" "9-20260101120000.json" "$TWO_FINDING_JSON"
+run_target "$r"
+assert "T-31 exit 0" "0" "$RC"
+assert_grep "T-31 WARNING" "$ERR" 'WARNING: 関連 Issue #42 のコメント取得に失敗しました'
+assert_grep "T-31 unavailable marker" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=comments_api; pr=9'
+assert_grep "T-31 gh の原因行を surface" "$ERR" 'simulated api failure'
+assert_grep "T-31 全件転記 (a.md)" "$STUB_DIR/body.md" 'a.md:3'
+assert_grep "T-31 全件転記 (b.md)" "$STUB_DIR/body.md" 'b.md:9'
+assert_not_grep "T-31 除外件数を出さない" "$ERR" 'sweep_issued:'
+
+reset_stubs
+printf '%s\n' '{"message":"not pages"}' > "$GH_API_JSON"
+r=$(new_root t31b)
+put_json "$r" "9-20260101120000.json" "$TWO_FINDING_JSON"
+run_target "$r"
+assert_grep "T-31b 解析不能は ledger_invalid" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=ledger_invalid; pr=9'
+assert "T-31b 起票は継続する" "1" "$(create_count)"
+
+reset_stubs
+r=$(new_root t31c)
+put_json "$r" "9-20260101120000.json" "$TWO_FINDING_JSON"
+PATH="$TMP_ROOT/bin:$PATH" \
+  bash "$TARGET" --state-root "$r" --pr 9 --owner acme --repo demo \
+    --projects-enabled false --create-script "$CREATE_STUB" >"$OUT" 2>"$ERR"
+RC=$?
+assert "T-31c exit 0" "0" "$RC"
+assert_grep "T-31c 関連 Issue 無しは no_source_issue" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=no_source_issue; pr=9'
+assert_grep "T-31c WARNING" "$ERR" 'WARNING: 関連 Issue が無いため却下台帳を読めません'
+assert "T-31c 起票は継続する" "1" "$(create_count)"
+assert_not_grep "T-31c 台帳取得 (gh api) を叩かない" "$GH_LOG" '^gh api '
+
+echo "--- T-32: 台帳が無い PR は従来どおり全件転記 ---"
+reset_stubs
+r=$(new_root t32)
+put_json "$r" "9-20260101120000.json" "$TWO_FINDING_JSON"
+jq -n --argjson c "$(comment_obj '作業メモリ')" '[[$c]]' > "$GH_API_JSON"
+run_target "$r"
+assert_grep "T-32 created" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
+assert_grep "T-32 a.md を転記" "$STUB_DIR/body.md" 'a.md:3'
+assert_grep "T-32 b.md を転記" "$STUB_DIR/body.md" 'b.md:9'
+assert_not_grep "T-32 除外不能に倒さない" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable'
+
+echo "--- T-33: 除外 key は [finding_id, file:line] の組 ---"
+reset_stubs
+r=$(new_root t33)
+put_json "$r" "9-20260101120000.json" "$TWO_FINDING_JSON"
+jq -n --argjson c "$(comment_obj "$(record_body '| F-01 | b.md:9 | issued | #77 https://example.test/issues/77 |')")" '[[$c]]' > "$GH_API_JSON"
+run_target "$r"
+assert_grep "T-33 id だけ一致する finding は除外しない" "$STUB_DIR/body.md" 'a.md:3'
+assert_grep "T-33 位置だけ一致する finding は除外しない" "$STUB_DIR/body.md" 'b.md:9'
+assert_grep "T-33 除外件数 0" "$ERR" 'sweep_issued: pr=9; excluded=0$'
+
+reset_stubs
+r=$(new_root t33b)
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-01","file":"a.md","line":3,"description":"cycle1"}]}'
+put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-01","file":"a.md","line":3,"description":"cycle2"},{"id":"F-02","file":"c.md","line":1,"description":"別の指摘"}]}'
+jq -n --argjson c "$(comment_obj "$(record_body "$ISSUED_A")")" '[[$c]]' > "$GH_API_JSON"
+run_target "$r"
+assert_grep "T-33b 別 key の finding は転記" "$STUB_DIR/body.md" 'c.md:1'
+assert_not_grep "T-33b 同じ組の再報告は全 cycle 分を除外" "$STUB_DIR/body.md" 'a.md:3'
+assert_grep "T-33b 除外件数 2" "$ERR" 'sweep_issued: pr=9; excluded=2$'
+assert_not_grep "T-33b 曖昧 marker を出さない" "$ERR" 'FOLLOW_UP_EXCLUDE_AMBIGUOUS'
+
+echo "--- T-34: cleanup SKILL.md が sweep 起票済み除外の結果を完了報告へ配線する ---"
+assert_grep "T-34 all_issued を x 相当に置く" "$CLEANUP_MD" '^  \| `created` .*`skipped; reason=all_issued` .*\| x 相当 \|'
+assert_grep "T-34 sweep note の定義" "$CLEANUP_MD" '^- `\{follow_up_sweep_note\}`:'
+assert_grep "T-34 sweep note は unavailable marker を読む" "$CLEANUP_MD" 'FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=\{r\}; pr=\{pr_number\}'
+assert_grep "T-34 完了報告に sweep note を差し込む" "$CLEANUP_MD" '\{follow_up_reverify_note\}\{follow_up_ambiguous_note\}\{follow_up_sweep_note\}'
+
+echo "--- T-35: 台帳の選別述語が nb-sweep-collect.sh と揃っている ---"
+COLLECT_SH="$SCRIPT_DIR/../scripts/nb-sweep-collect.sh"
+for f in "$TARGET" "$COLLECT_SH"; do
+  assert_grep "T-35 見出し ($(basename "$f"))" "$f" 'select\(startswith\("## 📜 rite 非実測指摘の記録"\)\)'
+  assert_grep "T-35 sentinel ($(basename "$f"))" "$f" '== "<!-- rite:nbr:v1 -->"\)'
+  assert_grep "T-35 台帳節の切り出し ($(basename "$f"))" "$f" 'split\("### 却下台帳\\n"\)\[1:\]\[\]'
+done
 
 echo "--- T-arg: 引数 gate ---"
 bash "$TARGET" --pr abc --state-root "$TMP_ROOT" --owner a --repo b >"$OUT" 2>"$ERR"; RC=$?

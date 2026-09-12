@@ -7,7 +7,8 @@
 #
 # 転記対象は**同一 PR の全 JSON の `non_blocking_findings[]` の和集合**。各 JSON はその cycle の
 # 観測にすぎず、最新 1 本は残存集合ではない (先行 cycle にのみ載る指摘を取りこぼす)。解消済みの
-# 除外は cleanup ステップ 6.0.V の再検証が `--exclude-ids` で担う。
+# 除外は cleanup ステップ 6.0.V の再検証が `--exclude-ids` で担う。iterate の NB sweep で起票済みの
+# 指摘 (関連 Issue 記録コメントの却下台帳で判定=issued) は本 helper が台帳を読んで除外する。
 #
 # 転記元は archive 前の JSON。archive helper は本スクリプトの後に走る (D-04)。
 #
@@ -20,7 +21,8 @@
 #   --pr                 PR 番号 (数値)。必須
 #   --owner              repo owner (-R 用)。必須
 #   --repo               repo name。必須
-#   --source-issue       元 Issue 番号。空 / 省略可
+#   --source-issue       元 Issue 番号。空 / 省略可。却下台帳 (sweep 起票済み判定) の取得元でもあり、
+#                        空なら除外不能として FOLLOW_UP_SWEEP_ISSUED=unavailable (no_source_issue) を出す
 #   --project-number     Projects 番号。projects-enabled=true のとき必須。
 #                        非数値なら WARNING のうえ Projects を無効化して起票する
 #   --project-owner      Projects owner。省略時は --owner
@@ -42,9 +44,10 @@
 #
 # Emitted markers (stderr):
 #   [CONTEXT] FOLLOW_UP_ISSUE=created; issue=<n>; pr=<n>
-#   [CONTEXT] FOLLOW_UP_ISSUE=skipped; reason=no_findings|all_resolved|no_json|already_exists|jq_missing; pr=<n>
+#   [CONTEXT] FOLLOW_UP_ISSUE=skipped; reason=no_findings|all_resolved|all_issued|no_json|already_exists|jq_missing; pr=<n>
 #     no_findings  : parse できた JSON の和集合が、除外を適用する前から 0 件
 #     all_resolved : 除外**後**に 0 件になった (再検証で全件が解消済みと判定された)
+#     all_issued   : sweep 起票済みの除外**後**に 0 件になった (残りが全件 sweep で Issue 化済み)
 #   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=lookup_api|create_api|create_script_missing|json_undecidable; pr=<n>
 #   [CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=<r>; count=<n|unknown>; pr=<n>
 #     除外要求どおりに除外できなかったことを cleanup ステップ 12 へ通知する。
@@ -55,6 +58,12 @@
 #                             count = 除外要求 id の総数 (適用された除外は 0 件)
 #       reason=parse_failed : --exclude-ids を解析できず除外を全破棄した。count=unknown
 #       reason=apply_failed : 除外適用の jq が失敗し除外を全破棄した。count = 要求 id 総数
+#   [CONTEXT] FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=<r>; pr=<n>
+#     sweep 起票済みの除外を適用できず全件を転記対象にした (成功経路では出さない)。
+#       reason=no_source_issue : --source-issue が空
+#       reason=comments_api    : 関連 Issue のコメント取得に失敗
+#       reason=ledger_invalid  : 取得したコメントから却下台帳を解析できない
+#       reason=apply_failed    : 除外適用の jq が失敗
 #
 # Emitted summary (stdout, 1 行):
 #   [cleanup-follow-up-issue] result=<created|skipped|failed>; ...
@@ -326,6 +335,57 @@ if [ -n "$EXCLUDE_IDS" ]; then
   if ! printf '%s' "$findings_json" | jq -e 'length > 0' >/dev/null; then
     emit_skip all_resolved
     exit 0
+  fi
+fi
+
+# iterate の NB sweep が既に Issue 化した指摘 (関連 Issue 記録コメントの却下台帳で判定=issued) を
+# 転記から除く。sweep の起票には follow-up ラベルも先頭行 marker も付かないため、下の既存判定では
+# 見分けられず同じ指摘が二重に Issue 化される。recorded / rejected 行は従来どおり転記する。
+# 除外 key は nb-sweep-collect.sh が台帳照合に使う [finding_id, file:line] の組と同じ形にする。
+# --exclude-ids のような「同じ key が複数 finding に一致したら除外拒否」は行わない: 未解消の指摘は
+# cycle ごとに同じ位置で再報告されるため、拒否すると重複起票がそのまま残る。id 単体と違い
+# 位置まで一致した別の指摘は実質生じない。
+# 台帳を読めないときは除外を適用せず全件を転記し、WARNING と marker で surface する
+# (黙って全件除外にも全件転記にも倒さない)。
+sweep_issued_unavailable() {
+  echo "WARNING: $2。sweep 起票済みの指摘を除外せず転記します (PR #${PR_NUMBER})" >&2
+  echo "[CONTEXT] FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=$1; pr=${PR_NUMBER}" >&2
+}
+if [ -z "$SOURCE_ISSUE" ]; then
+  sweep_issued_unavailable no_source_issue "関連 Issue が無いため却下台帳を読めません"
+else
+  rite_tempfile_new comments_err "fu-comments" || exit 1
+  if ! comments_json=$(gh api --paginate --slurp "repos/${OWNER}/${REPO}/issues/${SOURCE_ISSUE}/comments" 2>"$comments_err"); then
+    sweep_issued_unavailable comments_api "関連 Issue #${SOURCE_ISSUE} のコメント取得に失敗しました"
+    [ -s "$comments_err" ] && tr -d '\r' < "$comments_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+  # 記録コメントの選別 (見出し + 最終非空行 sentinel) と台帳行の分解は nb-sweep-collect.sh と同じ述語。
+  elif ! issued_keys=$(printf '%s' "$comments_json" | jq -ce '
+    def trim: gsub("^\\s+|\\s+$"; "");
+    if type != "array" or any(.[]; type != "array") then error("invalid comment pages") else . end
+    | [ .[][]
+        | .body // ""
+        | select(startswith("## 📜 rite 非実測指摘の記録"))
+        | select((split("\n") | map(sub("\r$"; "")) | map(select(test("\\S"))) | last) == "<!-- rite:nbr:v1 -->")
+        | split("### 却下台帳\n")[1:][]
+        | split("📎 non_blocking_count:")[0] | split("\n### ")[0]
+        | split("\n")[] | select(startswith("|"))
+        | split("|") | map(trim)
+        | select(.[3] == "issued")
+        | [.[1], .[2]] ] | unique' 2>"$comments_err"); then
+    sweep_issued_unavailable ledger_invalid "関連 Issue #${SOURCE_ISSUE} の却下台帳を解析できません"
+    [ -s "$comments_err" ] && head -3 "$comments_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+  elif ! issued_filtered=$(printf '%s' "$findings_json" | jq -c --argjson keys "$issued_keys" '
+    [.[] | select([(.id // ""), ((.file // "") + ":" + (.line | tostring))] as $k | any($keys[]; . == $k) | not)]'); then
+    sweep_issued_unavailable apply_failed "sweep 起票済みの除外適用に失敗しました"
+  else
+    _issued_before=$(printf '%s' "$findings_json" | jq 'length')
+    _issued_after=$(printf '%s' "$issued_filtered" | jq 'length')
+    findings_json="$issued_filtered"
+    echo "[cleanup-follow-up-issue] sweep_issued: pr=${PR_NUMBER}; excluded=$((_issued_before - _issued_after))" >&2
+    if [ "$_issued_after" -eq 0 ]; then
+      emit_skip all_issued
+      exit 0
+    fi
   fi
 fi
 

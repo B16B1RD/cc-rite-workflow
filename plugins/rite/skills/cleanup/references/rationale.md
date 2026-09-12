@@ -15,6 +15,22 @@ WARNING から手動復旧できるから (D-03)。helper は API 失敗でも e
 `FOLLOW_UP_ISSUE` だけである。完了報告がこれを見ず `REVIEW_CLEANUP_PARTIAL_FAILURE` だけを見ると、
 起票失敗が「なし」に倒れる。marker 不在を成功と読まない規約はステップ 5 と同型。
 
+## follow-up-sweep-issued-dedup
+
+sweep の起票 Issue に follow-up ラベルと先頭行 marker を付けて既存判定に乗せる方式は採らない。
+既存判定は「同一 PR 由来の marker を持つ Issue が 1 件でもあれば `already_exists` で全件 skip」
+するため、sweep 起票が 1 件あるだけで recorded 指摘まで転記されなくなる。除外は finding 単位で
+行う必要があり、その単位の記録は台帳にしか無い。
+
+台帳の取得を SKILL 側でなく helper 内で行うのは、除外 key が file パスを含むため。6.0.V の
+`{resolved_ids_csv}` を `F-NN` トークンに限っているのと同じ理由で、パス入りの値を二重引用符内へ
+リテラル置換で渡す経路を増やさない。
+
+除外 key を `[finding_id, file:line]` の組にするのは、`nb-sweep-collect.sh` が台帳と照合する
+identity そのものだから。id 単体は cycle 内の連番で衝突するが、id と位置の組が一致する別の指摘は
+実質生じない。一方で未解消の指摘は cycle ごとに同じ組で再報告されるため、`--exclude-ids` のような
+曖昧拒否をすると重複起票がそのまま残る。
+
 ## reverify-no-extract-marker
 
 6.0.V の抽出が成功しても marker を出さないのは、抽出だけを示す marker が「判定に到達しなかった」

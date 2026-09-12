@@ -550,6 +550,9 @@ rationale: references/rationale.md#remote-delete-markers
 archive より前に実行する（JSON が元の場所にあるうちに読む）。0 件は起票しない。同定不能は起票せず WARNING。cleanup は止めない。
 rationale: references/rationale.md#follow-up-before-archive
 
+iterate の NB sweep で起票済みの指摘（関連 Issue 記録コメントの却下台帳で判定=`issued`）は helper が台帳を読んで転記から除く。台帳を読めなければ除外せず全件を転記し `FOLLOW_UP_SWEEP_ISSUED=unavailable` を出す。
+rationale: references/rationale.md#follow-up-sweep-issued-dedup
+
 #### 6.0.V helper 呼び出し前の再検証（マージ後 HEAD）
 
 `non_blocking_findings[]` は**指摘が出た cycle** の観測であり、その後の fix cycle で解消されても JSON は更新されない。無条件に転記すると**マージ時点で既に存在しない drift** の follow-up Issue が起票される。helper（bash）は「この指摘は既に解消済みか」という散文の意味判定を持てないため、再検証は本ステップ（LLM 層）で行う。
@@ -908,7 +911,7 @@ Status: {projects_status_result}
 - [{base_update_check}] base ブランチを更新 (fetch + merge --ff-only)
 - [{session_worktree_check}] セッション worktree 退出・削除 (multi_session)
 - [{local_branch_check}] ローカル/リモートブランチ削除
-- [{review_cleanup_check}] PR-specific state ファイル削除{follow_up_reverify_note}{follow_up_ambiguous_note}
+- [{review_cleanup_check}] PR-specific state ファイル削除{follow_up_reverify_note}{follow_up_ambiguous_note}{follow_up_sweep_note}
 - [{projects_check}] Projects Status を Done に更新
 - [{wiki_ingest_check}] Wiki ingest (pending raw source のページ統合)
 - [x] flow state リセット
@@ -1006,12 +1009,12 @@ rationale: references/rationale.md#marker-data-delimiter
   | `FOLLOW_UP_ISSUE=failed`（reason 問わず。`helper_rc` / `lookup_api` / `create_api` / `create_script_missing` / `json_undecidable` を含む） | 未完了 | `⚠️ follow-up Issue の起票に失敗しました。review-results JSON の non_blocking_findings[] を元に follow-up ラベル付き Issue を手動作成してください` |
   | `skipped; reason=no_json` | 未完了 | 同上（レビュー結果 JSON 不在） |
   | `skipped; reason=jq_missing` | 未完了 | `⚠️ jq が見つからず follow-up 起票を skip しました。jq を導入したうえで、残存非実測指摘があれば follow-up Issue を手動作成してください` |
-  | `created` / `skipped; reason=no_findings` / `skipped; reason=already_exists` / `skipped; reason=all_resolved` | x 相当 | — |
+  | `created` / `skipped; reason=no_findings` / `skipped; reason=already_exists` / `skipped; reason=all_issued` / `skipped; reason=all_resolved` | x 相当 | — |
   | `[CONTEXT] FOLLOW_UP_ISSUE=` かつ `pr={pr_number}` の行が無い | 未完了 | `⚠️ follow-up 起票の実行結果が確認できませんでした。残存非実測指摘があれば follow-up ラベル付き Issue を手動作成してください` |
 
   **FOLLOW_UP_ISSUE marker 不在を成功と読んではならない。**
 
-  `skipped; reason=all_resolved` を x 相当に置くのは、ステップ 6.0.V の再検証で残存 0 件が確定した**正常完了**だから（起票すべきものが無い）。`no_findings` と同じ扱いであり「起票に失敗した」ではない。
+  `skipped; reason=all_resolved` を x 相当に置くのは、ステップ 6.0.V の再検証で残存 0 件が確定した**正常完了**だから（起票すべきものが無い）。`no_findings` と同じ扱いであり「起票に失敗した」ではない。`skipped; reason=all_issued` も、残りが全件 sweep で起票済みの正常完了として同じ扱いにする。
 
   **state 削除側**（`REVIEW_CLEANUP_PARTIAL_FAILURE=1` を上から評価し最初の一致。各行は presence 検査。こちら側に marker が 1 本も無ければ x 相当）:
 
@@ -1032,6 +1035,7 @@ rationale: references/rationale.md#review-cleanup-reasons
   - それ以外の `reason` のとき: ` — ⚠️ 除外を適用できなかったため（{reason}）、除外要求分もすべて転記対象としました（「follow-up 再検証」の「解消済み」は実際には除外されていません）`
   - 最終 `FOLLOW_UP_ISSUE=created` の場合だけ、上の note の「転記対象としました」を「転記しました」に置換する。失敗・未確認・`already_exists` を含むその他の結果では置換しない。
   - 本 note は除外結果の付記であり、起票結果と state 削除結果から決めた `{review_cleanup_check}` を変更しない。
+- `{follow_up_sweep_note}`: `[CONTEXT] FOLLOW_UP_SWEEP_ISSUED=unavailable; reason={r}; pr={pr_number}` のうち、`pr=` の直後が `;` または行末まで一致する最後の出現を採る。marker があれば ` — ⚠️ sweep 起票済みの除外を適用できなかったため（{reason}）、sweep で Issue 化済みの指摘も転記対象としました`（`{reason}` は marker の値）。marker が無ければ空文字列（除外の適用・起票の成功は推定しない）。`{review_cleanup_check}` を変更しない。
 - `{wiki_ingest_check}`: 以下の sentinel を上から評価し最初の一致を採用 (`WIKI_INGEST_DONE` + `WIKI_INGEST_PUSH_FAILED` が併存しうるため順序重要):
 
   | Sentinel | check | 表示 |
