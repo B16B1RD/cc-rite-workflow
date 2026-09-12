@@ -490,8 +490,10 @@ okf_version: "0.2"
 | [契約の判定表に退路の行を足すときは、適用条件を観測の時点だけでなく対象の内容で限定する](pages/heuristics/contract-table-row-scoped-by-subject-content-not-timing.md) | heuristics | ガードに拒否されたコマンドをスクリプト化して通す退路を判定表に足すと、「拒否された時点」だけを条件にした行はガードの真陽性（実際に隔離境界を越えるコマンド）まで同じ行に吸い込む。行の適用条件には拒否された対象の内容（作業先を外へ移すか）を判別子として含め、真陽性は既存の停止行へ振り分ける。 | 2026-09-12T05:05:00Z | medium |
 | [squash 昇格後の back-merge は衝突を前提に、復旧手順の衝突分岐を人間への引き渡し経路として書く](pages/heuristics/squash-promotion-back-merge-conflict-handoff.md) | heuristics | develop→main の昇格を squash でマージすると次の back-merge は merge-base が前回リリース前まで後退し、develop 側でリリース範囲の行を再編集していると 3-way merge が衝突する。ツリー不変の合流は ours 戦略でしか作れず GitHub の PR マージでは生成できないため、復旧手順は衝突分岐を『本手順では復旧できない理由と人間が選ぶ選択肢』として明記し、PR 経由で条件を満たすという主張は衝突しない場合に限定する。 | 2026-09-12T03:16:24Z | high |
 | [取り消し処理を fail-loud 化するときは、取り消す対象が無い no-op 経路を先に分けないと存在しない操作の失敗として止まる](pages/anti-patterns/fail-loud-undo-without-noop-path-stops-on-nothing-to-undo.md) | anti-patterns | dry-run の後始末（git merge --abort など）の失敗を検出して止めるように直すと、元の操作が no-op で終わり取り消す対象が最初から無い経路でも取り消しが失敗し、事実と逆の診断と復旧案内を出して止まる。前段の判定と実行対象が別の参照を見ている手順では、この no-op 経路が実際に到達する。 | 2026-09-12T06:12:24Z | high |
+| [停止後の案内を振り分ける判定に補助的な一覧の有無を使うと、案内が主張する状態を取り違える](pages/anti-patterns/guidance-branch-proxy-predicate-misroutes-state.md) | anti-patterns | 手順が止まった後の案内を「出力があれば A、なければ B」と分けるとき、判定に使ったコマンドが案内の前提とする状態そのものを見ていないと、無関係な要素が混ざった状態で誤った案内に振り分けられ、後段の検証を飛ばして先へ進ませてしまう。 | 2026-09-12T07:05:00+00:00 | high |
+| [停止 marker に現在値を載せると、後段の不変検証がその値を基準に使って自己比較で必ず通る](pages/anti-patterns/stop-marker-current-value-reused-as-verification-baseline.md) | anti-patterns | 停止分岐の marker に後段検証の基準と同じ名前で現在の値を出すと、基準値が手元に無い状況では実行者がその値を基準として代入し、「変化していないか」の比較が自分自身との比較になって、実際に変化していても検証が成功を返す。 | 2026-09-12T07:05:00+00:00 | high |
 ## 統計
 
-- 総ページ数: 480
-- ドメイン別: patterns=111, heuristics=215, anti-patterns=154
-- 最終更新: 2026-09-12T06:12:24Z
+- 総ページ数: 482
+- ドメイン別: patterns=111, heuristics=215, anti-patterns=156
+- 最終更新: 2026-09-12T07:05:00+00:00

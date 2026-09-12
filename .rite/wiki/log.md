@@ -1,5 +1,8 @@
 ## 2026-09-12
 
+* **Create**: [停止後の案内を振り分ける判定に補助的な一覧の有無を使うと、案内が主張する状態を取り違える](pages/anti-patterns/guidance-branch-proxy-predicate-misroutes-state.md) — [取り込み済み develop の停止分岐に対するレビュー結果](raw/reviews/20260912T065238Z-pr-2722.md) を新規ページ化
+* **Create**: [停止 marker に現在値を載せると、後段の不変検証がその値を基準に使って自己比較で必ず通る](pages/anti-patterns/stop-marker-current-value-reused-as-verification-baseline.md) — [取り込み済み develop の停止分岐に対するレビュー結果](raw/reviews/20260912T065238Z-pr-2722.md) を新規ページ化
+* **Skip**: [20260912T065538Z-pr-2722.md](raw/fixes/20260912T065538Z-pr-2722.md) — 非 fatal 指摘の移送経過のみで、レビュー結果 raw と別の経験則を含まない
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=477, broken_refs=0
 * **Create**: [取り消し処理を fail-loud 化するときは、取り消す対象が無い no-op 経路を先に分けないと存在しない操作の失敗として止まる](pages/anti-patterns/fail-loud-undo-without-noop-path-stops-on-nothing-to-undo.md) — [復旧手順の dry-run 取り消し失敗検出に対するレビュー結果](raw/reviews/20260912T053835Z-pr-2719.md) を新規ページ化
 * **Skip**: [20260912T054124Z-pr-2719.md](raw/fixes/20260912T054124Z-pr-2719.md) — fix triage の routing ログのみ。取り消し処理の誤停止の観測は同じ PR のレビュー結果 raw に記録済みで、新しい経験則なし
