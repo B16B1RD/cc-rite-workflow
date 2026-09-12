@@ -492,8 +492,9 @@ okf_version: "0.2"
 | [取り消し処理を fail-loud 化するときは、取り消す対象が無い no-op 経路を先に分けないと存在しない操作の失敗として止まる](pages/anti-patterns/fail-loud-undo-without-noop-path-stops-on-nothing-to-undo.md) | anti-patterns | dry-run の後始末（git merge --abort など）の失敗を検出して止めるように直すと、元の操作が no-op で終わり取り消す対象が最初から無い経路でも取り消しが失敗し、事実と逆の診断と復旧案内を出して止まる。前段の判定と実行対象が別の参照を見ている手順では、この no-op 経路が実際に到達する。 | 2026-09-12T06:12:24Z | high |
 | [停止後の案内を振り分ける判定に補助的な一覧の有無を使うと、案内が主張する状態を取り違える](pages/anti-patterns/guidance-branch-proxy-predicate-misroutes-state.md) | anti-patterns | 手順が止まった後の案内を「出力があれば A、なければ B」と分けるとき、判定に使ったコマンドが案内の前提とする状態そのものを見ていないと、無関係な要素が混ざった状態で誤った案内に振り分けられ、後段の検証を飛ばして先へ進ませてしまう。 | 2026-09-12T09:05:00+00:00 | high |
 | [停止 marker に現在値を載せると、後段の不変検証がその値を基準に使って自己比較で必ず通る](pages/anti-patterns/stop-marker-current-value-reused-as-verification-baseline.md) | anti-patterns | 停止分岐の marker に後段検証の基準と同じ名前で現在の値を出すと、基準値が手元に無い状況では実行者がその値を基準として代入し、「変化していないか」の比較が自分自身との比較になって、実際に変化していても検証が成功を返す。 | 2026-09-12T08:10:00+00:00 | high |
+| [契約文書の段落を固定するテストは、対象節の前の文から後続文の書き出しまでを 1 本の連続文字列で pin する](pages/patterns/contract-paragraph-adjacent-pin-through-following-sentence.md) | patterns | 手順書の停止節や禁止文をテストで固定するとき、節の書き出しだけを grep すると節を削除・反転しても通る。前の文から対象節の全文を経て後続文の書き出しまでを 1 本の固定文字列にすると、削除・反転・隣接挿入をまとめて検出できるが、固定範囲の外への打ち消し文挿入は捉えられない。 | 2026-09-12T11:48:01Z | high |
 ## 統計
 
-- 総ページ数: 482
-- ドメイン別: patterns=111, heuristics=215, anti-patterns=156
-- 最終更新: 2026-09-12T11:30:00Z
+- 総ページ数: 483
+- ドメイン別: patterns=112, heuristics=215, anti-patterns=156
+- 最終更新: 2026-09-12T11:48:01Z
