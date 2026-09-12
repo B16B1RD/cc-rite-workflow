@@ -19,9 +19,17 @@ sources:
     resource: "raw/reviews/20260805T043752Z-pr-2112.md"
   - type: "fixes"
     resource: "raw/fixes/20260805T050456Z-pr-2112.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260912T182103Z-pr-2751.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260912T182702Z-pr-2751.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260912T183826Z-pr-2751.md"
 tags: ["test", "fixture", "mutation", "invariant", "coverage"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-05T05:30:00+00:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T18:43:00+00:00" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T18:43:00+00:00" }
 ---
 
 # テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する
@@ -74,6 +82,14 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-05T05:30:00+00:00" }
 
 negative control の fixture は、**検証したい分岐に確実に入る形にする**（前段が成功する要素を併記しない）。追加時に対応する mutation を当て、落ちなければ到達していないと判断する。
 
+### 7. 同じコマンドを複数回呼ぶ手順の失敗注入は、呼び出し回数ごとに分ける
+
+1 つの手順が同じコマンドを 2 回呼び、それぞれの終了コードを別々に捕捉していることがある（例: 挿入位置を awk で決め、本文を awk で組み立てる）。このとき失敗注入の mock が**そのコマンドの全呼び出しを失敗させる**と、1 回目で必ず失敗が立つ。そのため 2 回目の捕捉を消してもテストは緑のままになり、2 回目だけが途中で落ちる実害（本文の切り詰めと成功 marker）を検出できない。
+
+- mock に呼び出し回数を数えさせ、**指定回目だけ失敗させ、それ以外は実コマンドへ exec する**。ケースは「何回目を・どの形（異常終了 / 空出力）で落とすか」の組で並べる
+- 単独固定できたかは、捕捉を 1 つずつ外す変異で**各変異がちょうど 1 ケースだけを落とす**ことで判定する。修正前のテストに同じ変異を当てて素通りすることも示すと、欠陥が実在したことまで裏付けられる
+- この形の mock の正しさは 3 点で決まる。回数ログを実行ごとに空にしていること、実コマンドのパスを mock が PATH に入る**前**に解決していること（mock が自分を exec する再帰を防ぐ）、関数呼び出しの前に置いた一時代入が子プロセスまで届くこと
+
 ### 検証の決定打
 
 guard・不変量の TC を追加したら、worktree-only mutation（当該 guard / report_diff 呼び出しの削除、列挿入等）を実機注入して「その TC だけが FAIL する」ことを確認する。見た目の構造同型ではなく mutation の kill 実績が non-vacuous coverage の証明になる。
@@ -97,3 +113,6 @@ guard・不変量の TC を追加したら、worktree-only mutation（当該 gua
 - [項ごとの fixture と read/write 両経路の pin を適用](../../raw/fixes/20260805T040711Z-pr-2112.md)
 - [連言 2 項の同時 false による識別力ゼロと、到達しない negative control を検出](../../raw/reviews/20260805T043752Z-pr-2112.md)
 - [項ごとの pin 分割と mutation 軸の取り直しを適用](../../raw/fixes/20260805T050456Z-pr-2112.md)
+- [全呼び出しを失敗させる mock が 2 つ目の終了コード捕捉を固定していないことを検出](../../raw/reviews/20260912T182103Z-pr-2751.md)
+- [失敗注入を呼び出し回数ごとに分けた修正](../../raw/fixes/20260912T182702Z-pr-2751.md)
+- [各捕捉の単独固定を変異表で確認したレビュー結果](../../raw/reviews/20260912T183826Z-pr-2751.md)

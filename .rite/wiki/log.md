@@ -1,5 +1,9 @@
 ## 2026-09-12
 
+* **Create**: [新しい経路を足したら、その出力を既存処理へ再入力して既存処理の暗黙の入力前提を確かめる](pages/heuristics/new-path-output-fed-back-into-existing-process.md) — [記録セクション新設経路のレビュー結果](raw/reviews/20260912T182103Z-pr-2751.md) を新規ページ化
+* **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — [全呼び出しを失敗させる mock の検出網不足のレビュー結果](raw/reviews/20260912T182103Z-pr-2751.md) を統合。同じコマンドを複数回呼ぶ手順の失敗注入を呼び出し回数ごとに分ける節を追記
+* **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — [失敗注入を呼び出し回数ごとに分けた修正](raw/fixes/20260912T182702Z-pr-2751.md) を統合
+* **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — [各捕捉の単独固定を変異表で確認したレビュー結果](raw/reviews/20260912T183826Z-pr-2751.md) を統合。単独固定の判定方法と mock の正しさの 3 条件を追記
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=482, broken_refs=0
 * **Skip**: [20260912T173345Z-pr-2750.md](raw/reviews/20260912T173345Z-pr-2750.md) — 既存の限定表現を要約段落へ追記するだけの文書変更で指摘 0 件のまま 1 cycle で収束しており、繰り返し使える domain 経験則を含まない。推奨事項は rite 自身の文書の表現範囲に関するもので Wiki の対象外
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=481, broken_refs=0
