@@ -405,7 +405,7 @@ assert "retreat stops without further variants when the single command is reject
 assert "retreat routes entry denial back to the stop row" "yes" "$(printf '%s\n' "$retreat" | grep -q '入場そのものが拒否された場合はこの行ではなく「native が権限拒否 / 隔離ガードで失敗」行を適用する' && echo yes || echo no)"
 retreat_exclusion='拒否されたブロック自身が `cd` / `git -C` / `workdir` で `{wt_path}` 外（main checkout を含む）を作業先にする場合も本行に該当しない。'
 assert "retreat excludes blocks that target outside the worktree, between the entry-denial sentence and the route list" "yes" \
-  "$(printf '%s\n' "$retreat" | sed -n '1p' | grep -qF '入場そのものが拒否された場合はこの行ではなく「native が権限拒否 / 隔離ガードで失敗」行を適用する。'"$retreat_exclusion" && printf '%s\n' "$retreat" | sed -n '1p' | grep -qF "${retreat_exclusion}"'退出は' && printf '%s\n' "$retreat" | sed -n '1p' | grep -q '退路は次のとおり。$' && echo yes || echo no)"
+  "$(printf '%s\n' "$retreat" | sed -n '1p' | grep -qF '入場そのものが拒否された場合はこの行ではなく「native が権限拒否 / 隔離ガードで失敗」行を適用する。'"$retreat_exclusion" && printf '%s\n' "$retreat" | sed -n '1p' | grep -qF "${retreat_exclusion}"'退出は「退出」節を適用し、main checkout 操作はスキルが定める経路（cleanup の委譲モード等）に従い、経路の定めがなければ代替経路を試さず停止する。いずれもスクリプト化しない。既存 helper による' && printf '%s\n' "$retreat" | sed -n '1p' | grep -q '退路は次のとおり。$' && echo yes || echo no)"
 assert "retreat exclusion is limited to working-directory targeting" "yes" "$(printf '%s\n' "$retreat" | sed -n '1p' | grep -q '既存 helper による main root の共有 state 更新や、作業先を worktree に保ったまま絶対パスで行う読み書きはこの除外に含まない。' && echo yes || echo no)"
 assert "retreat does not permit helper-cd or main-checkout evasion" "yes" "$(printf '%s\n' "$retreat" | grep -q 'helper 内の `cd` や main checkout への退避で拒否を迂回する経路ではない' && echo yes || echo no)"
 # Negative pair for the prohibition pin above: the prohibition sentence itself names the evasion
