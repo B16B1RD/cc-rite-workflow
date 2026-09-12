@@ -557,6 +557,7 @@ git pull origin develop
 | main マージ前に Release を作成してしまった | Release を削除 → main マージ → Release 再作成 |
 | PR マージ衝突 | 衝突を解消してから再試行 |
 | §1.0 の事前チェックで停止（main が develop に含まれない） | 前回の昇格が squash / rebase でマージされている。[復旧手順](#復旧手順-main-が-develop-の祖先でない場合) を実行してからリリースを最初からやり直す |
+| 復旧手順 R.2 が `conflict` で停止 | back-merge が 3-way merge で衝突し、PR 経由でも取り込めない。R.2 の `conflict` 行の 2 択（検証条件の例外を別 Issue で契約する / 乖離を持ち越す）を人間が選ぶ。履歴は変更されていない |
 | 昇格コミットの PR 検証失敗 | 直接 push を取り除くか、対象 commit を通常 PR 経由で develop に取り込み直してから検証を再実行。差分に前回リリースまでの出荷済みコミットが含まれるなら原因は前回の昇格方式にあるので、§1.0 と復旧手順を参照 |
 | Projects 登録失敗 | `gh project item-add` を再実行。`--limit` を増やして Item ID を再取得 |
 | ステータス更新失敗 | Field ID / Option ID を再取得して `gh project item-edit` を再実行 |
@@ -594,7 +595,7 @@ gh issue view {ISSUE_NUMBER} --json state,projectItems
 
 §1.0 が `diverged` で停止したときに使う。提示のみで自動実行しない。各ブロックはユーザーの明示指示を受けてから実行する。
 
-**方式**: main → develop の PR をマージコミット方式で取り込む。develop へ back-merge コミットを直接 push しない。Phase 3.2 の検証は昇格差分の各コミットが merged PR の merge commit であることを要求するため、直接 push した back-merge コミットは次回の昇格で拒否される。PR 経由のマージコミットならその条件を満たす。
+**方式**: main → develop の PR をマージコミット方式で取り込む。develop へ back-merge コミットを直接 push しない。Phase 3.2 の検証は昇格差分の各コミットが merged PR の merge commit であることを要求するため、直接 push した back-merge コミットは次回の昇格で拒否される。PR 経由のマージコミットは、3-way merge が衝突しない場合に限りその条件を満たす（衝突時の帰結は R.2 の `conflict` 行）。
 
 ### R.1 事前検証（履歴を変更しない）
 
@@ -617,16 +618,18 @@ fi
 
 ### R.2 マージ結果の事前確認（ローカル dry-run）
 
-復旧後の develop のツリーが復旧前と変わらないことを、push する前にローカルで確かめる。`before_head` / `before_tree` は後続ブロックへリテラルで渡す。
+復旧後の develop のツリーが復旧前と変わらないことを、push する前にローカルで確かめる。R.3 の GitHub マージと同じ 3-way merge を dry-run する。`before_tree` は後続ブロックへリテラルで渡す。
+
+squash 昇格後に develop 側でリリース範囲内の行を再編集していると、この 3-way merge は衝突する（merge-base が前回リリース前まで後退するため）。衝突は R.3 の PR でも同じく起きるので、衝突分岐は「停止して人間へ渡す」経路になる。
 
 ```bash
 git checkout develop || exit 1
 git pull origin develop || exit 1
 before_head=$(git rev-parse develop)
 before_tree=$(git rev-parse "develop^{tree}")
-if ! git merge --no-ff --no-commit origin/main >/dev/null 2>&1; then
-  git merge --abort
-  echo "ERROR: main のマージが衝突します。履歴を変更せず停止します（develop は $before_head のまま）" >&2
+if ! git merge --no-ff --no-commit origin/main; then
+  git rev-parse -q --verify MERGE_HEAD >/dev/null && git merge --abort
+  echo "[CONTEXT] RECOVERY_DRYRUN=conflict; before_head=$before_head; before_tree=$before_tree"
   exit 1
 fi
 merged_tree=$(git write-tree)
@@ -639,7 +642,11 @@ else
 fi
 ```
 
-`tree-changed` なら停止し、`git diff "$before_tree" "$merged_tree" --stat` で変化する内容を提示する（履歴は変更していない）。
+| `RECOVERY_DRYRUN` | アクション |
+|---|---|
+| `ok` | R.3 へ |
+| `tree-changed` | 停止し、`git diff "$before_tree" "$merged_tree" --stat` で変化する内容を提示する（履歴は変更していない） |
+| `conflict` | **本手順では復旧できない**。R.3 の PR も同じ衝突で GitHub 上で unmergeable になる。R.1 が通っているので正しい合流結果は develop のツリーそのもの（`git merge -s ours origin/main` 相当）だが、そのコミットは GitHub の PR マージでは作れず、ローカルで作って PR 経由で取り込むと Phase 3.2 の検証（昇格差分の各コミットが merged PR の merge commit であること）が拒否する。develop は `$before_head` のまま変更していないことを伝え、次の 2 択を人間に提示して終了する: (1) 昇格ゲートの検証条件に「第 2 親が origin/main の tip であるマージコミット」だけを許す例外を設ける（検証条件の変更なので別 Issue の契約とする）、(2) 復旧を諦めて次回の昇格までこの乖離を持ち越す（その昇格は Phase 3.2 で必ず止まる） |
 
 ### R.3 back-merge PR の作成とマージ
 
