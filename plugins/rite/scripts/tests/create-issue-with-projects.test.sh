@@ -9,6 +9,9 @@ MOCK_DIR="$SCRIPT_DIR"
 TEST_DIR="$(mktemp -d)"
 PASS=0
 FAIL=0
+# gh 呼び出しログは呼び出しごとに一意な名前にする。gh ログは追記で書かれるため、
+# 名前が重なると前のテストのログに混ざり、「gh が呼ばれていない」系の判定が偶発的に落ちる
+MOCK_LOG_SEQ=0
 
 # Global mock bin directory: created once, reused by all tests
 MOCK_BIN_DIR="$TEST_DIR/mock-bin"
@@ -55,7 +58,8 @@ run_script() {
   local json_args="$1"
   local scenario="${2:-success}"
   local issue_number="${3:-42}"
-  local mock_log="$TEST_DIR/gh_log_$$_$RANDOM"
+  MOCK_LOG_SEQ=$((MOCK_LOG_SEQ + 1))
+  local mock_log="$TEST_DIR/gh_log_$MOCK_LOG_SEQ"
   local rc=0
   local output
   output=$(
@@ -814,7 +818,8 @@ fi
 # --------------------------------------------------------------------------
 echo "TC-026: Invalid RETRY_DELAY → warning + successful execution"
 body_file=$(create_body_file "Test retry delay validation")
-mock_log="$TEST_DIR/gh_log_$$_$RANDOM"
+MOCK_LOG_SEQ=$((MOCK_LOG_SEQ + 1))
+mock_log="$TEST_DIR/gh_log_$MOCK_LOG_SEQ"
 rc=0
 output=$(
   MOCK_GH_SCENARIO="success" \
