@@ -381,5 +381,30 @@ assert "standalone state records current session, worktree, branch and phase" "t
 assert_grep "native absence permits explicit workdir" "$contract" 'native 不在、各 shell の `workdir`'
 assert_grep "native denial stops without fallback" "$contract" 'native が権限拒否 .*代替経路を試さず停止'
 
+echo "=== host worktree execution: post-entry guard rejection row and retreat ==="
+# The route table is the first `|` block after the section heading. Extract its data
+# rows so the shape (row count, order, adjacency) is pinned, not just the presence of text.
+route_rows=$(awk '/^### Host worktree execution$/ { s=1; next } s && /^\|/ { if ($0 !~ /^\|---/ && $0 !~ /^\| 観測した能力/) print; seen=1; next } s && seen && !/^\|/ { exit }' "$contract")
+assert "route table has 6 data rows" "6" "$(printf '%s\n' "$route_rows" | grep -c .)"
+assert "row 1 is native entry" "yes" "$(printf '%s\n' "$route_rows" | sed -n '1p' | grep -q '^| 既存 worktree へ入場する native ツールが利用可能 | `EnterWorktree(path)` 等の公開 schema に従って入場し、下記検証を実行する |$' && echo yes || echo no)"
+assert "row 2 is workdir route" "yes" "$(printf '%s\n' "$route_rows" | sed -n '2p' | grep -q '^| native 不在、各 shell の `workdir` 指定が利用可能 | 全呼び出しに専用 worktree の絶対 `workdir` を指定する。' && echo yes || echo no)"
+assert "row 3 is explicit cd route" "yes" "$(printf '%s\n' "$route_rows" | sed -n '3p' | grep -q '^| native / `workdir` 不在、各 shell で明示 `cd` が可能 | 毎回 `cd "{wt_path}" && ...` で実行し、同じ検証を通す。前の shell の cwd 永続化は仮定しない |$' && echo yes || echo no)"
+# Row 4 keeps its original observation and route, plus the entry-only discriminator.
+assert "row 4 is entry denial limited to entry itself" "yes" "$(printf '%s\n' "$route_rows" | sed -n '4p' | grep -q '^| native が権限拒否 / 隔離ガードで失敗（入場そのものが拒否された場合に限る） | 代替経路を試さず停止し、ホストの正式な承認手順へ。helper 内の `cd` 等で拒否を迂回しない |$' && echo yes || echo no)"
+assert "row 5 is other failure diagnosis" "yes" "$(printf '%s\n' "$route_rows" | sed -n '5p' | grep -q '^| その他の native 失敗 / 検証失敗 / 適合経路なし | worktree と state を保持して診断・停止。下記の native 失敗診断または `/rite:recover` を案内する |$' && echo yes || echo no)"
+row6=$(printf '%s\n' "$route_rows" | sed -n '6p')
+assert "row 6 observes post-entry guard rejection" "yes" "$(printf '%s\n' "$row6" | grep -q '^| 入場は検証済みで成功しているが、以後の複合 shell コマンドがホストの隔離ガードに拒否される |' && echo yes || echo no)"
+assert "row 6 route keeps the working directory, scripts the block, runs one command" "yes" \
+  "$(printf '%s\n' "$row6" | grep -q '作業先を変えない' && printf '%s\n' "$row6" | grep -q 'スクリプトファイル' && printf '%s\n' "$row6" | grep -q '単一コマンド' && echo yes || echo no)"
+retreat=$(awk '/^\*\*入場後のガード拒否の退路\*\*/ { s=1 } s && /^\*\*作業先固定\*\*/ { exit } s { print }' "$contract")
+assert "retreat prose exists before 作業先固定" "yes" "$(test -n "$retreat" && echo yes || echo no)"
+assert "retreat limits script location to the scratch area" "yes" "$(printf '%s\n' "$retreat" | grep -q '置き場所はスクラッチ領域に限る。worktree 内や main checkout 配下へ書き出さない' && echo yes || echo no)"
+assert "retreat keeps fixation, ownership and pre-change checks" "yes" "$(printf '%s\n' "$retreat" | grep -q '「作業先固定」「所有者の確定」「変更前検証」の各手順は省略しない' && echo yes || echo no)"
+assert "retreat stops when the script cannot be written" "yes" "$(printf '%s\n' "$retreat" | grep -q 'スクリプトファイルを書き出せない（スクラッチ領域が書込不可）場合は退路を採らず停止' && echo yes || echo no)"
+assert "retreat stops without further variants when the single command is rejected" "yes" "$(printf '%s\n' "$retreat" | grep -q 'スクリプトファイル化した単一コマンドもガードに拒否される場合は退路が成立しない。さらなる代替形を試さず停止' && echo yes || echo no)"
+assert "retreat routes entry denial back to the stop row" "yes" "$(printf '%s\n' "$retreat" | grep -q '入場そのものが拒否された場合はこの行ではなく「native が権限拒否 / 隔離ガードで失敗」行を適用する' && echo yes || echo no)"
+assert "retreat does not permit helper-cd or main-checkout evasion" "yes" "$(printf '%s\n' "$retreat" | grep -q 'helper 内の `cd` や main checkout への退避で拒否を迂回する経路ではない' && echo yes || echo no)"
+assert "retreat does not move the documented guard block" "yes" "$(printf '%s\n' "$retreat" | grep -q 'worktree-execution-check\|worktree-exit-check\|^```' && echo no || echo yes)"
+
 print_summary "ensure-session-worktree.test.sh" \
   "ensure_session_worktree contract changed — sync lib/worktree-git.sh and the recover.md WT_ENSURE table"
