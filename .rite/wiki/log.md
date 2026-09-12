@@ -1,5 +1,6 @@
 ## 2026-09-12
 
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=478, broken_refs=0
 * **Update**: [停止後の案内を振り分ける判定に補助的な一覧の有無を使うと、案内が主張する状態を取り違える](pages/anti-patterns/guidance-branch-proxy-predicate-misroutes-state.md) — [停止案内の振り分け判定を ancestry 判定へ差し替えた修正のレビュー結果](raw/reviews/20260912T085522Z-pr-2730.md) を統合。判定の差し替えで行き先が変わる状態に、元の枝が与えていた保証を新しい枝でも持たせる確認を追記
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=478, broken_refs=0
 * **Update**: [停止 marker に現在値を載せると、後段の不変検証がその値を基準に使って自己比較で必ず通る](pages/anti-patterns/stop-marker-current-value-reused-as-verification-baseline.md) — [復旧後のツリー検証の自己比較を塞いだ修正のレビュー結果](raw/reviews/20260912T075523Z-pr-2725.md) を統合。基準値の出所を正常分岐の marker に限定し、値が無ければ検証段の全入口で止まる修正方針を追記
