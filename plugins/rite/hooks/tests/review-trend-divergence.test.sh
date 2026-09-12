@@ -915,4 +915,117 @@ assert_grep "非退行: LOST 注記（推移行併記）が残っている" "$IT
 assert_not_grep "非退行: helper の lost= 算出を iterate 側で上書きしない" "$ITERATE_SKILL" \
   'trend_lost=\$\(\('
 
+# ---------------------------------------------------------------------------
+# iterate 消費側: run 開始点 pin の pr_number guard
+# pin の state パスは PR 番号から組むため、未置換（`{pr_number}` のまま / 空 / 非数値）なら
+# ファイルに触れる前に止まる。guard と pin 読み書き部を SKILL.md から literal 抽出して実行する。
+# ---------------------------------------------------------------------------
+echo "--- iterate run 開始点 pin の pr_number guard (消費側契約) ---"
+
+PG="$SANDBOX/pin-guard"
+mkdir -p "$PG/plugin/hooks"
+printf '#!/bin/bash\nprintf "%%s\\n" "$PIN_STATE_ROOT"\n' > "$PG/plugin/hooks/state-path-resolve.sh"
+
+# fence_of <start> <end>: 見出し start〜end の間にある最初の ```bash fence の中身
+fence_of() {
+  awk -v s="$1" -v e="$2" '
+    $0 ~ s { sec = 1; next }
+    sec && $0 ~ e { exit }
+    sec && !fence && $0 == "```bash" { fence = 1; next }
+    fence && $0 == "```" { exit }
+    fence { print }' "$ITERATE_SKILL"
+}
+fence_of '^## ステップ 0\.6:' '^## ステップ 1:' > "$PG/fence06.sh"
+fence_of '^## ステップ 1:' '^## ステップ 2:' > "$PG/fence1.sh"
+guard_of() { awk '$0 == "pr_number=\"{pr_number}\"" { f = 1 } f { print } f && $0 == "esac" { exit }' "$1"; }
+guard_of "$PG/fence06.sh" > "$PG/guard06.sh"
+guard_of "$PG/fence1.sh" > "$PG/guard1.sh"
+awk '$0 == "run_since_status=none" { f = 1 } /^marker_emit ITERATE_CYCLE_MAX/ { exit } f { print }' \
+  "$PG/fence06.sh" > "$PG/write06.sh"
+awk '$0 == "pin_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || pin_root=\"\"" { f = 1 } f { print } f && $0 == "fi" { exit }' \
+  "$PG/fence1.sh" > "$PG/read1.sh"
+# 行数の上限は終端アンカーを取り逃した over-extraction を検出する
+if [ "$(wc -l < "$PG/guard06.sh")" -ne 4 ] || [ "$(wc -l < "$PG/guard1.sh")" -ne 4 ] \
+   || ! grep -q 'review-run-since-' "$PG/write06.sh" || [ "$(wc -l < "$PG/write06.sh")" -gt 50 ] \
+   || ! grep -q 'review-run-since-' "$PG/read1.sh" || [ "$(wc -l < "$PG/read1.sh")" -gt 20 ]; then
+  echo "FATAL: iterate の pin guard / pin 読み書き部の抽出に失敗しました (アンカーが変更された可能性)" >&2
+  exit 1
+fi
+
+first_code() { awk '!/^[[:space:]]*(#|$)/ { print; exit }' "$1"; }
+assert "静的: ステップ 0.6 の fence は guard から始まる" 'pr_number="{pr_number}"' "$(first_code "$PG/fence06.sh")"
+assert "静的: ステップ 1 の fence は guard から始まる" 'pr_number="{pr_number}"' "$(first_code "$PG/fence1.sh")"
+for lit in 'nb-sweep-done-${pr_number}.txt' 'review-run-since-${pr_number}.txt' '-name "${pr_number}-*.json"'; do
+  assert "静的: ステップ 0.6 は $lit でパスを組む" "1" "$(grep -cF -- "$lit" "$PG/fence06.sh")"
+done
+assert "静的: ステップ 1 は review-run-since-\${pr_number}.txt で pin を読む" "2" \
+  "$(grep -cF 'review-run-since-${pr_number}.txt' "$PG/fence1.sh")"
+assert "静的: pin パスに未置換 placeholder が残っていない" "0" \
+  "$(cat "$PG/fence06.sh" "$PG/fence1.sh" | grep -cF -e 'nb-sweep-done-{pr_number}' -e 'review-run-since-{pr_number}' -e '"{pr_number}-*.json"')"
+assert "静的: helper への --pr {pr_number} 引数は変えていない" "1" \
+  "$(grep -cF -- '--pr {pr_number} --cycle-count' "$PG/fence1.sh")"
+
+# pin_state_root <name>: 結果 JSON (PR 42 の 2 件 + 別 PR 1 件) と sweep 済み marker を置いた state root
+pin_state_root() {
+  local r="$PG/$1"
+  rm -rf "$r"; mkdir -p "$r/.rite/review-results" "$r/.rite/state"
+  : > "$r/.rite/review-results/42-20260101000001.json"
+  : > "$r/.rite/review-results/42-20260101000002.json"
+  : > "$r/.rite/review-results/43-20260101000009.json"
+  : > "$r/.rite/state/nb-sweep-done-42.txt"
+  : > "$r/.rite/state/nb-sweep-done-{pr_number}.txt"
+  printf '%s\n' "$r"
+}
+# run_write <root> <value> <cb_mode_init> <cur_cc> / run_read <root> <value>
+run_write() {
+  { sed -e "s|\"{pr_number}\"|\"$2\"|" "$PG/guard06.sh"
+    printf 'cb_mode_init=%s\ncur_cc=%s\n' "$3" "$4"
+    sed -e "s|{plugin_root}|$PG/plugin|g" "$PG/write06.sh"
+    printf 'echo "RUN_SINCE=$run_since_status"\n'; } > "$PG/run-write.sh"
+  PIN_STATE_ROOT="$1" bash "$PG/run-write.sh" >"$PG/out" 2>"$PG/err"
+}
+run_read() {
+  { sed -e "s|\"{pr_number}\"|\"$2\"|" "$PG/guard1.sh"
+    sed -e "s|{plugin_root}|$PG/plugin|g" "$PG/read1.sh"
+    printf 'printf "%%s\\n" "$run_since" > "$PIN_STATE_ROOT/helper-called"\necho "RUN_SINCE_USED=$run_since_used"\n'; } > "$PG/run-read.sh"
+  PIN_STATE_ROOT="$1" bash "$PG/run-read.sh" >"$PG/out" 2>"$PG/err"
+}
+
+r=$(pin_state_root fresh)
+run_write "$r" 42 fresh 0; rc=$?
+assert "書込: 数値 PR 番号では rc=0" "0" "$rc"
+assert_grep "書込: 数値 PR 番号では RUN_SINCE=ok" "$PG/out" '^RUN_SINCE=ok$'
+assert "書込: pin は同じ PR の最新結果 basename" "42-20260101000002.json" "$(cat "$r/.rite/state/review-run-since-42.txt" 2>/dev/null)"
+assert "書込: 新しい run では同じ PR の sweep 済み marker を消す" "absent" \
+  "$([ -e "$r/.rite/state/nb-sweep-done-42.txt" ] && echo present || echo absent)"
+
+for bad in '{pr_number}' '' '12a' '#12' ' 12' '-1'; do
+  r=$(pin_state_root bad)
+  run_write "$r" "$bad" fresh 0; rc=$?
+  assert "書込 [$bad]: 非ゼロで止まる" "1" "$rc"
+  assert_grep "書込 [$bad]: 受けた値つきの ERROR を出す" "$PG/err" "^ERROR: .*pr_number が数値に置換されていません"
+  assert "書込 [$bad]: marker を消さず pin を作らない" "nb-sweep-done-42.txt nb-sweep-done-{pr_number}.txt" \
+    "$(ls "$r/.rite/state" | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"
+
+  r=$(pin_state_root bad-read)
+  printf 'stale.json\n' > "$r/.rite/state/review-run-since-{pr_number}.txt"
+  run_read "$r" "$bad"; rc=$?
+  assert "読込 [$bad]: 非ゼロで止まる" "1" "$rc"
+  assert_grep "読込 [$bad]: 受けた値つきの ERROR を出す" "$PG/err" "^ERROR: .*pr_number が数値に置換されていません"
+  assert "読込 [$bad]: helper へ --since を渡す段に進まない" "absent" \
+    "$([ -e "$r/helper-called" ] && echo present || echo absent)"
+done
+
+r=$(pin_state_root resume)
+printf '42-20260101000001.json\n' > "$r/.rite/state/review-run-since-42.txt"
+cp "$r/.rite/state/review-run-since-42.txt" "$PG/pin-before"
+run_write "$r" 42 resume 2; rc=$?
+assert "resume: 書込ブロックは rc=0" "0" "$rc"
+assert_grep "resume: counter 継続中は pin を記録しない" "$PG/out" '^RUN_SINCE=none$'
+assert "resume: 既存 pin を上書きしない" "same" "$(cmp -s "$PG/pin-before" "$r/.rite/state/review-run-since-42.txt" && echo same || echo changed)"
+run_read "$r" 42; rc=$?
+assert "resume: 読込ブロックは rc=0" "0" "$rc"
+assert_grep "resume: 既存 pin を使う" "$PG/out" '^RUN_SINCE_USED=pin$'
+assert "resume: helper へ既存 pin の値を渡す" "42-20260101000001.json" "$(cat "$r/helper-called" 2>/dev/null)"
+
 print_summary "review-trend-divergence"
