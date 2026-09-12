@@ -120,7 +120,7 @@ dl_code=${dl_code//\{source_issue_number\}/7}
 dl_code=${dl_code//\{owner_repo\}/example\/repo}
 printf '%s\n' "$dl_code" > "$work/dl.sh"
 assert_not_grep 'Decision Log block has no placeholder residue' "$work/dl.sh" '(^|[^$])\{[a-z_]+\}'
-mkdir "$work/dl-bin" "$work/awk-partial" "$work/awk-empty"
+mkdir "$work/dl-bin" "$work/awk-fail"
 cat > "$work/dl-bin/gh" <<'MOCK'
 #!/bin/bash
 jq -cn --args '$ARGS.positional' -- "$@" >> "$MOCK_LOG"
@@ -130,9 +130,18 @@ if [ "$1 $2" = 'issue edit' ]; then
 fi
 MOCK
 printf '#!/bin/bash\necho 2026-01-02\n' > "$work/dl-bin/date"
-printf '#!/bin/bash\necho call >> "$AWK_LOG"\nIFS= read -r first\nprintf "%%s\\n" "$first"\nexit 2\n' > "$work/awk-partial/awk"
-printf '#!/bin/bash\necho call >> "$AWK_LOG"\ncat > /dev/null\nexit 0\n' > "$work/awk-empty/awk"
-chmod +x "$work/dl-bin/gh" "$work/dl-bin/date" "$work/awk-partial/awk" "$work/awk-empty/awk"
+# Only the AWK_FAIL_AT-th awk call fails, so each exit-status capture in the block is pinned on its own.
+cat > "$work/awk-fail/awk" <<'MOCK'
+#!/bin/bash
+echo call >> "$AWK_LOG"
+if [ "$(wc -l < "$AWK_LOG" | tr -d ' ')" -ne "$AWK_FAIL_AT" ]; then exec "$REAL_AWK" "$@"; fi
+if [ "$AWK_FAIL_MODE" = partial ]; then IFS= read -r first; printf '%s\n' "$first"; exit 2; fi
+cat > /dev/null
+exit 0
+MOCK
+chmod +x "$work/dl-bin/gh" "$work/dl-bin/date" "$work/awk-fail/awk"
+REAL_AWK=$(command -v awk)
+export REAL_AWK
 dl_line='- 2026-01-02 D-01: decided / Reason: why / Impact: what'
 run_decision_log() {
   local name="$1" body="$2" extra_path="${3:-}" rc=0
@@ -208,15 +217,17 @@ if awk '/ D-01: / { a=NR } / D-02: / { b=NR } /^<\/details>/ { c=NR } END { exit
   pass 'D-02 follows D-01 inside details'
 else fail 'D-02 position'; fi
 
-# A failing or empty body build never writes back.
-for mode in partial empty; do
-  rm -f "$work/awk-$mode.edited"
-  run_decision_log "awk-$mode" "$work/footer-body.md" "$work/awk-$mode"
-  if [ -s "$work/awk-$mode.awklog" ]; then pass "awk $mode mock was used"; else fail "awk $mode mock not used"; fi
-  assert "awk $mode does not edit" 0 "$(edit_count "awk-$mode")"
-  assert_not_grep "awk $mode reports no append" "$work/awk-$mode.out" 'DECISION_LOG_APPENDED'
-  assert_grep "awk $mode reports gh_edit_failure" "$work/awk-$mode.err" 'DECISION_LOG_APPEND_FAILED=1; reason=gh_edit_failure'
-  assert_grep "awk $mode prints the pending line" "$work/awk-$mode.err" 'D-01: decided'
+# A failing or empty body build never writes back, whichever awk call fails.
+for fail in partial:1 partial:2 empty:2; do
+  mode=${fail%%:*}
+  at=${fail##*:}
+  name="awk-$mode-$at"
+  AWK_FAIL_MODE=$mode AWK_FAIL_AT=$at run_decision_log "$name" "$work/footer-body.md" "$work/awk-fail"
+  if [ "$(wc -l < "$work/$name.awklog" | tr -d ' ')" -ge "$at" ]; then pass "$name mock reached the failing call"; else fail "$name mock did not reach the failing call"; fi
+  assert "$name does not edit" 0 "$(edit_count "$name")"
+  assert_not_grep "$name reports no append" "$work/$name.out" 'DECISION_LOG_APPENDED'
+  assert_grep "$name reports gh_edit_failure" "$work/$name.err" 'DECISION_LOG_APPEND_FAILED=1; reason=gh_edit_failure'
+  assert_grep "$name prints the pending line" "$work/$name.err" 'D-01: decided'
 done
 
 # The work-memory fallback is gone from the Decision Log contract.
