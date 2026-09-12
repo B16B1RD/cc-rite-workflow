@@ -29,6 +29,9 @@ SANDBOXES=()
 cleanup() {
   local d
   for d in "${SANDBOXES[@]:-}"; do
+    # Restore write permission first: an admin dir left read-only by an
+    # interrupted sandbox-mask case would make both prune and rm fail.
+    [ -n "$d" ] && chmod -R u+w "$d" 2>/dev/null
     # Detach any worktrees before rm so no stale admin entries leak into $HOME.
     [ -n "$d" ] && [ -d "$d" ] && git -C "$d" worktree prune 2>/dev/null || true
     [ -n "$d" ] && rm -rf "$d"
@@ -361,6 +364,56 @@ if printf '%s' "$dry_nr_out" | grep -qE 'dry-run; branch=wiki'; then
   pass "dry-run with numref pending still reports dry-run status"
 else
   fail "dry-run status missing with numref pending: $dry_nr_out"
+fi
+
+# --- admin dir read-only (sandbox mask) ---------------------------------------
+# A sandbox can mount the worktree's admin dir read-only while the working tree
+# stays writable. Paths that write nothing there (no-pending / --push-only /
+# --dry-run) keep their results; the commit path stops with reason=sandbox-mask
+# / exit 6 before the numref gate stages anything.
+if [ "$(id -u)" = "0" ]; then
+  skip "admin dir read-only cases (root ignores directory write permission)"
+else
+  mask_repo="$(new_repo true)"; SANDBOXES+=("$mask_repo")
+  setup_wiki_worktree "$mask_repo"
+  mask_wt="$mask_repo/.rite/wiki-worktree"
+  mask_admin="$(git -C "$mask_wt" rev-parse --absolute-git-dir)"
+  mask_io="$(mktemp -d)"; SANDBOXES+=("$mask_io")
+  run_masked() {
+    local rc=0
+    chmod a-w "$mask_admin"
+    ( cd "$mask_repo" && bash "$SCRIPT" "$@" ) >"$mask_io/out" 2>"$mask_io/err" || rc=$?
+    chmod u+w "$mask_admin"
+    return "$rc"
+  }
+
+  mask_rc=0; run_masked --commit-only || mask_rc=$?
+  assert "read-only admin dir + no pending exits 0" "0" "$mask_rc"
+  assert_grep "read-only admin dir + no pending still reports reason=no-pending" "$mask_io/out" 'reason=no-pending'
+
+  mask_rc=0; run_masked --push-only || mask_rc=$?
+  assert "read-only admin dir + --push-only (nothing ahead) exits 0" "0" "$mask_rc"
+  assert_grep "--push-only does not probe the admin dir (push=no-op)" "$mask_io/out" 'push=no-op'
+  assert_not_grep "--push-only never reports sandbox-mask" "$mask_io/out" 'sandbox-mask'
+
+  add_pending_numref "$mask_repo" mask.md
+  mask_rc=0; run_masked --dry-run || mask_rc=$?
+  assert "read-only admin dir + --dry-run exits 0" "0" "$mask_rc"
+  assert_grep "--dry-run still reports the dry-run status line" "$mask_io/out" 'dry-run; branch=wiki'
+
+  others_before_mask=$(git -C "$mask_wt" ls-files --others --exclude-standard -- .rite/wiki)
+  wiki_before_mask="$(git -C "$mask_repo" rev-parse wiki)"
+  mask_rc=0; run_masked --commit-only || mask_rc=$?
+  assert "read-only admin dir + pending exits 6" "6" "$mask_rc"
+  assert_grep "pending with read-only admin dir reports reason=sandbox-mask" "$mask_io/out" \
+    '^\[wiki-worktree-commit\] committed=0; branch=wiki; reason=sandbox-mask$'
+  assert_not_grep "sandbox-mask is reported before the numref gate" "$mask_io/out" 'numref-'
+  assert_grep "stderr names the unwritable admin dir" "$mask_io/err" "管理ディレクトリ（${mask_admin}）に書き込めません"
+  assert "sandbox-mask stages nothing (numref helper not called)" "$others_before_mask" \
+    "$(git -C "$mask_wt" ls-files --others --exclude-standard -- .rite/wiki)"
+  assert "sandbox-mask does not advance the wiki branch" "$wiki_before_mask" "$(git -C "$mask_repo" rev-parse wiki)"
+  assert "the write probe leaves no file in the admin dir" "0" \
+    "$(find "$mask_admin" -maxdepth 1 -name 'rite-write-probe.*' | wc -l | tr -d '[:space:]')"
 fi
 
 print_summary "wiki-worktree-commit.sh"

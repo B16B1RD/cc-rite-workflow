@@ -22,6 +22,7 @@ When `parallel.mode: "worktree"` is set in `rite-config.yml`, each parallel agen
 - [SSH host alias 経由の git push/fetch が sandbox のネットワーク許可リストでブロックされる](#ssh-host-alias-経由の-git-pushfetch-が-sandbox-のネットワーク許可リストでブロックされる) - Bad Gateway failures when `origin` uses an SSH host alias remote
 - [worktree cwd から main checkout 配下への書き込みが sandbox の write 許可リストでブロックされる](#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる) - State writes rejected as read-only filesystem after `EnterWorktree`
 - [sandbox write-allowlist 設定の自動化（Decision Log）](#sandbox-write-allowlist-設定の自動化decision-log) - Why setup Phase 4.8 auto-writes `sandbox.filesystem.allowWrite` instead of guidance-only
+- [main checkout cwd から wiki worktree の管理ディレクトリへの書き込みが sandbox にブロックされる](#main-checkout-cwd-から-wiki-worktree-の管理ディレクトリへの書き込みが-sandbox-にブロックされる) - `index.lock` cannot be created in `.git/worktrees/wiki-worktree/`; detected as `reason=sandbox-mask`
 - [sandbox の write-block マスクマウントが git status に幽霊 untracked エントリを生む](#sandbox-の-write-block-マスクマウントが-git-status-に幽霊-untracked-エントリを生む) - Ghost `??` entries from sandbox `/dev/null` bind mounts, not real files
 
 ---
@@ -678,6 +679,30 @@ flock 排他の前提）ため、worktree cwd からの state 書込は構造的
   再起動が必要かは公式ドキュメントで明言されていない。安全側に倒し、案内メッセージでは「次回セッション
   から有効になる場合がある」旨を明記する。
 
+### main checkout cwd から wiki worktree の管理ディレクトリへの書き込みが sandbox にブロックされる
+
+sandbox が有効な環境で、main checkout を cwd として `wiki-numref-precommit.sh`（`/rite:wiki-ingest` ステップ 5.0.n）
+や `wiki-worktree-commit.sh --commit-only`（ingest ステップ 5.1、`/rite:wiki-lint` ステップ 8.3）を実行すると、
+wiki worktree の管理ディレクトリ（`.git/worktrees/wiki-worktree/`）に `index.lock` を作れず失敗することがある。
+
+**症状**: `Unable to create '.git/worktrees/wiki-worktree/index.lock'`（読み込み専用ファイルシステム）。wiki worktree
+の作業ツリーには書き込めるため、ページの Write は成功し、stage / commit だけが失敗する。同じコマンドを sandbox 外で
+実行すると成功する。
+
+**原因**: sandbox が管理ディレクトリを read-only でマウントしている。git の診断は lock ファイルの作成失敗としか
+言わず、sandbox を名指ししない。
+
+**検知**: 両 script は最初の index 書き込みの前に `hooks/scripts/lib/worktree-git.sh` の `worktree_admin_writable`
+で管理ディレクトリに一時ファイルを作れるか試す。作れなければ何も stage せず、`wiki-numref-precommit.sh` は
+`[CONTEXT] WIKI_INGEST_NUMREF=error; reason=sandbox-mask`、`wiki-worktree-commit.sh` は `reason=sandbox-mask` / exit 6
+を出す。`--push-only` / `--dry-run` / 変更なしの経路は管理ディレクトリに書かないため判定しない。
+
+**対処**: 拒否された当該 bash block だけを `dangerouslyDisableSandbox: true` で 1 回だけ再実行してよい（ユーザー
+確認は不要 — 既知の環境制約）。stage / commit の再実行は管理ディレクトリを壊さない。これは同じマスク下で
+`git worktree remove` を再試行してはならない（管理ディレクトリが半壊する）のとは扱いが異なる。再実行でも
+`sandbox-mask` が出る場合は sandbox 起因ではない（権限・容量）ため再試行せず、stderr が名指しした管理ディレクトリを
+確認して停止する。
+
 ### sandbox の write-block マスクマウントが `git status` に幽霊 untracked エントリを生む
 
 sandbox が有効な環境（worktree の内外を問わない）では、`git status` にリポジトリ直下の `.bashrc` /
@@ -713,7 +738,8 @@ dotfile、`.claude/settings.json`、`.mcp.json` 等）へ `/dev/null` のキャ�
 後者は `ls -la` でも通常ファイル（`-`）に見えるため `test -c` では検知できず、mount 表（`/proc/self/mountinfo`
 または `mountpoint`）との照合が要る。幽霊 `??` エントリを生むのは前者のみで、`git-status-filtered.sh` の
 `test -c` 判定は変わらない。worktree 削除前の管理ディレクトリ側の検知（両形状）は
-`hooks/scripts/cleanup-session-worktree-teardown.sh` が担う。
+`hooks/scripts/cleanup-session-worktree-teardown.sh` が担う。wiki worktree への stage / commit 前の書き込み可否は
+`hooks/scripts/lib/worktree-git.sh` の `worktree_admin_writable` が一時ファイルの作成で判定する（[上記節](#main-checkout-cwd-から-wiki-worktree-の管理ディレクトリへの書き込みが-sandbox-にブロックされる)）。
 
 **列挙は例示であり網羅ではない**: 上記のパスは観測された一例に過ぎず、どのパスが保護対象になるかは
 sandbox 設定に依存して変わる。ファイル名の allowlist で判定してはならない。判定は常に下記の機構ベース

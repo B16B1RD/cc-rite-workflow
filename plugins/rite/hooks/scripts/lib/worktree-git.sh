@@ -192,6 +192,35 @@ verify_worktree_branch() {
  return 0
 }
 
+# -----------------------------------------------------------------------
+# worktree_admin_writable: probe whether git can create lock files in a
+# tree's git dir (the admin dir `.git/worktrees/<name>/` for a linked
+# worktree). A sandbox can mount that dir read-only while the working tree
+# stays writable; git then fails at `index.lock` with a message that does
+# not name the cause. Probing before the first index write lets callers
+# report a dedicated reason instead of a generic git failure.
+#
+# Usage:
+# worktree_admin_writable "$tree"
+#
+# Exit codes:
+# 0 writable
+# 1 not writable (git dir and the mktemp error are on stderr)
+# 2 git dir could not be resolved (error on stderr)
+worktree_admin_writable() {
+ local tree="$1" git_dir probe
+ if ! git_dir=$(git -C "$tree" rev-parse --absolute-git-dir 2>&1); then
+ echo "ERROR: git -C '$tree' rev-parse --absolute-git-dir が失敗しました: $git_dir" >&2
+ return 2
+ fi
+ if probe=$(mktemp "$git_dir/rite-write-probe.XXXXXX" 2>&1); then
+ rm -f "$probe"
+ return 0
+ fi
+ echo "WARNING: git の管理ディレクトリ（${git_dir}）に書き込めません: $probe" >&2
+ return 1
+}
+
 worktree_commit_push() {
  local worktree="$1"
  local branch="$2"
