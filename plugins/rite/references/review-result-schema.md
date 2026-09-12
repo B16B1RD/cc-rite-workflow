@@ -303,7 +303,7 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 `判定` の書込値: `issued` / `recorded`。既存の `rejected` は `recorded` 相当として読み、再判断しない。`recorded` の機械理由は `severity={sev}; measured={bool}`。`guardrail_audit_log[]` / `already_rejected[]` は `recorded` として転記する。
 
-collect は `targets[]` に `verification` と `route` を返す。実測あり MEDIUM は `issued`、それ以外と nit-noted は `recorded`。`--pr` は関連 Issue コメントの台帳を読み、既存の issued/recorded/rejected を対象から除外する。`--json` 単独はオフライン収集。count は targets と未転記 already_rejected の合計で、guardrail のみでも sweep を実行する。`/rite:cleanup` ステップ 6.0 の follow-up 起票も台帳の issued 行を読み、最新 JSON に同じ `[finding_id, file:line]` がある指摘を転記から除外する。最新 JSON でその位置の指摘が全件そうして除外されるときは、先行 cycle の同じ位置の指摘も id を問わず除外する。
+collect は `targets[]` に `verification` と `route` を返す。実測あり MEDIUM は `issued`、それ以外と nit-noted は `recorded`。`--pr` は関連 Issue コメントの台帳を読み、既存の issued/recorded/rejected を対象から除外する。`--json` 単独はオフライン収集。count は targets と未転記 already_rejected の合計で、guardrail のみでも sweep を実行する。`/rite:cleanup` ステップ 6.0 の follow-up 起票も台帳の issued 行を読み、最新 JSON 由来で同じ `[finding_id, file:line]` を持つ指摘を転記から除外する。先行 cycle の指摘は id や位置が同じでも転記し、重複しうる件数を WARNING で出す（欠落防止を重複防止より優先する）。
 
 **sweep 消化結果 marker**（iterate 完了通知の値源。JSON フィールドではない）:
 

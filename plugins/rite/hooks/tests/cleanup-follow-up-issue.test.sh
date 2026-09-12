@@ -54,7 +54,8 @@
 #   T-30 issued だけを除き recorded は転記する / 記録コメント以外・issued 以外の行では除外しない
 #   T-31 台帳を読めない (API 失敗 / 解析不能 / 関連 Issue 無し) ときは WARNING + marker で全件転記
 #   T-32 台帳が無い PR は従来どおり全件転記
-#   T-33 台帳行は最新 JSON と組が一致したときだけ採用し、その file:line を cycle と id を問わず除外する
+#   T-33 除外は最新 JSON 由来で台帳の issued 行と組が一致する finding に限る。先行 cycle の finding は
+#        id・位置が同じでも転記し、重複しうる件数を WARNING で出す / 最新 JSON を照合できなければ apply_failed
 #   T-34 cleanup SKILL.md が all_issued と除外不能 note を完了報告へ配線する
 #   T-35 台帳の選別述語が nb-sweep-collect.sh と揃っている
 set -uo pipefail
@@ -887,6 +888,7 @@ assert "T-26 部分本文を起票しない" "0" "$(create_count)"
 assert_grep "T-26 本文生成失敗の WARNING" "$ERR" 'follow-up finding 本文の生成に失敗しました'
 assert_grep "T-26 失敗 marker" "$ERR" 'FOLLOW_UP_ISSUE=failed; reason=create_api; pr=9'
 assert_not_grep "T-26 起票成功を主張しない" "$ERR" 'FOLLOW_UP_ISSUE=created'
+assert_grep "T-26 sweep 起票済みの除外も適用失敗を surface" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=apply_failed; pr=9'
 
 echo "--- T-25b: 除外処理の失敗後も全 finding を保持する ---"
 for stage in parse ambiguity release apply; do
@@ -979,9 +981,10 @@ assert "T-29 exit 0" "0" "$RC"
 assert_grep "T-29 all_issued marker" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=all_issued; pr=9'
 assert_grep "T-29 stdout summary も all_issued" "$OUT" 'result=skipped; reason=all_issued; pr=9'
 assert "T-29 create 0 回" "0" "$(create_count)"
-assert_grep "T-29 除外件数を出す" "$ERR" '^\[cleanup-follow-up-issue\] sweep_issued: pr=9; excluded=1$'
+assert_grep "T-29 除外件数を出す" "$ERR" '^\[cleanup-follow-up-issue\] sweep_issued: pr=9; excluded=1; possible_duplicates=0$'
 assert_not_grep "T-29 gh issue list を叩かない" "$GH_LOG" 'issue list'
 assert_not_grep "T-29 除外不能に倒さない" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable'
+assert_not_grep "T-29 重複しうる指摘が無ければ WARNING を出さない" "$ERR" 'WARNING: sweep 起票済みの指摘と同じ位置'
 
 reset_stubs
 r=$(new_root t29b)
@@ -1006,7 +1009,7 @@ assert "T-30 create 1 回" "1" "$(create_count)"
 assert_grep "T-30 recorded の finding は転記する" "$STUB_DIR/body.md" 'b.md:9'
 assert_not_grep "T-30 issued の finding は転記しない" "$STUB_DIR/body.md" 'a.md:3'
 assert_not_grep "T-30 issued の description も載らない" "$STUB_DIR/body.md" '残存する指摘の本文'
-assert_grep "T-30 除外件数 1" "$ERR" 'sweep_issued: pr=9; excluded=1$'
+assert_grep "T-30 除外件数 1" "$ERR" 'sweep_issued: pr=9; excluded=1; possible_duplicates=0$'
 assert_grep "T-30 取得先は関連 Issue の全ページ" "$GH_LOG" '^gh api --paginate --slurp repos/acme/demo/issues/42/comments$'
 
 for variant in no_heading no_sentinel not_issued; do
@@ -1022,7 +1025,7 @@ for variant in no_heading no_sentinel not_issued; do
   run_target "$r"
   assert_grep "T-30 $variant は除外しない (a.md)" "$STUB_DIR/body.md" 'a.md:3'
   assert_grep "T-30 $variant は除外しない (b.md)" "$STUB_DIR/body.md" 'b.md:9'
-  assert_grep "T-30 $variant の除外件数 0" "$ERR" 'sweep_issued: pr=9; excluded=0$'
+  assert_grep "T-30 $variant の除外件数 0" "$ERR" 'sweep_issued: pr=9; excluded=0; possible_duplicates=0$'
 done
 
 echo "--- T-31: 台帳を読めないときは除外せず転記し WARNING + marker ---"
@@ -1079,7 +1082,7 @@ jq -n --argjson c "$(comment_obj "$(record_body '| F-01 | b.md:9 | issued | #77 
 run_target "$r"
 assert_grep "T-33 id だけ一致する finding は除外しない" "$STUB_DIR/body.md" 'a.md:3'
 assert_grep "T-33 位置だけ一致する finding は除外しない" "$STUB_DIR/body.md" 'b.md:9'
-assert_grep "T-33 除外件数 0" "$ERR" 'sweep_issued: pr=9; excluded=0$'
+assert_grep "T-33 除外件数 0" "$ERR" 'sweep_issued: pr=9; excluded=0; possible_duplicates=0$'
 
 reset_stubs
 r=$(new_root t33b)
@@ -1088,19 +1091,26 @@ put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-01","f
 jq -n --argjson c "$(comment_obj "$(record_body "$ISSUED_A")")" '[[$c]]' > "$GH_API_JSON"
 run_target "$r"
 assert_grep "T-33b 別 key の finding は転記" "$STUB_DIR/body.md" 'c.md:1'
-assert_not_grep "T-33b 同じ組の再報告は全 cycle 分を除外" "$STUB_DIR/body.md" 'a.md:3'
-assert_grep "T-33b 除外件数 2" "$ERR" 'sweep_issued: pr=9; excluded=2$'
+assert_not_grep "T-33b 最新 JSON の組の指摘は転記しない" "$STUB_DIR/body.md" '説明: cycle2$'
+assert_grep "T-33b 同じ id・同じ位置でも先行 cycle の指摘は転記" "$STUB_DIR/body.md" '説明: cycle1$'
+assert_grep "T-33b 除外は最新 JSON 由来の 1 件だけ" "$ERR" 'sweep_issued: pr=9; excluded=1; possible_duplicates=1$'
+assert_grep "T-33b 重複しうる位置を WARNING で出す" "$ERR" 'WARNING: sweep 起票済みの指摘と同じ位置に先行 cycle の指摘が 1 件あります \(a.md:3\)'
 assert_not_grep "T-33b 曖昧 marker を出さない" "$ERR" 'FOLLOW_UP_EXCLUDE_AMBIGUOUS'
 
+# 先行 cycle にしか無い指摘は、最新 JSON の同じ位置が全件 sweep 起票済みでも転記する
+# (id が振り直された同じ指摘か別の指摘かを台帳から判定できない)
 reset_stubs
 r=$(new_root t33c)
-put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-03","file":"a.md","line":3,"description":"cycle1 の同じ指摘"}]}'
-put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-01","file":"a.md","line":3,"description":"cycle2 の同じ指摘"}]}'
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-07","file":"a.md","line":3,"description":"先行 cycle にのみ載る指摘"}]}'
+put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-01","file":"a.md","line":3,"description":"cycle2 の起票済み指摘"}]}'
 jq -n --argjson c "$(comment_obj "$(record_body "$ISSUED_A")")" '[[$c]]' > "$GH_API_JSON"
 run_target "$r"
-assert "T-33c id が振り直された先行 cycle の分も起票しない" "0" "$(create_count)"
-assert_grep "T-33c all_issued" "$ERR" 'reason=all_issued; pr=9'
-assert_grep "T-33c 除外件数 2" "$ERR" 'sweep_issued: pr=9; excluded=2$'
+assert "T-33c 先行 cycle の指摘が残るので起票する" "1" "$(create_count)"
+assert_not_grep "T-33c all_issued に倒さない" "$ERR" 'reason=all_issued'
+assert_grep "T-33c 先行 cycle の指摘を転記" "$STUB_DIR/body.md" '先行 cycle にのみ載る指摘'
+assert_not_grep "T-33c 最新 JSON の起票済み指摘は転記しない" "$STUB_DIR/body.md" 'cycle2 の起票済み指摘'
+assert_grep "T-33c 除外件数 1" "$ERR" 'sweep_issued: pr=9; excluded=1; possible_duplicates=1$'
+assert_grep "T-33c 重複しうることを WARNING で出す" "$ERR" 'WARNING: sweep 起票済みの指摘と同じ位置に先行 cycle の指摘が 1 件あります'
 
 reset_stubs
 r=$(new_root t33d)
@@ -1110,18 +1120,21 @@ jq -n --argjson c "$(comment_obj "$(record_body "$ISSUED_A")")" '[[$c]]' > "$GH_
 run_target "$r"
 assert_grep "T-33d 最新 JSON に組が無い台帳行は採用しない" "$STUB_DIR/body.md" 'a.md:3'
 assert_grep "T-33d 最新 cycle の指摘も転記" "$STUB_DIR/body.md" 'c.md:1'
-assert_grep "T-33d 除外件数 0" "$ERR" 'sweep_issued: pr=9; excluded=0$'
+assert_grep "T-33d 除外件数 0" "$ERR" 'sweep_issued: pr=9; excluded=0; possible_duplicates=0$'
 
-reset_stubs
-r=$(new_root t33e)
-put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-04","file":"a.md","line":3,"description":"cycle1 の起票済み指摘"}]}'
-put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-01","file":"a.md","line":3,"description":"起票済みの指摘"},{"id":"F-02","file":"a.md","line":3,"description":"同じ位置の記録のみの指摘"}]}'
-jq -n --argjson c "$(comment_obj "$(record_body "$(printf '%s\n%s' "$ISSUED_A" '| F-02 | a.md:3 | recorded | severity=LOW; measured=false |')")")" '[[$c]]' > "$GH_API_JSON"
-run_target "$r"
-assert_grep "T-33e 同じ位置の recorded は転記" "$STUB_DIR/body.md" '同じ位置の記録のみの指摘'
-assert_not_grep "T-33e 採用した組の指摘は転記しない" "$STUB_DIR/body.md" '説明: 起票済みの指摘$'
-assert_grep "T-33e 曖昧な位置では先行 cycle を位置で除外しない" "$STUB_DIR/body.md" 'cycle1 の起票済み指摘'
-assert_grep "T-33e 除外件数 1" "$ERR" 'sweep_issued: pr=9; excluded=1$'
+# 先行 cycle の id が最新 JSON と衝突する (F-01) 場合も、組の照合は先行 cycle の指摘に当てない
+for cycle1_id in F-04 F-01; do
+  reset_stubs
+  r=$(new_root "t33e-$cycle1_id")
+  put_json "$r" "9-20260101120000.json" "{\"non_blocking_findings\":[{\"id\":\"$cycle1_id\",\"file\":\"a.md\",\"line\":3,\"description\":\"cycle1 の指摘\"}]}"
+  put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-01","file":"a.md","line":3,"description":"起票済みの指摘"},{"id":"F-02","file":"a.md","line":3,"description":"同じ位置の記録のみの指摘"}]}'
+  jq -n --argjson c "$(comment_obj "$(record_body "$(printf '%s\n%s' "$ISSUED_A" '| F-02 | a.md:3 | recorded | severity=LOW; measured=false |')")")" '[[$c]]' > "$GH_API_JSON"
+  run_target "$r"
+  assert_grep "T-33e $cycle1_id 同じ位置の recorded は転記" "$STUB_DIR/body.md" '同じ位置の記録のみの指摘'
+  assert_not_grep "T-33e $cycle1_id 採用した組の指摘は転記しない" "$STUB_DIR/body.md" '説明: 起票済みの指摘$'
+  assert_grep "T-33e $cycle1_id 先行 cycle の指摘は転記" "$STUB_DIR/body.md" 'cycle1 の指摘'
+  assert_grep "T-33e $cycle1_id 除外件数 1" "$ERR" 'sweep_issued: pr=9; excluded=1; possible_duplicates=1$'
+done
 
 for variant in broken not_array; do
   reset_stubs

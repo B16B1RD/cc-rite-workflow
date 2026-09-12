@@ -206,7 +206,9 @@ for f in "$results_dir/${PR_NUMBER}"-*.json*; do
   { [ -e "$f" ] || [ -L "$f" ]; } || continue
   matched=$((matched + 1))
   : > "$union_err"
-  if ! part=$(jq -c 'if (.non_blocking_findings | type) == "array" then .non_blocking_findings else error("non_blocking_findings is not an array") end' "$f" 2>"$union_err"); then
+  # 各 finding に出典 JSON のパス (`_src`) を持たせる。sweep 起票済みの除外を最新 JSON 由来の要素に
+  # 限るため (下の除外ブロック参照)。本文の生成は明示したフィールドだけを読むので転記には出ない。
+  if ! part=$(jq -c --arg src "$f" 'if (.non_blocking_findings | type) == "array" then .non_blocking_findings | map(if type == "object" then . + {_src: $src} else . end) else error("non_blocking_findings is not an array") end' "$f" 2>"$union_err"); then
     # 部分的な parse 失敗で全滅させない。健全な側の和集合で続行し、全滅時だけ json_undecidable。
     echo "WARNING: レビュー結果 JSON を読めないため和集合から除外します (PR #${PR_NUMBER}): $f" >&2
     [ -s "$union_err" ] && head -3 "$union_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
@@ -341,12 +343,12 @@ fi
 # iterate の NB sweep が既に Issue 化した指摘 (関連 Issue 記録コメントの却下台帳で判定=issued) を
 # 転記から除く。sweep の起票には follow-up ラベルも先頭行 marker も付かないため、下の既存判定では
 # 見分けられず同じ指摘が二重に Issue 化される。recorded / rejected 行は従来どおり転記する。
-# 台帳の issued 行 [finding_id, file:line] は、sweep が読んだ最新 JSON (nb-sweep-collect.sh と同じ
-# 選び方) の non_blocking_findings[] に同じ組があるときだけ採用する。id は cycle ごとに振り直され、
-# 別 PR の台帳行も同じ関連 Issue に並ぶため、組が最新 JSON と一致した行だけが本 PR の sweep 起票と言える。
-# 採用した組の finding を除外する。加えて、最新 JSON でその file:line の finding が全件採用済みなら、
-# 先行 cycle の同じ位置の finding も id を問わず除外する (未解消の指摘は cycle ごとに別の id で同じ位置に
-# 再報告される)。同じ位置に採用されていない finding が並ぶ位置は曖昧なので位置では除外しない。
+# 除外するのは、sweep が読んだ最新 JSON (nb-sweep-collect.sh と同じ選び方) 由来の finding のうち、
+# 台帳の issued 行と [finding_id, file:line] の組が一致するものだけ。台帳が判定したのは最新 JSON の
+# 指摘であり、別 PR の台帳行も同じ関連 Issue に並ぶため、組が最新 JSON と一致して初めて本 PR の sweep
+# 起票と言える。先行 cycle の finding は id や位置が同じでも転記する。台帳は cycle 属性も指摘の内容も
+# 持たず、同じ指摘の再報告か同じ位置の別の指摘かを判定できないため、除外すると sweep 未実施の指摘が
+# どの Issue にも残らなくなる (欠落より重複を選ぶ)。重複しうる件数は WARNING で出す。
 # 台帳や最新 JSON を読めないときは除外を適用せず全件を転記し、WARNING と marker で surface する
 # (黙って全件除外にも全件転記にも倒さない)。
 sweep_issued_unavailable() {
@@ -378,25 +380,33 @@ else
     [ -s "$comments_err" ] && head -3 "$comments_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   elif ! latest_json=$(find "$results_dir" -maxdepth 1 -type f -name "${PR_NUMBER}-*.json" | LC_ALL=C sort | tail -1) \
     || [ -z "$latest_json" ] \
-    || ! issued_match=$(jq -c --argjson keys "$issued_keys" '
-      if (.non_blocking_findings | type) != "array" then error("non_blocking_findings is not an array") else . end
-      | [.non_blocking_findings[] | [(.id // ""), ((.file // "") + ":" + (.line | tostring))]] as $latest
-      | [$latest[] | select(. as $k | any($keys[]; . == $k))] as $pairs
-      | {pairs: $pairs,
-         locations: ([$pairs[] | .[1]] | unique
-           | map(select(. as $l | all($latest[] | select(.[1] == $l); . as $k | any($pairs[]; . == $k)))))}' \
-      "$latest_json" 2>"$comments_err"); then
+    || ! jq -e 'if (.non_blocking_findings | type) != "array" then error("non_blocking_findings is not an array") else true end' \
+      "$latest_json" >/dev/null 2>"$comments_err"; then
     sweep_issued_unavailable apply_failed "sweep 起票済みの指摘を最新のレビュー結果 JSON と照合できません"
     [ -s "$comments_err" ] && head -3 "$comments_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-  elif ! issued_filtered=$(printf '%s' "$findings_json" | jq -c --argjson m "$issued_match" '
-    [.[] | [(.id // ""), ((.file // "") + ":" + (.line | tostring))] as $k
-     | select((any($m.pairs[]; . == $k) or any($m.locations[]; . == $k[1])) | not)]'); then
+  elif ! issued_split=$(printf '%s' "$findings_json" | jq -c --arg latest "$latest_json" --argjson keys "$issued_keys" '
+    def loc: (.file // "") + ":" + (.line | tostring);
+    def issued: ._src == $latest and ([(.id // ""), loc] as $k | any($keys[]; . == $k));
+    ([.[] | select(issued) | loc] | unique) as $locs
+    | [.[] | select((issued | not) and ._src != $latest and (loc as $l | any($locs[]; . == $l))) | loc] as $dups
+    | {kept: [.[] | select(issued | not)],
+       excluded: ([.[] | select(issued)] | length),
+       duplicates: ($dups | length),
+       duplicate_locations: ($dups | unique | join(", "))}') \
+    || ! issued_filtered=$(printf '%s' "$issued_split" | jq -c '.kept') \
+    || ! _issued_excluded=$(printf '%s' "$issued_split" | jq -r '.excluded') \
+    || ! _issued_dups=$(printf '%s' "$issued_split" | jq -r '.duplicates') \
+    || ! _issued_dup_locs=$(printf '%s' "$issued_split" | jq -r '.duplicate_locations'); then
     sweep_issued_unavailable apply_failed "sweep 起票済みの除外適用に失敗しました"
   else
-    _issued_before=$(printf '%s' "$findings_json" | jq 'length')
     _issued_after=$(printf '%s' "$issued_filtered" | jq 'length')
     findings_json="$issued_filtered"
-    echo "[cleanup-follow-up-issue] sweep_issued: pr=${PR_NUMBER}; excluded=$((_issued_before - _issued_after))" >&2
+    echo "[cleanup-follow-up-issue] sweep_issued: pr=${PR_NUMBER}; excluded=${_issued_excluded}; possible_duplicates=${_issued_dups}" >&2
+    if [ "$_issued_dups" -gt 0 ]; then
+      # file:line はレビュアーが書く値なので制御文字を潰す (パスは ASCII 前提。WARNING 本文には通さない)
+      _issued_dup_locs=$(printf '%s' "$_issued_dup_locs" | neutralize_ctrl)
+      echo "WARNING: sweep 起票済みの指摘と同じ位置に先行 cycle の指摘が ${_issued_dups} 件あります (${_issued_dup_locs})。同じ指摘の再報告か別の指摘かを台帳から判定できないため、欠落させずに転記します。sweep の Issue と重複していないか確認してください (PR #${PR_NUMBER})" >&2
+    fi
     if [ "$_issued_after" -eq 0 ]; then
       emit_skip all_issued
       exit 0
