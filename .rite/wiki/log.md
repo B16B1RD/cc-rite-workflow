@@ -1,5 +1,10 @@
 ## 2026-09-12
 
+* **Create**: [identity を持たない判定台帳で複数 cycle の和集合を重複除外すると、重複防止と欠落防止を同時には満たせない](pages/anti-patterns/identity-less-ledger-union-dedup-cannot-prevent-both-duplicate-and-loss.md) — [sweep 起票済み指摘の follow-up 除外に対するレビュー結果](raw/reviews/20260912T135538Z-pr-2741.md) を新規ページ化（同じ変更の後続 cycle のレビュー結果・fix 結果 4 件も統合）
+* **Create**: [jq の `[]?` は型不正を空の結果に変えて rc=0 で終わり、呼び出し側の fail-loud 分岐を迂回する](pages/anti-patterns/jq-optional-iterator-swallows-type-error-before-fail-loud-branch.md) — [照合 jq の型検査に対するレビュー結果](raw/reviews/20260912T142140Z-pr-2741.md) を新規ページ化（対応する fix 結果も統合）
+* **Update**: [実装が Issue の MUST と原則の両方に挟まれたら、実装を戻さず契約側（Decision Log と AC の例外）を更新する](pages/heuristics/contract-update-over-revert-on-must-conflict.md) — [重複防止と欠落防止の優先順位を決めた fix 結果](raw/fixes/20260912T145412Z-pr-2741.md) を統合。MUST 同士が両立しないときは実装を振り直す前に優先順位を契約とレビュー依頼に書く節を追記
+* **Update**: [検証ツールの保証文言は検証される不変量と非検出 gap に正確に対応させる](pages/heuristics/verification-doc-guarantee-matches-invariants.md) — [重複警告の検出範囲を文書が書きすぎた指摘](raw/reviews/20260912T150939Z-pr-2741.md) を統合。警告の検出範囲にも同じ規則が当たる節を追記
+
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=479, broken_refs=0
 * **Create**: [契約文書の段落を固定するテストは、対象節の前の文から後続文の書き出しまでを 1 本の連続文字列で pin する](pages/patterns/contract-paragraph-adjacent-pin-through-following-sentence.md) — [退路段落の停止節とスクリプト化禁止を固定したテスト変更のレビュー結果](raw/reviews/20260912T114337Z-pr-2736.md) を新規ページ化
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=479, broken_refs=0

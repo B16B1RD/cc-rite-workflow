@@ -4,7 +4,7 @@ title: "実装が Issue の MUST と原則の両方に挟まれたら、実装�
 domain: "heuristics"
 description: "純粋抽出リファクタの「振る舞い不変」MUST と fail-loud 原則のように、実装を直すことが別の MUST 違反になる衝突では、実装を機械的に復元しても同じ reviewer が同じ指摘を再発行する往復になる。契約側へ例外を明記して閉じるほうが収束する。"
 created: "2026-09-01T20:26:00+09:00"
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-01T20:26:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T15:25:00+00:00" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260901T092252Z-pr-2498.md"
@@ -12,6 +12,10 @@ sources:
     resource: "raw/fixes/20260901T092936Z-pr-2498.md"
   - type: "reviews"
     resource: "raw/reviews/20260901T095150Z-pr-2498.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260912T145412Z-pr-2741.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260912T150939Z-pr-2741.md"
 tags: []
 confidence: high
 ---
@@ -38,6 +42,14 @@ confidence: high
 
 **落とし穴 — 例外は書く場所が増えるほど不一致の面が増える**: 例外文を複数箇所へ書くとき、適用範囲の記述を全箇所で揃える。観測された事例では、ある節の例外括弧を 2 軸で、AC-8 の Then を 3 軸で書いたところ、次の cycle で「契約文書内で例外の適用範囲が食い違う」と別 reviewer に指摘された。例外の軸（対象・条件・派生箇所の数）を 1 つの文言に固定し、各所へは同じ文言を転記する。
 
+**MUST 同士が機械的に両立しないと分かったら、実装を振り直す前に優先順位を契約に書く**: 別の観測例では、Issue の「処理済みの指摘を再掲しない」と「未処理の指摘は必ず残す」が、判定台帳に identity が無いため両立しなかった。規則を足しても削っても、次の cycle で逆向きの指摘が出た。止まったのは次の 3 つを行ってからだった。
+
+- 優先する側（欠落させない）を Issue のコメントと設計理由の文書に 1 文で明記する
+- 逆向きだった旧テストの期待値を、理由を commit に添えて反転する
+- レビュー依頼にも「この優先順位は前提として扱い、覆す指摘は出さない」と書く
+
+これで残る指摘は記述の精度（警告が拾う範囲の書きすぎ等）に収束した。
+
 **revert を選んだ場合の検証 baseline は「導入 commit の親」**: 逆に実装を戻す判断をしたときは、`develop` との照合で検証してはならない。当該 call site が `develop` に存在しない（この PR で初めて入った）場合、その照合は成立しない。最も強い証拠は `git diff <その hunk を導入した commit の親>..HEAD -- <file>` が空であること。
 
 ## 関連ページ
@@ -50,3 +62,5 @@ confidence: high
 - [レビュー結果](../../raw/reviews/20260901T092252Z-pr-2498.md)
 - [fix 結果](../../raw/fixes/20260901T092936Z-pr-2498.md)
 - [レビュー結果](../../raw/reviews/20260901T095150Z-pr-2498.md)
+- [fix 結果](../../raw/fixes/20260912T145412Z-pr-2741.md)
+- [レビュー結果](../../raw/reviews/20260912T150939Z-pr-2741.md)

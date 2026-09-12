@@ -13,9 +13,11 @@ sources:
     resource: "raw/fixes/20260703T175226Z-pr-1743.md"
   - type: "reviews"
     resource: "raw/reviews/20260703T180609Z-pr-1743.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260912T150939Z-pr-2741.md"
 tags: ["documentation", "drift-check", "overclaim", "guarantee", "contributing"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-03T18:30:00+00:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T15:25:00+00:00" }
 ---
 
 # 検証ツールの保証文言は検証される不変量と非検出 gap に正確に対応させる
@@ -40,6 +42,10 @@ reviewer registry の 3-way 同期検証で実測。
 2. **3 面一貫伝播**: 同種の overclaim 表現（「machine-checked」の全称的表現）を `git grep` で列挙し、手順書の入口文・締め文・SoT 側注記（reviewers/SKILL.md）のすべてに同一の限定を伝播する。既に不変量限定で正確な表現（「row/slug consistency is machine-checked」= I3 限定）は対象外と判定する
 3. **設計を変えず文書を設計に合わせる**: gap を塞ぐためのチェック拡張（I2 双方向化）に「logic-selected reviewer と区別不能」という設計理由がある場合、実装は変えず文書を実装に合わせる方向が正解（過剰反応の回避）
 
+### 警告の検出範囲にも同じ規則が当たる
+
+検証ツールに限らず、「重複しうるものは WARNING で知らせる」のような可観測性の保証も、実装が数える範囲に合わせて書く。観測された事例では、実装は同じ `file:line` に並ぶ要素だけを重複候補として数えていた。一方、文書は条件なしに「黙って重複させない」と断言していた。fix で行がずれて同じ指摘が別の行で再報告される形は典型的なのに、件数 0・警告なしで重複した。直すのは文書側で、「同じ位置に並ぶものに限り警告する。行がずれた再報告は検出できず、警告なしで重複しうる」と検出できない形を明記する。検出を file 単位へ広げる案は、ノイズが増えるうえ判定の精度も上がらないため採らなかった。
+
 ### 判定基準
 
 - 保証文に「必ず」「すべて」「漏れなく」等の全称語が入ったら、実装の不変量リストと 1:1 で突合する
@@ -55,3 +61,4 @@ reviewer registry の 3-way 同期検証で実測。
 - [保証文 overclaim を MEDIUM 検出](../../raw/reviews/20260703T174623Z-pr-1743.md)
 - [保証範囲の I1/I3 限定 + gap 明記 + 3 面伝播](../../raw/fixes/20260703T175226Z-pr-1743.md)
 - [修正が指摘の意図を満たすことを確認、0 findings 収束](../../raw/reviews/20260703T180609Z-pr-1743.md)
+- [重複警告の検出範囲を文書が書きすぎた指摘](../../raw/reviews/20260912T150939Z-pr-2741.md)
