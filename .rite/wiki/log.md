@@ -3,6 +3,7 @@
 * **Create**: [契約の判定表に退路の行を足すときは、適用条件を観測の時点だけでなく対象の内容で限定する](pages/heuristics/contract-table-row-scoped-by-subject-content-not-timing.md) — [作業先実行契約への退路追加に対するレビュー結果](raw/reviews/20260912T001903Z-pr-2709.md) を新規ページ化
 * **Update**: [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](pages/patterns/absence-pin-base-present-head-absent-single-line.md) — [作業先実行契約への退路追加に対するレビュー結果](raw/reviews/20260912T001903Z-pr-2709.md) を統合。禁止文の存在 pin は許可文の追記を捕まえない（対の負側は denylist 止まりで防御価値は限定的、契約対応をコメントに残す）
 * **Skip**: [NB sweep 結果](raw/fixes/20260912T002125Z-pr-2709-nb-sweep.md) — sweep の routing ログのみで、退路の観測は同 PR のレビュー結果 raw に記録済み。新規経験則なし
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=475, broken_refs=0
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=474, broken_refs=0
 * **Create**: [同一箇所への逐語 pin が連続したら記述の分割を検討する](pages/heuristics/repeated-verbatim-pin-signals-structural-split.md) — [設計文書の記述を実装分岐と同じ広さへ揃えたレビュー結果](raw/reviews/20260911T183502Z-pr-2702.md) を新規ページ化
 * **Update**: [否定条件の分岐を文書へ転記するとき else 側集合を肯定的な具体名に置き換えない](pages/heuristics/negated-condition-branch-transcribed-as-positive-name.md) — [設計文書の記述を実装分岐と同じ広さへ揃えたレビュー結果](raw/reviews/20260911T183502Z-pr-2702.md) を統合。正しい文の存在を強制する肯定 assert 1 本で肯定的具体名への revert は落ちる（対の否定 assert は言い換えを捕まえない防御の重ね）。sweep 範囲は SoT 実装のコメントまで含める
