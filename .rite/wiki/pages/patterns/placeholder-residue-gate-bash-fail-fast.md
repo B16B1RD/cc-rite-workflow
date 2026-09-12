@@ -16,11 +16,14 @@ sources:
     resource: "raw/reviews/20260904T091303Z-pr-2549.md"
   - type: "fixes"
     resource: "raw/fixes/20260904T092650Z-pr-2549.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260912T094630Z-pr-2731.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-04T13:54:13Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T10:05:00Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-04T13:54:13Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T10:05:00Z" }
 ---
 
 # LLM substitute placeholder は bash residue gate で fail-fast 化する
@@ -67,6 +70,12 @@ LLM substitute シームを持つ helper を新設するとき、SKILL.md 側（
 
 検査対象の値ではなく、**検査パターン自身**が substitute されると、gate は自分を無効化する。パターンに `*"{plugin_root}"*` のように placeholder 名を書くと、literal substitute がパターン側まで書き換え、実行時には常に既に埋まっている値と照合して residual を見逃す。sibling が使っているのはブレースの形状（`"{"*"}"`）であり、名前をパターンに埋め込まない。この欠陥は静的 grep からは見えず、実行可能ブロックを 1 回走らせた pin が捕まえた。
 
+### ファイルパスに入る placeholder は一度だけ変数で受けて数値検証する
+
+placeholder が state ファイル名に直接入る場合（`.rite/state/review-run-since-{pr_number}.txt` 等）、置換漏れはエラーにならず字面どおりの名前のファイルとして通る。書く側と読む側が同じように漏らすと、字面どおりの名前のファイル同士で辻褄が合い、警告も出ずに誤った状態を読む。bash block の先頭で `pr_number="{pr_number}"` を一度だけ受け、`case "$pr_number" in ''|*[!0-9]*) ... exit 1 ;; esac` で最初のファイル操作より前に止め、以降のパスは `${pr_number}` で組み立てる。Bash 呼び出し間でシェル変数は引き継がれないため、同じ値を使う fence ごとに gate を置く。
+
+この形をテストで検証するときは、SKILL.md から gate と対象部を literal 抽出し、置換は gate 行の `"{pr_number}"` だけに当てる。全文を機械置換すると `${pr_number}` の内側まで書き換わり、テスト自体が本番と違う bash を走らせる。不正値（未置換・空・数字混じり・先頭空白・負号）では書込側がファイルを作らず、読込側が後段の helper 呼び出しに進まないことを観測点にする。
+
 ### LLM 内部状態 vs shell 変数の境界
 
 bash tool 呼び出し境界を跨いで shell 変数は保持されない。Phase A で `count=5` を定義しても Phase B からは参照不能で、LLM は自身の内部状態 (会話コンテキスト) から literal 値を substitute する責務を負う。この契約は bash コメントで明示することで、将来の読者が「なぜ placeholder が多いのか」を理解できる。
@@ -84,3 +93,4 @@ bash tool 呼び出し境界を跨いで shell 変数は保持されない。Pha
 - [レビュー結果](../../raw/reviews/20260804T145133Z-pr-2111.md)
 - [レビュー結果](../../raw/reviews/20260904T091303Z-pr-2549.md)
 - [fix 結果](../../raw/fixes/20260904T092650Z-pr-2549.md)
+- [レビュー結果](../../raw/reviews/20260912T094630Z-pr-2731.md)

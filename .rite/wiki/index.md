@@ -52,7 +52,7 @@ okf_version: "0.2"
 | [canonical reference 文書のサンプルコードは canonical 実装と一字一句同期する](pages/patterns/canonical-reference-sample-code-strict-sync.md) | patterns | reference 文書 (bash-trap-patterns.md / bash-cross-boundary-state-transfer.md 等) のサンプルコードはコピペ利用される前提のため、canonical 実装と一字一句揃っていなければ silent failure を下流に伝播させる。 | 2026-05-03T18:46:59Z | high |
 | [prompt 内 numbered list は同型構造で書く（全 step に動作詳細 bullet を対称配置）](pages/patterns/prompt-numbered-list-isomorphic-structure.md) | patterns | LLM が prompt / skill / command 定義を実装する際、numbered list は各 step の「動作詳細 bullet の有無・粒度」を**対称配置**する必要がある。 | 2026-04-18T17:40:00+09:00 | high |
 | [Fix 修正コメント自身が canonical convention を破る self-drift](pages/anti-patterns/fix-comment-self-drift.md) | anti-patterns | fix サイクルで追加・変更したコメントや説明文自体が、その PR が守るべき canonical convention（例: 「行番号参照禁止」原則）を破ってしまう self-drift failure mode。 | 2026-08-03T07:46:56Z | high |
-| [LLM substitute placeholder は bash residue gate で fail-fast 化する](pages/patterns/placeholder-residue-gate-bash-fail-fast.md) | patterns | LLM が literal substitute する bash 変数 (例: `commit_msg="... {n_pages_created} ..."` や `var="{placeholder}"`) は、substitute 漏れ時に bash レベルで silent 誤動作する経路を持つ。 | 2026-09-04T13:54:13Z | high |
+| [LLM substitute placeholder は bash residue gate で fail-fast 化する](pages/patterns/placeholder-residue-gate-bash-fail-fast.md) | patterns | LLM が literal substitute する bash 変数 (例: `commit_msg="... {n_pages_created} ..."` や `var="{placeholder}"`) は、substitute 漏れ時に bash レベルで silent 誤動作する経路を持つ。 | 2026-09-12T10:05:00Z | high |
 | [DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）](pages/patterns/drift-check-anchor-semantic-name.md) | patterns | drift 防止を目的とする anchor comment で literal 行番号 (例: `(L1331-1332)`) を埋め込むと、そのアンカー自身が drift 源になる。 | 2026-07-17T06:45:00+00:00 | high |
 | [Peer pattern の drift 判定は canonical schema 不変条件で cross-check する](pages/patterns/canonical-schema-invariant-peer-cross-check.md) | patterns | reviewer が「neighbor pattern と drift している」と指摘した際、neighbor 自身が drift 元である可能性があるため、`canonical schema` の不変条件 (例: `WORKFLOW_INCIDENT=1` family の `sep_count=3` semicolon-separated key=value invariant) で direction を機械検証してから fix する。 | 2026-05-18T04:00:00+00:00 | high |
 | [新規 exit 1 経路 / sentinel type 追加時は同一ファイル内 canonical 一覧を同期更新し、『N site 対称化』counter 宣言を drift 検出アンカーとして活用する](pages/heuristics/canonical-list-count-claim-drift-anchor.md) | heuristics | bash block に新規 `exit 1` fail-fast 経路を追加する PR は、同一ファイル内の 2 種の canonical SoT 一覧 (`9.3 exit code` 節の例外リスト / エラーハンドリング表) を **必ず同時更新** する義務を負う。 | 2026-08-30T15:15:33Z | high |
@@ -496,4 +496,4 @@ okf_version: "0.2"
 
 - 総ページ数: 482
 - ドメイン別: patterns=111, heuristics=215, anti-patterns=156
-- 最終更新: 2026-09-12T09:05:00+00:00
+- 最終更新: 2026-09-12T10:05:00Z

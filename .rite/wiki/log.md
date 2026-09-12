@@ -37,6 +37,7 @@
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=481, broken_refs=0
 * **Update**: [契約の判定表に退路の行を足すときは、適用条件を観測の時点だけでなく対象の内容で限定する](pages/heuristics/contract-table-row-scoped-by-subject-content-not-timing.md) — [退路の除外文の終端節が未 pin だったレビュー結果](raw/reviews/20260912T045212Z-pr-2717.md) を統合。除外文の pin は入口の 1 文だけでなく行き先と禁止を述べる終端節まで伸ばす
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=476, broken_refs=0
+* **Update**: [LLM substitute placeholder は bash residue gate で fail-fast 化する](pages/patterns/placeholder-residue-gate-bash-fail-fast.md) — [run 開始点 pin の PR 番号 guard に対するレビュー結果](raw/reviews/20260912T094630Z-pr-2731.md) を統合。ファイルパスに入る placeholder を一度だけ変数で受けて数値検証し、テストでは gate 行だけを置換して抽出実行する形を追記
 
 ## 2026-09-11
 
