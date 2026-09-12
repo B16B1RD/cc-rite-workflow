@@ -59,7 +59,8 @@
 #       reason=parse_failed : --exclude-ids を解析できず除外を全破棄した。count=unknown
 #       reason=apply_failed : 除外適用の jq が失敗し除外を全破棄した。count = 要求 id 総数
 #   [CONTEXT] FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=<r>; pr=<n>
-#     sweep 起票済みの除外を適用できず全件を転記対象にした (成功経路では出さない)。
+#     sweep 起票済みの除外を適用できず、sweep で Issue 化済みの指摘も転記対象にした
+#     (再検証による除外は適用済みのまま。成功経路では出さない)。
 #       reason=no_source_issue : --source-issue が空
 #       reason=comments_api    : 関連 Issue のコメント取得に失敗
 #       reason=ledger_invalid  : 取得したコメントから却下台帳を解析できない
@@ -349,8 +350,8 @@ fi
 # 起票と言える。先行 cycle の finding は id や位置が同じでも転記する。台帳は cycle 属性も指摘の内容も
 # 持たず、同じ指摘の再報告か同じ位置の別の指摘かを判定できないため、除外すると sweep 未実施の指摘が
 # どの Issue にも残らなくなる (欠落より重複を選ぶ)。重複しうる件数は WARNING で出す。
-# 台帳や最新 JSON を読めないときは除外を適用せず全件を転記し、WARNING と marker で surface する
-# (黙って全件除外にも全件転記にも倒さない)。
+# 台帳や最新 JSON を読めないときは sweep 起票済みの除外だけを適用せずに転記し (上の再検証による除外は
+# 適用済みのまま)、WARNING と marker で surface する (sweep 起票済みを黙って全件除外にも全件転記にも倒さない)。
 sweep_issued_unavailable() {
   echo "WARNING: $2。sweep 起票済みの指摘を除外せず転記します (PR #${PR_NUMBER})" >&2
   echo "[CONTEXT] FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=$1; pr=${PR_NUMBER}" >&2
