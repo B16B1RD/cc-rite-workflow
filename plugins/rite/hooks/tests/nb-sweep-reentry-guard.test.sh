@@ -141,7 +141,7 @@ assert_grep_in_section "T-07 5.0.2 skipped row" "$ITERATE" \
   'ITERATE_NB_SWEEP=skipped'
 assert_grep_in_section "T-07 0.6 deletes done-file on new run" "$ITERATE" \
   '## ステップ 0.6:' '## ステップ 1:' \
-  'nb-sweep-done-{pr_number}.txt'
+  'rm -f "\$pin_root/\.rite/state/nb-sweep-done-\$\{pr_number\}\.txt"'
 
 # --- T-08: AC-6 gitignore — sidecar * + setup nested 3-line。git check-ignore -q rc=0 ---
 assert_grep_in_section "T-08 setup Phase 4.6 calls nested gitignore helper" "$SETUP" \
