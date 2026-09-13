@@ -413,6 +413,7 @@ route_meta_check() {
   [ "$(printf '%s\n' "$body" | awk 'NR <= 4')" = "$expected" ] || { echo "body does not open with Type / Complexity=$projects / blank / ## 概要"; return 1; }
   [ "$(printf '%s\n' "$body" | grep -E '^#{2,3} ' | paste -sd '|' -)" = "$(route_headings "$1")" ] || { echo 'body headings changed'; return 1; }
   [ "$(grep -c '^| `{type}` |' "$2" || true)" = 1 ] || { echo 'Placeholder table has no single {type} row'; return 1; }
+  [ "$1" != split ] || [ "$(route_section "$1" "$2" | grep -c '^| `{type}` |' || true)" = 1 ] || { echo 'Placeholder table {type} row is outside §4'; return 1; }
 }
 for route in "triage|$triage" "cleanup|$cleanup_skill" "split|$split"; do
   name=${route%%|*}
@@ -435,6 +436,11 @@ for route in "triage|$triage" "cleanup|$cleanup_skill" "split|$split"; do
     fi
   done
 done
+# The triage row lives outside its section, so only split pins the row inside §4.
+{ grep '^| `{type}` |' "$split"; sed '/^| `{type}` |/d' "$split"; } > "$work/split-moved-mutant.md"
+if assert_mutant_changed 'split {type} placeholder moved before §4' "$split" "$work/split-moved-mutant.md"; then
+  assert 'split {type} placeholder moved before §4 is detected' 'Placeholder table {type} row is outside §4' "$(route_meta_check split "$work/split-moved-mutant.md")"
+fi
 
 # The complexity helper reads the expanded bodies; gh is a local mock, never the CLI.
 mkdir "$work/lane-bin"
