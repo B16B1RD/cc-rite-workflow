@@ -83,15 +83,19 @@ if assert_mutant_changed 'deleted summary rule' "$structure" "$work/mutant.md"; 
 fi
 
 # Execute the actual one-line version gate; gh is a local function, never the CLI.
-version_code=$(grep '^svg_allowed=' "$structure")
-for pair in '2.98.0 false' '2.99.0 true' '2.100.0 true' 'invalid false'; do
-  read -r version expected <<< "$pair"
-  actual=$(VERSION="$version" bash -c 'gh() { printf "gh version %s\n" "$VERSION"; }; eval "$1"; printf "%s" "$svg_allowed"' _ "$version_code" 2> "$work/version.err")
-  assert "SVG allowed for $version" "$expected" "$actual"
-  if [ "$version" = invalid ]; then
-    assert_grep 'invalid version warning' "$work/version.err" 'WARNING:'
-  else assert "valid $version is quiet" '' "$(cat "$work/version.err")"; fi
-done
+version_code=$(grep '^svg_allowed=' "$structure" || true)
+if [ -z "$version_code" ]; then
+  fail 'svg_allowed version gate line exists in template-structure'
+else
+  for pair in '2.98.0 false' '2.99.0 true' '2.100.0 true' 'invalid false'; do
+    read -r version expected <<< "$pair"
+    actual=$(VERSION="$version" bash -c 'gh() { printf "gh version %s\n" "$VERSION"; }; eval "$1"; printf "%s" "$svg_allowed"' _ "$version_code" 2> "$work/version.err")
+    assert "SVG allowed for $version" "$expected" "$actual"
+    if [ "$version" = invalid ]; then
+      assert_grep 'invalid version warning' "$work/version.err" 'WARNING:'
+    else assert "valid $version is quiet" '' "$(cat "$work/version.err")"; fi
+  done
+fi
 
 # Extract the real Decision Log awk program, including its historical boundaries.
 awk '/NEW_LINE="\$new_line" awk '\''/ { active=1; next } active && /^  '\''/ { exit } active { print }' \
