@@ -496,8 +496,9 @@ okf_version: "0.2"
 | [identity を持たない判定台帳で複数 cycle の和集合を重複除外すると、重複防止と欠落防止を同時には満たせない](pages/anti-patterns/identity-less-ledger-union-dedup-cannot-prevent-both-duplicate-and-loss.md) | anti-patterns | 判定台帳が最終回の id と位置しか持たないまま、複数 cycle の指摘を連結した集合から「既に処理済み」の指摘を除こうとすると、id や位置で推定した除外は別の指摘まで黙って落とす。除外は台帳が実際に判定した入力に由来する要素に限り、それ以外は転記して重複しうる件数を出す。 | 2026-09-12T15:25:00+00:00 | high |
 | [jq の `[]?` は型不正を空の結果に変えて rc=0 で終わり、呼び出し側の fail-loud 分岐を迂回する](pages/anti-patterns/jq-optional-iterator-swallows-type-error-before-fail-loud-branch.md) | anti-patterns | 入力 JSON の配列を `.key[]?` で読むと、キーが無い・配列でない入力でも jq はエラーにならず空の結果を返すため、その直後に置いた失敗分岐へ到達しない。型を明示的に検査して error() にし、壊れた入力と型違いの fixture で分岐をテストする。 | 2026-09-12T15:25:00+00:00 | high |
 | [新しい経路を足したら、その出力を既存処理へ再入力して既存処理の暗黙の入力前提を確かめる](pages/heuristics/new-path-output-fed-back-into-existing-process.md) | heuristics | 既存処理は、これまでの入力が常に持っていた形を暗黙の前提にして正しく動いていることがある。新しい経路がその形を持たない入力を既存処理へ渡し始めると、既存コードに一行も変更が無くても誤動作が表に出る。 | 2026-09-12T18:43:00+00:00 | medium |
+| [境界付き `grep -oE` の match には境界の 1 文字が含まれ、後段の数字抽出がそれを拾う](pages/anti-patterns/grep-boundary-alternation-match-leaks-boundary-char.md) | anti-patterns | `grep -oE '(^\|[^A-Za-z])D-[0-9]+'` のように先頭境界を文字クラスで要求すると、`-o` が出力する match に境界の 1 文字も入る。続けて `grep -oE '[0-9]+'` で数字を読むと、境界が数字だったとき（`9D-02` の 9）もそれを番号として数え、最大値計算が飛ぶ。 | 2026-09-12T23:59:02Z | high |
 ## 統計
 
-- 総ページ数: 486
-- ドメイン別: patterns=112, heuristics=216, anti-patterns=158
-- 最終更新: 2026-09-12T23:20:00+00:00
+- 総ページ数: 487
+- ドメイン別: patterns=112, heuristics=216, anti-patterns=159
+- 最終更新: 2026-09-12T23:59:02Z
