@@ -30,7 +30,7 @@ A collection of defensive Bash patterns to prevent recurring syntax errors in ri
 | 2 | `grep: 無効なオプション -- ' '` | Unquoted variable passed to grep | `grep -- "$pattern"` + `|| true` |
 | 3 | `SyntaxError: unterminated string literal` | Japanese strings in inline Python script (`python3 -c`) | File-based argument passing |
 | 4 | `そのようなファイルやディレクトリはありません` | Missing directory before file write | `mkdir -p` before write |
-| 5 | SIGPIPE / exit code 141 | `echo`/`printf` pipe to early-terminating `head`/`grep -m`/`grep -q` under `pipefail` | Here-string `<<<` instead of pipe |
+| 5 | SIGPIPE / exit code 141 | `echo`/`printf` pipe to early-terminating `head`/`grep -m`/`grep -q`, or buffered writer to early-exit `awk`, under `pipefail` | Here-string `<<<` instead of pipe; drain input in `awk` |
 
 ---
 
@@ -254,6 +254,20 @@ ISSUE_NUMBER=$(grep -oE '[0-9]+$' <<< "$ISSUE_URL" || true)
 | `echo "$small_var" \| grep` (`$small_var` < 64KB 確定) | pipe buffer 内で echo が完了 |
 | テストコード内の `echo "$output" \| grep -q` | テスト出力は通常小さい |
 
+### Buffered Writer + Early-Exit `awk`
+
+here-string にできない upstream（関数・`awk` / `sed` などコマンドの出力）でも同じ SIGPIPE が起きる。バッファ付きの writer は出力を数 KB ずつ複数回 write するため、合計が 64KB 未満でも、downstream の `awk '... { exit }'` が最初の chunk で終了すると次の write が SIGPIPE を受ける。発生はタイミング依存で、並列負荷下ほど再現しやすい。
+
+```bash
+# Vulnerable: section は複数 chunk で書かれ、awk は終端行で exit する
+extract_section "$file" | awk '/^BEGIN$/ { a=1; next } a && /^END$/ { exit } a { print }'
+
+# Defensive: 終端でフラグを立て、以降は next で入力を読み切る（done を先頭ルールに置き抽出の再開を防ぐ）
+extract_section "$file" | awk 'done { next } /^BEGIN$/ { a=1; next } a && /^END$/ { done=1; next } a { print }'
+```
+
+upstream がファイルを直接読む `awk ... "$file"` の `exit` は pipe を持たないため変換不要。
+
 ### Reference
 
 - 初回修正: `pr-review.md` の `printf | grep -m 1` → `<<<`
@@ -272,3 +286,4 @@ Before adding Bash code to a command template, verify:
 - [ ] All file writes are preceded by `mkdir -p` for the target directory
 - [ ] All variables in `[ ]` or `[[ ]]` are double-quoted
 - [ ] Pipelines with early-termination (`head`, `grep -m`, `grep -q`) use here-string `<<<` instead of `echo`/`printf` pipe
+- [ ] `awk` readers fed by a pipe drain their input instead of `exit` at the end marker

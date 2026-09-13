@@ -386,10 +386,12 @@ route_section() {
     split) awk '/^## §4 / { s=1; print; next } s && /^## §/ { exit } s { print }' "$2" ;;
   esac
 }
+# The readers drain their input instead of exiting at the end marker: route_section writes the
+# section in several buffered chunks, and a reader that exits early sends SIGPIPE to the writer.
 route_body() {
   case "$1" in
-    triage|split) route_section "$@" | awk '/cat <<.BODY_EOF. > "\$tmpfile"$/ { a=1; next } a && /^BODY_EOF$/ { exit } a { print }' ;;
-    cleanup) route_section "$@" | awk '/^\*\*Issue 本文テンプレート\*\*/ { s=1 } s && /^```markdown$/ { a=1; next } a && /^```$/ { exit } a { print }' ;;
+    triage|split) route_section "$@" | awk 'done { next } /cat <<.BODY_EOF. > "\$tmpfile"$/ { a=1; next } a && /^BODY_EOF$/ { done=1; next } a { print }' ;;
+    cleanup) route_section "$@" | awk 'done { next } /^\*\*Issue 本文テンプレート\*\*/ { s=1 } s && /^```markdown$/ { a=1; next } a && /^```$/ { done=1; next } a { print }' ;;
   esac
 }
 route_projects_complexity() {
