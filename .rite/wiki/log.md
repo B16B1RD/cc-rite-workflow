@@ -38,6 +38,7 @@
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=482, broken_refs=0
 * **Skip**: [受入基準番号を条件文へ置き換えた修正のレビュー結果](raw/reviews/20260913T153704Z-pr-2790.md) — detector-candidate: 部分列比較 pin の置き換え前行除外は、置き換え後の現行行に一致しない文字列で照合しているかを機械検査できる
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=483, broken_refs=0
+* **Skip**: [rail 保存テストの除外条件を旧行の完全一致に直した修正のレビュー結果](raw/reviews/20260913T161730Z-pr-2793.md) — detector-candidate: 部分列比較 pin の置き換え前行除外が旧行全体の完全一致（grep -Fxv）以外で照合されていないかを機械検査できる
 
 ## 2026-09-12
 
