@@ -27,6 +27,7 @@
 * **Update**: [実測アンカーの repro に書くパイプは U+00A6 へ置換する](pages/patterns/verification-anchor-pipe-substitution.md) — [指摘表のエスケープ付きパイプで表形式検証に落ちたレビュー結果](raw/reviews/20260913T090150Z-pr-2776.md) を統合。アンカー以外のセルのパイプも列境界になる節を追記
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=482, broken_refs=0
 * **Update**: [function 内 `local v=$(...)` と top-level `v=$(...)` の `set -e` 伝播差で writer/reader 非対称が偶然 mask される](pages/anti-patterns/bash-local-vs-toplevel-pipefail-asymmetry.md) — [途中終了の保護が呼び出し側の条件文脈にあることを示したレビュー結果](raw/reviews/20260913T095931Z-pr-2778.md) を統合。関数の mutant テストでは呼び出し側の条件文脈が固定されない節を追記
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=482, broken_refs=0
 
 ## 2026-09-12
 
