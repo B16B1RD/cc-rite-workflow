@@ -11,9 +11,13 @@ sources:
     resource: "raw/fixes/20260723T031622Z-pr-1974-cycle3.md"
   - type: "reviews"
     resource: "raw/reviews/20260829T153702Z-pr-2466.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260913T035756Z-pr-2764.md"
 tags: ["awk", "flip-flop-range", "test-helper", "section-scoping", "gawk-escaping", "no-journal-comment"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-29T15:42:53Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-13T04:02:13Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-13T04:02:13Z" }
 ---
 
 # テストヘルパーの awk flip-flop レンジは start pattern をコード行に一意なプレフィックスでアンカーする
@@ -65,6 +69,20 @@ start と end で fail-loud 性が非対称である。`assert_grep_in_section` 
 
 この一意性は grep で機械的に検査できる（end pattern の対象ファイル内マッチ数を数えるだけ）ため、検出器化の候補になる。
 
+### 抽出対象の本文が同じ形の見出しを含むときは、end 条件を節見出しの形に限定する
+
+抽出したい節の中に、切り出す対象そのものとして Markdown 見出しを含む本文（Issue 本文テンプレートの heredoc 等）があると、end 条件に汎用の `^## ` を使った瞬間に本文の `## 概要` で抽出が止まる。節の区切りが `## §N` のような固有の形を持つなら、end 条件はその形（`^## §`）に限定する。
+
+start 行自身が end 条件にも一致する形（`## §4` は `^## §` に一致する）では、状態変数で書く抽出は start 行を出力したあと `next` で次行へ進めないと、同じ行で end 判定に掛かって節が空になる:
+
+```awk
+/^## §4 / { s=1; print; next }
+s && /^## §/ { exit }
+s { print }
+```
+
+節が文書の最終節のときは end 条件が一度も一致せず EOF まで読むが、それ自体は正しい抽出である。ただし上の非対称性（end 未マッチが検出されない）は残るため、抽出結果の見出し列や一意なアンカー行の件数を assert して、抽出範囲そのものを固定しておく。
+
 ### テストコメントにも no_journal_comment 原則が適用される
 
 同 cycle 3 で、テストヘルパーのコメント中に「cycle 2 test reviewer 指摘」「the error-handling reviewer reproduced」等のレビュー経緯・reviewer 言及が残っていることが prompt-engineer reviewer から HIGH 指摘された。no_journal_comment 原則（cycle 番号・reviewer 名の言及禁止）はプロダクションコードだけでなくテストコメントにも同様に適用される。修正は該当箇所を現在形の Why のみに書き換えることで解消した。
@@ -78,3 +96,4 @@ start と end で fail-loud 性が非対称である。`assert_grep_in_section` 
 
 - [awk flip-flop レンジ過検出の修正](../../raw/fixes/20260723T031622Z-pr-1974-cycle3.md)
 - [end 境界の一意性と degrade 経路](../../raw/reviews/20260829T153702Z-pr-2466.md)
+- [本文に同じ形の見出しを含む節の抽出](../../raw/reviews/20260913T035756Z-pr-2764.md)
