@@ -19,12 +19,15 @@ sources:
     resource: "raw/reviews/20260907T233525Z-pr-2614.md"
   - type: "reviews"
     resource: "raw/reviews/20260911T154811Z-pr-2694.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260913T073838Z-pr-2773.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-11T16:00:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T07:45:50Z" }
 verified:
   - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-07T23:54:45Z" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-11T16:00:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T07:45:50Z" }
 ---
 
 # `set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる
@@ -123,6 +126,29 @@ if [ -n "$hit" ]; then ...
 
 「旧形式を復元すると決定的に落ちる回帰 pin」は要求しない。実データ規模では失敗が scheduler race のため決定的に再現できず、決定的に落とすには MB 級の合成 fixture が要る。判別力（`_fenced` を空出力に変異させて `no` で FAIL する）と 300 回連続 PASS の 2 点で十分と判断する。
 
+### 下流の `awk '... { exit }'` も同じ事故を起こす — 終端行の位置は関係ない
+
+セクション抽出関数の出力を `awk` で受け、終端行で `exit` する形でも同じ SIGPIPE が起きる。上流が `awk` / `sed` などのコマンドや関数だと here-string に置き換えられず、`grep -q` の対処表がそのまま使えない。
+
+- **発生条件**: reader が **writer の最後の write より前に** 終了すること。gawk はパイプへ 4096B 単位で書き、11KB 程度の出力でも 3 回の write になる。合計が 64KB 未満でも起きる
+- **終端行が何番目の chunk にあるかは関係ない**: 終端行が 1 つ目の chunk にある経路でも 2 つ目にある経路でも、同じ頻度で rc=141 になった。「終端行が先頭 4KB より後ろだから安全」とは判断できない
+- **負荷で再現率が上がる**: 単発の連続実行では 1000 回中 1 回程度だが、16 並列で回すと 200 回中 53 回まで上がった。修正前の陽性対照は並列負荷で取る
+- **実装差**: mawk では再現せず gawk で再現した。CI とローカルの awk 実装が違うと片側だけで flaky になる
+
+対処は、終端でフラグを立てて残りの入力を読み切る形にする。
+
+```bash
+# ✗ 終端行で exit し、上流の残りの write が SIGPIPE を受ける
+extract_section "$file" ¦ awk '/^BEGIN$/ { a=1; next } a && /^END$/ { exit } a { print }'
+
+# ✓ done を先頭ルールに置き、終端以降は next で読み捨てる
+extract_section "$file" ¦ awk 'done { next } /^BEGIN$/ { a=1; next } a && /^END$/ { done=1; next } a { print }'
+```
+
+`done { next }` は**先頭ルールでなければならない**。末尾に置くと、`a` が立ったままのため終端行より後ろの行も print される。書き換えの前後で抽出結果がバイト単位で一致することを `cmp` で確認してから差し替える。
+
+上流がファイルを直接読む `awk ... "$file"` の `exit` は入力側にパイプを持たないため対象外。writer の出力が数十バイトで 1 回の write に収まる場合も、reader が終了する時点で書き終えているため発火しない。
+
 ### 全量読取と抽出境界を同時に検証する
 
 全量を消費する修正では、一致・非一致だけでなく抽出範囲の境界も固定する。先頭20行だけを判定する処理なら、大容量本文を維持したまま20行目の marker を採用し21行目を除外する正負ケースを検証する。抽出を `sed -n '1,20p'` にすると、表示範囲を保ちつつ残りの入力も消費できる。
@@ -137,6 +163,7 @@ if [ -n "$hit" ]; then ...
 
 - [全量読取と大容量・範囲境界の回帰検証](../../raw/reviews/20260907T233525Z-pr-2614.md)
 - [契約テストのフェンス抽出 assert を grep -c で全量消費に置換（レビュー結果）](../../raw/reviews/20260911T154811Z-pr-2694.md)
+- [セクション抽出の下流 awk を入力を読み切る形へ直した修正のレビュー結果](../../raw/reviews/20260913T073838Z-pr-2773.md)
 
 - [fix 結果](../../raw/fixes/20260803T052647Z-pr-2094.md)
 - [`sed -n | grep -q` でバッファ境界を超えた地点の挙動反転を検出](../../raw/reviews/20260805T043752Z-pr-2112.md)
