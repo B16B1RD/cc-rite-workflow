@@ -61,10 +61,55 @@ if ! printf '%s' "$collect_out" | jq -e 'all(.targets[]; .route == "issued" or .
 fi
 ```
 
-全 `issued` target について finding の description / suggestion / file:line を本文ファイルに保存し、既存の起票 helper の入力形式に合わせる。`projects` は rite-config.yml の設定を反映する。起票ごとに次のブロックを実行し、成功時の `issue_number` と `issue_url` を当該 finding に対応付ける:
+全 `issued` target について finding の description / suggestion / file:line を本文ファイルに保存する。本文は `/rite:open` が複雑度を読む Meta で始め、Projects に渡す `complexity` と同じ値を宣言する。`projects` は rite-config.yml の設定を反映する。起票ごとに次の 2 ブロックを連結して単一 Bash で実行し、成功時の `issue_number` と `issue_url` を当該 finding に対応付けてステップ 3 の台帳行に使う:
+
+| Placeholder | Source |
+|-------------|--------|
+| `{type}` | finding の内容から推定（`fix` / `refactor` / `docs` 等） |
+| `{summary}` | finding の要約（動詞始まり、50 文字以内） |
+| `{description}` / `{suggestion}` / `{file}` / `{line}` | `targets[]` の同名フィールド |
+| `{projects_enabled}` / `{project_number}` / `{owner}` | `rite-config.yml` → `github.projects.enabled` / `project_number` / `owner` |
 
 ```bash
-# issue_args は jq --arg / --argjson で構築した JSON（body_file と options.source=pr_review を含む）。
+tmpfile=$(mktemp "${TMPDIR:-/tmp}/rite-nb-issue-XXXXXX") || { echo "[fix:error]"; exit 1; }
+trap 'rm -f "$tmpfile"' EXIT
+if ! cat <<'BODY_EOF' > "$tmpfile"
+**Type**: {type}
+**Complexity**: S
+
+## 概要
+
+{description}
+
+## 提案
+
+{suggestion}
+
+## 関連
+
+- 元の PR: #{pr_number}
+- 位置: {file}:{line}
+BODY_EOF
+then
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_issue_body_failed" >&2
+  echo "[fix:error]"
+  exit 1
+fi
+issue_args=$(jq -n \
+  --arg title "{type}: {summary}" \
+  --arg body_file "$tmpfile" \
+  --argjson projects_enabled {projects_enabled} \
+  --argjson project_number {project_number} \
+  --arg owner "{owner}" \
+  --arg complexity "S" \
+  '{
+    issue: { title: $title, body_file: $body_file },
+    projects: { enabled: $projects_enabled, project_number: $project_number, owner: $owner, status: "Todo", complexity: $complexity, iteration: { mode: "none" } },
+    options: { source: "pr_review", non_blocking_projects: true }
+  }') || { echo "[fix:error]"; exit 1; }
+```
+
+```bash
 if ! issue_result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$issue_args") ||
    ! printf '%s' "$issue_result" | jq -e '.issue_number > 0 and (.issue_url | type == "string" and length > 0)' >/dev/null; then
   echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_issue_failed" >&2

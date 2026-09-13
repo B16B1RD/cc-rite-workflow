@@ -397,18 +397,20 @@ done
 # Auto-created Issue bodies open with the Meta /rite:open reads, declaring the Complexity sent to Projects.
 cleanup_skill="$PLUGIN_ROOT/skills/cleanup/SKILL.md"
 split="$PLUGIN_ROOT/skills/pr-review/references/finding-cycling.md"
+nb_sweep="$PLUGIN_ROOT/skills/fix/references/nb-sweep.md"
 route_section() {
   case "$1" in
     triage) awk '/^#### 7\.4\.2 / { s=1 } s && /^#### 7\.4\.3 / { exit } s { print }' "$2" ;;
     cleanup) awk '/^## ステップ 3:/ { s=1 } s && /^## ステップ 4:/ { exit } s { print }' "$2" ;;
     split) awk '/^## §4 / { s=1; print; next } s && /^## §/ { exit } s { print }' "$2" ;;
+    nb) awk '/^2\. \*\*route 適用\*\*/ { s=1 } s && /^3\. \*\*台帳 persist\*\*/ { exit } s { print }' "$2" ;;
   esac
 }
 # The readers drain their input instead of exiting at the end marker: route_section writes the
 # section in several buffered chunks, and a reader that exits early sends SIGPIPE to the writer.
 route_body() {
   case "$1" in
-    triage|split) route_section "$@" | awk 'done { next } /cat <<.BODY_EOF. > "\$tmpfile"$/ { a=1; next } a && /^BODY_EOF$/ { done=1; next } a { print }' ;;
+    triage|split|nb) route_section "$@" | awk 'done { next } /cat <<.BODY_EOF. > "\$tmpfile"$/ { a=1; next } a && /^BODY_EOF$/ { done=1; next } a { print }' ;;
     cleanup) route_section "$@" | awk 'done { next } /^\*\*Issue 本文テンプレート\*\*/ { s=1 } s && /^```markdown$/ { a=1; next } a && /^```$/ { done=1; next } a { print }' ;;
   esac
 }
@@ -420,6 +422,7 @@ route_headings() {
     triage) printf '%s' '## 概要|## 背景|### 元のレビュー{source_label}|## 関連' ;;
     cleanup) printf '%s' '## 概要|## 背景・目的|## 関連|## 変更内容|## チェックリスト' ;;
     split) printf '%s' '## 概要|## 元の finding|## 関連' ;;
+    nb) printf '%s' '## 概要|## 提案|## 関連' ;;
   esac
 }
 # Prints the first broken rule and returns 1; returns 0 when the Meta and headings hold.
@@ -433,9 +436,16 @@ route_meta_check() {
   [ "$(printf '%s\n' "$body" | awk 'NR <= 4')" = "$expected" ] || { echo "body does not open with Type / Complexity=$projects / blank / ## 概要"; return 1; }
   [ "$(printf '%s\n' "$body" | grep -E '^#{2,3} ' | paste -sd '|' -)" = "$(route_headings "$1")" ] || { echo 'body headings changed'; return 1; }
   [ "$(grep -c '^| `{type}` |' "$2" || true)" = 1 ] || { echo 'Placeholder table has no single {type} row'; return 1; }
-  [ "$1" != split ] || [ "$(route_section "$1" "$2" | grep -c '^| `{type}` |' || true)" = 1 ] || { echo 'Placeholder table {type} row is outside §4'; return 1; }
+  case "$1" in split|nb)
+    [ "$(route_section "$1" "$2" | grep -c '^| `{type}` |' || true)" = 1 ] || { echo 'Placeholder table {type} row is outside the route section'; return 1; } ;;
+  esac
+  if [ "$1" = nb ]; then
+    for kept in '{description}' '{suggestion}' '{file}:{line}'; do
+      [ "$(printf '%s\n' "$body" | grep -cF -- "$kept" || true)" = 1 ] || { echo "body does not keep $kept once"; return 1; }
+    done
+  fi
 }
-for route in "triage|$triage" "cleanup|$cleanup_skill" "split|$split"; do
+for route in "triage|$triage" "cleanup|$cleanup_skill" "split|$split" "nb|$nb_sweep"; do
   name=${route%%|*}
   source=${route#*|}
   anchor="cat <<'BODY_EOF' > \"\$tmpfile\""
@@ -456,11 +466,66 @@ for route in "triage|$triage" "cleanup|$cleanup_skill" "split|$split"; do
     fi
   done
 done
-# The triage row lives outside its section, so only split pins the row inside §4.
-{ grep '^| `{type}` |' "$split" || true; sed '/^| `{type}` |/d' "$split"; } > "$work/split-moved-mutant.md"
-if assert_mutant_changed 'split {type} placeholder moved before §4' "$split" "$work/split-moved-mutant.md"; then
-  assert 'split {type} placeholder moved before §4 is detected' 'Placeholder table {type} row is outside §4' "$(route_meta_check split "$work/split-moved-mutant.md")"
-fi
+# The sweep body keeps the finding fields it has always saved.
+for mutation in \
+  'deleted {description}|/^{description}$/d' \
+  'deleted {suggestion}|/^{suggestion}$/d' \
+  'deleted {file}:{line}|s/^- 位置: {file}:{line}$/- 位置:/'; do
+  label=${mutation%%|*}
+  sed "${mutation#*|}" "$nb_sweep" > "$work/nb-kept-mutant.md"
+  if assert_mutant_changed "nb $label" "$nb_sweep" "$work/nb-kept-mutant.md"; then
+    if route_meta_check nb "$work/nb-kept-mutant.md" > /dev/null; then fail "nb $label is not detected"; else pass "nb $label is detected"; fi
+  fi
+done
+# The triage row lives outside its section, so only split and nb pin the row inside their section.
+for route in "split|$split" "nb|$nb_sweep"; do
+  name=${route%%|*}
+  source=${route#*|}
+  { grep '^| `{type}` |' "$source" || true; sed '/^| `{type}` |/d' "$source"; } > "$work/$name-moved-mutant.md"
+  if assert_mutant_changed "$name {type} placeholder moved before its section" "$source" "$work/$name-moved-mutant.md"; then
+    assert "$name {type} placeholder moved before its section is detected" 'Placeholder table {type} row is outside the route section' "$(route_meta_check "$name" "$work/$name-moved-mutant.md")"
+  fi
+done
+# complexity-lane.md names every auto-created route this test checks.
+lane_doc=$(grep -F 'body 先頭に記法 1 の Meta を持ち' "$PLUGIN_ROOT/skills/pr-review/references/complexity-lane.md" || true)
+for named in 'scope-triage.md](./scope-triage.md) 7.4.2' '`/rite:cleanup` ステップ 3' 'finding-cycling.md](./finding-cycling.md) §4' '`/rite:fix --nb-sweep`'; do
+  if printf '%s\n' "$lane_doc" | grep -qF -- "$named"; then pass "complexity-lane lists route: $named"; else fail "complexity-lane misses route: $named"; fi
+done
+
+# The sweep runs its body block and the issue guard as one script: the guard must receive the built arguments.
+# extract_fix_block in the contract test runs the first block holding the guard reason, so the body block must not hold it.
+assert 'nb guard reason appears once' 1 "$(grep -c 'reason=nb_sweep_issue_failed' "$nb_sweep" || true)"
+assert 'nb body reason appears once' 1 "$(grep -c 'reason=nb_sweep_issue_body_failed' "$nb_sweep" || true)"
+if awk '/reason=nb_sweep_issue_body_failed/ { b=NR } /reason=nb_sweep_issue_failed/ { g=NR } END { exit !(b && g && b < g) }' "$nb_sweep"; then
+  pass 'nb body block precedes the issue guard'
+else fail 'nb body block precedes the issue guard'; fi
+# The reader drains its input instead of exiting early, for the same SIGPIPE reason as route_body.
+nb_block() {
+  route_section nb "$nb_sweep" | awk -v needle="$1" 'found { next } /^```bash$/ { inside=1; block=""; next } /^```$/ { if (inside && index(block, needle)) { printf "%s", block; found=1 } inside=0; next } inside { block=block $0 "\n" }'
+}
+nb_code="$(nb_block 'BODY_EOF')"$'\n'"$(nb_block 'reason=nb_sweep_issue_failed')"
+mkdir -p "$work/nb-plugin/scripts"
+cat > "$work/nb-plugin/scripts/create-issue-with-projects.sh" <<'MOCK'
+#!/bin/bash
+printf '%s\n' "$1" >> "$NB_ARGS_LOG"
+cp "$(printf '%s' "$1" | jq -r '.issue.body_file')" "$NB_BODY_COPY"
+printf '{"issue_number":5,"issue_url":"https://example.invalid/5"}\n'
+MOCK
+chmod +x "$work/nb-plugin/scripts/create-issue-with-projects.sh"
+nb_code=${nb_code//\{plugin_root\}/$work/nb-plugin}
+nb_code=${nb_code//\{projects_enabled\}/true}
+nb_code=${nb_code//\{project_number\}/1}
+nb_code=${nb_code//\{owner\}/example}
+printf '%s\n' "$nb_code" > "$work/nb-issue.sh"
+: > "$work/nb-args.log"
+rc=0
+NB_ARGS_LOG="$work/nb-args.log" NB_BODY_COPY="$work/nb-body.md" bash "$work/nb-issue.sh" > "$work/nb-issue.out" 2> "$work/nb-issue.err" || rc=$?
+assert 'nb body block + issue guard exit status' 0 "$rc"
+assert 'nb issue helper is called once' 1 "$(jq -s length "$work/nb-args.log" 2>/dev/null || true)"
+if jq -e '.projects.complexity == "S" and .options.source == "pr_review"' "$work/nb-args.log" > /dev/null 2>&1; then
+  pass 'nb issue helper receives complexity S from pr_review'
+else fail 'nb issue helper arguments lack complexity S / pr_review'; fi
+assert 'nb issue helper body opens with Meta' "$(printf '**Type**: {type}\n**Complexity**: S\n\n## 概要')" "$(head -n 4 "$work/nb-body.md" 2>/dev/null || true)"
 
 # The complexity helper reads the expanded bodies; gh is a local mock, never the CLI.
 mkdir "$work/lane-bin"
@@ -474,7 +539,7 @@ run_lane() {
   assert "$name lane exit status" 0 "$rc"
   assert "$name lane reads the Issue once with -R" 'issue view 7 -R example/repo --json body --jq .body' "$(cat "$work/$name-lane.argv")"
 }
-for route in "triage|$triage|XS" "cleanup|$cleanup_skill|S" "split|$split|S"; do
+for route in "triage|$triage|XS" "cleanup|$cleanup_skill|S" "split|$split|S" "nb|$nb_sweep|S"; do
   IFS='|' read -r name source expected <<< "$route"
   route_body "$name" "$source" | sed -e 's/{type}/fix/g' -e 's/{complexity}/XS/g' > "$work/$name-lane.md"
   assert "$name expanded Projects complexity" "$expected" "$(route_projects_complexity "$name" "$source" | sed 's/{complexity}/XS/g')"
