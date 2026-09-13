@@ -1,6 +1,6 @@
 ### 1.3.S `--nb-sweep` consume（5.S 専用）
 
-`[CONTEXT] NB_SWEEP=1` のときだけ評価する。通常ループでは本節を skip（AC-7）。ステップ 2–4 は評価せず、本節の後に 5.1 へ進む。
+`[CONTEXT] NB_SWEEP=1` のときだけ評価する。通常ループでは本節を skip（AC-7）。fix/SKILL.md のステップ 2–4 は評価せず、本節の後に fix/SKILL.md の 5.1 へ進む。
 rationale: ../../iterate/references/rationale.md#nb-sweep-step
 
 1. **collect**（iterate 5.S と同 helper。冪等）:
