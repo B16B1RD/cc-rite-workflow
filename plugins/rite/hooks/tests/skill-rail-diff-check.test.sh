@@ -315,8 +315,11 @@ if [ -n "$REPO_ROOT_REAL" ] && git -C "$PLUGIN_ROOT" rev-parse --verify -q origi
       # has to survive.
       base_rail=$(printf '%s\n' "$base_rail" | grep -Fv '| `create_new` | branch も worktree もなし' || true)
       # An acceptance-criteria number removal rewrites the plan-approval
-      # `interactive` row. Drop the superseded line (same pattern as above).
-      base_rail=$(printf '%s\n' "$base_rail" | grep -Fv '| `interactive` | AskUserQuestion で「この計画で実装開始' || true)
+      # `interactive` row. Drop only the superseded line, matched as a whole
+      # line: a shared prefix would also match the replacement row, so once
+      # origin/develop carries it the pin would never see that row deleted or
+      # changed. After the base advances this exclusion matches nothing.
+      base_rail=$(printf '%s\n' "$base_rail" | grep -Fxv '| `interactive` | AskUserQuestion で「この計画で実装開始 / 計画を修正 / 中止」を選択（standalone。従来どおり。AC-4 回帰なし） |' || true)
       printf '%s\n' "$base_rail" > "$TEST_DIR/base-rail"
       printf '%s\n' "$head_rail" > "$TEST_DIR/head-rail"
       if [ -z "$base_rail" ] || [ -z "$head_rail" ]; then
