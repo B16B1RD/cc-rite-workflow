@@ -35,7 +35,7 @@ set しない契約のまま。
 ## session-scoped-queue
 
 run-queue はファイル名に `session_id` を含めてセッションごとに物理分離する。候補比較: (A)
-ファイル名スコープ化 / (B) 単一ファイル + 所有者検証 / (C) 持続ロック のうち、AC-1 を満たすのは
+ファイル名スコープ化 / (B) 単一ファイル + 所有者検証 / (C) 持続ロック のうち、セッションごとに独立したキューを並行して持てるのは
 A のみ。flow-state・issue-claim・worktree がすべて per-session である既存アーキテクチャと対称。
 session_id 解決不可で global `run-queue.json` へフォールバックすると複数セッションが同じ queue を
 上書きする。再開が session_id スコープに厳格化されるトレードオフは、flow-state の phase 解決も
@@ -60,7 +60,7 @@ atomic は `jq → 一時ファイル → mv` で十分。
 
 ## pre-summary-no-ask
 
-サマリは通知のみ。AskUserQuestion を挟むと無確認自律の開始を妨げる（AC-3）。目安時間は件数
+サマリは通知のみ。AskUserQuestion を挟むと無確認自律の開始を妨げる。目安時間は件数
 ベースの粗い目安であり正確な実行時間予測ではない。
 
 ## cursor-not-success

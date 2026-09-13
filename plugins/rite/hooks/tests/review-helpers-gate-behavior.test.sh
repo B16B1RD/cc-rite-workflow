@@ -2970,7 +2970,7 @@ else
   #      永続チャネルが無音でゼロになる。Routing[1] (legitimate skip) も同様に、条件を広げると
   #      本来 ERROR にすべき skip が正当化されて素通りする。
   assert "TC-5b 6.1.d step 3 Routing[1]: cycle 一致 → Gate passes (canonical)" \
-    'sentinel あり かつ `iteration_id` が本 cycle の `REVIEW_CYCLE_ID` と一致 (`outcome` は問わない)~Gate passes — ステップ 6.2 へ。`outcome=failed` / `aborted`、`degraded=1`（`outcome` を問わない）、または `NONBLOCKING_LEGACY_ORPHAN=1` / `NONBLOCKING_DUPLICATE_RECORD=1` を観測したときは (ステップ 8.0.3 と同一条件 — 片側だけに置かない) helper の WARNING / `NONBLOCKING_RECORD_FAILED` の reason を completion report に転記する (判定は不変、AC-3)' \
+    'sentinel あり かつ `iteration_id` が本 cycle の `REVIEW_CYCLE_ID` と一致 (`outcome` は問わない)~Gate passes — ステップ 6.2 へ。`outcome=failed` / `aborted`、`degraded=1`（`outcome` を問わない）、または `NONBLOCKING_LEGACY_ORPHAN=1` / `NONBLOCKING_DUPLICATE_RECORD=1` を観測したときは (ステップ 8.0.3 と同一条件 — 片側だけに置かない) helper の WARNING / `NONBLOCKING_RECORD_FAILED` の reason を completion report に転記する (判定は不変)' \
     "$(_routing_canonical _sec_610d 1)"
   assert "TC-5b 6.1.d step 3 Routing[2]: 不一致 → ERROR (canonical)" \
     'sentinel なし、または `iteration_id` が本 cycle の `REVIEW_CYCLE_ID` と不一致 (前 cycle のもの)~**ERROR**: 6.1.d が本 cycle で未評価。下記 ACTION を実行' \

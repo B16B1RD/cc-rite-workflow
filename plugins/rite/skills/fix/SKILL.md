@@ -311,7 +311,7 @@ echo "[CONTEXT] NB_SWEEP=$nb_sweep" >&2
 echo "[CONTEXT] REMAINING_ARGS=$remaining_args" >&2
 ```
 
-**`--nb-sweep` 入口**: `[CONTEXT] NB_SWEEP=1` のとき、ステップ 1.1 の PR 識別の後に **1.3.S へ進む**（1.2 コメント取得・1.3 分類・ステップ 2–4 は評価しない。AC-7: 通常ループの分類表は不変）。
+**`--nb-sweep` 入口**: `[CONTEXT] NB_SWEEP=1` のとき、ステップ 1.1 の PR 識別の後に **1.3.S へ進む**（1.2 コメント取得・1.3 分類・ステップ 2–4 は評価しない。通常ループの分類表は不変）。
 
 **Validation**: 本 Phase では **パス存在確認をしない** (Priority 0)。`--review-file=` (値なし) だけは即 fail-fast。
 
@@ -410,10 +410,10 @@ fi
 
 ### 1.2 Retrieve Review Comments
 
-#### 1.2.0 Hybrid Review Source Resolution <!-- AC-3 / AC-4 / AC-5 / D-01 -->
+#### 1.2.0 Hybrid Review Source Resolution <!-- D-01 -->
 
 
-> AC-3/4/5: 会話 > ローカル JSON > PR コメント。
+> 取得元の優先順位: 会話 > ローカル JSON > PR コメント。
 rationale: references/design-rationale.md#hybrid-source-priority
 
 **Priority chain**:
@@ -691,9 +691,9 @@ fi
 
 `{review_source}` を later phase の provenance に使う。
 
-#### 1.2.0.1 Interactive Fallback (when all sources missing) <!-- AC-6 -->
+#### 1.2.0.1 Interactive Fallback (when all sources missing)
 
-> **Acceptance Criteria anchor**: AC-6 (全ソース欠落時はレビューを 1 回自動再生成し、再度欠落した場合のみ `AskUserQuestion` で「ファイルパス指定 / 中止」を提示する)。
+> **契約**: 全ソース欠落時はレビューを 1 回自動再生成し、再度欠落した場合のみ `AskUserQuestion` で「ファイルパス指定 / 中止」を提示する。
 
 `{review_source}=fallback` (Priority 0-3 が全て不可) の場合、レビュー再実行は可逆かつ自己解決可能なので推奨として `/rite:pr-review {pr_number}` を 1 回自動実行し、その判断と欠落 source を既存 work memory の決定事項へ記録する。再実行後も source が得られない場合だけ、ユーザー固有の入力であるファイルパス指定または中止を `AskUserQuestion` で確認する:
 
@@ -1146,7 +1146,7 @@ rm -f "${TMPDIR:-/tmp}/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
       "${TMPDIR:-/tmp}/rite-fix-pr-comment-{pr_number}.txt"
 ```
 
-**FINALIZE handoff (E2E のみ)**: `[fix:cancelled-by-user]` は 5.1 を通らないので**ここで**セット。standalone では実行しない (AC-4)。
+**FINALIZE handoff (E2E のみ)**: `[fix:cancelled-by-user]` は 5.1 を通らないので**ここで**セット。standalone では実行しない。
 
 ```bash
 # E2E flow 時のみ: FINALIZE 終了通知 handoff をセット (Stop hook が ステップ5 中断通知を 1 回だけ強制)
@@ -2294,7 +2294,7 @@ Confidence override (policy bypass): {confidence_override_count}件{confidence_o
 |------|------------------|--------------------------|
 | 0 件 (accept なし) | `0` | 空文字列 |
 | 1〜4 件 | `{N}` | 空文字列 |
-| 5 件以上 (≥5 警告発火、AC-4) | `{N}` | ` ⚠️ reviewer の精度を疑うべき水準` |
+| 5 件以上 (≥5 警告発火) | `{N}` | ` ⚠️ reviewer の精度を疑うべき水準` |
 
 **読み出し方法**: 本読み出しはステップ 2.1.A と別 Bash invocation で実行される可能性があるため、`_state_root` の解決を必ず同一 invocation 内に inline する (pr-review.md 5.1.2.A Step 2 の再 inline と同型。解決行なしで verbatim 実行すると `$_state_root` 未束縛 → `/.rite/state/...` の ENOENT が `2>/dev/null` で握り潰され accept_count が silent に 0 化する):
 

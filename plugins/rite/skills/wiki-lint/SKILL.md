@@ -846,7 +846,7 @@ case "$branch_strategy" in
     set +e
     if [ "$auto_mode" = "true" ]; then
       # --auto: ingest から呼ばれている。push は ingest.md ステップ 8.6 の集約 push に委ね、
-      # ここでは commit のみ行う (AC-1)。
+      # ここでは commit のみ行う。
       commit_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --commit-only --message "$commit_msg")
     else
       # standalone: この lint 実行自身が唯一のフローのため、従来どおり即座に commit + push する。

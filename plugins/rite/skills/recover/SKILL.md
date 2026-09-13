@@ -276,7 +276,7 @@ rationale: references/rationale.md#conflict-priority
 - **解消してから継続（推奨）** — ユーザーがコンフリクトを手動解消（`git` の merge/rebase 続行 or `--abort`）した後、`/rite:recover {issue_arg}` を再実行する旨を案内していったん終了する。解消により上記 signal が消えれば、再実行時は本判定を通過して従来の cross-check に進む
 - **中止** — 何もせず終了する
 
-非コンフリクト時（上記 4 条件すべて不成立）は本判定を skip し、Phase 3.5 の従来 4 指標クロスチェックへそのまま進む（AC-3: 非干渉）。
+非コンフリクト時（上記 4 条件すべて不成立）は本判定を skip し、Phase 3.5 の従来 4 指標クロスチェックへそのまま進む。
 
 ### 3.5 整合性判定 (cross-check)
 
@@ -340,7 +340,7 @@ if [ "{resolved_phase}" = "cleanup" ] || [ "{resolved_phase}" = "completed" ]; t
 fi
 ```
 
-`[CONTEXT] RECOVER_OUTSTANDING_WIKI=` / `RECOVER_OUTSTANDING_BRANCH=` marker のいずれかがあれば、Phase 4.1 の状態サマリに以下を追記する（無ければ追記しない — silent、AC-3 相当の「なし」を明示するのは cleanup 自身の完了報告の責務であり、本節は検出のみ）:
+`[CONTEXT] RECOVER_OUTSTANDING_WIKI=` / `RECOVER_OUTSTANDING_BRANCH=` marker のいずれかがあれば、Phase 4.1 の状態サマリに以下を追記する（無ければ追記しない — silent、未完了事項「なし」を明示するのは cleanup 自身の完了報告の責務であり、本節は検出のみ）:
 
 ```
 ⚠️ 未完了事項を検出しました:
@@ -490,7 +490,7 @@ else
   elif [ "$q_cursor_issue" != "{issue_arg}" ]; then
     echo "[CONTEXT] BATCH_CONTINUE=none; reason=cursor_mismatch; cursor_issue=$q_cursor_issue"
   elif [ -z "$q_updated_at" ]; then
-    # updated_at 欠落 (旧形式 run-queue) = 鮮度不明として安全側 stale 扱い (AC-6)
+    # updated_at 欠落 (旧形式 run-queue) = 鮮度不明として安全側 stale 扱い
     echo "[CONTEXT] BATCH_CONTINUE=none; reason=stale_no_timestamp"
   else
     state_epoch=$(parse_iso8601_to_epoch "$q_updated_at")
@@ -514,9 +514,9 @@ fi
 
 | `BATCH_CONTINUE` | アクション |
 |---|---|
-| `none; reason=no_queue_file` | 通常の recover として完了（Phase 6 へ）。追記なし（AC-3） |
-| `none`（その他の reason） | 通常の recover として完了（Phase 6 へ）。完了レポートに「自セッションの run-queue に残存キューがあります。`/rite:batch-run` で状況を確認/再開できます」の 1 行を追記する（AC-2, AC-4, AC-6） |
-| `eligible` | 「この Issue は `/rite:batch-run` 実行中の中断と判定したため、残り {remaining} 件のキュー処理を継続します」と通知した上で 5.5.3 へ進む（AC-1） |
+| `none; reason=no_queue_file` | 通常の recover として完了（Phase 6 へ）。追記なし |
+| `none`（その他の reason） | 通常の recover として完了（Phase 6 へ）。完了レポートに「自セッションの run-queue に残存キューがあります。`/rite:batch-run` で状況を確認/再開できます」の 1 行を追記する |
+| `eligible` | 「この Issue は `/rite:batch-run` 実行中の中断と判定したため、残り {remaining} 件のキュー処理を継続します」と通知した上で 5.5.3 へ進む |
 
 <!-- run orchestration: after emitting the eligible notification, do NOT stop — proceed directly to 5.5.3 (resolved_phase 分岐の invoke)。batch-run 側にこの継続を担う handoff/Stop-hook は無いため、recover 自身が flat 構造 + 本 HTML hint で継続を保証する（batch-run の「エラー時の方針」節・「設計判断: handoff 不使用」節と同じ理由）。 -->
 

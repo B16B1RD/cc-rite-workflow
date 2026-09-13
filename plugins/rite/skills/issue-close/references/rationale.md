@@ -39,8 +39,8 @@ silent に壊した。3-method OR と Method 3 の検証ループ（自己マッ
 `--limit 10`）を open / projects-integration と揃えないと、同じ回帰が再発する。GitHub code
 search は `[` / `]` を無視しほぼ全 Issue を返すので、先頭 1 件の盲目採用は standalone が自分
 自身や無関係 Issue を親にする。`--state all` は親が既 closed の可能性を拾う（open 側の
-`--state open` は着手対象を open に限る意図的差異）。3 method 失敗は standalone として正常
-（AC-4）。debug log を残すのは silent-skip 回帰を観測するため。
+`--state open` は着手対象を open に限る意図的差異）。3 method 失敗は standalone として正常。
+debug log を残すのは silent-skip 回帰を観測するため。
 
 ## commit-delegate-single-process
 
