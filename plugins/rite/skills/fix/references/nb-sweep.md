@@ -61,7 +61,7 @@ if ! printf '%s' "$collect_out" | jq -e 'all(.targets[]; .route == "issued" or .
 fi
 ```
 
-全 `issued` target について finding の description / suggestion / file:line を本文ファイルに保存する。本文は `/rite:open` が複雑度を読む Meta で始め、Projects に渡す `complexity` と同じ値を宣言する。`projects` は rite-config.yml の設定を反映する。起票ごとに次の 2 ブロックを連結して単一 Bash で実行し、成功時の `issue_number` と `issue_url` を当該 finding に対応付けてステップ 3 の台帳行に使う:
+全 `issued` target について finding の description / suggestion / file:line を本文ファイルに保存する。本文は `/rite:open` が複雑度を読む Meta で始め、Projects に渡す `complexity` と同じ値を宣言する。`projects` は rite-config.yml の設定を反映する。起票ごとに次の 2 ブロックを連結して単一 Bash で実行し、成功時の `issue_number` と `issue_url` を当該 finding に対応付けて手順 3（台帳 persist）の台帳行に使う:
 
 | Placeholder | Source |
 |-------------|--------|
