@@ -120,6 +120,19 @@ append_boundary=$(sed -n 's/^[[:space:]]*in_section && (\(.*\)) {.*/\1/p' "$work
 if [ -n "$scan_boundary" ] && [ "$scan_boundary" = "$append_boundary" ]; then
   pass 'Section 9 scan and append share one boundary'
 else fail "Section 9 boundary drift: scan=[$scan_boundary] append=[$append_boundary]"; fi
+# A boundary added as a separate rule on one side leaves the parenthesized expressions equal.
+assert 'Section 9 scan and append have the same number of boundary rules' \
+  "$(grep -c 'in_section &&' "$work/section9.awk")" "$(grep -c 'in_section &&' "$work/append.awk")"
+# A rule written in another form escapes the count, so compare where each program ends the section.
+for candidate in '<!-- note -->' '### Sub heading' '' '***' '</details>' '## Following section' '---'; do
+  printf '## 9. Decision Log\n- D-01: existing\n%s\n- D-09: after candidate\n' "$candidate" > "$work/drift.md"
+  awk -f "$work/section9.awk" "$work/drift.md" > "$work/drift-scan.md"
+  NEW_LINE='NEW_LINE_MARKER' awk -f "$work/append.awk" "$work/drift.md" \
+    | awk '/^## 9\. Decision Log/ { in_section=1; next } $0 == "NEW_LINE_MARKER" { exit } in_section { print }' > "$work/drift-append.md"
+  if cmp -s "$work/drift-scan.md" "$work/drift-append.md"; then
+    pass "scan counts exactly the lines before the append point: ${candidate:-blank line}"
+  else fail "scan and append end Section 9 at different lines: ${candidate:-blank line}"; fi
+done
 for boundary in '</details>' '## Following section' '---'; do
   printf '## 9. Decision Log\n- D-01: existing\n%s\n- D-09: outside\n' "$boundary" > "$work/scan.md"
   awk -f "$work/section9.awk" "$work/scan.md" > "$work/scanned.md"
