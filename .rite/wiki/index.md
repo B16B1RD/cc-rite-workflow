@@ -188,7 +188,7 @@ okf_version: "0.2"
 | [future-note Issue は実装前に前提の現在性を再検証する](pages/heuristics/future-note-issue-premise-revalidation.md) | heuristics | 「将来 X が起きたら留意」型の future-note Issue は、起票から実装までの間にコードベースが進み前提が変わっていることがある。 | 2026-06-09T19:56:00Z | medium |
 | [fail-fast 構造の記述は構文・検証対象・場所の 3 軸で分離する](pages/patterns/fail-fast-description-three-axis-separation.md) | patterns | bash の fail-fast 構造をドキュメントで記述するときは「構文（case `*)` arm か if/elif/else の else 分岐か）」「検証対象（どの変数の fail-fast か）」「場所（どの step / block に分岐が実在するか）」の 3 軸を分離して書く。 | 2026-06-09T19:55:00Z | medium |
 | [形状検証 gate の allowlist 化は複数行 bypass・上流 degraded 値・コメント同期をセットで棚卸しする](pages/heuristics/allowlist-gate-hardening-checklist.md) | heuristics | 入力検証 gate を denylist から allowlist に強化する PR では、(1) 検証手段の行単位/文字列全体 anchor の差、(2) 上流が正規に emit する degraded sentinel 値の存在、(3) 置換機構変更に伴う同一ブロック内コメントの同期、の 3 点を着手時に棚卸しする。 | 2026-07-19T23:01:00+09:00 | high |
-| [「網羅」を主張する列挙は grep 全数棚卸し + scope note で構造的に収束させる](pages/heuristics/exhaustiveness-claims-require-mechanical-inventory.md) | heuristics | ドキュメントやテストの保守ガイダンスで「contract の全 consumer」のような網羅性を主張する列挙を書くとき、reviewer の指摘任せに 1 件ずつ追加していくと cycle ごとに新たな漏れが見つかり review-fix loop が発散する。 | 2026-08-04 | high |
+| [「網羅」を主張する列挙は grep 全数棚卸し + scope note で構造的に収束させる](pages/heuristics/exhaustiveness-claims-require-mechanical-inventory.md) | heuristics | ドキュメントやテストの保守ガイダンスで「contract の全 consumer」のような網羅性を主張する列挙を書くとき、reviewer の指摘任せに 1 件ずつ追加していくと cycle ごとに新たな漏れが見つかり review-fix loop が発散する。 | 2026-09-13T12:25:07+09:00 | high |
 | [同一 PR 内の設計 pivot 後に cross-reference コメントが旧設計の説明のまま残る](pages/anti-patterns/design-pivot-stale-cross-reference-comment.md) | anti-patterns | 実装途中で設計を pivot (例: sweep 条件の変更) した際、pivot した実装本体とそのコメントは更新されるが、**同一 PR 内の別箇所にある cross-reference コメント (他の検査・関数を説明する参照文)** が旧設計の説明のまま残り、同一ファイル内で自己矛盾する記述が生まれる。 | 2026-09-07T23:54:45Z | high |
 | [節の表示条件を変えたら inbound の位置参照を grep して文言同期する](pages/heuristics/display-condition-change-inbound-ref-sync.md) | heuristics | ドキュメント / command 定義の 1 節を「常時表示」から「条件付き表示 (on-demand / Optional)」へ変えると、その節を「下記 (below)」「FAQ below」のような**固定位置を含意する文言で参照していた常時表示テキスト**が dangling reference 化する。 | 2026-06-10T12:41:54Z | high |
 | [config テンプレートの default-on 設定は Advanced マーカーより上に配置する](pages/patterns/template-config-active-block-above-advanced-marker.md) | patterns | `templates/config/rite-config.yml` のある設定を「新規プロジェクトでデフォルト ON」にしたいなら、その active ブロックを `# --- Advanced (below this line) ---` マーカーより **上** に置く。 | 2026-06-11T00:57:13Z | high |
@@ -501,4 +501,4 @@ okf_version: "0.2"
 
 - 総ページ数: 487
 - ドメイン別: patterns=112, heuristics=216, anti-patterns=159
-- 最終更新: 2026-09-13T02:07:58+00:00
+- 最終更新: 2026-09-13T12:25:07+09:00
