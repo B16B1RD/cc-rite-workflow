@@ -9,6 +9,7 @@
 * **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — [差分テストが区切りの出ない変異を素通りさせることを示したレビュー結果](raw/reviews/20260913T020014Z-pr-2760.md) を統合。比較前に区切りの出現回数を固定する節と、候補リスト依存の限界を追記
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=482, broken_refs=0
 * **Update**: [「網羅」を主張する列挙は grep 全数棚卸し + scope note で構造的に収束させる](pages/heuristics/exhaustiveness-claims-require-mechanical-inventory.md) — [列挙文書の差分更新で同種の経路が残ったことを検出したレビュー結果](raw/reviews/20260913T031734Z-pr-2763.md) を統合。列挙の母集団を共通 helper の呼び出し元 grep から確定する節を追記
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=482, broken_refs=0
 
 ## 2026-09-12
 
