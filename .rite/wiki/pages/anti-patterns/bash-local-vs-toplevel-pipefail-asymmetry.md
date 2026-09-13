@@ -13,9 +13,13 @@ sources:
     resource: "raw/fixes/20260426T233931Z-pr-688.md"
   - type: "reviews"
     resource: "raw/reviews/20260609T071104Z-pr-1318.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260913T095931Z-pr-2778.md"
 tags: ["bash", "set-e", "pipefail", "writer-reader-asymmetry", "silent-failure"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-09T07:58:52+00:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-13T10:12:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-13T10:12:00Z" }
 ---
 
 # function 内 `local v=$(...)` と top-level `v=$(...)` の `set -e` 伝播差で writer/reader 非対称が偶然 mask される
@@ -117,6 +121,27 @@ if [ -z "$LOCKED_BASE" ]; then fail ...; else ...; fi
 
 `|| LOCKED_BASE=""` を付けて初めて、mktemp 失敗時に abort せず空文字へ畳まれ guard が機能する。sibling script (`pr-cycle-cleanup.sh`) は元々 `wt_list_err=$(mktemp ...) || wt_list_err=""` の慣習だったため、それに揃える形で解消した。教訓: **「guard を書いた」だけでは到達可能性を保証しない。guard の手前の代入が `set -e` で abort しないことを `|| v=""` で明示せよ。コメントで set -e 免除を主張する場合は local/plain の区別を正確に書く** (誤った mental model はレビューで [Comment Rot](./fix-comment-self-drift.md) として検出される)。3 cycle 収束 (cycle 2 で error-handling reviewer が LOW 指摘 → cycle 3 で `|| v=""` 化)。
 
+### 追加事例: 途中終了を防ぐ保護は呼び出し側の条件文脈にある
+
+同じ伝播差を「防ぐ側」で使った形。`set -euo pipefail` のテストで、欠落しうる行の取得と空値チェックを関数にまとめ、欠落時は名前付きメッセージを出して `return 1` させた:
+
+```bash
+gate_line() {
+  local line
+  line=$(grep '^key=' "$1" || true)
+  [ -n "$line" ] || { printf 'MISSING: %s\n' "$1" >&2; return 1; }
+  printf '%s\n' "$line"
+}
+if ! value=$(gate_line "$file"); then fail 'key line exists'; fi   # 呼び出し側 A
+gate_line "$mutant" > out 2> err || rc=$?                           # 呼び出し側 B
+```
+
+- `local line` と代入を別の文に分けているので、`local` が代入の終了ステータスを隠さない（本ページ Root cause の罠を避けている）。
+- `if !` と `|| rc=$?` はどちらも errexit が効かない条件文脈なので、関数内で grep が失敗しても途中終了しない。この文脈では関数内の `|| true` は冗長になる。
+- **保護が効いているのは関数の中ではなく呼び出し側の文脈**である。呼び出し側 A を `value=$(gate_line "$file")` と `if [ -z "$value" ]` の 2 文に書き換えると、行が欠けた瞬間に `set -e` で再び途中終了する。mutant を関数へ直接渡すテスト（呼び出し側 B）はこの書き換えを検出しない。
+
+教訓: **関数の戻り値とメッセージを mutant で固定しても、「途中終了しない」という性質は固定されない**。性質を固定するなら、呼び出し側のブロックごと関数化して mutant 入力で呼び、次の文へ戻ってくることを assert する。どこまで固定するかは契約次第で、契約が関数の挙動までなら残りは記録して見送ってよい。
+
 ## 関連ページ
 
 - [`if ! cmd; then rc=$?` は常に 0 を捕捉する](../anti-patterns/bash-if-bang-rc-capture.md)
@@ -129,3 +154,4 @@ if [ -z "$LOCKED_BASE" ]; then fail ...; else ...; fi
 - [fix 結果](../../raw/fixes/20260426T232316Z-pr-688.md)
 - [user scope expansion](../../raw/fixes/20260426T233931Z-pr-688.md)
 - [guard dead-code 発現形](../../raw/reviews/20260609T071104Z-pr-1318.md)
+- [途中終了の保護が呼び出し側の条件文脈にあることを示したレビュー結果](../../raw/reviews/20260913T095931Z-pr-2778.md)
