@@ -247,4 +247,4 @@ if [ "$project_reg" = "partial" ] || [ "$project_reg" = "failed" ]; then
 fi
 ```
 
-Signal 3 / Signal 4 由来の split では title prefix を `review-split:` のまま (Signal 1 と統一)、body の `## 概要` 直下の文にある "Quality Signal 1 発火" を実発火 signal 名に置換する（先頭の Meta 行は置換対象に含まない）。`options.source` も `fingerprint_split` → `quality_signal_3_split` / `quality_signal_4_split` に変更する（enum 値は `create-issue-with-projects.sh` の機械契約のため `fingerprint_split` の名称を維持している — Signal 1 由来の split を意味する歴史的名称）。
+Signal 3 / Signal 4 由来の split では title prefix を `review-split:` のまま (Signal 1 と統一)、body の `## 概要` 直下の文にある "Quality Signal 1 発火" を実発火 signal 名に置換する。`options.source` も `fingerprint_split` → `quality_signal_3_split` / `quality_signal_4_split` に変更する（enum 値は `create-issue-with-projects.sh` の機械契約のため `fingerprint_split` の名称を維持している — Signal 1 由来の split を意味する歴史的名称）。
