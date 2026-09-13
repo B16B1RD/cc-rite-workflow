@@ -122,6 +122,9 @@ tmpfile=$(mktemp)
 trap 'rm -f "$tmpfile"' EXIT
 
 if ! cat <<'BODY_EOF' > "$tmpfile"
+**Type**: {type}
+**Complexity**: {complexity}
+
 ## 概要
 
 {description}

@@ -86,7 +86,7 @@ fail-safe 発火時は **全 reason で WARNING を可視化する**（silent fa
 
 ## Complexity の抽出元を Issue body に限る理由
 
-flow-state は complexity フィールドを持たず、Projects の Complexity フィールドはフィールド名のローカライズ解決を伴う別経路になる。Issue body は `gh issue view --json body` 1 回で読め、**rite の Issue テンプレート経由で作られた Issue** は Section 0 Meta に宣言値を持つ。テンプレートを経ない生成経路のうち、`/rite:cleanup` ステップ 3 が作る `残作業:` Issue は Complexity を Projects フィールドにしか持たないため body からは読めず、`complexity_absent` で full へ倒れる — レーンが発動する母集団はこの分だけ狭い。follow-up Issue（`cleanup-follow-up-issue.sh`）と `/rite:pr-create` の自動 Issue は body 先頭に記法 1 の Meta を持つ。
+flow-state は complexity フィールドを持たず、Projects の Complexity フィールドはフィールド名のローカライズ解決を伴う別経路になる。Issue body は `gh issue view --json body` 1 回で読め、**rite の Issue テンプレート経由で作られた Issue** は Section 0 Meta に宣言値を持つ。テンプレートを経ない自動起票のうち、follow-up Issue（`cleanup-follow-up-issue.sh`）、`/rite:pr-create` の自動 Issue、スコープ外指摘の Issue（[scope-triage.md](./scope-triage.md) 7.4.2）、`/rite:cleanup` ステップ 3 の `残作業:` Issue は body 先頭に記法 1 の Meta を持ち、Projects に渡すのと同じ Complexity を宣言する。`review-split:` Issue（[finding-cycling.md](./finding-cycling.md)）は Complexity を Projects フィールドにしか持たないため body からは読めず、`complexity_absent` で full へ倒れる — レーンが発動する母集団はこの分だけ狭い。
 
 リポジトリ内に 3 つの記法が併存する（記法 1 = `**Complexity**: X` = [template-structure.md](../../../templates/issue/template-structure.md) Section 0 Meta / 記法 2 = `## 複雑度` セクション = [common-principles.md](../../rite-workflow/references/common-principles.md) / 記法 3 = `| **Complexity** | X |` = Section 0 Meta を表で書いた形）ため helper は**3 記法すべてを受理し、明示宣言を表行より優先する**。一部だけ読むと、他の記法で書かれた Issue が全て `complexity_absent` で full へ倒れ、レーンが一度も発動しない。探索順は 1 → 2 → 3 で、どれで読んだかは marker の `source=`（`body_meta` / `body_table` / `body_section`）で区別できる。
 
