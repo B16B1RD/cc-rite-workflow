@@ -13,11 +13,14 @@ sources:
     resource: "raw/fixes/20260731T083919Z-pr-2070.md"
   - type: "reviews"
     resource: "raw/reviews/20260913T130513Z-pr-2783.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260913T134104Z-pr-2785.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T13:20:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T13:50:00Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T13:20:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T13:50:00Z" }
 ---
 
 # 修飾は主張単位ではなく同格の主張の集合単位でかける
@@ -49,6 +52,8 @@ verified:
 
 参照の食い違いの根にはテスト側の命名がからむこともある。兄弟テストで同じ変数名が逆の対象（一方は呼び出し元ファイル、他方は切り出した reference）を指していると、コメントやラベルが旧ファイル名のまま producer を呼ぶ陳腐化が起きやすい。コメントを直すだけでは再発余地が残るので、変数名の不一致そのものを別途揃える対象として扱う。
 
+不揃いを解消する後続修正でも、洗い出しの対象を散文だけに絞ると同じ種類の未修飾参照が残る。手順書の fenced bash が出すエラーメッセージ文字列（例: 別ファイルの見出し番号だけを書いた `echo "ERROR: ..."`）も、読み手にとっては同じ番号参照である。grep は本文とコード片の両方にかけ、今回の差分に含めない箇所は「修飾しない理由」か別 Issue への切り出しとして記録する。揃えた後は、同じファイル内の他の番号参照（呼び出し元の手順範囲・別スキルの手順番号・自ファイル内の手順番号）がそれぞれ実在の見出しへ解決するかも Read で確かめておくと、修飾の揃え直しが別の参照を壊していないことを示せる。
+
 ## 関連ページ
 
 - [散文修正の完了検査は「主張した概念」で走査する（逆引き検査）](./reverse-lookup-concept-sweep-for-prose-fixes.md)
@@ -60,3 +65,4 @@ verified:
 - [レビュー結果](../../raw/reviews/20260731T083326Z-pr-2070.md)
 - [fix 結果](../../raw/fixes/20260731T083919Z-pr-2070.md)
 - [参照先ファイル名の部分修飾を検出したレビュー結果](../../raw/reviews/20260913T130513Z-pr-2783.md)
+- [未修飾の番号参照を揃えた修正のレビュー結果](../../raw/reviews/20260913T134104Z-pr-2785.md)

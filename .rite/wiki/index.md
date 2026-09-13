@@ -332,7 +332,7 @@ okf_version: "0.2"
 | [修正案が「一方の失敗モードを他方と交換する」形に割れたら、その機構は測るべき量を測っていない](pages/heuristics/split-reviewer-recommendations-signal-removal.md) | heuristics | レビュー指摘に対する修正案が複数出て、どれも「誤発火を減らすと見逃しが増える／見逃しを減らすと誤発火が増える」形にしかならないとき、選ぶべきなのはどの案でもない。 | 2026-08-01T00:21:06+09:00 | high |
 | [散文修正の完了検査は「削除した旧表現」ではなく「主張した概念」で走査する（逆引き検査）](pages/heuristics/reverse-lookup-concept-sweep-for-prose-fixes.md) | heuristics | 散文の是正を終えたあと、削除・置換した旧表現を全文検索して残存 0 件を確認するのは自然な完了検査だが、**構造的に 4 クラスを取り逃す**。 | 2026-09-06T16:10:23Z | high |
 | [実装が分岐しているならテストも分岐の数だけ要る — 既定構成の経路こそ抜けやすい](pages/heuristics/implementation-branch-count-equals-test-branch-count.md) | heuristics | 同じ責務が設定値によって別実装に分かれているとき（`separate_branch` と `same_branch`、`git cat-file -e` と `[ -f ]` など）、片方のテストは他方を一切担保しない。 | 2026-08-01T00:21:06+09:00 | high |
-| [修飾は主張単位ではなく同格の主張の集合単位でかける](pages/heuristics/qualifier-applies-to-peer-claim-set.md) | heuristics | 同格の主張が並ぶ場所で片方だけに「これは未検証」「これは指示であって観測ではない」といった限定を付けると、**無修飾で残った他方が検証済み・観測事実として読まれる**。 | 2026-09-13T13:20:00Z | high |
+| [修飾は主張単位ではなく同格の主張の集合単位でかける](pages/heuristics/qualifier-applies-to-peer-claim-set.md) | heuristics | 同格の主張が並ぶ場所で片方だけに「これは未検証」「これは指示であって観測ではない」といった限定を付けると、**無修飾で残った他方が検証済み・観測事実として読まれる**。 | 2026-09-13T13:50:00Z | high |
 | [一般化した断定は、実装が特殊化されている限り必ず偽になる — 同じ契約を書く複数サイトは最も限定的な表現に揃える](pages/heuristics/generalized-claim-false-while-implementation-specialized.md) | heuristics | 同じ契約が複数箇所に書かれているとき、書き手は場所ごとに違う抽象度で表現しがちである。 | 2026-08-26T02:16:20+09:00 | high |
 | [意図的除外と失敗を同じカウンタに載せると、そのカウンタの存在理由が消える](pages/heuristics/intentional-exclusion-not-counted-as-failure.md) | heuristics | 無音の欠損を可視化するために失敗カウンタを新設したら、そこに何を載せるかが設計判断になる。 | 2026-08-01T00:21:06+09:00 | high |
 | [実測アンカーの repro に書くパイプは U+00A6 へ置換する](pages/patterns/verification-anchor-pipe-substitution.md) | patterns | 実測必須ゲートは `Verification:` アンカーの full match に blocking を委ねる。パイプや空の左辺、値域外の種別ラベルは match を壊すか空振りさせ、機械カテゴリまで exclusion なし class B へ倒すと blocking が落ちる。 | 2026-09-13T09:12:00Z | high |
@@ -501,4 +501,4 @@ okf_version: "0.2"
 
 - 総ページ数: 487
 - ドメイン別: patterns=112, heuristics=216, anti-patterns=159
-- 最終更新: 2026-09-13T13:20:00Z
+- 最終更新: 2026-09-13T13:50:00Z
