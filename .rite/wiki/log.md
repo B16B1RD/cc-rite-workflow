@@ -35,6 +35,7 @@
 * **Update**: [修飾は主張単位ではなく同格の主張の集合単位でかける](pages/heuristics/qualifier-applies-to-peer-claim-set.md) — [参照先ファイル名の部分修飾を検出したレビュー結果](raw/reviews/20260913T130513Z-pr-2783.md) を統合。参照先ファイル名を 1 箇所だけ明記すると同一ファイル内の無修飾参照との不揃いが生じる節と、兄弟テストの変数名の不一致を追記
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=482, broken_refs=0
 * **Update**: [修飾は主張単位ではなく同格の主張の集合単位でかける](pages/heuristics/qualifier-applies-to-peer-claim-set.md) — [未修飾の番号参照を揃えた修正のレビュー結果](raw/reviews/20260913T134104Z-pr-2785.md) を統合。洗い出しをコード片のエラーメッセージ文字列にも広げる点と、揃えた後に他の番号参照の解決先を確かめる点を追記
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=482, broken_refs=0
 
 ## 2026-09-12
 
