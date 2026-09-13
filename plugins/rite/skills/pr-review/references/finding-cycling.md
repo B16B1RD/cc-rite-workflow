@@ -159,6 +159,7 @@ Signal 3 または Signal 4 が発火した場合、**§3 の 4-option AskUserQu
 
 | Placeholder | Source | Example |
 |-------------|--------|---------|
+| `{type}` | finding の内容から推定 (`fix` / `feat` / `refactor` / `docs` 等) | `fix` |
 | `{persistent_finding_body}` | 持続した finding の body (review 結果コンテキスト) | (finding 本文) |
 | `{short_summary}` | finding の要約 (動詞始まり、50 文字以内) | `fix XYZ guard` |
 | `{pr_number}` | 現在の PR 番号 (review-fix ループのコンテキスト) | `1253` |
@@ -172,6 +173,9 @@ tmpfile=$(mktemp)
 trap 'rm -f "$tmpfile"' EXIT
 
 if ! cat <<'BODY_EOF' > "$tmpfile"
+**Type**: {type}
+**Complexity**: S
+
 ## 概要
 
 レビューサイクル中に持続した finding を別 Issue として切り出しました (Quality Signal 1 発火)。
@@ -243,4 +247,4 @@ if [ "$project_reg" = "partial" ] || [ "$project_reg" = "failed" ]; then
 fi
 ```
 
-Signal 3 / Signal 4 由来の split では title prefix を `review-split:` のまま (Signal 1 と統一)、body の冒頭 "Quality Signal 1 発火" を実発火 signal 名に置換する。`options.source` も `fingerprint_split` → `quality_signal_3_split` / `quality_signal_4_split` に変更する（enum 値は `create-issue-with-projects.sh` の機械契約のため `fingerprint_split` の名称を維持している — Signal 1 由来の split を意味する歴史的名称）。
+Signal 3 / Signal 4 由来の split では title prefix を `review-split:` のまま (Signal 1 と統一)、body の `## 概要` 直下の文にある "Quality Signal 1 発火" を実発火 signal 名に置換する（先頭の Meta 行は置換対象に含まない）。`options.source` も `fingerprint_split` → `quality_signal_3_split` / `quality_signal_4_split` に変更する（enum 値は `create-issue-with-projects.sh` の機械契約のため `fingerprint_split` の名称を維持している — Signal 1 由来の split を意味する歴史的名称）。
