@@ -28,6 +28,7 @@
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=482, broken_refs=0
 * **Update**: [function 内 `local v=$(...)` と top-level `v=$(...)` の `set -e` 伝播差で writer/reader 非対称が偶然 mask される](pages/anti-patterns/bash-local-vs-toplevel-pipefail-asymmetry.md) — [途中終了の保護が呼び出し側の条件文脈にあることを示したレビュー結果](raw/reviews/20260913T095931Z-pr-2778.md) を統合。関数の mutant テストでは呼び出し側の条件文脈が固定されない節を追記
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=482, broken_refs=0
+* **Update**: [静的 parity テストには到達性 pin と emit pin を対で足す — 出現数 + 行順だけでは semantics を守れない](pages/patterns/static-parity-pin-needs-reachability-and-emit-pins.md) — [分割した手順書 bash の配線漏れを連結実行テストが捕まえたレビュー結果](raw/reviews/20260913T105832Z-pr-2779.md) を統合。引数行の静的一致では配線を守れず、分割ブロックを連結して mock で実行する節を追記
 
 ## 2026-09-12
 

@@ -275,7 +275,7 @@ okf_version: "0.2"
 | [gate を守る対象の内側に置くと、守るべき唯一の failure mode で gate も一緒に skip される](pages/anti-patterns/gate-placed-inside-guarded-scope.md) | anti-patterns | LLM が読む手順書で「手順 X が実行されたこと」を保証する post-condition gate を新設するとき、gate を X のサブステップとして書くと自己参照で無力化する。 | 2026-07-27T10:57:51+09:00 | high |
 | [属性は母集団からの除外ではなく別 map で持つ — 除外は下流の全分岐を経路依存で壊す](pages/heuristics/attribute-as-separate-map-not-population-exclusion.md) | heuristics | 既存の分類 map（severity_map など）に新しい軸（実測済みか否か）を導入するとき、「条件を満たさない要素を母集団から除外する」設計にすると、その map を参照する下流の全分岐が経路依存で壊れる。 | 2026-07-27T10:57:51+09:00 | high |
 | [SoT 同期は detection 側と authoring 側の双方向に書く — 片側だけでは機構が silent に空振りする](pages/heuristics/sot-bidirectional-detection-and-authoring-sync.md) | heuristics | 「アンカーが特定の regex にマッチしたら blocking として扱う」のような機構は、**検出する側**（assessment-rules.md / SKILL.md の判定ステップ）と**書く側**（`_reviewer-base.md` / reviewer-prompt-generator.md）の 2 つの SoT を持つ。 | 2026-07-27T10:57:51+09:00 | high |
-| [静的 parity テストには到達性 pin と emit pin を対で足す — 出現数 + 行順だけでは semantics を守れない](pages/patterns/static-parity-pin-needs-reachability-and-emit-pins.md) | patterns | SKILL.md 内の markdown 埋め込み bash は実行テストできないため、grep ベースの静的 parity テスト（述語文字列の出現数 + 行の並び）で drift を pin する運用がある。 | 2026-08-02T09:53:11+09:00 | high |
+| [静的 parity テストには到達性 pin と emit pin を対で足す — 出現数 + 行順だけでは semantics を守れない](pages/patterns/static-parity-pin-needs-reachability-and-emit-pins.md) | patterns | SKILL.md 内の markdown 埋め込み bash は実行テストできないため、grep ベースの静的 parity テスト（述語文字列の出現数 + 行の並び）で drift を pin する運用がある。 | 2026-09-13T11:10:00Z | high |
 | [markdown テーブル行に対する greedy `.*` はセル境界を跨いでマッチし、右辺の空検出を dead 化する](pages/anti-patterns/greedy-regex-crosses-markdown-table-cell-separator.md) | anti-patterns | reviewer が出力する markdown テーブルの `内容` 列からアンカー（`Verification: repro <cmd> => <observed>`）を抽出する検出 regex に greedy `.*` を使うと、セル区切りの `\|` を跨いで隣のセル（`推奨対応` 列）までマッチする。 | 2026-07-27T10:57:51+09:00 | high |
 | [毎回同じ入力で発火する分岐には脱出手順を書き、その破壊性を分岐自身の設計判断に揃える](pages/heuristics/recurring-branch-needs-escape-hatch-matching-its-design.md) | heuristics | 「原因が特定できないため破壊的操作をしない」という設計判断で no-op に倒した分岐は、設計としては正しくても**同じ入力が毎回選ばれて同じ WARNING を出し続ける**状態を作る。 | 2026-07-27T10:57:51+09:00 | medium |
 | [記録専用フィールドを判定入力に格上げする変更は 4 点を同時に同期する](pages/heuristics/field-semantics-promotion-record-to-decision-input.md) | heuristics | 「これまで記録・表示にしか使っていなかったフィールドを、これからは判定の入力にする」という変更は一見小さいが、そのフィールドを読む経路・語る文書・書く経路のすべてに影響が及ぶ。 | 2026-07-27T17:54:54+09:00 | high |
@@ -501,4 +501,4 @@ okf_version: "0.2"
 
 - 総ページ数: 487
 - ドメイン別: patterns=112, heuristics=216, anti-patterns=159
-- 最終更新: 2026-09-13T10:12:00Z
+- 最終更新: 2026-09-13T11:10:00Z

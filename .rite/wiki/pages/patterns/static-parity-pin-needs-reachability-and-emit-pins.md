@@ -18,9 +18,13 @@ sources:
     resource: "raw/reviews/20260801T170512Z-pr-2070.md"
   - type: "fixes"
     resource: "raw/fixes/20260801T171512Z-pr-2070.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260913T105832Z-pr-2779.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-02T09:53:11+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T11:10:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T11:10:00Z" }
 ---
 
 # 静的 parity テストには到達性 pin と emit pin を対で足す — 出現数 + 行順だけでは semantics を守れない
@@ -86,6 +90,14 @@ helper 抽出（bash を実ファイルに切り出して hermetic にテスト�
 
 **表記差の正規化は比較前に 1 箇所で行う。** awk プログラム内リテラルは `pages\/`、`grep -oE` は `pages/` とスラッシュのエスケープが違う、といった文脈依存の差がある。どちらかに実装を寄せるのではなく、**テスト側で `\/` → `/` に畳んでからバイト比較する**。実装の可読性（各文脈で自然なエスケープ）を保ったまま parity だけを pin できる。
 
+### 引数行の静的一致は配線を守らない — 分割ブロックは連結して mock で実行する
+
+手順書の bash が「値を組み立てるブロック」と「その値を helper へ渡すブロック」に分かれていると、`--arg complexity "S"` のような引数行を grep で読むテストは、jq フィルタ側でその変数を出力 JSON へ配線し忘れても通る。引数行は正しいまま、helper に届く JSON から値だけが消えるからである。
+
+対処は、2 ブロックを手順書と同じ順で連結し、helper を「受け取った引数を記録して成功を返す mock」に差し替えて実行し、記録された JSON の該当フィールドを assert すること。実測では、フィルタ側の配線を外した変異を静的検査はすべて素通りさせ、連結実行の 1 assert だけが落とした。
+
+分割そのものを安全に保つには、既存テストが「needle を含む最初のブロック」を抽出して実行している前提を壊さないことも要る。後段ブロックの reason 文字列を前段に書くと抽出先が入れ替わるので、各 reason の出現回数と前後順を assert で固定しておく。
+
 ## 関連ページ
 
 - [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](../anti-patterns/test-pin-protection-theater.md)
@@ -99,3 +111,4 @@ helper 抽出（bash を実ファイルに切り出して hermetic にテスト�
 - [レビュー結果](../../raw/reviews/20260726T150008Z-pr-2030-cycle5.md)
 - [レビュー結果](../../raw/reviews/20260801T170512Z-pr-2070.md)
 - [fix 結果](../../raw/fixes/20260801T171512Z-pr-2070.md)
+- [分割した手順書 bash の配線漏れを連結実行テストが捕まえたレビュー結果](../../raw/reviews/20260913T105832Z-pr-2779.md)
