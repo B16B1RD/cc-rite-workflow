@@ -378,15 +378,17 @@ done
 
 # Auto-created Issue bodies open with the Meta /rite:open reads, declaring the Complexity sent to Projects.
 cleanup_skill="$PLUGIN_ROOT/skills/cleanup/SKILL.md"
+split="$PLUGIN_ROOT/skills/pr-review/references/finding-cycling.md"
 route_section() {
   case "$1" in
     triage) awk '/^#### 7\.4\.2 / { s=1 } s && /^#### 7\.4\.3 / { exit } s { print }' "$2" ;;
     cleanup) awk '/^## ステップ 3:/ { s=1 } s && /^## ステップ 4:/ { exit } s { print }' "$2" ;;
+    split) awk '/^## §4 / { s=1; print; next } s && /^## §/ { exit } s { print }' "$2" ;;
   esac
 }
 route_body() {
   case "$1" in
-    triage) route_section "$@" | awk '/cat <<.BODY_EOF. > "\$tmpfile"$/ { a=1; next } a && /^BODY_EOF$/ { exit } a { print }' ;;
+    triage|split) route_section "$@" | awk '/cat <<.BODY_EOF. > "\$tmpfile"$/ { a=1; next } a && /^BODY_EOF$/ { exit } a { print }' ;;
     cleanup) route_section "$@" | awk '/^\*\*Issue 本文テンプレート\*\*/ { s=1 } s && /^```markdown$/ { a=1; next } a && /^```$/ { exit } a { print }' ;;
   esac
 }
@@ -397,6 +399,7 @@ route_headings() {
   case "$1" in
     triage) printf '%s' '## 概要|## 背景|### 元のレビュー{source_label}|## 関連' ;;
     cleanup) printf '%s' '## 概要|## 背景・目的|## 関連|## 変更内容|## チェックリスト' ;;
+    split) printf '%s' '## 概要|## 元の finding|## 関連' ;;
   esac
 }
 # Prints the first broken rule and returns 1; returns 0 when the Meta and headings hold.
@@ -409,12 +412,13 @@ route_meta_check() {
   expected=$(printf '**Type**: {type}\n**Complexity**: %s\n\n## 概要' "$projects")
   [ "$(printf '%s\n' "$body" | awk 'NR <= 4')" = "$expected" ] || { echo "body does not open with Type / Complexity=$projects / blank / ## 概要"; return 1; }
   [ "$(printf '%s\n' "$body" | grep -E '^#{2,3} ' | paste -sd '|' -)" = "$(route_headings "$1")" ] || { echo 'body headings changed'; return 1; }
+  [ "$1" != split ] || [ "$(route_section "$1" "$2" | grep -c '^| `{type}` |' || true)" = 1 ] || { echo 'Placeholder table has no single {type} row'; return 1; }
 }
-for route in "triage|$triage" "cleanup|$cleanup_skill"; do
+for route in "triage|$triage" "cleanup|$cleanup_skill" "split|$split"; do
   name=${route%%|*}
   source=${route#*|}
   anchor="cat <<'BODY_EOF' > \"\$tmpfile\""
-  [ "$name" = triage ] || anchor='**Issue 本文テンプレート**'
+  [ "$name" != cleanup ] || anchor='**Issue 本文テンプレート**'
   assert "$name body template anchor is unique" 1 "$(route_section "$name" "$source" | grep -cF -- "$anchor" || true)"
   assert "$name Projects complexity argument is unique" 1 "$(route_section "$name" "$source" | grep -c -- '--arg complexity' || true)"
   if reason=$(route_meta_check "$name" "$source"); then pass "$name body declares the Projects Complexity"; else fail "$name body Meta: $reason"; fi
@@ -430,6 +434,10 @@ for route in "triage|$triage" "cleanup|$cleanup_skill"; do
     fi
   done
 done
+sed '/^| `{type}` |/d' "$split" > "$work/split-mutant.md"
+if assert_mutant_changed 'split deleted {type} placeholder' "$split" "$work/split-mutant.md"; then
+  if route_meta_check split "$work/split-mutant.md" > /dev/null; then fail 'split deleted {type} placeholder is not detected'; else pass 'split deleted {type} placeholder is detected'; fi
+fi
 
 # The complexity helper reads the expanded bodies; gh is a local mock, never the CLI.
 mkdir "$work/lane-bin"
@@ -443,7 +451,7 @@ run_lane() {
   assert "$name lane exit status" 0 "$rc"
   assert "$name lane reads the Issue once with -R" 'issue view 7 -R example/repo --json body --jq .body' "$(cat "$work/$name-lane.argv")"
 }
-for route in "triage|$triage|XS" "cleanup|$cleanup_skill|S"; do
+for route in "triage|$triage|XS" "cleanup|$cleanup_skill|S" "split|$split|S"; do
   IFS='|' read -r name source expected <<< "$route"
   route_body "$name" "$source" | sed -e 's/{type}/fix/g' -e 's/{complexity}/XS/g' > "$work/$name-lane.md"
   assert "$name expanded Projects complexity" "$expected" "$(route_projects_complexity "$name" "$source" | sed 's/{complexity}/XS/g')"
