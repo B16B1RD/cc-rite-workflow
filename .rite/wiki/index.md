@@ -170,7 +170,7 @@ okf_version: "0.2"
 | [現在ブランチ取得は git branch --show-current で統一する (rev-parse --abbrev-ref HEAD は detached HEAD で挙動分岐)](pages/patterns/git-current-branch-idiom-detached-head.md) | patterns | 「現在のブランチ名を取得する」という同一目的を実現する 2 つの git idiom は、detached HEAD 状態で**挙動が分岐する**: `git rev-parse --abbrev-ref HEAD` は文字列 `HEAD` を出力し、`git branch --show-current` は**空文字**を出力する。 | 2026-06-02T03:50:58Z | high |
 | [外部コマンド (gh) 失敗時に not-found と一時障害を区別せず別経路へ落とすのは silent failure](pages/anti-patterns/external-command-failure-origin-distinction.md) | anti-patterns | `gh pr view N` のような外部コマンドが失敗したとき、失敗種別 (origin) を区別せず無条件に「別の番号空間・別経路とみなす」分岐は silent failure である。 | 2026-07-30T15:40:55Z | high |
 | [LLM 向けコマンド spec の placeholder は解決元 entity を一意化する (単一 {number} を {issue_number}/{pr_number} に分離)](pages/patterns/llm-command-spec-placeholder-entity-disambiguation.md) | patterns | LLM が実行する command spec (`.md`) で、単一の汎用 placeholder `{number}` を `gh issue view {number}` と `gh pr view {number}` の両方の代入先に使うと、LLM が「どちらの entity 番号か」を一意に解決できず 404・誤参照を招く。 | 2026-06-02T03:50:58Z | high |
-| [set -euo pipefail 下の外部コマンド単独文は後続 rc 分岐を dead code 化する](pages/anti-patterns/bare-statement-under-set-e-dead-code-rc-branch.md) | anti-patterns | `set -euo pipefail` 下で外部コマンド (`python3` / `jq` / `grep` 等) を **単独文 (bare statement)** として実行すると、コマンドが非ゼロ終了した瞬間に `set -e` が script 全体を abort する。 | 2026-09-08T09:16:17Z | high |
+| [set -euo pipefail 下の外部コマンド単独文は後続 rc 分岐を dead code 化する](pages/anti-patterns/bare-statement-under-set-e-dead-code-rc-branch.md) | anti-patterns | `set -euo pipefail` 下で外部コマンド (`python3` / `jq` / `grep` 等) を **単独文 (bare statement)** として実行すると、コマンドが非ゼロ終了した瞬間に `set -e` が script 全体を abort する。 | 2026-09-13T06:20:00Z | high |
 | [末尾の && 短絡文が非ブロッキング script の exit code を leak する (末尾 exit 0 を明示する)](pages/anti-patterns/trailing-and-shortcircuit-exit-code-leak.md) | anti-patterns | `set -e` を使わない (`set -uo pipefail` のみの) helper script で、`[ -n "$var" ] && cmd` のような `A && B` 短絡が **script の最終実行文**になると、`$var` が空のとき `[ -n "" ]` が rc=1 を返し、`&&` 短絡で compound 文全体が rc=1 を返す。 | 2026-06-02T07:42:13Z | high |
 | [複数 PR にまたがる incremental 追加履歴を単一 PR に誤集約する (multi-PR provenance aggregation error)](pages/anti-patterns/multi-pr-provenance-aggregation-error.md) | anti-patterns | 対称化 / 要約 PR で「先行 PR が追加したガード・機能の履歴」を散文で要約するとき、**複数 PR にまたがって incremental に追加された項目を単一 PR に誤集約する** failure mode。 | 2026-06-03T08:38:00Z | medium |
 | [i18n 同期 PR の忠実翻訳は原本の誤りを転写する — 検出時は accept + 両側同時修正 follow-up で決着する](pages/heuristics/i18n-faithful-translation-source-error-accept-followup.md) | heuristics | i18n 同期 PR (EN → JA 全面追従など) では、忠実翻訳が原本 (EN) に既存する事実誤りをそのまま翻訳側へ転写する。 | 2026-06-04T01:45:55Z | high |
@@ -501,4 +501,4 @@ okf_version: "0.2"
 
 - 総ページ数: 487
 - ドメイン別: patterns=112, heuristics=216, anti-patterns=159
-- 最終更新: 2026-09-13T05:16:00Z
+- 最終更新: 2026-09-13T06:20:00Z
