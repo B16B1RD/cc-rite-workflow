@@ -44,7 +44,7 @@ case "$collect_rc:$sweep_status" in
 esac
 ```
 
-`empty` なら route 適用・persist を skip して 5.1 へ。
+`empty` なら route 適用・persist を skip して fix/SKILL.md の 5.1 へ。
 
 2. **route 適用**（helper の判定を変更しない）:
 
@@ -214,4 +214,4 @@ if [ -n "$sweep_root" ]; then
 fi
 ```
 
-ステップ 5.1 が `[fix:sweep-done]` を emit する。`K+M` は collect `count`（already_rejected 転記を含む）と一致する。未消化 0 が正常出口。
+fix/SKILL.md のステップ 5.1 が `[fix:sweep-done]` を emit する。`K+M` は collect `count`（already_rejected 転記を含む）と一致する。未消化 0 が正常出口。
