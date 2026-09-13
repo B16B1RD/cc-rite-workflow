@@ -82,9 +82,23 @@ if assert_mutant_changed 'deleted summary rule' "$structure" "$work/mutant.md"; 
   assert_grep 'deleted literal reports MISSING RULE' "$work/mutation.err" '^MISSING RULE:'
 fi
 
+# Prints the version gate line; a missing line is reported and returns 1 instead of ending the run.
+svg_gate_line() {
+  local line
+  line=$(grep '^svg_allowed=' "$1" || true)
+  [ -n "$line" ] || { printf 'MISSING GATE: %s: svg_allowed=\n' "$1" >&2; return 1; }
+  printf '%s\n' "$line"
+}
+sed '/^svg_allowed=/d' "$structure" > "$work/gate-mutant.md"
+if assert_mutant_changed 'deleted svg_allowed gate line' "$structure" "$work/gate-mutant.md"; then
+  rc=0
+  svg_gate_line "$work/gate-mutant.md" > "$work/gate.out" 2> "$work/gate.err" || rc=$?
+  assert 'deleted gate line returns 1' 1 "$rc"
+  assert_grep 'deleted gate line reports MISSING GATE' "$work/gate.err" '^MISSING GATE:'
+fi
+
 # Execute the actual one-line version gate; gh is a local function, never the CLI.
-version_code=$(grep '^svg_allowed=' "$structure" || true)
-if [ -z "$version_code" ]; then
+if ! version_code=$(svg_gate_line "$structure"); then
   fail 'svg_allowed version gate line exists in template-structure'
 else
   for pair in '2.98.0 false' '2.99.0 true' '2.100.0 true' 'invalid false'; do
