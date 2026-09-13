@@ -437,7 +437,7 @@ for route in "triage|$triage" "cleanup|$cleanup_skill" "split|$split"; do
   done
 done
 # The triage row lives outside its section, so only split pins the row inside §4.
-{ grep '^| `{type}` |' "$split"; sed '/^| `{type}` |/d' "$split"; } > "$work/split-moved-mutant.md"
+{ grep '^| `{type}` |' "$split" || true; sed '/^| `{type}` |/d' "$split"; } > "$work/split-moved-mutant.md"
 if assert_mutant_changed 'split {type} placeholder moved before §4' "$split" "$work/split-moved-mutant.md"; then
   assert 'split {type} placeholder moved before §4 is detected' 'Placeholder table {type} row is outside §4' "$(route_meta_check split "$work/split-moved-mutant.md")"
 fi
