@@ -11,6 +11,7 @@
 * **Update**: [「網羅」を主張する列挙は grep 全数棚卸し + scope note で構造的に収束させる](pages/heuristics/exhaustiveness-claims-require-mechanical-inventory.md) — [列挙文書の差分更新で同種の経路が残ったことを検出したレビュー結果](raw/reviews/20260913T031734Z-pr-2763.md) を統合。列挙の母集団を共通 helper の呼び出し元 grep から確定する節を追記
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=482, broken_refs=0
 * **Update**: [テストヘルパーの awk flip-flop レンジは start pattern をコード行に一意なプレフィックスでアンカーする](pages/patterns/awk-flip-flop-range-start-pattern-anchoring.md) — [抽出対象の本文に同じ形の見出しがある節を切り出したテストのレビュー結果](raw/reviews/20260913T035756Z-pr-2764.md) を統合。end 条件を節見出しの形に限定し、start 行が end 条件にも一致する場合は出力して次行へ進める節を追記
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=482, broken_refs=0
 
 ## 2026-09-12
 
