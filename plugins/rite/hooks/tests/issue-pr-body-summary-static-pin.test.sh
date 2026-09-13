@@ -488,7 +488,7 @@ for route in "split|$split" "nb|$nb_sweep"; do
 done
 # complexity-lane.md names every auto-created route this test checks.
 lane_doc=$(grep -F 'body 先頭に記法 1 の Meta を持ち' "$PLUGIN_ROOT/skills/pr-review/references/complexity-lane.md" || true)
-for named in 'scope-triage.md](./scope-triage.md) 7.4.2' '`/rite:cleanup` ステップ 3' 'finding-cycling.md](./finding-cycling.md) §4' '`/rite:fix --nb-sweep`'; do
+for named in 'scope-triage.md](./scope-triage.md) 7.4.2' '`/rite:cleanup` ステップ 3' 'finding-cycling.md](./finding-cycling.md) §4' '`/rite:fix --nb-sweep`' 'nb-sweep.md](../../fix/references/nb-sweep.md) 1.3.S の route 適用'; do
   if printf '%s\n' "$lane_doc" | grep -qF -- "$named"; then pass "complexity-lane lists route: $named"; else fail "complexity-lane misses route: $named"; fi
 done
 
