@@ -256,7 +256,7 @@ ISSUE_NUMBER=$(grep -oE '[0-9]+$' <<< "$ISSUE_URL" || true)
 
 ### Buffered Writer + Early-Exit `awk`
 
-here-string にできない upstream（関数・`awk` / `sed` などコマンドの出力）でも同じ SIGPIPE が起きる。バッファ付きの writer は出力を数 KB ずつ複数回 write するため、合計が 64KB 未満でも、downstream の `awk '... { exit }'` が最初の chunk で終了すると次の write が SIGPIPE を受ける。発生はタイミング依存で、並列負荷下ほど再現しやすい。
+here-string にできない upstream（関数・`awk` / `sed` などコマンドの出力）でも同じ SIGPIPE が起きる。バッファ付きの writer は出力を数 KB ずつ複数回 write するため、合計が 64KB 未満でも、downstream の `awk '... { exit }'` が、writer の write がまだ残っているうちに終端行で終了すると、残りの write が SIGPIPE を受ける（終端行が何番目の chunk にあっても起きる）。発生はタイミング依存で、並列負荷下ほど再現しやすい。
 
 ```bash
 # Vulnerable: section は複数 chunk で書かれ、awk は終端行で exit する
