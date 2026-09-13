@@ -167,7 +167,7 @@ For each finding in 全指摘事項 (post-5.3.0) where scope ∈ {current-pr, fo
 
 本規約は **authoring 層に閉じており、本節の helper 実装契約は無変更**である。`scripts/review-measured-gate.sh` の 2 値 + error 判定 (`measured=true` / `false` / `anchor_undetermined`)・アンカー検出 regex・WARNING 発火条件・判別子はいずれも帰結クラスを参照しない。帰結クラスが作用するのは「アンカーが description に存在するか」の**上流**であり、形式崩れアンカーの実測判定不能を error として扱う挙動は本軸の導入前後で不変。両ドメインとも severity / scope は維持したまま blocking 集合から除外し、`scope=nit-noted` への転用は禁止する (nit-noted は `gated` 偽で `non_blocking_findings[]` に載らず 4 経路記録が失われるため)。判別子と適用例の SoT は [`_reviewer-base.md` §手順書・仕様書ドメイン Finding Gate](../../../agents/_reviewer-base.md#prose-domain-finding-gate) / [§テスト網羅性 Finding Gate](../../../agents/_reviewer-base.md#test-coverage-finding-gate)、語彙定義は [severity-levels.md §帰結クラス軸](../../../references/severity-levels.md#帰結クラス軸-consequence-class)。
 
-**指摘ゼロの場合**: `全指摘事項` が空なら本ゲートは no-op であり、mergeable 判定は現行と同一 (AC-3 非退行)。
+**指摘ゼロの場合**: `全指摘事項` が空なら本ゲートは no-op であり、mergeable 判定は現行と同一。
 
 ## 5.3.0.C 帰結クラス降格政策 (Consequence-Class Demotion Gate)
 
@@ -220,13 +220,13 @@ else:
 
 **category 固定**: `category == "number_reference"` の blocking finding は classification map の内容にかかわらず class A に固定する。well-formed な class B が指定された場合は WARNING + `[CONTEXT] CLASS_DEMOTION_CATEGORY_PINNED=1; count={n}` を emit し、map と固定の矛盾を silent に上書きしない。map 欠落・不正は従来の `CLASS_DEMOTION_UNCLASSIFIED` 経路だけを通る。
 
-**判定不能の安全側** (AC-6): map エントリの欠落・class 不正・class B の判定文欠落・class B の exclusion 不正・同 id の重複エントリは、いずれも当該 finding を **class A 扱い (blocking 維持)** にして WARNING + `[CONTEXT] CLASS_DEMOTION_UNCLASSIFIED=1; count={n}` を emit する。gated finding の `verification.measured` が boolean でない場合は map 判定と書き換えの前に `[CONTEXT] CLASS_DEMOTION_GATE_FAILED=1; reason=measured_undetermined; count={n}; findings={ids}` で停止し、入力 JSON を byte-identical に保つ。silent 降格は存在しない — 降格に入る経路は「実測判定済み ∧ well-formed な class B エントリ ∧ exclusion なし」のみ。
+**判定不能の安全側**: map エントリの欠落・class 不正・class B の判定文欠落・class B の exclusion 不正・同 id の重複エントリは、いずれも当該 finding を **class A 扱い (blocking 維持)** にして WARNING + `[CONTEXT] CLASS_DEMOTION_UNCLASSIFIED=1; count={n}` を emit する。gated finding の `verification.measured` が boolean でない場合は map 判定と書き換えの前に `[CONTEXT] CLASS_DEMOTION_GATE_FAILED=1; reason=measured_undetermined; count={n}; findings={ids}` で停止し、入力 JSON を byte-identical に保つ。silent 降格は存在しない — 降格に入る経路は「実測判定済み ∧ well-formed な class B エントリ ∧ exclusion なし」のみ。
 
 **non_blocking_findings への移送**: 5.3.0.M と同じ移送メカニズムを流用する — `total_findings` にカウントしない / `id` は振り直さず和集合で一意 / 記録 4 経路 (永続 JSON・6.1.d 関連 Issue 記録コメント・5.4 統合レポート section・E2E suffix) は 5.3.0.M §non_blocking_findings の扱い と同一。降格分は `demotion` オブジェクト (policy + 判定文) で実測ゲート降格分と区別でき、後から監査できる。
 
 **発散検出 (トレンド) との相互作用**: 本ゲートの降格が発動しても、blocking が 0 になるのは exclusion なし class B が全件落ちたときだけ。exclusion 付き B が残れば `applied` かつ `assessment=fix-needed`（部分降格）。除外付き B のみの cycle は not-triggered。全対象 B が落ちた cycle だけ iterate は `[review:mergeable]` で終了する。per-cycle blocking 数列への影響は**終端 cycle の値が 0 になることのみ**であり、発散検出 (`hooks/scripts/review-trend-divergence.sh`) の入力定義・実装は変更しない。
 
-**指摘ゼロの場合**: post-5.3.0.M の blocking が空なら本ゲートは no-op (JSON 無変更・分類判定もスキップ)。mergeable 判定は現行と同一 (AC-7 非退行)。
+**指摘ゼロの場合**: post-5.3.0.M の blocking が空なら本ゲートは no-op (JSON 無変更・分類判定もスキップ)。mergeable 判定は現行と同一。
 
 ## 5.3.1 Assessment Rules
 
@@ -277,7 +277,7 @@ When determining the assessment, explicitly output the finding count in the foll
 - 総合評価: {マージ可 / マージ不可（指摘あり） / 修正必要}
 ```
 
-**【実測必須ゲート】の省略規則**: `non_blocking_count == 0` かつ `total == 0` (指摘ゼロ) の場合は【実測必須ゲート】ブロック自体を**省略する** (MUST — permissive な裁量を残さない。AC-3: 指摘ゼロ経路の出力を現行と同一に保つ)。いずれかが 1 件以上なら必ず出力する。
+**【実測必須ゲート】の省略規則**: `non_blocking_count == 0` かつ `total == 0` (指摘ゼロ) の場合は【実測必須ゲート】ブロック自体を**省略する** (MUST — permissive な裁量を残さない。指摘ゼロ経路の出力を現行と同一に保つ)。いずれかが 1 件以上なら必ず出力する。
 
 **Additional output when fact-check was executed:**
 

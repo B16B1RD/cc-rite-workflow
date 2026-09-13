@@ -28,7 +28,7 @@ worktree 削除）で個別に確認を挟むと、人間の品質判断を工�
 
 ## order-invariant
 
-順序を固定する理由は AC-4 である。PR クローズが失敗したまま Status を `Cancelled` へ進めると、
+順序を固定するのは次の不整合を残さないためである。PR クローズが失敗したまま Status を `Cancelled` へ進めると、
 board は終端・PR は open の不整合が残る。フォールバックせずエラーで止めるのは、この不整合を
 見過ごさないため。PR クローズを先に置き、失敗したら Status も Issue クローズも後片付けも行わない。
 
@@ -263,7 +263,7 @@ worktree だけがカレントセッションの拒否で終わる非対称に�
 
 cwd がその path の中にいて `CLEANUP_WT` が `in_worktree` でないときは `ExitWorktree` が no-op
 になる（path 入場。cleanup と同じ観測）。ここで teardown をスキップして Issue を閉じると、
-再実行は AC-6 の冪等経路（Phase 4 skip）に落ち、worktree もブランチも残る。不能なら
+再実行は `CLOSED` + `NOT_PLANNED` の冪等経路（Phase 4 skip）に落ち、worktree もブランチも残る。不能なら
 Phase 5 / Phase 6 の前に止めて Issue を OPEN のまま残すほかない。
 
 ## reason-file-outside-worktree

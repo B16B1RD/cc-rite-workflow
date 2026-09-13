@@ -1070,7 +1070,7 @@ if [ "$branch_strategy" = "separate_branch" ]; then
   case "$push_rc" in
     0) echo "[CONTEXT] WIKI_INGEST_PUSH=ok" ;;
     4)
-      echo "WARNING: 蓄積した wiki commit の push に失敗しました (rc=4)。commit は local wiki branch に landed 済みです（AC-2: 非ブロッキングで継続、次回セッションの push-only 呼び出しが自動で flush する）" >&2
+      echo "WARNING: 蓄積した wiki commit の push に失敗しました (rc=4)。commit は local wiki branch に landed 済みです（非ブロッキングで継続、次回セッションの push-only 呼び出しが自動で flush する）" >&2
       echo "  手動回復: git -C \"$wiki_wt_abs\" push origin $wiki_branch" >&2
       echo "[CONTEXT] WIKI_INGEST_PUSH=failed" >&2
       ;;

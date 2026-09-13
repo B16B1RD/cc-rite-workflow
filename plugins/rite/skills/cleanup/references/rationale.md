@@ -110,7 +110,7 @@ reap せず、消滅済みなら stale 参照を drop し、存在すれば verb
 
 admin dir 半壊（corpse）では checkout 中 branch を git で解決できず、pr-cycle-cleanup.sh Step 5
 のブランチ名 manifest bypassが構造的に効かない。パス自体を事前記録すれば corpse age
-guard が 24h 待ちをバイパスできる。記録は `{pr_merged}=true` のときのみ（AC-4: 未マージ PR の
+guard が 24h 待ちをバイパスできる。記録は `{pr_merged}=true` のときのみ（未マージ PR の
 強制 cleanup では記録しない）。record 自体は non-blocking 契約（rite-tmp-artifact.sh）。
 
 ## main-root-cd
@@ -163,10 +163,10 @@ silent skip する事象が確認されている（`skills/ready/SKILL.md` Phase
 ## wiki-push-batch
 
 ingest.md はページ更新のたびに push していた旧挙動を、raw source ごとに commit のみ行い ingest
-フロー末尾で 1 回だけ push する方式に変更した（AC-1）。`push=failed` 部分文字列検出は
+フロー末尾で 1 回だけ push する方式に変更した。`push=failed` 部分文字列検出は
 そのまま機能する — 集約 push が失敗した場合も、その 1 回の push 結果として ingest の stdout に
 同じ文字列が現れるため、本ステップの検出ロジック自体の変更は不要（ローカル commit は保持され、
-次回 ingest が自動で flush を試みる — AC-2 / SHOULD）。
+次回 ingest が自動で flush を試みる）。
 
 ## wm-dual-finalize
 

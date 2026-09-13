@@ -62,7 +62,7 @@ else
 fi
 
 # jq 検査（欠落は ⚠️ 警告 + OS 別案内。案内は本フェーズで 1 回だけ出し、Phase 4.5.0 の
-# NO_JQ 経路では繰り返さない — AC-3）
+# NO_JQ 経路では繰り返さない）
 if ! command -v jq >/dev/null 2>&1; then
   dep_jq=missing
   echo "⚠️ jq が見つかりません。rite の hook / スクリプトは JSON 処理に jq を必要とします。"
@@ -74,13 +74,13 @@ if ! command -v jq >/dev/null 2>&1; then
   esac
 fi
 
-# flock 検査（non-blocking = ℹ️ 情報表示のみ。警告レベルにしない — AC-4）
+# flock 検査（non-blocking = ℹ️ 情報表示のみ。警告レベルにしない）
 if ! command -v flock >/dev/null 2>&1; then
   dep_flock=missing
   echo "ℹ️ flock が見つかりません（macOS / Git Bash では標準未同梱）。flow-state のロックは degrade 動作（ロックなし）になりますが、rite の動作は妨げません。"
 fi
 
-# 全依存 OK なら 1 行サマリのみ（AC-1）
+# 全依存 OK なら 1 行サマリのみ
 if [ "$dep_bash" = "ok" ] && [ "$dep_jq" = "ok" ] && [ "$dep_flock" = "ok" ]; then
   echo "✅ 依存検査: bash ${BASH_VERSION%%.*}+ / jq / flock をすべて検出しました（os=$os）"
 fi
@@ -1447,7 +1447,7 @@ fi
 **When `WIKI_INITIALIZED=true`**:
 - Display `Wiki は既に初期化されています（検知: {detection}）。スキップします。` (substitute `{detection}` with the matched branch name or file path)
 - Set `wiki_status=already_initialized` (remember in LLM context)
-- **Skip the rest of Phase 4.7** and proceed to the next step (new-install: Phase 4.8, then Phase 4.9, then Phase 5 / `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit). Do NOT invoke Skill (preserves existing Wiki content per AC-2)
+- **Skip the rest of Phase 4.7** and proceed to the next step (new-install: Phase 4.8, then Phase 4.9, then Phase 5 / `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit). Do NOT invoke Skill (preserves existing Wiki content)
 
 **When `WIKI_INITIALIZED=false`**: Proceed to 4.7.3.
 
@@ -1508,7 +1508,7 @@ Then:
 
 ## Phase 4.8: Sandbox Write-Allowlist 自動設定（multi_session 有効時）
 
-`multi_session.enabled: true`（Phase 4.1 で決定済み。新規生成・back-add いずれでも既定 ON）**かつ** Claude 自身の Bash tool 定義（sandbox セクション）が filesystem write 制限付き sandbox で動作している場合のみ実行する。いずれか一方でも該当しない場合は本節を完全に silent skip する（案内・warning 共に一切出さない — AC-3）。
+`multi_session.enabled: true`（Phase 4.1 で決定済み。新規生成・back-add いずれでも既定 ON）**かつ** Claude 自身の Bash tool 定義（sandbox セクション）が filesystem write 制限付き sandbox で動作している場合のみ実行する。いずれか一方でも該当しない場合は本節を完全に silent skip する（案内・warning 共に一切出さない）。
 
 判定は実行コンテキスト（system prompt の sandbox write 許可リスト）を読む。bash では検出できない。
 

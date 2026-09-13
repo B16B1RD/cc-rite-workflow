@@ -100,7 +100,7 @@ marker_emit ITERATE_ISSUE "$iterate_issue" "ITERATE_BRANCH=$iterate_branch"
 
 LLM は `[CONTEXT] ITERATE_ISSUE` / `ITERATE_BRANCH` から値を読み、後続の flow-state.sh set 呼び出しで `--issue` / `--branch` に literal substitute する。値が空の場合は AskUserQuestion で「Issue 番号 / ブランチ名を入力 / 中止」を提示。
 
-### ステップ 0.5: セッション worktree 健全性の保証（multi_session 有効時 / AC-2）
+### ステップ 0.5: セッション worktree 健全性の保証（multi_session 有効時）
 
 ループに入る前に、対象作業ブランチの session worktree を保証する。共通ヘルパー `ensure_session_worktree`（[`lib/worktree-git.sh`](../../hooks/scripts/lib/worktree-git.sh)）で検出・再構築する（`{issue_number}` / `{branch_name}` は ステップ 0 の `ITERATE_ISSUE` / `ITERATE_BRANCH` marker の値）:
 rationale: references/rationale.md#worktree-ensure-preamble
@@ -133,7 +133,7 @@ bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --i
 
 ## ステップ 0.6: cycle counter の初期化 + max_review_cycles の検証
 
-ループに入る前に、review⇄fix サーキットブレーカーの cycle counter を初期化し、上限値を検証する。counter は flow-state の `cycle_count` に永続化され、resume を跨いで継続する（AC-3）。
+ループに入る前に、review⇄fix サーキットブレーカーの cycle counter を初期化し、上限値を検証する。counter は flow-state の `cycle_count` に永続化され、resume を跨いで継続する。
 rationale: references/rationale.md#cycle-counter-init
 
 `{issue_number}` / `{branch_name}` は ステップ 0 の `ITERATE_ISSUE` / `ITERATE_BRANCH` marker の値、`{pr_number}` は引数をリテラル置換する:
@@ -168,7 +168,7 @@ fi
 source {plugin_root}/hooks/scripts/lib/context-marker.sh || { echo "ERROR: context-marker.sh を読み込めませんでした（プラグインの破損 / 版 skew）。marker を emit できないため中止します" >&2; exit 1; }
 
 # ⚠ 下行はテスト hooks/tests/max-review-cycles-default.test.sh が awk 抽出アンカーとして参照する。変更時はテスト側の awk パターンも同時更新すること
-# (1) max_review_cycles を rite-config.yml から読取・検証（AC-4）。無効値（0 以下 / 非数値）は WARNING + 既定値 15
+# (1) max_review_cycles を rite-config.yml から読取・検証。無効値（0 以下 / 非数値）は WARNING + 既定値 15
 raw_max=$(awk '/^safety:/{s=1;next} s&&/^[a-zA-Z]/{exit} s&&/^[[:space:]]+max_review_cycles:/{print;exit}' rite-config.yml 2>/dev/null \
   | sed 's/[[:space:]]#.*//' | sed 's/.*max_review_cycles:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 case "$raw_max" in
@@ -252,7 +252,7 @@ fi
 #     で proxy が壊れる。そこで pin を据え置くと、ステップ 1 は stale pin を `--since` に、残存
 #     counter を `--cycle-count` に渡すため helper の stale pin guard の前提条件（`since` が空
 #     または `cycle_count == 0`）が揃わず素通りし、**前 run の列を含む混合列で発火する**
-#     （AC-1 の否定方向）。選言にすれば fresh 側で必ず pin を張り直すので、その経路自体が消える
+#     （健全な run を誤って止める方向）。選言にすれば fresh 側で必ず pin を張り直すので、その経路自体が消える
 #     （reset 失敗分岐に pin 削除を複製する必要はない）。`cur_cc == 0` 側の項は resume 経路の
 #     ステップ 5.0.1 / ステップ 6 共有前段が counter を 0 にして run を閉じた直後の起動
 #     （phase 維持のため resume 判定になる）を拾うために残す。
@@ -288,7 +288,7 @@ if [ "$cb_mode_init" = fresh ] || [ "$cur_cc" -eq 0 ] 2>/dev/null; then
       # 「pin より新しいファイル」は前 run と現 run の結果を連結した列になる。helper の stale pin guard は `[ -z "$since" ] || cycle_count == 0`
       # を前提条件に持つため、pin が非空かつ 2 cycle 目以降ではこの列がそのまま判定にかかり、前 run の
       # 最良水準が `prefix_min` に居座る（実測: `5,3,1,0,8,8` は cycle 6 で fire）— 健全な run を殺す方向
-      # (AC-1 の否定) の縮退になる。pin を消せば ステップ 1 の `absent` 経路 → `--since ""` となり、
+      # の縮退になる。pin を消せば ステップ 1 の `absent` 経路 → `--since ""` となり、
       # 前 run の結果が同居している限り `実在数 > cycle_count` が必ず成立して guard の連言が揃い、
       # 既存の fail-loud 経路 `run_boundary_unresolved` へ倒れる（同居が無ければ全件 = 現 run なので
       # そのまま読んで正しい）。新しい fallback ではなく、用意済みの loud 経路へ到達させる措置。
@@ -388,7 +388,7 @@ case "$raw_max" in ''|0|*[!0-9]*) max_cycles=15 ;; *) max_cycles=$raw_max ;; esa
 
 # 収束トレンド判定。永続レビュー JSON から現 run の per-cycle blocking 列を復元し、
 # 発散していれば cycle 上限未到達でも発火させる。判定は helper に閉じており、LLM は verdict を
-# 読むだけで数え上げを行わない（AC-5）。
+# 読むだけで数え上げを行わない。
 # `--since` にはステップ 0.6 が記録した run 開始点 pin を渡す（run 境界の決定はこれが担う。
 # cycle_count は helper 側で「結果が失われた」診断にしか使われない）。pin ファイルが無ければ
 # 空文字を渡す = 全件を 1 本の列として読む（pin 導入前の run への後方互換）。
@@ -461,7 +461,7 @@ elif [ "$cc" -ge 1 ] 2>/dev/null && [ -z "$trend_lost_raw" ] && [ "$trend_reason
 fi
 
 # 発火理由を決める。**cycle 上限を先に評価する** — 両方成立しているとき、上限到達は
-# 従来からの契約（AC-3 の保険）であり、そちらを理由として報告するほうが挙動の説明として正確。
+# 従来からの契約（収束トレンド判定の backstop）であり、そちらを理由として報告するほうが挙動の説明として正確。
 # lost ゲートが fire のときは下の分岐で CB を保留する（本算出は行わないわけではない）。
 cb_reason=""
 if [ "$cc" -ge "$max_cycles" ] 2>/dev/null; then
@@ -522,7 +522,7 @@ elif [ -n "$cb_reason" ]; then
   # WARNING を出す経路を持つため、rc!=0 のときだけ表示するとブレーカー発火という最後の安全網の
   # 経路で診断が消える。neutralize_ctrl も同型（本ブロック冒頭で読み込み済み）。
   [ -n "$fire_out" ] && printf '%s\n' "$fire_out" | head -5 | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-  # CB_REASON / TREND はステップ 6.2 の停止通知が「理由」行とトレンド推移の表示に使う（AC-4）。
+  # CB_REASON / TREND はステップ 6.2 の停止通知が「理由」行とトレンド推移の表示に使う。
   # ステップ 6 は別の Bash 呼び出しでシェル変数を引き継げないため marker で渡す。
   marker_emit ITERATE_LOST_GATE ok "lost=$trend_lost" "cycle=$cc" "max=$max_cycles" \
     "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "INC=none"
@@ -765,7 +765,7 @@ MUST NOT: 同一 PR で 5.S を 2 回走らせる。sweep でコードを修正�
 
 ### ステップ 5.0: 一時残骸の最終回収 (terminal cleanup)
 
-完了通知を出力する**前に**、本ループが残した一時ブランチ・worktree を回収する。本ループの終端で明示的に発火させ、回収の到達性を担保する (AC-2)。non-blocking — 失敗してもループ完了を妨げない (AC-5):
+完了通知を出力する**前に**、本ループが残した一時ブランチ・worktree を回収する。本ループの終端で明示的に発火させ、回収の到達性を担保する。non-blocking — 失敗してもループ完了を妨げない:
 rationale: references/rationale.md#terminal-cleanup-age-guard
 
 ```bash
@@ -836,7 +836,7 @@ marker_emit ITERATE_NB_REMAINING 0 "status=ok" "record=" "by_severity=" "overlay
 
 | 5.S marker | 完了通知 |
 |---|---|
-| `ITERATE_NB_SWEEP=noop` | 0 件テンプレ。消化内訳行は出さない（AC-4） |
+| `ITERATE_NB_SWEEP=noop` | 0 件テンプレ。消化内訳行は出さない |
 | `ITERATE_NB_SWEEP=done`（`NB_SWEEP_RESULT=done`） | 0 件テンプレ + `- sweep: issued={sweep_issued} / recorded={sweep_recorded}` |
 | `ITERATE_NB_SWEEP=skipped` | ファイル 1 行目が `noop` なら 0 件テンプレ（digest 行なし）。`done` なら 0 件テンプレ + digest 行（件数が取れなければ 0） |
 | `ITERATE_NB_SWEEP=failed` | 到達不能（5.S で停止） |
@@ -1206,6 +1206,6 @@ rationale: [stop-loop-continuation-contract.md#mechanism](../../references/stop-
 - **ブレーカーの発火条件は「発散」であって「予算切れ」ではない** — 主経路は収束トレンドの発散検出、`safety.max_review_cycles`（既定 15）は backstop。**窓幅や閾値を config キーにしない**
 - **発火理由は停止 routing を変えない** — sentinel（`[iterate:max-cycles-reached]` / `[iterate:max-cycles-stopped]`）は理由に依らず不変
 - **発火後は停止** — batch は failed、対話は機械的に停止。再実行時の fresh entry が full scope を担う。
-- **cycle counter は flow-state に保持** — 専用 state file は持たない。resume 跨ぎ継続（AC-3）、fresh entry で 0 リセット。発火直前（ステップ 6 共有前段）と正常終了時（ステップ 5.0.1）でも 0 に戻す
+- **cycle counter は flow-state に保持** — 専用 state file は持たない。resume 跨ぎ継続、fresh entry で 0 リセット。発火直前（ステップ 6 共有前段）と正常終了時（ステップ 5.0.1）でも 0 に戻す
 - 人間が skip → 別 Issue で loop 終了する経路は閉じた。残存 non-blocking の消化は機械 routing（完了通知前の 5.S `/rite:fix --nb-sweep` と、cleanup の follow-up Issue 起票）が担う
 rationale: references/rationale.md#design-decisions

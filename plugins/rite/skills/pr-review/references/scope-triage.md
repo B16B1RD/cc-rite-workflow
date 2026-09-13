@@ -256,7 +256,7 @@ elif printf '%s' "$body" | grep -q '^## 9\. Decision Log'; then
   trap 'rm -f "$tmpfile"' EXIT
   # `awk -v` はバックスラッシュエスケープを解釈するため（`\n`→改行, `\t`→タブ, `\d`→`d` 等）、
   # $new_line に正規表現例・Windows パス等 backslash を含む free-text が入ると「1 行 append」
-  # 不変条件（AC-3）を破って複数行に分割されうる。ENVIRON はエスケープ解釈しないため経由する。
+  # 不変条件を破って複数行に分割されうる。ENVIRON はエスケープ解釈しないため経由する。
   printf '%s\n' "$body" | NEW_LINE="$new_line" awk '
     /^## 9\. Decision Log/ { print; in_section=1; next }
     in_section && (/^## / || /^---[[:space:]]*$/ || /^<\/details>/) { print ENVIRON["NEW_LINE"]; print; in_section=0; next }
@@ -318,7 +318,7 @@ Decision Log append failure reasons: (`line_content_write_failure` / `body_fetch
 | `body_fetch_failure` | 元 Issue の body 取得（`gh issue view`）に失敗 |
 | `gh_edit_failure` | Section 9 の採番走査・行挿入、または Section 9 新設時の本文組み立て（awk）の異常終了 / 空出力、または `gh issue edit` 適用に失敗 |
 
-失敗は non-blocking。WARNING + 記録予定行を出し、7.5-7.6 の completion report にも転記する（AC-5）。
+失敗は non-blocking。WARNING + 記録予定行を出し、7.5-7.6 の completion report にも転記する。
 
 #### 7.4.4 引き受け先 Issue への申し送りコメント
 
@@ -390,7 +390,7 @@ Handoff comment failure reasons: (`closed` / `body_write_failure` / `gh_comment_
 
 ### 7.5-7.6 Append to PR & Report
 
-Issue 一覧を PR コメントへ（`mktemp` + `--body-file`）。`DECISION_LOG_APPENDED=1` の件数と、失敗があれば「手動追記してください」行を completion report に転記する（AC-5）。`HANDOFF_COMMENT_POSTED=1` / `HANDOFF_COMMENT_FAILED=1` も転記し、失敗分は未投稿の申し送りとして列挙する。
+Issue 一覧を PR コメントへ（`mktemp` + `--body-file`）。`DECISION_LOG_APPENDED=1` の件数と、失敗があれば「手動追記してください」行を completion report に転記する。`HANDOFF_COMMENT_POSTED=1` / `HANDOFF_COMMENT_FAILED=1` も転記し、失敗分は未投稿の申し送りとして列挙する。
 
 ### 7.7 Post-condition Gate — Recommendation Disposition Enforcement
 

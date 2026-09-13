@@ -73,7 +73,7 @@ Project 番号は `rite-config.yml` の `github.projects.project_number` を最�
 
 入力テキストまたは同一セッション会話中に「# 探索サマリ:」見出し（`/rite:unknowns` の出力形式）を検出した場合、上記 1.3 の素朴な What/Why/Where 抽出に代えて [Step 3.1 mapping](./references/contract-section-mapping.md#step-31-探索サマリ-section--contract-section-mapping-riteunknowns-連携時) を適用する軽量化パスに入る（線引き rationale: [`references/unknowns-boundary-rationale.md#線引き`](./references/unknowns-boundary-rationale.md#線引き)）。この検出はステップ 4.0 / 5.0 の仮定表面化手順に軽量化規則として反映される（4.0 / 5.0 参照）。
 
-非サマリ入力ではこの検出は発動せず、1.3 の通常抽出のみを行う（後方互換、AC-5）。
+非サマリ入力ではこの検出は発動せず、1.3 の通常抽出のみを行う（後方互換）。
 
 ### 1.4 slug 生成
 
@@ -143,7 +143,7 @@ rationale: references/rationale.md#ask-only-user-unique
 - サマリの「確定したこと」に含まれる事項は手順 1（仮定列挙）から除外し、再質問しない
 - サマリの「未解決の問い」は手順 1 を経由せず直接、手順 3 の 3 分類 (b)/(c) へ合流させる
 
-非サマリ入力ではこの軽量化は適用されず、手順 1-5 を通常どおり実行する（AC-5、後方互換）。
+非サマリ入力ではこの軽量化は適用されず、手順 1-5 を通常どおり実行する（後方互換）。
 
 **質問強度（見込み Complexity 連動）**: ステップ 3.1 で見込まれた規模（未確定なら入力 Scope から XS〜XL を概算。確定値は 4.1 で確認）に連動させる:
 
