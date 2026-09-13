@@ -8,7 +8,7 @@
 # T-05 nit-noted in findings[] is a target; new class-B is not a second sweep (AC-5)
 # T-06 ledger write / merge fail-loud (AC-6)
 # T-07 class A findings[] stay out of sweep targets (AC-7)
-# T-08 body_count extraction expression matches between fix/SKILL.md and the record helper (AC-1..AC-3)
+# T-08 body_count extraction expression matches between fix/references/nb-sweep.md and the record helper (AC-1..AC-3)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -356,22 +356,22 @@ assert_grep "issue stub was called" "$NB_TEST_ISSUE_LOG" '^called$'
 assert "failure paths leave ledger unchanged" "$ledger_before" "$(cksum "$ledger")"
 assert "failure paths leave HEAD unchanged" "$head_before" "$(git -C "$PLUGIN_ROOT" rev-parse HEAD)"
 
-# --- T-08 (AC-1..AC-3): body_count の抽出式が producer (fix/SKILL.md) と validator (helper) で一致する ---
-# fix/SKILL.md ステップ 1.3.S step 3 は抽出した値を helper へ `--count` として渡し、helper は
+# --- T-08 (AC-1..AC-3): body_count の抽出式が producer (nb-sweep.md) と validator (helper) で一致する ---
+# nb-sweep.md 1.3.S の手順 3（台帳 persist）は抽出した値を helper へ `--count` として渡し、helper は
 # 同じ行を自前の式で再検査する。片側だけを書き換えると producer が通した body を validator が
 # count_body_mismatch で落とす。この不一致は実行時にしか現れないため、両者の式を突き合わせて
 # 固定する。期待値はテスト内にハードコードせず helper 側から抽出する。
 NBR_SH="$PLUGIN_ROOT/hooks/review-nonblocking-record.sh"
 assert_file_exists_or_fail "T-08 nonblocking record helper exists" "$NBR_SH" || true
 
-# 右辺の被演算子はファイル変数名だけが異なる (helper=$CONTENT_FILE / SKILL=$body)。
+# 右辺の被演算子はファイル変数名だけが異なる (helper=$CONTENT_FILE / nb-sweep.md=$body)。
 # 共通プレースホルダへ正規化してから突合する (TC-5b の __CYCLE__ 正規化と同型)。
 # 被演算子の手前で needle を切り詰めると `| tail -1 | grep -oE '[0-9]+'` が pin から外れ、
 # パイプライン後段の drift を取り逃す空振り経路が残るため、右辺は全体を対象にする。
 _t08_helper_lines=$(grep -cE '^body_count=' "$NBR_SH" || true)
 _t08_skill_lines=$(grep -cE '^[[:space:]]*body_count=' "$FIX" || true)
 assert "T-08 helper の body_count= 代入は 1 行 (head -1 による黙殺を防ぐ)" "1" "$_t08_helper_lines"
-assert "T-08 fix/SKILL.md の body_count= 代入は 1 行" "1" "$_t08_skill_lines"
+assert "T-08 nb-sweep.md の body_count= 代入は 1 行" "1" "$_t08_skill_lines"
 
 # 上の 2 assert が代入 1 行を保証するため、以下の head -1 は値の選択ではなく、行数が崩れた
 # 実行でも診断値を 1 つに定めるための保険。fail() は加算のみで停止しないので後続まで進む。
@@ -387,7 +387,7 @@ else
   # 本 assert は symmetry pin であって value pin ではない。両側を同時に同じ形へ書き換えた
   # drift は等値が保たれるため検出できない (それを検出するには期待式をテスト内へ
   # ハードコードする必要があり、helper 側から抽出する方針と衝突する)。
-  assert "T-08 body_count 抽出式が producer (fix/SKILL.md) と validator (helper) で一致" \
+  assert "T-08 body_count 抽出式が producer (nb-sweep.md) と validator (helper) で一致" \
     "$_t08_helper_rhs" "$_t08_skill_rhs"
 fi
 
