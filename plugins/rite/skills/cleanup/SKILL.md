@@ -135,9 +135,9 @@ rationale: references/rationale.md#tasklist-parent-verify
 candidates=$(gh issue list -R {owner_repo} --state open --search "in:body \"- [ ] #{issue_number}\" OR \"- [x] #{issue_number}\"" --json number --limit 10 --jq '.[].number')
 parent_issue_number=""
 for cand in $candidates; do
-  # 自己マッチ除外: standalone closing Issue が自分自身を親と誤検出するのを防ぐ（AC-1）
+  # 自己マッチ除外: standalone closing Issue が自分自身を親と誤検出するのを防ぐ
   [ "$cand" = "{issue_number}" ] && continue
-  # 妥当性検証: 候補 body に当該 tasklist 行が実在するか確認（緩いマッチで拾った無関係 Issue を排除、AC-2 を非回帰で通す）
+  # 妥当性検証: 候補 body に当該 tasklist 行が実在するか確認（緩いマッチで拾った無関係 Issue を排除）
   cand_body=$(gh issue view "$cand" -R {owner_repo} --json body --jq '.body')
   if grep -qE "^[[:space:]]*-[[:space:]]\[[ xX]\][[:space:]]*#{issue_number}([^0-9]|$)" <<< "$cand_body"; then
     parent_issue_number="$cand"
@@ -223,11 +223,11 @@ echo "incomplete_count=$(printf '%s\n' "$incomplete" | grep -c . 2>/dev/null || 
 
 | `WM_SOURCE` | 意味 |
 |---|---|
-| `local` | 進捗セクションを持つ実 WM を採用（AC-2）。path は state_root 絶対パス |
-| `stub_fallback` → 後続で `comment` / `none` | stub を不採用しコメントへ fallback。切替理由は WARNING 済み（AC-1） |
+| `local` | 進捗セクションを持つ実 WM を採用。path は state_root 絶対パス |
+| `stub_fallback` → 後続で `comment` / `none` | stub を不採用しコメントへ fallback。切替理由は WARNING 済み |
 | `resolver_unresolved` | resolver 失敗の中間 marker。採用元ではない。後段の最終 `comment` / `none` で判定する |
 | `comment` | ローカル WM 不在 or stub / resolver 失敗後のコメントを採用 |
-| `none` | ローカルもコメントも無い。既存の「WM なし」経路（AC-3） |
+| `none` | ローカルもコメントも無い。既存の「WM なし」経路 |
 
 未完了タスクがあれば `AskUserQuestion` で「未完了タスクを Issue 化 (推奨) / 無視して続行 / キャンセル」を確認。Issue 化選択時は各タスクを `残作業` label 付きで作成する。
 
@@ -418,7 +418,7 @@ rationale: references/rationale.md#exitworktree-delegation
      ```
      > 手順 2 の退出検証成功が削除の前提。native 退出が no-op / 失敗のまま self-exclusion を使って削除してはならない。検証済み作業先指定の経路でも他セッションの live cwd と sandbox mask のガードは維持する。`/proc` の無い環境での helper の後方互換挙動は変更しない。
 rationale: references/rationale.md#live-cwd-self-exclusion
-  4. 削除失敗（`WORKTREE_REMOVE_FAILED`）、live-cwd skip（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD`）、または sandbox マスク skip（`WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` — remove 試行自体が admin dir を半壊させるため試行せず委譲）は **WARNING を表示して続行**（non-blocking。`pr-cycle-cleanup.sh` の遅延 reap へ委譲。ステップ 12 報告に失敗/skip と手動コマンドを表示）。busy 失敗時は上記の sandbox 干渉 WARNING も追加表示される（AC-5）。`WORKTREE_REMOVE_FAILED` / `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` は `{pr_merged}=true` のときのみ reap manifest（`.rite/tmp-artifacts.tsv`）へ `session_worktree` type でパスを記録する（`worktree` type ではない）。corpse 化した場合、パス記録で `pr-cycle-cleanup.sh` Step 5 の corpse age guard（24h 待ち）をバイパスさせ、mount 解放後の次回セッションで即座に回収できるようにする。
+  4. 削除失敗（`WORKTREE_REMOVE_FAILED`）、live-cwd skip（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD`）、または sandbox マスク skip（`WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` — remove 試行自体が admin dir を半壊させるため試行せず委譲）は **WARNING を表示して続行**（non-blocking。`pr-cycle-cleanup.sh` の遅延 reap へ委譲。ステップ 12 報告に失敗/skip と手動コマンドを表示）。busy 失敗時は上記の sandbox 干渉 WARNING も追加表示される。`WORKTREE_REMOVE_FAILED` / `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` は `{pr_merged}=true` のときのみ reap manifest（`.rite/tmp-artifacts.tsv`）へ `session_worktree` type でパスを記録する（`worktree` type ではない）。corpse 化した場合、パス記録で `pr-cycle-cleanup.sh` Step 5 の corpse age guard（24h 待ち）をバイパスさせ、mount 解放後の次回セッションで即座に回収できるようにする。
 rationale: references/rationale.md#session-worktree-reap
 - `CLEANUP_WT=in_main`（resume 等で既に main 復帰済み）: 所有する保存 state / claim / 対象 branch と登録 worktree の照合、対象の dirty ゲート、共通作業先契約の退出検証を通す。矛盾・他 live claim は削除前に停止する。worktree が残っていれば 3 を実行（既削除なら 3 もスキップ = 冪等）。in_main では所有セッションが別セッションの可能性があるため、3 の self-exclusion 付き live-cwd guard が特に重要（live-cwd guard による遅延は別セッション在席時。これに加え sandbox マスク検知時（sandbox マスク）も削除を試行せず遅延する）。
 - `CLEANUP_WT=none`（multi_session 無効、または worktree 関連なし = 物理 cwd も当該 Issue の worktree でない）: 4-W 全体を no-op でスキップ。**注**: flow-state 未記録でも物理 cwd が当該 Issue の worktree なら `in_worktree_unrecorded` に分類されここには落ちない。**ただし関連 Issue が未識別（`{issue_number}` 空）のときは物理 cwd 導出が働かず `none` に落ちる** — 導出が issue 番号でパス末尾を照合するため。この場合の worktree は次回セッション開始時の遅延 reap に委ねられる。
@@ -543,11 +543,11 @@ rationale: references/rationale.md#remote-delete-markers
 
 ---
 
-## ステップ 6: PR-specific state ファイルを削除 <!-- AC-7 -->
+## ステップ 6: PR-specific state ファイルを削除
 
 マージ済み PR に紐づく state ファイルを削除する。**他 PR 誤削除防止のため glob は `{pr_number}-` prefix 固定**。
 
-> **Acceptance Criteria anchor (AC-7)**: [review-result-schema.md](../../references/review-result-schema.md#クリーンアップ) と双方向リンク。
+> **双方向リンク**: [review-result-schema.md](../../references/review-result-schema.md#クリーンアップ) のクリーンアップ節と対になる。
 
 ### 6.0 残存非実測指摘から follow-up Issue を起票
 
@@ -976,7 +976,7 @@ rationale: references/rationale.md#marker-scope-recency
 rationale: references/rationale.md#marker-data-delimiter
 
   **ローカル側**（**2 段で判定する**: まず `[CONTEXT] ` 行頭一致 + marker family + `branch={branch_name}` に該当する行を集め、**その中の最後の出現 1 行だけを対象に選ぶ**。次にその 1 行に対して以下のルールを上から評価し最初に一致したものを採用する。段の順序を入れ替えてはならない — ルールを先に評価すると、蓄積した stale marker のうち上位ルールに当たるものが最新の行より先に一致し、recency が働かない）:
-  - `[CONTEXT] BRANCH_DELETE_DEFERRED=1; branch={branch_name}` 行があるとき（作業ツリーが未削除のまま残っていて削除を見送った — 別セッション使用中しまたは sandbox マスク skip（sandbox マスク）。原因は断定しない）。**marker の `recovery=` フィールドで文面を出し分ける**（記録できていない経路で「自動回収」と偽らないため — AC-6）: ` ` + 以下を付記
+  - `[CONTEXT] BRANCH_DELETE_DEFERRED=1; branch={branch_name}` 行があるとき（作業ツリーが未削除のまま残っていて削除を見送った — 別セッション使用中しまたは sandbox マスク skip（sandbox マスク）。原因は断定しない）。**marker の `recovery=` フィールドで文面を出し分ける**（記録できていない経路で「自動回収」と偽らないため）: ` ` + 以下を付記
     - `recovery=auto`（PR が merged 済み、reap manifest に記録成功、かつ filtered dirty gate が clean → 次セッションで自動回収される）:
       ```
       ℹ️ ローカルブランチ {branch_name} は、まだ削除されていない作業ツリーで参照されているため残しました。その作業ツリーが解放されたあと、次回のセッション開始時に自動で削除されます（手動操作は不要）。
@@ -995,7 +995,7 @@ rationale: references/rationale.md#marker-data-delimiter
   **リモート側**（**2 段で判定する**: まず `[CONTEXT] ` 行頭一致 + marker family + `branch={branch_name}` に該当する行を集め、**その中の最後の出現 1 行だけを対象に選ぶ**。次にその 1 行に対して以下のルールを上から評価し最初に一致したものを採用する。段の順序を入れ替えてはならない — ルールを先に評価すると、蓄積した stale marker のうち上位ルールに当たるものが最新の行より先に一致し、recency が働かない。）:
   - `[CONTEXT] REMOTE_BRANCH_DELETE_FAILED=1; branch={branch_name}` 行があるとき（`rc=0` 経路で `git push origin --delete` を実行したが失敗した — protected branch / 権限不足 / race。リモートブランチは残存している）: ` ` + 「リモートブランチ {branch_name} の削除に失敗しました。`git push origin --delete "refs/heads/{branch_name}"` で手動削除」を付記
   - `[CONTEXT] REMOTE_BRANCH_CHECK_FAILED=1; branch={branch_name}` 行があるとき（`git ls-remote` が rc=0/2 以外で失敗した、またはブランチ名の事前検証・一時ファイル確保・ref 名の完全一致検証のいずれかが失敗して存在確認自体を完了できなかったため、削除を試行していない）: ` ` + 「リモートブランチ {branch_name} の存在確認に失敗したため削除を試行していません。`git ls-remote --exit-code --heads origin "refs/heads/{branch_name}"` で確認し、残っていれば `git push origin --delete "refs/heads/{branch_name}"` で手動削除」を付記（案内する確認コマンドにも `--exit-code` を付ける）
-  - `[CONTEXT] REMOTE_BRANCH_ALREADY_ABSENT=1; branch={branch_name}` 行があるとき（`delete_branch_on_merge: true` によるサーバサイド auto-delete などで既に不在。**正常系であり残作業ではない** — AC-4）: `x`
+  - `[CONTEXT] REMOTE_BRANCH_ALREADY_ABSENT=1; branch={branch_name}` 行があるとき（`delete_branch_on_merge: true` によるサーバサイド auto-delete などで既に不在。**正常系であり残作業ではない**）: `x`
   - `[CONTEXT] REMOTE_BRANCH_DELETED=1; branch={branch_name}` 行があるとき（`rc=0` 経路で `git push origin --delete` を実行し成功した = 通常削除。`delete_branch_on_merge: false` のリポジトリの正常系）: `x`
   - `[CONTEXT] REMOTE_BRANCH_*` かつ `branch={branch_name}` の行がいずれも無いとき: ` ` + 「リモートブランチ {branch_name} の削除結果を確認できませんでした。`git ls-remote --exit-code --heads origin "refs/heads/{branch_name}"` で確認し、残っていれば `git push origin --delete "refs/heads/{branch_name}"` で手動削除」を付記。**marker 不在を「削除成功」と読んではならない** — 不在は「ステップ 5 の bash block が実行されなかった」「出力が compact で失われた」等の**実行結果を確認できていない状態**である。**marker family でスコープすること**
 - `{projects_status_result}` / `{projects_check}`: 以下を**上から評価し最初に一致したもの**を採用する（`{wiki_ingest_check}` の legitimate-skip 区別パターンと統一。ステップ8 は `projects_enabled=false` または Issue 未識別のとき丸ごと skip され `[CONTEXT] PROJECTS_STATUS_UPDATED=` を emit しないため、この legitimate skip と本物の更新失敗を区別する）:
@@ -1063,7 +1063,7 @@ rationale: references/rationale.md#review-cleanup-reasons
     手動回復: git -C .rite/wiki-worktree push origin {wiki_branch}
   ```
 
-`{outstanding_items_block}`（非ブロッキング失敗の集約欄）: 上記チェックリストの `{base_update_check}` / `{session_worktree_check}` / `{local_branch_check}` / `{projects_check}` / `{wiki_ingest_check}` / `{review_cleanup_check}` のうち、**チェックボックスが `x` ではなく空欄（未チェック）として描画されたもの**があれば、そのチェックボックス直下の付記文をそのまま箇条書きで列挙する（各チェックボックス直下の付記と同じ文言をここにも重複表示する — チェックリストは一覧性、本節は見落とし防止のための集約であり、両立させる。AC-1 / AC-2）。
+`{outstanding_items_block}`（非ブロッキング失敗の集約欄）: 上記チェックリストの `{base_update_check}` / `{session_worktree_check}` / `{local_branch_check}` / `{projects_check}` / `{wiki_ingest_check}` / `{review_cleanup_check}` のうち、**チェックボックスが `x` ではなく空欄（未チェック）として描画されたもの**があれば、そのチェックボックス直下の付記文をそのまま箇条書きで列挙する（各チェックボックス直下の付記と同じ文言をここにも重複表示する — チェックリストは一覧性、本節は見落とし防止のための集約であり、両立させる）。
 
 判定基準を「⚠️/ℹ️ 等の絵文字 prefix 一致」ではなく「チェックボックスの空欄/`x`」に統一する: 6 check の判定ルールはいずれも「実失敗・残作業のときのみ空欄 ` ` を割り当て、成功時および legitimate な informational skip は `x` を割り当てる」。付記文の絵文字 prefix は飾りに過ぎず、チェックボックス自体の空欄/`x`こそが「未完了か否か」の一次情報である。
 rationale: references/rationale.md#outstanding-checkbox

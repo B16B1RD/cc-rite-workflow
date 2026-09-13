@@ -82,7 +82,7 @@ helper 側 5 reason の語彙は [issue-complexity-lane.sh](../../../scripts/iss
 
 **`full` が保守的な側であるとは限らない consumer が存在する**: レビュー側は `full` = reviewer を減らさない = 安全側だが、`issue-implement` 5.1.0.1 の並列実装ゲートでは `full` = 並列 sub-agent を許可する = 攻撃的な側になる。そのため同ゲートは `COMPLEXITY_LANE=full` 単独ではなく **`complexity=` の存在（= `COMPLEXITY_LANE_FALLBACK` の不在）** を判定キーにし、fail-safe 経路を順次実装へ倒している。**新規 consumer は `full` を「重い側」と仮定せず、必ず `COMPLEXITY_LANE_FALLBACK` を見ること。**
 
-fail-safe 発火時は **全 reason で WARNING を可視化する**（silent fallback 禁止）。consumer 側 2 reason（`issue_number_missing` / `helper_failed`）も同形の `⚠️ Complexity レーン判定のフォールバック: reason=<reason>。フル装備 (M+ 相当) で実行します。` を出力する。sibling の `review-cycle-scope.sh` は cycle 1 の正常経路である `no_prev_json` だけを無警告にするが、本レーンは全 reason を loud にする。**根拠は「宣言が必ずある」ことではない** — 実測では本リポジトリの Issue 60 件中 23 件が宣言を持たず、`complexity_absent` は定常的に出うる。loud にする根拠は、full へ倒れた事実が「この PR ではレーンが働かなかった」という観測値そのものであり、AC-5 の効果計測が分母を数えるために要ることにある。定常出力の中に埋もれさせないため、helper は**宣言らしき行はあるのに値を取り出せなかった場合に限り**対象行の**行番号**を報告する追加 WARNING を出し、値を取り出せない記述（lowercase key / 全角コロン / リスト項目化 / 未展開 placeholder / HTML コメント / 値行を持たない `## 複雑度` 節）を宣言不在と切り分ける。**行の中身も原因の分類も載せない** — 前者は body が第三者の書ける外部入力だからで、後者は退避先が増えるたびに列挙と実態がずれ、同じ列挙を持つ site との同期義務が増えるため（原因分類は本節と helper docstring の reason 表が持つ）。値行が 1 行も無い `## 複雑度` 節では見出し自身の行番号へ退避する（そこが唯一の是正先のため）。
+fail-safe 発火時は **全 reason で WARNING を可視化する**（silent fallback 禁止）。consumer 側 2 reason（`issue_number_missing` / `helper_failed`）も同形の `⚠️ Complexity レーン判定のフォールバック: reason=<reason>。フル装備 (M+ 相当) で実行します。` を出力する。sibling の `review-cycle-scope.sh` は cycle 1 の正常経路である `no_prev_json` だけを無警告にするが、本レーンは全 reason を loud にする。**根拠は「宣言が必ずある」ことではない** — 実測では本リポジトリの Issue 60 件中 23 件が宣言を持たず、`complexity_absent` は定常的に出うる。loud にする根拠は、full へ倒れた事実が「この PR ではレーンが働かなかった」という観測値そのものであり、レーンの効果計測が分母を数えるために要ることにある。定常出力の中に埋もれさせないため、helper は**宣言らしき行はあるのに値を取り出せなかった場合に限り**対象行の**行番号**を報告する追加 WARNING を出し、値を取り出せない記述（lowercase key / 全角コロン / リスト項目化 / 未展開 placeholder / HTML コメント / 値行を持たない `## 複雑度` 節）を宣言不在と切り分ける。**行の中身も原因の分類も載せない** — 前者は body が第三者の書ける外部入力だからで、後者は退避先が増えるたびに列挙と実態がずれ、同じ列挙を持つ site との同期義務が増えるため（原因分類は本節と helper docstring の reason 表が持つ）。値行が 1 行も無い `## 複雑度` 節では見出し自身の行番号へ退避する（そこが唯一の是正先のため）。
 
 ## Complexity の抽出元を Issue body に限る理由
 
@@ -90,7 +90,7 @@ flow-state は complexity フィールドを持たず、Projects の Complexity 
 
 リポジトリ内に 3 つの記法が併存する（記法 1 = `**Complexity**: X` = [template-structure.md](../../../templates/issue/template-structure.md) Section 0 Meta / 記法 2 = `## 複雑度` セクション = [common-principles.md](../../rite-workflow/references/common-principles.md) / 記法 3 = `| **Complexity** | X |` = Section 0 Meta を表で書いた形）ため helper は**3 記法すべてを受理し、明示宣言を表行より優先する**。一部だけ読むと、他の記法で書かれた Issue が全て `complexity_absent` で full へ倒れ、レーンが一度も発動しない。探索順は 1 → 2 → 3 で、どれで読んだかは marker の `source=`（`body_meta` / `body_table` / `body_section`）で区別できる。
 
-**表行を最後に読む理由**: helper は code fence を剥がさないため、表記法そのものを**説明している** Issue が本文中の例から値を解決してしまう。記法 1 の Meta 行と記法 2 の `## 複雑度` 節はいずれも「そこが宣言である」ことを形で示すが、表行は body のどこにでも現れうる。実測では、記法 2 で `M` を宣言し別節に表の例を置いた body が表行を先に読むと `XS` へ落ち（**M+ が silent に light へ落ちる = AC-4 違反**）、記法 2 宣言 + 文書用の表ヘッダ（`| **Complexity** | Projects Complexity field |`、issue-edit/SKILL.md に実在）では `complexity_invalid` へ落ちた。同じ理由で記法 3 の抽出は `head -1` で先頭の表行に固定する。
+**表行を最後に読む理由**: helper は code fence を剥がさないため、表記法そのものを**説明している** Issue が本文中の例から値を解決してしまう。記法 1 の Meta 行と記法 2 の `## 複雑度` 節はいずれも「そこが宣言である」ことを形で示すが、表行は body のどこにでも現れうる。実測では、記法 2 で `M` を宣言し別節に表の例を置いた body が表行を先に読むと `XS` へ落ち（**M+ が silent に light へ落ちる = M+ の挙動不変に反する**）、記法 2 宣言 + 文書用の表ヘッダ（`| **Complexity** | Projects Complexity field |`、issue-edit/SKILL.md に実在）では `complexity_invalid` へ落ちた。同じ理由で記法 3 の抽出は `head -1` で先頭の表行に固定する。
 
 記法 3 を受理するのは speculative な一般化ではなく実測に基づく — 表形式 Meta の Issue が本リポジトリに定常的に存在し、`/rite:batch-run` が open 段（[open ステップ 3.3.1](../../open/SKILL.md) の fail-loud）で停止した実測がある。**表形式を生成する code path は無い**（テンプレートは記法 1 が canonical）ため起票経路の是正では直せず、reader 側の受理でしか解けない。マーケットプレイス配布先の Issue は rite のテンプレートに従わないため、reader の堅牢化が配布物として正しい側でもある。記法 1 を最優先するのは、helper が code fence を剥がさないため、表記法そのものを**説明している** Issue が本文中の例から値を解決するのを防ぐため。
 
@@ -98,7 +98,7 @@ flow-state は complexity フィールドを持たず、Projects の Complexity 
 
 ## Reviewer mandate（軽量レーン適用時に注入する本文）
 
-`COMPLEXITY_LANE == light` のとき、[reviewer-prompt-generator.md](./reviewer-prompt-generator.md) の `{complexity_lane_mandate}` へ本節の以下の本文を抽出して注入する（`{cycle_scope_mandate}` / `{doc_heavy_mode_instructions}` と同じ conditional 抽出方式）。`full` のときは**空文字列とし、セクションごと省略する** — 空見出しだけが残ると M+ の prompt が変化し、AC-4（M+ の挙動不変）に違反する。
+`COMPLEXITY_LANE == light` のとき、[reviewer-prompt-generator.md](./reviewer-prompt-generator.md) の `{complexity_lane_mandate}` へ本節の以下の本文を抽出して注入する（`{cycle_scope_mandate}` / `{doc_heavy_mode_instructions}` と同じ conditional 抽出方式）。`full` のときは**空文字列とし、セクションごと省略する** — 空見出しだけが残ると M+ の prompt が変化し、M+ の挙動を変えないという契約に反する。
 
 ```
 このレビューは **XS/S 軽量レーン**で実行します。関連 Issue の宣言 Complexity が `{complexity}` のため、儀式コストを変更規模に比例させます。以下の 4 点を mandate として守ってください。

@@ -571,7 +571,7 @@ echo "[CONTEXT] OPEN_PLAN_MODE=$plan_mode; issue={issue_number}"
 | `OPEN_PLAN_MODE` | アクション |
 |---|---|
 | `batch` | 計画を**自動承認**（AskUserQuestion を出さない）。3.3 の計画（要判断ポイント含む）は記録として表示済みのまま、ステップ 3.5 へ直行する |
-| `interactive` | AskUserQuestion で「この計画で実装開始 / 計画を修正 / 中止」を選択（standalone。従来どおり。AC-4 回帰なし） |
+| `interactive` | AskUserQuestion で「この計画で実装開始 / 計画を修正 / 中止」を選択（standalone。従来どおり） |
 
 3.3.1 の `PLAN_REVIEW=` を承認材料に含める（`done` = 指摘件数と反映内容、または指摘なし。`unavailable` = 「計画レビュー未実施」。marker なし = XS skip で追加提示しない）。
 3.4 / 3.5 / 3.6 の入力は 3.3.1 反映後の計画（未実施なら 3.3 のまま）。

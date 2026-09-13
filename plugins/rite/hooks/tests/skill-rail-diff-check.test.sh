@@ -314,6 +314,9 @@ if [ -n "$REPO_ROOT_REAL" ] && git -C "$PLUGIN_ROOT" rev-parse --verify -q origi
       # subsequence pin (same pattern as above) so the rest of the rail still
       # has to survive.
       base_rail=$(printf '%s\n' "$base_rail" | grep -Fv '| `create_new` | branch も worktree もなし' || true)
+      # An acceptance-criteria number removal rewrites the plan-approval
+      # `interactive` row. Drop the superseded line (same pattern as above).
+      base_rail=$(printf '%s\n' "$base_rail" | grep -Fv '| `interactive` | AskUserQuestion で「この計画で実装開始' || true)
       printf '%s\n' "$base_rail" > "$TEST_DIR/base-rail"
       printf '%s\n' "$head_rail" > "$TEST_DIR/head-rail"
       if [ -z "$base_rail" ] || [ -z "$head_rail" ]; then
