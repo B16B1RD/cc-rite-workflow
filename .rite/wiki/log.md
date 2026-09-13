@@ -20,6 +20,7 @@
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=482, broken_refs=0
 * **Update**: [`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) — [セクション抽出の下流 awk を入力を読み切る形へ直した修正のレビュー結果](raw/reviews/20260913T073838Z-pr-2773.md) を統合。下流 awk の exit でも同じ事故が起き、終端行の chunk 位置に依存しないことと、done フラグで読み切る対処を追記
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=482, broken_refs=0
+* **Update**: [Scope drift fix での overclaim substitution (置換後に新たな過剰主張を持ち込む)](pages/anti-patterns/scope-drift-fix-overclaim-substitution.md) — [発生条件を直した括弧書きが単独で過大に読めることを再現で確かめたレビュー結果](raw/reviews/20260913T081122Z-pr-2775.md) を統合。条件を括弧内にも書く変種と、境界の両側を再現で確かめる検査を追記
 
 ## 2026-09-12
 
