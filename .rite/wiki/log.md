@@ -1,6 +1,5 @@
 ## 2026-09-13
 
-* **Update**: [set -euo pipefail 下の外部コマンド単独文は後続 rc 分岐を dead code 化する](pages/anti-patterns/bare-statement-under-set-e-dead-code-rc-branch.md) — [変異ファイル生成の grep に || true を付けた修正のレビュー結果](raw/reviews/20260913T060046Z-pr-2772.md) を統合。brace group 内で || true を付けても同じ入力を読む後続コマンドがあれば fail-loud が保たれる条件を追記
 * **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — [複製した境界条件式の同一性がテストで固定されていないことを検出したレビュー結果](raw/reviews/20260912T225833Z-pr-2753.md) を統合。複製された定義の一致を assert する節を追記
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=482, broken_refs=0
 * **Create**: [境界付き `grep -oE` の match には境界の 1 文字が含まれ、後段の数字抽出がそれを拾う](pages/anti-patterns/grep-boundary-alternation-match-leaks-boundary-char.md) — [採番パイプラインの境界文字混入を直した修正のレビュー結果](raw/reviews/20260912T235454Z-pr-2756.md) を新規ページ化
@@ -16,6 +15,8 @@
 * **Update**: [mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる](pages/heuristics/mutation-axes-beyond-predicate.md) — [検査の共通化で経路限定の配置検査が消えたことを検出したレビュー結果](raw/reviews/20260913T042914Z-pr-2767.md) を統合。検査の共通化が配置軸の pin を消しうる節を追記
 * **Update**: [mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる](pages/heuristics/mutation-axes-beyond-predicate.md) — [共通の検査を残して経路限定の検査を戻す対応を示した fix 結果](raw/fixes/20260913T043312Z-pr-2767.md) を統合。共通の件数検査と経路限定の節内検査の役割分担を追記
 * **Update**: [mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる](pages/heuristics/mutation-axes-beyond-predicate.md) — [戻した検査を失敗メッセージの完全一致で固定したレビュー結果](raw/reviews/20260913T051120Z-pr-2767.md) を統合。失敗メッセージでの変異検出と、変異ファイル生成の errexit ガードを追記
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=482, broken_refs=0
+* **Update**: [set -euo pipefail 下の外部コマンド単独文は後続 rc 分岐を dead code 化する](pages/anti-patterns/bare-statement-under-set-e-dead-code-rc-branch.md) — [変異ファイル生成の grep に || true を付けた修正のレビュー結果](raw/reviews/20260913T060046Z-pr-2772.md) を統合。brace group 内で || true を付けても同じ入力を読む後続コマンドがあれば fail-loud が保たれる条件を追記
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=482, broken_refs=0
 
 ## 2026-09-12
