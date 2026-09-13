@@ -239,6 +239,7 @@ echo "incomplete_count=$(printf '%s\n' "$incomplete" | grep -c . 2>/dev/null || 
 | `{pr_number}` | ステップ 1 で取得した PR 番号 | `1149` |
 | `{pr_title}` | `gh pr view {pr_number} -R {owner_repo} --json title --jq '.title'` | `fix(workflow): ...` |
 | `{issue_number}` | ステップ 2 で識別した関連 Issue 番号 | `1144` |
+| `{type}` | 未完了タスクの内容から推定（`fix` / `feat` / `refactor` / `docs` / `chore` 等） | `refactor` |
 | `{task_title}` | work memory 進捗セクションの未完了タスク見出し | `step-5: references/ 整理` |
 | `{task_text}` | 同上の本文 (チェックボックス行のテキスト) | `step-5: references/ 整理` |
 | `{projects_enabled}` | `rite-config.yml` → `github.projects.enabled` (boolean) | `true` |
@@ -249,6 +250,9 @@ echo "incomplete_count=$(printf '%s\n' "$incomplete" | grep -c . 2>/dev/null || 
 **Issue 本文テンプレート** (cleanup-specific、各タスクごとに以下の形式で生成):
 
 ```markdown
+**Type**: {type}
+**Complexity**: S
+
 ## 概要
 
 {task_title}
@@ -272,7 +276,7 @@ PR #{pr_number} ({pr_title}) のマージ時点で未完了だったタスクを
 - [ ] {task_text}
 ```
 
-**bash skeleton** (タスクごとに以下を反復実行、`{plugin_root}` / `{pr_number}` / `{pr_title}` / `{issue_number}` / `{task_title}` / `{task_text}` / `{projects_enabled}` / `{project_number}` / `{owner}` は Claude が事前 substitute):
+**bash skeleton** (タスクごとに以下を反復実行、`{plugin_root}` / `{pr_number}` / `{pr_title}` / `{issue_number}` / `{type}` / `{task_title}` / `{task_text}` / `{projects_enabled}` / `{project_number}` / `{owner}` は Claude が事前 substitute):
 
 ```bash
 # 0. `残作業` label を冪等に事前作成 (gh issue create --label X は X 未存在時に

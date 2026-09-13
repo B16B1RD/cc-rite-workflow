@@ -375,4 +375,84 @@ for mode in empty spaces failure; do
     assert 'failed upload preserves stderr' 'upload failed: permission denied' "$(cat "$work/$mode.err")"
   fi
 done
+
+# Auto-created Issue bodies open with the Meta /rite:open reads, declaring the Complexity sent to Projects.
+cleanup_skill="$PLUGIN_ROOT/skills/cleanup/SKILL.md"
+route_section() {
+  case "$1" in
+    triage) awk '/^#### 7\.4\.2 / { s=1 } s && /^#### 7\.4\.3 / { exit } s { print }' "$2" ;;
+    cleanup) awk '/^## ステップ 3:/ { s=1 } s && /^## ステップ 4:/ { exit } s { print }' "$2" ;;
+  esac
+}
+route_body() {
+  case "$1" in
+    triage) route_section "$@" | awk '/cat <<.BODY_EOF. > "\$tmpfile"$/ { a=1; next } a && /^BODY_EOF$/ { exit } a { print }' ;;
+    cleanup) route_section "$@" | awk '/^\*\*Issue 本文テンプレート\*\*/ { s=1 } s && /^```markdown$/ { a=1; next } a && /^```$/ { exit } a { print }' ;;
+  esac
+}
+route_projects_complexity() {
+  route_section "$@" | sed -n 's/^[[:space:]]*--arg complexity "\(.*\)" \\$/\1/p'
+}
+route_headings() {
+  case "$1" in
+    triage) printf '%s' '## 概要|## 背景|### 元のレビュー{source_label}|## 関連' ;;
+    cleanup) printf '%s' '## 概要|## 背景・目的|## 関連|## 変更内容|## チェックリスト' ;;
+  esac
+}
+# Prints the first broken rule and returns 1; returns 0 when the Meta and headings hold.
+route_meta_check() {
+  local body projects expected
+  body=$(route_body "$1" "$2")
+  projects=$(route_projects_complexity "$1" "$2")
+  [ -n "$body" ] || { echo 'body template not found'; return 1; }
+  [ "$(printf '%s\n' "$projects" | grep -c . || true)" = 1 ] || { echo "Projects complexity is not one value: [$projects]"; return 1; }
+  expected=$(printf '**Type**: {type}\n**Complexity**: %s\n\n## 概要' "$projects")
+  [ "$(printf '%s\n' "$body" | awk 'NR <= 4')" = "$expected" ] || { echo "body does not open with Type / Complexity=$projects / blank / ## 概要"; return 1; }
+  [ "$(printf '%s\n' "$body" | grep -E '^#{2,3} ' | paste -sd '|' -)" = "$(route_headings "$1")" ] || { echo 'body headings changed'; return 1; }
+}
+for route in "triage|$triage" "cleanup|$cleanup_skill"; do
+  name=${route%%|*}
+  source=${route#*|}
+  anchor="cat <<'BODY_EOF' > \"\$tmpfile\""
+  [ "$name" = triage ] || anchor='**Issue 本文テンプレート**'
+  assert "$name body template anchor is unique" 1 "$(route_section "$name" "$source" | grep -cF -- "$anchor" || true)"
+  assert "$name Projects complexity argument is unique" 1 "$(route_section "$name" "$source" | grep -c -- '--arg complexity' || true)"
+  if reason=$(route_meta_check "$name" "$source"); then pass "$name body declares the Projects Complexity"; else fail "$name body Meta: $reason"; fi
+  for mutation in \
+    'deleted Complexity|/^\*\*Complexity\*\*: /d' \
+    'drifted Complexity|s/^\*\*Complexity\*\*: .*/**Complexity**: XL/' \
+    'deleted Type|/^\*\*Type\*\*: {type}$/d' \
+    'Meta after 概要|/^\*\*Type\*\*: {type}$/{N;N;N;s/^\(.*\)\n\(.*\)\n\(.*\)\n\(.*\)$/\4\n\1\n\2\n\3/;}'; do
+    label=${mutation%%|*}
+    sed "${mutation#*|}" "$source" > "$work/$name-mutant.md"
+    if assert_mutant_changed "$name $label" "$source" "$work/$name-mutant.md"; then
+      if route_meta_check "$name" "$work/$name-mutant.md" > /dev/null; then fail "$name $label is not detected"; else pass "$name $label is detected"; fi
+    fi
+  done
+done
+
+# The complexity helper reads the expanded bodies; gh is a local mock, never the CLI.
+mkdir "$work/lane-bin"
+printf '#!/bin/bash\nprintf "%%s\\n" "$*" >> "$MOCK_LOG"\ncat "$MOCK_BODY"\n' > "$work/lane-bin/gh"
+chmod +x "$work/lane-bin/gh"
+run_lane() {
+  local name="$1" rc=0
+  : > "$work/$name-lane.argv"
+  MOCK_BODY="$work/$name-lane.md" MOCK_LOG="$work/$name-lane.argv" PATH="$work/lane-bin:$PATH" \
+    bash "$PLUGIN_ROOT/scripts/issue-complexity-lane.sh" --issue 7 --repo example/repo > /dev/null 2> "$work/$name-lane.err" || rc=$?
+  assert "$name lane exit status" 0 "$rc"
+  assert "$name lane reads the Issue once with -R" 'issue view 7 -R example/repo --json body --jq .body' "$(cat "$work/$name-lane.argv")"
+}
+for route in "triage|$triage|XS" "cleanup|$cleanup_skill|S"; do
+  IFS='|' read -r name source expected <<< "$route"
+  route_body "$name" "$source" | sed -e 's/{type}/fix/g' -e 's/{complexity}/XS/g' > "$work/$name-lane.md"
+  assert "$name expanded Projects complexity" "$expected" "$(route_projects_complexity "$name" "$source" | sed 's/{complexity}/XS/g')"
+  assert_not_grep "$name expanded Meta has no placeholder" "$work/$name-lane.md" '^\*\*(Type|Complexity)\*\*: \{'
+  run_lane "$name"
+  assert_grep "$name body Meta reaches the helper" "$work/$name-lane.err" "^\[CONTEXT\] COMPLEXITY_LANE=light; complexity=$expected; source=body_meta$"
+  assert_not_grep "$name body Meta needs no fallback" "$work/$name-lane.err" 'COMPLEXITY_LANE_FALLBACK'
+  sed '1,3d' "$work/$name-lane.md" > "$work/$name-no-meta-lane.md"
+  run_lane "$name-no-meta"
+  assert_grep "$name body without Meta is complexity_absent" "$work/$name-no-meta-lane.err" 'reason=complexity_absent'
+done
 print_summary "$(basename "$0")" || exit 1
