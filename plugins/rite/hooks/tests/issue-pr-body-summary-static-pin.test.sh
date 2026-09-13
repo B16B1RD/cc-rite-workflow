@@ -108,6 +108,29 @@ for boundary in '</details>' '## Following section' '---' ''; do
   if cmp -s "$work/expected.md" "$work/appended.md"; then pass "append before boundary: ${boundary:-EOF}"; else fail "append boundary: ${boundary:-EOF}"; fi
 done
 
+# The numbering scan copies the append boundaries; if either copy drifts, numbers skip without any other failure.
+awk '/section9=\$\(printf .%s\\n. "\$body" \| awk '\''$/ { active=1; next } active && /^  '\''\)/ { exit } active { print }' \
+  "$PLUGIN_ROOT/skills/pr-review/references/scope-triage.md" > "$work/section9.awk"
+assert 'Section 9 scan awk call site is unique' 1 "$(grep -cF 'section9=$(printf '"'"'%s\n'"'"' "$body" | awk '"'" "$PLUGIN_ROOT/skills/pr-review/references/scope-triage.md")"
+# The boundary expression is identical in both programs, so pin the scan by what only the scan has.
+assert_grep 'extracted awk is the Section 9 scan' "$work/section9.awk" '^[[:space:]]*in_section \{ print \}'
+assert_not_grep 'extracted scan awk has no append action' "$work/section9.awk" 'ENVIRON\["NEW_LINE"\]|END \{'
+scan_boundary=$(sed -n 's/^[[:space:]]*in_section && (\(.*\)) {.*/\1/p' "$work/section9.awk")
+append_boundary=$(sed -n 's/^[[:space:]]*in_section && (\(.*\)) {.*/\1/p' "$work/append.awk")
+if [ -n "$scan_boundary" ] && [ "$scan_boundary" = "$append_boundary" ]; then
+  pass 'Section 9 scan and append share one boundary'
+else fail "Section 9 boundary drift: scan=[$scan_boundary] append=[$append_boundary]"; fi
+for boundary in '</details>' '## Following section' '---'; do
+  printf '## 9. Decision Log\n- D-01: existing\n%s\n- D-09: outside\n' "$boundary" > "$work/scan.md"
+  awk -f "$work/section9.awk" "$work/scan.md" > "$work/scanned.md"
+  if [ "$(cat "$work/scanned.md")" = '- D-01: existing' ]; then pass "section9 scan stops at boundary: $boundary"; else fail "section9 scan stops at boundary: $boundary"; fi
+done
+printf '## 9. Decision Log\n- D-01: existing\n- D-02: last\n' > "$work/scan.md"
+awk -f "$work/section9.awk" "$work/scan.md" > "$work/scanned.md"
+if [ "$(cat "$work/scanned.md")" = "$(printf -- '- D-01: existing\n- D-02: last')" ]; then
+  pass 'section9 scan reads to EOF when no boundary follows'
+else fail 'section9 scan reads to EOF when no boundary follows'; fi
+
 # Execute the real Decision Log Append block; gh / date / awk failures are local mocks, never the CLI.
 triage="$PLUGIN_ROOT/skills/pr-review/references/scope-triage.md"
 awk '/^#### 7\.4\.3 / { sec=1 } sec && /^```bash$/ { active=1; next } active && /^```$/ { exit } active { print }' "$triage" > "$work/dl-block.sh"
