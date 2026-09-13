@@ -12,11 +12,14 @@ sources:
     resource: "raw/fixes/20260712T133936Z-pr-1835.md"
   - type: "reviews"
     resource: "raw/reviews/20260901T140807Z-pr-2500.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260913T123145Z-pr-2781.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T12:40:00Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T12:40:00Z" }
 ---
 
 # Step 番号参照は relative (Step N + 1) ではなく absolute (heading title 名 + Step 番号) で書く
@@ -61,6 +64,14 @@ canonical fix と検証手順:
 2. 置換時は **(a) 参照先ファイルの実在を ls/grep で確認**し、**(b) 同一ファイル内の既存相対パス慣例**（例: `../../references/` 形式）**に追従**する — 初回置換でパス形式の不整合を作り込みやすい
 3. 修正前に同一 stale 参照が PR diff 内の他箇所に存在しないか `git grep` で影響範囲スキャンし、pre-existing の類似参照への過剰修正（scope 逸脱）を避ける
 
+### 同じ語が 2 つの番号体系を指す衝突
+
+分割された reference ファイルでは、同じファイルの中で「ステップ N」が呼び出し元スキル本体の見出しを指す用法で揃っていることがある。そこへ同じファイル内の番号付き項目（`2. **route 適用**` など）を「ステップ 2」と書き足すと、同じ語が 2 つの番号体系を指すことになる。呼び出し元スキルには同じ番号の別工程（その経路では評価しない工程）が実在しうるので、字義どおりに読むと評価しない工程を指す矛盾した指示になる。
+
+- 同じファイルの番号付き項目は「手順 N（項目名）」のように、ファイル内で使っていない語に項目名を添えて書く
+- 別ファイルの節は「節番号 + 項目名」（例: 「1.3.S の route 適用」）で書き、リンク先に実在する識別子だけを使う
+- 参照表記を静的検査で固定するときは、照合文字列に経路名だけでなく参照先の節・項目名まで含める。経路名だけの照合は、リンク先表記が実在しない名前へ書き戻されても通ってしまう
+
 ## 関連ページ
 
 - [DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）](./drift-check-anchor-semantic-name.md)
@@ -69,3 +80,4 @@ canonical fix と検証手順:
 
 - [H-1 Self-defeating defense Step number off-by-one drift](../../raw/reviews/20260430T005759Z-pr-688.md)
 - [レビュー結果](../../raw/reviews/20260901T140807Z-pr-2500.md)
+- [レビュー結果](../../raw/reviews/20260913T123145Z-pr-2781.md)

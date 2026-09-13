@@ -30,6 +30,7 @@
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=482, broken_refs=0
 * **Update**: [静的 parity テストには到達性 pin と emit pin を対で足す — 出現数 + 行順だけでは semantics を守れない](pages/patterns/static-parity-pin-needs-reachability-and-emit-pins.md) — [分割した手順書 bash の配線漏れを連結実行テストが捕まえたレビュー結果](raw/reviews/20260913T105832Z-pr-2779.md) を統合。引数行の静的一致では配線を守れず、分割ブロックを連結して mock で実行する節を追記
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=482, broken_refs=0
+* **Update**: [Step 番号参照は relative (Step N + 1) ではなく absolute (heading title 名 + Step 番号) で書く](pages/patterns/step-reference-absolute-heading-over-relative.md) — [同じ語が 2 つの番号体系を指す参照を直したレビュー結果](raw/reviews/20260913T123145Z-pr-2781.md) を統合。同一ファイルの番号付き項目と呼び出し元見出しの番号衝突、および参照先名まで含めて照合する節を追記
 
 ## 2026-09-12
 
