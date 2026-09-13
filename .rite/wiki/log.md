@@ -4,6 +4,7 @@
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=482, broken_refs=0
 * **Create**: [境界付き `grep -oE` の match には境界の 1 文字が含まれ、後段の数字抽出がそれを拾う](pages/anti-patterns/grep-boundary-alternation-match-leaks-boundary-char.md) — [採番パイプラインの境界文字混入を直した修正のレビュー結果](raw/reviews/20260912T235454Z-pr-2756.md) を新規ページ化
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=482, broken_refs=0
+* **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — [条件式の文字列一致では片側だけに足した別行ルールを検出できないことを示したレビュー結果](raw/reviews/20260913T005700Z-pr-2757.md) を統合。ルール本数の固定と出力位置の差分テストを追記
 
 ## 2026-09-12
 
