@@ -412,7 +412,8 @@ route_meta_check() {
   expected=$(printf '**Type**: {type}\n**Complexity**: %s\n\n## 概要' "$projects")
   [ "$(printf '%s\n' "$body" | awk 'NR <= 4')" = "$expected" ] || { echo "body does not open with Type / Complexity=$projects / blank / ## 概要"; return 1; }
   [ "$(printf '%s\n' "$body" | grep -E '^#{2,3} ' | paste -sd '|' -)" = "$(route_headings "$1")" ] || { echo 'body headings changed'; return 1; }
-  [ "$1" != split ] || [ "$(route_section "$1" "$2" | grep -c '^| `{type}` |' || true)" = 1 ] || { echo 'Placeholder table has no single {type} row'; return 1; }
+  [ "$(grep -c '^| `{type}` |' "$2" || true)" = 1 ] || { echo 'Placeholder table has no single {type} row'; return 1; }
+  [ "$1" != split ] || [ "$(route_section "$1" "$2" | grep -c '^| `{type}` |' || true)" = 1 ] || { echo 'Placeholder table {type} row is outside §4'; return 1; }
 }
 for route in "triage|$triage" "cleanup|$cleanup_skill" "split|$split"; do
   name=${route%%|*}
@@ -426,7 +427,8 @@ for route in "triage|$triage" "cleanup|$cleanup_skill" "split|$split"; do
     'deleted Complexity|/^\*\*Complexity\*\*: /d' \
     'drifted Complexity|s/^\*\*Complexity\*\*: .*/**Complexity**: XL/' \
     'deleted Type|/^\*\*Type\*\*: {type}$/d' \
-    'Meta after 概要|/^\*\*Type\*\*: {type}$/{N;N;N;s/^\(.*\)\n\(.*\)\n\(.*\)\n\(.*\)$/\4\n\1\n\2\n\3/;}'; do
+    'Meta after 概要|/^\*\*Type\*\*: {type}$/{N;N;N;s/^\(.*\)\n\(.*\)\n\(.*\)\n\(.*\)$/\4\n\1\n\2\n\3/;}' \
+    'deleted {type} placeholder|/^| `{type}` |/d'; do
     label=${mutation%%|*}
     sed "${mutation#*|}" "$source" > "$work/$name-mutant.md"
     if assert_mutant_changed "$name $label" "$source" "$work/$name-mutant.md"; then
@@ -434,9 +436,10 @@ for route in "triage|$triage" "cleanup|$cleanup_skill" "split|$split"; do
     fi
   done
 done
-sed '/^| `{type}` |/d' "$split" > "$work/split-mutant.md"
-if assert_mutant_changed 'split deleted {type} placeholder' "$split" "$work/split-mutant.md"; then
-  if route_meta_check split "$work/split-mutant.md" > /dev/null; then fail 'split deleted {type} placeholder is not detected'; else pass 'split deleted {type} placeholder is detected'; fi
+# The triage row lives outside its section, so only split pins the row inside §4.
+{ grep '^| `{type}` |' "$split"; sed '/^| `{type}` |/d' "$split"; } > "$work/split-moved-mutant.md"
+if assert_mutant_changed 'split {type} placeholder moved before §4' "$split" "$work/split-moved-mutant.md"; then
+  assert 'split {type} placeholder moved before §4 is detected' 'Placeholder table {type} row is outside §4' "$(route_meta_check split "$work/split-moved-mutant.md")"
 fi
 
 # The complexity helper reads the expanded bodies; gh is a local mock, never the CLI.
