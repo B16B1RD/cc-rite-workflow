@@ -270,7 +270,7 @@ okf_version: "0.2"
 | [暫定注記は対象成果物内の同種表記を全数列挙してから書く](pages/heuristics/interim-notice-enumerate-all-stale-references-first.md) | heuristics | 陳腐化した成果物（再生成できない動画等）への暫定注記を書くとき、注記が言及する「旧表記」の範囲は対象成果物内の同種表記を最初に全数把握してから決める。 | 2026-07-26T20:51:40+09:00 | medium |
 | [段階分割 PR では「契約として宣言したこと」と「いま実装されていること」を時制で書き分ける](pages/heuristics/staged-pr-declared-contract-vs-implemented-fact-tense.md) | heuristics | Sub-Issue でデータ契約だけを先に切る PR では、SoT ドキュメントと LLM 向け指示が「write 側は常に N キーを出力する」「フィールドとして保存される」と現在形で書かれやすい。 | 2026-07-27T10:57:51+09:00 | high |
 | [accept fixture と reject fixture は設計目的が逆 — 安全側の形状を両方に適用すると順序契約が pin できなくなる](pages/heuristics/accept-vs-reject-fixture-design-inversion.md) | heuristics | 分岐チェーンに新しいガードを挿入したとき、「そのガードが先行分岐より前にある」という順序契約は fixture の形状に依存して観測可能／不可能が決まる。 | 2026-07-27T10:57:51+09:00 | high |
-| [mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる](pages/heuristics/mutation-axes-beyond-predicate.md) | heuristics | 「静的 pin を追加したらその場で mutation を当てて落ちることを確認する」は既に確立した規約だが、**当てる mutation の軸**が規約に含まれていないと、述語（条件式そのもの）にだけ変異を入れて満足してしまう。 | 2026-08-01T23:12:28+09:00 | high |
+| [mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる](pages/heuristics/mutation-axes-beyond-predicate.md) | heuristics | 「静的 pin を追加したらその場で mutation を当てて落ちることを確認する」は既に確立した規約だが、**当てる mutation の軸**が規約に含まれていないと、述語（条件式そのもの）にだけ変異を入れて満足してしまう。 | 2026-09-13T05:16:00Z | high |
 | [few-shot 例に「実行していない実測」を書く — LLM はもっともらしいコマンドを書く挙動を学習する](pages/anti-patterns/few-shot-unexecuted-measurement-anchor.md) | anti-patterns | reviewer / agent 向けの calibration 文書（finding-examples.md 等）に「実測アンカー付きの良い例」を追加するとき、例に載せる再現コマンドと観測結果を実際には走らせずに書いてしまう anti-pattern。 | 2026-07-27T10:57:51+09:00 | high |
 | [gate を守る対象の内側に置くと、守るべき唯一の failure mode で gate も一緒に skip される](pages/anti-patterns/gate-placed-inside-guarded-scope.md) | anti-patterns | LLM が読む手順書で「手順 X が実行されたこと」を保証する post-condition gate を新設するとき、gate を X のサブステップとして書くと自己参照で無力化する。 | 2026-07-27T10:57:51+09:00 | high |
 | [属性は母集団からの除外ではなく別 map で持つ — 除外は下流の全分岐を経路依存で壊す](pages/heuristics/attribute-as-separate-map-not-population-exclusion.md) | heuristics | 既存の分類 map（severity_map など）に新しい軸（実測済みか否か）を導入するとき、「条件を満たさない要素を母集団から除外する」設計にすると、その map を参照する下流の全分岐が経路依存で壊れる。 | 2026-07-27T10:57:51+09:00 | high |
@@ -501,4 +501,4 @@ okf_version: "0.2"
 
 - 総ページ数: 487
 - ドメイン別: patterns=112, heuristics=216, anti-patterns=159
-- 最終更新: 2026-09-13T04:02:13Z
+- 最終更新: 2026-09-13T05:16:00Z
