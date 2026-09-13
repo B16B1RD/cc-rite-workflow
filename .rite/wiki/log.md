@@ -15,6 +15,7 @@
 * **Update**: [mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる](pages/heuristics/mutation-axes-beyond-predicate.md) — [検査の共通化で経路限定の配置検査が消えたことを検出したレビュー結果](raw/reviews/20260913T042914Z-pr-2767.md) を統合。検査の共通化が配置軸の pin を消しうる節を追記
 * **Update**: [mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる](pages/heuristics/mutation-axes-beyond-predicate.md) — [共通の検査を残して経路限定の検査を戻す対応を示した fix 結果](raw/fixes/20260913T043312Z-pr-2767.md) を統合。共通の件数検査と経路限定の節内検査の役割分担を追記
 * **Update**: [mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる](pages/heuristics/mutation-axes-beyond-predicate.md) — [戻した検査を失敗メッセージの完全一致で固定したレビュー結果](raw/reviews/20260913T051120Z-pr-2767.md) を統合。失敗メッセージでの変異検出と、変異ファイル生成の errexit ガードを追記
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=482, broken_refs=0
 
 ## 2026-09-12
 
