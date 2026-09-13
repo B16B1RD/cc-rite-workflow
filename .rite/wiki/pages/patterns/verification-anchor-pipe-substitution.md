@@ -15,14 +15,18 @@ sources:
     resource: "raw/reviews/20260904T004239Z-pr-2544.md"
   - type: "fixes"
     resource: "raw/fixes/20260904T005810Z-pr-2544.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260913T090150Z-pr-2776.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-04T01:26:01Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T09:12:00Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-30T09:45:00Z"
   - by: "rite-wiki-ingest/grok-4.6"
     at: "2026-09-04T01:26:01Z"
+  - by: "rite-wiki-ingest/claude-opus-5"
+    at: "2026-09-13T09:12:00Z"
 ---
 
 # 実測アンカーの repro に書くパイプは U+00A6 へ置換する
@@ -59,6 +63,10 @@ verified:
 
 実測ゲートのあと、除外条件を持たない class B を non-blocking へ倒す政策は、番号参照のような機械検出カテゴリまで飲み込む。機械カテゴリは「除外が無い」こと自体が欠陥の本体なので、category を class A 固定しないと blocking が落ち、検出器があるのに指摘が消える。降格述語は機械カテゴリを先に除外してから exclusion なし class B を見る。
 
+### アンカー以外のセルでもエスケープ付きパイプは列境界として数えられる
+
+アンカーの正規形だけでなく、指摘表の叙述部や推奨対応セルに書いた `\|` も、表の列数を数える検証では区切りとして数えられる。reviewer 出力の表形式検査は 5 列を要求するため、`grep … \|\| true` のような記述が 1 行あるだけで表全体が不正形式として落ち、reviewer の再出力が 1 回必要になる。`¦` への置換はアンカー内に限らず、指摘表のすべてのセルに適用する。
+
 ## 関連ページ
 
 - [強制層の機械化は裁量を消すが依存を消さない](../heuristics/mechanization-moves-dependency-not-removes-it.md)
@@ -71,3 +79,4 @@ verified:
 - [種別ラベル `static` が未判定に倒れ blocking に残る](../../raw/reviews/20260830T093009Z-pr-2483.md)
 - [裸番号検出の cycle 1 レビュー結果](../../raw/reviews/20260904T004239Z-pr-2544.md)
 - [裸番号検出の修正結果](../../raw/fixes/20260904T005810Z-pr-2544.md)
+- [指摘表のエスケープ付きパイプで表形式検証に落ちたレビュー結果](../../raw/reviews/20260913T090150Z-pr-2776.md)

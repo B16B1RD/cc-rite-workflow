@@ -22,6 +22,9 @@
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=482, broken_refs=0
 * **Update**: [Scope drift fix での overclaim substitution (置換後に新たな過剰主張を持ち込む)](pages/anti-patterns/scope-drift-fix-overclaim-substitution.md) — [発生条件を直した括弧書きが単独で過大に読めることを再現で確かめたレビュー結果](raw/reviews/20260913T081122Z-pr-2775.md) を統合。条件を括弧内にも書く変種と、境界の両側を再現で確かめる検査を追記
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=482, broken_refs=0
+* **Update**: [set -euo pipefail 下の外部コマンド単独文は後続 rc 分岐を dead code 化する](pages/anti-patterns/bare-statement-under-set-e-dead-code-rc-branch.md) — [抜き出し代入の grep に || true と空値の名前付き FAIL を足した修正のレビュー結果](raw/reviews/20260913T090150Z-pr-2776.md) を統合。代入の空値を名前付き FAIL にしてから先へ進む節を追記
+* **Update**: [追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない](pages/patterns/mutation-prove-new-pin.md) — [途中終了防止の空値分岐が変異で固定されていないと指摘されたレビュー結果](raw/reviews/20260913T090150Z-pr-2776.md) を統合。fail-safe 分岐は正常な入力では通らない節を追記
+* **Update**: [実測アンカーの repro に書くパイプは U+00A6 へ置換する](pages/patterns/verification-anchor-pipe-substitution.md) — [指摘表のエスケープ付きパイプで表形式検証に落ちたレビュー結果](raw/reviews/20260913T090150Z-pr-2776.md) を統合。アンカー以外のセルのパイプも列境界になる節を追記
 
 ## 2026-09-12
 

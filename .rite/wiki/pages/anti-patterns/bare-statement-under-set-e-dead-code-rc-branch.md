@@ -15,12 +15,15 @@ sources:
     resource: "raw/fixes/20260608T112705Z-pr-1306.md"
   - type: "reviews"
     resource: "raw/reviews/20260913T060046Z-pr-2772.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260913T090150Z-pr-2776.md"
 tags: ["bash", "rc-capture", "set-e", "silent-failure", "dead-code"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T06:20:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T09:12:00Z" }
 verified:
   - { by: "rite-wiki-ingest/gpt-6", at: "2026-09-08T09:16:17Z" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T06:20:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T09:12:00Z" }
 ---
 
 # set -euo pipefail 下の外部コマンド単独文は後続 rc 分岐を dead code 化する
@@ -113,6 +116,12 @@ parser が失敗の理由・対象パスを stdout JSON に出し、stderr に�
 
 `grep ... || true` にすると一致なしだけでなく読み込みエラー (rc=2) も握りつぶす。それでも失敗を見逃さないのは、同じ group の後続コマンドが**同じファイルを読む**場合である。ファイルが読めなければ `sed` も rc=2 を返し、group の終了ステータスとして `set -e` が発火する。`|| true` を付ける前に、同じ入力を読む後続コマンドがあるか、無いなら読み込みエラーを別に検出する経路があるかを確認する。
 
+### 代入 `v=$(grep ...)` に `|| true` を付けたら、空値を名前付き FAIL にしてから先へ進む
+
+テストがソースから 1 行を抜き出して実行する形（`code=$(grep '^key=' "$src")`）でも、一致なしで代入行が `set -e` を発火し、後続の assertion と集計が走らない。`|| true` を付けるだけでは、行が消えたときに空の値をそのまま下流へ渡し、「期待値と違う」という別の assertion 群が意味の取りにくい失敗を並べる。空値を検出したら名前付きの FAIL を 1 件出し、その値に依存する検査だけを飛ばして集計まで進めると、失敗一覧がそのまま原因を名指しする。
+
+読み込みエラー（rc=2）の握りつぶしは、同じファイルに対する先行の pin 検査が名前付きで失敗することで補われる。先行検査が同じ入力を読んでいない場合は、この補償が成り立たないので別途確認する。
+
 ## 関連ページ
 
 - [`if ! cmd; then rc=$?` は常に 0 を捕捉する](./bash-if-bang-rc-capture.md)
@@ -127,3 +136,4 @@ parser が失敗の理由・対象パスを stdout JSON に出し、stderr に�
 
 - [追加観測](../../raw/reviews/20260908T090455Z-pr-2628.md)
 - [変異ファイル生成の grep に || true を付けた修正のレビュー結果](../../raw/reviews/20260913T060046Z-pr-2772.md)
+- [抜き出し代入の grep に || true と空値の名前付き FAIL を足した修正のレビュー結果](../../raw/reviews/20260913T090150Z-pr-2776.md)

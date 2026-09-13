@@ -35,15 +35,18 @@ sources:
     resource: "raw/reviews/20260904T091303Z-pr-2549.md"
   - type: "fixes"
     resource: "raw/fixes/20260904T092650Z-pr-2549.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260913T090150Z-pr-2776.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-04T13:54:13Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T09:12:00Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T04:58:47Z" }
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T06:56:34Z" }
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-04T01:26:01Z" }
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-04T13:54:13Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T09:12:00Z" }
 ---
 
 # 追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない
@@ -89,6 +92,8 @@ assert "Step 12 wiki_ingest_check has an unchecked marker-absence row" "1" \
 
 **単一 CLI モードの pin は兄弟モードを守らない**: 除外パスや文法を `--all` だけで pin すると、`--diff` / `--stdin` が別実装のまま緑で生存する。モードが 3 系統ある検出器は、同じ除外・同じ偽陽性を各モードへ 1 回ずつ当てて赤くなるまで完成していない。`--all` の成功を `--diff` の保証に読み替えてはならない。
 
+**途中終了を防ぐ fail-safe 分岐は、正常な入力では一度も通らない**: 「抜き出す行が消えたら名前付き FAIL を出して集計まで進む」ような分岐は、入力が健全なツリーでは実行されない。修正ごと消してもスイートは全件 green のままで、修正の除去を検出できない。行が消えた状態は変異版の入力（原本をコピーして当該行を削除したもの）で作り、その入力で分岐に入って名前付き FAIL が出ることを assert する。正常ツリーでの green だけを完成の根拠にしない。
+
 ## 関連ページ
 
 - [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](./absence-pin-base-present-head-absent-single-line.md)
@@ -111,3 +116,4 @@ assert "Step 12 wiki_ingest_check has an unchecked marker-absence row" "1" \
 - [裸番号検出の修正結果](../../raw/fixes/20260904T005810Z-pr-2544.md)
 - [レビュー結果](../../raw/reviews/20260904T091303Z-pr-2549.md)
 - [fix 結果](../../raw/fixes/20260904T092650Z-pr-2549.md)
+- [途中終了防止の空値分岐が変異で固定されていないと指摘されたレビュー結果](../../raw/reviews/20260913T090150Z-pr-2776.md)
