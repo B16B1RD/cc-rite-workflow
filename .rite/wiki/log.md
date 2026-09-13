@@ -33,6 +33,7 @@
 * **Update**: [Step 番号参照は relative (Step N + 1) ではなく absolute (heading title 名 + Step 番号) で書く](pages/patterns/step-reference-absolute-heading-over-relative.md) — [同じ語が 2 つの番号体系を指す参照を直したレビュー結果](raw/reviews/20260913T123145Z-pr-2781.md) を統合。同一ファイルの番号付き項目と呼び出し元見出しの番号衝突、および参照先名まで含めて照合する節を追記
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=482, broken_refs=0
 * **Update**: [修飾は主張単位ではなく同格の主張の集合単位でかける](pages/heuristics/qualifier-applies-to-peer-claim-set.md) — [参照先ファイル名の部分修飾を検出したレビュー結果](raw/reviews/20260913T130513Z-pr-2783.md) を統合。参照先ファイル名を 1 箇所だけ明記すると同一ファイル内の無修飾参照との不揃いが生じる節と、兄弟テストの変数名の不一致を追記
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=482, broken_refs=0
 
 ## 2026-09-12
 
