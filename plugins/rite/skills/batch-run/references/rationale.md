@@ -19,6 +19,20 @@ iterate は収束トレンドの発散検出、または `safety.max_review_cycl
 は理由を区別しない — 理由別に sentinel を分けると grep 契約が壊れる（名称の `max-cycles` は発散
 発火に対しては misnomer だが、契約の安定を優先）。発火は当該 Issue を完了できなかった失敗であり、後続へ進む根拠にはならない。cursor を保持してバッチを停止し、明示再開で当該 Issue から復帰する。
 
+## resume-stage-dispatch
+
+停止報告は引数省略の `/rite:batch-run` で残りを再開できると案内するが、ステップ 1 が
+`RUN_NEXT=process` を出すと無条件に open を呼んでいた。open の resume 表は PR 作成より後の phase
+（review / fix / ready / cleanup）を扱わない設計のため、それらで止まった Issue は open が完了通知を
+出さずに戻り、run は open 失敗として同じ Issue で再び止まる。案内と実挙動が食い違う。
+
+振り分けは run 側に置く。phase→スキルの対応は recover Phase 5.3 が SoT で、run は phase→自分の
+ステップへの入口だけを持つ（表を複製しない）。evaluate は run 起動あたり 1 回に限る — ループ再入で
+毎回評価すると、同一セッションで先に完了した Issue の cleanup 状態を次の Issue と取り違える。
+段階を決められない状態（読み出し失敗・PR 番号なし・未知 phase）は既定で open へ倒さず停止する。
+default モードで ready / cleanup 段階に達していた場合は、そのモードが ready 以降を実行しない契約に
+合わせ、draft を残したまま cursor を前進させる。
+
 ## no-handoff
 
 flow-state の `handoff` は単一フィールド + default-clear で、iterate / cleanup が内部で排他使用
