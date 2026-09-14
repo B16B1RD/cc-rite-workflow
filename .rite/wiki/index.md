@@ -344,7 +344,7 @@ okf_version: "0.2"
 | [判別述語を対象テキスト全体に広げると、その規則自体を論じる文書で自己言及的に誤発火する](pages/anti-patterns/predicate-scans-whole-text-in-self-describing-domain.md) | anti-patterns | 判別述語を「ある記号がテキスト中に存在するか」の形で書くと、その記号を論じる文書そのものが判定対象になった瞬間に崩れる。 | 2026-08-01T23:12:28+09:00 | high |
 | [機械的な述語を文書化するときは意図の語彙ではなく字句の語彙で書く](pages/heuristics/mechanical-predicate-prose-lexical-vocabulary.md) | heuristics | 判別子は字句的にしか判定できない。 | 2026-08-03T23:41:26+09:00 | high |
 | [行動指示と帰結記述を 1 文に混載しない — 帰結は SoT の表へのポインタに置き換える](pages/patterns/separate-directive-from-consequence-with-sot-pointer.md) | patterns | authoring 面（reviewer への指示、テンプレート、規約文書）の 1 文が「こう書け」という**行動指示**と「そう書かなかったらどうなるか」という**帰結記述**を同時に担っていると、判定ロジックの帰結が変わるたびに authoring 面の書き換えが必要になる。 | 2026-08-01T23:12:28+09:00 | medium |
-| [grep (BRE) と grep -E (ERE) のメタ文字反転で assert ヘルパーが常時緑の dead assertion になる](pages/anti-patterns/bre-ere-metachar-inversion-dead-assertion.md) | anti-patterns | `grep` と `grep -E` はメタ文字の意味が反転する。 | 2026-08-02T09:53:11+09:00 | high |
+| [grep (BRE) と grep -E (ERE) のメタ文字反転で assert ヘルパーが常時緑の dead assertion になる](pages/anti-patterns/bre-ere-metachar-inversion-dead-assertion.md) | anti-patterns | `grep` と `grep -E` はメタ文字の意味が反転する。 | 2026-09-14T14:12:00Z | high |
 | [外部依存の挙動は hedge か断定かの二択ではない — 既定形は「断定 + 出典 + 確認日 + 再検証手順」](pages/heuristics/external-dependency-claim-hedge-vs-citation.md) | heuristics | 管理外の上流ツール・ライブラリの挙動をドキュメントに書くとき、「断定するか / 『要検証』と逃げるか」の二択で考えると、どちらを選んでも欠陥になる。 | 2026-08-02T09:53:11+09:00 | high |
 | [新設した出力フィールドは producer と consumer の両側を pin する — consumer が表なら行単位で pin する](pages/patterns/new-output-field-pin-producer-and-consumer.md) | patterns | stdout フィールド・sentinel・marker など「出力の契約」を新設したとき、producer 側の emit だけを assert するテストは **「値が出ること」しか保証せず、「値が使われること」は保証しない**。 | 2026-09-06T16:10:23Z | high |
 | [同じ処理を 2 経路で実装したら fixture の「意地悪さ」も 2 経路で揃える](pages/heuristics/dual-path-implementation-needs-matching-adversarial-fixture.md) | heuristics | 同じ処理を 2 つの入力形式・2 つの経路で実装したとき、新しく足した側の fixture が「素朴な形」しか持たないと、経路の**存在**は測れても経路の**正しさ**は測れない。 | 2026-08-02T09:53:11+09:00 | high |
@@ -507,4 +507,4 @@ okf_version: "0.2"
 
 - 総ページ数: 493
 - ドメイン別: patterns=112, heuristics=220, anti-patterns=161
-- 最終更新: 2026-09-14T11:20:00Z
+- 最終更新: 2026-09-14T14:12:00Z

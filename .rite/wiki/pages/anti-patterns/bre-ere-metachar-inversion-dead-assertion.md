@@ -11,9 +11,13 @@ sources:
     resource: "raw/fixes/20260801T185220Z-pr-2070.md"
   - type: "reviews"
     resource: "raw/reviews/20260802T000641Z-pr-2070.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260914T135958Z-pr-2819.md"
 tags: ["dead-assertion", "bre-vs-ere", "mutation-testing", "assert-helper"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-02T09:53:11+09:00" }
+generated: { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-14T14:12:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-14T14:12:00Z" }
 ---
 
 # grep (BRE) と grep -E (ERE) のメタ文字反転で assert ヘルパーが常時緑の dead assertion になる
@@ -55,6 +59,17 @@ assert_not_grep "$FILE" 'ステップ 3-7\.4\|ステップ 7\.4'
 
 この dead assertion は「anti-pattern の `assert_not_grep` を追加したら、回避策が別の欠陥へ逃げないよう positive 側も同時に pin する」という cycle 1 の教訓の直後に生まれた。禁止（negative）だけを足すと、著者は禁止に触れない別表記へ逃げ、その別表記が新しい欠陥になる。禁止を足すときは、置換後の表記が意図した対象へ解決するかを測る positive 側の pin を対にする。
 
+**反転の逆方向: ERE に素の `|` を渡すと恒真の tautology になる**
+
+上の実例は「BRE の選択子 `\|` を ERE に渡して literal 化し、決してマッチしない dead assertion」だが、逆方向も同じ帰結に落ちる。`grep -qE` を使う `assert_grep` に、jq フィルタの行をそのまま写した `'^ *| \.body // "" | gsub(...)$'` を渡すと、素の `|` が ERE の交替になり、第 1 枝 `^ *` が任意の行に一致する。名乗った挙動（2 つの式が同一行で隣接している）に対してどんな実装でも PASS する。fix を除去した mutant にも、無関係な LICENSE ファイルにも一致した。
+
+| ヘルパーの方言 | 渡したパターン | `|` の意味 | 帰結 |
+|---|---|---|---|
+| ERE (`grep -qE`) | `A\|B` | literal | 決してマッチしない（常時緑の dead assertion） |
+| ERE (`grep -qE`) | `A|B` を literal のつもりで | 交替 | どちらかの枝が空に近ければ全行一致（常時緑の tautology） |
+
+どちらの向きでも「常に緑」になる点は同じで、検出手段も同じ: fix を外した mutant でスイートを回し、当該 assertion が FAIL することを目視する。pin に literal のパイプを含めるなら ERE では `\|` と書き、直後の「順序 assert」など別の assertion が同じ回帰を拾えているかに頼らず、pin ごとに検出力を確認する。
+
 ## 関連ページ
 
 - [アサーションの検証強度は「該当行を壊して赤くなるか」でしか測れない](../heuristics/mutation-testing-measures-assertion-strength.md)
@@ -66,3 +81,4 @@ assert_not_grep "$FILE" 'ステップ 3-7\.4\|ステップ 7\.4'
 - [レビュー結果](../../raw/reviews/20260801T184452Z-pr-2070.md)
 - [fix 結果](../../raw/fixes/20260801T185220Z-pr-2070.md)
 - [レビュー結果](../../raw/reviews/20260802T000641Z-pr-2070.md)
+- [ERE に素のパイプを渡した隣接 pin の tautology を指摘したレビュー結果](../../raw/reviews/20260914T135958Z-pr-2819.md)
