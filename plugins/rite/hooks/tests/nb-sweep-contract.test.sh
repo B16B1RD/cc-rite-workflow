@@ -11,7 +11,7 @@
 # T-08 body_count extraction expression matches between fix/references/nb-sweep.md and the record helper (AC-1..AC-3)
 # T-09 a ledger-only body (0 findings, no existing comment) creates the record comment, including CRLF and degraded lookup
 # T-10 nb-sweep.md record step succeeds only on created / updated and never reaches the done write otherwise
-# T-11 a body without ledger entries keeps the no-op skip; count mismatch and uncountable ledger fail instead (the awk diagnostic surfaces with the awk: prefix above the awk-specific guidance, the pending marker is removed)
+# T-11 a body without ledger entries keeps the no-op skip; count mismatch and uncountable ledger fail instead (the awk diagnostic surfaces with the awk: prefix above the awk-specific guidance, the pending marker is removed; an unknown _gh_err_detail label warns and falls back to the gh: prefix)
 # T-12 an existing record comment is updated in place even when the body carries a ledger
 set -uo pipefail
 
@@ -587,11 +587,12 @@ assert_grep "T-11 台帳を数えられない reason" "$nbr_err" 'reason=body_ch
 assert_not_grep "T-11 台帳を数えられないときは投稿しない" "$NBR_GH_LOG" '^issue comment '
 assert_grep "T-11 awk の stderr 診断を awk: 接頭辞で表示する" "$nbr_err" '^  awk: SIMULATED_AWK_DIAG'
 assert_not_grep "T-11 awk の stderr 診断を gh: 接頭辞で表示しない" "$nbr_err" 'gh: SIMULATED_AWK_DIAG'
-assert_grep "T-11 awk 用の案内を出す" "$nbr_err" 'awk の実行環境'
+assert_grep "T-11 awk 用の案内を出す" "$nbr_err" '^  対処: awk の実行環境'
 assert_not_grep "T-11 awk の失敗に jq の案内を出さない" "$nbr_err" 'jq --version'
-# 案内は「上の awk の診断」を指すため、診断行が案内行より前に出ることを行番号で固定する
+# 案内は「上の awk の診断」を指すため、診断行が案内行より前に出ることを行番号で固定する。
+# 案内行は対処行に限って当てる (後続の「awk の実行環境側の問題です」行に乗り換えて pass させない)
 awk_diag_line=$(grep -n '^  awk: SIMULATED_AWK_DIAG' "$nbr_err" | head -1 | cut -d: -f1)
-awk_hint_line=$(grep -n 'awk の実行環境' "$nbr_err" | head -1 | cut -d: -f1)
+awk_hint_line=$(grep -n '^  対処: awk の実行環境' "$nbr_err" | head -1 | cut -d: -f1)
 if [ -n "$awk_diag_line" ] && [ -n "$awk_hint_line" ] && [ "$awk_diag_line" -lt "$awk_hint_line" ]; then
   pass "T-11 awk の診断行が awk 用の案内行より前に出る"
 else
@@ -616,6 +617,32 @@ if [ -n "$ledger_assign_line" ] && [ -n "$ledger_awk_line" ] && [ "$ledger_assig
   pass "T-11 台帳集計の gh_err 代入が awk 実行より前"
 else
   fail "T-11 台帳集計の gh_err 代入が awk 実行より前にない (assign=${ledger_assign_line:-none} awk=${ledger_awk_line:-none})"
+fi
+# 診断接頭辞の未知ラベルは内部エラーとして知らせ、gh に倒す。今ある呼び出しは gh / awk だけで
+# helper 経由では到達できないため、関数定義を helper から抽出して直接呼ぶ。この分岐は sed 置換部へ
+# 任意文字列が入らないよう抑える役も兼ねる
+gh_err_detail_def=$(sed -n '/^_gh_err_detail() {/,/^}/p' "$NBR_SH")
+# 範囲の終端がずれて途中までしか取れない / EOF まで取り込む drift を、空でないことだけで通さない
+if [ "$(printf '%s\n' "$gh_err_detail_def" | grep -c '^_gh_err_detail() {')" != 1 ] \
+  || [ "$(printf '%s\n' "$gh_err_detail_def" | tail -1)" != '}' ] \
+  || ! printf '%s\n' "$gh_err_detail_def" | grep -q 'case "\$_label" in'; then
+  fail "T-11 _gh_err_detail の定義を helper から抽出できない (定義形の drift)"
+else
+  unknown_label_diag="$sandbox/unknown-label-diag.txt"
+  unknown_label_err="$sandbox/unknown-label.err"
+  printf 'SIMULATED_UNKNOWN_LABEL_DIAG\n' > "$unknown_label_diag"
+  (
+    # shellcheck source=../control-char-neutralize.sh
+    source "$PLUGIN_ROOT/hooks/control-char-neutralize.sh"
+    eval "$gh_err_detail_def"
+    declare -F _gh_err_detail neutralize_ctrl >/dev/null || { echo "UNKNOWN_LABEL_SETUP_FAILED"; exit 0; }
+    gh_err="$unknown_label_diag"
+    _gh_err_detail 'bogus/label'
+  ) > "$unknown_label_err.out" 2> "$unknown_label_err"
+  assert_not_grep "T-11 未知ラベルのテスト用に関数を定義できる" "$unknown_label_err.out" 'UNKNOWN_LABEL_SETUP_FAILED'
+  assert_grep "T-11 未知ラベルは内部エラーを出す" "$unknown_label_err" "^WARNING: 内部エラー: _gh_err_detail に未知のラベル 'bogus/label'"
+  assert_grep "T-11 未知ラベルの詳細行は gh: 接頭辞に倒す" "$unknown_label_err" '^  gh: SIMULATED_UNKNOWN_LABEL_DIAG$'
+  assert_not_grep "T-11 未知ラベルを詳細行の接頭辞に使わない" "$unknown_label_err" 'bogus/label: '
 fi
 
 # T-12: 既存の記録コメントがあれば台帳ありでも update-in-place する
