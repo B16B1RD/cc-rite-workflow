@@ -359,14 +359,22 @@ _rite_p61d_cleanup() {
     fi
   fi
 }
-# gh / jq の stderr 詳細を出す共通スニペット。行接頭辞に `gh:` を入れるのは、gh 側の stderr に
-# terminal sentinel と同形の行が混じったとき、字下げだけでは gate の部分一致述語をすり抜けて
-# 偽の完了報告として読まれうるため (テストの negative control は行頭 anchor 付きで検出できず、
-# gate だけが騙される非対称が生まれる)。
-_gh_err_detail() {
+# gh / jq / awk の stderr 詳細を出す共通スニペット。行接頭辞は stderr を出したコマンドの経路名で、
+# 省略時は gh。gh とパイプで伴う jq の stderr は gh 経路として `gh:` のまま出し、却下台帳を数える
+# awk の stderr だけ `awk` を渡す (operator を gh 認証の確認へ誤誘導しないため)。
+# 接頭辞を必ず付けるのは、stderr に terminal sentinel と同形の行が混じったとき、字下げだけでは
+# gate の部分一致述語をすり抜けて偽の完了報告として読まれうるため (テストの negative control は
+# 行頭 anchor 付きで検出できず、gate だけが騙される非対称が生まれる)。
+_gh_err_detail() {  # $1=gh|awk (省略時 gh)
   [ -n "$gh_err" ] && [ -s "$gh_err" ] || return 0
+  local _label="${1:-gh}"
+  case "$_label" in
+    gh|awk) ;;
+    *) echo "WARNING: 内部エラー: _gh_err_detail に未知のラベル '$_label' が渡されました (gh / awk のみ)" >&2
+       _label=gh ;;
+  esac
   echo "  詳細 (stderr 先頭 5 行):" >&2
-  head -5 "$gh_err" | neutralize_ctrl --keep-newline | sed 's/^/  gh: /' >&2
+  head -5 "$gh_err" | neutralize_ctrl --keep-newline | sed "s/^/  $_label: /" >&2
 }
 # lookup が degraded したときの案内。**記録は続行されうる** ため、記録失敗用の
 # _record_gh_io_failure_hint / _record_body_check_failure_hint とは文言を分ける。共用すると
@@ -880,7 +888,7 @@ if ! ledger_entry_count=$(awk -v head='### 却下台帳' '
        END { print n + 0 }
      ' "$CONTENT_FILE" 2>"${_ledger_awk_err:-/dev/null}") || [[ ! "$ledger_entry_count" =~ ^[0-9]+$ ]]; then
   echo "WARNING: 非実測記録の本文から却下台帳のエントリ数を数えられませんでした。投稿を中止します" >&2
-  _gh_err_detail
+  _gh_err_detail awk
   _record_env_failure_hint awk
   echo "  本文の作り直しでは解消しません (awk の実行環境側の問題です)。pending marker は削除するため 8.0.3 は差し戻しません" >&2
   echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=body_check_unavailable" >&2
