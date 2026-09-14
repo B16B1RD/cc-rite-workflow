@@ -13,6 +13,7 @@
 # T-10 nb-sweep.md record step succeeds only on created / updated and never reaches the done write otherwise
 # T-11 a body without ledger entries keeps the no-op skip; count mismatch and uncountable ledger fail instead (the awk diagnostic surfaces with the awk: prefix above the awk-specific guidance, the pending marker is removed; an unknown _gh_err_detail label warns and falls back to the gh: prefix)
 # T-12 an existing record comment is updated in place even when the body carries a ledger
+# T-13 the record helper and nb-sweep-ledger.sh read the same ledger range (row counts agree on LF / CRLF / trailing-section bodies; extract and merge-into ignore a trailing CR, skip rows outside the section, splice before the count line; predicates pinned statically)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -656,6 +657,85 @@ if [ -f "$NBR_POSTED" ] && cmp -s "$ledger_body" "$NBR_POSTED"; then
 else
   fail "T-12 PATCH 本文が content-file と一致しない"
 fi
+
+# T-13: 記録 helper と ledger helper が同じ本文で台帳節を同じ範囲と読む
+# 記録 helper が台帳ありと数えて投稿した本文を、次の cycle の extract / merge-into が読めないと台帳が失われる。
+# 2 実装は分けてあるため、記録 helper の集計 awk を source から抜き出し、同じ fixture で件数を突き合わせる。
+t13_prog=$(sed -n "/ledger_entry_count=\$(awk -v head=/,/' \"\$CONTENT_FILE\"/p" "$NBR_SH" | sed '1d;$d')
+t13_outside_crlf="$sandbox/t13-outside-crlf.md"
+sed 's/$/\r/' "$outside_rows" > "$t13_outside_crlf"
+if [ -z "$t13_prog" ]; then
+  fail "T-13 記録 helper の台帳集計 awk を抽出できない (代入形の drift)"
+else
+  for t13_body in "$ledger_body" "$crlf_body" "$outside_rows" "$t13_outside_crlf" "$header_only"; do
+    t13_record=$(awk -v head='### 却下台帳' "$t13_prog" "$t13_body")
+    t13_extract=$("$LEDGER" extract --body-file "$t13_body" 2>/dev/null | grep -E '^\| ' | grep -v '^| finding_id ' | grep -cvE '^\|[-: |]+\|$')
+    assert "T-13 台帳の件数が記録 helper と extract で一致 ($(basename "$t13_body"))" "$t13_record" "$t13_extract"
+  done
+fi
+t13_crlf_out="$sandbox/t13-crlf-extract.md"
+"$LEDGER" extract --body-file "$crlf_body" > "$t13_crlf_out" 2>/dev/null
+assert "T-13 CRLF 本文の extract は台帳 2 件を返す" 2 "$(grep -c '^| NB-' "$t13_crlf_out")"
+assert "T-13 extract の出力に CR を残さない" 0 "$(grep -c $'\r' "$t13_crlf_out")"
+"$LEDGER" extract --body-file "$outside_rows" > "$sandbox/t13-outside-extract.md" 2>/dev/null
+assert_not_grep "T-13 extract は台帳節の後の別の節の行を出さない" "$sandbox/t13-outside-extract.md" '^\| other '
+
+# merge-into: 既存台帳の後に別の節がある本文で、台帳節だけを置き換えて count 行の直前へ差し込む
+t13_new_ledger="$sandbox/t13-new-ledger.md"
+printf '%s\n' '| NB-9 | src/z.ts:9 | recorded | severity=LOW; measured=false |' > "$sandbox/t13-entries.md"
+"$LEDGER" append --ledger-file "$t13_new_ledger" --entries-file "$sandbox/t13-entries.md" 2>/dev/null
+t13_merge="$sandbox/t13-merge.md"
+printf '%s\n\n%s\n\n%s\n%s\n%s\n\n%s\n%s\n\n%s\n%s\n%s\n\n%s\n' "$MARKER" '### 却下台帳' \
+  '| finding_id | file:line | 判定 | 判定文 |' '|------------|-----------|------|--------|' \
+  '| NB-1 | src/a.ts:1 | recorded | severity=LOW; measured=false |' \
+  '### 別の節' '| other | src/x.ts:1 | note | 台帳ではない |' \
+  '📎 non_blocking_count: 0' '| tail | src/y.ts:2 | note | count 行より後 |' \
+  '📎 reviewed_commit: unknown' "$SENTINEL" > "$t13_merge"
+"$LEDGER" merge-into --body-file "$t13_merge" --ledger-file "$t13_new_ledger" 2>/dev/null
+assert "T-13 merge-into は旧台帳の行を残さない" 0 "$(grep -c '^| NB-1 ' "$t13_merge")"
+assert "T-13 merge-into は新台帳の行を 1 件入れる" 1 "$(grep -c '^| NB-9 ' "$t13_merge")"
+assert "T-13 merge-into は台帳見出しを 1 つにする" 1 "$(grep -c '^### 却下台帳$' "$t13_merge")"
+assert "T-13 merge-into は別の節を残す" 1 "$(grep -c '^| other ' "$t13_merge")"
+assert "T-13 merge-into は count 行より後の行を残す" 1 "$(grep -c '^| tail ' "$t13_merge")"
+t13_other_line=$(grep -n '^### 別の節$' "$t13_merge" | head -1 | cut -d: -f1)
+t13_head_line=$(grep -n '^### 却下台帳$' "$t13_merge" | head -1 | cut -d: -f1)
+t13_row_line=$(grep -n '^| NB-9 ' "$t13_merge" | head -1 | cut -d: -f1)
+t13_count_line=$(grep -n '^📎 non_blocking_count:' "$t13_merge" | head -1 | cut -d: -f1)
+if [ -n "$t13_other_line" ] && [ -n "$t13_head_line" ] && [ -n "$t13_row_line" ] && [ -n "$t13_count_line" ] \
+  && [ "$t13_other_line" -lt "$t13_head_line" ] && [ "$t13_head_line" -lt "$t13_row_line" ] \
+  && [ "$t13_count_line" -eq $((t13_row_line + 2)) ] \
+  && [ -z "$(sed -n "$((t13_row_line + 1))p" "$t13_merge")" ]; then
+  pass "T-13 merge-into は台帳を別の節の後・count 行の直前 (空行 1 行を挟む) へ差し込む"
+else
+  fail "T-13 merge-into の差し込み位置が違う (other=${t13_other_line:-none} head=${t13_head_line:-none} row=${t13_row_line:-none} count=${t13_count_line:-none})"
+fi
+
+# merge-into: CRLF 本文の既存台帳も見出しとして読み、置き換える
+t13_crlf_merge="$sandbox/t13-crlf-merge.md"
+cp "$crlf_body" "$t13_crlf_merge"
+"$LEDGER" merge-into --body-file "$t13_crlf_merge" --ledger-file "$t13_new_ledger" 2>/dev/null
+assert "T-13 CRLF 本文の merge-into は台帳見出しを重複させない" 1 "$(grep -c '^### 却下台帳$' "$t13_crlf_merge")"
+assert "T-13 CRLF 本文の merge-into は旧台帳の行を残さない" 0 "$(grep -c '^| NB-[12] ' "$t13_crlf_merge")"
+assert "T-13 CRLF 本文の merge-into は新台帳の行を 1 件入れる" 1 "$(grep -c '^| NB-9 ' "$t13_crlf_merge")"
+assert "T-13 台帳を差し込んだ merge-into の本文に CR を残さない" 0 "$(grep -c $'\r' "$t13_crlf_merge")"
+t13_noop="$sandbox/t13-noop.md"
+cp "$crlf_body" "$t13_noop"
+: > "$sandbox/t13-empty-ledger.md"
+"$LEDGER" merge-into --body-file "$t13_noop" --ledger-file "$sandbox/t13-empty-ledger.md" 2>/dev/null
+if cmp -s "$crlf_body" "$t13_noop"; then
+  pass "T-13 空台帳の merge-into は本文を書き換えない"
+else
+  fail "T-13 空台帳の merge-into が本文を書き換えた"
+fi
+
+# 判定式の静的 pin: macOS の awk は `==` をロケール照合で比べ、見出しの正規表現が一致しない実装差がある。
+# macOS の CI ジョブは失敗しても止まらないため、実行結果ではなく式の形で固定する
+assert_not_grep "T-13 ledger helper は見出しを == / != で比べない" "$LEDGER" '\$0 [!=]= head'
+assert_not_grep "T-13 ledger helper は節境界を正規表現で判定しない" "$LEDGER" '/\^### /|/\^📎 non_blocking_count:/|~ count'
+assert "T-13 ledger helper の行末 CR 除去は extract / merge-into の 2 か所" 2 "$(grep -cF 'sub(/\r$/, "")' "$LEDGER")"
+assert "T-13 ledger helper の見出し判定式は extract / merge-into の 2 か所" 2 "$(grep -cF 'index($0, head) == 1 && length($0) == length(head)' "$LEDGER")"
+assert "T-13 記録 helper の行末 CR 除去は 1 か所" 1 "$(grep -cF 'sub(/\r$/, "")' "$NBR_SH")"
+assert "T-13 記録 helper の見出し判定式は ledger helper と同じ式で 1 か所" 1 "$(grep -cF 'index($0, head) == 1 && length($0) == length(head)' "$NBR_SH")"
 
 # T-10: nb-sweep.md 手順 3 の成否判定。created / updated 以外で後続（done 書込）へ進まない
 record_block="$sandbox/record-block.sh"
