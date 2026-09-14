@@ -473,6 +473,26 @@ RITE_STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/flow-state.sh" migrate >/dev/nul
 # fall back to discarding output — this hook must never block session start on
 # a log-write failure.
 if [ "$CWD" = "$STATE_ROOT" ]; then
+  # A sandboxed command can leave the anchor of a write-block mount inside the
+  # git dir as a 0-byte file with every write bit cleared (e.g. config.lock),
+  # and every later git write that needs that lock fails. git creates its own
+  # locks writable, so the stub shape (same predicate as
+  # lib/git-status-filtered.sh) tells them apart. The lock is only reported:
+  # deleting a lock a running git holds would break that operation. This runs
+  # before the reap so the WARNING reaches the hook's stderr, not the reap log.
+  if _git_common=$(cd "$CWD" && _gc=$(git rev-parse --git-common-dir 2>/dev/null) && cd "$_gc" && pwd -P); then
+    _stub_rc=0
+    _stub_locks=$(find "$_git_common" -maxdepth 1 -name '*.lock' -type f -size 0c ! -perm -200 ! -perm -020 ! -perm -002 2>/dev/null) || _stub_rc=$?
+    if [ "$_stub_rc" -ne 0 ]; then
+      echo "WARNING: session-start.sh: cannot scan $(printf '%s' "$_git_common" | neutralize_ctrl) for leftover sandbox stub lock files (find rc=$_stub_rc); git commands may fail with 'could not lock' until a stub lock is removed" >&2
+    elif [ -n "$_stub_locks" ]; then
+      while IFS= read -r _stub_lock; do
+        _stub_lock_safe=$(printf '%s' "$_stub_lock" | neutralize_ctrl)
+        echo "WARNING: session-start.sh: $_stub_lock_safe is an empty read-only lock file left behind by a sandboxed command; git commands that need this lock fail until it is removed. User action: make sure no git process is running, then delete it by hand: rm -f '$_stub_lock_safe'" >&2
+      done <<<"$_stub_locks"
+    fi
+  fi
+
   _reap_log_dir="$STATE_ROOT/.rite/logs"
   # Test writability (not just dir creation) before committing to the log path:
   # mkdir -p succeeds on a pre-existing read-only dir, and a later `>` open
