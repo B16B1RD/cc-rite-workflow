@@ -29,9 +29,10 @@
 #   --projects-enabled   true|false。省略時 false
 #   --create-script      create-issue-with-projects.sh のパス。テスト注入用。省略時は plugin 内の実体
 #   --exclude-ids        転記から除外する finding の key の CSV。key は出典 JSON の basename と id を
-#                        `#` で連結した値 (例: "9-20260101120000.json#F-01,9-20260102120000.json#F-05")。
+#                        `#` で連結した値 (例: "9-20260101120000.json#F-01,9-20260102120000~1a2b.json#F-05")。
 #                        cleanup ステップ 6.0 がマージ後 HEAD で再検証し `resolved` と判定した key だけを
-#                        渡す。各トークンは `^[0-9]+-[0-9]{14}\.json#F-[0-9]{2,}$` に一致しなければならず、
+#                        渡す。各トークンは `^[0-9]+-[0-9]{14}(~[0-9a-f]{4})?\.json#F-[0-9]{2,}$` に一致しなければならず
+#                        (`~xxxx` は保存 helper が同秒衝突時に付ける suffix)、
 #                        1 つでも外れれば除外を 1 件も適用しない (reason=parse_failed)。空文字列 / 省略は
 #                        「除外なし」であり引数不正ではない。和集合と一致しない key は WARNING のうえ
 #                        無視し、残りの除外を適用して続行する。
@@ -273,7 +274,7 @@ if [ -n "$EXCLUDE_IDS" ]; then
   # 限る。形が合わないトークンを 1 つでも含めば部分適用せず、除外を全破棄する。
   exclude_json=$(printf '%s' "$EXCLUDE_IDS" | jq -Rsc '
     split("\n") | join(",") | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0)) | unique
-    | if all(.[]; test("^[0-9]+-[0-9]{14}\\.json#F-[0-9]{2,}$")) then . else error("exclude key format") end') || exclude_json=""
+    | if all(.[]; test("^[0-9]+-[0-9]{14}(~[0-9a-f]{4})?\\.json#F-[0-9]{2,}$")) then . else error("exclude key format") end') || exclude_json=""
   if [ -z "$exclude_json" ]; then
     # 入力は形の検証に落ちた値そのものなので、制御文字を潰してから載せる
     _exclude_safe=$(printf '%s' "$EXCLUDE_IDS" | neutralize_ctrl)
