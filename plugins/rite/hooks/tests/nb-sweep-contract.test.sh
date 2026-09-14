@@ -565,20 +565,6 @@ printf '%s\n\n%s\n\n%s\n%s\n\n%s\n%s\n\n%s\n%s\n%s\n\n%s\n' "$MARKER" '### 却�
   '📎 reviewed_commit: unknown' "$SENTINEL" > "$outside_rows"
 run_nbr_helper 0 "$outside_rows"
 assert "T-11 台帳節の外にある表の行は数えない" skipped "$nbr_outcome"
-if [ "$nbr_outcome" != skipped ]; then
-  echo "DEBUG-T11: awk=$(command -v awk) ver=[$(awk --version 2>&1 | head -1)] [$(awk -version 2>&1 | head -1)] LANG=${LANG:-} LC_ALL=${LC_ALL:-} LC_CTYPE=${LC_CTYPE:-}"
-  locale 2>&1 | sed 's/^/DEBUG-T11 locale: /'
-  sed 's/^/DEBUG-T11 err: /' "$nbr_err"
-  awk -v head='### 却下台帳' '
-    { sub(/\r$/, "") }
-    $0 == head { in_sec = 1; print "DEBUG-T11 HEAD:" NR; next }
-    in_sec && (/^📎 non_blocking_count:/ || /^### /) { in_sec = 0; print "DEBUG-T11 RESET:" NR }
-    { print "DEBUG-T11 line:" NR ":in_sec=" in_sec ":hash=" (/^### /) ":clip=" (/^📎 non_blocking_count:/) ":row=" (/^[|] /) }
-    in_sec && /^[|] / && !/^[|] finding_id / && !/^[|][-: |]+[|]$/ { n++; print "DEBUG-T11 COUNTED:" NR }
-    END { print "DEBUG-T11 n=" n + 0 }
-  ' "$outside_rows" 2>&1
-  od -c "$outside_rows" | head -30 | sed 's/^/DEBUG-T11 od: /'
-fi
 mismatch_body="$sandbox/nbr-mismatch.md"
 sed 's/^📎 non_blocking_count: 0$/📎 non_blocking_count: 2/' "$ledger_body" > "$mismatch_body"
 run_nbr_helper 0 "$mismatch_body"

@@ -859,12 +859,14 @@ fi
 # 却下台帳 (nb-sweep-ledger.sh が `📎 non_blocking_count:` 行の直前へ splice する節) のエントリ行を数える。
 # 台帳の保存先は記録コメントしかないため、非実測指摘が 0 件でも台帳を持つ本文は投稿しないと台帳が失われる。
 # 節の範囲 (見出しから次の `### ` 見出しまたは count 行まで) と列ヘッダ・区切り行の除外は同 helper と揃える。
+# 行の判定は index() の前方一致で行う。macOS の awk は UTF-8 ロケールで `==` がロケール照合になり
+# 別の日本語見出しを同じ見出しと判定し、`/^### /` も見出し行に一致しないため、節の外の行を数えてしまう。
 # 数えられなかったときは 0 件と読まない — 0 件扱いにすると台帳が skip で無音に消える。
 if ! ledger_entry_count=$(awk -v head='### 却下台帳' '
        { sub(/\r$/, "") }
-       $0 == head { in_sec = 1; next }
-       in_sec && (/^📎 non_blocking_count:/ || /^### /) { in_sec = 0 }
-       in_sec && /^[|] / && !/^[|] finding_id / && !/^[|][-: |]+[|]$/ { n++ }
+       index($0, head) == 1 && length($0) == length(head) { in_sec = 1; next }
+       in_sec && (index($0, "📎 non_blocking_count:") == 1 || index($0, "### ") == 1) { in_sec = 0 }
+       in_sec && index($0, "| ") == 1 && index($0, "| finding_id ") != 1 && !/^[|][-: |]+[|]$/ { n++ }
        END { print n + 0 }
      ' "$CONTENT_FILE" 2>/dev/null) || [[ ! "$ledger_entry_count" =~ ^[0-9]+$ ]]; then
   echo "WARNING: 非実測記録の本文から却下台帳のエントリ数を数えられませんでした。投稿を中止します" >&2
