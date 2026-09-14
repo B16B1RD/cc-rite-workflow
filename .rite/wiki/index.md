@@ -363,7 +363,7 @@ okf_version: "0.2"
 | [恒久規範の理由付けを「今は動かない」という現時点の欠陥への断定に置くと、欠陥が直った時点で規範が静かに誤りになる](pages/anti-patterns/rationale-asserting-current-defect-rots-when-fixed.md) | anti-patterns | 原則ファイルに「運用環境は `CLAUDE.md` に宣言する — **Wiki は reviewer が読まないため** — なぜなら reviewer 側の Guardrail がこの宣言を参照するから」と書いた。 | 2026-08-03T00:55:00+09:00 | high |
 | [列挙・全称主張を持つ記述は書き直しでは収束しない — 撤去だけが指摘面を消す](pages/anti-patterns/enumeration-claim-rewrite-never-converges.md) | anti-patterns | 散文やコメントが「この 2 field を env で渡す caller は X のみ」「以降の caller は番号を持たない」のように call site を数え上げたり、「〜だけが X を持つ」「どの経路でも Y されない」と全称・唯一性を断定すると、対象が 1 つ増えるだけでその文は偽になる。 | 2026-08-08T17:40:00+09:00 | high |
 | [修正に添えるコメントは機構を語るほど次サイクルの検証対象面を広げる — 根拠はテストに置く](pages/heuristics/comment-rationale-widens-review-surface.md) | heuristics | コードの修正そのものより、その修正に添えたコメントのほうが次のレビューサイクルで指摘を生みやすい。 | 2026-08-06T02:49:27Z | high |
-| [診断メッセージの主語と射程は、その文が発火する条件が保証している対象に限る](pages/heuristics/diagnostic-claim-scoped-to-firing-condition.md) | heuristics | 縮退時の診断が誤情報になると、既に degraded な状況でのトリアージを誤らせる。 | 2026-09-14T06:55:00Z | high |
+| [診断メッセージの主語と射程は、その文が発火する条件が保証している対象に限る](pages/heuristics/diagnostic-claim-scoped-to-firing-condition.md) | heuristics | 縮退時の診断が誤情報になると、既に degraded な状況でのトリアージを誤らせる。 | 2026-09-14T07:50:03Z | high |
 | [rc 変数を 0 で初期化すると、未起動の段を「起動して成功した」と断定する](pages/patterns/rc-variable-not-started-sentinel.md) | patterns | 多段 pipeline（例: `python3 ... \| jq ...`）の各段の rc を診断メッセージへ載せる設計で、後段の rc 変数を `0` で初期化すると、**後段が一度も起動しない経路で「起動して成功した」と能動的に断定する**。 | 2026-08-03T07:46:56Z | high |
 | [fail-closed ガードは「異常を検出したら止める」ではなく「正常を確認できなければ止める」で書く](pages/patterns/fail-closed-confirms-normal-not-detects-abnormal.md) | patterns | cross-Issue の値転写を遮断する fail-closed ガードが、「identity が**食い違う**」ときにしか発火しない実装になっていた。 | 2026-08-03T07:46:56Z | high |
 | [特定の 1 バイト・1 条件で書いた防御は、defect class 全体を覆うか修正直後に自問する](pages/heuristics/single-condition-defense-vs-defect-class.md) | heuristics | レビュー指摘は具体的な 1 ケースで届く。 | 2026-08-03T07:46:56Z | high |
@@ -505,4 +505,4 @@ okf_version: "0.2"
 
 - 総ページ数: 491
 - ドメイン別: patterns=112, heuristics=218, anti-patterns=161
-- 最終更新: 2026-09-14T06:55:00Z
+- 最終更新: 2026-09-14T07:50:03Z

@@ -10,6 +10,7 @@
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=484, broken_refs=0
 * **Update**: [診断メッセージの主語と射程は、その文が発火する条件が保証している対象に限る](pages/heuristics/diagnostic-claim-scoped-to-firing-condition.md) — [却下台帳の記録条件を変えた変更のレビュー結果](raw/reviews/20260914T053432Z-pr-2803.md) を統合。既存の失敗 reason を新経路で流用するときに reason 一覧と契約文書を同期する節を追記
 * **Skip**: [20260914T053707Z-pr-2803.md](raw/fixes/20260914T053707Z-pr-2803.md) — fatal と blocking の判定軸の違いはスキル契約の再掲であり、プロジェクト固有の経験則を含まない
+* **Update**: [診断メッセージの主語と射程は、その文が発火する条件が保証している対象に限る](pages/heuristics/diagnostic-claim-scoped-to-firing-condition.md) — [共通 helper の行ラベルと文書同期の取りこぼしを指摘したレビュー結果](raw/reviews/20260914T073943Z-pr-2806.md) を統合。共通の診断出力 helper に新経路を載せたときの行ラベルと、条件文言の同期で残る場面列挙・呼び名の揺れの節を追記
 * **Create**: [macOS の awk の == は UTF-8 ロケールで照合比較になり、別の日本語文字列を等しいと判定する](pages/anti-patterns/macos-awk-string-equality-uses-locale-collation.md) — [macOS の awk の誤判定を修正した変更の再レビュー結果](raw/reviews/20260914T064706Z-pr-2803.md) を新規ページ化
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=485, broken_refs=0
 
