@@ -11,27 +11,28 @@ Thank you for your interest in contributing to Claude Code Rite Workflow!
 
 ### Unified dogfooding launcher
 
-Use the same entry point from Claude Code, Codex, or Grok Build:
+Use the same entry point from Claude Code, Codex, Grok Build, or Antigravity (agy):
 
 ```bash
 scripts/rite-dev claude
 scripts/rite-dev codex
 scripts/rite-dev grok
+scripts/rite-dev agy
 ```
 
-The Codex launcher enables `--approve-for-me`, which automatically reviews
-approval requests inside the workspace-write sandbox similarly to Claude
-Code's auto permission mode.
+The Codex launcher enables `--approve-for-me`, and the Antigravity launcher enables
+`--dangerously-skip-permissions`, both of which automatically review approval
+requests inside their respective sandboxes similarly to Claude Code's auto permission mode.
 
 Additional arguments are forwarded to the selected host. The launcher exports
 `RITE_HOST` and `RITE_PLUGIN_ROOT` for host-neutral workflow code. Claude Code
 loads `plugins/rite` explicitly and disables `rite@rite-marketplace` for that
 process only, without changing the user's settings. Grok Build uses the
-repository-local plugin link, and Codex uses an ignored `.codex-dev/` profile. Its `skills` directory
-keeps Codex-managed state locally and links each rite skill back to
-`plugins/rite/skills`; this prevents `.system` and other mutable Codex files
-from entering the distributed plugin source. The profile may require a separate
-login on first use.
+repository-local plugin link, Codex uses an ignored `.codex-dev/` profile, and
+Antigravity uses repository-local symlinks under `.agents/skills/` linking each
+rite skill back to `plugins/rite/skills`. This keeps mutable state and host-managed
+files out of the distributed plugin source. Codex and Antigravity profiles may
+require a separate login on first use.
 
 The launcher never replaces an unexpected local link or directory. If an older
 development setup already has `.codex-dev/skills` as a symlink, move or remove

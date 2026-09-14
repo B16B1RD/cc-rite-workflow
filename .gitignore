@@ -21,6 +21,9 @@ Thumbs.db
 # may contain authentication/session data.
 .codex-dev/
 
+# Repository-local Antigravity dogfooding skills.
+.agents/
+
 # Temporary files
 tmp/
 temp/
