@@ -2775,3 +2775,10 @@ T02:22:43+09:00 — review ingest (skip pages)
 - source: `raw/reviews/20260904T172243Z-pr-2569.md`
 - action: skip (no changed-code defects and no transferable heuristic beyond existing review-gate guidance)
 - pages: none
+
+## 2026-09-15
+
+* **Create**: [Markdown 表を awk の既定 FS で抽出すると $1 が行頭のパイプになり、空集合ループの pin が常時 PASS する](pages/anti-patterns/markdown-table-awk-field-off-by-leading-pipe-vacuous-set-pin.md) — [空集合ループの pin と正規化 fixture の未到達を実測したレビュー結果](raw/reviews/20260914T151507Z-pr-2822.md) / [同 cycle 2](raw/reviews/20260914T153152Z-pr-2822.md) を統合
+* **Create**: [再開の振り分け先は phase 名の対応ではなく、遷移先スキルの入口契約（前提 phase と完了 sentinel）で決める](pages/heuristics/resume-dispatch-target-must-satisfy-downstream-entry-contract.md) — [phase=ready を ready へ振ると sentinel 不在で再停止することを実測したレビュー結果](raw/reviews/20260914T151507Z-pr-2822.md) を統合
+* **Update**: [明示的 Phase 遷移で駆動する SKILL.md に新規 Phase を挿入する際、既存の終端ルーティング更新漏れで到達不能になる](pages/anti-patterns/unrouted-phase-insertion-in-explicit-transition-skill.md) — [分岐表の process 行が旧遷移先のまま残った再発のレビュー結果](raw/reviews/20260914T151507Z-pr-2822.md) を統合
+* **Update**: [全域で成功する resolver への委譲が既存 fail-fast ガードを silent success 化する](pages/anti-patterns/total-resolver-delegation-defeats-fail-fast-gate.md) — [default 付き getter の rc=0 に読み出し失敗を委ねた事例のレビュー結果](raw/reviews/20260914T151507Z-pr-2822.md) を統合
