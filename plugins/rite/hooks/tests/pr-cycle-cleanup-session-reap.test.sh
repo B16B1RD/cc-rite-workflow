@@ -513,6 +513,23 @@ case "$out" in *"session_branches=1"*)  pass "D-01 status reports session_branch
 case "$out" in *"status=cleaned"*)      pass "D-01 reports status=cleaned (no false failure)" ;; *) fail "D-01 status: $out" ;; esac
 assert_not_grep "D-01 no misleading 'failed to reap manifest branch' WARNING" "$R/pcc.err" "failed to reap manifest branch"
 
+echo "=== D-01 shape + leftover sandbox stubs → reaped with its branch ==="
+R=$(make_repo 114); cleanup_dirs+=("$R")
+echo "squashed" > "$R/.rite/worktrees/issue-114/done.txt"
+GITC "$R/.rite/worktrees/issue-114" add done.txt >/dev/null 2>&1
+GITC "$R/.rite/worktrees/issue-114" commit -q -m "feat: squash-merged work" >/dev/null 2>&1
+make_stub "$R/.rite/worktrees/issue-114/.bashrc"
+make_stub "$R/.rite/worktrees/issue-114/.idea"
+printf 'branch\tfeat/issue-114\n' > "$R/.rite/tmp-artifacts.tsv"
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+rm -f "$R/.rite/state/issue-claims/issue-114.json"
+out=$(run_pcc "$R")
+assert "D-01 + stubs: worktree reaped" "0" "$( [ -d "$R/.rite/worktrees/issue-114" ] && echo 1 || echo 0 )"
+assert "D-01 + stubs: branch force-recovered (gone)" "0" "$( cd "$R" && $GIT rev-parse --verify feat/issue-114 >/dev/null 2>&1 && echo 1 || echo 0 )"
+assert "D-01 + stubs: manifest entry consumed" "0" "$( [ -f "$R/.rite/tmp-artifacts.tsv" ] && echo 1 || echo 0 )"
+case "$out" in *"session_worktrees=1"*) pass "D-01 + stubs: status reports session_worktrees=1" ;; *) fail "D-01 + stubs status: $out" ;; esac
+assert_not_grep "D-01 + stubs: not reported as dirty" "$R/pcc.err" "未コミット変更があるため auto-reap をスキップ"
+
 echo "=== D-02 (control): claim-free FRESH worktree, NOT recorded → survives (age guard intact) ==="
 R=$(make_repo 111); cleanup_dirs+=("$R")
 # Same claim-free + fresh shape but no manifest entry → the in-flight
