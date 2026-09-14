@@ -8,9 +8,13 @@ created: "2026-07-20T07:50:27Z"
 sources:
   - type: "fixes"
     resource: "raw/fixes/20260720T071821Z-pr-1925.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260914T151507Z-pr-2822.md"
 tags: ["skill-authoring", "phase-routing", "prompt-engineering", "dead-code"]
-confidence: medium
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-20T07:50:27Z" }
+confidence: high
+generated: { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-15T00:45:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-15T00:45:00Z" }
 ---
 
 # 明示的 Phase 遷移で駆動する SKILL.md に新規 Phase を挿入する際、既存の終端ルーティング更新漏れで到達不能になる
@@ -31,10 +35,18 @@ reviewer は grep + 実行フロー追跡（「新規 Phase への参照が見�
 - 新規追加した Phase の直後に文書上「次はこの Phase へ」と書くだけでは不十分。**その新規 Phase を参照すべき既存の全終端**（複数の分岐末尾、複数のエントリポイントなど）を洗い出し、漏れなく更新する。
 - レビュー時は「新規 Phase への参照が新規 Phase 自身の見出し以外に存在するか」を grep で確認し、既存の全終端遷移を実際に辿って到達可能性を実証するのが有効な検証手段。
 
+### 再発: 分岐表の行が旧遷移先のまま残る
+
+batch-run にステップ 1.5（再開段階の振り分け）を挿入し、ステップ 2 の冒頭に「1.5 の marker が open のときのみ実行する」と前提を書いたが、ステップ 1 の分岐表の `process` 行は「→ ステップ 2（open）へ」のままだった。2 名の reviewer が独立に「分岐表を機械レールとして辿る実行者は 1.5 を飛ばして open を呼ぶ」と指摘した。
+
+新ステップの冒頭に前提文を置いても、既存の**分岐表の行**がその新ステップを名指ししていなければ経路は繋がらない。修正は `process` 行を「run 起動後の最初の process は 1.5 へ、再入は 2 へ」に書き換え、その行を静的 pin（行頭の `| \`process\` |` から新ステップ番号までを 1 本の ERE で固定）で守ること。pin の ERE で表のパイプを `\|` にエスケープしないと交替になり、pin 自体が空虚に真になる。
+
 ## 関連ページ
 
 - [新規 helper は既存 sibling の安全規約に整合させる（trap・tree 解決・制御文字無害化）](../heuristics/new-helper-conform-to-sibling-safety-conventions.md)
+- [再開の振り分け先は phase 名の対応ではなく、遷移先スキルの入口契約（前提 phase と完了 sentinel）で決める](../heuristics/resume-dispatch-target-must-satisfy-downstream-entry-contract.md)
 
 ## ソース
 
 - [fix 結果](../../raw/fixes/20260720T071821Z-pr-1925.md)
+- [レビュー結果](../../raw/reviews/20260914T151507Z-pr-2822.md)

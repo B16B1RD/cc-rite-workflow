@@ -10,11 +10,14 @@ sources:
     resource: "raw/fixes/20260801T112516Z-pr-2081.md"
   - type: "reviews"
     resource: "raw/reviews/20260907T131420Z-pr-2608.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260914T151507Z-pr-2822.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-09-07T13:24:28Z" }
+generated: { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-15T00:45:00Z" }
 verified:
   - { by: "rite-wiki-ingest/gpt-6", at: "2026-09-07T13:24:28Z" }
+  - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-15T00:45:00Z" }
 ---
 
 # 全域で成功する resolver への委譲が既存 fail-fast ガードを silent success 化する
@@ -52,6 +55,12 @@ verified:
 - **非破壊性**: エラー終了時に入力や途中成果物を変更しない
 - **分散契約**: 実装の理由コードと caller routing、評価順、schema、テストの語彙を同期する
 
+### 同型: default 付き getter の rc=0 に「読み出し失敗」を委ねる
+
+「flow-state の読み出し失敗 → open に倒さず停止」を `flow-state.sh get ... || stop` で実装したが、この getter は state ファイルの JSON パースに失敗しても WARNING を出して `--default` を返し rc=0 で戻る。壊れた state は「不在」と同じ `open` に落ち、Error 契約が空文になった。テストは helper 全体を `exit 1` に差し替えて通しており、実 helper の default 経路を検証していなかった。
+
+修正は getter に頼らず `flow-state.sh path` のファイルを `[ -f ] && ! jq -e .` で直接検査し、壊れていれば停止すること。テストも helper 差し替えではなく、実 helper の下で state ファイルを不正 JSON に書き換えた fixture にした。「失敗」を helper の exit code で受けるなら、その helper が失敗を default で吸収しないことを先に読む。
+
 ## 检出のポイント
 
 - 委譲先 helper の「失敗時挙動」を読む: exit code だけでなく「失敗を成功として degrade する」経路 (fallback 内蔵) の有無
@@ -69,3 +78,4 @@ verified:
 - [レビュー結果](../../raw/reviews/20260712T223319Z-pr-1839.md)
 - [fix 結果](../../raw/fixes/20260801T112516Z-pr-2081.md)
 - [レビュー結果](../../raw/reviews/20260907T131420Z-pr-2608.md)
+- [レビュー結果](../../raw/reviews/20260914T151507Z-pr-2822.md)
