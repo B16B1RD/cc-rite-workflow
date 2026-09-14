@@ -618,7 +618,7 @@ if [ -n "$ledger_assign_line" ] && [ -n "$ledger_awk_line" ] && [ "$ledger_assig
 else
   fail "T-11 台帳集計の gh_err 代入が awk 実行より前にない (assign=${ledger_assign_line:-none} awk=${ledger_awk_line:-none})"
 fi
-# 診断接頭辞の未知ラベルは内部エラーとして知らせ、gh に倒す。今ある呼び出しは gh / awk だけで
+# 診断接頭辞の未知ラベルは内部エラーとして知らせ、gh に倒す。今ある呼び出しは gh / jq / awk だけで
 # helper 経由では到達できないため、関数定義を helper から抽出して直接呼ぶ。この分岐は sed 置換部へ
 # 任意文字列が入らないよう抑える役も兼ねる
 gh_err_detail_def=$(sed -n '/^_gh_err_detail() {/,/^}/p' "$NBR_SH")

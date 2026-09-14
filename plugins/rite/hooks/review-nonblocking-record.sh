@@ -360,17 +360,18 @@ _rite_p61d_cleanup() {
   fi
 }
 # gh / jq / awk の stderr 詳細を出す共通スニペット。行接頭辞は stderr を出したコマンドの経路名で、
-# 省略時は gh。gh とパイプで伴う jq の stderr は gh 経路として `gh:` のまま出し、却下台帳を数える
-# awk の stderr だけ `awk` を渡す (operator を gh 認証の確認へ誤誘導しないため)。
+# 省略時は gh。gh とパイプでつながる jq (id 取得・lookup の `gh api ... | jq`、PATCH の `jq -n ... | gh api`)
+# の stderr は gh 経路として `gh:` のまま出し、gh を介さず単独で動く本文述語の jq は `jq`、却下台帳を数える awk は `awk` を渡す
+# (後続の案内が gh 認証 / network を否定するのに、接頭辞だけ gh を指して operator を誤誘導しないため)。
 # 接頭辞を必ず付けるのは、stderr に terminal sentinel と同形の行が混じったとき、字下げだけでは
 # gate の部分一致述語をすり抜けて偽の完了報告として読まれうるため (テストの negative control は
 # 行頭 anchor 付きで検出できず、gate だけが騙される非対称が生まれる)。
-_gh_err_detail() {  # $1=gh|awk (省略時 gh)
+_gh_err_detail() {  # $1=gh|jq|awk (省略時 gh)
   [ -n "$gh_err" ] && [ -s "$gh_err" ] || return 0
   local _label="${1:-gh}"
   case "$_label" in
-    gh|awk) ;;
-    *) echo "WARNING: 内部エラー: _gh_err_detail に未知のラベル '$_label' が渡されました (gh / awk のみ)" >&2
+    gh|jq|awk) ;;
+    *) echo "WARNING: 内部エラー: _gh_err_detail に未知のラベル '$_label' が渡されました (gh / jq / awk のみ)" >&2
        _label=gh ;;
   esac
   echo "  詳細 (stderr 先頭 5 行):" >&2
@@ -819,7 +820,7 @@ _body_jq_err=$(bash "$(dirname "${BASH_SOURCE[0]}")/_mktemp-stderr-guard.sh" \
 gh_err="$_body_jq_err"
 if ! _body_last_line=$(jq -Rrs "$LAST_CONTENT_LINE_JQ"' last_content_line' < "$CONTENT_FILE" 2>"${_body_jq_err:-/dev/null}"); then
   echo "WARNING: 非実測記録の本文述語 (最終非空行の算出) を評価できませんでした。投稿を中止します" >&2
-  _gh_err_detail
+  _gh_err_detail jq
   _record_env_failure_hint jq
   echo "  本文の作り直しでは解消しません (jq の実行環境側の問題です)。pending marker は削除するため 8.0.3 は差し戻しません" >&2
   echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=body_check_unavailable" >&2
