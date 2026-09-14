@@ -365,7 +365,7 @@ _rite_p61d_cleanup() {
 # gate だけが騙される非対称が生まれる)。
 _gh_err_detail() {
   [ -n "$gh_err" ] && [ -s "$gh_err" ] || return 0
-  echo "  詳細 (gh/jq stderr 先頭 5 行):" >&2
+  echo "  詳細 (stderr 先頭 5 行):" >&2
   head -5 "$gh_err" | neutralize_ctrl --keep-newline | sed 's/^/  gh: /' >&2
 }
 # lookup が degraded したときの案内。**記録は続行されうる** ため、記録失敗用の
@@ -392,7 +392,7 @@ _record_id_unresolved_hint() {  # $1=reason
       # 本分岐は gh 側の失敗だけでなく **jq 側の失敗** (jq 不在 / filter 非互換) からも到達する
       # (GET は `gh api ... | jq` のパイプで、jq 単独失敗は pipefail で非ゼロ rc になり 404 判定を
       # 素通りする)。原因を片側に断定すると operator を真因から遠ざけるため両方を挙げる。
-      echo "  対処: gh auth status / network 接続、または jq の実行環境 (jq --version) を確認してください。直前の詳細行 (gh/jq stderr) で切り分けられます。本 cycle は本文照合の fallback で同定します" >&2 ;;
+      echo "  対処: gh auth status / network 接続、または jq の実行環境 (jq --version) を確認してください。直前の詳細行 (stderr) で切り分けられます。本 cycle は本文照合の fallback で同定します" >&2 ;;
     id_author_mismatch)
       echo "  対処: 永続化 id が別 identity のコメントを指しています。本文照合の fallback へ倒すため、そのコメントには一切触れません" >&2 ;;
     id_pr_mismatch)
@@ -599,12 +599,17 @@ _record_gh_io_failure_hint() {
   echo "  対処: gh auth status / network 接続 / Issue #${ISSUE_NUMBER} への write 権限を確認し、レビューをやり直してください" >&2
   echo "  mergeable 判定には影響しません (非ブロッキング)。記録内容は ステップ 5.4 統合レポートの「実測なし指摘」section と ステップ 6.1.a のローカル JSON (non_blocking_findings[]) から参照できます (後者は gitignore 対象のためレビュアーとは共有されません)" >&2
 }
-# 記録できなかったときの実行環境起因の案内。gh でも本文でもなく、本文述語を評価する jq の
-# 実行環境 (jq 不在 / 実行不能) に起因する失敗 (body_check_unavailable) から呼ぶ。gh auth /
-# network / 権限や本文の再生成を指す案内は原因と無関係なため出さない (下の
+# 記録できなかったときの実行環境起因の案内。gh でも本文でもなく、本文を検査するツールの
+# 実行環境 (本文述語を評価する jq、却下台帳のエントリを数える awk) に起因する失敗
+# (body_check_unavailable) から呼ぶ。引数は失敗したツール名で、案内をそのツールに合わせる。
+# gh auth / network / 権限や本文の再生成を指す案内は原因と無関係なため出さない (下の
 # _record_body_check_failure_hint と同じ規律 — 誤った復旧手順は operator を真因から遠ざける)。
-_record_env_failure_hint() {
-  echo "  対処: jq --version で jq の実行環境を確認してください (gh 認証 / network / 権限や本文生成の問題ではありません)" >&2
+_record_env_failure_hint() {  # $1=jq|awk
+  case "${1:-}" in
+    jq)  echo "  対処: jq --version で jq の実行環境を確認してください (gh 認証 / network / 権限や本文生成の問題ではありません)" >&2 ;;
+    awk) echo "  対処: awk の実行環境 (PATH 上の awk が実行できるか) と上の awk の診断を確認してください (gh 認証 / network / 権限や本文生成の問題ではありません)" >&2 ;;
+    *)   echo "WARNING: 内部エラー: _record_env_failure_hint に未知のツール名 '${1:-}' が渡されました (jq / awk のみ)" >&2 ;;
+  esac
   echo "  mergeable 判定には影響しません (非ブロッキング)。記録内容は ステップ 5.4 統合レポートの「実測なし指摘」section と ステップ 6.1.a のローカル JSON (non_blocking_findings[]) から参照できます (後者は gitignore 対象のためレビュアーとは共有されません)" >&2
 }
 # 記録できなかったときの本文検査起因の案内。gh / IO の障害ではなく caller (LLM) が
@@ -807,7 +812,7 @@ gh_err="$_body_jq_err"
 if ! _body_last_line=$(jq -Rrs "$LAST_CONTENT_LINE_JQ"' last_content_line' < "$CONTENT_FILE" 2>"${_body_jq_err:-/dev/null}"); then
   echo "WARNING: 非実測記録の本文述語 (最終非空行の算出) を評価できませんでした。投稿を中止します" >&2
   _gh_err_detail
-  _record_env_failure_hint
+  _record_env_failure_hint jq
   echo "  本文の作り直しでは解消しません (jq の実行環境側の問題です)。pending marker は削除するため 8.0.3 は差し戻しません" >&2
   echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=body_check_unavailable" >&2
   outcome="failed"
@@ -859,22 +864,31 @@ fi
 # 却下台帳 (nb-sweep-ledger.sh が `📎 non_blocking_count:` 行の直前へ splice する節) のエントリ行を数える。
 # 台帳の保存先は記録コメントしかないため、非実測指摘が 0 件でも台帳を持つ本文は投稿しないと台帳が失われる。
 # 節の範囲 (見出しから次の `### ` 見出しまたは count 行まで) と列ヘッダ・区切り行の除外は同 helper と揃える。
-# 行の判定は index() の前方一致で行う。macOS の awk は UTF-8 ロケールで `==` がロケール照合になり
-# 別の日本語見出しを同じ見出しと判定し、`/^### /` も見出し行に一致しないため、節の外の行を数えてしまう。
+# 見出しの判定は index() と length() で行う。macOS の awk は UTF-8 ロケールで `==` をロケール照合で比較し、
+# 別の日本語見出しを同じ見出しと判定するため。count 行・次の見出し・表の行も同じ実装差に依存しないよう index() に揃える。
 # 数えられなかったときは 0 件と読まない — 0 件扱いにすると台帳が skip で無音に消える。
+# awk の stderr は本文述語の jq と同じく一時ファイルへ捕まえて表示する (捨てると原因の診断が残らない)。
+_ledger_awk_err=$(bash "$(dirname "${BASH_SOURCE[0]}")/_mktemp-stderr-guard.sh" \
+  review-nonblocking-record p61d-ledger-err "却下台帳の集計失敗の詳細が表示されません") || _ledger_awk_err=""
+# 生成直後に trap 保護下へ置く (awk 実行中に INT/TERM/HUP を受けても EXIT trap が回収する)
+gh_err="$_ledger_awk_err"
 if ! ledger_entry_count=$(awk -v head='### 却下台帳' '
        { sub(/\r$/, "") }
        index($0, head) == 1 && length($0) == length(head) { in_sec = 1; next }
        in_sec && (index($0, "📎 non_blocking_count:") == 1 || index($0, "### ") == 1) { in_sec = 0 }
        in_sec && index($0, "| ") == 1 && index($0, "| finding_id ") != 1 && !/^[|][-: |]+[|]$/ { n++ }
        END { print n + 0 }
-     ' "$CONTENT_FILE" 2>/dev/null) || [[ ! "$ledger_entry_count" =~ ^[0-9]+$ ]]; then
+     ' "$CONTENT_FILE" 2>"${_ledger_awk_err:-/dev/null}") || [[ ! "$ledger_entry_count" =~ ^[0-9]+$ ]]; then
   echo "WARNING: 非実測記録の本文から却下台帳のエントリ数を数えられませんでした。投稿を中止します" >&2
-  echo "  対処: awk の実行環境を確認してください (gh 認証 / network / 権限や本文生成の問題ではありません)" >&2
+  _gh_err_detail
+  _record_env_failure_hint awk
+  echo "  本文の作り直しでは解消しません (awk の実行環境側の問題です)。pending marker は削除するため 8.0.3 は差し戻しません" >&2
   echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=body_check_unavailable" >&2
   outcome="failed"
   exit 0
 fi
+[ -n "$_ledger_awk_err" ] && rm -f "$_ledger_awk_err"
+gh_err=""
 
 # --- 記録 / skip の分岐 ---
 # 検索 degraded 時は `0 件 ∧ 台帳なし → skip` / それ以外 → 新規作成に縮退 (WARNING と degraded=1 は

@@ -1920,6 +1920,7 @@ assert_grep "TC-4.11k outcome=failed (terminal sentinel)" "$ERR" 'outcome=failed
 # 案内は原因に一致させる (helper の _record_env_failure_hint)。gh auth / network を指す誤案内は
 # operator を真因 (jq 実行環境) から遠ざけるため禁止 — helper 自身が hint 分離の規律として明文化している。
 assert_grep "TC-4.11k 原因に一致した案内 (jq 実行環境)" "$ERR" 'jq --version で jq の実行環境を確認'
+assert_not_grep "TC-4.11k jq の失敗に awk の案内を出さない" "$ERR" 'awk の実行環境'
 # 複合経路では lookup degraded hint が 'gh auth status を確認してください' を正当に出すため、
 # not_grep は _record_gh_io_failure_hint 固有の文言 (write 権限 + レビューやり直し) に絞る。
 assert_not_grep "TC-4.11k gh io 失敗の誤案内を出さない" "$ERR" 'write 権限を確認し、レビューをやり直してください'

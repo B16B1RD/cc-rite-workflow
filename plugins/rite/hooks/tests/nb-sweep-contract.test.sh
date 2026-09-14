@@ -11,7 +11,7 @@
 # T-08 body_count extraction expression matches between fix/references/nb-sweep.md and the record helper (AC-1..AC-3)
 # T-09 a ledger-only body (0 findings, no existing comment) creates the record comment, including CRLF and degraded lookup
 # T-10 nb-sweep.md record step succeeds only on created / updated and never reaches the done write otherwise
-# T-11 a body without ledger entries keeps the no-op skip; count mismatch and uncountable ledger fail instead
+# T-11 a body without ledger entries keeps the no-op skip; count mismatch and uncountable ledger fail instead (the awk diagnostic and awk-specific guidance surface, the pending marker is removed)
 # T-12 an existing record comment is updated in place even when the body carries a ledger
 set -uo pipefail
 
@@ -527,8 +527,12 @@ assert "fixture: 台帳 2 件を持つ 0 件本文" 2 "$(grep -c '^| NB-' "$ledg
 printf '[[]]\n' > "$NBR_COMMENTS"
 
 # T-09: 既存なし・count 0・台帳 2 件 → 台帳を含む記録コメントを作成する
-run_nbr_helper 0 "$ledger_body"
+nbr_tmp="$sandbox/nbr-tmp"
+mkdir -p "$nbr_tmp"
+TMPDIR="$nbr_tmp" run_nbr_helper 0 "$ledger_body"
 assert "T-09 台帳のみの本文は outcome=created" created "$nbr_outcome"
+# 台帳集計の stderr 一時ファイルは成功経路で消す。後続の投稿用 gh_err 代入で上書きされると trap が回収できない
+assert "T-09 台帳集計の stderr 一時ファイルを残さない" 0 "$(find "$nbr_tmp" -name 'rite-p61d-ledger-err-*' | wc -l | tr -d ' ')"
 assert_grep "T-09 issue comment で作成する" "$NBR_GH_LOG" '^issue comment 42 '
 if [ -f "$NBR_POSTED" ] && cmp -s "$ledger_body" "$NBR_POSTED"; then
   pass "T-09 投稿本文が content-file と一致"
@@ -573,12 +577,37 @@ assert_grep "T-11 count 不一致の reason" "$nbr_err" 'reason=count_body_misma
 assert_not_grep "T-11 count 不一致は投稿しない" "$NBR_GH_LOG" '^issue comment '
 awk_fail_bin="$sandbox/awk-fail-bin"
 mkdir -p "$awk_fail_bin"
-printf '#!/usr/bin/env bash\ncase "$*" in *却下台帳*) exit 2 ;; esac\nexec %q "$@"\n' "$(command -v awk)" > "$awk_fail_bin/awk"
+printf '#!/usr/bin/env bash\ncase "$*" in *却下台帳*) echo SIMULATED_AWK_DIAG >&2; exit 2 ;; esac\nexec %q "$@"\n' "$(command -v awk)" > "$awk_fail_bin/awk"
 chmod +x "$awk_fail_bin/awk"
+awk_fail_marker="${TMPDIR:-/tmp}/rite-nbr-pending-nbr-contract"
+: > "$awk_fail_marker"
 NBR_EXTRA_PATH="$awk_fail_bin" run_nbr_helper 0 "$ledger_body"
 assert "T-11 台帳を数えられないときは skipped にしない" failed "$nbr_outcome"
 assert_grep "T-11 台帳を数えられない reason" "$nbr_err" 'reason=body_check_unavailable'
 assert_not_grep "T-11 台帳を数えられないときは投稿しない" "$NBR_GH_LOG" '^issue comment '
+assert_grep "T-11 awk の stderr 診断を表示する" "$nbr_err" 'SIMULATED_AWK_DIAG'
+assert_grep "T-11 awk 用の案内を出す" "$nbr_err" 'awk の実行環境'
+assert_not_grep "T-11 awk の失敗に jq の案内を出さない" "$nbr_err" 'jq --version'
+if [ -e "$awk_fail_marker" ]; then
+  rm -f "$awk_fail_marker"
+  fail "T-11 台帳を数えられないときに pending marker が残る（環境起因は差し戻さない）"
+else
+  pass "T-11 台帳を数えられないときは pending marker を消す"
+fi
+printf '#!/usr/bin/env bash\ncase "$*" in *却下台帳*) echo not-a-number; exit 0 ;; esac\nexec %q "$@"\n' "$(command -v awk)" > "$awk_fail_bin/awk"
+NBR_EXTRA_PATH="$awk_fail_bin" run_nbr_helper 0 "$ledger_body"
+assert "T-11 数値以外の集計結果は outcome=failed" failed "$nbr_outcome"
+assert_grep "T-11 数値以外の集計結果の reason" "$nbr_err" 'reason=body_check_unavailable'
+assert_not_grep "T-11 数値以外の集計結果では投稿しない" "$NBR_GH_LOG" '^issue comment '
+# 一時ファイルは awk 実行より前に gh_err へ代入し、実行中の signal でも EXIT trap の回収対象にする
+# （signal のタイミングを突くテストは racy なため、行の順序で固定する）
+ledger_assign_line=$(grep -n 'gh_err="\$_ledger_awk_err"' "$NBR_SH" | head -1 | cut -d: -f1)
+ledger_awk_line=$(grep -n 'ledger_entry_count=\$(awk' "$NBR_SH" | head -1 | cut -d: -f1)
+if [ -n "$ledger_assign_line" ] && [ -n "$ledger_awk_line" ] && [ "$ledger_assign_line" -lt "$ledger_awk_line" ]; then
+  pass "T-11 台帳集計の gh_err 代入が awk 実行より前"
+else
+  fail "T-11 台帳集計の gh_err 代入が awk 実行より前にない (assign=${ledger_assign_line:-none} awk=${ledger_awk_line:-none})"
+fi
 
 # T-12: 既存の記録コメントがあれば台帳ありでも update-in-place する
 jq -n --rawfile body "$plain_body" '[[{id: 555, user: {login: "rite-bot"}, body: $body}]]' > "$NBR_COMMENTS"

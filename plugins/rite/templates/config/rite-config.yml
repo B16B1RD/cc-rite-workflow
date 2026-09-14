@@ -186,7 +186,8 @@ safety:
 # 注: 非実測指摘（実測必須ゲートで non-blocking に分類された指摘）の記録コメント
 # （「📜 rite 非実測指摘の記録」）は本設定に関わらず **関連 Issue** へ投稿される。通常は cycle ごとに
 # 同じ Issue コメントを update-in-place するが、自身の過去コメントを特定できない場合は縮退する —
-# 指摘ありなら新規作成されて複数並び、0 件なら投稿自体を省くため前 cycle の記録が stale で残る
+# 指摘あり（または 0 件でも本文に却下台帳のエントリあり）なら新規作成されて複数並び、
+# 0 件で台帳のエントリもなければ投稿自体を省くため前 cycle の記録が stale で残る
 # （非実測指摘を破棄せずマージ後も再確認可能にするため。opt-out の対象外）。
 # ただし投稿自体は best-effort — gh 失敗（create_failed / patch_failed）や本文不備では投稿されず
 # outcome=failed になる。**無条件の記録先はローカル JSON**（.rite/review-results/*.json の
