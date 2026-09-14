@@ -31,6 +31,8 @@
 * **Update**: [macOS の awk の == は UTF-8 ロケールで照合比較になり、別の日本語文字列を等しいと判定する](pages/anti-patterns/macos-awk-string-equality-uses-locale-collation.md) — [却下台帳の節判定を揃えた変更のレビュー結果](raw/reviews/20260914T110010Z-pr-2816.md) を統合。macOS の CI が止めないときに式の形の pin を書き換えに強くする節を追記
 * **Update**: [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](pages/patterns/absence-pin-base-present-head-absent-single-line.md) — [却下台帳の節判定を揃えた変更のレビュー結果](raw/reviews/20260914T110010Z-pr-2816.md) を統合。CR 付き見出しを数えない件数検査の節を追記
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=485, broken_refs=0
+* **Update**: [過剰マッチ防止の精緻化修正は、実装が許容する全形状を再確認しないと過小マッチという別の欠陥を生む (振り子現象)](pages/anti-patterns/precision-tightening-pendulum-regression.md) — [照合 key の形が同秒衝突の接尾辞付きファイル名を受け付けないことを指摘したレビュー結果](raw/reviews/20260914T163412Z-pr-2824.md) を統合。識別子の形を限定する前に生成側が作る名前の変種を列挙する節を追記
+* **Skip**: [20260914T163739Z-pr-2824.md](raw/fixes/20260914T163739Z-pr-2824.md) — 実測付き MEDIUM が fatal に届かず non-blocking へ移送された経過の記録で、スキル契約の再掲にとどまりプロジェクト固有の経験則を含まない
 
 ## 2026-09-13
 
