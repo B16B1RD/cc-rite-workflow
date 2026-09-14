@@ -33,6 +33,7 @@
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=485, broken_refs=0
 * **Update**: [過剰マッチ防止の精緻化修正は、実装が許容する全形状を再確認しないと過小マッチという別の欠陥を生む (振り子現象)](pages/anti-patterns/precision-tightening-pendulum-regression.md) — [照合 key の形が同秒衝突の接尾辞付きファイル名を受け付けないことを指摘したレビュー結果](raw/reviews/20260914T163412Z-pr-2824.md) を統合。識別子の形を限定する前に生成側が作る名前の変種を列挙する節を追記
 * **Skip**: [20260914T163739Z-pr-2824.md](raw/fixes/20260914T163739Z-pr-2824.md) — 実測付き MEDIUM が fatal に届かず non-blocking へ移送された経過の記録で、スキル契約の再掲にとどまりプロジェクト固有の経験則を含まない
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=486, broken_refs=0
 
 ## 2026-09-13
 
