@@ -223,6 +223,16 @@ case "$out" in
   *) pass "0-byte file without any write bit is excluded" ;;
 esac
 
+# Only untracked entries can be stubs: a tracked file emptied to the stub shape
+# and a staged new file with the stub shape are real changes.
+tracked_stub_repo=$(make_sandbox) && cleanup_dirs+=("$tracked_stub_repo") || exit 1
+make_mode_file "$tracked_stub_repo/a" 0444
+make_mode_file "$tracked_stub_repo/staged_stub" 0444
+(cd "$tracked_stub_repo" && git add staged_stub) || { echo "ERROR: cannot stage staged_stub" >&2; exit 1; }
+out=$(run_with_err "$tracked_stub_repo")
+assert "stub-shaped tracked and staged files stay in the output" " M a"$'\n'"A  staged_stub" "$out"
+assert "no stub exclusion warning for tracked or staged files" 0 "$(grep -c 'sandbox stub' "$err_file")"
+
 # A stub whose file information cannot be read stays in the output. The
 # control run proves the fixture is a stub first, so the failing-find run
 # cannot pass on a fixture that was never excluded.
