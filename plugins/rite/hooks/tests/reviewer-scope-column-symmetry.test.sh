@@ -3,7 +3,7 @@
 #
 # Verification:
 #   - agents/_reviewer-base.md (Japanese 列名: 重要度|スコープ|ファイル:行|内容|推奨対応)
-#   - 9 reviewer agent (application/code-quality/dependencies/devops/error-handling/
+#   - 10 reviewer agent (acceptance/application/code-quality/dependencies/devops/error-handling/
 #     prompt-engineer/security/tech-writer/test) すべての example 表
 #     (Japanese 列名)
 #   - skills/reviewers/{SKILL.md, references/output-format.md, references/finding-examples.md}
@@ -28,8 +28,9 @@ assert_not_grep "_reviewer-base.md: 4-column header drift (must not exist)" \
   "$base_file" \
   '\| 重要度 \| ファイル:行 \| 内容 \| 推奨対応 \|'
 
-# 3. 9 reviewer agent の example 表が 5 列か
+# 3. 10 reviewer agent の example 表が 5 列か
 reviewers=(
+  acceptance-reviewer
   application-reviewer
   code-quality-reviewer
   dependencies-reviewer

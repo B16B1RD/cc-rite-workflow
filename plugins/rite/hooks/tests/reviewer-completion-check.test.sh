@@ -155,6 +155,28 @@ cat "$TEST_DIR/security.md" "$TEST_DIR/security.md" > "$TEST_DIR/duplicate-secti
 output_check 'duplicate sections are ambiguous' "$TEST_DIR/duplicate-sections.md" output_format_invalid
 sed 's/^### 所見/### 入替/; s/^### 指摘事項/### 所見/; s/^### 入替/### 指摘事項/' "$TEST_DIR/security.md" > "$TEST_DIR/reordered.md"
 output_check 'report sections must be in contract order' "$TEST_DIR/reordered.md" output_format_invalid
+# The acceptance reviewer adds its criteria table between 所見 and 指摘事項;
+# the four mandatory sections still gate completion.
+cat > "$TEST_DIR/acceptance.md" <<'EOF'
+### 評価: 要修正
+### 所見
+AC-2 が HEAD で満たされていない。
+### 受入条件確認
+| AC | 判定 | 根拠 |
+|----|------|------|
+| AC-1 | 充足 | bash t.sh => PASS |
+| AC-2 | 未充足 | 指摘事項 [AC-2] を参照 |
+### 指摘事項
+| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
+|--------|----------|------------|------|----------|
+| CRITICAL | current-pr | app.sh | [AC-2] 空入力で exit 0 になる。 | ガードを戻す。 |
+### 監査ログ
+なし
+EOF
+jq --arg path "$TEST_DIR/acceptance.md" '.reviewers[1].output_file = $path' "$BASE" > "$INPUT" || exit 1
+run_check 'acceptance criteria table between 所見 and 指摘事項 is a completed report' 0
+sed '/^### 指摘事項/,/^### 監査ログ/{/^### 監査ログ/!d}' "$TEST_DIR/acceptance.md" > "$TEST_DIR/acceptance-no-findings.md"
+output_check 'acceptance criteria table does not replace 指摘事項' "$TEST_DIR/acceptance-no-findings.md" output_format_invalid
 ln -s "$TEST_DIR/test.md" "$TEST_DIR/alias.md" || exit 1
 output_check 'symlink to another reviewer result cannot count twice' "$TEST_DIR/alias.md" output_reused
 

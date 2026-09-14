@@ -201,8 +201,8 @@ log "Available Reviewers table  : ${available_count} reviewers"
 log "Type Identifiers table     : ${identifiers_count} reviewers"
 
 # Each sync point is expected to hold at least 6 reviewers (the registry has
-# 8-9 as of this writing — 9 agents / Type Identifiers rows, 8 Available
-# Reviewers rows after the consolidation). An empty or undersized set
+# 8-10 as of this writing — 10 agents / Type Identifiers rows, 8 Available
+# Reviewers rows; code-quality and acceptance are selected by rule, not pattern). An empty or undersized set
 # almost always means
 # extraction fell through, so fail fast with an invocation error rather than
 # silently reporting a large drift. The likely cause differs by source: the
