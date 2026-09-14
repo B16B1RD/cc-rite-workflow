@@ -9,13 +9,19 @@
 # snapshot but visible from inside the Bash tool, so they show up as
 # spurious `??` entries in every `git status --porcelain` call made from a
 # sandboxed Bash command even though nothing in the working tree actually
-# changed. Detection is mechanism-based (`test -c`), never a
-# filename allowlist, so it survives whatever set of paths a given sandbox
-# config happens to block.
+# changed. After the sandboxed command exits, each mount anchor stays behind
+# as a 0-byte regular file with every write bit cleared (a stub); callers
+# outside the sandbox (the session-start reaper) see those as `??` entries
+# instead. A real untracked file a user creates is writable, so the stub shape
+# does not match it. Detection is mechanism-based (`test -c` for the mount,
+# size + mode bits via `find -perm` for the stub, so root sees the same
+# result), never a filename allowlist, so it survives whatever set of paths a
+# given sandbox config happens to block. Each dropped stub is named in one
+# stderr WARNING so the user can delete it.
 #
 # Scope: only `??` (untracked) entries are ever dropped, and only when the
-# path is a character device. Every other status code (staged / unstaged /
-# unmerged / renamed / copied) passes through unchanged — this is a
+# path is a character device or a stub. Every other status code (staged /
+# unstaged / unmerged / renamed / copied) passes through unchanged — this is a
 # display-layer filter, not a substitute for real conflict or dirty-state
 # detection.
 #
@@ -69,6 +75,7 @@ fi
 
 result=""
 untracked_paths=()
+stub_paths=()
 while IFS= read -r -d '' entry; do
   [ -z "$entry" ] && continue
   code="${entry:0:2}"
@@ -88,6 +95,12 @@ while IFS= read -r -d '' entry; do
       if [ "$code" = "??" ] && [ -c "$path" ]; then
         continue # sandbox write-block ghost mount — drop
       fi
+      # find prints nothing when it cannot stat the path, so an entry whose
+      # size or mode is unreadable is kept (treated as dirty).
+      if [ "$code" = "??" ] && [ -n "$(find "./$path" -prune -type f -size 0c ! -perm -200 ! -perm -020 ! -perm -002 2>/dev/null)" ]; then
+        stub_paths+=("$path")
+        continue # leftover sandbox stub — drop
+      fi
       result+="$code $path"$'\n'
       ;;
   esac
@@ -96,6 +109,12 @@ done <"$tmp_out"
 if [ "${#untracked_paths[@]}" -gt 0 ]; then
   printf 'WARNING: git-status-filtered: %s untracked path(s) excluded from tracked-only status:' "${#untracked_paths[@]}" >&2
   printf ' %q' "${untracked_paths[@]}" >&2
+  printf '\n' >&2
+fi
+
+if [ "${#stub_paths[@]}" -gt 0 ]; then
+  printf 'WARNING: git-status-filtered: %s sandbox stub file(s) (0 bytes, no write permission) excluded from status; user action: delete them by hand once no sandboxed command is running:' "${#stub_paths[@]}" >&2
+  printf ' %q' "${stub_paths[@]}" >&2
   printf '\n' >&2
 fi
 

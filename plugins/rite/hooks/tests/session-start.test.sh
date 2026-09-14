@@ -2080,6 +2080,76 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# Leftover sandbox stub lock files in the git dir
+# A sandboxed command can leave `.git/config.lock` behind as a 0-byte file
+# with every write bit cleared; every later git config write then fails.
+# session-start names it with a manual removal hint and never deletes it.
+# The hook is started from outside the repo (JSON cwd only) so a relative
+# `--git-common-dir` resolved against the hook's own cwd cannot pass.
+# --------------------------------------------------------------------------
+_stub_lock_repo() {
+  local d="$1"
+  mkdir -p "$d"
+  (cd "$d" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q)
+}
+# Echoes the hook rc; stdout/stderr go to $1.out / $1.err.
+_stub_lock_run() {
+  local d="$1" rc=0
+  shift
+  (cd "$TEST_DIR" && echo "{\"cwd\": \"$d\", \"source\": \"startup\"}" | env "$@" bash "$HOOK" >"$d.out" 2>"$d.err") || rc=$?
+  echo "$rc"
+}
+
+echo "STUB-LOCK-1: 0-byte read-only .git/config.lock → WARNING on stderr, file kept, hook rc=0"
+d_sl1="$TEST_DIR/stub_lock1"
+_stub_lock_repo "$d_sl1"
+: > "$d_sl1/.git/config.lock" && chmod 0444 "$d_sl1/.git/config.lock"
+: > "$d_sl1/.git/writable.lock"
+if [ -z "$(find "$d_sl1/.git/config.lock" -prune -type f -perm 0444 -size 0c)" ]; then
+  fail "STUB-LOCK-1: fixture did not keep mode 0444 / size 0"
+else
+  rc_sl1=$(_stub_lock_run "$d_sl1" PATH="$PATH")
+  lock_path_sl1=$(cd "$d_sl1/.git" && pwd -P)/config.lock
+  if [ "$rc_sl1" = "0" ] \
+    && grep -F "$lock_path_sl1" "$d_sl1.err" | grep -q "rm -f" \
+    && [ -f "$d_sl1/.git/config.lock" ] \
+    && ! grep -q 'config.lock' "$d_sl1.out" \
+    && ! grep -q 'writable.lock' "$d_sl1.err"; then
+    pass "STUB-LOCK-1: stub lock named with removal hint, kept, not on stdout; writable lock ignored"
+  else
+    fail "STUB-LOCK-1: rc=$rc_sl1 stderr=$(cat "$d_sl1.err") stdout=$(cat "$d_sl1.out")"
+  fi
+fi
+echo ""
+
+echo "STUB-LOCK-2: git dir cannot be scanned → WARNING, hook rc=0, reap still runs"
+d_sl2="$TEST_DIR/stub_lock2"
+_stub_lock_repo "$d_sl2"
+failing_find_dir="$TEST_DIR/failing_find_bin"
+mkdir -p "$failing_find_dir"
+printf '#!/bin/sh\nexit 1\n' > "$failing_find_dir/find" && chmod +x "$failing_find_dir/find"
+rc_sl2=$(_stub_lock_run "$d_sl2" PATH="$failing_find_dir:$PATH")
+if [ "$rc_sl2" = "0" ] \
+  && grep -q "cannot scan .* for leftover sandbox stub lock files" "$d_sl2.err" \
+  && [ -f "$d_sl2/.rite/logs/pr-cycle-cleanup.log" ]; then
+  pass "STUB-LOCK-2: scan failure surfaced without blocking session start"
+else
+  fail "STUB-LOCK-2: rc=$rc_sl2 stderr=$(cat "$d_sl2.err")"
+fi
+echo ""
+
+echo "STUB-LOCK-3: CWD outside any git repository → no stub lock WARNING"
+d_sl3="$TEST_DIR/stub_lock3_nongit"
+mkdir -p "$d_sl3"
+rc_sl3=$(_stub_lock_run "$d_sl3" PATH="$PATH")
+if [ "$rc_sl3" = "0" ] && ! grep -q "lock file" "$d_sl3.err"; then
+  pass "STUB-LOCK-3: non-git CWD stays silent"
+else
+  fail "STUB-LOCK-3: rc=$rc_sl3 stderr=$(cat "$d_sl3.err")"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="

@@ -129,6 +129,35 @@ run_pcc "$R" >/dev/null
 assert "TC-3c tracked-dirty worktree survives" "1" "$( [ -d "$R/.rite/worktrees/issue-56" ] && echo 1 || echo 0 )"
 assert_grep "TC-3c tracked dirty emits WARNING" "$R/pcc.err" "未コミット変更があるため auto-reap をスキップ"
 
+# A sandboxed command leaves its write-block mount anchors behind as 0-byte
+# files with every write bit cleared. The fixture uses a real chmod 0444 so the
+# reap also proves `git worktree remove` copes with read-only files in the tree.
+make_stub() {
+  : > "$1" && chmod 0444 "$1"
+  [ -n "$(find "$1" -prune -type f -perm 0444 -size 0c)" ] \
+    || { echo "ERROR: stub fixture $1 did not keep mode 0444 / size 0" >&2; exit 1; }
+}
+
+echo "=== leftover sandbox stubs only (stale claim) → reaped with its branch ==="
+R=$(make_repo 57); cleanup_dirs+=("$R")
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+make_stub "$R/.rite/worktrees/issue-57/.bashrc"
+make_stub "$R/.rite/worktrees/issue-57/.idea"
+out=$(run_pcc "$R")
+assert "stub-only worktree reaped" "0" "$( [ -d "$R/.rite/worktrees/issue-57" ] && echo 1 || echo 0 )"
+assert "stub-only worktree branch recovered" "0" "$( cd "$R" && $GIT rev-parse --verify feat/issue-57 >/dev/null 2>&1 && echo 1 || echo 0 )"
+case "$out" in *"session_worktrees=1"*) pass "stub-only worktree status reports session_worktrees=1" ;; *) fail "stub-only worktree status: $out" ;; esac
+assert_not_grep "stub-only worktree is not reported as dirty" "$R/pcc.err" "未コミット変更があるため auto-reap をスキップ"
+
+echo "=== leftover sandbox stub + real untracked file → NOT reaped + WARNING ==="
+R=$(make_repo 58); cleanup_dirs+=("$R")
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+make_stub "$R/.rite/worktrees/issue-58/.bashrc"
+echo "uncommitted" > "$R/.rite/worktrees/issue-58/dirty.txt"
+run_pcc "$R" >/dev/null
+assert "stub + real untracked worktree survives" "1" "$( [ -d "$R/.rite/worktrees/issue-58" ] && echo 1 || echo 0 )"
+assert_grep "stub + real untracked emits dirty WARNING" "$R/pcc.err" "未コミット変更があるため auto-reap をスキップ"
+
 echo "=== TC-5 (AC-5): .rite/wiki-worktree + non-issue dirs NOT matched ==="
 R=$(make_repo 53); cleanup_dirs+=("$R")
 # A wiki-worktree-shaped registered worktree must be excluded by the strict regex.

@@ -23,7 +23,7 @@ When `parallel.mode: "worktree"` is set in `rite-config.yml`, each parallel agen
 - [worktree cwd から main checkout 配下への書き込みが sandbox の write 許可リストでブロックされる](#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる) - State writes rejected as read-only filesystem after `EnterWorktree`
 - [sandbox write-allowlist 設定の自動化（Decision Log）](#sandbox-write-allowlist-設定の自動化decision-log) - Why setup Phase 4.8 auto-writes `sandbox.filesystem.allowWrite` instead of guidance-only
 - [main checkout cwd から wiki worktree の管理ディレクトリへの書き込みが sandbox にブロックされる](#main-checkout-cwd-から-wiki-worktree-の管理ディレクトリへの書き込みが-sandbox-にブロックされる) - `index.lock` cannot be created in `.git/worktrees/wiki-worktree/`; detected as `reason=sandbox-mask`
-- [sandbox の write-block マスクマウントが git status に幽霊 untracked エントリを生む](#sandbox-の-write-block-マスクマウントが-git-status-に幽霊-untracked-エントリを生む) - Ghost `??` entries from sandbox `/dev/null` bind mounts, not real files
+- [sandbox の write-block マスクマウントが git status に幽霊 untracked エントリを生む](#sandbox-の-write-block-マスクマウントが-git-status-に幽霊-untracked-エントリを生む) - Ghost `??` entries from sandbox `/dev/null` bind mounts, and the 0-byte read-only stubs they leave behind
 
 ---
 
@@ -707,7 +707,7 @@ wiki worktree の管理ディレクトリ（`.git/worktrees/wiki-worktree/`）�
 
 sandbox が有効な環境（worktree の内外を問わない）では、`git status` にリポジトリ直下の `.bashrc` /
 `.gitconfig` / `.claude/settings.json` / `.mcp.json` 等が `??`（未追跡）として列挙されることがある。
-これは実在の未追跡ファイルではない。
+sandbox の内側ではデバイスノード、sandbox 終了後は 0 バイトの空ファイル（スタブ）であり、ユーザーの作業内容ではない。
 
 **症状**:
 
@@ -730,35 +730,51 @@ crw-rw-rw- 1 nobody nogroup 1, 3  7月 20 09:39 .bashrc
 dotfile、`.claude/settings.json`、`.mcp.json` 等）へ `/dev/null` のキャラクタデバイスを bind mount
 する。結果としてそのパス上には実ファイルではなくデバイスノードが存在する状態になり、`git status` は
 これを「git 管理外の新規パス」として `??` に分類する。しかし対象は実ファイルの内容変化ではなくデバイス
-ノードであり、作業ツリーの実体は変化していない（sandbox 外で同じ `git status` を実行すると clean に
-なる）。
+ノードであり、ユーザーの作業内容は変化していない。
+
+**sandbox 終了後に残るスタブ**: mount の土台として作られたパスは、sandbox 付きコマンドの終了後も
+0 バイト・書き込みビットなし（`-r--r--r--`）の通常ファイルとして残ることがある。sandbox 外（session-start
+の reaper など）から見るとこれは通常の `??` エントリであり、`test -c` には一致しない。同じ形のスタブは
+git dir にも残りうる（例: `.git/config.lock`）。この lock が残ると、lock を要する git 操作（`git config`
+の書き込み、`git branch -D` 等）が `could not lock config file` で失敗し続ける。
 
 マスクの形状は 2 種ある。上記の `/dev/null` character device 形に加え、既存の実ファイル（`.git/worktrees/<name>/`
 の `config.worktree` / `commondir` 等）には実ファイル自体を read-only で bind mount する形が張られる。
 後者は `ls -la` でも通常ファイル（`-`）に見えるため `test -c` では検知できず、mount 表（`/proc/self/mountinfo`
-または `mountpoint`）との照合が要る。幽霊 `??` エントリを生むのは前者のみで、`git-status-filtered.sh` の
-`test -c` 判定は変わらない。worktree 削除前の管理ディレクトリ側の検知（両形状）は
+または `mountpoint`）との照合が要る。幽霊 `??` エントリを生むのは前者（と、その終了後に残るスタブ）のみで、
+後者は `git-status-filtered.sh` の判定対象ではない。worktree 削除前の管理ディレクトリ側の検知（両形状）は
 `hooks/scripts/cleanup-session-worktree-teardown.sh` が担う。wiki worktree への stage / commit 前の書き込み可否は
 `hooks/scripts/lib/worktree-git.sh` の `worktree_admin_writable` が一時ファイルの作成で判定する（[上記節](#main-checkout-cwd-から-wiki-worktree-の管理ディレクトリへの書き込みが-sandbox-にブロックされる)）。
 
 **列挙は例示であり網羅ではない**: 上記のパスは観測された一例に過ぎず、どのパスが保護対象になるかは
 sandbox 設定に依存して変わる。ファイル名の allowlist で判定してはならない。判定は常に下記の機構ベース
-（`test -c`）で行う。
+（デバイスは `test -c`、スタブはサイズとモードビット）で行う。
 
 **実在確認手順**:
 
 - 当該パスがキャラクタデバイスかどうかを判定する: `test -c <path> && echo "ghost mount" || echo "real file"`
-- または sandbox の外側（通常のシェル）で同じ `git status` を実行し、差分が実在するか確認する
+- sandbox 外ではスタブの形かどうかを判定する: `find <path> -prune -type f -size 0c ! -perm -200 ! -perm -020 ! -perm -002`
+  が出力すればスタブ。ユーザーが作った空ファイルは書き込みビットを持つため一致しない
 
 **canonical な判定経路**: dirty 判定を行う hook / script は `hooks/scripts/lib/git-status-filtered.sh`
-を経由する。この helper は `git status --porcelain -z` の出力のうち `??` エントリで `test -c` により
-キャラクタデバイスと判定されたものだけを機械的に除外し、それ以外の全ステータス（staged / unstaged /
-unmerged / renamed / copied）はそのまま通す。ファイル名 allowlist を持たない機構ベース設計のため、
-sandbox 設定が変わっても追随できる。
+を経由する。この helper は `git status --porcelain -z` の出力のうち、`test -c` でキャラクタデバイスと判定された
+`??` エントリと、0 バイト・書き込みビットなし（u/g/o のいずれも）の通常ファイル（symlink は除く）である
+`??` エントリだけを機械的に除外し、それ以外の全ステータス（staged / unstaged / unmerged / renamed /
+copied）はそのまま通す。サイズやモードを読めないエントリは除外しない（dirty 扱い）。モードビットで判定
+するため root 実行でも結果は変わらない。除外したスタブは件数とパスを 1 行の stderr WARNING に出す。
+ファイル名 allowlist を持たない機構ベース設計のため、sandbox 設定が変わっても追随できる。
+
+共通 git dir の直下（`*.lock`）に残ったスタブの lock は `hooks/session-start.sh` が main checkout での
+セッション開始時に検知し、パスと手動削除の手順を hook の stderr に WARNING として書く。直下以外の lock は
+検知しない。SessionStart hook は exit 0 で終わるため、この stderr は Claude Code の debug ログにしか残らず、
+会話にもユーザーにも表示されない。`could not lock config file` で git 操作が失敗し続けるときは、
+`find "$(git rev-parse --git-common-dir)" -maxdepth 1 -name '*.lock' -type f -size 0c ! -perm -200 ! -perm -020 ! -perm -002`
+で自分で確かめる。実行中の git が持つ本物の lock と取り違えるとその操作を壊すため、自動では削除しない。
 
 **実行エージェントへの指示**: この現象で列挙される `??` エントリを「未追跡ファイルの異常」「リポジトリ
-汚染」として報告しない。削除・`git add`・コミットを試みない。dirty 判定が必要な箇所では `git status`
-を直接パースせず `git-status-filtered.sh` を使う。
+汚染」として報告しない。sandbox の内側から削除・`git add`・コミットを試みない。スタブとスタブの lock の削除は、sandbox 付きコマンドが動いて
+いないことを確かめたうえでユーザーが行う。dirty 判定が必要な箇所では `git status` を直接パースせず
+`git-status-filtered.sh` を使う。
 
 **関連 Issue**: （`git-status-filtered.sh` 導入元）/ （drift-hash 経路の sandbox 内外
 コンテキスト混在による誤警報の残件、本節の対象外）
