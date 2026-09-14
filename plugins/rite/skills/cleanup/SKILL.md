@@ -564,7 +564,7 @@ rationale: references/rationale.md#follow-up-sweep-issued-dedup
 対象 JSON は helper と同一の選び方（`{state_root}/.rite/review-results/{pr_number}-*.json*` の**全ファイルの `non_blocking_findings[]` を和集合**し、basename 昇順（= cycle 昇順）に**そのまま連結する**。`id` は各 JSON 内の連番で cycle 跨ぎの identity を持たないため畳み込み key に使わない）で確定する。最新 1 本だけを見ると helper が転記する集合と食い違い、先行 cycle にのみ載る指摘が再検証を経ずに転記される:
 
 ```bash
-# ⚠ 下行はテスト hooks/tests/cleanup-follow-up-issue.test.sh T-28 が awk 抽出アンカーとして参照する。変更時はテスト側の awk パターンも同時更新すること
+# ⚠ 下行はテスト hooks/tests/cleanup-follow-up-issue.test.sh T-28 / T-41 が awk 抽出アンカーとして参照する。変更時はテスト側の awk パターンも同時更新すること
 # reason は helper の語彙（no_json / jq_missing）に揃え、state root 解決失敗は別値にする。
 # 合成すると「JSON も jq も実在するのに no_json_or_jq」という誤った原因が完了報告へ転記される。
 _state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
@@ -588,7 +588,10 @@ else
     echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=no_json"
   else
     # 1 finding = 1 行の JSON で出す。TSV だと description / suggestion の改行で行が割れ、
-    # 後続行が id を失って id と本文の対応が崩れる（誤対応が resolved 側に振れると指摘の無言 drop）。
+    # 後続行が key を失って key と本文の対応が崩れる（誤対応が resolved 側に振れると指摘の無言 drop）。
+    # `key` は出典 JSON の basename と `id` を `#` で連結した除外指定の単位（`id` は cycle 内の連番で、
+    # 出典と組にして初めて 1 件を指せる）。basename が `{pr_number}-{14 桁}.json` の形でない出典
+    # （corrupt 退避ファイル等）と書式外 id は `key` を null にする。
     # `.id` は**落とさず null へ写す**。save 側は書式外 id の保存を hard fail で止めるが、
     # 本 gate を通さずに `.rite/review-results/` 直下へ保存された JSON には書式外 id が残る
     # （gate 導入前の JSON、および gate を経由しない `/rite:fix` の write 経路 — P1/P3 の直接 write と
@@ -613,7 +616,7 @@ else
       for f in "${_rv_srcs[@]}"; do
         # 2>"$_rv_errf" は毎周トランケートするため、除外 WARNING の**直後**に原因行を出す
         # （ループ後へ回すと最後の失敗の原因しか残らない）。helper 側の union ループと同形。
-        if _part=$(jq -c 'if (.non_blocking_findings | type) == "array" then .non_blocking_findings else error("not an array") end' "$f" 2>"${_rv_errf:-/dev/null}"); then
+        if _part=$(jq -c --arg src "${f##*/}" 'if (.non_blocking_findings | type) == "array" then .non_blocking_findings | map(if type == "object" then . + {_src: $src} else . end) else error("not an array") end' "$f" 2>"${_rv_errf:-/dev/null}"); then
           if _m=$(jq -c --argjson add "$_part" '. + $add' "$_rv_union" 2>"${_rv_errf:-/dev/null}"); then
             printf '%s\n' "$_m" > "$_rv_union"; _rv_ok=$((_rv_ok + 1)); continue
           fi
@@ -627,7 +630,9 @@ else
       # 最終射影の rc は必ず見る。落とすと jq 失敗（非文字列 id 等）が空出力と区別できず、
       # 再検証を経ていない部分集合のまま `done` を出してしまう。
       if _rv_out=$(jq -c '.[]
-        | {id: (if ((.id // "") | (test("^F-[0-9]{2,}$") and (contains("\n") | not))) then .id else null end),
+        | ((.id // "") | (test("^F-[0-9]{2,}$") and (contains("\n") | not))) as $fid
+        | {key: (if $fid and ((._src // "") | test("^[0-9]+-[0-9]{14}\\.json$")) then ._src + "#" + .id else null end),
+           id: (if $fid then .id else null end),
            file, line, description, suggestion}' "$_rv_union" 2>"${_rv_errf:-/dev/null}"); then
         # 0 件のとき printf は空行を 1 行出す。空行が finding として読まれないよう非空時だけ出力する。
         # 成功時は marker を出さない（判定後の `done` が唯一の成功 marker）
@@ -664,15 +669,16 @@ fi
 
 `FOLLOW_UP_REVERIFY=unavailable` を観測した場合、および本節を実行できなかった場合は**全件を `undecidable` 扱い**とし、`--exclude-ids` は空文字列のまま helper を呼ぶ（= 除外なし＝従来挙動）。
 
-出力に**同じ id が複数行**現れることがある（`id` は cycle 内の連番で cycle 跨ぎの identity を持たない）。各行は別の finding として独立に判定する。ただし重複 id は `resolved` と判定しても helper 側が除外を拒否して全件転記するため、`{n_resolved}` は実際に除外された件数と一致しないことがある。
+出力に**同じ id が複数行**現れることがある（`id` は cycle 内の連番で cycle 跨ぎの identity を持たない）。各行は別の finding として独立に判定し、`key` で区別する。ただし同じ `key` が複数行に現れる場合（同一 JSON 内の id 重複）は、`resolved` と判定しても helper 側が除外を拒否して全件転記するため、`{n_resolved}` は実際に除外された件数と一致しないことがある。
+rationale: references/rationale.md#follow-up-exclude-key
 
-`"id": null` の finding（書式外 id / id 欠落）は**必ず `undecidable`** とする。除外指定に載せられる id が無く、`{resolved_ids_csv}` へ入れられる値も無いため、判定の余地なく転記側へ倒れる。出力には現れるので `{n_undecidable}` には通常どおり数え上げられる。
+`"key": null` の finding（書式外 id / id 欠落 / 出典ファイル名が `{pr_number}-{14 桁}.json` の形でない）は**必ず `undecidable`** とする。除外指定に載せられる key が無く、`{resolved_ids_csv}` へ入れられる値も無いため、判定の余地なく転記側へ倒れる。出力には現れるので `{n_undecidable}` には通常どおり数え上げられる。
 
-判定を終えたら、`resolved` の id を CSV（`"F-01,F-05"`）に組み、内訳 marker を出す。**抽出が成功した経路では、抽出結果が 0 件でもこの marker を必ず出す**（`resolved=0; remains=0; undecidable=0; resolved_ids=`）— 出さないと成功 marker が 1 本も残らず、ステップ 12 が「marker が無いとき」の分岐に落ちる。**既に `unavailable` を出した経路では `done` を出さない**（出すと最後の出現が `done` になり `reason=` が完了報告から消える）:
+判定を終えたら、`resolved` の `key` を CSV（`"{pr_number}-20260101120000.json#F-01,{pr_number}-20260102120000.json#F-05"`）に組み、内訳 marker を出す。**抽出が成功した経路では、抽出結果が 0 件でもこの marker を必ず出す**（`resolved=0; remains=0; undecidable=0; resolved_ids=`）— 出さないと成功 marker が 1 本も残らず、ステップ 12 が「marker が無いとき」の分岐に落ちる。**既に `unavailable` を出した経路では `done` を出さない**（出すと最後の出現が `done` になり `reason=` が完了報告から消える）:
 
 ```bash
 # `{resolved_ids_csv}` / `{n_*}` は上記判定の結果をリテラル置換する（resolved が 0 件なら空文字列）。
-# `{resolved_ids_csv}` に置けるのは `F-NN` トークンをカンマ連結したものだけ。
+# `{resolved_ids_csv}` に置けるのは出力の `key` の値（`{pr_number}-{14 桁}.json#F-NN`）をカンマ連結したものだけ。
 echo "[CONTEXT] FOLLOW_UP_REVERIFY=done; resolved={n_resolved}; remains={n_remains}; undecidable={n_undecidable}; resolved_ids={resolved_ids_csv}"
 ```
 
@@ -1035,7 +1041,7 @@ rationale: references/rationale.md#review-cleanup-reasons
   - `unavailable` のとき: ` — follow-up 再検証: 未実施（{reason}。全件を転記対象としました）`（`{reason}` は marker の `reason=` 値）
   - marker が無いとき: ` — follow-up 再検証: 実施結果を確認できませんでした（全件を転記対象とした可能性があります）`。本分岐は「節ごと実行されなかった」場合と「抽出は成功したが判定 marker `done` に到達しなかった」場合の 2 つに落ちる（6.0.V は成功時に marker を出さないため後者が marker 皆無になる）。**marker 不在を成功と読んではならない** — 兄弟分岐と同じ規約
 - `{follow_up_ambiguous_note}`: 先に `{review_cleanup_check}` と同じ規則で最終 `FOLLOW_UP_ISSUE` を選ぶ。次に `[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason={r}; count={n}; pr={pr_number}` のうち、`pr=` の直後が `;` または行末まで一致する最後の出現を採る。`{count}` / `{reason}` はその marker の値を使う。marker が無ければ note は空文字列（除外拒否の通知なし。除外適用・起票の成功は推定しない）。
-  - `reason=ambiguous` のとき: ` — ⚠️ 曖昧 id {count} 件の指摘を除外せず転記対象としました（「follow-up 再検証」の「解消済み」は除外要求件数であり実除外数ではありません）`（`{count}` は除外を拒否した id の異なり数）
+  - `reason=ambiguous` のとき: ` — ⚠️ 曖昧 key {count} 件の指摘を除外せず転記対象としました（「follow-up 再検証」の「解消済み」は除外要求件数であり実除外数ではありません）`（`{count}` は除外を拒否した key の異なり数）
   - それ以外の `reason` のとき: ` — ⚠️ 除外を適用できなかったため（{reason}）、除外要求分もすべて転記対象としました（「follow-up 再検証」の「解消済み」は実際には除外されていません）`
   - 最終 `FOLLOW_UP_ISSUE=created` の場合だけ、上の note の「転記対象としました」を「転記しました」に置換する。失敗・未確認・`already_exists` を含むその他の結果では置換しない。
   - 本 note は除外結果の付記であり、起票結果と state 削除結果から決めた `{review_cleanup_check}` を変更しない。
