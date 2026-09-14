@@ -26,6 +26,7 @@
 * **Create**: [複数実装が「同じ範囲を読む」と書く前に、行の判定式と節を出たあとの制御を分けて突き合わせる](pages/heuristics/same-range-claim-needs-predicate-and-control-parity.md) — [却下台帳の節判定を揃えた変更のレビュー結果](raw/reviews/20260914T110010Z-pr-2816.md) を新規ページ化
 * **Update**: [macOS の awk の == は UTF-8 ロケールで照合比較になり、別の日本語文字列を等しいと判定する](pages/anti-patterns/macos-awk-string-equality-uses-locale-collation.md) — [却下台帳の節判定を揃えた変更のレビュー結果](raw/reviews/20260914T110010Z-pr-2816.md) を統合。macOS の CI が止めないときに式の形の pin を書き換えに強くする節を追記
 * **Update**: [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](pages/patterns/absence-pin-base-present-head-absent-single-line.md) — [却下台帳の節判定を揃えた変更のレビュー結果](raw/reviews/20260914T110010Z-pr-2816.md) を統合。CR 付き見出しを数えない件数検査の節を追記
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=485, broken_refs=0
 
 ## 2026-09-13
 
