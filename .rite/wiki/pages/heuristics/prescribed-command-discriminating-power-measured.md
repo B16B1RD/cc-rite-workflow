@@ -13,9 +13,13 @@ sources:
     resource: "raw/fixes/20260730T084017Z-pr-2056.md"
   - type: "reviews"
     resource: "raw/reviews/20260730T083745Z-pr-2056.md"
-tags: ["gh-cli", "verification", "prose-procedure", "discriminator"]
+  - type: "reviews"
+    resource: "raw/reviews/20260914T012508Z-pr-2795.md"
+tags: ["gh-cli", "verification", "prose-procedure", "discriminator", "sandbox"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-14T01:40:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-14T01:40:00Z" }
 ---
 
 # 検証手順を書くときは処方するコマンドの判別能力そのものを実測する
@@ -49,16 +53,27 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
 
 橋渡し手順に「`gh pr view` の `url` が `/pull/` であることを確認し」と書いた版があったが、`gh pr view` は非 PR を解決できず失敗するため、この確認は**常に真**だった。恒真の確認は種別判定済みであるかのような見かけを作り、入力種別の前提漏れ（Issue 番号 citation が主経路であること）を覆い隠す。**「確認せよ」という指示を書いたら、その確認が失敗しうる経路が実在するかを先に検証する。**
 
+### 同じコマンドでも実行場所で判別能力が変わる
+
+git dir に残った空の lock を「自分で確かめる」手順として、`find "$(git rev-parse --git-common-dir)" -maxdepth 1 -name '*.lock' -type f -size 0c ...` を文書に足したことがある。sandbox の外で走らせれば、空で書き込み不可の lock だけを正しく拾う。ところが Bash ツールの sandbox 内では、write-block マスクが対象の lock パス自体を character device に置き換える。`-type f` に一致しないので、ディスク上の lock の有無と関係なく常に 0 行を返す。しかも sandbox 内では git の lock 取得もこのマスクで失敗し続けるので、手順の前提（`could not lock` に出会った）を満たしたまま「lock は無い」と誤って結論できてしまう。
+
+判別能力は、コマンドの文面だけでなく**実行される環境**にも依存する。手順には実行場所（例: 「sandbox の外、ユーザーの端末で」）を書き、処方した環境で実測する。同じ節に「sandbox 外では」と限定した既存手順があるなら、新しい手順にも同じ限定を付ける。
+
+また、実装の判定式を手順へ複製すると、実装側だけ直したときに手順が別の条件になる。手順から実装（所有者）を指す書き方にするか、実装の述語が手順に含まれることを assert する静的テストで結ぶ。
+
 ### 適用のしかた
 
 - 変換・橋渡し手順を追加するときは**入力の全種別**（PR 番号 / Issue 番号 / SHA 直書き）を列挙してから分岐を設計し、種別判定には「全種別で成功する唯一のコマンド」を使う。
 - worked example は必ず実行して裏取りする。reference 中の具体例の**記述の正しさ**と、その例に処方手順を走らせたときの**手順の有効性**は別軸。
 - 機能の動機となった実例をテストケースとして修正のたびに end-to-end で通すと、defect が早期に出る。
+- 手順が走る環境（sandbox の内外、worktree、main checkout）を列挙し、判別能力が環境で変わらないかを確かめる。
 
 ## 関連ページ
 
 - [外部コマンド (gh) 失敗時に not-found と一時障害を区別せず別経路へ落とすのは silent failure](../anti-patterns/external-command-failure-origin-distinction.md)
 - [散文で引用した実装挙動は実際に動かして確認する](./prose-cited-implementation-behavioral-verification.md)
+- [sandbox の書込防止マスクは char device 形と ro bind mount 形の 2 形状があり、bind mount 形は mountinfo の mount point 完全一致で検知する](../patterns/sandbox-mask-two-shapes-mountinfo-detection.md)
+- [同一手順が複数 site に分散する場合は片方を canonical source と宣言する](../patterns/canonical-source-declaration-for-multi-site-procedure.md)
 
 ## ソース
 
@@ -66,3 +81,4 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
 - [url パスセグメントが唯一の判別子](../../raw/fixes/20260730T050205Z-pr-2056.md)
 - [恒真の確認が盲点を作る](../../raw/fixes/20260730T084017Z-pr-2056.md)
 - [入力種別の前提漏れ](../../raw/reviews/20260730T083745Z-pr-2056.md)
+- [sandbox 内で自己確認手順が判別能力を失うことを示したレビュー結果](../../raw/reviews/20260914T012508Z-pr-2795.md)

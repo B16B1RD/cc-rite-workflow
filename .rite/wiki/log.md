@@ -1,3 +1,9 @@
+## 2026-09-14
+
+* **Create**: [exit 0 で終わる hook の stderr は debug ログにしか残らない — 通知の到達先を確かめてから文書に「知らせる」と書く](pages/heuristics/hook-exit0-stderr-debug-log-only-verify-delivery.md) — [stderr の到達先を指摘したレビュー結果](raw/reviews/20260914T010341Z-pr-2795.md) と [文書を実態に合わせて契約を保った fix 結果](raw/fixes/20260914T010811Z-pr-2795.md) を新規ページ化
+* **Create**: [ユーザーにコピー実行させるコマンドをパスへ手書きの単一引用符で組み立てない](pages/anti-patterns/hand-single-quoted-copy-paste-command.md) — [案内コマンドの引用崩れを指摘したレビュー結果](raw/reviews/20260914T010341Z-pr-2795.md) を新規ページ化
+* **Update**: [検証手順を書くときは処方するコマンドの判別能力そのものを実測する](pages/heuristics/prescribed-command-discriminating-power-measured.md) — [sandbox 内で自己確認手順が判別能力を失うことを示したレビュー結果](raw/reviews/20260914T012508Z-pr-2795.md) を統合。実行場所で判別能力が変わる節を追記
+
 ## 2026-09-13
 
 * **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — [複製した境界条件式の同一性がテストで固定されていないことを検出したレビュー結果](raw/reviews/20260912T225833Z-pr-2753.md) を統合。複製された定義の一致を assert する節を追記
