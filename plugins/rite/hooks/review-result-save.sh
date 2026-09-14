@@ -529,7 +529,7 @@ fi
 #
 # 書式 (`^F-[0-9]{2,}$`) は id が identity として使えるかどうかそのものであり、`non_blocking_findings[]`
 # 側の書式外 id は advisory な記録の瑕疵では済まない — cleanup ステップ 6.0.V は id を除外指定
-# (`--exclude-ids`) の唯一の受け渡し経路として使うため、書式外 id は再検証層で null へ写され、
+# (`--exclude-ids` の key `{出典 JSON 名}#{id}`) の一部として使うため、書式外 id は再検証層で key が null になり、
 # 全件が undecidable へ倒れて解消済みの指摘まで follow-up に転記される。発生源を止めないと
 # 読み側の回避策が増え続けるので fail-loud にする (書式外 id の永続化を止める)。
 #

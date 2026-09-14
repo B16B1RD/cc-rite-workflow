@@ -278,11 +278,11 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 | キー欠落 / 非配列 (string / number / bool / object / null) | `[CONTEXT] NON_BLOCKING_FINDINGS_KEY_MISSING=1; pr={n}` |
 | 和集合での id 重複 (本配列側に起因) | `[CONTEXT] NON_BLOCKING_FINDINGS_ID_UNION_VIOLATION=1; pr={n}` |
 
-**id 書式違反 (`^F-[0-9]{2,}$` 不適合) だけは本配列側でも hard fail** (`LOCAL_SAVE_FAILED=1; reason=finding_id_format_or_uniqueness_violation`、保存しない)。書式は id が identity として使えるかどうかそのものであり、書式外 id は cleanup ステップ 6.0.V が再検証結果を `--exclude-ids` で helper へ渡す唯一の経路を壊す (書式外 id は再検証層で `null` へ写され、全件が `undecidable` に倒れて解消済みの指摘まで follow-up へ転記される)。発生源を止めないと読み側の回避策が増え続けるため fail-loud にする。**一意性違反は引き続き `findings[]` 側の欠陥に限って hard fail** で、本配列側に閉じた重複は上表の非ブロッキング marker に留める (id 自体は使える形をしており、advisory な重複を理由に blocking findings を失う理由がない)。
+**id 書式違反 (`^F-[0-9]{2,}$` 不適合) だけは本配列側でも hard fail** (`LOCAL_SAVE_FAILED=1; reason=finding_id_format_or_uniqueness_violation`、保存しない)。書式は id が identity として使えるかどうかそのものであり、書式外 id は cleanup ステップ 6.0.V が再検証結果を `--exclude-ids` で helper へ渡す唯一の経路を壊す (除外指定の key `{出典 JSON 名}#{id}` を作れず、再検証層で `key: null` になって全件が `undecidable` に倒れ、解消済みの指摘まで follow-up へ転記される)。発生源を止めないと読み側の回避策が増え続けるため fail-loud にする。**一意性違反は引き続き `findings[]` 側の欠陥に限って hard fail** で、本配列側に閉じた重複は上表の非ブロッキング marker に留める (id 自体は使える形をしており、advisory な重複を理由に blocking findings を失う理由がない)。
 
 また型 check は id 検証より**前**に置く — 後ろに置くと非配列で `length` が非 0 になる値 (`"abc"`→3 / `3`→3 / `{"a":1}`→1) が和集合の件数を水増しし、非ブロッキングと宣言した重複判定が型によって hard fail に化ける。
 
-> 本 hard fail は**本 gate を通る保存を止めるだけ**で、gate を通さずに `.rite/review-results/` 直下へ永続化された書式外 id JSON は移行しない (gate 導入前の JSON、および gate を経由しない `/rite:fix` の write 経路 — P1/P3 の直接 write と P0 ファイルの copy。一度きりの実行のために恒久的な複雑さを残さない)。したがって読み側 (6.0.V の `id` null 写像、および `id: null` を必ず `undecidable` とする規則) はそのまま維持する。
+> 本 hard fail は**本 gate を通る保存を止めるだけ**で、gate を通さずに `.rite/review-results/` 直下へ永続化された書式外 id JSON は移行しない (gate 導入前の JSON、および gate を経由しない `/rite:fix` の write 経路 — P1/P3 の直接 write と P0 ファイルの copy。一度きりの実行のために恒久的な複雑さを残さない)。したがって読み側 (6.0.V の `id` / `key` の null 写像、および `key: null` を必ず `undecidable` とする規則) はそのまま維持する。
 
 ### 却下台帳と sweep 消化結果（additive、schema_version 非 bump）
 
