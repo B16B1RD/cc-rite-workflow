@@ -593,16 +593,32 @@ Retain the Issue number in the conversation context for use in ステップ 6.4.
 
 ### 1.3.1 Load Issue Specification
 
-関連 Issue の「仕様詳細」「技術的決定事項」をレビュー基準としてロードする。ステップ 1.3 で Issue 番号が取れたときだけ実行する。
+関連 Issue の「仕様詳細」「技術的決定事項」をレビュー基準としてロードし、受入条件確認の対象かを決める。ステップ 1.3 で Issue 番号が取れなかったときは本節を実行せず、`[CONTEXT] ACCEPTANCE_SCOPE=skipped; reason=no_issue` として `受入条件確認: 対象外（関連 Issue なし）` を 1 行表示する。
 
 **Steps:**
 
-1. Retrieve the Issue body:
+1. Retrieve the Issue body and determine the acceptance scope:
  ```bash
- gh issue view {issue_number} -R {owner_repo} --json body --jq '.body'
+ issue_body_file=$(mktemp "${TMPDIR:-/tmp}/rite-review-issue-body-XXXXXX") || { echo "[review:error]"; exit 1; }
+ if ! gh issue view {issue_number} -R {owner_repo} --json body --jq '.body' > "$issue_body_file"; then
+   echo "ERROR: 関連 Issue の本文を取得できません。受入条件確認を skip せず停止します" >&2
+   rm -f "$issue_body_file"
+   echo "[review:error]"
+   exit 1
+ fi
+ echo "[CONTEXT] ISSUE_BODY_FILE=$issue_body_file"
+ bash {plugin_root}/scripts/acceptance-criteria-check.sh extract --body-file "$issue_body_file" || { echo "[review:error]"; exit 1; }
  ```
 
-2. Extract the following sections from the retrieved body (if they exist):
+ | `ACCEPTANCE_SCOPE` | アクション |
+ |---|---|
+ | `target; ids=` | `ids=` を `{acceptance_ids}` として retain。ステップ 3.2.2 で acceptance reviewer を追加する |
+ | `skipped; reason=no_ac_section; headings=` | `受入条件確認: 対象外（テンプレート形式の AC 節なし。見出し: {headings}）` を 1 行表示 |
+ | 上記 bash が `[review:error]` で終了（`ACCEPTANCE_CHECK_FAILED` の `no_ac_ids` / `duplicate_ac_id` を含む） | 停止。受入条件確認を skip して続行しない |
+
+ `ACCEPTANCE_SCOPE` の値（`target` / `skipped` と reason）はステップ 5.3.0.M step 1 の `acceptance_criteria` まで retain する。
+
+2. Extract the following sections from the body in `ISSUE_BODY_FILE` (if they exist):
  - The entire `## 仕様詳細` section
  - The `### 技術的決定事項` subsection
  - The `### ユーザー体験` subsection
@@ -842,6 +858,11 @@ Security / co-reviewer / sole-reviewer-guard のあと `max_reviewers` を適用
 1. Let `selected` be the reviewer set after ステップ 3.2 (Security Expert + co-reviewers + sole-reviewer guard applied).
 2. Resolve `effective_max` and apply Phase 5's cap logic to `selected` (Phase 5 owns the relevance ordering, the top-N cut, mandatory protection, and the effective floor = `max(min_reviewers, sole-reviewer-guard floor)` — the cap never undoes the ステップ 2.3 sole-reviewer guard's ≥2 blind-spot protection). Emit the matching user-facing message above when a validation case fires.
 3. Retain `{selected_reviewers}`, `{dropped_reviewers}` (each with its `matched file count` and `selection_type`), and `{effective_max}` in the conversation context for the omission display in ステップ 3.3. Silent capping is prohibited (MUST NOT) — the dropped reviewers MUST be surfaced there.
+
+### 3.2.2 Acceptance Reviewer Addition
+
+ステップ 1.3.1 が `ACCEPTANCE_SCOPE=target` のとき、3.2.1 で確定した `{selected_reviewers}` に `acceptance` を `selection_type: mandatory` で追加する。`REVIEW_CYCLE_SCOPE` / `COMPLEXITY_LANE` に依らず毎 cycle 追加し、sole-reviewer guard と `effective_max` の母数には数えない。`skipped` のときは追加しない。ステップ 3.3 の表示では `[必須]` とし、「レビュアーを減らす」でも削除できない。
+rationale: references/design-rationale.md#acceptance-reviewer
 
 ### 3.3 Confirm Reviewers
 
@@ -1086,6 +1107,7 @@ rationale: references/design-rationale.md#verification-inline-ban
 | Prompt Engineer | `prompt-engineer-reviewer.md` | Skill/command/agent definition quality |
 | Technical Writer | `tech-writer-reviewer.md` | Document clarity, accuracy |
 | Error Handling Expert | `error-handling-reviewer.md` | Silent failures, error propagation, catch quality |
+| Acceptance Reviewer | `acceptance-reviewer.md` | Every Acceptance Criterion of the related Issue on HEAD |
 
 **Loading sub-agent definition files:**
 
@@ -1142,6 +1164,7 @@ Task 呼び出しに background フラグを付けない（Agent tool に当該�
 | `prompt-engineer` | `rite:prompt-engineer-reviewer` |
 | `tech-writer` | `rite:tech-writer-reviewer` |
 | `error-handling` | `rite:error-handling-reviewer` |
+| `acceptance` | `rite:acceptance-reviewer` |
 
 **Formula**: `subagent_type = "rite:" + reviewer_type + "-reviewer"`（`rite:` prefix 必須）。
 **Legacy type fallback**: 旧 type（`api` / `frontend` / `performance` / `database` / `type-design`）は WARNING 付きで `application` に代替（silent skip 禁止。`skills/reviewers/SKILL.md` Legacy Reviewer Type Aliases）。
@@ -1211,10 +1234,10 @@ Determine the error type from the completion notification (failure payload or ab
 
 | Placeholder | Source | Extraction Method |
 |---------------|--------|----------|
-| `{relevant_files}` | Changed file list from ステップ 1.2 | Extract only files matching the reviewer's Activation pattern。`REVIEW_CYCLE_SCOPE == incremental` のときは ステップ 2.2 と同じく `git diff --name-only {cycle_base_sha}..HEAD` の一覧から抽出する。**例外**: `incremental` かつ当該 reviewer が `{prev_finders}` 由来の `mandatory` 合流で、パターン一致が 0 件のときは `{cycle_base_sha}..HEAD` の**全ファイル**を渡す（空で渡すと `{diff_content}` も空になり、mandate 4 が差分外の読み直しを禁じるため mandate 1 の解消検証すら実行できない prompt になる — 解消検証は自分の指摘箇所と fix の影響範囲の両方が読めて初めて成立する） |
+| `{relevant_files}` | Changed file list from ステップ 1.2 | Extract only files matching the reviewer's Activation pattern。`REVIEW_CYCLE_SCOPE == incremental` のときは ステップ 2.2 と同じく `git diff --name-only {cycle_base_sha}..HEAD` の一覧から抽出する。**例外**: `incremental` かつ当該 reviewer が `{prev_finders}` 由来の `mandatory` 合流で、パターン一致が 0 件のときは `{cycle_base_sha}..HEAD` の**全ファイル**を渡す（空で渡すと `{diff_content}` も空になり、mandate 4 が差分外の読み直しを禁じるため mandate 1 の解消検証すら実行できない prompt になる — 解消検証は自分の指摘箇所と fix の影響範囲の両方が読めて初めて成立する）。**`acceptance`** は Activation パターンと `REVIEW_CYCLE_SCOPE` に依らずステップ 1.2.3 の PR 全体の変更ファイルを渡す |
 | `{ci_status}` / `{ci_state}` | ステップ 1.2.5.C | 対象 SHA・分類・check 名/状態/結論/詳細 URL・failed 一覧・取得不能理由を出力 JSON から渡す。CI の分類規則を再実装しない |
-| `{diff_content}` | Diff from ステップ 1.2 | **Varies by scale** (see below)。`REVIEW_CYCLE_SCOPE == incremental` のときは PR 全体の diff ではなく `{cycle_base_sha}..HEAD` の diff を使う（取得コマンドは ステップ 1.2 の incremental 系。`{relevant_files}` が上記例外で全ファイルになった場合は同区間の全 diff を渡す） |
-| `{cycle_scope_mandate}` | [cycle-scope.md](references/cycle-scope.md#reviewer-mandate差分スコープ適用時に注入する本文) の Reviewer mandate 節 | **Conditional extraction**: `REVIEW_CYCLE_SCOPE == incremental` のときのみ、同節の fenced block 本文を抽出し `{previous_blocking_findings}` / `{cycle_base_sha}` を埋めて注入する。`full` のときは空文字列（セクションごと省略） |
+| `{diff_content}` | Diff from ステップ 1.2 | **Varies by scale** (see below)。`REVIEW_CYCLE_SCOPE == incremental` のときは PR 全体の diff ではなく `{cycle_base_sha}..HEAD` の diff を使う（取得コマンドは ステップ 1.2 の incremental 系。`{relevant_files}` が上記例外で全ファイルになった場合は同区間の全 diff を渡す）。**`acceptance`** は `REVIEW_CYCLE_SCOPE` に依らず PR 全体の diff を scale 規則どおり渡す |
+| `{cycle_scope_mandate}` | [cycle-scope.md](references/cycle-scope.md#reviewer-mandate差分スコープ適用時に注入する本文) の Reviewer mandate 節 | **Conditional extraction**: `REVIEW_CYCLE_SCOPE == incremental` のときのみ、同節の fenced block 本文を抽出し `{previous_blocking_findings}` / `{cycle_base_sha}` を埋めて注入する。`full` のときは空文字列（セクションごと省略）。**`reviewer_type == acceptance`** のときは `REVIEW_CYCLE_SCOPE` に依らず本文を注入せず、代わりに [reviewer-prompt-generator.md](references/reviewer-prompt-generator.md#受入条件確認の-mandate) の fenced block 本文を `{issue_number}` を埋めて注入する |
 | `{complexity_lane_mandate}` | [complexity-lane.md](references/complexity-lane.md#reviewer-mandate軽量レーン適用時に注入する本文) の Reviewer mandate 節 | **Conditional extraction**: `COMPLEXITY_LANE == light`（ステップ 1.3.2）のときのみ、同節の fenced block 本文を抽出し `{complexity}` を埋めて注入する。`full` のときは空文字列（セクションごと省略 — 空見出しが残ると M+ の prompt が変化し、M+ の挙動を変えないという契約に反する）。`{cycle_scope_mandate}` とは直交し、両方が非空になりうる（cycle 2+ の XS Issue）。両者が同時に届いても矛盾しない: 差分スコープは審査**範囲**を、軽量レーンは検証の**実行コスト**を絞るもので、いずれも採否基準を変えない |
 | `{issue_spec}` | Issue specification obtained in ステップ 1.3.1 | Content of the "仕様詳細" section (if empty, write "仕様情報なし") |
 | `{change_intelligence_summary}` | Change Intelligence Summary from ステップ 1.2.6 | One-paragraph summary of change type, file classification, and focus area |
@@ -1290,6 +1313,7 @@ esac
 | `full` | **`verification`** | Both: this section's (4.5.1) verification template AND the normal template from ステップ 4.5 |
 
 `incremental` で 4.5.1 を注入しない理由: [cycle-scope.md](references/cycle-scope.md#既存-reviewloopverification_mode-との合成)。
+**`acceptance`** には `review_mode` に依らず本節のテンプレートを注入しない（4.5 のみ。判定表が前回指摘の解消検証を兼ねる）。
 Verification テンプレート本文は [references/reviewer-prompt-verification.md](references/reviewer-prompt-verification.md)。
 
 **Placeholder embedding method:**
