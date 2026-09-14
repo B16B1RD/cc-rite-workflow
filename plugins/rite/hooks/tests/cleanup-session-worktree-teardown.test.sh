@@ -107,6 +107,18 @@ assert_contains "detect: dirty 一覧をデリミタで囲んで出す" "$out" "
 assert_contains "detect: dirty 一覧に当該パスが載る" "$out" "?? untracked-probe.txt"
 assert_contains "detect: dirty 一覧の終端デリミタ" "$out" "--- dirty files end ---"
 
+# sandbox 付きコマンドが残した 0 バイト・書き込みビットなしのスタブだけなら dirty にしない。
+# chmod が効かないファイルシステムでは前提が崩れるため、fixture の形を先に確かめる。
+r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
+main_root=$(git -C "$r" rev-parse --show-toplevel)
+( cd "$r" && bash "$PLUGIN_HOOKS/flow-state.sh" set \
+  --phase branch --issue 1 --branch feat/test --pr 0 --worktree "$wt" --next "test" ) >/dev/null 2>&1
+: > "$wt/.bashrc" && chmod 0444 "$wt/.bashrc"
+[ -n "$(find "$wt/.bashrc" -prune -type f -perm 0444 -size 0c)" ] && ok "detect(stub): fixture が 0 バイト・0444" || bad "detect(stub): fixture が 0 バイト・0444 にならない"
+out=$(cd "$wt" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
+assert_contains "detect: スタブだけの worktree は dirty=no" "$out" \
+  "[CONTEXT] CLEANUP_WT=in_worktree; worktree=$wt; dirty=no; main_root=$main_root"
+
 # `--issue` の空値・省略は usage error にしない（関連 Issue 未識別は cleanup の正規経路）。
 # 落とすと marker が 1 本も出ず、消費側が marker 不在を「削除成功」と読む。
 # marker の **値** まで固定する。prefix だけの pin は「空 issue では physical derivation が
