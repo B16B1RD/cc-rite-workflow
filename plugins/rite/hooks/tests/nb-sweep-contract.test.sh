@@ -741,10 +741,16 @@ fi
 
 # 判定式の静的 pin: macOS の awk は `==` をロケール照合で比べ、見出しの正規表現が一致しない実装差がある。
 # macOS の CI ジョブは失敗しても止まらないため、実行結果ではなく式の形で固定する
-assert_not_grep "T-13 ledger helper は見出しを == / != で比べない" "$LEDGER" '\$0 [!=]= head'
+# denylist は空白の有無・被演算子の順序に依らない形で書く（`$0==head` / `head == $0` / `$0 ~ "^### "` も捕捉する）
+assert_not_grep "T-13 ledger helper は見出しを == / != で比べない" "$LEDGER" '\$0[[:space:]]*[!=]=[[:space:]]*head|head[[:space:]]*[!=]=[[:space:]]*\$0|~[[:space:]]*"\^### "'
 assert_not_grep "T-13 ledger helper は節境界を正規表現で判定しない" "$LEDGER" '/\^### /|/\^📎 non_blocking_count:/|~ count'
 assert "T-13 ledger helper の行末 CR 除去は extract / merge-into の 2 か所" 2 "$(grep -cF 'sub(/\r$/, "")' "$LEDGER")"
 assert "T-13 ledger helper の見出し判定式は extract / merge-into の 2 か所" 2 "$(grep -cF 'index($0, head) == 1 && length($0) == length(head)' "$LEDGER")"
+# 使う側の肯定 pin: 代入行が残っていても、使う側が `==` 比較へ戻れば件数が動く
+assert "T-13 extract の開始規則は is_head を使う" 1 "$(grep -cF 'is_head { in_sec=1 }' "$LEDGER")"
+assert "T-13 merge-into の skip 規則は is_head を使う" 1 "$(grep -cF 'is_head { skip=1; next }' "$LEDGER")"
+assert "T-13 extract の節境界式は index で判定する" 1 "$(grep -cF 'index($0, "### ") == 1 && !is_head' "$LEDGER")"
+assert "T-13 merge-into の count 判定式は index で判定する" 1 "$(grep -cF 'is_count = (index($0, count) == 1)' "$LEDGER")"
 assert "T-13 記録 helper の行末 CR 除去は 1 か所" 1 "$(grep -cF 'sub(/\r$/, "")' "$NBR_SH")"
 assert "T-13 記録 helper の見出し判定式は ledger helper と同じ式で 1 か所" 1 "$(grep -cF 'index($0, head) == 1 && length($0) == length(head)' "$NBR_SH")"
 
