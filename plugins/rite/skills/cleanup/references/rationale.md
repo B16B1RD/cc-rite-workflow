@@ -23,7 +23,7 @@ sweep の起票 Issue に follow-up ラベルと先頭行 marker を付けて既
 行う必要があり、その単位の記録は台帳にしか無い。
 
 台帳の取得を SKILL 側でなく helper 内で行うのは、除外 key が file パスを含むため。6.0.V の
-`{resolved_ids_csv}` を `{pr_number}-{14 桁}.json#F-NN` の形のトークンに限っているのと同じ理由で、
+`{resolved_ids_csv}` を `{pr_number}-{14 桁}.json#F-NN`（同秒衝突時は `{pr_number}-{14 桁}~{4 桁 hex}.json#F-NN`）の形のトークンに限っているのと同じ理由で、
 パス入りの値を二重引用符内へリテラル置換で渡す経路を増やさない。
 
 除外するのは、sweep が読んだ最新 JSON 由来の finding のうち、台帳の issued 行 `[finding_id, file:line]`
@@ -46,7 +46,8 @@ cycle 属性も指摘の内容も持たない現状では機械的に両立し�
 `file:line` を key に含めないのは、同じ位置に cycle を跨いで別の指摘が並ぶため。位置で指すと、
 解消済みの指摘と同じ位置にある残存指摘まで落ちる。
 
-basename は rite が付けるファイル名の形（`{pr_number}-{14 桁}.json`）に限る。除外指定は二重引用符内へ
+basename は rite が付けるファイル名の形（`{pr_number}-{14 桁}.json`、同秒衝突時に保存 helper が
+suffix を付けた `{pr_number}-{14 桁}~{4 桁 hex}.json`）に限る。除外指定は二重引用符内へ
 リテラル置換される値なので、任意のパス文字列を通す経路を作らない。形が合わない出典（corrupt 退避
 ファイル等）の指摘は key を持たず `undecidable` として転記されるだけで、欠落は起きない。helper も
 形が合わないトークンを 1 つでも受け取ったら除外を部分適用せず全件を転記する。

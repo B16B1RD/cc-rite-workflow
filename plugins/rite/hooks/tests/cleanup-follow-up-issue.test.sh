@@ -61,10 +61,11 @@
 #   T-36 CRLF 本文の却下台帳も issued 行を読める
 #
 # Coverage (出典 JSON + id の除外 key):
-#   T-37 別 JSON の同じ id は key が指す finding だけを除外し、corrupt 退避ファイル由来は除外しない
+#   T-37 別 JSON の同じ id は key が指す finding だけを除外し (同秒衝突 suffix `~{4 桁小文字 hex}` 付きの
+#        出典を含む)、corrupt 退避ファイル由来は除外しない
 #   T-38 複数 JSON にまたがる全 finding を key で除外すると all_resolved で起票しない
-#   T-39 key 形式でないトークンを 1 つでも含む --exclude-ids は除外を全く適用しない
-#   T-41 6.0.V の射影が finding ごとに自分の出典の key を出し、形が合わなければ null にする
+#   T-39 key 形式でないトークン (形が合わない suffix を含む) を 1 つでも含む --exclude-ids は除外を全く適用しない
+#   T-41 6.0.V の射影が finding ごとに自分の出典の key を出し (同秒衝突 suffix 付きを含む)、形が合わなければ null にする
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -666,12 +667,12 @@ else
   assert_grep "T-15 key null は undecidable 固定" "$CLEANUP_MD" '`"key": null` の finding.*\*\*必ず `undecidable`\*\*'
   # 除外 key は出典 JSON の basename と id の組。和集合の各要素へ basename を付け、射影で連結する
   assert_grep "T-15 和集合の要素へ出典 basename を付ける" "$CLEANUP_MD" 'jq -c --arg src "\$\{f##\*/\}" .*\{_src: \$src\}'
-  assert_grep "T-15 射影が basename と id から key を作る" "$CLEANUP_MD" 'key: \(if \$fid and \(\(\._src // ""\) \| test\("\^\[0-9\]\+-\[0-9\]\{14\}\\\\\.json\$"\)\) then \._src \+ "#" \+ \.id else null end\)'
+  assert_grep "T-15 射影が basename と id から key を作る" "$CLEANUP_MD" 'key: \(if \$fid and \(\(\._src // ""\) \| test\("\^\[0-9\]\+-\[0-9\]\{14\}\(~\[0-9a-f\]\{4\}\)\?\\\\\.json\$"\)\) then \._src \+ "#" \+ \.id else null end\)'
   assert_grep "T-15 key トークンだけを resolved_ids_csv に置く" "$CLEANUP_MD" '`\{resolved_ids_csv\}` に置けるのは出力の `key` の値'
   assert_grep "T-15 resolved の key を CSV に組む" "$CLEANUP_MD" '`resolved` の `key` を CSV'
   assert_not_grep "T-15 id だけの CSV を組ませない" "$CLEANUP_MD" '`resolved` の id を CSV'
   # helper の受理形と 6.0.V の射影が同じ basename 形を使う (片方だけ広げると key が一致しなくなる)
-  _basename_re='test("^[0-9]+-[0-9]{14}\\.json'
+  _basename_re='test("^[0-9]+-[0-9]{14}(~[0-9a-f]{4})?\\.json'
   assert "T-15 射影の basename 形" "1" "$(grep -cF "$_basename_re" "$CLEANUP_MD" | tr -d ' ')"
   assert "T-15 helper の受理形も同じ basename 形" "1" "$(grep -cF "$_basename_re" "$TARGET" | tr -d ' ')"
   assert_not_grep "T-15 件数カウント機構を残さない" "$CLEANUP_MD" 'dropped_id_format'
@@ -1205,13 +1206,17 @@ r=$(new_root t37)
 put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-03","file":"a.md","line":1,"description":"cycle1 の F-03"}]}'
 put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-03","file":"a.md","line":1,"description":"cycle2 の F-03"}]}'
 put_json "$r" "9-20260103120000.json" '{"non_blocking_findings":[{"id":"F-03","file":"a.md","line":1,"description":"cycle3 の F-03"}]}'
+# 保存 helper が同秒衝突時に作る suffix 付きファイルも、自分の basename の key で除外できる
+put_json "$r" "9-20260102120000~1a2b.json" '{"non_blocking_findings":[{"id":"F-03","file":"a.md","line":1,"description":"同秒衝突の F-03"}]}'
 # 同じ timestamp の corrupt 退避ファイルも和集合に入る。basename が違うので正規 JSON の key では消えない
 put_json "$r" "9-20260101120000.json.corrupt-1" '{"non_blocking_findings":[{"id":"F-03","file":"a.md","line":1,"description":"corrupt 由来の F-03"}]}'
-run_target "$r" --exclude-ids "9-20260101120000.json#F-03,9-20260102120000.json#F-03"
+run_target "$r" --exclude-ids "9-20260101120000.json#F-03,9-20260102120000.json#F-03,9-20260102120000~1a2b.json#F-03"
 assert "T-37 exit 0" "0" "$RC"
 assert_grep "T-37 created" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
 assert_not_grep "T-37 cycle1 の指摘は除外" "$STUB_DIR/body.md" '説明: cycle1 の F-03$'
 assert_not_grep "T-37 cycle2 の指摘は除外" "$STUB_DIR/body.md" '説明: cycle2 の F-03$'
+assert_not_grep "T-37 同秒衝突 suffix 付きの指摘も除外" "$STUB_DIR/body.md" '説明: 同秒衝突の F-03$'
+assert_not_grep "T-37 同秒衝突 suffix 付き key を解析失敗にしない" "$ERR" 'exclude-ids を解析できませんでした'
 assert_grep "T-37 指定していない cycle3 の指摘は転記" "$STUB_DIR/body.md" '説明: cycle3 の F-03$'
 assert_grep "T-37 corrupt 由来の指摘は転記" "$STUB_DIR/body.md" '説明: corrupt 由来の F-03$'
 assert "T-37 F-03 の見出しは 2 件" "2" "$(grep -c '^### F-03 ' "$STUB_DIR/body.md" | tr -d ' ')"
@@ -1232,7 +1237,7 @@ assert_not_grep "T-38 台帳取得 (gh api) を叩かない" "$GH_LOG" '^gh api 
 assert_not_grep "T-38 曖昧 marker を出さない" "$ERR" 'FOLLOW_UP_EXCLUDE_AMBIGUOUS'
 
 echo "--- T-39: key 形式でないトークンを含む --exclude-ids は除外を全く適用しない ---"
-for variant in bare_id command_subst space; do
+for variant in bare_id command_subst space upper_suffix short_suffix long_suffix bare_tilde; do
   reset_stubs
   r=$(new_root "t39-$variant")
   put_json "$r" "9-20260101120000.json" "$TWO_FINDING_JSON"
@@ -1240,6 +1245,11 @@ for variant in bare_id command_subst space; do
     bare_id)       _ex='9-20260101120000.json#F-01,F-05' ;;
     command_subst) _ex='9-20260101120000.json#F-01,9-$(true).json#F-05' ;;
     space)         _ex='9-20260101120000.json#F-01,9-20260101 120000.json#F-05' ;;
+    # 保存 helper の suffix は printf '%04x' の小文字 hex 4 桁だけ。形を広げすぎていないことを固定する
+    upper_suffix)  _ex='9-20260101120000.json#F-01,9-20260101120000~1A2B.json#F-05' ;;
+    short_suffix)  _ex='9-20260101120000.json#F-01,9-20260101120000~1a2.json#F-05' ;;
+    long_suffix)   _ex='9-20260101120000.json#F-01,9-20260101120000~1a2b3.json#F-05' ;;
+    bare_tilde)    _ex='9-20260101120000.json#F-01,9-20260101120000~.json#F-05' ;;
   esac
   run_target "$r" --exclude-ids "$_ex"
   assert "T-39 $variant exit 0" "0" "$RC"
@@ -1258,6 +1268,9 @@ r=$(new_root t41)
 put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-03","file":"a.md","line":1,"description":"p1"}]}'
 put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-03","file":"a.md","line":1,"description":"p2"},{"id":"H-01","file":"a.md","line":2,"description":"p3"}]}'
 put_json "$r" "9-20260102120000.json.corrupt-1" '{"non_blocking_findings":[{"id":"F-04","file":"a.md","line":3,"description":"p4"}]}'
+put_json "$r" "9-20260102120000~1a2b.json" '{"non_blocking_findings":[{"id":"F-03","file":"a.md","line":1,"description":"p5"}]}'
+put_json "$r" "9-20260102120000~1A2B.json" '{"non_blocking_findings":[{"id":"F-05","file":"a.md","line":4,"description":"p6"}]}'
+put_json "$r" "9-20260102120000~1a2b.json.corrupt-1" '{"non_blocking_findings":[{"id":"F-06","file":"a.md","line":5,"description":"p7"}]}'
 # T-28 と同じアンカーから 6.0.V の実ブロックを抽出し、state root だけ fixture に置換する
 awk -v root="$r" '
   /cleanup-follow-up-issue.test.sh T-28/ {p=1}
@@ -1270,12 +1283,16 @@ if ! grep -q 'rite-fu-reverify-union' "$TMP_ROOT/reverify-t41.sh"; then
 else
   bash "$TMP_ROOT/reverify-t41.sh" > "$OUT" 2> "$ERR"; RC=$?
   assert "T-41 exit 0" "0" "$RC"
-  assert "T-41 出力行数は和集合の finding 数" "4" "$(grep -c '^{' "$OUT" | tr -d ' ')"
+  assert "T-41 出力行数は和集合の finding 数" "7" "$(grep -c '^{' "$OUT" | tr -d ' ')"
   _t41_key() { jq -r --arg d "$1" 'select(.description == $d) | .key // "null"' "$OUT"; }
   assert "T-41 1 本目の F-03 は自分の出典を指す" "9-20260101120000.json#F-03" "$(_t41_key p1)"
   assert "T-41 2 本目の F-03 は自分の出典を指す" "9-20260102120000.json#F-03" "$(_t41_key p2)"
   assert "T-41 書式外 id は key null" "null" "$(_t41_key p3)"
   assert "T-41 corrupt 退避ファイル由来は key null" "null" "$(_t41_key p4)"
+  assert "T-41 同秒衝突 suffix 付きの出典も自分の key を持つ" "9-20260102120000~1a2b.json#F-03" "$(_t41_key p5)"
+  assert "T-41 大文字 hex の suffix は key null" "null" "$(_t41_key p6)"
+  assert "T-41 suffix 付き出典の corrupt 退避ファイルは key null" "null" "$(_t41_key p7)"
+  assert "T-41 形が合わない suffix でも id は残す" "F-05,F-06" "$(jq -r 'select(.description == "p6" or .description == "p7") | .id' "$OUT" | paste -sd, -)"
   assert "T-41 corrupt 由来でも id は残す" "F-04" "$(jq -r 'select(.description == "p4") | .id' "$OUT")"
   assert_not_grep "T-41 抽出段で unavailable にしない" "$OUT" 'FOLLOW_UP_REVERIFY=unavailable'
 fi
