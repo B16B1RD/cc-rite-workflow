@@ -17,6 +17,12 @@
 #          `📎 non_blocking_count:`. Replaces an existing ### 却下台帳.
 #          Empty ledger-file is a no-op (does not insert a heading).
 #
+# Heading / section-boundary matching ignores a trailing CR and uses index()
+# prefix matches (macOS awk compares `==` by locale collation and treats a
+# different Japanese heading as equal). extract output and a spliced
+# merge-into body are LF; the empty-ledger no-op leaves the body untouched.
+# review-nonblocking-record.sh counts ledger rows with the same predicates.
+#
 # Exit:
 #   0  success (including extract-with-no-section / merge no-op)
 #   1  missing file / malformed body / write failure (fail-loud)
@@ -54,10 +60,11 @@ ledger_header() {
 extract_section() {
   local src=$1
   awk -v head="$LEDGER_HEAD" '
-    $0 == head { in_sec=1 }
+    { sub(/\r$/, ""); is_head = (index($0, head) == 1 && length($0) == length(head)) }
+    is_head { in_sec=1 }
     in_sec {
-      if ($0 ~ /^📎 non_blocking_count:/) { exit }
-      if (in_sec && /^### / && $0 != head) { exit }
+      if (index($0, "📎 non_blocking_count:") == 1) { exit }
+      if (index($0, "### ") == 1 && !is_head) { exit }
       print
     }
   ' "$src"
@@ -149,14 +156,14 @@ case "$cmd" in
     trap cleanup EXIT HUP INT TERM
     # Drop any existing ledger section, then insert the provided ledger
     # immediately before the count line.
-    awk -v head="$LEDGER_HEAD" -v count="^📎 non_blocking_count:" -v ledger_file="$ledger_file" '
-      $0 == head { skip=1; next }
+    awk -v head="$LEDGER_HEAD" -v count="📎 non_blocking_count:" -v ledger_file="$ledger_file" '
+      { sub(/\r$/, ""); is_head = (index($0, head) == 1 && length($0) == length(head)); is_count = (index($0, count) == 1) }
+      is_head { skip=1; next }
       skip {
-        if ($0 ~ count) { skip=0 }
-        else if (/^### / && $0 != head) { skip=0 }
+        if (is_count || index($0, "### ") == 1) { skip=0 }
         else next
       }
-      $0 ~ count {
+      is_count {
         if (ledger_file != "") {
           while ((getline line < ledger_file) > 0) print line
           close(ledger_file)
