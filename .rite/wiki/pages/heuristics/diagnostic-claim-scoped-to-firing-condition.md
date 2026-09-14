@@ -25,9 +25,11 @@ sources:
     resource: "raw/fixes/20260830T034210Z-pr-2471.md"
   - type: "fixes"
     resource: "raw/fixes/20260830T144004Z-pr-2489.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260914T053432Z-pr-2803.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-08-30T15:15:33Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-14T06:55:00Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-08-30T15:15:33Z" }
@@ -115,6 +117,10 @@ corrupt なファイル内容を診断へ補間する場合、**中和・clamp�
 ### 同じレポート内の 2 行を別ステップの出力のように書かない
 
 散文で表示先を列挙するとき、定義位置（どのステップの節に書かれているか）と描画位置（どのレポートに出るか）を混ぜると、読者は別々の出力だと受け取る。**定義位置を括弧で添え、描画位置を主語にする**と帰属が揃う。
+
+### 既存の失敗 reason を新しい失敗経路で流用すると、reason 一覧の原因説明が新経路に合わなくなる
+
+新しい失敗経路（例: 本文の行数を数える awk の失敗）に、既存の reason（jq の評価失敗を想定した `body_check_unavailable`）をそのまま流用した。helper 自身の WARNING は新経路に合わせて書き直したが、reason 一覧の説明と ACTION は旧経路（「jq --version を確認する」）のままで、その一覧を見た operator は無関係なツールを調べることになる。しかも新経路は `2>/dev/null` で stderr を捨てていたため、兄弟経路が出していた原因行も無かった。**reason を流用するなら、reason 一覧の原因説明と ACTION を新経路まで広げ、診断の出し方も兄弟経路に揃える。** 同じ変更で、共有 helper の分岐条件を散文で説明している契約文書（skill 本文・reference・配布テンプレート・英文ドキュメント）も条件文言で全リポジトリを grep して同期する。
 
 ## 関連ページ
 
