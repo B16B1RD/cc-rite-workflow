@@ -1,6 +1,7 @@
 ## 2026-09-14
 
 * **Update**: [grep (BRE) と grep -E (ERE) のメタ文字反転で assert ヘルパーが常時緑の dead assertion になる](pages/anti-patterns/bre-ere-metachar-inversion-dead-assertion.md) — [ERE に素のパイプを渡した隣接 pin の tautology を指摘したレビュー結果](raw/reviews/20260914T135958Z-pr-2819.md) を統合。反転の逆方向（素の `|` が交替になり全行一致で恒真化する）を追記
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=485, broken_refs=0
 * **Create**: [exit 0 で終わる hook の stderr は debug ログにしか残らない — 通知の到達先を確かめてから文書に「知らせる」と書く](pages/heuristics/hook-exit0-stderr-debug-log-only-verify-delivery.md) — [stderr の到達先を指摘したレビュー結果](raw/reviews/20260914T010341Z-pr-2795.md) と [文書を実態に合わせて契約を保った fix 結果](raw/fixes/20260914T010811Z-pr-2795.md) を新規ページ化
 * **Create**: [ユーザーにコピー実行させるコマンドをパスへ手書きの単一引用符で組み立てない](pages/anti-patterns/hand-single-quoted-copy-paste-command.md) — [案内コマンドの引用崩れを指摘したレビュー結果](raw/reviews/20260914T010341Z-pr-2795.md) を新規ページ化
 * **Update**: [検証手順を書くときは処方するコマンドの判別能力そのものを実測する](pages/heuristics/prescribed-command-discriminating-power-measured.md) — [sandbox 内で自己確認手順が判別能力を失うことを示したレビュー結果](raw/reviews/20260914T012508Z-pr-2795.md) を統合。実行場所で判別能力が変わる節を追記
