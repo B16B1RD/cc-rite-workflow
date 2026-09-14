@@ -78,6 +78,7 @@ REPO_PHYS=$(cd -- "$REPO" && pwd -P)
 make_host_stub "$BIN" claude
 make_host_stub "$BIN" codex
 make_host_stub "$BIN" grok
+make_host_stub "$BIN" agy
 
 # Existing project settings and local profile contents must survive launches.
 # These files live only inside the disposable fixture.
@@ -107,7 +108,7 @@ mkdir -p "$MISSING_BIN"
 ln -s "$(command -v bash)" "$MISSING_BIN/bash"
 ln -s "$(command -v dirname)" "$MISSING_BIN/dirname"
 ln -s "$(command -v git)" "$MISSING_BIN/git"
-for missing_host in claude codex grok; do
+for missing_host in claude codex grok agy; do
   set +e
   missing_out=$(PATH="$MISSING_BIN" "$REPO/scripts/rite-dev" "$missing_host" 2>&1)
   missing_rc=$?
@@ -164,7 +165,18 @@ assert_contains 'Grok plugin root 環境変数を設定' "$grok_log" "RITE_PLUGI
 assert_contains 'Grok は repository cwd を指定' "$grok_log" $'ARG=--cwd\nARG='"$REPO_PHYS"
 assert_contains 'Grok の語境界を保持' "$grok_log" $'ARG=two words\nARG=tail'
 
-for failing_host in claude codex grok; do
+RITE_STUB_LOG="$LOG" PATH="$BIN:$PATH" "$REPO/scripts/rite-dev" agy 'two words' tail
+agy_log=$(<"$LOG")
+assert_contains 'Agy host 環境変数を設定' "$agy_log" 'RITE_HOST=agy'
+assert_contains 'Agy plugin root 環境変数を設定' "$agy_log" "RITE_PLUGIN_ROOT=$REPO_PHYS/plugins/rite"
+assert_contains 'Agy は auto approval mode を使用' "$agy_log" 'ARG=--dangerously-skip-permissions'
+assert_contains 'Agy の語境界を保持' "$agy_log" $'ARG=two words\nARG=tail'
+[[ -d "$REPO/.agents/skills" && ! -L "$REPO/.agents/skills" ]] && \
+  pass 'Agy skills root は実ディレクトリ' || fail 'Agy skills root は実ディレクトリ'
+[[ -L "$REPO/.agents/skills/open" && -L "$REPO/.agents/skills/lint" ]] && \
+  pass 'rite スキルを個別リンク (agy)' || fail 'rite スキルを個別リンク (agy)'
+
+for failing_host in claude codex grok agy; do
   host_stderr="$TEST_ROOT/$failing_host.stderr"
   set +e
   RITE_STUB_LOG="$LOG" RITE_STUB_EXIT=7 RITE_STUB_STDERR="$failing_host fixture failure" \
@@ -195,6 +207,30 @@ assert_eq '競合する Codex skill path は非ゼロ終了' 1 "$conflict_rc"
 assert_contains '競合する Codex skill path を診断' "$conflict_out" "$conflict_repo/.codex-dev/skills/open"
 [[ $(<"$conflict_repo/.codex-dev/skills/open/sentinel") == keep ]] && \
   pass '競合 path を上書きしない' || fail '競合 path を上書きしない'
+
+wrong_link_agy_repo="$TEST_ROOT/wrong-link-agy"
+make_repo "$wrong_link_agy_repo"
+mkdir -p "$wrong_link_agy_repo/.agents/skills" "$wrong_link_agy_repo/unrelated/open"
+ln -s "$wrong_link_agy_repo/unrelated/open" "$wrong_link_agy_repo/.agents/skills/open"
+set +e
+wrong_link_agy_out=$(RITE_STUB_LOG="$LOG" PATH="$BIN:$PATH" "$wrong_link_agy_repo/scripts/rite-dev" agy 2>&1)
+wrong_link_agy_rc=$?
+set -e
+assert_eq '異実体 Agy skill link は非ゼロ終了' 1 "$wrong_link_agy_rc"
+assert_contains '異実体 Agy skill link を診断' "$wrong_link_agy_out" "$wrong_link_agy_repo/.agents/skills/open"
+
+conflict_agy_repo="$TEST_ROOT/conflict-agy"
+make_repo "$conflict_agy_repo"
+mkdir -p "$conflict_agy_repo/.agents/skills/open"
+printf 'keep\n' > "$conflict_agy_repo/.agents/skills/open/sentinel"
+set +e
+conflict_agy_out=$(RITE_STUB_LOG="$LOG" PATH="$BIN:$PATH" "$conflict_agy_repo/scripts/rite-dev" agy 2>&1)
+conflict_agy_rc=$?
+set -e
+assert_eq '競合する Agy skill path は非ゼロ終了' 1 "$conflict_agy_rc"
+assert_contains '競合する Agy skill path を診断' "$conflict_agy_out" "$conflict_agy_repo/.agents/skills/open"
+[[ $(<"$conflict_agy_repo/.agents/skills/open/sentinel") == keep ]] && \
+  pass '競合 path を上書きしない (agy)' || fail '競合 path を上書きしない (agy)'
 
 bad_grok_repo="$TEST_ROOT/bad-grok"
 make_repo "$bad_grok_repo"
