@@ -501,8 +501,9 @@ okf_version: "0.2"
 | [ユーザーにコピー実行させるコマンドをパスへ手書きの単一引用符で組み立てない](pages/anti-patterns/hand-single-quoted-copy-paste-command.md) | anti-patterns | WARNING に載せる手動復旧コマンドを rm -f '$path' のように手書きの単一引用符で組むと、パスにアポストロフィを含む環境で引用が閉じず、2 個含むと引数が分割されて無関係なパスが削除対象になる。表示用の無害化とは別に、実行用の文字列は printf %q で引用して作る。 | 2026-09-14T03:36:26Z | high |
 | [赤い CI check は失敗した step を見てから変更起因と判断する](pages/heuristics/ci-red-check-inspect-failed-step.md) | heuristics | CI の job が FAILURE でも、checkout やネットワーク解決の段階で落ちていればテストは 1 件も実行されておらず、変更の検証結果ではない。check 名と conclusion だけで変更起因の失敗と扱わず、job の steps から失敗した step を特定してから判断する。 | 2026-09-14T03:36:26Z | medium |
 | [macOS の awk の == は UTF-8 ロケールで照合比較になり、別の日本語文字列を等しいと判定する](pages/anti-patterns/macos-awk-string-equality-uses-locale-collation.md) | anti-patterns | macOS 標準の awk は UTF-8 ロケールで文字列の == をロケール照合で比較するため、別の日本語見出しを同じ見出しと判定し、Linux の gawk / mawk では再現しない誤判定を起こす。 | 2026-09-14T06:55:00Z | high |
+| [特定経路だけを壊す stub は、効果範囲が広がっていないことまで assert する](pages/heuristics/single-path-failure-stub-pins-its-blast-radius.md) | heuristics | 特定の引数のときだけ失敗させる stub で失敗経路を再現するときは、目的の診断が出ることに加えて、その診断の出現回数と隣接経路の縮退マーカー不在も assert する。そうしないと stub が他の呼び出しまで壊しても、目的の assert は緑のまま複合経路を検証してしまう。 | 2026-09-14T10:03:19Z | medium |
 ## 統計
 
-- 総ページ数: 491
-- ドメイン別: patterns=112, heuristics=218, anti-patterns=161
-- 最終更新: 2026-09-14T09:23:49Z
+- 総ページ数: 492
+- ドメイン別: patterns=112, heuristics=219, anti-patterns=161
+- 最終更新: 2026-09-14T10:03:19Z
