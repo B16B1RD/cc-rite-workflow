@@ -28,13 +28,16 @@
 #   --project-owner      Projects owner。省略時は --owner
 #   --projects-enabled   true|false。省略時 false
 #   --create-script      create-issue-with-projects.sh のパス。テスト注入用。省略時は plugin 内の実体
-#   --exclude-ids        転記から除外する finding id の CSV (例: "F-01,F-05")。cleanup ステップ 6.0 が
-#                        マージ後 HEAD で再検証し `resolved` と判定した id だけを渡す。空文字列 /
-#                        省略は「除外なし」であり引数不正ではない (後方互換)。既知 id と一致しない
-#                        値は WARNING のうえ無視し、残りの除外を適用して続行する。
-#                        和集合内で同一 id が複数 finding に付いている場合、その id は identity として
-#                        曖昧なため除外せずその id の finding を全件転記する (他の id の除外は継続する)。
-#                        WARNING と marker で surface し過剰転記側へ倒す。
+#   --exclude-ids        転記から除外する finding の key の CSV。key は出典 JSON の basename と id を
+#                        `#` で連結した値 (例: "9-20260101120000.json#F-01,9-20260102120000.json#F-05")。
+#                        cleanup ステップ 6.0 がマージ後 HEAD で再検証し `resolved` と判定した key だけを
+#                        渡す。各トークンは `^[0-9]+-[0-9]{14}\.json#F-[0-9]{2,}$` に一致しなければならず、
+#                        1 つでも外れれば除外を 1 件も適用しない (reason=parse_failed)。空文字列 / 省略は
+#                        「除外なし」であり引数不正ではない。和集合と一致しない key は WARNING のうえ
+#                        無視し、残りの除外を適用して続行する。
+#                        同じ key が和集合内の複数 finding に一致する場合 (同一 JSON 内の id 重複)、
+#                        その key は identity として曖昧なため除外せず全件転記する (他の key の除外は
+#                        継続する)。WARNING と marker で surface し過剰転記側へ倒す。
 #                        **除外が要求より少なく適用された経路はすべて FOLLOW_UP_EXCLUDE_AMBIGUOUS を
 #                        出す**（reason= で区別する。下記 Emitted markers 参照）
 #
@@ -52,12 +55,12 @@
 #   [CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=<r>; count=<n|unknown>; pr=<n>
 #     除外要求どおりに除外できなかったことを cleanup ステップ 12 へ通知する。
 #     marker 不在から除外適用・起票の成功を推定しない。起票結果は FOLLOW_UP_ISSUE で判定する。
-#       reason=ambiguous    : 和集合内で複数 finding に一致した id だけを除外拒否した。
-#                             count = 拒否した id の異なり数 (他の id の除外は適用済み)
+#       reason=ambiguous    : 和集合内で複数 finding に一致した key だけを除外拒否した。
+#                             count = 拒否した key の異なり数 (他の key の除外は適用済み)
 #       reason=undecidable  : 曖昧判定 / 除外解除の jq が失敗し除外を全破棄した。
-#                             count = 除外要求 id の総数 (適用された除外は 0 件)
-#       reason=parse_failed : --exclude-ids を解析できず除外を全破棄した。count=unknown
-#       reason=apply_failed : 除外適用の jq が失敗し除外を全破棄した。count = 要求 id 総数
+#                             count = 除外要求 key の総数 (適用された除外は 0 件)
+#       reason=parse_failed : --exclude-ids が key 形式でない / 解析できず除外を全破棄した。count=unknown
+#       reason=apply_failed : 除外適用の jq が失敗し除外を全破棄した。count = 要求 key 総数
 #   [CONTEXT] FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=<r>; pr=<n>
 #     sweep 起票済みの除外を適用できず、sweep で Issue 化済みの指摘も転記対象にした
 #     (再検証による除外は適用済みのまま。成功経路では出さない)。
@@ -207,8 +210,9 @@ for f in "$results_dir/${PR_NUMBER}"-*.json*; do
   { [ -e "$f" ] || [ -L "$f" ]; } || continue
   matched=$((matched + 1))
   : > "$union_err"
-  # 各 finding に出典 JSON のパス (`_src`) を持たせる。sweep 起票済みの除外を最新 JSON 由来の要素に
-  # 限るため (下の除外ブロック参照)。本文の生成は明示したフィールドだけを読むので転記には出ない。
+  # 各 finding に出典 JSON のパス (`_src`) を持たせる。再検証による除外の key (basename + id) と、
+  # sweep 起票済みの除外を最新 JSON 由来の要素に限る照合 (フルパス一致) の両方が使う。
+  # 本文の生成は明示したフィールドだけを読むので転記には出ない。
   if ! part=$(jq -c --arg src "$f" 'if (.non_blocking_findings | type) == "array" then .non_blocking_findings | map(if type == "object" then . + {_src: $src} else . end) else error("non_blocking_findings is not an array") end' "$f" 2>"$union_err"); then
     # 部分的な parse 失敗で全滅させない。健全な側の和集合で続行し、全滅時だけ json_undecidable。
     echo "WARNING: レビュー結果 JSON を読めないため和集合から除外します (PR #${PR_NUMBER}): $f" >&2
@@ -258,47 +262,55 @@ fi
 # 除外**後** 0 件だけが all_resolved (再検証で全件が解消済みと判定された)。両者を潰すと
 # 既存の no_findings 契約が回帰する。どちらも gh issue list より前に exit する。
 if [ -n "$EXCLUDE_IDS" ]; then
+  # 除外 key は「出典 JSON の basename + `#` + id」。`id` は各 JSON 内の連番で cycle 跨ぎの identity を
+  # 持たないため、出典と組にして初めて 1 件を指せる。`_src` はフルパスのまま保ち (sweep 起票済みの
+  # 照合がフルパス一致に依存する)、basename への変換は key の中だけで行う。
+  _key_def='def key: ((._src // "") | split("/") | last) + "#" + (.id // "");'
   # `-s` で入力全体を 1 文字列として読む。行単位 (`jq -R` 単体) だと改行入りの入力が
   # JSON 配列の複数連結になり、非空判定を通過した後で `--argjson` が rc=2 で落ちて
-  # unknown id の WARNING が無言で消える。改行も区切りとして畳めばその経路自体が無くなる。
+  # unknown key の WARNING が無言で消える。改行も区切りとして畳めばその経路自体が無くなる。
+  # 値はリテラル置換で二重引用符内へ渡されるため、許す文字を rite が付けるファイル名の形と id 書式に
+  # 限る。形が合わないトークンを 1 つでも含めば部分適用せず、除外を全破棄する。
   exclude_json=$(printf '%s' "$EXCLUDE_IDS" | jq -Rsc '
-    split("\n") | join(",") | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0)) | unique') || exclude_json=""
+    split("\n") | join(",") | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0)) | unique
+    | if all(.[]; test("^[0-9]+-[0-9]{14}\\.json#F-[0-9]{2,}$")) then . else error("exclude key format") end') || exclude_json=""
   if [ -z "$exclude_json" ]; then
-    echo "WARNING: --exclude-ids を解析できませんでした ('${EXCLUDE_IDS}')。除外を適用せず全件を転記します (PR #${PR_NUMBER})" >&2
+    # 入力は形の検証に落ちた値そのものなので、制御文字を潰してから載せる
+    _exclude_safe=$(printf '%s' "$EXCLUDE_IDS" | neutralize_ctrl)
+    echo "WARNING: --exclude-ids を解析できませんでした ('${_exclude_safe}')。各トークンは {出典 JSON 名}#F-NN の形でなければなりません。除外を適用せず全件を転記します (PR #${PR_NUMBER})" >&2
     # 除外を 1 件も適用していないので marker を出す (下記「除外ゼロなら必ず marker」参照)。
     # 要求件数は数えられない (解析に失敗した入力しか無い) ので count=unknown。
     echo "[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=parse_failed; count=unknown; pr=${PR_NUMBER}" >&2
   else
-    unknown_ids=$(printf '%s' "$findings_json" | jq -r --argjson ex "$exclude_json" '
-      ([.[] | .id // empty]) as $known | $ex - $known | join(", ")')
+    unknown_ids=$(printf '%s' "$findings_json" | jq -r --argjson ex "$exclude_json" "$_key_def"'
+      ([.[] | key]) as $known | $ex - $known | join(", ")')
     if [ -n "$unknown_ids" ]; then
-      # fail-loud: 一致しない id を silent に無視しない。転記自体は続行する (非ブロッキング)
-      echo "WARNING: --exclude-ids に non_blocking_findings[] と一致しない id が含まれます: ${unknown_ids} (PR #${PR_NUMBER})。一致した id のみ除外して続行します" >&2
+      # fail-loud: 一致しない key を silent に無視しない。転記自体は続行する (非ブロッキング)
+      echo "WARNING: --exclude-ids に non_blocking_findings[] と一致しない key が含まれます: ${unknown_ids} (PR #${PR_NUMBER})。一致した key のみ除外して続行します" >&2
     fi
-    # 和集合内で**同じ id が複数の finding に付いている**場合、その id は除外 key として曖昧になる
-    # (`id` は各 cycle 内の連番であり cycle 跨ぎの identity ではない)。6.0.V が片方だけを resolved と
-    # 判定しても `--exclude-ids` は id 一致で両方を落とすため、残存している側が黙って消える。
-    # よって曖昧な id は**除外せず全件を残し**、WARNING で surface する (過剰転記側へ倒す。
-    # `undecidable` は転記する / `id: null` は必ず `undecidable` と同じ方針)。
+    # 和集合内で**同じ key が複数の finding に付いている** (同一 JSON 内の id 重複) 場合、その key は
+    # 1 件を指せない。6.0.V が片方だけを resolved と判定しても key 一致で両方を落とすため、残存して
+    # いる側が黙って消える。よって曖昧な key は**除外せず全件を残し**、WARNING で surface する
+    # (過剰転記側へ倒す。`undecidable` は転記する / `key: null` は必ず `undecidable` と同じ方針)。
     # 判定 jq が失敗したら、除外をそのまま適用する側 (未解消の指摘が落ちうる危険側) ではなく
     # 除外なしで全件転記する側へ倒す。下の除外解除 jq の失敗ハンドラと同じ向きに揃えてある。
-    ambiguous_json=$(printf '%s' "$findings_json" | jq -c --argjson ex "$exclude_json" '
-      [ .[] | .id // empty ] | group_by(.) | map(select(length > 1) | .[0])
+    ambiguous_json=$(printf '%s' "$findings_json" | jq -c --argjson ex "$exclude_json" "$_key_def"'
+      [ .[] | key ] | group_by(.) | map(select(length > 1) | .[0])
       | map(select(. as $i | $ex | index($i))) | unique') \
       || {
         # 除外要求を全件拒否したので marker を出す。ここで落とすと「除外が 1 件も効いていないのに
         # 完了報告は解消済み N と出す」報告乖離になる。
-        # count は**除外要求 id の総数**で、成功経路の「曖昧 id の異なり数」とは母集団が違う。
+        # count は**除外要求 key の総数**で、成功経路の「曖昧 key の異なり数」とは母集団が違う。
         # reason= で区別し、消費側 (cleanup ステップ 12) が文面を出し分ける。
         # ここへ到達している時点で上流の jq -Rsc は成功しており exclude_json は妥当な JSON 配列
         # なので、length が入力理由で落ちることはない (到達不能な fallback を置かない)。
         _amb_req=$(printf '%s' "$exclude_json" | jq -r 'length')
-        echo "WARNING: 曖昧 id の判定に失敗しました。除外なしで全件を転記します (PR #${PR_NUMBER})" >&2
+        echo "WARNING: 曖昧 key の判定に失敗しました。除外なしで全件を転記します (PR #${PR_NUMBER})" >&2
         echo "[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=undecidable; count=${_amb_req}; pr=${PR_NUMBER}" >&2
         ambiguous_json="[]"; exclude_json='[]'
       }
     if printf '%s' "$ambiguous_json" | jq -e 'length > 0' >/dev/null 2>&1; then
-      # id は信頼できない入力 (レビュアーが書く JSON) なので、素の値は neutralize_ctrl を通す。
+      # key の id 部はレビュアーが書く JSON 由来なので、素の値は neutralize_ctrl を通す。
       # 件数サフィックスは bash 側で付ける。default 範囲は C0 + DEL + 0x80-0x9F を**バイト単位**で
       # 潰すため、文字列全体を通すと WARNING 本文の日本語 (例 `和` = E5 92 8C) が巻き込まれる。
       ambiguous_detail=""
@@ -306,27 +318,27 @@ if [ -n "$EXCLUDE_IDS" ]; then
         [ -n "$_amb_id" ] || continue
         _amb_safe=$(printf '%s' "$_amb_id" | neutralize_ctrl)
         ambiguous_detail="${ambiguous_detail:+${ambiguous_detail}, }${_amb_safe} (${_amb_n} 件)"
-      done < <(printf '%s' "$findings_json" | jq -r --argjson amb "$ambiguous_json" '
-        [ .[] | .id // empty ] | group_by(.)
+      done < <(printf '%s' "$findings_json" | jq -r --argjson amb "$ambiguous_json" "$_key_def"'
+        [ .[] | key ] | group_by(.)
         | .[] | select(.[0] as $i | $amb | index($i)) | [.[0], (length | tostring)] | @tsv')
       ambiguous_count=$(printf '%s' "$ambiguous_json" | jq -r 'length')
-      echo "WARNING: --exclude-ids の id が和集合内で複数の finding に一致するため除外しません: ${ambiguous_detail} (PR #${PR_NUMBER})。id は cycle ごとの連番で cycle 跨ぎの identity を持たないため、片方だけが解消済みでも両方を落とすと残存指摘が消えます。全件を転記します" >&2
+      echo "WARNING: --exclude-ids の key が和集合内で複数の finding に一致するため除外しません: ${ambiguous_detail} (PR #${PR_NUMBER})。同じ JSON 内で id が重複しており、片方だけが解消済みでも両方を落とすと残存指摘が消えます。全件を転記します" >&2
       # 起票結果とは独立に、除外を拒否したことを完了報告へ渡す。
-      # count は除外を拒否した id の異なり数 (転記された finding 件数ではない)。
+      # count は除外を拒否した key の異なり数 (転記された finding 件数ではない)。
       echo "[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=ambiguous; count=${ambiguous_count}; pr=${PR_NUMBER}" >&2
       if remaining_excludes=$(printf '%s' "$exclude_json" | jq -c --argjson amb "$ambiguous_json" '. - $amb'); then
         exclude_json="$remaining_excludes"
       else
-          # 直前に reason=ambiguous の marker を出しているが、そちらは「一部の id を除外できない」
+          # 直前に reason=ambiguous の marker を出しているが、そちらは「一部の key を除外できない」
           # 意味で、こちらは「除外を全破棄した」意味。件数も母集団が違うので改めて出す。
           _amb_req=$(printf '%s' "$exclude_json" | jq -r 'length')
-          echo "WARNING: 曖昧 id の除外解除に失敗しました。除外なしで全件を転記します (PR #${PR_NUMBER})" >&2
+          echo "WARNING: 曖昧 key の除外解除に失敗しました。除外なしで全件を転記します (PR #${PR_NUMBER})" >&2
           echo "[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=undecidable; count=${_amb_req}; pr=${PR_NUMBER}" >&2
           exclude_json='[]'
       fi
     fi
-    if filtered_json=$(printf '%s' "$findings_json" | jq -c --argjson ex "$exclude_json" '
-      [.[] | select((.id // "") as $i | ($ex | index($i)) | not)]'); then
+    if filtered_json=$(printf '%s' "$findings_json" | jq -c --argjson ex "$exclude_json" "$_key_def"'
+      [.[] | select(key as $k | ($ex | index($k)) | not)]'); then
       findings_json="$filtered_json"
     else
       # 除外を 1 件も適用できていないので marker を出す (「除外ゼロなら必ず marker」)。
