@@ -33,15 +33,18 @@ sources:
     resource: "raw/reviews/20260913T020014Z-pr-2760.md"
   - type: "reviews"
     resource: "raw/reviews/20260914T025734Z-pr-2798.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260914T091626Z-pr-2813.md"
 tags: ["test", "fixture", "mutation", "invariant", "coverage"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-14T03:36:26Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-14T09:23:49Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T18:43:00+00:00" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T23:20:00+00:00" }
   - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-13T01:10:00+00:00" }
   - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-13T02:07:58+00:00" }
   - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-14T03:36:26Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-14T09:23:49Z" }
 ---
 
 # テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する
@@ -126,6 +129,14 @@ negative control の fixture は、**検証したい分岐に確実に入る形�
 - 複数条件に外れる対照を残すなら、コメントで「単独の条件は固定しない」と明記する。「各対照が 1 条件だけを外す」と書いたコメントのまま置くと、コメントが守れていない保証を主張する
 - 条件ごとに変異を 1 つ当て、どの対照の assert が落ちたかをラベル単位で見る。落ちない条件があれば、その条件だけを外す対照が欠けている
 
+### 9. テスト入力の値が変異の落ち方を変え、assert の単独の検出力を奪うことがある
+
+未知ラベルを受けて既定ラベルに倒す分岐のテストで、入力ラベルに `/` を含む値を選んだ例がある。フォールバックを消す変異を当てると、ラベルが sed の置換式にそのまま入って sed 自体が失敗し、詳細行が 1 行も出なくなる。このため「未知ラベルを接頭辞に使わない」ことを見る否定の assert は、変異の下でも満たされたまま通る。変異を落としていたのは、既定ラベルの詳細行を完全一致で探す別の assert だけだった。
+
+- 変異は 1 つずつ当て、**assert ごとに**落ちたかを見る。「スイートが落ちた」だけでは、ある assert が単独で何も検出していないことが隠れる
+- 入力値が「実装を壊したときの壊れ方」を変えていないかを確かめる。壊れ方が変われば、否定の assert は探す行そのものが出ないことで通ってしまう
+- 単独の検出力が要るなら、壊れ方を変えない値（`/` を含まないラベル）に替える。壊れ方を実演できる値を残すなら、その否定の assert は補助だと分かる名前にし、保証を担う assert を別に置く
+
 ### 検証の決定打
 
 guard・不変量の TC を追加したら、worktree-only mutation（当該 guard / report_diff 呼び出しの削除、列挿入等）を実機注入して「その TC だけが FAIL する」ことを確認する。見た目の構造同型ではなく mutation の kill 実績が non-vacuous coverage の証明になる。
@@ -156,3 +167,4 @@ guard・不変量の TC を追加したら、worktree-only mutation（当該 gua
 - [条件式の文字列一致では片側だけに足した別行ルールを検出できないことを変異で示したレビュー結果](../../raw/reviews/20260913T005700Z-pr-2757.md)
 - [差分テストが区切りの出ない変異を素通りさせることを示したレビュー結果](../../raw/reviews/20260913T020014Z-pr-2760.md)
 - [symlink 対照が単独の条件を固定していないことを実測したレビュー結果](../../raw/reviews/20260914T025734Z-pr-2798.md)
+- [入力ラベルの値が否定の assert の単独の検出力を奪うことを変異で示したレビュー結果](../../raw/reviews/20260914T091626Z-pr-2813.md)

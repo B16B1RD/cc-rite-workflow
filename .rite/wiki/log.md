@@ -18,6 +18,8 @@
 * **Update**: [バグ修正PRが新設したエラーパス自身にも回帰テストを追加する](pages/patterns/bugfix-new-error-path-needs-regression-test.md) — [共通の診断出力 helper に経路ラベルを導入した変更のレビュー結果](raw/reviews/20260914T083015Z-pr-2808.md) を統合。値の限定を兼ねるフォールバック分岐にも入口テストが要る節を追記
 * **Update**: [pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する](pages/patterns/pin-literal-uniqueness-verified-by-mutation.md) — [共通の診断出力 helper に経路ラベルを導入した変更のレビュー結果](raw/reviews/20260914T083015Z-pr-2808.md) を統合。行順 assert の探索パターンが複数行に当たると先頭一致が別の行へ乗り換える節を追記
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=485, broken_refs=0
+* **Update**: [バグ修正PRが新設したエラーパス自身にも回帰テストを追加する](pages/patterns/bugfix-new-error-path-needs-regression-test.md) — [到達不能な分岐を関数の抜き出しで固めたテストのレビュー結果](raw/reviews/20260914T091626Z-pr-2813.md) を統合。抜き出した定義の形を検査し関数の定義を確かめてから呼ぶ節を追記
+* **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — [到達不能な分岐を関数の抜き出しで固めたテストのレビュー結果](raw/reviews/20260914T091626Z-pr-2813.md) を統合。テスト入力の値が変異の壊れ方を変えて否定の assert の単独の検出力を奪う節を追記
 
 ## 2026-09-13
 

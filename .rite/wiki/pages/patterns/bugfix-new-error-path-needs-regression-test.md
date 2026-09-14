@@ -12,12 +12,16 @@ sources:
     resource: "raw/fixes/20260709T061632Z-pr-1808-cycle2.md"
   - type: "reviews"
     resource: "raw/reviews/20260914T083015Z-pr-2808.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260914T091626Z-pr-2813.md"
 tags: [test-coverage, regression-test, revert-test, non-vacuous, self-referential]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-14T08:45:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-14T09:23:49Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-09-14T08:45:00Z"
+  - by: "rite-wiki-ingest/claude-opus-5[1m]"
+    at: "2026-09-14T09:23:49Z"
 ---
 
 # バグ修正PRが新設したエラーパス自身にも回帰テストを追加する
@@ -68,6 +72,12 @@ fi
 - テストは関数を抜き出して未知の値で呼び、(1) 内部エラーの文言が出る (2) 詳細行が既定ラベルで出る、の 2 点を assert する
 - 到達不能に見えるからと分岐を削ると、値の限定という役割まで一緒に消える。削るか残すかは、その分岐が受けていた入力の行き先を確認してから決める
 
+関数を抜き出す方式には、抽出そのものが静かに崩れる穴がある。sed の範囲指定（定義行から行頭の `}` まで）は、閉じ括弧が字下げされるなど定義の形が変わると途中で切れたり末尾まで取り込んだりするが、「抽出結果が空でない」ことしか見ていないとどちらも通ってしまう。
+
+- 抽出結果に形の条件を課してから使う。定義行がちょうど 1 つ、最終行が `}` だけ、検証したい分岐（`case` 行など）を含む、の 3 点を満たさなければテストを fail させる。とくに最終行の条件は、範囲が末尾まで伸びたとき（helper の最終行が `exit 0` 等）に唯一落ちる
+- サブシェルで依存ファイルを source して定義を eval したあと、`declare -F` で関数と依存関数の両方が定義されたことを確かめる。source が失敗しても eval は通るため、ここを見ないと後段の assert がまとめて的外れな理由で落ちる
+- eval する中身は同一リポジトリの helper であり、テストが helper 全体を既に実行しているなら新しい信頼境界は生まれない。サブシェルに閉じれば定義や変数もテスト本体へ漏れない
+
 ## 関連ページ
 
 - [resolver / helper 失敗時の silent fallback は debug log で観測性を確保する](./silent-fallback-observability-via-debug-log.md)
@@ -79,3 +89,4 @@ fi
 - [レビュー結果](../../raw/reviews/20260709T061246Z-pr-1808-cycle2.md)
 - [fix 結果](../../raw/fixes/20260709T061632Z-pr-1808-cycle2.md)
 - [未知ラベルのフォールバック分岐に入るテストが無かった](../../raw/reviews/20260914T083015Z-pr-2808.md)
+- [関数を抜き出して到達不能な分岐を固めたテストのレビュー結果](../../raw/reviews/20260914T091626Z-pr-2813.md)
