@@ -57,7 +57,8 @@
 #   T-33 除外は最新 JSON 由来で台帳の issued 行と組が一致する finding に限る。先行 cycle の finding は
 #        id・位置が同じでも転記し、重複しうる件数を WARNING で出す / 最新 JSON を照合できなければ apply_failed
 #   T-34 cleanup SKILL.md が all_issued と除外不能 note を完了報告へ配線する
-#   T-35 台帳の選別述語が nb-sweep-collect.sh と揃っている
+#   T-35 台帳の選別述語が nb-sweep-collect.sh と揃っている (CRLF 正規化の位置を含む)
+#   T-36 CRLF 本文の却下台帳も issued 行を読める
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -1165,7 +1166,25 @@ for f in "$TARGET" "$COLLECT_SH"; do
   assert_grep "T-35 見出し ($(basename "$f"))" "$f" 'select\(startswith\("## 📜 rite 非実測指摘の記録"\)\)'
   assert_grep "T-35 sentinel ($(basename "$f"))" "$f" '== "<!-- rite:nbr:v1 -->"\)'
   assert_grep "T-35 台帳節の切り出し ($(basename "$f"))" "$f" 'split\("### 却下台帳\\n"\)\[1:\]\[\]'
+  # CRLF 正規化は本文取得の直後・台帳切り出しより前に置く (離れた場所の gsub では pin にならない)
+  assert_grep "T-35 CRLF 正規化が本文取得に隣接 ($(basename "$f"))" "$f" '^ *| \.body // "" | gsub\("\\r\\n"; "\\n"\)$'
+  norm_line=$(grep -n '\.body // "" | gsub("\\r\\n"; "\\n")' "$f" | head -1 | cut -d: -f1)
+  split_line=$(grep -n 'split("### 却下台帳\\n")\[1:\]\[\]' "$f" | head -1 | cut -d: -f1)
+  assert "T-35 CRLF 正規化が台帳切り出しより前 ($(basename "$f"))" "yes" "$([ -n "$norm_line" ] && [ -n "$split_line" ] && [ "$norm_line" -lt "$split_line" ] && echo yes || echo no)"
 done
+
+echo "--- T-36: CRLF 本文の却下台帳も issued 行を読める ---"
+reset_stubs
+r=$(new_root t36)
+put_json "$r" "9-20260101120000.json" "$FINDING_JSON"
+crlf_body=$(record_body '| F-01 | plugins/rite/skills/cleanup/SKILL.md:12 | issued | #77 https://example.test/issues/77 |' | sed 's/$/\r/')
+assert "T-36 fixture は CR を含む" "yes" "$(printf '%s' "$crlf_body" | grep -q $'\r' && echo yes || echo no)"
+jq -n --argjson c "$(comment_obj "$crlf_body")" '[[$c]]' > "$GH_API_JSON"
+run_target "$r"
+assert "T-36 exit 0" "0" "$RC"
+assert_grep "T-36 CRLF でも all_issued" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=all_issued; pr=9'
+assert_grep "T-36 CRLF でも除外件数 1" "$ERR" 'sweep_issued: pr=9; excluded=1; possible_duplicates=0$'
+assert "T-36 create 0 回" "0" "$(create_count)"
 
 echo "--- T-arg: 引数 gate ---"
 bash "$TARGET" --pr abc --state-root "$TMP_ROOT" --owner a --repo b >"$OUT" 2>"$ERR"; RC=$?
