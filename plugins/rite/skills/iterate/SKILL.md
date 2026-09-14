@@ -607,8 +607,19 @@ args: "{pr_number}"
 |---------|-----------|
 | `[review:mergeable]` | ステップ 5.S（NB digest sweep。完了通知の前） |
 | `[review:fix-needed:N]` | ステップ 3 (fix invoke) へ |
+| `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=ac_unverified; ac={ids}` | 受入条件未検証の停止。再試行せず、下記の停止通知を出して終了する（成功 sentinel も新しい sentinel も出さない） |
 | `[review:error]` | 可逆な再試行を推奨として 1 回だけ自動実行し、work memory の既存決定事項へ理由を記録する。再失敗なら停止 |
 | sentinel 不在 | 可逆な再試行を推奨として 1 回だけ自動実行し、期待 sentinel と直近出力を既存 work memory へ記録する。再度不在なら停止 |
+
+`REVIEW_STOP` は行頭 `[CONTEXT] ` の marker だけを判定に使う（診断文や引用の中の文字列では分岐しない）。同じ HEAD を再レビューしても観測できない AC は変わらないため再試行しない。停止通知は `state-path-resolve.sh` 基準の `.rite/review-results/{pr_number}-*.json` のうち最新のファイルの `acceptance_criteria` から `status == "unverified"` の行を読んで作る:
+
+```
+## /rite:iterate 停止（受入条件未検証）
+
+- PR: #{pr_number}
+- 未検証の受入条件: {ac_id} — {evidence}（1 行ずつ）
+- 次の一手: 上記 AC を実環境で動作確認してください
+```
 
 ---
 

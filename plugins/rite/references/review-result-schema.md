@@ -186,6 +186,7 @@
 | `reviewer_timings` | array | (任意、1.1.0+) | 本 cycle で回収できた各 reviewer の起動時刻。要素は `{reviewer, started_at}` で、`reviewer` は `findings[].reviewer` と同じ参照整合性規則 (`agents/*-reviewer.md` の basename)、`started_at` は ISO 8601 UTC の正規形 (`YYYY-MM-DDThh:mm:ssZ`) または `null` (取得不能)。値源は `pr-review.md` ステップ 4.3.1（orchestrator が Task spawn 直前に記録した時刻）。ステップ 4.6 が timings JSON に書く。audit-only で、判定 consumer (`/rite:fix` / merge ゲート / 収束トレンド判定) は無視する。下記 [reviewer_timings と直列化フラグ](#reviewer_timings-と直列化フラグ) 参照 |
 | `reviewer_spawn_serialized` | bool | (任意、1.1.0+) | 起動時刻の拡がり (spawn spread) が閾値を超えたか。書き手は `hooks/scripts/review-spawn-spread-check.sh` のみ。**計測不能のときはキーごと欠落する** — `true` / `false` / 欠落 (= 未判定) の 3 値モデルである |
 | `reviewer_spawn_spread_seconds` | integer | (任意、1.1.0+) | 実測した spawn spread (秒、`max(started_at) - min(started_at)`)。`reviewer_spawn_serialized` と同時に書かれ、同時に欠落する |
+| `acceptance_criteria` | array \| object | write 側 ✅ (1.1.0 additive) | 関連 Issue の受入条件を acceptance reviewer が HEAD で確認した判定表、または対象外の理由。書き手は `pr-review.md` ステップ 5.3.0.M step 1 のみ。下記 [acceptance_criteria](#acceptance_criteria) 参照 |
 | `class_demotion` | object | (任意、1.1.0+) | 帰結クラス降格政策 ([assessment-rules.md §5.3.0.C](../skills/fix/references/assessment-rules.md#530c-帰結クラス降格政策-consequence-class-demotion-gate)) の監査フラグ。書き手は `scripts/review-class-demotion-gate.sh` のみ。形は `{applied: bool, class_a: int, class_b: int, demoted: int}` — `applied` は降格が発動したか (class A=0 ∧ 除外なし class B≥1)。部分降格では `demoted` が `class_b` より小さい。除外付き B のみなら not-triggered（`applied=false`）。`class_a` / `class_b` は effective 分類の件数 (判定不能は class A に計上)、`demoted` は本 cycle で移送した件数。**キー欠落 = 本ゲート未適用の cycle** (blocking 0 件の no-op を含む)。audit-only で判定 consumer は無視する — assessment / verdict への反映は helper が代入済みのため、read 側が本キーから判定を再導出してはならない |
 
 ### `findings[]` 要素
@@ -254,6 +255,33 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 **3 値モデル (`true` / `false` / 欠落)**: `reviewer_spawn_serialized` と `reviewer_spawn_spread_seconds` は**判定できたときのみ**書かれ、計測不能ではキーごと欠落する。「並列だった」と「測れなかった」を `false` に丸めると、計測失敗が直列化の隠れ蓑になるため。何が測れなかったかは `reviewer_timings[].started_at` の `null` に残る。計測不能の理由自体は helper が `[CONTEXT] SPAWN_SPREAD=undetermined; reason=` として会話へ出すもので、本 JSON には持たない (永続化する意味を持つのは計測値であって、その cycle 限りの失敗理由ではない)。
 
 **schema_version は bump しない**: `verification` / `verdict` / `reviewers` と同じ additive 追加の方針で、読取側 accept list 4 箇所の同期変更を避ける。read 側は未知キーを無視するため旧 reader でも壊れない。**`schema_version == "1.1.0"` から本 3 キーの存在を推論してはならない**。
+
+### `acceptance_criteria`
+
+<a id="acceptance_criteria"></a>
+
+関連 Issue の `## 5. Acceptance Criteria` にある全 `### AC-N` を、acceptance reviewer が本 cycle の HEAD で確認した結果。`pr-review.md` ステップ 5.3.0.M step 1 が毎 cycle 書き、降格ゲート helper は触れない。schema_version は bump しない（additive）。
+
+対象 cycle は配列で、AC ごとに 1 要素（Issue の AC-ID 集合と一致）:
+
+```json
+"acceptance_criteria": [
+  {"id": "AC-1", "status": "satisfied", "finding_id": null, "evidence": "bash hooks/tests/foo.test.sh => PASS: 12 FAIL: 0"},
+  {"id": "AC-2", "status": "unmet", "finding_id": "F-01", "evidence": "指摘事項 [AC-2] を参照"},
+  {"id": "AC-3", "status": "unverified", "finding_id": null, "evidence": "認証付きの実環境が必要"}
+]
+```
+
+| フィールド | 型 | 説明 |
+|-----------|-----|------|
+| `id` | string | `AC-N` |
+| `status` | **enum** (string) | `"satisfied"` (充足) / `"unmet"` (未充足) / `"unverified"` (未検証)。reviewer 出力の日本語判定と 1 対 1 |
+| `finding_id` | string \| null | `unmet` のときだけ、`description` が `[AC-N]` で始まる acceptance-reviewer の finding の `id`。それ以外は `null` |
+| `evidence` | string | 判定の根拠（実行コマンドと観測結果、または未検証の理由）。空にしない |
+
+対象外 cycle は object で、理由を 1 つ持つ: `{"skipped": "no_issue"}`（関連 Issue を特定できない）/ `{"skipped": "no_ac_section"}`（テンプレート形式の AC 節がない）。
+
+**`unmet` 行は降格されない**: 行の `finding_id` は降格ゲート適用後も `findings[]` の `scope == "current-pr"` に残っていなければならず、残っていなければ `pr-review.md` ステップ 5.3.0.A が停止する。`status` を `unverified` へ書き換えて通すことはない。`total_findings == 0` かつ `unverified` 行が 1 つ以上の cycle は保存後に `[review:error]` で停止する（ステップ 8.1）。
 
 ### `non_blocking_findings` 配列
 

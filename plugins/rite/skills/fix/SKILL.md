@@ -979,7 +979,7 @@ rite 結果がない場合も空の `findings` / `non_blocking_findings` を持�
 
 **全通常入力経路の合流点**。P0 明示ファイル、P1 会話、P2 ローカル JSON、P3 Raw JSON / legacy Markdown、Target Comment Fast Path は分類・選択・0 件終了の前に必ず本節を実行する。`--nb-sweep` の専用経路は変更しない。
 
-1. P0/P2 は選択した元のファイルを `{triage_review_path}` とし、producer を変更しない。P1/P3 は解析結果を JSON オブジェクト（`findings[]` / `non_blocking_findings[]`、PR 番号、commit SHA、元の gate receipt と verification を保持）にし、`state-path-resolve.sh` が返すルートの `.rite/review-results/` に `{pr_number}-{timestamp}.json`（timestamp は `YYYYMMDDHHMMSS`、同名があれば一意になるまで新しい時刻を取得） として atomic write する。Write 失敗は `[fix:error]` で終了する。新規 JSON のトップレベルに `producer: "fix"` を設定する（元 JSON に producer があっても上書き）。元ソースの `{review_source}` は provenance として保持する。
+1. P0/P2 は選択した元のファイルを `{triage_review_path}` とし、producer を変更しない。P1/P3 は解析結果を JSON オブジェクト（`findings[]` / `non_blocking_findings[]`、PR 番号、commit SHA、元の gate receipt と verification、`acceptance_criteria` を保持）にし、`state-path-resolve.sh` が返すルートの `.rite/review-results/` に `{pr_number}-{timestamp}.json`（timestamp は `YYYYMMDDHHMMSS`、同名があれば一意になるまで新しい時刻を取得） として atomic write する。Write 失敗は `[fix:error]` で終了する。新規 JSON のトップレベルに `producer: "fix"` を設定する（元 JSON に producer があっても上書き）。元ソースの `{review_source}` は provenance として保持する。
 2. P0 の helper source は `explicit_file`、それ以外は `local_file`。次を実行する。helper は **元 JSON に persist してから** ID-keyed `fatal_map` / `severity_map` / `scope_map` を返す。`fatal = verification.measured == true AND severity ∈ {CRITICAL, HIGH} AND scope ∈ {current-pr, follow-up}` の判定はこの helper だけが担い、LLM は再分類しない。gated な非 fatal を `demotion_reason: "non_fatal"` 付きで `non_blocking_findings[]` へ移送し、nit は保持する。
 
 ```bash
