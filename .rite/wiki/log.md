@@ -17,6 +17,7 @@
 * **Update**: [実装の分岐を散文へ落とす前に、フラグの状態数と観測ラベルの値域を機械的に数える](pages/heuristics/count-implementation-states-before-writing-prose.md) — [共通の診断出力 helper に経路ラベルを導入した変更のレビュー結果](raw/reviews/20260914T083015Z-pr-2808.md) を統合。ラベル機構の説明コメントを書く前に全呼び出し元の経路を列挙する節を追記
 * **Update**: [バグ修正PRが新設したエラーパス自身にも回帰テストを追加する](pages/patterns/bugfix-new-error-path-needs-regression-test.md) — [共通の診断出力 helper に経路ラベルを導入した変更のレビュー結果](raw/reviews/20260914T083015Z-pr-2808.md) を統合。値の限定を兼ねるフォールバック分岐にも入口テストが要る節を追記
 * **Update**: [pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する](pages/patterns/pin-literal-uniqueness-verified-by-mutation.md) — [共通の診断出力 helper に経路ラベルを導入した変更のレビュー結果](raw/reviews/20260914T083015Z-pr-2808.md) を統合。行順 assert の探索パターンが複数行に当たると先頭一致が別の行へ乗り換える節を追記
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=485, broken_refs=0
 
 ## 2026-09-13
 
