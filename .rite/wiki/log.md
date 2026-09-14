@@ -7,6 +7,7 @@
 * **Update**: [ユーザーにコピー実行させるコマンドをパスへ手書きの単一引用符で組み立てない](pages/anti-patterns/hand-single-quoted-copy-paste-command.md) — [引用修正と検出力テストを確認したレビュー結果](raw/reviews/20260914T025734Z-pr-2798.md) を統合。変異を確実に落とすテストの組み立てと、差分外に残る同形の案内の洗い出しを追記
 * **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — [引用修正と検出力テストを確認したレビュー結果](raw/reviews/20260914T025734Z-pr-2798.md) を統合。除外側の対照が判定式の条件を 1 つだけ外す形になっているかの確認を追記
 * **Create**: [赤い CI check は失敗した step を見てから変更起因と判断する](pages/heuristics/ci-red-check-inspect-failed-step.md) — [引用修正と検出力テストを確認したレビュー結果](raw/reviews/20260914T025734Z-pr-2798.md) を新規ページ化
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=484, broken_refs=0
 
 ## 2026-09-13
 
