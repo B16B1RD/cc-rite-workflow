@@ -111,8 +111,9 @@
 #     (最終非空行の等値) にする — 片側だけ緩いと人間のコメントを掴んで破壊し、片側だけ厳しいと増殖する。4 段目は step 1 の本文 variant 選択と
 #     step 2 の --count 置換のずれ（無音喪失 / 虚偽記録）を捕捉する。
 #     rationale: ../skills/pr-review/references/measured-gate-record.md#startswith
-#   - **create は count > 0 でガード**: 0 件 ∧ 既存なしで「0 件です」という事実と異なるコメントを
-#     新規作成しない (AC-4 非退行)。
+#   - **create は count > 0 ∨ 却下台帳エントリ ≥ 1 でガード**: 0 件 ∧ 台帳なし ∧ 既存なしで「0 件です」
+#     という事実と異なるコメントを新規作成しない。台帳だけを持つ本文は、台帳の保存先が記録コメントしか
+#     ないため 0 件でも作成する。台帳エントリを数えられないときは body_check_unavailable で failed にする。
 #   - [CONTEXT] / WARNING は stderr (6.1.a/b/c の 3 兄弟 helper と同一)。
 #
 # Exit codes:
@@ -855,11 +856,29 @@ if [ -z "$body_count" ] || [ "$body_count" != "$NB_COUNT" ]; then
   exit 0
 fi
 
+# 却下台帳 (nb-sweep-ledger.sh が `📎 non_blocking_count:` 行の直前へ splice する節) のエントリ行を数える。
+# 台帳の保存先は記録コメントしかないため、非実測指摘が 0 件でも台帳を持つ本文は投稿しないと台帳が失われる。
+# 節の範囲 (見出しから次の `### ` 見出しまたは count 行まで) と列ヘッダ・区切り行の除外は同 helper と揃える。
+# 数えられなかったときは 0 件と読まない — 0 件扱いにすると台帳が skip で無音に消える。
+if ! ledger_entry_count=$(awk -v head='### 却下台帳' '
+       { sub(/\r$/, "") }
+       $0 == head { in_sec = 1; next }
+       in_sec && (/^📎 non_blocking_count:/ || /^### /) { in_sec = 0 }
+       in_sec && /^[|] / && !/^[|] finding_id / && !/^[|][-: |]+[|]$/ { n++ }
+       END { print n + 0 }
+     ' "$CONTENT_FILE" 2>/dev/null) || [[ ! "$ledger_entry_count" =~ ^[0-9]+$ ]]; then
+  echo "WARNING: 非実測記録の本文から却下台帳のエントリ数を数えられませんでした。投稿を中止します" >&2
+  echo "  対処: awk の実行環境を確認してください (gh 認証 / network / 権限や本文生成の問題ではありません)" >&2
+  echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=body_check_unavailable" >&2
+  outcome="failed"
+  exit 0
+fi
+
 # --- 記録 / skip の分岐 ---
-# 検索 degraded 時は `0 件 → skip` / `>0 件 → 新規作成に縮退` (WARNING と degraded=1 は emit 済で
-# silent 縮退にはならない)。ここに到達した時点で本文は count/body 整合検査を通過済み。
-if [ -z "$existing_id" ] && [ "$NB_COUNT" -eq 0 ]; then
-  # 0 件 ∧ 既存なし: 投稿しない (AC-4 非退行)。事実と異なる「0 件」コメントを新規作成しない。
+# 検索 degraded 時は `0 件 ∧ 台帳なし → skip` / それ以外 → 新規作成に縮退 (WARNING と degraded=1 は
+# emit 済で silent 縮退にはならない)。ここに到達した時点で本文は count/body 整合検査を通過済み。
+if [ -z "$existing_id" ] && [ "$NB_COUNT" -eq 0 ] && [ "$ledger_entry_count" -eq 0 ]; then
+  # 0 件 ∧ 台帳なし ∧ 既存なし: 投稿しない。事実と異なる「0 件」コメントを新規作成しない。
   # ただし degraded 由来の「既存なし」は **既存コメントが実在しても検出できなかった** 可能性が
   # あるため、収束 cycle のクリア (AC-2) が成立していないことを明示する。
   [ "$lookup_degraded" = "1" ] && _record_degraded_skip_hint
@@ -954,7 +973,7 @@ if [ -n "$existing_id" ]; then
     _record_gh_failure "更新 (PATCH)" patch_failed "$?"
   fi
 else
-  # ここに来るのは count > 0 のときのみ (0 件 ∧ 既存なしは上で skip 済)。
+  # ここに来るのは count > 0 または却下台帳エントリがあるときのみ (0 件 ∧ 台帳なし ∧ 既存なしは上で skip 済)。
   # F-01 (cycle 3 review, application-reviewer + error-handling-reviewer が独立検出):
   # _record_degraded_create_hint は create の**成否が確定してから** (outcome="created" の直後)
   # 呼ぶこと。gh issue comment の実行前に呼ぶと、create 自体が失敗した run でも「重複して新規作成した」

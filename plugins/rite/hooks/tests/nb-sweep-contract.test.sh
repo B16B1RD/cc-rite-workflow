@@ -9,6 +9,10 @@
 # T-06 ledger write / merge fail-loud (AC-6)
 # T-07 class A findings[] stay out of sweep targets (AC-7)
 # T-08 body_count extraction expression matches between fix/references/nb-sweep.md and the record helper (AC-1..AC-3)
+# T-09 a ledger-only body (0 findings, no existing comment) creates the record comment, including CRLF and degraded lookup
+# T-10 nb-sweep.md record step succeeds only on created / updated and never reaches the done write otherwise
+# T-11 a body without ledger entries keeps the no-op skip; count mismatch and uncountable ledger fail instead
+# T-12 an existing record comment is updated in place even when the body carries a ledger
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -295,7 +299,9 @@ assert_grep "T-07 iterate sweep-done ステップ1禁止" "$ITERATE" 'ステッ�
 assert_grep "T-07 fix --nb-sweep" "$FIX" '\-\-nb-sweep'
 assert_grep "T-07 fix sweep-done sentinel" "$FIX" '\[fix:sweep-done\]'
 assert_grep "T-07 fix persist uses body count" "$FIX" '\-\-count "\$body_count"'
-assert_grep "T-07 fix record failed is error" "$FIX" 'outcome=failed'
+assert_grep "T-07 fix record reads the terminal outcome" "$FIX" 'record_outcome=.*NONBLOCKING_RECORD_DONE=1; \.\*outcome='
+assert_grep "T-07 fix record succeeds only on created / updated" "$FIX" '^[[:space:]]*0:created[|]0:updated\) ;;$'
+assert_not_grep "T-07 fix record drops the failed-only check" "$FIX" 'NONBLOCKING_RECORD_FAILED=1[|]outcome=failed'
 assert_grep "T-07 fix issued route" "$FIX" 'route=issued'
 assert_grep "T-07 fix recorded machine rationale" "$FIX" 'severity=\{sev\}; measured=\{bool\}'
 assert_grep "T-07 sweep forbids commits" "$FIX" 'コードを変更せず、commit / push を行わない'
@@ -456,6 +462,172 @@ assert_grep "reentry and nested sweep cannot overwrite entry reason" "$ITERATE" 
 assert "unknown entry cannot imply success" 1 "$(printf '%s\n' "$sweep_exit" | grep -c '^| 欠落 / その他 | `\[iterate:nb-sweep-error\]`')"
 assert_grep "all successful sweep outcomes use entry routing" "$ITERATE" '5\.S の `done` / `noop` / `skipped`.*消化の成功だけ'
 assert_grep "merge-mode batch still stops on reply-only" "$PLUGIN_ROOT/skills/batch-run/SKILL.md" '^\| `\[fix:replied-only\]` \+ `merge` \|.*ステップ 8'
+
+# --- 却下台帳だけを持つ本文の記録（T-09〜T-12） ---
+# 記録 helper 専用の gh stub。collect 用 stub（exit 97 で未知の呼び出しを落とす）とは別ディレクトリに置き、
+# helper / sweep ブロックの実行中だけ PATH の先頭へ入れる。
+nbr_bin="$sandbox/nbr-bin"
+mkdir -p "$nbr_bin"
+cat > "$nbr_bin/gh" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$NBR_GH_LOG"
+case "${1:-} ${2:-}" in
+  'api user') printf 'rite-bot\n'; exit 0 ;;
+  'pr view')
+    case " $* " in *" headRefName "*) printf 'feat/issue-42-test\n' ;; *) printf 'Closes #42\n' ;; esac
+    exit 0 ;;
+  'issue view'|'issue edit') exit 0 ;;
+  'issue comment')
+    args=("$@")
+    for ((i = 0; i < ${#args[@]}; i++)); do
+      [ "${args[$i]}" = --body-file ] && cp "${args[$((i + 1))]}" "$NBR_POSTED"
+    done
+    printf 'https://github.com/test/repo/issues/42#issuecomment-4242\n'
+    exit 0 ;;
+  'api --paginate')
+    [ "${NBR_LOOKUP_FAIL:-0}" = 0 ] || exit 1
+    cat "$NBR_COMMENTS"
+    exit 0 ;;
+esac
+case " $* " in
+  *" -X PATCH "*) jq -j '.body' > "$NBR_POSTED"; exit 0 ;;
+  # nb-sweep.md 手順 3 の既存記録コメント取得。記録コメントなしを返す
+  *" --paginate --jq "*) exit 0 ;;
+esac
+exit 97
+SH
+chmod +x "$nbr_bin/gh"
+export NBR_GH_LOG="$sandbox/nbr-gh.log"
+export NBR_POSTED="$sandbox/nbr-posted.md"
+export NBR_COMMENTS="$sandbox/nbr-comments.json"
+nbr_err="$sandbox/nbr.err"
+
+run_nbr_helper() {  # $1=count $2=content-file
+  : > "$NBR_GH_LOG"
+  rm -f "$NBR_POSTED"
+  nbr_rc=0
+  PATH="${NBR_EXTRA_PATH:+$NBR_EXTRA_PATH:}$nbr_bin:$PATH" bash "$NBR_SH" --pr 7 --owner-repo test/repo \
+    --count "$1" --iteration-id nbr-contract --content-file "$2" 2>"$nbr_err" || nbr_rc=$?
+  nbr_outcome=$(sed -n 's/^\[CONTEXT\] NONBLOCKING_RECORD_DONE=1; .*outcome=\([^;]*\);.*/\1/p' "$nbr_err" | tail -1)
+}
+
+# sweep が組む本文と同じ形（0 件の既定本文に台帳を merge-into）を実際の ledger helper で作る
+zero_body() {  # $1=out
+  printf '%s\n\n%s\n\n%s\n%s\n\n%s\n' "$MARKER" '本 cycle の非実測指摘: 0 件' \
+    '📎 non_blocking_count: 0' '📎 reviewed_commit: unknown' "$SENTINEL" > "$1"
+}
+nbr_entries="$sandbox/nbr-entries.md"
+printf '%s\n' '| NB-1 | src/a.ts:1 | recorded | severity=MEDIUM; measured=false |' \
+  '| NB-2 | src/b.ts:2 | recorded | severity=LOW; measured=false |' > "$nbr_entries"
+ledger_body="$sandbox/nbr-ledger-body.md"
+zero_body "$ledger_body"
+"$LEDGER" append --ledger-file "$sandbox/nbr-ledger.md" --entries-file "$nbr_entries" 2>/dev/null
+"$LEDGER" merge-into --body-file "$ledger_body" --ledger-file "$sandbox/nbr-ledger.md" 2>/dev/null
+assert "fixture: 台帳 2 件を持つ 0 件本文" 2 "$(grep -c '^| NB-' "$ledger_body")"
+printf '[[]]\n' > "$NBR_COMMENTS"
+
+# T-09: 既存なし・count 0・台帳 2 件 → 台帳を含む記録コメントを作成する
+run_nbr_helper 0 "$ledger_body"
+assert "T-09 台帳のみの本文は outcome=created" created "$nbr_outcome"
+assert_grep "T-09 issue comment で作成する" "$NBR_GH_LOG" '^issue comment 42 '
+if [ -f "$NBR_POSTED" ] && cmp -s "$ledger_body" "$NBR_POSTED"; then
+  pass "T-09 投稿本文が content-file と一致"
+else
+  fail "T-09 投稿本文が content-file と一致しない"
+fi
+crlf_body="$sandbox/nbr-ledger-body-crlf.md"
+sed 's/$/\r/' "$ledger_body" > "$crlf_body"
+run_nbr_helper 0 "$crlf_body"
+assert "T-09 CRLF 本文でも台帳を数えて outcome=created" created "$nbr_outcome"
+NBR_LOOKUP_FAIL=1 run_nbr_helper 0 "$ledger_body"
+assert "T-09 lookup 失敗でも台帳ありなら outcome=created" created "$nbr_outcome"
+assert_grep "T-09 lookup 失敗は degraded=1" "$nbr_err" 'NONBLOCKING_RECORD_DONE=1; .*degraded=1'
+assert_grep "T-09 degraded create の重複警告" "$nbr_err" '既存の記録コメントを特定できないまま新規作成した'
+
+# T-11: 台帳エントリ 0 件の本文は既存どおり投稿しない
+plain_body="$sandbox/nbr-plain.md"
+zero_body "$plain_body"
+run_nbr_helper 0 "$plain_body"
+assert "T-11 台帳なし・0 件・既存なしは outcome=skipped" skipped "$nbr_outcome"
+assert_not_grep "T-11 台帳なしは投稿しない" "$NBR_GH_LOG" '^issue comment '
+header_only="$sandbox/nbr-header-only.md"
+printf '%s\n\n%s\n\n%s\n%s\n\n%s\n%s\n\n%s\n' "$MARKER" '### 却下台帳' \
+  '| finding_id | file:line | 判定 | 判定文 |' '|------------|-----------|------|--------|' \
+  '📎 non_blocking_count: 0' '📎 reviewed_commit: unknown' "$SENTINEL" > "$header_only"
+run_nbr_helper 0 "$header_only"
+assert "T-11 見出しと列ヘッダだけの台帳は outcome=skipped" skipped "$nbr_outcome"
+assert_not_grep "T-11 見出しだけの台帳は投稿しない" "$NBR_GH_LOG" '^issue comment '
+outside_rows="$sandbox/nbr-outside-rows.md"
+printf '%s\n\n%s\n\n%s\n%s\n\n%s\n%s\n\n%s\n%s\n%s\n\n%s\n' "$MARKER" '### 却下台帳' \
+  '| finding_id | file:line | 判定 | 判定文 |' '|------------|-----------|------|--------|' \
+  '### 別の節' '| other | src/x.ts:1 | note | 台帳ではない |' \
+  '📎 non_blocking_count: 0' '| tail | src/y.ts:2 | note | count 行より後 |' \
+  '📎 reviewed_commit: unknown' "$SENTINEL" > "$outside_rows"
+run_nbr_helper 0 "$outside_rows"
+assert "T-11 台帳節の外にある表の行は数えない" skipped "$nbr_outcome"
+mismatch_body="$sandbox/nbr-mismatch.md"
+sed 's/^📎 non_blocking_count: 0$/📎 non_blocking_count: 2/' "$ledger_body" > "$mismatch_body"
+run_nbr_helper 0 "$mismatch_body"
+assert "T-11 count 不一致は台帳より先に outcome=failed" failed "$nbr_outcome"
+assert_grep "T-11 count 不一致の reason" "$nbr_err" 'reason=count_body_mismatch'
+assert_not_grep "T-11 count 不一致は投稿しない" "$NBR_GH_LOG" '^issue comment '
+awk_fail_bin="$sandbox/awk-fail-bin"
+mkdir -p "$awk_fail_bin"
+printf '#!/usr/bin/env bash\ncase "$*" in *却下台帳*) exit 2 ;; esac\nexec %q "$@"\n' "$(command -v awk)" > "$awk_fail_bin/awk"
+chmod +x "$awk_fail_bin/awk"
+NBR_EXTRA_PATH="$awk_fail_bin" run_nbr_helper 0 "$ledger_body"
+assert "T-11 台帳を数えられないときは skipped にしない" failed "$nbr_outcome"
+assert_grep "T-11 台帳を数えられない reason" "$nbr_err" 'reason=body_check_unavailable'
+assert_not_grep "T-11 台帳を数えられないときは投稿しない" "$NBR_GH_LOG" '^issue comment '
+
+# T-12: 既存の記録コメントがあれば台帳ありでも update-in-place する
+jq -n --rawfile body "$plain_body" '[[{id: 555, user: {login: "rite-bot"}, body: $body}]]' > "$NBR_COMMENTS"
+run_nbr_helper 0 "$ledger_body"
+assert "T-12 既存コメントありは outcome=updated" updated "$nbr_outcome"
+assert_grep "T-12 既存コメントを PATCH する" "$NBR_GH_LOG" 'repos/test/repo/issues/comments/555 -X PATCH'
+assert_not_grep "T-12 新規作成しない" "$NBR_GH_LOG" '^issue comment '
+if [ -f "$NBR_POSTED" ] && cmp -s "$ledger_body" "$NBR_POSTED"; then
+  pass "T-12 PATCH 本文が content-file と一致"
+else
+  fail "T-12 PATCH 本文が content-file と一致しない"
+fi
+
+# T-10: nb-sweep.md 手順 3 の成否判定。created / updated 以外で後続（done 書込）へ進まない
+record_block="$sandbox/record-block.sh"
+extract_fix_block 'reason=nb_sweep_ledger_record_failed' > "$record_block"
+if [ ! -s "$record_block" ] || ! grep -q 'review-nonblocking-record.sh' "$record_block"; then
+  fail "T-10 nb-sweep.md から記録ブロックを抽出できない"
+else
+  sweep_plugin="$sandbox/sweep-plugin"
+  mkdir -p "$sweep_plugin/hooks/scripts" "$sandbox/sweep-tmp"
+  ln -sf "$LEDGER" "$sweep_plugin/hooks/scripts/nb-sweep-ledger.sh"
+  cat > "$sweep_plugin/hooks/review-nonblocking-record.sh" <<'SH'
+#!/usr/bin/env bash
+[ "$SWEEP_STUB_OUTCOME" = none ] ||
+  echo "[CONTEXT] NONBLOCKING_RECORD_DONE=1; pr=7; outcome=$SWEEP_STUB_OUTCOME; count=0; iteration_id=nb-sweep-7; comment_id=; degraded=0" >&2
+exit "$SWEEP_STUB_RC"
+SH
+  sed -e "s|{plugin_root}|$sweep_plugin|g" -e 's|{pr_number}|7|g' -e 's|{issue_number}|42|g' \
+    -e 's|{owner_repo}|test/repo|g' "$record_block" > "$record_block.resolved"
+  printf '\nprintf "REACHED\\n"\n' >> "$record_block.resolved"
+  cp "$nbr_entries" "$sandbox/sweep-tmp/rite-nb-entries-7.md"
+  run_record_block() {  # $1=outcome (none = DONE 行なし) $2=rc
+    : > "$NBR_GH_LOG"
+    SWEEP_STUB_OUTCOME="$1" SWEEP_STUB_RC="$2" TMPDIR="$sandbox/sweep-tmp" PATH="$nbr_bin:$PATH" \
+      bash "$record_block.resolved" > "$sandbox/record-block.out" 2> "$sandbox/record-block.err"
+  }
+  for record_case in skipped:0 failed:0 aborted:0 none:0 created:1; do
+    run_record_block "${record_case%%:*}" "${record_case##*:}"
+    assert_grep "T-10 $record_case は [fix:error]" "$sandbox/record-block.out" '\[fix:error\]'
+    assert_grep "T-10 $record_case の reason" "$sandbox/record-block.err" 'reason=nb_sweep_ledger_record_failed'
+    assert_not_grep "T-10 $record_case は後続へ進まない" "$sandbox/record-block.out" '^REACHED$'
+  done
+  for record_case in created:0 updated:0; do
+    run_record_block "${record_case%%:*}" "${record_case##*:}"
+    assert_grep "T-10 $record_case は後続へ進む" "$sandbox/record-block.out" '^REACHED$'
+    assert_not_grep "T-10 $record_case は [fix:error] を出さない" "$sandbox/record-block.out" '\[fix:error\]'
+  done
+fi
 
 if ! print_summary "$(basename "$0")" "nb-sweep helper contract drift — check SKILL.md 5.S / 6.1.d preserve"; then
   exit 1

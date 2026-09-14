@@ -180,11 +180,16 @@ else
     --iteration-id "nb-sweep-{pr_number}" --content-file "$body" 2>"$record_err"
   record_rc=$?
   cat "$record_err" >&2
-  if [ "$record_rc" -ne 0 ] || grep -qE 'NONBLOCKING_RECORD_FAILED=1|outcome=failed' "$record_err"; then
-    echo "ERROR: 却下台帳 記録失敗 (rc=$record_rc)" >&2
-    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_record_failed" >&2
-    echo "[fix:error]"; exit 1
-  fi
+  record_outcome=$(sed -n 's/^\[CONTEXT\] NONBLOCKING_RECORD_DONE=1; .*outcome=\([^;]*\);.*/\1/p' "$record_err" | tail -1)
+  # entries は常に 1 件以上あるため、skipped は台帳が投稿されなかったことを意味する
+  case "$record_rc:$record_outcome" in
+    0:created|0:updated) ;;
+    *)
+      echo "ERROR: 却下台帳 記録失敗 (rc=$record_rc outcome=${record_outcome:-<欠落>})" >&2
+      echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_record_failed" >&2
+      echo "[fix:error]"; exit 1
+      ;;
+  esac
   rm -f -- "$record_err"
 fi
 ```
