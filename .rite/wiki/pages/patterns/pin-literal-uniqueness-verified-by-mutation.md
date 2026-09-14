@@ -29,14 +29,18 @@ sources:
     resource: "raw/fixes/20260906T135449Z-pr-2582.md"
   - type: "reviews"
     resource: "raw/reviews/20260911T120212Z-pr-2684.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260914T083015Z-pr-2808.md"
 tags: ["pin", "mutation-testing", "static-assert", "producer-consumer-symmetry", "drift-detection"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-11T12:08:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-14T08:45:00Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5"
     at: "2026-08-30T05:20:00Z"
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-09-11T12:08:00Z"
+  - by: "rite-wiki-ingest/claude-opus-5[1m]"
+    at: "2026-09-14T08:45:00Z"
 ---
 
 # pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する
@@ -197,6 +201,14 @@ negative assert は静かに通る。`[[:space:]]` を使う。
 - 既存の短い pin が新しい全文 pin の**真部分文字列**なら、残さず置換してよい。全文が存在すれば部分文字列も存在するので `assertIn` は包含され、検証力は落ちない（残すのは重複であって安全側ではない）
 - 効果の確認は本ページの手順どおり: pin を足す**前**に各変異（限定句削除 / 旧文言復帰 / 後続文削除）で suite が green のまま通ることを実測し、足した**後**にそれぞれが対応する assert で red になることを実測する。生存し続ける細粒度変異（末尾への後置弱化、節間移動）は契約に現れない限り non-blocking として記録し、追いかけて pin を増築しない
 
+### 行順 assert の探索パターンが複数行に当たると、先頭一致が別の行へ乗り換える
+
+「診断行が案内行より前に出る」ことを `grep -n '<案内の語句>' ¦ head -1` で得た行番号の比較で固定したところ、案内の語句が案内行とは別の説明行にも含まれていた。案内の呼び出しを消す変異を注入すると、`head -1` が残った説明行へ乗り換え、行番号の比較は緑のまま通った（順序そのものを入れ替える変異は検出した）。
+
+- 行番号を取る grep にも「その行に固有」の確認を当てる。`grep -c` で 1 行であることを確かめ、当たるなら行頭の固定文言（例: `^  対処: `）までアンカーする
+- 順序 assert は「A が B より前」という 2 点の関係なので、A と B の **それぞれ** を消す変異で赤くなるかを実測する。順序入れ替えの変異だけでは、どちらかの行が別の行へ乗り換える穴を検出しない
+- 否定側（「gh の接頭辞で出ない」）の `assert_not_grep` は、肯定側と揃えて行頭アンカーを足すと条件が緩くなる。否定 assert ではアンカーなしの方が厳しい
+
 ## 関連ページ
 
 - [assert_not_grep は「対象が fixture に存在する」ことを前提にしないと恒真になる — positive control を対で置く](../anti-patterns/assert-not-grep-vacuous-without-fixture-scope.md)
@@ -216,3 +228,4 @@ negative assert は静かに通る。`[[:space:]]` を使う。
 - [レビュー結果](../../raw/reviews/20260906T134450Z-pr-2582.md)
 - [fix 結果](../../raw/fixes/20260906T135449Z-pr-2582.md)
 - [レビュー結果（部分文字列 pin と限定句の削除、真部分文字列の置換）](../../raw/reviews/20260911T120212Z-pr-2684.md)
+- [行順 assert の探索パターンが別の行にも当たり案内の削除を見逃した](../../raw/reviews/20260914T083015Z-pr-2808.md)

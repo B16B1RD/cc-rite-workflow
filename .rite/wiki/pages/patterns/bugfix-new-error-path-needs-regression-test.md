@@ -10,9 +10,14 @@ sources:
     resource: "raw/reviews/20260709T061246Z-pr-1808-cycle2.md"
   - type: "fixes"
     resource: "raw/fixes/20260709T061632Z-pr-1808-cycle2.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260914T083015Z-pr-2808.md"
 tags: [test-coverage, regression-test, revert-test, non-vacuous, self-referential]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-09T06:56:16+00:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-14T08:45:00Z" }
+verified:
+  - by: "rite-wiki-ingest/claude-opus-5[1m]"
+    at: "2026-09-14T08:45:00Z"
 ---
 
 # バグ修正PRが新設したエラーパス自身にも回帰テストを追加する
@@ -55,6 +60,14 @@ fi
 
 新設した TC が「テストを追加した」という自己申告だけで実際に意図した回帰を検出できているとは限らない。最初の revert 試行で stderr redirect (`2>"${_fs_err:-/dev/null}"` → `2>/dev/null`) だけを外したところ、else 節の WARNING echo 自体は残っていたため TC-resolver-fallback は依然 PASS した — これはバグ修正前の実装を正しく再現できていなかったことを意味する。**revert は fix の一部分だけでなく、修正前の元の実装形（この場合は WARNING 自体が存在しない 1 行の fallback）へ完全に戻す必要がある**。バグ再現コードへ正しく戻した上で再実行し、TC-resolver-fallback が FAIL することを確認してから修正を復元して PASS を確認する 2 段階検証で、新設テストの識別力 (identification power) を実証した。
 
+### 値の限定を兼ねるフォールバック分岐も入口テストの対象にする
+
+診断の接頭辞ラベルを引数で受け取り、未知の値なら内部エラーの WARNING を出して既定ラベルに倒す `case` 分岐を足した変更で、その分岐に入るテストが 1 本も無かった。WARNING の echo を消す変異も、既定ラベルへの代入を消す変異も、対象スイートを全緑のまま通過した。
+
+- 今ある呼び出しがすべてリテラルで未知の値を渡す経路が無くても、分岐が **後段の sed 置換に任意文字列を流さないための値の限定** を兼ねているなら、削除や弱体化を検出するテストが要る。見張りが無いと、将来の変更で限定が黙って消える
+- テストは関数を抜き出して未知の値で呼び、(1) 内部エラーの文言が出る (2) 詳細行が既定ラベルで出る、の 2 点を assert する
+- 到達不能に見えるからと分岐を削ると、値の限定という役割まで一緒に消える。削るか残すかは、その分岐が受けていた入力の行き先を確認してから決める
+
 ## 関連ページ
 
 - [resolver / helper 失敗時の silent fallback は debug log で観測性を確保する](./silent-fallback-observability-via-debug-log.md)
@@ -65,3 +78,4 @@ fi
 
 - [レビュー結果](../../raw/reviews/20260709T061246Z-pr-1808-cycle2.md)
 - [fix 結果](../../raw/fixes/20260709T061632Z-pr-1808-cycle2.md)
+- [未知ラベルのフォールバック分岐に入るテストが無かった](../../raw/reviews/20260914T083015Z-pr-2808.md)

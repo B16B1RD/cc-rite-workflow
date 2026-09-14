@@ -4,7 +4,10 @@ title: "実装の分岐を散文へ落とす前に、フラグの状態数と観
 domain: "heuristics"
 description: "hook や helper の挙動を仕様書の散文に書き下ろすとき、boolean に見えるフラグが実は 3 状態を取り、観測ラベルが 3 値を出しているのに「主経路 + 例外 1 つ」の二分岐として書いてしまう。この誤りは経路追加による腐りではなく執筆時点で既に偽であり、書く前にフラグの状態数と観測ラベルの値域を grep で数えれば機械的に防げる。"
 created: "2026-08-30T04:57:39Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-30T04:57:39Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-14T08:45:00Z" }
+verified:
+  - by: "rite-wiki-ingest/claude-opus-5[1m]"
+    at: "2026-09-14T08:45:00Z"
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260830T043014Z-pr-2475.md"
@@ -12,6 +15,8 @@ sources:
     resource: "raw/fixes/20260830T043310Z-pr-2475.md"
   - type: "reviews"
     resource: "raw/reviews/20260830T044223Z-pr-2475.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260914T083015Z-pr-2808.md"
 tags: ["doc-implementation-sync", "branch-enumeration", "observability-label", "birth-defect", "spec-prose", "three-state-flag"]
 confidence: high
 ---
@@ -53,6 +58,14 @@ cycle 1 で両 reviewer が推奨事項として挙げた全称量化の限定�
 
 節の途中へステップを 1 つ挿入すると以降の番号が繰り下がる。これは Cross-File Impact Check の「列挙の変更」に当たり、**他ファイルから当該節のステップ番号を序数で参照している箇所が無いか grep で確認する**（本事例では 0 件だった）。コード側の enum に値を挿入するのと同じ扱いにする。
 
+### 経路ラベルを導入するときは、説明コメントを書く前に全呼び出し元の経路を列挙する
+
+共通の stderr 診断スニペットに「どのコマンドの診断か」を示す接頭辞ラベルを引数で渡す仕組みを入れ、1 経路（台帳を数える awk）だけにラベルを渡した変更で、新しい説明コメントが「jq の stderr は gh とパイプで伴うので gh 経路として扱う」と一般化した。実際には gh とパイプでつながらない単独の jq 経路（本文述語の評価）も同じスニペットを引数なしで呼んでおり、その診断は gh の接頭辞で出たまま、直後の案内は「gh 認証の問題ではない」と述べていた。2 人の reviewer が独立に同じ食い違いを指摘した。
+
+- ラベルの値域（`gh` / `awk`）と、スニペットを呼ぶ全呼び出し元がどの経路に属するかを **grep で列挙してから** コメントの分類を書く。「X だけ特別扱い、残りは既定」と書くと、既定側に入れた経路の分類が 1 つでも違えばコメントは執筆時点で偽になる
+- 列挙した結果、分類に合わない経路が残るなら、コメントを実装どおりに限定する（「単独の jq も現状は既定ラベルで出る」）か、ラベルをその経路にも広げる。どちらを選ぶかは契約範囲の判断で、コメントだけ一般化して済ませない
+- この種の指摘は実行時の挙動を変えないため帰結クラスでは文書整合（class B）に落ちるが、コメントは次に誰がどの呼び出し元へラベルを渡すかを決める根拠になるので、放置すると誤った分類が次の変更に引き継がれる
+
 ## 関連ページ
 
 - [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](./universal-claim-prose-invalidated-by-path-addition.md)
@@ -64,3 +77,4 @@ cycle 1 で両 reviewer が推奨事項として挙げた全称量化の限定�
 - [前進契約の skip 経路取りこぼしと round_trips の値域欠落](../../raw/reviews/20260830T043014Z-pr-2475.md)
 - [状態数を数える / ラベル値域を grep で列挙する / 参照の宙吊りを検出する](../../raw/fixes/20260830T043310Z-pr-2475.md)
 - [ついでの限定は over-fix ではない / 番号繰り下げは列挙変更](../../raw/reviews/20260830T044223Z-pr-2475.md)
+- [経路ラベルの説明コメントが単独の jq 経路を誤分類した](../../raw/reviews/20260914T083015Z-pr-2808.md)
