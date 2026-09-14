@@ -2100,25 +2100,55 @@ _stub_lock_run() {
   echo "$rc"
 }
 
-echo "STUB-LOCK-1: 0-byte read-only .git/config.lock → WARNING on stderr, file kept, hook rc=0"
+# _stub_lock_fixture <path> <octal mode> [content]: returns non-zero when the
+# filesystem did not keep the mode or size, so a case never passes or fails on
+# a fixture that does not have the shape it names.
+_stub_lock_fixture() {
+  local path="$1" mode="$2" content="${3:-}"
+  printf '%s' "$content" > "$path" && chmod "$mode" "$path" \
+    && [ -n "$(find "$path" -prune -type f -perm "$mode" -size "${#content}c")" ]
+}
+_stub_lock_expect() {
+  if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (expected='$2' actual='$3')"; fi
+}
+
+echo "STUB-LOCK-1: only a 0-byte no-write lock directly in the git dir is reported; file kept, hook rc=0"
 d_sl1="$TEST_DIR/stub_lock1"
 _stub_lock_repo "$d_sl1"
-: > "$d_sl1/.git/config.lock" && chmod 0444 "$d_sl1/.git/config.lock"
-: > "$d_sl1/.git/writable.lock"
-if [ -z "$(find "$d_sl1/.git/config.lock" -prune -type f -perm 0444 -size 0c)" ]; then
-  fail "STUB-LOCK-1: fixture did not keep mode 0444 / size 0"
-else
+git_dir_sl1=$(cd "$d_sl1/.git" && pwd -P)
+# Every lock below except config.lock misses one term of the stub predicate:
+# a write bit for u / g / o, a non-zero size, a location below the git dir, or
+# a regular file type.
+if _stub_lock_fixture "$git_dir_sl1/config.lock" 0444 \
+  && _stub_lock_fixture "$git_dir_sl1/writable.lock" 0644 \
+  && _stub_lock_fixture "$git_dir_sl1/group-writable.lock" 0464 \
+  && _stub_lock_fixture "$git_dir_sl1/other-writable.lock" 0446 \
+  && _stub_lock_fixture "$git_dir_sl1/with-content.lock" 0444 content \
+  && _stub_lock_fixture "$git_dir_sl1/refs/heads/nested.lock" 0444 \
+  && _stub_lock_fixture "$TEST_DIR/stub_lock1_link_target" 0444 \
+  && ln -s "$TEST_DIR/stub_lock1_link_target" "$git_dir_sl1/link-to-stub.lock" \
+  && mkfifo -m 0444 "$git_dir_sl1/fifo.lock" \
+  && [ -n "$(find "$git_dir_sl1/fifo.lock" -prune -type p -perm 0444)" ]; then
   rc_sl1=$(_stub_lock_run "$d_sl1" PATH="$PATH")
-  lock_path_sl1=$(cd "$d_sl1/.git" && pwd -P)/config.lock
-  if [ "$rc_sl1" = "0" ] \
-    && grep -F "$lock_path_sl1" "$d_sl1.err" | grep -q "rm -f" \
-    && [ -f "$d_sl1/.git/config.lock" ] \
-    && ! grep -q 'config.lock' "$d_sl1.out" \
-    && ! grep -q 'writable.lock' "$d_sl1.err"; then
-    pass "STUB-LOCK-1: stub lock named with removal hint, kept, not on stdout; writable lock ignored"
+  _stub_lock_expect "STUB-LOCK-1: hook rc=0" "0" "$rc_sl1"
+  _stub_lock_expect "STUB-LOCK-1: exactly one stub lock WARNING" "1" "$(grep -c 'is an empty read-only lock file' "$d_sl1.err")"
+  if grep -F "$git_dir_sl1/config.lock" "$d_sl1.err" | grep -q "rm -f"; then
+    pass "STUB-LOCK-1: config.lock named with removal hint"
   else
-    fail "STUB-LOCK-1: rc=$rc_sl1 stderr=$(cat "$d_sl1.err") stdout=$(cat "$d_sl1.out")"
+    fail "STUB-LOCK-1: config.lock named with removal hint (stderr=$(cat "$d_sl1.err"))"
   fi
+  _stub_lock_expect "STUB-LOCK-1: stub lock kept" "1" "$([ -f "$git_dir_sl1/config.lock" ] && echo 1 || echo 0)"
+  _stub_lock_expect "STUB-LOCK-1: stub lock not on stdout" "0" "$(grep -c 'config.lock' "$d_sl1.out")"
+  for kept in writable.lock group-writable.lock other-writable.lock with-content.lock refs/heads/nested.lock link-to-stub.lock fifo.lock; do
+    _stub_lock_expect "STUB-LOCK-1: $kept not reported" "0" "$(grep -Fc "$git_dir_sl1/$kept" "$d_sl1.err")"
+  done
+  if [ -f "$d_sl1/.rite/logs/pr-cycle-cleanup.log" ]; then
+    _stub_lock_expect "STUB-LOCK-1: stub lock WARNING stays out of the reap log" "0" "$(grep -Fc "$git_dir_sl1/config.lock" "$d_sl1/.rite/logs/pr-cycle-cleanup.log")"
+  else
+    fail "STUB-LOCK-1: reap log missing, cannot check that the WARNING stays out of it"
+  fi
+else
+  fail "STUB-LOCK-1: fixtures did not keep their mode / size / file type"
 fi
 echo ""
 
@@ -2146,6 +2176,39 @@ if [ "$rc_sl3" = "0" ] && ! grep -q "lock file" "$d_sl3.err"; then
   pass "STUB-LOCK-3: non-git CWD stays silent"
 else
   fail "STUB-LOCK-3: rc=$rc_sl3 stderr=$(cat "$d_sl3.err")"
+fi
+echo ""
+
+echo "STUB-LOCK-4: path with apostrophes → the removal hint removes only the stub lock"
+# With hand-written single quotes this path would split into "$TEST_DIR/Bobs",
+# "and" and "Anns repo/.git/config.lock"; decoys with those names catch it.
+d_sl4="$TEST_DIR/Bob's and Ann's repo"
+run_cwd_sl4="$TEST_DIR/stub_lock4_cwd"
+_stub_lock_repo "$d_sl4"
+mkdir -p "$run_cwd_sl4/Anns repo/.git"
+git_dir_sl4=$(cd "$d_sl4/.git" && pwd -P)
+if _stub_lock_fixture "$git_dir_sl4/config.lock" 0444 \
+  && _stub_lock_fixture "$git_dir_sl4/writable.lock" 0644 \
+  && _stub_lock_fixture "$TEST_DIR/Bobs" 0644 decoy \
+  && _stub_lock_fixture "$run_cwd_sl4/and" 0644 decoy \
+  && _stub_lock_fixture "$run_cwd_sl4/Anns repo/.git/config.lock" 0644 decoy; then
+  rc_sl4=$(_stub_lock_run "$d_sl4" PATH="$PATH")
+  cmd_sl4=$(sed -n 's/.*delete it by hand: //p' "$d_sl4.err")
+  _stub_lock_expect "STUB-LOCK-4: hook rc=0" "0" "$rc_sl4"
+  _stub_lock_expect "STUB-LOCK-4: one removal command" "1" "$(printf '%s\n' "$cmd_sl4" | grep -c '^rm -f')"
+  argc_sl4=$(eval "set -- $cmd_sl4" && echo "$#")
+  last_arg_sl4=$(eval "set -- $cmd_sl4" && echo "${4:-}")
+  _stub_lock_expect "STUB-LOCK-4: removal command has 4 words" "4" "$argc_sl4"
+  _stub_lock_expect "STUB-LOCK-4: last word is the stub lock path" "$git_dir_sl4/config.lock" "$last_arg_sl4"
+  (cd "$run_cwd_sl4" && bash -c "$cmd_sl4")
+  _stub_lock_expect "STUB-LOCK-4: stub lock removed" "0" "$([ -e "$git_dir_sl4/config.lock" ] && echo 1 || echo 0)"
+  kept_sl4=0
+  for f in "$git_dir_sl4/config" "$git_dir_sl4/writable.lock" "$TEST_DIR/Bobs" "$run_cwd_sl4/and" "$run_cwd_sl4/Anns repo/.git/config.lock"; do
+    [ -f "$f" ] && kept_sl4=$((kept_sl4 + 1))
+  done
+  _stub_lock_expect "STUB-LOCK-4: git config, writable lock and decoys kept" "5" "$kept_sl4"
+else
+  fail "STUB-LOCK-4: fixtures did not keep their mode / size"
 fi
 echo ""
 

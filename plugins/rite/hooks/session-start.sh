@@ -478,8 +478,9 @@ if [ "$CWD" = "$STATE_ROOT" ]; then
   # and every later git write that needs that lock fails. git creates its own
   # locks writable, so the stub shape (same predicate as
   # lib/git-status-filtered.sh) tells them apart. The lock is only reported:
-  # deleting a lock a running git holds would break that operation. This runs
-  # before the reap so the WARNING reaches the hook's stderr, not the reap log.
+  # deleting a lock a running git holds would break that operation. The WARNING
+  # reaches the hook's stderr only while this block stays outside the reap
+  # subshell, whose output is redirected to the reap log.
   if _git_common=$(cd "$CWD" && _gc=$(git rev-parse --git-common-dir 2>/dev/null) && cd "$_gc" && pwd -P); then
     _stub_rc=0
     _stub_locks=$(find "$_git_common" -maxdepth 1 -name '*.lock' -type f -size 0c ! -perm -200 ! -perm -020 ! -perm -002 2>/dev/null) || _stub_rc=$?
@@ -488,7 +489,11 @@ if [ "$CWD" = "$STATE_ROOT" ]; then
     elif [ -n "$_stub_locks" ]; then
       while IFS= read -r _stub_lock; do
         _stub_lock_safe=$(printf '%s' "$_stub_lock" | neutralize_ctrl)
-        echo "WARNING: session-start.sh: $_stub_lock_safe is an empty read-only lock file left behind by a sandboxed command; git commands that need this lock fail until it is removed. User action: make sure no git process is running, then delete it by hand: rm -f '$_stub_lock_safe'" >&2
+        # The copy-paste command is quoted for the shell separately from the
+        # display form: neutralize_ctrl leaves quotes intact, so a path with an
+        # apostrophe would otherwise split into unrelated rm arguments.
+        printf -v _stub_lock_cmd 'rm -f -- %q' "$_stub_lock"
+        echo "WARNING: session-start.sh: $_stub_lock_safe is an empty read-only lock file left behind by a sandboxed command; git commands that need this lock fail until it is removed. User action: make sure no git process is running, then delete it by hand: $_stub_lock_cmd" >&2
       done <<<"$_stub_locks"
     fi
   fi
