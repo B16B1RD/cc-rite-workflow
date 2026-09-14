@@ -1269,7 +1269,8 @@ put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-03","f
 put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-03","file":"a.md","line":1,"description":"p2"},{"id":"H-01","file":"a.md","line":2,"description":"p3"}]}'
 put_json "$r" "9-20260102120000.json.corrupt-1" '{"non_blocking_findings":[{"id":"F-04","file":"a.md","line":3,"description":"p4"}]}'
 put_json "$r" "9-20260102120000~1a2b.json" '{"non_blocking_findings":[{"id":"F-03","file":"a.md","line":1,"description":"p5"}]}'
-put_json "$r" "9-20260102120000~1A2B.json" '{"non_blocking_findings":[{"id":"F-05","file":"a.md","line":4,"description":"p6"}]}'
+# 大文字 hex は小文字版と別名にする (macOS の case-insensitive FS では ~1A2B と ~1a2b が同じファイルになる)
+put_json "$r" "9-20260102120000~ABCD.json" '{"non_blocking_findings":[{"id":"F-05","file":"a.md","line":4,"description":"p6"}]}'
 put_json "$r" "9-20260102120000~1a2b.json.corrupt-1" '{"non_blocking_findings":[{"id":"F-06","file":"a.md","line":5,"description":"p7"}]}'
 # T-28 と同じアンカーから 6.0.V の実ブロックを抽出し、state root だけ fixture に置換する
 awk -v root="$r" '
@@ -1292,7 +1293,7 @@ else
   assert "T-41 同秒衝突 suffix 付きの出典も自分の key を持つ" "9-20260102120000~1a2b.json#F-03" "$(_t41_key p5)"
   assert "T-41 大文字 hex の suffix は key null" "null" "$(_t41_key p6)"
   assert "T-41 suffix 付き出典の corrupt 退避ファイルは key null" "null" "$(_t41_key p7)"
-  assert "T-41 形が合わない suffix でも id は残す" "F-05,F-06" "$(jq -r 'select(.description == "p6" or .description == "p7") | .id' "$OUT" | paste -sd, -)"
+  assert "T-41 形が合わない suffix でも id は残す" "F-05,F-06" "$(jq -r 'select(.description == "p6" or .description == "p7") | .id' "$OUT" | LC_ALL=C sort | paste -sd, -)"
   assert "T-41 corrupt 由来でも id は残す" "F-04" "$(jq -r 'select(.description == "p4") | .id' "$OUT")"
   assert_not_grep "T-41 抽出段で unavailable にしない" "$OUT" 'FOLLOW_UP_REVERIFY=unavailable'
 fi
