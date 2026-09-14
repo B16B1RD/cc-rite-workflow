@@ -208,7 +208,7 @@ okf_version: "0.2"
 | [@tsv+IFS read の field-shift hazard 横断監査は cut-f免除と空フィールド可否の2条件で判定する](pages/heuristics/tsv-ifs-field-shift-hazard-audit-criteria.md) | heuristics | `jq '[...] \| @tsv'` の出力を `IFS=$'\\t' read -r a b c` で読む実装は、POSIX の IFS whitespace 規則により、tab を含む IFS では連続する区切り文字が1個に圧縮される。 | 2026-07-06T23:20:00+09:00 | high |
 | [新設要約文の「N 個の~系統」的な断定は対象外の類似構造を見落としやすい](pages/anti-patterns/unscoped-enumeration-claim-in-new-summary.md) | anti-patterns | ドキュメントに新しく要約セクションを書く際、「rite workflow has 3 independently-versioned schemas」のように件数を断定すると、リポジトリ内に実在する類似だが対象外の構造（本件では他にも `schema_version` を持つ work-memory ローカルファイルや issue-claim JSON）を見落として、読者に「これが全てだ」という誤読を与える。 | 2026-07-07T02:00:00+00:00 | medium |
 | [アンインストール/クリーンアップ手順の rm -rf 推奨は git worktree 等の live 状態管理対象を見落としやすい](pages/anti-patterns/cleanup-docs-must-exclude-live-git-worktrees.md) | anti-patterns | アンインストール手順やクリーンアップ手順のドキュメントで、gitignore 済みディレクトリを「安全に削除してよい」と単純化すると、その配下に git worktree のような live な状態管理対象が含まれるケースを見落とす。 | 2026-07-07T22:03:17+00:00 | high |
-| [過剰マッチ防止の精緻化修正は、実装が許容する全形状を再確認しないと過小マッチという別の欠陥を生む (振り子現象)](pages/anti-patterns/precision-tightening-pendulum-regression.md) | anti-patterns | reviewer の false-positive 指摘 (「この記述は無関係な対象まで拾ってしまう」) を受けて記述を厳密化する修正は、対象実装 (正規表現・マッチングロジック等) が実際に許容する**全ての**正当な形状を再確認せずに行うと、修正前には正しくカバーできていた別の形状を取りこぼす under-match を新規に導入する。 | 2026-09-06T16:10:23Z | high |
+| [過剰マッチ防止の精緻化修正は、実装が許容する全形状を再確認しないと過小マッチという別の欠陥を生む (振り子現象)](pages/anti-patterns/precision-tightening-pendulum-regression.md) | anti-patterns | reviewer の false-positive 指摘 (「この記述は無関係な対象まで拾ってしまう」) を受けて記述を厳密化する修正は、対象実装 (正規表現・マッチングロジック等) が実際に許容する**全ての**正当な形状を再確認せずに行うと、修正前には正しくカバーできていた別の形状を取りこぼす under-match を新規に導入する。 | 2026-09-14T16:45:05Z | high |
 | [rationale 転記圧縮時の主張スコープ量化拡大（この箇所→全体への過大一般化）](pages/anti-patterns/transcription-scope-quantifier-inflation.md) | anti-patterns | rationale（設計理由・背景解説）を SKILL.md 本体から references/ へ退避するコンテキストダイエット型 refactor では、転記時の文章圧縮によって主張の量化スコープが改変される系統的エラーが発生する。 | 2026-07-07T03:56:13+00:00 | high |
 | [識別子リネーム後の裸参照置換で除外すべき参照の分類](pages/patterns/rename-bare-reference-exclusion-classification.md) | patterns | スキル/コマンドのリネーム（例: `/rite:resume` → `/rite:recover`）後、旧名への「裸のスキル名参照」（bare-word reference、例: 「resume の AskUserQuestion」のような文中の裸表記）をリポジトリ横断で修正するとき、旧名と同じ文字列を含むが**修正してはいけない**箇所を誤って置換しないよう分類する必要がある。 | 2026-07-08T02:20:00+00:00 | medium |
 | [先行 Issue の明示的 Non-Target 指定は、reviewer 推奨だけで覆さずユーザー確認する](pages/heuristics/respect-prior-non-target-designation.md) | heuristics | 同種のクリーンアップ系列（例: 用語統一・裸ファイル名参照の一掃）で複数レビュアーが独立に同一箇所を「本 PR で対応すべき」と推奨しても、その箇所が先行 Issue/PR で明示的に Non-Target（対象外）と宣言されていた場合は、reviewer 推奨をそのまま実行せず、先行判断の経緯を提示したうえでユーザーに再確認する。 | 2026-07-08T03:06:55+09:00 | medium |
@@ -509,4 +509,4 @@ okf_version: "0.2"
 
 - 総ページ数: 495
 - ドメイン別: patterns=112, heuristics=221, anti-patterns=162
-- 最終更新: 2026-09-15T00:45:00Z
+- 最終更新: 2026-09-14T16:45:05Z
