@@ -11,11 +11,14 @@ sources:
     resource: "raw/fixes/20260805T050456Z-pr-2112.md"
   - type: "reviews"
     resource: "raw/reviews/20260912T040912Z-pr-2715.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260914T143622Z-pr-2821.md"
 tags: ["test", "static-pin", "allowlist", "mutation", "bash"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-12T04:13:09Z" }
+generated: { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-14T14:50:00Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-12T04:13:09Z" }
+  - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-14T14:50:00Z" }
 ---
 
 # 静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く
@@ -63,6 +66,14 @@ pin の文面は正しく、意図も正しかった。誤っていたのは、�
 
 この場面でも denylist が言い換えを素通りする性質は変わらない。レビューでは「迂回しても構わない」「main checkout 側で実行し直す」といった言い換えが green のまま生存することが実測された。契約側が denylist 方式と限界のコメント化を明示的に要求している場合はそのまま可としつつ、言い換えが実際に混入した時点で語彙を足すのではなく、退路で許容する行動（停止・復旧案内・承認手順）を allowlist として pin する方向へ切り替える。
 
+### denylist を残す場合は「使う側」の allowlist を対にし、denylist は表記揺れに依らない形にする
+
+awk の見出し判定を `==` で書くとロケール照合で誤判定する、という欠陥を denylist `\$0 [!=]= head` で pin していた場面で、演算子の両側の空白 1 個という表記に依存していたため `$0==head` / `head == $0` / `$0 ~ "^### "` はすべて素通りした。判定式の件数 pin も、代入行 `is_head = (...)` が残っていれば使う側の規則を `==` 比較に戻しても件数が動かず、green のまま欠陥が戻る。
+
+対処は 2 段で行う。第一に、**使う側の規則**（`is_head { in_sec=1 }` / `is_head { skip=1; next }` / 節境界式 / count 判定式）を `grep -cF` の allowlist として固定する。代入行が残っていても使う側が書き換われば件数が動く。第二に、denylist を残すなら ERE の選択肢で `\$0[[:space:]]*[!=]=[[:space:]]*head|head[[:space:]]*[!=]=[[:space:]]*\$0|~[[:space:]]*"\^### "` のように空白の有無と被演算子の順序に依らない形へ広げる。denylist の網羅は際限がない（既存規則を残したまま `$0 ~ head` を追加する変異は依然として素通りする）ので、denylist は補助に留め、allowlist が主であることを変えない。
+
+ERE の交替を denylist に使うときは、各枝が非空で単独でも HEAD に 0 hit であることを確認する。枝の一方が空や `^ *` のような常時一致になると assert 自体が恒真化する。実測は fix を外した mutant で suite の exit code が非 0 になること、HEAD で 0 になることの両側で行う。
+
 ## 関連ページ
 
 - [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](./fixture-mutation-isolates-invariants.md)
@@ -74,3 +85,4 @@ pin の文面は正しく、意図も正しかった。誤っていたのは、�
 - [`declare` / `typeset` で pin を素通りできることを検出](../../raw/reviews/20260805T043752Z-pr-2112.md)
 - [静的 pin を allowlist へ反転](../../raw/fixes/20260805T050456Z-pr-2112.md)
 - [退路本文への negative pin で禁止文を除外してから照合したレビュー結果](../../raw/reviews/20260912T040912Z-pr-2715.md)
+- [denylist の表記依存と使う側の allowlist 不在を mutation で実測したレビュー結果](../../raw/reviews/20260914T143622Z-pr-2821.md)
