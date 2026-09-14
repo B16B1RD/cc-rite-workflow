@@ -1934,6 +1934,40 @@ if [ -n "$_k_assign_line" ] && [ -n "$_k_jq_line" ] && [ "$_k_assign_line" -lt "
 assert "TC-4.11k' gh_err への代入が jq 実行より前 (signal 窓の trap 保護)" "before" "$_k_order"
 rm -f "$_nbr_marker_k"; rm -rf "$_jq_stub_dir"
 
+# TC-4.11m: 本文述語 jq の stderr 診断は `jq:` 接頭辞で出す。直後の案内は gh 認証 / network を否定するため、
+# 接頭辞が `gh:` だと診断と案内が食い違う。TC-4.11k の stub は stderr を出さないので接頭辞を観測できない。
+# 本文述語の jq (-Rrs が独立した引数のとき) だけを壊し、lookup 側の gh とパイプでつながる jq は実 jq のまま通す
+# (lookup も壊れる TC-4.11k の複合経路と違い、本文述語だけの単独経路を通す)。exec 先は PATH を差し替える前に
+# 絶対パスで解決する (PATH 上の jq を exec すると stub 自身を再帰呼び出しする)。
+_jq_diag_stub_dir="$TMP_ROOT/jq-diag-stub"; mkdir -p "$_jq_diag_stub_dir"
+printf '#!/usr/bin/env bash\ncase " $* " in *" -Rrs "*) echo "jq: error: SIMULATED_JQ_DIAG" >&2; exit 5 ;; esac\nexec %q "$@"\n' "$(command -v jq)" > "$_jq_diag_stub_dir/jq"
+chmod +x "$_jq_diag_stub_dir/jq"
+_nbr_marker_m="${TMPDIR:-/tmp}/rite-nbr-pending-9-234"
+: > "$_nbr_marker_m"
+PATH="$_jq_diag_stub_dir:$PATH" GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-234 --content-file "$NBR_BODY_C2"
+assert_grep "TC-4.11m reason=body_check_unavailable" "$ERR" 'NONBLOCKING_RECORD_FAILED=1; pr=9; reason=body_check_unavailable'
+assert_not_grep "TC-4.11m lookup は実 jq で成功する (degraded=1 を出さない)" "$ERR" 'degraded=1'
+assert_grep "TC-4.11m jq の stderr 診断を jq: 接頭辞で表示する" "$ERR" '^  jq: jq: error: SIMULATED_JQ_DIAG$'
+assert_not_grep "TC-4.11m jq の stderr 診断を gh: 接頭辞で表示しない" "$ERR" 'gh: jq: error: SIMULATED_JQ_DIAG'
+assert "TC-4.11m 診断は本文述語の失敗 1 回分だけ出る" "1" "$(grep -c 'SIMULATED_JQ_DIAG' "$ERR")"
+if [ -e "$_nbr_marker_m" ]; then _m_marker="present"; else _m_marker="absent"; fi
+assert "TC-4.11m pending marker を残さない (8.0.3 が差し戻さない)" "absent" "$_m_marker"
+# 診断が本文述語の失敗ブロック内で案内の直前に出ることを行番号で固定する:
+# WARNING 行 < 詳細見出し、見出しの次の行が診断行、診断行 < 対処行 (案内行は対処行に限る)
+_m_warn_line=$(grep -n '^WARNING: 非実測記録の本文述語' "$ERR" | head -1 | cut -d: -f1)
+_m_head_line=$(grep -n '^  詳細 (stderr 先頭 5 行):' "$ERR" | head -1 | cut -d: -f1)
+_m_diag_line=$(grep -n '^  jq: jq: error: SIMULATED_JQ_DIAG$' "$ERR" | head -1 | cut -d: -f1)
+_m_hint_line=$(grep -n '^  対処: jq --version' "$ERR" | head -1 | cut -d: -f1)
+if [ -n "$_m_warn_line" ] && [ -n "$_m_head_line" ] && [ -n "$_m_diag_line" ] && [ -n "$_m_hint_line" ] \
+  && [ "$_m_warn_line" -lt "$_m_head_line" ] && [ "$((_m_head_line + 1))" -eq "$_m_diag_line" ] \
+  && [ "$_m_diag_line" -lt "$_m_hint_line" ] 2>/dev/null; then
+  _m_order="adjacent"
+else
+  _m_order="warn=${_m_warn_line:-none} head=${_m_head_line:-none} diag=${_m_diag_line:-none} hint=${_m_hint_line:-none}"
+fi
+assert "TC-4.11m 診断行が本文述語の WARNING 詳細見出しの直後、jq 用の対処行より前に出る" "adjacent" "$_m_order"
+rm -f "$_nbr_marker_m"; rm -rf "$_jq_diag_stub_dir"
+
 # TC-4.11j [F-05 指摘, cycle 8]: **CRLF 本文**を write 側が受理する (read 側の CRLF fixture id=11 と対称)。
 # read/write は同一の jq 述語を共有するが、その CR 除去を落とすと CRLF 本文が body_sentinel_missing で
 # 毎 cycle 弾かれ、retain_pending_marker=1 → 8.0.3 が exit 1 で差し戻す固定ループになる
