@@ -4,10 +4,14 @@ title: "ユーザーにコピー実行させるコマンドをパスへ手書き
 domain: "anti-patterns"
 description: "WARNING に載せる手動復旧コマンドを rm -f '$path' のように手書きの単一引用符で組むと、パスにアポストロフィを含む環境で引用が閉じず、2 個含むと引数が分割されて無関係なパスが削除対象になる。表示用の無害化とは別に、実行用の文字列は printf %q で引用して作る。"
 created: "2026-09-14T01:40:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-14T01:40:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-14T03:36:26Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-14T03:36:26Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260914T010341Z-pr-2795.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260914T025734Z-pr-2798.md"
 tags: ["shell-quoting", "diagnostic-message", "manual-recovery"]
 confidence: high
 ---
@@ -42,6 +46,18 @@ WARNING に載せる手動復旧コマンドを rm -f '$path' のように手書
 
 アポストロフィを含むディレクトリの fixture を作り、出力された案内コマンドが `bash -n` を通ること、分割結果が 1 引数になることを assert する。
 
+`bash -n` だけでは足りない。アポストロフィが 2 個なら手書きの引用でも構文としては通るからである。修正後のレビューでは、次の 3 つを組み合わせたテストが、手書き引用へ戻す変異を確実に落とすことを複数のレビュアーが独立に再現した。
+
+- 取り出したコマンドを `eval "set -- $cmd"` で展開し、語数（`rm` `-f` `--` パスの 4 語）と最後の語がパスと一致することを確かめる。
+- 分割されたときに生まれる断片と同じ名前のおとりファイルを、実行する cwd に置く。
+- 実際にコマンドを実行し、対象の lock だけが消えておとりは残ることを確かめる。
+
+説明文側のパスが無害化済みの読める形のまま出ていることは、別の assert で固定しないと、説明文にも `%q` を使う退行を見逃す。
+
+### 1 箇所直しても同じ形が残る
+
+1 箇所を直しても、差分外の既存 helper に同じ形の手動回収案内（`rm -rf '$wt_path' ...` など）が残っていることがある。こうした行は、案内文字列の中で `'$` の直後に変数名が続く形として grep で機械的に拾える。修正するときは、兄弟 helper の同種の案内もまとめて洗い出す。
+
 ## 関連ページ
 
 - [二重引用符と -- は argv 分割にしか効かず、展開はパース時に終わっている](./quotes-do-not-stop-expansion.md)
@@ -50,3 +66,4 @@ WARNING に載せる手動復旧コマンドを rm -f '$path' のように手書
 ## ソース
 
 - [案内コマンドの引用崩れを指摘したレビュー結果](../../raw/reviews/20260914T010341Z-pr-2795.md)
+- [引用修正と検出力テストを確認したレビュー結果](../../raw/reviews/20260914T025734Z-pr-2798.md)

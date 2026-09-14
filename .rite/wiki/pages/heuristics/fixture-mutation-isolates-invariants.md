@@ -31,14 +31,17 @@ sources:
     resource: "raw/reviews/20260913T005700Z-pr-2757.md"
   - type: "reviews"
     resource: "raw/reviews/20260913T020014Z-pr-2760.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260914T025734Z-pr-2798.md"
 tags: ["test", "fixture", "mutation", "invariant", "coverage"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-13T02:07:58+00:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-14T03:36:26Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T18:43:00+00:00" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T23:20:00+00:00" }
   - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-13T01:10:00+00:00" }
   - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-13T02:07:58+00:00" }
+  - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-14T03:36:26Z" }
 ---
 
 # テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する
@@ -115,6 +118,14 @@ negative control の fixture は、**検証したい分岐に確実に入る形�
 - 単独固定できたかは、捕捉を 1 つずつ外す変異で**各変異がちょうど 1 ケースだけを落とす**ことで判定する。修正前のテストに同じ変異を当てて素通りすることも示すと、欠陥が実在したことまで裏付けられる
 - この形の mock の正しさは 3 点で決まる。回数ログを実行ごとに空にしていること、実コマンドのパスを mock が PATH に入る**前**に解決していること（mock が自分を exec する再帰を防ぐ）、関数呼び出しの前に置いた一時代入が子プロセスまで届くこと
 
+### 8. 除外側の対照は、判定式の条件を 1 つだけ外す形になっているかを確かめる
+
+`find ... -type f -size 0c ! -perm -200 ! -perm -020 ! -perm -002` のような複数条件の判定式に「報告しない」側の対照を並べるとき、各対照が**ちょうど 1 条件だけ**を外していないと、その条件を削る変異は落ちない。0464（g 書き込みあり）/ 0446（o 書き込みあり）/ 中身あり / 下位ディレクトリ配下は、それぞれ 1 条件だけを外すので各条件を固定できる。stub を指す symlink は lstat で mode 777・サイズ非 0・種別 symlink となり、3 条件に同時に外れる。このため `-type f` を削る変異では落ちず、実際に `-type f` を固定していたのは 0444 の FIFO だった。
+
+- 対照ごとに「どの条件だけが偽になるか」を、fixture を作ったあと実物で確かめる（lstat の mode・size・種別）
+- 複数条件に外れる対照を残すなら、コメントで「単独の条件は固定しない」と明記する。「各対照が 1 条件だけを外す」と書いたコメントのまま置くと、コメントが守れていない保証を主張する
+- 条件ごとに変異を 1 つ当て、どの対照の assert が落ちたかをラベル単位で見る。落ちない条件があれば、その条件だけを外す対照が欠けている
+
 ### 検証の決定打
 
 guard・不変量の TC を追加したら、worktree-only mutation（当該 guard / report_diff 呼び出しの削除、列挿入等）を実機注入して「その TC だけが FAIL する」ことを確認する。見た目の構造同型ではなく mutation の kill 実績が non-vacuous coverage の証明になる。
@@ -144,3 +155,4 @@ guard・不変量の TC を追加したら、worktree-only mutation（当該 gua
 - [複製した境界条件式の同一性がテストで固定されていないことを検出したレビュー結果](../../raw/reviews/20260912T225833Z-pr-2753.md)
 - [条件式の文字列一致では片側だけに足した別行ルールを検出できないことを変異で示したレビュー結果](../../raw/reviews/20260913T005700Z-pr-2757.md)
 - [差分テストが区切りの出ない変異を素通りさせることを示したレビュー結果](../../raw/reviews/20260913T020014Z-pr-2760.md)
+- [symlink 対照が単独の条件を固定していないことを実測したレビュー結果](../../raw/reviews/20260914T025734Z-pr-2798.md)
