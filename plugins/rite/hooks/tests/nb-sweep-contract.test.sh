@@ -11,7 +11,7 @@
 # T-08 body_count extraction expression matches between fix/references/nb-sweep.md and the record helper (AC-1..AC-3)
 # T-09 a ledger-only body (0 findings, no existing comment) creates the record comment, including CRLF and degraded lookup
 # T-10 nb-sweep.md record step succeeds only on created / updated and never reaches the done write otherwise
-# T-11 a body without ledger entries keeps the no-op skip; count mismatch and uncountable ledger fail instead (the awk diagnostic and awk-specific guidance surface, the pending marker is removed)
+# T-11 a body without ledger entries keeps the no-op skip; count mismatch and uncountable ledger fail instead (the awk diagnostic surfaces with the awk: prefix above the awk-specific guidance, the pending marker is removed)
 # T-12 an existing record comment is updated in place even when the body carries a ledger
 set -uo pipefail
 
@@ -585,9 +585,18 @@ NBR_EXTRA_PATH="$awk_fail_bin" run_nbr_helper 0 "$ledger_body"
 assert "T-11 台帳を数えられないときは skipped にしない" failed "$nbr_outcome"
 assert_grep "T-11 台帳を数えられない reason" "$nbr_err" 'reason=body_check_unavailable'
 assert_not_grep "T-11 台帳を数えられないときは投稿しない" "$NBR_GH_LOG" '^issue comment '
-assert_grep "T-11 awk の stderr 診断を表示する" "$nbr_err" 'SIMULATED_AWK_DIAG'
+assert_grep "T-11 awk の stderr 診断を awk: 接頭辞で表示する" "$nbr_err" '^  awk: SIMULATED_AWK_DIAG'
+assert_not_grep "T-11 awk の stderr 診断を gh: 接頭辞で表示しない" "$nbr_err" 'gh: SIMULATED_AWK_DIAG'
 assert_grep "T-11 awk 用の案内を出す" "$nbr_err" 'awk の実行環境'
 assert_not_grep "T-11 awk の失敗に jq の案内を出さない" "$nbr_err" 'jq --version'
+# 案内は「上の awk の診断」を指すため、診断行が案内行より前に出ることを行番号で固定する
+awk_diag_line=$(grep -n '^  awk: SIMULATED_AWK_DIAG' "$nbr_err" | head -1 | cut -d: -f1)
+awk_hint_line=$(grep -n 'awk の実行環境' "$nbr_err" | head -1 | cut -d: -f1)
+if [ -n "$awk_diag_line" ] && [ -n "$awk_hint_line" ] && [ "$awk_diag_line" -lt "$awk_hint_line" ]; then
+  pass "T-11 awk の診断行が awk 用の案内行より前に出る"
+else
+  fail "T-11 awk の診断行が awk 用の案内行より前にない (diag=${awk_diag_line:-none} hint=${awk_hint_line:-none})"
+fi
 if [ -e "$awk_fail_marker" ]; then
   rm -f "$awk_fail_marker"
   fail "T-11 台帳を数えられないときに pending marker が残る（環境起因は差し戻さない）"
