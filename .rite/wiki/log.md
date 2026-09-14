@@ -22,6 +22,7 @@
 * **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — [到達不能な分岐を関数の抜き出しで固めたテストのレビュー結果](raw/reviews/20260914T091626Z-pr-2813.md) を統合。テスト入力の値が変異の壊れ方を変えて否定の assert の単独の検出力を奪う節を追記
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=485, broken_refs=0
 * **Create**: [特定経路だけを壊す stub は、効果範囲が広がっていないことまで assert する](pages/heuristics/single-path-failure-stub-pins-its-blast-radius.md) — [診断の経路ラベルを本文検査の jq に揃えた変更のレビュー結果](raw/reviews/20260914T095810Z-pr-2814.md) を新規ページ化
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=485, broken_refs=0
 
 ## 2026-09-13
 
