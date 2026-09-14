@@ -19,14 +19,18 @@ sources:
     resource: "raw/reviews/20260828T040534Z-pr-2426.md"
   - type: "reviews"
     resource: "raw/reviews/20260912T001903Z-pr-2709.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260914T110010Z-pr-2816.md"
 tags: ["assert-not-grep", "vacuous-pin", "ere-portability", "test-pin", "fixture-scope", "count-zero-assertion"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-12T00:25:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-14T11:20:00Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-28T13:10:00+09:00"
   - by: "rite-wiki-ingest/claude-fable-5-1"
     at: "2026-09-12T00:25:00Z"
+  - by: "rite-wiki-ingest/claude-opus-5"
+    at: "2026-09-14T11:20:00Z"
 ---
 
 # absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する
@@ -74,6 +78,8 @@ printf '%s\n' "$err" | LC_ALL=C grep -qE '^  .*/\.gitignore: ' || fail   # 在�
 
 `LC_ALL=C` は必須。原因文字列は locale 依存の OS メッセージであり、UTF-8 locale の grep はデコードできない行を諦めて ASCII の anchor まで拾えなくなる。
 
+行末 CR が残る本文を `grep -c '^見出し$'` で数えると、CR 付きの行は一致しない。「見出しが重複していない（1 件）」を表明する assert は、CR 付きの旧見出しと LF の新見出しが並ぶ重複状態でも 1 を返して通る。行末を固定して数えるときは、先に `tr -d '\r'` で CR を除くか、CR を許すパターンにしてから数える。
+
 **同じリポジトリに正しい先例があるなら、新規テストはその片側だけを写していないか確認する** — 起点事例では既存の同型 assertion が `indented>=1 && bare==0` を対で表明していたのに、新規テストが負側だけを写していた。先例探索を挟めばレビュー往復を 1 回減らせた。
 
 ### 検証は mutation で
@@ -107,3 +113,4 @@ mutation の実施者は**主張する側と独立**であることが望まし�
 - [正負の対で pin + ミューテーション実測 + 先例探索](../../raw/fixes/20260828T035827Z-pr-2426.md)
 - [解消検証の独立再現と実バイト列の確認](../../raw/reviews/20260828T040534Z-pr-2426.md)
 - [禁止文の存在 pin が許可文の追記を捕まえない mutation 実測](../../raw/reviews/20260912T001903Z-pr-2709.md)
+- [CR 付き見出しを数えない重複検査を指摘したレビュー結果](../../raw/reviews/20260914T110010Z-pr-2816.md)
