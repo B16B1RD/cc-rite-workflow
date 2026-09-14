@@ -338,7 +338,7 @@ okf_version: "0.2"
 | [実測アンカーの repro に書くパイプは U+00A6 へ置換する](pages/patterns/verification-anchor-pipe-substitution.md) | patterns | 実測必須ゲートは `Verification:` アンカーの full match に blocking を委ねる。パイプや空の左辺、値域外の種別ラベルは match を壊すか空振りさせ、機械カテゴリまで exclusion なし class B へ倒すと blocking が落ちる。 | 2026-09-13T09:12:00Z | high |
 | [テンプレート準拠の fixture では、生成器が実データで作る構造的逸脱を検出できない](pages/heuristics/template-fixture-misses-generator-real-data-deviation.md) | heuristics | 除外規則やパーサの fixture を「そのファイル種別のテンプレート」に合わせて作ると、テンプレートが持つ偶然の性質（当該見出しが最終節にある、など）によって**誤った実装と正しい実装が同じ結果を返す**。 | 2026-08-30T12:50:00+09:00 | high |
 | [中断されうる処理の完了判定は、完了した処理だけが持つ不可逆な副作用を述語にする](pages/patterns/completion-predicate-uses-irreversible-side-effect.md) | patterns | signal で中断されうる処理について「完了したか」を判定するとき、成果物の**存在**（`[ -e "$dst" ]`）を証拠に使ってはならない。 | 2026-08-01T05:40:00Z | high |
-| [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](pages/anti-patterns/consumer-allowlist-wedges-producer-value-range.md) | anti-patterns | 「危険な入力を弾く」allowlist を**消費側だけ**に追加すると、生成側が正当に作れる値まで拒否する。 | 2026-08-13T19:20:00+09:00 | high |
+| [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](pages/anti-patterns/consumer-allowlist-wedges-producer-value-range.md) | anti-patterns | 「危険な入力を弾く」allowlist を**消費側だけ**に追加すると、生成側が正当に作れる値まで拒否する。 | 2026-09-14T23:10:01Z | high |
 | [静的ガードを新設したら、走査面の限界と現存する未カバーサイトをテスト本体のコメントに書く](pages/heuristics/static-guard-declare-scan-scope-limits.md) | heuristics | 退行を機械的に止める静的ガード（find + 検出器で全ファイルを走査するテスト等）を追加するとき、**走査面が何を含まないか**と、**その盲点に現時点で違反が残っているか**をテスト本体のコメントと PASS 文言に書く。 | 2026-08-01T17:45:00+09:00 | medium |
 | [限界を説明する例は検出器に食わせ、「〜としてのみ使う」型の断定は grep で数えてから書く](pages/heuristics/verify-explanatory-examples-against-the-detector.md) | heuristics | コメントやドキュメントで機構の限界・用途を説明するとき、**主張は頭の中で検証できるが、それを支える具体例と数え方は実行しないと逆を書く**。 | 2026-08-03T23:41:26+09:00 | medium |
 | [判別述語を対象テキスト全体に広げると、その規則自体を論じる文書で自己言及的に誤発火する](pages/anti-patterns/predicate-scans-whole-text-in-self-describing-domain.md) | anti-patterns | 判別述語を「ある記号がテキスト中に存在するか」の形で書くと、その記号を論じる文書そのものが判定対象になった瞬間に崩れる。 | 2026-08-01T23:12:28+09:00 | high |
@@ -505,8 +505,9 @@ okf_version: "0.2"
 | [複数実装が「同じ範囲を読む」と書く前に、行の判定式と節を出たあとの制御を分けて突き合わせる](pages/heuristics/same-range-claim-needs-predicate-and-control-parity.md) | heuristics | 同じ節を別々の実装で切り出すとき、行ごとの判定式を揃えただけでは同じ範囲を読むことにならない。節を抜けたあとに処理を終えるか、フラグを戻して読み続けて次の同名見出しで再び数えるかが違うと、同じ見出しが 2 回現れる本文で結果が割れるため、コメントや同期テストは判定式の一致と制御の一致を分けて主張する。 | 2026-09-14T11:20:00Z | medium |
 | [Markdown 表を awk の既定 FS で抽出すると $1 が行頭のパイプになり、空集合ループの pin が常時 PASS する](pages/anti-patterns/markdown-table-awk-field-off-by-leading-pipe-vacuous-set-pin.md) | anti-patterns | Markdown 表の行を awk の既定フィールド分割で読むと第 1 フィールドは行頭の `\|` であり、記号を gsub で剥がすと空文字になる。その空集合を for で回す「SoT の各要素を実装が扱う」pin はループが 0 回で常に PASS し、arm を削っても落ちない。集合を抽出したら非空を先に pin する。 | 2026-09-15T00:45:00Z | high |
 | [再開の振り分け先は phase 名の対応ではなく、遷移先スキルの入口契約（前提 phase と完了 sentinel）で決める](pages/heuristics/resume-dispatch-target-must-satisfy-downstream-entry-contract.md) | heuristics | phase → スキルの対応表だけで再開先を決めると、遷移先スキルの入口ゲート（E2E 判定の whitelist）や終了契約（既に完了済みの入力では sentinel を出さない）に阻まれて、再開しても同じ段で再停止する。phase が「その段の完了」を意味するなら次段へ振る。 | 2026-09-15T00:45:00Z | high |
+| [大文字小文字だけが違う fixture ファイル名は macOS で同じファイルになり、後から書いた fixture が前のものを上書きする](pages/anti-patterns/case-only-differing-fixture-names-collide-on-macos.md) | anti-patterns | macOS の標準ファイルシステムは大文字小文字を区別しないため、`~1a2b.json` と `~1A2B.json` のように大文字小文字だけが違う fixture は 1 つのファイルになる。Linux では緑のテストが macOS CI だけで赤になる。 | 2026-09-14T23:10:01Z | high |
 ## 統計
 
-- 総ページ数: 495
-- ドメイン別: patterns=112, heuristics=221, anti-patterns=162
-- 最終更新: 2026-09-14T16:45:05Z
+- 総ページ数: 496
+- ドメイン別: patterns=112, heuristics=221, anti-patterns=163
+- 最終更新: 2026-09-14T23:10:01Z
