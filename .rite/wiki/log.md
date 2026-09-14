@@ -1,6 +1,7 @@
 ## 2026-09-14
 
 * **Update**: [静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く](pages/heuristics/static-pin-semantic-allowlist-not-notation-denylist.md) — [denylist の表記依存と使う側の allowlist 不在を mutation で実測したレビュー結果](raw/reviews/20260914T143622Z-pr-2821.md) を統合。使う側の allowlist を対にし denylist は表記揺れに依らない形にする節を追記
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=485, broken_refs=0
 * **Update**: [grep (BRE) と grep -E (ERE) のメタ文字反転で assert ヘルパーが常時緑の dead assertion になる](pages/anti-patterns/bre-ere-metachar-inversion-dead-assertion.md) — [ERE に素のパイプを渡した隣接 pin の tautology を指摘したレビュー結果](raw/reviews/20260914T135958Z-pr-2819.md) を統合。反転の逆方向（素の `|` が交替になり全行一致で恒真化する）を追記
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=485, broken_refs=0
 * **Create**: [exit 0 で終わる hook の stderr は debug ログにしか残らない — 通知の到達先を確かめてから文書に「知らせる」と書く](pages/heuristics/hook-exit0-stderr-debug-log-only-verify-delivery.md) — [stderr の到達先を指摘したレビュー結果](raw/reviews/20260914T010341Z-pr-2795.md) と [文書を実態に合わせて契約を保った fix 結果](raw/fixes/20260914T010811Z-pr-2795.md) を新規ページ化
