@@ -274,6 +274,17 @@ live_out=$("$COLLECT" --json "$live_json" --pr 1)
 assert "all three ledger dispositions excluded, id collision retained" "2" "$(printf '%s' "$live_out" | jq '.count')"
 assert "guardrail ledger excluded" "0" "$(printf '%s' "$live_out" | jq '.already_rejected | length')"
 assert "same id different location retained" "src/different.ts" "$(printf '%s' "$live_out" | jq -r '.targets[] | select(.id=="old") | .file')"
+
+# CRLF body: the ledger section must be read exactly as the LF body (same targets, same section boundary).
+crlf_ledger_body="$sandbox/live-ledger-crlf.md"
+sed 's/$/\r/' "$ledger_body" > "$crlf_ledger_body"
+assert "CRLF fixture contains CR" "yes" "$(grep -q $'\r' "$crlf_ledger_body" && echo yes || echo no)"
+jq -n --rawfile body "$crlf_ledger_body" '[[{body:$body}]]' > "$NB_TEST_COMMENTS"
+crlf_out=$("$COLLECT" --json "$live_json" --pr 1)
+assert "CRLF ledger excludes the same three dispositions" "2" "$(printf '%s' "$crlf_out" | jq '.count')"
+assert "CRLF targets equal LF targets" "$(printf '%s' "$live_out" | jq -cS '[.targets[] | {id, file, line}]')" "$(printf '%s' "$crlf_out" | jq -cS '[.targets[] | {id, file, line}]')"
+assert "CRLF keeps the collision row outside the ledger" "1" "$(printf '%s' "$crlf_out" | jq '[.targets[] | select(.id=="collision")] | length')"
+jq -n --rawfile body "$ledger_body" '[[{body:$body}]]' > "$NB_TEST_COMMENTS"
 NB_TEST_BRANCH_ONLY=1 "$COLLECT" --json "$live_json" --pr 1 > "$sandbox/branch.out"
 assert "branch fallback gets same ledger" "$live_out" "$(cat "$sandbox/branch.out")"
 assert_grep "ledger loaded from related Issue" "$NB_TEST_GH_LOG" 'repos/test/repo/issues/42/comments'
