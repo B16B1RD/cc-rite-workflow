@@ -15,9 +15,13 @@ sources:
     resource: "raw/reviews/20260813T093122Z-pr-2306.md"
   - type: "fixes"
     resource: "raw/fixes/20260813T093419Z-pr-2306.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260914T224913Z-pr-2826.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-13T19:20:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-14T23:10:01Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-14T23:10:01Z" }
 ---
 
 # 消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る
@@ -75,6 +79,16 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-13T19:20:00+09:00" }
 
 どちらの向きも原因は同じ — **消費側の値域を、producer の実装ではなく設計意図から書いた**こと。新設する判定は、必ず producer の出力を実測（または helper の docstring 契約）から引く。加えて、成立を観測する marker を「保存が成功した」ことに限定し、判定不能を成功へ倒さない。
 
+### producer の例外経路が作る名前も値域に含める
+
+ファイル名の形を検査する消費側では、producer の**通常経路**の名前だけを受理形に書きがちである。保存 helper が同秒衝突時にだけ `{ts}~{4 桁 hex}.json` という suffix 付きの名前を作る実装で、消費側の受理 regex が `{ts}.json` しか許さなかったため、衝突経路で保存された結果に載った指摘は識別 key を持てず、解消済みでも毎回転記され続けた。
+
+直すときは次の 3 点を揃える。
+
+- 受理形の上限は producer の生成式から引く。`printf '%04x' "$RANDOM"` なら小文字 hex ちょうど 4 桁で、大文字や桁違いまで広げない
+- 同じ形を判定する消費側が複数あれば、同じバイト列で同時に広げ、片方だけの変更を静的 pin で止める
+- 説明文にも上限を書く。「4 桁 hex」とだけ書くと、regex より広い範囲を宣言したことになる
+
 ## 関連ページ
 
 - [非収束の review ループは個別修正ではなく構造を疑う](../heuristics/non-converging-review-loop-suspect-structure.md)
@@ -87,3 +101,4 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-13T19:20:00+09:00" }
 - [fix 結果](../../raw/fixes/20260801T013839Z-pr-2078.md)
 - [消費側ゲートの値域が helper 契約と食い違い主シナリオで発火しなかった](../../raw/reviews/20260813T093122Z-pr-2306.md)
 - [判定を helper 契約の値域へ揃え、保存観測を成功時 marker に限定](../../raw/fixes/20260813T093419Z-pr-2306.md)
+- [同秒衝突 suffix を受理形と射影の両方で同時に受け付けたレビュー結果](../../raw/reviews/20260914T224913Z-pr-2826.md)
