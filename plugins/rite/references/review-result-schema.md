@@ -209,7 +209,7 @@
 | `status` | **enum** (string) | ✅ | 対応状態。**受理値**: `"open"` / `"fixed"` / `"replied"` / `"deferred"` / `"acknowledged"` の **5 値**。現行実装では `/rite:pr-review` ステップ 6.1.a は常に `"open"` を出力する (将来の state machine 拡張で `/rite:fix` 完了時に `"fixed"` / `"acknowledged"` 等を書き戻す slot を予約)。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=status_unknown_value; value=<val>` を stderr 出力する |
 | `consequence_class` | **enum** (string) | (任意、1.1.0+) | 帰結クラス降格政策 (§5.3.0.C) の分類結果。**受理値**: `"A"` / `"B"` の 2 値。**書き手は `scripts/review-class-demotion-gate.sh` のみ** — classification map から算出して無条件に上書きするため、ステップ 5.3.0.M step 1 の Claude が書いても helper の算出結果で必ず置き換わる (分類入力にはならない — 迂回防止)。gated finding の `verification.measured` が boolean でない場合は `measured_undetermined` で書き換え前に停止し、本キーを付与しない。**キー欠落** = (a) `scope == "nit-noted"` の finding (本ゲート対象外のため降格発動 cycle でも付かない — nit が 1 件でもある cycle で常態)、(b) blocking 0 件で no-op になった cycle、(c) ゲート導入前の JSON、(d) 5.3.0.M の実測必須ゲートで `non_blocking_findings[]` へ降格した要素 (本ゲートは `findings[]` のみを走査するため)、(e) `measured_undetermined` で入力 JSON が byte-identical に保たれた失敗。audit-only で判定 consumer は無視する |
 | `consequence_scenario` | string | (任意、1.1.0+) | 分類の判定文。class A は「放置時にどの操作で何が壊れるか」の実行時シナリオ 1 行、class B は「実行時シナリオを書けない」ことの認定文。`consequence_class` と同時に helper が書く (判定不能で class A に倒した finding は `consequence_class: "A"` のみで本キーは欠落する) |
-| `consequence_exclusion` | string | (任意、1.1.0+) | 帰結クラス降格の除外判定文。**書き手は `scripts/review-class-demotion-gate.sh` のみ**。classification map の `exclusion` (非空文字列) を写す。本キーがある class B は A=0 でも `non_blocking_findings[]` へ移送されない。判定不能 / class A / 除外なし class B ではキーごと欠落する。`measured_undetermined` は書き換え前に停止するため既存キーも含め入力を変更しない |
+| `consequence_exclusion` | string | (任意、1.1.0+) | 帰結クラス降格の除外判定文。**書き手は `scripts/review-class-demotion-gate.sh` のみ**。classification map の `exclusion` (非空文字列) を写す。map に exclusion が無い class B で、`acceptance_criteria[]` の `unmet` 行が本 finding を `finding_id` で指すときは `ac_unmet:AC-N` (複数行は行順に `ac_unmet:AC-1,AC-2`) を書く。本キーがある class B は A=0 でも `non_blocking_findings[]` へ移送されない。判定不能 / class A / 除外なし class B ではキーごと欠落する。`measured_undetermined` は書き換え前に停止するため既存キーも含め入力を変更しない |
 
 ### `verdict` と `reviewers`
 
@@ -260,7 +260,7 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 <a id="acceptance_criteria"></a>
 
-関連 Issue の `## 5. Acceptance Criteria` にある全 `### AC-N` を、acceptance reviewer が本 cycle の HEAD で確認した結果。`pr-review.md` ステップ 5.3.0.M step 1 が毎 cycle 書き、降格ゲート helper は触れない。schema_version は bump しない（additive）。
+関連 Issue の `## 5. Acceptance Criteria` にある全 `### AC-N` を、acceptance reviewer が本 cycle の HEAD で確認した結果。`pr-review.md` ステップ 5.3.0.M step 1 が毎 cycle 書き、降格ゲート helper は読むだけで書き換えない。schema_version は bump しない（additive）。
 
 対象 cycle は配列で、AC ごとに 1 要素（Issue の AC-ID 集合と一致）:
 
@@ -281,7 +281,7 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 対象外 cycle は object で、理由を 1 つ持つ: `{"skipped": "no_issue"}`（関連 Issue を特定できない）/ `{"skipped": "no_ac_section"}`（テンプレート形式の AC 節がない）。
 
-**`unmet` 行は降格されない**: 行の `finding_id` は降格ゲート適用後も `findings[]` の `scope == "current-pr"` に残っていなければならず、残っていなければ `pr-review.md` ステップ 5.3.0.A が停止する。`status` を `unverified` へ書き換えて通すことはない。`total_findings == 0` かつ `unverified` 行が 1 つ以上の cycle は保存後に `[review:error]` で停止する（ステップ 8.1）。
+**`unmet` 行は降格されない**: 帰結クラス降格ゲート (`scripts/review-class-demotion-gate.sh`) は、`unmet` 行が `finding_id` で指す class B の finding に `consequence_exclusion: "ac_unmet:AC-N"` を付けて降格対象から外す。行の `finding_id` は降格ゲート適用後も `findings[]` の `scope == "current-pr"` に残っていなければならず、残っていなければ `pr-review.md` ステップ 5.3.0.A が停止する。`status` を `unverified` へ書き換えて通すことはない。`total_findings == 0` かつ `unverified` 行が 1 つ以上の cycle は保存後に `[review:error]` で停止する（ステップ 8.1）。
 
 ### `non_blocking_findings` 配列
 
