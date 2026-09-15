@@ -268,20 +268,24 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 "acceptance_criteria": [
   {"id": "AC-1", "status": "satisfied", "finding_id": null, "evidence": "bash hooks/tests/foo.test.sh => PASS: 12 FAIL: 0"},
   {"id": "AC-2", "status": "unmet", "finding_id": "F-01", "evidence": "指摘事項 [AC-2] を参照"},
-  {"id": "AC-3", "status": "unverified", "finding_id": null, "evidence": "認証付きの実環境が必要"}
+  {"id": "AC-3", "status": "human-verified", "finding_id": null, "evidence": "認証付きの実環境で人間が確認", "head": "abc1234", "at": "2026-04-11T13:20:00+09:00"}
 ]
 ```
 
 | フィールド | 型 | 説明 |
 |-----------|-----|------|
 | `id` | string | `AC-N` |
-| `status` | **enum** (string) | `"satisfied"` (充足) / `"unmet"` (未充足) / `"unverified"` (未検証)。reviewer 出力の日本語判定と 1 対 1 |
+| `status` | **enum** (string) | `"satisfied"` (充足) / `"unmet"` (未充足) / `"unverified"` (未検証) / `"human-verified"` (人間が実環境で確認済み)。最初の 3 値は reviewer 出力の日本語判定と 1 対 1。`human-verified` は ready / merge の attest 操作だけが `unverified` から書き換える |
 | `finding_id` | string \| null | `unmet` のときだけ、`description` が `[AC-N]` で始まる acceptance-reviewer の finding の `id`。それ以外は `null` |
 | `evidence` | string | 判定の根拠（実行コマンドと観測結果、または未検証の理由）。空にしない |
+| `head` | string | `human-verified` のときだけ必須。確認時の HEAD SHA で、トップレベルの `commit_sha` と一致しなければならない。それ以外の status では持たない |
+| `at` | string | `human-verified` のときだけ必須。確認記録を書いた時刻（ISO 8601）。それ以外の status では持たない |
 
 対象外 cycle は object で、理由を 1 つ持つ: `{"skipped": "no_issue"}`（関連 Issue を特定できない）/ `{"skipped": "no_ac_section"}`（テンプレート形式の AC 節がない）。
 
 **`unmet` 行は降格されない**: 帰結クラス降格ゲート (`scripts/review-class-demotion-gate.sh`) は、`unmet` 行が `finding_id` で指す class B の finding に `consequence_exclusion: "ac_unmet:AC-N"` を付けて降格対象から外す。行の `finding_id` は降格ゲート適用後も `findings[]` の `scope == "current-pr"` に残っていなければならず、残っていなければ `pr-review.md` ステップ 5.3.0.A が停止する。`status` を `unverified` へ書き換えて通すことはない。`total_findings == 0` かつ `unverified` 行が 1 つ以上の cycle は保存後に `[review:error]` で停止する（ステップ 8.1）。
+
+`human-verified` は未検証行への確認記録であり、reviewer の判定を置き換える一般的な override ではない。`unmet` / `satisfied` / 既存の `human-verified` 行は attest できず、`unmet` の解消には修正または Issue の AC 訂正後に `/rite:pr-review` を再実行する。ready / merge の enforce は全行が `satisfied`、またはトップレベルの `commit_sha` と同じ `head` を持つ `human-verified` の場合だけ通す。
 
 ### `non_blocking_findings` 配列
 
@@ -398,6 +402,8 @@ collect は `targets[]` に `verification` と `route` を返す。実測あり 
 1.1.0 で導入された `findings[].scope` / `findings[].pre_existing` フィールドは 1.0 / 1.0.0 JSON には欠落しているため、read 側 (`fix.md` ステップ 1.2.0) は schema_version が `"1.0.0"` または `"1.0"` の場合、下記 `scope` 節の default mapping を適用する。`pre_existing` は 1.1.0 JSON でも欠落しうる additive optional field であり、schema_version に依らず default mapping を**適用しない** — 下記 `pre_existing` 節参照。欠落のまま保持することが invariant #5 の後方互換の前提になっている。
 
 **`verification` の default mapping のみ schema_version に依らず適用される** — `verification` は 1.1.0 内で additive 追加されたため 1.1.0 JSON でも欠落しうる ([Schema Version](#schema-version-sot) 参照)。schema_version で gate してはならない。
+
+**`acceptance_criteria` 導入前の JSON は ready / merge で fail-closed にする** — 判定表は reviewer の実行結果からしか導出できないため、欠落を既定値へ写像したり、その場で補完したりしない。`measured_gate` receipt の欠落と同じく `/rite:pr-review` の再実行を要求する。既存 JSON を書き換える migration script は設けず、`archive/` 配下は ready / merge の最新結果探索対象外なので移行対象にも含めない。
 
 ### scope の default mapping
 
