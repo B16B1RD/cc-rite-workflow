@@ -600,7 +600,7 @@ retained flag: `[CONTEXT] REVIEW_SOURCE_STALE=1; reason={explicit_file|local_fil
 
 | 条件 | 挙動 |
 |------|------|
-| `--post-comment` と `--no-post-comment` 同時指定 | エラーメッセージを表示して終了 (レビューもコメント投稿も実行しない — AC-8) |
+| `--post-comment` と `--no-post-comment` 同時指定 | エラーメッセージを表示して終了（レビューもコメント投稿も実行しない） |
 
 ## クリーンアップ
 
@@ -617,8 +617,8 @@ wildcard は PR 番号 prefix 固定とし、他 PR のファイルを誤って�
 
 ## 関連ファイル
 
-- `plugins/rite/skills/pr-review/SKILL.md` ステップ 6.1: JSON 生成と保存ロジック (AC-1 default stop / AC-2 opt-in posting / D-04 non-blocking contract)
-- `plugins/rite/skills/fix/SKILL.md` ステップ 1.2.0: ハイブリッド読取ロジック (AC-3/4 会話/ファイル優先 / AC-5 後方互換 / AC-6 対話式 fallback)
+- `plugins/rite/skills/pr-review/SKILL.md` ステップ 6.1: JSON 生成と保存ロジック（デフォルトは投稿せず、opt-in 時のみ non-blocking で投稿）
+- `plugins/rite/skills/fix/SKILL.md` ステップ 1.2.0: 会話とローカルファイルを優先し、旧形式と対話式 fallback を保つハイブリッド読取ロジック
 - `plugins/rite/skills/cleanup/SKILL.md` ステップ 6: 自動削除/退避ロジック (レビュー結果ファイルは `non_blocking_findings[]` 非空 / 判定不能なら `archive/` へ退避、それ以外の state file は無条件削除)。レビュー結果ファイルの reason 語彙は `hooks/scripts/review-results-archive-or-rm.sh` の docstring、それ以外の failure reason と eval-order enumeration は `hooks/scripts/cleanup-pr-state-purge.sh` 側を単一源とする (ステップ 6 が持つのは helper 起動失敗時の `state_purge_helper_failed` のみ)。
 - `rite-config.yml` `pr_review.post_comment`: グローバル設定
 - `plugins/rite/hooks/review-result-save.sh`: 保存先へ同梱する `*` だけの `.gitignore`（除外機構の実体）
