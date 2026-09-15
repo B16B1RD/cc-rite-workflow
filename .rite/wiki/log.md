@@ -1,5 +1,6 @@
 ## 2026-09-15
 
+* **Skip**: [20260915T063424Z-pr-2839.md](raw/reviews/20260915T063424Z-pr-2839.md) — one-off documentation wording alignment of suffix description; no durable heuristic
 * **Update**: [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](pages/anti-patterns/consumer-allowlist-wedges-producer-value-range.md) — [同秒衝突 suffix を受理形と射影の両方で受け付けたレビュー結果](raw/reviews/20260914T224913Z-pr-2826.md) を統合。producer の例外経路が作る名前も受理形の値域に含める節を追記
 * **Create**: [大文字小文字だけが違う fixture ファイル名は macOS で同じファイルになり、後から書いた fixture が前のものを上書きする](pages/anti-patterns/case-only-differing-fixture-names-collide-on-macos.md) — [macOS CI だけで落ちた fixture の名前衝突を直した再レビュー結果](raw/reviews/20260914T230532Z-pr-2826.md) を新規ページ化
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=486, broken_refs=0
