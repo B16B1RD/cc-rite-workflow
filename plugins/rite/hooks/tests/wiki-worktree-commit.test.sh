@@ -17,6 +17,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_test-helpers.sh"
 
 SCRIPT="$SCRIPT_DIR/../scripts/wiki-worktree-commit.sh"
+# shellcheck source=../scripts/lib/worktree-git.sh
+source "$SCRIPT_DIR/../scripts/lib/worktree-git.sh"
 
 echo "=== wiki-worktree-commit.sh tests ==="
 
@@ -131,6 +133,16 @@ if printf '%s' "$nopending_out" | grep -q 'committed=0; branch=wiki; reason=no-p
 else
   fail "no-pending status line missing: $nopending_out"
 fi
+
+# Exercise the write probe against a writable linked-worktree admin dir. The
+# read-only fixture below cannot pin cleanup because mktemp never creates the
+# probe there in the first place.
+nopending_wt="$nopending_repo/.rite/wiki-worktree"
+nopending_admin="$(git -C "$nopending_wt" rev-parse --absolute-git-dir)"
+probe_rc=0; worktree_admin_writable "$nopending_wt" || probe_rc=$?
+assert "writable admin dir probe exits 0" "0" "$probe_rc"
+assert "the successful write probe leaves no file in the admin dir" "0" \
+  "$(find "$nopending_admin" -maxdepth 1 -name 'rite-write-probe.*' | wc -l | tr -d '[:space:]')"
 
 # --- newline --message guard, isolated -----------------------------------
 # The header-smuggling guard fires BEFORE the git/worktree checks. Run against a
@@ -412,8 +424,6 @@ else
   assert "sandbox-mask stages nothing (numref helper not called)" "$others_before_mask" \
     "$(git -C "$mask_wt" ls-files --others --exclude-standard -- .rite/wiki)"
   assert "sandbox-mask does not advance the wiki branch" "$wiki_before_mask" "$(git -C "$mask_repo" rev-parse wiki)"
-  assert "the write probe leaves no file in the admin dir" "0" \
-    "$(find "$mask_admin" -maxdepth 1 -name 'rite-write-probe.*' | wc -l | tr -d '[:space:]')"
 fi
 
 print_summary "wiki-worktree-commit.sh"
