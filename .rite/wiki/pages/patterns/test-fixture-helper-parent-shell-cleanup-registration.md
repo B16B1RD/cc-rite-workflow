@@ -9,9 +9,13 @@ sources:
     resource: "raw/fixes/20260703T054500Z-pr-1735.md"
   - type: "reviews"
     resource: "raw/reviews/20260703T055450Z-pr-1735.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260915T123233Z-pr-2867.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-03T06:00:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-15T12:50:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-15T12:50:00Z" }
 ---
 
 # path を返す test fixture ヘルパーの cleanup 登録は $() サブシェルではなく親シェルで行う
@@ -52,6 +56,12 @@ disabled_repo="$(new_repo false)"; SANDBOXES+=("$disabled_repo")
 - **fixture 構築の silent failure（偽 PASS）**: fixture の git 操作を `&&` 連結せず逐次実行し戻り値を検査しないと、`git commit`/`git push` が失敗しても壊れた repo を返し、後続の **skip 期待テスト（exit 0）が壊れた repo でも緑になる**。末尾で `git rev-parse HEAD`（構築検証）/ `git rev-parse origin/wiki`（push 検証）を assert し、`&&` 連結 + 失敗時 `exit 1` で fail-loud にする。
 - **exit-code assertion の非 isolation**: guard の発火を `exit 1` で assert しても、その guard を削除しても後続チェック（例: not-a-git-repo 検査）が **同じ exit 1** を返すなら、テストは guard を消しても pass し続ける false-positive になる。guard の直前が exit 0 になる構成（例: 構築済み repo で benign 入力=0 / trigger 入力=1）に置き、**benign と trigger の差分**で guard を isolate する。
 
+### 逆向きの罠: サブシェルで cleanup が走って親の fixture が消える
+
+配列 push が親に届かない罠とは逆に、`$(...)` の中で呼んだ関数が呼び出し元の EXIT trap を `eval` で復元すると、サブシェルが終わる時点でその trap が発火する。trap の中身が cleanup なら、親シェルがそれまでに登録した一時ディレクトリがその場で削除される。後続のテストケースは存在しないディレクトリを前提に動き、原因と離れた箇所で失敗する。
+
+実際に起きた例では、先頭のテストケースが trap を復元する関数を `$(...)` で呼んだ直後に、共有の fixture ディレクトリが消えていた。対処は、そうした呼び出しを済ませてから fixture ディレクトリを作ることである。trap を復元する関数を `$(...)` で呼ぶ限り、そこより前に作ったディレクトリは消える前提で並べる。
+
 ## 関連ページ
 
 - [trap 登録 → mktemp の順序で tempfile lifecycle を守る](./trap-register-before-mktemp.md)
@@ -60,3 +70,4 @@ disabled_repo="$(new_repo false)"; SANDBOXES+=("$disabled_repo")
 
 - [fix 結果](../../raw/fixes/20260703T054500Z-pr-1735.md)
 - [レビュー結果](../../raw/reviews/20260703T055450Z-pr-1735.md)
+- [サブシェルで trap が発火し fixture が消えた経緯を記録したレビュー結果](../../raw/reviews/20260915T123233Z-pr-2867.md)
