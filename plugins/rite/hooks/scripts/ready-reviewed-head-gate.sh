@@ -107,6 +107,7 @@ _check_acceptance_criteria() {
         (has("finding_id") | not) or
         (.status == "unmet" and (((.finding_id | type) != "string") or (.finding_id | test("^F-[0-9]{2,}$") | not))) or
         (.status != "unmet" and .finding_id != null) or
+        (.status != "human-verified" and (has("head") or has("at"))) or
         (.status != "satisfied" and .status != "unmet" and .status != "unverified" and .status != "human-verified") or
         (.status == "human-verified" and
           (((.head | type) != "string") or ((.at | type) != "string") or
@@ -145,7 +146,11 @@ _check_acceptance_criteria() {
         echo "[CONTEXT] REVIEWED_AC=malformed; reason=unknown_duplicate_or_mixed_attest_ids; file=$latest" >&2
         return 1
       fi
-      now=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+      if ! now=$(date -u +'%Y-%m-%dT%H:%M:%SZ'); then
+        rm -f "$ids_tmp"
+        echo "[CONTEXT] REVIEWED_AC=malformed; reason=attest_time_failed; file=$latest" >&2
+        return 1
+      fi
       tmp="$latest.tmp.$$"
       if ! jq --slurpfile ids "$ids_tmp" --arg head "$reviewed" --arg at "$now" '
         ($ids[0]) as $want | .acceptance_criteria |= map(

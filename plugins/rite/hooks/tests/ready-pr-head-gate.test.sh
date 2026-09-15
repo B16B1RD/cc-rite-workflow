@@ -141,7 +141,12 @@ cat > "$SB/bin/mv" <<'EOF'
 case "${MV_FAIL_ATTEST:-0}:$*" in 1:*'.tmp.'*) exit 7 ;; esac
 exec "$REAL_MV" "$@"
 EOF
-chmod +x "$SB/bin/jq" "$SB/bin/mv"
+cat > "$SB/bin/date" <<'EOF'
+#!/bin/bash
+[ "${DATE_FAIL_ATTEST:-0}" = 1 ] && exit 7
+exec /bin/date "$@"
+EOF
+chmod +x "$SB/bin/jq" "$SB/bin/mv" "$SB/bin/date"
 write_review_json() {
   local sha="$1" name="$2"
   jq -n --arg sha "$sha" --argjson pr 42 \
@@ -405,6 +410,9 @@ write_ac_json '[{"id":"AC-1","status":"unmet","evidence":"failed"}]'
 jq 'del(.acceptance_criteria[0].finding_id)' "$RH_DIR/42-20260101000000.json" > "$SB/ac.json" && mv "$SB/ac.json" "$RH_DIR/42-20260101000000.json"
 rc=0; run_rh_ac >/dev/null 2>"$SB/rh-ac" || rc=$?
 [ "$rc" -eq 1 ] && grep -q 'REVIEWED_AC=malformed' "$SB/rh-ac" && ok || bad RH-AC-missing-finding-id
+write_ac_json '[{"id":"AC-1","status":"satisfied","evidence":"test","head":"deadbeef","at":"not-a-time"}]'
+rc=0; run_rh_ac --enforce-ac >/dev/null 2>"$SB/rh-ac" || rc=$?
+[ "$rc" -eq 1 ] && grep -q 'REVIEWED_AC=malformed' "$SB/rh-ac" && ok || bad RH-AC-satisfied-attestation-fields
 
 # Attestation is atomic and only accepts unique, existing unverified IDs.
 write_ac_json '[{"id":"AC-1","status":"unverified","evidence":"manual"},{"id":"AC-2","status":"unverified","evidence":"manual"}]'
@@ -417,6 +425,10 @@ export JQ_FAILURE_MODE=encode
 rc=0; run_rh_ac --attest AC-1 >/dev/null 2>"$SB/rh-ac" || rc=$?
 unset JQ_FAILURE_MODE
 [ "$rc" -eq 1 ] && grep -q 'reason=attest_ids_encode_failed' "$SB/rh-ac" && cmp -s "$SB/before.json" "$RH_DIR/42-20260101000000.json" && ! find "$RH_DIR" -name '*.ids.tmp.*' -print -quit | grep -q . && ok || bad RH-AC-attest-encode-failure
+export DATE_FAIL_ATTEST=1
+rc=0; run_rh_ac --attest AC-1 >/dev/null 2>"$SB/rh-ac" || rc=$?
+unset DATE_FAIL_ATTEST
+[ "$rc" -eq 1 ] && grep -q 'reason=attest_time_failed' "$SB/rh-ac" && cmp -s "$SB/before.json" "$RH_DIR/42-20260101000000.json" && ! find "$RH_DIR" -name '*.tmp.*' -print -quit | grep -q . && ok || bad RH-AC-attest-time-failure
 export MV_FAIL_ATTEST=1
 rc=0; run_rh_ac --attest AC-1 >/dev/null 2>"$SB/rh-ac" || rc=$?
 unset MV_FAIL_ATTEST
