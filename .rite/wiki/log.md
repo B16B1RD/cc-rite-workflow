@@ -16,6 +16,7 @@
 * **Update**: [macOS の awk の == は UTF-8 ロケールで照合比較になり、別の日本語文字列を等しいと判定する](pages/anti-patterns/macos-awk-string-equality-uses-locale-collation.md) — [ロケール固定で全角空白の検査が外れたと指摘したレビュー結果](raw/reviews/20260915T025127Z-pr-2829.md) を統合。文字クラスが ASCII に狭まる節を追記
 * **Create**: [手順の再実行列は通常経路の強制層を飛ばさず、再実行の範囲と初回判断の保持を同じ文で書く](pages/patterns/rerun-sequence-states-scope-and-preserved-decisions.md) — [再実行の範囲と初回判断の保持が未記載と指摘したレビュー結果](raw/reviews/20260915T031032Z-pr-2829.md) を新規ページ化
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=486, broken_refs=0
+* **Update**: [先行 Issue の明示的 Non-Target 指定は、reviewer 推奨だけで覆さずユーザー確認する](pages/heuristics/respect-prior-non-target-designation.md) — [帰結クラス降格 helper に除外入力源を足したレビュー結果](raw/reviews/20260915T042231Z-pr-2833.md) を統合。同一 Issue の Non-Target と出力契約拡張が衝突したときの自律実行での扱いを追記
 
 ## 2026-09-14
 

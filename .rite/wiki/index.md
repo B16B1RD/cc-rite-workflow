@@ -211,7 +211,7 @@ okf_version: "0.2"
 | [過剰マッチ防止の精緻化修正は、実装が許容する全形状を再確認しないと過小マッチという別の欠陥を生む (振り子現象)](pages/anti-patterns/precision-tightening-pendulum-regression.md) | anti-patterns | reviewer の false-positive 指摘 (「この記述は無関係な対象まで拾ってしまう」) を受けて記述を厳密化する修正は、対象実装 (正規表現・マッチングロジック等) が実際に許容する**全ての**正当な形状を再確認せずに行うと、修正前には正しくカバーできていた別の形状を取りこぼす under-match を新規に導入する。 | 2026-09-14T16:45:05Z | high |
 | [rationale 転記圧縮時の主張スコープ量化拡大（この箇所→全体への過大一般化）](pages/anti-patterns/transcription-scope-quantifier-inflation.md) | anti-patterns | rationale（設計理由・背景解説）を SKILL.md 本体から references/ へ退避するコンテキストダイエット型 refactor では、転記時の文章圧縮によって主張の量化スコープが改変される系統的エラーが発生する。 | 2026-07-07T03:56:13+00:00 | high |
 | [識別子リネーム後の裸参照置換で除外すべき参照の分類](pages/patterns/rename-bare-reference-exclusion-classification.md) | patterns | スキル/コマンドのリネーム（例: `/rite:resume` → `/rite:recover`）後、旧名への「裸のスキル名参照」（bare-word reference、例: 「resume の AskUserQuestion」のような文中の裸表記）をリポジトリ横断で修正するとき、旧名と同じ文字列を含むが**修正してはいけない**箇所を誤って置換しないよう分類する必要がある。 | 2026-07-08T02:20:00+00:00 | medium |
-| [先行 Issue の明示的 Non-Target 指定は、reviewer 推奨だけで覆さずユーザー確認する](pages/heuristics/respect-prior-non-target-designation.md) | heuristics | 同種のクリーンアップ系列（例: 用語統一・裸ファイル名参照の一掃）で複数レビュアーが独立に同一箇所を「本 PR で対応すべき」と推奨しても、その箇所が先行 Issue/PR で明示的に Non-Target（対象外）と宣言されていた場合は、reviewer 推奨をそのまま実行せず、先行判断の経緯を提示したうえでユーザーに再確認する。 | 2026-07-08T03:06:55+09:00 | medium |
+| [先行 Issue の明示的 Non-Target 指定は、reviewer 推奨だけで覆さずユーザー確認する](pages/heuristics/respect-prior-non-target-designation.md) | heuristics | 同種のクリーンアップ系列（例: 用語統一・裸ファイル名参照の一掃）で複数レビュアーが独立に同一箇所を「本 PR で対応すべき」と推奨しても、その箇所が先行 Issue/PR で明示的に Non-Target（対象外）と宣言されていた場合は、reviewer 推奨をそのまま実行せず、先行判断の経緯を提示したうえでユーザーに再確認する。 | 2026-09-15T04:40:00Z | medium |
 | [識別子リネームは3階層（コマンド文字列・ファイル名shorthand・裸トークン）で置換対象を洗い出す](pages/heuristics/identifier-rename-three-tier-pattern-enumeration.md) | heuristics | 識別子リネーム PR では `rite:{old}` の完全コマンド文字列だけでなく `{old}.md` のファイル名 shorthand、および拡張子なしの裸トークン（一覧・例示内での言及）の3階層を意識的に洗い出さないと、review-fix ループが段階的に狭いスコープへ収束しながら複数サイクルを消費する。 | 2026-07-08T09:10:00+00:00 | high |
 | [境界での無害化は下流ツールの別エスケープ意味論までは保証しない（quoted heredoc → awk -v 伝播）](pages/anti-patterns/sanitization-gap-downstream-tool-escape-semantics.md) | anti-patterns | 自由入力（reviewer 指摘の要約、ユーザー入力等）をシェルに渡す際、quoted heredoc (`<<'EOF'`) でコマンド置換 (`` ` `` / `$(...)`) や変数展開 (`$VAR`) を無害化しても、その「無害化済み」の値を次の境界（別のツール、例えば `awk -v var=value`）へそのまま渡すと、そのツール固有のエスケープ解釈によって別種の破損が起きる。 | 2026-09-11T15:07:49Z | high |
 | [バグ修正PRが新設したエラーパス自身にも回帰テストを追加する](pages/patterns/bugfix-new-error-path-needs-regression-test.md) | patterns | バグ修正PRが対象バグの fallback/WARNING 分岐を新規追加すると、その新分岐自体は「修正対象のバグ」ではないという理由で回帰テストの追加が見落とされやすい。 | 2026-09-14T09:23:49Z | high |
@@ -513,4 +513,4 @@ okf_version: "0.2"
 
 - 総ページ数: 499
 - ドメイン別: patterns=114, heuristics=222, anti-patterns=163
-- 最終更新: 2026-09-15T03:40:00Z
+- 最終更新: 2026-09-15T04:40:00Z
