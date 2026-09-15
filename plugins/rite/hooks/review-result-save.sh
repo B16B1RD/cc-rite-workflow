@@ -422,7 +422,7 @@ fi
 # review.min_reviewers: 1 の下でどの reviewer パターンにもマッチせず code-quality が単独 fallback に
 # なった cycle (pr-review ステップ 2.3 の sole-reviewer guard は code-quality が既に単独のときは
 # 発火しない) の結果が保存すらされなくなる。
-# ただし **一意性は検査する** — ゲートは長さしか見ないため、同一名の重複ロスターが「2 名がレビューした」
+# ただし **一意性は検査する** — ゲートは名前の一意性を見ない (acceptance-reviewer を除いた人数だけを見る) ため、同一名の重複ロスターが「2 名がレビューした」
 # 証拠として floor 2 を機械的に満たしてしまう。同ファイルの findings[].id 検証が書式 + 一意性の両方を
 # かけているのと同じ水準に揃える。一意性は floor とは独立なので 1 名 cycle の保存性は変わらない。
 # verdict と overall_assessment の同値性は検査しない (契約テストが pin する)。ここで落とすと

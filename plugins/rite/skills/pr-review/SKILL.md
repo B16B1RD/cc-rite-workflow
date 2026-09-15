@@ -36,7 +36,7 @@ Hooks registration はチェックしない (`/rite:setup` の専管)。hooks �
 
 **Input**: PR number (or auto-detected from current branch), flow state with `phase: review` (written by `skills/iterate/SKILL.md` review side) or `phase: phase5_review` (legacy compat)
 rationale: references/design-rationale.md#contract-legacy-phase
-**Output**: `[review:mergeable]` | `[review:fix-needed:{n}]`
+**Output**: `[review:mergeable]` | `[review:fix-needed:{n}]` | `[review:error]`（受入条件未検証の停止は `[CONTEXT] REVIEW_STOP=ac_unverified` を伴う。ステップ 8.1）
 
 ## Prerequisites
 
@@ -54,7 +54,7 @@ rationale: references/design-rationale.md#e2e-askuser-split
 |-------|-----------|----------|
 | ステップ 3.3 (Confirm Reviewers) | `AskUserQuestion` で構成確認 | **`AskUserQuestion`（オプション選択）を skip**（pre-flight 確認のみ。flow-state ベース判定はステップ 3.3 参照）。`起動 reviewer {count} 名` サマリ行・省略された reviewer 表示は両経路で必須維持 |
 | ステップ 4 (Sub-Agent Execution) | Full execution | **Full execution** — sub-agents MUST run in parallel for every review cycle (including verification mode). No shortcut allowed. |
-| ステップ 5 (Consolidation) | Full findings table | Result pattern + summary counts only。**例外 1: ステップ 5.4 の `### レビュー範囲（cycle 2+ 差分スコープ）` section は `REVIEW_CYCLE_SCOPE == incremental` のとき E2E でも省略禁止** (cycle 2+ は E2E からしか発生しないため、ここを minimize すると「スキップした reviewer を記録する」要求が空文になる — SoT: [cycle-scope.md](references/cycle-scope.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 2: ステップ 5.4 の `### 実測なし指摘 (non-blocking)` section は `non_blocking_count > 0` のとき E2E でも省略禁止** (ステップ 7 AskUserQuestion と同じ identity 制約 — 関連 Issue 記録コメントはポインタのみで全文は載せない。既定 `post_comment: false` では統合レポートも PR に載らないため、この E2E 出力が非実測指摘の全文を人間が同期的に見る経路であり、省略は「非実測指摘を破棄しない」という記録契約の喪失に直結する)。**例外 3: ステップ 5.4 の `### レビューレーン（XS/S 軽量レーン）` section は `COMPLEXITY_LANE == light` のとき E2E でも省略禁止** (軽量レーンが動機づけられた Scenario 1「XS が 1 サイクル収束して自律マージされる」は E2E ループでしか起きず、そこを minimize すると観測性の MUST が主対象シナリオでだけ空文になる — SoT: [complexity-lane.md](references/complexity-lane.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 4: ステップ 5.4 の `### Guardrail 監査ログ` section は `guardrail_audit_count > 0` のとき E2E でも省略禁止** (既定 `post_comment: false` でも Category #2 の filter 判断を人間が確認できる同期経路を維持するため)。**例外 5: ステップ 5.4 の `### 総合評価` にある `**起動の直列化**` の 1 行は `SPAWN_SPREAD` が `serialized` / `undetermined` / 欠落を伴う `parallel` のとき E2E でも省略禁止** (直列化が起きるのは長時間 E2E セッションであり、そこを minimize すると本行が到達する経路が消える。既定 `post_comment: false` では統合レポートは PR にも載らないため、省略すると本行が主対象シナリオで空文になる。`serialized` / 欠落を伴う `parallel` では helper の stderr WARNING と結果 JSON のフラグが残るが、**`undetermined` では helper がフラグをキーごと書かない**ため、計測不能の**理由** (`reason=`) は揮発する stderr WARNING にしか残らない — 省略が最も高くつくのはこの条件。`reviewer_timings[]` はステップ 4.6 の timings ファイルが present のときだけ結果 JSON へ転記される)。**例外 6: ステップ 5.4 の `### 実測阻害` section は `measurement_blocked_count > 0` のとき E2E でも省略禁止** (既定 `post_comment: false` ではこの出力が実測阻害の件数・内訳を人間が見る同期経路であり、省略は無言の measured=false 降格を再導入する) |
+| ステップ 5 (Consolidation) | Full findings table | Result pattern + summary counts only。**例外 1: ステップ 5.4 の `### レビュー範囲（cycle 2+ 差分スコープ）` section は `REVIEW_CYCLE_SCOPE == incremental` のとき E2E でも省略禁止** (cycle 2+ は E2E からしか発生しないため、ここを minimize すると「スキップした reviewer を記録する」要求が空文になる — SoT: [cycle-scope.md](references/cycle-scope.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 2: ステップ 5.4 の `### 実測なし指摘 (non-blocking)` section は `non_blocking_count > 0` のとき E2E でも省略禁止** (ステップ 7 AskUserQuestion と同じ identity 制約 — 関連 Issue 記録コメントはポインタのみで全文は載せない。既定 `post_comment: false` では統合レポートも PR に載らないため、この E2E 出力が非実測指摘の全文を人間が同期的に見る経路であり、省略は「非実測指摘を破棄しない」という記録契約の喪失に直結する)。**例外 3: ステップ 5.4 の `### レビューレーン（XS/S 軽量レーン）` section は `COMPLEXITY_LANE == light` のとき E2E でも省略禁止** (軽量レーンが動機づけられた Scenario 1「XS が 1 サイクル収束して自律マージされる」は E2E ループでしか起きず、そこを minimize すると観測性の MUST が主対象シナリオでだけ空文になる — SoT: [complexity-lane.md](references/complexity-lane.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 4: ステップ 5.4 の `### Guardrail 監査ログ` section は `guardrail_audit_count > 0` のとき E2E でも省略禁止** (既定 `post_comment: false` でも Category #2 の filter 判断を人間が確認できる同期経路を維持するため)。**例外 5: ステップ 5.4 の `### 総合評価` にある `**起動の直列化**` の 1 行は `SPAWN_SPREAD` が `serialized` / `undetermined` / 欠落を伴う `parallel` のとき E2E でも省略禁止** (直列化が起きるのは長時間 E2E セッションであり、そこを minimize すると本行が到達する経路が消える。既定 `post_comment: false` では統合レポートは PR にも載らないため、省略すると本行が主対象シナリオで空文になる。`serialized` / 欠落を伴う `parallel` では helper の stderr WARNING と結果 JSON のフラグが残るが、**`undetermined` では helper がフラグをキーごと書かない**ため、計測不能の**理由** (`reason=`) は揮発する stderr WARNING にしか残らない — 省略が最も高くつくのはこの条件。`reviewer_timings[]` はステップ 4.6 の timings ファイルが present のときだけ結果 JSON へ転記される)。**例外 6: ステップ 5.4 の `### 実測阻害` section は `measurement_blocked_count > 0` のとき E2E でも省略禁止** (既定 `post_comment: false` ではこの出力が実測阻害の件数・内訳を人間が見る同期経路であり、省略は無言の measured=false 降格を再導入する)。**例外 7: ステップ 5.4 の `### 受入条件確認` section は E2E でも省略禁止** (未検証 AC は人間が動作チェックする対象そのものであり、既定 `post_comment: false` ではこの出力が判定表を人間が同期的に見る唯一の経路) |
 | ステップ 6 (PR Comment) | Full comment + display | Post comment silently, output pattern only |
 | ステップ 7 (Triage) | Full report + guidance | **Recommendations only** — detect scope-irrelevant recommendations (findings/recommendations containing 別 Issue / スコープ外 keywords). Decision Log 記録の推奨は可逆なので自動処理し、ユーザー固有・不可逆な disposition だけ `AskUserQuestion` で確認する。Only when `[review:mergeable]`. |
 
@@ -593,23 +593,39 @@ Retain the Issue number in the conversation context for use in ステップ 6.4.
 
 ### 1.3.1 Load Issue Specification
 
-関連 Issue の「仕様詳細」「技術的決定事項」をレビュー基準としてロードする。ステップ 1.3 で Issue 番号が取れたときだけ実行する。
+関連 Issue の「仕様詳細」「技術的決定事項」をレビュー基準としてロードし、受入条件確認の対象かを決める。ステップ 1.3 で Issue 番号が取れなかったときは本節を実行せず、`[CONTEXT] ACCEPTANCE_SCOPE=skipped; reason=no_issue` として `受入条件確認: 対象外（関連 Issue なし）` を 1 行表示し、`{acceptance_ids}` を空文字列としてステップ 5.3.0.A まで retain する。
 
 **Steps:**
 
-1. Retrieve the Issue body:
+1. Retrieve the Issue body and determine the acceptance scope:
  ```bash
- gh issue view {issue_number} -R {owner_repo} --json body --jq '.body'
+ issue_body_file=$(mktemp "${TMPDIR:-/tmp}/rite-review-issue-body-XXXXXX") || { echo "[review:error]"; exit 1; }
+ if ! gh issue view {issue_number} -R {owner_repo} --json body --jq '.body' > "$issue_body_file"; then
+   echo "ERROR: 関連 Issue の本文を取得できません。受入条件確認を skip せず停止します" >&2
+   rm -f "$issue_body_file"
+   echo "[review:error]"
+   exit 1
+ fi
+ echo "[CONTEXT] ISSUE_BODY_FILE=$issue_body_file"
+ bash {plugin_root}/scripts/acceptance-criteria-check.sh extract --body-file "$issue_body_file" || { rm -f "$issue_body_file"; echo "[review:error]"; exit 1; }
  ```
 
-2. Extract the following sections from the retrieved body (if they exist):
+ | `ACCEPTANCE_SCOPE` | アクション |
+ |---|---|
+ | `target; ids=` | `ids=` を `{acceptance_ids}` として retain。ステップ 3.2.2 で acceptance reviewer を追加する |
+ | `skipped; reason=no_ac_section; headings=` | `受入条件確認: 対象外（テンプレート形式の AC 節なし。見出し: {headings}）` を 1 行表示 |
+ | 上記 bash が `[review:error]` で終了（`ACCEPTANCE_CHECK_FAILED` の `no_ac_ids` / `duplicate_ac_id` を含む） | 停止。受入条件確認を skip して続行しない |
+
+ `ACCEPTANCE_SCOPE` の値（`target` / `skipped` と reason）と `{acceptance_ids}` はステップ 5.3.0.A まで retain する。`skipped; reason=no_ac_section` の cycle では `{acceptance_ids}` を空文字列とする。
+
+2. Extract the following sections from the body in `ISSUE_BODY_FILE` (if they exist):
  - The entire `## 仕様詳細` section
  - The `### 技術的決定事項` subsection
  - The `### ユーザー体験` subsection
  - The `### 考慮済みエッジケース` subsection
  - The `### スコープ外` subsection
 
-3. Retain the extracted specification as `{issue_spec}` in the conversation context for use in the ステップ 4.5 review instructions.
+3. Retain the extracted specification as `{issue_spec}` in the conversation context for use in the ステップ 4.5 review instructions. 抽出後に `rm -f "{issue_body_file}"`（`ISSUE_BODY_FILE=` の値）で一時ファイルを削除する。
 
 **If no specification is found:**
 
@@ -668,7 +684,7 @@ If the skill file (`skills/reviewers/SKILL.md`) is not found, fall back to the b
 | `full` | ステップ 1.2.3 の PR 全体の変更ファイル（従来どおり） |
 | `incremental` | `git diff --name-only {cycle_base_sha}..HEAD` の結果（= fix diff）に差し替える |
 
-`incremental` のとき: (1) パターンマッチ結果に `{prev_finders}` を **`selection_type: mandatory`** で合流させる（`recommended` は不可 — Phase 5 の cap が落とさないと保証するのは `mandatory` のみで、`recommended` は `max_reviewers` 超過時に落ちて「前サイクル finder は無条件に再起動」が破れる。昇格は `detected < recommended < mandatory` の高い側へのみ）。(2) ステップ 2.3 の sole-reviewer guard / ステップ 3.2 の Security Expert 条件 / ステップ 3.2.1 の cap とフロアは**すべて従来どおり適用する**。(3) 今サイクル対象外となった reviewer 名と理由を ステップ 5.4 の「レビュー範囲」section に記録する（silent な絞り込みは禁止）。**母集合は cycle 1 で選定された reviewer 集合**とし、そこから今サイクル起動しない名前を理由付きで列挙する（全 9 名を母集合にすると PR に一度も関係しない reviewer が毎サイクル並び、今サイクルの起動集合を母集合にすると差分スコープが何名減らしたかが読めない）。ステップ 3.3 の「省略された reviewer 表示」には記録しない — 同 section は出力条件が `{dropped_count} > 0`、見出しが cap 超過を理由として固定されており、パターンマッチの候補にすら上がらない差分スコープ由来の除外を表現できない。
+`incremental` のとき: (1) パターンマッチ結果に `{prev_finders}` を **`selection_type: mandatory`** で合流させる。ただし `{prev_finders}` の `acceptance` は合流させない（ステップ 3.2.2 が cap 後に毎 cycle 追加する）（`recommended` は不可 — Phase 5 の cap が落とさないと保証するのは `mandatory` のみで、`recommended` は `max_reviewers` 超過時に落ちて「前サイクル finder は無条件に再起動」が破れる。昇格は `detected < recommended < mandatory` の高い側へのみ）。(2) ステップ 2.3 の sole-reviewer guard / ステップ 3.2 の Security Expert 条件 / ステップ 3.2.1 の cap とフロアは**すべて従来どおり適用する**。(3) 今サイクル対象外となった reviewer 名と理由を ステップ 5.4 の「レビュー範囲」section に記録する（silent な絞り込みは禁止）。**母集合は cycle 1 で選定された reviewer 集合**とし、そこから今サイクル起動しない名前を理由付きで列挙する（全 reviewer を母集合にすると PR に一度も関係しない reviewer が毎サイクル並び、今サイクルの起動集合を母集合にすると差分スコープが何名減らしたかが読めない）。ステップ 3.3 の「省略された reviewer 表示」には記録しない — 同 section は出力条件が `{dropped_count} > 0`、見出しが cap 超過を理由として固定されており、パターンマッチの候補にすら上がらない差分スコープ由来の除外を表現できない。
 
 **Pattern priority rules:**
 1. `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md` -> Prompt Engineer (highest priority)
@@ -842,6 +858,11 @@ Security / co-reviewer / sole-reviewer-guard のあと `max_reviewers` を適用
 1. Let `selected` be the reviewer set after ステップ 3.2 (Security Expert + co-reviewers + sole-reviewer guard applied).
 2. Resolve `effective_max` and apply Phase 5's cap logic to `selected` (Phase 5 owns the relevance ordering, the top-N cut, mandatory protection, and the effective floor = `max(min_reviewers, sole-reviewer-guard floor)` — the cap never undoes the ステップ 2.3 sole-reviewer guard's ≥2 blind-spot protection). Emit the matching user-facing message above when a validation case fires.
 3. Retain `{selected_reviewers}`, `{dropped_reviewers}` (each with its `matched file count` and `selection_type`), and `{effective_max}` in the conversation context for the omission display in ステップ 3.3. Silent capping is prohibited (MUST NOT) — the dropped reviewers MUST be surfaced there.
+
+### 3.2.2 Acceptance Reviewer Addition
+
+ステップ 1.3.1 が `ACCEPTANCE_SCOPE=target` のとき、3.2.1 で確定した `{selected_reviewers}` に `acceptance` を `selection_type: mandatory` で追加する。`REVIEW_CYCLE_SCOPE` / `COMPLEXITY_LANE` に依らず毎 cycle 追加し、sole-reviewer guard と `effective_max` の母数には数えない。`{selected_reviewers}` に既に `acceptance` があれば追加しない。`skipped` のときは追加しない。ステップ 3.3 の表示では `[必須]` とし、「レビュアーを減らす」でも削除できない。
+rationale: references/design-rationale.md#acceptance-reviewer
 
 ### 3.3 Confirm Reviewers
 
@@ -1086,6 +1107,7 @@ rationale: references/design-rationale.md#verification-inline-ban
 | Prompt Engineer | `prompt-engineer-reviewer.md` | Skill/command/agent definition quality |
 | Technical Writer | `tech-writer-reviewer.md` | Document clarity, accuracy |
 | Error Handling Expert | `error-handling-reviewer.md` | Silent failures, error propagation, catch quality |
+| Acceptance Reviewer | `acceptance-reviewer.md` | Every Acceptance Criterion of the related Issue on HEAD |
 
 **Loading sub-agent definition files:**
 
@@ -1142,6 +1164,7 @@ Task 呼び出しに background フラグを付けない（Agent tool に当該�
 | `prompt-engineer` | `rite:prompt-engineer-reviewer` |
 | `tech-writer` | `rite:tech-writer-reviewer` |
 | `error-handling` | `rite:error-handling-reviewer` |
+| `acceptance` | `rite:acceptance-reviewer` |
 
 **Formula**: `subagent_type = "rite:" + reviewer_type + "-reviewer"`（`rite:` prefix 必須）。
 **Legacy type fallback**: 旧 type（`api` / `frontend` / `performance` / `database` / `type-design`）は WARNING 付きで `application` に代替（silent skip 禁止。`skills/reviewers/SKILL.md` Legacy Reviewer Type Aliases）。
@@ -1211,10 +1234,10 @@ Determine the error type from the completion notification (failure payload or ab
 
 | Placeholder | Source | Extraction Method |
 |---------------|--------|----------|
-| `{relevant_files}` | Changed file list from ステップ 1.2 | Extract only files matching the reviewer's Activation pattern。`REVIEW_CYCLE_SCOPE == incremental` のときは ステップ 2.2 と同じく `git diff --name-only {cycle_base_sha}..HEAD` の一覧から抽出する。**例外**: `incremental` かつ当該 reviewer が `{prev_finders}` 由来の `mandatory` 合流で、パターン一致が 0 件のときは `{cycle_base_sha}..HEAD` の**全ファイル**を渡す（空で渡すと `{diff_content}` も空になり、mandate 4 が差分外の読み直しを禁じるため mandate 1 の解消検証すら実行できない prompt になる — 解消検証は自分の指摘箇所と fix の影響範囲の両方が読めて初めて成立する） |
+| `{relevant_files}` | Changed file list from ステップ 1.2 | Extract only files matching the reviewer's Activation pattern。`REVIEW_CYCLE_SCOPE == incremental` のときは ステップ 2.2 と同じく `git diff --name-only {cycle_base_sha}..HEAD` の一覧から抽出する。**例外**: `incremental` かつ当該 reviewer が `{prev_finders}` 由来の `mandatory` 合流で、パターン一致が 0 件のときは `{cycle_base_sha}..HEAD` の**全ファイル**を渡す（空で渡すと `{diff_content}` も空になり、mandate 4 が差分外の読み直しを禁じるため mandate 1 の解消検証すら実行できない prompt になる — 解消検証は自分の指摘箇所と fix の影響範囲の両方が読めて初めて成立する）。**`acceptance`** は Activation パターンと `REVIEW_CYCLE_SCOPE` に依らずステップ 1.2.3 の PR 全体の変更ファイルを渡す |
 | `{ci_status}` / `{ci_state}` | ステップ 1.2.5.C | 対象 SHA・分類・check 名/状態/結論/詳細 URL・failed 一覧・取得不能理由を出力 JSON から渡す。CI の分類規則を再実装しない |
-| `{diff_content}` | Diff from ステップ 1.2 | **Varies by scale** (see below)。`REVIEW_CYCLE_SCOPE == incremental` のときは PR 全体の diff ではなく `{cycle_base_sha}..HEAD` の diff を使う（取得コマンドは ステップ 1.2 の incremental 系。`{relevant_files}` が上記例外で全ファイルになった場合は同区間の全 diff を渡す） |
-| `{cycle_scope_mandate}` | [cycle-scope.md](references/cycle-scope.md#reviewer-mandate差分スコープ適用時に注入する本文) の Reviewer mandate 節 | **Conditional extraction**: `REVIEW_CYCLE_SCOPE == incremental` のときのみ、同節の fenced block 本文を抽出し `{previous_blocking_findings}` / `{cycle_base_sha}` を埋めて注入する。`full` のときは空文字列（セクションごと省略） |
+| `{diff_content}` | Diff from ステップ 1.2 | **Varies by scale** (see below)。`REVIEW_CYCLE_SCOPE == incremental` のときは PR 全体の diff ではなく `{cycle_base_sha}..HEAD` の diff を使う（取得コマンドは ステップ 1.2 の incremental 系。`{relevant_files}` が上記例外で全ファイルになった場合は同区間の全 diff を渡す）。**`acceptance`** は `REVIEW_CYCLE_SCOPE` に依らず PR 全体の diff を scale 規則どおり渡す |
+| `{cycle_scope_mandate}` | [cycle-scope.md](references/cycle-scope.md#reviewer-mandate差分スコープ適用時に注入する本文) の Reviewer mandate 節 | **Conditional extraction**: `REVIEW_CYCLE_SCOPE == incremental` のときのみ、同節の fenced block 本文を抽出し `{previous_blocking_findings}` / `{cycle_base_sha}` を埋めて注入する。`full` のときは空文字列（セクションごと省略）。**`reviewer_type == acceptance`** のときは `REVIEW_CYCLE_SCOPE` に依らず本文を注入せず、代わりに [reviewer-prompt-generator.md](references/reviewer-prompt-generator.md#受入条件確認の-mandate) の fenced block 本文を `{issue_number}` を埋めて注入する |
 | `{complexity_lane_mandate}` | [complexity-lane.md](references/complexity-lane.md#reviewer-mandate軽量レーン適用時に注入する本文) の Reviewer mandate 節 | **Conditional extraction**: `COMPLEXITY_LANE == light`（ステップ 1.3.2）のときのみ、同節の fenced block 本文を抽出し `{complexity}` を埋めて注入する。`full` のときは空文字列（セクションごと省略 — 空見出しが残ると M+ の prompt が変化し、M+ の挙動を変えないという契約に反する）。`{cycle_scope_mandate}` とは直交し、両方が非空になりうる（cycle 2+ の XS Issue）。両者が同時に届いても矛盾しない: 差分スコープは審査**範囲**を、軽量レーンは検証の**実行コスト**を絞るもので、いずれも採否基準を変えない |
 | `{issue_spec}` | Issue specification obtained in ステップ 1.3.1 | Content of the "仕様詳細" section (if empty, write "仕様情報なし") |
 | `{change_intelligence_summary}` | Change Intelligence Summary from ステップ 1.2.6 | One-paragraph summary of change type, file classification, and focus area |
@@ -1290,6 +1313,7 @@ esac
 | `full` | **`verification`** | Both: this section's (4.5.1) verification template AND the normal template from ステップ 4.5 |
 
 `incremental` で 4.5.1 を注入しない理由: [cycle-scope.md](references/cycle-scope.md#既存-reviewloopverification_mode-との合成)。
+**`acceptance`** には `review_mode` に依らず本節のテンプレートを注入しない（4.5 のみ。判定表が前回指摘の解消検証を兼ねる）。
 Verification テンプレート本文は [references/reviewer-prompt-verification.md](references/reviewer-prompt-verification.md)。
 
 **Placeholder embedding method:**
@@ -1469,6 +1493,23 @@ Route the result mechanically per reviewer:
 `likelihood_evidence_retry_count` は per-reviewer dict、初期 `{}`。完了した retry だけ 0→1。本ゲートは仮説降格の前に走る。
 rationale: references/design-rationale.md#likelihood-evidence-before-demotion
 
+##### 5.1.0.AC 受入条件確認の判定表 Post-Condition
+
+`acceptance` を起動した cycle のみ。5.1.0.L を通過した acceptance の raw 出力 tempfile に対して実行する:
+
+```bash
+bash {plugin_root}/scripts/acceptance-criteria-check.sh table \
+  --expected "{acceptance_ids}" --input "{raw_reviewer_output_file}"
+```
+
+| Result | Action |
+|---|---|
+| rc=0 + `ACCEPTANCE_TABLE=ok` | stdout の行 JSON を `{acceptance_rows}` として retain し、ステップ 5.3.0.M step 1 で使う |
+| rc=1 + `reason ∈ {table_missing, table_malformed, table_empty, id_set_mismatch, status_invalid, evidence_missing, unmet_finding_missing}`, first occurrence | acceptance reviewer を 1 回だけ reroll する（元 prompt + 診断 + 「`### 受入条件確認` 表を Issue の AC と 1 対 1 で出し、未充足行ごとに `内容` が `[AC-N]` で始まる CRITICAL / current-pr の指摘を出す」）。reroll の回収結果で 5.1 の回収完了ゲート・5.1.0.L・本 helper を再実行する |
+| rc=1 after the one reroll、その他の reason、rc=2 | `[review:error]` で停止する。aggregation へ進まない |
+
+`acceptance_table_retry_count` は int、初期 0。完了した reroll だけ 0→1。
+
 #### 5.1.1 Verification Mode Findings Collection
 
 `review_mode == "verification"` では NOT_FIXED/PARTIAL/REGRESSION/MISSED_CRITICAL はすべて blocking。FIXED は Fix Verification Summary のみ。
@@ -1478,7 +1519,7 @@ rationale: references/design-rationale.md#likelihood-evidence-before-demotion
 
 ##### 5.1.1.1 Post-Condition Check: Verification Result Table Presence
 
-**Execution condition**: `review_mode == "verification"` **または** `REVIEW_CYCLE_SCOPE == incremental`。
+**Execution condition**: `review_mode == "verification"` **または** `REVIEW_CYCLE_SCOPE == incremental`。`acceptance` の出力は対象外（判定表が前回指摘の解消検証を兼ねる）。
 **Skip condition**: `review_mode == "full"` かつ `REVIEW_CYCLE_SCOPE == full`。
 **Purpose**: `### 修正検証結果` 欠落は前回指摘検証の silent skip になりうる。
 rationale: references/design-rationale.md#verification-post-condition-notes
@@ -1798,7 +1839,7 @@ Read `review.debate` from `rite-config.yml` (defaults defined in [cross-validati
 
 **Steps:**
 
-1. Check multiple findings for the same `file:line`
+1. Check multiple findings for the same `file:line`. `acceptance-reviewer` の指摘は他の指摘と統合しない（`[AC-N]` 接頭辞による判定表との紐付けを保つ）
 2. If the content is similar, merge into a single finding:
  - Severity: Adopt the highest
  - Description: Merge into a description integrating multiple perspectives
@@ -1892,8 +1933,9 @@ If reviewers have written items in the "仕様への疑問" section, prompt the 
 1. **5.3.0 Observed Likelihood Gate** — `Likelihood-Evidence:` 欠落を機械降格。`推奨事項` へ移した分は `total_findings` に数えない。LOW × Hypothetical は削除。5.4 の降格結果 section に記録。
 2. **5.3.0.M 実測必須ゲート** — **`scripts/review-measured-gate.sh` を実行する**。分類は helper。Claude は判定しない。SoT: [severity-levels.md §実測必須ゲート](../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) / [assessment-rules.md §5.3.0.M](../fix/references/assessment-rules.md)。
 3. **5.3.0.C 帰結クラス降格政策** — 分類 map の Write と `scripts/review-class-demotion-gate.sh`。`blocking=0` なら本ゲート全体を skip。A=0 で exclusion なし B を降格し、exclusion 付き B は blocking 維持。SoT: [severity-levels.md §帰結クラス軸](../../references/severity-levels.md#帰結クラス軸-consequence-class) / [assessment-rules.md §5.3.0.C](../fix/references/assessment-rules.md)。
-4. **5.3.1-5.3.7** を降格後の `全指摘事項` に適用。件数は marker とゲート後 JSON から読む（再分類しない）。
-5.3.0 / 5.3.0.M / 5.3.0.C を 5.3.1 の前に飛ばすことは **禁止**。
+4. **5.3.0.A 受入条件の最終整合検査** — `scripts/acceptance-criteria-check.sh final` を実行する。判定行の AC-ID 集合・対象判定と reviewers[] の整合、未充足行の finding が降格後も blocking に残ることを検査し、未検証 AC を 8.0 / 8.1 へ渡す。
+5. **5.3.1-5.3.7** を降格後の `全指摘事項` に適用。件数は marker とゲート後 JSON から読む（再分類しない）。
+5.3.0 / 5.3.0.M / 5.3.0.C / 5.3.0.A を 5.3.1 の前に飛ばすことは **禁止**。
 rationale: references/design-rationale.md#5.3-execution-order-why
 
 #### Number-reference `--diff` (every cycle)
@@ -1979,6 +2021,7 @@ fi
 - `overall_assessment` = 暫定値でよい。**helper が blocking 件数から両方向で確定する**ため Claude の値は判定に影響しない
 - **`verdict` は書かない** — merge ゲートが読む必須キーだが、書き手は step 2 の `review-measured-gate.sh` **のみ**で、`overall_assessment` と同一の blocking 件数式から**無条件に代入される**（step 1 で書いた値は必ず捨てられる）。step 1 時点では移送後の blocking 件数が未確定なので、書けば必ず推測値になる（`overall_assessment` を「暫定値でよい」としているのと同じ理由）。`findings[].verification` とは違い preset を尊重する経路が無いため、`--reject-preset-verification` のような強制フラグも持たない
 - **`reviewers[]` = 本 cycle で ステップ 5.1 が Task 結果を回収できた reviewer の名簿**（非空・重複なし）。値は各 `reviewer_type` に `-reviewer` を付した形で書く（例: `security` → `security-reviewer`。`plugins/rite/agents/*-reviewer.md` の basename と一致させる。`rite:` prefix は付けない、日本語表示名や suffix なし slug も書かない）。**判定基準は「回収できたか」**で、ステップ 5.1 の回収完了ゲートにより本 cycle の選定名簿と一致する。未回収者がいれば本ステップには到達せず `[review:error]` で停止する。名簿の水増しや失敗者の除去は禁止。**`findings[]` から導出してもならない** — マージ直前の最終 cycle は findings 0 件が正常形で、そこから導出すると名簿が空になり sole-reviewer guard の証拠が構造的に消える。ゲート helper は本キーに触れないため、ここで書かなければ欠落のまま保存へ回り `review-result-save.sh` が `schema_required_fields_missing` で拒否する。契約の SoT は [review-result-schema.md §verdict と reviewers](../../references/review-result-schema.md#verdict-と-reviewers)
+- **`acceptance_criteria` を常に書く** — `ACCEPTANCE_SCOPE=target` の cycle は 5.1.0.AC の `{acceptance_rows}` の各行に `finding_id` を足した配列（`unmet` 行は `description` が `[AC-N]` で始まる acceptance-reviewer の finding に本 JSON で採番した `F-NN`、それ以外は `null`）。`skipped` の cycle は `{"skipped": "no_issue"}` または `{"skipped": "no_ac_section"}`。ゲート helper は本キーに触れない。形の SoT は [review-result-schema.md §acceptance_criteria](../../references/review-result-schema.md#acceptance_criteria)
 - **`findings[].verification` は書かない** — 本フィールドは helper が `description` のアンカーから算出する唯一の書き手である。Claude が先に書くと helper は既存値を正として尊重し (§4.5)、アンカー検出を経ない値がそのまま blocking 判定に入る (= 本ゲートが閉じたはずの裁量が復活する)。**step 2 の `--reject-preset-verification` による強制は部分的**で、本規約の完全な履行は依然として Claude 側の忠実性に依存する (何が弾かれ何が素通りするかの詳細は helper docstring §Why --reject-preset-verification を SoT として参照)
 - **アンカーの直前の境界を保つ** — `内容` 列を `description` へ転記するとき、`Verification:` / `Likelihood-Evidence:` / `Measurement-Blocked:` 直前の行頭・`<br>`・空白を保つ。`Verification: repro <cmd> => <観測>` または `Verification: failing_test <path> => <失敗出力>` と書き、raw pipe は `¦` で代替表記する。形式崩れで実測判定不能なら `reason=anchor_undetermined` で JSON を変更せず失敗し、step 3 で該当 reviewer 出力を再生成する。
 - `timestamp` は literal sentinel `"__RITE_TS_PLACEHOLDER_7f3a9b2c__"` (実値は ステップ 6.1.a の helper が注入する)
@@ -2127,6 +2170,25 @@ bash {plugin_root}/scripts/review-class-demotion-gate.sh \
 
 **`class_gate_retry_count`** (retained flag、conversation context に保持): int、初期値 `0`。**step 2 を再実行する直前に +1 する。** 値が `1` の状態で再び caller 契約違反が出たら `[review:error]` を stdout に出力して停止する (`measured_gate_retry_count` と同じ規約・同じ理由)。
 
+#### 5.3.0.A 受入条件の最終整合検査
+
+5.3.0 / 5.3.0.M / 5.3.0.C のすべての後・5.3.1 とステップ 6.1.a の前に、毎 cycle 実行する（5.3.0.C を skip した cycle も含む）:
+
+```bash
+bash {plugin_root}/scripts/acceptance-criteria-check.sh final \
+  --expected "{acceptance_ids}" --input {review_tmp_dir}/rite-review-result-{pr_number}.json
+```
+
+| Result | Action |
+|---|---|
+| rc=0 + `ACCEPTANCE_FINAL=ok; unmet={ids}; unverified={ids}` | `unverified=` の値を `{acceptance_unverified}` として retain し 5.3.1 以降へ進む（ステップ 8.0 / 8.1 が使う） |
+| rc=0 + `ACCEPTANCE_FINAL=skipped` | `{acceptance_unverified}` を空として 5.3.1 以降へ進む |
+| rc=1 + `reason=unmet_finding_not_blocking`, first occurrence | reviewer 契約違反。acceptance reviewer を 1 回だけ reroll し（元 prompt + 診断 + 未充足の指摘に `[AC-N]` 接頭辞と正規形の `Verification:` アンカーを付ける要求）、5.1 の回収完了ゲート → 5.1.0.L → 5.1.0.AC → 5.1.2.A → 5.2 → 5.2.1 → Fact-Checking → 5.3.0 → 5.3.0.M step 1 → step 2 → step 3 → 5.3.0.C → 本検査を同 cycle 内で再実行する。`acceptance_criteria[].status` を `unverified` に書き換えて通してはならない |
+| rc=1 after the one reroll、その他の reason、rc=2 | `[review:error]` を stdout に出力して停止する |
+
+`acceptance_final_retry_count` は int、初期 0。reroll を始める直前に +1 する。reroll 内で再実行する 5.3.0.M / 5.3.0.C は、それぞれ既存の `measured_gate_retry_count` / `class_gate_retry_count` を引き継ぐ。
+rationale: references/design-rationale.md#acceptance-reviewer
+
 
 ### 5.3.8 Fix-Introduced Finding Attribution
 
@@ -2258,6 +2320,7 @@ fi
 
 **`### 実測なし指摘 (non-blocking)` の情報源**: ゲート適用済 JSON の `non_blocking_findings[]` を Read して描画する。記憶から再構成しない。`{non_blocking_count}` は 5.3.0.C 発動 cycle は移送後配列長、それ以外は `MEASURED_GATE` の `non_blocking_total=`。**`demotion` 付きは `内容` 先頭に `[class B 降格: {demotion.reason}]`**。**列は追加しない**（6 列固定）。
 **`### 実測阻害` の情報源**: ゲート適用済 JSON の `findings[]` と `non_blocking_findings[]` の和から `description` に `Measurement-Blocked:` を含む要素を抽出し描画する。記憶から再構成しない。`{measurement_blocked_count}` はその件数。0 件ならセクションごと省略。helper は本 marker を実測アンカーとして読まないため、当該 finding は通常 `non_blocking_findings[]` に入る。**列は `実測なし指摘` 表に足さない**（6 列固定）。本 section は E2E でも省略禁止（上記 E2E Output Minimization 表の例外 6）。
+**`### 受入条件確認` の情報源**: ゲート適用済 JSON の `acceptance_criteria` を Read して描画する。記憶から再構成しない。配列なら全行を `| AC | 判定 | 根拠 |` で描画し、判定は `satisfied` → 充足 / `unmet` → 未充足 / `unverified` → 未検証、未充足行の根拠に `finding_id` を併記する。`skipped` なら `受入条件確認: 対象外（{理由}）` の 1 行。本 section は E2E でも省略禁止（上記 E2E Output Minimization 表の例外 7）。
 
 ---
 
@@ -2939,6 +3002,7 @@ rationale: references/design-rationale.md#defense-in-depth-handoff
 |--------|-------|-----------------------|-------------|
 | `[review:mergeable]` | `review` | `FINALIZE:review:mergeable:{pr_number}` | `rite:pr-review completed. Result: [review:mergeable]. Proceed to /rite:ready (caller の review-fix loop が ready 遷移を起動). Do NOT stop.` |
 | `[review:fix-needed:{n}]` | `review` | `/rite:fix {pr_number}` | `rite:pr-review completed. Result: [review:fix-needed:{n}]. Proceed to /rite:fix (caller の review-fix loop が fix 起動). Do NOT stop.` |
+| `[review:error]`（受入条件未検証: `total_findings == 0` かつ `{acceptance_unverified}` が非空） | `review` | （付けない） | `rite:pr-review stopped. Result: [review:error] with REVIEW_STOP=ac_unverified. Unverified acceptance criteria need a human check.` |
 
 ```bash
 # [review:mergeable] の場合 (--handoff で FINALIZE 終了通知マーカーをセット):
@@ -2956,9 +3020,16 @@ bash {plugin_root}/hooks/flow-state.sh set \
  --next "{next_action_value}" \
  --handoff "/rite:fix {pr_number}" \
  --if-exists
+
+# 受入条件未検証の停止 (--handoff を付けず、残存 handoff を default-clear する):
+bash {plugin_root}/hooks/flow-state.sh set \
+ --phase "review" \
+ --active true \
+ --next "{next_action_value}" \
+ --if-exists
 ```
 
-`{next_action_value}` / `{pr_number}` / `{n}` を表どおり埋める。両 variant とも `--handoff` を付ける。
+`{next_action_value}` / `{pr_number}` / `{n}` を表どおり埋める。mergeable / fix-needed の 2 variant は `--handoff` を付け、受入条件未検証の停止行は付けない（FINALIZE が残ると Stop hook が mergeable 完了経路へ差し戻す）。
 **Gate evaluation order (SoT)**: 状態更新のあと、result の前に記載順で評価する。**全 gate pass のときだけ 8.1 へ**。ERROR ならその ACTION へ戻り 8.0 から再評価。
 
 ```
@@ -3163,10 +3234,11 @@ rm 失敗 WARNING 時は marker を手動削除してから再評価。
 
 ### 8.1 Output Pattern (Return Control to Caller)
 
-Based on the ステップ 6 review results, output the corresponding machine-readable pattern:
+Based on the ステップ 6 review results, output the corresponding machine-readable pattern (上から順に評価し、最初に一致した行を採る):
 
 | Condition | Output Pattern |
 |-----------|---------------|
+| `total_findings == 0` かつ `{acceptance_unverified}` が非空（受入条件未検証） | `[review:error]` と `[CONTEXT] REVIEW_STOP=ac_unverified; ac={acceptance_unverified}` |
 | `total_findings == 0` (blocking findings ゼロ) | `[review:mergeable]` |
 | `total_findings >= 1` (blocking findings あり) | `[review:fix-needed:{total_findings}]` |
 
@@ -3184,7 +3256,7 @@ rationale: references/design-rationale.md#aggregate-label-ban
 - The prohibited actions defined in ステップ 5.3.7 "Prohibition of Independent Judgment After Assessment" also apply here
 
 **"Merge OK" だが `total_findings > 0`**: `[review:fix-needed:{total_findings}]` に補正する。
-**⚠️ 非実測 non-blocking のみが残る場合は correct しない**: `total_findings == 0` なら `[review:mergeable]`。`[review:fix-needed:0]` へ override しない。
+**⚠️ 非実測 non-blocking のみが残る場合は correct しない**: `total_findings == 0` なら（受入条件未検証の行に一致しない限り）`[review:mergeable]`。`[review:fix-needed:0]` へ override しない。
 rationale: references/design-rationale.md#mergeable-zero-findings-no-override
 
 **Example output:**

@@ -105,7 +105,7 @@ plugins/rite/
 │   ├── (meta/top)      # setup, getting-started, workflow, investigate, learn, lint, recover, skill-suggest, template-reset
 │   ├── rite-workflow/  # Orchestration context (state detection, phase routing) + references (coding principles)
 │   └── reviewers/      # Reviewer coordinator (selection + tables) + references (per-reviewer profiles in agents/)
-├── agents/           # Sub-agent definitions for PR review (9 reviewers + _reviewer-base)
+├── agents/           # Sub-agent definitions for PR review (10 reviewers + _reviewer-base)
 ├── hooks/            # Event handler scripts (Bash)
 │   ├── scripts/      #   Internal helper scripts (drift-check, bang-backtick-check, lint scanners, etc.)
 │   └── tests/        #   Shell script tests
@@ -121,9 +121,9 @@ A reviewer lives in up to 4 places that must stay in sync. Sync between (1)–(3
 **Edit locations:**
 
 1. **`plugins/rite/agents/{type}-reviewer.md`** (new file) — the reviewer's full profile, injected as the named subagent's system prompt. Two shapes are sanctioned: the heavyweight structure (Role / Core Principles / Detection Process / Detailed Checklist (Expertise Areas, Review Checklist, Severity Definitions, Finding Quality Guidelines) / Output Format — model an existing specialist such as `security-reviewer.md`), or the lens-based structure (persona + first-suspect lenses + output contract, no exhaustive checklist — model `application-reviewer.md`) when the reviewer's checkpoint selection should be delegated to model judgment. Shared principles live in `_reviewer-base.md` and must not be duplicated.
-2. **`plugins/rite/skills/reviewers/SKILL.md` — `Available Reviewers` table** — add a row with the display name, agent filename, and activation file patterns. Skip this table only for logic-selected reviewers that have no file patterns (e.g. `code-quality`, the fallback / co-reviewer).
+2. **`plugins/rite/skills/reviewers/SKILL.md` — `Available Reviewers` table** — add a row with the display name, agent filename, and activation file patterns. Skip this table only for logic-selected reviewers that have no file patterns (e.g. `code-quality`, the fallback / co-reviewer, and `acceptance`, selected when the related Issue has acceptance criteria).
 3. **`plugins/rite/skills/reviewers/SKILL.md` — `Reviewer Type Identifiers` table** — add a row mapping the `reviewer_type` slug to the 日本語表示名 and agent filename. The slug MUST equal the agent basename minus `-reviewer.md` (e.g. `security-reviewer.md` → `security`); the drift check verifies this per row.
-4. **(Conditional) `plugins/rite/skills/pr-review/SKILL.md`** — only when the reviewer activates on diff content rather than file patterns: add a keyword-detection rule to ステップ 2.3, and extend the ステップ 3.2 selection logic if the reviewer needs special selection rules (mandatory promotion, co-reviewer conditions, etc.).
+4. **(Conditional) `plugins/rite/skills/pr-review/SKILL.md`** — only when the reviewer activates on diff content rather than file patterns: add a keyword-detection rule to ステップ 2.3, and extend the ステップ 3.2 selection logic if the reviewer needs special selection rules (mandatory promotion, co-reviewer conditions, etc.). A mandatory reviewer with neither file patterns nor keywords (e.g. `acceptance`) also needs the selection rule in `skills/reviewers/SKILL.md` (including its position relative to the Phase 5 cap) plus its own output post-condition and stop path in `pr-review/SKILL.md`.
 
 **Verification:**
 
