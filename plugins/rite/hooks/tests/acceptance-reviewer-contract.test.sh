@@ -11,7 +11,7 @@
 #   T-03 → TC-8          アンカー付き未充足が gate 後も findings[] に残り verdict fix-needed、行は unmet + finding_id
 #   T-04 → TC-5          8.0 / 8.1 の停止行が同一条件文言で並び、8.1 は mergeable 行より前、8.0 の停止 set は handoff なし /
 #                        6.5.1 は独自の判定表を持たず 8.1 を参照し、standalone の未検証分岐は Merge OK より前 /
-#                        6.5.1 と E2E 表のステップ 7 実行条件、8.0.2 / 7.7 の MUST NOT 対象、rationale anchor の対応
+#                        6.5.1 と E2E 表のステップ 7 実行条件、8.0.2 / 7.7 の MUST NOT 対象、rationale anchor と本文の対応
 #   T-05 → TC-6          iterate が行頭 marker で再試行を skip し、既存の再試行文言は残る
 #   T-06 → TC-3          5.1.0.AC が 5.1.0.L と 5.1.1 の間にあり、reroll 1 回 → [review:error]
 #   T-07 → TC-4 + TC-8   5.3.0.A が 5.3.0.C の後・5.3.8 の前、unverified への書き換え禁止 / アンカー欠落は final が rc=1
@@ -222,6 +222,18 @@ assert "7.7: 停止を含まない旧 MUST NOT が無い" "0" "$(grep -cF -- "$M
 anchor_651=$(grep -A1 -F '**Condition**:' <<<"$block_651" | sed -n 's|^rationale: references/design-rationale\.md#||p')
 if [ -n "$anchor_651" ]; then
   assert "6.5.1: rationale anchor の見出しが 1 つある" "1" "$(grep -cxF "## $anchor_651" "$RATIONALE")"
+  rationale_651=$(awk -v heading="## $anchor_651" '
+    $0 == heading { found=1; next }
+    found && /^## / { exit }
+    found { print }
+  ' "$RATIONALE")
+  if [ -n "$rationale_651" ]; then
+    assert "6.5.1: rationale 本文が終端 2 経路での実行を説明する" "1" "$(grep -cF 'ステップ 7 を `[review:mergeable]` と受入条件未検証の停止で走らせ' <<<"$rationale_651")"
+    assert "6.5.1: rationale 本文が受入条件未検証の停止を終端と説明する" "1" "$(grep -cF '受入条件未検証の停止はループの終端であり' <<<"$rationale_651")"
+    assert "6.5.1: rationale 本文に mergeable 限定の旧理由が無い" "0" "$(grep -cF 'のときだけ走らせる理由' <<<"$rationale_651")"
+  else
+    fail "6.5.1: rationale anchor の節本文を切り出せる"
+  fi
 else
   fail "6.5.1: Condition の直後に rationale ポインタが無い"
 fi
