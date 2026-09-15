@@ -360,6 +360,8 @@ run_unstage_failure_case() {
   check_words "unstage hint" "$cmd" git reset -q -- .rite/wiki/raw
   eq "$label: raw source is still staged as reported" ".rite/wiki/raw/reviews/pr-test.md" \
     "$(git -C "$repo" diff --cached --name-only)"
+  eq "$label: raw source restoration continues after unstage failure" "1" \
+    "$(grep -cxF 'INFO: restored 1/1 raw source(s) back to the dev branch working tree after failure (rc=3)' "$err" || true)"
 }
 
 # run_pre_checkout_failure_case: a failure before the wiki checkout (a raw source staged on
