@@ -161,8 +161,8 @@ assert_grep_count 'iterate question inventory is unchanged' "$ROOT/plugins/rite/
 # Count relocated procedures together with the entrypoint; keep the original totals.
 assert_grep_count 'fix question inventory is unchanged' "$ROOT/plugins/rite/skills/fix/SKILL.md" 'AskUserQuestion' 13 \
   "$ROOT/plugins/rite/skills/fix/references/"{target-comment,nb-sweep,accept-finding,wiki-recording}.md
-assert_grep_count 'ready question inventory is unchanged' "$ROOT/plugins/rite/skills/ready/SKILL.md" 'AskUserQuestion' 2
-assert_grep_count 'merge question inventory is unchanged' "$ROOT/plugins/rite/skills/merge/SKILL.md" 'AskUserQuestion' 2
+assert_grep_count 'ready question inventory includes AC attestation' "$ROOT/plugins/rite/skills/ready/SKILL.md" 'AskUserQuestion' 3
+assert_grep_count 'merge question inventory includes AC attestation' "$ROOT/plugins/rite/skills/merge/SKILL.md" 'AskUserQuestion' 3
 assert_grep_count 'cleanup question inventory is unchanged' "$ROOT/plugins/rite/skills/cleanup/SKILL.md" 'AskUserQuestion' 4
 # Reviewer resolution failures now stop with [review:error]; the three
 # references to bypassing missing reviewers through user confirmation are removed.
