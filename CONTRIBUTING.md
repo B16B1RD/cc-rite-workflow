@@ -357,7 +357,9 @@ echo "Results: $PASS passed, $FAIL failed$( [ "$SKIP" -gt 0 ] && printf ", %s sk
 
 Sourcing `_test-helpers.sh` gives you `pass` / `fail` / `skip` / `assert*` / `print_summary` /
 `make_sandbox` / `make_plain_sandbox` / `_timeout` and the `PASS` / `FAIL` / `SKIP` counters, so a
-new test usually only needs the test cases themselves. See the header of that file for the full API.
+new test usually only needs the test cases themselves. To pin a copy-paste recovery command a hook
+prints, use `assert_shell_words`: it checks that the command parses and splits into exactly the
+expected words. See the header of that file for the full API.
 
 ### Writing a New Test
 

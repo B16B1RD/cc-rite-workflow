@@ -605,6 +605,29 @@ if [ $rc -eq 3 ] && grep -q 'integrity check failed' "$dir27/err.log"; then
 else
   fail "Expected exit 3 with 'integrity check failed', got rc=$rc, stderr=$(cat "$dir27/err.log")"
 fi
+# The 対処 line is a pasteable `rm <target>`. The target is relative with a
+# timestamp + slug name, so an apostrophe cannot be placed in it: this pins the
+# words (a changed argument fails) but not %q versus a hand-written quote. The
+# EXIT rollback already deleted the file, so the target must match the path the
+# ERROR and rollback INFO lines name rather than an existing file.
+rm_prefix="  対処: ファイルを削除して再実行してください: "
+rm_lines=$(grep -c "^$rm_prefix" "$dir27/err.log" || true)
+rm_line=$(grep "^$rm_prefix" "$dir27/err.log" || true)
+rm_cmd=${rm_line#"$rm_prefix"}
+err_path=$(sed -n "s/^ERROR: '\(.*\)' integrity check failed .*/\1/p" "$dir27/err.log")
+info_path=$(sed -n "s/^INFO: partial-write rollback により '\(.*\)' を自動削除しました .*/\1/p" "$dir27/err.log")
+if rm_words=$( ( cd / && export GIT_DIR=/nonexistent && eval "set -- $rm_cmd" && printf '%s\n' "$#" "$@" ) 2>/dev/null ); then
+  rm_parsed=yes
+else
+  rm_parsed=no
+fi
+if [ "$rm_lines" = "1" ] && [ -n "$err_path" ] && [ "$err_path" = "$info_path" ] \
+   && [ "$rm_parsed" = "yes" ] && [ "$rm_words" = "$(printf '%s\n' 2 rm "$err_path")" ] \
+   && [ ! -e "$dir27/$err_path" ]; then
+  pass "対処 line splits into: rm <the rolled-back target>"
+else
+  fail "Expected one '対処: ... rm <target>' line naming the rolled-back target; got lines=$rm_lines err_path='$err_path' info_path='$info_path' parsed=$rm_parsed words=$(printf '%s' "$rm_words" | tr '\n' '|')"
+fi
 echo ""
 
 # --------------------------------------------------------------------------

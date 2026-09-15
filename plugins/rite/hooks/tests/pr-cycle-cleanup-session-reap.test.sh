@@ -106,6 +106,21 @@ run_pcc "$R" >/dev/null
 assert "TC-3 dirty worktree survives" "1" "$( [ -d "$R/.rite/worktrees/issue-52" ] && echo 1 || echo 0 )"
 assert_grep "TC-3 WARNING emitted for dirty" "$R/pcc.err" "未コミット変更があるため auto-reap をスキップ"
 
+echo "=== TC-3d: dirty worktree under an apostrophe path → 手動確認 hint splits into status + remove ==="
+APOS_DIRTY_BASE=$(mktemp -d); cleanup_dirs+=("$APOS_DIRTY_BASE")
+mkdir "$APOS_DIRTY_BASE/it's"
+R=$(TMPDIR="$APOS_DIRTY_BASE/it's" make_repo 59)
+wt="$R/.rite/worktrees/issue-59"
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+echo "uncommitted" > "$wt/dirty.txt"
+run_pcc "$R" >/dev/null
+assert "TC-3d exactly one 手動確認 hint" "1" "$(grep -c '^  手動確認: ' "$R/pcc.err" || true)"
+line=$(grep '^  手動確認: ' "$R/pcc.err" || true)
+cmd=${line#"  手動確認: "}
+assert "TC-3d hint joins exactly two commands" "1" "$(printf '%s\n' "$cmd" | grep -o ' / 不要なら ' | wc -l | tr -d ' ')"
+assert_shell_words "TC-3d status command" "${cmd%% / 不要なら *}" git -C "$wt" status
+assert_shell_words "TC-3d remove command" "${cmd#* / 不要なら }" git worktree remove "$wt"
+
 echo "=== TC-3b (AC-3/4): ignored ambient files → reaped ==="
 R=$(make_repo 55); cleanup_dirs+=("$R")
 printf '.claude/\n.mcp.json\n' >> "$R/.gitignore"
@@ -424,6 +439,26 @@ assert "B-01 unmerged worktree reaped (clean → Gate 3 passes)" "0" "$( [ -d "$
 assert "B-01 unmerged branch PRESERVED (not destroyed)" "1" "$( cd "$R" && $GIT rev-parse --verify feat/issue-90 >/dev/null 2>&1 && echo 1 || echo 0 )"
 assert_grep "B-01 unmerged-branch WARNING on stderr" "$R/pcc.err" "未マージのため保持"
 case "$out" in *"session_branches=0"*) pass "B-01 status reports session_branches=0" ;; *) fail "B-01 status: $out" ;; esac
+
+echo "=== B-01b: unmerged branch named with an apostrophe → branch -D hint keeps it one argument ==="
+R=$(make_repo 93); cleanup_dirs+=("$R")
+wt="$R/.rite/worktrees/issue-93"
+apos_branch="feat/issue-93-it's"
+GITC "$wt" branch -m "$apos_branch" >/dev/null 2>&1
+echo "wip" > "$wt/wip.txt"
+GITC "$wt" add wip.txt >/dev/null 2>&1
+GITC "$wt" commit -q -m "wip: unmerged work" >/dev/null 2>&1
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+run_pcc "$R" >/dev/null
+assert "B-01b apostrophe branch PRESERVED" "1" "$( cd "$R" && $GIT rev-parse --verify "$apos_branch" >/dev/null 2>&1 && echo 1 || echo 0 )"
+assert "B-01b exactly one unmerged-branch hint" "1" "$(grep -cF '（不要なら手動削除: ' "$R/pcc.err" || true)"
+line=$(grep -F '（不要なら手動削除: ' "$R/pcc.err" || true)
+assert "B-01b display half keeps literal quoting" \
+  "WARNING: session worktree branch '$apos_branch' は未マージのため保持しました" "${line%%（不要なら手動削除: *}"
+cmd=${line#*（不要なら手動削除: }
+hint_tail="）。"
+assert "B-01b paste command is closed by the display suffix" "$hint_tail" "${cmd: -${#hint_tail}}"
+assert_shell_words "B-01b paste command" "${cmd%"$hint_tail"}" git branch -D "$apos_branch"
 
 echo "=== B-02 (AC-3): squash-merged branch RECORDED in manifest → force-recovered after reap ==="
 R=$(make_repo 91); cleanup_dirs+=("$R")
@@ -921,6 +956,35 @@ check_corpse_fail_hint "C-13" "$R" 170
 echo "=== C-14: corpse reap failure under a plain path → same rm -rf hint arguments ==="
 R=$(make_repo 171); cleanup_dirs+=("$R")
 check_corpse_fail_hint "C-14" "$R" 171
+
+# The admin dir removal has its own paste-and-run `rm -rf`, reached only when the
+# working tree is gone but the admin dir cannot be deleted. A separate stub fails
+# just the admin dir so the C-13 / C-14 stub stays as is.
+ADMIN_RM_STUB_DIR=$(mktemp -d); cleanup_dirs+=("$ADMIN_RM_STUB_DIR")
+cat > "$ADMIN_RM_STUB_DIR/rm" <<EOF
+#!/bin/bash
+for a in "\$@"; do case "\$a" in */.git/worktrees/issue-*) exit 1 ;; esac; done
+exec "$REAL_RM" "\$@"
+EOF
+chmod +x "$ADMIN_RM_STUB_DIR/rm"
+
+echo "=== C-15: corpse admin dir removal failure under an apostrophe path → rm -rf hint names the admin dir ==="
+R=$(TMPDIR="$APOS_BASE/it's" make_repo 172)
+wt="$R/.rite/worktrees/issue-172"
+admin=$(sed -n 's/^gitdir: //p' "$wt/.git" | head -1)
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+make_corpse "$R" 172
+age_dir "$wt"
+( export PATH="$ADMIN_RM_STUB_DIR:$PATH"; run_pcc "$R" ) >/dev/null
+assert "C-15 working tree reaped" "0" "$( [ -d "$wt" ] && echo 1 || echo 0 )"
+assert "C-15 exactly one admin-dir WARNING" "1" "$(grep -cF 'の削除に失敗しました。手動回収: ' "$R/pcc.err" || true)"
+line=$(grep -F 'の削除に失敗しました。手動回収: ' "$R/pcc.err" || true)
+assert "C-15 display half keeps literal quoting" \
+  "WARNING: corpse admin dir '$admin' の削除に失敗しました。" "${line%%手動回収: *}"
+cmd=${line#*手動回収: }
+prune_tail=" && git worktree prune"
+assert "C-15 paste command ends with the prune step" "$prune_tail" "${cmd: -${#prune_tail}}"
+assert_shell_words "C-15 paste command" "${cmd%"$prune_tail"}" rm -rf "$admin"
 
 print_summary "$(basename "$0")" \
   "Drift hint: pr-cycle-cleanup.sh Step 5 §8 — Gate 0 self-exclusion (cwd/RITE_WORKTREE == self → never reap) + worktree liveness guard (flow-state signal: a session's active flow-state worktree ref → never reap; reap → null owner ref / claim-join signal — issue's claim holder still active=true, even with a stale 2h heartbeat → never reap) + OS-level live-cwd guard (any live process standing in the tree → never reap, via worktree-live-cwd.sh) + 3 gates (strict ^issue-[0-9]+$ / claim not-live / clean); corpse reap: admin-HEAD-missing AND git-unrecognized trees bypass Gate 3 and reap (rm -rf tree + admin dir) behind claim + 24h age guards — HEAD-present rc≠0 trees stay on the conservative skip; branch recovery: after reap, SAFE-delete the branch (merged → recovered) and FORCE-delete only manifest-recorded (merge-confirmed) branches, preserving unmerged work; free-arm manifest bypass: a claim-free worktree whose checked-out branch is manifest-recorded (merge-confirmed) bypasses the 24h age guard (harness mtime churn would otherwise leak it forever) and its manifest entry is consumed immediately after any successful branch recovery (-d and -D alike, best-effort with WARNING on failure); corpse-path manifest bypass: a corpse cannot resolve its branch (git doesn't recognize the tree) so the branch-name bypass never fires for one — cleanup.md Step 4-W now records the worktree's own PATH (not branch) into the manifest when removal fails/is skipped for busy/sandbox-mask reasons (merge-confirmed only), and the corpse age guard checks that PATH before falling back to the 24h wait, consuming the entry on successful reap (surgical: a mismatched path entry does not bypass); wiki-worktree excluded; session-start best-effort wiring."

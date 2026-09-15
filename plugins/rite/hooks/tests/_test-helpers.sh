@@ -75,6 +75,8 @@
 #   skip <label>                                 # writes to stdout, counted in SKIP
 #   _timeout <seconds> <command...>              # portable timeout(1); see Preconditions
 #   assert <label> <expected> <actual>           # writes to stdout (via pass/fail)
+#   shell_words <cmd>                            # word count, then one word per line; non-zero if <cmd> does not parse
+#   assert_shell_words <label> <cmd> <word>...   # a pasted command parses and splits into exactly <word>...
 #   assert_grep     <label> <file> <pattern>     # ERE (grep -E); bare | is alternation — see docstring
 #   assert_not_grep <label> <file> <pattern>     # ERE (grep -E); bare | is alternation — see docstring
 #   assert_file_exists_or_fail <label> <file>    # pre-condition guard for assertion-pair loops
@@ -161,6 +163,32 @@ assert() {
   else
     fail "$label (expected='$expected' actual='$actual')"
   fi
+}
+
+# Prints the word count, then one word per line, as the shell splits a pasted
+# <cmd>; non-zero when <cmd> does not parse. The eval runs in a subshell from /
+# with GIT_DIR=/nonexistent so a regressed hint cannot act on a repository.
+shell_words() {
+  ( cd / && export GIT_DIR=/nonexistent && eval "set -- $1" && printf '%s\n' "$#" "$@" ) 2>/dev/null
+}
+
+# Pins a copy-paste recovery command: it must parse and split into exactly the
+# expected words, in order. A hand-written '...' around a value containing an
+# apostrophe no longer parses, and a changed argument fails its word assert.
+# A parse failure is a single fail with no word asserts after it.
+assert_shell_words() {
+  local label="$1" cmd="$2" out i
+  shift 2
+  local -a words
+  if ! out=$(shell_words "$cmd"); then
+    fail "$label: parses as shell words (cmd=$cmd)"
+    return
+  fi
+  mapfile -t words <<<"$out"
+  assert "$label: word count" "$#" "${words[0]:-}"
+  for ((i = 1; i <= $#; i++)); do
+    assert "$label: word $i" "${!i}" "${words[$i]:-}"
+  done
 }
 
 # Pattern presence assertion (ERE via grep -E).

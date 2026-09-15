@@ -364,18 +364,27 @@ run_unstage_failure_case() {
 
 # run_pre_checkout_failure_case: a failure before the wiki checkout (a raw source staged on
 # the working branch) must leave the index alone so the invariant ERROR's hint still applies.
+# <raw> (default pr-test.md) is the raw source file name; its `git rm --cached` hint must
+# split back into that one path even when the name contains an apostrophe.
 run_pre_checkout_failure_case() {
-  local label="$1"
+  local label="$1" raw="${2:-pr-test.md}"
   local -x GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
-  local base repo tmpdir err rc=0
+  local base repo tmpdir err rc=0 line cmd words ok=1
   make_fixture dev no
   tmpdir="$base/tmp"; err="$base/err"; mkdir "$tmpdir"
-  git -C "$repo" add .rite/wiki/raw/reviews/pr-test.md
+  if [ "$raw" != pr-test.md ]; then
+    mv "$repo/.rite/wiki/raw/reviews/pr-test.md" "$repo/.rite/wiki/raw/reviews/$raw"
+  fi
+  git -C "$repo" add ".rite/wiki/raw/reviews/$raw"
 
   ( cd "$repo" && TMPDIR="$tmpdir" bash "$HOOK_SRC" ) >/dev/null 2>"$err" || rc=$?
   eq "$label: exits 3" "3" "$rc"
   eq "$label: invariant violation reported once" "1" "$(grep -c "is tracked on 'dev' — invariant violation" "$err" || true)"
-  eq "$label: raw source stays staged" ".rite/wiki/raw/reviews/pr-test.md" "$(git -C "$repo" diff --cached --name-only)"
+  eq "$label: raw source stays staged" ".rite/wiki/raw/reviews/$raw" "$(git -C "$repo" diff --cached --name-only)"
+  eq "$label: git rm --cached hint printed once" "1" "$(grep -c '^ 1) git rm --cached ' "$err" || true)"
+  line=$(grep '^ 1) git rm --cached ' "$err" || true)
+  cmd=${line#" 1) "}
+  check_words "untrack hint" "$cmd" git rm --cached ".rite/wiki/raw/reviews/$raw"
 }
 
 echo "TC-RECOVERY-PASTE: checkout-back failure prints pasteable recovery commands"
@@ -392,6 +401,7 @@ run_auto_restore_case "auto restore no stash" "dev" no
 run_auto_restore_preserves_staged_raw_case "auto restore preserves user staging"
 run_unstage_failure_case "unstage failure"
 run_pre_checkout_failure_case "pre-checkout failure"
+run_pre_checkout_failure_case "pre-checkout failure (apostrophe raw name)" "it's pr-test.md"
 echo ""
 
 echo "=== Results: $PASS passed, $FAIL failed ==="
