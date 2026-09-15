@@ -9,7 +9,8 @@
 #   (word splitting, line order, the stash step appearing only when a stash
 #   exists, and that running them lets a re-run ingest the raw source).
 # - separate_branch automatic restore after a failed wiki commit: the raw
-#   sources come back unstaged, so a re-run ingests them.
+#   sources come back unstaged without disturbing unrelated staged files, so a
+#   re-run ingests them.
 #   The separate_branch `dump_git_err` invocations stay out of scope.
 
 set -euo pipefail
@@ -286,6 +287,10 @@ run_auto_restore_case() {
   local base repo tmpdir err rc=0
   make_fixture "$branch" "$stash"
   tmpdir="$base/tmp"; err="$base/err"; mkdir "$tmpdir"
+  if [ "$stash" = yes ]; then
+    printf 'user work\n' > "$repo/user.txt"
+    git -C "$repo" add user.txt
+  fi
 
   ( cd "$repo" && TMPDIR="$tmpdir" bash "$HOOK_SRC" ) >/dev/null 2>"$err" || rc=$?
   eq "$label: exits 3" "3" "$rc"
@@ -293,7 +298,13 @@ run_auto_restore_case() {
   eq "$label: raw source restored in place" "1" "$(grep -cxF 'INFO: restored 1/1 raw source(s) back to the dev branch working tree after failure (rc=3)' "$err" || true)"
   eq "$label: no cleanup WARNING" "0" "$(grep -c '^WARNING: ' "$err" || true)"
   eq "$label: back on the working branch" "$branch" "$(git -C "$repo" branch --show-current)"
-  eq "$label: no raw source left staged" "" "$(git -C "$repo" diff --cached --name-only)"
+  if [ "$stash" = yes ]; then
+    eq "$label: unrelated user file stays staged" "user.txt" \
+      "$(git -C "$repo" diff --cached --name-only)"
+    git -C "$repo" reset -q -- user.txt
+  else
+    eq "$label: no raw source left staged" "" "$(git -C "$repo" diff --cached --name-only)"
+  fi
   eq "$label: raw source is untracked on the working branch" ".rite/wiki/raw/reviews/pr-test.md" \
     "$(git -C "$repo" ls-files --others --exclude-standard -- .rite/wiki/raw)"
   eq "$label: raw source content kept" "raw source" "$(cat "$repo/.rite/wiki/raw/reviews/pr-test.md" 2>/dev/null || true)"
