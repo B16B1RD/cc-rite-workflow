@@ -48,11 +48,11 @@
 #      - それ以外 (エントリ欠落 / class が A・B 以外 / class B なのに scenario 欠落・空 /
 #        class B で exclusion キーがあるのに非空文字列でない / 同 id の重複エントリ)
 #        → **class A 扱い** (blocking 維持) + WARNING。判定不能を降格に
-#        丸めない (AC-6)。consequence_class="A" のみ記録し scenario / exclusion は書かない
+#        丸めない。consequence_class="A" のみ記録し scenario / exclusion は書かない
 #      - 合意済み AC の実測済み未充足: acceptance_criteria[] の status="unmet" 行が指す
 #        finding_id の finding が effective class B で map の exclusion を持たないとき、
 #        consequence_exclusion に "ac_unmet:AC-N" (同じ finding を指す行が複数なら行順に
-#        "ac_unmet:AC-1,AC-2") を記録する。class は map の値のまま。class A (判定不能・
+#        "ac_unmet:AC-N,AC-M"。N / M は正整数のメタ変数) を記録する。class は map の値のまま。class A (判定不能・
 #        category 固定を含む) には記録しない。finding_id が null の行は除外に使わない
 #        (findings[] に残っているかの最終検査は scripts/acceptance-criteria-check.sh final)。
 #        finding_id が findings[] に無い行は除外に使わず WARNING を出し、成功 marker 末尾に
@@ -104,7 +104,7 @@
 #   classification_missing      — --classification のパスが存在しない / 通常ファイルでない (exit 1)。
 #                                 map なしの適用は「全件判定不能 = 全件 class A」と同値だが、
 #                                 caller が分類判定そのものを飛ばした契約違反と区別できないため
-#                                 fail-loud にする (per-finding の欠落だけを AC-6 の安全側に倒す)
+#                                 fail-loud にする (per-finding の欠落だけを class A の安全側に倒す)
 #   classification_unreadable   — --classification の読み取り権限がない (exit 1)
 #   classification_json_invalid — --classification が jq parse 不能 (exit 1)
 #   classifications_not_array   — .classifications が配列でない / キー欠落 (exit 1)
@@ -367,7 +367,7 @@ def effective_class($m; $ac):
 
 # 分類の記録: gated finding のみ consequence_class / consequence_scenario を持つ。
 # 既存値は算出結果で無条件に上書きする (map が唯一の入力 — preset は判定を変えられない)。
-# well-formed な exclusion がある class B は consequence_exclusion に判定文を残す (AC-4)。
+# well-formed な exclusion がある class B は consequence_exclusion に判定文を残す。
 def with_class($m; $ac):
   if gated then
     effective_class($m; $ac) as $ec

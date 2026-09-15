@@ -171,7 +171,7 @@ If Methods 1 and 2 both failed:
 candidates=$(gh issue list -R {owner_repo} --state open --search "in:body \"- [ ] #{issue_number}\" OR \"- [x] #{issue_number}\"" --json number --limit 10 --jq '.[].number')
 parent_number=""
 for cand in $candidates; do
-  # 自己マッチ除外: standalone Issue が自分自身を親と誤検出するのを防ぐ（AC-1）
+  # 自己マッチ除外: standalone Issue が自分自身を親と誤検出するのを防ぐ
   [ "$cand" = "{issue_number}" ] && continue
   # 妥当性検証: 候補 body に当該 tasklist 行が実在するか確認（緩いマッチで拾った無関係 Issue を排除）
   cand_body=$(gh issue view "$cand" -R {owner_repo} --json body --jq '.body')
@@ -187,7 +187,7 @@ echo "method3_parent=${parent_number:-none}"
 
 If `parent_number` is non-empty, extract it as `{parent_issue_number}` and proceed to 2.4.7.2.
 
-**When all three methods failed (no parent found)**: This is the normal path for standalone Issues (AC-4). Emit an explicit **debug log** (not a warning) so that the skip is visible in execution traces — silent skips are prohibited by the MUST requirement "同期失敗時は silent skip せず、明示的にログまたは warning を出力する" and the preceding incidents which all stemmed from silent skips in parent-child sync:
+**When all three methods failed (no parent found)**: This is the normal path for standalone Issues. Emit an explicit **debug log** (not a warning) so that the skip is visible in execution traces — silent skips are prohibited by the MUST requirement "同期失敗時は silent skip せず、明示的にログまたは warning を出力する" and the preceding incidents which all stemmed from silent skips in parent-child sync:
 
 ```bash
 echo "[DEBUG] parent not detected for issue #{issue_number} — processing as standalone (methods tried: body_meta, sub_issues_api, tasklist_search)"

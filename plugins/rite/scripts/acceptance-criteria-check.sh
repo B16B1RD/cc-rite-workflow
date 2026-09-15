@@ -13,8 +13,9 @@
 #
 # Usage:
 #   acceptance-criteria-check.sh extract --body-file PATH
-#   acceptance-criteria-check.sh table --expected AC-1,AC-2 --input PATH
-#   acceptance-criteria-check.sh final --expected AC-1,AC-2|"" --input PATH
+#   acceptance-criteria-check.sh table --expected AC_ID_LIST --input PATH
+#   acceptance-criteria-check.sh final --expected AC_ID_LIST --input PATH
+#     AC_ID_LIST は Issue に存在する数値 ID のカンマ区切りリストへ置き換える。
 #     (final の --expected は必須。空文字列は「対象外 (skipped) の cycle」を意味する)
 #
 # stdout contract:
@@ -60,8 +61,9 @@ usage() {
   cat <<'EOF'
 Usage:
   acceptance-criteria-check.sh extract --body-file PATH
-  acceptance-criteria-check.sh table --expected AC-1,AC-2 --input PATH
-  acceptance-criteria-check.sh final --expected AC-1,AC-2|"" --input PATH
+  acceptance-criteria-check.sh table --expected AC_ID_LIST --input PATH
+  acceptance-criteria-check.sh final --expected AC_ID_LIST --input PATH
+  AC_ID_LIST is a comma-separated list of numeric acceptance-criteria IDs from the Issue.
 EOF
 }
 
