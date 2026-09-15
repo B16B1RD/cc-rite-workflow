@@ -3,6 +3,7 @@
 
 * **Update**: [ユーザーにコピー実行させるコマンドをパスへ手書きの単一引用符で組み立てない](pages/anti-patterns/hand-single-quoted-copy-paste-command.md) — raw/reviews/20260915T123233Z-pr-2867.md を統合
 * **Update**: [path を返す test fixture ヘルパーの cleanup 登録は $() サブシェルではなく親シェルで行う](pages/patterns/test-fixture-helper-parent-shell-cleanup-registration.md) — raw/reviews/20260915T123233Z-pr-2867.md を統合
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=496, broken_refs=0
 * **Skip**: [20260915T121732Z-pr-2865.md](raw/reviews/20260915T121732Z-pr-2865.md) — no extractable heuristic: zero-finding regression test review; existing anti-pattern already covers staged-file preservation
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=496, broken_refs=0
 * **Create**: [テストの歴史的ピン行は番号を残し行末へ drift-check-ignore を付ける](pages/patterns/historical-pin-line-keeps-number-and-attaches-drift-check-ignore.md) — raw/reviews/20260915T100345Z-pr-2855.md を新規ページ化
