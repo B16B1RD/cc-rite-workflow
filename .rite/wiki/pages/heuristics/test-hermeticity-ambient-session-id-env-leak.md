@@ -10,9 +10,13 @@ sources:
     resource: "raw/reviews/20260720T094042Z-pr-1928.md"
   - type: "reviews"
     resource: "raw/reviews/20260720T142626Z-pr-1932.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260915T132416Z-pr-2871.md"
 tags: ["test", "hermeticity", "env-var-leak", "session-id", "flow-state", "sandbox"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-20T14:26:26Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-15T13:31:28Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-15T13:31:28Z" }
 ---
 
 # hook のテストスイートは ambient な session-id 環境変数 (CLAUDE_CODE_SESSION_ID 等) に依存させない (non-hermetic test)
@@ -55,6 +59,14 @@ bash "$HOOK" ...   # だが CLAUDE_CODE_SESSION_ID が親から継承され、�
 - **「部分ガードで未検証」という Issue 起票時点の推測が実機検証で覆るケースがある**: `issue-claim.test.sh` / `wiki-ingest-lock.test.sh` は起票時「部分的にしか env -u を持たない」と推測されていたが、実際には `--session` を省略する全呼出に inline `env -u` ガードが漏れなく掛かっており修正不要だった。推測ベースの Issue 記述は実装確認のスタート地点であり、そのまま信じて修正範囲を決めてはいけない。
 - **`set -euo pipefail` 環境下では漏洩が「一部テスト失敗」で済まず「テストスイート自体のクラッシュ」に発展しうる**: `pre-compact.test.sh` は ambient env 下で `set -euo pipefail` が jq parse 失敗を伝播させ、`Results:` 行に到達する前にスイート全体が exit code 5 でクラッシュしていた（unset 後は 32/0 で完走）。この失敗モードは通常の FAIL カウント比較では見えず、実行ログの exit code まで確認する必要がある。
 
+### 漏れる変数は session-id だけではない
+
+session-id の 2 変数を unset しても、同じテストが稼働中のセッション内で失敗し続けることがある。host 選択の `RITE_HOST` が残ると、解決側は「そのホストのセッション ID が必要」と判断し、ID が無いため ERROR で終わる。呼び出し側がその ERROR を `2>/dev/null` で捨てて「claim なし」と扱うと、作ったばかりの fixture は age guard で黙って skip され、reap 前提の assert が数十件まとめて落ちる。テストランナー経由では `run-tests.sh` が先に一覧をまとめて unset するので起きず、単体実行のときだけ現れる。
+
+- **漏れ方は変数ごとに違う**: `CODEX_THREAD_ID` / `GROK_SESSION_ID` は値があれば別セッションの sid に解決され、空で設定されていれば `RITE_HOST` と同じ ERROR 経路に入る。`RITE_STATE_ROOT` はセッション解決ではなく state の置き場所を差し替える。コメントで「同じように漏れる」とまとめると、この違いが読み取れなくなる。
+- **対策は runner の一覧に合わせる**: 冒頭の unset は、session 解決と state root に効く変数（`CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID CODEX_THREAD_ID GROK_SESSION_ID RITE_HOST RITE_STATE_ROOT`）まで含める。一覧を各テストへ手でコピーするとずれていくため、共通の読み込み元でまとめて unset する方法も候補になる。
+- **CI では検出できない**: CI はランナー経由でしか走らないので、テスト側の unset から変数を外しても green のままになる。効き目を確かめるには、該当変数を設定したまま単体実行する。
+
 ## 関連ページ
 
 - [owner/repo 解決テストは ambient な git remote 状態に依存させない (non-hermetic test)](./test-hermeticity-ambient-git-remote-dependency.md)
@@ -63,3 +75,4 @@ bash "$HOOK" ...   # だが CLAUDE_CODE_SESSION_ID が親から継承され、�
 
 - [post-compact.test.sh の ambient session-id 環境変数漏洩を遮断](../../raw/reviews/20260720T094042Z-pr-1928.md)
 - [hooks/tests 全体の悉皆監査で7ファイルを修正](../../raw/reviews/20260720T142626Z-pr-1932.md)
+- [reap テストの単体実行でホスト選択の環境変数を除去するレビュー結果](../../raw/reviews/20260915T132416Z-pr-2871.md)

@@ -1,6 +1,7 @@
 # Directory Update Log
 ## 2026-09-15
 
+* **Update**: [hook のテストスイートは ambient な session-id 環境変数 (CLAUDE_CODE_SESSION_ID 等) に依存させない (non-hermetic test)](pages/heuristics/test-hermeticity-ambient-session-id-env-leak.md) — raw/reviews/20260915T132416Z-pr-2871.md を統合。漏れる変数が session-id 以外（host 選択・state root）にも及ぶことと、unset 一覧の複製によるずれを追記
 * **Update**: [ユーザーにコピー実行させるコマンドをパスへ手書きの単一引用符で組み立てない](pages/anti-patterns/hand-single-quoted-copy-paste-command.md) — raw/reviews/20260915T123233Z-pr-2867.md を統合
 * **Update**: [path を返す test fixture ヘルパーの cleanup 登録は $() サブシェルではなく親シェルで行う](pages/patterns/test-fixture-helper-parent-shell-cleanup-registration.md) — raw/reviews/20260915T123233Z-pr-2867.md を統合
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=496, broken_refs=0
