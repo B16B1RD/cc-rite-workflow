@@ -689,29 +689,56 @@ for v in "${hermetic_vars[@]}"; do
   fi
 done
 
-if grep -Eq '^source "\$SCRIPT_DIR/_hermetic-env\.sh"' "$SCRIPT_DIR/run-tests.sh" \
-  && ! grep -Eq '^unset .*CLAUDE_CODE_SESSION_ID' "$SCRIPT_DIR/run-tests.sh"; then
-  outer_pass "TC-18.2: run-tests.sh reads the shared list instead of its own unset"
+missing_hermetic_dir=$(mktemp -d)
+cp "$HELPERS" "$missing_hermetic_dir/_test-helpers.sh"
+missing_hermetic_stdout="$missing_hermetic_dir/stdout"
+missing_hermetic_stderr="$missing_hermetic_dir/stderr"
+missing_hermetic_rc=0
+bash -c 'source "$1"; echo reached-after-source' _ \
+  "$missing_hermetic_dir/_test-helpers.sh" \
+  >"$missing_hermetic_stdout" 2>"$missing_hermetic_stderr" \
+  || missing_hermetic_rc=$?
+if [ "$missing_hermetic_rc" -eq 1 ]; then
+  outer_pass "TC-18.2: missing _hermetic-env.sh exits 1 without relying on set -e"
 else
-  outer_fail "TC-18.2: run-tests.sh must source _hermetic-env.sh and carry no inline unset"
+  outer_fail "TC-18.2: missing _hermetic-env.sh must exit 1 (actual rc=$missing_hermetic_rc)"
+fi
+if grep -Fq 'ERROR: _test-helpers.sh: cannot source _hermetic-env.sh' "$missing_hermetic_stderr"; then
+  outer_pass "TC-18.3: missing _hermetic-env.sh names the source failure on stderr"
+else
+  outer_fail "TC-18.3: missing _hermetic-env.sh diagnostic absent from stderr: $(tr '\n' '|' < "$missing_hermetic_stderr")"
+fi
+if ! grep -Fq 'reached-after-source' "$missing_hermetic_stdout"; then
+  outer_pass "TC-18.4: caller stops at the missing hermetic list"
+else
+  outer_fail "TC-18.4: caller continued after the missing hermetic list"
+fi
+rm -rf "$missing_hermetic_dir"
+
+hermetic_source_line='source "$SCRIPT_DIR/_hermetic-env.sh" || { echo "ERROR: cannot source _hermetic-env.sh" >&2; exit 1; }'
+if grep -Fxq "$hermetic_source_line" "$SCRIPT_DIR/run-tests.sh" \
+  && ! grep -Eq '^unset .*CLAUDE_CODE_SESSION_ID' "$SCRIPT_DIR/run-tests.sh"; then
+  outer_pass "TC-18.5: run-tests.sh fail-loud sources the shared list instead of its own unset"
+else
+  outer_fail "TC-18.5: run-tests.sh must fail-loud source _hermetic-env.sh and carry no inline unset"
 fi
 
 # Tests that reset identity mid-file and then export a chosen host keep their own unset.
 inline_unsets=$(grep -lE '^unset .*CLAUDE_CODE_SESSION_ID' "$SCRIPT_DIR"/*.test.sh \
   | grep -vE '/(host-runtime|runtime-session-identity)\.test\.sh$' || true)
 if [ -z "$inline_unsets" ]; then
-  outer_pass "TC-18.3: no test carries a file-level copy of the unset list"
+  outer_pass "TC-18.6: no test carries a file-level copy of the unset list"
 else
-  outer_fail "TC-18.3: file-level unset copies remain: $(printf '%s' "$inline_unsets" | xargs -n1 basename | tr '\n' ' ')"
+  outer_fail "TC-18.6: file-level unset copies remain: $(printf '%s' "$inline_unsets" | xargs -n1 basename | tr '\n' ' ')"
 fi
 
 # These tests do not source _test-helpers.sh, so they read the list directly.
 for t in post-compact post-tool-wm-sync crash-resume cleanup-on-session-end cleanup-work-memory \
   issue-comment-wm-sync pre-compact session-ownership-regression session-end session-start; do
-  if grep -Eq '^source "\$SCRIPT_DIR/_hermetic-env\.sh"' "$SCRIPT_DIR/$t.test.sh"; then
-    outer_pass "TC-18.4: $t.test.sh sources _hermetic-env.sh"
+  if grep -Fxq "$hermetic_source_line" "$SCRIPT_DIR/$t.test.sh"; then
+    outer_pass "TC-18.7: $t.test.sh fail-loud sources _hermetic-env.sh"
   else
-    outer_fail "TC-18.4: $t.test.sh does not source _hermetic-env.sh"
+    outer_fail "TC-18.7: $t.test.sh must fail-loud source _hermetic-env.sh"
   fi
 done
 
@@ -725,9 +752,9 @@ for t in session-start cleanup-work-memory issue-comment-wm-sync; do
   mktemp_line=$(awk '/^TEST_DIR=.*mktemp -d/{print NR; exit}' "$test_file")
   if [ -n "$script_dir_line" ] && [ -n "$hermetic_line" ] && [ -n "$mktemp_line" ] \
     && [ "$script_dir_line" -lt "$hermetic_line" ] && [ "$hermetic_line" -lt "$mktemp_line" ]; then
-    outer_pass "TC-18.5: $t.test.sh sources _hermetic-env.sh before mktemp"
+    outer_pass "TC-18.8: $t.test.sh sources _hermetic-env.sh before mktemp"
   else
-    outer_fail "TC-18.5: $t.test.sh must source _hermetic-env.sh after SCRIPT_DIR and before mktemp"
+    outer_fail "TC-18.8: $t.test.sh must source _hermetic-env.sh after SCRIPT_DIR and before mktemp"
   fi
 done
 
