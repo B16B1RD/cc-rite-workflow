@@ -3,6 +3,7 @@
 
 * **Skip**: [レビュー結果](raw/reviews/20260915T155931Z-pr-2881.md) — 既存ページで同じ経験則を扱っているため
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=504, broken_refs=0
+* **Skip**: [fix 結果](raw/fixes/20260915T160221Z-pr-2881.md) — rite workflow 自体の triage 挙動の記録で、プラグイン本体に機構として組み込み済みのため Wiki に置く domain 知見がない
 
 ## 2026-09-15
 
