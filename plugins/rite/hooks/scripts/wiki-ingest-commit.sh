@@ -760,8 +760,9 @@ for f in "${pending_files[@]}"; do
  echo "ERROR: '$f' is tracked on '$current_branch' — invariant violation" >&2
  echo " raw source capture should only produce untracked files on the dev branch" >&2
  echo " hint: this usually means an accidental commit of the raw source on the dev branch" >&2
+ printf -v _q_f '%q' "$f"
  echo " manual recovery:" >&2
- echo " 1) git rm --cached '$f'" >&2
+ echo " 1) git rm --cached $_q_f" >&2
  echo " 2) commit the removal on the dev branch" >&2
  echo " 3) re-run wiki-ingest-commit.sh" >&2
  exit 3
