@@ -680,16 +680,37 @@ if [ -z "$t13_prog" ]; then
 else
   for t13_body in "$ledger_body" "$crlf_body" "$outside_rows" "$t13_outside_crlf" "$header_only"; do
     t13_record=$(awk -v head='### 却下台帳' "$t13_prog" "$t13_body")
-    t13_extract=$("$LEDGER" extract --body-file "$t13_body" 2>/dev/null | grep -E '^\| ' | grep -v '^| finding_id ' | grep -cvE '^\|[-: |]+\|$')
+    t13_out="$sandbox/t13-extract-$(basename "$t13_body")"
+    t13_err="$sandbox/t13-extract-$(basename "$t13_body").err"
+    t13_extract_rc=0
+    "$LEDGER" extract --body-file "$t13_body" > "$t13_out" 2> "$t13_err" || t13_extract_rc=$?
+    if [ "$t13_extract_rc" -ne 0 ]; then
+      fail "T-13 extract failed ($(basename "$t13_body")) rc=$t13_extract_rc: $(tr '\n' ' ' < "$t13_err")"
+      continue
+    fi
+    t13_extract=$(grep -E '^\| ' "$t13_out" | grep -v '^| finding_id ' | grep -cvE '^\|[-: |]+\|$')
     assert "T-13 台帳の件数が記録 helper と extract で一致 ($(basename "$t13_body"))" "$t13_record" "$t13_extract"
   done
 fi
 t13_crlf_out="$sandbox/t13-crlf-extract.md"
-"$LEDGER" extract --body-file "$crlf_body" > "$t13_crlf_out" 2>/dev/null
-assert "T-13 CRLF 本文の extract は台帳 2 件を返す" 2 "$(grep -c '^| NB-' "$t13_crlf_out")"
-assert "T-13 extract の出力に CR を残さない" 0 "$(grep -c $'\r' "$t13_crlf_out")"
-"$LEDGER" extract --body-file "$outside_rows" > "$sandbox/t13-outside-extract.md" 2>/dev/null
-assert_not_grep "T-13 extract は台帳節の後の別の節の行を出さない" "$sandbox/t13-outside-extract.md" '^\| other '
+t13_crlf_err="$sandbox/t13-crlf-extract.err"
+t13_crlf_rc=0
+"$LEDGER" extract --body-file "$crlf_body" > "$t13_crlf_out" 2> "$t13_crlf_err" || t13_crlf_rc=$?
+if [ "$t13_crlf_rc" -ne 0 ]; then
+  fail "T-13 CRLF extract failed rc=$t13_crlf_rc: $(tr '\n' ' ' < "$t13_crlf_err")"
+else
+  assert "T-13 CRLF 本文の extract は台帳 2 件を返す" 2 "$(grep -c '^| NB-' "$t13_crlf_out")"
+  assert "T-13 extract の出力に CR を残さない" 0 "$(grep -c $'\r' "$t13_crlf_out")"
+fi
+t13_outside_out="$sandbox/t13-outside-extract.md"
+t13_outside_err="$sandbox/t13-outside-extract.err"
+t13_outside_rc=0
+"$LEDGER" extract --body-file "$outside_rows" > "$t13_outside_out" 2> "$t13_outside_err" || t13_outside_rc=$?
+if [ "$t13_outside_rc" -ne 0 ]; then
+  fail "T-13 outside extract failed rc=$t13_outside_rc: $(tr '\n' ' ' < "$t13_outside_err")"
+else
+  assert_not_grep "T-13 extract は台帳節の後の別の節の行を出さない" "$t13_outside_out" '^\| other '
+fi
 
 # merge-into: 既存台帳の後に別の節がある本文で、台帳節だけを置き換えて count 行の直前へ差し込む
 t13_new_ledger="$sandbox/t13-new-ledger.md"
@@ -725,7 +746,7 @@ fi
 t13_crlf_merge="$sandbox/t13-crlf-merge.md"
 cp "$crlf_body" "$t13_crlf_merge"
 "$LEDGER" merge-into --body-file "$t13_crlf_merge" --ledger-file "$t13_new_ledger" 2>/dev/null
-assert "T-13 CRLF 本文の merge-into は台帳見出しを重複させない" 1 "$(grep -c '^### 却下台帳$' "$t13_crlf_merge")"
+assert "T-13 CRLF 本文の merge-into は台帳見出しを重複させない" 1 "$(grep -cE $'^### 却下台帳\r?$' "$t13_crlf_merge")"
 assert "T-13 CRLF 本文の merge-into は旧台帳の行を残さない" 0 "$(grep -c '^| NB-[12] ' "$t13_crlf_merge")"
 assert "T-13 CRLF 本文の merge-into は新台帳の行を 1 件入れる" 1 "$(grep -c '^| NB-9 ' "$t13_crlf_merge")"
 assert "T-13 台帳を差し込んだ merge-into の本文に CR を残さない" 0 "$(grep -c $'\r' "$t13_crlf_merge")"
