@@ -53,6 +53,10 @@ stage_runner() {
   dir="$TEST_DIR/$name"
   mkdir -p "$dir"
   cp "$runner" "$dir/runner.sh"
+  # The hooks runner sources its sibling unset list; the scripts runner has none.
+  if [ "$runner" = "$HOOKS_RUNNER" ]; then
+    cp "$SCRIPT_DIR/_hermetic-env.sh" "$dir/_hermetic-env.sh"
+  fi
   printf '%s' "$dir"
 }
 

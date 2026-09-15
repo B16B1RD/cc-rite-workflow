@@ -665,6 +665,56 @@ check_shell_words_counts "TC-17.3 a changed argument fails its word assert" \
 check_shell_words_counts "TC-17.4 an extra word fails the word count" \
   "PASS=3 FAIL=1" "rm -rf $apos_q extra" rm -rf "$apos_path"
 
+# === TC-18: ambient runtime identity is cleared on source ===
+echo
+echo "TC-18: sourcing clears ambient runtime identity / state-root variables"
+
+hermetic_vars=(CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID CODEX_THREAD_ID GROK_SESSION_ID RITE_HOST
+  CLAUDE_PLUGIN_ROOT CLAUDE_ENV_FILE RITE_STATE_ROOT RITE_RUNTIME_EXPLICIT _RITE_HOOK_REDIRECTED)
+# `${V+set}` tells unset apart from set-to-empty, so a helper that only blanks a
+# variable still fails. The child starts from `/` so the helper has to locate its
+# sibling file from its own path, not from the caller's cwd.
+hermetic_probe=$(cd / && env CLAUDE_CODE_SESSION_ID=x CLAUDE_SESSION_ID=x CODEX_THREAD_ID=x \
+  GROK_SESSION_ID=x RITE_HOST=claude CLAUDE_PLUGIN_ROOT=/nonexistent CLAUDE_ENV_FILE=/nonexistent \
+  RITE_STATE_ROOT=/nonexistent RITE_RUNTIME_EXPLICIT=1 _RITE_HOOK_REDIRECTED=1 \
+  bash -c 'for v in "$@"; do printf "%s before=%s\n" "$v" "${!v+set}"; done
+    source "$0" >/dev/null
+    for v in "$@"; do printf "%s after=%s\n" "$v" "${!v+set}"; done' "$HELPERS" "${hermetic_vars[@]}" 2>&1) || true
+for v in "${hermetic_vars[@]}"; do
+  if printf '%s\n' "$hermetic_probe" | grep -qx "$v before=set" \
+    && printf '%s\n' "$hermetic_probe" | grep -qx "$v after="; then
+    outer_pass "TC-18.1: $v is set before source and unset after"
+  else
+    outer_fail "TC-18.1: $v not cleared on source: $(printf '%s' "$hermetic_probe" | grep "^$v " | tr '\n' '|')"
+  fi
+done
+
+if grep -Eq '^source "\$SCRIPT_DIR/_hermetic-env\.sh"' "$SCRIPT_DIR/run-tests.sh" \
+  && ! grep -Eq '^unset .*CLAUDE_CODE_SESSION_ID' "$SCRIPT_DIR/run-tests.sh"; then
+  outer_pass "TC-18.2: run-tests.sh reads the shared list instead of its own unset"
+else
+  outer_fail "TC-18.2: run-tests.sh must source _hermetic-env.sh and carry no inline unset"
+fi
+
+# Tests that reset identity mid-file and then export a chosen host keep their own unset.
+inline_unsets=$(grep -lE '^unset .*CLAUDE_CODE_SESSION_ID' "$SCRIPT_DIR"/*.test.sh \
+  | grep -vE '/(host-runtime|runtime-session-identity)\.test\.sh$' || true)
+if [ -z "$inline_unsets" ]; then
+  outer_pass "TC-18.3: no test carries a file-level copy of the unset list"
+else
+  outer_fail "TC-18.3: file-level unset copies remain: $(printf '%s' "$inline_unsets" | xargs -n1 basename | tr '\n' ' ')"
+fi
+
+# These tests do not source _test-helpers.sh, so they read the list directly.
+for t in post-compact post-tool-wm-sync crash-resume cleanup-on-session-end cleanup-work-memory \
+  issue-comment-wm-sync pre-compact session-ownership-regression session-end session-start; do
+  if grep -Eq '^source "\$SCRIPT_DIR/_hermetic-env\.sh"' "$SCRIPT_DIR/$t.test.sh"; then
+    outer_pass "TC-18.4: $t.test.sh sources _hermetic-env.sh"
+  else
+    outer_fail "TC-18.4: $t.test.sh does not source _hermetic-env.sh"
+  fi
+done
+
 # === Summary ===
 echo
 echo "─── $(basename "$0") summary ──────────────────────"
