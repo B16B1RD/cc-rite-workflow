@@ -195,7 +195,7 @@ make_r2_fixture() {
   fi
 }
 
-# run_r2 <name> <none|fail|noop> — fail: `merge --abort` exits 1; noop: exits 0 without aborting.
+# run_r2 <name> <none|fail|noop|realfail> — fail: `merge --abort` exits 1; noop: exits 0 without aborting; realfail: aborts via real git then exits 1.
 run_r2() {
   local name=$1 mode=$2 w="$fx_root/$1/work" path=$PATH
   if [ "$mode" != none ]; then
@@ -204,6 +204,10 @@ run_r2() {
 #!/bin/bash
 if [ "\${1:-} \${2:-}" = "merge --abort" ]; then
   echo abort >> "$fx_root/$name/abort.log"
+  if [ "$mode" = realfail ]; then
+    "$real_git" "\$@"
+    exit 1
+  fi
   [ "$mode" = fail ] && exit 1
   exit 0
 fi
@@ -231,7 +235,7 @@ expect_marker() {
   [ "$(git -C "$w" symbolic-ref --short HEAD)" = develop ] || r2_fail "not on develop" "$name"
 }
 
-# expect_abort_error <name> — stopped by the block's own abort check, after exactly one abort.
+# expect_abort_error <name> — stopped with an abort error after exactly one abort call (by the abort check or MERGE_HEAD check).
 expect_abort_error() {
   local name=$1
   [ "$r2_rc" = 1 ] || r2_fail "rc=$r2_rc (expected 1)" "$name"
@@ -257,6 +261,8 @@ expect_marker tree-changed 0 "[CONTEXT] RECOVERY_DRYRUN=tree-changed; before_tre
 
 make_r2_fixture clean-abort-fail clean; run_r2 clean-abort-fail fail; expect_abort_error clean-abort-fail
 make_r2_fixture conflict-abort-fail conflict; run_r2 conflict-abort-fail fail; expect_abort_error conflict-abort-fail
+# abort exits 1 after aborting (MERGE_HEAD cleared): only the clean-branch abort command check can stop it.
+make_r2_fixture clean-abort-realfail clean; run_r2 clean-abort-realfail realfail; expect_abort_error clean-abort-realfail
 # abort reports success but leaves MERGE_HEAD: only the post-abort MERGE_HEAD check can stop it.
 make_r2_fixture clean-abort-noop clean; run_r2 clean-abort-noop noop; expect_abort_error clean-abort-noop
 
