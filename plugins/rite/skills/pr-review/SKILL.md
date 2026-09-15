@@ -2497,7 +2497,7 @@ rationale: references/design-rationale.md#6.1d-always-eval
 #### 6.1.d 非実測指摘の関連 Issue コメント記録 (always evaluated、非ブロッキング)
 
 5.3.0.M / 5.3.0.C で降格した指摘を関連 Issue の記録コメントへ **update-in-place** する。`{post_comment_mode}` に **依存しない**。関連 Issue は PR body の closing keyword を第一候補、branch 命名 (`issue-{N}`) を第二候補として helper が解決する。解決できないときは `related_issue_unresolved` で fail-loud する。
-**Condition**: 常に評価する。投稿しない判定は helper（本文検査 4 段通過後、0 件 ∧ 既存なし → `outcome=skipped`）。検査失敗は `outcome=failed`。0 件でも既存があれば update-in-place。lookup degraded 時は既存を見逃し `skipped; degraded=1` になりうる。
+**Condition**: 常に評価する。投稿しない判定は helper（本文検査 4 段通過後、0 件 ∧ 却下台帳なし ∧ 既存なし → `outcome=skipped`）。検査失敗は `outcome=failed`。0 件でも却下台帳があれば `outcome=created`、既存があれば update-in-place。lookup degraded 時に既存を見逃しても、却下台帳なしなら `skipped; degraded=1`、却下台帳ありなら `created; degraded=1` になる。
 
 > rationale: [references/measured-gate-record.md#single-invocation](references/measured-gate-record.md#single-invocation)
 
