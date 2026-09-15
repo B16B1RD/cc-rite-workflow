@@ -20,7 +20,7 @@
 #      (and any session) Bash that issues `gh pr merge` / REST pulls/{n}/merge /
 #      GraphQL mergePullRequest is denied unless `.rite/review-results/{pr}-*.json`
 #      exists with minimum form (schema_version + verdict keys, reviewers array
-#      length >= sole-reviewer guard floor 2), or a release-promotion attestation
+#      length >= sole-reviewer guard floor 2, acceptance-reviewer not counted), or a release-promotion attestation
 #      proves a develop -> main PR contains only already-reviewed merge commits
 #      and pins the verified head with --match-head-commit. Fail-closed on PR-number
 #      unresolvable / missing / malformed / floor-under JSON. Purpose: block
@@ -818,7 +818,7 @@ if [ -z "$BLOCKED_PATTERN" ]; then
              or (has("verdict")|not)
              or ((.reviewers | type) != "array")
             then "missing_keys"
-          elif ((.reviewers | length) < 2)
+          elif (([.reviewers[] | select(. != "acceptance-reviewer")] | length) < 2)
             then "sole_reviewer"
           else "ok"
           end
@@ -878,7 +878,7 @@ if [ -z "$BLOCKED_PATTERN" ]; then
           case "$_mrg_fail_kind" in
             sole_reviewer)
               BLOCKED_PATTERN="merge-review-sole-reviewer"
-              BLOCKED_REASON="Review-results JSON for PR #${_mrg_pr} has reviewers array length below sole-reviewer guard floor (2). A single-reviewer (or empty) result does not satisfy the merge gate."
+              BLOCKED_REASON="Review-results JSON for PR #${_mrg_pr} has fewer reviewers than the sole-reviewer guard floor (2; acceptance-reviewer is not counted). A single-reviewer (or empty) result does not satisfy the merge gate."
               BLOCKED_ALTERNATIVE="Re-run /rite:pr-review ${_mrg_pr} so at least 2 reviewers are recorded, then re-run merge."
               ;;
             parse_error)

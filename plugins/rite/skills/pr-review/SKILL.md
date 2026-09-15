@@ -616,7 +616,7 @@ Retain the Issue number in the conversation context for use in ステップ 6.4.
  | `skipped; reason=no_ac_section; headings=` | `受入条件確認: 対象外（テンプレート形式の AC 節なし。見出し: {headings}）` を 1 行表示 |
  | 上記 bash が `[review:error]` で終了（`ACCEPTANCE_CHECK_FAILED` の `no_ac_ids` / `duplicate_ac_id` を含む） | 停止。受入条件確認を skip して続行しない |
 
- `ACCEPTANCE_SCOPE` の値（`target` / `skipped` と reason）はステップ 5.3.0.M step 1 の `acceptance_criteria` まで retain する。
+ `ACCEPTANCE_SCOPE` の値（`target` / `skipped` と reason）と `{acceptance_ids}` はステップ 5.3.0.A まで retain する。`skipped`（`no_issue` を含む）の cycle では `{acceptance_ids}` を空文字列とする。
 
 2. Extract the following sections from the body in `ISSUE_BODY_FILE` (if they exist):
  - The entire `## 仕様詳細` section
@@ -684,7 +684,7 @@ If the skill file (`skills/reviewers/SKILL.md`) is not found, fall back to the b
 | `full` | ステップ 1.2.3 の PR 全体の変更ファイル（従来どおり） |
 | `incremental` | `git diff --name-only {cycle_base_sha}..HEAD` の結果（= fix diff）に差し替える |
 
-`incremental` のとき: (1) パターンマッチ結果に `{prev_finders}` を **`selection_type: mandatory`** で合流させる（`recommended` は不可 — Phase 5 の cap が落とさないと保証するのは `mandatory` のみで、`recommended` は `max_reviewers` 超過時に落ちて「前サイクル finder は無条件に再起動」が破れる。昇格は `detected < recommended < mandatory` の高い側へのみ）。(2) ステップ 2.3 の sole-reviewer guard / ステップ 3.2 の Security Expert 条件 / ステップ 3.2.1 の cap とフロアは**すべて従来どおり適用する**。(3) 今サイクル対象外となった reviewer 名と理由を ステップ 5.4 の「レビュー範囲」section に記録する（silent な絞り込みは禁止）。**母集合は cycle 1 で選定された reviewer 集合**とし、そこから今サイクル起動しない名前を理由付きで列挙する（全 reviewer を母集合にすると PR に一度も関係しない reviewer が毎サイクル並び、今サイクルの起動集合を母集合にすると差分スコープが何名減らしたかが読めない）。ステップ 3.3 の「省略された reviewer 表示」には記録しない — 同 section は出力条件が `{dropped_count} > 0`、見出しが cap 超過を理由として固定されており、パターンマッチの候補にすら上がらない差分スコープ由来の除外を表現できない。
+`incremental` のとき: (1) パターンマッチ結果に `{prev_finders}` を **`selection_type: mandatory`** で合流させる。ただし `{prev_finders}` の `acceptance` は合流させない（ステップ 3.2.2 が cap 後に毎 cycle 追加する）（`recommended` は不可 — Phase 5 の cap が落とさないと保証するのは `mandatory` のみで、`recommended` は `max_reviewers` 超過時に落ちて「前サイクル finder は無条件に再起動」が破れる。昇格は `detected < recommended < mandatory` の高い側へのみ）。(2) ステップ 2.3 の sole-reviewer guard / ステップ 3.2 の Security Expert 条件 / ステップ 3.2.1 の cap とフロアは**すべて従来どおり適用する**。(3) 今サイクル対象外となった reviewer 名と理由を ステップ 5.4 の「レビュー範囲」section に記録する（silent な絞り込みは禁止）。**母集合は cycle 1 で選定された reviewer 集合**とし、そこから今サイクル起動しない名前を理由付きで列挙する（全 reviewer を母集合にすると PR に一度も関係しない reviewer が毎サイクル並び、今サイクルの起動集合を母集合にすると差分スコープが何名減らしたかが読めない）。ステップ 3.3 の「省略された reviewer 表示」には記録しない — 同 section は出力条件が `{dropped_count} > 0`、見出しが cap 超過を理由として固定されており、パターンマッチの候補にすら上がらない差分スコープ由来の除外を表現できない。
 
 **Pattern priority rules:**
 1. `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md` -> Prompt Engineer (highest priority)
@@ -861,7 +861,7 @@ Security / co-reviewer / sole-reviewer-guard のあと `max_reviewers` を適用
 
 ### 3.2.2 Acceptance Reviewer Addition
 
-ステップ 1.3.1 が `ACCEPTANCE_SCOPE=target` のとき、3.2.1 で確定した `{selected_reviewers}` に `acceptance` を `selection_type: mandatory` で追加する。`REVIEW_CYCLE_SCOPE` / `COMPLEXITY_LANE` に依らず毎 cycle 追加し、sole-reviewer guard と `effective_max` の母数には数えない。`skipped` のときは追加しない。ステップ 3.3 の表示では `[必須]` とし、「レビュアーを減らす」でも削除できない。
+ステップ 1.3.1 が `ACCEPTANCE_SCOPE=target` のとき、3.2.1 で確定した `{selected_reviewers}` に `acceptance` を `selection_type: mandatory` で追加する。`REVIEW_CYCLE_SCOPE` / `COMPLEXITY_LANE` に依らず毎 cycle 追加し、sole-reviewer guard と `effective_max` の母数には数えない。`{selected_reviewers}` に既に `acceptance` があれば追加しない。`skipped` のときは追加しない。ステップ 3.3 の表示では `[必須]` とし、「レビュアーを減らす」でも削除できない。
 rationale: references/design-rationale.md#acceptance-reviewer
 
 ### 3.3 Confirm Reviewers
@@ -1933,7 +1933,7 @@ If reviewers have written items in the "仕様への疑問" section, prompt the 
 1. **5.3.0 Observed Likelihood Gate** — `Likelihood-Evidence:` 欠落を機械降格。`推奨事項` へ移した分は `total_findings` に数えない。LOW × Hypothetical は削除。5.4 の降格結果 section に記録。
 2. **5.3.0.M 実測必須ゲート** — **`scripts/review-measured-gate.sh` を実行する**。分類は helper。Claude は判定しない。SoT: [severity-levels.md §実測必須ゲート](../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) / [assessment-rules.md §5.3.0.M](../fix/references/assessment-rules.md)。
 3. **5.3.0.C 帰結クラス降格政策** — 分類 map の Write と `scripts/review-class-demotion-gate.sh`。`blocking=0` なら本ゲート全体を skip。A=0 で exclusion なし B を降格し、exclusion 付き B は blocking 維持。SoT: [severity-levels.md §帰結クラス軸](../../references/severity-levels.md#帰結クラス軸-consequence-class) / [assessment-rules.md §5.3.0.C](../fix/references/assessment-rules.md)。
-4. **5.3.0.A 受入条件の最終整合検査** — `scripts/acceptance-criteria-check.sh final` を実行する。未充足行の finding が降格後も blocking に残ることを検査し、未検証 AC を 8.0 / 8.1 へ渡す。
+4. **5.3.0.A 受入条件の最終整合検査** — `scripts/acceptance-criteria-check.sh final` を実行する。判定行の AC-ID 集合・対象判定と reviewers[] の整合、未充足行の finding が降格後も blocking に残ることを検査し、未検証 AC を 8.0 / 8.1 へ渡す。
 5. **5.3.1-5.3.7** を降格後の `全指摘事項` に適用。件数は marker とゲート後 JSON から読む（再分類しない）。
 5.3.0 / 5.3.0.M / 5.3.0.C / 5.3.0.A を 5.3.1 の前に飛ばすことは **禁止**。
 rationale: references/design-rationale.md#5.3-execution-order-why
@@ -2176,7 +2176,7 @@ bash {plugin_root}/scripts/review-class-demotion-gate.sh \
 
 ```bash
 bash {plugin_root}/scripts/acceptance-criteria-check.sh final \
-  --input {review_tmp_dir}/rite-review-result-{pr_number}.json
+  --expected "{acceptance_ids}" --input {review_tmp_dir}/rite-review-result-{pr_number}.json
 ```
 
 | Result | Action |

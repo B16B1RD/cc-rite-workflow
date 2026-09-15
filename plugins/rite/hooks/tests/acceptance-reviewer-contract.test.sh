@@ -153,6 +153,10 @@ in_order "5.3.0.A 節は 5.3.0.C の後・5.3.8 の前" \
 in_order "5.3.0.A 節は 6.1.a より前" \
   "$(line_of "$PR_REVIEW" '#### 5.3.0.A 受入条件の最終整合検査')" \
   "$(line_of "$PR_REVIEW" '#### 6.1.a Local JSON File Save')"
+pin "5.3.0.A: final を Issue の AC 集合で実行" "$PR_REVIEW" '--expected "{acceptance_ids}" --input {review_tmp_dir}/rite-review-result-{pr_number}.json'
+pin "1.3.1: skipped の cycle は {acceptance_ids} を空文字列" "$PR_REVIEW" '`skipped`（`no_issue` を含む）の cycle では `{acceptance_ids}` を空文字列とする'
+pin "2.2: prev_finders の acceptance は合流させない" "$PR_REVIEW" '`{prev_finders}` の `acceptance` は合流させない（ステップ 3.2.2 が cap 後に毎 cycle 追加する）'
+pin "3.2.2: 既に acceptance があれば追加しない" "$PR_REVIEW" '`{selected_reviewers}` に既に `acceptance` があれば追加しない'
 pin "5.3.0.A: unverified への書き換え禁止" "$PR_REVIEW" '`acceptance_criteria[].status` を `unverified` に書き換えて通してはならない'
 pin "5.3.0.A: reroll 後は降格ゲートを通してから再検査" "$PR_REVIEW" '5.1 の回収完了ゲート → 5.1.0.L → 5.1.0.AC → 5.3.0 → 5.3.0.M step 1 → step 2 → step 3 → 5.3.0.C → 本検査を同 cycle 内で再実行する'
 pin "5.3.0.M step 1: acceptance_criteria を常に書く" "$PR_REVIEW" '- **`acceptance_criteria` を常に書く**'
@@ -224,8 +228,8 @@ DESC_ANCHOR="[AC-2] 空入力で exit 0<br>Likelihood-Evidence: runtime_observat
 step1_json "$TMP_ROOT/chain.json" "$DESC_ANCHOR" "$rows"
 bash "$MGATE" --input "$TMP_ROOT/chain.json" --reject-preset-verification >/dev/null 2>&1
 assert "TC-8 アンカー付き未充足で verdict fix-needed" "fix-needed" "$(jq -r '.verdict' "$TMP_ROOT/chain.json")"
-final_err=$(bash "$CHECK" final --input "$TMP_ROOT/chain.json" 2>&1 >/dev/null); final_rc=$?
-if [ "$final_rc" -eq 0 ] && grep -qF '[CONTEXT] ACCEPTANCE_FINAL=ok; unmet=AC-2; unverified=AC-3' <<<"$final_err"; then
+final_err=$(bash "$CHECK" final --expected "$ids" --input "$TMP_ROOT/chain.json" 2>&1 >/dev/null); final_rc=$?
+if [ "$final_rc" -eq 0 ] && grep -Fxq '[CONTEXT] ACCEPTANCE_FINAL=ok; unmet=AC-2; unverified=AC-3' <<<"$final_err"; then
   pass "TC-8 final が未充足の残存を確認し未検証 AC-3 を返す"
 else fail "TC-8 final (rc=$final_rc err=$final_err)"; fi
 assert "TC-8 gate 後も AC-2 行は unmet + finding_id" "unmet F-01" "$(jq -r '.acceptance_criteria[] | select(.id == "AC-2") | "\(.status) \(.finding_id)"' "$TMP_ROOT/chain.json")"
@@ -240,7 +244,7 @@ assert "TC-8 保存 JSON の reviewers に acceptance-reviewer" "true" "$(jq '.r
 
 step1_json "$TMP_ROOT/chain-noanchor.json" "[AC-2] 空入力で exit 0<br>Likelihood-Evidence: runtime_observation bash app.sh ''" "$rows"
 bash "$MGATE" --input "$TMP_ROOT/chain-noanchor.json" --reject-preset-verification >/dev/null 2>&1
-bash "$CHECK" final --input "$TMP_ROOT/chain-noanchor.json" >/dev/null 2>"$TMP_ROOT/final-noanchor.err"; rc=$?
+bash "$CHECK" final --expected "$ids" --input "$TMP_ROOT/chain-noanchor.json" >/dev/null 2>"$TMP_ROOT/final-noanchor.err"; rc=$?
 if [ "$rc" -eq 1 ] && grep -q 'reason=unmet_finding_not_blocking' "$TMP_ROOT/final-noanchor.err" \
   && [ "$(jq -r '.non_blocking_findings[0].id' "$TMP_ROOT/chain-noanchor.json")" = "F-01" ] \
   && [ "$(jq -r '.acceptance_criteria[1].status' "$TMP_ROOT/chain-noanchor.json")" = "unmet" ]; then
@@ -253,8 +257,9 @@ jq -n --argjson rows "$allrows" --arg ts "$SENTINEL" '{schema_version: "1.1.0", 
   findings: [], non_blocking_findings: [], guardrail_audit_log: [],
   acceptance_criteria: ($rows | map(.finding_id = null))}' > "$TMP_ROOT/all.json"
 bash "$MGATE" --input "$TMP_ROOT/all.json" --reject-preset-verification >/dev/null 2>&1
-final_err=$(bash "$CHECK" final --input "$TMP_ROOT/all.json" 2>&1 >/dev/null)
-if [ "$(jq -r '.verdict' "$TMP_ROOT/all.json")" = "mergeable" ] && grep -qF 'ACCEPTANCE_FINAL=ok; unmet=; unverified=' <<<"$final_err"; then
+final_err=$(bash "$CHECK" final --expected "$ids" --input "$TMP_ROOT/all.json" 2>&1 >/dev/null); final_rc=$?
+if [ "$final_rc" -eq 0 ] && [ "$(jq -r '.verdict' "$TMP_ROOT/all.json")" = "mergeable" ] \
+  && grep -Fxq '[CONTEXT] ACCEPTANCE_FINAL=ok; unmet=; unverified=' <<<"$final_err"; then
   pass "TC-8 全充足は verdict mergeable で未検証なし"
 else fail "TC-8 全充足 ($final_err)"; fi
 
