@@ -1210,7 +1210,10 @@ if [ -d "$session_wt_root" ]; then
       fi
       if [ -n "$_st_out" ]; then
         echo "WARNING: session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' は未コミット変更があるため auto-reap をスキップします。" >&2
-        echo "  手動確認: git -C '$wt_path' status / 不要なら git worktree remove '$wt_path'" >&2
+        # Copy-paste commands are shell-quoted separately from the neutralized
+        # display form: a hand-written '...' splits on an apostrophe in the path.
+        printf -v _q_wt_path '%q' "$wt_path"
+        echo "  手動確認: git -C $_q_wt_path status / 不要なら git worktree remove $_q_wt_path" >&2
         continue
       fi
     fi
@@ -1340,7 +1343,8 @@ if [ -d "$session_wt_root" ]; then
       # the post-loop prune and the next reap run both retry.
       if [ "$_corpse" -eq 1 ] && [ -d "$_admin_dir" ]; then
         if ! rm -rf "$_admin_dir" 2>/dev/null; then
-          echo "WARNING: corpse admin dir '$(printf '%s' "$_admin_dir" | neutralize_ctrl)' の削除に失敗しました。手動回収: rm -rf '$_admin_dir' && git worktree prune" >&2
+          printf -v _q_admin_dir '%q' "$_admin_dir"
+          echo "WARNING: corpse admin dir '$(printf '%s' "$_admin_dir" | neutralize_ctrl)' の削除に失敗しました。手動回収: rm -rf $_q_admin_dir && git worktree prune" >&2
         fi
       fi
       session_worktrees_reaped=$((session_worktrees_reaped + 1))
@@ -1406,7 +1410,10 @@ if [ -d "$session_wt_root" ]; then
             errors=$((errors + 1))
           fi
         else
-          echo "WARNING: session worktree branch '$(printf '%s' "$_reaped_branch" | neutralize_ctrl)' は未マージのため保持しました（不要なら手動削除: git branch -D '$(printf '%s' "$_reaped_branch" | neutralize_ctrl)'）。" >&2
+          # %q also escapes control bytes as $'...', so the paste form needs no
+          # neutralize_ctrl and still names the real branch.
+          printf -v _q_reaped_branch '%q' "$_reaped_branch"
+          echo "WARNING: session worktree branch '$(printf '%s' "$_reaped_branch" | neutralize_ctrl)' は未マージのため保持しました（不要なら手動削除: git branch -D ${_q_reaped_branch}）。" >&2
         fi
         # Consume the manifest entry NOW on ANY successful recovery — -d and -D
         # alike. With the Gate 2 free-arm age-guard bypass keyed on this
@@ -1459,7 +1466,9 @@ if [ -d "$session_wt_root" ]; then
         # Symmetric with the admin-dir failure branch above: a corpse reap
         # failure must carry the manual recovery command (§4.5),
         # including the admin dir path the generic message would lose.
-        echo "WARNING: corpse session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' の回収に失敗しました。手動回収: rm -rf '$wt_path' '$_admin_dir' && git worktree prune" >&2
+        printf -v _q_wt_path '%q' "$wt_path"
+        printf -v _q_admin_dir '%q' "$_admin_dir"
+        echo "WARNING: corpse session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' の回収に失敗しました。手動回収: rm -rf $_q_wt_path $_q_admin_dir && git worktree prune" >&2
       else
         echo "WARNING: failed to reap session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)'" >&2
       fi

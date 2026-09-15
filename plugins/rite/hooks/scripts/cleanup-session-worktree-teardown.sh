@@ -312,7 +312,9 @@ cmd_remove() {
     else
       echo "[CONTEXT] WORKTREE_REMOVE_FAILED=1; path=$flow_wt" >&2
       if [ -n "$_wt_rm_err" ] && grep -qi "busy" "$_wt_rm_err" 2>/dev/null; then
-        echo "WARNING: worktree 削除が「Device or resource busy」で失敗しました。Claude Code の sandbox が worktree の .git/worktrees/*/config.worktree・commondir に read-only bind mount を張っている環境では、sandbox 内からの git worktree remove（--force 含む）は構造的に失敗します。この失敗は意図的に non-blocking として遅延 reap（pr-cycle-cleanup.sh）へ委譲するため、実行エージェントはこの場で sandbox を無効化して同コマンドを再試行しないこと。復旧: ユーザーが sandbox 外のシェルで次を実行してください: git worktree remove --force '$flow_wt' && git worktree prune" >&2
+        local _q_flow_wt
+        printf -v _q_flow_wt '%q' "$flow_wt"
+        echo "WARNING: worktree 削除が「Device or resource busy」で失敗しました。Claude Code の sandbox が worktree の .git/worktrees/*/config.worktree・commondir に read-only bind mount を張っている環境では、sandbox 内からの git worktree remove（--force 含む）は構造的に失敗します。この失敗は意図的に non-blocking として遅延 reap（pr-cycle-cleanup.sh）へ委譲するため、実行エージェントはこの場で sandbox を無効化して同コマンドを再試行しないこと。復旧: ユーザーが sandbox 外のシェルで次を実行してください: git worktree remove --force $_q_flow_wt && git worktree prune" >&2
       fi
       # 失敗時は admin dir を追加操作しない（prune もしない）。remove --force が途中で
       # HEAD を消して止まっても、残件は遅延 reap の corpse 判定へ渡す。
