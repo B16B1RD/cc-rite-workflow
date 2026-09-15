@@ -298,6 +298,9 @@ Test files follow the `*.test.sh` naming convention. Each test file has this str
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Tests that read ambient runtime identity must clear the launching session's
+# values before creating any temporary state.
+source "$SCRIPT_DIR/_hermetic-env.sh" || { echo "ERROR: cannot source _hermetic-env.sh" >&2; exit 1; }
 HOOK="$SCRIPT_DIR/../your-hook.sh"
 # Two steps, not `$(cd "$(mktemp -d)" && pwd -P)`: bash `cd ""` returns 0 without
 # changing directory, so a failed mktemp inside that nesting yields the current
@@ -366,9 +369,10 @@ expected words. See the header of that file for the full API.
 
 1. Create `plugins/rite/hooks/tests/your-hook.test.sh`
 2. Follow the structure above: setup temporary directory, define `pass`/`fail`/`skip` helpers (or
-   source `_test-helpers.sh` and get them for free), write test cases. A test that does not source
-   `_test-helpers.sh` must `source "$SCRIPT_DIR/_hermetic-env.sh"` right after defining
-   `SCRIPT_DIR`; otherwise a standalone run inherits the launching session's identity
+   source `_test-helpers.sh` and get them for free), write test cases. A test that reads ambient
+   runtime identity and does not source `_test-helpers.sh` must
+   `source "$SCRIPT_DIR/_hermetic-env.sh"` right after defining `SCRIPT_DIR`; otherwise a
+   standalone run inherits the launching session's identity
 3. Use `mktemp -d` for isolated test environments, then canonicalize the root with
    `pwd -P` as the structure above does — anything that compares the sandbox path
    against a path the code under test resolved breaks on macOS otherwise

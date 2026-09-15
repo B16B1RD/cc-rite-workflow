@@ -715,6 +715,22 @@ for t in post-compact post-tool-wm-sync crash-resume cleanup-on-session-end clea
   fi
 done
 
+# The three tests below allocate their cleanup root themselves. Keep the
+# fail-loud hermetic source before the first allocation so a missing shared list
+# cannot leave a temporary directory behind.
+for t in session-start cleanup-work-memory issue-comment-wm-sync; do
+  test_file="$SCRIPT_DIR/$t.test.sh"
+  script_dir_line=$(awk '/^SCRIPT_DIR=/{print NR; exit}' "$test_file")
+  hermetic_line=$(awk '/^source "\$SCRIPT_DIR\/_hermetic-env\.sh"/{print NR; exit}' "$test_file")
+  mktemp_line=$(awk '/^TEST_DIR=.*mktemp -d/{print NR; exit}' "$test_file")
+  if [ -n "$script_dir_line" ] && [ -n "$hermetic_line" ] && [ -n "$mktemp_line" ] \
+    && [ "$script_dir_line" -lt "$hermetic_line" ] && [ "$hermetic_line" -lt "$mktemp_line" ]; then
+    outer_pass "TC-18.5: $t.test.sh sources _hermetic-env.sh before mktemp"
+  else
+    outer_fail "TC-18.5: $t.test.sh must source _hermetic-env.sh after SCRIPT_DIR and before mktemp"
+  fi
+done
+
 # === Summary ===
 echo
 echo "─── $(basename "$0") summary ──────────────────────"

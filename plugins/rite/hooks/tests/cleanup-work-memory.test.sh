@@ -11,6 +11,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=_hermetic-env.sh
+source "$SCRIPT_DIR/_hermetic-env.sh" || { echo "ERROR: cannot source _hermetic-env.sh" >&2; exit 1; }
 HOOK="$SCRIPT_DIR/../cleanup-work-memory.sh"
 TEST_DIR="$(mktemp -d)"
 PASS=0
@@ -22,9 +24,6 @@ FAIL=0
 # `_hermetic-env.sh`, the dogfooding session's ambient session id would leak in and override
 # each test's seeded .rite-session-id, resolving to a path outside TEST_DIR and
 # silently no-op'ing the Step 1 flow-state reset under test.
-# shellcheck source=_hermetic-env.sh
-source "$SCRIPT_DIR/_hermetic-env.sh" || { echo "ERROR: cannot source _hermetic-env.sh" >&2; exit 1; }
-
 cleanup() { rm -rf "$TEST_DIR"; }
 trap cleanup EXIT
 

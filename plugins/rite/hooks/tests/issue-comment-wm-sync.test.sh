@@ -13,6 +13,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=_hermetic-env.sh
+source "$SCRIPT_DIR/_hermetic-env.sh" || { echo "ERROR: cannot source _hermetic-env.sh" >&2; exit 1; }
 HOOK="$SCRIPT_DIR/../issue-comment-wm-sync.sh"
 TEST_DIR="$(mktemp -d)"
 PASS=0
@@ -22,9 +24,6 @@ FAIL=0
 # block under test (TC-003/TC-004) is env-first (CLAUDE_CODE_SESSION_ID /
 # CLAUDE_SESSION_ID); without `_hermetic-env.sh`, the dogfooding session's
 # ambient session id would leak in and override each test's seeded .rite-session-id.
-# shellcheck source=_hermetic-env.sh
-source "$SCRIPT_DIR/_hermetic-env.sh" || { echo "ERROR: cannot source _hermetic-env.sh" >&2; exit 1; }
-
 cleanup() { rm -rf "$TEST_DIR"; }
 trap cleanup EXIT
 
