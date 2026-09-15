@@ -273,11 +273,13 @@ Wiki ingest の skip / write 失敗を silent にしない理由。
 
 heredoc write 失敗で trigger を起動していないのに `trigger_exit=1` を reason にすると誤帰属になる。root cause は `WIKI_CONTENT_WRITE_FAILED` だが gate はそれを見ないため、`WIKI_INGEST_FAILED; reason=content_write_failed` を別に出す。
 
-## step7-mergeable-only
+## step7-terminal-results
 
-ステップ 7 を `[review:mergeable]` のときだけ走らせる理由。
+ステップ 7 を `[review:mergeable]` と受入条件未検証の停止で走らせ、`[review:fix-needed:N]` では skip する理由。
 
 `[review:fix-needed:N]` では fix loop が続き、最終 mergeable レビューで 7 を走らせれば重複 Issue 化を避けられる。
+
+受入条件未検証の停止はループの終端であり、iterate は再試行せずに止まるため再レビューは起きない。この前提が当てはまらないので、skip すると候補（Source B を含み、`total_findings == 0` でも 1 件以上になりうる）は 7.2 の処分を一度も受けずに消える。mergeable と同じく実行する。
 
 ## defense-in-depth-handoff
 

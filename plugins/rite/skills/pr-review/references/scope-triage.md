@@ -426,7 +426,7 @@ ERROR: ステップ 7.7 post-condition gate failed.
 candidate_count = {N} (>= 1) but no [CONTEXT] PHASE_7_ASKUSER_INVOKED sentinel found.
 This means ステップ 7.2 disposition handling was NOT executed — silent skip of recommendation disposition.
 ACTION: Return to ステップ 7.2, complete confirmation (対話は回答後、E2E 自動は判定確定後), emit the sentinel with mode/choice/reason, then re-enter ステップ 7.7. Do not run 7.4 before that sentinel.
-⚠️ LLM MUST NOT output [review:mergeable] or [review:fix-needed:{n}] until ステップ 7.2 has been executed and the sentinel is emitted.
+⚠️ LLM MUST NOT output [review:mergeable], [review:fix-needed:{n}], or the acceptance-unverified stop [review:error] (REVIEW_STOP=ac_unverified) until ステップ 7.2 has been executed and the sentinel is emitted.
 ANTI-PATTERN reference: This gate enforces the prohibition declared in
 .rite/wiki/pages/anti-patterns/aggregate-recommendation-label-evasion.md
 (if Wiki has not yet ingested this page, see the background section).
