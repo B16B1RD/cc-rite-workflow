@@ -18,14 +18,6 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
-# Clean session-id env for standalone runs. flow-state.sh resolves
-# session_id env-first; the file-based sandboxes below must exercise the
-# `.rite-session-id` fallback, so the dogfooding session's ambient
-# CLAUDE_CODE_SESSION_ID must not leak in. TC-13/14/15 + T-01/T-02/T-04 set the
-# vars explicitly per-command, overriding this unset. (run-tests.sh unsets the
-# same vars for suite runs; this keeps `bash flow-state.test.sh` deterministic too.)
-unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
-
 # Helper: prepare a sandbox with .rite-session-id and STATE_ROOT detection
 new_sandbox() {
   local d sid

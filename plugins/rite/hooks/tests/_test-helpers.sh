@@ -66,6 +66,8 @@
 #   available, because _timeout below cannot detect hangs without one of them and
 #   every caller reads a non-124 exit code as "no hang". Failing loudly at source
 #   time is the only placement that cannot be swallowed by a `$( )` subshell.
+#   Sourcing also clears the ambient runtime identity / state-root variables
+#   listed in _hermetic-env.sh, and aborts the caller when that file cannot be read.
 #
 # Provided functions:
 #   _helpers_resolve_plugin_root <script_dir>
@@ -99,6 +101,17 @@ _helpers_resolve_plugin_root() {
 _helpers_resolve_repo_root() {
   local script_dir="${1:?script_dir required}"
   (cd "$script_dir/../../../.." && pwd)
+}
+
+# A missing list must stop the caller even without `set -e`; otherwise the test
+# runs with the launching session's identity and can still pass. The directory is
+# derived without dirname(1) because some callers source this file under a PATH
+# that holds only fixture binaries.
+case "${BASH_SOURCE[0]}" in */*) _helpers_dir=${BASH_SOURCE[0]%/*} ;; *) _helpers_dir=. ;; esac
+# shellcheck source=_hermetic-env.sh
+source "$_helpers_dir/_hermetic-env.sh" || {
+  echo "ERROR: _test-helpers.sh: cannot source _hermetic-env.sh" >&2
+  exit 1
 }
 
 # Counters — declared here so callers can rely on them existing after `source`.

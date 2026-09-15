@@ -70,7 +70,9 @@ flow-state、run queue（`path` の basename）、claim、work memory の state 
   同一 ID 再開、選択優先、欠落・不正・競合時に foreign / legacy が不変であること。
 - `flow-state.test.sh`: opaque ID の path / set / get round-trip（Layer 1 を strict にしない）。
 - `issue-claim.test.sh` / `wiki-ingest-lock.test.sh`: UUID ownership と env-first / file fallback 互換。
-- `run-tests.sh` は ambient な Claude / Codex / Grok ID、`RITE_HOST`、runtime mode / state root を解除する。
+- `hooks/tests/_hermetic-env.sh` が ambient な Claude / Codex / Grok ID、`RITE_HOST`、runtime mode / state root の
+  解除一覧を持つ。`run-tests.sh` と `_test-helpers.sh` がこれを source し、`_test-helpers.sh` を読まないテストも
+  直接 source するため、suite 実行でも単体実行でも解除される。
 
 ## 関連
 

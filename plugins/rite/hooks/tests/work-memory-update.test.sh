@@ -26,17 +26,6 @@
 # Usage: bash plugins/rite/hooks/tests/work-memory-update.test.sh
 set -euo pipefail
 
-# Hermeticity guard: flow-state.sh path resolves session_id with
-# priority env CLAUDE_CODE_SESSION_ID > env CLAUDE_SESSION_ID > .rite-session-id
-# file. When this test suite runs inside a live Claude Code
-# session, that session's own id leaks into the `flow-state.sh get --field ...`
-# call inside work-memory-update.sh's run_update() helper (no `--session`
-# passed) and silently overrides the file-based per-session fixtures, making
-# the read resolve a nonexistent (or wrong) flow-state file. Unsetting both
-# here forces every invocation to resolve session_id from the fixture's
-# `.rite-session-id` file, matching the intended test isolation.
-unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID GROK_SESSION_ID CODEX_THREAD_ID RITE_HOST
-
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 HELPER="$SCRIPT_DIR/../work-memory-update.sh"

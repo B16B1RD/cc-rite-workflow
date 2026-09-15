@@ -35,8 +35,9 @@ fi
 # CLAUDE_CODE_SESSION_ID must not leak in (it would point the hook at a foreign
 # per-session state file). It also keeps the env-absent branch of the conditional
 # `.rite-session-id` write under test below as the default. Tests that need env
-# present set it explicitly. (run-tests.sh unsets the same vars for suite runs.)
-unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID CLAUDE_PLUGIN_ROOT
+# present set it explicitly.
+# shellcheck source=_hermetic-env.sh
+source "$SCRIPT_DIR/_hermetic-env.sh" || { echo "ERROR: cannot source _hermetic-env.sh" >&2; exit 1; }
 
 cleanup() {
   rm -rf "$TEST_DIR"
