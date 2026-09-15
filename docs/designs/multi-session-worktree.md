@@ -208,7 +208,7 @@ multi_session:
 3 ゲート全通過時のみ reap:
 
 1. `{worktree_base}` 配下かつディレクトリ名が `^issue-[0-9]+$` に**完全一致**（strict regex doctrine 踏襲）
-2. claim liveness（§7 の述語）が **live でない**（claim 不在時は mtime > 24h の既存 age guard を再利用）。例外: checkout 中 branch が **reap manifest に記録済み**（= cleanup.md が PR merged を確認して記録した deferred worktree — cleanup は claim を無条件解放するため必ず claim 不在でここに到達する）なら age guard を**バイパス**して即 reap する。ハーネスが worktree root の mtime をセッション毎に更新（`.claude/.cc-writes` churn）するため、age guard 単独では merged 済み deferred worktree が永久リークする
+2. claim liveness（§7 の述語）が **live でない**（claim 不在時は mtime > 24h の既存 age guard を再利用）。述語の評価自体が失敗した場合（session identity を解決できない等）は claim 状態不明として WARNING を出して skip し、claim 不在と同一視しない。例外: checkout 中 branch が **reap manifest に記録済み**（= cleanup.md が PR merged を確認して記録した deferred worktree — cleanup は claim を無条件解放するため必ず claim 不在でここに到達する）なら age guard を**バイパス**して即 reap する。ハーネスが worktree root の mtime をセッション毎に更新（`.claude/.cc-writes` churn）するため、age guard 単独では merged 済み deferred worktree が永久リークする
 3. `git -C <wt> status --porcelain` が**空**（**dirty worktree は絶対に auto-reap しない** — WARNING + 手動コマンド提示で skip）。例外: **corpse**（admin dir の `HEAD` 欠落 + git 非認識の AND — sandbox マスク下の remove が半壊させた残骸）は status 判定が構造的に不可能なため本ゲートをバイパスし、claim 非 live + 24h age guard 通過後に `rm -rf`（working tree + admin dir）+ `prune` で回収する（HEAD 存在で status rc≠0 のものは従来どおり安全側 skip）
 
 **Gate 0 — self-exclusion（後続で追加された第 4 の保護層）**: 上記 3 ゲートの**前段**に、実行中の自セッション worktree（起動時 cwd、または `RITE_WORKTREE` env が候補 worktree と一致/配下）を reap 対象から除外するガードを設ける。long-lived セッションが review 開始時（review.md Step 1.0.0）に**自分の作業中 worktree**（clean かつ claim free/stale で 3 ゲートを全通過しうる）を削除する事故を防ぐ。dirty(3)/claim(2) 保護とは独立した第 4 の保護層。
