@@ -442,7 +442,7 @@ fi
 case "$branch_strategy" in
   separate_branch)
     # Nested `*` / `!wiki/` / `!wiki/**` is the SoT. Root `.rite/wiki/` is not
-    # required and is not generated — do not DRIFT on its absence (AC-4).
+    # required and is not generated — do not DRIFT on its absence.
     log_info "gitignore-health-check: separate_branch: nested composition is SoT (root .rite/wiki/ not required)"
     ;;
 

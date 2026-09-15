@@ -147,7 +147,7 @@ if [ "$IS_SUBAGENT" = "0" ] && { [ -n "${CLAUDE_SUBAGENT_TYPE:-}" ] || [ -n "${C
   IS_SUBAGENT=1
 fi
 # Main session (not a reviewer subagent) → never blocked. This is the primary
-# guarantee that /rite:open → implement.md Edit/Write is unaffected (AC-4).
+# guarantee that /rite:open → implement.md Edit/Write is unaffected.
 [ "$IS_SUBAGENT" = "1" ] || exit 0
 
 # --- Absolute path resolution (join relative against cwd, then normalize lexically) ---
@@ -182,7 +182,7 @@ while :; do
 done
 ABS_PATH=${_path_norm:-/}
 
-# --- Dereference a FINAL-element symlink before isolation scoping (AC-2) ---
+# --- Dereference a FINAL-element symlink before isolation scoping ---
 # The _tdir walk below resolves INTERMEDIATE dirs physically (via `[ -d ]` / `git -C`), but the
 # target's own final element is never dereferenced. A reviewer could drop a symlink inside its
 # sanctioned isolation worktree pointing at the parent repo's .git —
@@ -213,7 +213,7 @@ ABS_PATH=${_path_norm:-/}
 # would let a two-link chain land _tdir back on the isolation root. Capped at 40 hops (Linux's
 # own ELOOP limit) so a symlink cycle terminates; a cycle then falls through to the walk with
 # ABS_PATH still a link inside the isolation worktree → allowed, exactly as before this fix.
-#   Note (AC-3): Claude Code's own Edit/Write tools REFUSE to write through a
+#   Note: Claude Code's own Edit/Write tools REFUSE to write through a
 #   final-element symlink ("Refusing to write through symlink …"), verified empirically, so this
 #   is defense-in-depth — it does not rely on that (undocumented) harness behavior.
 _hop=0
@@ -251,14 +251,14 @@ while [ -L "$ABS_PATH" ] && [ "$_hop" -lt 40 ]; do
   _hop=$((_hop + 1))
 done
 # Both give-up arms above (readlink failed → break; hop cap reached → loop exit) leave
-# ABS_PATH a link, so a link that stays inside the isolation worktree is allowed with AC-2
-# effectively off. That fail-open direction is correct here — scope is not yet confirmed, and
+# ABS_PATH a link, so a link that stays inside the isolation worktree is allowed with
+# final-element symlink resolution effectively off. That fail-open direction is correct here — scope is not yet confirmed, and
 # a legitimate isolation-internal symlink must not be false-denied — but the operator would
 # otherwise have no way to tell "allowed because it was safe" from "allowed because the deref
 # gave up". Record the give-up under RITE_DEBUG, same channel as the subagent-detection
 # fallback above. Not a fallback of its own: the decision is unchanged either way.
 if [ -n "${RITE_DEBUG:-}" ] && [ -L "$ABS_PATH" ]; then
-  printf '[%s] pre-tool-edit-guard: AC-2 deref gave up after %s hop(s), target still a symlink: %s\n' \
+  printf '[%s] pre-tool-edit-guard: final-element symlink resolution stops at hop cap after %s hop(s), target still a symlink: %s\n' \
     "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$_hop" \
     "$(printf '%s' "${ABS_PATH:0:120}" | neutralize_ctrl --c0-only)" \
     >> "${STATE_ROOT:-/tmp}/.rite/logs/flow-debug.log" 2>/dev/null || true
@@ -295,7 +295,7 @@ if [ -z "$TARGET_ROOT" ]; then
   #       axis (git status --porcelain ignores .git). This hook is the structural defense for the
   #       Edit/Write/MultiEdit/NotebookEdit path; deny git-internal writes there, allow only genuine
   #       non-repo scratch. (The sibling Bash-tool vector — `echo > .git/hooks/...`, `tee`/`cp`/`ln`
-  #       into .git — is closed by pre-tool-bash-guard.sh sub-block (H), which enforces AC-1)
+  #       into .git — is closed by pre-tool-bash-guard.sh sub-block (H))
   if [ "$(git -C "$_tdir" rev-parse --is-inside-git-dir 2>/dev/null)" = "true" ]; then
     _deny_kind="git-dir"
   else

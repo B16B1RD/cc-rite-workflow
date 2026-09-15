@@ -264,9 +264,9 @@ if [ "$SOURCE" = "startup" ]; then
     # The legacy single-file (.rite-flow-state) selection path was removed in the
     # per-session unification; flow-state is always per-session now. An explicit
     # `flow_state.schema_version: 1` no longer selects single-file — it is ignored.
-    # Warn once per session start (gated on SOURCE=startup → AC-3 "1 回のみ") so the
-    # user removes the now-dead key (D-01). Section-absent or `: 2` stays silent
-    # (AC-4). Reads the `flow_state:` sub-key directly (the top-level _rite_read_yaml_key
+    # Warn once per session start (gated on SOURCE=startup → "1 回のみ") so the
+    # user removes the now-dead key (D-01). Section-absent or `: 2` stays silent.
+    # Reads the `flow_state:` sub-key directly (the top-level _rite_read_yaml_key
     # only matches column-0 keys, so it cannot see an indented sub-key). Read failure is
     # surfaced as a WARNING rather than silently degraded, matching the _rite_read_yaml_key
     # convention above (silent degradation would suppress the deprecation advisory). The
@@ -448,7 +448,7 @@ fi
 # Only stdout is silenced (the "Migration complete: N" summary), which Claude reads
 # as the active-workflow injection payload. stderr is intentionally passed through:
 # _migrate_file emits an unconditional `migrated:` line per actually-migrated file
-# (AC-8, silent skip forbidden), so a real migration is always announced here while
+# (silent skip forbidden), so a real migration is always announced here while
 # quiet session starts (only v3 files → verbose-gated skip) stay silent.
 RITE_STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/flow-state.sh" migrate >/dev/null || true
 
@@ -578,7 +578,7 @@ fi
 # harmful to a later resume regardless of `active`). `flow-state.sh clear-worktree`
 # resolves the same session_id as `path` above (same .rite-session-id + RITE_STATE_ROOT),
 # so it targets THIS session's own state file. Non-blocking: failures WARN and the
-# hook continues (AC-5).
+# hook continues.
 _recorded_wt_err=$(mktemp 2>/dev/null) || _recorded_wt_err=""
 _recorded_wt=$(jq -r '.worktree // ""' "$STATE_FILE" 2>"${_recorded_wt_err:-/dev/null}") || _recorded_wt=""
 if [ -n "$_recorded_wt_err" ] && [ -s "$_recorded_wt_err" ]; then

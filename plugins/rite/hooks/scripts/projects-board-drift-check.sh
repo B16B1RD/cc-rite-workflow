@@ -152,7 +152,7 @@ if [ ! -f "$REPO_ROOT/rite-config.yml" ]; then
   emit_noop "rite-config.yml not found from $CWD upward"
 fi
 
-# AC-4: skip when Projects integration is disabled.
+# Skip when Projects integration is disabled.
 PROJECTS_ENABLED=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    enabled:/{print $2; exit}' "$REPO_ROOT/rite-config.yml" 2>/dev/null) || PROJECTS_ENABLED=""
 PROJECT_NUMBER=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    project_number:/{print $2; exit}' "$REPO_ROOT/rite-config.yml" 2>/dev/null) || PROJECT_NUMBER=""
 

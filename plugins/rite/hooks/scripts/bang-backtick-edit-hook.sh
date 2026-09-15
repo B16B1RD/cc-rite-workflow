@@ -32,7 +32,7 @@ INPUT=$(cat 2>/dev/null) || INPUT=""
 [ -n "$INPUT" ] || exit 0
 
 # Extract tool_name, file_path and cwd in a single jq spawn (was three separate
-# jq invocations (AC-4). Fields are joined on the unit separator
+# jq invocations). Fields are joined on the unit separator
 # (\x1f, U+001F), not a tab: with `IFS=$'\t' read` a tab is IFS whitespace, so an
 # empty middle field (e.g. an event with no file_path) would collapse and
 # left-shift cwd into FILE_PATH. \x1f is non-whitespace, so `read` keeps empty

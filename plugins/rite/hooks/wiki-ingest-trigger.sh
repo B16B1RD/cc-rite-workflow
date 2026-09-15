@@ -384,11 +384,11 @@ fi
 # All path-containment validation above evaluates `--content-file` against the
 # ORIGINAL $PWD (and reads the body via the absolute realpath result
 # $resolved_content), so they have already completed — moving cwd now does not
-# relax that guard (AC-3). From here on the write must target the same root
+# relax that guard. From here on the write must target the same root
 # wiki-ingest-commit.sh scans (state-path-resolve.sh; the main checkout under a
 # linked worktree), so cd into STATE_ROOT and keep target_dir relative. When
 # STATE_ROOT == $PWD (single-session run from repo root, or non-git fallback)
-# this is a no-op and behaviour is byte-identical to before (AC-2).
+# this is a no-op and behaviour is byte-identical to before.
 if [ "$STATE_ROOT" != "$PWD" ]; then
   # Detectable signal (re-divergence guard): surface that the raw is written to
   # the resolved state root rather than cwd, so a multi-session worktree /
@@ -472,7 +472,7 @@ trap 'trap - EXIT; _rite_trigger_target_rollback 129; exit 129' HUP
   # When `/rite:wiki-ingest` ステップ 5 decides to skip a raw, it adds
   # `ingest_status: skipped` + `skip_reason: "..."` to that raw's frontmatter.
   # Absence of `ingest_status` means "not skipped" (wiki-lint-skipped-refs.sh
-  # treats it permissively — AC-6). The skip SoT lives here, not in log.md.
+  # treats it permissively). The skip SoT lives here, not in log.md.
   printf -- '---\n\n'
   # `set -e` is suppressed on the LHS of `||`, so cat failures must be checked
   # explicitly. Reading from `$resolved_content` (the realpath result) instead

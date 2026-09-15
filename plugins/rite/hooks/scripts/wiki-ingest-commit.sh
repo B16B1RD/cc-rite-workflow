@@ -564,7 +564,7 @@ checked_out_wiki=false
 # HIGH #1 / HIGH #2 — rollback-safety rewrite.
 #
 # This rollback-safety design guards two latent failure modes that surface only
-# on error / signal paths (the happy path is unaffected, so empirical AC-1/2/3
+# on error / signal paths (the happy path is unaffected, so empirical
 # dogfooding does not catch them):
 #
 # (a) Attempting stash pop unconditionally even after checkout-back to
