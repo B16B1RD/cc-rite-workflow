@@ -4,7 +4,7 @@ title: "macOS の awk の == は UTF-8 ロケールで照合比較になり、�
 domain: "anti-patterns"
 description: "macOS 標準の awk は UTF-8 ロケールで文字列の == をロケール照合で比較するため、別の日本語見出しを同じ見出しと判定し、Linux の gawk / mawk では再現しない誤判定を起こす。"
 created: "2026-09-14T06:55:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-14T11:20:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-15T03:40:00Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5"
     at: "2026-09-14T11:20:00Z"
@@ -13,6 +13,16 @@ sources:
     resource: "raw/reviews/20260914T064706Z-pr-2803.md"
   - type: "reviews"
     resource: "raw/reviews/20260914T110010Z-pr-2816.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260915T022940Z-pr-2829.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260915T025127Z-pr-2829.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260915T021146Z-pr-2829.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260915T023331Z-pr-2829.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260915T025447Z-pr-2829.md"
 tags: ["portability", "awk", "macos", "locale", "diagnostics"]
 confidence: high
 ---
@@ -55,6 +65,39 @@ macOS の CI ジョブが `continue-on-error` だと、macOS でだけ起きる�
 - 禁止形の grep は、空白の有無と被演算子の順序に依らない形にする
 - それに加えて、使う側の規則行そのもの（例: `is_head { in_sec=1 }`）が期待どおりの件数あることを肯定形で pin する。禁止形を網羅するより、正しい形が在ることを数えるほうが書き換えに強い
 
+### 日本語を比べる helper はロケールを C に固定し、宣言行を pin する
+
+別の helper で、日本語の見出しを正規表現リテラルで判定していた箇所を文字列比較に置き換えても、macOS の CI では同じ空出力が続いた。式を 1 つずつ直すと、同じ helper に残る他の `==` や正規表現の比較を取りこぼす。helper の冒頭で `export LC_ALL=C` を宣言すると、awk の文字列比較と正規表現の照合がすべてバイト単位になり、同種の取りこぼしがなくなった。Linux の awk ではこの宣言を消しても失敗が再現しないため、宣言行そのものを `grep -qx 'export LC_ALL=C'` のような静的テストで固定する。
+
+### ロケールを C に固定すると文字クラスも ASCII に狭まる
+
+`LC_ALL=C` の下では `[[:space:]]` が ASCII の空白しか表さない。固定する前は UTF-8 ロケールの gawk が全角空白（U+3000）も空白として削っていたため、「根拠のセルが全角空白だけの行を空とみなす」検査が、固定した途端に黙って通るようになった。固定と同時に、全角空白をバイト列として明示的に扱う:
+
+```awk
+awk -F'|' -v zs="$(printf '\343\200\200')" '
+  function trim(s,   n, z) {
+    z = length(zs)
+    do {
+      n = length(s)
+      sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s)
+      if (index(s, zs) == 1) s = substr(s, z + 1)
+      if (length(s) >= z && substr(s, length(s) - z + 1) == zs) s = substr(s, 1, length(s) - z)
+    } while (length(s) != n)
+    return s
+  }
+'
+```
+
+C ロケールでの `index` / `substr` / `length` はバイト単位で動くので、awk 実装に依らず同じ結果になる。ASCII 空白と全角空白が交互に並ぶ場合に備えて、長さが変わらなくなるまで繰り返す。
+
+### 手元で再現しない失敗は、推定で式を替える前に観測を増やす
+
+reviewer は Linux の gawk / mawk / `LC_ALL=C` でしか変異テストを回せず、macOS でだけ落ちる不具合を誰も検出できなかった。この種の不具合の番人は CI の macOS ジョブだけである。
+
+- レビューの判定入力として CI の macOS ジョブ結果を必ず読む。`continue-on-error` のジョブでも、base ブランチで green なら PR 起因の回帰として merge 前に直す
+- 推定で式を置き換える前に、既存の経験則（本ページ）と、CI の失敗件数が変わったかを照合する。件数が変わらないなら置き換えは原因に届いていない
+- テストが helper を呼ぶときは stderr を捨てず、失敗時のメッセージに載せる。捨てると、CI でだけ落ちた失敗がどの理由で止まったかをログから追えない
+
 ## 関連ページ
 
 - [移植性の指摘は「環境分岐を足す」より先に「その正規表現機能が本当に要るか」を疑う](../heuristics/portability-fix-questions-the-regex-feature-first.md)
@@ -64,3 +107,8 @@ macOS の CI ジョブが `continue-on-error` だと、macOS でだけ起きる�
 
 - [再レビュー結果](../../raw/reviews/20260914T064706Z-pr-2803.md)
 - [判定式を固定する静的 pin の抜け道を指摘したレビュー結果](../../raw/reviews/20260914T110010Z-pr-2816.md)
+- [macOS CI だけの失敗を実測で blocking にしたレビュー結果](../../raw/reviews/20260915T022940Z-pr-2829.md)
+- [ロケール固定で全角空白の検査が外れたと指摘したレビュー結果](../../raw/reviews/20260915T025127Z-pr-2829.md)
+- [正規表現リテラルを文字列比較へ替えた fix 結果](../../raw/fixes/20260915T021146Z-pr-2829.md)
+- [helper 全体をロケール C に固定した fix 結果](../../raw/fixes/20260915T023331Z-pr-2829.md)
+- [全角空白をバイト列で削るようにした fix 結果](../../raw/fixes/20260915T025447Z-pr-2829.md)

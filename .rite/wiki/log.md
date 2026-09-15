@@ -3,6 +3,18 @@
 * **Update**: [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](pages/anti-patterns/consumer-allowlist-wedges-producer-value-range.md) — [同秒衝突 suffix を受理形と射影の両方で受け付けたレビュー結果](raw/reviews/20260914T224913Z-pr-2826.md) を統合。producer の例外経路が作る名前も受理形の値域に含める節を追記
 * **Create**: [大文字小文字だけが違う fixture ファイル名は macOS で同じファイルになり、後から書いた fixture が前のものを上書きする](pages/anti-patterns/case-only-differing-fixture-names-collide-on-macos.md) — [macOS CI だけで落ちた fixture の名前衝突を直した再レビュー結果](raw/reviews/20260914T230532Z-pr-2826.md) を新規ページ化
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=486, broken_refs=0
+* **Update**: [jq の `[]?` は型不正を空の結果に変えて rc=0 で終わり、呼び出し側の fail-loud 分岐を迂回する](pages/anti-patterns/jq-optional-iterator-swallows-type-error-before-fail-loud-branch.md) — [述語を型安全にして jq エラーを起こさないようにした fix 結果](raw/fixes/20260915T003133Z-pr-2829.md) を統合。終了コードを見ないコマンド置換の二層の閉じ方を追記
+* **Update**: [転記の網羅性は件数一致ではなく集合一致で検証する（件数一致は漏れと余剰が相殺して通る）](pages/heuristics/transcription-completeness-verified-by-set-equality.md) — [期待集合を必須引数で受け取るようにした fix 結果](raw/fixes/20260915T013143Z-pr-2829.md) を統合。手書きの転記を挟む最終ゲートの再検査を追記
+* **Update**: [変更・削除の掃き出しは旧語彙・置換した条件式・別記法トークンまで広げる](pages/heuristics/change-sweep-spans-old-vocabulary-and-notations.md) — [契約テストの pin を追従させた fix 結果](raw/fixes/20260915T021146Z-pr-2829.md) を統合。判定式の pin と人数を数える消費者の掃き出しを追記
+* **Update**: [macOS の awk の == は UTF-8 ロケールで照合比較になり、別の日本語文字列を等しいと判定する](pages/anti-patterns/macos-awk-string-equality-uses-locale-collation.md) — [helper 全体をロケール C に固定した fix 結果](raw/fixes/20260915T023331Z-pr-2829.md) を統合。ロケール固定と宣言行の pin を追記
+* **Create**: [置換で作った fixture は置換後の行の実在を確かめてから判定し、marker は完全一致で照合する](pages/patterns/substituted-fixture-verify-line-exists-and-exact-marker-match.md) — [置換後の行の実在確認を足した fix 結果](raw/fixes/20260915T025447Z-pr-2829.md) を新規ページ化
+* **Update**: [位置依存の表パースには検査行数ガードを対にする（silent false-pass 遮断）](pages/patterns/positional-parse-row-count-guard.md) — [列数の完全一致で正規形の行を読み飛ばすと指摘したレビュー結果](raw/reviews/20260915T002514Z-pr-2829.md) を統合。最終列にパイプを含む行の列数判定を追記
+* **Update**: [jq の `[]?` は型不正を空の結果に変えて rc=0 で終わり、呼び出し側の fail-loud 分岐を迂回する](pages/anti-patterns/jq-optional-iterator-swallows-type-error-before-fail-loud-branch.md) — [到達しにくい rc 検査が変異で生き残ると指摘したレビュー結果](raw/reviews/20260915T004916Z-pr-2829.md) を統合。shim で分岐に入れる固定方法を追記
+* **Update**: [転記の網羅性は件数一致ではなく集合一致で検証する（件数一致は漏れと余剰が相殺して通る）](pages/heuristics/transcription-completeness-verified-by-set-equality.md) — [最終ゲートが転記の欠落を検出しないと指摘したレビュー結果](raw/reviews/20260915T011900Z-pr-2829.md) を統合
+* **Create**: [「本節を実行しない」分岐を持つ節の内側に、後続ステップの必須値の定義を置かない](pages/heuristics/skip-branch-section-must-not-own-downstream-required-value.md) — [関連 Issue なし経路で値が未定義になることを指摘したレビュー結果](raw/reviews/20260915T015222Z-pr-2829.md) を新規ページ化
+* **Update**: [macOS の awk の == は UTF-8 ロケールで照合比較になり、別の日本語文字列を等しいと判定する](pages/anti-patterns/macos-awk-string-equality-uses-locale-collation.md) — [macOS CI だけの失敗を実測で blocking にしたレビュー結果](raw/reviews/20260915T022940Z-pr-2829.md) を統合。CI の macOS ジョブ結果を判定入力にする節を追記
+* **Update**: [macOS の awk の == は UTF-8 ロケールで照合比較になり、別の日本語文字列を等しいと判定する](pages/anti-patterns/macos-awk-string-equality-uses-locale-collation.md) — [ロケール固定で全角空白の検査が外れたと指摘したレビュー結果](raw/reviews/20260915T025127Z-pr-2829.md) を統合。文字クラスが ASCII に狭まる節を追記
+* **Create**: [手順の再実行列は通常経路の強制層を飛ばさず、再実行の範囲と初回判断の保持を同じ文で書く](pages/patterns/rerun-sequence-states-scope-and-preserved-decisions.md) — [再実行の範囲と初回判断の保持が未記載と指摘したレビュー結果](raw/reviews/20260915T031032Z-pr-2829.md) を新規ページ化
 
 ## 2026-09-14
 

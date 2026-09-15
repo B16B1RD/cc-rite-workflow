@@ -9,9 +9,16 @@ sources:
     resource: "raw/reviews/20260703T164934Z-pr-1743.md"
   - type: "fixes"
     resource: "raw/fixes/20260703T165654Z-pr-1743.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260915T002514Z-pr-2829.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260915T003133Z-pr-2829.md"
 tags: ["bash", "awk", "lint", "fail-fast", "drift-check"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-03T18:30:00+00:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-15T03:40:00Z" }
+verified:
+  - by: "rite-wiki-ingest/claude-opus-5"
+    at: "2026-09-15T03:40:00Z"
 ---
 
 # 位置依存の表パースには検査行数ガードを対にする（silent false-pass 遮断）
@@ -60,6 +67,10 @@ fi
 - lint / drift-check 系の表・列挙パーサ全般（`-F'|'` の markdown 表、`cut -f`、`awk '{print $N}'` の固定列）
 - 「skip する防御」を持つパーサほど本ガードが必須（防御が silent no-op の温床になるため）
 
+### 列数の完全一致は、最終列にパイプを含む正規形の行を落とす
+
+判定行を `NF == N` で選ぶと、最終列（自由記述の根拠など）に `|` が混じった行は列数が増えて読み飛ばされ、「判定行が無い」と誤診断する。最終列だけが `|` を含みうる表では、列数の判定を下限（`NF >= N`）に緩め、位置で読む前方の列（識別子・判定）は固定位置で読むままにする。緩めても検査行数ガードは外さない。
+
 ## 関連ページ
 
 - [Exit code semantic preservation: caller は case で語彙を保持する](./exit-code-semantic-preservation.md)
@@ -69,3 +80,5 @@ fi
 
 - [位置依存 awk 列パースの silent no-op 化を MEDIUM 検出](../../raw/reviews/20260703T164934Z-pr-1743.md)
 - [検査行数ガード + TC-10 回帰 pin を適用](../../raw/fixes/20260703T165654Z-pr-1743.md)
+- [列数の完全一致で正規形の行を読み飛ばすと指摘したレビュー結果](../../raw/reviews/20260915T002514Z-pr-2829.md)
+- [列数判定を下限へ緩めた fix 結果](../../raw/fixes/20260915T003133Z-pr-2829.md)
