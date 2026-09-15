@@ -1181,7 +1181,7 @@ for f in "$TARGET" "$COLLECT_SH"; do
   assert_grep "T-35 sentinel ($(basename "$f"))" "$f" '== "<!-- rite:nbr:v1 -->"\)'
   assert_grep "T-35 台帳節の切り出し ($(basename "$f"))" "$f" 'split\("### 却下台帳\\n"\)\[1:\]\[\]'
   # CRLF 正規化は本文取得の直後・台帳切り出しより前に置く (離れた場所の gsub では pin にならない)
-  assert_grep "T-35 CRLF 正規化が本文取得に隣接 ($(basename "$f"))" "$f" '^ *| \.body // "" | gsub\("\\r\\n"; "\\n"\)$'
+  assert_grep "T-35 CRLF 正規化が本文取得に隣接 ($(basename "$f"))" "$f" '^ *\| \.body // "" \| gsub\("\\r\\n"; "\\n"\)$'
   norm_line=$(grep -n '\.body // "" | gsub("\\r\\n"; "\\n")' "$f" | head -1 | cut -d: -f1)
   split_line=$(grep -n 'split("### 却下台帳\\n")\[1:\]\[\]' "$f" | head -1 | cut -d: -f1)
   assert "T-35 CRLF 正規化が台帳切り出しより前 ($(basename "$f"))" "yes" "$([ -n "$norm_line" ] && [ -n "$split_line" ] && [ "$norm_line" -lt "$split_line" ] && echo yes || echo no)"
