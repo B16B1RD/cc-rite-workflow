@@ -159,7 +159,7 @@ pin "1.3.1: no_ac_section の cycle は {acceptance_ids} を空文字列" "$PR_R
 pin "2.2: prev_finders の acceptance は合流させない" "$PR_REVIEW" '`{prev_finders}` の `acceptance` は合流させない（ステップ 3.2.2 が cap 後に毎 cycle 追加する）'
 pin "3.2.2: 既に acceptance があれば追加しない" "$PR_REVIEW" '`{selected_reviewers}` に既に `acceptance` があれば追加しない'
 pin "5.3.0.A: unverified への書き換え禁止" "$PR_REVIEW" '`acceptance_criteria[].status` を `unverified` に書き換えて通してはならない'
-pin "5.3.0.A: reroll 後は降格ゲートを通してから再検査" "$PR_REVIEW" '5.1 の回収完了ゲート → 5.1.0.L → 5.1.0.AC → 5.1.2.A → 5.3.0 → 5.3.0.M step 1 → step 2 → step 3 → 5.3.0.C → 本検査を同 cycle 内で再実行する'
+pin "5.3.0.A: reroll 後は降格ゲートを通してから再検査" "$PR_REVIEW" '5.1 の回収完了ゲート → 5.1.0.L → 5.1.0.AC → 5.1.2.A → 5.2 → 5.2.1 → Fact-Checking → 5.3.0 → 5.3.0.M step 1 → step 2 → step 3 → 5.3.0.C → 本検査を同 cycle 内で再実行する'
 pin "5.3.0.M step 1: acceptance_criteria を常に書く" "$PR_REVIEW" '- **`acceptance_criteria` を常に書く**'
 
 echo ""
@@ -192,8 +192,9 @@ echo ""
 echo "=== TC-8: 正典 helper チェーン (T-01 / T-02 / T-03 / T-07 / T-08) ==="
 SENTINEL="__RITE_TS_PLACEHOLDER_7f3a9b2c__"
 printf '## 5. Acceptance Criteria\n\n### AC-1: a\n\n### AC-2: b\n\n### AC-3: c\n' > "$TMP_ROOT/issue.md"
-ids=$(bash "$CHECK" extract --body-file "$TMP_ROOT/issue.md" 2>/dev/null)
-assert "TC-8 extract が AC 集合を返す" "AC-1,AC-2,AC-3" "$ids"
+ids=$(bash "$CHECK" extract --body-file "$TMP_ROOT/issue.md" 2>"$TMP_ROOT/extract.err")
+if [ "$ids" = "AC-1,AC-2,AC-3" ]; then pass "TC-8 extract が AC 集合を返す"
+else fail "TC-8 extract (out=$ids err=$(cat "$TMP_ROOT/extract.err"))"; fi
 
 cat > "$TMP_ROOT/acceptance-out.md" <<'EOF'
 ### 評価: 要修正
@@ -212,8 +213,9 @@ AC-2 が満たされていない。
 ### 監査ログ
 なし
 EOF
-rows=$(bash "$CHECK" table --expected "$ids" --input "$TMP_ROOT/acceptance-out.md" 2>/dev/null)
-assert "TC-8 table が 3 行を返す" "3" "$(jq 'length' <<<"$rows" 2>/dev/null)"
+rows=$(bash "$CHECK" table --expected "$ids" --input "$TMP_ROOT/acceptance-out.md" 2>"$TMP_ROOT/table.err")
+if [ "$(jq 'length' <<<"$rows" 2>/dev/null)" = 3 ]; then pass "TC-8 table が 3 行を返す"
+else fail "TC-8 table (out=$rows err=$(cat "$TMP_ROOT/table.err"))"; fi
 
 # 5.3.0.M step 1 形の JSON。$1 = file, $2 = description, $3 = rows JSON
 step1_json() {

@@ -148,9 +148,19 @@ case "$mode" in
     _check_expected_format
     command -v jq >/dev/null 2>&1 || _fail jq_missing "jq が見つかりません"
     # 表は 3 列、指摘事項は 5 列。指摘事項は 5 列目 (推奨対応) だけが raw pipe を含みうるため、
-    # 重要度 / スコープ / 内容は左端からの固定位置で読み、列数は下限だけを見る
-    parsed=$(_read_lf "$input" | awk -F'|' '
-      function trim(s) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
+    # 重要度 / スコープ / 内容は左端からの固定位置で読み、列数は下限だけを見る。
+    # LC_ALL=C の [[:space:]] は ASCII 空白だけなので、全角空白 (U+3000) も端から削り、全角空白だけの根拠を空とみなす
+    parsed=$(_read_lf "$input" | awk -F'|' -v zs="$(printf '\343\200\200')" '
+      function trim(s,   n, z) {
+        z = length(zs)
+        do {
+          n = length(s)
+          sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s)
+          if (index(s, zs) == 1) s = substr(s, z + 1)
+          if (length(s) >= z && substr(s, length(s) - z + 1) == zs) s = substr(s, 1, length(s) - z)
+        } while (length(s) != n)
+        return s
+      }
       /^### / {
         sec = ($0 ~ /^### 受入条件確認[[:space:]]*$/) ? "ac" : ($0 ~ /^### 指摘事項[[:space:]]*$/) ? "fd" : ""
         if (sec == "ac") { seen_ac = 1 }

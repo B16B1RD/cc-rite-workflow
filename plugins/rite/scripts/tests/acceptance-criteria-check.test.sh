@@ -168,12 +168,20 @@ trailing_body=${out_ok_body//$'\n### 受入条件確認\n'/$'\n### 受入条件�
 trailing_body=${trailing_body//$'\n### 指摘事項\n'/$'\n### 指摘事項 \n'}
 printf '%s\n' "$trailing_body" > "$TEST_DIR/out-heading-trailing.md"
 run_check table --expected AC-1,AC-2,AC-3 --input "$TEST_DIR/out-heading-trailing.md"
-if [ "$CHECK_RC" -eq 0 ] && grep -Fxq '[CONTEXT] ACCEPTANCE_TABLE=ok; rows=3; unmet=AC-2; unverified=AC-3' <<<"$CHECK_STDERR"; then
+if grep -Fxq '### 受入条件確認  ' "$TEST_DIR/out-heading-trailing.md" && grep -Fxq '### 指摘事項 ' "$TEST_DIR/out-heading-trailing.md" \
+  && [ "$CHECK_RC" -eq 0 ] && grep -Fxq '[CONTEXT] ACCEPTANCE_TABLE=ok; rows=3; unmet=AC-2; unverified=AC-3' <<<"$CHECK_STDERR"; then
   pass "table: 見出しの末尾空白を許し、未充足指摘も認識する"
 else fail "table heading trailing space (rc=$CHECK_RC err=$CHECK_STDERR)"; fi
 
 printf '%s\n' "${out_ok_body//$'\n### 受入条件確認\n'/$'\n### 受入条件確認（補足）\n'}" > "$TEST_DIR/out-heading-suffix.md"
 expect_failure "table: 見出しの後ろに文字が続く行は受入条件確認の見出しにしない" table_missing table --expected AC-1,AC-2,AC-3 --input "$TEST_DIR/out-heading-suffix.md"
+
+printf '%s\n' "${out_ok_body//$'\n### 指摘事項\n'/$'\n### 指摘事項（補足）\n'}" > "$TEST_DIR/out-findings-suffix.md"
+expect_failure "table: 見出しの後ろに文字が続く行は指摘事項の見出しにしない" unmet_finding_missing table --expected AC-1,AC-2,AC-3 --input "$TEST_DIR/out-findings-suffix.md"
+
+# 全角空白 (U+3000) だけの根拠は空とみなす
+write_output "$TEST_DIR/out-fullwidth-evidence.md" "| AC-1 | 充足 | $(printf '\343\200\200') |" ""
+expect_failure "table: 全角空白だけの根拠は失敗" evidence_missing table --expected AC-1 --input "$TEST_DIR/out-fullwidth-evidence.md"
 
 # macOS の awk は UTF-8 ロケールで == をロケール照合で比べ、Linux の awk では再現しないため静的に固定する
 if grep -qx 'export LC_ALL=C' "$TARGET"; then
