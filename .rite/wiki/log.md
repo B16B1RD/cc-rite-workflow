@@ -4,6 +4,7 @@
 * **Create**: [テストの歴史的ピン行は番号を残し行末へ drift-check-ignore を付ける](pages/patterns/historical-pin-line-keeps-number-and-attaches-drift-check-ignore.md) — raw/reviews/20260915T100345Z-pr-2855.md を新規ページ化
 * **Update**: [テストの歴史的ピン行は番号を残し行末へ drift-check-ignore を付ける](pages/patterns/historical-pin-line-keeps-number-and-attaches-drift-check-ignore.md) — raw/fixes/20260915T101257Z-pr-2855.md を統合
 * **Skip**: [20260915T102349Z-pr-2855.md](raw/reviews/20260915T102349Z-pr-2855.md) — no extractable heuristic: zero-finding incremental review after pin ignore
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=499, broken_refs=0
 * **Skip**: [20260915T100730Z-pr-2857.md](raw/reviews/20260915T100730Z-pr-2857.md) — no extractable heuristic: zero-finding documentation wording alignment review
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=498, broken_refs=0
 * **Skip**: [20260915T090433Z-pr-2848.md](raw/reviews/20260915T090433Z-pr-2848.md) — no extractable heuristic: zero-finding test fixture pin review
