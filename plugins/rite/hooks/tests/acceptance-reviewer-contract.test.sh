@@ -159,7 +159,7 @@ pin "1.3.1: no_ac_section の cycle は {acceptance_ids} を空文字列" "$PR_R
 pin "2.2: prev_finders の acceptance は合流させない" "$PR_REVIEW" '`{prev_finders}` の `acceptance` は合流させない（ステップ 3.2.2 が cap 後に毎 cycle 追加する）'
 pin "3.2.2: 既に acceptance があれば追加しない" "$PR_REVIEW" '`{selected_reviewers}` に既に `acceptance` があれば追加しない'
 pin "5.3.0.A: unverified への書き換え禁止" "$PR_REVIEW" '`acceptance_criteria[].status` を `unverified` に書き換えて通してはならない'
-pin "5.3.0.A: reroll 後は降格ゲートを通してから再検査" "$PR_REVIEW" '5.1 の回収完了ゲート → 5.1.0.L → 5.1.0.AC → 5.3.0 → 5.3.0.M step 1 → step 2 → step 3 → 5.3.0.C → 本検査を同 cycle 内で再実行する'
+pin "5.3.0.A: reroll 後は降格ゲートを通してから再検査" "$PR_REVIEW" '5.1 の回収完了ゲート → 5.1.0.L → 5.1.0.AC → 5.1.2.A → 5.3.0 → 5.3.0.M step 1 → step 2 → step 3 → 5.3.0.C → 本検査を同 cycle 内で再実行する'
 pin "5.3.0.M step 1: acceptance_criteria を常に書く" "$PR_REVIEW" '- **`acceptance_criteria` を常に書く**'
 
 echo ""

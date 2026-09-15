@@ -162,6 +162,24 @@ expect_failure "table: 判定行 0 件は失敗" table_empty table --expected AC
 printf '### 評価: 可\n### 指摘事項\n| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |\n|---|---|---|---|---|\n' > "$TEST_DIR/out-noheading.md"
 expect_failure "table: 見出し欠落は失敗" table_missing table --expected AC-1 --input "$TEST_DIR/out-noheading.md"
 
+# 見出しの末尾空白は許し、見出しの後ろに続く文字は許さない (bash の置換で fixture を作り、awk / sed のロケール差を持ち込まない)
+out_ok_body=$(cat "$TEST_DIR/out-ok.md")
+trailing_body=${out_ok_body//$'\n### 受入条件確認\n'/$'\n### 受入条件確認  \n'}
+trailing_body=${trailing_body//$'\n### 指摘事項\n'/$'\n### 指摘事項 \n'}
+printf '%s\n' "$trailing_body" > "$TEST_DIR/out-heading-trailing.md"
+run_check table --expected AC-1,AC-2,AC-3 --input "$TEST_DIR/out-heading-trailing.md"
+if [ "$CHECK_RC" -eq 0 ] && grep -Fxq '[CONTEXT] ACCEPTANCE_TABLE=ok; rows=3; unmet=AC-2; unverified=AC-3' <<<"$CHECK_STDERR"; then
+  pass "table: 見出しの末尾空白を許し、未充足指摘も認識する"
+else fail "table heading trailing space (rc=$CHECK_RC err=$CHECK_STDERR)"; fi
+
+printf '%s\n' "${out_ok_body//$'\n### 受入条件確認\n'/$'\n### 受入条件確認（補足）\n'}" > "$TEST_DIR/out-heading-suffix.md"
+expect_failure "table: 見出しの後ろに文字が続く行は受入条件確認の見出しにしない" table_missing table --expected AC-1,AC-2,AC-3 --input "$TEST_DIR/out-heading-suffix.md"
+
+# macOS の awk は UTF-8 ロケールで == をロケール照合で比べ、Linux の awk では再現しないため静的に固定する
+if grep -qx 'export LC_ALL=C' "$TARGET"; then
+  pass "helper は LC_ALL=C で awk の比較をバイト単位に固定する"
+else fail "helper に export LC_ALL=C がない"; fi
+
 write_output "$TEST_DIR/out-badstatus.md" '| AC-1 | 概ね充足 | ok |' ""
 expect_failure "table: 判定 3 値以外は失敗" status_invalid table --expected AC-1 --input "$TEST_DIR/out-badstatus.md"
 

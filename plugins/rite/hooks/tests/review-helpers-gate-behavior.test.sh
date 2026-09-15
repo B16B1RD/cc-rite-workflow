@@ -705,7 +705,7 @@ run_save --pr 123 --content-file "$JSON_SOLE_REVIEWER" --results-dir "$TMP_ROOT/
 assert "TC-3.5sole 1 名 reviewer: exit 0" "0" "$RC"
 assert_grep "TC-3.5sole 1 名 reviewer でも保存される (floor 2 はゲート側の責務)" "$ERR" 'JSON_SAVED=true'
 
-# 重複ロスターは拒否する。ゲートは長さしか見ないため、同一名 2 件が floor 2 を機械的に満たして
+# 重複ロスターは拒否する。ゲートは名前の一意性を見ない (acceptance-reviewer を除いた人数だけを見る) ため、同一名 2 件が floor 2 を機械的に満たして
 # 「2 名がレビューした」偽の証拠になる。floor そのものは save 側へ持ち込まない (上の sole ケースが
 # 通り続けることで、一意性検査が下限検査に化けていないことを示す)。
 JSON_DUP_REVIEWERS="$TMP_ROOT/json-dup-reviewers.json"
