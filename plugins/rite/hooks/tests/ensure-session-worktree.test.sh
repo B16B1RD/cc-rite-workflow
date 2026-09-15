@@ -157,6 +157,25 @@ assert "TC-9 rc=1" "1" "$(ens_rc "$M" --issue 42)"
 # AC-4 core: no silent fallback means no half-built worktree is registered.
 assert "TC-9 no worktree registered after failure" "no" "$(wt_registered "$M" 42)"
 
+# --- TC-9b: failed reconstruction prints a copy-paste `git worktree add` whose path and
+# branch stay one argument each, even when both contain an apostrophe ---
+echo "=== TC-9b: reconstruction fails under an apostrophe path + branch → worktree add hint keeps each value one argument ==="
+APOS_PARENT=$(make_plain_sandbox); cleanup_dirs+=("$APOS_PARENT")
+mkdir "$APOS_PARENT/it's"
+TMPDIR="$APOS_PARENT/it's" setup_repo; M="$REPO_MAIN"
+apos_branch="fix/issue-42-it's"
+git -C "$M" branch "$apos_branch" develop
+rm -rf "$M/.rite"; mkdir -p "$M/.rite"; printf 'blocker' > "$M/.rite/worktrees"  # base is a FILE
+( cd "$M" && bash "$HELPER" ensure-session-worktree --issue 42 --branch "$apos_branch" ) \
+  >"$APOS_PARENT/ens9b.out" 2>"$APOS_PARENT/ens9b.err" || true
+assert "TC-9b failed token" "failed" "$(sed -n 's/.*WT_ENSURE=\([a-z_]*\).*/\1/p' "$APOS_PARENT/ens9b.out")"
+assert "TC-9b exactly one recovery line" "1" "$(grep -c '^  recovery: ' "$APOS_PARENT/ens9b.err" || true)"
+line=$(grep '^  recovery: ' "$APOS_PARENT/ens9b.err" || true)
+recovery_prefix="  recovery: restart Claude Code from the repo root, or run: "
+assert "TC-9b recovery line prefix" "$recovery_prefix" "${line:0:${#recovery_prefix}}"
+assert_shell_words "TC-9b worktree add command" "${line#"$recovery_prefix"}" \
+  git worktree add "$M/.rite/worktrees/issue-42" "$apos_branch"
+
 # --- TC-10: argument error (missing / non-numeric --issue) → rc 2 ---
 echo "=== TC-10: missing / non-numeric --issue → rc 2 ==="
 setup_repo; M="$REPO_MAIN"

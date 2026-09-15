@@ -298,6 +298,38 @@ assert_not_contains "remove success: FAILED marker を出さない" "$out" "WORK
 [ ! -d "$wt" ] && ok "remove success: working tree を削除する" || bad "remove success: working tree が残った"
 [ ! -d "$admin" ] && ok "remove success: prune で admin dir を回収する" || bad "remove success: admin dir が残った"
 
+echo "=== cleanup-session-worktree-teardown: busy 失敗の復旧コマンド ==="
+
+# busy で remove が失敗すると、sandbox 外で貼り付けて実行する復旧コマンドを出す。
+# worktree パスに apostrophe が含まれても、分割すると 1 引数のまま元のパスに戻ることを固定する。
+# git は PATH stub で worktree remove だけを busy 失敗にする（sandbox の実マウントは再現できない）。
+apos_parent="$TMP_ROOT/it's"; mkdir -p "$apos_parent"
+r=$(make_repo "$apos_parent"); wt="$r/.rite/worktrees/issue-1"
+busy_bin="$TMP_ROOT/busy-bin"; mkdir -p "$busy_bin"
+real_git=$(command -v git)
+cat > "$busy_bin/git" <<EOF
+#!/bin/bash
+if [ "\${1:-}" = worktree ] && [ "\${2:-}" = remove ]; then
+  echo "fatal: failed to delete: Device or resource busy" >&2
+  exit 1
+fi
+exec "$real_git" "\$@"
+EOF
+chmod +x "$busy_bin/git"
+: > "$TMP_ROOT/mountinfo.busy"
+out=$(cd "$r" && RITE_MOUNTINFO="$TMP_ROOT/mountinfo.busy" PATH="$busy_bin:$PATH" bash "$HELPER" remove --worktree "$wt" --pr-merged true --self-root "$$" 2>&1); rc=$?
+assert_eq "busy: exit 0" "$rc" "0"
+recovery_prefix="復旧: ユーザーが sandbox 外のシェルで次を実行してください: "
+assert_eq "busy: 復旧コマンドは 1 回だけ出る" "$(printf '%s\n' "$out" | grep -oF "$recovery_prefix" | wc -l | tr -d ' ')" "1"
+cmd=${out#*"$recovery_prefix"}; cmd=${cmd%%$'\n'*}
+prune_tail=" && git worktree prune"
+assert_eq "busy: 復旧コマンドは prune で終わる" "${cmd: -${#prune_tail}}" "$prune_tail"
+cmd=${cmd%"$prune_tail"}
+parsed=no
+words=$( ( cd / && export GIT_DIR=/nonexistent && eval "set -- $cmd" && printf '%s\n' "$#" "$@" ) 2>/dev/null ) && parsed=yes
+assert_eq "busy: 復旧コマンドをシェルの語として解析できる" "$parsed" "yes"
+assert_eq "busy: 復旧コマンドの語数と各語" "$words" "$(printf '%s\n' 5 git worktree remove --force "$wt")"
+
 echo "=== cleanup-session-worktree-teardown: sandbox mask (bind mount shape) ==="
 
 # sandbox は admin dir の config.worktree / commondir に 2 形状のマスクを張る: /dev/null の
