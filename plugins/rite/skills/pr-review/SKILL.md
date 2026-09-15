@@ -56,7 +56,7 @@ rationale: references/design-rationale.md#e2e-askuser-split
 | ステップ 4 (Sub-Agent Execution) | Full execution | **Full execution** — sub-agents MUST run in parallel for every review cycle (including verification mode). No shortcut allowed. |
 | ステップ 5 (Consolidation) | Full findings table | Result pattern + summary counts only。**例外 1: ステップ 5.4 の `### レビュー範囲（cycle 2+ 差分スコープ）` section は `REVIEW_CYCLE_SCOPE == incremental` のとき E2E でも省略禁止** (cycle 2+ は E2E からしか発生しないため、ここを minimize すると「スキップした reviewer を記録する」要求が空文になる — SoT: [cycle-scope.md](references/cycle-scope.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 2: ステップ 5.4 の `### 実測なし指摘 (non-blocking)` section は `non_blocking_count > 0` のとき E2E でも省略禁止** (ステップ 7 AskUserQuestion と同じ identity 制約 — 関連 Issue 記録コメントはポインタのみで全文は載せない。既定 `post_comment: false` では統合レポートも PR に載らないため、この E2E 出力が非実測指摘の全文を人間が同期的に見る経路であり、省略は「非実測指摘を破棄しない」という記録契約の喪失に直結する)。**例外 3: ステップ 5.4 の `### レビューレーン（XS/S 軽量レーン）` section は `COMPLEXITY_LANE == light` のとき E2E でも省略禁止** (軽量レーンが動機づけられた Scenario 1「XS が 1 サイクル収束して自律マージされる」は E2E ループでしか起きず、そこを minimize すると観測性の MUST が主対象シナリオでだけ空文になる — SoT: [complexity-lane.md](references/complexity-lane.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 4: ステップ 5.4 の `### Guardrail 監査ログ` section は `guardrail_audit_count > 0` のとき E2E でも省略禁止** (既定 `post_comment: false` でも Category #2 の filter 判断を人間が確認できる同期経路を維持するため)。**例外 5: ステップ 5.4 の `### 総合評価` にある `**起動の直列化**` の 1 行は `SPAWN_SPREAD` が `serialized` / `undetermined` / 欠落を伴う `parallel` のとき E2E でも省略禁止** (直列化が起きるのは長時間 E2E セッションであり、そこを minimize すると本行が到達する経路が消える。既定 `post_comment: false` では統合レポートは PR にも載らないため、省略すると本行が主対象シナリオで空文になる。`serialized` / 欠落を伴う `parallel` では helper の stderr WARNING と結果 JSON のフラグが残るが、**`undetermined` では helper がフラグをキーごと書かない**ため、計測不能の**理由** (`reason=`) は揮発する stderr WARNING にしか残らない — 省略が最も高くつくのはこの条件。`reviewer_timings[]` はステップ 4.6 の timings ファイルが present のときだけ結果 JSON へ転記される)。**例外 6: ステップ 5.4 の `### 実測阻害` section は `measurement_blocked_count > 0` のとき E2E でも省略禁止** (既定 `post_comment: false` ではこの出力が実測阻害の件数・内訳を人間が見る同期経路であり、省略は無言の measured=false 降格を再導入する)。**例外 7: ステップ 5.4 の `### 受入条件確認` section は E2E でも省略禁止** (未検証 AC は人間が動作チェックする対象そのものであり、既定 `post_comment: false` ではこの出力が判定表を人間が同期的に見る唯一の経路) |
 | ステップ 6 (PR Comment) | Full comment + display | Post comment silently, output pattern only |
-| ステップ 7 (Triage) | Full report + guidance | **Recommendations only** — detect scope-irrelevant recommendations (findings/recommendations containing 別 Issue / スコープ外 keywords). Decision Log 記録の推奨は可逆なので自動処理し、ユーザー固有・不可逆な disposition だけ `AskUserQuestion` で確認する。Only when `[review:mergeable]`. |
+| ステップ 7 (Triage) | Full report + guidance | **Recommendations only** — detect scope-irrelevant recommendations (findings/recommendations containing 別 Issue / スコープ外 keywords). Decision Log 記録の推奨は可逆なので自動処理し、ユーザー固有・不可逆な disposition だけ `AskUserQuestion` で確認する。`[review:mergeable]` と受入条件未検証の停止のときに実行し、`[review:fix-needed:N]` では skip する。 |
 
 E2E output format (ステップ 6, replaces full display):
 
@@ -2911,8 +2911,8 @@ result pattern の前に ステップ 7.1-7.4 を実行する:
 - 候補あり: 7.2-7.3。可逆な Decision Log は自動、ユーザー固有・不可逆だけ `AskUserQuestion`
 - 候補なし: silent skip
 
-**Condition**: `[review:mergeable]` のときだけ。`[review:fix-needed:N]` と、受入条件未検証の停止を含む `[review:error]` では ステップ 7 を skip する。
-rationale: references/design-rationale.md#step7-mergeable-only
+**Condition**: `[review:mergeable]` と、受入条件未検証の停止（ステップ 8.1 の受入条件未検証行に一致する `[review:error]`）のとき。`[review:fix-needed:N]` では ステップ 7 を skip する。
+rationale: references/design-rationale.md#step7-terminal-results
 
 **Step 2: Output the result pattern**
 
@@ -3089,7 +3089,7 @@ rationale: references/design-rationale.md#w-phase-gate-sole
 ERROR: ステップ 8.0.2 ステップ 7 Post-condition Gate failed.
 current-cycle [CONTEXT] PHASE_7_ASKUSER_INVOKED sentinel は存在するが確認証跡 (mode=/choice=/reason=) を欠く（emit-before-evidence）。
 ACTION: Return to ステップ 7.2 only. complete confirmation (対話は回答後、E2E 自動は判定確定後), emit the sentinel with mode/choice/reason, then re-enter ステップ 8.0. Do not run 7.4 before that sentinel. Do not re-run 7.1.
-⚠️ LLM MUST NOT output [review:mergeable] or [review:fix-needed:{n}] until ステップ 7 has been executed for the current cycle.
+⚠️ LLM MUST NOT output [review:mergeable], [review:fix-needed:{n}], or the acceptance-unverified stop [review:error] (REVIEW_STOP=ac_unverified) until ステップ 7 has been executed for the current cycle.
 ```
 
 **On ERROR** (sentinel absent or stale, `candidate_count >= 1`):
@@ -3099,7 +3099,7 @@ ERROR: ステップ 8.0.2 ステップ 7 Post-condition Gate failed.
 candidate_count = {N} (>= 1) but no current-cycle [CONTEXT] PHASE_7_ASKUSER_INVOKED sentinel found.
 This means ステップ 7 (entire procedure 7.1 candidate extraction → 7.2 disposition handling → 7.7 gate) was NOT executed in the current review cycle.
 ACTION: Return to ステップ 7.2, complete confirmation (対話は回答後、E2E 自動は判定確定後), emit the sentinel with mode/choice/reason, then re-enter ステップ 8.0. Do not run 7.4 before that sentinel. 7.1 からの再抽出は sentinel 不在 / stale に限定する。
-⚠️ LLM MUST NOT output [review:mergeable] or [review:fix-needed:{n}] until ステップ 7 has been executed for the current cycle.
+⚠️ LLM MUST NOT output [review:mergeable], [review:fix-needed:{n}], or the acceptance-unverified stop [review:error] (REVIEW_STOP=ac_unverified) until ステップ 7 has been executed for the current cycle.
 ```
 
 7.7 と 8.0.2 が catch する failure mode は異なる。
