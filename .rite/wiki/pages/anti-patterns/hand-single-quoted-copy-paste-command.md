@@ -4,10 +4,11 @@ title: "ユーザーにコピー実行させるコマンドをパスへ手書き
 domain: "anti-patterns"
 description: "WARNING に載せる手動復旧コマンドを rm -f '$path' のように手書きの単一引用符で組むと、パスにアポストロフィを含む環境で引用が閉じず、2 個含むと引数が分割されて無関係なパスが削除対象になる。表示用の無害化とは別に、実行用の文字列は printf %q で引用して作る。"
 created: "2026-09-14T01:40:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-15T09:05:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-15T10:00:00Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-14T03:36:26Z" }
   - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-15T09:05:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-15T10:00:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260914T010341Z-pr-2795.md"
@@ -15,6 +16,8 @@ sources:
     resource: "raw/reviews/20260914T025734Z-pr-2798.md"
   - type: "reviews"
     resource: "raw/reviews/20260915T084547Z-pr-2847.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260915T094506Z-pr-2853.md"
 tags: ["shell-quoting", "diagnostic-message", "manual-recovery"]
 confidence: high
 ---
@@ -72,13 +75,27 @@ WARNING に載せる手動復旧コマンドを rm -f '$path' のように手書
 
 `%q` した値の直後に全角の句読点を続けるときは `${_q_var}）` のように波括弧で囲む。波括弧が無いと、マルチバイト文字に隣接した変数を検出する既存の静的ガードに掛かる。
 
+### 引用が無いだけの案内も同じ欠陥で、fixture の値の選び方で検出力が変わる
+
+手書きの単一引用符ではなく、そもそも引用を付けずに `cp -r $stage_dir/. dest` のように値を埋め込んだ案内も、空白やアポストロフィで引数が割れる点は同じである。手書き引用符の置換を目印に洗い出すと、この形は拾われずに残る。
+
+fixture に入れる値は、守りたい引用方式を他の方式と区別できるものにする。空白・アポストロフィ・glob 文字だけの fixture では、`%q` の代わりに二重引用符で囲む退行も正しく分割されてしまい、テストは green のままになる。`$` やバッククォートを含む値のケースを 1 つ足すと、二重引用符では展開が起きて語が変わるので区別できる。
+
+### 案内を実行して復旧を確かめる assert は、前段の手順だけで満たされないかを確かめる
+
+「案内の手順を実行すると元に戻る」ことを assert するテストは、確かめたい手順を抜いても通ることがある。git の実 fixture で commit を失敗させた経路では、失敗した commit の index が後続の `git checkout` で作業ブランチへ持ち越されるため、ファイルを書き戻す手順を実行しなくても対象ファイルが元の内容のまま残る。レビューでは、書き戻しの手順を実行連鎖から外した複製でもスイートが green のままであることが実測された。
+
+復元系の assert を足すときは、前段の手順を実行した直後に対象を取り除いて不在を確かめる negative control を挟み、そのあとで確かめたい手順を実行して内容一致を見る。negative control を置けないなら、その assert は復元を固定していないので、テスト名やコメントで復元を名乗らない。
+
 ## 関連ページ
 
 - [二重引用符と -- は argv 分割にしか効かず、展開はパース時に終わっている](./quotes-do-not-stop-expansion.md)
 - [新規診断出力の追加は同一ファイル内の既存 control-char 中和規約を踏襲する](./new-diagnostic-path-skips-existing-neutralize-convention.md)
+- [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
 
 ## ソース
 
 - [案内コマンドの引用崩れを指摘したレビュー結果](../../raw/reviews/20260914T010341Z-pr-2795.md)
 - [引用修正と検出力テストを確認したレビュー結果](../../raw/reviews/20260914T025734Z-pr-2798.md)
 - [まとめて %q 化した案内の検出網の穴を指摘したレビュー結果](../../raw/reviews/20260915T084547Z-pr-2847.md)
+- [引用の無い復旧案内を %q 化し、復元 assert の空振りを指摘したレビュー結果](../../raw/reviews/20260915T094506Z-pr-2853.md)
