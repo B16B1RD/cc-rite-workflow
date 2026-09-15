@@ -1238,7 +1238,7 @@ Determine the error type from the completion notification (failure payload or ab
 | `{ci_status}` / `{ci_state}` | ステップ 1.2.5.C | 対象 SHA・分類・check 名/状態/結論/詳細 URL・failed 一覧・取得不能理由を出力 JSON から渡す。CI の分類規則を再実装しない |
 | `{diff_content}` | Diff from ステップ 1.2 | **Varies by scale** (see below)。`REVIEW_CYCLE_SCOPE == incremental` のときは PR 全体の diff ではなく `{cycle_base_sha}..HEAD` の diff を使う（取得コマンドは ステップ 1.2 の incremental 系。`{relevant_files}` が上記例外で全ファイルになった場合は同区間の全 diff を渡す）。**`acceptance`** は `REVIEW_CYCLE_SCOPE` に依らず PR 全体の diff を scale 規則どおり渡す |
 | `{cycle_scope_mandate}` | [cycle-scope.md](references/cycle-scope.md#reviewer-mandate差分スコープ適用時に注入する本文) の Reviewer mandate 節 | **Conditional extraction**: `REVIEW_CYCLE_SCOPE == incremental` のときのみ、同節の fenced block 本文を抽出し `{previous_blocking_findings}` / `{cycle_base_sha}` を埋めて注入する。`full` のときは空文字列（セクションごと省略）。**`reviewer_type == acceptance`** のときは `REVIEW_CYCLE_SCOPE` に依らず本文を注入せず、代わりに [reviewer-prompt-generator.md](references/reviewer-prompt-generator.md#受入条件確認の-mandate) の fenced block 本文を `{issue_number}` を埋めて注入する |
-| `{complexity_lane_mandate}` | [complexity-lane.md](references/complexity-lane.md#reviewer-mandate軽量レーン適用時に注入する本文) の Reviewer mandate 節 | **Conditional extraction**: `COMPLEXITY_LANE == light`（ステップ 1.3.2）のときのみ、同節の fenced block 本文を抽出し `{complexity}` を埋めて注入する。`full` のときは空文字列（セクションごと省略 — 空見出しが残ると M+ の prompt が変化し、M+ の挙動を変えないという契約に反する）。`{cycle_scope_mandate}` とは直交し、両方が非空になりうる（cycle 2+ の XS Issue）。両者が同時に届いても矛盾しない: 差分スコープは審査**範囲**を、軽量レーンは検証の**実行コスト**を絞るもので、いずれも採否基準を変えない |
+| `{complexity_lane_mandate}` | [complexity-lane.md](references/complexity-lane.md#reviewer-mandate軽量レーン適用時に注入する本文) の Reviewer mandate 節 | **Conditional extraction**: `COMPLEXITY_LANE == light`（ステップ 1.3.2）のときのみ、同節の fenced block 本文を抽出し `{complexity}` を埋めて注入する。`full` のときは空文字列（セクションごと省略 — 空見出しが残ると M+ の prompt が変化し、M+ の挙動を変えないという契約に反する）。`{cycle_scope_mandate}` とは直交し、両方が非空になりうる（cycle 2+ の XS Issue）。両者が同時に届いても矛盾しない: 差分スコープは審査**範囲**を、軽量レーンは検証の**実行コスト**を絞るもので、いずれも採否基準を変えない。**`reviewer_type == acceptance`** のときは `COMPLEXITY_LANE` に依らず空文字列（セクションごと省略）とする |
 | `{issue_spec}` | Issue specification obtained in ステップ 1.3.1 | Content of the "仕様詳細" section (if empty, write "仕様情報なし") |
 | `{change_intelligence_summary}` | Change Intelligence Summary from ステップ 1.2.6 | One-paragraph summary of change type, file classification, and focus area |
 | `{shared_reviewer_principles}` | `_reviewer-base.md` (shared) | Extract all sections from the document start to the `## Input` heading (exclusive). This covers `## READ-ONLY Enforcement`, `## Reviewer Mindset`, `## Cross-File Impact Check`, and `## Confidence Scoring` as a contiguous block. Agent-specific identity is NOT included here — it is delivered via the named subagent's system prompt (Phase B). See ステップ 4.3 step 3 for the full extraction procedure |
@@ -2185,7 +2185,7 @@ bash {plugin_root}/scripts/acceptance-criteria-check.sh final \
 |---|---|
 | rc=0 + `ACCEPTANCE_FINAL=ok; unmet={ids}; unverified={ids}` | `unverified=` の値を `{acceptance_unverified}` として retain し 5.3.1 以降へ進む（ステップ 8.0 / 8.1 が使う） |
 | rc=0 + `ACCEPTANCE_FINAL=skipped` | `{acceptance_unverified}` を空として 5.3.1 以降へ進む |
-| rc=1 + `reason=unmet_finding_not_blocking`, first occurrence | reviewer 契約違反。acceptance reviewer を 1 回だけ reroll し（元 prompt + 診断 + 未充足の指摘に `[AC-N]` 接頭辞と正規形の `Verification:` アンカーを付ける要求）、5.1 の回収完了ゲート → 5.1.0.L → 5.1.0.AC → 5.1.2.A → 5.2 → 5.2.1 → Fact-Checking → 5.3.0 → 5.3.0.M step 1 → step 2 → step 3 → 5.3.0.C → 本検査を同 cycle 内で再実行する。`acceptance_criteria[].status` を `unverified` に書き換えて通してはならない |
+| rc=1 + `reason=unmet_finding_not_blocking`, first occurrence | reviewer 契約違反。acceptance reviewer を 1 回だけ reroll し（元 prompt + 診断 + 未充足の指摘に `[AC-N]` 接頭辞と正規形の `Verification:` アンカーを付ける要求）、5.1 の回収完了ゲート → 5.1.0.L → 5.1.0.AC → 5.1.2.A → 5.2 → 5.2.1 → Fact-Checking → 5.3.0 → 5.3.0.M step 1 → step 2 → step 3 → 5.3.0.C → 本検査を同 cycle 内で再実行する。`acceptance_criteria[].status` を `unverified` に書き換えて通してはならない。再実行する 5.2 / 5.2.1 / Fact-Checking の対象は reroll で置き換わった acceptance の finding（既存 finding との矛盾検出を含む）とし、他 reviewer の finding、初回に決まった矛盾の disposition、fact-check 判定は保持する |
 | rc=1 after the one reroll、その他の reason、rc=2 | `[review:error]` を stdout に出力して停止する |
 
 `acceptance_final_retry_count` は int、初期 0。reroll を始める直前に +1 する。reroll 内で再実行する 5.3.0.M / 5.3.0.C は、それぞれ既存の `measured_gate_retry_count` / `class_gate_retry_count` を引き継ぐ。
@@ -2825,7 +2825,7 @@ trap - EXIT
 
 **Placeholder descriptions:**
 - `{review_history_content}`: Review result summary (assessment, finding counts, commit SHA). Claude generates from ステップ 5 results.
-- `{next_step_content}`: Next command based on assessment. Merge OK → `/rite:ready` | Requires fixes → `/rite:fix`
+- `{next_step_content}`: Next command based on assessment. 受入条件未検証（ステップ 8.1 の受入条件未検証行に一致）→ 未検証 AC の人間確認 | Merge OK → `/rite:ready` | Requires fixes → `/rite:fix`
 
 Steps 1-3 は 6.2 の local WM（SoT）と Issue comment（backup）を揃える。
 
@@ -2911,24 +2911,20 @@ result pattern の前に ステップ 7.1-7.4 を実行する:
 - 候補あり: 7.2-7.3。可逆な Decision Log は自動、ユーザー固有・不可逆だけ `AskUserQuestion`
 - 候補なし: silent skip
 
-**Condition**: `[review:mergeable]` のときだけ。`[review:fix-needed:N]` では ステップ 7 を skip する。
+**Condition**: `[review:mergeable]` のときだけ。`[review:fix-needed:N]` と、受入条件未検証の停止を含む `[review:error]` では ステップ 7 を skip する。
 rationale: references/design-rationale.md#step7-mergeable-only
 
 **Step 2: Output the result pattern**
 
-| Overall Assessment | Output Pattern |
-|---------|------------------------|
-| **Merge OK** (`total_findings == 0` = blocking findings ゼロ) | `[review:mergeable]` |
-| **Requires fixes** (`total_findings >= 1`) | `[review:fix-needed:{total_findings}]` |
-
-> `total_findings` は blocking 集合の件数 (実測必須ゲートで降格された非実測指摘と scope=nit-noted を除く)。非実測指摘のみが残る場合は `[review:mergeable]` が正しい (ステップ 8.1 の同注記を参照)。
+ステップ 8.1 の出力表を上から順に評価し、最初に一致した行の pattern を出す。本節に別の判定表を持たない。
 
 loop 内では pattern だけ出す。続きは `/rite:iterate` ステップ 1-4。
 
 ---
 
 **When `/rite:pr-review` is executed standalone:**
-次アクションは `AskUserQuestion`。形式は ステップ 1.4 の AskUserQuestion invocation format。
+次アクションは `AskUserQuestion`。形式は ステップ 1.4 の AskUserQuestion invocation format。上から順に評価する。
+**受入条件未検証**（ステップ 8.1 の受入条件未検証行に一致）: 未検証 AC `{acceptance_unverified}` を列挙し、Keep draft（推奨）| 動作確認後に Ready for review → `rite:ready`（未検証 AC の確認を求められる）→ 終了。Merge OK は提示しない
 **Merge OK**: Ready for review（推奨）→ `rite:ready` | Keep draft | Additional fixes → 終了
 **要修正**: Handle findings（推奨）→ `rite:fix` | Handle later → ステップ 7
 **⚠️ Important**: standalone は必ず `AskUserQuestion`。完了後に ステップ 7 へ。

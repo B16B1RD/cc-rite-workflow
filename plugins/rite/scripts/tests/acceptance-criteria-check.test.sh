@@ -5,10 +5,13 @@
 #   extract — テンプレート形式の AC 集合 / fenced block と別節の見出しを数えない / CRLF /
 #             AC 節なし・別形式は skipped / 見出しあり 0 件と重複は失敗
 #   table   — 正常 / AC-ID 欠落・余分・重複 / 0 行 / 見出し欠落 / 判定値不正 / 根拠空 /
-#             未充足行に対応する [AC-N] 指摘の欠落・severity 不一致 / 推奨対応列の raw pipe
+#             未充足行に対応する [AC-N] 指摘の欠落・severity 不一致・scope 不一致 / 推奨対応列の raw pipe /
+#             全角空白の trim (先頭・末尾・ASCII 空白との交互) / jq 変換失敗
 #   final   — 正常 / 全充足 / 行の欠落・重複 / 未充足 finding が non_blocking_findings[] にある /
-#             finding 不在 / キー欠落 / skipped 形 / 対象判定と --expected・reviewers[] の矛盾 /
-#             行の形式違反 / 入力を書き換えない / ゲート未適用 / 型の崩れた行・description (jq エラーで通さない)
+#             finding 不在・scope 違い・reviewer 違い・object でない要素 / キー欠落 / skipped 形と値不正 /
+#             対象判定と --expected・reviewers[] の矛盾 / 行の形式違反 (finding_id・status) /
+#             入力を書き換えない / ゲート未適用 (欠落・null) / 型の崩れた行・description (jq エラーで通さない) /
+#             jq 変換失敗を置換ごとに違反なしと区別する
 #   chain   — 実測アンカーの無い未充足 finding を review-measured-gate.sh に通すと降格し、
 #             final が失敗する (行は unmet のまま)。アンカー付きなら通る
 #
@@ -183,6 +186,21 @@ expect_failure "table: 見出しの後ろに文字が続く行は指摘事項の
 write_output "$TEST_DIR/out-fullwidth-evidence.md" "| AC-1 | 充足 | $(printf '\343\200\200') |" ""
 expect_failure "table: 全角空白だけの根拠は失敗" evidence_missing table --expected AC-1 --input "$TEST_DIR/out-fullwidth-evidence.md"
 
+# 1 回の走査では全角空白と ASCII 空白が交互に並ぶ端を削り切れないため、trim は変化が止まるまで繰り返す
+ZS=$(printf '\343\200\200')
+write_output "$TEST_DIR/out-fullwidth-mixed.md" "| AC-1 | 充足 | ${ZS} ${ZS} |" ""
+expect_failure "table: 全角空白・ASCII 空白・全角空白だけの根拠は失敗" evidence_missing table --expected AC-1 --input "$TEST_DIR/out-fullwidth-mixed.md"
+
+for placement in trailing leading; do
+  if [ "$placement" = trailing ]; then status_cell="充足${ZS}"; else status_cell="${ZS}充足"; fi
+  write_output "$TEST_DIR/out-fullwidth-status-$placement.md" "| AC-1 | $status_cell | ok |" ""
+  run_check table --expected AC-1 --input "$TEST_DIR/out-fullwidth-status-$placement.md"
+  if [ "$CHECK_RC" -eq 0 ] && [ "$(jq -r '.[0] | "\(.id) \(.status)"' <<<"$CHECK_STDOUT")" = "AC-1 satisfied" ] \
+    && grep -Fxq '[CONTEXT] ACCEPTANCE_TABLE=ok; rows=1; unmet=; unverified=' <<<"$CHECK_STDERR"; then
+    pass "table: 判定の $placement 側の全角空白を削って充足と読む"
+  else fail "table fullwidth status $placement (rc=$CHECK_RC out=$CHECK_STDOUT err=$CHECK_STDERR)"; fi
+done
+
 # macOS の awk は UTF-8 ロケールで == をロケール照合で比べ、Linux の awk では再現しないため静的に固定する
 if grep -qx 'export LC_ALL=C' "$TARGET"; then
   pass "helper は LC_ALL=C で awk の比較をバイト単位に固定する"
@@ -199,6 +217,9 @@ expect_failure "table: 未充足行に [AC-N] 指摘が無ければ失敗" unmet
 
 write_output "$TEST_DIR/out-highfinding.md" "$ROWS_OK" "${FINDING_OK/CRITICAL/HIGH}"
 expect_failure "table: 未充足の指摘が CRITICAL でなければ失敗" unmet_finding_missing table --expected AC-1,AC-2,AC-3 --input "$TEST_DIR/out-highfinding.md"
+
+write_output "$TEST_DIR/out-followup-finding.md" "$ROWS_OK" "${FINDING_OK/current-pr/follow-up}"
+expect_failure "table: 未充足の指摘が current-pr でなければ失敗" unmet_finding_missing table --expected AC-1,AC-2,AC-3 --input "$TEST_DIR/out-followup-finding.md"
 
 write_output "$TEST_DIR/out-pipe-suggestion.md" "$ROWS_OK" "${FINDING_OK/| 直す |/| bash a.sh || exit 1 |}"
 run_check table --expected AC-1,AC-2,AC-3 --input "$TEST_DIR/out-pipe-suggestion.md"
@@ -308,6 +329,71 @@ write_result "$TEST_DIR/r-numdesc.json" "[${F_UNMET/\"\[AC-2\] 壊れている\"
 expect_failure "final: 未充足 finding の description が文字列でなければ失敗" unmet_finding_not_blocking final --expected "$AC3" --input "$TEST_DIR/r-numdesc.json"
 
 expect_failure "final: --expected が AC-N 形式でなければ失敗" expected_invalid final --expected "{acceptance_ids}" --input "$TEST_DIR/r-ok.json"
+
+write_result "$TEST_DIR/r-followup.json" "[${F_UNMET/current-pr/follow-up}]" '[]' "$AC_ROWS"
+expect_failure "final: 未充足 finding の scope が current-pr でなければ失敗" unmet_finding_not_blocking final --expected "$AC3" --input "$TEST_DIR/r-followup.json"
+
+write_result "$TEST_DIR/r-otherreviewer.json" "[${F_UNMET/acceptance-reviewer/test-reviewer}]" '[]' "$AC_ROWS"
+expect_failure "final: 未充足 finding の reviewer が acceptance-reviewer でなければ失敗" unmet_finding_not_blocking final --expected "$AC3" --input "$TEST_DIR/r-otherreviewer.json"
+
+write_result "$TEST_DIR/r-strfindings.json" '["F-01"]' '[]' "$AC_ROWS"
+expect_failure "final: findings が object でない要素だけなら失敗 (jq エラーで通さない)" unmet_finding_not_blocking final --expected "$AC3" --input "$TEST_DIR/r-strfindings.json"
+
+write_result "$TEST_DIR/r-satisfied-finding.json" "[$F_UNMET]" '[]' "${AC_ROWS/\"finding_id\":null/\"finding_id\":\"F-09\"}"
+expect_failure "final: 未充足以外の行に finding_id があれば失敗" acceptance_row_invalid final --expected "$AC3" --input "$TEST_DIR/r-satisfied-finding.json"
+
+write_result "$TEST_DIR/r-badstatus.json" "[$F_UNMET]" '[]' "${AC_ROWS/\"status\":\"satisfied\"/\"status\":\"bogus\"}"
+expect_failure "final: status が 3 値以外なら失敗" acceptance_row_invalid final --expected "$AC3" --input "$TEST_DIR/r-badstatus.json"
+
+write_result "$TEST_DIR/r-skip-other.json" '[]' '[]' '{"skipped":"other"}' '["code-quality-reviewer","test-reviewer"]'
+expect_failure "final: skipped の値が 2 種以外なら失敗" acceptance_row_invalid final --expected "" --input "$TEST_DIR/r-skip-other.json"
+
+jq '.measured_gate = null' "$TEST_DIR/r-ok.json" > "$TEST_DIR/r-gate-null.json"
+expect_failure "final: measured_gate が null なら失敗" gate_not_applied final --expected "$AC3" --input "$TEST_DIR/r-gate-null.json"
+
+echo "=== jq 変換失敗 ==="
+
+# フィルタ文字列が JQ_FAIL_PATTERN を含む jq 呼び出しだけを exit 5 にし、事前検査の jq は実 jq で通す
+REAL_JQ=$(command -v jq)
+mkdir -p "$TEST_DIR/jq-shim"
+cat > "$TEST_DIR/jq-shim/jq" <<EOF
+#!/bin/bash
+for arg in "\$@"; do
+  case "\$arg" in *"\$JQ_FAIL_PATTERN"*) exit 5 ;; esac
+done
+exec "$REAL_JQ" "\$@"
+EOF
+chmod +x "$TEST_DIR/jq-shim/jq"
+
+# $1 = label, $2 = 失敗させるフィルタの部分文字列, $3 = 期待する診断文, 残り = helper 引数
+expect_jq_transform_failed() {
+  local label="$1" pattern="$2" message="$3" saved_path="$PATH"
+  shift 3
+  export JQ_FAIL_PATTERN="$pattern"
+  PATH="$TEST_DIR/jq-shim:$PATH"
+  run_check "$@"
+  PATH="$saved_path"
+  unset JQ_FAIL_PATTERN
+  if [ "$CHECK_RC" -eq 1 ] && grep -q "^\[CONTEXT\] ACCEPTANCE_CHECK_FAILED=1; mode=$1; reason=jq_transform_failed$" <<<"$CHECK_STDERR" \
+    && grep -Fq "$message" <<<"$CHECK_STDERR"; then
+    pass "$label"
+  else
+    fail "$label (rc=$CHECK_RC stderr=$CHECK_STDERR)"
+  fi
+}
+
+expect_jq_transform_failed "final: skipped / reviewers の読み取り失敗" 'if type == "object" then (.skipped' \
+  'acceptance_criteria / reviewers を読めません' final --expected "$AC3" --input "$TEST_DIR/r-ok.json"
+expect_jq_transform_failed "final: 行の検査失敗" '.acceptance_criteria as $ac' \
+  'acceptance_criteria の行を検査できません' final --expected "$AC3" --input "$TEST_DIR/r-ok.json"
+expect_jq_transform_failed "final: 判定行 ID の読み取り失敗" '.acceptance_criteria[].id' \
+  '判定行の ID を読めません' final --expected "$AC3" --input "$TEST_DIR/r-ok.json"
+expect_jq_transform_failed "final: 未充足 finding の検査失敗" '$doc.findings' \
+  '未充足行の finding を検査できません' final --expected "$AC3" --input "$TEST_DIR/r-ok.json"
+expect_jq_transform_failed "final: 判定行 ID の集計失敗" 'select(.status == "unverified") | .id' \
+  '判定行の ID を集計できません' final --expected "$AC3" --input "$TEST_DIR/r-ok.json"
+expect_jq_transform_failed "table: 判定行の JSON 変換失敗" 'split("\n")' \
+  '判定行を JSON に変換できません' table --expected "$AC3" --input "$TEST_DIR/out-ok.md"
 
 echo "=== chain: review-measured-gate.sh → final ==="
 
