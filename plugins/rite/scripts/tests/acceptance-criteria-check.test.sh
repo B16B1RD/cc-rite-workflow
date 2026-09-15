@@ -255,6 +255,9 @@ expect_failure "final: skipped なのに reviewers に acceptance-reviewer が�
 write_result "$TEST_DIR/r-skip-finding.json" '[]' "[$F_UNMET]" '{"skipped":"no_ac_section"}' '["code-quality-reviewer","test-reviewer"]'
 expect_failure "final: skipped なのに acceptance-reviewer の指摘があれば失敗" acceptance_scope_mismatch final --expected "" --input "$TEST_DIR/r-skip-finding.json"
 
+write_result "$TEST_DIR/r-skip-finding-blocking.json" "[$F_UNMET]" '[]' '{"skipped":"no_ac_section"}' '["code-quality-reviewer","test-reviewer"]'
+expect_failure "final: skipped なのに acceptance-reviewer の blocking 指摘があれば失敗" acceptance_scope_mismatch final --expected "" --input "$TEST_DIR/r-skip-finding-blocking.json"
+
 expect_failure "final: 対象外 cycle なのに判定行があれば失敗" acceptance_scope_mismatch final --expected "" --input "$TEST_DIR/r-ok.json"
 
 write_result "$TEST_DIR/r-unnamed.json" "[$F_UNMET]" '[]' "$AC_ROWS" '["code-quality-reviewer","test-reviewer"]'

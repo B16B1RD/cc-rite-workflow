@@ -879,7 +879,7 @@ if [ -z "$BLOCKED_PATTERN" ]; then
             sole_reviewer)
               BLOCKED_PATTERN="merge-review-sole-reviewer"
               BLOCKED_REASON="Review-results JSON for PR #${_mrg_pr} has fewer reviewers than the sole-reviewer guard floor (2; acceptance-reviewer is not counted). A single-reviewer (or empty) result does not satisfy the merge gate."
-              BLOCKED_ALTERNATIVE="Re-run /rite:pr-review ${_mrg_pr} so at least 2 reviewers are recorded, then re-run merge."
+              BLOCKED_ALTERNATIVE="Re-run /rite:pr-review ${_mrg_pr} so at least 2 reviewers other than acceptance-reviewer are recorded, then re-run merge."
               ;;
             parse_error)
               BLOCKED_PATTERN="merge-review-json-parse"

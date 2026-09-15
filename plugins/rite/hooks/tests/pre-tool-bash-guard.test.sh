@@ -1847,7 +1847,8 @@ rc=0
 output=$(_mrg_run "$_mrg_tmp" "gh pr merge 56 --squash") || rc=$?
 decision=$(extract_hook_field "$output" permissionDecision)
 reason=$(extract_hook_field "$output" permissionDecisionReason)
-if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-review-sole-reviewer"* ]]; then
+if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-review-sole-reviewer"* ]] \
+  && [[ "$reason" == *"at least 2 reviewers other than acceptance-reviewer are recorded"* ]]; then
   pass "TC-131b acceptance-reviewer does not satisfy the sole-reviewer floor"
 else
   fail "TC-131b expected sole-reviewer deny, got decision=$decision reason=$reason"

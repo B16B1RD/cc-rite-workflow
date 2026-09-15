@@ -92,7 +92,7 @@ pin "generator: 未変更部の再監査制限を適用しない" "$GENERATOR" "
 
 echo ""
 echo "=== TC-2: 1.3.1 の対象判定と停止 (T-09 / T-10 / T-11) ==="
-pin "1.3.1: Issue 番号なしは no_issue の 1 行通知" "$PR_REVIEW" '`[CONTEXT] ACCEPTANCE_SCOPE=skipped; reason=no_issue` として `受入条件確認: 対象外（関連 Issue なし）` を 1 行表示する'
+pin "1.3.1: Issue 番号なしは no_issue の 1 行通知" "$PR_REVIEW" '`[CONTEXT] ACCEPTANCE_SCOPE=skipped; reason=no_issue` として `受入条件確認: 対象外（関連 Issue なし）` を 1 行表示し'
 pin "1.3.1: AC 節なしは 1 行通知" "$PR_REVIEW" '`受入条件確認: 対象外（テンプレート形式の AC 節なし。見出し: {headings}）` を 1 行表示'
 pin "1.3.1: gh issue view 失敗は skip せず停止" "$PR_REVIEW" '受入条件確認を skip せず停止します'
 pin "1.3.1: extract の失敗を [review:error] へ" "$PR_REVIEW" 'acceptance-criteria-check.sh extract --body-file "$issue_body_file" || { rm -f "$issue_body_file"; echo "[review:error]"; exit 1; }'
@@ -154,7 +154,8 @@ in_order "5.3.0.A 節は 6.1.a より前" \
   "$(line_of "$PR_REVIEW" '#### 5.3.0.A 受入条件の最終整合検査')" \
   "$(line_of "$PR_REVIEW" '#### 6.1.a Local JSON File Save')"
 pin "5.3.0.A: final を Issue の AC 集合で実行" "$PR_REVIEW" '--expected "{acceptance_ids}" --input {review_tmp_dir}/rite-review-result-{pr_number}.json'
-pin "1.3.1: skipped の cycle は {acceptance_ids} を空文字列" "$PR_REVIEW" '`skipped`（`no_issue` を含む）の cycle では `{acceptance_ids}` を空文字列とする'
+pin "1.3.1: no_issue 分岐で {acceptance_ids} を空文字列" "$PR_REVIEW" '`受入条件確認: 対象外（関連 Issue なし）` を 1 行表示し、`{acceptance_ids}` を空文字列としてステップ 5.3.0.A まで retain する'
+pin "1.3.1: no_ac_section の cycle は {acceptance_ids} を空文字列" "$PR_REVIEW" '`skipped; reason=no_ac_section` の cycle では `{acceptance_ids}` を空文字列とする'
 pin "2.2: prev_finders の acceptance は合流させない" "$PR_REVIEW" '`{prev_finders}` の `acceptance` は合流させない（ステップ 3.2.2 が cap 後に毎 cycle 追加する）'
 pin "3.2.2: 既に acceptance があれば追加しない" "$PR_REVIEW" '`{selected_reviewers}` に既に `acceptance` があれば追加しない'
 pin "5.3.0.A: unverified への書き換え禁止" "$PR_REVIEW" '`acceptance_criteria[].status` を `unverified` に書き換えて通してはならない'

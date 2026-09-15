@@ -31,7 +31,8 @@ prompt と drift する。`Verification:` は inclusion gate と直交し、再�
 ## incremental-mandatory-merge
 
 `incremental` では前サイクル blocking を出した reviewer を `selection_type: mandatory` として合流
-させる。Phase 5 が落とさないことを保証しているのは `mandatory` のみ。
+させる。Phase 5 が落とさないことを保証しているのは `mandatory` のみ。`acceptance` は選抜の母数に
+入れず cap 適用後に毎 cycle 追加するため、合流の対象外とする。
 
 ## phase5-cap
 

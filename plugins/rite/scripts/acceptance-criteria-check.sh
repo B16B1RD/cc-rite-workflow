@@ -115,7 +115,7 @@ case "$mode" in
       /^## / {
         in_ac = ($0 ~ /^## 5\. Acceptance Criteria[[:space:]]*$/)
         if (in_ac) { found = 1 }
-        else if (tolower($0) ~ /acceptance|受入/) { other = other (other == "" ? "" : ",") substr($0, 4) }
+        else if (index(tolower($0), "acceptance") || index($0, "受入")) { other = other (other == "" ? "" : ",") substr($0, 4) }
         next
       }
       in_ac && match($0, /^### AC-[0-9]+([:[:space:]]|$)/) {
@@ -145,11 +145,13 @@ case "$mode" in
     _check_expected_format
     command -v jq >/dev/null 2>&1 || _fail jq_missing "jq が見つかりません"
     # 表は 3 列、指摘事項は 5 列。指摘事項は 5 列目 (推奨対応) だけが raw pipe を含みうるため、
-    # 重要度 / スコープ / 内容は左端からの固定位置で読み、列数は下限だけを見る
+    # 重要度 / スコープ / 内容は左端からの固定位置で読み、列数は下限だけを見る。
+    # 日本語見出しは正規表現ではなく文字列比較で判定する (非 ASCII の正規表現リテラルは awk 実装とロケールで一致結果が変わる)
     parsed=$(_read_lf "$input" | awk -F'|' '
       function trim(s) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
       /^### / {
-        sec = ($0 ~ /^### 受入条件確認[[:space:]]*$/) ? "ac" : ($0 ~ /^### 指摘事項[[:space:]]*$/) ? "fd" : ""
+        h = $0; sub(/[[:space:]]+$/, "", h)
+        sec = (h == "### 受入条件確認") ? "ac" : (h == "### 指摘事項") ? "fd" : ""
         if (sec == "ac") { seen_ac = 1 }
         hdr = 0; next
       }
