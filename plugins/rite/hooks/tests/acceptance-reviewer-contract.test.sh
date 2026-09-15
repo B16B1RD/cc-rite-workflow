@@ -10,7 +10,8 @@
 #   T-02 → TC-8 + TC-9   全充足 JSON で final が unverified 空・verdict mergeable / 5.4 と両テンプレートの受入条件確認 section
 #   T-03 → TC-8          アンカー付き未充足が gate 後も findings[] に残り verdict fix-needed、行は unmet + finding_id
 #   T-04 → TC-5          8.0 / 8.1 の停止行が同一条件文言で並び、8.1 は mergeable 行より前、8.0 の停止 set は handoff なし /
-#                        6.5.1 は独自の判定表を持たず 8.1 を参照し、standalone の未検証分岐は Merge OK より前
+#                        6.5.1 は独自の判定表を持たず 8.1 を参照し、standalone の未検証分岐は Merge OK より前 /
+#                        6.5.1 と E2E 表のステップ 7 実行条件、8.0.2 / 7.7 の MUST NOT 対象、rationale anchor の対応
 #   T-05 → TC-6          iterate が行頭 marker で再試行を skip し、既存の再試行文言は残る
 #   T-06 → TC-3          5.1.0.AC が 5.1.0.L と 5.1.1 の間にあり、reroll 1 回 → [review:error]
 #   T-07 → TC-4 + TC-8   5.3.0.A が 5.3.0.C の後・5.3.8 の前、unverified への書き換え禁止 / アンカー欠落は final が rc=1
@@ -36,6 +37,8 @@ ITERATE="$PLUGIN_ROOT/skills/iterate/SKILL.md"
 FIX="$PLUGIN_ROOT/skills/fix/SKILL.md"
 SCHEMA="$PLUGIN_ROOT/references/review-result-schema.md"
 STOP_CONTRACT="$PLUGIN_ROOT/references/stop-loop-continuation-contract.md"
+SCOPE_TRIAGE="$PLUGIN_ROOT/skills/pr-review/references/scope-triage.md"
+RATIONALE="$PLUGIN_ROOT/skills/pr-review/references/design-rationale.md"
 CHECK="$PLUGIN_ROOT/scripts/acceptance-criteria-check.sh"
 MGATE="$PLUGIN_ROOT/scripts/review-measured-gate.sh"
 MAPS="$PLUGIN_ROOT/scripts/review-findings-maps.sh"
@@ -194,7 +197,35 @@ else
   fail "6.5.1: 判定表の行が残っている、または節を切り出せない"
 fi
 pin "6.5.1: 8.1 の出力表を上から評価する" "$PR_REVIEW" 'ステップ 8.1 の出力表を上から順に評価し、最初に一致した行の pattern を出す'
-pin "6.5.1: ステップ 7 は受入条件未検証の停止で skip" "$PR_REVIEW" '受入条件未検証の停止を含む `[review:error]` では ステップ 7 を skip する'
+# ステップ 7 は終端の出力 (mergeable と受入条件未検証の停止) で実行し、fix-needed でだけ skip する。
+# 受入条件未検証の停止には後続レビューが無く、skip すると候補が処分されずに消える
+cond_651=$(grep -F '**Condition**:' <<<"$block_651")
+if grep -qF '**Condition**: `[review:mergeable]` と、受入条件未検証の停止（ステップ 8.1 の受入条件未検証行に一致する `[review:error]`）のとき。' <<<"$cond_651"; then
+  pass "6.5.1: ステップ 7 は mergeable と受入条件未検証の停止で実行"
+else
+  fail "6.5.1: ステップ 7 の実行条件 (condition=$cond_651)"
+fi
+if grep -qF '`[review:fix-needed:N]` では ステップ 7 を skip する。' <<<"$cond_651"; then
+  pass "6.5.1: ステップ 7 は fix-needed で skip"
+else
+  fail "6.5.1: fix-needed の skip (condition=$cond_651)"
+fi
+assert "6.5.1: 受入条件未検証の停止で skip する旧条件が無い" "0" "$(grep -cF '受入条件未検証の停止を含む `[review:error]` では' "$PR_REVIEW")"
+pin "E2E 表: ステップ 7 の実行条件が 6.5.1 と同じ" "$PR_REVIEW" '`[review:mergeable]` と受入条件未検証の停止のときに実行し、`[review:fix-needed:N]` では skip する。 |'
+assert "E2E 表: mergeable だけで実行する旧条件が無い" "0" "$(grep -cF 'Only when `[review:mergeable]`.' "$PR_REVIEW")"
+MUST_NOT_7='[review:fix-needed:{n}], or the acceptance-unverified stop [review:error] (REVIEW_STOP=ac_unverified) until ステップ 7'
+MUST_NOT_7_OLD='[review:fix-needed:{n}] until ステップ 7'
+assert "8.0.2: 2 つの ERROR 文が受入条件未検証の停止も止める" "2" "$(grep -cF -- "$MUST_NOT_7" "$PR_REVIEW")"
+assert "8.0.2: 停止を含まない旧 MUST NOT が無い" "0" "$(grep -cF -- "$MUST_NOT_7_OLD" "$PR_REVIEW")"
+assert "7.7: ERROR 文が受入条件未検証の停止も止める" "1" "$(grep -cF -- "$MUST_NOT_7" "$SCOPE_TRIAGE")"
+assert "7.7: 停止を含まない旧 MUST NOT が無い" "0" "$(grep -cF -- "$MUST_NOT_7_OLD" "$SCOPE_TRIAGE")"
+anchor_651=$(grep -A1 -F '**Condition**:' <<<"$block_651" | sed -n 's|^rationale: references/design-rationale\.md#||p')
+if [ -n "$anchor_651" ]; then
+  assert "6.5.1: rationale anchor の見出しが 1 つある" "1" "$(grep -cxF "## $anchor_651" "$RATIONALE")"
+else
+  fail "6.5.1: Condition の直後に rationale ポインタが無い"
+fi
+assert "rationale: 旧 anchor を参照しない" "0" "$(grep -cF 'step7-mergeable-only' "$PR_REVIEW" "$RATIONALE" | awk -F: '{s+=$NF} END {print s+0}')"
 in_order "6.5.1: standalone の受入条件未検証分岐は Merge OK 分岐より前" \
   "$(line_of "$PR_REVIEW" '**受入条件未検証**（ステップ 8.1 の受入条件未検証行に一致）')" \
   "$(line_of "$PR_REVIEW" '**Merge OK**: Ready for review（推奨）')"
@@ -320,6 +351,6 @@ pin "CLAUDE.md: reviewer 数" "$REPO_ROOT/CLAUDE.md" "+ 10 reviewer agent"
 pin "SPEC: agents 一覧" "$REPO_ROOT/docs/SPEC.md" "│ ├── acceptance-reviewer.md"
 pin "CONFIGURATION: Available reviewers 表" "$REPO_ROOT/docs/CONFIGURATION.md" '| `acceptance-reviewer` |'
 
-if ! print_summary "$(basename "$0")" "drift: acceptance reviewer の配線 (agent / reviewers SKILL / pr-review 1.3.1・3.2.2・5.1.0.AC・5.3.0.A・8.0・8.1 / iterate ステップ 2 / fix 1.2.2 / review-result-schema) のいずれかが変更された可能性"; then
+if ! print_summary "$(basename "$0")" "drift: acceptance reviewer の配線 (agent / reviewers SKILL / pr-review 1.3.1・3.2.2・5.1.0.AC・5.3.0.A・6.5.1・E2E 表・8.0・8.0.2・8.1 / scope-triage 7.7 / design-rationale / iterate ステップ 2 / fix 1.2.2 / review-result-schema) のいずれかが変更された可能性"; then
   exit 1
 fi
