@@ -333,7 +333,7 @@ fi
 
 その後 [共通作業先契約](../../references/git-worktree-patterns.md#host-worktree-execution) を読み、`{wt_path}` への native / 検証済み `workdir` / 毎回 `cd` 経路を選ぶ。`EnterWorktree` が利用可能な場合は `path: {wt_path}` で呼ぶ。`multi_session.enabled: true` と本コマンドが入場の明示指示であり、ツール不在だけを理由に追加承認を求めない。権限拒否では代替を試さない。
 
-**native 入場失敗の診断**: git probe 成功なのに「not in a git repository」なら worktree を保持し、リポジトリ root から Claude Code を再起動して再実行する。path 消失などは `/rite:recover {issue_number}` の再構築へ委譲する。分離を捨てる `git switch -c` での続行は行わない。
+**native 入場失敗の診断**: git probe 成功なのに「not in a git repository」なら worktree を保持し、リポジトリ root から Claude Code を再起動して再実行する。ホストの作業先が前の Issue の登録済みセッション worktree に残っている場合は、共通作業先契約の [残留診断](../../references/git-worktree-patterns.md#native-入場が前のセッション-worktree-への残留で拒否される)（保持しての native 退出 → main root 確認 → 再入場 1 回）に従う（手順は契約側のみが持つ）。path 消失などは `/rite:recover {issue_number}` の再構築へ委譲する。分離を捨てる `git switch -c` での続行は行わない。
 
 rationale: references/rationale.md#worktree-entry-failure
 

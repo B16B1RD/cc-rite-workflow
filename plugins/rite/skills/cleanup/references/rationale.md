@@ -92,6 +92,10 @@ PostToolUse hook が作る空 stub（`phase: init`・進捗セクションなし
 
 保存 state の無い path 入場では所有する worktree と退出能力を確定できない。Claude の隔離ガードで main checkout 操作が拒否される経路もあるため、`in_worktree_unrecorded` は従来の委譲を保つ。保存 state のある入場は共通作業先契約で native / 検証済み作業先指定を選び、退出結果を確認する。分類 marker はツール能力の証拠にはならない。拒否を helper 内の `cd` に移して回避しない。
 
+## exit-check-independent-shell
+
+native 入場経路のホストはセッション単位の作業先を持ち、個々のシェル呼び出しの `cd` とは独立している。退出確認を main checkout へ `cd` したシェルや helper 内で行うと、toplevel はシェルの cwd を映して main root で合格するが、ホストの作業先は前の worktree に残る。その状態で次の Issue の native 入場は拒否され、batch-run が止まる。確認対象はホストの作業先なので、作業先を移す操作を伴わない独立したシェル呼び出しで行う。`workdir` / 毎回 `cd` 経路はホストの作業先を持たず、検出済み main root を作業先に指定して実行する従来の形を変えない。
+
 ## helper-rc-capture
 
 ステップ 4-W の 2 呼び出し（detect / remove）とステップ 6 の state purge —— 計 3 つの helper

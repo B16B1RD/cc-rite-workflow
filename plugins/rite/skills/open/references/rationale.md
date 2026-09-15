@@ -49,6 +49,12 @@ branch 分岐を Bash で hard 化したのと対称の措置で、git-worktree-
   すれば 2.2-W が `WT_CASE=reuse` と判定して継続できる。
 - **(B) worktree path 消失などの別要因** — recover.md Phase 3.1.5 の再構築経路に委譲する。本
   コマンドでは新規 worktree を作らず、再起動案内へ誤誘導もしない。
+- **(C) 前のセッション worktree への残留** — ホストの作業先が前の Issue の登録済みセッション
+  worktree に残ったままだと、native 入場が「このセッションから切り替えられる worktree ではない」
+  等で拒否される。保持しての native 退出と 1 回の再入場は worktree もブランチも消さない可逆な
+  操作で、工程途中に人間の判断を常駐させずに続行できる。再入場を 1 回に限るのは空転を防ぐため。
+  手順は共通作業先契約（git-worktree-patterns.md）が持ち、open と recover は参照だけにして複製
+  しない。
 native 不在と native 失敗は別の観測である。不在時は共通作業先契約で検証した `workdir` / 毎回 `cd` と絶対パス編集を使える。前の shell の cwd が永続するという仮定や、権限拒否を別経路で迂回する実行は採らない。
 
 ## projects-status-inline

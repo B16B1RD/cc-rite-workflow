@@ -139,6 +139,12 @@ assert_grep "4-W splits in_worktree_unrecorded into its own case arm" "$TEARDOWN
 assert_grep "4-W emits the delegation marker" "$TEARDOWN_HELPER" 'CLEANUP_DELEGATED=1; reason=exit_worktree_unavailable'
 assert_grep_in_section "4-W verifies exit for native and explicit cwd routes" "$CLEANUP" \
   '^### 4-W ' '^### 4 base' 'worktree-exit-check.*toplevel.*手順 3'
+# native 経路の退出確認は、退出に使ったシェルや helper 内の `cd` と同じシェルで行うと cwd を映して
+# 合格するため、作業先を移す操作を伴わない独立したシェル呼び出しで実行することを 4-W 節内に pin する。
+assert_grep_in_section "4-W runs the native exit check in an independent shell call" "$CLEANUP" \
+  '^### 4-W ' '^### 4 base' 'native 入場経路では、この確認を `cd` / `git -C` / `workdir` 指定のいずれも伴わない独立したシェル呼び出しで実行する'
+assert_grep_in_section "4-W forbids checking exit in the same shell that cd-ed to main" "$CLEANUP" \
+  '^### 4-W ' '^### 4 base' 'main checkout へ `cd` した後の同一シェルで確認しない'
 # ガード迂回の禁止を明記する (MUST NOT — 実測で拒否済みの複合コマンドを再試行させない)。
 assert_grep "4-W forbids bypassing the harness guard" "$CLEANUP" "ガードを迂回する複合コマンド"
 # T-03 (非回帰): in_worktree arm は従来どおり dirty チェックを持ち、ExitWorktree(keep) 手順も残る。
