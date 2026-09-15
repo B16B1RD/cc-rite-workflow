@@ -52,7 +52,7 @@
 #      - 合意済み AC の実測済み未充足: acceptance_criteria[] の status="unmet" 行が指す
 #        finding_id の finding が effective class B で map の exclusion を持たないとき、
 #        consequence_exclusion に "ac_unmet:AC-N" (同じ finding を指す行が複数なら行順に
-#        "ac_unmet:AC-1,AC-2") を記録する。class は map の値のまま。class A (判定不能・
+#        "ac_unmet:AC-N,AC-M") を記録する。class は map の値のまま。class A (判定不能・
 #        category 固定を含む) には記録しない。finding_id が null の行は除外に使わない
 #        (findings[] に残っているかの最終検査は scripts/acceptance-criteria-check.sh final)。
 #        finding_id が findings[] に無い行は除外に使わず WARNING を出し、成功 marker 末尾に

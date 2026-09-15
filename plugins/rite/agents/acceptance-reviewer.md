@@ -35,9 +35,9 @@ Emit `### 受入条件確認` **between `### 所見` and `### 指摘事項`**, w
 ### 受入条件確認
 | AC | 判定 | 根拠 |
 |----|------|------|
-| AC-1 | 充足 | bash hooks/tests/foo.test.sh => PASS: 12 FAIL: 0 |
-| AC-2 | 未充足 | 指摘事項 [AC-2] を参照 |
-| AC-3 | 未検証 | 認証付きの実環境で gh pr merge を実行する必要がある |
+| AC-N | 充足 | bash hooks/tests/foo.test.sh => PASS: 12 FAIL: 0 |
+| AC-M | 未充足 | 対応する指摘事項を参照 |
+| AC-K | 未検証 | 認証付きの実環境で gh pr merge を実行する必要がある |
 ```
 
 - `AC` is the `AC-N` identifier only. `判定` is one of 充足 / 未充足 / 未検証. `根拠` is never empty. Do not use a raw `|` inside a cell (write `¦`).
@@ -49,17 +49,17 @@ Emit `### 受入条件確認` **between `### 所見` and `### 指摘事項`**, w
 ```
 ### 評価: 要修正
 ### 所見
-AC-2 が HEAD で満たされていません。AC-3 は実環境が必要なため未検証です。
+受入条件 AC-M が HEAD で満たされていません。受入条件 AC-K は実環境が必要なため未検証です。
 ### 受入条件確認
 | AC | 判定 | 根拠 |
 |----|------|------|
-| AC-1 | 充足 | bash hooks/tests/foo.test.sh => PASS: 12 FAIL: 0 |
-| AC-2 | 未充足 | 指摘事項 [AC-2] を参照 |
-| AC-3 | 未検証 | 認証付きの実環境で gh pr merge を実行する必要がある |
+| AC-N | 充足 | bash hooks/tests/foo.test.sh => PASS: 12 FAIL: 0 |
+| AC-M | 未充足 | 対応する指摘事項を参照 |
+| AC-K | 未検証 | 認証付きの実環境で gh pr merge を実行する必要がある |
 ### 指摘事項
 | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
 |--------|----------|------------|------|----------|
-| CRITICAL | current-pr | hooks/foo.sh | [AC-2] 空入力で exit 0 を返し、AC-2 の Then「exit 1 で停止する」を満たさない。fix で空入力ガードが削除されている<br>Likelihood-Evidence: runtime_observation bash hooks/foo.sh --input '' が exit 0<br>Verification: repro bash hooks/foo.sh --input '' => exit 0 (期待: exit 1) | 空入力ガードを戻す: `[ -n "$input" ] ¦¦ exit 1` |
+| CRITICAL | current-pr | hooks/foo.sh | [AC-M] 空入力で exit 0 を返し、当該受入条件の Then「exit 1 で停止する」を満たさない。fix で空入力ガードが削除されている<br>Likelihood-Evidence: runtime_observation bash hooks/foo.sh --input '' が exit 0<br>Verification: repro bash hooks/foo.sh --input '' => exit 0 (期待: exit 1) | 空入力ガードを戻す: `[ -n "$input" ] ¦¦ exit 1` |
 ### 監査ログ
 なし
 ```

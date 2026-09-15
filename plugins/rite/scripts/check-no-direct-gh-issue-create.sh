@@ -136,7 +136,7 @@ if [ "$violations" -gt 0 ]; then
   echo "" >&2
   echo "Total files with violations: $violations" >&2
   echo "All Issue creation must go through plugins/rite/scripts/create-issue-with-projects.sh." >&2
-  echo "See 4.4 MUST NOT 1 for guidance." >&2
+  echo "Direct gh issue create invocations are prohibited; use the helper above." >&2
   exit 1
 fi
 
