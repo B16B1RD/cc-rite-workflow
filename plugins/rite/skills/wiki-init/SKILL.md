@@ -423,7 +423,7 @@ if [ "$branch_strategy" = "separate_branch" ] && [ -d .rite/wiki-worktree/.rite/
         echo "  対処: git -C .rite/wiki-worktree status で状態を確認してください" >&2
         ;;
       4) echo "WARNING: migration commit landed locally but push failed (rc=4)" >&2 ;;
-      6) echo "WARNING: wiki worktree の管理ディレクトリに書き込めないため migration commit しませんでした (rc=6, reason=sandbox-mask)。実行エージェントはこの bash block を別の Bash tool call で dangerouslyDisableSandbox: true を付けて 1 回だけ再実行する (確認不要)。再実行でも rc=6 なら sandbox 起因ではないため再試行せず、stderr の管理ディレクトリの権限・容量を確認する" >&2 ;;
+      6) echo "WARNING: wiki worktree の管理ディレクトリに書き込めないため migration commit しませんでした (rc=6, reason=sandbox-mask)。実行エージェントは直後の再試行専用 bash block を別の Bash tool call で dangerouslyDisableSandbox: true を付けて 1 回だけ実行する (確認不要)" >&2 ;;
       *)
         echo "WARNING: pages/ migration commit failed (rc=$commit_rc). /rite:wiki-ingest 側でも .gitkeep が作成されないと Write 失敗する可能性あり" >&2
         ;;
@@ -432,6 +432,23 @@ if [ "$branch_strategy" = "separate_branch" ] && [ -d .rite/wiki-worktree/.rite/
     echo "✅ pages/.gitkeep はすべて存在します (migration 不要)"
   fi
 fi
+```
+
+上の commit helper が `rc=6` (`reason=sandbox-mask`) を返した場合に限り、実行エージェントは以下の再試行専用 block を**別の Bash tool call**で `dangerouslyDisableSandbox: true` を付け、確認なしで1回だけ実行する。ステップ 3.5.1 全体は再実行しない。
+
+```bash
+plugin_root="{plugin_root}"
+commit_msg="chore(wiki): migrate pages/ directories with .gitkeep"
+retry_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --message "$commit_msg")
+retry_rc=$?
+echo "$retry_out"
+case "$retry_rc" in
+  0) echo "✅ pages/ migration committed to wiki branch" ;;
+  3) echo "WARNING: migration commit 内部で git 操作失敗 (retry rc=3)。git -C .rite/wiki-worktree status で状態を確認してください" >&2 ;;
+  4) echo "WARNING: migration commit landed locally but push failed (retry rc=4)" >&2 ;;
+  6) echo "WARNING: sandbox 無効化付き再実行でも migration commit しませんでした (retry rc=6, reason=sandbox-mask)。これ以上は再試行せず、stderr の管理ディレクトリの権限・容量を確認する" >&2 ;;
+  *) echo "WARNING: pages/ migration commit retry failed (rc=$retry_rc)" >&2 ;;
+esac
 ```
 
 ## ステップ 4: 完了レポート
