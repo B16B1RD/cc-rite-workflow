@@ -510,8 +510,9 @@ okf_version: "0.2"
 | [手順の再実行列は通常経路の強制層を飛ばさず、再実行の範囲と初回判断の保持を同じ文で書く](pages/patterns/rerun-sequence-states-scope-and-preserved-decisions.md) | patterns | やり直しで再実行する工程の列を散文で書くと、通常経路が通る検査工程が抜けて後段の検査が古い入力に当たったり、足した工程が初回に決着した判断まで作り直したりする。列は通常経路の順序に揃え、再実行の対象と保持する判断を同じ文で書き、順序の前提は helper 側で検査して機械的に失敗させる。 | 2026-09-15T03:40:00Z | medium |
 | [置換で作った fixture は置換後の行の実在を確かめてから判定し、marker は完全一致で照合する](pages/patterns/substituted-fixture-verify-line-exists-and-exact-marker-match.md) | patterns | 正常形の fixture を置換して異常形を作るテストは、置換が外れると正常形と同じ入力になり、同じ結果で合格する。marker を部分一致で照合すると空値でも一致する。置換後に対象行があることを grep -Fxq で確かめ、marker は行全体の完全一致で照合し、置換は bash のパラメータ展開で行う。 | 2026-09-15T03:40:00Z | high |
 | [判定表を 1 箇所へ寄せるときは、削除側の skip 条件が後続サイクル前提で書かれていないかを確認する](pages/heuristics/consolidate-decision-table-check-skip-assumption.md) | heuristics | 手順書で重複した判定表を 1 つに寄せると、残す側の表に新しい停止経路が加わる。削除側に付随していた「この結果では後段を skip する」条件をそのまま新経路へ広げると、その条件が「後でもう一度その段に来る」前提で書かれていた場合、終端の停止経路では後段が一度も実行されず、処分すべき候補が消える。 | 2026-09-15T06:32:02Z | medium |
+| [テストの歴史的ピン行は番号を残し行末へ drift-check-ignore を付ける](pages/patterns/historical-pin-line-keeps-number-and-attaches-drift-check-ignore.md) | patterns | 番号参照検査はテスト内の歴史的番号ピンも検出する。ピン契約は文字列の完全一致なので番号を消すと検査は通るがピンが壊れる。行末コメントとして drift-check-ignore を付け、照合対象の文字列値は変えない。 | 2026-09-15T10:36:56Z | high |
 ## 統計
 
-- 総ページ数: 500
-- ドメイン別: patterns=114, heuristics=223, anti-patterns=163
-- 最終更新: 2026-09-15T10:00:00Z
+- 総ページ数: 501
+- ドメイン別: patterns=115, heuristics=223, anti-patterns=163
+- 最終更新: 2026-09-15T10:36:56Z
