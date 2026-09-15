@@ -4,11 +4,12 @@ title: "ユーザーにコピー実行させるコマンドをパスへ手書き
 domain: "anti-patterns"
 description: "WARNING に載せる手動復旧コマンドを rm -f '$path' のように手書きの単一引用符で組むと、パスにアポストロフィを含む環境で引用が閉じず、2 個含むと引数が分割されて無関係なパスが削除対象になる。表示用の無害化とは別に、実行用の文字列は printf %q で引用して作る。"
 created: "2026-09-14T01:40:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-15T10:00:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-15T12:50:00Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-14T03:36:26Z" }
   - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-15T09:05:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-15T10:00:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-15T12:50:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260914T010341Z-pr-2795.md"
@@ -18,6 +19,8 @@ sources:
     resource: "raw/reviews/20260915T084547Z-pr-2847.md"
   - type: "reviews"
     resource: "raw/reviews/20260915T094506Z-pr-2853.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260915T123233Z-pr-2867.md"
 tags: ["shell-quoting", "diagnostic-message", "manual-recovery"]
 confidence: high
 ---
@@ -87,6 +90,16 @@ fixture に入れる値は、守りたい引用方式を他の方式と区別で
 
 復元系の assert を足すときは、前段の手順を実行した直後に対象を取り除いて不在を確かめる negative control を挟み、そのあとで確かめたい手順を実行して内容一致を見る。negative control を置けないなら、その assert は復元を固定していないので、テスト名やコメントで復元を名乗らない。
 
+### 特殊文字を入れられない値では、語の分割ではなく行全体を比べる
+
+語の分割 assert が手書き引用への退行を検出できるのは、値にアポストロフィなどを入れられる箇所だけである。固定の相対パスや slug 化されたファイル名のように安全な文字しか入らない値では、`%q` は引用符を付けず、手書きの `'...'` も `eval` 後は同じ 1 語に戻る。語数も各語も一致するので、分割を比べるテストは退行しても green のままになる。
+
+こうした箇所では、案内の行を期待値と完全一致で比べる。`%q` の出力には `'` が現れず、手書き引用に戻すと `'` が増えるので、行全体の比較なら差が出る。レビューでは 2 名のレビュアーが、この種の箇所だけ手書き引用への変異が生き残ることを独立に指摘した。
+
+### 共有 assert helper を独自カウンタのスイートへ持ち込まない
+
+独自の pass/fail カウンタで終了コードを決めるテストスイートに、共有の assert helper を source すると、helper の FAIL は helper 側のカウンタに数えられ、スイートの終了コードに反映されない。失敗が出てもスイートは成功で終わる。そうしたスイートでは分割と比較をファイル内で行い、スイート自身のカウンタで判定する。分割のロジックが複数箇所に複製されるのは、この判定経路を守るための代償として受け入れる。
+
 ## 関連ページ
 
 - [二重引用符と -- は argv 分割にしか効かず、展開はパース時に終わっている](./quotes-do-not-stop-expansion.md)
@@ -99,3 +112,4 @@ fixture に入れる値は、守りたい引用方式を他の方式と区別で
 - [引用修正と検出力テストを確認したレビュー結果](../../raw/reviews/20260914T025734Z-pr-2798.md)
 - [まとめて %q 化した案内の検出網の穴を指摘したレビュー結果](../../raw/reviews/20260915T084547Z-pr-2847.md)
 - [引用の無い復旧案内を %q 化し、復元 assert の空振りを指摘したレビュー結果](../../raw/reviews/20260915T094506Z-pr-2853.md)
+- [安全な文字だけの値で分割 assert が退行を見逃すことを指摘したレビュー結果](../../raw/reviews/20260915T123233Z-pr-2867.md)
