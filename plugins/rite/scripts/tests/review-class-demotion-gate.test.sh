@@ -731,6 +731,35 @@ if grep -q 'measured_undetermined' <<<"$stop_row" && grep -q '\[review:error\]' 
 else
   fail "measured error missing from stop row: $stop_row"
 fi
+if grep -q 'acceptance_criteria_invalid' <<<"$stop_row" && ! grep -q 'acceptance_criteria_invalid' <<<"$retry_row"; then
+  pass "acceptance_criteria_invalid routed to review:error, not map retry"
+else
+  fail "acceptance_criteria_invalid routing drift: stop=$stop_row"
+fi
+ac_key_row=$(grep -F '`acceptance_criteria` を常に書く' "$pr_review_skill" | head -1)
+reviewers_row=$(grep -F '`reviewers[]` = 本 cycle' "$pr_review_skill" | head -1)
+if grep -qF '読むだけで書き換えない' <<<"$ac_key_row" && ! grep -qF '本キーに触れない' <<<"$ac_key_row" \
+   && grep -qF '本キーに触れない' <<<"$reviewers_row"; then
+  pass "acceptance_criteria is read by the gate helper; reviewers stays untouched"
+else
+  fail "helper key-touch wording drift"
+fi
+class_section=$(awk '/^#### 5\.3\.0\.C 帰結クラス降格政策実行手順/{s=1; print; next} s && /^#### /{exit} s' "$pr_review_skill")
+suffix_literal='; warning=ac_unmet_finding_missing; rows='
+if [ "$(grep -cF '合意済み AC の実測済み未充足' <<<"$class_section")" -ge 2 ] \
+   && grep -qF '既存記述の削除/弱体化が観測できるなら `exclusion` を省略してはならない' <<<"$class_section" \
+   && grep -qF '成功 marker 末尾の warning suffix (下記) は行の一致判定に含めない' <<<"$class_section" \
+   && grep -qF "$suffix_literal" <<<"$class_section"; then
+  pass "5.3.0.C documents the acceptance exclusion and marker suffix"
+else
+  fail "5.3.0.C acceptance exclusion or suffix wording missing"
+fi
+if grep -qF "gate_warning=\"$suffix_literal" "$TARGET" \
+   && grep -F -- '- **ステップ 5.3.0.C** は' "$pr_review_skill" | grep -qF "$suffix_literal"; then
+  pass "documented suffix matches helper output"
+else
+  fail "documented suffix diverges from helper output"
+fi
 
 repo_root=$(cd "$PLUGIN_ROOT/../.." && pwd)
 old_phrase_one="blocking のまま"'残した形'
