@@ -788,7 +788,9 @@ fi
 #      `.rite/wiki-worktree` などの非 issue worktree 名前空間
 #      とは交差しない)
 #   2. claim liveness (S3) が live でない (issue-claim.sh check が stale、または
-#      claim 不在 free のとき mtime > 24h の age guard を再利用)。例外 (Issue
+#      claim 不在 free のとき mtime > 24h の age guard を再利用)。check 自体が
+#      失敗 (rc≠0、session identity 解決不可など) したら claim 状態不明として
+#      WARNING + skip する (claim 不在と同一視しない)。例外 (Issue
 #): checkout 中 branch が reap manifest に記録済み (= cleanup.md が
 #      PR merged を確認して記録した deferred worktree) なら age guard をバイパス
 #      して即 reap する — ハーネスの .claude/.cc-writes churn が root mtime を
@@ -1219,7 +1221,16 @@ if [ -d "$session_wt_root" ]; then
     fi
 
     # Gate 2: claim liveness. issue-claim.sh resolves its own session_id.
-    claim_state=$(bash "$SCRIPT_DIR/../issue-claim.sh" check --issue "$issue_num" 2>/dev/null) || claim_state=""
+    # A non-zero `check` (e.g. the session identity cannot be resolved) means
+    # the claim state is unknown, not absent: keep its stderr visible and skip,
+    # so neither the free arm's age guard nor its manifest bypass can reap
+    # without a liveness verdict.
+    _claim_rc=0
+    claim_state=$(bash "$SCRIPT_DIR/../issue-claim.sh" check --issue "$issue_num") || _claim_rc=$?
+    if [ "$_claim_rc" -ne 0 ]; then
+      echo "WARNING: session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' の claim 状態を判定できません (issue-claim.sh check rc=$_claim_rc) — 安全側で reap をスキップします" >&2
+      continue
+    fi
     case "$claim_state" in
       other|own)
         # A live session holds the claim — leave the worktree intact. A corpse
@@ -1235,7 +1246,7 @@ if [ -d "$session_wt_root" ]; then
       stale)
         : # holder is not live → reapable
         ;;
-      free|"")
+      free)
         # No claim recorded → conservative mtime age guard (24h) so an in-flight
         # worktree that simply has not written a claim yet is not reaped. A fresh
         # corpse is excluded from this silent continue: cleanup
