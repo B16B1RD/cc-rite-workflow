@@ -44,7 +44,7 @@ okf_version: "0.2"
 | [Observed Likelihood Gate — evidence anchor 未提示は推奨事項に降格](pages/heuristics/observed-likelihood-gate-with-evidence-anchors.md) | heuristics | reviewer が finding を HIGH/MEDIUM/LOW で提出する際、Likelihood-Evidence anchor（tool=Read/Grep, path=..., line=... の形式）を伴わない場合は自動的に「推奨事項」に降格させる gate を適用する。 | 2026-08-10T05:20:00+09:00 | high |
 | [_SCRIPT_DIR canonicalize: cd 前に BASH_SOURCE を絶対 path 化する](pages/patterns/script-dir-canonicalize-before-cd.md) | patterns | shell script が `cd "$repo_root"` を実行した後に `$(dirname "$0")` や `$(dirname "${BASH_SOURCE[0]}")` で sibling ライブラリを `source` すると、相対 path で invoke された場合に source path が `./scripts/lib/...` として壊れた状態で解釈される。 | 2026-04-17T00:00:00+00:00 | high |
 | [Bash lib helper の contract は実装と同じ rigour で保証する](pages/patterns/bash-lib-helper-contract-rigour.md) | patterns | shared bash lib の docstring に「caller owns shell options」「caller's outer trap is restored」と書くなら、実装側で `set -e` 強制 / `trap - EXIT ...` 消去をしてはいけない。 | 2026-04-17T00:00:00+00:00 | high |
-| [AC anchor / prose / コード emit 順は drift 検出 lint で 3 者同期する](pages/patterns/drift-check-anchor-prose-code-sync.md) | patterns | doc に書かれた AC anchor / reasons table / Eval-order enumeration と、bash 実装の emit 順は 3 者対等な契約であり、いずれかのドリフトを検出する pre-commit lint (`distributed-fix-drift-check.sh` Pattern-2 / Pattern-5) で機械的に整合性を保証する。 | 2026-05-03T18:46:59Z | high |
+| [AC anchor / prose / コード emit 順は drift 検出 lint で 3 者同期する](pages/patterns/drift-check-anchor-prose-code-sync.md) | patterns | doc に書かれた AC anchor / reasons table / Eval-order enumeration と、bash 実装の emit 順は 3 者対等な契約であり、いずれかのドリフトを検出する pre-commit lint (`distributed-fix-drift-check.sh` Pattern-2 / Pattern-5) で機械的に整合性を保証する。 | 2026-09-15T05:29:08Z | high |
 | [cwd破損下の成否検証は非空性とexit codeの両方をチェックする（文字列等値比較だけでは偽陽性を防げない）](pages/patterns/cwd-corruption-success-check-exit-code-and-nonempty.md) | patterns | `[ "$(cmd_a)" = "$(cmd_b)" ]` のような command substitution の等値比較は、両コマンドが cwd 破損等で失敗し共に空文字列を返した場合でも `true` と評価される。 | 2026-09-06T16:10:23Z | high |
 | [散文で宣言した設計は対応する実装契約がなければ機能しない](pages/anti-patterns/prose-design-without-backing-implementation.md) | anti-patterns | 設計意図を散文で記述しつつ、それを機能させる実装 / 契約 / consumer が存在しない状態を「Prose-only design」と呼ぶ。 | 2026-08-13T19:20:00+09:00 | high |
 | [cross-platform bash コマンドは fallback chain で portable 化する](pages/patterns/bash-portable-command-fallback.md) | patterns | Linux coreutils と macOS BSD userland でコマンド可用性が異なる bash ユーティリティ (sha1sum / readlink -f / date -Iseconds 等) は、`command -v` による存在確認を連鎖させた fallback chain で portable 化する。 | 2026-04-19T01:10:00+00:00 | high |
@@ -513,4 +513,4 @@ okf_version: "0.2"
 
 - 総ページ数: 499
 - ドメイン別: patterns=114, heuristics=222, anti-patterns=163
-- 最終更新: 2026-09-15T04:40:00Z
+- 最終更新: 2026-09-15T05:29:08Z
