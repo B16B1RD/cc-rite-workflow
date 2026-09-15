@@ -9,7 +9,8 @@
 #   T-01 → TC-1 + TC-8   agent 定義と mandatory 追加の配線 / チェーン後の JSON に reviewers と 3 行の acceptance_criteria
 #   T-02 → TC-8 + TC-9   全充足 JSON で final が unverified 空・verdict mergeable / 5.4 と両テンプレートの受入条件確認 section
 #   T-03 → TC-8          アンカー付き未充足が gate 後も findings[] に残り verdict fix-needed、行は unmet + finding_id
-#   T-04 → TC-5          8.0 / 8.1 の停止行が同一条件文言で並び、8.1 は mergeable 行より前、8.0 の停止 set は handoff なし
+#   T-04 → TC-5          8.0 / 8.1 の停止行が同一条件文言で並び、8.1 は mergeable 行より前、8.0 の停止 set は handoff なし /
+#                        6.5.1 は独自の判定表を持たず 8.1 を参照し、standalone の未検証分岐は Merge OK より前
 #   T-05 → TC-6          iterate が行頭 marker で再試行を skip し、既存の再試行文言は残る
 #   T-06 → TC-3          5.1.0.AC が 5.1.0.L と 5.1.1 の間にあり、reroll 1 回 → [review:error]
 #   T-07 → TC-4 + TC-8   5.3.0.A が 5.3.0.C の後・5.3.8 の前、unverified への書き換え禁止 / アンカー欠落は final が rc=1
@@ -86,6 +87,7 @@ pin "pr-review: subagent mapping" "$PR_REVIEW" '| `acceptance` | `rite:acceptanc
 pin "pr-review: acceptance には差分 mandate の代わりに受入条件 mandate" "$PR_REVIEW" '**`reviewer_type == acceptance`** のときは `REVIEW_CYCLE_SCOPE` に依らず本文を注入せず'
 pin "pr-review: acceptance の relevant_files は PR 全体" "$PR_REVIEW" '**`acceptance`** は Activation パターンと `REVIEW_CYCLE_SCOPE` に依らずステップ 1.2.3 の PR 全体の変更ファイルを渡す'
 pin "pr-review: acceptance に 4.5.1 を注入しない" "$PR_REVIEW" '**`acceptance`** には `review_mode` に依らず本節のテンプレートを注入しない'
+pin "pr-review: acceptance には軽量レーン mandate を注入しない" "$PR_REVIEW" '**`reviewer_type == acceptance`** のときは `COMPLEXITY_LANE` に依らず空文字列（セクションごと省略）とする'
 pin "generator: 受入条件確認の mandate 節" "$GENERATOR" "## 受入条件確認の mandate"
 pin "generator: 全 AC を毎 cycle 再確認" "$GENERATOR" "**全 AC を毎 cycle 再確認する**"
 pin "generator: 未変更部の再監査制限を適用しない" "$GENERATOR" "**未変更部の再監査制限を適用しない**"
@@ -113,17 +115,24 @@ run_131() {
   } > "$TMP_ROOT/bin/gh"
   chmod +x "$TMP_ROOT/bin/gh"
   sed -e "s|{plugin_root}|$PLUGIN_ROOT|g" -e 's|{issue_number}|1|g' -e 's|{owner_repo}|o/r|g' "$block_131" > "$script"
+  rm -f "$TMP_ROOT"/rite-review-issue-body-*
   RUN_OUT=$(PATH="$TMP_ROOT/bin:$PATH" TMPDIR="$TMP_ROOT" bash "$script" 2>&1)
   RUN_RC=$?
 }
+# 1.3.1 の mktemp が TMPDIR 直下に残した本文ファイルの件数
+body_tmp_count() { find "$TMP_ROOT" -maxdepth 1 -name 'rite-review-issue-body-*' | wc -l | tr -d ' '; }
 run_131 ""
 if [ "$RUN_RC" -ne 0 ] && grep -q '^\[review:error\]$' <<<"$RUN_OUT"; then pass "1.3.1 実行: gh 失敗で [review:error]"; else fail "1.3.1 実行: gh 失敗 (rc=$RUN_RC out=$RUN_OUT)"; fi
+assert "1.3.1 実行: gh 失敗で一時ファイルを残さない" "0" "$(body_tmp_count)"
 printf '## 5. Acceptance Criteria\n\n- 小見出しなし\n' > "$TMP_ROOT/body-noids.md"
 run_131 "$TMP_ROOT/body-noids.md"
 if [ "$RUN_RC" -ne 0 ] && grep -q 'reason=no_ac_ids' <<<"$RUN_OUT" && grep -q '^\[review:error\]$' <<<"$RUN_OUT"; then pass "1.3.1 実行: AC 節ありで 0 件は [review:error]"; else fail "1.3.1 実行: 0 件 (rc=$RUN_RC out=$RUN_OUT)"; fi
+assert "1.3.1 実行: 0 件の停止で一時ファイルを残さない" "0" "$(body_tmp_count)"
 printf '## 5. Acceptance Criteria\n\n### AC-1: a\n\n### AC-2: b\n' > "$TMP_ROOT/body-target.md"
 run_131 "$TMP_ROOT/body-target.md"
 if [ "$RUN_RC" -eq 0 ] && grep -qF '[CONTEXT] ACCEPTANCE_SCOPE=target; ids=AC-1,AC-2' <<<"$RUN_OUT"; then pass "1.3.1 実行: 対象 Issue は target と AC 集合"; else fail "1.3.1 実行: target (rc=$RUN_RC out=$RUN_OUT)"; fi
+# 陽性対照: 抽出成功時は後段が削除するまで残るため、件数の glob が実際の mktemp 名に一致することを示す
+assert "1.3.1 実行: 抽出成功時は一時ファイルが残る (glob の陽性対照)" "1" "$(body_tmp_count)"
 printf '## 概要\n\n本文のみ\n' > "$TMP_ROOT/body-none.md"
 run_131 "$TMP_ROOT/body-none.md"
 if [ "$RUN_RC" -eq 0 ] && grep -qF 'ACCEPTANCE_SCOPE=skipped; reason=no_ac_section' <<<"$RUN_OUT" && ! grep -q 'review:error' <<<"$RUN_OUT"; then pass "1.3.1 実行: AC 節なしは skipped で続行"; else fail "1.3.1 実行: skipped (rc=$RUN_RC out=$RUN_OUT)"; fi
@@ -160,6 +169,7 @@ pin "2.2: prev_finders の acceptance は合流させない" "$PR_REVIEW" '`{pre
 pin "3.2.2: 既に acceptance があれば追加しない" "$PR_REVIEW" '`{selected_reviewers}` に既に `acceptance` があれば追加しない'
 pin "5.3.0.A: unverified への書き換え禁止" "$PR_REVIEW" '`acceptance_criteria[].status` を `unverified` に書き換えて通してはならない'
 pin "5.3.0.A: reroll 後は降格ゲートを通してから再検査" "$PR_REVIEW" '5.1 の回収完了ゲート → 5.1.0.L → 5.1.0.AC → 5.1.2.A → 5.2 → 5.2.1 → Fact-Checking → 5.3.0 → 5.3.0.M step 1 → step 2 → step 3 → 5.3.0.C → 本検査を同 cycle 内で再実行する'
+pin "5.3.0.A: reroll の再実行は置き換わった acceptance の finding に限る" "$PR_REVIEW" '再実行する 5.2 / 5.2.1 / Fact-Checking の対象は reroll で置き換わった acceptance の finding（既存 finding との矛盾検出を含む）とし、他 reviewer の finding、初回に決まった矛盾の disposition、fact-check 判定は保持する'
 pin "5.3.0.M step 1: acceptance_criteria を常に書く" "$PR_REVIEW" '- **`acceptance_criteria` を常に書く**'
 
 echo ""
@@ -176,6 +186,18 @@ if grep -q 'flow-state.sh set' <<<"$stop_set" && ! grep -q -- '--handoff' <<<"$s
 else
   fail "8.0: 停止の flow-state set (block=$stop_set)"
 fi
+# 6.5.1 は 8.1 の出力表を参照するだけで、停止行を迂回する独自の判定表を持たない
+block_651=$(awk '/^#### 6\.5\.1 Next Step Branching by Invocation Source$/{s=1} /^## ステップ 7: /{s=0} s' "$PR_REVIEW")
+if [ -n "$block_651" ] && ! grep -q '^| \*\*Merge OK\*\*' <<<"$block_651" && ! grep -q '^|.*total_findings == 0' <<<"$block_651"; then
+  pass "6.5.1: 独自の判定表を持たない"
+else
+  fail "6.5.1: 判定表の行が残っている、または節を切り出せない"
+fi
+pin "6.5.1: 8.1 の出力表を上から評価する" "$PR_REVIEW" 'ステップ 8.1 の出力表を上から順に評価し、最初に一致した行の pattern を出す'
+pin "6.5.1: ステップ 7 は受入条件未検証の停止で skip" "$PR_REVIEW" '受入条件未検証の停止を含む `[review:error]` では ステップ 7 を skip する'
+in_order "6.5.1: standalone の受入条件未検証分岐は Merge OK 分岐より前" \
+  "$(line_of "$PR_REVIEW" '**受入条件未検証**（ステップ 8.1 の受入条件未検証行に一致）')" \
+  "$(line_of "$PR_REVIEW" '**Merge OK**: Ready for review（推奨）')"
 pin "8.0: 2 variant だけが handoff を付ける" "$PR_REVIEW" 'mergeable / fix-needed の 2 variant は `--handoff` を付け、受入条件未検証の停止行は付けない'
 pin "stop-loop contract: 受入条件未検証は handoff を持たない" "$STOP_CONTRACT" '**受入条件未検証の `[review:error]`（`REVIEW_STOP=ac_unverified`）も handoff を持たない**'
 
@@ -290,6 +312,10 @@ pin "schema: skip 形" "$SCHEMA" '`{"skipped": "no_issue"}`（関連 Issue を�
 pin "5.4: 受入条件確認の情報源と例外 7" "$PR_REVIEW" '**`### 受入条件確認` の情報源**: ゲート適用済 JSON の `acceptance_criteria` を Read して描画する'
 pin "E2E: 例外 7" "$PR_REVIEW" '**例外 7: ステップ 5.4 の `### 受入条件確認` section は E2E でも省略禁止**'
 assert "templates: full / verification の両方に受入条件確認" "2" "$(grep -c '^### 受入条件確認$' "$TEMPLATES")"
+assert "templates: 両方の判定表で finding_id を根拠列に書く" "2" "$(grep -cF '| {ac_id} | 充足 / 未充足 / 未検証 | {evidence}（未充足行は {finding_id} を併記） |' "$TEMPLATES")"
+assert "templates: 判定列に finding_id を書く旧形式が無い" "0" "$(grep -cF '未充足（{finding_id}）' "$TEMPLATES")"
+pin "SPEC: Current Agents 表に acceptance-reviewer" "$REPO_ROOT/docs/SPEC.md" '| `acceptance-reviewer` | inherit | high |'
+pin "SPEC: pr-review の並列 spawn 図に acceptance-reviewer" "$REPO_ROOT/docs/SPEC.md" ' └─ acceptance-reviewer:'
 pin "CLAUDE.md: reviewer 数" "$REPO_ROOT/CLAUDE.md" "+ 10 reviewer agent"
 pin "SPEC: agents 一覧" "$REPO_ROOT/docs/SPEC.md" "│ ├── acceptance-reviewer.md"
 pin "CONFIGURATION: Available reviewers 表" "$REPO_ROOT/docs/CONFIGURATION.md" '| `acceptance-reviewer` |'

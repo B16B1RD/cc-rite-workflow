@@ -98,7 +98,7 @@ flow-state は complexity フィールドを持たず、Projects の Complexity 
 
 ## Reviewer mandate（軽量レーン適用時に注入する本文）
 
-`COMPLEXITY_LANE == light` のとき、[reviewer-prompt-generator.md](./reviewer-prompt-generator.md) の `{complexity_lane_mandate}` へ本節の以下の本文を抽出して注入する（`{cycle_scope_mandate}` / `{doc_heavy_mode_instructions}` と同じ conditional 抽出方式）。`full` のときは**空文字列とし、セクションごと省略する** — 空見出しだけが残ると M+ の prompt が変化し、M+ の挙動を変えないという契約に反する。
+`COMPLEXITY_LANE == light` のとき、[reviewer-prompt-generator.md](./reviewer-prompt-generator.md) の `{complexity_lane_mandate}` へ本節の以下の本文を抽出して注入する（`{cycle_scope_mandate}` / `{doc_heavy_mode_instructions}` と同じ conditional 抽出方式）。`full` のときは**空文字列とし、セクションごと省略する** — 空見出しだけが残ると M+ の prompt が変化し、M+ の挙動を変えないという契約に反する。`reviewer_type == acceptance` のときは `COMPLEXITY_LANE` に依らず空文字列とする。
 
 ```
 このレビューは **XS/S 軽量レーン**で実行します。関連 Issue の宣言 Complexity が `{complexity}` のため、儀式コストを変更規模に比例させます。以下の 4 点を mandate として守ってください。
