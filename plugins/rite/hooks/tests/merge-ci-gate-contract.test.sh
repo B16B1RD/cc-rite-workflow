@@ -11,6 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_test-helpers.sh"
 
 MERGE="$SCRIPT_DIR/../../skills/merge/SKILL.md"
+READY="$SCRIPT_DIR/../../skills/ready/SKILL.md"
 CLASSIFIER="$SCRIPT_DIR/../scripts/pr-checks-classify.sh"
 PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 
@@ -44,6 +45,56 @@ assert_grep "unknown cannot use force override" "$MERGE" '`--force-ci` でも un
 assert_grep "classification failure is surfaced" "$MERGE" '分類不能.*原因を表示'
 assert_grep "classification failure is fail closed" "$MERGE" '`force_ci == false` では必ず `\[merge:not-ready\]` へ倒す'
 assert_grep "explicit force-ci override is documented" "$MERGE" '/rite:merge --force-ci \{pr_number\}'
+
+echo "=== reviewed-head and acceptance gate routing ==="
+assert_grep "merge inspect uses reviewed-head helper" "$MERGE" \
+  'ready-reviewed-head-gate.sh.*\\'
+assert_grep "merge captures acceptance state" "$MERGE" \
+  'reviewed_ac_state=\$\(printf.*REVIEWED_AC='
+assert_grep "merge captures unverified IDs for attestation" "$MERGE" \
+  'reviewed_ac_ids=.*ac='
+assert_grep "merge blocks unmet acceptance" "$MERGE" \
+  'reviewed_ac_state.*unmet'
+assert_grep "merge e2e detection reads flow phase" "$MERGE" \
+  'flow-state.sh" get --field phase'
+assert_grep "merge e2e detection reads active run queue" "$MERGE" \
+  'queue_active.*\.active // false'
+assert_grep "merge e2e detection compares cursor issue" "$MERGE" \
+  'queue_issue.*\.issues\[\.cursor // 0\]'
+assert_grep "merge batch/e2e unverified path does not ask" "$MERGE" \
+  'true` なら AskUserQuestion を挟まず `\[merge:not-ready\]`'
+assert_grep "merge standalone path attests selected IDs" "$MERGE" \
+  'attest "\$reviewed_ac_ids"'
+assert_grep "merge final gate enforces acceptance" "$MERGE" \
+  'plugin-root "\{plugin_root\}" --enforce-ac'
+assert_grep "force-ci cannot bypass acceptance gate" "$MERGE" \
+  '`--force-ci` は CI だけの override.*AC gate を迂回しない'
+enforce_line=$(grep -n -- '--enforce-ac' "$MERGE" | tail -1 | cut -d: -f1)
+merge_line=$(grep -n '^if gh pr merge ' "$MERGE" | head -1 | cut -d: -f1)
+if [ -n "$enforce_line" ] && [ -n "$merge_line" ] && [ "$enforce_line" -lt "$merge_line" ]; then
+  pass "acceptance enforce is ordered before gh pr merge"
+else
+  fail "acceptance enforce must precede gh pr merge (enforce=$enforce_line merge=$merge_line)"
+fi
+assert_grep "ready inspect uses reviewed-head helper" "$READY" \
+  'reviewed_gate_out=\$\(bash .*ready-reviewed-head-gate.sh'
+assert_grep "ready captures unverified IDs for attestation" "$READY" \
+  'reviewed_ac_ids=.*ac='
+assert_grep "ready standalone path attests selected IDs" "$READY" \
+  'attest "\$reviewed_ac_ids"'
+assert_grep "ready e2e unverified path stops without a question" "$READY" \
+  'in_e2e_flow=true.*質問せず.*\[ready:error\]'
+assert_grep "ready invalid AC states never reach attestation" "$READY" \
+  'unmet / missing / malformed.*standalone.*質問や attest に送らない'
+assert_grep "ready final gate enforces acceptance" "$READY" \
+  'plugin-root "\$plugin_root" --enforce-ac'
+ready_enforce_line=$(grep -n -- '--enforce-ac' "$READY" | tail -1 | cut -d: -f1)
+ready_call_line=$(grep -n '^gh pr ready ' "$READY" | head -1 | cut -d: -f1)
+if [ -n "$ready_enforce_line" ] && [ -n "$ready_call_line" ] && [ "$ready_enforce_line" -lt "$ready_call_line" ]; then
+  pass "ready acceptance enforce is ordered before gh pr ready"
+else
+  fail "ready acceptance enforce must precede gh pr ready (enforce=$ready_enforce_line ready=$ready_call_line)"
+fi
 
 echo "=== job classification facts ==="
 assert_grep "jobs API is the classification input" "$MERGE" 'actions/runs/\{run_id\}/jobs --paginate'

@@ -44,6 +44,7 @@ argument-hint: "[--force-ci] <pr_number>"
 | `{pr_number}` | 引数 `$1` |
 | `{branch_name}` | ステップ 1 の `gh pr view --json headRefName` から取得 |
 | `{owner_repo}` | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute |
+| `{reviewed_ac_ids}` | reviewed-head helper の `REVIEWED_AC=unverified; ac=` marker（カンマ区切り） |
 
 ---
 
@@ -105,6 +106,60 @@ if [ "$checks_state" = "pending" ] && [ "$force_ci" = "false" ]; then
 fi
 ```
 
+### ステップ 1.1: reviewed HEAD / 受入条件 inspect
+
+Ready 後に HEAD や review artifact が変わる可能性があるため、merge 自身も reviewed HEAD と受入条件を inspect する。unmet / missing / malformed は経路を問わず停止する。unverified は batch/e2e では質問なしで停止し、standalone だけ人間の確認と attest を許可する。
+
+```bash
+reviewed_gate_out=$(bash "{plugin_root}/hooks/scripts/ready-reviewed-head-gate.sh" \
+  --pr {pr_number} --plugin-root "{plugin_root}" 2>&1)
+reviewed_gate_rc=$?
+printf '%s\n' "$reviewed_gate_out" >&2
+reviewed_ac_state=$(printf '%s\n' "$reviewed_gate_out" | sed -n 's/^\[CONTEXT\] REVIEWED_AC=\([^;]*\);.*/\1/p' | tail -1)
+reviewed_ac_ids=$(printf '%s\n' "$reviewed_gate_out" | sed -n 's/^\[CONTEXT\] REVIEWED_AC=[^;]*; ac=\([^;]*\).*/\1/p' | tail -1)
+if [ "$reviewed_gate_rc" -ne 0 ] && [ "$reviewed_ac_state" != "unverified" ]; then
+  echo "[merge:not-ready]"
+  exit 1
+fi
+if [ "$reviewed_ac_state" = "unmet" ] || [ "$reviewed_ac_state" = "missing" ] || [ "$reviewed_ac_state" = "malformed" ]; then
+  echo "[merge:not-ready]"
+  exit 1
+fi
+```
+
+`reviewed_ac_state=unverified` の場合だけ、flow-state と自セッションの run-queue を照合する。state 読み取り失敗・欠損・別 Issue・停止済みキューは standalone へ fail-safe に倒す。
+
+```bash
+merge_in_e2e=false
+merge_phase=$(bash "{plugin_root}/hooks/flow-state.sh" get --field phase --default "" 2>/dev/null) || merge_phase=""
+merge_active=$(bash "{plugin_root}/hooks/flow-state.sh" get --field active --default "" 2>/dev/null) || merge_active=""
+merge_issue=$(bash "{plugin_root}/hooks/flow-state.sh" get --field issue_number --default "" 2>/dev/null) || merge_issue=""
+state_root=$(bash "{plugin_root}/hooks/state-path-resolve.sh" 2>/dev/null) || state_root=""
+fs_path=$(bash "{plugin_root}/hooks/flow-state.sh" path 2>/dev/null) || fs_path=""
+session_id=$(basename "$fs_path" .flow-state 2>/dev/null) || session_id=""
+queue_file="$state_root/.rite/state/run-queue-$session_id.json"
+queue_active=false
+queue_issue=""
+if [ -n "$state_root" ] && [ -n "$session_id" ] && [ -f "$queue_file" ] && jq -e . "$queue_file" >/dev/null 2>&1; then
+  queue_active=$(jq -r '.active // false' "$queue_file")
+  queue_issue=$(jq -r '.issues[.cursor // 0] // ""' "$queue_file")
+fi
+if [ "$merge_phase" = "ready" ] && [ "$merge_active" = "true" ] && [ "$queue_active" = "true" ] && [ -n "$merge_issue" ] && [ "$queue_issue" = "$merge_issue" ]; then
+  merge_in_e2e=true
+fi
+echo "merge_in_e2e=$merge_in_e2e"
+```
+
+LLM は `merge_in_e2e=` を読む。`true` なら AskUserQuestion を挟まず `[merge:not-ready]` で caller に戻す。`false` の standalone なら未検証 ID `{reviewed_ac_ids}` を列挙し、「人間として全件確認済みに attest する / キャンセル」を AskUserQuestion で確認する。承認された場合だけ次を実行する:
+
+```bash
+bash "{plugin_root}/hooks/scripts/ready-reviewed-head-gate.sh" \
+  --pr {pr_number} --plugin-root "{plugin_root}" \
+  --attest "$reviewed_ac_ids" || { echo "[merge:not-ready]"; exit 1; }
+```
+
+個別に確認できない ID があればキャンセルし、attest を作らない。attest 後もステップ 2 直前の `--enforce-ac` は省略しない。
+
 `headRefName` の値は完了通知 (ステップ 3) の `{branch_name}` 展開に使うため retain する (flow-state 不在でもブランチ名が空にならない)。
 
 | 状態 | アクション |
@@ -145,7 +200,14 @@ run ID を解決できない、または `gh api .../jobs` が 1 件でも失敗
 
 ## ステップ 2: マージ実行
 
+`gh pr merge` の直前に AC enforce を再実行する。`--force-ci` は CI だけの override であり、reviewed HEAD / AC gate を迂回しない。
+
 ```bash
+# inspect 後の差し替えを防ぐ最終 gate。unverified / unmet / missing / malformed はすべて停止する。
+bash "{plugin_root}/hooks/scripts/ready-reviewed-head-gate.sh" \
+  --pr {pr_number} --plugin-root "{plugin_root}" --enforce-ac \
+  || { echo "[merge:not-ready]"; exit 1; }
+
 # canonical signal-specific trap pattern (../../references/bash-trap-patterns.md 参照、fix スキル ステップ 2.4 と対称)
 gh_err=""
 _rite_merge_cleanup() {

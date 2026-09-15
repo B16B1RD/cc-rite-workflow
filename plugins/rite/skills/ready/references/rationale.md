@@ -32,6 +32,13 @@ ready を通過できなかった。受理するのは done-file 2 行目が指�
 SHA == HEAD のときだけ `via=sweep`。2 行目不正は既存判定へ縮退せず fail-loud。
 1 行のみ / ファイル不在は mismatch 文言を変えない。
 
+この reviewed-head override は HEAD 照合だけに対する既存の非常口であり、AC 判定を変更する
+仕組みではない。AC の attest は `unverified` 行に人間の実環境確認を記録する操作に限定し、
+`unmet` / `satisfied` / 既に `human-verified` の行は書き換えない。enforce は全行が
+`satisfied` または現在の review JSON の `commit_sha` と同じ `head` を持つ
+`human-verified` であることを機械的に確認する。この境界により、未充足を override で通す経路を
+作らず、修正または AC 訂正後の再レビューを解消手段として維持する。
+
 ## bang-backtick-hard-gate
 
 lint の bang-backtick は warning（`[lint:success]` を保つ）。本ゲートは同じパターンで Ready 遷移を
