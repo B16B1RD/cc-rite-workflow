@@ -209,7 +209,7 @@
 | `status` | **enum** (string) | ✅ | 対応状態。**受理値**: `"open"` / `"fixed"` / `"replied"` / `"deferred"` / `"acknowledged"` の **5 値**。現行実装では `/rite:pr-review` ステップ 6.1.a は常に `"open"` を出力する (将来の state machine 拡張で `/rite:fix` 完了時に `"fixed"` / `"acknowledged"` 等を書き戻す slot を予約)。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=status_unknown_value; value=<val>` を stderr 出力する |
 | `consequence_class` | **enum** (string) | (任意、1.1.0+) | 帰結クラス降格政策 (§5.3.0.C) の分類結果。**受理値**: `"A"` / `"B"` の 2 値。**書き手は `scripts/review-class-demotion-gate.sh` のみ** — classification map から算出して無条件に上書きするため、ステップ 5.3.0.M step 1 の Claude が書いても helper の算出結果で必ず置き換わる (分類入力にはならない — 迂回防止)。gated finding の `verification.measured` が boolean でない場合は `measured_undetermined` で書き換え前に停止し、本キーを付与しない。**キー欠落** = (a) `scope == "nit-noted"` の finding (本ゲート対象外のため降格発動 cycle でも付かない — nit が 1 件でもある cycle で常態)、(b) blocking 0 件で no-op になった cycle、(c) ゲート導入前の JSON、(d) 5.3.0.M の実測必須ゲートで `non_blocking_findings[]` へ降格した要素 (本ゲートは `findings[]` のみを走査するため)、(e) `measured_undetermined` で入力 JSON が byte-identical に保たれた失敗。audit-only で判定 consumer は無視する |
 | `consequence_scenario` | string | (任意、1.1.0+) | 分類の判定文。class A は「放置時にどの操作で何が壊れるか」の実行時シナリオ 1 行、class B は「実行時シナリオを書けない」ことの認定文。`consequence_class` と同時に helper が書く (判定不能で class A に倒した finding は `consequence_class: "A"` のみで本キーは欠落する) |
-| `consequence_exclusion` | string | (任意、1.1.0+) | 帰結クラス降格の除外判定文。**書き手は `scripts/review-class-demotion-gate.sh` のみ**。classification map の `exclusion` (非空文字列) を写す。map に exclusion が無い class B で、`acceptance_criteria[]` の `unmet` 行が本 finding を `finding_id` で指すときは `ac_unmet:AC-N` (複数行は行順に `ac_unmet:AC-1,AC-2`) を書く。本キーがある class B は A=0 でも `non_blocking_findings[]` へ移送されない。判定不能 / class A / 除外なし class B ではキーごと欠落する。`measured_undetermined` は書き換え前に停止するため既存キーも含め入力を変更しない |
+| `consequence_exclusion` | string | (任意、1.1.0+) | 帰結クラス降格の除外判定文。**書き手は `scripts/review-class-demotion-gate.sh` のみ**。classification map の `exclusion` (非空文字列) を写す。map に exclusion が無い class B で、`acceptance_criteria[]` の `unmet` 行が本 finding を `finding_id` で指すときは `ac_unmet:AC-N` (複数行は行順に `ac_unmet:AC-N,AC-M`。ここで N / M は正整数のメタ変数) を書く。本キーがある class B は A=0 でも `non_blocking_findings[]` へ移送されない。判定不能 / class A / 除外なし class B ではキーごと欠落する。`measured_undetermined` は書き換え前に停止するため既存キーも含め入力を変更しない |
 
 ### `verdict` と `reviewers`
 
@@ -266,11 +266,13 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 ```json
 "acceptance_criteria": [
-  {"id": "AC-1", "status": "satisfied", "finding_id": null, "evidence": "bash hooks/tests/foo.test.sh => PASS: 12 FAIL: 0"},
-  {"id": "AC-2", "status": "unmet", "finding_id": "F-01", "evidence": "指摘事項 [AC-2] を参照"},
-  {"id": "AC-3", "status": "human-verified", "finding_id": null, "evidence": "認証付きの実環境で人間が確認", "head": "abc1234", "at": "2026-04-11T13:20:00+09:00"}
+  {"id": "AC-N", "status": "satisfied", "finding_id": null, "evidence": "bash hooks/tests/foo.test.sh => PASS: 12 FAIL: 0"},
+  {"id": "AC-M", "status": "unmet", "finding_id": "F-01", "evidence": "対応する未充足の受入条件を参照"},
+  {"id": "AC-K", "status": "human-verified", "finding_id": null, "evidence": "認証付きの実環境で人間が確認", "head": "abc1234", "at": "2026-04-11T13:20:00+09:00"}
 ]
 ```
+
+この例の N / M / K はそれぞれ正整数のメタ変数であり、実データでは Issue に存在する数値 ID に置き換える。
 
 | フィールド | 型 | 説明 |
 |-----------|-----|------|
@@ -600,7 +602,7 @@ retained flag: `[CONTEXT] REVIEW_SOURCE_STALE=1; reason={explicit_file|local_fil
 
 | 条件 | 挙動 |
 |------|------|
-| `--post-comment` と `--no-post-comment` 同時指定 | エラーメッセージを表示して終了 (レビューもコメント投稿も実行しない — AC-8) |
+| `--post-comment` と `--no-post-comment` 同時指定 | エラーメッセージを表示して終了（レビューもコメント投稿も実行しない） |
 
 ## クリーンアップ
 
@@ -617,8 +619,8 @@ wildcard は PR 番号 prefix 固定とし、他 PR のファイルを誤って�
 
 ## 関連ファイル
 
-- `plugins/rite/skills/pr-review/SKILL.md` ステップ 6.1: JSON 生成と保存ロジック (AC-1 default stop / AC-2 opt-in posting / D-04 non-blocking contract)
-- `plugins/rite/skills/fix/SKILL.md` ステップ 1.2.0: ハイブリッド読取ロジック (AC-3/4 会話/ファイル優先 / AC-5 後方互換 / AC-6 対話式 fallback)
+- `plugins/rite/skills/pr-review/SKILL.md` ステップ 6.1: JSON 生成と保存ロジック（デフォルトは投稿せず、opt-in 時のみ non-blocking で投稿）
+- `plugins/rite/skills/fix/SKILL.md` ステップ 1.2.0: 会話とローカルファイルを優先し、旧形式と対話式 fallback を保つハイブリッド読取ロジック
 - `plugins/rite/skills/cleanup/SKILL.md` ステップ 6: 自動削除/退避ロジック (レビュー結果ファイルは `non_blocking_findings[]` 非空 / 判定不能なら `archive/` へ退避、それ以外の state file は無条件削除)。レビュー結果ファイルの reason 語彙は `hooks/scripts/review-results-archive-or-rm.sh` の docstring、それ以外の failure reason と eval-order enumeration は `hooks/scripts/cleanup-pr-state-purge.sh` 側を単一源とする (ステップ 6 が持つのは helper 起動失敗時の `state_purge_helper_failed` のみ)。
 - `rite-config.yml` `pr_review.post_comment`: グローバル設定
 - `plugins/rite/hooks/review-result-save.sh`: 保存先へ同梱する `*` だけの `.gitignore`（除外機構の実体）
