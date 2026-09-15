@@ -171,7 +171,7 @@ _emit_jq_err_snippet() {
 # phase that ran inside a session worktree lands in the same main-checkout log as
 # the rest of that session.
 #
-# Fully non-blocking (AC-2): every failure path emits a WARNING and returns 0, so
+# Fully non-blocking: every failure path emits a WARNING and returns 0, so
 # a read-only / full / permission-denied log destination changes neither cmd_set's
 # exit code nor the state JSON. `jq -c` supplies the "1 transition = 1 line"
 # invariant structurally — `_phase_is_valid` only WARNs about an unknown `--phase`
@@ -350,7 +350,7 @@ cmd_set() {
   # /rite:iterate がループ頭で increment し `--cycle-count N` で書き込む review⇄fix cycle カウンタ。
   # `--cycle-count` を伴わない他 skill の set (review/fix/open/ready 等) が毎 phase transition で
   # 値を wipe しないよう既存値を merge preserve する。iterate は fresh entry で 0 を明示指定して
-  # stale 値をリセットし、resume 時は既存値を継承してカウンタを継続する (AC-3)。
+  # stale 値をリセットし、resume 時は既存値を継承してカウンタを継続する。
   [ -z "$cycle_count" ] && cycle_count=$cur_cycle
   # --require-worktree: データ層で「multi_session 有効経路の set は worktree path を伴う」
   # invariant を検知する。merge-preserve 後も worktree が空 = open の worktree 化漏れ
@@ -438,7 +438,7 @@ cmd_set() {
   # transition that failed to persist. Reuses `$now` (the same timestamp the
   # state file's `updated_at` carries) so a record can be cross-referenced with
   # the state file it describes. `|| true` keeps this trailing statement from
-  # becoming cmd_set's exit code under `set -e` (AC-2: exit code unchanged) —
+  # becoming cmd_set's exit code under `set -e` (exit code unchanged) —
   # belt-and-braces with the helper's own unconditional `return 0`.
   # Sets skipped by `--if-exists` return earlier and are correctly not recorded:
   # no write happened. A same-phase set (from == to) IS recorded — update
@@ -657,12 +657,12 @@ cmd_reap_issue() {
 # Stop hook (stop-loop-continuation.sh) が turn 終了時に呼ぶ。`handoff` が非空ならその値を stdout に
 # 出力し、同じ呼び出しで file から削除 (atomic) する。これにより:
 #   - handoff 非空 → 値を出力 → hook が block + 再注入。削除済みなので次に LLM が何もせず止まれば
-#     handoff は空 → block しない (無限 block ループ防止 / AC-3)。
-#   - 継続 sentinel を出すたびに sub-skill が handoff を再セットするため複数サイクル継続する (AC-1)。
+#     handoff は空 → block しない (無限 block ループ防止)。
+#   - 継続 sentinel を出すたびに sub-skill が handoff を再セットするため複数サイクル継続する。
 # session 解決失敗 / state file 不在 / handoff 空 のいずれも「出力なし + rc=0」(= block しない) に縮退する。
 # 削除を **値の出力より前** に行う (fail-closed 順序): 削除に成功した周回だけ値を stdout に出す。
 # これにより `_atomic_write` が永続的に失敗する環境 (read-only FS / ENOSPC / EACCES) でも、削除できない
-# 周回は値を出さない = hook が block しないため、stale handoff による無限 block (AC-3 違反) を起こさない。
+# 周回は値を出さない = hook が block しないため、stale handoff による無限 block を起こさない。
 # 削除失敗は rc=0 で握るが、診断 ERROR を stderr に emit する (cmd_set / `_atomic_write` の他経路と対称化し、
 # fail-open を無診断にしない)。"print してから削除する" 旧順序では削除失敗時に値が既に出力済みで block が
 # 確定するため、回収不能な永続障害下で無限 block する経路があった。
@@ -674,7 +674,7 @@ cmd_consume_handoff() {
   esac; done
   local sid path; sid=$(_resolve_session_id "$session") || return 0
   path=$(_state_path "$sid"); [ ! -f "$path" ] && return 0
-  # corrupt JSON でも空 handoff に縮退して停止を許可するのは AC-3 の fail-open (安全側) で正しい。
+  # corrupt JSON でも空 handoff に縮退して停止を許可するのは fail-open (安全側) で正しい。
   # 欠落しているのは observability のみ — 無診断だと corrupt を検出できないため、jq rc を捕捉し
   # cmd_set / cmd_get と対称に WARNING + stderr スニペットを emit する。関数内は無条件 emit とし、
   # RITE_DEBUG gate は唯一の呼び出し元 stop-loop-continuation.sh の 2>/dev/null に委譲する
@@ -702,7 +702,7 @@ cmd_consume_handoff() {
 }
 
 # Returns:
-#   0 on actually-performed migration (`migrated:` announced unconditionally on stderr, AC-8)
+#   0 on actually-performed migration (`migrated:` announced unconditionally on stderr)
 #   0 on `--dry-run` (no rewrite; "would migrate:" printed to **stderr** for stdout/stderr
 #                     consistency with the migration announcement — session-start silences
 #                     only stdout, so dry-run preview surfaces alongside real migrations)
@@ -738,10 +738,10 @@ _migrate_file() {
   # set -e が抑制されるため、`_atomic_write` が flock timeout / mv 失敗 / EXDEV / EACCES /
   # ENOSPC / EROFS / printf 書き込み失敗で rc=1 を返しても、`|| return 1` がなければ実行は
   # 下流の `echo "  migrated: ..."` まで継続し、false announcement (migration counter inflate +
-  # AC-8 invariant 違反) を引き起こす。`|| return 1` で early-return することで、announce は
+  # 実施済み migration は必ず告知する invariant 違反) を引き起こす。`|| return 1` で early-return することで、announce は
   # physical-completion (atomic mv 成功) 後の経路でのみ出ることを保証する。
   _atomic_write "$f" "$updated" || return 1
-  # AC-8 (silent skip forbidden): an actually-performed migration is always
+  # Silent skip forbidden: an actually-performed migration is always
   # announced on stderr, even without --verbose, so the session-start auto path
   # (session-start.sh silences only stdout) surfaces it. The no-op "skip (already
   # v3)" case above stays --verbose-gated to keep quiet session starts quiet.

@@ -894,7 +894,7 @@ if [ -z "$BLOCKED_PATTERN" ]; then
           esac
         fi
       fi
-      # success: leave BLOCKED_PATTERN empty — no extra output (AC-1)
+      # success: leave BLOCKED_PATTERN empty — no extra output
     fi
   fi
 fi
