@@ -78,6 +78,8 @@ else
 fi
 assert_grep "ready inspect uses reviewed-head helper" "$READY" \
   'reviewed_gate_out=\$\(bash .*ready-reviewed-head-gate.sh'
+assert_grep "ready Phase 1 override keeps acceptance enforcement" "$READY" \
+  'plugin-root "\$plugin_root" \{reviewed_head_inspect_args\} 2>&1'
 assert_grep "ready captures unverified IDs for attestation" "$READY" \
   'reviewed_ac_ids=.*ac='
 assert_grep "ready standalone path attests selected IDs" "$READY" \

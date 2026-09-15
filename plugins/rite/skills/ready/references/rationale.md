@@ -22,7 +22,8 @@ Ready は mergeable 判定後の追加 commit を見ていなかった。配布�
 未レビューのまま Ready 化しかけた実測がある。照合不能（JSON 不在・archive のみ・
 `git rev-parse HEAD` 失敗・`commit_sha` 空）を Ready 許可に倒すと、その穴を残す。
 schema のキーは `commit_sha`（Issue 文の `reviewed_commit` は PR コメント marker 名）。
-`--force` フラグは作らない。強行はユーザーの明示指示で helper 呼び出しを除く。
+`--force` フラグは作らない。強行はユーザーの明示指示がある場合だけ `--skip-head-check` を
+`--enforce-ac` と組み合わせ、HEAD 照合のみを省略して AC 検査は維持する。
 
 NB sweep が `fixed ≥ 1` で push した commit は例外とする。reviewed-head ゲートは
 `commit_sha == HEAD` を要求するが、sweep 経路は sweep を再フルレビューの

@@ -47,6 +47,7 @@ PR を Ready for review にし、関連 Issue の Status を更新する。
 | `{reviewed_ac_state}` | reviewed-head helper の `REVIEWED_AC=` marker | Phase 1.0 の inspect 出力 |
 | `{reviewed_ac_ids}` | reviewed-head helper の `REVIEWED_AC=...; ac=` marker（カンマ区切り） | Phase 1.0 の inspect 出力 |
 | `{reviewed_head_override_arg}` | 通常は空。ユーザーが本ターンで未レビュー HEAD の強行を明示した場合だけ `--skip-head-check` | Phase 1.0 の明示 override 判定 |
+| `{reviewed_head_inspect_args}` | 通常は空。同じ明示 override 時だけ `--enforce-ac --skip-head-check` | Phase 1.0 の helper 呼び出し |
 
 ---
 
@@ -151,7 +152,7 @@ bash "$plugin_root/hooks/scripts/ready-pr-head-gate.sh" \
 # reviewed HEAD と受入条件を同じ review JSON から inspect する。stderr を捕捉するのは
 # REVIEWED_AC marker を Phase 2 へ渡すためで、診断自体は直後に必ず再表示する。
 reviewed_gate_out=$(bash "$plugin_root/hooks/scripts/ready-reviewed-head-gate.sh" \
-  --pr "$ready_pr_number" --plugin-root "$plugin_root" 2>&1)
+  --pr "$ready_pr_number" --plugin-root "$plugin_root" {reviewed_head_inspect_args} 2>&1)
 reviewed_gate_rc=$?
 printf '%s\n' "$reviewed_gate_out" >&2
 reviewed_ac_state=$(printf '%s\n' "$reviewed_gate_out" | sed -n 's/^\[CONTEXT\] REVIEWED_AC=\([^;]*\);.*/\1/p' | tail -1)
