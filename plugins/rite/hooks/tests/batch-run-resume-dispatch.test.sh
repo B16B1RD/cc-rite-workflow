@@ -102,9 +102,19 @@ echo "--- T-04: 決められない状態は stop ---"
 out=$(run_stage 44 merge ready 0 fix/issue-44-v true)
 assert "T-04 PR 番号 0 は stop" stop "$(stage_of "$out")"
 assert "T-04 reason=pr_number_missing" pr_number_missing "$(field_of "$out" reason)"
-out=$(run_stage 44 merge review "" fix/issue-44-v true)
+# flow-state.sh set --pr "" は pr_number: 0 を書くため、空文字は set 後に path の
+# ファイルを直接書き換える（壊れた JSON fixture と同じ手順。run_stage は使わない）。
+empty_root=$(mktemp -d "$TMP_ROOT/empty-pr-XXXXXX")
+mkdir -p "$empty_root/.rite/sessions"
+(cd "$empty_root" && RITE_STATE_ROOT="$empty_root" CLAUDE_CODE_SESSION_ID="sess-empty-pr" bash "$HOOK" set \
+  --phase review --issue 44 --branch fix/issue-44-v --pr 905 --active true --next "fixture" >/dev/null 2>&1)
+empty_path=$(cd "$empty_root" && RITE_STATE_ROOT="$empty_root" CLAUDE_CODE_SESSION_ID="sess-empty-pr" bash "$HOOK" path)
+jq '.pr_number = ""' "$empty_path" > "$empty_path.tmp" && mv "$empty_path.tmp" "$empty_path"
+sed -e "s|{plugin_root}|$PLUGIN_ROOT|g" -e "s|{current_issue}|44|g" -e "s|{run_mode}|merge|g" "$BLOCK" > "$empty_root/block.sh"
+out=$(cd "$empty_root" && RITE_STATE_ROOT="$empty_root" CLAUDE_CODE_SESSION_ID="sess-empty-pr" bash block.sh 2>/dev/null | grep -E '^\[CONTEXT\] RUN_RESUME_STAGE=' | tail -1)
 assert "T-04 PR 番号 空は stop" stop "$(stage_of "$out")"
 assert "T-04 空の reason=pr_number_missing" pr_number_missing "$(field_of "$out" reason)"
+assert "T-04 空の pr= は空文字（0 ではない）" "" "$(field_of "$out" pr)"
 # 読出失敗 (a): state ファイルが壊れた JSON。flow-state.sh get は default を返して rc=0 で戻るため、
 # ブロックがファイルを直接検査しないと open に倒れる
 corrupt_root=$(mktemp -d "$TMP_ROOT/corrupt-XXXXXX")
@@ -161,7 +171,13 @@ assert_grep "T-07 stop 行は recover を案内する" "$SKILL" '^\| `stop` \| .
 # recover Phase 5.3 の phase 集合を ステップ 1.5 の case が漏れなく扱う（既定 FS では $1 が行頭の | なので $2 を取る）
 recover_phases=$(awk '/^### 5\.3 Phase enum/{f=1;next} f&&/^### /{exit} f&&/^\| `[a-z_]+` \|/{gsub(/[`| ]/,"",$2); print $2}' "$RECOVER" | sort -u)
 recover_count=$(printf '%s\n' "$recover_phases" | grep -c '^[a-z_]\+$')
-assert "T-07 recover 5.3 から phase を 13 件抽出した（空集合の pin を防ぐ）" 13 "$recover_count"
+if [ "$recover_count" -gt 0 ]; then
+  assert "T-07 recover 5.3 から phase を 1 件以上抽出した（空集合の pin を防ぐ）" 1 1
+else
+  assert "T-07 recover 5.3 から phase を 1 件以上抽出した（空集合の pin を防ぐ）" 1 0
+fi
+recover_table_count=$(awk '/^### 5\.3 Phase enum/{f=1;next} f&&/^### /{exit} f&&/^\| `[a-z_]+` \|/{c++} END{print c+0}' "$RECOVER")
+assert "T-07 recover 5.3 の backtick phase 行数と抽出件数が一致する" "$recover_table_count" "$recover_count"
 missing=""
 for p in $recover_phases; do
   grep -qE "^[[:space:]]*([a-z_]+\|)*$p(\|[a-z_]+)*\)" "$BLOCK" || missing="$missing $p"
