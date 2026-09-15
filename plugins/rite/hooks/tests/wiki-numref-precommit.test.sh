@@ -91,6 +91,20 @@ run_helper "$ptree" "$pdir/outside.out"
 assert_grep ".rite/wiki 外の番号は hit にしない" "$pdir/outside.out" 'WIKI_INGEST_NUMREF=clean'
 (cd "$ptree" && git checkout -q -- outside.md)
 
+# git dir を解決できない木は sandbox-mask と誤分類せず、後段の
+# intent-to-add 失敗を stage_failed として報告する。
+p18b_nonrepo=$(mktemp -d "${TMPDIR:-/tmp}/rite-numref-nonrepo-XXXXXX")
+cleanup_dirs+=("$p18b_nonrepo")
+nonrepo_rc=0
+run_helper "$p18b_nonrepo" "$pdir/nonrepo.out" || nonrepo_rc=$?
+assert "git 管理外の repo-root は exit 2" "2" "$nonrepo_rc"
+assert_grep "git 管理外では git dir の解決失敗を診断する" \
+  "$pdir/nonrepo.out" 'rev-parse --absolute-git-dir が失敗しました'
+assert_grep "git dir を解決できない木は stage_failed のまま" \
+  "$pdir/nonrepo.out" 'WIKI_INGEST_NUMREF=error; reason=stage_failed'
+assert_not_grep "git dir の解決失敗を sandbox-mask と誤分類しない" \
+  "$pdir/nonrepo.out" 'reason=sandbox-mask'
+
 p18b_bare=$(mktemp -d "${TMPDIR:-/tmp}/rite-numref-bare-XXXXXX")
 cleanup_dirs+=("$p18b_bare")
 ( cd "$p18b_bare" && git init -q . && mkdir -p .rite/wiki/pages ) > "$pdir/bare.out" 2>&1

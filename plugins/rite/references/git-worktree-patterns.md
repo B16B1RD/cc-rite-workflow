@@ -695,7 +695,9 @@ wiki worktree の管理ディレクトリ（`.git/worktrees/wiki-worktree/`）�
 **検知**: 両 script は最初の index 書き込みの前に `hooks/scripts/lib/worktree-git.sh` の `worktree_admin_writable`
 で管理ディレクトリに一時ファイルを作れるか試す。作れなければ何も stage せず、`wiki-numref-precommit.sh` は
 `[CONTEXT] WIKI_INGEST_NUMREF=error; reason=sandbox-mask`、`wiki-worktree-commit.sh` は `reason=sandbox-mask` / exit 6
-を出す。`--push-only` / `--dry-run` / 変更なしの経路は管理ディレクトリに書かないため判定しない。
+を出す。`--dry-run` / 変更なしの経路は管理ディレクトリに書かないため判定しない。`--push-only` も通常は
+index を書かないため判定しないが、non-fast-forward の再試行では fetch + rebase が管理ディレクトリへ
+書き込み、マスク下の失敗を rc=4 の conflict として報告する場合がある。
 
 **対処**: 拒否された当該 bash block だけを `dangerouslyDisableSandbox: true` で 1 回だけ再実行してよい（ユーザー
 確認は不要 — 既知の環境制約）。stage / commit の再実行は管理ディレクトリを壊さない。これは同じマスク下で
