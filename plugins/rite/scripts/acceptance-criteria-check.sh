@@ -13,8 +13,8 @@
 #
 # Usage:
 #   acceptance-criteria-check.sh extract --body-file PATH
-#   acceptance-criteria-check.sh table --expected AC-N,AC-M --input PATH
-#   acceptance-criteria-check.sh final --expected AC-N,AC-M|"" --input PATH
+#   acceptance-criteria-check.sh table --expected "$AC_ID_LIST" --input PATH
+#   acceptance-criteria-check.sh final --expected "$AC_ID_LIST" --input PATH
 #     (final の --expected は必須。空文字列は「対象外 (skipped) の cycle」を意味する)
 #
 # stdout contract:
@@ -60,8 +60,8 @@ usage() {
   cat <<'EOF'
 Usage:
   acceptance-criteria-check.sh extract --body-file PATH
-  acceptance-criteria-check.sh table --expected AC-N,AC-M --input PATH
-  acceptance-criteria-check.sh final --expected AC-N,AC-M|"" --input PATH
+  acceptance-criteria-check.sh table --expected "$AC_ID_LIST" --input PATH
+  acceptance-criteria-check.sh final --expected "$AC_ID_LIST" --input PATH
 EOF
 }
 

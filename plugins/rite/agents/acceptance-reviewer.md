@@ -40,6 +40,8 @@ Emit `### 受入条件確認` **between `### 所見` and `### 指摘事項`**, w
 | AC-K | 未検証 | 認証付きの実環境で gh pr merge を実行する必要がある |
 ```
 
+上の N / M / K はそれぞれ正整数のメタ変数。実際の出力では Issue の数値 ID を使う。
+
 - `AC` is the `AC-N` identifier only. `判定` is one of 充足 / 未充足 / 未検証. `根拠` is never empty. Do not use a raw `|` inside a cell (write `¦`).
 - Each 未充足 row has exactly one finding in `### 指摘事項` whose `内容` **starts with `[AC-N]`**, with severity `CRITICAL` and scope `current-pr`. The `内容` ends with `Likelihood-Evidence: runtime_observation <what you ran>` followed by `Verification: repro <command> => <observed outcome>` (or `Verification: failing_test <path> => <failure output>`). A finding without the anchor does not block merge and the orchestrator rejects the review.
 - The rest of the output format (評価 / 所見 / 指摘事項 / 監査ログ) follows `_reviewer-base.md`.
