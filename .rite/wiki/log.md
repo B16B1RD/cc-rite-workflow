@@ -1,6 +1,7 @@
 # Directory Update Log
 ## 2026-09-15
 
+* **Skip**: [20260915T100730Z-pr-2857.md](raw/reviews/20260915T100730Z-pr-2857.md) — no extractable heuristic: zero-finding documentation wording alignment review
 * **Skip**: [20260915T090433Z-pr-2848.md](raw/reviews/20260915T090433Z-pr-2848.md) — no extractable heuristic: zero-finding test fixture pin review
 * **Skip**: [20260915T081552Z-pr-2845.md](raw/reviews/20260915T081552Z-pr-2845.md) — no extractable heuristic: zero-finding test fixture pin review
 * **Update**: [ユーザーにコピー実行させるコマンドをパスへ手書きの単一引用符で組み立てない](pages/anti-patterns/hand-single-quoted-copy-paste-command.md) — raw/reviews/20260915T094506Z-pr-2853.md を統合。引用が無い案内の扱い、fixture の値の選び方、復元 assert の negative control を追記
