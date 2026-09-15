@@ -2804,6 +2804,9 @@ T02:22:43+09:00 — review ingest (skip pages)
 
 ## 2026-09-15
 
+* **Skip**: 書込可能な linked worktree での probe cleanup 検証は指摘なしの確認結果のみで、既存 Wiki に追加する再利用可能な経験則がない — [レビュー結果](raw/reviews/20260915T060838Z-pr-2836.md)
+* **Skip**: Decision Log の追記位置変異検出は指摘なしの確認結果のみで、既存 Wiki に追加する再利用可能な経験則がない — [レビュー結果](raw/reviews/20260915T060930Z-pr-2837.md)
+
 * **Create**: [Markdown 表を awk の既定 FS で抽出すると $1 が行頭のパイプになり、空集合ループの pin が常時 PASS する](pages/anti-patterns/markdown-table-awk-field-off-by-leading-pipe-vacuous-set-pin.md) — [空集合ループの pin と正規化 fixture の未到達を実測したレビュー結果](raw/reviews/20260914T151507Z-pr-2822.md) / [同 cycle 2](raw/reviews/20260914T153152Z-pr-2822.md) を統合
 * **Create**: [再開の振り分け先は phase 名の対応ではなく、遷移先スキルの入口契約（前提 phase と完了 sentinel）で決める](pages/heuristics/resume-dispatch-target-must-satisfy-downstream-entry-contract.md) — [phase=ready を ready へ振ると sentinel 不在で再停止することを実測したレビュー結果](raw/reviews/20260914T151507Z-pr-2822.md) を統合
 * **Update**: [明示的 Phase 遷移で駆動する SKILL.md に新規 Phase を挿入する際、既存の終端ルーティング更新漏れで到達不能になる](pages/anti-patterns/unrouted-phase-insertion-in-explicit-transition-skill.md) — [分岐表の process 行が旧遷移先のまま残った再発のレビュー結果](raw/reviews/20260914T151507Z-pr-2822.md) を統合
