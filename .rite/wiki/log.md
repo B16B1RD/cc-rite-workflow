@@ -2,6 +2,7 @@
 ## 2026-09-16
 
 * **Skip**: [レビュー結果](raw/reviews/20260915T155931Z-pr-2881.md) — 既存ページで同じ経験則を扱っているため
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=504, broken_refs=0
 
 ## 2026-09-15
 
