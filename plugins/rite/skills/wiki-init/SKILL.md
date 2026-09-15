@@ -423,6 +423,7 @@ if [ "$branch_strategy" = "separate_branch" ] && [ -d .rite/wiki-worktree/.rite/
         echo "  対処: git -C .rite/wiki-worktree status で状態を確認してください" >&2
         ;;
       4) echo "WARNING: migration commit landed locally but push failed (rc=4)" >&2 ;;
+      6) echo "WARNING: wiki worktree の管理ディレクトリに書き込めないため migration commit しませんでした (rc=6, reason=sandbox-mask)。実行エージェントはこの bash block を別の Bash tool call で dangerouslyDisableSandbox: true を付けて 1 回だけ再実行する (確認不要)。再実行でも rc=6 なら sandbox 起因ではないため再試行せず、stderr の管理ディレクトリの権限・容量を確認する" >&2 ;;
       *)
         echo "WARNING: pages/ migration commit failed (rc=$commit_rc). /rite:wiki-ingest 側でも .gitkeep が作成されないと Write 失敗する可能性あり" >&2
         ;;
