@@ -64,11 +64,13 @@
 # it exits 0 without touching git state.
 # - Preserves any unrelated uncommitted work in the current branch via
 # full `git stash push -u`, and pops the stash afterwards.
-# - The current branch is restored before exit on the happy path. On
-# cleanup failure (checkout-back failing or stash pop failing), a
-# manual-recovery hint is printed to stderr and the staging directory
-# is preserved so the user can recover by hand. This is best-effort,
-# not absolute — see the cleanup_body function for the exact semantics.
+# - The current branch is restored before exit on the happy path. On a
+# failed run the raw sources are restored to the working tree unstaged,
+# so the next run can ingest them. On cleanup failure (checkout-back,
+# unstage, or stash pop failing), a manual-recovery hint is printed to
+# stderr, and a failed checkout-back preserves the staging directory so
+# the user can recover by hand. This is best-effort, not absolute — see
+# the cleanup_body function for the exact semantics.
 # - Emits a structured status line to stdout on success so the caller
 # (pr-review.md / fix.md / close.md Phase X.X.W) can observe the result:
 # [wiki-ingest-commit] committed=<N>; branch=<wiki>; head=<sha>
@@ -560,6 +562,8 @@ if ! stage_dir=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-stage-XXXXXX" 2>/dev/null)
 fi
 stash_pushed=false
 checked_out_wiki=false
+# Stays true after checkout-back: records that the wiki branch index was used.
+entered_wiki=false
 
 # HIGH #1 / HIGH #2 — rollback-safety rewrite.
 #
@@ -602,8 +606,19 @@ cleanup_body() {
  checked_out_wiki=false
  else
  echo "WARNING: cleanup failed to return to '$current_branch'" >&2
+ # A preserved staging dir gets its own numbered procedure below, which
+ # already includes the checkout and the stash pop; one procedure keeps
+ # the stash from being popped twice.
+ if [[ "$rc" -ne 0 ]] && [[ -d "$stage_dir" ]]; then
+ echo " manual recovery: follow the numbered steps after the staging directory WARNING below" >&2
+ elif [[ "$stash_pushed" == "true" ]]; then
  echo " manual recovery: git checkout $_q_current_branch && git stash pop" >&2
+ else
+ echo " manual recovery: git checkout $_q_current_branch" >&2
+ fi
+ if [[ "$stash_pushed" == "true" ]]; then
  echo " (stash is intentionally left intact to avoid cross-branch pop)" >&2
+ fi
  fi
  fi
  # Only pop the stash once we are safely back on the original branch.
@@ -627,8 +642,18 @@ cleanup_body() {
  # message below would misreport the destination. When checkout-back
  # failed, the staging dir is preserved so the user can recover raw
  # sources manually after resolving the branch state.
+ #
+ # `git add` on the wiki branch stages the raw sources, and checkout-back
+ # carries those index entries onto the original branch, where the next
+ # run reads them as tracked (invariant violation). The restore therefore
+ # unstages them once the wiki branch has been checked out; before that
+ # the index was never touched, so it is left as the user staged it.
  if [[ "$rc" -ne 0 ]] && [[ -d "$stage_dir" ]]; then
  if [[ "$checked_out_wiki" == "false" ]]; then
+ if [[ "$entered_wiki" == "true" ]] && ! git reset -q -- .rite/wiki/raw >/dev/null 2>&1; then
+ echo "WARNING: cleanup failed to unstage raw sources carried back from '$wiki_branch'" >&2
+ echo " manual recovery: git reset -q -- .rite/wiki/raw" >&2
+ fi
  # Cycle 3 LOW #4 — count the files that actually made it back rather
  # than reporting the full pending_files length. On a mid-Step-1 signal
  # the staging dir may hold fewer files than pending_files[], and the
@@ -655,10 +680,16 @@ cleanup_body() {
  # Preserve the staging dir so the user can recover by hand.
  echo "WARNING: staging directory preserved at $stage_dir (raw sources not restored)" >&2
  echo " (checkout-back to '$current_branch' failed earlier; copying now would write onto the wiki branch)" >&2
+ local step=3
  echo " manual recovery:" >&2
  echo " 1) resolve the branch state: git checkout $_q_current_branch" >&2
- echo " 2) copy staged raw sources back: cp -r $_q_stage_dir/. .rite/wiki/raw/" >&2
- echo " 3) clean up: rm -rf $_q_stage_dir" >&2
+ echo " 2) unstage raw sources carried over from the wiki branch: git reset -q -- .rite/wiki/raw" >&2
+ if [[ "$stash_pushed" == "true" ]]; then
+ echo " 3) restore stashed changes: git stash pop" >&2
+ step=4
+ fi
+ echo " ${step}) copy staged raw sources back: cp -r $_q_stage_dir/. .rite/wiki/raw/" >&2
+ echo " $((step + 1))) clean up: rm -rf $_q_stage_dir" >&2
  fi
  else
  rm -rf "$stage_dir" 2>/dev/null || true
@@ -870,6 +901,7 @@ if ! git checkout -q "$wiki_branch" 2>"${git_err:-/dev/null}"; then
 fi
 surface_git_warnings "checkout $wiki_branch"
 checked_out_wiki=true
+entered_wiki=true
 
 # Step 5: replay staged raw files into the wiki branch working tree.
 while IFS= read -r -d '' staged; do
