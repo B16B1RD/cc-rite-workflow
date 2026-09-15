@@ -55,7 +55,8 @@
 #   T-31 台帳を読めない (API 失敗 / 解析不能 / 関連 Issue 無し) ときは WARNING + marker で全件転記
 #   T-32 台帳が無い PR は従来どおり全件転記
 #   T-33 除外は最新 JSON 由来で台帳の issued 行と組が一致する finding に限る。先行 cycle の finding は
-#        id・位置が同じでも転記し、重複しうる件数を WARNING で出す / 最新 JSON を照合できなければ apply_failed
+#        id・位置が同じでも転記し、同じ file:line のものだけ重複候補として WARNING に出す。
+#        行がずれた再報告は WARNING なしで重複しうる / 最新 JSON を照合できなければ apply_failed
 #   T-34 cleanup SKILL.md が all_issued と除外不能 note を完了報告へ配線する
 #   T-35 台帳の選別述語が nb-sweep-collect.sh と揃っている (CRLF 正規化の位置を含む)
 #   T-36 CRLF 本文の却下台帳も issued 行を読める
@@ -1111,6 +1112,18 @@ assert_grep "T-33b 同じ id・同じ位置でも先行 cycle の指摘は転記
 assert_grep "T-33b 除外は最新 JSON 由来の 1 件だけ" "$ERR" 'sweep_issued: pr=9; excluded=1; possible_duplicates=1$'
 assert_grep "T-33b 重複しうる位置を WARNING で出す" "$ERR" 'WARNING: sweep 起票済みの指摘と同じ位置に先行 cycle の指摘が 1 件あります \(a.md:3\)'
 assert_not_grep "T-33b 曖昧 marker を出さない" "$ERR" 'FOLLOW_UP_EXCLUDE_AMBIGUOUS'
+
+# 同じ指摘が行ずれして再報告された場合、台帳の file:line だけでは先行 cycle の同一性を判定できない
+reset_stubs
+r=$(new_root t33b_shifted)
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-07","file":"a.md","line":3,"description":"行ずれ前の指摘"}]}'
+put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-01","file":"a.md","line":5,"description":"行ずれ後の起票済み指摘"}]}'
+jq -n --argjson c "$(comment_obj "$(record_body '| F-01 | a.md:5 | issued | #77 https://example.test/issues/77 |')")" '[[$c]]' > "$GH_API_JSON"
+run_target "$r"
+assert_grep "T-33b 行ずれ前の先行 cycle 指摘は転記" "$STUB_DIR/body.md" '行ずれ前の指摘'
+assert_not_grep "T-33b 行ずれ後の最新指摘は転記しない" "$STUB_DIR/body.md" '行ずれ後の起票済み指摘'
+assert_grep "T-33b 行ずれは重複候補に数えない" "$ERR" 'sweep_issued: pr=9; excluded=1; possible_duplicates=0$'
+assert_not_grep "T-33b 行ずれは重複 WARNING を出さない" "$ERR" 'WARNING: sweep 起票済みの指摘と同じ位置'
 
 # 先行 cycle にしか無い指摘は、最新 JSON の同じ位置が全件 sweep 起票済みでも転記する
 # (id が振り直された同じ指摘か別の指摘かを台帳から判定できない)
