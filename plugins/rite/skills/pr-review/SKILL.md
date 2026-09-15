@@ -607,7 +607,7 @@ Retain the Issue number in the conversation context for use in ステップ 6.4.
    exit 1
  fi
  echo "[CONTEXT] ISSUE_BODY_FILE=$issue_body_file"
- bash {plugin_root}/scripts/acceptance-criteria-check.sh extract --body-file "$issue_body_file" || { echo "[review:error]"; exit 1; }
+ bash {plugin_root}/scripts/acceptance-criteria-check.sh extract --body-file "$issue_body_file" || { rm -f "$issue_body_file"; echo "[review:error]"; exit 1; }
  ```
 
  | `ACCEPTANCE_SCOPE` | アクション |
@@ -625,7 +625,7 @@ Retain the Issue number in the conversation context for use in ステップ 6.4.
  - The `### 考慮済みエッジケース` subsection
  - The `### スコープ外` subsection
 
-3. Retain the extracted specification as `{issue_spec}` in the conversation context for use in the ステップ 4.5 review instructions.
+3. Retain the extracted specification as `{issue_spec}` in the conversation context for use in the ステップ 4.5 review instructions. 抽出後に `rm -f "{issue_body_file}"`（`ISSUE_BODY_FILE=` の値）で一時ファイルを削除する。
 
 **If no specification is found:**
 

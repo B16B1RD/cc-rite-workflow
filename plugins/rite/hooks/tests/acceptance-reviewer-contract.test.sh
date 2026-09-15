@@ -95,7 +95,9 @@ echo "=== TC-2: 1.3.1 の対象判定と停止 (T-09 / T-10 / T-11) ==="
 pin "1.3.1: Issue 番号なしは no_issue の 1 行通知" "$PR_REVIEW" '`[CONTEXT] ACCEPTANCE_SCOPE=skipped; reason=no_issue` として `受入条件確認: 対象外（関連 Issue なし）` を 1 行表示する'
 pin "1.3.1: AC 節なしは 1 行通知" "$PR_REVIEW" '`受入条件確認: 対象外（テンプレート形式の AC 節なし。見出し: {headings}）` を 1 行表示'
 pin "1.3.1: gh issue view 失敗は skip せず停止" "$PR_REVIEW" '受入条件確認を skip せず停止します'
-pin "1.3.1: extract の失敗を [review:error] へ" "$PR_REVIEW" 'acceptance-criteria-check.sh extract --body-file "$issue_body_file" || { echo "[review:error]"; exit 1; }'
+pin "1.3.1: extract の失敗を [review:error] へ" "$PR_REVIEW" 'acceptance-criteria-check.sh extract --body-file "$issue_body_file" || { rm -f "$issue_body_file"; echo "[review:error]"; exit 1; }'
+pin "1.3.1: ids= を 5.1.0.AC が読む {acceptance_ids} として retain" "$PR_REVIEW" '| `target; ids=` | `ids=` を `{acceptance_ids}` として retain。'
+pin "1.3.1: 抽出後に一時ファイルを削除" "$PR_REVIEW" '抽出後に `rm -f "{issue_body_file}"`（`ISSUE_BODY_FILE=` の値）で一時ファイルを削除する'
 
 # 1.3.1 の bash を実際に実行し、gh 失敗 / 0 件 / 対象 / 対象外の終端を観測する
 block_131="$TMP_ROOT/block-131.sh"
