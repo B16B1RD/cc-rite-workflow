@@ -2,6 +2,7 @@
 ## 2026-09-15
 
 * **Skip**: [20260915T140730Z-pr-2874.md](raw/reviews/20260915T140730Z-pr-2874.md) — no extractable heuristic: zero-finding review; existing session-id env leak page already covers per-variable leak mechanisms and shared unset
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=497, broken_refs=0
 
 * **Update**: [hook のテストスイートは ambient な session-id 環境変数 (CLAUDE_CODE_SESSION_ID 等) に依存させない (non-hermetic test)](pages/heuristics/test-hermeticity-ambient-session-id-env-leak.md) — raw/reviews/20260915T132416Z-pr-2871.md を統合。漏れる変数が session-id 以外（host 選択・state root）にも及ぶことと、unset 一覧の複製によるずれを追記
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=496, broken_refs=0
