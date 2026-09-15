@@ -220,10 +220,28 @@ run_recovery_case() {
   # hand a split path to rm -rf.
   if [ "$ok" -eq 1 ]; then
     rc=0
+    ( cd "$repo" && eval "$cmd1" ) >/dev/null 2>&1 || rc=$?
     (
-      cd "$repo" && eval "$cmd1" && eval "$cmd2" &&
-        { [ "$stash" = no ] || git stash pop; } && eval "$cmd4" && eval "$cmd5"
+      git -C "$repo" rm -q --cached -- .rite/wiki/raw/reviews/pr-test.md &&
+        rm -f "$repo/.rite/wiki/raw/reviews/pr-test.md"
+    ) || rc=$?
+    eq "$label: negative control removes raw source from the working tree" "0" \
+      "$([ -e "$repo/.rite/wiki/raw/reviews/pr-test.md" ] && echo 1 || echo 0)"
+    eq "$label: negative control removes raw source from the index" "" \
+      "$(git -C "$repo" diff --cached --name-only -- .rite/wiki/raw/reviews/pr-test.md)"
+
+    (
+      cd "$repo" && eval "$cmd2" && { [ "$stash" = no ] || git stash pop; }
     ) >/dev/null 2>&1 || rc=$?
+    eq "$label: raw source is absent immediately before the copy step" "0" \
+      "$([ -e "$repo/.rite/wiki/raw/reviews/pr-test.md" ] && echo 1 || echo 0)"
+    eq "$label: raw source remains absent from the index before the copy step" "" \
+      "$(git -C "$repo" diff --cached --name-only -- .rite/wiki/raw/reviews/pr-test.md)"
+
+    ( cd "$repo" && eval "$cmd4" ) >/dev/null 2>&1 || rc=$?
+    eq "$label: copy step restores the raw source" "raw source" \
+      "$(cat "$repo/.rite/wiki/raw/reviews/pr-test.md" 2>/dev/null || true)"
+    ( cd "$repo" && eval "$cmd5" ) >/dev/null 2>&1 || rc=$?
     eq "$label: pasted steps succeed" "0" "$rc"
     eq "$label: back on the working branch" "$branch" "$(git -C "$repo" branch --show-current)"
     eq "$label: no raw source left staged" "" "$(git -C "$repo" diff --cached --name-only)"
