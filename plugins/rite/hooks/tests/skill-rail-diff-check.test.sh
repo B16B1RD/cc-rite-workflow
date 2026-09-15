@@ -381,7 +381,7 @@ if [ -n "${REPO_ROOT_REAL:-}" ] && [ -f "$REPO_ROOT_REAL/plugins/rite/skills/ope
   CREATE_NEW_CUR='| `create_new` | branch も worktree もなし → `git worktree add --no-track -b "{branch}" "{path}" "origin/{base_branch}"`（`--no-track`: sandbox 有効環境で `branch.autoSetupMerge` の tracking 書込が `.git/config` 拒否に当たるのを回避。branch は origin 起点のまま tracking だけ張らない） |'
   PLUGIN_ROOT_CUR_IF='if [ -f "$repo_root/.rite/plugin-root" ] || [ -f "$repo_root/.rite-plugin-root" ]; then'
   PLUGIN_ROOT_CUR_CP='    cp "$repo_root/.rite-plugin-root" "$wt_path/.rite/plugin-root" 2>/dev/null || true'
-  CREATE_NEW_OLD='| `create_new` | branch も worktree もなし → `git worktree add --no-track -b "{branch}" "{path}" "origin/{base_branch}"`（`--no-track`: sandbox 有効環境で `branch.autoSetupMerge` の tracking 書込が `.git/config` 拒否に当たるのを回避。branch は origin 起点のまま tracking だけ張らない — Issue #1894） |'
+  CREATE_NEW_OLD='| `create_new` | branch も worktree もなし → `git worktree add --no-track -b "{branch}" "{path}" "origin/{base_branch}"`（`--no-track`: sandbox 有効環境で `branch.autoSetupMerge` の tracking 書込が `.git/config` 拒否に当たるのを回避。branch は origin 起点のまま tracking だけ張らない — Issue #1894） |' # drift-check-ignore
   PLUGIN_ROOT_OLD='[ -f "$repo_root/.rite-plugin-root" ] && cp "$repo_root/.rite-plugin-root" "$wt_path/.rite-plugin-root" 2>/dev/null || true'
 
   cur_blob=$(cat "$REPO_ROOT_REAL/plugins/rite/skills/open/SKILL.md")
