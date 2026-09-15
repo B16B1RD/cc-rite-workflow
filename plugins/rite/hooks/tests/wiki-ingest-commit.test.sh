@@ -302,6 +302,32 @@ run_auto_restore_case() {
   rerun_ingest "$label" "$branch"
 }
 
+# A raw source that was already ingested is not part of pending_files, but it
+# can still be staged by the user before the run.  Failure cleanup must unstage
+# wiki-carried entries before stash pop so the user's original index is restored.
+run_auto_restore_preserves_staged_raw_case() {
+  local label="$1"
+  local -x GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+  local base repo tmpdir err rc=0 staged_raw
+  make_fixture dev yes
+  tmpdir="$base/tmp"; err="$base/err"; mkdir "$tmpdir"
+  staged_raw=".rite/wiki/raw/reviews/old.md"
+  printf '%s\n' '---' 'ingested: true' '---' 'old raw source' > "$repo/$staged_raw"
+  git -C "$repo" add "$staged_raw"
+
+  ( cd "$repo" && TMPDIR="$tmpdir" bash "$HOOK_SRC" ) >/dev/null 2>"$err" || rc=$?
+  eq "$label: exits 3" "3" "$rc"
+  eq "$label: user-staged raw stays staged" "$staged_raw" \
+    "$(git -C "$repo" diff --cached --name-only -- "$staged_raw")"
+  eq "$label: user-staged raw content kept" "old raw source" \
+    "$(tail -1 "$repo/$staged_raw" 2>/dev/null || true)"
+  eq "$label: pending raw is restored untracked" ".rite/wiki/raw/reviews/pr-test.md" \
+    "$(git -C "$repo" ls-files --others --exclude-standard -- .rite/wiki/raw/reviews/pr-test.md)"
+  eq "$label: pending raw is not staged" "" \
+    "$(git -C "$repo" diff --cached --name-only -- .rite/wiki/raw/reviews/pr-test.md)"
+  eq "$label: no cleanup WARNING" "0" "$(grep -c '^WARNING: ' "$err" || true)"
+}
+
 # run_unstage_failure_case: when the unstage itself fails, cleanup says so and prints
 # the command to run by hand.
 run_unstage_failure_case() {
@@ -352,6 +378,7 @@ echo ""
 echo "TC-AUTO-RESTORE: failed wiki commit restores the raw source unstaged"
 run_auto_restore_case "auto restore" "dev" yes
 run_auto_restore_case "auto restore no stash" "dev" no
+run_auto_restore_preserves_staged_raw_case "auto restore preserves user staging"
 run_unstage_failure_case "unstage failure"
 run_pre_checkout_failure_case "pre-checkout failure"
 echo ""
