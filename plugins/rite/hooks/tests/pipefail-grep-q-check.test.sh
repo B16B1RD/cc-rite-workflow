@@ -415,6 +415,17 @@ out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
 assert "ignore marker suppresses finding" "0" "$rc"
 assert "ignored run reports zero" "1" "$(printf '%s' "$out" | grep -c 'Total pipefail-grep-q findings: 0')"
 
+# tests/ is an intentional scan boundary: identical unsafe syntax is ignored in
+# a fixture directory but remains detectable in production hook code.
+mkdir -p "$SBX/plugins/rite/hooks/tests"
+printf '%s\n' 'set -o pipefail' 'stream_many | grep -q x' > "$SBX/plugins/rite/hooks/tests/ignored-fixture.sh"
+printf '%s\n' 'set -o pipefail' 'stream_many | grep -q x' > "$SBX/plugins/rite/hooks/production-site.sh"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "production twin outside tests is detected" "1" "$rc"
+assert "production twin yields one finding" "1" "$(printf '%s\n' "$out" | grep -c '^\[pipefail-grep-q\].*production-site\.sh:' || true)"
+assert "tests twin remains outside the finding set" "0" "$(printf '%s\n' "$out" | grep -c '^\[pipefail-grep-q\].*ignored-fixture\.sh:' || true)"
+rm -f "$SBX/plugins/rite/hooks/production-site.sh" "$SBX/plugins/rite/hooks/tests/ignored-fixture.sh"
+
 REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
 out=$(bash "$SCRIPT" --all --repo-root "$REPO_ROOT" --quiet 2>&1); rc=$?
 assert "full-tree scan is clean" "0" "$rc"

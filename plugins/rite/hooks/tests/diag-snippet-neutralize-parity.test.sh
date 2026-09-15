@@ -43,6 +43,14 @@ HOOKS_DIR="$PLUGIN_ROOT/hooks"
 SCRIPTS_DIR="$PLUGIN_ROOT/scripts"
 SWEEP_DIRS=("$HOOKS_DIR" "$SCRIPTS_DIR")
 
+has_ctrl_helper_call() {
+  awk '
+    /^[[:space:]]*#/ { next }
+    /neutralize_ctrl|contains_ctrl/ { found = 1 }
+    END { exit !found }
+  ' "$1"
+}
+
 for sweep_dir in "${SWEEP_DIRS[@]}"; do
   if [ ! -d "$sweep_dir" ]; then
     echo "ERROR: $sweep_dir not found" >&2
@@ -107,6 +115,20 @@ fi
 
 echo ""
 echo "=== TC-2: neutralize_ctrl の caller は helper を source 済み ==="
+# call-site 判定は大きなファイルでも入力を最後まで消費し、pipefail 下で producer を
+# SIGPIPE にしない。先頭で一致した後も pipe buffer を超える入力を流して回帰を固定する。
+tc2_probe=$(mktemp "${TMPDIR:-/tmp}/rite-diag-parity-tc2-XXXXXX")
+{
+  printf '%s\n' 'neutralize_ctrl "$value"'
+  awk 'BEGIN { for (i = 0; i < 20000; i++) print "value=plain_text" }'
+} > "$tc2_probe"
+if has_ctrl_helper_call "$tc2_probe"; then
+  pass "TC-2: call-site detection consumes large input without SIGPIPE"
+else
+  fail "TC-2: call-site detection lost a real caller under pipefail"
+fi
+rm -f "$tc2_probe"
+
 # `neutralize_ctrl` / `contains_ctrl` を実行コードとして含むファイル一覧 (コメント行のみの言及は除外)
 # 収集側も両関数対応にする — contains_ctrl のみを使う hook が将来追加された場合の検査漏れ防止
 caller_files=$(grep -rlE 'neutralize_ctrl|contains_ctrl' "${SWEEP_DIRS[@]}" --include='*.sh' \
@@ -116,7 +138,7 @@ caller_files=$(grep -rlE 'neutralize_ctrl|contains_ctrl' "${SWEEP_DIRS[@]}" --in
 checked=0
 for f in $caller_files; do
   # コメント行を除いた実 call site があるファイルのみ検査 (収集側 grep -rlE と書式統一)
-  if ! grep -vE '^[[:space:]]*#' "$f" | grep -qE 'neutralize_ctrl|contains_ctrl'; then
+  if ! has_ctrl_helper_call "$f"; then
     continue
   fi
   checked=$((checked + 1))
