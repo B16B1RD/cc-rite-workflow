@@ -13,8 +13,6 @@ CLEANUP_WM="$HOOKS_DIR/cleanup-work-memory.sh"
 PLUGIN_ROOT="$(cd "$HOOKS_DIR/.." && pwd)"
 REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
 
-unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
-
 TEST_DIR="$(mktemp -d)" || exit 1
 TEST_DIR="$(cd "$TEST_DIR" && pwd -P)" || exit 1
 trap 'rm -rf "$TEST_DIR"' EXIT

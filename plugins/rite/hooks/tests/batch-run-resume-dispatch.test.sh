@@ -21,8 +21,6 @@
 # Usage: bash plugins/rite/hooks/tests/batch-run-resume-dispatch.test.sh
 set -uo pipefail
 
-unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_test-helpers.sh"
 

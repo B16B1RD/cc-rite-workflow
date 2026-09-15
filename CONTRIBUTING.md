@@ -356,8 +356,9 @@ echo "Results: $PASS passed, $FAIL failed$( [ "$SKIP" -gt 0 ] && printf ", %s sk
 ```
 
 Sourcing `_test-helpers.sh` gives you `pass` / `fail` / `skip` / `assert*` / `print_summary` /
-`make_sandbox` / `make_plain_sandbox` / `_timeout` and the `PASS` / `FAIL` / `SKIP` counters, so a
-new test usually only needs the test cases themselves. To pin a copy-paste recovery command a hook
+`make_sandbox` / `make_plain_sandbox` / `_timeout` and the `PASS` / `FAIL` / `SKIP` counters, and it
+clears ambient runtime identity and state-root variables through `_hermetic-env.sh`, so a new test
+usually only needs the test cases themselves. To pin a copy-paste recovery command a hook
 prints, use `assert_shell_words`: it checks that the command parses and splits into exactly the
 expected words. See the header of that file for the full API.
 
@@ -365,7 +366,9 @@ expected words. See the header of that file for the full API.
 
 1. Create `plugins/rite/hooks/tests/your-hook.test.sh`
 2. Follow the structure above: setup temporary directory, define `pass`/`fail`/`skip` helpers (or
-   source `_test-helpers.sh` and get them for free), write test cases
+   source `_test-helpers.sh` and get them for free), write test cases. A test that does not source
+   `_test-helpers.sh` must `source "$SCRIPT_DIR/_hermetic-env.sh"` right after defining
+   `SCRIPT_DIR`; otherwise a standalone run inherits the launching session's identity
 3. Use `mktemp -d` for isolated test environments, then canonicalize the root with
    `pwd -P` as the structure above does — anything that compares the sandbox path
    against a path the code under test resolved breaks on macOS otherwise

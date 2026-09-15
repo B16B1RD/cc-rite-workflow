@@ -18,12 +18,12 @@ TEST_DIR="$(mktemp -d)"
 PASS=0
 FAIL=0
 
-# Clean session-id env for standalone runs (same convention as
-# cleanup-work-memory.test.sh / flow-state.test.sh). The FLOW_STATE resolver
+# Clean session-id env for standalone runs. The FLOW_STATE resolver
 # block under test (TC-003/TC-004) is env-first (CLAUDE_CODE_SESSION_ID /
-# CLAUDE_SESSION_ID); without this unset, the dogfooding session's ambient
-# session id would leak in and override each test's seeded .rite-session-id.
-unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
+# CLAUDE_SESSION_ID); without `_hermetic-env.sh`, the dogfooding session's
+# ambient session id would leak in and override each test's seeded .rite-session-id.
+# shellcheck source=_hermetic-env.sh
+source "$SCRIPT_DIR/_hermetic-env.sh" || { echo "ERROR: cannot source _hermetic-env.sh" >&2; exit 1; }
 
 cleanup() { rm -rf "$TEST_DIR"; }
 trap cleanup EXIT

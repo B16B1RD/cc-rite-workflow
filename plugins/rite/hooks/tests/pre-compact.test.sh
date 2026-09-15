@@ -5,6 +5,7 @@ set -euo pipefail
 
 issue_text() { printf 'Issue #%s' "$1"; }
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Hermeticity guard: flow-state.sh path resolves session_id with
 # priority env CLAUDE_CODE_SESSION_ID > env CLAUDE_SESSION_ID > .rite-session-id
 # file. When this test suite runs inside a live Claude Code
@@ -12,14 +13,12 @@ issue_text() { printf 'Issue #%s' "$1"; }
 # below (only one call site had an inline `env -u` guard) and silently
 # overrides the file-based per-session fixtures, making the hook resolve a
 # nonexistent (or wrong) flow-state file — in the worst case crashing the
-# suite outright under `set -euo pipefail`. Unsetting both here forces every
-# invocation to resolve session_id from the fixture's `.rite-session-id` file,
-# matching the intended test isolation. (The pre-existing inline `env -u`
-# guard further down stays as defense in depth; it's redundant but harmless
-# with this file-wide unset in place.)
-unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
-
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# suite outright under `set -euo pipefail`. `_hermetic-env.sh` clears them
+# (with the rest of the runner's list), so every invocation resolves session_id
+# from the fixture's `.rite-session-id` file. (The inline `env -u` guard further
+# down stays as defense in depth; it's redundant but harmless.)
+# shellcheck source=_hermetic-env.sh
+source "$SCRIPT_DIR/_hermetic-env.sh" || { echo "ERROR: cannot source _hermetic-env.sh" >&2; exit 1; }
 HOOK="$SCRIPT_DIR/../pre-compact.sh"
 TEST_DIR="$(mktemp -d)"
 LAST_STDERR_FILE=""

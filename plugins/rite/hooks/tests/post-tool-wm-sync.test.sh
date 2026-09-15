@@ -3,17 +3,17 @@
 # Usage: bash plugins/rite/hooks/tests/post-tool-wm-sync.test.sh
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Hermeticity guard: flow-state.sh path resolves session_id with
 # priority env CLAUDE_CODE_SESSION_ID > env CLAUDE_SESSION_ID > .rite-session-id
 # file. When this test suite runs inside a live Claude Code
 # session, that session's own id leaks into every `bash "$HOOK"` invocation
 # below and silently overrides the file-based per-session fixtures, making the
-# hook resolve a nonexistent (or wrong) flow-state file. Unsetting both here
-# forces every invocation to resolve session_id from the fixture's
-# `.rite-session-id` file, matching the intended test isolation.
-unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
-
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# hook resolve a nonexistent (or wrong) flow-state file. `_hermetic-env.sh`
+# clears them (with the rest of the runner's list), so every invocation resolves
+# session_id from the fixture's `.rite-session-id` file.
+# shellcheck source=_hermetic-env.sh
+source "$SCRIPT_DIR/_hermetic-env.sh" || { echo "ERROR: cannot source _hermetic-env.sh" >&2; exit 1; }
 HOOK="$SCRIPT_DIR/../post-tool-wm-sync.sh"
 TEST_DIR="$(mktemp -d)"
 PASS=0
