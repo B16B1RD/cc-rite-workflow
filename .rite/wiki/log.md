@@ -1,6 +1,7 @@
 # Directory Update Log
 ## 2026-09-15
 
+* **Skip**: [20260915T090433Z-pr-2848.md](raw/reviews/20260915T090433Z-pr-2848.md) — no extractable heuristic: zero-finding test fixture pin review
 * **Skip**: [20260915T081552Z-pr-2845.md](raw/reviews/20260915T081552Z-pr-2845.md) — no extractable heuristic: zero-finding test fixture pin review
 
 * **Skip**: [20260915T063424Z-pr-2839.md](raw/reviews/20260915T063424Z-pr-2839.md) — one-off documentation wording alignment of suffix description; no durable heuristic
