@@ -175,7 +175,7 @@ AC-2 が HEAD で満たされていない。
 EOF
 jq --arg path "$TEST_DIR/acceptance.md" '.reviewers[1].output_file = $path' "$BASE" > "$INPUT" || exit 1
 run_check 'acceptance criteria table between 所見 and 指摘事項 is a completed report' 0
-sed '/^### 指摘事項/,/^### 監査ログ/{/^### 監査ログ/!d}' "$TEST_DIR/acceptance.md" > "$TEST_DIR/acceptance-no-findings.md"
+awk '/^### 指摘事項/{skip=1} /^### 監査ログ/{skip=0} !skip' "$TEST_DIR/acceptance.md" > "$TEST_DIR/acceptance-no-findings.md"
 output_check 'acceptance criteria table does not replace 指摘事項' "$TEST_DIR/acceptance-no-findings.md" output_format_invalid
 ln -s "$TEST_DIR/test.md" "$TEST_DIR/alias.md" || exit 1
 output_check 'symlink to another reviewer result cannot count twice' "$TEST_DIR/alias.md" output_reused

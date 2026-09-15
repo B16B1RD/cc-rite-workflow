@@ -160,10 +160,10 @@ pin "5.3.0.M step 1: acceptance_criteria を常に書く" "$PR_REVIEW" '- **`acc
 echo ""
 echo "=== TC-5: 8.0 / 8.1 の停止行 (T-04) ==="
 COND='`total_findings == 0` かつ `{acceptance_unverified}` が非空'
-pin "8.0: 停止行が同じ条件文言" "$PR_REVIEW" "| \`[review:error]\`（受入条件未検証: $COND）"
-pin "8.1: 停止行が同じ条件文言" "$PR_REVIEW" "| $COND（受入条件未検証） | \`[review:error]\` と \`[CONTEXT] REVIEW_STOP=ac_unverified; ac={acceptance_unverified}\` |"
+pin "8.0: 停止行が同じ条件文言" "$PR_REVIEW" "| \`[review:error]\`（受入条件未検証: ${COND}）"
+pin "8.1: 停止行が同じ条件文言" "$PR_REVIEW" "| ${COND}（受入条件未検証） | \`[review:error]\` と \`[CONTEXT] REVIEW_STOP=ac_unverified; ac={acceptance_unverified}\` |"
 in_order "8.1: 停止行は mergeable 行より前 (上から評価)" \
-  "$(line_of "$PR_REVIEW" "| $COND（受入条件未検証） |")" \
+  "$(line_of "$PR_REVIEW" "| ${COND}（受入条件未検証） |")" \
   "$(line_of "$PR_REVIEW" '| `total_findings == 0` (blocking findings ゼロ) | `[review:mergeable]` |')"
 stop_set=$(awk '/^# 受入条件未検証の停止 \(--handoff を付けず/{s=1; next} s && /^```$/{exit} s' "$PR_REVIEW")
 if grep -q 'flow-state.sh set' <<<"$stop_set" && ! grep -q -- '--handoff' <<<"$stop_set"; then
