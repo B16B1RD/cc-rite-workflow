@@ -17,7 +17,7 @@ plugins/rite/
 │   ├── rite-workflow/  # orchestration context（状態検出・phase routing）+ references/（コーディング原則 等）
 │   └── reviewers/      # レビュアー調整（選定 + テーブル）+ references/（各 reviewer profile は agents/{type}-reviewer.md）
 ├── agents/           # PR レビュー用サブエージェント定義
-│                     # _reviewer-base.md（共通原則）+ 9 reviewer agent
+│                     # _reviewer-base.md（共通原則）+ 10 reviewer agent
 ├── templates/        # config/（rite-config.yml 最小デフォルト）、
 │                     # issue/, pr/, review/, wiki/ の各フォーマット
 ├── references/       # gh CLI パターン、GraphQL、severity-levels、investigation-protocol、

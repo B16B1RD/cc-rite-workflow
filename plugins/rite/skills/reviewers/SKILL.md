@@ -3,7 +3,8 @@ name: reviewers
 description: |
   rite workflow のレビュアー選定コーディネータ: 変更ファイルパターンから起動すべき専門 reviewer
   agent（Security / Application / DevOps / Test / Dependencies / Prompt Engineer /
-  Tech Writer / Code Quality / Error Handling）の選定テーブルと横断ルールを提供する。
+  Tech Writer / Code Quality / Error Handling）と、関連 Issue の受入条件を確認する Acceptance
+  reviewer の選定テーブルと横断ルールを提供する。
   /rite:pr-review から Read でのみ参照される（ユーザー直接起動も Skill ツール invoke もされない）。
   汎用の「コードレビュー」ヘルパーではなく、その語では auto-activate しない。
 user-invocable: false
@@ -12,7 +13,7 @@ disable-model-invocation: true
 
 # Reviewer Skills - Main Coordinator
 
-**Structure**: `SKILL.md` は reviewer 群の coordinator（選定ロジック + 横断テーブル）。各 reviewer は `agents/{reviewer_type}-reviewer.md` の named subagent。8 specialist は heavyweight 構造、`application-reviewer.md` は lens-based（persona + first-suspect lenses + output contract）。
+**Structure**: `SKILL.md` は reviewer 群の coordinator（選定ロジック + 横断テーブル）。各 reviewer は `agents/{reviewer_type}-reviewer.md` の named subagent。8 specialist は heavyweight 構造、`application-reviewer.md` は lens-based（persona + first-suspect lenses + output contract）、`acceptance-reviewer.md` は受入条件確認の専任（ファイルパターンを持たない）。
 
 ## Invocation
 
@@ -72,8 +73,11 @@ Mapping of reviewer identifiers (`reviewer_type`) to display names. Update this 
 | tech-writer | テクニカルライター | `tech-writer-reviewer.md` |
 | code-quality | コード品質専門家 | `code-quality-reviewer.md` |
 | error-handling | エラーハンドリング専門家 | `error-handling-reviewer.md` |
+| acceptance | 受入条件確認担当 | `acceptance-reviewer.md` |
 
-**Note**: この表が SoT。`pr-review` も参照する。`code-quality` は no-match fallback、fenced-code co-reviewer、sole reviewer guard（上記規則）。
+**Note**: この表が SoT。`pr-review` も参照する。`code-quality` は no-match fallback、fenced-code co-reviewer、sole reviewer guard（上記規則）。`acceptance` は Available Reviewers 表に載らない（下記 Acceptance reviewer rule で選定する）。
+
+**Acceptance reviewer rule**: `pr-review` ステップ 1.3.1 の `ACCEPTANCE_SCOPE=target`（関連 Issue に `## 5. Acceptance Criteria` と `### AC-N` がある）のときだけ、ステップ 3.2.1 の cap 適用**後**に `selection_type: mandatory` で追加する。sole reviewer guard の人数判定にも `max_reviewers` / 軽量レーン上限の母数にも数えず、incremental cycle でも落とさない。
 
 ## Legacy Reviewer Type Aliases
 
@@ -107,7 +111,7 @@ For each changed file:
 | `full`（cycle 1 / fail-safe） | PR 全体の変更ファイル |
 | `incremental`（cycle 2+） | 前回レビュー起点からの fix diff (`git diff --name-only {cycle_base_sha}..HEAD`) |
 
-`incremental` では、Phase 1 の結果に**前サイクルで blocking を出した reviewer を `selection_type: mandatory` として合流**させる（Phase 5 が落とさないことを保証しているのは `mandatory` のみのため）。設計根拠: [`cycle-scope.md`](../pr-review/references/cycle-scope.md)。
+`incremental` では、Phase 1 の結果に**前サイクルで blocking を出した reviewer を `selection_type: mandatory` として合流**させる（Phase 5 が落とさないことを保証しているのは `mandatory` のみのため）。ただし `acceptance` は合流させない（cap 適用後に毎 cycle 追加する）。設計根拠: [`cycle-scope.md`](../pr-review/references/cycle-scope.md)。
 rationale: references/rationale.md#incremental-mandatory-merge
 
 ### Phase 2: Content Analysis (Optional)
@@ -179,6 +183,8 @@ Cap logic:
         that floor is clamped up to it (the guard's blind-spot protection is not overridable by the cost cap) —
         emit the ステップ 3.2.1 WARNING so the clamp is not silent.
   - MUST display each dropped reviewer's name and matched file count (silent capping is prohibited)
+  - The acceptance reviewer is outside this cap: it is added after the cap is applied and is not counted
+    against effective_max (see Acceptance reviewer rule above)
 
 effective_max resolution (config validation):
   - max_reviewers unset            -> default 6

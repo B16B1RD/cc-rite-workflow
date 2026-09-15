@@ -350,3 +350,13 @@ Decision Log append を候補ごとに単一 Bash invocation にする理由。
 既存 Issue を引き受け先にして新規作成を見送る経路に申し送りコメントを必須化した理由。
 
 「引き受け先が実在する」判定だけで triage を閉じると、#N 側に何も残らず、後から「フォローアップ Issue 化はありませんか」と問われて初めてコメントが投稿される。Decision Log は元 Issue の記録であり引き受け先への通知ではない。CLOSED Issue は着手対象にできないため投稿せず、当該候補について 7.2 の既存 4 択を再掲する。新規 AskUserQuestion を足さないのは既存 disposition 質問へ戻す方が inventory を増やさず、差し戻し先が既にあるため。見送りは 7.2 の 5 択ではなく「別 Issue 作成」の結果分岐である。`HANDOFF_COMMENT_REJECTED=1` のあとに 7.4.3 へ進むと申し送りコメントの必須化が空文になる。
+
+## acceptance-reviewer
+
+受入条件確認を専任 reviewer にし、mandatory・cap 枠外で毎 cycle 起動する理由。
+
+他の reviewer は「diff が導入した問題」を revert test で探すため、fix が機能を削り過ぎて AC を満たさなくなった状態や、最初から満たしていない AC を検出する責任を誰も持たない。欠落指向・全 HEAD 対象・差分スコープ非適用は専門 reviewer と別モードなので、既存 reviewer への責務追加ではなく専任にする。cap 枠内に数えると軽量レーンや `max_reviewers` で専門 reviewer の枠が 1 つ減り、品質を人数上限で縛ることになるため、cap 適用後に追加する。
+
+判定表の AC-ID 集合と未充足 finding の残存を helper（`scripts/acceptance-criteria-check.sh`）で機械検査するのは、reviewer が AC を読み飛ばした出力や、降格ゲートで未充足 finding が消えた JSON を「全充足」と区別できないため。未充足行は降格されても未検証へ格下げしない — 不合格を観測した事実と finding の採否は別で、格下げは人間確認で通せる経路を再生産する。Accepted Fingerprint Suppression / Fact-Checking / Debate は免除せず、そこで finding が消えたら最終整合検査が error で止める（例外経路を増やさず fail-loud に倒す）。Deduplication だけ免除するのは、同じ file の別指摘へ統合されると `[AC-N]` 接頭辞の紐付けが壊れ、正常な未充足まで error になるため。
+
+blocking 0 で未検証だけが残る cycle を `[review:mergeable]` にしないのは、agent が観測できなかった AC を黙って合格扱いにするため。新 sentinel を足さず `[review:error]` + `REVIEW_STOP=ac_unverified` にするのは sentinel 語彙と caller の分岐表を増やさないため。ステップ 8.0 は 8.1 より先に flow-state を書くので、同じ条件の行で handoff を付けない — 付けると FINALIZE の mergeable 完了経路へ Stop hook が差し戻す。iterate が自動再試行しないのは、同じ HEAD では再実行しても観測できないため。
