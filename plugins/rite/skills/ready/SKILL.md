@@ -45,7 +45,8 @@ PR を Ready for review にし、関連 Issue の Status を更新する。
 | `{plugin_root}` | Absolute path to the plugin root directory. Works for both local dev and marketplace installs | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
 | `{owner_repo}` | Repo-context gh コマンドの `-R` に literal substitute する owner/repo（slash 形式） | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) |
 | `{reviewed_ac_state}` | reviewed-head helper の `REVIEWED_AC=` marker | Phase 1.0 の inspect 出力 |
-| `{reviewed_ac_ids}` | reviewed-head helper の `ids=` marker（カンマ区切り） | Phase 1.0 の inspect 出力 |
+| `{reviewed_ac_ids}` | reviewed-head helper の `REVIEWED_AC=...; ac=` marker（カンマ区切り） | Phase 1.0 の inspect 出力 |
+| `{reviewed_head_override_arg}` | 通常は空。ユーザーが本ターンで未レビュー HEAD の強行を明示した場合だけ `--skip-head-check` | Phase 1.0 の明示 override 判定 |
 
 ---
 
@@ -334,11 +335,11 @@ End processing.
 
 ### 3.0 Final acceptance-criteria gate
 
-Ready 遷移の直前に必ず再検査する。Phase 1 の inspect 後に review JSON / attestation / HEAD が変化しても、この enforce を通らない限り `gh pr ready` を実行しない。reviewed-head の明示 override 経路でも本 gate は必須。
+Ready 遷移の直前に必ず再検査する。Phase 1 の inspect 後に review JSON / attestation / HEAD が変化しても、この enforce を通らない限り `gh pr ready` を実行しない。reviewed-head の明示 override 経路では `{reviewed_head_override_arg}` を `--skip-head-check` に置換し、HEAD 照合だけを省略して AC 検証は維持する。通常経路では空文字に置換する。
 
 ```bash
 bash "$plugin_root/hooks/scripts/ready-reviewed-head-gate.sh" \
-  --pr "$ready_pr_number" --plugin-root "$plugin_root" --enforce-ac \
+  --pr "$ready_pr_number" --plugin-root "$plugin_root" --enforce-ac {reviewed_head_override_arg} \
   || { echo "[ready:error]"; exit 1; }
 ```
 

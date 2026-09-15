@@ -7,7 +7,7 @@
 # nb-sweep-done-{pr}.txt may name the one known sweep commit.
 set -u
 pr_number=""; plugin_root=""; results_dir=""; state_root=""
-ac_mode="inspect"; attest_ids=""
+ac_mode="inspect"; attest_ids=""; skip_head_check=0
 results_dir_explicit=0
 state_root_explicit=0
 while [ "$#" -gt 0 ]; do
@@ -31,9 +31,12 @@ while [ "$#" -gt 0 ]; do
     --enforce-ac)
       [ "$ac_mode" = inspect ] || { echo "ERROR: Ready reviewed-head gate: AC modes are mutually exclusive" >&2; exit 2; }
       ac_mode="enforce"; shift ;;
+    --skip-head-check)
+      skip_head_check=1; shift ;;
     *) echo "ERROR: Ready reviewed-head gate: unknown argument: $1" >&2; exit 2 ;;
   esac
 done
+[ "$skip_head_check" -eq 0 ] || [ "$ac_mode" = enforce ] || { echo "ERROR: Ready reviewed-head gate: --skip-head-check requires --enforce-ac" >&2; exit 2; }
 case "$pr_number" in ''|*[!0-9]*) echo "ERROR: Ready reviewed-head gate: PR number is required" >&2; exit 2 ;; esac
 if [ -z "$results_dir" ]; then
   [ -n "$plugin_root" ] || { echo "ERROR: Ready reviewed-head gate: --plugin-root is required when --results-dir is omitted" >&2; exit 2; }
@@ -75,6 +78,7 @@ _check_acceptance_criteria() {
     return 1
   fi
   if [ "$ac_type" = missing ]; then
+    echo "  次の行動: /rite:pr-review を再実行してください。" >&2
     echo "[CONTEXT] REVIEWED_AC=missing; file=$latest" >&2
     return 1
   fi
@@ -94,17 +98,24 @@ _check_acceptance_criteria() {
     echo "[CONTEXT] REVIEWED_AC=malformed; reason=empty_or_duplicate_ids; file=$latest" >&2
     return 1
   fi
-  invalid=$(jq -r --arg head "$reviewed" '
+  if ! invalid=$(jq -r --arg head "$reviewed" '
     [.acceptance_criteria[] |
       select((type != "object") or
         ((.id | type) != "string") or (.id | test("^AC-[0-9]+$") | not) or
         ((.status | type) != "string") or
+        ((.evidence | type) != "string") or (.evidence | length == 0) or
+        (has("finding_id") | not) or
+        (.status == "unmet" and (((.finding_id | type) != "string") or (.finding_id | test("^F-[0-9]{2,}$") | not))) or
+        (.status != "unmet" and .finding_id != null) or
         (.status != "satisfied" and .status != "unmet" and .status != "unverified" and .status != "human-verified") or
         (.status == "human-verified" and
           (((.head | type) != "string") or ((.at | type) != "string") or
            ((.head | ascii_downcase) != $head) or
            (.at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$") | not))))] | length
-  ' "$latest" 2>/dev/null) || invalid=1
+  ' "$latest" 2>/dev/null); then
+    echo "[CONTEXT] REVIEWED_AC=malformed; reason=ac_query_failed; file=$latest" >&2
+    return 1
+  fi
   if [ "$invalid" -ne 0 ] 2>/dev/null; then
     echo "[CONTEXT] REVIEWED_AC=malformed; reason=invalid_row_or_attestation; file=$latest" >&2
     return 1
@@ -130,6 +141,7 @@ _check_acceptance_criteria() {
           (length == 1 and .[0].status == "unverified")] | all)
       ' "$latest" >/dev/null 2>&1; then
         rm -f "$ids_tmp"
+        echo "  次の行動: 修正または Issue の AC 訂正後に /rite:pr-review を再実行してください。" >&2
         echo "[CONTEXT] REVIEWED_AC=malformed; reason=unknown_duplicate_or_mixed_attest_ids; file=$latest" >&2
         return 1
       fi
@@ -149,12 +161,16 @@ _check_acceptance_criteria() {
       echo "[CONTEXT] REVIEWED_AC=attested; ac=$(printf '%s' "$ids" | paste -sd, -); head=$reviewed; file=$latest" >&2
       ;;
     enforce)
-      ids=$(jq -r '[.acceptance_criteria[] | select(.status == "unmet") | .id] | join(",")' "$latest")
+      if ! ids=$(jq -r '[.acceptance_criteria[] | select(.status == "unmet") | .id] | join(",")' "$latest"); then
+        echo "[CONTEXT] REVIEWED_AC=malformed; reason=ac_query_failed; file=$latest" >&2; return 1
+      fi
       if [ -n "$ids" ]; then
         echo "[CONTEXT] REVIEWED_AC=unmet; ac=$ids; file=$latest" >&2
         return 1
       fi
-      ids=$(jq -r --arg head "$reviewed" '[.acceptance_criteria[] | select(.status == "unverified" or (.status == "human-verified" and (.head | ascii_downcase) != $head)) | .id] | join(",")' "$latest")
+      if ! ids=$(jq -r --arg head "$reviewed" '[.acceptance_criteria[] | select(.status == "unverified" or (.status == "human-verified" and (.head | ascii_downcase) != $head)) | .id] | join(",")' "$latest"); then
+        echo "[CONTEXT] REVIEWED_AC=malformed; reason=ac_query_failed; file=$latest" >&2; return 1
+      fi
       if [ -n "$ids" ]; then
         echo "[CONTEXT] REVIEWED_AC=unverified; ac=$ids; file=$latest" >&2
         return 1
@@ -162,11 +178,15 @@ _check_acceptance_criteria() {
       echo "[CONTEXT] REVIEWED_AC=satisfied; file=$latest" >&2
       ;;
     *)
-      ids=$(jq -r '[.acceptance_criteria[] | select(.status == "unmet") | .id] | join(",")' "$latest")
+      if ! ids=$(jq -r '[.acceptance_criteria[] | select(.status == "unmet") | .id] | join(",")' "$latest"); then
+        echo "[CONTEXT] REVIEWED_AC=malformed; reason=ac_query_failed; file=$latest" >&2; return 1
+      fi
       if [ -n "$ids" ]; then echo "[CONTEXT] REVIEWED_AC=unmet; ac=$ids; file=$latest" >&2; return 0; fi
-      ids=$(jq -r '[.acceptance_criteria[] | select(.status == "unverified") | .id] | join(",")' "$latest")
+      if ! ids=$(jq -r '[.acceptance_criteria[] | select(.status == "unverified") | .id] | join(",")' "$latest"); then
+        echo "[CONTEXT] REVIEWED_AC=malformed; reason=ac_query_failed; file=$latest" >&2; return 1
+      fi
       if [ -n "$ids" ]; then echo "[CONTEXT] REVIEWED_AC=unverified; ac=$ids; file=$latest" >&2
-      else echo "[CONTEXT] REVIEWED_AC=satisfied; file=$latest" >&2; fi
+      fi
       ;;
   esac
 }
@@ -202,6 +222,12 @@ case "$reviewed" in
     exit 1
     ;;
 esac
+
+if [ "$skip_head_check" -eq 1 ]; then
+  echo "[CONTEXT] READY_REVIEWED_HEAD=override; reviewed=$reviewed; head=$head_sha" >&2
+  _check_acceptance_criteria
+  exit $?
+fi
 
 if _sha_matches "$reviewed" "$head_sha"; then
   echo "[CONTEXT] READY_REVIEWED_HEAD=match; reviewed=$reviewed; head=$head_sha; via=json" >&2

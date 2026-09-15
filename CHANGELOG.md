@@ -34,7 +34,7 @@ Past version sections carry none either — they have already been stripped.
 
 ### Changed
 
-- **Ready and merge enforce the reviewed acceptance-criteria record** — both transitions inspect the latest review result, allow a human to attest only criteria that remain unverified, and enforce that every criterion is either satisfied or human-verified at the reviewed HEAD. Merge now also checks that the current HEAD is the final reviewed commit. Review-result JSON created before the acceptance-criteria record was introduced fails closed and requires `/rite:pr-review` to run again; existing files are not migrated and archived results are not considered.
+- **Ready and merge enforce the reviewed acceptance-criteria record** — both transitions inspect the latest review result, allow a human to attest only criteria that remain unverified, and enforce that every criterion is either satisfied or human-verified at the reviewed HEAD. Merge now also checks that the current HEAD is the final reviewed commit or the explicitly permitted non-blocking sweep commit. Review-result JSON created before the acceptance-criteria record was introduced fails closed and requires `/rite:pr-review` to run again; existing files are not migrated and archived results are not considered.
 
 ## [0.15.1] - 2026-09-12
 

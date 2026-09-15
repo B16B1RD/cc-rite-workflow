@@ -88,6 +88,10 @@ assert_grep "ready invalid AC states never reach attestation" "$READY" \
   'unmet / missing / malformed.*standalone.*質問や attest に送らない'
 assert_grep "ready final gate enforces acceptance" "$READY" \
   'plugin-root "\$plugin_root" --enforce-ac'
+assert_grep "ready unmet branch uses an exact blocking comparison" "$READY" \
+  '^if \[ "\$reviewed_ac_state" = "unmet" \] \|\| \[ "\$reviewed_ac_state" = "missing" \] \|\| \[ "\$reviewed_ac_state" = "malformed" \]; then$'
+assert_grep "explicit reviewed-head override preserves AC enforcement" "$READY" \
+  '.*--enforce-ac \{reviewed_head_override_arg\}'
 ready_enforce_line=$(grep -n -- '--enforce-ac' "$READY" | tail -1 | cut -d: -f1)
 ready_call_line=$(grep -n '^gh pr ready ' "$READY" | head -1 | cut -d: -f1)
 if [ -n "$ready_enforce_line" ] && [ -n "$ready_call_line" ] && [ "$ready_enforce_line" -lt "$ready_call_line" ]; then
