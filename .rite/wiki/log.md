@@ -1,4 +1,8 @@
 # Directory Update Log
+## 2026-09-16
+
+* **Skip**: [レビュー結果](raw/reviews/20260915T155931Z-pr-2881.md) — 既存ページで同じ経験則を扱っているため
+
 ## 2026-09-15
 
 * **Skip**: [20260915T145209Z-pr-2877.md](raw/reviews/20260915T145209Z-pr-2877.md) — no extractable heuristic: zero-finding review; existing fail-loud all-exits and test pin pages already cover undeterminable-state skip and independent mutation pins
