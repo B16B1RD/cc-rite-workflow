@@ -432,20 +432,21 @@ fi
 
 # 出典別の除外を先に適用しないと、残すはずのコピーが除外対象だった場合に指摘を失う。
 # 比較から `_src` だけを外し、最初に現れた要素と順序を維持する。
-_dedupe_before=$(printf '%s' "$findings_json" | jq 'length')
-if deduplicated_json=$(printf '%s' "$findings_json" | jq -c '
-  reduce .[] as $finding (
+if dedupe_result=$(printf '%s' "$findings_json" | jq -r '
+  length as $before
+  | reduce .[] as $finding (
     {kept: [], seen: []};
     ($finding | del(._src)) as $key
     | if (.seen | index($key)) == null
       then .kept += [$finding] | .seen += [$key]
       else .
       end
-  ) | .kept
+  )
+  | (($before - (.kept | length)) | tostring) + "\n" + (.kept | tojson)
 '); then
+  _dedupe_removed=${dedupe_result%%$'\n'*}
+  deduplicated_json=${dedupe_result#*$'\n'}
   findings_json="$deduplicated_json"
-  _dedupe_after=$(printf '%s' "$findings_json" | jq 'length')
-  _dedupe_removed=$((_dedupe_before - _dedupe_after))
   if [ "$_dedupe_removed" -gt 0 ]; then
     echo "[cleanup-follow-up-issue] deduplicated: pr=${PR_NUMBER}; removed=${_dedupe_removed}" >&2
   fi

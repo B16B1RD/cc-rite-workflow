@@ -1354,11 +1354,11 @@ echo "--- T-45: 集約失敗は全 finding を元の順序で転記する ---"
 reset_stubs
 export RITE_TEST_JQ_FAIL=dedupe
 r=$(new_root t45)
-put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-01","reviewer":"test-reviewer","severity":"LOW","file":"a.md","line":1,"description":"same","suggestion":"fix"}]}'
-put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-01","reviewer":"test-reviewer","severity":"LOW","file":"a.md","line":1,"description":"same","suggestion":"fix"}]}'
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-01","reviewer":"test-reviewer","severity":"LOW","file":"a.md","line":1,"description":"first","suggestion":"fix"}]}'
+put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-02","reviewer":"test-reviewer","severity":"LOW","file":"b.md","line":2,"description":"second","suggestion":"fix"}]}'
 run_target "$r"
 assert "T-45 exit 0" "0" "$RC"
-assert "T-45 全件維持" "2" "$(grep -c '説明: same$' "$STUB_DIR/body.md" | tr -d ' ')"
+assert "T-45 全件を元の順序で維持" "first,second" "$(sed -n 's/^- 説明: //p' "$STUB_DIR/body.md" | paste -sd, -)"
 assert_grep "T-45 WARNING" "$ERR" 'WARNING: 完全一致する指摘の集約に失敗したため全件を転記します'
 assert "T-45 故障注入 1 回" "1" "$(grep -c '^dedupe$' "$STUB_DIR/jq-fail.log" | tr -d ' ')"
 
