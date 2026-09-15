@@ -55,7 +55,8 @@
 #   T-31 台帳を読めない (API 失敗 / 解析不能 / 関連 Issue 無し) ときは WARNING + marker で全件転記
 #   T-32 台帳が無い PR は従来どおり全件転記
 #   T-33 除外は最新 JSON 由来で台帳の issued 行と組が一致する finding に限る。先行 cycle の finding は
-#        id・位置が同じでも転記し、重複しうる件数を WARNING で出す / 最新 JSON を照合できなければ apply_failed
+#        id・位置が同じでも転記し、同じ file:line のものだけ重複候補として WARNING に出す。
+#        行がずれた再報告は WARNING なしで重複しうる / 最新 JSON を照合できなければ apply_failed
 #   T-34 cleanup SKILL.md が all_issued と除外不能 note を完了報告へ配線する
 #   T-35 台帳の選別述語が nb-sweep-collect.sh と揃っている (CRLF 正規化の位置を含む)
 #   T-36 CRLF 本文の却下台帳も issued 行を読める
