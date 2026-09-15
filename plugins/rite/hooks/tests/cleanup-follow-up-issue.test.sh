@@ -67,6 +67,12 @@
 #   T-38 複数 JSON にまたがる全 finding を key で除外すると all_resolved で起票しない
 #   T-39 key 形式でないトークン (形が合わない suffix を含む) を 1 つでも含む --exclude-ids は除外を全く適用しない
 #   T-41 6.0.V の射影が finding ごとに自分の出典の key を出し (同秒衝突 suffix 付きを含む)、形が合わなければ null にする
+#
+# Coverage (完全一致 finding の集約):
+#   T-42 _src だけ異なる非隣接の完全一致 finding を初出順で 1 件にまとめる
+#   T-43 1 フィールドでも異なる finding はまとめない
+#   T-44 再検証による除外後に完全一致を判定し、残った finding を転記する
+#   T-45 集約判定に失敗したら WARNING を出し、全 finding を元の順序で転記する
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -151,7 +157,7 @@ cat > "$TMP_ROOT/bin/jq" <<'JQ'
 #!/bin/bash
 for arg in "$@"; do
   case "${RITE_TEST_JQ_FAIL:-}:$arg" in
-    parse:*'split("\n") | join(",") | split(",")'*|ambiguity:*'map(select(length > 1)'*|release:'. - $amb'|apply:*'[.[] | select(key as $k'*)
+    parse:*'split("\n") | join(",") | split(",")'*|ambiguity:*'map(select(length > 1)'*|release:'. - $amb'|apply:*'[.[] | select(key as $k'*|dedupe:*'reduce .[] as $finding'*)
       printf '%s\n' "$RITE_TEST_JQ_FAIL" >> "$STUB_DIR/jq-fail.log"
       cat >/dev/null
       echo "jq: injected $RITE_TEST_JQ_FAIL failure" >&2
@@ -1310,6 +1316,51 @@ else
   assert "T-41 corrupt 由来でも id は残す" "F-04" "$(jq -r 'select(.description == "p4") | .id' "$OUT")"
   assert_not_grep "T-41 抽出段で unavailable にしない" "$OUT" 'FOLLOW_UP_REVERIFY=unavailable'
 fi
+
+echo "--- T-42: _src だけ異なる非隣接の完全一致 finding を初出順で 1 件にまとめる ---"
+reset_stubs
+r=$(new_root t42)
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-01","reviewer":"test-reviewer","severity":"LOW","file":"a.md","line":1,"description":"same","suggestion":"same fix"},{"id":"F-02","reviewer":"test-reviewer","severity":"LOW","file":"b.md","line":2,"description":"middle","suggestion":"middle fix"}]}'
+put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-01","reviewer":"test-reviewer","severity":"LOW","file":"a.md","line":1,"description":"same","suggestion":"same fix"}]}'
+run_target "$r"
+assert "T-42 exit 0" "0" "$RC"
+assert "T-42 完全一致は 1 件" "1" "$(grep -c '説明: same$' "$STUB_DIR/body.md" | tr -d ' ')"
+assert "T-42 初出順を維持" "same,middle" "$(sed -n 's/^- 説明: //p' "$STUB_DIR/body.md" | paste -sd, -)"
+assert_grep "T-42 削減件数" "$ERR" '^\[cleanup-follow-up-issue\] deduplicated: pr=9; removed=1$'
+
+echo "--- T-43: 1 フィールドでも異なる finding はまとめない ---"
+reset_stubs
+r=$(new_root t43)
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-01","reviewer":"test-reviewer","severity":"LOW","file":"a.md","line":1,"description":"line differs","suggestion":"same"},{"id":"F-02","reviewer":"test-reviewer","severity":"LOW","file":"b.md","line":2,"description":"suggestion differs","suggestion":"first"}]}'
+put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-01","reviewer":"test-reviewer","severity":"LOW","file":"a.md","line":9,"description":"line differs","suggestion":"same"},{"id":"F-02","reviewer":"test-reviewer","severity":"LOW","file":"b.md","line":2,"description":"suggestion differs","suggestion":"second"}]}'
+run_target "$r"
+assert "T-43 exit 0" "0" "$RC"
+assert "T-43 line 差は 2 件" "2" "$(grep -c '説明: line differs$' "$STUB_DIR/body.md" | tr -d ' ')"
+assert "T-43 suggestion 差は 2 件" "2" "$(grep -c '説明: suggestion differs$' "$STUB_DIR/body.md" | tr -d ' ')"
+assert_not_grep "T-43 集約ログなし" "$ERR" 'deduplicated:'
+
+echo "--- T-44: 再検証で先行コピーを除外しても後続コピーを転記する ---"
+reset_stubs
+r=$(new_root t44)
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-01","reviewer":"test-reviewer","severity":"LOW","file":"a.md","line":1,"description":"remaining copy","suggestion":"fix"}]}'
+put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-01","reviewer":"test-reviewer","severity":"LOW","file":"a.md","line":1,"description":"remaining copy","suggestion":"fix"}]}'
+run_target "$r" --exclude-ids "9-20260101120000.json#F-01"
+assert "T-44 exit 0" "0" "$RC"
+assert_grep "T-44 created" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
+assert "T-44 残ったコピーを 1 件転記" "1" "$(grep -c '説明: remaining copy$' "$STUB_DIR/body.md" | tr -d ' ')"
+assert_not_grep "T-44 除外後は集約なし" "$ERR" 'deduplicated:'
+
+echo "--- T-45: 集約失敗は全 finding を元の順序で転記する ---"
+reset_stubs
+export RITE_TEST_JQ_FAIL=dedupe
+r=$(new_root t45)
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-01","reviewer":"test-reviewer","severity":"LOW","file":"a.md","line":1,"description":"first","suggestion":"fix"}]}'
+put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-02","reviewer":"test-reviewer","severity":"LOW","file":"b.md","line":2,"description":"second","suggestion":"fix"}]}'
+run_target "$r"
+assert "T-45 exit 0" "0" "$RC"
+assert "T-45 全件を元の順序で維持" "first,second" "$(sed -n 's/^- 説明: //p' "$STUB_DIR/body.md" | paste -sd, -)"
+assert_grep "T-45 WARNING" "$ERR" 'WARNING: 完全一致する指摘の集約に失敗したため全件を転記します'
+assert "T-45 故障注入 1 回" "1" "$(grep -c '^dedupe$' "$STUB_DIR/jq-fail.log" | tr -d ' ')"
 
 echo "--- T-arg: 引数 gate ---"
 bash "$TARGET" --pr abc --state-root "$TMP_ROOT" --owner a --repo b >"$OUT" 2>"$ERR"; RC=$?
