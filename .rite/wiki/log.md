@@ -26,6 +26,7 @@
 * **Update**: [散文契約の静的 pin には weakened probe による positive control を課す（見出しラベルで充足する pin を構造的に排除する）](pages/patterns/prose-pin-requires-positive-control.md) — [見出しだけの pin と付け足し型の変異が生存したレビュー結果](raw/reviews/20260915T073009Z-pr-2842.md) を統合。rationale 節の本文 pin と、同じ行への矛盾条項の付け足しに対する否定 assert を追記
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=489, broken_refs=0
 * **Skip**: [20260915T074332Z-pr-2843.md](raw/reviews/20260915T074332Z-pr-2843.md) — 指摘事項なし（0件）のためスキップ
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=495, broken_refs=0
 
 ## 2026-09-14
 
