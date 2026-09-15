@@ -591,7 +591,7 @@ else
     # 後続行が key を失って key と本文の対応が崩れる（誤対応が resolved 側に振れると指摘の無言 drop）。
     # `key` は出典 JSON の basename と `id` を `#` で連結した除外指定の単位（`id` は cycle 内の連番で、
     # 出典と組にして初めて 1 件を指せる）。basename が `{pr_number}-{14 桁}.json`
-    # （同秒衝突時は `{pr_number}-{14 桁}~{4 桁 hex}.json`）の形でない出典（corrupt 退避ファイル等）と書式外 id は `key` を null にする。
+    # （同秒衝突時は `{pr_number}-{14 桁}~{4 桁小文字 hex}.json`）の形でない出典（corrupt 退避ファイル等）と書式外 id は `key` を null にする。
     # `.id` は**落とさず null へ写す**。save 側は書式外 id の保存を hard fail で止めるが、
     # 本 gate を通さずに `.rite/review-results/` 直下へ保存された JSON には書式外 id が残る
     # （gate 導入前の JSON、および gate を経由しない `/rite:fix` の write 経路 — P1/P3 の直接 write と
@@ -672,13 +672,13 @@ fi
 出力に**同じ id が複数行**現れることがある（`id` は cycle 内の連番で cycle 跨ぎの identity を持たない）。各行は別の finding として独立に判定し、`key` で区別する。ただし同じ `key` が複数行に現れる場合（同一 JSON 内の id 重複）は、`resolved` と判定しても helper 側が除外を拒否して全件転記するため、`{n_resolved}` は実際に除外された件数と一致しないことがある。
 rationale: references/rationale.md#follow-up-exclude-key
 
-`"key": null` の finding（書式外 id / id 欠落 / 出典ファイル名が `{pr_number}-{14 桁}.json` / `{pr_number}-{14 桁}~{4 桁 hex}.json` のどちらの形でもない）は**必ず `undecidable`** とする。除外指定に載せられる key が無く、`{resolved_ids_csv}` へ入れられる値も無いため、判定の余地なく転記側へ倒れる。出力には現れるので `{n_undecidable}` には通常どおり数え上げられる。
+`"key": null` の finding（書式外 id / id 欠落 / 出典ファイル名が `{pr_number}-{14 桁}.json` / `{pr_number}-{14 桁}~{4 桁小文字 hex}.json` のどちらの形でもない）は**必ず `undecidable`** とする。除外指定に載せられる key が無く、`{resolved_ids_csv}` へ入れられる値も無いため、判定の余地なく転記側へ倒れる。出力には現れるので `{n_undecidable}` には通常どおり数え上げられる。
 
 判定を終えたら、`resolved` の `key` を CSV（`"{pr_number}-20260101120000.json#F-01,{pr_number}-20260102120000~1a2b.json#F-05"`）に組み、内訳 marker を出す。**抽出が成功した経路では、抽出結果が 0 件でもこの marker を必ず出す**（`resolved=0; remains=0; undecidable=0; resolved_ids=`）— 出さないと成功 marker が 1 本も残らず、ステップ 12 が「marker が無いとき」の分岐に落ちる。**既に `unavailable` を出した経路では `done` を出さない**（出すと最後の出現が `done` になり `reason=` が完了報告から消える）:
 
 ```bash
 # `{resolved_ids_csv}` / `{n_*}` は上記判定の結果をリテラル置換する（resolved が 0 件なら空文字列）。
-# `{resolved_ids_csv}` に置けるのは出力の `key` の値（`{pr_number}-{14 桁}.json#F-NN`、同秒衝突時は `{pr_number}-{14 桁}~{4 桁 hex}.json#F-NN`）をカンマ連結したものだけ。
+# `{resolved_ids_csv}` に置けるのは出力の `key` の値（`{pr_number}-{14 桁}.json#F-NN`、同秒衝突時は `{pr_number}-{14 桁}~{4 桁小文字 hex}.json#F-NN`）をカンマ連結したものだけ。
 echo "[CONTEXT] FOLLOW_UP_REVERIFY=done; resolved={n_resolved}; remains={n_remains}; undecidable={n_undecidable}; resolved_ids={resolved_ids_csv}"
 ```
 
