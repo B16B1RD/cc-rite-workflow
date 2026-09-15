@@ -30,10 +30,12 @@
 #
 # Reason SoT:
 #   extract: input_missing / no_ac_ids / duplicate_ac_id
-#   table:   input_missing / expected_invalid / table_missing / table_malformed / table_empty /
-#            id_set_mismatch / status_invalid / evidence_missing / unmet_finding_missing
-#   final:   jq_missing / input_missing / json_invalid / acceptance_criteria_missing /
-#            acceptance_row_invalid / unmet_finding_not_blocking
+#   table:   input_missing / expected_invalid / jq_missing / table_missing / table_malformed /
+#            table_empty / id_set_mismatch / status_invalid / evidence_missing /
+#            unmet_finding_missing / jq_transform_failed
+#   final:   jq_missing / input_missing / json_invalid / gate_not_applied /
+#            acceptance_criteria_missing / acceptance_row_invalid / unmet_finding_not_blocking /
+#            jq_transform_failed
 #
 # Exit codes:
 #   0  検査通過 (skipped を含む)
@@ -122,7 +124,8 @@ case "$mode" in
     printf '%s\n' "$expected" | grep -Eq '^AC-[0-9]+(,AC-[0-9]+)*$' \
       || _fail expected_invalid "--expected は AC-N のカンマ区切りで指定してください: $expected"
     command -v jq >/dev/null 2>&1 || _fail jq_missing "jq が見つかりません"
-    # 表は 3 列、指摘事項は 5 列。raw pipe は表の区切りにしか現れない契約 (_reviewer-base.md の 内容 列規約)
+    # 表は 3 列、指摘事項は 5 列。指摘事項は 5 列目 (推奨対応) だけが raw pipe を含みうるため、
+    # 重要度 / スコープ / 内容は左端からの固定位置で読み、列数は下限だけを見る
     parsed=$(_read_lf "$input" | awk -F'|' '
       function trim(s) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
       /^### / {
@@ -138,7 +141,7 @@ case "$mode" in
         if (sec == "ac") {
           if (NF != 5) { print "MALFORMED"; next }
           print "ROW\t" trim($2) "\t" trim($3) "\t" trim($4)
-        } else if (NF == 7) {
+        } else if (NF >= 7) {
           c = trim($5)
           if (match(c, /^\[AC-[0-9]+\]/)) print "FD\t" substr(c, 2, RLENGTH - 2) "\t" trim($2) "\t" trim($3)
         }
@@ -171,11 +174,14 @@ case "$mode" in
       printf '%s\n' "$parsed" | awk -F'\t' -v ac="$ac" '$1 == "FD" && $2 == ac && $3 == "CRITICAL" && $4 == "current-pr" { ok = 1 } END { exit !ok }' \
         || _fail unmet_finding_missing "未充足の $ac に対応する [${ac}] で始まる CRITICAL / current-pr の指摘がありません" "ac=$ac"
     done
-    printf '%s\n' "$rows" | jq -R -s -c '
+    if ! rows_json=$(printf '%s\n' "$rows" | jq -R -s -c '
       split("\n") | map(select(length > 0) | split("\t"))
       | map({id: .[1],
              status: ({"充足": "satisfied", "未充足": "unmet", "未検証": "unverified"}[.[2]]),
-             evidence: .[3]})'
+             evidence: .[3]})'); then
+      _fail jq_transform_failed "判定行を JSON に変換できません"
+    fi
+    printf '%s\n' "$rows_json"
     unverified=$(printf '%s\n' "$rows" | awk -F'\t' '$3 == "未検証" { print $2 }' | paste -sd, -)
     echo "[CONTEXT] ACCEPTANCE_TABLE=ok; rows=$(printf '%s\n' "$rows" | wc -l | tr -d ' '); unmet=$(printf '%s\n' "$unmet" | paste -sd, -); unverified=$unverified" >&2
     ;;
@@ -184,38 +190,53 @@ case "$mode" in
     [ -n "$input" ] || { usage >&2; exit 2; }
     command -v jq >/dev/null 2>&1 || _fail jq_missing "jq が見つかりません"
     [ -f "$input" ] || _fail input_missing "--input が存在しません: $input"
-    jq empty "$input" 2>/dev/null || _fail json_invalid "JSON として parse できません: $input"
+    jq -e 'type == "object"' "$input" >/dev/null 2>&1 || _fail json_invalid "JSON オブジェクトとして parse できません: $input"
+    # 降格ゲート適用前の JSON では、降格された未充足 finding がまだ findings[] に残って見える
+    jq -e '(.measured_gate | type) == "object"' "$input" >/dev/null \
+      || _fail gate_not_applied "measured_gate がありません (5.3.0.M step 2 の適用後に実行する): $input"
     jq -e 'has("acceptance_criteria")' "$input" >/dev/null \
       || _fail acceptance_criteria_missing "acceptance_criteria キーがありません (5.3.0.M step 1 は常に書く)"
-    skipped=$(jq -r '.acceptance_criteria | if type == "object" then (.skipped // "") else "" end' "$input")
+    # jq の失敗は空文字列になり「違反なし」と区別できないため、置換ごとに終了コードを見る
+    if ! skipped=$(jq -r '.acceptance_criteria | if type == "object" then (.skipped // "" | tostring) else "" end' "$input"); then
+      _fail jq_transform_failed "acceptance_criteria を読めません: $input"
+    fi
     if [ -n "$skipped" ]; then
       case "$skipped" in
         no_issue|no_ac_section) echo "[CONTEXT] ACCEPTANCE_FINAL=skipped; reason=$skipped" >&2; exit 0 ;;
         *) _fail acceptance_row_invalid "skipped の値が不正です: $skipped" ;;
       esac
     fi
-    invalid=$(jq -r '
+    if ! invalid=$(jq -r '
       .acceptance_criteria as $ac
       | if ($ac | type) != "array" or ($ac | length) == 0 then "acceptance_criteria"
         else [$ac[] | select(
-          ((.id // "") | test("^AC-[0-9]+$") | not)
-          or ((.status // "") | IN("satisfied", "unmet", "unverified") | not)
+          (type != "object")
+          or ((.id | type) != "string") or ((.id | test("^AC-[0-9]+$")) | not)
+          or ((.status | type) != "string") or ((.status | IN("satisfied", "unmet", "unverified")) | not)
           or ((.evidence | type) != "string")
           or (if .status == "unmet" then ((.finding_id | type) != "string") else (.finding_id != null) end)
-        ) | (.id // "?")] | join(",") end' "$input")
+        ) | if type == "object" and (.id | type) == "string" then .id else "?" end] | join(",") end' "$input"); then
+      _fail jq_transform_failed "acceptance_criteria の行を検査できません: $input"
+    fi
     [ -z "$invalid" ] || _fail acceptance_row_invalid "acceptance_criteria の行が契約を満たしません: $invalid" "ac=$invalid"
     # 未充足行の finding は blocking 集合 (findings[] の current-pr) に、acceptance reviewer の [AC-N] 付きで残る
-    lost=$(jq -r '
+    if ! lost=$(jq -r '
       . as $doc
       | [.acceptance_criteria[] | select(.status == "unmet") | . as $row
-         | select(([$doc.findings[]? | select(.id == $row.finding_id
+         | select(([$doc.findings[]? | select(type == "object"
+             and .id == $row.finding_id
              and .reviewer == "acceptance-reviewer"
              and .scope == "current-pr"
-             and ((.description // "") | startswith("[" + $row.id + "]")))] | length) == 0)
-         | "\($row.id):\($row.finding_id)"] | join(",")' "$input")
+             and ((.description | type) == "string")
+             and (.description | startswith("[" + $row.id + "]")))] | length) == 0)
+         | "\($row.id):\($row.finding_id)"] | join(",")' "$input"); then
+      _fail jq_transform_failed "未充足行の finding を検査できません: $input"
+    fi
     [ -z "$lost" ] || _fail unmet_finding_not_blocking "未充足行の finding が最終 blocking 集合にありません: $lost" "lost=$lost"
-    unmet=$(jq -r '[.acceptance_criteria[] | select(.status == "unmet") | .id] | join(",")' "$input")
-    unverified=$(jq -r '[.acceptance_criteria[] | select(.status == "unverified") | .id] | join(",")' "$input")
+    if ! unmet=$(jq -r '[.acceptance_criteria[] | select(.status == "unmet") | .id] | join(",")' "$input") \
+      || ! unverified=$(jq -r '[.acceptance_criteria[] | select(.status == "unverified") | .id] | join(",")' "$input"); then
+      _fail jq_transform_failed "判定行の ID を集計できません: $input"
+    fi
     echo "[CONTEXT] ACCEPTANCE_FINAL=ok; unmet=$unmet; unverified=$unverified" >&2
     ;;
 

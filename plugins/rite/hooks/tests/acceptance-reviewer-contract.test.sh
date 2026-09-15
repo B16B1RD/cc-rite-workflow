@@ -154,6 +154,7 @@ in_order "5.3.0.A 節は 6.1.a より前" \
   "$(line_of "$PR_REVIEW" '#### 5.3.0.A 受入条件の最終整合検査')" \
   "$(line_of "$PR_REVIEW" '#### 6.1.a Local JSON File Save')"
 pin "5.3.0.A: unverified への書き換え禁止" "$PR_REVIEW" '`acceptance_criteria[].status` を `unverified` に書き換えて通してはならない'
+pin "5.3.0.A: reroll 後は降格ゲートを通してから再検査" "$PR_REVIEW" '5.1 の回収完了ゲート → 5.1.0.L → 5.1.0.AC → 5.3.0 → 5.3.0.M step 1 → step 2 → step 3 → 5.3.0.C → 本検査を同 cycle 内で再実行する'
 pin "5.3.0.M step 1: acceptance_criteria を常に書く" "$PR_REVIEW" '- **`acceptance_criteria` を常に書く**'
 
 echo ""

@@ -5,9 +5,10 @@
 #   extract — テンプレート形式の AC 集合 / fenced block と別節の見出しを数えない / CRLF /
 #             AC 節なし・別形式は skipped / 見出しあり 0 件と重複は失敗
 #   table   — 正常 / AC-ID 欠落・余分・重複 / 0 行 / 見出し欠落 / 判定値不正 / 根拠空 /
-#             未充足行に対応する [AC-N] 指摘の欠落・severity 不一致
+#             未充足行に対応する [AC-N] 指摘の欠落・severity 不一致 / 推奨対応列の raw pipe
 #   final   — 正常 / 未充足 finding が non_blocking_findings[] にある / finding 不在 /
-#             キー欠落 / skipped 形 / 行の形式違反 / 入力を書き換えない
+#             キー欠落 / skipped 形 / 行の形式違反 / 入力を書き換えない /
+#             ゲート未適用 / 型の崩れた行・description (jq エラーで通さない)
 #   chain   — 実測アンカーの無い未充足 finding を review-measured-gate.sh に通すと降格し、
 #             final が失敗する (行は unmet のまま)。アンカー付きなら通る
 #
@@ -173,12 +174,19 @@ expect_failure "table: 未充足行に [AC-N] 指摘が無ければ失敗" unmet
 write_output "$TEST_DIR/out-highfinding.md" "$ROWS_OK" "${FINDING_OK/CRITICAL/HIGH}"
 expect_failure "table: 未充足の指摘が CRITICAL でなければ失敗" unmet_finding_missing table --expected AC-1,AC-2,AC-3 --input "$TEST_DIR/out-highfinding.md"
 
+write_output "$TEST_DIR/out-pipe-suggestion.md" "$ROWS_OK" "${FINDING_OK/| 直す |/| bash a.sh || exit 1 |}"
+run_check table --expected AC-1,AC-2,AC-3 --input "$TEST_DIR/out-pipe-suggestion.md"
+if [ "$CHECK_RC" -eq 0 ] && grep -Fq 'ACCEPTANCE_TABLE=ok; rows=3; unmet=AC-2' <<<"$CHECK_STDERR"; then
+  pass "table: 推奨対応列に raw pipe を含む未充足指摘も認識する"
+else fail "table pipe in suggestion (rc=$CHECK_RC err=$CHECK_STDERR)"; fi
+
 echo "=== final ==="
 
 write_result() {
   # $1 = file, $2 = findings JSON, $3 = non_blocking JSON, $4 = acceptance_criteria JSON
   jq -n --argjson f "$2" --argjson nb "$3" --argjson ac "$4" \
-    '{schema_version: "1.1.0", findings: $f, non_blocking_findings: $nb, acceptance_criteria: $ac}' > "$1"
+    '{schema_version: "1.1.0", findings: $f, non_blocking_findings: $nb, acceptance_criteria: $ac,
+      measured_gate: {commit_sha: "abc1234", applied_at: "2026-01-01T00:00:00Z", blocking: 0, demoted: 0, anchor_undetermined: 0}}' > "$1"
 }
 F_UNMET='{"id":"F-01","reviewer":"acceptance-reviewer","scope":"current-pr","severity":"CRITICAL","description":"[AC-2] 壊れている"}'
 AC_ROWS='[{"id":"AC-1","status":"satisfied","finding_id":null,"evidence":"ok"},{"id":"AC-2","status":"unmet","finding_id":"F-01","evidence":"x"},{"id":"AC-3","status":"unverified","finding_id":null,"evidence":"実環境"}]'
@@ -206,7 +214,7 @@ expect_failure "final: 未充足 finding が存在しなければ失敗" unmet_f
 write_result "$TEST_DIR/r-wrongprefix.json" "[${F_UNMET/\[AC-2\]/[AC-5]}]" '[]' "$AC_ROWS"
 expect_failure "final: finding の [AC-N] が行と一致しなければ失敗" unmet_finding_not_blocking final --input "$TEST_DIR/r-wrongprefix.json"
 
-echo '{"findings":[],"non_blocking_findings":[]}' > "$TEST_DIR/r-nokey.json"
+echo '{"findings":[],"non_blocking_findings":[],"measured_gate":{"commit_sha":"abc1234"}}' > "$TEST_DIR/r-nokey.json"
 expect_failure "final: acceptance_criteria 欠落は失敗" acceptance_criteria_missing final --input "$TEST_DIR/r-nokey.json"
 
 for reason in no_issue no_ac_section; do
@@ -222,6 +230,18 @@ expect_failure "final: 未充足行の finding_id 欠落は失敗" acceptance_ro
 
 write_result "$TEST_DIR/r-emptyrows.json" '[]' '[]' '[]'
 expect_failure "final: 判定行 0 件は失敗" acceptance_row_invalid final --input "$TEST_DIR/r-emptyrows.json"
+
+jq 'del(.measured_gate)' "$TEST_DIR/r-ok.json" > "$TEST_DIR/r-ungated.json"
+expect_failure "final: 降格ゲート適用前の JSON は失敗" gate_not_applied final --input "$TEST_DIR/r-ungated.json"
+
+write_result "$TEST_DIR/r-strrow.json" '[]' '[]' '["AC-1"]'
+expect_failure "final: object でない判定行は失敗 (jq エラーで通さない)" acceptance_row_invalid final --input "$TEST_DIR/r-strrow.json"
+
+write_result "$TEST_DIR/r-numid.json" '[]' '[]' '[{"id":5,"status":"satisfied","finding_id":null,"evidence":"ok"}]'
+expect_failure "final: 数値の AC-ID は失敗" acceptance_row_invalid final --input "$TEST_DIR/r-numid.json"
+
+write_result "$TEST_DIR/r-numdesc.json" "[${F_UNMET/\"\[AC-2\] 壊れている\"/7}]" '[]' "$AC_ROWS"
+expect_failure "final: 未充足 finding の description が文字列でなければ失敗" unmet_finding_not_blocking final --input "$TEST_DIR/r-numdesc.json"
 
 echo "=== chain: review-measured-gate.sh → final ==="
 
