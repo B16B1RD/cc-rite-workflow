@@ -65,6 +65,10 @@
 #        形状 (g') と variant A/B への位置 (g'') も別途固定する (いずれも前方一致 count だけでは
 #        素通りする drift クラス)。
 #        各 pin は追加時に mutation を当てて落ちることを実測する (手順: measured-gate-record.md#static-pin)
+#   TC-7 scripts/review-class-demotion-gate.sh の除外判別子 SoT 静的 pin — severity-levels §ゲート層 /
+#        assessment-rules §5.3.0.C / helper docstring の各節に「合意済み AC の実測済み未充足」が載り、
+#        既存判別子 (既存記述の削除/弱体化) の原文が残る。helper の挙動は
+#        scripts/tests/review-class-demotion-gate.test.sh が固定する
 #
 # Network 非依存: gh は PATH 先頭の stub に差し替え、review-result-save は --results-dir で
 # sandbox に隔離する (repo の .rite/ を汚さない)。
@@ -4004,7 +4008,33 @@ assert "TC-6.7 統合レポート full-mode テンプレに直列化の 1 行" "
 assert "TC-6.7 統合レポート verification-mode テンプレに直列化の 1 行" "1" \
   "$(awk '/^## verification-mode-template$/ { inside = 1 } inside { print }' "$_tmpl" | grep -c '\*\*起動の直列化\*\*' || true)"
 
+# TC-7 帰結クラス降格政策の除外判別子 — SoT 3 箇所 (severity-levels §ゲート層 / assessment-rules
+# §5.3.0.C / helper docstring) の節の中に第 2 判別子が載り、既存判別子の原文が残ることを固定する。
+# ファイル全体への grep だと別節への移動や見出し改名で空振りするため、節を切り出して数える。
+_sev="$PLUGIN_ROOT/references/severity-levels.md"
+_ar="$PLUGIN_ROOT/skills/fix/references/assessment-rules.md"
+_gate="$PLUGIN_ROOT/scripts/review-class-demotion-gate.sh"
+_sec_sev_gate() { awk '/^<a id="ゲート層の-class-ab-降格政策"><\/a>$/ { f = 1 } f && /^## / { exit } f { print }' "$_sev"; }
+_sec_ar_530c() { awk '/^## 5\.3\.0\.C / { f = 1; print; next } f && /^## / { exit } f { print }' "$_ar"; }
+_sec_gate_doc() { awk '/^set -u$/ { exit } { print }' "$_gate"; }
+assert "TC-7 severity-levels ゲート層節に第 2 判別子が 1 箇所" "1" \
+  "$(_sec_sev_gate | grep -cF '**除外判別子 (合意済み AC の実測済み未充足)**' || true)"
+assert "TC-7 severity-levels ゲート層節に既存判別子の原文が残る" "1" \
+  "$(_sec_sev_gate | grep -cF '**除外判別子 (既存記述の削除/弱体化)**: class B であっても、本 PR の diff が**既存 (base 側) に存在した記述・ガード・禁止文を削除または弱体化した**ことを示す判定文が付く finding は降格しない' || true)"
+assert "TC-7 assessment-rules §5.3.0.C に第 2 除外入力源が 1 箇所" "1" \
+  "$(_sec_ar_530c | grep -cF '**第 2 除外入力源 (合意済み AC の実測済み未充足)**' || true)"
+assert "TC-7 assessment-rules §5.3.0.C の集合演算に ac_unmet の付与が 1 箇所" "1" \
+  "$(_sec_ar_530c | grep -cF 'consequence_exclusion = "ac_unmet:AC-N"' || true)"
+assert "TC-7 assessment-rules §5.3.0.C に既存判別子の原文が残る" "1" \
+  "$(_sec_ar_530c | grep -cF '既存 (base 側) に存在した記述・ガード・禁止文を本 PR の diff が削除/弱体化した' || true)"
+assert "TC-7 helper docstring の Gate semantics に第 2 判別子が 1 箇所" "1" \
+  "$(_sec_gate_doc | grep -cF '#      - 合意済み AC の実測済み未充足:' || true)"
+assert "TC-7 helper docstring の Reason SoT に acceptance_criteria_invalid が 1 箇所" "1" \
+  "$(_sec_gate_doc | grep -cE '^#   acceptance_criteria_invalid +— ' || true)"
+assert "TC-7 helper docstring に既存判別子の well-formed 条件が残る" "1" \
+  "$(_sec_gate_doc | grep -cF 'exclusion キー欠落または exclusion が非空文字列) がある' || true)"
+
 if ! print_summary "$(basename "$0")" \
-  "drift: review helper 5 件 (review-skip-notification / review-comment-post / review-result-save / review-nonblocking-record / review-spawn-spread-check) の gate 分岐・reason 語彙・exit code 契約、または skills/pr-review/SKILL.md ステップ 4.6 / 6.1.d / 8.0.3 の gate 契約が変更された可能性。各 helper のヘッダ契約コメントと skills/pr-review/SKILL.md ステップ 4.6 / 6.1 / 8.0 を確認すること。"; then
+  "drift: review helper 5 件 (review-skip-notification / review-comment-post / review-result-save / review-nonblocking-record / review-spawn-spread-check) の gate 分岐・reason 語彙・exit code 契約、または skills/pr-review/SKILL.md ステップ 4.6 / 6.1.d / 8.0.3 の gate 契約、または帰結クラス降格の除外判別子 SoT (severity-levels / assessment-rules §5.3.0.C / review-class-demotion-gate.sh docstring) が変更された可能性。各 helper のヘッダ契約コメントと skills/pr-review/SKILL.md ステップ 4.6 / 6.1 / 8.0 を確認すること。"; then
   exit 1
 fi
