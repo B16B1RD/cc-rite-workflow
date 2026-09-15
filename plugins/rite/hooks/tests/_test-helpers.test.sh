@@ -636,6 +636,35 @@ else
   outer_pass "TC-16.3: assert_mutant_changed rejects diff rc>=2"
 fi
 
+# === TC-17: assert_shell_words ===
+echo
+echo "TC-17: assert_shell_words"
+
+# $1 = TC id, $2 = expected "PASS=N FAIL=M", $3 = cmd, rest = expected words.
+# Counts are pinned exactly so a parse failure that still emits word asserts,
+# or a word-count mismatch counted as passing words, is caught.
+check_shell_words_counts() {
+  local id="$1" expected="$2" cmd="$3" state
+  shift 3
+  state=$(bash -c 'source "$1"; shift; assert_shell_words probe "$@" >/dev/null; echo "PASS=$PASS FAIL=$FAIL"' _ "$HELPERS" "$cmd" "$@")
+  if [ "$state" = "$expected" ]; then
+    outer_pass "$id: $expected"
+  else
+    outer_fail "$id: expected '$expected' actual '$state'"
+  fi
+}
+
+apos_path="/tmp/it's dir/wt"
+printf -v apos_q '%q' "$apos_path"
+check_shell_words_counts "TC-17.1 %q-escaped value splits into the expected words" \
+  "PASS=4 FAIL=0" "rm -rf $apos_q" rm -rf "$apos_path"
+check_shell_words_counts "TC-17.2 hand-written '...' around an apostrophe fails once, with no word asserts" \
+  "PASS=0 FAIL=1" "rm -rf '$apos_path'" rm -rf "$apos_path"
+check_shell_words_counts "TC-17.3 a changed argument fails its word assert" \
+  "PASS=3 FAIL=1" "rm -rf $apos_q/x" rm -rf "$apos_path"
+check_shell_words_counts "TC-17.4 an extra word fails the word count" \
+  "PASS=3 FAIL=1" "rm -rf $apos_q extra" rm -rf "$apos_path"
+
 # === Summary ===
 echo
 echo "─── $(basename "$0") summary ──────────────────────"

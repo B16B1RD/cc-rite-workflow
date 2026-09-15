@@ -197,5 +197,49 @@ else
 fi
 echo ""
 
+# --- TC-SETUP-WRONG-BRANCH: a worktree checked out to the wrong branch gets a pasteable remove command ---
+# setup.sh stops (exit 3) and prints `git worktree remove <target> && re-run this script`.
+# The target is the fixed relative `.rite/wiki-worktree`, so this pins the words
+# (a changed argument fails) but cannot tell %q from a hand-written quote.
+rm -rf "$WORK"; WORK="$(mktemp -d)"
+REPO="$WORK/repo"
+mkdir -p "$REPO"
+git -C "$REPO" init -q -b develop
+git -C "$REPO" config user.email "test@example.com"
+git -C "$REPO" config user.name "rite test"
+git -C "$REPO" config commit.gpgsign false
+printf 'wiki:\n  enabled: true\n  branch_strategy: separate_branch\n  branch_name: wiki\n' > "$REPO/rite-config.yml"
+printf '.rite/wiki-worktree/\n.rite/state/\n' > "$REPO/.gitignore"
+git -C "$REPO" add rite-config.yml .gitignore
+git -C "$REPO" commit -q -m "init develop"
+git -C "$REPO" branch wiki
+git -C "$REPO" worktree add -q -b not-wiki "$REPO/.rite/wiki-worktree" >/dev/null 2>&1
+echo "TC-SETUP-WRONG-BRANCH: wrong-branch worktree → exit 3 with a pasteable remove command"
+set +e
+(cd "$REPO" && bash "$SETUP_SH" >/dev/null 2>wb_err.txt)
+wb_rc=$?
+set -e
+wb_err="$(cat "$REPO/wb_err.txt" 2>/dev/null || true)"
+wb_lines=$(printf '%s\n' "$wb_err" | grep -c '^  manual recovery: ' || true)
+wb_line=$(printf '%s\n' "$wb_err" | grep '^  manual recovery: ' || true)
+wb_cmd=${wb_line#"  manual recovery: "}
+rerun_tail=" && re-run this script"
+wb_tail=${wb_cmd: -${#rerun_tail}}
+wb_cmd=${wb_cmd%"$rerun_tail"}
+if wb_words=$( ( cd / && export GIT_DIR=/nonexistent && eval "set -- $wb_cmd" && printf '%s\n' "$#" "$@" ) 2>/dev/null ); then
+  wb_parsed=yes
+else
+  wb_parsed=no
+fi
+wb_expected=$(printf '%s\n' 4 git worktree remove .rite/wiki-worktree)
+if [ "$wb_rc" -eq 3 ] && [ "$wb_lines" = "1" ] && [ "$wb_tail" = "$rerun_tail" ] \
+   && [ "$wb_parsed" = "yes" ] && [ "$wb_words" = "$wb_expected" ]; then
+  pass "exit 3 with one manual recovery line splitting into: git worktree remove .rite/wiki-worktree"
+else
+  fail "expected exit 3 + one 'git worktree remove .rite/wiki-worktree && re-run this script' line; got rc=$wb_rc lines=$wb_lines tail='$wb_tail' parsed=$wb_parsed words=$(printf '%s' "$wb_words" | tr '\n' '|')"
+  printf '%s\n' "$wb_err" | sed 's/^/    err: /'
+fi
+echo ""
+
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [ "$FAIL" -eq 0 ] || exit 1
