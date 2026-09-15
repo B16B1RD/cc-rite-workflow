@@ -71,8 +71,8 @@ flow-state、run queue（`path` の basename）、claim、work memory の state 
 - `flow-state.test.sh`: opaque ID の path / set / get round-trip（Layer 1 を strict にしない）。
 - `issue-claim.test.sh` / `wiki-ingest-lock.test.sh`: UUID ownership と env-first / file fallback 互換。
 - `hooks/tests/_hermetic-env.sh` が ambient な Claude / Codex / Grok ID、`RITE_HOST`、runtime mode / state root の
-  解除一覧を持つ。`run-tests.sh` と `_test-helpers.sh` がこれを source し、`_test-helpers.sh` を読まないテストも
-  直接 source するため、suite 実行でも単体実行でも解除される。
+  解除一覧を持つ。`run-tests.sh` と `_test-helpers.sh` がこれを source し、ambient identity を読むテストのうち
+  `_test-helpers.sh` を読まないものも直接 source するため、suite 実行でも単体実行でも解除される。
 
 ## 関連
 
