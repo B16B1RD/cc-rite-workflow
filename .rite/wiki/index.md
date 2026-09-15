@@ -511,8 +511,9 @@ okf_version: "0.2"
 | [置換で作った fixture は置換後の行の実在を確かめてから判定し、marker は完全一致で照合する](pages/patterns/substituted-fixture-verify-line-exists-and-exact-marker-match.md) | patterns | 正常形の fixture を置換して異常形を作るテストは、置換が外れると正常形と同じ入力になり、同じ結果で合格する。marker を部分一致で照合すると空値でも一致する。置換後に対象行があることを grep -Fxq で確かめ、marker は行全体の完全一致で照合し、置換は bash のパラメータ展開で行う。 | 2026-09-15T03:40:00Z | high |
 | [判定表を 1 箇所へ寄せるときは、削除側の skip 条件が後続サイクル前提で書かれていないかを確認する](pages/heuristics/consolidate-decision-table-check-skip-assumption.md) | heuristics | 手順書で重複した判定表を 1 つに寄せると、残す側の表に新しい停止経路が加わる。削除側に付随していた「この結果では後段を skip する」条件をそのまま新経路へ広げると、その条件が「後でもう一度その段に来る」前提で書かれていた場合、終端の停止経路では後段が一度も実行されず、処分すべき候補が消える。 | 2026-09-15T06:32:02Z | medium |
 | [テストの歴史的ピン行は番号を残し行末へ drift-check-ignore を付ける](pages/patterns/historical-pin-line-keeps-number-and-attaches-drift-check-ignore.md) | patterns | 番号参照検査はテスト内の歴史的番号ピンも検出する。ピン契約は文字列の完全一致なので番号を消すと検査は通るがピンが壊れる。行末コメントとして drift-check-ignore を付け、照合対象の文字列値は変えない。 | 2026-09-15T10:36:56Z | high |
+| [失敗経路の後始末で stash pop の後に index を reset すると、ユーザーが staged にしていた変更まで外れる](pages/anti-patterns/index-cleanup-after-stash-pop-unstages-user-staging.md) | anti-patterns | git stash で作業を退避してから別ブランチを操作する処理では、失敗時に index を掃除する reset を stash pop の後に置くと、stash pop が index へ戻したユーザー自身の staged エントリまで警告なしに unstage される。reset は持ち帰ったエントリだけが index にある stash pop 前に行い、無関係な staged ファイルを置いた fixture でその順序を固定する。 | 2026-09-15T11:02:40Z | high |
 ## 統計
 
-- 総ページ数: 501
-- ドメイン別: patterns=115, heuristics=223, anti-patterns=163
-- 最終更新: 2026-09-15T10:36:56Z
+- 総ページ数: 502
+- ドメイン別: patterns=115, heuristics=223, anti-patterns=164
+- 最終更新: 2026-09-15T11:02:40Z
