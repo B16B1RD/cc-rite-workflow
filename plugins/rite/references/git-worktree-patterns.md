@@ -406,6 +406,8 @@ echo "[CONTEXT] WORKTREE_INVARIANT=ok; toplevel=$cur_top"
 
 **退出**: cleanup は削除前に同じ所有者・branch・worktree の照合と既存 dirty ゲートを通す。native 入場経路では `ExitWorktree(action: "keep")` 等で退出し、不在時の検証済み `workdir` / 毎回 `cd` 経路では以後の全操作先を検出済み `main_root` に切り替える。次をその作業先で実行し、成功後だけ既存 teardown helper を呼ぶ。native 退出の拒否・失敗、main へのアクセス不可では削除せず既存 cleanup 委譲経路で未完了を報告する。`in_worktree_unrecorded` は所有する保存 state が未確認なので従来どおり委譲し、ツール不在だけから所有権を補完しない。
 
+**退出確認の実行条件（native 経路）**: native 入場経路では、下記の退出確認ブロックを `cd` / `git -C` / `workdir` 指定のいずれも伴わない独立したシェル呼び出しで実行する。確認したいのはホストがセッション単位で保持する作業先であり、シェル内で `cd` した先ではない。退出に使ったシェルや helper 内で main checkout へ `cd` した後に同じシェルで確認すると、ホストの作業先が前の worktree に残っていても toplevel が main root を指して合格してしまう。`workdir` / 毎回 `cd` 経路はホストの作業先を持たないため従来どおり検出済み `main_root` を作業先として実行する。
+
 ```bash
 # worktree-exit-check
 set -e
@@ -467,6 +469,32 @@ Native absence uses [Host worktree execution](#host-worktree-execution), includi
 explicit workdir and absolute-path editing checks. Failures from other causes
 (e.g. the worktree path vanished) follow the normal `ensure_session_worktree` rebuild
 path (`WT_ENSURE=reconstructed`), not the restart guidance.
+
+### native 入場が前のセッション worktree への残留で拒否される
+
+native 入場経路のホストは、セッション単位の作業先が既に別の worktree にあると、次の worktree への入場を「このセッションから切り替えられる worktree ではない」等の理由で拒否することがある。前の Issue の cleanup が native 退出を呼ばず（上記「退出確認の実行条件」を満たさない確認で合格していた場合を含む）、ホストの作業先が前のセッション worktree に残ったまま次の Issue を open したときに起きる。`/rite:open`（Step 2.3-W）と `/rite:recover`（Phase 3.1.5）の native 入場失敗診断は、上記「not in a git repository」・path 消失の切り分けに加えて本節を適用する。手順は本節だけが持ち、呼び出し元は参照する。
+
+native 入場が失敗したら、次を**この順**で行う:
+
+1. **残留診断**: `cd` / `git -C` / `workdir` 指定を伴わない独立したシェル呼び出しで `git rev-parse --show-toplevel` と `git worktree list --porcelain` を取得する。取得した toplevel が `multi_session.worktree_base` 配下の登録済みセッション worktree（`{worktree_base}/issue-{N}` 形）で、かつ入場先 `{wt_path}` と異なる場合に限り残留と判定する。
+2. **保持しての native 退出**: `ExitWorktree(action: "keep")` 等、worktree を保持する指定で native 退出する。前の worktree もそのブランチも削除しない。
+3. **main root 確認**: 手順 1 と同じ独立したシェル呼び出しで toplevel を再取得し、main root と一致することを確認する。
+4. **再入場 1 回**: `{wt_path}` へ native 入場を 1 回だけ再試行する。
+5. **変更前検証**: 再入場後は上記 `worktree-execution-check` を実行し、`WORKTREE_INVARIANT=ok` を前提条件として続行する。自動退出した事実（前の worktree の絶対パス）を 1 行で出力し、work memory の採用経路記録に含める。
+
+発火しない条件（既存の切り分けまたは停止に進む）:
+
+- 手順 1 の toplevel 取得自体が失敗した
+- toplevel が main root 自身、未登録パス、ホスト管理配下など、登録済みセッション worktree ではない
+- toplevel が入場先 `{wt_path}` と同じ worktree（残留ではない。変更前検証へ進む）
+- native 入場 / 退出機能が当該セッションに無い（`workdir` / 毎回 `cd` 経路はそのまま）
+
+停止する条件（worktree と state を保持し、前の worktree と入場先の絶対パスを含む診断を出して `/rite:recover {issue_number}` を案内する）:
+
+- 手順 2 の native 退出が拒否・失敗した、または手順 3 の toplevel が main root でない → 再入場を試さない
+- 手順 4 の再入場も失敗した → 2 回目の再試行をしない
+
+本節の自動退出で前の worktree やブランチを削除してはならない。再入場を 2 回以上試してはならず、main checkout での `git switch -c` へ切り替えてもならない。native 退出の拒否・隔離ガードを helper 内の `cd` 等で迂回してはならない。条件はいずれも当該セッションで観測した native 入場 / 退出機能の有無で書き、ホスト名・ツール名で分岐しない。
 
 ### Branch-creation worktree invariant (marker 再確定・silent fallback 排除)
 

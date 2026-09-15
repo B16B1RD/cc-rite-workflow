@@ -188,6 +188,7 @@ bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --i
 **EnterWorktree が失敗した場合**（`reenter` / `reconstructed` 経路の `EnterWorktree(path)` がエラー）: open Step 2.3-W と同じ切り分けを行い、**silent に新規セッション扱いしない**。
 
 - **harness の git 誤判定**（`.git` が存在し `git -C "{path}" rev-parse` は成功するのに、起動コンテキストが `Is a git repository: false` で EnterWorktree が「not in a git repository」エラーを返す）→ **推奨**。診断とともに「**リポジトリ root から Claude Code を再起動**し、`/rite:recover {issue_number}` を再実行すれば、登録済み worktree が `WT_ENSURE=reenter` で再入場される」と案内する。worktree は保持済みのため破壊しない。
+- **前のセッション worktree への残留**（ホストの作業先が別 Issue の登録済みセッション worktree に残っている）→ 共通作業先契約の [残留診断](../../references/git-worktree-patterns.md#native-入場が前のセッション-worktree-への残留で拒否される)（保持しての native 退出 → main root 確認 → 再入場 1 回）に従う。手順は契約側のみが持ち、本スキルに複製しない。
 - **worktree path 消失などの別要因** → 再度本ヘルパーを実行すれば `branch_absent` 以外なら再構築される。再起動案内へ誤誘導しない。
 
 `already_in` / `reenter` / `reconstructed` はいずれも共通作業先契約の変更前検証を実行する。現在 session の state 不在時は、所有権照合済みの復旧 phase / PR を `entry_phase` / `pr_number` に渡す。phase がまだ不明なら `init` / PR 未判明なら `0` として入場を記録し、Phase 3.3 の既存クロスチェックで復旧 phase を確定する。実体・claim 照合後だけ初回 state を作り、既存 state は上書きしない。成功後に claim の worktree path を記録し、Phase 3.2 以降を同じ作業先で実行する。
