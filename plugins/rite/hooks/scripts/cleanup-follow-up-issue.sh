@@ -194,8 +194,8 @@ fi
 # **id では畳まない**。`id` は各 JSON 内で振り直される連番であり cycle を跨いだ identity を持たない
 # (cycle 間の同一性判断は pr-review の semantic 判断が担い、本配列に機械的 identity キーは無い)。同じ `F-07` が cycle ごとに
 # 別の指摘を指すため、id を key に畳むと別々の指摘が黙って 1 件に潰れる — 本 helper が防ごうとしている
-# 取りこぼしそのものになる。よって全 cycle 分を**そのまま連結**する。同一 id の見出しが body に複数出るが、
-# それらは実際に別の指摘なので正しい。
+# 取りこぼしそのものになる。よってここでは全 cycle 分をそのまま連結し、出典別の除外を終えた後で
+# `_src` 以外が完全一致する再報告だけをまとめる。同一 id でも内容が異なる指摘は独立して残る。
 # 走査順は basename 昇順 (= cycle 昇順) に固定する。
 # glob 未展開の pattern 文字列は実在検査で弾く (archive-or-rm と同型)。
 findings_json="[]"
@@ -221,7 +221,7 @@ for f in "$results_dir/${PR_NUMBER}"-*.json*; do
     unparsed=$((unparsed + 1))
     continue
   fi
-  # 連結のみ。id / 内容による畳み込みはしない (上のコメント参照)。
+  # 出典別の除外より前なので、ここでは id / 内容による畳み込みをしない。
   : > "$union_err"
   if ! merged=$(jq -c --argjson add "$part" '. + $add' "$union_tmp" 2>"$union_err"); then
     echo "WARNING: 和集合の統合に失敗したため当該 JSON を除外します (PR #${PR_NUMBER}): $f" >&2
@@ -428,6 +428,29 @@ else
       exit 0
     fi
   fi
+fi
+
+# 出典別の除外を先に適用しないと、残すはずのコピーが除外対象だった場合に指摘を失う。
+# 比較から `_src` だけを外し、最初に現れた要素と順序を維持する。
+_dedupe_before=$(printf '%s' "$findings_json" | jq 'length')
+if deduplicated_json=$(printf '%s' "$findings_json" | jq -c '
+  reduce .[] as $finding (
+    {kept: [], seen: []};
+    ($finding | del(._src)) as $key
+    | if (.seen | index($key)) == null
+      then .kept += [$finding] | .seen += [$key]
+      else .
+      end
+  ) | .kept
+'); then
+  findings_json="$deduplicated_json"
+  _dedupe_after=$(printf '%s' "$findings_json" | jq 'length')
+  _dedupe_removed=$((_dedupe_before - _dedupe_after))
+  if [ "$_dedupe_removed" -gt 0 ]; then
+    echo "[cleanup-follow-up-issue] deduplicated: pr=${PR_NUMBER}; removed=${_dedupe_removed}" >&2
+  fi
+else
+  echo "WARNING: 完全一致する指摘の集約に失敗したため全件を転記します (PR #${PR_NUMBER})" >&2
 fi
 
 # 同定不能は重複起票より起票失敗に倒す (D-03)。Search API は hyphen をトークン分割するため使わない。
