@@ -27,6 +27,7 @@ source "$SCRIPT_DIR/_test-helpers.sh"
 PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 INGEST_MD="$PLUGIN_ROOT/skills/wiki-ingest/SKILL.md"
 LINT_MD="$PLUGIN_ROOT/skills/wiki-lint/SKILL.md"
+INIT_MD="$PLUGIN_ROOT/skills/wiki-init/SKILL.md"
 
 if [ ! -f "$INGEST_MD" ]; then
   echo "ERROR: $INGEST_MD not found" >&2
@@ -34,6 +35,10 @@ if [ ! -f "$INGEST_MD" ]; then
 fi
 if [ ! -f "$LINT_MD" ]; then
   echo "ERROR: $LINT_MD not found" >&2
+  exit 1
+fi
+if [ ! -f "$INIT_MD" ]; then
+  echo "ERROR: $INIT_MD not found" >&2
   exit 1
 fi
 
@@ -142,5 +147,23 @@ assert_grep_in_section "lint.md 8.3: rc=6 warns and points to the one-shot sandb
   '^      6\) echo "WARNING: .*reason=sandbox-mask.*dangerouslyDisableSandbox: true を付けて 1 回だけ再実行.*" >&2 ;;$'
 assert_not_grep "lint.md 8.3: rc=6 stays non-blocking (no exit 1 on the branch)" \
   "$LINT_MD" '^      6\).*exit 1'
+
+# --- init.md ステップ 3.5.1: migration commit keeps sandbox-mask recovery actionable ---
+assert_grep_in_section "init.md 3.5.1: rc=6 warns and points to the one-shot sandbox retry" \
+  "$INIT_MD" '^### 3\.5\.1 ' '^## ステップ 4' \
+  '^      6\) echo "WARNING: .*reason=sandbox-mask.*再試行専用 bash block.*dangerouslyDisableSandbox: true.*1 回だけ実行.*確認不要.*" >&2 ;;$'
+assert_not_grep "init.md 3.5.1: rc=6 stays non-blocking (no exit 1 on the branch)" \
+  "$INIT_MD" '^      6\).*exit 1'
+assert_grep_in_section "init.md 3.5.1: retry guidance requires a separate Bash tool call" \
+  "$INIT_MD" '^### 3\.5\.1 ' '^## ステップ 4' \
+  '以下の再試行専用 block を\*\*別の Bash tool call\*\*.*dangerouslyDisableSandbox: true.*確認なしで1回だけ実行'
+assert_grep_in_section "init.md 3.5.1: retry block calls the commit helper directly" \
+  "$INIT_MD" '^### 3\.5\.1 ' '^## ステップ 4' \
+  '^retry_out=\$\(bash "\$plugin_root/hooks/scripts/wiki-worktree-commit\.sh" --message "\$commit_msg"\)$'
+assert_grep_in_section "init.md 3.5.1: second rc=6 stops without another retry" \
+  "$INIT_MD" '^### 3\.5\.1 ' '^## ステップ 4' \
+  '^  6\) echo "WARNING: .*retry rc=6, reason=sandbox-mask.*これ以上は再試行せず.*" >&2 ;;$'
+assert_not_grep "init.md 3.5.1: retry block has no recursive sandbox retry instruction" \
+  "$INIT_MD" '^  6\).*dangerouslyDisableSandbox'
 
 print_summary "wiki-push-batch-defer-static-pin.test.sh"
