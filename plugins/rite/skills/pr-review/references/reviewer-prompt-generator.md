@@ -13,7 +13,7 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 {cycle_scope_mandate}
 
 ## レビューレーン（XS/S 軽量レーン — 適用時のみ非空）
-<!-- COMPLEXITY_LANE == light のときのみ内容が入る（complexity-lane.md の Reviewer mandate 節を抽出し {complexity} を埋める）。full のときは空文字列で、このセクションごと省略する — 空見出しが残ると M+ の prompt が変化する。上の差分スコープとは直交し、両方が非空になりうる（範囲を絞るのが差分スコープ、検証の実行コストを絞るのが軽量レーン）。 -->
+<!-- COMPLEXITY_LANE == light のときのみ内容が入る（complexity-lane.md の Reviewer mandate 節を抽出し {complexity} を埋める）。full のときは空文字列で、このセクションごと省略する — 空見出しが残ると M+ の prompt が変化する。上の差分スコープとは直交し、両方が非空になりうる（範囲を絞るのが差分スコープ、検証の実行コストを絞るのが軽量レーン）。reviewer_type == acceptance のときは COMPLEXITY_LANE に依らず空文字列。 -->
 {complexity_lane_mandate}
 
 ## レビュー対象ファイル
