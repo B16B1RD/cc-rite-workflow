@@ -769,9 +769,12 @@ copied）はそのまま通す。サイズやモードを読めないエント�
 共通 git dir の直下（`*.lock`）に残ったスタブの lock は `hooks/session-start.sh` が main checkout での
 セッション開始時に検知し、パスと手動削除の手順を hook の stderr に WARNING として書く。直下以外の lock は
 検知しない。SessionStart hook は exit 0 で終わるため、この stderr は Claude Code の debug ログにしか残らず、
-会話にもユーザーにも表示されない。`could not lock config file` で git 操作が失敗し続けるときは、
+会話にもユーザーにも表示されない。`could not lock config file` で git 操作が失敗し続けるときは、sandbox の外
+（ユーザーの端末）で
 `find "$(git rev-parse --git-common-dir)" -maxdepth 1 -name '*.lock' -type f -size 0c ! -perm -200 ! -perm -020 ! -perm -002`
-で自分で確かめる。実行中の git が持つ本物の lock と取り違えるとその操作を壊すため、自動では削除しない。
+を実行して自分で確かめる。この現象が観測された sandbox 内では、この種の lock パスがデバイスとして
+マスクされるため `find -type f` に一致せず、git の lock 操作も失敗する。実行中の git が持つ本物の lock と
+取り違えるとその操作を壊すため、自動では削除しない。
 
 **実行エージェントへの指示**: この現象で列挙される `??` エントリを「未追跡ファイルの異常」「リポジトリ
 汚染」として報告しない。sandbox の内側から削除・`git add`・コミットを試みない。スタブとスタブの lock の削除は、sandbox 付きコマンドが動いて
