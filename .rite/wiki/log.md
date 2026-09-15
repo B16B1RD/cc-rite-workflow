@@ -44,6 +44,7 @@
 * **Create**: [失敗経路の後始末で stash pop の後に index を reset すると、ユーザーが staged にしていた変更まで外れる](pages/anti-patterns/index-cleanup-after-stash-pop-unstages-user-staging.md) — raw/reviews/20260915T104705Z-pr-2858.md を新規ページ化
 * **Update**: [失敗経路の後始末で stash pop の後に index を reset すると、ユーザーが staged にしていた変更まで外れる](pages/anti-patterns/index-cleanup-after-stash-pop-unstages-user-staging.md) — raw/fixes/20260915T105433Z-pr-2858.md を統合。commit 前の自己検証を追記
 * **Skip**: [20260915T110057Z-pr-2859.md](raw/reviews/20260915T110057Z-pr-2859.md) — no extractable heuristic: zero-finding regression test review
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=495, broken_refs=0
 
 ## 2026-09-14
 
