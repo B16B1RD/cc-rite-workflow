@@ -21,6 +21,7 @@
 * **Update**: [AC anchor / prose / コード emit 順は drift 検出 lint で 3 者同期する](pages/patterns/drift-check-anchor-prose-code-sync.md) — [helper の出力契約を手順書へ書き写した同期のレビュー結果](raw/reviews/20260915T052437Z-pr-2834.md) を統合。helper docstring を SoT とする後追い同期を集合一致と base 側での assert 評価で閉じる節を追記
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=486, broken_refs=0
 * **Create**: [判定表を 1 箇所へ寄せるときは、削除側の skip 条件が後続サイクル前提で書かれていないかを確認する](pages/heuristics/consolidate-decision-table-check-skip-assumption.md) — [判定表の統合で終端停止にもトリアージ段の skip を広げたと指摘したレビュー結果](raw/reviews/20260915T062445Z-pr-2838.md) を新規ページ化
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=488, broken_refs=0
 
 ## 2026-09-14
 
