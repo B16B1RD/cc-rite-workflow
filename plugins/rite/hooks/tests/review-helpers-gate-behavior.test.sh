@@ -65,6 +65,10 @@
 #        形状 (g') と variant A/B への位置 (g'') も別途固定する (いずれも前方一致 count だけでは
 #        素通りする drift クラス)。
 #        各 pin は追加時に mutation を当てて落ちることを実測する (手順: measured-gate-record.md#static-pin)
+#   TC-7 scripts/review-class-demotion-gate.sh の除外判別子 SoT 静的 pin — severity-levels §ゲート層 /
+#        assessment-rules §5.3.0.C / helper docstring の各節に「合意済み AC の実測済み未充足」が載り、
+#        既存判別子 (既存記述の削除/弱体化) の原文が残る。helper の挙動は
+#        scripts/tests/review-class-demotion-gate.test.sh が固定する
 #
 # Network 非依存: gh は PATH 先頭の stub に差し替え、review-result-save は --results-dir で
 # sandbox に隔離する (repo の .rite/ を汚さない)。
@@ -4031,6 +4035,6 @@ assert "TC-7 helper docstring に既存判別子の well-formed 条件が残る"
   "$(_sec_gate_doc | grep -cF 'exclusion キー欠落または exclusion が非空文字列) がある' || true)"
 
 if ! print_summary "$(basename "$0")" \
-  "drift: review helper 5 件 (review-skip-notification / review-comment-post / review-result-save / review-nonblocking-record / review-spawn-spread-check) の gate 分岐・reason 語彙・exit code 契約、または skills/pr-review/SKILL.md ステップ 4.6 / 6.1.d / 8.0.3 の gate 契約が変更された可能性。各 helper のヘッダ契約コメントと skills/pr-review/SKILL.md ステップ 4.6 / 6.1 / 8.0 を確認すること。"; then
+  "drift: review helper 5 件 (review-skip-notification / review-comment-post / review-result-save / review-nonblocking-record / review-spawn-spread-check) の gate 分岐・reason 語彙・exit code 契約、または skills/pr-review/SKILL.md ステップ 4.6 / 6.1.d / 8.0.3 の gate 契約、または帰結クラス降格の除外判別子 SoT (severity-levels / assessment-rules §5.3.0.C / review-class-demotion-gate.sh docstring) が変更された可能性。各 helper のヘッダ契約コメントと skills/pr-review/SKILL.md ステップ 4.6 / 6.1 / 8.0 を確認すること。"; then
   exit 1
 fi
