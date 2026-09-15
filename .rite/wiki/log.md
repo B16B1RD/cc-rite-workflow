@@ -1,6 +1,7 @@
 # Directory Update Log
 ## 2026-09-15
 
+* **Skip**: [20260915T145209Z-pr-2877.md](raw/reviews/20260915T145209Z-pr-2877.md) — no extractable heuristic: zero-finding review; existing fail-loud all-exits and test pin pages already cover undeterminable-state skip and independent mutation pins
 * **Skip**: [20260915T140730Z-pr-2874.md](raw/reviews/20260915T140730Z-pr-2874.md) — no extractable heuristic: zero-finding review; existing session-id env leak page already covers per-variable leak mechanisms and shared unset
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=497, broken_refs=0
 
