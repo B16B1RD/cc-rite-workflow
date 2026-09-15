@@ -27,9 +27,8 @@ set -euo pipefail
 # SID_B by writing `.rite-session-id`=SID_B, so the dogfooding session's ambient
 # CLAUDE_CODE_SESSION_ID must not leak in (it would make the reaper resolve a foreign
 # sid instead of SID_B). An ambient RITE_HOST is just as harmful: with the host's
-# runtime session ID unset, `check` exits with an ERROR, the claim state stays empty,
-# and a fresh fixture worktree is treated as claim-free and skipped silently by the
-# 24h age guard instead of being reaped.
+# runtime session ID unset, `check` exits with an ERROR, and Gate 2 skips every
+# fixture worktree as claim-state-unknown instead of reaping it.
 # CODEX_THREAD_ID / GROK_SESSION_ID / RITE_STATE_ROOT leak the same way. run-tests.sh
 # unsets a superset of these vars for suite runs; this keeps the standalone run
 # deterministic too.
@@ -95,6 +94,7 @@ out=$(run_pcc "$R")
 assert "TC-2 stale worktree reaped" "0" "$( [ -d "$R/.rite/worktrees/issue-51" ] && echo 1 || echo 0 )"
 assert "TC-2 claim file deleted" "0" "$( [ -f "$R/.rite/state/issue-claims/issue-51.json" ] && echo 1 || echo 0 )"
 case "$out" in *"session_worktrees=1"*) pass "TC-2 status reports session_worktrees=1" ;; *) fail "TC-2 status: $out" ;; esac
+assert_not_grep "TC-2 successful claim check writes no ERROR" "$R/pcc.err" "ERROR: "
 
 echo "=== TC-4: merged-into-base branch recovered after reap ==="
 # feat/issue-51 was created from develop with no new commits → merged/even with the
@@ -552,6 +552,7 @@ case "$out" in *"session_worktrees=1"*) pass "D-01 status reports session_worktr
 case "$out" in *"session_branches=1"*)  pass "D-01 status reports session_branches=1"  ;; *) fail "D-01 status: $out" ;; esac
 case "$out" in *"status=cleaned"*)      pass "D-01 reports status=cleaned (no false failure)" ;; *) fail "D-01 status: $out" ;; esac
 assert_not_grep "D-01 no misleading 'failed to reap manifest branch' WARNING" "$R/pcc.err" "failed to reap manifest branch"
+assert_not_grep "D-01 successful claim check writes no ERROR" "$R/pcc.err" "ERROR: "
 
 echo "=== D-01 shape + leftover sandbox stubs → reaped with its branch ==="
 R=$(make_repo 114); cleanup_dirs+=("$R")
@@ -990,6 +991,51 @@ cmd=${line#*手動回収: }
 prune_tail=" && git worktree prune"
 assert "C-15 paste command ends with the prune step" "$prune_tail" "${cmd: -${#prune_tail}}"
 assert_shell_words "C-15 paste command" "${cmd%"$prune_tail"}" rm -rf "$admin"
+
+# ===========================================================================
+# Why: Gate 2 must not read an undeterminable claim state as "no claim".
+# `issue-claim.sh check` exits non-zero when the reaper cannot resolve its own
+# session identity (here: RITE_HOST=claude with the host's runtime session ID
+# unset). Folded into the free arm, that error would reap a manifest-recorded
+# worktree through the age-guard bypass, and an aged unrecorded one through the
+# age guard, with no claim liveness verdict at all. RITE_HOST is set on the
+# reaper call only, so fixture setup and every other case keep the clean env.
+# ===========================================================================
+run_pcc_unresolved_identity() { ( cd "$1" && RITE_HOST=claude bash "$PCC" 2>"$1/pcc.err"; echo "rc=$?" ) ; }
+
+assert_claim_undeterminable_skip() {
+  local label="$1" R="$2" n="$3" out="$4" other
+  assert "$label worktree survives" "1" "$( [ -d "$R/.rite/worktrees/issue-$n" ] && echo 1 || echo 0 )"
+  assert "$label branch survives" "1" "$( cd "$R" && $GIT rev-parse --verify "feat/issue-$n" >/dev/null 2>&1 && echo 1 || echo 0 )"
+  assert_grep "$label Gate 2 WARNING emitted" "$R/pcc.err" "の claim 状態を判定できません"
+  assert_grep "$label check ERROR is surfaced" "$R/pcc.err" "ERROR: cannot resolve session_id for RITE_HOST=claude"
+  for other in "self-exclusion" "worktree liveness" "保護判定に必要な flow-state" "live-cwd guard" "status を判定できません" "未コミット変更があるため"; do
+    assert_not_grep "$label not skipped by another gate ($other)" "$R/pcc.err" "$other"
+  done
+  assert_not_grep "$label skipped before the manifest bypass" "$R/pcc.err" "age guard をバイパスします"
+  case "$out" in *"rc=0"*) pass "$label reaper exits 0 (loop not aborted)" ;; *) fail "$label rc: $out" ;; esac
+  case "$out" in *"session_worktrees=0"*) pass "$label status reports session_worktrees=0" ;; *) fail "$label status: $out" ;; esac
+}
+
+echo "=== G2-01: claim check fails, manifest-recorded FRESH worktree → NOT reaped + WARNING ==="
+R=$(make_repo 180); cleanup_dirs+=("$R")
+echo "squashed" > "$R/.rite/worktrees/issue-180/done.txt"
+GITC "$R/.rite/worktrees/issue-180" add done.txt >/dev/null 2>&1
+GITC "$R/.rite/worktrees/issue-180" commit -q -m "feat: squash-merged work" >/dev/null 2>&1
+printf 'branch\tfeat/issue-180\n' > "$R/.rite/tmp-artifacts.tsv"
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+rm -f "$R/.rite/state/issue-claims/issue-180.json"
+out=$(run_pcc_unresolved_identity "$R")
+assert_claim_undeterminable_skip "G2-01" "$R" 180 "$out"
+assert "G2-01 manifest entry kept" "1" "$( grep -qxF "branch$(printf '\t')feat/issue-180" "$R/.rite/tmp-artifacts.tsv" 2>/dev/null && echo 1 || echo 0 )"
+
+echo "=== G2-02: claim check fails, unrecorded AGED worktree → NOT reaped + WARNING ==="
+R=$(make_repo 181); cleanup_dirs+=("$R")
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+rm -f "$R/.rite/state/issue-claims/issue-181.json"
+age_dir "$R/.rite/worktrees/issue-181"
+out=$(run_pcc_unresolved_identity "$R")
+assert_claim_undeterminable_skip "G2-02" "$R" 181 "$out"
 
 print_summary "$(basename "$0")" \
   "Drift hint: pr-cycle-cleanup.sh Step 5 §8 — Gate 0 self-exclusion (cwd/RITE_WORKTREE == self → never reap) + worktree liveness guard (flow-state signal: a session's active flow-state worktree ref → never reap; reap → null owner ref / claim-join signal — issue's claim holder still active=true, even with a stale 2h heartbeat → never reap) + OS-level live-cwd guard (any live process standing in the tree → never reap, via worktree-live-cwd.sh) + 3 gates (strict ^issue-[0-9]+$ / claim not-live / clean); corpse reap: admin-HEAD-missing AND git-unrecognized trees bypass Gate 3 and reap (rm -rf tree + admin dir) behind claim + 24h age guards — HEAD-present rc≠0 trees stay on the conservative skip; branch recovery: after reap, SAFE-delete the branch (merged → recovered) and FORCE-delete only manifest-recorded (merge-confirmed) branches, preserving unmerged work; free-arm manifest bypass: a claim-free worktree whose checked-out branch is manifest-recorded (merge-confirmed) bypasses the 24h age guard (harness mtime churn would otherwise leak it forever) and its manifest entry is consumed immediately after any successful branch recovery (-d and -D alike, best-effort with WARNING on failure); corpse-path manifest bypass: a corpse cannot resolve its branch (git doesn't recognize the tree) so the branch-name bypass never fires for one — cleanup.md Step 4-W now records the worktree's own PATH (not branch) into the manifest when removal fails/is skipped for busy/sandbox-mask reasons (merge-confirmed only), and the corpse age guard checks that PATH before falling back to the 24h wait, consuming the entry on successful reap (surgical: a mismatched path entry does not bypass); wiki-worktree excluded; session-start best-effort wiring."
