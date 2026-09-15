@@ -42,7 +42,13 @@ set -euo pipefail
 # Clean session-id env (mirrors pr-cycle-cleanup-session-reap.test.sh): the
 # reaper resolves its session via issue-claim.sh check, which is env-first, so
 # ambient CLAUDE_CODE_SESSION_ID must not leak into these SID_B-as-reaper tests.
-unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
+# An ambient RITE_HOST is just as harmful: with the host's runtime session ID
+# unset, `check` exits with an ERROR, the claim state stays empty, and the
+# reaper reports status=noop instead of reaping the TTL-exceeded fixtures.
+# CODEX_THREAD_ID / GROK_SESSION_ID / RITE_STATE_ROOT leak the same way.
+# run-tests.sh unsets a superset of these vars for suite runs; this keeps the
+# standalone run deterministic too.
+unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID CODEX_THREAD_ID GROK_SESSION_ID RITE_HOST RITE_STATE_ROOT
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_test-helpers.sh"
