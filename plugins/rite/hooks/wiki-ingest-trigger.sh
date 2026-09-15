@@ -523,7 +523,8 @@ case "$awk_rc" in
 esac
 if [ "$expected_status" = "incomplete" ]; then
   echo "ERROR: '$target_file' integrity check failed (frontmatter present but body missing/truncated)" >&2
-  echo "  対処: ファイルを削除して再実行してください: rm '$target_file'" >&2
+  printf -v _q_target_file '%q' "$target_file"
+  echo "  対処: ファイルを削除して再実行してください: rm $_q_target_file" >&2
   exit 3
 fi
 

@@ -867,5 +867,60 @@ assert "C-12 composition admin dir reaped" "0" "$( [ -d "$R/.git/worktrees/issue
 assert "C-12 composition gone from worktree list" "0" "$( list_has_wt "$R" 165 && echo 1 || echo 0 )"
 case "$out" in *"session_worktrees=1"*) pass "C-12 status reports session_worktrees=1" ;; *) fail "C-12 status: $out" ;; esac
 
+# ===========================================================================
+# Why: the corpse reap failure WARNING carries a paste-and-run `rm -rf`. The
+# paths are shell-quoted, so a repo path containing an apostrophe still splits
+# into exactly the working tree and the admin dir, while the display half of the
+# message keeps its literal '...' quoting. The rm failure comes from a PATH stub
+# (not chmod) so the fixture does not depend on the uid.
+# ===========================================================================
+REAL_RM=$(command -v rm)
+RM_STUB_DIR=$(mktemp -d); cleanup_dirs+=("$RM_STUB_DIR")
+cat > "$RM_STUB_DIR/rm" <<EOF
+#!/bin/bash
+for a in "\$@"; do case "\$a" in */.rite/worktrees/issue-*) exit 1 ;; esac; done
+exec "$REAL_RM" "\$@"
+EOF
+chmod +x "$RM_STUB_DIR/rm"
+
+# $1 = label, $2 = repo root, $3 = issue number
+check_corpse_fail_hint() {
+  local label="$1" r="$2" n="$3" wt line cmd admin rc words
+  local prune_tail=" && git worktree prune"
+  wt="$r/.rite/worktrees/issue-$n"
+  admin=$(sed -n 's/^gitdir: //p' "$wt/.git" | head -1)
+  RITE_STATE_ROOT="$r" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+  make_corpse "$r" "$n"
+  age_dir "$wt"
+  ( export PATH="$RM_STUB_DIR:$PATH"; run_pcc "$r" ) >/dev/null
+  assert "$label corpse survives the failed reap" "1" "$( [ -d "$wt" ] && echo 1 || echo 0 )"
+  assert "$label exactly one reap-failure WARNING" "1" "$(grep -cF 'の回収に失敗しました。手動回収: ' "$r/pcc.err" || true)"
+  line=$(grep -F 'の回収に失敗しました。手動回収: ' "$r/pcc.err" || true)
+  assert "$label display half keeps literal quoting" \
+    "WARNING: corpse session worktree '$wt' の回収に失敗しました。" "${line%%手動回収: *}"
+  cmd=${line#*手動回収: }
+  assert "$label paste command ends with the prune step" "$prune_tail" "${cmd: -${#prune_tail}}"
+  cmd=${cmd%"$prune_tail"}
+  rc=0
+  words=$( ( eval "set -- $cmd" && printf '%s\n' "$#" "$@" ) ) || rc=$?
+  assert "$label paste command parses as shell words" "0" "$rc"
+  mapfile -t words <<<"$words"
+  assert "$label word count" "4" "${words[0]:-}"
+  assert "$label word 1" "rm" "${words[1]:-}"
+  assert "$label word 2" "-rf" "${words[2]:-}"
+  assert "$label word 3 is the working tree" "$wt" "${words[3]:-}"
+  assert "$label word 4 is the admin dir" "$admin" "${words[4]:-}"
+}
+
+echo "=== C-13: corpse reap failure under an apostrophe path → rm -rf hint splits into tree + admin dir ==="
+APOS_BASE=$(mktemp -d); cleanup_dirs+=("$APOS_BASE")
+mkdir "$APOS_BASE/it's"
+R=$(TMPDIR="$APOS_BASE/it's" make_repo 170)
+check_corpse_fail_hint "C-13" "$R" 170
+
+echo "=== C-14: corpse reap failure under a plain path → same rm -rf hint arguments ==="
+R=$(make_repo 171); cleanup_dirs+=("$R")
+check_corpse_fail_hint "C-14" "$R" 171
+
 print_summary "$(basename "$0")" \
   "Drift hint: pr-cycle-cleanup.sh Step 5 §8 — Gate 0 self-exclusion (cwd/RITE_WORKTREE == self → never reap) + worktree liveness guard (flow-state signal: a session's active flow-state worktree ref → never reap; reap → null owner ref / claim-join signal — issue's claim holder still active=true, even with a stale 2h heartbeat → never reap) + OS-level live-cwd guard (any live process standing in the tree → never reap, via worktree-live-cwd.sh) + 3 gates (strict ^issue-[0-9]+$ / claim not-live / clean); corpse reap: admin-HEAD-missing AND git-unrecognized trees bypass Gate 3 and reap (rm -rf tree + admin dir) behind claim + 24h age guards — HEAD-present rc≠0 trees stay on the conservative skip; branch recovery: after reap, SAFE-delete the branch (merged → recovered) and FORCE-delete only manifest-recorded (merge-confirmed) branches, preserving unmerged work; free-arm manifest bypass: a claim-free worktree whose checked-out branch is manifest-recorded (merge-confirmed) bypasses the 24h age guard (harness mtime churn would otherwise leak it forever) and its manifest entry is consumed immediately after any successful branch recovery (-d and -D alike, best-effort with WARNING on failure); corpse-path manifest bypass: a corpse cannot resolve its branch (git doesn't recognize the tree) so the branch-name bypass never fires for one — cleanup.md Step 4-W now records the worktree's own PATH (not branch) into the manifest when removal fails/is skipped for busy/sandbox-mask reasons (merge-confirmed only), and the corpse age guard checks that PATH before falling back to the 24h wait, consuming the entry on successful reap (surgical: a mismatched path entry does not bypass); wiki-worktree excluded; session-start best-effort wiring."
