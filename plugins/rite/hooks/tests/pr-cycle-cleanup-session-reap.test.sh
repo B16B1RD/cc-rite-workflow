@@ -26,9 +26,14 @@ set -euo pipefail
 # `issue-claim.sh check`, which is now env-first; this test makes the reaper act as
 # SID_B by writing `.rite-session-id`=SID_B, so the dogfooding session's ambient
 # CLAUDE_CODE_SESSION_ID must not leak in (it would make the reaper resolve a foreign
-# sid instead of SID_B). run-tests.sh unsets the same vars for suite runs; this keeps
-# the standalone run deterministic too.
-unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
+# sid instead of SID_B). An ambient RITE_HOST is just as harmful: with the host's
+# runtime session ID unset, `check` exits with an ERROR, the claim state stays empty,
+# and a fresh fixture worktree is treated as claim-free and skipped silently by the
+# 24h age guard instead of being reaped.
+# CODEX_THREAD_ID / GROK_SESSION_ID / RITE_STATE_ROOT leak the same way. run-tests.sh
+# unsets a superset of these vars for suite runs; this keeps the standalone run
+# deterministic too.
+unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID CODEX_THREAD_ID GROK_SESSION_ID RITE_HOST RITE_STATE_ROOT
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_test-helpers.sh"
