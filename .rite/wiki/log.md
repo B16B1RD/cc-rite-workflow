@@ -19,6 +19,7 @@
 * **Update**: [先行 Issue の明示的 Non-Target 指定は、reviewer 推奨だけで覆さずユーザー確認する](pages/heuristics/respect-prior-non-target-designation.md) — [帰結クラス降格 helper に除外入力源を足したレビュー結果](raw/reviews/20260915T042231Z-pr-2833.md) を統合。同一 Issue の Non-Target と出力契約拡張が衝突したときの自律実行での扱いを追記
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=486, broken_refs=0
 * **Update**: [AC anchor / prose / コード emit 順は drift 検出 lint で 3 者同期する](pages/patterns/drift-check-anchor-prose-code-sync.md) — [helper の出力契約を手順書へ書き写した同期のレビュー結果](raw/reviews/20260915T052437Z-pr-2834.md) を統合。helper docstring を SoT とする後追い同期を集合一致と base 側での assert 評価で閉じる節を追記
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=486, broken_refs=0
 
 ## 2026-09-14
 
