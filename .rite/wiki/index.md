@@ -498,7 +498,7 @@ okf_version: "0.2"
 | [新しい経路を足したら、その出力を既存処理へ再入力して既存処理の暗黙の入力前提を確かめる](pages/heuristics/new-path-output-fed-back-into-existing-process.md) | heuristics | 既存処理は、これまでの入力が常に持っていた形を暗黙の前提にして正しく動いていることがある。新しい経路がその形を持たない入力を既存処理へ渡し始めると、既存コードに一行も変更が無くても誤動作が表に出る。 | 2026-09-12T18:43:00+00:00 | medium |
 | [境界付き `grep -oE` の match には境界の 1 文字が含まれ、後段の数字抽出がそれを拾う](pages/anti-patterns/grep-boundary-alternation-match-leaks-boundary-char.md) | anti-patterns | `grep -oE '(^\|[^A-Za-z])D-[0-9]+'` のように先頭境界を文字クラスで要求すると、`-o` が出力する match に境界の 1 文字も入る。続けて `grep -oE '[0-9]+'` で数字を読むと、境界が数字だったとき（`9D-02` の 9）もそれを番号として数え、最大値計算が飛ぶ。 | 2026-09-12T23:59:02Z | high |
 | [exit 0 で終わる hook の stderr は debug ログにしか残らない — 通知の到達先を確かめてから文書に「知らせる」と書く](pages/heuristics/hook-exit0-stderr-debug-log-only-verify-delivery.md) | heuristics | SessionStart など exit 0 で終わる Claude Code hook が stderr に書いた WARNING は debug ログにしか残らず、会話にもユーザーにも届かない。出力先を字義で指定した受入基準を満たしていても、文書が「ユーザーに知らせる」と書けば実行時に成り立たない主張になるため、到達経路を公式ドキュメントと実行で確かめてから書く。 | 2026-09-14T01:40:00Z | high |
-| [ユーザーにコピー実行させるコマンドをパスへ手書きの単一引用符で組み立てない](pages/anti-patterns/hand-single-quoted-copy-paste-command.md) | anti-patterns | WARNING に載せる手動復旧コマンドを rm -f '$path' のように手書きの単一引用符で組むと、パスにアポストロフィを含む環境で引用が閉じず、2 個含むと引数が分割されて無関係なパスが削除対象になる。表示用の無害化とは別に、実行用の文字列は printf %q で引用して作る。 | 2026-09-14T03:36:26Z | high |
+| [ユーザーにコピー実行させるコマンドをパスへ手書きの単一引用符で組み立てない](pages/anti-patterns/hand-single-quoted-copy-paste-command.md) | anti-patterns | WARNING に載せる手動復旧コマンドを rm -f '$path' のように手書きの単一引用符で組むと、パスにアポストロフィを含む環境で引用が閉じず、2 個含むと引数が分割されて無関係なパスが削除対象になる。表示用の無害化とは別に、実行用の文字列は printf %q で引用して作る。 | 2026-09-15T09:05:00Z | high |
 | [赤い CI check は失敗した step を見てから変更起因と判断する](pages/heuristics/ci-red-check-inspect-failed-step.md) | heuristics | CI の job が FAILURE でも、checkout やネットワーク解決の段階で落ちていればテストは 1 件も実行されておらず、変更の検証結果ではない。check 名と conclusion だけで変更起因の失敗と扱わず、job の steps から失敗した step を特定してから判断する。 | 2026-09-14T03:36:26Z | medium |
 | [macOS の awk の == は UTF-8 ロケールで照合比較になり、別の日本語文字列を等しいと判定する](pages/anti-patterns/macos-awk-string-equality-uses-locale-collation.md) | anti-patterns | macOS 標準の awk は UTF-8 ロケールで文字列の == をロケール照合で比較するため、別の日本語見出しを同じ見出しと判定し、Linux の gawk / mawk では再現しない誤判定を起こす。 | 2026-09-15T03:40:00Z | high |
 | [特定経路だけを壊す stub は、効果範囲が広がっていないことまで assert する](pages/heuristics/single-path-failure-stub-pins-its-blast-radius.md) | heuristics | 特定の引数のときだけ失敗させる stub で失敗経路を再現するときは、目的の診断が出ることに加えて、その診断の出現回数と隣接経路の縮退マーカー不在も assert する。そうしないと stub が他の呼び出しまで壊しても、目的の assert は緑のまま複合経路を検証してしまう。 | 2026-09-14T10:03:19Z | medium |
@@ -514,4 +514,4 @@ okf_version: "0.2"
 
 - 総ページ数: 500
 - ドメイン別: patterns=114, heuristics=223, anti-patterns=163
-- 最終更新: 2026-09-15T07:45:00Z
+- 最終更新: 2026-09-15T09:05:00Z

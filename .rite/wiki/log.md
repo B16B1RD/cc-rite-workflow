@@ -30,6 +30,7 @@
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=489, broken_refs=0
 * **Skip**: [20260915T074332Z-pr-2843.md](raw/reviews/20260915T074332Z-pr-2843.md) — 指摘事項なし（0件）のためスキップ
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=495, broken_refs=0
+* **Update**: [ユーザーにコピー実行させるコマンドをパスへ手書きの単一引用符で組み立てない](pages/anti-patterns/hand-single-quoted-copy-paste-command.md) — [まとめて %q 化した案内の検出網の穴を指摘したレビュー結果](raw/reviews/20260915T084547Z-pr-2847.md) を統合。全箇所を固定する静的検査と既存テストへの分割 assert、全角句読点前の波括弧を追記
 
 ## 2026-09-14
 

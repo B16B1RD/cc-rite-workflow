@@ -4,14 +4,17 @@ title: "ユーザーにコピー実行させるコマンドをパスへ手書き
 domain: "anti-patterns"
 description: "WARNING に載せる手動復旧コマンドを rm -f '$path' のように手書きの単一引用符で組むと、パスにアポストロフィを含む環境で引用が閉じず、2 個含むと引数が分割されて無関係なパスが削除対象になる。表示用の無害化とは別に、実行用の文字列は printf %q で引用して作る。"
 created: "2026-09-14T01:40:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-14T03:36:26Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-15T09:05:00Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-14T03:36:26Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-15T09:05:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260914T010341Z-pr-2795.md"
   - type: "reviews"
     resource: "raw/reviews/20260914T025734Z-pr-2798.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260915T084547Z-pr-2847.md"
 tags: ["shell-quoting", "diagnostic-message", "manual-recovery"]
 confidence: high
 ---
@@ -58,6 +61,17 @@ WARNING に載せる手動復旧コマンドを rm -f '$path' のように手書
 
 1 箇所を直しても、差分外の既存 helper に同じ形の手動回収案内（`rm -rf '$wt_path' ...` など）が残っていることがある。こうした行は、案内文字列の中で `'$` の直後に変数名が続く形として grep で機械的に拾える。修正するときは、兄弟 helper の同種の案内もまとめて洗い出す。
 
+### まとめて直したら全箇所を固定する
+
+複数ファイルにまたがる同型の案内をまとめて `%q` 化したとき、挙動テストを代表 1 箇所にだけ足すと、残りの箇所は手書きの引用へ戻しても suite が green のままになる。実装が全箇所で正しくても、同じ契約を持つ他の行の回帰は検出されない。別々のレビュアーが、代表以外の行を手書きの引用へ戻す変異を作り、どれも検出されないことを独立に確かめた。
+
+全箇所を固定する手段は 2 つある。
+
+- 静的な検査: 案内ラベル（`手動回収:` / `manual recovery:` / `対処:` / `hint:` など）を含む echo 行のコマンド部に `'$` が現れないことを assert する。対象ファイルを増やしても 1 本で済む。
+- 既存テストへの分割 assert: 失敗分岐へ既に到達しているテストは、stderr を捕捉していても本文の部分一致しか見ていないことが多い。そこへアポストロフィ入りの fixture と `eval "set -- $cmd"` による位置ごとの完全一致を足す。`rm -rf` の失敗は chmod ではなく PATH 上の `rm` スタブで起こすと、root で実行しても fixture が空振りしない。
+
+`%q` した値の直後に全角の句読点を続けるときは `${_q_var}）` のように波括弧で囲む。波括弧が無いと、マルチバイト文字に隣接した変数を検出する既存の静的ガードに掛かる。
+
 ## 関連ページ
 
 - [二重引用符と -- は argv 分割にしか効かず、展開はパース時に終わっている](./quotes-do-not-stop-expansion.md)
@@ -67,3 +81,4 @@ WARNING に載せる手動復旧コマンドを rm -f '$path' のように手書
 
 - [案内コマンドの引用崩れを指摘したレビュー結果](../../raw/reviews/20260914T010341Z-pr-2795.md)
 - [引用修正と検出力テストを確認したレビュー結果](../../raw/reviews/20260914T025734Z-pr-2798.md)
+- [まとめて %q 化した案内の検出網の穴を指摘したレビュー結果](../../raw/reviews/20260915T084547Z-pr-2847.md)
