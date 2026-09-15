@@ -21,9 +21,14 @@ sources:
     resource: "raw/fixes/20260425T161635Z-pr-661.md"
   - type: "fixes"
     resource: "raw/fixes/20260503T183643Z-pr-799-cycle4.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260915T052437Z-pr-2834.md"
 tags: ["drift-detection", "lint", "pre-commit", "convergence", "mechanical-validation", "anchor-prose-enumeration"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T13:37:28Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-15T05:29:08Z" }
+verified:
+  - by: "rite-wiki-ingest/claude-opus-5[1m]"
+    at: "2026-09-15T05:29:08Z"
 ---
 
 # AC anchor / prose / コード emit 順は drift 検出 lint で 3 者同期する
@@ -109,6 +114,14 @@ drift-check-anchor lint pattern (Pattern-2 / Pattern-5) が現状 (a)(c) の lit
 
 **「Cross-File Impact Check の delete/rename 参照整合性」との同型性**: 本 sync 義務は「削除/リネームされた export の参照整合性」と同型の cross-site impact pattern。実装の semantics 変更が prose / 限界表 / Edge Case 表 / factual claim を invalidate する可能性を、実装変更時 default で確認する習慣を持つ。
 
+### helper docstring を SoT とする後追い同期は、集合一致と base 側評価で閉じる
+
+helper に失敗 reason・成功 marker の suffix・判定の入力源を足した変更と、それを手順書へ書き写す変更が別サイクルに分かれることがある。後追いの同期では、手順書の reason 列挙（再試行群と停止群の和）を helper docstring の Reason 一覧と**集合として**突き合わせ、過不足が 0 であることを確かめる。独立した複数の reviewer がこの突き合わせを別々に行い、同じ件数で一致を確認したサイクルでは blocking 指摘が出なかった。列挙の一部だけを読んで「足りている」と判断すると、停止群と再試行群のどちらに入れたかという routing の誤りを見逃す。
+
+手順書の文言を固定する静的 assert を足したときは、**同じ条件式を base 側の手順書（`git show <base>:<path>`）に当てて、追加した assert が全件不成立になること**を確かめる。mutation 用の worktree を作らなくても、各 assert が変更前の文面では落ちることを示せ、中身のない assert（どの文面でも通る assert）を排除できる。mutation worktree による検証と base 側の条件評価は同じ結論に至り、軽量な方で足りる。
+
+同じ同期で残りやすいのは assert の精度の問題である。helper の出力ではなく source の代入文を照合する assert、片方の marker にしか実行時 pin が無い suffix、配置を区別せず出現回数だけを数える assert がこれにあたる。いずれも検出網の粒度の話で、実行時の挙動は変わらない。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -124,3 +137,4 @@ drift-check-anchor lint pattern (Pattern-2 / Pattern-5) が現状 (a)(c) の lit
 - [ANCHOR comment prose 内 enumeration 同期漏れ実測](../../raw/reviews/20260425T161137Z-pr-661.md)
 - [prose 側 4-arg 拡張完了](../../raw/fixes/20260425T161635Z-pr-661.md)
 - [prose-implementation drift 訂正 + reference Edge Case / 既知の限界表 factual error 訂正](../../raw/fixes/20260503T183643Z-pr-799-cycle4.md)
+- [helper docstring の Reason 一覧と手順書列挙の集合一致、base 側での assert 評価](../../raw/reviews/20260915T052437Z-pr-2834.md)
