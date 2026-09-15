@@ -486,6 +486,237 @@ grep -q "CLASS_DEMOTION_UNCLASSIFIED=1; count=1" <<<"$GATE_STDERR" && pass "UNCL
 [ "$(jq -r '.findings[0].consequence_class' "$TEST_DIR/tc20.json")" = "A" ] && pass "missing map stays A" || fail "missing map class changed"
 
 # ---- Static contract: pr-review routing と廃止語彙の全数除去 ----
+# ---- 合意済み AC の実測済み未充足: acceptance_criteria[] の unmet 行が第 2 の除外入力源 ----
+# $1 = JSON path, $2 = acceptance_criteria の JSON 値
+set_ac() {
+  jq --argjson ac "$2" '.acceptance_criteria = $ac' "$1" > "$1.tmp" && mv "$1.tmp" "$1"
+}
+
+# ---- TC-21: map が class B・exclusion なしでも unmet 行の finding は blocking に残る ----
+echo "TC-21: unmet 行が指す class B は blocking 維持 + ac_unmet を記録"
+f1=$(mk_finding "F-01" "MEDIUM" "current-pr" "README の手順が実装と同期していない")
+mk_json "$TEST_DIR/tc21.json" "$f1"
+set_ac "$TEST_DIR/tc21.json" '[{"id":"AC-1","status":"unmet","finding_id":"F-01","evidence":"指摘事項 [AC-1] を参照"}]'
+mk_cls "$TEST_DIR/tc21-cls.json" "$(mk_entry F-01 B "文書整合に留まる")"
+run_gate "$TEST_DIR/tc21.json" "$TEST_DIR/tc21-cls.json"
+[ "$GATE_RC" -eq 0 ] && pass "rc=0" || fail "rc=$GATE_RC (expected 0)"
+grep -qxF "[CONTEXT] CLASS_DEMOTION_GATE=not-triggered; class_a=0; class_b=1; demoted=0; assessment=fix-needed" <<<"$GATE_STDERR" \
+  && pass "marker not-triggered (exact)" || fail "marker mismatch: $GATE_STDERR"
+[ "$(jq -c '[.findings[] | {id, scope, consequence_class, consequence_exclusion}]' "$TEST_DIR/tc21.json")" \
+  = '[{"id":"F-01","scope":"current-pr","consequence_class":"B","consequence_exclusion":"ac_unmet:AC-1"}]' ] \
+  && pass "finding stays blocking as class B with ac_unmet:AC-1" || fail "finding wrong: $(jq -c '.findings' "$TEST_DIR/tc21.json")"
+[ "$(jq -r '"\(.verdict) \(.overall_assessment) \(.non_blocking_findings | length) \(.class_demotion.demoted)"' "$TEST_DIR/tc21.json")" = "fix-needed fix-needed 0 0" ] \
+  && pass "verdict fix-needed, nothing demoted" || fail "verdict/demotion wrong"
+[ "$(jq -c '.acceptance_criteria' "$TEST_DIR/tc21.json")" = '[{"id":"AC-1","status":"unmet","finding_id":"F-01","evidence":"指摘事項 [AC-1] を参照"}]' ] \
+  && pass "acceptance_criteria preserved" || fail "acceptance_criteria changed"
+
+# ---- TC-22: 部分降格 — 除外なし B は降格、unmet の B は残り final 検査を通る ----
+echo "TC-22: unmet の B は残り、除外なし B だけ降格する (final 検査が通過する)"
+f1=$(mk_finding "F-01" "MEDIUM" "current-pr" "[AC-1] README の手順が実装と同期していない")
+f2=$(mk_finding "F-02" "LOW" "current-pr" "新規追加文の pin 精度")
+mk_json "$TEST_DIR/tc22.json" "$f1" "$f2"
+jq '.reviewers += ["acceptance-reviewer"] | .findings[0].reviewer = "acceptance-reviewer" | .measured_gate = {commit_sha: .commit_sha}' "$TEST_DIR/tc22.json" > "$TEST_DIR/tc22.tmp" \
+  && mv "$TEST_DIR/tc22.tmp" "$TEST_DIR/tc22.json"
+set_ac "$TEST_DIR/tc22.json" '[{"id":"AC-1","status":"unmet","finding_id":"F-01","evidence":"指摘事項 [AC-1] を参照"}]'
+mk_cls "$TEST_DIR/tc22-cls.json" "$(mk_entry F-01 B "文書整合に留まる")" "$(mk_entry F-02 B "検出網の粒度に留まる")"
+run_gate "$TEST_DIR/tc22.json" "$TEST_DIR/tc22-cls.json"
+grep -qxF "[CONTEXT] CLASS_DEMOTION_GATE=applied; class_a=0; class_b=2; demoted=1; assessment=fix-needed" <<<"$GATE_STDERR" \
+  && pass "marker applied partial (exact)" || fail "marker mismatch: $GATE_STDERR"
+[ "$(jq -c '[[.findings[].id], [.non_blocking_findings[].id]]' "$TEST_DIR/tc22.json")" = '[["F-01"],["F-02"]]' ] \
+  && pass "F-01 blocking / F-02 demoted" || fail "sets wrong: $(jq -c '[[.findings[].id], [.non_blocking_findings[].id]]' "$TEST_DIR/tc22.json")"
+bash "$SCRIPT_DIR/../acceptance-criteria-check.sh" final --expected AC-1 --input "$TEST_DIR/tc22.json" 2>"$TEST_DIR/tc22-final.err"
+final_rc=$?
+[ "$final_rc" -eq 0 ] && pass "acceptance-criteria-check final passes" || fail "final rc=$final_rc: $(cat "$TEST_DIR/tc22-final.err")"
+
+# ---- TC-23: map の exclusion 文言は ac_unmet で上書きしない ----
+echo "TC-23: map exclusion がある B は map の判定文を保持"
+f1=$(mk_finding "F-01" "HIGH" "current-pr" "base 側禁止文の削除")
+mk_json "$TEST_DIR/tc23.json" "$f1"
+set_ac "$TEST_DIR/tc23.json" '[{"id":"AC-1","status":"unmet","finding_id":"F-01","evidence":"e"}]'
+mk_cls "$TEST_DIR/tc23-cls.json" "$(mk_entry_excl F-01 B "文書整合に留まる" "base 側の禁止文が本 PR の diff で削除された")"
+run_gate "$TEST_DIR/tc23.json" "$TEST_DIR/tc23-cls.json"
+[ "$(jq -r '.findings[0].consequence_exclusion' "$TEST_DIR/tc23.json")" = "base 側の禁止文が本 PR の diff で削除された" ] \
+  && pass "map exclusion kept" || fail "exclusion overwritten: $(jq -r '.findings[0].consequence_exclusion' "$TEST_DIR/tc23.json")"
+
+# ---- TC-24: 同じ finding を指す複数の unmet 行は行順に連結する ----
+echo "TC-24: 複数 unmet 行は ac_unmet:AC-3,AC-1 (行順)"
+f1=$(mk_finding "F-01" "MEDIUM" "current-pr" "文書同期")
+mk_json "$TEST_DIR/tc24.json" "$f1"
+set_ac "$TEST_DIR/tc24.json" '[{"id":"AC-3","status":"unmet","finding_id":"F-01","evidence":"e"},{"id":"AC-2","status":"satisfied","finding_id":null,"evidence":"e"},{"id":"AC-1","status":"unmet","finding_id":"F-01","evidence":"e"}]'
+mk_cls "$TEST_DIR/tc24-cls.json" "$(mk_entry F-01 B "文書整合に留まる")"
+run_gate "$TEST_DIR/tc24.json" "$TEST_DIR/tc24-cls.json"
+[ "$(jq -r '.findings[0].consequence_exclusion' "$TEST_DIR/tc24.json")" = "ac_unmet:AC-3,AC-1" ] \
+  && pass "row-order join" || fail "join wrong: $(jq -r '.findings[0].consequence_exclusion' "$TEST_DIR/tc24.json")"
+
+# ---- TC-25: class A / 判定不能 / category 固定には ac_unmet を記録しない ----
+echo "TC-25: unmet 行が class A・判定不能・number_reference を指しても記録なし、観測 marker 不変"
+f1=$(mk_finding "F-01" "HIGH" "current-pr" "実行時に壊れる")
+f2=$(mk_finding "F-02" "MEDIUM" "current-pr" "map エントリ欠落")
+f3=$(mk_finding "F-03" "MEDIUM" "current-pr" "番号入り追加行" "plugins/rite/skills/pr-review/SKILL.md" "true" "number_reference")
+mk_json "$TEST_DIR/tc25.json" "$f1" "$f2" "$f3"
+set_ac "$TEST_DIR/tc25.json" '[{"id":"AC-1","status":"unmet","finding_id":"F-01","evidence":"e"},{"id":"AC-2","status":"unmet","finding_id":"F-02","evidence":"e"},{"id":"AC-3","status":"unmet","finding_id":"F-03","evidence":"e"}]'
+mk_cls "$TEST_DIR/tc25-cls.json" "$(mk_entry F-01 A "実行時に壊れる")" "$(mk_entry F-03 B "文書整合に留まる")"
+run_gate "$TEST_DIR/tc25.json" "$TEST_DIR/tc25-cls.json"
+[ "$GATE_RC" -eq 0 ] && pass "rc=0" || fail "rc=$GATE_RC (expected 0)"
+grep -qxF "[CONTEXT] CLASS_DEMOTION_GATE=not-triggered; class_a=3; class_b=0; demoted=0; assessment=fix-needed" <<<"$GATE_STDERR" \
+  && pass "marker not-triggered class_a=3 (exact)" || fail "marker mismatch: $GATE_STDERR"
+grep -qxF "[CONTEXT] CLASS_DEMOTION_UNCLASSIFIED=1; count=1" <<<"$GATE_STDERR" \
+  && pass "UNCLASSIFIED count=1" || fail "UNCLASSIFIED mismatch: $GATE_STDERR"
+grep -qxF "[CONTEXT] CLASS_DEMOTION_CATEGORY_PINNED=1; count=1" <<<"$GATE_STDERR" \
+  && pass "CATEGORY_PINNED count=1" || fail "CATEGORY_PINNED mismatch: $GATE_STDERR"
+[ "$(jq -r '[.findings[] | select(has("consequence_exclusion"))] | length' "$TEST_DIR/tc25.json")" = "0" ] \
+  && pass "no consequence_exclusion on class A" || fail "unexpected consequence_exclusion"
+
+# ---- TC-26: 未充足行が無ければ変更前の helper と byte 一致で降格する ----
+# golden は本 fixture を変更前の helper に通した出力 (stdout 側 JSON と stderr marker)。
+echo "TC-26: satisfied のみ / finding_id=null の unmet / skip object / キー欠落は従来どおり降格"
+cat > "$TEST_DIR/tc26-golden.json" <<'EOF'
+{
+  "schema_version": "1.1.0",
+  "pr_number": 99,
+  "timestamp": "2026-08-11T00:00:00Z",
+  "commit_sha": "0123456789abcdef0123456789abcdef01234567",
+  "overall_assessment": "mergeable",
+  "verdict": "mergeable",
+  "reviewers": [
+    "code-quality-reviewer",
+    "acceptance-reviewer"
+  ],
+  "findings": [],
+  "non_blocking_findings": [
+    {
+      "id": "F-01",
+      "reviewer": "acceptance-reviewer",
+      "category": "code_quality",
+      "severity": "MEDIUM",
+      "file": "plugins/rite/hooks/foo.sh",
+      "line": 1,
+      "description": "[AC-1] 文書同期が未充足",
+      "suggestion": "s",
+      "status": "open",
+      "scope": "current-pr",
+      "verification": {
+        "measured": true,
+        "repro": "bash t.sh => observed failure",
+        "failing_test": null
+      },
+      "consequence_class": "B",
+      "consequence_scenario": "文書整合に留まる",
+      "demotion": {
+        "policy": "class-b-demotion",
+        "reason": "文書整合に留まる"
+      }
+    }
+  ],
+  "guardrail_audit_log": [],
+  "acceptance_criteria": [
+    {
+      "id": "AC-1",
+      "status": "satisfied",
+      "finding_id": null,
+      "evidence": "e"
+    }
+  ],
+  "class_demotion": {
+    "applied": true,
+    "class_a": 0,
+    "class_b": 1,
+    "demoted": 1
+  }
+}
+EOF
+tc26_marker="[CONTEXT] CLASS_DEMOTION_GATE=applied; class_a=0; class_b=1; demoted=1; assessment=mergeable"
+tc26_input='{"schema_version":"1.1.0","pr_number":99,"timestamp":"2026-08-11T00:00:00Z","commit_sha":"0123456789abcdef0123456789abcdef01234567","overall_assessment":"fix-needed","verdict":"fix-needed","reviewers":["code-quality-reviewer","acceptance-reviewer"],"findings":[{"id":"F-01","reviewer":"acceptance-reviewer","category":"code_quality","severity":"MEDIUM","file":"plugins/rite/hooks/foo.sh","line":1,"description":"[AC-1] 文書同期が未充足","suggestion":"s","status":"open","scope":"current-pr","verification":{"measured":true,"repro":"bash t.sh => observed failure","failing_test":null}}],"non_blocking_findings":[],"guardrail_audit_log":[],"acceptance_criteria":[{"id":"AC-1","status":"satisfied","finding_id":null,"evidence":"e"}]}'
+mk_cls "$TEST_DIR/tc26-cls.json" "$(mk_entry F-01 B "文書整合に留まる")"
+printf '%s\n' "$tc26_input" > "$TEST_DIR/tc26-satisfied.json"
+run_gate "$TEST_DIR/tc26-satisfied.json" "$TEST_DIR/tc26-cls.json"
+cmp -s "$TEST_DIR/tc26-satisfied.json" "$TEST_DIR/tc26-golden.json" \
+  && pass "satisfied-only output is byte-identical to the pre-change golden" || fail "satisfied-only output differs from golden"
+[ "$GATE_STDERR" = "$tc26_marker" ] && pass "satisfied-only stderr is exactly the golden marker" || fail "stderr differs: $GATE_STDERR"
+golden_rest=$(jq -S 'del(.acceptance_criteria)' "$TEST_DIR/tc26-golden.json")
+for variant in 'unmet-null|[{"id":"AC-1","status":"unmet","finding_id":null,"evidence":"e"}]' \
+               'no-issue|{"skipped":"no_issue"}' \
+               'no-ac-section|{"skipped":"no_ac_section"}' \
+               'absent|'; do
+  name="${variant%%|*}"; ac="${variant#*|}"
+  if [ -z "$ac" ]; then
+    printf '%s\n' "$tc26_input" | jq 'del(.acceptance_criteria)' > "$TEST_DIR/tc26-$name.json"
+  else
+    printf '%s\n' "$tc26_input" | jq --argjson ac "$ac" '.acceptance_criteria = $ac' > "$TEST_DIR/tc26-$name.json"
+  fi
+  ac_before=$(jq -cS '.acceptance_criteria' "$TEST_DIR/tc26-$name.json")
+  run_gate "$TEST_DIR/tc26-$name.json" "$TEST_DIR/tc26-cls.json"
+  [ "$(jq -S 'del(.acceptance_criteria)' "$TEST_DIR/tc26-$name.json")" = "$golden_rest" ] \
+    && pass "$name: output equals golden outside acceptance_criteria" || fail "$name: output differs from golden"
+  [ "$(jq -cS '.acceptance_criteria' "$TEST_DIR/tc26-$name.json")" = "$ac_before" ] \
+    && pass "$name: acceptance_criteria unchanged" || fail "$name: acceptance_criteria changed"
+  [ "$GATE_STDERR" = "$tc26_marker" ] && pass "$name: stderr is exactly the golden marker" || fail "$name: stderr differs: $GATE_STDERR"
+done
+
+# ---- TC-27: findings[] に無い finding_id は無視して警告し、他 finding の判定は変わらない ----
+echo "TC-27: 存在しない finding_id の unmet 行は WARNING + marker suffix"
+f1=$(mk_finding "F-01" "MEDIUM" "current-pr" "文書同期")
+f2=$(mk_finding "F-02" "LOW" "current-pr" "pin 精度")
+mk_json "$TEST_DIR/tc27.json" "$f1" "$f2"
+set_ac "$TEST_DIR/tc27.json" '[{"id":"AC-1","status":"unmet","finding_id":"F-01","evidence":"e"},{"id":"AC-2","status":"unmet","finding_id":"F-98","evidence":"e"},{"id":"AC-3","status":"unmet","finding_id":"F-99","evidence":"e"}]'
+mk_cls "$TEST_DIR/tc27-cls.json" "$(mk_entry F-01 B "文書整合に留まる")" "$(mk_entry F-02 B "検出網の粒度に留まる")"
+run_gate "$TEST_DIR/tc27.json" "$TEST_DIR/tc27-cls.json"
+[ "$GATE_RC" -eq 0 ] && pass "rc=0" || fail "rc=$GATE_RC (expected 0)"
+grep -qxF "[CONTEXT] CLASS_DEMOTION_GATE=applied; class_a=0; class_b=2; demoted=1; assessment=fix-needed; warning=ac_unmet_finding_missing; rows=AC-2:F-98,AC-3:F-99" <<<"$GATE_STDERR" \
+  && pass "marker carries the missing rows (exact)" || fail "marker mismatch: $GATE_STDERR"
+[ "$(grep -c '^WARNING: acceptance_criteria の未充足行' <<<"$GATE_STDERR")" = "1" ] \
+  && pass "one WARNING line" || fail "WARNING count wrong: $GATE_STDERR"
+[ "$(jq -c '[[.findings[] | "\(.id)=\(.consequence_exclusion)"], [.non_blocking_findings[].id]]' "$TEST_DIR/tc27.json")" = '[["F-01=ac_unmet:AC-1"],["F-02"]]' ] \
+  && pass "F-01 excluded by AC-1, F-02 demoted as usual" || fail "sets wrong: $(jq -c '[.findings, .non_blocking_findings]' "$TEST_DIR/tc27.json")"
+
+# ---- TC-28: acceptance_criteria の形が崩れていれば停止し、JSON を変えない ----
+echo "TC-28: 不正な acceptance_criteria は acceptance_criteria_invalid で停止"
+f1=$(mk_finding "F-01" "MEDIUM" "current-pr" "文書同期")
+mk_cls "$TEST_DIR/tc28-cls.json" "$(mk_entry F-01 B "文書整合に留まる")"
+tc28_i=0
+for bad in '"x"' '1' 'null' '{}' '{"skipped":1}' '{"skipped":"foo"}' '{"skipped":"no_issue","extra":1}' '[1]' \
+           '[{"id":"AC-1","finding_id":null}]' \
+           '[{"id":"AC-1","status":"unmet","finding_id":5}]' \
+           '[{"id":"AC-1","status":"unmet","finding_id":""}]'; do
+  tc28_i=$((tc28_i + 1))
+  mk_json "$TEST_DIR/tc28-$tc28_i.json" "$f1"
+  set_ac "$TEST_DIR/tc28-$tc28_i.json" "$bad"
+  cp "$TEST_DIR/tc28-$tc28_i.json" "$TEST_DIR/tc28-$tc28_i.before"
+  run_gate "$TEST_DIR/tc28-$tc28_i.json" "$TEST_DIR/tc28-cls.json"
+  if [ "$GATE_RC" -eq 1 ] \
+    && grep -q "CLASS_DEMOTION_GATE_FAILED=1; reason=acceptance_criteria_invalid" <<<"$GATE_STDERR" \
+    && cmp -s "$TEST_DIR/tc28-$tc28_i.json" "$TEST_DIR/tc28-$tc28_i.before"; then
+    pass "rejects $bad (rc=1, JSON unchanged)"
+  else
+    fail "did not reject $bad (rc=$GATE_RC): $GATE_STDERR"
+  fi
+done
+# 判定順: measured 未判定 > 不正な acceptance_criteria > classification map
+mk_json "$TEST_DIR/tc28-nomap.json" "$f1"
+set_ac "$TEST_DIR/tc28-nomap.json" '{}'
+run_gate "$TEST_DIR/tc28-nomap.json" "$TEST_DIR/no-such-map.json"
+grep -q "reason=acceptance_criteria_invalid" <<<"$GATE_STDERR" \
+  && pass "invalid acceptance_criteria wins over missing map" || fail "precedence wrong: $GATE_STDERR"
+mk_json "$TEST_DIR/tc28-measured.json" "$(mk_finding "F-01" "MEDIUM" "current-pr" "文書同期" "plugins/rite/hooks/foo.sh" "none")"
+set_ac "$TEST_DIR/tc28-measured.json" '{}'
+run_gate "$TEST_DIR/tc28-measured.json" "$TEST_DIR/tc28-cls.json"
+grep -q "reason=measured_undetermined" <<<"$GATE_STDERR" \
+  && pass "measured_undetermined wins over invalid acceptance_criteria" || fail "precedence wrong: $GATE_STDERR"
+# blocking 0 件は従来どおり no-op (acceptance_criteria を検査しない)
+mk_json "$TEST_DIR/tc28-noop.json" "$(mk_finding "F-01" "LOW" "nit-noted" "nit")"
+set_ac "$TEST_DIR/tc28-noop.json" '{}'
+run_gate "$TEST_DIR/tc28-noop.json" "$TEST_DIR/no-such-map.json"
+[ "$GATE_RC" -eq 0 ] && [ "$GATE_STDERR" = "[CONTEXT] CLASS_DEMOTION_GATE=noop; reason=no_blocking" ] \
+  && pass "blocking 0 stays noop" || fail "noop changed (rc=$GATE_RC): $GATE_STDERR"
+
+# ---- TC-29: acceptance_criteria キー欠落の not-triggered marker に suffix が付かない ----
+echo "TC-29: キー欠落入力の not-triggered marker は従来形のまま"
+mk_json "$TEST_DIR/tc29.json" "$(mk_finding "F-01" "HIGH" "current-pr" "実行時に壊れる")"
+mk_cls "$TEST_DIR/tc29-cls.json" "$(mk_entry F-01 A "実行時に壊れる")"
+run_gate "$TEST_DIR/tc29.json" "$TEST_DIR/tc29-cls.json"
+[ "$GATE_STDERR" = "[CONTEXT] CLASS_DEMOTION_GATE=not-triggered; class_a=1; class_b=0; demoted=0; assessment=fix-needed" ] \
+  && pass "not-triggered marker exact" || fail "marker changed: $GATE_STDERR"
+
 echo "Static contract: measured error は再試行せず停止し、廃止語彙を残さない"
 pr_review_skill="$PLUGIN_ROOT/skills/pr-review/SKILL.md"
 retry_row=$(grep -F 'reason=classification_missing' "$pr_review_skill" | head -1)

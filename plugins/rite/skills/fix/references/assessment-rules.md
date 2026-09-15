@@ -190,6 +190,9 @@ if blocking is empty: no-op (JSON 無変更、CLASS_DEMOTION_GATE=noop)
 if blocking に verification.measured が boolean でない finding がある:
   error 停止 (CLASS_DEMOTION_GATE_FAILED reason=measured_undetermined、件数・ID 一覧を出力)
   classification map を参照せず、JSON は書き換えない
+if acceptance_criteria が キー欠落 / {skipped: "no_issue"|"no_ac_section"} / 契約を満たす行配列 のいずれでもない:
+  error 停止 (CLASS_DEMOTION_GATE_FAILED reason=acceptance_criteria_invalid)。JSON は書き換えない
+  (行の契約: object ∧ status が文字列 ∧ status == "unmet" なら finding_id が null または非空文字列)
 
 For each finding in blocking:
   entry = classification map の同 id エントリ
@@ -201,7 +204,14 @@ For each finding in blocking:
     exclusion が非空文字列なら consequence_exclusion に判定文を記録 (降格しない)
     category == "number_reference" なら effective class = A に固定。entry.class == B との
     矛盾は WARNING + CLASS_DEMOTION_CATEGORY_PINNED で可視化
+    effective class == B ∧ exclusion なし ∧ acceptance_criteria[] の status == "unmet" 行の finding_id が本 finding の id:
+      consequence_exclusion = "ac_unmet:AC-N" (同じ finding を指す行が複数なら行順に "ac_unmet:AC-1,AC-2")
+      class は B のまま。降格しない
   finding に consequence_class / consequence_scenario を記録 (書き手は helper のみ)
+
+acceptance_criteria[] の status == "unmet" 行で finding_id が findings[] に無いもの:
+  除外判定に使わない。WARNING + 成功 marker 末尾に "; warning=ac_unmet_finding_missing; rows=AC-N:F-NN,..."
+  (他 finding の判定は変わらない。finding_id が null の行は除外判定にも警告にも使わない)
 
 if (effective A の件数) == 0 and (exclusion なし class B の件数) >= 1:
   exclusion なし class B を non_blocking_findings[] へ移送
@@ -217,6 +227,8 @@ else:
 ```
 
 **分類入力 (classification map)**: `/rite:pr-review` ステップ 5.3.0.C step 1 が Write する独立 JSON (`{"classifications": [{"id", "class", "scenario", "exclusion"?}]}`)。`exclusion` は class B の任意キーで、非空文字列のときだけ「既存 (base 側) に存在した記述・ガード・禁止文を本 PR の diff が削除/弱体化した」判定文として読む。キー欠落 = 除外しない (従来どおり降格対象)。キーがあるのに非空文字列でない (空文字・非文字列) は不正 = class A 扱い + WARNING。review-result JSON の `findings[].consequence_class` を分類入力にはしない — 判定の入力と適用結果を同じフィールドに置くと、LLM の先書きがゲートを無音で迂回する (5.3.0.M の verification preset と同じ穴)。helper は map だけを読み、`consequence_class` / `consequence_scenario` / `consequence_exclusion` は算出結果として無条件に上書きする。
+
+**第 2 除外入力源 (合意済み AC の実測済み未充足)**: review-result JSON の `acceptance_criteria[]` ([review-result-schema.md §acceptance_criteria](../../../references/review-result-schema.md#acceptance_criteria)) で `status == "unmet"` の行が `finding_id` で指す finding は、map が class B・exclusion なしでも降格しない。class は map の値のまま、`consequence_exclusion` に `ac_unmet:AC-N` を記録する。map に exclusion がある finding は map の判定文を保持し、class A (判定不能・category 固定を含む) には記録しない。判定表は acceptance reviewer の実測結果であり、分類主体の裁量を介さない。`finding_id` が `null` の未充足行は除外に使わない — その finding が blocking に残っているかの最終検査は `scripts/acceptance-criteria-check.sh final` が持つ。
 
 **category 固定**: `category == "number_reference"` の blocking finding は classification map の内容にかかわらず class A に固定する。well-formed な class B が指定された場合は WARNING + `[CONTEXT] CLASS_DEMOTION_CATEGORY_PINNED=1; count={n}` を emit し、map と固定の矛盾を silent に上書きしない。map 欠落・不正は従来の `CLASS_DEMOTION_UNCLASSIFIED` 経路だけを通る。
 
