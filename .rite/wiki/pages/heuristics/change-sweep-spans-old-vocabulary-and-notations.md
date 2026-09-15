@@ -28,9 +28,22 @@ sources:
     resource: "raw/fixes/20260801T104510Z-pr-2081.md"
   - type: "fixes"
     resource: "raw/fixes/20260810T113055Z-pr-2229.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260915T015222Z-pr-2829.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260915T011900Z-pr-2829.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260915T002514Z-pr-2829.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260915T021146Z-pr-2829.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260915T013143Z-pr-2829.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-10T11:55:05Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-15T03:40:00Z" }
+verified:
+  - by: "rite-wiki-ingest/claude-opus-5"
+    at: "2026-09-15T03:40:00Z"
 ---
 
 # 変更・削除の掃き出しは旧語彙・置換した条件式・別記法トークンまで広げる
@@ -106,6 +119,18 @@ canonical snippet / 共有 reference が「新規箇所を追加したら usage 
 
 ただし snippet 本体を広げるのではなく「write 側だけの追加検証」として書く — read 側は書込済みデータを信頼する設計なので、本体を広げると read 側が誤って厳格化される。
 
+### (5) 判定式を変えたら、その式を文字列で固定している契約テストを repo 全体で探す
+
+判定式（例: 人数の数え方）を変えたとき、関連するテストスイートだけを回して push すると、別のスイートが旧式を文字列で pin していて CI が赤になる。式の断片で repo 全体を grep し、全スイートを実行してから push する。
+
+### (6) 「数に入れない」参加者を足したら、数える側をすべて洗う
+
+選抜の母数に数えない種類の参加者（例: 毎回必ず追加する reviewer）を足すとき、選抜処理だけに除外を入れると、前回の参加者を次回へ引き継ぐ処理や最低人数を検査するゲートなど、別の場所で人数を数える処理に取り残される。取り残された側は、その参加者を数えて最低人数を満たしたり、重複して追加したりする。数える処理を grep で全部洗って同じ除外を入れ、案内文・仕様書の人数の記述も同じ変更で直す。
+
+### 同じ判定を出す表を 2 箇所に持つと片方だけ更新される
+
+出力の判定表を 2 つの節に持つ手順書では、新しい停止条件を片方の表にだけ足し、もう片方の表に従うと停止が迂回される。reviewer 数の変更で仕様書の表やフロー図が取り残されるのも同じ形である。この種の字面の食い違いは実測アンカーを付けられず、non-blocking のまま cycle を跨いで残る。変更時の掃き出しで潰すか、表を 1 つにして他方から参照する。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -126,3 +151,8 @@ canonical snippet / 共有 reference が「新規箇所を追加したら usage 
 - [fix 結果](../../raw/fixes/20260729T092343Z-pr-2044.md)
 - [fix 結果](../../raw/fixes/20260728T235426Z-pr-2044.md)
 - [狭めた pin が除去済み表記形を取りこぼした](../../raw/fixes/20260810T113055Z-pr-2229.md)
+- [判定式を pin する契約テストの取り残しを指摘したレビュー結果](../../raw/reviews/20260915T015222Z-pr-2829.md)
+- [人数を数える消費者の取り残しを指摘したレビュー結果](../../raw/reviews/20260915T011900Z-pr-2829.md)
+- [判定表と仕様書の表の drift を指摘したレビュー結果](../../raw/reviews/20260915T002514Z-pr-2829.md)
+- [契約テストの pin を追従させた fix 結果](../../raw/fixes/20260915T021146Z-pr-2829.md)
+- [人数を数える全消費者に除外を入れた fix 結果](../../raw/fixes/20260915T013143Z-pr-2829.md)

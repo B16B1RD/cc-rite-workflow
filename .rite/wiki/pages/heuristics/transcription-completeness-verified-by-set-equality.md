@@ -7,9 +7,16 @@ created: "2026-08-30T10:28:04Z"
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260830T102118Z-pr-2485.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260915T011900Z-pr-2829.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260915T013143Z-pr-2829.md"
 tags: ["review-verification", "set-equality", "transcription-completeness", "changelog", "bilingual-parity", "offsetting-error"]
 confidence: medium
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-30T10:28:04Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-15T03:40:00Z" }
+verified:
+  - by: "rite-wiki-ingest/claude-opus-5"
+    at: "2026-09-15T03:40:00Z"
 ---
 
 # 転記の網羅性は件数一致ではなく集合一致で検証する（件数一致は漏れと余剰が相殺して通る）
@@ -68,6 +75,13 @@ awk '/^### /{sec=$2} /\(#[0-9]+\)/{ match($0,/\(#[0-9]+\)/); print sec, substr($
 
 「一覧 A の全項目が一覧 B に現れること」を人間が読んで確かめる場面すべて。CHANGELOG のほか、Issue のタスクリストと実装 PR の対応、設定キーの移行表、reviewer が出した指摘と fix コミットの対応などが該当する。逆に、対象が数件で目視で全要素を保持できる規模なら集合化のコストが上回るため、機械抽出は要らない。
 
+### 手書きの転記を挟むゲートは、最終段でも期待集合を受け取って再検査する
+
+上流のゲートが集合の欠落・重複を検査しても、その後で LLM が結果を JSON などへ書き写す区間があると、書き写しで行が落ちたり重なったりする。最終ゲートが書き写した後の成果物だけを入力にしていると、何が期待されていたかを知らないため、この転記誤りを検出できない。
+
+- 最終ゲートは上流の期待集合（例: 受入条件の ID 一覧）を必須引数で受け取り、比較ロジックは上流ゲートと同じ関数を使う
+- 「対象外」は引数の省略で表さず、空文字列を明示して渡す。引数の省略そのものは呼び出しエラーにする。省略を許すと、渡し忘れた経路で検査が黙って外れる
+
 ## 関連ページ
 
 - [共有 /tmp の leak 検査は count delta ではなく path 集合差分 (comm -13) で行う](../patterns/shared-tmp-leak-check-path-set-difference.md)
@@ -76,3 +90,5 @@ awk '/^### /{sec=$2} /\(#[0-9]+\)/{ match($0,/\(#[0-9]+\)/); print sec, substr($
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20260830T102118Z-pr-2485.md)
+- [最終ゲートが転記の欠落を検出しないと指摘したレビュー結果](../../raw/reviews/20260915T011900Z-pr-2829.md)
+- [期待集合を必須引数で受け取るようにした fix 結果](../../raw/fixes/20260915T013143Z-pr-2829.md)
