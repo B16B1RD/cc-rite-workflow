@@ -23,6 +23,7 @@
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=486, broken_refs=0
 * **Create**: [判定表を 1 箇所へ寄せるときは、削除側の skip 条件が後続サイクル前提で書かれていないかを確認する](pages/heuristics/consolidate-decision-table-check-skip-assumption.md) — [判定表の統合で終端停止にもトリアージ段の skip を広げたと指摘したレビュー結果](raw/reviews/20260915T062445Z-pr-2838.md) を新規ページ化
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=488, broken_refs=0
+* **Update**: [散文契約の静的 pin には weakened probe による positive control を課す（見出しラベルで充足する pin を構造的に排除する）](pages/patterns/prose-pin-requires-positive-control.md) — [見出しだけの pin と付け足し型の変異が生存したレビュー結果](raw/reviews/20260915T073009Z-pr-2842.md) を統合。rationale 節の本文 pin と、同じ行への矛盾条項の付け足しに対する否定 assert を追記
 
 ## 2026-09-14
 
