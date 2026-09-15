@@ -621,6 +621,17 @@ cleanup_body() {
  fi
  fi
  fi
+ # Unstage only the raw index entries carried back from the wiki branch before
+ # restoring the user's stash.  At this point the original branch is checked
+ # out but the stash has not been popped, so this reset cannot disturb raw
+ # entries that the user had staged before the run.
+ if [[ "$rc" -ne 0 ]] && [[ -d "$stage_dir" ]] && \
+    [[ "$checked_out_wiki" == "false" ]] && [[ "$entered_wiki" == "true" ]]; then
+ if ! git reset -q -- .rite/wiki/raw >/dev/null 2>&1; then
+ echo "WARNING: cleanup failed to unstage raw sources carried back from '$wiki_branch'" >&2
+ echo " manual recovery: git reset -q -- .rite/wiki/raw" >&2
+ fi
+ fi
  # Only pop the stash once we are safely back on the original branch.
  # If checkout-back failed, $checked_out_wiki remains true and we skip
  # pop entirely — the user must resolve manually to avoid corrupting
@@ -645,15 +656,10 @@ cleanup_body() {
  #
  # `git add` on the wiki branch stages the raw sources, and checkout-back
  # carries those index entries onto the original branch, where the next
- # run reads them as tracked (invariant violation). The restore therefore
- # unstages them once the wiki branch has been checked out; before that
- # the index was never touched, so it is left as the user staged it.
+ # run reads them as tracked (invariant violation). They were unstaged above,
+ # before stash pop restored the user's original index state.
  if [[ "$rc" -ne 0 ]] && [[ -d "$stage_dir" ]]; then
  if [[ "$checked_out_wiki" == "false" ]]; then
- if [[ "$entered_wiki" == "true" ]] && ! git reset -q -- .rite/wiki/raw >/dev/null 2>&1; then
- echo "WARNING: cleanup failed to unstage raw sources carried back from '$wiki_branch'" >&2
- echo " manual recovery: git reset -q -- .rite/wiki/raw" >&2
- fi
  # Cycle 3 LOW #4 — count the files that actually made it back rather
  # than reporting the full pending_files length. On a mid-Step-1 signal
  # the staging dir may hold fewer files than pending_files[], and the
