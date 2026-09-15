@@ -7,7 +7,7 @@
 #
 # Invoked by /rite:wiki-ingest after wiki.enabled is confirmed true and
 # the wiki root is resolved. The helper itself does not read
-# rite-config.yml — the caller owns the enabled gate (AC-7).
+# rite-config.yml — the caller owns the enabled gate.
 #
 # Mapping (applied to every page under pages/**.md):
 #   sources[].ref  → sources[].resource  (value unchanged)
@@ -22,7 +22,7 @@
 #
 # Fail-loud: a single page rewrite failure exits non-zero and does NOT
 # bump okf_version, so a later re-run can finish the remaining pages.
-# raw/** is never opened (AC-6).
+# raw/** is never opened.
 #
 # Inputs:
 #   --wiki-root DIR   bundle root that contains index.md / pages / SCHEMA.md / log.md

@@ -502,7 +502,7 @@ worktree_push_branch() {
  # new pages / log appends) so the rebase is almost always conflict-free;
  # a rebase conflict aborts and falls through to the existing rc=4.
  # Non-NFF failures (auth / network) do NOT retry — they fail
- # immediately (AC-3: a deferred push that fails is surfaced and
+ # immediately (a deferred push that fails is surfaced and
  # left for manual/next-session recovery, not auto-retried within the
  # same flow).
  local push_status="failed" _push_max=3 _push_i=0

@@ -43,8 +43,8 @@
 #
 # NOTE on shell flags: this script manages `$?` explicitly per command. A global
 # `set -e` would break those explicit rc checks (git ls-tree / find listing
-# failures degrade to io_error per AC-7; per-file git show / cat failures are
-# isolated as non-skipped per AC-6 — all handled explicitly, none fatal), so it
+# failures degrade to io_error; per-file git show / cat failures are
+# isolated as non-skipped — all handled explicitly, none fatal), so it
 # is intentionally NOT set.
 # `set -o pipefail` is also NOT used: no pipeline's exit status is consumed here
 # (every `$(... | ...)` capture is judged by its output via `[ -n ... ]` / sort,
@@ -196,7 +196,7 @@ log_read_ok="unknown"
 #             so lint.md ステップ 9.1 shows the false-positive note
 #
 # _emit_if_skipped: print "$rel" when the given raw content's frontmatter has
-# `ingest_status: skipped` (quotes tolerated, AC-6 permissive — absence of the
+# `ingest_status: skipped` (quotes tolerated, permissive — absence of the
 # field means "not skipped"). $rel is the raw path relative to .rite/wiki/.
 _emit_if_skipped() {
   printf '%s\n' "$2" | awk -v rel="$1" '
@@ -207,9 +207,9 @@ _emit_if_skipped() {
 }
 
 # Accumulate skipped raw refs across all raw sources. A per-file content read
-# failure skips that single raw (treated as non-skipped, AC-6) with a WARNING but
+# failure skips that single raw (treated as non-skipped) with a WARNING but
 # does NOT empty the whole set; only a directory-listing failure degrades to
-# io_error (AC-7).
+# io_error.
 _skip_acc=""
 case "$branch_strategy" in
   separate_branch)

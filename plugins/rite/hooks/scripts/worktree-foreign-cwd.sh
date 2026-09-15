@@ -21,7 +21,7 @@
 #   WITHOUT modifying worktree-live-cwd.sh (its OS detection method is unchanged —
 # Non-Target §4.2). The caller passes --self-root (its harness pid); every
 #   process in that pid subtree is "self" and ignored, so only a genuine OTHER
-#   session standing in the tree defers the removal (AC-3).
+#   session standing in the tree defers the removal.
 #
 # Usage:
 #   worktree-foreign-cwd.sh <dir> --self-root <pid>

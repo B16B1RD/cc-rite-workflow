@@ -524,7 +524,7 @@ fi
 
 # Read a candidate page's frontmatter metadata (domain / confidence / generated.at).
 # Returns "domain\x1f confidence\x1f generated.at" on stdout, or exit 1 on read
-# failure (the caller treats failure as a non-blocking skip — AC-8). Reads via
+# failure (the caller treats failure as a non-blocking skip). Reads via
 # the same `ref` (separate_branch) / working-tree (same_branch) selection used
 # for index.md and per-page body reads, keeping origin/wiki fallback consistent.
 read_page_meta() {
@@ -583,7 +583,7 @@ while IFS=$'\x1f' read -r title path description; do
   [[ -z "$path" ]] && continue
   # Pass 2: read page frontmatter for metadata. Non-blocking — a candidate whose
   # page is unreadable (stale index → page drift) is skipped with a WARNING and
-  # the remaining candidates still render (AC-8).
+  # the remaining candidates still render.
   if ! meta=$(read_page_meta "$path"); then
     # `path` comes from index.md too, so it goes through the same neutralizer as
     # the drop samples above (this site became reachable for 360 candidates once
