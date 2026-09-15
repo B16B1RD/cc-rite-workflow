@@ -2853,6 +2853,8 @@ T02:22:43+09:00 — review ingest (skip pages)
 
 * **Skip**: [レビュー結果](raw/reviews/20260915T170513Z-pr-2887.md) — 指摘なしの確認結果のみで、既存 Wiki に追加する再利用可能な新規経験則がない
 
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=507, broken_refs=0
+
 * **Skip**: pipefail 下の早期終了による検査漏れは checker と大入力回帰テストで機械検出されるため、独立ページを追加しない — [レビュー結果](raw/reviews/20260915T162940Z-pr-2885.md)
 
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=506, broken_refs=0
