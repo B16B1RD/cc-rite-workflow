@@ -6,6 +6,8 @@ set -euo pipefail
 issue_text() { printf 'Issue #%s' "$1"; }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=_hermetic-env.sh
+source "$SCRIPT_DIR/_hermetic-env.sh" || { echo "ERROR: cannot source _hermetic-env.sh" >&2; exit 1; }
 HOOK="$SCRIPT_DIR/../session-start.sh"
 # Canonicalize the sandbox root: on macOS $TMPDIR is under /var/folders (a
 # symlink to /private/var/...), while session-start.sh resolves paths via
@@ -36,9 +38,6 @@ fi
 # per-session state file). It also keeps the env-absent branch of the conditional
 # `.rite-session-id` write under test below as the default. Tests that need env
 # present set it explicitly.
-# shellcheck source=_hermetic-env.sh
-source "$SCRIPT_DIR/_hermetic-env.sh" || { echo "ERROR: cannot source _hermetic-env.sh" >&2; exit 1; }
-
 cleanup() {
   rm -rf "$TEST_DIR"
 }
