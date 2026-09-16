@@ -521,14 +521,15 @@ EOF
       # fixtures below can vary the column name (and the field name via
       # $RITE_TEST_BOARD_FIELD) without a shim per column. `pr view` leaves the same
       # positive-control marker as draft_pr, because most asserts against these boards
-      # are absences.
+      # are absences. `api graphql` leaves its own marker so a TC can assert that the
+      # board was never read — an observed absence, not an inference from silence.
       cat > "$dir/bin/gh" <<'EOF'
 #!/bin/bash
 . "$(dirname "$0")/gh-mock-lib.sh"
 case "$1 $2" in
   "pr view") touch "$(dirname "$0")/../pr-view-called"; _mock_gh_pr_view '{"isDraft":false}' "$@" ;;
   "repo view") echo '{"owner":{"login":"o"},"name":"r"}' ;;
-  "api graphql") jq -cn --arg s "$RITE_TEST_BOARD_STATUS" --arg f "${RITE_TEST_BOARD_FIELD:-Status}" '{data:{repository:{issue:{projectItems:{nodes:[{project:{number:1},fieldValues:{nodes:[{field:{name:$f},name:$s}]}}]}}}}}' ;;
+  "api graphql") touch "$(dirname "$0")/../graphql-called"; jq -cn --arg s "$RITE_TEST_BOARD_STATUS" --arg f "${RITE_TEST_BOARD_FIELD:-Status}" '{data:{repository:{issue:{projectItems:{nodes:[{project:{number:1},fieldValues:{nodes:[{field:{name:$f},name:$s}]}}]}}}}}' ;;
   *) exit 0 ;;
 esac
 EOF
@@ -866,6 +867,13 @@ recon_stderr="$(mktemp "$TEST_DIR/recon-renamed-todo-stderr.XXXXXX")"
 echo "{\"cwd\": \"$recon_dir\", \"source\": \"auto\"}" \
   | env PATH="$recon_dir/bin:$PATH" RITE_TEST_BOARD_STATUS="To-Do" RITE_TEST_BOARD_FIELD="ステータス" \
     bash "$recon_dir/plugin/hooks/post-compact.sh" >/dev/null 2>"$recon_stderr" || true
+# Positive control for the board-read marker: this fixture does read the board, so the
+# marker must exist here or the absence assert in the invalid-config TC proves nothing.
+if [ -f "$recon_dir/graphql-called" ]; then
+  pass "the board read leaves the graphql-called marker"
+else
+  fail "the board read left no graphql-called marker — the absence assert in the invalid-config TC would be vacuous"
+fi
 if [ -f "$recon_dir/status-update-call.json" ]; then
   pass "reconcile helper was invoked for a renamed todo column"
   recorded_status=$(jq -r '.status_role // empty' "$recon_dir/status-update-call.json" 2>/dev/null || echo "")
@@ -932,10 +940,6 @@ fi
 # invalid without being told why.
 echo "TC-RECON-17: invalid Status configuration → WARNING + skip before the board read, exit 0"
 recon_dir=$(_setup_recon_env "config-invalid" "ready_board_file" "updated" "" "yes")
-# The board read is `gh api graphql`; leave a marker on it so "stopped before the board
-# read" is an observed absence, not an inference from the diagnostics that happen to be
-# silent when the candidate list is empty.
-sed -i 's|"api graphql") |"api graphql") touch "$(dirname "$0")/../graphql-called"; |' "$recon_dir/bin/gh"
 cat > "$recon_dir/rite-config.yml" <<'YAML'
 github:
   projects:
