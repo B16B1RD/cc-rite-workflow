@@ -147,7 +147,14 @@ case "$pr_number" in
 esac
 
 # review-state-initialize
-review_state=$(bash {plugin_root}/hooks/flow-state.sh get --jq-filter . --default '{}') || exit 1
+review_state_path=$(bash {plugin_root}/hooks/flow-state.sh path) || exit 1
+review_state='{}'
+if [ -e "$review_state_path" ] || [ -L "$review_state_path" ]; then
+  review_state=$(jq -e 'select(type == "object")' "$review_state_path") || {
+    echo "ERROR: cannot read review state: $review_state_path" >&2
+    exit 1
+  }
+fi
 if ! printf '%s' "$review_state" | jq -e --argjson pr "{pr_number}" --arg branch "{branch_name}" '
   ((.pr_number // 0) == 0 or .pr_number == $pr) and
   ((.branch // "") == "" or .branch == $branch)' >/dev/null; then

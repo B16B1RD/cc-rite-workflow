@@ -69,6 +69,18 @@ with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
     # Disabled worktree entry reaches the actual initializer without pre-created state.
     (work / 'rite-config.yml').write_text('multi_session:\n  enabled: false\n')
     init_block = block(iterate, '# review-state-initialize')
+    state_path = Path(flow('path').stdout.strip())
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    # Both documented entrances must preserve malformed existing state byte-for-byte.
+    selection.write_text(json.dumps(['test-reviewer']))
+    for caller in (init_block, start_block):
+        for corrupt in ('{"review_cycle":', 'null', '[]', ''):
+            state_path.write_text(corrupt)
+            output = execute(caller, False)
+            assert output.returncode != 0, 'corrupt state accepted'
+            assert 'cannot read review state' in output.stderr
+            assert state_path.read_text() == corrupt, 'corrupt state overwritten'
+    state_path.unlink()
     execute(init_block)
     assert state()['pr_number'] == 4242 and state()['phase'] == 'pr'
     assert state()['issue_number'] == 4241
