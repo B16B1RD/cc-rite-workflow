@@ -1,6 +1,10 @@
 # Directory Update Log
 ## 2026-09-16
 
+* **Skip**: [レビュー結果](raw/reviews/20260916T134606Z-pr-2916.md) — 実装と文書の整合確認のみで新しい経験則がない
+* **Update**: [GNU 形式の sed in-place 編集は BSD sed で失敗する](pages/anti-patterns/gnu-sed-inplace-silently-noop-on-bsd.md) — [レビュー結果](raw/reviews/20260916T135355Z-pr-2917.md) と [修正結果](raw/fixes/20260916T140542Z-pr-2917.md) を統合
+* **Update**: [否定アサーションには positive control を添える](pages/patterns/negative-assertion-positive-control.md) — [レビュー結果](raw/reviews/20260916T135355Z-pr-2917.md) と [修正結果](raw/fixes/20260916T140542Z-pr-2917.md) を統合
+
 * **lint:checked** — stale=66, orphans=0, missing_concept=0, unregistered_raw=509, broken_refs=0, descriptive_refs=0。既存ページ本文は変更なし。構造検査を実行し、全ページ間の意味比較は今回再実行していない。
 
 * **Skip**: [実行記録](raw/fixes/20260916T055334Z-pr-2904.md) — rite workflow の原因と検証結果はプラグイン本体と回帰テストへ反映済み。raw を今回の経過・完了記録として保持する

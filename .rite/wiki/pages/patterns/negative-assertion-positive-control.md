@@ -23,11 +23,16 @@ sources:
     resource: "raw/reviews/20260725T162025Z-pr-2020.md"
   - type: "reviews"
     resource: "raw/reviews/20260916T025549Z-pr-2896.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260916T135355Z-pr-2917.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260916T140542Z-pr-2917.md"
 tags: ["test", "negative-assert", "positive-control", "fail-open", "mutation-testing"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-16T03:09:20Z" }
+generated: { by: "rite-wiki-ingest/gpt-5", at: "2026-09-16T14:11:59Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-16T03:09:20Z" }
+  - { by: "rite-wiki-ingest/gpt-5", at: "2026-09-16T14:11:59Z" }
 ---
 
 # 否定アサーションには positive control を添える — `|| true` は唯一の crash signal を消す
@@ -122,6 +127,8 @@ Issue 起票時に提示された修正案が実装の出力契約と噛み合�
 
 失敗系（pr view が失敗して照合へ進まない）も同型で、WARNING トークンの存在が到達 control、記録ファイルの不在が本命になる。ここで失敗系フィクスチャが他の呼び出しまで縮退させていると、hook が失敗後に照合へ進んでも helper に到達しないため、不在 pin は経路の正しさを何も証明しない。フィクスチャは失敗させたい 1 箇所だけを失敗させ、残りは正常応答にする。control の無い不在 pin は「経路未到達」と「正しく呼ばれなかった」を区別できない。
 
+mock の marker 設置を生成後の検索置換に依存させると、置換の no-match が marker 不在を作り、本命の absence assert が空振りする。marker は mock 定義へ直接置き、同じテスト群でその marker を実際に読む positive control を先に通す。これにより「対象経路で marker が無い」と「fixture が marker を設置できなかった」を分離できる。
+
 ## 関連ページ
 
 - [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](./absence-pin-base-present-head-absent-single-line.md)
@@ -139,3 +146,5 @@ Issue 起票時に提示された修正案が実装の出力契約と噛み合�
 - [load-bearing な派生元をコメントに明記](../../raw/fixes/20260725T154630Z-pr-2020.md)
 - [旧新対比と蒸し返さない規律](../../raw/reviews/20260725T162025Z-pr-2020.md)
 - [到達マーカーの positive control と失敗系フィクスチャの縮退を扱ったレビュー結果](../../raw/reviews/20260916T025549Z-pr-2896.md)
+- [事後パッチに依存した marker 設置と absence assert の空振りを扱ったレビュー結果](../../raw/reviews/20260916T135355Z-pr-2917.md)
+- [marker を mock 定義へ移し positive control で固定した修正結果](../../raw/fixes/20260916T140542Z-pr-2917.md)
