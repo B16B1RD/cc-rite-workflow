@@ -4,13 +4,11 @@
 #
 # Covers what decides the colour of the CI job: the two skip-summary parsers, the
 # marker cross-check, the order of the failure list against the accounting bail,
-# and the exit code in each of the four quadrants. `run-tests.sh` and `run-all.sh`
-# carry the same ~90 lines twice, so every case runs against both.
+# and the exit code in each of the four quadrants. Accounting cases run against
+# both runners; the hook runner also exercises fixed batches and interruption.
 #
 # The runner under test is copied into a sandbox and pointed at synthetic test
-# files. It does not recurse: with the copy as its SCRIPT_DIR, the sibling glob
-# `$SCRIPT_DIR/../scripts/tests/test-*.sh` matches nothing and the existing
-# `[ -f "$f" ]` guard skips it.
+# files. Fixtures live in separate trees and never discover the real suite.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -50,7 +48,7 @@ done
 # sibling directory, so a flat sandbox drives both.
 stage_runner() {
   local runner="$1" name="$2" dir
-  dir="$TEST_DIR/$name"
+  dir="$TEST_DIR/$name/hooks/tests"
   mkdir -p "$dir"
   cp "$runner" "$dir/runner.sh"
   # The hooks runner sources its sibling unset list; the scripts runner has none.
@@ -77,8 +75,9 @@ make_test_file() {
 # Run a staged runner, capturing stdout+stderr and the exit code.
 run_staged() {
   local dir="$1"
+  shift
   RUN_RC=0
-  RUN_OUT=$(bash "$dir/runner.sh" 2>&1) || RUN_RC=$?
+  RUN_OUT=$(bash "$dir/runner.sh" "$@" 2>&1) || RUN_RC=$?
 }
 
 assert_rc() {
@@ -366,6 +365,209 @@ tc10() {
   fi
 }
 run_case_on_both tc10
+
+# Fixed-batch execution needs live process observations in addition to summaries.
+if command -v python3 >/dev/null 2>&1; then
+  parallel_rc=0
+  python3 - "$HOOKS_RUNNER" "$TEST_DIR" <<'PY' || parallel_rc=$?
+import os
+from pathlib import Path
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import time
+
+source, root = map(Path, sys.argv[1:])
+
+def stage(name):
+    directory = root / name / 'hooks' / 'tests'
+    directory.mkdir(parents=True)
+    shutil.copy(source, directory / 'runner.sh')
+    shutil.copy(source.parent / '_hermetic-env.sh', directory)
+    return directory
+
+def fixture(directory, name, body, sibling=False):
+    target = directory.parent / 'scripts' / 'tests' if sibling else directory
+    target.mkdir(parents=True, exist_ok=True)
+    path = target / name
+    path.write_text('#!/bin/bash\nset -eu\n' + body + '\n')
+    return path
+
+def run(directory, jobs):
+    return subprocess.run(['bash', str(directory / 'runner.sh'), '--jobs', str(jobs)],
+                          capture_output=True, text=True, timeout=25)
+
+def headline(output):
+    return re.findall(r'^Results: .*', output, re.M)[-1]
+
+def check(condition, message):
+    if not condition:
+        raise AssertionError(message)
+
+# Both discovery globs, a full batch and a tail, exact execution and concurrency.
+d = stage('parallel-bounds')
+for i in range(9):
+    fixture(d, f'{i}.test.sh' if i < 5 else f'test-{i}.sh', f'''
+while ! mkdir '{d}/lock' 2>/dev/null; do sleep 0.01; done
+echo '+ {i}' >> '{d}/events'
+rmdir '{d}/lock'
+sleep 0.15
+while ! mkdir '{d}/lock' 2>/dev/null; do sleep 0.01; done
+echo '- {i}' >> '{d}/events'
+rmdir '{d}/lock'
+''', sibling=i >= 5)
+for jobs in (1, 4):
+    (d / 'events').unlink(missing_ok=True)
+    result = run(d, jobs)
+    check(result.returncode == 0, result.stdout + result.stderr)
+    active = peak = 0
+    starts, ends = [], []
+    for line in (d / 'events').read_text().splitlines():
+        direction, number = line.split()
+        if direction == '+':
+            active += 1
+            starts.append(int(number))
+        else:
+            active -= 1
+            ends.append(int(number))
+        peak = max(peak, active)
+        check(0 <= active <= jobs, 'concurrency exceeds --jobs')
+    check(active == 0 and sorted(starts) == sorted(ends) == list(range(9)),
+          'each discovery result must run exactly once')
+    check(peak == jobs, 'parallel option must actually run concurrently')
+    check(headline(result.stdout) == 'Results: 9/9 passed, 0 failed', 'incorrect total')
+    markers = re.findall(r'^TEST_(START|END)\s+id=(\d+)', result.stdout, re.M)
+    check(len(markers) == 18, 'missing or duplicate progress marker')
+    for offset in range(0, 9, jobs):
+        batch = set(str(n) for n in range(offset + 1, min(offset + jobs, 9) + 1))
+        seen_end = set()
+        for kind, number in markers:
+            if kind == 'END' and number in batch:
+                seen_end.add(number)
+            if kind == 'START' and int(number) > offset + jobs:
+                check(seen_end == batch, 'next batch starts before current batch ends')
+    output_ids = re.findall(r'^TEST_OUTPUT_BEGIN\s+id=(\d+)', result.stdout, re.M)
+    check(output_ids == [str(n) for n in range(1, 10)], 'body output order changed')
+    check(re.findall(r'^TEST_OUTPUT_END\s+id=(\d+)', result.stdout, re.M) == output_ids,
+          'body output delimiters are not paired')
+print('parallel bounds, both globs, exact-once and fixed batches: passed')
+
+# Reversed completion keeps rc, filenames, failure order and skip totals aligned.
+d = stage('parallel-order')
+fixture(d, 'a.test.sh', "sleep 0.4\necho '  ⏭️ SKIP: first'\necho 'SKIP: 1'\nexit 7")
+fixture(d, 'b.test.sh', "echo '  ⏭️ SKIP: second'\necho 'SKIP: 1'\nexit 9")
+fixture(d, 'test-c.sh', 'exit 0', sibling=True)
+serial, parallel = run(d, 1), run(d, 4)
+check(serial.returncode == parallel.returncode == 1, 'real failures must fail suite')
+check(headline(serial.stdout) == headline(parallel.stdout) ==
+      'Results: 1/3 passed, 2 failed, 2 gated group(s) skipped', 'skip/failure count mismatch')
+check(re.findall(r'^  - .*', parallel.stdout, re.M) == ['  - a.test.sh', '  - b.test.sh'],
+      'failure list must preserve discovery order')
+for name, rc in [('a.test.sh', 7), ('b.test.sh', 9)]:
+    check(re.search(r'^TEST_END\s+.*file=\S*' + re.escape(name) + r'\s+rc=' + str(rc) + r'\b',
+                    parallel.stdout, re.M), 'END rc must match filename')
+check(parallel.stdout.index('file=hooks/tests/b.test.sh rc=9') <
+      parallel.stdout.index('file=hooks/tests/a.test.sh rc=7'), 'fixture must reverse completion')
+print('reverse completion and aggregation: passed')
+
+# A real failure in one file must coexist with skip drift in another.
+d = stage('parallel-drift')
+fixture(d, 'a.test.sh', 'exit 5')
+fixture(d, 'b.test.sh', "echo '  ⏭️ SKIP: uncounted'")
+result = run(d, 4)
+check(result.returncode == 1 and '  - a.test.sh' in result.stdout and
+      'Skip accounting is unreliable' in result.stdout and
+      'summary format drift' in result.stdout + result.stderr, 'one error hides another')
+print('independent failure and skip drift: passed')
+
+# Invalid arguments must fail before any fixture starts.
+d = stage('parallel-invalid')
+fixture(d, 'never.test.sh', f"touch '{d}/ran'")
+for arguments in (['--jobs', '0'], ['--jobs', '-1'], ['--jobs', 'abc'], ['--jobs'],
+                  ['--unknown']):
+    result = subprocess.run(['bash', str(d / 'runner.sh'), *arguments],
+                            capture_output=True, text=True, timeout=5)
+    check(result.returncode == 2 and 'usage' in result.stderr.lower() and not (d / 'ran').exists(),
+          f'invalid arguments accepted: {arguments}')
+print('invalid --jobs: passed')
+
+# Exercise the tr path without depending on the machine's python installation.
+d = stage('parallel-sanitize-fallback')
+fixture(d, 'bytes.test.sh', "printf 'before\\233after\\n'")
+fake_bin = d / 'bin'
+fake_bin.mkdir()
+(fake_bin / 'python3').write_text('#!/bin/bash\nexit 1\n')
+(fake_bin / 'python3').chmod(0o755)
+result = subprocess.run(['bash', str(d / 'runner.sh'), '--jobs', '4'],
+                        env={**os.environ, 'PATH': str(fake_bin) + ':' + os.environ['PATH']},
+                        capture_output=True, timeout=10)
+check(result.returncode == 0 and b'\x9b' not in result.stdout and
+      b'before?after' in result.stdout, 'tr fallback did not sanitize captured bytes')
+print('tr sanitize fallback: passed')
+
+def alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    # Linux may briefly retain an already terminated orphan as a zombie.
+    stat = Path(f'/proc/{pid}/stat')
+    return not (stat.exists() and stat.read_text().split(') ', 1)[1].startswith('Z'))
+
+# Signals and a killed worker must not leave the fixture or its child running.
+for action in ('TERM', 'INT', 'worker-kill'):
+    d = stage('parallel-' + action)
+    fixture(d, 'hung.test.sh', f"echo $$ > '{d}/fixture-pid'\nsleep 60 &\necho $! > '{d}/child-pid'\nwait")
+    with (d / 'output').open('w') as output:
+        process = subprocess.Popen(['bash', str(d / 'runner.sh'), '--jobs', '4'],
+                                   stdout=output, stderr=subprocess.STDOUT)
+        try:
+            deadline = time.monotonic() + 8
+            while not (d / 'child-pid').exists() and time.monotonic() < deadline:
+                time.sleep(0.02)
+            check((d / 'child-pid').exists(), 'hung fixture never started')
+            text = (d / 'output').read_text()
+            start = re.search(r'^TEST_START\s+id=(\d+)\s+file=(\S+)\s+pid=(\d+)', text, re.M)
+            check(start is not None, 'START must be visible while test is hung')
+            number, file, worker = start.groups()
+            if action == 'worker-kill':
+                os.kill(int(worker), signal.SIGKILL)
+            else:
+                process.send_signal(getattr(signal, 'SIG' + action))
+            check(process.wait(timeout=8) != 0, 'interrupted runner reported success')
+            text = (d / 'output').read_text()
+            if action == 'worker-kill':
+                check('  - hung.test.sh' in text and '1 failed' in text,
+                      'missing worker result was not counted as failure')
+            else:
+                check(f'TEST_INCOMPLETE id={number} file={file}' in text,
+                      'interrupted file is not identified')
+                check(not re.search(r'^TEST_END\s+id=' + number + r'\b', text, re.M),
+                      'hung file falsely emitted END')
+            pids = [int((d / name).read_text()) for name in ('fixture-pid', 'child-pid')]
+            deadline = time.monotonic() + 3
+            while any(alive(pid) for pid in pids) and time.monotonic() < deadline:
+                time.sleep(0.02)
+            check(not any(alive(pid) for pid in pids), 'worker descendants survived cleanup')
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+            for name in ('fixture-pid', 'child-pid'):
+                if (d / name).exists():
+                    try:
+                        os.kill(int((d / name).read_text()), signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+    print(action + ' cleanup and failure accounting: passed')
+PY
+  assert_rc "parallel runner execution contract" 0 "$parallel_rc"
+else
+  SKIP=$((SKIP + 1))
+  echo "  ⏭️ SKIP: parallel process observations require python3"
+fi
 
 # --- Summary ---
 echo ""
