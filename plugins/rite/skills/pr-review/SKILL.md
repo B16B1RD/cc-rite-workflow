@@ -999,10 +999,24 @@ The behavior depends on the Security Expert's selection type:
 
 ### 4.0 Review Cycle Start / Resume
 
+単一ツリーの入口も、確認済み PR / branch から自 session の開始状態を記録する。既存の別 PR / branch は上書きしない。
+
 選定済みの全 reviewer 名（`security-reviewer` 形式、非空・重複なし）を JSON 配列として絶対パス `{reviewer_selection_file}` に Write する。再開時は `flow-state.sh get --jq-filter .` の `review_cycle.selected_reviewers` を使用し、人数・担当を減らさない。
 
 ```bash
 # review-cycle-start
+# review-state-initialize
+review_state=$(bash {plugin_root}/hooks/flow-state.sh get --jq-filter . --default '{}') || exit 1
+if ! printf '%s' "$review_state" | jq -e --argjson pr "{pr_number}" --arg branch "{head_ref}" '
+  ((.pr_number // 0) == 0 or .pr_number == $pr) and
+  ((.branch // "") == "" or .branch == $branch)' >/dev/null; then
+  echo "ERROR: review state belongs to a different PR or branch" >&2
+  exit 1
+fi
+if printf '%s' "$review_state" | jq -e '(.pr_number // 0) == 0 and (.review_cycle == null)' >/dev/null; then
+  bash {plugin_root}/hooks/flow-state.sh set --phase pr --pr "{pr_number}" \
+    --branch "{head_ref}" --next "/rite:pr-review {pr_number}" || exit 1
+fi
 echo "[CONTEXT] REVIEW_TMP_DIR=${TMPDIR:-/tmp}" >&2
 bash {plugin_root}/hooks/flow-state.sh review-start \
   --selection "{reviewer_selection_file}" || {

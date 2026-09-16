@@ -188,7 +188,6 @@ with tempfile.TemporaryDirectory(prefix="rite-review-cycle-") as tmp:
     changed_content = copy.deepcopy(content); changed_content["extra"] = "different"; dump(content_file, changed_content)
     rejected(finish_args, "same context different content")
     dump(content_file, content)
-    rejected(["set", "--phase", "ready", "--next", "ready"], "blocking verdict cannot authorize ready")
     current_receipt = Path(cycle()["result_path"])
     missing_receipt = current_receipt.with_suffix(".missing")
     current_receipt.rename(missing_receipt)
@@ -217,6 +216,42 @@ with tempfile.TemporaryDirectory(prefix="rite-review-cycle-") as tmp:
     # State requires the receipt; ready-reviewed-head-gate owns whether this new
     # HEAD has the existing NB sweep marker. No duplicate stricter state gate.
     flow("set", "--phase", "ready", "--next", "merge")
+    # Final class policy owns verdict; measured_gate retains the earlier count.
+    for partial in (False, True):
+        flow("review-start", "--selection", selection)
+        manifest, content = fixtures(True)
+        if partial:
+            second = copy.deepcopy(content["findings"][0]); second["id"] = "F-02"
+            content["findings"].append(second)
+            dump(content_file, content)
+            run(["bash", str(hooks.parent / "scripts/review-measured-gate.sh"), "--input", str(content_file)])
+        classification = root / "classes.json"
+        classes = [dict(id="F-01", **{"class": "B"}, scenario="documentation consistency")]
+        if partial:
+            classes.append(dict(id="F-02", **{"class": "B"}, scenario="removed existing requirement", exclusion="existing rule removed"))
+        dump(classification, dict(classifications=classes))
+        run(["bash", str(hooks.parent / "scripts/review-class-demotion-gate.sh"), "--input", str(content_file), "--classification", str(classification)])
+        final = json.loads(content_file.read_text())
+        check(final["measured_gate"]["blocking"] > len(final["findings"]), "historical measured count differs from final findings")
+        flow(*finish_args)
+        check(cycle()["verdict"] == ("fix-needed" if partial else "mergeable"), "class policy verdict preserved")
+        count_before = len(saved_files())
+        flow(*finish_args)
+        check(len(saved_files()) == count_before, "class policy replay does not save twice")
+        flow("set", "--phase", "fix" if partial else "ready", "--next", "continue")
+
+    # Existing non-fatal triage deliberately retains the original saved verdict.
+    flow("review-start", "--selection", selection)
+    manifest, content = fixtures(True)
+    content["findings"][0]["severity"] = "MEDIUM"
+    dump(content_file, content)
+    flow(*finish_args)
+    flow("set", "--phase", "fix", "--next", "triage")
+    receipt_path = cycle()["result_path"]
+    run(["bash", str(hooks.parent / "scripts/review-findings-maps.sh"), "--review-source", "explicit_file", "--review-source-path", receipt_path])
+    triaged = json.loads(Path(receipt_path).read_text())
+    check(not triaged["findings"] and triaged["verdict"] == "fix-needed", "real non-fatal triage retains original verdict")
+    flow("set", "--phase", "ready", "--next", "merge after sweep")
     flow("set", "--phase", "cleanup", "--next", "cleanup")
     flow("set", "--phase", "completed", "--next", "none", "--active", "false")
     check(other_path.read_bytes() == other_before, "other session byte-identical")

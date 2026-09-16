@@ -56,7 +56,7 @@ with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
         'plugin_root': str(plugin), 'reviewer_selection_file': str(selection),
         'reviewer_completions_file': str(manifest), 'review_tmp_dir': str(work),
         'pr_number': '4242', 'issue_number': '4241', 'branch_name': 'caller-test', 'save_pending_id': '',
-        'cb_reason': 'max-cycles'}
+        'cb_reason': 'max-cycles', 'head_ref': 'caller-test'}
 
     def execute(body, success=True):
         for key, value in replacements.items():
@@ -66,11 +66,23 @@ with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
     run(['git', 'init', '-q'])
     run(['git', '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
          'commit', '-q', '--allow-empty', '-m', 'fixture'])
-    flow('set', '--phase', 'pr', '--pr', '4242', '--issue', '4241', '--branch', 'caller-test', '--next', 'review')
+    # Disabled worktree entry reaches the actual initializer without pre-created state.
+    (work / 'rite-config.yml').write_text('multi_session:\n  enabled: false\n')
+    init_block = block(iterate, '# review-state-initialize')
+    execute(init_block)
+    assert state()['pr_number'] == 4242 and state()['phase'] == 'pr'
+    assert state()['issue_number'] == 4241
     assert 'PR_REVIEW_IN_E2E=true' in execute(entry_block).stdout
+    # Standalone pr-review must also initialize without iterate or a worktree.
+    state_path = Path(flow('path').stdout.strip())
+    state_path.unlink()
     selection.write_text(json.dumps(['security-reviewer', 'test-reviewer', 'code-quality-reviewer', 'acceptance-reviewer']))
     assert execute(finish_block, False).returncode != 0, 'finish without begin must fail'
     execute(start_block)
+    initialized = state_path.read_bytes()
+    wrong = start_block.replace('{pr_number}', '9999')
+    assert execute(wrong, False).returncode != 0, 'different PR state overwritten'
+    assert state_path.read_bytes() == initialized
     frozen = state()['review_cycle']
     assert state()['cycle_count'] == 1 and len(frozen['selected_reviewers']) == 4
     execute(start_block)

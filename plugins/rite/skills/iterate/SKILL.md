@@ -117,11 +117,11 @@ bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --i
 
 `[CONTEXT] WT_ENSURE=` marker の分岐は [skills/recover/SKILL.md](../recover/SKILL.md) Phase 3.1.5 の **WT_ENSURE 分岐表（SoT）** に従う:
 
-- `disabled` → no-op、ステップ 1 へ。
+- `disabled` → worktree 操作は no-op、ステップ 0.6 の状態初期化へ。
 共通作業先契約には `entry_phase=pr` / `pr_number={pr_number}` を渡す。state 不在時は実体・claim の照合後に初回記録してから厳密検証する。既存 state の不一致は上書きせず停止する。
 
 - `already_in` → 共通作業先契約の所有権・branch・変更前検証を通し、同じ作業先で続行する。
-- `reenter` / `reconstructed` → recover Phase 3.1.5 と[共通作業先契約](../../references/git-worktree-patterns.md#host-worktree-execution) に従い、marker の `path=` へ native / 検証済み代替で入場し、所有権・branch・変更前検証を通してステップ 1 へ。後続の全 shell・編集・検証・委譲をこの作業先に固定する。
+- `reenter` / `reconstructed` → recover Phase 3.1.5 と[共通作業先契約](../../references/git-worktree-patterns.md#host-worktree-execution) に従い、marker の `path=` へ native / 検証済み代替で入場し、所有権・branch・変更前検証を通してステップ 0.6 へ。後続の全 shell・編集・検証・委譲をこの作業先に固定する。
 - `residue` → AskUserQuestion（削除 `rm -rf {path}` して再実行 / 中止）。
 - `branch_other_worktree` → 中止（並行セッションの可能性。`other=` を表示）。
 - `branch_absent` → 対象ブランチが実在しない。**develop 上で続行しない**。AskUserQuestion で「Issue 番号 / ブランチを確認して再実行 / 中止」を提示（誤再構築しない）。
@@ -145,6 +145,19 @@ pr_number="{pr_number}"
 case "$pr_number" in
   ''|*[!0-9]*) echo "ERROR: iterate ステップ 0.6: pr_number が数値に置換されていません (値: '$pr_number')。PR 番号を確認して再実行してください" >&2; exit 1 ;;
 esac
+
+# review-state-initialize
+review_state=$(bash {plugin_root}/hooks/flow-state.sh get --jq-filter . --default '{}') || exit 1
+if ! printf '%s' "$review_state" | jq -e --argjson pr "{pr_number}" --arg branch "{branch_name}" '
+  ((.pr_number // 0) == 0 or .pr_number == $pr) and
+  ((.branch // "") == "" or .branch == $branch)' >/dev/null; then
+  echo "ERROR: review state belongs to a different PR or branch" >&2
+  exit 1
+fi
+if printf '%s' "$review_state" | jq -e '(.pr_number // 0) == 0 and (.review_cycle == null)' >/dev/null; then
+  bash {plugin_root}/hooks/flow-state.sh set --phase pr --pr "{pr_number}" \
+    --branch "{branch_name}" --issue "{issue_number}" --next "/rite:pr-review {pr_number}" || exit 1
+fi
 
 # (0) 診断スニペット用 helper を読み込む。SoT は control-char-neutralize.sh の header
 # （`head -N ... | neutralize_ctrl --keep-newline | sed ... >&2` が全 emission site の canonical idiom）。

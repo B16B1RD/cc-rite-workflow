@@ -83,8 +83,9 @@ for reason in max-cycles divergence; do
       mkdir -p "$case_dir/.rite/state"
       sid=breaker-contract
       flow="$ROOT/plugins/rite/hooks/flow-state.sh"
+      # The breaker runs after fix; an unfinished review cannot reset its counter.
       env RITE_STATE_ROOT="$case_dir" CLAUDE_CODE_SESSION_ID="$sid" bash "$flow" set \
-        --phase review --issue 2567 --branch issue-2567 --pr 2600 --next pending \
+        --phase fix --issue 2567 --branch issue-2567 --pr 2600 --next pending \
         --cycle-count 4 --handoff '/rite:pr-review 2600' >/dev/null
       if [ "$mode" = batch ]; then active=true; else active=false; fi
       jq -n --argjson active "$active" '{issues:[2567],cursor:0,active:$active}' \

@@ -132,8 +132,6 @@ def guard_set(path, new, directory):
             require(new.get("pr_number") == cycle["review_context"]["pr_number"], "receipt belongs to a different PR")
             receipt = matching_receipt(directory, cycle)
             require(receipt is not None, "saved review receipt is missing")
-            if new.get("phase") == "ready":
-                require(receipt[1]["verdict"] == "mergeable", "ready requires a mergeable saved verdict")
             # A mergeable result may still enter fix for the established NB sweep.
             # ready's existing HEAD/AC gate owns its reviewed-HEAD exception.
     if cycle:
@@ -203,8 +201,12 @@ def finish(state, args, path, directory):
     require(isinstance(gate, dict) and type(gate.get("blocking")) is int
             and gate["blocking"] >= 0 and gate.get("anchor_undetermined") == 0,
             "measured gate must have resolved all anchors")
-    require(content.get("verdict") == ("fix-needed" if gate["blocking"] else "mergeable"),
-            "verdict disagrees with measured gate")
+    # Class demotion can change the final verdict after the measured receipt.
+    findings = content.get("findings")
+    require(isinstance(findings, list), "findings must be an array")
+    blocking = any(finding.get("scope") in ("current-pr", "follow-up") for finding in findings)
+    require(content.get("verdict") == ("fix-needed" if blocking else "mergeable"),
+            "verdict disagrees with final findings")
     hooks = Path(__file__).resolve().parents[2]
     subprocess.run(["bash", str(hooks / "scripts/reviewer-completion-check.sh"), "--input", args.manifest],
                    check=True, stdout=sys.stderr)
