@@ -408,7 +408,7 @@ plugin_root="{plugin_root}"; owner="{owner}"; project_number="{project-number}"
 source "$plugin_root/hooks/scripts/lib/projects-status-config.sh"
 project_root=$(git rev-parse --show-toplevel 2>/dev/null) || project_root="$PWD"
 config="${RITE_SETUP_CONFIG_CANDIDATE:-$project_root/rite-config.yml}"
-case "$config" in /*) ;; *) echo '[CONTEXT] STATUS_OPTIONS_VERIFY=error; reason=config_path_not_absolute'; exit 1 ;; esac
+projects_status_path_is_absolute "$config" || { echo '[CONTEXT] STATUS_OPTIONS_VERIFY=error; reason=config_path_not_absolute'; exit 1; }
 export RITE_STATUS_CONFIG_PATH="$config"
 roles=(todo in_progress in_review done cancelled); required=(); candidates=()
 if [ -r "$config" ]; then
@@ -579,31 +579,41 @@ Generate `rite-config.yml` from the template config file.
 | `iteration.enabled` | `{iteration-enabled}` from Phase 3.5 |
 | `iteration.field_name` | `"{iteration-field-name}"` from Phase 3.5 |
 
-**Step 4**: `project_selection=new` は結果を project root の `rite-config.yml` へ Write する。`project_selection=existing` は candidate directory へ移動する前に `project_root=$(git rev-parse --show-toplevel)` を確定して絶対 path の `RITE_SETUP_PROJECT_ROOT` として retain する。root config をまだ変更せず、`mktemp -d "${TMPDIR:-/tmp}/rite-setup-config.XXXXXX"` で candidate directory を作り、絶対 path の `{candidate_dir}/rite-config.yml` へ結果を Write する。candidate directory が作れない場合は停止する。candidate が Git repository 内に作られても、次 step は cwd 推論を使わず明示 path を resolver へ渡す。
+**Step 4**: `project_selection=new` は結果を project root の `rite-config.yml` へ Write する。`project_selection=existing` は下記 block を実行し、marker の `RITE_SETUP_PROJECT_ROOT` と `RITE_SETUP_CONFIG_CANDIDATE` を retain する。root config はまだ変更せず、後者の絶対 path へ結果を Write する。candidate が Git repository 内に作られても、次 step は cwd 推論を使わず明示 path を resolver へ渡す。
+
+```bash
+# STATUS_OPTION_CONFIG_CANDIDATE_CREATE
+project_root=$(git rev-parse --show-toplevel 2>/dev/null) || project_root="$PWD"
+candidate_created=$(mktemp -d "${TMPDIR:-/tmp}/rite-setup-config.XXXXXX") || { echo '[CONTEXT] STATUS_OPTION_CONFIG_CANDIDATE=error; reason=tmp_create_failed'; exit 1; }
+candidate_dir=$(cd "$candidate_created" && pwd -P) || { rmdir "$candidate_created" 2>/dev/null || true; echo '[CONTEXT] STATUS_OPTION_CONFIG_CANDIDATE=error; reason=path_resolve_failed'; exit 1; }
+echo "[CONTEXT] STATUS_OPTION_CONFIG_CANDIDATE=ok; RITE_SETUP_PROJECT_ROOT=$project_root; RITE_SETUP_CONFIG_CANDIDATE=$candidate_dir/rite-config.yml"
+```
 
 **Step 5**: `project_selection=existing` の場合は candidate directory を cwd にし、`RITE_SETUP_CONFIG_CANDIDATE={candidate_dir}/rite-config.yml` を設定して 3.4 の `STATUS_OPTION_EXISTING_VERIFY` bash block だけを再実行する。共有 resolver は `RITE_STATUS_CONFIG_PATH` を通して candidate の絶対 path を読む。`error` / marker 不在 / bash 非 0 なら candidate directory を削除して停止し、project root の既存 config は変更しない。`ok` の場合だけ、retained `RITE_SETUP_PROJECT_ROOT` と同じ `RITE_SETUP_CONFIG_CANDIDATE` を設定したまま下記 block を candidate cwd で実行し、root config と同一 directory の一時ファイルから原子的に置き換える。marker 不在 / bash 非 0 は停止する。Phase 3.5 へは戻らず、既存 Project に provisioning を実行しない。`project_selection=new` はこの再検証を skip して Phase 4.2 へ進む。
 
 ```bash
 # STATUS_OPTION_EXISTING_CONFIG_COMMIT
+plugin_root="{plugin_root}"
+source "$plugin_root/hooks/scripts/lib/projects-status-config.sh"
 project_root="${RITE_SETUP_PROJECT_ROOT:?project root path is required}"
-case "$project_root" in /*) ;; *) echo '[CONTEXT] STATUS_OPTION_CONFIG_COMMIT=error; reason=project_root_not_absolute'; exit 1 ;; esac
+projects_status_path_is_absolute "$project_root" || { echo '[CONTEXT] STATUS_OPTION_CONFIG_COMMIT=error; reason=project_root_not_absolute'; exit 1; }
 config="$project_root/rite-config.yml"
 candidate="${RITE_SETUP_CONFIG_CANDIDATE:?candidate config path is required}"
-case "$candidate" in /*) ;; *) echo '[CONTEXT] STATUS_OPTION_CONFIG_COMMIT=error; reason=candidate_not_absolute'; exit 1 ;; esac
+projects_status_path_is_absolute "$candidate" || { echo '[CONTEXT] STATUS_OPTION_CONFIG_COMMIT=error; reason=candidate_not_absolute'; exit 1; }
 [ "$candidate" != "$config" ] || { echo '[CONTEXT] STATUS_OPTION_CONFIG_COMMIT=error; reason=candidate_is_target'; exit 1; }
 [ -r "$candidate" ] || { echo '[CONTEXT] STATUS_OPTION_CONFIG_COMMIT=error; reason=candidate_unreadable'; exit 1; }
 candidate_dir=${candidate%/*}
-tmp=$(mktemp "${config}.setup.XXXXXX") || { echo '[CONTEXT] STATUS_OPTION_CONFIG_COMMIT=error; reason=tmp_create_failed'; exit 1; }
-_rite_setup_config_cleanup() { rm -f -- "$tmp"; }
+tmp=""
+_rite_setup_config_cleanup() { [ -n "$tmp" ] && rm -f -- "$tmp"; rm -f -- "$candidate"; rmdir "$candidate_dir" 2>/dev/null || true; }
 trap '_rite_setup_config_cleanup; exit 130' INT
 trap '_rite_setup_config_cleanup; exit 143' TERM
 trap '_rite_setup_config_cleanup; exit 129' HUP
 trap '_rite_setup_config_cleanup' EXIT
+tmp=$(mktemp "${config}.setup.XXXXXX") || { echo '[CONTEXT] STATUS_OPTION_CONFIG_COMMIT=error; reason=tmp_create_failed'; exit 1; }
 if [ -e "$config" ]; then cp -p "$config" "$tmp" || { echo '[CONTEXT] STATUS_OPTION_CONFIG_COMMIT=error; reason=metadata_copy_failed'; exit 1; }; fi
 cat "$candidate" > "$tmp" || { echo '[CONTEXT] STATUS_OPTION_CONFIG_COMMIT=error; reason=write_failed'; exit 1; }
 mv "$tmp" "$config" || { echo '[CONTEXT] STATUS_OPTION_CONFIG_COMMIT=error; reason=replace_failed'; exit 1; }
-tmp=""; trap - EXIT INT TERM HUP
-rm -f -- "$candidate"; rmdir "$candidate_dir" 2>/dev/null || true
+tmp=""; _rite_setup_config_cleanup; trap - EXIT INT TERM HUP
 echo '[CONTEXT] STATUS_OPTION_CONFIG_COMMIT=updated'
 ```
 
@@ -735,7 +745,8 @@ project_root=$(git rev-parse --show-toplevel 2>/dev/null) || project_root="$PWD"
 config="$project_root/rite-config.yml"
 mode=$(RITE_STATUS_CONFIG_PATH="$config" projects_status_mode) || { echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=error; reason=invalid_config'; exit 1; }
 if [ "$mode" = explicit ]; then echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=noop; reason=already_explicit'; else
-  scratch=$(mktemp -d "${TMPDIR:-/tmp}/rite-status-role.XXXXXX") || { echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=error; reason=tmp_create_failed'; exit 1; }
+  scratch_created=$(mktemp -d "${TMPDIR:-/tmp}/rite-status-role.XXXXXX") || { echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=error; reason=tmp_create_failed'; exit 1; }
+  scratch=$(cd "$scratch_created" && pwd -P) || { rmdir "$scratch_created" 2>/dev/null || true; echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=error; reason=path_resolve_failed'; exit 1; }
   tmp=""
   _rite_status_role_cleanup() { [ -n "$tmp" ] && rm -f -- "$tmp"; rm -f -- "$scratch/rite-config.yml"; rmdir "$scratch" 2>/dev/null || true; }
   trap '_rite_status_role_cleanup; exit 130' INT

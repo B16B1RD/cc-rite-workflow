@@ -13,6 +13,10 @@ source "$LIB"
 assert 'source preserves shell options' "$before_options" "$(set +o)"
 assert 'source preserves caller traps' "$before_traps" "$(trap -p)"
 assert 'source creates no files' '' "$(ls -A)"
+if projects_status_path_is_absolute '/tmp/rite-config.yml'; then pass 'POSIX absolute path accepted'; else fail 'POSIX absolute path accepted'; fi
+if projects_status_path_is_absolute 'C:/Users/test/repo/rite-config.yml'; then pass 'Windows drive absolute path accepted'; else fail 'Windows drive absolute path accepted'; fi
+if projects_status_path_is_absolute 'C:\Users\test\repo\rite-config.yml'; then pass 'Windows backslash absolute path accepted'; else fail 'Windows backslash absolute path accepted'; fi
+if projects_status_path_is_absolute 'relative/rite-config.yml'; then fail 'relative path rejected'; else pass 'relative path rejected'; fi
 
 write_config() {
   printf 'github:\n  projects:\n    fields:\n      status:\n%s\n' "$1" > rite-config.yml

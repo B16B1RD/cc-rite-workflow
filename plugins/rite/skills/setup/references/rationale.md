@@ -207,6 +207,10 @@ role mapping が変わると、setup が成功した直後から更新 helper �
 候補と更新先は cwd から推論せず絶対 path で別々に渡す。`TMPDIR` が repository 内でも resolver が
 root config を誤読せず、candidate cwd から commit しても更新先を取り違えないためである。失敗後に
 旧内容を復元する方式では、signal 中断との間に壊れた config が見えるため採用しない。
+`mktemp` の結果は `pwd -P` で物理絶対 path に正規化し、相対 `TMPDIR` も同じ契約へ揃える。
+絶対 path 判定は resolver の共通関数を使い、POSIX / UNC と Git Bash の drive-letter path を受理する。
+commit の cleanup trap は root tempfile と candidate をまとめて回収し、失敗や signal でも生成済み
+config を一時領域へ残さない。
 
 Phase 3 は config 生成より前に走るため、既存 `rite-config.yml` があれば resolver を使い、まだ
 存在しなければ legacy の標準 5 role と既定フィールド候補を使う。config 不在を invalid として

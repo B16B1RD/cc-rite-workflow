@@ -37,10 +37,12 @@ VERIFY_RAW=$(extract_marked_bash STATUS_OPTION_EXISTING_VERIFY)
 MIGRATION_RAW=$(extract_marked_bash STATUS_OPTIONS_ROLE_MIGRATION)
 BACKUP_RAW=$(extract_marked_bash STATUS_OPTIONS_UPGRADE_BACKUP)
 COMMIT_RAW=$(extract_marked_bash STATUS_OPTION_EXISTING_CONFIG_COMMIT)
-for marker in STATUS_OPTION_EXISTING_VERIFY STATUS_OPTIONS_ROLE_MIGRATION STATUS_OPTIONS_UPGRADE_BACKUP STATUS_OPTION_EXISTING_CONFIG_COMMIT; do
+CANDIDATE_RAW=$(extract_marked_bash STATUS_OPTION_CONFIG_CANDIDATE_CREATE)
+for marker in STATUS_OPTION_EXISTING_VERIFY STATUS_OPTIONS_ROLE_MIGRATION STATUS_OPTIONS_UPGRADE_BACKUP STATUS_OPTION_EXISTING_CONFIG_COMMIT STATUS_OPTION_CONFIG_CANDIDATE_CREATE; do
   raw_var=VERIFY_RAW; [ "$marker" = STATUS_OPTIONS_ROLE_MIGRATION ] && raw_var=MIGRATION_RAW
   [ "$marker" = STATUS_OPTIONS_UPGRADE_BACKUP ] && raw_var=BACKUP_RAW
   [ "$marker" = STATUS_OPTION_EXISTING_CONFIG_COMMIT ] && raw_var=COMMIT_RAW
+  [ "$marker" = STATUS_OPTION_CONFIG_CANDIDATE_CREATE ] && raw_var=CANDIDATE_RAW
   if ! printf '%s' "${!raw_var}" | grep -q "$marker"; then
     echo "FAIL: SKILL.md からの $marker block 抽出に失敗しました" >&2
     exit 1
@@ -59,7 +61,9 @@ printf '%s' "$MIGRATION_RAW" | sed -e "s|{plugin_root}|$PLUGIN_ROOT|g" > "$MIGRA
 BACKUP="$WORKDIR/backup.sh"
 printf '%s' "$BACKUP_RAW" > "$BACKUP"
 COMMIT="$WORKDIR/commit-config.sh"
-printf '%s' "$COMMIT_RAW" > "$COMMIT"
+printf '%s' "$COMMIT_RAW" | sed -e "s|{plugin_root}|$PLUGIN_ROOT|g" > "$COMMIT"
+CANDIDATE_CREATE="$WORKDIR/candidate-create.sh"
+printf '%s' "$CANDIDATE_RAW" > "$CANDIDATE_CREATE"
 
 cat > "$MOCKBIN/gh" <<'MOCK'
 #!/usr/bin/env bash
@@ -158,7 +162,7 @@ assert_grep "T-routing provisioning is new-only" "$SKILL" 'project_selection=new
 assert_grep "T-routing verification is existing-only" "$SKILL" 'project_selection=existing.*ときだけ実行'
 assert_grep "T-routing final config is reverified" "$SKILL" 'candidate directory.*STATUS_OPTION_EXISTING_VERIFY'
 assert_grep "T-routing preview names role migration" "$SKILL" 'Status role migration: \{status_role_migration_status\}'
-assert_grep "T-routing existing writes candidate first" "$SKILL" 'project_selection=existing.*root config をまだ変更せず'
+assert_grep "T-routing existing writes candidate first" "$SKILL" 'project_selection=existing.*下記 block を実行'
 assert_grep "T-routing failed candidate preserves root" "$SKILL" 'project root の既存 config は変更しない'
 
 echo "=== T-static-cancelled: 新規 Project provisioning の required 5 組 ==="
@@ -401,8 +405,13 @@ assert "T-existing-nested-cwd creates no nested config" "0" "$([ -e "$d_nested/s
 
 echo "=== T-existing-candidate: 不一致候補は root を不変にし、一致候補だけ原子的に反映 ==="
 root_before=$(cksum "$d_nested/rite-config.yml")
-d_candidate_bad="$d_nested/.tmp/final-candidate-bad"
-mkdir -p "$d_candidate_bad"
+mkdir -p "$d_nested/.tmp"
+rc=$(cd "$d_nested" && TMPDIR=.tmp bash "$CANDIDATE_CREATE" >candidate-create-bad-stdout 2>candidate-create-bad-stderr && echo 0 || echo $?)
+assert "T-existing-candidate relative TMPDIR create exits 0" "0" "$rc"
+candidate_bad=$(sed -n 's/.*RITE_SETUP_CONFIG_CANDIDATE=//p' "$d_nested/candidate-create-bad-stdout")
+project_root_marker=$(sed -n 's/.*RITE_SETUP_PROJECT_ROOT=\([^;]*\);.*/\1/p' "$d_nested/candidate-create-bad-stdout")
+d_candidate_bad=${candidate_bad%/*}
+assert_grep "T-existing-candidate relative TMPDIR becomes absolute" "$d_nested/candidate-create-bad-stdout" 'RITE_SETUP_CONFIG_CANDIDATE=/'
 cat > "$d_candidate_bad/rite-config.yml" <<'YAML'
 github:
   projects:
@@ -422,8 +431,10 @@ assert_grep "T-existing-candidate reports mismatch" "$d_nested/post-stdout" 'STA
 assert "T-existing-candidate mismatch preserves root" "$root_before" "$(cksum "$d_nested/rite-config.yml")"
 assert "T-existing-candidate mutation zero" "0" "$(mutation_count "$d_nested")"
 
-d_candidate_ok="$d_nested/.tmp/final-candidate-ok"
-mkdir -p "$d_candidate_ok"
+rc=$(cd "$d_nested" && TMPDIR=.tmp bash "$CANDIDATE_CREATE" >candidate-create-ok-stdout 2>candidate-create-ok-stderr && echo 0 || echo $?)
+assert "T-existing-candidate second relative TMPDIR create exits 0" "0" "$rc"
+candidate_ok=$(sed -n 's/.*RITE_SETUP_CONFIG_CANDIDATE=//p' "$d_nested/candidate-create-ok-stdout")
+d_candidate_ok=${candidate_ok%/*}
 cat > "$d_candidate_ok/rite-config.yml" <<'YAML'
 github:
   projects:
@@ -439,11 +450,49 @@ YAML
 rc=$(cd "$d_candidate_ok" && RITE_SETUP_CONFIG_CANDIDATE="$d_candidate_ok/rite-config.yml" MOCK_GH_DIR="$d_nested" PATH="$MOCKBIN:$PATH" bash "$VERIFY" >"$d_nested/candidate-ok-stdout" 2>"$d_nested/candidate-ok-stderr" && echo 0 || echo $?)
 assert "T-existing-candidate match verifies" "0" "$rc"
 candidate_sum=$(cksum "$d_candidate_ok/rite-config.yml" | awk '{ print $1 ":" $2 }')
-rc=$(cd "$d_candidate_ok" && RITE_SETUP_PROJECT_ROOT="$d_nested" RITE_SETUP_CONFIG_CANDIDATE="$d_candidate_ok/rite-config.yml" bash "$COMMIT" >"$d_nested/commit-stdout" 2>"$d_nested/commit-stderr" && echo 0 || echo $?)
+rc=$(cd "$d_candidate_ok" && RITE_SETUP_PROJECT_ROOT="$project_root_marker" RITE_SETUP_CONFIG_CANDIDATE="$d_candidate_ok/rite-config.yml" bash "$COMMIT" >"$d_nested/commit-stdout" 2>"$d_nested/commit-stderr" && echo 0 || echo $?)
 assert "T-existing-candidate commit exits 0" "0" "$rc"
 assert "T-existing-candidate commit installs candidate" "$candidate_sum" "$(cksum "$d_nested/rite-config.yml" | awk '{ print $1 ":" $2 }')"
 assert_grep "T-existing-candidate commit marker" "$d_nested/commit-stdout" 'STATUS_OPTION_CONFIG_COMMIT=updated'
 assert "T-existing-candidate directory cleaned" "0" "$([ -e "$d_candidate_ok" ] && echo 1 || echo 0)"
+
+root_fail_before=$(cksum "$d_nested/rite-config.yml")
+rc=$(cd "$d_nested" && TMPDIR=.tmp bash "$CANDIDATE_CREATE" >candidate-create-mv-fail-stdout 2>candidate-create-mv-fail-stderr && echo 0 || echo $?)
+assert "T-existing-candidate mv-fail fixture create exits 0" "0" "$rc"
+candidate_mv_fail=$(sed -n 's/.*RITE_SETUP_CONFIG_CANDIDATE=//p' "$d_nested/candidate-create-mv-fail-stdout")
+d_candidate_mv_fail=${candidate_mv_fail%/*}
+cp "$d_nested/rite-config.yml" "$candidate_mv_fail"
+mkdir -p "$d_nested/mv-fail-bin"
+cat > "$d_nested/mv-fail-bin/mv" <<'MOCK'
+#!/usr/bin/env bash
+exit 1
+MOCK
+chmod +x "$d_nested/mv-fail-bin/mv"
+rc=$(cd "$d_candidate_mv_fail" && PATH="$d_nested/mv-fail-bin:$PATH" RITE_SETUP_PROJECT_ROOT="$d_nested" RITE_SETUP_CONFIG_CANDIDATE="$candidate_mv_fail" bash "$COMMIT" >"$d_nested/mv-fail-stdout" 2>"$d_nested/mv-fail-stderr" && echo 0 || echo $?)
+assert "T-existing-candidate mv failure exits non-zero" "1" "$rc"
+assert_grep "T-existing-candidate mv failure marker" "$d_nested/mv-fail-stdout" 'STATUS_OPTION_CONFIG_COMMIT=error; reason=replace_failed'
+assert "T-existing-candidate mv failure preserves root" "$root_fail_before" "$(cksum "$d_nested/rite-config.yml")"
+assert "T-existing-candidate mv failure removes candidate directory" "0" "$([ -e "$d_candidate_mv_fail" ] && echo 1 || echo 0)"
+assert "T-existing-candidate mv failure removes root temp" "0" "$(find "$d_nested" -maxdepth 1 -name 'rite-config.yml.setup.*' | wc -l | tr -d ' ')"
+
+rc=$(cd "$d_nested" && TMPDIR=.tmp bash "$CANDIDATE_CREATE" >candidate-create-signal-stdout 2>candidate-create-signal-stderr && echo 0 || echo $?)
+assert "T-existing-candidate signal fixture create exits 0" "0" "$rc"
+candidate_signal=$(sed -n 's/.*RITE_SETUP_CONFIG_CANDIDATE=//p' "$d_nested/candidate-create-signal-stdout")
+d_candidate_signal=${candidate_signal%/*}
+cp "$d_nested/rite-config.yml" "$candidate_signal"
+mkdir -p "$d_nested/signal-bin"
+cat > "$d_nested/signal-bin/cat" <<'MOCK'
+#!/usr/bin/env bash
+kill -TERM "$PPID"
+sleep 1
+exit 143
+MOCK
+chmod +x "$d_nested/signal-bin/cat"
+rc=$(cd "$d_candidate_signal" && PATH="$d_nested/signal-bin:$PATH" RITE_SETUP_PROJECT_ROOT="$d_nested" RITE_SETUP_CONFIG_CANDIDATE="$candidate_signal" bash "$COMMIT" >"$d_nested/signal-stdout" 2>"$d_nested/signal-stderr" && echo 0 || echo $?)
+assert "T-existing-candidate signal exits 143" "143" "$rc"
+assert "T-existing-candidate signal preserves root" "$root_fail_before" "$(cksum "$d_nested/rite-config.yml")"
+assert "T-existing-candidate signal removes candidate directory" "0" "$([ -e "$d_candidate_signal" ] && echo 1 || echo 0)"
+assert "T-existing-candidate signal removes root temp" "0" "$(find "$d_nested" -maxdepth 1 -name 'rite-config.yml.setup.*' | wc -l | tr -d ' ')"
 
 echo "=== T-upgrade-backup: nested cwd でも root config を backup ==="
 backup_before=$(cksum "$d_nested/rite-config.yml" | awk '{ print $1 ":" $2 }')
@@ -511,10 +560,10 @@ github:
           - { name: "In Review" }
           - { name: "Done" }
 YAML
-rc=$(cd "$d_tmp_inside" && TMPDIR="$d_tmp_inside/.tmp" bash "$MIGRATION" >stdout 2>stderr && echo 0 || echo $?)
-assert "T-upgrade repository-local TMPDIR exits 0" "0" "$rc"
-assert "T-upgrade repository-local TMPDIR validates transformed candidate" "explicit" "$(migration_mode "$d_tmp_inside")"
-assert "T-upgrade repository-local TMPDIR cleans scratch" "0" "$(find "$d_tmp_inside/.tmp" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')"
+rc=$(cd "$d_tmp_inside" && TMPDIR=.tmp bash "$MIGRATION" >stdout 2>stderr && echo 0 || echo $?)
+assert "T-upgrade relative repository-local TMPDIR exits 0" "0" "$rc"
+assert "T-upgrade relative repository-local TMPDIR validates transformed candidate" "explicit" "$(migration_mode "$d_tmp_inside")"
+assert "T-upgrade relative repository-local TMPDIR cleans scratch" "0" "$(find "$d_tmp_inside/.tmp" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')"
 
 d_block="$WORKDIR/migrate-block"
 mkdir -p "$d_block"
