@@ -45,30 +45,11 @@ github:
           - { name: "M", default: true }
           - { name: "L" }
           - { name: "XL" }
-      # Custom fields (project-specific)
-      # Any Single Select field from your GitHub Projects can be added here
-      work_type:
-        enabled: true
-        options:
-          - { name: "Feature" }
-          - { name: "Bug Fix" }
-          - { name: "Documentation" }
-          - { name: "Refactor" }
-          - { name: "Chore" }
-      category:
-        enabled: true
-        options:
-          - { name: "Frontend" }
-          - { name: "Backend" }
-          - { name: "Infrastructure" }
-          - { name: "Other" }
     # Explicit field IDs (optional, overrides auto-detection)
     # field_ids:
     #   status: "PVTSSF_..."      # Status field ID
     #   priority: "PVTSSF_..."    # Priority field ID
     #   complexity: "PVTSSF_..."  # Complexity field ID
-    #   # Custom fields
-    #   work_type: "PVTSSF_..."   # Custom Single Select field ID
 
 # Branch naming rules
 branch:
@@ -222,7 +203,7 @@ language: auto  # auto | ja | en
 | `enabled` | boolean | `true` | Enable GitHub Projects integration |
 | `project_number` | integer | `null` | Project number (auto-detected from repository if null) |
 | `owner` | string | `null` | Project owner - user or organization (uses repository owner if null) |
-| `fields` | object | - | Custom field definitions |
+| `fields` | object | - | Definitions for the supported Status, Priority, and Complexity fields |
 | `field_ids` | object | - | Explicit field IDs (optional, overrides auto-detection) |
 
 ### github.projects.field_ids
@@ -238,7 +219,6 @@ When specified, these field IDs are used directly instead of auto-detecting via 
 | `status` | string | Field ID for Status field (e.g., `PVTSSF_...`) |
 | `priority` | string | Field ID for Priority field |
 | `complexity` | string | Field ID for Complexity field |
-| *(any custom field)* | string | Field ID for custom Single Select fields (e.g., `work_type`, `category`) |
 
 **Example:**
 
@@ -248,8 +228,6 @@ github:
     field_ids:
       status: "PVTSSF_your-status-field-id"      # Replace with your actual ID
       priority: "PVTSSF_your-priority-field-id"  # Replace with your actual ID
-      # Custom fields
-      category: "PVTSSF_your-category-field-id"  # Replace with your actual ID
 ```
 
 **Behavior:**
@@ -271,12 +249,15 @@ Look for the `id` field in the output for each field.
 
 ### github.projects.fields
 
-Each field can have:
+Only `status`, `priority`, and `complexity` are supported. Each field can have:
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `enabled` | boolean | Enable this field |
+| `name` | string | Exact GitHub Projects field name override |
 | `options` | array | Status uses `role` and `name` as described below; other fields use `name` and optional `default: true` |
+
+Field-name lookup is exact and case-sensitive. For Priority and Complexity, a configured `name` is tried first, followed by the built-in Japanese alias and then the canonical English name. Status uses the shared Status resolver described below: a configured `fields.status.name` must match exactly, while an omitted name tries `ステータス` and then `Status`.
 
 **Status role configuration:**
 
@@ -369,41 +350,6 @@ These fields are commonly used in GitHub Projects and have built-in support:
 | `status` | Issue/PR status tracking by role (`todo` → `in_progress` → `in_review` → `done`, plus `cancelled`); column names come from `options[].name` |
 | `priority` | Priority level (High, Medium, Low) |
 | `complexity` | Estimated complexity (XS, S, M, L, XL) |
-
-**Custom fields:**
-
-You can add any project-specific Single Select fields by using the same field name as defined in your GitHub Projects. Common examples include `work_type`, `category`, `team`, etc.
-
-```yaml
-github:
-  projects:
-    fields:
-      # Standard fields
-      status: { enabled: true, options: [...] }
-      priority: { enabled: true, options: [...] }
-
-      # Custom fields (project-specific)
-      # Field names must match your GitHub Projects field names (case-insensitive)
-      work_type:
-        enabled: true
-        options:
-          - { name: "Feature" }
-          - { name: "Bug Fix" }
-          - { name: "Documentation" }
-          - { name: "Refactor" }
-      category:
-        enabled: true
-        options:
-          - { name: "Frontend" }
-          - { name: "Backend" }
-          - { name: "Infrastructure" }
-          - { name: "Other" }
-```
-
-**Requirements for custom fields:**
-- The field name in `rite-config.yml` must match the field name in GitHub Projects (case-insensitive)
-- The field must be a Single Select type in GitHub Projects
-- Options should match the available options in GitHub Projects
 
 ### branch
 
