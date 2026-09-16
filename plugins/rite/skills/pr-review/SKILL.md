@@ -2462,6 +2462,8 @@ bash {plugin_root}/hooks/flow-state.sh review-finish \
 
 **Persistence contract**: `review-finish` は固定名簿・全員回収・context 一致・保存ファイルの実在を検証して `review_cycle.status=completed` と次工程を返す。失敗時は理由を表示して `[review:error]`、counter を維持し manifest / raw / 入力を保持する。保存 helper が互換性のため rc=0 を返す失敗も成功として扱わない。返却の次工程は候補であり、6.1.b 以降と既存の HEAD・受入条件・measured・Wiki ゲートを完了するまで成功 sentinel / handoff を発行しない。再実行は同じ manifest / content を渡し、保存済みなら二重保存しない。
 
+修正へ渡す入力は、この全員回収済み `review_cycle.result_path` と最新 Issue 仕様。指摘の ID・出自・根因の関連・AC の確認結果を保持し、`fix` の[編集前一括計画](../fix/references/fix-plan.md)へ接続する。個別 reviewer の速報だけで編集を始めない。
+
 **Placeholder data flow**: `file_timestamp` / `iso_timestamp` / `json_saved` は EXIT trap が stderr に emit。6.1.c が使うのは `file_timestamp` と `local_save_failed`。`iso_timestamp` は observability 専用。
 
 #### 6.1.b PR Comment Post (Conditional on `{post_comment_mode}`) <!-- opt-in PR comment posting -->

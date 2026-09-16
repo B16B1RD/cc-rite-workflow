@@ -1,0 +1,301 @@
+#!/usr/bin/env bash
+# Exercise scope planning and validation through real persisted review receipts.
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+python3 - "$SCRIPT_DIR/../.." <<'PYTEST'
+import copy
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+plugin = Path(sys.argv[1]).resolve()
+helper = plugin / 'hooks/scripts/review-fix-scope-check.sh'
+checks = 0
+
+
+def check(value, label):
+    global checks
+    assert value, label
+    checks += 1
+
+
+def dump(path, value):
+    path.write_text(json.dumps(value), encoding='utf-8')
+
+
+def caller_block(text, marker):
+    check(text.count(marker) == 1, 'unique caller marker: ' + marker)
+    at = text.index(marker)
+    start = text.rfind('```bash\n', 0, at)
+    end = text.index('\n```', at)
+    check(start >= 0, 'caller is an executable bash block')
+    return text[start + len('```bash\n'):end]
+
+
+with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
+    root = Path(tmp)
+    private = root / '.rite'
+    private.mkdir()
+    env = dict(os.environ)
+    for key in ('CODEX_THREAD_ID', 'GROK_SESSION_ID', 'CLAUDE_SESSION_ID',
+                'CLAUDE_CODE_SESSION_ID', 'RITE_SESSION_ID', 'RITE_HOST', 'RITE_STATE_ROOT',
+                'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE'):
+        env.pop(key, None)
+    session = 'fix-scope-test'
+    env.update(RITE_HOST='claude', CLAUDE_CODE_SESSION_ID=session, RITE_STATE_ROOT=tmp,
+               TMPDIR=tmp, SCOPE_TEST_ENV='initial')
+
+    def run(args, ok=True):
+        result = subprocess.run(args, cwd=root, env=env, text=True, capture_output=True)
+        if ok:
+            check(result.returncode == 0, repr(args) + '\n' + result.stdout + result.stderr)
+        return result
+
+    def flow(*args):
+        return run(['bash', str(plugin / 'hooks/flow-state.sh'), *map(str, args)])
+
+    run(['git', 'init', '-q'])
+    (root / '.git/info/exclude').write_text('.rite/\n')
+    (root / 'src').mkdir()
+    source = root / 'src/a.py'
+    source.write_text('original\n')
+    (root / 'protected').mkdir()
+    (root / 'protected/secret.py').write_text('protected\n')
+    run(['git', 'add', 'src', 'protected'])
+    run(['git', '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+         'commit', '-q', '-m', 'fixture'])
+    flow('set', '--phase', 'pr', '--next', 'review', '--pr', 71, '--issue', 42)
+    selection = private / 'selection.json'
+    selected = ['code-quality-reviewer', 'acceptance-reviewer']
+    dump(selection, selected)
+    flow('review-start', '--selection', selection)
+    state_path = Path(flow('path').stdout.strip())
+    state = json.loads(state_path.read_text())
+    context = state['review_cycle']['review_context']
+    records = []
+    for index, reviewer in enumerate(selected):
+        raw = private / (reviewer + '.md')
+        raw.write_text('### 評価: 要修正\n### 所見\n確認済み\n### 指摘事項\n再現済み\n### 監査ログ\nなし\n')
+        records.append(dict(reviewer=reviewer, review_context=context, agent_id='child-' + str(index),
+                            status='completed', started_at='2026-01-01T00:00:00Z',
+                            ended_at='2026-01-01T00:01:00Z', output_file=str(raw)))
+    manifest = private / 'manifest.json'
+    dump(manifest, dict(schema_version=1, parent_agent_id=session, review_context=context,
+                        selected_reviewers=selected, reviewers=records))
+    content = private / 'review.json'
+    findings = [dict(id='F-0' + str(index + 1), reviewer=selected[index], severity='HIGH',
+                     file='src/a.py', line=1, description='Verification: repro sample => failed',
+                     suggestion='fix', status='open', scope='current-pr') for index in range(2)]
+    dump(content, dict(schema_version='1.1.0', pr_number=71, review_context=context,
+                       timestamp='__RITE_TS_PLACEHOLDER_7f3a9b2c__', commit_sha=context['commit_sha'],
+                       reviewers=selected, findings=findings, non_blocking_findings=[], guardrail_audit_log=[]))
+    run(['bash', str(plugin / 'scripts/review-measured-gate.sh'), '--input', str(content),
+         '--reject-preset-verification'])
+    flow('review-finish', '--manifest', manifest, '--content-file', content)
+    cycle = json.loads(state_path.read_text())['review_cycle']
+    check(cycle['status'] == 'completed' and cycle['verdict'] == 'fix-needed', 'real blocking receipt')
+    review_path = Path(cycle['result_path'])
+    issue_file, plan_file = private / 'issue.json', private / 'plan.json'
+    issue = {'number': 42, 'body': '## 4. 対象範囲\n### 4.1 対象\n- `src/a.py`\n'
+             '### 4.2 対象外\n- `protected`\n## 5. 受入条件\n- 全指摘を一括修正する\n'}
+    dump(issue_file, issue)
+    related_command = "printf 'related\\n' >> .rite/related.log; if test -f .rite/fail; then exit 7; fi"
+    plan = dict(review_context=context, issue_number=42, issue_body=issue['body'],
+                constraints=dict(targets=['src/a.py'], non_targets=['protected'], closed_targets=False,
+                                 rationale='Issue target候補なので開集合'),
+                groups=[dict(root_cause='共有する入力判定の欠落', finding_ids=['F-01', 'F-02'], action='fix',
+                             paths=['src/a.py'], rationale='入力判定の修正で両指摘を解消する',
+                             semantic=dict(approved=True, acceptance_criteria='全指摘を一括修正するACに適合',
+                                           out_of_scope='protectedは変更しない'), verification_ids=['related'])],
+                verifications=[dict(id='related', kind='related', command=related_command,
+                                    inputs=['src/a.py'], environment=['SCOPE_TEST_ENV']),
+                               dict(id='full', kind='full', command="printf 'full\\n' >> .rite/full.log; test ! -f .rite/full-fail",
+                                    inputs=['src'], environment=[])])
+    canonical = private / ('state/fix-plan-' + session + '.json')
+    verification_file = private / ('state/fix-verification-' + session + '.json')
+
+    def invoke(mode='check', kind=None, ok=True):
+        args = ['bash', str(helper), mode, '--plan', str(plan_file), '--issue', str(issue_file)]
+        if kind:
+            args += ['--kind', kind]
+        return run(args, ok)
+
+    def save_plan(value=plan):
+        dump(plan_file, value)
+
+    def reject_plan(value, label):
+        before = canonical.read_bytes() if canonical.exists() else None
+        save_plan(value)
+        result = invoke(ok=False)
+        check(result.returncode != 0 and '[fix:error]' in result.stdout + result.stderr, label)
+        if before is not None:
+            check(canonical.read_bytes() == before, label + ': old record retained')
+        save_plan()
+
+    def lines(name):
+        path = private / name
+        return len(path.read_text().splitlines()) if path.exists() else 0
+
+    save_plan()
+    invoke()
+    saved = json.loads(canonical.read_text())
+    check(saved['plan'] == plan and saved['plan_hash'] and saved['review_hash'] and
+          saved['mechanical'] and saved['checked_at'], 'canonical scope receipt separates semantic and mechanical evidence')
+    invoke()  # Interrupted callers may repeat the check without starting another review.
+    check(json.loads(state_path.read_text())['cycle_count'] == 1, 'idempotent check preserves cycle')
+    for mutation, label in (
+            (lambda p: p['groups'][0].update(finding_ids=['F-01']), 'missing blocking disposition'),
+            (lambda p: p['groups'][0].update(finding_ids=['F-01', 'F-02', 'invented']), 'unknown finding'),
+            (lambda p: p['groups'][0]['semantic'].update(approved=False), 'unresolved semantic decision'),
+            (lambda p: p['groups'][0].update(verification_ids=[]), 'fix without verification'),
+            (lambda p: p['review_context'].update(session_id='foreign'), 'foreign session'),
+            (lambda p: p['review_context'].update(run_id='foreign'), 'foreign run'),
+            (lambda p: p.update(issue_number=43), 'foreign issue'),
+            (lambda p: p['constraints'].update(non_targets=[]), 'omitted explicit non-target'),
+            (lambda p: p['groups'][0].update(paths=['protected/secret.py']), 'explicit non-target'),
+            (lambda p: p['groups'][0].update(paths=['src/../protected/secret.py']), 'parent traversal'),
+            (lambda p: p['groups'][0].update(paths=[str(source)]), 'absolute path')):
+        candidate = copy.deepcopy(plan)
+        mutation(candidate)
+        reject_plan(candidate, label)
+    with tempfile.TemporaryDirectory(prefix='rite-fix-outside-') as outside:
+        (root / 'src/escape').symlink_to(outside, target_is_directory=True)
+        candidate = copy.deepcopy(plan)
+        candidate['groups'][0]['paths'] = ['src/escape/new.py']
+        reject_plan(candidate, 'symlink escape')
+        (root / 'src/escape').unlink()
+
+    previous = canonical.read_bytes()
+    plan_file.write_text('{broken')
+    check(invoke(ok=False).returncode != 0 and canonical.read_bytes() == previous, 'malformed plan preserves saved record')
+    save_plan()
+    original_review = review_path.read_bytes()
+    review_path.write_text('{broken')
+    check(invoke(ok=False).returncode != 0 and canonical.read_bytes() == previous, 'damaged review receipt rejected')
+    review_path.write_bytes(original_review)
+    changed_issue = dict(issue, body=issue['body'] + '\n追加AC\n')
+    dump(issue_file, changed_issue)
+    check(invoke(ok=False).returncode != 0 and canonical.read_bytes() == previous, 'changed issue requires replanning')
+    dump(issue_file, issue)
+
+    # Inject a physical replace failure after serialization, retaining the old canonical file.
+    fault_dir = private / 'fault'
+    fault_dir.mkdir()
+    (fault_dir / 'sitecustomize.py').write_text(
+        "import os\noriginal = os.replace\n"
+        "def fail_plan_replace(src, dst, *a, **kw):\n"
+        "    if str(dst).endswith('fix-plan-fix-scope-test.json'):\n"
+        "        raise OSError('fixture replace failure')\n"
+        "    return original(src, dst, *a, **kw)\n"
+        "os.replace = fail_plan_replace\n")
+    old_pythonpath = env.get('PYTHONPATH')
+    env['PYTHONPATH'] = str(fault_dir)
+    result = invoke(ok=False)
+    check(result.returncode != 0 and canonical.read_bytes() == previous, 'atomic save failure retains old plan')
+    if old_pythonpath is None:
+        env.pop('PYTHONPATH')
+    else:
+        env['PYTHONPATH'] = old_pythonpath
+
+    source.write_text('fixed\n')
+    invoke('verify', 'related')
+    invoke('verify', 'related')
+    check(lines('related.log') == 1 and lines('full.log') == 0, 'unchanged related result reused; full waits')
+    source.write_text('fixed again\n')
+    invoke('verify', 'related')
+    check(lines('related.log') == 2, 'dependency content invalidates related cache')
+    env['SCOPE_TEST_ENV'] = 'changed'
+    invoke('verify', 'related')
+    check(lines('related.log') == 3, 'environment value invalidates related cache')
+    candidate = copy.deepcopy(plan)
+    candidate['verifications'][0]['command'] += '; : changed-command'
+    save_plan(candidate)
+    check(invoke('verify', 'related', ok=False).returncode != 0, 'changed plan requires check before execution')
+    invoke()
+    invoke('verify', 'related')
+    check(lines('related.log') == 4, 'changed command executes again')
+    save_plan()
+    invoke()
+    invoke('verify', 'all')
+    invoke('verify', 'all')
+    check(lines('full.log') == 2, 'full suite always executes at each completion checkpoint')
+    record = json.loads(verification_file.read_text())
+    check(record['review_context'] == context and record['results']['related']['exit_code'] == 0 and
+          record['results']['related']['key'], 'verification receipt has identity, input key and exit')
+    count = lines('related.log')
+    source.unlink()
+    invoke('verify', 'related')
+    check(lines('related.log') == count + 1, 'missing dependency invalidates cached success')
+    source.write_text('restored dependency\n')
+    invoke('verify', 'related')
+    check(lines('related.log') == count + 2, 'restored dependency invalidates missing-input cache')
+    original_verification = verification_file.read_bytes()
+    record = json.loads(original_verification)
+    record['review_context']['session_id'] = 'foreign-session'
+    dump(verification_file, record)
+    check(invoke('verify', 'related', ok=False).returncode != 0, 'foreign verification receipt rejected')
+    verification_file.write_text('{broken')
+    check(invoke('verify', 'related', ok=False).returncode != 0, 'corrupt verification receipt rejected')
+    verification_file.write_bytes(original_verification)
+
+    source.write_text('another revision\n')
+    (private / 'fail').touch()
+    check(invoke('verify', 'related', ok=False).returncode != 0, 'failed related command stops verification')
+    count = lines('related.log')
+    check(invoke('verify', 'related', ok=False).returncode != 0 and lines('related.log') == count + 1,
+          'failed verification never reuses an old successful receipt')
+    check(json.loads(verification_file.read_text())['results']['related']['exit_code'] == 7,
+          'failed command exit is persisted')
+    (private / 'fail').unlink()
+    invoke('verify', 'related')
+    extra = root / 'src/unplanned.py'
+    extra.write_text('new unplanned change\n')
+    check(invoke('verify', 'all', ok=False).returncode != 0, 'unplanned untracked changes rejected')
+    extra.unlink()
+    protected = root / 'protected/secret.py'
+    protected.write_text('forbidden change\n')
+    check(invoke('verify', 'all', ok=False).returncode != 0, 'actual tracked non-target changes rejected')
+    protected.write_text('protected\n')
+
+    docs = (plugin / 'skills/fix/SKILL.md').read_text()
+    before_edit = caller_block(docs, '# fix-scope-before-edit')
+    final_verify = caller_block(docs, '# fix-scope-final-verification')
+
+    def execute(body):
+        for key, value in {'plugin_root': str(plugin), 'fix_plan_file': str(plan_file),
+                           'fix_issue_file': str(issue_file)}.items():
+            body = body.replace('{' + key + '}', value)
+        return run(['bash', '-c', body + '\nprintf "REACHED_LATER_ACTION\\n"'], ok=False)
+
+    save_plan()
+    result = execute(before_edit)
+    check(result.returncode == 0 and 'REACHED_LATER_ACTION' in result.stdout, 'real pre-edit caller permits checked plan')
+    candidate = copy.deepcopy(plan)
+    candidate['groups'][0]['semantic']['approved'] = False
+    save_plan(candidate)
+    result = execute(before_edit)
+    check(result.returncode != 0 and 'REACHED_LATER_ACTION' not in result.stdout and
+          '[fix:error]' in result.stdout + result.stderr, 'pre-edit caller fails before later edit')
+    save_plan()
+    invoke()
+    (private / 'fail').touch()
+    source.write_text('force failed completion\n')
+    result = execute(final_verify)
+    check(result.returncode != 0 and 'REACHED_LATER_ACTION' not in result.stdout and
+          '[fix:error]' in result.stdout + result.stderr, 'final caller fails before commit/push/review')
+    (private / 'fail').unlink()
+    result = execute(final_verify)
+    check(result.returncode == 0 and 'REACHED_LATER_ACTION' in result.stdout, 'final caller permits verified completion')
+    (private / 'full-fail').touch()
+    result = execute(final_verify)
+    check(result.returncode != 0 and 'REACHED_LATER_ACTION' not in result.stdout and
+          '[fix:error]' in result.stdout + result.stderr, 'full-suite failure stops final caller after related success')
+    (private / 'full-fail').unlink()
+    run(['git', '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+         'commit', '-q', '--allow-empty', '-m', 'changed HEAD'])
+    check(invoke(ok=False).returncode != 0, 'changed HEAD rejects stale review and plan')
+    print('PASS: review fix scope: ' + str(checks) + ' assertions; real receipts, cache, failures and documented callers')
+PYTEST
