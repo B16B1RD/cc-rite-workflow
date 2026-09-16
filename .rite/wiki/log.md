@@ -27,6 +27,10 @@
 * **Update**: [静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く](pages/heuristics/static-pin-semantic-allowlist-not-notation-denylist.md) — [レビュー結果](raw/reviews/20260916T025549Z-pr-2896.md) を統合
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=503, broken_refs=0
 
+* **Update**: [変更パスの列挙契約](pages/anti-patterns/git-diff-parser-output-shape-assumptions.md) — [レビュー結果](raw/reviews/20260916T070028Z-pr-2906.md) を統合
+* **Update**: [変更パスの列挙契約](pages/anti-patterns/git-diff-parser-output-shape-assumptions.md) — [修正記録](raw/fixes/20260916T070742Z-pr-2906.md) を統合
+* **Skip**: [再レビュー結果](raw/reviews/20260916T071932Z-pr-2906.md) — 修正後の指摘ゼロという完了記録で、新たな経験則がない
+
 ## 2026-09-15
 
 * **Skip**: [20260915T145209Z-pr-2877.md](raw/reviews/20260915T145209Z-pr-2877.md) — no extractable heuristic: zero-finding review; existing fail-loud all-exits and test pin pages already cover undeterminable-state skip and independent mutation pins

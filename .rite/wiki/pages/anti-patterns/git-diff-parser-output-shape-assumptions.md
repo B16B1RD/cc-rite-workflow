@@ -2,12 +2,16 @@
 type: "anti-patterns"
 title: "git diff の出力形状を前提にしたパーサは、git の設定と変更種別で黙って空振りする"
 domain: "anti-patterns"
-description: "`+++ b/<path>` の literal prefix 一致だけを入口にした diff パーサは、非 ASCII パス・pure rename・prefix なし設定の 3 条件で対象を 1 件も拾わず、「判定不能」が「未対応」に化ける silent degradation を起こす。"
+description: "git diff の出力形式と rename 検出は、変更パスの列挙結果を変える。対象範囲を検査する場合は引用・prefix の正規化に加え、移動元と移動先の両方を含む列挙契約が必要になる。"
 created: "2026-09-06T16:10:23Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-06T16:10:23Z" }
+generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-09-16T07:23:24Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260906T125803Z-pr-2582.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260916T070028Z-pr-2906.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260916T070742Z-pr-2906.md"
 tags: ["git-diff", "parser", "silent-degradation", "portability"]
 confidence: high
 ---
@@ -36,9 +40,13 @@ confidence: high
 
 ### 書き方
 
-- ファイル名の取得は `git diff --name-only -z`（NUL 区切り・quote なし）など、形状が設定に依存しない経路を使う
+- ファイル名の取得は `git diff --name-only -z`（NUL 区切り・quote なし）など、引用形式に依存しない経路を使う。移動元の削除も検査対象なら `--no-renames` を指定する
 - 形状に依存する経路を選ぶなら、unquote と prefix 剥がしを入口に置き、rename を別経路で拾う
 - 「1 件も拾えなかった」を成功ではなく判定不能として扱い、fail-loud にする
+
+### 移動元の削除も対象範囲へ含める
+
+rename 検出が有効な `--name-only` は、移動先だけを返すことがある。変更を許可したディレクトリへの移動であっても、対象外ディレクトリからの削除を伴うため、移動先だけの照合では範囲違反が通過する。範囲検査には `git diff --no-renames HEAD --name-only -z` を使い、削除元と追加先を別々に検査する。対象外から対象内へ staged rename する回帰テストを置くと、この列挙契約を実測できる。
 
 ## 関連ページ
 
@@ -47,3 +55,6 @@ confidence: high
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20260906T125803Z-pr-2582.md)
+
+- [レビュー結果](../../raw/reviews/20260916T070028Z-pr-2906.md)
+- [修正と回帰検証](../../raw/fixes/20260916T070742Z-pr-2906.md)

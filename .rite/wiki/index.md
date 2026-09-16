@@ -470,7 +470,7 @@ okf_version: "0.2"
 | [ゲートの判定基準を被検査側が選べると検査は自己無効化する](pages/anti-patterns/gate-subject-chooses-anchor-self-invalidates.md) | anti-patterns | 委譲先のラベルがパス除外にも使われるとき、呼び出し側が検査対象のパスをラベルに渡すと、内容に問題があっても無条件 clean が返る。判定基準はゲートされる側が選べない値（未 commit 差分など）から取る。 | 2026-09-04T13:54:13Z | high |
 | [awk の close() は追記のつもりだったリダイレクトを再 truncate する](pages/anti-patterns/awk-close-reopens-and-truncates.md) | anti-patterns | `> file` は初回オープンで truncate、以降は追記だが、close() を挟むと次の `> file` が再オープン＝再 truncate する。END で二重に書いていた検出が、この 1 行で片方消える。 | 2026-09-04T13:54:13Z | high |
 | [複数の書き込み口がある資源は、最後の共有口に政策検査を置く](pages/heuristics/policy-check-at-last-shared-write-mouth.md) | heuristics | 同じ資源へ commit する経路が複数あるとき、政策検査を 1 呼び出し口だけに置くと、別経路が拒否済みの pending を無検査で着地させる。検査本体は最後の共有書き込み口に置き、呼び出し口は薄い呼び出しに縮小する。 | 2026-09-06T08:10:46Z | high |
-| [git diff の出力形状を前提にしたパーサは、git の設定と変更種別で黙って空振りする](pages/anti-patterns/git-diff-parser-output-shape-assumptions.md) | anti-patterns | `+++ b/<path>` の literal prefix 一致だけを入口にした diff パーサは、非 ASCII パス・pure rename・prefix なし設定の 3 条件で対象を 1 件も拾わず、「判定不能」が「未対応」に化ける silent degradation を起こす。 | 2026-09-06T16:10:23Z | high |
+| [git diff の出力形状を前提にしたパーサは、git の設定と変更種別で黙って空振りする](pages/anti-patterns/git-diff-parser-output-shape-assumptions.md) | anti-patterns | git diff の出力形式と rename 検出は、変更パスの列挙結果を変える。対象範囲を検査する場合は引用・prefix の正規化に加え、移動元と移動先の両方を含む列挙契約が必要になる。 | 2026-09-16T07:23:24Z | high |
 | [行番号の名前空間を 2 つ混ぜた突合は、偽陽性と偽陰性を同時に生む](pages/anti-patterns/mixed-line-number-namespaces-in-diff-matching.md) | anti-patterns | unified diff の削除側範囲は修正前ファイルの採番、追加側範囲は修正後ファイルの採番である。記録規約が片方の採番なのに両方を OR で受けると、一切変更していない行を挙げても検証を通過する経路が開く。 | 2026-09-06T16:10:23Z | high |
 | [HEREDOC は空展開でも改行を書くため、直後の空ファイル検査は常に通過する](pages/anti-patterns/heredoc-empty-expansion-defeats-empty-file-guard.md) | anti-patterns | `cat > f <<EOF` は展開結果が空でも改行 1 バイトを書き出す。その直後に置いた `[ ! -s "$f" ]` は決して真にならず、fail-loud のつもりのガードが到達しない検査として残る。 | 2026-09-06T16:10:23Z | high |
 | [リダイレクトはコマンド実行より先に評価されるため、生成失敗が出力先を truncate する](pages/anti-patterns/redirect-truncates-target-before-generator-failure.md) | anti-patterns | シェルは `cmd > file` の file を cmd より先に開いて truncate する。生成が失敗しても既存ファイルは既に空になっており、消費側が即死する前にデータが消える。 | 2026-09-06T16:10:23Z | high |
@@ -518,4 +518,4 @@ okf_version: "0.2"
 
 - 総ページ数: 504
 - ドメイン別: patterns=116, heuristics=223, anti-patterns=165
-- 最終更新: 2026-09-16T03:09:20Z
+- 最終更新: 2026-09-16T07:23:24Z
