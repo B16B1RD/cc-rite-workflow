@@ -104,7 +104,7 @@ issue_args=$(jq -n \
   --arg complexity "S" \
   '{
     issue: { title: $title, body_file: $body_file },
-    projects: { enabled: $projects_enabled, project_number: $project_number, owner: $owner, status: "Todo", complexity: $complexity, iteration: { mode: "none" } },
+    projects: { enabled: $projects_enabled, project_number: $project_number, owner: $owner, status: "todo", complexity: $complexity, iteration: { mode: "none" } },
     options: { source: "pr_review", non_blocking_projects: true }
   }') || { echo "[fix:error]"; exit 1; }
 ```

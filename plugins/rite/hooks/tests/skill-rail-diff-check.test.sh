@@ -339,6 +339,13 @@ if [ -n "$REPO_ROOT_REAL" ] && git -C "$PLUGIN_ROOT" rev-parse --verify -q origi
       # origin/develop carries it the pin would never see that row deleted or
       # changed. After the base advances this exclusion matches nothing.
       base_rail=$(printf '%s\n' "$base_rail" | grep -Fxv '| `interactive` | AskUserQuestion で「この計画で実装開始 / 計画を修正 / 中止」を選択（standalone。従来どおり。AC-4 回帰なし） |' || true)
+      # The Status gate moved from a column name to a role: the gate call and the
+      # `ok` / `missing` routing rows were rewritten. Drop only the superseded lines,
+      # matched as whole lines (a shared prefix would also match the replacement
+      # rows). After the base advances these exclusions match nothing.
+      base_rail=$(printf '%s\n' "$base_rail" | grep -Fxv 'bash {plugin_root}/hooks/scripts/projects-status-gate.sh --issue {issue_number} --expect "In Progress"' || true)
+      base_rail=$(printf '%s\n' "$base_rail" | grep -Fxv '| `ok` | 盤面が `In Progress` 以降に到達済み。ステップ 3 へ進む |' || true)
+      base_rail=$(printf '%s\n' "$base_rail" | grep -Fxv '| `missing` | 2.4(A) が盤面に届いていない（Status が期待に達していない / Status 値が空 / Issue が Project 未登録）。**2.4(A) の bash を 1 回だけ再実行**してステップ 3 へ進む |' || true)
       printf '%s\n' "$base_rail" > "$TEST_DIR/base-rail"
       printf '%s\n' "$head_rail" > "$TEST_DIR/head-rail"
       if [ -z "$base_rail" ] || [ -z "$head_rail" ]; then

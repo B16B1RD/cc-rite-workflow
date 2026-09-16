@@ -379,12 +379,21 @@ From the resulting JSON, find the target fields (Status/Priority/Complexity) and
 - `id`: Field ID (`{field_id}`)
 - `id` of the desired option from the `options` array (`{option_id}`)
 
+The Status field is identified by the same candidate names every other consumer uses — the resolver reads `github.projects.fields.status.name` from `rite-config.yml`, or falls back to the built-in Japanese / English defaults — so a board that calls the field `ステータス` or `進捗` is found without naming it here. `{plugin_root}` is resolved per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) before the block runs:
+
+```bash
+source {plugin_root}/hooks/scripts/lib/projects-status-config.sh || { echo "ERROR: projects-status-config.sh を読み込めませんでした (plugin path の解決失敗 / plugin 未配置)" >&2; exit 1; }
+projects_status_field_candidates
+```
+
+The first candidate (one name per line) that matches a field `name` in the API result is the Status field. The option the user picks is any option of that field — this skill does not restrict the choice to the columns mapped to roles.
+
 **Retrieval Logic:**
 1. Execute the API (always required to get option IDs)
 2. Check `github.projects.field_ids.{field_name}` in `rite-config.yml`
 3. Determine field ID:
    - If configured -> use configured value
-   - If not configured -> use value from API result
+   - If not configured -> use value from API result (Status: first resolver candidate present; Priority / Complexity: the field of that name)
 4. Option ID: retrieve from API result
 
 #### 4.2.4 Update Each Field

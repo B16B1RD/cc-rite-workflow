@@ -27,7 +27,7 @@
 #       "enabled": true,                    # default: true
 #       "project_number": 6,
 #       "owner": "{owner}",
-#       "status": "Todo",                   # default: "Todo"
+#       "status": "todo",                   # Status role; default "todo" (the board column name comes from rite-config.yml)
 #       "priority": "High|Medium|Low"
 #     },
 #     "repo": "{repo}",                     # for link-sub-issue.sh
@@ -123,7 +123,7 @@ trap 'rm -f "$helper_err_file"; if [ -n "$workdir" ] && [ -d "$workdir" ]; then 
 proj_enabled=$(spec_get '.projects.enabled // true')
 project_number=$(spec_get '.projects.project_number')
 owner=$(spec_get '.projects.owner')
-status=$(spec_get '.projects.status // "Todo"')
+status=$(spec_get '.projects.status // "todo"')
 priority=$(spec_get '.projects.priority // "Medium"')
 repo=$(spec_get '.repo // empty')
 labels_csv=$(spec_get '.labels_csv // ""')

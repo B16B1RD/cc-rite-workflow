@@ -305,6 +305,13 @@ ITEMJSON
               fi
               exit 0
               ;;
+            pif_named_field)
+              # Single page whose Status field carries the name in MOCK_PIF_FIELD_NAME
+              # (e.g. ステータス / 進捗) — exercises the resolver's field-name candidates.
+              jq -cn --arg f "${MOCK_PIF_FIELD_NAME:-ステータス}" \
+                '{data:{node:{items:{pageInfo:{hasNextPage:false,endCursor:null},nodes:[{content:{number:101},fieldValues:{nodes:[{name:"In Progress",field:{name:$f}}]}},{content:{number:102},fieldValues:{nodes:[{name:"Done",field:{name:"Status"}}]}}]}}}}'
+              exit 0
+              ;;
             *)
               # pif_success (default): single page with a Status item, a status-less
               # item, and a draft item (content {}) that the normalizer must exclude.
@@ -394,6 +401,12 @@ ITEMJSON
               ;;
           esac
 
+          # Status option values default to the English names. A board whose columns are
+          # named differently (roles mapped in rite-config.yml) passes its options as JSON
+          # through MOCK_STATUS_OPTIONS_JSON.
+          STATUS_OPTIONS_JSON='[{"id": "OPT_TODO", "name": "Todo"}, {"id": "OPT_INPROGRESS", "name": "In Progress"}, {"id": "OPT_DONE", "name": "Done"}]'
+          [ -n "${MOCK_STATUS_OPTIONS_JSON:-}" ] && STATUS_OPTIONS_JSON="$MOCK_STATUS_OPTIONS_JSON"
+
           PRIORITY_FIELD_NODE=""
           if [ "$INCLUDE_PRIORITY_FIELD" = true ]; then
             PRIORITY_FIELD_NODE=',
@@ -422,11 +435,7 @@ ITEMJSON
             {
               "id": "FIELD_STATUS",
               "name": "${STATUS_FIELD_NAME}",
-              "options": [
-                {"id": "OPT_TODO", "name": "Todo"},
-                {"id": "OPT_INPROGRESS", "name": "In Progress"},
-                {"id": "OPT_DONE", "name": "Done"}
-              ]
+              "options": ${STATUS_OPTIONS_JSON}
             }${PRIORITY_FIELD_NODE},
             {
               "id": "FIELD_COMPLEXITY",

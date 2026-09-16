@@ -113,11 +113,18 @@ assert_file_contains "$WATCHDOG_SH" '\-\-quiet\)' \
 # header purpose marker
 assert_file_contains "$WATCHDOG_SH" 'Status Mismatch Watchdog' \
   "header documents watchdog purpose"
-# Detection logic: isDraft=false && Status="In Progress"
+# Detection logic: isDraft=false && role in_progress. The rules are written on roles the
+# resolver returns, never on column names — pin the resolver call and the role arms.
 assert_file_contains "$WATCHDOG_SH" 'isDraft' \
   "Script checks PR isDraft"
-assert_file_contains "$WATCHDOG_SH" 'In Progress' \
-  "Script checks Status == 'In Progress'"
+assert_file_contains "$WATCHDOG_SH" 'current_role=\$\(cd "\$REPO_ROOT" && projects_status_role_for_name "\$current_status"' \
+  "Script maps the column name to a role through the resolver"
+assert_file_contains "$WATCHDOG_SH" '^    in_progress\)$' \
+  "Script dispatches on the in_progress role"
+assert_file_contains "$WATCHDOG_SH" '^    todo\)$' \
+  "Script dispatches on the todo role"
+assert_file_contains "$WATCHDOG_SH" '\$fields \| index\(\$fn\) != null' \
+  "Script selects the Status field by the resolver's candidate names"
 
 echo ""
 echo "[T-9f] Behavioral: git-remote fast path resolves SSH alias origin, --repo threaded into gh pr list"
@@ -211,7 +218,7 @@ trap 'rm -rf "$T9F_DIR" "$RULES_DIR"' EXIT
 mkdir -p "$RULES_DIR/plugin/scripts" "$RULES_DIR/plugin/hooks/scripts/lib" "$RULES_DIR/repo/bin"
 cp "$WATCHDOG_SH" "$RULES_DIR/plugin/scripts/watchdog-status-mismatch.sh"
 cp "$REPO_ROOT/plugins/rite/hooks/control-char-neutralize.sh" "$RULES_DIR/plugin/hooks/"
-cp "$REPO_ROOT/plugins/rite/hooks/scripts/lib/git-remote.sh" "$RULES_DIR/plugin/hooks/scripts/lib/"
+cp "$REPO_ROOT/plugins/rite/hooks/scripts/lib/git-remote.sh" "$REPO_ROOT/plugins/rite/hooks/scripts/lib/projects-status-config.sh" "$RULES_DIR/plugin/hooks/scripts/lib/"
 cat > "$RULES_DIR/plugin/scripts/projects-status-update.sh" <<'RECON_SHIM'
 #!/bin/bash
 # Mock reconciler: records the status_role it was asked for so the caller's per-rule
@@ -325,6 +332,107 @@ echo "  -- T-07: Issue not on the project board"
 out=$(run_rule_fixture true "<absent>" --dry-run)
 assert_json "$out" '.scan_summary.prs_scanned' '1' "the scan actually entered the detection loop"
 assert_json "$out" '.scan_summary.mismatches_found' '0' "an Issue absent from the board is never a mismatch"
+
+echo ""
+echo "[T-08..T-10] Behavioral: rules run on roles the board column resolves to"
+# The fixtures above run on the legacy config, where English names map onto themselves.
+# A Japanese board with a renamed Status field pins that the rule fires on the role, that
+# the expected column name comes from the config, and that the field is found by the
+# resolver's candidates rather than a literal "Status".
+cat > "$RULES_DIR/repo/rite-config.yml" <<'YAML'
+github:
+  projects:
+    enabled: true
+    project_number: 1
+    fields:
+      status:
+        name: "ステータス"
+        options:
+          - { role: todo, name: "未着手" }
+          - { role: in_progress, name: "対応中" }
+          - { role: in_review, name: "レビュー中" }
+          - { role: done, name: "完了" }
+YAML
+# $1=isDraft $2=Status name $3=field name $4=mode — like run_rule_fixture, with the field
+# name under test.
+run_named_field_fixture() {
+  local is_draft="$1" status="$2" field="$3" mode="$4"
+  _closes='Closes #998' # drift-check-ignore
+  printf '[{"number":1001,"isDraft":%s,"body":"%s","headRefName":"fix/issue-998-x"}]\n' \
+    "$is_draft" "$_closes" > "$RULES_DIR/pr-list.json"
+  jq -n --arg s "$status" --arg f "$field" \
+    '{data:{repository:{issue:{projectItems:{nodes:[{project:{number:1},fieldValues:{nodes:[{field:{name:$f},name:$s}]}}]}}}}}' \
+    > "$RULES_DIR/board.json"
+  : > "$RULES_DIR/recon.log"
+  ( cd "$RULES_DIR/repo" \
+    && PATH="$RULES_DIR/repo/bin:$PATH" \
+       RITE_TEST_PR_LIST="$RULES_DIR/pr-list.json" \
+       RITE_TEST_BOARD="$RULES_DIR/board.json" \
+       RITE_TEST_RECON_LOG="$RULES_DIR/recon.log" \
+       bash "$RULES_DIR/plugin/scripts/watchdog-status-mismatch.sh" "$mode" 2>"$RULES_DIR/stderr.txt" ) || true
+}
+
+echo "  -- T-08: 対応中 (in_progress) + ready PR on a ステータス field"
+out=$(run_named_field_fixture false "対応中" "ステータス" --reconcile)
+assert_json "$out" '.scan_summary.prs_scanned' '1' "the scan actually entered the detection loop"
+assert_json "$out" '.scan_summary.mismatches_found' '1' "in_progress residue on a ready PR is reported through the role mapping"
+assert_json "$out" '.mismatches[0].current_status' '対応中' "the record carries the board's own column name"
+assert_json "$out" '.mismatches[0].expected_status' 'レビュー中' "the expected column name comes from the configured in_review name"
+recon_target=$(cat "$RULES_DIR/recon.log" 2>/dev/null | tr -d '\n')
+if [ "$recon_target" = "in_review" ]; then
+  PASS=$((PASS + 1)); echo "  ✓ --reconcile asks the helper for the in_review role"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-08: reconcile role expected 'in_review', got '$recon_target'")
+  echo "  ✗ reconcile role expected 'in_review', got '$recon_target'" >&2
+fi
+
+echo "  -- T-09: a column the config does not map is skipped with a WARNING, never moved"
+out=$(run_named_field_fixture false "Blocked" "ステータス" --reconcile)
+assert_json "$out" '.scan_summary.prs_scanned' '1' "the scan actually entered the detection loop (positive control for the absence asserts)"
+assert_json "$out" '.scan_summary.mismatches_found' '0' "an unmapped column is not a mismatch"
+if [ -s "$RULES_DIR/recon.log" ]; then
+  FAIL=$((FAIL + 1)); FAILURES+=("T-09: reconcile helper was invoked for an unmapped column: $(cat "$RULES_DIR/recon.log")")
+  echo "  ✗ reconcile helper was invoked for an unmapped column" >&2
+else
+  PASS=$((PASS + 1)); echo "  ✓ reconcile helper is never invoked for an unmapped column"
+fi
+if grep -q 'column "Blocked" maps to no role' "$RULES_DIR/stderr.txt"; then
+  PASS=$((PASS + 1)); echo "  ✓ the WARNING names the unmapped column"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-09: expected a WARNING naming Blocked, got: $(head -c 300 "$RULES_DIR/stderr.txt" | tr '\n' ' ')")
+  echo "  ✗ expected a WARNING naming Blocked" >&2
+fi
+
+echo "  -- T-10: the legacy English name is not a role on an explicit board"
+out=$(run_named_field_fixture true "Todo" "ステータス" --dry-run)
+assert_json "$out" '.scan_summary.prs_scanned' '1' "the scan actually entered the detection loop"
+assert_json "$out" '.scan_summary.mismatches_found' '0' "Todo on a board that names todo 未着手 is unmapped, not a todo residue"
+
+echo "  -- T-11: an invalid Status configuration is fatal (exit 1), never a silent scan"
+cat > "$RULES_DIR/repo/rite-config.yml" <<'YAML'
+github:
+  projects:
+    enabled: true
+    project_number: 1
+    fields:
+      status:
+        options:
+          - { role: todo, name: "未着手" }
+YAML
+: > "$RULES_DIR/recon.log"
+set +e
+( cd "$RULES_DIR/repo" && PATH="$RULES_DIR/repo/bin:$PATH" \
+    RITE_TEST_PR_LIST="$RULES_DIR/pr-list.json" RITE_TEST_BOARD="$RULES_DIR/board.json" \
+    RITE_TEST_RECON_LOG="$RULES_DIR/recon.log" \
+    bash "$RULES_DIR/plugin/scripts/watchdog-status-mismatch.sh" --reconcile >/dev/null 2>"$RULES_DIR/stderr.txt" )
+t11_rc=$?
+set -e
+if [ "$t11_rc" -eq 1 ] && grep -q 'github.projects.fields.status:' "$RULES_DIR/stderr.txt" && [ ! -s "$RULES_DIR/recon.log" ]; then
+  PASS=$((PASS + 1)); echo "  ✓ invalid configuration exits 1 with the config error and no reconcile"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-11: expected exit 1 + config error + empty recon log, got rc=$t11_rc stderr=$(head -c 300 "$RULES_DIR/stderr.txt" | tr '\n' ' ')")
+  echo "  ✗ invalid configuration: expected exit 1 + config error + no reconcile (exit $t11_rc)" >&2
+fi
 
 echo ""
 echo "==============================="
