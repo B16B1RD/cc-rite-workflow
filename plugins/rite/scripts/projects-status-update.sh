@@ -17,15 +17,15 @@
 #     "owner": "{owner}",
 #     "repo": "{repo}",
 #     "project_number": 6,
-#     "status_name": "In Progress",           # required: Todo|In Progress|In Review|Done|...
-#     "status_field_id_hint": "PVTSSF_...",   # optional: skip field ID discovery if provided
+#     "status_role": "in_progress",           # required: todo|in_progress|in_review|done|cancelled
+#     "status_field_id_hint": "PVTSSF_...",   # optional: must match the resolved Status field ID
 #     "auto_add": true,                        # default: true — add Issue to Project if missing
 #     "non_blocking": true                     # default: true — warnings + exit 0 on API failure
 #   }
 #
 # Output JSON (stdout):
 #   {
-#     "result": "updated|skipped_not_in_project|skipped_terminal_conflict|failed",
+#     "result": "updated|skipped_not_in_project|skipped_terminal_conflict|skipped_role_unmapped|failed",
 #     "item_id": "PVTI_...",
 #     "project_id": "PVT_...",
 #     "status_field_id": "PVTSSF_...",
@@ -37,7 +37,9 @@
 #   updated                     — Status written, or same-terminal no-op (Done→Done / Cancelled→Cancelled)
 #   skipped_not_in_project      — Issue is not on the Project and auto_add is false
 #   skipped_terminal_conflict   — current Status is Cancelled and the request was Done
+#                                 or done requested for CLOSED + NOT_PLANNED / DUPLICATE
 #                                 (one-way guard; SoT: references/projects-integration.md §2.4.8)
+#   skipped_role_unmapped       — requested role has no configured column; no write
 #   failed                      — API / parse / GraphQL errors[] / unreadable current Status
 #                                 (does not write). Unreadable includes fieldValues key missing,
 #                                 fieldValues == null, or nodes not an array. Empty nodes / no
@@ -47,6 +49,8 @@
 #   0 = success OR non-blocking failure (caller must inspect .result)
 #   1 = fatal (JSON parse error, missing required fields, non_blocking=false API failure)
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../hooks/scripts/lib/projects-status-config.sh"
 
 # --- Centralized tmpfile management ---
 TMPDIR_WORK=$(mktemp -d)
@@ -104,7 +108,7 @@ eval "$(printf '%s\n' "$INPUT_JSON" | jq -r '
   @sh "OWNER=\(.owner // "")",
   @sh "REPO=\(.repo // "")",
   @sh "PROJECT_NUMBER=\(.project_number // 0)",
-  @sh "STATUS_NAME=\(.status_name // "")",
+  @sh "STATUS_ROLE=\(.status_role // "")",
   @sh "STATUS_FIELD_ID_HINT=\(.status_field_id_hint // "")",
   @sh "AUTO_ADD=\(if .auto_add == false then false else true end)",
   @sh "NON_BLOCKING=\(if .non_blocking == false then false else true end)"
@@ -131,11 +135,20 @@ if [ "$PROJECT_NUMBER" -eq 0 ]; then
   output_result "failed"
   exit 1
 fi
-if [ -z "$STATUS_NAME" ]; then
-  add_warning "status_name is required"
+if [ -z "$STATUS_ROLE" ]; then
+  add_warning "status_role is required"
   output_result "failed"
   exit 1
 fi
+if printf '%s\n' "$INPUT_JSON" | jq -e 'has("status_name")' >/dev/null; then
+  add_warning "status_name is not accepted; use status_role"
+  output_result "failed"
+  exit 1
+fi
+case "$STATUS_ROLE" in
+  todo|in_progress|in_review|done|cancelled) ;;
+  *) add_warning "Unknown status_role '$STATUS_ROLE'"; output_result "failed"; exit 1 ;;
+esac
 
 # Helper: emit a terminal failure result and exit.
 # NOTE: fail_nb ALWAYS exits — it never returns to the caller. This is intentional:
@@ -165,6 +178,19 @@ gh_err_msg() {
   fi
 }
 
+STATUS_NAME=$(projects_status_name_for_role "$STATUS_ROLE" 2>"$GH_ERR_FILE") || {
+  add_warning "Invalid Status configuration: $(gh_err_msg)"
+  fail_nb "failed"
+}
+if [ -z "$STATUS_NAME" ]; then
+  output_result "skipped_role_unmapped"
+  exit 0
+fi
+FIELD_CANDIDATES=$(projects_status_field_candidates 2>"$GH_ERR_FILE") || {
+  add_warning "Invalid Status configuration: $(gh_err_msg)"
+  fail_nb "failed"
+}
+
 # --- Step A: Retrieve Issue's project item ID and project GraphQL id ---
 query_project_items() {
   gh api graphql -f query='
@@ -172,6 +198,8 @@ query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
     issue(number: $number) {
       url
+      state
+      stateReason
       projectItems(first: 10) {
         nodes {
           id
@@ -225,6 +253,26 @@ if [ -z "$ISSUE_EXISTS" ]; then
   fail_nb "failed"
 fi
 
+# Check closure before auto-add, which is itself a board write.
+if [ "$STATUS_ROLE" = done ]; then
+  if ! printf '%s\n' "$GQL_RESULT" | jq -e '
+    .data.repository.issue |
+    (.state == "OPEN" or .state == "CLOSED") and
+    (has("stateReason")) and
+    (.stateReason == null or (.stateReason | type) == "string")
+  ' >/dev/null; then
+    add_warning "Could not read Issue state/stateReason"
+    fail_nb "failed"
+  fi
+  if printf '%s\n' "$GQL_RESULT" | jq -e '
+    .data.repository.issue | .state == "CLOSED" and
+    (.stateReason == "NOT_PLANNED" or .stateReason == "DUPLICATE")
+  ' >/dev/null; then
+    output_result "skipped_terminal_conflict"
+    exit 0
+  fi
+fi
+
 # Find node whose project.number matches PROJECT_NUMBER.
 find_matching_node() {
   printf '%s\n' "$GQL_RESULT" | jq -r --argjson pn "$PROJECT_NUMBER" \
@@ -275,20 +323,49 @@ if [ -z "$ITEM_ID" ] || [ -z "$PROJECT_ID" ]; then
   fail_nb "failed"
 fi
 
-# Current Status. Terminal names (Done / Cancelled) are copied from
-# references/projects-integration.md §2.4.8 — do not add a third here.
+# --- Step C: Retrieve Status field + option id ---
+# Resolve the field once for both current value and destination option.
+FIELD_LIST_JSON=$(gh project field-list "$PROJECT_NUMBER" --owner "$OWNER" --format json 2>"$GH_ERR_FILE") || {
+  add_warning "gh project field-list failed: $(gh_err_msg)"
+  fail_nb "failed" "$ITEM_ID" "$PROJECT_ID"
+}
+
+# `gh project field-list` returns {fields: [...]} — find the Status field.
+STATUS_NODE=$(printf '%s\n' "$FIELD_LIST_JSON" | jq -c --arg candidates "$FIELD_CANDIDATES" '
+  .fields as $fields | [$candidates | split("\n")[] as $name |
+  $fields[] | select(.name == $name)][0] // empty') || {
+  add_warning "Could not parse project field list"
+  fail_nb "failed" "$ITEM_ID" "$PROJECT_ID"
+}
+if [ -z "$STATUS_NODE" ]; then
+  available_fields=$(printf '%s\n' "$FIELD_LIST_JSON" | jq -c '[.fields[].name]')
+  add_warning "Status field not found in project #$PROJECT_NUMBER; available fields: $available_fields"
+  fail_nb "failed" "$ITEM_ID" "$PROJECT_ID"
+fi
+
+STATUS_FIELD_NAME=$(printf '%s\n' "$STATUS_NODE" | jq -r '.name')
+STATUS_FIELD_ID=$(printf '%s\n' "$STATUS_NODE" | jq -r '.id // empty')
+if [ -n "$STATUS_FIELD_ID_HINT" ] && [ "$STATUS_FIELD_ID_HINT" != "$STATUS_FIELD_ID" ]; then
+  add_warning "status_field_id_hint does not match resolved Status field '$STATUS_FIELD_NAME'"
+  fail_nb "failed" "$ITEM_ID" "$PROJECT_ID"
+fi
+if [ -z "$STATUS_FIELD_ID" ]; then
+  add_warning "Could not determine Status field id"
+  fail_nb "failed" "$ITEM_ID" "$PROJECT_ID"
+fi
+
 # Unreadable (fail, do not write): fieldValues key missing, fieldValues == null,
 # nodes not an array, or jq failure. has("fieldValues") is true for null, so
 # null must be typed as unreadable rather than treated as unset.
 # Unset (write allowed): empty nodes / no Status entry.
-CURRENT_EXTRACT=$(printf '%s\n' "$GQL_RESULT" | jq -c --argjson pn "$PROJECT_NUMBER" '
+CURRENT_EXTRACT=$(printf '%s\n' "$GQL_RESULT" | jq -c --argjson pn "$PROJECT_NUMBER" --arg field "$STATUS_FIELD_NAME" '
   [.data.repository.issue.projectItems.nodes[] | select(.project.number == $pn)][0] as $n
   | if $n == null then {ok:false, reason:"no_item"}
     elif ($n | has("fieldValues") | not) then {ok:false, reason:"fieldValues_missing"}
     elif ($n.fieldValues | type) != "object" then {ok:false, reason:"fieldValues_unreadable"}
     elif ($n.fieldValues | has("nodes") | not) then {ok:false, reason:"fieldValues_unreadable"}
     elif ($n.fieldValues.nodes | type) != "array" then {ok:false, reason:"fieldValues_unreadable"}
-    else {ok:true, status: ([ $n.fieldValues.nodes[] | select(.field.name == "Status") | .name ][0] // "")}
+    else {ok:true, status: ([ $n.fieldValues.nodes[] | select(.field.name == $field) | .name ][0] // "")}
     end
 ') || CURRENT_EXTRACT=""
 if [ -z "$CURRENT_EXTRACT" ] || [ "$(printf '%s' "$CURRENT_EXTRACT" | jq -r '.ok // false')" != "true" ]; then
@@ -298,45 +375,26 @@ if [ -z "$CURRENT_EXTRACT" ] || [ "$(printf '%s' "$CURRENT_EXTRACT" | jq -r '.ok
 fi
 CURRENT_STATUS=$(printf '%s' "$CURRENT_EXTRACT" | jq -r '.status')
 
-# --- Step C: Retrieve Status field + option id ---
-# If status_field_id_hint is provided, we still need to fetch options (field_ids
-# optimization only skips field ID extraction, not option ID).
-FIELD_LIST_JSON=$(gh project field-list "$PROJECT_NUMBER" --owner "$OWNER" --format json 2>"$GH_ERR_FILE") || {
-  add_warning "gh project field-list failed: $(gh_err_msg)"
+CURRENT_ROLE=$(projects_status_role_for_name "$CURRENT_STATUS" 2>"$GH_ERR_FILE") || {
+  add_warning "Invalid Status configuration: $(gh_err_msg)"
   fail_nb "failed" "$ITEM_ID" "$PROJECT_ID"
 }
 
-# `gh project field-list` returns {fields: [...]} — find the Status field.
-STATUS_NODE=$(printf '%s\n' "$FIELD_LIST_JSON" | jq -c '[.fields[] | select(.name == "Status")][0] // empty')
-if [ -z "$STATUS_NODE" ]; then
-  add_warning "Status field not found in project #$PROJECT_NUMBER"
-  fail_nb "failed" "$ITEM_ID" "$PROJECT_ID"
-fi
-
-if [ -n "$STATUS_FIELD_ID_HINT" ]; then
-  STATUS_FIELD_ID="$STATUS_FIELD_ID_HINT"
-else
-  STATUS_FIELD_ID=$(printf '%s\n' "$STATUS_NODE" | jq -r '.id // empty')
-fi
-if [ -z "$STATUS_FIELD_ID" ]; then
-  add_warning "Could not determine Status field id"
-  fail_nb "failed" "$ITEM_ID" "$PROJECT_ID"
-fi
-
 OPTION_ID=$(printf '%s\n' "$STATUS_NODE" | jq -r --arg sn "$STATUS_NAME" '[.options[] | select(.name == $sn)][0].id // empty')
 if [ -z "$OPTION_ID" ]; then
-  add_warning "Status option '$STATUS_NAME' not found in Status field"
+  available_options=$(printf '%s\n' "$STATUS_NODE" | jq -c '[.options[].name]')
+  add_warning "Status option '$STATUS_NAME' not found in Status field; available options: $available_options"
   fail_nb "failed" "$ITEM_ID" "$PROJECT_ID" "$STATUS_FIELD_ID"
 fi
 
 # One-way terminal guard (SoT: §2.4.8). Cancelled must not be overwritten with
 # Done. Done → Cancelled stays writable so /rite:issue-cancel can resync.
 # Same-terminal (Done→Done / Cancelled→Cancelled) is an idempotent no-op.
-if [ "$CURRENT_STATUS" = "Cancelled" ] && [ "$STATUS_NAME" = "Done" ]; then
-  add_warning "Issue #$ISSUE_NUMBER is already on terminal Status 'Cancelled'; refusing overwrite to 'Done'"
+if [ "$CURRENT_ROLE" = cancelled ] && [ "$STATUS_ROLE" = done ]; then
+  add_warning "Issue #$ISSUE_NUMBER is already on terminal Status '$CURRENT_STATUS'; refusing overwrite to '$STATUS_NAME'"
   fail_nb "skipped_terminal_conflict" "$ITEM_ID" "$PROJECT_ID" "$STATUS_FIELD_ID" "$OPTION_ID"
 fi
-if [ "$CURRENT_STATUS" = "$STATUS_NAME" ] && { [ "$CURRENT_STATUS" = "Done" ] || [ "$CURRENT_STATUS" = "Cancelled" ]; }; then
+if [ "$CURRENT_ROLE" = "$STATUS_ROLE" ] && projects_status_is_terminal "$CURRENT_ROLE"; then
   output_result "updated" "$ITEM_ID" "$PROJECT_ID" "$STATUS_FIELD_ID" "$OPTION_ID"
   exit 0
 fi

@@ -33,9 +33,9 @@ rationale: references/rationale.md#projects-status-delegate
 ```bash
 status_json_args=$(jq -n \
   --argjson issue {issue} --arg owner "{owner}" --arg repo "{repo}" \
-  --argjson project_number {project_number} --arg status "Done" \
+  --argjson project_number {project_number} --arg role "done" \
   --argjson auto_add false --argjson non_blocking true \
-  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_role:$role, auto_add:$auto_add, non_blocking:$non_blocking}')
 bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args"
 ```
 
@@ -778,9 +778,9 @@ _mktemp_or_warn() { mktemp 2>/dev/null || { echo "[DEBUG] p463 $1: mktemp failed
 if [ "$projects_enabled" = "true" ]; then
   status_json_args=$(jq -n \
     --argjson issue "$parent_number" --arg owner "$owner" --arg repo "$repo" \
-    --argjson project_number "$project_number" --arg status "Done" \
+    --argjson project_number "$project_number" --arg role "done" \
     --argjson auto_add false --argjson non_blocking true \
-    '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')
+    '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_role:$role, auto_add:$auto_add, non_blocking:$non_blocking}')
   p463_err_status=$(_mktemp_or_warn "Step 1")
   # `|| status_json=""` は付けない — command substitution は script が非ゼロ終了しても stdout
   # (script が既に出力した失敗理由入り JSON) を capture するため、fallback は診断情報を破棄する
