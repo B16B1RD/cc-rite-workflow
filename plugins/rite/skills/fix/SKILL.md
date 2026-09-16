@@ -1255,6 +1255,19 @@ rationale: references/design-rationale.md#simplification-first-rationale
 
 ### 2.1 Confirm Fix Approach
 
+全指摘の処置を編集前に一括で決める。個別指摘の読み取り・impact scan は先に行ってよいが、最初の編集前に [一括計画と検証](references/fix-plan.md) を読み、同一 HEAD の全員回収済み保存結果・最新 Issue 本文から `{fix_plan_file}` と `{fix_issue_file}`（絶対 JSON パス）を作る。root cause ごとに重複を関連付け、全 blocking 指摘へ処置と検証を割り当てる。人間由来の未解決指摘も計画へ記録し、既存の対応義務を維持する。
+
+```bash
+# fix-scope-before-edit
+if ! bash {plugin_root}/hooks/scripts/review-fix-scope-check.sh check \
+  --plan "{fix_plan_file}" --issue "{fix_issue_file}"; then
+  echo "[fix:error]"
+  exit 1
+fi
+```
+
+失敗時は編集せず、診断・計画・途中成果を保持する。範囲内代替を検討して同じ計画を修正し再検査する。代替不能なら Issue 仕様を変更せず理由を work memory に残して `[fix:error]`。パス通過だけでは意味的承認にしない。計画外の変更先が必要になったら、編集前に計画と根拠を更新し本ゲートへ戻る。各編集は検査済み `groups[].paths` 内に限定する。typo-only の impact scan 省略も本ゲートを省略しない。
+
 reviewer の推奨対応（`recommendation` 列）は候補であって設計ではない。文書の主張を書く／広げる修正案は、適用前に実装と突き合わせる（ステップ 2.3）。
 
 **Entry routing — scope=nit-noted skip**:
@@ -1602,6 +1615,17 @@ rationale: references/design-rationale.md#nit-noted-no-reply-notes
 ## ステップ 3: 修正のコミット
 
 > **Reference**: Apply [Comment Best Practices](../../skills/rite-workflow/references/comment-best-practices.md) when finalising fix commits — 生成コメント/散文に Issue/PR 番号・AC 番号を残さない。残す背景は現在形の制約文。ジャーナル/経緯文は禁止。file:line 参照と未検証ジャーゴンも diff に残さない。review/fix 履歴は commit message / PR description へ。
+
+一括修正完了後、最新 Issue を再取得し、検査済み計画に対して次を実行する。関連結果の鮮度確認後に、必要な全体検証を全件実行・記録する。失敗または保存不能なら commit / push / 次レビューへ進まない。既存の差分・schema・AC ゲートは引き続き実行する。
+
+```bash
+# fix-scope-final-verification
+if ! bash {plugin_root}/hooks/scripts/review-fix-scope-check.sh verify \
+  --plan "{fix_plan_file}" --issue "{fix_issue_file}" --kind all; then
+  echo "[fix:error]"
+  exit 1
+fi
+```
 
 ### 3.1 Verify Changes
 
