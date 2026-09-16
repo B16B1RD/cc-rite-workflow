@@ -242,10 +242,12 @@ From the result:
 source {plugin_root}/hooks/scripts/lib/projects-status-config.sh || { echo "ERROR: projects-status-config.sh を読み込めませんでした" >&2; exit 1; }
 if ! parent_status_role=$(cd "$(git rev-parse --show-toplevel)" && projects_status_role_for_name "{parent_status_name}"); then
   echo "警告: rite-config.yml の Status 設定が不正なため、親 Issue の Status を判定できません。更新をスキップします" >&2
+  parent_status_role="<invalid-config>"
 fi
+echo "[CONTEXT] PARENT_STATUS=role=${parent_status_role}; name={parent_status_name}"
 ```
 
-An invalid Status configuration skips 2.4.7.3–2.4.7.4 (the judgement cannot be made). An empty `{parent_status_name}` maps to an empty role and is treated as `todo` in 2.4.7.3.
+The marker is the judgement input for 2.4.7.3 — the role lives only in this shell and the executor reads tool output, so a block that keeps it in a variable leaves the table with nothing to branch on. An empty `{parent_status_name}` maps to an empty role and is treated as `todo` in 2.4.7.3.
 
 **When `projectItems.nodes` is empty** (parent Issue not registered in Project):
 
@@ -258,15 +260,16 @@ Display warning and skip 2.4.7.3–2.4.7.4 (non-blocking).
 
 #### 2.4.7.3 Status Condition Check
 
-Only update the parent Issue's Status if its role is `todo`. This prevents overwriting a more advanced Status (e.g. `in_progress` set by a sibling child Issue). The judgement uses `{parent_status_role}` from 2.4.7.2:
+Only update the parent Issue's Status if its role is `todo`. This prevents overwriting a more advanced Status (e.g. `in_progress` set by a sibling child Issue). The judgement reads the `role=` / `name=` fields of the `[CONTEXT] PARENT_STATUS=` marker emitted in 2.4.7.2:
 
-| `{parent_status_role}` | Action |
+| `role=` | Action |
 |---|---|
+| `<invalid-config>` | Skip — the Status configuration is invalid and the role cannot be judged (2.4.7.2 has already displayed the warning) |
 | `todo` | Proceed to 2.4.7.4 (update to the `in_progress` role) |
-| empty with empty `{parent_status_name}` (Status value unset) | Proceed to 2.4.7.4 — treated as `todo` (Status field value not yet selected) |
+| empty with empty `name=` (Status value unset) | Proceed to 2.4.7.4 — treated as `todo` (Status field value not yet selected) |
 | `in_progress` | Skip — already at the target role. Display: `警告: 親 Issue #{parent_issue_number} は既に {parent_status_name} です` |
 | `in_review` / `done` / `cancelled` | Skip — more advanced or terminal. Display: `警告: 親 Issue #{parent_issue_number} は既に {parent_status_name} です（更新スキップ）` |
-| empty with non-empty `{parent_status_name}` (column maps to no role) | Skip — the operator placed the Issue in a column `rite-config.yml` does not map, and it is not overwritten. Display: `警告: 親 Issue #{parent_issue_number} の Status 列 "{parent_status_name}" は rite-config.yml の role に対応しません（更新スキップ）` |
+| empty with non-empty `name=` (column maps to no role) | Skip — the operator placed the Issue in a column `rite-config.yml` does not map, and it is not overwritten. Display: `警告: 親 Issue #{parent_issue_number} の Status 列 "{parent_status_name}" は rite-config.yml の role に対応しません（更新スキップ）` |
 
 #### 2.4.7.4 Update Parent Issue Status to the `in_progress` Role
 
