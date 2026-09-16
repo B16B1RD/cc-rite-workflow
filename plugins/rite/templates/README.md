@@ -62,7 +62,7 @@ Variables use the following formats:
 | `{project_number}` | GitHub Projects project number | `rite-config.yml` or Projects API | `1` |
 | `{project_url}` | GitHub Projects URL | Projects API | `https://github.com/users/owner/projects/1` |
 | `{iteration_title}` | Iteration/Sprint title | Projects API iteration field | `Sprint 2026-02` |
-| `{field_name}` | Custom field name | Projects API | `Priority`, `Complexity` |
+| `{field_name}` | Supported Projects field name | Projects API | `Status`, `Priority`, `Complexity` |
 
 ### Work Memory & Session
 
