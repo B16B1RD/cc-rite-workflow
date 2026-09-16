@@ -449,6 +449,28 @@ language: ja
 YAML
 rc=$(cd "$d_candidate_ok" && RITE_SETUP_CONFIG_CANDIDATE="$d_candidate_ok/rite-config.yml" MOCK_GH_DIR="$d_nested" PATH="$MOCKBIN:$PATH" bash "$VERIFY" >"$d_nested/candidate-ok-stdout" 2>"$d_nested/candidate-ok-stderr" && echo 0 || echo $?)
 assert "T-existing-candidate match verifies" "0" "$rc"
+actual_jq=$(command -v jq)
+mkdir -p "$d_nested/jq-fail-bin"
+cat > "$d_nested/jq-fail-bin/jq" <<MOCK
+#!/usr/bin/env bash
+mode="\${MOCK_JQ_FAIL:-}"
+args="\$*"
+case "\$mode" in
+  required_names) [ "\$args" = '-R .' ] && { echo 'forced required-name encoding failure' >&2; exit 1; } ;;
+  missing_json) [[ "\$args" == -cn* ]] && { echo 'forced missing-json failure' >&2; exit 1; } ;;
+  missing_count) [ "\$args" = 'length' ] && { echo 'forced missing-count failure' >&2; exit 1; } ;;
+esac
+exec "$actual_jq" "\$@"
+MOCK
+chmod +x "$d_nested/jq-fail-bin/jq"
+for jq_failure in required_names missing_json missing_count; do
+  root_jq_before=$(cksum "$d_nested/rite-config.yml")
+  rc=$(cd "$d_candidate_ok" && MOCK_JQ_FAIL="$jq_failure" RITE_SETUP_CONFIG_CANDIDATE="$d_candidate_ok/rite-config.yml" MOCK_GH_DIR="$d_nested" PATH="$d_nested/jq-fail-bin:$MOCKBIN:$PATH" bash "$VERIFY" >"$d_nested/jq-$jq_failure-stdout" 2>"$d_nested/jq-$jq_failure-stderr" && echo 0 || echo $?)
+  assert "T-existing-candidate jq $jq_failure exits non-zero" "1" "$rc"
+  assert_grep "T-existing-candidate jq $jq_failure emits error marker" "$d_nested/jq-$jq_failure-stdout" 'STATUS_OPTIONS_VERIFY=error; reason='
+  assert "T-existing-candidate jq $jq_failure preserves root" "$root_jq_before" "$(cksum "$d_nested/rite-config.yml")"
+  assert "T-existing-candidate jq $jq_failure retains uncommitted candidate" "1" "$([ -e "$d_candidate_ok/rite-config.yml" ] && echo 1 || echo 0)"
+done
 candidate_sum=$(cksum "$d_candidate_ok/rite-config.yml" | awk '{ print $1 ":" $2 }')
 rc=$(cd "$d_candidate_ok" && RITE_SETUP_PROJECT_ROOT="$project_root_marker" RITE_SETUP_CONFIG_CANDIDATE="$d_candidate_ok/rite-config.yml" bash "$COMMIT" >"$d_nested/commit-stdout" 2>"$d_nested/commit-stderr" && echo 0 || echo $?)
 assert "T-existing-candidate commit exits 0" "0" "$rc"

@@ -208,7 +208,7 @@ role mapping が変わると、setup が成功した直後から更新 helper �
 root config を誤読せず、candidate cwd から commit しても更新先を取り違えないためである。失敗後に
 旧内容を復元する方式では、signal 中断との間に壊れた config が見えるため採用しない。
 `mktemp` の結果は `pwd -P` で物理絶対 path に正規化し、相対 `TMPDIR` も同じ契約へ揃える。
-絶対 path 判定は resolver の共通関数を使い、POSIX / UNC と Git Bash の drive-letter path を受理する。
+setup 内の絶対 path 判定は POSIX / UNC と Git Bash の drive-letter path を受理する。
 commit の cleanup trap は root tempfile と candidate をまとめて回収し、失敗や signal でも生成済み
 config を一時領域へ残さない。
 
@@ -227,7 +227,8 @@ resolver は config を repository root から読むため、検証と移行の�
 揃える。移行は固定インデントや option の連続配置を前提にせず YAML の階層境界で配列全体を置換し、
 resolver で explicit と再判定できた tempfile だけを同一ディレクトリ上で原子的に置き換える。
 Status options 自体が無い legacy config は後続の missing-sub-key back-add に委ねる。
-一時 config の検証だけは `RITE_STATUS_CONFIG_PATH` で絶対 path を明示し、Git root 探索を迂回する。
+一時 config の検証だけは candidate / scratch directory の親を `GIT_CEILING_DIRECTORIES` に指定し、
+親 repository の Git root 探索を遮断する。resolver 自体の契約は変更しない。
 upgrade の backup も同じ root config を対象にし、backup 成功を後続変更の precondition とする。
 解析用の行末 CR は除去する一方、生成行には元の EOL を引き継ぎ、Git Bash の CRLF config も
 resolver と同じ入力契約で移行する。

@@ -13,10 +13,6 @@ source "$LIB"
 assert 'source preserves shell options' "$before_options" "$(set +o)"
 assert 'source preserves caller traps' "$before_traps" "$(trap -p)"
 assert 'source creates no files' '' "$(ls -A)"
-if projects_status_path_is_absolute '/tmp/rite-config.yml'; then pass 'POSIX absolute path accepted'; else fail 'POSIX absolute path accepted'; fi
-if projects_status_path_is_absolute 'C:/Users/test/repo/rite-config.yml'; then pass 'Windows drive absolute path accepted'; else fail 'Windows drive absolute path accepted'; fi
-if projects_status_path_is_absolute 'C:\Users\test\repo\rite-config.yml'; then pass 'Windows backslash absolute path accepted'; else fail 'Windows backslash absolute path accepted'; fi
-if projects_status_path_is_absolute 'relative/rite-config.yml'; then fail 'relative path rejected'; else pass 'relative path rejected'; fi
 
 write_config() {
   printf 'github:\n  projects:\n    fields:\n      status:\n%s\n' "$1" > rite-config.yml
@@ -160,12 +156,4 @@ git init -q
 mkdir nested
 cd nested
 assert 'nested cwd resolves repository-root config' 完了 "$(projects_status_name_for_role done)"
-override_config="$TEST_DIR/override-config.yml"
-sed 's/name: "完了"/name: "候補完了"/' "$TEST_DIR/rite-config.yml" > "$override_config"
-assert 'absolute override bypasses repository-root config' 候補完了 "$(RITE_STATUS_CONFIG_PATH="$override_config" projects_status_name_for_role done)"
-if RITE_STATUS_CONFIG_PATH=../override-config.yml projects_status_mode >/dev/null 2>override-error.txt; then
-  fail 'relative override is rejected'
-else
-  assert_grep 'relative override explains absolute-path contract' override-error.txt 'must be an absolute path'
-fi
 print_summary 'projects-status-config.test.sh'

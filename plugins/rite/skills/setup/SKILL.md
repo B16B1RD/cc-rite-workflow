@@ -408,8 +408,16 @@ plugin_root="{plugin_root}"; owner="{owner}"; project_number="{project-number}"
 source "$plugin_root/hooks/scripts/lib/projects-status-config.sh"
 project_root=$(git rev-parse --show-toplevel 2>/dev/null) || project_root="$PWD"
 config="${RITE_SETUP_CONFIG_CANDIDATE:-$project_root/rite-config.yml}"
-projects_status_path_is_absolute "$config" || { echo '[CONTEXT] STATUS_OPTIONS_VERIFY=error; reason=config_path_not_absolute'; exit 1; }
-export RITE_STATUS_CONFIG_PATH="$config"
+if [ -n "${RITE_SETUP_CONFIG_CANDIDATE:-}" ]; then
+  case "$config" in /*|[A-Za-z]:[\\/]*) ;; *) echo '[CONTEXT] STATUS_OPTIONS_VERIFY=error; reason=config_path_not_absolute'; exit 1 ;; esac
+  candidate_dir=${config%/*}
+  candidate_pwd=$(cd "$candidate_dir" && pwd -P) || { echo '[CONTEXT] STATUS_OPTIONS_VERIFY=error; reason=candidate_path_unreadable'; exit 1; }
+  current_pwd=$(pwd -P) || { echo '[CONTEXT] STATUS_OPTIONS_VERIFY=error; reason=candidate_cwd_unreadable'; exit 1; }
+  [ "$current_pwd" = "$candidate_pwd" ] || { echo '[CONTEXT] STATUS_OPTIONS_VERIFY=error; reason=candidate_cwd_mismatch'; exit 1; }
+  candidate_parent=${candidate_pwd%/*}
+  export GIT_CEILING_DIRECTORIES="$candidate_parent"
+  project_root="$candidate_pwd"
+fi
 roles=(todo in_progress in_review done cancelled); required=(); candidates=()
 if [ -r "$config" ]; then
   mode=$(projects_status_mode) || { echo '[CONTEXT] STATUS_OPTIONS_VERIFY=error; reason=invalid_config'; exit 1; }
@@ -424,9 +432,11 @@ available_fields=$(printf '%s' "$field_list" | jq -c '[.fields[]?.name]')
 [ -n "$status_field_id" ] && [ "$status_field_id" != null ] || { echo "ERROR: configured Status field not found; available=$available_fields" >&2; echo "[CONTEXT] STATUS_OPTIONS_VERIFY=error; reason=status_field_missing; missing=[]; available=$available_fields"; exit 1; }
 options_json=$(gh api graphql -f query='query($id: ID!) { node(id: $id) { ... on ProjectV2SingleSelectField { options { name } } } }' -f id="$status_field_id") || { echo '[CONTEXT] STATUS_OPTIONS_VERIFY=error; reason=options_query_failed'; exit 1; }
 available=$(printf '%s' "$options_json" | jq -c '.data.node.options | map(.name)') || { echo '[CONTEXT] STATUS_OPTIONS_VERIFY=error; reason=options_json_invalid'; exit 1; }
-required_json=$(printf '%s\n' "${required[@]}" | jq -R . | jq -sc '.') || exit 1
-missing=$(jq -cn --argjson a "$available" --argjson r "$required_json" '$r | map(select(. as $n | ($a | index($n) | not)))')
-if [ "$(printf '%s' "$missing" | jq 'length')" -gt 0 ]; then [ "$mode" = legacy ] && printf '%s' "$missing" | jq -e 'index("Cancelled")' >/dev/null && echo 'ERROR: Cancelled を追加するか、cancelled を省略した explicit role 設定へ移行してください' >&2; echo "[CONTEXT] STATUS_OPTIONS_VERIFY=error; missing=$missing; available=$available"; exit 1; fi
+required_lines=$(printf '%s\n' "${required[@]}" | jq -R .) || { echo '[CONTEXT] STATUS_OPTIONS_VERIFY=error; reason=required_names_encode_failed'; exit 1; }
+required_json=$(printf '%s\n' "$required_lines" | jq -sc '.') || { echo '[CONTEXT] STATUS_OPTIONS_VERIFY=error; reason=required_json_failed'; exit 1; }
+missing=$(jq -cn --argjson a "$available" --argjson r "$required_json" '$r | map(select(. as $n | ($a | index($n) | not)))') || { echo '[CONTEXT] STATUS_OPTIONS_VERIFY=error; reason=missing_json_failed'; exit 1; }
+missing_count=$(printf '%s' "$missing" | jq 'length') || { echo '[CONTEXT] STATUS_OPTIONS_VERIFY=error; reason=missing_count_failed'; exit 1; }
+if [ "$missing_count" -gt 0 ]; then [ "$mode" = legacy ] && printf '%s' "$missing" | jq -e 'index("Cancelled")' >/dev/null && echo 'ERROR: Cancelled を追加するか、cancelled を省略した explicit role 設定へ移行してください' >&2; echo "[CONTEXT] STATUS_OPTIONS_VERIFY=error; missing=$missing; available=$available"; exit 1; fi
 echo "[CONTEXT] STATUS_OPTIONS_VERIFY=ok; missing=[]; available=$available"
 ```
 
@@ -589,17 +599,15 @@ candidate_dir=$(cd "$candidate_created" && pwd -P) || { rmdir "$candidate_create
 echo "[CONTEXT] STATUS_OPTION_CONFIG_CANDIDATE=ok; RITE_SETUP_PROJECT_ROOT=$project_root; RITE_SETUP_CONFIG_CANDIDATE=$candidate_dir/rite-config.yml"
 ```
 
-**Step 5**: `project_selection=existing` の場合は candidate directory を cwd にし、`RITE_SETUP_CONFIG_CANDIDATE={candidate_dir}/rite-config.yml` を設定して 3.4 の `STATUS_OPTION_EXISTING_VERIFY` bash block だけを再実行する。共有 resolver は `RITE_STATUS_CONFIG_PATH` を通して candidate の絶対 path を読む。`error` / marker 不在 / bash 非 0 なら candidate directory を削除して停止し、project root の既存 config は変更しない。`ok` の場合だけ、retained `RITE_SETUP_PROJECT_ROOT` と同じ `RITE_SETUP_CONFIG_CANDIDATE` を設定したまま下記 block を candidate cwd で実行し、root config と同一 directory の一時ファイルから原子的に置き換える。marker 不在 / bash 非 0 は停止する。Phase 3.5 へは戻らず、既存 Project に provisioning を実行しない。`project_selection=new` はこの再検証を skip して Phase 4.2 へ進む。
+**Step 5**: `project_selection=existing` の場合は candidate directory を cwd にし、`RITE_SETUP_CONFIG_CANDIDATE={candidate_dir}/rite-config.yml` を設定して 3.4 の `STATUS_OPTION_EXISTING_VERIFY` bash block だけを再実行する。共有 resolver は candidate directory の親を Git 探索の ceiling にして candidate の `rite-config.yml` を読む。`error` / marker 不在 / bash 非 0 なら candidate directory を削除して停止し、project root の既存 config は変更しない。`ok` の場合だけ、retained `RITE_SETUP_PROJECT_ROOT` と同じ `RITE_SETUP_CONFIG_CANDIDATE` を設定したまま下記 block を candidate cwd で実行し、root config と同一 directory の一時ファイルから原子的に置き換える。marker 不在 / bash 非 0 は停止する。Phase 3.5 へは戻らず、既存 Project に provisioning を実行しない。`project_selection=new` はこの再検証を skip して Phase 4.2 へ進む。
 
 ```bash
 # STATUS_OPTION_EXISTING_CONFIG_COMMIT
-plugin_root="{plugin_root}"
-source "$plugin_root/hooks/scripts/lib/projects-status-config.sh"
 project_root="${RITE_SETUP_PROJECT_ROOT:?project root path is required}"
-projects_status_path_is_absolute "$project_root" || { echo '[CONTEXT] STATUS_OPTION_CONFIG_COMMIT=error; reason=project_root_not_absolute'; exit 1; }
+case "$project_root" in /*|[A-Za-z]:[\\/]*) ;; *) echo '[CONTEXT] STATUS_OPTION_CONFIG_COMMIT=error; reason=project_root_not_absolute'; exit 1 ;; esac
 config="$project_root/rite-config.yml"
 candidate="${RITE_SETUP_CONFIG_CANDIDATE:?candidate config path is required}"
-projects_status_path_is_absolute "$candidate" || { echo '[CONTEXT] STATUS_OPTION_CONFIG_COMMIT=error; reason=candidate_not_absolute'; exit 1; }
+case "$candidate" in /*|[A-Za-z]:[\\/]*) ;; *) echo '[CONTEXT] STATUS_OPTION_CONFIG_COMMIT=error; reason=candidate_not_absolute'; exit 1 ;; esac
 [ "$candidate" != "$config" ] || { echo '[CONTEXT] STATUS_OPTION_CONFIG_COMMIT=error; reason=candidate_is_target'; exit 1; }
 [ -r "$candidate" ] || { echo '[CONTEXT] STATUS_OPTION_CONFIG_COMMIT=error; reason=candidate_unreadable'; exit 1; }
 candidate_dir=${candidate%/*}
@@ -743,7 +751,7 @@ plugin_root="{plugin_root}"
 source "$plugin_root/hooks/scripts/lib/projects-status-config.sh"
 project_root=$(git rev-parse --show-toplevel 2>/dev/null) || project_root="$PWD"
 config="$project_root/rite-config.yml"
-mode=$(RITE_STATUS_CONFIG_PATH="$config" projects_status_mode) || { echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=error; reason=invalid_config'; exit 1; }
+mode=$(projects_status_mode) || { echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=error; reason=invalid_config'; exit 1; }
 if [ "$mode" = explicit ]; then echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=noop; reason=already_explicit'; else
   scratch_created=$(mktemp -d "${TMPDIR:-/tmp}/rite-status-role.XXXXXX") || { echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=error; reason=tmp_create_failed'; exit 1; }
   scratch=$(cd "$scratch_created" && pwd -P) || { rmdir "$scratch_created" 2>/dev/null || true; echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=error; reason=path_resolve_failed'; exit 1; }
@@ -787,7 +795,8 @@ if [ "$mode" = explicit ]; then echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=no
   transform_rc=$?
   if [ "$transform_rc" -eq 3 ]; then _rite_status_role_cleanup; trap - EXIT INT TERM HUP; echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=noop; reason=status_options_absent'; else
     [ "$transform_rc" -eq 0 ] || { echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=error; reason=transform_failed'; exit 1; }
-    transformed_mode=$(RITE_STATUS_CONFIG_PATH="$scratch/rite-config.yml" projects_status_mode) || { echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=error; reason=transformed_invalid'; exit 1; }
+    scratch_parent=${scratch%/*}
+    transformed_mode=$(cd "$scratch" && GIT_CEILING_DIRECTORIES="$scratch_parent" projects_status_mode) || { echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=error; reason=transformed_invalid'; exit 1; }
     [ "$transformed_mode" = explicit ] || { echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=error; reason=transformed_not_explicit'; exit 1; }
     tmp=$(mktemp "${config}.status-role.XXXXXX") || { echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=error; reason=tmp_create_failed'; exit 1; }
     cp -p "$config" "$tmp" || { echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=error; reason=metadata_copy_failed'; exit 1; }
