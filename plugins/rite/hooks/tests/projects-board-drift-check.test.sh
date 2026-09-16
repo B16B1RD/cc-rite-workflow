@@ -195,8 +195,8 @@ assert_file_contains "$DRIFT_SH" 'DUPLICATE\) *target_status="\$TERMINAL_STATUS_
 # label narrow so a failure here points at the assignment, not at the WARNING.
 assert_file_contains "$DRIFT_SH" 'COMPLETED\) *target_status="\$TERMINAL_STATUS_DONE"' \
   "AC-3: COMPLETED が独立した明示アームを持つ"
-assert_file_contains "$DRIFT_SH" '--arg status "\$target_status"' \
-  "reconcile が固定 Done ではなく target_status を渡す"
+assert_file_contains "$DRIFT_SH" '--arg role "\$target_role"' \
+  "reconcile が対象の status_role を渡す"
 assert_file_contains "$DRIFT_SH" 'projectItems' "queries projectItems for board membership"
 # AC-4: projects-enabled gate
 assert_file_contains "$DRIFT_SH" 'PROJECTS_ENABLED' "gates on github.projects.enabled (AC-4)"
@@ -418,7 +418,7 @@ case "$1 $2" in
 SCAN
     else
       cat <<'ITEM'
-{"data":{"repository":{"issue":{"url":"https://github.com/o/r/issues/103","projectItems":{"nodes":[{"id":"ITEM_103","project":{"id":"PROJ_1","number":1},"fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Todo"}]}}]}}}}}
+{"data":{"repository":{"issue":{"state":"CLOSED","stateReason":"COMPLETED","url":"https://github.com/o/r/issues/103","projectItems":{"nodes":[{"id":"ITEM_103","project":{"id":"PROJ_1","number":1},"fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Todo"}]}}]}}}}}
 ITEM
     fi ;;
   "project field-list")
@@ -528,7 +528,7 @@ case "$1 $2" in
 SCAN
     else
       cat <<'ITEM'
-{"data":{"repository":{"issue":{"url":"https://github.com/o/r/issues/103","projectItems":{"nodes":[{"id":"ITEM_103","project":{"id":"PROJ_1","number":1},"fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Todo"}]}}]}}}}}
+{"data":{"repository":{"issue":{"state":"CLOSED","stateReason":"COMPLETED","url":"https://github.com/o/r/issues/103","projectItems":{"nodes":[{"id":"ITEM_103","project":{"id":"PROJ_1","number":1},"fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Todo"}]}}]}}}}}
 ITEM
     fi ;;
   "project field-list")
@@ -583,8 +583,8 @@ case "$1 $2" in
     if printf '%s\n' "$*" | grep -q 'states: CLOSED'; then
       cat "$GH_SCAN_FILE"
     else
-      cat <<'ITEM'
-{"data":{"repository":{"issue":{"url":"https://github.com/o/r/issues/203","projectItems":{"nodes":[{"id":"ITEM_203","project":{"id":"PROJ_1","number":1},"fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Todo"}]}}]}}}}}
+      jq --slurpfile scan "$GH_SCAN_FILE" '.data.repository.issue.stateReason = $scan[0].data.repository.issues.nodes[0].stateReason' <<'ITEM'
+{"data":{"repository":{"issue":{"state":"CLOSED","url":"https://github.com/o/r/issues/203","projectItems":{"nodes":[{"id":"ITEM_203","project":{"id":"PROJ_1","number":1},"fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Todo"}]}}]}}}}}
 ITEM
     fi ;;
   "project field-list")

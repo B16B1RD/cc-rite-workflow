@@ -29,10 +29,10 @@ status_json_args=$(jq -n \
   --arg owner "{owner}" \
   --arg repo "{repo}" \
   --argjson project_number {project_number} \
-  --arg status "Done" \
+  --arg role "done" \
   --argjson auto_add false \
   --argjson non_blocking true \
-  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_role:$role, auto_add:$auto_add, non_blocking:$non_blocking}')
 bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args"
 ```
 
@@ -391,10 +391,10 @@ status_json_args=$(jq -n \
   --arg owner "{owner}" \
   --arg repo "{repo}" \
   --argjson project_number {project_number} \
-  --arg status "Done" \
+  --arg role "done" \
   --argjson auto_add false \
   --argjson non_blocking true \
-  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_role:$role, auto_add:$auto_add, non_blocking:$non_blocking}')
 bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args"
 ```
 
@@ -689,4 +689,3 @@ bash {plugin_root}/hooks/cleanup-work-memory.sh
 **Do NOT delete** the `.rite/work-memory/` directory itself — the script preserves it.
 
 ---
-

@@ -296,12 +296,16 @@ if [ -n "$DRIFT_TSV" ]; then
 
     reconcile_suffix=""
     if [ "$RECONCILE" = "true" ]; then
+      case "$target_status" in
+        "$TERMINAL_STATUS_CANCELLED") target_role="cancelled" ;;
+        "$TERMINAL_STATUS_DONE") target_role="done" ;;
+      esac
       reconcile_err=$(mktemp "${TMPDIR:-/tmp}/rite-board-drift-reconcile-err-XXXXXX") || reconcile_err=""
       reconcile_json=$(bash "$PLUGIN_ROOT/scripts/projects-status-update.sh" "$(jq -n \
         --argjson issue "$issue_number" --arg owner "$REPO_OWNER" --arg repo "$REPO_NAME" \
-        --argjson project_number "$PROJECT_NUMBER" --arg status "$target_status" \
+        --argjson project_number "$PROJECT_NUMBER" --arg role "$target_role" \
         --argjson auto_add false --argjson non_blocking true \
-        '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>"${reconcile_err:-/dev/null}") || reconcile_json=""
+        '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_role:$role, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>"${reconcile_err:-/dev/null}") || reconcile_json=""
       reconcile_result=$(printf '%s' "$reconcile_json" | jq -r '.result // "failed"' 2>/dev/null) || reconcile_result="failed"
       if [ "$reconcile_result" = "updated" ]; then
         RECONCILED=$((RECONCILED + 1))

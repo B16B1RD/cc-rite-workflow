@@ -282,6 +282,21 @@ else fail "expected rc=0 + '(1 rail lines)', got rc=$rc: $output"; fi
 # Identity remains the fast path: when rails are byte-identical the checker
 # already reports "machine rail identical" and we accept that.
 # --------------------------------------------------------------------------
+normalize_open_status_roles() {
+  awk '
+    BEGIN {
+      old_arg = "  --arg status \"In Progress\" \\";
+      new_arg = "  --arg role \"in_progress\" \\";
+      old_payload = "  " sprintf("%c", 39) "{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}" sprintf("%c", 39) ")";
+      new_payload = old_payload;
+      sub(/status_name:\$status/, "status_role:$role", new_payload);
+    }
+    $0 == old_arg { print new_arg; next }
+    $0 == old_payload { print new_payload; next }
+    { print }
+  '
+}
+
 echo "TC-015: open/SKILL.md existing rails preserved vs origin/develop"
 REPO_ROOT_REAL=$(git -C "$PLUGIN_ROOT" rev-parse --show-toplevel 2>/dev/null || echo "")
 if [ -n "$REPO_ROOT_REAL" ] && git -C "$PLUGIN_ROOT" rev-parse --verify -q origin/develop >/dev/null 2>&1; then
@@ -301,7 +316,7 @@ if [ -n "$REPO_ROOT_REAL" ] && git -C "$PLUGIN_ROOT" rev-parse --verify -q origi
       }
       head_rail=$(bash "$TARGET" --repo-root "$REPO_ROOT_REAL" --skill "plugins/rite/skills/open/SKILL.md" --extract-only 2>/dev/null) || head_rail=""
       base_blob=$(git -C "$REPO_ROOT_REAL" show origin/develop:plugins/rite/skills/open/SKILL.md 2>/dev/null) || base_blob=""
-      base_rail=$(printf '%s\n' "$base_blob" | extract_rail)
+      base_rail=$(printf '%s\n' "$base_blob" | extract_rail | normalize_open_status_roles)
       # The worktree plugin-root copy rail was relocated (one bash line
       # replaced by new-path-first dual-read). Drop only the superseded line,
       # matched as a whole line: a substring match would also match the
@@ -365,7 +380,7 @@ if [ -n "${REPO_ROOT_REAL:-}" ] && [ -f "$REPO_ROOT_REAL/plugins/rite/skills/ope
     rail=$(printf '%s\n' "$rail" | grep -Fv 'GUARD (#1595)' || true) # drift-check-ignore
     rail=$(printf '%s\n' "$rail" | grep -Fxv '| `create_new` | branch も worktree もなし → `git worktree add --no-track -b "{branch}" "{path}" "origin/{base_branch}"`（`--no-track`: sandbox 有効環境で `branch.autoSetupMerge` の tracking 書込が `.git/config` 拒否に当たるのを回避。branch は origin 起点のまま tracking だけ張らない — Issue #1894） |' || true) # drift-check-ignore
     rail=$(printf '%s\n' "$rail" | grep -Fxv '| `interactive` | AskUserQuestion で「この計画で実装開始 / 計画を修正 / 中止」を選択（standalone。従来どおり。AC-4 回帰なし） |' || true)
-    printf '%s\n' "$rail"
+    printf '%s\n' "$rail" | normalize_open_status_roles
   }
   first_unmatched_base_line() {
     awk '
@@ -381,6 +396,8 @@ if [ -n "${REPO_ROOT_REAL:-}" ] && [ -f "$REPO_ROOT_REAL/plugins/rite/skills/ope
   CREATE_NEW_CUR='| `create_new` | branch も worktree もなし → `git worktree add --no-track -b "{branch}" "{path}" "origin/{base_branch}"`（`--no-track`: sandbox 有効環境で `branch.autoSetupMerge` の tracking 書込が `.git/config` 拒否に当たるのを回避。branch は origin 起点のまま tracking だけ張らない） |'
   PLUGIN_ROOT_CUR_IF='if [ -f "$repo_root/.rite/plugin-root" ] || [ -f "$repo_root/.rite-plugin-root" ]; then'
   PLUGIN_ROOT_CUR_CP='    cp "$repo_root/.rite-plugin-root" "$wt_path/.rite/plugin-root" 2>/dev/null || true'
+  STATUS_ROLE_CUR='  --arg role "in_progress" \'
+  STATUS_PAYLOAD_CUR="  '{issue_number:\$issue, owner:\$owner, repo:\$repo, project_number:\$project_number, status_role:\$role, auto_add:\$auto_add, non_blocking:\$non_blocking}')"
   CREATE_NEW_OLD='| `create_new` | branch も worktree もなし → `git worktree add --no-track -b "{branch}" "{path}" "origin/{base_branch}"`（`--no-track`: sandbox 有効環境で `branch.autoSetupMerge` の tracking 書込が `.git/config` 拒否に当たるのを回避。branch は origin 起点のまま tracking だけ張らない — Issue #1894） |' # drift-check-ignore
   PLUGIN_ROOT_OLD='[ -f "$repo_root/.rite-plugin-root" ] && cp "$repo_root/.rite-plugin-root" "$wt_path/.rite-plugin-root" 2>/dev/null || true'
 
@@ -391,7 +408,9 @@ if [ -n "${REPO_ROOT_REAL:-}" ] && [ -f "$REPO_ROOT_REAL/plugins/rite/skills/ope
 
   if printf '%s\n' "$pin_base" | grep -Fxq "$CREATE_NEW_CUR" \
     && printf '%s\n' "$pin_base" | grep -Fxq "$PLUGIN_ROOT_CUR_IF" \
-    && printf '%s\n' "$pin_base" | grep -Fxq "$PLUGIN_ROOT_CUR_CP"; then
+    && printf '%s\n' "$pin_base" | grep -Fxq "$PLUGIN_ROOT_CUR_CP" \
+    && printf '%s\n' "$pin_base" | grep -Fxq "$STATUS_ROLE_CUR" \
+    && printf '%s\n' "$pin_base" | grep -Fxq "$STATUS_PAYLOAD_CUR"; then
     pass "replacement rows remain in the pin after exact exclusion"
   else
     fail "replacement rows were dropped by exact exclusion"

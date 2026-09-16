@@ -380,10 +380,10 @@ status_json_args=$(jq -n \
   --arg owner "{owner}" \
   --arg repo "{repo}" \
   --argjson project_number {project_number} \
-  --arg status "In Progress" \
+  --arg role "in_progress" \
   --argjson auto_add true \
   --argjson non_blocking true \
-  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_role:$role, auto_add:$auto_add, non_blocking:$non_blocking}')
 # `|| status_json=""` は付けない — このブロックに set -e はなく、command substitution は
 # script が非ゼロ終了しても stdout (script が既に出力した失敗理由入り JSON) を正しく capture
 # するため、fallback を付けるとその診断情報を空文字列で上書き・破棄してしまう

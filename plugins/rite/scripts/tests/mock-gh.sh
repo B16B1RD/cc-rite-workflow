@@ -115,6 +115,10 @@ case "$1" in
         printf '{"id": "%s", "title": "Mock Project"}\n' "$MOCK_PROJECT_ID"
         ;;
       field-list)
+        if [ -n "${MOCK_PSU_FIELDS_JSON:-}" ]; then
+          printf '%s\n' "$MOCK_PSU_FIELDS_JSON"
+          exit 0
+        fi
         # New: `gh project field-list PROJECT_NUMBER --owner OWNER --format json`
         # Used by projects-status-update.sh to resolve Status field + option ids.
         if [ "$SCENARIO" = "psu_field_list_fail" ]; then
@@ -133,7 +137,9 @@ FLJSON
 FLJSON
           exit 0
         fi
-        cat <<'FLJSON'
+        jq --arg field "${MOCK_STATUS_FIELD_NAME:-Status}" \
+          --argjson options "${MOCK_STATUS_OPTIONS:-null}" \
+          '.fields[0].name = $field | if $options != null then .fields[0].options = $options else . end' <<'FLJSON'
 {
   "fields": [
     {"id": "FIELD_STATUS", "name": "Status", "options": [
@@ -462,12 +468,19 @@ EOJSON
                 printf '{"id":"%s","project":{"id":"%s","number":6},"fieldValues":{"nodes":[{"name":"High","field":{"name":"Priority"}}]}}' "$MOCK_ITEM_ID" "$MOCK_PROJECT_ID"
                 ;;
               *)
-                printf '{"id":"%s","project":{"id":"%s","number":6},"fieldValues":{"nodes":[{"name":"%s","field":{"name":"Status"}}]}}' "$MOCK_ITEM_ID" "$MOCK_PROJECT_ID" "$kind"
+                jq -cn --arg id "$MOCK_ITEM_ID" --arg project "$MOCK_PROJECT_ID" \
+                  --arg name "${MOCK_CURRENT_STATUS:-$kind}" --arg field "${MOCK_STATUS_FIELD_NAME:-Status}" \
+                  --argjson values "${MOCK_PSU_FIELD_VALUES_JSON:-null}" \
+                  '{id:$id,project:{id:$project,number:6},fieldValues:{nodes:($values // [{name:$name,field:{name:$field}}])}}'
                 ;;
             esac
           }
           _psu_issue() {
-            printf '{"data":{"repository":{"issue":{"url":"https://github.com/test-owner/test-repo/issues/%s","projectItems":{"nodes":[%s]}}}}}\n' "$MOCK_ISSUE_NUMBER" "$1"
+            jq -cn --arg number "$MOCK_ISSUE_NUMBER" --argjson nodes "[$1]" \
+              --arg state "${MOCK_PSU_STATE:-OPEN}" --arg reason "${MOCK_PSU_REASON:-null}" \
+              '{data:{repository:{issue:{url:("https://github.com/test-owner/test-repo/issues/"+$number),
+                state:$state,stateReason:(if $reason=="null" then null else $reason end),projectItems:{nodes:$nodes}}}}}' |
+              jq 'if env.MOCK_PSU_REASON_MISSING == "true" then del(.data.repository.issue.stateReason) else . end'
           }
 
           # Determine scenario-dependent response shape.
@@ -490,7 +503,7 @@ EOJSON
               # - psu_not_in_project: auto_add=false, script stops
               # - psu_auto_add_fail: auto_add=true, script tries item-add which then fails
               # - psu_auto_add_requery_empty: auto_add=true, item-add succeeds, re-query empty
-              printf '{"data":{"repository":{"issue":{"url":"https://github.com/test-owner/test-repo/issues/%s","projectItems":{"nodes":[]}}}}}\n' "$MOCK_ISSUE_NUMBER"
+              _psu_issue ""
               exit 0
               ;;
             psu_auto_add_then_ok)
@@ -505,7 +518,7 @@ EOJSON
                 _psu_issue "$(_psu_node Todo)"
               else
                 echo "1" > "$state_file"
-                printf '{"data":{"repository":{"issue":{"url":"https://github.com/test-owner/test-repo/issues/%s","projectItems":{"nodes":[]}}}}}\n' "$MOCK_ISSUE_NUMBER"
+                _psu_issue ""
               fi
               exit 0
               ;;
