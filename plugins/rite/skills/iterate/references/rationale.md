@@ -1,5 +1,7 @@
 # /rite:iterate — 設計理由
 
+counter reset・fresh run の説明は `review_run` がない legacy state に限る。診断履歴を持つ現在の run は [停滞診断](../../../references/review-stagnation.md) に従い、完了・停止・recoverでも counter と観測・見直し履歴を維持する。
+
 `skills/iterate/SKILL.md` から退避した rationale（設計理由・背景・過去の障害）。本体は各該当箇所に
 `rationale: references/rationale.md#<anchor>` の 1 行ポインタだけを残す。
 

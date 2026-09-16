@@ -452,6 +452,8 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 ### review-cycle の再開
 
+`review_run` がある場合は [停滞診断の回復規則](../../references/review-stagnation.md) を先に適用する。未閉の時計区間は中断として閉じ、保存済み区間の再送では時刻を変更しない。観測・修正・見直し履歴と counter は保持する。`current_decision.action=stop` は同じ停止理由を返し、再設計・counter reset・新 run 作成で迂回しない。保存済み観測がない completed cycle は pr-review の停滞観測保存へ戻る。
+
 `phase=review` では自セッションの `flow-state.sh get --jq-filter .` を読み、`review_cycle.review_context` の PR / HEAD を現在値と照合する。不一致・破損は理由を出して停止し、別 session の結果を流用しない。
 
 | 状態 | 再開位置 |
