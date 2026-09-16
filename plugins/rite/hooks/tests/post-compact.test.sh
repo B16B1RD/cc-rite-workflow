@@ -924,6 +924,60 @@ else
   fail "expected skip + post_compact_status_config_unavailable (helper=$([ -f "$recon_dir/status-update-call.json" ] && echo called || echo not-called)); stderr: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
 fi
 
+# TC-RECON-17: an invalid Status configuration (a role list missing the required
+# progress roles) must degrade to a WARNING + skip before the board is read, exit 0,
+# and never reach the reconcile helper. The resolver validates the whole config on
+# every query, so the field-candidate lookup is the arm that fires; the WARNING has
+# to carry the resolver's own diagnostic, or the operator is told the config is
+# invalid without being told why.
+echo "TC-RECON-17: invalid Status configuration → WARNING + skip before the board read, exit 0"
+recon_dir=$(_setup_recon_env "config-invalid" "ready_board_file" "updated" "" "yes")
+# The board read is `gh api graphql`; leave a marker on it so "stopped before the board
+# read" is an observed absence, not an inference from the diagnostics that happen to be
+# silent when the candidate list is empty.
+sed -i 's|"api graphql") |"api graphql") touch "$(dirname "$0")/../graphql-called"; |' "$recon_dir/bin/gh"
+cat > "$recon_dir/rite-config.yml" <<'YAML'
+github:
+  projects:
+    enabled: true
+    project_number: 1
+    fields:
+      status:
+        options:
+          - { role: todo, name: "To-Do" }
+YAML
+recon_stderr="$(mktemp "$TEST_DIR/recon-config-invalid-stderr.XXXXXX")"
+set +e
+echo "{\"cwd\": \"$recon_dir\", \"source\": \"auto\"}" \
+  | env PATH="$recon_dir/bin:$PATH" RITE_TEST_BOARD_STATUS="To-Do" bash "$recon_dir/plugin/hooks/post-compact.sh" >/dev/null 2>"$recon_stderr"
+config_invalid_rc=$?
+set -e
+if [ "$config_invalid_rc" -eq 0 ]; then
+  pass "hook exits 0 when the Status configuration is invalid"
+else
+  fail "hook exited $config_invalid_rc when the Status configuration is invalid; stderr: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+fi
+if [ -f "$recon_dir/pr-view-called" ]; then
+  pass "reconciliation block reached gh pr view for the config-invalid fixture"
+else
+  fail "config-invalid fixture never reached gh pr view — the absence asserts below would be vacuous"
+fi
+if [ ! -f "$recon_dir/status-update-call.json" ] && grep -q 'post_compact_status_config_invalid' "$recon_stderr"; then
+  pass "reconcile skipped with the post_compact_status_config_invalid WARNING"
+else
+  fail "expected skip + post_compact_status_config_invalid (helper=$([ -f "$recon_dir/status-update-call.json" ] && echo called || echo not-called)); stderr: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+fi
+if grep 'post_compact_status_config_invalid' "$recon_stderr" | grep -q 'stderr=ERROR: github.projects.fields.status:'; then
+  pass "the WARNING carries the resolver's config diagnostic"
+else
+  fail "expected the resolver diagnostic inside the WARNING line; stderr: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+fi
+if [ ! -f "$recon_dir/graphql-called" ]; then
+  pass "the hook stopped before reading the board (gh api graphql never called)"
+else
+  fail "the hook went on to read the board despite the invalid config; stderr: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+fi
+
 # TC-RECON-12: the gh mocks must answer `pr view` through real jq, not a literal.
 # Static guard on this file itself. Without it the mocks can drift back to
 # `echo "false"`, and every runtime TC above would keep passing while the hook's
