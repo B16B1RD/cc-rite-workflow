@@ -33,8 +33,8 @@ echo "=== T-01: 着手前中止で NOT_PLANNED と Cancelled が両方適用さ�
 # 表セルにも一致し、Phase 6 の実行行から --reason を落としても緑のまま通る (T-03 と同じ規則)。
 assert_grep "T-01 closes the Issue with --reason \"not planned\"" "$SKILL" \
   '^if gh issue close .*--reason "not planned"'
-assert_grep "T-01 writes Cancelled as the board Status" "$SKILL" \
-  '\-\-arg status "Cancelled"'
+assert_grep "T-01 requests the cancelled board Status role" "$SKILL" \
+  '\-\-arg role "cancelled"'
 # 理由コメントは close と同一コールに載る (理由なしクローズの窓を作らない)。
 assert_grep "T-01 the close call carries the reason as a comment" "$SKILL" \
   '\-\-comment "🚫 この Issue を中止しました'
@@ -226,7 +226,7 @@ echo "=== T-03: gh pr close が Projects Status 更新より先に呼ばれる (
 # コマンド名だけで拾うと散文の出現順を測ってしまい、bash 側が入れ替わっても緑のままになる。
 # 実行行は fenced bash 内の `if gh ...` という固定の形なので、そこにアンカーする。
 _pr_close_line=$(_first_line "$SKILL" '^if gh pr close')
-_status_line=$(_first_line "$SKILL" '\-\-arg status "Cancelled"')
+_status_line=$(_first_line "$SKILL" '\-\-arg role "cancelled"')
 if [ -n "$_pr_close_line" ] && [ -n "$_status_line" ]; then
   if [ "$_pr_close_line" -lt "$_status_line" ]; then
     pass "T-03 gh pr close precedes the Cancelled Status write"
@@ -504,7 +504,7 @@ assert_grep "T-09 states the delegation rule explicitly" "$SKILL" \
 echo "=== T-10: Cancelled の子を含む親を Done へ更新しない (AC-10) ==="
 # 親 Done 更新は archive-procedures.md §3.7 にのみ存在する手順で、共有 helper ではない。
 # issue-cancel が配線しないこと自体が AC-10 の充足条件なので、Done を書く経路の不在を pin する。
-assert_not_grep "T-10 never writes Done to any board row" "$SKILL" '\-\-arg status "Done"'
+assert_not_grep "T-10 never requests the done role for any board row" "$SKILL" '\-\-arg role "done"'
 assert_not_grep "T-10 does not reference the parent auto-close procedure" "$SKILL" 'archive-procedures'
 assert_not_grep "T-10 does not touch the parent tasklist" "$SKILL" 'parent_issue_number'
 assert_grep "T-10 states the non-propagation rule" "$SKILL" '親 Issue には伝播しない'

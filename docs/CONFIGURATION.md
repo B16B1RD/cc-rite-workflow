@@ -26,11 +26,11 @@ github:
       status:
         enabled: true
         options:
-          - { name: "Todo", default: true }
-          - { name: "In Progress" }
-          - { name: "In Review" }
-          - { name: "Done" }
-          - { name: "Cancelled" }
+          - { role: todo, name: "Todo" }
+          - { role: in_progress, name: "In Progress" }
+          - { role: in_review, name: "In Review" }
+          - { role: done, name: "Done" }
+          - { role: cancelled, name: "Cancelled" }
       priority:
         enabled: true
         options:
@@ -257,6 +257,8 @@ github:
 - If not specified, the field ID is auto-detected via `gh project field-list`
 - Partial specification is supported: if only `status` is specified, `priority` and `complexity` will be auto-detected (if enabled in `fields`)
 
+For Status updates through `projects-status-update.sh`, a supplied `status_field_id_hint` is checked against the field resolved by name. It does not skip field discovery; a mismatch fails without editing the board item.
+
 **Finding field IDs:**
 
 Run the following command (replace `1` with your project number and `myorg` with your owner):
@@ -274,7 +276,17 @@ Each field can have:
 | Field | Type | Description |
 |-------|------|-------------|
 | `enabled` | boolean | Enable this field |
-| `options` | array | List of options with `name` and optional `default: true` |
+| `options` | array | Status uses `role` and `name` as described below; other fields use `name` and optional `default: true` |
+
+**Status role configuration:**
+
+`projects-status-update.sh` resolves workflow roles from `github.projects.fields.status.options`. With no `role` keys (including missing Status options), legacy mode maps `todo`, `in_progress`, `in_review`, `done`, and `cancelled` to the English names `Todo`, `In Progress`, `In Review`, `Done`, and `Cancelled`. Legacy option names do not change that mapping. A missing or unreadable `rite-config.yml` is an error.
+
+Adding any `role` key enables explicit mode. Define each required role (`todo`, `in_progress`, `in_review`, `done`) exactly once; `cancelled` is optional. Each option must be a single-line flow mapping in the form `{ role: todo, name: "未着手" }`; `name` may also be unquoted. Block mappings, single-quoted names, multiline scalars, anchors, aliases, and other YAML forms are unsupported. Mixed entries with and without roles, duplicate roles or names, unknown roles, missing required roles, empty names, and unsupported syntax are configuration errors. Status has no `default: true` option; `todo` identifies its initial role.
+
+The Status field name can be set with `github.projects.fields.status.name`. An explicit name requires an exact match; without it, the helper tries `ステータス` and then `Status`. Option names must exactly match the configured role's display name.
+
+The helper accepts only `status_role` for the destination. A supplied `status_name` (even alongside `status_role`) or an unknown role is invalid input and exits 1 regardless of `non_blocking`. Requesting an omitted `cancelled` role in explicit mode returns `skipped_role_unmapped` with exit 0, no warning, and no board write. A configured role whose option is missing on the board is a failure.
 
 **Standard fields:**
 

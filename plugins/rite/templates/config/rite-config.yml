@@ -17,11 +17,11 @@ github:
         enabled: true
         # name: "ステータス"   # optional: actual Status field name in the Project
         options:
-          - { name: "Todo", default: true }
-          - { name: "In Progress" }
-          - { name: "In Review" }
-          - { name: "Done" }
-          - { name: "Cancelled" }
+          - { role: todo, name: "Todo" }
+          - { role: in_progress, name: "In Progress" }
+          - { role: in_review, name: "In Review" }
+          - { role: done, name: "Done" }
+          - { role: cancelled, name: "Cancelled" }
       priority:
         enabled: true
         # name: "優先度"       # optional: actual Priority field name in the Project
