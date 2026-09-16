@@ -198,6 +198,21 @@ rite 管理 5 つとの和集合を送り、既存には `id` を付けて ident
 4 件リテラルへフォールバックするとユーザー定義 option が無言で消えるため、mutation せず
 fail-loud する。
 
+provisioning は setup がその場で新規作成した Project に限定する。既存 Project は利用者の運用中
+スキーマであり、足りない field / option を setup が補うと、意図した表示名と標準名が並存する。
+既存 Project では設定名の完全一致だけを検証し、不足名と実 option 名を表示して停止する。
+
+Phase 3 は config 生成より前に走るため、既存 `rite-config.yml` があれば resolver を使い、まだ
+存在しなければ legacy の標準 5 role と既定フィールド候補を使う。config 不在を invalid として
+扱うと、新規導入で既存 Project を選ぶ正規経路が必ず停止するためである。
+
+## status-options-role-migration
+
+legacy 配列には role が無く、表示名から利用者の意図を復元できない。`--upgrade` は配列の内容や
+要素数を解釈せず英語標準 5 role へ置換する。これにより、設定が 4 行でも実ボードが 5 列ある
+環境で cancelled を誤って省略しない。既に explicit な設定は利用者の対応付けなので保持し、
+invalid 設定は一部だけを書き換えず backup を残して停止する。
+
 ## ssh-alias-sandbox
 
 本問題は SSH alias remote + sandbox の組合せだけで起きる。`multi_session` の有無には依存

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# setup Phase 3.4 Status option union provisioning.
-# SKILL.md から bash を抽出して mock gh で実行する（コピーは SKILL.md との drift を生む）。
+# setup の新規 Project provisioning、既存 Project 検証、role 設定移行。
+# SKILL.md から bash を抽出して実行する（コピーは SKILL.md との drift を生む）。
 # 抽出失敗は skip せず exit 1（CI が緑のまま残らないようにする）。
 set -uo pipefail
 
@@ -8,36 +8,50 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_test-helpers.sh"
 
 SKILL="$SCRIPT_DIR/../../skills/setup/SKILL.md"
+PLUGIN_ROOT="$SCRIPT_DIR/../.."
 assert_file_exists_or_fail "setup/SKILL.md exists" "$SKILL" || {
   print_summary "$(basename "$0")" "setup SKILL.md missing" || exit 1
   exit 1
 }
 
-extract_provision_bash() {
-  awk '
+extract_marked_bash() {
+  awk -v marker="$1" '
     /^```bash$/ { fence=1; buf=""; next }
     fence && /^```$/ {
-      if (buf ~ /STATUS_OPTION_UNION_PROVISION/) { printf "%s", buf; found=1; exit }
+      if (buf ~ marker) { printf "%s", buf; found=1; exit }
       fence=0; buf=""
       next
     }
     fence { buf = buf $0 "\n" }
-    END { if (!found && buf ~ /STATUS_OPTION_UNION_PROVISION/) printf "%s", buf }
+    END { if (!found && buf ~ marker) printf "%s", buf }
   ' "$SKILL"
 }
 
-SNIPPET_RAW=$(extract_provision_bash)
+SNIPPET_RAW=$(extract_marked_bash STATUS_OPTION_UNION_PROVISION)
 if ! printf '%s' "$SNIPPET_RAW" | grep -q 'STATUS_OPTION_UNION_PROVISION'; then
   echo "FAIL: SKILL.md からの STATUS_OPTION_UNION_PROVISION block 抽出に失敗しました" >&2
   echo "  抽出結果: $(printf '%s' "$SNIPPET_RAW" | wc -l) 行" >&2
   exit 1
 fi
+VERIFY_RAW=$(extract_marked_bash STATUS_OPTION_EXISTING_VERIFY)
+MIGRATION_RAW=$(extract_marked_bash STATUS_OPTIONS_ROLE_MIGRATION)
+for marker in STATUS_OPTION_EXISTING_VERIFY STATUS_OPTIONS_ROLE_MIGRATION; do
+  raw_var=VERIFY_RAW; [ "$marker" = STATUS_OPTIONS_ROLE_MIGRATION ] && raw_var=MIGRATION_RAW
+  if ! printf '%s' "${!raw_var}" | grep -q "$marker"; then
+    echo "FAIL: SKILL.md からの $marker block 抽出に失敗しました" >&2
+    exit 1
+  fi
+done
 
 WORKDIR=$(make_plain_sandbox)
 MOCKBIN="$WORKDIR/bin"
 mkdir -p "$MOCKBIN"
 SNIPPET="$WORKDIR/provision.sh"
 printf '%s' "$SNIPPET_RAW" | sed -e 's/{owner}/test-owner/g' -e 's/{project-number}/11/g' > "$SNIPPET"
+VERIFY="$WORKDIR/verify.sh"
+printf '%s' "$VERIFY_RAW" | sed -e "s|{plugin_root}|$PLUGIN_ROOT|g" -e 's/{owner}/test-owner/g' -e 's/{project-number}/11/g' > "$VERIFY"
+MIGRATION="$WORKDIR/migrate.sh"
+printf '%s' "$MIGRATION_RAW" | sed -e "s|{plugin_root}|$PLUGIN_ROOT|g" > "$MIGRATION"
 
 cat > "$MOCKBIN/gh" <<'MOCK'
 #!/usr/bin/env bash
@@ -120,21 +134,21 @@ mutation_count() {
   fi
 }
 
-echo "=== T-static-cancelled: Phase 3.4 required 5 組 (name/color/description) ==="
+echo "=== T-static-cancelled: 新規 Project provisioning の required 5 組 ==="
 assert_grep_in_section "T-static Todo/GRAY/Not started" "$SKILL" \
-  'STATUS_OPTION_UNION_PROVISION' '^## Phase 3.5' \
+  'STATUS_OPTION_UNION_PROVISION' '^### 3.4' \
   '"name":"Todo","color":"GRAY","description":"Not started"'
 assert_grep_in_section "T-static In Progress/YELLOW" "$SKILL" \
-  'STATUS_OPTION_UNION_PROVISION' '^## Phase 3.5' \
+  'STATUS_OPTION_UNION_PROVISION' '^### 3.4' \
   '"name":"In Progress","color":"YELLOW","description":"Work in progress"'
 assert_grep_in_section "T-static In Review/BLUE" "$SKILL" \
-  'STATUS_OPTION_UNION_PROVISION' '^## Phase 3.5' \
+  'STATUS_OPTION_UNION_PROVISION' '^### 3.4' \
   '"name":"In Review","color":"BLUE","description":"Under review"'
 assert_grep_in_section "T-static Done/GREEN" "$SKILL" \
-  'STATUS_OPTION_UNION_PROVISION' '^## Phase 3.5' \
+  'STATUS_OPTION_UNION_PROVISION' '^### 3.4' \
   '"name":"Done","color":"GREEN","description":"Completed"'
 assert_grep_in_section "T-static Cancelled/GRAY" "$SKILL" \
-  'STATUS_OPTION_UNION_PROVISION' '^## Phase 3.5' \
+  'STATUS_OPTION_UNION_PROVISION' '^### 3.4' \
   '"name":"Cancelled","color":"GRAY","description":"Cancelled \(not planned\)"'
 
 echo "=== T-no-replace-fallback: 旧 id 無し 4 要素 GraphQL 全置換フェンスが無い ==="
@@ -280,7 +294,119 @@ else
   fail "T-idempotent missing noop marker: $(cat "$d_noop/stdout")"
 fi
 
-if ! print_summary "$(basename "$0")" "setup Status option union provision"; then
+echo "=== T-existing-verify: explicit 4 role の既存 Project は検証のみ、schema mutation 0 ==="
+d_verify="$WORKDIR/verify-ok"
+mkdir -p "$d_verify"
+printf '%s\n' "$status_field_list" > "$d_verify/field-list.json"
+printf '%s\n' '{"data":{"node":{"options":[{"name":"To-Do"},{"name":"In progress"},{"name":"In Review"},{"name":"Done"}]}}}' > "$d_verify/options.json"
+cat > "$d_verify/rite-config.yml" <<'YAML'
+github:
+  projects:
+    fields:
+      status:
+        options:
+          - { role: todo, name: "To-Do" }
+          - { role: in_progress, name: "In progress" }
+          - { role: in_review, name: "In Review" }
+          - { role: done, name: "Done" }
+YAML
+rc=$(cd "$d_verify" && MOCK_GH_DIR="$d_verify" PATH="$MOCKBIN:$PATH" bash "$VERIFY" >stdout 2>stderr && echo 0 || echo $?)
+assert "T-existing-verify exits 0" "0" "$rc"
+assert "T-existing-verify mutation zero" "0" "$(mutation_count "$d_verify")"
+assert "T-existing-verify field-create zero" "0" "$(grep -c 'project field-create' "$d_verify/calls" || true)"
+assert_grep "T-existing-verify emits ok" "$d_verify/stdout" 'STATUS_OPTIONS_VERIFY=ok'
+
+echo "=== T-existing-missing: 不足名と実 option 一覧を出して変更せず停止 ==="
+d_missing="$WORKDIR/verify-missing"
+mkdir -p "$d_missing"
+printf '%s\n' "$status_field_list" > "$d_missing/field-list.json"
+printf '%s\n' '{"data":{"node":{"options":[{"name":"Todo"},{"name":"In Progress"},{"name":"In Review"},{"name":"Done"}]}}}' > "$d_missing/options.json"
+cat > "$d_missing/rite-config.yml" <<'YAML'
+github:
+  projects:
+    fields:
+      status:
+        options:
+          - { role: todo, name: "Todo" }
+          - { role: in_progress, name: "In Progress" }
+          - { role: in_review, name: "Review" }
+          - { role: done, name: "Done" }
+YAML
+rc=$(cd "$d_missing" && MOCK_GH_DIR="$d_missing" PATH="$MOCKBIN:$PATH" bash "$VERIFY" >stdout 2>stderr && echo 0 || echo $?)
+assert "T-existing-missing exits non-zero" "1" "$rc"
+assert "T-existing-missing mutation zero" "0" "$(mutation_count "$d_missing")"
+assert_grep "T-existing-missing marker includes missing Review" "$d_missing/stdout" 'STATUS_OPTIONS_VERIFY=error; missing=\["Review"\]'
+assert_grep "T-existing-missing marker includes available names" "$d_missing/stdout" 'available=\["Todo","In Progress","In Review","Done"\]'
+
+echo "=== T-existing-legacy-no-cancelled: 未生成 config は標準5 role、2案を表示 ==="
+d_legacy_verify="$WORKDIR/verify-legacy"
+mkdir -p "$d_legacy_verify"
+printf '%s\n' "$status_field_list" > "$d_legacy_verify/field-list.json"
+printf '%s\n' "$opt4" > "$d_legacy_verify/options.json"
+rc=$(cd "$d_legacy_verify" && MOCK_GH_DIR="$d_legacy_verify" PATH="$MOCKBIN:$PATH" bash "$VERIFY" >stdout 2>stderr && echo 0 || echo $?)
+assert "T-existing-legacy-no-cancelled exits non-zero" "1" "$rc"
+assert "T-existing-legacy-no-cancelled mutation zero" "0" "$(mutation_count "$d_legacy_verify")"
+assert_grep "T-existing-legacy-no-cancelled suggests board column" "$d_legacy_verify/stderr" 'Cancelled を追加'
+assert_grep "T-existing-legacy-no-cancelled suggests explicit config" "$d_legacy_verify/stderr" 'cancelled を省略した explicit role 設定'
+
+echo "=== T-upgrade-role-migration: legacy は5 role化、explicit不変、invalid無変更 ==="
+d_migrate="$WORKDIR/migrate-legacy"
+mkdir -p "$d_migrate"
+cat > "$d_migrate/rite-config.yml" <<'YAML'
+github:
+  projects:
+    fields:
+      status:
+        enabled: true
+        options:
+          - { name: "Todo", default: true }
+          - { name: "In Progress" }
+          - { name: "In Review" }
+          - { name: "Done" }
+      priority:
+        enabled: true
+YAML
+rc=$(cd "$d_migrate" && bash "$MIGRATION" >stdout 2>stderr && echo 0 || echo $?)
+assert "T-upgrade legacy exits 0" "0" "$rc"
+assert "T-upgrade legacy has five roles" "5" "$(grep -c 'role:' "$d_migrate/rite-config.yml")"
+assert_not_grep "T-upgrade legacy removes status default" "$d_migrate/rite-config.yml" 'name: "Todo", default: true'
+assert_grep "T-upgrade legacy adds cancelled" "$d_migrate/rite-config.yml" 'role: cancelled, name: "Cancelled"'
+
+d_explicit="$WORKDIR/migrate-explicit"
+mkdir -p "$d_explicit"
+cat > "$d_explicit/rite-config.yml" <<'YAML'
+github:
+  projects:
+    fields:
+      status:
+        options:
+          - { role: todo, name: "To-Do" }
+          - { role: in_progress, name: "In progress" }
+          - { role: in_review, name: "Review" }
+          - { role: done, name: "Complete" }
+YAML
+before=$(cksum "$d_explicit/rite-config.yml")
+rc=$(cd "$d_explicit" && bash "$MIGRATION" >stdout 2>stderr && echo 0 || echo $?)
+assert "T-upgrade explicit exits 0" "0" "$rc"
+assert "T-upgrade explicit unchanged" "$before" "$(cksum "$d_explicit/rite-config.yml")"
+
+d_invalid="$WORKDIR/migrate-invalid"
+mkdir -p "$d_invalid"
+cat > "$d_invalid/rite-config.yml" <<'YAML'
+github:
+  projects:
+    fields:
+      status:
+        options:
+          - { role: todo, name: "Todo" }
+          - { name: "In Progress" }
+YAML
+before=$(cksum "$d_invalid/rite-config.yml")
+rc=$(cd "$d_invalid" && bash "$MIGRATION" >stdout 2>stderr && echo 0 || echo $?)
+assert "T-upgrade invalid exits non-zero" "1" "$rc"
+assert "T-upgrade invalid unchanged" "$before" "$(cksum "$d_invalid/rite-config.yml")"
+
+if ! print_summary "$(basename "$0")" "setup Status option provisioning / verification / role migration"; then
   exit 1
 fi
 exit 0

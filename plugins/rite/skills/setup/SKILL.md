@@ -262,6 +262,8 @@ Select with AskUserQuestion:
 
 どちらを選んでも、Project 番号確定後に 3.3.5（`gh project link`）を必ず実行する（既存 Project 選択時は 3.3 をスキップして 3.3.5 へ進む）。
 
+選択結果を `project_selection=new|existing` として会話コンテキストに保持する。3.3.5 後の分岐はこの値だけで決め、既存 Project を新規作成経路へ流さない。
+
 ### 3.3 If Creating New
 
 ```bash
@@ -283,7 +285,12 @@ fi
 
 link 失敗（権限不足・API エラー等）は WARNING と上記の手動コマンド案内のみで、setup 全体は停止せず次の Phase へ続行する。
 
-### 3.4 Verify and Configure Fields
+- `project_selection=new` → 3.3.6 へ
+- `project_selection=existing` → 3.4 へ
+
+### 3.3.6 Configure Fields on the Newly Created Project
+
+**`project_selection=new` のときだけ実行する。** setup が今回作成した Project に必要なフィールドと Status option を作る。既存 Project では本節を実行しない。
 
 ```bash
 gh project field-list {project-number} --owner {owner} --format json
@@ -388,6 +395,43 @@ echo "[CONTEXT] STATUS_OPTIONS_PROVISION=updated; added=$(printf '%s' "$missing"
 1. `gh project field-list` の Status options に `Cancelled` がある
 2. setup 実行前からあった rite 管理外 option が残っている
 3. 既に 5 option がある board への再実行は `STATUS_OPTIONS_PROVISION=noop`（mutation なし）
+
+完了後は Phase 3.5 へ進む。
+
+### 3.4 Verify Fields on an Existing Project
+
+**`project_selection=existing` のときだけ実行する。** 既存 Project には `field-create` も `updateProjectV2Field` も発行しない。既存の `rite-config.yml` が読める場合は共有 resolver の設定（legacy / explicit）を使い、未生成の場合は legacy の標準 5 role とフィールド候補 `ステータス` → `Status` を使う。フィールド名と option 名は完全一致で検証する。
+
+```bash
+# STATUS_OPTION_EXISTING_VERIFY
+plugin_root="{plugin_root}"; owner="{owner}"; project_number="{project-number}"
+source "$plugin_root/hooks/scripts/lib/projects-status-config.sh"
+roles=(todo in_progress in_review done cancelled); required=(); candidates=()
+if [ -r rite-config.yml ]; then
+  mode=$(projects_status_mode) || { echo '[CONTEXT] STATUS_OPTIONS_VERIFY=error; reason=invalid_config'; exit 1; }
+  mapfile -t candidates < <(projects_status_field_candidates) || exit 1
+  for role in "${roles[@]}"; do name=$(projects_status_name_for_role "$role") || exit 1; [ -n "$name" ] && required+=("$name"); done
+else
+  mode=legacy; candidates=("ステータス" "Status"); required=("Todo" "In Progress" "In Review" "Done" "Cancelled")
+fi
+field_list=$(gh project field-list "$project_number" --owner "$owner" --format json) || { echo '[CONTEXT] STATUS_OPTIONS_VERIFY=error; reason=field_list_failed'; exit 1; }
+status_field_id=""; for candidate in "${candidates[@]}"; do status_field_id=$(printf '%s' "$field_list" | jq -r --arg n "$candidate" '.fields[]? | select(.name==$n) | .id' | head -1); [ -n "$status_field_id" ] && [ "$status_field_id" != null ] && break; done
+available_fields=$(printf '%s' "$field_list" | jq -c '[.fields[]?.name]')
+[ -n "$status_field_id" ] && [ "$status_field_id" != null ] || { echo "ERROR: configured Status field not found; available=$available_fields" >&2; echo "[CONTEXT] STATUS_OPTIONS_VERIFY=error; reason=status_field_missing; missing=[]; available=$available_fields"; exit 1; }
+options_json=$(gh api graphql -f query='query($id: ID!) { node(id: $id) { ... on ProjectV2SingleSelectField { options { name } } } }' -f id="$status_field_id") || { echo '[CONTEXT] STATUS_OPTIONS_VERIFY=error; reason=options_query_failed'; exit 1; }
+available=$(printf '%s' "$options_json" | jq -c '.data.node.options | map(.name)') || { echo '[CONTEXT] STATUS_OPTIONS_VERIFY=error; reason=options_json_invalid'; exit 1; }
+required_json=$(printf '%s\n' "${required[@]}" | jq -R . | jq -sc '.') || exit 1
+missing=$(jq -cn --argjson a "$available" --argjson r "$required_json" '$r | map(select(. as $n | ($a | index($n) | not)))')
+if [ "$(printf '%s' "$missing" | jq 'length')" -gt 0 ]; then [ "$mode" = legacy ] && printf '%s' "$missing" | jq -e 'index("Cancelled")' >/dev/null && echo 'ERROR: Cancelled を追加するか、cancelled を省略した explicit role 設定へ移行してください' >&2; echo "[CONTEXT] STATUS_OPTIONS_VERIFY=error; missing=$missing; available=$available"; exit 1; fi
+echo "[CONTEXT] STATUS_OPTIONS_VERIFY=ok; missing=[]; available=$available"
+```
+
+| `STATUS_OPTIONS_VERIFY` | アクション |
+|---|---|
+| `ok` | Phase 3.5 へ |
+| `error` / marker 不在 / bash 非 0 | 実 option 名と不足名を表示して停止。既存 Project を変更せず、setup を完了扱いにしない |
+
+不足時は、`available` をそのまま `name:` へ写せる role 付き設定例も表示する。legacy 設定で `Cancelled` だけが不足している場合は、上記の explicit 設定への移行とボードへの列追加の 2 案を必ず案内する。
 
 ---
 
@@ -585,6 +629,7 @@ Compare current config against the template and classify each key:
 | **Missing section** — any active top-level section above the `--- Advanced ---` marker (github, iteration, branch, commands, verification, issue, review, etc. — **excluding `wiki:` and `multi_session:`**, which have dedicated rows below) | **Add** — insert the whole section from the template with default values |
 | **Missing sub-key** — a key newly added to the template *inside* a section the config already has (e.g., `review.fact_check.verify_internal_likelihood`) | **Add the missing key only** from the template default; **preserve** all existing sibling values (e.g., a customized `review.fact_check.max_claims`). No-op when the key already exists |
 | **`multi_session:` section** | **Back-add on --upgrade with `enabled: true`** (default-on). `multi_session:` is declared above the `--- Advanced ---` marker (active). When missing from an existing config, insert the template active block (`enabled: true` + `worktree_base`) so `--upgrade`-ed projects receive the same default-on behavior as new `/rite:setup` generation. If a user's config already has a `multi_session:` block, it is preserved as a User-customized value (no overwrite — **including an explicit `enabled: false`**). Idempotent: no-op when the active section already exists |
+| **`github.projects.fields.status.options`** | resolver が `legacy` と判定した場合は配列内容を推測せず英語標準 5 role の 1 行フロー形式へ置換し、option の `default` を除去する。`explicit` は不変。`invalid` は config を変更せず停止する |
 | **Advanced section** (parallel, metrics, investigate) | **Add as comments** — insert commented-out with default values |
 | **`wiki:` section** | **Step 3/4 は扱わない**。wiki セクションの追加は **Phase 4.1.2 Step 2 (新規生成: template の Advanced 境界より上にある active block が自動コピーされる) および Phase 4.1.3 Step 6 item 7 (Upgrade path: 未存在時に active block として append。`current < latest` / `current >= latest` 両経路で実行) の専権**。template 側にはコメント形式の `# wiki:` ブロックは存在しない (active 位置に移動済み) ため、重複追加経路はない |
 | **Unknown key** (user-added keys not in template) | **Preserve with warning** — keep but display warning |
@@ -638,8 +683,35 @@ Ask with `AskUserQuestion`:
 
 **Step 6: Apply changes**
 
-**Path-dependent application**: On the `current < latest` path, apply all items below after the user confirms in Step 5. On the `current >= latest` short-circuit path (Step 5 skipped), apply **only items 3, 4, 6, 7** — the drift back-add (missing active sections / missing sub-keys / multi_session / wiki) — directly without confirmation. Items 1, 2, 5 は full-upgrade-only。back-add（3, 4, 6, 7）は冪等で User-customized（明示的な `enabled: false` を含む）を保全する。対象が皆無なら config は不変で `rite-config.yml は最新です (v{current})` を表示する。
+**Path-dependent application**: Status options の role 移行は両経路で最初に実行する。On the `current < latest` path, apply all items below after the user confirms in Step 5. On the `current >= latest` short-circuit path (Step 5 skipped), apply **only items 3, 4, 6, 7** — the drift back-add (missing active sections / missing sub-keys / multi_session / wiki) — directly without confirmation after the role migration. Items 1, 2, 5 は full-upgrade-only。role 移行と back-add（3, 4, 6, 7）は冪等で、explicit 設定と User-customized 値（明示的な `enabled: false` を含む）を保全する。対象が皆無なら config は不変で `rite-config.yml は最新です (v{current})` を表示する。
 rationale: references/rationale.md#upgrade-apply-ssot
+
+Status options の移行は config を変更する前に resolver で検証する。legacy は既存配列の要素数・表示名にかかわらず英語標準 5 role へ置換する。explicit はそのまま保持し、invalid は backup だけを残して停止する。
+
+```bash
+# STATUS_OPTIONS_ROLE_MIGRATION
+plugin_root="{plugin_root}"; config=rite-config.yml
+source "$plugin_root/hooks/scripts/lib/projects-status-config.sh"
+mode=$(projects_status_mode) || { echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=error; reason=invalid_config'; exit 1; }
+if [ "$mode" = explicit ]; then echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=noop; reason=already_explicit'; else
+  tmp=$(mktemp "${config}.status-role.XXXXXX") || exit 1
+  if ! awk '
+    /^      status:[[:space:]]*$/ { in_status=1 }
+    in_status && /^        options:[[:space:]]*$/ { print; print "          - { role: todo, name: \"Todo\" }\n          - { role: in_progress, name: \"In Progress\" }\n          - { role: in_review, name: \"In Review\" }\n          - { role: done, name: \"Done\" }\n          - { role: cancelled, name: \"Cancelled\" }"; replacing=1; found=1; next }
+    replacing && /^          / { next }
+    replacing { replacing=0; in_status=0 }
+    { print }
+    END { if (!found) exit 2 }
+  ' "$config" > "$tmp"; then rm -f "$tmp"; echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=error; reason=status_options_missing'; exit 1; fi
+  mv "$tmp" "$config" || { rm -f "$tmp"; echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=error; reason=write_failed'; exit 1; }
+  echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=updated; roles=5'
+fi
+```
+
+| `STATUS_OPTIONS_ROLE_MIGRATION` | アクション |
+|---|---|
+| `updated` / `noop` | 下記 item 1 以降へ |
+| `error` / marker 不在 / bash 非 0 | config をそれ以上変更せず停止。Step 3 の backup から復旧可能 |
 
 Apply the following:
 
