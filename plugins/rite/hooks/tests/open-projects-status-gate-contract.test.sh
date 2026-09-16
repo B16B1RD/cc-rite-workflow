@@ -236,6 +236,21 @@ assert_gate_warning "<absent-item>" "not on project" \
   "the not-on-board verdict explains itself on stderr"
 assert_gate_warning "<absent-issue>" "did not resolve" \
   "the unresolvable-Issue verdict explains itself on stderr"
+# The no-value sentinel is a missed write, not a column. Described as an unmapped column it
+# would send the reader to declare a role for a column that does not exist, and the
+# caller's routing would read it as the one `missing` that must not be re-run.
+assert_gate_warning "<no-status-field>" "Status field carries no value" \
+  "an item with no Status value is diagnosed as a missed write, not an unmapped column"
+write_board_fixture "<no-status-field>"
+set +e
+( cd "$T03_DIR/repo" && PATH="$T03_DIR/repo/bin:$PATH" RITE_TEST_BOARD="$T03_DIR/board.json" \
+  bash "$GATE_SH" --issue 42 --expect in_progress >/dev/null 2>"$T03_DIR/gate-stderr.txt" )
+set -e
+if grep -q "maps to no role" "$T03_DIR/gate-stderr.txt"; then
+  fail "an item with no Status value is described as an unmapped column: $(head -c 200 "$T03_DIR/gate-stderr.txt")"
+else
+  pass "an item with no Status value is not described as an unmapped column"
+fi
 assert_gate_warning "Cancelled" "abandoned" \
   "a cancelled board is diagnosed as an abandoned Issue"
 # Both halves matter: the reader must be told the Issue was cancelled AND must not also be

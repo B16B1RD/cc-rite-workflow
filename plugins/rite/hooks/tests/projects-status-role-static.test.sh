@@ -10,6 +10,8 @@
 #   - case labels on a column name:                    "In Review")     Todo)
 #   - creation payload defaults carrying a column:     status: "Todo"   "status": "Todo"
 #                                                      --arg status "Todo"   // "Todo"
+#   - a column name bound to an identifier:            TERMINAL="Done"
+#     (a comparison against that identifier is a decision on the name by one indirection)
 # Exclusions: the resolver itself (its legacy defaults are the one legitimate home of
 # the English names), the test fixtures / mocks, and the setup skill (it provisions
 # board options by name, which is not a judgement on a row).
@@ -29,6 +31,7 @@ PATTERNS=(
   "\"?status\"?: *\"Todo\""
   "--arg status \"Todo\""
   "// *\"Todo\""
+  "[A-Za-z_0-9]=\"($COLUMN_NAMES)\""
 )
 
 # $1=file  — prints matching lines (grep -nE) for every arm, or nothing.
@@ -52,12 +55,13 @@ esac
   status: "Todo",
 jq -n --arg status "Todo"
 x=$(spec_get '.projects.status // "Todo"')
+TERMINAL="Done"
 FIX
 hits=$(scan_file "$fixture" | wc -l | tr -d ' ')
-if [ "$hits" -ge 6 ]; then
-  pass "grammar detects the six decision shapes in the fixture ($hits hits)"
+if [ "$hits" -ge 7 ]; then
+  pass "grammar detects the seven decision shapes in the fixture ($hits hits)"
 else
-  fail "grammar detected only $hits of 6 decision shapes: $(scan_file "$fixture" | tr '\n' ' ')"
+  fail "grammar detected only $hits of 7 decision shapes: $(scan_file "$fixture" | tr '\n' ' ')"
 fi
 rm -f "$fixture"
 

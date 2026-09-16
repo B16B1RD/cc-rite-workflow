@@ -201,7 +201,7 @@ Then skip 2.4.7.2–2.4.7.4.
 
 #### 2.4.7.2 Retrieve Parent Issue Project Item and Current Status
 
-Retrieve the parent Issue's (identified in 2.4.7.1 as `{parent_issue_number}`) project item ID and current Status in a single query:
+Retrieve the parent Issue's (identified in 2.4.7.1 as `{parent_issue_number}`) project membership and current Status in a single query:
 
 ```bash
 gh api graphql -f query='
@@ -210,9 +210,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
  issue(number: $number) {
  projectItems(first: 10) {
  nodes {
- id
  project {
- id
  number
  }
  fieldValues(first: 10) {
@@ -237,8 +235,17 @@ query($owner: String!, $repo: String!, $number: Int!) {
 From the result:
 
 1. Find the node where `project.number` matches `{project_number}` from `rite-config.yml`
-2. Extract `{parent_item_id}` (node `id`) and `{parent_project_id}` (node `project.id`)
-3. From `fieldValues.nodes`, find the entry where `field.name` is `"Status"` and extract the current `name` value as `{current_status}`. If no Status entry exists in `fieldValues.nodes` (Status field value is unset/null), treat `{current_status}` as `null` and proceed to 2.4.7.3 (handled as equivalent to "Todo")
+2. From `fieldValues.nodes`, take the entry whose `field.name` is one of the Status field candidates (`projects_status_field_candidates`: the configured `github.projects.fields.status.name`, or `ステータス` then `Status`) and extract its `name` as `{parent_status_name}`. If no such entry exists (Status field value unset), `{parent_status_name}` is empty
+3. Map the column name to its role. The parent's Status is judged on the role, never on the column name, so a board that spells its columns differently is judged the same way:
+
+```bash
+source {plugin_root}/hooks/scripts/lib/projects-status-config.sh || { echo "ERROR: projects-status-config.sh を読み込めませんでした" >&2; exit 1; }
+if ! parent_status_role=$(cd "$(git rev-parse --show-toplevel)" && projects_status_role_for_name "{parent_status_name}"); then
+  echo "警告: rite-config.yml の Status 設定が不正なため、親 Issue の Status を判定できません。更新をスキップします" >&2
+fi
+```
+
+An invalid Status configuration skips 2.4.7.3–2.4.7.4 (the judgement cannot be made). An empty `{parent_status_name}` maps to an empty role and is treated as `todo` in 2.4.7.3.
 
 **When `projectItems.nodes` is empty** (parent Issue not registered in Project):
 
@@ -251,41 +258,40 @@ Display warning and skip 2.4.7.3–2.4.7.4 (non-blocking).
 
 #### 2.4.7.3 Status Condition Check
 
-Only update the parent Issue's Status if it is currently "Todo". This prevents overwriting a more advanced Status (e.g., "In Progress" set by a sibling child Issue).
+Only update the parent Issue's Status if its role is `todo`. This prevents overwriting a more advanced Status (e.g. `in_progress` set by a sibling child Issue). The judgement uses `{parent_status_role}` from 2.4.7.2:
 
-| Current Status | Action |
-|---------------|--------|
-| **Todo** | Proceed to 2.4.7.4 (update to "In Progress") |
-| **null (unset)** | Proceed to 2.4.7.4 — treat as equivalent to "Todo" (Status field value not yet selected) |
-| **In Progress** | Skip — already at target status. Display: `警告: 親 Issue #{parent_issue_number} は既に In Progress です` |
-| **In Review** / **Done** | Skip — more advanced status. Display: `警告: 親 Issue #{parent_issue_number} は既に {current_status} です（更新スキップ）` |
+| `{parent_status_role}` | Action |
+|---|---|
+| `todo` | Proceed to 2.4.7.4 (update to the `in_progress` role) |
+| empty with empty `{parent_status_name}` (Status value unset) | Proceed to 2.4.7.4 — treated as `todo` (Status field value not yet selected) |
+| `in_progress` | Skip — already at the target role. Display: `警告: 親 Issue #{parent_issue_number} は既に {parent_status_name} です` |
+| `in_review` / `done` / `cancelled` | Skip — more advanced or terminal. Display: `警告: 親 Issue #{parent_issue_number} は既に {parent_status_name} です（更新スキップ）` |
+| empty with non-empty `{parent_status_name}` (column maps to no role) | Skip — the operator placed the Issue in a column `rite-config.yml` does not map, and it is not overwritten. Display: `警告: 親 Issue #{parent_issue_number} の Status 列 "{parent_status_name}" は rite-config.yml の role に対応しません（更新スキップ）` |
 
-#### 2.4.7.4 Update Parent Issue Status to "In Progress"
+#### 2.4.7.4 Update Parent Issue Status to the `in_progress` Role
 
-**Step 1**: Retrieve the "In Progress" option ID.
-
-If 2.4.4 was already executed in this workflow run, reuse the `{status_field_id}` and `{in_progress_option_id}` values obtained there (no additional API call needed). Otherwise (e.g., 2.4.7 is referenced standalone), retrieve them as follows. See [2.4.4](#244-retrieve-status-field-information) for the full retrieval logic including `field_ids` optimization.
-
-```bash
-gh project field-list {project_number} --owner {owner} --format json
-```
-
-From the result, find the field with `name` "Status". Extract:
-- `{status_field_id}`: the field's `id` (skip if `github.projects.field_ids.status` is set in `rite-config.yml`)
-- `{in_progress_option_id}`: the `id` of the option with `name` "In Progress"
-
-**Important**: Option IDs always need to be retrieved from the API (consistent with 2.4.4). Only field IDs can be specified via `field_ids`.
-
-**Step 2**: Update the Status:
+The write goes through `scripts/projects-status-update.sh` with the role, exactly as 2.4.2–2.4.5 do for the Issue itself; the helper resolves the Status field by its candidate names and the option by the role's configured column name, so no field or option is named here. `auto_add` is `false` — 2.4.7.2 already confirmed the parent is on the board, and a parent that is not must not be added as a side effect of starting a child:
 
 ```bash
-gh project item-edit --project-id {parent_project_id} --id {parent_item_id} --field-id {status_field_id} --single-select-option-id {in_progress_option_id}
-```
-
-**Step 3**: Display result:
-
-```
-親 Issue #{parent_issue_number} の Status を "In Progress" に更新しました
+parent_status_args=$(jq -n \
+  --argjson issue {parent_issue_number} \
+  --arg owner "{owner}" \
+  --arg repo "{repo}" \
+  --argjson project_number {project_number} \
+  --arg role "in_progress" \
+  --argjson auto_add false \
+  --argjson non_blocking true \
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_role:$role, auto_add:$auto_add, non_blocking:$non_blocking}')
+parent_status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$parent_status_args")
+parent_status_result=$(printf '%s' "$parent_status_json" | jq -r '.result // "failed"' 2>/dev/null)
+[ -z "$parent_status_result" ] && parent_status_result=failed
+case "$parent_status_result" in
+  updated)
+    echo "親 Issue #{parent_issue_number} の Status を in_progress 列に更新しました" ;;
+  *)
+    printf '%s' "$parent_status_json" | jq -r '.warnings[]?' 2>/dev/null | sed 's/^/  /' >&2
+    echo "警告: 親 Issue #{parent_issue_number} の Status 更新に失敗しました (result: $parent_status_result)" >&2 ;;
+esac
 ```
 
 #### 2.4.7.5 Error Handling
@@ -298,8 +304,9 @@ Parent Issue Status update failure does **not** block the start of work. Each st
 | 2.4.7.1 | Tasklist search returns no results | Emit `[DEBUG] parent not detected` and skip (standalone Issue — per 2.4.7.1, not silent) |
 | 2.4.7.2 | GraphQL query fails | Display `警告: 親 Issue の Projects 情報取得に失敗しました。Status 更新をスキップします` |
 | 2.4.7.2 | Parent not registered in Project | Display warning and skip (see 2.4.7.2) |
-| 2.4.7.4 | field-list fails | Display `警告: Status フィールド情報の取得に失敗しました` and skip |
-| 2.4.7.4 | item-edit fails | Display `警告: 親 Issue #{parent_issue_number} の Status 更新に失敗しました` and continue |
+| 2.4.7.2 | Status configuration invalid | Display warning and skip 2.4.7.3–2.4.7.4 (see 2.4.7.2) |
+| 2.4.7.3 | Column maps to no role | Display warning naming the column and skip (see 2.4.7.3) |
+| 2.4.7.4 | helper returns anything but `updated` | Display the helper's warnings and `警告: 親 Issue #{parent_issue_number} の Status 更新に失敗しました` and continue |
 
 ### 2.4.8 Terminal Status Set
 

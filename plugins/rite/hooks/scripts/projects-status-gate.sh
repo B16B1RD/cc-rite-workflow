@@ -291,6 +291,17 @@ if [ "$CURRENT" = "<not-on-board>" ]; then
   emit missing "" "$CURRENT"
 fi
 
+# An item whose Status field carries no value is the other shape of a missed transition:
+# the item exists but the Status write did not land. It is routed here, before the role
+# lookup, because the sentinel is not a column name — passed through the mapping it would
+# be reported as an unmapped column, telling the reader to declare a role for a column
+# that does not exist and, in the caller's routing, suppressing the one re-run that
+# repairs this state.
+if [ "$CURRENT" = "<no-status>" ]; then
+  warn "Issue #$ISSUE is on project $PROJECT_NUMBER but its Status field carries no value — the Status transition did not land"
+  emit missing "" "$CURRENT"
+fi
+
 # --- Map the column name to a role and compare against the expected role ---
 # The board's Status columns are ordered stages, and the gate asks "has the Issue reached
 # this stage", not "is it exactly here". A re-entry through /rite:recover after ready or
