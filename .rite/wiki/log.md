@@ -49,6 +49,11 @@
 * **Update**: [全称主張の確認](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md)、[許可操作による検証](pages/heuristics/static-pin-semantic-allowlist-not-notation-denylist.md)、[各分岐の到達確認](pages/anti-patterns/test-pin-protection-theater.md) — [レビュー結果](raw/reviews/20260916T101455Z-pr-2910.md) を統合
 
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=515, broken_refs=0。全ページのタイトルと概要による類似候補を本文で照合し、同じ経緯表現を持つ異なるテーマの組は重複から除外。更新したページと関連する契約に方針逆転は検出されなかった。番号参照は検出なし。
+* **Update**: [形状検証 gate の allowlist 化は複数行 bypass・上流 degraded 値・コメント同期をセットで棚卸しする](pages/heuristics/allowlist-gate-hardening-checklist.md) — raw/fixes/20260916T103034Z-pr-2910-fix.md を統合（gh shim のログ 1 行化と allowlist 反転、per-arm positive control）
+* **Update**: [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) — raw/fixes/20260916T103034Z-pr-2910-fix.md と raw/reviews/20260916T111808Z-pr-2910.md を統合（read / write 二分法自体が次の全称文になる）
+* **Update**: [macOS の awk の == は UTF-8 ロケールで照合比較になり、別の日本語文字列を等しいと判定する](pages/anti-patterns/macos-awk-string-equality-uses-locale-collation.md) — raw/reviews/20260916T111808Z-pr-2910.md、raw/fixes/20260916T112742Z-pr-2910-fix.md、raw/reviews/20260916T114658Z-pr-2910.md を統合（awk -v 経由の再発と、見出しを行番号へ解決して awk へ整数で渡す回避）
+* **Create**: [CI が pending のまま閉じたレビューは失敗 job を観測できない — 完了後に担当 reviewer を CI 状態付きで reroll する](pages/heuristics/ci-pending-at-review-close-reroll-finder-after-completion.md) — raw/reviews/20260916T111808Z-pr-2910.md を新規ページ化
+* **Create**: [fail し得る解決と本文の抽出を別関数に分け、fail はコマンド置換の外で呼ぶ](pages/patterns/test-helper-fail-outside-command-substitution.md) — raw/reviews/20260916T114658Z-pr-2910.md を新規ページ化
 
 ## 2026-09-15
 

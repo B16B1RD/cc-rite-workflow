@@ -7,6 +7,10 @@ created: "2026-07-21T18:30:00Z"
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260916T101455Z-pr-2910.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260916T103034Z-pr-2910-fix.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260916T111808Z-pr-2910.md"
   - type: "reviews"
     resource: "raw/reviews/20260905T121410Z-pr-2573.md"
   - type: "fixes"
@@ -41,7 +45,7 @@ sources:
     resource: "raw/reviews/20260831T074623Z-pr-2494.md"
 tags: ["comment-rot", "cause-neutral", "exclusivity-claim", "doc-sync", "not-grep-pin", "quantifier-strengthening", "birth-defect"]
 confidence: high
-generated: { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-16T12:05:00Z" }
 verified:
   - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
   - { by: "rite-wiki-ingest/gpt-6", at: "2026-09-05T12:10:29.806932+00:00" }
@@ -124,6 +128,12 @@ drift 先が Issue の Non-Target（別 Issue の管轄と明記）である場�
 
 consumer ごとに読取り・書込み・同期という責務を確認してから保証の対象を限定する。同じ未マップ入力を各 consumer に渡す通し回帰で、文書の全称主張と実際の更新を対応付ける。
 
+### 二分法で直した全称文は、その二分法自体が次の全称文になる
+
+「全 consumer は触らない」を「read 側は放置し、write 側は書く」へ直した修正が、次のレビューで再び偽と判定された。compact hook と親 Issue 同期は現在列を読んで未マップなら放置するが、マップ済みなら更新 helper を呼んで書く経路を持ち、watchdog も `--reconcile` で書く。read / write は consumer の属性ではなく同じ consumer の中の 2 経路であり、「read-side consumer のみ」という限定は列挙漏れと分類誤りを同時に含んでいた。
+
+実装が実際に分岐している軸で書く。この事例では「現在列の role を先に解決してから判断する caller は未マップ列を skip + WARNING」対「destination の role だけを解決する helper は書く」が分岐軸で、drift check は列を読んで role が無くても書く意図的な例外として個別に書く。修正案の限定句（`Only …`、`read-side`）を置く前に、その限定句で名指しされる集合を実装の call site で列挙し、限定句の外にある consumer が同じ挙動をしていないかを確認する。
+
 
 ## 関連ページ
 
@@ -135,6 +145,8 @@ consumer ごとに読取り・書込み・同期という責務を確認して�
 ## ソース
 
 - [今回のレビュー結果](../../raw/reviews/20260916T101455Z-pr-2910.md)
+- [全称保証を consumer 別の列挙へ置き換えた fix 結果](../../raw/fixes/20260916T103034Z-pr-2910-fix.md)
+- [read / write 二分法自体が偽だと指摘した再レビュー結果](../../raw/reviews/20260916T111808Z-pr-2910.md)
 
 - [説明散文の排他性残存を検出](../../raw/reviews/20260721T173620Z-pr-1959.md)
 - [中立化 + not_grep pin](../../raw/fixes/20260721T173955Z-pr-1959.md)
