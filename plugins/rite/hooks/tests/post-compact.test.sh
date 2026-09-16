@@ -549,6 +549,29 @@ case "$1 $2" in
 esac
 EOF
       ;;
+    pr_view_fail_board_todo)
+      # `pr view` fails only when $RITE_TEST_PR_VIEW_FAIL is set; every other arm answers
+      # like mismatch_then_reconcile. The same fixture therefore proves two things in
+      # sequence: with pr view healthy the Todo board reaches the reconcile helper, and
+      # with pr view failing the identical board must not. A failure-only fixture whose
+      # repo view / graphql arms are degraded would make the helper-absence assert pass
+      # for the wrong reason.
+      cat > "$dir/bin/gh" <<'EOF'
+#!/bin/bash
+. "$(dirname "$0")/gh-mock-lib.sh"
+case "$1 $2" in
+  "pr view")
+    if [ -n "${RITE_TEST_PR_VIEW_FAIL:-}" ]; then
+      echo "HTTP 403: rate limit exceeded" >&2; exit 1
+    fi
+    _mock_gh_pr_view '{"isDraft":false}' "$@"
+    ;;
+  "repo view") echo '{"owner":{"login":"o"},"name":"r"}' ;;
+  "api graphql") echo '{"data":{"repository":{"issue":{"projectItems":{"nodes":[{"project":{"number":1},"fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Todo"}]}}]}}}}}' ;;
+  *) exit 0 ;;
+esac
+EOF
+      ;;
   esac
   chmod +x "$dir/bin/gh"
 
@@ -612,6 +635,45 @@ if grep -qE 'pr_deleted_or_inaccessible' "$recon_stderr"; then
   fail "pr_deleted_or_inaccessible wrongly emitted for 403 case (classification leak)"
 else
   pass "pr_deleted_or_inaccessible NOT emitted for 403 case (no classification leak)"
+fi
+
+# TC-RECON-13: a failed `gh pr view` must leave PR_IS_DRAFT empty so the reconciliation
+# block never reaches the helper. TC-RECON-03 only pins the WARNING token; its fixture
+# degrades repo view / graphql, so a hook that kept reconciling after the failure would
+# still stop short of the helper and the suite would stay green. Run the healthy board
+# first as the positive control (the helper is reachable), then re-arm and fail pr view.
+echo "TC-RECON-13: gh pr view failure → reconcile helper not invoked on a Todo board"
+recon_dir=$(_setup_recon_env "pr-view-fail-todo" "pr_view_fail_board_todo" "updated" "" "yes")
+recon_stderr="$(mktemp "$TEST_DIR/recon-pr-view-fail-todo-control-stderr.XXXXXX")"
+echo "{\"cwd\": \"$recon_dir\", \"source\": \"auto\"}" \
+  | env PATH="$recon_dir/bin:$PATH" bash "$recon_dir/plugin/hooks/post-compact.sh" >/dev/null 2>"$recon_stderr" || true
+if [ -f "$recon_dir/status-update-call.json" ]; then
+  pass "control: healthy pr view on the same fixture reaches the reconcile helper"
+else
+  fail "control: fixture never reaches the reconcile helper even with pr view healthy; stderr: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+fi
+# The control run normalized the compact state; re-arm it or the hook exits before the block.
+rm -f "$recon_dir/status-update-call.json"
+jq -n '{compact_state: "recovering", compact_state_set_at: "2026-04-01T00:00:00Z", active_issue: 42}' \
+  > "$(compact_state_path "$recon_dir")"
+recon_stderr="$(mktemp "$TEST_DIR/recon-pr-view-fail-todo-stderr.XXXXXX")"
+echo "{\"cwd\": \"$recon_dir\", \"source\": \"auto\"}" \
+  | env PATH="$recon_dir/bin:$PATH" RITE_TEST_PR_VIEW_FAIL=1 \
+    bash "$recon_dir/plugin/hooks/post-compact.sh" >/dev/null 2>"$recon_stderr" || true
+if grep -qE 'post_compact_gh_pr_view_failed' "$recon_stderr"; then
+  pass "post_compact_gh_pr_view_failed emitted when pr view fails on a Todo board"
+else
+  fail "expected post_compact_gh_pr_view_failed; got: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+fi
+if [ -f "$recon_dir/status-update-call.json" ]; then
+  fail "reconcile helper invoked after pr view failed; payload: $(head -c 300 "$recon_dir/status-update-call.json")"
+else
+  pass "reconcile helper NOT invoked after pr view failed"
+fi
+if grep -qE 'post-compact mismatch detected' "$recon_stderr"; then
+  fail "mismatch line emitted after pr view failed: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+else
+  pass "no mismatch line after pr view failed"
 fi
 
 # TC-RECON-04: mktemp degradation surfaces stderr_capture=disabled
