@@ -20,10 +20,11 @@ on:
   push:
     branches:
       - develop
+      - main
   pull_request:
 
 # Least-privilege: this workflow only reads the repo, never writes back
-# (same rationale as test-hooks.yml / sentinel-contract-check.yml).
+# (same rationale as sentinel-contract-check.yml).
 permissions:
   contents: read
 
@@ -64,6 +65,24 @@ jobs:
         run: |
           brew install bash
           echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+
+      # Fail before any suite if a required tool is unavailable on either OS.
+      - name: Verify required tools (bash, jq, git, python3)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for tool in bash jq git python3; do
+            if ! command -v "$tool" >/dev/null 2>&1; then
+              echo "::error::required tool not available: $tool"
+              exit 1
+            fi
+            tool_path=$(command -v "$tool")
+            tool_version=$("$tool" --version 2>&1 | head -1 || echo "(version unknown)")
+            if [ -z "$tool_version" ]; then
+              tool_version="(empty version output)"
+            fi
+            echo "::notice::$tool resolved to $tool_path ($tool_version)"
+          done
 
       # Emit environment diagnostics so a failure can be attributed to a specific
       # tool/version difference (MUST: bash --version + jq/flock/gdate

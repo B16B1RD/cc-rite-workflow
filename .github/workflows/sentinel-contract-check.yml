@@ -24,12 +24,12 @@ on:
       - 'plugins/rite/hooks/scripts/sentinel-contract-check.sh'
       - '.github/workflows/sentinel-contract-check.yml'
 
-# Least-privilege permissions (same rationale as test-hooks.yml): read-only,
+# Least-privilege permissions (same rationale as ci.yml): read-only,
 # no write-back to the repository.
 permissions:
   contents: read
 
-# Cancel in-flight runs on the same ref (same rationale as test-hooks.yml).
+# Cancel in-flight runs on the same ref (same rationale as ci.yml).
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -42,7 +42,7 @@ jobs:
 
     steps:
       # actions/checkout pinned by full SHA (v4.2.2) for supply-chain
-      # integrity — same convention as test-hooks.yml.
+      # integrity — same convention as ci.yml.
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
