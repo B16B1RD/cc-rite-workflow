@@ -28,7 +28,7 @@ argument-hint: "<title or description>"
 |-------------|--------|
 | `{owner}`, `{repo}` | ステップ 1.1（git-remote.sh 優先 + `gh repo view` fallback。SSH host alias 対応） |
 | `{project_number}` | `rite-config.yml` の `github.projects.project_number` |
-| `{field_name_status}`, `{field_name_priority}`, `{field_name_complexity}` | `rite-config.yml` の `github.projects.fields.{status,priority,complexity}.name`（任意。未設定は空文字 = helper 内蔵の英日エイリアスで解決） |
+| `{field_name_status}`, `{field_name_priority}`, `{field_name_complexity}` | `rite-config.yml` の `github.projects.fields.{status,priority,complexity}.name`（任意。未設定は空文字。priority / complexity は helper 内蔵の英日エイリアスで解決し、status は `hooks/scripts/lib/projects-status-config.sh` の候補 = 同キー、未設定なら `ステータス` → `Status` で解決する） |
 | `{language}` | `rite-config.yml` の `language`（`ja` / `en` / `auto`、未設定 `auto`） |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
 | `{owner_repo}` | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute |
@@ -265,7 +265,7 @@ File 列のセルが実パス ⇔ (`/` を含む、または `.` + 英数字の�
 
 `create-issue-with-projects.sh` に委譲（Issue 作成 + Projects 追加 + status / priority / complexity 設定を 1 ステップで実行）。実 interface は JSON 単一引数 + body は tmpfile 経由（canonical SoT: [`issue-create-with-projects.md`](../../references/issue-create-with-projects.md)）:
 
-> **フィールド名のローカライズ配線**: `rite-config.yml` の `github.projects.fields.{status,priority,complexity}.name`（任意）を読み取り、`{field_name_status}` / `{field_name_priority}` / `{field_name_complexity}` に展開する。未設定のキーは空文字とする（helper 側で内蔵の英日エイリアス + 英語正準名にフォールバックするため、日本語フィールド名 Project でもゼロ設定で解決する）。これらは helper 入力 JSON の `projects.field_names` に additive に詰められる。
+> **フィールド名のローカライズ配線**: `rite-config.yml` の `github.projects.fields.{status,priority,complexity}.name`（任意）を読み取り、`{field_name_status}` / `{field_name_priority}` / `{field_name_complexity}` に展開する。未設定のキーは空文字とする（priority / complexity は helper 側で内蔵の英日エイリアス + 英語正準名にフォールバックし、status は `hooks/scripts/lib/projects-status-config.sh` の候補（`ステータス` → `Status`）で解決するため、日本語フィールド名 Project でもゼロ設定で解決する）。これらは helper 入力 JSON の `projects.field_names` に additive に詰められる。
 
 ```bash
 # drift-check-ignore: canonical な「JSON を helper へ単一引数で渡す」契約は

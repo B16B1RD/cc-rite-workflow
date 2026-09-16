@@ -285,6 +285,7 @@ github:
           - { role: in_progress, name: "In progress" }
           - { role: in_review, name: "In Review" }
           - { role: done, name: "Done" }
+          - { role: cancelled, name: "中止" }
 YAML
 # $1=board state $2=expected verdict $3=expected role= value $4=description
 run_role_fixture() {
@@ -314,6 +315,13 @@ run_role_fixture "Blocked" missing "" "a column the config does not map yields m
 run_role_fixture "In Progress" missing "" "the legacy English name is unmapped on an explicit board and yields missing"
 assert_gate_warning "Blocked" 'column "Blocked" maps to no role' \
   "the unmapped-column verdict names the column on stderr"
+# The cancelled column reaches the abandoned-Issue diagnostic only through the role
+# mapping: a gate that compared the legacy spelling would fall through the rank
+# comparison and still print `missing; role=cancelled`, so the verdict alone does not
+# prove the branch exists — the "abandoned" wording on stderr does.
+run_role_fixture "中止" missing cancelled "a renamed cancelled column yields missing with role=cancelled"
+assert_gate_warning "中止" "abandoned" \
+  "a renamed cancelled column is diagnosed as an abandoned Issue through the role mapping"
 # An expected value that is not a role has no rank; refusing it keeps the rank comparison
 # from silently answering missing for every board.
 set +e

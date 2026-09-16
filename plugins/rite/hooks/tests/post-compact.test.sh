@@ -521,14 +521,15 @@ EOF
       # fixtures below can vary the column name (and the field name via
       # $RITE_TEST_BOARD_FIELD) without a shim per column. `pr view` leaves the same
       # positive-control marker as draft_pr, because most asserts against these boards
-      # are absences.
+      # are absences. `api graphql` leaves its own marker so a TC can assert that the
+      # board was never read — an observed absence, not an inference from silence.
       cat > "$dir/bin/gh" <<'EOF'
 #!/bin/bash
 . "$(dirname "$0")/gh-mock-lib.sh"
 case "$1 $2" in
   "pr view") touch "$(dirname "$0")/../pr-view-called"; _mock_gh_pr_view '{"isDraft":false}' "$@" ;;
   "repo view") echo '{"owner":{"login":"o"},"name":"r"}' ;;
-  "api graphql") jq -cn --arg s "$RITE_TEST_BOARD_STATUS" --arg f "${RITE_TEST_BOARD_FIELD:-Status}" '{data:{repository:{issue:{projectItems:{nodes:[{project:{number:1},fieldValues:{nodes:[{field:{name:$f},name:$s}]}}]}}}}}' ;;
+  "api graphql") touch "$(dirname "$0")/../graphql-called"; jq -cn --arg s "$RITE_TEST_BOARD_STATUS" --arg f "${RITE_TEST_BOARD_FIELD:-Status}" '{data:{repository:{issue:{projectItems:{nodes:[{project:{number:1},fieldValues:{nodes:[{field:{name:$f},name:$s}]}}]}}}}}' ;;
   *) exit 0 ;;
 esac
 EOF
@@ -866,6 +867,13 @@ recon_stderr="$(mktemp "$TEST_DIR/recon-renamed-todo-stderr.XXXXXX")"
 echo "{\"cwd\": \"$recon_dir\", \"source\": \"auto\"}" \
   | env PATH="$recon_dir/bin:$PATH" RITE_TEST_BOARD_STATUS="To-Do" RITE_TEST_BOARD_FIELD="ステータス" \
     bash "$recon_dir/plugin/hooks/post-compact.sh" >/dev/null 2>"$recon_stderr" || true
+# Positive control for the board-read marker: this fixture does read the board, so the
+# marker must exist here or the absence assert in the invalid-config TC proves nothing.
+if [ -f "$recon_dir/graphql-called" ]; then
+  pass "the board read leaves the graphql-called marker"
+else
+  fail "the board read left no graphql-called marker — the absence assert in the invalid-config TC would be vacuous"
+fi
 if [ -f "$recon_dir/status-update-call.json" ]; then
   pass "reconcile helper was invoked for a renamed todo column"
   recorded_status=$(jq -r '.status_role // empty' "$recon_dir/status-update-call.json" 2>/dev/null || echo "")
@@ -922,6 +930,56 @@ if [ ! -f "$recon_dir/status-update-call.json" ] && grep -q 'post_compact_status
   pass "reconcile skipped with the post_compact_status_config_unavailable WARNING"
 else
   fail "expected skip + post_compact_status_config_unavailable (helper=$([ -f "$recon_dir/status-update-call.json" ] && echo called || echo not-called)); stderr: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+fi
+
+# TC-RECON-17: an invalid Status configuration (a role list missing the required
+# progress roles) must degrade to a WARNING + skip before the board is read, exit 0,
+# and never reach the reconcile helper. The resolver validates the whole config on
+# every query, so the field-candidate lookup is the arm that fires; the WARNING has
+# to carry the resolver's own diagnostic, or the operator is told the config is
+# invalid without being told why.
+echo "TC-RECON-17: invalid Status configuration → WARNING + skip before the board read, exit 0"
+recon_dir=$(_setup_recon_env "config-invalid" "ready_board_file" "updated" "" "yes")
+cat > "$recon_dir/rite-config.yml" <<'YAML'
+github:
+  projects:
+    enabled: true
+    project_number: 1
+    fields:
+      status:
+        options:
+          - { role: todo, name: "To-Do" }
+YAML
+recon_stderr="$(mktemp "$TEST_DIR/recon-config-invalid-stderr.XXXXXX")"
+set +e
+echo "{\"cwd\": \"$recon_dir\", \"source\": \"auto\"}" \
+  | env PATH="$recon_dir/bin:$PATH" RITE_TEST_BOARD_STATUS="To-Do" bash "$recon_dir/plugin/hooks/post-compact.sh" >/dev/null 2>"$recon_stderr"
+config_invalid_rc=$?
+set -e
+if [ "$config_invalid_rc" -eq 0 ]; then
+  pass "hook exits 0 when the Status configuration is invalid"
+else
+  fail "hook exited $config_invalid_rc when the Status configuration is invalid; stderr: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+fi
+if [ -f "$recon_dir/pr-view-called" ]; then
+  pass "reconciliation block reached gh pr view for the config-invalid fixture"
+else
+  fail "config-invalid fixture never reached gh pr view — the absence asserts below would be vacuous"
+fi
+if [ ! -f "$recon_dir/status-update-call.json" ] && grep -q 'post_compact_status_config_invalid' "$recon_stderr"; then
+  pass "reconcile skipped with the post_compact_status_config_invalid WARNING"
+else
+  fail "expected skip + post_compact_status_config_invalid (helper=$([ -f "$recon_dir/status-update-call.json" ] && echo called || echo not-called)); stderr: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+fi
+if grep 'post_compact_status_config_invalid' "$recon_stderr" | grep -q 'stderr=ERROR: github.projects.fields.status:'; then
+  pass "the WARNING carries the resolver's config diagnostic"
+else
+  fail "expected the resolver diagnostic inside the WARNING line; stderr: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+fi
+if [ ! -f "$recon_dir/graphql-called" ]; then
+  pass "the hook stopped before reading the board (gh api graphql never called)"
+else
+  fail "the hook went on to read the board despite the invalid config; stderr: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
 fi
 
 # TC-RECON-12: the gh mocks must answer `pr view` through real jq, not a literal.
