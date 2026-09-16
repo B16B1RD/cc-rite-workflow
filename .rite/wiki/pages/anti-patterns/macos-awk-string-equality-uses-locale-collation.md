@@ -4,7 +4,7 @@ title: "macOS の awk の == は UTF-8 ロケールで照合比較になり、�
 domain: "anti-patterns"
 description: "macOS 標準の awk は UTF-8 ロケールで文字列の == をロケール照合で比較するため、別の日本語見出しを同じ見出しと判定し、Linux の gawk / mawk では再現しない誤判定を起こす。"
 created: "2026-09-14T06:55:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-15T03:40:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-16T12:07:00Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5"
     at: "2026-09-14T11:20:00Z"
@@ -23,6 +23,12 @@ sources:
     resource: "raw/fixes/20260915T023331Z-pr-2829.md"
   - type: "fixes"
     resource: "raw/fixes/20260915T025447Z-pr-2829.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260916T111808Z-pr-2910.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260916T112742Z-pr-2910-fix.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260916T114658Z-pr-2910.md"
 tags: ["portability", "awk", "macos", "locale", "diagnostics"]
 confidence: high
 ---
@@ -98,6 +104,28 @@ reviewer は Linux の gawk / mawk / `LC_ALL=C` でしか変異テストを回�
 - 推定で式を置き換える前に、既存の経験則（本ページ）と、CI の失敗件数が変わったかを照合する。件数が変わらないなら置き換えは原因に届いていない
 - テストが helper を呼ぶときは stderr を捨てず、失敗時のメッセージに載せる。捨てると、CI でだけ落ちた失敗がどの理由で止まったかをログから追えない
 
+### `awk -v` で渡した日本語見出しでも同じ誤一致が再発した — 比較を awk の外へ出す
+
+上の事例から 2 日後、別のテストが同じ罠に落ちた。README の日英 2 版から `ステータス遷移:` 見出し直後の fence を切り出す helper が `awk -v h="$2" '$0 == h {f=1; next} …'` で見出し行を探していた。macOS の CI では ASCII 見出し `Status Transitions:` 側は正しく動く一方、日本語側は 70 行以上手前の `プラグインを削除するには:`（CJK 文字 + 末尾 `:` という同じ構造の行）に一致し、無関係な fence と段落が返って 4 つの assert が決定的に落ちた。Linux の gawk / mawk では再現せず、レビュー時に CI がまだ pending だったため誰も気付かないまま merge 直前まで進んだ。
+
+本ページの経験則は Wiki に存在していたが、レビュー前の自動参照（キーワード照合）には現れなかった。Wiki は思い出させるだけで強制はしないため、同種の罠は awk に日本語文字列を渡す箇所を機械的に検出する側で塞ぐ必要がある。
+
+**書き方（`index` + `length` より構造的な回避）**: 比較そのものを awk から外す。見出しは bash 側で `grep -nxF -- "$heading" "$file"` により行番号へ解決し（`-F` で正規表現を経由せず、`-x` で行全体一致、パターンとファイルが同じバイト列なのでロケールに依らない）、awk には整数だけを `-v n=` で渡して `NR == n` で位置決めする。`NR == n` は数値比較で `strcoll` もロケールも経由せず、gawk / mawk / macOS awk のすべてで同じ行に一致することを CI の macOS 実機で確認した。
+
+```bash
+heading_line() {
+  HEADING_LINE=$(grep -nxF -- "$2" "$1" | cut -d: -f1)
+  case "$HEADING_LINE" in
+    ''|*$'\n'*) fail "heading '$2' is not found exactly once in ${1##*/}"; HEADING_LINE=0 ;;
+  esac
+}
+fence_after() { awk -v n="$1" 'NR == n {f=1; next} f && /^```/ {c++; if (c==2) exit; next} f && c==1 {print}' "$2"; }
+```
+
+見出しがちょうど 1 回見つからなければその場で `fail` し、`HEADING_LINE=0` で下流の抽出を空にする。旧実装は未一致のとき空文字を返し、下流の assert が「fence が違う」「段落にトークンが無い」と別の原因を名乗っていた。
+
+**修正の検証**: Linux ではこの欠陥を再現できないので、CI の macOS ログの失敗行（テスト名 + FAIL 行 + summary）を `failing_test` の実測アンカーにして blocking にし、修正後は同じ leg が PASS することで閉じる。移植性の修正はローカルの再実行では確認にならない。
+
 ## 関連ページ
 
 - [移植性の指摘は「環境分岐を足す」より先に「その正規表現機能が本当に要るか」を疑う](../heuristics/portability-fix-questions-the-regex-feature-first.md)
@@ -112,3 +140,6 @@ reviewer は Linux の gawk / mawk / `LC_ALL=C` でしか変異テストを回�
 - [正規表現リテラルを文字列比較へ替えた fix 結果](../../raw/fixes/20260915T021146Z-pr-2829.md)
 - [helper 全体をロケール C に固定した fix 結果](../../raw/fixes/20260915T023331Z-pr-2829.md)
 - [全角空白をバイト列で削るようにした fix 結果](../../raw/fixes/20260915T025447Z-pr-2829.md)
+- [`awk -v` に渡した日本語見出しが別行に一致した再発を CI ログで実測したレビュー結果](../../raw/reviews/20260916T111808Z-pr-2910.md)
+- [見出しを grep で行番号に解決して awk へ整数で渡した fix 結果](../../raw/fixes/20260916T112742Z-pr-2910-fix.md)
+- [行番号渡しが 3 実装で同じ行に一致することを確認したレビュー結果](../../raw/reviews/20260916T114658Z-pr-2910.md)

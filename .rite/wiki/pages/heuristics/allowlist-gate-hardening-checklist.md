@@ -18,9 +18,14 @@ sources:
     resource: "raw/reviews/20260719T120555Z-pr-1909.md"
   - type: "fixes"
     resource: "raw/fixes/20260719T121530Z-pr-1909.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260916T103034Z-pr-2910-fix.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-19T23:01:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-16T12:06:00Z" }
+verified:
+  - by: "rite-wiki-ingest/claude-opus-5[1m]"
+    at: "2026-09-16T12:06:00Z"
 ---
 
 # 形状検証 gate の allowlist 化は複数行 bypass・上流 degraded 値・コメント同期をセットで棚卸しする
@@ -42,6 +47,8 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-19T23:01:00+09:00" }
 
 5. **新 arm 追加時の per-arm テスト pin（resume cycle、MEDIUM ×2 reviewer 独立検出）**: exfiltration 境界などの allowlist gate に新しい受理 arm を追加するときは、per-arm のテスト pin — **正例 (受理) + 負例 (拒否) + fallback 経路 (realpath 失敗時の fail-closed + 診断 WARNING)** — の 3 点セットを同一 PR で追加する。実装が正しくてもテスト無しでは受理経路の drift と診断消失の回帰から守れない (test + security の 2 reviewer が独立検出)。
 
+6. **外部コマンドの呼び出しを記録する shim も同じ 3 点に掛かる**: 状態保持型の `gh` shim を使う回帰テストで「書き込み系 subcommand が呼ばれない」を denylist regex で pin していたところ、複数行の GraphQL 引数（`-f query='` の直後で改行し 2 行目から `mutation`）が行単位 grep をすり抜けた。これは (1) の複数行 bypass と同型で、検証対象が「値」ではなく「ログ行」に変わっただけである。対処も同型: shim の記録側で引数の改行を空白に潰して 1 呼び出し = 1 行に固定し（`printf 'gh %s\n' "${*//$'\n'/ }"`）、判定側は許可する読取 subcommand の allowlist に反転して「allowlist 外の行が 1 つでもあれば fail」にする。allowlist は被試験スクリプトの実 gh 呼び出し形を列挙して作り、GraphQL は `mutation` キーワードを含む行を別 grep で拒否する。合わせて (5) の per-arm pin として、合成ログ（許可行・書き込み verb・改行入り mutation）を shim に通して各 arm が到達する positive control を置く。総 hit 数ではなく arm ごとの到達を assert しないと、1 本の arm が死んでも別 arm の重複一致で通る。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -54,3 +61,4 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-19T23:01:00+09:00" }
 - [mergeable (5 reviewer 0 件、mutation 検証で non-vacuity 実証)](../../raw/reviews/20260609T225247Z-pr-1330-c4.md)
 - [resume cycle — allowlist 新 arm の per-arm pin 欠落指摘](../../raw/reviews/20260719T120555Z-pr-1909.md)
 - [per-arm 3 点セット pin の追加](../../raw/fixes/20260719T121530Z-pr-1909.md)
+- [gh shim のログ 1 行化と denylist → allowlist 反転、positive control 追加の fix 結果](../../raw/fixes/20260916T103034Z-pr-2910-fix.md)
