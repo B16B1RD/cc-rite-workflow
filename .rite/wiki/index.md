@@ -258,7 +258,7 @@ okf_version: "0.2"
 | [移植性のための外部コマンド差し替えは分岐を消さず「別の層」へ移動させる](pages/anti-patterns/external-command-swap-relocates-platform-divergence.md) | anti-patterns | GNU/BSD で挙動が割れるコマンドを別コマンドへ置き換えるとき、比較するのは「解決セマンティクス（何を返すか）」に偏りがちである。 | 2026-07-25T14:18:43Z | high |
 | [sentinel でコマンド置換のバイト厳密性を守る](pages/patterns/sentinel-byte-exact-command-substitution-capture.md) | patterns | `var=$(cmd)` はコマンド出力の **末尾の改行を全て** 除去する。 | 2026-07-25T14:18:43Z | high |
 | [対象プラットフォーム挙動を shim して blocking gate 側で pin する](pages/heuristics/portability-fix-needs-target-platform-shim-on-blocking-gate.md) | heuristics | 移植性の修正は、対象プラットフォームで検証されて初めて意味を持つ。 | 2026-08-12T18:34:40Z | high |
-| [否定形の assert は前提条件が崩れると fail-silent になる](pages/anti-patterns/negative-assertion-vacuous-without-precondition-floor.md) | anti-patterns | 「X が起きていないこと」を検証する assert は、そもそも X が起こりうる条件が成立していなければ自動的に通る。 | 2026-07-25T14:18:43Z | high |
+| [否定形の assert は前提条件が崩れると fail-silent になる](pages/anti-patterns/negative-assertion-vacuous-without-precondition-floor.md) | anti-patterns | 「X が起きていないこと」を検証する assert は、そもそも X が起こりうる条件が成立していなければ自動的に通る。 | 2026-09-16T12:58:00Z | high |
 | [レビューが足場を対象に発散したら finding の基準を prompt で明示して止める](pages/heuristics/review-finding-bar-stops-scaffolding-divergence.md) | heuristics | 修正 1 件は新しいレビュー対象面を 1 つ作る。 | 2026-07-25T14:18:43Z | medium |
 | [`set -euo pipefail` 下の `var=$(cmd \| jq ... 2>/dev/null)` は不正入力でテストを無言 abort させる](pages/anti-patterns/pipefail-jq-assignment-silent-abort.md) | anti-patterns | 被テスト対象の stdout を jq でパースして変数に代入する形は、`set -euo pipefail` 下では **jq の非ゼロ終了がそのまま代入コマンドの終了ステータス**になる。 | 2026-07-26T01:35:00+09:00 | high |
 | [コメントの主語は「変更イベント」ではなく「コードの現在の性質」に置く — lint が緑でも規約違反は成立する](pages/heuristics/comment-subject-present-tense-not-change-event.md) | heuristics | 判定形式を変えたとき、その理由を「旧形式は X を受け入れていた」と書くと、コメントの**主語が変更イベント（過去の行為）**になる。 | 2026-07-26T01:35:00+09:00 | high |
@@ -520,4 +520,4 @@ okf_version: "0.2"
 
 - 総ページ数: 506
 - ドメイン別: patterns=117, heuristics=224, anti-patterns=165
-- 最終更新: 2026-09-16T12:09:00Z
+- 最終更新: 2026-09-16T12:58:00Z

@@ -7,9 +7,13 @@ created: "2026-07-25T14:18:43Z"
 sources:
   - type: "fixes"
     resource: "raw/fixes/20260725T103734Z-pr-2017-cycle3.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260916T125101Z-pr-2914.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-25T14:18:43Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-16T12:58:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-16T12:58:00Z" }
 ---
 
 # 否定形の assert は前提条件が崩れると fail-silent になる
@@ -85,6 +89,24 @@ cwd 依存のように、テスト側で固定できる前提は固定してし�
 out=$(cd / && run_edit_guard "Write" "$target" ...)   # 兄弟ディレクトリを持たない位置から実行
 ```
 
+### 実例 3: 縮退した mock の他 arm が「到達不能」を隠す（レビュー結果）
+
+hook の「外部 CLI が失敗したら照合 helper を呼ばない」契約を pin するテストで、失敗系 fixture の gh mock が失敗させたい arm 以外を `*) exit 0` で縮退させていると、hook は失敗分岐に入る前の別段（repo 解決など）で抜けてしまい、「helper が呼ばれない」の不在 assert は失敗分岐を経由せずに通る。契約分岐を壊す変異（空にすべき変数を `false` に固定）を入れても suite は緑のままだった。
+
+### 対処 4: 同一 fixture で対照走行を先に置く
+
+失敗を環境変数 1 つで切り替えられる fixture にし、**同じ fixture で先に正常走行を回して helper へ到達すること（記録ファイルの存在）を assert**してから、状態を再武装して失敗走行を回す。対照走行が「この fixture は経路の終端まで届く」を証明するので、続く不在 assert は「届くはずの経路で helper が呼ばれなかった」としか読めなくなる。前提条件の floor を、環境値の計算ではなく同一 fixture の肯定走行で置く形。
+
+```bash
+# 対照走行: 正常応答で helper 到達を証明
+run_hook "$dir"; [ -f "$dir/helper-call.json" ] || fail "control: fixture never reaches helper"
+# 再武装してから失敗走行: 同じ fixture で不在を assert
+rm -f "$dir/helper-call.json"; rearm_state "$dir"
+FAIL_SWITCH=1 run_hook "$dir"; [ ! -f "$dir/helper-call.json" ] || fail "helper invoked after failure"
+```
+
+失敗分岐を通ったことの positive control（失敗時にだけ出る診断トークンの存在）も同じ走行で assert すると、不在 assert が 2 方向から支えられる。
+
 ### 検出方法
 
 否定形 pin の vacuous 化は、通常の mutation testing では見つからない（blocking gate の環境では pin が機能するため mutation は kill される）。**環境変数や cwd を振って同じ mutation を再実行する** ことで初めて見える。移植性・環境依存を扱う PR では、mutation matrix に「環境軸」を 1 本足す。
@@ -98,3 +120,4 @@ out=$(cd / && run_edit_guard "Write" "$target" ...)   # 兄弟ディレクトリ
 ## ソース
 
 - [fix 結果](../../raw/fixes/20260725T103734Z-pr-2017-cycle3.md)
+- [レビュー結果](../../raw/reviews/20260916T125101Z-pr-2914.md)
