@@ -5,6 +5,12 @@ domain: "patterns"
 description: "macOS/BSD で GNU ツール（`timeout` 等）が無い環境向けに shim を書くとき、**契約の一部だけを再現すると fail-open になる**。"
 created: "2026-07-25T07:05:21Z"
 sources:
+  - type: "fixes"
+    resource: "raw/fixes/20260916T164531Z-pr-2920.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260916T165843Z-pr-2920-cycle1.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260916T170221Z-pr-2920-cycle2-incomplete.md"
   - type: "reviews"
     resource: "raw/reviews/20260724T175144Z-pr-2013.md"
   - type: "reviews"
@@ -17,7 +23,7 @@ sources:
     resource: "raw/fixes/20260725T033607Z-pr-2013.md"
 tags: ["shim", "portability", "gnu-bsd", "timeout", "fail-open", "exit-code-contract"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-25T07:05:21Z" }
+generated: { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T23:37:15Z" }
 ---
 
 # GNU ツールの代替 shim は exit code だけでなく期限・シグナル範囲まで契約を全部再現する
@@ -73,6 +79,12 @@ shim を書くときに必要なのは以下の 3 点で、どれが欠けても
 
 あわせて、**機械的検査が「複数箇所の同時変更」を要求するなら、その要求を文書に書く**。CONTRIBUTING が「`_test-helpers.sh` が提供し source 時に abort する」としか書いていないと、文書だけを読んで本体を直したコントリビューターが drift TC で落ちる。floor 値のハードコード位置（統合時に触る場所）も含めて書く。
 
+### 外側runnerの回収範囲と入れ子shimのprocess groupを照合する
+
+timeoutが子を別process groupへ分離する設計では、外側runnerが自分のworker groupだけを終了しても、その子は残り得る。実際のPerl timeoutを経由した中断fixtureで回収漏れを再現し、所有子孫を終了前に取得してから回収する変更で解消を確認した。親を先に終了するとPPIDが変わるため、その後の親子関係探索だけでは元の所有関係を失う。
+
+回帰検証には単純な `sleep` だけでなく、実際にgroupを分離するshimを含める。TERM、INT、worker異常終了ごとにrunnerの非ゼロ終了・未完了マーカー・workerと分離子の残存なしを確認する。これは観測したプロセス構造の検証であり、任意の敵対的なPID再利用まで保証するものではない。
+
 ## 関連ページ
 
 - [新設した検証機構が、その機構自身の目的を局所的に打ち消す](../anti-patterns/self-defeating-guard-local-purpose-negation.md)
@@ -86,3 +98,7 @@ shim を書くときに必要なのは以下の 3 点で、どれが欠けても
 - [shim 3 点セットと複製 drift テスト](../../raw/fixes/20260724T180733Z-pr-2013.md)
 - [perl alarm の整数切り捨て](../../raw/fixes/20260724T193804Z-pr-2013.md)
 - [(cycle 3, 後半) — setpgrp + グループ kill で GNU と同じ範囲にする](../../raw/fixes/20260725T033607Z-pr-2013.md)
+
+- [並列runnerの実測と修正記録](../../raw/fixes/20260916T164531Z-pr-2920.md)
+- [並列runnerの実測と修正記録](../../raw/reviews/20260916T165843Z-pr-2920-cycle1.md)
+- [並列runnerの実測と修正記録](../../raw/reviews/20260916T170221Z-pr-2920-cycle2-incomplete.md)

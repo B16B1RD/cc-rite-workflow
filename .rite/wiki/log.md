@@ -65,6 +65,11 @@
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=515, broken_refs=0
 * **Update**: [否定形の assert は前提条件が崩れると fail-silent になる](pages/anti-patterns/negative-assertion-vacuous-without-precondition-floor.md) — raw/reviews/20260916T125101Z-pr-2914.md を統合（同一 fixture の対照走行で不在 assert の到達性を先に証明する対処を追記）
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=515, broken_refs=0
+* **Update**: [並列時の偽失敗とtimeout子孫回収](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) — 実測・修正の出典を統合
+* **Update**: [並列時の偽失敗とtimeout子孫回収](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) — 実測・修正の出典を統合
+* **Update**: [並列時の偽失敗とtimeout子孫回収](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) — 実測・修正の出典を統合
+* **Update**: [並列時の偽失敗とtimeout子孫回収](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) — 実測・修正の出典を統合
+* **Skip**: [出力分離と互換性の検証計画](raw/reviews/20260916T230650Z-pr-2920-cycle2.md) — detector-candidate: 大容量本文と低速readerで進捗混在を検出し、実Bash処理系で空配列展開を検証する
 
 ## 2026-09-15
 
