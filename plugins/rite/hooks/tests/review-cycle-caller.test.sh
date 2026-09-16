@@ -256,10 +256,6 @@ with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
 
     # Default draft batches close the verified review, then execute the real next-Issue initializer.
     state_path.write_text(json.dumps(successful))
-    replacements.update(sweep_origin='[fix:replied-only]')
-    retained_close = execute(block(iterate, 'close_phase=$(bash'))
-    assert 'ITERATE_RUN_CLOSE=retained' in retained_close.stdout
-    assert 'completed_context' not in state()['review_run'], 'reply-only exit promoted to completion'
     replacements.update(sweep_origin='[review:mergeable]')
     closed = execute(block(iterate, 'close_phase=$(bash'))
     assert 'ITERATE_RUN_CLOSE=completed' in closed.stdout
@@ -274,6 +270,57 @@ with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
     execute(start_block)
     assert state()['review_run']['run_id'] != context['run_id'] and state()['cycle_count'] == 1
     assert state()['review_run_history'] == [completed]
+
+    # Reply-only drafts advance the real queue without promoting unresolved findings.
+    (work / 'rite-config.yml').write_text('safety:\n  max_review_cycles: 8\n')
+    context = state()['review_cycle']['review_context']
+    assert flow('review-defer', success=False).returncode != 0, 'uncollected review deferred'
+    for record in records:
+        record['review_context'] = context
+    data.update(review_context=context, reviewers=records)
+    manifest.write_text(json.dumps(data))
+    result.update(review_context=context, pr_number=4244, commit_sha=context['commit_sha'],
+                  findings=[dict(id='F-01', reviewer='test-reviewer', severity='HIGH',
+                      scope='current-pr', status='open', file='source.txt', line=1,
+                      description='Verification: repro draft fixture => unresolved',
+                      suggestion='repair')])
+    result.pop('measured_gate', None)
+    content = work / 'rite-review-result-4244.json'
+    content.write_text(json.dumps(result))
+    run(['bash', str(plugin / 'scripts/review-measured-gate.sh'), '--input', str(content),
+         '--reject-preset-verification'])
+    execute(finish_block)
+    assert flow('review-defer', success=False).returncode != 0, 'unobserved review deferred'
+    issue.write_text(json.dumps({'number': 4243, 'body': 'Review the change.'}))
+    observed.write_text(json.dumps(dict(review_context=context, issue_number=4243,
+        issue_body='Review the change.',
+        roots=[dict(defect='draft defect', trigger='reply only', violated_contract='batch transition',
+                    finding_ids=['F-01'])],
+        acceptance=dict(satisfied=[], evidence='The specification has no acceptance table.'))))
+    replacements.update(clock_kind='work', clock_close_mode='normal')
+    execute(open_clock)
+    execute(close_clock)
+    execute(observe_block)
+    receipt_path = Path(state()['review_cycle']['result_path'])
+    receipt_bytes = receipt_path.read_bytes()
+    flow('set', '--phase', 'fix', '--next', 'reply only')
+    replacements.update(sweep_origin='[fix:replied-only]')
+    deferred = execute(block(iterate, 'close_phase=$(bash'))
+    assert 'ITERATE_RUN_CLOSE=deferred' in deferred.stdout
+    deferred_run = state()['review_run']
+    assert deferred_run['deferred_context'] == context
+    assert deferred_run['deferred_reason'] == 'replied-only'
+    assert 'completed_context' not in deferred_run, 'reply-only exit promoted to completion'
+    assert receipt_path.read_bytes() == receipt_bytes, 'unresolved receipt changed'
+    assert json.loads(receipt_bytes)['verdict'] == 'fix-needed'
+    queue.write_text(json.dumps(dict(issues=[4243, 4245], cursor=0, active=True, mode='default')))
+    execute(block(batch, "new_cursor=$(jq -r '.cursor'"))
+    assert json.loads(queue.read_text())['cursor'] == 1
+    replacements.update(issue_number='4245')
+    execute(block((plugin / 'skills/open/SKILL.md').read_text(), '# open-initial-state'))
+    assert state()['issue_number'] == 4245 and 'review_run' not in state()
+    assert state()['review_run_history'] == [completed, deferred_run]
+    assert receipt_path.read_bytes() == receipt_bytes, 'draft evidence lost during ownership change'
 
     # Existing output gates precede the deferred success handoff.
     assert '状態更新・result の前に記載順で評価する' in review

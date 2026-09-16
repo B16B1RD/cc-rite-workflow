@@ -295,6 +295,7 @@ try:
            '--stop-reason', 'circuit-breaker:stagnation')
     check(f.state()['review_run'] == run, 'iterate terminal notification retains non-convergent cause')
     f.reject(lambda: f.flow('review-close', ok=False), 'stopped run cannot record completion')
+    f.reject(lambda: f.flow('review-defer', ok=False), 'stopped run cannot defer to another Issue')
 finally:
     f.close()
 
@@ -338,6 +339,23 @@ try:
     check(f.state()['review_run'] == run and f.state()['stop_reason'] == 'stagnation:scope-insoluble',
           'iterate terminal notification retains scoped insolubility cause')
     f.reject(lambda: f.start(ok=False), 'insoluble run cannot restart')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    f.cycle(seconds=1801)
+    f.reject(lambda: f.flow('review-defer', ok=False), 'required replan cannot be deferred')
+    f.plan(replan=True)
+    f.replan()
+    f.flow('review-defer')
+    before = f.state_path.read_bytes()
+    f.flow('review-defer')
+    check(f.state_path.read_bytes() == before, 'defer replay is idempotent')
+    check('completed_context' not in f.state()['review_run'], 'defer does not complete unresolved review')
+    f.start()
+    f.reject(lambda: f.flow('set', '--phase', 'init', '--next', 'next', '--issue', 43, '--pr', 0,
+                           ok=False), 'previous deferred context cannot release a new pending cycle')
 finally:
     f.close()
 

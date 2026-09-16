@@ -100,9 +100,10 @@ def guard_set(old, new):
     switching = (new.get("issue_number") != old.get("issue_number")
                  or new.get("pr_number") not in (old.get("pr_number"), 0))
     if switching:
-        closed = run.get("completed_context") == context
+        closed = (run.get("completed_context") == context
+                  or run.get("deferred_context") == context)
         require(closed or (old.get("phase") in ("cleanup", "completed") and old.get("active") is False),
-                "new Issue / PR requires completed review or ownership cleanup")
+                "new Issue / PR requires completed or deferred review, or ownership cleanup")
         gate(old, old["session_id"], check_head=False)
         # Ordinary setters merge counters; ownership completion, rather than an
         # optional caller flag, authorizes this new run's initial zero.
@@ -143,6 +144,19 @@ def close(state, args, directory):
                 for row in table)), "cannot close review with unmet or unverified acceptance criteria")
     if run.get("completed_context") != context:
         run["completed_context"] = context.copy()
+        state["updated_at"] = cycle.now()
+    return state
+
+
+def defer(state, args, directory):
+    """Retain an unresolved draft without declaring the review successful."""
+    gate(state, args.session)
+    run, context = current(state, args.session, completed=True)
+    require(cycle.matching_receipt(directory, state["review_cycle"]) is not None,
+            "saved review receipt missing")
+    if run.get("deferred_context") != context:
+        run["deferred_context"] = context.copy()
+        run["deferred_reason"] = "replied-only"
         state["updated_at"] = cycle.now()
     return state
 

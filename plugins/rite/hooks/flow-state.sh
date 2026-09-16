@@ -820,6 +820,7 @@ case "${1:-}" in
   review-observe) shift; cmd_review_cycle observe "$@" ;;
   review-replan) shift; cmd_review_cycle replan "$@" ;;
   review-close) shift; cmd_review_cycle close "$@" ;;
+  review-defer) shift; cmd_review_cycle defer "$@" ;;
   get) shift; cmd_get "$@" ;;
   deactivate) shift; cmd_deactivate "$@" ;;
   reap-issue) shift; cmd_reap_issue "$@" ;;
@@ -841,6 +842,7 @@ Usage: $0 {set|get|review-start|review-finish|deactivate|reap-issue|clear-worktr
   review-observe --input /absolute/observation.json --issue /absolute/issue.json
   review-replan --plan /absolute/fix-plan.json --issue /absolute/issue.json
   review-close
+  review-defer
   review-finish --manifest /absolute/completions.json --content-file /absolute/result.json [--pending-id TOKEN]
   deactivate [--next T] [--session UUID]
   reap-issue --issue N               # cross-session active=false + lock reap for issue N (non-blocking)

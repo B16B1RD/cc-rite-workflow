@@ -870,6 +870,11 @@ if printf '%s' "$close_state" | jq -e '.review_run != null' >/dev/null; then
     marker_emit ITERATE_RUN_CLOSE completed "phase=$close_phase"
     exit 0
   fi
+  if [ "{sweep_origin}" = '[fix:replied-only]' ]; then
+    bash {plugin_root}/hooks/flow-state.sh review-defer || { echo '[review:error] reason=review_defer_failed'; exit 1; }
+    marker_emit ITERATE_RUN_CLOSE deferred "phase=$close_phase"
+    exit 0
+  fi
   marker_emit ITERATE_RUN_CLOSE retained "phase=$close_phase"
   exit 0
 fi
@@ -895,6 +900,7 @@ marker_emit ITERATE_RUN_CLOSE "$run_close" "phase=$close_phase"
 | `ITERATE_RUN_CLOSE` | 意味 |
 |---|---|
 | `completed` | 検証済み完了 context と履歴を保持した。次 Issue への切替時に旧 run を履歴へ移し、新 run を開始できる。同じ Issue の再開では counter を維持する |
+| `deferred` | 返信のみで draft を残す終了 context と理由を保存した。未解決指摘・判定・履歴を保持して default batch の次 Issue へ移れる。品質上の完了にはせず、merge モードの失敗扱いも変えない |
 | `retained` | 現在の run の counter・観測・見直し履歴を保持した。既存の品質ゲートと完了 sentinel に従って caller へ戻る |
 | `ok` | counter を 0 にして run を閉じた。次回起動は fresh entry となり pin が更新される |
 | `failed` | リセットに失敗。次回起動は resume 判定となり前 run の pin を引き継ぐ（WARNING 済み）。`/rite:recover` で最後の未完了工程を再開する。未完了 review の counter reset は拒否される |
