@@ -32,6 +32,12 @@
 * **Skip**: [再レビュー結果](raw/reviews/20260916T071932Z-pr-2906.md) — 修正後の指摘ゼロという完了記録で、新たな経験則がない
 
 * **lint:checked** — stale=66, orphans=0, missing_concept=0, unregistered_raw=510, broken_refs=0, descriptive_refs=0。更新ページと同テーマの索引を照合。全504ページ間の意味比較は未実施。
+* **Skip**: [実行記録](raw/fixes/20260916T062620Z-pr-2905.md) — rite workflow の原因と検証結果はプラグイン本体と回帰テストへ反映済み。残件は follow-up Issue として起票済み。raw を今回の経過・完了記録として保持する
+* **Skip**: [実行記録](raw/fixes/20260916T065907Z-pr-2905.md) — rite workflow の原因と検証結果はプラグイン本体と回帰テストへ反映済み。残件は follow-up Issue として起票済み。raw を今回の経過・完了記録として保持する
+* **Skip**: [実行記録](raw/reviews/20260916T060744Z-pr-2905.md) — rite workflow の原因と検証結果はプラグイン本体と回帰テストへ反映済み。残件は follow-up Issue として起票済み。raw を今回の経過・完了記録として保持する
+* **Skip**: [実行記録](raw/reviews/20260916T065509Z-pr-2905.md) — rite workflow の原因と検証結果はプラグイン本体と回帰テストへ反映済み。残件は follow-up Issue として起票済み。raw を今回の経過・完了記録として保持する
+* **Skip**: [実行記録](raw/reviews/20260916T072435Z-pr-2905.md) — rite workflow の原因と検証結果はプラグイン本体と回帰テストへ反映済み。残件は follow-up Issue として起票済み。raw を今回の経過・完了記録として保持する
+
 
 ## 2026-09-15
 
