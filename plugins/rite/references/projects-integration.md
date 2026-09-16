@@ -13,6 +13,12 @@ Retrieve the Project item ID and update Status to "In Progress".
 
 > **Runtime execution**: Callers (`skills/open/SKILL.md` ステップ 2.4 / `skills/ready/SKILL.md` Phase 4 / `skills/issue-close/SKILL.md`) invoke `plugins/rite/scripts/projects-status-update.sh`, which is the single source of truth for Projects Status updates. The bash examples in §2.4.2 – §2.4.5 below document the underlying API calls for reference and debugging. Do NOT reproduce them inline in new commands — delegate to the script instead (inlining the API calls duplicates the single source of truth and invites drift).
 
+**Helper contract:** Supply JSON with `issue_number`, `owner`, `repo`, `project_number`, and `status_role` (`todo`, `in_progress`, `in_review`, `done`, or `cancelled`), plus optional `auto_add` and `non_blocking`. `status_name` is invalid even when `status_role` is also present; missing or unknown roles are invalid input. Input errors exit 1 regardless of `non_blocking`.
+
+`hooks/scripts/lib/projects-status-config.sh` maps roles to option names from `github.projects.fields.status.options`. No role keys means legacy mode with the five English names. Any role key enables explicit mode: `todo`, `in_progress`, `in_review`, and `done` are required once each; `cancelled` is optional. Use only single-line flow entries such as `{ role: todo, name: "未着手" }` (unquoted names are also supported). Mixed role/non-role entries, duplicate roles or names, unknown or missing required roles, empty names, and unsupported YAML syntax fail resolution. An explicit `fields.status.name` requires an exact field-name match; when omitted, field lookup tries `ステータス` then `Status`.
+
+The JSON `.result` is `updated`, `skipped_not_in_project`, `skipped_terminal_conflict`, `skipped_role_unmapped`, or `failed`. `skipped_role_unmapped` means an optional `cancelled` role was omitted in explicit mode: exit 0, empty warnings, and no board write, including no auto-add. A configured role with no matching board option returns `failed`. Other handled failures retain the helper's `non_blocking` behavior and `.warnings[]` diagnostics.
+
 ### 2.4.1 Configuration Retrieval
 
 Retrieve Projects configuration from `rite-config.yml`:
@@ -69,7 +75,7 @@ After adding, re-execute the 2.4.2 query to retrieve the new item_id.
 
 **Field ID retrieval:**
 
-If `github.projects.field_ids.status` is set in `rite-config.yml`, use that value directly as `{status_field_id}` (skip field ID extraction from API result):
+If `github.projects.field_ids.status` is set in `rite-config.yml`, it may be passed as `status_field_id_hint`. The helper still resolves the field by name and requires the hint to match that field's ID; a mismatch returns `failed` without `item-edit`:
 
 Replace the configured value with your actual project's ID (see CONFIGURATION.md for how to obtain):
 
@@ -86,16 +92,14 @@ github:
 gh project field-list {project_number} --owner {owner} --format json
 ```
 
-From the resulting JSON, find the field with `name` "Status" and retrieve the following:
-- `id`: Status field ID (`{status_field_id}`) -- only used when `field_ids` is not set
-- From the `options` array, the `id` of the option with `name` "In Progress" (`{in_progress_option_id}`)
+From the resulting JSON, find the configured Status field by exact name (or `ステータス`, then `Status`, when no name is configured) and retrieve the following:
+- `id`: Status field ID (`{status_field_id}`), also checked against `status_field_id_hint` when supplied
+- From the `options` array, the `id` of the option whose `name` matches the resolved `in_progress` role (`{in_progress_option_id}`; "In Progress" in legacy mode)
 
 **Retrieval logic:**
 1. Execute API (always needed for option ID retrieval)
-2. Check `github.projects.field_ids.status` in `rite-config.yml`
-3. Determine field ID:
- - If set -> Use configured value as `{status_field_id}`
- - If not set -> Retrieve `{status_field_id}` from API result
+2. Resolve the Status field by its configured name or the default field-name candidates
+3. Retrieve `{status_field_id}` from that field and verify any supplied `status_field_id_hint` matches
 4. Option ID: Retrieve `{in_progress_option_id}` from API result
 
 ### 2.4.5 Update Status to "In Progress"
@@ -311,7 +315,7 @@ Two rules follow from this set, and both are load-bearing:
 1. **A row already on a terminal Status is never drift.** The consumers below skip it entirely. An Issue deliberately parked at `Cancelled` must not be dragged to `Done`, and vice versa — the operator's choice between the two carries information that the automation cannot reconstruct.
 2. **A CLOSED Issue on a non-terminal Status is drift, and its destination comes from `stateReason`.** `NOT_PLANNED` and `DUPLICATE` land on `Cancelled`, `COMPLETED` on `Done`. Every other value lands on `Done` **with a WARNING** — that includes both a reason the API leaves unset and any future enum GitHub may add. Leaving such a row alone is not an option: a CLOSED Issue stranded in `Todo` or `In Review` is exactly the stall this reconciliation exists to clear.
 
-`Cancelled` is an English literal. `projects-status-update.sh` matches the board's Status option names literally (it has no alias table of its own — the field-name aliases live in `scripts/create-issue-with-projects.sh`), so a board whose Status field lacks a `Cancelled` option fails the option-ID lookup and surfaces through that helper's normal failure path. `/rite:setup` provisions the five-option union `Todo` / `In Progress` / `In Review` / `Done` / `Cancelled` (existing operator-defined options are kept). The `fields.status.options` key in `rite-config.yml` remains descriptive — no consumer reads it. On a board that has not been re-run through setup since that provisioning existed, a `NOT_PLANNED` row therefore stays non-terminal, and the next drift check reports it again.
+The detector rules above use the English terminal names. Calls to `projects-status-update.sh` supply the `done` or `cancelled` role; the helper resolves the corresponding display names from `fields.status.options` as described in §2.4. An omitted optional `cancelled` role returns `skipped_role_unmapped` without a board write. A mapped role whose board option is missing follows the normal failure path. `/rite:setup` provisions the five-option union `Todo` / `In Progress` / `In Review` / `Done` / `Cancelled` (existing operator-defined options are kept).
 
 **Consumers** (each references this section by name, never by line number):
 
@@ -322,9 +326,9 @@ Two rules follow from this set, and both are load-bearing:
 | `hooks/scripts/projects-status-gate.sh` | Reports a terminal `Cancelled` as an abandoned Issue rather than a dropped transition |
 | `skills/lint/references/plugin-checks-rationale.md` | Documents why the drift check consults the closure reason |
 | `skills/issue-cancel/SKILL.md` | Writes `Cancelled` as the destination for the `NOT_PLANNED` closure it performs — the deliberate-cancellation counterpart to the drift check's `--reconcile` |
-| `scripts/projects-status-update.sh` | Read-before-write: refuses `Cancelled`→`Done` (`skipped_terminal_conflict`); same-terminal is a no-op `updated`. Binds every `Done` caller (issue-close / cleanup) to rule 1 |
+| `scripts/projects-status-update.sh` | Read-before-write with resolved role names: refuses `cancelled`→`done` and any `done` write to a CLOSED `NOT_PLANNED` / `DUPLICATE` Issue (`skipped_terminal_conflict`); same-terminal is a no-op `updated` |
 
-**Helper write guard.** `projects-status-update.sh` reads the current Status via `fieldValues` before `item-edit`. A `Cancelled` row refused a `Done` write (`result=skipped_terminal_conflict`) so `/rite:issue-close` (Shared / Phase 1.3.2 / 4.2 / 4.6.3 / `skip_already_closed`) and `/rite:cleanup` (ステップ 8 / archive-procedures §3.2 / §3.7.2.1) sit under rule 1. Same-terminal writes (`Done`→`Done`, `Cancelled`→`Cancelled`) are an idempotent no-op (`updated`, no `item-edit`). `Done`→`Cancelled` still writes so `/rite:issue-cancel` can resync a `NOT_PLANNED` row. Progress-axis writes (`Todo` / `In Progress` / `In Review`) are unchanged.
+**Helper write guard.** `projects-status-update.sh` reads the current Status via `fieldValues` before `item-edit` and compares resolved role names. A row on the mapped `cancelled` option refuses a `done` write (`result=skipped_terminal_conflict`). A CLOSED Issue with `stateReason=NOT_PLANNED` or `DUPLICATE` also refuses `done`, even when `cancelled` is unmapped or its board Status is not terminal. This closure guard takes precedence over same-terminal no-op handling. Otherwise, same-terminal writes are idempotent (`updated`, no `item-edit`); `done`→`cancelled` still writes so `/rite:issue-cancel` can resync a `NOT_PLANNED` row. Progress-axis requests use the resolved `todo` / `in_progress` / `in_review` names.
 
 Progress ordering (`Todo` → `In Progress` → `In Review` → `Done`) is a separate concept. `Cancelled` has no position in it and must not be given one — an Issue that was abandoned has not "reached" any progress stage, and ranking it would let a stage check read a cancelled Issue as having advanced.
 

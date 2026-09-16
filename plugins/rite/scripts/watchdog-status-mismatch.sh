@@ -309,14 +309,18 @@ query($owner: String!, $repo: String!, $number: Int!) {
     reconcile_result="not_attempted"
     reconcile_stderr_oneline=""
     if [ "$RECONCILE" = "true" ]; then
+      case "$expected_status" in
+        "In Progress") expected_role="in_progress" ;;
+        "In Review") expected_role="in_review" ;;
+      esac
       # stderr を tempfile に退避して失敗時の原因 (auth / rate limit / partial failure) を可視化する。
       # silent suppress (2>/dev/null) では RECONCILE_FAILURES non-zero 時に user が失敗原因を triage できない。
       reconcile_err=$(mktemp "${TMPDIR:-/tmp}/rite-watchdog-reconcile-err-XXXXXX") || reconcile_err=""
       reconcile_json=$(bash "$PLUGIN_ROOT/scripts/projects-status-update.sh" "$(jq -n \
         --argjson issue "$issue_number" --arg owner "$REPO_OWNER" --arg repo "$REPO_NAME" \
-        --argjson project_number "$PROJECT_NUMBER" --arg status "$expected_status" \
+        --argjson project_number "$PROJECT_NUMBER" --arg role "$expected_role" \
         --argjson auto_add false --argjson non_blocking true \
-        '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>"${reconcile_err:-/dev/null}") || reconcile_json=""
+        '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_role:$role, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>"${reconcile_err:-/dev/null}") || reconcile_json=""
       reconcile_result=$(printf '%s' "$reconcile_json" | jq -r '.result // "failed"' 2>/dev/null) || reconcile_result="failed"
       if [ "$reconcile_result" = "updated" ]; then
         RECONCILED=$((RECONCILED + 1))

@@ -214,9 +214,9 @@ cp "$REPO_ROOT/plugins/rite/hooks/control-char-neutralize.sh" "$RULES_DIR/plugin
 cp "$REPO_ROOT/plugins/rite/hooks/scripts/lib/git-remote.sh" "$RULES_DIR/plugin/hooks/scripts/lib/"
 cat > "$RULES_DIR/plugin/scripts/projects-status-update.sh" <<'RECON_SHIM'
 #!/bin/bash
-# Mock reconciler: records the status_name it was asked for so the caller's per-rule
+# Mock reconciler: records the status_role it was asked for so the caller's per-rule
 # target can be asserted, then reports success.
-printf '%s' "$1" | jq -r '.status_name' >> "$RITE_TEST_RECON_LOG"
+printf '%s' "$1" | jq -r '.status_role' >> "$RITE_TEST_RECON_LOG"
 echo '{"result":"updated","warnings":[]}'
 RECON_SHIM
 chmod +x "$RULES_DIR/plugin/scripts/projects-status-update.sh"
@@ -287,11 +287,11 @@ assert_json "$out" '.scan_summary.mismatches_found' '1' "Todo residue on a draft
 assert_json "$out" '.mismatches[0].current_status' 'Todo' "the record carries the observed status"
 assert_json "$out" '.mismatches[0].expected_status' 'In Progress' "the Todo rule expects In Progress"
 recon_target=$(cat "$RULES_DIR/recon.log" 2>/dev/null | tr -d '\n')
-if [ "$recon_target" = "In Progress" ]; then
+if [ "$recon_target" = "in_progress" ]; then
   PASS=$((PASS + 1)); echo "  ✓ --reconcile drove the Todo residue to In Progress"
 else
-  FAIL=$((FAIL + 1)); FAILURES+=("T-04: reconcile target expected 'In Progress', got '$recon_target'")
-  echo "  ✗ reconcile target expected 'In Progress', got '$recon_target'" >&2
+  FAIL=$((FAIL + 1)); FAILURES+=("T-04: reconcile role expected 'in_progress', got '$recon_target'")
+  echo "  ✗ reconcile role expected 'in_progress', got '$recon_target'" >&2
 fi
 
 echo "  -- T-04b: Todo + ready PR (the rule says ANY open PR, not just drafts)"
@@ -309,11 +309,11 @@ assert_json "$out" '.scan_summary.prs_scanned' '1' "the scan actually entered th
 assert_json "$out" '.scan_summary.mismatches_found' '1' "In Progress residue on a ready PR is still reported"
 assert_json "$out" '.mismatches[0].expected_status' 'In Review' "the In Progress rule expects In Review"
 recon_target=$(cat "$RULES_DIR/recon.log" 2>/dev/null | tr -d '\n')
-if [ "$recon_target" = "In Review" ]; then
+if [ "$recon_target" = "in_review" ]; then
   PASS=$((PASS + 1)); echo "  ✓ --reconcile drove the In Progress residue to In Review"
 else
-  FAIL=$((FAIL + 1)); FAILURES+=("T-06: reconcile target expected 'In Review', got '$recon_target'")
-  echo "  ✗ reconcile target expected 'In Review', got '$recon_target'" >&2
+  FAIL=$((FAIL + 1)); FAILURES+=("T-06: reconcile role expected 'in_review', got '$recon_target'")
+  echo "  ✗ reconcile role expected 'in_review', got '$recon_target'" >&2
 fi
 
 echo "  -- T-06b: In Progress + draft PR is the correct state, not a mismatch"

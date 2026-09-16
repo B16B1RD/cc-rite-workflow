@@ -760,10 +760,10 @@ status_json_args=$(jq -n \
   --arg owner "{owner}" \
   --arg repo "{repo}" \
   --argjson project_number {project_number} \
-  --arg status "Done" \
+  --arg role "done" \
   --argjson auto_add false \
   --argjson non_blocking true \
-  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_role:$role, auto_add:$auto_add, non_blocking:$non_blocking}')
 # `jq 2>/dev/null` 抑制 / `failed|*)` catch-all により script が JSON-emit 前に死んだ場合も
 # silent fall-through を防ぐ。`|| status_json=""` は付けない — このブロックに set -e はなく、
 # command substitution は script が非ゼロ終了しても stdout (script が既に出力した失敗理由入り
