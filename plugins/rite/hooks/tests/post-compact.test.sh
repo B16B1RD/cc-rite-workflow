@@ -741,8 +741,11 @@ fi
 # actual `--jq` expression went unexercised — the exact blind spot that let
 # `.isDraft // null` survive.
 # Written as a sufficiency check, not an absence check: every `"pr view")` arm must
-# either dispatch to _mock_gh_pr_view or be an error arm that exits non-zero without
-# ever reaching the expression. An absence-only scan would pass vacuously if the arms
+# either dispatch to _mock_gh_pr_view or answer only on stderr before failing. The
+# discriminator is "does this arm write to stdout", not "does it contain exit 1": an arm
+# can hold a guard's `exit 1` and still reach the expression (git_remote_bypass asserts
+# --repo, then dispatches), and exempting it on the `exit 1` alone lets its dispatch
+# drift back to a literal unseen. An absence-only scan would pass vacuously if the arms
 # were renamed away, so the arm count is asserted non-zero too.
 echo "TC-RECON-12: gh mocks evaluate --jq with real jq (every pr view arm accounted for)"
 pr_view_arms=$(grep -nE '^[[:space:]]*"pr view"\)' "$SELF_PATH" || true)
@@ -753,20 +756,35 @@ else
   fail "no gh mock 'pr view' arm found — the scan below would pass vacuously"
 fi
 # Arm bodies span multiple lines (git_remote_bypass asserts --repo before dispatching),
-# so accumulate each arm from `"pr view")` through its `;;` terminator rather than
-# judging the opening line alone.
-unaccounted_arms=$(awk '
-  /^[[:space:]]*"pr view"\)/ { inarm = 1; start = FNR; body = ""; }
-  inarm { body = body $0 "\n" }
-  inarm && /;;[[:space:]]*$/ {
-    inarm = 0
-    if (body !~ /_mock_gh_pr_view/ && body !~ /exit 1/) print start ": " $0
+# so track each arm from `"pr view")` through its `;;` terminator with per-line flags.
+# The terminator is `;;` anywhere on the line, not anchored to end-of-line: a trailing
+# comment is still a terminator, and anchoring drops that arm's close so the body runs
+# on into the arms below it, judging several arms as one. The closed-arm count is
+# reported as a cheap self-check that every arm the grep found was also scanned.
+scan_output=$(awk '
+  /^[[:space:]]*"pr view"\)/ { inarm = 1; start = FNR; dispatch = 0; stdout_emit = 0 }
+  inarm {
+    if ($0 ~ /_mock_gh_pr_view/) dispatch = 1
+    if ($0 ~ /(echo|printf)[[:space:]]/ && $0 !~ />&2/) stdout_emit = 1
   }
+  inarm && /;;/ {
+    inarm = 0
+    closed++
+    if (dispatch == 0 && stdout_emit == 1) print "ARM " start ": " $0
+  }
+  END { print "CLOSED " closed + 0 }
 ' "$SELF_PATH" || true)
-if [ -n "$unaccounted_arms" ]; then
-  fail "a gh mock 'pr view' arm neither dispatches to _mock_gh_pr_view nor fails fast: $(printf '%s' "$unaccounted_arms" | head -3 | tr '\n' ' ')"
+closed_arm_count=$(printf '%s\n' "$scan_output" | sed -n 's/^CLOSED //p')
+unaccounted_arms=$(printf '%s\n' "$scan_output" | sed -n 's/^ARM //p')
+if [ "${closed_arm_count:-0}" -eq "${pr_view_arm_count:-0}" ] 2>/dev/null; then
+  pass "scanner closed every 'pr view' arm it found ($closed_arm_count)"
 else
-  pass "every gh mock 'pr view' arm dispatches through real jq or is an error arm"
+  fail "scanner closed ${closed_arm_count:-?} arms but ${pr_view_arm_count:-?} 'pr view' arms exist — it cannot parse some terminator, so those arms and every arm after them went unscanned"
+fi
+if [ -n "$unaccounted_arms" ]; then
+  fail "a gh mock 'pr view' arm answers on stdout without dispatching to _mock_gh_pr_view: $(printf '%s' "$unaccounted_arms" | head -3 | tr '\n' ' ')"
+else
+  pass "every gh mock 'pr view' arm that returns stdout goes through real jq"
 fi
 if grep -q 'MOCK_JQ_BIN" -r "\$jq_expr"' "$SELF_PATH"; then
   pass "gh mock lib pipes the fixture JSON through real jq"
