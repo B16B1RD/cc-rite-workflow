@@ -6,7 +6,7 @@
 #
 # Coverage (T-01..T-06 + D-03 lookup fail + caller coupling):
 #   T-01/T-02 残存指摘ありで 1 件起票され、body に出典・finding 要点・marker が含まれる
-#             Projects status=Todo / enabled=true を args.json に pin
+#             Projects status=todo (role) / enabled=true を args.json に pin
 #   T-03 起票 API 失敗で WARNING + exit 0 (cleanup を止めない)
 #   T-03g 最新が空でも先行 cycle の指摘が和集合で転記される
 #   T-03u 一部 parse 不能でも健全側の和集合で起票する
@@ -244,7 +244,7 @@ assert_grep "T-02 file:line" "$STUB_DIR/body.md" 'cleanup/SKILL.md:12'
 assert_grep "T-02 description" "$STUB_DIR/body.md" '実測なしの指摘本文'
 assert_grep "T-02 labels follow-up" "$STUB_DIR/args.json" '"follow-up"'
 assert_grep "T-02 source cleanup" "$STUB_DIR/args.json" '"source": "cleanup"'
-assert_grep "T-01 status Todo" "$STUB_DIR/args.json" '"status": "Todo"'
+assert_grep "T-01 status todo role" "$STUB_DIR/args.json" '"status": "todo"'
 assert_grep "T-01 projects enabled true" "$STUB_DIR/args.json" '"enabled": true'
 assert_grep "T-01 gh --label follow-up" "$GH_LOG" 'label follow-up'
 assert_not_grep "T-01 gh は Search API を使わない" "$GH_LOG" 'rite-follow-up-from-pr'

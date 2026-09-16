@@ -450,7 +450,7 @@ echo "[CONTEXT] WM_REPLICA_INIT=$(printf '%s\n' "$init_out" | sed -n 's/^status=
 ゲートは flow-state の `set` と**同じ bash ブロック**に置く。別ブロックに分けると、2.4(A) を飛ばした実行はゲートのブロックも同じように飛ばせてしまう — 検証したい唯一の failure mode でゲートごと消える。`set` は phase を進める必須手順なので、そこに同乗させれば実行が保証される。
 
 ```bash
-bash {plugin_root}/hooks/scripts/projects-status-gate.sh --issue {issue_number} --expect "In Progress"
+bash {plugin_root}/hooks/scripts/projects-status-gate.sh --issue {issue_number} --expect in_progress
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase branch --issue {issue_number} --branch {branch_name} --pr 0 \
   --next "実装計画策定へ進む"
@@ -460,10 +460,10 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 | `PROJECTS_STATUS_INVARIANT` | アクション |
 |---|---|
-| `ok` | 盤面が `In Progress` 以降に到達済み。ステップ 3 へ進む |
+| `ok` | 盤面の列が role `in_progress` 以降に到達済み（列名は `rite-config.yml` の `fields.status.options` で role に変換される）。ステップ 3 へ進む |
 | `skipped` | 検証対象なし（Projects 無効 / `project_number` 未設定 / `rite-config.yml` 不在）。ステップ 3 へ進む |
 | `unknown` | 検証自体が失敗した（gh / jq エラー、または Issue 番号・owner/repo が解決しない。stderr に原因）。**`ok` として扱わない**。警告を表示してステップ 3 へ進む（再実行はしない — 盤面の状態が不明なだけで、更新が失敗したとは限らない） |
-| `missing` | 2.4(A) が盤面に届いていない（Status が期待に達していない / Status 値が空 / Issue が Project 未登録）。**2.4(A) の bash を 1 回だけ再実行**してステップ 3 へ進む |
+| `missing` | 2.4(A) が盤面に届いていない（role が `in_progress` に達していない / Status 値が空 / Issue が Project 未登録）。**2.4(A) の bash を 1 回だけ再実行**してステップ 3 へ進む。ただし `role=` が空で `status=` に列名が入っている（列が role に対応しない。stderr に列名）ときは再実行しない — ユーザーが置いた列を上書きしないため、警告を表示してステップ 3 へ進む |
 
 `missing` の再実行の終端契約: 再実行では `[CONTEXT] PROJECTS_STATUS=` を再度 1 回だけ emit する。**ゲートは再呼び出ししない**（再々実行のループを構造的に作らない）。再実行も失敗した場合は最後の `PROJECTS_STATUS=` 値を残したままステップ 3 へ進む — ブロックも 3 回目の実行もしない。
 

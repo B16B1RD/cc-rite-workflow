@@ -303,7 +303,7 @@ args_json=$(jq -n \
   --argjson enabled true \
   --argjson project_number {project_number} \
   --arg owner "{owner}" \
-  --arg status "Todo" \
+  --arg status "todo" \
   --arg priority "{priority}" \
   --arg complexity "{complexity}" \
   --arg field_name_status "{field_name_status}" \
@@ -465,7 +465,7 @@ echo "[CONTEXT] DECOMPOSE_WORKDIR=$workdir"
     "enabled": true,
     "project_number": {project_number},
     "owner": "{owner}",
-    "status": "Todo",
+    "status": "todo",
     "priority": "{priority}"
   },
   "repo": "{repo}",

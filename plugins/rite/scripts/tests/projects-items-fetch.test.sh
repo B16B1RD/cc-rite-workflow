@@ -105,6 +105,13 @@ trap cleanup EXIT
 pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
 
+# Config sandbox: the target resolves the Status field name through rite-config.yml at
+# the git toplevel / cwd. Run from a directory that carries a legacy (no options) config
+# so the suite does not depend on the repository's own configuration.
+CONFIG_DIR="$TEST_DIR/repo"
+mkdir -p "$CONFIG_DIR"
+printf 'github:\n  projects:\n    enabled: true\n    project_number: 6\n' > "$CONFIG_DIR/rite-config.yml"
+
 # Helper: run the target with mock gh in an isolated TMPDIR.
 # Sets LAST_OUTPUT / LAST_RC. Each call resets the isolated tmp dir.
 run_fetch() {
@@ -115,6 +122,7 @@ run_fetch() {
   local rc=0
   local output
   output=$(
+    cd "$CONFIG_DIR" && \
     MOCK_GH_SCENARIO="$scenario" \
     TMPDIR="$ISOLATED_TMP" \
     PATH="$MOCK_BIN_DIR:$PATH" \
@@ -396,6 +404,49 @@ for scenario in pif_success pif_multi_page pif_project_view_fail pif_view_null_i
     fail "[$scenario] success/failure shape diverged: ref='$REF_OUTPUT' new='$LAST_OUTPUT'"
   fi
 done
+
+# --------------------------------------------------------------------------
+# TC-13: the Status field is found by the resolver's candidate names, not a literal
+# "Status" — a board whose field is named ステータス resolves with the default config,
+# a field named 進捗 resolves once rite-config.yml declares it, and a configuration the
+# resolver rejects is a fetch failure (never a silent status: null column).
+# --------------------------------------------------------------------------
+echo "TC-13: Status field resolved through rite-config.yml candidates"
+MOCK_PIF_FIELD_NAME="ステータス" run_fetch pif_named_field --project-number 6 --owner test-owner
+if [ "$LAST_RC" = "0" ] && [ -f "$LAST_OUTPUT" ]; then
+  expected='{"items":[{"content":{"number":101},"status":"In Progress"},{"content":{"number":102},"status":"Done"}]}'
+  actual=$(jq -c . "$LAST_OUTPUT")
+  if [ "$actual" = "$expected" ]; then
+    pass "ステータス field resolves with the default candidates (Japanese alias, zero config)"
+  else
+    fail "ステータス field: normalized JSON mismatch: $actual"
+  fi
+else
+  fail "ステータス field: expected tempfile path on stdout (rc=$LAST_RC, output=$LAST_OUTPUT)"
+fi
+printf 'github:\n  projects:\n    enabled: true\n    project_number: 6\n    fields:\n      status:\n        name: "進捗"\n' > "$CONFIG_DIR/rite-config.yml"
+MOCK_PIF_FIELD_NAME="進捗" run_fetch pif_named_field --project-number 6 --owner test-owner
+if [ "$LAST_RC" = "0" ] && [ -f "$LAST_OUTPUT" ]; then
+  # With an explicit name only that name is a candidate: item 102 (field "Status") is
+  # status-less on this board, which is what proves the literal is gone.
+  expected='{"items":[{"content":{"number":101},"status":"In Progress"},{"content":{"number":102},"status":null}]}'
+  actual=$(jq -c . "$LAST_OUTPUT")
+  if [ "$actual" = "$expected" ]; then
+    pass "a configured field name (進捗) is the only candidate; a literal Status field is not read"
+  else
+    fail "進捗 field: normalized JSON mismatch: $actual"
+  fi
+else
+  fail "進捗 field: expected tempfile path on stdout (rc=$LAST_RC, output=$LAST_OUTPUT)"
+fi
+printf 'github:\n  projects:\n    enabled: true\n    project_number: 6\n    fields:\n      status:\n        options:\n          - { role: todo, name: "To-Do" }\n' > "$CONFIG_DIR/rite-config.yml"
+run_fetch pif_success --project-number 6 --owner test-owner
+if [ "$LAST_RC" = "0" ] && [[ "$LAST_OUTPUT" == "[projects:fetch-failed] invalid Status configuration:"* ]]; then
+  pass "an invalid Status configuration is a fetch failure carrying the resolver's diagnostic"
+else
+  fail "invalid config: expected [projects:fetch-failed] invalid Status configuration, got rc=$LAST_RC output=$LAST_OUTPUT"
+fi
+printf 'github:\n  projects:\n    enabled: true\n    project_number: 6\n' > "$CONFIG_DIR/rite-config.yml"
 
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="

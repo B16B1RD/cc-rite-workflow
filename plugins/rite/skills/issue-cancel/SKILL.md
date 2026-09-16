@@ -53,6 +53,8 @@ rationale: references/rationale.md#no-reconfirm
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
 | `{owner}` / `{repo}` / `{owner_repo}` | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した値を literal substitute |
 | `{project_number}` | `rite-config.yml` → `github.projects.project_number` |
+| `{board_status_result}` | Phase 5 の helper `.result`（Phase 5 をスキップしたときは `skipped_projects_disabled`） |
+| `{board_note}` | `{board_status_result}` が `updated` のとき `board Status は Cancelled です。`、それ以外は空文字列（Phase 6 の close コメント末尾） |
 
 ---
 
@@ -487,13 +489,15 @@ bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args"
 
 explicit role mode で `cancelled` を省略した場合は `skipped_role_unmapped`。role が設定済み（legacy mode では `Cancelled`）で対応する board option が存在しない場合は `failed` になる。option の provisioning は本スキルの責務ではない。
 
+`.result` を `{board_status_result}` として retain し（本 Phase をスキップした場合は `skipped_projects_disabled`）、Phase 6 の close コメント末尾と Phase 7 の報告に使う。board に書いていないのに「board Status は Cancelled です」と記録しないため。
+
 ---
 
 ## Phase 6: Issue を NOT_PLANNED でクローズ
 
 > **Phase 2.1 で `CLOSED` を観測した経路は本 Phase をスキップする**（再クローズしない）。
 
-理由コメントとクローズを 1 コールで行い、「理由の無いクローズ」が成立する窓を作らない:
+理由コメントとクローズを 1 コールで行い、「理由の無いクローズ」が成立する窓を作らない。`{board_note}` は `{board_status_result}` が `updated` のときだけ `board Status は Cancelled です。`（それ以外は空文字列）を literal substitute する — board を書いていない経路（`skipped_role_unmapped` / Projects 無効 / 失敗）のコメントは board Status に言及しない:
 
 ```bash
 if ! cancel_reason=$(cat "{reason_file}"); then
@@ -509,7 +513,7 @@ if gh issue close {issue_number} -R {owner_repo} --reason "not planned" \
 
 理由: $cancel_reason
 
-中止の記録は /rite:issue-cancel が残しています。board Status は Cancelled です。"; then
+中止の記録は /rite:issue-cancel が残しています。{board_note}"; then
   echo "[CONTEXT] CANCEL_ISSUE_CLOSED=1; issue={issue_number}"
 else
   issue_close_rc=$?
@@ -540,7 +544,7 @@ rationale: references/rationale.md#no-parent-propagation
 - PR: #{pr_number}（マージせずクローズ）／ なし
 - ブランチ: {branch_name}（削除済み）／ 残置（理由）／ なし
 - セッション worktree: 削除済み ／ 残置（理由）／ なし
-- board Status: Cancelled へ更新 ／ 更新失敗（手動対応が必要）／ Projects 無効のためスキップ
+- board Status: Cancelled へ更新 ／ cancelled role 未設定のため未更新 ／ 更新失敗（手動対応が必要）／ Projects 無効のためスキップ
 
 （未完了項目があるときのみ）未完了:
 - {項目}: {理由と手動復旧コマンド}
@@ -552,7 +556,7 @@ rationale: references/rationale.md#no-parent-propagation
 ## /rite:issue-cancel 完了（Status 同期のみ）
 
 Issue #{issue_number} は既に中止済みです（stateReason: {state_reason}）。
-board Status: Cancelled へ同期 ／ 更新失敗（手動対応が必要）／ Projects 無効のためスキップ
+board Status: Cancelled へ同期 ／ cancelled role 未設定のため未更新 ／ 更新失敗（手動対応が必要）／ Projects 無効のためスキップ
 
 PR クローズ・後片付け・再クローズは実行していません。
 ```

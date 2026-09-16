@@ -525,12 +525,33 @@ else
   fail "references/rationale.md is missing (SKILL.md points into it)"
 fi
 
+echo "=== T-11: close コメントは board を書いたときだけ board Status に言及する ==="
+# Positive control: the sentence still exists and is bound to the updated result — deleting
+# it from every path would also make the negative assert below pass.
+assert_grep "T-11 the board sentence is emitted for the updated result" "$SKILL" \
+  '`{board_status_result}` が `updated` のとき `board Status は Cancelled です。`'
+assert_grep_in_section "T-11 the close comment ends with the board_note placeholder" "$SKILL" \
+  '^## Phase 6: Issue を NOT_PLANNED でクローズ' '^## Phase 7:' \
+  '^中止の記録は /rite:issue-cancel が残しています。{board_note}"; then$'
+# Negative: the close call must not hard-code the sentence — on a board without a cancelled
+# column (skipped_role_unmapped) the comment would claim a write that never happened.
+assert_not_grep "T-11 the close call does not hard-code the board sentence" "$SKILL" \
+  '残しています。board Status は Cancelled です。"'
+assert_grep "T-11 skipped_role_unmapped is named as a path that must not mention the board" "$SKILL" \
+  'board を書いていない経路（`skipped_role_unmapped`'
+# The close call stays a single, non-indented `if gh issue close` (T-01 / T-03 anchor it).
+if [ "$(grep -c '^if gh issue close' "$SKILL")" -eq 1 ]; then
+  pass "T-11 exactly one non-indented gh issue close call remains"
+else
+  fail "T-11 expected exactly one '^if gh issue close' line, got $(grep -c '^if gh issue close' "$SKILL")"
+fi
+
 echo "=== 補助: 起動が人間の明示指示に限られる (Non-goal) ==="
 assert_grep "frontmatter states the skill does not auto-activate" "$SKILL" \
   'auto-activate しない'
 assert_grep "the body states rite never invokes cancel on its own judgement" "$SKILL" \
   '自律判断して本スキルを呼ぶ経路は作らない'
 
-if ! print_summary "$(basename "$0")" "issue-cancel の実行順序 (PR close → Status → Issue close) / fail-loud / helper 委譲 / 親非伝播 contract (T-01〜T-10)"; then
+if ! print_summary "$(basename "$0")" "issue-cancel の実行順序 (PR close → Status → Issue close) / fail-loud / helper 委譲 / 親非伝播 / board 言及 contract (T-01〜T-11)"; then
   exit 1
 fi
