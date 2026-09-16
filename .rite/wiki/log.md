@@ -55,6 +55,7 @@
 * **Create**: [CI が pending のまま閉じたレビューは失敗 job を観測できない — 完了後に担当 reviewer を CI 状態付きで reroll する](pages/heuristics/ci-pending-at-review-close-reroll-finder-after-completion.md) — raw/reviews/20260916T111808Z-pr-2910.md を新規ページ化
 * **Create**: [fail し得る解決と本文の抽出を別関数に分け、fail はコマンド置換の外で呼ぶ](pages/patterns/test-helper-fail-outside-command-substitution.md) — raw/reviews/20260916T114658Z-pr-2910.md を新規ページ化
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=515, broken_refs=0
+* **Update**: [否定形の assert は前提条件が崩れると fail-silent になる](pages/anti-patterns/negative-assertion-vacuous-without-precondition-floor.md) — raw/reviews/20260916T125101Z-pr-2914.md を統合（同一 fixture の対照走行で不在 assert の到達性を先に証明する対処を追記）
 
 ## 2026-09-15
 
