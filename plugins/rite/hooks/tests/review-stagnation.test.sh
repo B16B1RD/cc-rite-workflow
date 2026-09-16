@@ -81,7 +81,7 @@ class Fixture:
     def start(self, ok=True):
         return self.flow('review-start', '--selection', self.selection, '--stagnation', ok=ok)
 
-    def finish(self, roots=None, satisfied=(), non_blocking=False):
+    def finish(self, roots=None, satisfied=(), non_blocking=False, severities=None):
         if roots is None:
             roots = ['input defect']
         context = self.context()
@@ -99,6 +99,9 @@ class Fixture:
                          description='Verification: repro ' + root + ' => failed', suggestion='repair')
                     for index, root in enumerate(roots)]
         content = self.private / 'review.json'
+        if severities:
+            for finding, severity in zip(findings, severities):
+                finding['severity'] = severity
         notes = [dict(id='F-99', reviewer='code-quality-reviewer', severity='LOW', scope='nit-noted',
                       status='open', file='source.txt', line=1, description='Informational note', suggestion='consider')] if non_blocking else []
         dump(content, dict(schema_version='1.1.0', pr_number=71, review_context=context,
@@ -287,6 +290,11 @@ try:
              'ordinary set cannot reactivate stopped run')
     f.flow('set', '--phase', 'review', '--next', 'recover', '--active', 'false')
     check(f.state()['stop_reason'] == 'stagnation:non-convergent', 'ordinary stopped update retains reason')
+    run = f.state()['review_run']
+    f.flow('set', '--phase', 'review', '--next', 'stopped', '--active', 'false',
+           '--stop-reason', 'circuit-breaker:stagnation')
+    check(f.state()['review_run'] == run, 'iterate terminal notification retains non-convergent cause')
+    f.reject(lambda: f.flow('review-close', ok=False), 'stopped run cannot record completion')
 finally:
     f.close()
 
@@ -324,9 +332,58 @@ try:
     f.replan()
     check(f.decision() == 'stop' and f.state()['stop_reason'] == 'stagnation:scope-insoluble',
           'contractual insolubility retains alternatives and stops')
+    run = f.state()['review_run']
+    f.flow('set', '--phase', 'review', '--next', 'stopped', '--active', 'false',
+           '--stop-reason', 'circuit-breaker:stagnation')
+    check(f.state()['review_run'] == run and f.state()['stop_reason'] == 'stagnation:scope-insoluble',
+          'iterate terminal notification retains scoped insolubility cause')
     f.reject(lambda: f.start(ok=False), 'insoluble run cannot restart')
 finally:
     f.close()
+
+for seconds in [0, 1801]:
+    f = Fixture()
+    try:
+        f.start()
+        f.finish(roots=['fatal defect', 'advisory defect'], severities=['HIGH', 'MEDIUM'])
+        f.clock(seconds)
+        f.observe()
+        receipt_path = Path(f.state()['review_cycle']['result_path'])
+        f.run(['bash', str(plugin / 'scripts/review-findings-maps.sh'), '--review-source', 'local_file',
+               '--review-source-path', str(receipt_path)])
+        receipt = json.loads(receipt_path.read_text())
+        check(len(receipt['findings']) == 1 and receipt['non_blocking_findings'][0]['id'] == 'F-02',
+              'normal fatal triage persists advisory disposition')
+        before = f.state_path.read_bytes()
+        f.observe()
+        check(f.state_path.read_bytes() == before, 'observation replay accepts only known triaged receipt')
+        f.plan(replan=seconds > 1800)
+        if seconds > 1800:
+            f.replan()
+            f.replan()
+        f.scope()
+        changed = copy.deepcopy(receipt)
+        changed['findings'][0]['description'] = 'changed evidence'
+        dump(receipt_path, changed)
+        f.reject(lambda: f.scope(ok=False), 'triaged receipt evidence tampering remains rejected')
+        if seconds > 1800:
+            f.reject(lambda: f.replan(ok=False), 'replan replay cannot accept tampered receipt')
+        dump(receipt_path, receipt)
+        f.reject(lambda: f.flow('review-close', ok=False), 'unresolved fatal finding prevents completion')
+        (f.root / 'source.txt').write_text('verified repair\n')
+        f.scope('verify')
+        f.commit()
+        f.cycle(roots=[])
+        check(f.decision() == 'continue', 'historical classified receipt permits next observation')
+        f.flow('review-close')
+        before = f.state_path.read_bytes()
+        f.flow('review-close')
+        check(f.state_path.read_bytes() == before, 'review completion replay preserves history')
+        f.start()
+        f.reject(lambda: f.flow('set', '--phase', 'init', '--next', 'next', '--issue', 43, '--pr', 0,
+                               ok=False), 'previous completed context cannot close a new pending cycle')
+    finally:
+        f.close()
 
 f = Fixture()
 try:

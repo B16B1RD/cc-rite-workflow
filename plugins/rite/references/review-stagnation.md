@@ -8,6 +8,10 @@ Issue に関連付いた通常 caller は `flow-state.sh review-start --stagnati
 2. 未完了 cycle は同じ cycle の回収・保存を再開する。完了済み cycle の欠損修復と既存の発散・回数 breaker を先に適用する。
 3. 未観測を示す `action:observe` のまま先へ進めず、保存済み全指摘を観測し、`review_run.current_decision` の `action: continue|replan|stop` と `reasons: []` に従う。`continue` は通常の品質ゲートへ戻す意味で、merge の許可ではない。
 
+観測時には元 receipt のハッシュと、既存 fatal triage helper がそのコピーから生成した派生 receipt のハッシュを保存する。以降はこの2種類だけを許可し、正規の分類後も観測・見直しの再送と履歴検証を継続できる。それ以外の証跡・指摘・受入条件の変更は拒否する。
+
+iterate の全品質ゲートと non-blocking sweep の成功後、`flow-state.sh review-close` が現在の観測・receipt・未解決指摘・受入条件を確認して `review_run.completed_context` を保存する。phase・counter・履歴は維持する。次 Issue への切替時だけ旧 run を `review_run_history` に移すため、draft batch は cleanup を挟まず継続できる。同じ Issue の再開や次 cycle には完了記録を流用しない。停止済み run の具体的な停止理由は通常の終了通知でも上書きしない。
+
 前回診断後の実作業が **1800 秒を超えた**場合は診断する。時間だけでは停止・merge・品質緩和を行わない。同じ根因が3観測に現れ、その間にその根因を対象とした検証済み修正と異なる HEAD が2回あれば見直す。同一 HEAD の再レビュー、未検証修正、別 run は再発回数を増やさない。
 
 見直しは同一 run で最大2回。同じ観測で時間と再発が同時に成立しても1回とする。見直し後に根因が解消し受入条件の充足が進めば継続する。見直し後も同じ根因が2回の修正をまたいで再発し、受入条件の充足が進まなければ非収束として停止する。進展は見直し時の充足集合と比較し、その後に新たな充足が一度でも記録されれば、この非収束条件には該当しない。枠の消費や時間超過だけでは停止しない。範囲内解決不能は代替案と契約上の理由を保存して停止する。

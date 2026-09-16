@@ -218,6 +218,7 @@ with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
     execute(observe_block)
     assert len(state()['review_run']['observations']) == 1, 'observation replay duplicated'
     assert 'ITERATE_STAGNATION=continue' in execute(block(iterate, '# iterate-stagnation-route')).stdout
+    successful = state()
     flow('set', '--phase', 'ready', '--next', 'verified')
 
     # Saving a clock and crashing before removal must submit exactly the same interval.
@@ -252,6 +253,27 @@ with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
     retained = json.loads(queue.read_text())
     assert retained['cursor'] == 0 and retained['active'] is False
     assert retained['failed'] == [4241] and retained['issues'] == [4241, 4243]
+
+    # Default draft batches close the verified review, then execute the real next-Issue initializer.
+    state_path.write_text(json.dumps(successful))
+    replacements.update(sweep_origin='[fix:replied-only]')
+    retained_close = execute(block(iterate, 'close_phase=$(bash'))
+    assert 'ITERATE_RUN_CLOSE=retained' in retained_close.stdout
+    assert 'completed_context' not in state()['review_run'], 'reply-only exit promoted to completion'
+    replacements.update(sweep_origin='[review:mergeable]')
+    closed = execute(block(iterate, 'close_phase=$(bash'))
+    assert 'ITERATE_RUN_CLOSE=completed' in closed.stdout
+    completed = state()['review_run']
+    assert completed['completed_context'] == context and state()['cycle_count'] == 1
+    replacements.update(issue_number='4243')
+    execute(block((plugin / 'skills/open/SKILL.md').read_text(), '# open-initial-state'))
+    assert state()['issue_number'] == 4243 and 'review_run' not in state()
+    assert state()['review_run_history'] == [completed] and state().get('cycle_count', 0) == 0
+    flow('set', '--phase', 'pr', '--pr', 4244, '--next', 'next review')
+    replacements.update(pr_number='4244')
+    execute(start_block)
+    assert state()['review_run']['run_id'] != context['run_id'] and state()['cycle_count'] == 1
+    assert state()['review_run_history'] == [completed]
 
     # Existing output gates precede the deferred success handoff.
     assert '状態更新・result の前に記載順で評価する' in review

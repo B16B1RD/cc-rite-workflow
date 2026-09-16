@@ -837,7 +837,7 @@ bash {plugin_root}/hooks/scripts/pr-cycle-cleanup.sh 2>&1 || true
 
 ### ステップ 5.0.1: run を閉じる (cycle counter のリセット)
 
-`review_run` がある現在の run は下の `retained` 分岐で counter と履歴を維持する。以下の reset の説明と失敗警告は legacy state に適用する。
+`review_run` がある現在の run は counter と履歴を維持する。正常終了では、全品質ゲートと 5.S の成功後に `review-close` で完了 context を保存する。これにより cleanup を行わない draft batch も次 Issue へ進める。完了記録の失敗は caller へ成功を返さず停止する。中断・返信のみは `retained` とし未完了 run を閉じない。以下の reset の説明と失敗警告は legacy state に適用する。
 
 完了通知を出力する**前に**、`cycle_count` を 0 にして run を明示的に閉じる。これをしないと終了経路
 （`[review:mergeable]` / `[fix:non-fatal-only]` / `[fix:replied-only]` / `[fix:cancelled-by-user]`）はいずれも counter を残したまま
@@ -863,6 +863,13 @@ close_phase=$(bash {plugin_root}/hooks/flow-state.sh get --field phase --default
 close_handoff=$(bash {plugin_root}/hooks/flow-state.sh get --field handoff --default "") || close_handoff=""
 close_state=$(bash {plugin_root}/hooks/flow-state.sh get --jq-filter .) || exit 1
 if printf '%s' "$close_state" | jq -e '.review_run != null' >/dev/null; then
+  close_success=false
+  case "{sweep_origin}" in '[review:mergeable]'|'[fix:non-fatal-only]') close_success=true ;; esac
+  if [ "$close_success" = true ]; then
+    bash {plugin_root}/hooks/flow-state.sh review-close || { echo '[review:error] reason=review_close_failed'; exit 1; }
+    marker_emit ITERATE_RUN_CLOSE completed "phase=$close_phase"
+    exit 0
+  fi
   marker_emit ITERATE_RUN_CLOSE retained "phase=$close_phase"
   exit 0
 fi
@@ -887,6 +894,7 @@ marker_emit ITERATE_RUN_CLOSE "$run_close" "phase=$close_phase"
 
 | `ITERATE_RUN_CLOSE` | 意味 |
 |---|---|
+| `completed` | 検証済み完了 context と履歴を保持した。次 Issue への切替時に旧 run を履歴へ移し、新 run を開始できる。同じ Issue の再開では counter を維持する |
 | `retained` | 現在の run の counter・観測・見直し履歴を保持した。既存の品質ゲートと完了 sentinel に従って caller へ戻る |
 | `ok` | counter を 0 にして run を閉じた。次回起動は fresh entry となり pin が更新される |
 | `failed` | リセットに失敗。次回起動は resume 判定となり前 run の pin を引き継ぐ（WARNING 済み）。`/rite:recover` で最後の未完了工程を再開する。未完了 review の counter reset は拒否される |

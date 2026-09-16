@@ -797,7 +797,7 @@ cmd_review_cycle() {
     printf '%s' "$updated" | jq -r '.review_cycle | "[CONTEXT] REVIEW_CYCLE=completed; verdict=\(.verdict); result=\(.result_path)"' >&2
   fi
   case "$operation" in
-    clock|observe|replan) printf '%s' "$updated" | jq '.review_run' ;;
+    clock|observe|replan|close) printf '%s' "$updated" | jq '.review_run' ;;
     *) printf '%s' "$updated" | jq '.review_cycle' ;;
   esac
 }
@@ -819,6 +819,7 @@ case "${1:-}" in
   review-clock) shift; cmd_review_cycle clock "$@" ;;
   review-observe) shift; cmd_review_cycle observe "$@" ;;
   review-replan) shift; cmd_review_cycle replan "$@" ;;
+  review-close) shift; cmd_review_cycle close "$@" ;;
   get) shift; cmd_get "$@" ;;
   deactivate) shift; cmd_deactivate "$@" ;;
   reap-issue) shift; cmd_reap_issue "$@" ;;
@@ -839,6 +840,7 @@ Usage: $0 {set|get|review-start|review-finish|deactivate|reap-issue|clear-worktr
   review-clock --input /absolute/clock-segment.json
   review-observe --input /absolute/observation.json --issue /absolute/issue.json
   review-replan --plan /absolute/fix-plan.json --issue /absolute/issue.json
+  review-close
   review-finish --manifest /absolute/completions.json --content-file /absolute/result.json [--pending-id TOKEN]
   deactivate [--next T] [--session UUID]
   reap-issue --issue N               # cross-session active=false + lock reap for issue N (non-blocking)

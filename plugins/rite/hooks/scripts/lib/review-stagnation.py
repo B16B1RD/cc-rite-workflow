@@ -62,6 +62,22 @@ def observation(run, context):
     return next((item for item in run["observations"] if item["input"]["review_context"] == context), None)
 
 
+def triaged_hash(receipt):
+    """Freeze the one permitted derivative using the existing classification policy."""
+    helper = Path(__file__).resolve().parents[3] / "scripts/review-findings-maps.sh"
+    with tempfile.TemporaryDirectory(prefix="rite-review-triage-") as temporary:
+        path = Path(temporary, "review.json")
+        path.write_text(json.dumps(receipt), encoding="utf-8")
+        result = subprocess.run(["bash", str(helper), "--review-source", "explicit_file",
+                                 "--review-source-path", str(path)], text=True, capture_output=True)
+        require(result.returncode == 0, "review receipt classification failed: " + result.stdout + result.stderr)
+        return digest(read(path))
+
+
+def unchanged_receipt(saved, receipt):
+    return digest(receipt) in (saved["review_hash"], saved.get("triaged_hash"))
+
+
 def gate(state, session, allow_replan=False, check_head=True):
     if "review_run" not in state:
         return
@@ -69,7 +85,7 @@ def gate(state, session, allow_replan=False, check_head=True):
     require(run["status"] != "stopped", "review run stopped: " + str(run.get("stop_reason")))
     saved = observation(run, context)
     require(saved is not None, "saved stagnation observation required before fix / next review")
-    require(digest(read(saved["result_path"])) == saved["review_hash"], "observed review receipt is missing or changed")
+    require(unchanged_receipt(saved, read(saved["result_path"])), "observed review receipt is missing or changed")
     require(allow_replan or run["current_decision"]["action"] != "replan",
             "required review-replan must complete before fix / next review")
 
@@ -79,13 +95,15 @@ def guard_set(old, new):
         new["review_run_history"] = old["review_run_history"]
     if "review_run" not in old:
         return False
-    run, _ = current(old, old["session_id"], check_head=False)
+    run, context = current(old, old["session_id"], check_head=False)
     require(new.get("session_id") == old["session_id"], "foreign session transition")
     switching = (new.get("issue_number") != old.get("issue_number")
                  or new.get("pr_number") not in (old.get("pr_number"), 0))
     if switching:
-        require(old.get("phase") in ("cleanup", "completed") and old.get("active") is False,
-                "new Issue / PR requires completed ownership cleanup")
+        closed = run.get("completed_context") == context
+        require(closed or (old.get("phase") in ("cleanup", "completed") and old.get("active") is False),
+                "new Issue / PR requires completed review or ownership cleanup")
+        gate(old, old["session_id"], check_head=False)
         # Ordinary setters merge counters; ownership completion, rather than an
         # optional caller flag, authorizes this new run's initial zero.
         new["cycle_count"] = 0
@@ -97,7 +115,7 @@ def guard_set(old, new):
     if new.get("phase") in ("fix", "ready") and new.get("phase") != old.get("phase"):
         gate(old, old["session_id"], allow_replan=new.get("phase") == "fix", check_head=False)
     reason = new.get("stop_reason", "")
-    if reason.startswith("circuit-breaker:"):
+    if reason.startswith("circuit-breaker:") and run["status"] != "stopped":
         run.update(status="stopped", stop_reason=reason,
                    current_decision=dict(action="stop", reasons=[reason]))
     if run["status"] == "stopped":
@@ -107,6 +125,26 @@ def guard_set(old, new):
     if "review_run_history" in old:
         new["review_run_history"] = old["review_run_history"]
     return False
+
+
+def close(state, args, directory):
+    """Record the successful iterate boundary without resetting the owning run."""
+    gate(state, args.session)
+    run, context = current(state, args.session, completed=True)
+    receipt = cycle.matching_receipt(directory, state["review_cycle"])
+    require(receipt is not None, "saved review receipt missing")
+    saved = receipt[1]
+    require(not any(f.get("scope") in ("current-pr", "follow-up") for f in saved["findings"]),
+            "cannot close review with unresolved blocking findings")
+    table = saved.get("acceptance_criteria")
+    require((isinstance(table, dict) and table.get("skipped") in ("no_issue", "no_ac_section"))
+            or (isinstance(table, list) and all(row.get("status") == "satisfied"
+                or (row.get("status") == "human-verified" and row.get("head") == context["commit_sha"])
+                for row in table)), "cannot close review with unmet or unverified acceptance criteria")
+    if run.get("completed_context") != context:
+        run["completed_context"] = context.copy()
+        state["updated_at"] = cycle.now()
+    return state
 
 
 def instant(value):
@@ -224,13 +262,14 @@ def observe(state, args, directory):
             "Issue specification changed within run; retain history and reconcile before continuing")
     previous = observation(run, context)
     if previous:
-        require(previous["input"] == data and previous["review_hash"] == digest(receipt[1]),
+        require(previous["input"] == data and unchanged_receipt(previous, receipt[1]),
                 "same observation cannot be overwritten with different content")
         return state
     require(run["status"] != "stopped", "review run stopped: " + str(run.get("stop_reason")))
     require(any(entry["review_context"] == context for entry in run["clock"]),
             "explicit clock segment required for this review observation")
-    entry = dict(input=data, roots=roots, review_hash=digest(receipt[1]), result_path=str(receipt[0]))
+    entry = dict(input=data, roots=roots, review_hash=digest(receipt[1]),
+                 triaged_hash=triaged_hash(receipt[1]), result_path=str(receipt[0]))
     run["observations"].append(entry)
     breaker = existing_breaker(state, run)
     if breaker:
@@ -287,7 +326,7 @@ def existing_breaker(state, run):
         for index, item in enumerate(records):
             saved = read(item["result_path"])
             require(saved.get("review_context") == item["input"]["review_context"]
-                    and digest(saved) == item["review_hash"], "saved historical receipt is missing or changed")
+                    and unchanged_receipt(item, saved), "saved historical receipt is missing or changed")
             Path(temporary, str(state["pr_number"]) + "-" + str(index).zfill(8) + ".json").write_text(json.dumps(saved))
         helper = Path(__file__).resolve().parent.parent / "review-trend-divergence.sh"
         result = subprocess.run(["bash", str(helper), "--pr", str(state["pr_number"]),
@@ -325,7 +364,9 @@ def replan(state, args, directory):
         require(previous["plan_hash"] == digest(plan), "same replan cannot be overwritten")
         require(plan.get("issue_body") == issue.get("body") and issue.get("number") == state.get("issue_number"),
                 "latest Issue specification differs from replan")
-        require(cycle.matching_receipt(directory, state["review_cycle"]) is not None, "saved receipt missing")
+        receipt = cycle.matching_receipt(directory, state["review_cycle"])
+        require(receipt is not None, "saved receipt missing")
+        require(unchanged_receipt(observation(run, context), receipt[1]), "observed review receipt is missing or changed")
         return state
     gate(state, args.session, allow_replan=True)
     require(run["current_decision"]["action"] == "replan", "no required replan for this observation")
