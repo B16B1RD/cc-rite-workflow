@@ -248,7 +248,7 @@ okf_version: "0.2"
 | [複数の異種 signal を集約するロジックは表層パターンではなく共通の構造化された状態を判定基準にする](pages/heuristics/aggregate-heterogeneous-signals-by-structured-state-not-surface-pattern.md) | heuristics | 複数の異種 signal（各ステップが出す `[CONTEXT]` marker、チェックボックスの x/空欄、絵文字 prefix 付き付記文など）を集約する新規ロジックを書く際、一律の仮定（「marker が無ければ異常」）や表層的な文字列パターン一致（「絵文字 prefix で判定する」）を先に決めてしまうと、各 signal の実際の emit 条件を個別確認していないぶんだけ取りこぼしや誤検知を生む。 | 2026-07-23T06:38:31Z | high |
 | [新設した検証機構が、その機構自身の目的を局所的に打ち消す](pages/anti-patterns/self-defeating-guard-local-purpose-negation.md) | anti-patterns | 過去のレビュー事例（macOS/BSD 対応でテストスイートを green 化）の 4 cycle・累積 26 指摘のうち **最多の型が本パターン（5 件）**だった。 | 2026-08-12T18:34:40Z | high |
 | [却下理由が採用案にも等しく当てはまる — differentiator でない根拠をコメントに残す](pages/anti-patterns/rejected-rationale-applies-to-adopted-option.md) | anti-patterns | 設計判断をコメントに残すとき「A を却下して B を採用した」と書く。 | 2026-08-01T00:21:06+09:00 | high |
-| [GNU ツールの代替 shim は exit code だけでなく期限・シグナル範囲まで契約を全部再現する](pages/patterns/gnu-tool-shim-full-contract-reproduction.md) | patterns | macOS/BSD で GNU ツール（`timeout` 等）が無い環境向けに shim を書くとき、**契約の一部だけを再現すると fail-open になる**。 | 2026-07-25T07:05:21Z | high |
+| [GNU ツールの代替 shim は exit code だけでなく期限・シグナル範囲まで契約を全部再現する](pages/patterns/gnu-tool-shim-full-contract-reproduction.md) | patterns | macOS/BSD で GNU ツール（`timeout` 等）が無い環境向けに shim を書くとき、**契約の一部だけを再現すると fail-open になる**。 | 2026-09-16T23:37:15Z | high |
 | [mktemp -d の canonical 化は 2 段階に分ける — `cd "$(mktemp -d)"` は失敗時にリポジトリ本体を掴む](pages/patterns/two-stage-canonicalization-mktemp-pwd-p.md) | patterns | macOS の `$TMPDIR` は `/var/folders/...`（`/private` への symlink）なので、テストが temp ディレクトリの path を比較すると symlink 解決の差で落ちる。 | 2026-07-25T07:05:21Z | high |
 | [否定アサーションには positive control を添える — `\|\| true` は唯一の crash signal を消す](pages/patterns/negative-assertion-positive-control.md) | patterns | 否定アサーション（「出力が空であること」「canary ファイルが作られないこと」で pass する TC）は、**被テストコマンドの exit code が唯一残った crash signal** である。 | 2026-09-16T15:08:04Z | high |
 | [プラットフォーム skip を増やすなら「緑の意味」を痩せさせない skip 会計をセットで入れる](pages/heuristics/skip-accounting-honest-green.md) | heuristics | クロスプラットフォーム対応は skip を増やす。 | 2026-08-30T15:15:33Z | high |
@@ -368,7 +368,7 @@ okf_version: "0.2"
 | [fail-closed ガードは「異常を検出したら止める」ではなく「正常を確認できなければ止める」で書く](pages/patterns/fail-closed-confirms-normal-not-detects-abnormal.md) | patterns | cross-Issue の値転写を遮断する fail-closed ガードが、「identity が**食い違う**」ときにしか発火しない実装になっていた。 | 2026-08-03T07:46:56Z | high |
 | [特定の 1 バイト・1 条件で書いた防御は、defect class 全体を覆うか修正直後に自問する](pages/heuristics/single-condition-defense-vs-defect-class.md) | heuristics | レビュー指摘は具体的な 1 ケースで届く。 | 2026-08-03T07:46:56Z | high |
 | [bash の算術比較は非数値入力で rc=2 を返し、fail-closed の意図が else 側へ倒れる](pages/anti-patterns/bash-numeric-test-fail-open-on-nonnumeric.md) | anti-patterns | `[ "$x" -eq 0 ]` は `$x` が非数値のとき「偽」ではなく **rc=2（エラー）** を返す。 | 2026-08-03T07:46:56Z | high |
-| [`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) | anti-patterns | `grep -q` は最初の一致で即座に終了する。 | 2026-09-13T07:45:50Z | high |
+| [`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) | anti-patterns | `grep -q` は最初の一致で即座に終了する。 | 2026-09-16T23:37:15Z | high |
 | [mutation は適用前に一致件数を、適用後に構文を検証してから結論に使う](pages/heuristics/mutation-validate-before-and-after-application.md) | heuristics | mutation テストの結論（「このアサーションは守れている / 守れていない」）は、mutation 自体が正しく適用されて初めて意味を持つ。 | 2026-09-12T12:57:28Z | high |
 | [自身の検出を避けるために崩した書式は、読者に「こう書け」と読まれる](pages/anti-patterns/self-detection-evasion-format-read-as-prescription.md) | anti-patterns | 検出ゲートの仕様を記述する文書は、その仕様が検出する文字列を本文に書いた瞬間に自分自身が検出対象になる。 | 2026-08-03T23:41:26+09:00 | medium |
 | [テストの gate 条件がプラットフォーム事実を環境 capability の代理にすると恒常 red 化する](pages/anti-patterns/test-gate-proxy-indicator-drift.md) | anti-patterns | テストの floor（skip を禁じて fail させるガード）が、守りたい性質そのものではなく「プラットフォーム事実」を代理指標にしていると、代理の成立しない環境で恒常的に赤くなりスイート全体の signal を劣化させる。 | 2026-08-04T00:55:00+09:00 | medium |
@@ -520,4 +520,4 @@ okf_version: "0.2"
 
 - 総ページ数: 506
 - ドメイン別: patterns=117, heuristics=224, anti-patterns=165
-- 最終更新: 2026-09-16T15:08:04Z
+- 最終更新: 2026-09-16T23:37:15Z
