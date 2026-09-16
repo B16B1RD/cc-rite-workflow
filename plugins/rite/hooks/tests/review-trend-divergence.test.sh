@@ -892,8 +892,8 @@ assert_grep "消費側: ITERATE_LOST_GATE fire を marker_emit する" "$ITERATE
   'marker_emit ITERATE_LOST_GATE fire'
 assert_grep "消費側: 分岐結果を ITERATE_LOST_REPAIR に記録する" "$ITERATE_SKILL" \
   'marker_emit ITERATE_LOST_REPAIR'
-assert_grep "消費側: (a) は既存 save helper 経由" "$ITERATE_SKILL" \
-  'hooks/review-result-save.sh --pr \{pr_number\} --content-file'
+assert_grep "消費側: (a) は固定名簿と保存を検証する review-finish 経由" "$ITERATE_SKILL" \
+  'pr-review ステップ 6.1.a の `review-finish` で保存・検証'
 assert_grep "消費側: (b) は counter 不前進のまま pr-review" "$ITERATE_SKILL" \
   'counter 不前進のまま `/rite:pr-review`'
 assert_grep "消費側: ゲート fire 時は次 cycle の review を開始しない" "$ITERATE_SKILL" \

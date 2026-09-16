@@ -20,7 +20,13 @@ check "fix は file JSON の receipt を検査" '.measured_gate.commit_sha == .c
 check "fix は未適用 JSON で停止" '[fix:error] reason=gate_not_applied' "$FIX"
 check "pr-review は incremental も連続レール" 'full / incremental を問わない単一の連続レール' "$REVIEW"
 check "pr-review は gate helper を実行" 'bash {plugin_root}/scripts/review-measured-gate.sh' "$REVIEW"
-check "pr-review は save helper を実行" 'bash {plugin_root}/hooks/review-result-save.sh' "$REVIEW"
+check "pr-review は検証済み終了操作を実行" 'bash {plugin_root}/hooks/flow-state.sh review-finish' "$REVIEW"
+check "終了操作は既存 saver を再利用" 'str(hooks / "review-result-save.sh")' "$ROOT/plugins/rite/hooks/scripts/lib/review-cycle.py"
+if bash "$ROOT/plugins/rite/hooks/tests/review-cycle-caller.test.sh"; then
+  echo '  ✅ documented review-finish saves through the real saver'; pass=$((pass + 1))
+else
+  echo '  ❌ documented review-finish persistence'; fail=$((fail + 1))
+fi
 
 # Execute the documented callers so a zero exit from a failed record cannot pass.
 if python3 - "$ROOT" <<'PY_CHECK'
