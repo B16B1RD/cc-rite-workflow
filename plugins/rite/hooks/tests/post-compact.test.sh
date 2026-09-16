@@ -18,6 +18,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=_hermetic-env.sh
 source "$SCRIPT_DIR/_hermetic-env.sh" || { echo "ERROR: cannot source _hermetic-env.sh" >&2; exit 1; }
 HOOK="$SCRIPT_DIR/../post-compact.sh"
+# Static self-inspection target for TC-RECON-12 (the gh mocks live in this file).
+SELF_PATH="$SCRIPT_DIR/$(basename "$0")"
 TEST_DIR="$(mktemp -d)"
 PASS=0
 FAIL=0
@@ -342,9 +344,51 @@ echo ""
 # ──────────────────────────────────────────────────────────────────────────
 
 _setup_recon_env() {
-  local label="$1" gh_behavior="$2" reconcile_result="${3:-updated}" git_remote_url="${4:-}"
+  local label="$1" gh_behavior="$2" reconcile_result="${3:-updated}" git_remote_url="${4:-}" plugin_sandbox="${5:-no}"
   local dir="$TEST_DIR/recon-$label"
   mkdir -p "$dir/bin"
+
+  # Shared by every PATH-injected `gh` mock below. `gh pr view --json X --jq EXPR`
+  # answers by running EXPR through real jq against the fixture JSON. Echoing a
+  # fixed literal instead would bypass the very expression under test: a
+  # `.isDraft // null` regression turns false into null and the hook stops
+  # reconciling, yet a literal-echo mock keeps reporting "false" and every TC
+  # here passes. Resolve jq once, now, so the mock never depends on what PATH
+  # looks like inside the hook's subshells.
+  local mock_jq
+  mock_jq="$(command -v jq)" || mock_jq=""
+  if [ -z "$mock_jq" ]; then
+    echo "_setup_recon_env: jq not found — gh mocks cannot evaluate --jq" >&2
+    return 1
+  fi
+  {
+    printf '%s\n' "MOCK_JQ_BIN=$mock_jq"
+    cat <<'MOCKLIB_EOF'
+_mock_gh_pr_view() {
+  local json="$1"; shift
+  if [ -z "${MOCK_JQ_BIN:-}" ] || [ ! -x "$MOCK_JQ_BIN" ]; then
+    # No raw-JSON fallback: returning the fixture verbatim would make PR_IS_DRAFT
+    # something other than "false", the reconciliation block would skip, and the
+    # absence-based draft assertions would go green for the wrong reason.
+    echo "MOCK ASSERTION FAILED: jq unresolvable (MOCK_JQ_BIN='${MOCK_JQ_BIN:-}')" >&2
+    exit 1
+  fi
+  local jq_expr=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --jq) jq_expr="${2:-}"; shift 2 ;;
+      --jq=*) jq_expr="${1#--jq=}"; shift ;;
+      *) shift ;;
+    esac
+  done
+  if [ -z "$jq_expr" ]; then
+    printf '%s\n' "$json"
+    return 0
+  fi
+  printf '%s\n' "$json" | "$MOCK_JQ_BIN" -r "$jq_expr"
+}
+MOCKLIB_EOF
+  } > "$dir/bin/gh-mock-lib.sh"
   if [ -n "$git_remote_url" ]; then
     # Real git repo (not the `mkdir -p .git` non-repo stub below) so
     # resolve_owner_repo() can actually parse `origin` — used by TC-RECON-09
@@ -372,7 +416,7 @@ YAML
       cat > "$dir/bin/gh" <<'EOF'
 #!/bin/bash
 case "$1 $2" in
-  "pr view") echo "could not resolve to a PullRequest with the number of 42" >&2; exit 1 ;;
+  "pr view") echo "could not resolve to a PullRequest with the number of 42" >&2; exit 1 ;;  # no-jq-dispatch: fail-fast error fixture
   "repo view") echo '{"owner":{"login":"o"},"name":"r"}' ;;
   "api graphql") echo "Todo" ;;
   *) exit 0 ;;
@@ -383,7 +427,7 @@ EOF
       cat > "$dir/bin/gh" <<'EOF'
 #!/bin/bash
 case "$1 $2" in
-  "pr view") echo "HTTP 403: rate limit exceeded" >&2; exit 1 ;;
+  "pr view") echo "HTTP 403: rate limit exceeded" >&2; exit 1 ;;  # no-jq-dispatch: fail-fast error fixture
   *) exit 0 ;;
 esac
 EOF
@@ -391,8 +435,9 @@ EOF
     repo_view_fail)
       cat > "$dir/bin/gh" <<'EOF'
 #!/bin/bash
+. "$(dirname "$0")/gh-mock-lib.sh"
 case "$1 $2" in
-  "pr view") echo "false" ;;
+  "pr view") _mock_gh_pr_view '{"isDraft":false}' "$@" ;;
   "repo view") echo "auth required" >&2; exit 1 ;;
   *) exit 0 ;;
 esac
@@ -401,8 +446,9 @@ EOF
     happy)
       cat > "$dir/bin/gh" <<'EOF'
 #!/bin/bash
+. "$(dirname "$0")/gh-mock-lib.sh"
 case "$1 $2" in
-  "pr view") echo "false" ;;
+  "pr view") _mock_gh_pr_view '{"isDraft":false}' "$@" ;;
   "repo view") echo '{"owner":{"login":"o"},"name":"r"}' ;;
   "api graphql") echo '{"data":{"repository":{"issue":{"projectItems":{"nodes":[{"project":{"number":1},"fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"In Review"}]}}]}}}}}' ;;
   *) exit 0 ;;
@@ -421,13 +467,14 @@ EOF
       # silently pass this fixture. See MOCK ASSERTION FAILED handling below.
       cat > "$dir/bin/gh" <<'EOF'
 #!/bin/bash
+. "$(dirname "$0")/gh-mock-lib.sh"
 case "$1 $2" in
   "pr view")
     if ! printf '%s\n' "$*" | grep -q -- '--repo o/r'; then
       echo "MOCK ASSERTION FAILED: expected --repo o/r, got: $*" >&2
       exit 1
     fi
-    echo "false"
+    _mock_gh_pr_view '{"isDraft":false}' "$@"
     ;;
   "repo view") echo "auth required (should not be called — git-remote should resolve first)" >&2; exit 1 ;;
   "api graphql")
@@ -444,8 +491,9 @@ EOF
     mismatch_then_reconcile)
       cat > "$dir/bin/gh" <<'EOF'
 #!/bin/bash
+. "$(dirname "$0")/gh-mock-lib.sh"
 case "$1 $2" in
-  "pr view") echo "false" ;;
+  "pr view") _mock_gh_pr_view '{"isDraft":false}' "$@" ;;
   "repo view") echo '{"owner":{"login":"o"},"name":"r"}' ;;
   "api graphql") echo '{"data":{"repository":{"issue":{"projectItems":{"nodes":[{"project":{"number":1},"fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Todo"}]}}]}}}}}' ;;
   *) exit 0 ;;
@@ -459,10 +507,27 @@ EOF
       # keeps this row from being dragged back to In Review.
       cat > "$dir/bin/gh" <<'EOF'
 #!/bin/bash
+. "$(dirname "$0")/gh-mock-lib.sh"
 case "$1 $2" in
-  "pr view") echo "false" ;;
+  "pr view") _mock_gh_pr_view '{"isDraft":false}' "$@" ;;
   "repo view") echo '{"owner":{"login":"o"},"name":"r"}' ;;
   "api graphql") echo '{"data":{"repository":{"issue":{"projectItems":{"nodes":[{"project":{"number":1},"fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Cancelled"}]}}]}}}}}' ;;
+  *) exit 0 ;;
+esac
+EOF
+      ;;
+    draft_pr)
+      # Ready-vs-draft boundary: `repo view` and `api graphql` answer normally so the
+      # only thing that can keep the reconciliation block silent is isDraft=true.
+      # A broken `repo view` here would emit post_compact_gh_repo_view_failed and the
+      # "no WARNING" assertion would pass for the wrong reason.
+      cat > "$dir/bin/gh" <<'EOF'
+#!/bin/bash
+. "$(dirname "$0")/gh-mock-lib.sh"
+case "$1 $2" in
+  "pr view") touch "$(dirname "$0")/../pr-view-called"; _mock_gh_pr_view '{"isDraft":true}' "$@" ;;
+  "repo view") echo '{"owner":{"login":"o"},"name":"r"}' ;;
+  "api graphql") echo '{"data":{"repository":{"issue":{"projectItems":{"nodes":[{"project":{"number":1},"fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Todo"}]}}]}}}}}' ;;
   *) exit 0 ;;
 esac
 EOF
@@ -477,6 +542,23 @@ EOF
 echo '{"result":"$reconcile_result"}'
 EOF
   chmod +x "$dir/bin/projects-status-update.sh"
+
+  # The hook calls the reconcile helper by absolute path
+  # ("\$PLUGIN_ROOT_PC/scripts/projects-status-update.sh"), never through PATH, so a
+  # PATH-injected mock alone cannot observe the payload it was handed. Build a
+  # sandbox plugin root — hooks/ copied verbatim, scripts/ holding a recording
+  # mock — and run that copy of the hook. Callers then assert on the recorded
+  # payload instead of inferring the reconcile target from a stderr token.
+  if [ "$plugin_sandbox" = "yes" ]; then
+    mkdir -p "$dir/plugin/scripts"
+    cp -a "$(cd "$SCRIPT_DIR/.." && pwd)" "$dir/plugin/hooks"
+    cat > "$dir/plugin/scripts/projects-status-update.sh" <<EOF
+#!/bin/bash
+printf '%s' "\$1" > "$dir/status-update-call.json"
+echo '{"result":"$reconcile_result"}'
+EOF
+    chmod +x "$dir/plugin/scripts/projects-status-update.sh"
+  fi
 
   echo "$dir"
 }
@@ -590,6 +672,137 @@ if grep -qE 'post_compact_reconciliation_failed' "$recon_stderr"; then
   pass "post_compact_reconciliation_failed emitted when reconcile returns failed"
 else
   fail "expected post_compact_reconciliation_failed; got: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+fi
+
+# TC-RECON-10: Ready PR (isDraft=false) reaches the reconcile helper with the in_review role.
+# `gh pr view` is asked for `--jq '.isDraft'`; the mock evaluates that expression with
+# real jq, so the boolean false has to survive the round trip for the block to run at
+# all. Asserting on the recorded payload (not a stderr token) is what pins the target
+# status: a reconcile aimed at any other column would still print the same WARNING.
+echo "TC-RECON-10: Ready PR → reconcile helper invoked with status_role=in_review"
+recon_dir=$(_setup_recon_env "ready-reconcile" "mismatch_then_reconcile" "updated" "" "yes")
+recon_stderr="$(mktemp "$TEST_DIR/recon-ready-reconcile-stderr.XXXXXX")"
+echo "{\"cwd\": \"$recon_dir\", \"source\": \"auto\"}" \
+  | env PATH="$recon_dir/bin:$PATH" bash "$recon_dir/plugin/hooks/post-compact.sh" >/dev/null 2>"$recon_stderr" || true
+if [ -f "$recon_dir/status-update-call.json" ]; then
+  pass "reconcile helper was invoked for a Ready PR"
+  recorded_status=$(jq -r '.status_role // empty' "$recon_dir/status-update-call.json" 2>/dev/null || echo "")
+  if [ "$recorded_status" = "in_review" ]; then
+    pass "reconcile helper received status_role=in_review"
+  else
+    fail "reconcile helper received status_role='$recorded_status' (expected in_review); payload: $(head -c 300 "$recon_dir/status-update-call.json")"
+  fi
+else
+  fail "reconcile helper never invoked for a Ready PR; stderr: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+fi
+if grep -qE 'post-compact mismatch detected' "$recon_stderr"; then
+  pass "mismatch line emitted for a Ready PR on a non-terminal Status"
+else
+  fail "expected mismatch line; got: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+fi
+
+# TC-RECON-11: draft PR (isDraft=true) leaves the board alone and stays silent.
+# The negative control for TC-RECON-10 — same fixture shape, same Todo board, only
+# isDraft differs — so a failure here means the draft branch stopped discriminating,
+# not that the block was never reachable.
+echo "TC-RECON-11: draft PR → no reconcile, no WARNING"
+recon_dir=$(_setup_recon_env "draft-pr" "draft_pr" "updated" "" "yes")
+recon_stderr="$(mktemp "$TEST_DIR/recon-draft-pr-stderr.XXXXXX")"
+echo "{\"cwd\": \"$recon_dir\", \"source\": \"auto\"}" \
+  | env PATH="$recon_dir/bin:$PATH" bash "$recon_dir/plugin/hooks/post-compact.sh" >/dev/null 2>"$recon_stderr" || true
+# Positive control first: every assertion below is an absence, and an absence also
+# holds when the block was never entered at all (missing pr_number, unresolved repo,
+# mock never run). The marker proves `gh pr view` actually ran, so a pass here means
+# isDraft=true is what stopped the reconciliation, not an unreached code path.
+if [ -f "$recon_dir/pr-view-called" ]; then
+  pass "reconciliation block reached gh pr view for the draft fixture"
+else
+  fail "draft fixture never reached gh pr view — absence assertions below would be vacuous; stderr: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+fi
+if [ -f "$recon_dir/status-update-call.json" ]; then
+  fail "reconcile helper invoked for a draft PR; payload: $(head -c 300 "$recon_dir/status-update-call.json")"
+else
+  pass "reconcile helper not invoked for a draft PR"
+fi
+if grep -qE 'post-compact mismatch detected' "$recon_stderr"; then
+  fail "draft PR wrongly reported as a Status mismatch: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+else
+  pass "draft PR is not reported as a mismatch"
+fi
+if grep -qE '(post_compact_[a-z_]+|state_root_(inaccessible|toctou_race)|pr_deleted_or_inaccessible)' "$recon_stderr"; then
+  fail "draft PR surfaced a reconciliation-failure WARNING: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+else
+  pass "draft PR surfaces no reconciliation-failure WARNING"
+fi
+
+# TC-RECON-12: the gh mocks must answer `pr view` through real jq, not a literal.
+# Static guard on this file itself. Without it the mocks can drift back to
+# `echo "false"`, and every runtime TC above would keep passing while the hook's
+# actual `--jq` expression went unexercised — the exact blind spot that let
+# `.isDraft // null` survive.
+# Written as a sufficiency check, not an absence check: every `"pr view")` arm must
+# either dispatch to _mock_gh_pr_view or carry a `no-jq-dispatch:` marker saying why it
+# does not. Inferring the exemption from the arm's shape is what keeps failing: judging on
+# `exit 1` exempts an arm that holds a guard's `exit 1` and still reaches the expression
+# (git_remote_bypass asserts --repo, then dispatches), and judging on the writer misses
+# every writer left off the list — `cat fixture` returns a literal just as well as `echo`.
+# A marker cannot be arrived at by accident, so an arm drifting back to a literal loses
+# its exemption no matter which shape the drift takes. An absence-only scan would pass
+# vacuously if the arms were renamed away, so the arm count is asserted non-zero too.
+echo "TC-RECON-12: gh mocks evaluate --jq with real jq (every pr view arm accounted for)"
+pr_view_arms=$(grep -nE '^[[:space:]]*"pr view"\)' "$SELF_PATH" || true)
+pr_view_arm_count=$(printf '%s' "$pr_view_arms" | grep -c . || true)
+if [ "${pr_view_arm_count:-0}" -gt 0 ]; then
+  pass "gh mock 'pr view' arms found in this file ($pr_view_arm_count)"
+else
+  fail "no gh mock 'pr view' arm found — the scan below would pass vacuously"
+fi
+# Arm bodies span multiple lines (git_remote_bypass asserts --repo before dispatching),
+# so track each arm from `"pr view")` through its `;;` terminator with per-line flags.
+# The terminator is `;;` anywhere on the line, not anchored to end-of-line: a trailing
+# comment is still a terminator, and anchoring drops that arm's close so the body runs
+# on into the arms below it, judging several arms as one.
+#
+# The dispatch must be real code, so it is matched with comments stripped — otherwise
+# `cat fixture ;;  # was _mock_gh_pr_view` would claim an exemption it does not have.
+# The marker is the opposite: it only ever appears in a comment, so it is matched raw.
+# The closed-arm count keeps the `|| true` above from turning an awk failure into a
+# vacuous green: with no arms scanned, the unaccounted list is empty either way.
+scan_output=$(awk '
+  /^[[:space:]]*"pr view"\)/ { inarm = 1; start = FNR; dispatch = 0; exempt = 0 }
+  inarm {
+    code = $0; sub(/#.*/, "", code)
+    if (code ~ /_mock_gh_pr_view/) dispatch = 1
+    if ($0 ~ /no-jq-dispatch:/) exempt = 1
+  }
+  inarm && /;;/ {
+    inarm = 0
+    closed++
+    if (dispatch == 0 && exempt == 0) print "ARM " start ": " $0
+  }
+  END { print "CLOSED " closed + 0 }
+' "$SELF_PATH" || true)
+closed_arm_count=$(printf '%s\n' "$scan_output" | sed -n 's/^CLOSED //p')
+unaccounted_arms=$(printf '%s\n' "$scan_output" | sed -n 's/^ARM //p')
+if [ "${closed_arm_count:-0}" -eq "${pr_view_arm_count:-0}" ] 2>/dev/null; then
+  pass "scanner closed every 'pr view' arm it found ($closed_arm_count)"
+else
+  fail "scanner closed ${closed_arm_count:-?} arms but ${pr_view_arm_count:-?} 'pr view' arms exist — the scan did not cover every arm (awk failure, or an arm with no ';;' before the next one)"
+fi
+if [ -n "$unaccounted_arms" ]; then
+  fail "a gh mock 'pr view' arm neither dispatches to _mock_gh_pr_view nor carries a 'no-jq-dispatch:' marker: $(printf '%s' "$unaccounted_arms" | head -3 | tr '\n' ' ')"
+else
+  pass "every gh mock 'pr view' arm either dispatches through real jq or declares its exemption"
+fi
+if grep -q 'MOCK_JQ_BIN" -r "\$jq_expr"' "$SELF_PATH"; then
+  pass "gh mock lib pipes the fixture JSON through real jq"
+else
+  fail "gh mock lib no longer evaluates --jq with real jq"
+fi
+if grep -q 'MOCK ASSERTION FAILED: jq unresolvable' "$SELF_PATH"; then
+  pass "gh mock lib fails loud when jq cannot be resolved (no raw-JSON fallback)"
+else
+  fail "gh mock lib lost its fail-loud guard for an unresolvable jq"
 fi
 
 # TC-RECON-07: gh repo view failure → cascade emit guard
