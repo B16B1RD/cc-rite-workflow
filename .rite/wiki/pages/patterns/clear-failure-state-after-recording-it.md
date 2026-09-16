@@ -7,13 +7,19 @@ reference: "plugins/rite/references/wiki-promotions/patterns/clear-failure-state
 description: "サーキットブレーカー発火時に cycle counter を 0 へリセットする設計（「再実行でループを再開できる」ため）を入れたが、そのリセットは発火を記録する唯一の手段である sentinel emit より**手前**にあった。"
 created: "2026-07-29T21:32:36+09:00"
 sources:
+  - type: "fixes"
+    resource: "raw/fixes/20260916T092034Z-pr-2909.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260916T090121Z-pr-2909.md"
   - type: "reviews"
     resource: "raw/reviews/20260729T042319Z-pr-2044.md"
   - type: "fixes"
     resource: "raw/fixes/20260729T043110Z-pr-2044.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-29T21:32:36+09:00" }
+generated: { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
 ---
 
 # 失敗状態のクリアは失敗の記録より後に置く
@@ -51,6 +57,13 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-29T21:32:36+09:00" }
 
 散文（Markdown 埋め込み bash）の修正でも A/B 対比の実測が有効だった。修正後のブロックと、修正前相当（sed で 1 行戻した版）を同じ stub 環境で走らせ、「fire → ステップ 6 未到達で中断 → resume」の 1 シナリオで両者の marker を並べて観測している。**「直った」ことの証拠は、修正後の正しい出力ではなく修正前との差分で示すほうが強い。**
 
+### 停止後の通知で具体的な理由を失わない
+
+停止の記録後にも情報を失う経路がある。診断処理が具体的な停止原因を保存していても、共通の終了処理が汎用 breaker 名を書き直すと、再開時に原因と必要な対応を区別できなくなる。
+
+既に停止済みの run では原因を維持し、まだ停止していない run への breaker 適用は残す。保存直後だけでなく、通常の終了通知を通した後と復旧時の読出しまで同じ原因が残ることを検証する。
+
+
 ## 関連ページ
 
 - [終端状態は「到達した事実」で記録し、可変値との境界比較で代用しない](../heuristics/terminal-state-recorded-not-boundary-compared.md)
@@ -58,6 +71,9 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-29T21:32:36+09:00" }
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
 
 ## ソース
+
+- [今回の修正結果](../../raw/fixes/20260916T092034Z-pr-2909.md)
+- [今回のレビュー結果](../../raw/reviews/20260916T090121Z-pr-2909.md)
 
 - [レビュー結果](../../raw/reviews/20260729T042319Z-pr-2044.md)
 - [fix 結果](../../raw/fixes/20260729T043110Z-pr-2044.md)

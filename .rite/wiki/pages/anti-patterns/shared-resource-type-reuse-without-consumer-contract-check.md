@@ -6,6 +6,10 @@ promote: rite-plugin
 description: "新機能実装で既存の共有リソース（reap manifest の type 名前空間等）を再利用する際、その共有リソースの既存消費者（別のロジック段）が持つ契約——多くはコード内コメントで明示された不変条件——を確認しないまま実装すると、共有リソースの解釈が衝突し、既存の健全なリソースが無警告で破壊されうる。"
 created: "2026-07-23T04:14:28Z"
 sources:
+  - type: "fixes"
+    resource: "raw/fixes/20260916T092034Z-pr-2909.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260916T090121Z-pr-2909.md"
   - type: "reviews"
     resource: "raw/reviews/20260904T232945Z-pr-2571.md"
   - type: "fixes"
@@ -27,8 +31,9 @@ sources:
 tags: ["shared-resource-contract", "namespace-reuse", "reap-manifest", "existing-consumer-verification", "mutation-testing", "cross-validation", "marker-prefix-glob-scope"]
 confidence: high
 verified:
+  - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
   - { by: "rite-wiki-ingest/gpt-6", at: "2026-09-05T12:10:29.806932+00:00" }
-generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-09-05T12:10:29.806932+00:00" }
+generated: { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
 ---
 
 # 共有リソースの type/名前空間を再利用する新機能は、既存消費者のコード内契約（コメント明示の不変条件）を見落として生存中のリソースを破壊しうる
@@ -89,12 +94,22 @@ consumer 契約の確認を怠った結果は、生存中リソースの破壊�
 
 入力取得に成功扱いの fallback を置くと、その下流の fail-loud guard が不発になりうる。再実行しても変わらない分類エラーは、同じ入力の再試行だけで回復しない。入力を作った上流の責務と区別する。
 
+### 保存結果の監査も既存 writer の契約を確認する
+
+共有の保存 JSON に完全ハッシュの監査を追加する場合、読み手だけでなく既存の正規 writer も列挙する。必須の分類処理が保存結果から非 fatal 指摘を移す設計では、保存直後のハッシュだけを許す監査が通常の処理を改変として拒否する。
+
+元データのハッシュに加えて、同じ canonical 分類 helper が生成した派生データのハッシュだけを許可する。任意の変更を許す緩和にはしない。保存、正規分類、観測、見直しの順で結合検証し、正規更新の受理と無関係な変更の拒否を対にする。
+
+
 ## 関連ページ
 
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
 - [Canonical helper bypass: 既存集約 helper を bypass して inline 再実装する](./canonical-helper-bypass.md)
 
 ## ソース
+
+- [今回の修正結果](../../raw/fixes/20260916T092034Z-pr-2909.md)
+- [今回のレビュー結果](../../raw/reviews/20260916T090121Z-pr-2909.md)
 
 - [CRITICAL 検出](../../raw/reviews/20260723T005459Z-pr-1974.md)
 - [専用 type 新設による修正](../../raw/fixes/20260723T010449Z-pr-1974.md)

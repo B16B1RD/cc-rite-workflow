@@ -6,6 +6,8 @@ promote: rite-plugin
 created: "2026-04-19T03:30:00+00:00"
 sources:
   - type: "reviews"
+    resource: "raw/reviews/20260916T101007Z-pr-2909.md"
+  - type: "reviews"
     resource: "raw/reviews/20260419T034237Z-pr-586-cycle5.md"
   - type: "fixes"
     resource: "raw/fixes/20260420T150304Z-pr-624-cycle2.md"
@@ -15,8 +17,9 @@ sources:
     resource: "raw/reviews/20260830T013439Z-pr-2470.md"
 tags: [ring-pattern, helper-caller-sync, observability]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-30T11:20:00+09:00" }
+generated: { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
 verified:
+  - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-30T11:20:00+09:00"
 ---
@@ -119,6 +122,13 @@ Issue テンプレート (`templates/issue/template-structure.md`) では、` ``
 
 **併走する観測**: 同一コミット内の simplification も片側にだけ適用されやすい。tempfile lib へ移行して 4 つの変数すべてで guard が不要になったが、削除されたのは目に入った 2 つだけだった。**同じ理屈が当たる箇所は grep で洗い出してから消す**。
 
+### 終了区分を変えたら導入段落も同期する
+
+返信のみの終了を `review-defer` に分離し、実行分岐が `deferred` を返すようになっても、導入段落に「中断・返信のみは retained」が残ると同じ工程が二つの終了契約を持つ。分岐テーブルだけでなく、節の冒頭・終了通知・呼出し元の説明も同じ区分で照合する。
+
+この観測では caller の誤動作は再現しておらず、文書の不整合として記録された。記述の矛盾と実行障害の有無は分けて報告する。
+
+
 ## 関連ページ
 
 - [DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）](./drift-check-anchor-semantic-name.md)
@@ -128,6 +138,8 @@ Issue テンプレート (`templates/issue/template-structure.md`) では、` ``
 - [「N 種を禁止し行き先を示す」規則は禁止列挙と行き先を 1 つの対リストに畳む](./deny-list-paired-with-destination.md)
 
 ## ソース
+
+- [今回のレビュー結果](../../raw/reviews/20260916T101007Z-pr-2909.md)
 
 - [state 動作矛盾 F-03 検出](../../raw/reviews/20260419T034237Z-pr-586-cycle5.md)
 - [helper case 拡張 × caller WARN_MSG 連動漏れ G3 HIGH](../../raw/fixes/20260420T150304Z-pr-624-cycle2.md)

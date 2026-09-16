@@ -6,6 +6,8 @@ description: "静的 pin（ソースの文字列を grep して構造を固定�
 created: "2026-08-05T05:30:00+00:00"
 sources:
   - type: "reviews"
+    resource: "raw/reviews/20260916T101455Z-pr-2910.md"
+  - type: "reviews"
     resource: "raw/reviews/20260805T043752Z-pr-2112.md"
   - type: "fixes"
     resource: "raw/fixes/20260805T050456Z-pr-2112.md"
@@ -17,8 +19,9 @@ sources:
     resource: "raw/reviews/20260916T025549Z-pr-2896.md"
 tags: ["test", "static-pin", "allowlist", "mutation", "bash"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-16T03:09:20Z" }
+generated: { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
 verified:
+  - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
   - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-12T04:13:09Z" }
   - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-14T14:50:00Z" }
   - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-16T03:09:20Z" }
@@ -85,6 +88,13 @@ ERE の交替を denylist に使うときは、各枝が非空で単独でも HE
 
 あわせて、scanner が実際に閉じた arm 数と `grep -c` で数えた arm 数を突合する。終端パターンの取りこぼしで後続 arm が無検査になる経路を scanner 自身に検出させないと、免除述語を直しても走査面の欠落は無音のまま残る。
 
+### コマンド記録の改行で禁止操作を見落とさない
+
+状態保持型の gh shim で変更操作の不在を検証するとき、引数をそのまま複数行に記録すると、GraphQL の `mutation` が次行へ分かれて行単位の denylist を通過する。コマンド境界を保持したうえで引数内の改行を正規化し、許可した読取り操作以外の記録があれば失敗させる。
+
+単一行の通常入力だけでなく、複数行 GraphQL 引数を含む変更操作を注入して検出を確かめる。記録を整形しただけで安全になったとは判定せず、allowlist の拒否を実際に確認する。
+
+
 ## 関連ページ
 
 - [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](./fixture-mutation-isolates-invariants.md)
@@ -92,6 +102,8 @@ ERE の交替を denylist に使うときは、各枝が非空で単独でも HE
 - [pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する](../patterns/pin-literal-uniqueness-verified-by-mutation.md)
 
 ## ソース
+
+- [今回のレビュー結果](../../raw/reviews/20260916T101455Z-pr-2910.md)
 
 - [`declare` / `typeset` で pin を素通りできることを検出](../../raw/reviews/20260805T043752Z-pr-2112.md)
 - [静的 pin を allowlist へ反転](../../raw/fixes/20260805T050456Z-pr-2112.md)

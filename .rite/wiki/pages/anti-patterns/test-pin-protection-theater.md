@@ -5,6 +5,8 @@ created: "2026-04-24T14:55:00+00:00"
 description: "test ファイルのコメントが「cleanup arm 3 site (L383/L409/L412) の完全一致を pin」のように **複数 site pin** を claim していても、実際の `assert_contains` が 1 site しか pin していない (または canonical phrase が実在 site と factually 一致しない) 場合、regression 検出インフラへの信頼を破壊する false-sense-of-security。"
 sources:
   - type: "reviews"
+    resource: "raw/reviews/20260916T101455Z-pr-2910.md"
+  - type: "reviews"
     resource: "raw/reviews/20260905T101143Z-pr-2571.md"
   - type: "fixes"
     resource: "raw/fixes/20260905T004810Z-pr-2571.md"
@@ -78,8 +80,9 @@ sources:
     resource: "raw/reviews/20260911T183502Z-pr-2702.md"
 tags: [test-pin, mutation-test, drift-check, protection-theater, canonical-phrase, same-file-3-site-sync, subsidiary-claim-empirical-verification, cross-file-cross-site-coverage, multi-axis-mutation-verification, channel-collision, negative-control, twin-site-satisfaction, anchor-uniqueness, occurrence-count-pin]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-11T18:35:02Z" }
+generated: { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
 verified:
+  - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-11T18:35:02Z" }
   - { by: "rite-wiki-ingest/gpt-6", at: "2026-09-05T12:10:29.806932+00:00" }
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-25T16:50:12Z" }
@@ -411,6 +414,13 @@ helper の述語が正しくても、その結果を表示・永続記録へ運�
 
 文書の検証は判定値・識別子・処方コマンドと必要な節範囲へ絞り、助詞や物理行間隔を固定しない。共通 prefix だけの一致では別の出現箇所に救われるため、契約が要求する対象そのものを確認する。重複を単一の定義へ畳んだ後は、委譲先と参照の関係が検証の対象になる。
 
+### 総 hit 数は各分岐の到達証拠にならない
+
+positive control で総 hit 数が arm 数以上あると assert しても、一つの arm が到達不能になった分を別の arm の重複一致が埋める。網羅性の単位を arm に合わせ、各 arm の識別子について到達を個別に assert する。
+
+一つずつ arm を無効にし、他の arm を重複して発火させても当該 assert が失敗することを確かめると、総数による見かけの網羅を区別できる。
+
+
 ## 関連ページ
 
 - [HINT-specific 文言 pin で case arm 削除 regression を検知する](../patterns/hint-specific-assertion-pin.md)
@@ -421,6 +431,8 @@ helper の述語が正しくても、その結果を表示・永続記録へ運�
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](asymmetric-fix-transcription.md)
 
 ## ソース
+
+- [今回のレビュー結果](../../raw/reviews/20260916T101455Z-pr-2910.md)
 
 - [F-C6-03 protection theater 初明文化 + E-2 経験則](../../raw/reviews/20260424T095915Z-pr-655-cycle6.md)
 - [canonical phrase partial unification の blind spot 指摘](../../raw/reviews/20260424T085837Z-pr-655.md)
