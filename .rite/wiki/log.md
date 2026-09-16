@@ -10,6 +10,8 @@
 * **Update**: [入力不在と不正入力の区別](pages/anti-patterns/strict-predicate-collapses-broken-into-absent.md)、[契約とテストの対応](pages/patterns/contract-additions-and-pins-one-to-one.md) — [fix 結果](raw/fixes/20260916T010251Z-pr-2897.md) を統合
 * **Update**: [入力不在と不正入力の区別](pages/anti-patterns/strict-predicate-collapses-broken-into-absent.md)、[契約とテストの対応](pages/patterns/contract-additions-and-pins-one-to-one.md) — [再レビュー結果](raw/reviews/20260916T011819Z-pr-2897.md) を統合
 
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=503, broken_refs=0
+
 ## 2026-09-15
 
 * **Skip**: [20260915T145209Z-pr-2877.md](raw/reviews/20260915T145209Z-pr-2877.md) — no extractable heuristic: zero-finding review; existing fail-loud all-exits and test pin pages already cover undeterminable-state skip and independent mutation pins
