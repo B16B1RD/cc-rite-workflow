@@ -127,6 +127,14 @@ for invalid_options in \
 done
 write_config '        name: ""'
 assert_invalid 'empty explicit field name rejected'
+for key in github projects fields status options; do
+  for quote in '"' "'"; do
+    explicit_config
+    sed "s/^\( *\)$key:/\1$quote$key$quote:/" rite-config.yml > quoted-config.yml
+    mv quoted-config.yml rite-config.yml
+    assert_invalid "quoted $key key rejected: $quote"
+  done
+done
 explicit_config '
           - { role: cancelled, name: "完了" }'
 for query in 'projects_status_name_for_role todo' 'projects_status_role_for_name 完了' 'projects_status_field_candidates'; do

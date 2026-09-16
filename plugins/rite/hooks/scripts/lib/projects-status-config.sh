@@ -125,6 +125,8 @@ _projects_status_read() {
       path=""
       for (i=1;i<=depth;i++) path=path keys[i] "."
       key=line; sub(/:.*/, "", key); key=trim(key)
+      # Recognize quoted target keys so unsupported syntax cannot look absent.
+      if (key ~ /^"[^"]*"$/ || key ~ /^\047[^\047]*\047$/) key=substr(key,2,length(key)-2)
       path=path key
       relevant=(path=="github" || path=="github.projects" || path=="github.projects.fields" || path=="github.projects.fields.status")
       if (relevant || path ~ /^github\.projects\.fields\.status\./) {

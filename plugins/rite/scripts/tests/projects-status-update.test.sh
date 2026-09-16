@@ -543,6 +543,23 @@ check_result "explicit exact spelling" updated 0
 if gh_log_has 'CUSTOM_PROGRESS'; then pass "exact mapped option ID written"; else fail "mapped option ID"; fi
 unset MOCK_STATUS_OPTIONS
 
+for key in github projects fields status; do
+  for nb in true false; do
+    write_explicit_config
+    sed "s/^\( *\)$key:/\1\"$key\":/" "$TEST_DIR/rite-config.yml" > "$TEST_DIR/quoted-config.yml"
+    mv "$TEST_DIR/quoted-config.yml" "$TEST_DIR/rite-config.yml"
+    run_script "$(build_json 42 in_progress true "$nb")"
+    expected_rc=0
+    [ "$nb" = true ] || expected_rc=1
+    check_result "quoted $key fails non_blocking=$nb" failed "$expected_rc"
+    if [ ! -s "$LAST_GH_LOG" ] &&
+       printf '%s' "$LAST_OUTPUT" | jq -e '.warnings | any(contains("unsupported syntax"))' >/dev/null; then
+      pass "quoted $key reports invalid config before any API call"
+    else fail "quoted $key bypassed config validation"; fi
+  done
+done
+write_explicit_config
+
 run_script "$(build_json 42 in_review)"
 check_result "missing mapped option fails" failed 0
 if printf '%s' "$LAST_OUTPUT" | jq -e '.warnings | any(contains("In Review"))' >/dev/null; then
@@ -626,6 +643,32 @@ run_script "$(build_json)"
 check_result "missing cwd configuration fails without repository fallback" failed 0
 check_no_mutation "missing config never writes"
 mv "$TEST_DIR/saved-config" "$TEST_DIR/rite-config.yml"
+
+# Scan every production helper reference, including Markdown command payloads.
+# Keep obsolete-input rejection tests and unrelated helpers outside this check.
+check_caller_contract() {
+  local root="$1" file invalid=0
+  local obsolete_key="[\"']?status_name[\"']?[[:space:]]*:"
+  while IFS= read -r -d '' file; do
+    if grep -q 'projects-status-update\.sh' "$file" &&
+       grep -nE "$obsolete_key" "$file"; then
+      invalid=1
+    fi
+  done < <(find "$root" -type d -name tests -prune -o -type f \( -name '*.sh' -o -name '*.md' \) -print0)
+  return "$invalid"
+}
+PLUGIN_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+if check_caller_contract "$PLUGIN_DIR"; then
+  pass "all production helper callers use role input"
+else fail "obsolete status_name payload in a production caller"; fi
+
+mkdir "$TEST_DIR/caller-fixture"
+sed 's/status_role:/status_name:/g' "$PLUGIN_DIR/skills/ready/SKILL.md" > "$TEST_DIR/caller-fixture/ready.md"
+if check_caller_contract "$TEST_DIR/caller-fixture" > "$TEST_DIR/caller-errors"; then
+  fail "caller scan missed a reverted Ready payload"
+elif [ -s "$TEST_DIR/caller-errors" ]; then
+  pass "caller scan rejects a reverted Ready payload"
+else fail "caller scan failed without identifying the obsolete payload"; fi
 
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [ "$FAIL" = "0" ]
