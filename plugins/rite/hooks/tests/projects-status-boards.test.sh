@@ -22,8 +22,9 @@
 #   - a CLOSED COMPLETED Issue left on the in_review column is 1 drift finding (proves the
 #     scan reads this board), and 0 findings once the done write lands
 #   - the item-edit option ids are exactly [in_progress, in_review, done] in that order,
-#     and no other write subcommand (item-add / field-create / issue edit / mutation ...)
-#     appears in the gh log: the board's option set is never touched
+#     and every gh call in the log is on the allowlist (read-only GraphQL query, field-list,
+#     repo view, Status item-edit): the board's option set is never touched. The shim logs
+#     each call on one line so a multi-line GraphQL mutation cannot hide from the grep
 # nocancel additionally (T-04): a CLOSED NOT_PLANNED Issue -> helper `cancelled` returns
 #   `skipped_role_unmapped` with no item-edit, and the drift check lists it as informational
 #   with 0 findings.
@@ -74,7 +75,9 @@ write_gh_shim() {
   cat > "$dir/bin/gh" <<'GH_SHIM'
 #!/bin/bash
 set -euo pipefail
-echo "gh $*" >> "$GH_LOG"
+# One log line per call: the GraphQL argument spans lines, and a line-oriented grep over
+# the log must still see the whole call (a `mutation` on line 2 would otherwise hide).
+printf 'gh %s\n' "${*//$'\n'/ }" >> "$GH_LOG"
 case "$1 $2" in
   "api graphql")
     if printf '%s\n' "$*" | grep -q 'states: CLOSED'; then
@@ -167,9 +170,17 @@ set_issue() {
 board_status() { jq -r --arg n "$2" '.issues[$n].status' "$1/board.json"; }
 option_id() { jq -r --arg name "$2" '.options[] | select(.name == $name) | .id' "$1/board.json"; }
 
-# Write-class gh subcommands. item-edit on the Status field is the one write the chain is
-# allowed to make; everything else here would change the board's shape or the Issue.
-WRITE_RE='^gh (project (item-add|item-create|item-delete|field-create|field-delete|edit|create)|issue (edit|close|create|reopen)|api graphql .*mutation)'
+# The only gh calls the chain may make: read-only GraphQL queries, the field list, the
+# repo lookup, and item-edit on the Status field. An allowlist pins "no other write" without
+# having to enumerate every write verb gh has or will grow; a GraphQL line that carries a
+# mutation is rejected even though it starts like an allowed query.
+ALLOW_RE='^gh (api graphql -f query=|project field-list |project item-edit |repo view)'
+# Prints every log line outside the allowlist (empty output = no unexpected call).
+unexpected_gh_lines() {
+  grep -vE "$ALLOW_RE" "$1"
+  grep -E '^gh api graphql .*mutation' "$1"
+  return 0
+}
 
 # $1=shape $2=dir $3..$6 = display names of in_progress / in_review / done / todo
 run_chain() {
@@ -214,15 +225,17 @@ run_chain() {
   # The PR merged and GitHub closed the Issue while the board is still on in_review:
   # this is the drift the check exists for, and it proves the scan reads this board.
   set_issue "$dir" 42 CLOSED COMPLETED "$ir"
-  lines_before=$(grep -cE "$WRITE_RE" "$dir/gh.log" || true)
+  lines_before=$(unexpected_gh_lines "$dir/gh.log" | wc -l | tr -d ' ')
   drift_run "$dir"; out="$DRIFT_OUT"
   if [ "$DRIFT_RC" -eq 1 ] && printf '%s\n' "$out" | grep -q '==> Total projects-board-drift findings: 1'; then
     pass "$shape: CLOSED COMPLETED on the in_review column is 1 drift finding (exit 1)"
   else
     fail "$shape: expected 1 finding / exit 1 before done, got rc=$DRIFT_RC: $(printf '%s' "$out" | tr '\n' ' ' | head -c 200)"
   fi
-  lines_after=$(grep -cE "$WRITE_RE" "$dir/gh.log" || true)
-  assert "$shape: --dry-run drift check issues no write" "$lines_before" "$lines_after"
+  lines_after=$(unexpected_gh_lines "$dir/gh.log" | wc -l | tr -d ' ')
+  # An item-edit issued by --dry-run would pass this allowlist; the option-id sequence
+  # assertion below is what catches it.
+  assert "$shape: --dry-run drift check issues no unexpected gh call" "$lines_before" "$lines_after"
 
   res=$(helper_result "$dir" 42 done)
   assert "$shape: helper done -> updated" "updated" "$res"
@@ -244,11 +257,11 @@ run_chain() {
   ids=$(grep '^gh project item-edit' "$dir/gh.log" | sed 's/.*--single-select-option-id //' | tr '\n' ' ')
   expected_ids="$(option_id "$dir" "$ip") $(option_id "$dir" "$ir") $(option_id "$dir" "$dn") "
   assert "$shape: item-edit option ids are [in_progress, in_review, done] in order" "$expected_ids" "$ids"
-  writes=$(grep -E "$WRITE_RE" "$dir/gh.log" || true)
+  writes=$(unexpected_gh_lines "$dir/gh.log")
   if [ -z "$writes" ]; then
-    pass "$shape: no write other than item-edit reached gh (board option set untouched)"
+    pass "$shape: every gh call is an allowed read or the Status item-edit (board option set untouched)"
   else
-    fail "$shape: unexpected write subcommands in gh log: $(printf '%s' "$writes" | tr '\n' ' ' | head -c 200)"
+    fail "$shape: gh calls outside the allowlist: $(printf '%s' "$writes" | tr '\n' ' ' | head -c 200)"
   fi
   if grep -q '^gh project field-list' "$dir/gh.log"; then
     pass "$shape: gh log records the field-list reads (log wiring is live)"
@@ -258,6 +271,39 @@ run_chain() {
 }
 
 ENGLISH_OPTS='[{"id":"OPT_TODO","name":"Todo"},{"id":"OPT_IP","name":"In Progress"},{"id":"OPT_IR","name":"In Review"},{"id":"OPT_DONE","name":"Done"},{"id":"OPT_CANCEL","name":"Cancelled"}]'
+
+echo "=== T-05 positive control: the allowlist rejects writes the shim would have logged ==="
+# The shim collapses a multi-line GraphQL argument onto one log line, so a mutation written
+# in the codebase's usual shape (newline after -f query=) must be caught, as must a write
+# subcommand outside the allowlist. Allowed lines must pass.
+ctl_log="$TEST_ROOT/allowlist-control.log"
+printf '%s\n' \
+  'gh api graphql -f query= query($owner: String!) { repository(owner: $owner) { id } } -f owner=o' \
+  'gh project field-list 1 --owner o --format json' \
+  'gh project item-edit --project-id PROJ_1 --id ITEM_42 --field-id FIELD_STATUS --single-select-option-id OPT_IP' \
+  'gh repo view --json owner,name' \
+  'gh api graphql -f query= mutation($fieldId: ID!) { updateProjectV2Field(input: {fieldId: $fieldId}) { projectV2Field { id } } }' \
+  'gh project field-create 1 --owner o --name Status2' \
+  > "$ctl_log"
+assert "T-05 control: two synthetic writes are the only unexpected lines" "2" "$(unexpected_gh_lines "$ctl_log" | wc -l | tr -d ' ')"
+if unexpected_gh_lines "$ctl_log" | grep -q 'updateProjectV2Field'; then
+  pass "T-05 control: a GraphQL mutation collapsed onto one line is rejected"
+else
+  fail "T-05 control: the GraphQL mutation slipped through the allowlist"
+fi
+if unexpected_gh_lines "$ctl_log" | grep -q '^gh project field-create'; then
+  pass "T-05 control: a write subcommand outside the allowlist is rejected"
+else
+  fail "T-05 control: field-create slipped through the allowlist"
+fi
+# The shim itself must produce the one-line form the allowlist depends on.
+ctl_dir="$TEST_ROOT/shim-control"; mkdir -p "$ctl_dir"; write_gh_shim "$ctl_dir"; : > "$ctl_dir/gh.log"
+printf '{"field":"Status","options":[],"issues":{}}' > "$ctl_dir/board.json"
+( cd "$ctl_dir" && PATH="$ctl_dir/bin:$PATH" BOARD_STATE="$ctl_dir/board.json" GH_LOG="$ctl_dir/gh.log" \
+  gh api graphql -f query='
+mutation($x: ID!) { deleteProjectV2Field(input: {fieldId: $x}) { projectV2Field { id } } }' -f x=1 >/dev/null 2>&1 ) || true
+assert "T-05 control: the shim logs a multi-line GraphQL call as exactly one line" "1" "$(wc -l < "$ctl_dir/gh.log" | tr -d ' ')"
+assert "T-05 control: that one line is rejected by the allowlist" "1" "$(unexpected_gh_lines "$ctl_dir/gh.log" | wc -l | tr -d ' ')"
 
 echo "=== T-01: legacy config on the English standard board ==="
 make_board "$TEST_ROOT/legacy" 'github:
@@ -373,6 +419,8 @@ SOT_ARMS=(
   'terminal Status set \(`Done` / `Cancelled`\)'
   '^\| `(Done|Cancelled)` \| Work'
   'Update Status to the terminal Status (`Done`|"Done")'
+  'is never written or ranked'
+  'not map is left alone'
 )
 TARGET_DOCS=(
   "$REPO_ROOT/plugins/rite/references/projects-integration.md"
@@ -395,12 +443,19 @@ The consumers listed below copy these two names from here.
 outside the terminal Status set (`Done` / `Cancelled`)
 | `Cancelled` | Work abandoned | `NOT_PLANNED` |
 3. Update Status to the terminal Status "Done"
+A column that maps to no role is never written or ranked.
+a column the config does not map is left alone and reported with its name
 FIX
-hits=$(sot_hits "$fixture" | wc -l | tr -d ' ')
-if [ "$hits" -ge "${#SOT_ARMS[@]}" ]; then
-  pass "T-06 positive control: the grammar detects each of the ${#SOT_ARMS[@]} wording shapes ($hits hits)"
+# Each arm must reach at least one fixture line on its own; a total hit count would let a
+# dead arm hide behind another arm matching two lines.
+dead_arms=""
+for arm in "${SOT_ARMS[@]}"; do
+  grep -qE -- "$arm" "$fixture" || dead_arms="${dead_arms}${arm}; "
+done
+if [ -z "$dead_arms" ]; then
+  pass "T-06 positive control: each of the ${#SOT_ARMS[@]} grammar arms matches its fixture line"
 else
-  fail "T-06 positive control: grammar detected only $hits of ${#SOT_ARMS[@]} shapes: $(sot_hits "$fixture" | tr '\n' ' ')"
+  fail "T-06 positive control: arms with no fixture hit: $dead_arms"
 fi
 findings=""
 for doc in "${TARGET_DOCS[@]}"; do

@@ -358,7 +358,7 @@ github:
 
 Without a `cancelled` row, `/rite:issue-cancel` closes the Issue as not planned but leaves its board Status unchanged, and `/rite:lint`'s drift check lists such Issues as informational rather than counting them as drift.
 
-The helper accepts only `status_role` for the destination. A supplied `status_name` (even alongside `status_role`) or an unknown role is invalid input and exits 1 regardless of `non_blocking`. Requesting an omitted `cancelled` role in explicit mode returns `skipped_role_unmapped` with exit 0, no warning, and no board write. A configured role whose option is missing on the board is a failure. A board column that maps to no role is never written or ranked; consumers leave the Issue where it is and warn with the column name.
+The helper accepts only `status_role` for the destination. A supplied `status_name` (even alongside `status_role`) or an unknown role is invalid input and exits 1 regardless of `non_blocking`. Requesting an omitted `cancelled` role in explicit mode returns `skipped_role_unmapped` with exit 0, no warning, and no board write. A configured role whose option is missing on the board is a failure. An Issue sitting on a column that maps to no role (one you added yourself, such as `Blocked`) is still moved when a role is written to it — the helper resolves only the destination. Only the read-side consumers (the `/rite:open` Status gate, the compact hook, the parent-Issue sync) leave such a column alone and warn with its name; `/rite:lint`'s drift check counts a CLOSED Issue on such a column as drift.
 
 **Standard fields:**
 
