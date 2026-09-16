@@ -38,6 +38,8 @@
 * **Skip**: [実行記録](raw/reviews/20260916T065509Z-pr-2905.md) — rite workflow の原因と検証結果はプラグイン本体と回帰テストへ反映済み。残件は follow-up Issue として起票済み。raw を今回の経過・完了記録として保持する
 * **Skip**: [実行記録](raw/reviews/20260916T072435Z-pr-2905.md) — rite workflow の原因と検証結果はプラグイン本体と回帰テストへ反映済み。残件は follow-up Issue として起票済み。raw を今回の経過・完了記録として保持する
 
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=515, broken_refs=0（ページ本文の変更なし。タイトル衝突の構造検査のみ実施し、全 504 ページ間の意味比較は再実行していない）
+
 
 ## 2026-09-15
 
