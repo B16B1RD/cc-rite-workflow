@@ -349,7 +349,7 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
       "post-compact" \
       "pr-cd-err" \
       "TOCTOU cd failure must be distinguished from gh pr view failure inside the same subshell") || _pr_cd_err=""
-    if PR_IS_DRAFT=$(cd "$STATE_ROOT" 2>"${_pr_cd_err:-/dev/null}" && gh pr view "$PR" "${_pc_repo_flag[@]+"${_pc_repo_flag[@]}"}" --json isDraft --jq '.isDraft // null' 2>"${pr_view_err:-/dev/null}"); then
+    if PR_IS_DRAFT=$(cd "$STATE_ROOT" 2>"${_pr_cd_err:-/dev/null}" && gh pr view "$PR" "${_pc_repo_flag[@]+"${_pc_repo_flag[@]}"}" --json isDraft --jq '.isDraft' 2>"${pr_view_err:-/dev/null}"); then
       :
     else
       pr_rc=$?
