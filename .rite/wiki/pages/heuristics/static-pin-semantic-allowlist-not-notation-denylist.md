@@ -13,12 +13,15 @@ sources:
     resource: "raw/reviews/20260912T040912Z-pr-2715.md"
   - type: "reviews"
     resource: "raw/reviews/20260914T143622Z-pr-2821.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260916T025549Z-pr-2896.md"
 tags: ["test", "static-pin", "allowlist", "mutation", "bash"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-14T14:50:00Z" }
+generated: { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-16T03:09:20Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-12T04:13:09Z" }
   - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-14T14:50:00Z" }
+  - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-16T03:09:20Z" }
 ---
 
 # 静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く
@@ -74,6 +77,14 @@ awk の見出し判定を `==` で書くとロケール照合で誤判定する�
 
 ERE の交替を denylist に使うときは、各枝が非空で単独でも HEAD に 0 hit であることを確認する。枝の一方が空や `^ *` のような常時一致になると assert 自体が恒真化する。実測は fix を外した mutant で suite の exit code が非 0 になること、HEAD で 0 になることの両側で行う。
 
+### 免除は形から推測せず、明示マーカーで宣言させる
+
+モック gh の各 case arm が「実 jq へ dispatch する」ことを静的に pin する場面で、stderr へ出して `exit 1` するだけの純粋なエラー arm を免除する必要があった。免除条件を arm の形から推測する述語 — 「`exit 1` を含む」「stdout writer（echo / printf）を持たない」「exit を見た後に writer が無い」 — は 3 サイクル連続で穴が見つかった。`exit 1` を持ちつつ最後に dispatch する複合 arm が免除され、writer の列挙は `cat` や awk 経由の出力を数え落とし、順序に依存する述語は行の並べ替えで崩れる。推測の外側には必ず抜け道が残り、レビューはそのたびに新しい形を見つけてくる。
+
+対処は免除を推測から宣言へ変えること。免除したい arm には `# no-jq-dispatch: <理由>` のような明示マーカーを書かせ、述語を「dispatch している」「マーカーを持つ」の 2 値に縮約する。どちらでもない arm は無条件に fail する。マーカーは理由を書く欄を兼ねるので、免除の妥当性がレビューで読める。これは denylist（形の列挙）を allowlist（宣言の有無）へ反転する操作でもある。
+
+あわせて、scanner が実際に閉じた arm 数と `grep -c` で数えた arm 数を突合する。終端パターンの取りこぼしで後続 arm が無検査になる経路を scanner 自身に検出させないと、免除述語を直しても走査面の欠落は無音のまま残る。
+
 ## 関連ページ
 
 - [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](./fixture-mutation-isolates-invariants.md)
@@ -86,3 +97,4 @@ ERE の交替を denylist に使うときは、各枝が非空で単独でも HE
 - [静的 pin を allowlist へ反転](../../raw/fixes/20260805T050456Z-pr-2112.md)
 - [退路本文への negative pin で禁止文を除外してから照合したレビュー結果](../../raw/reviews/20260912T040912Z-pr-2715.md)
 - [denylist の表記依存と使う側の allowlist 不在を mutation で実測したレビュー結果](../../raw/reviews/20260914T143622Z-pr-2821.md)
+- [免除条件の推測が 3 サイクル素通りし明示マーカーへ切り替えたレビュー結果](../../raw/reviews/20260916T025549Z-pr-2896.md)
