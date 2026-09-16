@@ -674,23 +674,23 @@ else
   fail "expected post_compact_reconciliation_failed; got: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
 fi
 
-# TC-RECON-10: Ready PR (isDraft=false) reaches the reconcile helper with In Review.
+# TC-RECON-10: Ready PR (isDraft=false) reaches the reconcile helper with the in_review role.
 # `gh pr view` is asked for `--jq '.isDraft'`; the mock evaluates that expression with
 # real jq, so the boolean false has to survive the round trip for the block to run at
 # all. Asserting on the recorded payload (not a stderr token) is what pins the target
 # status: a reconcile aimed at any other column would still print the same WARNING.
-echo "TC-RECON-10: Ready PR → reconcile helper invoked with status_name=In Review"
+echo "TC-RECON-10: Ready PR → reconcile helper invoked with status_role=in_review"
 recon_dir=$(_setup_recon_env "ready-reconcile" "mismatch_then_reconcile" "updated" "" "yes")
 recon_stderr="$(mktemp "$TEST_DIR/recon-ready-reconcile-stderr.XXXXXX")"
 echo "{\"cwd\": \"$recon_dir\", \"source\": \"auto\"}" \
   | env PATH="$recon_dir/bin:$PATH" bash "$recon_dir/plugin/hooks/post-compact.sh" >/dev/null 2>"$recon_stderr" || true
 if [ -f "$recon_dir/status-update-call.json" ]; then
   pass "reconcile helper was invoked for a Ready PR"
-  recorded_status=$(jq -r '.status_name // empty' "$recon_dir/status-update-call.json" 2>/dev/null || echo "")
-  if [ "$recorded_status" = "In Review" ]; then
-    pass "reconcile helper received status_name=In Review"
+  recorded_status=$(jq -r '.status_role // empty' "$recon_dir/status-update-call.json" 2>/dev/null || echo "")
+  if [ "$recorded_status" = "in_review" ]; then
+    pass "reconcile helper received status_role=in_review"
   else
-    fail "reconcile helper received status_name='$recorded_status' (expected In Review); payload: $(head -c 300 "$recon_dir/status-update-call.json")"
+    fail "reconcile helper received status_role='$recorded_status' (expected in_review); payload: $(head -c 300 "$recon_dir/status-update-call.json")"
   fi
 else
   fail "reconcile helper never invoked for a Ready PR; stderr: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
@@ -759,18 +759,27 @@ fi
 # so track each arm from `"pr view")` through its `;;` terminator with per-line flags.
 # The terminator is `;;` anywhere on the line, not anchored to end-of-line: a trailing
 # comment is still a terminator, and anchoring drops that arm's close so the body runs
-# on into the arms below it, judging several arms as one. The closed-arm count is
-# reported as a cheap self-check that every arm the grep found was also scanned.
+# on into the arms below it, judging several arms as one.
+#
+# The burden of proof sits on the arm, not on a list of stdout writers: an arm without a
+# dispatch is exempt only when it fails fast AND nothing in it looks like a stdout write.
+# Enumerating writers (`echo`, `printf`, …) instead would exempt every writer left off the
+# list — `cat fixture` returns a literal just as well as `echo` does. `stdout_emit` is a
+# heuristic that only strengthens the check (an arm it fires on still needs a dispatch);
+# it skips `>&2` writes and piped writes, which are diagnostics and assertions, not answers.
+# The closed-arm count keeps the `|| true` above from turning an awk failure into a
+# vacuous green: with no arms scanned, the unaccounted list is empty either way.
 scan_output=$(awk '
-  /^[[:space:]]*"pr view"\)/ { inarm = 1; start = FNR; dispatch = 0; stdout_emit = 0 }
+  /^[[:space:]]*"pr view"\)/ { inarm = 1; start = FNR; dispatch = 0; stdout_emit = 0; exit_seen = 0 }
   inarm {
     if ($0 ~ /_mock_gh_pr_view/) dispatch = 1
-    if ($0 ~ /(echo|printf)[[:space:]]/ && $0 !~ />&2/) stdout_emit = 1
+    if ($0 ~ /exit 1/) exit_seen = 1
+    if ($0 ~ /(echo|printf)[[:space:]]/ && $0 !~ />&2/ && $0 !~ /\|/) stdout_emit = 1
   }
   inarm && /;;/ {
     inarm = 0
     closed++
-    if (dispatch == 0 && stdout_emit == 1) print "ARM " start ": " $0
+    if (dispatch == 0 && (stdout_emit == 1 || exit_seen == 0)) print "ARM " start ": " $0
   }
   END { print "CLOSED " closed + 0 }
 ' "$SELF_PATH" || true)
@@ -779,12 +788,12 @@ unaccounted_arms=$(printf '%s\n' "$scan_output" | sed -n 's/^ARM //p')
 if [ "${closed_arm_count:-0}" -eq "${pr_view_arm_count:-0}" ] 2>/dev/null; then
   pass "scanner closed every 'pr view' arm it found ($closed_arm_count)"
 else
-  fail "scanner closed ${closed_arm_count:-?} arms but ${pr_view_arm_count:-?} 'pr view' arms exist — it cannot parse some terminator, so those arms and every arm after them went unscanned"
+  fail "scanner closed ${closed_arm_count:-?} arms but ${pr_view_arm_count:-?} 'pr view' arms exist — the scan did not cover every arm (awk failure, or an arm with no ';;' before the next one)"
 fi
 if [ -n "$unaccounted_arms" ]; then
-  fail "a gh mock 'pr view' arm answers on stdout without dispatching to _mock_gh_pr_view: $(printf '%s' "$unaccounted_arms" | head -3 | tr '\n' ' ')"
+  fail "a gh mock 'pr view' arm answers without dispatching to _mock_gh_pr_view: $(printf '%s' "$unaccounted_arms" | head -3 | tr '\n' ' ')"
 else
-  pass "every gh mock 'pr view' arm that returns stdout goes through real jq"
+  pass "every gh mock 'pr view' arm either dispatches through real jq or fails fast in silence"
 fi
 if grep -q 'MOCK_JQ_BIN" -r "\$jq_expr"' "$SELF_PATH"; then
   pass "gh mock lib pipes the fixture JSON through real jq"
