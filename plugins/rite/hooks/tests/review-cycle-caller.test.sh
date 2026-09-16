@@ -322,6 +322,15 @@ with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
     assert state()['review_run_history'] == [completed, deferred_run]
     assert receipt_path.read_bytes() == receipt_bytes, 'draft evidence lost during ownership change'
 
+    # An interrupted run retains its review context instead of deferring it.
+    state_path.write_text(json.dumps(successful))
+    replacements.update(sweep_origin='[fix:cancelled-by-user]')
+    interrupted = execute(block(iterate, 'close_phase=$(bash'))
+    assert 'ITERATE_RUN_CLOSE=retained' in interrupted.stdout
+    retained_run = state()['review_run']
+    assert retained_run == successful['review_run']
+    assert 'deferred_context' not in retained_run
+
     # Existing output gates precede the deferred success handoff.
     assert '状態更新・result の前に記載順で評価する' in review
     assert '全 gate pass を確認してから 8.0 の該当する状態更新を実行する' in review
