@@ -484,10 +484,21 @@ done
 
 echo ""
 echo "=== T-07: README.md / README.ja.md keep the Status Transitions section in sync ==="
-fence_after() { awk -v h="$2" '$0 == h {f=1; next} f && /^```/ {c++; if (c==2) exit; next} f && c==1 {print}' "$1"; }
-para_after() { awk -v h="$2" '$0 == h {f=1; next} f && /^```/ {c++; next} f && c==2 && NF {print; exit}' "$1"; }
-en_fence=$(fence_after "$REPO_ROOT/README.md" 'Status Transitions:')
-ja_fence=$(fence_after "$REPO_ROOT/README.ja.md" 'ステータス遷移:')
+# Resolve the heading to a line number in bash and hand awk only that integer. macOS awk
+# compares a non-ASCII `-v` string unreliably (`$0 == h` matched a different Japanese line
+# and returned the wrong fence); `grep -xF` is a byte comparison on every platform.
+heading_line() {
+  HEADING_LINE=$(grep -nxF -- "$2" "$1" | cut -d: -f1)
+  case "$HEADING_LINE" in
+    ''|*$'\n'*) fail "T-07: heading '$2' is not found exactly once in ${1##*/}"; HEADING_LINE=0 ;;
+  esac
+}
+fence_after() { awk -v n="$1" 'NR == n {f=1; next} f && /^```/ {c++; if (c==2) exit; next} f && c==1 {print}' "$2"; }
+para_after() { awk -v n="$1" 'NR == n {f=1; next} f && /^```/ {c++; next} f && c==2 && NF {print; exit}' "$2"; }
+heading_line "$REPO_ROOT/README.md" 'Status Transitions:'
+en_fence=$(fence_after "$HEADING_LINE" "$REPO_ROOT/README.md")
+heading_line "$REPO_ROOT/README.ja.md" 'ステータス遷移:'
+ja_fence=$(fence_after "$HEADING_LINE" "$REPO_ROOT/README.ja.md")
 if [ -n "$en_fence" ] && [ "$en_fence" = "$ja_fence" ]; then
   pass "T-07: the Status Transitions fence is byte-identical in both READMEs"
 else
@@ -500,7 +511,8 @@ else
 fi
 for pair in "README.md|Status Transitions:" "README.ja.md|ステータス遷移:"; do
   file="${pair%%|*}"; heading="${pair#*|}"
-  para=$(para_after "$REPO_ROOT/$file" "$heading")
+  heading_line "$REPO_ROOT/$file" "$heading"
+  para=$(para_after "$HEADING_LINE" "$REPO_ROOT/$file")
   for token in 'rite-config.yml' 'fields.status.options' 'cancelled'; do
     if printf '%s\n' "$para" | grep -qF -- "$token"; then
       pass "T-07: $file paragraph after the fence mentions $token"
