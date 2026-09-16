@@ -47,17 +47,34 @@ done
 # Monitor mode is available in macOS Bash 3.2; no setsid or wait -n is needed.
 # Workers disable it so ordinary descendants stay in that worker's group.
 run_dir=$(mktemp -d "${TMPDIR:-/tmp}/rite-hook-tests.XXXXXX")
-batch_pids=()
-batch_ids=()
-batch_files=()
+active_pids=()
+active_ids=()
+active_files=()
 run_started=$SECONDS
 launch_in_progress=0
 pending_signal=0
 cleanup() {
   rm -rf "$run_dir"
 }
+# Snapshot descendants before terminating supervisors: the portable timeout
+# helper and recursive runners can create process groups of their own.
+owned_descendants() {
+  ps -ax -o pid= -o ppid= -o pgid= | awk -v roots=" $* " '
+    { parent[$1]=$2; group[$1]=$3 }
+    END {
+      for (pid in parent)
+        if (index(roots, " " pid " ") || index(roots, " " group[pid] " ")) owned[pid]=1
+      do {
+        changed=0
+        for (pid in parent)
+          if (!owned[pid] && owned[parent[pid]]) { owned[pid]=1; changed=1 }
+      } while (changed)
+      for (pid in owned) if (owned[pid]) print pid
+    }'
+}
 interrupt_run() {
   local status=$1 i pid
+  local descendants=()
   # Do not lose a child if a signal lands between spawning it and recording $!.
   if [ "$launch_in_progress" -eq 1 ]; then
     pending_signal=$status
@@ -65,17 +82,26 @@ interrupt_run() {
   fi
   trap '' TERM INT
   set +m
-  for ((i=0; i<${#batch_pids[@]}; i++)); do
-    pid=${batch_pids[$i]}
-    if [ ! -f "$run_dir/${batch_ids[$i]}.result" ]; then
+  while read -r pid; do
+    [ -n "$pid" ] && descendants+=("$pid")
+  done < <(owned_descendants "${active_pids[@]}")
+  if [ "${#descendants[@]}" -gt 0 ]; then
+    kill -TERM "${descendants[@]}" 2>/dev/null || true
+  fi
+  for ((i=0; i<${#active_pids[@]}; i++)); do
+    pid=${active_pids[$i]}
+    if [ ! -f "$run_dir/${active_ids[$i]}.result" ]; then
       printf 'TEST_INCOMPLETE id=%s file=%s elapsed_s=%s\n' \
-        "${batch_ids[$i]}" "${batch_files[$i]}" "$((SECONDS - run_started))"
+        "${active_ids[$i]}" "${active_files[$i]}" "$((SECONDS - run_started))"
     fi
     kill -TERM -- "-$pid" 2>/dev/null || true
   done
   # Bound cleanup even when a test ignores TERM, then reap each owned worker.
   sleep 0.1
-  for pid in "${batch_pids[@]}"; do
+  if [ "${#descendants[@]}" -gt 0 ]; then
+    kill -KILL "${descendants[@]}" 2>/dev/null || true
+  fi
+  for pid in "${active_pids[@]}"; do
     kill -KILL -- "-$pid" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
   done
@@ -93,13 +119,13 @@ trap 'interrupt_run 130' INT
 SKIPPED=0
 SKIP_ACCOUNTING_BROKEN=0
 next_test=0
-while [ "$next_test" -lt "${#test_files[@]}" ]; do
-  batch_pids=()
-  batch_ids=()
-  batch_files=()
-  batch_rcs=()
+next_output=1
+test_rcs=()
+completed=()
+marker_files=()
+while [ "$next_test" -lt "${#test_files[@]}" ] || [ "${#active_pids[@]}" -gt 0 ]; do
   set -m
-  while [ "$next_test" -lt "${#test_files[@]}" ] && [ "${#batch_pids[@]}" != "$JOBS" ]; do
+  while [ "$next_test" -lt "${#test_files[@]}" ] && [ "${#active_pids[@]}" != "$JOBS" ]; do
     test_file=${test_files[$next_test]}
     test_id=$((next_test + 1))
     case "$test_file" in
@@ -120,9 +146,10 @@ while [ "$next_test" -lt "${#test_files[@]}" ]; do
       exit "$rc"
     ) &
     worker_pid=$!
-    batch_pids+=("$worker_pid")
-    batch_ids+=("$test_id")
-    batch_files+=("$marker_file")
+    active_pids+=("$worker_pid")
+    active_ids+=("$test_id")
+    active_files+=("$marker_file")
+    marker_files[$test_id]=$marker_file
     printf 'TEST_START id=%s file=%s pid=%s elapsed_s=%s\n' \
       "$test_id" "$marker_file" "$worker_pid" "$((SECONDS - run_started))"
     : > "$run_dir/$test_id.start"
@@ -131,27 +158,49 @@ while [ "$next_test" -lt "${#test_files[@]}" ]; do
     next_test=$((next_test + 1))
   done
   set +m
-  # Complete this fixed batch before launching another. Record each PID's status
-  # separately; a failed or killed worker must never disappear behind a later one.
-  for ((batch_index=0; batch_index<${#batch_pids[@]}; batch_index++)); do
-    worker_pid=${batch_pids[$batch_index]}
-    worker_rc=0
-    wait "$worker_pid" || worker_rc=$?
-    batch_rcs+=("$worker_rc")
-    if [ ! -f "$run_dir/${batch_ids[$batch_index]}.result" ]; then
-      # An externally killed wrapper cannot reap its test; stop its remaining
-      # process group before collecting the partial output and reporting failure.
-      kill -KILL -- "-$worker_pid" 2>/dev/null || true
+  # Poll only owned workers; wait by PID remains the authority for exit status.
+  # Refill a freed slot without waiting for slower peers (including on Bash 3.2).
+  remaining_pids=()
+  remaining_ids=()
+  remaining_files=()
+  reaped=0
+  for ((active_index=0; active_index<${#active_pids[@]}; active_index++)); do
+    worker_pid=${active_pids[$active_index]}
+    test_id=${active_ids[$active_index]}
+    if [ -f "$run_dir/$test_id.result" ] || ! kill -0 "$worker_pid" 2>/dev/null; then
+      worker_rc=0
+      wait "$worker_pid" || worker_rc=$?
+      test_rcs[$test_id]=$worker_rc
+      completed[$test_id]=1
+      reaped=1
+      if [ ! -f "$run_dir/$test_id.result" ]; then
+        # Seed by the worker's group as its PID may already have been reaped.
+        while read -r child_pid; do
+          [ -n "$child_pid" ] && kill -KILL "$child_pid" 2>/dev/null || true
+        done < <(owned_descendants "$worker_pid")
+        kill -KILL -- "-$worker_pid" 2>/dev/null || true
+      fi
+    else
+      remaining_pids+=("$worker_pid")
+      remaining_ids+=("$test_id")
+      remaining_files+=("${active_files[$active_index]}")
     fi
   done
-  for ((batch_index=0; batch_index<${#batch_pids[@]}; batch_index++)); do
-    test_id=${batch_ids[$batch_index]}
+  launch_in_progress=1
+  active_pids=("${remaining_pids[@]}")
+  active_ids=("${remaining_ids[@]}")
+  active_files=("${remaining_files[@]}")
+  launch_in_progress=0
+  if [ "$pending_signal" -ne 0 ]; then interrupt_run "$pending_signal"; fi
+  # Completed bodies remain in discovery order even when workers finish out of order.
+  while [ "${completed[$next_output]:-0}" -eq 1 ]; do
+    test_id=$next_output
     test_file=${test_files[$((test_id - 1))]}
     test_name="$(basename "$test_file")"
     TOTAL=$((TOTAL + 1))
-    printf 'TEST_OUTPUT_BEGIN id=%s file=%s\n' "$test_id" "${batch_files[$batch_index]}"
+    printf 'TEST_OUTPUT_BEGIN id=%s file=%s\n' "$test_id" "${marker_files[$test_id]}"
     echo "=== Running: $test_name ==="
-    test_rc=${batch_rcs[$batch_index]}
+    test_rc=${test_rcs[$test_id]}
     result_rc=
     if [ -f "$run_dir/$test_id.result" ]; then
       read -r result_rc < "$run_dir/$test_id.result" || true
@@ -207,7 +256,9 @@ while [ "$next_test" -lt "${#test_files[@]}" ]; do
     fi
     SKIPPED=$((SKIPPED + file_skips))
     echo ""
+    next_output=$((next_output + 1))
   done
+  if [ "$reaped" -eq 0 ] && [ "${#active_pids[@]}" -gt 0 ]; then sleep 0.05; fi
 done
 
 echo "==============================="

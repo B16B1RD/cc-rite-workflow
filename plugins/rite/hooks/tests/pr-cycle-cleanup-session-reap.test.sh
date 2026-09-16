@@ -44,6 +44,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Cleanup scans TMPDIR for orphan workdirs. Keep that scan away from other
+# tests' concurrently created and removed temporary directories.
+scan_tmp=$(mktemp -d "${TMPDIR:-/tmp}/rite-session-reap-tmp.XXXXXX")
+cleanup_dirs+=("$scan_tmp")
+export TMPDIR="$scan_tmp"
+
 # SID_A = the "working" session that holds the claim; SID_B = the (different)
 # session that triggers the reap (a new session-start / another session's
 # cleanup). session↔worktree is not 1:1 so the reaping session is never the

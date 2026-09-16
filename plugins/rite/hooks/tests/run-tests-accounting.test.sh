@@ -366,8 +366,8 @@ tc10() {
 }
 run_case_on_both tc10
 
-# Fixed-batch execution needs live process observations in addition to summaries.
-if command -v python3 >/dev/null 2>&1; then
+# Concurrent execution needs live process observations in addition to summaries.
+if command -v python3 >/dev/null 2>&1 && command -v perl >/dev/null 2>&1; then
   parallel_rc=0
   python3 - "$HOOKS_RUNNER" "$TEST_DIR" <<'PY' || parallel_rc=$?
 import os
@@ -406,7 +406,7 @@ def check(condition, message):
     if not condition:
         raise AssertionError(message)
 
-# Both discovery globs, a full batch and a tail, exact execution and concurrency.
+# Both discovery globs, exact execution and bounded concurrency.
 d = stage('parallel-bounds')
 for i in range(9):
     fixture(d, f'{i}.test.sh' if i < 5 else f'test-{i}.sh', f'''
@@ -440,19 +440,22 @@ for jobs in (1, 4):
     check(headline(result.stdout) == 'Results: 9/9 passed, 0 failed', 'incorrect total')
     markers = re.findall(r'^TEST_(START|END)\s+id=(\d+)', result.stdout, re.M)
     check(len(markers) == 18, 'missing or duplicate progress marker')
-    for offset in range(0, 9, jobs):
-        batch = set(str(n) for n in range(offset + 1, min(offset + jobs, 9) + 1))
-        seen_end = set()
-        for kind, number in markers:
-            if kind == 'END' and number in batch:
-                seen_end.add(number)
-            if kind == 'START' and int(number) > offset + jobs:
-                check(seen_end == batch, 'next batch starts before current batch ends')
     output_ids = re.findall(r'^TEST_OUTPUT_BEGIN\s+id=(\d+)', result.stdout, re.M)
     check(output_ids == [str(n) for n in range(1, 10)], 'body output order changed')
     check(re.findall(r'^TEST_OUTPUT_END\s+id=(\d+)', result.stdout, re.M) == output_ids,
           'body output delimiters are not paired')
-print('parallel bounds, both globs, exact-once and fixed batches: passed')
+print('parallel bounds, both globs and exact-once: passed')
+
+# A slow first test must not hold up the next file once the second slot is free.
+d = stage('parallel-refill')
+fixture(d, 'a.test.sh', 'sleep 1')
+fixture(d, 'b.test.sh', 'sleep 0.05')
+fixture(d, 'c.test.sh', 'exit 0')
+result = run(d, 2)
+check(result.returncode == 0, result.stdout + result.stderr)
+check(result.stdout.index('file=hooks/tests/c.test.sh rc=0') <
+      result.stdout.index('file=hooks/tests/a.test.sh rc=0'), 'free slot was not refilled')
+print('free slot refilled before slow peer finishes: passed')
 
 # Reversed completion keeps rc, filenames, failure order and skip totals aligned.
 d = stage('parallel-order')
@@ -562,11 +565,51 @@ for action in ('TERM', 'INT', 'worker-kill'):
                     except ProcessLookupError:
                         pass
     print(action + ' cleanup and failure accounting: passed')
+
+# Exercise the real Perl timeout shim: its child deliberately owns another group.
+for action in ('TERM', 'INT', 'worker-kill'):
+    d = stage('parallel-timeout-' + action)
+    fake_bin = d / 'bin'
+    fake_bin.mkdir()
+    for command in ('bash', 'perl', 'sleep'):
+        (fake_bin / command).symlink_to(shutil.which(command))
+    (d / 'child.sh').write_text(f"echo $$ > '{d}/child-pid'\nexec sleep 60\n")
+    fixture(d, 'hung.test.sh', f"source '{source.parent / '_test-helpers.sh'}'\n"
+            f"echo $$ > '{d}/fixture-pid'\nPATH='{fake_bin}'\n_timeout 1 bash '{d}/child.sh'")
+    with (d / 'output').open('w') as output:
+        process = subprocess.Popen(['bash', str(d / 'runner.sh')],
+                                   stdout=output, stderr=subprocess.STDOUT)
+        try:
+            deadline = time.monotonic() + 8
+            while not (d / 'child-pid').exists() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            check((d / 'child-pid').exists(), 'timeout child never started')
+            text = (d / 'output').read_text()
+            worker = int(re.search(r'^TEST_START .*pid=(\d+)', text, re.M)[1])
+            if action == 'worker-kill':
+                os.kill(worker, signal.SIGKILL)
+            else:
+                process.send_signal(getattr(signal, 'SIG' + action))
+            check(process.wait(timeout=8) != 0, 'timeout interruption reported success')
+            time.sleep(1.2)
+            check(not alive(int((d / 'child-pid').read_text())),
+                  'detached timeout child survived its deadline after interruption')
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+            for name in ('fixture-pid', 'child-pid'):
+                if (d / name).exists():
+                    try:
+                        os.kill(int((d / name).read_text()), signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+    print(action + ' detached timeout child cleanup: passed')
 PY
   assert_rc "parallel runner execution contract" 0 "$parallel_rc"
 else
   SKIP=$((SKIP + 1))
-  echo "  ⏭️ SKIP: parallel process observations require python3"
+  echo "  ⏭️ SKIP: parallel process observations require python3 and perl"
 fi
 
 # --- Summary ---
