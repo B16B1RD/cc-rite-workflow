@@ -5,6 +5,8 @@
 * **Update**: [GNU 形式の sed in-place 編集は BSD sed で失敗する](pages/anti-patterns/gnu-sed-inplace-silently-noop-on-bsd.md) — [レビュー結果](raw/reviews/20260916T135355Z-pr-2917.md) と [修正結果](raw/fixes/20260916T140542Z-pr-2917.md) を統合
 * **Update**: [否定アサーションには positive control を添える](pages/patterns/negative-assertion-positive-control.md) — [レビュー結果](raw/reviews/20260916T135355Z-pr-2917.md) と [修正結果](raw/fixes/20260916T140542Z-pr-2917.md) を統合
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=516, broken_refs=0
+* **Update**: [否定アサーションには positive control を添える](pages/patterns/negative-assertion-positive-control.md) — [再レビュー結果](raw/reviews/20260916T141828Z-pr-2917.md) を統合（control が別 TC に住む構造）
+* **Update**: [GNU 形式の sed in-place 編集は BSD sed で失敗する](pages/anti-patterns/gnu-sed-inplace-silently-noop-on-bsd.md) — [再レビュー結果](raw/reviews/20260916T141828Z-pr-2917.md) を統合（2 変異での実測記録）
 
 * **lint:checked** — stale=66, orphans=0, missing_concept=0, unregistered_raw=509, broken_refs=0, descriptive_refs=0。既存ページ本文は変更なし。構造検査を実行し、全ページ間の意味比較は今回再実行していない。
 
