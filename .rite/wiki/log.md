@@ -70,6 +70,7 @@
 * **Update**: [並列時の偽失敗とtimeout子孫回収](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) — 実測・修正の出典を統合
 * **Update**: [並列時の偽失敗とtimeout子孫回収](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) — 実測・修正の出典を統合
 * **Skip**: [出力分離と互換性の検証計画](raw/reviews/20260916T230650Z-pr-2920-cycle2.md) — detector-candidate: 大容量本文と低速readerで進捗混在を検出し、実Bash処理系で空配列展開を検証する
+* **lint:clean**: contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=518, broken_refs=0。更新した知見の整合性と既存ページとの重複を確認。陳腐化件数と意図的skipは情報値。
 
 ## 2026-09-15
 
