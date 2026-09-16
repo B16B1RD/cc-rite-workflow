@@ -107,22 +107,30 @@ def validate(plan, issue, state, session, root):
 
 def fingerprint(test):
     contents = {}
+
+    def visit(entry, ancestors):
+        path(entry.as_posix())
+        link = os.readlink(entry) if entry.is_symlink() else None
+        if entry.is_dir():
+            resolved = entry.resolve()
+            require(resolved not in ancestors, "cyclic verification input: " + str(entry))
+            contents[str(entry)] = [entry.stat().st_mode, "directory", link]
+            for child in sorted(entry.iterdir()):
+                visit(child, ancestors | {resolved})
+        elif entry.is_file():
+            contents[str(entry)] = [entry.stat().st_mode, hashlib.sha256(entry.read_bytes()).hexdigest(), link]
+        else:
+            contents[str(entry)] = ["missing", link]
+
     for name in test["inputs"]:
-        item = Path(path(name))
-        entries = [item] + (sorted(item.rglob("*")) if item.is_dir() else [])
-        for entry in entries:
-            path(entry.as_posix())
-            if entry.is_file():
-                contents[str(entry)] = [entry.stat().st_mode, hashlib.sha256(entry.read_bytes()).hexdigest()]
-            else:
-                contents[str(entry)] = "directory" if entry.is_dir() else "missing"
+        visit(Path(path(name)), set())
     environment = {name: os.environ.get(name) for name in test["environment"]}
     runtime = [platform.platform(), sys.version, subprocess.check_output(["bash", "--version"], text=True).splitlines()[0]]
     return digest([test, contents, environment, runtime, str(Path.cwd().resolve())])
 
 
 def verify(plan, paths, output, kind):
-    changed = subprocess.check_output(["git", "diff", "HEAD", "--name-only", "-z"]).decode().split("\0")
+    changed = subprocess.check_output(["git", "diff", "--no-renames", "HEAD", "--name-only", "-z"]).decode().split("\0")
     changed += subprocess.check_output(["git", "ls-files", "--others", "--exclude-standard", "-z"]).decode().split("\0")
     require(all(any(within(path(p), allowed) for allowed in paths) for p in changed if p), "unplanned changed path; revise plan before continuing")
     result = read(output) if output.exists() else {"review_context": plan["review_context"], "results": {}}
@@ -174,7 +182,7 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.SubprocessError) as error:
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, RuntimeError, subprocess.SubprocessError) as error:
         print("ERROR: review-fix-scope: " + json.dumps(str(error), ensure_ascii=False)
               + "; retain plan/evidence and return [fix:error]", file=sys.stderr)
         sys.exit(1)

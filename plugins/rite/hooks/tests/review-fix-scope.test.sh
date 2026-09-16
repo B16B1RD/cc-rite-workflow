@@ -260,6 +260,47 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
     check(invoke('verify', 'all', ok=False).returncode != 0, 'actual tracked non-target changes rejected')
     protected.write_text('protected\n')
 
+    candidate = copy.deepcopy(plan)
+    candidate['groups'][0]['paths'] = ['src']
+    save_plan(candidate)
+    invoke()
+    run(['git', 'mv', 'protected/secret.py', 'src/moved.py'])
+    result = invoke('verify', 'all', ok=False)
+    check(result.returncode != 0 and 'unplanned changed path' in result.stderr,
+          'staged rename cannot hide a non-target source deletion')
+    run(['git', 'mv', 'src/moved.py', 'protected/secret.py'])
+
+    dependency = private / 'dependency'
+    dependency.mkdir()
+    (dependency / 'flag').write_text('good\n')
+    linked = root / 'src/link'
+    linked.symlink_to('../.rite/dependency', target_is_directory=True)
+    candidate['groups'][0]['paths'].append('src/link')
+    candidate['verifications'][0].update(
+        inputs=['src'], command="echo run >> .rite/symlink.log; test \"$(cat src/link/flag)\" = good")
+    save_plan(candidate)
+    invoke()
+    invoke('verify', 'related')
+    invoke('verify', 'related')
+    check(lines('symlink.log') == 1, 'unchanged nested directory symlink result is reused')
+    (dependency / 'flag').write_text('broken\n')
+    result = invoke('verify', 'related', ok=False)
+    check(result.returncode != 0 and lines('symlink.log') == 2,
+          'nested directory symlink content change reruns and propagates failure')
+    check(json.loads(verification_file.read_text())['results']['related']['exit_code'] == 1,
+          'symlink dependency failure is recorded')
+    (dependency / 'flag').write_text('good\n')
+    invoke('verify', 'related')
+    loop = dependency / 'loop'
+    loop.symlink_to('.', target_is_directory=True)
+    result = invoke('verify', 'related', ok=False)
+    check(result.returncode != 0 and 'cyclic verification input' in result.stderr,
+          'cyclic directory input cannot reuse cached success')
+    loop.unlink()
+    linked.unlink()
+    save_plan()
+    invoke()
+
     docs = (plugin / 'skills/fix/SKILL.md').read_text()
     before_edit = caller_block(docs, '# fix-scope-before-edit')
     final_verify = caller_block(docs, '# fix-scope-final-verification')
