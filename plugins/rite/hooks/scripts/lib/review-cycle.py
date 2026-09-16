@@ -6,6 +6,7 @@ validation. A saved result is the receipt, including on replay after interruptio
 """
 import argparse
 import datetime
+import importlib
 import json
 import os
 from pathlib import Path
@@ -109,8 +110,10 @@ def guard_set(path, new, directory):
         return new
     try:
         old = read(path)
-    except (OSError, ValueError):
-        # cmd_set already diagnoses corrupt legacy state before rebuilding it.
+    except (OSError, ValueError) as error:
+        # Corruption cannot establish that a run has no retained review history.
+        raise InvalidReview("existing state is unreadable; preserve it and recover before set") from error
+    if importlib.import_module("review-stagnation").guard_set(old, new):
         return new
     require(new.get("phase") != "review" or old.get("phase") == "review",
             "enter review through review-start; ordinary set cannot begin another review")
@@ -144,6 +147,10 @@ def start(state, args, directory):
     roster(selected)
     cycle = state.get("review_cycle")
     current_head = head()
+    stagnation = importlib.import_module("review-stagnation")
+    if "review_run" in state:
+        run, _ = stagnation.current(state, args.session, check_head=False)
+        require(run["status"] != "stopped", "review run stopped: " + str(run.get("stop_reason")))
     count = state.get("cycle_count", 0)
     require(type(count) is int and count >= 0, "cycle_count must be a nonnegative integer")
     require(type(state.get("pr_number")) is int and state["pr_number"] > 0, "positive pr_number required")
@@ -153,6 +160,8 @@ def start(state, args, directory):
                 and context["cycle_count"] == count, "frozen review context differs from state")
         require(current_head == context["commit_sha"], "HEAD changed during incomplete review; retain evidence and recover")
         require(roster(selected) == roster(cycle["selected_reviewers"]), "cannot change incomplete review selection")
+        if args.stagnation and "review_run" not in state:
+            stagnation.initialize(state)
         return state
     require(state.get("phase") in ("pr", "review", "fix", "ready", "ready_error"),
             "review-start requires a PR review phase")
@@ -160,6 +169,8 @@ def start(state, args, directory):
         require(cycle["review_context"]["pr_number"] == state["pr_number"], "new PR requires a fresh run (cycle_count 0)")
         require(cycle.get("status") == "completed" and matching_receipt(directory, cycle) is not None,
                 "previous review has no verified saved receipt")
+        if "review_run" in state:
+            stagnation.advance(state, args.session, current_head)
     # Legacy callers already incremented before entering review. Adopt that count
     # once; new runs and completed cycles increment here exclusively.
     count = count if not cycle and state.get("phase") == "review" and count > 0 else count + 1
@@ -169,6 +180,10 @@ def start(state, args, directory):
     state.update(phase="review", cycle_count=count, active=True, updated_at=now(),
                  next_action="/rite:pr-review " + str(state["pr_number"]),
                  review_cycle=dict(review_context=context, selected_reviewers=selected, status="collecting"))
+    if args.stagnation and "review_run" not in state:
+        stagnation.initialize(state)
+    elif "review_run" in state:
+        state["review_run"]["current_decision"] = dict(action="observe", reasons=[])
     state.pop("stop_reason", None)
     state.pop("handoff", None)
     return state
@@ -251,7 +266,7 @@ def finish(state, args, path, directory):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("operation", choices=("start", "finish", "guard-set"))
+    parser.add_argument("operation", choices=("start", "finish", "guard-set", "clock", "observe", "replan", "close", "defer"))
     parser.add_argument("--state", required=True)
     parser.add_argument("--session", required=True)
     parser.add_argument("--results-dir", required=True)
@@ -259,17 +274,29 @@ def main():
     parser.add_argument("--manifest")
     parser.add_argument("--content-file")
     parser.add_argument("--pending-id")
+    parser.add_argument("--stagnation", action="store_true")
+    parser.add_argument("--input")
+    parser.add_argument("--issue")
+    parser.add_argument("--plan")
     args = parser.parse_args()
     path, directory = Path(args.state), Path(args.results_dir)
     if args.operation == "guard-set":
         print(json.dumps(guard_set(path, json.load(sys.stdin), directory)))
         return
-    for name in ["selection"] if args.operation == "start" else ["manifest", "content_file"]:
+    required = dict(start=["selection"], finish=["manifest", "content_file"],
+                    clock=["input"], observe=["input", "issue"], replan=["plan", "issue"], close=[], defer=[])
+    for name in required[args.operation]:
         value = getattr(args, name)
         require(value and Path(value).is_absolute(), name + " must be an absolute file path")
     state = read(path)
     require(state.get("session_id") == args.session, "state session_id differs from current session")
-    updated = start(state, args, directory) if args.operation == "start" else finish(state, args, path, directory)
+    if args.operation == "start":
+        updated = start(state, args, directory)
+    elif args.operation == "finish":
+        updated = finish(state, args, path, directory)
+    else:
+        stagnation = importlib.import_module("review-stagnation")
+        updated = stagnation.clock(state, args) if args.operation == "clock" else getattr(stagnation, args.operation)(state, args, directory)
     print(json.dumps(updated, ensure_ascii=False))
 
 

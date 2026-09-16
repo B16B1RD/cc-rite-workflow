@@ -8,6 +8,8 @@
 # Called from:
 #   - skills/iterate/SKILL.md ステップ 1 (発火条件チェック内、backstop 判定の直後)。
 #     上限未到達でも本 helper が fire を返せばブレーカーへ分岐する。
+# 根因・実作業時間の診断は review-stagnation の責務。既存の欠損修復と本発散判定が
+# 優先し、見直しを理由に fire を無視したり入力列を切り直したりしない。
 #
 # Usage:
 #   bash review-trend-divergence.sh --pr N --cycle-count N [--since BASENAME] [--results-dir PATH]

@@ -528,9 +528,11 @@ result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 mkdir -p "$d/.rite/sessions"
 state_file="$d/.rite/sessions/${sid}.flow-state"
 printf '{this is not valid JSON' > "$state_file"
-# cmd_set should succeed (defaults applied to merge) BUT emit a WARNING to stderr so
-# operator can observe the silent-overwrite-into-zero-state situation.
-(cd "$d" && bash "$HOOK" set --phase plan --issue 12 --branch "b" --pr 0 --next "n") 2> "$d/tc12.stderr"
+# A corrupt file may contain a retained review run; never replace it with defaults.
+cp "$state_file" "$d/tc12.before"
+tc12_rc=0
+(cd "$d" && bash "$HOOK" set --phase plan --issue 12 --branch "b" --pr 0 --next "n") 2> "$d/tc12.stderr" || tc12_rc=$?
+assert "TC-12: corrupt set fails" "1" "$tc12_rc"
 if grep -q "WARNING: flow-state.sh cmd_set: existing state read failed" "$d/tc12.stderr"; then
   pass "TC-12: corrupt-JSON WARNING emitted"
 else
@@ -550,11 +552,11 @@ if grep -qE '^  [^ ]' "$d/tc12.stderr"; then
 else
   fail "TC-12: 診断 stderr の indented 行が欠落"
 fi
-# Resulting file must be valid JSON (write proceeded with defaults).
-if jq -e . "$state_file" >/dev/null 2>&1; then
-  pass "TC-12: merged write produced valid JSON with defaults"
+# Keep the original bytes so recovery cannot erase unknown run counters.
+if cmp -s "$state_file" "$d/tc12.before"; then
+  pass "TC-12: corrupt state bytes retained"
 else
-  fail "TC-12: merged write failed to produce valid JSON"
+  fail "TC-12: corrupt state was replaced"
 fi
 
 # --- TC-13: AC-4 — CLAUDE_CODE_SESSION_ID env resolves session_id when .rite-session-id is absent ---

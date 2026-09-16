@@ -238,6 +238,13 @@ fs_phase=$(bash {plugin_root}/hooks/flow-state.sh get --field phase --default ""
 fs_pr=$(bash {plugin_root}/hooks/flow-state.sh get --field pr_number --default "0") || { echo "[CONTEXT] RUN_RESUME_STAGE=stop; reason=state_read_failed; issue={current_issue}"; exit 0; }
 fs_branch=$(bash {plugin_root}/hooks/flow-state.sh get --field branch --default "") || { echo "[CONTEXT] RUN_RESUME_STAGE=stop; reason=state_read_failed; issue={current_issue}"; exit 0; }
 
+# A stopped diagnostic run retains its identity even while inactive.
+if [ "$fs_issue" = "{current_issue}" ] && [ -f "$fs_path" ] && \
+   jq -e '.review_run.status == "stopped"' "$fs_path" >/dev/null; then
+  echo "[CONTEXT] RUN_RESUME_STAGE=stop; reason=stagnation_stopped; issue={current_issue}; pr=$fs_pr; branch=$fs_branch"
+  exit 0
+fi
+
 # 別 Issue / 非 active の state は本 Issue の再開材料にならない → 従来どおり open
 if [ "$fs_active" != "true" ] || [ "$fs_issue" != "{current_issue}" ]; then
   echo "[CONTEXT] RUN_RESUME_STAGE=open; reason=fresh_or_mismatched; issue={current_issue}"
@@ -309,6 +316,8 @@ args: "{pr_number}"
 ```
 
 iterate の終了 sentinel を `{run_mode}`（ステップ 1 の `mode=` marker）で出し分ける:
+
+停滞の見直し中は iterate 内で継続する。見直し後の非収束も既存の `[iterate:max-cycles-reached]` に返り、下表の停止経路を使う。診断・保存・権限の失敗を成功扱いせず、同一 run の再開で cycle や見直し履歴をリセットしない。
 
 | Sentinel + `{run_mode}` | アクション |
 |---------|-----------|
@@ -494,6 +503,7 @@ fs_path=$(bash {plugin_root}/hooks/flow-state.sh path)
 session_id=$(basename "$fs_path" .flow-state)
 [ -n "$session_id" ] || { echo "ERROR: batch-run: session_id を解決できません（run-queue はセッションスコープのため必須）" >&2; exit 1; }
 queue_file="$state_root/.rite/state/run-queue-$session_id.json"
+# batch-run-stop
 # 失敗段が iterate の場合、fix.md が set した FINALIZE handoff が残り Stop hook が
 # iterate 完了通知を差し戻しうる。停止報告の前に one-shot 消費して出力順序を確定させる。
 bash {plugin_root}/hooks/flow-state.sh consume-handoff >/dev/null 2>&1 || true

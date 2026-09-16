@@ -24,3 +24,20 @@ helper は標準 `### 4.2` 節内の backtick パスが `non_targets` に含ま�
 修正中は `review-fix-scope-check.sh verify --plan ... --issue ... --kind related` を使う。内容（追加・削除・modeを含む）・コマンド・指定環境・作業先・基本runtimeが同一で、当該 context の実測成功がある関連テストだけ再利用する。失敗・入力変化・新しいreview contextは再実行する。全修正後は `fix` 本体の最終検証ブロックを実行し、関連結果の鮮度を確認した後、全体検証を全件実行する。検証コマンドは入力を変更しない。
 
 機械検査と意味判断を分けた記録は `.rite/state/fix-plan-{session}.json`、実測コマンド・終了コード・stdout/stderr・鮮度キーは `.rite/state/fix-verification-{session}.json` に保存する。保存失敗は成功にせず前の記録を保持する。復旧は同じ入力で check → verify。任意のファイル直接編集やホスト権限の遮断は保証しない。
+
+## 停滞時の見直し計画
+
+[レビュー停滞の診断](../../../references/review-stagnation.md) が `action=replan` を返した場合、同じ `{fix_plan_file}` に次の `replan` を追加する。全指摘・最新仕様・既存 `constraints` / `groups` / `verifications` との対応を維持する。
+
+| フィールド | 内容 |
+|---|---|
+| `replan.alternatives[]` | 最低2案。それぞれ `id`, `description`, `paths`（相対パス配列）, `recurrence_prevention`（非空文字列）, `rejection_reason` を記録 |
+| `replan.selected_id` | 選択案の `id`。`outcome:insoluble` のときは `null` |
+| `replan.selection_reason` | 選択理由。解決不能時は仕様・契約上、範囲内で解けない理由 |
+| `replan.outcome` | 範囲内修正を続ける `continue` / 範囲内解決不能の `insoluble` |
+
+選択案の `paths` 集合は全 `groups[].paths` の集合と一致させる。非選択案には棄却理由を必須とし、`insoluble` は全案の棄却理由を保持する。再発防止検証は各案の根因を再現・検出できる内容を示し、選択案では `groups[].verification_ids` と `verifications[]` に接続する。未検証、証跡欠損、権限拒否を解決不能という意味判断に置き換えない。
+
+編集前に `flow-state.sh review-replan --plan "{fix_plan_file}" --issue "{fix_issue_file}"` を実行する。helper は既存の範囲検査を適用して見直し結果を run に保存する。失敗時は計画・履歴を保持して編集せず、同じ工程を復旧する。通常の scope check も、診断 run の観測欠損や未完了の見直しを拒否する。
+
+最終 `verify --kind all` の成功で検証済み tree fingerprint と対象根因を保存する。次レビュー開始時の新 HEAD・clean tree と検証済み内容の照合を経て修正履歴を確定するため、検証後に入力が変わった場合は最終検証をやり直す。同じ run の再開で見直し回数や観測履歴をリセットしない。

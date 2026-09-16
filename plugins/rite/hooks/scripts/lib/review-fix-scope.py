@@ -38,7 +38,7 @@ def within(value, parent):
     return Path(value).resolve() == Path(parent).resolve() or Path(parent).resolve() in Path(value).resolve().parents
 
 
-def validate(plan, issue, state, session, root):
+def validate(plan, issue, state, session, root, allow_replan=False):
     require(state.get("session_id") == session, "foreign session state")
     current = state.get("review_cycle")
     require(isinstance(current, dict) and current.get("status") == "completed", "all reviews must be collected and saved")
@@ -48,6 +48,7 @@ def validate(plan, issue, state, session, root):
     require(plan.get("review_context") == context and cycle.head() == context["commit_sha"], "stale or foreign review context / HEAD")
     receipt = cycle.matching_receipt(root / ".rite/review-results", current)
     require(receipt is not None, "saved review receipt missing")
+    importlib.import_module("review-stagnation").plan_gate(state, plan, session, allow_replan)
     require(issue.get("number") == state.get("issue_number") == plan.get("issue_number")
             and text(issue.get("body")) and plan.get("issue_body") == issue["body"], "Issue specification changed or mismatched")
     constraints = plan["constraints"]
@@ -152,6 +153,7 @@ def verify(plan, paths, output, kind):
         require(measured.returncode == 0, "verification failed: " + test["id"] + "; evidence=" + str(output))
         require(fingerprint(test) == key, "verification inputs changed during execution: " + test["id"])
         print("[CONTEXT] FIX_VERIFICATION=executed; id=" + test["id"])
+    return result
 
 
 def main():
@@ -175,7 +177,10 @@ def main():
     else:
         approved = read(saved)
         require(approved["plan_hash"] == record["plan_hash"] and approved["review_hash"] == record["review_hash"], "plan or review changed; check scope again")
-        verify(plan, paths, directory / ("fix-verification-" + args.session + ".json"), args.kind)
+        result = verify(plan, paths, directory / ("fix-verification-" + args.session + ".json"), args.kind)
+        if args.kind == "all" and "review_run" in state:
+            importlib.import_module("review-stagnation").verified(state, plan, result, paths)
+            atomic_write(Path(args.state), state)
         print("[CONTEXT] FIX_VERIFICATION=pass; kind=" + args.kind)
 
 
