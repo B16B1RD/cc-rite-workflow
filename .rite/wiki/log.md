@@ -31,6 +31,8 @@
 * **Update**: [変更パスの列挙契約](pages/anti-patterns/git-diff-parser-output-shape-assumptions.md) — [修正記録](raw/fixes/20260916T070742Z-pr-2906.md) を統合
 * **Skip**: [再レビュー結果](raw/reviews/20260916T071932Z-pr-2906.md) — 修正後の指摘ゼロという完了記録で、新たな経験則がない
 
+* **lint:checked** — stale=66, orphans=0, missing_concept=0, unregistered_raw=510, broken_refs=0, descriptive_refs=0。更新ページと同テーマの索引を照合。全504ページ間の意味比較は未実施。
+
 ## 2026-09-15
 
 * **Skip**: [20260915T145209Z-pr-2877.md](raw/reviews/20260915T145209Z-pr-2877.md) — no extractable heuristic: zero-finding review; existing fail-loud all-exits and test pin pages already cover undeterminable-state skip and independent mutation pins
