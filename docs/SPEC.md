@@ -680,7 +680,7 @@ Before Confirmation & Creation, surface the assumptions the model implicitly fil
 
 1. Create Issue with `gh issue create`
 2. Add to Projects with `gh project item-add`
-3. Set fields (Status/Priority/Complexity/Work Type)
+3. Set fields (Status/Priority/Complexity)
 
 ---
 
