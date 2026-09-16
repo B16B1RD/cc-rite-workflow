@@ -15,6 +15,8 @@ plugin = Path(sys.argv[1]).resolve()
 review = (plugin / 'skills/pr-review/SKILL.md').read_text()
 iterate = (plugin / 'skills/iterate/SKILL.md').read_text()
 recover = (plugin / 'skills/recover/SKILL.md').read_text()
+batch = (plugin / 'skills/batch-run/SKILL.md').read_text()
+diagnostic = (plugin / 'references/review-stagnation.md').read_text()
 
 def block(text, marker):
     assert text.count(marker) == 1, 'caller block missing or ambiguous: ' + marker
@@ -44,7 +46,7 @@ with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
         return output
 
     def flow(*args, success=True):
-        return run(['bash', str(plugin / 'hooks/flow-state.sh'), *args], success)
+        return run(['bash', str(plugin / 'hooks/flow-state.sh'), *map(str, args)], success)
 
     def state():
         return json.loads(flow('get', '--jq-filter', '.').stdout)
@@ -175,6 +177,81 @@ with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
     assert state()['review_cycle']['review_context']['run_id'] != context['run_id']
     assert state()['review_cycle']['review_context']['commit_sha'] != context['commit_sha']
     assert flow('set', '--phase', 'fix', '--next', 'skip finish', success=False).returncode != 0
+
+    # Issue-backed callers must collect diagnostics before advancing.
+    state_path.unlink()
+    flow('set', '--phase', 'pr', '--pr', 4242, '--issue', 4241,
+         '--branch', 'caller-test', '--next', 'review')
+    execute(start_block)
+    context = state()['review_cycle']['review_context']
+    assert state()['review_run']['run_id'] == context['run_id']
+    replacements.update(clock_kind='work', clock_close_mode='normal')
+    open_clock = block(diagnostic, '# review-clock-open')
+    close_clock = block(diagnostic, '# review-clock-close')
+    execute(open_clock)
+    assert execute(open_clock, False).returncode != 0, 'open clock overwritten'
+    execute(close_clock)
+    assert len(state()['review_run']['clock']) == 1
+
+    for record in records:
+        record['review_context'] = context
+    data.update(review_context=context, reviewers=records)
+    manifest.write_text(json.dumps(data))
+    result.update(review_context=context, commit_sha=context['commit_sha'],
+                  acceptance_criteria={'skipped': 'no_ac_section'})
+    result.pop('measured_gate', None)
+    content.write_text(json.dumps(result))
+    run(['bash', str(plugin / 'scripts/review-measured-gate.sh'), '--input', str(content),
+         '--reject-preset-verification'])
+    execute(finish_block)
+    assert flow('set', '--phase', 'ready', '--next', 'omitted observation',
+                success=False).returncode != 0
+    issue = work / 'issue.json'
+    observed = work / 'observation.json'
+    issue.write_text(json.dumps({'number': 4241, 'body': 'Review the change.'}))
+    observed.write_text(json.dumps(dict(review_context=context, issue_number=4241,
+        issue_body='Review the change.', roots=[],
+        acceptance=dict(satisfied=[], evidence='The specification has no acceptance table.'))))
+    replacements.update(review_observation_file=str(observed), review_issue_file=str(issue))
+    observe_block = block(review, '# review-stagnation-observe')
+    execute(observe_block)
+    execute(observe_block)
+    assert len(state()['review_run']['observations']) == 1, 'observation replay duplicated'
+    assert 'ITERATE_STAGNATION=continue' in execute(block(iterate, '# iterate-stagnation-route')).stdout
+    flow('set', '--phase', 'ready', '--next', 'verified')
+
+    # Saving a clock and crashing before removal must submit exactly the same interval.
+    replacements['clock_kind'] = 'external_wait'
+    execute(open_clock)
+    clock_file = work / '.rite/state/review-clock-caller-test.json'
+    clock_data = json.loads(clock_file.read_text())
+    clock_data['ended_at'] = clock_data['started_at']
+    clock_file.write_text(json.dumps(clock_data))
+    flow('review-clock', '--input', str(clock_file))
+    execute(close_clock)
+    assert not clock_file.exists() and len(state()['review_run']['clock']) == 2
+    replacements.update(clock_kind='work', clock_close_mode='recover')
+    execute(open_clock)
+    execute(close_clock)
+    assert state()['review_run']['clock'][-1]['kind'] == 'interruption'
+    assert flow('set', '--phase', 'ready', '--next', 'reset', '--cycle-count', 0,
+                success=False).returncode != 0, 'recover can erase review history'
+
+    # The real terminal callers retain the run and stop the batch at its current item.
+    execute(breaker_block)
+    stopped = state()
+    assert stopped['cycle_count'] == 1 and stopped['review_run']['status'] == 'stopped'
+    assert stopped['active'] is False
+    assert execute(start_block, False).returncode != 0, 'stopped run restarted'
+    replacements.update(current_issue='4241', run_mode='merge', breaker_failed='true')
+    resumed = execute(block(batch, '# batch-run-resume-stage'))
+    assert 'RUN_RESUME_STAGE=stop; reason=stagnation_stopped' in resumed.stdout
+    queue = work / '.rite/state/run-queue-caller-test.json'
+    queue.write_text(json.dumps(dict(issues=[4241, 4243], cursor=0, active=True, mode='merge')))
+    execute(block(batch, '# batch-run-stop'))
+    retained = json.loads(queue.read_text())
+    assert retained['cursor'] == 0 and retained['active'] is False
+    assert retained['failed'] == [4241] and retained['issues'] == [4241, 4243]
 
     # Existing output gates precede the deferred success handoff.
     assert '状態更新・result の前に記載順で評価する' in review

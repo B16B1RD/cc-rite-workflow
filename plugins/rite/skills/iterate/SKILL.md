@@ -34,7 +34,9 @@ argument-hint: "<pr_number>"
 - **`safety.max_review_cycles`（既定 15）到達**（保険）: 発散判定をすり抜ける非収束を受け止める backstop。`cc >= max_cycles` は trend 判定と**独立した発火条件**。**16 cycle 以上を要する収束中の run は既定値のままでも本経路で停止する**
 rationale: references/rationale.md#circuit-breaker-conditions
 
-ブレーカー発火は review⇄fix ループの停止 signal である。発火後は counter を 0 に戻し停止理由を記録して終了する。review / fix は invoke しない。再開はユーザーによる `/rite:iterate` の明示的な再実行に委ね、fresh entry で run 開始点を更新し full scope から始める。cycle_count は flow-state に永続化され resume を跨いで継続する。
+ブレーカー発火は review⇄fix ループの停止 signal である。`review_run` がある現在の run は counter・根因観測・見直し履歴・停止理由を保持して終了する。同じ run の再起動で履歴を消さない。review / fix は invoke しない。以下に残る counter reset と fresh entry の手順は `review_run` がない legacy state に限る。
+
+保存済みレビューの [停滞診断](../../references/review-stagnation.md) は、実作業時間または根因再発を契機に修正方針を見直す。証跡欠損・権限拒否・既存 breaker を優先し、時間だけでは停止しない。見直し後の非収束はステップ 6 の既存停止 sentinel に合流する。
 
 途中で止まったら flow-state に現 phase (review or fix) が残るので `/rite:recover` で再開する。
 
@@ -67,7 +69,7 @@ rationale: references/rationale.md#circuit-breaker-conditions
 | `{cb_reason}` | ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `CB_REASON=` の**生値**（`max-cycles` / `divergence`）。ステップ 6 共有前段が flow-state へ書く `--stop-reason "circuit-breaker:{cb_reason}"` でのみ使う（人間向けの文面は `{fire_reason_line}` が担う） |
 | `{trend}` | ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `TREND=`（カンマ区切りの per-cycle blocking 件数）。停止通知では `→` 区切りへ整形して表示する。空のときの扱いは ステップ 6.2「発火理由の文面」を参照 |
 | `{trend_reason}` | ステップ 1 の `[CONTEXT] ITERATE_CB=` marker の `TREND_REASON=`（helper が返した判定不能の理由。ステップ 6.2「発火理由の文面」の `max-cycles` 分岐と推移行の差し替えで使う） |
-| `{cycle_count}` | flow-state `cycle_count` field（review⇄fix cycle の消化数。pr-review の `review-start` で increment、fresh entry で 0 リセット。発火時はステップ 6 の共有前段が、正常終了時はステップ 5.0.1 が 0 にリセットする） |
+| `{cycle_count}` | flow-state `cycle_count` field（review-start で増加。`review_run` がある同一 run では完了・停止・recoverでも保持。以下の 0 リセット手順は legacy state 専用） |
 | `{state_root}` | ステップ 6 共有前段の `[CONTEXT] STATE_ROOT=` marker の値（`hooks/state-path-resolve.sh` の解決結果。未解決時は sentinel `unresolved`）。ステップ 6.2 注意行 (b) の手動リセットコマンドでのみ使い、値が得られないときは同節の pre-fill 表に従って解決手順へ置き換える |
 | `{session_id}` | ステップ 6 共有前段の `[CONTEXT] SESSION_ID=` marker の値（`flow-state.sh path` の basename）。用途と未解決時の扱いは `{state_root}` と同じ |
 | `{nb_count}` | ステップ 5.0.2 の `ITERATE_NB_REMAINING` marker 値（overlay 後は 0。取得失敗は 5.S で停止しここへ来ない） |
@@ -132,6 +134,8 @@ bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --i
 ---
 
 ## ステップ 0.6: cycle counter の初期化 + max_review_cycles の検証
+
+`review_run` があれば phase に依らず resume とし、counter と pin を保持する。停止済み run は `iterate-stagnation-route` で停止理由を報告し、fresh entry に変換しない。以下の reset 診断表は legacy state のみが対象。
 
 ループに入る前に、review⇄fix サーキットブレーカーの cycle counter を初期化し、上限値を検証する。counter は flow-state の `cycle_count` に永続化され、resume を跨いで継続する。
 rationale: references/rationale.md#cycle-counter-init
@@ -216,6 +220,9 @@ if [ "$cur_cc" -ge "$max_cycles" ] 2>/dev/null; then
   cb_will_refire=1
 fi
 resume_state=$(bash {plugin_root}/hooks/flow-state.sh get --jq-filter .) || exit 1
+if printf '%s' "$resume_state" | jq -e '.review_run != null' >/dev/null; then
+  cb_mode_init=resume
+fi
 if printf '%s' "$resume_state" | jq -e '.phase == "review" and (.cycle_count // 0) > 0 and
   (.review_cycle.status == "collecting" or .review_cycle.status == "completed")' >/dev/null; then
   cb_mode_init=resume
@@ -623,6 +630,8 @@ args: "{pr_number}"
 
 ## ステップ 2: review sentinel を判定
 
+`[review:error]` でも `review_run.current_decision.action=stop` が保存済みなら、ステップ 3 の `iterate-stagnation-route` を実行してステップ 6 へ進む。観測の保存・権限・入力エラーだけは既存のエラー処理に従う。非収束を再レビューで迂回しない。
+
 | Sentinel | アクション |
 |---------|-----------|
 | `[review:mergeable]` | ステップ 5.S（NB digest sweep。完了通知の前） |
@@ -645,7 +654,24 @@ args: "{pr_number}"
 
 ## ステップ 3: /rite:fix を invoke
 
-flow-state を `phase=fix` に更新後、`/rite:fix` を invoke:
+先に保存された停滞判定を読む。未完了レビューはステップ 1 の同 cycle 再開が先、証跡・保存・権限エラーは既存エラー経路が先である。`stop` なら `{cb_reason}=stagnation` としてステップ 6 へ進む。`replan` は fix の一括計画で範囲内代替を保存し、通常の scope gate へ戻る。
+
+```bash
+# iterate-stagnation-route
+source {plugin_root}/hooks/scripts/lib/context-marker.sh || exit 1
+stagnation_state=$(bash {plugin_root}/hooks/flow-state.sh get --jq-filter .) || exit 1
+if printf '%s' "$stagnation_state" | jq -e '.review_run != null' >/dev/null; then
+  stagnation_action=$(printf '%s' "$stagnation_state" | jq -er '.review_run.current_decision.action') || exit 1
+  case "$stagnation_action" in
+    continue|replan|stop) marker_emit ITERATE_STAGNATION "$stagnation_action" ;;
+    *) echo 'ERROR: invalid stagnation decision' >&2; exit 1 ;;
+  esac
+else
+  marker_emit ITERATE_STAGNATION legacy
+fi
+```
+
+`stop` の理由が既存の `max-cycles` / `divergence` なら、その値を `{cb_reason}` とする。それ以外は `stagnation`。`continue` / `replan` / `legacy` の場合だけ flow-state を `phase=fix` に更新し `/rite:fix` を invoke:
 
 ```bash
 bash {plugin_root}/hooks/flow-state.sh set \
@@ -661,6 +687,8 @@ args: "{pr_number}"
 ---
 
 ## ステップ 4: fix sentinel を判定
+
+`[fix:error]` のときは再試行前に `iterate-stagnation-route` を実行する。`stop` なら `{cb_reason}=stagnation` でステップ 6 へ直行し、修正を再試行しない。それ以外のエラーだけ下表の1回再試行を適用する。
 
 | Sentinel | アクション |
 |---------|-----------|
@@ -809,6 +837,8 @@ bash {plugin_root}/hooks/scripts/pr-cycle-cleanup.sh 2>&1 || true
 
 ### ステップ 5.0.1: run を閉じる (cycle counter のリセット)
 
+`review_run` がある現在の run は下の `retained` 分岐で counter と履歴を維持する。以下の reset の説明と失敗警告は legacy state に適用する。
+
 完了通知を出力する**前に**、`cycle_count` を 0 にして run を明示的に閉じる。これをしないと終了経路
 （`[review:mergeable]` / `[fix:non-fatal-only]` / `[fix:replied-only]` / `[fix:cancelled-by-user]`）はいずれも counter を残したまま
 終わり、**同じ PR に対する次の `/rite:iterate` が resume と判定され、ステップ 0.6 の pin 更新に入らない**。
@@ -831,6 +861,11 @@ source {plugin_root}/hooks/scripts/lib/context-marker.sh || { echo "ERROR: conte
 
 close_phase=$(bash {plugin_root}/hooks/flow-state.sh get --field phase --default review) || close_phase=review
 close_handoff=$(bash {plugin_root}/hooks/flow-state.sh get --field handoff --default "") || close_handoff=""
+close_state=$(bash {plugin_root}/hooks/flow-state.sh get --jq-filter .) || exit 1
+if printf '%s' "$close_state" | jq -e '.review_run != null' >/dev/null; then
+  marker_emit ITERATE_RUN_CLOSE retained "phase=$close_phase"
+  exit 0
+fi
 if [ -n "$close_handoff" ]; then
   close_out=$(LC_ALL=C bash {plugin_root}/hooks/flow-state.sh set \
     --phase "$close_phase" --issue {issue_number} --branch "{branch_name}" --pr {pr_number} \
@@ -852,6 +887,7 @@ marker_emit ITERATE_RUN_CLOSE "$run_close" "phase=$close_phase"
 
 | `ITERATE_RUN_CLOSE` | 意味 |
 |---|---|
+| `retained` | 現在の run の counter・観測・見直し履歴を保持した。既存の品質ゲートと完了 sentinel に従って caller へ戻る |
 | `ok` | counter を 0 にして run を閉じた。次回起動は fresh entry となり pin が更新される |
 | `failed` | リセットに失敗。次回起動は resume 判定となり前 run の pin を引き継ぐ（WARNING 済み）。`/rite:recover` で最後の未完了工程を再開する。未完了 review の counter reset は拒否される |
 
@@ -977,6 +1013,8 @@ flow-state は phase={review|fix} のままです。`/rite:ready` 実行時に p
 
 ## ステップ 6: サーキットブレーカー（発火時のみ）
 
+`review_run` がある場合は共有ブロックの先行分岐で `active=false` と停止理由を保存し、counter・観測・見直し履歴を保持する。以下の reset・手動リセット・fresh run 再開の説明は legacy state のみ。現在の run の停止通知には `/rite:recover {issue_number}` で保存済み原因と証跡を確認する手順を出し、counter削除やReady直行を案内しない。根本原因・要件変更を解決するまで同じ停止判定を維持する。
+
 > **停止 invariant**: 発火後は review / fix を invoke せず、停止 sentinel と通知を出して終了する。発火そのものから Ready / merge へ直行する分岐は存在しない。counter reset は次の明示的な再実行を可能にする処理であり、この起動でループを再開する許可ではない。
 rationale: references/rationale.md#circuit-breaker-stop-invariant
 
@@ -1039,6 +1077,16 @@ fi
 # 読み直されるため、state に焼くと設定変更で符号化が破綻する（counter reset を選んだのと同じ理由）。
 # review-cycle-breaker-reset
 iteration_phase=$(bash {plugin_root}/hooks/flow-state.sh get --field phase --default pr) || exit 1
+breaker_state=$(bash {plugin_root}/hooks/flow-state.sh get --jq-filter .) || exit 1
+if printf '%s' "$breaker_state" | jq -e '.review_run != null' >/dev/null; then
+  bash {plugin_root}/hooks/flow-state.sh set \
+    --phase "$iteration_phase" --issue {issue_number} --branch {branch_name} --pr {pr_number} \
+    --next "停止理由と成果を保持して復旧情報を報告する" \
+    --active false --stop-reason "circuit-breaker:{cb_reason}" || exit 1
+  marker_emit ITERATE_CB_MODE "$cb_mode" "issue={issue_number}" "pr={pr_number}" \
+    "SESSION_ID=$session_id" "STATE_ROOT=$state_root"
+  exit 0
+fi
 if cb_reset_out=$(LC_ALL=C bash {plugin_root}/hooks/flow-state.sh set \
   --phase "$iteration_phase" --issue {issue_number} --branch {branch_name} --pr {pr_number} \
   --next "サーキットブレーカー発火: 停止通知を出し、明示的な /rite:iterate 再実行を待つ" --cycle-count 0 \
@@ -1146,6 +1194,7 @@ rationale: references/rationale.md#notice-trend-and-notes
 
 | `CB_REASON` | `TREND_VERDICT` | `{fire_reason_line}` |
 |---|---|---|
+| `stagnation` | 任意 | `方針見直し後も同じ根因が再発し進展がない、または範囲内代替で解決できない（詳細は review_run.current_decision.reasons）` |
 | `divergence` | （必ず `fire`） | `review⇄fix ループの収束トレンドが発散（直近サイクルで過去の最良水準へ戻れず、下降もしていない）` |
 | `max-cycles` | `ok` | `review⇄fix cycle が上限 {max_review_cycles} に到達（発散判定は実行され、発散ではないと結論）` |
 | `max-cycles` | `fire` | `review⇄fix cycle が上限 {max_review_cycles} に到達（収束トレンドの発散も同時に検出）` |

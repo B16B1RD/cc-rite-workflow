@@ -1025,8 +1025,11 @@ if printf '%s' "$review_state" | jq -e '(.pr_number // 0) == 0 and (.review_cycl
     --branch "{head_ref}" --next "/rite:pr-review {pr_number}" || exit 1
 fi
 echo "[CONTEXT] REVIEW_TMP_DIR=${TMPDIR:-/tmp}" >&2
+review_start_args=()
+review_issue=$(bash {plugin_root}/hooks/flow-state.sh get --field issue_number --default 0) || exit 1
+if [ "$review_issue" -gt 0 ] 2>/dev/null; then review_start_args+=(--stagnation); fi
 bash {plugin_root}/hooks/flow-state.sh review-start \
-  --selection "{reviewer_selection_file}" || {
+  --selection "{reviewer_selection_file}" "${review_start_args[@]}" || {
   echo "[review:error]"
   exit 1
 }
@@ -1035,6 +1038,8 @@ bash {plugin_root}/hooks/flow-state.sh review-start \
 返った `review_context`（実 session / run / PR / cycle / HEAD）と `selected_reviewers` を保持する。counter 更新はこの操作だけが担い、同一 HEAD・名簿の collecting 再開では加算しない。`review_context.commit_sha` とステップ 1.2.5 の対象 SHA が異なれば停止する。`review_cycle` に manifest / content / result のパスがある場合は [recover の再開表](../recover/SKILL.md#review-cycle-の再開) に従う。completed の最終ゲート再開では本 start を再実行せず、保存結果を読んで未完了のステップ 6〜8 へ戻る。
 
 固定した context ごとに `REVIEW_TMP_DIR/rite-review-{session_id}-{run_id}-{pr_number}-{cycle_count}/` を使用する。初回 spawn 前に manifest の名簿・context と全員の pending entry を Write し、各回収後に同じファイルを更新する。中断後も成功結果を保持して不足分だけ回収する。入力・raw が失われた場合は原因とパスを報告し、同一 cycle の不足結果を再取得する。
+
+Issue に関連付いたレビュー開始直後に [停滞診断の時計](../../references/review-stagnation.md) の `review-clock-open` を `clock_kind=work` で実行する。CI・外部待ちへ入る前に区間を閉じ、待機区分で開き直す。中断復帰は同参照の回復規則を適用し、未閉区間を実作業と推測しない。時計の保存失敗は `[review:error]`。関連 Issue がない standalone レビューは仕様入力を持たないため診断を開始せず、既存のレビュー経路を維持する。
 
 ### 4.0.A Pre-Review State Snapshot
 
@@ -2465,6 +2470,34 @@ bash {plugin_root}/hooks/flow-state.sh review-finish \
 修正へ渡す入力は、この全員回収済み `review_cycle.result_path` と最新 Issue 仕様。指摘の ID・出自・根因の関連・AC の確認結果を保持し、`fix` の[編集前一括計画](../fix/references/fix-plan.md)へ接続する。個別 reviewer の速報だけで編集を始めない。
 
 **Placeholder data flow**: `file_timestamp` / `iso_timestamp` / `json_saved` は EXIT trap が stderr に emit。6.1.c が使うのは `file_timestamp` と `local_save_failed`。`iso_timestamp` は observability 専用。
+
+#### 6.1.S 停滞観測の保存
+
+`review_run` がない Issue 未関連の standalone レビューは本節をスキップする。
+
+保存済み全指摘と最新 Issue 本文から [停滞診断の入力契約](../../references/review-stagnation.md) に従う `{review_observation_file}` を同じ cycle の作業ディレクトリへ作る。`{review_issue_file}` は `gh issue view --json number,body` で取得した絶対 JSON パス。`roots` は実測された全 blocking 指摘を欠陥・再現条件・違反契約でまとめ、`acceptance.satisfied` は保存結果の受入条件確認で `satisfied`、または対象 HEAD と一致する `human-verified` の ID を使う。未検証条件を進展に数えない。
+
+先に `review-clock-close` を実行して区間を保存する。観測保存後の再開では同じ入力を再利用し、内容や時計を推測で作り直さない。
+
+```bash
+# review-stagnation-observe
+observed_state=$(bash {plugin_root}/hooks/flow-state.sh get --jq-filter .) || exit 1
+if ! printf '%s' "$observed_state" | jq -e '.review_run != null' >/dev/null; then
+  exit 0
+fi
+if ! bash {plugin_root}/hooks/flow-state.sh review-observe \
+  --input "{review_observation_file}" --issue "{review_issue_file}"; then
+  echo "[review:error]"
+  exit 1
+fi
+observed_state=$(bash {plugin_root}/hooks/flow-state.sh get --jq-filter .) || exit 1
+if printf '%s' "$observed_state" | jq -e '.review_run.current_decision.action == "stop"' >/dev/null; then
+  echo "[review:error]"
+  exit 1
+fi
+```
+
+判定は `review_run.current_decision` に保存される。`stop` は停止記録を保持して `[review:error]` で iterate へ戻し、再レビューせず停止経路へ合流する。`replan` は残りの必須ゲートを終えて通常のレビュー sentinel とともに戻す。ここで mergeable 判定や既存の HEAD / AC ゲートを変更しない。
 
 #### 6.1.b PR Comment Post (Conditional on `{post_comment_mode}`) <!-- opt-in PR comment posting -->
 

@@ -10,6 +10,12 @@
 
 この追加フィールドは schema version を変えない。過去 JSON の読取互換は維持するが、context が無い過去結果を新しい cycle の成功証跡には使用しない。
 
+### run の停滞診断記録との関連
+
+停滞診断を有効にした run は、レビュー結果本体を変更せず `review_context` で flow-state の `review_run` と結び付ける。時計区間、全 blocking finding の根因、受入条件の充足、検証済み修正、見直し理由・代替案・選択・結果を run に保持する。観測では保存済み `verification.measured=true` の `repro` / `failing_test` を指摘 ID とともにコピーし、ラベル一致だけの根因判定にしない。
+
+入力 API・時計区分・同一観測の冪等性・診断と既存 breaker の優先順位は [レビュー停滞の診断と見直し](review-stagnation.md) を参照する。結果の schema version は据え置き、過去結果から新規 run の時計・観測を推定して補完しない。保存 receipt の確認前や証跡欠損時に見直しへ進まない。
+
 ## 保存場所
 
 レビュー結果は以下のパスにタイムスタンプ付きで保存される (ルートは `state-path-resolve.sh` の解決結果 — セッション worktree 内から保存しても main checkout と同一パスに解決される。`--results-dir` 明示指定時はそちらを優先):

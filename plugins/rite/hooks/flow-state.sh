@@ -314,7 +314,7 @@ cmd_set() {
                        (.phase // "")] | join("")' "$path" 2>"${_cur_jq_err:-/dev/null}") || _cur_rc=$?
     if [ "$_cur_rc" -ne 0 ]; then
       # basename only — multi-tenant 環境での絶対 path leakage を最小化 (cmd_get / cmd_set --if-exists と対称化)
-      echo "WARNING: flow-state.sh cmd_set: existing state read failed for $(basename "$path") (may be corrupt; merged write will use defaults)" >&2
+      echo "WARNING: flow-state.sh cmd_set: existing state read failed for $(basename "$path") (may be corrupt; existing state will be retained)" >&2
       _emit_jq_err_snippet "$_cur_jq_err"
     else
       IFS=$'\x1f' read -r cur_issue cur_branch cur_pr cur_parent cur_active cur_err cur_last_synced cur_worktree cur_cycle cur_wm_comment_id cur_wm_replica cur_phase <<< "$_cur_data"
@@ -778,7 +778,8 @@ cmd_review_cycle() {
   shift
   while [ $# -gt 0 ]; do
     case "$operation:$1" in
-      start:--selection|finish:--manifest|finish:--content-file|finish:--pending-id)
+      start:--stagnation) args+=("$1"); shift ;;
+      start:--selection|finish:--manifest|finish:--content-file|finish:--pending-id|clock:--input|observe:--input|observe:--issue|replan:--plan|replan:--issue)
         [ $# -ge 2 ] || { echo "ERROR: missing value for $1" >&2; return 1; }
         args+=("$1" "$2"); shift 2 ;;
       *) echo "ERROR: unknown review-cycle option: $1" >&2; return 1 ;;
@@ -788,11 +789,17 @@ cmd_review_cycle() {
   path=$(_state_path "$sid")
   updated=$(python3 "$SCRIPT_DIR/scripts/lib/review-cycle.py" "$operation" \
     --state "$path" --session "$sid" --results-dir "$STATE_ROOT/.rite/review-results" "${args[@]}") || return 1
-  _atomic_write "$path" "$updated" || return 1
+  _atomic_write "$path" "$updated" || {
+    echo "ERROR: review-cycle $operation persistence failed; retain evidence and retry the same operation" >&2
+    return 1
+  }
   if [ "$operation" = finish ]; then
     printf '%s' "$updated" | jq -r '.review_cycle | "[CONTEXT] REVIEW_CYCLE=completed; verdict=\(.verdict); result=\(.result_path)"' >&2
   fi
-  printf '%s' "$updated" | jq '.review_cycle'
+  case "$operation" in
+    clock|observe|replan) printf '%s' "$updated" | jq '.review_run' ;;
+    *) printf '%s' "$updated" | jq '.review_cycle' ;;
+  esac
 }
 
 cmd_path() {
@@ -809,6 +816,9 @@ case "${1:-}" in
   set) shift; cmd_set "$@" ;;
   review-start) shift; cmd_review_cycle start "$@" ;;
   review-finish) shift; cmd_review_cycle finish "$@" ;;
+  review-clock) shift; cmd_review_cycle clock "$@" ;;
+  review-observe) shift; cmd_review_cycle observe "$@" ;;
+  review-replan) shift; cmd_review_cycle replan "$@" ;;
   get) shift; cmd_get "$@" ;;
   deactivate) shift; cmd_deactivate "$@" ;;
   reap-issue) shift; cmd_reap_issue "$@" ;;
@@ -825,7 +835,10 @@ Usage: $0 {set|get|review-start|review-finish|deactivate|reap-issue|clear-worktr
       [--stop-reason TOKEN]                    # durable "stopped as a failure" marker; default-clear like --handoff
   get --field <F> [--default V] [--session UUID]
       | --jq-filter <FILTER> [--default V] [--session UUID]
-  review-start --selection /absolute/selection.json
+  review-start --selection /absolute/selection.json [--stagnation]
+  review-clock --input /absolute/clock-segment.json
+  review-observe --input /absolute/observation.json --issue /absolute/issue.json
+  review-replan --plan /absolute/fix-plan.json --issue /absolute/issue.json
   review-finish --manifest /absolute/completions.json --content-file /absolute/result.json [--pending-id TOKEN]
   deactivate [--next T] [--session UUID]
   reap-issue --issue N               # cross-session active=false + lock reap for issue N (non-blocking)
