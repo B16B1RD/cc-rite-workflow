@@ -40,7 +40,8 @@ jobs:
     # the PR while its pass rate is being triaged (D-03). ubuntu stays
     # blocking. AC-5 (fail-fast: false) still lets both legs run to completion.
     continue-on-error: ${{ matrix.os == 'macos-latest' }}
-    timeout-minutes: 15
+    # Observed macOS jobs take 13.5–15.3 minutes; allow headroom while measuring.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
