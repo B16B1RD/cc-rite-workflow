@@ -416,7 +416,7 @@ YAML
       cat > "$dir/bin/gh" <<'EOF'
 #!/bin/bash
 case "$1 $2" in
-  "pr view") echo "could not resolve to a PullRequest with the number of 42" >&2; exit 1 ;;
+  "pr view") echo "could not resolve to a PullRequest with the number of 42" >&2; exit 1 ;;  # no-jq-dispatch: fail-fast error fixture
   "repo view") echo '{"owner":{"login":"o"},"name":"r"}' ;;
   "api graphql") echo "Todo" ;;
   *) exit 0 ;;
@@ -427,7 +427,7 @@ EOF
       cat > "$dir/bin/gh" <<'EOF'
 #!/bin/bash
 case "$1 $2" in
-  "pr view") echo "HTTP 403: rate limit exceeded" >&2; exit 1 ;;
+  "pr view") echo "HTTP 403: rate limit exceeded" >&2; exit 1 ;;  # no-jq-dispatch: fail-fast error fixture
   *) exit 0 ;;
 esac
 EOF
@@ -741,12 +741,14 @@ fi
 # actual `--jq` expression went unexercised — the exact blind spot that let
 # `.isDraft // null` survive.
 # Written as a sufficiency check, not an absence check: every `"pr view")` arm must
-# either dispatch to _mock_gh_pr_view or answer only on stderr before failing. The
-# discriminator is "does this arm write to stdout", not "does it contain exit 1": an arm
-# can hold a guard's `exit 1` and still reach the expression (git_remote_bypass asserts
-# --repo, then dispatches), and exempting it on the `exit 1` alone lets its dispatch
-# drift back to a literal unseen. An absence-only scan would pass vacuously if the arms
-# were renamed away, so the arm count is asserted non-zero too.
+# either dispatch to _mock_gh_pr_view or carry a `no-jq-dispatch:` marker saying why it
+# does not. Inferring the exemption from the arm's shape is what keeps failing: judging on
+# `exit 1` exempts an arm that holds a guard's `exit 1` and still reaches the expression
+# (git_remote_bypass asserts --repo, then dispatches), and judging on the writer misses
+# every writer left off the list — `cat fixture` returns a literal just as well as `echo`.
+# A marker cannot be arrived at by accident, so an arm drifting back to a literal loses
+# its exemption no matter which shape the drift takes. An absence-only scan would pass
+# vacuously if the arms were renamed away, so the arm count is asserted non-zero too.
 echo "TC-RECON-12: gh mocks evaluate --jq with real jq (every pr view arm accounted for)"
 pr_view_arms=$(grep -nE '^[[:space:]]*"pr view"\)' "$SELF_PATH" || true)
 pr_view_arm_count=$(printf '%s' "$pr_view_arms" | grep -c . || true)
@@ -761,25 +763,22 @@ fi
 # comment is still a terminator, and anchoring drops that arm's close so the body runs
 # on into the arms below it, judging several arms as one.
 #
-# The burden of proof sits on the arm, not on a list of stdout writers: an arm without a
-# dispatch is exempt only when it fails fast AND nothing in it looks like a stdout write.
-# Enumerating writers (`echo`, `printf`, …) instead would exempt every writer left off the
-# list — `cat fixture` returns a literal just as well as `echo` does. `stdout_emit` is a
-# heuristic that only strengthens the check (an arm it fires on still needs a dispatch);
-# it skips `>&2` writes and piped writes, which are diagnostics and assertions, not answers.
+# The dispatch must be real code, so it is matched with comments stripped — otherwise
+# `cat fixture ;;  # was _mock_gh_pr_view` would claim an exemption it does not have.
+# The marker is the opposite: it only ever appears in a comment, so it is matched raw.
 # The closed-arm count keeps the `|| true` above from turning an awk failure into a
 # vacuous green: with no arms scanned, the unaccounted list is empty either way.
 scan_output=$(awk '
-  /^[[:space:]]*"pr view"\)/ { inarm = 1; start = FNR; dispatch = 0; stdout_emit = 0; exit_seen = 0 }
+  /^[[:space:]]*"pr view"\)/ { inarm = 1; start = FNR; dispatch = 0; exempt = 0 }
   inarm {
-    if ($0 ~ /_mock_gh_pr_view/) dispatch = 1
-    if ($0 ~ /exit 1/) exit_seen = 1
-    if ($0 ~ /(echo|printf)[[:space:]]/ && $0 !~ />&2/ && $0 !~ /\|/) stdout_emit = 1
+    code = $0; sub(/#.*/, "", code)
+    if (code ~ /_mock_gh_pr_view/) dispatch = 1
+    if ($0 ~ /no-jq-dispatch:/) exempt = 1
   }
   inarm && /;;/ {
     inarm = 0
     closed++
-    if (dispatch == 0 && (stdout_emit == 1 || exit_seen == 0)) print "ARM " start ": " $0
+    if (dispatch == 0 && exempt == 0) print "ARM " start ": " $0
   }
   END { print "CLOSED " closed + 0 }
 ' "$SELF_PATH" || true)
@@ -791,9 +790,9 @@ else
   fail "scanner closed ${closed_arm_count:-?} arms but ${pr_view_arm_count:-?} 'pr view' arms exist — the scan did not cover every arm (awk failure, or an arm with no ';;' before the next one)"
 fi
 if [ -n "$unaccounted_arms" ]; then
-  fail "a gh mock 'pr view' arm answers without dispatching to _mock_gh_pr_view: $(printf '%s' "$unaccounted_arms" | head -3 | tr '\n' ' ')"
+  fail "a gh mock 'pr view' arm neither dispatches to _mock_gh_pr_view nor carries a 'no-jq-dispatch:' marker: $(printf '%s' "$unaccounted_arms" | head -3 | tr '\n' ' ')"
 else
-  pass "every gh mock 'pr view' arm either dispatches through real jq or fails fast in silence"
+  pass "every gh mock 'pr view' arm either dispatches through real jq or declares its exemption"
 fi
 if grep -q 'MOCK_JQ_BIN" -r "\$jq_expr"' "$SELF_PATH"; then
   pass "gh mock lib pipes the fixture JSON through real jq"
