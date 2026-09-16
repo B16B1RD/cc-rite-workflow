@@ -250,7 +250,7 @@ okf_version: "0.2"
 | [却下理由が採用案にも等しく当てはまる — differentiator でない根拠をコメントに残す](pages/anti-patterns/rejected-rationale-applies-to-adopted-option.md) | anti-patterns | 設計判断をコメントに残すとき「A を却下して B を採用した」と書く。 | 2026-08-01T00:21:06+09:00 | high |
 | [GNU ツールの代替 shim は exit code だけでなく期限・シグナル範囲まで契約を全部再現する](pages/patterns/gnu-tool-shim-full-contract-reproduction.md) | patterns | macOS/BSD で GNU ツール（`timeout` 等）が無い環境向けに shim を書くとき、**契約の一部だけを再現すると fail-open になる**。 | 2026-07-25T07:05:21Z | high |
 | [mktemp -d の canonical 化は 2 段階に分ける — `cd "$(mktemp -d)"` は失敗時にリポジトリ本体を掴む](pages/patterns/two-stage-canonicalization-mktemp-pwd-p.md) | patterns | macOS の `$TMPDIR` は `/var/folders/...`（`/private` への symlink）なので、テストが temp ディレクトリの path を比較すると symlink 解決の差で落ちる。 | 2026-07-25T07:05:21Z | high |
-| [否定アサーションには positive control を添える — `|| true` は唯一の crash signal を消す](pages/patterns/negative-assertion-positive-control.md) | patterns | 否定アサーション（「出力が空であること」「canary ファイルが作られないこと」で pass する TC）は、**被テストコマンドの exit code が唯一残った crash signal** である。 | 2026-07-26T01:35:00+09:00 | high |
+| [否定アサーションには positive control を添える — `\|\| true` は唯一の crash signal を消す](pages/patterns/negative-assertion-positive-control.md) | patterns | 否定アサーション（「出力が空であること」「canary ファイルが作られないこと」で pass する TC）は、**被テストコマンドの exit code が唯一残った crash signal** である。 | 2026-09-16T03:09:20Z | high |
 | [プラットフォーム skip を増やすなら「緑の意味」を痩せさせない skip 会計をセットで入れる](pages/heuristics/skip-accounting-honest-green.md) | heuristics | クロスプラットフォーム対応は skip を増やす。 | 2026-08-30T15:15:33Z | high |
 | [degrade する対象をテストするときは判別子を probe と連動させる — 片側の値で固定すると degrade 環境が恒久 RED になる](pages/heuristics/degrade-discriminator-switched-by-probe.md) | heuristics | スクリプトが GNU ツール不在時に `n_stale=0` + rc 0 で短絡する設計だと、「0 件を期待する TC」は **degrade 経路でも PASS する**（vacuous green）。 | 2026-07-25T07:05:21Z | high |
 | [機械的制裁を伴う規約は「何をすると」「何がどこまで」落ちるかを書く — 予約グリフ・予約文字列も導入と同時に文書化する](pages/heuristics/mechanical-sanction-rule-documents-blast-radius.md) | heuristics | 規約に機械的な制裁（CI で落ちる）を伴わせるなら、**発火条件と制裁の範囲**を文書に書かなければ、規約どおりに従ったコントリビューターが blocking gate を落とす。 | 2026-07-25T07:05:21Z | high |
@@ -382,7 +382,7 @@ okf_version: "0.2"
 | [シェル層で閉じられない注入防御は値を substitute する側（LLM）の実行前ゲートとして書く](pages/heuristics/shell-unclosable-defense-goes-to-substituting-side.md) | heuristics | LLM が値を literal substitute する bash block では、**防御の層を 1 つ塞ぐたびに同じ機構の中の「次の層」が露出する**。 | 2026-08-05T09:26:00+09:00 | medium |
 | [抽出述語の厳格化は「壊れた入力」と「入力なし」を同一経路へ畳み、fail-loud を構造的に壊す](pages/anti-patterns/strict-predicate-collapses-broken-into-absent.md) | anti-patterns | 「散文中の同形文字列を誤検出しない」ために抽出述語へアンカーや厳密条件を足すと、**正規の入力でも表記の揺れ（行末 CR・字下げ・末尾空白）があれば不一致になる**。 | 2026-09-16T01:27:23Z | high |
 | [同定手段の取得経路を差し替えるときは、旧経路が構造的に保証していた述語を先に全部列挙する](pages/heuristics/identity-path-swap-enumerate-old-invariants.md) | heuristics | 同定子・キー・参照を取りに行く経路（API エンドポイント・クエリ・検索式）を差し替えると、**旧経路がパスやクエリの形で暗黙に保証していた制約が落ちる**。 | 2026-08-05T05:30:00+00:00 | high |
-| [静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く](pages/heuristics/static-pin-semantic-allowlist-not-notation-denylist.md) | heuristics | 静的 pin（ソースの文字列を grep して構造を固定するテスト）を「この表記が出現しないこと」として書くと、**同じ意味を持つ別表記が pin を素通りする**。 | 2026-09-14T14:50:00Z | high |
+| [静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く](pages/heuristics/static-pin-semantic-allowlist-not-notation-denylist.md) | heuristics | 静的 pin（ソースの文字列を grep して構造を固定するテスト）を「この表記が出現しないこと」として書くと、**同じ意味を持つ別表記が pin を素通りする**。 | 2026-09-16T03:09:20Z | high |
 | [診断退避用の tempfile は診断が最も要る場面でだけ消える — command substitution へ畳む](pages/heuristics/diagnostic-tempfile-fails-when-diagnosis-needed-most.md) | heuristics | stderr を退避して WARNING に載せるために tempfile を確保する定型（`err=$(mktemp ... 2>/dev/null) \|\| err=""` に続けて `cmd 2>"${err:-/dev/null}"`）は、mktemp が失敗したときに後続コマンドの診断を丸ごと `/dev/null` へ捨てる。 | 2026-08-06T00:40:00+09:00 | high |
 | [保護は「設定ファイルの内容」ではなく「保護対象と同じ場所」に置く](pages/heuristics/protection-colocated-with-target-not-config-state.md) | heuristics | 「機密を含むファイルが公開リポジトリに入らないようにする」ような保護を、セットアップが生成する設定ファイル（`.gitignore` など）へ 1 行追記する形で実装すると、その保護は 3 つの状態に同時に依存する — セットアップをいつ実行したか、アップグレード経路が追記ブロックに到達するか、ユーザーが設定を手で編集していないか。 | 2026-08-06T00:40:00+09:00 | high |
 | [ガードの述語は「守りたい状態」そのものを測る — 存在ではなく内容を測る](pages/heuristics/guard-predicate-measures-the-protected-state.md) | heuristics | 冪等性のためにガードを置くとき、述語が「守りたい不変量」ではなく「その代理指標」を測っていると、代理と実体が乖離した瞬間にガードが恒久的な無音 skip へ変わる。 | 2026-08-06T00:40:00+09:00 | high |
@@ -512,8 +512,10 @@ okf_version: "0.2"
 | [判定表を 1 箇所へ寄せるときは、削除側の skip 条件が後続サイクル前提で書かれていないかを確認する](pages/heuristics/consolidate-decision-table-check-skip-assumption.md) | heuristics | 手順書で重複した判定表を 1 つに寄せると、残す側の表に新しい停止経路が加わる。削除側に付随していた「この結果では後段を skip する」条件をそのまま新経路へ広げると、その条件が「後でもう一度その段に来る」前提で書かれていた場合、終端の停止経路では後段が一度も実行されず、処分すべき候補が消える。 | 2026-09-15T06:32:02Z | medium |
 | [テストの歴史的ピン行は番号を残し行末へ drift-check-ignore を付ける](pages/patterns/historical-pin-line-keeps-number-and-attaches-drift-check-ignore.md) | patterns | 番号参照検査はテスト内の歴史的番号ピンも検出する。ピン契約は文字列の完全一致なので番号を消すと検査は通るがピンが壊れる。行末コメントとして drift-check-ignore を付け、照合対象の文字列値は変えない。 | 2026-09-15T10:36:56Z | high |
 | [失敗経路の後始末で stash pop の後に index を reset すると、ユーザーが staged にしていた変更まで外れる](pages/anti-patterns/index-cleanup-after-stash-pop-unstages-user-staging.md) | anti-patterns | git stash で作業を退避してから別ブランチを操作する処理では、失敗時に index を掃除する reset を stash pop の後に置くと、stash pop が index へ戻したユーザー自身の staged エントリまで警告なしに unstage される。reset は持ち帰ったエントリだけが index にある stash pop 前に行い、無関係な staged ファイルを置いた fixture でその順序を固定する。 | 2026-09-15T11:02:40Z | high |
+| [jq の `//` は false を falsy として右辺へ倒す — boolean フィールドに既定値演算子を付けない](pages/anti-patterns/jq-alternative-operator-collapses-boolean-false.md) | anti-patterns | jq の alternative 演算子 `//` は null だけでなく false も右辺へ倒すため、boolean フィールドに `// null` のような既定値を付けると否定側の値が消える。false が正常系を表す判定（Ready かどうか等）では、正常系だけが恒常的に不成立になる。 | 2026-09-16T03:09:20Z | high |
+| [テストダブルは被テスト式を実際に評価させ、helper 呼び出しの有無は記録モックの不在で pin する](pages/patterns/test-double-evaluates-real-expression-records-helper-calls.md) | patterns | モックの gh が `--jq` を無視して固定文字列を返すと、被テストの式は一度も実行されず退行を検出できない。モックはフィクスチャ JSON を実 jq に通し、絶対パスで呼ばれる helper は解決先のプラグインルートに記録用モックを置いて受領ペイロードを観測する。「helper は呼ばれない」という失敗系の契約は、WARNING 文字列ではなく記録ファイルの不在と到達 positive control の対で pin する。 | 2026-09-16T03:09:20Z | high |
 ## 統計
 
-- 総ページ数: 502
-- ドメイン別: patterns=115, heuristics=223, anti-patterns=164
-- 最終更新: 2026-09-16T01:27:23Z
+- 総ページ数: 504
+- ドメイン別: patterns=116, heuristics=223, anti-patterns=165
+- 最終更新: 2026-09-16T03:09:20Z

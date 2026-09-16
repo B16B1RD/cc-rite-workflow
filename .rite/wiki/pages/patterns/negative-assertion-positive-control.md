@@ -21,9 +21,13 @@ sources:
     resource: "raw/fixes/20260725T154630Z-pr-2020.md"
   - type: "reviews"
     resource: "raw/reviews/20260725T162025Z-pr-2020.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260916T025549Z-pr-2896.md"
 tags: ["test", "negative-assert", "positive-control", "fail-open", "mutation-testing"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-26T01:35:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-16T03:09:20Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-16T03:09:20Z" }
 ---
 
 # 否定アサーションには positive control を添える — `|| true` は唯一の crash signal を消す
@@ -112,6 +116,12 @@ Issue 起票時に提示された修正案が実装の出力契約と噛み合�
 
 旧実装と新実装を**同じ変異**に当てて対比すると増減が議論の余地なく示せる。特に「旧実装では全テストが緑のまま通る変異」を 1 つ見つけられると、問題が実在することの決定的証拠になる。テストが timeout（rc=124）を PASS 扱いしていたケースでは、その guard 自身が「timed-out hook fails OPEN」を防ぐ目的だったため、「設計どおりの permit」と「死んだ結果の permit」を区別できないことが致命的だった。
 
+### 不在アサーションは到達マーカーの positive control を先に置く
+
+「draft PR では照合 helper が呼ばれない」を記録ファイルの不在で pin する場面では、不在だけを assert すると hook が draft 判定に到達する前に落ちても緑になる。同じフィクスチャで、hook が draft 分岐へ到達したときだけ触れるマーカー（フィクスチャ側の `touch`）を positive control として先に確認し、そのうえで記録ファイルの不在を assert する。
+
+失敗系（pr view が失敗して照合へ進まない）も同型で、WARNING トークンの存在が到達 control、記録ファイルの不在が本命になる。ここで失敗系フィクスチャが他の呼び出しまで縮退させていると、hook が失敗後に照合へ進んでも helper に到達しないため、不在 pin は経路の正しさを何も証明しない。フィクスチャは失敗させたい 1 箇所だけを失敗させ、残りは正常応答にする。control の無い不在 pin は「経路未到達」と「正しく呼ばれなかった」を区別できない。
+
 ## 関連ページ
 
 - [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](./absence-pin-base-present-head-absent-single-line.md)
@@ -128,3 +138,4 @@ Issue 起票時に提示された修正案が実装の出力契約と噛み合�
 - [mutation testing による control の非重複性実証](../../raw/reviews/20260725T154346Z-pr-2020.md)
 - [load-bearing な派生元をコメントに明記](../../raw/fixes/20260725T154630Z-pr-2020.md)
 - [旧新対比と蒸し返さない規律](../../raw/reviews/20260725T162025Z-pr-2020.md)
+- [到達マーカーの positive control と失敗系フィクスチャの縮退を扱ったレビュー結果](../../raw/reviews/20260916T025549Z-pr-2896.md)
