@@ -4,11 +4,19 @@ title: "契約を N 箇所に追記したら pin も N 箇所あるかを数え�
 domain: "patterns"
 description: "散文駆動スキルの契約変更で複数箇所を追記したとき、追加したアサーションが追記箇所より少ないと、pin されなかった 1 箇所だけを元に戻してもスイートが green のまま受入基準が壊れる。"
 created: "2026-08-29T15:42:53Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-30T06:15:00Z" }
+generated: { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T01:27:23Z" }
 verified:
+  - by: "rite-wiki-ingest/gpt-6-astra"
+    at: "2026-09-16T01:27:23Z"
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-30T06:15:00Z"
 sources:
+  - type: "reviews"
+    resource: "raw/reviews/20260916T005332Z-pr-2897.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260916T010251Z-pr-2897.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260916T011819Z-pr-2897.md"
   - type: "reviews"
     resource: "raw/reviews/20260829T152045Z-pr-2466.md"
   - type: "fixes"
@@ -75,12 +83,22 @@ negative のパターンは file-wide 検査になるため、**base 版にし�
 
 pin を隣接ファイル向けに既に持っている場合でも、対象ファイルの列挙（`REVIEW_MD=` のような変数）にその契約先が入っているかを確認する — 同型の pin が存在することと、その pin が当該行に届くことは別である。
 
+### helper の入力変更は呼び出し元も検査対象にする
+
+helper が旧入力を拒否する単体テストだけでは、呼び出し元が旧入力へ戻る変更を検出できない。実行される Markdown 内の payload も含め、production の helper 参照を走査して旧キーの不在を検査する。対象を固定した数本だけに限定すると、追加された呼び出し元が検査から漏れる。
+
+検出能力は、隔離コピーで Ready の payload だけを旧形式へ戻し、その検査が失敗することまで確認する。helper 自体の拒否と、呼び出し元の移行維持は別の境界なので、それぞれの負例が必要になる。
+
 ## 関連ページ
 
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](./mutation-testing-test-fidelity.md)
 - [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](./absence-pin-base-present-head-absent-single-line.md)
 
 ## ソース
+ 
+- [レビュー結果](../../raw/reviews/20260916T005332Z-pr-2897.md)
+- [fix 結果](../../raw/fixes/20260916T010251Z-pr-2897.md)
+- [レビュー結果](../../raw/reviews/20260916T011819Z-pr-2897.md)
 
 - [レビュー結果](../../raw/reviews/20260829T152045Z-pr-2466.md)
 - [fix 結果](../../raw/fixes/20260829T152626Z-pr-2466.md)

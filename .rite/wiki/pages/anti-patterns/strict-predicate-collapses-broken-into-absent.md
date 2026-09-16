@@ -6,12 +6,21 @@ description: "「散文中の同形文字列を誤検出しない」ために抽
 created: "2026-08-05T05:30:00+00:00"
 sources:
   - type: "reviews"
+    resource: "raw/reviews/20260916T005332Z-pr-2897.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260916T010251Z-pr-2897.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260916T011819Z-pr-2897.md"
+  - type: "reviews"
     resource: "raw/reviews/20260805T033632Z-pr-2112.md"
   - type: "fixes"
     resource: "raw/fixes/20260805T040711Z-pr-2112.md"
 tags: ["fail-loud", "regex", "predicate", "silent-failure", "review-fix-loop"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-05T05:30:00+00:00" }
+generated: { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T01:27:23Z" }
+verified:
+  - by: "rite-wiki-ingest/gpt-6-astra"
+    at: "2026-09-16T01:27:23Z"
 ---
 
 # 抽出述語の厳格化は「壊れた入力」と「入力なし」を同一経路へ畳み、fail-loud を構造的に壊す
@@ -56,6 +65,12 @@ cycle 3 で、この 2 本立て自体が次の欠陥を出した。probe の受
 2. 割れないなら、異常系を検出する別の経路が同じコミットにあるか
 3. 表記の揺れ（CR / 空白 / 字下げ / 大小文字）を許容するなら、**抽出側と除去側で対称に許容しているか**
 
+### 限定設定パーサーでも対象の認識と構文の受理を分ける
+
+階層キーの引用符を対象外として読み飛ばすと、明示された設定を設定不在と誤認し、既定の表示名で外部更新してしまう。引用符を外したキーで対象階層を識別してから、元の行を構文検証へ渡せば、受理外の表記を既存のエラー経路で止められる。識別の正規化は、その表記を受理することとは別である。
+
+回帰試験では階層ごとに単一引用符・二重引用符のキーを与える。外部更新 helper でも非ブロッキング指定の両値を試し、診断を返すだけでなく API が呼ばれないことを確認する。設定不在の正常経路と、認識した受理外設定の失敗経路を同じ戻り値に畳まない。
+
 ## 関連ページ
 
 - [過剰マッチ防止の精緻化修正は、実装が許容する全形状を再確認しないと過小マッチという別の欠陥を生む (振り子現象)](./precision-tightening-pendulum-regression.md)
@@ -63,6 +78,10 @@ cycle 3 で、この 2 本立て自体が次の欠陥を出した。probe の受
 - [fail-loud ガードは同じ帰結を持つ全出口に張る（症状側から出口を網羅する）](../heuristics/fail-loud-guard-covers-all-sibling-exits.md)
 
 ## ソース
+
+- [レビュー結果](../../raw/reviews/20260916T005332Z-pr-2897.md)
+- [fix 結果](../../raw/fixes/20260916T010251Z-pr-2897.md)
+- [レビュー結果](../../raw/reviews/20260916T011819Z-pr-2897.md)
 
 - [行アンカーで正規 marker が全不一致になり無音縮退することを検出](../../raw/reviews/20260805T033632Z-pr-2112.md)
 - [厳格な式 + 緩い probe の 2 本立てを適用](../../raw/fixes/20260805T040711Z-pr-2112.md)
