@@ -48,6 +48,8 @@
 * **Update**: [状態機械の記述同期](pages/patterns/state-machine-dual-location-sync.md) — [最終レビュー結果](raw/reviews/20260916T101007Z-pr-2909.md) を統合
 * **Update**: [全称主張の確認](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md)、[許可操作による検証](pages/heuristics/static-pin-semantic-allowlist-not-notation-denylist.md)、[各分岐の到達確認](pages/anti-patterns/test-pin-protection-theater.md) — [レビュー結果](raw/reviews/20260916T101455Z-pr-2910.md) を統合
 
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=515, broken_refs=0。全ページのタイトルと概要による類似候補を本文で照合し、同じ経緯表現を持つ異なるテーマの組は重複から除外。更新したページと関連する契約に方針逆転は検出されなかった。番号参照は検出なし。
+
 ## 2026-09-15
 
 * **Skip**: [20260915T145209Z-pr-2877.md](raw/reviews/20260915T145209Z-pr-2877.md) — no extractable heuristic: zero-finding review; existing fail-loud all-exits and test pin pages already cover undeterminable-state skip and independent mutation pins
