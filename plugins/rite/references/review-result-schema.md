@@ -2,6 +2,14 @@
 
 `/rite:pr-review` が生成し、`/rite:fix` が読取するレビュー結果 JSON のスキーマ定義。「ローカルファイル経由の review → fix 連携」の Single Source of Truth。
 
+## review_context と工程完了
+
+通常 caller の新規結果には `review_context: {session_id, run_id, pr_number, cycle_count, commit_sha}` を必須とする。`flow-state.sh review-start` の返却値をそのまま使い、manifest top-level・全 reviewer entry・結果 JSON で完全一致させる。トップレベル `pr_number` / `commit_sha` も context と一致させ、`reviewers` は固定した `review_cycle.selected_reviewers` 全件と一致させる。
+
+`review-finish --manifest <絶対パス> --content-file <絶対パス>` が回収・保存を検証して `review_cycle.status=completed` にする。`manifest_path` / `content_file` は保存再試行用、`result_path` / `verdict` は検証済み保存結果を指す。counter の加算は開始時に一度だけで、同じ cycle の再開・終了再実行では増やさない。最終成功 sentinel は後続の既存品質ゲートを完了してから発行する。
+
+この追加フィールドは schema version を変えない。過去 JSON の読取互換は維持するが、context が無い過去結果を新しい cycle の成功証跡には使用しない。
+
 ## 保存場所
 
 レビュー結果は以下のパスにタイムスタンプ付きで保存される (ルートは `state-path-resolve.sh` の解決結果 — セッション worktree 内から保存しても main checkout と同一パスに解決される。`--results-dir` 明示指定時はそちらを優先):
@@ -176,6 +184,7 @@
 | `producer` | string | 任意 (1.1.0 additive) | fix が新規永続化する記録は `"fix"`。既存ファイルの in-place triage は値を維持する。トレンド helper は文字列 `"fix"` と完全一致した記録だけを列と件数ガードから除外し、欠落・null・その他の値は従来のレビュー検証へ渡す。記録の削除・移動はしない。 |
 | `timestamp` | string | ✅ | レビュー実行時刻 (ISO 8601 `YYYY-MM-DDTHH:MM:SS+TZ`) |
 | `commit_sha` | string | ✅ | レビュー対象の commit SHA。用途: (a) verification mode 用の diff 起点、(b) Priority 0/2/3 の stale file detection 用の HEAD 比較キー、(c) `pr-review.md` ステップ 8.0.4 positive 検査の判定軸。write 側の値源はステップ 1.2.5 で記録した commit SHA。`review-result-save.sh` は現在、この値と `measured_gate.commit_sha` の一致を保存直前に強制し、不一致を `gate_record_mismatch` で拒否する。read 側 (`fix.md` ステップ 1.2.0) も各 Priority success 経路で現 HEAD および gate receipt との一致を検査する。 |
+| `review_context` | object | 通常 caller ✅ (1.1.0 additive) | `review-start` が固定した session / run / PR / cycle / HEAD。manifest・全 reviewer・結果で完全一致させる。過去 JSON の読取互換とは別に、工程遷移には必須。 |
 | `measured_gate` | object | 現行 write/read 側 ✅ (1.1.0 additive) | `review-measured-gate.sh` の適用記録。`{commit_sha, applied_at, blocking, demoted, anchor_undetermined}` を持ち、`commit_sha` はトップレベル値と一致する。schema version は据え置くため形式上 additive だが、現行 producer の保存、8.0.4 positive 検査、`/rite:fix` の JSON consumer では必須。欠落する既存アーカイブは遡及修復せず、再利用時は fail-closed で停止して `/rite:pr-review` の再実行を要求する。 |
 | `overall_assessment` | **enum** (string) | ✅ | 総合評価。**受理値**: `"mergeable"` / `"fix-needed"` の 2 値のみ。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=overall_assessment_unknown_value` を stderr に出力し、Priority に応じた fallback/routing を実行する (P0: fallback、P2: Priority 3 routing、P3: legacy parser fallthrough。詳細は fix.md failure reasons table `overall_assessment_unknown_value` 参照) |
 | `verdict` | **enum** (string) | ✅ | 本 cycle の最終判定。**受理値**: `"mergeable"` / `"fix-needed"` の 2 値のみ (`overall_assessment` と同一語彙で、`pr-review.md` ステップ 8.1 の terminal sentinel `[review:mergeable]` / `[review:fix-needed:{n}]` と対応する)。**merge ゲート (`hooks/pre-tool-bash-guard.sh`) が読む必須キー**。`overall_assessment` と**同値であることが不変条件**で、両者は `scripts/review-measured-gate.sh` の単一の blocking 件数式から同時に代入される。下記 [verdict と reviewers](#verdict-と-reviewers) 参照 |
@@ -594,8 +603,8 @@ retained flag: `[CONTEXT] REVIEW_SOURCE_STALE=1; reason={explicit_file|local_fil
 
 | 条件 | 挙動 |
 |------|------|
-| `.rite/review-results/` ディレクトリ作成不可 | 警告表示し、会話コンテキストのみで続行 (`/rite:pr-review` 全体は失敗扱いにしない — D-04 non-blocking contract) |
-| JSON 書き込み失敗 | 警告表示し、PR コメント投稿または会話コンテキスト経由で続行 (D-04 non-blocking contract、ただし `post_comment=false` ∧ save 失敗時は H-1 で WARNING に昇格し復旧手順を提示) |
+| `.rite/review-results/` ディレクトリ作成不可 | `review-finish` が非ゼロを返し `[review:error]`。入力・成功分を保持し同一 cycle で再試行 |
+| JSON 書き込み失敗 | 同上。保存 helper の互換 rc=0 や会話コンテキストだけでは工程を完了しない |
 | 同一秒連続実行での file path 衝突 | collision 検出時に `~<4桁hex>` suffix (`~$(printf '%04x' "${RANDOM:-0}")` 相当) で回避を試みる (best-effort、完全保証ではない — M-2 tradeoff)。separator は `~` (0x7E) を使用。ファイル名分岐点で `.` (0x2E) < `~` (0x7E) のため collision-resolved 版が lexicographic 大 → `sort -r` で先頭に並ぶ (cycle 8 M-2 で `-` から変更済み) |
 
 ### 引数整合性のエラー

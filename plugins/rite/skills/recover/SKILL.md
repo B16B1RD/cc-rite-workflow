@@ -450,6 +450,31 @@ bash {plugin_root}/hooks/flow-state.sh set \
 | `ingest` | `/rite:wiki-ingest` を再呼び出し |
 | `completed` | Issue は完結済。AskUserQuestion で「新規作業として再開 / 終了」 |
 
+### review-cycle の再開
+
+`phase=review` では自セッションの `flow-state.sh get --jq-filter .` を読み、`review_cycle.review_context` の PR / HEAD を現在値と照合する。不一致・破損は理由を出して停止し、別 session の結果を流用しない。
+
+| 状態 | 再開位置 |
+|---|---|
+| `collecting`、manifest / content が未登録 | 固定名簿と context から pr-review 4.0 のディレクトリを復元し manifest / raw を読む。成功分を保持し、不足 reviewer だけ同一 cycle で再取得する |
+| `collecting`、`manifest_path` / `content_file` あり | 下の `review-finish` を再実行する。保存前・保存直後・完了記録前の中断も同じ入力を使う。`pending_id` は helper が保存済みの値を再利用する |
+| `completed`、最終 gate 未完了 | `result_path` を読み、同じ `review-finish` で保存結果を再検証してから pr-review ステップ 6 の残作業〜8 の全 gate へ戻る。新 cycle や fix / ready を直接始めない |
+| `review_cycle` なし | 既存の iterate の lost 修復と新規開始手順へ。過去の保存 JSON だけを新 cycle の完了証跡にしない |
+
+```bash
+# review-cycle-recover
+review_state=$(bash {plugin_root}/hooks/flow-state.sh get --jq-filter .) || exit 1
+manifest_path=$(printf '%s' "$review_state" | jq -er '.review_cycle.manifest_path') || exit 1
+content_file=$(printf '%s' "$review_state" | jq -er '.review_cycle.content_file') || exit 1
+bash {plugin_root}/hooks/flow-state.sh review-finish \
+  --manifest "$manifest_path" --content-file "$content_file" || {
+  echo "[review:error]"
+  exit 1
+}
+```
+
+review-finish の保存検証を通過しても、既存の HEAD / AC / measured / Wiki ゲートや sentinel は代替しない。iterate は再開 cycle の breaker / lost 判定と counter 加算を保留する。手動の phase 変更・counter reset で未回収や保存失敗を迂回しない。
+
 ### 5.4 invoke
 
 確定した phase に応じて native Skill または共通契約の本文実行で対応コマンドを呼ぶ。引数として `{issue_arg}` (`open`) または `{pr_number}` (`iterate` / `ready` / `cleanup`) を渡す。

@@ -175,7 +175,10 @@ assert_grep_in_section "iterate routes handoff recovery detail through action_it
   '継続 handoff のクリアにも失敗しています'
 assert_grep_in_section "iterate preserves the manual cycle-counter reset command" "$ITERATE" \
   '^#### `\{action_items\}` 追加項目（ステップ 6\.2 のみ）$' '^---$' \
-  'flow-state\.sh set --session \{session_id\} --phase review --next "cycle counter 手動リセット" --cycle-count 0'
+  'flow-state\.sh set --session \{session_id\} --phase "\$reset_phase" --next "cycle counter 手動リセット" --cycle-count 0'
+assert_grep_in_section "iterate resolves the same session phase before manual reset" "$ITERATE" \
+  '^#### `\{action_items\}` 追加項目（ステップ 6\.2 のみ）$' '^---$' \
+  'reset_phase=\$\(RITE_STATE_ROOT="\{state_root\}" bash "\{plugin_root\}"/hooks/flow-state\.sh get --session \{session_id\} --field phase --default pr\) && RITE_STATE_ROOT="\{state_root\}"'
 assert_grep_in_section "iterate preserves the reset-first restart replacement" "$ITERATE" \
   '^#### `\{action_items\}` 追加項目（ステップ 6\.2 のみ）$' '^---$' \
   'ループを再開する: 上記の手動リセットを実行してから /rite:iterate \{pr_number\} を再実行する'

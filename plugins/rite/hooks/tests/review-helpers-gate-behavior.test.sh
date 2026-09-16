@@ -3288,7 +3288,7 @@ else
   #        消すだけで helper は opt-out 経路 (no-op) に落ち、marker が一切消えず 8.0.4 が毎 cycle
   #        exit 1 を返して ステップ 8.1 に永久到達できなくなる。sibling は path を内部導出するため
   #        配線 drift が構造的に起こり得ないが、本 helper は id を受け取るのでここが単一障害点。
-  _sec_610a() { _section_of '^bash \{plugin_root\}/hooks/review-result-save\.sh' '^```$'; }
+  _sec_610a() { _section_of '^bash \{plugin_root\}/hooks/flow-state\.sh review-finish' '^```$'; }
   assert "TC-5h 6.1.a の helper 呼び出しが --pending-id を渡す (配線 drift の検出)" "1" \
     "$(_sec_610a | grep -cE '^[[:space:]]*--pending-id "\{save_pending_id\}" \|\| \{$' || true)"
   # 生成側の変数名と caller placeholder 名が一致すること (片側改名で silent に空文字が渡る)
