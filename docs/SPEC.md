@@ -60,7 +60,7 @@ The command prefix `rite` was chosen for:
 | `/rite:issue-create` | Create new Issue | `<title or description>` |
 | `/rite:issue-update` | Update work memory | `[memo]` |
 | `/rite:issue-close` | Check Issue completion | `<Issue number>` |
-| `/rite:issue-cancel` | Cancel an Issue (close as not planned, board Status → Cancelled, clean up PR / branch / worktree / state) | `<Issue number> [reason]` |
+| `/rite:issue-cancel` | Cancel an Issue (close as not planned, board Status → the `cancelled` role's column when one is configured, clean up PR / branch / worktree / state) | `<Issue number> [reason]` |
 | `/rite:issue-edit` | Interactively edit existing Issue | `<Issue number>` |
 | `/rite:open` | Start work end-to-end (branch → plan → implement → lint → draft PR) | `<Issue number>` |
 | `/rite:iterate` | Loop review ⇄ fix until mergeable | `<PR number>` |
@@ -92,10 +92,10 @@ The command prefix `rite` was chosen for:
  │
  ▼
 /rite:issue-create (Create New Issue)
- │ Status: Todo
+ │ Status role: todo
  ▼
 /rite:open <issue> (Start Work)
- │ Status: In Progress
+ │ Status role: in_progress
  │
  ├── Branch Creation
  ├── Implementation Planning
@@ -109,22 +109,22 @@ The command prefix `rite` was chosen for:
  │    (reply-only stays reply-only after sweep)
  ▼
 /rite:ready <pr> (Ready for Review)
- │ Status: In Review
+ │ Status role: in_review
  ▼
 /rite:merge <pr> (Squash-Merge)
  │
  ▼
 /rite:cleanup <pr> (Post-Merge Cleanup)
- │ Status: Done
+ │ Status role: done
  ▼
 Issue Auto-Close
 ```
 
 **Note:** The end-to-end flow is split across four single-responsibility commands. `/rite:open <issue>` handles branch creation, implementation, autonomous lint, and draft PR creation. `/rite:iterate <pr>` loops review and fix until convergence, bounded by a circuit breaker that fires on convergence-trend divergence or, as a backstop, on `safety.max_review_cycles` (default 15); on either, both modes stop mechanically without prompting — interactive runs emit a stop notice and `/rite:batch-run` batch marks the Issue failed and stops with its cursor unchanged — and the loop resumes only when a human re-runs `/rite:iterate` explicitly (manual abort via `Ctrl+C` + `/rite:recover` remains available). `/rite:ready <pr>` flips the PR to Ready for review. `/rite:merge <pr>` runs `gh pr merge --squash`. For the canonical live spec of each command, see [`skills/open/SKILL.md`](../plugins/rite/skills/open/SKILL.md), [`iterate.md`](../plugins/rite/skills/iterate/SKILL.md), [`ready.md`](../plugins/rite/skills/ready/SKILL.md), and [`merge.md`](../plugins/rite/skills/merge/SKILL.md). (The legacy [Phase 5: End-to-End Execution](#phase-5-end-to-end-execution) section below documents the pre-decomposition `start.md` orchestrator for archaeological / migration reference only.)
 
-**Status Transitions:**
+**Status Transitions** (roles; the column each role is displayed as comes from `rite-config.yml` `github.projects.fields.status.options`, so an existing board keeps its own column names — see [`projects-integration.md`](../plugins/rite/references/projects-integration.md#24-github-projects-status-update) section "Terminal Status Set"):
 ```
-Todo → In Progress → In Review → Done
+todo → in_progress → in_review → done        (cancelled: terminal, outside the order; optional on the board)
 ```
 
 **Recording channels** (dialogue on the PR, records on Issues, how-we-fixed in commit messages):
@@ -524,7 +524,9 @@ followed by AskUserQuestion confirmation)
  - Link to existing Projects
  - Create new Projects
 3. Link the Project to the repository (`gh project link`, idempotent, non-blocking on failure)
-4. Auto-configure fields
+4. Configure fields:
+ - **New Project** (created in this run): create the Priority / Complexity fields and provision the Status options for the five roles (`Todo` / `In Progress` / `In Review` / `Done` / `Cancelled`)
+ - **Existing Project**: verification only — every display name in `github.projects.fields.status.options` (the English standard names in legacy mode; four names when `cancelled` is omitted) must exist on the Status field. No option is added, renamed, or removed; a missing name stops setup and lists the board's actual option names so the config can be written to match the board
 
 #### Phase 4: Template Generation
 1. Check `.github/ISSUE_TEMPLATE/`
@@ -571,6 +573,7 @@ followed by AskUserQuestion confirmation)
  - **Missing section** (add with template defaults): `review.debate`, `review.fact_check`, `verification`, etc.
  - **Advanced section** (add as commented-out block): `parallel`, `metrics`, `investigate`
  - **Unknown key** (preserve with warning): user-added keys not present in the template
+ - **Status role migration** (both paths, applied first): when the resolver judges `github.projects.fields.status.options` as legacy (no `role` keys), the list is rewritten to the English standard five roles in single-line flow form and any `default: true` on a Status option is removed; an explicit list is left unchanged; an invalid list stops the upgrade before the config is touched
 5. **Preview and confirm** (Step 5)
  Display deprecated keys to be removed, sections to be added, and preserved existing settings; ask via `AskUserQuestion` to either apply or cancel.
 6. **Apply** (Step 6)
@@ -719,9 +722,9 @@ When working on a child Issue, the parent Issue's status is automatically synchr
 
 | Trigger | Parent Issue Status Update |
 |---------|---------------------------|
-| First child Issue becomes In Progress | Parent Issue → In Progress |
-| All child Issues become Done | Parent Issue → Done |
-| Some completed, some pending | Parent Issue stays In Progress |
+| First child Issue reaches the `in_progress` role | Parent Issue → `in_progress` (only from `todo` / unset; a parent already at `in_progress` or beyond, or on a column that maps to no role, is left as is) |
+| All child Issues become `done` | Parent Issue → `done` |
+| Some completed, some pending | Parent Issue stays `in_progress` |
 
 This ensures the parent Issue accurately reflects the overall progress of its child Issues.
 
@@ -761,7 +764,7 @@ When a parent Issue is detected, automatically selects the most appropriate chil
 1. Generate branch name (per config pattern)
 2. Check for existing branch (including recognized patterns from `branch.recognized_patterns` config)
 3. Create branch with `git checkout -b`
-4. Update GitHub Projects Status to "In Progress"
+4. Update GitHub Projects Status to the `in_progress` role (column name resolved from `rite-config.yml`)
 5. Assign to current Iteration (if `iteration.enabled: true` and `iteration.auto_assign: true`)
 6. Initialize work memory comment
 
@@ -834,7 +837,7 @@ The Session Info section of the work memory includes phase information indicatin
 | `pr` | PR creation in progress | `/rite:open` Step 6 (formerly step 6) |
 | `review` | Review in progress | `/rite:iterate` review side (formerly step 7.1) |
 | `fix` | Review-fix loop in progress | `/rite:iterate` fix side (formerly step 7.2) |
-| `ready` | `/rite:ready` succeeded; awaiting Projects Status In Review → completion report | `/rite:ready` (formerly step 8.3) |
+| `ready` | `/rite:ready` succeeded; awaiting Projects Status `in_review` role → completion report | `/rite:ready` (formerly step 8.3) |
 | `ready_error` | `/rite:ready` failed inside e2e flow; `/rite:recover` re-enters `/rite:ready` retry | `/rite:ready` retry (formerly step 8) |
 | `cleanup` | `/rite:cleanup` in progress (branch / worktree cleanup pre-ingest) | `/rite:cleanup` Steps 1-3 |
 | `ingest` | Wiki ingest in progress (post-cleanup `/rite:wiki-ingest` integration) | `/rite:cleanup` ステップ 9 → `/rite:wiki-ingest` |
@@ -1107,7 +1110,7 @@ For each unresolved comment:
 
 1. Get Project configuration from `rite-config.yml`
 2. Find Issue's Project item
-3. Update Status to "Done"
+3. Update Status to the `done` role (column name resolved from `rite-config.yml`)
 4. Add completion record to work memory comment
 
 #### Phase 4: Completion Report
@@ -1124,7 +1127,7 @@ Completed tasks:
 - [x] Updated base (fetch + merge --ff-only)
 - [x] Deleted local branch {branch_name}
 - [x] Deleted remote branch
-- [x] Updated Projects Status to Done
+- [x] Updated Projects Status to the `done` role's column
 - [x] Finalized work memory
 
 Next steps:
@@ -1394,8 +1397,8 @@ Non-hook helper scripts invoked either directly from orchestrator skills or by o
 | `bang-backtick-check.sh` | Detect bash history-expansion pitfalls in generated content | — |
 | `reviewer-registry-drift-check.sh` | `/rite:lint` Phase 3.5 — detect reviewer registry drift across `agents/*-reviewer.md` and the 2 tables in `skills/reviewers/SKILL.md` (edit procedure: CONTRIBUTING.md "Adding a New Reviewer") | — |
 | `gitignore-health-check.sh` | Verify `$state_root/.rite/.gitignore` 3-line composition (`*` / `!wiki/` / `!wiki/**`); lint does not write | — |
-| `projects-board-drift-check.sh` | `/rite:lint` Phase 3.18 — detect CLOSED Issues whose Projects board Status is outside the terminal Status set (`Done` / `Cancelled`), optionally reconcile via `--reconcile` to the terminal Status the closure reason maps to (`NOT_PLANNED` / `DUPLICATE` → `Cancelled`, `COMPLETED` → `Done`, その他は WARNING 付きで `Done`) | — |
-| `projects-status-gate.sh` | `/rite:open` ステップ 2.6 — read an Issue's actual Projects board Status and report whether ステップ 2.4(A) (`Status → In Progress`) landed, as `[CONTEXT] PROJECTS_STATUS_INVARIANT=ok\|missing\|skipped\|unknown`. Read-only; always exits 0 so the non-blocking contract of 2.4(A) is preserved | — |
+| `projects-board-drift-check.sh` | `/rite:lint` Phase 3.18 — map each CLOSED Issue's board column to its role through `rite-config.yml` and detect those outside the terminal roles (`done` / `cancelled`), optionally reconcile via `--reconcile` to the terminal role the closure reason maps to (`NOT_PLANNED` / `DUPLICATE` → `cancelled`, `COMPLETED` → `done`, その他は WARNING 付きで `done`). When `cancelled` is not configured, `NOT_PLANNED` / `DUPLICATE` rows are listed as informational and not counted | — |
+| `projects-status-gate.sh` | `/rite:open` ステップ 2.6 — read an Issue's actual Projects board Status, map the column to its role through `rite-config.yml`, and report whether ステップ 2.4(A) (`Status → in_progress` role) landed by role rank, as `[CONTEXT] PROJECTS_STATUS_INVARIANT=ok\|missing\|skipped\|unknown; role=...`. A column that maps to no role is `missing` with the column named. Read-only; always exits 0 so the non-blocking contract of 2.4(A) is preserved | — |
 | `number-reference-check.sh` | Grammar SoT for bare Issue/PR number tokens. Modes: `--all` (git-tracked minus exclusions), `--diff <base>` (added lines, including uncommitted; `--path DIR` narrows it to a pathspec), `--stdin --label`. `/rite:lint` runs `--diff` as blocking and `--all` as informational (`plugins/rite/skills/lint/SKILL.md`). CI `shellcheck` job runs `--all` as blocking. `/rite:pr-review` calls `--diff` (`plugins/rite/skills/pr-review/SKILL.md`). `/rite:fix` ステップ 3.1 calls `--diff` after `git add -N` of existing paths in `{changed_files}` so same-cycle untracked files are in the diff (`plugins/rite/skills/fix/SKILL.md`). `wiki-lint-descriptive-refs.sh` delegates the grammar via `--stdin --label` after extracting each target's scannable body (`/rite:wiki-lint` ステップ 7.5). Commit-time gate is `wiki-numref-precommit.sh` (called from ingest 5.0.n and from `wiki-worktree-commit.sh` before stage/commit), which runs `--diff HEAD --path .rite/wiki` after `git add -N` so newly written pages are in the diff | — |
 | `sentinel-contract-check.sh` | `/rite:lint` Phase 3.5 — verify the sentinel SoT against emitter and consumer skill files, and detect undeclared sentinel-shaped literals | Canonical contract: `references/sentinel-contract.md` |
 | `tmp-hardcode-check.sh` | `/rite:lint` Phase 3.5 — detect sandbox-incompatible patterns (`mktemp` + `/tmp` template, fixed `/tmp` path hardcode, `git push` upstream `-u`) in `plugins/rite/**/*.{md,sh}` + `docs/**/*.md` (test harnesses / error-catalog / self excluded) | — |

@@ -150,7 +150,9 @@ Run the initialization wizard:
 
 What /rite:setup configures:
   ✓ Creates rite-config.yml with project settings
-  ✓ Configures GitHub Projects integration (optional)
+  ✓ Configures GitHub Projects integration (optional; an existing board keeps
+    its Status columns — setup only verifies that the names in rite-config.yml
+    exist and adds options only to a Project it creates)
   ✓ Sets up branch naming conventions
   ✓ Configures iteration settings (optional)
   ✓ Installs workflow hooks for state management
@@ -229,7 +231,8 @@ Option B: Create a new Issue
 
 What happens when you start an Issue:
   ✓ Creates a feature branch (e.g., feat/issue-42-description)
-  ✓ Updates Issue status to "In Progress" (if Projects is configured)
+  ✓ Moves the Issue to the "in_progress" Status role — the column named for it
+    in rite-config.yml (if Projects is configured)
   ✓ Initializes work memory for context tracking
   ✓ Implements changes, runs quality checks (/rite:lint), and opens a draft PR
 ```
@@ -307,7 +310,9 @@ Common Issues and Solutions:
 
 7. Unable to update Issue status
    Solution: Verify Projects integration in rite-config.yml
-   Check: projects.enabled and projects.project_number fields
+   Check: projects.enabled and projects.project_number fields, and that each
+   name in github.projects.fields.status.options matches a Status column on
+   the board exactly (e.g. { role: in_progress, name: "In progress" })
 
 8. Running multiple Claude Code sessions on the same repository
    Solution: multi_session is ON by default (rite-config.yml) — session

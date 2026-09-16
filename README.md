@@ -112,7 +112,7 @@ This will:
 | `/rite:issue-create` | Create new Issue |
 | `/rite:issue-update` | Update work memory |
 | `/rite:issue-close` | Check Issue completion |
-| `/rite:issue-cancel` | Cancel an Issue (close as not planned, board Status → Cancelled, clean up any PR/branch/worktree) |
+| `/rite:issue-cancel` | Cancel an Issue (close as not planned, board Status → the `cancelled` role's column when configured, clean up any PR/branch/worktree) |
 | `/rite:issue-edit` | Edit existing Issue interactively |
 | `/rite:open` | Start work end-to-end (branch → plan → implement → lint → draft PR) |
 | `/rite:iterate` | Loop review ⇄ fix until mergeable |
@@ -144,10 +144,12 @@ This will:
 
 Status Transitions:
 ```
-Todo → In Progress → In Review → Done
- ↑         ↑            ↑         ↑
-Create   Start Work   Set Ready  Merged
+todo → in_progress → in_review → done      (cancelled: terminal, outside the order)
+ ↑         ↑            ↑          ↑
+Create   Start Work   Set Ready   Merged
 ```
+
+These are rite's fixed Status **roles**. The column each role is displayed as on your GitHub Projects board is declared in `rite-config.yml` (`github.projects.fields.status.options`, one `{ role, name }` per column), so an existing board keeps its own column names — for example `To-Do` / `In progress`, or Japanese names — and rite never adds, renames, or removes options on a board it did not create. Omit the `cancelled` row when your board has no column for abandoned Issues. Without any `role` keys the English names `Todo` / `In Progress` / `In Review` / `Done` / `Cancelled` are assumed. See [Configuration Reference](docs/CONFIGURATION.md#githubprojectsfields) for the four board shapes.
 
 ## Configuration
 

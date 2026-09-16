@@ -280,13 +280,85 @@ Each field can have:
 
 **Status role configuration:**
 
-`projects-status-update.sh` resolves workflow roles from `github.projects.fields.status.options`. With no `role` keys (including missing Status options), legacy mode maps `todo`, `in_progress`, `in_review`, `done`, and `cancelled` to the English names `Todo`, `In Progress`, `In Review`, `Done`, and `Cancelled`. Legacy option names do not change that mapping. A missing or unreadable `rite-config.yml` is an error.
+rite tracks an Issue's board Status by **role**, not by column name. The five roles are fixed: `todo`, `in_progress`, `in_review`, `done`, `cancelled`. Their meaning — progress order `todo` < `in_progress` < `in_review` < `done`, the terminal pair `done` / `cancelled`, and which closure reason each terminal role answers to — is defined once in `plugins/rite/references/projects-integration.md` (section "Terminal Status Set"). `fields.status.options` only declares which column on **your** board displays each role, so an existing board keeps its column names; rite never renames, adds, or removes options on a board it did not create (`/rite:setup` verifies that every configured name exists and stops with the board's actual option names when one is missing).
 
-Adding any `role` key enables explicit mode. Define each required role (`todo`, `in_progress`, `in_review`, `done`) exactly once; `cancelled` is optional. Each option must be a single-line flow mapping in the form `{ role: todo, name: "未着手" }`; `name` may also be unquoted. Block mappings, single-quoted names, multiline scalars, anchors, aliases, and other YAML forms are unsupported. Mixed entries with and without roles, duplicate roles or names, unknown roles, missing required roles, empty names, and unsupported syntax are configuration errors. Status has no `default: true` option; `todo` identifies its initial role.
+Every consumer that reads or writes Status (`projects-status-update.sh`, the `/rite:open` Status gate, `/rite:lint`'s board drift check, the compact/watchdog hooks, Issue creation) goes through the same resolver (`hooks/scripts/lib/projects-status-config.sh`), so the configuration is judged in exactly one of three states:
 
-The Status field name can be set with `github.projects.fields.status.name`. An explicit name requires an exact match; without it, the helper tries `ステータス` and then `Status`. Option names must exactly match the configured role's display name.
+| State | When | Behavior |
+|-------|------|----------|
+| **legacy** | No option carries a `role` key (including a missing `options` list) | The English names `Todo`, `In Progress`, `In Review`, `Done`, `Cancelled` are used for the five roles. Any `name` values present are ignored for the mapping. No warning is emitted |
+| **explicit** | At least one option carries `role` | Each required role (`todo`, `in_progress`, `in_review`, `done`) appears exactly once; `cancelled` appears zero or one time; every `name` is non-empty and unique |
+| **invalid** | Anything else | Every consumer stops with a configuration error naming the problem; nothing falls back to legacy |
 
-The helper accepts only `status_role` for the destination. A supplied `status_name` (even alongside `status_role`) or an unknown role is invalid input and exits 1 regardless of `non_blocking`. Requesting an omitted `cancelled` role in explicit mode returns `skipped_role_unmapped` with exit 0, no warning, and no board write. A configured role whose option is missing on the board is a failure.
+Invalid configurations include: entries with and without `role` mixed in one list, duplicate roles or names, an unknown role, a missing required role, an empty `name`, and unsupported YAML syntax. Each option must be a single-line flow mapping in the form `{ role: todo, name: "未着手" }`; `name` may also be unquoted. Block mappings, single-quoted names, multiline scalars, anchors, and aliases are unsupported. Status has no `default: true` option; `todo` identifies its initial role. A missing or unreadable `rite-config.yml` is an error.
+
+The Status field name can be set with `github.projects.fields.status.name`. An explicit name requires an exact match; without it, the helper tries `ステータス` and then `Status`. Option names must exactly match the display name on the board.
+
+**Board shapes** — four configurations covering the common boards:
+
+English standard board (identical to legacy mode; write it out when you want the roles visible):
+
+```yaml
+github:
+  projects:
+    fields:
+      status:
+        options:
+          - { role: todo,        name: "Todo" }
+          - { role: in_progress, name: "In Progress" }
+          - { role: in_review,   name: "In Review" }
+          - { role: done,        name: "Done" }
+          - { role: cancelled,   name: "Cancelled" }
+```
+
+Board that spells its columns differently (`To-Do` / `In progress`):
+
+```yaml
+github:
+  projects:
+    fields:
+      status:
+        options:
+          - { role: todo,        name: "To-Do" }
+          - { role: in_progress, name: "In progress" }
+          - { role: in_review,   name: "In Review" }
+          - { role: done,        name: "Done" }
+          - { role: cancelled,   name: "Cancelled" }
+```
+
+Japanese field name and Japanese columns (the field name must match exactly once it is set):
+
+```yaml
+github:
+  projects:
+    fields:
+      status:
+        name: "ステータス"
+        options:
+          - { role: todo,        name: "未着手" }
+          - { role: in_progress, name: "進行中" }
+          - { role: in_review,   name: "レビュー中" }
+          - { role: done,        name: "完了" }
+          - { role: cancelled,   name: "中止" }
+```
+
+Board with no column for abandoned Issues (omit the `cancelled` row):
+
+```yaml
+github:
+  projects:
+    fields:
+      status:
+        options:
+          - { role: todo,        name: "Todo" }
+          - { role: in_progress, name: "In Progress" }
+          - { role: in_review,   name: "In Review" }
+          - { role: done,        name: "Done" }
+```
+
+Without a `cancelled` row, `/rite:issue-cancel` closes the Issue as not planned but leaves its board Status unchanged, and `/rite:lint`'s drift check lists such Issues as informational rather than counting them as drift.
+
+The helper accepts only `status_role` for the destination. A supplied `status_name` (even alongside `status_role`) or an unknown role is invalid input and exits 1 regardless of `non_blocking`. Requesting an omitted `cancelled` role in explicit mode returns `skipped_role_unmapped` with exit 0, no warning, and no board write. A configured role whose option is missing on the board is a failure. A board column that maps to no role is never written or ranked; consumers leave the Issue where it is and warn with the column name.
 
 **Standard fields:**
 
@@ -294,7 +366,7 @@ These fields are commonly used in GitHub Projects and have built-in support:
 
 | Field | Description |
 |-------|-------------|
-| `status` | Issue/PR status tracking (Todo, In Progress, etc.) |
+| `status` | Issue/PR status tracking by role (`todo` → `in_progress` → `in_review` → `done`, plus `cancelled`); column names come from `options[].name` |
 | `priority` | Priority level (High, Medium, Low) |
 | `complexity` | Estimated complexity (XS, S, M, L, XL) |
 
