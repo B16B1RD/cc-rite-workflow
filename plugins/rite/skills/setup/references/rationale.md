@@ -203,6 +203,8 @@ provisioning は setup がその場で新規作成した Project に限定する
 既存 Project では設定名の完全一致だけを検証し、不足名と実 option 名を表示して停止する。
 検証後に template で config を上書きした場合も最終 config で再検証する。検証時と完了時で
 role mapping が変わると、setup が成功した直後から更新 helper が option を解決できないためである。
+既存 Project の上書き候補は repository 外の一時 directory で検証し、成功後だけ root config へ
+原子的に反映する。失敗後に旧内容を復元する方式では、signal 中断との間に壊れた config が見えるためである。
 
 Phase 3 は config 生成より前に走るため、既存 `rite-config.yml` があれば resolver を使い、まだ
 存在しなければ legacy の標準 5 role と既定フィールド候補を使う。config 不在を invalid として
@@ -219,6 +221,9 @@ resolver は config を repository root から読むため、検証と移行の�
 揃える。移行は固定インデントや option の連続配置を前提にせず YAML の階層境界で配列全体を置換し、
 resolver で explicit と再判定できた tempfile だけを同一ディレクトリ上で原子的に置き換える。
 Status options 自体が無い legacy config は後続の missing-sub-key back-add に委ねる。
+upgrade の backup も同じ root config を対象にし、backup 成功を後続変更の precondition とする。
+解析用の行末 CR は除去する一方、生成行には元の EOL を引き継ぎ、Git Bash の CRLF config も
+resolver と同じ入力契約で移行する。
 
 ## ssh-alias-sandbox
 

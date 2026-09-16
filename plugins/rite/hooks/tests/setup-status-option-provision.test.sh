@@ -35,8 +35,12 @@ if ! printf '%s' "$SNIPPET_RAW" | grep -q 'STATUS_OPTION_UNION_PROVISION'; then
 fi
 VERIFY_RAW=$(extract_marked_bash STATUS_OPTION_EXISTING_VERIFY)
 MIGRATION_RAW=$(extract_marked_bash STATUS_OPTIONS_ROLE_MIGRATION)
-for marker in STATUS_OPTION_EXISTING_VERIFY STATUS_OPTIONS_ROLE_MIGRATION; do
+BACKUP_RAW=$(extract_marked_bash STATUS_OPTIONS_UPGRADE_BACKUP)
+COMMIT_RAW=$(extract_marked_bash STATUS_OPTION_EXISTING_CONFIG_COMMIT)
+for marker in STATUS_OPTION_EXISTING_VERIFY STATUS_OPTIONS_ROLE_MIGRATION STATUS_OPTIONS_UPGRADE_BACKUP STATUS_OPTION_EXISTING_CONFIG_COMMIT; do
   raw_var=VERIFY_RAW; [ "$marker" = STATUS_OPTIONS_ROLE_MIGRATION ] && raw_var=MIGRATION_RAW
+  [ "$marker" = STATUS_OPTIONS_UPGRADE_BACKUP ] && raw_var=BACKUP_RAW
+  [ "$marker" = STATUS_OPTION_EXISTING_CONFIG_COMMIT ] && raw_var=COMMIT_RAW
   if ! printf '%s' "${!raw_var}" | grep -q "$marker"; then
     echo "FAIL: SKILL.md からの $marker block 抽出に失敗しました" >&2
     exit 1
@@ -52,6 +56,10 @@ VERIFY="$WORKDIR/verify.sh"
 printf '%s' "$VERIFY_RAW" | sed -e "s|{plugin_root}|$PLUGIN_ROOT|g" -e 's/{owner}/test-owner/g' -e 's/{project-number}/11/g' > "$VERIFY"
 MIGRATION="$WORKDIR/migrate.sh"
 printf '%s' "$MIGRATION_RAW" | sed -e "s|{plugin_root}|$PLUGIN_ROOT|g" > "$MIGRATION"
+BACKUP="$WORKDIR/backup.sh"
+printf '%s' "$BACKUP_RAW" > "$BACKUP"
+COMMIT="$WORKDIR/commit-config.sh"
+printf '%s' "$COMMIT_RAW" > "$COMMIT"
 
 cat > "$MOCKBIN/gh" <<'MOCK'
 #!/usr/bin/env bash
@@ -148,8 +156,10 @@ assert_grep "T-routing new enters provisioning" "$SKILL" 'project_selection=new.
 assert_grep "T-routing existing enters verification" "$SKILL" 'project_selection=existing.*3\.4'
 assert_grep "T-routing provisioning is new-only" "$SKILL" 'project_selection=new.*ときだけ実行'
 assert_grep "T-routing verification is existing-only" "$SKILL" 'project_selection=existing.*ときだけ実行'
-assert_grep "T-routing final config is reverified" "$SKILL" '書き込んだ最終 config.*STATUS_OPTION_EXISTING_VERIFY'
+assert_grep "T-routing final config is reverified" "$SKILL" 'candidate directory.*STATUS_OPTION_EXISTING_VERIFY'
 assert_grep "T-routing preview names role migration" "$SKILL" 'Status role migration: \{status_role_migration_status\}'
+assert_grep "T-routing existing writes candidate first" "$SKILL" 'project_selection=existing.*root config をまだ変更せず'
+assert_grep "T-routing failed candidate preserves root" "$SKILL" 'project root の既存 config は変更しない'
 
 echo "=== T-static-cancelled: 新規 Project provisioning の required 5 組 ==="
 assert_grep_in_section "T-static Todo/GRAY/Not started" "$SKILL" \
@@ -389,8 +399,11 @@ assert_grep "T-existing-nested-cwd uses custom names" "$d_nested/stdout" 'STATUS
 assert "T-existing-nested-cwd mutation zero" "0" "$(mutation_count "$d_nested")"
 assert "T-existing-nested-cwd creates no nested config" "0" "$([ -e "$d_nested/sub/rite-config.yml" ] && echo 1 || echo 0)"
 
-echo "=== T-existing-post-overwrite: 最終 config が board と不一致なら停止 ==="
-cat > "$d_nested/rite-config.yml" <<'YAML'
+echo "=== T-existing-candidate: 不一致候補は root を不変にし、一致候補だけ原子的に反映 ==="
+root_before=$(cksum "$d_nested/rite-config.yml")
+d_candidate_bad="$WORKDIR/final-candidate-bad"
+mkdir -p "$d_candidate_bad"
+cat > "$d_candidate_bad/rite-config.yml" <<'YAML'
 github:
   projects:
     fields:
@@ -403,10 +416,41 @@ github:
           - { role: cancelled, name: "Cancelled" }
 YAML
 : > "$d_nested/calls"
-rc=$(cd "$d_nested/sub" && MOCK_GH_DIR="$d_nested" PATH="$MOCKBIN:$PATH" bash "$VERIFY" >"$d_nested/post-stdout" 2>"$d_nested/post-stderr" && echo 0 || echo $?)
-assert "T-existing-post-overwrite exits non-zero" "1" "$rc"
-assert_grep "T-existing-post-overwrite reports final mismatch" "$d_nested/post-stdout" 'STATUS_OPTIONS_VERIFY=error; missing=\["Todo","In Progress","Cancelled"\]'
-assert "T-existing-post-overwrite mutation zero" "0" "$(mutation_count "$d_nested")"
+rc=$(cd "$d_candidate_bad" && MOCK_GH_DIR="$d_nested" PATH="$MOCKBIN:$PATH" bash "$VERIFY" >"$d_nested/post-stdout" 2>"$d_nested/post-stderr" && echo 0 || echo $?)
+assert "T-existing-candidate mismatch exits non-zero" "1" "$rc"
+assert_grep "T-existing-candidate reports mismatch" "$d_nested/post-stdout" 'STATUS_OPTIONS_VERIFY=error; missing=\["Todo","In Progress","Cancelled"\]'
+assert "T-existing-candidate mismatch preserves root" "$root_before" "$(cksum "$d_nested/rite-config.yml")"
+assert "T-existing-candidate mutation zero" "0" "$(mutation_count "$d_nested")"
+
+d_candidate_ok="$WORKDIR/final-candidate-ok"
+mkdir -p "$d_candidate_ok"
+cat > "$d_candidate_ok/rite-config.yml" <<'YAML'
+github:
+  projects:
+    fields:
+      status:
+        options:
+          - { role: todo, name: "To-Do" }
+          - { role: in_progress, name: "In progress" }
+          - { role: in_review, name: "In Review" }
+          - { role: done, name: "Done" }
+YAML
+rc=$(cd "$d_candidate_ok" && MOCK_GH_DIR="$d_nested" PATH="$MOCKBIN:$PATH" bash "$VERIFY" >"$d_nested/candidate-ok-stdout" 2>"$d_nested/candidate-ok-stderr" && echo 0 || echo $?)
+assert "T-existing-candidate match verifies" "0" "$rc"
+candidate_sum=$(cksum "$d_candidate_ok/rite-config.yml" | awk '{ print $1 ":" $2 }')
+rc=$(cd "$d_nested/sub" && RITE_SETUP_CONFIG_CANDIDATE="$d_candidate_ok/rite-config.yml" bash "$COMMIT" >"$d_nested/commit-stdout" 2>"$d_nested/commit-stderr" && echo 0 || echo $?)
+assert "T-existing-candidate commit exits 0" "0" "$rc"
+assert "T-existing-candidate commit installs candidate" "$candidate_sum" "$(cksum "$d_nested/rite-config.yml" | awk '{ print $1 ":" $2 }')"
+assert_grep "T-existing-candidate commit marker" "$d_nested/commit-stdout" 'STATUS_OPTION_CONFIG_COMMIT=updated'
+assert "T-existing-candidate directory cleaned" "0" "$([ -e "$d_candidate_ok" ] && echo 1 || echo 0)"
+
+echo "=== T-upgrade-backup: nested cwd でも root config を backup ==="
+backup_before=$(cksum "$d_nested/rite-config.yml" | awk '{ print $1 ":" $2 }')
+rc=$(cd "$d_nested/sub" && bash "$BACKUP" >"$d_nested/backup-stdout" 2>"$d_nested/backup-stderr" && echo 0 || echo $?)
+assert "T-upgrade-backup nested exits 0" "0" "$rc"
+backup_path=$(sed -n 's/^\[CONTEXT\] STATUS_OPTIONS_UPGRADE_BACKUP=ok; path=//p' "$d_nested/backup-stdout")
+assert "T-upgrade-backup root copy matches" "$backup_before" "$(cksum "$backup_path" | awk '{ print $1 ":" $2 }')"
+assert "T-upgrade-backup creates no cwd backup" "0" "$(find "$d_nested/sub" -maxdepth 1 -name 'rite-config.yml.bak.*' | wc -l | tr -d ' ')"
 
 echo "=== T-upgrade-role-migration: legacy は5 role化、explicit不変、invalid無変更 ==="
 d_migrate="$WORKDIR/migrate-legacy"
@@ -476,6 +520,29 @@ assert "T-upgrade block/blank/variable-indent result is explicit" "explicit" "$(
 assert "T-upgrade block/blank/variable-indent has five roles" "5" "$(grep -c 'role:' "$d_block/rite-config.yml")"
 assert_not_grep "T-upgrade block/blank removes all unroled options" "$d_block/rite-config.yml" '^[[:space:]]*- name:'
 assert_grep "T-upgrade block/blank preserves adjacent section" "$d_block/rite-config.yml" '^[[:space:]]*priority:'
+
+d_crlf="$WORKDIR/migrate-crlf"
+mkdir -p "$d_crlf"
+printf '%s\r\n' \
+  'github:' \
+  '  projects:' \
+  '    fields:' \
+  '      status:' \
+  '' \
+  '        options:' \
+  '          - { name: "Todo", default: true }' \
+  '' \
+  '          # CRLF comment inside the legacy option list' \
+  '          - { name: "In Progress" }' \
+  '          - { name: "In Review" }' \
+  '          - { name: "Done" }' \
+  '      priority:' \
+  '        enabled: true' > "$d_crlf/rite-config.yml"
+rc=$(cd "$d_crlf" && bash "$MIGRATION" >stdout 2>stderr && echo 0 || echo $?)
+assert "T-upgrade CRLF blank/comment exits 0" "0" "$rc"
+assert "T-upgrade CRLF result is explicit" "explicit" "$(migration_mode "$d_crlf")"
+assert "T-upgrade CRLF preserves line endings" "0" "$(awk 'sub(/\r$/, "") { next } { bad++ } END { print bad+0 }' "$d_crlf/rite-config.yml")"
+assert_grep "T-upgrade CRLF preserves adjacent section" "$d_crlf/rite-config.yml" '^[[:space:]]*priority:'
 
 d_explicit="$WORKDIR/migrate-explicit"
 mkdir -p "$d_explicit"

@@ -577,9 +577,30 @@ Generate `rite-config.yml` from the template config file.
 | `iteration.enabled` | `{iteration-enabled}` from Phase 3.5 |
 | `iteration.field_name` | `"{iteration-field-name}"` from Phase 3.5 |
 
-**Step 4**: Write the result to `rite-config.yml` in the project root using the Write tool.
+**Step 4**: `project_selection=new` は結果を project root の `rite-config.yml` へ Write する。`project_selection=existing` は root config をまだ変更せず、`mktemp -d "${TMPDIR:-/tmp}/rite-setup-config.XXXXXX"` で repository 外の candidate directory を作り、結果を `{candidate_dir}/rite-config.yml` へ Write する。candidate directory が作れない場合は停止する。
 
-**Step 5**: `project_selection=existing` の場合は、書き込んだ最終 config を使って 3.4 の `STATUS_OPTION_EXISTING_VERIFY` bash block だけを再実行する。`ok` なら Phase 4.2 へ進み、`error` / marker 不在 / bash 非 0 なら setup を完了扱いにせず停止する。Phase 3.5 へは戻らず、既存 Project に provisioning を実行しない。`project_selection=new` はこの再検証を skip して Phase 4.2 へ進む。
+**Step 5**: `project_selection=existing` の場合は candidate directory を cwd にして 3.4 の `STATUS_OPTION_EXISTING_VERIFY` bash block だけを再実行する。repository 外なので共有 resolver は candidate の `rite-config.yml` を読む。`error` / marker 不在 / bash 非 0 なら candidate directory を削除して停止し、project root の既存 config は変更しない。`ok` の場合だけ `RITE_SETUP_CONFIG_CANDIDATE={candidate_dir}/rite-config.yml` を設定して下記 block を実行し、同一 directory の一時ファイルから root config を原子的に置き換える。marker 不在 / bash 非 0 は停止する。Phase 3.5 へは戻らず、既存 Project に provisioning を実行しない。`project_selection=new` はこの再検証を skip して Phase 4.2 へ進む。
+
+```bash
+# STATUS_OPTION_EXISTING_CONFIG_COMMIT
+project_root=$(git rev-parse --show-toplevel 2>/dev/null) || project_root="$PWD"
+config="$project_root/rite-config.yml"
+candidate="${RITE_SETUP_CONFIG_CANDIDATE:?candidate config path is required}"
+[ -r "$candidate" ] || { echo '[CONTEXT] STATUS_OPTION_CONFIG_COMMIT=error; reason=candidate_unreadable'; exit 1; }
+candidate_dir=${candidate%/*}
+tmp=$(mktemp "${config}.setup.XXXXXX") || { echo '[CONTEXT] STATUS_OPTION_CONFIG_COMMIT=error; reason=tmp_create_failed'; exit 1; }
+_rite_setup_config_cleanup() { rm -f -- "$tmp"; }
+trap '_rite_setup_config_cleanup; exit 130' INT
+trap '_rite_setup_config_cleanup; exit 143' TERM
+trap '_rite_setup_config_cleanup; exit 129' HUP
+trap '_rite_setup_config_cleanup' EXIT
+if [ -e "$config" ]; then cp -p "$config" "$tmp" || { echo '[CONTEXT] STATUS_OPTION_CONFIG_COMMIT=error; reason=metadata_copy_failed'; exit 1; }; fi
+cat "$candidate" > "$tmp" || { echo '[CONTEXT] STATUS_OPTION_CONFIG_COMMIT=error; reason=write_failed'; exit 1; }
+mv "$tmp" "$config" || { echo '[CONTEXT] STATUS_OPTION_CONFIG_COMMIT=error; reason=replace_failed'; exit 1; }
+tmp=""; trap - EXIT INT TERM HUP
+rm -f -- "$candidate"; rmdir "$candidate_dir" 2>/dev/null || true
+echo '[CONTEXT] STATUS_OPTION_CONFIG_COMMIT=updated'
+```
 
 > **Note on wiki section**: 新規生成は Advanced 境界より上を抽出するだけ。追加 append は不要。
 rationale: references/rationale.md#wiki-section-new-gen
@@ -594,8 +615,10 @@ Display "rite-config.yml のアップグレードを開始します" and "スキ
 
 Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) (required when entering via `--upgrade` skip, which bypasses the Phase 4.1 blockquote).
 
+Resolve `project_root` with `git rev-parse --show-toplevel` (fall back to `$PWD` outside Git) and retain `config="$project_root/rite-config.yml"` for every config read, backup, and write in this upgrade.
+
 Read both files with the Read tool:
-- `rite-config.yml` (project root)
+- `{config}` (project root の `rite-config.yml`)
 - `{plugin_root}/templates/config/rite-config.yml` (template)
 
 **Step 2: Check schema versions**
@@ -617,10 +640,15 @@ rationale: references/rationale.md#upgrade-branching
 **Step 3: Create backup**
 
 ```bash
-cp rite-config.yml "rite-config.yml.bak.$(date +%Y%m%d-%H%M%S)"
+# STATUS_OPTIONS_UPGRADE_BACKUP
+project_root=$(git rev-parse --show-toplevel 2>/dev/null) || project_root="$PWD"
+config="$project_root/rite-config.yml"
+backup="${config}.bak.$(date +%Y%m%d-%H%M%S)"
+cp "$config" "$backup" || { echo '[CONTEXT] STATUS_OPTIONS_UPGRADE_BACKUP=error; reason=copy_failed'; exit 1; }
+echo "[CONTEXT] STATUS_OPTIONS_UPGRADE_BACKUP=ok; path=$backup"
 ```
 
-Display "バックアップを作成しました: {path}".
+`STATUS_OPTIONS_UPGRADE_BACKUP=ok` と bash 0 の両方を確認してから Step 4 へ進む。marker 不在 / bash 非 0 なら config を変更せず停止する。Display "バックアップを作成しました: {path}".
 
 **Step 4: Identify changes**
 
@@ -713,7 +741,7 @@ if [ "$mode" = explicit ]; then echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=no
     function leading(s) { match(s, /^[ \t]*/); return RLENGTH }
     BEGIN {
       while ((getline raw) > 0) {
-        indent=leading(raw); line=substr(raw, indent+1)
+        indent=leading(raw); line=substr(raw, indent+1); eol=(raw ~ /\r$/ ? "\r" : ""); sub(/\r$/, "", line)
         if (replacing) {
           if (line ~ /^[ \t]*$/ || line ~ /^#/) { if (indent > options_indent) continue; print raw; continue }
           if (indent > options_indent) continue
@@ -725,12 +753,12 @@ if [ "$mode" = explicit ]; then echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=no
         path=""; for (i=1; i<=depth; i++) path=path keys[i] "."; path=path key
         if (path == "github.projects.fields.status.options") {
           prefix=substr(raw, 1, indent)
-          print prefix "options:"
-          print prefix "  - { role: todo, name: \"Todo\" }"
-          print prefix "  - { role: in_progress, name: \"In Progress\" }"
-          print prefix "  - { role: in_review, name: \"In Review\" }"
-          print prefix "  - { role: done, name: \"Done\" }"
-          print prefix "  - { role: cancelled, name: \"Cancelled\" }"
+          print prefix "options:" eol
+          print prefix "  - { role: todo, name: \"Todo\" }" eol
+          print prefix "  - { role: in_progress, name: \"In Progress\" }" eol
+          print prefix "  - { role: in_review, name: \"In Review\" }" eol
+          print prefix "  - { role: done, name: \"Done\" }" eol
+          print prefix "  - { role: cancelled, name: \"Cancelled\" }" eol
           replacing=1; options_indent=indent; found=1; continue
         }
         print raw
