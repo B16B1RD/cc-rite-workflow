@@ -15,6 +15,7 @@
 * **Create**: [テストダブルは被テスト式を実際に評価させ、helper 呼び出しの有無は記録モックの不在で pin する](pages/patterns/test-double-evaluates-real-expression-records-helper-calls.md) — [レビュー結果](raw/reviews/20260916T025549Z-pr-2896.md) を新規ページ化
 * **Update**: [否定アサーションには positive control を添える — `|| true` は唯一の crash signal を消す](pages/patterns/negative-assertion-positive-control.md) — [レビュー結果](raw/reviews/20260916T025549Z-pr-2896.md) を統合
 * **Update**: [静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く](pages/heuristics/static-pin-semantic-allowlist-not-notation-denylist.md) — [レビュー結果](raw/reviews/20260916T025549Z-pr-2896.md) を統合
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=503, broken_refs=0
 
 ## 2026-09-15
 
