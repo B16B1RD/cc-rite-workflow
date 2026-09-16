@@ -1007,17 +1007,32 @@ done
 # Mapping contents, not just the heading: a "未決" / open-question leftover in rule 2
 # would still cite the section name and pass the loop above.
 sot_248=$(awk '/^### 2\.4\.8 Terminal Status Set$/,/^## 2\.5 /' "$TERMINAL_SOT")
-assert_present "$sot_248" "$(printf '| `Cancelled` | Work abandoned — closed as not planned (wontfix, superseded) or as duplicate | `NOT_PLANNED`, `DUPLICATE` |')" \
-  "§2.4.8 Cancelled 行の closure reason 列に DUPLICATE が載る"
+# The set is keyed by role: the row must start with the `cancelled` role and carry both
+# abandonment reasons. An English column name in the key column would make the display
+# name the source of truth again, which is the drift this pin guards against.
+assert_present "$sot_248" "$(printf '| `cancelled` | Work abandoned — closed as not planned (wontfix, superseded) or as duplicate | `NOT_PLANNED`, `DUPLICATE` |')" \
+  "§2.4.8 cancelled role 行の closure reason 列に DUPLICATE が載る"
+assert_present "$sot_248" "$(printf '| `done` | Work completed | `COMPLETED` |')" \
+  "§2.4.8 done role 行が COMPLETED に対応する"
+assert_absent "$sot_248" "$(printf '| `Cancelled` |')" \
+  "§2.4.8 の表が英語表示名 Cancelled をキーにしていない"
+assert_absent "$sot_248" "$(printf '| `Done` |')" \
+  "§2.4.8 の表が英語表示名 Done をキーにしていない"
 assert_absent "$sot_248" "open question" \
   "§2.4.8 rule 2 から open question が消えている"
 assert_absent "$sot_248" "this mapping does not claim" \
   "§2.4.8 rule 2 から this mapping does not claim が消えている"
 RATIONALE="$REPO_ROOT/plugins/rite/skills/lint/references/plugin-checks-rationale.md"
-assert_file_contains "$RATIONALE" '`NOT_PLANNED` / `DUPLICATE` → `Cancelled`' \
-  "plugin-checks-rationale が NOT_PLANNED/DUPLICATE → Cancelled 無警告を述べる"
-assert_file_contains "$RATIONALE" '`COMPLETED` → `Done`' \
-  "plugin-checks-rationale が COMPLETED → Done 無警告を述べる"
+assert_file_contains "$RATIONALE" '`NOT_PLANNED` / `DUPLICATE` → `cancelled`' \
+  "plugin-checks-rationale が NOT_PLANNED/DUPLICATE → cancelled role 無警告を述べる"
+assert_file_contains "$RATIONALE" '`COMPLETED` → `done`' \
+  "plugin-checks-rationale が COMPLETED → done role 無警告を述べる"
+# The destinations are roles, so the display-name form must be gone from both the SoT and
+# the rationale — a leftover `→ \`Cancelled\`` would document a column name as the target.
+assert_file_lacks "$RATIONALE" '→ `(Cancelled|Done)`' \
+  "plugin-checks-rationale が reconcile 先を英語表示名で書いていない"
+assert_file_lacks "$TERMINAL_SOT" '→ `(Cancelled|Done)`' \
+  "projects-integration.md が reconcile 先を英語表示名で書いていない"
 
 echo ""
 echo "==============================="
