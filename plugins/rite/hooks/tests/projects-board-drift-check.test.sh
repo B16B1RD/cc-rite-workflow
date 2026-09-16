@@ -881,10 +881,10 @@ else
   FAIL=$((FAIL + 1)); FAILURES+=("T-16: expected exit 0 + 0 findings, got rc=$t16_rc; stdout: $(printf '%s' "$t16_out" | tr '\n' ' ' | head -c 300)")
   echo "  ✗ T-16: expected exit 0 + 0 findings (exit $t16_rc)" >&2
 fi
-assert_present "$t16_out" '[projects-board-drift] info #301' "T-16: cancelled 未マップの中止 Issue は informational 行として載る"
+assert_present "$t16_out" '[projects-board-drift] info #301' "T-16: cancelled 未マップの中止 Issue は informational 行として載る" # drift-check-ignore
 assert_present "$t16_out" 'no cancelled column is configured' "T-16: informational 行が cancelled 未設定を理由として示す"
-assert_absent "$t16_out" '[projects-board-drift] #302' "T-16: 完了 (done role) の行は drift に載らない"
-if grep -q 'projects-board-drift: WARNING #301' "$T12_DIR/t16-stderr.txt"; then
+assert_absent "$t16_out" '[projects-board-drift] #302' "T-16: 完了 (done role) の行は drift に載らない" # drift-check-ignore
+if grep -q 'projects-board-drift: WARNING #301' "$T12_DIR/t16-stderr.txt"; then # drift-check-ignore
   FAIL=$((FAIL + 1)); FAILURES+=("T-16: cancelled 未マップの行が drift WARNING として出た")
   echo "  ✗ T-16: cancelled 未マップの行が drift WARNING として出た" >&2
 else
