@@ -27,12 +27,15 @@ sources:
     resource: "raw/reviews/20260916T135355Z-pr-2917.md"
   - type: "fixes"
     resource: "raw/fixes/20260916T140542Z-pr-2917.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260916T141828Z-pr-2917.md"
 tags: ["test", "negative-assert", "positive-control", "fail-open", "mutation-testing"]
 confidence: high
-generated: { by: "rite-wiki-ingest/gpt-5", at: "2026-09-16T14:11:59Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-16T15:08:04Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-16T03:09:20Z" }
   - { by: "rite-wiki-ingest/gpt-5", at: "2026-09-16T14:11:59Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-16T15:08:04Z" }
 ---
 
 # 否定アサーションには positive control を添える — `|| true` は唯一の crash signal を消す
@@ -129,6 +132,10 @@ Issue 起票時に提示された修正案が実装の出力契約と噛み合�
 
 mock の marker 設置を生成後の検索置換に依存させると、置換の no-match が marker 不在を作り、本命の absence assert が空振りする。marker は mock 定義へ直接置き、同じテスト群でその marker を実際に読む positive control を先に通す。これにより「対象経路で marker が無い」と「fixture が marker を設置できなかった」を分離できる。
 
+### control の置き場は本命 TC の外になることがある
+
+主題が「呼ばない」である TC の内側には、その経路を「呼ぶ」入力を置けない — 置いた瞬間に TC の主題が変わる。この場合、同じ suite 内で同じ mock を使い「呼ばれる」ことを本命とする別 TC が、absence assert の precondition（marker が読まれうること）を担う唯一の構造になる。suite の粒度が TC 単位のとき、control が別 TC に住むこと自体は欠陥ではないが、両 TC が同じ mock 定義を共有していることが前提になる。片方だけ mock を差し替えると control は precondition を保証しなくなるので、共有を崩す変更は control の側にも反映する。
+
 ## 関連ページ
 
 - [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](./absence-pin-base-present-head-absent-single-line.md)
@@ -148,3 +155,4 @@ mock の marker 設置を生成後の検索置換に依存させると、置換�
 - [到達マーカーの positive control と失敗系フィクスチャの縮退を扱ったレビュー結果](../../raw/reviews/20260916T025549Z-pr-2896.md)
 - [事後パッチに依存した marker 設置と absence assert の空振りを扱ったレビュー結果](../../raw/reviews/20260916T135355Z-pr-2917.md)
 - [marker を mock 定義へ移し positive control で固定した修正結果](../../raw/fixes/20260916T140542Z-pr-2917.md)
+- [control が別 TC に住む構造を確認した再レビュー結果](../../raw/reviews/20260916T141828Z-pr-2917.md)

@@ -4,10 +4,11 @@ title: "GNU 形式の `sed -i '<expr>' file` は BSD sed で fixture を書き�
 domain: "anti-patterns"
 description: "BSD sed は `-i` の次の引数を backup 拡張子と解釈するため、式が拡張子・ファイル名が script として扱われ parse error になる。`set -e` の無いテストでは無言で先へ進み、fixture 不変のまま突合系 assertion だけが落ちる。"
 created: "2026-09-06T16:10:23Z"
-generated: { by: "rite-wiki-ingest/gpt-5", at: "2026-09-16T14:11:59Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-16T15:08:04Z" }
 verified:
   - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-07T23:54:45Z" }
   - { by: "rite-wiki-ingest/gpt-5", at: "2026-09-16T14:11:59Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-16T15:08:04Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260906T155431Z-pr-2582.md"
@@ -17,6 +18,8 @@ sources:
     resource: "raw/reviews/20260916T135355Z-pr-2917.md"
   - type: "fixes"
     resource: "raw/fixes/20260916T140542Z-pr-2917.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260916T141828Z-pr-2917.md"
 tags: ["portability", "sed", "bsd", "macos", "test-fixture", "awk"]
 confidence: high
 ---
@@ -37,7 +40,7 @@ BSD sed（macOS 既定）は `-i` の直後の引数を backup 拡張子とし�
 
 リポジトリ内で既定として使える形は awk の read → transform → write → `mv` である。GNU / BSD / bwk awk のいずれでも同じ動作をする。ヘルパーが複数のテストスイートに別名で複製されている場合、共通ヘルパーへの一本化が次の再発防止になる。
 
-テスト用 mock に marker を足すだけなら、生成後のファイルを `sed -i` で再編集せず、mock 定義そのものへ marker を書く。事後パッチの移植性差と、置換対象が見つからなくても処理が進む no-match 経路を同時に除去できる。
+テスト用 mock に marker を足すだけなら、生成後のファイルを `sed -i` で再編集せず、mock 定義そのものへ marker を書く。事後パッチの移植性差と、置換対象が見つからなくても処理が進む no-match 経路を同時に除去できる。この置き換えが load-bearing であることは、marker 除去と `exit 0` 欠落の 2 変異で該当 TC が赤くなることを実測して確認した。
 
 ### 移植性修正の検証は 3 実装で行う
 
@@ -59,3 +62,4 @@ BSD sed（macOS 既定）は `-i` の直後の引数を backup 拡張子とし�
 - [レビュー結果](../../raw/reviews/20260906T155431Z-pr-2582.md)
 - [mock の事後パッチが macOS で失敗し、否定アサーションも空振りし得たレビュー結果](../../raw/reviews/20260916T135355Z-pr-2917.md)
 - [marker を mock 定義へ移して事後パッチを除去した修正結果](../../raw/fixes/20260916T140542Z-pr-2917.md)
+- [置き換えを 2 変異で実測した再レビュー結果](../../raw/reviews/20260916T141828Z-pr-2917.md)
