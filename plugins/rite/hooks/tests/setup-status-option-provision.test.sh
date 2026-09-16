@@ -401,7 +401,7 @@ assert "T-existing-nested-cwd creates no nested config" "0" "$([ -e "$d_nested/s
 
 echo "=== T-existing-candidate: 不一致候補は root を不変にし、一致候補だけ原子的に反映 ==="
 root_before=$(cksum "$d_nested/rite-config.yml")
-d_candidate_bad="$WORKDIR/final-candidate-bad"
+d_candidate_bad="$d_nested/.tmp/final-candidate-bad"
 mkdir -p "$d_candidate_bad"
 cat > "$d_candidate_bad/rite-config.yml" <<'YAML'
 github:
@@ -416,13 +416,13 @@ github:
           - { role: cancelled, name: "Cancelled" }
 YAML
 : > "$d_nested/calls"
-rc=$(cd "$d_candidate_bad" && MOCK_GH_DIR="$d_nested" PATH="$MOCKBIN:$PATH" bash "$VERIFY" >"$d_nested/post-stdout" 2>"$d_nested/post-stderr" && echo 0 || echo $?)
+rc=$(cd "$d_candidate_bad" && RITE_SETUP_CONFIG_CANDIDATE="$d_candidate_bad/rite-config.yml" MOCK_GH_DIR="$d_nested" PATH="$MOCKBIN:$PATH" bash "$VERIFY" >"$d_nested/post-stdout" 2>"$d_nested/post-stderr" && echo 0 || echo $?)
 assert "T-existing-candidate mismatch exits non-zero" "1" "$rc"
 assert_grep "T-existing-candidate reports mismatch" "$d_nested/post-stdout" 'STATUS_OPTIONS_VERIFY=error; missing=\["Todo","In Progress","Cancelled"\]'
 assert "T-existing-candidate mismatch preserves root" "$root_before" "$(cksum "$d_nested/rite-config.yml")"
 assert "T-existing-candidate mutation zero" "0" "$(mutation_count "$d_nested")"
 
-d_candidate_ok="$WORKDIR/final-candidate-ok"
+d_candidate_ok="$d_nested/.tmp/final-candidate-ok"
 mkdir -p "$d_candidate_ok"
 cat > "$d_candidate_ok/rite-config.yml" <<'YAML'
 github:
@@ -434,11 +434,12 @@ github:
           - { role: in_progress, name: "In progress" }
           - { role: in_review, name: "In Review" }
           - { role: done, name: "Done" }
+language: ja
 YAML
-rc=$(cd "$d_candidate_ok" && MOCK_GH_DIR="$d_nested" PATH="$MOCKBIN:$PATH" bash "$VERIFY" >"$d_nested/candidate-ok-stdout" 2>"$d_nested/candidate-ok-stderr" && echo 0 || echo $?)
+rc=$(cd "$d_candidate_ok" && RITE_SETUP_CONFIG_CANDIDATE="$d_candidate_ok/rite-config.yml" MOCK_GH_DIR="$d_nested" PATH="$MOCKBIN:$PATH" bash "$VERIFY" >"$d_nested/candidate-ok-stdout" 2>"$d_nested/candidate-ok-stderr" && echo 0 || echo $?)
 assert "T-existing-candidate match verifies" "0" "$rc"
 candidate_sum=$(cksum "$d_candidate_ok/rite-config.yml" | awk '{ print $1 ":" $2 }')
-rc=$(cd "$d_nested/sub" && RITE_SETUP_CONFIG_CANDIDATE="$d_candidate_ok/rite-config.yml" bash "$COMMIT" >"$d_nested/commit-stdout" 2>"$d_nested/commit-stderr" && echo 0 || echo $?)
+rc=$(cd "$d_candidate_ok" && RITE_SETUP_PROJECT_ROOT="$d_nested" RITE_SETUP_CONFIG_CANDIDATE="$d_candidate_ok/rite-config.yml" bash "$COMMIT" >"$d_nested/commit-stdout" 2>"$d_nested/commit-stderr" && echo 0 || echo $?)
 assert "T-existing-candidate commit exits 0" "0" "$rc"
 assert "T-existing-candidate commit installs candidate" "$candidate_sum" "$(cksum "$d_nested/rite-config.yml" | awk '{ print $1 ":" $2 }')"
 assert_grep "T-existing-candidate commit marker" "$d_nested/commit-stdout" 'STATUS_OPTION_CONFIG_COMMIT=updated'
@@ -495,6 +496,25 @@ assert "T-upgrade empty nested result is explicit" "explicit" "$(migration_mode 
 assert_grep "T-upgrade empty nested preserves adjacent section" "$d_empty/rite-config.yml" '^      priority:'
 assert "T-upgrade empty nested creates no cwd config" "0" "$([ -e "$d_empty/sub/rite-config.yml" ] && echo 1 || echo 0)"
 assert "T-upgrade empty nested leaves no config temp" "0" "$(find "$d_empty" -maxdepth 1 -name 'rite-config.yml.status-role.*' | wc -l | tr -d ' ')"
+
+d_tmp_inside="$WORKDIR/migrate-tmp-inside/repo"
+mkdir -p "$d_tmp_inside/.tmp"
+git -C "$d_tmp_inside" init -q
+cat > "$d_tmp_inside/rite-config.yml" <<'YAML'
+github:
+  projects:
+    fields:
+      status:
+        options:
+          - { name: "Todo" }
+          - { name: "In Progress" }
+          - { name: "In Review" }
+          - { name: "Done" }
+YAML
+rc=$(cd "$d_tmp_inside" && TMPDIR="$d_tmp_inside/.tmp" bash "$MIGRATION" >stdout 2>stderr && echo 0 || echo $?)
+assert "T-upgrade repository-local TMPDIR exits 0" "0" "$rc"
+assert "T-upgrade repository-local TMPDIR validates transformed candidate" "explicit" "$(migration_mode "$d_tmp_inside")"
+assert "T-upgrade repository-local TMPDIR cleans scratch" "0" "$(find "$d_tmp_inside/.tmp" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')"
 
 d_block="$WORKDIR/migrate-block"
 mkdir -p "$d_block"

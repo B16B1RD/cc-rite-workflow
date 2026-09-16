@@ -156,4 +156,12 @@ git init -q
 mkdir nested
 cd nested
 assert 'nested cwd resolves repository-root config' 完了 "$(projects_status_name_for_role done)"
+override_config="$TEST_DIR/override-config.yml"
+sed 's/name: "完了"/name: "候補完了"/' "$TEST_DIR/rite-config.yml" > "$override_config"
+assert 'absolute override bypasses repository-root config' 候補完了 "$(RITE_STATUS_CONFIG_PATH="$override_config" projects_status_name_for_role done)"
+if RITE_STATUS_CONFIG_PATH=../override-config.yml projects_status_mode >/dev/null 2>override-error.txt; then
+  fail 'relative override is rejected'
+else
+  assert_grep 'relative override explains absolute-path contract' override-error.txt 'must be an absolute path'
+fi
 print_summary 'projects-status-config.test.sh'

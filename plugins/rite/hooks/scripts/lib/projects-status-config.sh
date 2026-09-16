@@ -1,12 +1,21 @@
 # shellcheck shell=bash
 # Function-only library: callers own shell options, traps, and error handling.
-# Config queries read the current repository root (or cwd outside Git). No cache:
-# helpers and tests can change configuration between calls in the same shell.
+# Config queries read RITE_STATUS_CONFIG_PATH when it is an absolute path, otherwise
+# the current repository root (or cwd outside Git). No cache: helpers and tests can
+# change configuration between calls in the same shell.
 
 _projects_status_read() {
   local root config
-  root=$(git rev-parse --show-toplevel 2>/dev/null) || root="$PWD"
-  config="$root/rite-config.yml"
+  if [[ -n "${RITE_STATUS_CONFIG_PATH:-}" ]]; then
+    config="$RITE_STATUS_CONFIG_PATH"
+    [[ "$config" == /* ]] || {
+      printf 'ERROR: RITE_STATUS_CONFIG_PATH must be an absolute path\n' >&2
+      return 1
+    }
+  else
+    root=$(git rev-parse --show-toplevel 2>/dev/null) || root="$PWD"
+    config="$root/rite-config.yml"
+  fi
   if [[ ! -r "$config" ]]; then
     printf 'ERROR: projects status config is missing or unreadable: %s\n' "$config" >&2
     return 1
