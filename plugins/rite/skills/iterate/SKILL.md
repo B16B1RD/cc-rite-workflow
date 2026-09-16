@@ -837,7 +837,7 @@ bash {plugin_root}/hooks/scripts/pr-cycle-cleanup.sh 2>&1 || true
 
 ### ステップ 5.0.1: run を閉じる (cycle counter のリセット)
 
-`review_run` がある現在の run は counter と履歴を維持する。正常終了では、全品質ゲートと 5.S の成功後に `review-close` で完了 context を保存する。これにより cleanup を行わない draft batch も次 Issue へ進める。完了記録の失敗は caller へ成功を返さず停止する。中断・返信のみは `retained` とし未完了 run を閉じない。以下の reset の説明と失敗警告は legacy state に適用する。
+`review_run` がある現在の run は counter と履歴を維持する。正常終了では、全品質ゲートと 5.S の成功後に `review-close` で完了 context を保存する。これにより cleanup を行わない draft batch も次 Issue へ進める。完了記録の失敗は caller へ成功を返さず停止する。返信のみは `review-defer` で `deferred` として終了記録を保存し、中断は `retained` として未完了 run を閉じない。以下の reset の説明と失敗警告は legacy state に適用する。
 
 完了通知を出力する**前に**、`cycle_count` を 0 にして run を明示的に閉じる。これをしないと終了経路
 （`[review:mergeable]` / `[fix:non-fatal-only]` / `[fix:replied-only]` / `[fix:cancelled-by-user]`）はいずれも counter を残したまま
