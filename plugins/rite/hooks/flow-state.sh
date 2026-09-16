@@ -433,6 +433,9 @@ cmd_set() {
   [ -n "$_new_jq_err" ] && rm -f "$_new_jq_err"
   # `_atomic_write` の header 契約 ("Callers MUST check rc") を遵守 (`_migrate_file` の
   # `_atomic_write` 呼び出し直前と対称化)。
+  # The cycle object survives ordinary sets; only review-start/finish may advance it.
+  new=$(printf '%s' "$new" | python3 "$SCRIPT_DIR/scripts/lib/review-cycle.py" guard-set \
+    --state "$path" --session "$sid" --results-dir "$STATE_ROOT/.rite/review-results") || return 1
   _atomic_write "$path" "$new" || return 1
   # Record only after the write physically landed, so the log never claims a
   # transition that failed to persist. Reuses `$now` (the same timestamp the
@@ -768,6 +771,30 @@ cmd_migrate() {
   echo "Migration complete: $migrated file(s) processed"
 }
 
+# Both operations use the current session identity; no cross-session override.
+cmd_review_cycle() {
+  local operation="$1" sid path updated
+  local args=()
+  shift
+  while [ $# -gt 0 ]; do
+    case "$operation:$1" in
+      start:--selection|finish:--manifest|finish:--content-file|finish:--pending-id)
+        [ $# -ge 2 ] || { echo "ERROR: missing value for $1" >&2; return 1; }
+        args+=("$1" "$2"); shift 2 ;;
+      *) echo "ERROR: unknown review-cycle option: $1" >&2; return 1 ;;
+    esac
+  done
+  sid=$(_resolve_session_id) || return 1
+  path=$(_state_path "$sid")
+  updated=$(python3 "$SCRIPT_DIR/scripts/lib/review-cycle.py" "$operation" \
+    --state "$path" --session "$sid" --results-dir "$STATE_ROOT/.rite/review-results" "${args[@]}") || return 1
+  _atomic_write "$path" "$updated" || return 1
+  if [ "$operation" = finish ]; then
+    printf '%s' "$updated" | jq -r '.review_cycle | "[CONTEXT] REVIEW_CYCLE=completed; verdict=\(.verdict); result=\(.result_path)"' >&2
+  fi
+  printf '%s' "$updated" | jq '.review_cycle'
+}
+
 cmd_path() {
   local session=""
   while [ $# -gt 0 ]; do case "$1" in
@@ -780,6 +807,8 @@ cmd_path() {
 
 case "${1:-}" in
   set) shift; cmd_set "$@" ;;
+  review-start) shift; cmd_review_cycle start "$@" ;;
+  review-finish) shift; cmd_review_cycle finish "$@" ;;
   get) shift; cmd_get "$@" ;;
   deactivate) shift; cmd_deactivate "$@" ;;
   reap-issue) shift; cmd_reap_issue "$@" ;;
@@ -789,13 +818,15 @@ case "${1:-}" in
   path) shift; cmd_path "$@" ;;
   *)
     cat >&2 <<EOF
-Usage: $0 {set|get|deactivate|reap-issue|clear-worktree|consume-handoff|migrate|path} [options]
+Usage: $0 {set|get|review-start|review-finish|deactivate|reap-issue|clear-worktree|consume-handoff|migrate|path} [options]
   set --phase <P> --next <T> [--issue N] [--branch S] [--pr N] [--parent-issue N]
       [--active true|false] [--handoff CMD] [--session UUID] [--if-exists] [--preserve-error-count]
       [--worktree PATH] [--require-worktree]   # --require-worktree: warn + emit WORKTREE_INVARIANT marker when worktree empty (non-blocking)
       [--stop-reason TOKEN]                    # durable "stopped as a failure" marker; default-clear like --handoff
   get --field <F> [--default V] [--session UUID]
       | --jq-filter <FILTER> [--default V] [--session UUID]
+  review-start --selection /absolute/selection.json
+  review-finish --manifest /absolute/completions.json --content-file /absolute/result.json [--pending-id TOKEN]
   deactivate [--next T] [--session UUID]
   reap-issue --issue N               # cross-session active=false + lock reap for issue N (non-blocking)
   clear-worktree [--session UUID]    # surgically del(.worktree); idempotent, no phase/next needed

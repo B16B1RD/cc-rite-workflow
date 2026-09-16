@@ -6,7 +6,7 @@
 
 > **Note**: ステップ 6.1.a / 6.1.b / 6.1.c の reason は委譲先 helper が emit する (`hooks/review-result-save.sh` / `hooks/review-comment-post.sh` / `hooks/review-skip-notification.sh`、SoT は各 helper の docstring)。委譲済 reason は「この SKILL.md 自身が emit する reason」と区別できるよう **markdown table 行にせず bullet 形式**で列挙し、本文 prose でも `reason=...` 構文を使わず bare backtick 名で参照する。helper の stderr `[CONTEXT]` emit は caller の bash 出力として LLM コンテキストに surface するため、下記 reason はレビュー flow 上で従来どおり観測される。
 
-**ステップ 6.1.a reasons** (`review-result-save.sh` が `[CONTEXT] LOCAL_SAVE_FAILED=1; reason=...` を emit。通常の環境・永続化失敗は従来どおり非ブロッキングだが、次の provenance 契約違反は非ゼロで停止する。`signal_aborted` も signal trap 由来の非ゼロを返す):
+**ステップ 6.1.a reasons** (`review-result-save.sh` が `[CONTEXT] LOCAL_SAVE_FAILED=1; reason=...` を emit。通常 caller は `review-finish` で全保存失敗を非ゼロとして停止する。保存 helper 単体も次の provenance 契約違反は非ゼロで停止する。`signal_aborted` も signal trap 由来の非ゼロを返す):
 - `gate_not_applied`: `measured_gate` receipt が欠落または不正。実測ゲートを迂回した JSON のため保存しない
 - `gate_record_mismatch`: `measured_gate.commit_sha` がトップレベル `commit_sha` と一致しないため保存しない
 - `timestamp_not_injected`: 入力 JSON の `timestamp` が正規 placeholder でなく、helper 外で実値を書いたため保存しない
@@ -79,8 +79,8 @@
 | `save_result_json_absent` | `REVIEW_SAVE_GATE_FAILED=1` | 本 cycle の commit SHA (ステップ 1.2.5) を `commit_sha` に持つ結果 JSON が現 run の results dir に**実在しない** (results dir 自体が無い場合を含む)。**`exit 1`** で落とし ステップ 6.1.a **step 0** へ戻す (**ただし会話に本 cycle の `REVIEW_SAVE_PENDING_MARKER` / `REVIEW_SAVE_PENDING_ID` が 1 つも無い場合の戻り先は ステップ 5.3.0.M step 2** — 6.1.a だけ再実行すると実測必須ゲートを走らせないまま JSON が再生成され、次の評価で本 gate が pass してしまう。helper の ACTION 行が SoT)。helper が期待 SHA と現 run の JSON 一覧 (basename + `commit_sha`) を stderr に出すため、「区間ごと未実行」と「本 cycle 分だけ未保存」を切り分けられる。**ファイルが 1 件でもあれば pass、にはしない** — 前 cycle の JSON で素通りするため。emit 元は `hooks/scripts/review-save-json-verify.sh` |
 | `gate_record_mismatch` | `REVIEW_SAVE_GATE_FAILED=1` | トップレベル `commit_sha` が本 cycle と一致する JSON はあるが、同じ JSON の `measured_gate.commit_sha` が欠落または不一致。ステップ 5.3.0.M step 2 から再実行して receipt 付き JSON を保存する |
 | `save_result_json_undecidable` | `REVIEW_SAVE_GATE=degraded` | positive 検査の入力・環境を揃えられない (`{pr_number}` / `{current_commit_sha}` の置換漏れ・形状不正、jq 不在、state root / run 開始点 pin を解決できない、results dir を**読めない**)。positive 層の機械強制のみ skip し `**Check**` の prose 判定へ続行。**置換漏れを fail にしない**のは、差し戻し先 (6.1.a) を何度実行しても直らず非収束ループになるため (`save_pending_marker_placeholder_residue` と同じ論拠)。WARNING で原因を名指しし、黙って pass にはしない。emit 元は同 helper |
-| `save_pending_marker_present` | `REVIEW_SAVE_GATE_FAILED=1` | marker が残存 = 6.1.a が本 cycle で走っていない。**`exit 1`** で落とし ステップ 6.1.a **step 0** へ戻す。marker はここでは削除しない (削除すると 6.1.a を実行せず再評価だけで通せる)。**保存失敗では発火しない** — helper は `LOCAL_SAVE_FAILED` でも marker を削除するため (D-04 非ブロッキング契約の維持) |
+| `save_pending_marker_present` | `REVIEW_SAVE_GATE_FAILED=1` | marker が残存 = 6.1.a が本 cycle で走っていない。**`exit 1`** で落とし ステップ 6.1.a **step 0** へ戻す。marker はここでは削除しない (削除すると 6.1.a を実行せず再評価だけで通せる)。**保存失敗では発火しない** — helper は `LOCAL_SAVE_FAILED` でも marker を削除するため （完走 marker と保存成功の検証は別責務。`review-finish` は保存失敗で停止する） |
 | `save_pending_marker_placeholder_residue` | `REVIEW_SAVE_GATE=degraded` | `{save_pending_marker}` が literal substitute されず `{...}` 形状のまま到達。機械強制を skip し `**Check**` の prose 判定のみで続行 |
 | `save_pending_marker_unavailable` | `REVIEW_SAVE_GATE=degraded` | ステップ 5.3.0.M step 2 が marker を作成できなかった (read-only な `${TMPDIR}` 等、同 step で WARNING 済)。同上 |
 
-**Persistence error contract**: 従来の16種の環境・永続化 reason は `signal_aborted` を除き非ブロッキングのまま維持する。一方、`gate_not_applied` / `gate_record_mismatch` / `timestamp_not_injected` は JSON provenance の caller 契約違反なので helper が rc=1 を返し、ステップ 6 を停止する。未適用 JSON を会話コンテキストだけで先へ送る fallback は作らない。
+**Persistence error contract**: `review-finish` は helper の診断を保持し、保存未確認なら rc にかかわらず停止する。manifest / raw / content を保持して同じ cycle で再試行する。会話や PR コメントを保存成功の代用にしない。
