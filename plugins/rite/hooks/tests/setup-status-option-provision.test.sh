@@ -134,6 +134,23 @@ mutation_count() {
   fi
 }
 
+migration_mode() {
+  (
+    cd "$1" || exit 1
+    source "$PLUGIN_ROOT/hooks/scripts/lib/projects-status-config.sh"
+    projects_status_mode
+  )
+}
+
+echo "=== T-routing: new / existing の排他的経路を固定 ==="
+assert_grep "T-routing selection retained" "$SKILL" 'project_selection=new|existing'
+assert_grep "T-routing new enters provisioning" "$SKILL" 'project_selection=new.*3\.3\.6'
+assert_grep "T-routing existing enters verification" "$SKILL" 'project_selection=existing.*3\.4'
+assert_grep "T-routing provisioning is new-only" "$SKILL" 'project_selection=new.*ときだけ実行'
+assert_grep "T-routing verification is existing-only" "$SKILL" 'project_selection=existing.*ときだけ実行'
+assert_grep "T-routing final config is reverified" "$SKILL" '書き込んだ最終 config.*STATUS_OPTION_EXISTING_VERIFY'
+assert_grep "T-routing preview names role migration" "$SKILL" 'Status role migration: \{status_role_migration_status\}'
+
 echo "=== T-static-cancelled: 新規 Project provisioning の required 5 組 ==="
 assert_grep_in_section "T-static Todo/GRAY/Not started" "$SKILL" \
   'STATUS_OPTION_UNION_PROVISION' '^### 3.4' \
@@ -349,6 +366,48 @@ assert "T-existing-legacy-no-cancelled mutation zero" "0" "$(mutation_count "$d_
 assert_grep "T-existing-legacy-no-cancelled suggests board column" "$d_legacy_verify/stderr" 'Cancelled を追加'
 assert_grep "T-existing-legacy-no-cancelled suggests explicit config" "$d_legacy_verify/stderr" 'cancelled を省略した explicit role 設定'
 
+echo "=== T-existing-nested-cwd: repository root の explicit config を使う ==="
+d_nested="$WORKDIR/verify-nested/repo"
+mkdir -p "$d_nested/sub"
+git -C "$d_nested" init -q
+printf '%s\n' "$status_field_list" > "$d_nested/field-list.json"
+printf '%s\n' '{"data":{"node":{"options":[{"name":"To-Do"},{"name":"In progress"},{"name":"In Review"},{"name":"Done"}]}}}' > "$d_nested/options.json"
+cat > "$d_nested/rite-config.yml" <<'YAML'
+github:
+  projects:
+    fields:
+      status:
+        options:
+          - { role: todo, name: "To-Do" }
+          - { role: in_progress, name: "In progress" }
+          - { role: in_review, name: "In Review" }
+          - { role: done, name: "Done" }
+YAML
+rc=$(cd "$d_nested/sub" && MOCK_GH_DIR="$d_nested" PATH="$MOCKBIN:$PATH" bash "$VERIFY" >"$d_nested/stdout" 2>"$d_nested/stderr" && echo 0 || echo $?)
+assert "T-existing-nested-cwd exits 0" "0" "$rc"
+assert_grep "T-existing-nested-cwd uses custom names" "$d_nested/stdout" 'STATUS_OPTIONS_VERIFY=ok'
+assert "T-existing-nested-cwd mutation zero" "0" "$(mutation_count "$d_nested")"
+assert "T-existing-nested-cwd creates no nested config" "0" "$([ -e "$d_nested/sub/rite-config.yml" ] && echo 1 || echo 0)"
+
+echo "=== T-existing-post-overwrite: 最終 config が board と不一致なら停止 ==="
+cat > "$d_nested/rite-config.yml" <<'YAML'
+github:
+  projects:
+    fields:
+      status:
+        options:
+          - { role: todo, name: "Todo" }
+          - { role: in_progress, name: "In Progress" }
+          - { role: in_review, name: "In Review" }
+          - { role: done, name: "Done" }
+          - { role: cancelled, name: "Cancelled" }
+YAML
+: > "$d_nested/calls"
+rc=$(cd "$d_nested/sub" && MOCK_GH_DIR="$d_nested" PATH="$MOCKBIN:$PATH" bash "$VERIFY" >"$d_nested/post-stdout" 2>"$d_nested/post-stderr" && echo 0 || echo $?)
+assert "T-existing-post-overwrite exits non-zero" "1" "$rc"
+assert_grep "T-existing-post-overwrite reports final mismatch" "$d_nested/post-stdout" 'STATUS_OPTIONS_VERIFY=error; missing=\["Todo","In Progress","Cancelled"\]'
+assert "T-existing-post-overwrite mutation zero" "0" "$(mutation_count "$d_nested")"
+
 echo "=== T-upgrade-role-migration: legacy は5 role化、explicit不変、invalid無変更 ==="
 d_migrate="$WORKDIR/migrate-legacy"
 mkdir -p "$d_migrate"
@@ -371,6 +430,52 @@ assert "T-upgrade legacy exits 0" "0" "$rc"
 assert "T-upgrade legacy has five roles" "5" "$(grep -c 'role:' "$d_migrate/rite-config.yml")"
 assert_not_grep "T-upgrade legacy removes status default" "$d_migrate/rite-config.yml" 'name: "Todo", default: true'
 assert_grep "T-upgrade legacy adds cancelled" "$d_migrate/rite-config.yml" 'role: cancelled, name: "Cancelled"'
+assert "T-upgrade legacy result is resolver-valid explicit" "explicit" "$(migration_mode "$d_migrate")"
+assert_grep "T-upgrade legacy preserves adjacent section" "$d_migrate/rite-config.yml" '^      priority:'
+
+d_empty="$WORKDIR/migrate-empty-nested/repo"
+mkdir -p "$d_empty/sub"
+git -C "$d_empty" init -q
+cat > "$d_empty/rite-config.yml" <<'YAML'
+github:
+  projects:
+    fields:
+      status:
+        options: []
+      priority:
+        enabled: true
+YAML
+rc=$(cd "$d_empty/sub" && bash "$MIGRATION" >"$d_empty/stdout" 2>"$d_empty/stderr" && echo 0 || echo $?)
+assert "T-upgrade empty nested exits 0" "0" "$rc"
+assert "T-upgrade empty nested result is explicit" "explicit" "$(migration_mode "$d_empty")"
+assert_grep "T-upgrade empty nested preserves adjacent section" "$d_empty/rite-config.yml" '^      priority:'
+assert "T-upgrade empty nested creates no cwd config" "0" "$([ -e "$d_empty/sub/rite-config.yml" ] && echo 1 || echo 0)"
+assert "T-upgrade empty nested leaves no config temp" "0" "$(find "$d_empty" -maxdepth 1 -name 'rite-config.yml.status-role.*' | wc -l | tr -d ' ')"
+
+d_block="$WORKDIR/migrate-block"
+mkdir -p "$d_block"
+cat > "$d_block/rite-config.yml" <<'YAML'
+github:
+ projects:
+  fields:
+   status:
+    options:
+     - name: "Todo"
+       default: true
+
+     # option 間のコメントも旧配列の一部
+     - name: "In Progress"
+     - name: "In Review"
+     - name: "Done"
+   priority:
+    enabled: true
+YAML
+rc=$(cd "$d_block" && bash "$MIGRATION" >stdout 2>stderr && echo 0 || echo $?)
+assert "T-upgrade block/blank/variable-indent exits 0" "0" "$rc"
+assert "T-upgrade block/blank/variable-indent result is explicit" "explicit" "$(migration_mode "$d_block")"
+assert "T-upgrade block/blank/variable-indent has five roles" "5" "$(grep -c 'role:' "$d_block/rite-config.yml")"
+assert_not_grep "T-upgrade block/blank removes all unroled options" "$d_block/rite-config.yml" '^[[:space:]]*- name:'
+assert_grep "T-upgrade block/blank preserves adjacent section" "$d_block/rite-config.yml" '^[[:space:]]*priority:'
 
 d_explicit="$WORKDIR/migrate-explicit"
 mkdir -p "$d_explicit"
@@ -405,6 +510,75 @@ before=$(cksum "$d_invalid/rite-config.yml")
 rc=$(cd "$d_invalid" && bash "$MIGRATION" >stdout 2>stderr && echo 0 || echo $?)
 assert "T-upgrade invalid exits non-zero" "1" "$rc"
 assert "T-upgrade invalid unchanged" "$before" "$(cksum "$d_invalid/rite-config.yml")"
+
+d_missing_options="$WORKDIR/migrate-missing-options"
+mkdir -p "$d_missing_options"
+cat > "$d_missing_options/rite-config.yml" <<'YAML'
+github:
+  projects:
+    fields:
+      priority:
+        enabled: true
+YAML
+before=$(cksum "$d_missing_options/rite-config.yml")
+rc=$(cd "$d_missing_options" && bash "$MIGRATION" >stdout 2>stderr && echo 0 || echo $?)
+assert "T-upgrade missing options defers to back-add" "0" "$rc"
+assert "T-upgrade missing options leaves config unchanged" "$before" "$(cksum "$d_missing_options/rite-config.yml")"
+assert_grep "T-upgrade missing options emits noop" "$d_missing_options/stdout" 'STATUS_OPTIONS_ROLE_MIGRATION=noop; reason=status_options_absent'
+
+d_tmp_fail="$WORKDIR/migrate-tmp-fail"
+mkdir -p "$d_tmp_fail/bin"
+cat > "$d_tmp_fail/rite-config.yml" <<'YAML'
+github:
+  projects:
+    fields:
+      status:
+        options:
+          - { name: "Todo" }
+          - { name: "In Progress" }
+          - { name: "In Review" }
+          - { name: "Done" }
+YAML
+cat > "$d_tmp_fail/bin/mktemp" <<'MOCK'
+#!/usr/bin/env bash
+exit 1
+MOCK
+chmod +x "$d_tmp_fail/bin/mktemp"
+rc=$(cd "$d_tmp_fail" && PATH="$d_tmp_fail/bin:$PATH" bash "$MIGRATION" >stdout 2>stderr && echo 0 || echo $?)
+assert "T-upgrade mktemp failure exits non-zero" "1" "$rc"
+assert_grep "T-upgrade mktemp failure emits marker" "$d_tmp_fail/stdout" 'STATUS_OPTIONS_ROLE_MIGRATION=error; reason=tmp_create_failed'
+
+d_signal="$WORKDIR/migrate-signal"
+signal_tmp="$WORKDIR/migrate-signal-tmp"
+mkdir -p "$d_signal/bin" "$signal_tmp"
+cat > "$d_signal/rite-config.yml" <<'YAML'
+github:
+  projects:
+    fields:
+      status:
+        options:
+          - { name: "Todo" }
+          - { name: "In Progress" }
+          - { name: "In Review" }
+          - { name: "Done" }
+YAML
+actual_awk=$(command -v awk)
+cat > "$d_signal/bin/awk" <<MOCK
+#!/usr/bin/env bash
+count=0
+[ -f '$d_signal/awk-count' ] && count=\$(cat '$d_signal/awk-count')
+count=\$((count + 1))
+printf '%s\n' "\$count" > '$d_signal/awk-count'
+if [ "\$count" -eq 1 ]; then exec '$actual_awk' "\$@"; fi
+kill -TERM "\$PPID"
+sleep 1
+exit 143
+MOCK
+chmod +x "$d_signal/bin/awk"
+rc=$(cd "$d_signal" && TMPDIR="$signal_tmp" PATH="$d_signal/bin:$PATH" bash "$MIGRATION" >stdout 2>stderr && echo 0 || echo $?)
+assert "T-upgrade signal exits 143" "143" "$rc"
+assert "T-upgrade signal removes scratch" "0" "$(find "$signal_tmp" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')"
+assert "T-upgrade signal preserves config" "legacy" "$(migration_mode "$d_signal")"
 
 if ! print_summary "$(basename "$0")" "setup Status option provisioning / verification / role migration"; then
   exit 1

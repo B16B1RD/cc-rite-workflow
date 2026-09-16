@@ -201,6 +201,8 @@ fail-loud する。
 provisioning は setup がその場で新規作成した Project に限定する。既存 Project は利用者の運用中
 スキーマであり、足りない field / option を setup が補うと、意図した表示名と標準名が並存する。
 既存 Project では設定名の完全一致だけを検証し、不足名と実 option 名を表示して停止する。
+検証後に template で config を上書きした場合も最終 config で再検証する。検証時と完了時で
+role mapping が変わると、setup が成功した直後から更新 helper が option を解決できないためである。
 
 Phase 3 は config 生成より前に走るため、既存 `rite-config.yml` があれば resolver を使い、まだ
 存在しなければ legacy の標準 5 role と既定フィールド候補を使う。config 不在を invalid として
@@ -212,6 +214,11 @@ legacy 配列には role が無く、表示名から利用者の意図を復元�
 要素数を解釈せず英語標準 5 role へ置換する。これにより、設定が 4 行でも実ボードが 5 列ある
 環境で cancelled を誤って省略しない。既に explicit な設定は利用者の対応付けなので保持し、
 invalid 設定は一部だけを書き換えず backup を残して停止する。
+
+resolver は config を repository root から読むため、検証と移行の存在判定・書込先も同じ root に
+揃える。移行は固定インデントや option の連続配置を前提にせず YAML の階層境界で配列全体を置換し、
+resolver で explicit と再判定できた tempfile だけを同一ディレクトリ上で原子的に置き換える。
+Status options 自体が無い legacy config は後続の missing-sub-key back-add に委ねる。
 
 ## ssh-alias-sandbox
 

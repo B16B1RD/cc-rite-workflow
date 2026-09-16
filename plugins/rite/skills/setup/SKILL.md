@@ -406,8 +406,10 @@ echo "[CONTEXT] STATUS_OPTIONS_PROVISION=updated; added=$(printf '%s' "$missing"
 # STATUS_OPTION_EXISTING_VERIFY
 plugin_root="{plugin_root}"; owner="{owner}"; project_number="{project-number}"
 source "$plugin_root/hooks/scripts/lib/projects-status-config.sh"
+project_root=$(git rev-parse --show-toplevel 2>/dev/null) || project_root="$PWD"
+config="$project_root/rite-config.yml"
 roles=(todo in_progress in_review done cancelled); required=(); candidates=()
-if [ -r rite-config.yml ]; then
+if [ -r "$config" ]; then
   mode=$(projects_status_mode) || { echo '[CONTEXT] STATUS_OPTIONS_VERIFY=error; reason=invalid_config'; exit 1; }
   mapfile -t candidates < <(projects_status_field_candidates) || exit 1
   for role in "${roles[@]}"; do name=$(projects_status_name_for_role "$role") || exit 1; [ -n "$name" ] && required+=("$name"); done
@@ -577,6 +579,8 @@ Generate `rite-config.yml` from the template config file.
 
 **Step 4**: Write the result to `rite-config.yml` in the project root using the Write tool.
 
+**Step 5**: `project_selection=existing` の場合は、書き込んだ最終 config を使って 3.4 の `STATUS_OPTION_EXISTING_VERIFY` bash block だけを再実行する。`ok` なら Phase 4.2 へ進み、`error` / marker 不在 / bash 非 0 なら setup を完了扱いにせず停止する。Phase 3.5 へは戻らず、既存 Project に provisioning を実行しない。`project_selection=new` はこの再検証を skip して Phase 4.2 へ進む。
+
 > **Note on wiki section**: 新規生成は Advanced 境界より上を抽出するだけ。追加 append は不要。
 rationale: references/rationale.md#wiki-section-new-gen
 
@@ -666,11 +670,13 @@ Display the changes to the user:
 新規セクション追加: {new_sections}
 サブキー補完: {new_subkeys}
 multi_session back-add: {multi_session_status}
+Status role migration: {status_role_migration_status}
 Advanced セクション追加（コメントアウト）: {advanced_sections}
 保持される既存設定: {preserved_keys}
 ```
 
 > `{multi_session_status}` は back-add を実行した場合 `enabled: true`、既存ブロックが存在し変更しなかった場合 `（既存のため変更なし）` を表示する。
+> `{status_role_migration_status}` は legacy の場合 `legacy → explicit 5 roles`、explicit の場合 `変更なし`、invalid の場合 `適用前に停止` を表示する。
 
 Ask with `AskUserQuestion`:
 
@@ -690,21 +696,62 @@ Status options の移行は config を変更する前に resolver で検証す�
 
 ```bash
 # STATUS_OPTIONS_ROLE_MIGRATION
-plugin_root="{plugin_root}"; config=rite-config.yml
+plugin_root="{plugin_root}"
 source "$plugin_root/hooks/scripts/lib/projects-status-config.sh"
+project_root=$(git rev-parse --show-toplevel 2>/dev/null) || project_root="$PWD"
+config="$project_root/rite-config.yml"
 mode=$(projects_status_mode) || { echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=error; reason=invalid_config'; exit 1; }
 if [ "$mode" = explicit ]; then echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=noop; reason=already_explicit'; else
-  tmp=$(mktemp "${config}.status-role.XXXXXX") || exit 1
-  if ! awk '
-    /^      status:[[:space:]]*$/ { in_status=1 }
-    in_status && /^        options:[[:space:]]*$/ { print; print "          - { role: todo, name: \"Todo\" }\n          - { role: in_progress, name: \"In Progress\" }\n          - { role: in_review, name: \"In Review\" }\n          - { role: done, name: \"Done\" }\n          - { role: cancelled, name: \"Cancelled\" }"; replacing=1; found=1; next }
-    replacing && /^          / { next }
-    replacing { replacing=0; in_status=0 }
-    { print }
-    END { if (!found) exit 2 }
-  ' "$config" > "$tmp"; then rm -f "$tmp"; echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=error; reason=status_options_missing'; exit 1; fi
-  mv "$tmp" "$config" || { rm -f "$tmp"; echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=error; reason=write_failed'; exit 1; }
-  echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=updated; roles=5'
+  scratch=$(mktemp -d "${TMPDIR:-/tmp}/rite-status-role.XXXXXX") || { echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=error; reason=tmp_create_failed'; exit 1; }
+  tmp=""
+  _rite_status_role_cleanup() { [ -n "$tmp" ] && rm -f -- "$tmp"; rm -f -- "$scratch/rite-config.yml"; rmdir "$scratch" 2>/dev/null || true; }
+  trap '_rite_status_role_cleanup; exit 130' INT
+  trap '_rite_status_role_cleanup; exit 143' TERM
+  trap '_rite_status_role_cleanup; exit 129' HUP
+  trap '_rite_status_role_cleanup' EXIT
+  awk '
+    function leading(s) { match(s, /^[ \t]*/); return RLENGTH }
+    BEGIN {
+      while ((getline raw) > 0) {
+        indent=leading(raw); line=substr(raw, indent+1)
+        if (replacing) {
+          if (line ~ /^[ \t]*$/ || line ~ /^#/) { if (indent > options_indent) continue; print raw; continue }
+          if (indent > options_indent) continue
+          replacing=0
+        }
+        if (line ~ /^[ \t]*$/ || line ~ /^#/) { print raw; continue }
+        while (depth && indent <= indents[depth]) depth--
+        key=line; sub(/[ \t]*:.*/, "", key)
+        path=""; for (i=1; i<=depth; i++) path=path keys[i] "."; path=path key
+        if (path == "github.projects.fields.status.options") {
+          prefix=substr(raw, 1, indent)
+          print prefix "options:"
+          print prefix "  - { role: todo, name: \"Todo\" }"
+          print prefix "  - { role: in_progress, name: \"In Progress\" }"
+          print prefix "  - { role: in_review, name: \"In Review\" }"
+          print prefix "  - { role: done, name: \"Done\" }"
+          print prefix "  - { role: cancelled, name: \"Cancelled\" }"
+          replacing=1; options_indent=indent; found=1; continue
+        }
+        print raw
+        if (line ~ /^[a-zA-Z_][a-zA-Z_0-9-]*[ \t]*:/) { depth++; indents[depth]=indent; keys[depth]=key }
+      }
+      if (!found) exit 3
+      exit 0
+    }
+  ' "$config" > "$scratch/rite-config.yml"
+  transform_rc=$?
+  if [ "$transform_rc" -eq 3 ]; then _rite_status_role_cleanup; trap - EXIT INT TERM HUP; echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=noop; reason=status_options_absent'; else
+    [ "$transform_rc" -eq 0 ] || { echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=error; reason=transform_failed'; exit 1; }
+    transformed_mode=$(cd "$scratch" && projects_status_mode) || { echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=error; reason=transformed_invalid'; exit 1; }
+    [ "$transformed_mode" = explicit ] || { echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=error; reason=transformed_not_explicit'; exit 1; }
+    tmp=$(mktemp "${config}.status-role.XXXXXX") || { echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=error; reason=tmp_create_failed'; exit 1; }
+    cp -p "$config" "$tmp" || { echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=error; reason=metadata_copy_failed'; exit 1; }
+    cat "$scratch/rite-config.yml" > "$tmp" || { echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=error; reason=write_failed'; exit 1; }
+    mv "$tmp" "$config" || { echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=error; reason=write_failed'; exit 1; }
+    tmp=""; _rite_status_role_cleanup; trap - EXIT INT TERM HUP
+    echo '[CONTEXT] STATUS_OPTIONS_ROLE_MIGRATION=updated; roles=5'
+  fi
 fi
 ```
 
