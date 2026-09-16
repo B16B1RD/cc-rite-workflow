@@ -217,7 +217,7 @@ if acquire_wm_lock "$LOCKDIR"; then
 fi
 
 # --- PR Ready/Status mismatch reconciliation safety net ---
-# When workflow active + PR exists + PR is Ready (isDraft=false) + Status != In Review,
+# When workflow active + PR exists + PR is Ready (isDraft=false) + Status role is todo / in_progress,
 # attempt reconciliation by re-invoking projects-status-update.sh. On failure, print a
 # plain WARNING to stderr so a silent Status mismatch never persists past compaction.
 #
@@ -243,6 +243,7 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
     reconcile_err=""
     reconcile_jq_err=""
     reconcile_parse_err=""
+    cfg_err=""
     _pc_cleanup() {
       # The `[ -n "$f" ]` guard is defense-in-depth: even though the `2>/dev/null`
       # redirect below already suppresses BSD `rm -f ""` stderr noise
@@ -253,7 +254,7 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
       for f in "${pr_view_err:-}" "${repo_view_err:-}" "${git_remote_err:-}" \
                "${jq_owner_err:-}" "${jq_name_err:-}" \
                "${gql_err:-}" "${jq_err:-}" "${reconcile_err:-}" \
-               "${reconcile_jq_err:-}" "${reconcile_parse_err:-}"; do
+               "${reconcile_jq_err:-}" "${reconcile_parse_err:-}" "${cfg_err:-}"; do
         [ -n "$f" ] && rm -f "$f" 2>/dev/null || true
       done
     }
@@ -449,6 +450,22 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
         exit 0
       fi
       if [ "$PROJECTS_ENABLED" = "true" ] && [ -n "$PROJECT_NUMBER" ] && [ -n "$REPO_OWNER" ] && [ -n "$REPO_NAME" ] && [ "$ISSUE" != "unknown" ]; then
+        # Column names are mapped to roles through rite-config.yml before any comparison.
+        # The resolver is sourced here, inside the sub-shell, so a distribution missing
+        # the lib degrades to a WARNING + skip instead of aborting every compaction under
+        # set -e; it reads the config from the git toplevel (or cwd), hence the cd to
+        # STATE_ROOT — the same file the projects.enabled check above read.
+        # shellcheck source=scripts/lib/projects-status-config.sh
+        if ! source "$SCRIPT_DIR/scripts/lib/projects-status-config.sh" 2>/dev/null; then
+          echo "[rite] WARNING: post-compact: Issue #$ISSUE — Status role resolver unavailable ($SCRIPT_DIR/scripts/lib/projects-status-config.sh); PR Status reconciliation could not run (post_compact_status_config_unavailable)" >&2
+          exit 0
+        fi
+        cfg_err=$(mktemp "${TMPDIR:-/tmp}/rite-pc-cfg-err-XXXXXX") || cfg_err=""
+        if ! FIELD_CANDIDATES=$(cd "$STATE_ROOT" && projects_status_field_candidates 2>"${cfg_err:-/dev/null}"); then
+          cfg_err_oneline=$(head -c 200 "${cfg_err:-/dev/null}" 2>/dev/null | tr '\n' ' ' | neutralize_ctrl --c0-only)
+          echo "[rite] WARNING: post-compact: Issue #$ISSUE — Status configuration in rite-config.yml is invalid (stderr=$cfg_err_oneline); PR Status reconciliation could not run (post_compact_status_config_invalid)" >&2
+          exit 0
+        fi
         if CURRENT_STATUS=$(cd "$STATE_ROOT" && gh api graphql -f query='
 query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
@@ -469,8 +486,9 @@ query($owner: String!, $repo: String!, $number: Int!) {
     }
   }
 }' -f owner="$REPO_OWNER" -f repo="$REPO_NAME" -F number="$ISSUE" 2>"${gql_err:-/dev/null}" \
-          | jq -r --argjson pn "$PROJECT_NUMBER" \
-            '[.data.repository.issue.projectItems.nodes[] | select(.project.number == $pn) | .fieldValues.nodes[] | select(.field.name == "Status") | .name][0] // empty' 2>"${jq_err:-/dev/null}"); then
+          | jq -r --argjson pn "$PROJECT_NUMBER" --arg candidates "$FIELD_CANDIDATES" \
+            '($candidates | split("\n") | map(select(. != ""))) as $fields
+             | [.data.repository.issue.projectItems.nodes[] | select(.project.number == $pn) | .fieldValues.nodes[] | select((.field.name // "") as $fn | $fields | index($fn) != null) | .name][0] // empty' 2>"${jq_err:-/dev/null}"); then
           :
         else
           gql_rc=$?
@@ -480,12 +498,26 @@ query($owner: String!, $repo: String!, $number: Int!) {
           CURRENT_STATUS=""
         fi
 
-        # Done / Cancelled are the terminal Status set (references/projects-integration.md,
-        # "Terminal Status Set"). A terminal row is finished, so pulling it back to
-        # In Review would undo a deliberate decision — Cancelled is excluded for exactly
-        # the same reason Done always has been.
-        if [ -n "$CURRENT_STATUS" ] && [ "$CURRENT_STATUS" != "In Review" ] && [ "$CURRENT_STATUS" != "Done" ] && [ "$CURRENT_STATUS" != "Cancelled" ]; then
-          echo "[rite] ⚠️ post-compact mismatch detected: Issue #$ISSUE PR=#$PR isDraft=false Status=\"$CURRENT_STATUS\" (expected In Review)" >&2
+        # Only a board still on todo or in_progress is pulled forward to in_review. done /
+        # cancelled are the terminal roles (references/projects-integration.md,
+        # "Terminal Status Set"): a terminal row is finished, and pulling it back would
+        # undo a deliberate decision. A column that maps to no role is left alone — the
+        # hook cannot know what a column it does not recognise means, so it names the
+        # column and moves on instead of guessing.
+        CURRENT_ROLE=""
+        if [ -n "$CURRENT_STATUS" ]; then
+          if ! CURRENT_ROLE=$(cd "$STATE_ROOT" && projects_status_role_for_name "$CURRENT_STATUS" 2>"${cfg_err:-/dev/null}"); then
+            cfg_err_oneline=$(head -c 200 "${cfg_err:-/dev/null}" 2>/dev/null | tr '\n' ' ' | neutralize_ctrl --c0-only)
+            echo "[rite] WARNING: post-compact: Issue #$ISSUE — Status configuration in rite-config.yml is invalid (stderr=$cfg_err_oneline); PR Status reconciliation could not run (post_compact_status_config_invalid)" >&2
+            exit 0
+          fi
+          if [ -z "$CURRENT_ROLE" ]; then
+            echo "[rite] WARNING: post-compact: Issue #$ISSUE — board Status column \"$(printf '%s' "$CURRENT_STATUS" | neutralize_ctrl --c0-only)\" maps to no role in rite-config.yml (github.projects.fields.status.options); left untouched (post_compact_status_unmapped)" >&2
+          fi
+        fi
+        [ -n "$cfg_err" ] && rm -f "$cfg_err"
+        if [ "$CURRENT_ROLE" = "todo" ] || [ "$CURRENT_ROLE" = "in_progress" ]; then
+          echo "[rite] ⚠️ post-compact mismatch detected: Issue #$ISSUE PR=#$PR isDraft=false Status=\"$CURRENT_STATUS\" role=$CURRENT_ROLE (expected in_review)" >&2
           # STATE_ROOT existence is already enforced at the top of the sub-shell
           # (early state_root_inaccessible WARNING + exit 0), so this reconciliation
           # block can call reconcile directly without re-checking.
@@ -512,7 +544,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
             RECONCILE_RESULT=$(cd "$STATE_ROOT" && bash "$PLUGIN_ROOT_PC/scripts/projects-status-update.sh" "$JQ_PAYLOAD" 2>"${reconcile_err:-/dev/null}") || RECONCILE_RC=$?
             RECONCILE_STATUS=$(printf '%s' "$RECONCILE_RESULT" | jq -r '.result // empty' 2>"${reconcile_parse_err:-/dev/null}") || RECONCILE_STATUS=""
             if [ "$RECONCILE_STATUS" = "updated" ]; then
-              echo "[rite] ✅ post-compact reconciliation succeeded: Issue #$ISSUE Status → In Review" >&2
+              echo "[rite] ✅ post-compact reconciliation succeeded: Issue #$ISSUE Status → in_review" >&2
             else
               reconcile_err_oneline=$(head -c 200 "${reconcile_err:-/dev/null}" 2>/dev/null | tr '\n' ' ' | neutralize_ctrl --c0-only)
               # RECONCILE_STATUS が空で RECONCILE_RESULT が非空なら、reconcile script は応答したが

@@ -5,31 +5,36 @@
 # behind where the PR already is. Outputs JSON to stdout and a warning summary to stderr.
 # Optionally attempts reconciliation when --reconcile is passed.
 #
-# Two rules, evaluated per scanned PR:
+# Two rules, evaluated per scanned PR on the Status *role* the board column resolves to
+# (rite-config.yml github.projects.fields.status.options, read by
+# hooks/scripts/lib/projects-status-config.sh — the column name itself is never compared):
 #
-#   Todo residue         Status = "Todo" with ANY open PR, draft included → expected
-#                        "In Progress". A draft PR means /rite:open already ran, so a
-#                        board still on Todo means its Status transition never landed.
+#   todo residue         role = todo with ANY open PR, draft included → expected
+#                        in_progress. A draft PR means /rite:open already ran, so a
+#                        board still on todo means its Status transition never landed.
 #                        Drafts must be in scope: the whole iterate loop happens while
 #                        the PR is a draft, which is exactly the window a ready-only
 #                        scan cannot see.
-#   In Progress residue  Status = "In Progress" with a Ready PR (isDraft=false) →
-#                        expected "In Review". The isDraft=false qualifier belongs to this
-#                        rule alone: "In Progress" during a draft is the correct state,
+#   in_progress residue  role = in_progress with a Ready PR (isDraft=false) →
+#                        expected in_review. The isDraft=false qualifier belongs to this
+#                        rule alone: in_progress during a draft is the correct state,
 #                        not a mismatch.
 #
 # An Issue that is not on the project board is never a mismatch — there is no board
 # Status to reconcile (same on-board policy as hooks/scripts/projects-board-drift-check.sh).
+# A column that maps to no role (one the user added, or a board the config does not
+# describe) is never touched either: the Issue is skipped with a WARNING naming the
+# column, because the watchdog cannot know what the column means.
 #
 # Usage:
 #   bash watchdog-status-mismatch.sh [options]
 #
 # Options:
 #   --dry-run         Report only; do not reconcile (default)
-#   --reconcile      Attempt to update each mismatched Issue Status to the status the
-#                    fired rule expects (Todo → "In Progress", In Progress → "In Review")
+#   --reconcile      Attempt to update each mismatched Issue Status to the role the
+#                    fired rule expects (todo → in_progress, in_progress → in_review)
 #                    via projects-status-update.sh. A single hardcoded target would push
-#                    a Todo residue straight to "In Review", manufacturing the very gap
+#                    a todo residue straight to in_review, manufacturing the very gap
 #                    this watchdog exists to report. Failures are logged but never block.
 #   --limit N        Maximum PRs to scan (default: 50)
 #   --quiet          Suppress stderr warnings (JSON output still produced)
@@ -48,6 +53,8 @@
 #     ],
 #     "warnings": []
 #   }
+#   current_status / expected_status carry the board's own column names; expected_status
+#   is the configured name of the role the fired rule expects.
 #
 # Exit codes:
 #   0  success, no mismatches
@@ -76,19 +83,20 @@ Scans Issues linked to OPEN PRs and detects ones whose GitHub Projects Status la
 where the PR already is. Outputs JSON to stdout and a warning summary to stderr.
 Optionally attempts reconciliation when --reconcile is passed.
 
-Rules:
-  Todo residue         Status "Todo" + any open PR (draft included) -> expected "In Progress"
-  In Progress residue  Status "In Progress" + Ready PR (isDraft=false) -> expected "In Review"
+Rules (on the Status role the board column resolves to via rite-config.yml):
+  todo residue         role todo + any open PR (draft included) -> expected in_progress
+  in_progress residue  role in_progress + Ready PR (isDraft=false) -> expected in_review
 
 Issues that are not on the project board are never reported (no board Status to reconcile).
+Issues on a column that maps to no role are skipped with a WARNING naming the column.
 
 Usage:
   bash watchdog-status-mismatch.sh [options]
 
 Options:
   --dry-run         Report only; do not reconcile (default)
-  --reconcile      Attempt to update each mismatched Issue Status to the status the fired
-                   rule expects (Todo -> "In Progress", In Progress -> "In Review") via
+  --reconcile      Attempt to update each mismatched Issue Status to the role the fired
+                   rule expects (todo -> in_progress, in_progress -> in_review) via
                    projects-status-update.sh. Failures are logged but never block.
   --limit N        Maximum PRs to scan (default: 50)
   --quiet          Suppress stderr warnings (JSON output still produced)
@@ -111,6 +119,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(dirname "$SCRIPT_DIR")"
 # shellcheck source=../hooks/control-char-neutralize.sh
 source "$SCRIPT_DIR/../hooks/control-char-neutralize.sh"
+# shellcheck source=../hooks/scripts/lib/projects-status-config.sh
+source "$SCRIPT_DIR/../hooks/scripts/lib/projects-status-config.sh"
 
 # Find repo root (look upward for rite-config.yml or .git)
 CWD="$(pwd)"
@@ -133,6 +143,23 @@ if [ "$PROJECTS_ENABLED" != "true" ] || [ -z "$PROJECT_NUMBER" ]; then
   exit 0
 fi
 
+# --- Status role configuration ---
+# The resolver reads rite-config.yml from the git toplevel (or cwd); run it from REPO_ROOT
+# so it reads the same file the projects-enabled gate above did. A configuration it
+# rejects cannot map any column, so the scan cannot run: fatal, like a missing config.
+cfg_err=$(mktemp "${TMPDIR:-/tmp}/rite-watchdog-cfg-err-XXXXXX") || cfg_err=""
+report_config_error() {
+  echo "ERROR: Status configuration in rite-config.yml is invalid; cannot map board columns to roles" >&2
+  if [ -n "$cfg_err" ] && [ -s "$cfg_err" ]; then head -5 "$cfg_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2; fi
+  echo "  対処: github.projects.fields.status.options を確認してください" >&2
+  rm -f "${cfg_err:-}"
+  exit 1
+}
+FIELD_CANDIDATES=$(cd "$REPO_ROOT" && projects_status_field_candidates 2>"${cfg_err:-/dev/null}") || report_config_error
+IN_PROGRESS_NAME=$(cd "$REPO_ROOT" && projects_status_name_for_role in_progress 2>"${cfg_err:-/dev/null}") || report_config_error
+IN_REVIEW_NAME=$(cd "$REPO_ROOT" && projects_status_name_for_role in_review 2>"${cfg_err:-/dev/null}") || report_config_error
+rm -f "${cfg_err:-}"; cfg_err=""
+
 # --- Trap setup: tempfile orphan 防止 (EXIT/INT/TERM/HUP) ---
 # stderr-capture symmetry contract: this script and hooks/post-compact.sh form
 # the 2-site set for gh/jq stderr discrimination. Update both together if the
@@ -148,8 +175,9 @@ pr_list_err=""
 gql_err=""
 jq_err=""
 reconcile_err=""
+cfg_err=""
 _rite_watchdog_cleanup() {
-  rm -f "${repo_view_err:-}" "${git_remote_err:-}" "${pr_list_err:-}" "${gql_err:-}" "${jq_err:-}" "${reconcile_err:-}"
+  rm -f "${repo_view_err:-}" "${git_remote_err:-}" "${pr_list_err:-}" "${gql_err:-}" "${jq_err:-}" "${reconcile_err:-}" "${cfg_err:-}"
 }
 trap 'rc=$?; _rite_watchdog_cleanup; exit $rc' EXIT
 trap '_rite_watchdog_cleanup; exit 130' INT
@@ -274,8 +302,9 @@ query($owner: String!, $repo: String!, $number: Int!) {
     }
   }
 }' -f owner="$REPO_OWNER" -f repo="$REPO_NAME" -F number="$issue_number" 2>"${gql_err:-/dev/null}" \
-      | jq -r --argjson pn "$PROJECT_NUMBER" \
-        '[.data.repository.issue.projectItems.nodes[]? | select(.project.number == $pn) | .fieldValues.nodes[] | select(.field.name == "Status") | .name][0] // empty' 2>"${jq_err:-/dev/null}"); then
+      | jq -r --argjson pn "$PROJECT_NUMBER" --arg candidates "$FIELD_CANDIDATES" \
+        '($candidates | split("\n") | map(select(. != ""))) as $fields
+         | [.data.repository.issue.projectItems.nodes[]? | select(.project.number == $pn) | .fieldValues.nodes[] | select((.field.name // "") as $fn | $fields | index($fn) != null) | .name][0] // empty' 2>"${jq_err:-/dev/null}"); then
     # gh / jq pipeline 失敗 — silent skip せず warnings に記録 (debug 可能性向上)
     # 4-site stderr root cause attribution: gh_stderr と jq_stderr を独立表示
     if [ "$QUIET" != "true" ]; then
@@ -292,27 +321,38 @@ query($owner: String!, $repo: String!, $number: Int!) {
   gql_err=""
   jq_err=""
 
-  # Rule dispatch. expected_status stays empty when no rule fires, which is also what
-  # keeps an Issue that is not on the board out of the report: current_status is empty
-  # there, so neither arm matches.
+  # Rule dispatch on the role the column name resolves to. expected_role stays empty when
+  # no rule fires, which is also what keeps an Issue that is not on the board out of the
+  # report: current_status is empty there, so the name maps to nothing and neither arm
+  # matches. A non-empty name that maps to nothing is a column the config does not
+  # describe — skipped with a WARNING, never moved.
   # The arms use `if` rather than `[ ... ] && assign`: under `set -e` a false `[` at the
   # head of an AND list makes the whole case return non-zero and aborts the scan.
-  expected_status=""
-  case "$current_status" in
-    Todo)
-      expected_status="In Progress" ;;
-    "In Progress")
-      if [ "$is_draft" = "false" ]; then expected_status="In Review"; fi ;;
+  expected_role=""
+  current_role=""
+  if [ -n "$current_status" ]; then
+    cfg_err=$(mktemp "${TMPDIR:-/tmp}/rite-watchdog-cfg-err-XXXXXX") || cfg_err=""
+    current_role=$(cd "$REPO_ROOT" && projects_status_role_for_name "$current_status" 2>"${cfg_err:-/dev/null}") || report_config_error
+    rm -f "${cfg_err:-}"; cfg_err=""
+    if [ -z "$current_role" ]; then
+      if [ "$QUIET" != "true" ]; then
+        echo "[watchdog] ⚠️ Issue #$issue_number board Status column \"$(printf '%s' "$current_status" | neutralize_ctrl)\" maps to no role in rite-config.yml (github.projects.fields.status.options) — skipped, not reconciled" >&2
+      fi
+      continue
+    fi
+  fi
+  case "$current_role" in
+    todo)
+      expected_role="in_progress" ;;
+    in_progress)
+      if [ "$is_draft" = "false" ]; then expected_role="in_review"; fi ;;
   esac
 
-  if [ -n "$expected_status" ]; then
+  if [ -n "$expected_role" ]; then
+    if [ "$expected_role" = "in_progress" ]; then expected_status="$IN_PROGRESS_NAME"; else expected_status="$IN_REVIEW_NAME"; fi
     reconcile_result="not_attempted"
     reconcile_stderr_oneline=""
     if [ "$RECONCILE" = "true" ]; then
-      case "$expected_status" in
-        "In Progress") expected_role="in_progress" ;;
-        "In Review") expected_role="in_review" ;;
-      esac
       # stderr を tempfile に退避して失敗時の原因 (auth / rate limit / partial failure) を可視化する。
       # silent suppress (2>/dev/null) では RECONCILE_FAILURES non-zero 時に user が失敗原因を triage できない。
       reconcile_err=$(mktemp "${TMPDIR:-/tmp}/rite-watchdog-reconcile-err-XXXXXX") || reconcile_err=""

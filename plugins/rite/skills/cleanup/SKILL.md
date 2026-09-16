@@ -333,7 +333,7 @@ args_json=$(jq -n \
       enabled: $projects_enabled,
       project_number: $project_number,
       owner: $owner,
-      status: "Todo",
+      status: "todo",
       priority: $priority,
       complexity: $complexity,
       iteration: { mode: $iter_mode }

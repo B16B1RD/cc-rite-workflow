@@ -55,7 +55,7 @@ args_json=$(jq -n \
  --argjson enabled true \
  --argjson project_number 2 \
  --arg owner "{owner}" \
- --arg status "Todo" \
+ --arg status "todo" \
  --arg priority "Medium" \
  --arg complexity "S" \
  --arg field_name_status "" \
@@ -115,7 +115,7 @@ projects:
  enabled: true|false # From rite-config.yml github.projects.enabled
  project_number: number # From rite-config.yml github.projects.project_number
  owner: string # From rite-config.yml github.projects.owner
- status: "Todo" # Default: "Todo"
+ status: "todo" # Status role (default: "todo"); the board column name comes from rite-config.yml
  priority: "High|Medium|Low" # Determined by caller
  complexity: "XS|S|M|L|XL" # Determined by caller
  iteration:

@@ -56,8 +56,8 @@ assert_file_contains "$OPEN_MD" '\[ -z "\$status_result" \] && status_result=fai
 
 echo ""
 echo "[T-02] 2.6 carries a detection path for a 2.4(A) that never landed"
-assert_file_contains "$OPEN_MD" 'projects-status-gate\.sh --issue \{issue_number\}' \
-  "open ステップ 2.6 invokes the gate helper"
+assert_file_contains "$OPEN_MD" 'projects-status-gate\.sh --issue \{issue_number\} --expect in_progress' \
+  "open ステップ 2.6 invokes the gate helper with the in_progress role (never a column name)"
 assert_file_contains "$OPEN_MD" 'PROJECTS_STATUS_INVARIANT' \
   "open ステップ 2.6 routes on the PROJECTS_STATUS_INVARIANT verdict"
 assert_file_contains "$OPEN_MD" '\| `missing` \|' \
@@ -101,7 +101,7 @@ GH_SHIM
 chmod +x "$T03_DIR/repo/bin/gh"
 set +e
 t03_out=$(cd "$T03_DIR/repo" && PATH="$T03_DIR/repo/bin:$PATH" \
-  bash "$GATE_SH" --issue 42 --expect "In Progress" --quiet 2>"$T03_DIR/stderr.txt")
+  bash "$GATE_SH" --issue 42 --expect in_progress --quiet 2>"$T03_DIR/stderr.txt")
 t03_rc=$?
 set -e
 if [ "$t03_rc" -eq 0 ]; then
@@ -187,7 +187,7 @@ run_gate_fixture() {
   write_board_fixture "$state"
   set +e
   out=$(cd "$T03_DIR/repo" && PATH="$T03_DIR/repo/bin:$PATH" RITE_TEST_BOARD="$T03_DIR/board.json" \
-    bash "$GATE_SH" --issue 42 --expect "In Progress" --quiet 2>"$T03_DIR/gate-stderr.txt")
+    bash "$GATE_SH" --issue 42 --expect in_progress --quiet 2>"$T03_DIR/gate-stderr.txt")
   rc=$?
   set -e
   # Every verdict path must keep the non-blocking contract, not just the error ones.
@@ -223,7 +223,7 @@ assert_gate_warning() {
   write_board_fixture "$1"
   set +e
   ( cd "$T03_DIR/repo" && PATH="$T03_DIR/repo/bin:$PATH" RITE_TEST_BOARD="$T03_DIR/board.json" \
-    bash "$GATE_SH" --issue 42 --expect "In Progress" >/dev/null 2>"$T03_DIR/gate-stderr.txt" )
+    bash "$GATE_SH" --issue 42 --expect in_progress >/dev/null 2>"$T03_DIR/gate-stderr.txt" )
   set -e
   if grep -q "$2" "$T03_DIR/gate-stderr.txt"; then
     pass "$3"
@@ -236,6 +236,21 @@ assert_gate_warning "<absent-item>" "not on project" \
   "the not-on-board verdict explains itself on stderr"
 assert_gate_warning "<absent-issue>" "did not resolve" \
   "the unresolvable-Issue verdict explains itself on stderr"
+# The no-value sentinel is a missed write, not a column. Described as an unmapped column it
+# would send the reader to declare a role for a column that does not exist, and the
+# caller's routing would read it as the one `missing` that must not be re-run.
+assert_gate_warning "<no-status-field>" "Status field carries no value" \
+  "an item with no Status value is diagnosed as a missed write, not an unmapped column"
+write_board_fixture "<no-status-field>"
+set +e
+( cd "$T03_DIR/repo" && PATH="$T03_DIR/repo/bin:$PATH" RITE_TEST_BOARD="$T03_DIR/board.json" \
+  bash "$GATE_SH" --issue 42 --expect in_progress >/dev/null 2>"$T03_DIR/gate-stderr.txt" )
+set -e
+if grep -q "maps to no role" "$T03_DIR/gate-stderr.txt"; then
+  fail "an item with no Status value is described as an unmapped column: $(head -c 200 "$T03_DIR/gate-stderr.txt")"
+else
+  pass "an item with no Status value is not described as an unmapped column"
+fi
 assert_gate_warning "Cancelled" "abandoned" \
   "a cancelled board is diagnosed as an abandoned Issue"
 # Both halves matter: the reader must be told the Issue was cancelled AND must not also be
@@ -244,13 +259,103 @@ assert_gate_warning "Cancelled" "abandoned" \
 write_board_fixture "Cancelled"
 set +e
 ( cd "$T03_DIR/repo" && PATH="$T03_DIR/repo/bin:$PATH" RITE_TEST_BOARD="$T03_DIR/board.json" \
-  bash "$GATE_SH" --issue 42 --expect "In Progress" >/dev/null 2>"$T03_DIR/gate-stderr.txt" )
+  bash "$GATE_SH" --issue 42 --expect in_progress >/dev/null 2>"$T03_DIR/gate-stderr.txt" )
 set -e
 if grep -q "the Status transition did not land" "$T03_DIR/gate-stderr.txt"; then
   fail "a cancelled board is still described as a dropped Status transition: $(head -c 200 "$T03_DIR/gate-stderr.txt")"
 else
   pass "a cancelled board is not described as a dropped Status transition"
 fi
+
+echo ""
+echo "[T-02d] Behavioral: column names are mapped to roles through rite-config.yml"
+# Every fixture above runs on the legacy config, where the English names map onto
+# themselves, so a gate that still compared column names would pass all of them. These
+# fixtures declare a board whose columns are spelled differently from the roles and pin
+# that the verdict — and the role= field — come from the mapping, not from the spelling.
+cat > "$T03_DIR/repo/rite-config.yml" <<'YAML'
+github:
+  projects:
+    enabled: true
+    project_number: 1
+    fields:
+      status:
+        options:
+          - { role: todo, name: "To-Do" }
+          - { role: in_progress, name: "In progress" }
+          - { role: in_review, name: "In Review" }
+          - { role: done, name: "Done" }
+YAML
+# $1=board state $2=expected verdict $3=expected role= value $4=description
+run_role_fixture() {
+  local state="$1" want="$2" role="$3" desc="$4" out rc
+  write_board_fixture "$state"
+  set +e
+  out=$(cd "$T03_DIR/repo" && PATH="$T03_DIR/repo/bin:$PATH" RITE_TEST_BOARD="$T03_DIR/board.json" \
+    bash "$GATE_SH" --issue 42 --expect in_progress --quiet 2>"$T03_DIR/gate-stderr.txt")
+  rc=$?
+  set -e
+  if [ "$rc" -ne 0 ]; then
+    fail "$desc (expected exit 0, got $rc)"
+    return
+  fi
+  if printf '%s' "$out" | grep -q "PROJECTS_STATUS_INVARIANT=$want; issue=42; role=$role; status="; then
+    pass "$desc"
+  else
+    fail "$desc (expected verdict $want with role=$role, got: $(printf '%s' "$out" | head -c 200))"
+  fi
+}
+run_role_fixture "In progress" ok in_progress "a renamed in_progress column reaches ok through the role mapping"
+run_role_fixture "In Review" ok in_review "a mapped column above the expected role yields ok (rank comparison on roles)"
+run_role_fixture "To-Do" missing todo "a renamed todo column is below the expected role and yields missing"
+run_role_fixture "Blocked" missing "" "a column the config does not map yields missing with an empty role"
+# The legacy spelling is not a role. On an explicit board the config is the only mapping,
+# so a gate that still knew the English names by heart would wave this through.
+run_role_fixture "In Progress" missing "" "the legacy English name is unmapped on an explicit board and yields missing"
+assert_gate_warning "Blocked" 'column "Blocked" maps to no role' \
+  "the unmapped-column verdict names the column on stderr"
+# An expected value that is not a role has no rank; refusing it keeps the rank comparison
+# from silently answering missing for every board.
+set +e
+bogus_out=$(cd "$T03_DIR/repo" && PATH="$T03_DIR/repo/bin:$PATH" RITE_TEST_BOARD="$T03_DIR/board.json" \
+  bash "$GATE_SH" --issue 42 --expect "In Progress" --quiet 2>/dev/null)
+bogus_rc=$?
+set -e
+if [ "$bogus_rc" -eq 0 ] && printf '%s' "$bogus_out" | grep -q 'PROJECTS_STATUS_INVARIANT=unknown;'; then
+  pass "--expect with a column name instead of a role yields unknown"
+else
+  fail "T-02d: expected unknown for --expect \"In Progress\", got rc=$bogus_rc out=$(printf '%s' "$bogus_out" | head -c 200)"
+fi
+# An invalid Status configuration cannot map anything: the verification did not run.
+cat > "$T03_DIR/repo/rite-config.yml" <<'YAML'
+github:
+  projects:
+    enabled: true
+    project_number: 1
+    fields:
+      status:
+        options:
+          - { role: todo, name: "To-Do" }
+YAML
+write_board_fixture "To-Do"
+set +e
+invalid_out=$(cd "$T03_DIR/repo" && PATH="$T03_DIR/repo/bin:$PATH" RITE_TEST_BOARD="$T03_DIR/board.json" \
+  bash "$GATE_SH" --issue 42 --expect in_progress 2>"$T03_DIR/gate-stderr.txt")
+invalid_rc=$?
+set -e
+if [ "$invalid_rc" -eq 0 ] && printf '%s' "$invalid_out" | grep -q 'PROJECTS_STATUS_INVARIANT=unknown;' \
+  && grep -q 'github.projects.fields.status:' "$T03_DIR/gate-stderr.txt"; then
+  pass "an invalid Status configuration yields unknown and surfaces the config error"
+else
+  fail "T-02d: expected unknown + config diagnostic, got rc=$invalid_rc out=$(printf '%s' "$invalid_out" | head -c 200) stderr=$(head -c 200 "$T03_DIR/gate-stderr.txt")"
+fi
+# Restore the legacy config for the argument-error arms below.
+cat > "$T03_DIR/repo/rite-config.yml" <<'YAML'
+github:
+  projects:
+    enabled: true
+    project_number: 1
+YAML
 
 echo ""
 echo "[T-02c] Behavioral: the argument-error arms"
@@ -262,10 +367,10 @@ set +e
 argerr_out=$(bash "$GATE_SH" --issue 42 --expect 2>/dev/null)
 argerr_rc=$?
 set -e
-if [ "$argerr_rc" -eq 0 ] && printf '%s' "$argerr_out" | grep -q 'expected=In Progress'; then
+if [ "$argerr_rc" -eq 0 ] && printf '%s' "$argerr_out" | grep -q 'expected=in_progress'; then
   pass "a missing --expect value still reports the default it would have verified against"
 else
-  fail "T-02c: expected rc 0 and expected=In Progress, got rc=$argerr_rc out=$(printf '%s' "$argerr_out" | head -c 200)"
+  fail "T-02c: expected rc 0 and expected=in_progress, got rc=$argerr_rc out=$(printf '%s' "$argerr_out" | head -c 200)"
 fi
 
 set +e

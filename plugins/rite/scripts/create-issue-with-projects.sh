@@ -19,7 +19,10 @@
 #       "enabled": true|false,
 #       "project_number": 2,
 #       "owner": "{owner}",
-#       "status": "Todo",            # default: "Todo"
+#       "status": "todo",            # Status role; only "todo" is accepted (default). The
+#                                    #   board's column name for it comes from rite-config.yml
+#                                    #   (github.projects.fields.status.options), never from
+#                                    #   the caller
 #       "priority": "High|Medium|Low",
 #       "complexity": "XS|S|M|L|XL",
 #       "iteration": {
@@ -29,8 +32,8 @@
 #       "field_names": {             # optional: localized project field-name overrides
 #         "status": "ステータス",     #   each overrides the built-in EN<->JA alias for
 #         "priority": "優先度",       #   the canonical field. Empty/absent -> built-in
-#         "complexity": "複雑度"      #   aliases only (Status/Priority/Complexity).
-#       }
+#         "complexity": "複雑度"      #   aliases only (Priority/Complexity); for Status the
+#       }                            #   candidates after the override come from rite-config.yml
 #     },
 #     "options": {
 #       "source": "interactive|pr_review|pr_create|cleanup|xl_decomposition|fingerprint_split|quality_signal_3_split|quality_signal_4_split",
@@ -61,6 +64,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(dirname "$SCRIPT_DIR")"
 source "$PLUGIN_ROOT/hooks/control-char-neutralize.sh"
+# shellcheck source=../hooks/scripts/lib/projects-status-config.sh
+source "$PLUGIN_ROOT/hooks/scripts/lib/projects-status-config.sh"
 
 # --- Centralized tmpfile management ---
 # All temporary files live under TMPDIR_WORK; a single EXIT trap cleans them all.
@@ -177,7 +182,7 @@ eval "$(printf '%s\n' "$INPUT_JSON" | jq -r '
   @sh "PROJECTS_ENABLED=\(.projects.enabled // false)",
   @sh "PROJECT_NUMBER=\(.projects.project_number // 0)",
   @sh "OWNER=\(.projects.owner // "")",
-  @sh "STATUS_VALUE=\(.projects.status // "Todo")",
+  @sh "STATUS_ROLE=\(.projects.status // "todo")",
   @sh "PRIORITY_VALUE=\(.projects.priority // "")",
   @sh "COMPLEXITY_VALUE=\(.projects.complexity // "")",
   @sh "ITERATION_MODE=\(.projects.iteration.mode // "none")",
@@ -197,6 +202,15 @@ fi
 
 if [ -n "$BODY_FILE" ] && [ ! -f "$BODY_FILE" ]; then
   add_warning "Body file not found: $(basename "$BODY_FILE")"
+  output_result "" 0 "" "" "failed"
+  exit 1
+fi
+
+# projects.status is a role, and a freshly created Issue can only start at todo. A
+# column name here (the pre-role payload shape) would silently register nothing, so it
+# is refused before any gh call — the caller is the one that has to change.
+if [ "$STATUS_ROLE" != "todo" ]; then
+  add_warning "projects.status must be the role \"todo\" (got: '$(printf '%s' "$STATUS_ROLE" | neutralize_ctrl)'); the board's column name comes from rite-config.yml"
   output_result "" 0 "" "" "failed"
   exit 1
 fi
@@ -411,12 +425,12 @@ query(\$owner: String!, \$repo: String!, \$projectNumber: Int!) {
 fi
 
 # Built-in English<->Japanese field-name aliases. Maps a canonical English field
-# name (Status/Priority/Complexity) to its built-in Japanese alias so that
-# localized Projects resolve with zero config. Extend this single table to add
-# more built-in aliases.
+# name (Priority/Complexity) to its built-in Japanese alias so that localized
+# Projects resolve with zero config. Status is not here: its candidates come from
+# the shared resolver (hooks/scripts/lib/projects-status-config.sh). Extend this
+# single table to add more built-in aliases.
 field_name_alias() {
   case "$1" in
-    Status) printf 'ステータス' ;;
     Priority) printf '優先度' ;;
     Complexity) printf '複雑度' ;;
     *) printf '' ;;
@@ -451,6 +465,9 @@ option_id_by_name() {
 #   1. input-JSON override (projects.field_names.*)
 #   2. built-in Japanese alias
 #   3. canonical English name
+# For Status, steps 2–3 are replaced by the shared resolver's candidates
+# (rite-config.yml github.projects.fields.status.name, or its Japanese / English
+# defaults), so every consumer finds the Status field by the same names.
 # This lets localized (e.g. Japanese-named) Projects work with zero config while
 # still allowing per-field overrides. Reuses centralized FIELD_ERR_FILE.
 set_field() {
@@ -466,9 +483,21 @@ set_field() {
   local override alias_name
   override=$(field_name_override "$canonical")
   [ -n "$override" ] && candidates+=("$override")
-  alias_name=$(field_name_alias "$canonical")
-  [ -n "$alias_name" ] && candidates+=("$alias_name")
-  candidates+=("$canonical")
+  if [ "$canonical" = "Status" ]; then
+    local resolver_candidates
+    if ! resolver_candidates=$(projects_status_field_candidates 2>"$FIELD_ERR_FILE"); then
+      add_warning_with_stderr "Invalid Status configuration in rite-config.yml for Issue #$ISSUE_NUMBER: $(tr '\n' ' ' < "$FIELD_ERR_FILE")"
+      PROJECT_REG="partial"
+      return 0
+    fi
+    while IFS= read -r candidate_name; do
+      [ -n "$candidate_name" ] && candidates+=("$candidate_name")
+    done <<< "$resolver_candidates"
+  else
+    alias_name=$(field_name_alias "$canonical")
+    [ -n "$alias_name" ] && candidates+=("$alias_name")
+    candidates+=("$canonical")
+  fi
 
   # Resolve the first candidate that exists as a field in the project.
   local matched_name="" field_id="" candidate
@@ -504,7 +533,15 @@ set_field() {
   fi
 }
 
-set_field "Status" "$STATUS_VALUE"
+# The initial Status is written as the board's own name for the todo role. An empty
+# name here cannot happen for todo (the resolver requires it in explicit mode and
+# defaults it in legacy mode), so the only failure is an invalid configuration.
+if STATUS_VALUE=$(projects_status_name_for_role "$STATUS_ROLE" 2>"$FIELD_ERR_FILE"); then
+  set_field "Status" "$STATUS_VALUE"
+else
+  add_warning_with_stderr "Invalid Status configuration in rite-config.yml for Issue #$ISSUE_NUMBER: $(tr '\n' ' ' < "$FIELD_ERR_FILE")"
+  PROJECT_REG="partial"
+fi
 set_field "Priority" "$PRIORITY_VALUE"
 set_field "Complexity" "$COMPLEXITY_VALUE"
 

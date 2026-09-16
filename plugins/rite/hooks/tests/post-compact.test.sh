@@ -516,6 +516,23 @@ case "$1 $2" in
 esac
 EOF
       ;;
+    ready_board_file)
+      # Ready PR whose board Status is read from $RITE_TEST_BOARD_STATUS so the role
+      # fixtures below can vary the column name (and the field name via
+      # $RITE_TEST_BOARD_FIELD) without a shim per column. `pr view` leaves the same
+      # positive-control marker as draft_pr, because most asserts against these boards
+      # are absences.
+      cat > "$dir/bin/gh" <<'EOF'
+#!/bin/bash
+. "$(dirname "$0")/gh-mock-lib.sh"
+case "$1 $2" in
+  "pr view") touch "$(dirname "$0")/../pr-view-called"; _mock_gh_pr_view '{"isDraft":false}' "$@" ;;
+  "repo view") echo '{"owner":{"login":"o"},"name":"r"}' ;;
+  "api graphql") jq -cn --arg s "$RITE_TEST_BOARD_STATUS" --arg f "${RITE_TEST_BOARD_FIELD:-Status}" '{data:{repository:{issue:{projectItems:{nodes:[{project:{number:1},fieldValues:{nodes:[{field:{name:$f},name:$s}]}}]}}}}}' ;;
+  *) exit 0 ;;
+esac
+EOF
+      ;;
     draft_pr)
       # Ready-vs-draft boundary: `repo view` and `api graphql` answer normally so the
       # only thing that can keep the reconciliation block silent is isDraft=true.
@@ -733,6 +750,116 @@ if grep -qE '(post_compact_[a-z_]+|state_root_(inaccessible|toctou_race)|pr_dele
   fail "draft PR surfaced a reconciliation-failure WARNING: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
 else
   pass "draft PR surfaces no reconciliation-failure WARNING"
+fi
+
+# TC-RECON-14: an unmapped column is left alone. The board says "Blocked", a column the
+# config does not describe; the PR is Ready, so every other condition for the mismatch
+# branch holds and only the role mapping keeps the helper from being called.
+echo "TC-RECON-14: Ready PR on an unmapped column → no reconcile, WARNING names the column"
+recon_dir=$(_setup_recon_env "unmapped-column" "ready_board_file" "updated" "" "yes")
+recon_stderr="$(mktemp "$TEST_DIR/recon-unmapped-column-stderr.XXXXXX")"
+echo "{\"cwd\": \"$recon_dir\", \"source\": \"auto\"}" \
+  | env PATH="$recon_dir/bin:$PATH" RITE_TEST_BOARD_STATUS="Blocked" bash "$recon_dir/plugin/hooks/post-compact.sh" >/dev/null 2>"$recon_stderr" || true
+if [ -f "$recon_dir/pr-view-called" ]; then
+  pass "reconciliation block reached gh pr view for the unmapped-column fixture"
+else
+  fail "unmapped-column fixture never reached gh pr view — absence assertions below would be vacuous; stderr: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+fi
+if [ -f "$recon_dir/status-update-call.json" ]; then
+  fail "reconcile helper invoked for an unmapped column; payload: $(head -c 300 "$recon_dir/status-update-call.json")"
+else
+  pass "reconcile helper not invoked for an unmapped column"
+fi
+if grep -q 'column "Blocked" maps to no role' "$recon_stderr" && grep -q 'post_compact_status_unmapped' "$recon_stderr"; then
+  pass "WARNING names the unmapped column and carries the post_compact_status_unmapped token"
+else
+  fail "expected a WARNING naming Blocked; got: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+fi
+if grep -qE 'post-compact mismatch detected' "$recon_stderr"; then
+  fail "unmapped column wrongly reported as a Status mismatch: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+else
+  pass "unmapped column is not reported as a mismatch"
+fi
+
+# TC-RECON-15: the column name is mapped through rite-config.yml. A board that spells
+# todo as "To-Do" on a field named "ステータス" is still pulled to in_review; the
+# legacy English "Todo" on the same board is unmapped and left alone.
+echo "TC-RECON-15: Ready PR on a renamed todo column → reconcile helper invoked with status_role=in_review"
+recon_dir=$(_setup_recon_env "renamed-todo" "ready_board_file" "updated" "" "yes")
+cat > "$recon_dir/rite-config.yml" <<'YAML'
+github:
+  projects:
+    enabled: true
+    project_number: 1
+    fields:
+      status:
+        name: "ステータス"
+        options:
+          - { role: todo, name: "To-Do" }
+          - { role: in_progress, name: "In progress" }
+          - { role: in_review, name: "In Review" }
+          - { role: done, name: "Done" }
+YAML
+recon_stderr="$(mktemp "$TEST_DIR/recon-renamed-todo-stderr.XXXXXX")"
+echo "{\"cwd\": \"$recon_dir\", \"source\": \"auto\"}" \
+  | env PATH="$recon_dir/bin:$PATH" RITE_TEST_BOARD_STATUS="To-Do" RITE_TEST_BOARD_FIELD="ステータス" \
+    bash "$recon_dir/plugin/hooks/post-compact.sh" >/dev/null 2>"$recon_stderr" || true
+if [ -f "$recon_dir/status-update-call.json" ]; then
+  pass "reconcile helper was invoked for a renamed todo column"
+  recorded_status=$(jq -r '.status_role // empty' "$recon_dir/status-update-call.json" 2>/dev/null || echo "")
+  if [ "$recorded_status" = "in_review" ]; then
+    pass "reconcile helper received status_role=in_review"
+  else
+    fail "reconcile helper received status_role='$recorded_status' (expected in_review); payload: $(head -c 300 "$recon_dir/status-update-call.json")"
+  fi
+else
+  fail "reconcile helper never invoked for a renamed todo column; stderr: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+fi
+if grep -q 'role=todo (expected in_review)' "$recon_stderr"; then
+  pass "mismatch line reports the resolved role and the expected role"
+else
+  fail "expected mismatch line with role=todo; got: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+fi
+# Negative control on the same board: the legacy English name is not a role here. The
+# first run normalized the compact state, so re-arm it or the hook exits before the block.
+rm -f "$recon_dir/status-update-call.json" "$recon_dir/pr-view-called"
+jq -n '{compact_state: "recovering", compact_state_set_at: "2026-04-01T00:00:00Z", active_issue: 42}' \
+  > "$(compact_state_path "$recon_dir")"
+recon_stderr="$(mktemp "$TEST_DIR/recon-renamed-todo-legacy-stderr.XXXXXX")"
+echo "{\"cwd\": \"$recon_dir\", \"source\": \"auto\"}" \
+  | env PATH="$recon_dir/bin:$PATH" RITE_TEST_BOARD_STATUS="Todo" RITE_TEST_BOARD_FIELD="ステータス" \
+    bash "$recon_dir/plugin/hooks/post-compact.sh" >/dev/null 2>"$recon_stderr" || true
+if [ -f "$recon_dir/pr-view-called" ] && [ ! -f "$recon_dir/status-update-call.json" ] && grep -q 'column "Todo" maps to no role' "$recon_stderr"; then
+  pass "the legacy English name is unmapped on an explicit board and is left alone"
+else
+  fail "expected Todo to be unmapped on the explicit board (pr-view-called=$([ -f "$recon_dir/pr-view-called" ] && echo yes || echo no), helper=$([ -f "$recon_dir/status-update-call.json" ] && echo called || echo not-called)); stderr: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+fi
+
+# TC-RECON-16: the resolver lib is sourced inside the sub-shell. A distribution missing
+# it must degrade to a WARNING + skip on every compaction, not abort the hook under set -e.
+echo "TC-RECON-16: resolver lib missing → WARNING + skip, exit 0"
+recon_dir=$(_setup_recon_env "lib-missing" "ready_board_file" "updated" "" "yes")
+rm -f "$recon_dir/plugin/hooks/scripts/lib/projects-status-config.sh"
+recon_stderr="$(mktemp "$TEST_DIR/recon-lib-missing-stderr.XXXXXX")"
+set +e
+echo "{\"cwd\": \"$recon_dir\", \"source\": \"auto\"}" \
+  | env PATH="$recon_dir/bin:$PATH" RITE_TEST_BOARD_STATUS="Todo" bash "$recon_dir/plugin/hooks/post-compact.sh" >/dev/null 2>"$recon_stderr"
+lib_missing_rc=$?
+set -e
+if [ "$lib_missing_rc" -eq 0 ]; then
+  pass "hook exits 0 when the resolver lib is missing"
+else
+  fail "hook exited $lib_missing_rc when the resolver lib is missing; stderr: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+fi
+if [ -f "$recon_dir/pr-view-called" ]; then
+  pass "reconciliation block reached gh pr view for the lib-missing fixture"
+else
+  fail "lib-missing fixture never reached gh pr view — the absence assert below would be vacuous"
+fi
+if [ ! -f "$recon_dir/status-update-call.json" ] && grep -q 'post_compact_status_config_unavailable' "$recon_stderr"; then
+  pass "reconcile skipped with the post_compact_status_config_unavailable WARNING"
+else
+  fail "expected skip + post_compact_status_config_unavailable (helper=$([ -f "$recon_dir/status-update-call.json" ] && echo called || echo not-called)); stderr: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
 fi
 
 # TC-RECON-12: the gh mocks must answer `pr view` through real jq, not a literal.
