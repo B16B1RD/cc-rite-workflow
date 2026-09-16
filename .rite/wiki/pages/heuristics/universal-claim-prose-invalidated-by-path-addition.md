@@ -6,6 +6,8 @@ description: "「本経路に来るのは別 live セッション在席時のみ
 created: "2026-07-21T18:30:00Z"
 sources:
   - type: "reviews"
+    resource: "raw/reviews/20260916T101455Z-pr-2910.md"
+  - type: "reviews"
     resource: "raw/reviews/20260905T121410Z-pr-2573.md"
   - type: "fixes"
     resource: "raw/fixes/20260905T121410Z-pr-2573.md"
@@ -39,8 +41,9 @@ sources:
     resource: "raw/reviews/20260831T074623Z-pr-2494.md"
 tags: ["comment-rot", "cause-neutral", "exclusivity-claim", "doc-sync", "not-grep-pin", "quantifier-strengthening", "birth-defect"]
 confidence: high
-generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-09-05T12:14:41.011525+00:00" }
+generated: { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
 verified:
+  - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
   - { by: "rite-wiki-ingest/gpt-6", at: "2026-09-05T12:10:29.806932+00:00" }
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-29T11:40:00+09:00"
@@ -115,6 +118,13 @@ drift 先が Issue の Non-Target（別 Issue の管轄と明記）である場�
 
 固定の pass 件数や「第何条件と同一」という説明は、同じ変更の中でも古くなる。意味を担う条件や観測した結論で記述し、履歴上の件数は実行ログへ分離する。新しい規律は同一ファイルの隣接箇所にも適用されているか確認する。
 
+### 全 consumer の保証は読取り側と書込み側を区別する
+
+未マップの状態を保持するという仕様を記述するとき、読取り gate がその状態を放置することから、更新 helper も変更しないとは言えない。状態を書き込む経路と `--reconcile` が role に対応する先へ移すなら、「全 consumer が未マップ列を触らない」という保証は成立しない。
+
+consumer ごとに読取り・書込み・同期という責務を確認してから保証の対象を限定する。同じ未マップ入力を各 consumer に渡す通し回帰で、文書の全称主張と実際の更新を対応付ける。
+
+
 ## 関連ページ
 
 - [実装の分岐を散文へ落とす前に、フラグの状態数と観測ラベルの値域を機械的に数える](./count-implementation-states-before-writing-prose.md)
@@ -123,6 +133,8 @@ drift 先が Issue の Non-Target（別 Issue の管轄と明記）である場�
 - [新設 logged ガードの上流に同一判定の silent 経路が残ると支配的入力で可視化が無効化される](../anti-patterns/upstream-silent-path-defeats-new-logged-guard.md)
 
 ## ソース
+
+- [今回のレビュー結果](../../raw/reviews/20260916T101455Z-pr-2910.md)
 
 - [説明散文の排他性残存を検出](../../raw/reviews/20260721T173620Z-pr-1959.md)
 - [中立化 + not_grep pin](../../raw/fixes/20260721T173955Z-pr-1959.md)

@@ -41,6 +41,13 @@
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=515, broken_refs=0（ページ本文の変更なし。タイトル衝突の構造検査のみ実施し、全 504 ページ間の意味比較は再実行していない）
 
 
+* **Update**: [再開先の入口契約](pages/heuristics/resume-dispatch-target-must-satisfy-downstream-entry-contract.md)、[共有リソースの契約](pages/anti-patterns/shared-resource-type-reuse-without-consumer-contract-check.md)、[停止情報の保持](pages/patterns/clear-failure-state-after-recording-it.md) — [レビュー結果](raw/reviews/20260916T090121Z-pr-2909.md) を統合
+* **Update**: [再開先の入口契約](pages/heuristics/resume-dispatch-target-must-satisfy-downstream-entry-contract.md)、[共有リソースの契約](pages/anti-patterns/shared-resource-type-reuse-without-consumer-contract-check.md)、[停止情報の保持](pages/patterns/clear-failure-state-after-recording-it.md) — [修正結果](raw/fixes/20260916T092034Z-pr-2909.md) を統合
+* **Update**: [再開先の入口契約](pages/heuristics/resume-dispatch-target-must-satisfy-downstream-entry-contract.md) — [再レビュー結果](raw/reviews/20260916T094235Z-pr-2909.md) を統合
+* **Update**: [再開先の入口契約](pages/heuristics/resume-dispatch-target-must-satisfy-downstream-entry-contract.md) — [返信のみ経路の修正結果](raw/fixes/20260916T095520Z-pr-2909.md) を統合
+* **Update**: [状態機械の記述同期](pages/patterns/state-machine-dual-location-sync.md) — [最終レビュー結果](raw/reviews/20260916T101007Z-pr-2909.md) を統合
+* **Update**: [全称主張の確認](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md)、[許可操作による検証](pages/heuristics/static-pin-semantic-allowlist-not-notation-denylist.md)、[各分岐の到達確認](pages/anti-patterns/test-pin-protection-theater.md) — [レビュー結果](raw/reviews/20260916T101455Z-pr-2910.md) を統合
+
 ## 2026-09-15
 
 * **Skip**: [20260915T145209Z-pr-2877.md](raw/reviews/20260915T145209Z-pr-2877.md) — no extractable heuristic: zero-finding review; existing fail-loud all-exits and test pin pages already cover undeterminable-state skip and independent mutation pins
