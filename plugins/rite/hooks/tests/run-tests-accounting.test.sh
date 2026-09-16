@@ -457,6 +457,31 @@ check(result.stdout.index('file=hooks/tests/c.test.sh rc=0') <
       result.stdout.index('file=hooks/tests/a.test.sh rc=0'), 'free slot was not refilled')
 print('free slot refilled before slow peer finishes: passed')
 
+# A slow stdout reader must not let live END markers enter captured bodies.
+d = stage('parallel-output-backpressure')
+payload = 'fixture output line\n' * 100000
+(d / 'payload').write_text(payload)
+fixture(d, 'a.test.sh', f"cat '{d}/payload'")
+fixture(d, 'b.test.sh', 'sleep 0.3')
+process = subprocess.Popen(['bash', str(d / 'runner.sh'), '--jobs', '2'],
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+try:
+    # The 2 MB body exceeds both Linux and macOS pipe buffers.
+    time.sleep(1)
+    output, error = process.communicate(timeout=25)
+finally:
+    if process.poll() is None:
+        process.kill()
+        process.communicate()
+check(process.returncode == 0, error)
+body = output.split('TEST_OUTPUT_BEGIN id=1 ', 1)[1].split('TEST_OUTPUT_END id=1', 1)[0]
+check('TEST_START ' not in body and 'TEST_END ' not in body,
+      'live progress marker mixed into captured body')
+check(body.split('=== Running: a.test.sh ===\n', 1)[1] == payload,
+      'captured body changed under backpressure')
+check(headline(output) == 'Results: 2/2 passed, 0 failed', 'backpressure result changed')
+print('body output stays separate under backpressure: passed')
+
 # Reversed completion keeps rc, filenames, failure order and skip totals aligned.
 d = stage('parallel-order')
 fixture(d, 'a.test.sh', "sleep 0.4\necho '  ⏭️ SKIP: first'\necho 'SKIP: 1'\nexit 7")

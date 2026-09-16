@@ -125,19 +125,19 @@ RITE_STATE_ROOT="$d7" bash "$FS" set --phase review --issue 1176 --branch b --pr
 out=$(stop_payload "$d7" | bash "$HOOK")
 assert "TC-7: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
 _reason7=$(printf '%s' "$out" | jq -r '.reason // ""')
-if printf '%s' "$_reason7" | grep -q "完了通知"; then
+if grep -q "完了通知" <<< "$_reason7"; then
   pass "TC-7: reason requests the ステップ5 completion notice"
 else
   fail "TC-7: reason missing completion-notice directive: $out"
 fi
 # The FINALIZE branch must NOT re-inject a continuation command (would falsely restart the loop).
-if printf '%s' "$_reason7" | grep -q "停止せず、次を実行してください"; then
+if grep -q "停止せず、次を実行してください" <<< "$_reason7"; then
   fail "TC-7: FINALIZE reason wrongly used the continuation phrasing: $out"
 else
   pass "TC-7: FINALIZE reason is distinct from the continuation branch"
 fi
 # The terminal result identifier should be surfaced for context.
-if printf '%s' "$_reason7" | grep -q "review:mergeable:99"; then
+if grep -q "review:mergeable:99" <<< "$_reason7"; then
   pass "TC-7: reason surfaces the terminal result (review:mergeable:99)"
 else
   fail "TC-7: reason missing the terminal result identifier: $out"
@@ -199,29 +199,29 @@ RITE_STATE_ROOT="$d11" bash "$FS" set --phase cleanup --issue 1245 --branch b --
 out=$(stop_payload "$d11" | bash "$HOOK")
 assert "TC-11: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
 _reason11=$(printf '%s' "$out" | jq -r '.reason // ""')
-if printf '%s' "$_reason11" | grep -q "wiki-lint チェーン"; then
+if grep -q "wiki-lint チェーン" <<< "$_reason11"; then
   pass "TC-11: reason identifies the cleanup → ingest → lint chain"
 else
   fail "TC-11: reason missing the chain identification: $out"
 fi
-if printf '%s' "$_reason11" | grep -q "$(pr_text 99)"; then
+if grep -q "$(pr_text 99)" <<< "$_reason11"; then
   pass "TC-11: reason surfaces the PR number from the handoff"
 else
   fail "TC-11: reason missing the PR number: $out"
 fi
-if printf '%s' "$_reason11" | grep -q "ステップ 10"; then
+if grep -q "ステップ 10" <<< "$_reason11"; then
   pass "TC-11: reason directs continuation to cleanup ステップ 10-12"
 else
   fail "TC-11: reason missing the cleanup step continuation directive: $out"
 fi
 # Distinctness pins (symmetric to TC-1/TC-7 bidirectional checks): the WIKICHAIN branch must
 # use neither the FINALIZE completion-notice phrasing nor the review↔fix loop phrasing.
-if printf '%s' "$_reason11" | grep -q "完了通知"; then
+if grep -q "完了通知" <<< "$_reason11"; then
   fail "TC-11: WIKICHAIN reason wrongly used the FINALIZE completion-notice phrasing: $out"
 else
   pass "TC-11: WIKICHAIN reason is distinct from the FINALIZE branch"
 fi
-if printf '%s' "$_reason11" | grep -q "review↔fix"; then
+if grep -q "review↔fix" <<< "$_reason11"; then
   fail "TC-11: WIKICHAIN reason wrongly used the review↔fix loop phrasing: $out"
 else
   pass "TC-11: WIKICHAIN reason is distinct from the continuation branch"
@@ -374,13 +374,13 @@ assert "TC-16: decision=block survives the fallback" "block" "$(printf '%s' "$ou
 _reason16=$(printf '%s' "$out16" | "$real_jq" -r '.reason // ""')
 # The Japanese continuation directive must survive (--c0-only does not touch UTF-8
 # multibyte bytes; the default neutralize mode would shred it into ? runs).
-if printf '%s' "$_reason16" | grep -q "停止せず"; then
+if grep -q "停止せず" <<< "$_reason16"; then
   pass "TC-16: Japanese directive text preserved in the fallback reason"
 else
   fail "TC-16: Japanese directive text lost from the fallback reason: $out16"
 fi
 # The handoff's ESC bytes are ?-neutralized inside the re-injected reason.
-if printf '%s' "$_reason16" | grep -qF 'EVILPREFIX:?[31mred?[0m:99'; then
+if grep -qF 'EVILPREFIX:?[31mred?[0m:99' <<< "$_reason16"; then
   pass "TC-16: handoff control bytes neutralized to ? in the fallback reason"
 else
   fail "TC-16: neutralized handoff missing from the fallback reason: $out16"
@@ -439,13 +439,13 @@ assert "TC-17: decision=block survives the placeholder degradation" "block" "$(p
 _reason17=$(printf '%s' "$out17" | "$real_jq" -r '.reason // ""')
 # 縮退の発生証明 (非 vacuous): placeholder 文言 + /rite:recover 案内あり、通常 reason
 # (handoff コマンド再注入 / 日本語継続指示) なし。
-if printf '%s' "$_reason17" | grep -q "rite handoff continuation pending (reason neutralization failed)" \
-   && printf '%s' "$_reason17" | grep -qF "/rite:recover"; then
+if grep -q "rite handoff continuation pending (reason neutralization failed)" <<< "$_reason17" \
+   && grep -qF "/rite:recover" <<< "$_reason17"; then
   pass "TC-17: reason degraded to the static placeholder with recovery guidance"
 else
   fail "TC-17: expected static placeholder reason, got: $out17"
 fi
-if printf '%s' "$_reason17" | grep -qF "/rite:fix 99" || printf '%s' "$_reason17" | grep -q "停止せず"; then
+if grep -qF "/rite:fix 99" <<< "$_reason17" || grep -q "停止せず" <<< "$_reason17"; then
   fail "TC-17: normal-path reason leaked into the placeholder degradation: $out17"
 else
   pass "TC-17: normal-path reason absent (degradation actually fired, non-vacuous)"
@@ -470,12 +470,12 @@ out=$(jq -nc --arg c "$d18" --arg s "$SID" --arg tp "$tp18" \
   '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:false}' | bash "$HOOK")
 assert "TC-18: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
 _reason18=$(printf '%s' "$out" | jq -r '.reason // ""')
-if printf '%s' "$_reason18" | grep -q "未処理 non-blocking"; then
+if grep -q "未処理 non-blocking" <<< "$_reason18"; then
   pass "TC-18: reason requires the remaining-field"
 else
   fail "TC-18: reason missing remaining-field directive: $out"
 fi
-if printf '%s' "$_reason18" | grep -q "欄がありません"; then
+if grep -q "欄がありません" <<< "$_reason18"; then
   pass "TC-18: reason reports the field is missing from the last notice"
 else
   fail "TC-18: reason did not report missing field: $out"
@@ -522,12 +522,12 @@ RITE_STATE_ROOT="$d19" bash "$FS" set --phase review --issue 2346 --branch b --p
 out=$(stop_payload "$d19" | bash "$HOOK")
 assert "TC-19: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
 _reason19=$(printf '%s' "$out" | jq -r '.reason // ""')
-if printf '%s' "$_reason19" | grep -q "判定できなかった"; then
+if grep -q "判定できなかった" <<< "$_reason19"; then
   pass "TC-19: inspect-fail fail-safe asks to re-output the remaining field"
 else
   fail "TC-19: inspect-fail reason missing fail-safe wording: $out"
 fi
-if printf '%s' "$_reason19" | grep -q "未処理 non-blocking"; then
+if grep -q "未処理 non-blocking" <<< "$_reason19"; then
   pass "TC-19: inspect-fail reason still requires the remaining field"
 else
   fail "TC-19: inspect-fail reason missing remaining-field directive: $out"
@@ -542,12 +542,12 @@ RITE_STATE_ROOT="$d20" bash "$FS" set --phase fix --issue 2346 --branch b --pr 9
 out=$(stop_payload "$d20" | bash "$HOOK")
 assert "TC-20: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
 _reason20=$(printf '%s' "$out" | jq -r '.reason // ""')
-if printf '%s' "$_reason20" | grep -q "未処理 non-blocking"; then
+if grep -q "未処理 non-blocking" <<< "$_reason20"; then
   fail "TC-20: replied-only reason wrongly required remaining field: $out"
 else
   pass "TC-20: replied-only reason does not mention remaining field"
 fi
-if printf '%s' "$_reason20" | grep -q "完了通知"; then
+if grep -q "完了通知" <<< "$_reason20"; then
   pass "TC-20: replied-only still requests the completion notice"
 else
   fail "TC-20: replied-only reason lost the completion-notice directive: $out"
@@ -619,7 +619,7 @@ out=$(jq -nc --arg c "$d24" --arg s "$SID" --arg tp "$tp24" \
   '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:false}' | bash "$HOOK")
 assert "TC-24: decision=block (inspect-fail fail-safe)" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
 _reason24=$(printf '%s' "$out" | jq -r '.reason // ""')
-if printf '%s' "$_reason24" | grep -q "完了通知"; then
+if grep -q "完了通知" <<< "$_reason24"; then
   pass "TC-24: inspect-fail still requests the completion notice"
 else
   fail "TC-24: inspect-fail reason missing completion-notice directive: $out"
@@ -767,13 +767,13 @@ out=$(run_stop "$d")
 assert "T-01: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
 _r=$(printf '%s' "$out" | jq -r '.reason // ""')
 for needle in "mode=merge" "cursor=0/1" "Issue #2502" "PR #99" "phase=review" "/rite:iterate 99" "queue_file="; do # drift-check-ignore
-  if printf '%s' "$_r" | grep -qF "$needle"; then
+  if grep -qF "$needle" <<< "$_r"; then
     pass "T-01: reason contains $needle"
   else
     fail "T-01: reason missing $needle: $out"
   fi
 done
-if printf '%s' "$_r" | grep -q "review↔fix ループ"; then
+if grep -q "review↔fix ループ" <<< "$_r"; then
   fail "T-01: watchdog reason used handoff continuation phrasing: $out"
 else
   pass "T-01: watchdog reason is distinct from handoff continuation"
@@ -789,12 +789,12 @@ write_queue "$d"
 out=$(run_stop "$d")
 assert "T-02: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
 _r=$(printf '%s' "$out" | jq -r '.reason // ""')
-if printf '%s' "$_r" | grep -q "/rite:fix 99"; then
+if grep -q "/rite:fix 99" <<< "$_r"; then
   pass "T-02: reason is existing continuation"
 else
   fail "T-02: reason lost handoff command: $out"
 fi
-if printf '%s' "$_r" | grep -qE 'queue_file=|Batch:'; then
+if grep -qE 'queue_file=|Batch:' <<< "$_r"; then
   fail "T-02: handoff reason leaked batch frame: $out"
 else
   pass "T-02: handoff reason has no batch frame"
@@ -939,12 +939,12 @@ assert_hint() {
   fi
   out=$(run_stop "$dir")
   r=$(printf '%s' "$out" | jq -r '.reason // ""')
-  if printf '%s' "$r" | grep -qF "$want"; then
+  if grep -qF "$want" <<< "$r"; then
     pass "T-routing $label: hint contains $want"
   else
     fail "T-routing $label: missing $want in $r"
   fi
-  if [ -n "$not_want" ] && printf '%s' "$r" | grep -qF "$not_want"; then
+  if [ -n "$not_want" ] && grep -qF "$not_want" <<< "$r"; then
     fail "T-routing $label: leaked $not_want in $r"
   else
     [ -n "$not_want" ] && pass "T-routing $label: does not contain $not_want"
@@ -975,7 +975,7 @@ d=$(new_sandbox)
 write_queue "$d"
 out=$(run_stop "$d")
 _r=$(printf '%s' "$out" | jq -r '.reason // ""')
-if printf '%s' "$_r" | grep -q "batch-run ステップ 1 から再判定"; then
+if grep -q "batch-run ステップ 1 から再判定" <<< "$_r"; then
   pass "T-routing fs-absent: ステップ 1 再判定"
 else
   fail "T-routing fs-absent: $out"
@@ -990,12 +990,12 @@ jq '.active=false' "$(state_file_for "$d")" > "$(state_file_for "$d").tmp" \
   && mv "$(state_file_for "$d").tmp" "$(state_file_for "$d")"
 out=$(run_stop "$d")
 _r=$(printf '%s' "$out" | jq -r '.reason // ""')
-if printf '%s' "$_r" | grep -q "batch-run ステップ 6（cursor 前進）"; then
+if grep -q "batch-run ステップ 6（cursor 前進）" <<< "$_r"; then
   pass "T-11: reason routes to cursor advance"
 else
   fail "T-11: $out"
 fi
-if printf '%s' "$_r" | grep -qF "$CLEANUP_IN_PROGRESS"; then
+if grep -qF "$CLEANUP_IN_PROGRESS" <<< "$_r"; then
   fail "T-11: inactive cleanup used in-progress hint: $out"
 else
   pass "T-11: inactive cleanup does not use in-progress hint"
@@ -1012,12 +1012,12 @@ out=$(run_stop "$d")
 assert "T-wikichain-1st: handoff blocks" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
 out=$(run_stop "$d")
 _r=$(printf '%s' "$out" | jq -r '.reason // ""')
-if printf '%s' "$_r" | grep -qF "$CLEANUP_IN_PROGRESS"; then
+if grep -qF "$CLEANUP_IN_PROGRESS" <<< "$_r"; then
   pass "T-wikichain-2nd: continues cleanup remaining steps"
 else
   fail "T-wikichain-2nd: $out"
 fi
-if printf '%s' "$_r" | grep -q "ステップ 6（cursor 前進）"; then
+if grep -q "ステップ 6（cursor 前進）" <<< "$_r"; then
   fail "T-wikichain-2nd: replaced wiki chain with cursor advance: $out"
 else
   pass "T-wikichain-2nd: does not jump to cursor advance"
@@ -1036,9 +1036,9 @@ out=$(run_stop "$d")
 _r=$(printf '%s' "$out" | jq -r '.reason // ""')
 assert "T-identity cleanup: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
 _n2503="Issue #2503" # drift-check-ignore
-if printf '%s' "$_r" | grep -q "$_n2503" \
-  && printf '%s' "$_r" | grep -q "batch-run ステップ 1 から再判定" \
-  && ! printf '%s' "$_r" | grep -q "ステップ 6"; then
+if grep -q "$_n2503" <<< "$_r" \
+  && grep -q "batch-run ステップ 1 から再判定" <<< "$_r" \
+  && ! grep -q "ステップ 6" <<< "$_r"; then
   pass "T-identity leftover cleanup: step 1 re-eval for next issue"
 else
   fail "T-identity leftover cleanup: $out"
@@ -1053,9 +1053,9 @@ jq '.issues=[2502,2503] | .cursor=1' "$(queue_for "$d")" > "$(queue_for "$d").tm
 out=$(run_stop "$d")
 _r=$(printf '%s' "$out" | jq -r '.reason // ""')
 _n2503b="Issue #2503" # drift-check-ignore
-if printf '%s' "$_r" | grep -q "$_n2503b" \
-  && printf '%s' "$_r" | grep -q "batch-run ステップ 1 から再判定" \
-  && ! printf '%s' "$_r" | grep -q "ステップ 6"; then
+if grep -q "$_n2503b" <<< "$_r" \
+  && grep -q "batch-run ステップ 1 から再判定" <<< "$_r" \
+  && ! grep -q "ステップ 6" <<< "$_r"; then
   pass "T-identity leftover CB: step 1 re-eval for next issue"
 else
   fail "T-identity leftover CB: $out"

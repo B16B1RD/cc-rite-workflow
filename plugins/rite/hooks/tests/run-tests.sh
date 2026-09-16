@@ -84,7 +84,7 @@ interrupt_run() {
   set +m
   while read -r pid; do
     [ -n "$pid" ] && descendants+=("$pid")
-  done < <(owned_descendants "${active_pids[@]}")
+  done < <(owned_descendants ${active_pids[@]+"${active_pids[@]}"})
   if [ "${#descendants[@]}" -gt 0 ]; then
     kill -TERM "${descendants[@]}" 2>/dev/null || true
   fi
@@ -101,7 +101,7 @@ interrupt_run() {
   if [ "${#descendants[@]}" -gt 0 ]; then
     kill -KILL "${descendants[@]}" 2>/dev/null || true
   fi
-  for pid in "${active_pids[@]}"; do
+  for pid in ${active_pids[@]+"${active_pids[@]}"}; do
     kill -KILL -- "-$pid" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
   done
@@ -121,7 +121,6 @@ SKIP_ACCOUNTING_BROKEN=0
 next_test=0
 next_output=1
 test_rcs=()
-completed=()
 marker_files=()
 while [ "$next_test" -lt "${#test_files[@]}" ] || [ "${#active_pids[@]}" -gt 0 ]; do
   set -m
@@ -171,7 +170,6 @@ while [ "$next_test" -lt "${#test_files[@]}" ] || [ "${#active_pids[@]}" -gt 0 ]
       worker_rc=0
       wait "$worker_pid" || worker_rc=$?
       test_rcs[$test_id]=$worker_rc
-      completed[$test_id]=1
       reaped=1
       if [ ! -f "$run_dir/$test_id.result" ]; then
         # Seed by the worker's group as its PID may already have been reaped.
@@ -187,78 +185,80 @@ while [ "$next_test" -lt "${#test_files[@]}" ] || [ "${#active_pids[@]}" -gt 0 ]
     fi
   done
   launch_in_progress=1
-  active_pids=("${remaining_pids[@]}")
-  active_ids=("${remaining_ids[@]}")
-  active_files=("${remaining_files[@]}")
+  active_pids=(${remaining_pids[@]+"${remaining_pids[@]}"})
+  active_ids=(${remaining_ids[@]+"${remaining_ids[@]}"})
+  active_files=(${remaining_files[@]+"${remaining_files[@]}"})
   launch_in_progress=0
   if [ "$pending_signal" -ne 0 ]; then interrupt_run "$pending_signal"; fi
-  # Completed bodies remain in discovery order even when workers finish out of order.
-  while [ "${completed[$next_output]:-0}" -eq 1 ]; do
-    test_id=$next_output
-    test_file=${test_files[$((test_id - 1))]}
-    test_name="$(basename "$test_file")"
-    TOTAL=$((TOTAL + 1))
-    printf 'TEST_OUTPUT_BEGIN id=%s file=%s\n' "$test_id" "${marker_files[$test_id]}"
-    echo "=== Running: $test_name ==="
-    test_rc=${test_rcs[$test_id]}
-    result_rc=
-    if [ -f "$run_dir/$test_id.result" ]; then
-      read -r result_rc < "$run_dir/$test_id.result" || true
-    fi
-    if [ "$result_rc" != "$test_rc" ]; then
-      echo "ERROR: $test_name worker result missing or inconsistent (wait rc=$test_rc)" >&2
-      [ "$test_rc" -ne 0 ] || test_rc=1
-    fi
-    # Valid UTF-8 (Japanese, emoji) is unchanged. Invalid sequences (raw C1
-    # 0x80-0x9f, orphaned lead bytes) become U+FFFD so BSD sed/grep and the
-    # GHA macos Worker log flush do not die with EILSEQ (no uploaded logs).
-    # Read directly from the capture file: background writers cannot hold a command
-    # substitution pipe open, and invalid bytes never enter a shell variable.
-    [ -f "$run_dir/$test_id.output" ] || : > "$run_dir/$test_id.output"
-    if command -v python3 >/dev/null 2>&1 \
-       && test_out=$(python3 -c 'import sys; sys.stdout.buffer.write(sys.stdin.buffer.read().decode("utf-8", "replace").encode("utf-8"))' < "$run_dir/$test_id.output"); then
-      :
-    else
-      test_out=$(LC_ALL=C tr '\000-\010\013-\037\177\200-\237' '[?*]' < "$run_dir/$test_id.output")
-    fi
-    printf '%s\n' "$test_out"
-    printf 'TEST_OUTPUT_END id=%s\n' "$test_id"
-    if [ "$test_rc" -eq 0 ]; then
-      PASSED=$((PASSED + 1))
-    else
-      FAILED=$((FAILED + 1))
-      FAILED_TESTS+=("$test_name")
-    fi
-    # Anchor both forms to a summary line rather than matching anywhere: a failure
-    # diagnostic quoting ", 7 skipped" would otherwise be counted as seven skips.
-    # A file emits one form or the other, so take whichever appears and stop —
-    # summing both would double-count a file that ever printed both.
+
+  if [ "$reaped" -eq 0 ] && [ "${#active_pids[@]}" -gt 0 ]; then sleep 0.05; fi
+done
+
+# All live progress writers have exited before the parent emits captured bodies.
+while [ "$next_output" -le "${#test_files[@]}" ]; do
+  test_id=$next_output
+  test_file=${test_files[$((test_id - 1))]}
+  test_name="$(basename "$test_file")"
+  TOTAL=$((TOTAL + 1))
+  printf 'TEST_OUTPUT_BEGIN id=%s file=%s\n' "$test_id" "${marker_files[$test_id]}"
+  echo "=== Running: $test_name ==="
+  test_rc=${test_rcs[$test_id]}
+  result_rc=
+  if [ -f "$run_dir/$test_id.result" ]; then
+    read -r result_rc < "$run_dir/$test_id.result" || true
+  fi
+  if [ "$result_rc" != "$test_rc" ]; then
+    echo "ERROR: $test_name worker result missing or inconsistent (wait rc=$test_rc)" >&2
+    [ "$test_rc" -ne 0 ] || test_rc=1
+  fi
+  # Valid UTF-8 (Japanese, emoji) is unchanged. Invalid sequences (raw C1
+  # 0x80-0x9f, orphaned lead bytes) become U+FFFD so BSD sed/grep and the
+  # GHA macos Worker log flush do not die with EILSEQ (no uploaded logs).
+  # Read directly from the capture file: background writers cannot hold a command
+  # substitution pipe open, and invalid bytes never enter a shell variable.
+  [ -f "$run_dir/$test_id.output" ] || : > "$run_dir/$test_id.output"
+  if command -v python3 >/dev/null 2>&1 \
+     && test_out=$(python3 -c 'import sys; sys.stdout.buffer.write(sys.stdin.buffer.read().decode("utf-8", "replace").encode("utf-8"))' < "$run_dir/$test_id.output"); then
+    :
+  else
+    test_out=$(LC_ALL=C tr '\000-\010\013-\037\177\200-\237' '[?*]' < "$run_dir/$test_id.output")
+  fi
+  printf '%s\n' "$test_out"
+  printf 'TEST_OUTPUT_END id=%s\n' "$test_id"
+  if [ "$test_rc" -eq 0 ]; then
+    PASSED=$((PASSED + 1))
+  else
+    FAILED=$((FAILED + 1))
+    FAILED_TESTS+=("$test_name")
+  fi
+  # Anchor both forms to a summary line rather than matching anywhere: a failure
+  # diagnostic quoting ", 7 skipped" would otherwise be counted as seven skips.
+  # A file emits one form or the other, so take whichever appears and stop —
+  # summing both would double-count a file that ever printed both.
+  file_skips=$(printf '%s\n' "$test_out" \
+    | sed -n -E 's/^[[:space:]]*SKIP: ([0-9]+)[[:space:]]*$/\1/p' \
+    | awk '{s += $1} END {print s + 0}')
+  case "$file_skips" in ''|*[!0-9]*) file_skips=0 ;; esac
+  if [ "$file_skips" -eq 0 ]; then
     file_skips=$(printf '%s\n' "$test_out" \
-      | sed -n -E 's/^[[:space:]]*SKIP: ([0-9]+)[[:space:]]*$/\1/p' \
+      | sed -n -E 's/^[^❌]*Results:[^❌]*, ([0-9]+) skipped.*$/\1/p' \
       | awk '{s += $1} END {print s + 0}')
     case "$file_skips" in ''|*[!0-9]*) file_skips=0 ;; esac
-    if [ "$file_skips" -eq 0 ]; then
-      file_skips=$(printf '%s\n' "$test_out" \
-        | sed -n -E 's/^[^❌]*Results:[^❌]*, ([0-9]+) skipped.*$/\1/p' \
-        | awk '{s += $1} END {print s + 0}')
-      case "$file_skips" in ''|*[!0-9]*) file_skips=0 ;; esac
-    fi
-    # Cross-check the parsed count against the visible markers. A mismatch in either
-    # direction means the file reports skips in a shape the runner does not know
-    # about, and the undercount is exactly what this accounting exists to prevent —
-    # so it FAILS the run rather than only warning. Counting only the zero case
-    # would miss a file that mixes counted skip() calls with bare echoes.
-    visible_skips=$(printf '%s\n' "$test_out" | grep -c '⏭️' || true)
-    case "$visible_skips" in ''|*[!0-9]*) visible_skips=0 ;; esac
-    if [ "$visible_skips" -ne "$file_skips" ]; then
-      echo "ERROR: $test_name printed $visible_skips skip marker(s) but the summary reported $file_skips — summary format drift, the skip total below is wrong" >&2
-      SKIP_ACCOUNTING_BROKEN=1
-    fi
-    SKIPPED=$((SKIPPED + file_skips))
-    echo ""
-    next_output=$((next_output + 1))
-  done
-  if [ "$reaped" -eq 0 ] && [ "${#active_pids[@]}" -gt 0 ]; then sleep 0.05; fi
+  fi
+  # Cross-check the parsed count against the visible markers. A mismatch in either
+  # direction means the file reports skips in a shape the runner does not know
+  # about, and the undercount is exactly what this accounting exists to prevent —
+  # so it FAILS the run rather than only warning. Counting only the zero case
+  # would miss a file that mixes counted skip() calls with bare echoes.
+  visible_skips=$(printf '%s\n' "$test_out" | grep -c '⏭️' || true)
+  case "$visible_skips" in ''|*[!0-9]*) visible_skips=0 ;; esac
+  if [ "$visible_skips" -ne "$file_skips" ]; then
+    echo "ERROR: $test_name printed $visible_skips skip marker(s) but the summary reported $file_skips — summary format drift, the skip total below is wrong" >&2
+    SKIP_ACCOUNTING_BROKEN=1
+  fi
+  SKIPPED=$((SKIPPED + file_skips))
+  echo ""
+  next_output=$((next_output + 1))
 done
 
 echo "==============================="
