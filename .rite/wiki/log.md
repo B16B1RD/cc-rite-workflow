@@ -1,6 +1,16 @@
 # Directory Update Log
 ## 2026-09-16
 
+* **lint:checked** — stale=66, orphans=0, missing_concept=0, unregistered_raw=509, broken_refs=0, descriptive_refs=0。既存ページ本文は変更なし。構造検査を実行し、全ページ間の意味比較は今回再実行していない。
+
+* **Skip**: [実行記録](raw/fixes/20260916T055334Z-pr-2904.md) — rite workflow の原因と検証結果はプラグイン本体と回帰テストへ反映済み。raw を今回の経過・完了記録として保持する
+* **Skip**: [実行記録](raw/fixes/20260916T060526Z-pr-2904.md) — rite workflow の原因と検証結果はプラグイン本体と回帰テストへ反映済み。raw を今回の経過・完了記録として保持する
+* **Skip**: [実行記録](raw/retrospectives/20260916T061852Z-issue-2901.md) — rite workflow の原因と検証結果はプラグイン本体と回帰テストへ反映済み。raw を今回の経過・完了記録として保持する
+* **Skip**: [実行記録](raw/reviews/20260916T054013Z-pr-2904.md) — rite workflow の原因と検証結果はプラグイン本体と回帰テストへ反映済み。raw を今回の経過・完了記録として保持する
+* **Skip**: [実行記録](raw/reviews/20260916T060343Z-pr-2904.md) — rite workflow の原因と検証結果はプラグイン本体と回帰テストへ反映済み。raw を今回の経過・完了記録として保持する
+* **Skip**: [実行記録](raw/reviews/20260916T061402Z-pr-2904.md) — rite workflow の原因と検証結果はプラグイン本体と回帰テストへ反映済み。raw を今回の経過・完了記録として保持する
+
+
 * **Skip**: [レビュー結果](raw/reviews/20260915T155931Z-pr-2881.md) — 既存ページで同じ経験則を扱っているため
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=504, broken_refs=0
 * **Skip**: [fix 結果](raw/fixes/20260915T160221Z-pr-2881.md) — rite workflow 自体の triage 挙動の記録で、プラグイン本体に機構として組み込み済みのため Wiki に置く domain 知見がない
