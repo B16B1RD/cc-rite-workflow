@@ -470,6 +470,12 @@ sweep_exit=$(sed -n '/^### sweep 後の終了理由/,/^### 正常終了/p' "$ITE
 assert "reply-only enters sweep before completion" 1 "$(printf '%s\n' "$reply_entry" | grep -c '^| `\[fix:replied-only\]` | ステップ 5\.S.*返信のみで完了通知')"
 assert "successful sweep keeps reply-only exit" 1 "$(printf '%s\n' "$sweep_exit" | grep -c '^| `\[fix:replied-only\]` | `\[fix:replied-only\]`.*mergeable へ昇格しない')"
 assert "other successful entries remain mergeable" 1 "$(printf '%s\n' "$sweep_exit" | grep -c '^| `\[review:mergeable\]` / `\[fix:non-fatal-only\]` | `\[review:mergeable\]` |')"
+run_close_section=$(sed -n '/^### ステップ 5\.0\.1:/,/^### ステップ 5\.0\.2:/p' "$ITERATE")
+assert "reply-only records deferred context" 1 "$(printf '%s\n' "$run_close_section" | grep -c '返信のみは `review-defer` で `deferred` として終了記録を保存')"
+assert "reply-only defers through the flow-state helper" 1 "$(printf '%s\n' "$run_close_section" | grep -c 'bash {plugin_root}/hooks/flow-state.sh review-defer')"
+assert "reply-only emits deferred run-close state" 1 "$(printf '%s\n' "$run_close_section" | grep -c 'marker_emit ITERATE_RUN_CLOSE deferred')"
+assert "interruption retains the unfinished run" 1 "$(printf '%s\n' "$run_close_section" | grep -c '中断は `retained` として未完了 run を閉じない')"
+assert "stale reply-only retained wording is absent" 0 "$(printf '%s\n' "$run_close_section" | grep -c '中断・返信のみは `retained`')"
 assert_grep "reentry and nested sweep cannot overwrite entry reason" "$ITERATE" '5\.S 再入時も保持値を使い、内部の `\[fix:sweep-done\]` や handoff で上書きしない'
 assert "unknown entry cannot imply success" 1 "$(printf '%s\n' "$sweep_exit" | grep -c '^| 欠落 / その他 | `\[iterate:nb-sweep-error\]`')"
 assert_grep "all successful sweep outcomes use entry routing" "$ITERATE" '5\.S の `done` / `noop` / `skipped`.*消化の成功だけ'
