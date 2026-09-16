@@ -115,13 +115,13 @@ projects:
  enabled: true|false # From rite-config.yml github.projects.enabled
  project_number: number # From rite-config.yml github.projects.project_number
  owner: string # From rite-config.yml github.projects.owner
- status: "todo" # Status role (default: "todo"); the board column name comes from rite-config.yml
+ status: "todo" # Status role; only "todo" is accepted (default). Any other value is refused before any gh call (exit 1, project_registration: "failed", Issue not created); the board column name comes from rite-config.yml
  priority: "High|Medium|Low" # Determined by caller
  complexity: "XS|S|M|L|XL" # Determined by caller
  iteration:
  mode: "none|auto" # Default: "none". "auto" assigns to current iteration
  field_name: "Sprint" # Default: "Sprint"
- field_names: { status, priority, complexity } # Optional: each overrides the built-in EN<->JA alias for that canonical field. Empty/absent -> aliases only
+ field_names: { status, priority, complexity } # Optional per-field project field-name override. priority / complexity: overrides the built-in EN<->JA alias (empty/absent -> aliases only). status: overrides the resolver's candidates, which come from rite-config.yml github.projects.fields.status.name (empty/absent -> "ステータス" then "Status"); the built-in alias table does not apply to Status
 options:
  source: string # Caller identifier (pr_review|pr_create|cleanup|interactive|xl_decomposition|fingerprint_split|quality_signal_3_split|quality_signal_4_split)
                 # Note: 以下の値は legacy 互換のため enum に含めない (caller 消失済、`grep -rn 'source: "<value>"' plugins/rite/` で 0 件確認):
@@ -205,6 +205,7 @@ The script handles errors internally with the following behavior:
 
 | Error Case | Response |
 |------------|----------|
+| `projects.status` is not `"todo"` | Input error: output JSON with `project_registration: "failed"` + `exit 1` **before any gh call** (the Issue is not created), even with `non_blocking_projects: true`. The warning names the received value |
 | `gh issue create` failure | Output JSON with `project_registration: "failed"` + `exit 1`. Caller's `result=$(bash ...)` captures stdout but gets non-zero exit code |
 | `gh project item-add` failure (after 3 retries) | Output JSON with `project_registration: "failed"` + `exit 0` (non-blocking) or `exit 1`. **stderr emit**: `ERROR: Projects registration failed: ...` |
 | `item_id` retrieval failure (after fallback to last: 20 + 3 retries) | Output JSON with `project_registration: "partial"` + `exit 0`. **stderr emit** on each failure |
@@ -214,7 +215,7 @@ The script handles errors internally with the following behavior:
 
 **Exit code convention:**
 - `exit 0`: Success or non-blocking failure (Projects-related issues when `non_blocking_projects: true`)
-- `exit 1`: Fatal error (Issue creation itself failed, or blocking failure when `non_blocking_projects: false`)
+- `exit 1`: Fatal error (input validation such as `projects.status` other than `"todo"`, Issue creation itself failed, or blocking failure when `non_blocking_projects: false`)
 
 **Behavior on error:**
 - All output (success and error) is written to **stdout** as JSON. The caller captures stdout via `result=$(bash ...)` and checks the exit code

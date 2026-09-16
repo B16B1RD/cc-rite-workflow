@@ -205,8 +205,8 @@ assert_file_contains "$DRIFT_SH" 'COMPLETED\) *target_role="done"' \
   "AC-3: COMPLETED が独立した明示アームを持つ"
 # The cancelled-unmapped exclusion must run before the count is incremented; pin the
 # guard's shape so it cannot drift below `DRIFT_COUNT=$((DRIFT_COUNT + 1))`.
-unmapped_guard_line=$(grep -n 'if \[ "\$target_role" = "cancelled" \] && \[ -z "\$CANCELLED_NAME" \]; then' "$DRIFT_SH" | head -1 | cut -d: -f1)
-count_line=$(grep -n '^    DRIFT_COUNT=\$((DRIFT_COUNT + 1))$' "$DRIFT_SH" | head -1 | cut -d: -f1)
+unmapped_guard_line=$(grep -n 'if \[ "\$target_role" = "cancelled" \] && \[ -z "\$CANCELLED_NAME" \]; then' "$DRIFT_SH" | head -1 | cut -d: -f1 || true)
+count_line=$(grep -n '^    DRIFT_COUNT=\$((DRIFT_COUNT + 1))$' "$DRIFT_SH" | head -1 | cut -d: -f1 || true)
 if [ -n "$unmapped_guard_line" ] && [ -n "$count_line" ] && [ "$unmapped_guard_line" -lt "$count_line" ]; then
   PASS=$((PASS + 1)); echo "  ✓ cancelled 未マップの除外は DRIFT_COUNT 加算より前にある"
 else
