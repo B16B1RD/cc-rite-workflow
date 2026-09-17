@@ -15,7 +15,7 @@
 #   japanese  `ステータス` field with Japanese columns
 #   nocancel  no column for abandoned Issues (cancelled row omitted)
 #
-# Per shape (T-01 .. T-03, T-05):
+# Per shape (T-01 .. T-03):
 #   - gate before any write reports `missing` (the todo column has not reached in_progress)
 #   - helper in_progress -> in_review -> done each return `updated`; the gate reports `ok`
 #     with the reached role after each write
@@ -29,9 +29,13 @@
 #   `skipped_role_unmapped` with no item-edit, and the drift check lists it as informational
 #   with 0 findings.
 #
+# T-05  allowlist positive control: synthetic writes and a multi-line GraphQL mutation
+#       are rejected, allowed lines pass.
+#
 # Static pins on the documentation this chain is specified by:
-#   T-06  no Target document defines the Status set by English display names (grammar
-#         arms with a positive-control fixture, then a 0-hit sweep)
+#   T-06  no Target document defines the Status set by English display names or keeps
+#         the retired unmapped-column wording (grammar arms with a positive-control
+#         fixture, then a 0-hit sweep)
 #   T-07  README.md / README.ja.md carry the same Status Transitions fence and both point
 #         at rite-config.yml `fields.status.options`
 #   T-08  docs/CONFIGURATION.md shows the four board shapes and the three config states
@@ -407,9 +411,9 @@ assert "nocancel: the refused write leaves the column unchanged" "In Progress" "
 # Static pins on the documentation
 # ---------------------------------------------------------------------------
 echo ""
-echo "=== T-06: no Target document defines the Status set by English display names ==="
-# One arm per shape of the old wording. Each is a definition or destination written as a
-# display name; mentions of a column name as an example are not matched.
+echo "=== T-06: no English-display-name Status definitions or retired unmapped-column wording ==="
+# Arms match Status definitions or destinations written as display names and the
+# retired unmapped-column wording; display names used only as examples are not matched.
 SOT_ARMS=(
   'copy these two names'
   'read by no consumer'
@@ -463,9 +467,9 @@ for doc in "${TARGET_DOCS[@]}"; do
   hit=$(sot_hits "$doc"); [ -n "$hit" ] && findings="${findings}${hit}"$'\n'
 done
 if [ -z "$findings" ]; then
-  pass "T-06: no Target document keeps an English-display-name definition of the Status set"
+  pass "T-06: no Target document keeps English-display-name Status definitions or retired unmapped-column wording"
 else
-  fail "T-06: English display names still define the Status set:"$'\n'"$findings"
+  fail "T-06: English-display-name Status definitions or retired unmapped-column wording remain:"$'\n'"$findings"
 fi
 SOT="$REPO_ROOT/plugins/rite/references/projects-integration.md"
 sot_248=$(awk '/^### 2\.4\.8 Terminal Status Set$/,/^## 2\.5 /' "$SOT")
