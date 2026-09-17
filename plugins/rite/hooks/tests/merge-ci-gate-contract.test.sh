@@ -129,7 +129,7 @@ timeout_prev=$(awk '
   s && /^```bash$/ { print prev; exit }
   { prev = $0 }
 ' "$MERGE")
-if printf '%s\n' "$timeout_prev" | grep -q 'timeout: 600000'; then
+if printf '%s\n' "$timeout_prev" | grep -c >/dev/null 'timeout: 600000'; then
   pass "T-09 timeout: 600000 is the line immediately before the step-1 bash fence"
 else
   fail "T-09 timeout: 600000 must be the line immediately before the step-1 bash fence (got: $timeout_prev)"
@@ -280,12 +280,12 @@ assert "T-03 gh pr merge was not called" "0" "$STEP1_MERGE"
 rm -rf "$STEP1_SANDBOX"
 
 run_step1 "pending2" "1"
-if printf '%s\n' "$STEP1_OUT" | grep -q '\[merge:not-ready\]'; then
+if printf '%s\n' "$STEP1_OUT" | grep -c >/dev/null '\[merge:not-ready\]'; then
   pass "T-04 timeout emits [merge:not-ready]"
 else
   fail "T-04 timeout did not emit [merge:not-ready] (out=$STEP1_OUT)"
 fi
-if printf '%s\n' "$STEP1_ERR" | grep -q 'tests' && printf '%s\n' "$STEP1_ERR" | grep -q 'lint'; then
+if printf '%s\n' "$STEP1_ERR" | grep -c >/dev/null 'tests' && printf '%s\n' "$STEP1_ERR" | grep -c >/dev/null 'lint'; then
   pass "T-04 timeout stderr lists pending check names"
 else
   fail "T-04 timeout stderr missing pending check names (err=$STEP1_ERR)"
@@ -319,12 +319,12 @@ assert "T-08 checks 0 sleep count is 0" "0" "$STEP1_SLEEP"
 rm -rf "$STEP1_SANDBOX"
 
 run_step1 "pending2,fail" "1"
-if printf '%s\n' "$STEP1_OUT" | grep -q '\[merge:not-ready\]'; then
+if printf '%s\n' "$STEP1_OUT" | grep -c >/dev/null '\[merge:not-ready\]'; then
   pass "loop-mid gh failure emits [merge:not-ready]"
 else
   fail "loop-mid gh failure missing [merge:not-ready] (out=$STEP1_OUT)"
 fi
-if printf '%s\n' "$STEP1_ERR" | grep -q 'PR/CI 状態を取得できないためマージしません'; then
+if printf '%s\n' "$STEP1_ERR" | grep -c >/dev/null 'PR/CI 状態を取得できないためマージしません'; then
   pass "loop-mid gh failure uses the existing ERROR text"
 else
   fail "loop-mid gh failure missing existing ERROR text (err=$STEP1_ERR)"

@@ -300,7 +300,7 @@ unset RITE_DEBUG
 # a fixed /tmp path — the latter collides across concurrent runs and needs manual rm.
 out_stdout=$(extract_session_id 'not-json-corrupt-{{{' 2>"$TEST_DIR/corrupt01-stderr")
 out_stderr=$(cat "$TEST_DIR/corrupt01-stderr" 2>/dev/null)
-if printf '%s' "$out_stderr" | grep -qE 'WARNING: extract_session_id: jq parse failed.*rc='; then
+if printf '%s' "$out_stderr" | grep -cE >/dev/null 'WARNING: extract_session_id: jq parse failed.*rc='; then
   pass "TC-CORRUPT-01 WARNING emitted with rc capture"
 else
   fail "TC-CORRUPT-01 WARNING missing rc — corrupt hook payload silently classified or rc absent: $out_stderr"
@@ -319,7 +319,7 @@ mkdir -p "$TEST_DIR"
 printf '{ not valid json' > "$corrupt_state"
 out_stdout=$(get_state_session_id "$corrupt_state" 2>"$TEST_DIR/corrupt02-stderr")
 out_stderr=$(cat "$TEST_DIR/corrupt02-stderr" 2>/dev/null)
-if printf '%s' "$out_stderr" | grep -qE 'WARNING: get_state_session_id: jq parse failed.*rc='; then
+if printf '%s' "$out_stderr" | grep -cE >/dev/null 'WARNING: get_state_session_id: jq parse failed.*rc='; then
   pass "TC-CORRUPT-02 WARNING emitted with rc capture"
 else
   fail "TC-CORRUPT-02 WARNING missing rc — corrupt state file silently classified or rc absent: $out_stderr"

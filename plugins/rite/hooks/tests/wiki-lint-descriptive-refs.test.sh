@@ -1034,7 +1034,7 @@ assert "TC-46 index.md 分の hits は残る" "1" "$(sed -n 's/^\[CONTEXT\] WIKI
 step22_re=$(grep -oE "grep -E '\^\\\\\.rite/wiki/pages/[^']*'" "$LINT_MD" | head -1)
 if [ -z "$step22_re" ]; then
   fail "TC-35 (T-09) SKILL.md ステップ 2.2 separate_branch の pages_list 抽出 regex を特定できなかった"
-elif printf '%s' "$step22_re" | grep -q 'index'; then
+elif printf '%s' "$step22_re" | grep -c >/dev/null 'index'; then
   fail "TC-35 (T-09) separate_branch の pages_list に index.md が混ざっている (孤児 / 陳腐化の件数が変わる)"
 else
   pass "TC-35 (T-09) separate_branch の pages_list は pages/ 配下のみ (他カテゴリの入力が不変)"
@@ -1045,9 +1045,9 @@ fi
 step22_find=$(grep -oE 'pages_list=\$\(find [^)]*' "$LINT_MD" | head -1)
 if [ -z "$step22_find" ]; then
   fail "TC-35 (T-09) SKILL.md ステップ 2.2 same_branch の pages_list find 式を特定できなかった"
-elif printf '%s' "$step22_find" | grep -q 'index'; then
+elif printf '%s' "$step22_find" | grep -c >/dev/null 'index'; then
   fail "TC-35 (T-09) same_branch の pages_list に index.md が混ざっている (孤児 / 陳腐化の件数が変わる)"
-elif ! printf '%s' "$step22_find" | grep -q '\.rite/wiki/pages'; then
+elif ! printf '%s' "$step22_find" | grep -c >/dev/null '\.rite/wiki/pages'; then
   fail "TC-35 (T-09) same_branch の pages_list の探索根が pages/ 配下ではない (他カテゴリの入力が変わる)"
 else
   pass "TC-35 (T-09) same_branch の pages_list は pages/ 配下のみ (他カテゴリの入力が不変)"
@@ -1058,7 +1058,7 @@ fi
 # 二重管理が復活していて片方が黙って古くなる。コメント行を落とした live コードだけを見る
 # (ヘッダは委譲の説明で `#[0-9]` 相当の表記を持ちうる)。
 helper_live=$(grep -v '^[[:space:]]*#' "$SCRIPT")
-if printf '%s' "$helper_live" | grep -q '#\[0-9\]'; then
+if printf '%s' "$helper_live" | grep -c >/dev/null '#\[0-9\]'; then
   fail "TC-22 helper の live コードに番号パターンが再出現している (検出文法は number-reference-check.sh のみが持つ)
 $(printf '%s' "$helper_live" | grep -n '#\[0-9\]' | head -3)"
 else

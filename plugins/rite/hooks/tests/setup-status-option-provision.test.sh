@@ -28,7 +28,7 @@ extract_marked_bash() {
 }
 
 SNIPPET_RAW=$(extract_marked_bash STATUS_OPTION_UNION_PROVISION)
-if ! printf '%s' "$SNIPPET_RAW" | grep -q 'STATUS_OPTION_UNION_PROVISION'; then
+if ! printf '%s' "$SNIPPET_RAW" | grep -c >/dev/null 'STATUS_OPTION_UNION_PROVISION'; then
   echo "FAIL: SKILL.md からの STATUS_OPTION_UNION_PROVISION block 抽出に失敗しました" >&2
   echo "  抽出結果: $(printf '%s' "$SNIPPET_RAW" | wc -l) 行" >&2
   exit 1
@@ -43,7 +43,7 @@ for marker in STATUS_OPTION_EXISTING_VERIFY STATUS_OPTIONS_ROLE_MIGRATION STATUS
   [ "$marker" = STATUS_OPTIONS_UPGRADE_BACKUP ] && raw_var=BACKUP_RAW
   [ "$marker" = STATUS_OPTION_EXISTING_CONFIG_COMMIT ] && raw_var=COMMIT_RAW
   [ "$marker" = STATUS_OPTION_CONFIG_CANDIDATE_CREATE ] && raw_var=CANDIDATE_RAW
-  if ! printf '%s' "${!raw_var}" | grep -q "$marker"; then
+  if ! printf '%s' "${!raw_var}" | grep -c >/dev/null "$marker"; then
     echo "FAIL: SKILL.md からの $marker block 抽出に失敗しました" >&2
     exit 1
   fi

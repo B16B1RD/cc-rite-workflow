@@ -97,10 +97,10 @@ echo "=== TC-1: same_branch 検出 (登録 2 / 実在 3 → orphan 1) ==="
 repo=$(make_same_branch_sandbox tc1 1)
 run_helper "$repo" "$PAGES_3" --branch-strategy same_branch
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'n_orphans=1' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx '\.rite/wiki/pages/anti-patterns/orphan\.md' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'orphan_check_ok=true' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx '\[CONTEXT\] WIKI_LINT_ORPHANS=1'; then
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'n_orphans=1' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null '\.rite/wiki/pages/anti-patterns/orphan\.md' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'orphan_check_ok=true' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null '\[CONTEXT\] WIKI_LINT_ORPHANS=1'; then
   pass "TC-1 orphan 1 件のみ検出 (./pages/ 形式 link も登録扱い) + enum/sentinel emit"
 else
   fail "TC-1 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
@@ -110,9 +110,9 @@ echo "=== TC-2: index.md 不在 → index_unreadable ==="
 repo=$(make_same_branch_sandbox tc2 0)
 run_helper "$repo" "$PAGES_3" --branch-strategy same_branch
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'n_orphans=0' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'orphan_check_ok=index_unreadable' \
-   && printf '%s\n' "$HELPER_STDERR" | grep -q '読み出せません'; then
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'n_orphans=0' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'orphan_check_ok=index_unreadable' \
+   && printf '%s\n' "$HELPER_STDERR" | grep -c >/dev/null '読み出せません'; then
   pass "TC-2 index_unreadable + n_orphans=0 + WARNING"
 else
   fail "TC-2 (rc=$HELPER_RC stdout=$HELPER_STDOUT stderr=$HELPER_STDERR)"
@@ -125,9 +125,9 @@ repo=$(make_same_branch_sandbox tc3 1 '# Wiki Index
 ')
 run_helper "$repo" "$PAGES_3" --branch-strategy same_branch
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'n_orphans=0' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'orphan_check_ok=index_empty' \
-   && printf '%s\n' "$HELPER_STDERR" | grep -q '抽出できませんでした'; then
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'n_orphans=0' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'orphan_check_ok=index_empty' \
+   && printf '%s\n' "$HELPER_STDERR" | grep -c >/dev/null '抽出できませんでした'; then
   pass "TC-3 index_empty + 全ページ orphan 誤検出なし"
 else
   fail "TC-3 (rc=$HELPER_RC stdout=$HELPER_STDOUT stderr=$HELPER_STDERR)"
@@ -137,8 +137,8 @@ echo "=== TC-4: separate_branch 検出 (git show 経由) ==="
 repo=$(make_separate_branch_sandbox tc4)
 run_helper "$repo" "$PAGES_3" --branch-strategy separate_branch --wiki-branch wiki
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'n_orphans=1' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx '\.rite/wiki/pages/anti-patterns/orphan\.md'; then
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'n_orphans=1' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null '\.rite/wiki/pages/anti-patterns/orphan\.md'; then
   pass "TC-4 separate_branch で orphan 検出"
 else
   fail "TC-4 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
@@ -146,7 +146,7 @@ fi
 
 echo "=== TC-5: placeholder residue (--branch-strategy) → exit 1 ==="
 run_helper "$repo" "" --branch-strategy "{branch_strategy}"
-if [ "$HELPER_RC" -eq 1 ] && printf '%s\n' "$HELPER_STDERR" | grep -q 'LINT_PHASE_5_PLACEHOLDER_RESIDUE=1'; then
+if [ "$HELPER_RC" -eq 1 ] && printf '%s\n' "$HELPER_STDERR" | grep -c >/dev/null 'LINT_PHASE_5_PLACEHOLDER_RESIDUE=1'; then
   pass "TC-5 exit 1 + residue marker"
 else
   fail "TC-5 (rc=$HELPER_RC stderr=$HELPER_STDERR)"
@@ -154,7 +154,7 @@ fi
 
 echo "=== TC-6: unknown branch_strategy → exit 1 ==="
 run_helper "$repo" "" --branch-strategy bogus
-if [ "$HELPER_RC" -eq 1 ] && printf '%s\n' "$HELPER_STDERR" | grep -q "未知の branch_strategy 値"; then
+if [ "$HELPER_RC" -eq 1 ] && printf '%s\n' "$HELPER_STDERR" | grep -c >/dev/null "未知の branch_strategy 値"; then
   pass "TC-6 exit 1 + 未知値メッセージ"
 else
   fail "TC-6 (rc=$HELPER_RC stderr=$HELPER_STDERR)"
@@ -172,9 +172,9 @@ echo "=== TC-8: 空 stdin (index 有効) → n_orphans=0 + orphan_check_ok=true 
 repo=$(make_same_branch_sandbox tc8 1)
 run_helper "$repo" "" --branch-strategy same_branch
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'n_orphans=0' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'orphan_check_ok=true' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx '\[CONTEXT\] WIKI_LINT_ORPHANS=0'; then
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'n_orphans=0' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'orphan_check_ok=true' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null '\[CONTEXT\] WIKI_LINT_ORPHANS=0'; then
   pass "TC-8 空入力で 0 件 + true enum"
 else
   fail "TC-8 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
@@ -191,9 +191,9 @@ INDEX_FIXTURE_BULLET='# Wiki Index
 repo=$(make_same_branch_sandbox tc9 1 "$INDEX_FIXTURE_BULLET")
 run_helper "$repo" "$PAGES_3" --branch-strategy same_branch
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'n_orphans=1' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx '\.rite/wiki/pages/anti-patterns/orphan\.md' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'orphan_check_ok=true'; then
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'n_orphans=1' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null '\.rite/wiki/pages/anti-patterns/orphan\.md' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'orphan_check_ok=true'; then
   pass "TC-9 OKF 箇条書き形式でも orphan 1 件のみ検出 (./pages/ 形式 link も登録扱い)"
 else
   fail "TC-9 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"

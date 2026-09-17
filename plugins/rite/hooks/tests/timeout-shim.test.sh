@@ -244,7 +244,7 @@ REFERENCE_COPY="$PLUGIN_ROOT/hooks/tests/_test-helpers.sh"
 # reformatted-definition case, so a PR that ADDS a copy must raise it in the same change.
 if [ "${#TIMEOUT_COPIES[@]}" -lt 6 ]; then
   fail "TC-7 discovery found only ${#TIMEOUT_COPIES[@]} _timeout definition(s) (expected >= 6) — either the grep pattern or the layout changed, or copies were deliberately consolidated, in which case lower this floor and TC-8's; conversely, raise both when you add a copy: ${TIMEOUT_COPIES[*]-<none>}"
-elif ! printf '%s\n' "${TIMEOUT_COPIES[@]}" | grep -qxF "$REFERENCE_COPY"; then
+elif ! printf '%s\n' "${TIMEOUT_COPIES[@]}" | grep -cxF >/dev/null "$REFERENCE_COPY"; then
   fail "TC-7 discovery did not include the reference copy $REFERENCE_COPY"
 else
   extract_timeout_body() {

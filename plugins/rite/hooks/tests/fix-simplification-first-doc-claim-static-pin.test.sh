@@ -135,7 +135,7 @@ negative_control() {
   # ENVIRON avoids awk -v escape processing (`\.` would otherwise warn and be rewritten).
   local section
   section=$(SEC_START="$start" SEC_END="$end" awk '$0 ~ ENVIRON["SEC_START"], $0 ~ ENVIRON["SEC_END"]' "$mutant")
-  if printf '%s\n' "$section" | grep -qE "$pattern"; then
+  if printf '%s\n' "$section" | grep -cE >/dev/null "$pattern"; then
     fail "$label (pin still matches after removing literal — pin is not live: $pattern)"
   else
     pass "$label"

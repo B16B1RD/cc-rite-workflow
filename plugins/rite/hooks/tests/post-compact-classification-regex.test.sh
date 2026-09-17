@@ -51,7 +51,7 @@ positive_fixtures=(
 for fixture in "${positive_fixtures[@]}"; do
   # $REGEX (production から抽出) と hard-code regex の両方を確認することで、
   # post-compact.sh 側で regex を変更した時にこの test も同期更新する必要があることを明示する。
-  if printf '%s' "$fixture" | grep -qiE "$REGEX"; then
+  if printf '%s' "$fixture" | grep -ciE >/dev/null "$REGEX"; then
     pass "positive (production regex): classify '$fixture'"
   else
     fail "positive (production regex): '$fixture' did NOT match (regex drift suspected: $REGEX)"
@@ -68,7 +68,7 @@ negative_fixtures=(
   "could not write to file"  # contains "could not" but no "resolve...pull request"
 )
 for fixture in "${negative_fixtures[@]}"; do
-  if printf '%s' "$fixture" | grep -qiE "$REGEX"; then
+  if printf '%s' "$fixture" | grep -ciE >/dev/null "$REGEX"; then
     fail "negative (production regex): '$fixture' falsely classified"
   else
     pass "negative (production regex): '$fixture' correctly NOT classified"
@@ -100,7 +100,7 @@ if [ -n "$recon_block" ]; then
   missing_in_block=""
   for literal in "projects-status-update.sh" 'status_role:$role' '"in_review"' \
                  "post_compact_reconciliation_failed" "post-compact mismatch detected"; do
-    if ! printf '%s' "$recon_block" | grep -qF "$literal"; then
+    if ! printf '%s' "$recon_block" | grep -cF >/dev/null "$literal"; then
       missing_in_block="${missing_in_block} ${literal}"
     fi
   done

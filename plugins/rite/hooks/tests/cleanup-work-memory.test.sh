@@ -155,7 +155,7 @@ exec /bin/mv "$@"
 MV_SHIM
 chmod +x "$dir003/bin/mv"
 stderr003=$(cd "$dir003" && PATH="$dir003/bin:$PATH" bash "$HOOK" 2>&1 >/dev/null || true)
-if printf '%s' "$stderr003" | grep -qE 'flow-state の更新に失敗しました \(mv rc=[1-9][0-9]*\)'; then
+if printf '%s' "$stderr003" | grep -cE >/dev/null 'flow-state の更新に失敗しました \(mv rc=[1-9][0-9]*\)'; then
   pass "TC-003: Step 1 mv WARNING carries real rc"
 else
   fail "TC-003: Step 1 mv WARNING missing or rc collapsed (a bash-! regression would emit rc=0). stderr: $stderr003"

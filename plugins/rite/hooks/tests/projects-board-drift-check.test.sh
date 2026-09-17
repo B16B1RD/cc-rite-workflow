@@ -69,7 +69,7 @@ assert_file_contains() {
 # T-7 behavioral fixture, where the value is the jq pipeline's TSV output).
 assert_present() {
   local haystack="$1" needle="$2" description="$3"
-  if printf '%s\n' "$haystack" | grep -qF -- "$needle"; then
+  if printf '%s\n' "$haystack" | grep -cF >/dev/null -- "$needle"; then
     PASS=$((PASS + 1)); echo "  ✓ $description"
   else
     FAIL=$((FAIL + 1)); FAILURES+=("$description"); echo "  ✗ $description" >&2
@@ -78,7 +78,7 @@ assert_present() {
 
 assert_absent() {
   local haystack="$1" needle="$2" description="$3"
-  if printf '%s\n' "$haystack" | grep -qF -- "$needle"; then
+  if printf '%s\n' "$haystack" | grep -cF >/dev/null -- "$needle"; then
     FAIL=$((FAIL + 1)); FAILURES+=("$description"); echo "  ✗ $description" >&2
   else
     PASS=$((PASS + 1)); echo "  ✓ $description"
@@ -120,18 +120,18 @@ fi
 echo ""
 echo "[T-3] --help prints usage"
 help_output=$(bash "$DRIFT_SH" --help 2>&1) || true
-if printf '%s' "$help_output" | grep -q 'projects-board-drift-check.sh'; then
+if printf '%s' "$help_output" | grep -c >/dev/null 'projects-board-drift-check.sh'; then
   PASS=$((PASS + 1)); echo "  ✓ --help prints usage including script name"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("--help output missing script name"); echo "  ✗ --help output missing script name" >&2
 fi
-if printf '%s' "$help_output" | grep -q 'NOT_PLANNED or DUPLICATE' \
-  && printf '%s' "$help_output" | grep -q 'the cancelled role'; then
+if printf '%s' "$help_output" | grep -c >/dev/null 'NOT_PLANNED or DUPLICATE' \
+  && printf '%s' "$help_output" | grep -c >/dev/null 'the cancelled role'; then
   PASS=$((PASS + 1)); echo "  ✓ --help maps DUPLICATE to the cancelled role"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("--help does not map DUPLICATE to the cancelled role"); echo "  ✗ --help does not map DUPLICATE to the cancelled role" >&2
 fi
-if printf '%s' "$help_output" | grep -qi 'unmapped'; then
+if printf '%s' "$help_output" | grep -ci >/dev/null 'unmapped'; then
   FAIL=$((FAIL + 1)); FAILURES+=("--help still calls a mapped reason unmapped"); echo "  ✗ --help still says unmapped" >&2
 else
   PASS=$((PASS + 1)); echo "  ✓ --help does not call a mapped reason unmapped"
@@ -239,7 +239,7 @@ CFG
 # the harness at the command-substitution line under `set -euo pipefail` — otherwise the
 # `[ "$noop_rc" -eq 0 ]` failure branch below becomes dead code and failure attribution is lost.
 set +e; noop_out=$( (cd "$tmpd/disabled" && bash "$DRIFT_SH" --quiet) 2>/dev/null ); noop_rc=$?; set -e
-if [ "$noop_rc" -eq 0 ] && printf '%s' "$noop_out" | grep -q '==> Total projects-board-drift findings: 0'; then
+if [ "$noop_rc" -eq 0 ] && printf '%s' "$noop_out" | grep -c >/dev/null '==> Total projects-board-drift findings: 0'; then
   PASS=$((PASS + 1)); echo "  ✓ projects disabled → exit 0, 0 findings"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("projects disabled no-op (rc=$noop_rc)"); echo "  ✗ projects disabled no-op (rc=$noop_rc)" >&2
@@ -247,7 +247,7 @@ fi
 # rite-config absent (walks up to a .git boundary with no config)
 mkdir -p "$tmpd/noconfig/.git"
 set +e; noop2_out=$( (cd "$tmpd/noconfig" && bash "$DRIFT_SH" --quiet) 2>/dev/null ); noop2_rc=$?; set -e
-if [ "$noop2_rc" -eq 0 ] && printf '%s' "$noop2_out" | grep -q '==> Total projects-board-drift findings: 0'; then
+if [ "$noop2_rc" -eq 0 ] && printf '%s' "$noop2_out" | grep -c >/dev/null '==> Total projects-board-drift findings: 0'; then
   PASS=$((PASS + 1)); echo "  ✓ rite-config absent → exit 0, 0 findings"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("rite-config absent no-op (rc=$noop2_rc)"); echo "  ✗ rite-config absent no-op (rc=$noop2_rc)" >&2
@@ -384,7 +384,7 @@ case "$1 $2" in
     echo "should not be called - git-remote fast path must resolve first" >&2
     exit 1 ;;
   "api graphql")
-    if ! { printf '%s\n' "$*" | grep -qE -- ' owner=o( |$)' && printf '%s\n' "$*" | grep -qE -- ' repo=r( |$)'; }; then
+    if ! { printf '%s\n' "$*" | grep -cE >/dev/null -- ' owner=o( |$)' && printf '%s\n' "$*" | grep -cE >/dev/null -- ' repo=r( |$)'; }; then
       echo "MOCK ASSERTION FAILED: expected -f owner=o -f repo=r, got: $*" >&2
       exit 1
     fi
@@ -397,7 +397,7 @@ set +e
 t8_out=$(cd "$T8_DIR/repo" && PATH="$T8_DIR/repo/bin:$PATH" bash "$DRIFT_SH" --quiet 2>"$T8_DIR/stderr.txt")
 t8_rc=$?
 set -e
-if [ "$t8_rc" -eq 0 ] && printf '%s' "$t8_out" | grep -q 'Total projects-board-drift findings: 0'; then
+if [ "$t8_rc" -eq 0 ] && printf '%s' "$t8_out" | grep -c >/dev/null 'Total projects-board-drift findings: 0'; then
   PASS=$((PASS + 1)); echo "  ✓ run succeeds via git-remote fast path (exit 0, 0 findings)"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("T-8: expected exit 0 + 0-findings summary, got rc=$t8_rc; stderr: $(head -c 300 "$T8_DIR/stderr.txt" | tr '\n' ' ')")
@@ -432,7 +432,7 @@ cat > "$T9_DIR/repo/bin/gh" <<'GH_SHIM'
 #!/bin/bash
 case "$1 $2" in
   "api graphql")
-    if printf '%s\n' "$*" | grep -q 'states: CLOSED'; then
+    if printf '%s\n' "$*" | grep -c >/dev/null 'states: CLOSED'; then
       cat <<'SCAN'
 {"data":{"repository":{"issues":{"nodes":[
   {"number":103,"title":"closed as completed","stateReason":"COMPLETED",
@@ -460,7 +460,7 @@ t9_rc=$?
 set -e
 # exit 1 = drift detected (reconcile does not clear the finding); the summary proves the
 # helper reported success rather than a swallowed failure.
-if [ "$t9_rc" -eq 1 ] && printf '%s' "$t9_out" | grep -q 'reconcile summary: 1 updated, 0 failed'; then
+if [ "$t9_rc" -eq 1 ] && printf '%s' "$t9_out" | grep -c >/dev/null 'reconcile summary: 1 updated, 0 failed'; then
   PASS=$((PASS + 1)); echo "  ✓ reconcile reports 1 updated, 0 failed (exit 1 = drift detected)"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("T-9: expected exit 1 + '1 updated, 0 failed', got rc=$t9_rc; stdout: $(printf '%s' "$t9_out" | tr '\n' ' ' | head -c 300)")
@@ -542,7 +542,7 @@ cat > "$T11_DIR/repo/bin/gh" <<'GH_SHIM'
 #!/bin/bash
 case "$1 $2" in
   "api graphql")
-    if printf '%s\n' "$*" | grep -q 'states: CLOSED'; then
+    if printf '%s\n' "$*" | grep -c >/dev/null 'states: CLOSED'; then
       cat <<'SCAN'
 {"data":{"repository":{"issues":{"nodes":[
   {"number":103,"title":"closed as completed","stateReason":"COMPLETED",
@@ -568,7 +568,7 @@ set +e
 t11_out=$(cd "$T11_DIR/repo" && PATH="$T11_DIR/repo/bin:$PATH" bash "$DRIFT_SH" --reconcile 2>"$T11_DIR/stderr.txt")
 t11_rc=$?
 set -e
-if [ "$t11_rc" -eq 1 ] && printf '%s' "$t11_out" | grep -q 'reconcile summary: 0 updated, 1 failed'; then
+if [ "$t11_rc" -eq 1 ] && printf '%s' "$t11_out" | grep -c >/dev/null 'reconcile summary: 0 updated, 1 failed'; then
   PASS=$((PASS + 1)); echo "  ✓ failed reconcile is counted (0 updated, 1 failed) and still exits 1"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("T-11: expected exit 1 + '0 updated, 1 failed', got rc=$t11_rc; stdout: $(printf '%s' "$t11_out" | tr '\n' ' ' | head -c 300)")
@@ -604,7 +604,7 @@ YAML
 #!/bin/bash
 case "$1 $2" in
   "api graphql")
-    if printf '%s\n' "$*" | grep -q 'states: CLOSED'; then
+    if printf '%s\n' "$*" | grep -c >/dev/null 'states: CLOSED'; then
       cat "$GH_SCAN_FILE"
     else
       jq --slurpfile scan "$GH_SCAN_FILE" '.data.repository.issue.stateReason = $scan[0].data.repository.issues.nodes[0].stateReason' <<'ITEM'
@@ -636,7 +636,7 @@ t12_out=$(cd "$t12_repo" && PATH="$t12_repo/bin:$PATH" \
   bash "$DRIFT_SH" --reconcile --quiet 2>"$T12_DIR/t12-stderr.txt")
 t12_rc=$?
 set -e
-if [ "$t12_rc" -eq 1 ] && printf '%s' "$t12_out" | grep -q 'reconcile summary: 1 updated, 0 failed'; then
+if [ "$t12_rc" -eq 1 ] && printf '%s' "$t12_out" | grep -c >/dev/null 'reconcile summary: 1 updated, 0 failed'; then
   PASS=$((PASS + 1)); echo "  ✓ T-12: NOT_PLANNED row reconciles successfully (exit 1 = drift detected)"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("T-12: expected exit 1 + '1 updated, 0 failed', got rc=$t12_rc; stdout: $(printf '%s' "$t12_out" | tr '\n' ' ' | head -c 300)")
@@ -673,7 +673,7 @@ t13_out=$(cd "$t13_repo" && PATH="$t13_repo/bin:$PATH" \
   bash "$DRIFT_SH" --reconcile 2>"$T12_DIR/t13-stderr.txt")
 t13_rc=$?
 set -e
-if [ "$t13_rc" -eq 1 ] && printf '%s' "$t13_out" | grep -q 'reconcile summary: 1 updated, 0 failed'; then
+if [ "$t13_rc" -eq 1 ] && printf '%s' "$t13_out" | grep -c >/dev/null 'reconcile summary: 1 updated, 0 failed'; then
   PASS=$((PASS + 1)); echo "  ✓ T-13: unclassified reason still reconciles (not left behind)"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("T-13: expected exit 1 + '1 updated, 0 failed', got rc=$t13_rc; stdout: $(printf '%s' "$t13_out" | tr '\n' ' ' | head -c 300)")
@@ -711,7 +711,7 @@ t13b_out=$(cd "$t13b_repo" && PATH="$t13b_repo/bin:$PATH" \
   bash "$DRIFT_SH" --reconcile 2>"$T12_DIR/t13b-stderr.txt")
 t13b_rc=$?
 set -e
-if [ "$t13b_rc" -eq 1 ] && printf '%s' "$t13b_out" | grep -q 'reconcile summary: 1 updated, 0 failed'; then
+if [ "$t13b_rc" -eq 1 ] && printf '%s' "$t13b_out" | grep -c >/dev/null 'reconcile summary: 1 updated, 0 failed'; then
   PASS=$((PASS + 1)); echo "  ✓ T-13b: DUPLICATE still reconciles (not left behind)"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("T-13b: expected exit 1 + '1 updated, 0 failed', got rc=$t13b_rc; stdout: $(printf '%s' "$t13b_out" | tr '\n' ' ' | head -c 300)")
@@ -748,7 +748,7 @@ t13d_out=$(cd "$t13d_repo" && PATH="$t13d_repo/bin:$PATH" \
   bash "$DRIFT_SH" --reconcile 2>"$T12_DIR/t13d-stderr.txt")
 t13d_rc=$?
 set -e
-if [ "$t13d_rc" -eq 1 ] && printf '%s' "$t13d_out" | grep -q 'reconcile summary: 1 updated, 0 failed'; then
+if [ "$t13d_rc" -eq 1 ] && printf '%s' "$t13d_out" | grep -c >/dev/null 'reconcile summary: 1 updated, 0 failed'; then
   PASS=$((PASS + 1)); echo "  ✓ T-13d: unknown enum still reconciles (not left behind)"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("T-13d: expected exit 1 + '1 updated, 0 failed', got rc=$t13d_rc; stdout: $(printf '%s' "$t13d_out" | tr '\n' ' ' | head -c 300)")
@@ -822,7 +822,7 @@ t14_out=$(cd "$t14_repo" && PATH="$t14_repo/bin:$PATH" \
   bash "$DRIFT_SH" --reconcile --quiet 2>"$T12_DIR/t14-stderr.txt")
 t14_rc=$?
 set -e
-if [ "$t14_rc" -eq 0 ] && printf '%s' "$t14_out" | grep -q '==> Total projects-board-drift findings: 0'; then
+if [ "$t14_rc" -eq 0 ] && printf '%s' "$t14_out" | grep -c >/dev/null '==> Total projects-board-drift findings: 0'; then
   PASS=$((PASS + 1)); echo "  ✓ T-14 (AC-1): Cancelled row reports 0 findings and exits 0"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("T-14: expected exit 0 + 0 findings, got rc=$t14_rc; stdout: $(printf '%s' "$t14_out" | tr '\n' ' ' | head -c 300)")
@@ -875,7 +875,7 @@ set -e
 # The renamed done column is terminal through the role mapping; the abandoned Issue has no
 # cancelled column to go to, so it is listed as informational and excluded from the count
 # and the exit code (the row would otherwise be reported on every lint run).
-if [ "$t16_rc" -eq 0 ] && printf '%s' "$t16_out" | grep -q '==> Total projects-board-drift findings: 0'; then
+if [ "$t16_rc" -eq 0 ] && printf '%s' "$t16_out" | grep -c >/dev/null '==> Total projects-board-drift findings: 0'; then
   PASS=$((PASS + 1)); echo "  ✓ T-16: renamed done column + cancelled-unmapped NOT_PLANNED row -> 0 findings, exit 0"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("T-16: expected exit 0 + 0 findings, got rc=$t16_rc; stdout: $(printf '%s' "$t16_out" | tr '\n' ' ' | head -c 300)")
@@ -923,7 +923,7 @@ t16b_out=$(cd "$t16_repo" && PATH="$t16_repo/bin:$PATH" \
   bash "$T12_DIR/role-plugin/hooks/scripts/projects-board-drift-check.sh" --reconcile --quiet 2>/dev/null)
 t16b_rc=$?
 set -e
-if [ "$t16b_rc" -eq 1 ] && printf '%s' "$t16b_out" | grep -q '==> Total projects-board-drift findings: 1'; then
+if [ "$t16b_rc" -eq 1 ] && printf '%s' "$t16b_out" | grep -c >/dev/null '==> Total projects-board-drift findings: 1'; then
   PASS=$((PASS + 1)); echo "  ✓ T-16: cancelled をマップすると同じ行が drift (1 finding, exit 1) になる"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("T-16: expected exit 1 + 1 finding with cancelled mapped, got rc=$t16b_rc; stdout: $(printf '%s' "$t16b_out" | tr '\n' ' ' | head -c 300)")
@@ -955,7 +955,7 @@ t16c_out=$(cd "$t16_repo" && PATH="$t16_repo/bin:$PATH" GH_SCAN_FILE="$T12_DIR/s
 t16c_rc=$?
 set -e
 if [ "$t16c_rc" -eq 2 ] && grep -q 'github.projects.fields.status:' "$T12_DIR/t16c-stderr.txt" \
-  && ! printf '%s' "$t16c_out" | grep -q 'Total projects-board-drift findings:'; then
+  && ! printf '%s' "$t16c_out" | grep -c >/dev/null 'Total projects-board-drift findings:'; then
   PASS=$((PASS + 1)); echo "  ✓ T-16: invalid Status configuration exits 2 with the config error and no summary line"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("T-16: expected exit 2 + config error + no summary, got rc=$t16c_rc; stdout: $(printf '%s' "$t16c_out" | tr '\n' ' ' | head -c 200); stderr: $(head -c 200 "$T12_DIR/t16c-stderr.txt")")
@@ -977,7 +977,7 @@ set +e
 t16d_out=$(cd "$t16_repo" && PATH="$t16_repo/bin:$PATH" bash "$DRIFT_SH" --dry-run --quiet 2>/dev/null)
 t16d_rc=$?
 set -e
-if [ "$t16d_rc" -eq 0 ] && printf '%s' "$t16d_out" | grep -q '==> Total projects-board-drift findings: 0'; then
+if [ "$t16d_rc" -eq 0 ] && printf '%s' "$t16d_out" | grep -c >/dev/null '==> Total projects-board-drift findings: 0'; then
   PASS=$((PASS + 1)); echo "  ✓ T-16: projects disabled stays a 0-findings no-op even with an invalid Status configuration"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("T-16: expected no-op exit 0 with projects disabled, got rc=$t16d_rc")

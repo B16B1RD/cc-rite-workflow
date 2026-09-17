@@ -691,7 +691,7 @@ warn19=$(printf '%s' "$err19" | grep "$WARN_CORRUPT_FWD" | head -1) || true
 assert_eq "T-15.1: corrupt WARNING 行が clamp されている (2000 バイト未満)" "yes" \
   "$([ "$(printf '%s' "$warn19" | wc -c)" -lt 2000 ] && echo yes || echo no)"
 assert_eq "T-15.2: pipefail 下でも corrupt 種別が (種別不明) へ潰れない" "no" \
-  "$(printf '%s' "$warn19" | grep -q '種別不明' && echo yes || echo no)"
+  "$(printf '%s' "$warn19" | grep -c >/dev/null '種別不明' && echo yes || echo no)"
 assert_contains "T-15.3: 種別は issue_number_mismatch として出る" "issue_number_mismatch" "$warn19"
 
 # ─── T-16: 読み戻し不能 WARNING の stderr スニペットは根因行を含む ──────

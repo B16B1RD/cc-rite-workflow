@@ -67,7 +67,7 @@ assert_file_contains "$OPEN_MD" '\| `missing` \|' \
 # the guard would be absent in exactly the failure mode it exists to catch. The awk
 # below extracts the block that contains the gate call and requires the set in it too.
 gate_block=$(awk '/^```bash$/{inblock=1; buf=""; next} /^```$/{if (inblock && buf ~ /projects-status-gate\.sh/) print buf; inblock=0; next} inblock{buf = buf "\n" $0}' "$OPEN_MD")
-if printf '%s' "$gate_block" | grep -q 'flow-state\.sh set'; then
+if printf '%s' "$gate_block" | grep -c >/dev/null 'flow-state\.sh set'; then
   pass "gate and flow-state set share one bash block (gate cannot be skipped on its own)"
 else
   fail "gate is not co-located with flow-state.sh set in the same bash block"
@@ -109,12 +109,12 @@ if [ "$t03_rc" -eq 0 ]; then
 else
   fail "T-03: expected exit 0 on gh failure, got $t03_rc"
 fi
-if printf '%s' "$t03_out" | grep -q 'PROJECTS_STATUS_INVARIANT=unknown'; then
+if printf '%s' "$t03_out" | grep -c >/dev/null 'PROJECTS_STATUS_INVARIANT=unknown'; then
   pass "gate reports unknown when the board query fails"
 else
   fail "T-03: expected PROJECTS_STATUS_INVARIANT=unknown, got: $(printf '%s' "$t03_out" | head -c 200)"
 fi
-if printf '%s' "$t03_out" | grep -q 'PROJECTS_STATUS_INVARIANT=ok'; then
+if printf '%s' "$t03_out" | grep -c >/dev/null 'PROJECTS_STATUS_INVARIANT=ok'; then
   fail "T-03: a failed verification was reported as ok"
 else
   pass "a failed verification is never reported as ok"
@@ -132,7 +132,7 @@ t03b_out=$(cd "$T03_DIR/repo" && PATH="$T03_DIR/repo/bin:$PATH" \
   bash "$GATE_SH" --issue 42 --quiet 2>/dev/null)
 t03b_rc=$?
 set -e
-if [ "$t03b_rc" -eq 0 ] && printf '%s' "$t03b_out" | grep -q 'PROJECTS_STATUS_INVARIANT=skipped'; then
+if [ "$t03b_rc" -eq 0 ] && printf '%s' "$t03b_out" | grep -c >/dev/null 'PROJECTS_STATUS_INVARIANT=skipped'; then
   pass "Projects disabled yields skipped with exit 0"
 else
   fail "T-03: Projects disabled expected skipped/exit 0, got rc=$t03b_rc out=$(printf '%s' "$t03b_out" | head -c 200)"
@@ -195,7 +195,7 @@ run_gate_fixture() {
     fail "$desc (expected exit 0, got $rc)"
     return
   fi
-  if printf '%s' "$out" | grep -q "PROJECTS_STATUS_INVARIANT=$want;"; then
+  if printf '%s' "$out" | grep -c >/dev/null "PROJECTS_STATUS_INVARIANT=$want;"; then
     pass "$desc"
   else
     fail "$desc (expected verdict $want, got: $(printf '%s' "$out" | head -c 200))"
@@ -300,7 +300,7 @@ run_role_fixture() {
     fail "$desc (expected exit 0, got $rc)"
     return
   fi
-  if printf '%s' "$out" | grep -q "PROJECTS_STATUS_INVARIANT=$want; issue=42; role=$role; status="; then
+  if printf '%s' "$out" | grep -c >/dev/null "PROJECTS_STATUS_INVARIANT=$want; issue=42; role=$role; status="; then
     pass "$desc"
   else
     fail "$desc (expected verdict $want with role=$role, got: $(printf '%s' "$out" | head -c 200))"
@@ -329,7 +329,7 @@ bogus_out=$(cd "$T03_DIR/repo" && PATH="$T03_DIR/repo/bin:$PATH" RITE_TEST_BOARD
   bash "$GATE_SH" --issue 42 --expect "In Progress" --quiet 2>/dev/null)
 bogus_rc=$?
 set -e
-if [ "$bogus_rc" -eq 0 ] && printf '%s' "$bogus_out" | grep -q 'PROJECTS_STATUS_INVARIANT=unknown;'; then
+if [ "$bogus_rc" -eq 0 ] && printf '%s' "$bogus_out" | grep -c >/dev/null 'PROJECTS_STATUS_INVARIANT=unknown;'; then
   pass "--expect with a column name instead of a role yields unknown"
 else
   fail "T-02d: expected unknown for --expect \"In Progress\", got rc=$bogus_rc out=$(printf '%s' "$bogus_out" | head -c 200)"
@@ -351,7 +351,7 @@ invalid_out=$(cd "$T03_DIR/repo" && PATH="$T03_DIR/repo/bin:$PATH" RITE_TEST_BOA
   bash "$GATE_SH" --issue 42 --expect in_progress 2>"$T03_DIR/gate-stderr.txt")
 invalid_rc=$?
 set -e
-if [ "$invalid_rc" -eq 0 ] && printf '%s' "$invalid_out" | grep -q 'PROJECTS_STATUS_INVARIANT=unknown;' \
+if [ "$invalid_rc" -eq 0 ] && printf '%s' "$invalid_out" | grep -c >/dev/null 'PROJECTS_STATUS_INVARIANT=unknown;' \
   && grep -q 'github.projects.fields.status:' "$T03_DIR/gate-stderr.txt"; then
   pass "an invalid Status configuration yields unknown and surfaces the config error"
 else
@@ -375,7 +375,7 @@ set +e
 argerr_out=$(bash "$GATE_SH" --issue 42 --expect 2>/dev/null)
 argerr_rc=$?
 set -e
-if [ "$argerr_rc" -eq 0 ] && printf '%s' "$argerr_out" | grep -q 'expected=in_progress'; then
+if [ "$argerr_rc" -eq 0 ] && printf '%s' "$argerr_out" | grep -c >/dev/null 'expected=in_progress'; then
   pass "a missing --expect value still reports the default it would have verified against"
 else
   fail "T-02c: expected rc 0 and expected=in_progress, got rc=$argerr_rc out=$(printf '%s' "$argerr_out" | head -c 200)"
@@ -385,7 +385,7 @@ set +e
 unknown_opt_out=$(bash "$GATE_SH" --issue 42 --bogus 2>/dev/null)
 unknown_opt_rc=$?
 set -e
-if [ "$unknown_opt_rc" -eq 0 ] && printf '%s' "$unknown_opt_out" | grep -q 'PROJECTS_STATUS_INVARIANT=unknown'; then
+if [ "$unknown_opt_rc" -eq 0 ] && printf '%s' "$unknown_opt_out" | grep -c >/dev/null 'PROJECTS_STATUS_INVARIANT=unknown'; then
   pass "an unknown option yields unknown with exit 0"
 else
   fail "T-02c: expected rc 0 and unknown verdict, got rc=$unknown_opt_rc out=$(printf '%s' "$unknown_opt_out" | head -c 200)"

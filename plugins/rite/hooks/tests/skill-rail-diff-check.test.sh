@@ -413,18 +413,18 @@ if [ -n "${REPO_ROOT_REAL:-}" ] && [ -f "$REPO_ROOT_REAL/plugins/rite/skills/ope
   pin_base=$(printf '%s\n' "$cur_rail" | drop_superseded_open_base_rails)
   printf '%s\n' "$pin_base" > "$TEST_DIR/pin-base"
 
-  if printf '%s\n' "$pin_base" | grep -Fxq "$CREATE_NEW_CUR" \
-    && printf '%s\n' "$pin_base" | grep -Fxq "$PLUGIN_ROOT_CUR_IF" \
-    && printf '%s\n' "$pin_base" | grep -Fxq "$PLUGIN_ROOT_CUR_CP" \
-    && printf '%s\n' "$pin_base" | grep -Fxq "$STATUS_ROLE_CUR" \
-    && printf '%s\n' "$pin_base" | grep -Fxq "$STATUS_PAYLOAD_CUR"; then
+  if grep -Fxq "$CREATE_NEW_CUR" <<< "$pin_base" \
+    && grep -Fxq "$PLUGIN_ROOT_CUR_IF" <<< "$pin_base" \
+    && grep -Fxq "$PLUGIN_ROOT_CUR_CP" <<< "$pin_base" \
+    && grep -Fxq "$STATUS_ROLE_CUR" <<< "$pin_base" \
+    && grep -Fxq "$STATUS_PAYLOAD_CUR" <<< "$pin_base"; then
     pass "replacement rows remain in the pin after exact exclusion"
   else
     fail "replacement rows were dropped by exact exclusion"
   fi
 
-  if printf '%s\n' "$pin_base" | grep -Fxq "$CREATE_NEW_OLD" \
-    || printf '%s\n' "$pin_base" | grep -Fxq "$PLUGIN_ROOT_OLD"; then
+  if grep -Fxq "$CREATE_NEW_OLD" <<< "$pin_base" \
+    || grep -Fxq "$PLUGIN_ROOT_OLD" <<< "$pin_base"; then
     fail "old superseded line still in pin after grep -Fxv"
   else
     pass "old superseded lines are absent from the pin"

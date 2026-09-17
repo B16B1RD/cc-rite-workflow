@@ -137,17 +137,17 @@ assert "untagged fence detected (exit 1)" "1" \
 
 ng_out="$(bash "$SCRIPT" --repo-root "$SANDBOX" --quiet \
   --target plugins/rite/skills/demo/ng-fenced.md 2>/dev/null || true)"
-if printf '%s' "$ng_out" | grep -qF '[dollar-zero]'; then
+if printf '%s' "$ng_out" | grep -cF >/dev/null '[dollar-zero]'; then
   pass "finding is tagged [dollar-zero]"
 else
   fail "finding tag missing: $ng_out"
 fi
-if printf '%s' "$ng_out" | grep -qF 'ng-fenced.md:4:'; then
+if printf '%s' "$ng_out" | grep -cF >/dev/null 'ng-fenced.md:4:'; then
   pass "finding carries file path and line number"
 else
   fail "finding lacks file:line — got: $ng_out"
 fi
-if printf '%s' "$ng_out" | grep -qF 'helper script'; then
+if printf '%s' "$ng_out" | grep -cF >/dev/null 'helper script'; then
   pass "finding states the fix direction (helper script)"
 else
   fail "finding lacks fix direction — got: $ng_out"
@@ -169,12 +169,12 @@ assert "unbalanced fence exits 2 (not scanned != clean)" "2" \
   "$(run --quiet --target plugins/rite/skills/demo/ng-unbalanced.md)"
 unbalanced_err="$(bash "$SCRIPT" --repo-root "$SANDBOX" --quiet \
   --target plugins/rite/skills/demo/ng-unbalanced.md 2>&1 >/dev/null || true)"
-if printf '%s' "$unbalanced_err" | grep -qF 'unbalanced code fence'; then
+if printf '%s' "$unbalanced_err" | grep -cF >/dev/null 'unbalanced code fence'; then
   pass "unbalanced fence emits a WARNING naming the cause"
 else
   fail "unbalanced fence WARNING missing — got: $unbalanced_err"
 fi
-if printf '%s' "$unbalanced_err" | grep -qF 'could not be scanned'; then
+if printf '%s' "$unbalanced_err" | grep -cF >/dev/null 'could not be scanned'; then
   pass "unscannable file is called out as not a clean bill"
 else
   fail "unscannable ERROR line missing — got: $unbalanced_err"
@@ -210,7 +210,7 @@ else
   assert "findings win the exit code when both are present (exit 1)" "1" \
     "$(run --quiet --all)"
   mixed_err="$(bash "$SCRIPT" --repo-root "$SANDBOX" --quiet --all 2>&1 >/dev/null || true)"
-  if printf '%s' "$mixed_err" | grep -qF 'could not be scanned'; then
+  if printf '%s' "$mixed_err" | grep -cF >/dev/null 'could not be scanned'; then
     pass "the unscannable count survives a run that also has findings"
   else
     fail "aggregate unscannable line lost when findings are present — got: $mixed_err"
@@ -244,7 +244,7 @@ else
     "$(run --quiet --target plugins/rite/skills/demo/unreadable.md)"
   unreadable_err="$(bash "$SCRIPT" --repo-root "$SANDBOX" --quiet \
     --target plugins/rite/skills/demo/unreadable.md 2>&1 >/dev/null || true)"
-  if printf '%s' "$unreadable_err" | grep -qF 'awk failed on'; then
+  if printf '%s' "$unreadable_err" | grep -cF >/dev/null 'awk failed on'; then
     pass "awk failure is reported distinctly from the fence sentinel"
   else
     fail "awk failure WARNING missing — got: $unreadable_err"
@@ -258,7 +258,7 @@ assert "missing --target exits 2 (per the documented contract)" "2" \
   "$(run --quiet --target plugins/rite/skills/demo/does-not-exist.md)"
 missing_err="$(bash "$SCRIPT" --repo-root "$SANDBOX" --quiet \
   --target plugins/rite/skills/demo/does-not-exist.md 2>&1 >/dev/null || true)"
-if printf '%s' "$missing_err" | grep -qF 'target not found'; then
+if printf '%s' "$missing_err" | grep -cF >/dev/null 'target not found'; then
   pass "missing --target is reported as a WARNING"
 else
   fail "missing --target produced no WARNING — got: $missing_err"
@@ -270,14 +270,14 @@ fi
 # innocuous-looking "warning (0 findings)" rather than as a failure.
 count_out="$(bash "$SCRIPT" --repo-root "$SANDBOX" \
   --target plugins/rite/skills/demo/clean-prose.md 2>&1 >/dev/null || true)"
-if printf '%s' "$count_out" | grep -qE 'Total dollar-zero findings: [0-9]+'; then
+if printf '%s' "$count_out" | grep -cE >/dev/null 'Total dollar-zero findings: [0-9]+'; then
   pass "count line matches the regex /rite:lint parses"
 else
   fail "count line format drifted — got: $count_out"
 fi
 quiet_out="$(bash "$SCRIPT" --repo-root "$SANDBOX" --quiet \
   --target plugins/rite/skills/demo/clean-prose.md 2>&1 || true)"
-if printf '%s' "$quiet_out" | grep -qF 'Total dollar-zero findings:'; then
+if printf '%s' "$quiet_out" | grep -cF >/dev/null 'Total dollar-zero findings:'; then
   fail "--quiet leaked the count line — got: $quiet_out"
 else
   pass "--quiet suppresses the count line"
@@ -289,7 +289,7 @@ fi
 assert "real repo skills/ tree is clean (exit 0)" "0" \
   "$(bash "$SCRIPT" --repo-root "$REPO_ROOT" --quiet --all --skip-if-no-target >/dev/null 2>&1; echo $?)"
 real_repo_err="$(bash "$SCRIPT" --repo-root "$REPO_ROOT" --quiet --all --skip-if-no-target 2>&1 >/dev/null || true)"
-if printf '%s' "$real_repo_err" | grep -qF 'unbalanced code fence'; then
+if printf '%s' "$real_repo_err" | grep -cF >/dev/null 'unbalanced code fence'; then
   fail "real repo has an unscannable file — coverage is silently reduced: $real_repo_err"
 else
   pass "no file in the real repo is skipped for an unbalanced fence"
