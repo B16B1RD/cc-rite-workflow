@@ -353,6 +353,15 @@ for opener, inner in (('```', '~~~'), ('````', '```'), ('~~~', '```')):
     fence = '## 9. Decision Log\n' + opener + '\n' + inner + '\n'
     check(not same(fence + row + '\n' + opener, fence + edit + '\n' + opener),
           'a ' + inner + ' line does not close a ' + opener + ' fence')
+check(not same('## 9. Decision Log\n~~~\n' + row + '\n~~~', '## 9. Decision Log\n~~~\n' + edit + '\n~~~'),
+      'a tilde fence protects the rows inside it')
+for closer, label in (('    ```', 'a closing line indented four spaces'), ('```bash', 'a closing line with trailing text')):
+    fence = '## 9. Decision Log\n```\n' + closer + '\n'
+    check(not same(fence + row + '\n```', fence + edit + '\n```'), label + ' does not close the fence')
+check(same('## 9. Decision Log\n\n```inline``` code\n\n' + row, '## 9. Decision Log\n\n```inline``` code'),
+      'a line with backticks after the opening run is inline code, not a fence')
+check(not same('````\n## 9. Decision Log\n' + row + '\n````', '````\n## 9. Decision Log\n' + edit + '\n````'),
+      'a four-backtick fence still opens')
 check(same('## 9. Decision Log\n\n    ```\n' + row, '## 9. Decision Log\n\n    ```'),
       'code indented four spaces does not open a fence')
 check(same('```\n## 9. Decision Log\n```\n', '```\n## 9. Decision Log\n```\n\n## 9. Decision Log\n\n' + row),

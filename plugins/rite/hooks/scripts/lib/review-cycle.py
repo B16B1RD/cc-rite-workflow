@@ -77,7 +77,7 @@ DECISION_LOG_END = re.compile(r"^(## |---\s*$|</details>)")
 DECISION_LOG_ROW = re.compile(r"^- \d{4}-\d{2}-\d{2} D-\d{2,}: .+ / Reason: .+ / Impact: .+$")
 # Same line shape the non-blocking record helper accepts as its own marker.
 NBR_MARKER_LINE = re.compile(r"^\s*<!-- rite:nbr:comment-id:.*-->\s*$")
-FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}(?=[^`]*$)|~{3,})")
 
 
 def normalize_issue_body(body):
@@ -87,7 +87,8 @@ def normalize_issue_body(body):
     # Everything else, including blank lines inside the specification sections
     # and anything inside a code fence, is compared verbatim; only the gaps left
     # by a removed line and trailing line breaks are closed. A body whose section
-    # boundary cannot be decided (the heading occurs more than once) is compared
+    # boundary cannot be decided (the heading occurs more than once outside code
+    # fences) is compared
     # verbatim, loudly, instead of guessing which section is the log.
     require(isinstance(body, str), "Issue body must be a string")
     lines = body.split("\n")
