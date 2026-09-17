@@ -516,9 +516,10 @@ okf_version: "0.2"
 | [テストダブルは被テスト式を実際に評価させ、helper 呼び出しの有無は記録モックの不在で pin する](pages/patterns/test-double-evaluates-real-expression-records-helper-calls.md) | patterns | モックの gh が `--jq` を無視して固定文字列を返すと、被テストの式は一度も実行されず退行を検出できない。モックはフィクスチャ JSON を実 jq に通し、絶対パスで呼ばれる helper は解決先のプラグインルートに記録用モックを置いて受領ペイロードを観測する。「helper は呼ばれない」という失敗系の契約は、WARNING 文字列ではなく記録ファイルの不在と到達 positive control の対で pin する。 | 2026-09-16T03:09:20Z | high |
 | [CI が pending のまま閉じたレビューは失敗 job を観測できない — 完了後に担当 reviewer を CI 状態付きで reroll する](pages/heuristics/ci-pending-at-review-close-reroll-finder-after-completion.md) | heuristics | レビュー時点で CI が未完了だと reviewer は失敗 job のログを読めず、ローカル環境で通るテストだけを根拠に受入条件を充足と判定する。CI 完了後に失敗 job が本 PR の追加テストに対応するなら、その領域の reviewer を最新の CI 状態とログ付きで reroll し、失敗行を failing_test アンカーにして blocking へ戻す。advisory な CI leg でも降格理由にはならない。 | 2026-09-16T12:08:00Z | high |
 | [fail し得る解決と本文の抽出を別関数に分け、fail はコマンド置換の外で呼ぶ](pages/patterns/test-helper-fail-outside-command-substitution.md) | patterns | bash テストの helper が $(...) の中で fail を呼ぶと、失敗カウンタの加算はサブシェルで消え、呼び出し側には空文字だけが返る。位置の解決（fail し得る）と本文の抽出（fail しない）を別関数に分け、前者をトップレベルで実行してグローバル変数で受け渡すと、失敗はカウンタに残り、下流の assert が別の原因を名乗ることもなくなる。 | 2026-09-16T12:09:00Z | high |
+| [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17 | high |
 ## 統計
 
-- 総ページ数: 506
-- ドメイン別: patterns=117, heuristics=224, anti-patterns=165
-- 最終更新: 2026-09-17T00:06:13Z
+- 総ページ数: 507
+- ドメイン別: patterns=117, heuristics=225, anti-patterns=165
+- 最終更新: 2026-09-17
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |

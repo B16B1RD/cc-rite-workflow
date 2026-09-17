@@ -6,6 +6,8 @@ description: "並列化の速度目標を判定するときは、同じ実装SHA
 created: "2026-09-17T03:15:00Z"
 sources:
   - type: "reviews"
+    resource: "raw/reviews/20260917T035635Z-pr-2920-cycle7.md"
+  - type: "reviews"
     resource: "raw/reviews/20260917T031500Z-pr-2920-final.md"
   - type: "fixes"
     resource: "raw/fixes/20260917T000451Z-pr-2920.md"
@@ -30,7 +32,9 @@ generated: { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-17T03:15:00Z" }
 
 ## 事例
 
-10回の完走測定で全173 hook testsと4 suiteが成功した。Ubuntu hook平均は152.8/416秒（36.7%）、macOSは337.6/726秒（46.5%）。macOS job最大559秒で、600秒未満の目標を満たした。最大値の2倍を分に切り上げたtimeoutは19分となり、設定変更後の通常CIも成功した。詳細は [Raw Source](../../raw/reviews/20260917T031500Z-pr-2920-final.md) を参照。
+10回の完走測定で全173 hook testsと4 suiteが成功した。Ubuntu hook平均は156.4/416秒（37.6%）、macOSは330.4/726秒（45.5%）。macOS job最大520秒で、600秒未満の目標を満たした。最大値の2倍を分に切り上げたtimeoutは18分となり、設定変更後の通常CIも両OSの全4suiteが成功した。詳細は [Raw Source](../../raw/reviews/20260917T031500Z-pr-2920-final.md) を参照。
+
+Git metadataをseedからコピーしてfixture初期化を短縮する場合、コピー元が実際に不変であることを確認する。初期commitの自動maintenanceが非同期でlockを作成・削除し、macOSのcopytreeと競合した実例がある。seed作成commandで`maintenance.auto=false`を指定し、Git traceでmaintenance子プロセスが起動しないことと、両OSの再測定成功を確認した。
 
 ## 関連ページ
 
