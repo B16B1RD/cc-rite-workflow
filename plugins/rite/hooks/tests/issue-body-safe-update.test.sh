@@ -43,7 +43,7 @@ printf 'original body content here\n' > "$tmp_read"
 rc=0
 out=$(bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 30 2>&1) || rc=$?
 assert_exit "TC-03 empty tmpfile-write → exit 0 (non-blocking skip)" 0 "$rc"
-if printf '%s' "$out" | grep -q '更新内容が空\|empty'; then
+if printf '%s' "$out" | grep -c >/dev/null '更新内容が空\|empty'; then
   pass "TC-04 empty write emits WARNING with 空 / empty message"
 else
   fail "TC-04 empty write WARNING missing in output: $out"
@@ -61,7 +61,7 @@ printf 'short' > "$tmp_write"
 rc=0
 out=$(bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 100 2>&1) || rc=$?
 assert_exit "TC-07 < 50% shrinkage → exit 0 (non-blocking skip)" 0 "$rc"
-if printf '%s' "$out" | grep -q 'body 消失\|50%未満\|shrinkage'; then
+if printf '%s' "$out" | grep -c >/dev/null 'body 消失\|50%未満\|shrinkage'; then
   pass "TC-08 shrinkage guard emits WARNING with 消失 / 50% message"
 else
   fail "TC-08 shrinkage WARNING missing in output: $out"
@@ -76,7 +76,7 @@ printf 'identical content\n' > "$tmp_write"
 rc=0
 out=$(bash "$TARGET" apply --issue 999 --diff-check --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 18 2>&1) || rc=$?
 assert_exit "TC-10 diff-check identical → exit 0 (skip)" 0 "$rc"
-if printf '%s' "$out" | grep -q 'INFO\|変更なし\|already'; then
+if printf '%s' "$out" | grep -c >/dev/null 'INFO\|変更なし\|already'; then
   pass "TC-11 diff-check emits INFO on identical files"
 else
   fail "TC-11 diff-check INFO missing: $out"
@@ -150,7 +150,7 @@ printf 'b%.0s' $(seq 1 250) > "$tmp_write"
 rc=0
 out=$(PATH="$mock_bin:$PATH" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 200 2>&1) || rc=$?
 assert_exit "TC-18 apply gh failure → exit 0 (non-blocking)" 0 "$rc"
-if printf '%s' "$out" | grep -q 'gh issue edit 失敗.*rate limit\|apply_failure_reason=gh_edit_failed'; then
+if printf '%s' "$out" | grep -c >/dev/null 'gh issue edit 失敗.*rate limit\|apply_failure_reason=gh_edit_failed'; then
   pass "TC-19 apply gh failure emits WARNING with root cause + failure reason"
 else
   fail "TC-19 apply gh failure WARNING missing in output: $out"
@@ -158,7 +158,7 @@ fi
 # `if ! cmd; then rc=$?` forces rc=0 inside the then-branch — regression guard
 # for the canonical `if cmd; then :; else rc=$?` form. The mock gh exits 1, so
 # the incident details must report rc=1, not rc=0.
-if printf '%s' "$out" | grep -qE 'rc=1\b'; then
+if printf '%s' "$out" | grep -cE >/dev/null 'rc=1\b'; then
   pass "TC-19b apply gh failure reports actual gh rc (rc=1, not rc=0)"
 else
   fail "TC-19b apply gh failure reported wrong rc (likely rc=0 from if-! antipattern): $out"
@@ -190,17 +190,17 @@ chmod +x "$mock_bin2/gh"
 rc=0
 out=$(PATH="$mock_bin2:$PATH" bash "$TARGET" fetch --issue 999 2>&1) || rc=$?
 assert_exit "TC-22 fetch failure → exit 0 (non-blocking)" 0 "$rc"
-if printf '%s' "$out" | grep -q 'issue_body_fetch_failed'; then
+if printf '%s' "$out" | grep -c >/dev/null 'issue_body_fetch_failed'; then
   pass "TC-22 fetch failure emits WARNING with incident_type=issue_body_fetch_failed"
 else
   fail "TC-22 WARNING missing issue_body_fetch_failed: out=$out"
 fi
-if printf '%s' "$out" | grep -qE 'rc=1\b'; then
+if printf '%s' "$out" | grep -cE >/dev/null 'rc=1\b'; then
   pass "TC-22b WARNING reports actual gh rc=1 (regression guard for if-! antipattern)"
 else
   fail "TC-22b WARNING missing rc=1 (likely rc=0 from if-! pattern): out=$out"
 fi
-if printf '%s' "$out" | grep -q 'gh_view_failed'; then
+if printf '%s' "$out" | grep -c >/dev/null 'gh_view_failed'; then
   pass "TC-22c WARNING includes reason=gh_view_failed"
 else
   fail "TC-22c WARNING missing gh_view_failed: out=$out"
@@ -225,12 +225,12 @@ out=$(PATH="$mock_bin4:$PATH" bash "$TARGET" apply --issue 999 --tmpfile-read "$
 assert_exit "TC-24 apply gh failure → exit 0" 0 "$rc"
 # AND-style assertion: collapsing apply_failure_reason / root_cause_hint into a
 # single OR would let regressions delete either signal silently.
-if printf '%s' "$out" | grep -qE 'apply_failure_reason=gh_edit_failed'; then
+if printf '%s' "$out" | grep -cE >/dev/null 'apply_failure_reason=gh_edit_failed'; then
   pass "TC-24 apply failure emits apply_failure_reason=gh_edit_failed"
 else
   fail "TC-24 apply failure missing apply_failure_reason=gh_edit_failed: $out"
 fi
-if printf '%s' "$out" | grep -qE 'rc=1\b'; then
+if printf '%s' "$out" | grep -cE >/dev/null 'rc=1\b'; then
   pass "TC-24b apply failure reports actual gh rc=1 (if-! antipattern regression guard)"
 else
   fail "TC-24b apply failure reported wrong rc (likely rc=0): $out"
@@ -257,17 +257,17 @@ printf 'b%.0s' $(seq 1 250) > "$tmp_write"
 rc=0
 out=$(PATH="$mock_bin5:$PATH" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 200 2>&1) || rc=$?
 assert_exit "TC-25 apply gh edit failure → exit 0" 0 "$rc"
-if printf '%s' "$out" | grep -qE 'issue_body_fetch_failed'; then
+if printf '%s' "$out" | grep -cE >/dev/null 'issue_body_fetch_failed'; then
   pass "TC-25 apply gh failure emits WARNING with incident_type=issue_body_fetch_failed"
 else
   fail "TC-25 apply WARNING missing incident_type — degraded deployment silently loses observability: $out"
 fi
-if printf '%s' "$out" | grep -qE 'reason=gh_edit_failed'; then
+if printf '%s' "$out" | grep -cE >/dev/null 'reason=gh_edit_failed'; then
   pass "TC-25b apply WARNING preserves reason=gh_edit_failed"
 else
   fail "TC-25b apply WARNING reason missing: $out"
 fi
-if printf '%s' "$out" | grep -qE 'rc=1\b'; then
+if printf '%s' "$out" | grep -cE >/dev/null 'rc=1\b'; then
   pass "TC-25c apply WARNING reports actual gh rc=1"
 else
   fail "TC-25c apply WARNING rc missing: $out"
@@ -303,12 +303,12 @@ printf 'a%.0s' $(seq 1 200) > "$tmp_read"
 printf 'b%.0s' $(seq 1 250) > "$tmp_write"
 rc=0
 out=$(PATH="$mock_bin6:$PATH" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 200 2>&1) || rc=$?
-if printf '%s' "$out" | grep -qE 'mktemp apply_err failed'; then
+if printf '%s' "$out" | grep -cE >/dev/null 'mktemp apply_err failed'; then
   pass "TC-26 apply mktemp failure emits WARNING (regression guard for stderr capture disabled path)"
 else
   fail "TC-26 apply mktemp WARNING missing: $out"
 fi
-if printf '%s' "$out" | grep -qE 'reason=mktemp_failed'; then
+if printf '%s' "$out" | grep -cE >/dev/null 'reason=mktemp_failed'; then
   pass "TC-26b apply mktemp failure WARNING carries reason=mktemp_failed"
 else
   fail "TC-26b apply mktemp WARNING reason missing: $out"
@@ -342,12 +342,12 @@ printf 'b%.0s' $(seq 1 250) > "$tmp_write"
 rc=0
 out=$(PATH="$mock_bin7:$PATH" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 200 --diff-check 2>&1) || rc=$?
 assert_exit "TC-27 diff IO error → exit 0 (skip apply)" 0 "$rc"
-if printf '%s' "$out" | grep -qE 'diff コマンドが IO エラー.*rc=2'; then
+if printf '%s' "$out" | grep -cE >/dev/null 'diff コマンドが IO エラー.*rc=2'; then
   pass "TC-27 diff IO error WARNING reports rc=2 explicitly"
 else
   fail "TC-27 diff IO error WARNING missing or rc not reported: $out"
 fi
-if printf '%s' "$out" | grep -qE 'GH_INVOKED'; then
+if printf '%s' "$out" | grep -cE >/dev/null 'GH_INVOKED'; then
   fail "TC-27 critical: gh issue edit was invoked despite diff IO error (data loss risk)"
 else
   pass "TC-27 gh issue edit NOT invoked after diff IO error (data loss prevented)"
@@ -375,12 +375,12 @@ printf 'aaaaa' > "$tmp_write"
 rc=0
 out=$(PATH="$mock_bin8:$PATH" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 200 2>&1) || rc=$?
 assert_exit "TC-25d shrinkage trip → exit 0" 0 "$rc"
-if printf '%s' "$out" | grep -qE 'body_shrinkage_guard_tripped'; then
+if printf '%s' "$out" | grep -cE >/dev/null 'body_shrinkage_guard_tripped'; then
   pass "TC-25d shrinkage trip emits WARNING with incident_type=body_shrinkage_guard_tripped"
 else
   fail "TC-25d shrinkage WARNING missing or wrong incident_type: $out"
 fi
-if printf '%s' "$out" | grep -qE 'reason=shrinkage_below_50pct'; then
+if printf '%s' "$out" | grep -cE >/dev/null 'reason=shrinkage_below_50pct'; then
   pass "TC-25d WARNING carries reason=shrinkage_below_50pct"
 else
   fail "TC-25d reason missing: $out"
@@ -403,12 +403,12 @@ printf 'a%.0s' $(seq 1 200) > "$tmp_read"
 rc=0
 out=$(PATH="$mock_bin9:$PATH" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 200 2>&1) || rc=$?
 assert_exit "TC-25e empty write → exit 0" 0 "$rc"
-if printf '%s' "$out" | grep -qE 'body_shrinkage_guard_tripped'; then
+if printf '%s' "$out" | grep -cE >/dev/null 'body_shrinkage_guard_tripped'; then
   pass "TC-25e empty write emits WARNING with incident_type=body_shrinkage_guard_tripped"
 else
   fail "TC-25e empty-write WARNING missing or wrong incident_type: $out"
 fi
-if printf '%s' "$out" | grep -qE 'reason=empty_write'; then
+if printf '%s' "$out" | grep -cE >/dev/null 'reason=empty_write'; then
   pass "TC-25e WARNING carries reason=empty_write"
 else
   fail "TC-25e empty-write reason missing: $out"
@@ -436,12 +436,12 @@ printf 'updated body' > "$tmp_write"
 rc=0
 out=$(PATH="$mock_bin10:$PATH" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length "abc" 2>&1) || rc=$?
 assert_exit "TC-25f apply with non-numeric --original-length → exit 0 (non-blocking)" 0 "$rc"
-if printf '%s' "$out" | grep -qE 'body_shrinkage_guard_tripped'; then
+if printf '%s' "$out" | grep -cE >/dev/null 'body_shrinkage_guard_tripped'; then
   pass "TC-25f non-numeric --original-length emits body_shrinkage_guard_tripped WARNING"
 else
   fail "TC-25f WARNING missing: $out"
 fi
-if printf '%s' "$out" | grep -qE 'reason=original_length_invalid'; then
+if printf '%s' "$out" | grep -cE >/dev/null 'reason=original_length_invalid'; then
   pass "TC-25f WARNING carries reason=original_length_invalid (distinct from shrinkage_below_50pct / empty_write)"
 else
   fail "TC-25f original_length_invalid reason missing — caller cannot distinguish from a real shrinkage trip: $out"
@@ -473,7 +473,7 @@ GHEOF
   rc=0
   out=$(PATH="$mock_bin_25g:$PATH" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length "$invalid_val" 2>&1) || rc=$?
   assert_exit "TC-25g (--original-length=$invalid_val) → exit 0 (non-blocking)" 0 "$rc"
-  if printf '%s' "$out" | grep -qE 'reason=original_length_invalid'; then
+  if printf '%s' "$out" | grep -cE >/dev/null 'reason=original_length_invalid'; then
     pass "TC-25g (--original-length=$invalid_val) emits reason=original_length_invalid"
   else
     fail "TC-25g (--original-length=$invalid_val) reason missing — regex may be accepting non-numeric content: $out"
@@ -569,7 +569,7 @@ if grep -qE 'issue view 999 --json body' "$mock_log7"; then
 else
   fail "TC-31b expected a --repo-less 'issue view' invocation: $(cat "$mock_log7")"
 fi
-if printf '%s' "$out" | grep -q 'owner/repo を解決できません'; then
+if printf '%s' "$out" | grep -c >/dev/null 'owner/repo を解決できません'; then
   pass "TC-31c unresolvable repo surfaces a WARNING instead of degrading silently"
 else
   fail "TC-31c missing owner/repo resolution WARNING: $out"

@@ -412,29 +412,29 @@ assert "row 3 is explicit cd route" "yes" "$(printf '%s\n' "$route_rows" | sed -
 assert "row 4 is entry denial limited to entry itself" "yes" "$(printf '%s\n' "$route_rows" | sed -n '4p' | grep -q '^| native が権限拒否 / 隔離ガードで失敗（入場そのものが拒否された場合に限る） | 代替経路を試さず停止し、ホストの正式な承認手順へ。helper 内の `cd` 等で拒否を迂回しない |$' && echo yes || echo no)"
 assert "row 5 is other failure diagnosis" "yes" "$(printf '%s\n' "$route_rows" | sed -n '5p' | grep -q '^| その他の native 失敗 / 検証失敗 / 適合経路なし | worktree と state を保持して診断・停止。下記の native 失敗診断または `/rite:recover` を案内する |$' && echo yes || echo no)"
 row6=$(printf '%s\n' "$route_rows" | sed -n '6p')
-assert "row 6 observes post-entry guard rejection" "yes" "$(printf '%s\n' "$row6" | grep -q '^| 入場は検証済みで成功しているが、以後の複合 shell コマンドがホストの隔離ガードに拒否される |' && echo yes || echo no)"
+assert "row 6 observes post-entry guard rejection" "yes" "$(printf '%s\n' "$row6" | grep -c >/dev/null '^| 入場は検証済みで成功しているが、以後の複合 shell コマンドがホストの隔離ガードに拒否される |' && echo yes || echo no)"
 assert "row 6 route keeps the working directory, scripts the block, runs one command" "yes" \
-  "$(printf '%s\n' "$row6" | grep -q '作業先を変えない' && printf '%s\n' "$row6" | grep -q 'スクリプトファイル' && printf '%s\n' "$row6" | grep -q '単一コマンド' && echo yes || echo no)"
+  "$(printf '%s\n' "$row6" | grep -c >/dev/null '作業先を変えない' && printf '%s\n' "$row6" | grep -c >/dev/null 'スクリプトファイル' && printf '%s\n' "$row6" | grep -c >/dev/null '単一コマンド' && echo yes || echo no)"
 retreat=$(awk '/^\*\*入場後のガード拒否の退路\*\*/ { s=1 } s && /^\*\*作業先固定\*\*/ { exit } s { print }' "$contract")
 assert "retreat prose exists before 作業先固定" "yes" "$(test -n "$retreat" && echo yes || echo no)"
-assert "retreat limits script location to the scratch area" "yes" "$(printf '%s\n' "$retreat" | grep -q '置き場所はスクラッチ領域に限る。worktree 内や main checkout 配下へ書き出さない' && echo yes || echo no)"
-assert "retreat keeps fixation, ownership and pre-change checks" "yes" "$(printf '%s\n' "$retreat" | grep -q '「作業先固定」「所有者の確定」「変更前検証」の各手順は省略しない' && echo yes || echo no)"
-assert "retreat stops when the script cannot be written" "yes" "$(printf '%s\n' "$retreat" | grep -q 'スクリプトファイルを書き出せない（スクラッチ領域が書込不可）場合は退路を採らず停止' && echo yes || echo no)"
-assert "retreat stops without further variants when the single command is rejected" "yes" "$(printf '%s\n' "$retreat" | grep -q 'スクリプトファイル化した単一コマンドもガードに拒否される場合は退路が成立しない。さらなる代替形を試さず停止' && echo yes || echo no)"
-assert "retreat routes entry denial back to the stop row" "yes" "$(printf '%s\n' "$retreat" | grep -q '入場そのものが拒否された場合はこの行ではなく「native が権限拒否 / 隔離ガードで失敗」行を適用する' && echo yes || echo no)"
+assert "retreat limits script location to the scratch area" "yes" "$(printf '%s\n' "$retreat" | grep -c >/dev/null '置き場所はスクラッチ領域に限る。worktree 内や main checkout 配下へ書き出さない' && echo yes || echo no)"
+assert "retreat keeps fixation, ownership and pre-change checks" "yes" "$(printf '%s\n' "$retreat" | grep -c >/dev/null '「作業先固定」「所有者の確定」「変更前検証」の各手順は省略しない' && echo yes || echo no)"
+assert "retreat stops when the script cannot be written" "yes" "$(printf '%s\n' "$retreat" | grep -c >/dev/null 'スクリプトファイルを書き出せない（スクラッチ領域が書込不可）場合は退路を採らず停止' && echo yes || echo no)"
+assert "retreat stops without further variants when the single command is rejected" "yes" "$(printf '%s\n' "$retreat" | grep -c >/dev/null 'スクリプトファイル化した単一コマンドもガードに拒否される場合は退路が成立しない。さらなる代替形を試さず停止' && echo yes || echo no)"
+assert "retreat routes entry denial back to the stop row" "yes" "$(printf '%s\n' "$retreat" | grep -c >/dev/null '入場そのものが拒否された場合はこの行ではなく「native が権限拒否 / 隔離ガードで失敗」行を適用する' && echo yes || echo no)"
 retreat_exclusion='拒否されたブロック自身が `cd` / `git -C` / `workdir` で `{wt_path}` 外（main checkout を含む）を作業先にする場合も本行に該当しない。'
 assert "retreat excludes blocks that target outside the worktree, between the entry-denial sentence and the route list" "yes" \
   "$(printf '%s\n' "$retreat" | sed -n '1p' | grep -qF '入場そのものが拒否された場合はこの行ではなく「native が権限拒否 / 隔離ガードで失敗」行を適用する。'"$retreat_exclusion" && printf '%s\n' "$retreat" | sed -n '1p' | grep -qF "${retreat_exclusion}"'退出は「退出」節を適用し、main checkout 操作はスキルが定める経路（cleanup の委譲モード等）に従い、経路の定めがなければ代替経路を試さず停止する。いずれもスクリプト化しない。既存 helper による' && printf '%s\n' "$retreat" | sed -n '1p' | grep -q '退路は次のとおり。$' && echo yes || echo no)"
 assert "retreat exclusion is limited to working-directory targeting" "yes" "$(printf '%s\n' "$retreat" | sed -n '1p' | grep -q '既存 helper による main root の共有 state 更新や、作業先を worktree に保ったまま絶対パスで行う読み書きはこの除外に含まない。' && echo yes || echo no)"
-assert "retreat does not permit helper-cd or main-checkout evasion" "yes" "$(printf '%s\n' "$retreat" | grep -q 'helper 内の `cd` や main checkout への退避で拒否を迂回する経路ではない' && echo yes || echo no)"
+assert "retreat does not permit helper-cd or main-checkout evasion" "yes" "$(printf '%s\n' "$retreat" | grep -c >/dev/null 'helper 内の `cd` や main checkout への退避で拒否を迂回する経路ではない' && echo yes || echo no)"
 # Negative pair for the prohibition pin above: the prohibition sentence itself names the evasion
 # routes, so strip only that sentence (keeping the rest of its line and $retreat untouched) and
 # fail if permissive vocabulary remains. A vocabulary denylist is bypassable by paraphrase; it
 # pins the known phrasings, not every possible wording.
 retreat_rest=$(printf '%s\n' "$retreat" | sed 's/helper 内の `cd` や main checkout への退避で拒否を迂回する経路ではない//')
-assert "retreat remains after excluding the prohibition sentence" "yes" "$(printf '%s\n' "$retreat_rest" | grep -q 'bash {script_path}' && printf '%s\n' "$retreat_rest" | grep -qF "$retreat_exclusion" && echo yes || echo no)"
-assert "retreat contains no permission to evade the guard" "yes" "$(printf '%s\n' "$retreat_rest" | grep -qE '迂回して(も)?(よい|良い)|退避して(よい|良い|再実行)|main checkout へ(退避|切り替え)|helper 内で `?cd|cd "?\$?main_root|再実行してよい' && echo no || echo yes)"
-assert "retreat does not move the documented guard block" "yes" "$(printf '%s\n' "$retreat" | grep -q 'worktree-execution-check\|worktree-exit-check\|^```' && echo no || echo yes)"
+assert "retreat remains after excluding the prohibition sentence" "yes" "$(printf '%s\n' "$retreat_rest" | grep -c >/dev/null 'bash {script_path}' && printf '%s\n' "$retreat_rest" | grep -cF >/dev/null "$retreat_exclusion" && echo yes || echo no)"
+assert "retreat contains no permission to evade the guard" "yes" "$(printf '%s\n' "$retreat_rest" | grep -cE >/dev/null '迂回して(も)?(よい|良い)|退避して(よい|良い|再実行)|main checkout へ(退避|切り替え)|helper 内で `?cd|cd "?\$?main_root|再実行してよい' && echo no || echo yes)"
+assert "retreat does not move the documented guard block" "yes" "$(printf '%s\n' "$retreat" | grep -c >/dev/null 'worktree-execution-check\|worktree-exit-check\|^```' && echo no || echo yes)"
 
 echo "=== host worktree execution: exit check runs in an independent shell on the native route ==="
 # 「退出」節の本文（**退出**: 段落から exit-check フェンスの手前まで）を抽出する。native 経路の
@@ -442,13 +442,13 @@ echo "=== host worktree execution: exit check runs in an independent shell on th
 # 実行する条件が、フェンス本体を変えずに prose 側へ置かれていることを pin する。
 exit_prose=$(awk '/^\*\*退出\*\*/ { s=1 } s && /^```bash$/ { exit } s { print }' "$contract")
 assert "exit prose exists before the exit-check fence" "yes" "$(test -n "$exit_prose" && echo yes || echo no)"
-assert "exit prose names the native-route execution condition" "yes" "$(printf '%s\n' "$exit_prose" | grep -q '^\*\*退出確認の実行条件（native 経路）\*\*' && echo yes || echo no)"
+assert "exit prose names the native-route execution condition" "yes" "$(printf '%s\n' "$exit_prose" | grep -c >/dev/null '^\*\*退出確認の実行条件（native 経路）\*\*' && echo yes || echo no)"
 assert "native exit check is an independent shell call without cd / git -C / workdir" "yes" \
-  "$(printf '%s\n' "$exit_prose" | grep -q '退出確認ブロックを `cd` / `git -C` / `workdir` 指定のいずれも伴わない独立したシェル呼び出しで実行する' && echo yes || echo no)"
+  "$(printf '%s\n' "$exit_prose" | grep -c >/dev/null '退出確認ブロックを `cd` / `git -C` / `workdir` 指定のいずれも伴わない独立したシェル呼び出しで実行する' && echo yes || echo no)"
 assert "exit condition explains that the host working directory is the target" "yes" \
-  "$(printf '%s\n' "$exit_prose" | grep -q '確認したいのはホストがセッション単位で保持する作業先であり、シェル内で `cd` した先ではない' && echo yes || echo no)"
+  "$(printf '%s\n' "$exit_prose" | grep -c >/dev/null '確認したいのはホストがセッション単位で保持する作業先であり、シェル内で `cd` した先ではない' && echo yes || echo no)"
 assert "workdir / explicit cd routes keep the detected main_root as working directory" "yes" \
-  "$(printf '%s\n' "$exit_prose" | grep -q '`workdir` / 毎回 `cd` 経路はホストの作業先を持たないため従来どおり検出済み `main_root` を作業先として実行する' && echo yes || echo no)"
+  "$(printf '%s\n' "$exit_prose" | grep -c >/dev/null '`workdir` / 毎回 `cd` 経路はホストの作業先を持たないため従来どおり検出済み `main_root` を作業先として実行する' && echo yes || echo no)"
 # 退出確認ブロック本体は不変。teardown テストが最初の `# worktree-exit-check` を awk で切り出して
 # 実行するため、同じリテラル行は契約全体で 1 回だけ現れる。
 assert "exit-check marker line appears exactly once in the contract" "1" "$(grep -c '^# worktree-exit-check$' "$contract")"
@@ -462,7 +462,7 @@ echo "=== host worktree execution: stale-worktree residue diagnosis on native en
 residue=$(awk '/^### native 入場が前のセッション worktree への残留で拒否される$/ { s=1; next } s && /^### / { exit } s { print }' "$contract")
 assert "residue section exists" "yes" "$(test -n "$residue" && echo yes || echo no)"
 assert "residue section is referenced from the other-failure diagnosis via open and recover" "yes" \
-  "$(printf '%s\n' "$residue" | grep -q '`/rite:open`（Step 2.3-W）と `/rite:recover`（Phase 3.1.5）の native 入場失敗診断は' && printf '%s\n' "$residue" | grep -q '手順は本節だけが持ち、呼び出し元は参照する' && echo yes || echo no)"
+  "$(printf '%s\n' "$residue" | grep -c >/dev/null '`/rite:open`（Step 2.3-W）と `/rite:recover`（Phase 3.1.5）の native 入場失敗診断は' && printf '%s\n' "$residue" | grep -c >/dev/null '手順は本節だけが持ち、呼び出し元は参照する' && echo yes || echo no)"
 residue_steps=$(printf '%s\n' "$residue" | grep -n '^[0-9]\. \*\*' )
 assert "residue procedure has exactly 5 numbered steps" "5" "$(printf '%s\n' "$residue_steps" | grep -c .)"
 assert "step 1 is the residue diagnosis in an independent shell" "yes" "$(printf '%s\n' "$residue_steps" | sed -n '1p' | grep -q '^[0-9]*:1\. \*\*残留診断\*\*: `cd` / `git -C` / `workdir` 指定を伴わない独立したシェル呼び出しで `git rev-parse --show-toplevel` と `git worktree list --porcelain` を取得する' && echo yes || echo no)"
@@ -472,33 +472,33 @@ assert "step 4 is the single re-entry" "yes" "$(printf '%s\n' "$residue_steps" |
 assert "step 5 is the pre-change check with WORKTREE_INVARIANT=ok" "yes" "$(printf '%s\n' "$residue_steps" | sed -n '5p' | grep -q '^[0-9]*:5\. \*\*変更前検証\*\*: 再入場後は上記 `worktree-execution-check` を実行し、`WORKTREE_INVARIANT=ok` を前提条件として続行する' && echo yes || echo no)"
 assert "residue steps appear in increasing line order" "yes" \
   "$(printf '%s\n' "$residue_steps" | cut -d: -f1 | awk 'NR>1 && $1<=prev { bad=1 } { prev=$1 } END { exit bad }' && echo yes || echo no)"
-assert "step 5 records the auto-exit in work memory" "yes" "$(printf '%s\n' "$residue" | grep -q '自動退出した事実（前の worktree の絶対パス）を 1 行で出力し、work memory の採用経路記録に含める' && echo yes || echo no)"
+assert "step 5 records the auto-exit in work memory" "yes" "$(printf '%s\n' "$residue" | grep -c >/dev/null '自動退出した事実（前の worktree の絶対パス）を 1 行で出力し、work memory の採用経路記録に含める' && echo yes || echo no)"
 # 発火条件は「登録済みセッション worktree かつ入場先と異なる」に限定される。
 assert "trigger is limited to a registered session worktree different from the target" "yes" \
-  "$(printf '%s\n' "$residue" | grep -q '登録済みセッション worktree（`{worktree_base}/issue-{N}` 形）で、かつ入場先 `{wt_path}` と異なる場合に限り残留と判定する' && echo yes || echo no)"
+  "$(printf '%s\n' "$residue" | grep -c >/dev/null '登録済みセッション worktree（`{worktree_base}/issue-{N}` 形）で、かつ入場先 `{wt_path}` と異なる場合に限り残留と判定する' && echo yes || echo no)"
 nofire=$(printf '%s\n' "$residue" | awk '/^発火しない条件/ { s=1; next } s && /^$/ && seen { exit } s && /^- / { print; seen=1 }')
 assert "non-firing list has 4 entries" "4" "$(printf '%s\n' "$nofire" | grep -c .)"
-assert "non-firing: toplevel lookup failure" "yes" "$(printf '%s\n' "$nofire" | grep -q 'toplevel 取得自体が失敗した' && echo yes || echo no)"
-assert "non-firing: main root / unregistered / host-managed paths" "yes" "$(printf '%s\n' "$nofire" | grep -q 'main root 自身、未登録パス、ホスト管理配下など、登録済みセッション worktree ではない' && echo yes || echo no)"
-assert "non-firing: same worktree as the target" "yes" "$(printf '%s\n' "$nofire" | grep -q '入場先 `{wt_path}` と同じ worktree（残留ではない' && echo yes || echo no)"
-assert "non-firing: no native entry / exit capability keeps workdir and cd routes" "yes" "$(printf '%s\n' "$nofire" | grep -q 'native 入場 / 退出機能が当該セッションに無い（`workdir` / 毎回 `cd` 経路はそのまま）' && echo yes || echo no)"
+assert "non-firing: toplevel lookup failure" "yes" "$(printf '%s\n' "$nofire" | grep -c >/dev/null 'toplevel 取得自体が失敗した' && echo yes || echo no)"
+assert "non-firing: main root / unregistered / host-managed paths" "yes" "$(printf '%s\n' "$nofire" | grep -c >/dev/null 'main root 自身、未登録パス、ホスト管理配下など、登録済みセッション worktree ではない' && echo yes || echo no)"
+assert "non-firing: same worktree as the target" "yes" "$(printf '%s\n' "$nofire" | grep -c >/dev/null '入場先 `{wt_path}` と同じ worktree（残留ではない' && echo yes || echo no)"
+assert "non-firing: no native entry / exit capability keeps workdir and cd routes" "yes" "$(printf '%s\n' "$nofire" | grep -c >/dev/null 'native 入場 / 退出機能が当該セッションに無い（`workdir` / 毎回 `cd` 経路はそのまま）' && echo yes || echo no)"
 # 停止条件: 退出失敗 / main root 不一致では再入場しない。再入場失敗では 2 回目を試さない。
 stops=$(printf '%s\n' "$residue" | awk '/^停止する条件/ { s=1; next } s && /^$/ && seen { exit } s && /^- / { print; seen=1 }')
 assert "stop list has 2 entries" "2" "$(printf '%s\n' "$stops" | grep -c .)"
 assert "stop: exit refusal or main root mismatch skips re-entry" "yes" "$(printf '%s\n' "$stops" | sed -n '1p' | grep -q 'native 退出が拒否・失敗した、または手順 3 の toplevel が main root でない → 再入場を試さない' && echo yes || echo no)"
 assert "stop: failed re-entry is not retried" "yes" "$(printf '%s\n' "$stops" | sed -n '2p' | grep -q '再入場も失敗した → 2 回目の再試行をしない' && echo yes || echo no)"
-assert "stop diagnosis names both absolute paths and recover" "yes" "$(printf '%s\n' "$residue" | grep -q '前の worktree と入場先の絶対パスを含む診断を出して `/rite:recover {issue_number}` を案内する' && echo yes || echo no)"
+assert "stop diagnosis names both absolute paths and recover" "yes" "$(printf '%s\n' "$residue" | grep -c >/dev/null '前の worktree と入場先の絶対パスを含む診断を出して `/rite:recover {issue_number}` を案内する' && echo yes || echo no)"
 # 禁止事項の存在 pin と、禁止文を除いた残余に許容語彙が無いことの negative pin。語彙 denylist は
 # 言い換えで回避できるため、既知の表現だけを pin する。
 prohibition='本節の自動退出で前の worktree やブランチを削除してはならない。再入場を 2 回以上試してはならず、main checkout での `git switch -c` へ切り替えてもならない。native 退出の拒否・隔離ガードを helper 内の `cd` 等で迂回してはならない。'
-assert "residue prohibits deletion, repeated re-entry, git switch -c and guard evasion" "yes" "$(printf '%s\n' "$residue" | grep -qF "$prohibition" && echo yes || echo no)"
+assert "residue prohibits deletion, repeated re-entry, git switch -c and guard evasion" "yes" "$(printf '%s\n' "$residue" | grep -cF >/dev/null "$prohibition" && echo yes || echo no)"
 residue_rest=$(printf '%s\n' "$residue" | sed "s|$prohibition||")
-assert "residue rest still holds the procedure after stripping the prohibition" "yes" "$(printf '%s\n' "$residue_rest" | grep -q '再入場 1 回' && echo yes || echo no)"
+assert "residue rest still holds the procedure after stripping the prohibition" "yes" "$(printf '%s\n' "$residue_rest" | grep -c >/dev/null '再入場 1 回' && echo yes || echo no)"
 assert "residue contains no permission to delete, retry or switch" "yes" \
-  "$(printf '%s\n' "$residue_rest" | grep -qE 'git worktree remove|--force|再入場を繰り返|再試行してよい|2 回目を試|git switch -c で(続行|切り替え)|迂回して(も)?(よい|良い)' && echo no || echo yes)"
+  "$(printf '%s\n' "$residue_rest" | grep -cE >/dev/null 'git worktree remove|--force|再入場を繰り返|再試行してよい|2 回目を試|git switch -c で(続行|切り替え)|迂回して(も)?(よい|良い)' && echo no || echo yes)"
 # 条件は観測した能力で書く。ホスト名・ツール名による分岐を持たない。
 assert "residue conditions are capability-based, not host-named" "yes" \
-  "$(printf '%s\n' "$residue" | grep -q 'ホスト名・ツール名で分岐しない' && printf '%s\n' "$residue" | grep -qE 'Claude Code|Codex|Grok|(もし|場合は|なら)[^。]*(Claude|Codex|Grok)' && echo no || echo yes)"
+  "$(printf '%s\n' "$residue" | grep -c >/dev/null 'ホスト名・ツール名で分岐しない' && printf '%s\n' "$residue" | grep -cE >/dev/null 'Claude Code|Codex|Grok|(もし|場合は|なら)[^。]*(Claude|Codex|Grok)' && echo no || echo yes)"
 
 echo "=== open / recover reference the residue diagnosis without duplicating it ==="
 OPEN_SKILL="$SCRIPT_DIR/../../skills/open/SKILL.md"

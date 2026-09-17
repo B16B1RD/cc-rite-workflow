@@ -66,7 +66,7 @@ assert "semicolon rejected" "1" "$(check "wiki;rm")"
 
 # --- Rejection diagnostics reach stderr ---------------------------------------
 reject_err="$(validate_wiki_branch_name "-wiki" 2>&1 >/dev/null || true)"
-if printf '%s' "$reject_err" | grep -qE "invalid wiki.branch_name"; then
+if printf '%s' "$reject_err" | grep -cE >/dev/null "invalid wiki.branch_name"; then
   pass "rejection prints a descriptive ERROR to stderr"
 else
   fail "rejection ERROR missing/malformed: $reject_err"

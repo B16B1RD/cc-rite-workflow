@@ -149,16 +149,16 @@ echo "=== TC-1: same_branch 検出 (stale 1 / fresh 1 / 欠落 1 / パース不�
 repo=$(make_same_branch_sandbox tc1)
 run_helper "$repo" "$PAGES_4" --branch-strategy same_branch
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'n_stale=1' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -q '^\.rite/wiki/pages/patterns/stale\.md|2020-01-01T00:00:00Z|' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'stale_check_ok=true' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx '\[CONTEXT\] WIKI_LINT_STALE=1'; then
+   && grep -qx 'n_stale=1' <<< "$HELPER_STDOUT" \
+   && grep -q '^\.rite/wiki/pages/patterns/stale\.md|2020-01-01T00:00:00Z|' <<< "$HELPER_STDOUT" \
+   && grep -qx 'stale_check_ok=true' <<< "$HELPER_STDOUT" \
+   && grep -qx '\[CONTEXT\] WIKI_LINT_STALE=1' <<< "$HELPER_STDOUT"; then
   pass "TC-1 stale 1 件のみ検出 + enum/sentinel emit"
 else
   fail "TC-1 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
 fi
-if printf '%s\n' "$HELPER_STDERR" | grep -q 'no-updated.md に generated.at フィールドが存在しません' \
-   && printf '%s\n' "$HELPER_STDERR" | grep -q "bad-date.md の generated.at フィールド 'not-a-date' をパースできません"; then
+if grep -q 'no-updated.md に generated.at フィールドが存在しません' <<< "$HELPER_STDERR" \
+   && grep -q "bad-date.md の generated.at フィールド 'not-a-date' をパースできません" <<< "$HELPER_STDERR"; then
   pass "TC-1 欠落 / パース不能の WARNING を stderr に emit"
 else
   fail "TC-1 WARNING (stderr=$HELPER_STDERR)"
@@ -168,8 +168,8 @@ echo "=== TC-2: separate_branch 検出 (git show 経由) ==="
 repo=$(make_separate_branch_sandbox tc2)
 run_helper "$repo" "$PAGES_2" --branch-strategy separate_branch --wiki-branch wiki
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'n_stale=1' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -q '^\.rite/wiki/pages/patterns/stale\.md|'; then
+   && grep -qx 'n_stale=1' <<< "$HELPER_STDOUT" \
+   && grep -q '^\.rite/wiki/pages/patterns/stale\.md|' <<< "$HELPER_STDOUT"; then
   pass "TC-2 separate_branch で stale 検出"
 else
   fail "TC-2 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
@@ -189,8 +189,8 @@ run_helper "$repo" "$PAGES_2" --branch-strategy same_branch --stale-days 36500
 # discriminator; pinning the platform-appropriate value makes this TC fail closed
 # on both (see EXPECT_STALE_CHECK_OK above).
 if [ "$HELPER_RC" -eq 0 ] \
-  && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'n_stale=0' \
-  && printf '%s\n' "$HELPER_STDOUT" | grep -qx "$EXPECT_STALE_CHECK_OK"; then
+  && grep -qx 'n_stale=0' <<< "$HELPER_STDOUT" \
+  && grep -qx "$EXPECT_STALE_CHECK_OK" <<< "$HELPER_STDOUT"; then
   pass "TC-3 閾値内は 0 件 ($EXPECT_STALE_CHECK_OK)"
 else
   fail "TC-3 (rc=$HELPER_RC expected=$EXPECT_STALE_CHECK_OK stdout=$HELPER_STDOUT)"
@@ -199,7 +199,7 @@ fi
 echo "=== TC-4: placeholder residue (--branch-strategy) → exit 1 ==="
 repo=$(make_same_branch_sandbox tc4)
 run_helper "$repo" "" --branch-strategy "{branch_strategy}"
-if [ "$HELPER_RC" -eq 1 ] && printf '%s\n' "$HELPER_STDERR" | grep -q 'LINT_PHASE_4_PLACEHOLDER_RESIDUE=1'; then
+if [ "$HELPER_RC" -eq 1 ] && grep -q 'LINT_PHASE_4_PLACEHOLDER_RESIDUE=1' <<< "$HELPER_STDERR"; then
   pass "TC-4 exit 1 + residue marker"
 else
   fail "TC-4 (rc=$HELPER_RC stderr=$HELPER_STDERR)"
@@ -215,7 +215,7 @@ fi
 
 echo "=== TC-6: unknown branch_strategy → exit 1 ==="
 run_helper "$repo" "" --branch-strategy bogus
-if [ "$HELPER_RC" -eq 1 ] && printf '%s\n' "$HELPER_STDERR" | grep -q "未知の branch_strategy 値"; then
+if [ "$HELPER_RC" -eq 1 ] && grep -q "未知の branch_strategy 値" <<< "$HELPER_STDERR"; then
   pass "TC-6 exit 1 + 未知値メッセージ"
 else
   fail "TC-6 (rc=$HELPER_RC stderr=$HELPER_STDERR)"
@@ -244,11 +244,11 @@ run_helper "$repo" "" --branch-strategy same_branch
 # WIKI_LINT_STALE=0 payload, so without it this TC would pass on BSD/macOS
 # without exercising the empty-input path (review F-05).
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'n_stale=0' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx "$EXPECT_STALE_CHECK_OK" \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx -- '---stale_pages_begin---' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx -- '---stale_pages_end---' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx '\[CONTEXT\] WIKI_LINT_STALE=0'; then
+   && grep -qx 'n_stale=0' <<< "$HELPER_STDOUT" \
+   && grep -qx "$EXPECT_STALE_CHECK_OK" <<< "$HELPER_STDOUT" \
+   && grep -qx -- '---stale_pages_begin---' <<< "$HELPER_STDOUT" \
+   && grep -qx -- '---stale_pages_end---' <<< "$HELPER_STDOUT" \
+   && grep -qx '\[CONTEXT\] WIKI_LINT_STALE=0' <<< "$HELPER_STDOUT"; then
   pass "TC-9 空入力で 0 件 + marker block 維持 ($EXPECT_STALE_CHECK_OK)"
 else
   fail "TC-9 (rc=$HELPER_RC expected=$EXPECT_STALE_CHECK_OK stdout=$HELPER_STDOUT)"

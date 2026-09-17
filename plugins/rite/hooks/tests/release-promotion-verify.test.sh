@@ -81,7 +81,7 @@ if [ "$gi_out" != "0123456789abcdef0123456789abcdef01234567" ]; then
 fi
 # The warning must actually appear — otherwise the write silently succeeded and
 # T-03/T-04 would pass without ever exercising the failure path.
-if ! printf '%s\n' "$gi_err" | grep -q 'WARNING:.*\.gitignore'; then
+if ! printf '%s\n' "$gi_err" | grep -c >/dev/null 'WARNING:.*\.gitignore'; then
   echo "FAIL: no WARNING emitted for the .gitignore write failure" >&2
   exit 1
 fi

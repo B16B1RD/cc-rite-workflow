@@ -80,7 +80,7 @@ set -euo pipefail
 printf 'gh %s\n' "${*//$'\n'/ }" >> "$GH_LOG"
 case "$1 $2" in
   "api graphql")
-    if printf '%s\n' "$*" | grep -q 'states: CLOSED'; then
+    if printf '%s\n' "$*" | grep -c >/dev/null 'states: CLOSED'; then
       jq -c '. as $s | {data:{repository:{issues:{nodes:[
         $s.issues | to_entries[] | select(.value.state == "CLOSED") |
         {number: (.key | tonumber), title: ("issue " + .key), stateReason: .value.stateReason,
@@ -227,7 +227,7 @@ run_chain() {
   set_issue "$dir" 42 CLOSED COMPLETED "$ir"
   lines_before=$(unexpected_gh_lines "$dir/gh.log" | wc -l | tr -d ' ')
   drift_run "$dir"; out="$DRIFT_OUT"
-  if [ "$DRIFT_RC" -eq 1 ] && printf '%s\n' "$out" | grep -q '==> Total projects-board-drift findings: 1'; then
+  if [ "$DRIFT_RC" -eq 1 ] && printf '%s\n' "$out" | grep -c >/dev/null '==> Total projects-board-drift findings: 1'; then
     pass "$shape: CLOSED COMPLETED on the in_review column is 1 drift finding (exit 1)"
   else
     fail "$shape: expected 1 finding / exit 1 before done, got rc=$DRIFT_RC: $(printf '%s' "$out" | tr '\n' ' ' | head -c 200)"
@@ -246,7 +246,7 @@ run_chain() {
     *) fail "$shape: gate after done expected ok/role=done, got: $marker" ;;
   esac
   drift_run "$dir"; out="$DRIFT_OUT"
-  if [ "$DRIFT_RC" -eq 0 ] && printf '%s\n' "$out" | grep -q '==> Total projects-board-drift findings: 0'; then
+  if [ "$DRIFT_RC" -eq 0 ] && printf '%s\n' "$out" | grep -c >/dev/null '==> Total projects-board-drift findings: 0'; then
     pass "$shape: done column is terminal -> 0 findings (exit 0)"
   else
     fail "$shape: expected 0 findings / exit 0 after done, got rc=$DRIFT_RC: $(printf '%s' "$out" | tr '\n' ' ' | head -c 200)"
@@ -388,12 +388,12 @@ edits_after=$(grep -c '^gh project item-edit' "$TEST_ROOT/nocancel/gh.log" || tr
 assert "nocancel: skipped_role_unmapped writes nothing" "$edits_before" "$edits_after"
 assert "nocancel: the abandoned Issue keeps its column" "In Progress" "$(board_status "$TEST_ROOT/nocancel" 43)"
 drift_run "$TEST_ROOT/nocancel"; out="$DRIFT_OUT"
-if [ "$DRIFT_RC" -eq 0 ] && printf '%s\n' "$out" | grep -q '==> Total projects-board-drift findings: 0'; then
+if [ "$DRIFT_RC" -eq 0 ] && printf '%s\n' "$out" | grep -c >/dev/null '==> Total projects-board-drift findings: 0'; then
   pass "nocancel: NOT_PLANNED Issue is not counted as drift (0 findings, exit 0)"
 else
   fail "nocancel: expected 0 findings / exit 0, got rc=$DRIFT_RC: $(printf '%s' "$out" | tr '\n' ' ' | head -c 200)"
 fi
-if printf '%s\n' "$out" | grep -q '^\[projects-board-drift\] info #43 .*no cancelled column is configured'; then # drift-check-ignore
+if printf '%s\n' "$out" | grep -c >/dev/null '^\[projects-board-drift\] info #43 .*no cancelled column is configured'; then # drift-check-ignore
   pass "nocancel: the abandoned Issue is listed as informational"
 else
   fail "nocancel: informational line for the abandoned Issue missing: $(printf '%s' "$out" | tr '\n' ' ' | head -c 200)"
@@ -475,7 +475,7 @@ for needle in '| `done` | Work completed | `COMPLETED` |' \
               '`cancelled` has no position in this order' \
               'lands on `done` **with a WARNING**' \
               'skipped_role_unmapped'; do
-  if printf '%s\n' "$sot_248" | grep -qF -- "$needle"; then
+  if printf '%s\n' "$sot_248" | grep -cF >/dev/null -- "$needle"; then
     pass "T-06: §2.4.8 states: $needle"
   else
     fail "T-06: §2.4.8 lacks: $needle"
@@ -504,7 +504,7 @@ if [ -n "$en_fence" ] && [ "$en_fence" = "$ja_fence" ]; then
 else
   fail "T-07: Status Transitions fences differ or are missing (en=$(printf '%s' "$en_fence" | head -c 80) ja=$(printf '%s' "$ja_fence" | head -c 80))"
 fi
-if printf '%s\n' "$en_fence" | grep -q 'todo → in_progress → in_review → done'; then
+if printf '%s\n' "$en_fence" | grep -c >/dev/null 'todo → in_progress → in_review → done'; then
   pass "T-07: the fence lists the roles, not the English column names"
 else
   fail "T-07: the fence does not list the roles: $(printf '%s' "$en_fence" | head -c 120)"
@@ -514,7 +514,7 @@ for pair in "README.md|Status Transitions:" "README.ja.md|ステータス遷移:
   heading_line "$REPO_ROOT/$file" "$heading"
   para=$(para_after "$HEADING_LINE" "$REPO_ROOT/$file")
   for token in 'rite-config.yml' 'fields.status.options' 'cancelled'; do
-    if printf '%s\n' "$para" | grep -qF -- "$token"; then
+    if printf '%s\n' "$para" | grep -cF >/dev/null -- "$token"; then
       pass "T-07: $file paragraph after the fence mentions $token"
     else
       fail "T-07: $file paragraph after the fence lacks $token"
@@ -541,24 +541,24 @@ assert "T-08: four role-mapped yaml examples in github.projects.fields" "4" "$ro
 assert "T-08: exactly one example omits the cancelled row" "1" "$nocancel_blocks"
 distinct=$(printf '%s' "$name_sets" | sort -u | grep -c . || true)
 assert "T-08: the four examples carry four different name sets" "4" "$distinct"
-if printf '%s\n' "$name_sets" | grep -q 'name: "To-Do",name: "In progress"'; then
+if printf '%s\n' "$name_sets" | grep -c >/dev/null 'name: "To-Do",name: "In progress"'; then
   pass "T-08: a To-Do / In progress example is present"
 else
   fail "T-08: no To-Do / In progress example"
 fi
-if printf '%s\n' "$name_sets" | grep -q 'name: "ステータス",name: "未着手"'; then
+if printf '%s\n' "$name_sets" | grep -c >/dev/null 'name: "ステータス",name: "未着手"'; then
   pass "T-08: a Japanese field-name + Japanese column example is present"
 else
   fail "T-08: no Japanese example"
 fi
 for state in legacy explicit invalid; do
-  if printf '%s\n' "$cfg_section" | grep -qE "^\| \*\*$state\*\* \|"; then
+  if printf '%s\n' "$cfg_section" | grep -cE >/dev/null "^\| \*\*$state\*\* \|"; then
     pass "T-08: the $state state has a row in the three-state table"
   else
     fail "T-08: no $state row in the three-state table"
   fi
 done
-if printf '%s\n' "$cfg_section" | grep -qF 'leaves its board Status unchanged'; then
+if printf '%s\n' "$cfg_section" | grep -cF >/dev/null 'leaves its board Status unchanged'; then
   pass "T-08: the cancelled-omitted behavior is stated"
 else
   fail "T-08: the cancelled-omitted behavior is not stated"

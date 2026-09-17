@@ -60,13 +60,13 @@ assert "P2 parenthetical qualifier detected (exit 1)" "1" "$(run --quiet --targe
 
 # --- Finding output names the pattern -----------------------------------------
 p1_out="$(bash "$SCRIPT" --repo-root "$SANDBOX" --quiet --target ng-p1.md 2>/dev/null || true)"
-if printf '%s' "$p1_out" | grep -qF '[backlink-format][P1]'; then
+if printf '%s' "$p1_out" | grep -cF >/dev/null '[backlink-format][P1]'; then
   pass "P1 finding is tagged [backlink-format][P1]"
 else
   fail "P1 finding tag missing: $p1_out"
 fi
 p2_out="$(bash "$SCRIPT" --repo-root "$SANDBOX" --quiet --target ng-p2.md 2>/dev/null || true)"
-if printf '%s' "$p2_out" | grep -qF '[backlink-format][P2]'; then
+if printf '%s' "$p2_out" | grep -cF >/dev/null '[backlink-format][P2]'; then
   pass "P2 finding is tagged [backlink-format][P2]"
 else
   fail "P2 finding tag missing: $p2_out"

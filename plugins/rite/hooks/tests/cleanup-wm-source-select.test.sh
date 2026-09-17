@@ -131,11 +131,11 @@ Local work memory auto-created by PostToolUse hook.
 EOF
 FAKE_COMMENT=$'📜 rite 作業メモリ\n\n### 進捗サマリー\n\n- [ ] real task from comment\n'
 out=$(run_select "$SB1" "$FAKE_COMMENT")
-if ! printf '%s' "$out" | grep -q 'WM_SOURCE=stub_fallback'; then
+if ! printf '%s' "$out" | grep -c >/dev/null 'WM_SOURCE=stub_fallback'; then
   fail "T-01: stub_fallback marker 不在 (出力: $out)"
-elif ! printf '%s' "$out" | grep -qi 'WARNING:.*stub'; then
+elif ! printf '%s' "$out" | grep -ci >/dev/null 'WARNING:.*stub'; then
   fail "T-01: WARNING 不在 (出力: $out)"
-elif ! printf '%s' "$out" | grep -q 'WM_SOURCE=comment'; then
+elif ! printf '%s' "$out" | grep -c >/dev/null 'WM_SOURCE=comment'; then
   fail "T-01: comment fallback 不在 (出力: $out)"
 else
   pass "T-01 (stub → WARNING + comment fallback)"
@@ -159,11 +159,11 @@ phase: implement
 EOF
 # comment があっても local を優先すべき
 out=$(run_select "$SB2" $'📜 rite 作業メモリ\n### 進捗サマリー\n- [ ] should not win\n')
-if ! printf '%s' "$out" | grep -q 'WM_SOURCE=local'; then
+if ! printf '%s' "$out" | grep -c >/dev/null 'WM_SOURCE=local'; then
   fail "T-02: local 採用されない (出力: $out)"
-elif printf '%s' "$out" | grep -q 'stub_fallback'; then
+elif printf '%s' "$out" | grep -c >/dev/null 'stub_fallback'; then
   fail "T-02: 実 WM を stub と誤判定 (出力: $out)"
-elif printf '%s' "$out" | grep -q 'resolver_unresolved'; then
+elif printf '%s' "$out" | grep -c >/dev/null 'resolver_unresolved'; then
   fail "T-02: 成功経路に resolver_unresolved が混入 (出力: $out)"
 else
   pass "T-02 (実 WM を local 採用)"
@@ -174,7 +174,7 @@ echo "T-03: no local WM and no comment -> none"
 SB3="$TEST_DIR/sb3"
 mkdir -p "$SB3"
 out=$(run_select "$SB3" "")
-if ! printf '%s' "$out" | grep -q 'WM_SOURCE=none'; then
+if ! printf '%s' "$out" | grep -c >/dev/null 'WM_SOURCE=none'; then
   fail "T-03: none に倒れていない (出力: $out)"
 else
   pass "T-03 (両不在 → none)"
@@ -190,7 +190,7 @@ cat > "$SB2b/.rite-work-memory/issue-9999.md" <<'EOF'
 - [x] old step
 EOF
 out=$(run_select "$SB2b" "")
-if ! printf '%s' "$out" | grep -q 'WM_SOURCE=local'; then
+if ! printf '%s' "$out" | grep -c >/dev/null 'WM_SOURCE=local'; then
   fail "T-02b: v1 進捗見出しが local にならない (出力: $out)"
 else
   pass "T-02b (v1 ### 進捗 も内容ありと判定)"
@@ -216,15 +216,15 @@ T04_CWD="$(cd "$T04_CWD" && pwd -P)"
 T04_EXPECT="$T04_MAIN/.rite/work-memory/issue-9999.md"
 T04_CWD_PATH="$T04_CWD/.rite/work-memory/issue-9999.md"
 out=$(run_select "$T04_CWD" $'📜 rite 作業メモリ\n### 進捗サマリー\n- [ ] comment should not win\n' "$T04_MAIN")
-if ! printf '%s' "$out" | grep -q 'WM_SOURCE=local'; then
+if ! printf '%s' "$out" | grep -c >/dev/null 'WM_SOURCE=local'; then
   fail "T-04: local 採用されない (出力: $out)"
-elif ! printf '%s' "$out" | grep -qF "path=$T04_EXPECT"; then
+elif ! printf '%s' "$out" | grep -cF >/dev/null "path=$T04_EXPECT"; then
   fail "T-04: 採用 path が MAIN 絶対パスと一致しない (期待: $T04_EXPECT / 出力: $out)"
 elif printf '%s' "$out" | grep -F "path=$T04_CWD_PATH"; then
   fail "T-04: cwd 側 path を採用している (出力: $out)"
-elif printf '%s' "$out" | grep -q 'path=\.rite/work-memory/'; then
+elif printf '%s' "$out" | grep -c >/dev/null 'path=\.rite/work-memory/'; then
   fail "T-04: cwd 相対 path を採用している (出力: $out)"
-elif printf '%s' "$out" | grep -q 'resolver_unresolved'; then
+elif printf '%s' "$out" | grep -c >/dev/null 'resolver_unresolved'; then
   fail "T-04: 成功経路に resolver_unresolved が混入 (出力: $out)"
 else
   pass "T-04 (MAIN 絶対パス採用、cwd 非採用)"
@@ -254,7 +254,7 @@ elif [ -z "$_n_final" ]; then
   fail "T-05: 最終 comment 不在 (出力: $out)"
 elif ! [ "$_n_warn" -lt "$_n_mid" ] || ! [ "$_n_mid" -lt "$_n_final" ]; then
   fail "T-05: 順序が WARNING → resolver_unresolved → comment ではない (lines: $_n_warn/$_n_mid/$_n_final / 出力: $out)"
-elif printf '%s' "$out" | grep -q 'WM_SOURCE=local'; then
+elif printf '%s' "$out" | grep -c >/dev/null 'WM_SOURCE=local'; then
   fail "T-05: cwd の local を採用している (出力: $out)"
 else
   pass "T-05 (resolver 失敗 → WARNING → unresolved → comment、cwd local 不採用)"
@@ -270,13 +270,13 @@ cat > "$T05b/.rite/work-memory/issue-9999.md" <<'EOF'
 - [ ] cwd real wm must not win
 EOF
 out=$(run_select "$T05b" "" "" 1)
-if ! printf '%s' "$out" | grep -q 'WM_SOURCE=resolver_unresolved'; then
+if ! printf '%s' "$out" | grep -c >/dev/null 'WM_SOURCE=resolver_unresolved'; then
   fail "T-05b: resolver_unresolved 不在 (出力: $out)"
-elif ! printf '%s' "$out" | grep -q 'WM_SOURCE=none'; then
+elif ! printf '%s' "$out" | grep -c >/dev/null 'WM_SOURCE=none'; then
   fail "T-05b: none に倒れていない (出力: $out)"
-elif printf '%s' "$out" | grep -q 'WM_SOURCE=local'; then
+elif printf '%s' "$out" | grep -c >/dev/null 'WM_SOURCE=local'; then
   fail "T-05b: cwd の local を採用している (出力: $out)"
-elif printf '%s' "$out" | grep -q 'WM_SOURCE=comment'; then
+elif printf '%s' "$out" | grep -c >/dev/null 'WM_SOURCE=comment'; then
   fail "T-05b: コメント無しなのに comment になった (出力: $out)"
 else
   pass "T-05b (resolver 失敗 + コメントなし → none、cwd local 不採用)"
@@ -296,13 +296,13 @@ T06_ROOT="$(cd "$T06_ROOT" && pwd -P)"
 T06_CWD="$(cd "$T06_CWD" && pwd -P)"
 T06_CWD_PATH="$T06_CWD/.rite/work-memory/issue-9999.md"
 out=$(run_select "$T06_CWD" $'📜 rite 作業メモリ\n### 進捗サマリー\n- [ ] comment wins when root empty\n' "$T06_ROOT")
-if printf '%s' "$out" | grep -q 'WM_SOURCE=local'; then
+if printf '%s' "$out" | grep -c >/dev/null 'WM_SOURCE=local'; then
   fail "T-06: cwd の local を採用している (出力: $out)"
 elif printf '%s' "$out" | grep -F "path=$T06_CWD_PATH"; then
   fail "T-06: cwd path を採用している (出力: $out)"
-elif ! printf '%s' "$out" | grep -q 'WM_SOURCE=comment'; then
+elif ! printf '%s' "$out" | grep -c >/dev/null 'WM_SOURCE=comment'; then
   fail "T-06: 最終 comment にならない (出力: $out)"
-elif printf '%s' "$out" | grep -q 'resolver_unresolved'; then
+elif printf '%s' "$out" | grep -c >/dev/null 'resolver_unresolved'; then
   fail "T-06: 成功経路に resolver_unresolved が混入 (出力: $out)"
 else
   pass "T-06 (state_root 空・cwd 実 WM → comment、local 不採用)"

@@ -121,12 +121,12 @@ else
   fail "TC-2: expected rc=0 on synchronized fixture, got rc=$rc"
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 fi
-if printf '%s\n' "$out" | grep -Fq "unrelated-reviewer.md"; then
+if printf '%s\n' "$out" | grep -Fc >/dev/null "unrelated-reviewer.md"; then
   fail "TC-2: prose outside tables leaked into the comparison"
 else
   pass "TC-2: prose outside tables correctly ignored"
 fi
-if printf '%s\n' "$out" | grep -Fq "_reviewer-base"; then
+if printf '%s\n' "$out" | grep -Fc >/dev/null "_reviewer-base"; then
   fail "TC-2: shared principles file leaked into the agents set"
 else
   pass "TC-2: _reviewer-base.md correctly excluded from the agents set"
@@ -139,12 +139,12 @@ fi
 # なので、行フィルタが外れると victor/whiskey が Available/Type Identifiers 双方の
 # 集合に漏れ出し、agents.set に存在しないため drift finding として検出され rc が
 # 1 に変わる（本 TC の rc=0 assert 自体が mutation を kill する）。
-if printf '%s\n' "$out" | grep -Fq "victor-reviewer"; then
+if printf '%s\n' "$out" | grep -Fc >/dev/null "victor-reviewer"; then
   fail "TC-2: in-section prose decoy (Available Reviewers) leaked into extraction"
 else
   pass "TC-2: Available Reviewers セクション内の非パイプ散文行が正しく除外された"
 fi
-if printf '%s\n' "$out" | grep -Fq "whiskey-reviewer"; then
+if printf '%s\n' "$out" | grep -Fc >/dev/null "whiskey-reviewer"; then
   fail "TC-2: in-section prose decoy (Type Identifiers) leaked into extraction"
 else
   pass "TC-2: Type Identifiers セクション内の非パイプ散文行が正しく除外された"
@@ -164,7 +164,7 @@ else
   fail "TC-3: expected rc=1, got rc=$rc"
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 fi
-if printf '%s\n' "$out" | grep -Fq "dummy-reviewer.md"; then
+if printf '%s\n' "$out" | grep -Fc >/dev/null "dummy-reviewer.md"; then
   pass "TC-3: finding names the missing reviewer"
 else
   fail "TC-3: dummy-reviewer.md missing from findings"
@@ -190,7 +190,7 @@ else
   fail "TC-4: expected rc=1, got rc=$rc"
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 fi
-if printf '%s\n' "$out" | grep -Fq "zulu-reviewer.md"; then
+if printf '%s\n' "$out" | grep -Fc >/dev/null "zulu-reviewer.md"; then
   pass "TC-4: finding names the half-registered reviewer"
 else
   fail "TC-4: zulu-reviewer.md missing from findings"
@@ -208,7 +208,7 @@ awk_inplace "$d/plugins/rite/skills/reviewers/SKILL.md" '
 '
 rc=0
 out=$(bash "$CHECKER" --all --quiet --repo-root "$d" 2>&1) || rc=$?
-if [ "$rc" -eq 1 ] && printf '%s\n' "$out" | grep -Fq "bravo-reviewer.md"; then
+if [ "$rc" -eq 1 ] && printf '%s\n' "$out" | grep -Fc >/dev/null "bravo-reviewer.md"; then
   pass "TC-5: missing Type Identifiers row detected (agents側 + Available側から双方向で浮く)"
 else
   fail "TC-5: expected rc=1 with bravo-reviewer.md finding, got rc=$rc"
@@ -230,7 +230,7 @@ awk_inplace "$d/plugins/rite/skills/reviewers/SKILL.md" '
 '
 rc=0
 out=$(bash "$CHECKER" --all --quiet --repo-root "$d" 2>&1) || rc=$?
-if [ "$rc" -eq 1 ] && printf '%s\n' "$out" | grep -Fq "slug charlie expects charlie-reviewer.md"; then
+if [ "$rc" -eq 1 ] && printf '%s\n' "$out" | grep -Fc >/dev/null "slug charlie expects charlie-reviewer.md"; then
   pass "TC-6: slug/Agent mismatch detected via I3 row check"
 else
   fail "TC-6: expected rc=1 with slug mismatch finding, got rc=$rc"
@@ -238,7 +238,7 @@ else
 fi
 # 均衡入替により集合は保存されるため、I1/I2 の集合差分 finding（"only in ..."）が
 # 混入していないことを assert する（I3 の固有価値を分離検証）
-if printf '%s\n' "$out" | grep -Fq "only in"; then
+if printf '%s\n' "$out" | grep -Fc >/dev/null "only in"; then
   fail "TC-6: set-difference findings leaked — swap was not balanced (I3 not isolated)"
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 else
@@ -269,7 +269,7 @@ fi
 # BSD/macOS `wc` right-justifies the count with leading spaces, so the script's
 # message reads "extracted only        0 reviewers" — match with a whitespace
 # class instead of a fixed single space (same BSD wc padding as TC-15).
-if printf '%s\n' "$out" | grep -qE "extracted only[[:space:]]+0 reviewers"; then
+if printf '%s\n' "$out" | grep -cE >/dev/null "extracted only[[:space:]]+0 reviewers"; then
   pass "TC-7: fired via the >= 6 extraction guard (not the I3 row-count guard)"
 else
   fail "TC-7: rc=2 but not via the extraction guard — unexpected message"
@@ -303,8 +303,8 @@ rc=0
 out=$(bash "$CHECKER" --all --quiet --repo-root "$d" 2>&1) || rc=$?
 # ヘッダ行（方向ラベル）と finding 行（ファイル名）は別行のため独立に assert する
 if [ "$rc" -eq 1 ] \
-  && printf '%s\n' "$out" | grep -Fq "only in Type Identifiers table" \
-  && printf '%s\n' "$out" | grep -Fq "mike-reviewer.md"; then
+  && printf '%s\n' "$out" | grep -Fc >/dev/null "only in Type Identifiers table" \
+  && printf '%s\n' "$out" | grep -Fc >/dev/null "mike-reviewer.md"; then
   pass "TC-9: reverse direction (identifiers row without profile) detected"
 else
   fail "TC-9: expected rc=1 with 'only in Type Identifiers table' finding for mike-reviewer.md, got rc=$rc"
@@ -337,7 +337,7 @@ fi
 # TC-7 と対称の guard 特定 assert。列挿入は正規表現ベースの set 抽出（>= 6 ガード）
 # 自体は通過し、位置依存の I3 行数ガードだけが落ちるはずなので、その guard 固有の
 # 文言で発火元を特定する（抽出ガードで落ちていたら列シフト検知の意図が壊れている）。
-if printf '%s\n' "$out" | grep -Fq "I3 slug check evaluated only 0 rows"; then
+if printf '%s\n' "$out" | grep -Fc >/dev/null "I3 slug check evaluated only 0 rows"; then
   pass "TC-10: fired via the I3 row-count guard (not the >= 6 extraction guard)"
 else
   fail "TC-10: rc=2 but not via the I3 guard — unexpected message"
@@ -373,7 +373,7 @@ else
   fail "TC-12: expected rc=1, got rc=$rc"
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 fi
-if printf '%s\n' "$out" | grep -Fxq "==> Total reviewer-registry-drift findings: 1"; then
+if printf '%s\n' "$out" | grep -Fxc >/dev/null "==> Total reviewer-registry-drift findings: 1"; then
   pass "TC-12: aggregate log line matches the skills/lint extraction contract exactly"
 else
   fail "TC-12: aggregate log line missing or drifted from 'Total reviewer-registry-drift findings: N'"
@@ -393,7 +393,7 @@ else
   fail "TC-13: expected rc=0, got rc=$rc"
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 fi
-if printf '%s\n' "$out" | grep -Fq "not applicable"; then
+if printf '%s\n' "$out" | grep -Fc >/dev/null "not applicable"; then
   pass "TC-13: not-applicable skip message present"
 else
   fail "TC-13: expected 'not applicable' message in output"
@@ -420,14 +420,14 @@ else
   fail "TC-14a: expected rc=2, got rc=$rc"
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 fi
-if printf '%s\n' "$out" | grep -Fq "not applicable"; then
+if printf '%s\n' "$out" | grep -Fc >/dev/null "not applicable"; then
   fail "TC-14a: asymmetric absence incorrectly treated as clean skip (not applicable)"
 else
   pass "TC-14a: asymmetric absence not confused with the clean-skip path"
 fi
 # Needle pins the full path of the MISSING sync point — a bare "SKILL.md"
 # would pass even if the diagnostic named the wrong file.
-if printf '%s\n' "$out" | grep -Fq "reviewers/SKILL.md"; then
+if printf '%s\n' "$out" | grep -Fc >/dev/null "reviewers/SKILL.md"; then
   pass "TC-14a: names reviewers/SKILL.md as the missing sync point"
 else
   fail "TC-14a: expected output to name reviewers/SKILL.md"
@@ -447,12 +447,12 @@ else
   fail "TC-14b: expected rc=2, got rc=$rc"
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 fi
-if printf '%s\n' "$out" | grep -Fq "not applicable"; then
+if printf '%s\n' "$out" | grep -Fc >/dev/null "not applicable"; then
   fail "TC-14b: asymmetric absence incorrectly treated as clean skip (not applicable)"
 else
   pass "TC-14b: asymmetric absence not confused with the clean-skip path"
 fi
-if printf '%s\n' "$out" | grep -Fq "plugins/rite/agents"; then
+if printf '%s\n' "$out" | grep -Fc >/dev/null "plugins/rite/agents"; then
   pass "TC-14b: names plugins/rite/agents as the missing sync point"
 else
   fail "TC-14b: expected output to name plugins/rite/agents"
@@ -488,19 +488,19 @@ fi
 # right-justifies its count with leading spaces (the checker interpolates that
 # count into these log lines). AGENT_RE itself is already digit-aware and
 # portable — the count still asserts web3-reviewer.md is not dropped.
-if printf '%s\n' "$out" | grep -qE "agents/ profiles[[:space:]]*:[[:space:]]*${expected_count} reviewers"; then
+if printf '%s\n' "$out" | grep -cE >/dev/null "agents/ profiles[[:space:]]*:[[:space:]]*${expected_count} reviewers"; then
   pass "TC-15: agents/ profiles count includes web3-reviewer.md (not silently dropped by AGENT_RE)"
 else
   fail "TC-15: expected agents/ profiles count to be ${expected_count} (web3 must not be excluded by a digit-unaware AGENT_RE)"
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 fi
-if printf '%s\n' "$out" | grep -qE "Available Reviewers table[[:space:]]*:[[:space:]]*${expected_count} reviewers"; then
+if printf '%s\n' "$out" | grep -cE >/dev/null "Available Reviewers table[[:space:]]*:[[:space:]]*${expected_count} reviewers"; then
   pass "TC-15: Available Reviewers table count includes web3-reviewer.md"
 else
   fail "TC-15: expected Available Reviewers table count to be ${expected_count}"
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 fi
-if printf '%s\n' "$out" | grep -qE "Type Identifiers table[[:space:]]*:[[:space:]]*${expected_count} reviewers"; then
+if printf '%s\n' "$out" | grep -cE >/dev/null "Type Identifiers table[[:space:]]*:[[:space:]]*${expected_count} reviewers"; then
   pass "TC-15: Type Identifiers table count includes web3-reviewer.md"
 else
   fail "TC-15: expected Type Identifiers table count to be ${expected_count}"
