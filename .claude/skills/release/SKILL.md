@@ -578,7 +578,7 @@ jq -r '.plugins[0].version' .claude-plugin/marketplace.json
 gh issue list --search "リリース" --state open
 
 # main と develop の差分
-git log main..develop --oneline
+git log origin/main..develop --oneline
 
 # main 側にしか無いコミット（件数は健全性の判定材料にならない。判定は下の §1.0 と同じ祖先チェックで行う）
 git log origin/develop..origin/main --oneline

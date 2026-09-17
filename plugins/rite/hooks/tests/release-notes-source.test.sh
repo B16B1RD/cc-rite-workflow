@@ -32,6 +32,8 @@ create_block="$TMP_ROOT/create.sh"
 # The notes and the tag target must not depend on switching or updating the work tree.
 awk '/^### 3\.3 /{s=1; next} s && /^##+ /{exit} s' "$RELEASE_SKILL" | grep -E 'git (checkout|pull)' \
   && fail "3.3 still switches or updates the work tree"
+# Nothing updates the local main branch anymore, so no check may compare against it.
+grep -nE 'git log main([^/[:alnum:]]|$)' "$RELEASE_SKILL" && fail "release skill still reads the local main branch"
 extract_fence 'RELEASE_NOTES_SHA=' "$notes_block"
 extract_fence 'gh release create' "$create_block"
 for anchor in 'git fetch origin main' 'rev-parse --verify' 'git show "$release_sha:CHANGELOG.md"' \
