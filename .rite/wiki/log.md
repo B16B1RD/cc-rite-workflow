@@ -13,6 +13,7 @@
 * **lint:clean** — contradictions=0 (ページ変更なし。既存ページの全組合せ再評価は未実施), stale=66, orphans=0, missing_concept=0, unregistered_raw=519, broken_refs=0。既存 helper の Broken pipe 診断を観測したが、各 helper は正常終了し読出成功を報告した。
 * **Update**: [実測ゲートで降格した文書指摘でも、grep で確認できる事実誤りはリリース転記前に修正で消化する](pages/heuristics/demoted-doc-factual-error-fix-before-release-transcription.md) — raw/reviews/20260917T054339Z-pr-2924.md を統合（リリースノート要約時の事実誤り 3 型を補強）
 * **Update**: [実測ゲートで降格した文書指摘でも、grep で確認できる事実誤りはリリース転記前に修正で消化する](pages/heuristics/demoted-doc-factual-error-fix-before-release-transcription.md) — raw/reviews/20260917T060028Z-pr-2924-c2.md を統合（リリースノート要約時の事実誤り 3 型を補強）
+* **lint:clean** — contradictions=0 (変更ページはリリース転記前修正の既存ページへの補強のみ。全組合せ再評価は未実施), stale=66, orphans=0, missing_concept=0, unregistered_raw=520, broken_refs=0
 
 ## 2026-09-16
 
