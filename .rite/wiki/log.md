@@ -2941,4 +2941,6 @@ T02:22:43+09:00 — review ingest (skip pages)
 ## 2026-09-17
 
 * **Skip**: Projects 設定対象を実装済み3フィールドへ揃えた指摘なしの仕様同期確認で、既存 Wiki に追加する再利用可能な新規経験則がない — [レビュー結果](raw/reviews/20260916T150913Z-pr-2918.md)
+## 2026-09-17
 
+* **Create**: [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) — [最終レビューと計測](raw/reviews/20260917T031500Z-pr-2920-final.md) を統合（旧目標未達記録を最終達成値で更新）
