@@ -7,6 +7,7 @@ import copy
 import json
 import os
 from pathlib import Path
+import stat
 import subprocess
 import sys
 import tempfile
@@ -255,6 +256,65 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
     extra.write_text('new unplanned change\n')
     check(invoke('verify', 'all', ok=False).returncode != 0, 'unplanned untracked changes rejected')
     extra.unlink()
+
+    # Sandbox write-block masks: a character device (simulated by a symlink to
+    # /dev/null, which stat follows) and a leftover 0-byte no-write stub are not
+    # untracked changes; every other untracked shape still is.
+    def fixture(name, mode, content=''):
+        target = root / name
+        target.write_text(content)
+        target.chmod(mode)
+        info = os.lstat(target)
+        if not (stat.S_ISREG(info.st_mode) and info.st_size == len(content) and stat.S_IMODE(info.st_mode) == mode):
+            raise SystemExit('ERROR: fixture ' + name + ' did not keep mode/size (filesystem does not keep modes?)')
+        return target
+
+    def stub_warnings(result):
+        return [line for line in result.stderr.splitlines() if 'sandbox stub file(s)' in line]
+
+    def filtered_untracked():
+        # The helper's own mktemp files must not land in the tree it inspects.
+        result = subprocess.run(['bash', str(plugin / 'hooks/scripts/lib/git-status-filtered.sh')], cwd=root,
+                                env=dict(env, TMPDIR=str(private)), text=True, capture_output=True)
+        check(result.returncode == 0, 'git-status-filtered.sh succeeds: ' + result.stderr)
+        return {line[3:] for line in result.stdout.splitlines() if line.startswith('?? ')}
+
+    ghost = root / 'ghost_devnull'
+    ghost.symlink_to('/dev/null')
+    check(stat.S_ISLNK(os.lstat(ghost).st_mode) and stat.S_ISCHR(os.stat(ghost).st_mode), 'device fixture is a symlink to a character device')
+    result = invoke('verify', 'all')
+    check(stub_warnings(result) == [], 'character device mask excluded silently')
+    check(filtered_untracked() == set(), 'git-status-filtered.sh also drops the device mask')
+    ghost.unlink()
+    mask = fixture('.bashrc', 0o444)
+    result = invoke('verify', 'all')
+    warnings = stub_warnings(result)
+    check(len(warnings) == 1 and ' 1 sandbox stub file(s)' in warnings[0] and '".bashrc"' in warnings[0],
+          'stub mask excluded with a single warning naming it')
+    check(filtered_untracked() == set(), 'git-status-filtered.sh also drops the stub')
+    link = root / 'stub_link'
+    link.symlink_to(mask.name)
+    check(stat.S_ISLNK(os.lstat(link).st_mode) and os.stat(link).st_size == 0, 'stub link fixture points at the stub')
+    result = invoke('verify', 'all', ok=False)
+    warnings = stub_warnings(result)
+    check(result.returncode != 0 and len(warnings) == 1 and '"stub_link"' not in warnings[0],
+          'symlink to a stub stays an untracked change while the stub itself is still excluded')
+    check(filtered_untracked() == {link.name}, 'git-status-filtered.sh keeps the same symlink')
+    link.unlink()
+    mask.unlink()
+    for name, mode, content, label in (('.bashrc', 0o644, '', 'writable empty file'),
+                                       ('.bashrc', 0o444, 'alias ls=ls\n', 'read-only file with content'),
+                                       ('.gitconfig', 0o464, '', 'empty file with a group write bit')):
+        real = fixture(name, mode, content)
+        result = invoke('verify', 'all', ok=False)
+        check(result.returncode != 0 and stub_warnings(result) == [], label + ' rejected as untracked change')
+        check(filtered_untracked() == {name}, label + ' kept by git-status-filtered.sh too')
+        real.unlink()
+    tracked_stub = fixture('protected/secret.py', 0o444)
+    result = invoke('verify', 'all', ok=False)
+    check(result.returncode != 0 and stub_warnings(result) == [], 'tracked file emptied into stub shape is a change, not a mask')
+    tracked_stub.chmod(0o644)
+    tracked_stub.write_text('protected\n')
     protected = root / 'protected/secret.py'
     protected.write_text('forbidden change\n')
     check(invoke('verify', 'all', ok=False).returncode != 0, 'actual tracked non-target changes rejected')
