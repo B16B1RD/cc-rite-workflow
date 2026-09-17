@@ -485,6 +485,25 @@ echo "[CONTEXT] RELEASE_NOTES_SHA=$release_sha"
 echo "[CONTEXT] RELEASE_NOTES_PATH=$release_notes"
 ```
 
+Release を作る前に、同名タグが既にリモートにあるかを確認する。GitHub はタグが既にある場合 `--target` を無視するため、別コミットを指すタグが残っていると取得元と公開対象がずれる。`{VERSION}` と `{RELEASE_NOTES_SHA}` は marker の値へリテラル置換する:
+
+```bash
+tag_lines=$(git ls-remote --tags origin "refs/tags/v{VERSION}" "refs/tags/v{VERSION}^{}"); ls_rc=$?
+[ "$ls_rc" -eq 0 ] || { echo "ERROR: 既存タグ v{VERSION} を確認できませんでした (rc=$ls_rc)" >&2; exit 1; }
+# ls-remote のパターンは slash 境界からの部分一致なので、ref 名の完全一致で選ぶ
+tag_sha=$(printf '%s\n' "$tag_lines" | awk -F'\t' -v r="refs/tags/v{VERSION}" -v p="refs/tags/v{VERSION}^{}" '$2==p{print $1; f=1; exit} $2==r{last=$1} END{if(!f) print last}'); awk_rc=$?
+# 抽出できなかったことを「タグ不在」と同じ経路に畳まない
+[ "$awk_rc" -eq 0 ] || { echo "ERROR: 既存タグ v{VERSION} の照合に失敗しました (rc=$awk_rc)" >&2; exit 1; }
+if [ -z "$tag_sha" ]; then
+  echo "[CONTEXT] RELEASE_TAG_STATE=absent"
+else
+  [ "$tag_sha" = "{RELEASE_NOTES_SHA}" ] || { echo "ERROR: 既存タグ v{VERSION} は $tag_sha を指しており、ノート取得元 {RELEASE_NOTES_SHA} と一致しません。Release を作成せず停止します" >&2; exit 1; }
+  echo "[CONTEXT] RELEASE_TAG_STATE=matched"
+fi
+```
+
+不一致で停止したときはタグを自動削除しない。既存タグが指すコミットを確認し、誤ったタグを削除するか版番号を見直してから 3.3 をやり直す。
+
 スクラッチファイルを指定して Release を作成する。プロセス置換は使用しない。
 
 ```bash
@@ -531,7 +550,7 @@ git pull origin develop
 |---|---------|---------|
 | 1 | GitHub Release が公開されている | `gh release view v{VERSION}` |
 | 2 | main に最新コードが反映されている | `git log origin/main --oneline -1` |
-| 3 | タグがノート取得元と同じコミットを指している | `git rev-parse "v{VERSION}^{commit}"` が `{RELEASE_NOTES_SHA}` と一致すること |
+| 3 | タグがノート取得元と同じコミットを指している | `git fetch --tags origin` の後に `git rev-parse "v{VERSION}^{commit}"` が `{RELEASE_NOTES_SHA}` と一致すること（タグは作成直後ローカルに無いため取得が必要。fetch に失敗したら確認不能として扱い、この項目を未確認のままにしない） |
 | 4 | 両 Issue がクローズされている | `gh issue view {PREP_ISSUE} --json state && gh issue view {RELEASE_ISSUE} --json state` |
 | 5 | 両 Issue の Projects Status が Done | `gh issue view {PREP_ISSUE} --json projectItems && gh issue view {RELEASE_ISSUE} --json projectItems` |
 | 6 | リリース準備ブランチが削除されている | `git branch --list 'chore/issue-*-release-prep'` が空であること |
@@ -554,7 +573,8 @@ git pull origin develop
 |------|------|
 | バージョン番号の更新漏れ | grep で検出し、追加コミットで修正 |
 | CHANGELOG の形式不備 | 既存エントリのパターンに合わせて修正 |
-| Phase 3.3 が `ERROR:` で停止（fetch / SHA 確定 / CHANGELOG 読取 / 一時ファイル作成の失敗） | Release は作成されていない。ネットワークと origin/main を確認して Phase 3.3 を最初からやり直す |
+| Phase 3.3 が `ERROR:` で停止（fetch / SHA 確定 / CHANGELOG 読取 / 一時ファイル作成 / 既存タグ確認の失敗） | Release は作成されていない。ネットワークと origin/main を確認して Phase 3.3 を最初からやり直す |
+| Phase 3.3 が既存タグの不一致で停止 | Release は作成されていない。`v{VERSION}` が指すコミットを確認し、誤って作られたタグを削除するか版番号を見直してから Phase 3.3 をやり直す。タグの自動削除はしない |
 | Phase 3.3 が節の欠落・本文空で停止 | Release は作成されていない。origin/main の CHANGELOG.md に `## [{VERSION}]` 節があり本文が空でないことを確認し、欠けていれば develop で修正して昇格からやり直す |
 | main マージ前に Release を作成してしまった | Release を削除 → main マージ → Release 再作成 |
 | PR マージ衝突 | 衝突を解消してから再試行 |
