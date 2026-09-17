@@ -12,6 +12,11 @@
 #   M-05 別セッションが使用中（live-cwd skip 経路）ではマスク probe を走らせず、判定不能 WARNING も出ない
 #   M-06 Darwin（uname stub）では判定不能を無言で -c 判定に落とす
 #   M-07 character device 形（/dev/null symlink で再現）の検知結果と emit 内容は不変
+#   U-01 flow-state 未記録でも main checkout からは登録済みの当該 Issue の worktree を in_main（source / branch / dirty）へ補完する
+#   U-02 別 Issue の登録・未登録ディレクトリ・別の worktree 内からの呼び出しでは補完しない
+#   U-03 空白を含む親 + 相対 base、絶対 base、symlink base（対象 worktree 内からは委譲）で候補を正しく解決する
+#   U-04 一覧取得失敗は unknown（WARNING 付き）、dirty 取得失敗は dirty=yes、実体の無い登録は missing=yes
+#   U-05 補完したパスでも remove の live-cwd guard が働き、実体の無い登録は remove で消える
 #
 # marker は行まるごと固定する。呼び出し側（cleanup/SKILL.md ステップ 12）は marker 名 +
 # フィールドで判定するため、フィールドが 1 つ落ちても helper 単体では動いて見える。
@@ -83,11 +88,11 @@ r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
 main_root=$(git -C "$r" rev-parse --show-toplevel)
 out=$(cd "$r" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
 assert_eq "detect(unrecorded main): 登録済み worktree を in_main で補完する" "$out" \
-  "[CONTEXT] CLEANUP_WT=in_main; worktree=$wt; source=git_worktree_list; dirty=no; main_root=$main_root"
+  "[CONTEXT] CLEANUP_WT=in_main; worktree=$wt; source=git_worktree_list; branch=feat/test; dirty=no; main_root=$main_root"
 printf 'x\n' > "$wt/untracked-probe.txt"
 out=$(cd "$r" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
 assert_eq "detect(unrecorded main): 補完した worktree の dirty 一覧を出す" "$out" \
-  "[CONTEXT] CLEANUP_WT=in_main; worktree=$wt; source=git_worktree_list; dirty=yes; main_root=$main_root
+  "[CONTEXT] CLEANUP_WT=in_main; worktree=$wt; source=git_worktree_list; branch=feat/test; dirty=yes; main_root=$main_root
 --- dirty files begin ---
 ?? untracked-probe.txt
 --- dirty files end ---"
@@ -120,7 +125,49 @@ git -C "$r" worktree remove --force "$r/.rite/worktrees/issue-1"
 git -C "$r" worktree add -q "$r/wt/sessions/issue-1" feat/test
 out=$(cd "$r" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
 assert_eq "detect(unrecorded main): 空白を含むパスとカスタム base で in_main" "$out" \
-  "[CONTEXT] CLEANUP_WT=in_main; worktree=$r/wt/sessions/issue-1; source=git_worktree_list; dirty=no; main_root=$r"
+  "[CONTEXT] CLEANUP_WT=in_main; worktree=$r/wt/sessions/issue-1; source=git_worktree_list; branch=feat/test; dirty=no; main_root=$r"
+
+# 絶対パスの base は main_root に連結せずそのまま候補にする。
+r=$(make_repo)
+abs_base="$TMP_ROOT/abs-wt-$(basename "$r")"
+printf 'multi_session:\n  enabled: true\n  worktree_base: "%s"\n' "$abs_base" > "$r/rite-config.yml"
+git -C "$r" worktree remove --force "$r/.rite/worktrees/issue-1"
+git -C "$r" worktree add -q "$abs_base/issue-1" feat/test
+out=$(cd "$r" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
+assert_eq "detect(unrecorded main): 絶対パスの base で in_main" "$out" \
+  "[CONTEXT] CLEANUP_WT=in_main; worktree=$abs_base/issue-1; source=git_worktree_list; branch=feat/test; dirty=no; main_root=$r"
+
+# symlink を含む base では分類 helper の末尾照合が物理 cwd と合わない。対象 worktree 自身の中から呼んだら
+# 退出不要の in_main にせず、path 入場と同じ in_worktree_unrecorded（委譲）に寄せる。
+r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
+ln -s .rite/worktrees "$r/alias"
+printf 'multi_session:\n  enabled: true\n  worktree_base: "alias"\n' > "$r/rite-config.yml"
+out=$(cd "$wt" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
+assert_eq "detect(unrecorded self): symlink base で対象 worktree 内なら委譲" "$out" \
+  "[CONTEXT] CLEANUP_WT=in_worktree_unrecorded; worktree=$wt; main_root=$r
+[CONTEXT] CLEANUP_DELEGATED=1; reason=exit_worktree_unavailable"
+out=$(cd "$r" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
+assert_eq "detect(unrecorded self): 対照 — 同じ symlink base を main から呼べば補完する" "$out" \
+  "[CONTEXT] CLEANUP_WT=in_main; worktree=$wt; source=git_worktree_list; branch=feat/test; dirty=no; main_root=$r"
+
+# 別の worktree の中から呼んだときは cwd が main checkout ではないので補完しない。
+git -C "$r" branch feat/other
+git -C "$r" worktree add -q "$r/.rite/worktrees/issue-2" feat/other
+out=$(cd "$r/.rite/worktrees/issue-2" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
+assert_eq "detect(unrecorded other): 別の worktree 内からは none" "$out" \
+  "[CONTEXT] CLEANUP_WT=none; worktree=; main_root=$r"
+
+# 登録だけ残り実体が無い（prunable）worktree は dirty の取得に進まず missing=yes を出し、
+# 所有権照合に使う branch は登録情報から出す。既存の remove でそのまま登録が消える。
+r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
+rm -rf "$wt"
+out=$(cd "$r" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
+assert_eq "detect(prunable): 実体の無い登録は missing=yes" "$out" \
+  "[CONTEXT] CLEANUP_WT=in_main; worktree=$wt; source=git_worktree_list; branch=feat/test; missing=yes; main_root=$r"
+out=$(cd "$r" && bash "$HELPER" remove --worktree "$wt" --pr-merged true --self-root 4194303 2>&1); rc=$?
+assert_eq "detect(prunable)→remove: exit 0" "$rc" "0"
+assert_not_contains "detect(prunable)→remove: 失敗 marker を出さない" "$out" "WORKTREE_REMOVE_"
+assert_not_contains "detect(prunable)→remove: 登録が消える" "$(git -C "$r" worktree list --porcelain)" "worktree $wt"
 
 # git worktree list の失敗は none にせず unknown にする。stub は `worktree list` だけを失敗させ、
 # 他の git 呼び出しは実 git へ渡す（効果範囲を対照ケースで確認する）。
@@ -133,9 +180,12 @@ exec "$real_git" "\$@"
 STUB
 chmod +x "$git_stub_bin/git"
 r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
-out=$(cd "$r" && PATH="$git_stub_bin:$PATH" bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
+err="$TMP_ROOT/list-failure.err"
+out=$(cd "$r" && PATH="$git_stub_bin:$PATH" bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>"$err")
 assert_eq "detect(list failure): 補完が必要な none は unknown" "$out" \
   "[CONTEXT] CLEANUP_WT=unknown; reason=worktree_list_failed; rc=128"
+assert_contains "detect(list failure): 人間向けの WARNING を stderr に出す" "$(cat "$err")" \
+  "WARNING: git worktree list が rc=128 で失敗しました。未記録の作業ツリーの有無を確認できていません"
 out=$(cd "$wt" && PATH="$git_stub_bin:$PATH" bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
 assert_contains "detect(list failure): 対照 — worktree 内 cwd の分類は変えない" "$out" \
   "[CONTEXT] CLEANUP_WT=in_worktree_unrecorded; worktree=$wt; main_root="
@@ -150,7 +200,7 @@ exec "$real_git" "\$@"
 STUB
 out=$(cd "$r" && PATH="$git_stub_bin:$PATH" bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
 assert_contains "detect(dirty failure): 取得失敗は dirty=yes" "$out" \
-  "[CONTEXT] CLEANUP_WT=in_main; worktree=$wt; source=git_worktree_list; dirty=yes; main_root=$r"
+  "[CONTEXT] CLEANUP_WT=in_main; worktree=$wt; source=git_worktree_list; branch=feat/test; dirty=yes; main_root=$r"
 assert_contains "detect(dirty failure): 失敗理由を一覧に出す" "$out" "?? (dirty-check failed — assume dirty for safety)"
 
 # 補完で得たパスをそのまま remove に渡しても、別セッションが使用中なら既存の live-cwd guard で見送る。
