@@ -259,7 +259,7 @@ cmd_detect() {
     # （登録だけ残った worktree）も、存在する最も近い親を解決して残りを連結する。解決できなければ
     # 候補と登録の関係を判定できないので none にせず unknown にする。
     if ! candidate=$(_physical_path "$candidate"); then
-      echo "WARNING: 作業ツリーの候補パス（$base/issue-$issue）を物理パスへ解決できませんでした。未記録の作業ツリーの有無を確認できていません" >&2
+      echo "WARNING: 作業ツリーの候補パス（${base}/issue-${issue}）を物理パスへ解決できませんでした。未記録の作業ツリーの有無を確認できていません" >&2
       echo "[CONTEXT] CLEANUP_WT=unknown; reason=candidate_unresolved"
       return 0
     fi
