@@ -470,22 +470,16 @@ GitHub API が返したコミット件数は PR metadata の総コミット数�
 
 ### 3.3 タグ作成 + GitHub Release
 
-main を最新にする。どちらかが失敗したら止める（checkout 失敗のまま pull すると現在のブランチへ main を取り込む）:
-
-```bash
-git checkout main || { echo "ERROR: main へ切り替えられませんでした" >&2; exit 1; }
-git pull origin main || { echo "ERROR: origin/main を取り込めませんでした" >&2; exit 1; }
-```
-
-リリースノートは作業ツリーではなく、昇格で確定した origin/main の SHA にある CHANGELOG.md から該当バージョンのセクションを抽出する:
+リリースノートとタグ対象は作業ツリーを使わず、昇格で確定した origin/main の SHA にある CHANGELOG.md から該当バージョンのセクションを抽出する:
 
 ```bash
 git fetch origin main || { echo "ERROR: origin/main を取得できませんでした" >&2; exit 1; }
 release_sha=$(git rev-parse --verify "origin/main^{commit}") || { echo "ERROR: origin/main の SHA を確定できませんでした" >&2; exit 1; }
 changelog_text=$(git show "$release_sha:CHANGELOG.md") || { echo "ERROR: $release_sha の CHANGELOG.md を読めませんでした" >&2; exit 1; }
-printf '%s\n' "$changelog_text" | grep -q '^## \[{VERSION}\]' || { echo "ERROR: $release_sha の CHANGELOG.md に {VERSION} の節がありません" >&2; exit 1; }
-release_notes=$(mktemp) || exit 1
-printf '%s\n' "$changelog_text" | sed -n '/^## \[{VERSION}\]/,/^## \[/{ /^## \[{VERSION}\]/d; /^## \[/d; p; }' > "$release_notes" || { rm -f "$release_notes"; exit 1; }
+version_re=$(printf '%s' "{VERSION}" | sed 's/[.]/\\./g')
+printf '%s\n' "$changelog_text" | grep -q "^## \[$version_re\]" || { echo "ERROR: $release_sha の CHANGELOG.md に {VERSION} の節がありません" >&2; exit 1; }
+release_notes=$(mktemp) || { echo "ERROR: リリースノートの一時ファイルを作成できませんでした" >&2; exit 1; }
+printf '%s\n' "$changelog_text" | sed -n "/^## \[$version_re\]/,/^## \[/{ /^## \[$version_re\]/d; /^## \[/d; p; }" > "$release_notes" || { rm -f "$release_notes"; echo "ERROR: {VERSION} の節を抽出できませんでした" >&2; exit 1; }
 grep -q '[^[:space:]]' "$release_notes" || { rm -f "$release_notes"; echo "ERROR: $release_sha の CHANGELOG.md の {VERSION} の節の本文が空です" >&2; exit 1; }
 echo "[CONTEXT] RELEASE_NOTES_SHA=$release_sha"
 echo "[CONTEXT] RELEASE_NOTES_PATH=$release_notes"
@@ -536,7 +530,7 @@ git pull origin develop
 | # | 確認項目 | コマンド |
 |---|---------|---------|
 | 1 | GitHub Release が公開されている | `gh release view v{VERSION}` |
-| 2 | main に最新コードが反映されている | `git log main --oneline -1` |
+| 2 | main に最新コードが反映されている | `git log origin/main --oneline -1` |
 | 3 | タグがノート取得元と同じコミットを指している | `git rev-parse "v{VERSION}^{commit}"` が `{RELEASE_NOTES_SHA}` と一致すること |
 | 4 | 両 Issue がクローズされている | `gh issue view {PREP_ISSUE} --json state && gh issue view {RELEASE_ISSUE} --json state` |
 | 5 | 両 Issue の Projects Status が Done | `gh issue view {PREP_ISSUE} --json projectItems && gh issue view {RELEASE_ISSUE} --json projectItems` |
@@ -560,7 +554,7 @@ git pull origin develop
 |------|------|
 | バージョン番号の更新漏れ | grep で検出し、追加コミットで修正 |
 | CHANGELOG の形式不備 | 既存エントリのパターンに合わせて修正 |
-| Phase 3.3 が `ERROR:` で停止（checkout / pull / fetch / SHA 確定 / CHANGELOG 読取の失敗） | Release は作成されていない。ネットワークと origin/main、作業ツリーの状態を確認して Phase 3.3 を最初からやり直す |
+| Phase 3.3 が `ERROR:` で停止（fetch / SHA 確定 / CHANGELOG 読取 / 一時ファイル作成の失敗） | Release は作成されていない。ネットワークと origin/main を確認して Phase 3.3 を最初からやり直す |
 | Phase 3.3 が節の欠落・本文空で停止 | Release は作成されていない。origin/main の CHANGELOG.md に `## [{VERSION}]` 節があり本文が空でないことを確認し、欠けていれば develop で修正して昇格からやり直す |
 | main マージ前に Release を作成してしまった | Release を削除 → main マージ → Release 再作成 |
 | PR マージ衝突 | 衝突を解消してから再試行 |

@@ -27,10 +27,11 @@ extract_fence() {
   [ "$count" = 1 ] || fail "expected exactly one 3.3 fence containing '$anchor', found $count"
 }
 
-checkout_block="$TMP_ROOT/checkout.sh"
 notes_block="$TMP_ROOT/notes.sh"
 create_block="$TMP_ROOT/create.sh"
-extract_fence 'git checkout main' "$checkout_block"
+# The notes and the tag target must not depend on switching or updating the work tree.
+awk '/^### 3\.3 /{s=1; next} s && /^##+ /{exit} s' "$RELEASE_SKILL" | grep -E 'git (checkout|pull)' \
+  && fail "3.3 still switches or updates the work tree"
 extract_fence 'RELEASE_NOTES_SHA=' "$notes_block"
 extract_fence 'gh release create' "$create_block"
 for anchor in 'git fetch origin main' 'rev-parse --verify' 'git show "$release_sha:CHANGELOG.md"' \
@@ -42,7 +43,9 @@ grep -qF -- '--target "{RELEASE_NOTES_SHA}"' "$create_block" || fail "create blo
 grep -qF -- '--target main' "$create_block" && fail "create block still targets main"
 grep -qF -- '--target main' "$RELEASE_SKILL" && fail "release skill still mentions --target main"
 grep -qF -- 'gh release view v{VERSION} --json body' "$RELEASE_SKILL" || fail "4.1 lacks the non-empty release body check"
-sed -i 's/{VERSION}/9.9.9/g' "$notes_block" "$create_block"
+for block in "$notes_block" "$create_block"; do
+  sed -i.bak 's/{VERSION}/9.9.9/g' "$block" && rm -f "$block.bak"
+done
 
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null LC_ALL=C
@@ -66,6 +69,7 @@ make_fixture() {
     case "$kind" in
       ok) printf '# Changelog\n\n## [9.9.9] - 2026-01-01\n\n- new entry\n\n## [9.9.8]\n\n- old\n' > CHANGELOG.md ;;
       no-heading) printf '# Changelog\n\n## [9.9.90]\n\n- other\n\n## [9.9.8]\n\n- old\n' > CHANGELOG.md ;;
+      near-heading) printf '# Changelog\n\n## [9x9x9]\n\n- other\n\n## [9.9.8]\n\n- old\n' > CHANGELOG.md ;;
       blank) printf '# Changelog\n\n## [9.9.9]\n\n   \n\n## [9.9.8]\n\n- old\n' > CHANGELOG.md ;;
       no-file) git rm -q CHANGELOG.md; printf 'x\n' > other.txt ;;
     esac
@@ -104,7 +108,7 @@ cat > "$TMP_ROOT/bin/gh" <<'EOF'
 EOF
 chmod +x "$TMP_ROOT/bin/gh"
 export GH_ARGV_LOG="$TMP_ROOT/gh-argv.log"
-sed -i -e "s|{RELEASE_NOTES_SHA}|$origin_sha|g" -e "s|{RELEASE_NOTES_PATH}|$notes_path|g" "$create_block"
+sed -i.bak -e "s|{RELEASE_NOTES_SHA}|$origin_sha|g" -e "s|{RELEASE_NOTES_PATH}|$notes_path|g" "$create_block" && rm -f "$create_block.bak"
 [ "$(PATH="$TMP_ROOT/bin:$PATH" command -v gh)" = "$TMP_ROOT/bin/gh" ] || fail "T-05 gh stub not first on PATH"
 PATH="$TMP_ROOT/bin:$PATH" bash "$create_block" || fail "T-05 create block failed"
 expected_argv=$(printf '%s\n' release create v9.9.9 --title v9.9.9 --notes-file "$notes_path" --target "$origin_sha" --end--)
@@ -112,7 +116,7 @@ expected_argv=$(printf '%s\n' release create v9.9.9 --title v9.9.9 --notes-file 
 rm -f "$notes_path"
 
 # T-02 / T-03 / T-04: stop before any marker, with the step-specific error, leaving no scratch file.
-for case_spec in 'no-heading|の節がありません' 'blank|の節の本文が空です' 'no-file|の CHANGELOG.md を読めませんでした'; do
+for case_spec in 'no-heading|の節がありません' 'near-heading|の節がありません' 'blank|の節の本文が空です' 'no-file|の CHANGELOG.md を読めませんでした'; do
   kind=${case_spec%%|*} msg=${case_spec#*|}
   fx="$TMP_ROOT/$kind"; make_fixture "$fx" "$kind"
   run_notes "$fx"
@@ -121,32 +125,6 @@ for case_spec in 'no-heading|の節がありません' 'blank|の節の本文が
   [ "$(printf '%s\n' "$err" | grep -c '^ERROR: ')" = 1 ] || fail "$kind expected one ERROR line: $err"
   printf '%s\n' "$out" | grep -q '^\[CONTEXT\] ' && fail "$kind emitted a marker: $out"
   [ -z "$(ls -A "$fx/tmp")" ] || fail "$kind left scratch files: $(ls -A "$fx/tmp")"
-done
-
-# Checkout guard: a failed checkout stops before pull. The twin without the failure succeeds.
-cat > "$TMP_ROOT/bin/git" <<'EOF'
-#!/bin/bash
-printf '%s\n' "$*" >> "$GIT_ARGV_LOG"
-[ "$1" = checkout ] && [ "${FAIL_CHECKOUT:-0}" = 1 ] && exit 1
-exec "$REAL_GIT" "$@"
-EOF
-chmod +x "$TMP_ROOT/bin/git"
-export REAL_GIT GIT_ARGV_LOG
-REAL_GIT=$(command -v git)
-for mode in 1 0; do
-  fx="$TMP_ROOT/checkout-$mode"; make_fixture "$fx" ok
-  GIT_ARGV_LOG="$fx/git-argv.log"; : > "$GIT_ARGV_LOG"
-  rc=0
-  (cd "$fx/work" && FAIL_CHECKOUT=$mode PATH="$TMP_ROOT/bin:$PATH" bash "$checkout_block" >"$fx/out" 2>"$fx/err") || rc=$?
-  if [ "$mode" = 1 ]; then
-    [ "$rc" = 1 ] || fail "checkout failure rc=$rc"
-    grep -qF 'ERROR: main へ切り替えられませんでした' "$fx/err" || fail "checkout failure message: $(cat "$fx/err")"
-    grep -q '^pull' "$GIT_ARGV_LOG" && fail "pull ran after a failed checkout"
-    [ "$(git -C "$fx/work" branch --show-current)" = develop ] || fail "checkout failure changed the branch"
-  else
-    [ "$rc" = 0 ] || fail "checkout twin rc=$rc err=$(cat "$fx/err")"
-    [ "$(grep -c '^pull origin main$' "$GIT_ARGV_LOG")" = 1 ] || fail "checkout twin did not pull once"
-  fi
 done
 
 [ "$(git -C "$REPO_ROOT" rev-parse HEAD)" = "$repo_head_before" ] || fail "repository HEAD changed"
