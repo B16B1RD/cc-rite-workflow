@@ -303,7 +303,7 @@ okf_version: "0.2"
 | [検出器が「走査できなかった」を「問題なし」に畳むと、ガードが黙って無検査になる](pages/anti-patterns/checker-conflates-unscannable-with-clean.md) | anti-patterns | 静的チェックスクリプトの exit code 設計に「検出できなかった」状態が無いと、走査失敗（対象ファイルを開けない / パーサが fatal で落ちた / 対象が 1 件も見つからない）がすべて「findings 0 件 = 問題なし」として rc=0 で返る。 | 2026-08-12T18:34:40Z | high |
 | [自前 sentinel exit code は呼び出す外部コマンドの予約値を避けて選ぶ](pages/anti-patterns/custom-sentinel-collides-with-tool-exit-code.md) | anti-patterns | awk プログラムなどに「この状態を呼び出し側へ伝えたい」という独自の意味を持たせた exit code を割り当てるとき、値を 2 にすると gawk / mawk が fatal error で返す 2 と区別できなくなる。 | 2026-07-30T01:30:00+09:00 | high |
 | [アサーションの検証強度は「該当行を壊して赤くなるか」でしか測れない](pages/heuristics/mutation-testing-measures-assertion-strength.md) | heuristics | テストの存在はカバレッジを保証しない。 | 2026-08-02T09:53:11+09:00 | high |
-| [除外契約のテストは境界の両側に対で書く](pages/patterns/exclusion-test-requires-both-sides-of-boundary.md) | patterns | 除外契約（「実スクリプトは走査しない」「コードフェンス外は対象外」「このディレクトリは除く」）のテストは、fixture の置き方を誤ると恒真になる。 | 2026-07-30T01:30:00+09:00 | high |
+| [除外契約のテストは境界の両側に対で書く](pages/patterns/exclusion-test-requires-both-sides-of-boundary.md) | patterns | 除外契約（「実スクリプトは走査しない」「コードフェンス外は対象外」「このディレクトリは除く」）のテストは、fixture の置き方を誤ると恒真になる。 | 2026-09-17T13:08:59Z | high |
 | [`$( )` でコマンド置換したヘルパーの `exit` は呼び出し元を止めない](pages/anti-patterns/command-substitution-helper-exit-does-not-stop-caller.md) | anti-patterns | シェル関数の中に書いた `exit 1` は、その関数が `$( )` の中で呼ばれた場合、**コマンド置換のサブシェルを終了させるだけ**で呼び出し元スクリプトは走り続ける。 | 2026-07-30T01:30:00+09:00 | high |
 | [集合演算で検証するときは入力集合が空である可能性を成功と区別する](pages/anti-patterns/empty-set-difference-passes-as-success.md) | anti-patterns | 「A に含まれて B に含まれない要素が無いこと」を差集合の空で検証する形は、**A 自体が空でも成立する**。 | 2026-07-30T01:30:00+09:00 | high |
 | [mktemp が作った名前から派生させたパスは O_CREAT\|O_EXCL 保証を失う](pages/anti-patterns/mktemp-derived-path-loses-atomic-creation.md) | anti-patterns | `mktemp` の安全性は「ランダムな名前を `O_CREAT\|O_EXCL` で atomic に作る」ことに由来する。 | 2026-07-30T01:20:00+09:00 | high |
@@ -523,5 +523,5 @@ okf_version: "0.2"
 
 - 総ページ数: 509
 - ドメイン別: patterns=119, heuristics=225, anti-patterns=165
-- 最終更新: 2026-09-17T10:34:18Z
+- 最終更新: 2026-09-17T13:08:59Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
