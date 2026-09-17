@@ -6,6 +6,8 @@ description: "`grep -q` は最初の一致で即座に終了する。"
 created: "2026-08-03T07:46:56Z"
 sources:
   - type: "fixes"
+    resource: "raw/fixes/20260916T235140Z-pr-2920.md"
+  - type: "fixes"
     resource: "raw/fixes/20260916T164531Z-pr-2920.md"
   - type: "fixes"
     resource: "raw/fixes/20260916T232344Z-pr-2920.md"
@@ -31,7 +33,7 @@ sources:
     resource: "raw/reviews/20260913T073838Z-pr-2773.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T23:37:15Z" }
+generated: { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-17T00:06:13Z" }
 verified:
   - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-07T23:54:45Z" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-11T16:00:00Z" }
@@ -161,6 +163,8 @@ extract_section "$file" ¦ awk 'done { next } /^BEGIN$/ { a=1; next } a && /^END
 
 全量を消費する修正では、一致・非一致だけでなく抽出範囲の境界も固定する。先頭20行だけを判定する処理なら、大容量本文を維持したまま20行目の marker を採用し21行目を除外する正負ケースを検証する。抽出を `sed -n '1,20p'` にすると、表示範囲を保ちつつ残りの入力も消費できる。
 
+入力バイトを変えずに伝播修正する場合は、直接の `printf` 出力を保ち、検索側を `grep -cF >/dev/null -- "$needle"` のように全量読取へ変える。here-stringが加える末尾改行を避けつつ、一致時0・非一致時1の判定を維持できる。並列CIで複数のテストに同じ偽失敗が実測された場合は、同型の直接パイプを一覧化して修正し、全suiteで確認する。一般のproducerや共通helperまで機械的に広げない。
+
 ### 保存済み文字列の検索は producer を作らず入力する
 
 並列テストでは、同じ条件がローカルで成功していてもCIで `printf: write error: Broken pipe` となり得る。実際に複数の肯定・否定アサーションで発生し、hook suiteの偽失敗によって後続suiteも実行されなかった。並列化だけを原因として再試行で隠すと、判定方法の欠陥が残る。
@@ -189,3 +193,5 @@ extract_section "$file" ¦ awk 'done { next } /^BEGIN$/ { a=1; next } a && /^END
 - [並列runnerの実測と修正記録](../../raw/fixes/20260916T232344Z-pr-2920.md)
 - [並列runnerの実測と修正記録](../../raw/reviews/20260916T165843Z-pr-2920-cycle1.md)
 - [並列runnerの実測と修正記録](../../raw/reviews/20260916T170221Z-pr-2920-cycle2-incomplete.md)
+
+- [並列CIの同型偽失敗を全量読取へ伝播修正](../../raw/fixes/20260916T235140Z-pr-2920.md)
