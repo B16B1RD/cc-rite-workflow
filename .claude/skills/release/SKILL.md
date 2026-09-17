@@ -491,7 +491,9 @@ Release を作る前に、同名タグが既にリモートにあるかを確認
 tag_lines=$(git ls-remote --tags origin "refs/tags/v{VERSION}" "refs/tags/v{VERSION}^{}"); ls_rc=$?
 [ "$ls_rc" -eq 0 ] || { echo "ERROR: 既存タグ v{VERSION} を確認できませんでした (rc=$ls_rc)" >&2; exit 1; }
 # ls-remote のパターンは slash 境界からの部分一致なので、ref 名の完全一致で選ぶ
-tag_sha=$(printf '%s\n' "$tag_lines" | awk -F'\t' -v r="refs/tags/v{VERSION}" -v p="refs/tags/v{VERSION}^{}" '$2==p{print $1; f=1; exit} $2==r{last=$1} END{if(!f) print last}')
+tag_sha=$(printf '%s\n' "$tag_lines" | awk -F'\t' -v r="refs/tags/v{VERSION}" -v p="refs/tags/v{VERSION}^{}" '$2==p{print $1; f=1; exit} $2==r{last=$1} END{if(!f) print last}'); awk_rc=$?
+# 抽出できなかったことを「タグ不在」と同じ経路に畳まない
+[ "$awk_rc" -eq 0 ] || { echo "ERROR: 既存タグ v{VERSION} の照合に失敗しました (rc=$awk_rc)" >&2; exit 1; }
 if [ -z "$tag_sha" ]; then
   echo "[CONTEXT] RELEASE_TAG_STATE=absent"
 else

@@ -150,7 +150,7 @@ for case_spec in 'no-heading|の節がありません' 'near-heading|の節が�
   [ -z "$(ls -A "$fx/tmp")" ] || fail "$kind left scratch files: $(ls -A "$fx/tmp")"
 done
 
-# T-06 .. T-12 (AC-1 / AC-2 / AC-3): the existing remote tag decides whether the release may be created.
+# T-06 .. T-12, T-14 (AC-1 / AC-2): the existing remote tag decides whether the release may be created.
 # The tag check and the create block run as one script so a stop really keeps gh unused.
 chain="$TMP_ROOT/chain.sh"
 # $2 puts a tag on origin: "other" points elsewhere, "match"/"annotated" point at origin/main.
@@ -166,6 +166,10 @@ tag_fixture() {
       decoy)
         git tag v9.9.9 main && git push -q origin refs/tags/v9.9.9
         git tag -a -m decoy decoy origin/main && git push -q origin refs/tags/decoy:refs/tags/a/refs/tags/v9.9.9
+        git tag -d decoy >/dev/null ;;
+      # Only the sibling exists: the real tag is absent, so the release may be created.
+      sibling-only)
+        git tag -a -m decoy decoy origin/main && git push -q origin refs/tags/decoy:refs/tags/z/refs/tags/v9.9.9
         git tag -d decoy >/dev/null ;;
       match) git tag v9.9.9 origin/main && git push -q origin refs/tags/v9.9.9 ;;
       annotated) git tag -a -m release v9.9.9 origin/main && git push -q origin refs/tags/v9.9.9 ;;
@@ -195,8 +199,10 @@ for stop_case in other:T-06 decoy:T-07; do
   kind=${stop_case%%:*} id=${stop_case#*:}
   fx="$TMP_ROOT/tag-$kind"; tag_fixture "$fx" "$kind"
   if [ "$kind" = decoy ]; then
-    git -C "$fx/work" ls-remote --tags origin "refs/tags/v9.9.9" | grep -q 'refs/tags/a/refs/tags/v9.9.9' \
-      || fail "$id fixture: the sibling ref is not returned by the pattern"
+    # The decoy only exercises the peeled branch if its "^{}" line comes back too.
+    git -C "$fx/work" ls-remote --tags origin "refs/tags/v9.9.9" "refs/tags/v9.9.9^{}" \
+      | grep -q 'refs/tags/a/refs/tags/v9.9.9\^{}' \
+      || fail "$id fixture: the sibling peeled ref is not returned by the pattern"
   fi
   run_chain "$fx" "tag-$kind"
   [ "$rc" = 1 ] || fail "$id $kind mismatched tag rc=$rc out=$out"
@@ -204,7 +210,7 @@ for stop_case in other:T-06 decoy:T-07; do
   printf '%s\n' "$out" | grep -q '^\[CONTEXT\] RELEASE_TAG_STATE=' && fail "$id $kind emitted a state marker: $out"
   [ ! -s "$TMP_ROOT/gh-argv-tag-$kind.log" ] || fail "$id $kind called gh: $(cat "$TMP_ROOT/gh-argv-tag-$kind.log")"
 done
-for tag_case in none:absent:T-08 match:matched:T-09 annotated:matched:T-10; do
+for tag_case in none:absent:T-08 match:matched:T-09 annotated:matched:T-10 sibling-only:absent:T-14; do
   kind=${tag_case%%:*} rest=${tag_case#*:} state=${rest%%:*} id=${rest#*:}
   fx="$TMP_ROOT/tag-$kind"; tag_fixture "$fx" "$kind"
   run_chain "$fx" "tag-$kind"
@@ -239,6 +245,24 @@ for mode in 1 0; do
   fi
 done
 rm -f "$TMP_ROOT/bin/git"
+
+# T-15 (AC-1): a failing awk must stop, not read as "the tag is absent".
+cat > "$TMP_ROOT/bin/awk" <<'EOF'
+#!/bin/bash
+exit 42
+EOF
+chmod +x "$TMP_ROOT/bin/awk"
+fx="$TMP_ROOT/tag-awk-fail"; tag_fixture "$fx" other
+build_chain "$fx"
+[ "$(PATH="$TMP_ROOT/bin:$PATH" command -v awk)" = "$TMP_ROOT/bin/awk" ] || fail "T-15 awk stub not first on PATH"
+rc=0
+GH_ARGV_LOG="$TMP_ROOT/gh-argv-awk-fail.log"; : > "$GH_ARGV_LOG"
+(cd "$fx/work" && GH_ARGV_LOG="$GH_ARGV_LOG" PATH="$TMP_ROOT/bin:$PATH" bash "$chain" >"$fx/out" 2>"$fx/err") || rc=$?
+[ "$rc" = 1 ] || fail "T-15 awk failure rc=$rc out=$(cat "$fx/out")"
+grep -qF 'ERROR: 既存タグ v9.9.9 の照合に失敗しました' "$fx/err" || fail "T-15 error message: $(cat "$fx/err")"
+grep -q '^\[CONTEXT\] RELEASE_TAG_STATE=' "$fx/out" && fail "T-15 emitted a state marker: $(cat "$fx/out")"
+[ ! -s "$GH_ARGV_LOG" ] || fail "T-15 called gh after a failed tag lookup: $(cat "$GH_ARGV_LOG")"
+rm -f "$TMP_ROOT/bin/awk"
 
 # T-13 (AC-3): 4.1 can only compare the tag after fetching it — the release creates it on the remote only.
 fx="$TMP_ROOT/tag-fetch"; tag_fixture "$fx" match
