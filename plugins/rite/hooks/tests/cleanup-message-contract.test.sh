@@ -194,7 +194,7 @@ assert "delegation skip guard exists in exactly three steps" "3" \
 # 住所は positive / negative の両方向で固定する — 片方だけでは変異が生存することを実測済み:
 #   `*)` arm への移設 / case 文の前への持ち上げ → negative control（下段）を素通りし positive（上段）が捕まえる
 #   case arm ラベルの入れ替え                    → positive（上段）を素通りし negative control（下段）が捕まえる
-# 前者はGit 登録の無い再実行セッション（CLEANUP_WT=none。登録済みを補完した in_main は case の前で return する）が `*)` に落ちるため委譲が再帰し AC-2 の Then を、
+# 前者は Git 登録の無い再実行セッション（CLEANUP_WT=none。登録済みを補完した in_main は case の前で return する）が `*)` に落ちるため委譲が再帰し AC-2 の Then を、
 # 後者は batch-run 経路で委譲が発火し AC-3 の Then を、それぞれ無効化する。
 # end パターンの `)` `*` は上記と同じ理由で二重エスケープ。
 # 内側 grep は emit の **実行行** へアンカーする — 素の部分文字列一致だと、コメントアウトされた
@@ -220,8 +220,9 @@ assert_grep "Step 12 enumerates the wiki ingest item" "$CLEANUP" '^- Wiki ingest
 assert_grep "Step 12 enumerates the session worktree removal item" "$CLEANUP" '^- セッション worktree の削除$'
 assert_grep "Step 12 enumerates the branch deletion item" "$CLEANUP" '^- ローカル/リモートブランチの削除$'
 # T-02: 委譲先は main checkout での再実行 1 系統。再実行が何をどう完了させるかまで案内に含める
-# （worktree とローカルブランチは再実行の**その場**では消えず、ステップ 5 の manifest 記録を経て
-#  次回セッション開始時に回収される — この経路を落とすと「再実行したのに残っている」の説明が消える）。
+# （再実行の 4-W は登録済みの worktree を補完して照合を経てその場で削除し、削除を見送ったときだけ
+#  ステップ 5 の manifest 記録を経て次回セッション開始時に回収される — 見送り側の経路を落とすと
+#  「再実行したのに残っている」の説明が消える）。
 assert_grep "Step 12 delegation notice points to a main-checkout re-run" "$CLEANUP" \
   'main checkout でセッションを開き `/rite:cleanup \{pr_number\}` を再実行してください'
 assert_grep "Step 12 delegation notice states the re-run is idempotent" "$CLEANUP" \
@@ -231,8 +232,10 @@ assert_grep "Step 12 delegation notice states the re-run is idempotent" "$CLEANU
 # 名指しすると必ずどれかで外れる（実測: dirty は再実行時に評価されず recovery=auto と報告される）。
 # 条件も案内先も列挙せず、退路は直後の手動コマンドが与える形に留める —  In Scope の
 # 「簡潔な定型」に収める形でもある。条件節や案内先の列挙を足す方向へ戻さない。
+assert_grep "Step 12 delegation notice names the immediate removal after closing the original session" "$CLEANUP" \
+  'セッション worktree とローカルブランチは、元のセッションを閉じてから再実行すれば照合を経てその場で削除され'
 assert_grep "Step 12 delegation notice names the deferred reclamation path" "$CLEANUP" \
-  'セッション worktree とローカルブランチは次回セッション開始時の自動回収の対象になります'
+  '使用中など削除を見送ったときは次回セッション開始時の自動回収に回ります'
 # 手動コマンドは main checkout で実行する前提（worktree 内では remove が cwd を消して連鎖が止まる）。
 # 失敗モードを防ぐのは限定句のみで、prune を外したのは remove --force が admin エントリを解除する
 # ため冗長だから。コマンド本体まで含めて固定し、限定句・引数のどちらが欠けても落ちるようにする。
@@ -352,7 +355,7 @@ assert "4-W supplemented in_main passes the claim only for own/free/stale" "1" \
 assert "4-W supplemented in_main stops on a branch mismatch or detached registration" "1" \
   "$(printf '%s\n' "$_s4w_main" | grep -cF -- 'marker の `branch=` が `{branch_name}` と完全一致すれば通過。不一致・空（detached）→ 停止（`reason=branch_mismatch`）')"
 assert "4-W supplemented in_main skips the dirty gate only for a missing registration" "1" \
-  "$(printf '%s\n' "$_s4w_main" | grep -cF -- '`missing=yes`（登録だけ残り実体が無い）→ 退避すべき変更は無いので 4 を飛ばして手順 3 へ')"
+  "$(printf '%s\n' "$_s4w_main" | grep -cF -- '`missing=yes`（登録だけ残り実体が無い）→ 退避すべき変更は無いので照合 4 を飛ばして in_worktree の手順 3 へ')"
 assert "4-W supplemented in_main treats a dirty-check failure as dirty" "1" \
   "$(printf '%s\n' "$_s4w_main" | grep -cF -- '`dirty=yes`（取得失敗も helper が `dirty=yes` として出す）→ AskUserQuestion')"
 # stash は対象 worktree を明示し untracked まで退避する。cwd（main checkout）で素の stash を実行すると

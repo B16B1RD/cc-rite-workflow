@@ -150,12 +150,40 @@ out=$(cd "$r" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2
 assert_eq "detect(unrecorded self): 対照 — 同じ symlink base を main から呼べば補完する" "$out" \
   "[CONTEXT] CLEANUP_WT=in_main; worktree=$wt; source=git_worktree_list; branch=feat/test; dirty=no; main_root=$r"
 
-# 別の worktree の中から呼んだときは cwd が main checkout ではないので補完しない。
+# 別の worktree の中から呼んだときは cwd が main checkout ではないので補完しない。登録済みなら none に
+# すると報告から漏れるため、worktree= に（cwd とは別の）候補を載せて main checkout での再実行へ委譲する。
 git -C "$r" branch feat/other
 git -C "$r" worktree add -q "$r/.rite/worktrees/issue-2" feat/other
 out=$(cd "$r/.rite/worktrees/issue-2" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
-assert_eq "detect(unrecorded other): 別の worktree 内からは none" "$out" \
+assert_eq "detect(unrecorded other): 別の worktree 内から登録済みの候補は委譲" "$out" \
+  "[CONTEXT] CLEANUP_WT=in_worktree_unrecorded; worktree=$wt; main_root=$r
+[CONTEXT] CLEANUP_DELEGATED=1; reason=exit_worktree_unavailable"
+out=$(cd "$r/.rite/worktrees/issue-2" && bash "$HELPER" detect --issue 3 --config "$r/rite-config.yml" 2>/dev/null)
+assert_eq "detect(unrecorded other): 対照 — 未登録の候補は none" "$out" \
   "[CONTEXT] CLEANUP_WT=none; worktree=; main_root=$r"
+
+# 一致した worktree の後ろに別の登録が並んでも、branch= は一致した worktree 自身の登録から取る。
+out=$(cd "$r" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
+assert_eq "detect(branch): 後続の登録の branch で上書きしない" "$out" \
+  "[CONTEXT] CLEANUP_WT=in_main; worktree=$wt; source=git_worktree_list; branch=feat/test; dirty=no; main_root=$r"
+# detached の登録は branch を持たないので空。前に並ぶ登録の branch を持ち込まない。
+git -C "$r" worktree add -q --detach "$r/.rite/worktrees/issue-4" feat/test
+out=$(cd "$r" && bash "$HELPER" detect --issue 4 --config "$r/rite-config.yml" 2>/dev/null)
+assert_eq "detect(branch): detached の登録は branch が空" "$out" \
+  "[CONTEXT] CLEANUP_WT=in_main; worktree=$r/.rite/worktrees/issue-4; source=git_worktree_list; branch=; dirty=no; main_root=$r"
+
+# symlink の base 配下で実体を失った登録も、存在する親を解決して登録と照合する。
+rm -rf "$r/.rite/worktrees/issue-2"
+out=$(cd "$r" && bash "$HELPER" detect --issue 2 --config "$r/rite-config.yml" 2>/dev/null)
+assert_eq "detect(prunable): symlink base 配下の実体の無い登録も missing=yes" "$out" \
+  "[CONTEXT] CLEANUP_WT=in_main; worktree=$r/.rite/worktrees/issue-2; source=git_worktree_list; branch=feat/other; missing=yes; main_root=$r"
+# symlink 経由のパスで登録され、実体を失った登録も同じ物理パスとして照合する。
+git -C "$r" branch feat/alias
+git -C "$r" worktree add -q "$r/alias/issue-5" feat/alias
+rm -rf "$r/.rite/worktrees/issue-5"
+out=$(cd "$r" && bash "$HELPER" detect --issue 5 --config "$r/rite-config.yml" 2>/dev/null)
+assert_contains "detect(prunable): symlink 経由で登録された実体の無い登録も missing=yes" "$out" \
+  "source=git_worktree_list; branch=feat/alias; missing=yes; main_root=$r"
 
 # 登録だけ残り実体が無い（prunable）worktree は dirty の取得に進まず missing=yes を出し、
 # 所有権照合に使う branch は登録情報から出す。既存の remove でそのまま登録が消える。

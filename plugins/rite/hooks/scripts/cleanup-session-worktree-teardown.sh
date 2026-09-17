@@ -20,9 +20,11 @@
 # derivation。issue 番号でパス末尾を照合するため `[ -n "$issue" ]` を要求する）が働かず `none` に
 # 落ちる — 空 issue で分類できるのは flow-state に worktree 記録がある経路だけ。
 # multi_session 有効かつ issue があり分類が none のときは、`<worktree_base>/issue-<issue>` を物理パスへ
-# 解決して次の順に扱う: 候補が cwd の toplevel 自身なら in_worktree_unrecorded（base の表記が末尾照合と
-# 合わなかった path 入場）/ cwd が main checkout で候補が `git worktree list` に登録済みなら in_main
-# （source=git_worktree_list）/ それ以外（別の worktree 内から呼んだ等）は none のまま。
+# 解決して（実体が無ければ存在する最も近い親を解決して）次の順に扱う: 候補が cwd の toplevel 自身なら
+# in_worktree_unrecorded（base の表記が末尾照合と合わなかった path 入場）/ 候補が `git worktree list` に
+# 登録済みで cwd が main checkout なら in_main（source=git_worktree_list）/ 登録済みで cwd がそれ以外
+# （別の worktree 内から呼んだ等）なら in_worktree_unrecorded（worktree= は cwd とは別の候補。main
+# checkout での再実行へ委譲する）/ 未登録なら none のまま。
 # remove の 3 引数は既定値を持たず未指定で exit 2。
 #
 # detect の出力 (stdout):
@@ -34,6 +36,8 @@
 #   [CONTEXT] CLEANUP_WT=unknown; reason=worktree_list_failed; rc=<n>
 #     (補完が必要な none のときに git worktree list が失敗した。候補も cwd との関係も判定できないため
 #      none へ戻さず、削除を試みさせない)
+#   [CONTEXT] CLEANUP_WT=unknown; reason=candidate_unresolved
+#     (補完の候補パスを物理パスへ解決できず、登録との関係を判定できない)
 #   source=git_worktree_list の in_main は登録情報の branch（detached なら空）を出す。実体が無い登録
 #   （prunable）は dirty の代わりに missing=yes を出す。
 #   in_worktree と実体のある source=git_worktree_list の in_main は dirty を出し、非空なら
@@ -140,6 +144,23 @@ _sandbox_mask_present() {
   return 1
 }
 
+# $1 を物理パスで出す。存在しない末尾は、存在する最も近い親を `pwd -P` で解決して連結する。
+# 解決できない（親が 1 つも辿れない / cd に失敗する）ときは rc 1。
+_physical_path() {
+  local _p=$1 _rest=""
+  while [ ! -d "$_p" ]; do
+    case "$_p" in
+      /|"") return 1 ;;
+    esac
+    _rest="/${_p##*/}$_rest"
+    _p=${_p%/*}
+    [ -n "$_p" ] || _p=/
+  done
+  _p=$(CDPATH= cd -- "$_p" && pwd -P) || return 1
+  [ "$_p" = / ] && _p=""
+  printf '%s\n' "$_p$_rest"
+}
+
 cmd_detect() {
   local issue="" config="rite-config.yml"
   while [ "$#" -gt 0 ]; do
@@ -234,35 +255,40 @@ cmd_detect() {
       /*) candidate="$base/issue-$issue" ;;
       *) candidate="$main_root/$base/issue-$issue" ;;
     esac
-    # symlink を含む base でも同じ実体を同じ文字列で比べるため、実在するパスは物理パスへ寄せる。
-    [ -d "$candidate" ] && candidate=$(CDPATH= cd -- "$candidate" && pwd -P)
+    # symlink を含む base でも同じ実体を同じ文字列で比べるため、物理パスへ寄せる。実体が無い候補
+    # （登録だけ残った worktree）も、存在する最も近い親を解決して残りを連結する。解決できなければ
+    # 候補と登録の関係を判定できないので none にせず unknown にする。
+    if ! candidate=$(_physical_path "$candidate"); then
+      echo "WARNING: 作業ツリーの候補パス（$base/issue-$issue）を物理パスへ解決できませんでした。未記録の作業ツリーの有無を確認できていません" >&2
+      echo "[CONTEXT] CLEANUP_WT=unknown; reason=candidate_unresolved"
+      return 0
+    fi
     cur_phys=$cur_top; [ -d "$cur_phys" ] && cur_phys=$(CDPATH= cd -- "$cur_phys" && pwd -P)
     main_phys=$main_root; [ -d "$main_phys" ] && main_phys=$(CDPATH= cd -- "$main_phys" && pwd -P)
-    if [ -n "$cur_phys" ] && [ "$candidate" = "$cur_phys" ]; then
-      # base の表記（symlink 等）が分類 helper の末尾照合と合わなかっただけで、cwd は対象 worktree 自身。
-      # 退出経路が未確認の path 入場と同じく委譲へ回す。
-      cleanup_wt=in_worktree_unrecorded; flow_wt=$candidate
-    elif [ -n "$cur_phys" ] && [ "$cur_phys" = "$main_phys" ]; then
-      # cwd が main checkout のときだけ補完する（別の worktree 内からでは退出不要の前提が成り立たない）。
-      local matched=false
-      while IFS= read -r listed; do
-        case "$listed" in
-          worktree\ *)
-            [ "$matched" = true ] && break
-            listed=${listed#worktree }
-            [ -d "$listed" ] && listed=$(CDPATH= cd -- "$listed" && pwd -P)
-            [ "$listed" = "$candidate" ] && matched=true
-            ;;
-          branch\ refs/heads/*)
-            [ "$matched" = true ] && wt_branch=${listed#branch refs/heads/}
-            ;;
-        esac
-      done <<WT_LIST_EOF
+    local matched=false
+    while IFS= read -r listed; do
+      case "$listed" in
+        worktree\ *)
+          [ "$matched" = true ] && break
+          listed=${listed#worktree }
+          # git は登録パスを実パスで記録するため、物理パスへ寄せた候補とそのまま比べる。
+          [ "$listed" = "$candidate" ] && matched=true
+          ;;
+        branch\ refs/heads/*)
+          [ "$matched" = true ] && wt_branch=${listed#branch refs/heads/}
+          ;;
+      esac
+    done <<WT_LIST_EOF
 $wt_list
 WT_LIST_EOF
-      if [ "$matched" = true ]; then
-        cleanup_wt=in_main; flow_wt=$candidate; source=git_worktree_list
-      fi
+    if [ "$matched" = true ] && [ -n "$cur_phys" ] && [ "$cur_phys" = "$main_phys" ]; then
+      # cwd が main checkout のときだけ補完する（退出不要の前提が成り立つのはここだけ）。
+      cleanup_wt=in_main; flow_wt=$candidate; source=git_worktree_list
+    elif [ "$matched" = true ]; then
+      # 登録済みだが cwd は main checkout ではない。cwd が対象自身（base の表記が分類 helper の末尾照合と
+      # 合わなかった path 入場）でも別の worktree 内でも退出経路が未確認なので、main checkout での再実行へ
+      # 委譲する。後者では worktree= は cwd とは別の候補を指す。
+      cleanup_wt=in_worktree_unrecorded; flow_wt=$candidate
     fi
   fi
   if [ -n "$source" ]; then
