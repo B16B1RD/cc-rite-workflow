@@ -69,7 +69,10 @@ SID_B="bbbbbbbb-5555-6666-7777-888888888888"
 # and the claim; `.rite-session-id` is SID_B (the reaping session).
 make_repo() {
   local n="$1" root
-  root=$(mktemp -d "${TMPDIR:-/tmp}/rite-session-reap-repo.XXXXXX")
+  root=$(mktemp -d "${TMPDIR:-/tmp}/rite-session-reap-repo.XXXXXX") || {
+    echo "ERROR: make_repo: failed to create Git fixture root" >&2
+    return 1
+  }
   root=$(cd "$root" && pwd -P) || {
     echo "ERROR: make_repo: failed to canonicalize Git fixture root" >&2
     return 1
@@ -88,6 +91,19 @@ make_repo() {
 }
 
 run_pcc() { ( cd "$1" && bash "$PCC" 2>"$1/pcc.err"; echo "rc=$?" ) ; }
+
+echo "=== Fixture allocation failure stops before copying into cwd ==="
+allocation_rc=0
+allocation_out=$(
+  mktemp() { return 1; }
+  # Keep the regression safe even if the allocation check is removed.
+  cp() { echo "unexpected fixture copy" >&2; return 99; }
+  make_repo 0 2>"$scan_tmp/allocation.err"
+) || allocation_rc=$?
+assert "fixture allocation failure is propagated" "1" "$allocation_rc"
+assert "failed fixture does not return cwd" "" "$allocation_out"
+assert "fixture stops at allocation failure" \
+  "ERROR: make_repo: failed to create Git fixture root" "$(cat "$scan_tmp/allocation.err")"
 
 echo "=== TC-1 (AC-1): live claim → worktree NOT reaped ==="
 R=$(make_repo 50); cleanup_dirs+=("$R")
