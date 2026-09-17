@@ -2,6 +2,7 @@
 
 ## 2026-09-17
 
+* **Skip**: [レビュー結果](raw/reviews/20260917T043358Z-pr-2922.md) — 実装と文書・静的テストの整合確認のみで新しいドメイン経験則はない。軽量レーン上限の並び順で docs 中心 PR から tech-writer が落ちる観察は rite 自体の挙動に関する知見であり plugin 側の reviewer 選抜規則へ扱いを移す
 * **Update**: [quiet grepの偽失敗](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) — 入力バイトを維持する全量読取と同型の伝播修正を統合
 * **Skip**: [全CI実測の判定保留](raw/fixes/20260917T000451Z-pr-2920.md) — detector-candidate: 全CI sampleのsuite成否・上限時間・直列比・skip差分を機械集計する。受入条件変更は未承認であり新しい経験則として一般化しない
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=519, broken_refs=0
