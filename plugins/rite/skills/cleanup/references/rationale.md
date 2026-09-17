@@ -15,6 +15,44 @@ WARNING から手動復旧できるから (D-03)。helper は API 失敗でも e
 `FOLLOW_UP_ISSUE` だけである。完了報告がこれを見ず `REVIEW_CLEANUP_PARTIAL_FAILURE` だけを見ると、
 起票失敗が「なし」に倒れる。marker 不在を成功と読まない規約はステップ 5 と同型。
 
+## follow-up-sweep-issued-dedup
+
+sweep の起票 Issue に follow-up ラベルと先頭行 marker を付けて既存判定に乗せる方式は採らない。
+既存判定は「同一 PR 由来の marker を持つ Issue が 1 件でもあれば `already_exists` で全件 skip」
+するため、sweep 起票が 1 件あるだけで recorded 指摘まで転記されなくなる。除外は finding 単位で
+行う必要があり、その単位の記録は台帳にしか無い。
+
+台帳の取得を SKILL 側でなく helper 内で行うのは、除外 key が file パスを含むため。6.0.V の
+`{resolved_ids_csv}` を `{pr_number}-{14 桁}.json#F-NN`（同秒衝突時は `{pr_number}-{14 桁}~{4 桁小文字 hex}.json#F-NN`）の形のトークンに限っているのと同じ理由で、
+パス入りの値を二重引用符内へリテラル置換で渡す経路を増やさない。
+
+除外するのは、sweep が読んだ最新 JSON 由来の finding のうち、台帳の issued 行 `[finding_id, file:line]`
+と組が一致するものだけ。組は `nb-sweep-collect.sh` が台帳と照合する identity で、最新 JSON と一致すれば
+本 PR の sweep が起票した行だと言える（同じ関連 Issue には別 PR の台帳行も並びうる）。
+
+先行 cycle の finding は、id や位置が最新 JSON の起票済み指摘と同じでも除外しない。重複防止
+（id が振り直された同じ指摘を二重に起票しない）と欠落防止（sweep 未実施の指摘は転記する）は、台帳が
+cycle 属性も指摘の内容も持たない現状では機械的に両立しない。同じ位置には cycle を跨いで別の指摘が
+並ぶことも多く、位置や id で推定して除外するとその本文がどの Issue にも残らない。欠落は共有経路から
+本文が消える取り返しのつかない損失で、重複は人が閉じれば済む損失なので、**欠落防止を優先する**。
+最新 JSON の起票済み指摘と同じ `file:line` にある先行 cycle の指摘に限り、重複しうる件数と
+位置を WARNING で出す。行がずれた再報告は台帳から判別できないため、WARNING なしで重複しうる。
+
+## follow-up-exclude-key
+
+6.0.V から helper へ渡す除外指定の単位は「出典 JSON の basename + `#` + id」。`id` は各 JSON 内で
+振り直される連番で、複数 cycle に同じ id が並ぶため、id だけでは解消済みの 1 件を指せない。id だけで
+照合すると helper は曖昧として除外を拒否し、解消済みの指摘がまとめて follow-up に転記される。
+
+`file:line` を key に含めないのは、同じ位置に cycle を跨いで別の指摘が並ぶため。位置で指すと、
+解消済みの指摘と同じ位置にある残存指摘まで落ちる。
+
+basename は rite が付けるファイル名の形（`{pr_number}-{14 桁}.json`、同秒衝突時に保存 helper が
+suffix を付けた `{pr_number}-{14 桁}~{4 桁小文字 hex}.json`）に限る。除外指定は二重引用符内へ
+リテラル置換される値なので、任意のパス文字列を通す経路を作らない。形が合わない出典（corrupt 退避
+ファイル等）の指摘は key を持たず `undecidable` として転記されるだけで、欠落は起きない。helper も
+形が合わないトークンを 1 つでも受け取ったら除外を部分適用せず全件を転記する。
+
 ## reverify-no-extract-marker
 
 6.0.V の抽出が成功しても marker を出さないのは、抽出だけを示す marker が「判定に到達しなかった」
@@ -54,6 +92,10 @@ PostToolUse hook が作る空 stub（`phase: init`・進捗セクションなし
 
 保存 state の無い path 入場では所有する worktree と退出能力を確定できない。Claude の隔離ガードで main checkout 操作が拒否される経路もあるため、`in_worktree_unrecorded` は従来の委譲を保つ。保存 state のある入場は共通作業先契約で native / 検証済み作業先指定を選び、退出結果を確認する。分類 marker はツール能力の証拠にはならない。拒否を helper 内の `cd` に移して回避しない。
 
+## exit-check-independent-shell
+
+native 入場経路のホストはセッション単位の作業先を持ち、個々のシェル呼び出しの `cd` とは独立している。退出確認を main checkout へ `cd` したシェルや helper 内で行うと、toplevel はシェルの cwd を映して main root で合格するが、ホストの作業先は前の worktree に残る。その状態で次の Issue の native 入場は拒否され、batch-run が止まる。確認対象はホストの作業先なので、作業先を移す操作を伴わない独立したシェル呼び出しで行う。`workdir` / 毎回 `cd` 経路はホストの作業先を持たず、検出済み main root を作業先に指定して実行する従来の形を変えない。
+
 ## helper-rc-capture
 
 ステップ 4-W の 2 呼び出し（detect / remove）とステップ 6 の state purge —— 計 3 つの helper
@@ -88,7 +130,7 @@ reap せず、消滅済みなら stale 参照を drop し、存在すれば verb
 
 admin dir 半壊（corpse）では checkout 中 branch を git で解決できず、pr-cycle-cleanup.sh Step 5
 のブランチ名 manifest bypassが構造的に効かない。パス自体を事前記録すれば corpse age
-guard が 24h 待ちをバイパスできる。記録は `{pr_merged}=true` のときのみ（AC-4: 未マージ PR の
+guard が 24h 待ちをバイパスできる。記録は `{pr_merged}=true` のときのみ（未マージ PR の
 強制 cleanup では記録しない）。record 自体は non-blocking 契約（rite-tmp-artifact.sh）。
 
 ## main-root-cd
@@ -141,10 +183,10 @@ silent skip する事象が確認されている（`skills/ready/SKILL.md` Phase
 ## wiki-push-batch
 
 ingest.md はページ更新のたびに push していた旧挙動を、raw source ごとに commit のみ行い ingest
-フロー末尾で 1 回だけ push する方式に変更した（AC-1）。`push=failed` 部分文字列検出は
+フロー末尾で 1 回だけ push する方式に変更した。`push=failed` 部分文字列検出は
 そのまま機能する — 集約 push が失敗した場合も、その 1 回の push 結果として ingest の stdout に
 同じ文字列が現れるため、本ステップの検出ロジック自体の変更は不要（ローカル commit は保持され、
-次回 ingest が自動で flush を試みる — AC-2 / SHOULD）。
+次回 ingest が自動で flush を試みる）。
 
 ## wm-dual-finalize
 

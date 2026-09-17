@@ -11,27 +11,28 @@ Thank you for your interest in contributing to Claude Code Rite Workflow!
 
 ### Unified dogfooding launcher
 
-Use the same entry point from Claude Code, Codex, or Grok Build:
+Use the same entry point from Claude Code, Codex, Grok Build, or Antigravity (agy):
 
 ```bash
 scripts/rite-dev claude
 scripts/rite-dev codex
 scripts/rite-dev grok
+scripts/rite-dev agy
 ```
 
-The Codex launcher enables `--approve-for-me`, which automatically reviews
-approval requests inside the workspace-write sandbox similarly to Claude
-Code's auto permission mode.
+The Codex launcher enables `--approve-for-me`, and the Antigravity launcher enables
+`--dangerously-skip-permissions`, both of which automatically review approval
+requests inside their respective sandboxes similarly to Claude Code's auto permission mode.
 
 Additional arguments are forwarded to the selected host. The launcher exports
 `RITE_HOST` and `RITE_PLUGIN_ROOT` for host-neutral workflow code. Claude Code
 loads `plugins/rite` explicitly and disables `rite@rite-marketplace` for that
 process only, without changing the user's settings. Grok Build uses the
-repository-local plugin link, and Codex uses an ignored `.codex-dev/` profile. Its `skills` directory
-keeps Codex-managed state locally and links each rite skill back to
-`plugins/rite/skills`; this prevents `.system` and other mutable Codex files
-from entering the distributed plugin source. The profile may require a separate
-login on first use.
+repository-local plugin link, Codex uses an ignored `.codex-dev/` profile, and
+Antigravity uses repository-local symlinks under `.agents/skills/` linking each
+rite skill back to `plugins/rite/skills`. This keeps mutable state and host-managed
+files out of the distributed plugin source. Codex and Antigravity profiles may
+require a separate login on first use.
 
 The launcher never replaces an unexpected local link or directory. If an older
 development setup already has `.codex-dev/skills` as a symlink, move or remove
@@ -104,7 +105,7 @@ plugins/rite/
 │   ├── (meta/top)      # setup, getting-started, workflow, investigate, learn, lint, recover, skill-suggest, template-reset
 │   ├── rite-workflow/  # Orchestration context (state detection, phase routing) + references (coding principles)
 │   └── reviewers/      # Reviewer coordinator (selection + tables) + references (per-reviewer profiles in agents/)
-├── agents/           # Sub-agent definitions for PR review (9 reviewers + _reviewer-base)
+├── agents/           # Sub-agent definitions for PR review (10 reviewers + _reviewer-base)
 ├── hooks/            # Event handler scripts (Bash)
 │   ├── scripts/      #   Internal helper scripts (drift-check, bang-backtick-check, lint scanners, etc.)
 │   └── tests/        #   Shell script tests
@@ -120,9 +121,9 @@ A reviewer lives in up to 4 places that must stay in sync. Sync between (1)–(3
 **Edit locations:**
 
 1. **`plugins/rite/agents/{type}-reviewer.md`** (new file) — the reviewer's full profile, injected as the named subagent's system prompt. Two shapes are sanctioned: the heavyweight structure (Role / Core Principles / Detection Process / Detailed Checklist (Expertise Areas, Review Checklist, Severity Definitions, Finding Quality Guidelines) / Output Format — model an existing specialist such as `security-reviewer.md`), or the lens-based structure (persona + first-suspect lenses + output contract, no exhaustive checklist — model `application-reviewer.md`) when the reviewer's checkpoint selection should be delegated to model judgment. Shared principles live in `_reviewer-base.md` and must not be duplicated.
-2. **`plugins/rite/skills/reviewers/SKILL.md` — `Available Reviewers` table** — add a row with the display name, agent filename, and activation file patterns. Skip this table only for logic-selected reviewers that have no file patterns (e.g. `code-quality`, the fallback / co-reviewer).
+2. **`plugins/rite/skills/reviewers/SKILL.md` — `Available Reviewers` table** — add a row with the display name, agent filename, and activation file patterns. Skip this table only for logic-selected reviewers that have no file patterns (e.g. `code-quality`, the fallback / co-reviewer, and `acceptance`, selected when the related Issue has acceptance criteria).
 3. **`plugins/rite/skills/reviewers/SKILL.md` — `Reviewer Type Identifiers` table** — add a row mapping the `reviewer_type` slug to the 日本語表示名 and agent filename. The slug MUST equal the agent basename minus `-reviewer.md` (e.g. `security-reviewer.md` → `security`); the drift check verifies this per row.
-4. **(Conditional) `plugins/rite/skills/pr-review/SKILL.md`** — only when the reviewer activates on diff content rather than file patterns: add a keyword-detection rule to ステップ 2.3, and extend the ステップ 3.2 selection logic if the reviewer needs special selection rules (mandatory promotion, co-reviewer conditions, etc.).
+4. **(Conditional) `plugins/rite/skills/pr-review/SKILL.md`** — only when the reviewer activates on diff content rather than file patterns: add a keyword-detection rule to ステップ 2.3, and extend the ステップ 3.2 selection logic if the reviewer needs special selection rules (mandatory promotion, co-reviewer conditions, etc.). A mandatory reviewer with neither file patterns nor keywords (e.g. `acceptance`) also needs the selection rule in `skills/reviewers/SKILL.md` (including its position relative to the Phase 5 cap) plus its own output post-condition and stop path in `pr-review/SKILL.md`.
 
 **Verification:**
 
@@ -297,6 +298,9 @@ Test files follow the `*.test.sh` naming convention. Each test file has this str
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Tests that read ambient runtime identity must clear the launching session's
+# values before creating any temporary state.
+source "$SCRIPT_DIR/_hermetic-env.sh" || { echo "ERROR: cannot source _hermetic-env.sh" >&2; exit 1; }
 HOOK="$SCRIPT_DIR/../your-hook.sh"
 # Two steps, not `$(cd "$(mktemp -d)" && pwd -P)`: bash `cd ""` returns 0 without
 # changing directory, so a failed mktemp inside that nesting yields the current
@@ -355,14 +359,20 @@ echo "Results: $PASS passed, $FAIL failed$( [ "$SKIP" -gt 0 ] && printf ", %s sk
 ```
 
 Sourcing `_test-helpers.sh` gives you `pass` / `fail` / `skip` / `assert*` / `print_summary` /
-`make_sandbox` / `make_plain_sandbox` / `_timeout` and the `PASS` / `FAIL` / `SKIP` counters, so a
-new test usually only needs the test cases themselves. See the header of that file for the full API.
+`make_sandbox` / `make_plain_sandbox` / `_timeout` and the `PASS` / `FAIL` / `SKIP` counters, and it
+clears ambient runtime identity and state-root variables through `_hermetic-env.sh`, so a new test
+usually only needs the test cases themselves. To pin a copy-paste recovery command a hook
+prints, use `assert_shell_words`: it checks that the command parses and splits into exactly the
+expected words. See the header of that file for the full API.
 
 ### Writing a New Test
 
 1. Create `plugins/rite/hooks/tests/your-hook.test.sh`
 2. Follow the structure above: setup temporary directory, define `pass`/`fail`/`skip` helpers (or
-   source `_test-helpers.sh` and get them for free), write test cases
+   source `_test-helpers.sh` and get them for free), write test cases. A test that reads ambient
+   runtime identity and does not source `_test-helpers.sh` must
+   `source "$SCRIPT_DIR/_hermetic-env.sh"` right after defining `SCRIPT_DIR`; otherwise a
+   standalone run inherits the launching session's identity
 3. Use `mktemp -d` for isolated test environments, then canonicalize the root with
    `pwd -P` as the structure above does — anything that compares the sandbox path
    against a path the code under test resolved breaks on macOS otherwise

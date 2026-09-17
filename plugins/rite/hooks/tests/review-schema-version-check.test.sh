@@ -81,7 +81,7 @@ assert "one drift in a mixed batch fails the whole run" "1" \
 
 # --- Drift marker shape -------------------------------------------------------
 drift_stderr="$(bash "$SCRIPT" --target "$SANDBOX/drift-999.json" 2>&1 >/dev/null || true)"
-if printf '%s' "$drift_stderr" | grep -qE 'REVIEW_SCHEMA_VERSION_DRIFT=1; file=.*; schema_version=9\.9\.9'; then
+if printf '%s' "$drift_stderr" | grep -cE >/dev/null 'REVIEW_SCHEMA_VERSION_DRIFT=1; file=.*; schema_version=9\.9\.9'; then
   pass "drift marker names the offending file and version"
 else
   fail "drift marker missing/malformed: $drift_stderr"

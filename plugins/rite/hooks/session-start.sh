@@ -264,9 +264,9 @@ if [ "$SOURCE" = "startup" ]; then
     # The legacy single-file (.rite-flow-state) selection path was removed in the
     # per-session unification; flow-state is always per-session now. An explicit
     # `flow_state.schema_version: 1` no longer selects single-file — it is ignored.
-    # Warn once per session start (gated on SOURCE=startup → AC-3 "1 回のみ") so the
-    # user removes the now-dead key (D-01). Section-absent or `: 2` stays silent
-    # (AC-4). Reads the `flow_state:` sub-key directly (the top-level _rite_read_yaml_key
+    # Warn once per session start (gated on SOURCE=startup → "1 回のみ") so the
+    # user removes the now-dead key (D-01). Section-absent or `: 2` stays silent.
+    # Reads the `flow_state:` sub-key directly (the top-level _rite_read_yaml_key
     # only matches column-0 keys, so it cannot see an indented sub-key). Read failure is
     # surfaced as a WARNING rather than silently degraded, matching the _rite_read_yaml_key
     # convention above (silent degradation would suppress the deprecation advisory). The
@@ -448,7 +448,7 @@ fi
 # Only stdout is silenced (the "Migration complete: N" summary), which Claude reads
 # as the active-workflow injection payload. stderr is intentionally passed through:
 # _migrate_file emits an unconditional `migrated:` line per actually-migrated file
-# (AC-8, silent skip forbidden), so a real migration is always announced here while
+# (silent skip forbidden), so a real migration is always announced here while
 # quiet session starts (only v3 files → verbose-gated skip) stay silent.
 RITE_STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/flow-state.sh" migrate >/dev/null || true
 
@@ -473,6 +473,31 @@ RITE_STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/flow-state.sh" migrate >/dev/nul
 # fall back to discarding output — this hook must never block session start on
 # a log-write failure.
 if [ "$CWD" = "$STATE_ROOT" ]; then
+  # A sandboxed command can leave the anchor of a write-block mount inside the
+  # git dir as a 0-byte file with every write bit cleared (e.g. config.lock),
+  # and every later git write that needs that lock fails. git creates its own
+  # locks writable, so the stub shape (same predicate as
+  # lib/git-status-filtered.sh) tells them apart. The lock is only reported:
+  # deleting a lock a running git holds would break that operation. The WARNING
+  # reaches the hook's stderr only while this block stays outside the reap
+  # subshell, whose output is redirected to the reap log.
+  if _git_common=$(cd "$CWD" && _gc=$(git rev-parse --git-common-dir 2>/dev/null) && cd "$_gc" && pwd -P); then
+    _stub_rc=0
+    _stub_locks=$(find "$_git_common" -maxdepth 1 -name '*.lock' -type f -size 0c ! -perm -200 ! -perm -020 ! -perm -002 2>/dev/null) || _stub_rc=$?
+    if [ "$_stub_rc" -ne 0 ]; then
+      echo "WARNING: session-start.sh: cannot scan $(printf '%s' "$_git_common" | neutralize_ctrl) for leftover sandbox stub lock files (find rc=$_stub_rc); git commands may fail with 'could not lock' until a stub lock is removed" >&2
+    elif [ -n "$_stub_locks" ]; then
+      while IFS= read -r _stub_lock; do
+        _stub_lock_safe=$(printf '%s' "$_stub_lock" | neutralize_ctrl)
+        # The copy-paste command is quoted for the shell separately from the
+        # display form: neutralize_ctrl leaves quotes intact, so a path with an
+        # apostrophe would otherwise split into unrelated rm arguments.
+        printf -v _stub_lock_cmd 'rm -f -- %q' "$_stub_lock"
+        echo "WARNING: session-start.sh: $_stub_lock_safe is an empty read-only lock file left behind by a sandboxed command; git commands that need this lock fail until it is removed. User action: make sure no git process is running, then delete it by hand: $_stub_lock_cmd" >&2
+      done <<<"$_stub_locks"
+    fi
+  fi
+
   _reap_log_dir="$STATE_ROOT/.rite/logs"
   # Test writability (not just dir creation) before committing to the log path:
   # mkdir -p succeeds on a pre-existing read-only dir, and a later `>` open
@@ -553,7 +578,7 @@ fi
 # harmful to a later resume regardless of `active`). `flow-state.sh clear-worktree`
 # resolves the same session_id as `path` above (same .rite-session-id + RITE_STATE_ROOT),
 # so it targets THIS session's own state file. Non-blocking: failures WARN and the
-# hook continues (AC-5).
+# hook continues.
 _recorded_wt_err=$(mktemp 2>/dev/null) || _recorded_wt_err=""
 _recorded_wt=$(jq -r '.worktree // ""' "$STATE_FILE" 2>"${_recorded_wt_err:-/dev/null}") || _recorded_wt=""
 if [ -n "$_recorded_wt_err" ] && [ -s "$_recorded_wt_err" ]; then

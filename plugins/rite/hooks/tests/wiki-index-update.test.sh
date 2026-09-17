@@ -139,7 +139,7 @@ cat > "$TEST_DIR/tc1-expected.md" <<'EOF'
 - 最終更新: 2026-08-04T22:00:00+09:00
 EOF
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -q '^\[CONTEXT\] WIKI_INDEX_UPDATE=row_action=added; dedup_removed=0; stats_sync=synced$' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -c >/dev/null '^\[CONTEXT\] WIKI_INDEX_UPDATE=row_action=added; dedup_removed=0; stats_sync=synced$' \
    && diff -u "$TEST_DIR/tc1-expected.md" "$dir/index.md" > "$TEST_DIR/tc1-diff.txt" 2>&1; then
   pass "TC-1 新規行追加 (golden 全文比較: 末尾追加・本文/構造保存・統計同期)"
 else
@@ -156,7 +156,7 @@ run_helper --index "$dir/index.md" --title "Foo Pattern v2" --domain patterns \
   --confidence low --pages-root "$dir/pages"
 expected_row='| [Foo Pattern v2](pages/patterns/foo.md) | patterns | 新サマリー | 2026-08-05T00:00:00+09:00 | low |'
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'row_action=updated' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'row_action=updated' \
    && grep -qxF "$expected_row" "$dir/index.md" \
    && ! grep -q 'Foo Pattern](pages' "$dir/index.md"; then
   pass "TC-2 既存行更新 (行全体を新形式で再生成)"
@@ -173,7 +173,7 @@ run_helper --index "$dir/index.md" --title "Foo Pattern v3" --domain patterns \
   --pages-root "$dir/pages"
 expected_row='| [Foo Pattern v3](pages/patterns/foo.md) | patterns | 既存サマリー | 2026-08-06T00:00:00+09:00 | high |'
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'row_action=updated' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'row_action=updated' \
    && grep -qxF "$expected_row" "$dir/index.md"; then
   pass "TC-3 description 空で既存サマリー保持 (空文字上書きしない)"
 else
@@ -199,7 +199,7 @@ run_helper --index "$dir/index.md" --title "broken | title" --domain patterns \
   --pages-root "$dir/pages"
 expected_row='| [broken \| title](pages/patterns/pipe-page.md) | patterns | ズレた行のサマリー | 2026-08-04T23:00:00+09:00 | medium |'
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'row_action=updated' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'row_action=updated' \
    && grep -qxF "$expected_row" "$dir/index.md"; then
   pass "TC-4 生パイプ title 行の同定・エスケープ是正・サマリー位置抽出"
 else
@@ -296,7 +296,7 @@ cat > "$TEST_DIR/tc7-expected.md" <<'EOF'
 - 最終更新: 2026-08-05T01:00:00+09:00
 EOF
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'row_action=updated' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'row_action=updated' \
    && diff -u "$TEST_DIR/tc7-expected.md" "$dir/index.md" > "$TEST_DIR/tc7-diff.txt" 2>&1; then
   pass "TC-7 節内空行の除去 (golden 全文比較: 空行後の行の同定・境界空行の保持)"
 else
@@ -324,7 +324,7 @@ run_helper --index "$dir/index.md" --title "旧形式ページ" --domain heurist
   --slug old-style --description "テーブルへ新規登録" --updated "2026-08-05T02:00:00+09:00" \
   --confidence medium --pages-root "$dir/pages"
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'row_action=added' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'row_action=added' \
    && grep -qxF -- '- [旧形式ページ](pages/heuristics/old-style.md) - 旧箇条書きの説明' "$dir/index.md" \
    && grep -qxF '| [旧形式ページ](pages/heuristics/old-style.md) | heuristics | テーブルへ新規登録 | 2026-08-05T02:00:00+09:00 | medium |' "$dir/index.md"; then
   pass "TC-8 旧箇条書き行は述語対象外 (新規追加扱い・旧行は無改変で共存)"
@@ -352,8 +352,8 @@ run_helper --index "$dir/index.md" --title "Foo Pattern" --domain patterns \
   --slug foo --updated "2026-08-05T03:00:00+09:00" --confidence high \
   --pages-root "$dir/pages"
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'row_action=updated' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'dedup_removed=1' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'row_action=updated' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'dedup_removed=1' \
    && grep -q 'Dup 先発' "$dir/index.md" \
    && ! grep -q 'Dup 後発' "$dir/index.md"; then
   pass "TC-9 対象外ページの重複も 3a が後発削除 (先発保持)"
@@ -385,9 +385,9 @@ run_helper --index "$dir/index.md" --title "Dup NEW" --domain patterns \
   --slug dup --description "中止されるべき更新" --updated "2026-08-05T04:00:00+09:00" \
   --confidence medium --pages-root "$dir/pages"
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'row_action=aborted_duplicate' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'dedup_removed=2' \
-   && printf '%s\n' "$HELPER_STDERR" | grep -qF "3 rows register page 'patterns/dup'" \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'row_action=aborted_duplicate' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'dedup_removed=2' \
+   && printf '%s\n' "$HELPER_STDERR" | grep -cF >/dev/null "3 rows register page 'patterns/dup'" \
    && [ "$(grep -c 'pages/patterns/dup\.md' "$dir/index.md")" -eq 1 ] \
    && grep -q 'Dup 先発' "$dir/index.md" \
    && ! grep -q 'Dup NEW' "$dir/index.md" \
@@ -415,7 +415,7 @@ run_helper --index "$dir/index.md" --title "Foo Pattern" --domain patterns \
   --slug foo --updated "2026-08-05T05:00:00+09:00" --confidence high \
   --pages-root "$dir/pages"
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'stats_sync=skipped_no_section' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'stats_sync=skipped_no_section' \
    && ! grep -q '^## 統計' "$dir/index.md"; then
   pass "TC-11 統計節不在は skip し節を新設しない"
 else
@@ -462,7 +462,7 @@ cat > "$TEST_DIR/tc12-expected.md" <<'EOF'
 - 最終更新: 2026-08-05T06:00:00+09:00
 EOF
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'row_action=added' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'row_action=added' \
    && diff -u "$TEST_DIR/tc12-expected.md" "$dir/index.md" > "$TEST_DIR/tc12-diff.txt" 2>&1; then
   pass "TC-12 節不在時は統計の直前にヘッダ付きで新設 (golden)"
 else
@@ -490,7 +490,7 @@ cat > "$TEST_DIR/tc12b-expected.md" <<'EOF'
 | [EOF Page](pages/patterns/foo.md) | patterns | EOF 挿入 | 2026-08-05T06:30:00+09:00 | high |
 EOF
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -q '^\[CONTEXT\] WIKI_INDEX_UPDATE=row_action=added; dedup_removed=0; stats_sync=skipped_no_section$' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -c >/dev/null '^\[CONTEXT\] WIKI_INDEX_UPDATE=row_action=added; dedup_removed=0; stats_sync=skipped_no_section$' \
    && diff -u "$TEST_DIR/tc12b-expected.md" "$dir/index.md" > "$TEST_DIR/tc12b-diff.txt" 2>&1; then
   pass "TC-12b 統計節も不在なら EOF に新設 (golden)"
 else
@@ -506,7 +506,7 @@ run_helper --index "$TEST_DIR/nonexistent/index.md" --title t --domain patterns 
 # rc=1 だけでは識別力がない (`-f` ガードを外しても兄弟の `-r` ガードが同じ rc=1 +
 # ERROR を返し、運用者には "not readable" の誤診断が届く) ため、TC-13b と対で
 # ガード固有の診断文言を assert する
-if [ "$HELPER_RC" -eq 1 ] && printf '%s\n' "$HELPER_STDERR" | grep -q 'not found'; then
+if [ "$HELPER_RC" -eq 1 ] && printf '%s\n' "$HELPER_STDERR" | grep -c >/dev/null 'not found'; then
   pass "TC-13 index.md 不在で exit 1 + 'not found' 診断 (fail-loud)"
 else
   fail "TC-13 (rc=$HELPER_RC stderr=$HELPER_STDERR)"
@@ -529,7 +529,7 @@ else
   chmod 644 "$dir/index.md"
   after=$(cat "$dir/index.md")
   if [ "$HELPER_RC" -eq 1 ] \
-     && printf '%s\n' "$HELPER_STDERR" | grep -q 'not readable' \
+     && printf '%s\n' "$HELPER_STDERR" | grep -c >/dev/null 'not readable' \
      && [ "$before" = "$after" ]; then
     pass "TC-13b index.md 読み取り不能で exit 1 + 'not readable' 診断 (fail-loud)"
   else
@@ -559,7 +559,7 @@ run_helper --index "$dir/index.md" --title t --domain patterns --slug s \
   --updated "2026-08-05T08:00:00+09:00" --confidence high --pages-root "$dir/pages"
 after=$(cat "$dir/index.md")
 if [ "$HELPER_RC" -eq 1 ] \
-   && printf '%s\n' "$HELPER_STDERR" | grep -qF -- "2 '## ページ一覧' headings — ambiguous target, refusing to guess" \
+   && printf '%s\n' "$HELPER_STDERR" | grep -cF >/dev/null -- "2 '## ページ一覧' headings — ambiguous target, refusing to guess" \
    && [ "$before" = "$after" ]; then
   pass "TC-14 見出し重複 (想定外構造) で exit 1・部分適用なし (ガード固有文言 + 件数を識別)"
 else
@@ -598,8 +598,8 @@ run_helper --index "$dir/index.md" --title "Foo Pattern" --domain patterns \
   --slug foo --description "更新後" --updated "2026-08-05T13:30:00+09:00" \
   --confidence high --pages-root "$dir/pages"
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qF '[CONTEXT] WIKI_INDEX_UPDATE=row_action=updated; dedup_removed=0; stats_sync=skipped_unreadable' \
-   && printf '%s\n' "$HELPER_STDERR" | grep -q 'ambiguous sync target' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cF >/dev/null '[CONTEXT] WIKI_INDEX_UPDATE=row_action=updated; dedup_removed=0; stats_sync=skipped_unreadable' \
+   && printf '%s\n' "$HELPER_STDERR" | grep -c >/dev/null 'ambiguous sync target' \
    && grep -q '総ページ数: 99' "$dir/index.md" \
    && grep -q '総ページ数: 77' "$dir/index.md" \
    && grep -qxF '| [Foo Pattern](pages/patterns/foo.md) | patterns | 更新後 | 2026-08-05T13:30:00+09:00 | high |' "$dir/index.md"; then
@@ -631,24 +631,24 @@ run_helper --index "$dir/index.md" --title t --domain patterns --slug 'bad/slug'
 run_helper --index "$dir/index.md" --domain patterns --slug s \
   --updated "2026-08-05T09:00:00+09:00" --confidence high
 [ "$HELPER_RC" -eq 2 ] || { tc15_ok=0; echo "  (--title 欠落が rc=$HELPER_RC)"; }
-printf '%s\n' "$HELPER_STDERR" | grep -qF -- '--title is required' \
+printf '%s\n' "$HELPER_STDERR" | grep -cF >/dev/null -- '--title is required' \
   || { tc15_ok=0; echo "  (--title 欠落の診断文言が固有でない)"; }
 run_helper --title t --domain patterns --slug s \
   --updated "2026-08-05T09:00:00+09:00" --confidence high
 [ "$HELPER_RC" -eq 2 ] || { tc15_ok=0; echo "  (--index 欠落が rc=$HELPER_RC)"; }
-printf '%s\n' "$HELPER_STDERR" | grep -qF -- '--index is required' \
+printf '%s\n' "$HELPER_STDERR" | grep -cF >/dev/null -- '--index is required' \
   || { tc15_ok=0; echo "  (--index 欠落の診断文言が固有でない)"; }
 run_helper --index "$dir/index.md" --title t --domain patterns \
   --updated "2026-08-05T09:00:00+09:00" --confidence high
 [ "$HELPER_RC" -eq 2 ] || { tc15_ok=0; echo "  (--slug 欠落が rc=$HELPER_RC)"; }
-printf '%s\n' "$HELPER_STDERR" | grep -qF -- '--slug is required' \
+printf '%s\n' "$HELPER_STDERR" | grep -cF >/dev/null -- '--slug is required' \
   || { tc15_ok=0; echo "  (--slug 欠落の診断文言が固有でない)"; }
 # --updated 欠落: ガードを失うと更新日セルと `- 最終更新:` 行が空のまま
 # rc=0 + stats_sync=synced で書かれる silent corruption になる
 run_helper --index "$dir/index.md" --title t --domain patterns --slug s \
   --confidence high
 [ "$HELPER_RC" -eq 2 ] || { tc15_ok=0; echo "  (--updated 欠落が rc=$HELPER_RC)"; }
-printf '%s\n' "$HELPER_STDERR" | grep -qF -- '--updated is required' \
+printf '%s\n' "$HELPER_STDERR" | grep -cF >/dev/null -- '--updated is required' \
   || { tc15_ok=0; echo "  (--updated 欠落の診断文言が固有でない)"; }
 # 制御文字 reject 経路 (_has_c0_del): 改行入り title / 改行入り description /
 # 制御文字 (TAB) 入り updated はいずれも exit 2 (1 行のテーブル行として表現不能)
@@ -674,7 +674,7 @@ run_helper --index "$dir/index.md" --title t --domain patterns --slug s \
 # unknown argument arm: フラグ誤記への唯一の fail-loud (silent no-op 退化の検出)
 run_helper --index "$dir/index.md" --title t --domain patterns --slug s \
   --updated "2026-08-05T09:00:00+09:00" --confidence high --bogus x
-if [ "$HELPER_RC" -ne 2 ] || ! printf '%s\n' "$HELPER_STDERR" | grep -qF 'unknown argument: --bogus'; then
+if [ "$HELPER_RC" -ne 2 ] || ! printf '%s\n' "$HELPER_STDERR" | grep -cF >/dev/null 'unknown argument: --bogus'; then
   tc15_ok=0; echo "  (unknown argument --bogus が rc=$HELPER_RC / ERROR 文言不一致)"
 fi
 after=$(cat "$dir/index.md")
@@ -693,7 +693,7 @@ run_helper --index "$dir/index.md" --title "日本語タイトルのページ" -
   --slug foo --description "日本語の説明文です" --updated "2026-08-05T09:30:00+09:00" \
   --confidence high --pages-root "$dir/pages"
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'row_action=updated' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'row_action=updated' \
    && grep -qxF '| [日本語タイトルのページ](pages/patterns/foo.md) | patterns | 日本語の説明文です | 2026-08-05T09:30:00+09:00 | high |' "$dir/index.md"; then
   pass "TC-15b UTF-8 日本語 title/description が制御文字誤検出されない (rc=0)"
 else
@@ -710,7 +710,7 @@ run_helper --index "$dir/index.md" --title '{CONTEXT} マーカーの設計 {emi
   --slug foo --description '{description 風だが正当} な値' \
   --updated "2026-08-05T09:40:00+09:00" --confidence high --pages-root "$dir/pages"
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'row_action=updated' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'row_action=updated' \
    && grep -qxF '| [{CONTEXT} マーカーの設計 {emit}](pages/patterns/foo.md) | patterns | {description 風だが正当} な値 | 2026-08-05T09:40:00+09:00 | high |' "$dir/index.md"; then
   pass "TC-15c brace 含み正当 title/description が residue gate に棄却されない (rc=0)"
 else
@@ -726,8 +726,8 @@ run_helper --index "$dir/index.md" --title "Foo Pattern" --domain patterns \
   --slug foo --updated "2026-08-05T10:00:00+09:00" --confidence high \
   --pages-root "$dir/pages"
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'stats_sync=skipped_unreadable' \
-   && printf '%s\n' "$HELPER_STDERR" | grep -q 'WARNING' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'stats_sync=skipped_unreadable' \
+   && printf '%s\n' "$HELPER_STDERR" | grep -c >/dev/null 'WARNING' \
    && grep -qx -- '- 総ページ数: 1' "$dir/index.md" \
    && grep -qx -- '- 最終更新: 2026-01-01T00:00:00+09:00' "$dir/index.md" \
    && grep -q '2026-08-05T10:00:00+09:00' "$dir/index.md"; then
@@ -748,8 +748,8 @@ run_helper --index "$dir/index.md" --title "Foo Pattern" --domain patterns \
   --slug foo --updated "2026-08-05T10:10:00+09:00" --confidence high \
   --pages-root "$dir/pages"
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'stats_sync=skipped_unreadable' \
-   && printf '%s\n' "$HELPER_STDERR" | grep -q 'WARNING' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'stats_sync=skipped_unreadable' \
+   && printf '%s\n' "$HELPER_STDERR" | grep -c >/dev/null 'WARNING' \
    && grep -qx -- '- 総ページ数: 1' "$dir/index.md" \
    && grep -qx -- '- ドメイン別: patterns=1, heuristics=0, anti-patterns=0' "$dir/index.md" \
    && grep -qx -- '- 最終更新: 2026-01-01T00:00:00+09:00' "$dir/index.md"; then
@@ -765,8 +765,8 @@ dir=$(make_sandbox tc16c)
 run_helper --index "$dir/index.md" --title "Foo Pattern" --domain patterns \
   --slug foo --updated "2026-08-05T10:20:00+09:00" --confidence high
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'stats_sync=skipped_unreadable' \
-   && printf '%s\n' "$HELPER_STDERR" | grep -qF -- '--pages-root was not given' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'stats_sync=skipped_unreadable' \
+   && printf '%s\n' "$HELPER_STDERR" | grep -cF >/dev/null -- '--pages-root was not given' \
    && grep -qx -- '- 総ページ数: 1' "$dir/index.md" \
    && grep -qx -- '- 最終更新: 2026-01-01T00:00:00+09:00' "$dir/index.md" \
    && grep -q '2026-08-05T10:20:00+09:00' "$dir/index.md"; then
@@ -812,8 +812,8 @@ cat > "$TEST_DIR/tc16d-expected.md" <<'EOF'
 - 最終更新: 2026-08-05T10:30:00+09:00
 EOF
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'stats_sync=synced' \
-   && printf '%s\n' "$HELPER_STDERR" | grep -q 'ドメイン別' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'stats_sync=synced' \
+   && printf '%s\n' "$HELPER_STDERR" | grep -c >/dev/null 'ドメイン別' \
    && diff -u "$TEST_DIR/tc16d-expected.md" "$dir/index.md" > "$TEST_DIR/tc16d-diff.txt" 2>&1; then
   pass "TC-16d 統計行の一部欠落は WARNING (行名明示) + 残存行のみ同期・欠落行は新設しない (golden)"
 else
@@ -845,8 +845,8 @@ run_helper --index "$dir/index.md" --title "Foo Pattern" --domain patterns \
   --slug foo --updated "2026-08-05T10:35:00+09:00" --confidence high \
   --pages-root "$dir/pages"
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'stats_sync=skipped_unreadable' \
-   && printf '%s\n' "$HELPER_STDERR" | grep -q 'WARNING' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'stats_sync=skipped_unreadable' \
+   && printf '%s\n' "$HELPER_STDERR" | grep -c >/dev/null 'WARNING' \
    && grep -qxF '（統計行は手動整理で失われた）' "$dir/index.md" \
    && grep -q '2026-08-05T10:35:00+09:00' "$dir/index.md"; then
   pass "TC-16g 統計 3 行全欠落は skipped_unreadable (0 行同期を synced と偽装しない・行は新設しない)"
@@ -882,7 +882,7 @@ run_helper --index "$dir/index.md" --title "P1" --domain patterns \
   --slug p1 --updated "2026-08-05T10:40:00+09:00" --confidence high \
   --pages-root "$dir/pages"
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'stats_sync=synced' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'stats_sync=synced' \
    && grep -qx -- '- 総ページ数: 6' "$dir/index.md" \
    && grep -qx -- '- ドメイン別: patterns=2, heuristics=1, anti-patterns=3' "$dir/index.md"; then
   pass "TC-16e 祖先 patterns/ ディレクトリ下でも内訳が膨張しない (前方一致 anchor)"
@@ -929,7 +929,7 @@ cat > "$TEST_DIR/tc16f-expected.md" <<'EOF'
 | [Foo Pattern](pages/patterns/foo.md) | 参考リンク |
 EOF
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -q '^\[CONTEXT\] WIKI_INDEX_UPDATE=row_action=updated; dedup_removed=0; stats_sync=skipped_no_section$' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -c >/dev/null '^\[CONTEXT\] WIKI_INDEX_UPDATE=row_action=updated; dedup_removed=0; stats_sync=skipped_no_section$' \
    && diff -u "$TEST_DIR/tc16f-expected.md" "$dir/index.md" > "$TEST_DIR/tc16f-diff.txt" 2>&1; then
   pass "TC-16f 節末端より後ろの別節にある pages リンク行は同定・回収の対象外 (golden)"
 else
@@ -968,7 +968,7 @@ cat > "$TEST_DIR/tc18-expected.md" <<'EOF'
 | [C heuristics 側](pages/heuristics/c.md) | heuristics | sB | 2026-01-02T00:00:00+09:00 | medium |
 EOF
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -q '^\[CONTEXT\] WIKI_INDEX_UPDATE=row_action=updated; dedup_removed=0; stats_sync=skipped_no_section$' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -c >/dev/null '^\[CONTEXT\] WIKI_INDEX_UPDATE=row_action=updated; dedup_removed=0; stats_sync=skipped_no_section$' \
    && diff -u "$TEST_DIR/tc18-expected.md" "$dir/index.md" > "$TEST_DIR/tc18-diff.txt" 2>&1; then
   pass "TC-18 別ドメイン同一 slug は両行保持 (対象ドメインの行のみ更新・dedup 0)"
 else
@@ -1002,7 +1002,7 @@ cat > "$TEST_DIR/tc19-expected.md" <<'EOF'
 | [Foo Pattern v19](pages/patterns/foo.md) | patterns | 既存 | 2026-08-05T11:00:00+09:00 | high |
 EOF
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'row_action=updated' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'row_action=updated' \
    && diff -u "$TEST_DIR/tc19-expected.md" "$dir/index.md" > "$TEST_DIR/tc19-diff.txt" 2>&1; then
   pass "TC-19 ヘッダ・区切り両方欠落を見出し直後に補填 (golden)"
 else
@@ -1033,7 +1033,7 @@ cat > "$TEST_DIR/tc20-expected.md" <<'EOF'
 | [Foo Pattern v20](pages/patterns/foo.md) | patterns | 既存 | 2026-08-05T12:00:00+09:00 | high |
 EOF
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'row_action=updated' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'row_action=updated' \
    && diff -u "$TEST_DIR/tc20-expected.md" "$dir/index.md" > "$TEST_DIR/tc20-diff.txt" 2>&1; then
   pass "TC-20 区切り行のみ欠落をヘッダ行直後に補填 (golden)"
 else
@@ -1063,7 +1063,7 @@ cat > "$TEST_DIR/tc21-expected.md" <<'EOF'
 | [Foo Pattern v21](pages/patterns/foo.md) | patterns | 既存 | 2026-08-05T13:00:00+09:00 | high |
 EOF
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'row_action=updated' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'row_action=updated' \
    && diff -u "$TEST_DIR/tc21-expected.md" "$dir/index.md" > "$TEST_DIR/tc21-diff.txt" 2>&1; then
   pass "TC-21 ヘッダ行のみ欠落を見出し直後 (区切り行の前) に補填 (golden)"
 else
@@ -1099,7 +1099,7 @@ after=$(cat "$dir/index.md")
 # 併せて fail-loud 経路で一時ファイルが index.md と同じディレクトリに残らないことも固定する
 # (残置すると後続の commit が `git add .rite/wiki/` でディレクトリごと stage して wiki ブランチへ混入する)
 if [ "$HELPER_RC" -eq 1 ] \
-   && printf '%s\n' "$HELPER_STDERR" | grep -qF -- 'content outside the cell delimiters' \
+   && printf '%s\n' "$HELPER_STDERR" | grep -cF >/dev/null -- 'content outside the cell delimiters' \
    && [ "$before" = "$after" ] \
    && [ "$(grep -c '蓄積サマリー' "$dir/index.md")" -eq 1 ] \
    && [ "$(ls -A "$dir" | grep -c '^\.wiki-index-update\.')" -eq 0 ]; then
@@ -1143,7 +1143,7 @@ EOF
     --slug foo --updated "2026-08-05T12:00:00+09:00" --confidence high \
     --pages-root "$dir/pages"
   after=$(cat "$dir/index.md")
-  if [ "$HELPER_RC" -ne 1 ] || ! printf '%s\n' "$HELPER_STDERR" | grep -qF -- "$expected_msg" \
+  if [ "$HELPER_RC" -ne 1 ] || ! printf '%s\n' "$HELPER_STDERR" | grep -cF >/dev/null -- "$expected_msg" \
      || [ "$before" != "$after" ] || [ "$(grep -c '蓄積サマリー' "$dir/index.md")" -ne 1 ]; then
     tc22b_ok=0; echo "  (セル数 $(printf '%s' "$shape" | awk -F'|' '{print NF-2}') の行が rc=$HELPER_RC / 期待文言 '$expected_msg' 不一致 / 蓄積サマリー残存 $(grep -c '蓄積サマリー' "$dir/index.md"))"
   fi
@@ -1175,9 +1175,9 @@ run_helper --index "$dir/index.md" --title "Foo Pattern" --domain patterns \
 tc22d_esc=$(printf '%s' "$HELPER_STDERR" | od -An -tx1 | tr -d ' \n' | grep -o '1b' | wc -l | tr -d ' ')
 tc22d_del=$(printf '%s' "$HELPER_STDERR" | od -An -tx1 | tr -d ' \n' | grep -o '7f' | wc -l | tr -d ' ')
 if [ "$HELPER_RC" -eq 1 ] \
-   && printf '%s\n' "$HELPER_STDERR" | grep -qF -- 'content outside the cell delimiters' \
+   && printf '%s\n' "$HELPER_STDERR" | grep -cF >/dev/null -- 'content outside the cell delimiters' \
    && [ "$tc22d_esc" -eq 0 ] && [ "$tc22d_del" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDERR" | grep -qF -- '蓄積' ; then
+   && printf '%s\n' "$HELPER_STDERR" | grep -cF >/dev/null -- '蓄積' ; then
   pass "TC-22d malformed 行の診断は制御バイトを中和 (ESC/DEL 0 バイト・日本語は保持)"
 else
   fail "TC-22d (rc=$HELPER_RC esc=$tc22d_esc del=$tc22d_del)"
@@ -1201,7 +1201,7 @@ run_helper --index "$dir/index.md" --title "Foo Pattern" --domain patterns \
   --slug foo --updated "2026-08-05T12:10:00+09:00" --confidence high \
   --pages-root "$dir/pages"
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'row_action=updated' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'row_action=updated' \
    && grep -qxF '| [Foo Pattern](pages/patterns/foo.md) | patterns |  | 2026-08-05T12:10:00+09:00 | high |' "$dir/index.md"; then
   pass "TC-22c 空サマリーセルの正当 5 列行は保持経路で rc=0 (ガードの過剰発火なし)"
 else
@@ -1252,7 +1252,7 @@ cat > "$TEST_DIR/tc23-expected.md" <<'EOF'
 - 最終更新: 2026-08-05T12:20:00+09:00
 EOF
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -q '^\[CONTEXT\] WIKI_INDEX_UPDATE=row_action=updated; dedup_removed=0; stats_sync=synced$' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -c >/dev/null '^\[CONTEXT\] WIKI_INDEX_UPDATE=row_action=updated; dedup_removed=0; stats_sync=synced$' \
    && diff -u "$TEST_DIR/tc23-expected.md" "$dir/index.md" > "$TEST_DIR/tc23-diff.txt" 2>&1; then
   pass "TC-23 サマリー欄の相互参照リンクは非同定 (FIRST link 述語・両行保持・golden)"
 else
@@ -1281,7 +1281,7 @@ run_helper --index "$dir/index.md" --title "New Page" --domain heuristics \
   --slug new --description "追加" --updated "2026-08-05T12:30:00+09:00" \
   --confidence medium --pages-root "$dir/pages"
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qF '[CONTEXT] WIKI_INDEX_UPDATE=row_action=added; dedup_removed=1; stats_sync=skipped_no_section' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cF >/dev/null '[CONTEXT] WIKI_INDEX_UPDATE=row_action=added; dedup_removed=1; stats_sync=skipped_no_section' \
    && [ "$(grep -c 'pages/patterns/dup\.md' "$dir/index.md")" -eq 1 ] \
    && grep -q '先発' "$dir/index.md" \
    && ! grep -q '後発' "$dir/index.md" \
@@ -1328,9 +1328,9 @@ cat > "$TEST_DIR/tc25-expected.md" <<'EOF'
 - 最終更新: 2026-08-05T14:10:00+09:00
 EOF
 if [ "$tc25_rc1" -eq 0 ] \
-   && printf '%s\n' "$tc25_out1" | grep -qF '[CONTEXT] WIKI_INDEX_UPDATE=row_action=added; dedup_removed=0; stats_sync=synced' \
+   && printf '%s\n' "$tc25_out1" | grep -cF >/dev/null '[CONTEXT] WIKI_INDEX_UPDATE=row_action=added; dedup_removed=0; stats_sync=synced' \
    && [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'row_action=updated' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'row_action=updated' \
    && diff -u "$TEST_DIR/tc25-expected.md" "$dir/index.md" > "$TEST_DIR/tc25-diff.txt" 2>&1; then
   pass "TC-25 リンク構文入り title の同定キー詐称を &#93; 中和で防止 (added 行が回収されず foo 更新も非破壊・golden)"
 else
@@ -1370,7 +1370,7 @@ cat > "$TEST_DIR/tc25b-expected.md" <<'EOF'
 - 最終更新: 2026-08-05T15:00:00+09:00
 EOF
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'row_action=added' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'row_action=added' \
    && ! grep -q '&#93;' "$dir/index.md" \
    && diff -u "$TEST_DIR/tc25b-expected.md" "$dir/index.md" > "$TEST_DIR/tc25b-diff.txt" 2>&1; then
   pass 'TC-25b `](` を含まない `]` は無改変 (中和の過剰適用なし・golden)'
@@ -1388,12 +1388,12 @@ if [ ! -f "$INGEST_MD" ]; then
 fi
 step6=$(awk '/^## ステップ 6:/{f=1} f && /^## ステップ 7/{exit} f{print}' "$INGEST_MD")
 tc17_ok=1
-printf '%s\n' "$step6" | grep -q 'wiki-index-update\.sh' || { tc17_ok=0; echo "  (helper 呼び出しがステップ 6 に無い)"; }
+printf '%s\n' "$step6" | grep -c >/dev/null 'wiki-index-update\.sh' || { tc17_ok=0; echo "  (helper 呼び出しがステップ 6 に無い)"; }
 # 操作アルゴリズムの散文が残っていないこと (各フレーズは旧手順 0-3b の記述に固有)
 for phrase in '最初に現れる' '閉じ括弧までの範囲' '末尾 2 つを更新日列' \
               '後発行を削除' '空行があれば削除' 'エスケープして substitute' \
               '見出しの直後（既存の登録行より前）に補う'; do
-  if printf '%s\n' "$step6" | grep -qF "$phrase"; then
+  if printf '%s\n' "$step6" | grep -cF >/dev/null "$phrase"; then
     tc17_ok=0; echo "  (操作散文が残存: $phrase)"
   fi
 done
@@ -1422,30 +1422,30 @@ fi
 # frontmatter 由来 6 値はすべて heredoc 変数経由で渡す (placeholder をシェル語へ直接
 # 置換する形が再混入していないことを、変数対応と placeholder 直渡しの不在の両側で pin)
 for v in title description domain slug updated confidence; do
-  printf '%s\n' "$step6_block" | grep -qF -- "--$v \"\$wiu_$v\"" \
+  printf '%s\n' "$step6_block" | grep -cF >/dev/null -- "--$v \"\$wiu_$v\"" \
     || { tc17b_ok=0; echo "  (--$v の heredoc 変数対応が崩れている)"; }
-  printf '%s\n' "$step6_block" | grep -qF -- "--$v \"{$v}\"" \
+  printf '%s\n' "$step6_block" | grep -cF >/dev/null -- "--$v \"{$v}\"" \
     && { tc17b_ok=0; echo "  (--$v が placeholder 直渡しへ退行している — command injection 経路)"; }
 done
 # heredoc 本体では placeholder がそのまま現れる (シェル解釈なしで helper へ届く形)
 for v in title description domain slug updated confidence; do
-  printf '%s\n' "$step6_block" | grep -qxF -- "{$v}" \
+  printf '%s\n' "$step6_block" | grep -cxF >/dev/null -- "{$v}" \
     || { tc17b_ok=0; echo "  ($v の heredoc 本体に {$v} が無い)"; }
 done
 # 呼び出し行の実体 (コマンド語・値の形) も literal で pin する — フラグ名集合の突合だけでは
 # 呼び出し行の削除・helper パス改名・パス値の相対化・quoted heredoc 解除が生存する
-printf '%s\n' "$step6_block" | grep -qF -- 'bash "{plugin_root}/hooks/scripts/wiki-index-update.sh"' || { tc17b_ok=0; echo "  (helper 呼び出しコマンド行が無い/形が崩れている)"; }
-printf '%s\n' "$step6_block" | grep -qF -- '--index "$wiki_root/index.md"' || { tc17b_ok=0; echo '  (--index の値が $wiki_root/index.md でない)'; }
-printf '%s\n' "$step6_block" | grep -qF -- '--pages-root "$wiki_root/pages"' || { tc17b_ok=0; echo '  (--pages-root の値が $wiki_root/pages でない)'; }
+printf '%s\n' "$step6_block" | grep -cF >/dev/null -- 'bash "{plugin_root}/hooks/scripts/wiki-index-update.sh"' || { tc17b_ok=0; echo "  (helper 呼び出しコマンド行が無い/形が崩れている)"; }
+printf '%s\n' "$step6_block" | grep -cF >/dev/null -- '--index "$wiki_root/index.md"' || { tc17b_ok=0; echo '  (--index の値が $wiki_root/index.md でない)'; }
+printf '%s\n' "$step6_block" | grep -cF >/dev/null -- '--pages-root "$wiki_root/pages"' || { tc17b_ok=0; echo '  (--pages-root の値が $wiki_root/pages でない)'; }
 # 書き込み先を決める $wiki_root の導出 4 行も pin する。値 pin だけでは routing drift
 # (branch_strategy の literal 改変・分岐条件の破壊・worktree 側代入の消失) が素通りし、
 # helper は exit 1 で loud に落ちるが marker 表がそれを「スキップして続行」に落とすため
 # ingest は完走し続け登録行だけが恒久的に欠落する
-printf '%s\n' "$step6_block" | grep -qF -- 'branch_strategy="{branch_strategy}"' || { tc17b_ok=0; echo "  (branch_strategy の placeholder 代入が無い/崩れている)"; }
-printf '%s\n' "$step6_block" | grep -qF -- 'wiki_wt_abs="{wiki_worktree_abs}"' || { tc17b_ok=0; echo "  (wiki_worktree_abs の placeholder 代入が無い/崩れている)"; }
-printf '%s\n' "$step6_block" | grep -qF -- 'if [ "$branch_strategy" = "separate_branch" ]; then' || { tc17b_ok=0; echo "  (branch_strategy の分岐条件が崩れている)"; }
-printf '%s\n' "$step6_block" | grep -qF -- 'wiki_root="${wiki_wt_abs:-.rite/wiki-worktree}/.rite/wiki"' || { tc17b_ok=0; echo "  (separate_branch 側の wiki_root 代入が崩れている)"; }
-printf '%s\n' "$step6_block" | grep -qF -- 'wiki_root=".rite/wiki"' || { tc17b_ok=0; echo "  (same_branch 側の wiki_root 代入が崩れている)"; }
+printf '%s\n' "$step6_block" | grep -cF >/dev/null -- 'branch_strategy="{branch_strategy}"' || { tc17b_ok=0; echo "  (branch_strategy の placeholder 代入が無い/崩れている)"; }
+printf '%s\n' "$step6_block" | grep -cF >/dev/null -- 'wiki_wt_abs="{wiki_worktree_abs}"' || { tc17b_ok=0; echo "  (wiki_worktree_abs の placeholder 代入が無い/崩れている)"; }
+printf '%s\n' "$step6_block" | grep -cF >/dev/null -- 'if [ "$branch_strategy" = "separate_branch" ]; then' || { tc17b_ok=0; echo "  (branch_strategy の分岐条件が崩れている)"; }
+printf '%s\n' "$step6_block" | grep -cF >/dev/null -- 'wiki_root="${wiki_wt_abs:-.rite/wiki-worktree}/.rite/wiki"' || { tc17b_ok=0; echo "  (separate_branch 側の wiki_root 代入が崩れている)"; }
+printf '%s\n' "$step6_block" | grep -cF >/dev/null -- 'wiki_root=".rite/wiki"' || { tc17b_ok=0; echo "  (same_branch 側の wiki_root 代入が崩れている)"; }
 # 継続行を 1 論理コマンドへ join して 8 フラグが同一コマンド内に並ぶことを assert する。
 # 行単位断片の grep だけでは継続 backslash の脱落 (行が分断され後続フラグが別コマンド化し
 # 実行時 rc=127 になる Edit 崩れ) が生存する
@@ -1466,19 +1466,19 @@ fi
 # frontmatter 由来 6 値はすべて quoted heredoc で受ける (double-quote されたシェル語への
 # 直接置換は値の `"` でクォートが閉じ command injection になる)
 for v in title description domain slug updated confidence; do
-  printf '%s\n' "$step6_block" | grep -qF -- "IFS= read -r wiu_${v}" \
+  printf '%s\n' "$step6_block" | grep -cF >/dev/null -- "IFS= read -r wiu_${v}" \
     || { tc17b_ok=0; echo "  ($v の literal read が無い)"; }
 done
-printf '%s\n' "$step6_block" | grep -qF -- "} <<'WIU_EOF'" \
+printf '%s\n' "$step6_block" | grep -cF >/dev/null -- "} <<'WIU_EOF'" \
   || { tc17b_ok=0; echo "  (quoted heredoc が解除されている)"; }
 # heredoc 終端子衝突の実行前ゲート。quoted heredoc に残る唯一の脱出口 (値の行が
 # `WIU_EOF` と一致すると heredoc が早期終了し残りがコマンド実行される) は block 内の
 # シェルでは parse 前に検査できないため、substitute する LLM 側の責務としてゲート文言が
 # 必要。後続 cycle での脱落を殺すため散文を literal で pin する
 step6_prose=$(printf '%s\n' "$step6" | grep -vF -- '```')
-printf '%s\n' "$step6_prose" | grep -qF -- '終端子 `WIU_EOF` と完全一致' \
+printf '%s\n' "$step6_prose" | grep -cF >/dev/null -- '終端子 `WIU_EOF` と完全一致' \
   || { tc17b_ok=0; echo "  (heredoc 終端子衝突の実行前ゲート文言が無い)"; }
-printf '%s\n' "$step6_prose" | grep -qF -- 'この bash を実行してはならない' \
+printf '%s\n' "$step6_prose" | grep -cF >/dev/null -- 'この bash を実行してはならない' \
   || { tc17b_ok=0; echo "  (実行前ゲートの禁止指示が無い)"; }
 if [ "$tc17b_ok" -eq 1 ]; then
   pass "TC-17b ステップ 6 呼び出し契約 (8 フラグ + placeholder 対応 + 呼び出し行 literal + wiki_root 導出 + 6 値 heredoc + 終端子ゲート) が helper と一致"

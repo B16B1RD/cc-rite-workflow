@@ -18,14 +18,6 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
-# Clean session-id env for standalone runs. flow-state.sh resolves
-# session_id env-first; the file-based sandboxes below must exercise the
-# `.rite-session-id` fallback, so the dogfooding session's ambient
-# CLAUDE_CODE_SESSION_ID must not leak in. TC-13/14/15 + T-01/T-02/T-04 set the
-# vars explicitly per-command, overriding this unset. (run-tests.sh unsets the
-# same vars for suite runs; this keeps `bash flow-state.test.sh` deterministic too.)
-unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
-
 # Helper: prepare a sandbox with .rite-session-id and STATE_ROOT detection
 new_sandbox() {
   local d sid
@@ -536,9 +528,11 @@ result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 mkdir -p "$d/.rite/sessions"
 state_file="$d/.rite/sessions/${sid}.flow-state"
 printf '{this is not valid JSON' > "$state_file"
-# cmd_set should succeed (defaults applied to merge) BUT emit a WARNING to stderr so
-# operator can observe the silent-overwrite-into-zero-state situation.
-(cd "$d" && bash "$HOOK" set --phase plan --issue 12 --branch "b" --pr 0 --next "n") 2> "$d/tc12.stderr"
+# A corrupt file may contain a retained review run; never replace it with defaults.
+cp "$state_file" "$d/tc12.before"
+tc12_rc=0
+(cd "$d" && bash "$HOOK" set --phase plan --issue 12 --branch "b" --pr 0 --next "n") 2> "$d/tc12.stderr" || tc12_rc=$?
+assert "TC-12: corrupt set fails" "1" "$tc12_rc"
 if grep -q "WARNING: flow-state.sh cmd_set: existing state read failed" "$d/tc12.stderr"; then
   pass "TC-12: corrupt-JSON WARNING emitted"
 else
@@ -558,11 +552,11 @@ if grep -qE '^  [^ ]' "$d/tc12.stderr"; then
 else
   fail "TC-12: 診断 stderr の indented 行が欠落"
 fi
-# Resulting file must be valid JSON (write proceeded with defaults).
-if jq -e . "$state_file" >/dev/null 2>&1; then
-  pass "TC-12: merged write produced valid JSON with defaults"
+# Keep the original bytes so recovery cannot erase unknown run counters.
+if cmp -s "$state_file" "$d/tc12.before"; then
+  pass "TC-12: corrupt state bytes retained"
 else
-  fail "TC-12: merged write failed to produce valid JSON"
+  fail "TC-12: corrupt state was replaced"
 fi
 
 # --- TC-13: AC-4 — CLAUDE_CODE_SESSION_ID env resolves session_id when .rite-session-id is absent ---
@@ -1135,7 +1129,7 @@ else
 fi
 # TC-23.3: 制御文字が中和マーカー '?' へ 1:1 置換され可読テキストは保持される
 # (空削除への revert と snippet 全体 drop の両方を catch する)
-if printf '%s' "$snippet" | grep -qF '?[31mINJECTED?[0m'; then
+if printf '%s' "$snippet" | grep -cF >/dev/null '?[31mINJECTED?[0m'; then
   pass "TC-23.3: 制御文字が '?' へ 1:1 置換され可読テキストが保持される"
 else
   fail "TC-23.3: 中和マーカー '?' パターンが不在: '$(printf '%s' "$snippet" | cat -v)'"
@@ -1304,23 +1298,22 @@ sfile="$d/.rite/sessions/${sid}.flow-state"
 (cd "$d" && bash "$HOOK" set --phase review --issue 700 --branch "feat/700" --pr 42 --next "n" --cycle-count 3) >/dev/null
 assert "TC-27: cycle_count=3 recorded" "3" "$(jq -r '.cycle_count // "ABSENT"' "$sfile")"
 assert "TC-27: get returns 3" "3" "$(cd "$d" && bash "$HOOK" get --field cycle_count --default 0)"
-# (b) merge-preserve: a set WITHOUT --cycle-count (e.g. review/fix phase transition) keeps the value
-(cd "$d" && bash "$HOOK" set --phase fix --issue 700 --branch "feat/700" --pr 42 --next "n2") >/dev/null
+# (b) diagnostic updates preserve an incomplete legacy review's counter.
+(cd "$d" && bash "$HOOK" set --phase review --issue 700 --branch "feat/700" --pr 42 --next "diagnose") >/dev/null
 assert "TC-27: cycle_count preserved across --cycle-count-less set" "3" "$(jq -r '.cycle_count // "ABSENT"' "$sfile")"
-# (c) a later set overwrites cycle_count with a new value (increment is the caller's job, not the hook's)
-(cd "$d" && bash "$HOOK" set --phase review --issue 700 --branch "feat/700" --pr 42 --next "n3" --cycle-count 4) >/dev/null
-assert "TC-27: later set overwrites cycle_count to a new value (increment scenario)" "4" "$(jq -r '.cycle_count // "ABSENT"' "$sfile")"
-# (d) reset with --cycle-count 0 removes the key (get falls back to default; fresh-entry reset)
-(cd "$d" && bash "$HOOK" set --phase review --issue 700 --branch "feat/700" --pr 42 --next "n4" --cycle-count 0) >/dev/null
-assert "TC-27: --cycle-count 0 removes the key" "false" "$(jq -r 'has("cycle_count")' "$sfile")"
-assert "TC-27: get after reset returns default 0" "0" "$(cd "$d" && bash "$HOOK" get --field cycle_count --default 0)"
-# (d2) reset while OMITTING issue/branch/pr (the actual iterate ステップ0.6 fresh-reset call shape):
-#      --cycle-count 0 removes the key AND merge-preserve keeps issue/branch intact
-(cd "$d" && bash "$HOOK" set --phase review --issue 700 --branch "feat/700" --pr 42 --next "seed" --cycle-count 3) >/dev/null
-(cd "$d" && bash "$HOOK" set --phase review --next "fresh reset" --cycle-count 0) >/dev/null
-assert "TC-27: reset with issue/branch omitted removes cycle_count key" "false" "$(jq -r 'has("cycle_count")' "$sfile")"
-assert "TC-27: reset merge-preserves issue_number" "700" "$(jq -r '.issue_number' "$sfile")"
-assert "TC-27: reset merge-preserves branch" "feat/700" "$(jq -r '.branch' "$sfile")"
+# (c/d) direct increment/reset cannot erase an unverified review. Verified next
+# cycles and completed-run resets are exercised with the real saver by the
+# review-cycle-transition integration suite.
+for proposed in 4 0; do
+  before=$(cat "$sfile")
+  rc=0
+  (cd "$d" && bash "$HOOK" set --phase review --next "manual counter update" --cycle-count "$proposed") >"$d/counter.out" 2>"$d/counter.err" || rc=$?
+  assert "TC-27: unverified counter change to $proposed rejected" "1" "$rc"
+  assert "TC-27: rejected counter change leaves full state intact" "$before" "$(cat "$sfile")"
+  assert_grep "TC-27: rejected counter change diagnosed" "$d/counter.err" 'ERROR: review-cycle:'
+done
+assert "TC-27: rejection preserves issue_number" "700" "$(jq -r '.issue_number' "$sfile")"
+assert "TC-27: rejection preserves branch" "feat/700" "$(jq -r '.branch' "$sfile")"
 # (e) backward compat: a fresh session that never sets --cycle-count has no cycle_count key
 result=$(new_sandbox); d2="${result%|*}"; sid2="${result#*|}"
 sfile2="$d2/.rite/sessions/${sid2}.flow-state"
@@ -1508,7 +1501,7 @@ echo ""
 echo "=== TC-2115-01 (AC-1): phase transitions are appended to .rite/logs/phase-transitions.log ==="
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 (cd "$d" && bash "$HOOK" set --phase implement --issue 2115 --branch "feat/x" --pr 0 --next "n1")
-(cd "$d" && bash "$HOOK" set --phase review --issue 2115 --pr 42 --next "n2")
+(cd "$d" && bash "$HOOK" set --phase pr --issue 2115 --pr 42 --next "n2")
 tlog="$d/.rite/logs/phase-transitions.log"
 assert_file_exists_or_fail "TC-2115-01: transition log created" "$tlog" || true
 assert "TC-2115-01: one line per transition (2 sets → 2 lines)" "2" "$(wc -l < "$tlog" | tr -d ' ')"
@@ -1518,7 +1511,7 @@ assert "TC-2115-01: one line per transition (2 sets → 2 lines)" "2" "$(wc -l <
 assert "TC-2115-01: first record from='' (fresh session, no prior state)" "" "$(head -1 "$tlog" | jq -r .from)"
 assert "TC-2115-01: first record to=implement" "implement" "$(head -1 "$tlog" | jq -r .to)"
 assert "TC-2115-01: second record from=implement (pre-write phase)" "implement" "$(sed -n 2p "$tlog" | jq -r .from)"
-assert "TC-2115-01: second record to=review" "review" "$(sed -n 2p "$tlog" | jq -r .to)"
+assert "TC-2115-01: second record to=pr" "pr" "$(sed -n 2p "$tlog" | jq -r .to)"
 assert "TC-2115-01: session_id recorded" "$sid" "$(sed -n 2p "$tlog" | jq -r .session_id)"
 assert "TC-2115-01: issue_number recorded" "2115" "$(sed -n 2p "$tlog" | jq -r .issue_number)"
 assert "TC-2115-01: pr_number recorded" "42" "$(sed -n 2p "$tlog" | jq -r .pr_number)"

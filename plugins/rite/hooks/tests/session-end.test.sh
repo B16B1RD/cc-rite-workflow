@@ -5,17 +5,17 @@ set -euo pipefail
 
 issue_text() { printf 'Issue #%s' "$1"; }
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Hermeticity guard: flow-state.sh path resolves session_id with
 # priority env CLAUDE_CODE_SESSION_ID > env CLAUDE_SESSION_ID > .rite-session-id
 # file. When this test suite runs inside a live Claude Code
 # session, that session's own id leaks into every `bash "$HOOK"` invocation
 # below and silently overrides the file-based per-session fixtures, making the
-# hook resolve a nonexistent (or wrong) flow-state file. Unsetting both here
-# forces every invocation to resolve session_id from the fixture's
-# `.rite-session-id` file, matching the intended test isolation.
-unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
-
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# hook resolve a nonexistent (or wrong) flow-state file. `_hermetic-env.sh`
+# clears them (with the rest of the runner's list), so every invocation resolves
+# session_id from the fixture's `.rite-session-id` file.
+# shellcheck source=_hermetic-env.sh
+source "$SCRIPT_DIR/_hermetic-env.sh" || { echo "ERROR: cannot source _hermetic-env.sh" >&2; exit 1; }
 HOOK="$SCRIPT_DIR/../session-end.sh"
 TEST_DIR="$(mktemp -d)"
 LAST_STDERR_FILE=""
@@ -65,7 +65,7 @@ create_state_file() {
   mkdir -p "$dir/.rite/sessions"
   printf '%s' "$sid" > "$dir/.rite-session-id"
   local merged
-  if printf '%s' "$content" | grep -q '"schema_version"'; then
+  if printf '%s' "$content" | grep -c >/dev/null '"schema_version"'; then
     merged="$content"
   elif printf '%s' "$content" | jq -e . >/dev/null 2>&1; then
     merged=$(printf '%s' "$content" | jq -c '. + {schema_version: 3}')
@@ -509,7 +509,7 @@ echo "{\"cwd\": \"$dir_749\"}" \
   | bash "$sbx_749/session-end.sh" >/dev/null 2>"$LAST_STDERR_FILE" || true
 stderr_749="$(cat "$LAST_STDERR_FILE")"
 
-if printf '%s' "$stderr_749" | grep -qF 'TC-helper-failure simulated flow-state.sh path failure'; then
+if printf '%s' "$stderr_749" | grep -cF >/dev/null 'TC-helper-failure simulated flow-state.sh path failure'; then
   pass "ERROR line from flow-state.sh passed through to caller stderr"
 else
   fail "Expected ERROR pass-through; got stderr: $stderr_749"
@@ -518,7 +518,7 @@ fi
 # emits a "flow-state.sh path resolution failed — skip" WARNING and aborts the
 # state-cleanup step. The previous "Legacy fallback path was loaded" assertion
 # was removed accordingly.
-if printf '%s' "$stderr_749" | grep -qF 'flow-state.sh path resolution failed'; then
+if printf '%s' "$stderr_749" | grep -cF >/dev/null 'flow-state.sh path resolution failed'; then
   pass "Skip WARNING emitted to stderr (no legacy fallback in v3)"
 else
   fail "Expected skip WARNING; got stderr: $stderr_749"
@@ -593,7 +593,7 @@ PATH="$fake_jq_bin:$PATH" \
   >/dev/null 2>"$LAST_STDERR_FILE" || true
 stderr_jq="$(cat "$LAST_STDERR_FILE")"
 
-if printf '%s' "$stderr_jq" | grep -qE 'rite: session-end: (WARNING: )?failed to deactivate state file'; then
+if printf '%s' "$stderr_jq" | grep -cE >/dev/null 'rite: session-end: (WARNING: )?failed to deactivate state file'; then
   pass "WARNING emitted on jq atomic write failure"
 else
   fail "Expected jq-write WARNING; got stderr: $stderr_jq"
@@ -601,7 +601,7 @@ fi
 # Assert the structural invariant ("WARNING contains an Issue number") instead
 # of a literal number, which would only match by coincidence with the test
 # branch name and become brittle if the branch convention changes.
-if printf '%s' "$stderr_jq" | grep -qE 'Issue #[0-9]+'; then
+if printf '%s' "$stderr_jq" | grep -cE >/dev/null 'Issue #[0-9]+'; then
   pass "WARNING includes Issue number from branch detection"
 else
   fail "Expected 'Issue #<number>' in WARNING; got stderr: $stderr_jq"
@@ -610,7 +610,7 @@ fi
 # and operators can locate the failed deactivation target without grepping git).
 # Under v3 the resolved path is `.rite/sessions/<sid>.flow-state`; accept either
 # the per-session form or the legacy form for backward-compat-friendly matching.
-if printf '%s' "$stderr_jq" | grep -qE '\.rite-flow-state|\.rite/sessions/.*\.flow-state'; then
+if printf '%s' "$stderr_jq" | grep -cE >/dev/null '\.rite-flow-state|\.rite/sessions/.*\.flow-state'; then
   pass "WARNING includes state file path"
 else
   fail "Expected state file path in WARNING; got stderr: $stderr_jq"
@@ -620,7 +620,7 @@ fi
 # error diagnostics (line/column on parse errors, or here our fake script's
 # stderr) MUST reach the user. Locking this in test prevents a future refactor
 # from adding `2>/dev/null` and silently dropping the production jq diagnostic.
-if printf '%s' "$stderr_jq" | grep -qF 'fake jq: simulated failure'; then
+if printf '%s' "$stderr_jq" | grep -cF >/dev/null 'fake jq: simulated failure'; then
   pass "jq stderr passed through to caller"
 else
   fail "Expected fake jq stderr in WARNING; got stderr: $stderr_jq"

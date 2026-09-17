@@ -65,7 +65,7 @@ write_healthy_gitignore "$sbx"
 errf=$(mk_errfile)
 out=$(cd "$sbx" && bash "$SCRIPT" --verify-negation 2>"$errf"); rc=$?
 assert "TC-1 exit 0" "0" "$rc"
-if printf '%s' "$out" | grep -qF "✅ .gitignore negation verification OK"; then
+if printf '%s' "$out" | grep -cF >/dev/null "✅ .gitignore negation verification OK"; then
   pass "TC-1 stdout に ✅ negation OK"
 else
   fail "TC-1 stdout に ✅ negation OK (out='$out' err='$(cat "$errf")')"
@@ -79,12 +79,12 @@ errf=$(mk_errfile)
 out=$(cd "$sbx" && bash "$SCRIPT" --verify-negation 2>"$errf"); rc=$?
 err=$(cat "$errf")
 assert "TC-2 exit 0 (non-blocking)" "0" "$rc"
-if printf '%s' "$err" | grep -qF "WARNING: .gitignore negation verification failed"; then
+if printf '%s' "$err" | grep -cF >/dev/null "WARNING: .gitignore negation verification failed"; then
   pass "TC-2 stderr に WARNING"
 else
   fail "TC-2 stderr に WARNING (err='$err' out='$out')"
 fi
-if printf '%s' "$out" | grep -qF "✅"; then
+if printf '%s' "$out" | grep -cF >/dev/null "✅"; then
   fail "TC-2 success メッセージが出てはいけない (out='$out')"
 else
   pass "TC-2 stdout に ✅ 不在"
@@ -114,7 +114,7 @@ rm -f "$sbx/rite-config.yml"  # make_sandbox は作らないが念のため
 errf=$(mk_errfile)
 out=$(cd "$sbx" && bash "$SCRIPT" --verify-negation 2>"$errf"); rc=$?
 assert "TC-4 exit 0 (config 不在)" "0" "$rc"
-if printf '%s' "$out" | grep -qF "✅ .gitignore negation verification OK"; then
+if printf '%s' "$out" | grep -cF >/dev/null "✅ .gitignore negation verification OK"; then
   pass "TC-4 config 不在でも ✅ OK"
 else
   fail "TC-4 config 不在で ✅ OK (out='$out' err='$(cat "$errf")')"

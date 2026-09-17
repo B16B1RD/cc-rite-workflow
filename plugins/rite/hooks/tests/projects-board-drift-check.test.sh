@@ -9,11 +9,10 @@
 #   T-5: documented flags + detection logic present in source
 #   T-6: config-aware no-op (projects disabled / rite-config absent) exits 0 with a
 #        0-findings summary line — exercised offline, no gh required (AC-4)
-#   T-7: behavioral fixture — the jq detection pipeline (extracted from source, not a
-#        copy) classifies all eight cases correctly (COMPLETED drift / NOT_PLANNED drift /
-#        Done / Cancelled / not-on-board / other-project / <no-status> / null reason),
-#        catching semantic breaks that preserve jq literals but flip scoping
-#        (offline, jq-only, no gh)
+#   T-7: behavioral fixture — the jq board-row pipeline (extracted from source, not a
+#        copy) scopes all eight cases correctly (on-board rows carried through with their
+#        Status / not-on-board / other-project / <no-status> / null reason), catching
+#        semantic breaks that preserve jq literals but flip scoping (offline, jq-only)
 #   T-9: behavioral — --reconcile drives the Status update helper to "Done" for a
 #        COMPLETED closure (offline, gh shim records the item-edit)
 #  T-10: behavioral — a failing GraphQL scan exits 2 with a diagnostic, so lint never
@@ -31,6 +30,11 @@
 #        exit 0), so --reconcile can never overwrite a deliberate cancellation
 #  T-15: static — every consumer of the terminal Status set points at its source of truth
 #        by section name, with no line-number anchor
+#  T-16: behavioral — column names are mapped to roles through rite-config.yml: a renamed
+#        done column is terminal, a NOT_PLANNED row on a board with no cancelled column is
+#        informational (0 findings), the same row is drift once cancelled is mapped and
+#        --reconcile asks for the cancelled role, an invalid configuration exits 2 with no
+#        summary line, and the projects-disabled no-op still precedes the resolver
 #
 # This suite is named for projects-board-drift-check.sh but also pins the cross-file
 # terminal-status contract (T-15), because that contract is what the drift check's
@@ -46,8 +50,6 @@ DRIFT_SH="$REPO_ROOT/plugins/rite/hooks/scripts/projects-board-drift-check.sh"
 # Terminal Status names and the unclassified-reason sentinel are read back out of the
 # script rather than restated here, so a rename in the source travels into the fixtures
 # instead of leaving the suite asserting against values nothing produces any more.
-TERM_DONE=$(sed -n 's/^TERMINAL_STATUS_DONE="\(.*\)"$/\1/p' "$DRIFT_SH" | head -1)
-TERM_CANCELLED=$(sed -n 's/^TERMINAL_STATUS_CANCELLED="\(.*\)"$/\1/p' "$DRIFT_SH" | head -1)
 NO_REASON=$(sed -n 's/^NO_CLOSURE_REASON="\(.*\)"$/\1/p' "$DRIFT_SH" | head -1)
 
 PASS=0
@@ -67,7 +69,7 @@ assert_file_contains() {
 # T-7 behavioral fixture, where the value is the jq pipeline's TSV output).
 assert_present() {
   local haystack="$1" needle="$2" description="$3"
-  if printf '%s\n' "$haystack" | grep -qF -- "$needle"; then
+  if printf '%s\n' "$haystack" | grep -cF >/dev/null -- "$needle"; then
     PASS=$((PASS + 1)); echo "  ✓ $description"
   else
     FAIL=$((FAIL + 1)); FAILURES+=("$description"); echo "  ✗ $description" >&2
@@ -76,7 +78,7 @@ assert_present() {
 
 assert_absent() {
   local haystack="$1" needle="$2" description="$3"
-  if printf '%s\n' "$haystack" | grep -qF -- "$needle"; then
+  if printf '%s\n' "$haystack" | grep -cF >/dev/null -- "$needle"; then
     FAIL=$((FAIL + 1)); FAILURES+=("$description"); echo "  ✗ $description" >&2
   else
     PASS=$((PASS + 1)); echo "  ✓ $description"
@@ -118,18 +120,18 @@ fi
 echo ""
 echo "[T-3] --help prints usage"
 help_output=$(bash "$DRIFT_SH" --help 2>&1) || true
-if printf '%s' "$help_output" | grep -q 'projects-board-drift-check.sh'; then
+if printf '%s' "$help_output" | grep -c >/dev/null 'projects-board-drift-check.sh'; then
   PASS=$((PASS + 1)); echo "  ✓ --help prints usage including script name"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("--help output missing script name"); echo "  ✗ --help output missing script name" >&2
 fi
-if printf '%s' "$help_output" | grep -q 'NOT_PLANNED or DUPLICATE' \
-  && printf '%s' "$help_output" | grep -q 'Cancelled'; then
-  PASS=$((PASS + 1)); echo "  ✓ --help maps DUPLICATE to Cancelled"
+if printf '%s' "$help_output" | grep -c >/dev/null 'NOT_PLANNED or DUPLICATE' \
+  && printf '%s' "$help_output" | grep -c >/dev/null 'the cancelled role'; then
+  PASS=$((PASS + 1)); echo "  ✓ --help maps DUPLICATE to the cancelled role"
 else
-  FAIL=$((FAIL + 1)); FAILURES+=("--help does not map DUPLICATE to Cancelled"); echo "  ✗ --help does not map DUPLICATE to Cancelled" >&2
+  FAIL=$((FAIL + 1)); FAILURES+=("--help does not map DUPLICATE to the cancelled role"); echo "  ✗ --help does not map DUPLICATE to the cancelled role" >&2
 fi
-if printf '%s' "$help_output" | grep -qi 'unmapped'; then
+if printf '%s' "$help_output" | grep -ci >/dev/null 'unmapped'; then
   FAIL=$((FAIL + 1)); FAILURES+=("--help still calls a mapped reason unmapped"); echo "  ✗ --help still says unmapped" >&2
 else
   PASS=$((PASS + 1)); echo "  ✓ --help does not call a mapped reason unmapped"
@@ -173,30 +175,46 @@ assert_file_contains "$DRIFT_SH" 'Reconciliation drift-guard' "header documents 
 # header comments (which spell the status names as prose), so deleting the detection logic
 # actually fails the suite. Board membership is the inclusion gate, so pin its exact form.
 assert_file_contains "$DRIFT_SH" 'select\(\$pitem != null\)' "board 掲載のみで絞る"
-# The terminal Status set is the whole point of the filter, so pin both members at their
-# definitions. A drift back to a Done-only filter deletes one of these and fails here.
-assert_file_contains "$DRIFT_SH" '^TERMINAL_STATUS_DONE="Done"$' "終端 Status 集合に Done を持つ"
-assert_file_contains "$DRIFT_SH" '^TERMINAL_STATUS_CANCELLED="Cancelled"$' "終端 Status 集合に Cancelled を持つ"
-# Pin the predicate by its exact two-member form. A one-sided `!= $terminal_done` would still
-# match a looser pattern while silently reporting every Cancelled row as drift again.
-assert_file_contains "$DRIFT_SH" 'select\(\$st != \$terminal_done and \$st != \$terminal_cancelled\)' \
-  "AC-1: drift は終端 Status 集合のいずれでもない行に限る"
+# Terminal classification is made on the role the column name resolves to, never on the
+# name itself. Pin the resolver call and the terminal predicate at their use sites: a
+# drift back to comparing English names deletes these and fails here.
+assert_file_contains "$DRIFT_SH" 'role=\$\(cd "\$REPO_ROOT" && projects_status_role_for_name "\$status"' \
+  "AC-1: 列名を resolver で role に変換する（no-op ゲートと同じ config を読む）"
+assert_file_contains "$DRIFT_SH" 'if projects_status_is_terminal "\$role"; then' \
+  "AC-1: 終端判定は projects_status_is_terminal で行う"
+assert_file_lacks "$DRIFT_SH" '^TERMINAL_STATUS_(DONE|CANCELLED)=' \
+  "AC-1: 終端 Status を英語表示名の定数で持たない"
+# The Status field is found by the resolver's field-name candidates, not a literal "Status".
+assert_file_contains "$DRIFT_SH" '\$fields \| index\(\$fn\) != null' \
+  "Status フィールドを resolver の候補名で選ぶ"
+assert_file_lacks "$DRIFT_SH" 'select\(\.field\.name == "Status"\)' \
+  "Status フィールド名をリテラル比較しない"
 # The closure reason is now load-bearing on both ends: selected by the query, carried by jq.
 assert_file_contains "$DRIFT_SH" '^ *stateReason$' "GraphQL query が stateReason を取得する"
 assert_file_contains "$DRIFT_SH" '\$i\.stateReason // \$no_reason' "jq が stateReason を TSV へ載せる"
-# AC-2/AC-3: the reconcile destination is chosen from the closure reason, not fixed to Done.
-assert_file_contains "$DRIFT_SH" 'NOT_PLANNED\) target_status="\$TERMINAL_STATUS_CANCELLED"' \
-  "AC-2: NOT_PLANNED の reconcile 先は Cancelled"
-assert_file_contains "$DRIFT_SH" 'DUPLICATE\) *target_status="\$TERMINAL_STATUS_CANCELLED"' \
-  "AC-2: DUPLICATE の reconcile 先は Cancelled"
+# AC-2/AC-3: the reconcile destination is chosen from the closure reason, not fixed to done.
+assert_file_contains "$DRIFT_SH" 'NOT_PLANNED\) target_role="cancelled"' \
+  "AC-2: NOT_PLANNED の reconcile 先は cancelled role"
+assert_file_contains "$DRIFT_SH" 'DUPLICATE\) *target_role="cancelled"' \
+  "AC-2: DUPLICATE の reconcile 先は cancelled role"
 # COMPLETED gets its own silent arm so the catch-all means "unmapped", not "everything
 # else". This pin is static: it sees the arm's existence and destination, not its silence
 # and not its position relative to the catch-all. Both of those are T-13c's job — keep the
 # label narrow so a failure here points at the assignment, not at the WARNING.
-assert_file_contains "$DRIFT_SH" 'COMPLETED\) *target_status="\$TERMINAL_STATUS_DONE"' \
+assert_file_contains "$DRIFT_SH" 'COMPLETED\) *target_role="done"' \
   "AC-3: COMPLETED が独立した明示アームを持つ"
-assert_file_contains "$DRIFT_SH" '--arg status "\$target_status"' \
-  "reconcile が固定 Done ではなく target_status を渡す"
+# The cancelled-unmapped exclusion must run before the count is incremented; pin the
+# guard's shape so it cannot drift below `DRIFT_COUNT=$((DRIFT_COUNT + 1))`.
+unmapped_guard_line=$(grep -n 'if \[ "\$target_role" = "cancelled" \] && \[ -z "\$CANCELLED_NAME" \]; then' "$DRIFT_SH" | head -1 | cut -d: -f1 || true)
+count_line=$(grep -n '^    DRIFT_COUNT=\$((DRIFT_COUNT + 1))$' "$DRIFT_SH" | head -1 | cut -d: -f1 || true)
+if [ -n "$unmapped_guard_line" ] && [ -n "$count_line" ] && [ "$unmapped_guard_line" -lt "$count_line" ]; then
+  PASS=$((PASS + 1)); echo "  ✓ cancelled 未マップの除外は DRIFT_COUNT 加算より前にある"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("cancelled 未マップの除外が DRIFT_COUNT 加算より前にない (guard=$unmapped_guard_line count=$count_line)")
+  echo "  ✗ cancelled 未マップの除外が DRIFT_COUNT 加算より前にない" >&2
+fi
+assert_file_contains "$DRIFT_SH" '--arg role "\$target_role"' \
+  "reconcile が対象の status_role を渡す"
 assert_file_contains "$DRIFT_SH" 'projectItems' "queries projectItems for board membership"
 # AC-4: projects-enabled gate
 assert_file_contains "$DRIFT_SH" 'PROJECTS_ENABLED' "gates on github.projects.enabled (AC-4)"
@@ -221,7 +239,7 @@ CFG
 # the harness at the command-substitution line under `set -euo pipefail` — otherwise the
 # `[ "$noop_rc" -eq 0 ]` failure branch below becomes dead code and failure attribution is lost.
 set +e; noop_out=$( (cd "$tmpd/disabled" && bash "$DRIFT_SH" --quiet) 2>/dev/null ); noop_rc=$?; set -e
-if [ "$noop_rc" -eq 0 ] && printf '%s' "$noop_out" | grep -q '==> Total projects-board-drift findings: 0'; then
+if [ "$noop_rc" -eq 0 ] && printf '%s' "$noop_out" | grep -c >/dev/null '==> Total projects-board-drift findings: 0'; then
   PASS=$((PASS + 1)); echo "  ✓ projects disabled → exit 0, 0 findings"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("projects disabled no-op (rc=$noop_rc)"); echo "  ✗ projects disabled no-op (rc=$noop_rc)" >&2
@@ -229,19 +247,21 @@ fi
 # rite-config absent (walks up to a .git boundary with no config)
 mkdir -p "$tmpd/noconfig/.git"
 set +e; noop2_out=$( (cd "$tmpd/noconfig" && bash "$DRIFT_SH" --quiet) 2>/dev/null ); noop2_rc=$?; set -e
-if [ "$noop2_rc" -eq 0 ] && printf '%s' "$noop2_out" | grep -q '==> Total projects-board-drift findings: 0'; then
+if [ "$noop2_rc" -eq 0 ] && printf '%s' "$noop2_out" | grep -c >/dev/null '==> Total projects-board-drift findings: 0'; then
   PASS=$((PASS + 1)); echo "  ✓ rite-config absent → exit 0, 0 findings"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("rite-config absent no-op (rc=$noop2_rc)"); echo "  ✗ rite-config absent no-op (rc=$noop2_rc)" >&2
 fi
 
 echo ""
-echo "[T-7] Behavioral fixture: jq detection pipeline classifies all eight cases (semantic-break guard)"
-# Extract the EXACT jq detection program from the source so this exercises the real
-# pipeline, not a copy. A semantic break that T-5's literal grep cannot see — e.g.
-# $pitem != null -> == null, dropping one member of the terminal Status set, or dropping
-# the `.project.number == $pn` board scoping — changes the classification below and fails
-# here. The invocation spans several lines (`jq -r --argjson pn` plus the --arg
+echo "[T-7] Behavioral fixture: jq board-row pipeline scopes all eight cases (semantic-break guard)"
+# Extract the EXACT jq program from the source so this exercises the real pipeline, not a
+# copy. jq's job is board membership and Status extraction only — terminal classification
+# happens in bash after the name is mapped to a role (T-9 / T-12 / T-14 / T-16 pin that
+# end to end). A semantic break that T-5's literal grep cannot see — e.g. $pitem != null
+# -> == null, dropping the `.project.number == $pn` board scoping, or matching the Status
+# field by a literal name instead of the resolver's candidates — changes the rows below and
+# fails here. The invocation spans several lines (`jq -r --argjson pn` plus the --arg
 # continuations), so capture from the LAST continuation, which is the line that opens the
 # program's quote, through its `2>"${jq_err...}"` redirect.
 jq_prog=$(awk '
@@ -290,8 +310,9 @@ else
 JSON
 )
   set +e
+  # Candidates are the resolver's legacy default (Japanese alias first, then English).
   actual=$(printf '%s' "$fixture" | jq -r --argjson pn 6 \
-    --arg terminal_done "$TERM_DONE" --arg terminal_cancelled "$TERM_CANCELLED" \
+    --arg candidates $'ステータス\nStatus' \
     --arg no_reason "$NO_REASON" "$jq_prog" 2>/dev/null); jq_rc=$?
   set -e
   if [ "$jq_rc" -eq 0 ]; then
@@ -299,14 +320,15 @@ JSON
   else
     FAIL=$((FAIL + 1)); FAILURES+=("jq pipeline errored (rc=$jq_rc)"); echo "  ✗ jq pipeline errored (rc=$jq_rc)" >&2
   fi
-  # Exactly four drift rows — guards over-detection (e.g. a broken on-board scope letting
-  # not-on-board / other-project issues through, or a Done-only filter re-admitting the
-  # Cancelled row). Count lines carrying a TAB separator.
+  # Exactly six on-board rows — guards over-detection (a broken on-board scope letting
+  # not-on-board / other-project issues through) and under-detection (jq re-growing a
+  # terminal filter on column names, which belongs to the bash role mapping). Count lines
+  # carrying a TAB separator.
   line_count=$(printf '%s\n' "$actual" | grep -c $'\t' || true)
-  if [ "$line_count" -eq 4 ]; then
-    PASS=$((PASS + 1)); echo "  ✓ exactly 4 drift rows emitted"
+  if [ "$line_count" -eq 6 ]; then
+    PASS=$((PASS + 1)); echo "  ✓ exactly 6 on-board rows emitted"
   else
-    FAIL=$((FAIL + 1)); FAILURES+=("expected 4 drift rows, got $line_count"); echo "  ✗ expected 4 drift rows, got $line_count" >&2
+    FAIL=$((FAIL + 1)); FAILURES+=("expected 6 on-board rows, got $line_count"); echo "  ✗ expected 6 on-board rows, got $line_count" >&2
   fi
   # Each present-assert pins the WHOLE row, so the four-column order
   # (number / status / stateReason / title) is fixed here and not just the field values —
@@ -315,16 +337,18 @@ JSON
   assert_present "$actual" "$(printf '101\tIn Review\tCOMPLETED\tdrift case')" "case1: COMPLETED on-board 非終端 -> drift row"
   # Case 6: COMPLETED + on-board(6) + no Status field -> drift as <no-status> (boundary).
   assert_present "$actual" "$(printf '106\t<no-status>\tCOMPLETED\tno-status boundary')" "case6: on-board without Status field -> <no-status> drift"
-  # Case 2: Status already Done -> excluded.
-  assert_absent "$actual" "done excluded" "case2: Status=Done excluded (AC-1)"
+  # Case 2: Status already Done -> still a board row; bash maps it to the done role and
+  # drops it (T-16 pins the 0-findings outcome end to end).
+  assert_present "$actual" "$(printf '102\tDone\tCOMPLETED\tdone excluded')" "case2: Status=Done は board row として渡り、終端判定は bash 側 (AC-1)"
   # Case 3: NOT_PLANNED closure on a non-terminal board row -> drift, same as COMPLETED.
   assert_present "$actual" "$(printf '103\tTodo\tNOT_PLANNED\tnot_planned drift')" "case3: NOT_PLANNED on-board 非終端 -> drift row"
   # Case 4: not on the board (empty projectItems) -> excluded.
   assert_absent "$actual" "not on board" "case4: not-on-board excluded"
   # Case 5: on a different project (number != pn) -> excluded.
   assert_absent "$actual" "other project" "case5: other-project excluded"
-  # Case 7: Status already Cancelled -> excluded, the other half of the terminal set (AC-1).
-  assert_absent "$actual" "cancelled excluded" "case7: Status=Cancelled excluded (AC-1)"
+  # Case 7: Status already Cancelled -> still a board row; bash maps it to the cancelled
+  # role and drops it (T-14 pins the 0-findings outcome end to end).
+  assert_present "$actual" "$(printf '107\tCancelled\tNOT_PLANNED\tcancelled excluded')" "case7: Status=Cancelled は board row として渡り、終端判定は bash 側 (AC-1)"
   # Case 8: absent stateReason -> still drift, and the sentinel (not a bare `null` string
   # or an empty field) is what crosses the TSV boundary into the reconcile branch (AC-4).
   assert_present "$actual" "$(printf '108\tTodo\t%s\tnull reason drift' "$NO_REASON")" "case8: stateReason null -> sentinel を載せた drift row"
@@ -360,7 +384,7 @@ case "$1 $2" in
     echo "should not be called - git-remote fast path must resolve first" >&2
     exit 1 ;;
   "api graphql")
-    if ! { printf '%s\n' "$*" | grep -qE -- ' owner=o( |$)' && printf '%s\n' "$*" | grep -qE -- ' repo=r( |$)'; }; then
+    if ! { printf '%s\n' "$*" | grep -cE >/dev/null -- ' owner=o( |$)' && printf '%s\n' "$*" | grep -cE >/dev/null -- ' repo=r( |$)'; }; then
       echo "MOCK ASSERTION FAILED: expected -f owner=o -f repo=r, got: $*" >&2
       exit 1
     fi
@@ -373,7 +397,7 @@ set +e
 t8_out=$(cd "$T8_DIR/repo" && PATH="$T8_DIR/repo/bin:$PATH" bash "$DRIFT_SH" --quiet 2>"$T8_DIR/stderr.txt")
 t8_rc=$?
 set -e
-if [ "$t8_rc" -eq 0 ] && printf '%s' "$t8_out" | grep -q 'Total projects-board-drift findings: 0'; then
+if [ "$t8_rc" -eq 0 ] && printf '%s' "$t8_out" | grep -c >/dev/null 'Total projects-board-drift findings: 0'; then
   PASS=$((PASS + 1)); echo "  ✓ run succeeds via git-remote fast path (exit 0, 0 findings)"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("T-8: expected exit 0 + 0-findings summary, got rc=$t8_rc; stderr: $(head -c 300 "$T8_DIR/stderr.txt" | tr '\n' ' ')")
@@ -408,7 +432,7 @@ cat > "$T9_DIR/repo/bin/gh" <<'GH_SHIM'
 #!/bin/bash
 case "$1 $2" in
   "api graphql")
-    if printf '%s\n' "$*" | grep -q 'states: CLOSED'; then
+    if printf '%s\n' "$*" | grep -c >/dev/null 'states: CLOSED'; then
       cat <<'SCAN'
 {"data":{"repository":{"issues":{"nodes":[
   {"number":103,"title":"closed as completed","stateReason":"COMPLETED",
@@ -418,7 +442,7 @@ case "$1 $2" in
 SCAN
     else
       cat <<'ITEM'
-{"data":{"repository":{"issue":{"url":"https://github.com/o/r/issues/103","projectItems":{"nodes":[{"id":"ITEM_103","project":{"id":"PROJ_1","number":1},"fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Todo"}]}}]}}}}}
+{"data":{"repository":{"issue":{"state":"CLOSED","stateReason":"COMPLETED","url":"https://github.com/o/r/issues/103","projectItems":{"nodes":[{"id":"ITEM_103","project":{"id":"PROJ_1","number":1},"fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Todo"}]}}]}}}}}
 ITEM
     fi ;;
   "project field-list")
@@ -436,7 +460,7 @@ t9_rc=$?
 set -e
 # exit 1 = drift detected (reconcile does not clear the finding); the summary proves the
 # helper reported success rather than a swallowed failure.
-if [ "$t9_rc" -eq 1 ] && printf '%s' "$t9_out" | grep -q 'reconcile summary: 1 updated, 0 failed'; then
+if [ "$t9_rc" -eq 1 ] && printf '%s' "$t9_out" | grep -c >/dev/null 'reconcile summary: 1 updated, 0 failed'; then
   PASS=$((PASS + 1)); echo "  ✓ reconcile reports 1 updated, 0 failed (exit 1 = drift detected)"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("T-9: expected exit 1 + '1 updated, 0 failed', got rc=$t9_rc; stdout: $(printf '%s' "$t9_out" | tr '\n' ' ' | head -c 300)")
@@ -518,7 +542,7 @@ cat > "$T11_DIR/repo/bin/gh" <<'GH_SHIM'
 #!/bin/bash
 case "$1 $2" in
   "api graphql")
-    if printf '%s\n' "$*" | grep -q 'states: CLOSED'; then
+    if printf '%s\n' "$*" | grep -c >/dev/null 'states: CLOSED'; then
       cat <<'SCAN'
 {"data":{"repository":{"issues":{"nodes":[
   {"number":103,"title":"closed as completed","stateReason":"COMPLETED",
@@ -528,7 +552,7 @@ case "$1 $2" in
 SCAN
     else
       cat <<'ITEM'
-{"data":{"repository":{"issue":{"url":"https://github.com/o/r/issues/103","projectItems":{"nodes":[{"id":"ITEM_103","project":{"id":"PROJ_1","number":1},"fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Todo"}]}}]}}}}}
+{"data":{"repository":{"issue":{"state":"CLOSED","stateReason":"COMPLETED","url":"https://github.com/o/r/issues/103","projectItems":{"nodes":[{"id":"ITEM_103","project":{"id":"PROJ_1","number":1},"fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Todo"}]}}]}}}}}
 ITEM
     fi ;;
   "project field-list")
@@ -544,7 +568,7 @@ set +e
 t11_out=$(cd "$T11_DIR/repo" && PATH="$T11_DIR/repo/bin:$PATH" bash "$DRIFT_SH" --reconcile 2>"$T11_DIR/stderr.txt")
 t11_rc=$?
 set -e
-if [ "$t11_rc" -eq 1 ] && printf '%s' "$t11_out" | grep -q 'reconcile summary: 0 updated, 1 failed'; then
+if [ "$t11_rc" -eq 1 ] && printf '%s' "$t11_out" | grep -c >/dev/null 'reconcile summary: 0 updated, 1 failed'; then
   PASS=$((PASS + 1)); echo "  ✓ failed reconcile is counted (0 updated, 1 failed) and still exits 1"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("T-11: expected exit 1 + '0 updated, 1 failed', got rc=$t11_rc; stdout: $(printf '%s' "$t11_out" | tr '\n' ' ' | head -c 300)")
@@ -580,11 +604,11 @@ YAML
 #!/bin/bash
 case "$1 $2" in
   "api graphql")
-    if printf '%s\n' "$*" | grep -q 'states: CLOSED'; then
+    if printf '%s\n' "$*" | grep -c >/dev/null 'states: CLOSED'; then
       cat "$GH_SCAN_FILE"
     else
-      cat <<'ITEM'
-{"data":{"repository":{"issue":{"url":"https://github.com/o/r/issues/203","projectItems":{"nodes":[{"id":"ITEM_203","project":{"id":"PROJ_1","number":1},"fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Todo"}]}}]}}}}}
+      jq --slurpfile scan "$GH_SCAN_FILE" '.data.repository.issue.stateReason = $scan[0].data.repository.issues.nodes[0].stateReason' <<'ITEM'
+{"data":{"repository":{"issue":{"state":"CLOSED","url":"https://github.com/o/r/issues/203","projectItems":{"nodes":[{"id":"ITEM_203","project":{"id":"PROJ_1","number":1},"fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Todo"}]}}]}}}}}
 ITEM
     fi ;;
   "project field-list")
@@ -612,7 +636,7 @@ t12_out=$(cd "$t12_repo" && PATH="$t12_repo/bin:$PATH" \
   bash "$DRIFT_SH" --reconcile --quiet 2>"$T12_DIR/t12-stderr.txt")
 t12_rc=$?
 set -e
-if [ "$t12_rc" -eq 1 ] && printf '%s' "$t12_out" | grep -q 'reconcile summary: 1 updated, 0 failed'; then
+if [ "$t12_rc" -eq 1 ] && printf '%s' "$t12_out" | grep -c >/dev/null 'reconcile summary: 1 updated, 0 failed'; then
   PASS=$((PASS + 1)); echo "  ✓ T-12: NOT_PLANNED row reconciles successfully (exit 1 = drift detected)"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("T-12: expected exit 1 + '1 updated, 0 failed', got rc=$t12_rc; stdout: $(printf '%s' "$t12_out" | tr '\n' ' ' | head -c 300)")
@@ -649,7 +673,7 @@ t13_out=$(cd "$t13_repo" && PATH="$t13_repo/bin:$PATH" \
   bash "$DRIFT_SH" --reconcile 2>"$T12_DIR/t13-stderr.txt")
 t13_rc=$?
 set -e
-if [ "$t13_rc" -eq 1 ] && printf '%s' "$t13_out" | grep -q 'reconcile summary: 1 updated, 0 failed'; then
+if [ "$t13_rc" -eq 1 ] && printf '%s' "$t13_out" | grep -c >/dev/null 'reconcile summary: 1 updated, 0 failed'; then
   PASS=$((PASS + 1)); echo "  ✓ T-13: unclassified reason still reconciles (not left behind)"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("T-13: expected exit 1 + '1 updated, 0 failed', got rc=$t13_rc; stdout: $(printf '%s' "$t13_out" | tr '\n' ' ' | head -c 300)")
@@ -687,7 +711,7 @@ t13b_out=$(cd "$t13b_repo" && PATH="$t13b_repo/bin:$PATH" \
   bash "$DRIFT_SH" --reconcile 2>"$T12_DIR/t13b-stderr.txt")
 t13b_rc=$?
 set -e
-if [ "$t13b_rc" -eq 1 ] && printf '%s' "$t13b_out" | grep -q 'reconcile summary: 1 updated, 0 failed'; then
+if [ "$t13b_rc" -eq 1 ] && printf '%s' "$t13b_out" | grep -c >/dev/null 'reconcile summary: 1 updated, 0 failed'; then
   PASS=$((PASS + 1)); echo "  ✓ T-13b: DUPLICATE still reconciles (not left behind)"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("T-13b: expected exit 1 + '1 updated, 0 failed', got rc=$t13b_rc; stdout: $(printf '%s' "$t13b_out" | tr '\n' ' ' | head -c 300)")
@@ -724,7 +748,7 @@ t13d_out=$(cd "$t13d_repo" && PATH="$t13d_repo/bin:$PATH" \
   bash "$DRIFT_SH" --reconcile 2>"$T12_DIR/t13d-stderr.txt")
 t13d_rc=$?
 set -e
-if [ "$t13d_rc" -eq 1 ] && printf '%s' "$t13d_out" | grep -q 'reconcile summary: 1 updated, 0 failed'; then
+if [ "$t13d_rc" -eq 1 ] && printf '%s' "$t13d_out" | grep -c >/dev/null 'reconcile summary: 1 updated, 0 failed'; then
   PASS=$((PASS + 1)); echo "  ✓ T-13d: unknown enum still reconciles (not left behind)"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("T-13d: expected exit 1 + '1 updated, 0 failed', got rc=$t13d_rc; stdout: $(printf '%s' "$t13d_out" | tr '\n' ' ' | head -c 300)")
@@ -798,7 +822,7 @@ t14_out=$(cd "$t14_repo" && PATH="$t14_repo/bin:$PATH" \
   bash "$DRIFT_SH" --reconcile --quiet 2>"$T12_DIR/t14-stderr.txt")
 t14_rc=$?
 set -e
-if [ "$t14_rc" -eq 0 ] && printf '%s' "$t14_out" | grep -q '==> Total projects-board-drift findings: 0'; then
+if [ "$t14_rc" -eq 0 ] && printf '%s' "$t14_out" | grep -c >/dev/null '==> Total projects-board-drift findings: 0'; then
   PASS=$((PASS + 1)); echo "  ✓ T-14 (AC-1): Cancelled row reports 0 findings and exits 0"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("T-14: expected exit 0 + 0 findings, got rc=$t14_rc; stdout: $(printf '%s' "$t14_out" | tr '\n' ' ' | head -c 300)")
@@ -809,6 +833,155 @@ if [ -f "$T12_DIR/t14-item-edit.args" ]; then
   echo "  ✗ T-14: item-edit was called on an already-terminal row" >&2
 else
   PASS=$((PASS + 1)); echo "  ✓ T-14 (AC-1): no item-edit issued — the cancellation is left intact"
+fi
+
+echo ""
+echo "[T-16] Behavioral: column names are mapped to roles through rite-config.yml"
+# Every fixture above runs on the legacy config, where the English names map onto
+# themselves. These boards spell their columns differently, so a check that still compared
+# English names would count every row as drift — or, with no cancelled column, would keep
+# reporting an abandoned Issue on every lint run.
+t16_repo="$T12_DIR/role-board"; _setup_terminal_repo "$t16_repo"
+# Board with renamed columns and NO cancelled column.
+cat > "$t16_repo/rite-config.yml" <<'YAML'
+github:
+  projects:
+    enabled: true
+    project_number: 1
+    fields:
+      status:
+        options:
+          - { role: todo, name: "To-Do" }
+          - { role: in_progress, name: "In progress" }
+          - { role: in_review, name: "Review" }
+          - { role: done, name: "完了" }
+YAML
+cat > "$T12_DIR/scan-role.json" <<'SCAN'
+{"data":{"repository":{"issues":{"nodes":[
+  {"number":301,"title":"abandoned on a board with no cancelled column","stateReason":"NOT_PLANNED",
+   "projectItems":{"nodes":[{"project":{"number":1},
+     "fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"In progress"}]}}]}},
+  {"number":302,"title":"finished on a renamed done column","stateReason":"COMPLETED",
+   "projectItems":{"nodes":[{"project":{"number":1},
+     "fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"完了"}]}}]}}
+]}}}}
+SCAN
+set +e
+t16_out=$(cd "$t16_repo" && PATH="$t16_repo/bin:$PATH" \
+  GH_SCAN_FILE="$T12_DIR/scan-role.json" GH_ITEM_EDIT_LOG="$T12_DIR/t16-item-edit.args" \
+  bash "$DRIFT_SH" --dry-run 2>"$T12_DIR/t16-stderr.txt")
+t16_rc=$?
+set -e
+# The renamed done column is terminal through the role mapping; the abandoned Issue has no
+# cancelled column to go to, so it is listed as informational and excluded from the count
+# and the exit code (the row would otherwise be reported on every lint run).
+if [ "$t16_rc" -eq 0 ] && printf '%s' "$t16_out" | grep -c >/dev/null '==> Total projects-board-drift findings: 0'; then
+  PASS=$((PASS + 1)); echo "  ✓ T-16: renamed done column + cancelled-unmapped NOT_PLANNED row -> 0 findings, exit 0"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-16: expected exit 0 + 0 findings, got rc=$t16_rc; stdout: $(printf '%s' "$t16_out" | tr '\n' ' ' | head -c 300)")
+  echo "  ✗ T-16: expected exit 0 + 0 findings (exit $t16_rc)" >&2
+fi
+assert_present "$t16_out" '[projects-board-drift] info #301' "T-16: cancelled 未マップの中止 Issue は informational 行として載る" # drift-check-ignore
+assert_present "$t16_out" 'no cancelled column is configured' "T-16: informational 行が cancelled 未設定を理由として示す"
+assert_absent "$t16_out" '[projects-board-drift] #302' "T-16: 完了 (done role) の行は drift に載らない" # drift-check-ignore
+if grep -q 'projects-board-drift: WARNING #301' "$T12_DIR/t16-stderr.txt"; then # drift-check-ignore
+  FAIL=$((FAIL + 1)); FAILURES+=("T-16: cancelled 未マップの行が drift WARNING として出た")
+  echo "  ✗ T-16: cancelled 未マップの行が drift WARNING として出た" >&2
+else
+  PASS=$((PASS + 1)); echo "  ✓ T-16: cancelled 未マップの行は drift WARNING を出さない"
+fi
+# Same board with a cancelled column: the abandoned Issue is now drift, and --reconcile
+# asks the helper for the cancelled role (the helper resolves the column name itself).
+cat > "$t16_repo/rite-config.yml" <<'YAML'
+github:
+  projects:
+    enabled: true
+    project_number: 1
+    fields:
+      status:
+        options:
+          - { role: todo, name: "To-Do" }
+          - { role: in_progress, name: "In progress" }
+          - { role: in_review, name: "Review" }
+          - { role: done, name: "完了" }
+          - { role: cancelled, name: "中止" }
+YAML
+mkdir -p "$T12_DIR/role-plugin/scripts" "$T12_DIR/role-plugin/hooks/scripts/lib"
+cp "$DRIFT_SH" "$T12_DIR/role-plugin/hooks/scripts/projects-board-drift-check.sh"
+cp "$REPO_ROOT/plugins/rite/hooks/control-char-neutralize.sh" "$T12_DIR/role-plugin/hooks/"
+cp "$REPO_ROOT/plugins/rite/hooks/scripts/lib/git-remote.sh" "$REPO_ROOT/plugins/rite/hooks/scripts/lib/projects-status-config.sh" "$T12_DIR/role-plugin/hooks/scripts/lib/"
+cat > "$T12_DIR/role-plugin/scripts/projects-status-update.sh" <<'RECON_SHIM'
+#!/bin/bash
+printf '%s' "$1" > "$RITE_TEST_RECON_PAYLOAD"
+echo '{"result":"updated","warnings":[]}'
+RECON_SHIM
+chmod +x "$T12_DIR/role-plugin/scripts/projects-status-update.sh"
+rm -f "$T12_DIR/t16-recon.json"
+set +e
+t16b_out=$(cd "$t16_repo" && PATH="$t16_repo/bin:$PATH" \
+  GH_SCAN_FILE="$T12_DIR/scan-role.json" RITE_TEST_RECON_PAYLOAD="$T12_DIR/t16-recon.json" \
+  bash "$T12_DIR/role-plugin/hooks/scripts/projects-board-drift-check.sh" --reconcile --quiet 2>/dev/null)
+t16b_rc=$?
+set -e
+if [ "$t16b_rc" -eq 1 ] && printf '%s' "$t16b_out" | grep -c >/dev/null '==> Total projects-board-drift findings: 1'; then
+  PASS=$((PASS + 1)); echo "  ✓ T-16: cancelled をマップすると同じ行が drift (1 finding, exit 1) になる"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-16: expected exit 1 + 1 finding with cancelled mapped, got rc=$t16b_rc; stdout: $(printf '%s' "$t16b_out" | tr '\n' ' ' | head -c 300)")
+  echo "  ✗ T-16: expected exit 1 + 1 finding with cancelled mapped (exit $t16b_rc)" >&2
+fi
+t16_role=$(jq -r '.status_role // empty' "$T12_DIR/t16-recon.json" 2>/dev/null || echo "")
+if [ "$t16_role" = "cancelled" ]; then
+  PASS=$((PASS + 1)); echo "  ✓ T-16: --reconcile が helper に status_role: cancelled を渡す"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-16: reconcile role expected 'cancelled', got '$t16_role'")
+  echo "  ✗ T-16: reconcile role expected 'cancelled', got '$t16_role'" >&2
+fi
+assert_present "$t16b_out" '(expected 中止) -> reconciled to 中止' "T-16: findings 行が設定した cancelled 列名を示す"
+# A configuration the resolver rejects cannot classify any row: exit 2 with the config
+# error on stderr and no summary line, so lint records an error rather than findings.
+cat > "$t16_repo/rite-config.yml" <<'YAML'
+github:
+  projects:
+    enabled: true
+    project_number: 1
+    fields:
+      status:
+        options:
+          - { role: todo, name: "To-Do" }
+YAML
+set +e
+t16c_out=$(cd "$t16_repo" && PATH="$t16_repo/bin:$PATH" GH_SCAN_FILE="$T12_DIR/scan-role.json" \
+  bash "$DRIFT_SH" --dry-run 2>"$T12_DIR/t16c-stderr.txt")
+t16c_rc=$?
+set -e
+if [ "$t16c_rc" -eq 2 ] && grep -q 'github.projects.fields.status:' "$T12_DIR/t16c-stderr.txt" \
+  && ! printf '%s' "$t16c_out" | grep -c >/dev/null 'Total projects-board-drift findings:'; then
+  PASS=$((PASS + 1)); echo "  ✓ T-16: invalid Status configuration exits 2 with the config error and no summary line"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-16: expected exit 2 + config error + no summary, got rc=$t16c_rc; stdout: $(printf '%s' "$t16c_out" | tr '\n' ' ' | head -c 200); stderr: $(head -c 200 "$T12_DIR/t16c-stderr.txt")")
+  echo "  ✗ T-16: expected exit 2 + config error + no summary (exit $t16c_rc)" >&2
+fi
+# Positive control: the no-op gate still runs before the resolver, so a disabled project
+# with the same invalid options is a clean 0-findings no-op, not a config error.
+cat > "$t16_repo/rite-config.yml" <<'YAML'
+github:
+  projects:
+    enabled: false
+    project_number: 1
+    fields:
+      status:
+        options:
+          - { role: todo, name: "To-Do" }
+YAML
+set +e
+t16d_out=$(cd "$t16_repo" && PATH="$t16_repo/bin:$PATH" bash "$DRIFT_SH" --dry-run --quiet 2>/dev/null)
+t16d_rc=$?
+set -e
+if [ "$t16d_rc" -eq 0 ] && printf '%s' "$t16d_out" | grep -c >/dev/null '==> Total projects-board-drift findings: 0'; then
+  PASS=$((PASS + 1)); echo "  ✓ T-16: projects disabled stays a 0-findings no-op even with an invalid Status configuration"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-16: expected no-op exit 0 with projects disabled, got rc=$t16d_rc")
+  echo "  ✗ T-16: expected no-op exit 0 with projects disabled (exit $t16d_rc)" >&2
 fi
 
 echo ""
@@ -834,17 +1007,32 @@ done
 # Mapping contents, not just the heading: a "未決" / open-question leftover in rule 2
 # would still cite the section name and pass the loop above.
 sot_248=$(awk '/^### 2\.4\.8 Terminal Status Set$/,/^## 2\.5 /' "$TERMINAL_SOT")
-assert_present "$sot_248" "$(printf '| `Cancelled` | Work abandoned — closed as not planned (wontfix, superseded) or as duplicate | `NOT_PLANNED`, `DUPLICATE` |')" \
-  "§2.4.8 Cancelled 行の closure reason 列に DUPLICATE が載る"
+# The set is keyed by role: the row must start with the `cancelled` role and carry both
+# abandonment reasons. An English column name in the key column would make the display
+# name the source of truth again, which is the drift this pin guards against.
+assert_present "$sot_248" "$(printf '| `cancelled` | Work abandoned — closed as not planned (wontfix, superseded) or as duplicate | `NOT_PLANNED`, `DUPLICATE` |')" \
+  "§2.4.8 cancelled role 行の closure reason 列に DUPLICATE が載る"
+assert_present "$sot_248" "$(printf '| `done` | Work completed | `COMPLETED` |')" \
+  "§2.4.8 done role 行が COMPLETED に対応する"
+assert_absent "$sot_248" "$(printf '| `Cancelled` |')" \
+  "§2.4.8 の表が英語表示名 Cancelled をキーにしていない"
+assert_absent "$sot_248" "$(printf '| `Done` |')" \
+  "§2.4.8 の表が英語表示名 Done をキーにしていない"
 assert_absent "$sot_248" "open question" \
   "§2.4.8 rule 2 から open question が消えている"
 assert_absent "$sot_248" "this mapping does not claim" \
   "§2.4.8 rule 2 から this mapping does not claim が消えている"
 RATIONALE="$REPO_ROOT/plugins/rite/skills/lint/references/plugin-checks-rationale.md"
-assert_file_contains "$RATIONALE" '`NOT_PLANNED` / `DUPLICATE` → `Cancelled`' \
-  "plugin-checks-rationale が NOT_PLANNED/DUPLICATE → Cancelled 無警告を述べる"
-assert_file_contains "$RATIONALE" '`COMPLETED` → `Done`' \
-  "plugin-checks-rationale が COMPLETED → Done 無警告を述べる"
+assert_file_contains "$RATIONALE" '`NOT_PLANNED` / `DUPLICATE` → `cancelled`' \
+  "plugin-checks-rationale が NOT_PLANNED/DUPLICATE → cancelled role 無警告を述べる"
+assert_file_contains "$RATIONALE" '`COMPLETED` → `done`' \
+  "plugin-checks-rationale が COMPLETED → done role 無警告を述べる"
+# The destinations are roles, so the display-name form must be gone from both the SoT and
+# the rationale — a leftover `→ \`Cancelled\`` would document a column name as the target.
+assert_file_lacks "$RATIONALE" '→ `(Cancelled|Done)`' \
+  "plugin-checks-rationale が reconcile 先を英語表示名で書いていない"
+assert_file_lacks "$TERMINAL_SOT" '→ `(Cancelled|Done)`' \
+  "projects-integration.md が reconcile 先を英語表示名で書いていない"
 
 echo ""
 echo "==============================="

@@ -22,14 +22,6 @@
 #                       (the lost-cwd robustness path; cleanup runs from main checkout)
 set -euo pipefail
 
-# Clean session-id env. The reaper resolves its session via
-# `issue-claim.sh check`, which is now env-first; this test makes the reaper act as
-# SID_B by writing `.rite-session-id`=SID_B, so the dogfooding session's ambient
-# CLAUDE_CODE_SESSION_ID must not leak in (it would make the reaper resolve a foreign
-# sid instead of SID_B). run-tests.sh unsets the same vars for suite runs; this keeps
-# the standalone run deterministic too.
-unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_test-helpers.sh"
 
@@ -52,6 +44,19 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Cleanup scans TMPDIR for orphan workdirs. Keep that scan away from other
+# tests' concurrently created and removed temporary directories.
+scan_tmp=$(mktemp -d "${TMPDIR:-/tmp}/rite-session-reap-tmp.XXXXXX")
+cleanup_dirs+=("$scan_tmp")
+export TMPDIR="$scan_tmp"
+
+# These fixtures all start from the same one-commit develop tree. Prepare that
+# immutable Git metadata once, then copy it for each independent repository
+# instead of repeating git init/add/commit 54 times. Each copy still owns its
+# refs, index, config and worktree administration data.
+SANDBOX_SEED=$(make_sandbox --branch develop)
+cleanup_dirs+=("$SANDBOX_SEED")
+
 # SID_A = the "working" session that holds the claim; SID_B = the (different)
 # session that triggers the reap (a new session-start / another session's
 # cleanup). session↔worktree is not 1:1 so the reaping session is never the
@@ -64,7 +69,19 @@ SID_B="bbbbbbbb-5555-6666-7777-888888888888"
 # and the claim; `.rite-session-id` is SID_B (the reaping session).
 make_repo() {
   local n="$1" root
-  root=$(make_sandbox --branch develop)
+  root=$(mktemp -d "${TMPDIR:-/tmp}/rite-session-reap-repo.XXXXXX") || {
+    echo "ERROR: make_repo: failed to create Git fixture root" >&2
+    return 1
+  }
+  root=$(cd "$root" && pwd -P) || {
+    echo "ERROR: make_repo: failed to canonicalize Git fixture root" >&2
+    return 1
+  }
+  cp -R "$SANDBOX_SEED/.git" "$root/.git" || {
+    echo "ERROR: make_repo: failed to copy Git fixture seed into $root" >&2
+    return 1
+  }
+  printf 'a\n' > "$root/a"
   printf 'multi_session:\n  enabled: true\n  worktree_base: ".rite/worktrees"\n' > "$root/rite-config.yml"
   printf '%s' "$SID_B" > "$root/.rite-session-id"
   ( cd "$root" && $GIT worktree add -q -b "feat/issue-$n" ".rite/worktrees/issue-$n" >/dev/null 2>&1 )
@@ -74,6 +91,19 @@ make_repo() {
 }
 
 run_pcc() { ( cd "$1" && bash "$PCC" 2>"$1/pcc.err"; echo "rc=$?" ) ; }
+
+echo "=== Fixture allocation failure stops before copying into cwd ==="
+allocation_rc=0
+allocation_out=$(
+  mktemp() { return 1; }
+  # Keep the regression safe even if the allocation check is removed.
+  cp() { echo "unexpected fixture copy" >&2; return 99; }
+  make_repo 0 2>"$scan_tmp/allocation.err"
+) || allocation_rc=$?
+assert "fixture allocation failure is propagated" "1" "$allocation_rc"
+assert "failed fixture does not return cwd" "" "$allocation_out"
+assert "fixture stops at allocation failure" \
+  "ERROR: make_repo: failed to create Git fixture root" "$(cat "$scan_tmp/allocation.err")"
 
 echo "=== TC-1 (AC-1): live claim → worktree NOT reaped ==="
 R=$(make_repo 50); cleanup_dirs+=("$R")
@@ -90,6 +120,7 @@ out=$(run_pcc "$R")
 assert "TC-2 stale worktree reaped" "0" "$( [ -d "$R/.rite/worktrees/issue-51" ] && echo 1 || echo 0 )"
 assert "TC-2 claim file deleted" "0" "$( [ -f "$R/.rite/state/issue-claims/issue-51.json" ] && echo 1 || echo 0 )"
 case "$out" in *"session_worktrees=1"*) pass "TC-2 status reports session_worktrees=1" ;; *) fail "TC-2 status: $out" ;; esac
+assert_not_grep "TC-2 successful claim check writes no ERROR" "$R/pcc.err" "ERROR: "
 
 echo "=== TC-4: merged-into-base branch recovered after reap ==="
 # feat/issue-51 was created from develop with no new commits → merged/even with the
@@ -105,6 +136,21 @@ echo "uncommitted" > "$R/.rite/worktrees/issue-52/dirty.txt"   # untracked → d
 run_pcc "$R" >/dev/null
 assert "TC-3 dirty worktree survives" "1" "$( [ -d "$R/.rite/worktrees/issue-52" ] && echo 1 || echo 0 )"
 assert_grep "TC-3 WARNING emitted for dirty" "$R/pcc.err" "未コミット変更があるため auto-reap をスキップ"
+
+echo "=== TC-3d: dirty worktree under an apostrophe path → 手動確認 hint splits into status + remove ==="
+APOS_DIRTY_BASE=$(mktemp -d); cleanup_dirs+=("$APOS_DIRTY_BASE")
+mkdir "$APOS_DIRTY_BASE/it's"
+R=$(TMPDIR="$APOS_DIRTY_BASE/it's" make_repo 59)
+wt="$R/.rite/worktrees/issue-59"
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+echo "uncommitted" > "$wt/dirty.txt"
+run_pcc "$R" >/dev/null
+assert "TC-3d exactly one 手動確認 hint" "1" "$(grep -c '^  手動確認: ' "$R/pcc.err" || true)"
+line=$(grep '^  手動確認: ' "$R/pcc.err" || true)
+cmd=${line#"  手動確認: "}
+assert "TC-3d hint joins exactly two commands" "1" "$(printf '%s\n' "$cmd" | grep -o ' / 不要なら ' | wc -l | tr -d ' ')"
+assert_shell_words "TC-3d status command" "${cmd%% / 不要なら *}" git -C "$wt" status
+assert_shell_words "TC-3d remove command" "${cmd#* / 不要なら }" git worktree remove "$wt"
 
 echo "=== TC-3b (AC-3/4): ignored ambient files → reaped ==="
 R=$(make_repo 55); cleanup_dirs+=("$R")
@@ -128,6 +174,35 @@ printf 'tracked change\n' >> "$R/.rite/worktrees/issue-56/README.md"
 run_pcc "$R" >/dev/null
 assert "TC-3c tracked-dirty worktree survives" "1" "$( [ -d "$R/.rite/worktrees/issue-56" ] && echo 1 || echo 0 )"
 assert_grep "TC-3c tracked dirty emits WARNING" "$R/pcc.err" "未コミット変更があるため auto-reap をスキップ"
+
+# A sandboxed command leaves its write-block mount anchors behind as 0-byte
+# files with every write bit cleared. The fixture uses a real chmod 0444 so the
+# reap also proves `git worktree remove` copes with read-only files in the tree.
+make_stub() {
+  : > "$1" && chmod 0444 "$1"
+  [ -n "$(find "$1" -prune -type f -perm 0444 -size 0c)" ] \
+    || { echo "ERROR: stub fixture $1 did not keep mode 0444 / size 0" >&2; exit 1; }
+}
+
+echo "=== leftover sandbox stubs only (stale claim) → reaped with its branch ==="
+R=$(make_repo 57); cleanup_dirs+=("$R")
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+make_stub "$R/.rite/worktrees/issue-57/.bashrc"
+make_stub "$R/.rite/worktrees/issue-57/.idea"
+out=$(run_pcc "$R")
+assert "stub-only worktree reaped" "0" "$( [ -d "$R/.rite/worktrees/issue-57" ] && echo 1 || echo 0 )"
+assert "stub-only worktree branch recovered" "0" "$( cd "$R" && $GIT rev-parse --verify feat/issue-57 >/dev/null 2>&1 && echo 1 || echo 0 )"
+case "$out" in *"session_worktrees=1"*) pass "stub-only worktree status reports session_worktrees=1" ;; *) fail "stub-only worktree status: $out" ;; esac
+assert_not_grep "stub-only worktree is not reported as dirty" "$R/pcc.err" "未コミット変更があるため auto-reap をスキップ"
+
+echo "=== leftover sandbox stub + real untracked file → NOT reaped + WARNING ==="
+R=$(make_repo 58); cleanup_dirs+=("$R")
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+make_stub "$R/.rite/worktrees/issue-58/.bashrc"
+echo "uncommitted" > "$R/.rite/worktrees/issue-58/dirty.txt"
+run_pcc "$R" >/dev/null
+assert "stub + real untracked worktree survives" "1" "$( [ -d "$R/.rite/worktrees/issue-58" ] && echo 1 || echo 0 )"
+assert_grep "stub + real untracked emits dirty WARNING" "$R/pcc.err" "未コミット変更があるため auto-reap をスキップ"
 
 echo "=== TC-5 (AC-5): .rite/wiki-worktree + non-issue dirs NOT matched ==="
 R=$(make_repo 53); cleanup_dirs+=("$R")
@@ -396,6 +471,26 @@ assert "B-01 unmerged branch PRESERVED (not destroyed)" "1" "$( cd "$R" && $GIT 
 assert_grep "B-01 unmerged-branch WARNING on stderr" "$R/pcc.err" "未マージのため保持"
 case "$out" in *"session_branches=0"*) pass "B-01 status reports session_branches=0" ;; *) fail "B-01 status: $out" ;; esac
 
+echo "=== B-01b: unmerged branch named with an apostrophe → branch -D hint keeps it one argument ==="
+R=$(make_repo 93); cleanup_dirs+=("$R")
+wt="$R/.rite/worktrees/issue-93"
+apos_branch="feat/issue-93-it's"
+GITC "$wt" branch -m "$apos_branch" >/dev/null 2>&1
+echo "wip" > "$wt/wip.txt"
+GITC "$wt" add wip.txt >/dev/null 2>&1
+GITC "$wt" commit -q -m "wip: unmerged work" >/dev/null 2>&1
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+run_pcc "$R" >/dev/null
+assert "B-01b apostrophe branch PRESERVED" "1" "$( cd "$R" && $GIT rev-parse --verify "$apos_branch" >/dev/null 2>&1 && echo 1 || echo 0 )"
+assert "B-01b exactly one unmerged-branch hint" "1" "$(grep -cF '（不要なら手動削除: ' "$R/pcc.err" || true)"
+line=$(grep -F '（不要なら手動削除: ' "$R/pcc.err" || true)
+assert "B-01b display half keeps literal quoting" \
+  "WARNING: session worktree branch '$apos_branch' は未マージのため保持しました" "${line%%（不要なら手動削除: *}"
+cmd=${line#*（不要なら手動削除: }
+hint_tail="）。"
+assert "B-01b paste command is closed by the display suffix" "$hint_tail" "${cmd: -${#hint_tail}}"
+assert_shell_words "B-01b paste command" "${cmd%"$hint_tail"}" git branch -D "$apos_branch"
+
 echo "=== B-02 (AC-3): squash-merged branch RECORDED in manifest → force-recovered after reap ==="
 R=$(make_repo 91); cleanup_dirs+=("$R")
 # Same unmerged shape as B-01 (a commit not in develop, so `git branch -d` refuses —
@@ -483,6 +578,24 @@ case "$out" in *"session_worktrees=1"*) pass "D-01 status reports session_worktr
 case "$out" in *"session_branches=1"*)  pass "D-01 status reports session_branches=1"  ;; *) fail "D-01 status: $out" ;; esac
 case "$out" in *"status=cleaned"*)      pass "D-01 reports status=cleaned (no false failure)" ;; *) fail "D-01 status: $out" ;; esac
 assert_not_grep "D-01 no misleading 'failed to reap manifest branch' WARNING" "$R/pcc.err" "failed to reap manifest branch"
+assert_not_grep "D-01 successful claim check writes no ERROR" "$R/pcc.err" "ERROR: "
+
+echo "=== D-01 shape + leftover sandbox stubs → reaped with its branch ==="
+R=$(make_repo 114); cleanup_dirs+=("$R")
+echo "squashed" > "$R/.rite/worktrees/issue-114/done.txt"
+GITC "$R/.rite/worktrees/issue-114" add done.txt >/dev/null 2>&1
+GITC "$R/.rite/worktrees/issue-114" commit -q -m "feat: squash-merged work" >/dev/null 2>&1
+make_stub "$R/.rite/worktrees/issue-114/.bashrc"
+make_stub "$R/.rite/worktrees/issue-114/.idea"
+printf 'branch\tfeat/issue-114\n' > "$R/.rite/tmp-artifacts.tsv"
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+rm -f "$R/.rite/state/issue-claims/issue-114.json"
+out=$(run_pcc "$R")
+assert "D-01 + stubs: worktree reaped" "0" "$( [ -d "$R/.rite/worktrees/issue-114" ] && echo 1 || echo 0 )"
+assert "D-01 + stubs: branch force-recovered (gone)" "0" "$( cd "$R" && $GIT rev-parse --verify feat/issue-114 >/dev/null 2>&1 && echo 1 || echo 0 )"
+assert "D-01 + stubs: manifest entry consumed" "0" "$( [ -f "$R/.rite/tmp-artifacts.tsv" ] && echo 1 || echo 0 )"
+case "$out" in *"session_worktrees=1"*) pass "D-01 + stubs: status reports session_worktrees=1" ;; *) fail "D-01 + stubs status: $out" ;; esac
+assert_not_grep "D-01 + stubs: not reported as dirty" "$R/pcc.err" "未コミット変更があるため auto-reap をスキップ"
 
 echo "=== D-02 (control): claim-free FRESH worktree, NOT recorded → survives (age guard intact) ==="
 R=$(make_repo 111); cleanup_dirs+=("$R")
@@ -820,6 +933,135 @@ assert "C-12 composition working tree reaped" "0" "$( [ -d "$R/.rite/worktrees/i
 assert "C-12 composition admin dir reaped" "0" "$( [ -d "$R/.git/worktrees/issue-165" ] && echo 1 || echo 0 )"
 assert "C-12 composition gone from worktree list" "0" "$( list_has_wt "$R" 165 && echo 1 || echo 0 )"
 case "$out" in *"session_worktrees=1"*) pass "C-12 status reports session_worktrees=1" ;; *) fail "C-12 status: $out" ;; esac
+
+# ===========================================================================
+# Why: the corpse reap failure WARNING carries a paste-and-run `rm -rf`. The
+# paths are shell-quoted, so a repo path containing an apostrophe still splits
+# into exactly the working tree and the admin dir, while the display half of the
+# message keeps its literal '...' quoting. The rm failure comes from a PATH stub
+# (not chmod) so the fixture does not depend on the uid.
+# ===========================================================================
+REAL_RM=$(command -v rm)
+RM_STUB_DIR=$(mktemp -d); cleanup_dirs+=("$RM_STUB_DIR")
+cat > "$RM_STUB_DIR/rm" <<EOF
+#!/bin/bash
+for a in "\$@"; do case "\$a" in */.rite/worktrees/issue-*) exit 1 ;; esac; done
+exec "$REAL_RM" "\$@"
+EOF
+chmod +x "$RM_STUB_DIR/rm"
+
+# $1 = label, $2 = repo root, $3 = issue number
+check_corpse_fail_hint() {
+  local label="$1" r="$2" n="$3" wt line cmd admin rc words
+  local prune_tail=" && git worktree prune"
+  wt="$r/.rite/worktrees/issue-$n"
+  admin=$(sed -n 's/^gitdir: //p' "$wt/.git" | head -1)
+  RITE_STATE_ROOT="$r" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+  make_corpse "$r" "$n"
+  age_dir "$wt"
+  ( export PATH="$RM_STUB_DIR:$PATH"; run_pcc "$r" ) >/dev/null
+  assert "$label corpse survives the failed reap" "1" "$( [ -d "$wt" ] && echo 1 || echo 0 )"
+  assert "$label exactly one reap-failure WARNING" "1" "$(grep -cF 'の回収に失敗しました。手動回収: ' "$r/pcc.err" || true)"
+  line=$(grep -F 'の回収に失敗しました。手動回収: ' "$r/pcc.err" || true)
+  assert "$label display half keeps literal quoting" \
+    "WARNING: corpse session worktree '$wt' の回収に失敗しました。" "${line%%手動回収: *}"
+  cmd=${line#*手動回収: }
+  assert "$label paste command ends with the prune step" "$prune_tail" "${cmd: -${#prune_tail}}"
+  cmd=${cmd%"$prune_tail"}
+  rc=0
+  words=$( ( eval "set -- $cmd" && printf '%s\n' "$#" "$@" ) ) || rc=$?
+  assert "$label paste command parses as shell words" "0" "$rc"
+  mapfile -t words <<<"$words"
+  assert "$label word count" "4" "${words[0]:-}"
+  assert "$label word 1" "rm" "${words[1]:-}"
+  assert "$label word 2" "-rf" "${words[2]:-}"
+  assert "$label word 3 is the working tree" "$wt" "${words[3]:-}"
+  assert "$label word 4 is the admin dir" "$admin" "${words[4]:-}"
+}
+
+echo "=== C-13: corpse reap failure under an apostrophe path → rm -rf hint splits into tree + admin dir ==="
+APOS_BASE=$(mktemp -d); cleanup_dirs+=("$APOS_BASE")
+mkdir "$APOS_BASE/it's"
+R=$(TMPDIR="$APOS_BASE/it's" make_repo 170)
+check_corpse_fail_hint "C-13" "$R" 170
+
+echo "=== C-14: corpse reap failure under a plain path → same rm -rf hint arguments ==="
+R=$(make_repo 171); cleanup_dirs+=("$R")
+check_corpse_fail_hint "C-14" "$R" 171
+
+# The admin dir removal has its own paste-and-run `rm -rf`, reached only when the
+# working tree is gone but the admin dir cannot be deleted. A separate stub fails
+# just the admin dir so the C-13 / C-14 stub stays as is.
+ADMIN_RM_STUB_DIR=$(mktemp -d); cleanup_dirs+=("$ADMIN_RM_STUB_DIR")
+cat > "$ADMIN_RM_STUB_DIR/rm" <<EOF
+#!/bin/bash
+for a in "\$@"; do case "\$a" in */.git/worktrees/issue-*) exit 1 ;; esac; done
+exec "$REAL_RM" "\$@"
+EOF
+chmod +x "$ADMIN_RM_STUB_DIR/rm"
+
+echo "=== C-15: corpse admin dir removal failure under an apostrophe path → rm -rf hint names the admin dir ==="
+R=$(TMPDIR="$APOS_BASE/it's" make_repo 172)
+wt="$R/.rite/worktrees/issue-172"
+admin=$(sed -n 's/^gitdir: //p' "$wt/.git" | head -1)
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+make_corpse "$R" 172
+age_dir "$wt"
+( export PATH="$ADMIN_RM_STUB_DIR:$PATH"; run_pcc "$R" ) >/dev/null
+assert "C-15 working tree reaped" "0" "$( [ -d "$wt" ] && echo 1 || echo 0 )"
+assert "C-15 exactly one admin-dir WARNING" "1" "$(grep -cF 'の削除に失敗しました。手動回収: ' "$R/pcc.err" || true)"
+line=$(grep -F 'の削除に失敗しました。手動回収: ' "$R/pcc.err" || true)
+assert "C-15 display half keeps literal quoting" \
+  "WARNING: corpse admin dir '$admin' の削除に失敗しました。" "${line%%手動回収: *}"
+cmd=${line#*手動回収: }
+prune_tail=" && git worktree prune"
+assert "C-15 paste command ends with the prune step" "$prune_tail" "${cmd: -${#prune_tail}}"
+assert_shell_words "C-15 paste command" "${cmd%"$prune_tail"}" rm -rf "$admin"
+
+# ===========================================================================
+# Why: Gate 2 must not read an undeterminable claim state as "no claim".
+# `issue-claim.sh check` exits non-zero when the reaper cannot resolve its own
+# session identity (here: RITE_HOST=claude with the host's runtime session ID
+# unset). Folded into the free arm, that error would reap a manifest-recorded
+# worktree through the age-guard bypass, and an aged unrecorded one through the
+# age guard, with no claim liveness verdict at all. RITE_HOST is set on the
+# reaper call only, so fixture setup and every other case keep the clean env.
+# ===========================================================================
+run_pcc_unresolved_identity() { ( cd "$1" && RITE_HOST=claude bash "$PCC" 2>"$1/pcc.err"; echo "rc=$?" ) ; }
+
+assert_claim_undeterminable_skip() {
+  local label="$1" R="$2" n="$3" out="$4" other
+  assert "$label worktree survives" "1" "$( [ -d "$R/.rite/worktrees/issue-$n" ] && echo 1 || echo 0 )"
+  assert "$label branch survives" "1" "$( cd "$R" && $GIT rev-parse --verify "feat/issue-$n" >/dev/null 2>&1 && echo 1 || echo 0 )"
+  assert_grep "$label Gate 2 WARNING emitted" "$R/pcc.err" "の claim 状態を判定できません"
+  assert_grep "$label check ERROR is surfaced" "$R/pcc.err" "ERROR: cannot resolve session_id for RITE_HOST=claude"
+  for other in "self-exclusion" "worktree liveness" "保護判定に必要な flow-state" "live-cwd guard" "status を判定できません" "未コミット変更があるため"; do
+    assert_not_grep "$label not skipped by another gate ($other)" "$R/pcc.err" "$other"
+  done
+  assert_not_grep "$label skipped before the manifest bypass" "$R/pcc.err" "age guard をバイパスします"
+  case "$out" in *"rc=0"*) pass "$label reaper exits 0 (loop not aborted)" ;; *) fail "$label rc: $out" ;; esac
+  case "$out" in *"session_worktrees=0"*) pass "$label status reports session_worktrees=0" ;; *) fail "$label status: $out" ;; esac
+}
+
+echo "=== G2-01: claim check fails, manifest-recorded FRESH worktree → NOT reaped + WARNING ==="
+R=$(make_repo 180); cleanup_dirs+=("$R")
+echo "squashed" > "$R/.rite/worktrees/issue-180/done.txt"
+GITC "$R/.rite/worktrees/issue-180" add done.txt >/dev/null 2>&1
+GITC "$R/.rite/worktrees/issue-180" commit -q -m "feat: squash-merged work" >/dev/null 2>&1
+printf 'branch\tfeat/issue-180\n' > "$R/.rite/tmp-artifacts.tsv"
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+rm -f "$R/.rite/state/issue-claims/issue-180.json"
+out=$(run_pcc_unresolved_identity "$R")
+assert_claim_undeterminable_skip "G2-01" "$R" 180 "$out"
+assert "G2-01 manifest entry kept" "1" "$( grep -qxF "branch$(printf '\t')feat/issue-180" "$R/.rite/tmp-artifacts.tsv" 2>/dev/null && echo 1 || echo 0 )"
+
+echo "=== G2-02: claim check fails, unrecorded AGED worktree → NOT reaped + WARNING ==="
+R=$(make_repo 181); cleanup_dirs+=("$R")
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+rm -f "$R/.rite/state/issue-claims/issue-181.json"
+age_dir "$R/.rite/worktrees/issue-181"
+out=$(run_pcc_unresolved_identity "$R")
+assert_claim_undeterminable_skip "G2-02" "$R" 181 "$out"
 
 print_summary "$(basename "$0")" \
   "Drift hint: pr-cycle-cleanup.sh Step 5 §8 — Gate 0 self-exclusion (cwd/RITE_WORKTREE == self → never reap) + worktree liveness guard (flow-state signal: a session's active flow-state worktree ref → never reap; reap → null owner ref / claim-join signal — issue's claim holder still active=true, even with a stale 2h heartbeat → never reap) + OS-level live-cwd guard (any live process standing in the tree → never reap, via worktree-live-cwd.sh) + 3 gates (strict ^issue-[0-9]+$ / claim not-live / clean); corpse reap: admin-HEAD-missing AND git-unrecognized trees bypass Gate 3 and reap (rm -rf tree + admin dir) behind claim + 24h age guards — HEAD-present rc≠0 trees stay on the conservative skip; branch recovery: after reap, SAFE-delete the branch (merged → recovered) and FORCE-delete only manifest-recorded (merge-confirmed) branches, preserving unmerged work; free-arm manifest bypass: a claim-free worktree whose checked-out branch is manifest-recorded (merge-confirmed) bypasses the 24h age guard (harness mtime churn would otherwise leak it forever) and its manifest entry is consumed immediately after any successful branch recovery (-d and -D alike, best-effort with WARNING on failure); corpse-path manifest bypass: a corpse cannot resolve its branch (git doesn't recognize the tree) so the branch-name bypass never fires for one — cleanup.md Step 4-W now records the worktree's own PATH (not branch) into the manifest when removal fails/is skipped for busy/sandbox-mask reasons (merge-confirmed only), and the corpse age guard checks that PATH before falling back to the 24h wait, consuming the entry on successful reap (surgical: a mismatched path entry does not bypass); wiki-worktree excluded; session-start best-effort wiring."

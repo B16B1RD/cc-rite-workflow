@@ -112,9 +112,9 @@ assert_grep "prompt generator omits the whole section on the full lane" "$PROMPT
   'COMPLEXITY_LANE == light のときのみ.*full のときは空文字列で、このセクションごと省略する'
 assert_grep "4.5 placeholder table maps the mandate to complexity-lane.md" "$PR_REVIEW" \
   '\| `\{complexity_lane_mandate\}` \| \[complexity-lane\.md\]'
-# full で空文字列にすることを AC-4 の根拠つきで pin する (空見出しの残留は M+ の prompt を変える)。
-assert_grep "4.5 pins the empty-string contract with its AC-4 rationale" "$PR_REVIEW" \
-  '`full` のときは空文字列（セクションごと省略 — 空見出しが残ると M\+ の prompt が変化し AC-4 に違反する）'
+# full で空文字列にすることを「M+ の挙動を変えない」根拠つきで pin する (空見出しの残留は M+ の prompt を変える)。
+assert_grep "4.5 pins the empty-string contract with its M+ invariance rationale" "$PR_REVIEW" \
+  '`full` のときは空文字列（セクションごと省略 — 空見出しが残ると M\+ の prompt が変化し、M\+ の挙動を変えないという契約に反する）'
 # 差分スコープ mandate と直交し共存しうること (両方非空を禁じる読みへの退行を防ぐ)。
 assert_grep "4.5 declares the two mandates orthogonal" "$PR_REVIEW" \
   '\{cycle_scope_mandate\}` とは直交し、両方が非空になりうる'

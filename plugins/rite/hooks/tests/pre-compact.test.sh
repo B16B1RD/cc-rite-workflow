@@ -5,6 +5,7 @@ set -euo pipefail
 
 issue_text() { printf 'Issue #%s' "$1"; }
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Hermeticity guard: flow-state.sh path resolves session_id with
 # priority env CLAUDE_CODE_SESSION_ID > env CLAUDE_SESSION_ID > .rite-session-id
 # file. When this test suite runs inside a live Claude Code
@@ -12,14 +13,12 @@ issue_text() { printf 'Issue #%s' "$1"; }
 # below (only one call site had an inline `env -u` guard) and silently
 # overrides the file-based per-session fixtures, making the hook resolve a
 # nonexistent (or wrong) flow-state file — in the worst case crashing the
-# suite outright under `set -euo pipefail`. Unsetting both here forces every
-# invocation to resolve session_id from the fixture's `.rite-session-id` file,
-# matching the intended test isolation. (The pre-existing inline `env -u`
-# guard further down stays as defense in depth; it's redundant but harmless
-# with this file-wide unset in place.)
-unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
-
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# suite outright under `set -euo pipefail`. `_hermetic-env.sh` clears them
+# (with the rest of the runner's list), so every invocation resolves session_id
+# from the fixture's `.rite-session-id` file. (The inline `env -u` guard further
+# down stays as defense in depth; it's redundant but harmless.)
+# shellcheck source=_hermetic-env.sh
+source "$SCRIPT_DIR/_hermetic-env.sh" || { echo "ERROR: cannot source _hermetic-env.sh" >&2; exit 1; }
 HOOK="$SCRIPT_DIR/../pre-compact.sh"
 TEST_DIR="$(mktemp -d)"
 LAST_STDERR_FILE=""
@@ -74,7 +73,7 @@ create_state_file() {
   mkdir -p "$dir/.rite/sessions"
   printf '%s' "$sid" > "$dir/.rite-session-id"
   local merged
-  if printf '%s' "$content" | grep -q '"schema_version"'; then
+  if printf '%s' "$content" | grep -c >/dev/null '"schema_version"'; then
     merged="$content"
   elif printf '%s' "$content" | jq -e . >/dev/null 2>&1; then
     merged=$(printf '%s' "$content" | jq -c '. + {schema_version: 3}')
@@ -680,7 +679,7 @@ echo "{\"cwd\": \"$dir_749\"}" \
   | bash "$sbx_749/pre-compact.sh" >/dev/null 2>"$LAST_STDERR_FILE" || true
 stderr_749="$(cat "$LAST_STDERR_FILE")"
 
-if printf '%s' "$stderr_749" | grep -qF 'TC-helper-failure simulated flow-state.sh path failure'; then
+if printf '%s' "$stderr_749" | grep -cF >/dev/null 'TC-helper-failure simulated flow-state.sh path failure'; then
   pass "ERROR line from flow-state.sh passed through to caller stderr"
 else
   fail "Expected ERROR pass-through; got stderr: $stderr_749"
@@ -689,7 +688,7 @@ fi
 # emits a "flow-state.sh path resolution failed — skip" WARNING and aborts the
 # flow-state update. The previous "Legacy fallback path was loaded" assertion
 # was removed accordingly.
-if printf '%s' "$stderr_749" | grep -qF 'flow-state.sh path resolution failed'; then
+if printf '%s' "$stderr_749" | grep -cF >/dev/null 'flow-state.sh path resolution failed'; then
   pass "Skip WARNING emitted to stderr (no legacy fallback in v3)"
 else
   fail "Expected skip WARNING; got stderr: $stderr_749"
@@ -710,12 +709,12 @@ LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.active-parse.XXXXXX")"
 echo "{\"cwd\": \"$dir_active_parse\"}" \
   | bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE" || true
 stderr_ap="$(cat "$LAST_STDERR_FILE")"
-if printf '%s' "$stderr_ap" | grep -qF 'workflow snapshot will be skipped'; then
+if printf '%s' "$stderr_ap" | grep -cF >/dev/null 'workflow snapshot will be skipped'; then
   pass "TC-ACTIVE-PARSE-WARNING: corrupt flow-state .active parse surfaces 'workflow snapshot will be skipped' WARNING"
 else
   fail "TC-ACTIVE-PARSE-WARNING: WARNING missing — recovery may silently lose workflow snapshot. stderr: $stderr_ap"
 fi
-if printf '%s' "$stderr_ap" | grep -qE 'jq rc=[0-9]+'; then
+if printf '%s' "$stderr_ap" | grep -cE >/dev/null 'jq rc=[0-9]+'; then
   pass "TC-ACTIVE-PARSE-WARNING: WARNING carries jq rc so triagers can distinguish failure modes"
 else
   fail "TC-ACTIVE-PARSE-WARNING: WARNING missing rc capture — silent-failure regression"
@@ -740,12 +739,12 @@ dir_mvfail="$TEST_DIR/tc-mv-fail"
 mkdir -p "$dir_mvfail"
 create_state_file "$dir_mvfail" '{"active":true,"phase":"implement","updated_at":"2026-01-01T00:00:00+00:00"}'
 stderr_mvfail=$(echo "{\"cwd\": \"$dir_mvfail\"}" | PATH="$shim_dir:$PATH" bash "$HOOK" 2>&1 >/dev/null || true)
-if printf '%s' "$stderr_mvfail" | grep -qE 'mv flow-state updated_at failed \(rc=[1-9][0-9]*'; then
+if printf '%s' "$stderr_mvfail" | grep -cE >/dev/null 'mv flow-state updated_at failed \(rc=[1-9][0-9]*'; then
   pass "TC-FLOW-MV-FAIL: flow-state mv WARNING carries real rc (≥1)"
 else
   fail "TC-FLOW-MV-FAIL: missing rc-carrying WARNING (bash-! antipattern would collapse to rc=0). stderr: $stderr_mvfail"
 fi
-if printf '%s' "$stderr_mvfail" | grep -qE 'mv compact state failed \(rc=[1-9][0-9]*'; then
+if printf '%s' "$stderr_mvfail" | grep -cE >/dev/null 'mv compact state failed \(rc=[1-9][0-9]*'; then
   pass "TC-COMPACT-MV-FAIL: compact_state mv WARNING carries real rc"
 else
   fail "TC-COMPACT-MV-FAIL: missing rc-carrying WARNING. stderr: $stderr_mvfail"
@@ -764,7 +763,7 @@ dir_chmod="$TEST_DIR/tc-chmod-fail"
 mkdir -p "$dir_chmod"
 create_state_file "$dir_chmod" '{"active":true,"phase":"implement","updated_at":"2026-01-01T00:00:00+00:00"}'
 stderr_chmod=$(echo "{\"cwd\": \"$dir_chmod\"}" | PATH="$shim_chmod_dir:$PATH" bash "$HOOK" 2>&1 >/dev/null || true)
-if printf '%s' "$stderr_chmod" | grep -qE 'chmod 600 .* failed \(rc=13\)'; then
+if printf '%s' "$stderr_chmod" | grep -cE >/dev/null 'chmod 600 .* failed \(rc=13\)'; then
   pass "TC-CHMOD-FAIL: chmod WARNING carries the real rc (13), not bash-! collapsed value"
 else
   fail "TC-CHMOD-FAIL: chmod WARNING missing or rc collapsed. stderr: $stderr_chmod"

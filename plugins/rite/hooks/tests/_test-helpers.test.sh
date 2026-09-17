@@ -636,6 +636,128 @@ else
   outer_pass "TC-16.3: assert_mutant_changed rejects diff rc>=2"
 fi
 
+# === TC-17: assert_shell_words ===
+echo
+echo "TC-17: assert_shell_words"
+
+# $1 = TC id, $2 = expected "PASS=N FAIL=M", $3 = cmd, rest = expected words.
+# Counts are pinned exactly so a parse failure that still emits word asserts,
+# or a word-count mismatch counted as passing words, is caught.
+check_shell_words_counts() {
+  local id="$1" expected="$2" cmd="$3" state
+  shift 3
+  state=$(bash -c 'source "$1"; shift; assert_shell_words probe "$@" >/dev/null; echo "PASS=$PASS FAIL=$FAIL"' _ "$HELPERS" "$cmd" "$@")
+  if [ "$state" = "$expected" ]; then
+    outer_pass "$id: $expected"
+  else
+    outer_fail "$id: expected '$expected' actual '$state'"
+  fi
+}
+
+apos_path="/tmp/it's dir/wt"
+printf -v apos_q '%q' "$apos_path"
+check_shell_words_counts "TC-17.1 %q-escaped value splits into the expected words" \
+  "PASS=4 FAIL=0" "rm -rf $apos_q" rm -rf "$apos_path"
+check_shell_words_counts "TC-17.2 hand-written '...' around an apostrophe fails once, with no word asserts" \
+  "PASS=0 FAIL=1" "rm -rf '$apos_path'" rm -rf "$apos_path"
+check_shell_words_counts "TC-17.3 a changed argument fails its word assert" \
+  "PASS=3 FAIL=1" "rm -rf $apos_q/x" rm -rf "$apos_path"
+check_shell_words_counts "TC-17.4 an extra word fails the word count" \
+  "PASS=3 FAIL=1" "rm -rf $apos_q extra" rm -rf "$apos_path"
+
+# === TC-18: ambient runtime identity is cleared on source ===
+echo
+echo "TC-18: sourcing clears ambient runtime identity / state-root variables"
+
+hermetic_vars=(CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID CODEX_THREAD_ID GROK_SESSION_ID RITE_HOST
+  CLAUDE_PLUGIN_ROOT CLAUDE_ENV_FILE RITE_STATE_ROOT RITE_RUNTIME_EXPLICIT _RITE_HOOK_REDIRECTED)
+# `${V+set}` tells unset apart from set-to-empty, so a helper that only blanks a
+# variable still fails. The child starts from `/` so the helper has to locate its
+# sibling file from its own path, not from the caller's cwd.
+hermetic_probe=$(cd / && env CLAUDE_CODE_SESSION_ID=x CLAUDE_SESSION_ID=x CODEX_THREAD_ID=x \
+  GROK_SESSION_ID=x RITE_HOST=claude CLAUDE_PLUGIN_ROOT=/nonexistent CLAUDE_ENV_FILE=/nonexistent \
+  RITE_STATE_ROOT=/nonexistent RITE_RUNTIME_EXPLICIT=1 _RITE_HOOK_REDIRECTED=1 \
+  bash -c 'for v in "$@"; do printf "%s before=%s\n" "$v" "${!v+set}"; done
+    source "$0" >/dev/null
+    for v in "$@"; do printf "%s after=%s\n" "$v" "${!v+set}"; done' "$HELPERS" "${hermetic_vars[@]}" 2>&1) || true
+for v in "${hermetic_vars[@]}"; do
+  if printf '%s\n' "$hermetic_probe" | grep -cx >/dev/null "$v before=set" \
+    && printf '%s\n' "$hermetic_probe" | grep -cx >/dev/null "$v after="; then
+    outer_pass "TC-18.1: $v is set before source and unset after"
+  else
+    outer_fail "TC-18.1: $v not cleared on source: $(printf '%s' "$hermetic_probe" | grep "^$v " | tr '\n' '|')"
+  fi
+done
+
+missing_hermetic_dir=$(mktemp -d)
+cp "$HELPERS" "$missing_hermetic_dir/_test-helpers.sh"
+missing_hermetic_stdout="$missing_hermetic_dir/stdout"
+missing_hermetic_stderr="$missing_hermetic_dir/stderr"
+missing_hermetic_rc=0
+bash -c 'source "$1"; echo reached-after-source' _ \
+  "$missing_hermetic_dir/_test-helpers.sh" \
+  >"$missing_hermetic_stdout" 2>"$missing_hermetic_stderr" \
+  || missing_hermetic_rc=$?
+if [ "$missing_hermetic_rc" -eq 1 ]; then
+  outer_pass "TC-18.2: missing _hermetic-env.sh exits 1 without relying on set -e"
+else
+  outer_fail "TC-18.2: missing _hermetic-env.sh must exit 1 (actual rc=$missing_hermetic_rc)"
+fi
+if grep -Fq 'ERROR: _test-helpers.sh: cannot source _hermetic-env.sh' "$missing_hermetic_stderr"; then
+  outer_pass "TC-18.3: missing _hermetic-env.sh names the source failure on stderr"
+else
+  outer_fail "TC-18.3: missing _hermetic-env.sh diagnostic absent from stderr: $(tr '\n' '|' < "$missing_hermetic_stderr")"
+fi
+if ! grep -Fq 'reached-after-source' "$missing_hermetic_stdout"; then
+  outer_pass "TC-18.4: caller stops at the missing hermetic list"
+else
+  outer_fail "TC-18.4: caller continued after the missing hermetic list"
+fi
+rm -rf "$missing_hermetic_dir"
+
+hermetic_source_line='source "$SCRIPT_DIR/_hermetic-env.sh" || { echo "ERROR: cannot source _hermetic-env.sh" >&2; exit 1; }'
+if grep -Fxq "$hermetic_source_line" "$SCRIPT_DIR/run-tests.sh" \
+  && ! grep -Eq '^unset .*CLAUDE_CODE_SESSION_ID' "$SCRIPT_DIR/run-tests.sh"; then
+  outer_pass "TC-18.5: run-tests.sh fail-loud sources the shared list instead of its own unset"
+else
+  outer_fail "TC-18.5: run-tests.sh must fail-loud source _hermetic-env.sh and carry no inline unset"
+fi
+
+# Tests that reset identity mid-file and then export a chosen host keep their own unset.
+inline_unsets=$(grep -lE '^unset .*CLAUDE_CODE_SESSION_ID' "$SCRIPT_DIR"/*.test.sh \
+  | grep -vE '/(host-runtime|runtime-session-identity)\.test\.sh$' || true)
+if [ -z "$inline_unsets" ]; then
+  outer_pass "TC-18.6: no test carries a file-level copy of the unset list"
+else
+  outer_fail "TC-18.6: file-level unset copies remain: $(printf '%s' "$inline_unsets" | xargs -n1 basename | tr '\n' ' ')"
+fi
+
+# These tests do not source _test-helpers.sh, so they read the list directly.
+for t in post-compact post-tool-wm-sync crash-resume cleanup-on-session-end cleanup-work-memory \
+  issue-comment-wm-sync pre-compact session-ownership-regression session-end session-start; do
+  if grep -Fxq "$hermetic_source_line" "$SCRIPT_DIR/$t.test.sh"; then
+    outer_pass "TC-18.7: $t.test.sh fail-loud sources _hermetic-env.sh"
+  else
+    outer_fail "TC-18.7: $t.test.sh must fail-loud source _hermetic-env.sh"
+  fi
+done
+
+# The three tests below allocate their cleanup root themselves. Keep the
+# fail-loud hermetic source before the first allocation so a missing shared list
+# cannot leave a temporary directory behind.
+for t in session-start cleanup-work-memory issue-comment-wm-sync; do
+  test_file="$SCRIPT_DIR/$t.test.sh"
+  script_dir_line=$(awk '/^SCRIPT_DIR=/{print NR; exit}' "$test_file")
+  hermetic_line=$(awk '/^source "\$SCRIPT_DIR\/_hermetic-env\.sh"/{print NR; exit}' "$test_file")
+  mktemp_line=$(awk '/^TEST_DIR=.*mktemp -d/{print NR; exit}' "$test_file")
+  if [ -n "$script_dir_line" ] && [ -n "$hermetic_line" ] && [ -n "$mktemp_line" ] \
+    && [ "$script_dir_line" -lt "$hermetic_line" ] && [ "$hermetic_line" -lt "$mktemp_line" ]; then
+    outer_pass "TC-18.8: $t.test.sh sources _hermetic-env.sh before mktemp"
+  else
+    outer_fail "TC-18.8: $t.test.sh must source _hermetic-env.sh after SCRIPT_DIR and before mktemp"
+  fi
+done
+
 # === Summary ===
 echo
 echo "─── $(basename "$0") summary ──────────────────────"

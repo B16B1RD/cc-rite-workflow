@@ -22,7 +22,8 @@ When `parallel.mode: "worktree"` is set in `rite-config.yml`, each parallel agen
 - [SSH host alias 経由の git push/fetch が sandbox のネットワーク許可リストでブロックされる](#ssh-host-alias-経由の-git-pushfetch-が-sandbox-のネットワーク許可リストでブロックされる) - Bad Gateway failures when `origin` uses an SSH host alias remote
 - [worktree cwd から main checkout 配下への書き込みが sandbox の write 許可リストでブロックされる](#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる) - State writes rejected as read-only filesystem after `EnterWorktree`
 - [sandbox write-allowlist 設定の自動化（Decision Log）](#sandbox-write-allowlist-設定の自動化decision-log) - Why setup Phase 4.8 auto-writes `sandbox.filesystem.allowWrite` instead of guidance-only
-- [sandbox の write-block マスクマウントが git status に幽霊 untracked エントリを生む](#sandbox-の-write-block-マスクマウントが-git-status-に幽霊-untracked-エントリを生む) - Ghost `??` entries from sandbox `/dev/null` bind mounts, not real files
+- [main checkout cwd から wiki worktree の管理ディレクトリへの書き込みが sandbox にブロックされる](#main-checkout-cwd-から-wiki-worktree-の管理ディレクトリへの書き込みが-sandbox-にブロックされる) - `index.lock` cannot be created in `.git/worktrees/wiki-worktree/`; detected as `reason=sandbox-mask`
+- [sandbox の write-block マスクマウントが git status に幽霊 untracked エントリを生む](#sandbox-の-write-block-マスクマウントが-git-status-に幽霊-untracked-エントリを生む) - Ghost `??` entries from sandbox `/dev/null` bind mounts, and the 0-byte read-only stubs they leave behind
 
 ---
 
@@ -347,8 +348,18 @@ reaped lazily by `pr-cycle-cleanup.sh` Step 5.
 | 既存 worktree へ入場する native ツールが利用可能 | `EnterWorktree(path)` 等の公開 schema に従って入場し、下記検証を実行する |
 | native 不在、各 shell の `workdir` 指定が利用可能 | 全呼び出しに専用 worktree の絶対 `workdir` を指定する。`git rev-parse --show-toplevel` / `git branch --show-current` の読取専用 probe が期待値と一致すれば、下記の所有権・state 確定へ進む |
 | native / `workdir` 不在、各 shell で明示 `cd` が可能 | 毎回 `cd "{wt_path}" && ...` で実行し、同じ検証を通す。前の shell の cwd 永続化は仮定しない |
-| native が権限拒否 / 隔離ガードで失敗 | 代替経路を試さず停止し、ホストの正式な承認手順へ。helper 内の `cd` 等で拒否を迂回しない |
+| native が権限拒否 / 隔離ガードで失敗（入場そのものが拒否された場合に限る） | 代替経路を試さず停止し、ホストの正式な承認手順へ。helper 内の `cd` 等で拒否を迂回しない |
 | その他の native 失敗 / 検証失敗 / 適合経路なし | worktree と state を保持して診断・停止。下記の native 失敗診断または `/rite:recover` を案内する |
+| 入場は検証済みで成功しているが、以後の複合 shell コマンドがホストの隔離ガードに拒否される | 作業先を変えない。拒否されたシェルブロックをスクラッチ領域のスクリプトファイルへ書き出し、単一コマンド `bash {script_path}` で実行する（下記「入場後のガード拒否の退路」） |
+
+**入場後のガード拒否の退路**: 判定表の最終行に該当するのは、入場の検証（下記「変更前検証」の `WORKTREE_INVARIANT=ok`）が済んだ後に、スキルのシェルブロックがホストの隔離ガードに「worktree 内に留まることを検証できない」旨で拒否される場合である。拒否されやすい形は、変数代入とコマンド置換を組み合わせたブロック、共有 helper の `source` を伴うブロック、`git` を含む複数行の複合コマンドである。入場そのものが拒否された場合はこの行ではなく「native が権限拒否 / 隔離ガードで失敗」行を適用する。拒否されたブロック自身が `cd` / `git -C` / `workdir` で `{wt_path}` 外（main checkout を含む）を作業先にする場合も本行に該当しない。退出は「退出」節を適用し、main checkout 操作はスキルが定める経路（cleanup の委譲モード等）に従い、経路の定めがなければ代替経路を試さず停止する。いずれもスクリプト化しない。既存 helper による main root の共有 state 更新や、作業先を worktree に保ったまま絶対パスで行う読み書きはこの除外に含まない。退路は次のとおり。
+
+- 拒否されたシェルブロックを、そのままの内容でスクラッチ領域（ホストが session 用に用意する一時ディレクトリ）のスクリプトファイルへ書き出し、`bash {script_path}` の単一コマンドで実行する。ファイル先頭で `cd "{wt_path}"` を行い、作業先は検証済み worktree のまま固定する
+- 置き場所はスクラッチ領域に限る。worktree 内や main checkout 配下へ書き出さない（作業ツリーを汚し、diff と commit 対象に混入する）
+- 退路を採っても「作業先固定」「所有者の確定」「変更前検証」の各手順は省略しない。スクリプト化は実行形式を変えるだけで、作業先を変えない。helper 内の `cd` や main checkout への退避で拒否を迂回する経路ではない
+- 採用したことを、他の入場経路と同様に work memory へ記録する
+- スクリプトファイルを書き出せない（スクラッチ領域が書込不可）場合は退路を採らず停止し、作業先と state を保持したまま `/rite:recover` を案内する
+- スクリプトファイル化した単一コマンドもガードに拒否される場合は退路が成立しない。さらなる代替形を試さず停止し、ホストの正式な承認手順へ案内する
 
 **作業先固定**: shell の読取・編集・検証・git 操作はすべて選択した経路で実行する。ファイルツールには検証済み worktree 配下の絶対パスを渡す。委譲先にも絶対ルート・branch・この検証手順・main checkout 編集禁止を渡し、子の最初の結果で照合する。共有 state は `state-path-resolve.sh` が返した main root に対し既存 helper で更新する。
 
@@ -394,6 +405,8 @@ echo "[CONTEXT] WORKTREE_INVARIANT=ok; toplevel=$cur_top"
 ```
 
 **退出**: cleanup は削除前に同じ所有者・branch・worktree の照合と既存 dirty ゲートを通す。native 入場経路では `ExitWorktree(action: "keep")` 等で退出し、不在時の検証済み `workdir` / 毎回 `cd` 経路では以後の全操作先を検出済み `main_root` に切り替える。次をその作業先で実行し、成功後だけ既存 teardown helper を呼ぶ。native 退出の拒否・失敗、main へのアクセス不可では削除せず既存 cleanup 委譲経路で未完了を報告する。`in_worktree_unrecorded` は所有する保存 state が未確認なので従来どおり委譲し、ツール不在だけから所有権を補完しない。
+
+**退出確認の実行条件（native 経路）**: native 入場経路では、下記の退出確認ブロックを `cd` / `git -C` / `workdir` 指定のいずれも伴わない独立したシェル呼び出しで実行する。確認したいのはホストがセッション単位で保持する作業先であり、シェル内で `cd` した先ではない。退出に使ったシェルや helper 内で main checkout へ `cd` した後に同じシェルで確認すると、ホストの作業先が前の worktree に残っていても toplevel が main root を指して合格してしまう。`workdir` / 毎回 `cd` 経路はホストの作業先を持たないため従来どおり検出済み `main_root` を作業先として実行する。
 
 ```bash
 # worktree-exit-check
@@ -456,6 +469,32 @@ Native absence uses [Host worktree execution](#host-worktree-execution), includi
 explicit workdir and absolute-path editing checks. Failures from other causes
 (e.g. the worktree path vanished) follow the normal `ensure_session_worktree` rebuild
 path (`WT_ENSURE=reconstructed`), not the restart guidance.
+
+### native 入場が前のセッション worktree への残留で拒否される
+
+native 入場経路のホストは、セッション単位の作業先が既に別の worktree にあると、次の worktree への入場を「このセッションから切り替えられる worktree ではない」等の理由で拒否することがある。前の Issue の cleanup が native 退出を呼ばず（上記「退出確認の実行条件」を満たさない確認で合格していた場合を含む）、ホストの作業先が前のセッション worktree に残ったまま次の Issue を open したときに起きる。`/rite:open`（Step 2.3-W）と `/rite:recover`（Phase 3.1.5）の native 入場失敗診断は、上記「not in a git repository」・path 消失の切り分けに加えて本節を適用する。手順は本節だけが持ち、呼び出し元は参照する。
+
+native 入場が失敗したら、次を**この順**で行う:
+
+1. **残留診断**: `cd` / `git -C` / `workdir` 指定を伴わない独立したシェル呼び出しで `git rev-parse --show-toplevel` と `git worktree list --porcelain` を取得する。取得した toplevel が `multi_session.worktree_base` 配下の登録済みセッション worktree（`{worktree_base}/issue-{N}` 形）で、かつ入場先 `{wt_path}` と異なる場合に限り残留と判定する。
+2. **保持しての native 退出**: `ExitWorktree(action: "keep")` 等、worktree を保持する指定で native 退出する。前の worktree もそのブランチも削除しない。
+3. **main root 確認**: 手順 1 と同じ独立したシェル呼び出しで toplevel を再取得し、main root と一致することを確認する。
+4. **再入場 1 回**: `{wt_path}` へ native 入場を 1 回だけ再試行する。
+5. **変更前検証**: 再入場後は上記 `worktree-execution-check` を実行し、`WORKTREE_INVARIANT=ok` を前提条件として続行する。自動退出した事実（前の worktree の絶対パス）を 1 行で出力し、work memory の採用経路記録に含める。
+
+発火しない条件（既存の切り分けまたは停止に進む）:
+
+- 手順 1 の toplevel 取得自体が失敗した
+- toplevel が main root 自身、未登録パス、ホスト管理配下など、登録済みセッション worktree ではない
+- toplevel が入場先 `{wt_path}` と同じ worktree（残留ではない。変更前検証へ進む）
+- native 入場 / 退出機能が当該セッションに無い（`workdir` / 毎回 `cd` 経路はそのまま）
+
+停止する条件（worktree と state を保持し、前の worktree と入場先の絶対パスを含む診断を出して `/rite:recover {issue_number}` を案内する）:
+
+- 手順 2 の native 退出が拒否・失敗した、または手順 3 の toplevel が main root でない → 再入場を試さない
+- 手順 4 の再入場も失敗した → 2 回目の再試行をしない
+
+本節の自動退出で前の worktree やブランチを削除してはならない。再入場を 2 回以上試してはならず、main checkout での `git switch -c` へ切り替えてもならない。native 退出の拒否・隔離ガードを helper 内の `cd` 等で迂回してはならない。条件はいずれも当該セッションで観測した native 入場 / 退出機能の有無で書き、ホスト名・ツール名で分岐しない。
 
 ### Branch-creation worktree invariant (marker 再確定・silent fallback 排除)
 
@@ -668,11 +707,37 @@ flock 排他の前提）ため、worktree cwd からの state 書込は構造的
   再起動が必要かは公式ドキュメントで明言されていない。安全側に倒し、案内メッセージでは「次回セッション
   から有効になる場合がある」旨を明記する。
 
+### main checkout cwd から wiki worktree の管理ディレクトリへの書き込みが sandbox にブロックされる
+
+sandbox が有効な環境で、main checkout を cwd として `wiki-numref-precommit.sh`（`/rite:wiki-ingest` ステップ 5.0.n）
+や `wiki-worktree-commit.sh --commit-only`（ingest ステップ 5.1、`/rite:wiki-lint` ステップ 8.3）を実行すると、
+wiki worktree の管理ディレクトリ（`.git/worktrees/wiki-worktree/`）に `index.lock` を作れず失敗することがある。
+
+**症状**: `Unable to create '.git/worktrees/wiki-worktree/index.lock'`（読み込み専用ファイルシステム）。wiki worktree
+の作業ツリーには書き込めるため、ページの Write は成功し、stage / commit だけが失敗する。同じコマンドを sandbox 外で
+実行すると成功する。
+
+**原因**: sandbox が管理ディレクトリを read-only でマウントしている。git の診断は lock ファイルの作成失敗としか
+言わず、sandbox を名指ししない。
+
+**検知**: 両 script は最初の index 書き込みの前に `hooks/scripts/lib/worktree-git.sh` の `worktree_admin_writable`
+で管理ディレクトリに一時ファイルを作れるか試す。作れなければ何も stage せず、`wiki-numref-precommit.sh` は
+`[CONTEXT] WIKI_INGEST_NUMREF=error; reason=sandbox-mask`、`wiki-worktree-commit.sh` は `reason=sandbox-mask` / exit 6
+を出す。`--dry-run` / 変更なしの経路は管理ディレクトリに書かないため判定しない。`--push-only` も通常は
+index を書かないため判定しないが、non-fast-forward の再試行では fetch + rebase が管理ディレクトリへ
+書き込み、マスク下の失敗を rc=4 の conflict として報告する場合がある。
+
+**対処**: 拒否された当該 bash block だけを `dangerouslyDisableSandbox: true` で 1 回だけ再実行してよい（ユーザー
+確認は不要 — 既知の環境制約）。stage / commit の再実行は管理ディレクトリを壊さない。これは同じマスク下で
+`git worktree remove` を再試行してはならない（管理ディレクトリが半壊する）のとは扱いが異なる。再実行でも
+`sandbox-mask` が出る場合は sandbox 起因ではない（権限・容量）ため再試行せず、stderr が名指しした管理ディレクトリを
+確認して停止する。
+
 ### sandbox の write-block マスクマウントが `git status` に幽霊 untracked エントリを生む
 
 sandbox が有効な環境（worktree の内外を問わない）では、`git status` にリポジトリ直下の `.bashrc` /
 `.gitconfig` / `.claude/settings.json` / `.mcp.json` 等が `??`（未追跡）として列挙されることがある。
-これは実在の未追跡ファイルではない。
+sandbox の内側ではデバイスノード、sandbox 終了後は 0 バイトの空ファイル（スタブ）であり、ユーザーの作業内容ではない。
 
 **症状**:
 
@@ -695,34 +760,54 @@ crw-rw-rw- 1 nobody nogroup 1, 3  7月 20 09:39 .bashrc
 dotfile、`.claude/settings.json`、`.mcp.json` 等）へ `/dev/null` のキャラクタデバイスを bind mount
 する。結果としてそのパス上には実ファイルではなくデバイスノードが存在する状態になり、`git status` は
 これを「git 管理外の新規パス」として `??` に分類する。しかし対象は実ファイルの内容変化ではなくデバイス
-ノードであり、作業ツリーの実体は変化していない（sandbox 外で同じ `git status` を実行すると clean に
-なる）。
+ノードであり、ユーザーの作業内容は変化していない。
+
+**sandbox 終了後に残るスタブ**: mount の土台として作られたパスは、sandbox 付きコマンドの終了後も
+0 バイト・書き込みビットなし（`-r--r--r--`）の通常ファイルとして残ることがある。sandbox 外（session-start
+の reaper など）から見るとこれは通常の `??` エントリであり、`test -c` には一致しない。同じ形のスタブは
+git dir にも残りうる（例: `.git/config.lock`）。この lock が残ると、lock を要する git 操作（`git config`
+の書き込み、`git branch -D` 等）が `could not lock config file` で失敗し続ける。
 
 マスクの形状は 2 種ある。上記の `/dev/null` character device 形に加え、既存の実ファイル（`.git/worktrees/<name>/`
 の `config.worktree` / `commondir` 等）には実ファイル自体を read-only で bind mount する形が張られる。
 後者は `ls -la` でも通常ファイル（`-`）に見えるため `test -c` では検知できず、mount 表（`/proc/self/mountinfo`
-または `mountpoint`）との照合が要る。幽霊 `??` エントリを生むのは前者のみで、`git-status-filtered.sh` の
-`test -c` 判定は変わらない。worktree 削除前の管理ディレクトリ側の検知（両形状）は
-`hooks/scripts/cleanup-session-worktree-teardown.sh` が担う。
+または `mountpoint`）との照合が要る。幽霊 `??` エントリを生むのは前者（と、その終了後に残るスタブ）のみで、
+後者は `git-status-filtered.sh` の判定対象ではない。worktree 削除前の管理ディレクトリ側の検知（両形状）は
+`hooks/scripts/cleanup-session-worktree-teardown.sh` が担う。wiki worktree への stage / commit 前の書き込み可否は
+`hooks/scripts/lib/worktree-git.sh` の `worktree_admin_writable` が一時ファイルの作成で判定する（[上記節](#main-checkout-cwd-から-wiki-worktree-の管理ディレクトリへの書き込みが-sandbox-にブロックされる)）。
 
 **列挙は例示であり網羅ではない**: 上記のパスは観測された一例に過ぎず、どのパスが保護対象になるかは
 sandbox 設定に依存して変わる。ファイル名の allowlist で判定してはならない。判定は常に下記の機構ベース
-（`test -c`）で行う。
+（デバイスは `test -c`、スタブはサイズとモードビット）で行う。
 
 **実在確認手順**:
 
 - 当該パスがキャラクタデバイスかどうかを判定する: `test -c <path> && echo "ghost mount" || echo "real file"`
-- または sandbox の外側（通常のシェル）で同じ `git status` を実行し、差分が実在するか確認する
+- sandbox 外ではスタブの形かどうかを判定する: `find <path> -prune -type f -size 0c ! -perm -200 ! -perm -020 ! -perm -002`
+  が出力すればスタブ。ユーザーが作った空ファイルは書き込みビットを持つため一致しない
 
 **canonical な判定経路**: dirty 判定を行う hook / script は `hooks/scripts/lib/git-status-filtered.sh`
-を経由する。この helper は `git status --porcelain -z` の出力のうち `??` エントリで `test -c` により
-キャラクタデバイスと判定されたものだけを機械的に除外し、それ以外の全ステータス（staged / unstaged /
-unmerged / renamed / copied）はそのまま通す。ファイル名 allowlist を持たない機構ベース設計のため、
-sandbox 設定が変わっても追随できる。
+を経由する。この helper は `git status --porcelain -z` の出力のうち、`test -c` でキャラクタデバイスと判定された
+`??` エントリと、0 バイト・書き込みビットなし（u/g/o のいずれも）の通常ファイル（symlink は除く）である
+`??` エントリだけを機械的に除外し、それ以外の全ステータス（staged / unstaged / unmerged / renamed /
+copied）はそのまま通す。サイズやモードを読めないエントリは除外しない（dirty 扱い）。モードビットで判定
+するため root 実行でも結果は変わらない。除外したスタブは件数とパスを 1 行の stderr WARNING に出す。
+ファイル名 allowlist を持たない機構ベース設計のため、sandbox 設定が変わっても追随できる。
+
+共通 git dir の直下（`*.lock`）に残ったスタブの lock は `hooks/session-start.sh` が main checkout での
+セッション開始時に検知し、パスと手動削除の手順を hook の stderr に WARNING として書く。直下以外の lock は
+検知しない。SessionStart hook は exit 0 で終わるため、この stderr は Claude Code の debug ログにしか残らず、
+会話にもユーザーにも表示されない。`could not lock config file` で git 操作が失敗し続けるときは、sandbox の外
+（ユーザーの端末）で
+`find "$(git rev-parse --git-common-dir)" -maxdepth 1 -name '*.lock' -type f -size 0c ! -perm -200 ! -perm -020 ! -perm -002`
+を実行して自分で確かめる。この現象が観測された sandbox 内では、この種の lock パスがデバイスとして
+マスクされるため `find -type f` に一致せず、git の lock 操作も失敗する。実行中の git が持つ本物の lock と
+取り違えるとその操作を壊すため、自動では削除しない。
 
 **実行エージェントへの指示**: この現象で列挙される `??` エントリを「未追跡ファイルの異常」「リポジトリ
-汚染」として報告しない。削除・`git add`・コミットを試みない。dirty 判定が必要な箇所では `git status`
-を直接パースせず `git-status-filtered.sh` を使う。
+汚染」として報告しない。sandbox の内側から削除・`git add`・コミットを試みない。スタブとスタブの lock の削除は、sandbox 付きコマンドが動いて
+いないことを確かめたうえでユーザーが行う。dirty 判定が必要な箇所では `git status` を直接パースせず
+`git-status-filtered.sh` を使う。
 
 **関連 Issue**: （`git-status-filtered.sh` 導入元）/ （drift-hash 経路の sandbox 内外
 コンテキスト混在による誤警報の残件、本節の対象外）

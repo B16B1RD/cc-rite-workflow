@@ -26,17 +26,6 @@
 # Usage: bash plugins/rite/hooks/tests/work-memory-update.test.sh
 set -euo pipefail
 
-# Hermeticity guard: flow-state.sh path resolves session_id with
-# priority env CLAUDE_CODE_SESSION_ID > env CLAUDE_SESSION_ID > .rite-session-id
-# file. When this test suite runs inside a live Claude Code
-# session, that session's own id leaks into the `flow-state.sh get --field ...`
-# call inside work-memory-update.sh's run_update() helper (no `--session`
-# passed) and silently overrides the file-based per-session fixtures, making
-# the read resolve a nonexistent (or wrong) flow-state file. Unsetting both
-# here forces every invocation to resolve session_id from the fixture's
-# `.rite-session-id` file, matching the intended test isolation.
-unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID GROK_SESSION_ID CODEX_THREAD_ID RITE_HOST
-
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 HELPER="$SCRIPT_DIR/../work-memory-update.sh"
@@ -702,7 +691,7 @@ warn19=$(printf '%s' "$err19" | grep "$WARN_CORRUPT_FWD" | head -1) || true
 assert_eq "T-15.1: corrupt WARNING 行が clamp されている (2000 バイト未満)" "yes" \
   "$([ "$(printf '%s' "$warn19" | wc -c)" -lt 2000 ] && echo yes || echo no)"
 assert_eq "T-15.2: pipefail 下でも corrupt 種別が (種別不明) へ潰れない" "no" \
-  "$(printf '%s' "$warn19" | grep -q '種別不明' && echo yes || echo no)"
+  "$(printf '%s' "$warn19" | grep -c >/dev/null '種別不明' && echo yes || echo no)"
 assert_contains "T-15.3: 種別は issue_number_mismatch として出る" "issue_number_mismatch" "$warn19"
 
 # ─── T-16: 読み戻し不能 WARNING の stderr スニペットは根因行を含む ──────

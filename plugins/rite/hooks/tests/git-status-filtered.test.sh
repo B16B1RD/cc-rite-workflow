@@ -7,10 +7,13 @@
 # harness's own git-status snapshot but visible from inside the Bash tool,
 # so they show up as spurious `??` (untracked) entries in every
 # `git status --porcelain` a sandboxed Bash command runs — even though
-# nothing in the working tree actually changed. lib/git-status-filtered.sh
-# strips exactly those entries (untracked + character device, detected via
-# `test -c`, never a filename allowlist) while passing every other status
-# code through unchanged.
+# nothing in the working tree actually changed. Once the sandboxed command
+# exits, the mount anchors stay behind as 0-byte regular files with every
+# write bit cleared (stubs), which a non-sandboxed caller such as the
+# session-start reaper sees as plain `??` entries. lib/git-status-filtered.sh
+# strips exactly those two shapes (untracked character device via `test -c`,
+# untracked 0-byte no-write regular file via `find -perm`; never a filename
+# allowlist) while passing every other status code through unchanged.
 #
 # mknod requires root/CAP_MKNOD and is unavailable in this (and most CI)
 # environments, so tests simulate a "character device at this path" with a
@@ -32,7 +35,7 @@ source "$SCRIPT_DIR/_test-helpers.sh"
 
 LIB="$SCRIPT_DIR/../scripts/lib/git-status-filtered.sh"
 
-echo "=== git-status-filtered.sh (untracked character-device ghost mount filter) ==="
+echo "=== git-status-filtered.sh (untracked character-device ghost mount + leftover stub filter) ==="
 
 if [ ! -f "$LIB" ]; then
   echo "ERROR: $LIB not found" >&2
@@ -157,6 +160,99 @@ for repo in "$sbx3" "$sbx3u" "$sbx_ren"; do
 done
 out=$(cd "$plain" && bash "$LIB" --tracked-only 2>"$mode_err"); rc=$?
 assert "tracked-only failure remains nonzero" 1 "$rc"
+
+# --- Leftover sandbox stubs (0-byte regular file, no write bit) ---------------
+# make_mode_file <path> <octal mode> [content]: creates the fixture and stops
+# the run when the filesystem did not keep the mode or size, since every stub
+# assertion below would otherwise pass or fail for the wrong reason.
+make_mode_file() {
+  local path="$1" mode="$2" content="${3:-}"
+  printf '%s' "$content" > "$path" && chmod "$mode" "$path" || { echo "ERROR: cannot create fixture $path" >&2; exit 1; }
+  [ -n "$(find "$path" -prune -type f -perm "$mode" -size "${#content}c")" ] \
+    || { echo "ERROR: fixture $path did not keep mode $mode / size ${#content} (filesystem does not keep modes?)" >&2; exit 1; }
+}
+run_with_err() {
+  local dir="$1"; shift
+  ( cd "$dir" && bash "$LIB" "$@" 2>"$err_file" )
+}
+err_file=$(mktemp) && cleanup_dirs+=("$err_file") || exit 1
+
+stub_repo=$(make_sandbox) && cleanup_dirs+=("$stub_repo") || exit 1
+make_mode_file "$stub_repo/.bashrc" 0444
+make_mode_file "$stub_repo/"$'stub\nnewline' 0444
+out=$(run_with_err "$stub_repo"); rc=$?
+assert "stub-only tree: exit 0" 0 "$rc"
+assert "stub-only tree: stdout is empty" "" "$out"
+assert "stub exclusion warning is a single line" 1 "$(wc -l < "$err_file" | tr -d ' ')"
+assert "stub exclusion warning counts each stub" 1 "$(grep -c 'WARNING: git-status-filtered: 2 sandbox stub file(s)' "$err_file")"
+for name in .bashrc $'stub\nnewline'; do
+  printf -v quoted '%q' "$name"
+  assert "stub exclusion warning names $quoted" 1 "$(grep -Fc " $quoted" "$err_file")"
+done
+
+out=$(run_with_err "$sbx_clean")
+assert "clean tree: stderr stays empty" "" "$(cat "$err_file")"
+out=$(run_with_err "$sbx1")
+assert "character-device-only tree: stdout stays empty" "" "$out"
+assert "character-device-only tree: stderr stays empty" "" "$(cat "$err_file")"
+
+mixed_repo=$(make_sandbox) && cleanup_dirs+=("$mixed_repo") || exit 1
+make_mode_file "$mixed_repo/.gitconfig" 0444
+make_mode_file "$mixed_repo/real_untracked.txt" 0644 content
+out=$(run_with_err "$mixed_repo")
+assert "stub next to a real untracked file: only the real file remains" "?? real_untracked.txt" "$out"
+
+keep_repo=$(make_sandbox) && cleanup_dirs+=("$keep_repo") || exit 1
+make_mode_file "$keep_repo/empty_writable" 0644
+make_mode_file "$keep_repo/readonly_with_content" 0444 content
+make_mode_file "$keep_repo/empty_group_writable" 0464
+make_mode_file "$keep_repo/empty_other_writable" 0446
+make_mode_file "$keep_repo/empty_owner_read_only" 0440
+stub_target_dir=$(make_plain_sandbox) && cleanup_dirs+=("$stub_target_dir") || exit 1
+make_mode_file "$stub_target_dir/stub" 0444
+ln -s "$stub_target_dir/stub" "$keep_repo/link_to_stub"
+out=$(run_with_err "$keep_repo")
+for kept in empty_writable readonly_with_content empty_group_writable empty_other_writable link_to_stub; do
+  case "$out" in
+    *"?? $kept"*) pass "$kept stays in the output" ;;
+    *) fail "$kept stays in the output (got: $out)" ;;
+  esac
+done
+case "$out" in
+  *empty_owner_read_only*) fail "0-byte file without any write bit is excluded (got: $out)" ;;
+  *) pass "0-byte file without any write bit is excluded" ;;
+esac
+
+# Only untracked entries can be stubs: a tracked file emptied to the stub shape
+# and a staged new file with the stub shape are real changes.
+tracked_stub_repo=$(make_sandbox) && cleanup_dirs+=("$tracked_stub_repo") || exit 1
+make_mode_file "$tracked_stub_repo/a" 0444
+make_mode_file "$tracked_stub_repo/staged_stub" 0444
+(cd "$tracked_stub_repo" && git add staged_stub) || { echo "ERROR: cannot stage staged_stub" >&2; exit 1; }
+out=$(run_with_err "$tracked_stub_repo")
+assert "stub-shaped tracked and staged files stay in the output" " M a"$'\n'"A  staged_stub" "$out"
+assert "no stub exclusion warning for tracked or staged files" 0 "$(grep -c 'sandbox stub' "$err_file")"
+
+# A stub whose file information cannot be read stays in the output. The
+# control run proves the fixture is a stub first, so the failing-find run
+# cannot pass on a fixture that was never excluded.
+unreadable_repo=$(make_sandbox) && cleanup_dirs+=("$unreadable_repo") || exit 1
+make_mode_file "$unreadable_repo/.profile" 0444
+out=$(run_with_err "$unreadable_repo")
+assert "control: the stub is excluded while find works" "" "$out"
+failing_bin=$(make_plain_sandbox) && cleanup_dirs+=("$failing_bin") || exit 1
+printf '#!/bin/sh\nexit 1\n' > "$failing_bin/find" && chmod +x "$failing_bin/find"
+out=$(cd "$unreadable_repo" && PATH="$failing_bin:$PATH" bash "$LIB" 2>"$err_file")
+assert "stub stays in the output when its file information cannot be read" "?? .profile" "$out"
+assert "no stub exclusion warning when nothing was excluded" 0 "$(grep -c 'sandbox stub' "$err_file")"
+
+# --tracked-only keeps its own contract: stubs count as untracked paths there.
+out=$(cd "$mixed_repo" && bash "$LIB" --tracked-only 2>"$err_file"); rc=$?
+assert "tracked-only with stubs: exit 0" 0 "$rc"
+assert "tracked-only with stubs: stdout is empty" "" "$out"
+assert "tracked-only with stubs: one warning line" 1 "$(wc -l < "$err_file" | tr -d ' ')"
+assert "tracked-only with stubs: stub counted as untracked" 1 "$(grep -c 'WARNING:.*2 untracked path(s)' "$err_file")"
+assert "tracked-only with stubs: no stub exclusion warning" 0 "$(grep -c 'sandbox stub' "$err_file")"
 
 # Exercise the actual fix commit guard, including its failure fallback.
 PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"

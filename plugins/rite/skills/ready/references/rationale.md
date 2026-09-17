@@ -22,7 +22,8 @@ Ready は mergeable 判定後の追加 commit を見ていなかった。配布�
 未レビューのまま Ready 化しかけた実測がある。照合不能（JSON 不在・archive のみ・
 `git rev-parse HEAD` 失敗・`commit_sha` 空）を Ready 許可に倒すと、その穴を残す。
 schema のキーは `commit_sha`（Issue 文の `reviewed_commit` は PR コメント marker 名）。
-`--force` フラグは作らない。強行はユーザーの明示指示で helper 呼び出しを除く。
+`--force` フラグは作らない。強行はユーザーの明示指示がある場合だけ `--skip-head-check` を
+`--enforce-ac` と組み合わせ、HEAD 照合のみを省略して AC 検査は維持する。
 
 NB sweep が `fixed ≥ 1` で push した commit は例外とする。reviewed-head ゲートは
 `commit_sha == HEAD` を要求するが、sweep 経路は sweep を再フルレビューの
@@ -31,6 +32,13 @@ ready を通過できなかった。受理するのは done-file 2 行目が指�
 だけ**。JSON 一致を先に評価し（`via=json`、done-file 非読取）、不一致かつ 2 行目
 SHA == HEAD のときだけ `via=sweep`。2 行目不正は既存判定へ縮退せず fail-loud。
 1 行のみ / ファイル不在は mismatch 文言を変えない。
+
+この reviewed-head override は HEAD 照合だけに対する既存の非常口であり、AC 判定を変更する
+仕組みではない。AC の attest は `unverified` 行に人間の実環境確認を記録する操作に限定し、
+`unmet` / `satisfied` / 既に `human-verified` の行は書き換えない。enforce は全行が
+`satisfied` または現在の review JSON の `commit_sha` と同じ `head` を持つ
+`human-verified` であることを機械的に確認する。この境界により、未充足を override で通す経路を
+作らず、修正または AC 訂正後の再レビューを解消手段として維持する。
 
 ## bang-backtick-hard-gate
 

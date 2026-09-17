@@ -91,7 +91,7 @@ if [ -n "$pr" ]; then
     def trim: gsub("^\\s+|\\s+$"; "");
     if type != "array" or any(.[]; type != "array") then error("invalid comment pages") else . end
     | [ .[][]
-        | .body // ""
+        | .body // "" | gsub("\r\n"; "\n")
         | select(startswith("## 📜 rite 非実測指摘の記録"))
         | select((split("\n") | map(sub("\r$"; "")) | map(select(test("\\S"))) | last) == "<!-- rite:nbr:v1 -->")
         | split("### 却下台帳\n")[1:][]

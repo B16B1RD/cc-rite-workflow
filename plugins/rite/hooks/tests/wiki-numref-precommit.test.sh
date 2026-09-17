@@ -17,7 +17,8 @@ fi
 cleanup_dirs=()
 cleanup() {
   local p
-  for p in "${cleanup_dirs[@]:-}"; do [ -n "$p" ] && rm -rf "$p"; done
+  # read-only にした .git が残っていても消せるよう、書込権限を戻してから削除する
+  for p in "${cleanup_dirs[@]:-}"; do [ -n "$p" ] && { chmod -R u+w "$p" 2>/dev/null; rm -rf "$p"; }; done
 }
 trap cleanup EXIT
 
@@ -89,6 +90,20 @@ assert_grep "新規ページの hit も file:line" "$pdir/untracked.out" '\.rite
 run_helper "$ptree" "$pdir/outside.out"
 assert_grep ".rite/wiki 外の番号は hit にしない" "$pdir/outside.out" 'WIKI_INGEST_NUMREF=clean'
 (cd "$ptree" && git checkout -q -- outside.md)
+
+# git dir を解決できない木は sandbox-mask と誤分類せず、後段の
+# intent-to-add 失敗を stage_failed として報告する。
+p18b_nonrepo=$(mktemp -d "${TMPDIR:-/tmp}/rite-numref-nonrepo-XXXXXX")
+cleanup_dirs+=("$p18b_nonrepo")
+nonrepo_rc=0
+run_helper "$p18b_nonrepo" "$pdir/nonrepo.out" || nonrepo_rc=$?
+assert "git 管理外の repo-root は exit 2" "2" "$nonrepo_rc"
+assert_grep "git 管理外では git dir の解決失敗を診断する" \
+  "$pdir/nonrepo.out" 'rev-parse --absolute-git-dir が失敗しました'
+assert_grep "git dir を解決できない木は stage_failed のまま" \
+  "$pdir/nonrepo.out" 'WIKI_INGEST_NUMREF=error; reason=stage_failed'
+assert_not_grep "git dir の解決失敗を sandbox-mask と誤分類しない" \
+  "$pdir/nonrepo.out" 'reason=sandbox-mask'
 
 p18b_bare=$(mktemp -d "${TMPDIR:-/tmp}/rite-numref-bare-XXXXXX")
 cleanup_dirs+=("$p18b_bare")
@@ -177,5 +192,23 @@ assert_not_grep "git の診断を原因欄へ字下げして載せない" \
   "$pdir/shim.out" '^    fatal: shimmed check-ignore failure'
 assert_grep "名指しできた件数が表示件数に満たないことを明示する" \
   "$pdir/shim.out" '注意: 表示 [0-9]+ 件のうち 0 件しか原因を名指しできていません'
+
+# git dir が read-only（sandbox マスク）なら intent-to-add の前に sandbox-mask で止まる
+if [ "$(id -u)" = "0" ]; then
+  skip "git dir read-only ケース（root は書込権限を無視するため再現できない）"
+else
+  (cd "$ptree" && mkdir -p .rite/wiki/pages/ro && printf '# ro\n\nPR #1308 を参照\n' > .rite/wiki/pages/ro/r.md)
+  chmod a-w "$ptree/.git"
+  mask_rc=0
+  run_helper "$ptree" "$pdir/mask.out" || mask_rc=$?
+  chmod u+w "$ptree/.git"
+  assert "git dir read-only は exit 2" "2" "$mask_rc"
+  assert_grep "git dir read-only は sandbox-mask" "$pdir/mask.out" 'WIKI_INGEST_NUMREF=error; reason=sandbox-mask'
+  assert_grep "sandbox-mask は書き込めない git dir を名指しする" "$pdir/mask.out" '管理ディレクトリ（.*\.git）に書き込めません'
+  assert_not_grep "sandbox-mask は stage_failed の .gitignore 案内を出さない" "$pdir/mask.out" 'reason=stage_failed'
+  assert "sandbox-mask は intent-to-add しない" ".rite/wiki/pages/ro/r.md" \
+    "$(git -C "$ptree" ls-files --others --exclude-standard -- .rite/wiki/pages/ro)"
+  rm -rf "$ptree/.rite/wiki/pages/ro"
+fi
 
 print_summary "wiki-numref-precommit.sh"

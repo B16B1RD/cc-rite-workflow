@@ -9,11 +9,11 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 {change_intelligence_summary}
 
 ## レビュースコープ（cycle 2+ 差分スコープ — 適用時のみ非空）
-<!-- REVIEW_CYCLE_SCOPE == incremental のときのみ内容が入る（cycle-scope.md の Reviewer mandate 節を抽出）。full のときは空文字列で、このセクションごと省略する。 -->
+<!-- REVIEW_CYCLE_SCOPE == incremental のときのみ内容が入る（cycle-scope.md の Reviewer mandate 節を抽出）。full のときは空文字列で、このセクションごと省略する。reviewer_type == acceptance のときは cycle scope に依らず下記「受入条件確認の mandate」節の本文が入る。 -->
 {cycle_scope_mandate}
 
 ## レビューレーン（XS/S 軽量レーン — 適用時のみ非空）
-<!-- COMPLEXITY_LANE == light のときのみ内容が入る（complexity-lane.md の Reviewer mandate 節を抽出し {complexity} を埋める）。full のときは空文字列で、このセクションごと省略する — 空見出しが残ると M+ の prompt が変化する。上の差分スコープとは直交し、両方が非空になりうる（範囲を絞るのが差分スコープ、検証の実行コストを絞るのが軽量レーン）。 -->
+<!-- COMPLEXITY_LANE == light のときのみ内容が入る（complexity-lane.md の Reviewer mandate 節を抽出し {complexity} を埋める）。full のときは空文字列で、このセクションごと省略する — 空見出しが残ると M+ の prompt が変化する。上の差分スコープとは直交し、両方が非空になりうる（範囲を絞るのが差分スコープ、検証の実行コストを絞るのが軽量レーン）。reviewer_type == acceptance のときは COMPLEXITY_LANE に依らず空文字列。 -->
 {complexity_lane_mandate}
 
 ## レビュー対象ファイル
@@ -153,3 +153,15 @@ Finding Quality Guardrail Category #2 で除外した候補を次の表へ必ず
 ## 制約
 [READ-ONLY RULE] このレビューは読み取り専用。`Edit`/`Write` 禁止、問題は指摘事項として報告し修正は `/rite:fix` に委譲する。許可/禁止コマンドの完全一覧は上記「共通レビュー原則」に注入済みの `_reviewer-base.md` `## READ-ONLY Enforcement` を SoT として参照。
 ````
+
+## 受入条件確認の mandate
+
+`reviewer_type == acceptance` のとき、`{cycle_scope_mandate}` へ cycle-scope.md の本文ではなく以下の本文を注入する（`REVIEW_CYCLE_SCOPE` に依らない。`{issue_number}` を埋める）。
+
+```
+このレビューは **受入条件確認**です。関連 Issue #{issue_number} の `## 5. Acceptance Criteria` にある全 AC を、**現 HEAD** に対して確認してください。
+
+1. **全 AC を毎 cycle 再確認する**: 前 cycle の判定を再利用せず、充足と判定した AC も含めて全件を HEAD で確認します。差分スコープは適用しません。
+2. **未変更部の再監査制限を適用しない**: 変更の外にあるコードも、AC の `Then` を観測するために必要なら読み、実行してください。
+3. **判定表を出す**: `### 所見` と `### 指摘事項` の間に `### 受入条件確認` 表（`| AC | 判定 | 根拠 |`）を、Issue の AC と 1 対 1 で出力します。未充足の行は `内容` が `[AC-N]` で始まる CRITICAL / current-pr の指摘を持ちます。
+```

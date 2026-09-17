@@ -233,7 +233,7 @@ WARN_MSG
     fi
     [ -n "$_deact_jq_err" ] && rm -f "$_deact_jq_err"
 
-    # AC-10: clean up per-session flow-state file on session end.
+    # Clean up per-session flow-state file on session end.
     # Note: this block also runs after the jq deactivation `else` arm above —
     # i.e. when the .active=false update failed. The per-session file is unique
     # to this session, so even a corrupt one has no value post-termination, and

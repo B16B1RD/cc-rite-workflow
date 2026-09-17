@@ -126,7 +126,7 @@ for file in "$@"; do
     }
   ' "$file")
   if [ -n "$matches" ]; then
-    echo "VIOLATION: Direct 'gh issue create' invocation detected (AC-3 violation):" >&2
+    echo "VIOLATION: Direct 'gh issue create' invocation detected (Issue creation helper bypass):" >&2
     printf '%s\n' "$matches" >&2
     violations=$((violations + 1))
   fi
@@ -136,7 +136,7 @@ if [ "$violations" -gt 0 ]; then
   echo "" >&2
   echo "Total files with violations: $violations" >&2
   echo "All Issue creation must go through plugins/rite/scripts/create-issue-with-projects.sh." >&2
-  echo "See AC-3 (4.4 MUST NOT 1) for guidance." >&2
+  echo "Direct gh issue create invocations are prohibited; use the helper above." >&2
   exit 1
 fi
 

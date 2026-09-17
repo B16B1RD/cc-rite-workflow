@@ -65,7 +65,7 @@ else
   pass "init.md drift anchor present"
   enum_text=$(sed -n "${enum_line}p" "$INIT_MD")
   for sec in $template_sections; do
-    if printf '%s' "$enum_text" | grep -qF -- "\`$sec\`"; then
+    if printf '%s' "$enum_text" | grep -cF >/dev/null -- "\`$sec\`"; then
       pass "template section '$sec' is enumerated in init.md"
     else
       fail "template section '$sec' is NOT enumerated in init.md upgrade handling"
@@ -124,7 +124,7 @@ else
     row=$(printf '%s\n' "$anchor_block" | grep -F -- "- \`$sec\`:" | head -1 || true)
     if [ -z "$row" ]; then
       fail "init.md sub-key anchor has no row for section '$sec' (needed for '$pair')"
-    elif printf '%s' "$row" | grep -qF -- "\`$key\`"; then
+    elif printf '%s' "$row" | grep -cF >/dev/null -- "\`$key\`"; then
       pass "template sub-key '$pair' is enumerated in init.md"
     else
       fail "template sub-key '$pair' is NOT enumerated in init.md sub-key anchor"

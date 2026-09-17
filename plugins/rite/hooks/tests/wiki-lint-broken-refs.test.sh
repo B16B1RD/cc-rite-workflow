@@ -154,19 +154,19 @@ echo "=== TC-1: same_branch 検出 (broken 2 件のみ、除外対象は非検�
 repo=$(make_same_branch_sandbox tc1)
 run_helper "$repo" "$(stdin_input)" --branch-strategy same_branch
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'n_broken_refs=2' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx '\.rite/wiki/pages/patterns/a\.md|\.\./patterns/missing\.md' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx '\.rite/wiki/pages/patterns/a\.md|\.\./\.\./raw/reviews/missing\.md' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'broken_refs_read_ok=true' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx '\[CONTEXT\] WIKI_LINT_BROKEN_REFS=2'; then
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'n_broken_refs=2' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null '\.rite/wiki/pages/patterns/a\.md|\.\./patterns/missing\.md' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null '\.rite/wiki/pages/patterns/a\.md|\.\./\.\./raw/reviews/missing\.md' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'broken_refs_read_ok=true' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null '\[CONTEXT\] WIKI_LINT_BROKEN_REFS=2'; then
   pass "TC-1 broken 2 件のみ検出 + enum/sentinel emit"
 else
   fail "TC-1 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
 fi
 
 echo "=== TC-2/TC-3: indent fence + インライン code span 内 link は対象外 ==="
-if ! printf '%s\n' "$HELPER_STDOUT" | grep -q 'in-fence-missing' \
-   && ! printf '%s\n' "$HELPER_STDOUT" | grep -q 'in-span-missing'; then
+if ! printf '%s\n' "$HELPER_STDOUT" | grep -c >/dev/null 'in-fence-missing' \
+   && ! printf '%s\n' "$HELPER_STDOUT" | grep -c >/dev/null 'in-span-missing'; then
   pass "TC-2/TC-3 fence / code span 内の link 引用は非検出"
 else
   fail "TC-2/TC-3 (stdout=$HELPER_STDOUT)"
@@ -176,8 +176,8 @@ echo "=== TC-4: separate_branch 検出 (git show 経由、working tree に .rite
 repo=$(make_separate_branch_sandbox tc4)
 run_helper "$repo" "$(stdin_input)" --branch-strategy separate_branch --wiki-branch wiki
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'n_broken_refs=2' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'broken_refs_read_ok=true'; then
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'n_broken_refs=2' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'broken_refs_read_ok=true'; then
   pass "TC-4 separate_branch で broken 検出"
 else
   fail "TC-4 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
@@ -188,8 +188,8 @@ repo=$(make_same_branch_sandbox tc5)
 rm "$repo/.rite/wiki/pages/heuristics/c.md"
 run_helper "$repo" "$(stdin_input)" --branch-strategy same_branch
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'broken_refs_read_ok=io_error' \
-   && printf '%s\n' "$HELPER_STDERR" | grep -q 'c.md を読み出せません'; then
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'broken_refs_read_ok=io_error' \
+   && printf '%s\n' "$HELPER_STDERR" | grep -c >/dev/null 'c.md を読み出せません'; then
   pass "TC-5 io_error 降格 + WARNING"
 else
   fail "TC-5 (rc=$HELPER_RC stdout=$HELPER_STDOUT stderr=$HELPER_STDERR)"
@@ -203,7 +203,7 @@ fi
 
 echo "=== TC-6: placeholder residue (--branch-strategy) → exit 1 ==="
 run_helper "$repo" "" --branch-strategy "{branch_strategy}"
-if [ "$HELPER_RC" -eq 1 ] && printf '%s\n' "$HELPER_STDERR" | grep -q 'LINT_PHASE_7_PLACEHOLDER_RESIDUE=1'; then
+if [ "$HELPER_RC" -eq 1 ] && printf '%s\n' "$HELPER_STDERR" | grep -c >/dev/null 'LINT_PHASE_7_PLACEHOLDER_RESIDUE=1'; then
   pass "TC-6 exit 1 + residue marker"
 else
   fail "TC-6 (rc=$HELPER_RC stderr=$HELPER_STDERR)"
@@ -211,7 +211,7 @@ fi
 
 echo "=== TC-7: unknown branch_strategy → exit 1 ==="
 run_helper "$repo" "" --branch-strategy bogus
-if [ "$HELPER_RC" -eq 1 ] && printf '%s\n' "$HELPER_STDERR" | grep -q "未知の branch_strategy 値"; then
+if [ "$HELPER_RC" -eq 1 ] && printf '%s\n' "$HELPER_STDERR" | grep -c >/dev/null "未知の branch_strategy 値"; then
   pass "TC-7 exit 1 + 未知値メッセージ"
 else
   fail "TC-7 (rc=$HELPER_RC stderr=$HELPER_STDERR)"
@@ -229,10 +229,10 @@ if [ "$HAS_GNU_REALPATH" = 1 ]; then
 echo "=== TC-9: 空 stdin → n_broken_refs=0 + 空 marker block ==="
 run_helper "$repo" "" --branch-strategy same_branch
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'n_broken_refs=0' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx -- '---broken_refs_begin---' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx -- '---broken_refs_end---' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx '\[CONTEXT\] WIKI_LINT_BROKEN_REFS=0'; then
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null 'n_broken_refs=0' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null -- '---broken_refs_begin---' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null -- '---broken_refs_end---' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -cx >/dev/null '\[CONTEXT\] WIKI_LINT_BROKEN_REFS=0'; then
   pass "TC-9 空入力で 0 件 + marker block 維持"
 else
   fail "TC-9 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"

@@ -118,12 +118,12 @@ echo "TC-4: skip-notification displays the state-root absolute path from worktre
 notif_out=$( (cd "$WT" && bash "$MAIN_ROOT/hooks/review-skip-notification.sh" \
   --post-comment-mode false --pr 99 --file-timestamp 20260101000000 --local-save-failed "") 2>&1 ) || true
 expected_line="ローカルファイル: ${RESOLVED_ROOT}/.rite/review-results/99-20260101000000.json"
-if printf '%s\n' "$notif_out" | grep -qF "$expected_line"; then
+if printf '%s\n' "$notif_out" | grep -cF >/dev/null "$expected_line"; then
   pass "TC-4: display path anchors to the resolved state root"
 else
   fail "TC-4: expected '$expected_line' in output. got: $notif_out"
 fi
-if printf '%s\n' "$notif_out" | grep -qF "ローカルファイル: .rite/review-results/"; then
+if printf '%s\n' "$notif_out" | grep -cF >/dev/null "ローカルファイル: .rite/review-results/"; then
   fail "TC-4: cwd-relative display path leaked (regression to pre-unification format)"
 else
   pass "TC-4: no cwd-relative display path"
@@ -137,12 +137,12 @@ cp "$HOOKS_DIR/review-skip-notification.sh" "$NORES/"
 # state-path-resolve.sh を意図的に置かない
 fallback_out=$( (cd "$TEST_DIR/nores" && bash "$NORES/review-skip-notification.sh" \
   --post-comment-mode false --pr 99 --file-timestamp 20260101000000 --local-save-failed "") 2>&1 ) || true
-if printf '%s\n' "$fallback_out" | grep -q "WARNING: state-path-resolve.sh の解決に失敗"; then
+if printf '%s\n' "$fallback_out" | grep -c >/dev/null "WARNING: state-path-resolve.sh の解決に失敗"; then
   pass "TC-5: fallback WARNING surfaced"
 else
   fail "TC-5: fallback WARNING missing. got: $fallback_out"
 fi
-if printf '%s\n' "$fallback_out" | grep -qF "ローカルファイル: .rite/review-results/99-20260101000000.json"; then
+if printf '%s\n' "$fallback_out" | grep -cF >/dev/null "ローカルファイル: .rite/review-results/99-20260101000000.json"; then
   pass "TC-5: cwd-relative display path used as fallback"
 else
   fail "TC-5: cwd-relative fallback path missing. got: $fallback_out"

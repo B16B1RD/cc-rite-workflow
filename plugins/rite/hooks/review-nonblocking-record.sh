@@ -33,7 +33,7 @@
 #     `aborted` は trap の初期値で、判定に到達する前に落ちた場合にのみ残る (早期 exit が
 #     success を騙れない構造)。個別の RECORDED / CLEAR_SKIPPED marker は持たない (consumer が
 #     いない marker を作らないため)。
-#   - **非ブロッキング (AC-3)**: gh / jq / IO の失敗は WARNING + `[CONTEXT] NONBLOCKING_RECORD_FAILED=1;
+#   - **非ブロッキング**: gh / jq / IO の失敗は WARNING + `[CONTEXT] NONBLOCKING_RECORD_FAILED=1;
 #     reason=...` を emit して **exit 0**。overall_assessment / result pattern に一切影響しない。
 #     例外は placeholder residue 系 gate (skill 定義のバグ) で、loud に exit 1 する。
 #     reason 語彙: pr_number_placeholder_residue / owner_repo_placeholder_residue /
@@ -58,7 +58,7 @@
 #     **述語を評価できなかった**環境起因の失敗であり、caller が本文を作り直しても解消しないため
 #     (ii) ではなく本群に属する。exit code (trap 設置の前後) で境界を引くと (ii) だけが検出位置の違いで機械強制から
 #     外れる。marker 保持は overall_assessment を変えず「result pattern を emit してよいか」だけを
-#     止めるため AC-3 と両立する。
+#     止めるため非ブロッキング契約と両立する。
 #   - **既存コメントの特定は 2 段解決**: (1) 関連 Issue body に永続化した comment id (durable、第一候補)、
 #     (2) 本文照合による fallback。本文照合だけを同定手段にすると「記録コメントの raw markdown を
 #     複製した同一 author の人間コメント」を構造的に除外できない (述語を 4 度強化してもこの残余は
@@ -111,8 +111,9 @@
 #     (最終非空行の等値) にする — 片側だけ緩いと人間のコメントを掴んで破壊し、片側だけ厳しいと増殖する。4 段目は step 1 の本文 variant 選択と
 #     step 2 の --count 置換のずれ（無音喪失 / 虚偽記録）を捕捉する。
 #     rationale: ../skills/pr-review/references/measured-gate-record.md#startswith
-#   - **create は count > 0 でガード**: 0 件 ∧ 既存なしで「0 件です」という事実と異なるコメントを
-#     新規作成しない (AC-4 非退行)。
+#   - **create は count > 0 ∨ 却下台帳エントリ ≥ 1 でガード**: 0 件 ∧ 台帳なし ∧ 既存なしで「0 件です」
+#     という事実と異なるコメントを新規作成しない。台帳だけを持つ本文は、台帳の保存先が記録コメントしか
+#     ないため 0 件でも作成する。台帳エントリを数えられないときは body_check_unavailable で failed にする。
 #   - [CONTEXT] / WARNING は stderr (6.1.a/b/c の 3 兄弟 helper と同一)。
 #
 # Exit codes:
@@ -332,7 +333,7 @@ _terminal_emitted="false"
 #   - caller (LLM) 契約違反で、caller が本文/--count を作り直せば 1 iteration で収束するもの
 #     → marker を残して 8.0.3 に差し戻させる (retain_pending_marker=1)
 #   - gh / network / rate-limit / IO 起因で、差し戻しても同じ cycle 内では収束しないもの
-#     → 従来どおり無条件削除 (非ブロッキング契約 AC-3 をそのまま維持)
+#     → 従来どおり無条件削除 (非ブロッキング契約をそのまま維持)
 # 引数 gate 群 (unknown_option / placeholder residue 5 種 / content_file_missing = 7 種) は本 trap 設置**前**に exit 1 するため
 # 自動的に marker が残る。本フラグは trap 設置**後**に検出される caller 契約違反 (本文検査 4 段) を
 # 同じ扱いに揃えるためのもの — 境界を exit code (trap 前/後) で引くと、同種の契約違反が検出位置の
@@ -342,7 +343,7 @@ _rite_p61d_cleanup() {
   rm -f "${gh_err:-}" "${id_persist_tmp:-}" "${id_persist_err:-}" "${id_persist_prev_err:-}"
   # 既定は「記録の成否 (created / updated / skipped / failed / aborted) に関わらず削除」。8.0.3 へ
   # 伝えるのは「6.1.d が完走した」ことだけで、成否は terminal sentinel の outcome= が担う
-  # (非ブロッキング契約 AC-3 を gate 側へ持ち込まない)。例外は retain_pending_marker=1 の
+  # (非ブロッキング契約を gate 側へ持ち込まない)。例外は retain_pending_marker=1 の
   # caller 契約違反のみで、これは overall_assessment を変えず「result pattern を emit してよいか」
   # だけを止める (= 引数 gate 群が既に行っている挙動と構造的に同一)。
   [ "$retain_pending_marker" = "1" ] && return 0
@@ -358,14 +359,23 @@ _rite_p61d_cleanup() {
     fi
   fi
 }
-# gh / jq の stderr 詳細を出す共通スニペット。行接頭辞に `gh:` を入れるのは、gh 側の stderr に
-# terminal sentinel と同形の行が混じったとき、字下げだけでは gate の部分一致述語をすり抜けて
-# 偽の完了報告として読まれうるため (テストの negative control は行頭 anchor 付きで検出できず、
-# gate だけが騙される非対称が生まれる)。
-_gh_err_detail() {
+# gh / jq / awk の stderr 詳細を出す共通スニペット。行接頭辞は stderr を出したコマンドの経路名で、
+# 省略時は gh。gh とパイプでつながる jq (id 取得・lookup の `gh api ... | jq`、PATCH の `jq -n ... | gh api`)
+# の stderr は gh 経路として `gh:` のまま出し、gh を介さず単独で動く本文述語の jq は `jq`、却下台帳を数える awk は `awk` を渡す
+# (後続の案内が gh 認証 / network を否定するのに、接頭辞だけ gh を指して operator を誤誘導しないため)。
+# 接頭辞を必ず付けるのは、stderr に terminal sentinel と同形の行が混じったとき、字下げだけでは
+# gate の部分一致述語をすり抜けて偽の完了報告として読まれうるため (テストの negative control は
+# 行頭 anchor 付きで検出できず、gate だけが騙される非対称が生まれる)。
+_gh_err_detail() {  # $1=gh|jq|awk (省略時 gh)
   [ -n "$gh_err" ] && [ -s "$gh_err" ] || return 0
-  echo "  詳細 (gh/jq stderr 先頭 5 行):" >&2
-  head -5 "$gh_err" | neutralize_ctrl --keep-newline | sed 's/^/  gh: /' >&2
+  local _label="${1:-gh}"
+  case "$_label" in
+    gh|jq|awk) ;;
+    *) echo "WARNING: 内部エラー: _gh_err_detail に未知のラベル '$_label' が渡されました (gh / jq / awk のみ)" >&2
+       _label=gh ;;
+  esac
+  echo "  詳細 (stderr 先頭 5 行):" >&2
+  head -5 "$gh_err" | neutralize_ctrl --keep-newline | sed "s/^/  $_label: /" >&2
 }
 # lookup が degraded したときの案内。**記録は続行されうる** ため、記録失敗用の
 # _record_gh_io_failure_hint / _record_body_check_failure_hint とは文言を分ける。共用すると
@@ -391,7 +401,7 @@ _record_id_unresolved_hint() {  # $1=reason
       # 本分岐は gh 側の失敗だけでなく **jq 側の失敗** (jq 不在 / filter 非互換) からも到達する
       # (GET は `gh api ... | jq` のパイプで、jq 単独失敗は pipefail で非ゼロ rc になり 404 判定を
       # 素通りする)。原因を片側に断定すると operator を真因から遠ざけるため両方を挙げる。
-      echo "  対処: gh auth status / network 接続、または jq の実行環境 (jq --version) を確認してください。直前の詳細行 (gh/jq stderr) で切り分けられます。本 cycle は本文照合の fallback で同定します" >&2 ;;
+      echo "  対処: gh auth status / network 接続、または jq の実行環境 (jq --version) を確認してください。直前の詳細行 (stderr) で切り分けられます。本 cycle は本文照合の fallback で同定します" >&2 ;;
     id_author_mismatch)
       echo "  対処: 永続化 id が別 identity のコメントを指しています。本文照合の fallback へ倒すため、そのコメントには一切触れません" >&2 ;;
     id_pr_mismatch)
@@ -453,7 +463,7 @@ _resolve_related_issue() {
 }
 # 段 1: 関連 Issue body に永続化された comment id を第一候補として解決する。**同定は id で 1 件に絞り込む**
 # ため、同一 author が記録コメントの raw markdown を複製したコメントが Issue 上にあっても PATCH 先を
-# 奪われない (AC-1)。本文述語 (下の GET) は絞り込んだ**後**の必要条件であって同定手段ではない。
+# 奪われない。本文述語 (下の GET) は絞り込んだ**後**の必要条件であって同定手段ではない。
 # 結果は persisted_id / id_resolved / id_reason / id_action に置く。
 _resolve_persisted_id() {
   local _issue_body="" _raw="" _id_probe="" _author="" _rest="" _issue_url="" _is_record=""
@@ -497,7 +507,7 @@ _resolve_persisted_id() {
     # 最終非空行 sentinel の 3 述語で対象を絞っていた。read 経路の差し替えでそのどれも落とさない。
     # **これは同定手段を本文照合へ戻すものではない** — id で 1 件に絞り込んだ**後**の必要条件として
     # 本文を見るだけなので、記録コメントの raw markdown を複製した人間コメントが述語を満たしても
-    # id が指す先は 1 件のままで誤認は起きない (AC-1 は保たれる)。
+    # id が指す先は 1 件のままで誤認は起きない。
     # 述語は shell 側で再実装せず read/write 共有の `$LAST_CONTENT_LINE_JQ` をそのまま使う
     # (「2 言語で並行実装してはならない」の規律)。`--arg` が要るので `gh --jq` ではなく実 jq へ繋ぐ
     # (グローバルの `set -o pipefail` により jq 段の失敗も rc に伝播する)。
@@ -521,12 +531,12 @@ _resolve_persisted_id() {
         # (`gh api user` の rc=0 + 空文字を degraded に倒すのと同じ規律)。
         id_reason="id_fetch_unparseable"; id_action="fallback"
       elif [ "$_author" != "$gh_login" ]; then
-        # AC-5: 他人のコメントは PATCH しない。identity 変更 / 関連 Issue body の手動編集が疑われる。
+        # 他人のコメントは PATCH しない。identity 変更 / 関連 Issue body の手動編集が疑われる。
         id_reason="id_author_mismatch"; id_action="fallback"
       elif [ "${_issue_url%/issues/$ISSUE_NUMBER}" = "$_issue_url" ]; then
         # issue_url が `/issues/{ISSUE_NUMBER}` で終わらない = 当該関連 Issue に属さないコメント。
         # Issue body は書き込み権限があれば編集できるため、author 検証だけでは
-        # repo 内の任意の自コメントを PATCH 先にされうる (AC-5 の author 検証は「誰の」しか縛らない)。
+        # repo 内の任意の自コメントを PATCH 先にされうる (author 検証は「誰の」しか縛らない)。
         id_reason="id_pr_mismatch"; id_action="fallback"
       elif [ "$_is_record" != "true" ]; then
         # 同一 Issue の自コメントではあるが記録コメントではない。ここを縛らないと、Issue body に marker を
@@ -536,13 +546,13 @@ _resolve_persisted_id() {
         id_resolved="$persisted_id"
       fi
     elif [ -n "${gh_err:-}" ] && [ -s "$gh_err" ] && grep -qE 'HTTP 404|Not Found' "$gh_err"; then
-      # AC-4: 削除済みをエラーにしない。**fallback へ倒す** — 「id が使えない」他の reason と同じ扱い。
+      # 削除済みをエラーにしない。**fallback へ倒す** — 「id が使えない」他の reason と同じ扱い。
       # 当初は「かつて canonical だった記録が消えた以上、新規作成が意図に近い」として recreate 分岐を
       # 持っていたが、それは (a) 本文照合が実在の canonical を見つけていても無視して 2 通目を作り、
-      # (b) 0 件 cycle では収束クリア (AC-2) が成立せず、(c) list 失敗と重なると degraded 判定が
+      # (b) 0 件 cycle では収束クリアが成立せず、(c) list 失敗と重なると degraded 判定が
       # 非対称になる、という 3 つの実害を生んだ。fallback は「author ∧ 1 行目 marker ∧ 最終非空行
       # sentinel」を満たすコメントしか掴まないので、削除済み id の代わりに採っても安全であり、
-      # 見つからなければ既存の「既存なし」経路がそのまま新規作成へ倒す (AC-4 の帰結は保たれる)。
+      # 見つからなければ既存の「既存なし」経路がそのまま新規作成へ倒す (この帰結は保たれる)。
       id_reason="id_comment_deleted"; id_action="fallback"
     else
       id_reason="id_fetch_failed"; id_action="fallback"
@@ -598,12 +608,17 @@ _record_gh_io_failure_hint() {
   echo "  対処: gh auth status / network 接続 / Issue #${ISSUE_NUMBER} への write 権限を確認し、レビューをやり直してください" >&2
   echo "  mergeable 判定には影響しません (非ブロッキング)。記録内容は ステップ 5.4 統合レポートの「実測なし指摘」section と ステップ 6.1.a のローカル JSON (non_blocking_findings[]) から参照できます (後者は gitignore 対象のためレビュアーとは共有されません)" >&2
 }
-# 記録できなかったときの実行環境起因の案内。gh でも本文でもなく、本文述語を評価する jq の
-# 実行環境 (jq 不在 / 実行不能) に起因する失敗 (body_check_unavailable) から呼ぶ。gh auth /
-# network / 権限や本文の再生成を指す案内は原因と無関係なため出さない (下の
+# 記録できなかったときの実行環境起因の案内。gh でも本文でもなく、本文を検査するツールの
+# 実行環境 (本文述語を評価する jq、却下台帳のエントリを数える awk) に起因する失敗
+# (body_check_unavailable) から呼ぶ。引数は失敗したツール名で、案内をそのツールに合わせる。
+# gh auth / network / 権限や本文の再生成を指す案内は原因と無関係なため出さない (下の
 # _record_body_check_failure_hint と同じ規律 — 誤った復旧手順は operator を真因から遠ざける)。
-_record_env_failure_hint() {
-  echo "  対処: jq --version で jq の実行環境を確認してください (gh 認証 / network / 権限や本文生成の問題ではありません)" >&2
+_record_env_failure_hint() {  # $1=jq|awk
+  case "${1:-}" in
+    jq)  echo "  対処: jq --version で jq の実行環境を確認してください (gh 認証 / network / 権限や本文生成の問題ではありません)" >&2 ;;
+    awk) echo "  対処: awk の実行環境 (PATH 上の awk が実行できるか) と上の awk の診断を確認してください (gh 認証 / network / 権限や本文生成の問題ではありません)" >&2 ;;
+    *)   echo "WARNING: 内部エラー: _record_env_failure_hint に未知のツール名 '${1:-}' が渡されました (jq / awk のみ)" >&2 ;;
+  esac
   echo "  mergeable 判定には影響しません (非ブロッキング)。記録内容は ステップ 5.4 統合レポートの「実測なし指摘」section と ステップ 6.1.a のローカル JSON (non_blocking_findings[]) から参照できます (後者は gitignore 対象のためレビュアーとは共有されません)" >&2
 }
 # 記録できなかったときの本文検査起因の案内。gh / IO の障害ではなく caller (LLM) が
@@ -676,7 +691,7 @@ if ! gh_login=$(gh api user --jq '.login' 2>"${gh_err:-/dev/null}") || [ -z "$gh
   _record_degraded_hint
   existing_id=""
   lookup_degraded=1
-  # 自 login が無いと durable id の author 検証 (AC-5) も本文照合の author 条件も評価できない。
+  # 自 login が無いと durable id の author 検証も本文照合の author 条件も評価できない。
   # 段 1-3 をまとめて skip し「存在不明」で確定させる (誤 PATCH より新規作成を選ぶ既存の縮退方針)。
   gh_login=""
 fi
@@ -755,7 +770,7 @@ fi
 # F-01 (cycle 3 review): count/body 整合検査は必ず **skip 判定より前** に置く。skip 判定を先に
 # 評価すると、F-01 が本来対象としていた「--count 0 の誤置換 + N 件を表示する本文 + 既存コメントなし」
 # のシナリオが `existing_id 空 ∧ NB_COUNT==0` の skip 条件に一致し、本文を一切読まないまま
-# `outcome=skipped` へ抜けてしまう (AC-4 の正当な no-op と観測上区別できず、D-01 の記録が無音で
+# `outcome=skipped` へ抜けてしまう (正当な no-op と観測上区別できず、D-01 の記録が無音で
 # 消える経路が温存される)。本文検査を先に行えば、0 件 skip の対象になる run でも「本当に 0 件と
 # 宣言された本文か」を確認してから skip するため、この経路も count_body_mismatch で捕捉できる。
 if [ ! -s "$CONTENT_FILE" ]; then
@@ -805,8 +820,8 @@ _body_jq_err=$(bash "$(dirname "${BASH_SOURCE[0]}")/_mktemp-stderr-guard.sh" \
 gh_err="$_body_jq_err"
 if ! _body_last_line=$(jq -Rrs "$LAST_CONTENT_LINE_JQ"' last_content_line' < "$CONTENT_FILE" 2>"${_body_jq_err:-/dev/null}"); then
   echo "WARNING: 非実測記録の本文述語 (最終非空行の算出) を評価できませんでした。投稿を中止します" >&2
-  _gh_err_detail
-  _record_env_failure_hint
+  _gh_err_detail jq
+  _record_env_failure_hint jq
   echo "  本文の作り直しでは解消しません (jq の実行環境側の問題です)。pending marker は削除するため 8.0.3 は差し戻しません" >&2
   echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=body_check_unavailable" >&2
   outcome="failed"
@@ -855,13 +870,44 @@ if [ -z "$body_count" ] || [ "$body_count" != "$NB_COUNT" ]; then
   exit 0
 fi
 
+# 却下台帳 (nb-sweep-ledger.sh が `📎 non_blocking_count:` 行の直前へ splice する節) のエントリ行を数える。
+# 台帳の保存先は記録コメントしかないため、非実測指摘が 0 件でも台帳を持つ本文は投稿しないと台帳が失われる。
+# 節の範囲 (見出しから次の `### ` 見出しまたは count 行まで) の判定は、行末 CR の除去を含めて同 helper の extract / merge-into と同じ式にする
+# (台帳ありと数えて投稿した本文の台帳を、次の cycle の extract が読めなくなるため)。列ヘッダ・区切り行の除外は同 helper の append と揃える。
+# 本文を出力せず数えるだけで、失敗の診断を awk 向けに出すため実装は分けたままにし、同じ fixture での件数一致は nb-sweep-contract.test.sh で固定する。
+# 見出しの判定は index() と length() で行う。macOS の awk は UTF-8 ロケールで `==` をロケール照合で比較し、
+# 別の日本語見出しを同じ見出しと判定するため。count 行・次の見出し・表の行も同じ実装差に依存しないよう index() に揃える。
+# 数えられなかったときは 0 件と読まない — 0 件扱いにすると台帳が skip で無音に消える。
+# awk の stderr は本文述語の jq と同じく一時ファイルへ捕まえて表示する (捨てると原因の診断が残らない)。
+_ledger_awk_err=$(bash "$(dirname "${BASH_SOURCE[0]}")/_mktemp-stderr-guard.sh" \
+  review-nonblocking-record p61d-ledger-err "却下台帳の集計失敗の詳細が表示されません") || _ledger_awk_err=""
+# 生成直後に trap 保護下へ置く (awk 実行中に INT/TERM/HUP を受けても EXIT trap が回収する)
+gh_err="$_ledger_awk_err"
+if ! ledger_entry_count=$(awk -v head='### 却下台帳' '
+       { sub(/\r$/, "") }
+       index($0, head) == 1 && length($0) == length(head) { in_sec = 1; next }
+       in_sec && (index($0, "📎 non_blocking_count:") == 1 || index($0, "### ") == 1) { in_sec = 0 }
+       in_sec && index($0, "| ") == 1 && index($0, "| finding_id ") != 1 && !/^[|][-: |]+[|]$/ { n++ }
+       END { print n + 0 }
+     ' "$CONTENT_FILE" 2>"${_ledger_awk_err:-/dev/null}") || [[ ! "$ledger_entry_count" =~ ^[0-9]+$ ]]; then
+  echo "WARNING: 非実測記録の本文から却下台帳のエントリ数を数えられませんでした。投稿を中止します" >&2
+  _gh_err_detail awk
+  _record_env_failure_hint awk
+  echo "  本文の作り直しでは解消しません (awk の実行環境側の問題です)。pending marker は削除するため 8.0.3 は差し戻しません" >&2
+  echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=body_check_unavailable" >&2
+  outcome="failed"
+  exit 0
+fi
+[ -n "$_ledger_awk_err" ] && rm -f "$_ledger_awk_err"
+gh_err=""
+
 # --- 記録 / skip の分岐 ---
-# 検索 degraded 時は `0 件 → skip` / `>0 件 → 新規作成に縮退` (WARNING と degraded=1 は emit 済で
-# silent 縮退にはならない)。ここに到達した時点で本文は count/body 整合検査を通過済み。
-if [ -z "$existing_id" ] && [ "$NB_COUNT" -eq 0 ]; then
-  # 0 件 ∧ 既存なし: 投稿しない (AC-4 非退行)。事実と異なる「0 件」コメントを新規作成しない。
+# 検索 degraded 時は `0 件 ∧ 台帳なし → skip` / それ以外 → 新規作成に縮退 (WARNING と degraded=1 は
+# emit 済で silent 縮退にはならない)。ここに到達した時点で本文は count/body 整合検査を通過済み。
+if [ -z "$existing_id" ] && [ "$NB_COUNT" -eq 0 ] && [ "$ledger_entry_count" -eq 0 ]; then
+  # 0 件 ∧ 台帳なし ∧ 既存なし: 投稿しない。事実と異なる「0 件」コメントを新規作成しない。
   # ただし degraded 由来の「既存なし」は **既存コメントが実在しても検出できなかった** 可能性が
-  # あるため、収束 cycle のクリア (AC-2) が成立していないことを明示する。
+  # あるため、収束 cycle のクリアが成立していないことを明示する。
   [ "$lookup_degraded" = "1" ] && _record_degraded_skip_hint
   outcome="skipped"
   exit 0
@@ -887,7 +933,7 @@ _record_gh_failure() {  # $1=label $2=reason $3=rc
 
 # 投稿した記録コメントの id を関連 Issue body へ永続化する。次 cycle の lookup が本文照合を経ずに
 # canonical を特定できるようにするための唯一の書き込み経路であり、本経路の write 側の要。
-# **失敗しても記録は成功扱いのまま**で pending marker も残さない (AC-3 / MUST NOT) — 環境 / IO 起因で
+# **失敗しても記録は成功扱いのまま**で pending marker も残さない (MUST NOT) — 環境 / IO 起因で
 # caller が本文を作り直しても解消しないため、`body_check_unavailable` と同じ削除バケットに属する。
 _persist_comment_id() {  # $1=comment_id
   # 呼び出し時点の gh_err (投稿失敗診断用) をグローバルの退避枠へ移す。本関数は _gh_err_detail に
@@ -954,7 +1000,7 @@ if [ -n "$existing_id" ]; then
     _record_gh_failure "更新 (PATCH)" patch_failed "$?"
   fi
 else
-  # ここに来るのは count > 0 のときのみ (0 件 ∧ 既存なしは上で skip 済)。
+  # ここに来るのは count > 0 または却下台帳エントリがあるときのみ (0 件 ∧ 台帳なし ∧ 既存なしは上で skip 済)。
   # F-01 (cycle 3 review, application-reviewer + error-handling-reviewer が独立検出):
   # _record_degraded_create_hint は create の**成否が確定してから** (outcome="created" の直後)
   # 呼ぶこと。gh issue comment の実行前に呼ぶと、create 自体が失敗した run でも「重複して新規作成した」

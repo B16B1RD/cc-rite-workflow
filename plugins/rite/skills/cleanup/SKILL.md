@@ -135,9 +135,9 @@ rationale: references/rationale.md#tasklist-parent-verify
 candidates=$(gh issue list -R {owner_repo} --state open --search "in:body \"- [ ] #{issue_number}\" OR \"- [x] #{issue_number}\"" --json number --limit 10 --jq '.[].number')
 parent_issue_number=""
 for cand in $candidates; do
-  # 自己マッチ除外: standalone closing Issue が自分自身を親と誤検出するのを防ぐ（AC-1）
+  # 自己マッチ除外: standalone closing Issue が自分自身を親と誤検出するのを防ぐ
   [ "$cand" = "{issue_number}" ] && continue
-  # 妥当性検証: 候補 body に当該 tasklist 行が実在するか確認（緩いマッチで拾った無関係 Issue を排除、AC-2 を非回帰で通す）
+  # 妥当性検証: 候補 body に当該 tasklist 行が実在するか確認（緩いマッチで拾った無関係 Issue を排除）
   cand_body=$(gh issue view "$cand" -R {owner_repo} --json body --jq '.body')
   if grep -qE "^[[:space:]]*-[[:space:]]\[[ xX]\][[:space:]]*#{issue_number}([^0-9]|$)" <<< "$cand_body"; then
     parent_issue_number="$cand"
@@ -223,11 +223,11 @@ echo "incomplete_count=$(printf '%s\n' "$incomplete" | grep -c . 2>/dev/null || 
 
 | `WM_SOURCE` | 意味 |
 |---|---|
-| `local` | 進捗セクションを持つ実 WM を採用（AC-2）。path は state_root 絶対パス |
-| `stub_fallback` → 後続で `comment` / `none` | stub を不採用しコメントへ fallback。切替理由は WARNING 済み（AC-1） |
+| `local` | 進捗セクションを持つ実 WM を採用。path は state_root 絶対パス |
+| `stub_fallback` → 後続で `comment` / `none` | stub を不採用しコメントへ fallback。切替理由は WARNING 済み |
 | `resolver_unresolved` | resolver 失敗の中間 marker。採用元ではない。後段の最終 `comment` / `none` で判定する |
 | `comment` | ローカル WM 不在 or stub / resolver 失敗後のコメントを採用 |
-| `none` | ローカルもコメントも無い。既存の「WM なし」経路（AC-3） |
+| `none` | ローカルもコメントも無い。既存の「WM なし」経路 |
 
 未完了タスクがあれば `AskUserQuestion` で「未完了タスクを Issue 化 (推奨) / 無視して続行 / キャンセル」を確認。Issue 化選択時は各タスクを `残作業` label 付きで作成する。
 
@@ -239,6 +239,7 @@ echo "incomplete_count=$(printf '%s\n' "$incomplete" | grep -c . 2>/dev/null || 
 | `{pr_number}` | ステップ 1 で取得した PR 番号 | `1149` |
 | `{pr_title}` | `gh pr view {pr_number} -R {owner_repo} --json title --jq '.title'` | `fix(workflow): ...` |
 | `{issue_number}` | ステップ 2 で識別した関連 Issue 番号 | `1144` |
+| `{type}` | 未完了タスクの内容から推定（`fix` / `feat` / `refactor` / `docs` / `chore` 等） | `refactor` |
 | `{task_title}` | work memory 進捗セクションの未完了タスク見出し | `step-5: references/ 整理` |
 | `{task_text}` | 同上の本文 (チェックボックス行のテキスト) | `step-5: references/ 整理` |
 | `{projects_enabled}` | `rite-config.yml` → `github.projects.enabled` (boolean) | `true` |
@@ -249,6 +250,9 @@ echo "incomplete_count=$(printf '%s\n' "$incomplete" | grep -c . 2>/dev/null || 
 **Issue 本文テンプレート** (cleanup-specific、各タスクごとに以下の形式で生成):
 
 ```markdown
+**Type**: {type}
+**Complexity**: S
+
 ## 概要
 
 {task_title}
@@ -272,7 +276,7 @@ PR #{pr_number} ({pr_title}) のマージ時点で未完了だったタスクを
 - [ ] {task_text}
 ```
 
-**bash skeleton** (タスクごとに以下を反復実行、`{plugin_root}` / `{pr_number}` / `{pr_title}` / `{issue_number}` / `{task_title}` / `{task_text}` / `{projects_enabled}` / `{project_number}` / `{owner}` は Claude が事前 substitute):
+**bash skeleton** (タスクごとに以下を反復実行、`{plugin_root}` / `{pr_number}` / `{pr_title}` / `{issue_number}` / `{type}` / `{task_title}` / `{task_text}` / `{projects_enabled}` / `{project_number}` / `{owner}` は Claude が事前 substitute):
 
 ```bash
 # 0. `残作業` label を冪等に事前作成 (gh issue create --label X は X 未存在時に
@@ -329,7 +333,7 @@ args_json=$(jq -n \
       enabled: $projects_enabled,
       project_number: $project_number,
       owner: $owner,
-      status: "Todo",
+      status: "todo",
       priority: $priority,
       complexity: $complexity,
       iteration: { mode: $iter_mode }
@@ -394,7 +398,7 @@ rationale: references/rationale.md#exitworktree-delegation
   **委譲先は main checkout での `/rite:cleanup {pr_number}` 再実行**（1 系統）。再実行セッションでは flow-state に worktree 記録が無いため 4-W は `CLEANUP_WT=none` を返し、`CLEANUP_DELEGATED` を emit せずステップ 4 / 5 / 9 が通常実行される。base 更新・wiki ingest・リモートブランチ削除はそこで直接完了し、worktree 削除とローカルブランチ削除は**ステップ 5 が `branch` エントリを reap manifest に記録する**ことで次回セッション開始時の自動回収を arm する（`{pr_merged}=true`、manifest への記録を verify 済み、かつ対象 worktree が reaper と同じ filtered dirty gate を通過したときだけ `recovery=auto` になる。未マージ PR の強制 cleanup・記録漏れ・dirty または判定不能な worktree は `recovery=manual` に倒れ手動回復が必要 — 出し分けはステップ 12 の `{local_branch_check}` 判定に規定済み。既存配線で、本ステップから追加の記録は行わない）。
 - `CLEANUP_WT=in_worktree`（保存 state に worktree 記録あり）:
   1. 共通作業先契約の変更前検証で所有権・branch・worktree を照合する。`dirty=yes` なら **AskUserQuestion**（「`git stash push` して続行 / 中止」）。説明文は上記 `--- dirty files begin/end ---` デリミタ内に出力された生パス一覧を**引用**する（要約・創作しない）。stash は common git dir に格納されるため worktree 削除後も `git stash pop` 可能（完了報告の stash 案内は従来文面を流用）。
-  2. native 入場なら `ExitWorktree` を `action: "keep"` で呼び出す（**常に keep**）。検証済み作業先指定で入場した場合は、以後の全 shell の `workdir` / 毎回 `cd` とファイル操作先を検出済み `{main_root}` に切り替える。共通作業先契約の **worktree-exit-check** を実行し、実際の toplevel が main root と一致した場合だけ手順 3 へ進む。退出失敗・拒否・検証不可なら削除を試さず `CLEANUP_DELEGATED=1` を emit して、上記委譲経路で残作業を報告する。
+  2. native 入場なら `ExitWorktree` を `action: "keep"` で呼び出す（**常に keep**）。検証済み作業先指定で入場した場合は、以後の全 shell の `workdir` / 毎回 `cd` とファイル操作先を検出済み `{main_root}` に切り替える。共通作業先契約の **worktree-exit-check** を実行し、実際の toplevel が main root と一致した場合だけ手順 3 へ進む。native 入場経路では、この確認を `cd` / `git -C` / `workdir` 指定のいずれも伴わない独立したシェル呼び出しで実行する（helper 内や退出に使ったシェルで main checkout へ `cd` した後の同一シェルで確認しない。rationale: references/rationale.md#exit-check-independent-shell）。退出失敗・拒否・検証不可なら削除を試さず `CLEANUP_DELEGATED=1` を emit して、上記委譲経路で残作業を報告する。
   3. main から worktree を削除する。**削除は helper に委譲する** — helper が self-exclusion 付き live-cwd guard（**別の**セッションの harness cwd がまだこの worktree に立っている場合、削除するとそのセッションの `/clear` が `Path does not exist` で失敗するため、削除せず遅延回収へ委譲する。cleanup を実行している**自セッション自身**は `--self-root` で除外する）と sandbox マスク検知（マスク下の `git worktree remove` は admin dir を半壊させるため試行しない）を順に通し、通過したときだけ remove → prune を実行する:
      ```bash
      # 判定と削除（self-exclusion 付き live-cwd guard → sandbox マスク検知 → remove →
@@ -414,7 +418,7 @@ rationale: references/rationale.md#exitworktree-delegation
      ```
      > 手順 2 の退出検証成功が削除の前提。native 退出が no-op / 失敗のまま self-exclusion を使って削除してはならない。検証済み作業先指定の経路でも他セッションの live cwd と sandbox mask のガードは維持する。`/proc` の無い環境での helper の後方互換挙動は変更しない。
 rationale: references/rationale.md#live-cwd-self-exclusion
-  4. 削除失敗（`WORKTREE_REMOVE_FAILED`）、live-cwd skip（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD`）、または sandbox マスク skip（`WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` — remove 試行自体が admin dir を半壊させるため試行せず委譲）は **WARNING を表示して続行**（non-blocking。`pr-cycle-cleanup.sh` の遅延 reap へ委譲。ステップ 12 報告に失敗/skip と手動コマンドを表示）。busy 失敗時は上記の sandbox 干渉 WARNING も追加表示される（AC-5）。`WORKTREE_REMOVE_FAILED` / `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` は `{pr_merged}=true` のときのみ reap manifest（`.rite/tmp-artifacts.tsv`）へ `session_worktree` type でパスを記録する（`worktree` type ではない）。corpse 化した場合、パス記録で `pr-cycle-cleanup.sh` Step 5 の corpse age guard（24h 待ち）をバイパスさせ、mount 解放後の次回セッションで即座に回収できるようにする。
+  4. 削除失敗（`WORKTREE_REMOVE_FAILED`）、live-cwd skip（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD`）、または sandbox マスク skip（`WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` — remove 試行自体が admin dir を半壊させるため試行せず委譲）は **WARNING を表示して続行**（non-blocking。`pr-cycle-cleanup.sh` の遅延 reap へ委譲。ステップ 12 報告に失敗/skip と手動コマンドを表示）。busy 失敗時は上記の sandbox 干渉 WARNING も追加表示される。`WORKTREE_REMOVE_FAILED` / `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` は `{pr_merged}=true` のときのみ reap manifest（`.rite/tmp-artifacts.tsv`）へ `session_worktree` type でパスを記録する（`worktree` type ではない）。corpse 化した場合、パス記録で `pr-cycle-cleanup.sh` Step 5 の corpse age guard（24h 待ち）をバイパスさせ、mount 解放後の次回セッションで即座に回収できるようにする。
 rationale: references/rationale.md#session-worktree-reap
 - `CLEANUP_WT=in_main`（resume 等で既に main 復帰済み）: 所有する保存 state / claim / 対象 branch と登録 worktree の照合、対象の dirty ゲート、共通作業先契約の退出検証を通す。矛盾・他 live claim は削除前に停止する。worktree が残っていれば 3 を実行（既削除なら 3 もスキップ = 冪等）。in_main では所有セッションが別セッションの可能性があるため、3 の self-exclusion 付き live-cwd guard が特に重要（live-cwd guard による遅延は別セッション在席時。これに加え sandbox マスク検知時（sandbox マスク）も削除を試行せず遅延する）。
 - `CLEANUP_WT=none`（multi_session 無効、または worktree 関連なし = 物理 cwd も当該 Issue の worktree でない）: 4-W 全体を no-op でスキップ。**注**: flow-state 未記録でも物理 cwd が当該 Issue の worktree なら `in_worktree_unrecorded` に分類されここには落ちない。**ただし関連 Issue が未識別（`{issue_number}` 空）のときは物理 cwd 導出が働かず `none` に落ちる** — 導出が issue 番号でパス末尾を照合するため。この場合の worktree は次回セッション開始時の遅延 reap に委ねられる。
@@ -539,16 +543,19 @@ rationale: references/rationale.md#remote-delete-markers
 
 ---
 
-## ステップ 6: PR-specific state ファイルを削除 <!-- AC-7 -->
+## ステップ 6: PR-specific state ファイルを削除
 
 マージ済み PR に紐づく state ファイルを削除する。**他 PR 誤削除防止のため glob は `{pr_number}-` prefix 固定**。
 
-> **Acceptance Criteria anchor (AC-7)**: [review-result-schema.md](../../references/review-result-schema.md#クリーンアップ) と双方向リンク。
+> **双方向リンク**: [review-result-schema.md](../../references/review-result-schema.md#クリーンアップ) のクリーンアップ節と対になる。
 
 ### 6.0 残存非実測指摘から follow-up Issue を起票
 
 archive より前に実行する（JSON が元の場所にあるうちに読む）。0 件は起票しない。同定不能は起票せず WARNING。cleanup は止めない。
 rationale: references/rationale.md#follow-up-before-archive
+
+iterate の NB sweep で起票済みの指摘（関連 Issue 記録コメントの却下台帳で判定=`issued`）は helper が台帳を読んで転記から除く。台帳か最新のレビュー結果 JSON を読めなければ、sweep で Issue 化済みの指摘も転記対象とし（再検証による除外は適用済みのまま）、WARNING と `FOLLOW_UP_SWEEP_ISSUED=unavailable` を出す。
+rationale: references/rationale.md#follow-up-sweep-issued-dedup
 
 #### 6.0.V helper 呼び出し前の再検証（マージ後 HEAD）
 
@@ -557,7 +564,7 @@ rationale: references/rationale.md#follow-up-before-archive
 対象 JSON は helper と同一の選び方（`{state_root}/.rite/review-results/{pr_number}-*.json*` の**全ファイルの `non_blocking_findings[]` を和集合**し、basename 昇順（= cycle 昇順）に**そのまま連結する**。`id` は各 JSON 内の連番で cycle 跨ぎの identity を持たないため畳み込み key に使わない）で確定する。最新 1 本だけを見ると helper が転記する集合と食い違い、先行 cycle にのみ載る指摘が再検証を経ずに転記される:
 
 ```bash
-# ⚠ 下行はテスト hooks/tests/cleanup-follow-up-issue.test.sh T-28 が awk 抽出アンカーとして参照する。変更時はテスト側の awk パターンも同時更新すること
+# ⚠ 下行はテスト hooks/tests/cleanup-follow-up-issue.test.sh T-28 / T-41 が awk 抽出アンカーとして参照する。変更時はテスト側の awk パターンも同時更新すること
 # reason は helper の語彙（no_json / jq_missing）に揃え、state root 解決失敗は別値にする。
 # 合成すると「JSON も jq も実在するのに no_json_or_jq」という誤った原因が完了報告へ転記される。
 _state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
@@ -581,7 +588,10 @@ else
     echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=no_json"
   else
     # 1 finding = 1 行の JSON で出す。TSV だと description / suggestion の改行で行が割れ、
-    # 後続行が id を失って id と本文の対応が崩れる（誤対応が resolved 側に振れると指摘の無言 drop）。
+    # 後続行が key を失って key と本文の対応が崩れる（誤対応が resolved 側に振れると指摘の無言 drop）。
+    # `key` は出典 JSON の basename と `id` を `#` で連結した除外指定の単位（`id` は cycle 内の連番で、
+    # 出典と組にして初めて 1 件を指せる）。basename が `{pr_number}-{14 桁}.json`
+    # （同秒衝突時は `{pr_number}-{14 桁}~{4 桁小文字 hex}.json`）の形でない出典（corrupt 退避ファイル等）と書式外 id は `key` を null にする。
     # `.id` は**落とさず null へ写す**。save 側は書式外 id の保存を hard fail で止めるが、
     # 本 gate を通さずに `.rite/review-results/` 直下へ保存された JSON には書式外 id が残る
     # （gate 導入前の JSON、および gate を経由しない `/rite:fix` の write 経路 — P1/P3 の直接 write と
@@ -606,7 +616,7 @@ else
       for f in "${_rv_srcs[@]}"; do
         # 2>"$_rv_errf" は毎周トランケートするため、除外 WARNING の**直後**に原因行を出す
         # （ループ後へ回すと最後の失敗の原因しか残らない）。helper 側の union ループと同形。
-        if _part=$(jq -c 'if (.non_blocking_findings | type) == "array" then .non_blocking_findings else error("not an array") end' "$f" 2>"${_rv_errf:-/dev/null}"); then
+        if _part=$(jq -c --arg src "${f##*/}" 'if (.non_blocking_findings | type) == "array" then .non_blocking_findings | map(if type == "object" then . + {_src: $src} else . end) else error("not an array") end' "$f" 2>"${_rv_errf:-/dev/null}"); then
           if _m=$(jq -c --argjson add "$_part" '. + $add' "$_rv_union" 2>"${_rv_errf:-/dev/null}"); then
             printf '%s\n' "$_m" > "$_rv_union"; _rv_ok=$((_rv_ok + 1)); continue
           fi
@@ -620,7 +630,9 @@ else
       # 最終射影の rc は必ず見る。落とすと jq 失敗（非文字列 id 等）が空出力と区別できず、
       # 再検証を経ていない部分集合のまま `done` を出してしまう。
       if _rv_out=$(jq -c '.[]
-        | {id: (if ((.id // "") | (test("^F-[0-9]{2,}$") and (contains("\n") | not))) then .id else null end),
+        | ((.id // "") | (test("^F-[0-9]{2,}$") and (contains("\n") | not))) as $fid
+        | {key: (if $fid and ((._src // "") | test("^[0-9]+-[0-9]{14}(~[0-9a-f]{4})?\\.json$")) then ._src + "#" + .id else null end),
+           id: (if $fid then .id else null end),
            file, line, description, suggestion}' "$_rv_union" 2>"${_rv_errf:-/dev/null}"); then
         # 0 件のとき printf は空行を 1 行出す。空行が finding として読まれないよう非空時だけ出力する。
         # 成功時は marker を出さない（判定後の `done` が唯一の成功 marker）
@@ -657,15 +669,16 @@ fi
 
 `FOLLOW_UP_REVERIFY=unavailable` を観測した場合、および本節を実行できなかった場合は**全件を `undecidable` 扱い**とし、`--exclude-ids` は空文字列のまま helper を呼ぶ（= 除外なし＝従来挙動）。
 
-出力に**同じ id が複数行**現れることがある（`id` は cycle 内の連番で cycle 跨ぎの identity を持たない）。各行は別の finding として独立に判定する。ただし重複 id は `resolved` と判定しても helper 側が除外を拒否して全件転記するため、`{n_resolved}` は実際に除外された件数と一致しないことがある。
+出力に**同じ id が複数行**現れることがある（`id` は cycle 内の連番で cycle 跨ぎの identity を持たない）。各行は別の finding として独立に判定し、`key` で区別する。ただし同じ `key` が複数行に現れる場合（同一 JSON 内の id 重複）は、`resolved` と判定しても helper 側が除外を拒否して全件転記するため、`{n_resolved}` は実際に除外された件数と一致しないことがある。
+rationale: references/rationale.md#follow-up-exclude-key
 
-`"id": null` の finding（書式外 id / id 欠落）は**必ず `undecidable`** とする。除外指定に載せられる id が無く、`{resolved_ids_csv}` へ入れられる値も無いため、判定の余地なく転記側へ倒れる。出力には現れるので `{n_undecidable}` には通常どおり数え上げられる。
+`"key": null` の finding（書式外 id / id 欠落 / 出典ファイル名が `{pr_number}-{14 桁}.json` / `{pr_number}-{14 桁}~{4 桁小文字 hex}.json` のどちらの形でもない）は**必ず `undecidable`** とする。除外指定に載せられる key が無く、`{resolved_ids_csv}` へ入れられる値も無いため、判定の余地なく転記側へ倒れる。出力には現れるので `{n_undecidable}` には通常どおり数え上げられる。
 
-判定を終えたら、`resolved` の id を CSV（`"F-01,F-05"`）に組み、内訳 marker を出す。**抽出が成功した経路では、抽出結果が 0 件でもこの marker を必ず出す**（`resolved=0; remains=0; undecidable=0; resolved_ids=`）— 出さないと成功 marker が 1 本も残らず、ステップ 12 が「marker が無いとき」の分岐に落ちる。**既に `unavailable` を出した経路では `done` を出さない**（出すと最後の出現が `done` になり `reason=` が完了報告から消える）:
+判定を終えたら、`resolved` の `key` を CSV（`"{pr_number}-20260101120000.json#F-01,{pr_number}-20260102120000~1a2b.json#F-05"`）に組み、内訳 marker を出す。**抽出が成功した経路では、抽出結果が 0 件でもこの marker を必ず出す**（`resolved=0; remains=0; undecidable=0; resolved_ids=`）— 出さないと成功 marker が 1 本も残らず、ステップ 12 が「marker が無いとき」の分岐に落ちる。**既に `unavailable` を出した経路では `done` を出さない**（出すと最後の出現が `done` になり `reason=` が完了報告から消える）:
 
 ```bash
 # `{resolved_ids_csv}` / `{n_*}` は上記判定の結果をリテラル置換する（resolved が 0 件なら空文字列）。
-# `{resolved_ids_csv}` に置けるのは `F-NN` トークンをカンマ連結したものだけ。
+# `{resolved_ids_csv}` に置けるのは出力の `key` の値（`{pr_number}-{14 桁}.json#F-NN`、同秒衝突時は `{pr_number}-{14 桁}~{4 桁小文字 hex}.json#F-NN`）をカンマ連結したものだけ。
 echo "[CONTEXT] FOLLOW_UP_REVERIFY=done; resolved={n_resolved}; remains={n_remains}; undecidable={n_undecidable}; resolved_ids={resolved_ids_csv}"
 ```
 
@@ -747,10 +760,10 @@ status_json_args=$(jq -n \
   --arg owner "{owner}" \
   --arg repo "{repo}" \
   --argjson project_number {project_number} \
-  --arg status "Done" \
+  --arg role "done" \
   --argjson auto_add false \
   --argjson non_blocking true \
-  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_role:$role, auto_add:$auto_add, non_blocking:$non_blocking}')
 # `jq 2>/dev/null` 抑制 / `failed|*)` catch-all により script が JSON-emit 前に死んだ場合も
 # silent fall-through を防ぐ。`|| status_json=""` は付けない — このブロックに set -e はなく、
 # command substitution は script が非ゼロ終了しても stdout (script が既に出力した失敗理由入り
@@ -908,7 +921,7 @@ Status: {projects_status_result}
 - [{base_update_check}] base ブランチを更新 (fetch + merge --ff-only)
 - [{session_worktree_check}] セッション worktree 退出・削除 (multi_session)
 - [{local_branch_check}] ローカル/リモートブランチ削除
-- [{review_cleanup_check}] PR-specific state ファイル削除{follow_up_reverify_note}{follow_up_ambiguous_note}
+- [{review_cleanup_check}] PR-specific state ファイル削除{follow_up_reverify_note}{follow_up_ambiguous_note}{follow_up_sweep_note}
 - [{projects_check}] Projects Status を Done に更新
 - [{wiki_ingest_check}] Wiki ingest (pending raw source のページ統合)
 - [x] flow state リセット
@@ -969,7 +982,7 @@ rationale: references/rationale.md#marker-scope-recency
 rationale: references/rationale.md#marker-data-delimiter
 
   **ローカル側**（**2 段で判定する**: まず `[CONTEXT] ` 行頭一致 + marker family + `branch={branch_name}` に該当する行を集め、**その中の最後の出現 1 行だけを対象に選ぶ**。次にその 1 行に対して以下のルールを上から評価し最初に一致したものを採用する。段の順序を入れ替えてはならない — ルールを先に評価すると、蓄積した stale marker のうち上位ルールに当たるものが最新の行より先に一致し、recency が働かない）:
-  - `[CONTEXT] BRANCH_DELETE_DEFERRED=1; branch={branch_name}` 行があるとき（作業ツリーが未削除のまま残っていて削除を見送った — 別セッション使用中しまたは sandbox マスク skip（sandbox マスク）。原因は断定しない）。**marker の `recovery=` フィールドで文面を出し分ける**（記録できていない経路で「自動回収」と偽らないため — AC-6）: ` ` + 以下を付記
+  - `[CONTEXT] BRANCH_DELETE_DEFERRED=1; branch={branch_name}` 行があるとき（作業ツリーが未削除のまま残っていて削除を見送った — 別セッション使用中しまたは sandbox マスク skip（sandbox マスク）。原因は断定しない）。**marker の `recovery=` フィールドで文面を出し分ける**（記録できていない経路で「自動回収」と偽らないため）: ` ` + 以下を付記
     - `recovery=auto`（PR が merged 済み、reap manifest に記録成功、かつ filtered dirty gate が clean → 次セッションで自動回収される）:
       ```
       ℹ️ ローカルブランチ {branch_name} は、まだ削除されていない作業ツリーで参照されているため残しました。その作業ツリーが解放されたあと、次回のセッション開始時に自動で削除されます（手動操作は不要）。
@@ -988,7 +1001,7 @@ rationale: references/rationale.md#marker-data-delimiter
   **リモート側**（**2 段で判定する**: まず `[CONTEXT] ` 行頭一致 + marker family + `branch={branch_name}` に該当する行を集め、**その中の最後の出現 1 行だけを対象に選ぶ**。次にその 1 行に対して以下のルールを上から評価し最初に一致したものを採用する。段の順序を入れ替えてはならない — ルールを先に評価すると、蓄積した stale marker のうち上位ルールに当たるものが最新の行より先に一致し、recency が働かない。）:
   - `[CONTEXT] REMOTE_BRANCH_DELETE_FAILED=1; branch={branch_name}` 行があるとき（`rc=0` 経路で `git push origin --delete` を実行したが失敗した — protected branch / 権限不足 / race。リモートブランチは残存している）: ` ` + 「リモートブランチ {branch_name} の削除に失敗しました。`git push origin --delete "refs/heads/{branch_name}"` で手動削除」を付記
   - `[CONTEXT] REMOTE_BRANCH_CHECK_FAILED=1; branch={branch_name}` 行があるとき（`git ls-remote` が rc=0/2 以外で失敗した、またはブランチ名の事前検証・一時ファイル確保・ref 名の完全一致検証のいずれかが失敗して存在確認自体を完了できなかったため、削除を試行していない）: ` ` + 「リモートブランチ {branch_name} の存在確認に失敗したため削除を試行していません。`git ls-remote --exit-code --heads origin "refs/heads/{branch_name}"` で確認し、残っていれば `git push origin --delete "refs/heads/{branch_name}"` で手動削除」を付記（案内する確認コマンドにも `--exit-code` を付ける）
-  - `[CONTEXT] REMOTE_BRANCH_ALREADY_ABSENT=1; branch={branch_name}` 行があるとき（`delete_branch_on_merge: true` によるサーバサイド auto-delete などで既に不在。**正常系であり残作業ではない** — AC-4）: `x`
+  - `[CONTEXT] REMOTE_BRANCH_ALREADY_ABSENT=1; branch={branch_name}` 行があるとき（`delete_branch_on_merge: true` によるサーバサイド auto-delete などで既に不在。**正常系であり残作業ではない**）: `x`
   - `[CONTEXT] REMOTE_BRANCH_DELETED=1; branch={branch_name}` 行があるとき（`rc=0` 経路で `git push origin --delete` を実行し成功した = 通常削除。`delete_branch_on_merge: false` のリポジトリの正常系）: `x`
   - `[CONTEXT] REMOTE_BRANCH_*` かつ `branch={branch_name}` の行がいずれも無いとき: ` ` + 「リモートブランチ {branch_name} の削除結果を確認できませんでした。`git ls-remote --exit-code --heads origin "refs/heads/{branch_name}"` で確認し、残っていれば `git push origin --delete "refs/heads/{branch_name}"` で手動削除」を付記。**marker 不在を「削除成功」と読んではならない** — 不在は「ステップ 5 の bash block が実行されなかった」「出力が compact で失われた」等の**実行結果を確認できていない状態**である。**marker family でスコープすること**
 - `{projects_status_result}` / `{projects_check}`: 以下を**上から評価し最初に一致したもの**を採用する（`{wiki_ingest_check}` の legitimate-skip 区別パターンと統一。ステップ8 は `projects_enabled=false` または Issue 未識別のとき丸ごと skip され `[CONTEXT] PROJECTS_STATUS_UPDATED=` を emit しないため、この legitimate skip と本物の更新失敗を区別する）:
@@ -1006,12 +1019,12 @@ rationale: references/rationale.md#marker-data-delimiter
   | `FOLLOW_UP_ISSUE=failed`（reason 問わず。`helper_rc` / `lookup_api` / `create_api` / `create_script_missing` / `json_undecidable` を含む） | 未完了 | `⚠️ follow-up Issue の起票に失敗しました。review-results JSON の non_blocking_findings[] を元に follow-up ラベル付き Issue を手動作成してください` |
   | `skipped; reason=no_json` | 未完了 | 同上（レビュー結果 JSON 不在） |
   | `skipped; reason=jq_missing` | 未完了 | `⚠️ jq が見つからず follow-up 起票を skip しました。jq を導入したうえで、残存非実測指摘があれば follow-up Issue を手動作成してください` |
-  | `created` / `skipped; reason=no_findings` / `skipped; reason=already_exists` / `skipped; reason=all_resolved` | x 相当 | — |
+  | `created` / `skipped; reason=no_findings` / `skipped; reason=already_exists` / `skipped; reason=all_issued` / `skipped; reason=all_resolved` | x 相当 | — |
   | `[CONTEXT] FOLLOW_UP_ISSUE=` かつ `pr={pr_number}` の行が無い | 未完了 | `⚠️ follow-up 起票の実行結果が確認できませんでした。残存非実測指摘があれば follow-up ラベル付き Issue を手動作成してください` |
 
   **FOLLOW_UP_ISSUE marker 不在を成功と読んではならない。**
 
-  `skipped; reason=all_resolved` を x 相当に置くのは、ステップ 6.0.V の再検証で残存 0 件が確定した**正常完了**だから（起票すべきものが無い）。`no_findings` と同じ扱いであり「起票に失敗した」ではない。
+  `skipped; reason=all_resolved` を x 相当に置くのは、ステップ 6.0.V の再検証で残存 0 件が確定した**正常完了**だから（起票すべきものが無い）。`no_findings` と同じ扱いであり「起票に失敗した」ではない。`skipped; reason=all_issued` も、残りが全件 sweep で起票済みの正常完了として同じ扱いにする。
 
   **state 削除側**（`REVIEW_CLEANUP_PARTIAL_FAILURE=1` を上から評価し最初の一致。各行は presence 検査。こちら側に marker が 1 本も無ければ x 相当）:
 
@@ -1028,10 +1041,11 @@ rationale: references/rationale.md#review-cleanup-reasons
   - `unavailable` のとき: ` — follow-up 再検証: 未実施（{reason}。全件を転記対象としました）`（`{reason}` は marker の `reason=` 値）
   - marker が無いとき: ` — follow-up 再検証: 実施結果を確認できませんでした（全件を転記対象とした可能性があります）`。本分岐は「節ごと実行されなかった」場合と「抽出は成功したが判定 marker `done` に到達しなかった」場合の 2 つに落ちる（6.0.V は成功時に marker を出さないため後者が marker 皆無になる）。**marker 不在を成功と読んではならない** — 兄弟分岐と同じ規約
 - `{follow_up_ambiguous_note}`: 先に `{review_cleanup_check}` と同じ規則で最終 `FOLLOW_UP_ISSUE` を選ぶ。次に `[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason={r}; count={n}; pr={pr_number}` のうち、`pr=` の直後が `;` または行末まで一致する最後の出現を採る。`{count}` / `{reason}` はその marker の値を使う。marker が無ければ note は空文字列（除外拒否の通知なし。除外適用・起票の成功は推定しない）。
-  - `reason=ambiguous` のとき: ` — ⚠️ 曖昧 id {count} 件の指摘を除外せず転記対象としました（「follow-up 再検証」の「解消済み」は除外要求件数であり実除外数ではありません）`（`{count}` は除外を拒否した id の異なり数）
+  - `reason=ambiguous` のとき: ` — ⚠️ 曖昧 key {count} 件の指摘を除外せず転記対象としました（「follow-up 再検証」の「解消済み」は除外要求件数であり実除外数ではありません）`（`{count}` は除外を拒否した key の異なり数）
   - それ以外の `reason` のとき: ` — ⚠️ 除外を適用できなかったため（{reason}）、除外要求分もすべて転記対象としました（「follow-up 再検証」の「解消済み」は実際には除外されていません）`
   - 最終 `FOLLOW_UP_ISSUE=created` の場合だけ、上の note の「転記対象としました」を「転記しました」に置換する。失敗・未確認・`already_exists` を含むその他の結果では置換しない。
   - 本 note は除外結果の付記であり、起票結果と state 削除結果から決めた `{review_cleanup_check}` を変更しない。
+- `{follow_up_sweep_note}`: `[CONTEXT] FOLLOW_UP_SWEEP_ISSUED=unavailable; reason={r}; pr={pr_number}` のうち、`pr=` の直後が `;` または行末まで一致する最後の出現を採る。marker があれば ` — ⚠️ sweep 起票済みの除外を適用できなかったため（{reason}）、sweep で Issue 化済みの指摘も転記対象としました`（`{reason}` は marker の値）。marker が無ければ空文字列（除外の適用・起票の成功は推定しない）。`{review_cleanup_check}` を変更しない。
 - `{wiki_ingest_check}`: 以下の sentinel を上から評価し最初の一致を採用 (`WIKI_INGEST_DONE` + `WIKI_INGEST_PUSH_FAILED` が併存しうるため順序重要):
 
   | Sentinel | check | 表示 |
@@ -1055,7 +1069,7 @@ rationale: references/rationale.md#review-cleanup-reasons
     手動回復: git -C .rite/wiki-worktree push origin {wiki_branch}
   ```
 
-`{outstanding_items_block}`（非ブロッキング失敗の集約欄）: 上記チェックリストの `{base_update_check}` / `{session_worktree_check}` / `{local_branch_check}` / `{projects_check}` / `{wiki_ingest_check}` / `{review_cleanup_check}` のうち、**チェックボックスが `x` ではなく空欄（未チェック）として描画されたもの**があれば、そのチェックボックス直下の付記文をそのまま箇条書きで列挙する（各チェックボックス直下の付記と同じ文言をここにも重複表示する — チェックリストは一覧性、本節は見落とし防止のための集約であり、両立させる。AC-1 / AC-2）。
+`{outstanding_items_block}`（非ブロッキング失敗の集約欄）: 上記チェックリストの `{base_update_check}` / `{session_worktree_check}` / `{local_branch_check}` / `{projects_check}` / `{wiki_ingest_check}` / `{review_cleanup_check}` のうち、**チェックボックスが `x` ではなく空欄（未チェック）として描画されたもの**があれば、そのチェックボックス直下の付記文をそのまま箇条書きで列挙する（各チェックボックス直下の付記と同じ文言をここにも重複表示する — チェックリストは一覧性、本節は見落とし防止のための集約であり、両立させる）。
 
 判定基準を「⚠️/ℹ️ 等の絵文字 prefix 一致」ではなく「チェックボックスの空欄/`x`」に統一する: 6 check の判定ルールはいずれも「実失敗・残作業のときのみ空欄 ` ` を割り当て、成功時および legitimate な informational skip は `x` を割り当てる」。付記文の絵文字 prefix は飾りに過ぎず、チェックボックス自体の空欄/`x`こそが「未完了か否か」の一次情報である。
 rationale: references/rationale.md#outstanding-checkbox

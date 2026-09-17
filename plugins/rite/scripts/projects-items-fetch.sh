@@ -45,6 +45,24 @@ esac
 
 command -v jq >/dev/null 2>&1 || fetch_failed "jq not found"
 
+# --- Status field name candidates ---
+# The board's Status field is found by the names rite-config.yml declares
+# (github.projects.fields.status.name, or the built-in Japanese / English defaults), read
+# through the shared resolver. It reads the config from the git toplevel (or cwd), which
+# is where the skill invokes this script from. A configuration the resolver rejects is a
+# fetch failure: no field can be matched.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../hooks/scripts/lib/projects-status-config.sh
+source "$SCRIPT_DIR/../hooks/scripts/lib/projects-status-config.sh" 2>/dev/null \
+  || fetch_failed "Status role resolver not found: $SCRIPT_DIR/../hooks/scripts/lib/projects-status-config.sh"
+cfg_err=$(mktemp "${TMPDIR:-/tmp}/rite-projects-items-cfg-XXXXXX") || fetch_failed "mktemp failed for config stderr tempfile"
+if ! field_candidates=$(projects_status_field_candidates 2>"$cfg_err"); then
+  reason="invalid Status configuration: $(tr '\n' ' ' < "$cfg_err")"
+  rm -f "$cfg_err"
+  fetch_failed "$reason"
+fi
+rm -f "$cfg_err"
+
 # --- tempfile 準備 + cleanup trap ---
 # tmpfile は成功時に caller へ hand-off するため trap 対象から外す (handed_off で制御)。
 # pages / err は中間ファイルのため全経路で削除する。
@@ -115,7 +133,8 @@ if [ "$ok" != "1" ]; then
 fi
 
 # --- {items: [{content: {number}, status}]} へ正規化 (number null の draft item は除外) ---
-if ! jq -s '{items: ([ .[] | { content: { number: (.content.number // null) }, status: ([ .fieldValues.nodes[]? | select(.field.name? == "Status") | .name ] | first // null) } ] | map(select(.content.number == null | not)))}' "$pages" > "$tmpfile" 2>"$err"; then
+# Status 値は resolver の候補名 (改行区切り) のいずれかに一致する field から取る。
+if ! jq -s --arg candidates "$field_candidates" '($candidates | split("\n") | map(select(. != ""))) as $fields | {items: ([ .[] | { content: { number: (.content.number // null) }, status: ([ .fieldValues.nodes[]? | select((.field.name? // "") as $fn | $fields | index($fn) != null) | .name ] | first // null) } ] | map(select(.content.number == null | not)))}' "$pages" > "$tmpfile" 2>"$err"; then
   fetch_failed "jq normalization failed: $(tr '\n' ' ' < "$err")"
 fi
 

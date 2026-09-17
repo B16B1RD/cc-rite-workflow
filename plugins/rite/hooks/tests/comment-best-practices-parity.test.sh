@@ -108,7 +108,7 @@ matched_count=0
 for probe in "${probes[@]}"; do
   matched=0
   for regex in "${heuristic_regexes[@]}"; do
-    if printf '%s' "$probe" | grep -qE "$regex"; then
+    if printf '%s' "$probe" | grep -cE >/dev/null "$regex"; then
       matched=1
       break
     fi

@@ -282,6 +282,21 @@ else fail "expected rc=0 + '(1 rail lines)', got rc=$rc: $output"; fi
 # Identity remains the fast path: when rails are byte-identical the checker
 # already reports "machine rail identical" and we accept that.
 # --------------------------------------------------------------------------
+normalize_open_status_roles() {
+  awk '
+    BEGIN {
+      old_arg = "  --arg status \"In Progress\" \\";
+      new_arg = "  --arg role \"in_progress\" \\";
+      old_payload = "  " sprintf("%c", 39) "{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}" sprintf("%c", 39) ")";
+      new_payload = old_payload;
+      sub(/status_name:\$status/, "status_role:$role", new_payload);
+    }
+    $0 == old_arg { print new_arg; next }
+    $0 == old_payload { print new_payload; next }
+    { print }
+  '
+}
+
 echo "TC-015: open/SKILL.md existing rails preserved vs origin/develop"
 REPO_ROOT_REAL=$(git -C "$PLUGIN_ROOT" rev-parse --show-toplevel 2>/dev/null || echo "")
 if [ -n "$REPO_ROOT_REAL" ] && git -C "$PLUGIN_ROOT" rev-parse --verify -q origin/develop >/dev/null 2>&1; then
@@ -301,19 +316,36 @@ if [ -n "$REPO_ROOT_REAL" ] && git -C "$PLUGIN_ROOT" rev-parse --verify -q origi
       }
       head_rail=$(bash "$TARGET" --repo-root "$REPO_ROOT_REAL" --skill "plugins/rite/skills/open/SKILL.md" --extract-only 2>/dev/null) || head_rail=""
       base_blob=$(git -C "$REPO_ROOT_REAL" show origin/develop:plugins/rite/skills/open/SKILL.md 2>/dev/null) || base_blob=""
-      base_rail=$(printf '%s\n' "$base_blob" | extract_rail)
+      base_rail=$(printf '%s\n' "$base_blob" | extract_rail | normalize_open_status_roles)
       # The worktree plugin-root copy rail was relocated (one bash line
-      # replaced by new-path-first dual-read). Drop that superseded line from
-      # the subsequence pin so the rest of the rail still has to survive.
-      base_rail=$(printf '%s\n' "$base_rail" | grep -Fv '.rite-plugin-root' || true)
+      # replaced by new-path-first dual-read). Drop only the superseded line,
+      # matched as a whole line: a substring match would also match the
+      # replacement rows, so once origin/develop carries them the pin would
+      # never see those rows deleted or changed. After the base advances this
+      # exclusion matches nothing.
+      base_rail=$(printf '%s\n' "$base_rail" | grep -Fxv '[ -f "$repo_root/.rite-plugin-root" ] && cp "$repo_root/.rite-plugin-root" "$wt_path/.rite-plugin-root" 2>/dev/null || true' || true)
       # number-citation comments removed from the number-free surface; drop the
       # superseded GUARD line from the subsequence pin (same pattern as above).
       base_rail=$(printf '%s\n' "$base_rail" | grep -Fv 'GUARD (#1595)' || true) # drift-check-ignore
       # A number removal left a dangling dash inside this row's parenthetical;
-      # closing it rewrites the row. Drop the superseded line from the
-      # subsequence pin (same pattern as above) so the rest of the rail still
-      # has to survive.
-      base_rail=$(printf '%s\n' "$base_rail" | grep -Fv '| `create_new` | branch も worktree もなし' || true)
+      # closing it rewrites the row. Drop only the superseded line, matched as a
+      # whole line: a shared prefix would also match the replacement row, so once
+      # origin/develop carries it the pin would never see that row deleted or
+      # changed. After the base advances this exclusion matches nothing.
+      base_rail=$(printf '%s\n' "$base_rail" | grep -Fxv '| `create_new` | branch も worktree もなし → `git worktree add --no-track -b "{branch}" "{path}" "origin/{base_branch}"`（`--no-track`: sandbox 有効環境で `branch.autoSetupMerge` の tracking 書込が `.git/config` 拒否に当たるのを回避。branch は origin 起点のまま tracking だけ張らない — Issue #1894） |' || true) # drift-check-ignore
+      # An acceptance-criteria number removal rewrites the plan-approval
+      # `interactive` row. Drop only the superseded line, matched as a whole
+      # line: a shared prefix would also match the replacement row, so once
+      # origin/develop carries it the pin would never see that row deleted or
+      # changed. After the base advances this exclusion matches nothing.
+      base_rail=$(printf '%s\n' "$base_rail" | grep -Fxv '| `interactive` | AskUserQuestion で「この計画で実装開始 / 計画を修正 / 中止」を選択（standalone。従来どおり。AC-4 回帰なし） |' || true)
+      # The Status gate moved from a column name to a role: the gate call and the
+      # `ok` / `missing` routing rows were rewritten. Drop only the superseded lines,
+      # matched as whole lines (a shared prefix would also match the replacement
+      # rows). After the base advances these exclusions match nothing.
+      base_rail=$(printf '%s\n' "$base_rail" | grep -Fxv 'bash {plugin_root}/hooks/scripts/projects-status-gate.sh --issue {issue_number} --expect "In Progress"' || true)
+      base_rail=$(printf '%s\n' "$base_rail" | grep -Fxv '| `ok` | 盤面が `In Progress` 以降に到達済み。ステップ 3 へ進む |' || true)
+      base_rail=$(printf '%s\n' "$base_rail" | grep -Fxv '| `missing` | 2.4(A) が盤面に届いていない（Status が期待に達していない / Status 値が空 / Issue が Project 未登録）。**2.4(A) の bash を 1 回だけ再実行**してステップ 3 へ進む |' || true)
       printf '%s\n' "$base_rail" > "$TEST_DIR/base-rail"
       printf '%s\n' "$head_rail" > "$TEST_DIR/head-rail"
       if [ -z "$base_rail" ] || [ -z "$head_rail" ]; then
@@ -335,6 +367,125 @@ if [ -n "$REPO_ROOT_REAL" ] && git -C "$PLUGIN_ROOT" rev-parse --verify -q origi
   esac
 else
   skip "origin/develop or repo root not available"
+fi
+
+# --------------------------------------------------------------------------
+# TC-015 exclusion pins: whole-line exact match of superseded rows.
+# Identity (HEAD == origin/develop) never reaches the exclusions above.
+# These cases feed current open/SKILL.md as base so a prefix/substring
+# exclusion would hide deletion and mutation of the replacement rows.
+# --------------------------------------------------------------------------
+echo "TC-015 exclusion pins: superseded open rails are whole-line exact"
+if [ -n "${REPO_ROOT_REAL:-}" ] && [ -f "$REPO_ROOT_REAL/plugins/rite/skills/open/SKILL.md" ]; then
+  extract_rail() {
+    awk '/^[[:space:]]*(```|~~~)/ { inb = !inb; print; next } inb { print; next } /^[[:space:]]*\|/ { print }'
+  }
+  drop_superseded_open_base_rails() {
+    local rail
+    rail=$(cat)
+    rail=$(printf '%s\n' "$rail" | grep -Fxv '[ -f "$repo_root/.rite-plugin-root" ] && cp "$repo_root/.rite-plugin-root" "$wt_path/.rite-plugin-root" 2>/dev/null || true' || true)
+    rail=$(printf '%s\n' "$rail" | grep -Fv 'GUARD (#1595)' || true) # drift-check-ignore
+    rail=$(printf '%s\n' "$rail" | grep -Fxv '| `create_new` | branch も worktree もなし → `git worktree add --no-track -b "{branch}" "{path}" "origin/{base_branch}"`（`--no-track`: sandbox 有効環境で `branch.autoSetupMerge` の tracking 書込が `.git/config` 拒否に当たるのを回避。branch は origin 起点のまま tracking だけ張らない — Issue #1894） |' || true) # drift-check-ignore
+    rail=$(printf '%s\n' "$rail" | grep -Fxv '| `interactive` | AskUserQuestion で「この計画で実装開始 / 計画を修正 / 中止」を選択（standalone。従来どおり。AC-4 回帰なし） |' || true)
+    printf '%s\n' "$rail" | normalize_open_status_roles
+  }
+  first_unmatched_base_line() {
+    awk '
+      NR==FNR { base[++n]=$0; next }
+      { head[++m]=$0 }
+      END {
+        i=1
+        for (j=1; j<=m && i<=n; j++) if (head[j]==base[i]) i++
+        if (i<=n) { print base[i]; exit 1 }
+        exit 0
+      }' "$1" "$2"
+  }
+  CREATE_NEW_CUR='| `create_new` | branch も worktree もなし → `git worktree add --no-track -b "{branch}" "{path}" "origin/{base_branch}"`（`--no-track`: sandbox 有効環境で `branch.autoSetupMerge` の tracking 書込が `.git/config` 拒否に当たるのを回避。branch は origin 起点のまま tracking だけ張らない） |'
+  PLUGIN_ROOT_CUR_IF='if [ -f "$repo_root/.rite/plugin-root" ] || [ -f "$repo_root/.rite-plugin-root" ]; then'
+  PLUGIN_ROOT_CUR_CP='    cp "$repo_root/.rite-plugin-root" "$wt_path/.rite/plugin-root" 2>/dev/null || true'
+  STATUS_ROLE_CUR='  --arg role "in_progress" \'
+  STATUS_PAYLOAD_CUR="  '{issue_number:\$issue, owner:\$owner, repo:\$repo, project_number:\$project_number, status_role:\$role, auto_add:\$auto_add, non_blocking:\$non_blocking}')"
+  CREATE_NEW_OLD='| `create_new` | branch も worktree もなし → `git worktree add --no-track -b "{branch}" "{path}" "origin/{base_branch}"`（`--no-track`: sandbox 有効環境で `branch.autoSetupMerge` の tracking 書込が `.git/config` 拒否に当たるのを回避。branch は origin 起点のまま tracking だけ張らない — Issue #1894） |' # drift-check-ignore
+  PLUGIN_ROOT_OLD='[ -f "$repo_root/.rite-plugin-root" ] && cp "$repo_root/.rite-plugin-root" "$wt_path/.rite-plugin-root" 2>/dev/null || true'
+
+  cur_blob=$(cat "$REPO_ROOT_REAL/plugins/rite/skills/open/SKILL.md")
+  cur_rail=$(printf '%s\n' "$cur_blob" | extract_rail)
+  pin_base=$(printf '%s\n' "$cur_rail" | drop_superseded_open_base_rails)
+  printf '%s\n' "$pin_base" > "$TEST_DIR/pin-base"
+
+  if grep -Fxq "$CREATE_NEW_CUR" <<< "$pin_base" \
+    && grep -Fxq "$PLUGIN_ROOT_CUR_IF" <<< "$pin_base" \
+    && grep -Fxq "$PLUGIN_ROOT_CUR_CP" <<< "$pin_base" \
+    && grep -Fxq "$STATUS_ROLE_CUR" <<< "$pin_base" \
+    && grep -Fxq "$STATUS_PAYLOAD_CUR" <<< "$pin_base"; then
+    pass "replacement rows remain in the pin after exact exclusion"
+  else
+    fail "replacement rows were dropped by exact exclusion"
+  fi
+
+  if grep -Fxq "$CREATE_NEW_OLD" <<< "$pin_base" \
+    || grep -Fxq "$PLUGIN_ROOT_OLD" <<< "$pin_base"; then
+    fail "old superseded line still in pin after grep -Fxv"
+  else
+    pass "old superseded lines are absent from the pin"
+  fi
+
+  printf '%s\n' "$pin_base" | grep -Fxv "$CREATE_NEW_CUR" > "$TEST_DIR/pin-head-create-new" || true
+  first=$(first_unmatched_base_line "$TEST_DIR/pin-base" "$TEST_DIR/pin-head-create-new" || true)
+  if [ "$first" = "$CREATE_NEW_CUR" ]; then
+    pass "create_new replacement deletion: first unmatched is the deleted row"
+  else
+    fail "create_new replacement deletion first unmatched mismatch: [$first]"
+  fi
+
+  awk -v a="$PLUGIN_ROOT_CUR_IF" -v b="$PLUGIN_ROOT_CUR_CP" '
+    $0==a { next }
+    $0==b { next }
+    { print }
+  ' "$TEST_DIR/pin-base" > "$TEST_DIR/pin-head-plugin-root"
+  first=$(first_unmatched_base_line "$TEST_DIR/pin-base" "$TEST_DIR/pin-head-plugin-root" || true)
+  if [ "$first" = "$PLUGIN_ROOT_CUR_IF" ]; then
+    pass "plugin-root replacement deletion: first unmatched is the if-row"
+  else
+    fail "plugin-root replacement deletion first unmatched mismatch: [$first]"
+  fi
+  printf '%s\n' "$pin_base" | grep -Fxv "$PLUGIN_ROOT_CUR_CP" > "$TEST_DIR/pin-head-plugin-root-cp" || true
+  first=$(first_unmatched_base_line "$TEST_DIR/pin-base" "$TEST_DIR/pin-head-plugin-root-cp" || true)
+  if [ "$first" = "$PLUGIN_ROOT_CUR_CP" ]; then
+    pass "plugin-root cp-row deletion: first unmatched is the cp-row"
+  else
+    fail "plugin-root cp-row deletion first unmatched mismatch: [$first]"
+  fi
+
+  printf '%s\n' "$pin_base" | sed "s/tracking だけ張らない） |/tracking だけ張らない MUTATED） |/" > "$TEST_DIR/pin-head-mut-create-new"
+  first=$(first_unmatched_base_line "$TEST_DIR/pin-base" "$TEST_DIR/pin-head-mut-create-new" || true)
+  if [ "$first" = "$CREATE_NEW_CUR" ]; then
+    pass "create_new replacement mutation: first unmatched is the original row"
+  else
+    fail "create_new replacement mutation first unmatched mismatch: [$first]"
+  fi
+
+  hidden_cn=$(printf '%s\n' "$cur_rail" | grep -Fv '| `create_new` | branch も worktree もなし' || true)
+  printf '%s\n' "$hidden_cn" > "$TEST_DIR/pin-hidden-cn-base"
+  if first_unmatched_base_line "$TEST_DIR/pin-hidden-cn-base" "$TEST_DIR/pin-head-create-new" >/dev/null; then
+    pass "prefix create_new exclusion still hides the replacement deletion"
+  else
+    fail "prefix create_new exclusion unexpectedly detected the deletion"
+  fi
+  hidden_pr=$(printf '%s\n' "$cur_rail" | grep -Fv '.rite-plugin-root' || true)
+  printf '%s\n' "$hidden_pr" > "$TEST_DIR/pin-hidden-pr-base"
+  awk -v a="$PLUGIN_ROOT_CUR_IF" -v b="$PLUGIN_ROOT_CUR_CP" '
+    $0==a { next }
+    $0==b { next }
+    { print }
+  ' "$TEST_DIR/pin-base" > "$TEST_DIR/pin-head-plugin-root-from-cur"
+  if first_unmatched_base_line "$TEST_DIR/pin-hidden-pr-base" "$TEST_DIR/pin-head-plugin-root-from-cur" >/dev/null; then
+    pass "substring plugin-root exclusion still hides the replacement deletion"
+  else
+    fail "substring plugin-root exclusion unexpectedly detected the deletion"
+  fi
+else
+  skip "open/SKILL.md not available for exclusion pins"
 fi
 
 # --------------------------------------------------------------------------

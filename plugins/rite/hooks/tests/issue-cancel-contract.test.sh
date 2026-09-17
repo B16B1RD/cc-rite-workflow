@@ -33,8 +33,8 @@ echo "=== T-01: 着手前中止で NOT_PLANNED と Cancelled が両方適用さ�
 # 表セルにも一致し、Phase 6 の実行行から --reason を落としても緑のまま通る (T-03 と同じ規則)。
 assert_grep "T-01 closes the Issue with --reason \"not planned\"" "$SKILL" \
   '^if gh issue close .*--reason "not planned"'
-assert_grep "T-01 writes Cancelled as the board Status" "$SKILL" \
-  '\-\-arg status "Cancelled"'
+assert_grep "T-01 requests the cancelled board Status role" "$SKILL" \
+  '\-\-arg role "cancelled"'
 # 理由コメントは close と同一コールに載る (理由なしクローズの窓を作らない)。
 assert_grep "T-01 the close call carries the reason as a comment" "$SKILL" \
   '\-\-comment "🚫 この Issue を中止しました'
@@ -102,7 +102,7 @@ assert_grep_in_section "T-02 (d) discovery matches the last path segment exactly
 # 発見失敗は「記録なし」へ畳まず fail-loud。list 失敗を none に倒すと AC-2 が確認不能のまま
 # Issue を閉じ、再実行が Phase 4 に届かなくなる。
 _disc_fail_block=$(awk '/^  echo .*CANCEL_WT_TARGET=undetermined; reason=worktree_list_failed/{f=1} f{print} f&&/^  exit 1$/{exit}' "$SKILL")
-if printf '%s\n' "$_disc_fail_block" | grep -qE '^  exit 1$'; then
+if printf '%s\n' "$_disc_fail_block" | grep -cE >/dev/null '^  exit 1$'; then
   pass "T-02 (d) a failed worktree list exits non-zero (machine-enforced stop)"
 else
   fail "T-02 (d) git worktree list failure must exit non-zero before closing the Issue"
@@ -135,13 +135,13 @@ assert_grep_in_section "T-02 (d) the none arm is the literal none token only" "$
   '^#### 4\\.2\\.0 Issue 束縛ガード' '^#### 4\\.2\\.1' \
   '^  none)$'
 _empty_fail_block=$(awk '/CANCEL_WT_BOUND=blocked; reason=target_unconfirmed/{f=1} f{print} f&&/^    exit 1$/{exit}' "$SKILL")
-if printf '%s\n' "$_empty_fail_block" | grep -qE '^    exit 1$'; then
+if printf '%s\n' "$_empty_fail_block" | grep -cE >/dev/null '^    exit 1$'; then
   pass "T-02 (d) an empty or undetermined target exits non-zero"
 else
   fail "T-02 (d) empty/undetermined target must exit non-zero before Status / Issue close"
 fi
 _mismatch_fail_block=$(awk '/CANCEL_WT_BOUND=blocked; reason=basename_mismatch/{f=1} f{print} f&&/^      exit 1$/{exit}' "$SKILL")
-if printf '%s\n' "$_mismatch_fail_block" | grep -qE '^      exit 1$'; then
+if printf '%s\n' "$_mismatch_fail_block" | grep -cE >/dev/null '^      exit 1$'; then
   pass "T-02 (d) a basename mismatch exits non-zero"
 else
   fail "T-02 (d) basename mismatch must exit non-zero before Status / Issue close"
@@ -152,7 +152,7 @@ assert_grep_in_section "T-02 (d) sitting in the target without ExitWorktree emit
   '^#### 4\\.2\\.0 Issue 束縛ガード' '^#### 4\\.2\\.1' \
   'CANCEL_WT_BOUND=blocked; reason=exit_worktree_unavailable'
 _blocked_fail_block=$(awk '/CANCEL_WT_BOUND=blocked; reason=exit_worktree_unavailable/{f=1} f{print} f&&/^            exit 1$/{exit}' "$SKILL")
-if printf '%s\n' "$_blocked_fail_block" | grep -qE '^            exit 1$'; then
+if printf '%s\n' "$_blocked_fail_block" | grep -cE >/dev/null '^            exit 1$'; then
   pass "T-02 (d) the blocked branch exits non-zero (machine-enforced stop)"
 else
   fail "T-02 (d) exit_worktree_unavailable must exit non-zero before Status / Issue close"
@@ -226,7 +226,7 @@ echo "=== T-03: gh pr close が Projects Status 更新より先に呼ばれる (
 # コマンド名だけで拾うと散文の出現順を測ってしまい、bash 側が入れ替わっても緑のままになる。
 # 実行行は fenced bash 内の `if gh ...` という固定の形なので、そこにアンカーする。
 _pr_close_line=$(_first_line "$SKILL" '^if gh pr close')
-_status_line=$(_first_line "$SKILL" '\-\-arg status "Cancelled"')
+_status_line=$(_first_line "$SKILL" '\-\-arg role "cancelled"')
 if [ -n "$_pr_close_line" ] && [ -n "$_status_line" ]; then
   if [ "$_pr_close_line" -lt "$_status_line" ]; then
     pass "T-03 gh pr close precedes the Cancelled Status write"
@@ -264,7 +264,7 @@ assert_grep_in_section "T-04 the failure branch emits the failure marker" "$SKIL
 # emit 行からブロック終端 `fi` までの「隣接範囲」に限って exit を要求する。
 # 判定表の行は `|` 始まりなので `^  echo ` とは衝突しない。marker 名アンカーで一意に決まる。
 _pr_fail_block=$(awk '/^  echo .*CANCEL_PR_CLOSE_FAILED=1/{f=1} f{print} f&&/^fi$/{exit}' "$SKILL")
-if printf '%s\n' "$_pr_fail_block" | grep -qE '^  exit 1$'; then
+if printf '%s\n' "$_pr_fail_block" | grep -cE >/dev/null '^  exit 1$'; then
   pass "T-04 the failure branch exits non-zero (machine-enforced stop)"
 else
   fail "T-04 the PR-close failure branch must exit non-zero before its closing fi"
@@ -272,7 +272,7 @@ fi
 # Phase 6 の Issue クローズ失敗も同型に遮断されること（判定表は「停止する」と書くが、bash の rc が
 # 0 のままだと state 不整合を抱えたまま Phase 7 の完了報告へ進みうる）。
 _issue_fail_block=$(awk '/^  echo .*CANCEL_ISSUE_CLOSE_FAILED=1/{f=1} f{print} f&&/^fi$/{exit}' "$SKILL")
-if printf '%s\n' "$_issue_fail_block" | grep -qE '^  exit 1$'; then
+if printf '%s\n' "$_issue_fail_block" | grep -cE >/dev/null '^  exit 1$'; then
   pass "T-04 the Issue-close failure branch exits non-zero (machine-enforced stop)"
 else
   fail "T-04 the Issue-close failure branch must exit non-zero before its closing fi"
@@ -504,7 +504,7 @@ assert_grep "T-09 states the delegation rule explicitly" "$SKILL" \
 echo "=== T-10: Cancelled の子を含む親を Done へ更新しない (AC-10) ==="
 # 親 Done 更新は archive-procedures.md §3.7 にのみ存在する手順で、共有 helper ではない。
 # issue-cancel が配線しないこと自体が AC-10 の充足条件なので、Done を書く経路の不在を pin する。
-assert_not_grep "T-10 never writes Done to any board row" "$SKILL" '\-\-arg status "Done"'
+assert_not_grep "T-10 never requests the done role for any board row" "$SKILL" '\-\-arg role "done"'
 assert_not_grep "T-10 does not reference the parent auto-close procedure" "$SKILL" 'archive-procedures'
 assert_not_grep "T-10 does not touch the parent tasklist" "$SKILL" 'parent_issue_number'
 assert_grep "T-10 states the non-propagation rule" "$SKILL" '親 Issue には伝播しない'
@@ -525,12 +525,33 @@ else
   fail "references/rationale.md is missing (SKILL.md points into it)"
 fi
 
+echo "=== T-11: close コメントは board を書いたときだけ board Status に言及する ==="
+# Positive control: the sentence still exists and is bound to the updated result — deleting
+# it from every path would also make the negative assert below pass.
+assert_grep "T-11 the board sentence is emitted for the updated result" "$SKILL" \
+  '`{board_status_result}` が `updated` のとき `board Status は Cancelled です。`'
+assert_grep_in_section "T-11 the close comment ends with the board_note placeholder" "$SKILL" \
+  '^## Phase 6: Issue を NOT_PLANNED でクローズ' '^## Phase 7:' \
+  '^中止の記録は /rite:issue-cancel が残しています。{board_note}"; then$'
+# Negative: the close call must not hard-code the sentence — on a board without a cancelled
+# column (skipped_role_unmapped) the comment would claim a write that never happened.
+assert_not_grep "T-11 the close call does not hard-code the board sentence" "$SKILL" \
+  '残しています。board Status は Cancelled です。"'
+assert_grep "T-11 skipped_role_unmapped is named as a path that must not mention the board" "$SKILL" \
+  'board を書いていない経路（`skipped_role_unmapped`'
+# The close call stays a single, non-indented `if gh issue close` (T-01 / T-03 anchor it).
+if [ "$(grep -c '^if gh issue close' "$SKILL")" -eq 1 ]; then
+  pass "T-11 exactly one non-indented gh issue close call remains"
+else
+  fail "T-11 expected exactly one '^if gh issue close' line, got $(grep -c '^if gh issue close' "$SKILL")"
+fi
+
 echo "=== 補助: 起動が人間の明示指示に限られる (Non-goal) ==="
 assert_grep "frontmatter states the skill does not auto-activate" "$SKILL" \
   'auto-activate しない'
 assert_grep "the body states rite never invokes cancel on its own judgement" "$SKILL" \
   '自律判断して本スキルを呼ぶ経路は作らない'
 
-if ! print_summary "$(basename "$0")" "issue-cancel の実行順序 (PR close → Status → Issue close) / fail-loud / helper 委譲 / 親非伝播 contract (T-01〜T-10)"; then
+if ! print_summary "$(basename "$0")" "issue-cancel の実行順序 (PR close → Status → Issue close) / fail-loud / helper 委譲 / 親非伝播 / board 言及 contract (T-01〜T-11)"; then
   exit 1
 fi

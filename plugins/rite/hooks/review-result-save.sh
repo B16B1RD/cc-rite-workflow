@@ -422,7 +422,7 @@ fi
 # review.min_reviewers: 1 の下でどの reviewer パターンにもマッチせず code-quality が単独 fallback に
 # なった cycle (pr-review ステップ 2.3 の sole-reviewer guard は code-quality が既に単独のときは
 # 発火しない) の結果が保存すらされなくなる。
-# ただし **一意性は検査する** — ゲートは長さしか見ないため、同一名の重複ロスターが「2 名がレビューした」
+# ただし **一意性は検査する** — ゲートは名前の一意性を見ない (acceptance-reviewer を除いた人数だけを見る) ため、同一名の重複ロスターが「2 名がレビューした」
 # 証拠として floor 2 を機械的に満たしてしまう。同ファイルの findings[].id 検証が書式 + 一意性の両方を
 # かけているのと同じ水準に揃える。一意性は floor とは独立なので 1 名 cycle の保存性は変わらない。
 # verdict と overall_assessment の同値性は検査しない (契約テストが pin する)。ここで落とすと
@@ -529,7 +529,7 @@ fi
 #
 # 書式 (`^F-[0-9]{2,}$`) は id が identity として使えるかどうかそのものであり、`non_blocking_findings[]`
 # 側の書式外 id は advisory な記録の瑕疵では済まない — cleanup ステップ 6.0.V は id を除外指定
-# (`--exclude-ids`) の唯一の受け渡し経路として使うため、書式外 id は再検証層で null へ写され、
+# (`--exclude-ids` の key `{出典 JSON 名}#{id}`) の一部として使うため、書式外 id は再検証層で key が null になり、
 # 全件が undecidable へ倒れて解消済みの指摘まで follow-up に転記される。発生源を止めないと
 # 読み側の回避策が増え続けるので fail-loud にする (書式外 id の永続化を止める)。
 #

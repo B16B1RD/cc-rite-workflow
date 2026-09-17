@@ -370,6 +370,10 @@ def backslash_continues(line):
 for base in ("plugins/rite/hooks", "plugins/rite/scripts"):
     start=os.path.join(root,base)
     for dp, dns, fns in os.walk(start, onerror=walk_error):
+        # Test fixtures intentionally exercise unsafe pipelines and often enable
+        # pipefail only inside generated shell snippets. Scanning them would turn
+        # expected-negative fixtures into lint findings, so this checker covers
+        # production hooks/scripts only; test code must guard its own pipelines.
         dns[:] = [d for d in dns if d != "tests"]
         for fn in fns:
             if not fn.endswith(".sh") or fn == "pipefail-grep-q-check.sh": continue

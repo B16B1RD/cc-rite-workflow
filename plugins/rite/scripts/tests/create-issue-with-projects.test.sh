@@ -9,6 +9,9 @@ MOCK_DIR="$SCRIPT_DIR"
 TEST_DIR="$(mktemp -d)"
 PASS=0
 FAIL=0
+# gh 呼び出しログは呼び出しごとに一意な名前にする。gh ログは追記で書かれるため、
+# 名前が重なると前のテストのログに混ざり、「gh が呼ばれていない」系の判定が偶発的に落ちる
+MOCK_LOG_SEQ=0
 
 # Global mock bin directory: created once, reused by all tests
 MOCK_BIN_DIR="$TEST_DIR/mock-bin"
@@ -50,15 +53,28 @@ fail() {
   echo "  ❌ FAIL: $1"
 }
 
+# Config sandbox: the target resolves the Status role and field name through
+# rite-config.yml at the git toplevel / cwd. Run from a directory carrying a legacy
+# (no options) config so the suite does not depend on the repository's own configuration;
+# TCs that need an explicit board overwrite the file and restore it afterwards.
+CONFIG_DIR="$TEST_DIR/repo"
+mkdir -p "$CONFIG_DIR"
+write_legacy_config() {
+  printf 'github:\n  projects:\n    enabled: true\n    project_number: 2\n' > "$CONFIG_DIR/rite-config.yml"
+}
+write_legacy_config
+
 # Helper: run the target script with mock gh and given JSON args
 run_script() {
   local json_args="$1"
   local scenario="${2:-success}"
   local issue_number="${3:-42}"
-  local mock_log="$TEST_DIR/gh_log_$$_$RANDOM"
+  MOCK_LOG_SEQ=$((MOCK_LOG_SEQ + 1))
+  local mock_log="$TEST_DIR/gh_log_$MOCK_LOG_SEQ"
   local rc=0
   local output
   output=$(
+    cd "$CONFIG_DIR" && \
     MOCK_GH_SCENARIO="$scenario" \
     MOCK_ISSUE_NUMBER="$issue_number" \
     MOCK_GH_LOG="$mock_log" \
@@ -178,7 +194,7 @@ run_script "$(jq -n --arg bf "$body_file" '{
     enabled: true,
     project_number: 2,
     owner: "test-owner",
-    status: "Todo",
+    status: "todo",
     priority: "High",
     complexity: "M"
   },
@@ -289,7 +305,7 @@ run_script "$(jq -n --arg bf "$body_file" '{
     enabled: true,
     project_number: 2,
     owner: "test-owner",
-    status: "Todo"
+    status: "todo"
   },
   options: {non_blocking_projects: true}
 }')" "no_item_id"
@@ -356,7 +372,7 @@ if [ "$LAST_RC" -eq 0 ]; then
     fail "Missing labels/assignees in gh call log: $(cat "$LAST_GH_LOG")"
   fi
 else
-  fail "Expected exit 0, got $LAST_RC"
+  fail "Expected exit 0, got $LAST_RC (stderr: $(head -c 300 "$LAST_STDERR" 2>/dev/null | tr "\n" " "); output: $(printf "%s" "$LAST_OUTPUT" | head -c 300))"
 fi
 
 # --------------------------------------------------------------------------
@@ -410,7 +426,7 @@ run_script "$(jq -n --arg bf "$body_file" '{
     enabled: true,
     project_number: 2,
     owner: "test-owner",
-    status: "Todo",
+    status: "todo",
     priority: "High"
   },
   options: {non_blocking_projects: true}
@@ -442,7 +458,7 @@ run_script "$(jq -n --arg bf "$body_file" '{
     enabled: true,
     project_number: 2,
     owner: "test-org",
-    status: "Todo",
+    status: "todo",
     priority: "High",
     complexity: "M"
   }
@@ -551,13 +567,14 @@ run_script "$(jq -n --arg bf "$body_file" '{
 }')"
 if [ "$LAST_RC" -eq 0 ]; then
   reg=$(json_field '.project_registration')
-  # Default status=Todo should be set, iteration mode=none
+  # Default role todo resolves to the legacy name "Todo" (option OPT_TODO); iteration mode=none
   if [ "$reg" = "ok" ]; then
-    # Verify default Status=Todo was set via project item-edit
-    if grep -q "item-edit" "$LAST_GH_LOG" 2>/dev/null && grep -q -- "--single-select-option-id" "$LAST_GH_LOG" 2>/dev/null; then
-      pass "Default values applied: reg=$reg, Status field edit confirmed"
+    # Pin the option id, not just that an item-edit happened: any other column's id here
+    # would mean the role → name resolution picked the wrong option.
+    if grep -q -- "item-edit .*--field-id FIELD_STATUS .*--single-select-option-id OPT_TODO" "$LAST_GH_LOG" 2>/dev/null; then
+      pass "Default values applied: reg=$reg, Status set to the todo role's option (OPT_TODO)"
     else
-      fail "Expected item-edit for default Status=Todo in gh log"
+      fail "Expected item-edit with --field-id FIELD_STATUS --single-select-option-id OPT_TODO in gh log: $(grep item-edit "$LAST_GH_LOG" 2>/dev/null | head -c 300)"
     fi
   else
     fail "Expected reg=ok with defaults, got $reg"
@@ -565,6 +582,78 @@ if [ "$LAST_RC" -eq 0 ]; then
 else
   fail "Expected exit 0, got $LAST_RC"
 fi
+
+# --------------------------------------------------------------------------
+# TC-018b: the todo role's column name comes from rite-config.yml. A board that names
+# the field ステータス and the todo column 未着手 gets its option (not "Todo") — the
+# mock's status options are read from MOCK_STATUS_OPTIONS_JSON for this board.
+# --------------------------------------------------------------------------
+echo "TC-018b: explicit board (ステータス / 未着手) → item-edit with the 未着手 option"
+cat > "$CONFIG_DIR/rite-config.yml" <<'YAML'
+github:
+  projects:
+    enabled: true
+    project_number: 2
+    fields:
+      status:
+        name: "ステータス"
+        options:
+          - { role: todo, name: "未着手" }
+          - { role: in_progress, name: "対応中" }
+          - { role: in_review, name: "レビュー中" }
+          - { role: done, name: "完了" }
+YAML
+body_file=$(create_body_file "Test jp board")
+MOCK_STATUS_OPTIONS_JSON='[{"id":"OPT_TODO_JA","name":"未着手"},{"id":"OPT_INPROGRESS_JA","name":"対応中"},{"id":"OPT_DONE_JA","name":"完了"}]' \
+  run_script "$(jq -n --arg bf "$body_file" '{
+  issue: {title: "JP Board", body_file: $bf},
+  projects: {
+    enabled: true,
+    project_number: 2,
+    owner: "test-owner",
+    status: "todo"
+  }
+}')" "jp_field_names"
+if [ "$LAST_RC" -eq 0 ]; then
+  reg=$(json_field '.project_registration')
+  if [ "$reg" = "ok" ] && grep -q -- "item-edit .*--field-id FIELD_STATUS .*--single-select-option-id OPT_TODO_JA" "$LAST_GH_LOG" 2>/dev/null; then
+    pass "todo role resolved to 未着手 on the ステータス field (option OPT_TODO_JA)"
+  else
+    fail "Expected reg=ok + item-edit with OPT_TODO_JA, got reg=$reg log: $(grep item-edit "$LAST_GH_LOG" 2>/dev/null | head -c 300) warnings: $(json_field '.warnings')"
+  fi
+else
+  fail "Expected exit 0, got $LAST_RC (stderr: $(head -c 300 "$LAST_STDERR" 2>/dev/null | tr '\n' ' '))"
+fi
+# Same board, invalid configuration: Status cannot be set, registration is partial, and
+# the warning carries the resolver's diagnostic.
+cat > "$CONFIG_DIR/rite-config.yml" <<'YAML'
+github:
+  projects:
+    enabled: true
+    project_number: 2
+    fields:
+      status:
+        options:
+          - { role: todo, name: "未着手" }
+YAML
+body_file=$(create_body_file "Test invalid status config")
+run_script "$(jq -n --arg bf "$body_file" '{
+  issue: {title: "Invalid Status Config", body_file: $bf},
+  projects: {enabled: true, project_number: 2, owner: "test-owner"}
+}')"
+if [ "$LAST_RC" -eq 0 ]; then
+  reg=$(json_field '.project_registration')
+  warns_text=$(printf '%s\n' "$LAST_OUTPUT" | jq -r '.warnings[]?' 2>/dev/null)
+  if [ "$reg" = "partial" ] && printf '%s' "$warns_text" | grep -q 'Invalid Status configuration' \
+     && ! grep -q -- "--field-id FIELD_STATUS" "$LAST_GH_LOG" 2>/dev/null; then
+    pass "invalid Status configuration → reg=partial, warning carries the diagnostic, Status not written"
+  else
+    fail "Expected reg=partial + Invalid Status configuration warning + no Status item-edit, got reg=$reg warns='$warns_text'"
+  fi
+else
+  fail "Expected exit 0, got $LAST_RC"
+fi
+write_legacy_config
 
 # --------------------------------------------------------------------------
 # TC-019: Iteration auto-assign success (mode=auto)
@@ -577,7 +666,7 @@ run_script "$(jq -n --arg bf "$body_file" '{
     enabled: true,
     project_number: 2,
     owner: "test-owner",
-    status: "Todo",
+    status: "todo",
     iteration: {mode: "auto", field_name: "Sprint"}
   }
 }')" "iteration_success"
@@ -606,7 +695,7 @@ run_script "$(jq -n --arg bf "$body_file" '{
     enabled: true,
     project_number: 2,
     owner: "test-owner",
-    status: "Todo",
+    status: "todo",
     iteration: {mode: "auto", field_name: "Sprint"}
   },
   options: {non_blocking_projects: true}
@@ -641,7 +730,7 @@ run_script "$(jq -n --arg bf "$body_file" '{
     enabled: true,
     project_number: 2,
     owner: "test-owner",
-    status: "Todo"
+    status: "todo"
   },
   options: {non_blocking_projects: true}
 }')" "gql_items_lookup_fail"
@@ -746,7 +835,7 @@ run_script "$(jq -n --arg bf "$body_file" '{
     enabled: true,
     project_number: 2,
     owner: "test-owner",
-    status: "NonExistentStatus"
+    priority: "NonExistentPriority"
   }
 }')"
 if [ "$LAST_RC" -eq 0 ]; then
@@ -758,6 +847,39 @@ if [ "$LAST_RC" -eq 0 ]; then
   fi
 else
   fail "Expected exit 0, got $LAST_RC"
+fi
+
+# --------------------------------------------------------------------------
+# TC-023b: projects.status is a role. A column name (the pre-role payload shape) is
+# refused before any gh call — the Issue is not created, so a caller that still sends
+# a display name cannot register a half-configured Issue.
+# --------------------------------------------------------------------------
+echo "TC-023b: projects.status with a column name instead of the todo role → failed before gh"
+body_file=$(create_body_file "Test status not a role")
+run_script "$(jq -n --arg bf "$body_file" '{
+  issue: {title: "Status Not A Role", body_file: $bf},
+  projects: {
+    enabled: true,
+    project_number: 2,
+    owner: "test-owner",
+    status: "Todo"
+  }
+}')"
+if [ "$LAST_RC" -ne 0 ]; then
+  reg=$(json_field '.project_registration')
+  warn_msg=$(json_field '.warnings[0] // empty')
+  if [ "$reg" = "failed" ] && printf '%s' "$warn_msg" | grep -q 'projects.status must be the role "todo"'; then
+    pass "column name in projects.status → exit $LAST_RC, reg=failed, warning names the todo role"
+  else
+    fail "Expected reg=failed + role warning, got reg=$reg warning='$warn_msg'"
+  fi
+  if [ -f "$LAST_GH_LOG" ] && grep -q 'issue create' "$LAST_GH_LOG"; then
+    fail "gh issue create was reached despite the invalid Status role"
+  else
+    pass "no gh issue create was issued (refused before any gh call)"
+  fi
+else
+  fail "Expected non-zero exit for a column name in projects.status"
 fi
 
 # --------------------------------------------------------------------------
@@ -814,7 +936,8 @@ fi
 # --------------------------------------------------------------------------
 echo "TC-026: Invalid RETRY_DELAY → warning + successful execution"
 body_file=$(create_body_file "Test retry delay validation")
-mock_log="$TEST_DIR/gh_log_$$_$RANDOM"
+MOCK_LOG_SEQ=$((MOCK_LOG_SEQ + 1))
+mock_log="$TEST_DIR/gh_log_$MOCK_LOG_SEQ"
 rc=0
 output=$(
   MOCK_GH_SCENARIO="success" \
@@ -849,7 +972,7 @@ echo "TC-027: project_add failure → stderr contains 'ERROR: Projects registrat
 body_file=$(create_body_file)
 run_script "$(jq -n --arg bf "$body_file" '{
   issue: {title: "Stderr emit test", body_file: $bf},
-  projects: {enabled: true, project_number: 6, owner: "test-owner", status: "Todo"},
+  projects: {enabled: true, project_number: 6, owner: "test-owner", status: "todo"},
   options: {non_blocking_projects: true}
 }')" "project_add_fail"
 if [ "$LAST_RC" -eq 0 ]; then
@@ -879,7 +1002,7 @@ echo "TC-028: graphql_fail → stderr contains 'ERROR: Projects registration fai
 body_file=$(create_body_file)
 run_script "$(jq -n --arg bf "$body_file" '{
   issue: {title: "GraphQL stderr test", body_file: $bf},
-  projects: {enabled: true, project_number: 6, owner: "test-owner", status: "Todo"},
+  projects: {enabled: true, project_number: 6, owner: "test-owner", status: "todo"},
   options: {non_blocking_projects: true}
 }')" "graphql_fail"
 if [ "$LAST_RC" -eq 0 ]; then
@@ -957,7 +1080,7 @@ run_script "$(jq -n --arg bf "$body_file" '{
     enabled: true,
     project_number: 2,
     owner: "test-owner",
-    status: "Todo",
+    status: "todo",
     priority: "High",
     complexity: "M"
   }
@@ -989,7 +1112,7 @@ run_script "$(jq -n --arg bf "$body_file" '{
     enabled: true,
     project_number: 2,
     owner: "test-owner",
-    status: "Todo",
+    status: "todo",
     priority: "High",
     field_names: { priority: "重要度" }
   }
@@ -1019,7 +1142,7 @@ run_script "$(jq -n --arg bf "$body_file" '{
     enabled: true,
     project_number: 2,
     owner: "test-owner",
-    status: "Todo",
+    status: "todo",
     priority: "High"
   },
   options: {non_blocking_projects: true}

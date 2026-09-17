@@ -13,8 +13,6 @@ CLEANUP_WM="$HOOKS_DIR/cleanup-work-memory.sh"
 PLUGIN_ROOT="$(cd "$HOOKS_DIR/.." && pwd)"
 REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
 
-unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
-
 TEST_DIR="$(mktemp -d)" || exit 1
 TEST_DIR="$(cd "$TEST_DIR" && pwd -P)" || exit 1
 trap 'rm -rf "$TEST_DIR"' EXIT
@@ -182,7 +180,7 @@ chmod +x "$shim/mv"
 err03=$(jq -n --arg cwd "$d03fail" --arg src "startup" --arg sid "ffffffff-ffff-ffff-ffff-ffffffffffff" \
   '{cwd: $cwd, source: $src, session_id: $sid}' \
   | env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID PATH="$shim:$PATH" bash "$HOOK" 2>&1 >/dev/null || true)
-printf '%s\n' "$err03" | grep -q 'WARNING: relocated-state-migrate: failed to migrate'
+printf '%s\n' "$err03" | grep -c >/dev/null 'WARNING: relocated-state-migrate: failed to migrate'
 assert "T-03 mv failure emits WARNING" "0" "$?"
 [ -d "$d03fail/.rite-work-memory" ]
 assert "T-03 mv failure leaves legacy WM dir" "0" "$?"

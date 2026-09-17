@@ -26,11 +26,11 @@ github:
       status:
         enabled: true
         options:
-          - { name: "Todo", default: true }
-          - { name: "In Progress" }
-          - { name: "In Review" }
-          - { name: "Done" }
-          - { name: "Cancelled" }
+          - { role: todo, name: "Todo" }
+          - { role: in_progress, name: "In Progress" }
+          - { role: in_review, name: "In Review" }
+          - { role: done, name: "Done" }
+          - { role: cancelled, name: "Cancelled" }
       priority:
         enabled: true
         options:
@@ -45,30 +45,11 @@ github:
           - { name: "M", default: true }
           - { name: "L" }
           - { name: "XL" }
-      # Custom fields (project-specific)
-      # Any Single Select field from your GitHub Projects can be added here
-      work_type:
-        enabled: true
-        options:
-          - { name: "Feature" }
-          - { name: "Bug Fix" }
-          - { name: "Documentation" }
-          - { name: "Refactor" }
-          - { name: "Chore" }
-      category:
-        enabled: true
-        options:
-          - { name: "Frontend" }
-          - { name: "Backend" }
-          - { name: "Infrastructure" }
-          - { name: "Other" }
     # Explicit field IDs (optional, overrides auto-detection)
     # field_ids:
     #   status: "PVTSSF_..."      # Status field ID
     #   priority: "PVTSSF_..."    # Priority field ID
     #   complexity: "PVTSSF_..."  # Complexity field ID
-    #   # Custom fields
-    #   work_type: "PVTSSF_..."   # Custom Single Select field ID
 
 # Branch naming rules
 branch:
@@ -162,8 +143,9 @@ parallel:
 # It is normally a single Issue comment updated in place each cycle; when the helper cannot identify
 # its own previous comment (e.g. `gh api user` fails, or the earlier comment was posted under a
 # different token identity) it degrades in one of two ways depending on the count: with findings
-# it creates a new one, so more than one may accumulate on the Issue; with zero it skips the post
-# entirely, so the previous cycle's record stays on the Issue as stale.
+# it creates a new one, so more than one may accumulate on the Issue; with zero and no
+# rejection-ledger entries in the body it skips the post entirely, so the previous cycle's record
+# stays on the Issue as stale (a body carrying ledger entries is still created with zero findings).
 # The record comment carries pointers plus the demotion reason (reviewer / severity / file:line /
 # demotion label, plus one line naming
 # where the full text lives); a finding's description / suggestion never appears there, so a
@@ -172,8 +154,12 @@ parallel:
 # ran the review — rite writes a `*` .gitignore alongside it, so it stays untracked regardless of the
 # host repository's root .gitignore, and checking out the PR's branch does not produce it. At merge,
 # remaining findings are re-verified against the merged HEAD and the ones already resolved are
-# dropped; whatever remains is transcribed in full into one follow-up Issue (none if nothing
-# remains; public on a public repository). `/rite:cleanup` archives that JSON instead of deleting it when
+# dropped, as are the ones the iterate sweep already filed as Issues (if the sweep ledger or the
+# latest review result cannot be read, only the sweep-filed exclusion is skipped — findings already
+# excluded by re-verification stay excluded — and a warning is surfaced); whatever
+# remains is transcribed in full into one follow-up Issue (none if zero, if re-verification resolves
+# every finding, or if every remaining finding was already filed by the iterate sweep; public on a
+# public repository). `/rite:cleanup` archives that JSON instead of deleting it when
 # `non_blocking_findings[]` is non-empty, as a local fallback if the follow-up Issue is not created.
 pr_review:
   post_comment: false   # true to post the integrated review report as a PR comment (equivalent to --post-comment, default: false; this key does not control the related-Issue non-measured record comment)
@@ -217,7 +203,7 @@ language: auto  # auto | ja | en
 | `enabled` | boolean | `true` | Enable GitHub Projects integration |
 | `project_number` | integer | `null` | Project number (auto-detected from repository if null) |
 | `owner` | string | `null` | Project owner - user or organization (uses repository owner if null) |
-| `fields` | object | - | Custom field definitions |
+| `fields` | object | - | Definitions for the supported Status, Priority, and Complexity fields |
 | `field_ids` | object | - | Explicit field IDs (optional, overrides auto-detection) |
 
 ### github.projects.field_ids
@@ -233,7 +219,6 @@ When specified, these field IDs are used directly instead of auto-detecting via 
 | `status` | string | Field ID for Status field (e.g., `PVTSSF_...`) |
 | `priority` | string | Field ID for Priority field |
 | `complexity` | string | Field ID for Complexity field |
-| *(any custom field)* | string | Field ID for custom Single Select fields (e.g., `work_type`, `category`) |
 
 **Example:**
 
@@ -243,14 +228,14 @@ github:
     field_ids:
       status: "PVTSSF_your-status-field-id"      # Replace with your actual ID
       priority: "PVTSSF_your-priority-field-id"  # Replace with your actual ID
-      # Custom fields
-      category: "PVTSSF_your-category-field-id"  # Replace with your actual ID
 ```
 
 **Behavior:**
 - If a field ID is specified in `field_ids`, it is used directly (no API call to detect this field ID)
 - If not specified, the field ID is auto-detected via `gh project field-list`
 - Partial specification is supported: if only `status` is specified, `priority` and `complexity` will be auto-detected (if enabled in `fields`)
+
+For Status updates through `projects-status-update.sh`, a supplied `status_field_id_hint` is checked against the field resolved by name. It does not skip field discovery; a mismatch fails without editing the board item.
 
 **Finding field IDs:**
 
@@ -264,12 +249,97 @@ Look for the `id` field in the output for each field.
 
 ### github.projects.fields
 
-Each field can have:
+Only `status`, `priority`, and `complexity` are supported. Each field can have:
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `enabled` | boolean | Enable this field |
-| `options` | array | List of options with `name` and optional `default: true` |
+| `name` | string | Exact GitHub Projects field name override |
+| `options` | array | Status uses `role` and `name` as described below; other fields use `name` and optional `default: true` |
+
+Field-name lookup is exact and case-sensitive. For Priority and Complexity, a configured `name` is tried first, followed by the built-in Japanese alias and then the canonical English name. Status uses the shared Status resolver described below: a configured `fields.status.name` must match exactly, while an omitted name tries `ステータス` and then `Status`.
+
+**Status role configuration:**
+
+rite tracks an Issue's board Status by **role**, not by column name. The five roles are fixed: `todo`, `in_progress`, `in_review`, `done`, `cancelled`. Their meaning — progress order `todo` < `in_progress` < `in_review` < `done`, the terminal pair `done` / `cancelled`, and which closure reason each terminal role answers to — is defined once in `plugins/rite/references/projects-integration.md` (section "Terminal Status Set"). `fields.status.options` only declares which column on **your** board displays each role, so an existing board keeps its column names; rite never renames, adds, or removes options on a board it did not create (`/rite:setup` verifies that every configured name exists and stops with the board's actual option names when one is missing).
+
+Every consumer that reads or writes Status (`projects-status-update.sh`, the `/rite:open` Status gate, `/rite:lint`'s board drift check, the compact/watchdog hooks, Issue creation) goes through the same resolver (`hooks/scripts/lib/projects-status-config.sh`), so the configuration is judged in exactly one of three states:
+
+| State | When | Behavior |
+|-------|------|----------|
+| **legacy** | No option carries a `role` key (including a missing `options` list) | The English names `Todo`, `In Progress`, `In Review`, `Done`, `Cancelled` are used for the five roles. Any `name` values present are ignored for the mapping. No warning is emitted |
+| **explicit** | At least one option carries `role` | Each required role (`todo`, `in_progress`, `in_review`, `done`) appears exactly once; `cancelled` appears zero or one time; every `name` is non-empty and unique |
+| **invalid** | Anything else | Every consumer stops with a configuration error naming the problem; nothing falls back to legacy |
+
+Invalid configurations include: entries with and without `role` mixed in one list, duplicate roles or names, an unknown role, a missing required role, an empty `name`, and unsupported YAML syntax. Each option must be a single-line flow mapping in the form `{ role: todo, name: "未着手" }`; `name` may also be unquoted. Block mappings, single-quoted names, multiline scalars, anchors, and aliases are unsupported. Status has no `default: true` option; `todo` identifies its initial role. A missing or unreadable `rite-config.yml` is an error.
+
+The Status field name can be set with `github.projects.fields.status.name`. An explicit name requires an exact match; without it, the helper tries `ステータス` and then `Status`. Option names must exactly match the display name on the board.
+
+**Board shapes** — four configurations covering the common boards:
+
+English standard board (identical to legacy mode; write it out when you want the roles visible):
+
+```yaml
+github:
+  projects:
+    fields:
+      status:
+        options:
+          - { role: todo,        name: "Todo" }
+          - { role: in_progress, name: "In Progress" }
+          - { role: in_review,   name: "In Review" }
+          - { role: done,        name: "Done" }
+          - { role: cancelled,   name: "Cancelled" }
+```
+
+Board that spells its columns differently (`To-Do` / `In progress`):
+
+```yaml
+github:
+  projects:
+    fields:
+      status:
+        options:
+          - { role: todo,        name: "To-Do" }
+          - { role: in_progress, name: "In progress" }
+          - { role: in_review,   name: "In Review" }
+          - { role: done,        name: "Done" }
+          - { role: cancelled,   name: "Cancelled" }
+```
+
+Japanese field name and Japanese columns (the field name must match exactly once it is set):
+
+```yaml
+github:
+  projects:
+    fields:
+      status:
+        name: "ステータス"
+        options:
+          - { role: todo,        name: "未着手" }
+          - { role: in_progress, name: "進行中" }
+          - { role: in_review,   name: "レビュー中" }
+          - { role: done,        name: "完了" }
+          - { role: cancelled,   name: "中止" }
+```
+
+Board with no column for abandoned Issues (omit the `cancelled` row):
+
+```yaml
+github:
+  projects:
+    fields:
+      status:
+        options:
+          - { role: todo,        name: "Todo" }
+          - { role: in_progress, name: "In Progress" }
+          - { role: in_review,   name: "In Review" }
+          - { role: done,        name: "Done" }
+```
+
+Without a `cancelled` row, `/rite:issue-cancel` closes the Issue as not planned but leaves its board Status unchanged, and `/rite:lint`'s drift check lists such Issues as informational rather than counting them as drift.
+
+The helper accepts only `status_role` for the destination. A supplied `status_name` (even alongside `status_role`) or an unknown role is invalid input and exits 1 regardless of `non_blocking`. Requesting an omitted `cancelled` role in explicit mode returns `skipped_role_unmapped` with exit 0, no warning, and no board write. A configured role whose option is missing on the board is a failure. An Issue sitting on a column that maps to no role (one you added yourself, such as `Blocked`) can still be moved by the helper: its destination comes from the requested role, subject to the [closure guard](../plugins/rite/references/projects-integration.md#248-terminal-status-set). Callers that check the current column's role — the `/rite:open` Status gate, the compact hook, the parent-Issue sync and the Status watchdog — leave an unmapped column untouched even when they would otherwise move the Issue. The gate reports `missing` with the column; the others warn with its name (unless the watchdog uses `--quiet`). `/rite:lint`'s drift check is the exception: a CLOSED Issue on such a column counts as drift and `--reconcile` requests the terminal role for its closure reason, except when that reason requires an omitted `cancelled` role.
 
 **Standard fields:**
 
@@ -277,44 +347,9 @@ These fields are commonly used in GitHub Projects and have built-in support:
 
 | Field | Description |
 |-------|-------------|
-| `status` | Issue/PR status tracking (Todo, In Progress, etc.) |
+| `status` | Issue/PR status tracking by role (`todo` → `in_progress` → `in_review` → `done`, plus `cancelled`); column names come from `options[].name` |
 | `priority` | Priority level (High, Medium, Low) |
 | `complexity` | Estimated complexity (XS, S, M, L, XL) |
-
-**Custom fields:**
-
-You can add any project-specific Single Select fields by using the same field name as defined in your GitHub Projects. Common examples include `work_type`, `category`, `team`, etc.
-
-```yaml
-github:
-  projects:
-    fields:
-      # Standard fields
-      status: { enabled: true, options: [...] }
-      priority: { enabled: true, options: [...] }
-
-      # Custom fields (project-specific)
-      # Field names must match your GitHub Projects field names (case-insensitive)
-      work_type:
-        enabled: true
-        options:
-          - { name: "Feature" }
-          - { name: "Bug Fix" }
-          - { name: "Documentation" }
-          - { name: "Refactor" }
-      category:
-        enabled: true
-        options:
-          - { name: "Frontend" }
-          - { name: "Backend" }
-          - { name: "Infrastructure" }
-          - { name: "Other" }
-```
-
-**Requirements for custom fields:**
-- The field name in `rite-config.yml` must match the field name in GitHub Projects (case-insensitive)
-- The field must be a Single Select type in GitHub Projects
-- Options should match the available options in GitHub Projects
 
 ### branch
 
@@ -465,9 +500,9 @@ The review-fix loop exits via the following paths:
 
 **Doc-Heavy PR Mode** (`doc_heavy.enabled: true` by default): A PR is classified as doc-heavy when `doc_lines / total_diff_lines >= lines_ratio_threshold`, or — for small diffs (`total_diff_lines < max_diff_lines_for_count`) — when `doc_files / total_files >= count_ratio_threshold`. In doc-heavy mode, `tech-writer-reviewer` verifies the five consistency categories (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) against the actual implementation using Grep/Read/Glob. See `plugins/rite/skills/pr-review/references/internal-consistency.md` for the full protocol.
 
-**Cycle scope** (no config key): cycle 1 reviews the whole PR, matching the reviewer set against every changed file (then bounded by `min_reviewers` / `max_reviewers` as usual); from cycle 2+ the review is diff-scoped to `commit_sha..HEAD` of the previous cycle's persisted review-result JSON, plus verification that the previous cycle's gated-scope (`current-pr` / `follow-up`) findings were resolved, with the reviewer set narrowed to those findings' reviewers (rejoined as `mandatory`) union the owners of the fix diff's file patterns. Acknowledged `nit-noted` findings are excluded from both — they stay in `findings[]` after the measured gate, so counting them would occupy cap-exempt slots and replay settled nits every cycle. Any missing input falls back to full scope; every reason except `no_prev_json` (the normal cycle-1 path) emits a warning. This is not configurable and not a progressive relaxation — cycle 3 and cycle 5 behave identically, and no finding criterion loosens. See `plugins/rite/skills/pr-review/references/cycle-scope.md`.
+**Cycle scope** (no config key): the acceptance reviewer is outside this narrowing — when the related Issue has template acceptance criteria it runs every cycle as `mandatory` against the whole PR and is not counted against `max_reviewers`. Otherwise, cycle 1 reviews the whole PR, matching the reviewer set against every changed file (then bounded by `min_reviewers` / `max_reviewers` as usual); from cycle 2+ the review is diff-scoped to `commit_sha..HEAD` of the previous cycle's persisted review-result JSON, plus verification that the previous cycle's gated-scope (`current-pr` / `follow-up`) findings were resolved, with the reviewer set narrowed to those findings' reviewers (rejoined as `mandatory`) union the owners of the fix diff's file patterns. Acknowledged `nit-noted` findings are excluded from both — they stay in `findings[]` after the measured gate, so counting them would occupy cap-exempt slots and replay settled nits every cycle. Any missing input falls back to full scope; every reason except `no_prev_json` (the normal cycle-1 path) emits a warning. This is not configurable and not a progressive relaxation — cycle 3 and cycle 5 behave identically, and no finding criterion loosens. See `plugins/rite/skills/pr-review/references/cycle-scope.md`.
 
-**Complexity lane** (no config key): the Issue's declared Complexity scales the review's ceremony cost. `XS` / `S` take a light lane — the reviewer bound tightens to 3 (subject to the usual `mandatory` protection and the `min_reviewers` / sole-reviewer-guard floor, so it is not a hard "at most 3"), and verification runs are limited to the tests the PR touched, with full-suite sandbox replication and mutation experiments reserved for `M` and above. `M` / `L` / `XL` behave exactly as before. The criteria for admitting a finding — the four mandatory self-questions, Confidence, Observed Likelihood, the measured-finding gate, the consequence class — and the Cross-File Impact Check are identical on both lanes; only the cost of verification differs. Complexity is read from the Issue body (`**Complexity**: X` or a `## 複雑度` section) and never inferred; any missing or invalid value falls back to the full lane with a warning. This is not configurable, and it is not a progressive relaxation — the lane is decided once from a declared value, not from the cycle count. See `plugins/rite/skills/pr-review/references/complexity-lane.md`.
+**Complexity lane** (no config key): the Issue's declared Complexity scales the review's ceremony cost. `XS` / `S` take a light lane — the reviewer bound tightens to 3 (subject to the usual `mandatory` protection and the `min_reviewers` / sole-reviewer-guard floor, so it is not a hard "at most 3"; the acceptance reviewer is added on top of the bound), and verification runs are limited to the tests the PR touched, with full-suite sandbox replication and mutation experiments reserved for `M` and above. `M` / `L` / `XL` behave exactly as before. The criteria for admitting a finding — the four mandatory self-questions, Confidence, Observed Likelihood, the measured-finding gate, the consequence class — and the Cross-File Impact Check are identical on both lanes; only the cost of verification differs. Complexity is read from the Issue body (`**Complexity**: X` or a `## 複雑度` section) and never inferred; any missing or invalid value falls back to the full lane with a warning. This is not configurable, and it is not a progressive relaxation — the lane is decided once from a declared value, not from the cycle count. See `plugins/rite/skills/pr-review/references/complexity-lane.md`.
 
 **Verification mode** (`verification_mode: false` by default): When explicitly set to `true`, reviews detect the previous review from **PR comments** and perform both a full review and verification of previous fixes with incremental diff regression checks; new MEDIUM/LOW findings in unchanged code are classified as "stability concerns" (non-blocking). This mode is evaluated **only when the cycle scope resolved to full** (cycle 1, or a diff-scope fallback) — under diff scope its two parts are already covered by the scope mandate, so it is skipped.
 
@@ -477,7 +512,7 @@ The review-fix loop exits via the following paths:
 
 **Available reviewers:**
 
-The following specialized reviewers are automatically selected based on the changed files:
+The following specialized reviewers are automatically selected based on the changed files (`acceptance-reviewer` is selected instead by whether the related Issue has template acceptance criteria):
 
 | Reviewer | Focus Area |
 |----------|------------|
@@ -490,6 +525,7 @@ The following specialized reviewers are automatically selected based on the chan
 | `prompt-engineer-reviewer` | Claude Code skill, command, and agent definitions |
 | `tech-writer-reviewer` | Documentation clarity, accuracy, completeness |
 | `error-handling-reviewer` | Silent failures, error propagation, catch block quality |
+| `acceptance-reviewer` | Every acceptance criterion of the related Issue, observed on HEAD each cycle; unverified criteria stop the loop for a human check |
 
 > **v0.x consolidation**: the former `api` / `frontend` / `performance` / `database` / `type-design` reviewers were consolidated into `application-reviewer`. Legacy type names appearing as input are substituted with `application` after a WARNING (see CHANGELOG for the migration table).
 
@@ -664,7 +700,7 @@ When a limit is exceeded, the workflow presents options (**except the review⇄f
 
 **The review⇄fix circuit breaker (two fire conditions):**
 
-The `/rite:iterate` review⇄fix loop runs a one-shot 5.S NB digest sweep (`/rite:fix --nb-sweep`) after `[review:mergeable]`, `[fix:non-fatal-only]`, or `[fix:replied-only]`, before the completion notice. A successful sweep preserves the entry reason: reply-only remains `[fix:replied-only]` and stops a merge-mode batch; the other two entries return `[review:mergeable]`. Non-blocking findings still exist at mergeable, by two routes: a `current-pr` / `follow-up` finding the Measured CONFIRMED Gate demoted is moved out to `non_blocking_findings[]`, while a `nit-noted` finding is outside the gate entirely and stays in `findings[]`. Neither drives the blocking fix cycle — see `plugins/rite/references/severity-levels.md` §実測必須ゲート for what counts as blocking — but 5.S consumes both (fix / reject-with-rationale / issue) so the normal exit is undigested 0. Re-entry is guarded by `.rite/state/nb-sweep-done-{pr}.txt` (line 1 `noop` or `done`; **presence** skips collect / `--nb-sweep`. After a `fixed ≥ 1` push, line 2 is the sweep HEAD SHA for the ready reviewed-head gate; skip readers still use line 1 / existence only). A new `/rite:iterate` run deletes it at step 0.6 (`fresh || cycle_count == 0`); `/rite:cleanup` removes it with the other PR-state files. To force another sweep in the same run, delete the file. A circuit breaker keeps a non-convergent PR from looping forever. It fires on **either** of two conditions, evaluated at each loop head:
+The `/rite:iterate` review⇄fix loop runs a one-shot 5.S NB digest sweep (`/rite:fix --nb-sweep`) after `[review:mergeable]`, `[fix:non-fatal-only]`, or `[fix:replied-only]`, before the completion notice. A successful sweep preserves the entry reason: reply-only remains `[fix:replied-only]` and stops a merge-mode batch; the other two entries return `[review:mergeable]`. Non-blocking findings still exist at mergeable, by two routes: a `current-pr` / `follow-up` finding the Measured CONFIRMED Gate demoted is moved out to `non_blocking_findings[]`, while a `nit-noted` finding is outside the gate entirely and stays in `findings[]`. Neither drives the blocking fix cycle — see `plugins/rite/references/severity-levels.md` §実測必須ゲート for what counts as blocking — but 5.S consumes both (fix / reject-with-rationale / issue) so the normal exit is undigested 0. Re-entry is guarded by `.rite/state/nb-sweep-done-{pr}.txt` (line 1 `noop` or `done`; **presence** skips collect / `--nb-sweep`. After a `fixed ≥ 1` push, line 2 is the sweep HEAD SHA for the ready reviewed-head gate; skip readers still use line 1 / existence only). A new `/rite:iterate` run deletes it at step 0.6 (`fresh || cycle_count == 0`); `/rite:cleanup` removes it with the other PR-state files. To force another sweep in the same run, delete the file. A circuit breaker keeps a non-convergent PR from looping forever. It fires on **either** of two conditions, evaluated before each new review cycle:
 
 1. **Convergence-trend divergence (primary).** `plugins/rite/hooks/scripts/review-trend-divergence.sh` reconstructs the current run's per-cycle blocking counts from the persisted review-result JSON and reports divergence when the two most recent counts both exceed the run's earlier best *and* are not still descending. The two conditions are independent, so a diverging loop is cut early instead of burning the whole budget — but the rule needs at least three results in the run before "the run's earlier best" is defined, and a loop head carries the count of *completed* reviews, so cycles 1, 2, and 3 always fall through to the backstop; the check is first armed at the head of cycle 4. With the default budget of 15 that leaves twelve loop heads — the heads of cycles 4 through 15 — at which the trend can fire, before the backstop takes over at the head of cycle 16.
 2. **`max_review_cycles` reached (backstop).** Catches the runs the trend check deliberately passes over — a count that keeps shrinking but never reaches 0 (an intentional escape so that a run still descending is never cut), or one that plateaus at the run's best (an intentional boundary, because firing there would kill a loop that is a couple of findings from done). The backstop is an independent condition that never consults the trend verdict, so at the default of 15 it is what stops a *converging* run that needs 16 or more cycles. The default was raised from 5 to 15 after a six-cycle run whose trend check never once reported divergence at a head where a verdict came back — the earliest heads fall through undecided until three results are in — with per-cycle blocking counts of 8, 5, 4, 6, 3, and which was then cut off by the backstop at the head of cycle 6 (`cycle_count == 5`) and recorded as a non-convergent failure, so `/rite:batch-run --merge` never merged it. 15 is a provisional value, not a derived optimum: the run that motivated the change had not converged after 5 cycles, so the new default leaves headroom well past that point without any claim about where the true ceiling lies. Whether the default of 15 is right is a question for operational data; the only thing measured so far is that 5 was too small.
@@ -678,7 +714,7 @@ Tripping the breaker records a **failure** — a non-convergent loop — and nev
 
 The only way to resume the loop is to re-run `/rite:iterate {pr}` explicitly (`/rite:recover` routes to the same command, so it takes this path too). The breaker clears the cycle counter as it records the trip, so that re-run starts from cycle 1 rather than tripping again immediately. The trend check does **not** use that counter to find the run boundary. The review-result JSON files accumulate across every run of a PR until `/rite:cleanup` removes them, so a boundary is needed — but deriving it from the counter assumes the run wrote exactly one result file per counted cycle, and that assumption breaks whenever a result fails to save or a review is interrupted after the counter advanced. `/rite:iterate` therefore pins the run start instead: when the counter is 0 it records the newest existing result file in `.rite/state/review-run-since-{pr}.txt`, and the helper treats only files newer than that pin as the current run. The breaker itself does not update this pin. On explicit restart, the refreshed pin makes the first review full scope (`reason=no_prev_json`); no additional review runs as part of the trip. A missing pin falls back to reading every file as one series (runs that predate the pin) — but only while that series matches the counter: with no pin and **more** files than the counter, other runs are bleeding in, so the check is dropped as `run_boundary_unresolved` rather than risking a false fire. Once a pin is set **and the counter has advanced past 0**, the boundary is known, so neither direction suppresses the check: a **shortfall** is reported as a WARNING naming how many results were lost (and as `lost=N` on the helper's marker), an **excess** means the counter lagged behind the saved results, and either way the judgment proceeds on the files that do exist. An excess while the counter is still 0 is different: the current run has not completed a single review, so any results present belong to an earlier run whose pin was never refreshed, and the check is dropped as `run_boundary_unresolved`. If the counter reset fails, the interactive stop notice says so and points at a manual reset; in a batch run only a stderr WARNING is emitted (the batch notice is not yet symmetric). A failed reset leaves the counter and the run-start pin both unrefreshed, so the re-run trips again straight away — after a backstop trip because the counter is still at the limit, and after a divergence trip because a non-zero counter skips the re-pin and the helper reads the same series over again. Separately, if the pending continuation handoff survives, the Stop hook re-injects `/rite:pr-review`, and that chain re-arms itself at every step — `/rite:pr-review` sets a `/rite:fix` handoff, `/rite:fix` sets a `/rite:pr-review` handoff — without ever re-entering the cycle-count check in `/rite:iterate` step 1. The loop then runs outside the counter's control until the model returns to `/rite:iterate`. That is the one case in which the interactive bullet's "never auto-continued past the limit" guarantee does not hold. For the exact condition under which the handoff survives, see [`stop-loop-continuation-contract.md`](../plugins/rite/references/stop-loop-continuation-contract.md) — it is the single source of truth and is not restated here.
 
-The cycle counter is persisted in the per-session flow-state (`cycle_count`) and continues across `/rite:recover` — an interrupted loop resumes its count rather than restarting from 0. A reset happens on a fresh entry (step 0.6), when the loop exits normally (step 5.0.1, so the next run re-pins its start), and as the trip is recorded (in the step 6 preamble that runs immediately before the trip sentinel). The trip's reset is taken at trip time rather than deferred to the next start-up. In the same atomic state update, the preamble records `stop_reason` (`circuit-breaker:max-cycles` or `circuit-breaker:divergence`), so a turn that ends between the preamble and sentinel still leaves a durable failure reason for `session-start` and `/rite:recover`. A turn that ends **before the preamble runs** leaves the counter at the limit, so the next run trips again instead of silently regaining a full budget. If the atomic update itself fails, neither the reset nor the reason is persisted and the emitted warning reports both consequences. Being at the limit (`cycle_count == max_review_cycles`) is the normal state throughout the final cycle; an interrupt there does not go through the fire branch, so its count is resumed and the breaker trips as intended.
+The cycle counter is persisted in the per-session flow-state (`cycle_count`). `flow-state.sh review-start` advances it once after fixing the reviewer roster and HEAD. Recovery resumes collection, persistence, and remaining gates for that same cycle without incrementing or evaluating the lost-result / circuit-breaker checks; those checks run before the next new cycle. A reset happens on a fresh entry (step 0.6), when the loop exits normally (step 5.0.1, so the next run re-pins its start), and as the trip is recorded (in the step 6 preamble that runs immediately before the trip sentinel). The trip's reset is taken at trip time rather than deferred to the next start-up. In the same atomic state update, the preamble records `stop_reason` (`circuit-breaker:max-cycles` or `circuit-breaker:divergence`), so a turn that ends between the preamble and sentinel still leaves a durable failure reason for `session-start` and `/rite:recover`. A turn that ends **before the preamble runs** leaves the counter at the limit, so the next run trips again instead of silently regaining a full budget. If the atomic update itself fails, neither the reset nor the reason is persisted and the emitted warning reports both consequences. Being at the limit (`cycle_count == max_review_cycles`) is the normal state throughout the final cycle. An interruption resumes that cycle and its remaining gates; the breaker is evaluated if another cycle is needed.
 
 ### metrics
 
@@ -712,9 +748,9 @@ Settings for PR review **output** recording. This section is intentionally separ
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `post_comment` | boolean | `false` | This key scopes **only** the integrated review-report post onto the PR. When `true`, that full review report is posted as a PR comment (equivalent to `--post-comment`). When `false` (default), the report is saved to `.rite/review-results/{pr_number}-{timestamp}.json` only. **Exception**: the non-measured findings record comment (`📜 rite 非実測指摘の記録`, normally one comment updated in place — the lookup degrades to creating a second one when it cannot identify its own prior comment) is **attempted** independently of this setting whenever the review produces one or more non-measured findings — and is additionally refreshed in place on a converged cycle producing zero, when a record comment from a previous cycle already exists **and the helper can identify it**. Identification runs in two stages: a durable comment id persisted on its own line in the related Issue body first, then a body match (author + first-line marker + machine sentinel on the last non-blank line) as the fallback. The id stage accepts the referenced comment only when it exists, is authored by the caller, belongs to this Issue, **and is itself a record comment** (first-line marker + machine sentinel) — a repo-scoped id alone could otherwise point at the caller's own comment on a different Issue, and an Issue-scoped one at an unrelated comment such as a work-memory replica, whose body would then be overwritten in place. When **both** stages fail to resolve the prior comment, the helper falls back to creating a new record comment if the cycle has one or more non-measured findings, and skips posting entirely — leaving the previous cycle's record stale — if the cycle has zero. That double failure happens in exactly three mutually exclusive ways: (a) `gh api user` fails, which disables both stages at once since each needs the caller's own login; (b) the id stage fails on its own terms (the marker is absent, malformed, unreachable, deleted, or points at another Issue or a non-record comment) **while** the body match separately finds nothing; (c) the prior comment was posted under a different token identity, which by itself defeats the author check in both stages — this is the case that emits `id_author_mismatch`. Two situations emit no `NONBLOCKING_ID_UNRESOLVED` reason at all: case (a), because the id stage never runs, and the first cycle of a related Issue before any id has been persisted, because falling back is the normal path there rather than a failure. A body-match lookup that fails on its own no longer degrades the cycle when the persisted id resolves the comment. The Issue comment is **best-effort**: a gh failure (`create_failed` / `patch_failed`), a jq runtime failure (`body_check_unavailable`), or a malformed body (`body_file_empty` / `body_marker_missing` / `body_sentinel_missing` / `count_body_mismatch`) aborts the post with a warning and `outcome=failed`, so the **unconditional** record channel is the local JSON, not the comment (Measured CONFIRMED Gate). The record comment carries **pointers plus the demotion reason** — reviewer, severity, `file:line`, and the demotion label (the class B verdict sentence for 5.3.0.C demotions, "実測なし" otherwise) for every non-blocking finding, and a line naming where the full text lives. It never contains a finding's `description` or `suggestion`, so that a non-measured CRITICAL is not disclosed in detail on a public PR before it is fixed. Under the default `post_comment: false`, **during the review cycle** the local JSON is the sole store of that full text — it lives only on the machine that ran the review, is kept untracked by a `*` .gitignore that rite writes alongside it rather than by any root .gitignore entry (so checking out the PR's branch does not produce it), and has no sharing channel until merge; with `post_comment: true` the full review report comment carries the full text as well. `/rite:cleanup` moves a result JSON whose `non_blocking_findings[]` is non-empty into `.rite/review-results/archive/` instead of deleting it, so the local detail survives the merge. Remaining non-measured findings at merge time become one follow-up Issue (none if zero) that transcribes `description` / `suggestion` in full — on a public repository that Issue is public. `/rite:cleanup` re-verifies each finding against the merged HEAD first and excludes the ones a later fix cycle already resolved; a finding it cannot decide is transcribed rather than dropped, and when every finding is resolved no follow-up Issue is opened. How a finding was addressed is recorded in the fix commit message; because `/rite:merge` squash-merges, that message is **not** in develop's git log and is read from the PR's Commits tab |
+| `post_comment` | boolean | `false` | This key scopes **only** the integrated review-report post onto the PR. When `true`, that full review report is posted as a PR comment (equivalent to `--post-comment`). When `false` (default), the report is saved to `.rite/review-results/{pr_number}-{timestamp}.json` only. **Exception**: the non-measured findings record comment (`📜 rite 非実測指摘の記録`, normally one comment updated in place — the lookup degrades to creating a second one when it cannot identify its own prior comment) is **attempted** independently of this setting whenever the review produces one or more non-measured findings — and is additionally refreshed in place on a converged cycle producing zero, when a record comment from a previous cycle already exists **and the helper can identify it**. Identification runs in two stages: a durable comment id persisted on its own line in the related Issue body first, then a body match (author + first-line marker + machine sentinel on the last non-blank line) as the fallback. The id stage accepts the referenced comment only when it exists, is authored by the caller, belongs to this Issue, **and is itself a record comment** (first-line marker + machine sentinel) — a repo-scoped id alone could otherwise point at the caller's own comment on a different Issue, and an Issue-scoped one at an unrelated comment such as a work-memory replica, whose body would then be overwritten in place. When **both** stages fail to resolve the prior comment, the helper falls back to creating a new record comment if the cycle has one or more non-measured findings, and skips posting entirely — leaving the previous cycle's record stale — if the cycle has zero and the body carries no rejection-ledger entries (a body carrying ledger entries is still created, because the record comment is the ledger's only store). That double failure happens in exactly three mutually exclusive ways: (a) `gh api user` fails, which disables both stages at once since each needs the caller's own login; (b) the id stage fails on its own terms (the marker is absent, malformed, unreachable, deleted, or points at another Issue or a non-record comment) **while** the body match separately finds nothing; (c) the prior comment was posted under a different token identity, which by itself defeats the author check in both stages — this is the case that emits `id_author_mismatch`. Two situations emit no `NONBLOCKING_ID_UNRESOLVED` reason at all: case (a), because the id stage never runs, and the first cycle of a related Issue before any id has been persisted, because falling back is the normal path there rather than a failure. A body-match lookup that fails on its own no longer degrades the cycle when the persisted id resolves the comment. The Issue comment is **best-effort**: a gh failure (`create_failed` / `patch_failed`), a jq or awk runtime failure (`body_check_unavailable`), or a malformed body (`body_file_empty` / `body_marker_missing` / `body_sentinel_missing` / `count_body_mismatch`) aborts the post with a warning and `outcome=failed`, so the **unconditional** record channel is the local JSON, not the comment (Measured CONFIRMED Gate). The record comment carries **pointers plus the demotion reason** — reviewer, severity, `file:line`, and the demotion label (the class B verdict sentence for 5.3.0.C demotions, "実測なし" otherwise) for every non-blocking finding, and a line naming where the full text lives. It never contains a finding's `description` or `suggestion`, so that a non-measured CRITICAL is not disclosed in detail on a public PR before it is fixed. Under the default `post_comment: false`, **during the review cycle** the local JSON is the sole store of that full text — it lives only on the machine that ran the review, is kept untracked by a `*` .gitignore that rite writes alongside it rather than by any root .gitignore entry (so checking out the PR's branch does not produce it), and has no sharing channel until merge; with `post_comment: true` the full review report comment carries the full text as well. `/rite:cleanup` moves a result JSON whose `non_blocking_findings[]` is non-empty into `.rite/review-results/archive/` instead of deleting it, so the local detail survives the merge. Remaining non-measured findings at merge time become one follow-up Issue (none if zero) that transcribes `description` / `suggestion` in full — on a public repository that Issue is public. `/rite:cleanup` re-verifies each finding against the merged HEAD first and excludes the ones a later fix cycle already resolved; a finding it cannot decide is transcribed rather than dropped, and when every finding is resolved no follow-up Issue is opened. Findings the iterate sweep already filed as Issues are excluded as well, and when every remaining finding was filed that way no follow-up Issue is opened; if the sweep ledger or the latest review result cannot be read, only this sweep-filed exclusion is skipped — findings already excluded by re-verification stay excluded — and a warning is surfaced. How a finding was addressed is recorded in the fix commit message; because `/rite:merge` squash-merges, that message is **not** in develop's git log and is read from the PR's Commits tab |
 
-`/rite:fix` automatically reads review results in the priority order: **conversation > local file > PR comment**. Most users should leave `post_comment: false` to keep the full review report off the PR; note that the non-measured findings record comment is still recorded regardless — best-effort on the related Issue (normally one, updated in place, pointers plus the demotion reason), unconditionally in the local JSON (full text during the cycle). At merge, remaining full text is transcribed into one follow-up Issue (public on a public repository) — after a re-verification pass against the merged HEAD drops the findings a later fix cycle already resolved. Enable `post_comment: true` only if you want an auditable full review trail on the PR itself.
+`/rite:fix` automatically reads review results in the priority order: **conversation > local file > PR comment**. Most users should leave `post_comment: false` to keep the full review report off the PR; note that the non-measured findings record comment is still recorded regardless — best-effort on the related Issue (normally one, updated in place, pointers plus the demotion reason), unconditionally in the local JSON (full text during the cycle). At merge, remaining full text is transcribed into one follow-up Issue (public on a public repository) — after a re-verification pass against the merged HEAD drops the findings a later fix cycle already resolved, and the findings the iterate sweep already filed as Issues are dropped too. If the sweep ledger or the latest review result cannot be read, only the sweep-filed exclusion is skipped — findings already excluded by re-verification stay excluded — and a warning is surfaced. Enable `post_comment: true` only if you want an auditable full review trail on the PR itself.
 
 ### wiki
 

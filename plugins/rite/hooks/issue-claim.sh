@@ -30,7 +30,7 @@
 # only one of N racing processes wins the create. The stale-steal, own-refresh,
 # and release paths serialize through an atomic mkdir lock, which is available on
 # stock macOS and other POSIX systems without util-linux. A LIVE other-session claim is NEVER stolen
-# unattended (AC-5) — `claim` returns rc=10 so the caller (open Step 1.6)
+# unattended — `claim` returns rc=10 so the caller (open Step 1.6)
 # raises an AskUserQuestion.
 #
 # KNOWN LIMITATION: an `implement` phase that runs >2h without any phase
@@ -274,7 +274,7 @@ cmd_claim() {
       if [ "$src" -eq 10 ]; then
         # CAS aborted under the lock: a concurrent stealer already won, or the
         # holder revived. Report "other" (rc 10) so the caller (open Step 1.6)
-        # raises an AskUserQuestion instead of double-stealing (AC-1).
+        # raises an AskUserQuestion instead of double-stealing.
         echo "[issue-claim] issue #${issue} steal aborted under lock (concurrent stealer or holder revived); not stealing" >&2
         echo "other"
         return 10
@@ -306,11 +306,11 @@ cmd_release() {
   local sid; sid=$(_resolve_current_session_id "$session") || return 1
   [ -n "$sid" ] || { echo "ERROR: issue-claim.sh release: cannot resolve session_id" >&2; return 1; }
   local file="$CLAIMS_DIR/issue-${issue}.json"
-  # Idempotent: releasing an absent claim is a success (AC-4).
+  # Idempotent: releasing an absent claim is a success.
   [ -f "$file" ] || { echo "released"; return 0; }
   local holder; holder=$(_claim_holder "$file")
   if [ "$holder" != "$sid" ]; then
-    # Only the owner releases its own claim — never touch another session's (AC-3).
+    # Only the owner releases its own claim — never touch another session's.
     echo "[issue-claim] release: issue #${issue} is held by another session (${holder:-<corrupt>}); leaving it intact" >&2
     echo "skipped"
     return 0
