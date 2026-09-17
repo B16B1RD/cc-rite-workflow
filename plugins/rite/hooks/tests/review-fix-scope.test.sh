@@ -331,8 +331,8 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
     check(stat.S_ISLNK(os.lstat(link).st_mode) and os.stat(link).st_size == 0, 'stub link fixture points at the stub')
     result = invoke('verify', 'all', ok=False)
     warnings = stub_warnings(result)
-    check(result.returncode != 0 and len(warnings) == 1 and '"stub_link"' not in warnings[0]
-          and 'unplanned changed path' in result.stderr,
+    check(result.returncode != 0 and len(warnings) == 1 and ' 1 sandbox stub file(s)' in warnings[0]
+          and '"stub_link"' not in warnings[0] and 'unplanned changed path' in result.stderr,
           'symlink to a stub stays an untracked change while the stub itself is still excluded')
     check(filtered_untracked() == {link.name}, 'git-status-filtered.sh keeps the same symlink')
     link.unlink()
