@@ -18,6 +18,7 @@
 * **lint:clean** — contradictions=0 (新規 1 ページと関連ページの比較のみ。既存ページの全組合せ再評価は未実施), stale=66, orphans=0, missing_concept=0, unregistered_raw=520, broken_refs=0
 * **Create**: [同じ判定規則を別言語で二重実装するときは、同一 fixture で SoT 実装の実行結果と突合する parity assert を置く](pages/patterns/dual-implementation-rule-parity-assert-against-sot-executable.md) — raw/reviews/20260917T102546Z-pr-2933.md を新規ページ化
 * **Update**: [sandbox 環境では raw な git status --porcelain が恒に非空になり clean 判定ガードが一度も発火しない](pages/anti-patterns/sandbox-bind-mount-makes-raw-git-status-always-dirty.md) — raw/reviews/20260917T102546Z-pr-2933.md を統合（git ls-files 列挙器と同一欠陥クラスの未対応サイト洗い出しを補強）
+* **lint:clean** — contradictions=0 (新規 1 ページと関連ページ・同テーマ既存ページの比較のみ。既存ページの全組合せ再評価は未実施), stale=66, orphans=0, missing_concept=0, unregistered_raw=520, broken_refs=0
 
 ## 2026-09-16
 
