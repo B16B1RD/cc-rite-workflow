@@ -331,11 +331,34 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
     check(stat.S_ISLNK(os.lstat(link).st_mode) and os.stat(link).st_size == 0, 'stub link fixture points at the stub')
     result = invoke('verify', 'all', ok=False)
     warnings = stub_warnings(result)
-    check(result.returncode != 0 and len(warnings) == 1 and '"stub_link"' not in warnings[0],
+    check(result.returncode != 0 and len(warnings) == 1 and '"stub_link"' not in warnings[0]
+          and 'unplanned changed path' in result.stderr,
           'symlink to a stub stays an untracked change while the stub itself is still excluded')
     check(filtered_untracked() == {link.name}, 'git-status-filtered.sh keeps the same symlink')
     link.unlink()
     mask.unlink()
+    # An untracked entry whose stat fails is not excluded. The shell helper keeps the
+    # same link only because find -type f does not match it, not through its own
+    # unreadable-entry path, so this pins the Python stat-failure branch.
+    dangling = root / 'dangling_link'
+    dangling.symlink_to('missing-target')
+    check(stat.S_ISLNK(os.lstat(dangling).st_mode) and not os.path.exists(dangling), 'dangling link fixture makes stat fail')
+    result = invoke('verify', 'all', ok=False)
+    check(result.returncode != 0 and 'unplanned changed path' in result.stderr and stub_warnings(result) == [],
+          'untracked entry whose stat fails stays a change')
+    check(filtered_untracked() == {dangling.name}, 'git-status-filtered.sh keeps the same dangling link')
+    dangling.unlink()
+    first, second = fixture('.bashrc', 0o444), fixture('.gitconfig', 0o444)
+    result = invoke('verify', 'all')
+    warnings = stub_warnings(result)
+    check(result.returncode == 0 and len(warnings) == 1 and ' 2 sandbox stub file(s)' in warnings[0]
+          and warnings[0].count('".bashrc"') == 1 and warnings[0].count('".gitconfig"') == 1
+          and warnings[0].endswith('".bashrc" ".gitconfig"'),
+          'several stubs share one warning line that names each once')
+    check(filtered_untracked() == set(), 'git-status-filtered.sh also drops both stubs')
+    first.unlink()
+    second.unlink()
+    check(filtered_untracked() == set(), 'stub fixtures leave no untracked entries behind')
     for name, mode, content, label in (('.bashrc', 0o644, '', 'writable empty file'),
                                        ('.bashrc', 0o444, 'alias ls=ls\n', 'read-only file with content'),
                                        ('.gitconfig', 0o464, '', 'empty file with a group write bit')):
