@@ -91,7 +91,7 @@ assert_rc() {
 
 assert_contains() {
   local label="$1" needle="$2"
-  if printf '%s\n' "$RUN_OUT" | grep -qF "$needle"; then
+  if printf '%s\n' "$RUN_OUT" | grep -cF >/dev/null "$needle"; then
     pass "$label"
   else
     fail "$label: output did not contain '$needle'"
@@ -100,7 +100,7 @@ assert_contains() {
 
 assert_not_contains() {
   local label="$1" needle="$2"
-  if printf '%s\n' "$RUN_OUT" | grep -qF "$needle"; then
+  if printf '%s\n' "$RUN_OUT" | grep -cF >/dev/null "$needle"; then
     fail "$label: output unexpectedly contained '$needle'"
   else
     pass "$label"
@@ -120,7 +120,7 @@ assert_line_matches() {
   line=$(printf '%s\n' "$RUN_OUT" | { grep -F "$line_needle" || true; } | tail -1)
   if [ -z "$line" ]; then
     fail "$label: no line containing '$line_needle'"
-  elif printf '%s' "$line" | grep -qE "$pattern"; then
+  elif printf '%s' "$line" | grep -cE >/dev/null "$pattern"; then
     pass "$label"
   else
     fail "$label: line '$line' did not match /$pattern/"
@@ -133,7 +133,7 @@ assert_line_matches() {
 # on the name can never fail.
 assert_line_present() {
   local label="$1" pattern="$2"
-  if printf '%s\n' "$RUN_OUT" | grep -qE "$pattern"; then
+  if printf '%s\n' "$RUN_OUT" | grep -cE >/dev/null "$pattern"; then
     pass "$label"
   else
     fail "$label: no line matched /$pattern/"

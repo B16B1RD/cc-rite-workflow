@@ -123,7 +123,7 @@ assert "merged PRs >= threshold with stalled wiki → finding (exit 1)" "1" \
 
 # --- Findings line always emitted --------------------------------------------
 findings_out="$(PATH="$STUB_DIR:$PATH" GH_STUB_PRS='[]' bash "$SCRIPT" --repo-root "$healthy_repo" --quiet 2>/dev/null || true)"
-if printf '%s' "$findings_out" | grep -qE '==> Total wiki-growth-check findings: [0-9]+'; then
+if printf '%s' "$findings_out" | grep -cE >/dev/null '==> Total wiki-growth-check findings: [0-9]+'; then
   pass "always prints the findings summary line"
 else
   fail "findings summary line missing: $findings_out"

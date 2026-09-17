@@ -62,7 +62,7 @@ stderr001=$(PATH="$dir001/bin:$PATH" bash -c "
   $func_body
   cache_comment_id 12345
 " 2>&1 >/dev/null)
-if printf '%s' "$stderr001" | grep -qE 'cache_comment_id mv failed \(rc=23'; then
+if printf '%s' "$stderr001" | grep -cE >/dev/null 'cache_comment_id mv failed \(rc=23'; then
   pass "TC-001: cache_comment_id mv WARNING carries real rc (23)"
 else
   fail "TC-001: cache_comment_id WARNING missing or rc collapsed. stderr: $stderr001"
@@ -85,7 +85,7 @@ if [ "$written_cid" = "99999" ]; then
 else
   fail "TC-002: wm_comment_id not written (got '$written_cid'). stderr: $stderr002"
 fi
-if printf '%s' "$stderr002" | grep -qE 'cache_comment_id (mv|jq) failed'; then
+if printf '%s' "$stderr002" | grep -cE >/dev/null 'cache_comment_id (mv|jq) failed'; then
   fail "TC-002: happy path emitted a failure WARNING — stderr: $stderr002"
 else
   pass "TC-002: happy path silent on stderr"
@@ -110,7 +110,7 @@ out003=$(cd "$dir003" && bash -c "
   $resolver_block
   echo \"FLOW_STATE=\$FLOW_STATE\"
 " 2>&1)
-if printf '%s' "$out003" | grep -qF "FLOW_STATE=$dir003/.rite/sessions/tc003-sid.flow-state"; then
+if printf '%s' "$out003" | grep -cF >/dev/null "FLOW_STATE=$dir003/.rite/sessions/tc003-sid.flow-state"; then
   pass "TC-003: resolver resolved to per-session file"
 else
   fail "TC-003: resolver did not resolve to expected per-session path. got: $out003"
@@ -132,9 +132,9 @@ out004=$(cd "$dir004" && bash -c "
   $resolver_block
   echo \"FLOW_STATE=\$FLOW_STATE\"
 " 2>&1)
-if printf '%s' "$out004" | grep -q 'WARNING: issue-comment-wm-sync: flow-state.sh path resolution failed' && \
-   printf '%s' "$out004" | grep -qE 'cannot resolve session_id' && \
-   printf '%s' "$out004" | grep -qF "FLOW_STATE=$dir004/.rite-flow-state"; then
+if printf '%s' "$out004" | grep -c >/dev/null 'WARNING: issue-comment-wm-sync: flow-state.sh path resolution failed' && \
+   printf '%s' "$out004" | grep -cE >/dev/null 'cannot resolve session_id' && \
+   printf '%s' "$out004" | grep -cF >/dev/null "FLOW_STATE=$dir004/.rite-flow-state"; then
   pass "TC-004: resolver fallback emits WARNING and falls back to legacy path"
 else
   fail "TC-004: expected WARNING + legacy fallback (with diagnostic detail). got: $out004"
@@ -161,7 +161,7 @@ GH_SHIM
 chmod +x "$dir005/bin/gh"
 out005=$(cd "$dir005" && PATH="$dir005/bin:$PATH" GH_SHIM_MARKER="$GH_SHIM_MARKER" \
   bash "$HOOK" init --issue 42 --branch "fix/issue-42-test" 2>/dev/null) || true
-if printf '%s' "$out005" | grep -qF "status=skipped; reason=already_exists" && [ ! -f "$GH_SHIM_MARKER" ]; then
+if printf '%s' "$out005" | grep -cF >/dev/null "status=skipped; reason=already_exists" && [ ! -f "$GH_SHIM_MARKER" ]; then
   pass "TC-005: existing replica → skipped; reason=already_exists, gh issue comment 未実行"
 else
   fail "TC-005: expected skipped/already_exists without post. out: $out005 marker=$([ -f "$GH_SHIM_MARKER" ] && echo present || echo absent)"
@@ -186,7 +186,7 @@ case "$1 $2" in
     if [ -f "$GH_SHIM_MARKER" ]; then echo "222"; fi
     exit 0 ;;
   "issue comment")
-    if ! printf '%s\n' "$*" | grep -qE -- '--repo testowner/testrepo( |$)'; then
+    if ! printf '%s\n' "$*" | grep -cE >/dev/null -- '--repo testowner/testrepo( |$)'; then
       echo "MOCK ASSERTION FAILED: expected --repo testowner/testrepo, got: $*" >&2
       exit 1
     fi
@@ -197,7 +197,7 @@ GH_SHIM
 chmod +x "$dir006/bin/gh"
 out006=$(cd "$dir006" && PATH="$dir006/bin:$PATH" GH_SHIM_MARKER="$GH_SHIM_MARKER6" \
   bash "$HOOK" init --issue 42 --branch "fix/issue-42-test" 2>/dev/null) || true
-if printf '%s' "$out006" | grep -qF "status=success" && [ -f "$GH_SHIM_MARKER6" ]; then
+if printf '%s' "$out006" | grep -cF >/dev/null "status=success" && [ -f "$GH_SHIM_MARKER6" ]; then
   pass "TC-006: no replica → posted + status=success"
 else
   fail "TC-006: expected post + status=success. out: $out006 marker=$([ -f "$GH_SHIM_MARKER6" ] && echo present || echo absent)"
@@ -223,7 +223,7 @@ case "$1 $2" in
     if [ -f "$GH_SHIM_MARKER" ]; then echo "333"; exit 0; fi
     echo "HTTP 500: Internal Server Error" >&2; exit 1 ;;
   "issue comment")
-    if ! printf '%s\n' "$*" | grep -qE -- '--repo testowner/testrepo( |$)'; then
+    if ! printf '%s\n' "$*" | grep -cE >/dev/null -- '--repo testowner/testrepo( |$)'; then
       echo "MOCK ASSERTION FAILED: expected --repo testowner/testrepo, got: $*" >&2
       exit 1
     fi
@@ -236,17 +236,17 @@ stderr007_file="$dir007/stderr.txt"
 out007=$(cd "$dir007" && PATH="$dir007/bin:$PATH" GH_SHIM_MARKER="$GH_SHIM_MARKER7" \
   bash "$HOOK" init --issue 42 --branch "fix/issue-42-test" 2>"$stderr007_file") || true
 stderr007=$(cat "$stderr007_file" 2>/dev/null)
-if printf '%s' "$stderr007" | grep -qE 'init pre-check gh api 失敗 \(rc=1\)'; then
+if printf '%s' "$stderr007" | grep -cE >/dev/null 'init pre-check gh api 失敗 \(rc=1\)'; then
   pass "TC-007: pre-check failure WARNING carries real rc (1)"
 else
   fail "TC-007: pre-check WARNING missing or rc collapsed. stderr: $stderr007"
 fi
-if printf '%s' "$stderr007" | grep -qF 'HTTP 500: Internal Server Error'; then
+if printf '%s' "$stderr007" | grep -cF >/dev/null 'HTTP 500: Internal Server Error'; then
   pass "TC-007: captured gh stderr detail surfaced in WARNING"
 else
   fail "TC-007: gh stderr detail not surfaced. stderr: $stderr007"
 fi
-if printf '%s' "$out007" | grep -qF "status=success" && [ -f "$GH_SHIM_MARKER7" ]; then
+if printf '%s' "$out007" | grep -cF >/dev/null "status=success" && [ -f "$GH_SHIM_MARKER7" ]; then
   pass "TC-007: posting continued despite pre-check failure → status=success"
 else
   fail "TC-007: expected post-through + status=success. out: $out007 marker=$([ -f "$GH_SHIM_MARKER7" ] && echo present || echo absent)"
@@ -343,7 +343,7 @@ stderr010=$(cd "$dir010" && PATH="$dir010/bin:$PATH" bash -c "
   $func_get_owner_repo
   get_owner_repo
 " 2>&1 >/dev/null)
-if printf '%s' "$stderr010" | grep -qE 'WARNING: issue-comment-wm-sync: gh repo view failed'; then
+if printf '%s' "$stderr010" | grep -cE >/dev/null 'WARNING: issue-comment-wm-sync: gh repo view failed'; then
   pass "TC-010: WARNING header emitted even when gh repo view fails with empty stderr"
 else
   fail "TC-010: WARNING header missing when gh repo view fails silently. stderr: $stderr010"
@@ -401,7 +401,7 @@ printf '%s\n' "- [x] レビュー完了" "- [x] マージ完了" "- [x] クリ�
 out011=$(cd "$dir011" && PATH="$dir011/bin:$PATH" PATCH_MARKER="$PATCH_MARKER011" \
   bash "$HOOK" update --issue 42 \
     --transform merge-checklist --section 進捗サマリー --content-file "$items011" 2>/dev/null) || true
-if printf '%s' "$out011" | grep -qF "status=skipped; reason=section_absent"; then
+if printf '%s' "$out011" | grep -cF >/dev/null "status=skipped; reason=section_absent"; then
   pass "TC-011a: section absent → status=skipped; reason=section_absent"
 else
   fail "TC-011a: expected section_absent status. out: $out011"
@@ -508,7 +508,7 @@ out_t03=$(cd "$dir_t03" && PATH="$dir_t03/bin:$PATH" \
     --phase "implement" --phase-detail "実装中" 2>/dev/null)
 rc_t03=$?
 set -e
-if printf '%s' "$out_t03" | grep -qF "status=success" && [ "$rc_t03" -eq 0 ]; then
+if printf '%s' "$out_t03" | grep -cF >/dev/null "status=success" && [ "$rc_t03" -eq 0 ]; then
   pass "T-03: update status=success exit 0"
 else
   fail "T-03: expected status=success exit 0. out=$out_t03 rc=$rc_t03"
@@ -550,7 +550,7 @@ chmod +x "$dir_t06/bin/gh"
 out_t06=$(cd "$dir_t06" && PATH="$dir_t06/bin:$PATH" \
   bash "$HOOK" update --issue 42 --transform update-phase \
     --phase "implement" --phase-detail "実装中" 2>/dev/null) || true
-if printf '%s' "$out_t06" | grep -qF "status=skipped; reason=no_comment"; then
+if printf '%s' "$out_t06" | grep -cF >/dev/null "status=skipped; reason=no_comment"; then
   pass "T-06a: 0 comments → status=skipped; reason=no_comment"
 else
   fail "T-06a: expected no_comment. out=$out_t06"
@@ -597,7 +597,7 @@ out_t08=$(cd "$dir_t08" && PATH="$dir_t08/bin:$PATH" \
   bash "$HOOK" init --issue 42 --branch "fix/issue-42-test" 2>/dev/null) || true
 has_rep=$(jq -r 'has("wm_replica")' "$dir_t08/.rite-flow-state")
 cid8=$(jq -r '.wm_comment_id // empty' "$dir_t08/.rite-flow-state")
-if printf '%s' "$out_t08" | grep -qF "status=success" \
+if printf '%s' "$out_t08" | grep -cF >/dev/null "status=success" \
    && [ "$has_rep" = "false" ] && [ "$cid8" = "888" ]; then
   pass "T-08: init success deleted wm_replica and wrote wm_comment_id=888"
 else
@@ -653,7 +653,7 @@ cid12=$(jq -r '.wm_comment_id // empty' "$dir_t12/.rite-flow-state")
 list_gets=$(grep -c '/issues/42/comments' "$GH_URLS_T12" 2>/dev/null || true)
 patch_n12=$(grep -c '^PATCH$' "$GH_CLASS_T12" 2>/dev/null || true)
 : "${list_gets:=0}" "${patch_n12:=0}"
-if printf '%s' "$out_t12" | grep -qF "status=success" \
+if printf '%s' "$out_t12" | grep -cF >/dev/null "status=success" \
    && [ "$cid12" = "888" ] && [ "$list_gets" = "1" ] && [ "$patch_n12" = "1" ]; then
   pass "T-12: 404 → list GET once → re-cache 888 → PATCH success"
 else
@@ -712,7 +712,7 @@ set -e
 get_nfs=$(grep -c '^GET$' "$GH_CLASS_NFS" 2>/dev/null || true)
 patch_nfs=$(grep -c '^PATCH$' "$GH_CLASS_NFS" 2>/dev/null || true)
 : "${get_nfs:=0}" "${patch_nfs:=0}"
-if printf '%s' "$out_tnfs" | grep -qF "status=success" \
+if printf '%s' "$out_tnfs" | grep -cF >/dev/null "status=success" \
    && [ "$rc_tnfs" -eq 0 ] && [ "$get_nfs" = "1" ] && [ "$patch_nfs" = "1" ]; then
   pass "T-nfs: no flow-state update GET 1 + PATCH 1, status=success"
 else
@@ -749,7 +749,7 @@ out_t13=$(cd "$dir_t13" && PATH="$dir_t13/bin:$PATH" \
   bash "$HOOK" init --issue 42 --branch "fix/issue-42-test" 2>/dev/null) || true
 seq13=$(tr '\n' ' ' < "$GH_SEQ_T13" | sed 's/ *$//')
 # pre-check LIST (empty) → COMMENT → verify LIST (id)
-if printf '%s' "$out_t13" | grep -qF "status=success" \
+if printf '%s' "$out_t13" | grep -cF >/dev/null "status=success" \
    && [ "$seq13" = "LIST COMMENT LIST" ]; then
   pass "T-13: init sequence pre-check GET → gh issue comment → verify GET"
 else
@@ -829,7 +829,7 @@ if [ "$seq20" = "GET_CACHED GET_LIST PATCH_SCANNED" ]; then
 else
   fail "T-20a: expected 'GET_CACHED GET_LIST PATCH_SCANNED', got '$seq20' out=$out_t20"
 fi
-if printf '%s' "$out_t20" | grep -qF "status=success"; then
+if printf '%s' "$out_t20" | grep -cF >/dev/null "status=success"; then
   pass "T-20b: AC-2 — scan path returns status=success"
 else
   fail "T-20b: expected status=success. out=$out_t20"

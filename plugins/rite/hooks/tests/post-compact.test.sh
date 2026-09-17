@@ -67,7 +67,7 @@ write_per_session_state() {
   mkdir -p "$dir/.rite/sessions"
   printf '%s' "$sid" > "$dir/.rite-session-id"
   local merged
-  if printf '%s' "$content" | grep -q '"schema_version"'; then
+  if printf '%s' "$content" | grep -c >/dev/null '"schema_version"'; then
     merged="$content"
   elif printf '%s' "$content" | jq -e . >/dev/null 2>&1; then
     merged=$(printf '%s' "$content" | jq -c '. + {schema_version: 3}')
@@ -316,7 +316,7 @@ echo "{\"cwd\": \"$dir_749\", \"source\": \"auto\"}" \
   | bash "$sbx_749/post-compact.sh" >/dev/null 2>"$stderr_file" || true
 stderr_749="$(cat "$stderr_file")"
 
-if printf '%s' "$stderr_749" | grep -qF 'TC-helper-failure simulated flow-state.sh path failure'; then
+if printf '%s' "$stderr_749" | grep -cF >/dev/null 'TC-helper-failure simulated flow-state.sh path failure'; then
   pass "ERROR line from flow-state.sh passed through to caller stderr"
 else
   fail "Expected ERROR pass-through; got stderr: $stderr_749"
@@ -325,7 +325,7 @@ fi
 # emits a "flow-state.sh path resolution failed — skip" WARNING and aborts the
 # recovery branch. The previous "Legacy fallback path was loaded" assertion was
 # removed accordingly.
-if printf '%s' "$stderr_749" | grep -qF 'flow-state.sh path resolution failed'; then
+if printf '%s' "$stderr_749" | grep -cF >/dev/null 'flow-state.sh path resolution failed'; then
   pass "Skip WARNING emitted to stderr (no legacy fallback in v3)"
 else
   fail "Expected skip WARNING; got stderr: $stderr_749"
@@ -470,7 +470,7 @@ EOF
 . "$(dirname "$0")/gh-mock-lib.sh"
 case "$1 $2" in
   "pr view")
-    if ! printf '%s\n' "$*" | grep -q -- '--repo o/r'; then
+    if ! printf '%s\n' "$*" | grep -c >/dev/null -- '--repo o/r'; then
       echo "MOCK ASSERTION FAILED: expected --repo o/r, got: $*" >&2
       exit 1
     fi
@@ -478,7 +478,7 @@ case "$1 $2" in
     ;;
   "repo view") echo "auth required (should not be called — git-remote should resolve first)" >&2; exit 1 ;;
   "api graphql")
-    if ! { printf '%s\n' "$*" | grep -q -- '-f owner=o' && printf '%s\n' "$*" | grep -q -- '-f repo=r'; }; then
+    if ! { printf '%s\n' "$*" | grep -c >/dev/null -- '-f owner=o' && printf '%s\n' "$*" | grep -c >/dev/null -- '-f repo=r'; }; then
       echo "MOCK ASSERTION FAILED: expected -f owner=o -f repo=r, got: $*" >&2
       exit 1
     fi
@@ -1135,7 +1135,7 @@ write_per_session_state "$TC_DIR" \
   '{"active": true, "issue_number": 99, "phase": "implement", "branch": "feat/issue-99-test"}'
 printf 'not-valid-json{{' > "$(compact_state_path "$TC_DIR")"
 STDERR_OUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>&1 >/dev/null) || true
-if printf '%s' "$STDERR_OUT" | grep -qE 'post-compact: jq parse of \.compact_state failed \(rc=[1-9]'; then
+if printf '%s' "$STDERR_OUT" | grep -cE >/dev/null 'post-compact: jq parse of \.compact_state failed \(rc=[1-9]'; then
   pass "TC-COMPACT-STATE-CORRUPT: WARNING surfaces real jq rc on corrupt compact-state"
 else
   fail "TC-COMPACT-STATE-CORRUPT: expected WARNING with rc on corrupt compact-state; got: $STDERR_OUT"

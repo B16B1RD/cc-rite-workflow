@@ -67,7 +67,7 @@ assert "code line (non-comment) is excluded" "0" "$(run --quiet --target codelin
 
 # --- Finding output shape -----------------------------------------------------
 ng_out="$(bash "$SCRIPT" --repo-root "$SANDBOX" --quiet --target ng.sh 2>/dev/null || true)"
-if printf '%s' "$ng_out" | grep -qF '[comment-line-ref]' && printf '%s' "$ng_out" | grep -qF 'wiki-config.sh:42'; then
+if printf '%s' "$ng_out" | grep -cF >/dev/null '[comment-line-ref]' && printf '%s' "$ng_out" | grep -cF >/dev/null 'wiki-config.sh:42'; then
   pass "finding tags [comment-line-ref] and quotes the offending reference"
 else
   fail "finding tag/reference missing: $ng_out"

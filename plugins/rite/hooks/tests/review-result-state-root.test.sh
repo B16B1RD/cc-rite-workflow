@@ -99,8 +99,8 @@ out2=$(cd "$REPO/.rite/worktrees/issue-99" && \
   bash "$REPO/scripts/review-source-resolve.sh" \
     --pr-number 99 --review-file-path "__RITE_UNSET__" \
     --conversation-decision none --p1-scan-turns 0 --p1-scan-found false 2>&1) || true
-if printf '%s' "$out2" | grep -q 'REVIEW_SOURCE=local_file' && \
-   printf '%s' "$out2" | grep -q "review_source_path=$MAIN_ROOT/.rite/review-results/99-"; then
+if printf '%s' "$out2" | grep -c >/dev/null 'REVIEW_SOURCE=local_file' && \
+   printf '%s' "$out2" | grep -c >/dev/null "review_source_path=$MAIN_ROOT/.rite/review-results/99-"; then
   pass "TC-2: Priority 2 resolved to main-root local file"
 else
   fail "TC-2: expected local_file at main root. out: $(printf '%s' "$out2" | grep REVIEW_SOURCE | head -2)"
@@ -124,8 +124,8 @@ git -C "$REPO/.rite/worktrees/issue-99" commit -qm "advance"
 echo "TC-2b: review-cycle-scope default results dir resolves to main root from worktree cwd"
 out2b=$(cd "$REPO/.rite/worktrees/issue-99" && \
   bash "$REPO/scripts/review-cycle-scope.sh" --pr 99 2>&1) || true
-if printf '%s' "$out2b" | grep -q 'REVIEW_CYCLE_SCOPE=incremental' && \
-   printf '%s' "$out2b" | grep -q "prev_json=$MAIN_ROOT/.rite/review-results/99-"; then
+if printf '%s' "$out2b" | grep -c >/dev/null 'REVIEW_CYCLE_SCOPE=incremental' && \
+   printf '%s' "$out2b" | grep -c >/dev/null "prev_json=$MAIN_ROOT/.rite/review-results/99-"; then
   pass "TC-2b: default results dir resolved to main root"
 else
   fail "TC-2b: expected incremental with main-root prev_json. out: $(printf '%s' "$out2b" | grep REVIEW_CYCLE_SCOPE | head -2)"
@@ -141,7 +141,7 @@ cp "$HOOKS_DIR/../scripts/review-cycle-scope.sh" "$FALLBACK_DIR/scripts/"
 cp "$HOOKS_DIR/scripts/lib/tempfile.sh" "$FALLBACK_DIR/hooks/scripts/lib/"
 # state-path-resolve.sh を意図的に置かない (解決失敗経路)
 out2c=$(cd "$FALLBACK_DIR" && bash "$FALLBACK_DIR/scripts/review-cycle-scope.sh" --pr 99 2>&1) || true
-if printf '%s' "$out2c" | grep -q 'state-path-resolve.sh の解決に失敗'; then
+if printf '%s' "$out2c" | grep -c >/dev/null 'state-path-resolve.sh の解決に失敗'; then
   pass "TC-2c: fallback emitted a loud WARNING"
 else
   fail "TC-2c: expected fallback WARNING. out: $(printf '%s' "$out2c" | head -3)"
@@ -190,7 +190,7 @@ content5="$TEST_DIR/body5.json"
 json_body > "$content5"
 out5=$( cd "$nogit_dir" && bash "$nogit_dir/hooks/review-result-save.sh" --pr 99 --content-file "$content5" 2>&1 ) || true
 cwd_hits=$({ find "$nogit_dir/.rite/review-results" -maxdepth 1 -name '99-*.json' 2>/dev/null || true; } | wc -l | tr -d ' ')
-if [ "$cwd_hits" -eq 1 ] && printf '%s' "$out5" | grep -q 'state-path-resolve.sh の解決に失敗'; then
+if [ "$cwd_hits" -eq 1 ] && printf '%s' "$out5" | grep -c >/dev/null 'state-path-resolve.sh の解決に失敗'; then
   pass "TC-5: cwd fallback + WARNING emitted"
 else
   fail "TC-5: expected cwd save + WARNING. hits=$cwd_hits warning=$(printf '%s' "$out5" | grep -c '解決に失敗' || true)"

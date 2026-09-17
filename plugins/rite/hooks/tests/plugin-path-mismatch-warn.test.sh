@@ -66,9 +66,9 @@ cat > "$FAKE_HOME/.claude/plugins/installed_plugins.json" <<JSON
 JSON
 out=$(run_snippet)
 err=$(cat "$TEST_DIR/err")
-if printf '%s' "$err" | grep -q '解決方式間で不一致' && \
-   printf '%s' "$err" | grep -qF "$INSTALL_A" && \
-   printf '%s' "$err" | grep -qF "$INSTALL_B" && \
+if printf '%s' "$err" | grep -c >/dev/null '解決方式間で不一致' && \
+   printf '%s' "$err" | grep -cF >/dev/null "$INSTALL_A" && \
+   printf '%s' "$err" | grep -cF >/dev/null "$INSTALL_B" && \
    [ "$out" = "MARKETPLACE:$INSTALL_B/hooks" ]; then
   pass "TC-1: WARNING (両パス表示) + 解決は direct key 維持"
 else
@@ -86,7 +86,7 @@ cat > "$FAKE_HOME/.claude/plugins/installed_plugins.json" <<JSON
 JSON
 out=$(run_snippet)
 err=$(cat "$TEST_DIR/err")
-if ! printf '%s' "$err" | grep -q '不一致' && [ "$out" = "MARKETPLACE:$INSTALL_B/hooks" ]; then
+if ! printf '%s' "$err" | grep -c >/dev/null '不一致' && [ "$out" = "MARKETPLACE:$INSTALL_B/hooks" ]; then
   pass "TC-2: WARNING なし + 従来どおり解決"
 else
   fail "TC-2: expected no WARNING + MARKETPLACE, got out='$out' err='$err'"
@@ -127,7 +127,7 @@ cat > "$FAKE_HOME/.claude/plugins/installed_plugins.json" <<JSON
 JSON
 out=$(run_snippet)
 err=$(cat "$TEST_DIR/err")
-if [ "$out" = "NOT_FOUND:NO_HOOKS" ] && ! printf '%s' "$err" | grep -q '不一致'; then
+if [ "$out" = "NOT_FOUND:NO_HOOKS" ] && ! printf '%s' "$err" | grep -c >/dev/null '不一致'; then
   pass "TC-5: INSTALL_PATH 空のため照合せず従来どおり NOT_FOUND"
 else
   fail "TC-5: expected NOT_FOUND:NO_HOOKS without WARNING, got out='$out' err='$err'"

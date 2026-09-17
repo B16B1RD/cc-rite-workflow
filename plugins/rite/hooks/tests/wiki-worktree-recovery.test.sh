@@ -137,7 +137,7 @@ echo "TC-COMMIT-NOT-SILENT: a WARNING is emitted (no silent stall)"
 # verify_worktree_branch remediation hint ("対処: ... bash .../wiki-worktree-setup.sh"),
 # so the assertion passed even on the broken (reverted) code — a non-discriminating
 # test. `自己回復` appears only on the recovery path this PR adds.
-if printf '%s' "$commit_err" | grep -q "自己回復"; then
+if printf '%s' "$commit_err" | grep -c >/dev/null "自己回復"; then
   pass "recovery WARNING surfaced on stderr"
 else
   fail "no recovery WARNING — silent-failure regression"
@@ -188,7 +188,7 @@ ft_out="$(cd "$REPO" && bash "$COMMIT_SH" 2>ft_err.txt)"
 ft_rc=$?
 ft_err="$(cat "$REPO/ft_err.txt" 2>/dev/null || true)"
 set -e
-if [ "$ft_rc" -eq 2 ] && printf '%s' "$ft_err" | grep -q "自己回復"; then
+if [ "$ft_rc" -eq 2 ] && printf '%s' "$ft_err" | grep -c >/dev/null "自己回復"; then
   pass "graceful fallthrough exit 2 with recovery WARNING (no silent exit-1 stall)"
 else
   fail "expected graceful exit 2 + recovery WARNING; got rc=$ft_rc"

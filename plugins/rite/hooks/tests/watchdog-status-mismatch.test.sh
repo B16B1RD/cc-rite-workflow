@@ -77,7 +77,7 @@ fi
 echo ""
 echo "[T-9c] --help prints usage"
 help_output=$(bash "$WATCHDOG_SH" --help 2>&1) || true
-if printf '%s' "$help_output" | grep -q 'watchdog-status-mismatch.sh'; then
+if printf '%s' "$help_output" | grep -c >/dev/null 'watchdog-status-mismatch.sh'; then
   PASS=$((PASS + 1))
   echo "  ✓ --help prints usage including script name"
 else
@@ -151,7 +151,7 @@ case "$1 $2" in
     echo "should not be called - git-remote fast path must resolve first" >&2
     exit 1 ;;
   "pr list")
-    if ! printf '%s\n' "$*" | grep -qE -- '--repo o/r( |$)'; then
+    if ! printf '%s\n' "$*" | grep -cE >/dev/null -- '--repo o/r( |$)'; then
       echo "MOCK ASSERTION FAILED: expected --repo o/r, got: $*" >&2
       exit 1
     fi

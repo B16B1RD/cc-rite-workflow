@@ -230,7 +230,7 @@ printf 'no markers here at all\n' > "$SANDBOX/$REASON_TARGET"
 assert "zero emitted reasons exits 2 (not a silent pass)" "2" \
   "$(bash "$REASON_COVERAGE" --repo-root "$SANDBOX" >/dev/null 2>&1; echo $?)"
 zero_err="$(bash "$REASON_COVERAGE" --repo-root "$SANDBOX" 2>&1 >/dev/null || true)"
-if printf '%s' "$zero_err" | grep -qF 'emit を 1 件も抽出できませんでした'; then
+if printf '%s' "$zero_err" | grep -cF >/dev/null 'emit を 1 件も抽出できませんでした'; then
   pass "zero-emit case explains the suspected marker drift"
 else
   fail "zero-emit diagnostic missing — got: $zero_err"

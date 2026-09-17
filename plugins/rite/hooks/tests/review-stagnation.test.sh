@@ -8,6 +8,7 @@ import datetime
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -26,6 +27,23 @@ def dump(path, value):
     path.write_text(json.dumps(value), encoding='utf-8')
 
 
+# Every fixture needs the same one-commit starting tree. Build it once and copy
+# its independent Git metadata for each fixture instead of forking Git to init,
+# add and commit on every construction.
+_seed_temp = tempfile.TemporaryDirectory(prefix='rite-stagnation-seed-')
+_seed_root = Path(_seed_temp.name)
+_seed_env = dict(os.environ)
+for _key in ('CODEX_THREAD_ID', 'GROK_SESSION_ID', 'CLAUDE_SESSION_ID', 'CLAUDE_CODE_SESSION_ID',
+             'RITE_SESSION_ID', 'RITE_HOST', 'RITE_STATE_ROOT', 'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE'):
+    _seed_env.pop(_key, None)
+subprocess.run(['git', 'init', '-q'], cwd=_seed_root, env=_seed_env, check=True)
+(_seed_root / 'source.txt').write_text('initial\n')
+subprocess.run(['git', 'add', 'source.txt'], cwd=_seed_root, env=_seed_env, check=True)
+subprocess.run(['git', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+                'commit', '-q', '--allow-empty', '-m', 'fixture update'],
+               cwd=_seed_root, env=_seed_env, check=True)
+
+
 class Fixture:
     def __init__(self):
         self.temp = tempfile.TemporaryDirectory(prefix='rite-stagnation-')
@@ -39,10 +57,12 @@ class Fixture:
         self.session = 'stagnation-fixture'
         self.env.update(RITE_HOST='claude', CLAUDE_CODE_SESSION_ID=self.session,
                         RITE_STATE_ROOT=self.temp.name, TMPDIR=self.temp.name)
-        self.run(['git', 'init', '-q'])
+        shutil.copytree(_seed_root / '.git', self.root / '.git')
+        check((self.root / '.git').is_dir(), 'independent Git fixture metadata copied')
+        check((self.root / '.git/index').is_file(), 'fixture seed index copied')
+        check((self.root / '.git/HEAD').is_file(), 'fixture seed HEAD copied')
         (self.root / '.git/info/exclude').write_text('.rite/\n')
         (self.root / 'source.txt').write_text('initial\n')
-        self.commit()
         self.flow('set', '--phase', 'pr', '--next', 'review', '--issue', 42, '--pr', 71)
         self.state_path = Path(self.flow('path').stdout.strip())
         self.selection = self.private / 'selection.json'

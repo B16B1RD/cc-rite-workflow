@@ -313,7 +313,7 @@ _heading_block() {
 }
 _assert_block_grep() {
   local label="$1" block="$2" pattern="$3"
-  if printf '%s\n' "$block" | grep -qE "$pattern"; then
+  if printf '%s\n' "$block" | grep -cE >/dev/null "$pattern"; then
     pass "$label"
   else
     fail "$label (pattern not in extracted block: $pattern)"
@@ -321,7 +321,7 @@ _assert_block_grep() {
 }
 _assert_block_not_grep() {
   local label="$1" block="$2" pattern="$3"
-  if printf '%s\n' "$block" | grep -qE "$pattern"; then
+  if printf '%s\n' "$block" | grep -cE >/dev/null "$pattern"; then
     fail "$label (forbidden pattern in extracted block: $pattern)"
   else
     pass "$label"

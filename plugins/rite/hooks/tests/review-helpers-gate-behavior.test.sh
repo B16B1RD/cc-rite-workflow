@@ -1662,7 +1662,7 @@ assert_not_grep "TC-4.7b degraded skip 案内が結末を断定しない (広域
 # guard に退化していないことを、代表的な断定文に対して実際にマッチすることで示す (production
 # コードを mutate せずに regex 自体の生死を確認する自己検査)。
 _f02_sample='なお記録は投稿されますのでご安心ください'
-if printf '%s' "$_f02_sample" | grep -qE '(記録|投稿)[^。]*(されます|される)'; then
+if printf '%s' "$_f02_sample" | grep -cE >/dev/null '(記録|投稿)[^。]*(されます|される)'; then
   pass "TC-4.7c [positive control] 広域 ERE は代表的な断定文を検出できる"
 else
   fail "TC-4.7c [positive control] 広域 ERE が代表的な断定文を検出できない (regex 自体の不備)"

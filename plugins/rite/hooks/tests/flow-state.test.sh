@@ -1129,7 +1129,7 @@ else
 fi
 # TC-23.3: 制御文字が中和マーカー '?' へ 1:1 置換され可読テキストは保持される
 # (空削除への revert と snippet 全体 drop の両方を catch する)
-if printf '%s' "$snippet" | grep -qF '?[31mINJECTED?[0m'; then
+if printf '%s' "$snippet" | grep -cF >/dev/null '?[31mINJECTED?[0m'; then
   pass "TC-23.3: 制御文字が '?' へ 1:1 置換され可読テキストが保持される"
 else
   fail "TC-23.3: 中和マーカー '?' パターンが不在: '$(printf '%s' "$snippet" | cat -v)'"

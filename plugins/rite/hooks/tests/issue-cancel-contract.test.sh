@@ -102,7 +102,7 @@ assert_grep_in_section "T-02 (d) discovery matches the last path segment exactly
 # 発見失敗は「記録なし」へ畳まず fail-loud。list 失敗を none に倒すと AC-2 が確認不能のまま
 # Issue を閉じ、再実行が Phase 4 に届かなくなる。
 _disc_fail_block=$(awk '/^  echo .*CANCEL_WT_TARGET=undetermined; reason=worktree_list_failed/{f=1} f{print} f&&/^  exit 1$/{exit}' "$SKILL")
-if printf '%s\n' "$_disc_fail_block" | grep -qE '^  exit 1$'; then
+if printf '%s\n' "$_disc_fail_block" | grep -cE >/dev/null '^  exit 1$'; then
   pass "T-02 (d) a failed worktree list exits non-zero (machine-enforced stop)"
 else
   fail "T-02 (d) git worktree list failure must exit non-zero before closing the Issue"
@@ -135,13 +135,13 @@ assert_grep_in_section "T-02 (d) the none arm is the literal none token only" "$
   '^#### 4\\.2\\.0 Issue 束縛ガード' '^#### 4\\.2\\.1' \
   '^  none)$'
 _empty_fail_block=$(awk '/CANCEL_WT_BOUND=blocked; reason=target_unconfirmed/{f=1} f{print} f&&/^    exit 1$/{exit}' "$SKILL")
-if printf '%s\n' "$_empty_fail_block" | grep -qE '^    exit 1$'; then
+if printf '%s\n' "$_empty_fail_block" | grep -cE >/dev/null '^    exit 1$'; then
   pass "T-02 (d) an empty or undetermined target exits non-zero"
 else
   fail "T-02 (d) empty/undetermined target must exit non-zero before Status / Issue close"
 fi
 _mismatch_fail_block=$(awk '/CANCEL_WT_BOUND=blocked; reason=basename_mismatch/{f=1} f{print} f&&/^      exit 1$/{exit}' "$SKILL")
-if printf '%s\n' "$_mismatch_fail_block" | grep -qE '^      exit 1$'; then
+if printf '%s\n' "$_mismatch_fail_block" | grep -cE >/dev/null '^      exit 1$'; then
   pass "T-02 (d) a basename mismatch exits non-zero"
 else
   fail "T-02 (d) basename mismatch must exit non-zero before Status / Issue close"
@@ -152,7 +152,7 @@ assert_grep_in_section "T-02 (d) sitting in the target without ExitWorktree emit
   '^#### 4\\.2\\.0 Issue 束縛ガード' '^#### 4\\.2\\.1' \
   'CANCEL_WT_BOUND=blocked; reason=exit_worktree_unavailable'
 _blocked_fail_block=$(awk '/CANCEL_WT_BOUND=blocked; reason=exit_worktree_unavailable/{f=1} f{print} f&&/^            exit 1$/{exit}' "$SKILL")
-if printf '%s\n' "$_blocked_fail_block" | grep -qE '^            exit 1$'; then
+if printf '%s\n' "$_blocked_fail_block" | grep -cE >/dev/null '^            exit 1$'; then
   pass "T-02 (d) the blocked branch exits non-zero (machine-enforced stop)"
 else
   fail "T-02 (d) exit_worktree_unavailable must exit non-zero before Status / Issue close"
@@ -264,7 +264,7 @@ assert_grep_in_section "T-04 the failure branch emits the failure marker" "$SKIL
 # emit 行からブロック終端 `fi` までの「隣接範囲」に限って exit を要求する。
 # 判定表の行は `|` 始まりなので `^  echo ` とは衝突しない。marker 名アンカーで一意に決まる。
 _pr_fail_block=$(awk '/^  echo .*CANCEL_PR_CLOSE_FAILED=1/{f=1} f{print} f&&/^fi$/{exit}' "$SKILL")
-if printf '%s\n' "$_pr_fail_block" | grep -qE '^  exit 1$'; then
+if printf '%s\n' "$_pr_fail_block" | grep -cE >/dev/null '^  exit 1$'; then
   pass "T-04 the failure branch exits non-zero (machine-enforced stop)"
 else
   fail "T-04 the PR-close failure branch must exit non-zero before its closing fi"
@@ -272,7 +272,7 @@ fi
 # Phase 6 の Issue クローズ失敗も同型に遮断されること（判定表は「停止する」と書くが、bash の rc が
 # 0 のままだと state 不整合を抱えたまま Phase 7 の完了報告へ進みうる）。
 _issue_fail_block=$(awk '/^  echo .*CANCEL_ISSUE_CLOSE_FAILED=1/{f=1} f{print} f&&/^fi$/{exit}' "$SKILL")
-if printf '%s\n' "$_issue_fail_block" | grep -qE '^  exit 1$'; then
+if printf '%s\n' "$_issue_fail_block" | grep -cE >/dev/null '^  exit 1$'; then
   pass "T-04 the Issue-close failure branch exits non-zero (machine-enforced stop)"
 else
   fail "T-04 the Issue-close failure branch must exit non-zero before its closing fi"

@@ -643,7 +643,7 @@ gh_err_detail_def=$(sed -n '/^_gh_err_detail() {/,/^}/p' "$NBR_SH")
 # 範囲の終端がずれて途中までしか取れない / EOF まで取り込む drift を、空でないことだけで通さない
 if [ "$(printf '%s\n' "$gh_err_detail_def" | grep -c '^_gh_err_detail() {')" != 1 ] \
   || [ "$(printf '%s\n' "$gh_err_detail_def" | tail -1)" != '}' ] \
-  || ! printf '%s\n' "$gh_err_detail_def" | grep -q 'case "\$_label" in'; then
+  || ! printf '%s\n' "$gh_err_detail_def" | grep -c >/dev/null 'case "\$_label" in'; then
   fail "T-11 _gh_err_detail の定義を helper から抽出できない (定義形の drift)"
 else
   unknown_label_diag="$sandbox/unknown-label-diag.txt"

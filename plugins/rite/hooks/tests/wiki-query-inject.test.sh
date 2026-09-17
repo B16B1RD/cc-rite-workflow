@@ -125,10 +125,10 @@ confidence: high
 ---'
 run_query "$repo" --keywords "cache" --format compact
 if [ "$QRC" -eq 0 ] \
-   && printf '%s' "$QOUT" | grep -q 'Cache Strategy' \
-   && printf '%s' "$QOUT" | grep -q '確信度.*: high' \
-   && printf '%s' "$QOUT" | grep -q 'ドメイン.*: heuristics' \
-   && printf '%s' "$QOUT" | grep -q '更新日.*: 2026-06-15'; then
+   && printf '%s' "$QOUT" | grep -c >/dev/null 'Cache Strategy' \
+   && printf '%s' "$QOUT" | grep -c >/dev/null '確信度.*: high' \
+   && printf '%s' "$QOUT" | grep -c >/dev/null 'ドメイン.*: heuristics' \
+   && printf '%s' "$QOUT" | grep -c >/dev/null '更新日.*: 2026-06-15'; then
   pass "TC-1 一致ページ + frontmatter 由来メタデータ (domain/confidence/updated)"
 else
   fail "TC-1 (rc=$QRC out=$QOUT)"
@@ -183,9 +183,9 @@ confidence: medium
 # missing.md は作らない
 run_query "$repo" --keywords "gizmo" --format compact
 if [ "$QRC" -eq 0 ] \
-   && printf '%s' "$QOUT" | grep -q 'Good Page' \
-   && printf '%s' "$QERR" | grep -q 'pages/heuristics/missing.md' \
-   && printf '%s' "$QERR" | grep -qi 'skipping candidate'; then
+   && printf '%s' "$QOUT" | grep -c >/dev/null 'Good Page' \
+   && printf '%s' "$QERR" | grep -c >/dev/null 'pages/heuristics/missing.md' \
+   && printf '%s' "$QERR" | grep -ci >/dev/null 'skipping candidate'; then
   pass "TC-3 missing.md は WARNING + skip、Good Page は表示、exit 0"
 else
   fail "TC-3 (rc=$QRC out=$QOUT err=$QERR)"
@@ -225,8 +225,8 @@ confidence: high
 # pages/heuristics/example.md は作らない（コメント内の例なので実在しない）
 run_query "$repo" --keywords "thing" --format compact
 if [ "$QRC" -eq 0 ] \
-   && printf '%s' "$QOUT" | grep -q 'Real Page' \
-   && ! printf '%s' "$QERR" | grep -q 'example.md'; then
+   && printf '%s' "$QOUT" | grep -c >/dev/null 'Real Page' \
+   && ! printf '%s' "$QERR" | grep -c >/dev/null 'example.md'; then
   pass "TC-5 コメント内サンプル example.md を読みに行かず phantom WARNING なし"
 else
   fail "TC-5 (rc=$QRC out=$QOUT err=$QERR)"
@@ -252,8 +252,8 @@ confidence: high
 ---'
 run_query "$repo" --keywords "mktemp" --format compact
 if [ "$QRC" -eq 0 ] \
-   && printf '%s' "$QOUT" | grep -q 'Table Page' \
-   && printf '%s' "$QOUT" | grep -q '確信度.*: high'; then
+   && printf '%s' "$QOUT" | grep -c >/dev/null 'Table Page' \
+   && printf '%s' "$QOUT" | grep -c >/dev/null '確信度.*: high'; then
   pass "TC-6 テーブル行から候補抽出 + frontmatter メタデータ"
 else
   fail "TC-6 (rc=$QRC out=$QOUT err=$QERR)"
@@ -288,8 +288,8 @@ confidence: medium
 ---'
 run_query "$repo" --keywords "gadget" --format compact
 if [ "$QRC" -eq 0 ] \
-   && printf '%s' "$QOUT" | grep -q 'Bullet Page' \
-   && printf '%s' "$QOUT" | grep -q 'Table Page'; then
+   && printf '%s' "$QOUT" | grep -c >/dev/null 'Bullet Page' \
+   && printf '%s' "$QOUT" | grep -c >/dev/null 'Table Page'; then
   pass "TC-7 両形式から候補抽出 (箇条書きの既存挙動を保ったままテーブルも拾う)"
 else
   fail "TC-7 (rc=$QRC out=$QOUT err=$QERR)"
@@ -315,8 +315,8 @@ confidence: high
 ---'
 run_query "$repo" --keywords "widget" --format compact
 if [ "$QRC" -eq 0 ] \
-   && printf '%s' "$QOUT" | grep -qF 'cmd | grep' \
-   && ! printf '%s' "$QOUT" | grep -qF 'cmd \| grep'; then
+   && printf '%s' "$QOUT" | grep -cF >/dev/null 'cmd | grep' \
+   && ! printf '%s' "$QOUT" | grep -cF >/dev/null 'cmd \| grep'; then
   pass "TC-8 \\| を含むセルが生の | として復元される"
 else
   fail "TC-8 (rc=$QRC out=$QOUT err=$QERR)"
@@ -333,8 +333,8 @@ INDEX_9='# Wiki Index
 repo=$(make_query_sandbox tc9 "$INDEX_9")
 run_query "$repo" --keywords "anything" --format compact
 if [ "$QRC" -eq 0 ] \
-   && printf '%s' "$QOUT" | grep -q 'Wiki 経験則は注入されていません' \
-   && printf '%s' "$QERR" | grep -q '候補を 1 件も抽出できませんでした'; then
+   && printf '%s' "$QOUT" | grep -c >/dev/null 'Wiki 経験則は注入されていません' \
+   && printf '%s' "$QERR" | grep -c >/dev/null '候補を 1 件も抽出できませんでした'; then
   pass "TC-9 形式未対応による 0 件が stderr と stdout の両方で可視化される"
 else
   fail "TC-9 (rc=$QRC out=$QOUT err=$QERR)"
@@ -365,8 +365,8 @@ confidence: high
 # pages/heuristics/example.md は作らない（コメント内の例なので実在しない）
 run_query "$repo" --keywords "doodad" --format compact
 if [ "$QRC" -eq 0 ] \
-   && printf '%s' "$QOUT" | grep -q 'Real Table Page' \
-   && ! printf '%s' "$QERR" | grep -q 'example.md'; then
+   && printf '%s' "$QOUT" | grep -c >/dev/null 'Real Table Page' \
+   && ! printf '%s' "$QERR" | grep -c >/dev/null 'example.md'; then
   pass "TC-10 コメント内テーブル例 example.md を読みに行かず phantom WARNING なし"
 else
   fail "TC-10 (rc=$QRC out=$QOUT err=$QERR)"
@@ -395,8 +395,8 @@ confidence: high
 # pages/heuristics/other.md は作らない（サマリー内の相互リンク先を候補にしていないことの検証）
 run_query "$repo" --keywords "thingamajig" --format compact
 if [ "$QRC" -eq 0 ] \
-   && printf '%s' "$QOUT" | grep -q 'Owner Page' \
-   && ! printf '%s' "$QERR" | grep -q 'other.md'; then
+   && printf '%s' "$QOUT" | grep -c >/dev/null 'Owner Page' \
+   && ! printf '%s' "$QERR" | grep -c >/dev/null 'other.md'; then
   pass "TC-11 ページ列の最初のリンクのみを候補にする (サマリー内リンクを読みに行かない)"
 else
   fail "TC-11 (rc=$QRC out=$QOUT err=$QERR)"
@@ -434,9 +434,9 @@ mkdir -p "$repo/.rite/wiki/pages/patterns"
 } > "$repo/.rite/wiki/pages/patterns/big.md"
 run_query "$repo" --keywords "whatsit" --format compact
 if [ "$QRC" -eq 0 ] \
-   && printf '%s' "$QOUT" | grep -q 'Big Page' \
-   && printf '%s' "$QOUT" | grep -q '確信度.*: high' \
-   && ! printf '%s' "$QERR" | grep -q 'cannot read frontmatter'; then
+   && printf '%s' "$QOUT" | grep -c >/dev/null 'Big Page' \
+   && printf '%s' "$QOUT" | grep -c >/dev/null '確信度.*: high' \
+   && ! printf '%s' "$QERR" | grep -c >/dev/null 'cannot read frontmatter'; then
   pass "TC-12 大きいページの frontmatter を読めて候補として描画される"
 else
   fail "TC-12 (rc=$QRC out=$QOUT err=$QERR)"
@@ -510,8 +510,8 @@ confidence: high
 ---'
 run_query "$repo" --keywords "whozit" --format compact
 if [ "$QRC" -eq 0 ] \
-   && printf '%s' "$QOUT" | grep -q 'Good Row' \
-   && printf '%s' "$QERR" | grep -q '候補になりませんでした'; then
+   && printf '%s' "$QOUT" | grep -c >/dev/null 'Good Row' \
+   && printf '%s' "$QERR" | grep -c >/dev/null '候補になりませんでした'; then
   pass "TC-14 部分脱落が WARNING で可視化され、正常行は描画される"
 else
   fail "TC-14 (rc=$QRC out=$QOUT err=$QERR)"
@@ -534,8 +534,8 @@ idx_size=$(wc -c < "$repo/.rite/wiki/index.md")
 run_query "$repo" --keywords "anything" --format compact
 if [ "$QRC" -eq 0 ] \
    && [ "$idx_size" -gt 65536 ] \
-   && printf '%s' "$QOUT" | grep -q 'Wiki 経験則は注入されていません' \
-   && printf '%s' "$QERR" | grep -q '候補を 1 件も抽出できませんでした'; then
+   && printf '%s' "$QOUT" | grep -c >/dev/null 'Wiki 経験則は注入されていません' \
+   && printf '%s' "$QERR" | grep -c >/dev/null '候補を 1 件も抽出できませんでした'; then
   pass "TC-15 ${idx_size} バイトの index でも 0 件 WARNING が発火する"
 else
   fail "TC-15 size=$idx_size (rc=$QRC out=$QOUT err=$QERR)"
@@ -566,8 +566,8 @@ confidence: high
 # pages/heuristics/second.md は作らない（2 つ目に解決したら stale WARNING で露見する）
 run_query "$repo" --keywords "flapdoodle" --format compact
 if [ "$QRC" -eq 0 ] \
-   && printf '%s' "$QOUT" | grep -q 'First Link' \
-   && ! printf '%s' "$QERR" | grep -q 'second.md'; then
+   && printf '%s' "$QOUT" | grep -c >/dev/null 'First Link' \
+   && ! printf '%s' "$QERR" | grep -c >/dev/null 'second.md'; then
   pass "TC-16 ページ列の最初のリンクが候補になる (2 つ目を読みに行かない)"
 else
   fail "TC-16 (rc=$QRC out=$QOUT err=$QERR)"
@@ -603,8 +603,8 @@ run_query "$repo" --keywords "thingummy" --max-pages 20 --format compact
 rendered17=$(printf '%s\n' "$QOUT" | grep -c '^#### ')
 if [ "$QRC" -eq 0 ] \
    && [ "$rendered17" -eq 1 ] \
-   && printf '%s' "$QOUT" | grep -q 'Fine Row' \
-   && printf '%s' "$QERR" | grep -q '2 行が登録リンク'; then
+   && printf '%s' "$QOUT" | grep -c >/dev/null 'Fine Row' \
+   && printf '%s' "$QERR" | grep -c >/dev/null '2 行が登録リンク'; then
   pass "TC-17 3 セル未満と 5 セル超の両方が WARNING に載り、正常行だけ描画される"
 else
   fail "TC-17 rendered=$rendered17 (rc=$QRC out=$QOUT err=$QERR)"
@@ -624,9 +624,9 @@ INDEX_18='# Wiki Index
 |--------|---------|---------|--------|--------|
 | [gizmo が作った名前から派生させたパスは O_CREAT\|O_EXCL 保証を失う](pages/anti-patterns/gizmo-pipe.md) | anti-patterns | `gizmo` の安全性は「ランダムな名前を `O_CREAT\|O_EXCL` で atomic に作る」ことに由来する。 | 2026-07-30T01:20:00+09:00 | high |
 '
-if printf '%s\n' "$INDEX_18" | grep -q '\[gizmo が作った名前から派生させたパスは O_CREAT\\|O_EXCL 保証を失う\]' \
-   && printf '%s\n' "$INDEX_18" | grep -q '`O_CREAT\\|O_EXCL`' \
-   && ! printf '%s\n' "$INDEX_18" | grep -q '\[`'; then
+if printf '%s\n' "$INDEX_18" | grep -c >/dev/null '\[gizmo が作った名前から派生させたパスは O_CREAT\\|O_EXCL 保証を失う\]' \
+   && printf '%s\n' "$INDEX_18" | grep -c >/dev/null '`O_CREAT\\|O_EXCL`' \
+   && ! printf '%s\n' "$INDEX_18" | grep -c >/dev/null '\[`'; then
   :
 else
   fail "TC-18 fixture 形状 (title コード外 \\| × summary コード内 \\|) が崩れている"
@@ -641,10 +641,10 @@ confidence: high
 ---'
 run_query "$repo" --keywords "gizmo" --format compact
 if [ "$QRC" -eq 0 ] \
-   && printf '%s' "$QOUT" | grep -qF '#### gizmo が作った名前から派生させたパスは O_CREAT|O_EXCL 保証を失う' \
-   && printf '%s' "$QOUT" | grep -qF '**サマリー**:' \
-   && printf '%s' "$QOUT" | grep -qF '`O_CREAT|O_EXCL`' \
-   && ! printf '%s' "$QERR" | grep -q '候補になりませんでした'; then
+   && printf '%s' "$QOUT" | grep -cF >/dev/null '#### gizmo が作った名前から派生させたパスは O_CREAT|O_EXCL 保証を失う' \
+   && printf '%s' "$QOUT" | grep -cF >/dev/null '**サマリー**:' \
+   && printf '%s' "$QOUT" | grep -cF >/dev/null '`O_CREAT|O_EXCL`' \
+   && ! printf '%s' "$QERR" | grep -c >/dev/null '候補になりませんでした'; then
   pass "TC-18 コード外\\|×コード内\\| の同一行が候補になり title/summary とも生 | に復元される"
 else
   fail "TC-18 (rc=$QRC out=$QOUT err=$QERR)"
@@ -675,12 +675,12 @@ confidence: high
 run_query "$repo" --keywords "ほげほげ" --format compact
 _samples19=$(printf '%s\n' "$QERR" | grep '^    |' || true)
 if [ "$QRC" -eq 0 ] \
-   && printf '%s' "$QOUT" | grep -qF '正常なカタログ行' \
-   && printf '%s' "$QERR" | grep -qF '候補になりませんでした' \
-   && ! printf '%s' "$QERR" | grep -qF '1 件も抽出できませんでした' \
-   && printf '%s' "$_samples19" | grep -qF '壊れたカタログ行' \
-   && printf '%s' "$_samples19" | grep -qF '壊れたカタログ行?日本語' \
-   && ! printf '%s' "$_samples19" | grep -qF "$(printf '壊れたカタログ行\x1b')"; then
+   && printf '%s' "$QOUT" | grep -cF >/dev/null '正常なカタログ行' \
+   && printf '%s' "$QERR" | grep -cF >/dev/null '候補になりませんでした' \
+   && ! printf '%s' "$QERR" | grep -cF >/dev/null '1 件も抽出できませんでした' \
+   && printf '%s' "$_samples19" | grep -cF >/dev/null '壊れたカタログ行' \
+   && printf '%s' "$_samples19" | grep -cF >/dev/null '壊れたカタログ行?日本語' \
+   && ! printf '%s' "$_samples19" | grep -cF >/dev/null "$(printf '壊れたカタログ行\x1b')"; then
   pass "TC-19 部分脱落 sample 行に日本語が残り ESC は ? 化される"
 else
   fail "TC-19 (rc=$QRC)"

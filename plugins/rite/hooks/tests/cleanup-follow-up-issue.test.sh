@@ -1211,7 +1211,7 @@ reset_stubs
 r=$(new_root t36)
 put_json "$r" "9-20260101120000.json" "$FINDING_JSON"
 crlf_body=$(record_body '| F-01 | plugins/rite/skills/cleanup/SKILL.md:12 | issued | #77 https://example.test/issues/77 |' | sed 's/$/\r/')
-assert "T-36 fixture は CR を含む" "yes" "$(printf '%s' "$crlf_body" | grep -q $'\r' && echo yes || echo no)"
+assert "T-36 fixture は CR を含む" "yes" "$(printf '%s' "$crlf_body" | grep -c >/dev/null $'\r' && echo yes || echo no)"
 jq -n --argjson c "$(comment_obj "$crlf_body")" '[[$c]]' > "$GH_API_JSON"
 run_target "$r"
 assert "T-36 exit 0" "0" "$RC"

@@ -681,8 +681,8 @@ hermetic_probe=$(cd / && env CLAUDE_CODE_SESSION_ID=x CLAUDE_SESSION_ID=x CODEX_
     source "$0" >/dev/null
     for v in "$@"; do printf "%s after=%s\n" "$v" "${!v+set}"; done' "$HELPERS" "${hermetic_vars[@]}" 2>&1) || true
 for v in "${hermetic_vars[@]}"; do
-  if printf '%s\n' "$hermetic_probe" | grep -qx "$v before=set" \
-    && printf '%s\n' "$hermetic_probe" | grep -qx "$v after="; then
+  if printf '%s\n' "$hermetic_probe" | grep -cx >/dev/null "$v before=set" \
+    && printf '%s\n' "$hermetic_probe" | grep -cx >/dev/null "$v after="; then
     outer_pass "TC-18.1: $v is set before source and unset after"
   else
     outer_fail "TC-18.1: $v not cleared on source: $(printf '%s' "$hermetic_probe" | grep "^$v " | tr '\n' '|')"

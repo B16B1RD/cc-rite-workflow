@@ -83,7 +83,7 @@ create_state_file() {
   # `implement` mid-test). Tests that intentionally exercise the migrate path
   # should pass content with a different schema_version value.
   local merged
-  if printf '%s' "$content" | grep -q '"schema_version"'; then
+  if printf '%s' "$content" | grep -c >/dev/null '"schema_version"'; then
     merged="$content"
   elif printf '%s' "$content" | jq -e . >/dev/null 2>&1; then
     merged=$(printf '%s' "$content" | jq -c '. + {schema_version: 3}')
@@ -1010,12 +1010,12 @@ echo "{\"cwd\": \"$dir_749\", \"source\": \"startup\"}" \
   | bash "$sbx_749/session-start.sh" >/dev/null 2>"$LAST_STDERR_FILE" || true
 stderr_749="$(cat "$LAST_STDERR_FILE")"
 
-if printf '%s' "$stderr_749" | grep -qF 'TC-helper-failure simulated flow-state.sh path failure'; then
+if printf '%s' "$stderr_749" | grep -cF >/dev/null 'TC-helper-failure simulated flow-state.sh path failure'; then
   pass "ERROR line from flow-state.sh passed through to caller stderr"
 else
   fail "Expected ERROR pass-through; got stderr: $stderr_749"
 fi
-if printf '%s' "$stderr_749" | grep -qF 'flow-state.sh path resolution failed'; then
+if printf '%s' "$stderr_749" | grep -cF >/dev/null 'flow-state.sh path resolution failed'; then
   pass "Skip WARNING emitted to stderr (no legacy fallback in v3)"
 else
   fail "Expected skip WARNING; got stderr: $stderr_749"
@@ -1091,12 +1091,12 @@ if [ "$rc_1241a" -eq 0 ]; then
 else
   fail "TC-settings-local-invalid-json: hook aborted (rc=$rc_1241a) — set -e regression on python3 non-zero exit"
 fi
-if printf '%s' "$err_1241a" | grep -qF 'settings.local.json repair python3 failed (rc=2)'; then
+if printf '%s' "$err_1241a" | grep -cF >/dev/null 'settings.local.json repair python3 failed (rc=2)'; then
   pass "TC-settings-local-invalid-json: invalid JSON corruption surfaces on stderr (rc=2 reported, not dead code)"
 else
   fail "TC-settings-local-invalid-json: corruption not surfaced (report branch is dead code); stderr: $err_1241a"
 fi
-if printf '%s' "$err_1241a" | grep -qF 'settings.local.json の JSON 形式 / encoding'; then
+if printf '%s' "$err_1241a" | grep -cF >/dev/null 'settings.local.json の JSON 形式 / encoding'; then
   pass "TC-settings-local-invalid-json: JSON-format hint shown for genuine invalid JSON (empty script stderr)"
 else
   fail "TC-settings-local-invalid-json: JSON hint missing for invalid JSON; stderr: $err_1241a"
@@ -1130,13 +1130,13 @@ if [ "$rc_1241b" -eq 0 ]; then
 else
   fail "TC-settings-local-noop-downstream: hook aborted (rc=$rc_1241b) — set -e regression on rc=1 no-op"
 fi
-if printf '%s' "$err_1241b" | grep -qF 'settings.local.json repair python3 failed'; then
+if printf '%s' "$err_1241b" | grep -cF >/dev/null 'settings.local.json repair python3 failed'; then
   fail "TC-settings-local-noop-downstream: rc=1 no-op misreported as failure; stderr: $err_1241b"
 else
   pass "TC-settings-local-noop-downstream: rc=1 no-op stays silent (no false failure WARNING)"
 fi
-if printf '%s' "$out_1241b" | grep -qF '前回のセッション状態が残っていたためリセットしました' \
-   && printf '%s' "$out_1241b" | grep -qF "$(issue_text 1241)"; then
+if printf '%s' "$out_1241b" | grep -cF >/dev/null '前回のセッション状態が残っていたためリセットしました' \
+   && printf '%s' "$out_1241b" | grep -cF >/dev/null "$(issue_text 1241)"; then
   pass "TC-settings-local-noop-downstream: downstream STATE_FILE resolution + defensive reset reached"
 else
   fail "TC-settings-local-noop-downstream: downstream not reached (hook stopped before reset); stdout: $out_1241b"
@@ -1167,12 +1167,12 @@ if [ "$rc_1241c" -eq 0 ]; then
 else
   fail "TC-settings-local-missing-script: hook aborted (rc=$rc_1241c) — set -e regression on missing script"
 fi
-if printf '%s' "$err_1241c" | grep -qF 'settings.local.json repair python3 failed'; then
+if printf '%s' "$err_1241c" | grep -cF >/dev/null 'settings.local.json repair python3 failed'; then
   pass "TC-settings-local-missing-script: python3 failure reported on stderr"
 else
   fail "TC-settings-local-missing-script: missing-script failure not reported; stderr: $err_1241c"
 fi
-if printf '%s' "$err_1241c" | grep -qF 'settings.local.json の JSON 形式 / encoding'; then
+if printf '%s' "$err_1241c" | grep -cF >/dev/null 'settings.local.json の JSON 形式 / encoding'; then
   fail "TC-settings-local-missing-script: JSON hint misdirects on missing-script (subtask 3 regression); stderr: $err_1241c"
 else
   pass "TC-settings-local-missing-script: JSON hint suppressed when python3 emits its own stderr (no misdirection)"
@@ -1474,7 +1474,7 @@ iso_tmpdir_ac2="$TEST_DIR/reap-ac2-tmpdir"
 mkdir -p "$iso_tmpdir_ac2"
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
 output=$(echo "{\"cwd\": \"$dir_reap_ac2\"}" | TMPDIR="$iso_tmpdir_ac2" bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
-if ! printf '%s' "$output" | grep -q '\[pr-cycle-cleanup\]'; then
+if ! printf '%s' "$output" | grep -c >/dev/null '\[pr-cycle-cleanup\]'; then
   pass "TC-1968-02: hook stdout does not contain reap output"
 else
   fail "TC-1968-02: reap output leaked into hook stdout: $output"

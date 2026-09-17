@@ -50,6 +50,13 @@ scan_tmp=$(mktemp -d "${TMPDIR:-/tmp}/rite-session-reap-tmp.XXXXXX")
 cleanup_dirs+=("$scan_tmp")
 export TMPDIR="$scan_tmp"
 
+# These fixtures all start from the same one-commit develop tree. Prepare that
+# immutable Git metadata once, then copy it for each independent repository
+# instead of repeating git init/add/commit 54 times. Each copy still owns its
+# refs, index, config and worktree administration data.
+SANDBOX_SEED=$(make_sandbox --branch develop)
+cleanup_dirs+=("$SANDBOX_SEED")
+
 # SID_A = the "working" session that holds the claim; SID_B = the (different)
 # session that triggers the reap (a new session-start / another session's
 # cleanup). session↔worktree is not 1:1 so the reaping session is never the
@@ -62,7 +69,16 @@ SID_B="bbbbbbbb-5555-6666-7777-888888888888"
 # and the claim; `.rite-session-id` is SID_B (the reaping session).
 make_repo() {
   local n="$1" root
-  root=$(make_sandbox --branch develop)
+  root=$(mktemp -d "${TMPDIR:-/tmp}/rite-session-reap-repo.XXXXXX")
+  root=$(cd "$root" && pwd -P) || {
+    echo "ERROR: make_repo: failed to canonicalize Git fixture root" >&2
+    return 1
+  }
+  cp -R "$SANDBOX_SEED/.git" "$root/.git" || {
+    echo "ERROR: make_repo: failed to copy Git fixture seed into $root" >&2
+    return 1
+  }
+  printf 'a\n' > "$root/a"
   printf 'multi_session:\n  enabled: true\n  worktree_base: ".rite/worktrees"\n' > "$root/rite-config.yml"
   printf '%s' "$SID_B" > "$root/.rite-session-id"
   ( cd "$root" && $GIT worktree add -q -b "feat/issue-$n" ".rite/worktrees/issue-$n" >/dev/null 2>&1 )

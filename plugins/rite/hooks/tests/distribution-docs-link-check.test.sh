@@ -111,7 +111,7 @@ assert "(3b) fence-only hop exits 0" "0" "$rc"
 rc=0
 out=$(bash "$SCRIPT" --all --repo-root "$CONSUMER_SANDBOX" --quiet 2>&1) || rc=$?
 assert "(4) --all without plugins/rite exits 2" "2" "$rc"
-if printf '%s' "$out" | grep -qF 'plugins/rite does not exist'; then
+if printf '%s' "$out" | grep -cF >/dev/null 'plugins/rite does not exist'; then
   pass "(4) missing plugin root is an ERROR"
 else
   fail "(4) missing plugin root produced no ERROR — got: $out"
@@ -119,7 +119,7 @@ fi
 rc=0
 out=$(bash "$SCRIPT" --all --skip-if-no-target --repo-root "$CONSUMER_SANDBOX" --quiet 2>&1) || rc=$?
 assert "(4) --skip-if-no-target exits 0" "0" "$rc"
-if printf '%s' "$out" | grep -qF 'not applicable'; then
+if printf '%s' "$out" | grep -cF >/dev/null 'not applicable'; then
   pass "(4) skip names not applicable"
 else
   fail "(4) skip notice missing — got: $out"
@@ -148,12 +148,12 @@ rc=0
 bash "$SCRIPT" --all --repo-root "$REPO_ROOT" >/dev/null 2>"$SANDBOX/real.err" || rc=$?
 real_err=$(cat "$SANDBOX/real.err")
 assert "(6) real repo --all exits 0" "0" "$rc"
-if printf '%s' "$real_err" | grep -qE 'Scanning [1-9][0-9]* file\(s\)'; then
+if printf '%s' "$real_err" | grep -cE >/dev/null 'Scanning [1-9][0-9]* file\(s\)'; then
   pass "(6) real repo scanned N>=1 files"
 else
   fail "(6) Scanning N missing or zero — got: $real_err"
 fi
-if printf '%s' "$real_err" | grep -qF 'unbalanced code fence'; then
+if printf '%s' "$real_err" | grep -cF >/dev/null 'unbalanced code fence'; then
   fail "(6) real repo has an unscannable file: $real_err"
 else
   pass "(6) no real-repo file is skipped for an unbalanced fence"
