@@ -77,7 +77,7 @@ DECISION_LOG_END = re.compile(r"^(## |---\s*$|</details>)")
 DECISION_LOG_ROW = re.compile(r"^- \d{4}-\d{2}-\d{2} D-\d{2,}: .+ / Reason: .+ / Impact: .+$")
 # Same line shape the non-blocking record helper accepts as its own marker.
 NBR_MARKER_LINE = re.compile(r"^\s*<!-- rite:nbr:comment-id:.*-->\s*$")
-FENCE_LINE = re.compile(r"^\s*(```|~~~)")
+FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 
 
 def normalize_issue_body(body):
@@ -91,17 +91,27 @@ def normalize_issue_body(body):
     # verbatim, loudly, instead of guessing which section is the log.
     require(isinstance(body, str), "Issue body must be a string")
     lines = body.split("\n")
-    headings = sum(1 for line in lines if DECISION_LOG_HEADING.match(line))
+    fenced = []
+    fence = None
+    for line in lines:
+        if fence is None:
+            opened = FENCE_OPEN.match(line)
+            if opened:
+                fence = opened.group(1)
+            fenced.append(fence is not None)
+        else:
+            fenced.append(True)
+            if re.fullmatch(r" {0,3}" + re.escape(fence[0]) + "{" + str(len(fence)) + r",}\s*", line):
+                fence = None
+    headings = sum(1 for line, inside in zip(lines, fenced) if not inside and DECISION_LOG_HEADING.match(line))
     if headings > 1:
         print("WARNING: review-cycle: Decision Log heading appears " + str(headings)
               + " times; boundary undecidable, comparing the Issue body verbatim", file=sys.stderr)
         return body.rstrip("\r\n")
     keep, removed_at = [], set()
-    section, start, fenced = False, None, False
-    for line in lines:
-        if FENCE_LINE.match(line):
-            fenced = not fenced
-        if fenced:
+    section, start = False, None
+    for line, inside in zip(lines, fenced):
+        if inside:
             keep.append(line)
             continue
         if section and DECISION_LOG_END.match(line):

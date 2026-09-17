@@ -279,6 +279,10 @@ try:
         f.reject(lambda: f.observe(ok=False), label + ' is a specification change within the run')
     undecidable = f.flow('review-observe', '--input', f.input, '--issue', f.issue_path, ok=False)
     check('boundary undecidable' in undecidable.stderr, 'duplicated heading is reported as an undecidable boundary')
+    f.with_issue(spec.replace('repair', 'rewrite'))
+    f.observed['issue_body'] = spec
+    dump(f.input, f.observed)
+    f.reject(lambda: f.observe(ok=False), 'observation copied from an older Issue snapshot is rejected')
     f.with_issue(triaged)
     f.observed['issue_body'] = triaged
     dump(f.input, f.observed)
@@ -311,6 +315,8 @@ try:
     f.with_issue(replay['issue_body'] + '\n' + row.replace('D-01', 'D-02'))
     f.plan(replan=True)
     f.replan()
+    f.with_issue(edited)
+    f.reject(lambda: f.replan(ok=False), 'goal edit is rejected when the saved replan is replayed')
     f.with_issue(replay['issue_body'])
     before = f.state_path.read_bytes()
     f.replan()
@@ -340,8 +346,24 @@ check(same('## 9. Decision Log\n\n' + row + '\n\n## 10. Notes\n\nx', '## 10. Not
 crlf = contract.replace('\n', '\r\n')
 check(same(crlf, crlf + '\r\n\r\n<!-- rite:nbr:comment-id:101 -->\r\n'), 'record marker on a CRLF body is ignored')
 check(same(contract, contract + '\n\n<!-- rite:nbr:comment-id:a b -->'), 'record marker with a broken value is ignored like the writer does')
-check(not same('```\n' + row + '\n```', '```\n' + row.replace('defer', 'keep') + '\n```'),
-      'triage-format row inside a code fence is specification text')
+edit = row.replace('defer', 'keep')
+check(not same('```\n## 9. Decision Log\n' + row + '\n```', '```\n## 9. Decision Log\n' + edit + '\n```'),
+      'Decision Log example inside a code fence is specification text')
+for opener, inner in (('```', '~~~'), ('````', '```'), ('~~~', '```')):
+    fence = '## 9. Decision Log\n' + opener + '\n' + inner + '\n'
+    check(not same(fence + row + '\n' + opener, fence + edit + '\n' + opener),
+          'a ' + inner + ' line does not close a ' + opener + ' fence')
+check(same('## 9. Decision Log\n\n    ```\n' + row, '## 9. Decision Log\n\n    ```'),
+      'code indented four spaces does not open a fence')
+check(same('```\n## 9. Decision Log\n```\n', '```\n## 9. Decision Log\n```\n\n## 9. Decision Log\n\n' + row),
+      'heading example inside a fence does not make the real section ambiguous')
+check(same('## 9. Decision Log\n\n- note: manual\n', '## 9. Decision Log\n\n- note: manual\n\n' + row),
+      'row appended after a free-form row closes the gap it leaves')
+check(same('## 1. Goal\n\nx\n\n## 2. Scope\n\ny', '## 1. Goal\n\nx\n\n<!-- rite:nbr:comment-id:7 -->\n\n## 2. Scope\n\ny'),
+      'record marker in the middle of the body closes the gap it leaves')
+check(same('x\n\n---\nsignature', 'x\n\n## 9. Decision Log\n\n' + row + '\n\n---\nsignature'),
+      'section created before the footer rule is closed at the rule')
+check(not same('x', 'x\n\n## Decision Log\n\n' + row), 'a heading that is not exactly the Decision Log heading opens no section')
 gap = '## 1. Goal\n\n\nrepair\n'
 check(same('## 9. Decision Log\n\n' + row + '\n\n' + gap, gap) and not same(gap, gap.replace('\n\n\n', '\n\n')),
       'blank lines after a removed section keep their count')
