@@ -247,7 +247,7 @@ if [ "$_dt_rc" -ne 0 ]; then
 fi
 ```
 
-detect は現セッションの flow-state / cwd と、それで分類できないときに補完する Git 登録済みの `issue-{issue_number}` worktree（`source=git_worktree_list`）を見る。返った `worktree=` を削除対象にしてはならない（削除対象は 4.1.1 が発見した path だけ）。補完は cwd が main checkout のときだけ行われ、cwd が対象 worktree 内なら補完ではなく `in_worktree_unrecorded` になる。`reason=worktree_list_failed` の `CLEANUP_WT=unknown` を含め、`in_worktree` 以外の分類で cwd が対象 worktree 内なら 4.2.0 が停止する（同じ一覧を使う 4.1.1 も一覧取得に失敗すれば停止する）。
+detect は現セッションの flow-state / cwd と、それで分類できないときに補完する Git 登録済みの `issue-{issue_number}` worktree（`source=git_worktree_list`）を見る。返った `worktree=` を削除対象にしてはならない（削除対象は 4.1.1 が発見した path だけ）。補完は cwd が main checkout のときだけ行われ、cwd が対象 worktree 内、または別の worktree 内から登録済みの候補を見つけたときは補完ではなく `in_worktree_unrecorded` になる（後者の `worktree=` は cwd とは別の候補）。`reason=worktree_list_failed` / `reason=candidate_unresolved` の `CLEANUP_WT=unknown` を含め、`in_worktree` 以外の分類で cwd が対象 worktree 内なら 4.2.0 が停止する（同じ一覧を使う 4.1.1 も一覧取得に失敗すれば停止する）。
 
 ### 4.1.1 対象 Issue の worktree を発見する
 

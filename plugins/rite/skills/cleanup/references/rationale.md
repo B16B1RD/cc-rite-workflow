@@ -90,7 +90,7 @@ PostToolUse hook が作る空 stub（`phase: init`・進捗セクションなし
 
 ## exitworktree-delegation
 
-保存 state の無い path 入場では所有する worktree と退出能力を確定できない。Claude の隔離ガードで main checkout 操作が拒否される経路もあるため、`in_worktree_unrecorded` は従来の委譲を保つ。保存 state のある入場は共通作業先契約で native / 検証済み作業先指定を選び、退出結果を確認する。分類 marker はツール能力の証拠にはならない。拒否を helper 内の `cd` に移して回避しない。
+保存 state の無い path 入場や、別の worktree 内から登録済みの当該 Issue の worktree を検出した場合は、所有する worktree と退出能力を確定できない。Claude の隔離ガードで main checkout 操作が拒否される経路もあるため、`in_worktree_unrecorded` は従来の委譲を保つ。保存 state のある入場は共通作業先契約で native / 検証済み作業先指定を選び、退出結果を確認する。分類 marker はツール能力の証拠にはならない。拒否を helper 内の `cd` に移して回避しない。
 
 ## exit-check-independent-shell
 
@@ -111,7 +111,7 @@ archive helper に対して既に採っている形を、抽出で新設した�
 ステップ 6.0（follow-up Issue 起票、`_fu_rc`）も同じ rc → marker の形を採るが、本 anchor の
 対象には数えない。消費側が marker 不在を「完了」と読まないため、上記の規約破れが起きないため。
 なお `cleanup-session-worktree-teardown.sh` 内で内側の分類 helper を呼ぶ境界も同型の扱いにして
-あり（失敗を `none` ではなく `CLEANUP_WT=unknown` へ寄せる。未記録 worktree の補完に必要な `git worktree list` の失敗も同じく `reason=worktree_list_failed` で寄せる）、外側と内側で「分類不能」の表現を
+あり（失敗を `none` ではなく `CLEANUP_WT=unknown` へ寄せる。未記録 worktree の補完に必要な `git worktree list` の失敗も `reason=worktree_list_failed`、補完の候補パスを物理パスへ解決できない場合も `reason=candidate_unresolved` で同じく寄せる）、外側と内側で「分類不能」の表現を
 揃えている — `none` は消費側が唯一「行ごと省略」に routing する値なので、そこへ落とすと検出失敗が
 報告から消える。
 

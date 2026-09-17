@@ -220,9 +220,9 @@ assert_grep "Step 12 enumerates the wiki ingest item" "$CLEANUP" '^- Wiki ingest
 assert_grep "Step 12 enumerates the session worktree removal item" "$CLEANUP" '^- セッション worktree の削除$'
 assert_grep "Step 12 enumerates the branch deletion item" "$CLEANUP" '^- ローカル/リモートブランチの削除$'
 # T-02: 委譲先は main checkout での再実行 1 系統。再実行が何をどう完了させるかまで案内に含める
-# （再実行の 4-W は登録済みの worktree を補完して照合を経てその場で削除し、削除を見送ったときだけ
-#  ステップ 5 の manifest 記録を経て次回セッション開始時に回収される — 見送り側の経路を落とすと
-#  「再実行したのに残っている」の説明が消える）。
+# （再実行の 4-W は登録済みの worktree を補完して照合を経てその場で削除する。見送ったときの行き先は
+#  理由ごとに違うので、案内は再実行時の報告へ送る — 見送り側の案内を落とすと「再実行したのに残って
+#  いる」の説明が消える）。
 assert_grep "Step 12 delegation notice points to a main-checkout re-run" "$CLEANUP" \
   'main checkout でセッションを開き `/rite:cleanup \{pr_number\}` を再実行してください'
 assert_grep "Step 12 delegation notice states the re-run is idempotent" "$CLEANUP" \
@@ -232,10 +232,12 @@ assert_grep "Step 12 delegation notice states the re-run is idempotent" "$CLEANU
 # 名指しすると必ずどれかで外れる（実測: dirty は再実行時に評価されず recovery=auto と報告される）。
 # 条件も案内先も列挙せず、退路は直後の手動コマンドが与える形に留める —  In Scope の
 # 「簡潔な定型」に収める形でもある。条件節や案内先の列挙を足す方向へ戻さない。
-assert_grep "Step 12 delegation notice names the immediate removal after closing the original session" "$CLEANUP" \
-  'セッション worktree とローカルブランチは、元のセッションを閉じてから再実行すれば照合を経てその場で削除され'
-assert_grep "Step 12 delegation notice names the deferred reclamation path" "$CLEANUP" \
-  '使用中など削除を見送ったときは次回セッション開始時の自動回収に回ります'
+assert_grep "Step 12 delegation notice names the immediate removal after closing the sessions using the worktree" "$CLEANUP" \
+  'セッション worktree とローカルブランチは、対象の作業ツリーを使っているセッションを閉じてから再実行すれば照合を経てその場で削除されます'
+# 見送った場合の回収経路は理由で分かれる（使用中は次回の自動回収、dirty・照合不能は手動回復）ため、
+# 委譲案内では断定せず再実行時の報告へ送る。
+assert_grep "Step 12 delegation notice defers the skipped case to the re-run report" "$CLEANUP" \
+  '削除を見送った場合は、再実行時の報告に従ってください'
 # 手動コマンドは main checkout で実行する前提（worktree 内では remove が cwd を消して連鎖が止まる）。
 # 失敗モードを防ぐのは限定句のみで、prune を外したのは remove --force が admin エントリを解除する
 # ため冗長だから。コマンド本体まで含めて固定し、限定句・引数のどちらが欠けても落ちるようにする。

@@ -13,9 +13,10 @@
 #   M-06 Darwin（uname stub）では判定不能を無言で -c 判定に落とす
 #   M-07 character device 形（/dev/null symlink で再現）の検知結果と emit 内容は不変
 #   U-01 flow-state 未記録でも main checkout からは登録済みの当該 Issue の worktree を in_main（source / branch / dirty）へ補完する
-#   U-02 別 Issue の登録・未登録ディレクトリ・別の worktree 内からの呼び出しでは補完しない
+#   U-02 別 Issue の登録・未登録ディレクトリでは補完せず、別の worktree 内から登録済みの候補を見つけたら委譲する
 #   U-03 空白を含む親 + 相対 base、絶対 base、symlink base（対象 worktree 内からは委譲）で候補を正しく解決する
-#   U-04 一覧取得失敗は unknown（WARNING 付き）、dirty 取得失敗は dirty=yes、実体の無い登録は missing=yes
+#   U-04 一覧取得失敗・候補パスの解決失敗は unknown（WARNING 付き）、dirty 取得失敗は dirty=yes、
+#        実体の無い登録は（symlink 経由でも）missing=yes
 #   U-05 補完したパスでも remove の live-cwd guard が働き、実体の無い登録は remove で消える
 #
 # marker は行まるごと固定する。呼び出し側（cleanup/SKILL.md ステップ 12）は marker 名 +
@@ -182,8 +183,27 @@ git -C "$r" branch feat/alias
 git -C "$r" worktree add -q "$r/alias/issue-5" feat/alias
 rm -rf "$r/.rite/worktrees/issue-5"
 out=$(cd "$r" && bash "$HELPER" detect --issue 5 --config "$r/rite-config.yml" 2>/dev/null)
-assert_contains "detect(prunable): symlink 経由で登録された実体の無い登録も missing=yes" "$out" \
-  "source=git_worktree_list; branch=feat/alias; missing=yes; main_root=$r"
+assert_eq "detect(prunable): symlink 経由で登録された実体の無い登録も missing=yes" "$out" \
+  "[CONTEXT] CLEANUP_WT=in_main; worktree=$r/.rite/worktrees/issue-5; source=git_worktree_list; branch=feat/alias; missing=yes; main_root=$r"
+
+# 候補パスを物理パスへ解決できない（存在する最も近い親へ cd できない）ときは、登録との関係を判定
+# できないので none にせず unknown にする。root は権限を無視するので再現できない。
+if [ "$(id -u)" != 0 ]; then
+  r=$(make_repo)
+  blocked="$TMP_ROOT/blocked-$(basename "$r")"
+  mkdir -p "$blocked/inner"
+  printf 'multi_session:\n  enabled: true\n  worktree_base: "%s"\n' "$blocked/inner/wt" > "$r/rite-config.yml"
+  chmod 000 "$blocked"
+  err="$TMP_ROOT/candidate-unresolved.err"
+  out=$(cd "$r" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>"$err")
+  chmod 755 "$blocked"
+  assert_eq "detect(candidate unresolved): 候補パスを解決できなければ unknown" "$out" \
+    "[CONTEXT] CLEANUP_WT=unknown; reason=candidate_unresolved"
+  assert_contains "detect(candidate unresolved): 人間向けの WARNING を stderr に出す" "$(cat "$err")" \
+    "WARNING: 作業ツリーの候補パス（$blocked/inner/wt/issue-1）を物理パスへ解決できませんでした"
+else
+  ok "detect(candidate unresolved): root では権限による解決失敗を再現できないため skip"
+fi
 
 # 登録だけ残り実体が無い（prunable）worktree は dirty の取得に進まず missing=yes を出し、
 # 所有権照合に使う branch は登録情報から出す。既存の remove でそのまま登録が消える。
