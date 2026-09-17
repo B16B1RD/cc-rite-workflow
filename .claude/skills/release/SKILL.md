@@ -488,11 +488,13 @@ echo "[CONTEXT] RELEASE_NOTES_PATH=$release_notes"
 Release を作る前に、同名タグが既にリモートにあるかを確認する。GitHub はタグが既にある場合 `--target` を無視するため、別コミットを指すタグが残っていると取得元と公開対象がずれる。`{VERSION}` と `{RELEASE_NOTES_SHA}` は marker の値へリテラル置換する:
 
 ```bash
-tag_lines=$(git ls-remote --tags origin "refs/tags/v{VERSION}" "refs/tags/v{VERSION}^{}") || { echo "ERROR: 既存タグ v{VERSION} を確認できませんでした" >&2; exit 1; }
-if [ -z "$tag_lines" ]; then
+tag_lines=$(git ls-remote --tags origin "refs/tags/v{VERSION}" "refs/tags/v{VERSION}^{}"); ls_rc=$?
+[ "$ls_rc" -eq 0 ] || { echo "ERROR: 既存タグ v{VERSION} を確認できませんでした (rc=$ls_rc)" >&2; exit 1; }
+# ls-remote のパターンは slash 境界からの部分一致なので、ref 名の完全一致で選ぶ
+tag_sha=$(printf '%s\n' "$tag_lines" | awk -F'\t' -v r="refs/tags/v{VERSION}" -v p="refs/tags/v{VERSION}^{}" '$2==p{print $1; f=1; exit} $2==r{last=$1} END{if(!f) print last}')
+if [ -z "$tag_sha" ]; then
   echo "[CONTEXT] RELEASE_TAG_STATE=absent"
 else
-  tag_sha=$(printf '%s\n' "$tag_lines" | awk '/\^\{\}$/ {print $1; found=1; exit} {last=$1} END {if (!found) print last}')
   [ "$tag_sha" = "{RELEASE_NOTES_SHA}" ] || { echo "ERROR: 既存タグ v{VERSION} は $tag_sha を指しており、ノート取得元 {RELEASE_NOTES_SHA} と一致しません。Release を作成せず停止します" >&2; exit 1; }
   echo "[CONTEXT] RELEASE_TAG_STATE=matched"
 fi
