@@ -164,11 +164,14 @@ def main():
     parser.add_argument("--kind", choices=("related", "all"), default="all")
     args = parser.parse_args()
     root = Path(args.state_root)
+    directory = root / ".rite/state"
+    saved = directory / ("fix-plan-" + args.session + ".json")
+    # The check record replaces its target; a plan handed in under that name
+    # (by any spelling or symlink) would be destroyed before it could be verified.
+    require(Path(args.plan).resolve() != saved.resolve(), "plan input must not be the check record: " + str(saved))
     plan, issue, state = read(args.plan), read(args.issue), read(args.state)
     receipt, paths = validate(plan, issue, state, args.session, root)
-    directory = root / ".rite/state"
     directory.mkdir(parents=True, exist_ok=True)
-    saved = directory / ("fix-plan-" + args.session + ".json")
     record = dict(plan=plan, plan_hash=digest(plan), review_hash=digest(receipt),
                   mechanical=dict(paths=paths, non_targets=plan["constraints"]["non_targets"]), checked_at=cycle.now())
     if args.operation == "check":
