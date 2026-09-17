@@ -39,7 +39,10 @@ for _key in ('CODEX_THREAD_ID', 'GROK_SESSION_ID', 'CLAUDE_SESSION_ID', 'CLAUDE_
 subprocess.run(['git', 'init', '-q'], cwd=_seed_root, env=_seed_env, check=True)
 (_seed_root / 'source.txt').write_text('initial\n')
 subprocess.run(['git', 'add', 'source.txt'], cwd=_seed_root, env=_seed_env, check=True)
-subprocess.run(['git', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+# Do not let detached auto-maintenance change lock files while fixtures copy
+# this seed's Git metadata.
+subprocess.run(['git', '-c', 'maintenance.auto=false',
+                '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
                 'commit', '-q', '--allow-empty', '-m', 'fixture update'],
                cwd=_seed_root, env=_seed_env, check=True)
 

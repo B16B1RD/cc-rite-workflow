@@ -42,7 +42,7 @@ jobs:
     # blocking. AC-5 (fail-fast: false) still lets both legs run to completion.
     continue-on-error: ${{ matrix.os == 'macos-latest' }}
     # Twice the measured full-job maximum, rounded up to whole minutes.
-    timeout-minutes: 19
+    timeout-minutes: 18
     strategy:
       fail-fast: false
       matrix:
