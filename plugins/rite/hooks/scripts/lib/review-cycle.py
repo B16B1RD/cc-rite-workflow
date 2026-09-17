@@ -72,6 +72,73 @@ def same_json(left, right):
     return json.dumps(left, sort_keys=True) == json.dumps(right, sort_keys=True)
 
 
+DECISION_LOG_HEADING = re.compile(r"^## 9\. Decision Log\s*$")
+DECISION_LOG_END = re.compile(r"^(## |---\s*$|</details>)")
+DECISION_LOG_ROW = re.compile(r"^- \d{4}-\d{2}-\d{2} D-\d{2,}: .+ / Reason: .+ / Impact: .+$")
+# Same line shape the non-blocking record helper accepts as its own marker.
+NBR_MARKER_LINE = re.compile(r"^\s*<!-- rite:nbr:comment-id:.*-->\s*$")
+FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}(?=[^`]*$)|~{3,})")
+
+
+def normalize_issue_body(body):
+    # Specification identity ignores what rite itself appends to the Issue body
+    # during a run: Decision Log rows in the triage format (inside section 9 only,
+    # whatever wrote them) and the non-blocking record's comment-id marker line.
+    # Everything else, including blank lines inside the specification sections
+    # and anything inside a code fence, is compared verbatim; only the gaps left
+    # by a removed line and trailing line breaks are closed. A body whose section
+    # boundary cannot be decided (the heading occurs more than once outside code
+    # fences) is compared
+    # verbatim, loudly, instead of guessing which section is the log.
+    require(isinstance(body, str), "Issue body must be a string")
+    lines = body.split("\n")
+    fenced = []
+    fence = None
+    for line in lines:
+        if fence is None:
+            opened = FENCE_OPEN.match(line)
+            if opened:
+                fence = opened.group(1)
+            fenced.append(fence is not None)
+        else:
+            fenced.append(True)
+            if re.fullmatch(r" {0,3}" + re.escape(fence[0]) + "{" + str(len(fence)) + r",}\s*", line):
+                fence = None
+    headings = sum(1 for line, inside in zip(lines, fenced) if not inside and DECISION_LOG_HEADING.match(line))
+    if headings > 1:
+        print("WARNING: review-cycle: Decision Log heading appears " + str(headings)
+              + " times; boundary undecidable, comparing the Issue body verbatim", file=sys.stderr)
+        return body.rstrip("\r\n")
+    keep, removed_at = [], set()
+    section, start = False, None
+    for line, inside in zip(lines, fenced):
+        if inside:
+            keep.append(line)
+            continue
+        if section and DECISION_LOG_END.match(line):
+            section = False
+            if all(not keep[i].strip() for i in range(start + 1, len(keep))):
+                del keep[start:]
+                removed_at = {i for i in removed_at if i < start} | {start}
+        if DECISION_LOG_HEADING.match(line):
+            section, start = True, len(keep)
+        elif (section and DECISION_LOG_ROW.match(line)) or NBR_MARKER_LINE.match(line):
+            removed_at.add(len(keep))
+            continue
+        keep.append(line)
+    if section and all(not keep[i].strip() for i in range(start + 1, len(keep))):
+        del keep[start:]
+        removed_at = {i for i in removed_at if i < start} | {start}
+    for index in sorted(removed_at, reverse=True):
+        while 0 < index < len(keep) and not keep[index - 1].strip() and not keep[index].strip():
+            del keep[index]
+    return "\n".join(keep).rstrip("\r\n")
+
+
+def same_specification(left, right):
+    return normalize_issue_body(left) == normalize_issue_body(right)
+
+
 def without_timestamp(result):
     return {key: value for key, value in result.items() if key != "timestamp"}
 

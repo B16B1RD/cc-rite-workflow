@@ -74,6 +74,13 @@ def triaged_hash(receipt):
         return digest(read(path))
 
 
+def same_observation(saved, data):
+    # A replayed observation keeps its raw Issue body; only the specification identity must match.
+    left = {k: v for k, v in saved.items() if k != "issue_body"}
+    right = {k: v for k, v in data.items() if k != "issue_body"}
+    return left == right and cycle.same_specification(saved.get("issue_body", ""), data.get("issue_body", ""))
+
+
 def unchanged_receipt(saved, receipt):
     return digest(receipt) in (saved["review_hash"], saved.get("triaged_hash"))
 
@@ -198,7 +205,8 @@ def validate_input(state, args, data, receipt):
     require(data.get("review_context") == state["review_cycle"]["review_context"], "observation context mismatch")
     issue = read(args.issue)
     require(issue.get("number") == data.get("issue_number") == state.get("issue_number")
-            and text(issue.get("body")) and data.get("issue_body") == issue["body"],
+            and text(issue.get("body")) and text(data.get("issue_body"))
+            and cycle.same_specification(data["issue_body"], issue["body"]),
             "latest Issue specification differs from observation")
     roots = data.get("roots")
     require(isinstance(roots, list), "root observations must be an array")
@@ -272,11 +280,11 @@ def observe(state, args, directory):
     require(receipt is not None, "saved review receipt missing")
     data = read(args.input)
     roots = validate_input(state, args, data, receipt[1])
-    require(all(entry["input"]["issue_body"] == data["issue_body"] for entry in run["observations"]),
+    require(all(cycle.same_specification(entry["input"]["issue_body"], data["issue_body"]) for entry in run["observations"]),
             "Issue specification changed within run; retain history and reconcile before continuing")
     previous = observation(run, context)
     if previous:
-        require(previous["input"] == data and unchanged_receipt(previous, receipt[1]),
+        require(same_observation(previous["input"], data) and unchanged_receipt(previous, receipt[1]),
                 "same observation cannot be overwritten with different content")
         return state
     require(run["status"] != "stopped", "review run stopped: " + str(run.get("stop_reason")))
@@ -376,7 +384,9 @@ def replan(state, args, directory):
     previous = next((item for item in run["replans"] if item["review_context"] == context), None)
     if previous:
         require(previous["plan_hash"] == digest(plan), "same replan cannot be overwritten")
-        require(plan.get("issue_body") == issue.get("body") and issue.get("number") == state.get("issue_number"),
+        require(text(plan.get("issue_body")) and text(issue.get("body"))
+                and cycle.same_specification(plan["issue_body"], issue["body"])
+                and issue.get("number") == state.get("issue_number"),
                 "latest Issue specification differs from replan")
         receipt = cycle.matching_receipt(directory, state["review_cycle"])
         require(receipt is not None, "saved receipt missing")
@@ -442,7 +452,8 @@ def plan_gate(state, plan, session, allow_replan=False):
         return
     run = state["review_run"]
     observed = observation(run, plan["review_context"])
-    require(observed is not None and plan.get("issue_body") == observed["input"]["issue_body"],
+    require(observed is not None and text(plan.get("issue_body"))
+            and cycle.same_specification(plan["issue_body"], observed["input"]["issue_body"]),
             "fix specification differs from diagnosed observation")
     if allow_replan:
         return
