@@ -76,6 +76,16 @@ assert_grep "projects-integration.md §2.4.7 retains Method 1 (## 親 Issue body
 assert_grep "projects-integration.md §2.4.7 retains Method 2 (sub_issues GraphQL feature)" "$PROJECTS_REF" "sub_issues"
 assert_grep "projects-integration.md §2.4.7 retains Method 3 (tasklist / in:body search)" "$PROJECTS_REF" "in:body|tasklist"
 
+# The parent-Status marker must go through the shared emitter so its wire format
+# matches what marker_get parses (role as primary value, column as `name=` field)
+# and so a column name carrying `;` is rejected instead of forging a field.
+# Both directions are pinned: the raw-echo idiom is absent AND the shared call exists,
+# otherwise deleting the emit line altogether would still pass the first assert.
+# EMIT_IDIOM mirrors context-marker.test.sh T-08.
+EMIT_IDIOM='(echo|printf)[[:space:]]+([^|;&]*[[:space:]])?["'"'"']?\[CONTEXT\]'
+assert_not_grep "projects-integration.md emits no [CONTEXT] marker by raw echo/printf" "$PROJECTS_REF" "$EMIT_IDIOM"
+assert_grep "projects-integration.md §2.4.7.2 emits PARENT_STATUS via marker_emit" "$PROJECTS_REF" "^[[:space:]]*marker_emit[[:space:]]+PARENT_STATUS[[:space:]]"
+
 echo "=== Phase 5: already-closed parent still syncs Status → Done ==="
 # close 冪等 skip と board 同期が同一 skip に畳まれると AC-1 が壊れる。
 assert_grep "close.md skip_already_closed continues for Status → Done" "$CLOSE_MD" "continue for Status"

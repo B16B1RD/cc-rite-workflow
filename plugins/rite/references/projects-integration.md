@@ -244,14 +244,15 @@ From the result:
 
 ```bash
 source {plugin_root}/hooks/scripts/lib/projects-status-config.sh || { echo "ERROR: projects-status-config.sh を読み込めませんでした" >&2; exit 1; }
+source {plugin_root}/hooks/scripts/lib/context-marker.sh || { echo "ERROR: context-marker.sh を読み込めませんでした" >&2; exit 1; }
 if ! parent_status_role=$(cd "$(git rev-parse --show-toplevel)" && projects_status_role_for_name "{parent_status_name}"); then
   echo "警告: rite-config.yml の Status 設定が不正なため、親 Issue の Status を判定できません。更新をスキップします" >&2
   parent_status_role="<invalid-config>"
 fi
-echo "[CONTEXT] PARENT_STATUS=role=${parent_status_role}; name={parent_status_name}"
+marker_emit PARENT_STATUS "$parent_status_role" "name={parent_status_name}" || exit 1
 ```
 
-The marker is the judgement input for 2.4.7.3 — the role lives only in this shell and the executor reads tool output, so a block that keeps it in a variable leaves the table with nothing to branch on. An empty `{parent_status_name}` maps to an empty role and is treated as `todo` in 2.4.7.3.
+The marker is the judgement input for 2.4.7.3 — the role lives only in this shell and the executor reads tool output, so a block that keeps it in a variable leaves the table with nothing to branch on. The role is the marker's primary value (`[CONTEXT] PARENT_STATUS=todo; name=Todo`) so that `marker_get PARENT_STATUS` returns it and `--field name` returns the column; `marker_emit` rejects a column name carrying `;` or a newline instead of letting it forge a field. An empty `{parent_status_name}` maps to an empty role and is treated as `todo` in 2.4.7.3.
 
 **When `projectItems.nodes` is empty** (parent Issue not registered in Project):
 
@@ -264,9 +265,9 @@ Display warning and skip 2.4.7.3–2.4.7.4 (non-blocking).
 
 #### 2.4.7.3 Status Condition Check
 
-Only update the parent Issue's Status if its role is `todo`. This prevents overwriting a more advanced Status (e.g. `in_progress` set by a sibling child Issue). The judgement reads the `role=` / `name=` fields of the `[CONTEXT] PARENT_STATUS=` marker emitted in 2.4.7.2:
+Only update the parent Issue's Status if its role is `todo`. This prevents overwriting a more advanced Status (e.g. `in_progress` set by a sibling child Issue). The judgement reads the primary value (`PARENT_STATUS=`) and the `name=` field of the `[CONTEXT] PARENT_STATUS=` marker emitted in 2.4.7.2:
 
-| `role=` | Action |
+| `PARENT_STATUS=` | Action |
 |---|---|
 | `<invalid-config>` | Skip — the Status configuration is invalid and the role cannot be judged (2.4.7.2 has already displayed the warning) |
 | `todo` | Proceed to 2.4.7.4 (update to the `in_progress` role) |
