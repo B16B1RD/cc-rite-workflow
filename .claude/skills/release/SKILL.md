@@ -573,7 +573,7 @@ git pull origin develop
 |------|------|
 | バージョン番号の更新漏れ | grep で検出し、追加コミットで修正 |
 | CHANGELOG の形式不備 | 既存エントリのパターンに合わせて修正 |
-| Phase 3.3 が `ERROR:` で停止（fetch / SHA 確定 / CHANGELOG 読取 / 一時ファイル作成 / 既存タグ確認の失敗） | Release は作成されていない。ネットワークと origin/main を確認して Phase 3.3 を最初からやり直す |
+| Phase 3.3 が `ERROR:` で停止（fetch / SHA 確定 / CHANGELOG 読取 / 一時ファイル作成 / 既存タグの確認・照合の失敗） | Release は作成されていない。ネットワークと origin/main を確認して Phase 3.3 を最初からやり直す（`照合に失敗しました` はネットワークではなく実行環境側の失敗なので、そちらを確認する） |
 | Phase 3.3 が既存タグの不一致で停止 | Release は作成されていない。`v{VERSION}` が指すコミットを確認し、誤って作られたタグを削除するか版番号を見直してから Phase 3.3 をやり直す。タグの自動削除はしない |
 | Phase 3.3 が節の欠落・本文空で停止 | Release は作成されていない。origin/main の CHANGELOG.md に `## [{VERSION}]` 節があり本文が空でないことを確認し、欠けていれば develop で修正して昇格からやり直す |
 | main マージ前に Release を作成してしまった | Release を削除 → main マージ → Release 再作成 |
