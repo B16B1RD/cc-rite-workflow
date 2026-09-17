@@ -168,6 +168,7 @@ tag_fixture() {
         git tag -a -m decoy decoy origin/main && git push -q origin refs/tags/decoy:refs/tags/a/refs/tags/v9.9.9
         git tag -d decoy >/dev/null ;;
       # Only the sibling exists: the real tag is absent, so the release may be created.
+      # It sorts after the real tag's name, where the decoy above sorts before it.
       sibling-only)
         git tag -a -m decoy decoy origin/main && git push -q origin refs/tags/decoy:refs/tags/z/refs/tags/v9.9.9
         git tag -d decoy >/dev/null ;;
@@ -213,6 +214,12 @@ done
 for tag_case in none:absent:T-08 match:matched:T-09 annotated:matched:T-10 sibling-only:absent:T-14; do
   kind=${tag_case%%:*} rest=${tag_case#*:} state=${rest%%:*} id=${rest#*:}
   fx="$TMP_ROOT/tag-$kind"; tag_fixture "$fx" "$kind"
+  if [ "$kind" = sibling-only ]; then
+    # Without a sibling in the pattern's output this case would just repeat T-08.
+    git -C "$fx/work" ls-remote --tags origin "refs/tags/v9.9.9" "refs/tags/v9.9.9^{}" \
+      | grep -q 'refs/tags/z/refs/tags/v9.9.9' \
+      || fail "$id fixture: the sibling ref is not returned by the pattern"
+  fi
   run_chain "$fx" "tag-$kind"
   [ "$rc" = 0 ] || fail "$id $kind rc=$rc err=$err"
   [ "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ')" = "[CONTEXT] RELEASE_TAG_STATE=$state" ] || fail "$id $kind markers: $out"
