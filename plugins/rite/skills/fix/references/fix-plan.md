@@ -4,7 +4,7 @@
 
 最新 Issue を `gh issue view` の `--json number,body` で `{fix_issue_file}` へ取得する。再開時と最終検証前にも再取得し、取得失敗で古い snapshot を使用しない。Issue の targets は候補か閉じた allowlist かを本文で判断し、明示 Non-Target と Out of Scope は変更しない。曖昧で解消不能な制約は理由を保持して停止する。
 
-`{fix_plan_file}` は現在セッションの `.rite/state/` 配下に置く。JSON 契約:
+`{fix_plan_file}` は現在セッションの `.rite/state/fix-plan-input-{session}.json` に置く。JSON 契約:
 
 | フィールド | 内容 |
 |---|---|
@@ -23,7 +23,7 @@ helper は標準 `### 4.2` 節内の backtick パスが `non_targets` に含ま�
 
 修正中は `review-fix-scope-check.sh verify --plan ... --issue ... --kind related` を使う。内容（追加・削除・modeを含む）・コマンド・指定環境・作業先・基本runtimeが同一で、当該 context の実測成功がある関連テストだけ再利用する。失敗・入力変化・新しいreview contextは再実行する。全修正後は `fix` 本体の最終検証ブロックを実行し、関連結果の鮮度を確認した後、全体検証を全件実行する。検証コマンドは入力を変更しない。
 
-機械検査と意味判断を分けた記録は `.rite/state/fix-plan-{session}.json`、実測コマンド・終了コード・stdout/stderr・鮮度キーは `.rite/state/fix-verification-{session}.json` に保存する。保存失敗は成功にせず前の記録を保持する。復旧は同じ入力で check → verify。任意のファイル直接編集やホスト権限の遮断は保証しない。
+機械検査と意味判断を分けた検査記録は `.rite/state/fix-plan-{session}.json`、実測コマンド・終了コード・stdout/stderr・鮮度キーは `.rite/state/fix-verification-{session}.json` に保存する。検査記録は入力とは別ファイルであり、記録と同一実体を `--plan` に渡すと `check` は書き込み前に拒否する。保存失敗は成功にせず前の記録を保持する。復旧は同じ入力で check → verify。任意のファイル直接編集やホスト権限の遮断は保証しない。
 
 ## 停滞時の見直し計画
 
