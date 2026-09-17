@@ -335,6 +335,52 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
     check(result.returncode != 0 and 'REACHED_LATER_ACTION' not in result.stdout and
           '[fix:error]' in result.stdout + result.stderr, 'full-suite failure stops final caller after related success')
     (private / 'full-fail').unlink()
+
+    # A plan stored under the check record's own name must be refused before the record replaces it.
+    plan_bytes = json.dumps(plan).encode()
+    guard = 'plan input must not be the check record'
+
+    def check_record_guard(plan_arg, label, stored=plan_bytes):
+        canonical.write_bytes(stored)
+        for mode, kind in (('check', None), ('verify', 'related')):
+            args = ['bash', str(helper), mode, '--plan', plan_arg, '--issue', str(issue_file)]
+            if kind:
+                args += ['--kind', kind]
+            result = run(args, ok=False)
+            check(result.returncode != 0 and guard in result.stderr and
+                  '[fix:error]' in result.stdout + result.stderr, label + ': ' + mode + ' refused by guard')
+            check(canonical.read_bytes() == stored, label + ': ' + mode + ' leaves input intact')
+
+    check_record_guard(str(canonical), 'absolute record path')
+    check_record_guard('.rite/state/fix-plan-' + session + '.json', 'relative record path')
+    alias = private / 'alias-plan.json'
+    alias.symlink_to('state/fix-plan-' + session + '.json')
+    check_record_guard(str(alias), 'file symlink to record')
+    alias.unlink()
+    statelink = private / 'statelink'
+    statelink.symlink_to('state', target_is_directory=True)
+    check_record_guard(str(statelink / ('fix-plan-' + session + '.json')), 'directory symlink to record')
+    statelink.unlink()
+    overwritten = json.dumps(dict(plan=plan, plan_hash='x', review_hash='x', mechanical={}, checked_at='x')).encode()
+    check_record_guard(str(canonical), 'record already holding a check result', stored=overwritten)
+
+    input_file = private / ('state/fix-plan-input-' + session + '.json')
+    input_file.write_bytes(plan_bytes)
+    run(['bash', str(helper), 'check', '--plan', '.rite/state/fix-plan-input-' + session + '.json',
+         '--issue', str(issue_file)])
+    check(input_file.read_bytes() == plan_bytes and input_file.resolve() != canonical.resolve() and
+          json.loads(canonical.read_text())['plan'] == plan, 'documented input name keeps the plan and records separately')
+    result = run(['bash', str(helper), 'verify', '--plan', str(input_file), '--issue', str(issue_file), '--kind', 'all'])
+    check('FIX_VERIFICATION=pass' in result.stdout and input_file.read_bytes() == plan_bytes,
+          'documented input name verifies without touching the plan')
+    input_file.unlink()
+    guide = (plugin / 'skills/fix/references/fix-plan.md').read_text()
+    defined = [line for line in guide.splitlines() if '`{fix_plan_file}` は' in line]
+    check(len(defined) == 1 and 'fix-plan-input-{session}.json' in defined[0] and
+          '`.rite/state/fix-plan-{session}.json`' not in defined[0] and
+          '検査記録は `.rite/state/fix-plan-{session}.json`' in guide, 'guide names input and check record separately')
+    save_plan()
+    invoke()
     run(['git', '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
          'commit', '-q', '--allow-empty', '-m', 'changed HEAD'])
     check(invoke(ok=False).returncode != 0, 'changed HEAD rejects stale review and plan')
