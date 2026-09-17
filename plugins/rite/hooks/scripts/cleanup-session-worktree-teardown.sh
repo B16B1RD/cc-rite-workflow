@@ -19,15 +19,30 @@
 # では物理 cwd からの `in_worktree_unrecorded` 導出（cleanup-worktree-detect.sh の physical
 # derivation。issue 番号でパス末尾を照合するため `[ -n "$issue" ]` を要求する）が働かず `none` に
 # 落ちる — 空 issue で分類できるのは flow-state に worktree 記録がある経路だけ。
+# multi_session 有効かつ issue があり分類が none のときは、`<worktree_base>/issue-<issue>` を物理パスへ
+# 解決して（実体が無ければ存在する最も近い親を解決して）次の順に扱う: 候補が cwd の toplevel 自身なら
+# in_worktree_unrecorded（base の表記が末尾照合と合わなかった path 入場）/ 候補が `git worktree list` に
+# 登録済みで cwd が main checkout なら in_main（source=git_worktree_list）/ 登録済みで cwd がそれ以外
+# （別の worktree 内から呼んだ等）なら in_worktree_unrecorded（worktree= は cwd とは別の候補。main
+# checkout での再実行へ委譲する）/ 未登録なら none のまま。
 # remove の 3 引数は既定値を持たず未指定で exit 2。
 #
 # detect の出力 (stdout):
 #   [CONTEXT] CLEANUP_WT=<none|in_main|in_worktree|in_worktree_unrecorded>; worktree=<path>; \
-#     [dirty=<yes|no>; ]main_root=<path>
+#     [source=git_worktree_list; branch=<name>; ][dirty=<yes|no>; |missing=yes; ]main_root=<path>
 #   [CONTEXT] CLEANUP_DELEGATED=1; reason=exit_worktree_unavailable   (in_worktree_unrecorded のみ)
 #   [CONTEXT] CLEANUP_WT=unknown; reason=detect_classify_failed; rc=<n>
 #     (内側の分類 helper cleanup-worktree-detect.sh が起動できない / 失敗したとき)
-#   in_worktree のとき dirty が非空なら `--- dirty files begin/end ---` で囲んだ生パス一覧を続けて出す。
+#   [CONTEXT] CLEANUP_WT=unknown; reason=worktree_list_failed; rc=<n>
+#     (補完が必要な none のときに git worktree list が失敗した。候補も cwd との関係も判定できないため
+#      none へ戻さず、削除を試みさせない)
+#   [CONTEXT] CLEANUP_WT=unknown; reason=candidate_unresolved
+#     (補完の候補パスを物理パスへ解決できず、登録との関係を判定できない)
+#   source=git_worktree_list の in_main は登録情報の branch（detached なら空）を出す。実体が無い登録
+#   （prunable）は dirty の代わりに missing=yes を出す。
+#   in_worktree と実体のある source=git_worktree_list の in_main は dirty を出し、非空なら
+#   `--- dirty files begin/end ---` で囲んだ生パス一覧を続けて出す（取得失敗は dirty 扱い）。
+#   `main_root=` は常に行末フィールドに置く（消費側が行末まで値として読む）。
 #
 #   `CLEANUP_WT=unknown` は **呼び出し側 (cleanup/SKILL.md 4-W) も emit する** —— 本 helper 自体が
 #   起動できなかった場合に `reason=detect_helper_failed` で出す。helper 自身は emit しないが、
@@ -129,6 +144,23 @@ _sandbox_mask_present() {
   return 1
 }
 
+# $1 を物理パスで出す。存在しない末尾は、存在する最も近い親を `pwd -P` で解決して連結する。
+# 解決できない（親が 1 つも辿れない / cd に失敗する）ときは rc 1。
+_physical_path() {
+  local _p=$1 _rest=""
+  while [ ! -d "$_p" ]; do
+    case "$_p" in
+      /|"") return 1 ;;
+    esac
+    _rest="/${_p##*/}$_rest"
+    _p=${_p%/*}
+    [ -n "$_p" ] || _p=/
+  done
+  _p=$(CDPATH= cd -- "$_p" && pwd -P) || return 1
+  [ "$_p" = / ] && _p=""
+  printf '%s\n' "$_p$_rest"
+}
+
 cmd_detect() {
   local issue="" config="rite-config.yml"
   while [ "$#" -gt 0 ]; do
@@ -179,7 +211,10 @@ cmd_detect() {
   # main checkout の絶対パスを削除前に確保する（自己削除後も main checkout を参照できるようにするため）。
   # `git worktree list --porcelain` の先頭 worktree entry は常に main checkout（git の仕様上保証）
   # なので、削除がまだ起きていないこの時点で取得すれば cwd の状態に関わらず正しい値が取れる。
-  main_root=$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}') || main_root=""
+  # 行全体を取る（`$2` は空白を含むパスで切れる）。一覧は下の未記録 worktree 補完でも使うため rc ごと保持する。
+  local wt_list="" wt_list_rc=0
+  wt_list=$(git worktree list --porcelain 2>/dev/null) || wt_list_rc=$?
+  main_root=$(printf '%s\n' "$wt_list" | awk '/^worktree /{sub(/^worktree /, ""); print; exit}')
   # 検出は既存 helper に委譲する。flow-state 未記録（flow_wt 空）でも、物理 cwd が当該 Issue の
   # rite セッション worktree なら in_worktree_unrecorded を返し worktree= に cur_top を導出する。
   # 分類 helper が起動できない / 失敗したときに `none` へ落とすと、消費側は `none` を
@@ -204,6 +239,76 @@ cmd_detect() {
   fi
   cleanup_wt=${detect#CLEANUP_WT=}; cleanup_wt=${cleanup_wt%%;*}
   flow_wt=${detect##*worktree=}
+  # flow-state に記録が無く cwd も対象でない（分類が none）ときだけ、Git に登録済みの当該 Issue の
+  # worktree を補完する。記録あり・cwd 由来の分類は一覧の取得結果に左右させない。
+  # 一覧を取得できないのに none を返すと、未削除の worktree が「無い」と報告されるため unknown にする。
+  local source=""
+  if [ "$cleanup_wt" = "none" ] && [ "$ms_enabled" = "true" ] && [ -n "$issue" ]; then
+    if [ "$wt_list_rc" -ne 0 ]; then
+      echo "WARNING: git worktree list が rc=${wt_list_rc} で失敗しました。未記録の作業ツリーの有無を確認できていません" >&2
+      echo "[CONTEXT] CLEANUP_WT=unknown; reason=worktree_list_failed; rc=${wt_list_rc}"
+      return 0
+    fi
+    local base candidate listed cur_phys main_phys wt_branch=""
+    base=${ms_base#./}; base=${base%/}
+    case "$base" in
+      /*) candidate="$base/issue-$issue" ;;
+      *) candidate="$main_root/$base/issue-$issue" ;;
+    esac
+    # symlink を含む base でも同じ実体を同じ文字列で比べるため、物理パスへ寄せる。実体が無い候補
+    # （登録だけ残った worktree）も、存在する最も近い親を解決して残りを連結する。解決できなければ
+    # 候補と登録の関係を判定できないので none にせず unknown にする。
+    if ! candidate=$(_physical_path "$candidate"); then
+      echo "WARNING: 作業ツリーの候補パス（${base}/issue-${issue}）を物理パスへ解決できませんでした。未記録の作業ツリーの有無を確認できていません" >&2
+      echo "[CONTEXT] CLEANUP_WT=unknown; reason=candidate_unresolved"
+      return 0
+    fi
+    cur_phys=$cur_top; [ -d "$cur_phys" ] && cur_phys=$(CDPATH= cd -- "$cur_phys" && pwd -P)
+    main_phys=$main_root; [ -d "$main_phys" ] && main_phys=$(CDPATH= cd -- "$main_phys" && pwd -P)
+    local matched=false
+    while IFS= read -r listed; do
+      case "$listed" in
+        worktree\ *)
+          [ "$matched" = true ] && break
+          listed=${listed#worktree }
+          # git は登録パスを実パスで記録するため、物理パスへ寄せた候補とそのまま比べる。
+          [ "$listed" = "$candidate" ] && matched=true
+          ;;
+        branch\ refs/heads/*)
+          [ "$matched" = true ] && wt_branch=${listed#branch refs/heads/}
+          ;;
+      esac
+    done <<WT_LIST_EOF
+$wt_list
+WT_LIST_EOF
+    if [ "$matched" = true ] && [ -n "$cur_phys" ] && [ "$cur_phys" = "$main_phys" ]; then
+      # cwd が main checkout のときだけ補完する（退出不要の前提が成り立つのはここだけ）。
+      cleanup_wt=in_main; flow_wt=$candidate; source=git_worktree_list
+    elif [ "$matched" = true ]; then
+      # 登録済みだが cwd は main checkout ではない。cwd が対象自身（base の表記が分類 helper の末尾照合と
+      # 合わなかった path 入場）でも別の worktree 内でも退出経路が未確認なので、main checkout での再実行へ
+      # 委譲する。後者では worktree= は cwd とは別の候補を指す。
+      cleanup_wt=in_worktree_unrecorded; flow_wt=$candidate
+    fi
+  fi
+  if [ -n "$source" ]; then
+    # 保存 state が無いため、呼び出し側の所有権照合と dirty ゲートの入力をここで出す。
+    # branch は登録情報から取る（実体が無くても照合できる）。detached なら空。
+    if [ ! -d "$flow_wt" ]; then
+      # 登録だけ残り実体が無い（prunable）。退避すべき変更は無いので dirty は出さない。
+      echo "[CONTEXT] CLEANUP_WT=$cleanup_wt; worktree=$flow_wt; source=$source; branch=$wt_branch; missing=yes; main_root=$main_root"
+      return 0
+    fi
+    # 取得失敗は dirty 扱い。
+    dirty=$(CDPATH= cd -- "$flow_wt" && bash "$SCRIPT_DIR/lib/git-status-filtered.sh") || dirty="?? (dirty-check failed — assume dirty for safety)"
+    echo "[CONTEXT] CLEANUP_WT=$cleanup_wt; worktree=$flow_wt; source=$source; branch=$wt_branch; dirty=$([ -n "$dirty" ] && echo yes || echo no); main_root=$main_root"
+    if [ -n "$dirty" ]; then
+      echo "--- dirty files begin ---"
+      printf '%s\n' "$dirty"
+      echo "--- dirty files end ---"
+    fi
+    return 0
+  fi
   case "$cleanup_wt" in
     in_worktree)
       dirty=$(bash "$SCRIPT_DIR/lib/git-status-filtered.sh") || dirty="?? (dirty-check failed — assume dirty for safety)"
