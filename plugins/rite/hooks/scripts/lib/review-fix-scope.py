@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import platform
 import re
+import stat
 import subprocess
 import sys
 
@@ -130,9 +131,30 @@ def fingerprint(test):
     return digest([test, contents, environment, runtime, str(Path.cwd().resolve())])
 
 
+def sandbox_mask(value):
+    # Same mechanism-based rule as git-status-filtered.sh: a write-block mount is a
+    # character device (stat follows the symlink used to simulate it), and its
+    # leftover anchor is an empty regular file with every write bit cleared (lstat,
+    # so a symlink to such a stub stays a real untracked entry). An unreadable
+    # entry stays dirty. Keep both implementations in step when changing the rule.
+    try:
+        if stat.S_ISCHR(os.stat(value).st_mode):
+            return "device"
+        info = os.lstat(value)
+    except OSError:
+        return None
+    return "stub" if stat.S_ISREG(info.st_mode) and info.st_size == 0 and not info.st_mode & 0o222 else None
+
+
 def verify(plan, paths, output, kind):
     changed = subprocess.check_output(["git", "diff", "--no-renames", "HEAD", "--name-only", "-z"]).decode().split("\0")
-    changed += subprocess.check_output(["git", "ls-files", "--others", "--exclude-standard", "-z"]).decode().split("\0")
+    untracked = {p: sandbox_mask(p) for p in subprocess.check_output(["git", "ls-files", "--others", "--exclude-standard", "-z"]).decode().split("\0") if p}
+    stubs = [p for p, mask in untracked.items() if mask == "stub"]
+    if stubs:
+        print("WARNING: review-fix-scope: " + str(len(stubs)) + " sandbox stub file(s) (0 bytes, no write permission) excluded"
+              + " from unplanned path check; user action: delete them by hand once no sandboxed command is running: "
+              + " ".join(json.dumps(p, ensure_ascii=False) for p in stubs), file=sys.stderr)
+    changed += [p for p, mask in untracked.items() if not mask]
     require(all(any(within(path(p), allowed) for allowed in paths) for p in changed if p), "unplanned changed path; revise plan before continuing")
     result = read(output) if output.exists() else {"review_context": plan["review_context"], "results": {}}
     require(result["review_context"]["session_id"] == plan["review_context"]["session_id"], "verification receipt belongs to another session")
