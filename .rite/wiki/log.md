@@ -2,6 +2,7 @@
 
 ## 2026-09-17
 
+* **Create**: [入力ファイルと記録先が同一実体になりうる helper は書き込み前に resolve 比較で拒否する](pages/patterns/guard-record-overwriting-its-own-input-before-write.md) — raw/reviews/20260917T073541Z-pr-2931.md を新規ページ化
 * **Skip**: [レビュー結果](raw/reviews/20260917T043358Z-pr-2922.md) — 実装と文書・静的テストの整合確認のみで新しいドメイン経験則はない。軽量レーン上限の並び順で docs 中心 PR から tech-writer が落ちる観察は rite 自体の挙動に関する知見であり plugin 側の reviewer 選抜規則へ扱いを移す
 * **lint:clean** — contradictions=0 (ページ変更なし。既存ページの全組合せ再評価は未実施), stale=66, orphans=0, missing_concept=0, unregistered_raw=520, broken_refs=0
 * **Update**: [quiet grepの偽失敗](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) — 入力バイトを維持する全量読取と同型の伝播修正を統合
