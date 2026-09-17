@@ -284,7 +284,7 @@ okf_version: "0.2"
 | [検出層の表記ゆれ対応は「列挙」ではなく「正規化」で吸収する](pages/patterns/normalize-instead-of-enumerate-in-detection-layer.md) | patterns | 過去のレビュー事例では、マーカー検出の stage 1 regex に対する同種の指摘が **3 cycle にわたって再発した**。 | 2026-07-29T21:32:36+09:00 | high |
 | [advisory データの欠陥検証を hard fail にすると primary データごと失われる](pages/anti-patterns/advisory-data-validation-hard-fail-drops-primary-data.md) | anti-patterns | 過去のレビュー事例で 2 サイクル連続して踏んだ fail-unsafe。 | 2026-07-27T17:54:54+09:00 | high |
 | [canonical 例を持つ SoT は「例が自身の enforcer を通る」ことを実測で確かめる](pages/patterns/canonical-example-must-pass-its-own-enforcer.md) | patterns | 過去のレビュー事例の cycle 4 で **4 reviewer が独立に検出**した欠陥クラス。 | 2026-08-03T00:55:00+09:00 | high |
-| [sandbox 環境では raw な git status --porcelain が恒に非空になり clean 判定ガードが一度も発火しない](pages/anti-patterns/sandbox-bind-mount-makes-raw-git-status-always-dirty.md) | anti-patterns | 過去のレビュー事例の cycle 2 で HIGH（repro 付き）として検出。 | 2026-07-27T17:54:54+09:00 | high |
+| [sandbox 環境では raw な git status --porcelain が恒に非空になり clean 判定ガードが一度も発火しない](pages/anti-patterns/sandbox-bind-mount-makes-raw-git-status-always-dirty.md) | anti-patterns | 過去のレビュー事例の cycle 2 で HIGH（repro 付き）として検出。 | 2026-09-17T10:34:18Z | high |
 | [file:line を key にする map は、同じ位置にある別出自のデータを無音で巻き添えにする](pages/anti-patterns/colocated-key-map-swallows-different-provenance-data.md) | anti-patterns | 過去のレビュー事例の cycle 2 で HIGH として検出。 | 2026-07-27T17:54:54+09:00 | high |
 | [同じ述語を 2 言語で並行実装すると受理集合が環境で割れる — 定義を 1 本に寄せるまで症状は再発し続ける](pages/anti-patterns/dual-language-predicate-divergence.md) | anti-patterns | 「本文の最終非空行が sentinel と一致するか」のような判定条件を、read 側（lookup の jq）と write 側（投稿前検査の shell）で**別々に実装**すると、同じ意図の述語でも受理する入力の集合が一致しない。 | 2026-07-28T21:30:00+09:00 | high |
 | [エラーを 1 つの reason へ畳むときは「原因の類型」が同じかを確かめる — 復旧手順が違うなら分ける](pages/heuristics/error-classification-by-cause-not-detection-site.md) | heuristics | `result=$(cmd 2>/dev/null) \|\| result=""` は「失敗したら空にする」定番の書き方だが、**2 つの意味的に違う失敗を同じ値へ畳む**。 | 2026-09-07T23:46:17+09:00 | high |
@@ -518,9 +518,10 @@ okf_version: "0.2"
 | [fail し得る解決と本文の抽出を別関数に分け、fail はコマンド置換の外で呼ぶ](pages/patterns/test-helper-fail-outside-command-substitution.md) | patterns | bash テストの helper が $(...) の中で fail を呼ぶと、失敗カウンタの加算はサブシェルで消え、呼び出し側には空文字だけが返る。位置の解決（fail し得る）と本文の抽出（fail しない）を別関数に分け、前者をトップレベルで実行してグローバル変数で受け渡すと、失敗はカウンタに残り、下流の assert が別の原因を名乗ることもなくなる。 | 2026-09-16T12:09:00Z | high |
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17 | high |
 | [入力ファイルと記録先が同一実体になりうる helper は書き込み前に resolve 比較で拒否する](pages/patterns/guard-record-overwriting-its-own-input-before-write.md) | patterns | 入力ファイルを読み、その検査結果を固定名の記録ファイルへ atomic write する helper は、呼び出し側が記録名を入力名に流用すると入力を記録で上書きし、直後の照合が「入力が別物になった」形で失敗する。読み込みより前に Path.resolve() 同士を比較して同一実体を拒否すれば、絶対・相対・ファイル symlink・ディレクトリ symlink の各表記を単一の比較で覆える。 | 2026-09-17T07:50:00Z | high |
+| [同じ判定規則を別言語で二重実装するときは、同一 fixture で SoT 実装の実行結果と突合する parity assert を置く](pages/patterns/dual-implementation-rule-parity-assert-against-sot-executable.md) | patterns | bash の SoT helper と同じ除外規則を Python 側にも持たせる変更では、Python 側の期待値を手書きせず、同じ fixture tree に対して SoT helper を実際に実行し、その出力集合と Python 側が「残す」と判定した集合の一致を assert する。規則本文の複製は文書で「同時更新」と宣言するだけでは守れず、実行結果の突合だけが drift を検出する。 | 2026-09-17T10:34:18Z | high |
 ## 統計
 
-- 総ページ数: 508
-- ドメイン別: patterns=118, heuristics=225, anti-patterns=165
-- 最終更新: 2026-09-17T07:50:00Z
+- 総ページ数: 509
+- ドメイン別: patterns=119, heuristics=225, anti-patterns=165
+- 最終更新: 2026-09-17T10:34:18Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
