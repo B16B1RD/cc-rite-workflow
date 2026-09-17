@@ -1,6 +1,6 @@
 ### 1.3.S `--nb-sweep` consume（5.S 専用）
 
-`[CONTEXT] NB_SWEEP=1` のときだけ評価する。通常ループでは本節を skip（AC-7）。ステップ 2–4 は評価せず、本節の後に 5.1 へ進む。
+`[CONTEXT] NB_SWEEP=1` のときだけ評価する。通常ループでは本節を skip。fix/SKILL.md のステップ 2–4 は評価せず、本節の後に fix/SKILL.md の 5.1 へ進む。
 rationale: ../../iterate/references/rationale.md#nb-sweep-step
 
 1. **collect**（iterate 5.S と同 helper。冪等）:
@@ -44,7 +44,7 @@ case "$collect_rc:$sweep_status" in
 esac
 ```
 
-`empty` なら route 適用・persist を skip して 5.1 へ。
+`empty` なら route 適用・persist を skip して fix/SKILL.md の 5.1 へ。
 
 2. **route 適用**（helper の判定を変更しない）:
 
@@ -61,10 +61,55 @@ if ! printf '%s' "$collect_out" | jq -e 'all(.targets[]; .route == "issued" or .
 fi
 ```
 
-全 `issued` target について finding の description / suggestion / file:line を本文ファイルに保存し、既存の起票 helper の入力形式に合わせる。`projects` は rite-config.yml の設定を反映する。起票ごとに次のブロックを実行し、成功時の `issue_number` と `issue_url` を当該 finding に対応付ける:
+全 `issued` target について finding の description / suggestion / file:line を本文ファイルに保存する。本文は `/rite:open` が複雑度を読む Meta で始め、Projects に渡す `complexity` と同じ値を宣言する。`projects` は rite-config.yml の設定を反映する。起票ごとに次の 2 ブロックを連結して単一 Bash で実行し、成功時の `issue_number` と `issue_url` を当該 finding に対応付けて手順 3（台帳 persist）の台帳行に使う:
+
+| Placeholder | Source |
+|-------------|--------|
+| `{type}` | finding の内容から推定（`fix` / `refactor` / `docs` 等） |
+| `{summary}` | finding の要約（動詞始まり、50 文字以内） |
+| `{description}` / `{suggestion}` / `{file}` / `{line}` | `targets[]` の同名フィールド |
+| `{projects_enabled}` / `{project_number}` / `{owner}` | `rite-config.yml` → `github.projects.enabled` / `project_number` / `owner` |
 
 ```bash
-# issue_args は jq --arg / --argjson で構築した JSON（body_file と options.source=pr_review を含む）。
+tmpfile=$(mktemp "${TMPDIR:-/tmp}/rite-nb-issue-XXXXXX") || { echo "[fix:error]"; exit 1; }
+trap 'rm -f "$tmpfile"' EXIT
+if ! cat <<'BODY_EOF' > "$tmpfile"
+**Type**: {type}
+**Complexity**: S
+
+## 概要
+
+{description}
+
+## 提案
+
+{suggestion}
+
+## 関連
+
+- 元の PR: #{pr_number}
+- 位置: {file}:{line}
+BODY_EOF
+then
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_issue_body_failed" >&2
+  echo "[fix:error]"
+  exit 1
+fi
+issue_args=$(jq -n \
+  --arg title "{type}: {summary}" \
+  --arg body_file "$tmpfile" \
+  --argjson projects_enabled {projects_enabled} \
+  --argjson project_number {project_number} \
+  --arg owner "{owner}" \
+  --arg complexity "S" \
+  '{
+    issue: { title: $title, body_file: $body_file },
+    projects: { enabled: $projects_enabled, project_number: $project_number, owner: $owner, status: "todo", complexity: $complexity, iteration: { mode: "none" } },
+    options: { source: "pr_review", non_blocking_projects: true }
+  }') || { echo "[fix:error]"; exit 1; }
+```
+
+```bash
 if ! issue_result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$issue_args") ||
    ! printf '%s' "$issue_result" | jq -e '.issue_number > 0 and (.issue_url | type == "string" and length > 0)' >/dev/null; then
   echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_issue_failed" >&2
@@ -135,11 +180,16 @@ else
     --iteration-id "nb-sweep-{pr_number}" --content-file "$body" 2>"$record_err"
   record_rc=$?
   cat "$record_err" >&2
-  if [ "$record_rc" -ne 0 ] || grep -qE 'NONBLOCKING_RECORD_FAILED=1|outcome=failed' "$record_err"; then
-    echo "ERROR: 却下台帳 記録失敗 (rc=$record_rc)" >&2
-    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_record_failed" >&2
-    echo "[fix:error]"; exit 1
-  fi
+  record_outcome=$(sed -n 's/^\[CONTEXT\] NONBLOCKING_RECORD_DONE=1; .*outcome=\([^;]*\);.*/\1/p' "$record_err" | tail -1)
+  # entries は常に 1 件以上あるため、skipped は台帳が投稿されなかったことを意味する
+  case "$record_rc:$record_outcome" in
+    0:created|0:updated) ;;
+    *)
+      echo "ERROR: 却下台帳 記録失敗 (rc=$record_rc outcome=${record_outcome:-<欠落>})" >&2
+      echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_record_failed" >&2
+      echo "[fix:error]"; exit 1
+      ;;
+  esac
   rm -f -- "$record_err"
 fi
 ```
@@ -169,4 +219,4 @@ if [ -n "$sweep_root" ]; then
 fi
 ```
 
-ステップ 5.1 が `[fix:sweep-done]` を emit する。`K+M` は collect `count`（already_rejected 転記を含む）と一致する。未消化 0 が正常出口。
+fix/SKILL.md のステップ 5.1 が `[fix:sweep-done]` を emit する。`K+M` は collect `count`（already_rejected 転記を含む）と一致する。未消化 0 が正常出口。

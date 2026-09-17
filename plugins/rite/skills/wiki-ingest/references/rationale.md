@@ -26,7 +26,7 @@ opt-out default で「Wiki 無効」と報告するのは、この Issue が潰�
 ## cwd-independent-worktree
 
 絶対パス基点にすると、セッション worktree から起動しても共有 root の wiki worktree 一箇所に
-解決される（multi-session design §9 / AC-5）。`{wiki_worktree_abs}` が空の縮退（旧バージョン互換）
+解決される（multi-session design §9）。`{wiki_worktree_abs}` が空の縮退（旧バージョン互換）
 だけ相対パス `.rite/wiki-worktree` を許す。
 
 ## session-lock-mkdir
@@ -34,7 +34,7 @@ opt-out default で「Wiki 無効」と報告するのは、この Issue が潰�
 `flock` は複数 Bash 呼び出しに跨る ingest を守れない。持続的 mkdir lock の stale 判定は保持
 セッションの flow-state liveness（`active=true` ∧ `updated_at` 2h 以内）を流用する
 （multi-session design §9）。`concurrent_ingest` 時に新しい回収機構を作らないのは、pending raw
-が wiki branch に残り次回 ingest が冪等に回収する（AC-4）ため。
+が wiki branch に残り次回 ingest が冪等に回収するため。
 
 ## informational-counters
 
@@ -106,7 +106,7 @@ canonical と literal 一致させ、サイト識別子（`ステップ 5.{X}`�
 
 複数 raw source のループ内で raw ごとに push すると、SSH host alias 環境で毎回 sandbox バイパス
 が必要になり、同一 push の短時間重複実行も起きていた。ステップ 5.1 は `--commit-only`、Lint
-`--auto` も同様に commit のみ積み、ステップ 8.6 で全処理後に 1 回だけ push する（AC-1: 1 ingest
+`--auto` も同様に commit のみ積み、ステップ 8.6 で全処理後に 1 回だけ push する（1 ingest
 フローで `git push origin {wiki_branch}` は最大 1 回）。`same_branch` の push は PR ブランチの
 通常 push に含まれ、このフローの管轄外。`push=no-op` は push すべき commit が無かっただけで
 失敗ではない。

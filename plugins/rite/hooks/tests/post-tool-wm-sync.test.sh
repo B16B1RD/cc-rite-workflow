@@ -3,17 +3,17 @@
 # Usage: bash plugins/rite/hooks/tests/post-tool-wm-sync.test.sh
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Hermeticity guard: flow-state.sh path resolves session_id with
 # priority env CLAUDE_CODE_SESSION_ID > env CLAUDE_SESSION_ID > .rite-session-id
 # file. When this test suite runs inside a live Claude Code
 # session, that session's own id leaks into every `bash "$HOOK"` invocation
 # below and silently overrides the file-based per-session fixtures, making the
-# hook resolve a nonexistent (or wrong) flow-state file. Unsetting both here
-# forces every invocation to resolve session_id from the fixture's
-# `.rite-session-id` file, matching the intended test isolation.
-unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
-
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# hook resolve a nonexistent (or wrong) flow-state file. `_hermetic-env.sh`
+# clears them (with the rest of the runner's list), so every invocation resolves
+# session_id from the fixture's `.rite-session-id` file.
+# shellcheck source=_hermetic-env.sh
+source "$SCRIPT_DIR/_hermetic-env.sh" || { echo "ERROR: cannot source _hermetic-env.sh" >&2; exit 1; }
 HOOK="$SCRIPT_DIR/../post-tool-wm-sync.sh"
 TEST_DIR="$(mktemp -d)"
 PASS=0
@@ -51,7 +51,7 @@ create_state_file() {
   mkdir -p "$dir/.rite/sessions"
   printf '%s' "$sid" > "$dir/.rite-session-id"
   local merged
-  if printf '%s' "$content" | grep -q '"schema_version"'; then
+  if printf '%s' "$content" | grep -c >/dev/null '"schema_version"'; then
     merged="$content"
   elif printf '%s' "$content" | jq -e . >/dev/null 2>&1; then
     merged=$(printf '%s' "$content" | jq -c '. + {schema_version: 3}')
@@ -444,8 +444,8 @@ stderr014=$(echo "{\"tool_name\": \"Bash\", \"cwd\": \"$dir014\"}" | PATH="$shim
 # Anchor the rc value with both `\)` close-paren and the `phase 名に縮退` fallback
 # message so a future regression that emits `rc=17890` or that drops the
 # fallback prose alone cannot silently satisfy a bare `rc=17` match.
-if printf '%s' "$stderr014" | grep -qE 'post-tool-wm-sync: phase_detail 取得失敗 \(rc=17\)' \
-   && printf '%s' "$stderr014" | grep -qE 'phase 名に縮退'; then
+if printf '%s' "$stderr014" | grep -cE >/dev/null 'post-tool-wm-sync: phase_detail 取得失敗 \(rc=17\)' \
+   && printf '%s' "$stderr014" | grep -cE >/dev/null 'phase 名に縮退'; then
   pass "TC-014: python3 failure surfaces WARNING with rc=17 and fallback semantic"
 else
   fail "TC-014: expected 'phase_detail 取得失敗 (rc=17)' + 'phase 名に縮退' in stderr — got: $stderr014"
@@ -700,9 +700,9 @@ echo ""
 echo "T-02: PATCH body contains update-phase + update-progress + update-plan-status changes"
 body_n01=""
 [ -f "$dir_n01/patch-body.txt" ] && body_n01=$(jq -r '.body // empty' "$dir_n01/patch-body.txt" 2>/dev/null) || body_n01=""
-if printf '%s' "$body_n01" | grep -qF '**フェーズ**: implement' \
-   && printf '%s' "$body_n01" | grep -q '| 実装 | ✅ 完了 |' \
-   && printf '%s' "$body_n01" | grep -q '| S1 | 実装 | ✅ |'; then
+if printf '%s' "$body_n01" | grep -cF >/dev/null '**フェーズ**: implement' \
+   && printf '%s' "$body_n01" | grep -c >/dev/null '| 実装 | ✅ 完了 |' \
+   && printf '%s' "$body_n01" | grep -c >/dev/null '| S1 | 実装 | ✅ |'; then
   pass "T-02: PATCH body has phase + progress + plan-status transforms"
 else
   fail "T-02: PATCH body missing expected transforms. body=$body_n01 raw=$(cat "$dir_n01/patch-body.txt" 2>/dev/null)"
@@ -725,9 +725,9 @@ body_n05=""
 [ -f "$dir_n05/patch-body.txt" ] && body_n05=$(jq -r '.body // empty' "$dir_n05/patch-body.txt" 2>/dev/null) || body_n05=""
 lsp_n05=$(jq -r '.last_synced_phase // empty' "$(state_file_path "$dir_n05")")
 if [ "$get_n05" = "1" ] && [ "$patch_n05" = "1" ] \
-   && printf '%s' "$body_n05" | grep -qF '**フェーズ**: plan' \
-   && printf '%s' "$body_n05" | grep -q '| 実装 | ⬜ 未着手 |' \
-   && printf '%s' "$body_n05" | grep -q '| S1 | 実装 | ⬜ |' \
+   && printf '%s' "$body_n05" | grep -cF >/dev/null '**フェーズ**: plan' \
+   && printf '%s' "$body_n05" | grep -c >/dev/null '| 実装 | ⬜ 未着手 |' \
+   && printf '%s' "$body_n05" | grep -c >/dev/null '| S1 | 実装 | ⬜ |' \
    && [ "$lsp_n05" = "plan" ]; then
   pass "T-05: ungated phase 2 gh calls, PATCH is update-phase only, last_synced_phase=plan"
 else
@@ -800,10 +800,10 @@ stdout10=$(cat "$dir_n10/hook.stdout" 2>/dev/null)
 body_n10=""
 [ -f "$dir_n10/patch-body.txt" ] && body_n10=$(jq -r '.body // empty' "$dir_n10/patch-body.txt" 2>/dev/null) || body_n10=""
 if printf '%s' "$stdout10" | jq -e . >/dev/null 2>&1 \
-   && printf '%s' "$stdout10" | grep -q '"systemMessage"' \
-   && printf '%s' "$stdout10" | grep -q 'branch.base' \
-   && printf '%s' "$body_n10" | grep -qF '**フェーズ**: implement' \
-   && printf '%s' "$body_n10" | grep -q '| 実装 | ⬜ 未着手 |'; then
+   && printf '%s' "$stdout10" | grep -c >/dev/null '"systemMessage"' \
+   && printf '%s' "$stdout10" | grep -c >/dev/null 'branch.base' \
+   && printf '%s' "$body_n10" | grep -cF >/dev/null '**フェーズ**: implement' \
+   && printf '%s' "$body_n10" | grep -c >/dev/null '| 実装 | ⬜ 未着手 |'; then
   pass "T-10: systemMessage + update-phase in PATCH, progress skipped (stdout is 1 JSON object)"
 else
   fail "T-10: stdout=$stdout10 body=$body_n10 stderr=$(cat "$dir_n10/hook.stderr" 2>/dev/null)"
@@ -835,7 +835,7 @@ lsp11=$(jq -r '.last_synced_phase // empty' "$(state_file_path "$dir_n11")")
 stdout11=$(cat "$dir_n11/hook.stdout" 2>/dev/null)
 bak11=$(ls -1 "$dir_n11"/rite-wm-backup-42-* 2>/dev/null | head -1 || true)
 if [ -n "$bak11" ] && [ -f "$bak11" ] \
-   && printf '%s' "$stdout11" | grep -q '"systemMessage"' \
+   && printf '%s' "$stdout11" | grep -c >/dev/null '"systemMessage"' \
    && [ "$lsp11" = "init" ]; then
   pass "T-11: backup remains, systemMessage, last_synced_phase unchanged"
 else
@@ -1063,7 +1063,7 @@ list23=$(grep -c '/issues/42/comments' "$dir_n23/gh.urls" 2>/dev/null || true); 
 sysmsg23=$(printf '%s' "$stdout23" | jq -r '.systemMessage // empty' 2>/dev/null)
 # 文言まで pin する: 有無だけの assert では、過渡窓判定が常に真へ退化して no_comment 用の文言が
 # 別経路 (fetch 失敗の「取得に失敗しました」等) に置き換わっても検出できない。
-if [ "$rc_n23" -eq 0 ] && printf '%s' "$sysmsg23" | grep -qF 'replica が見つかりません'; then
+if [ "$rc_n23" -eq 0 ] && printf '%s' "$sysmsg23" | grep -cF >/dev/null 'replica が見つかりません'; then
   pass "T-23a: AC-2 — 過渡窓外では no_comment 固有の文言が維持される"
 else
   fail "T-23a: rc=$rc_n23 sysmsg=$sysmsg23 stdout=$stdout23"

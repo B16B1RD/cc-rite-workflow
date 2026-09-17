@@ -106,7 +106,7 @@ assert_grep_in_section "3.3.1 runs identically on batch and standalone" "$OPEN" 
   "$S331_START" "$S331_END" \
   'batch / standalone とも同一'
 # レビュー発火を OPEN_PLAN_MODE / plan_mode に掛けないこと。掛けてしまうと batch 自動承認がレビューを飛ばす。
-if printf '%s\n' "$_sec331" | grep -qE 'OPEN_PLAN_MODE|plan_mode='; then
+if printf '%s\n' "$_sec331" | grep -cE >/dev/null 'OPEN_PLAN_MODE|plan_mode='; then
   fail "3.3.1 section must not branch on OPEN_PLAN_MODE or plan_mode (AC-5)"
 else
   pass "3.3.1 section does not branch on OPEN_PLAN_MODE or plan_mode (AC-5)"

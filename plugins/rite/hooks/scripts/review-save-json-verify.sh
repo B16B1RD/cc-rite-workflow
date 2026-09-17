@@ -45,11 +45,11 @@
 #   **両オペランド**に 7 桁下限を課すことで防ぐ — 比較が双方向である以上、`--commit-sha` 側の
 #   入力検査だけでは JSON 側の短すぎる値を止められない (書き手は commit_sha を検査しない)。
 #
-# fail と degraded の境界 (§4.5 / AC-6):
+# fail と degraded の境界 (§4.5):
 #   degraded に倒すのは「判定に必要な入力・環境が揃わない」場合だけ — 入力の置換漏れ / 形状不正、
 #   jq 不在、state root 未解決、run 開始点 pin を読めない、results dir を **読めない** (permission
 #   等で find が失敗する) の 5 群。results dir が **存在しない** のは degraded ではなく fail に
-#   合流させる (AC-2 の Given「区間ごと skip して JSON も無い」の最も強い証拠であり、degraded に
+#   合流させる (Given「区間ごと skip して JSON も無い」の最も強い証拠であり、degraded に
 #   倒すと機械強制がその Given でだけ降りる)。
 #
 # 既知の検出限界:
@@ -154,7 +154,7 @@ command -v jq >/dev/null 2>&1 || _degraded "jq が PATH 上にありません。
 # 解決**先**は書込側 hooks/review-result-save.sh・sibling hooks/scripts/review-trend-divergence.sh と
 # 同一 (state-path-resolve.sh、セッション worktree 内から呼ばれても main checkout と同一パスへ解決)。
 # ただし解決に**失敗した**ときの縮退は sibling と異なり cwd 相対へ倒さず _degraded にする —
-# 誤った基準で「JSON 不在 = fail」を宣告する gate になるより、未判定として降りる方が安全側 (AC-6)。
+# 誤った基準で「JSON 不在 = fail」を宣告する gate になるより、未判定として降りる方が安全側。
 state_root=""
 if [ -z "$results_dir" ] || [ "$since_set" -eq 0 ]; then
   # `2>/dev/null` は付けない — resolver は git 内外どちらでも rc=0 / 非空を返す設計なので、
@@ -169,7 +169,7 @@ if [ -z "$results_dir" ]; then
 fi
 
 # results dir の **不在** は degraded にしない — §4.5 が degraded に置くのは
-# 「解決できない / 読めない」であって「存在しない」ではなく、dir 不在は AC-2 の Given
+# 「解決できない / 読めない」であって「存在しない」ではなく、dir 不在は Given
 # (区間ごと skip して JSON も無い) の最も強い証拠だからである。下の走査を skip して fail 側へ
 # 合流させる (診断は seen_count=0 のとき「(なし)」を出すので追加実装は要らない)。
 
@@ -232,7 +232,7 @@ fi
 if [ -d "$results_dir" ]; then
   # find の rc を検査する。dir が存在しても読めない (permission 等) と find は 0 件を返すため、
   # rc を見ないと「読めない」が「実在しない」に化けて fail へ落ち、差し戻し先の 6.1.a を何度
-  # 実行しても解消しない非収束ループになる (§4.5 / AC-6 は読取不能を degraded 側に置く)。
+  # 実行しても解消しない非収束ループになる (§4.5: 読取不能を degraded 側に置く)。
   # `2>/dev/null` は付けない — find の "Permission denied" が原因の唯一の手がかり。
   find_raw=$(find "$results_dir" -maxdepth 1 -type f -name "${pr_number}-*.json") \
     || _degraded "レビュー結果ディレクトリを読めません ($results_dir)。直前の find の診断を参照してください"

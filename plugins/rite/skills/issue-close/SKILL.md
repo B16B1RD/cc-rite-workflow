@@ -33,9 +33,9 @@ rationale: references/rationale.md#projects-status-delegate
 ```bash
 status_json_args=$(jq -n \
   --argjson issue {issue} --arg owner "{owner}" --arg repo "{repo}" \
-  --argjson project_number {project_number} --arg status "Done" \
+  --argjson project_number {project_number} --arg role "done" \
   --argjson auto_add false --argjson non_blocking true \
-  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_role:$role, auto_add:$auto_add, non_blocking:$non_blocking}')
 bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args"
 ```
 
@@ -536,7 +536,7 @@ rationale: references/rationale.md#three-method-parent
 candidates=$(gh issue list -R {owner_repo} --state all --search "in:body \"- [ ] #{issue_number}\" OR \"- [x] #{issue_number}\"" --json number --limit 10 --jq '.[].number')
 parent_number=""
 for cand in $candidates; do
-  # 自己マッチ除外: standalone Issue が自分自身を親と誤検出するのを防ぐ（AC-1）
+  # 自己マッチ除外: standalone Issue が自分自身を親と誤検出するのを防ぐ
   [ "$cand" = "{issue_number}" ] && continue
   # 妥当性検証: 候補 body に当該 tasklist 行が実在するか確認（緩いマッチで拾った無関係 Issue を排除）
   cand_body=$(gh issue view "$cand" -R {owner_repo} --json body --jq '.body')
@@ -548,7 +548,7 @@ done
 echo "method3_parent=${parent_number:-none}"
 ```
 
-**3 method すべて失敗（`parent_number` 空）**は standalone（AC-4。debug log は残す）:
+**3 method すべて失敗（`parent_number` 空）**は standalone（正常系として扱う。debug log は残す）:
 
 ```bash
 echo "[DEBUG] parent not detected for issue #{issue_number} — processing as standalone (methods tried: body_meta, sub_issues_api, tasklist_search)"
@@ -566,7 +566,7 @@ echo "[DEBUG] parent not detected for issue #{issue_number} — processing as st
 bash {plugin_root}/hooks/issue-body-safe-update.sh fetch --issue {parent_number} --parent
 ```
 
-出力に `tmpfile_read=` / `tmpfile_write=` / `original_length=` があれば Step 2 へ。WARNING のみ / 失敗なら警告して Phase 5 へ（non-blocking, AC-4）。
+出力に `tmpfile_read=` / `tmpfile_write=` / `original_length=` があれば Step 2 へ。WARNING のみ / 失敗なら警告して Phase 5 へ（non-blocking）。
 
 **Step 2: Read tool + Write tool で更新** — Read tool で `$tmpfile_read` を読み、以下 2 置換を適用して Write tool で `$tmpfile_write` に書く:
 1. **Sub-Issues checkbox**: `- [ ] #{issue_number}` 行の `- [ ]` を `- [x]` に（該当 Issue 番号行のみ）
@@ -582,7 +582,7 @@ bash {plugin_root}/hooks/issue-body-safe-update.sh apply \
   --original-length "$original_length" --parent --diff-check
 ```
 
-exit 0 で成功（`--diff-check` で変更不要時は skip）。非 0 なら警告して Phase 4.6 へ（non-blocking, AC-4。close 自体は Phase 4.1 で成功済み）。→ Phase 4.6 へ。
+exit 0 で成功（`--diff-check` で変更不要時は skip）。非 0 なら警告して Phase 4.6 へ（non-blocking。close 自体は Phase 4.1 で成功済み）。→ Phase 4.6 へ。
 
 ---
 
@@ -778,9 +778,9 @@ _mktemp_or_warn() { mktemp 2>/dev/null || { echo "[DEBUG] p463 $1: mktemp failed
 if [ "$projects_enabled" = "true" ]; then
   status_json_args=$(jq -n \
     --argjson issue "$parent_number" --arg owner "$owner" --arg repo "$repo" \
-    --argjson project_number "$project_number" --arg status "Done" \
+    --argjson project_number "$project_number" --arg role "done" \
     --argjson auto_add false --argjson non_blocking true \
-    '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')
+    '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_role:$role, auto_add:$auto_add, non_blocking:$non_blocking}')
   p463_err_status=$(_mktemp_or_warn "Step 1")
   # `|| status_json=""` は付けない — command substitution は script が非ゼロ終了しても stdout
   # (script が既に出力した失敗理由入り JSON) を capture するため、fallback は診断情報を破棄する

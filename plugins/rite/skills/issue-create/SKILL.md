@@ -28,7 +28,7 @@ argument-hint: "<title or description>"
 |-------------|--------|
 | `{owner}`, `{repo}` | ステップ 1.1（git-remote.sh 優先 + `gh repo view` fallback。SSH host alias 対応） |
 | `{project_number}` | `rite-config.yml` の `github.projects.project_number` |
-| `{field_name_status}`, `{field_name_priority}`, `{field_name_complexity}` | `rite-config.yml` の `github.projects.fields.{status,priority,complexity}.name`（任意。未設定は空文字 = helper 内蔵の英日エイリアスで解決） |
+| `{field_name_status}`, `{field_name_priority}`, `{field_name_complexity}` | `rite-config.yml` の `github.projects.fields.{status,priority,complexity}.name`（任意。未設定は空文字。priority / complexity は helper 内蔵の英日エイリアスで解決し、status は `hooks/scripts/lib/projects-status-config.sh` の候補 = 同キー、未設定なら `ステータス` → `Status` で解決する） |
 | `{language}` | `rite-config.yml` の `language`（`ja` / `en` / `auto`、未設定 `auto`） |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
 | `{owner_repo}` | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute |
@@ -73,7 +73,7 @@ Project 番号は `rite-config.yml` の `github.projects.project_number` を最�
 
 入力テキストまたは同一セッション会話中に「# 探索サマリ:」見出し（`/rite:unknowns` の出力形式）を検出した場合、上記 1.3 の素朴な What/Why/Where 抽出に代えて [Step 3.1 mapping](./references/contract-section-mapping.md#step-31-探索サマリ-section--contract-section-mapping-riteunknowns-連携時) を適用する軽量化パスに入る（線引き rationale: [`references/unknowns-boundary-rationale.md#線引き`](./references/unknowns-boundary-rationale.md#線引き)）。この検出はステップ 4.0 / 5.0 の仮定表面化手順に軽量化規則として反映される（4.0 / 5.0 参照）。
 
-非サマリ入力ではこの検出は発動せず、1.3 の通常抽出のみを行う（後方互換、AC-5）。
+非サマリ入力ではこの検出は発動せず、1.3 の通常抽出のみを行う（後方互換）。
 
 ### 1.4 slug 生成
 
@@ -143,7 +143,7 @@ rationale: references/rationale.md#ask-only-user-unique
 - サマリの「確定したこと」に含まれる事項は手順 1（仮定列挙）から除外し、再質問しない
 - サマリの「未解決の問い」は手順 1 を経由せず直接、手順 3 の 3 分類 (b)/(c) へ合流させる
 
-非サマリ入力ではこの軽量化は適用されず、手順 1-5 を通常どおり実行する（AC-5、後方互換）。
+非サマリ入力ではこの軽量化は適用されず、手順 1-5 を通常どおり実行する（後方互換）。
 
 **質問強度（見込み Complexity 連動）**: ステップ 3.1 で見込まれた規模（未確定なら入力 Scope から XS〜XL を概算。確定値は 4.1 で確認）に連動させる:
 
@@ -265,7 +265,7 @@ File 列のセルが実パス ⇔ (`/` を含む、または `.` + 英数字の�
 
 `create-issue-with-projects.sh` に委譲（Issue 作成 + Projects 追加 + status / priority / complexity 設定を 1 ステップで実行）。実 interface は JSON 単一引数 + body は tmpfile 経由（canonical SoT: [`issue-create-with-projects.md`](../../references/issue-create-with-projects.md)）:
 
-> **フィールド名のローカライズ配線**: `rite-config.yml` の `github.projects.fields.{status,priority,complexity}.name`（任意）を読み取り、`{field_name_status}` / `{field_name_priority}` / `{field_name_complexity}` に展開する。未設定のキーは空文字とする（helper 側で内蔵の英日エイリアス + 英語正準名にフォールバックするため、日本語フィールド名 Project でもゼロ設定で解決する）。これらは helper 入力 JSON の `projects.field_names` に additive に詰められる。
+> **フィールド名のローカライズ配線**: `rite-config.yml` の `github.projects.fields.{status,priority,complexity}.name`（任意）を読み取り、`{field_name_status}` / `{field_name_priority}` / `{field_name_complexity}` に展開する。未設定のキーは空文字とする（priority / complexity は helper 側で内蔵の英日エイリアス + 英語正準名にフォールバックし、status は `hooks/scripts/lib/projects-status-config.sh` の候補（`ステータス` → `Status`）で解決するため、日本語フィールド名 Project でもゼロ設定で解決する）。これらは helper 入力 JSON の `projects.field_names` に additive に詰められる。
 
 ```bash
 # drift-check-ignore: canonical な「JSON を helper へ単一引数で渡す」契約は
@@ -303,7 +303,7 @@ args_json=$(jq -n \
   --argjson enabled true \
   --argjson project_number {project_number} \
   --arg owner "{owner}" \
-  --arg status "Todo" \
+  --arg status "todo" \
   --arg priority "{priority}" \
   --arg complexity "{complexity}" \
   --arg field_name_status "{field_name_status}" \
@@ -465,7 +465,7 @@ echo "[CONTEXT] DECOMPOSE_WORKDIR=$workdir"
     "enabled": true,
     "project_number": {project_number},
     "owner": "{owner}",
-    "status": "Todo",
+    "status": "todo",
     "priority": "{priority}"
   },
   "repo": "{repo}",

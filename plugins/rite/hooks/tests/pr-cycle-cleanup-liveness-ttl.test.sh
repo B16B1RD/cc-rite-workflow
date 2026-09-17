@@ -39,11 +39,6 @@
 # and the corresponding pair of assertions inverts.
 set -euo pipefail
 
-# Clean session-id env (mirrors pr-cycle-cleanup-session-reap.test.sh): the
-# reaper resolves its session via issue-claim.sh check, which is env-first, so
-# ambient CLAUDE_CODE_SESSION_ID must not leak into these SID_B-as-reaper tests.
-unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_test-helpers.sh"
 

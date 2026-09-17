@@ -1,5 +1,7 @@
 # /rite:iterate — 設計理由
 
+counter reset・fresh run の説明は `review_run` がない legacy state に限る。診断履歴を持つ現在の run は [停滞診断](../../../references/review-stagnation.md) に従い、完了・停止・recoverでも counter と観測・見直し履歴を維持する。
+
 `skills/iterate/SKILL.md` から退避した rationale（設計理由・背景・過去の障害）。本体は各該当箇所に
 `rationale: references/rationale.md#<anchor>` の 1 行ポインタだけを残す。
 
@@ -22,7 +24,7 @@ helper のテストが持つ。
 頭）で backstop が発火した。この実測では判定は現 run の結果が 3 件揃うまで降りる — どの reason で
 降りるかは results dir と run 開始点 pin の状態で分かれるため、内訳は本体ステップ 1 の
 `TREND_REASON` 説明を参照。`10,9,8,7,6` は「漸減が続くが 0 に達しない」escape 節の対象で、本経路へ
-委ねること自体が設計どおりの帰着（AC-3）であり過剰発火例ではない。既定 15 は「引き上げ前の 5 が
+委ねること自体が設計どおりの帰着であり過剰発火例ではない。既定 15 は「引き上げ前の 5 が
 実測で不足したことへの暫定対応」で、最適値は運用データで再評価する。
 
 cycle 数上限は努力と無駄を区別できない — 健全に収束中のループも残り数件のところで予算切れになり、
@@ -48,7 +50,7 @@ degraded に回り続ける。`--branch` 明示は helper の issue-N ref 推定
 
 ## cycle-counter-init
 
-counter を flow-state の `cycle_count` に置くのは resume 跨ぎ継続（AC-3）のため。fresh / resume
+counter を flow-state の `cycle_count` に置くのは resume 跨ぎ継続のため。fresh / resume
 判定を phase で分けるのは、run バッチで前 Issue の counter が同一セッション flow-state に
 merge-preserve され次 Issue に漏れるのを防ぐため。発火時はステップ 6 共有前段が 0 に戻すので、
 発火後の再実行は本ステップで何もしなくても cycle 1 から再開する（override を持たない）。
@@ -68,7 +70,7 @@ run-start pin を使うか」が SoT。保存失敗と review 中断で「現 ru
 破れる。判定を `fresh || cur_cc == 0` の選言にするのは、fresh で reset が失敗した経路（marker
 整合のため `cur_cc` を 0 に落とさない）で pin を据え置くと、ステップ 1 が stale pin と残存
 counter を同時に渡し helper の stale pin guard 前提が揃わず、前 run を含む混合列で発火するため
-（AC-1 の否定）。`cur_cc == 0` 側の項は、ステップ 5.0.1 / ステップ 6 が counter を 0 にして run
+（健全な run を誤って止める方向）。`cur_cc == 0` 側の項は、ステップ 5.0.1 / ステップ 6 が counter を 0 にして run
 を閉じた直後の起動（phase 維持のため resume 判定になる）を拾う。
 
 pin 書き込み失敗時に残った pin を消すのは、残る pin が前 run の開始点であり「pin より新しい
@@ -173,7 +175,7 @@ fresh review や Ctrl+C 中断と区別できる。`stop_reason` は後続の通
 ## notice-trend-and-notes
 
 推移行を省略しないのは、発火が「予算切れ」ではなく「構造的な発散の検出」であることを人間が
-読んで検証できる唯一の材料であり、AC-4 が通知への包含を要求しているため。上限到達だけを見て
+読んで検証できる唯一の材料であるため。上限到達だけを見て
 「発散判定をすり抜けた」と書くと、両方成立時や 3 cycle 未満の未実施時に事実に反する。
 
 差し替え条件を `TREND=` の空判定にしないのは、`need_3_cycles` だけが部分トレンドを非空で返す
@@ -257,7 +259,7 @@ handoff とも独立（handoff は one-shot consume される継続マーカー�
 完了通知の残件欄をテンプレート必須欄にするのは、LLM の自発的補足と Stop hook 差し戻し再出力の
 両方で欄が脱落する実測があるため。5.S overlay 後は残件 0 固定（JSON の配列長は消化前の値）。
 取得失敗は 5.S の fail-loud で停止し、完了通知へ進まない。0 件でも欄は省略しない。
-`done` のときだけ消化内訳行を足し、`noop` は従来の 0 件通知のまま（AC-4）。
+`done` のときだけ消化内訳行を足し、`noop` は従来の 0 件通知のまま。
 `[review:mergeable]` sentinel は下流 routing が依存するので変えない。
 replied-only / 中断 / サーキットブレーカーのテンプレートは対象外。
 
@@ -273,7 +275,7 @@ consume を `/rite:fix --nb-sweep` に閉じ、collect helper の issued/recorde
 
 再入の権威を会話 marker に置かないのは、`[fix:pushed]` でステップ 1 に戻ったあとに marker が
 見えなくなり 5.S が再走する実測があるため。会話 marker 既出を skip 条件に残すと、0.6 が
-ファイルを消した同一会話の再 iterate で AC-7 の再 sweep が死ぬ。`.rite/state/nb-sweep-done-{pr}.txt` の存在が
+ファイルを消した同一会話の再 iterate で再 sweep が死ぬ。`.rite/state/nb-sweep-done-{pr}.txt` の存在が
 skip（中身 1 行は完了通知の noop/done 出し分け）。書込直前に既存 `_ensure_dir_gitignore` を
 呼ぶのは、setup の dir_entry が `.rite/state/` を含まない消費者が `git add -A` で skip 権威
 ファイルを stage する穴を、setup 再実行に依存せず塞ぐため。新 helper は増やさない。失敗は

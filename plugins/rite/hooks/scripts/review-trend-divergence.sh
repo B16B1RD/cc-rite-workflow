@@ -8,6 +8,8 @@
 # Called from:
 #   - skills/iterate/SKILL.md ステップ 1 (発火条件チェック内、backstop 判定の直後)。
 #     上限未到達でも本 helper が fire を返せばブレーカーへ分岐する。
+# 根因・実作業時間の診断は review-stagnation の責務。既存の欠損修復と本発散判定が
+# 優先し、見直しを理由に fire を無視したり入力列を切り直したりしない。
 #
 # Usage:
 #   bash review-trend-divergence.sh --pr N --cycle-count N [--since BASENAME] [--results-dir PATH]
@@ -53,8 +55,8 @@
 #   | 10,11,11,13     | 上限より早く   | cycle 3    |
 #   | 10,9,8,7,6      | 上限保険へ     | 不発火     |
 #
-#   escape 節 (2) が AC-3 を非空虚にする — 漸減が続くが 0 に達しない run は本判定をすり抜け、
-#   従来どおり max_review_cycles で止まる。escape 節が無いと AC-3 のケースが本判定に吸われ、
+#   escape 節 (2) が上限保険のケースを非空虚にする — 漸減が続くが 0 に達しない run は本判定をすり抜け、
+#   従来どおり max_review_cycles で止まる。escape 節が無いと上限保険のケースが本判定に吸われ、
 #   「上限保険の維持」を検証するテストが空虚になる。
 #
 # 意図した境界: 最良水準での平坦は発火しない (`>` であって `>=` ではない):
@@ -81,7 +83,7 @@
 #         そのまま routing するため skew がその run の間ずっと解消しない。
 #   どちらの場合も「末尾 cycle_count 件」は前 run のファイルを現 run の先頭として取り込む。
 #   前 run の末尾は収束途中の低い件数であることが多く、それが prefix_min に入ると健全な run が
-#   発散判定で殺される — 本判定が最も避けたい false positive (AC-1 の否定) がまさに起きる。
+#   発散判定で殺される — 本判定が最も避けたい false positive がまさに起きる。
 #
 #   そこで run 境界は cycle_count ではなく **run 開始時点の pin** で復元する。
 #   `.rite/state/review-run-since-{pr}.txt` には、その run の 1 cycle 目に入る直前に存在していた
@@ -102,8 +104,8 @@
 #   診断 (WARNING / marker の `lost=`) に留めて実在する列で判定する。
 #
 # Why 判定不能を「発火しない」に倒すか:
-#   fallback ではなく設計。判定できない入力で発火させると健全な run を殺す (AC-1 の否定) が、
-#   発火させなければ max_review_cycles が従来どおり backstop として働く (AC-3)。
+#   fallback ではなく設計。判定できない入力で発火させると健全な run を殺すが、
+#   発火させなければ max_review_cycles が従来どおり backstop として働く。
 #   ただし **silent にはしない** — 理由を reason= に載せ、データ異常は WARNING を stderr へ出す。
 #
 # Exit codes:
@@ -324,7 +326,7 @@ fi
 # counter = 現 run の完了レビュー数 = 保存済みファイル数)。実在数が cycle_count を**超える**のは
 # 現 run の列に他 run のファイルが混ざっている証拠であり、その混入は前 run 末尾の低い件数を
 # prefix_min に持ち込んで健全な run を発散判定で殺す — 本判定が最も避けたい false positive
-# (AC-1 の否定) そのもの。pin が書けなかった / pin 導入前の run では since が空で全件を読むため、
+# そのもの。pin が書けなかった / pin 導入前の run では since が空で全件を読むため、
 # 複数 run が同居していればここで必ず捕まる (cycle_count=0 で `0 < _run_total` も同式が拾う)。
 # 不足側 (`<`) は run 内の欠落にすぎず判定を降ろさない — 降ろすと中断 1 回でその run の発散検出が
 # 恒久的に無効化される (旧 fewer_files_than_cycles の失敗)。**方向で扱いを分けるのが要点**。
@@ -446,7 +448,7 @@ fi
 
 # 全 cycle 時点を走査して最初に発散と判定される時点を返す。判定を「呼ばれた時点」ではなく
 # トレンド全体の純関数にすることで、resume や helper 導入前の run に対しても同一入力 →
-# 同一出力を保つ (AC-5 決定論)。live なループでは前 cycle で既に停止しているため、
+# 同一出力を保つ (決定論)。live なループでは前 cycle で既に停止しているため、
 # 走査結果は「最新時点だけを見た場合」と一致する。
 _fire_at=0
 for ((_i = 3; _i <= _n_cycles; _i++)); do

@@ -49,7 +49,7 @@ review/fix SKILL.md（各 4,040 行）の rationale を references へ退避す�
 - **量化スコープの保存**: 過大一般化されたコメントを「限定列挙 + 例外系統の明示」に復元する（例: retained flag / 引数 parse 系は stderr、WT_ENSURE / ROOT_CAUSE_GATE / WIKI_INGEST_* 等の status emit は stdout で別系統）
 - **量化表現の機械的疑義**: 転記文中の「各 / 全体 / すべて」を grep で洗い出し、実配置（単一 or 複数）と突合する
 - **両側検証**: 退避後は SKILL.md 本体だけでなく references 側の転記文も同じ観点で検証する（F-02 の教訓）
-- **AC-2 (bash 非コメント行不変) との両立**: 修正はコメント/散文 1 行のみで bash 実行内容不変を維持し、impact scan で同種パターンの他所出現・references への誤転記なしを確認してから適用する。伝播スキャン + references 側検証を fix 手順に含めたことで cycle 3 での新規発生ゼロにつながった
+- **bash 非コメント行不変との両立**: 修正はコメント/散文 1 行のみで bash 実行内容不変を維持し、impact scan で同種パターンの他所出現・references への誤転記なしを確認してから適用する。伝播スキャン + references 側検証を fix 手順に含めることで新たな誤転記を防ぐ
 
 ### 周辺観測（別 Issue 候補として記録）
 

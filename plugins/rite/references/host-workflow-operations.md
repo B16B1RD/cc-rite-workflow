@@ -27,11 +27,11 @@ native task 機能があれば既存手順で使う。無い実行面では、�
 |---|---|
 | native named Agent/Task | 選定済み `rite:{type}-reviewer` を指定し、実 ID と completion notification を回収する |
 | named agent が公開されず独立子は利用可能 | 配布内 `agents/{type}-reviewer.md` と `agents/_reviewer-base.md`、必要な参照の絶対パスと着手前の全文読取義務、制約・差分・仕様・絶対 workdir を native 子の prompt へ明示する。子は raw 出力の先頭行で読取完了を申告する（[本文の引き渡し](#本文の引き渡し)） |
-| 独立子・必要な並列性・読取専用制約を維持できない | 起動前に不足能力を診断し `[review:error]`。自己レビューや人数削減で代替しない |
+| 独立子・利用可能な子枠・読取専用制約を維持できない | 起動前に不足能力を診断し `[review:error]`。自己レビューや人数削減で代替しない |
 
 Codex の `spawn_agent` では named reviewer の frontmatter `model: inherit` と `effort: high` を尊重する。公開 schema が effort を設定できる場合は設定する。Grok でも同じ絶対パス集合と読取義務を渡すが、frontmatter が実際に適用されるとは仮定しない。ホストで強制できない制約は子の指示へ明示し、結果と変更前後の state snapshot で確認する。権限拒否された起動を別経路へ置換しない。
 
-起動時に選定名簿と親/子の実 ID・時刻を保持し、全 completion を待つ。子が失敗したら既存の1回再試行を適用し、再失敗は incomplete として停止する。残りの成功結果は保持する。
+起動前に `flow-state.sh review-start --selection <絶対パスの JSON 配列>` で全選定名簿と `review_context` を固定する。利用可能な子枠を実際の tool schema / runtime から確認し、名簿が枠を超える場合は組に分ける（親を含む 4 枠なら子は最大 3 人）。各組の回収後に枠を解放し、次の組を起動する。親/子の実 ID・時刻を保持し、全組・全員の completion を待つ。子が失敗したら既存の1回再試行を適用し、再失敗は incomplete として停止する。残りの成功結果は保持する。
 
 ### 本文の引き渡し
 
@@ -48,15 +48,17 @@ named agent が公開されないホストでは、reviewer 本文を prompt へ
 
 ### 回収ゲート
 
-選定名簿は起動前の値を固定し、回収不能な reviewer を削除しない。raw 出力は編集せず絶対パスのファイルへ保存する。ホストの実出力から次の manifest を `REVIEW_TMP_DIR/rite-review-{session_id}-{pr_number}-{cycle_count}-{orchestrator_spawn_at}/reviewer-completions.json` に保存する（各値は pr-review で取得した現在 session・PR・cycle・初回 spawn 時刻）。同じディレクトリに reviewer ごとの raw 出力を置き、別 session / cycle の manifest を流用しない。本文の引き渡し経路では、helper を実行する前に各 raw 出力の先頭行の読取完了申告が渡した全パスと一致することを確認する。
+選定名簿は起動前の値を固定し、回収不能な reviewer を削除しない。raw 出力は編集せず絶対パスのファイルへ保存する。ホストの実出力から次の manifest を `REVIEW_TMP_DIR/rite-review-{session_id}-{run_id}-{pr_number}-{cycle_count}/reviewer-completions.json` に保存する（各値は `review-start` が返した context）。同じディレクトリに reviewer ごとの raw 出力を置き、別 session / cycle の manifest を流用しない。本文の引き渡し経路では、helper を実行する前に各 raw 出力の先頭行の読取完了申告が渡した全パスと一致することを確認する。
 
 ```json
 {
   "schema_version": 1,
+  "review_context": {"session_id":"actual-session", "run_id":"actual-run", "pr_number":123, "cycle_count":1, "commit_sha":"actual-full-head-sha"},
   "parent_agent_id": "actual-parent-id",
   "selected_reviewers": ["security-reviewer"],
   "reviewers": [{
     "reviewer": "security-reviewer",
+    "review_context": {"session_id":"actual-session", "run_id":"actual-run", "pr_number":123, "cycle_count":1, "commit_sha":"actual-full-head-sha"},
     "agent_id": "actual-child-id",
     "status": "completed",
     "started_at": "2026-01-01T00:00:00Z",
@@ -73,6 +75,14 @@ bash {plugin_root}/hooks/scripts/reviewer-completion-check.sh --input "{reviewer
 ```
 
 `{reviewer_completions_file}` は保存した manifest の絶対パス。非ゼロなら失敗 reviewer と理由を診断し `[review:error]` を返す。指摘統合・mergeable 判定には進まない。pass は回収条件だけの検証であり、指摘の正しさは既存の Critic フェーズで検証する。
+
+### 回収・保存・工程遷移
+
+統合結果にも同一 `review_context` を記録し、pr-review の measured / AC ゲート適用後に `flow-state.sh review-finish --manifest <絶対パス> --content-file <絶対パス> [--pending-id <id>]` を実行する。completion helper と saver を再利用し、名簿全員・各 context・保存ファイルを検証する。失敗は未完了の state と成功結果を保持して停止し、fix / ready / 次 cycle へ進めない。通常の `flow-state.sh set` による未検証遷移も拒否する。
+
+工程の権威は自セッションの `review_cycle`。`collecting` は同じ cycle で再開し、`completed` は保存先を再検証して未完了の後続ゲートに戻る。review-finish の成功だけで最終 sentinel / handoff を発行しない。
+
+この強制範囲は helper とそれを通る通常 caller である。state ファイルの直接編集や、ホストが公開していない自動イベントの遮断までは保証しない。明示的 host-runtime 呼出しの実測と、自動 hook の適用範囲を区別して報告する。
 
 ## 質問と承認
 

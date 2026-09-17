@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: scripts/rite-dev <claude|codex|grok> [host arguments...]
+Usage: scripts/rite-dev <claude|codex|grok|agy> [host arguments...]
 
 Launch an AI coding host against the rite plugin in this working tree.
 
@@ -11,12 +11,14 @@ Examples:
   scripts/rite-dev claude
   scripts/rite-dev codex
   scripts/rite-dev grok
+  scripts/rite-dev agy
   scripts/rite-dev codex "inspect the current issue"
 
 The launcher keeps host-global rite installations out of the dogfooding path:
   claude  loads plugins/rite explicitly with --plugin-dir
   codex   uses the repository-local .codex-dev profile in auto-approval mode
   grok    uses the repository-local .grok configuration and plugin symlink
+  agy     uses the repository-local .agents skills in auto-approval mode
 EOF
 }
 
@@ -97,8 +99,33 @@ case "$host" in
       die "expected $grok_link to resolve to $plugin_root"
     exec grok --cwd "$repo_root" "$@"
     ;;
+  agy)
+    command -v agy >/dev/null 2>&1 || die "agy executable not found"
+    agy_skills="$repo_root/.agents/skills"
+    if [[ -L "$agy_skills" || ( -e "$agy_skills" && ! -d "$agy_skills" ) ]]; then
+      die "expected $agy_skills to be a directory reserved for Antigravity state"
+    fi
+    mkdir -p "$agy_skills"
+
+    for skill_dir in "$plugin_root"/skills/*; do
+      [[ -f "$skill_dir/SKILL.md" ]] || continue
+      skill_name=${skill_dir##*/}
+      skill_link="$agy_skills/$skill_name"
+      if [[ -e "$skill_link" || -L "$skill_link" ]]; then
+        [[ -L "$skill_link" ]] || \
+          die "expected $skill_link to be a symlink to $skill_dir"
+        linked_skill=$(cd -- "$(dirname -- "$skill_link")" && cd -- "$(readlink -- "$skill_link")" 2>/dev/null && pwd -P) || \
+          die "expected $skill_link to resolve to $skill_dir"
+        [[ "$linked_skill" == "$skill_dir" ]] || \
+          die "expected $skill_link to resolve to $skill_dir"
+      else
+        ln -s "$skill_dir" "$skill_link"
+      fi
+    done
+    exec agy --dangerously-skip-permissions "$@"
+    ;;
   *)
     usage >&2
-    die "unknown host '$host' (expected claude, codex, or grok)"
+    die "unknown host '$host' (expected claude, codex, grok, or agy)"
     ;;
 esac

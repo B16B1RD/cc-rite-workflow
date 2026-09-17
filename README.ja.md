@@ -2,7 +2,7 @@
 
 > Claude Code のための汎用 Issue ドリブン開発ワークフロー
 
-[![Version](https://img.shields.io/badge/version-0.15.1-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.15.1)
+[![Version](https://img.shields.io/badge/version-0.16.0-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.16.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 [English](README.md) | **日本語**
@@ -112,7 +112,7 @@ Rite Workflow は 3 ステップでインストールします。マーケット
 | `/rite:issue-create` | 新規 Issue を作成 |
 | `/rite:issue-update` | 作業メモリを更新 |
 | `/rite:issue-close` | Issue の完了状態を確認 |
-| `/rite:issue-cancel` | Issue を中止（not planned でクローズ・board Status → Cancelled・PR / ブランチ / worktree を後片付け） |
+| `/rite:issue-cancel` | Issue を中止（not planned でクローズ・board Status → `cancelled` role の列（設定時のみ）・PR / ブランチ / worktree を後片付け） |
 | `/rite:issue-edit` | 既存 Issue を対話的に編集 |
 | `/rite:open` | 作業を一気通貫で開始（ブランチ → 計画 → 実装 → lint → draft PR） |
 | `/rite:iterate` | mergeable になるまで review ⇄ fix をループ |
@@ -144,10 +144,12 @@ Rite Workflow は 3 ステップでインストールします。マーケット
 
 ステータス遷移:
 ```
-Todo → In Progress → In Review → Done
- ↑         ↑            ↑         ↑
-作成     作業開始     Ready 設定  マージ済
+todo → in_progress → in_review → done      (cancelled: terminal, outside the order)
+ ↑         ↑            ↑          ↑
+Create   Start Work   Set Ready   Merged
 ```
+
+上図は rite が内部で扱う固定の Status **role** です。各 role をボード上のどの列として表示するかは `rite-config.yml`（`github.projects.fields.status.options`、列ごとに `{ role, name }` を 1 行）で宣言するため、既存のボードは列名（例: `To-Do` / `In progress`、日本語名）をそのまま使えます。rite は自分が作成していないボードの option を追加・改名・削除しません。中止列が無いボードでは `cancelled` 行を省略します。`role` キーが 1 つも無い場合は英語標準名 `Todo` / `In Progress` / `In Review` / `Done` / `Cancelled` とみなします。4 つのボード形態の設定例は[設定リファレンス](docs/CONFIGURATION.md#githubprojectsfields)を参照してください。
 
 ## 設定
 

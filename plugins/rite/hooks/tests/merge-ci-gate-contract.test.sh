@@ -11,6 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_test-helpers.sh"
 
 MERGE="$SCRIPT_DIR/../../skills/merge/SKILL.md"
+READY="$SCRIPT_DIR/../../skills/ready/SKILL.md"
 CLASSIFIER="$SCRIPT_DIR/../scripts/pr-checks-classify.sh"
 PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 
@@ -45,6 +46,62 @@ assert_grep "classification failure is surfaced" "$MERGE" '分類不能.*原因�
 assert_grep "classification failure is fail closed" "$MERGE" '`force_ci == false` では必ず `\[merge:not-ready\]` へ倒す'
 assert_grep "explicit force-ci override is documented" "$MERGE" '/rite:merge --force-ci \{pr_number\}'
 
+echo "=== reviewed-head and acceptance gate routing ==="
+assert_grep "merge inspect uses reviewed-head helper" "$MERGE" \
+  'ready-reviewed-head-gate.sh.*\\'
+assert_grep "merge captures acceptance state" "$MERGE" \
+  'reviewed_ac_state=\$\(printf.*REVIEWED_AC='
+assert_grep "merge captures unverified IDs for attestation" "$MERGE" \
+  'reviewed_ac_ids=.*ac='
+assert_grep "merge blocks unmet acceptance" "$MERGE" \
+  'reviewed_ac_state.*unmet'
+assert_grep "merge e2e detection reads flow phase" "$MERGE" \
+  'flow-state.sh" get --field phase'
+assert_grep "merge e2e detection reads active run queue" "$MERGE" \
+  'queue_active.*\.active // false'
+assert_grep "merge e2e detection compares cursor issue" "$MERGE" \
+  'queue_issue.*\.issues\[\.cursor // 0\]'
+assert_grep "merge batch/e2e unverified path does not ask" "$MERGE" \
+  'true` なら AskUserQuestion を挟まず `\[merge:not-ready\]`'
+assert_grep "merge standalone path attests selected IDs" "$MERGE" \
+  'attest "\$reviewed_ac_ids"'
+assert_grep "merge final gate enforces acceptance" "$MERGE" \
+  'plugin-root "\{plugin_root\}" --enforce-ac'
+assert_grep "force-ci cannot bypass acceptance gate" "$MERGE" \
+  '`--force-ci` は CI だけの override.*AC gate を迂回しない'
+enforce_line=$(grep -n -- '--enforce-ac' "$MERGE" | tail -1 | cut -d: -f1)
+merge_line=$(grep -n '^if gh pr merge ' "$MERGE" | head -1 | cut -d: -f1)
+if [ -n "$enforce_line" ] && [ -n "$merge_line" ] && [ "$enforce_line" -lt "$merge_line" ]; then
+  pass "acceptance enforce is ordered before gh pr merge"
+else
+  fail "acceptance enforce must precede gh pr merge (enforce=$enforce_line merge=$merge_line)"
+fi
+assert_grep "ready inspect uses reviewed-head helper" "$READY" \
+  'reviewed_gate_out=\$\(bash .*ready-reviewed-head-gate.sh'
+assert_grep "ready Phase 1 override keeps acceptance enforcement" "$READY" \
+  'plugin-root "\$plugin_root" \{reviewed_head_inspect_args\} 2>&1'
+assert_grep "ready captures unverified IDs for attestation" "$READY" \
+  'reviewed_ac_ids=.*ac='
+assert_grep "ready standalone path attests selected IDs" "$READY" \
+  'attest "\$reviewed_ac_ids"'
+assert_grep "ready e2e unverified path stops without a question" "$READY" \
+  'in_e2e_flow=true.*質問せず.*\[ready:error\]'
+assert_grep "ready invalid AC states never reach attestation" "$READY" \
+  'unmet / missing / malformed.*standalone.*質問や attest に送らない'
+assert_grep "ready final gate enforces acceptance" "$READY" \
+  'plugin-root "\$plugin_root" --enforce-ac'
+assert_grep "ready unmet branch uses an exact blocking comparison" "$READY" \
+  '^if \[ "\$reviewed_ac_state" = "unmet" \] \|\| \[ "\$reviewed_ac_state" = "missing" \] \|\| \[ "\$reviewed_ac_state" = "malformed" \]; then$'
+assert_grep "explicit reviewed-head override preserves AC enforcement" "$READY" \
+  '.*--enforce-ac \{reviewed_head_override_arg\}'
+ready_enforce_line=$(grep -n -- '--enforce-ac' "$READY" | tail -1 | cut -d: -f1)
+ready_call_line=$(grep -n '^gh pr ready ' "$READY" | head -1 | cut -d: -f1)
+if [ -n "$ready_enforce_line" ] && [ -n "$ready_call_line" ] && [ "$ready_enforce_line" -lt "$ready_call_line" ]; then
+  pass "ready acceptance enforce is ordered before gh pr ready"
+else
+  fail "ready acceptance enforce must precede gh pr ready (enforce=$ready_enforce_line ready=$ready_call_line)"
+fi
+
 echo "=== job classification facts ==="
 assert_grep "jobs API is the classification input" "$MERGE" 'actions/runs/\{run_id\}/jobs --paginate'
 assert_grep "never-run predicate uses empty runner and zero steps" "$MERGE" '`runner_name` が空、かつ `steps \| length == 0`'
@@ -72,7 +129,7 @@ timeout_prev=$(awk '
   s && /^```bash$/ { print prev; exit }
   { prev = $0 }
 ' "$MERGE")
-if printf '%s\n' "$timeout_prev" | grep -q 'timeout: 600000'; then
+if printf '%s\n' "$timeout_prev" | grep -c >/dev/null 'timeout: 600000'; then
   pass "T-09 timeout: 600000 is the line immediately before the step-1 bash fence"
 else
   fail "T-09 timeout: 600000 must be the line immediately before the step-1 bash fence (got: $timeout_prev)"
@@ -223,12 +280,12 @@ assert "T-03 gh pr merge was not called" "0" "$STEP1_MERGE"
 rm -rf "$STEP1_SANDBOX"
 
 run_step1 "pending2" "1"
-if printf '%s\n' "$STEP1_OUT" | grep -q '\[merge:not-ready\]'; then
+if printf '%s\n' "$STEP1_OUT" | grep -c >/dev/null '\[merge:not-ready\]'; then
   pass "T-04 timeout emits [merge:not-ready]"
 else
   fail "T-04 timeout did not emit [merge:not-ready] (out=$STEP1_OUT)"
 fi
-if printf '%s\n' "$STEP1_ERR" | grep -q 'tests' && printf '%s\n' "$STEP1_ERR" | grep -q 'lint'; then
+if printf '%s\n' "$STEP1_ERR" | grep -c >/dev/null 'tests' && printf '%s\n' "$STEP1_ERR" | grep -c >/dev/null 'lint'; then
   pass "T-04 timeout stderr lists pending check names"
 else
   fail "T-04 timeout stderr missing pending check names (err=$STEP1_ERR)"
@@ -262,12 +319,12 @@ assert "T-08 checks 0 sleep count is 0" "0" "$STEP1_SLEEP"
 rm -rf "$STEP1_SANDBOX"
 
 run_step1 "pending2,fail" "1"
-if printf '%s\n' "$STEP1_OUT" | grep -q '\[merge:not-ready\]'; then
+if printf '%s\n' "$STEP1_OUT" | grep -c >/dev/null '\[merge:not-ready\]'; then
   pass "loop-mid gh failure emits [merge:not-ready]"
 else
   fail "loop-mid gh failure missing [merge:not-ready] (out=$STEP1_OUT)"
 fi
-if printf '%s\n' "$STEP1_ERR" | grep -q 'PR/CI 状態を取得できないためマージしません'; then
+if printf '%s\n' "$STEP1_ERR" | grep -c >/dev/null 'PR/CI 状態を取得できないためマージしません'; then
   pass "loop-mid gh failure uses the existing ERROR text"
 else
   fail "loop-mid gh failure missing existing ERROR text (err=$STEP1_ERR)"

@@ -333,7 +333,7 @@ fi
 
 その後 [共通作業先契約](../../references/git-worktree-patterns.md#host-worktree-execution) を読み、`{wt_path}` への native / 検証済み `workdir` / 毎回 `cd` 経路を選ぶ。`EnterWorktree` が利用可能な場合は `path: {wt_path}` で呼ぶ。`multi_session.enabled: true` と本コマンドが入場の明示指示であり、ツール不在だけを理由に追加承認を求めない。権限拒否では代替を試さない。
 
-**native 入場失敗の診断**: git probe 成功なのに「not in a git repository」なら worktree を保持し、リポジトリ root から Claude Code を再起動して再実行する。path 消失などは `/rite:recover {issue_number}` の再構築へ委譲する。分離を捨てる `git switch -c` での続行は行わない。
+**native 入場失敗の診断**: git probe 成功なのに「not in a git repository」なら worktree を保持し、リポジトリ root から Claude Code を再起動して再実行する。ホストの作業先が前の Issue の登録済みセッション worktree に残っている場合は、共通作業先契約の [残留診断](../../references/git-worktree-patterns.md#native-入場が前のセッション-worktree-への残留で拒否される)（保持しての native 退出 → main root 確認 → 再入場 1 回）に従う（手順は契約側のみが持つ）。path 消失などは `/rite:recover {issue_number}` の再構築へ委譲する。分離を捨てる `git switch -c` での続行は行わない。
 
 rationale: references/rationale.md#worktree-entry-failure
 
@@ -380,10 +380,10 @@ status_json_args=$(jq -n \
   --arg owner "{owner}" \
   --arg repo "{repo}" \
   --argjson project_number {project_number} \
-  --arg status "In Progress" \
+  --arg role "in_progress" \
   --argjson auto_add true \
   --argjson non_blocking true \
-  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_role:$role, auto_add:$auto_add, non_blocking:$non_blocking}')
 # `|| status_json=""` は付けない — このブロックに set -e はなく、command substitution は
 # script が非ゼロ終了しても stdout (script が既に出力した失敗理由入り JSON) を正しく capture
 # するため、fallback を付けるとその診断情報を空文字列で上書き・破棄してしまう
@@ -413,7 +413,7 @@ echo "[CONTEXT] PROJECTS_STATUS=$status_result; issue={issue_number}"
 **(B) 親 Issue の Status 更新（Sub-Issue 着手時）** — (A) と独立に必ず実行する。ロジックの SoT は `projects-integration.md` §2.4.7:
 
 1. **§2.4.7.1 親検出（3-method OR）**: `## 親 Issue` body meta（PRIMARY）→ Sub-Issues API → tasklist search。この 3-method 構造は `../skills/issue-close/SKILL.md` Phase 4.5.1 と同一に保つ（Method 3 の `--state open` は start 側固有の意図的差異）。
-2. 親を検出したら **§2.4.7.2–2.4.7.4**: Status が **Todo または null のときのみ** In Progress にする。既に In Progress / In Review / Done なら上書きしない（sibling child の進捗を保持する）。
+2. 親を検出したら **§2.4.7.2–2.4.7.4**: 盤面の列名を `rite-config.yml` の role に変換し、role が **`todo` または Status 未設定のときのみ** `in_progress` 列へ更新する（書き込みは `projects-status-update.sh` に `status_role: in_progress` で委譲）。既に `in_progress` / `in_review` / `done` / `cancelled` なら上書きしない（sibling child の進捗を保持する）。role に対応しない列も上書きしない。
 3. 親が無い standalone Issue は `[DEBUG] parent not detected for issue #{issue_number} — processing as standalone (methods tried: body_meta, sub_issues_api, tasklist_search)` を emit して skip する（silent skip 禁止）。
 4. 親を検出した場合は、その番号を `{parent_issue_number}` として retain し、ステップ 2.6 の `flow-state.sh set` へ渡す（standalone のときは retain しない）。Status 更新の成否とは独立に retain する — (B) は non-blocking だが、flow-state への記録が漏れると `/rite:issue-implement` 5.1.2 の親進捗更新が常に skip される。
 
@@ -450,7 +450,7 @@ echo "[CONTEXT] WM_REPLICA_INIT=$(printf '%s\n' "$init_out" | sed -n 's/^status=
 ゲートは flow-state の `set` と**同じ bash ブロック**に置く。別ブロックに分けると、2.4(A) を飛ばした実行はゲートのブロックも同じように飛ばせてしまう — 検証したい唯一の failure mode でゲートごと消える。`set` は phase を進める必須手順なので、そこに同乗させれば実行が保証される。
 
 ```bash
-bash {plugin_root}/hooks/scripts/projects-status-gate.sh --issue {issue_number} --expect "In Progress"
+bash {plugin_root}/hooks/scripts/projects-status-gate.sh --issue {issue_number} --expect in_progress
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase branch --issue {issue_number} --branch {branch_name} --pr 0 \
   --next "実装計画策定へ進む"
@@ -460,10 +460,10 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 | `PROJECTS_STATUS_INVARIANT` | アクション |
 |---|---|
-| `ok` | 盤面が `In Progress` 以降に到達済み。ステップ 3 へ進む |
+| `ok` | 盤面の列が role `in_progress` 以降に到達済み（列名は `rite-config.yml` の `fields.status.options` で role に変換される）。ステップ 3 へ進む |
 | `skipped` | 検証対象なし（Projects 無効 / `project_number` 未設定 / `rite-config.yml` 不在）。ステップ 3 へ進む |
 | `unknown` | 検証自体が失敗した（gh / jq エラー、または Issue 番号・owner/repo が解決しない。stderr に原因）。**`ok` として扱わない**。警告を表示してステップ 3 へ進む（再実行はしない — 盤面の状態が不明なだけで、更新が失敗したとは限らない） |
-| `missing` | 2.4(A) が盤面に届いていない（Status が期待に達していない / Status 値が空 / Issue が Project 未登録）。**2.4(A) の bash を 1 回だけ再実行**してステップ 3 へ進む |
+| `missing` | 2.4(A) が盤面に届いていない（role が `in_progress` に達していない / Status 値が空 / Issue が Project 未登録）。**2.4(A) の bash を 1 回だけ再実行**してステップ 3 へ進む。ただし `role=` が空で `status=` に列名が入っている（`<no-status>` / `<not-on-board>` の sentinel ではなく盤面の列名。列が role に対応しない。stderr に列名）ときは再実行しない — ユーザーが置いた列を上書きしないため、警告を表示してステップ 3 へ進む |
 
 `missing` の再実行の終端契約: 再実行では `[CONTEXT] PROJECTS_STATUS=` を再度 1 回だけ emit する。**ゲートは再呼び出ししない**（再々実行のループを構造的に作らない）。再実行も失敗した場合は最後の `PROJECTS_STATUS=` 値を残したままステップ 3 へ進む — ブロックも 3 回目の実行もしない。
 
@@ -571,7 +571,7 @@ echo "[CONTEXT] OPEN_PLAN_MODE=$plan_mode; issue={issue_number}"
 | `OPEN_PLAN_MODE` | アクション |
 |---|---|
 | `batch` | 計画を**自動承認**（AskUserQuestion を出さない）。3.3 の計画（要判断ポイント含む）は記録として表示済みのまま、ステップ 3.5 へ直行する |
-| `interactive` | AskUserQuestion で「この計画で実装開始 / 計画を修正 / 中止」を選択（standalone。従来どおり。AC-4 回帰なし） |
+| `interactive` | AskUserQuestion で「この計画で実装開始 / 計画を修正 / 中止」を選択（standalone。従来どおり） |
 
 3.3.1 の `PLAN_REVIEW=` を承認材料に含める（`done` = 指摘件数と反映内容、または指摘なし。`unavailable` = 「計画レビュー未実施」。marker なし = XS skip で追加提示しない）。
 3.4 / 3.5 / 3.6 の入力は 3.3.1 反映後の計画（未実施なら 3.3 のまま）。

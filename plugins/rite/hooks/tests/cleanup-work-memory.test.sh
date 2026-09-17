@@ -11,19 +11,19 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=_hermetic-env.sh
+source "$SCRIPT_DIR/_hermetic-env.sh" || { echo "ERROR: cannot source _hermetic-env.sh" >&2; exit 1; }
 HOOK="$SCRIPT_DIR/../cleanup-work-memory.sh"
 TEST_DIR="$(mktemp -d)"
 PASS=0
 FAIL=0
 
-# Clean session-id env for standalone runs (same convention as flow-state.test.sh).
+# Clean session-id env for standalone runs.
 # cleanup-work-memory.sh now resolves its flow-state file via flow-state.sh path,
-# which is env-first (CLAUDE_CODE_SESSION_ID / CLAUDE_SESSION_ID). Without this
-# unset, the dogfooding session's ambient session id would leak in and override
+# which is env-first (CLAUDE_CODE_SESSION_ID / CLAUDE_SESSION_ID). Without
+# `_hermetic-env.sh`, the dogfooding session's ambient session id would leak in and override
 # each test's seeded .rite-session-id, resolving to a path outside TEST_DIR and
 # silently no-op'ing the Step 1 flow-state reset under test.
-unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
-
 cleanup() { rm -rf "$TEST_DIR"; }
 trap cleanup EXIT
 
@@ -155,7 +155,7 @@ exec /bin/mv "$@"
 MV_SHIM
 chmod +x "$dir003/bin/mv"
 stderr003=$(cd "$dir003" && PATH="$dir003/bin:$PATH" bash "$HOOK" 2>&1 >/dev/null || true)
-if printf '%s' "$stderr003" | grep -qE 'flow-state の更新に失敗しました \(mv rc=[1-9][0-9]*\)'; then
+if printf '%s' "$stderr003" | grep -cE >/dev/null 'flow-state の更新に失敗しました \(mv rc=[1-9][0-9]*\)'; then
   pass "TC-003: Step 1 mv WARNING carries real rc"
 else
   fail "TC-003: Step 1 mv WARNING missing or rc collapsed (a bash-! regression would emit rc=0). stderr: $stderr003"

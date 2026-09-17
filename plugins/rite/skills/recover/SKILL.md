@@ -188,6 +188,7 @@ bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --i
 **EnterWorktree が失敗した場合**（`reenter` / `reconstructed` 経路の `EnterWorktree(path)` がエラー）: open Step 2.3-W と同じ切り分けを行い、**silent に新規セッション扱いしない**。
 
 - **harness の git 誤判定**（`.git` が存在し `git -C "{path}" rev-parse` は成功するのに、起動コンテキストが `Is a git repository: false` で EnterWorktree が「not in a git repository」エラーを返す）→ **推奨**。診断とともに「**リポジトリ root から Claude Code を再起動**し、`/rite:recover {issue_number}` を再実行すれば、登録済み worktree が `WT_ENSURE=reenter` で再入場される」と案内する。worktree は保持済みのため破壊しない。
+- **前のセッション worktree への残留**（ホストの作業先が別 Issue の登録済みセッション worktree に残っている）→ 共通作業先契約の [残留診断](../../references/git-worktree-patterns.md#native-入場が前のセッション-worktree-への残留で拒否される)（保持しての native 退出 → main root 確認 → 再入場 1 回）に従う。手順は契約側のみが持ち、本スキルに複製しない。
 - **worktree path 消失などの別要因** → 再度本ヘルパーを実行すれば `branch_absent` 以外なら再構築される。再起動案内へ誤誘導しない。
 
 `already_in` / `reenter` / `reconstructed` はいずれも共通作業先契約の変更前検証を実行する。現在 session の state 不在時は、所有権照合済みの復旧 phase / PR を `entry_phase` / `pr_number` に渡す。phase がまだ不明なら `init` / PR 未判明なら `0` として入場を記録し、Phase 3.3 の既存クロスチェックで復旧 phase を確定する。実体・claim 照合後だけ初回 state を作り、既存 state は上書きしない。成功後に claim の worktree path を記録し、Phase 3.2 以降を同じ作業先で実行する。
@@ -276,7 +277,7 @@ rationale: references/rationale.md#conflict-priority
 - **解消してから継続（推奨）** — ユーザーがコンフリクトを手動解消（`git` の merge/rebase 続行 or `--abort`）した後、`/rite:recover {issue_arg}` を再実行する旨を案内していったん終了する。解消により上記 signal が消えれば、再実行時は本判定を通過して従来の cross-check に進む
 - **中止** — 何もせず終了する
 
-非コンフリクト時（上記 4 条件すべて不成立）は本判定を skip し、Phase 3.5 の従来 4 指標クロスチェックへそのまま進む（AC-3: 非干渉）。
+非コンフリクト時（上記 4 条件すべて不成立）は本判定を skip し、Phase 3.5 の従来 4 指標クロスチェックへそのまま進む。
 
 ### 3.5 整合性判定 (cross-check)
 
@@ -340,7 +341,7 @@ if [ "{resolved_phase}" = "cleanup" ] || [ "{resolved_phase}" = "completed" ]; t
 fi
 ```
 
-`[CONTEXT] RECOVER_OUTSTANDING_WIKI=` / `RECOVER_OUTSTANDING_BRANCH=` marker のいずれかがあれば、Phase 4.1 の状態サマリに以下を追記する（無ければ追記しない — silent、AC-3 相当の「なし」を明示するのは cleanup 自身の完了報告の責務であり、本節は検出のみ）:
+`[CONTEXT] RECOVER_OUTSTANDING_WIKI=` / `RECOVER_OUTSTANDING_BRANCH=` marker のいずれかがあれば、Phase 4.1 の状態サマリに以下を追記する（無ければ追記しない — silent、未完了事項「なし」を明示するのは cleanup 自身の完了報告の責務であり、本節は検出のみ）:
 
 ```
 ⚠️ 未完了事項を検出しました:
@@ -449,6 +450,33 @@ bash {plugin_root}/hooks/flow-state.sh set \
 | `ingest` | `/rite:wiki-ingest` を再呼び出し |
 | `completed` | Issue は完結済。AskUserQuestion で「新規作業として再開 / 終了」 |
 
+### review-cycle の再開
+
+`review_run` がある場合は [停滞診断の回復規則](../../references/review-stagnation.md) を先に適用する。未閉の時計区間は中断として閉じ、保存済み区間の再送では時刻を変更しない。観測・修正・見直し履歴と counter は保持する。`current_decision.action=stop` は同じ停止理由を返し、再設計・counter reset・新 run 作成で迂回しない。保存済み観測がない completed cycle は pr-review の停滞観測保存へ戻る。
+
+`phase=review` では自セッションの `flow-state.sh get --jq-filter .` を読み、`review_cycle.review_context` の PR / HEAD を現在値と照合する。不一致・破損は理由を出して停止し、別 session の結果を流用しない。
+
+| 状態 | 再開位置 |
+|---|---|
+| `collecting`、manifest / content が未登録 | 固定名簿と context から pr-review 4.0 のディレクトリを復元し manifest / raw を読む。成功分を保持し、不足 reviewer だけ同一 cycle で再取得する |
+| `collecting`、`manifest_path` / `content_file` あり | 下の `review-finish` を再実行する。保存前・保存直後・完了記録前の中断も同じ入力を使う。`pending_id` は helper が保存済みの値を再利用する |
+| `completed`、最終 gate 未完了 | `result_path` を読み、同じ `review-finish` で保存結果を再検証してから pr-review ステップ 6 の残作業〜8 の全 gate へ戻る。新 cycle や fix / ready を直接始めない |
+| `review_cycle` なし | 既存の iterate の lost 修復と新規開始手順へ。過去の保存 JSON だけを新 cycle の完了証跡にしない |
+
+```bash
+# review-cycle-recover
+review_state=$(bash {plugin_root}/hooks/flow-state.sh get --jq-filter .) || exit 1
+manifest_path=$(printf '%s' "$review_state" | jq -er '.review_cycle.manifest_path') || exit 1
+content_file=$(printf '%s' "$review_state" | jq -er '.review_cycle.content_file') || exit 1
+bash {plugin_root}/hooks/flow-state.sh review-finish \
+  --manifest "$manifest_path" --content-file "$content_file" || {
+  echo "[review:error]"
+  exit 1
+}
+```
+
+review-finish の保存検証を通過しても、既存の HEAD / AC / measured / Wiki ゲートや sentinel は代替しない。iterate は再開 cycle の breaker / lost 判定と counter 加算を保留する。手動の phase 変更・counter reset で未回収や保存失敗を迂回しない。
+
 ### 5.4 invoke
 
 確定した phase に応じて native Skill または共通契約の本文実行で対応コマンドを呼ぶ。引数として `{issue_arg}` (`open`) または `{pr_number}` (`iterate` / `ready` / `cleanup`) を渡す。
@@ -490,7 +518,7 @@ else
   elif [ "$q_cursor_issue" != "{issue_arg}" ]; then
     echo "[CONTEXT] BATCH_CONTINUE=none; reason=cursor_mismatch; cursor_issue=$q_cursor_issue"
   elif [ -z "$q_updated_at" ]; then
-    # updated_at 欠落 (旧形式 run-queue) = 鮮度不明として安全側 stale 扱い (AC-6)
+    # updated_at 欠落 (旧形式 run-queue) = 鮮度不明として安全側 stale 扱い
     echo "[CONTEXT] BATCH_CONTINUE=none; reason=stale_no_timestamp"
   else
     state_epoch=$(parse_iso8601_to_epoch "$q_updated_at")
@@ -514,9 +542,9 @@ fi
 
 | `BATCH_CONTINUE` | アクション |
 |---|---|
-| `none; reason=no_queue_file` | 通常の recover として完了（Phase 6 へ）。追記なし（AC-3） |
-| `none`（その他の reason） | 通常の recover として完了（Phase 6 へ）。完了レポートに「自セッションの run-queue に残存キューがあります。`/rite:batch-run` で状況を確認/再開できます」の 1 行を追記する（AC-2, AC-4, AC-6） |
-| `eligible` | 「この Issue は `/rite:batch-run` 実行中の中断と判定したため、残り {remaining} 件のキュー処理を継続します」と通知した上で 5.5.3 へ進む（AC-1） |
+| `none; reason=no_queue_file` | 通常の recover として完了（Phase 6 へ）。追記なし |
+| `none`（その他の reason） | 通常の recover として完了（Phase 6 へ）。完了レポートに「自セッションの run-queue に残存キューがあります。`/rite:batch-run` で状況を確認/再開できます」の 1 行を追記する |
+| `eligible` | 「この Issue は `/rite:batch-run` 実行中の中断と判定したため、残り {remaining} 件のキュー処理を継続します」と通知した上で 5.5.3 へ進む |
 
 <!-- run orchestration: after emitting the eligible notification, do NOT stop — proceed directly to 5.5.3 (resolved_phase 分岐の invoke)。batch-run 側にこの継続を担う handoff/Stop-hook は無いため、recover 自身が flat 構造 + 本 HTML hint で継続を保証する（batch-run の「エラー時の方針」節・「設計判断: handoff 不使用」節と同じ理由）。 -->
 

@@ -1724,7 +1724,7 @@ echo ""
 # Pattern 5: Merge-point review-result positive gate
 # --------------------------------------------------------------------------
 # Isolates state via RITE_STATE_ROOT so real repo review-results never leak in.
-# Sole-reviewer guard floor = 2 (same constant as pr-review sole-reviewer guard).
+# Sole-reviewer guard floor = 2 (same constant as pr-review sole-reviewer guard; acceptance-reviewer is not counted).
 
 _mrg_setup_state() {
   # $1 = temp root; creates sessions + review-results dirs and a session id file
@@ -1834,6 +1834,24 @@ if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-review-sole-reviewer"* ]]
   pass "TC-131 sole-reviewer JSON denies with merge-review-sole-reviewer"
 else
   fail "TC-131 expected sole-reviewer deny, got decision=$decision reason=$reason"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
+echo "TC-131b: code-quality-reviewer + acceptance-reviewer JSON → deny (acceptance-reviewer is not counted)"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"
+_mrg_write_json "$_mrg_tmp" "56-sole-acceptance.json" \
+  '{"schema_version":1,"verdict":"mergeable","reviewers":["code-quality-reviewer","acceptance-reviewer"]}'
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge 56 --squash") || rc=$?
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-review-sole-reviewer"* ]] \
+  && [[ "$reason" == *"at least 2 reviewers other than acceptance-reviewer are recorded"* ]]; then
+  pass "TC-131b acceptance-reviewer does not satisfy the sole-reviewer floor"
+else
+  fail "TC-131b expected sole-reviewer deny, got decision=$decision reason=$reason"
 fi
 rm -rf "$_mrg_tmp"
 echo ""

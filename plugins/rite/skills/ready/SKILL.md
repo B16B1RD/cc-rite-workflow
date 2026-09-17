@@ -44,6 +44,10 @@ PR を Ready for review にし、関連 Issue の Status を更新する。
 |---------------|------|----------|
 | `{plugin_root}` | Absolute path to the plugin root directory. Works for both local dev and marketplace installs | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
 | `{owner_repo}` | Repo-context gh コマンドの `-R` に literal substitute する owner/repo（slash 形式） | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) |
+| `{reviewed_ac_state}` | reviewed-head helper の `REVIEWED_AC=` marker | Phase 1.0 の inspect 出力 |
+| `{reviewed_ac_ids}` | reviewed-head helper の `REVIEWED_AC=...; ac=` marker（カンマ区切り） | Phase 1.0 の inspect 出力 |
+| `{reviewed_head_override_arg}` | 通常は空。ユーザーが本ターンで未レビュー HEAD の強行を明示した場合だけ `--skip-head-check` | Phase 1.0 の明示 override 判定 |
+| `{reviewed_head_inspect_args}` | 通常は空。同じ明示 override 時だけ `--enforce-ac --skip-head-check` | Phase 1.0 の helper 呼び出し |
 
 ---
 
@@ -145,11 +149,28 @@ bash "$plugin_root/hooks/scripts/ready-pr-head-gate.sh" \
 # HEAD が最終レビュー済み commit と一致すること（sweep が push した 1 commit は
 # nb-sweep-done 2 行目 SHA 一致で例外。JSON 不在 / 不一致 / 照合不能 / 2 行目不正は
 # fail-loud）。フィールドは schema の commit_sha。
-bash "$plugin_root/hooks/scripts/ready-reviewed-head-gate.sh" \
-  --pr "$ready_pr_number" --plugin-root "$plugin_root" || exit
+# reviewed HEAD と受入条件を同じ review JSON から inspect する。stderr を捕捉するのは
+# REVIEWED_AC marker を Phase 2 へ渡すためで、診断自体は直後に必ず再表示する。
+reviewed_gate_out=$(bash "$plugin_root/hooks/scripts/ready-reviewed-head-gate.sh" \
+  --pr "$ready_pr_number" --plugin-root "$plugin_root" {reviewed_head_inspect_args} 2>&1)
+reviewed_gate_rc=$?
+printf '%s\n' "$reviewed_gate_out" >&2
+reviewed_ac_state=$(printf '%s\n' "$reviewed_gate_out" | sed -n 's/^\[CONTEXT\] REVIEWED_AC=\([^;]*\);.*/\1/p' | tail -1)
+reviewed_ac_ids=$(printf '%s\n' "$reviewed_gate_out" | sed -n 's/^\[CONTEXT\] REVIEWED_AC=[^;]*; ac=\([^;]*\).*/\1/p' | tail -1)
+
+# unmet / missing / malformed と、AC marker を伴わない helper failure は常に停止する。
+# unverified だけは Phase 2 で standalone に限り人間の明示確認へ送る。
+if [ "$reviewed_gate_rc" -ne 0 ] && [ "$reviewed_ac_state" != "unverified" ]; then
+  echo "[ready:error]"
+  exit 1
+fi
+if [ "$reviewed_ac_state" = "unmet" ] || [ "$reviewed_ac_state" = "missing" ] || [ "$reviewed_ac_state" = "malformed" ]; then
+  echo "[ready:error]"
+  exit 1
+fi
 ```
 
-> **本 bash が exit 1**: `[ready:returned-to-caller]` / `[ready:error]` より前に終わる。invocation failure は orchestrator が 1 回 retry し、2 回目で `[ready:error]`。未検証の force-continue は出さない。`BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` は stderr-only。finding（rc=1）では flag を立てない。reviewed-head ゲートの rc=1（不一致 / JSON 不在 / 照合不能）も同じ停止契約。ユーザーが本ターンで「未レビューのまま Ready 化を強行」と明示した場合のみ、reviewed-head helper の 1 行を除いて実行する。
+> **本 bash が exit 1**: `[ready:error]` で停止する。`BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` は stderr-only。finding（rc=1）では flag を立てない。reviewed-head の不一致 / JSON 不在 / 照合不能、および AC の unmet / missing / malformed も停止する。ユーザーが本ターンで「未レビューのまま Ready 化を強行」と明示した場合は HEAD 照合だけを override できるが、受入条件 inspect と Phase 3 直前の `--enforce-ac` は省略禁止。
 > rationale: references/rationale.md#bang-backtick-hard-gate
 > rationale: references/rationale.md#reviewed-head-gate
 
@@ -278,6 +299,16 @@ echo "in_e2e_flow=$in_e2e_flow"
 
 The LLM reads the bash stdout (`in_e2e_flow=...`): when `in_e2e_flow=true`, skip the AskUserQuestion in this sub-section and proceed directly to Phase 3; only when `in_e2e_flow=false`, confirm via `AskUserQuestion`:
 
+`reviewed_ac_state=unverified` の場合は経路で分岐する。`in_e2e_flow=true`（batch を含む）では質問せず `[ready:error]` で停止する。`in_e2e_flow=false` の standalone だけ、未検証 ID `{reviewed_ac_ids}` を列挙して「人間として確認済みに attest する / キャンセル」を AskUserQuestion で確認する。確認された ID だけを helper に渡す:
+
+```bash
+bash "$plugin_root/hooks/scripts/ready-reviewed-head-gate.sh" \
+  --pr "$ready_pr_number" --plugin-root "$plugin_root" \
+  --attest "$reviewed_ac_ids" || { echo "[ready:error]"; exit 1; }
+```
+
+未検証 AC は列挙した全 ID を一括で確認する。個別に確認できない ID があればキャンセルし、attest を作らない。unmet / missing / malformed は standalone でも質問や attest に送らない。
+
 ```
 PR #{number} を Ready for review に変更します。
 
@@ -302,6 +333,16 @@ End processing.
 ---
 
 ## Phase 3: Change to Ready for Review
+
+### 3.0 Final acceptance-criteria gate
+
+Ready 遷移の直前に必ず再検査する。Phase 1 の inspect 後に review JSON / attestation / HEAD が変化しても、この enforce を通らない限り `gh pr ready` を実行しない。reviewed-head の明示 override 経路では `{reviewed_head_override_arg}` を `--skip-head-check` に置換し、HEAD 照合だけを省略して AC 検証は維持する。通常経路では空文字に置換する。
+
+```bash
+bash "$plugin_root/hooks/scripts/ready-reviewed-head-gate.sh" \
+  --pr "$ready_pr_number" --plugin-root "$plugin_root" --enforce-ac {reviewed_head_override_arg} \
+  || { echo "[ready:error]"; exit 1; }
+```
 
 ### 3.1 Execute gh pr ready
 
@@ -403,10 +444,10 @@ status_json_args=$(jq -n \
   --arg owner "{owner}" \
   --arg repo "{repo}" \
   --argjson project_number {project_number} \
-  --arg status "In Review" \
+  --arg role "in_review" \
   --argjson auto_add false \
   --argjson non_blocking true \
-  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_role:$role, auto_add:$auto_add, non_blocking:$non_blocking}')
 bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args"
 ```
 

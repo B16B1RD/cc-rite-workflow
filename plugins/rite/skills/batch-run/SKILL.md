@@ -52,8 +52,8 @@ rationale: references/rationale.md#session-scoped-queue
 | `{summary_issues}` / `{summary_total}` / `{summary_remaining}` / `{summary_per_issue}` / `{summary_est_total}` | ステップ 0.5 の `RUN_SUMMARY` marker（`issues=` / `total=` / `remaining=` / `per_issue=` / `est_total=`。着手前サマリの表示に使う） |
 | `{current_issue}` | ステップ 1 の `RUN_NEXT=process; issue=` が指す Issue |
 | `{new_cursor}` / `{total}` | ステップ 6 の `RUN_ADVANCE` marker（`cursor=`（前進後のキューを進めた件数）/ `total=`。各 Issue の cursor 前進時の `✅ N/M 件処理済み` 進捗表示に使う。成功件数ではない） |
-| `{pr_number}` | ステップ 2 の open 完了通知（`[pr:created:N]`）から抽出 |
-| `{branch_name}` | ステップ 2 の open 完了通知「ブランチ: ...」行から抽出（ステップ 6 の cleanup に渡す） |
+| `{pr_number}` | ステップ 2 の open 完了通知（`[pr:created:N]`）から抽出。ステップ 1.5 で open を飛ばした場合は同 marker の `pr=` |
+| `{branch_name}` | ステップ 2 の open 完了通知「ブランチ: ...」行から抽出（ステップ 6 の cleanup に渡す）。ステップ 1.5 で open を飛ばした場合は同 marker の `branch=` |
 | `{processed_issues}` | ステップ 7 bash の `processed=`（全完了 Issue 一覧） |
 | `{breaker_failed}` | ステップ 8: `[iterate:max-cycles-reached]` 受領なら `true`、それ以外は `false` |
 | `{failed_issues}` | ステップ 7 bash の `failed=`（サーキットブレーカー `[iterate:max-cycles-reached]` で非収束となった Issue 一覧。空 `[]` のとき完了通知の該当行を省略） |
@@ -214,15 +214,83 @@ fi
 
 | `RUN_NEXT` marker | アクション |
 |---|---|
-| `process` | `issue=` を `{current_issue}`、`mode=` を `{run_mode}` として retain → ステップ 2（open）へ |
+| `process` | `issue=` を `{current_issue}`、`mode=` を `{run_mode}` として retain。run 起動後の最初の `process` はステップ 1.5（再開段階の振り分け）へ、ステップ 6 からの再入はステップ 2（open）へ |
 | `skip-closed` | この Issue は既に処理済み。ステップ 1 を再実行（次の Issue へ） |
 | `all-done` | 残り Issue 無し → ステップ 7（全完了通知）へ |
 
 ---
 
+## ステップ 1.5: 再開段階の振り分け（run 起動あたり 1 回だけ）
+
+open 以外の段階で止まった Issue を、止まった段階から続けるための振り分け。**run 起動後の最初の `RUN_NEXT=process` でのみ評価する**（`RUN_QUEUE` が `resume_no_args` / `resume_match` / `initialized` のいずれでも同じ。ステップ 6 の cursor 前進からステップ 1 へ戻る再入では実行せず、常に `open` として扱う）。判定は flow-state のローカル読み出しだけで完結し、`gh` 等のネットワーク呼び出しを含めない。phase→スキルの対応は [recover Phase 5.3](../recover/SKILL.md) が SoT で、本ステップは phase→本コマンドのステップへの入口だけを持つ。
+rationale: references/rationale.md#resume-stage-dispatch
+
+```bash
+# batch-run-resume-stage
+# flow-state.sh get は JSON 破損でも default を返して rc=0 で戻るため、ファイルの可読性は先に直接検査する
+fs_path=$(bash {plugin_root}/hooks/flow-state.sh path) || { echo "[CONTEXT] RUN_RESUME_STAGE=stop; reason=state_read_failed; issue={current_issue}"; exit 0; }
+if [ -f "$fs_path" ] && ! jq -e . "$fs_path" >/dev/null 2>&1; then
+  echo "[CONTEXT] RUN_RESUME_STAGE=stop; reason=state_read_failed; issue={current_issue}"; exit 0
+fi
+fs_issue=$(bash {plugin_root}/hooks/flow-state.sh get --field issue_number --default "") || { echo "[CONTEXT] RUN_RESUME_STAGE=stop; reason=state_read_failed; issue={current_issue}"; exit 0; }
+fs_active=$(bash {plugin_root}/hooks/flow-state.sh get --field active --default "") || { echo "[CONTEXT] RUN_RESUME_STAGE=stop; reason=state_read_failed; issue={current_issue}"; exit 0; }
+fs_phase=$(bash {plugin_root}/hooks/flow-state.sh get --field phase --default "") || { echo "[CONTEXT] RUN_RESUME_STAGE=stop; reason=state_read_failed; issue={current_issue}"; exit 0; }
+fs_pr=$(bash {plugin_root}/hooks/flow-state.sh get --field pr_number --default "0") || { echo "[CONTEXT] RUN_RESUME_STAGE=stop; reason=state_read_failed; issue={current_issue}"; exit 0; }
+fs_branch=$(bash {plugin_root}/hooks/flow-state.sh get --field branch --default "") || { echo "[CONTEXT] RUN_RESUME_STAGE=stop; reason=state_read_failed; issue={current_issue}"; exit 0; }
+
+# A stopped diagnostic run retains its identity even while inactive.
+if [ "$fs_issue" = "{current_issue}" ] && [ -f "$fs_path" ] && \
+   jq -e '.review_run.status == "stopped"' "$fs_path" >/dev/null; then
+  echo "[CONTEXT] RUN_RESUME_STAGE=stop; reason=stagnation_stopped; issue={current_issue}; pr=$fs_pr; branch=$fs_branch"
+  exit 0
+fi
+
+# 別 Issue / 非 active の state は本 Issue の再開材料にならない → 従来どおり open
+if [ "$fs_active" != "true" ] || [ "$fs_issue" != "{current_issue}" ]; then
+  echo "[CONTEXT] RUN_RESUME_STAGE=open; reason=fresh_or_mismatched; issue={current_issue}"
+  exit 0
+fi
+
+case "$fs_phase" in
+  init|branch|plan|implement|lint|pr) stage=open ;;
+  review|fix)                        stage=iterate ;;
+  ready)                             stage=merge ;;   # ready 化は完了済み。/rite:ready は既 Ready の PR で sentinel を出さないため merge から続ける
+  ready_error)                       stage=ready ;;
+  cleanup)                           stage=cleanup ;;
+  ingest|completed)                  stage=stop ;;    # recover 5.3 では wiki-ingest 再呼び出し / 完結済み。run のステップに対応が無い
+  *)                                 stage=stop ;;
+esac
+
+# PR 以降の段階なのに PR 番号が無い → 推測せず停止
+if [ "$stage" != open ] && [ "$stage" != stop ]; then
+  case "$fs_pr" in ''|0|*[!0-9]*) stage=stop; reason=pr_number_missing ;; esac
+fi
+# cleanup は {branch_name} を要するため、merge モードで branch が空なら停止
+if [ "$stage" = cleanup ] && [ "{run_mode}" = merge ] && [ -z "$fs_branch" ]; then
+  stage=stop; reason=branch_missing
+fi
+# default モードは ready / merge / cleanup を実行しない → draft のまま次へ
+if [ "{run_mode}" = default ] && { [ "$stage" = ready ] || [ "$stage" = merge ] || [ "$stage" = cleanup ]; }; then
+  stage=advance
+fi
+echo "[CONTEXT] RUN_RESUME_STAGE=$stage; reason=${reason:-phase_$fs_phase}; issue={current_issue}; pr=$fs_pr; branch=$fs_branch"
+```
+
+| `RUN_RESUME_STAGE` | アクション |
+|---|---|
+| `open` | ステップ 2（従来どおり `/rite:open`） |
+| `iterate` | `pr=` を `{pr_number}`、`branch=` を `{branch_name}` として retain し、ステップ 2 を飛ばしてステップ 3（iterate）へ |
+| `ready` | 同上で retain し、ステップ 4（ready）へ（`ready_error` からの再試行。`/rite:ready` の E2E 判定は phase=`ready_error` を standalone 扱いするため確認を求められうる） |
+| `merge` | 同上で retain し、ステップ 5（merge）へ（ready 化は完了済み） |
+| `cleanup` | 同上で retain し、ステップ 6（cleanup）へ |
+| `advance` | `default` モードで ready / merge / cleanup 段階に達している。ready / merge / cleanup は実行せず、ステップ 6 の cursor 前進 bash へ直行 |
+| `stop` | 段階を決められない（`reason=` に `state_read_failed` / `pr_number_missing` / `branch_missing` / `phase_ingest` / `phase_completed` / 未知 phase）。open も iterate も invoke せず、ステップ 8（段階=resume）で停止し `/rite:recover {current_issue}` を案内 |
+
+---
+
 ## ステップ 2: /rite:open を invoke
 
-> この skill return 後、停止せずに sentinel を判定してステップ 3 へ進む。本コマンドは handoff を使わないため、継続はこの flat 構造に依存する。
+> ステップ 1.5 の marker が `open` のときのみ実行する（`iterate` / `ready` / `merge` / `cleanup` / `advance` は各段階へ直行済み、`stop` はステップ 8 へ）。この skill return 後、停止せずに sentinel を判定してステップ 3 へ進む。本コマンドは handoff を使わないため、継続はこの flat 構造に依存する。
 
 ```text
 skill: rite:open
@@ -248,6 +316,8 @@ args: "{pr_number}"
 ```
 
 iterate の終了 sentinel を `{run_mode}`（ステップ 1 の `mode=` marker）で出し分ける:
+
+停滞の見直し中は iterate 内で継続する。見直し後の非収束も既存の `[iterate:max-cycles-reached]` に返り、下表の停止経路を使う。診断・保存・権限の失敗を成功扱いせず、同一 run の再開で cycle や見直し履歴をリセットしない。
 
 | Sentinel + `{run_mode}` | アクション |
 |---------|-----------|
@@ -433,6 +503,7 @@ fs_path=$(bash {plugin_root}/hooks/flow-state.sh path)
 session_id=$(basename "$fs_path" .flow-state)
 [ -n "$session_id" ] || { echo "ERROR: batch-run: session_id を解決できません（run-queue はセッションスコープのため必須）" >&2; exit 1; }
 queue_file="$state_root/.rite/state/run-queue-$session_id.json"
+# batch-run-stop
 # 失敗段が iterate の場合、fix.md が set した FINALIZE handoff が残り Stop hook が
 # iterate 完了通知を差し戻しうる。停止報告の前に one-shot 消費して出力順序を確定させる。
 bash {plugin_root}/hooks/flow-state.sh consume-handoff >/dev/null 2>&1 || true
@@ -451,14 +522,14 @@ remaining=$(jq -rc ".issues[$cursor:]" "$queue_file" 2>/dev/null || echo "[]")
 echo "[CONTEXT] RUN_STOP; cursor=$cursor; done=$done_issues; remaining=$remaining; mode=$mode"
 ```
 
-`done=` / `remaining=` / `mode=` を読んで停止報告を出す。デフォルトモードでは失敗段は `open` / `iterate` のいずれかに限られる（ready/merge/cleanup は実行しないため）:
+`done=` / `remaining=` / `mode=` を読んで停止報告を出す。デフォルトモードでは失敗段は `resume` / `open` / `iterate` のいずれかに限られる（ready/merge/cleanup は実行しないため）:
 
 ```
 ## /rite:batch-run 停止
 
-失敗した Issue: #{current_issue}（段階: {open|iterate|ready|merge|cleanup}、モード: {run_mode}）
-失敗理由: {受領した失敗 sentinel または「sentinel 不在」}
-失敗時の状態: PR #{pr_number}（{draft | open | 未作成}）
+失敗した Issue: #{current_issue}（段階: {resume|open|iterate|ready|merge|cleanup}、モード: {run_mode}）
+失敗理由: {受領した失敗 sentinel または「sentinel 不在」。段階=resume では RUN_RESUME_STAGE=stop の reason= 値}
+失敗時の状態: PR #{pr_number}（{draft | open | 未作成}。段階=resume で PR 番号を確定できないときは「PR 未確定」）
 
 処理済み Issue: {done_issues}
 未処理 Issue: {remaining_issues}
@@ -469,7 +540,7 @@ echo "[CONTEXT] RUN_STOP; cursor=$cursor; done=$done_issues; remaining=$remainin
 
 復旧:
 - この Issue を続きから: /rite:recover {current_issue}
-- 残りをまとめて再開: /rite:batch-run（引数省略で自セッションの run-queue の cursor とモードから再開。明示再開する場合の `--merge` 併記は下記の補足を参照）
+- 残りをまとめて再開: /rite:batch-run（引数省略で自セッションの run-queue の cursor とモードから再開する。この Issue はステップ 1.5 が flow-state の phase から再開段階を決める。明示再開する場合の `--merge` 併記は下記の補足を参照）
 
 <!-- [run:stopped] -->
 ```

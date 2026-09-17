@@ -57,6 +57,7 @@
 # [wiki-worktree-commit] branch=<wiki>; head=<sha>; push=<ok|failed|no-op>       (--push-only)
 # [wiki-worktree-commit] committed=0; branch=<wiki>; reason=<no-pending|no-staged-diff|concurrent-invocation>
 # [wiki-worktree-commit] committed=0; branch=<wiki>; reason=<numref-hit|numref-error>
+# [wiki-worktree-commit] committed=0; branch=<wiki>; reason=sandbox-mask   (admin dir not writable)
 #
 # Exit codes:
 # 0 success (committed and/or pushed, or nothing pending/to push)
@@ -68,6 +69,9 @@
 # commit is preserved on the local wiki branch and can be pushed
 # manually with `git -C .rite/wiki-worktree push origin wiki`).
 # Not reachable with --commit-only (no push is attempted).
+# 6 the worktree's admin dir (.git/worktrees/<name>/) is not writable
+# (reason=sandbox-mask) — nothing is staged or committed.
+# Not reachable with --push-only / --dry-run / no-pending.
 #
 # Notes:
 # - All git operations run with `git -C "$worktree_path"` to scope
@@ -352,6 +356,29 @@ if [[ "$DRY_RUN" == "true" ]]; then
  fi
  exit 0
 fi
+
+# -----------------------------------------------------------------------
+# Admin dir write probe. Both the numref gate (`git add -N`) and the commit
+# need `index.lock` in the worktree's admin dir. A sandbox can mount that
+# dir read-only while the working tree stays writable, so probe first and
+# report a dedicated reason (exit 6) instead of numref-error or a generic
+# git failure. --push-only / --dry-run / no-pending never reach this block.
+# -----------------------------------------------------------------------
+set +e
+worktree_admin_writable "$worktree_path"
+admin_rc=$?
+set -e
+case "$admin_rc" in
+  0) ;;
+  1)
+    echo "  原因候補: sandbox が wiki worktree の管理ディレクトリを read-only でマスクしている" >&2
+    echo "[wiki-worktree-commit] committed=0; branch=${wiki_branch}; reason=sandbox-mask"
+    exit 6
+    ;;
+  *)
+    exit 3
+    ;;
+esac
 
 # -----------------------------------------------------------------------
 # Number-reference pre-commit gate. The last write mouth must refuse to

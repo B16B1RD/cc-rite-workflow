@@ -182,7 +182,7 @@ rm -f "$helper_stdout"
 echo "TC-10: missing arguments → exit 1 with usage error"
 output=$(bash "$HOOK" 2>&1; echo "_EXIT_$?") || true
 exit_marker=$(printf '%s' "$output" | grep -oE '_EXIT_[0-9]+$' | tail -1)
-if [ "$exit_marker" = "_EXIT_1" ] && printf '%s' "$output" | grep -qF "usage:"; then
+if [ "$exit_marker" = "_EXIT_1" ] && printf '%s' "$output" | grep -cF >/dev/null "usage:"; then
   echo "  ✅ TC-10.1: missing args → exit 1 + usage message"
   PASS=$((PASS+1))
 else

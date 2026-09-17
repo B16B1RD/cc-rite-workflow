@@ -6,6 +6,8 @@ set -euo pipefail
 issue_text() { printf 'Issue #%s' "$1"; }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=_hermetic-env.sh
+source "$SCRIPT_DIR/_hermetic-env.sh" || { echo "ERROR: cannot source _hermetic-env.sh" >&2; exit 1; }
 HOOK="$SCRIPT_DIR/../session-start.sh"
 # Canonicalize the sandbox root: on macOS $TMPDIR is under /var/folders (a
 # symlink to /private/var/...), while session-start.sh resolves paths via
@@ -35,9 +37,7 @@ fi
 # CLAUDE_CODE_SESSION_ID must not leak in (it would point the hook at a foreign
 # per-session state file). It also keeps the env-absent branch of the conditional
 # `.rite-session-id` write under test below as the default. Tests that need env
-# present set it explicitly. (run-tests.sh unsets the same vars for suite runs.)
-unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID CLAUDE_PLUGIN_ROOT
-
+# present set it explicitly.
 cleanup() {
   rm -rf "$TEST_DIR"
 }
@@ -83,7 +83,7 @@ create_state_file() {
   # `implement` mid-test). Tests that intentionally exercise the migrate path
   # should pass content with a different schema_version value.
   local merged
-  if printf '%s' "$content" | grep -q '"schema_version"'; then
+  if printf '%s' "$content" | grep -c >/dev/null '"schema_version"'; then
     merged="$content"
   elif printf '%s' "$content" | jq -e . >/dev/null 2>&1; then
     merged=$(printf '%s' "$content" | jq -c '. + {schema_version: 3}')
@@ -1010,12 +1010,12 @@ echo "{\"cwd\": \"$dir_749\", \"source\": \"startup\"}" \
   | bash "$sbx_749/session-start.sh" >/dev/null 2>"$LAST_STDERR_FILE" || true
 stderr_749="$(cat "$LAST_STDERR_FILE")"
 
-if printf '%s' "$stderr_749" | grep -qF 'TC-helper-failure simulated flow-state.sh path failure'; then
+if printf '%s' "$stderr_749" | grep -cF >/dev/null 'TC-helper-failure simulated flow-state.sh path failure'; then
   pass "ERROR line from flow-state.sh passed through to caller stderr"
 else
   fail "Expected ERROR pass-through; got stderr: $stderr_749"
 fi
-if printf '%s' "$stderr_749" | grep -qF 'flow-state.sh path resolution failed'; then
+if printf '%s' "$stderr_749" | grep -cF >/dev/null 'flow-state.sh path resolution failed'; then
   pass "Skip WARNING emitted to stderr (no legacy fallback in v3)"
 else
   fail "Expected skip WARNING; got stderr: $stderr_749"
@@ -1091,12 +1091,12 @@ if [ "$rc_1241a" -eq 0 ]; then
 else
   fail "TC-settings-local-invalid-json: hook aborted (rc=$rc_1241a) — set -e regression on python3 non-zero exit"
 fi
-if printf '%s' "$err_1241a" | grep -qF 'settings.local.json repair python3 failed (rc=2)'; then
+if printf '%s' "$err_1241a" | grep -cF >/dev/null 'settings.local.json repair python3 failed (rc=2)'; then
   pass "TC-settings-local-invalid-json: invalid JSON corruption surfaces on stderr (rc=2 reported, not dead code)"
 else
   fail "TC-settings-local-invalid-json: corruption not surfaced (report branch is dead code); stderr: $err_1241a"
 fi
-if printf '%s' "$err_1241a" | grep -qF 'settings.local.json の JSON 形式 / encoding'; then
+if printf '%s' "$err_1241a" | grep -cF >/dev/null 'settings.local.json の JSON 形式 / encoding'; then
   pass "TC-settings-local-invalid-json: JSON-format hint shown for genuine invalid JSON (empty script stderr)"
 else
   fail "TC-settings-local-invalid-json: JSON hint missing for invalid JSON; stderr: $err_1241a"
@@ -1130,13 +1130,13 @@ if [ "$rc_1241b" -eq 0 ]; then
 else
   fail "TC-settings-local-noop-downstream: hook aborted (rc=$rc_1241b) — set -e regression on rc=1 no-op"
 fi
-if printf '%s' "$err_1241b" | grep -qF 'settings.local.json repair python3 failed'; then
+if printf '%s' "$err_1241b" | grep -cF >/dev/null 'settings.local.json repair python3 failed'; then
   fail "TC-settings-local-noop-downstream: rc=1 no-op misreported as failure; stderr: $err_1241b"
 else
   pass "TC-settings-local-noop-downstream: rc=1 no-op stays silent (no false failure WARNING)"
 fi
-if printf '%s' "$out_1241b" | grep -qF '前回のセッション状態が残っていたためリセットしました' \
-   && printf '%s' "$out_1241b" | grep -qF "$(issue_text 1241)"; then
+if printf '%s' "$out_1241b" | grep -cF >/dev/null '前回のセッション状態が残っていたためリセットしました' \
+   && printf '%s' "$out_1241b" | grep -cF >/dev/null "$(issue_text 1241)"; then
   pass "TC-settings-local-noop-downstream: downstream STATE_FILE resolution + defensive reset reached"
 else
   fail "TC-settings-local-noop-downstream: downstream not reached (hook stopped before reset); stdout: $out_1241b"
@@ -1167,12 +1167,12 @@ if [ "$rc_1241c" -eq 0 ]; then
 else
   fail "TC-settings-local-missing-script: hook aborted (rc=$rc_1241c) — set -e regression on missing script"
 fi
-if printf '%s' "$err_1241c" | grep -qF 'settings.local.json repair python3 failed'; then
+if printf '%s' "$err_1241c" | grep -cF >/dev/null 'settings.local.json repair python3 failed'; then
   pass "TC-settings-local-missing-script: python3 failure reported on stderr"
 else
   fail "TC-settings-local-missing-script: missing-script failure not reported; stderr: $err_1241c"
 fi
-if printf '%s' "$err_1241c" | grep -qF 'settings.local.json の JSON 形式 / encoding'; then
+if printf '%s' "$err_1241c" | grep -cF >/dev/null 'settings.local.json の JSON 形式 / encoding'; then
   fail "TC-settings-local-missing-script: JSON hint misdirects on missing-script (subtask 3 regression); stderr: $err_1241c"
 else
   pass "TC-settings-local-missing-script: JSON hint suppressed when python3 emits its own stderr (no misdirection)"
@@ -1474,7 +1474,7 @@ iso_tmpdir_ac2="$TEST_DIR/reap-ac2-tmpdir"
 mkdir -p "$iso_tmpdir_ac2"
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
 output=$(echo "{\"cwd\": \"$dir_reap_ac2\"}" | TMPDIR="$iso_tmpdir_ac2" bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
-if ! printf '%s' "$output" | grep -q '\[pr-cycle-cleanup\]'; then
+if ! printf '%s' "$output" | grep -c >/dev/null '\[pr-cycle-cleanup\]'; then
   pass "TC-1968-02: hook stdout does not contain reap output"
 else
   fail "TC-1968-02: reap output leaked into hook stdout: $output"
@@ -2076,6 +2076,139 @@ if grep -q 'run-queue-reap.sh" --session' "$HOOK" \
   pass "RQ-09: reap call is non-blocking and outside the worktree CWD gate"
 else
   fail "RQ-09: call site missing or still inside CWD==STATE_ROOT gate"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# Leftover sandbox stub lock files in the git dir
+# A sandboxed command can leave `.git/config.lock` behind as a 0-byte file
+# with every write bit cleared; every later git config write then fails.
+# session-start names it with a manual removal hint and never deletes it.
+# The hook is started from outside the repo (JSON cwd only) so a relative
+# `--git-common-dir` resolved against the hook's own cwd cannot pass.
+# --------------------------------------------------------------------------
+_stub_lock_repo() {
+  local d="$1"
+  mkdir -p "$d"
+  (cd "$d" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q)
+}
+# Echoes the hook rc; stdout/stderr go to $1.out / $1.err.
+_stub_lock_run() {
+  local d="$1" rc=0
+  shift
+  (cd "$TEST_DIR" && echo "{\"cwd\": \"$d\", \"source\": \"startup\"}" | env "$@" bash "$HOOK" >"$d.out" 2>"$d.err") || rc=$?
+  echo "$rc"
+}
+
+# _stub_lock_fixture <path> <octal mode> [content]: returns non-zero when the
+# filesystem did not keep the mode or size, so a case never passes or fails on
+# a fixture that does not have the shape it names.
+_stub_lock_fixture() {
+  local path="$1" mode="$2" content="${3:-}"
+  printf '%s' "$content" > "$path" && chmod "$mode" "$path" \
+    && [ -n "$(find "$path" -prune -type f -perm "$mode" -size "${#content}c")" ]
+}
+_stub_lock_expect() {
+  if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (expected='$2' actual='$3')"; fi
+}
+
+echo "STUB-LOCK-1: only a 0-byte no-write lock directly in the git dir is reported; file kept, hook rc=0"
+d_sl1="$TEST_DIR/stub_lock1"
+_stub_lock_repo "$d_sl1"
+git_dir_sl1=$(cd "$d_sl1/.git" && pwd -P)
+# Every lock below except config.lock misses one term of the stub predicate:
+# a write bit for u / g / o, a non-zero size, a location below the git dir, or
+# a regular file type.
+if _stub_lock_fixture "$git_dir_sl1/config.lock" 0444 \
+  && _stub_lock_fixture "$git_dir_sl1/writable.lock" 0644 \
+  && _stub_lock_fixture "$git_dir_sl1/group-writable.lock" 0464 \
+  && _stub_lock_fixture "$git_dir_sl1/other-writable.lock" 0446 \
+  && _stub_lock_fixture "$git_dir_sl1/with-content.lock" 0444 content \
+  && _stub_lock_fixture "$git_dir_sl1/refs/heads/nested.lock" 0444 \
+  && _stub_lock_fixture "$TEST_DIR/stub_lock1_link_target" 0444 \
+  && ln -s "$TEST_DIR/stub_lock1_link_target" "$git_dir_sl1/link-to-stub.lock" \
+  && mkfifo -m 0444 "$git_dir_sl1/fifo.lock" \
+  && [ -n "$(find "$git_dir_sl1/fifo.lock" -prune -type p -perm 0444)" ]; then
+  rc_sl1=$(_stub_lock_run "$d_sl1" PATH="$PATH")
+  _stub_lock_expect "STUB-LOCK-1: hook rc=0" "0" "$rc_sl1"
+  _stub_lock_expect "STUB-LOCK-1: exactly one stub lock WARNING" "1" "$(grep -c 'is an empty read-only lock file' "$d_sl1.err")"
+  if grep -F "$git_dir_sl1/config.lock" "$d_sl1.err" | grep -q "rm -f"; then
+    pass "STUB-LOCK-1: config.lock named with removal hint"
+  else
+    fail "STUB-LOCK-1: config.lock named with removal hint (stderr=$(cat "$d_sl1.err"))"
+  fi
+  _stub_lock_expect "STUB-LOCK-1: stub lock kept" "1" "$([ -f "$git_dir_sl1/config.lock" ] && echo 1 || echo 0)"
+  _stub_lock_expect "STUB-LOCK-1: stub lock not on stdout" "0" "$(grep -c 'config.lock' "$d_sl1.out")"
+  for kept in writable.lock group-writable.lock other-writable.lock with-content.lock refs/heads/nested.lock link-to-stub.lock fifo.lock; do
+    _stub_lock_expect "STUB-LOCK-1: $kept not reported" "0" "$(grep -Fc "$git_dir_sl1/$kept" "$d_sl1.err")"
+  done
+  if [ -f "$d_sl1/.rite/logs/pr-cycle-cleanup.log" ]; then
+    _stub_lock_expect "STUB-LOCK-1: stub lock WARNING stays out of the reap log" "0" "$(grep -Fc "$git_dir_sl1/config.lock" "$d_sl1/.rite/logs/pr-cycle-cleanup.log")"
+  else
+    fail "STUB-LOCK-1: reap log missing, cannot check that the WARNING stays out of it"
+  fi
+else
+  fail "STUB-LOCK-1: fixtures did not keep their mode / size / file type"
+fi
+echo ""
+
+echo "STUB-LOCK-2: git dir cannot be scanned → WARNING, hook rc=0, reap still runs"
+d_sl2="$TEST_DIR/stub_lock2"
+_stub_lock_repo "$d_sl2"
+failing_find_dir="$TEST_DIR/failing_find_bin"
+mkdir -p "$failing_find_dir"
+printf '#!/bin/sh\nexit 1\n' > "$failing_find_dir/find" && chmod +x "$failing_find_dir/find"
+rc_sl2=$(_stub_lock_run "$d_sl2" PATH="$failing_find_dir:$PATH")
+if [ "$rc_sl2" = "0" ] \
+  && grep -q "cannot scan .* for leftover sandbox stub lock files" "$d_sl2.err" \
+  && [ -f "$d_sl2/.rite/logs/pr-cycle-cleanup.log" ]; then
+  pass "STUB-LOCK-2: scan failure surfaced without blocking session start"
+else
+  fail "STUB-LOCK-2: rc=$rc_sl2 stderr=$(cat "$d_sl2.err")"
+fi
+echo ""
+
+echo "STUB-LOCK-3: CWD outside any git repository → no stub lock WARNING"
+d_sl3="$TEST_DIR/stub_lock3_nongit"
+mkdir -p "$d_sl3"
+rc_sl3=$(_stub_lock_run "$d_sl3" PATH="$PATH")
+if [ "$rc_sl3" = "0" ] && ! grep -q "lock file" "$d_sl3.err"; then
+  pass "STUB-LOCK-3: non-git CWD stays silent"
+else
+  fail "STUB-LOCK-3: rc=$rc_sl3 stderr=$(cat "$d_sl3.err")"
+fi
+echo ""
+
+echo "STUB-LOCK-4: path with apostrophes → the removal hint removes only the stub lock"
+# With hand-written single quotes this path would split into "$TEST_DIR/Bobs",
+# "and" and "Anns repo/.git/config.lock"; decoys with those names catch it.
+d_sl4="$TEST_DIR/Bob's and Ann's repo"
+run_cwd_sl4="$TEST_DIR/stub_lock4_cwd"
+_stub_lock_repo "$d_sl4"
+mkdir -p "$run_cwd_sl4/Anns repo/.git"
+git_dir_sl4=$(cd "$d_sl4/.git" && pwd -P)
+if _stub_lock_fixture "$git_dir_sl4/config.lock" 0444 \
+  && _stub_lock_fixture "$git_dir_sl4/writable.lock" 0644 \
+  && _stub_lock_fixture "$TEST_DIR/Bobs" 0644 decoy \
+  && _stub_lock_fixture "$run_cwd_sl4/and" 0644 decoy \
+  && _stub_lock_fixture "$run_cwd_sl4/Anns repo/.git/config.lock" 0644 decoy; then
+  rc_sl4=$(_stub_lock_run "$d_sl4" PATH="$PATH")
+  cmd_sl4=$(sed -n 's/.*delete it by hand: //p' "$d_sl4.err")
+  _stub_lock_expect "STUB-LOCK-4: hook rc=0" "0" "$rc_sl4"
+  _stub_lock_expect "STUB-LOCK-4: one removal command" "1" "$(printf '%s\n' "$cmd_sl4" | grep -c '^rm -f')"
+  argc_sl4=$(eval "set -- $cmd_sl4" && echo "$#")
+  last_arg_sl4=$(eval "set -- $cmd_sl4" && echo "${4:-}")
+  _stub_lock_expect "STUB-LOCK-4: removal command has 4 words" "4" "$argc_sl4"
+  _stub_lock_expect "STUB-LOCK-4: last word is the stub lock path" "$git_dir_sl4/config.lock" "$last_arg_sl4"
+  (cd "$run_cwd_sl4" && bash -c "$cmd_sl4")
+  _stub_lock_expect "STUB-LOCK-4: stub lock removed" "0" "$([ -e "$git_dir_sl4/config.lock" ] && echo 1 || echo 0)"
+  kept_sl4=0
+  for f in "$git_dir_sl4/config" "$git_dir_sl4/writable.lock" "$TEST_DIR/Bobs" "$run_cwd_sl4/and" "$run_cwd_sl4/Anns repo/.git/config.lock"; do
+    [ -f "$f" ] && kept_sl4=$((kept_sl4 + 1))
+  done
+  _stub_lock_expect "STUB-LOCK-4: git config, writable lock and decoys kept" "5" "$kept_sl4"
+else
+  fail "STUB-LOCK-4: fixtures did not keep their mode / size"
 fi
 echo ""
 

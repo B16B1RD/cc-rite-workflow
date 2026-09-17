@@ -66,6 +66,8 @@
 #   available, because _timeout below cannot detect hangs without one of them and
 #   every caller reads a non-124 exit code as "no hang". Failing loudly at source
 #   time is the only placement that cannot be swallowed by a `$( )` subshell.
+#   Sourcing also clears the ambient runtime identity / state-root variables
+#   listed in _hermetic-env.sh, and aborts the caller when that file cannot be read.
 #
 # Provided functions:
 #   _helpers_resolve_plugin_root <script_dir>
@@ -75,6 +77,8 @@
 #   skip <label>                                 # writes to stdout, counted in SKIP
 #   _timeout <seconds> <command...>              # portable timeout(1); see Preconditions
 #   assert <label> <expected> <actual>           # writes to stdout (via pass/fail)
+#   shell_words <cmd>                            # word count, then one word per line; non-zero if <cmd> does not parse
+#   assert_shell_words <label> <cmd> <word>...   # a pasted command parses and splits into exactly <word>...
 #   assert_grep     <label> <file> <pattern>     # ERE (grep -E); bare | is alternation — see docstring
 #   assert_not_grep <label> <file> <pattern>     # ERE (grep -E); bare | is alternation — see docstring
 #   assert_file_exists_or_fail <label> <file>    # pre-condition guard for assertion-pair loops
@@ -97,6 +101,17 @@ _helpers_resolve_plugin_root() {
 _helpers_resolve_repo_root() {
   local script_dir="${1:?script_dir required}"
   (cd "$script_dir/../../../.." && pwd)
+}
+
+# A missing list must stop the caller even without `set -e`; otherwise the test
+# runs with the launching session's identity and can still pass. The directory is
+# derived without dirname(1) because some callers source this file under a PATH
+# that holds only fixture binaries.
+case "${BASH_SOURCE[0]}" in */*) _helpers_dir=${BASH_SOURCE[0]%/*} ;; *) _helpers_dir=. ;; esac
+# shellcheck source=_hermetic-env.sh
+source "$_helpers_dir/_hermetic-env.sh" || {
+  echo "ERROR: _test-helpers.sh: cannot source _hermetic-env.sh" >&2
+  exit 1
 }
 
 # Counters — declared here so callers can rely on them existing after `source`.
@@ -161,6 +176,32 @@ assert() {
   else
     fail "$label (expected='$expected' actual='$actual')"
   fi
+}
+
+# Prints the word count, then one word per line, as the shell splits a pasted
+# <cmd>; non-zero when <cmd> does not parse. The eval runs in a subshell from /
+# with GIT_DIR=/nonexistent so a regressed hint cannot act on a repository.
+shell_words() {
+  ( cd / && export GIT_DIR=/nonexistent && eval "set -- $1" && printf '%s\n' "$#" "$@" ) 2>/dev/null
+}
+
+# Pins a copy-paste recovery command: it must parse and split into exactly the
+# expected words, in order. A hand-written '...' around a value containing an
+# apostrophe no longer parses, and a changed argument fails its word assert.
+# A parse failure is a single fail with no word asserts after it.
+assert_shell_words() {
+  local label="$1" cmd="$2" out i
+  shift 2
+  local -a words
+  if ! out=$(shell_words "$cmd"); then
+    fail "$label: parses as shell words (cmd=$cmd)"
+    return
+  fi
+  mapfile -t words <<<"$out"
+  assert "$label: word count" "$#" "${words[0]:-}"
+  for ((i = 1; i <= $#; i++)); do
+    assert "$label: word $i" "${!i}" "${words[$i]:-}"
+  done
 }
 
 # Pattern presence assertion (ERE via grep -E).

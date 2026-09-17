@@ -224,7 +224,8 @@ elif [[ -n "$existing_branch" ]]; then
   fi
   # Unexpected: worktree exists but on the wrong branch.
   echo "ERROR: worktree at '$target_path' is checked out to '$existing_branch', expected '$wiki_branch'" >&2
-  echo "  manual recovery: git worktree remove '$target_path' && re-run this script" >&2
+  printf -v _q_target_path '%q' "$target_path"
+  echo "  manual recovery: git worktree remove $_q_target_path && re-run this script" >&2
   exit 3
 fi
 [ -n "$wt_list_err" ] && rm -f "$wt_list_err"

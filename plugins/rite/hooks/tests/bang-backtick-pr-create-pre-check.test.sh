@@ -80,7 +80,7 @@ else
   fail "TC-2 --all expected exit 1, got $seed_rc"
   printf '%s\n' "$seed_output" | head -10 >&2
 fi
-if printf '%s\n' "$seed_output" | grep -q '\[bang-backtick\]'; then
+if printf '%s\n' "$seed_output" | grep -c >/dev/null '\[bang-backtick\]'; then
   pass "TC-2 finding line includes [bang-backtick] tag"
 else
   fail "TC-2 finding line missing [bang-backtick] tag"
@@ -222,7 +222,7 @@ else
   fail "TC-6 expected exit 0 with --skip-if-no-target, got $skip_rc"
   printf '%s\n' "$skip_output" | head -5 >&2
 fi
-if printf '%s\n' "$skip_output" | grep -q 'not applicable'; then
+if printf '%s\n' "$skip_output" | grep -c >/dev/null 'not applicable'; then
   pass "TC-6 skip emits 'not applicable' informational note"
 else
   fail "TC-6 skip note missing"

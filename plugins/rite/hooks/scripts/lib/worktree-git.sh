@@ -138,6 +138,11 @@ verify_worktree_branch() {
  local expected_branch="$2"
  local tempfile_tag="${3:-vwb}"
  local extra_hint="${4:-}"
+ # Copy-paste hints need shell quoting, not hand-written single quotes: a path
+ # or branch containing an apostrophe would otherwise split into other arguments.
+ local _q_worktree _q_expected_branch
+ printf -v _q_worktree '%q' "$worktree"
+ printf -v _q_expected_branch '%q' "$expected_branch"
 
  local rev_parse_err=""
  # Save caller's outer trap to avoid clobbering it.
@@ -172,7 +177,7 @@ verify_worktree_branch() {
  head -3 "$rev_parse_err" | neutralize_ctrl --keep-newline | sed 's/^/ git: /' >&2
  fi
  echo " 原因候補: worktree corrupt (.git file 破損) / permission denied / git binary 異常" >&2
- echo " 対処: git worktree remove '$worktree' && bash plugins/rite/hooks/scripts/wiki-worktree-setup.sh" >&2
+ echo " 対処: git worktree remove $_q_worktree && bash plugins/rite/hooks/scripts/wiki-worktree-setup.sh" >&2
  [ -n "$rev_parse_err" ] && rm -f "$rev_parse_err"
  _vwb_restore_traps
  return 2
@@ -182,7 +187,7 @@ verify_worktree_branch() {
 
  if [ "$wt_head" != "$expected_branch" ]; then
  echo "ERROR: worktree at '$worktree' is on branch '$wt_head', expected '$expected_branch'" >&2
- echo " hint: git -C '$worktree' checkout '$expected_branch'" >&2
+ echo " hint: git -C $_q_worktree checkout $_q_expected_branch" >&2
  if [ -n "$extra_hint" ]; then
  echo " $extra_hint" >&2
  fi
@@ -190,6 +195,35 @@ verify_worktree_branch() {
  fi
 
  return 0
+}
+
+# -----------------------------------------------------------------------
+# worktree_admin_writable: probe whether git can create lock files in a
+# tree's git dir (the admin dir `.git/worktrees/<name>/` for a linked
+# worktree). A sandbox can mount that dir read-only while the working tree
+# stays writable; git then fails at `index.lock` with a message that does
+# not name the cause. Probing before the first index write lets callers
+# report a dedicated reason instead of a generic git failure.
+#
+# Usage:
+# worktree_admin_writable "$tree"
+#
+# Exit codes:
+# 0 writable
+# 1 not writable (git dir and the mktemp error are on stderr)
+# 2 git dir could not be resolved (error on stderr)
+worktree_admin_writable() {
+ local tree="$1" git_dir probe
+ if ! git_dir=$(git -C "$tree" rev-parse --absolute-git-dir 2>&1); then
+ echo "ERROR: git -C '$tree' rev-parse --absolute-git-dir が失敗しました: $git_dir" >&2
+ return 2
+ fi
+ if probe=$(mktemp "$git_dir/rite-write-probe.XXXXXX" 2>&1); then
+ rm -f "$probe"
+ return 0
+ fi
+ echo "WARNING: git の管理ディレクトリ（${git_dir}）に書き込めません: $probe" >&2
+ return 1
 }
 
 worktree_commit_push() {
@@ -408,6 +442,12 @@ worktree_push_branch() {
  return 2
  fi
 
+ # Shell-quoted forms for the copy-paste manual recovery commands below.
+ local _q_worktree _q_branch _q_origin_branch
+ printf -v _q_worktree '%q' "$worktree"
+ printf -v _q_branch '%q' "$branch"
+ printf -v _q_origin_branch '%q' "origin/$branch"
+
  local _wpb_errexit=0
  case $- in *e*) _wpb_errexit=1 ;; esac
 
@@ -473,7 +513,7 @@ worktree_push_branch() {
  # new pages / log appends) so the rebase is almost always conflict-free;
  # a rebase conflict aborts and falls through to the existing rc=4.
  # Non-NFF failures (auth / network) do NOT retry — they fail
- # immediately (AC-3: a deferred push that fails is surfaced and
+ # immediately (a deferred push that fails is surfaced and
  # left for manual/next-session recovery, not auto-retried within the
  # same flow).
  local push_status="failed" _push_max=3 _push_i=0
@@ -488,13 +528,13 @@ worktree_push_branch() {
  if ! { [ -n "$push_err" ] && grep -qiE 'rejected|non-fast-forward|fetch first|behind' "$push_err"; }; then
  echo "WARNING: git push origin '$branch' failed in worktree '$worktree' — commit is local only" >&2
  [ -n "$push_err" ] && [ -s "$push_err" ] && head -n 10 "$push_err" | neutralize_ctrl --keep-newline | sed 's/^/ git: /' >&2
- echo " manual recovery: git -C '$worktree' push origin '$branch'" >&2
+ echo " manual recovery: git -C $_q_worktree push origin $_q_branch" >&2
  break
  fi
  if [ "$_push_i" -ge "$_push_max" ]; then
  echo "WARNING: git push origin '$branch' rejected (non-fast-forward) after $_push_max attempts — commit is local only" >&2
  [ -n "$push_err" ] && [ -s "$push_err" ] && head -n 10 "$push_err" | neutralize_ctrl --keep-newline | sed 's/^/ git: /' >&2
- echo " manual recovery: git -C '$worktree' fetch origin '$branch' && git -C '$worktree' rebase 'origin/$branch' && git -C '$worktree' push origin '$branch'" >&2
+ echo " manual recovery: git -C $_q_worktree fetch origin $_q_branch && git -C $_q_worktree rebase $_q_origin_branch && git -C $_q_worktree push origin $_q_branch" >&2
  break
  fi
  echo "WARNING: push rejected (non-fast-forward) — fetch + rebase onto origin/$branch + retry (attempt $_push_i/$_push_max)" >&2
@@ -507,7 +547,7 @@ worktree_push_branch() {
  git -C "$worktree" rebase --abort 2>/dev/null || true
  echo "WARNING: rebase onto origin/$branch failed (conflict) — aborted; push not retried (commit is local only)" >&2
  [ -n "$push_err" ] && [ -s "$push_err" ] && head -n 10 "$push_err" | neutralize_ctrl --keep-newline | sed 's/^/ git: /' >&2
- echo " manual recovery: git -C '$worktree' fetch origin '$branch' && git -C '$worktree' rebase 'origin/$branch'" >&2
+ echo " manual recovery: git -C $_q_worktree fetch origin $_q_branch && git -C $_q_worktree rebase $_q_origin_branch" >&2
  break
  fi
  # rebase succeeded — loop back and retry the push.
@@ -699,7 +739,10 @@ ensure_session_worktree() {
       return 0
     fi
     echo "ERROR: ensure_session_worktree: git worktree add '$wt_path' '$branch' failed (issue #$issue)" >&2
-    echo "  recovery: restart Claude Code from the repo root, or run: git worktree add '$wt_path' '$branch'" >&2
+    local _q_wt_path _q_branch
+    printf -v _q_wt_path '%q' "$wt_path"
+    printf -v _q_branch '%q' "$branch"
+    echo "  recovery: restart Claude Code from the repo root, or run: git worktree add $_q_wt_path $_q_branch" >&2
     echo "[CONTEXT] WT_ENSURE=failed; path=$wt_path; branch=$branch"
     return 1
   fi

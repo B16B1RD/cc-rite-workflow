@@ -109,10 +109,10 @@ assert_not_grep "TC-1 save helper に sole-reviewer floor (2) を持ち込まな
 # 同値検査を入れると手組みの復旧用 JSON が保存不能 = merge 不能になり救済経路が閉じる
 assert_not_grep "TC-1 save helper が verdict == overall_assessment を検査しない" "$SAVE" '\.verdict == \.overall_assessment'
 
-# --- 要求側 4/4: merge ゲート (受け側。本 Issue では変更しない) ---
+# --- 要求側 4/4: merge ゲート (受け側。floor は acceptance-reviewer を数えない) ---
 assert_grep "TC-1 ゲートが verdict の存在を必須にする" "$GUARD" 'has\("verdict"\)\|not'
 assert_grep "TC-1 ゲートが reviewers の配列型を必須にする" "$GUARD" '\(\.reviewers \| type\) != "array"'
-assert_grep "TC-1 ゲートが sole-reviewer floor 2 を維持する" "$GUARD" '\(\.reviewers \| length\) < 2'
+assert_grep "TC-1 ゲートが sole-reviewer floor 2 を維持する (acceptance-reviewer は数えない)" "$GUARD" '\(\[\.reviewers\[\] \| select\(\. != "acceptance-reviewer"\)\] \| length\) < 2'
 
 # --- 書き手の単一性: verdict は実測必須ゲート helper のみ ---
 mgate_verdict_writes=$(grep -c '\.verdict = (if \$blocking == 0 then "mergeable" else "fix-needed" end)' "$MGATE" || true)

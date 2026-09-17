@@ -103,7 +103,7 @@ terminal_set_line=$(grep -n -- '--phase "cleanup" --next "none" --active false' 
 
 if [ -z "$terminal_set_line" ]; then
   fail "TC-4 cleanup.md ステップ 12 の terminal set (--phase \"cleanup\" --next \"none\" --active false) が見つかりません (default-clear の anchor 行が変更された場合は本 test の grep も同期してください)"
-elif printf '%s' "$terminal_set_line" | grep -q -- '--handoff'; then
+elif printf '%s' "$terminal_set_line" | grep -c >/dev/null -- '--handoff'; then
   fail "TC-4 terminal set に --handoff が付与されています (default-clear 喪失: チェーン完走後も handoff が残存し誤 block します): $terminal_set_line"
 else
   pass "TC-4 terminal set は --handoff を持たず default-clear が機能する"

@@ -124,7 +124,7 @@ tmpfile=""  # mv 成功後は trap cleanup 対象から外す (二重 rm 回避)
 # Step 6: 成功時 retained flag (bash 変数経由で placeholder 残留を防ぐ)
 echo "[CONTEXT] ACCEPT_FINGERPRINT_PERSISTED=1; fingerprint=$fingerprint; pr=$pr_number; file=$file_path; line=$line_no" >&2
 
-# Step 7: accept ≥5 件警告 (AC-4)
+# Step 7: accept ≥5 件警告
 # wc -l 出力に platform 依存の空白が含まれるため tr -d で剥がす (BSD wc は 先頭に空白を付ける)
 accept_count=$(wc -l < "$state_file" 2>/dev/null | tr -d '[:space:]')
 case "$accept_count" in ''|*[!0-9]*) accept_count=0 ;; esac
@@ -147,6 +147,6 @@ accept は **revocable** (state file の行削除)。`acknowledged` は ステ�
 | `ACCEPT_FINGERPRINT_PERSIST_FAILED` | `mkdir_failed` | `.rite/state/` directory 作成失敗 (permission denied / read-only filesystem) |
 | `ACCEPT_FINGERPRINT_PERSIST_FAILED` | `mktemp_failed` | tmpfile 作成失敗 (disk full / inode 枯渇) |
 | `ACCEPT_FINGERPRINT_PERSIST_FAILED` | `mv_failed` | tmpfile から state file への atomic mv 失敗 |
-| `ACCEPT_LIMIT_EXCEEDED` | (warning marker) | 同一 PR 内 accept 件数が 5 件以上に達した警告 (AC-4) |
+| `ACCEPT_LIMIT_EXCEEDED` | (warning marker) | 同一 PR 内 accept 件数が 5 件以上に達した警告 |
 
 永続化失敗は WARNING + flag で続行 (reply は済、suppression だけ諦める)。

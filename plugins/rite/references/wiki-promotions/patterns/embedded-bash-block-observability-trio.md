@@ -104,7 +104,7 @@ repo=$(gh repo view --json name --jq '.name') || {
   echo "ERROR: gh repo view failed for repo" >&2
   exit 1
 }
-# ↑ ここで上述の pipefail + stderr 分離 + emit を組み合わせると AC-8 core 検知が silent skip と機能等価にならない
+# ↑ ここで上述の pipefail + stderr 分離 + emit を組み合わせると、core 検知の失敗がsilent skip と機能等価にならない
 ```
 
 これにより orchestrator state dependency を排除し、bash invocation の独立性を担保する。

@@ -51,13 +51,13 @@ assert "embedded tab rejected (exit 1)" "1" "$(rc "$(printf '/home/a\tb/state')"
 
 # --- Rejection diagnostics reach stderr ---------------------------------------
 traversal_err="$(bash "$SCRIPT" "/home/user/../etc" 2>&1 >/dev/null || true)"
-if printf '%s' "$traversal_err" | grep -qE 'unsafe traversal or shell metacharacter'; then
+if printf '%s' "$traversal_err" | grep -cE >/dev/null 'unsafe traversal or shell metacharacter'; then
   pass "traversal rejection prints a descriptive ERROR to stderr"
 else
   fail "traversal ERROR missing/malformed: $traversal_err"
 fi
 ctrl_err="$(bash "$SCRIPT" "$(printf '/home/a\nb')" 2>&1 >/dev/null || true)"
-if printf '%s' "$ctrl_err" | grep -qE 'control characters'; then
+if printf '%s' "$ctrl_err" | grep -cE >/dev/null 'control characters'; then
   pass "control-char rejection prints a descriptive ERROR to stderr"
 else
   fail "control-char ERROR missing/malformed: $ctrl_err"

@@ -311,7 +311,7 @@ echo "[CONTEXT] NB_SWEEP=$nb_sweep" >&2
 echo "[CONTEXT] REMAINING_ARGS=$remaining_args" >&2
 ```
 
-**`--nb-sweep` 入口**: `[CONTEXT] NB_SWEEP=1` のとき、ステップ 1.1 の PR 識別の後に **1.3.S へ進む**（1.2 コメント取得・1.3 分類・ステップ 2–4 は評価しない。AC-7: 通常ループの分類表は不変）。
+**`--nb-sweep` 入口**: `[CONTEXT] NB_SWEEP=1` のとき、ステップ 1.1 の PR 識別の後に **1.3.S へ進む**（1.2 コメント取得・1.3 分類・ステップ 2–4 は評価しない。通常ループの分類表は不変）。
 
 **Validation**: 本 Phase では **パス存在確認をしない** (Priority 0)。`--review-file=` (値なし) だけは即 fail-fast。
 
@@ -410,10 +410,10 @@ fi
 
 ### 1.2 Retrieve Review Comments
 
-#### 1.2.0 Hybrid Review Source Resolution <!-- AC-3 / AC-4 / AC-5 / D-01 -->
+#### 1.2.0 Hybrid Review Source Resolution <!-- D-01 -->
 
 
-> AC-3/4/5: 会話 > ローカル JSON > PR コメント。
+> 取得元の優先順位: 会話 > ローカル JSON > PR コメント。
 rationale: references/design-rationale.md#hybrid-source-priority
 
 **Priority chain**:
@@ -691,9 +691,9 @@ fi
 
 `{review_source}` を later phase の provenance に使う。
 
-#### 1.2.0.1 Interactive Fallback (when all sources missing) <!-- AC-6 -->
+#### 1.2.0.1 Interactive Fallback (when all sources missing)
 
-> **Acceptance Criteria anchor**: AC-6 (全ソース欠落時はレビューを 1 回自動再生成し、再度欠落した場合のみ `AskUserQuestion` で「ファイルパス指定 / 中止」を提示する)。
+> **契約**: 全ソース欠落時はレビューを 1 回自動再生成し、再度欠落した場合のみ `AskUserQuestion` で「ファイルパス指定 / 中止」を提示する。
 
 `{review_source}=fallback` (Priority 0-3 が全て不可) の場合、レビュー再実行は可逆かつ自己解決可能なので推奨として `/rite:pr-review {pr_number}` を 1 回自動実行し、その判断と欠落 source を既存 work memory の決定事項へ記録する。再実行後も source が得られない場合だけ、ユーザー固有の入力であるファイルパス指定または中止を `AskUserQuestion` で確認する:
 
@@ -979,7 +979,7 @@ rite 結果がない場合も空の `findings` / `non_blocking_findings` を持�
 
 **全通常入力経路の合流点**。P0 明示ファイル、P1 会話、P2 ローカル JSON、P3 Raw JSON / legacy Markdown、Target Comment Fast Path は分類・選択・0 件終了の前に必ず本節を実行する。`--nb-sweep` の専用経路は変更しない。
 
-1. P0/P2 は選択した元のファイルを `{triage_review_path}` とし、producer を変更しない。P1/P3 は解析結果を JSON オブジェクト（`findings[]` / `non_blocking_findings[]`、PR 番号、commit SHA、元の gate receipt と verification を保持）にし、`state-path-resolve.sh` が返すルートの `.rite/review-results/` に `{pr_number}-{timestamp}.json`（timestamp は `YYYYMMDDHHMMSS`、同名があれば一意になるまで新しい時刻を取得） として atomic write する。Write 失敗は `[fix:error]` で終了する。新規 JSON のトップレベルに `producer: "fix"` を設定する（元 JSON に producer があっても上書き）。元ソースの `{review_source}` は provenance として保持する。
+1. P0/P2 は選択した元のファイルを `{triage_review_path}` とし、producer を変更しない。P1/P3 は解析結果を JSON オブジェクト（`findings[]` / `non_blocking_findings[]`、PR 番号、commit SHA、元の gate receipt と verification、`acceptance_criteria` を保持）にし、`state-path-resolve.sh` が返すルートの `.rite/review-results/` に `{pr_number}-{timestamp}.json`（timestamp は `YYYYMMDDHHMMSS`、同名があれば一意になるまで新しい時刻を取得） として atomic write する。Write 失敗は `[fix:error]` で終了する。新規 JSON のトップレベルに `producer: "fix"` を設定する（元 JSON に producer があっても上書き）。元ソースの `{review_source}` は provenance として保持する。
 2. P0 の helper source は `explicit_file`、それ以外は `local_file`。次を実行する。helper は **元 JSON に persist してから** ID-keyed `fatal_map` / `severity_map` / `scope_map` を返す。`fatal = verification.measured == true AND severity ∈ {CRITICAL, HIGH} AND scope ∈ {current-pr, follow-up}` の判定はこの helper だけが担い、LLM は再分類しない。gated な非 fatal を `demotion_reason: "non_fatal"` 付きで `non_blocking_findings[]` へ移送し、nit は保持する。
 
 ```bash
@@ -1146,7 +1146,7 @@ rm -f "${TMPDIR:-/tmp}/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
       "${TMPDIR:-/tmp}/rite-fix-pr-comment-{pr_number}.txt"
 ```
 
-**FINALIZE handoff (E2E のみ)**: `[fix:cancelled-by-user]` は 5.1 を通らないので**ここで**セット。standalone では実行しない (AC-4)。
+**FINALIZE handoff (E2E のみ)**: `[fix:cancelled-by-user]` は 5.1 を通らないので**ここで**セット。standalone では実行しない。
 
 ```bash
 # E2E flow 時のみ: FINALIZE 終了通知 handoff をセット (Stop hook が ステップ5 中断通知を 1 回だけ強制)
@@ -1254,6 +1254,39 @@ Escalation trigger 成立時は、この判断を commit body の `simplificatio
 rationale: references/design-rationale.md#simplification-first-rationale
 
 ### 2.1 Confirm Fix Approach
+
+全指摘の処置を編集前に一括で決める。個別指摘の読み取り・impact scan は先に行ってよいが、最初の編集前に [一括計画と検証](references/fix-plan.md) を読み、同一 HEAD の全員回収済み保存結果・最新 Issue 本文から `{fix_plan_file}` と `{fix_issue_file}`（絶対 JSON パス）を作る。root cause ごとに重複を関連付け、全 blocking 指摘へ処置と検証を割り当てる。人間由来の未解決指摘も計画へ記録し、既存の対応義務を維持する。
+
+`review_run.current_decision.action=replan` なら、[停滞診断](../../references/review-stagnation.md) の契約で全指摘と仕様を再照合し、代替案・選択理由・棄却理由・再発防止検証を同じ計画の `replan` に記録する。範囲内の選択は通常の承認待ちを挟まない。以下の保存後に通常の scope gate を通す。時計は同参照の `review-clock-open` を `clock_kind=work` で実行し、外部待機は別区分にする。
+
+時計の open / close は `review_run` がある場合だけ実行する。中断からの再入場では既存区間を同参照の `recover` モードで閉じてから、新しい作業区間を開く。
+
+```bash
+# fix-stagnation-replan
+fix_state=$(bash {plugin_root}/hooks/flow-state.sh get --jq-filter .) || exit 1
+if printf '%s' "$fix_state" | jq -e '.review_run.current_decision.action == "replan"' >/dev/null; then
+  bash {plugin_root}/hooks/flow-state.sh review-replan \
+    --plan "{fix_plan_file}" --issue "{fix_issue_file}" || { echo "[fix:error]"; exit 1; }
+fi
+fix_state=$(bash {plugin_root}/hooks/flow-state.sh get --jq-filter .) || exit 1
+if printf '%s' "$fix_state" | jq -e '.review_run.current_decision.action == "stop"' >/dev/null; then
+  echo "[fix:error]"
+  exit 1
+fi
+```
+
+解決不能は検討した範囲内代替と契約上の理由を保存して `stop` とする。保存・権限・証跡の失敗は `[fix:error]` のまま保持し、解決不能という判断へ変換しない。
+
+```bash
+# fix-scope-before-edit
+if ! bash {plugin_root}/hooks/scripts/review-fix-scope-check.sh check \
+  --plan "{fix_plan_file}" --issue "{fix_issue_file}"; then
+  echo "[fix:error]"
+  exit 1
+fi
+```
+
+失敗時は編集せず、診断・計画・途中成果を保持する。範囲内代替を検討して同じ計画を修正し再検査する。代替不能なら Issue 仕様を変更せず理由を work memory に残して `[fix:error]`。パス通過だけでは意味的承認にしない。計画外の変更先が必要になったら、編集前に計画と根拠を更新し本ゲートへ戻る。各編集は検査済み `groups[].paths` 内に限定する。typo-only の impact scan 省略も本ゲートを省略しない。
 
 reviewer の推奨対応（`recommendation` 列）は候補であって設計ではない。文書の主張を書く／広げる修正案は、適用前に実装と突き合わせる（ステップ 2.3）。
 
@@ -1602,6 +1635,17 @@ rationale: references/design-rationale.md#nit-noted-no-reply-notes
 ## ステップ 3: 修正のコミット
 
 > **Reference**: Apply [Comment Best Practices](../../skills/rite-workflow/references/comment-best-practices.md) when finalising fix commits — 生成コメント/散文に Issue/PR 番号・AC 番号を残さない。残す背景は現在形の制約文。ジャーナル/経緯文は禁止。file:line 参照と未検証ジャーゴンも diff に残さない。review/fix 履歴は commit message / PR description へ。
+
+一括修正完了後、最新 Issue を再取得し、検査済み計画に対して次を実行する。関連結果の鮮度確認後に、必要な全体検証を全件実行・記録する。失敗または保存不能なら commit / push / 次レビューへ進まない。既存の差分・schema・AC ゲートは引き続き実行する。成功後に `review-clock-close` で修正区間を保存する。検証済み修正は run 履歴へ結び付き、次の review-start が異なる HEAD と検証済み内容を照合して修正回数を確定する。
+
+```bash
+# fix-scope-final-verification
+if ! bash {plugin_root}/hooks/scripts/review-fix-scope-check.sh verify \
+  --plan "{fix_plan_file}" --issue "{fix_issue_file}" --kind all; then
+  echo "[fix:error]"
+  exit 1
+fi
+```
 
 ### 3.1 Verify Changes
 
@@ -2294,7 +2338,7 @@ Confidence override (policy bypass): {confidence_override_count}件{confidence_o
 |------|------------------|--------------------------|
 | 0 件 (accept なし) | `0` | 空文字列 |
 | 1〜4 件 | `{N}` | 空文字列 |
-| 5 件以上 (≥5 警告発火、AC-4) | `{N}` | ` ⚠️ reviewer の精度を疑うべき水準` |
+| 5 件以上 (≥5 警告発火) | `{N}` | ` ⚠️ reviewer の精度を疑うべき水準` |
 
 **読み出し方法**: 本読み出しはステップ 2.1.A と別 Bash invocation で実行される可能性があるため、`_state_root` の解決を必ず同一 invocation 内に inline する (pr-review.md 5.1.2.A Step 2 の再 inline と同型。解決行なしで verbatim 実行すると `$_state_root` 未束縛 → `/.rite/state/...` の ENOENT が `2>/dev/null` で握り潰され accept_count が silent に 0 化する):
 

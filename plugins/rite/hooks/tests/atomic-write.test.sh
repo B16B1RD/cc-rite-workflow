@@ -261,7 +261,7 @@ echo "TC-6: flock 不在 PATH → set 成功 + state file 書込 + no 'flock tim
 noflock_stub=$(mktemp -d)
 cleanup_dirs+=("$noflock_stub")
 for _c in bash sh awk basename cat chmod date dirname find git grep head jq \
-          mkdir mktemp mv rm sed sleep tail touch tr wc; do
+          mkdir mktemp mv python3 rm sed sleep tail touch tr wc; do
   _p=$(command -v "$_c" 2>/dev/null) && ln -sf "$_p" "$noflock_stub/$_c"
 done
 _flock_path=$(command -v flock 2>/dev/null) || _flock_path=""

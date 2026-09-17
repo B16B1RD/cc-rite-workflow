@@ -65,6 +65,10 @@
 #        形状 (g') と variant A/B への位置 (g'') も別途固定する (いずれも前方一致 count だけでは
 #        素通りする drift クラス)。
 #        各 pin は追加時に mutation を当てて落ちることを実測する (手順: measured-gate-record.md#static-pin)
+#   TC-7 scripts/review-class-demotion-gate.sh の除外判別子 SoT 静的 pin — severity-levels §ゲート層 /
+#        assessment-rules §5.3.0.C / helper docstring の各節に「合意済み AC の実測済み未充足」が載り、
+#        既存判別子 (既存記述の削除/弱体化) の原文が残る。helper の挙動は
+#        scripts/tests/review-class-demotion-gate.test.sh が固定する
 #
 # Network 非依存: gh は PATH 先頭の stub に差し替え、review-result-save は --results-dir で
 # sandbox に隔離する (repo の .rite/ を汚さない)。
@@ -705,7 +709,7 @@ run_save --pr 123 --content-file "$JSON_SOLE_REVIEWER" --results-dir "$TMP_ROOT/
 assert "TC-3.5sole 1 名 reviewer: exit 0" "0" "$RC"
 assert_grep "TC-3.5sole 1 名 reviewer でも保存される (floor 2 はゲート側の責務)" "$ERR" 'JSON_SAVED=true'
 
-# 重複ロスターは拒否する。ゲートは長さしか見ないため、同一名 2 件が floor 2 を機械的に満たして
+# 重複ロスターは拒否する。ゲートは名前の一意性を見ない (acceptance-reviewer を除いた人数だけを見る) ため、同一名 2 件が floor 2 を機械的に満たして
 # 「2 名がレビューした」偽の証拠になる。floor そのものは save 側へ持ち込まない (上の sole ケースが
 # 通り続けることで、一意性検査が下限検査に化けていないことを示す)。
 JSON_DUP_REVIEWERS="$TMP_ROOT/json-dup-reviewers.json"
@@ -1658,7 +1662,7 @@ assert_not_grep "TC-4.7b degraded skip 案内が結末を断定しない (広域
 # guard に退化していないことを、代表的な断定文に対して実際にマッチすることで示す (production
 # コードを mutate せずに regex 自体の生死を確認する自己検査)。
 _f02_sample='なお記録は投稿されますのでご安心ください'
-if printf '%s' "$_f02_sample" | grep -qE '(記録|投稿)[^。]*(されます|される)'; then
+if printf '%s' "$_f02_sample" | grep -cE >/dev/null '(記録|投稿)[^。]*(されます|される)'; then
   pass "TC-4.7c [positive control] 広域 ERE は代表的な断定文を検出できる"
 else
   fail "TC-4.7c [positive control] 広域 ERE が代表的な断定文を検出できない (regex 自体の不備)"
@@ -1920,6 +1924,7 @@ assert_grep "TC-4.11k outcome=failed (terminal sentinel)" "$ERR" 'outcome=failed
 # 案内は原因に一致させる (helper の _record_env_failure_hint)。gh auth / network を指す誤案内は
 # operator を真因 (jq 実行環境) から遠ざけるため禁止 — helper 自身が hint 分離の規律として明文化している。
 assert_grep "TC-4.11k 原因に一致した案内 (jq 実行環境)" "$ERR" 'jq --version で jq の実行環境を確認'
+assert_not_grep "TC-4.11k jq の失敗に awk の案内を出さない" "$ERR" 'awk の実行環境'
 # 複合経路では lookup degraded hint が 'gh auth status を確認してください' を正当に出すため、
 # not_grep は _record_gh_io_failure_hint 固有の文言 (write 権限 + レビューやり直し) に絞る。
 assert_not_grep "TC-4.11k gh io 失敗の誤案内を出さない" "$ERR" 'write 権限を確認し、レビューをやり直してください'
@@ -1932,6 +1937,40 @@ _k_jq_line=$(grep -n 'if ! _body_last_line=\$(jq -Rrs' "$_k_nbr_sh" | head -1 | 
 if [ -n "$_k_assign_line" ] && [ -n "$_k_jq_line" ] && [ "$_k_assign_line" -lt "$_k_jq_line" ] 2>/dev/null; then _k_order="before"; else _k_order="after-or-missing"; fi
 assert "TC-4.11k' gh_err への代入が jq 実行より前 (signal 窓の trap 保護)" "before" "$_k_order"
 rm -f "$_nbr_marker_k"; rm -rf "$_jq_stub_dir"
+
+# TC-4.11m: 本文述語 jq の stderr 診断は `jq:` 接頭辞で出す。直後の案内は gh 認証 / network を否定するため、
+# 接頭辞が `gh:` だと診断と案内が食い違う。TC-4.11k の stub は stderr を出さないので接頭辞を観測できない。
+# 本文述語の jq (-Rrs が独立した引数のとき) だけを壊し、lookup 側の gh とパイプでつながる jq は実 jq のまま通す
+# (lookup も壊れる TC-4.11k の複合経路と違い、本文述語だけの単独経路を通す)。exec 先は PATH を差し替える前に
+# 絶対パスで解決する (PATH 上の jq を exec すると stub 自身を再帰呼び出しする)。
+_jq_diag_stub_dir="$TMP_ROOT/jq-diag-stub"; mkdir -p "$_jq_diag_stub_dir"
+printf '#!/usr/bin/env bash\ncase " $* " in *" -Rrs "*) echo "jq: error: SIMULATED_JQ_DIAG" >&2; exit 5 ;; esac\nexec %q "$@"\n' "$(command -v jq)" > "$_jq_diag_stub_dir/jq"
+chmod +x "$_jq_diag_stub_dir/jq"
+_nbr_marker_m="${TMPDIR:-/tmp}/rite-nbr-pending-9-234"
+: > "$_nbr_marker_m"
+PATH="$_jq_diag_stub_dir:$PATH" GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-234 --content-file "$NBR_BODY_C2"
+assert_grep "TC-4.11m reason=body_check_unavailable" "$ERR" 'NONBLOCKING_RECORD_FAILED=1; pr=9; reason=body_check_unavailable'
+assert_not_grep "TC-4.11m lookup は実 jq で成功する (degraded=1 を出さない)" "$ERR" 'degraded=1'
+assert_grep "TC-4.11m jq の stderr 診断を jq: 接頭辞で表示する" "$ERR" '^  jq: jq: error: SIMULATED_JQ_DIAG$'
+assert_not_grep "TC-4.11m jq の stderr 診断を gh: 接頭辞で表示しない" "$ERR" 'gh: jq: error: SIMULATED_JQ_DIAG'
+assert "TC-4.11m 診断は本文述語の失敗 1 回分だけ出る" "1" "$(grep -c 'SIMULATED_JQ_DIAG' "$ERR")"
+if [ -e "$_nbr_marker_m" ]; then _m_marker="present"; else _m_marker="absent"; fi
+assert "TC-4.11m pending marker を残さない (8.0.3 が差し戻さない)" "absent" "$_m_marker"
+# 診断が本文述語の失敗ブロック内で案内の直前に出ることを行番号で固定する:
+# WARNING 行 < 詳細見出し、見出しの次の行が診断行、診断行 < 対処行 (案内行は対処行に限る)
+_m_warn_line=$(grep -n '^WARNING: 非実測記録の本文述語' "$ERR" | head -1 | cut -d: -f1)
+_m_head_line=$(grep -n '^  詳細 (stderr 先頭 5 行):' "$ERR" | head -1 | cut -d: -f1)
+_m_diag_line=$(grep -n '^  jq: jq: error: SIMULATED_JQ_DIAG$' "$ERR" | head -1 | cut -d: -f1)
+_m_hint_line=$(grep -n '^  対処: jq --version' "$ERR" | head -1 | cut -d: -f1)
+if [ -n "$_m_warn_line" ] && [ -n "$_m_head_line" ] && [ -n "$_m_diag_line" ] && [ -n "$_m_hint_line" ] \
+  && [ "$_m_warn_line" -lt "$_m_head_line" ] && [ "$((_m_head_line + 1))" -eq "$_m_diag_line" ] \
+  && [ "$_m_diag_line" -lt "$_m_hint_line" ] 2>/dev/null; then
+  _m_order="adjacent"
+else
+  _m_order="warn=${_m_warn_line:-none} head=${_m_head_line:-none} diag=${_m_diag_line:-none} hint=${_m_hint_line:-none}"
+fi
+assert "TC-4.11m 診断行が本文述語の WARNING 詳細見出しの直後、jq 用の対処行より前に出る" "adjacent" "$_m_order"
+rm -f "$_nbr_marker_m"; rm -rf "$_jq_diag_stub_dir"
 
 # TC-4.11j [F-05 指摘, cycle 8]: **CRLF 本文**を write 側が受理する (read 側の CRLF fixture id=11 と対称)。
 # read/write は同一の jq 述語を共有するが、その CR 除去を落とすと CRLF 本文が body_sentinel_missing で
@@ -2970,7 +3009,7 @@ else
   #      永続チャネルが無音でゼロになる。Routing[1] (legitimate skip) も同様に、条件を広げると
   #      本来 ERROR にすべき skip が正当化されて素通りする。
   assert "TC-5b 6.1.d step 3 Routing[1]: cycle 一致 → Gate passes (canonical)" \
-    'sentinel あり かつ `iteration_id` が本 cycle の `REVIEW_CYCLE_ID` と一致 (`outcome` は問わない)~Gate passes — ステップ 6.2 へ。`outcome=failed` / `aborted`、`degraded=1`（`outcome` を問わない）、または `NONBLOCKING_LEGACY_ORPHAN=1` / `NONBLOCKING_DUPLICATE_RECORD=1` を観測したときは (ステップ 8.0.3 と同一条件 — 片側だけに置かない) helper の WARNING / `NONBLOCKING_RECORD_FAILED` の reason を completion report に転記する (判定は不変、AC-3)' \
+    'sentinel あり かつ `iteration_id` が本 cycle の `REVIEW_CYCLE_ID` と一致 (`outcome` は問わない)~Gate passes — ステップ 6.2 へ。`outcome=failed` / `aborted`、`degraded=1`（`outcome` を問わない）、または `NONBLOCKING_LEGACY_ORPHAN=1` / `NONBLOCKING_DUPLICATE_RECORD=1` を観測したときは (ステップ 8.0.3 と同一条件 — 片側だけに置かない) helper の WARNING / `NONBLOCKING_RECORD_FAILED` の reason を completion report に転記する (判定は不変)' \
     "$(_routing_canonical _sec_610d 1)"
   assert "TC-5b 6.1.d step 3 Routing[2]: 不一致 → ERROR (canonical)" \
     'sentinel なし、または `iteration_id` が本 cycle の `REVIEW_CYCLE_ID` と不一致 (前 cycle のもの)~**ERROR**: 6.1.d が本 cycle で未評価。下記 ACTION を実行' \
@@ -3249,7 +3288,7 @@ else
   #        消すだけで helper は opt-out 経路 (no-op) に落ち、marker が一切消えず 8.0.4 が毎 cycle
   #        exit 1 を返して ステップ 8.1 に永久到達できなくなる。sibling は path を内部導出するため
   #        配線 drift が構造的に起こり得ないが、本 helper は id を受け取るのでここが単一障害点。
-  _sec_610a() { _section_of '^bash \{plugin_root\}/hooks/review-result-save\.sh' '^```$'; }
+  _sec_610a() { _section_of '^bash \{plugin_root\}/hooks/flow-state\.sh review-finish' '^```$'; }
   assert "TC-5h 6.1.a の helper 呼び出しが --pending-id を渡す (配線 drift の検出)" "1" \
     "$(_sec_610a | grep -cE '^[[:space:]]*--pending-id "\{save_pending_id\}" \|\| \{$' || true)"
   # 生成側の変数名と caller placeholder 名が一致すること (片側改名で silent に空文字が渡る)
@@ -3969,7 +4008,33 @@ assert "TC-6.7 統合レポート full-mode テンプレに直列化の 1 行" "
 assert "TC-6.7 統合レポート verification-mode テンプレに直列化の 1 行" "1" \
   "$(awk '/^## verification-mode-template$/ { inside = 1 } inside { print }' "$_tmpl" | grep -c '\*\*起動の直列化\*\*' || true)"
 
+# TC-7 帰結クラス降格政策の除外判別子 — SoT 3 箇所 (severity-levels §ゲート層 / assessment-rules
+# §5.3.0.C / helper docstring) の節の中に第 2 判別子が載り、既存判別子の原文が残ることを固定する。
+# ファイル全体への grep だと別節への移動や見出し改名で空振りするため、節を切り出して数える。
+_sev="$PLUGIN_ROOT/references/severity-levels.md"
+_ar="$PLUGIN_ROOT/skills/fix/references/assessment-rules.md"
+_gate="$PLUGIN_ROOT/scripts/review-class-demotion-gate.sh"
+_sec_sev_gate() { awk '/^<a id="ゲート層の-class-ab-降格政策"><\/a>$/ { f = 1 } f && /^## / { exit } f { print }' "$_sev"; }
+_sec_ar_530c() { awk '/^## 5\.3\.0\.C / { f = 1; print; next } f && /^## / { exit } f { print }' "$_ar"; }
+_sec_gate_doc() { awk '/^set -u$/ { exit } { print }' "$_gate"; }
+assert "TC-7 severity-levels ゲート層節に第 2 判別子が 1 箇所" "1" \
+  "$(_sec_sev_gate | grep -cF '**除外判別子 (合意済み AC の実測済み未充足)**' || true)"
+assert "TC-7 severity-levels ゲート層節に既存判別子の原文が残る" "1" \
+  "$(_sec_sev_gate | grep -cF '**除外判別子 (既存記述の削除/弱体化)**: class B であっても、本 PR の diff が**既存 (base 側) に存在した記述・ガード・禁止文を削除または弱体化した**ことを示す判定文が付く finding は降格しない' || true)"
+assert "TC-7 assessment-rules §5.3.0.C に第 2 除外入力源が 1 箇所" "1" \
+  "$(_sec_ar_530c | grep -cF '**第 2 除外入力源 (合意済み AC の実測済み未充足)**' || true)"
+assert "TC-7 assessment-rules §5.3.0.C の集合演算に ac_unmet の付与が 1 箇所" "1" \
+  "$(_sec_ar_530c | grep -cF 'consequence_exclusion = "ac_unmet:AC-N"' || true)"
+assert "TC-7 assessment-rules §5.3.0.C に既存判別子の原文が残る" "1" \
+  "$(_sec_ar_530c | grep -cF '既存 (base 側) に存在した記述・ガード・禁止文を本 PR の diff が削除/弱体化した' || true)"
+assert "TC-7 helper docstring の Gate semantics に第 2 判別子が 1 箇所" "1" \
+  "$(_sec_gate_doc | grep -cF '#      - 合意済み AC の実測済み未充足:' || true)"
+assert "TC-7 helper docstring の Reason SoT に acceptance_criteria_invalid が 1 箇所" "1" \
+  "$(_sec_gate_doc | grep -cE '^#   acceptance_criteria_invalid +— ' || true)"
+assert "TC-7 helper docstring に既存判別子の well-formed 条件が残る" "1" \
+  "$(_sec_gate_doc | grep -cF 'exclusion キー欠落または exclusion が非空文字列) がある' || true)"
+
 if ! print_summary "$(basename "$0")" \
-  "drift: review helper 5 件 (review-skip-notification / review-comment-post / review-result-save / review-nonblocking-record / review-spawn-spread-check) の gate 分岐・reason 語彙・exit code 契約、または skills/pr-review/SKILL.md ステップ 4.6 / 6.1.d / 8.0.3 の gate 契約が変更された可能性。各 helper のヘッダ契約コメントと skills/pr-review/SKILL.md ステップ 4.6 / 6.1 / 8.0 を確認すること。"; then
+  "drift: review helper 5 件 (review-skip-notification / review-comment-post / review-result-save / review-nonblocking-record / review-spawn-spread-check) の gate 分岐・reason 語彙・exit code 契約、または skills/pr-review/SKILL.md ステップ 4.6 / 6.1.d / 8.0.3 の gate 契約、または帰結クラス降格の除外判別子 SoT (severity-levels / assessment-rules §5.3.0.C / review-class-demotion-gate.sh docstring) が変更された可能性。各 helper のヘッダ契約コメントと skills/pr-review/SKILL.md ステップ 4.6 / 6.1 / 8.0 を確認すること。"; then
   exit 1
 fi

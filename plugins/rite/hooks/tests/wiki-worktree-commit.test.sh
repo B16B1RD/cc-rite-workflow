@@ -17,6 +17,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_test-helpers.sh"
 
 SCRIPT="$SCRIPT_DIR/../scripts/wiki-worktree-commit.sh"
+# shellcheck source=../scripts/lib/worktree-git.sh
+source "$SCRIPT_DIR/../scripts/lib/worktree-git.sh"
 
 echo "=== wiki-worktree-commit.sh tests ==="
 
@@ -29,6 +31,9 @@ SANDBOXES=()
 cleanup() {
   local d
   for d in "${SANDBOXES[@]:-}"; do
+    # Restore write permission first: an admin dir left read-only by an
+    # interrupted sandbox-mask case would make both prune and rm fail.
+    [ -n "$d" ] && chmod -R u+w "$d" 2>/dev/null
     # Detach any worktrees before rm so no stale admin entries leak into $HOME.
     [ -n "$d" ] && [ -d "$d" ] && git -C "$d" worktree prune 2>/dev/null || true
     [ -n "$d" ] && rm -rf "$d"
@@ -109,7 +114,7 @@ assert "wiki disabled exits 2" "2" "$(rc_in "$disabled_repo")"
 # Capture stdout to a variable first: run_in exits 2 here, and `set -o pipefail`
 # would make `run_in | grep` report the pipeline as failed even on a grep match.
 disabled_out="$(run_in "$disabled_repo")"
-if printf '%s' "$disabled_out" | grep -q 'reason=wiki-disabled'; then
+if printf '%s' "$disabled_out" | grep -c >/dev/null 'reason=wiki-disabled'; then
   pass "wiki disabled reports reason=wiki-disabled"
 else
   fail "wiki-disabled reason line missing: $disabled_out"
@@ -123,11 +128,21 @@ nopending_repo="$(new_repo true)"; SANDBOXES+=("$nopending_repo")
 setup_wiki_worktree "$nopending_repo"
 assert "no pending changes exits 0" "0" "$(rc_in "$nopending_repo")"
 nopending_out="$(run_in "$nopending_repo")"
-if printf '%s' "$nopending_out" | grep -q 'committed=0; branch=wiki; reason=no-pending'; then
+if printf '%s' "$nopending_out" | grep -c >/dev/null 'committed=0; branch=wiki; reason=no-pending'; then
   pass "no pending reports committed=0; reason=no-pending"
 else
   fail "no-pending status line missing: $nopending_out"
 fi
+
+# Exercise the write probe against a writable linked-worktree admin dir. The
+# read-only fixture below cannot pin cleanup because mktemp never creates the
+# probe there in the first place.
+nopending_wt="$nopending_repo/.rite/wiki-worktree"
+nopending_admin="$(git -C "$nopending_wt" rev-parse --absolute-git-dir)"
+probe_rc=0; worktree_admin_writable "$nopending_wt" || probe_rc=$?
+assert "writable admin dir probe exits 0" "0" "$probe_rc"
+assert "the successful write probe leaves no file in the admin dir" "0" \
+  "$(find "$nopending_admin" -maxdepth 1 -name 'rite-write-probe.*' | wc -l | tr -d '[:space:]')"
 
 # --- newline --message guard, isolated -----------------------------------
 # The header-smuggling guard fires BEFORE the git/worktree checks. Run against a
@@ -146,7 +161,7 @@ wiki_before_dry="$(git -C "$dryrun_repo" rev-parse wiki)"
 dry_out="$(run_in "$dryrun_repo" --dry-run)"
 wiki_after_dry="$(git -C "$dryrun_repo" rev-parse wiki)"
 assert "dry-run does not advance the wiki branch" "$wiki_before_dry" "$wiki_after_dry"
-if printf '%s' "$dry_out" | grep -qE 'dry-run; branch=wiki'; then
+if printf '%s' "$dry_out" | grep -cE >/dev/null 'dry-run; branch=wiki'; then
   pass "dry-run reports the dry-run status line"
 else
   fail "dry-run status line missing: $dry_out"
@@ -158,7 +173,7 @@ setup_wiki_worktree "$commit_repo"
 add_pending "$commit_repo"
 origin_before="$(git -C "$commit_repo" rev-parse origin/wiki)"
 commit_out="$(run_in "$commit_repo")"
-if printf '%s' "$commit_out" | grep -qE 'committed=1; branch=wiki;.*push=ok'; then
+if printf '%s' "$commit_out" | grep -cE >/dev/null 'committed=1; branch=wiki;.*push=ok'; then
   pass "pending change is committed and pushed to the local bare origin (push=ok)"
 else
   fail "expected committed=1 + push=ok; got: $commit_out"
@@ -184,7 +199,7 @@ setup_wiki_worktree "$commitonly_repo"
 add_pending "$commitonly_repo" page1.md
 origin_before_co="$(git -C "$commitonly_repo" rev-parse origin/wiki)"
 co_out="$(run_in "$commitonly_repo" --commit-only)"
-if printf '%s' "$co_out" | grep -qE 'committed=1; branch=wiki;.*push=deferred'; then
+if printf '%s' "$co_out" | grep -cE >/dev/null 'committed=1; branch=wiki;.*push=deferred'; then
   pass "--commit-only reports committed=1 + push=deferred"
 else
   fail "expected committed=1 + push=deferred; got: $co_out"
@@ -199,7 +214,7 @@ assert "--commit-only advances the local wiki branch" \
 
 # --push-only then pushes what --commit-only landed locally.
 po_out="$(run_in "$commitonly_repo" --push-only)"
-if printf '%s' "$po_out" | grep -qE 'branch=wiki;.*push=ok'; then
+if printf '%s' "$po_out" | grep -cE >/dev/null 'branch=wiki;.*push=ok'; then
   pass "--push-only reports push=ok"
 else
   fail "expected push=ok; got: $po_out"
@@ -210,7 +225,7 @@ assert "--push-only advances origin/wiki to match local wiki HEAD" \
 
 # A second --push-only with nothing new to send self-gates to no-op (no network call).
 noop_out="$(run_in "$commitonly_repo" --push-only)"
-if printf '%s' "$noop_out" | grep -qE 'push=no-op'; then
+if printf '%s' "$noop_out" | grep -cE >/dev/null 'push=no-op'; then
   pass "--push-only self-gates to push=no-op when nothing is ahead of origin"
 else
   fail "expected push=no-op on a second --push-only call; got: $noop_out"
@@ -258,7 +273,7 @@ run_in "$pushfail_repo" --commit-only >/dev/null
 wiki_head_before_push="$(git -C "$pushfail_repo" rev-parse wiki)"
 pf_out="$(run_in "$pushfail_repo" --push-only)"; pf_rc=$?
 assert "--push-only against an unreachable origin exits 4" "4" "$pf_rc"
-if printf '%s' "$pf_out" | grep -qE 'push=failed'; then
+if printf '%s' "$pf_out" | grep -cE >/dev/null 'push=failed'; then
   pass "--push-only reports push=failed for a non-NFF failure"
 else
   fail "expected push=failed; got: $pf_out"
@@ -287,7 +302,7 @@ wiki_before_nr="$(git -C "$numref_repo" rev-parse wiki)"
 nr_out="$(run_in "$numref_repo")"
 nr_rc="$(rc_in "$numref_repo")"
 assert "numref pending default invoke exits 1" "1" "$nr_rc"
-if printf '%s' "$nr_out" | grep -qE '\[wiki-worktree-commit\] committed=0; branch=wiki; reason=numref-hit'; then
+if printf '%s' "$nr_out" | grep -cE >/dev/null '\[wiki-worktree-commit\] committed=0; branch=wiki; reason=numref-hit'; then
   pass "numref pending default invoke reports committed=0 reason=numref-hit on stdout"
 else
   fail "expected stdout committed=0; reason=numref-hit; got: $nr_out"
@@ -307,7 +322,7 @@ wiki_before_co_nr="$(git -C "$numref_co_repo" rev-parse wiki)"
 co_nr_out="$(run_in "$numref_co_repo" --commit-only)"
 co_nr_rc="$(rc_in "$numref_co_repo" --commit-only)"
 assert "numref pending --commit-only exits 1" "1" "$co_nr_rc"
-if printf '%s' "$co_nr_out" | grep -qE '\[wiki-worktree-commit\] committed=0; branch=wiki; reason=numref-hit'; then
+if printf '%s' "$co_nr_out" | grep -cE >/dev/null '\[wiki-worktree-commit\] committed=0; branch=wiki; reason=numref-hit'; then
   pass "numref --commit-only reports committed=0 reason=numref-hit on stdout"
 else
   fail "expected --commit-only committed=0; reason=numref-hit; got: $co_nr_out"
@@ -336,7 +351,7 @@ wiki_before_err="$(git -C "$numref_err_repo" rev-parse wiki)"
 err_out="$(run_in "$numref_err_repo" --commit-only)"
 err_rc="$(rc_in "$numref_err_repo" --commit-only)"
 assert "numref-error --commit-only exits 1" "1" "$err_rc"
-if printf '%s' "$err_out" | grep -qE '\[wiki-worktree-commit\] committed=0; branch=wiki; reason=numref-error'; then
+if printf '%s' "$err_out" | grep -cE >/dev/null '\[wiki-worktree-commit\] committed=0; branch=wiki; reason=numref-error'; then
   pass "helper error reports committed=0 reason=numref-error on stdout"
 else
   fail "expected reason=numref-error; got: $err_out"
@@ -357,10 +372,58 @@ assert "dry-run with numref pending does not advance wiki" \
   "$wiki_before_dry_nr" "$(git -C "$dry_nr_repo" rev-parse wiki)"
 others_after=$(git -C "$dry_nr_repo/.rite/wiki-worktree" ls-files --others --exclude-standard -- .rite/wiki)
 assert "dry-run does not intent-to-add (helper not called)" "$others_before" "$others_after"
-if printf '%s' "$dry_nr_out" | grep -qE 'dry-run; branch=wiki'; then
+if printf '%s' "$dry_nr_out" | grep -cE >/dev/null 'dry-run; branch=wiki'; then
   pass "dry-run with numref pending still reports dry-run status"
 else
   fail "dry-run status missing with numref pending: $dry_nr_out"
+fi
+
+# --- admin dir read-only (sandbox mask) ---------------------------------------
+# A sandbox can mount the worktree's admin dir read-only while the working tree
+# stays writable. Paths that write nothing there (no-pending / --push-only /
+# --dry-run) keep their results; the commit path stops with reason=sandbox-mask
+# / exit 6 before the numref gate stages anything.
+if [ "$(id -u)" = "0" ]; then
+  skip "admin dir read-only cases (root ignores directory write permission)"
+else
+  mask_repo="$(new_repo true)"; SANDBOXES+=("$mask_repo")
+  setup_wiki_worktree "$mask_repo"
+  mask_wt="$mask_repo/.rite/wiki-worktree"
+  mask_admin="$(git -C "$mask_wt" rev-parse --absolute-git-dir)"
+  mask_io="$(mktemp -d)"; SANDBOXES+=("$mask_io")
+  run_masked() {
+    local rc=0
+    chmod a-w "$mask_admin"
+    ( cd "$mask_repo" && bash "$SCRIPT" "$@" ) >"$mask_io/out" 2>"$mask_io/err" || rc=$?
+    chmod u+w "$mask_admin"
+    return "$rc"
+  }
+
+  mask_rc=0; run_masked --commit-only || mask_rc=$?
+  assert "read-only admin dir + no pending exits 0" "0" "$mask_rc"
+  assert_grep "read-only admin dir + no pending still reports reason=no-pending" "$mask_io/out" 'reason=no-pending'
+
+  mask_rc=0; run_masked --push-only || mask_rc=$?
+  assert "read-only admin dir + --push-only (nothing ahead) exits 0" "0" "$mask_rc"
+  assert_grep "--push-only does not probe the admin dir (push=no-op)" "$mask_io/out" 'push=no-op'
+  assert_not_grep "--push-only never reports sandbox-mask" "$mask_io/out" 'sandbox-mask'
+
+  add_pending_numref "$mask_repo" mask.md
+  mask_rc=0; run_masked --dry-run || mask_rc=$?
+  assert "read-only admin dir + --dry-run exits 0" "0" "$mask_rc"
+  assert_grep "--dry-run still reports the dry-run status line" "$mask_io/out" 'dry-run; branch=wiki'
+
+  others_before_mask=$(git -C "$mask_wt" ls-files --others --exclude-standard -- .rite/wiki)
+  wiki_before_mask="$(git -C "$mask_repo" rev-parse wiki)"
+  mask_rc=0; run_masked --commit-only || mask_rc=$?
+  assert "read-only admin dir + pending exits 6" "6" "$mask_rc"
+  assert_grep "pending with read-only admin dir reports reason=sandbox-mask" "$mask_io/out" \
+    '^\[wiki-worktree-commit\] committed=0; branch=wiki; reason=sandbox-mask$'
+  assert_not_grep "sandbox-mask is reported before the numref gate" "$mask_io/out" 'numref-'
+  assert_grep "stderr names the unwritable admin dir" "$mask_io/err" "管理ディレクトリ（${mask_admin}）に書き込めません"
+  assert "sandbox-mask stages nothing (numref helper not called)" "$others_before_mask" \
+    "$(git -C "$mask_wt" ls-files --others --exclude-standard -- .rite/wiki)"
+  assert "sandbox-mask does not advance the wiki branch" "$wiki_before_mask" "$(git -C "$mask_repo" rev-parse wiki)"
 fi
 
 print_summary "wiki-worktree-commit.sh"

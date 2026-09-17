@@ -82,20 +82,41 @@ if assert_mutant_changed 'deleted summary rule' "$structure" "$work/mutant.md"; 
   assert_grep 'deleted literal reports MISSING RULE' "$work/mutation.err" '^MISSING RULE:'
 fi
 
+# Prints the version gate line; a missing line is reported and returns 1 instead of ending the run.
+svg_gate_line() {
+  local line
+  line=$(grep '^svg_allowed=' "$1" || true)
+  [ -n "$line" ] || { printf 'MISSING GATE: %s: svg_allowed=\n' "$1" >&2; return 1; }
+  printf '%s\n' "$line"
+}
+sed '/^svg_allowed=/d' "$structure" > "$work/gate-mutant.md"
+if assert_mutant_changed 'deleted svg_allowed gate line' "$structure" "$work/gate-mutant.md"; then
+  rc=0
+  svg_gate_line "$work/gate-mutant.md" > "$work/gate.out" 2> "$work/gate.err" || rc=$?
+  assert 'deleted gate line returns 1' 1 "$rc"
+  assert_grep 'deleted gate line reports MISSING GATE' "$work/gate.err" '^MISSING GATE:'
+fi
+
 # Execute the actual one-line version gate; gh is a local function, never the CLI.
-version_code=$(grep '^svg_allowed=' "$structure")
-for pair in '2.98.0 false' '2.99.0 true' '2.100.0 true' 'invalid false'; do
-  read -r version expected <<< "$pair"
-  actual=$(VERSION="$version" bash -c 'gh() { printf "gh version %s\n" "$VERSION"; }; eval "$1"; printf "%s" "$svg_allowed"' _ "$version_code" 2> "$work/version.err")
-  assert "SVG allowed for $version" "$expected" "$actual"
-  if [ "$version" = invalid ]; then
-    assert_grep 'invalid version warning' "$work/version.err" 'WARNING:'
-  else assert "valid $version is quiet" '' "$(cat "$work/version.err")"; fi
-done
+if ! version_code=$(svg_gate_line "$structure"); then
+  fail 'svg_allowed version gate line exists in template-structure'
+else
+  for pair in '2.98.0 false' '2.99.0 true' '2.100.0 true' 'invalid false'; do
+    read -r version expected <<< "$pair"
+    actual=$(VERSION="$version" bash -c 'gh() { printf "gh version %s\n" "$VERSION"; }; eval "$1"; printf "%s" "$svg_allowed"' _ "$version_code" 2> "$work/version.err")
+    assert "SVG allowed for $version" "$expected" "$actual"
+    if [ "$version" = invalid ]; then
+      assert_grep 'invalid version warning' "$work/version.err" 'WARNING:'
+    else assert "valid $version is quiet" '' "$(cat "$work/version.err")"; fi
+  done
+fi
 
 # Extract the real Decision Log awk program, including its historical boundaries.
 awk '/NEW_LINE="\$new_line" awk '\''/ { active=1; next } active && /^  '\''/ { exit } active { print }' \
   "$PLUGIN_ROOT/skills/pr-review/references/scope-triage.md" > "$work/append.awk"
+# The extraction anchors on one call site; pin that it is unique and is the Section 9 append, not the creation awk.
+assert 'Decision Log append awk call site is unique' 1 "$(grep -cF 'NEW_LINE="$new_line" awk '"'" "$PLUGIN_ROOT/skills/pr-review/references/scope-triage.md")"
+assert_grep 'extracted awk is the Section 9 append' "$work/append.awk" 'END \{ if \(in_section\)'
 for boundary in '</details>' '## Following section' '---' ''; do
   printf '## 9. Decision Log\n- D-01: existing\n' > "$work/log.md"
   [ -z "$boundary" ] || printf '%s\n' "$boundary" >> "$work/log.md"
@@ -104,6 +125,220 @@ for boundary in '</details>' '## Following section' '---' ''; do
   [ -z "$boundary" ] || printf '%s\n' "$boundary" >> "$work/expected.md"
   if cmp -s "$work/expected.md" "$work/appended.md"; then pass "append before boundary: ${boundary:-EOF}"; else fail "append boundary: ${boundary:-EOF}"; fi
 done
+
+# The numbering scan copies the append boundaries; if either copy drifts, numbers skip without any other failure.
+awk '/section9=\$\(printf .%s\\n. "\$body" \| awk '\''$/ { active=1; next } active && /^  '\''\)/ { exit } active { print }' \
+  "$PLUGIN_ROOT/skills/pr-review/references/scope-triage.md" > "$work/section9.awk"
+assert 'Section 9 scan awk call site is unique' 1 "$(grep -cF 'section9=$(printf '"'"'%s\n'"'"' "$body" | awk '"'" "$PLUGIN_ROOT/skills/pr-review/references/scope-triage.md")"
+# The boundary expression is identical in both programs, so pin the scan by what only the scan has.
+assert_grep 'extracted awk is the Section 9 scan' "$work/section9.awk" '^[[:space:]]*in_section \{ print \}'
+assert_not_grep 'extracted scan awk has no append action' "$work/section9.awk" 'ENVIRON\["NEW_LINE"\]|END \{'
+scan_boundary=$(sed -n 's/^[[:space:]]*in_section && (\(.*\)) {.*/\1/p' "$work/section9.awk")
+append_boundary=$(sed -n 's/^[[:space:]]*in_section && (\(.*\)) {.*/\1/p' "$work/append.awk")
+if [ -n "$scan_boundary" ] && [ "$scan_boundary" = "$append_boundary" ]; then
+  pass 'Section 9 scan and append share one boundary'
+else fail "Section 9 boundary drift: scan=[$scan_boundary] append=[$append_boundary]"; fi
+# A boundary added as a separate rule on one side leaves the parenthesized expressions equal.
+assert 'Section 9 scan and append have the same number of boundary rules' \
+  "$(grep -c 'in_section &&' "$work/section9.awk")" "$(grep -c 'in_section &&' "$work/append.awk")"
+# A rule written in another form escapes the count, so compare where each program ends the section.
+for candidate in '<!-- note -->' '### Sub heading' '' '***' '</details>' '## Following section' '---'; do
+  printf '## 9. Decision Log\n- D-01: existing\n%s\n- D-09: after candidate\n' "$candidate" > "$work/drift.md"
+  awk -f "$work/section9.awk" "$work/drift.md" > "$work/drift-scan.md"
+  NEW_LINE='NEW_LINE_MARKER' awk -f "$work/append.awk" "$work/drift.md" > "$work/drift-appended-raw.md"
+  assert "append inserts exactly once: ${candidate:-blank line}" 1 "$(grep -c '^NEW_LINE_MARKER$' "$work/drift-appended-raw.md")"
+  awk '/^## 9\. Decision Log/ { in_section=1; next } $0 == "NEW_LINE_MARKER" { exit } in_section { print }' \
+    "$work/drift-appended-raw.md" > "$work/drift-append.md"
+  if cmp -s "$work/drift-scan.md" "$work/drift-append.md"; then
+    pass "scan counts exactly the lines before the append point: ${candidate:-blank line}"
+  else fail "scan and append end Section 9 at different lines: ${candidate:-blank line}"; fi
+done
+for boundary in '</details>' '## Following section' '---'; do
+  printf '## 9. Decision Log\n- D-01: existing\n%s\n- D-09: outside\n' "$boundary" > "$work/scan.md"
+  awk -f "$work/section9.awk" "$work/scan.md" > "$work/scanned.md"
+  if [ "$(cat "$work/scanned.md")" = '- D-01: existing' ]; then pass "section9 scan stops at boundary: $boundary"; else fail "section9 scan stops at boundary: $boundary"; fi
+done
+printf '## 9. Decision Log\n- D-01: existing\n- D-02: last\n' > "$work/scan.md"
+awk -f "$work/section9.awk" "$work/scan.md" > "$work/scanned.md"
+if [ "$(cat "$work/scanned.md")" = "$(printf -- '- D-01: existing\n- D-02: last')" ]; then
+  pass 'section9 scan reads to EOF when no boundary follows'
+else fail 'section9 scan reads to EOF when no boundary follows'; fi
+
+# Execute the real Decision Log Append block; gh / date / awk failures are local mocks, never the CLI.
+triage="$PLUGIN_ROOT/skills/pr-review/references/scope-triage.md"
+awk '/^#### 7\.4\.3 / { sec=1 } sec && /^```bash$/ { active=1; next } active && /^```$/ { exit } active { print }' "$triage" > "$work/dl-block.sh"
+assert_grep 'Decision Log block extracted' "$work/dl-block.sh" 'section=created'
+dl_code=$(cat "$work/dl-block.sh")
+dl_code=${dl_code//\{decision\}/decided}
+dl_code=${dl_code//\{reason\}/why}
+dl_code=${dl_code//\{impact\}/what}
+dl_code=${dl_code//\{source_issue_number\}/7}
+dl_code=${dl_code//\{owner_repo\}/example\/repo}
+printf '%s\n' "$dl_code" > "$work/dl.sh"
+assert_not_grep 'Decision Log block has no placeholder residue' "$work/dl.sh" '(^|[^$])\{[a-z_]+\}'
+mkdir "$work/dl-bin" "$work/awk-fail"
+cat > "$work/dl-bin/gh" <<'MOCK'
+#!/bin/bash
+jq -cn --args '$ARGS.positional' -- "$@" >> "$MOCK_LOG"
+if [ "$1 $2" = 'issue view' ]; then cat "$MOCK_BODY"; fi
+if [ "$1 $2" = 'issue edit' ]; then
+  while [ $# -gt 0 ]; do [ "$1" = --body-file ] && cp "$2" "$MOCK_EDITED"; shift; done
+fi
+MOCK
+printf '#!/bin/bash\necho 2026-01-02\n' > "$work/dl-bin/date"
+# Only the AWK_FAIL_AT-th awk call fails, so each exit-status capture in the block is pinned on its own.
+cat > "$work/awk-fail/awk" <<'MOCK'
+#!/bin/bash
+echo call >> "$AWK_LOG"
+if [ "$(wc -l < "$AWK_LOG" | tr -d ' ')" -ne "$AWK_FAIL_AT" ]; then exec "$REAL_AWK" "$@"; fi
+if [ "$AWK_FAIL_MODE" = partial ]; then IFS= read -r first; printf '%s\n' "$first"; exit 2; fi
+cat > /dev/null
+exit 0
+MOCK
+chmod +x "$work/dl-bin/gh" "$work/dl-bin/date" "$work/awk-fail/awk"
+REAL_AWK=$(command -v awk)
+export REAL_AWK
+dl_line='- 2026-01-02 D-01: decided / Reason: why / Impact: what'
+run_decision_log() {
+  local name="$1" body="$2" extra_path="${3:-}" rc=0
+  : > "$work/$name.argv"; : > "$work/$name.awklog"
+  AWK_LOG="$work/$name.awklog" MOCK_LOG="$work/$name.argv" MOCK_BODY="$body" MOCK_EDITED="$work/$name.edited" \
+    PATH="${extra_path:+$extra_path:}$work/dl-bin:$PATH" bash "$work/dl.sh" > "$work/$name.out" 2> "$work/$name.err" || rc=$?
+  assert "Decision Log $name exit status" 0 "$rc"
+}
+edit_count() { jq -s '[.[] | select(.[0:2] == ["issue", "edit"] and index("--body-file") != null)] | length' "$work/$1.argv"; }
+heading_count() { grep -c '^## 9\. Decision Log' "$work/$1.edited" || true; }
+
+# Section 9 is created inside the contract details, before </details> and not before the footer rule.
+cat > "$work/contract-body.md" <<'BODY'
+**Type**: fix
+
+## 要約
+
+free text
+---
+
+<details>
+<summary>Implementation Contract（契約）</summary>
+
+## 8. Definition of Done
+
+- [ ] done
+
+</details>
+
+---
+
+🤖 Generated with rite
+BODY
+details_at=$(grep -n '^</details>$' "$work/contract-body.md" | cut -d: -f1)
+{ head -n $((details_at - 1)) "$work/contract-body.md"; printf '## 9. Decision Log\n\n%s\n\n' "$dl_line"; tail -n +"$details_at" "$work/contract-body.md"; } > "$work/contract-expected.md"
+run_decision_log contract "$work/contract-body.md"
+assert_grep 'created marker names D-01 and section=created' "$work/contract.out" 'DECISION_LOG_APPENDED=1; issue=7; entry=D-01; section=created'
+assert 'created section edits once' 1 "$(edit_count contract)"
+if cmp -s "$work/contract-expected.md" "$work/contract.edited"; then pass 'created section keeps every other line'; else fail 'created section changed other lines'; fi
+assert 'created section heading appears once' 1 "$(heading_count contract)"
+if awk -v l="$dl_line" '/^<details>/ { o=NR } $0 == l { d=NR } /^<\/details>/ { c=NR } END { exit !(o && o < d && d < c) }' "$work/contract.edited"; then
+  pass 'created D-01 sits inside details'
+else fail 'created D-01 outside details'; fi
+assert 'pr-create reads one decision from created section' 1 \
+  "$(awk '/^## 9\. Decision Log/ { s=1; next } s && (/^## / || /^<\/details>/) { exit } s && /D-[0-9]+:/ { n++ } END { print n+0 }' "$work/contract.edited")"
+
+# CRLF bodies keep their bytes; only the inserted lines are added.
+sed 's/$/\r/' "$work/contract-body.md" > "$work/crlf-body.md"
+{ head -n $((details_at - 1)) "$work/crlf-body.md"; printf '## 9. Decision Log\n\n%s\n\n' "$dl_line"; tail -n +"$details_at" "$work/crlf-body.md"; } > "$work/crlf-expected.md"
+run_decision_log crlf "$work/crlf-body.md"
+if cmp -s "$work/crlf-expected.md" "$work/crlf.edited"; then pass 'CRLF body gets section before </details>'; else fail 'CRLF body insertion'; fi
+
+# No details: a footer rule followed only by the signature is the boundary.
+printf '<!-- rite:marker -->\n**Type**: fix\n\n## 概要\n\ntext\n\n---\n\n🤖 Generated with rite\n' > "$work/footer-body.md"
+printf '<!-- rite:marker -->\n**Type**: fix\n\n## 概要\n\ntext\n\n## 9. Decision Log\n\n%s\n\n---\n\n🤖 Generated with rite\n' "$dl_line" > "$work/footer-expected.md"
+run_decision_log footer "$work/footer-body.md"
+if cmp -s "$work/footer-expected.md" "$work/footer.edited"; then pass 'marker body gets section before footer rule'; else fail 'marker body footer insertion'; fi
+assert 'footer body heading appears once' 1 "$(heading_count footer)"
+
+# Free-text rule / </details> lines are not boundaries; the section goes to the end.
+printf '<!-- rite:follow-up -->\n## 残存非実測指摘\n\n- 説明: before\n---\n</details>\n- 提案: after\n' > "$work/freetext-body.md"
+{ cat "$work/freetext-body.md"; printf '\n## 9. Decision Log\n\n%s\n' "$dl_line"; } > "$work/freetext-expected.md"
+run_decision_log freetext "$work/freetext-body.md"
+if cmp -s "$work/freetext-expected.md" "$work/freetext.edited"; then pass 'free-text rule body gets section at end'; else fail 'free-text rule body insertion'; fi
+assert 'free-text body heading appears once' 1 "$(heading_count freetext)"
+
+# The created section is the Section 9 of the next append.
+run_decision_log existing "$work/contract.edited"
+assert_grep 'existing section appends D-02' "$work/existing.out" 'DECISION_LOG_APPENDED=1; issue=7; entry=D-02$'
+assert_not_grep 'existing section is not reported as created' "$work/existing.out" 'section=created'
+assert 'existing section heading stays single' 1 "$(heading_count existing)"
+if awk '/ D-01: / { a=NR } / D-02: / { b=NR } /^<\/details>/ { c=NR } END { exit !(a && a < b && b < c) }' "$work/existing.edited"; then
+  pass 'D-02 follows D-01 inside details'
+else fail 'D-02 position'; fi
+
+# Numbering counts only Section 9; D-NN in prose before or after the section is not a decision.
+cat > "$work/prose-body.md" <<'BODY'
+**Type**: fix
+
+## 残存非実測指摘
+
+- 説明: 2 件目が D-04 に飛ぶ
+
+<details>
+<summary>Implementation Contract（契約）</summary>
+
+## 8. Definition of Done
+
+- [ ] done
+
+</details>
+
+- 提案: D-09 を参照
+BODY
+run_decision_log prose-created "$work/prose-body.md"
+assert_grep 'prose body creates D-01' "$work/prose-created.out" 'entry=D-01; section=created'
+run_decision_log prose-appended "$work/prose-created.edited"
+assert_grep 'prose body appends D-02' "$work/prose-appended.out" 'entry=D-02$'
+assert_grep 'prose body records D-02' "$work/prose-appended.edited" ' D-02: decided'
+assert_not_grep 'prose body skips no number' "$work/prose-appended.edited" ' D-(05|10): '
+printf '## 要約\n\n- 説明: D-07 を参照\n\n## 9. Decision Log\n\n- 2026-01-01 D-03: earlier / CARD-12 は別物\n\n---\n\n- 提案: D-08 を参照\n' > "$work/max-body.md"
+run_decision_log max "$work/max-body.md"
+assert_grep 'Section 9 maximum D-03 appends D-04' "$work/max.out" 'entry=D-04$'
+# A digit directly before D-NN in a record is not part of the number.
+printf '## 9. Decision Log\n\n- 2026-01-01 D-01: a\n- 2026-01-01 D-02: b\n- 2026-01-01 D-03: c\n- 2026-01-01 D-04: see 9D-02\n' > "$work/digit-body.md"
+run_decision_log digit "$work/digit-body.md"
+assert_grep 'digit before D-NN still appends D-05' "$work/digit.out" 'entry=D-05$'
+
+# A failing numbering scan or append awk on an existing Section 9 never writes back.
+for fail in partial:1 partial:2; do
+  at=${fail##*:}
+  name="existing-awk-$at"
+  AWK_FAIL_MODE=partial AWK_FAIL_AT=$at run_decision_log "$name" "$work/contract.edited" "$work/awk-fail"
+  if [ "$(wc -l < "$work/$name.awklog" | tr -d ' ')" -ge "$at" ]; then pass "$name mock reached the failing call"; else fail "$name mock did not reach the failing call"; fi
+  assert "$name does not edit" 0 "$(edit_count "$name")"
+  assert_not_grep "$name reports no append" "$work/$name.out" 'DECISION_LOG_APPENDED'
+  assert_grep "$name reports gh_edit_failure" "$work/$name.err" 'DECISION_LOG_APPEND_FAILED=1; reason=gh_edit_failure'
+done
+assert_grep 'failed scan leaves the pending number open' "$work/existing-awk-1.err" 'D-NN: decided'
+assert_grep 'failed append prints the pending D-02' "$work/existing-awk-2.err" 'D-02: decided'
+
+# A failing or empty body build never writes back, whichever awk call fails.
+for fail in partial:1 partial:2 empty:2; do
+  mode=${fail%%:*}
+  at=${fail##*:}
+  name="awk-$mode-$at"
+  AWK_FAIL_MODE=$mode AWK_FAIL_AT=$at run_decision_log "$name" "$work/footer-body.md" "$work/awk-fail"
+  if [ "$(wc -l < "$work/$name.awklog" | tr -d ' ')" -ge "$at" ]; then pass "$name mock reached the failing call"; else fail "$name mock did not reach the failing call"; fi
+  assert "$name does not edit" 0 "$(edit_count "$name")"
+  assert_not_grep "$name reports no append" "$work/$name.out" 'DECISION_LOG_APPENDED'
+  assert_grep "$name reports gh_edit_failure" "$work/$name.err" 'DECISION_LOG_APPEND_FAILED=1; reason=gh_edit_failure'
+  assert_grep "$name prints the pending line" "$work/$name.err" 'D-01: decided'
+done
+
+# The work-memory fallback is gone from the Decision Log contract.
+for gone in 'issue-comment-wm-sync' 'wm_sync_failure' 'fallback=work_memory' '決定事項・メモ'; do
+  if grep -qF -- "$gone" "$triage"; then fail "scope-triage still mentions $gone"; else pass "scope-triage has no $gone"; fi
+done
+awk '/^#### 7\.4\.3 / { s=1; print; next } s && /^#### / { exit } s { print }' "$triage" > "$work/dl-section.md"
+assert_not_grep 'Decision Log section has no work memory route' "$work/dl-section.md" '作業メモリ'
+assert 'Decision Log failure table has three reasons' 3 "$(grep -cE '^\| `[a-z_]+_failure` \|' "$work/dl-section.md" || true)"
 
 # Consumer headings/checklist syntax remains observable through a details wrapper.
 cat > "$work/contract.md" <<'BODY'
@@ -159,5 +394,163 @@ for mode in empty spaces failure; do
     assert 'failed upload preserves PR URL' 'https://github.com/example/repo/pull/42' "$(cat "$work/$mode.out")"
     assert 'failed upload preserves stderr' 'upload failed: permission denied' "$(cat "$work/$mode.err")"
   fi
+done
+
+# Auto-created Issue bodies open with the Meta /rite:open reads, declaring the Complexity sent to Projects.
+cleanup_skill="$PLUGIN_ROOT/skills/cleanup/SKILL.md"
+split="$PLUGIN_ROOT/skills/pr-review/references/finding-cycling.md"
+nb_sweep="$PLUGIN_ROOT/skills/fix/references/nb-sweep.md"
+route_section() {
+  case "$1" in
+    triage) awk '/^#### 7\.4\.2 / { s=1 } s && /^#### 7\.4\.3 / { exit } s { print }' "$2" ;;
+    cleanup) awk '/^## ステップ 3:/ { s=1 } s && /^## ステップ 4:/ { exit } s { print }' "$2" ;;
+    split) awk '/^## §4 / { s=1; print; next } s && /^## §/ { exit } s { print }' "$2" ;;
+    nb) awk '/^2\. \*\*route 適用\*\*/ { s=1 } s && /^3\. \*\*台帳 persist\*\*/ { exit } s { print }' "$2" ;;
+  esac
+}
+# The readers drain their input instead of exiting at the end marker: route_section writes the
+# section in several buffered chunks, and a reader that exits early sends SIGPIPE to the writer.
+route_body() {
+  case "$1" in
+    triage|split|nb) route_section "$@" | awk 'done { next } /cat <<.BODY_EOF. > "\$tmpfile"$/ { a=1; next } a && /^BODY_EOF$/ { done=1; next } a { print }' ;;
+    cleanup) route_section "$@" | awk 'done { next } /^\*\*Issue 本文テンプレート\*\*/ { s=1 } s && /^```markdown$/ { a=1; next } a && /^```$/ { done=1; next } a { print }' ;;
+  esac
+}
+route_projects_complexity() {
+  route_section "$@" | sed -n 's/^[[:space:]]*--arg complexity "\(.*\)" \\$/\1/p'
+}
+route_headings() {
+  case "$1" in
+    triage) printf '%s' '## 概要|## 背景|### 元のレビュー{source_label}|## 関連' ;;
+    cleanup) printf '%s' '## 概要|## 背景・目的|## 関連|## 変更内容|## チェックリスト' ;;
+    split) printf '%s' '## 概要|## 元の finding|## 関連' ;;
+    nb) printf '%s' '## 概要|## 提案|## 関連' ;;
+  esac
+}
+# Prints the first broken rule and returns 1; returns 0 when the Meta and headings hold.
+route_meta_check() {
+  local body projects expected
+  body=$(route_body "$1" "$2")
+  projects=$(route_projects_complexity "$1" "$2")
+  [ -n "$body" ] || { echo 'body template not found'; return 1; }
+  [ "$(printf '%s\n' "$projects" | grep -c . || true)" = 1 ] || { echo "Projects complexity is not one value: [$projects]"; return 1; }
+  expected=$(printf '**Type**: {type}\n**Complexity**: %s\n\n## 概要' "$projects")
+  [ "$(printf '%s\n' "$body" | awk 'NR <= 4')" = "$expected" ] || { echo "body does not open with Type / Complexity=$projects / blank / ## 概要"; return 1; }
+  [ "$(printf '%s\n' "$body" | grep -E '^#{2,3} ' | paste -sd '|' -)" = "$(route_headings "$1")" ] || { echo 'body headings changed'; return 1; }
+  [ "$(grep -c '^| `{type}` |' "$2" || true)" = 1 ] || { echo 'Placeholder table has no single {type} row'; return 1; }
+  case "$1" in split|nb)
+    [ "$(route_section "$1" "$2" | grep -c '^| `{type}` |' || true)" = 1 ] || { echo 'Placeholder table {type} row is outside the route section'; return 1; } ;;
+  esac
+  if [ "$1" = nb ]; then
+    for kept in '{description}' '{suggestion}' '{file}:{line}'; do
+      [ "$(printf '%s\n' "$body" | grep -cF -- "$kept" || true)" = 1 ] || { echo "body does not keep $kept once"; return 1; }
+    done
+  fi
+}
+for route in "triage|$triage" "cleanup|$cleanup_skill" "split|$split" "nb|$nb_sweep"; do
+  name=${route%%|*}
+  source=${route#*|}
+  anchor="cat <<'BODY_EOF' > \"\$tmpfile\""
+  [ "$name" != cleanup ] || anchor='**Issue 本文テンプレート**'
+  assert "$name body template anchor is unique" 1 "$(route_section "$name" "$source" | grep -cF -- "$anchor" || true)"
+  assert "$name Projects complexity argument is unique" 1 "$(route_section "$name" "$source" | grep -c -- '--arg complexity' || true)"
+  if reason=$(route_meta_check "$name" "$source"); then pass "$name body declares the Projects Complexity"; else fail "$name body Meta: $reason"; fi
+  for mutation in \
+    'deleted Complexity|/^\*\*Complexity\*\*: /d' \
+    'drifted Complexity|s/^\*\*Complexity\*\*: .*/**Complexity**: XL/' \
+    'deleted Type|/^\*\*Type\*\*: {type}$/d' \
+    'Meta after 概要|/^\*\*Type\*\*: {type}$/{N;N;N;s/^\(.*\)\n\(.*\)\n\(.*\)\n\(.*\)$/\4\n\1\n\2\n\3/;}' \
+    'deleted {type} placeholder|/^| `{type}` |/d'; do
+    label=${mutation%%|*}
+    sed "${mutation#*|}" "$source" > "$work/$name-mutant.md"
+    if assert_mutant_changed "$name $label" "$source" "$work/$name-mutant.md"; then
+      if route_meta_check "$name" "$work/$name-mutant.md" > /dev/null; then fail "$name $label is not detected"; else pass "$name $label is detected"; fi
+    fi
+  done
+done
+# The sweep body keeps the finding fields it has always saved.
+for mutation in \
+  'deleted {description}|/^{description}$/d' \
+  'deleted {suggestion}|/^{suggestion}$/d' \
+  'deleted {file}:{line}|s/^- 位置: {file}:{line}$/- 位置:/'; do
+  label=${mutation%%|*}
+  sed "${mutation#*|}" "$nb_sweep" > "$work/nb-kept-mutant.md"
+  if assert_mutant_changed "nb $label" "$nb_sweep" "$work/nb-kept-mutant.md"; then
+    if route_meta_check nb "$work/nb-kept-mutant.md" > /dev/null; then fail "nb $label is not detected"; else pass "nb $label is detected"; fi
+  fi
+done
+# The triage row lives outside its section, so only split and nb pin the row inside their section.
+for route in "split|$split" "nb|$nb_sweep"; do
+  name=${route%%|*}
+  source=${route#*|}
+  { grep '^| `{type}` |' "$source" || true; sed '/^| `{type}` |/d' "$source"; } > "$work/$name-moved-mutant.md"
+  if assert_mutant_changed "$name {type} placeholder moved before its section" "$source" "$work/$name-moved-mutant.md"; then
+    assert "$name {type} placeholder moved before its section is detected" 'Placeholder table {type} row is outside the route section' "$(route_meta_check "$name" "$work/$name-moved-mutant.md")"
+  fi
+done
+# complexity-lane.md names every auto-created route this test checks.
+lane_doc=$(grep -F 'body 先頭に記法 1 の Meta を持ち' "$PLUGIN_ROOT/skills/pr-review/references/complexity-lane.md" || true)
+for named in 'scope-triage.md](./scope-triage.md) 7.4.2' '`/rite:cleanup` ステップ 3' 'finding-cycling.md](./finding-cycling.md) §4' '`/rite:fix --nb-sweep`' 'nb-sweep.md](../../fix/references/nb-sweep.md) 1.3.S の route 適用'; do
+  if printf '%s\n' "$lane_doc" | grep -cF >/dev/null -- "$named"; then pass "complexity-lane lists route: $named"; else fail "complexity-lane misses route: $named"; fi
+done
+
+# The sweep runs its body block and the issue guard as one script: the guard must receive the built arguments.
+# extract_fix_block in the contract test runs the first block holding the guard reason, so the body block must not hold it.
+assert 'nb guard reason appears once' 1 "$(grep -c 'reason=nb_sweep_issue_failed' "$nb_sweep" || true)"
+assert 'nb body reason appears once' 1 "$(grep -c 'reason=nb_sweep_issue_body_failed' "$nb_sweep" || true)"
+if awk '/reason=nb_sweep_issue_body_failed/ { b=NR } /reason=nb_sweep_issue_failed/ { g=NR } END { exit !(b && g && b < g) }' "$nb_sweep"; then
+  pass 'nb body block precedes the issue guard'
+else fail 'nb body block precedes the issue guard'; fi
+# The reader drains its input instead of exiting early, for the same SIGPIPE reason as route_body.
+nb_block() {
+  route_section nb "$nb_sweep" | awk -v needle="$1" 'found { next } /^```bash$/ { inside=1; block=""; next } /^```$/ { if (inside && index(block, needle)) { printf "%s", block; found=1 } inside=0; next } inside { block=block $0 "\n" }'
+}
+nb_code="$(nb_block 'BODY_EOF')"$'\n'"$(nb_block 'reason=nb_sweep_issue_failed')"
+mkdir -p "$work/nb-plugin/scripts"
+cat > "$work/nb-plugin/scripts/create-issue-with-projects.sh" <<'MOCK'
+#!/bin/bash
+printf '%s\n' "$1" >> "$NB_ARGS_LOG"
+cp "$(printf '%s' "$1" | jq -r '.issue.body_file')" "$NB_BODY_COPY"
+printf '{"issue_number":5,"issue_url":"https://example.invalid/5"}\n'
+MOCK
+chmod +x "$work/nb-plugin/scripts/create-issue-with-projects.sh"
+nb_code=${nb_code//\{plugin_root\}/$work/nb-plugin}
+nb_code=${nb_code//\{projects_enabled\}/true}
+nb_code=${nb_code//\{project_number\}/1}
+nb_code=${nb_code//\{owner\}/example}
+printf '%s\n' "$nb_code" > "$work/nb-issue.sh"
+: > "$work/nb-args.log"
+rc=0
+NB_ARGS_LOG="$work/nb-args.log" NB_BODY_COPY="$work/nb-body.md" bash "$work/nb-issue.sh" > "$work/nb-issue.out" 2> "$work/nb-issue.err" || rc=$?
+assert 'nb body block + issue guard exit status' 0 "$rc"
+assert 'nb issue helper is called once' 1 "$(jq -s length "$work/nb-args.log" 2>/dev/null || true)"
+if jq -e '.projects.complexity == "S" and .options.source == "pr_review"' "$work/nb-args.log" > /dev/null 2>&1; then
+  pass 'nb issue helper receives complexity S from pr_review'
+else fail 'nb issue helper arguments lack complexity S / pr_review'; fi
+assert 'nb issue helper body opens with Meta' "$(printf '**Type**: {type}\n**Complexity**: S\n\n## 概要')" "$(head -n 4 "$work/nb-body.md" 2>/dev/null || true)"
+
+# The complexity helper reads the expanded bodies; gh is a local mock, never the CLI.
+mkdir "$work/lane-bin"
+printf '#!/bin/bash\nprintf "%%s\\n" "$*" >> "$MOCK_LOG"\ncat "$MOCK_BODY"\n' > "$work/lane-bin/gh"
+chmod +x "$work/lane-bin/gh"
+run_lane() {
+  local name="$1" rc=0
+  : > "$work/$name-lane.argv"
+  MOCK_BODY="$work/$name-lane.md" MOCK_LOG="$work/$name-lane.argv" PATH="$work/lane-bin:$PATH" \
+    bash "$PLUGIN_ROOT/scripts/issue-complexity-lane.sh" --issue 7 --repo example/repo > /dev/null 2> "$work/$name-lane.err" || rc=$?
+  assert "$name lane exit status" 0 "$rc"
+  assert "$name lane reads the Issue once with -R" 'issue view 7 -R example/repo --json body --jq .body' "$(cat "$work/$name-lane.argv")"
+}
+for route in "triage|$triage|XS" "cleanup|$cleanup_skill|S" "split|$split|S" "nb|$nb_sweep|S"; do
+  IFS='|' read -r name source expected <<< "$route"
+  route_body "$name" "$source" | sed -e 's/{type}/fix/g' -e 's/{complexity}/XS/g' > "$work/$name-lane.md"
+  assert "$name expanded Projects complexity" "$expected" "$(route_projects_complexity "$name" "$source" | sed 's/{complexity}/XS/g')"
+  assert_not_grep "$name expanded Meta has no placeholder" "$work/$name-lane.md" '^\*\*(Type|Complexity)\*\*: \{'
+  run_lane "$name"
+  assert_grep "$name body Meta reaches the helper" "$work/$name-lane.err" "^\[CONTEXT\] COMPLEXITY_LANE=light; complexity=$expected; source=body_meta$"
+  assert_not_grep "$name body Meta needs no fallback" "$work/$name-lane.err" 'COMPLEXITY_LANE_FALLBACK'
+  sed '1,3d' "$work/$name-lane.md" > "$work/$name-no-meta-lane.md"
+  run_lane "$name-no-meta"
+  assert_grep "$name body without Meta is complexity_absent" "$work/$name-no-meta-lane.err" 'reason=complexity_absent'
 done
 print_summary "$(basename "$0")" || exit 1

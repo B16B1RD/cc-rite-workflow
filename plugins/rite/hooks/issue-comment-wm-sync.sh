@@ -793,7 +793,7 @@ transform_status=0
 
 # merge-checklist: exit 10 = target section absent with new items remaining.
 # Distinguish from transform_failed so caller can show "セクション不在のためスキップ"
-# instead of reporting a successful no-op merge (AC-1).
+# instead of reporting a successful no-op merge.
 if [ "$transform_status" -eq 10 ]; then
   py_err=$(cat "$py_err_tmp" 2>/dev/null)
   echo "WARNING: merge-checklist: target section absent; items not merged. Skipping PATCH. Backup: $backup_file" >&2

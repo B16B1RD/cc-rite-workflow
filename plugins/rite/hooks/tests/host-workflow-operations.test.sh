@@ -270,12 +270,15 @@ class WorkflowContracts(unittest.TestCase):
             self.assertIn("docs/designs/multi-host-runtime.md", body)
             self.assertIn("Codex", body)
             self.assertIn("Grok", body)
-        workflow = (root / ".github/workflows/test-hooks.yml").read_text(encoding="utf-8")
+        workflow = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
         for event in ["push", "pull_request"]:
             section = re.search(r"(?ms)^  " + event + r":\n(.*?)(?=^  [a-z_]+:|^\S|\Z)", workflow)
             self.assertIsNotNone(section, event)
-            for pattern in ["plugins/rite/hooks/**", "plugins/rite/references/**", "plugins/rite/skills/**", "README.md", "README.ja.md"]:
-                self.assertIn("'" + pattern + "'", section.group(1), event + ": " + pattern)
+            # Unfiltered events cover runtime inputs and documentation alike.
+            self.assertNotRegex(section.group(1), r"(?m)^\s+paths(?:-ignore)?:")
+        self.assertRegex(workflow, r"(?m)^      - main$")
+        self.assertRegex(workflow, r"(?m)^      - develop$")
+        self.assertIn("for tool in bash jq git python3; do", workflow)
         self.assertIn("run: bash plugins/rite/hooks/tests/run-tests.sh", workflow)
 
 

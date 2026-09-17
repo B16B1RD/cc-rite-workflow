@@ -408,7 +408,7 @@ echo "TC-1: absent remote ref -> no push --delete, REMOTE_BRANCH_ALREADY_ABSENT"
 out=$(run_guard "$GUARD_SNIPPET")
 if push_delete_called; then
   fail "TC-1: git push origin --delete が呼ばれた ($(cat "$CALL_LOG"))"
-elif ! printf '%s' "$out" | grep -qE "^\[CONTEXT\] REMOTE_BRANCH_ALREADY_ABSENT=1; branch=$BRANCH(;|\$)"; then
+elif ! grep -qE "^\[CONTEXT\] REMOTE_BRANCH_ALREADY_ABSENT=1; branch=$BRANCH(;|\$)" <<< "$out"; then
   # 照合はステップ 12 の consumer 側と同形で行う。「行頭 + `[CONTEXT] ` 込み」だけでなく
   # **`; branch=<値>` の右端境界 (直後が `;` または行末) まで**要求する。consumer は marker を
   # branch= までスコープして照合するため emitter の branch= は load-bearing だが、marker 名までしか
@@ -416,7 +416,7 @@ elif ! printf '%s' "$out" | grep -qE "^\[CONTEXT\] REMOTE_BRANCH_ALREADY_ABSENT=
   # その退行が起きると consumer 側は全ルール不一致 → fallback へ落ち、削除成功でも
   # 「削除結果を確認できませんでした」と報告する (本 Issue が塞いだ誤報告クラスの復活)。
   fail "TC-1: REMOTE_BRANCH_ALREADY_ABSENT marker が branch= スコープ込みで行頭に出ていない (出力: '$out')"
-elif printf '%s' "$out" | grep -q '^error:'; then
+elif grep -q '^error:' <<< "$out"; then
   fail "TC-1: error: 行が出力された (AC-1 違反。出力: '$out')"
 else
   # ここでタグ非削除を assert しない — TC-1 は存在確認が不在 (rc=2) に落ちて push 自体を呼ばない
@@ -439,12 +439,12 @@ if ! push_delete_called; then
   fail "TC-2: git push origin --delete が呼ばれていない (delete_branch_on_merge:false 環境の機能後退)"
 elif branch_exists_exact; then
   fail "TC-2: リモートブランチが削除されていない (削除先の refs/heads/ 修飾が外れ、同名タグとの ambiguous dst で push が失敗した可能性)"
-elif ! printf '%s' "$out" | grep -qE "^\[CONTEXT\] REMOTE_BRANCH_DELETED=1; branch=$BRANCH(;|\$)"; then
+elif ! grep -qE "^\[CONTEXT\] REMOTE_BRANCH_DELETED=1; branch=$BRANCH(;|\$)" <<< "$out"; then
   # ステップ 12 の契約は全 emit 経路が marker を出すこと。成功も positive marker で表さないと
   # 「marker 不在 = 削除成功」に戻り、ステップ 5 の未実行と削除成功が区別できなくなる。
   # branch= の右端境界まで要求する理由は TC-1 と同じ。
   fail "TC-2: 削除成功の marker REMOTE_BRANCH_DELETED が branch= スコープ込みで行頭に出ていない。ステップ 12 が marker 不在を成功と読む契約に退行する (出力: '$out')"
-elif printf '%s' "$out" | grep -qE 'REMOTE_BRANCH_(DELETE_FAILED|CHECK_FAILED|ALREADY_ABSENT)'; then
+elif grep -qE 'REMOTE_BRANCH_(DELETE_FAILED|CHECK_FAILED|ALREADY_ABSENT)' <<< "$out"; then
   # 失敗系 3 marker は正常系で出てはならない。非アンカーで照合するのは意図的 — prefix の有無や
   # 行中/行頭に関わらず「出ていること」を捕捉したいので、アンカーすると検出範囲が狭まる。
   fail "TC-2: 削除成功なのに失敗系 marker が出た。ステップ 12 が正常系を未完了と報告する (出力: '$out')"
@@ -478,9 +478,9 @@ if ! push_delete_called; then
   fail "TC-2b: setup 不備 — ref が存在するのに push --delete が呼ばれていない"
 elif ! branch_exists_exact; then
   fail "TC-2b: setup 不備 — 削除が拒否されたはずだがリモート ref が消えている (receive.denyDeletes が効いていない)"
-elif ! printf '%s' "$out" | grep -qE "^\[CONTEXT\] REMOTE_BRANCH_DELETE_FAILED=1; branch=$BRANCH(;|\$)"; then
+elif ! grep -qE "^\[CONTEXT\] REMOTE_BRANCH_DELETE_FAILED=1; branch=$BRANCH(;|\$)" <<< "$out"; then
   fail "TC-2b: push 失敗が branch= スコープ込みの行頭 marker で surface されていない。ステップ 12 が削除失敗を x と報告する (出力: '$out')"
-elif ! printf '%s' "$out" | grep -qE 'denyDeletes|remote rejected'; then
+elif ! grep -qE 'denyDeletes|remote rejected' <<< "$out"; then
   # TC-3 と対称。`_push_err=$(... 2>&1)` は stdout/stderr を両方飲み込むため、WARNING から
   # $_push_err が落ちると原因情報がゼロになる（ターミナルにも何も残らない）。
   fail "TC-2b: WARNING に push 失敗の原因テキストが載っていない (出力: '$out')"
@@ -504,12 +504,12 @@ git remote set-url origin "$TEST_DIR/does-not-exist.git"
 out=$(run_guard "$GUARD_SNIPPET")
 if push_delete_called; then
   fail "TC-3: 存在判定できていないのに push --delete が呼ばれた ($(cat "$CALL_LOG"))"
-elif printf '%s' "$out" | grep -q 'REMOTE_BRANCH_ALREADY_ABSENT=1'; then
+elif grep -q 'REMOTE_BRANCH_ALREADY_ABSENT=1' <<< "$out"; then
   fail "TC-3: ネットワーク失敗を「既削除」に丸めた (出力: '$out')"
-elif ! printf '%s' "$out" | grep -qE "^\[CONTEXT\] REMOTE_BRANCH_CHECK_FAILED=1; branch=$BRANCH(;|\$)"; then
+elif ! grep -qE "^\[CONTEXT\] REMOTE_BRANCH_CHECK_FAILED=1; branch=$BRANCH(;|\$)" <<< "$out"; then
   # CHECK_FAILED は `; rc=<n>` が後続するため、右端境界は `;` 側で成立する。
   fail "TC-3: REMOTE_BRANCH_CHECK_FAILED marker が branch= スコープ込みで行頭に出ていない (出力: '$out')"
-elif ! printf '%s' "$out" | grep -q 'does not appear to be a git repository'; then
+elif ! grep -q 'does not appear to be a git repository' <<< "$out"; then
   # ガードは stderr のみを退避して WARNING に載せる設計 (stdout は完全一致検証に使うため別ファイルへ
   # 分離する)。退避の向きを取り違えると原因が消え rc だけになる（認証失敗・DNS 解決失敗・
   # proxy 遮断がすべて 128 に潰れて切り分け不能になる）。LC_ALL=C 固定で文言は安定する。
@@ -559,9 +559,9 @@ if [ "$_ls_n" -lt 2 ]; then
   fail "TC-3b: ls-remote が 2 回呼ばれていない (count=$_ls_n — 128 リトライが消失した可能性。出力: '$out')"
 elif push_delete_called; then
   fail "TC-3b: 不在判定後に push --delete が呼ばれた ($(cat "$CALL_LOG"))"
-elif ! printf '%s' "$out" | grep -qE "^\[CONTEXT\] REMOTE_BRANCH_ALREADY_ABSENT=1; branch=$BRANCH(;|\$)"; then
+elif ! grep -qE "^\[CONTEXT\] REMOTE_BRANCH_ALREADY_ABSENT=1; branch=$BRANCH(;|\$)" <<< "$out"; then
   fail "TC-3b: 128→2 の遷移で ALREADY_ABSENT になっていない (出力: '$out')"
-elif printf '%s' "$out" | grep -q 'REMOTE_BRANCH_CHECK_FAILED=1'; then
+elif grep -q 'REMOTE_BRANCH_CHECK_FAILED=1' <<< "$out"; then
   fail "TC-3b: リトライ成功後も CHECK_FAILED を出した (出力: '$out')"
 else
   pass "TC-3b (128→2 の transient を吸収し不在判定・削除処方なし)"
@@ -578,9 +578,9 @@ extract_guard_as "$EVIL_BRANCH" > "$EVIL_SNIPPET"
 out=$(run_guard "$EVIL_SNIPPET")
 if push_delete_called; then
   fail "TC-7: 契約を満たせないブランチ名なのに push --delete が呼ばれた ($(cat "$CALL_LOG"))"
-elif ! printf '%s' "$out" | grep -q '^\[CONTEXT\] REMOTE_BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=marker-delimiter-in-branch-name'; then
+elif ! grep -q '^\[CONTEXT\] REMOTE_BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=marker-delimiter-in-branch-name' <<< "$out"; then
   fail "TC-7: fail-fast の sentinel marker が行頭に出ていない (出力: '$out')"
-elif printf '%s' "$out" | grep -q "^\[CONTEXT\].*branch=$EVIL_BRANCH"; then
+elif grep -q "^\[CONTEXT\].*branch=$EVIL_BRANCH" <<< "$out"; then
   # 実ブランチ名を marker に載せると `branch=other` が別ブランチのルールに右端境界で一致する。
   fail "TC-7: marker 行に実ブランチ名が載っている (guard が防ぐはずの誤帰属経路が開いたまま。出力: '$out')"
 else
@@ -593,14 +593,14 @@ for _bad in "fix/trailing "; do
   _bad_snippet="$TEST_DIR/guard-bad-${RANDOM}.sh"
   extract_guard_as "$_bad" > "$_bad_snippet"
   out=$(run_guard "$_bad_snippet")
-  printf '%s' "$out" | grep -q '^\[CONTEXT\] REMOTE_BRANCH_CHECK_FAILED=1' \
+  grep -q '^\[CONTEXT\] REMOTE_BRANCH_CHECK_FAILED=1' <<< "$out" \
     || tc7b_fail="remote bad name が CHECK_FAILED にならない: $_bad (出力: '$out')"
   [ -z "$tc7b_fail" ] && push_delete_called && tc7b_fail="remote bad name で push delete が呼ばれた: $_bad"
 done
 if [ -z "$tc7b_fail" ]; then
   : > "$CALL_LOG"
   out=$(TMPDIR="$TEST_DIR/does-not-exist" PATH="$BIN_DIR:$PATH" bash "$GUARD_SNIPPET" 2>&1)
-  printf '%s' "$out" | grep -q 'rc=mktemp-failed' || tc7b_fail="mktemp 失敗が marker で surface されない (出力: '$out')"
+  grep -q 'rc=mktemp-failed' <<< "$out" || tc7b_fail="mktemp 失敗が marker で surface されない (出力: '$out')"
   [ -z "$tc7b_fail" ] && push_delete_called && tc7b_fail="mktemp 失敗時に push delete が呼ばれた"
 fi
 if [ -z "$tc7b_fail" ]; then
@@ -609,7 +609,7 @@ if [ -z "$tc7b_fail" ]; then
   _unverified="$TEST_DIR/guard-unverified.sh"
   extract_guard_as "$BRANCH" true false > "$_unverified"
   out=$(run_guard "$_unverified")
-  printf '%s' "$out" | grep -q 'rc=branch-identity-unverified' || tc7b_fail="identity 未確認が拒否されない"
+  grep -q 'rc=branch-identity-unverified' <<< "$out" || tc7b_fail="identity 未確認が拒否されない"
   [ -z "$tc7b_fail" ] && push_delete_called && tc7b_fail="identity 未確認で push delete が呼ばれた"
 fi
 if [ -n "$tc7b_fail" ]; then fail "TC-7b: $tc7b_fail"; else pass "TC-7b (remote preflight/mktemp failure は削除未試行)"; fi
@@ -622,9 +622,9 @@ EOF
 chmod +x "$BIN_DIR/awk"
 out=$(run_guard "$GUARD_SNIPPET")
 rm -f "$BIN_DIR/awk"
-if ! printf '%s' "$out" | grep -q 'reason=ref-match-awk-2'; then
+if ! grep -q 'reason=ref-match-awk-2' <<< "$out"; then
   fail "TC-7c: awk rc=2 が reason 付き CHECK_FAILED にならない (出力: '$out')"
-elif printf '%s' "$out" | grep -q 'REMOTE_BRANCH_ALREADY_ABSENT'; then
+elif grep -q 'REMOTE_BRANCH_ALREADY_ABSENT' <<< "$out"; then
   fail "TC-7c: awk 異常終了を既削除へ丸めた"
 elif push_delete_called; then
   fail "TC-7c: awk 異常終了時に push delete が呼ばれた"
@@ -658,26 +658,26 @@ run_local() {
 tc8_fail=""
 # (a) デリミタ含みの名前 -> sentinel、実名を marker に載せない
 out=$(run_local "fix/issue-2016;branch=other")
-printf '%s' "$out" | grep -q '^\[CONTEXT\] BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=marker-delimiter-in-branch-name' \
+grep -q '^\[CONTEXT\] BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=marker-delimiter-in-branch-name' <<< "$out" \
   || tc8_fail="デリミタ含みの名前で sentinel marker が行頭に出ていない (出力: '$out')"
-[ -z "$tc8_fail" ] && { printf '%s' "$out" | grep -q 'branch=fix/issue-2016;branch=other' \
+[ -z "$tc8_fail" ] && { grep -q 'branch=fix/issue-2016;branch=other' <<< "$out" \
   && tc8_fail="marker 行に実ブランチ名が載っている (誤帰属経路が開いたまま)"; }
 [ -z "$tc8_fail" ] && branch_delete_called && tc8_fail="デリミタ含み入力で git branch delete が呼ばれた"
 # (b) 空名 -> sentinel。必ず失敗する処方 (`git branch -D ""`) を出さない
 if [ -z "$tc8_fail" ]; then
   out=$(run_local "")
-  printf '%s' "$out" | grep -q '^\[CONTEXT\] BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=empty-branch-name' \
+  grep -q '^\[CONTEXT\] BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=empty-branch-name' <<< "$out" \
     || tc8_fail="空ブランチ名で sentinel marker が行頭に出ていない (出力: '$out')"
-  [ -z "$tc8_fail" ] && { printf '%s' "$out" | grep -q 'git branch -D ""' \
+  [ -z "$tc8_fail" ] && { grep -q 'git branch -D ""' <<< "$out" \
     && tc8_fail="空ブランチ名に対して必ず失敗する処方 git branch -D \"\" を提示している"; }
   [ -z "$tc8_fail" ] && branch_delete_called && tc8_fail="空ブランチ名で git branch delete が呼ばれた"
 fi
 # (c) refname 非合法 (末尾空白) -> 「既削除」に丸めない
 if [ -z "$tc8_fail" ]; then
   out=$(run_local "fix/trailing ")
-  printf '%s' "$out" | grep -q '^\[CONTEXT\] BRANCH_CHECK_FAILED=1; branch=fix/trailing ; rc=invalid-refname' \
+  grep -q '^\[CONTEXT\] BRANCH_CHECK_FAILED=1; branch=fix/trailing ; rc=invalid-refname' <<< "$out" \
     || tc8_fail="refname 非合法な名前が invalid-refname として surface されていない (出力: '$out')"
-  [ -z "$tc8_fail" ] && { printf '%s' "$out" | grep -q 'BRANCH_ALREADY_ABSENT' \
+  [ -z "$tc8_fail" ] && { grep -q 'BRANCH_ALREADY_ABSENT' <<< "$out" \
     && tc8_fail="refname 非合法な名前を「既削除 = 正常系」に丸めた (削除していないのに完了と報告する)"; }
   [ -z "$tc8_fail" ] && branch_delete_called && tc8_fail="refname 非合法入力で git branch delete が呼ばれた"
 fi
@@ -685,14 +685,14 @@ fi
 if [ -z "$tc8_fail" ]; then
   extract_local_guard_as "upstream/foo" true false > "$LOCAL_RUN"
   : > "$CALL_LOG"; out=$(PATH="$BIN_DIR:$PATH" bash "$LOCAL_RUN" 2>&1)
-  printf '%s' "$out" | grep -q 'rc=branch-identity-unverified' \
+  grep -q 'rc=branch-identity-unverified' <<< "$out" \
     || tc8_fail="identity 未確認入力が拒否されていない (出力: '$out')"
   [ -z "$tc8_fail" ] && branch_delete_called && tc8_fail="identity 未確認入力で git branch delete が呼ばれた"
 fi
 # (e) 本当に不在 -> 正常系
 if [ -z "$tc8_fail" ]; then
   out=$(run_local "fix/definitely-absent")
-  printf '%s' "$out" | grep -q '^\[CONTEXT\] BRANCH_ALREADY_ABSENT=1; branch=fix/definitely-absent' \
+  grep -q '^\[CONTEXT\] BRANCH_ALREADY_ABSENT=1; branch=fix/definitely-absent' <<< "$out" \
     || tc8_fail="不在ブランチが BRANCH_ALREADY_ABSENT (正常系) になっていない (出力: '$out')"
 fi
 if [ -n "$tc8_fail" ]; then
@@ -708,9 +708,9 @@ echo "TC-9: local existence check failure (rc!=0/1) -> BRANCH_CHECK_FAILED, not 
 NONREPO="$TEST_DIR/nonrepo"; mkdir -p "$NONREPO"
 extract_local_guard_as "fix/whatever" > "$NONREPO/run.sh"
 out=$(cd "$NONREPO" && PATH="$BIN_DIR:$PATH" bash ./run.sh 2>&1)
-if printf '%s' "$out" | grep -q 'BRANCH_ALREADY_ABSENT'; then
+if grep -q 'BRANCH_ALREADY_ABSENT' <<< "$out"; then
   fail "TC-9: 判定不能 (rc=128) を「既削除」に丸めた — cycle 1 の回帰そのもの (出力: '$out')"
-elif ! printf '%s' "$out" | grep -qE '^\[CONTEXT\] BRANCH_CHECK_FAILED=1; branch=fix/whatever; rc=[0-9]+'; then
+elif ! grep -qE '^\[CONTEXT\] BRANCH_CHECK_FAILED=1; branch=fix/whatever; rc=[0-9]+' <<< "$out"; then
   fail "TC-9: BRANCH_CHECK_FAILED が行頭 marker で surface されていない (出力: '$out')"
 elif ! delimited_block_indented "$out" "show-ref"; then
   fail "TC-9: 退避 stderr の行が列 0 から始まっている (出力: '$out')"
@@ -723,9 +723,9 @@ mkdir -p .git/refs/heads
 printf 'bad\n' > .git/refs/heads/broken
 out=$(run_local "broken")
 rm -f .git/refs/heads/broken
-if ! printf '%s' "$out" | grep -q 'rc=ref-store-0'; then
+if ! grep -q 'rc=ref-store-0' <<< "$out"; then
   fail "TC-9b: for-each-ref rc=0 + warning を判定不能として surface しない (出力: '$out')"
-elif printf '%s' "$out" | grep -q 'BRANCH_ALREADY_ABSENT'; then
+elif grep -q 'BRANCH_ALREADY_ABSENT' <<< "$out"; then
   fail "TC-9b: broken ref を既削除へ丸めた"
 elif branch_delete_called; then
   fail "TC-9b: broken ref で git branch delete が呼ばれた"
@@ -746,16 +746,16 @@ decision=$(awk '
 ' "$MERGE_MD")
 if [ -z "$decision" ]; then
   fail "TC-4: merge/SKILL.md に --delete-branch=false の設計判断項目が見つからない"
-elif printf '%s' "$decision" | grep -qE '保証する|保証します|保証される|保証できる'; then
+elif grep -qE '保証する|保証します|保証される|保証できる' <<< "$decision"; then
   fail "TC-4: 全称的な保証の主張が残っている: $decision"
-elif ! printf '%s' "$decision" | grep -q 'delete_branch_on_merge'; then
+elif ! grep -q 'delete_branch_on_merge' <<< "$decision"; then
   fail "TC-4: サーバサイド auto-delete (delete_branch_on_merge) への言及がない: $decision"
-elif ! printf '%s' "$decision" | grep -qE '保証されない|担保されない|止められない|抑止できない'; then
+elif ! grep -qE '保証されない|担保されない|止められない|抑止できない' <<< "$decision"; then
   # 否定表現は **単体で否定を含意するもの** に限る。「抑止できるのは」のような断片を alternation に
   # 混ぜると、後続が「…だけである。よってマージ後はブランチが必ず残る」という過大主張でもマッチし、
   # AC-3 が禁じている当の違反に false confidence を与える (実測で確認)。
   fail "TC-4: 「抑止できないもの」を明示する否定表現がない (AC-3 が求める区別に届いていない): $decision"
-elif ! printf '%s' "$decision" | grep -qE '抑止できるのは.*(gh|クライアント)'; then
+elif ! grep -qE '抑止できるのは.*(gh|クライアント)' <<< "$decision"; then
   # AC-3 は「できる側」と「できない側」の**区別**を要求する。否定表現だけを pin すると、
   # 「できる側」を丸ごと削って冗長さを整理する編集で AC-3 の半分が無防備になる (実測で緑を確認済み)。
   fail "TC-4: 「抑止できるもの (gh クライアント側の削除)」の明示がない (AC-3 の片側のみ)"
@@ -766,15 +766,15 @@ else
   branch_line=$(grep -n '^- ブランチ: {branch_name}' "$MERGE_MD" | head -1 | cut -d: -f2-)
   if [ -z "$branch_line" ]; then
     fail "TC-4: merge/SKILL.md の完了通知に '- ブランチ: {branch_name}' 行がない (アンカーが変更された可能性)"
-  elif printf '%s' "$branch_line" | grep -q 'まだ削除されていません'; then
+  elif grep -q 'まだ削除されていません' <<< "$branch_line"; then
     fail "TC-4: 完了通知が「まだ削除されていません」に戻っている (delete_branch_on_merge: true では事実虚偽)"
-  elif ! printf '%s' "$branch_line" | grep -q 'delete_branch_on_merge'; then
+  elif ! grep -q 'delete_branch_on_merge' <<< "$branch_line"; then
     fail "TC-4: 完了通知がリモート側の既削除可能性 (delete_branch_on_merge) に言及していない"
-  elif ! printf '%s' "$branch_line" | grep -q '既に削除'; then
+  elif ! grep -q '既に削除' <<< "$branch_line"; then
     # 語彙 (旧文言の不在 + トークンの存在) だけでは、同じ語彙で意味を反転した文が通る。
     # 「リモートは既に削除されている場合がある」という命題そのものを要求する。
     fail "TC-4: 完了通知が「リモートは既に削除済みの場合がある」旨を述べていない (語彙は揃うが命題が逆の文を通す)"
-  elif printf '%s' "$branch_line" | grep -qE '必ず残|削除されません|残り続け'; then
+  elif grep -qE '必ず残|削除されません|残り続け' <<< "$branch_line"; then
     # 命題の否定形も禁止する。肯定の存在だけを要求すると、肯定と否定を同居させる文で回避できる。
     fail "TC-4: 完了通知が「リモートブランチは必ず残る」と主張している (が是正した過大主張の再導入)"
   else
@@ -798,12 +798,12 @@ tc6_fail=""
 assert_prose_pin() {
   local _text="$1" _pattern="$2" _probe="$3" _label="$4"
   [ -n "$tc6_fail" ] && return 0
-  if ! printf '%s' "$_text" | grep -qE "$_pattern"; then
+  if ! grep -qE "$_pattern" <<< "$_text"; then
     tc6_fail="$_label"
     return 0
   fi
   # probe は「規約を弱めた形／見出しだけ残した形」。ここに一致する pin は命題を捉えていない。
-  if printf '%s' "$_probe" | grep -qE "$_pattern"; then
+  if grep -qE "$_pattern" <<< "$_probe"; then
     tc6_fail="pin が弱すぎる: $_label のパターンが弱化形にも一致する (命題ではなく語彙を捉えている)"
   fi
 }
@@ -818,11 +818,11 @@ assert_prose_pin() {
 # 本 Issue の headline 欠陥（削除失敗が完了として報告される）をそのまま通す。処方コマンドまで
 # 含めるのは、リモート用 `git push origin --delete` をローカル用 `git branch -D` に差し替える
 # 誤処方（アンカー化規約が防ごうとしているもの）も同時に捕捉するため。
-[ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_DELETE_FAILED=1.*: ` ` \+.*git push origin --delete' || tc6_fail="REMOTE_BRANCH_DELETE_FAILED が「未完了 ` ` + git push origin --delete での手動削除」になっていない"; }
-[ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_CHECK_FAILED=1.*: ` ` \+.*削除.*試行.*ls-remote --exit-code --heads' || tc6_fail="REMOTE_BRANCH_CHECK_FAILED が「未完了 ` ` + 削除未試行の案内」になっていない"; }
-[ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_ALREADY_ABSENT=1.*: `x`' || tc6_fail="REMOTE_BRANCH_ALREADY_ABSENT が x (正常系) に割り当てられていない"; }
-[ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_DELETED=1.*: `x`' || tc6_fail="REMOTE_BRANCH_DELETED が x (正常系) に割り当てられていない"; }
-[ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -q 'REMOTE_BRANCH_\*' || tc6_fail="リモート側 fallback が REMOTE_BRANCH_* の marker family でスコープされていない"; }
+[ -z "$tc6_fail" ] && { grep -qE 'REMOTE_BRANCH_DELETE_FAILED=1.*: ` ` \+.*git push origin --delete' <<< "$remote_section" || tc6_fail="REMOTE_BRANCH_DELETE_FAILED が「未完了 ` ` + git push origin --delete での手動削除」になっていない"; }
+[ -z "$tc6_fail" ] && { grep -qE 'REMOTE_BRANCH_CHECK_FAILED=1.*: ` ` \+.*削除.*試行.*ls-remote --exit-code --heads' <<< "$remote_section" || tc6_fail="REMOTE_BRANCH_CHECK_FAILED が「未完了 ` ` + 削除未試行の案内」になっていない"; }
+[ -z "$tc6_fail" ] && { grep -qE 'REMOTE_BRANCH_ALREADY_ABSENT=1.*: `x`' <<< "$remote_section" || tc6_fail="REMOTE_BRANCH_ALREADY_ABSENT が x (正常系) に割り当てられていない"; }
+[ -z "$tc6_fail" ] && { grep -qE 'REMOTE_BRANCH_DELETED=1.*: `x`' <<< "$remote_section" || tc6_fail="REMOTE_BRANCH_DELETED が x (正常系) に割り当てられていない"; }
+[ -z "$tc6_fail" ] && { grep -q 'REMOTE_BRANCH_\*' <<< "$remote_section" || tc6_fail="リモート側 fallback が REMOTE_BRANCH_* の marker family でスコープされていない"; }
 # marker の branch= スコープ。batch-run は同一セッションで Issue ごとに cleanup をループ invoke する
 # ため、先行 Issue の stale marker が後続 Issue の判定に一致する。リモート側は失敗ルールが先頭なので、
 # スコープが落ちると stale な失敗が自分の成功を必ず上書きする (既削除に対する誤処方)。
@@ -830,15 +830,15 @@ assert_prose_pin() {
 # 4 ルールそれぞれが marker 名の直後に branch= を持つことを個別に要求する。
 for _m in REMOTE_BRANCH_DELETE_FAILED REMOTE_BRANCH_CHECK_FAILED REMOTE_BRANCH_ALREADY_ABSENT REMOTE_BRANCH_DELETED; do
   [ -n "$tc6_fail" ] && break
-  printf '%s' "$remote_section" | grep -q "$_m=1; branch={branch_name}" \
+  grep -q "$_m=1; branch={branch_name}" <<< "$remote_section" \
     || tc6_fail="リモート側ルール $_m が branch={branch_name} までスコープされていない (batch-run の stale marker に誤一致する)"
 done
 # fallback の判定値。marker 不在を `x` に倒す mutation は「ステップ 5 が実行されなかった」と
 # 「削除成功」を再び同一視し、本 Issue が塞いだ false-success を判定表側から復活させる。
 # 判定値 (` `) と「成功と読むな」の禁止文の両方を要求する — 判定値だけだと禁止根拠が消え、
 # 禁止文だけだと値の反転を素通しする。
-[ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE 'REMOTE_BRANCH_\*.*無いとき: ` ` \+' || tc6_fail="リモート側 fallback が未完了 ` ` になっていない (marker 不在を削除成功と読む契約に退行)"; }
-[ -z "$tc6_fail" ] && { printf '%s' "$remote_section" | grep -qE '不在.*削除成功.*(ならない|いけない)' || tc6_fail="リモート側 fallback に marker 不在を成功と読む禁止文がない"; }
+[ -z "$tc6_fail" ] && { grep -qE 'REMOTE_BRANCH_\*.*無いとき: ` ` \+' <<< "$remote_section" || tc6_fail="リモート側 fallback が未完了 ` ` になっていない (marker 不在を削除成功と読む契約に退行)"; }
+[ -z "$tc6_fail" ] && { grep -qE '不在.*削除成功.*(ならない|いけない)' <<< "$remote_section" || tc6_fail="リモート側 fallback に marker 不在を成功と読む禁止文がない"; }
 # 判定ブロック全体 (ローカル側 + リモート側を含む {local_branch_check} の箇条書き) を抽出する。
 # 以下 2 本の grep をファイル全体ではなくここへスコープする — ファイル全体を対象にすると、
 # 判定ブロックから当該文を削除して「過去の設計では…」等の歴史メモへ格下げしても、文字列が
@@ -867,40 +867,40 @@ fi
 # ローカル側 fallback の marker family スコープ (リモート側と対称に pin する)。無条件形へ戻す
 # mutation が素通りしていたため追加。SKILL.md 自身がこの形を「リモート側 marker の存在で偽になり
 # 判定が破綻する」と明記して禁じている。
-[ -z "$tc6_fail" ] && { printf '%s' "$local_section" | grep -q 'BRANCH_DELETE_\*' || tc6_fail="ローカル側 fallback が marker family でスコープされていない"; }
+[ -z "$tc6_fail" ] && { grep -q 'BRANCH_DELETE_\*' <<< "$local_section" || tc6_fail="ローカル側 fallback が marker family でスコープされていない"; }
 # ローカル側 fallback の判定値。リモート側と同じ到達条件なので同じ意味 (` ` = 未確認) でなければ
 # ならない。片側だけ `x` に倒す mutation は「同一条件に正反対の意味」という矛盾を復活させる。
-[ -z "$tc6_fail" ] && { printf '%s' "$local_section" | grep -qE 'BRANCH_DELETE_\*.*無いとき: ` ` \+' || tc6_fail="ローカル側 fallback が未完了 ` ` になっていない (リモート側と非対称: marker 不在を削除成功と読む契約に退行)"; }
+[ -z "$tc6_fail" ] && { grep -qE 'BRANCH_DELETE_\*.*無いとき: ` ` \+' <<< "$local_section" || tc6_fail="ローカル側 fallback が未完了 ` ` になっていない (リモート側と非対称: marker 不在を削除成功と読む契約に退行)"; }
 # ローカル側もリモート側と対称に branch= スコープを要求する。grep 対象は $local_section に限定する
 # — ファイル全体を対象にするとステップ 5 の emitter コード行 (`echo "[CONTEXT] BRANCH_DELETED=1;
 # branch={branch_name}"`) に一致してしまい、判定表側からルールを消しても vacuous に PASS する。
 for _m in BRANCH_DELETE_DEFERRED BRANCH_DELETED BRANCH_DELETE_FAILED BRANCH_DELETE_UNMERGED BRANCH_ALREADY_ABSENT BRANCH_CHECK_FAILED; do
   [ -n "$tc6_fail" ] && break
-  printf '%s' "$local_section" | grep -q "\[CONTEXT\] $_m=1; branch={branch_name}" \
+  grep -q "\[CONTEXT\] $_m=1; branch={branch_name}" <<< "$local_section" \
     || tc6_fail="ローカル側ルール $_m が branch={branch_name} までスコープされていない (batch-run の stale marker に誤一致する)"
 done
-[ -z "$tc6_fail" ] && { printf '%s' "$local_section" | grep -q 'BRANCH_DELETE_\*.*branch={branch_name}' || tc6_fail="ローカル側 fallback が branch={branch_name} までスコープされていない"; }
+[ -z "$tc6_fail" ] && { grep -q 'BRANCH_DELETE_\*.*branch={branch_name}' <<< "$local_section" || tc6_fail="ローカル側 fallback が branch={branch_name} までスコープされていない"; }
 # 「既に不在」を正常系 (`x`) に倒すルール。ローカル側だけこれが無いと、cleanup 再実行時に
 # `git branch -d` が "not found" で失敗して BRANCH_DELETE_FAILED に落ち、判定表が
 # 「`git branch -D` で手動削除」という**必ず失敗する処方**を出す (リモート側 ALREADY_ABSENT を
 # 正常系に倒したのと同型の症状がローカル側に残る、)。fallback の family 列挙にも含める。
-[ -z "$tc6_fail" ] && { printf '%s' "$local_section" | grep -qE 'BRANCH_ALREADY_ABSENT=1; branch=\{branch_name\}.*: `x`' || tc6_fail="ローカル側の BRANCH_ALREADY_ABSENT が x (正常系) に割り当てられていない"; }
-[ -z "$tc6_fail" ] && { printf '%s' "$local_section" | grep -q 'BRANCH_DELETE_\*.*BRANCH_ALREADY_ABSENT' || tc6_fail="ローカル側 fallback の marker family 列挙に BRANCH_ALREADY_ABSENT が含まれていない"; }
+[ -z "$tc6_fail" ] && { grep -qE 'BRANCH_ALREADY_ABSENT=1; branch=\{branch_name\}.*: `x`' <<< "$local_section" || tc6_fail="ローカル側の BRANCH_ALREADY_ABSENT が x (正常系) に割り当てられていない"; }
+[ -z "$tc6_fail" ] && { grep -q 'BRANCH_DELETE_\*.*BRANCH_ALREADY_ABSENT' <<< "$local_section" || tc6_fail="ローカル側 fallback の marker family 列挙に BRANCH_ALREADY_ABSENT が含まれていない"; }
 # 「存在確認に失敗 = 判定不能」を正常系に倒さないルール。リモート側 REMOTE_BRANCH_CHECK_FAILED と
 # 対称で、これが無いと `git show-ref` の rc=128 (リポジトリ外での実行等) が「既に不在」に丸められ、
 # ローカルブランチが残ったまま完了と報告される。
-[ -z "$tc6_fail" ] && { printf '%s' "$local_section" | grep -qE 'BRANCH_CHECK_FAILED=1; branch=\{branch_name\}.*: ` ` \+' || tc6_fail="ローカル側の BRANCH_CHECK_FAILED が未完了 ` ` になっていない (判定不能を正常系に倒す退行)"; }
-[ -z "$tc6_fail" ] && { printf '%s' "$local_section" | grep -q 'BRANCH_DELETE_\*.*BRANCH_CHECK_FAILED' || tc6_fail="ローカル側 fallback の marker family 列挙に BRANCH_CHECK_FAILED が含まれていない"; }
+[ -z "$tc6_fail" ] && { grep -qE 'BRANCH_CHECK_FAILED=1; branch=\{branch_name\}.*: ` ` \+' <<< "$local_section" || tc6_fail="ローカル側の BRANCH_CHECK_FAILED が未完了 ` ` になっていない (判定不能を正常系に倒す退行)"; }
+[ -z "$tc6_fail" ] && { grep -q 'BRANCH_DELETE_\*.*BRANCH_CHECK_FAILED' <<< "$local_section" || tc6_fail="ローカル側 fallback の marker family 列挙に BRANCH_CHECK_FAILED が含まれていない"; }
 # 3 つ目の marker family ({session_worktree_check}) の fallback スコープ。同一の失敗モードを
 # 2 family で pin しておきながら 3 個目を落とすと、旧無条件形へ戻す退行が検出されない。
 wt_section=$(awk '/^- `\{session_worktree_check\}`/{f=1} f && /^- `\{local_branch_check\}`/{found=1; exit} f{print} END{exit !found}' "$CLEANUP_MD")
 wt_rc=$?
 [ -z "$tc6_fail" ] && { [ -n "$wt_section" ] || tc6_fail="{session_worktree_check} section を抽出できない"; }
 [ -z "$tc6_fail" ] && { [ "$wt_rc" -eq 0 ] || tc6_fail="{session_worktree_check} section の閉じアンカーに到達しなかった (over-capture)"; }
-[ -z "$tc6_fail" ] && { printf '%s' "$wt_section" | grep -q 'WORKTREE_REMOVE_\*' || tc6_fail="{session_worktree_check} fallback が WORKTREE_REMOVE_* の marker family でスコープされていない"; }
+[ -z "$tc6_fail" ] && { grep -q 'WORKTREE_REMOVE_\*' <<< "$wt_section" || tc6_fail="{session_worktree_check} fallback が WORKTREE_REMOVE_* の marker family でスコープされていない"; }
 # この family は「marker 不在 = 削除成功」が正当 (ステップ 4-W は成功時に marker を出さない)。
 # 他 2 family と前提が逆なので、判定値とその根拠の両方を pin する。
-[ -z "$tc6_fail" ] && { printf '%s' "$wt_section" | grep -qE 'WORKTREE_REMOVE_\*.*無い（削除成功）とき: `x`' || tc6_fail="{session_worktree_check} fallback の判定値 x が pin されていない"; }
+[ -z "$tc6_fail" ] && { grep -qE 'WORKTREE_REMOVE_\*.*無い（削除成功）とき: `x`' <<< "$wt_section" || tc6_fail="{session_worktree_check} fallback の判定値 x が pin されていない"; }
 # デリミタ + 肯定/否定とも行頭一致の規約を pin する
 # 契約は **サイト非依存の形** で要求する。デリミタを個別に列挙する形 (`--- push stderr ---` /
 # `--- ls-remote stderr ---` …) は、退避サイトを増やすたびに列挙更新を忘れて契約とコードが drift する
@@ -983,7 +983,7 @@ else
   out=$(run_guard "$MUTANT")
   if ! push_delete_called; then
     fail "TC-5: 完全一致検証を弱めても push --delete が呼ばれなかった。TC-1 がその検証を検証できていない (vacuous pass)"
-  elif printf '%s' "$out" | grep -q 'REMOTE_BRANCH_ALREADY_ABSENT=1'; then
+  elif grep -q 'REMOTE_BRANCH_ALREADY_ABSENT=1' <<< "$out"; then
     # 負の assertion は非アンカー (ファイル冒頭の規約どおり)。prefix や位置に関わらず marker の
     # 出現を捕捉したいので、アンカーすると検出範囲が狭まる。TC-2 / TC-3 の負 assertion と同形。
     fail "TC-5: 完全一致検証を弱めても不在判定が成立した。ガードが完全一致検証に依存していない (出力: '$out')"

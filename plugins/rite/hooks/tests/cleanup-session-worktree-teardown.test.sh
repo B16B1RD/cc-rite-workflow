@@ -107,6 +107,18 @@ assert_contains "detect: dirty 一覧をデリミタで囲んで出す" "$out" "
 assert_contains "detect: dirty 一覧に当該パスが載る" "$out" "?? untracked-probe.txt"
 assert_contains "detect: dirty 一覧の終端デリミタ" "$out" "--- dirty files end ---"
 
+# sandbox 付きコマンドが残した 0 バイト・書き込みビットなしのスタブだけなら dirty にしない。
+# chmod が効かないファイルシステムでは前提が崩れるため、fixture の形を先に確かめる。
+r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
+main_root=$(git -C "$r" rev-parse --show-toplevel)
+( cd "$r" && bash "$PLUGIN_HOOKS/flow-state.sh" set \
+  --phase branch --issue 1 --branch feat/test --pr 0 --worktree "$wt" --next "test" ) >/dev/null 2>&1
+: > "$wt/.bashrc" && chmod 0444 "$wt/.bashrc"
+[ -n "$(find "$wt/.bashrc" -prune -type f -perm 0444 -size 0c)" ] && ok "detect(stub): fixture が 0 バイト・0444" || bad "detect(stub): fixture が 0 バイト・0444 にならない"
+out=$(cd "$wt" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
+assert_contains "detect: スタブだけの worktree は dirty=no" "$out" \
+  "[CONTEXT] CLEANUP_WT=in_worktree; worktree=$wt; dirty=no; main_root=$main_root"
+
 # `--issue` の空値・省略は usage error にしない（関連 Issue 未識別は cleanup の正規経路）。
 # 落とすと marker が 1 本も出ず、消費側が marker 不在を「削除成功」と読む。
 # marker の **値** まで固定する。prefix だけの pin は「空 issue では physical derivation が
@@ -285,6 +297,38 @@ assert_eq "remove success: exit 0" "$rc" "0"
 assert_not_contains "remove success: FAILED marker を出さない" "$out" "WORKTREE_REMOVE_"
 [ ! -d "$wt" ] && ok "remove success: working tree を削除する" || bad "remove success: working tree が残った"
 [ ! -d "$admin" ] && ok "remove success: prune で admin dir を回収する" || bad "remove success: admin dir が残った"
+
+echo "=== cleanup-session-worktree-teardown: busy 失敗の復旧コマンド ==="
+
+# busy で remove が失敗すると、sandbox 外で貼り付けて実行する復旧コマンドを出す。
+# worktree パスに apostrophe が含まれても、分割すると 1 引数のまま元のパスに戻ることを固定する。
+# git は PATH stub で worktree remove だけを busy 失敗にする（sandbox の実マウントは再現できない）。
+apos_parent="$TMP_ROOT/it's"; mkdir -p "$apos_parent"
+r=$(make_repo "$apos_parent"); wt="$r/.rite/worktrees/issue-1"
+busy_bin="$TMP_ROOT/busy-bin"; mkdir -p "$busy_bin"
+real_git=$(command -v git)
+cat > "$busy_bin/git" <<EOF
+#!/bin/bash
+if [ "\${1:-}" = worktree ] && [ "\${2:-}" = remove ]; then
+  echo "fatal: failed to delete: Device or resource busy" >&2
+  exit 1
+fi
+exec "$real_git" "\$@"
+EOF
+chmod +x "$busy_bin/git"
+: > "$TMP_ROOT/mountinfo.busy"
+out=$(cd "$r" && RITE_MOUNTINFO="$TMP_ROOT/mountinfo.busy" PATH="$busy_bin:$PATH" bash "$HELPER" remove --worktree "$wt" --pr-merged true --self-root "$$" 2>&1); rc=$?
+assert_eq "busy: exit 0" "$rc" "0"
+recovery_prefix="復旧: ユーザーが sandbox 外のシェルで次を実行してください: "
+assert_eq "busy: 復旧コマンドは 1 回だけ出る" "$(printf '%s\n' "$out" | grep -oF "$recovery_prefix" | wc -l | tr -d ' ')" "1"
+cmd=${out#*"$recovery_prefix"}; cmd=${cmd%%$'\n'*}
+prune_tail=" && git worktree prune"
+assert_eq "busy: 復旧コマンドは prune で終わる" "${cmd: -${#prune_tail}}" "$prune_tail"
+cmd=${cmd%"$prune_tail"}
+parsed=no
+words=$( ( cd / && export GIT_DIR=/nonexistent && eval "set -- $cmd" && printf '%s\n' "$#" "$@" ) 2>/dev/null ) && parsed=yes
+assert_eq "busy: 復旧コマンドをシェルの語として解析できる" "$parsed" "yes"
+assert_eq "busy: 復旧コマンドの語数と各語" "$words" "$(printf '%s\n' 5 git worktree remove --force "$wt")"
 
 echo "=== cleanup-session-worktree-teardown: sandbox mask (bind mount shape) ==="
 

@@ -69,7 +69,7 @@
 - **先延ばし禁止の設計原則**: 仮説的な将来リスクに先手を打つ Issue は大半が無駄に終わる。スコープ内の実指摘は本 PR で解決し（fix ループで強制済み）、スコープ外候補は「起票せず記録して終わり」をデフォルトにする方が、Issue の増殖を防ぎ実際に着手される確率を上げる。
 - **推奨機械決定表を裁量の代わりに置く理由**: 「裁量で決めてよい」とすると上記の構造的動機により実質的に「別 Issue 作成」へ誘導される。Likelihood（Observed/Demonstrable vs Hypothetical）と Source（A/B）という機械的に判定可能な軸だけで推奨を決定することで、エージェントの意思が介在する余地を無くす。
 - **Decision Log 記録を「追加」の経路とする理由**: fix ループの nit-noted 返信経路・acknowledged suppression（PR コメント / JSON ベースの再指摘抑制）は Decision Log 記録では代替されない。両者は別の目的（前者は次サイクルでの再指摘抑制、後者は仕様変更の記録）を持つため、置き換えではなく追加とした。
-- **元 Issue が特定できない PR での「選択肢非表示」**: PR コメント記録という代替スキーマを新設すると、記録先が「Section 9」「作業メモリ」「PR コメント」の 3 種に増え「シンプルさを死守」原則に反する。本リポジトリはブランチ命名規則上ほぼ全 PR が issue 番号を含むため、この縮退経路の実発生頻度は低いと判断し、選択肢非表示（3 択化）で単純に倒した（対象 Issue の Decision Log D-04 参照）。
+- **元 Issue が特定できない PR での「選択肢非表示」**: PR コメント記録という代替スキーマを新設すると、記録先が「Section 9」「PR コメント」の 2 種に増え「シンプルさを死守」原則に反する。本リポジトリはブランチ命名規則上ほぼ全 PR が issue 番号を含むため、この縮退経路の実発生頻度は低いと判断し、選択肢非表示（3 択化）で単純に倒した（対象 Issue の Decision Log D-04 参照）。
 
 ## phase7-gate-notes
 
@@ -189,7 +189,7 @@ undefined を残すとステップ 5.4 の placeholder が literal または err
 
 `complexity_absent` を含む全 fail-safe を WARNING 付き `full` へ倒す理由。
 
-宣言 Complexity が無い Issue では定常的に出うるが、loud にする根拠は「宣言が必ずある」ことではなく、`full` へ倒れた事実が AC-5 の効果計測の分母になる観測値だから。helper 非ゼロ / marker 欠落 / Issue 番号未特定も同じ consumer 側既定。
+宣言 Complexity が無い Issue では定常的に出うるが、loud にする根拠は「宣言が必ずある」ことではなく、`full` へ倒れた事実が レーンの効果計測の分母になる観測値だから。helper 非ゼロ / marker 欠落 / Issue 番号未特定も同じ consumer 側既定。
 
 ## doc-heavy-override-relationship
 
@@ -255,7 +255,7 @@ JSON 本文の書き手を 5.3.0.M step 1 に一本化する理由。
 
 5.3.0.C を 5.3.0.M の後・5.3.1 の前に置く理由。
 
-実測付き blocking を class A（実行時挙動が変わる）/ class B（検出網・可読性・文書整合）に分け、A=0 の cycle で exclusion なし B を non-blocking にして churn 尾部を自然終了させる。exclusion 付き B（既存記述の削除/弱体化）は blocking 維持。gated finding の `verification.measured` が boolean でない入力は classification map で修復できないため、分類と書き換えの前に `measured_undetermined` で停止する。成功した実測ゲート出力の gated finding は boolean を持つ。不確実なら class B（攻め側既定）。ファイルパスで機械分類しない。
+実測付き blocking を class A（実行時挙動が変わる）/ class B（検出網・可読性・文書整合）に分け、A=0 の cycle で exclusion なし B を non-blocking にして churn 尾部を自然終了させる。exclusion 付き B（既存記述の削除/弱体化、または合意済み AC の実測済み未充足）は blocking 維持。gated finding の `verification.measured` が boolean でない入力は classification map で修復できないため、分類と書き換えの前に `measured_undetermined` で停止する。成功した実測ゲート出力の gated finding は boolean を持つ。不確実なら class B（攻め側既定）。ファイルパスで機械分類しない。
 
 classification map のパスに commit SHA を入れる理由: `${TMPDIR}` はセッション内不変で、含めないと前 cycle の map が同一パスに残り、step 1 を飛ばして step 2 だけ実行すると stale map を無音適用する。
 
@@ -273,11 +273,13 @@ Wiki ingest の skip / write 失敗を silent にしない理由。
 
 heredoc write 失敗で trigger を起動していないのに `trigger_exit=1` を reason にすると誤帰属になる。root cause は `WIKI_CONTENT_WRITE_FAILED` だが gate はそれを見ないため、`WIKI_INGEST_FAILED; reason=content_write_failed` を別に出す。
 
-## step7-mergeable-only
+## step7-terminal-results
 
-ステップ 7 を `[review:mergeable]` のときだけ走らせる理由。
+ステップ 7 を `[review:mergeable]` と受入条件未検証の停止で走らせ、`[review:fix-needed:N]` では skip する理由。
 
 `[review:fix-needed:N]` では fix loop が続き、最終 mergeable レビューで 7 を走らせれば重複 Issue 化を避けられる。
+
+受入条件未検証の停止はループの終端であり、iterate は再試行せずに止まるため再レビューは起きない。この前提が当てはまらないので、skip すると候補（Source B を含み、`total_findings == 0` でも 1 件以上になりうる）は 7.2 の処分を一度も受けずに消える。mergeable と同じく実行する。
 
 ## defense-in-depth-handoff
 
@@ -335,6 +337,10 @@ Decision Log append を候補ごとに単一 Bash invocation にする理由。
 
 複数候補を 1 呼び出しでループすると `trap` が候補間で上書きされ tmpfile がリークする。
 
+記録先を元 Issue 本文の Section 9 に一本化する理由: Section 9 が無いときに作業メモリへ逃がすと、作業メモリも無い Issue（Complexity S 以下で Section 9 を省いた Issue や cleanup の follow-up Issue）で記録先が尽き、人間の手動追記が定常経路になる。Section 9 を新設すれば記録は作業メモリの有無に依存せず、PR 作成時の Implementation Notes も同じ Section 9 から判断を読める。Issue 作成時に S 以下で Section 9 を省く規則は生成時のテンプレート規則であり、後から実際の判断を記録するための新設とは衝突しない。
+
+採番を Section 9 の内側に限る理由: Section 9 は判断の記録がない本文にも新設されるため、本文の散文に D-NN を含む Issue（レビュー指摘の文面をそのまま転記する follow-up Issue 等）にも Section 9 ができる。本文全体を数えると散文の番号に 1 を足した値へ飛び、新設時の D-01 と連番にならない。境界は追記位置を決める awk と同じにし、数える範囲と書き込む範囲を一致させる。
+
 ## 5.3-execution-order-why
 
 5.3.0 → 5.3.0.M → 5.3.0.C → 5.3.1 の順を守る理由。
@@ -345,4 +351,14 @@ Decision Log append を候補ごとに単一 Bash invocation にする理由。
 
 既存 Issue を引き受け先にして新規作成を見送る経路に申し送りコメントを必須化した理由。
 
-「引き受け先が実在する」判定だけで triage を閉じると、#N 側に何も残らず、後から「フォローアップ Issue 化はありませんか」と問われて初めてコメントが投稿される。Decision Log は元 Issue の記録であり引き受け先への通知ではない。CLOSED Issue は着手対象にできないため投稿せず、当該候補について 7.2 の既存 4 択を再掲する。新規 AskUserQuestion を足さないのは既存 disposition 質問へ戻す方が inventory を増やさず、差し戻し先が既にあるため。見送りは 7.2 の 5 択ではなく「別 Issue 作成」の結果分岐である。`HANDOFF_COMMENT_REJECTED=1` のあとに 7.4.3 へ進むと AC-3 が空文になる。
+「引き受け先が実在する」判定だけで triage を閉じると、#N 側に何も残らず、後から「フォローアップ Issue 化はありませんか」と問われて初めてコメントが投稿される。Decision Log は元 Issue の記録であり引き受け先への通知ではない。CLOSED Issue は着手対象にできないため投稿せず、当該候補について 7.2 の既存 4 択を再掲する。新規 AskUserQuestion を足さないのは既存 disposition 質問へ戻す方が inventory を増やさず、差し戻し先が既にあるため。見送りは 7.2 の 5 択ではなく「別 Issue 作成」の結果分岐である。`HANDOFF_COMMENT_REJECTED=1` のあとに 7.4.3 へ進むと申し送りコメントの必須化が空文になる。
+
+## acceptance-reviewer
+
+受入条件確認を専任 reviewer にし、mandatory・cap 枠外で毎 cycle 起動する理由。
+
+他の reviewer は「diff が導入した問題」を revert test で探すため、fix が機能を削り過ぎて AC を満たさなくなった状態や、最初から満たしていない AC を検出する責任を誰も持たない。欠落指向・全 HEAD 対象・差分スコープ非適用は専門 reviewer と別モードなので、既存 reviewer への責務追加ではなく専任にする。cap 枠内に数えると軽量レーンや `max_reviewers` で専門 reviewer の枠が 1 つ減り、品質を人数上限で縛ることになるため、cap 適用後に追加する。
+
+判定表の AC-ID 集合と未充足 finding の残存を helper（`scripts/acceptance-criteria-check.sh`）で機械検査するのは、reviewer が AC を読み飛ばした出力や、降格ゲートで未充足 finding が消えた JSON を「全充足」と区別できないため。未充足行は降格されても未検証へ格下げしない — 不合格を観測した事実と finding の採否は別で、格下げは人間確認で通せる経路を再生産する。Accepted Fingerprint Suppression / Fact-Checking / Debate は免除せず、そこで finding が消えたら最終整合検査が error で止める（例外経路を増やさず fail-loud に倒す）。Deduplication だけ免除するのは、同じ file の別指摘へ統合されると `[AC-N]` 接頭辞の紐付けが壊れ、正常な未充足まで error になるため。
+
+blocking 0 で未検証だけが残る cycle を `[review:mergeable]` にしないのは、agent が観測できなかった AC を黙って合格扱いにするため。新 sentinel を足さず `[review:error]` + `REVIEW_STOP=ac_unverified` にするのは sentinel 語彙と caller の分岐表を増やさないため。ステップ 8.0 は 8.1 より先に flow-state を書くので、同じ条件の行で handoff を付けない — 付けると FINALIZE の mergeable 完了経路へ Stop hook が差し戻す。iterate が自動再試行しないのは、同じ HEAD では再実行しても観測できないため。

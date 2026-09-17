@@ -309,7 +309,7 @@ else
     if [ "$_fetch_rc" -ne 0 ]; then
       _set_sysmsg "作業メモリ replica の取得に失敗しました。認証とネットワークを確認してください。次のツール実行時に再試行されます。"
     elif [ "$_fetch_status" = "skipped" ] && [ "$_fetch_reason" = "no_comment" ]; then
-      # AC-4: 初回検知。fetch 側が wm_replica=absent を記録済み。legitimate no-op なので phase は進める。
+      # 初回検知。fetch 側が wm_replica=absent を記録済み。legitimate no-op なので phase は進める。
       log_debug "fetch no_comment; round_trips=1 path=fetch"
       if _replica_init_window_phase "$_phase"; then
         # 過渡窓では replica 未作成が正常。通知だけ落とし、negative cache も phase 前進も従来どおり。

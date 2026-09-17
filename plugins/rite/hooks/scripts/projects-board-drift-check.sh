@@ -14,15 +14,24 @@
 # default (matching the other hooks/scripts/*-check.sh lint checks); with --reconcile it
 # drives scripts/projects-status-update.sh to set the appropriate terminal Status.
 #
-# Closure-reason policy: the closure reason picks the destination. The terminal Status
-# set (Done for a COMPLETED closure, Cancelled for a NOT_PLANNED or DUPLICATE one) is
+# Closure-reason policy: the closure reason picks the destination. The terminal roles
+# (done for a COMPLETED closure, cancelled for a NOT_PLANNED or DUPLICATE one) are
 # defined in references/projects-integration.md, section "Terminal Status Set" — a row
-# already on either value is finished and is never reported as drift, and a CLOSED row
-# on any other Status is reconciled to the terminal Status its stateReason names. Any
+# already on either role is finished and is never reported as drift, and a CLOSED row
+# on any other Status is reconciled to the terminal role its stateReason names. Any
 # reason outside those three — an unclassified one, or a future enum this check does not
-# map — goes to Done with a WARNING rather than being left behind: an unreconciled CLOSED
+# map — goes to done with a WARNING rather than being left behind: an unreconciled CLOSED
 # Issue is the stall this check exists to clear, and the WARNING is what keeps the
 # unmapped destination from being a silent choice.
+#
+# Role policy: the board's column names are mapped to roles through rite-config.yml
+# (github.projects.fields.status.options, read by hooks/scripts/lib/projects-status-config.sh)
+# before anything is compared, so a board whose columns are spelled differently from the
+# English defaults classifies the same way. A board with no cancelled column (the role is
+# optional) has nowhere to put an abandoned Issue: a CLOSED + NOT_PLANNED / DUPLICATE row
+# is then listed as informational and kept out of the findings count and the exit code,
+# instead of being reported as drift on every lint run or pushed to done — done and
+# cancelled are different outcomes, and the helper refuses to overwrite one with the other.
 #
 # On-board policy: an Issue that is not on the project board (no projectItem for the
 # configured project_number) is NOT a drift — there is no board Status to reconcile.
@@ -33,7 +42,7 @@
 #
 # Options:
 #   --dry-run     Report only; do not reconcile (default)
-#   --reconcile   Update each drifted Issue's Status -> its terminal Status via
+#   --reconcile   Update each drifted Issue's Status -> its terminal role via
 #                 projects-status-update.sh (auto_add false / non_blocking true / 冪等).
 #                 Failures are logged but never block.
 #   --limit N     Maximum CLOSED Issues to scan, most-recently-updated first
@@ -51,16 +60,11 @@
 #   0  no drift — OR a legitimate no-op (projects disabled / project_number unset /
 #      rite-config.yml absent). Summary line reports 0 findings.
 #   1  drift detected (warning, non-blocking in lint)
-#   2  invocation error (bad args, gh/network failure, malformed API response)
+#   2  invocation error (bad args, gh/network failure, malformed API response, or a
+#      Status configuration the resolver rejects — no summary line is emitted, so lint
+#      records the run as an error rather than as findings)
 set -euo pipefail
 
-# --- Terminal Status set ---
-# Source of truth: references/projects-integration.md, section "Terminal Status Set".
-# Hardcoded here on purpose: rite-config.yml's fields.status.options is not read by any
-# consumer, and making this check the first reader would turn a descriptive key into a
-# load-bearing one. Keep these two names in step with that section.
-TERMINAL_STATUS_DONE="Done"
-TERMINAL_STATUS_CANCELLED="Cancelled"
 # Sentinel the jq program emits for an unclassified closure reason (GraphQL stateReason
 # null). A literal empty TSV field would be indistinguishable from a parse slip, so the
 # absence gets a name the bash side can match on.
@@ -91,7 +95,7 @@ while [ $# -gt 0 ]; do
 projects-board-drift-check.sh - Projects Board Terminal-Status Drift Check
 
 Scans recently-updated CLOSED Issues and reports the ones whose GitHub Projects board
-Status is not in the terminal Status set (Done / Cancelled) — the symptom of a closure
+Status is not on a terminal role (done / cancelled) — the symptom of a closure
 that never reached the board, such as a merge that auto-closed an Issue without
 /rite:cleanup running.
 
@@ -101,8 +105,9 @@ Usage:
 Options:
   --dry-run     Report only; do not reconcile (default)
   --reconcile   Update each drifted Issue's Status via projects-status-update.sh:
-                -> Cancelled for a NOT_PLANNED or DUPLICATE closure, -> Done for a COMPLETED one,
-                -> Done with a WARNING for any other closure reason
+                -> the cancelled role for a NOT_PLANNED or DUPLICATE closure, -> done for a
+                COMPLETED one, -> done with a WARNING for any other closure reason.
+                Column names come from rite-config.yml (github.projects.fields.status.options).
   --limit N     Maximum CLOSED Issues to scan, most-recently-updated first (default: 100)
   --quiet       Suppress stderr WARNING lines (stdout report still produced)
   -h, --help    Show usage
@@ -136,6 +141,8 @@ done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../control-char-neutralize.sh
 source "$SCRIPT_DIR/../control-char-neutralize.sh"
+# shellcheck source=lib/projects-status-config.sh
+source "$SCRIPT_DIR/lib/projects-status-config.sh"
 # SCRIPT_DIR is .../hooks/scripts; plugin root (plugins/rite) is its grandparent (../..)
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
@@ -152,7 +159,7 @@ if [ ! -f "$REPO_ROOT/rite-config.yml" ]; then
   emit_noop "rite-config.yml not found from $CWD upward"
 fi
 
-# AC-4: skip when Projects integration is disabled.
+# Skip when Projects integration is disabled.
 PROJECTS_ENABLED=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    enabled:/{print $2; exit}' "$REPO_ROOT/rite-config.yml" 2>/dev/null) || PROJECTS_ENABLED=""
 PROJECT_NUMBER=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    project_number:/{print $2; exit}' "$REPO_ROOT/rite-config.yml" 2>/dev/null) || PROJECT_NUMBER=""
 
@@ -166,8 +173,9 @@ git_remote_err=""
 gql_err=""
 jq_err=""
 reconcile_err=""
+cfg_err=""
 _rite_board_drift_cleanup() {
-  rm -f "${repo_view_err:-}" "${git_remote_err:-}" "${gql_err:-}" "${jq_err:-}" "${reconcile_err:-}"
+  rm -f "${repo_view_err:-}" "${git_remote_err:-}" "${gql_err:-}" "${jq_err:-}" "${reconcile_err:-}" "${cfg_err:-}"
 }
 trap 'rc=$?; _rite_board_drift_cleanup; exit $rc' EXIT
 trap '_rite_board_drift_cleanup; exit 130' INT
@@ -208,16 +216,37 @@ if [ -z "$REPO_OWNER" ] || [ -z "$REPO_NAME" ]; then
   fi
 fi
 
+# --- Status role configuration ---
+# The resolver reads rite-config.yml from the git toplevel (or cwd); run it from REPO_ROOT
+# so it reads the same file the no-op gate above did. A configuration it rejects cannot
+# classify any row, so that is an invocation error (exit 2, no summary line) rather than
+# a finding — lint records it as an error instead of counting it as drift.
+cfg_err=$(mktemp "${TMPDIR:-/tmp}/rite-board-drift-cfg-err-XXXXXX") || cfg_err=""
+report_config_error() {
+  echo "ERROR: Status configuration in rite-config.yml is invalid; cannot map board columns to roles" >&2
+  if [ -n "$cfg_err" ] && [ -s "$cfg_err" ]; then head -5 "$cfg_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2; fi
+  echo "  対処: github.projects.fields.status.options を確認してください" >&2
+  exit 2
+}
+FIELD_CANDIDATES=$(cd "$REPO_ROOT" && projects_status_field_candidates 2>"${cfg_err:-/dev/null}") || report_config_error
+# cancelled is an optional role: an empty name means the board has no column for
+# abandoned Issues, and the NOT_PLANNED / DUPLICATE rows are listed but not counted.
+CANCELLED_NAME=$(cd "$REPO_ROOT" && projects_status_name_for_role cancelled 2>"${cfg_err:-/dev/null}") || report_config_error
+DONE_NAME=$(cd "$REPO_ROOT" && projects_status_name_for_role done 2>"${cfg_err:-/dev/null}") || report_config_error
+[ -n "$cfg_err" ] && rm -f "$cfg_err"; cfg_err=""
+
 # --- Scan recently-updated CLOSED Issues (single GraphQL page) ---
 gql_err=$(mktemp "${TMPDIR:-/tmp}/rite-board-drift-gql-err-XXXXXX") || gql_err=""
 jq_err=$(mktemp "${TMPDIR:-/tmp}/rite-board-drift-jq-err-XXXXXX") || jq_err=""
 
-# jq emits one TSV line per drifted Issue:
+# jq emits one TSV line per on-board CLOSED Issue:
 #   number<TAB>status<TAB>stateReason<TAB>title
-# Drift = on board (projectItem for $pn) AND Status is not in the terminal Status set.
-# stateReason rides along so the reconcile step below can pick the destination without a
-# second round trip; an unclassified reason arrives as $NO_CLOSURE_REASON.
-if ! DRIFT_TSV=$(set -o pipefail; gh api graphql -f query='
+# On-board = has a projectItem for $pn. The Status value is read from the first field whose
+# name is one of the resolver's candidates ($candidates, newline-separated). Terminal
+# classification happens in bash, after the name is mapped to a role — jq never compares
+# column names. stateReason rides along so the reconcile step below can pick the destination
+# without a second round trip; an unclassified reason arrives as $NO_CLOSURE_REASON.
+if ! BOARD_TSV=$(set -o pipefail; gh api graphql -f query='
 query($owner: String!, $repo: String!, $first: Int!) {
   repository(owner: $owner, name: $repo) {
     issues(first: $first, states: CLOSED, orderBy: {field: UPDATED_AT, direction: DESC}) {
@@ -243,15 +272,14 @@ query($owner: String!, $repo: String!, $first: Int!) {
   }
 }' -f owner="$REPO_OWNER" -f repo="$REPO_NAME" -F first="$LIMIT" 2>"${gql_err:-/dev/null}" \
   | jq -r --argjson pn "$PROJECT_NUMBER" \
-      --arg terminal_done "$TERMINAL_STATUS_DONE" \
-      --arg terminal_cancelled "$TERMINAL_STATUS_CANCELLED" \
+      --arg candidates "$FIELD_CANDIDATES" \
       --arg no_reason "$NO_CLOSURE_REASON" '
-      .data.repository.issues.nodes[]
+      ($candidates | split("\n") | map(select(. != ""))) as $fields
+      | .data.repository.issues.nodes[]
       | . as $i
       | (([$i.projectItems.nodes[] | select(.project.number == $pn)][0]) // null) as $pitem
       | select($pitem != null)
-      | (([$pitem.fieldValues.nodes[] | select(.field.name == "Status") | .name][0]) // "<no-status>") as $st
-      | select($st != $terminal_done and $st != $terminal_cancelled)
+      | (([$pitem.fieldValues.nodes[] | select((.field.name // "") as $fn | $fields | index($fn) != null) | .name][0]) // "<no-status>") as $st
       | (($i.stateReason // $no_reason)) as $sr
       | "\($i.number)\t\($st)\t\($sr)\t\($i.title)"
     ' 2>"${jq_err:-/dev/null}"); then
@@ -267,41 +295,63 @@ fi
 [ -n "$LIMIT_NOTE" ] && echo "$LIMIT_NOTE"
 
 DRIFT_COUNT=0
+UNMAPPED_CANCELLED_COUNT=0
 RECONCILED=0
 RECONCILE_FAILURES=0
 
-if [ -n "$DRIFT_TSV" ]; then
+if [ -n "$BOARD_TSV" ]; then
   while IFS=$'\t' read -r issue_number status state_reason title; do
     [ -n "$issue_number" ] || continue
-    DRIFT_COUNT=$((DRIFT_COUNT + 1))
+
+    # The name → role mapping is the only comparison made on the column name. A row on a
+    # terminal role is finished. A row on a column the config does not map has no role,
+    # and a CLOSED Issue parked there is still stalled — the destination is chosen by the
+    # closure reason, never by the column it sits on, so it is reported as drift.
+    cfg_err=$(mktemp "${TMPDIR:-/tmp}/rite-board-drift-cfg-err-XXXXXX") || cfg_err=""
+    role=$(cd "$REPO_ROOT" && projects_status_role_for_name "$status" 2>"${cfg_err:-/dev/null}") || report_config_error
+    [ -n "$cfg_err" ] && rm -f "$cfg_err"; cfg_err=""
+    if projects_status_is_terminal "$role"; then
+      continue
+    fi
 
     # Destination comes from the closure reason (references/projects-integration.md,
     # "Terminal Status Set"). Mapped reasons get a silent arm; every other value still
-    # goes to Done rather than being left on a non-terminal Status, but says so, because
+    # goes to done rather than being left on a non-terminal Status, but says so, because
     # a reason that reaches the catch-all is one nobody has decided a destination for.
-    # The catch-all is for unset reasons and future enums — DUPLICATE maps to Cancelled.
+    # The catch-all is for unset reasons and future enums — DUPLICATE maps to cancelled.
     case "$state_reason" in
-      NOT_PLANNED) target_status="$TERMINAL_STATUS_CANCELLED" ;;
-      DUPLICATE)   target_status="$TERMINAL_STATUS_CANCELLED" ;;
-      COMPLETED)   target_status="$TERMINAL_STATUS_DONE" ;;
+      NOT_PLANNED) target_role="cancelled" ;;
+      DUPLICATE)   target_role="cancelled" ;;
+      COMPLETED)   target_role="done" ;;
       "$NO_CLOSURE_REASON")
-        target_status="$TERMINAL_STATUS_DONE"
-        [ "$QUIET" = "true" ] || echo "projects-board-drift: WARNING #$issue_number closure reason is unavailable (stateReason null) — reconcile target: $TERMINAL_STATUS_DONE" >&2
+        target_role="done"
+        [ "$QUIET" = "true" ] || echo "projects-board-drift: WARNING #$issue_number closure reason is unavailable (stateReason null) — reconcile target: $DONE_NAME" >&2
         ;;
       *)
-        target_status="$TERMINAL_STATUS_DONE"
-        [ "$QUIET" = "true" ] || echo "projects-board-drift: WARNING #$issue_number closure reason \"$(printf '%s' "$state_reason" | neutralize_ctrl --c0-only)\" has no mapped terminal Status — reconcile target: $TERMINAL_STATUS_DONE" >&2
+        target_role="done"
+        [ "$QUIET" = "true" ] || echo "projects-board-drift: WARNING #$issue_number closure reason \"$(printf '%s' "$state_reason" | neutralize_ctrl --c0-only)\" has no mapped terminal Status — reconcile target: $DONE_NAME" >&2
         ;;
     esac
+
+    # No cancelled column on this board: the abandoned Issue has nowhere to go, and it is
+    # not a stall the check can clear. Listed for the reader, excluded from the count.
+    if [ "$target_role" = "cancelled" ] && [ -z "$CANCELLED_NAME" ]; then
+      UNMAPPED_CANCELLED_COUNT=$((UNMAPPED_CANCELLED_COUNT + 1))
+      echo "[projects-board-drift] info #$issue_number \"$title\" status=\"$status\" closed as $state_reason — no cancelled column is configured (github.projects.fields.status.options), not counted"
+      continue
+    fi
+
+    DRIFT_COUNT=$((DRIFT_COUNT + 1))
+    if [ "$target_role" = "cancelled" ]; then target_status="$CANCELLED_NAME"; else target_status="$DONE_NAME"; fi
 
     reconcile_suffix=""
     if [ "$RECONCILE" = "true" ]; then
       reconcile_err=$(mktemp "${TMPDIR:-/tmp}/rite-board-drift-reconcile-err-XXXXXX") || reconcile_err=""
       reconcile_json=$(bash "$PLUGIN_ROOT/scripts/projects-status-update.sh" "$(jq -n \
         --argjson issue "$issue_number" --arg owner "$REPO_OWNER" --arg repo "$REPO_NAME" \
-        --argjson project_number "$PROJECT_NUMBER" --arg status "$target_status" \
+        --argjson project_number "$PROJECT_NUMBER" --arg role "$target_role" \
         --argjson auto_add false --argjson non_blocking true \
-        '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>"${reconcile_err:-/dev/null}") || reconcile_json=""
+        '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_role:$role, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>"${reconcile_err:-/dev/null}") || reconcile_json=""
       reconcile_result=$(printf '%s' "$reconcile_json" | jq -r '.result // "failed"' 2>/dev/null) || reconcile_result="failed"
       if [ "$reconcile_result" = "updated" ]; then
         RECONCILED=$((RECONCILED + 1))
@@ -331,9 +381,12 @@ if [ -n "$DRIFT_TSV" ]; then
 
     echo "[projects-board-drift] #$issue_number \"$title\" status=\"$status\" (expected $target_status)$reconcile_suffix"
     [ "$QUIET" = "true" ] || echo "projects-board-drift: WARNING #$issue_number CLOSED but board Status=\"$status\" (expected $target_status)" >&2
-  done <<< "$DRIFT_TSV"
+  done <<< "$BOARD_TSV"
 fi
 
+if [ "$UNMAPPED_CANCELLED_COUNT" -gt 0 ]; then
+  echo "info: $UNMAPPED_CANCELLED_COUNT abandoned Issue(s) listed above are not counted — add a cancelled role to github.projects.fields.status.options to reconcile them"
+fi
 if [ "$DRIFT_COUNT" -gt 0 ] && [ "$RECONCILE" != "true" ]; then
   echo "対処: 'bash $PLUGIN_ROOT/hooks/scripts/projects-board-drift-check.sh --reconcile' で各行の (expected ...) が示す終端 Status へ是正できます (または /rite:issue-close / /rite:cleanup を当該 Issue に対して実行)"
 fi

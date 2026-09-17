@@ -127,10 +127,30 @@ grep -q 'writer failed (rc=7)' "$SB/wm-writer-fail" && ok || bad wm_writer_warni
 RH="$ROOT/hooks/scripts/ready-reviewed-head-gate.sh"
 RH_DIR="$SB/review-results"
 mkdir -p "$RH_DIR"
+REAL_JQ=$(command -v jq); REAL_MV=$(command -v mv); export REAL_JQ REAL_MV
+cat > "$SB/bin/jq" <<'EOF'
+#!/bin/bash
+case "${JQ_FAILURE_MODE:-}:$*" in
+  query:*'join(",")'*) exit 7 ;;
+  encode:*'-R -s'*) exit 7 ;;
+esac
+exec "$REAL_JQ" "$@"
+EOF
+cat > "$SB/bin/mv" <<'EOF'
+#!/bin/bash
+case "${MV_FAIL_ATTEST:-0}:$*" in 1:*'.tmp.'*) exit 7 ;; esac
+exec "$REAL_MV" "$@"
+EOF
+cat > "$SB/bin/date" <<'EOF'
+#!/bin/bash
+[ "${DATE_FAIL_ATTEST:-0}" = 1 ] && exit 7
+exec /bin/date "$@"
+EOF
+chmod +x "$SB/bin/jq" "$SB/bin/mv" "$SB/bin/date"
 write_review_json() {
   local sha="$1" name="$2"
   jq -n --arg sha "$sha" --argjson pr 42 \
-    '{schema_version:"1.1.0", pr_number:$pr, timestamp:"T", commit_sha:$sha, overall_assessment:"approve", findings:[]}' \
+    '{schema_version:"1.1.0", pr_number:$pr, timestamp:"T", commit_sha:$sha, overall_assessment:"approve", findings:[], acceptance_criteria:{skipped:"no_ac_section"}}' \
     > "$RH_DIR/$name"
 }
 run_rh() {
@@ -344,7 +364,7 @@ EOF
 chmod +x "$SB/plugin/hooks/state-path-resolve.sh"
 rm -f "$ST/.rite/review-results"/42-*.json
 jq -n --arg sha "$REV_A" --argjson pr 42 \
-  '{schema_version:"1.1.0", pr_number:$pr, timestamp:"T", commit_sha:$sha, overall_assessment:"approve", findings:[]}' \
+  '{schema_version:"1.1.0", pr_number:$pr, timestamp:"T", commit_sha:$sha, overall_assessment:"approve", findings:[], acceptance_criteria:{skipped:"no_ac_section"}}' \
   > "$ST/.rite/review-results/42-20260101000000.json"
 write_done_lines done "$REV_B"
 run_rh_prod >/dev/null 2>"$SB/rh-err" \
@@ -352,6 +372,98 @@ run_rh_prod >/dev/null 2>"$SB/rh-err" \
   && grep -q 'via=sweep' "$SB/rh-err" \
   && ! grep -q 'via=json' "$SB/rh-err" \
   && ok || bad RH-SW-T-10
+
+# ----- acceptance criteria inspect / attest / enforce ---------------------
+write_ac_json() {
+  local ac="$1"
+  rm -f "$RH_DIR"/42-*.json
+  jq -n --arg sha "$REV_A" --argjson ac "$ac" \
+    '{commit_sha:$sha, acceptance_criteria:(if ($ac|type)=="array" then
+      [$ac[] | . + {finding_id:(if .status=="unmet" then "F-01" else null end)}]
+      else $ac end)}' > "$RH_DIR/42-20260101000000.json"
+}
+run_rh_ac() {
+  PATH="$SB/bin:$PATH" bash "$RH" --pr 42 --plugin-root "$SB/plugin" --results-dir "$RH_DIR" "$@"
+}
+export CURRENT_HEAD=$REV_A
+
+# Inspect reports unresolved states without blocking.
+write_ac_json '[{"id":"AC-1","status":"unverified","evidence":"manual"}]'
+run_rh_ac >/dev/null 2>"$SB/rh-ac" \
+  && grep -q 'REVIEWED_AC=unverified; ac=AC-1' "$SB/rh-ac" && ok || bad RH-AC-inspect
+write_ac_json '[{"id":"AC-1","status":"unmet","evidence":"failed"}]'
+run_rh_ac >/dev/null 2>"$SB/rh-ac" \
+  && grep -q 'REVIEWED_AC=unmet; ac=AC-1' "$SB/rh-ac" && ok || bad RH-AC-inspect-unmet
+
+# Missing/malformed AC data fails closed in every mode.
+rm -f "$RH_DIR"/42-*.json
+jq -n --arg sha "$REV_A" '{commit_sha:$sha}' > "$RH_DIR/42-20260101000000.json"
+rc=0; run_rh_ac >/dev/null 2>"$SB/rh-ac" || rc=$?
+[ "$rc" -eq 1 ] && grep -q 'REVIEWED_AC=missing' "$SB/rh-ac" && grep -q '/rite:pr-review を再実行' "$SB/rh-ac" && ok || bad RH-AC-missing
+write_ac_json '[{"id":"AC-1","status":"invented","evidence":"x"}]'
+rc=0; run_rh_ac >/dev/null 2>"$SB/rh-ac" || rc=$?
+[ "$rc" -eq 1 ] && grep -q 'REVIEWED_AC=malformed' "$SB/rh-ac" && ok || bad RH-AC-status
+write_ac_json '[{"id":"AC-1","status":"satisfied","evidence":""}]'
+rc=0; run_rh_ac >/dev/null 2>"$SB/rh-ac" || rc=$?
+[ "$rc" -eq 1 ] && grep -q 'REVIEWED_AC=malformed' "$SB/rh-ac" && ok || bad RH-AC-empty-evidence
+write_ac_json '[{"id":"AC-1","status":"unmet","evidence":"failed"}]'
+jq 'del(.acceptance_criteria[0].finding_id)' "$RH_DIR/42-20260101000000.json" > "$SB/ac.json" && mv "$SB/ac.json" "$RH_DIR/42-20260101000000.json"
+rc=0; run_rh_ac >/dev/null 2>"$SB/rh-ac" || rc=$?
+[ "$rc" -eq 1 ] && grep -q 'REVIEWED_AC=malformed' "$SB/rh-ac" && ok || bad RH-AC-missing-finding-id
+write_ac_json '[{"id":"AC-1","status":"satisfied","evidence":"test","head":"deadbeef","at":"not-a-time"}]'
+rc=0; run_rh_ac --enforce-ac >/dev/null 2>"$SB/rh-ac" || rc=$?
+[ "$rc" -eq 1 ] && grep -q 'REVIEWED_AC=malformed' "$SB/rh-ac" && ok || bad RH-AC-satisfied-attestation-fields
+
+# Attestation is atomic and only accepts unique, existing unverified IDs.
+write_ac_json '[{"id":"AC-1","status":"unverified","evidence":"manual"},{"id":"AC-2","status":"unverified","evidence":"manual"}]'
+run_rh_ac --attest 'AC-1,AC-2' >/dev/null 2>"$SB/rh-ac" \
+  && [ "$(jq -r '[.acceptance_criteria[] | select(.status=="human-verified" and .head=="'$REV_A'" and (.at|test("Z$")))] | length' "$RH_DIR/42-20260101000000.json")" -eq 2 ] \
+  && ok || bad RH-AC-attest
+write_ac_json '[{"id":"AC-1","status":"unverified","evidence":"manual"}]'
+cp "$RH_DIR/42-20260101000000.json" "$SB/before.json"
+export JQ_FAILURE_MODE=encode
+rc=0; run_rh_ac --attest AC-1 >/dev/null 2>"$SB/rh-ac" || rc=$?
+unset JQ_FAILURE_MODE
+[ "$rc" -eq 1 ] && grep -q 'reason=attest_ids_encode_failed' "$SB/rh-ac" && cmp -s "$SB/before.json" "$RH_DIR/42-20260101000000.json" && ! find "$RH_DIR" -name '*.ids.tmp.*' -print -quit | grep -q . && ok || bad RH-AC-attest-encode-failure
+export DATE_FAIL_ATTEST=1
+rc=0; run_rh_ac --attest AC-1 >/dev/null 2>"$SB/rh-ac" || rc=$?
+unset DATE_FAIL_ATTEST
+[ "$rc" -eq 1 ] && grep -q 'reason=attest_time_failed' "$SB/rh-ac" && cmp -s "$SB/before.json" "$RH_DIR/42-20260101000000.json" && ! find "$RH_DIR" -name '*.tmp.*' -print -quit | grep -q . && ok || bad RH-AC-attest-time-failure
+export MV_FAIL_ATTEST=1
+rc=0; run_rh_ac --attest AC-1 >/dev/null 2>"$SB/rh-ac" || rc=$?
+unset MV_FAIL_ATTEST
+[ "$rc" -eq 1 ] && grep -q 'reason=attest_write_failed' "$SB/rh-ac" && cmp -s "$SB/before.json" "$RH_DIR/42-20260101000000.json" && ! find "$RH_DIR" -name '*.tmp.*' -print -quit | grep -q . && ok || bad RH-AC-attest-write-failure
+write_ac_json '[{"id":"AC-1","status":"unverified","evidence":"manual"},{"id":"AC-2","status":"satisfied","evidence":"test"}]'
+cp "$RH_DIR/42-20260101000000.json" "$SB/before.json"
+rc=0; run_rh_ac --attest 'AC-1,AC-2' >/dev/null 2>"$SB/rh-ac" || rc=$?
+[ "$rc" -eq 1 ] && cmp -s "$SB/before.json" "$RH_DIR/42-20260101000000.json" && grep -q '/rite:pr-review を再実行' "$SB/rh-ac" && ok || bad RH-AC-attest-mixed-atomic
+cp "$RH_DIR/42-20260101000000.json" "$SB/before.json"
+rc=0; run_rh_ac --attest 'AC-9' >/dev/null 2>"$SB/rh-ac" || rc=$?
+[ "$rc" -eq 1 ] && cmp -s "$SB/before.json" "$RH_DIR/42-20260101000000.json" && ok || bad RH-AC-attest-unknown-atomic
+
+# Enforcement permits satisfied/current attestations, rejects unresolved rows.
+write_ac_json '[{"id":"AC-1","status":"satisfied","evidence":"test"},{"id":"AC-2","status":"human-verified","head":"'$REV_A'","at":"2026-01-01T00:00:00Z","evidence":"manual"}]'
+run_rh_ac --enforce-ac >/dev/null 2>"$SB/rh-ac" && grep -q 'REVIEWED_AC=satisfied' "$SB/rh-ac" && ok || bad RH-AC-enforce-pass
+write_ac_json '[{"id":"AC-1","status":"unverified","evidence":"manual"}]'
+rc=0; run_rh_ac --enforce-ac >/dev/null 2>"$SB/rh-ac" || rc=$?
+[ "$rc" -eq 1 ] && grep -q 'REVIEWED_AC=unverified; ac=AC-1' "$SB/rh-ac" && ok || bad RH-AC-enforce-block
+write_ac_json '[{"id":"AC-1","status":"satisfied","evidence":"test"}]'
+run_rh_ac >/dev/null 2>"$SB/rh-ac" && ! grep -q 'REVIEWED_AC=' "$SB/rh-ac" && ok || bad RH-AC-inspect-satisfied-no-marker
+export JQ_FAILURE_MODE=query
+rc=0; run_rh_ac --enforce-ac >/dev/null 2>"$SB/rh-ac" || rc=$?
+unset JQ_FAILURE_MODE
+[ "$rc" -eq 1 ] && grep -q 'reason=ac_query_failed' "$SB/rh-ac" && ok || bad RH-AC-query-fail-closed
+export CURRENT_HEAD=$REV_B
+run_rh_ac --enforce-ac --skip-head-check >/dev/null 2>"$SB/rh-ac" && grep -q 'READY_REVIEWED_HEAD=override' "$SB/rh-ac" && grep -q 'REVIEWED_AC=satisfied' "$SB/rh-ac" && ok || bad RH-AC-explicit-head-override
+export CURRENT_HEAD=$REV_A
+write_ac_json '[{"id":"AC-1","status":"unmet","evidence":"failed"},{"id":"AC-2","status":"unverified","evidence":"manual"}]'
+rc=0; run_rh_ac --enforce-ac >/dev/null 2>"$SB/rh-ac" || rc=$?
+[ "$rc" -eq 1 ] && grep -q 'REVIEWED_AC=unmet; ac=AC-1' "$SB/rh-ac" && ok || bad RH-AC-enforce-unmet
+write_ac_json '{"skipped":"no_ac_section"}'
+run_rh_ac --enforce-ac >/dev/null 2>"$SB/rh-ac" && grep -q 'REVIEWED_AC=skipped' "$SB/rh-ac" && ok || bad RH-AC-skipped
+write_ac_json '{"skipped":"invented"}'
+rc=0; run_rh_ac --enforce-ac >/dev/null 2>"$SB/rh-ac" || rc=$?
+[ "$rc" -eq 1 ] && grep -q 'REVIEWED_AC=malformed' "$SB/rh-ac" && ok || bad RH-AC-skipped-enum
 
 echo "$pass PASS / $fail FAIL"
 [ "$fail" -eq 0 ]
