@@ -34,4 +34,4 @@ generated: { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-17T03:15:00Z" }
 
 ## 関連ページ
 
-- [GNU shim の期限契約](gnu-tool-shim-full-contract-reproduction.md)
+- [GNU shim の期限契約](../patterns/gnu-tool-shim-full-contract-reproduction.md)
