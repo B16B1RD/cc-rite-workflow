@@ -189,12 +189,23 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
     marker = '<!-- rite:nbr:comment-id:101 -->'
     triaged = issue['body'] + '\n## 9. Decision Log\n\n' + row + '\n\n' + marker + '\n'
     for body, label in ((issue['body'] + row + '\n', 'triage-format row outside the Decision Log'),
-                        (issue['body'] + '\n## 9. Decision Log\n\n- note: manual decision\n', 'free-form Decision Log row')):
+                        (issue['body'] + '\n## 9. Decision Log\n\n- note: manual decision\n', 'free-form Decision Log row'),
+                        (issue['body'] + '\n<!-- note -->\n', 'HTML comment that is not the record marker'),
+                        (issue['body'] + '\n' + marker + ' trailing\n', 'record marker with trailing text'),
+                        (triaged + '\n## 9. Decision Log\n\n' + row + '\n', 'duplicated Decision Log heading')):
         dump(issue_file, dict(issue, body=body))
-        check(invoke(ok=False).returncode != 0 and canonical.read_bytes() == previous, label + ' requires replanning')
+        result = invoke(ok=False)
+        check(result.returncode != 0 and canonical.read_bytes() == previous, label + ' requires replanning')
+    check('boundary undecidable' in result.stderr, 'duplicated heading is reported as an undecidable boundary')
     dump(issue_file, dict(issue, body=triaged))
     check(invoke().returncode == 0,
           'created Decision Log row and record marker pass the specification check')
+    crlf = issue['body'].replace('\n', '\r\n') + '\r\n' + marker + '\r\n'
+    dump(issue_file, dict(issue, body=crlf))
+    check(invoke(ok=False).returncode != 0, 'CRLF rewrite of the specification text is still a change')
+    dump(plan_file, dict(plan, issue_body=issue['body'].replace('\n', '\r\n')))
+    check(invoke().returncode == 0, 'record marker on a CRLF body passes the specification check')
+    save_plan()
     mutant = private / 'mutant-hooks'
     shutil.copytree(plugin / 'hooks', mutant)
     lib = mutant / 'scripts/lib/review-cycle.py'

@@ -269,11 +269,16 @@ try:
     f.clock(1)
     for body, label in ((spec.replace('repair', 'rewrite'), 'goal edit'),
                         (spec + '\n' + row, 'triage-format row outside the Decision Log'),
-                        (spec + '\n\n## 9. Decision Log\n\n- note: manual decision\n', 'free-form Decision Log row')):
+                        (spec + '\n\n## 9. Decision Log\n\n- note: manual decision\n', 'free-form Decision Log row'),
+                        (spec + '\n\n<!-- note -->', 'HTML comment that is not the record marker'),
+                        (spec + '\n\n' + marker + ' trailing', 'record marker with trailing text'),
+                        (spec + '\n\n## 9. Decision Log\n\n' + row + '\n\n## 9. Decision Log\n\n' + row, 'duplicated Decision Log heading')):
         f.with_issue(body)
         f.observed['issue_body'] = body
         dump(f.input, f.observed)
         f.reject(lambda: f.observe(ok=False), label + ' is a specification change within the run')
+    undecidable = f.flow('review-observe', '--input', f.input, '--issue', f.issue_path, ok=False)
+    check('boundary undecidable' in undecidable.stderr, 'duplicated heading is reported as an undecidable boundary')
     f.with_issue(triaged)
     f.observed['issue_body'] = triaged
     dump(f.input, f.observed)
@@ -283,7 +288,7 @@ try:
     check(len(observations) == 2 and observations[1]['input']['issue_body'] == triaged
           and observations[0]['input']['issue_body'] == spec,
           'created Decision Log row and record marker pass the specification check and keep the raw body')
-    mutant = f.root / 'mutant-hooks'
+    mutant = f.private / 'mutant-hooks'
     shutil.copytree(plugin / 'hooks', mutant)
     helper = mutant / 'scripts/lib/review-cycle.py'
     helper.write_text(helper.read_text().replace('def normalize_issue_body(body):\n', 'def normalize_issue_body(body):\n    return body\n', 1))
@@ -298,8 +303,15 @@ try:
     f.plan()
     f.reject(lambda: f.scope(ok=False), 'required replan cannot be skipped by scope')
     f.reject(lambda: f.start(ok=False), 'required replan cannot be skipped by next review')
+    edited = replay['issue_body'].replace('repair', 'rewrite')
+    f.with_issue(edited)
+    f.plan(replan=True)
+    f.reject(lambda: f.replan(ok=False), 'goal edit within the run is rejected by replan')
+    f.reject(lambda: f.scope(ok=False), 'goal edit within the run is rejected by the scope check')
+    f.with_issue(replay['issue_body'] + '\n' + row.replace('D-01', 'D-02'))
     f.plan(replan=True)
     f.replan()
+    f.with_issue(replay['issue_body'])
     before = f.state_path.read_bytes()
     f.replan()
     check(f.state_path.read_bytes() == before and len(f.state()['review_run']['replans']) == 1,
@@ -308,6 +320,38 @@ try:
     check(f.decision() == 'continue', 'validated alternative returns to fix')
 finally:
     f.close()
+
+# Writer shapes and boundaries of the specification identity itself.
+import contextlib
+import importlib
+import io
+sys.path.insert(0, str(plugin / 'hooks/scripts/lib'))
+identity = importlib.import_module('review-cycle')
+same = identity.same_specification
+row = '- 2026-01-02 D-01: defer the boundary / Reason: out of scope / Impact: none'
+contract = ('## 1. Goal\n\nrepair source.txt\n\n<details>\n<summary>Implementation Contract</summary>\n\n'
+            '## 5. Acceptance Criteria\n\n- AC-1: preserve protected content\n\n</details>\n\n---\n🤖 signature')
+created = contract.replace('\n</details>', '\n## 9. Decision Log\n\n' + row + '\n\n</details>')
+check(same(contract, created), 'section created before the contract details close is not a specification change')
+check(same(created, created.replace('\n\n</details>', '\n' + row.replace('D-01', 'D-02') + '\n\n</details>')),
+      'row appended to the created section is not a specification change')
+check(same('## 9. Decision Log\n\n' + row + '\n\n## 10. Notes\n\nx', '## 10. Notes\n\nx'),
+      'section followed by another heading is closed at that heading')
+crlf = contract.replace('\n', '\r\n')
+check(same(crlf, crlf + '\r\n\r\n<!-- rite:nbr:comment-id:101 -->\r\n'), 'record marker on a CRLF body is ignored')
+check(same(contract, contract + '\n\n<!-- rite:nbr:comment-id:a b -->'), 'record marker with a broken value is ignored like the writer does')
+check(not same('```\n' + row + '\n```', '```\n' + row.replace('defer', 'keep') + '\n```'),
+      'triage-format row inside a code fence is specification text')
+gap = '## 1. Goal\n\n\nrepair\n'
+check(same('## 9. Decision Log\n\n' + row + '\n\n' + gap, gap) and not same(gap, gap.replace('\n\n\n', '\n\n')),
+      'blank lines after a removed section keep their count')
+stderr = io.StringIO()
+with contextlib.redirect_stderr(stderr):
+    raw = identity.normalize_issue_body(created + '\n## 9. Decision Log\n')
+check(not same(contract, contract + '  '), 'trailing spaces are specification text')
+check(same(contract, contract + '\n\n'), 'trailing line breaks are not a specification change')
+check(raw == created + '\n## 9. Decision Log' and 'undecidable' in stderr.getvalue(),
+      'duplicated heading keeps the body verbatim and says why')
 
 f = Fixture()
 try:
