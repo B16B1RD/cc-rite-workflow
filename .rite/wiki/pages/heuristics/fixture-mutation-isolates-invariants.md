@@ -35,6 +35,8 @@ sources:
     resource: "raw/reviews/20260914T025734Z-pr-2798.md"
   - type: "reviews"
     resource: "raw/reviews/20260914T091626Z-pr-2813.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260917T132504Z-pr-2936.md"
 tags: ["test", "fixture", "mutation", "invariant", "coverage"]
 confidence: high
 generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-14T09:23:49Z" }
@@ -145,11 +147,18 @@ guard・不変量の TC を追加したら、worktree-only mutation（当該 gua
 
 **修正した箇所の mutation は、修正後の軸で取り直す。** 修正でアンカーの形が変われば前 cycle の mutant 定義は無効になる。同じラベルの mutation でも中身が変わるため、`^` の除去と `[[:space:]]*` の除去を別軸として測り直して初めて生存が見つかった。
 
+## 集約出力の件数は「対象と対象外が混在する」fixture でも固定する
+
+集約した警告の件数（例: `N 件を除外`）を固定するテストが、対象だけが存在する fixture でしか件数を assert していないと、件数を対象外も含む全体から数える変異が生き残る。どちらの数え方でも同じ数になるためである。対象と対象外が同時に存在するケースを 1 つ選び、そこにも件数の assert を置くと、この変異を単独で検出できる。
+
+例外経路を固定する fixture は、その経路に本当に入る前提（例: dangling symlink なら「lstat では symlink」かつ「exists は偽」）を同じテスト内で check しておく。環境の違いで fixture が別の経路に落ちたとき、assert が何も確かめずに通ってしまうのを防げる。
+
 ## 関連ページ
 
 - [位置依存の表パースには検査行数ガードを対にする（silent false-pass 遮断）](../patterns/positional-parse-row-count-guard.md)
 - [静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く](./static-pin-semantic-allowlist-not-notation-denylist.md)
 - [抽出述語の厳格化は「壊れた入力」と「入力なし」を同一経路へ畳み、fail-loud を構造的に壊す](../anti-patterns/strict-predicate-collapses-broken-into-absent.md)
+
 
 ## ソース
 
@@ -168,3 +177,4 @@ guard・不変量の TC を追加したら、worktree-only mutation（当該 gua
 - [差分テストが区切りの出ない変異を素通りさせることを示したレビュー結果](../../raw/reviews/20260913T020014Z-pr-2760.md)
 - [symlink 対照が単独の条件を固定していないことを実測したレビュー結果](../../raw/reviews/20260914T025734Z-pr-2798.md)
 - [入力ラベルの値が否定の assert の単独の検出力を奪うことを変異で示したレビュー結果](../../raw/reviews/20260914T091626Z-pr-2813.md)
+- [件数の数え方の変異を、対象と対象外が混在するケースの assert で検出したレビュー結果](../../raw/reviews/20260917T132504Z-pr-2936.md)
