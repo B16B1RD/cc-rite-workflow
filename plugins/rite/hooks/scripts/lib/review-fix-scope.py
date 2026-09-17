@@ -51,7 +51,8 @@ def validate(plan, issue, state, session, root, allow_replan=False):
     require(receipt is not None, "saved review receipt missing")
     importlib.import_module("review-stagnation").plan_gate(state, plan, session, allow_replan)
     require(issue.get("number") == state.get("issue_number") == plan.get("issue_number")
-            and text(issue.get("body")) and plan.get("issue_body") == issue["body"], "Issue specification changed or mismatched")
+            and text(issue.get("body")) and text(plan.get("issue_body"))
+            and cycle.same_specification(plan["issue_body"], issue["body"]), "Issue specification changed or mismatched")
     constraints = plan["constraints"]
     targets = [path(p) for p in constraints["targets"]]
     excluded = [path(p) for p in constraints["non_targets"]]

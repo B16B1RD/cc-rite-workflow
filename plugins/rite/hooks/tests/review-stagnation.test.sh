@@ -153,6 +153,10 @@ class Fixture:
         dump(path, data)
         return self.flow('review-clock', '--input', path, ok=ok)
 
+    def with_issue(self, body):
+        self.issue['body'] = body
+        dump(self.issue_path, self.issue)
+
     def observe(self, ok=True):
         return self.flow('review-observe', '--input', self.input, '--issue', self.issue_path, ok=ok)
 
@@ -238,6 +242,15 @@ try:
     before = f.state_path.read_bytes()
     f.observe()
     check(f.state_path.read_bytes() == before, 'observation replay is byte-idempotent')
+    spec = f.issue['body']
+    marker = '<!-- rite:nbr:comment-id:101 -->'
+    f.with_issue(spec + '\n\n' + marker)
+    replay = copy.deepcopy(f.observed)
+    replay['issue_body'] = f.issue['body']
+    dump(f.input, replay)
+    f.observe()
+    check(f.state_path.read_bytes() == before, 'record marker appended after observation replays the same observation')
+    f.with_issue(spec)
     changed = copy.deepcopy(f.observed)
     changed['roots'][0]['defect'] = 'different'
     dump(f.input, changed)
@@ -250,10 +263,38 @@ try:
     f.fix()
     f.start()
     check(len(f.state()['review_run']['fixes']) == 1, 'full verification bound to committed new HEAD')
+    row = '- 2026-01-02 D-01: defer the boundary / Reason: out of scope / Impact: none'
+    triaged = spec + '\n\n## 9. Decision Log\n\n' + row + '\n\n' + marker.replace('101', '202')
     f.finish()
     f.clock(1)
+    for body, label in ((spec.replace('repair', 'rewrite'), 'goal edit'),
+                        (spec + '\n' + row, 'triage-format row outside the Decision Log'),
+                        (spec + '\n\n## 9. Decision Log\n\n- note: manual decision\n', 'free-form Decision Log row')):
+        f.with_issue(body)
+        f.observed['issue_body'] = body
+        dump(f.input, f.observed)
+        f.reject(lambda: f.observe(ok=False), label + ' is a specification change within the run')
+    f.with_issue(triaged)
+    f.observed['issue_body'] = triaged
+    dump(f.input, f.observed)
     f.observe()
     check(f.decision() == 'replan', 'thirty minutes plus one second requests diagnosis')
+    observations = f.state()['review_run']['observations']
+    check(len(observations) == 2 and observations[1]['input']['issue_body'] == triaged
+          and observations[0]['input']['issue_body'] == spec,
+          'created Decision Log row and record marker pass the specification check and keep the raw body')
+    mutant = f.root / 'mutant-hooks'
+    shutil.copytree(plugin / 'hooks', mutant)
+    helper = mutant / 'scripts/lib/review-cycle.py'
+    helper.write_text(helper.read_text().replace('def normalize_issue_body(body):\n', 'def normalize_issue_body(body):\n    return body\n', 1))
+    replay = copy.deepcopy(f.observed)
+    replay['issue_body'] = triaged.replace('202', '303')
+    dump(f.input, replay)
+    f.with_issue(replay['issue_body'])
+    mutation = f.run(['bash', str(mutant / 'flow-state.sh'), 'review-observe', '--input', str(f.input), '--issue', str(f.issue_path)], ok=False)
+    check(mutation.returncode != 0 and 'specification' in mutation.stderr, 'identity normalization mutation fails the marker replacement replay')
+    f.observe()
+    check(len(f.state()['review_run']['observations']) == 2, 'replaced record marker replays the same observation')
     f.plan()
     f.reject(lambda: f.scope(ok=False), 'required replan cannot be skipped by scope')
     f.reject(lambda: f.start(ok=False), 'required replan cannot be skipped by next review')

@@ -72,6 +72,47 @@ def same_json(left, right):
     return json.dumps(left, sort_keys=True) == json.dumps(right, sort_keys=True)
 
 
+DECISION_LOG_HEADING = re.compile(r"^## 9\. Decision Log\s*$")
+DECISION_LOG_END = re.compile(r"^(## |---\s*$|</details>)")
+DECISION_LOG_ROW = re.compile(r"^- \d{4}-\d{2}-\d{2} D-\d{2,}: .+ / Reason: .+ / Impact: .+$")
+NBR_MARKER_LINE = re.compile(r"^[ \t]*<!-- rite:nbr:comment-id:[^ ]* -->[ \t]*$")
+
+
+def normalize_issue_body(body):
+    # Specification identity ignores what rite itself appends to the Issue body
+    # during a run: Decision Log rows in the triage format (inside section 9 only,
+    # whatever wrote them) and the non-blocking record's comment-id marker line.
+    # Everything else, including blank lines inside the specification sections,
+    # is compared verbatim; only the gaps left by a removed line are closed.
+    require(isinstance(body, str), "Issue body must be a string")
+    lines = body.split("\n")
+    keep, removed_at = [], set()
+    section, start = False, None
+    for line in lines:
+        if section and DECISION_LOG_END.match(line):
+            section = False
+            if all(not keep[i].strip() for i in range(start + 1, len(keep))):
+                del keep[start:]
+                removed_at.add(len(keep))
+        if DECISION_LOG_HEADING.match(line):
+            section, start = True, len(keep)
+        elif (section and DECISION_LOG_ROW.match(line)) or NBR_MARKER_LINE.match(line):
+            removed_at.add(len(keep))
+            continue
+        keep.append(line)
+    if section and all(not keep[i].strip() for i in range(start + 1, len(keep))):
+        del keep[start:]
+        removed_at.add(len(keep))
+    for index in sorted(removed_at, reverse=True):
+        while 0 < index < len(keep) and not keep[index - 1].strip() and not keep[index].strip():
+            del keep[index]
+    return "\n".join(keep).rstrip()
+
+
+def same_specification(left, right):
+    return normalize_issue_body(left) == normalize_issue_body(right)
+
+
 def without_timestamp(result):
     return {key: value for key, value in result.items() if key != "timestamp"}
 

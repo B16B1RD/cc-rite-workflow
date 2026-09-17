@@ -7,6 +7,7 @@ import copy
 import json
 import os
 from pathlib import Path
+import shutil
 import stat
 import subprocess
 import sys
@@ -181,6 +182,28 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
     dump(issue_file, changed_issue)
     check(invoke(ok=False).returncode != 0 and canonical.read_bytes() == previous, 'changed issue requires replanning')
     dump(issue_file, issue)
+
+    # Rows rite itself appends to the Issue (triage Decision Log entries, the non-blocking
+    # record marker) are not specification changes; anything else in the body still is.
+    row = '- 2026-01-02 D-01: defer the boundary / Reason: out of scope / Impact: none'
+    marker = '<!-- rite:nbr:comment-id:101 -->'
+    triaged = issue['body'] + '\n## 9. Decision Log\n\n' + row + '\n\n' + marker + '\n'
+    for body, label in ((issue['body'] + row + '\n', 'triage-format row outside the Decision Log'),
+                        (issue['body'] + '\n## 9. Decision Log\n\n- note: manual decision\n', 'free-form Decision Log row')):
+        dump(issue_file, dict(issue, body=body))
+        check(invoke(ok=False).returncode != 0 and canonical.read_bytes() == previous, label + ' requires replanning')
+    dump(issue_file, dict(issue, body=triaged))
+    check(invoke().returncode == 0,
+          'created Decision Log row and record marker pass the specification check')
+    mutant = private / 'mutant-hooks'
+    shutil.copytree(plugin / 'hooks', mutant)
+    lib = mutant / 'scripts/lib/review-cycle.py'
+    lib.write_text(lib.read_text().replace('def normalize_issue_body(body):\n', 'def normalize_issue_body(body):\n    return body\n', 1))
+    mutation = run(['bash', str(mutant / 'scripts/review-fix-scope-check.sh'), 'check', '--plan', str(plan_file), '--issue', str(issue_file)], ok=False)
+    check(mutation.returncode != 0 and 'specification' in mutation.stderr, 'identity normalization mutation rejects the triaged Issue')
+    dump(issue_file, issue)
+    invoke()
+    previous = canonical.read_bytes()
 
     # Inject a physical replace failure after serialization, retaining the old canonical file.
     fault_dir = private / 'fault'
