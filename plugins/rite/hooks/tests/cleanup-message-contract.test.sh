@@ -194,7 +194,7 @@ assert "delegation skip guard exists in exactly three steps" "3" \
 # 住所は positive / negative の両方向で固定する — 片方だけでは変異が生存することを実測済み:
 #   `*)` arm への移設 / case 文の前への持ち上げ → negative control（下段）を素通りし positive（上段）が捕まえる
 #   case arm ラベルの入れ替え                    → positive（上段）を素通りし negative control（下段）が捕まえる
-# 前者は再実行セッション（CLEANUP_WT=none）が `*)` に落ちるため委譲が再帰し AC-2 の Then を、
+# 前者は Git 登録の無い再実行セッション（CLEANUP_WT=none。登録済みを補完した in_main は case の前で return する）が `*)` に落ちるため委譲が再帰し AC-2 の Then を、
 # 後者は batch-run 経路で委譲が発火し AC-3 の Then を、それぞれ無効化する。
 # end パターンの `)` `*` は上記と同じ理由で二重エスケープ。
 # 内側 grep は emit の **実行行** へアンカーする — 素の部分文字列一致だと、コメントアウトされた
@@ -220,8 +220,9 @@ assert_grep "Step 12 enumerates the wiki ingest item" "$CLEANUP" '^- Wiki ingest
 assert_grep "Step 12 enumerates the session worktree removal item" "$CLEANUP" '^- セッション worktree の削除$'
 assert_grep "Step 12 enumerates the branch deletion item" "$CLEANUP" '^- ローカル/リモートブランチの削除$'
 # T-02: 委譲先は main checkout での再実行 1 系統。再実行が何をどう完了させるかまで案内に含める
-# （worktree とローカルブランチは再実行の**その場**では消えず、ステップ 5 の manifest 記録を経て
-#  次回セッション開始時に回収される — この経路を落とすと「再実行したのに残っている」の説明が消える）。
+# （再実行の 4-W は登録済みの worktree を補完して照合を経てその場で削除する。見送ったときの行き先は
+#  理由ごとに違うので、案内は再実行時の報告へ送る — 見送り側の案内を落とすと「再実行したのに残って
+#  いる」の説明が消える）。
 assert_grep "Step 12 delegation notice points to a main-checkout re-run" "$CLEANUP" \
   'main checkout でセッションを開き `/rite:cleanup \{pr_number\}` を再実行してください'
 assert_grep "Step 12 delegation notice states the re-run is idempotent" "$CLEANUP" \
@@ -231,8 +232,12 @@ assert_grep "Step 12 delegation notice states the re-run is idempotent" "$CLEANU
 # 名指しすると必ずどれかで外れる（実測: dirty は再実行時に評価されず recovery=auto と報告される）。
 # 条件も案内先も列挙せず、退路は直後の手動コマンドが与える形に留める —  In Scope の
 # 「簡潔な定型」に収める形でもある。条件節や案内先の列挙を足す方向へ戻さない。
-assert_grep "Step 12 delegation notice names the deferred reclamation path" "$CLEANUP" \
-  'セッション worktree とローカルブランチは次回セッション開始時の自動回収の対象になります'
+assert_grep "Step 12 delegation notice names the immediate removal after closing the sessions using the worktree" "$CLEANUP" \
+  'セッション worktree とローカルブランチは、対象の作業ツリーを使っているセッションを閉じてから再実行すれば照合を経てその場で削除されます'
+# 見送った場合の回収経路は理由で分かれる（使用中は次回の自動回収、dirty・照合不能は手動回復）ため、
+# 委譲案内では断定せず再実行時の報告へ送る。
+assert_grep "Step 12 delegation notice defers the skipped case to the re-run report" "$CLEANUP" \
+  '削除を見送った場合は、再実行時の報告に従ってください'
 # 手動コマンドは main checkout で実行する前提（worktree 内では remove が cwd を消して連鎖が止まる）。
 # 失敗モードを防ぐのは限定句のみで、prune を外したのは remove --force が admin エントリを解除する
 # ため冗長だから。コマンド本体まで含めて固定し、限定句・引数のどちらが欠けても落ちるようにする。
@@ -344,6 +349,30 @@ assert_grep "Step 12 picks the last CLEANUP_WT occurrence (batch-run recency)" "
   "複数あれば最後の出現 1 行だけ"
 assert_grep "Step 12 omits the row only for a scoped none" "$CLEANUP" \
   "行ごと省略してよいのは .none. かつ"
+# Git 登録から補完した in_main には保存 state が無い。所有権・branch・dirty の停止条件が文言から
+# 消えると、別セッションの worktree や未コミット変更を照合なしに削除する経路になる。
+_s4w_main=$(awk '/^- `CLEANUP_WT=in_main`/,/^- `CLEANUP_WT=none`/' "$CLEANUP")
+assert "4-W supplemented in_main passes the claim only for own/free/stale" "1" \
+  "$(printf '%s\n' "$_s4w_main" | grep -cF -- '`bash {plugin_root}/hooks/issue-claim.sh check --issue "{issue_number}"` の出力が `own` / `free` / `stale` なら通過。`other` → 停止（`reason=claim_other`）。非 0 rc・それ以外の値 → 停止（`reason=claim_check_failed`）')"
+assert "4-W supplemented in_main stops on a branch mismatch or detached registration" "1" \
+  "$(printf '%s\n' "$_s4w_main" | grep -cF -- 'marker の `branch=` が `{branch_name}` と完全一致すれば通過。不一致・空（detached）→ 停止（`reason=branch_mismatch`）')"
+assert "4-W supplemented in_main skips the dirty gate only for a missing registration" "1" \
+  "$(printf '%s\n' "$_s4w_main" | grep -cF -- '`missing=yes`（登録だけ残り実体が無い）→ 退避すべき変更は無いので照合 4 を飛ばして in_worktree の手順 3 へ')"
+assert "4-W supplemented in_main treats a dirty-check failure as dirty" "1" \
+  "$(printf '%s\n' "$_s4w_main" | grep -cF -- '`dirty=yes`（取得失敗も helper が `dirty=yes` として出す）→ AskUserQuestion')"
+# stash は対象 worktree を明示し untracked まで退避する。cwd（main checkout）で素の stash を実行すると
+# 変更は退避されず、手順 3 の --force fallback で失われる。
+assert "4-W supplemented in_main stashes in the target worktree including untracked files" "1" \
+  "$(printf '%s\n' "$_s4w_main" | grep -cF -- '`git -C "{flow_wt}" stash push -u -m "rite-cleanup: issue-{issue_number}"`')"
+assert "4-W supplemented in_main re-checks the target worktree after stashing" "1" \
+  "$(printf '%s\n' "$_s4w_main" | grep -cF -- '`(cd "{flow_wt}" && bash {plugin_root}/hooks/scripts/lib/git-status-filtered.sh)` が rc=0 かつ空出力であることを確認する。stash の失敗・rc≠0・非空 → 停止（`reason=stash_incomplete`）')"
+# 停止は marker で残す。marker が無いとステップ 12 は削除側 family の不在を削除成功 x と読む。
+assert "4-W supplemented in_main emits the unverified skip marker when it stops" "1" \
+  "$(printf '%s\n' "$_s4w_main" | grep -cF -- 'echo "[CONTEXT] WORKTREE_REMOVE_SKIPPED_UNVERIFIED=1; path={flow_wt}; reason=<下記の reason>" >&2')"
+assert_grep "Step 12 reports an unverified skip as not removed" "$CLEANUP" \
+  '^  - `WORKTREE_REMOVE_SKIPPED_UNVERIFIED=1` のとき（Git の登録から補完した作業ツリーの所有権・branch・未コミット変更を確認できず削除を見送った）: ` ` \+'
+assert "Step 12 evaluates the unverified skip before the removal-success rule" "1" \
+  "$(awk '/WORKTREE_REMOVE_SKIPPED_UNVERIFIED=1` のとき/{u=NR} /いずれの行も無い（削除成功）とき/{s=NR} END{print (u && s && u < s) ? 1 : 0}' "$CLEANUP")"
 assert_grep "4-W unknown routing forbids running steps 1-4" "$CLEANUP" \
   "分類不能なので\*\*上記の手順 1〜4 を実行しない\*\*"
 # unknown は既存 4 gate (base 更新 / ブランチ削除 / wiki ingest / ステップ 12 委譲段落) に
