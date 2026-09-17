@@ -247,7 +247,7 @@ if [ "$_dt_rc" -ne 0 ]; then
 fi
 ```
 
-detect は現セッションの flow-state / cwd だけを見る。返った `worktree=` を削除対象にしてはならない。
+detect は現セッションの flow-state / cwd と、それで分類できないときに補完する Git 登録済みの `issue-{issue_number}` worktree（`source=git_worktree_list`）を見る。返った `worktree=` を削除対象にしてはならない（削除対象は 4.1.1 が発見した path だけ）。`reason=worktree_list_failed` の `CLEANUP_WT=unknown` は cwd が対象 worktree でないときにだけ出る（同じ一覧を使う 4.1.1 も停止する）。
 
 ### 4.1.1 対象 Issue の worktree を発見する
 

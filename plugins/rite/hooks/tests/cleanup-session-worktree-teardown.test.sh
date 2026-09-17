@@ -68,13 +68,107 @@ assert_contains "detect: worktree 内は in_worktree_unrecorded に分類する"
 assert_contains "detect: 退出不能な入場は委譲 marker を出す" "$out" \
   "[CONTEXT] CLEANUP_DELEGATED=1; reason=exit_worktree_unavailable"
 
-# AC-2: 対象外の cwd（main checkout）では worktree を触らず none を返して exit 0。
+# AC-2: 対象外の cwd（main checkout）で、当該 Issue の worktree も登録されていなければ
+# worktree を触らず none を返して exit 0（issue-1 は登録済みなので未登録の issue-2 で呼ぶ）。
 r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
-out=$(cd "$r" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null); rc=$?
+out=$(cd "$r" && bash "$HELPER" detect --issue 2 --config "$r/rite-config.yml" 2>/dev/null); rc=$?
 assert_eq "detect: 対象外 cwd でも exit 0" "$rc" "0"
 assert_contains "detect: 対象外 cwd は none" "$out" "[CONTEXT] CLEANUP_WT=none;"
 assert_not_contains "detect: none では委譲 marker を出さない" "$out" "CLEANUP_DELEGATED"
 [ -d "$wt" ] && ok "detect: worktree を削除しない（read-only）" || bad "detect が worktree を削除した"
+
+# flow-state 記録が無く cwd が main checkout でも、Git に登録済みの当該 Issue の worktree は
+# in_main へ補完する。marker は行全体で固定し、main_root= が行末フィールドであることも pin する。
+r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
+main_root=$(git -C "$r" rev-parse --show-toplevel)
+out=$(cd "$r" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
+assert_eq "detect(unrecorded main): 登録済み worktree を in_main で補完する" "$out" \
+  "[CONTEXT] CLEANUP_WT=in_main; worktree=$wt; source=git_worktree_list; dirty=no; main_root=$main_root"
+printf 'x\n' > "$wt/untracked-probe.txt"
+out=$(cd "$r" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
+assert_eq "detect(unrecorded main): 補完した worktree の dirty 一覧を出す" "$out" \
+  "[CONTEXT] CLEANUP_WT=in_main; worktree=$wt; source=git_worktree_list; dirty=yes; main_root=$main_root
+--- dirty files begin ---
+?? untracked-probe.txt
+--- dirty files end ---"
+
+# 別 Issue の worktree だけが登録されていても、番号の前方一致で拾わない（issue-12 は issue-1 ではない）。
+r=$(make_repo)
+git -C "$r" branch feat/other
+git -C "$r" worktree add -q "$r/.rite/worktrees/issue-12" feat/other
+out=$(cd "$r" && bash "$HELPER" detect --issue 12 --config "$r/rite-config.yml" 2>/dev/null)
+assert_contains "detect(unrecorded main): 対照 — issue-12 自身は補完される" "$out" \
+  "[CONTEXT] CLEANUP_WT=in_main; worktree=$r/.rite/worktrees/issue-12; source=git_worktree_list;"
+git -C "$r" worktree remove --force "$r/.rite/worktrees/issue-1"
+out=$(cd "$r" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
+assert_eq "detect(unrecorded main): 別 Issue の登録だけでは none" "$out" \
+  "[CONTEXT] CLEANUP_WT=none; worktree=; main_root=$r"
+
+# 登録されていないディレクトリは、置き場と名前が一致しても補完しない。
+r=$(make_repo)
+git -C "$r" worktree remove --force "$r/.rite/worktrees/issue-1"
+mkdir -p "$r/.rite/worktrees/issue-1"
+out=$(cd "$r" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
+assert_eq "detect(unrecorded main): 未登録ディレクトリは none" "$out" \
+  "[CONTEXT] CLEANUP_WT=none; worktree=; main_root=$r"
+
+# 空白を含む親ディレクトリ配下でカスタム base を使っても、解決済みパスと main_root が切れずに一致する。
+mkdir -p "$TMP_ROOT/with space"
+r=$(make_repo "$TMP_ROOT/with space")
+printf 'multi_session:\n  enabled: true\n  worktree_base: "wt/sessions/"\n' > "$r/rite-config.yml"
+git -C "$r" worktree remove --force "$r/.rite/worktrees/issue-1"
+git -C "$r" worktree add -q "$r/wt/sessions/issue-1" feat/test
+out=$(cd "$r" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
+assert_eq "detect(unrecorded main): 空白を含むパスとカスタム base で in_main" "$out" \
+  "[CONTEXT] CLEANUP_WT=in_main; worktree=$r/wt/sessions/issue-1; source=git_worktree_list; dirty=no; main_root=$r"
+
+# git worktree list の失敗は none にせず unknown にする。stub は `worktree list` だけを失敗させ、
+# 他の git 呼び出しは実 git へ渡す（効果範囲を対照ケースで確認する）。
+real_git=$(command -v git)
+git_stub_bin="$TMP_ROOT/git-stub-bin"; mkdir -p "$git_stub_bin"
+cat > "$git_stub_bin/git" <<STUB
+#!/usr/bin/env bash
+[ "\$1 \$2" = "worktree list" ] && exit 128
+exec "$real_git" "\$@"
+STUB
+chmod +x "$git_stub_bin/git"
+r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
+out=$(cd "$r" && PATH="$git_stub_bin:$PATH" bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
+assert_eq "detect(list failure): 補完が必要な none は unknown" "$out" \
+  "[CONTEXT] CLEANUP_WT=unknown; reason=worktree_list_failed; rc=128"
+out=$(cd "$wt" && PATH="$git_stub_bin:$PATH" bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
+assert_contains "detect(list failure): 対照 — worktree 内 cwd の分類は変えない" "$out" \
+  "[CONTEXT] CLEANUP_WT=in_worktree_unrecorded; worktree=$wt; main_root="
+out=$(cd "$r" && PATH="$git_stub_bin:$PATH" bash "$HELPER" detect --issue "" --config "$r/rite-config.yml" 2>/dev/null)
+assert_contains "detect(list failure): 対照 — 空 issue は none のまま" "$out" "[CONTEXT] CLEANUP_WT=none;"
+
+# dirty の取得に失敗したら dirty 扱いにする（保存 state の無い削除経路で未コミット変更を守るため）。
+cat > "$git_stub_bin/git" <<STUB
+#!/usr/bin/env bash
+[ "\$1" = "status" ] && exit 128
+exec "$real_git" "\$@"
+STUB
+out=$(cd "$r" && PATH="$git_stub_bin:$PATH" bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
+assert_contains "detect(dirty failure): 取得失敗は dirty=yes" "$out" \
+  "[CONTEXT] CLEANUP_WT=in_main; worktree=$wt; source=git_worktree_list; dirty=yes; main_root=$r"
+assert_contains "detect(dirty failure): 失敗理由を一覧に出す" "$out" "?? (dirty-check failed — assume dirty for safety)"
+
+# 補完で得たパスをそのまま remove に渡しても、別セッションが使用中なら既存の live-cwd guard で見送る。
+if [ -d /proc/self ]; then
+  r=$(make_repo)
+  out=$(cd "$r" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
+  found=$(printf '%s\n' "$out" | sed -n 's/^\[CONTEXT\] CLEANUP_WT=in_main; worktree=\(.*\); source=git_worktree_list; .*/\1/p')
+  ( cd "$found" && exec sleep 30 ) &
+  live_pid=$!
+  sleep 0.2
+  out=$(cd "$r" && bash "$HELPER" remove --worktree "$found" --pr-merged true --self-root 4194303 2>&1)
+  kill "$live_pid" 2>/dev/null; wait "$live_pid" 2>/dev/null
+  assert_contains "detect→remove(live-cwd): 補完したパスで LIVE_CWD skip" "$out" \
+    "[CONTEXT] WORKTREE_REMOVE_SKIPPED_LIVE_CWD=1; path=$r/.rite/worktrees/issue-1"
+  [ -d "$found" ] && ok "detect→remove(live-cwd): worktree が残る" || bad "detect→remove(live-cwd): worktree が消えた"
+else
+  ok "detect→remove(live-cwd): /proc 不在のため skip"
+fi
 
 # multi_session 無効な config では分類自体が none（4-W 全体 no-op）。
 r=$(make_repo); wt="$r/.rite/worktrees/issue-1"

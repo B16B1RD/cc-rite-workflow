@@ -19,15 +19,21 @@
 # では物理 cwd からの `in_worktree_unrecorded` 導出（cleanup-worktree-detect.sh の physical
 # derivation。issue 番号でパス末尾を照合するため `[ -n "$issue" ]` を要求する）が働かず `none` に
 # 落ちる — 空 issue で分類できるのは flow-state に worktree 記録がある経路だけ。
+# issue があり分類が none のときは、`<worktree_base>/issue-<issue>` が `git worktree list` に登録済み
+# なら in_main（source=git_worktree_list）へ補完する（flow-state 記録も cwd も無い main checkout 経路）。
 # remove の 3 引数は既定値を持たず未指定で exit 2。
 #
 # detect の出力 (stdout):
 #   [CONTEXT] CLEANUP_WT=<none|in_main|in_worktree|in_worktree_unrecorded>; worktree=<path>; \
-#     [dirty=<yes|no>; ]main_root=<path>
+#     [source=git_worktree_list; ][dirty=<yes|no>; ]main_root=<path>
 #   [CONTEXT] CLEANUP_DELEGATED=1; reason=exit_worktree_unavailable   (in_worktree_unrecorded のみ)
 #   [CONTEXT] CLEANUP_WT=unknown; reason=detect_classify_failed; rc=<n>
 #     (内側の分類 helper cleanup-worktree-detect.sh が起動できない / 失敗したとき)
-#   in_worktree のとき dirty が非空なら `--- dirty files begin/end ---` で囲んだ生パス一覧を続けて出す。
+#   [CONTEXT] CLEANUP_WT=unknown; reason=worktree_list_failed; rc=<n>
+#     (補完が必要な none のときに git worktree list が失敗した。削除を試みさせない)
+#   in_worktree と source=git_worktree_list の in_main は dirty を出し、非空なら
+#   `--- dirty files begin/end ---` で囲んだ生パス一覧を続けて出す（取得失敗は dirty 扱い）。
+#   `main_root=` は常に行末フィールドに置く（消費側が行末まで値として読む）。
 #
 #   `CLEANUP_WT=unknown` は **呼び出し側 (cleanup/SKILL.md 4-W) も emit する** —— 本 helper 自体が
 #   起動できなかった場合に `reason=detect_helper_failed` で出す。helper 自身は emit しないが、
@@ -179,7 +185,10 @@ cmd_detect() {
   # main checkout の絶対パスを削除前に確保する（自己削除後も main checkout を参照できるようにするため）。
   # `git worktree list --porcelain` の先頭 worktree entry は常に main checkout（git の仕様上保証）
   # なので、削除がまだ起きていないこの時点で取得すれば cwd の状態に関わらず正しい値が取れる。
-  main_root=$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}') || main_root=""
+  # 行全体を取る（`$2` は空白を含むパスで切れる）。一覧は下の未記録 worktree 補完でも使うため rc ごと保持する。
+  local wt_list="" wt_list_rc=0
+  wt_list=$(git worktree list --porcelain 2>/dev/null) || wt_list_rc=$?
+  main_root=$(printf '%s\n' "$wt_list" | awk '/^worktree /{sub(/^worktree /, ""); print; exit}')
   # 検出は既存 helper に委譲する。flow-state 未記録（flow_wt 空）でも、物理 cwd が当該 Issue の
   # rite セッション worktree なら in_worktree_unrecorded を返し worktree= に cur_top を導出する。
   # 分類 helper が起動できない / 失敗したときに `none` へ落とすと、消費側は `none` を
@@ -204,6 +213,46 @@ cmd_detect() {
   fi
   cleanup_wt=${detect#CLEANUP_WT=}; cleanup_wt=${cleanup_wt%%;*}
   flow_wt=${detect##*worktree=}
+  # flow-state に記録が無く cwd も対象でない（分類が none）ときだけ、Git に登録済みの当該 Issue の
+  # worktree を補完する。記録あり・cwd 由来の分類は一覧の取得結果に左右させない。
+  # 一覧を取得できないのに none を返すと、未削除の worktree が「無い」と報告されるため unknown にする。
+  local source=""
+  if [ "$cleanup_wt" = "none" ] && [ "$ms_enabled" = "true" ] && [ -n "$issue" ]; then
+    if [ "$wt_list_rc" -ne 0 ]; then
+      echo "WARNING: git worktree list が rc=${wt_list_rc} で失敗しました。未記録の作業ツリーの有無を確認できていません" >&2
+      echo "[CONTEXT] CLEANUP_WT=unknown; reason=worktree_list_failed; rc=${wt_list_rc}"
+      return 0
+    fi
+    local base candidate listed
+    base=${ms_base#./}; base=${base%/}
+    case "$base" in
+      /*) candidate="$base/issue-$issue" ;;
+      *) candidate="$main_root/$base/issue-$issue" ;;
+    esac
+    [ -d "$candidate" ] && candidate=$(CDPATH= cd -- "$candidate" && pwd -P)
+    while IFS= read -r listed; do
+      case "$listed" in worktree\ *) ;; *) continue ;; esac
+      listed=${listed#worktree }
+      [ -d "$listed" ] && listed=$(CDPATH= cd -- "$listed" && pwd -P)
+      if [ "$listed" = "$candidate" ]; then
+        cleanup_wt=in_main; flow_wt=$candidate; source=git_worktree_list
+        break
+      fi
+    done <<WT_LIST_EOF
+$wt_list
+WT_LIST_EOF
+  fi
+  if [ -n "$source" ]; then
+    # 保存 state が無いため、呼び出し側の dirty ゲートの入力をここで出す。取得失敗は dirty 扱い。
+    dirty=$(CDPATH= cd -- "$flow_wt" && bash "$SCRIPT_DIR/lib/git-status-filtered.sh") || dirty="?? (dirty-check failed — assume dirty for safety)"
+    echo "[CONTEXT] CLEANUP_WT=$cleanup_wt; worktree=$flow_wt; source=$source; dirty=$([ -n "$dirty" ] && echo yes || echo no); main_root=$main_root"
+    if [ -n "$dirty" ]; then
+      echo "--- dirty files begin ---"
+      printf '%s\n' "$dirty"
+      echo "--- dirty files end ---"
+    fi
+    return 0
+  fi
   case "$cleanup_wt" in
     in_worktree)
       dirty=$(bash "$SCRIPT_DIR/lib/git-status-filtered.sh") || dirty="?? (dirty-check failed — assume dirty for safety)"

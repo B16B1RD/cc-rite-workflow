@@ -111,7 +111,7 @@ archive helper に対して既に採っている形を、抽出で新設した�
 ステップ 6.0（follow-up Issue 起票、`_fu_rc`）も同じ rc → marker の形を採るが、本 anchor の
 対象には数えない。消費側が marker 不在を「完了」と読まないため、上記の規約破れが起きないため。
 なお `cleanup-session-worktree-teardown.sh` 内で内側の分類 helper を呼ぶ境界も同型の扱いにして
-あり（失敗を `none` ではなく `CLEANUP_WT=unknown` へ寄せる）、外側と内側で「分類不能」の表現を
+あり（失敗を `none` ではなく `CLEANUP_WT=unknown` へ寄せる。未記録 worktree の補完に必要な `git worktree list` の失敗も同じく `reason=worktree_list_failed` で寄せる）、外側と内側で「分類不能」の表現を
 揃えている — `none` は消費側が唯一「行ごと省略」に routing する値なので、そこへ落とすと検出失敗が
 報告から消える。
 

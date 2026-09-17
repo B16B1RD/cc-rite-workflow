@@ -194,7 +194,7 @@ assert "delegation skip guard exists in exactly three steps" "3" \
 # 住所は positive / negative の両方向で固定する — 片方だけでは変異が生存することを実測済み:
 #   `*)` arm への移設 / case 文の前への持ち上げ → negative control（下段）を素通りし positive（上段）が捕まえる
 #   case arm ラベルの入れ替え                    → positive（上段）を素通りし negative control（下段）が捕まえる
-# 前者は再実行セッション（CLEANUP_WT=none）が `*)` に落ちるため委譲が再帰し AC-2 の Then を、
+# 前者は再実行セッション（CLEANUP_WT=none、または source を持たない in_main）が `*)` に落ちるため委譲が再帰し AC-2 の Then を、
 # 後者は batch-run 経路で委譲が発火し AC-3 の Then を、それぞれ無効化する。
 # end パターンの `)` `*` は上記と同じ理由で二重エスケープ。
 # 内側 grep は emit の **実行行** へアンカーする — 素の部分文字列一致だと、コメントアウトされた
@@ -344,6 +344,17 @@ assert_grep "Step 12 picks the last CLEANUP_WT occurrence (batch-run recency)" "
   "複数あれば最後の出現 1 行だけ"
 assert_grep "Step 12 omits the row only for a scoped none" "$CLEANUP" \
   "行ごと省略してよいのは .none. かつ"
+# Git 登録から補完した in_main には保存 state が無い。所有権・branch・dirty の停止条件が文言から
+# 消えると、別セッションの worktree や未コミット変更を照合なしに削除する経路になる。
+_s4w_main=$(awk '/^- `CLEANUP_WT=in_main`/,/^- `CLEANUP_WT=none`/' "$CLEANUP")
+assert "4-W supplemented in_main stops on another live claim or an unreadable claim" "1" \
+  "$(printf '%s\n' "$_s4w_main" | grep -cF -- '`issue-claim.sh check --issue {issue_number}` が他の live セッションを示す、または check 自体が失敗・不明値を返す → 停止')"
+assert "4-W supplemented in_main stops on a head branch mismatch or unreadable branch" "1" \
+  "$(printf '%s\n' "$_s4w_main" | grep -cF -- 'PR の head branch と一致しない、または branch を取得できない → 停止')"
+assert "4-W supplemented in_main asks before removing a dirty worktree" "1" \
+  "$(printf '%s\n' "$_s4w_main" | grep -cF -- '`dirty=yes` → in_worktree の手順 1 と同じ AskUserQuestion')"
+assert "4-W supplemented in_main treats a dirty-check failure as dirty" "1" \
+  "$(printf '%s\n' "$_s4w_main" | grep -cF -- 'dirty の取得失敗は helper が `dirty=yes` として出す')"
 assert_grep "4-W unknown routing forbids running steps 1-4" "$CLEANUP" \
   "分類不能なので\*\*上記の手順 1〜4 を実行しない\*\*"
 # unknown は既存 4 gate (base 更新 / ブランチ削除 / wiki ingest / ステップ 12 委譲段落) に
