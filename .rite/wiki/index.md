@@ -521,3 +521,4 @@ okf_version: "0.2"
 - 総ページ数: 506
 - ドメイン別: patterns=117, heuristics=224, anti-patterns=165
 - 最終更新: 2026-09-17T00:06:13Z
+| [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
