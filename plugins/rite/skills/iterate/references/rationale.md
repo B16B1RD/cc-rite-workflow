@@ -284,3 +284,18 @@ WARNING で続行し、偽 skip はしない。寿命は本 run — 0.6 の
 再 iterate の 5.S が skip され未消化 0 の再保証が死ぬ。write 失敗時は `rm -f`
 してファイル非存在として本体へ（偽 skip 禁止）。`--nb-sweep` 戻りはステップ 4 汎用表を使わず、
 `[fix:pushed]` / `[fix:pushed-wm-stale]` / `[fix:replied-only]` でもステップ 1 に戻らない。
+
+## resume-routes-no-state-read
+
+停止通知の再開経路を marker だけで決めるのは、この節が state を読みに行くと
+`iterate-stagnation-route` が存在する理由そのものを崩すため。分岐の権威を flow-state に置くと、
+同じ判定が 2 箇所に生まれ、片方だけが更新される形になる。
+
+marker 不在を `legacy` へ倒さないのは、`legacy` の行が counter リセットによる fresh entry の
+案内であり、ステップ 0.6 が `review_run` のある run に対して禁じた経路そのものになるため。
+不在は「legacy である」ことを意味しない — ステップ 1 の fire 分岐がステップ 3 を通らずに
+ステップ 6 へ直行した、という別の事実を意味する。安全側は「抜ける」を出すこと。
+
+再試行権の使用済み判定を案内側で行わないのは、そのための marker を増やさずに済むから。
+提示した経路が `review-retry` の拒否で終わるのは fail-loud であって、案内が state を
+追いかける理由にはならない。

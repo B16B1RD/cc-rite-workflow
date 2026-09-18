@@ -97,10 +97,74 @@ def gate(state, session, allow_replan=False, check_head=True):
             "required review-replan must complete before fix / next review")
 
 
+def park(old, run):
+    """The run plus what a set would otherwise drop, so a return can restore it.
+
+    `cycle_count` is stored outright rather than read back from the frozen
+    cycle's context, and the cycle itself is stored only when there is one. A run
+    that drops an evidence-free cycle keeps no frozen counterpart, and that shape
+    still has a counter to bring home; deriving the counter from the cycle would
+    leave it the one exit with no way back. On this module's own paths the cycle
+    is always present — current() requires the pairing before park() is reached —
+    so neither branch is exercised here. Keep them: they cost two untaken
+    branches, and the caller that parks the unpaired shape needs no second guard.
+    """
+    parked = dict(run, parked=dict(cycle_count=old.get("cycle_count", 0)))
+    frozen = old.get("review_cycle")
+    if isinstance(frozen, dict):
+        parked["parked"]["review_cycle"] = frozen
+    return parked
+
+
+def restore(old, new):
+    """Returning to a parked PR brings its run back rather than starting a new one.
+
+    Without this, the exit doubles as a breaker reset: a fresh run on the same
+    PR would arrive with a zeroed counter and no observations, and every stop
+    reason would clear by leaving and coming back.
+    """
+    history = list(old.get("review_run_history", []))
+    for index in range(len(history) - 1, -1, -1):
+        entry = history[index]
+        if not (isinstance(entry, dict) and entry.get("pr_number") == new.get("pr_number")):
+            continue
+        # Only a stop outlives the session that left it. A completed or deferred
+        # run has spent its counter and observations on a verdict that already
+        # landed; handing those back would carry its breaker budget into the next
+        # round of review instead of starting one.
+        if entry.get("status") != "stopped":
+            continue
+        # Passing over a parked stop would hand back exactly the fresh run the
+        # parking exists to withhold, so a stop this PR cannot restore stops the
+        # set rather than falling through to one.
+        require(isinstance(entry.get("parked"), dict),
+                "archived review run for this PR was parked without its frozen cycle and counter; "
+                "its stop cannot be restored in this session")
+        require(entry.get("issue_number") == new.get("issue_number")
+                and entry.get("session_id") == new.get("session_id"),
+                "archived review run for this PR belongs to another Issue or session")
+        run = dict(entry)
+        parked = run.pop("parked")
+        new["review_run"] = run
+        new["cycle_count"] = parked["cycle_count"]
+        if isinstance(parked.get("review_cycle"), dict):
+            new["review_cycle"] = parked["review_cycle"]
+        # Every other path that records a stop deactivates the session in the same
+        # write. Restoring the reason without the flag would leave a combination
+        # no stop produces, and the consumers that branch on `active` would read
+        # a frozen run as work in progress. Only a stopped entry reaches here.
+        new["stop_reason"] = run["stop_reason"]
+        new["active"] = False
+        history.pop(index)
+        new["review_run_history"] = history
+        return
+
+
 def guard_set(old, new):
     if "review_run_history" in old:
         new["review_run_history"] = old["review_run_history"]
     if "review_run" not in old:
+        restore(old, new)
         return False
     run, context = current(old, old["session_id"], check_head=False)
     require(new.get("session_id") == old["session_id"], "foreign session transition")
@@ -109,13 +173,24 @@ def guard_set(old, new):
     if switching:
         closed = (run.get("completed_context") == context
                   or run.get("deferred_context") == context)
-        require(closed or (old.get("phase") in ("cleanup", "completed") and old.get("active") is False),
+        # A stop is already the decision that this run takes no further cycle, so
+        # it releases the session exactly as a completed or deferred one does.
+        # Requiring ownership cleanup first would leave the lockout in place at
+        # the entry that matters: the switching set new-Issue entry performs has
+        # no cleanup step, and clear-worktree never reaches cmd_set.
+        stopped = run["status"] == "stopped"
+        require(closed or stopped
+                or (old.get("phase") in ("cleanup", "completed") and old.get("active") is False),
                 "new Issue / PR requires completed or deferred review, or ownership cleanup")
-        gate(old, old["session_id"], check_head=False)
+        # Releasing the session is not discharging the stop: the archived run
+        # keeps its status, reason and spent retry, and close() still refuses it
+        # because gate() itself is untouched.
+        if not stopped:
+            gate(old, old["session_id"], check_head=False)
         # Ordinary setters merge counters; ownership completion, rather than an
         # optional caller flag, authorizes this new run's initial zero.
         new["cycle_count"] = 0
-        new["review_run_history"] = old.get("review_run_history", []) + [run]
+        new["review_run_history"] = old.get("review_run_history", []) + [park(old, run)]
         return True
     require(new.get("cycle_count", 0) == old.get("cycle_count", 0),
             "cannot reset cycle_count within a review run")
@@ -133,6 +208,57 @@ def guard_set(old, new):
     if "review_run_history" in old:
         new["review_run_history"] = old["review_run_history"]
     return False
+
+
+def retry_consumed(run):
+    """One grant per run. The archive is not scanned.
+
+    A parked run comes back through restore() rather than being replaced by a
+    fresh one, so a spent grant returns attached to the run that spent it. The
+    limit therefore holds at the run, and a second reading of the same rule from
+    the history would be a backstop for a case the return no longer produces.
+    """
+    return "retry" in run
+
+
+def retry(state, args, directory):
+    """Grant a divergence-stopped run one bounded re-entry against a checked plan.
+
+    Not an acquittal of the stop: the plan proves every blocking finding has a
+    disposition and a verification, nothing proves the run will converge. The
+    reason moves into the grant rather than being erased, and conclude_retry
+    ends the attempt one review later.
+    """
+    run, context = current(state, args.session, completed=True)
+    require(run["status"] == "stopped", "review run is not stopped")
+    require(run.get("stop_reason") == "circuit-breaker:divergence",
+            "only circuit-breaker:divergence can be retried; stopped: " + str(run.get("stop_reason")))
+    require(not retry_consumed(run), "review run has already used its retry")
+    saved = observation(run, context)
+    require(saved is not None, "saved stagnation observation required before retry")
+    require(unchanged_receipt(saved, read(saved["result_path"])), "observed review receipt is missing or changed")
+    scope = importlib.import_module("review-fix-scope")
+    plan, issue = read(args.plan), read(args.issue)
+    receipt = scope.validate_context(plan, state, args.session, directory)
+    plan_specification(state, plan)
+    scope.validate_plan(plan, issue, state, receipt)
+    run["retry"] = dict(stop_context=context.copy(), stop_reason=run["stop_reason"],
+                        plan_hash=digest(plan), outcome=None)
+    run.pop("stop_reason", None)
+    run.update(status="active", current_decision=dict(action="observe", reasons=[]))
+    state.pop("stop_reason", None)
+    state.update(active=True, updated_at=cycle.now())
+    return state
+
+
+def conclude_retry(run, receipt):
+    """A grant buys one review. Blocking findings at its end restore the stop."""
+    grant = run.get("retry")
+    if not grant or grant["outcome"] is not None:
+        return None
+    blocking = any(f.get("scope") in ("current-pr", "follow-up") for f in receipt["findings"])
+    grant["outcome"] = "unresolved" if blocking else "resolved"
+    return dict(action="stop", reasons=["retry-unresolved"]) if blocking else None
 
 
 def close(state, args, directory):
@@ -293,7 +419,16 @@ def observe(state, args, directory):
     entry = dict(input=data, roots=roots, review_hash=digest(receipt[1]),
                  triaged_hash=triaged_hash(receipt[1]), result_path=str(receipt[0]))
     run["observations"].append(entry)
+    # existing_breaker re-reads every saved receipt and checks the observation
+    # series for gaps before it decides anything, so it runs on every path. Only
+    # which stop is recorded depends on the grant.
     breaker = existing_breaker(state, run)
+    concluded = conclude_retry(run, receipt[1])
+    if concluded:
+        entry["decision"] = concluded.copy()
+        run.update(status="stopped", stop_reason=run["retry"]["stop_reason"], current_decision=concluded)
+        state.update(active=False, stop_reason=run["stop_reason"], updated_at=cycle.now())
+        return state
     if breaker:
         decision = dict(action="stop", reasons=[breaker])
         entry["decision"] = decision.copy()
@@ -446,8 +581,12 @@ def replan(state, args, directory):
     return state
 
 
-def plan_gate(state, plan, session, allow_replan=False):
-    gate(state, session, allow_replan=allow_replan)
+def plan_specification(state, plan, allow_replan=False):
+    """Bind a plan to the run that diagnosed it, without permitting a transition.
+
+    Everything plan_gate asserts about the plan itself, so the retry path — which
+    decides its own admissibility — reuses it instead of restating it.
+    """
     if "review_run" not in state:
         return
     run = state["review_run"]
@@ -460,6 +599,11 @@ def plan_gate(state, plan, session, allow_replan=False):
     for record in run["replans"]:
         if record["review_context"] == plan["review_context"]:
             require(record["plan_hash"] == digest(plan), "fix plan differs from required replan")
+
+
+def plan_gate(state, plan, session, allow_replan=False):
+    gate(state, session, allow_replan=allow_replan)
+    plan_specification(state, plan, allow_replan)
 
 
 def tree_fingerprint():
