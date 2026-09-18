@@ -275,7 +275,7 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 <a id="acceptance_criteria"></a>
 
-関連 Issue の `## 5. Acceptance Criteria` にある全 `### AC-N` を、acceptance reviewer が本 cycle の HEAD で確認した結果。`pr-review.md` ステップ 5.3.0.M step 1 が毎 cycle 書き、降格ゲート helper は読むだけで書き換えない。schema_version は bump しない（additive）。
+関連 Issue の受入条件節にある全 AC（`scripts/acceptance-criteria-check.sh extract` が返す ID 集合）を、acceptance reviewer が本 cycle の HEAD で確認した結果。`pr-review.md` ステップ 5.3.0.M step 1 が毎 cycle 書き、降格ゲート helper は読むだけで書き換えない。schema_version は bump しない（additive）。
 
 対象 cycle は配列で、AC ごとに 1 要素（Issue の AC-ID 集合と一致）:
 

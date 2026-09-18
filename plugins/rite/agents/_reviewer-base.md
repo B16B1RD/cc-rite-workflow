@@ -563,7 +563,7 @@ Hypothetical Exception Category 適用は不要 (コメント品質は security 
 blocking か否かは「**その mutation が無効化するのは Issue 契約が規定する挙動か、実装内部の細部か**」で決まる。判定材料は Issue body に固定し、reviewer の主観に開かない:
 
 1. PR body の `refs #N` / `Closes #N` から対象 Issue を解決する
-2. その Issue の **`## 4. Implementation Details` §4.4 Behavioral Requirements の MUST 箇条書き**と、**`## 5. Acceptance Criteria` 各 AC の `Then` 節**を読む
+2. その Issue の **`## 4. Implementation Details` §4.4 Behavioral Requirements の MUST 箇条書き**と、**受入条件節（`Acceptance Criteria` / `受入基準` / `受入条件` / `受け入れ条件`、先頭の `N. ` は任意）の各 AC の `Then` 節**を読む
 3. mutation が無効化する挙動が上記のいずれかに**文として現れていれば契約対応**、現れていなければ実装内部
 
 **契約リンクを解決できない場合 (PR body に Issue 参照が無い / Issue 取得に失敗) は blocking へ倒す** — 契約対応とみなして扱う。non-blocking を既定にすると実指摘を無音で握り潰すため、fail-loud 側に倒す。
