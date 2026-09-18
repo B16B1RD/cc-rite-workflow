@@ -1259,7 +1259,7 @@ rationale: references/design-rationale.md#simplification-first-rationale
 
 全指摘の処置を編集前に一括で決める。個別指摘の読み取り・impact scan は先に行ってよいが、最初の編集前に [一括計画と検証](references/fix-plan.md) を読み、同一 HEAD の全員回収済み保存結果・最新 Issue 本文から `{fix_plan_file}` と `{fix_issue_file}`（絶対 JSON パス）を作る。root cause ごとに重複を関連付け、全 blocking 指摘へ処置と検証を割り当てる。人間由来の未解決指摘も計画へ記録し、既存の対応義務を維持する。
 
-`review_run.current_decision.action=replan` なら、[停滞診断](../../references/review-stagnation.md) の契約で全指摘と仕様を再照合し、代替案・選択理由・棄却理由・再発防止検証を同じ計画の `replan` に記録する。範囲内の選択は通常の承認待ちを挟まない。以下の保存後に通常の scope gate を通す。時計は同参照の `review-clock-open` を `clock_kind=work` で実行し、外部待機は別区分にする。
+`review_run.current_decision.action=replan` なら、[停滞診断](../../references/review-stagnation.md) の契約で全指摘と仕様を再照合し、代替案・選択理由・棄却理由・再発防止検証を同じ計画の `replan` に記録する。範囲内の選択は通常の承認待ちを挟まない。以下の保存後に通常の scope gate を通す。時計は同参照の共有ブロック `review-clock-open`（Bash ブロック名。時計の CLI 動詞は `review-clock` だけ）を `clock_kind=work` で実行し、外部待機は別区分にする。
 
 時計の open / close は `review_run` がある場合だけ実行する。中断からの再入場では既存区間を同参照の `recover` モードで閉じてから、新しい作業区間を開く。
 
@@ -1638,7 +1638,7 @@ rationale: references/design-rationale.md#nit-noted-no-reply-notes
 
 > **Reference**: Apply [Comment Best Practices](../../skills/rite-workflow/references/comment-best-practices.md) when finalising fix commits — 生成コメント/散文に Issue/PR 番号・AC 番号を残さない。残す背景は現在形の制約文。ジャーナル/経緯文は禁止。file:line 参照と未検証ジャーゴンも diff に残さない。review/fix 履歴は commit message / PR description へ。
 
-一括修正完了後、最新 Issue を再取得し、検査済み計画に対して次を実行する。関連結果の鮮度確認後に、必要な全体検証を全件実行・記録する。失敗または保存不能なら commit / push / 次レビューへ進まない。既存の差分・schema・AC ゲートは引き続き実行する。成功後に `review-clock-close` で修正区間を保存する。検証済み修正は run 履歴へ結び付き、次の review-start が異なる HEAD と検証済み内容を照合して修正回数を確定する。
+一括修正完了後、最新 Issue を再取得し、検査済み計画に対して次を実行する。関連結果の鮮度確認後に、必要な全体検証を全件実行・記録する。失敗または保存不能なら commit / push / 次レビューへ進まない。既存の差分・schema・AC ゲートは引き続き実行する。成功後に [停滞診断](../../references/review-stagnation.md) の共有ブロック `review-clock-close` を `clock_close_mode=normal` で実行して修正区間を保存する。検証済み修正は run 履歴へ結び付き、次の review-start が異なる HEAD と検証済み内容を照合して修正回数を確定する。
 
 ```bash
 # fix-scope-final-verification
