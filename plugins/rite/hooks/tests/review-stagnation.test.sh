@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 python3 - "$SCRIPT_DIR/../.." <<'PYTEST'
 import copy
 import datetime
+import importlib
 import json
 import os
 from pathlib import Path
@@ -991,6 +992,22 @@ try:
 finally:
     f.close()
 
+# T-20: park() keeps the counter for a run with no frozen cycle. The set path
+# cannot deliver that shape here — current() requires the pairing before park()
+# is reached — so the contract is asserted against the function the caller that
+# drops an evidence-free cycle will call.
+sys.path.insert(0, str(plugin / 'hooks/scripts/lib'))
+stagnation = importlib.import_module('review-stagnation')
+
+unpaired = stagnation.park(dict(cycle_count=4), dict(pr_number=71, status='stopped'))
+check(unpaired['parked'] == dict(cycle_count=4),
+      'T-20: a state with no frozen cycle parks the counter alone')
+paired = stagnation.park(dict(cycle_count=4, review_cycle=dict(status='completed')), dict(pr_number=71))
+check(paired['parked'] == dict(cycle_count=4, review_cycle=dict(status='completed')),
+      'T-20: a state with a frozen cycle parks both')
+check(paired['pr_number'] == 71 and 'parked' not in dict(pr_number=71),
+      'T-20: parking leaves the run itself readable at the top level')
+
 # T-17: a receipt swapped after the observation is not a retryable state.
 f = Fixture()
 try:
@@ -1066,6 +1083,27 @@ try:
     f.plan()
     f.reject(lambda: retry(f, ok=False), 'T-10: a spent grant is not reissued')
     f.reject(lambda: f.start(ok=False), 'T-10: the re-stopped run cannot start another review')
+finally:
+    f.close()
+
+# T-21: concluding a retry does not excuse the run from the checks every other
+# stop path makes. A receipt rewritten behind an earlier observation has to be
+# caught on the retry's own review, not only on the paths that reach the breaker.
+f = Fixture()
+try:
+    diverge(f)
+    f.plan()
+    retry(f)
+    f.fix()
+    first = f.state()['review_run']['observations'][0]
+    receipt = json.loads(Path(first['result_path']).read_text())
+    receipt['findings'][0]['description'] = receipt['findings'][0]['description'] + ' (rewritten)'
+    Path(first['result_path']).write_text(json.dumps(receipt))
+    f.start()
+    f.finish(['input defect'])
+    f.clock(1)
+    f.reject(lambda: f.observe(ok=False),
+             'T-21: a rewritten historical receipt stops the retry review too')
 finally:
     f.close()
 
