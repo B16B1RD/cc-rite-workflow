@@ -51,6 +51,11 @@ with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
     def state():
         return json.loads(flow('get', '--jq-filter', '.').stdout)
 
+    def archived_runs():
+        """Parked runs without the envelope carrying their frozen cycle and counter."""
+        return [{k: v for k, v in entry.items() if k != 'parked'}
+                for entry in state().get('review_run_history', [])]
+
     selection = work / 'selection.json'
     manifest = work / 'manifest.json'
     content = work / 'rite-review-result-4242.json'
@@ -264,12 +269,12 @@ with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
     replacements.update(issue_number='4243')
     execute(block((plugin / 'skills/open/SKILL.md').read_text(), '# open-initial-state'))
     assert state()['issue_number'] == 4243 and 'review_run' not in state()
-    assert state()['review_run_history'] == [completed] and state().get('cycle_count', 0) == 0
+    assert archived_runs() == [completed] and state().get('cycle_count', 0) == 0
     flow('set', '--phase', 'pr', '--pr', 4244, '--next', 'next review')
     replacements.update(pr_number='4244')
     execute(start_block)
     assert state()['review_run']['run_id'] != context['run_id'] and state()['cycle_count'] == 1
-    assert state()['review_run_history'] == [completed]
+    assert archived_runs() == [completed]
 
     # Reply-only drafts advance the real queue without promoting unresolved findings.
     (work / 'rite-config.yml').write_text('safety:\n  max_review_cycles: 8\n')
@@ -319,7 +324,7 @@ with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
     replacements.update(issue_number='4245')
     execute(block((plugin / 'skills/open/SKILL.md').read_text(), '# open-initial-state'))
     assert state()['issue_number'] == 4245 and 'review_run' not in state()
-    assert state()['review_run_history'] == [completed, deferred_run]
+    assert archived_runs() == [completed, deferred_run]
     assert receipt_path.read_bytes() == receipt_bytes, 'draft evidence lost during ownership change'
 
     # An interrupted run retains its review context instead of deferring it.
