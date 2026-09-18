@@ -3,6 +3,7 @@
 ## 2026-09-19
 
 * **Skip**: [レビュー結果](raw/reviews/20260918T160544Z-pr-2963.md) — rite スキル記述の知見は plugin 側へ移す。新しいドメイン経験則はない
+* **lint:clean** — contradictions=0 (ページ変更なし。既存ページの全組合せ再評価は未実施), stale=66, orphans=0, missing_concept=0, unregistered_raw=521, broken_refs=0
 
 ## 2026-09-18
 
