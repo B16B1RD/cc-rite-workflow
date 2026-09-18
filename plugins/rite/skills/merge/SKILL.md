@@ -108,11 +108,11 @@ fi
 
 ### ステップ 1.1: reviewed HEAD / 受入条件 inspect
 
-Ready 後に HEAD や review artifact が変わる可能性があるため、merge 自身も reviewed HEAD と受入条件を inspect する。unmet / missing / malformed は経路を問わず停止する。unverified は batch/e2e では質問なしで停止し、standalone だけ人間の確認と attest を許可する。
+Ready 後に PR head や review artifact が変わる可能性があるため、merge 自身も reviewed HEAD と受入条件を inspect する。照合対象は対象 PR の head（`headRefOid`）で、実行時のチェックアウト位置には依存しない。unmet / missing / malformed は経路を問わず停止する。unverified は batch/e2e では質問なしで停止し、standalone だけ人間の確認と attest を許可する。
 
 ```bash
 reviewed_gate_out=$(bash "{plugin_root}/hooks/scripts/ready-reviewed-head-gate.sh" \
-  --pr {pr_number} --plugin-root "{plugin_root}" 2>&1)
+  --pr {pr_number} --repo {owner_repo} --plugin-root "{plugin_root}" 2>&1)
 reviewed_gate_rc=$?
 printf '%s\n' "$reviewed_gate_out" >&2
 reviewed_ac_state=$(printf '%s\n' "$reviewed_gate_out" | sed -n 's/^\[CONTEXT\] REVIEWED_AC=\([^;]*\);.*/\1/p' | tail -1)
@@ -154,7 +154,7 @@ LLM は `merge_in_e2e=` を読む。`true` なら AskUserQuestion を挟まず `
 
 ```bash
 bash "{plugin_root}/hooks/scripts/ready-reviewed-head-gate.sh" \
-  --pr {pr_number} --plugin-root "{plugin_root}" \
+  --pr {pr_number} --repo {owner_repo} --plugin-root "{plugin_root}" \
   --attest "$reviewed_ac_ids" || { echo "[merge:not-ready]"; exit 1; }
 ```
 
@@ -200,13 +200,24 @@ run ID を解決できない、または `gh api .../jobs` が 1 件でも失敗
 
 ## ステップ 2: マージ実行
 
-`gh pr merge` の直前に AC enforce を再実行する。`--force-ci` は CI だけの override であり、reviewed HEAD / AC gate を迂回しない。
+`gh pr merge` の直前に AC enforce を再実行し、そこで照合した PR head をマージ対象として固定する。`--force-ci` は CI だけの override であり、reviewed HEAD / AC gate を迂回しない。
 
 ```bash
 # inspect 後の差し替えを防ぐ最終 gate。unverified / unmet / missing / malformed はすべて停止する。
-bash "{plugin_root}/hooks/scripts/ready-reviewed-head-gate.sh" \
-  --pr {pr_number} --plugin-root "{plugin_root}" --enforce-ac \
-  || { echo "[merge:not-ready]"; exit 1; }
+# stderr を捕捉するのは照合済みの PR head を取り出すためで、診断は直後に必ず再表示する。
+final_gate_out=$(bash "{plugin_root}/hooks/scripts/ready-reviewed-head-gate.sh" \
+  --pr {pr_number} --repo {owner_repo} --plugin-root "{plugin_root}" --enforce-ac 2>&1)
+final_gate_rc=$?
+printf '%s\n' "$final_gate_out" >&2
+[ "$final_gate_rc" -eq 0 ] || { echo "[merge:not-ready]"; exit 1; }
+# マージ対象を照合済みの OID に固定する。照合後に PR head が動いていれば GitHub がマージを拒否する。
+verified_head=$(printf '%s\n' "$final_gate_out" \
+  | sed -n 's/^\[CONTEXT\] READY_REVIEWED_HEAD=match; reviewed=[0-9a-f]*; head=\([0-9a-f]\{40\}\); via=.*/\1/p' | tail -1)
+if [ -z "$verified_head" ]; then
+  echo "ERROR: 照合済みの PR head を特定できません。マージ対象を固定できないため中止します。" >&2
+  echo "[merge:not-ready]"
+  exit 1
+fi
 
 # canonical signal-specific trap pattern (../../references/bash-trap-patterns.md 参照、fix スキル ステップ 2.4 と対称)
 gh_err=""
@@ -228,7 +239,7 @@ else
   gh_err=""
 fi
 
-if gh pr merge {pr_number} -R {owner_repo} --squash --delete-branch=false 2>"${gh_err:-/dev/null}"; then
+if gh pr merge {pr_number} -R {owner_repo} --squash --delete-branch=false --match-head-commit "$verified_head" 2>"${gh_err:-/dev/null}"; then
   echo "<!-- skill return signal: caller must continue next step -->"
   echo "<!-- [merge:returned-to-caller] -->"
   # 成功時のみ stderr の warning (deprecation / rate-limit) を surface する。
