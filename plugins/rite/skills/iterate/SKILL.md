@@ -647,7 +647,7 @@ fi
 | `ITERATE_RESUME_HEAD` | アクション |
 |---|---|
 | `match` | 凍結 context の HEAD と現 HEAD が一致。従来どおり `REVIEW_RESUME=1` で早期 exit する |
-| `changed` | 不一致。早期 exit せず後段へ落ちる。`status=collecting` は直後に放棄を試みる（下記 `ITERATE_ABANDON`）。`status=completed` は後段の新規 cycle 経路へ進む。`review-start` は保存済み receipt を要求し、`review_run` があれば加えて advance 条件（観測・検証済み修正・clean tree）を検査する。満たせば現 HEAD で新しい cycle を凍結し、不足すれば停止する |
+| `changed` | 不一致。早期 exit せず後段へ落ちる。`status=collecting` は直後に放棄を試みる（下記 `ITERATE_ABANDON`）。`status=completed` は ITERATE_CB 表の `changed` 行へ進む。`review-start` は保存済み receipt を要求し、`review_run` があれば加えて advance 条件（観測・検証済み修正・clean tree）を検査する。満たせば現 HEAD で新しい cycle を凍結し、不足すれば停止する |
 | `undecidable` | 凍結 `commit_sha` 欠落（`reason=frozen_sha_missing`）または `git rev-parse HEAD` 失敗（`reason=git_head_failed`）。HEAD 変更と混同せず `exit 1` で停止する |
 
 `ITERATE_ABANDON` は再開ガード直後の放棄の結果。`ITERATE_RESUME_HEAD=changed` かつ `status=collecting` のときだけ emit する。**lost 修復ゲートより前に評価する** — 後段に置くと前 cycle の JSON が残る経路で放棄されず、どの道も `review-start` の HEAD 一致要求で止まる:
@@ -677,7 +677,7 @@ marker_emit ITERATE_LOST_REPAIR "{repair}" "cycle={cycle_count}" "lost={lost}"
 
 | `ITERATE_CB` marker | アクション |
 |---------|-----------|
-| `ok` かつ `ITERATE_LOST_GATE=ok` かつ `ITERATE_RESUME_HEAD=changed` | 上の HEAD 照合表に従う。`collecting` は `ITERATE_ABANDON=done` の場合だけ現 HEAD のレビューへ進み、`refused` なら回収する。`completed` は `review-start` の receipt・advance 条件を満たす場合だけ次 cycle へ進む |
+| `ok` かつ `ITERATE_LOST_GATE=ok` かつ `ITERATE_RESUME_HEAD=changed` | `collecting` は `ITERATE_ABANDON=done` の場合だけ現 HEAD のレビューへ進み `/rite:pr-review` を invoke（下記）。`refused` なら回収する。`completed` は `review-start` の receipt・advance 条件を満たす場合だけ次 cycle へ進む。`/rite:pr-review` を invoke（下記） |
 | `ok` かつ `ITERATE_LOST_GATE=ok` かつ HEAD 変更分岐以外 | 発火条件のいずれにも該当せず。counter 更新は `review-start` まで保留。`REVIEW_RESUME=1` なら同一 cycle を再開し、それ以外は新規 cycle として `/rite:pr-review` を invoke（下記）してステップ 2 へ |
 | `ok` かつ `ITERATE_LOST_GATE=fire` | 上の lost-gate 表。(b) 以外で pr-review を invoke しない |
 | `fire` | 発火（`CB_REASON` に理由）。**review を invoke せず** サーキットブレーカー（ステップ 6）へ直行（mergeable 判定済 PR には発火しない = ステップ 2 で先に `[review:mergeable]` 終了するため到達しない。lost-gate が fire のときは本行に到達しない） |
@@ -693,7 +693,7 @@ marker_emit ITERATE_LOST_REPAIR "{repair}" "cycle={cycle_count}" "lost={lost}"
 
 `TREND_REASON` は helper が返した `reason=` の値で、**判定が下りなかったときにその理由を運ぶ唯一の経路**。helper は理由を stdout の `reason=` に載せるため、ここで抽出して marker に載せないと呼び出し側からは消える。主な値: `need_3_cycles`（現 run の結果が 3 件に満たない。全 run が cycle 2〜3 で必ず通る正常系）/ `no_file_after_pin`（run 開始点 pin より新しい結果が 0 件。**再実行直後の 1 cycle 目は正常系**で、全面不作動を疑うのは helper が stderr WARNING を併発したとき = `cycle_count>=1`）/ `run_boundary_unresolved`（実在数が `cycle_count` を超え、他 run の結果が混ざっている。pin が無い / 古い。誤発火を避けて判定を降ろした状態で、`RUN_SINCE_USED` が原因を示す）/ `no_results_file`・`results_dir_missing`（結果ディレクトリ自体を読めない = 発散検出の全面不作動。cycle_count>=1 なら helper が stderr にも WARNING を出す）/ `json_parse_failure`・`schema_version_unknown`・`scope_enum_violation`・`pr_number_mismatch`・`blocking_count_failed`（データ異常。いずれも helper の stderr WARNING に詳細）/ `helper_unavailable`（helper 自体を実行できなかった。上記 WARNING が対）/ 判定が下りた場合は `converging_or_descending`・`no_new_minimum_and_not_descending`。
 
-`ITERATE_CB=ok` かつ `ITERATE_LOST_GATE=ok` かつ HEAD 変更分岐以外のとき `/rite:pr-review` を invoke（`ITERATE_RESUME_HEAD=changed` は上表。refused は回収し、包括 invoke しない）:
+`ITERATE_CB=ok` かつ `ITERATE_LOST_GATE=ok` かつ（HEAD 変更分岐以外、または `ITERATE_RESUME_HEAD=changed` かつ (`ITERATE_ABANDON=done` または `status=completed`)）のとき `/rite:pr-review` を invoke（`refused` は回収し、包括 invoke しない）:
 
 ```text
 skill: rite:pr-review
