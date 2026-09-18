@@ -101,8 +101,13 @@ def park(old, run):
     """The run plus what a set would otherwise drop, so a return can restore it.
 
     `cycle_count` is stored outright rather than read back from the frozen
-    cycle's context: a run whose frozen cycle is gone still has a counter to
-    bring home, and deriving it would give that shape no way back.
+    cycle's context, and the cycle itself is stored only when there is one. A run
+    that drops an evidence-free cycle keeps no frozen counterpart, and that shape
+    still has a counter to bring home; deriving the counter from the cycle would
+    leave it the one exit with no way back. On this module's own paths the cycle
+    is always present — current() requires the pairing before park() is reached —
+    so neither branch is exercised here. Keep them: they cost two untaken
+    branches, and the caller that parks the unpaired shape needs no second guard.
     """
     parked = dict(run, parked=dict(cycle_count=old.get("cycle_count", 0)))
     frozen = old.get("review_cycle")
@@ -144,8 +149,13 @@ def restore(old, new):
         new["cycle_count"] = parked["cycle_count"]
         if isinstance(parked.get("review_cycle"), dict):
             new["review_cycle"] = parked["review_cycle"]
+        # Every other path that records a stop deactivates the session in the same
+        # write. Restoring the reason without the flag would leave a combination
+        # no stop produces, and the consumers that branch on `active` would read
+        # a frozen run as work in progress.
         if run.get("status") == "stopped":
             new["stop_reason"] = run["stop_reason"]
+            new["active"] = False
         history.pop(index)
         new["review_run_history"] = history
         return

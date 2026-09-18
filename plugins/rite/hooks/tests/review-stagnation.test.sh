@@ -689,6 +689,8 @@ def round_trip(fixture, reason):
           'T-14: the round trip restores the stop (' + reason + ')')
     check(state.get('cycle_count') == before,
           'T-14: the round trip does not zero the counter (' + reason + ')')
+    check(state.get('active') is False,
+          'T-14: the restored stop deactivates the session as the original stop did (' + reason + ')')
     fixture.reject(lambda: fixture.start(ok=False),
                    'T-14: the round trip cannot restart review (' + reason + ')')
 
@@ -897,9 +899,10 @@ finally:
     f.close()
 
 # T-16: restoring does not depend on the parked run having a frozen cycle. A run
-# can lose its frozen cycle and still be parked by a caller that knows why the
-# pairing is absent; the counter has to come home either way, or that shape is
-# the one exit with no way back.
+# that drops an evidence-free cycle keeps no frozen counterpart, and the caller
+# that parks that shape records why the pairing is absent; the counter has to
+# come home either way, or that shape is the one exit with no way back. This
+# module's own paths always park a paired run, so the shape is built here.
 f = Fixture()
 try:
     diverge(f)
