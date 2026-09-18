@@ -416,6 +416,22 @@ with tempfile.TemporaryDirectory(prefix="rite-review-abandon-") as tmp:
     check("HEAD changed during incomplete review" in refusal.stderr,
           "regression keeps the original HEAD-change diagnostic")
 
+    # Missing frozen fields are a state refusal, not helper unavailability.
+    valid_before_missing = state_path.read_bytes()
+    for missing in ("review_context", "selected_reviewers"):
+        corrupted = json.loads(valid_before_missing)
+        corrupted["review_cycle"].pop(missing)
+        dump(state_path, corrupted)
+        before_refusal = state_path.read_bytes()
+        refusal = flow("review-abandon", "--reason", "missing field probe", ok=False)
+        check('ERROR: review-cycle: ' in refusal.stderr
+              and 'ERROR: review-cycle failed:' not in refusal.stderr
+              and 'collecting cycle is missing ' + missing in refusal.stderr,
+              "missing " + missing + " is classified as a state refusal")
+        check(state_path.read_bytes() == before_refusal,
+              "missing " + missing + " refusal preserves state")
+    state_path.write_bytes(valid_before_missing)
+
     # --- no-op: nothing to abandon reports and succeeds ----------------------
     flow("review-abandon", "--reason", "drop the cycle")
     before_noop = state_path.read_bytes()
