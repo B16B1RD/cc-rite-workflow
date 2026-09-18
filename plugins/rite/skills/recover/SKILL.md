@@ -11,6 +11,8 @@ argument-hint: ""
 
 > 実行入口と工程境界は [Host Runtime Contract](../../references/host-runtime-contract.md#入口と工程境界)、native Skill / Task がない場合の実行は [Host workflow operations](../../references/host-workflow-operations.md) に従う。nested 呼出しは caller の runtime 選択を引き継ぐ。
 
+> セッション worktree 入場後にシェルブロックがホストの隔離ガードに拒否されたら、[共通作業先契約](../../references/git-worktree-patterns.md#host-worktree-execution) の「入場後のガード拒否の退路」に従う。
+
 中断した rite ワークフローを再開する。flow-state (phase enum v3 SoT) と commit 数 / PR 状態 / work memory を cross-check して再開点を決める。
 
 **Use cases:** クラッシュ / セッション切断 / 手動中断 / **Context 枯渇**（`/clear` 後に本コマンド。これが **唯一の正規経路**。[workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md)）。
