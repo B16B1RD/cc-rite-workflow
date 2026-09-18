@@ -937,6 +937,21 @@ if [ -z "$BLOCKED_PATTERN" ]; then
   fi
 fi
 
+# Pattern 8: review/fix evidence must exist before changing the reviewed HEAD.
+# Reuse the heredoc surface, not CMD_CHECK which drops later command lines.
+if [ -z "$BLOCKED_PATTERN" ] && [[ "$COMMAND" == *git* && "$COMMAND" == *commit* ]]; then
+  if _commit_surface=$(_rite_btg_pattern6_command_surface "$COMMAND") \
+     && _commit_cwd=$(printf '%s' "$INPUT" | jq -r '.cwd // empty') \
+     && _commit_reason=$(bash "$SCRIPT_DIR/scripts/review-fix-scope-check.sh" commit-check \
+          --command "$_commit_surface" --cwd "${_commit_cwd:-$PWD}" 2>&1); then
+    :
+  else
+    BLOCKED_PATTERN="review-commit-evidence"
+    BLOCKED_REASON="Commit evidence check failed: ${_commit_reason:-cannot inspect command or state}"
+    BLOCKED_ALTERNATIVE="Save the current review with review-finish, then run review-fix-scope-check.sh check --plan <plan> --issue <issue> and review-fix-scope-check.sh verify --plan <plan> --issue <issue> --kind all. If denied for an unplanned changed path, delete the path when it is not needed, or add it to the plan and re-check; staging it does not clear that denial, and review-finish and verify alone will not either. Run commit in a separate Bash call from verification. If the reason is a quoting or parse error, write the message to a file outside the work tree and commit with git commit -F <message-file> in its own Bash call. Keep state and evidence intact."
+  fi
+fi
+
 # --- Result ---
 
 if [ -z "$BLOCKED_PATTERN" ]; then
