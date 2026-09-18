@@ -501,8 +501,8 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
     script_a.write_text('printf "target out\\n"; printf "target err\\n" >&2; exit 2\n')
     script_b.write_text('exit 2\n')
     for marker, cases in (
-        ('# assert-expected-exit-single', ((2, 2, True), (1, 2, False))),
-        ('# assert-expected-exit-multiple', ((2, 2, True), (2, 1, False), (1, 2, False))),
+        ('# assert-expected-exit-single', ((2, 2, True), (1, 2, False), (0, 2, False))),
+        ('# assert-expected-exit-multiple', ((2, 2, True), (2, 1, False), (1, 2, False), (0, 2, False), (2, 0, False))),
     ):
         body = caller_block(guide, marker).replace('scripts/a.sh', '.rite/a.sh').replace('scripts/b.sh', '.rite/b.sh')
         candidate = copy.deepcopy(plan)
