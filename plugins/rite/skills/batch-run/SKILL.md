@@ -290,6 +290,8 @@ echo "[CONTEXT] RUN_RESUME_STAGE=$stage; reason=${reason:-phase_$fs_phase}; issu
 
 ## ステップ 2: /rite:open を invoke
 
+配下の lint が `commands.lint` 未設定かつ自動検出も未該当なら、[lint 1.3](../lint/SKILL.md#13-when-command-cannot-be-detected) の `[lint:skipped]` 経路を質問なしで選ぶ。未実行の理由・設定案内は省略しない。open が既存 sentinel 契約で PR 作成へ進み、設定済みコマンドの失敗はこのスキップに変換しない。
+
 > ステップ 1.5 の marker が `open` のときのみ実行する（`iterate` / `ready` / `merge` / `cleanup` / `advance` は各段階へ直行済み、`stop` はステップ 8 へ）。この skill return 後、停止せずに sentinel を判定してステップ 3 へ進む。本コマンドは handoff を使わないため、継続はこの flat 構造に依存する。
 
 ```text
