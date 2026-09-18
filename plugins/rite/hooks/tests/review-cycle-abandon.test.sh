@@ -99,6 +99,16 @@ with tempfile.TemporaryDirectory(prefix="rite-review-abandon-") as tmp:
         check(after[key] == before[key], "T-03 preserves " + key)
     check(json.loads(result.stdout)["reason"] == record["reason"], "T-03 prints the appended record")
 
+    # The record has to survive later writes: cmd_set rebuilds the state object
+    # from its own field list, so a field nothing carries forward is lost.
+    flow("set", "--phase", "pr", "--next", "still here")
+    carried = state().get("review_cycle_abandoned")
+    check(isinstance(carried, list) and len(carried) == 1, "T-03 record survives a later set")
+    check(carried[0]["review_context"] == record["review_context"]
+          and carried[0]["reason"] == record["reason"]
+          and carried[0]["head_at_abandon"] == record["head_at_abandon"],
+          "T-03 record survives a later set intact")
+
     # --- T-06: phase init for another issue is no longer refused -------------
     flow("set", "--phase", "init", "--issue", 92, "--pr", 0, "--branch", "fix/issue-92-y",
          "--next", "branch")
@@ -117,6 +127,10 @@ with tempfile.TemporaryDirectory(prefix="rite-review-abandon-") as tmp:
     check(restarted["commit_sha"] == third_head != frozen, "T-05 new cycle freezes the current HEAD")
     check(state()["review_cycle"]["status"] == "collecting", "T-05 new cycle is collecting")
     check(len(state()["review_cycle_abandoned"]) == 1, "T-05 keeps the abandonment history")
+    # The restart is a new cycle, so review-start advances the counter exactly once
+    # and the frozen context agrees with the state it was written from.
+    check(state()["cycle_count"] == count_before + 1, "T-05 review-start advances the counter once")
+    check(restarted["cycle_count"] == state()["cycle_count"], "T-05 frozen counter matches the state")
 
     # --- T-04: a cycle holding evidence is refused, state untouched ----------
     for key, value in (("manifest_path", str(root / "manifest.json")),
@@ -144,6 +158,28 @@ with tempfile.TemporaryDirectory(prefix="rite-review-abandon-") as tmp:
     refusal = rejected(["review-abandon", "--reason", "should not pass"], "T-04 abandon with saved receipt")
     check(str(receipt) in refusal.stderr, "T-04 names the saved receipt path")
     receipt.unlink()
+
+    # A stagnation-tracked run outlives the cycle it froze: abandoning leaves the
+    # run with no frozen counterpart, and review-start still has to accept that.
+    fresh_collecting(pr=99, issue=99)
+    flow("review-start", "--selection", selection, "--stagnation")
+    check(state()["review_run"]["status"] == "active", "fixture arms a stagnation run")
+    commit("move HEAD with a run in flight")
+    flow("review-abandon", "--reason", "restart with the run retained")
+    check("review_run" in state(), "abandon keeps the stagnation run")
+    flow("review-start", "--selection", selection, "--stagnation")
+    check(state()["review_cycle"]["status"] == "collecting", "review-start works with a retained run")
+
+    # --- regression: abandon must not become a bypass ------------------------
+    # Without abandoning, a HEAD-changed collecting cycle is still refused by
+    # review-start. The new escape route is the only way past it, and it is the
+    # evidence check above that keeps it from swallowing a real review.
+    fresh_collecting(pr=98, issue=98)
+    commit("move HEAD without abandoning")
+    refusal = rejected(["review-start", "--selection", selection],
+                       "HEAD-changed collecting cycle without abandon")
+    check("HEAD changed during incomplete review" in refusal.stderr,
+          "regression keeps the original HEAD-change diagnostic")
 
     # --- no-op: nothing to abandon reports and succeeds ----------------------
     flow("review-abandon", "--reason", "drop the cycle")

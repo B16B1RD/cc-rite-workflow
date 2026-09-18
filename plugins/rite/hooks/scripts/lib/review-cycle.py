@@ -206,6 +206,12 @@ def guard_set(path, new, directory):
             # ready's existing HEAD/AC gate owns its reviewed-HEAD exception.
     if cycle:
         new["review_cycle"] = cycle
+    # cmd_set rebuilds the state from its own field list, so an abandonment that
+    # is not carried forward here disappears on the very next set — leaving the
+    # run with no record of why its cycle was dropped.
+    history = old.get("review_cycle_abandoned")
+    if history:
+        new["review_cycle_abandoned"] = history
     return new
 
 
@@ -216,7 +222,14 @@ def start(state, args, directory):
     current_head = head()
     stagnation = importlib.import_module("review-stagnation")
     if "review_run" in state:
-        run, _ = stagnation.current(state, args.session, check_head=False)
+        if cycle:
+            run, _ = stagnation.current(state, args.session, check_head=False)
+        else:
+            # An abandoned cycle leaves the run with no frozen counterpart to
+            # cross-check against. The stop decision still has to be honored, so
+            # read it directly rather than skipping the check with the pairing.
+            run = state["review_run"]
+            require(isinstance(run, dict), "review run must be an object")
         require(run["status"] != "stopped", "review run stopped: " + str(run.get("stop_reason")))
     count = state.get("cycle_count", 0)
     require(type(count) is int and count >= 0, "cycle_count must be a nonnegative integer")

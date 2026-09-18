@@ -564,10 +564,7 @@ if [ "$lost_gate" = fire ]; then
   # 証跡があるときは helper が拒否して停止するので、ここで判定を先取りしない（fail-loud）。
   abandon_state=skipped
   if printf '%s' "$review_state" | jq -e '.review_cycle.status == "collecting"' >/dev/null \
-    && [ "$resume_head_state" = changed ] \
-    && printf '%s' "$review_state" | jq -e '
-      (.review_cycle.manifest_path // "") == "" and (.review_cycle.content_file // "") == ""
-      and (.review_cycle.result_path // "") == ""' >/dev/null; then
+    && [ "$resume_head_state" = changed ]; then
     if abandon_out=$(LC_ALL=C bash {plugin_root}/hooks/flow-state.sh review-abandon \
       --reason "HEAD changed before any evidence was recorded (lost gate)" 2>&1); then
       abandon_state=done
