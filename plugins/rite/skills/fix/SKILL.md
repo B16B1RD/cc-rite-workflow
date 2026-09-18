@@ -1649,9 +1649,13 @@ if ! bash {plugin_root}/hooks/scripts/review-fix-scope-check.sh verify \
 fi
 ```
 
-コミットを直接実行する Bash 呼び出しも、実行前 hook が未完了 cycle と保存済み計画・全件検証の鮮度を確認する。拒否された場合は理由に従って `review-finish` または上記の scope check / verify を完了し、commit は別の Bash 呼び出しで再実行する。凍結 HEAD を戻して検査を通してはならない。
+コミットを直接実行する Bash 呼び出しも、実行前 hook が未完了 cycle と保存済み計画・全件検証の鮮度を確認する。拒否された場合は理由に従って次を行う。凍結 HEAD を戻して検査を通してはならない。
 
-commit は作業 worktree で `git commit`（必要なら literal な `git -C <path> commit`）を直接呼ぶ。検証・編集・commit を同じ Bash 呼び出しにまとめない。hook は直接コマンドと既存 heredoc 除去後の表面を検査し、スクリプト内部・alias・動的に組み立てた subcommand は解釈しない。これらの間接実行を commit 手順に使わない。
+- 未完了 cycle: `review-finish` で結果を保存してから commit を別 Bash 呼び出しで再実行する
+- 計画・検証の鮮度: 上記の `check --plan "{fix_plan_file}" --issue "{fix_issue_file}"` と `verify --plan "{fix_plan_file}" --issue "{fix_issue_file}" --kind all` を完了してから commit する
+- `unplanned changed path`: `review-finish` と `verify` では解消しない。当該パスが計画内なら明示パスで stage、不要なら削除、必要なら計画へ追加して scope check からやり直す
+
+commit は作業 worktree で `git commit`（必要なら literal な `git -C <path> commit`）を直接呼ぶ。検証・編集・commit を同じ Bash 呼び出しにまとめない。hook は直接コマンドと既存 heredoc 除去後の表面を検査し、スクリプト内部・alias・動的に組み立てた subcommand は解釈しない。これらの間接実行を commit 手順に使わない。メッセージファイル `{commit_message_file}` は作業 worktree 外の絶対パスにする。
 
 ### 3.1 Verify Changes
 

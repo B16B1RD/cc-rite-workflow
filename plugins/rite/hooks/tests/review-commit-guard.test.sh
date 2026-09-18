@@ -84,7 +84,8 @@ for use_run, plan_paths, full_inputs, rename_boundary in ((False, ['src/a.py'], 
         run(['git', 'add', 'src', 'protected'])
         run(['git', '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
              'commit', '-q', '-m', 'fixture'])
-        flow('set', '--phase', 'pr', '--next', 'review', '--pr', 71, '--issue', 42)
+        flow('set', '--phase', 'pr', '--next', 'review', '--pr', 71, '--issue', 42,
+             '--worktree', str(root), '--require-worktree')
         selection = private / 'selection.json'
         selected = ['code-quality-reviewer', 'acceptance-reviewer']
         dump(selection, selected)
@@ -93,14 +94,19 @@ for use_run, plan_paths, full_inputs, rename_boundary in ((False, ['src/a.py'], 
         state = json.loads(state_path.read_text())
         context = state['review_cycle']['review_context']
         guard = plugin / 'hooks/pre-tool-bash-guard.sh'
-        def hook(command='git commit -m fix', allowed=False):
+        def hook(command='git commit -m fix', allowed=False, reason=None):
             payload = json.dumps(dict(tool_name='Bash', cwd=str(root), tool_input=dict(command=command)))
             result = subprocess.run(['bash', str(guard)], input=payload, cwd=root, env=env,
                                     text=True, capture_output=True)
             denied = bool(result.stdout.strip()) and json.loads(result.stdout).get('hookSpecificOutput', {}).get('permissionDecision') == 'deny'
             check(not denied if allowed else denied, command + ': ' + result.stdout + result.stderr)
             if not allowed:
+                text = result.stdout + result.stderr
                 check('review-commit-evidence' in result.stdout, 'fail-closed commit denial')
+                check('review-finish' in text and 'verify --plan' in text and '--issue' in text,
+                      'denied alternative names check/verify with plan and issue: ' + text)
+                if reason:
+                    check(reason in text, 'expected reason ' + reason + ' in ' + text)
             return result
 
         message_file = private / 'commit-message.txt'
@@ -112,10 +118,18 @@ for use_run, plan_paths, full_inputs, rename_boundary in ((False, ['src/a.py'], 
         for command in ('git commit -m fix', 'git -c user.name=Test commit --amend -m fix',
                         'git -C . commit -m fix', 'git commit -m --dry-run', 'git commit -am --dry-run', '/usr/bin/git commit -m fix',
                         'git status; git commit -m fix', 'cat <<EOF\nhello\nEOF\ngit commit -m fix'):
-            hook(command)
+            hook(command, reason='review is incomplete')
+        hook('if true; then git commit -m x; fi', reason='review is incomplete')
+        hook('{ git commit -m x; }', reason='review is incomplete')
+        hook('env git commit -m x', reason='review is incomplete')
+        hook('nohup git commit -m x', reason='review is incomplete')
+        hook('time git commit -m x', reason='review is incomplete')
+        hook('exec git commit -m x', reason='review is incomplete')
+        hook('command git commit -m x', reason='review is incomplete')
         check(run(['git', 'rev-parse', 'HEAD']).stdout == old_head, 'denial precedes HEAD change')
-        hook(ordinary_recipe)
+        hook(ordinary_recipe, reason='review is incomplete')
         hook('git commit --dry-run', allowed=True)
+        hook('git commit --help', allowed=True)
         hook("printf '%s' 'git commit -m text'", allowed=True)
         hook("echo ';' git commit", allowed=True)
         hook("echo '\n' git commit", allowed=True)
@@ -125,7 +139,7 @@ for use_run, plan_paths, full_inputs, rename_boundary in ((False, ['src/a.py'], 
         state_path.unlink()
         hook(allowed=True)
         state_path.write_text('{invalid')
-        hook()
+        hook(reason='Expecting property name')
         state_path.write_bytes(saved)
         normal = json.loads(saved)
         normal.pop('review_cycle')
@@ -136,6 +150,12 @@ for use_run, plan_paths, full_inputs, rename_boundary in ((False, ['src/a.py'], 
         with tempfile.TemporaryDirectory(prefix='rite-unrelated-') as other:
             run(['git', 'worktree', 'add', '--detach', other, 'HEAD'])
             hook('git -C ' + other + ' commit -m unrelated', allowed=True)
+            missing_wt = json.loads(state_path.read_text())
+            missing_wt.pop('worktree', None)
+            dump(state_path, missing_wt)
+            hook('git -C ' + other + ' commit -m unrelated',
+                 reason='session worktree path is missing from state')
+            state_path.write_bytes(saved)
 
         records = []
         for index, reviewer in enumerate(selected):
@@ -189,8 +209,6 @@ for use_run, plan_paths, full_inputs, rename_boundary in ((False, ['src/a.py'], 
             dump(plan_file, value)
 
         (private / 'state').mkdir(exist_ok=True)
-        # The hook consumes the same canonical Issue snapshot as the fix skill.
-        dump(private / ('state/fix-issue-' + session + '.json'), issue)
         if use_run:
             clock_file = private / 'clock.json'
             dump(clock_file, dict(review_context=context, segment_id='work', kind='work',
@@ -203,13 +221,18 @@ for use_run, plan_paths, full_inputs, rename_boundary in ((False, ['src/a.py'], 
                  acceptance=dict(satisfied=[], evidence='saved measurements')))
             flow('review-observe', '--input', observation, '--issue', issue_file)
 
-        hook()  # completed but no scope/verification
+        hook(reason='fix plan record missing')  # completed but no scope/verification
         save_plan()
         invoke('check')
-        hook()  # scope approval alone is not verification
+        record = json.loads(canonical.read_text())
+        check(record['issue']['number'] == 42 and 'body' in record['issue'],
+              'check stores the validated Issue snapshot on the plan record')
+        check(not (private / ('state/fix-issue-' + session + '.json')).exists(),
+              'check does not plant a separate fix-issue file')
+        hook(reason='fix-verification')  # scope approval alone is not verification
         source.write_text('fixed\n')
         invoke('verify', 'related')
-        hook()  # full verification is missing
+        hook(reason='stale/missing verification: full')  # full verification is missing
         # A sandbox write-block stub is untracked but is not a real change. The
         # commit preflight must apply verify's mask, or the verified commit that
         # the fix recipe runs next becomes unreachable.
@@ -272,5 +295,138 @@ for use_run, plan_paths, full_inputs, rename_boundary in ((False, ['src/a.py'], 
         env.update(GIT_AUTHOR_NAME='Test', GIT_AUTHOR_EMAIL='test@example.invalid', GIT_COMMITTER_NAME='Test', GIT_COMMITTER_EMAIL='test@example.invalid')
         run(['bash', '-c', ordinary_recipe])
         check(run(['git', 'rev-parse', 'HEAD']).stdout != old_head, 'verified commit succeeds')
+
+# Mergeable completed cycle and active retained run must not lock out ordinary commits.
+with tempfile.TemporaryDirectory(prefix='rite-fix-scope-mergeable-') as tmp:
+    root = Path(tmp)
+    private = root / '.rite'
+    private.mkdir()
+    env = dict(os.environ)
+    for key in ('CODEX_THREAD_ID', 'GROK_SESSION_ID', 'CLAUDE_SESSION_ID',
+                'CLAUDE_CODE_SESSION_ID', 'RITE_SESSION_ID', 'RITE_HOST', 'RITE_STATE_ROOT',
+                'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE'):
+        env.pop(key, None)
+    session = 'fix-scope-test'
+    env.update(RITE_HOST='claude', CLAUDE_CODE_SESSION_ID=session, RITE_STATE_ROOT=tmp, TMPDIR=tmp)
+
+    def run(args, ok=True):
+        result = subprocess.run(args, cwd=root, env=env, text=True, capture_output=True)
+        if ok:
+            check(result.returncode == 0, repr(args) + '\n' + result.stdout + result.stderr)
+        return result
+
+    def flow(*args):
+        return run(['bash', str(plugin / 'hooks/flow-state.sh'), *map(str, args)])
+
+    run(['git', 'init', '-q'])
+    (root / '.git/info/exclude').write_text('.rite/\n')
+    (root / 'src').mkdir()
+    (root / 'src/a.py').write_text('original\n')
+    run(['git', 'add', 'src'])
+    run(['git', '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-q', '-m', 'fixture'])
+    flow('set', '--phase', 'pr', '--next', 'review', '--pr', 71, '--issue', 42,
+         '--worktree', str(root), '--require-worktree')
+    selection = private / 'selection.json'
+    selected = ['code-quality-reviewer', 'acceptance-reviewer']
+    dump(selection, selected)
+    flow('review-start', '--selection', selection, '--stagnation')
+    state_path = Path(flow('path').stdout.strip())
+    state = json.loads(state_path.read_text())
+    context = state['review_cycle']['review_context']
+    guard = plugin / 'hooks/pre-tool-bash-guard.sh'
+
+    def hook(command='git commit -m fix', allowed=False, reason=None):
+        payload = json.dumps(dict(tool_name='Bash', cwd=str(root), tool_input=dict(command=command)))
+        result = subprocess.run(['bash', str(guard)], input=payload, cwd=root, env=env,
+                                text=True, capture_output=True)
+        denied = bool(result.stdout.strip()) and json.loads(result.stdout).get('hookSpecificOutput', {}).get('permissionDecision') == 'deny'
+        check(not denied if allowed else denied, command + ': ' + result.stdout + result.stderr)
+        if not allowed:
+            text = result.stdout + result.stderr
+            check('review-commit-evidence' in result.stdout, 'fail-closed commit denial')
+            check('review-finish' in text and 'verify --plan' in text, 'denied alternative: ' + text)
+            if reason:
+                check(reason in text, 'expected reason ' + reason + ' in ' + text)
+        return result
+
+    records = []
+    for index, reviewer in enumerate(selected):
+        raw = private / (reviewer + '.md')
+        raw.write_text('### 評価: 可\n### 所見\n確認済み\n### 指摘事項\n\n| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |\n|--------|----------|------------|------|----------|\n\n### 監査ログ\nなし\n')
+        records.append(dict(reviewer=reviewer, review_context=context, agent_id='child-' + str(index),
+                            status='completed', started_at='2026-01-01T00:00:00Z',
+                            ended_at='2026-01-01T00:01:00Z', output_file=str(raw)))
+    manifest = private / 'manifest.json'
+    dump(manifest, dict(schema_version=1, parent_agent_id=session, review_context=context,
+                        selected_reviewers=selected, reviewers=records))
+    content = private / 'review.json'
+    dump(content, dict(schema_version='1.1.0', pr_number=71, review_context=context,
+                       timestamp='__RITE_TS_PLACEHOLDER_7f3a9b2c__', commit_sha=context['commit_sha'],
+                       reviewers=selected, findings=[], non_blocking_findings=[], guardrail_audit_log=[],
+                       acceptance_criteria=[]))
+    run(['bash', str(plugin / 'scripts/review-measured-gate.sh'), '--input', str(content),
+         '--reject-preset-verification'])
+    flow('review-finish', '--manifest', manifest, '--content-file', content)
+    cycle = json.loads(state_path.read_text())['review_cycle']
+    check(cycle['status'] == 'completed' and cycle['verdict'] == 'mergeable', 'empty findings are mergeable')
+    hook(allowed=True)
+
+with tempfile.TemporaryDirectory(prefix='rite-fix-scope-retained-') as tmp:
+    root = Path(tmp)
+    private = root / '.rite'
+    private.mkdir()
+    env = dict(os.environ)
+    for key in ('CODEX_THREAD_ID', 'GROK_SESSION_ID', 'CLAUDE_SESSION_ID',
+                'CLAUDE_CODE_SESSION_ID', 'RITE_SESSION_ID', 'RITE_HOST', 'RITE_STATE_ROOT',
+                'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE'):
+        env.pop(key, None)
+    session = 'fix-scope-test'
+    env.update(RITE_HOST='claude', CLAUDE_CODE_SESSION_ID=session, RITE_STATE_ROOT=tmp, TMPDIR=tmp)
+
+    def run(args, ok=True):
+        result = subprocess.run(args, cwd=root, env=env, text=True, capture_output=True)
+        if ok:
+            check(result.returncode == 0, repr(args) + '\n' + result.stdout + result.stderr)
+        return result
+
+    def flow(*args):
+        return run(['bash', str(plugin / 'hooks/flow-state.sh'), *map(str, args)])
+
+    run(['git', 'init', '-q'])
+    (root / '.git/info/exclude').write_text('.rite/\n')
+    (root / 'src').mkdir()
+    (root / 'src/a.py').write_text('original\n')
+    run(['git', 'add', 'src'])
+    run(['git', '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-q', '-m', 'fixture'])
+    flow('set', '--phase', 'pr', '--next', 'review', '--pr', 71, '--issue', 42,
+         '--worktree', str(root), '--require-worktree')
+    selection = private / 'selection.json'
+    dump(selection, ['code-quality-reviewer', 'acceptance-reviewer'])
+    flow('review-start', '--selection', selection, '--stagnation')
+    guard = plugin / 'hooks/pre-tool-bash-guard.sh'
+
+    def hook(command='git commit -m fix', allowed=False, reason=None):
+        payload = json.dumps(dict(tool_name='Bash', cwd=str(root), tool_input=dict(command=command)))
+        result = subprocess.run(['bash', str(guard)], input=payload, cwd=root, env=env,
+                                text=True, capture_output=True)
+        denied = bool(result.stdout.strip()) and json.loads(result.stdout).get('hookSpecificOutput', {}).get('permissionDecision') == 'deny'
+        check(not denied if allowed else denied, command + ': ' + result.stdout + result.stderr)
+        if not allowed:
+            text = result.stdout + result.stderr
+            check('review-commit-evidence' in result.stdout, 'fail-closed commit denial')
+            if reason:
+                check(reason in text, 'expected reason ' + reason + ' in ' + text)
+        return result
+
+    flow('review-abandon', '--reason', 'test-retained')
+    abandoned = json.loads(Path(flow('path').stdout.strip()).read_text())
+    check(abandoned.get('review_cycle') is None and 'review_run' in abandoned, 'abandon retains the run')
+    hook(allowed=True)
+    state_path = Path(flow('path').stdout.strip())
+    stopped = json.loads(state_path.read_text())
+    stopped['review_run']['status'] = 'stopped'
+    stopped['review_run']['stop_reason'] = 'circuit-breaker:max-cycles'
+    dump(state_path, stopped)
+    hook(reason='review run stopped')
 print(str(checks) + ' checks passed')
 PYTEST
