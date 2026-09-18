@@ -32,10 +32,9 @@ assert_grep "contract carries the post-entry guard-refusal escape" "$CONTRACT" \
   '入場後のガード拒否の退路'
 # 手順の各句はファイル全体ではなく退路節の内側に実在させる。ファイル全体を見ると、節を
 # 丸ごと削っても判定表の行に残る同じ語を拾って緑のままになる。
-# 節の開始は行頭のラベル文字列（`assert_grep_in_section` が awk -v で渡す際に
-# バックスラッシュが剥がれるため、`*` の有無は実効上問わない）。
-# `^### Host worktree execution$` を開始に使うと、awk の範囲パターンでは開始行自身が
-# 終了パターン `^###[^#]` にも一致して範囲が 1 行に潰れる。
+# 節の開始は契約側の太字ラベル行に一致させる。`^### Host worktree execution$` を開始に
+# 使うと、awk の範囲パターンでは開始行自身が終了パターン `^###[^#]` にも一致して範囲が
+# 1 行に潰れる。
 ESCAPE_SECTION='^\*\*入場後のガード拒否の退路\*\*'
 for clause in "${CLAUSES[@]}"; do
   assert_grep_in_section "contract still defines the escape step ($clause)" "$CONTRACT" \
