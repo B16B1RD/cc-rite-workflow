@@ -271,8 +271,10 @@ def commit_check(args):
         if not words:
             continue
         if Path(words[0]).name != "git":
+            if Path(words[0]).name in {"echo", "printf"}:
+                continue
             names = [Path(word).name for word in words]
-            if peeled and "git" in names:
+            if "git" in names:
                 index = names.index("git")
                 if index + 1 < len(words) and words[index + 1] == "commit":
                     require(False, "run commit as a direct command in its own Bash call")
@@ -330,9 +332,6 @@ def commit_check(args):
         require(isinstance(frozen, dict), "review run has no frozen cycle; start its review before committing")
         require(frozen.get("status") == "completed",
                 "review is incomplete; collect reviewers and run review-finish before committing")
-        if frozen.get("verdict") == "mergeable" and not (
-                isinstance(state.get("review_run"), dict) and state["review_run"].get("pending_fix")):
-            return
         directory = Path(args.state_root) / ".rite/state"
         approved_path = directory / ("fix-plan-" + args.session + ".json")
         require(approved_path.is_file(),

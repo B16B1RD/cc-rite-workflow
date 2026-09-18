@@ -126,6 +126,8 @@ for use_run, plan_paths, full_inputs, rename_boundary in ((False, ['src/a.py'], 
         hook('time git commit -m x', reason='review is incomplete')
         hook('exec git commit -m x', reason='review is incomplete')
         hook('command git commit -m x', reason='review is incomplete')
+        hook('env -u GIT_DIR git commit -m x', reason='run commit as a direct command')
+        hook('sudo git commit -m x', reason='run commit as a direct command')
         check(run(['git', 'rev-parse', 'HEAD']).stdout == old_head, 'denial precedes HEAD change')
         hook(ordinary_recipe, reason='review is incomplete')
         hook('git commit --dry-run', allowed=True)
@@ -296,7 +298,9 @@ for use_run, plan_paths, full_inputs, rename_boundary in ((False, ['src/a.py'], 
         run(['bash', '-c', ordinary_recipe])
         check(run(['git', 'rev-parse', 'HEAD']).stdout != old_head, 'verified commit succeeds')
 
-# Mergeable completed cycle and active retained run must not lock out ordinary commits.
+# Mergeable is not verification evidence for later edits. An unverified commit
+# is denied; the same HEAD can still open the next review. A verified commit
+# must reach the next review-start (asserted in the use_run loop below).
 with tempfile.TemporaryDirectory(prefix='rite-fix-scope-mergeable-') as tmp:
     root = Path(tmp)
     private = root / '.rite'
@@ -369,7 +373,162 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-mergeable-') as tmp:
     flow('review-finish', '--manifest', manifest, '--content-file', content)
     cycle = json.loads(state_path.read_text())['review_cycle']
     check(cycle['status'] == 'completed' and cycle['verdict'] == 'mergeable', 'empty findings are mergeable')
+    issue_file = private / 'issue.json'
+    dump(issue_file, dict(number=42, body='## Acceptance Criteria\n- [ ] AC-1 pass'))
+    clock_file = private / 'clock.json'
+    dump(clock_file, dict(review_context=context, segment_id='real-test', kind='work',
+                         started_at='2026-01-01T00:00:00Z', ended_at='2026-01-01T00:01:00Z'))
+    flow('review-clock', '--input', clock_file)
+    observation = private / 'observation.json'
+    dump(observation, dict(review_context=context, issue_number=42,
+                           issue_body='## Acceptance Criteria\n- [ ] AC-1 pass', roots=[],
+                           acceptance=dict(satisfied=[], evidence='saved measurements')))
+    flow('review-observe', '--input', observation, '--issue', issue_file)
+    mergeable_head = run(['git', 'rev-parse', 'HEAD']).stdout
+    hook(reason='fix plan record missing')
+    (root / 'src/a.py').write_text('post review change\n')
+    run(['git', 'add', 'src/a.py'])
+    hook(reason='fix plan record missing')
+    check(run(['git', 'rev-parse', 'HEAD']).stdout == mergeable_head,
+          'unverified post-mergeable commit does not move HEAD')
+    run(['git', 'checkout', 'HEAD', '--', 'src/a.py'])
+    flow('review-start', '--selection', selection, '--stagnation')
+    restarted = json.loads(state_path.read_text())
+    check(restarted['review_cycle']['review_context']['commit_sha'] == mergeable_head.strip(),
+          'same-HEAD review-start after mergeable keeps the frozen HEAD')
+    check(restarted['review_cycle']['status'] == 'collecting', 'next review is collecting')
+    check(run(['git', 'rev-parse', 'HEAD']).stdout == mergeable_head,
+          'review-start does not change HEAD')
+
+# Verified fix commit must open the next review on the new HEAD.
+with tempfile.TemporaryDirectory(prefix='rite-fix-scope-next-review-') as tmp:
+    root = Path(tmp)
+    private = root / '.rite'
+    private.mkdir()
+    env = dict(os.environ)
+    for key in ('CODEX_THREAD_ID', 'GROK_SESSION_ID', 'CLAUDE_SESSION_ID',
+                'CLAUDE_CODE_SESSION_ID', 'RITE_SESSION_ID', 'RITE_HOST', 'RITE_STATE_ROOT',
+                'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE'):
+        env.pop(key, None)
+    session = 'fix-scope-test'
+    env.update(RITE_HOST='claude', CLAUDE_CODE_SESSION_ID=session, RITE_STATE_ROOT=tmp,
+               TMPDIR=tmp, SCOPE_TEST_ENV='initial')
+
+    def run(args, ok=True):
+        result = subprocess.run(args, cwd=root, env=env, text=True, capture_output=True)
+        if ok:
+            check(result.returncode == 0, repr(args) + '\n' + result.stdout + result.stderr)
+        return result
+
+    def flow(*args):
+        return run(['bash', str(plugin / 'hooks/flow-state.sh'), *map(str, args)])
+
+    run(['git', 'init', '-q'])
+    (root / '.git/info/exclude').write_text('.rite/\n')
+    (root / 'src').mkdir()
+    source = root / 'src/a.py'
+    source.write_text('original\n')
+    (root / 'protected').mkdir()
+    (root / 'protected/secret.py').write_text('protected\n')
+    run(['git', 'add', 'src', 'protected'])
+    run(['git', '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+         'commit', '-q', '-m', 'fixture'])
+    flow('set', '--phase', 'pr', '--next', 'review', '--pr', 71, '--issue', 42,
+         '--worktree', str(root), '--require-worktree')
+    selection = private / 'selection.json'
+    selected = ['code-quality-reviewer', 'acceptance-reviewer']
+    dump(selection, selected)
+    flow('review-start', '--selection', selection, '--stagnation')
+    state_path = Path(flow('path').stdout.strip())
+    state = json.loads(state_path.read_text())
+    context = state['review_cycle']['review_context']
+    guard = plugin / 'hooks/pre-tool-bash-guard.sh'
+
+    def hook(command='git commit -m fix', allowed=False, reason=None):
+        payload = json.dumps(dict(tool_name='Bash', cwd=str(root), tool_input=dict(command=command)))
+        result = subprocess.run(['bash', str(guard)], input=payload, cwd=root, env=env,
+                                text=True, capture_output=True)
+        denied = bool(result.stdout.strip()) and json.loads(result.stdout).get('hookSpecificOutput', {}).get('permissionDecision') == 'deny'
+        check(not denied if allowed else denied, command + ': ' + result.stdout + result.stderr)
+        if not allowed:
+            text = result.stdout + result.stderr
+            check('review-commit-evidence' in result.stdout, 'fail-closed commit denial')
+            check('review-finish' in text and 'verify --plan' in text and '--issue' in text,
+                  'denied alternative names check/verify with plan and issue: ' + text)
+            if reason:
+                check(reason in text, 'expected reason ' + reason + ' in ' + text)
+        return result
+
+    records = []
+    for index, reviewer in enumerate(selected):
+        raw = private / (reviewer + '.md')
+        raw.write_text('### 評価: 要修正\n### 所見\n確認済み\n### 指摘事項\n再現済み\n### 監査ログ\nなし\n')
+        records.append(dict(reviewer=reviewer, review_context=context, agent_id='child-' + str(index),
+                            status='completed', started_at='2026-01-01T00:00:00Z',
+                            ended_at='2026-01-01T00:01:00Z', output_file=str(raw)))
+    manifest = private / 'manifest.json'
+    dump(manifest, dict(schema_version=1, parent_agent_id=session, review_context=context,
+                        selected_reviewers=selected, reviewers=records))
+    content = private / 'review.json'
+    findings = [dict(id='F-0' + str(index + 1), reviewer=selected[index], severity='HIGH',
+                     file='src/a.py', line=1, description='Verification: repro sample => failed',
+                     suggestion='fix', status='open', scope='current-pr') for index in range(2)]
+    dump(content, dict(schema_version='1.1.0', pr_number=71, review_context=context,
+                       timestamp='__RITE_TS_PLACEHOLDER_7f3a9b2c__', commit_sha=context['commit_sha'],
+                       reviewers=selected, findings=findings, non_blocking_findings=[],
+                       guardrail_audit_log=[], acceptance_criteria=[]))
+    run(['bash', str(plugin / 'scripts/review-measured-gate.sh'), '--input', str(content),
+         '--reject-preset-verification'])
+    flow('review-finish', '--manifest', manifest, '--content-file', content)
+    issue = {'number': 42, 'body': '## 4. 対象範囲\n### 4.1 対象\n- `src/a.py`\n'
+             '### 4.2 対象外\n- `protected`\n## 5. 受入条件\n- 全指摘を一括修正する\n'}
+    issue_file, plan_file = private / 'issue.json', private / 'plan.json'
+    dump(issue_file, issue)
+    clock_file = private / 'clock.json'
+    dump(clock_file, dict(review_context=context, segment_id='work', kind='work',
+                         started_at='2026-01-01T00:00:00Z', ended_at='2026-01-01T00:00:01Z'))
+    flow('review-clock', '--input', clock_file)
+    observation = private / 'observation.json'
+    dump(observation, dict(review_context=context, issue_number=42, issue_body=issue['body'],
+         roots=[dict(defect='shared input defect', trigger='invalid input',
+                     violated_contract='input contract', finding_ids=['F-01', 'F-02'])],
+         acceptance=dict(satisfied=[], evidence='saved measurements')))
+    flow('review-observe', '--input', observation, '--issue', issue_file)
+    plan = dict(review_context=context, issue_number=42, issue_body=issue['body'],
+                constraints=dict(targets=['src/a.py'], non_targets=['protected'], closed_targets=False,
+                                 rationale='Issue target候補なので開集合'),
+                groups=[dict(root_cause='共有する入力判定の欠落', finding_ids=['F-01', 'F-02'], action='fix',
+                             paths=['src/a.py'], rationale='入力判定の修正で両指摘を解消する',
+                             semantic=dict(approved=True, acceptance_criteria='全指摘を一括修正するACに適合',
+                                           out_of_scope='protectedは変更しない'), verification_ids=['related'])],
+                verifications=[dict(id='related', kind='related',
+                                    command="printf 'related\\n' >> .rite/related.log",
+                                    inputs=['src/a.py'], environment=['SCOPE_TEST_ENV']),
+                               dict(id='full', kind='full',
+                                    command="printf 'full\\n' >> .rite/full.log",
+                                    inputs=['src/a.py'], environment=[])])
+    dump(plan_file, plan)
+    run(['bash', str(helper), 'check', '--plan', str(plan_file), '--issue', str(issue_file)])
+    source.write_text('fixed\n')
+    run(['bash', str(helper), 'verify', '--plan', str(plan_file), '--issue', str(issue_file), '--kind', 'all'])
     hook(allowed=True)
+    message_file = private / 'commit-message.txt'
+    message_file.write_text('fix: preserve receipt\n\nRoot cause: the "review context" was skipped.\n'
+                            'Keep `git commit` evidence bound to HEAD.\n')
+    env.update(GIT_AUTHOR_NAME='Test', GIT_AUTHOR_EMAIL='test@example.invalid',
+               GIT_COMMITTER_NAME='Test', GIT_COMMITTER_EMAIL='test@example.invalid')
+    run(['git', 'add', '--', 'src/a.py'])
+    run(['git', 'commit', '-F', str(message_file)])
+    verified_head = run(['git', 'rev-parse', 'HEAD']).stdout.strip()
+    check(verified_head != context['commit_sha'], 'verified commit moved HEAD')
+    flow('review-start', '--selection', selection, '--stagnation')
+    restarted = json.loads(state_path.read_text())
+    restarted_ctx = restarted['review_cycle']['review_context']
+    check(restarted_ctx['commit_sha'] == verified_head, 'next review freezes the verified HEAD')
+    check(restarted_ctx['cycle_count'] == context['cycle_count'] + 1, 'verified commit advances the cycle')
+    check(restarted['review_cycle']['status'] == 'collecting', 'next review is collecting')
+    check(restarted['review_run'].get('pending_fix') is None, 'advance consumes pending_fix')
+    check(len(restarted['review_run']['fixes']) == 1, 'verified HEAD is recorded as a fix')
 
 with tempfile.TemporaryDirectory(prefix='rite-fix-scope-retained-') as tmp:
     root = Path(tmp)
