@@ -950,6 +950,44 @@ try:
 finally:
     f.close()
 
+# T-19: only a stop outlives the session that left it. A run that reached a
+# verdict spent its counter and observations on that verdict; bringing them back
+# would carry its breaker budget into the next round of review.
+f = Fixture()
+try:
+    f.cycle(seconds=1801, satisfied=['criterion-one'])
+    f.fix()
+    f.cycle(roots=(), seconds=1801, satisfied=('criterion-one', 'criterion-two'))
+    f.flow('review-close')
+    closed_run = f.state()['review_run']
+    check('completed_context' in closed_run and f.state()['cycle_count'] == 2,
+          'T-19: fixture closed a run with a spent counter')
+    f.flow('set', '--phase', 'cleanup', '--next', 'cleanup', '--active', 'false')
+    f.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--branch', 'chore/issue-43', '--pr', 0)
+    f.flow('set', '--phase', 'pr', '--next', 'review', '--issue', 42, '--pr', 71)
+    back = f.state()
+    check('review_run' not in back and back.get('cycle_count', 0) == 0,
+          'T-19: returning to a closed run starts the next round instead of resuming it')
+    check(archived_run(back) == closed_run, 'T-19: the closed run stays in the history')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    f.cycle(seconds=1801)
+    f.plan(replan=True)
+    f.replan()
+    f.flow('review-defer')
+    deferred_run = f.state()['review_run']
+    f.flow('set', '--phase', 'cleanup', '--next', 'cleanup', '--active', 'false')
+    f.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--branch', 'chore/issue-43', '--pr', 0)
+    f.flow('set', '--phase', 'pr', '--next', 'review', '--issue', 42, '--pr', 71)
+    check('review_run' not in f.state() and f.state().get('cycle_count', 0) == 0,
+          'T-19: returning to a deferred run does not resume it either')
+    check(archived_run(f.state()) == deferred_run, 'T-19: the deferred run stays in the history')
+finally:
+    f.close()
+
 # T-17: a receipt swapped after the observation is not a retryable state.
 f = Fixture()
 try:

@@ -123,14 +123,18 @@ def restore(old, new):
         entry = history[index]
         if not (isinstance(entry, dict) and entry.get("pr_number") == new.get("pr_number")):
             continue
-        # Passing over a parked stop would hand back exactly the fresh run the
-        # parking exists to withhold, so anything this PR cannot restore stops
-        # the set rather than falling through to one.
-        if not isinstance(entry.get("parked"), dict):
-            require(entry.get("status") != "stopped",
-                    "archived review run for this PR was parked without its frozen cycle and counter; "
-                    "its stop cannot be restored in this session")
+        # Only a stop outlives the session that left it. A completed or deferred
+        # run has spent its counter and observations on a verdict that already
+        # landed; handing those back would carry its breaker budget into the next
+        # round of review instead of starting one.
+        if entry.get("status") != "stopped":
             continue
+        # Passing over a parked stop would hand back exactly the fresh run the
+        # parking exists to withhold, so a stop this PR cannot restore stops the
+        # set rather than falling through to one.
+        require(isinstance(entry.get("parked"), dict),
+                "archived review run for this PR was parked without its frozen cycle and counter; "
+                "its stop cannot be restored in this session")
         require(entry.get("issue_number") == new.get("issue_number")
                 and entry.get("session_id") == new.get("session_id"),
                 "archived review run for this PR belongs to another Issue or session")

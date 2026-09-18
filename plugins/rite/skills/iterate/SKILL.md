@@ -68,7 +68,7 @@ rationale: references/rationale.md#circuit-breaker-conditions
 | `{branch_name}` | flow-state `branch` field |
 | `{max_review_cycles}` | `safety.max_review_cycles` in `rite-config.yml`（既定 15、無効値は既定へフォールバック）。**発散判定をすり抜けた非収束を受け止める backstop**（既定 15 では 16 cycle 以上を要する収束中の run にも上限として働く） |
 | `{fire_reason_line}` | ステップ 6.1 / 6.2 の「理由」行。ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `CB_REASON=` から ステップ 6.2「発火理由の文面」表で決める |
-| `{cb_reason}` | ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `CB_REASON=` の**生値**（`max-cycles` / `divergence`）。ステップ 6 共有前段が flow-state へ書く `--stop-reason "circuit-breaker:{cb_reason}"` でのみ使う（人間向けの文面は `{fire_reason_line}` が担う） |
+| `{cb_reason}` | 停止理由の**生値**（`max-cycles` / `divergence`）。供給元は ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `CB_REASON=` と、`review_run` がある run の発散停止を記録した ステップ 3 の規則の 2 つ（同節「`{resume_routes}`」参照）。ステップ 6 共有前段が flow-state へ書く `--stop-reason "circuit-breaker:{cb_reason}"` と `{resume_routes}` の分岐で使う（人間向けの文面は `{fire_reason_line}` が担う） |
 | `{trend}` | ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `TREND=`（カンマ区切りの per-cycle blocking 件数）。停止通知では `→` 区切りへ整形して表示する。空のときの扱いは ステップ 6.2「発火理由の文面」を参照 |
 | `{trend_reason}` | ステップ 1 の `[CONTEXT] ITERATE_CB=` marker の `TREND_REASON=`（helper が返した判定不能の理由。ステップ 6.2「発火理由の文面」の `max-cycles` 分岐と推移行の差し替えで使う） |
 | `{cycle_count}` | flow-state `cycle_count` field（review-start で増加。`review_run` がある同一 run では完了・停止・recoverでも保持。以下の 0 リセット手順は legacy state 専用） |
@@ -1209,12 +1209,11 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 | `ITERATE_STAGNATION` | `{cb_reason}` | `{resume_routes}` |
 |---|---|---|
 | `legacy` | 任意 | 下記「legacy 再開」1 行のみ |
-| `stop` / `continue` / `replan` | `divergence` | 下記「戻る」「抜ける」の 2 行 |
-| `stop` / `continue` / `replan` | `divergence` 以外 | 下記「抜ける」1 行のみ |
-| marker 不在 | `divergence` | 下記「戻る」「抜ける」の 2 行 |
-| marker 不在 | `divergence` 以外 | 下記「抜ける」1 行のみ |
+| それ以外（`stop` / `continue` / `replan` / marker 不在） | `divergence` | 下記「戻る」「抜ける」の 2 行 |
+| それ以外（同上） | `divergence` 以外 | 下記「抜ける」1 行のみ |
 
-marker 不在を `legacy` に倒さない。`legacy` の行は counter リセットによる fresh entry の案内で、ステップ 0.6 が `review_run` のある run に対して禁じた経路そのものになる。
+marker 不在を `legacy` に倒さない。
+rationale: references/rationale.md#resume-routes-no-state-read
 
 `{cb_reason}` の供給元は 2 つある。ステップ 1 の `ITERATE_CB=fire` marker の `CB_REASON=` と、`review_run` がある run で発散停止を `observe()` が記録した場合のステップ 3 の規則（同ステップの「`stop` の理由が既存の `max-cycles` / `divergence` なら、その値を `{cb_reason}` とする」）。後者の iteration ではステップ 1 が `ITERATE_CB=ok` を出すため、前者だけを見ると発散停止で「戻る」行が落ちる。
 
@@ -1239,8 +1238,9 @@ rationale: references/rationale.md#resume-routes-no-state-read
   （停止した run は status・stop_reason・観測・cycle counter ごと履歴へ退避される。前段の ownership
   cleanup は要らない）
 - 退避したこの PR へ戻る: /rite:open {issue_number} の後に /rite:iterate {pr_number} を実行する
-  （退避した run がそのまま復元されるので停止は往復で消えない。復元直後は停止したままなので、
-  上の「戻る」を通すまで通常の phase 更新は拒否される）
+  （退避した run がそのまま復元されるので停止は往復で消えない。復元後も停止したままで通常の
+  phase 更新は拒否される。この停止から先へ進めるのは再試行権を発行できるときだけで、発行できるのは
+  circuit-breaker:divergence に限る）
 ```
 
 「legacy 再開」の行（`ITERATE_STAGNATION=legacy` のみ）:
@@ -1250,7 +1250,6 @@ rationale: references/rationale.md#resume-routes-no-state-read
   リセットされ、新しい run として cycle 1 を full scope で回る。再び発散すればブレーカーは上限を
   待たずに再発火する）。/rite:recover 経由の再開も同じ経路
 ```
-
 
 #### 発火理由の文面（6.1 / 6.2 共通の置換表）
 
@@ -1331,7 +1330,8 @@ handoff 迂回のリスクは (b) には含めない。迂回が成立するの�
 
 差し替える単位は**`{resume_routes}` が出した「legacy 再開」の bullet 全体** — `- ループを再開する:` で始まる行から、次に `- ` で始まる行が現れる直前までの全行 — であり、第 1 物理行だけを置き換えてはならない。**物理行数を数えて指定しないこと**。
 
-**この差し替えは `{resume_routes}` が「legacy 再開」を出したときだけ行う。** 「抜ける」「戻る」を出した run では `- ループを再開する:` の行が存在せず、差し替え先の文面（counter リセット後の fresh entry 再実行）はステップ 0.6 が `review_run` のある run に対して禁じた経路そのものになる。その場合は差し替えず、(b) の手動リセットは `{action_items}` の注意行だけで案内する。
+**この差し替えは `{resume_routes}` が「legacy 再開」を出したときだけ行う。** 「抜ける」「戻る」を出した run では `- ループを再開する:` の行が出力されない。その場合は差し替えず、(b) の手動リセットは `{action_items}` の注意行だけで案内する。
+rationale: references/rationale.md#resume-routes-no-state-read
 
 (a) のみを観測した場合はこの差し替えを**行わない**。(a) / (b) / (c) は独立に評価し、観測したものを **(a) → (b) → (c) の順に**反映する。(a) は末尾へ追加し、(b) / (c) は上記の raw WARNING 置換規則に従う。差し替えは (b) を観測した場合のみ行う。
 
