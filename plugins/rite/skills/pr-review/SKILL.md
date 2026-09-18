@@ -1041,7 +1041,7 @@ bash {plugin_root}/hooks/flow-state.sh review-start \
 
 固定した context ごとに `REVIEW_TMP_DIR/rite-review-{session_id}-{run_id}-{pr_number}-{cycle_count}/` を使用する。初回 spawn 前に manifest の名簿・context と全員の pending entry を Write し、各回収後に同じファイルを更新する。中断後も成功結果を保持して不足分だけ回収する。入力・raw が失われた場合は原因とパスを報告し、同一 cycle の不足結果を再取得する。
 
-Issue に関連付いたレビュー開始直後に [停滞診断の時計](../../references/review-stagnation.md) の `review-clock-open` を `clock_kind=work` で実行する。CI・外部待ちへ入る前に区間を閉じ、待機区分で開き直す。中断復帰は同参照の回復規則を適用し、未閉区間を実作業と推測しない。時計の保存失敗は `[review:error]`。関連 Issue がない standalone レビューは仕様入力を持たないため診断を開始せず、既存のレビュー経路を維持する。
+Issue に関連付いたレビュー開始直後に [停滞診断の時計](../../references/review-stagnation.md) の共有ブロック `review-clock-open`（同参照の Bash ブロック名。時計の CLI 動詞は `review-clock` だけ）を `clock_kind=work` で実行する。CI・外部待ちへ入る前に区間を閉じ、待機区分で開き直す。中断復帰は同参照の回復規則を適用し、未閉区間を実作業と推測しない。時計の保存失敗は `[review:error]`。関連 Issue がない standalone レビューは仕様入力を持たないため診断を開始せず、既存のレビュー経路を維持する。
 
 ### 4.0.A Pre-Review State Snapshot
 
@@ -2479,7 +2479,7 @@ bash {plugin_root}/hooks/flow-state.sh review-finish \
 
 保存済み全指摘と最新 Issue 本文から [停滞診断の入力契約](../../references/review-stagnation.md) に従う `{review_observation_file}` を同じ cycle の作業ディレクトリへ作る。`{review_issue_file}` は `gh issue view --json number,body` で取得した絶対 JSON パス。`roots` は実測された全 blocking 指摘を欠陥・再現条件・違反契約でまとめ、`acceptance.satisfied` は保存結果の受入条件確認で `satisfied`、または対象 HEAD と一致する `human-verified` の ID を使う。未検証条件を進展に数えない。
 
-先に `review-clock-close` を実行して区間を保存する。観測保存後の再開では同じ入力を再利用し、内容や時計を推測で作り直さない。
+先に [停滞診断の時計](../../references/review-stagnation.md) の共有ブロック `review-clock-close` を `clock_close_mode=normal` で実行して区間を保存する。観測保存後の再開では同じ入力を再利用し、内容や時計を推測で作り直さない。
 
 ```bash
 # review-stagnation-observe
