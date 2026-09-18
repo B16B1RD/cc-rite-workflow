@@ -72,6 +72,7 @@ rationale: references/rationale.md#circuit-breaker-conditions
 | `{trend}` | ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `TREND=`（カンマ区切りの per-cycle blocking 件数）。停止通知では `→` 区切りへ整形して表示する。空のときの扱いは ステップ 6.2「発火理由の文面」を参照 |
 | `{trend_reason}` | ステップ 1 の `[CONTEXT] ITERATE_CB=` marker の `TREND_REASON=`（helper が返した判定不能の理由。ステップ 6.2「発火理由の文面」の `max-cycles` 分岐と推移行の差し替えで使う） |
 | `{cycle_count}` | flow-state `cycle_count` field（review-start で増加。`review_run` がある同一 run では完了・停止・recoverでも保持。以下の 0 リセット手順は legacy state 専用） |
+| `{resume_routes}` | ステップ 6.2 停止通知の「再開方法」の行。`review_run` の有無と `{cb_reason}` から 同節「`{resume_routes}`」表で決める |
 | `{state_root}` | ステップ 6 共有前段の `[CONTEXT] STATE_ROOT=` marker の値（`hooks/state-path-resolve.sh` の解決結果。未解決時は sentinel `unresolved`）。ステップ 6.2 注意行 (b) の手動リセットコマンドでのみ使い、値が得られないときは同節の pre-fill 表に従って解決手順へ置き換える |
 | `{session_id}` | ステップ 6 共有前段の `[CONTEXT] SESSION_ID=` marker の値（`flow-state.sh path` の basename）。用途と未解決時の扱いは `{state_root}` と同じ |
 | `{nb_count}` | ステップ 5.0.2 の `ITERATE_NB_REMAINING` marker 値（overlay 後は 0。取得失敗は 5.S で停止しここへ来ない） |
@@ -137,7 +138,7 @@ bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --i
 
 ## ステップ 0.6: cycle counter の初期化 + max_review_cycles の検証
 
-`review_run` があれば phase に依らず resume とし、counter と pin を保持する。停止済み run は `iterate-stagnation-route` で停止理由を報告し、fresh entry に変換しない。以下の reset 診断表は legacy state のみが対象。
+`review_run` があれば phase に依らず resume とし、counter と pin を保持する。停止済み run は `iterate-stagnation-route` で停止理由を報告し、fresh entry に変換しない。停止した run に残る経路はステップ 6.2 の `{resume_routes}` が名指しする 2 本（抜ける / `divergence` 限定で戻る）だけで、契約の SoT は [review-stagnation.md 停止後の退路と再開](../../references/review-stagnation.md#停止後の退路と再開)。以下の reset 診断表は legacy state のみが対象。
 
 ループに入る前に、review⇄fix サーキットブレーカーの cycle counter を初期化し、上限値を検証する。counter は flow-state の `cycle_count` に永続化され、resume を跨いで継続する。
 rationale: references/rationale.md#cycle-counter-init
@@ -1193,13 +1194,39 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 {action_items}
 
 再開方法:
-- ループを再開する: /rite:iterate {pr_number} を明示的に再実行する（cycle counter と run 開始点が
-  リセットされ、新しい run として cycle 1 を full scope で回る。再び発散すればブレーカーは上限を待たずに
-  再発火する）。/rite:recover 経由の再開も同じ経路
+{resume_routes}
 - Ready 化して人間のレビューに委ねる: /rite:ready {pr_number}
 
 <!-- [iterate:max-cycles-stopped] -->
 ```
+
+#### `{resume_routes}`（6.2 のみ。`review_run` の有無で分岐する）
+
+`review_run` がある run は counter リセットによる fresh entry へ変換しない（ステップ 0.6）。停止した run に残る経路は「抜ける」と、`divergence` 限定の「戻る」の 2 本だけで、どちらも停止理由を消さない。契約の SoT は [review-stagnation.md 停止後の退路と再開](../../references/review-stagnation.md#停止後の退路と再開)。
+
+| 状態 | `{resume_routes}` |
+|---|---|
+| `review_run` なし（legacy） | `- ループを再開する: /rite:iterate {pr_number} を明示的に再実行する（cycle counter と run 開始点がリセットされ、新しい run として cycle 1 を full scope で回る。再び発散すればブレーカーは上限を待たずに再発火する）。/rite:recover 経由の再開も同じ経路` |
+| `review_run` あり・`{cb_reason}` が `divergence` 以外 | 下記「抜ける」1 行のみ |
+| `review_run` あり・`{cb_reason}` が `divergence` | 下記「戻る」「抜ける」の 2 行 |
+
+「戻る」の行（`divergence` のみ。この run で再試行権が未使用のときだけ通る）:
+
+```
+- この PR の修復を 1 巡だけ試す: 全 blocking 指摘に修正計画と検証項目を対応付けたうえで
+  `flow-state.sh review-retry --plan <一括修正計画の絶対パス> --issue <最新 Issue JSON の絶対パス>` を実行する
+  （run 生涯 1 回。計画が blocking を覆えない・HEAD や receipt が動いている・権利が使用済みなら拒否される。
+  許可されるのは fix → 検証 → review の 1 巡で、その review に blocking が残れば同じ理由で再停止する）
+```
+
+「抜ける」の行（全停止理由で共通）:
+
+```
+- この PR を停止のまま残して別 Issue へ移る: `flow-state.sh set --phase cleanup --active false` の後に
+  別 Issue 番号の `set` を実行する（停止した run は status と stop_reason を保持したまま履歴へ退避される）
+```
+
+発火直後は再試行権が未使用なので「戻る」行を出す。同じ run で既に権利を使っている場合（`review_run.retry` がある）は「戻る」行を出さず「抜ける」行だけにする。
 
 #### 発火理由の文面（6.1 / 6.2 共通の置換表）
 

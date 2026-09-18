@@ -106,4 +106,23 @@ rm "$clock_file"
 
 停止は caller の既存失敗 sentinel へ返し、batch は cursor を当該 Issue に保ち `active=false` にする。PR・branch・作業差分・履歴・最後の検証済み状態を保持し、停止理由と復旧工程を報告する。同一 run の再開は保存済み判定と未完工程から続け、停止履歴を消して新しい見直し枠を作らない。
 
+## 停止後の退路と再開
+
+停止は「この run でのレビュー継続を止める」ことであり、「この run に触れる操作をすべて止める」ことではない。停止した run に対してできることは次の 2 つだけで、どちらも停止理由を消さない。
+
+**抜ける（全停止理由で可）**: `set --phase cleanup --active false` で ownership cleanup を行い、続けて別 Issue 番号の `set` を実行する。旧 run は `status` と `stop_reason` を保持したまま `review_run_history` へ移り、`cycle_count` は 0 から始まる。停止していない run はこの 2 ステップでも従来どおり完了・保留・cleanup を要求される。
+
+**戻る（`circuit-breaker:divergence` のみ）**: `flow-state.sh review-retry --plan <一括修正計画の絶対パス> --issue <最新 Issue JSON の絶対パス>` が、次の条件をすべて満たすときに限り再試行権を 1 つ発行する。
+
+1. `stop_reason` が `circuit-breaker:divergence` である。`circuit-breaker:max-cycles` と `stagnation:*` は再開できない
+2. 停止時の context・HEAD・receipt・観測が一致し、変更されていない
+3. 全 blocking 指摘に、`review-fix-scope-check.sh check` と同じ計画検証を通る修正計画と検証項目が対応している
+4. その run で再試行権が未使用である。使用済みの権利は `review_run_history` へ移った後も数え、同じ PR で新しい run を始めても復活しない
+
+発行は条件をすべて検証したあとに一度だけ書き込む。1 つでも崩れていれば権利を発行せず、run は `stopped` のまま残る。人間の承認は条件に含めない。
+
+発行すると `stop_reason` は run 直下から `review_run.retry.stop_reason` へ移り、`status` が `active` に戻る。権利が買えるのは fix → 検証 → review の 1 巡だけで、その review に blocking 指摘が残っていれば `retry.outcome=unresolved` を記録して元の停止理由で再停止する。残っていなければ `retry.outcome=resolved` として通常の run に戻る。いずれの場合も権利は再発行されない。
+
+再試行権は停止理由の解消認定ではない。計画の存在は収束を証明しないため、これは制限付きの再試行であって品質ゲートの解除ではない。`cycle_count` は run を通じて積み上がり続けるので、再試行を挟んでも最終的に再開不可の `circuit-breaker:max-cycles` に到達する。
+
 helper が保証するのは context・保存証跡・入力構造・範囲・時計と回数・冪等性である。根因の意味的同一性、仕様解釈、受入条件の充足、代替案の妥当性は親の判断として根拠を残す。保証範囲は同梱 helper と通常 caller の経路に限り、任意の state 直接編集や未対応ホストの予告なし中断検出まで保証しない。

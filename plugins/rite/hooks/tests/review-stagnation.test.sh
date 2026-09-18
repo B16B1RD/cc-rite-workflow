@@ -650,5 +650,187 @@ try:
 finally:
     f.close()
 
+
+# --- Breaker-stopped runs: the way out, and the one bounded way back in. ---
+
+
+def diverge(fixture):
+    """Drive a run to circuit-breaker:divergence with its HEAD on the frozen cycle."""
+    fixture.cycle(roots=['input defect'])
+    fixture.fix()
+    fixture.cycle(roots=('input defect', 'second defect'))
+    fixture.fix()
+    fixture.cycle(roots=('input defect', 'second defect', 'third defect'), seconds=1801)
+    check(fixture.state()['stop_reason'] == 'circuit-breaker:divergence', 'fixture reached divergence stop')
+
+
+def retry(fixture, ok=True):
+    return fixture.flow('review-retry', '--plan', fixture.plan_path, '--issue', fixture.issue_path, ok=ok)
+
+
+# T-01 / T-02 / T-11: the exit, what it keeps, and what it must not carry forward.
+f = Fixture()
+try:
+    diverge(f)
+    stopped_run = f.state()['review_run']
+    f.reject(lambda: f.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--pr', 0, ok=False),
+             'stopped run still needs ownership cleanup before switching')
+    f.flow('set', '--phase', 'cleanup', '--next', 'cleanup', '--active', 'false')
+    f.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--pr', 0, '--active', 'true')
+    moved = f.state()
+    check(moved['issue_number'] == 43 and moved.get('cycle_count', 0) == 0
+          and 'review_run' not in moved and 'review_cycle' not in moved,
+          'T-01: stopped run releases the session to another Issue')
+    check(moved['review_run_history'] == [stopped_run], 'T-01: the stopped run is archived, not discarded')
+    archived = moved['review_run_history'][0]
+    check(archived['status'] == 'stopped' and archived['stop_reason'] == 'circuit-breaker:divergence'
+          and archived['observations'], 'T-02: archived run retains its stop, reason and observations')
+    check(not moved.get('stop_reason'), 'T-11: the new Issue starts without the previous stop reason')
+finally:
+    f.close()
+
+# T-03 / T-04: what a stop still refuses when no retry has been granted.
+f = Fixture()
+try:
+    diverge(f)
+    f.reject(lambda: f.start(ok=False), 'T-03: divergence-stopped run cannot start another review')
+    f.reject(lambda: f.flow('review-close', ok=False), 'T-04: divergence-stopped run cannot be closed as complete')
+    f.reject(lambda: f.flow('review-defer', ok=False), 'T-04: divergence-stopped run cannot be deferred')
+finally:
+    f.close()
+
+# T-05: an unstopped run keeps the ownership requirement it always had.
+f = Fixture()
+try:
+    f.cycle()
+    check(f.state()['review_run']['status'] == 'active', 'T-05: fixture run is not stopped')
+    f.reject(lambda: f.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--pr', 0, ok=False),
+             'T-05: active run still requires completed, deferred or cleaned-up ownership')
+finally:
+    f.close()
+
+# T-06: the grant, and where the stop reason goes.
+f = Fixture()
+try:
+    diverge(f)
+    f.plan()
+    retry(f)
+    run = f.state()['review_run']
+    check(run['status'] == 'active' and 'stop_reason' not in run and not f.state().get('stop_reason')
+          and f.state()['active'] is True, 'T-06: a granted retry reopens the run')
+    check(run['retry']['stop_reason'] == 'circuit-breaker:divergence'
+          and run['retry']['stop_context'] == f.context() and run['retry']['outcome'] is None,
+          'T-06: the grant retains the stop it answers')
+    check(run['observations'] and run['fixes'], 'T-06: the grant keeps the run history it was issued against')
+    f.scope()
+finally:
+    f.close()
+
+# T-07: only divergence is retryable.
+f = Fixture()
+try:
+    (f.root / 'rite-config.yml').write_text('safety:\n  max_review_cycles: 1\n')
+    f.cycle(roots=['input defect'], seconds=1801)
+    check(f.state()['stop_reason'] == 'circuit-breaker:max-cycles', 'T-07: fixture reached the cycle cap')
+    f.plan()
+    f.reject(lambda: retry(f, ok=False), 'T-07: circuit-breaker:max-cycles cannot be retried')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    f.cycle(seconds=1801)
+    f.plan(replan=True, insoluble=True)
+    f.replan()
+    check(f.state()['stop_reason'] == 'stagnation:scope-insoluble', 'T-07: fixture reached scoped insolubility')
+    f.reject(lambda: retry(f, ok=False), 'T-07: stagnation:scope-insoluble cannot be retried')
+finally:
+    f.close()
+
+# T-08: one grant per run, and the archive counts.
+f = Fixture()
+try:
+    diverge(f)
+    f.plan()
+    retry(f)
+    f.reject(lambda: retry(f, ok=False), 'T-08: a run cannot be granted a second retry')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    diverge(f)
+    f.plan()
+    retry(f)
+    f.flow('set', '--phase', 'cleanup', '--next', 'cleanup', '--active', 'false')
+    f.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--pr', 0, '--active', 'true')
+    check('retry' in f.state()['review_run_history'][0], 'T-08: the grant follows its run into history')
+    f.flow('set', '--phase', 'pr', '--next', 'review', '--issue', 42, '--pr', 71)
+    diverge(f)
+    check('retry' not in f.state()['review_run'], 'T-08: the fresh run carries no grant of its own')
+    f.plan()
+    f.reject(lambda: retry(f, ok=False), 'T-08: a fresh run on the same PR inherits the spent grant')
+finally:
+    f.close()
+
+# T-09: a broken precondition grants nothing and leaves the stop standing.
+f = Fixture()
+try:
+    diverge(f)
+    f.plan()
+    f.commit()
+    f.reject(lambda: retry(f, ok=False), 'T-09: a moved HEAD cannot be retried')
+    check(f.state()['review_run']['status'] == 'stopped'
+          and f.state()['review_run']['stop_reason'] == 'circuit-breaker:divergence',
+          'T-09: the run is still stopped after a refused retry')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    diverge(f)
+    broken = f.plan()
+    broken['groups'][0]['finding_ids'] = broken['groups'][0]['finding_ids'][:1]
+    dump(f.plan_path, broken)
+    f.reject(lambda: retry(f, ok=False), 'T-09: a plan that leaves blocking findings undisposed cannot be retried')
+    check('retry' not in f.state()['review_run'], 'T-09: a refused retry records no grant')
+finally:
+    f.close()
+
+# T-10: the grant buys one review, and an unresolved one ends it.
+f = Fixture()
+try:
+    diverge(f)
+    f.plan()
+    retry(f)
+    f.fix()
+    f.cycle(roots=['input defect'])
+    run = f.state()['review_run']
+    check(run['status'] == 'stopped' and run['stop_reason'] == 'circuit-breaker:divergence'
+          and run['current_decision']['reasons'] == ['retry-unresolved'],
+          'T-10: unresolved findings return the run to its stop')
+    check(run['retry']['outcome'] == 'unresolved', 'T-10: the grant records that it was spent')
+    check(f.state()['active'] is False and f.state()['stop_reason'] == 'circuit-breaker:divergence',
+          'T-10: the session is deactivated with the original reason')
+    f.plan()
+    f.reject(lambda: retry(f, ok=False), 'T-10: a spent grant is not reissued')
+    f.reject(lambda: f.start(ok=False), 'T-10: the re-stopped run cannot start another review')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    diverge(f)
+    f.plan()
+    retry(f)
+    f.fix()
+    f.cycle(roots=())
+    run = f.state()['review_run']
+    check(run['status'] == 'active' and run['retry']['outcome'] == 'resolved',
+          'T-10: a retry that clears every blocking finding continues the run')
+finally:
+    f.close()
+
+
 print('PASS: review stagnation: ' + str(checks) + ' assertions; real clocks, receipts, repairs and retained stops')
 PYTEST
