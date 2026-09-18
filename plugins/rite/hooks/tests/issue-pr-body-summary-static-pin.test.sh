@@ -71,6 +71,7 @@ pin "$PLUGIN_ROOT/skills/issue-create/SKILL.md" 'svg_allowed=true` なら SVG �
 pin "$PLUGIN_ROOT/skills/issue-implement/SKILL.md" '`Acceptance Criteria` (case-insensitive), `受入基準`, `受入条件`, `受け入れ条件`'
 pin "$PLUGIN_ROOT/skills/issue-implement/SKILL.md" "Do not downgrade these errors to advisory warnings"
 pin "$PLUGIN_ROOT/skills/issue-implement/SKILL.md" 'acceptance-criteria-check.sh extract --body-file'
+pin "$PLUGIN_ROOT/skills/issue-implement/SKILL.md" "do not classify an unreadable body as having no AC"
 if awk '/^Closes / { closes=NR } /^<details>/ { details=NR } /^## 変更/ { changes=NR } /^<\/details>/ { end=NR } END { exit !(closes && closes<details && details<changes && changes<end) }' "$pr_template"; then
   pass 'PR closes outside details; changes inside'
 else fail 'PR section ordering'; fi

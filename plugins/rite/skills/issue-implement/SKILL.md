@@ -444,9 +444,8 @@ E2E では結果を context に残す（`/rite:lint` Phase 3.4 が再利用で�
 
 ```
 受入条件チェック:
-- {criterion_1} — 満たされています
-- {criterion_2} — 満たされています
-- {criterion_3} — 確認が必要です（理由: {reason}）
+- {id} — 満たされています
+- {id} — 確認が必要です（理由: {reason}）
 ```
 
 **Result handling:**

@@ -137,11 +137,12 @@ case "$mode" in
         if (in_ac && level != 3 && heading ~ /^AC-/) malformed = NR
         if (level <= 2) end_section()
         if (title ~ /^acceptance[[:space:]]+criteria|^受入(基準|条件)|^受け入れ条件/) {
-          if (level == 2 && (title == "acceptance criteria" || title == "受入基準" ||
-                            title == "受入条件" || title == "受け入れ条件")) {
+          exact = (title == "acceptance criteria" || title == "受入基準" ||
+                   title == "受入条件" || title == "受け入れ条件")
+          if (level == 2 && exact) {
             in_ac = 1; found = 1; next
           }
-          if (level <= 2) other = other (other == "" ? "" : ",") heading
+          if (exact || level <= 2) other = other (other == "" ? "" : ",") heading
         }
       }
       in_ac {
