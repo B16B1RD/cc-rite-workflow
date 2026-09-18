@@ -141,7 +141,7 @@ def gate(state, session, allow_replan=False, check_head=True):
 
 
 def park(old, run):
-    """Preserve the run, counter and optional cycle across an Issue switch.
+    """Preserve the run, counter and optional cycle across an Issue or PR switch.
 
     A retained run has no frozen cycle, so its counter must be saved separately.
     Its abandonment record remains in the session history for restore validation.
@@ -167,17 +167,19 @@ def restore(old, new):
             continue
         require(entry.get("status") in ("active", "stopped"),
                 "archived review run for this PR has an unknown status: " + str(entry.get("status")))
-        # Historical close/defer markers cannot discharge a later stop. Active
-        # settled runs keep the existing exclusion; stopped runs retain all debt.
-        if entry["status"] != "stopped" and (entry.get("completed_context") is not None
-                                             or entry.get("deferred_context") is not None):
-            continue
-        # Passing over a parked stop would hand back exactly the fresh run the
-        # parking exists to withhold, so a stop this PR cannot restore stops the
-        # set rather than falling through to one.
+        # Without the parked context, an old marker cannot prove this run ended.
         require(isinstance(entry.get("parked"), dict),
                 "archived review run for this PR was parked without its frozen cycle and counter; "
                 "its review state cannot be restored in this session")
+        frozen = entry["parked"].get("review_cycle")
+        context = frozen.get("review_context") if isinstance(frozen, dict) else None
+        # Only close/defer of the parked completed cycle settles an active run.
+        # A later retained cycle has no frozen context, so historical markers
+        # cannot discharge its counter or observations. Stops always survive.
+        if (entry["status"] != "stopped" and isinstance(context, dict) and context
+                and frozen.get("status") == "completed"
+                and (entry.get("completed_context") == context or entry.get("deferred_context") == context)):
+            continue
         require(entry.get("issue_number") == new.get("issue_number")
                 and entry.get("session_id") == new.get("session_id"),
                 "archived review run for this PR belongs to another Issue or session")
@@ -213,6 +215,13 @@ def guard_set(old, new):
         new["review_run_history"] = old["review_run_history"]
     if "review_run" not in old:
         restore(old, new)
+        if "review_run" in new:
+            # Restoration owns the destination pairing. The outer cycle guard
+            # must not overwrite it with the standalone source's completed cycle.
+            frozen = old.get("review_cycle")
+            require(frozen is None or (isinstance(frozen, dict) and frozen.get("status") == "completed"),
+                    "cannot restore a review run while a standalone review is incomplete")
+            return True
         return False
     # An abandoned cycle leaves the run without a frozen counterpart. Routing that
     # shape into current() would reject every ordinary set, including the one

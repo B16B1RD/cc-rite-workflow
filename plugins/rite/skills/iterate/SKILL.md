@@ -647,7 +647,7 @@ fi
 | `ITERATE_RESUME_HEAD` | アクション |
 |---|---|
 | `match` | 凍結 context の HEAD と現 HEAD が一致。従来どおり `REVIEW_RESUME=1` で早期 exit する |
-| `changed` | 不一致。早期 exit せず後段へ落ちる。`status=collecting` は直後に放棄を試みる（下記 `ITERATE_ABANDON`）。`status=completed` はそのまま後段の新規 cycle 経路へ進む — `review_run` を持つ run では `review-start` が保存済み receipt・観測と検証済み修正（`pending_fix`）、新 HEAD・clean tree の一致など既存の advance 条件を検査し、満たせば次 cycle へ進み、不足すれば停止する。run を持たない（関連 Issue の無い）PR では止まらず現 HEAD で新しい cycle を凍結する |
+| `changed` | 不一致。早期 exit せず後段へ落ちる。`status=collecting` は直後に放棄を試みる（下記 `ITERATE_ABANDON`）。`status=completed` は後段の新規 cycle 経路へ進む。`review-start` は保存済み receipt を要求し、`review_run` があれば加えて advance 条件（観測・検証済み修正・clean tree）を検査する。満たせば現 HEAD で新しい cycle を凍結し、不足すれば停止する |
 | `undecidable` | 凍結 `commit_sha` 欠落（`reason=frozen_sha_missing`）または `git rev-parse HEAD` 失敗（`reason=git_head_failed`）。HEAD 変更と混同せず `exit 1` で停止する |
 
 `ITERATE_ABANDON` は再開ガード直後の放棄の結果。`ITERATE_RESUME_HEAD=changed` かつ `status=collecting` のときだけ emit する。**lost 修復ゲートより前に評価する** — 後段に置くと前 cycle の JSON が残る経路で放棄されず、どの道も `review-start` の HEAD 一致要求で止まる:

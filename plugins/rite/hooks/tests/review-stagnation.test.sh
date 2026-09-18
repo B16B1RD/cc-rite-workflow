@@ -139,7 +139,7 @@ class Fixture:
                 finding['severity'] = severity
         notes = [dict(id='F-99', reviewer='code-quality-reviewer', severity='LOW', scope='nit-noted',
                       status='open', file='source.txt', line=1, description='Informational note', suggestion='consider')] if non_blocking else []
-        dump(content, dict(schema_version='1.1.0', pr_number=71, review_context=context,
+        dump(content, dict(schema_version='1.1.0', pr_number=context['pr_number'], review_context=context,
                            timestamp='__RITE_TS_PLACEHOLDER_7f3a9b2c__', commit_sha=context['commit_sha'],
                            reviewers=['code-quality-reviewer'], findings=findings, non_blocking_findings=notes,
                            guardrail_audit_log=[], acceptance_criteria=[
@@ -228,6 +228,68 @@ class Fixture:
         check(result.returncode != 0 and 'ERROR:' in result.stderr, label)
         check(self.state_path.read_bytes() == before, label + ': last state retained')
 
+
+# A completed standalone cycle must not overwrite the run being restored.
+for original_count, pending in ((1, False), (2, False), (2, True)):
+    f = Fixture()
+    try:
+        f.cycle()
+        if original_count == 2:
+            f.fix()
+            f.cycle(roots=('input defect', 'second defect'))
+        f.flow('set', '--phase', 'review', '--next', 'stop', '--active', 'false',
+               '--stop-reason', 'circuit-breaker:max-cycles')
+        stopped = f.state()
+        f.flow('set', '--phase', 'pr', '--next', 'review', '--issue', 0, '--pr', 80, '--active', 'true')
+        f.flow('review-start', '--selection', f.selection)
+        check('review_run' not in f.state(), 'standalone review has no diagnostic run')
+        if pending:
+            f.reject(lambda: f.flow('set', '--phase', 'pr', '--next', 'review', '--issue', 42,
+                                    '--pr', 71, '--cycle-count', 0, ok=False),
+                     'restore cannot discard a collecting standalone review')
+        else:
+            f.finish()
+            f.flow('set', '--phase', 'pr', '--next', 'review', '--issue', 42, '--pr', 71, '--cycle-count', 0)
+            for key in ('review_run', 'review_cycle', 'cycle_count', 'stop_reason', 'active'):
+                check(f.state()[key] == stopped[key], 'standalone return preserves restored ' + key)
+            f.flow('set', '--phase', 'pr', '--next', 'still stopped', '--active', 'false')
+            f.reject(lambda: f.start(ok=False), 'standalone return preserves the review stop')
+    finally:
+        f.close()
+
+# A defer settles its own context, not later evidence-free cycles of the run.
+f = Fixture()
+try:
+    f.cycle(roots=['input defect'])
+    f.flow('review-defer')
+    deferred = f.state()['review_run']['deferred_context']
+    f.fix()
+    f.start()
+    f.flow('review-abandon', '--reason', 'later cycle needs another HEAD')
+    retained = f.state()
+    check(retained['review_run']['deferred_context'] == deferred
+          and retained['cycle_count'] > deferred['cycle_count'],
+          'active retained fixture has an older actual defer marker')
+    f.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--pr', 0)
+    parked = f.state()
+    f.flow('set', '--phase', 'pr', '--next', 'review', '--issue', 42, '--pr', 71)
+    check(f.state().get('review_run') == retained['review_run']
+          and f.state()['cycle_count'] == retained['cycle_count'],
+          'historical defer cannot erase a later active retained run')
+    f.flow('set', '--phase', 'pr', '--next', 'resume')
+    f.start()
+    check(f.state()['review_cycle']['review_context']['run_id'] == retained['review_run']['run_id']
+          and f.state()['review_cycle']['review_context']['cycle_count'] == retained['cycle_count'],
+          'historical defer roundtrip restarts the same run and counter')
+    f.clock(60)
+    # Missing parked data must not make an old defer look like a current exit.
+    legacy = copy.deepcopy(parked)
+    legacy['review_run_history'][-1].pop('parked')
+    dump(f.state_path, legacy)
+    f.reject(lambda: f.flow('set', '--phase', 'pr', '--next', 'review', '--issue', 42, '--pr', 71, ok=False),
+             'legacy active archive with defer cannot silently start a fresh run')
+finally:
+    f.close()
 
 f = Fixture()
 try:
@@ -995,9 +1057,8 @@ try:
 finally:
     f.close()
 
-# T-19: only a stop outlives the session that left it. A run that reached a
-# verdict spent its counter and observations on that verdict; bringing them back
-# would carry its breaker budget into the next round of review.
+# T-19: close/defer of the current parked context ends an active run. Those
+# settled runs stay archived; older markers must not settle a later cycle.
 f = Fixture()
 try:
     f.cycle(seconds=1801, satisfied=['criterion-one'])

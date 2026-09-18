@@ -799,8 +799,8 @@ cmd_review_cycle() {
   case "$operation" in
     clock|observe|replan|retry|close) printf '%s' "$updated" | jq '.review_run' ;;
     # After abandon `.review_cycle` is gone; the appended record is the outcome.
-    # The no-op (nothing to abandon) prints null — REVIEW_ABANDON=noop on stderr
-    # is what distinguishes it from a record.
+    # A no-op prints the last record, or null if none; REVIEW_ABANDON=noop
+    # on stderr distinguishes it from a new abandonment.
     abandon) printf '%s' "$updated" | jq '.review_cycle_abandoned[-1]' ;;
     *) printf '%s' "$updated" | jq '.review_cycle' ;;
   esac
