@@ -108,24 +108,30 @@ rm "$clock_file"
 
 ## 停止後の退路と再開
 
-停止は「この run でのレビュー継続を止める」ことであり、「この run に触れる操作をすべて止める」ことではない。停止した run に対してできることは次の 2 つだけで、どちらも停止理由を消さない。
+停止は「この run でのレビュー継続を止める」ことであり、「この run に触れる操作をすべて止める」ことではない。停止した run でレビューを進める操作は次の 2 つだけで、どちらも停止理由を消さない。
 
-**抜ける（全停止理由で可）**: 別 Issue 番号の `set` をそのまま実行する。旧 run は `status`・`stop_reason`・使用済みの再試行権を保持したまま `review_run_history` へ移り、`cycle_count` は 0 から始まる。停止は「この run はもう cycle を積まない」判断が下りた状態なので、完了・保留と同格に扱ってセッションを手放す。ownership cleanup を前置きしても同じ結果になる。
+**抜ける（全停止理由で可）**: 別 Issue 番号の `set` をそのまま実行する。旧 run は `review_run_history` へ退避され、live state の `cycle_count` は 0 から始まる。停止は「この run はもう cycle を積まない」判断が下りた状態なので、完了・保留と同格に扱ってセッションを手放す。ownership cleanup を前置きしても同じ結果になる。
 
-停止していない run は従来どおり完了・保留・ownership cleanup のいずれかを要求される。この緩和は停止した run に限る。退避はセッションを手放すだけで停止を帳消しにしない — 退避先の `status` は `stopped` のままで、同じ PR で新しい run を始めても使用済みの再試行権は復活しない。
+停止していない run は従来どおり完了・保留・ownership cleanup のいずれかを要求される。この緩和は停止した run に限る。
 
-**戻る（`circuit-breaker:divergence` のみ）**: `flow-state.sh review-retry --plan <一括修正計画の絶対パス> --issue <最新 Issue JSON の絶対パス>` が、次の条件をすべて満たすときに限り再試行権を 1 つ発行する。
+退避はセッションを手放すだけで停止を帳消しにしない。退避された記録は run（`status`・`stop_reason`・観測・修正履歴・使用済みの再試行権）に加えて、退避時点の `cycle_count` と、凍結 `review_cycle` があればそれも保持する。**同じ Issue 番号・同じ PR 番号へ戻る `set` は、その記録から run をそのまま復元する** — 新しい run を作り直さないので、`review-start` は復元された停止理由で拒否され続け、counter もゼロから積み直されない。往復はどの停止理由でも解除にならない。復元された記録は履歴から取り除かれる。
+
+保持するのは `cycle_count` そのものであって凍結 context から導出した値ではない。凍結 `review_cycle` を持たない run でも counter は退避と復元を往復する。
+
+この保持と復元はセッションの flow-state に載る。別セッション（別 `session_id`）では退避記録が見えないため、復元も再試行権の消費判定も効かない。`cycle_count` をはじめとする既存の counter と同じ性質である。
+
+**再試行権で再開する（`circuit-breaker:divergence` のみ）**: `flow-state.sh review-retry --plan <一括修正計画の絶対パス> --issue <最新 Issue JSON の絶対パス>` が、次の条件をすべて満たすときに限り再試行権を 1 つ発行する。
 
 1. `stop_reason` が `circuit-breaker:divergence` である。`circuit-breaker:max-cycles` と `stagnation:*` は再開できない
 2. 停止時の context・HEAD・receipt・観測が一致し、変更されていない
-3. 全 blocking 指摘に、`review-fix-scope-check.sh check` と同じ計画検証を通る修正計画と検証項目が対応している
+3. 全 blocking 指摘に、通常の fix 経路と同じ計画内容の検証（状態遷移の許可判定を除く）を通る修正計画と検証項目が対応している。`review-fix-scope-check.sh check` そのものを前段として実行する必要はない — 同コマンドは停止した run では状態遷移の許可判定で拒否される
 4. その run で再試行権が未使用である。使用済みの権利は `review_run_history` へ移った後も数え、同じ PR で新しい run を始めても復活しない
 
 発行は条件をすべて検証したあとに一度だけ書き込む。1 つでも崩れていれば権利を発行せず、run は `stopped` のまま残る。人間の承認は条件に含めない。
 
 発行すると `stop_reason` は run 直下から `review_run.retry.stop_reason` へ移り、`status` が `active` に戻る。権利が買えるのは fix → 検証 → review の 1 巡だけで、その review に blocking 指摘が残っていれば `retry.outcome=unresolved` を記録して元の停止理由で再停止する。残っていなければ `retry.outcome=resolved` として通常の run に戻る。いずれの場合も権利は再発行されない。
 
-発行後の run は本当に `active` なので、`review-close` / `review-defer` も通常の run と同じ条件で通る。`close` は未解決 blocking と未充足受入条件を従来どおり拒否し、`defer` は返信のみの draft を残す既存の意味のままである。これは「停止した run を閉じられる」ことではなく、再試行権を発行した run がその 1 巡の間は通常の run として扱われるということで、権利の使用済み記録は `close` / `defer` / 退避のいずれを経ても残る。
+再試行権は退避された run にも復元された run にも等しく付いて回る。発行後の run は本当に `active` なので、`review-close` / `review-defer` も通常の run と同じ条件で通る。`close` は未解決 blocking と未充足受入条件を従来どおり拒否し、`defer` は返信のみの draft を残す既存の意味のままである。これは「停止した run を閉じられる」ことではなく、再試行権を発行した run がその 1 巡の間は通常の run として扱われるということで、権利の使用済み記録は `close` / `defer` / 退避のいずれを経ても残る。
 
 再試行権は停止理由の解消認定ではない。計画の存在は収束を証明しないため、これは制限付きの再試行であって品質ゲートの解除ではない。`cycle_count` は run を通じて積み上がり続けるので、再試行を挟んでも最終的に再開不可の `circuit-breaker:max-cycles` に到達する。
 

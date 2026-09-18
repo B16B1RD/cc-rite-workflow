@@ -27,6 +27,17 @@ def dump(path, value):
     path.write_text(json.dumps(value), encoding='utf-8')
 
 
+def archived_run(state, index=0):
+    """The parked run without the envelope that carries its frozen cycle."""
+    entry = dict(state['review_run_history'][index])
+    entry.pop('parked', None)
+    return entry
+
+
+def parked_of(state, index=0):
+    return state['review_run_history'][index]['parked']
+
+
 # Every fixture needs the same one-commit starting tree. Build it once and copy
 # its independent Git metadata for each fixture instead of forking Git to init,
 # add and commit on every construction.
@@ -457,10 +468,10 @@ try:
     f.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--pr', 0, '--active', 'true')
     state = f.state()
     check(state.get('cycle_count', 0) == 0 and 'review_run' not in state and 'review_cycle' not in state
-          and state['review_run_history'] == [old_run], 'completed ownership starts new Issue with clean cycle and archived history')
+          and archived_run(state) == old_run, 'completed ownership starts new Issue with clean cycle and archived history')
     f.flow('set', '--phase', 'pr', '--next', 'review', '--pr', 72)
     f.start()
-    check(f.context()['run_id'] != old_run['run_id'] and f.state()['review_run_history'] == [old_run],
+    check(f.context()['run_id'] != old_run['run_id'] and archived_run(f.state()) == old_run,
           'new review run has a new identity and preserves archived run across ordinary sets')
 finally:
     f.close()
@@ -668,6 +679,20 @@ def retry(fixture, ok=True):
     return fixture.flow('review-retry', '--plan', fixture.plan_path, '--issue', fixture.issue_path, ok=ok)
 
 
+def round_trip(fixture, reason):
+    """Leave for another Issue, come back, and confirm the stop came back too."""
+    before = fixture.state()['cycle_count']
+    fixture.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--branch', 'chore/issue-43', '--pr', 0)
+    fixture.flow('set', '--phase', 'pr', '--next', 'review', '--issue', 42, '--pr', 71)
+    state = fixture.state()
+    check(state.get('review_run', {}).get('status') == 'stopped' and state.get('stop_reason') == reason,
+          'T-14: the round trip restores the stop (' + reason + ')')
+    check(state.get('cycle_count') == before,
+          'T-14: the round trip does not zero the counter (' + reason + ')')
+    fixture.reject(lambda: fixture.start(ok=False),
+                   'T-14: the round trip cannot restart review (' + reason + ')')
+
+
 # T-01 / T-02 / T-11: the exit, what it keeps, and what it must not carry forward.
 f = Fixture()
 try:
@@ -679,8 +704,8 @@ try:
     check(moved['issue_number'] == 43 and moved.get('cycle_count', 0) == 0
           and 'review_run' not in moved and 'review_cycle' not in moved,
           'T-01: stopped run releases the session to another Issue')
-    check(moved['review_run_history'] == [stopped_run], 'T-01: the stopped run is archived, not discarded')
-    archived = moved['review_run_history'][0]
+    check(archived_run(moved) == stopped_run, 'T-01: the stopped run is archived, not discarded')
+    archived = archived_run(moved)
     check(archived['status'] == 'stopped' and archived['stop_reason'] == 'circuit-breaker:divergence'
           and archived['observations'], 'T-02: archived run retains its stop, reason and observations')
     check(not moved.get('stop_reason'), 'T-11: the new Issue starts without the previous stop reason')
@@ -695,7 +720,7 @@ try:
     stopped_run = f.state()['review_run']
     f.flow('set', '--phase', 'cleanup', '--next', 'cleanup', '--active', 'false')
     f.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--pr', 0, '--active', 'true')
-    check(f.state()['issue_number'] == 43 and f.state()['review_run_history'] == [stopped_run],
+    check(f.state()['issue_number'] == 43 and archived_run(f.state()) == stopped_run,
           'T-01: cleanup then switch still archives the stopped run')
 finally:
     f.close()
@@ -779,14 +804,134 @@ try:
     f.cycle(roots=['input defect'])
     check(f.state()['review_run']['status'] == 'stopped', 'T-08: the granted retry ended unresolved')
     f.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--branch', 'chore/issue-43', '--pr', 0)
-    archived = f.state()['review_run_history'][0]
+    archived = archived_run(f.state())
     check('retry' in archived and archived['status'] == 'stopped',
           'T-08: the direct exit archives the spent grant, it does not reset the gate')
     f.flow('set', '--phase', 'pr', '--next', 'review', '--issue', 42, '--pr', 71)
-    diverge(f)
-    check('retry' not in f.state()['review_run'], 'T-08: the fresh run carries no grant of its own')
+    check('retry' in f.state().get('review_run', {}) and f.state().get('review_run', {}).get('status') == 'stopped',
+          'T-08: returning to the PR brings the spent grant back with the run')
+    check(isinstance(f.state().get('review_cycle'), dict),
+          'T-08: returning also brings back the frozen cycle the grant is checked against')
     f.plan()
-    f.reject(lambda: retry(f, ok=False), 'T-08: a fresh run on the same PR inherits the spent grant')
+    f.reject(lambda: retry(f, ok=False), 'T-08: the restored run cannot be granted another retry')
+finally:
+    f.close()
+
+# T-12 / T-13: what leaving parks, and what returning brings back.
+f = Fixture()
+try:
+    diverge(f)
+    stopped_run = f.state()['review_run']
+    frozen = f.state()['review_cycle']
+    before = f.state()['cycle_count']
+    f.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--branch', 'chore/issue-43', '--pr', 0)
+    moved = f.state()
+    check('review_run' not in moved and 'review_cycle' not in moved and not moved.get('stop_reason'),
+          'T-12: leaving clears the live run, cycle and stop reason')
+    check(archived_run(moved) == stopped_run, 'T-12: the parked entry carries the run itself')
+    check(parked_of(moved) == dict(cycle_count=before, review_cycle=frozen),
+          'T-12: the parked entry carries the counter and the frozen cycle')
+
+    f.flow('set', '--phase', 'pr', '--next', 'review', '--issue', 42, '--pr', 71)
+    back = f.state()
+    check(back.get('review_run') == stopped_run and back.get('review_cycle') == frozen,
+          'T-13: returning restores the run and its frozen cycle')
+    check(back.get('cycle_count') == before and back.get('stop_reason') == 'circuit-breaker:divergence',
+          'T-13: returning restores the counter and the stop reason')
+    check(back.get('review_run_history', []) == [], 'T-13: a restored entry leaves the history')
+    check(len(back.get('review_run', {}).get('observations', [])) == 3,
+          'T-13: the observations come back with the run')
+finally:
+    f.close()
+
+# T-14: the round trip is not a reset, whatever stopped the run.
+f = Fixture()
+try:
+    diverge(f)
+    round_trip(f, 'circuit-breaker:divergence')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    (f.root / 'rite-config.yml').write_text('safety:\n  max_review_cycles: 1\n')
+    f.cycle(roots=['input defect'], seconds=1801)
+    check(f.state()['stop_reason'] == 'circuit-breaker:max-cycles', 'T-14: fixture reached the cycle cap')
+    round_trip(f, 'circuit-breaker:max-cycles')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    f.cycle(seconds=1801)
+    f.plan(replan=True, insoluble=True)
+    f.replan()
+    check(f.state()['stop_reason'] == 'stagnation:scope-insoluble', 'T-14: fixture reached scoped insolubility')
+    round_trip(f, 'stagnation:scope-insoluble')
+finally:
+    f.close()
+
+# T-15: a restored divergence keeps the one door back; a restored cap does not.
+f = Fixture()
+try:
+    diverge(f)
+    f.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--branch', 'chore/issue-43', '--pr', 0)
+    f.flow('set', '--phase', 'pr', '--next', 'review', '--issue', 42, '--pr', 71)
+    f.plan()
+    retry(f)
+    check(f.state()['review_run']['status'] == 'active'
+          and f.state()['review_run']['retry']['stop_reason'] == 'circuit-breaker:divergence',
+          'T-15: a restored divergence can still be retried')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    (f.root / 'rite-config.yml').write_text('safety:\n  max_review_cycles: 1\n')
+    f.cycle(roots=['input defect'], seconds=1801)
+    f.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--branch', 'chore/issue-43', '--pr', 0)
+    f.flow('set', '--phase', 'pr', '--next', 'review', '--issue', 42, '--pr', 71)
+    f.plan()
+    f.reject(lambda: retry(f, ok=False), 'T-15: a restored cycle cap is still not retryable')
+finally:
+    f.close()
+
+# T-16: restoring does not depend on the parked run having a frozen cycle. A run
+# can lose its frozen cycle and still be parked by a caller that knows why the
+# pairing is absent; the counter has to come home either way, or that shape is
+# the one exit with no way back.
+f = Fixture()
+try:
+    diverge(f)
+    stopped_run = f.state()['review_run']
+    before = f.state()['cycle_count']
+    f.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--branch', 'chore/issue-43', '--pr', 0)
+    cycleless = json.loads(f.state_path.read_text())
+    entry = dict(stopped_run, parked=dict(cycle_count=before))
+    cycleless['review_run_history'] = [entry]
+    f.state_path.write_text(json.dumps(cycleless))
+    f.flow('set', '--phase', 'pr', '--next', 'review', '--issue', 42, '--pr', 71)
+    back = f.state()
+    check(back.get('cycle_count') == before and 'review_cycle' not in back,
+          'T-16: the counter comes back without inventing a frozen cycle')
+    check(back.get('review_run') == stopped_run and back.get('stop_reason') == 'circuit-breaker:divergence',
+          'T-16: the stop comes back with it')
+    check(back.get('review_run_history', []) == [], 'T-16: the restored entry leaves the history')
+finally:
+    f.close()
+
+# T-17: a receipt swapped after the observation is not a retryable state.
+f = Fixture()
+try:
+    diverge(f)
+    f.plan()
+    saved = f.state()['review_run']['observations'][-1]
+    receipt = json.loads(Path(saved['result_path']).read_text())
+    receipt['findings'][0]['description'] = receipt['findings'][0]['description'] + ' (rewritten)'
+    Path(saved['result_path']).write_text(json.dumps(receipt))
+    f.reject(lambda: retry(f, ok=False), 'T-17: a changed receipt cannot be retried')
+    check(f.state()['review_run']['status'] == 'stopped' and 'retry' not in f.state()['review_run'],
+          'T-17: the refused retry leaves the stop and grants nothing')
 finally:
     f.close()
 

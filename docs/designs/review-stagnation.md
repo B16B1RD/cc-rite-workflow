@@ -18,9 +18,9 @@
 2. 未完了レビューは同じcycleの回収・保存を再開する。完了済みcycleの欠損修復と既存の発散・回数breakerを優先する。
 3. 上記を通過した保存済みレビューを停滞診断へ渡す。見直しが必要なら通常の範囲検査へ接続し、成功した場合のみ修正・次レビューへ進む。
 
-既存 fatal triage は保存済み receipt を更新するため、観測時に元データと同じ分類 helper が生成する派生データのハッシュを固定する。この正規更新だけを許可し、証跡や処置対象の任意変更は拒否する。通常 iterate の全ゲートと sweep 完了後は `review-close` が完了 context を保存する。返信のみなら `review-defer` が別の終了 context と理由を保存し、未解決指摘と判定を保持する。default draft batch はこれらの終了境界から次 Issue へ移る際に旧 run を履歴へ移せる。返信のみを mergeable へ昇格させず、merge モードの失敗扱いを維持する。未回収・観測欠損・見直し未完了・停止済み run と別 cycle の終了記録では切り替えられない。
+既存 fatal triage は保存済み receipt を更新するため、観測時に元データと同じ分類 helper が生成する派生データのハッシュを固定する。この正規更新だけを許可し、証跡や処置対象の任意変更は拒否する。通常 iterate の全ゲートと sweep 完了後は `review-close` が完了 context を保存する。返信のみなら `review-defer` が別の終了 context と理由を保存し、未解決指摘と判定を保持する。default draft batch はこれらの終了境界から次 Issue へ移る際に旧 run を履歴へ移せる。返信のみを mergeable へ昇格させず、merge モードの失敗扱いを維持する。未回収・観測欠損・見直し未完了と別 cycle の終了記録では切り替えられない。停止済み run は完了・保留と同格に扱い、停止理由・観測・counter を保持したまま履歴へ退避して切り替える。
 
-既存review-cycleの原子的保存を再利用し、runの時計・観測・修正検証・見直し理由と結果をreview_contextに結び付ける。通常のflow-state更新は履歴を維持する。同一runのrecoverや停止でcounterや見直し回数をリセットしない。停止済みrunを単に再起動しても同じ停止理由を返す。新しいIssue/PRへの遷移は既存の終了・所有権条件を満たす場合に限る。
+既存review-cycleの原子的保存を再利用し、runの時計・観測・修正検証・見直し理由と結果をreview_contextに結び付ける。通常のflow-state更新は履歴を維持する。同一runのrecoverや停止でcounterや見直し回数をリセットしない。停止済みrunを単に再起動しても同じ停止理由を返す。新しいIssue/PRへの遷移は既存の終了・所有権条件を満たす場合、または当該runが停止済みの場合に限る。退避したrunは同じPRへ戻った時点で復元されるため、退避と復帰の往復は停止解除にならない。
 
 停止には既存の失敗sentinelを用いる。batchはcursorを当該Issueに保持しactive=falseにして後続Issue、ready、mergeを実行しない。PR、branch、作業差分、履歴、最後の検証済み状態と復旧手順を保持する。
 

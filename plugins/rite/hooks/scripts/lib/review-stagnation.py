@@ -97,10 +97,54 @@ def gate(state, session, allow_replan=False, check_head=True):
             "required review-replan must complete before fix / next review")
 
 
+def park(old, run):
+    """The run plus what a set would otherwise drop, so a return can restore it.
+
+    `cycle_count` is stored outright rather than read back from the frozen
+    cycle's context: a run whose frozen cycle is gone still has a counter to
+    bring home, and deriving it would give that shape no way back.
+    """
+    parked = dict(run, parked=dict(cycle_count=old.get("cycle_count", 0)))
+    frozen = old.get("review_cycle")
+    if isinstance(frozen, dict):
+        parked["parked"]["review_cycle"] = frozen
+    return parked
+
+
+def restore(old, new):
+    """Returning to a parked PR brings its run back rather than starting a new one.
+
+    Without this, the exit doubles as a breaker reset: a fresh run on the same
+    PR would arrive with a zeroed counter and no observations, and every stop
+    reason would clear by leaving and coming back.
+    """
+    history = list(old.get("review_run_history", []))
+    for index in range(len(history) - 1, -1, -1):
+        entry = history[index]
+        if not (isinstance(entry, dict) and isinstance(entry.get("parked"), dict)):
+            continue
+        if entry.get("pr_number") != new.get("pr_number") or entry.get("issue_number") != new.get("issue_number"):
+            continue
+        if entry.get("session_id") != new.get("session_id"):
+            continue
+        run = dict(entry)
+        parked = run.pop("parked")
+        new["review_run"] = run
+        new["cycle_count"] = parked["cycle_count"]
+        if isinstance(parked.get("review_cycle"), dict):
+            new["review_cycle"] = parked["review_cycle"]
+        if run.get("status") == "stopped":
+            new["stop_reason"] = run["stop_reason"]
+        history.pop(index)
+        new["review_run_history"] = history
+        return
+
+
 def guard_set(old, new):
     if "review_run_history" in old:
         new["review_run_history"] = old["review_run_history"]
     if "review_run" not in old:
+        restore(old, new)
         return False
     run, context = current(old, old["session_id"], check_head=False)
     require(new.get("session_id") == old["session_id"], "foreign session transition")
@@ -126,7 +170,7 @@ def guard_set(old, new):
         # Ordinary setters merge counters; ownership completion, rather than an
         # optional caller flag, authorizes this new run's initial zero.
         new["cycle_count"] = 0
-        new["review_run_history"] = old.get("review_run_history", []) + [run]
+        new["review_run_history"] = old.get("review_run_history", []) + [park(old, run)]
         return True
     require(new.get("cycle_count", 0) == old.get("cycle_count", 0),
             "cannot reset cycle_count within a review run")
@@ -189,10 +233,10 @@ def retry(state, args, directory):
     return state
 
 
-def conclude_retry(run, context, receipt):
+def conclude_retry(run, receipt):
     """A grant buys one review. Blocking findings at its end restore the stop."""
     grant = run.get("retry")
-    if not grant or grant["outcome"] is not None or context == grant["stop_context"]:
+    if not grant or grant["outcome"] is not None:
         return None
     blocking = any(f.get("scope") in ("current-pr", "follow-up") for f in receipt["findings"])
     grant["outcome"] = "unresolved" if blocking else "resolved"
@@ -357,13 +401,16 @@ def observe(state, args, directory):
     entry = dict(input=data, roots=roots, review_hash=digest(receipt[1]),
                  triaged_hash=triaged_hash(receipt[1]), result_path=str(receipt[0]))
     run["observations"].append(entry)
-    concluded = conclude_retry(run, context, receipt[1])
+    # existing_breaker re-reads every saved receipt and checks the observation
+    # series for gaps before it decides anything, so it runs on every path. Only
+    # which stop is recorded depends on the grant.
+    breaker = existing_breaker(state, run)
+    concluded = conclude_retry(run, receipt[1])
     if concluded:
         entry["decision"] = concluded.copy()
         run.update(status="stopped", stop_reason=run["retry"]["stop_reason"], current_decision=concluded)
         state.update(active=False, stop_reason=run["stop_reason"], updated_at=cycle.now())
         return state
-    breaker = existing_breaker(state, run)
     if breaker:
         decision = dict(action="stop", reasons=[breaker])
         entry["decision"] = decision.copy()
