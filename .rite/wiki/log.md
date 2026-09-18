@@ -1,5 +1,9 @@
 # Directory Update Log
 
+## 2026-09-19
+
+* **Skip**: [レビュー結果](raw/reviews/20260918T160544Z-pr-2963.md) — rite スキル記述の知見は plugin 側へ移す。新しいドメイン経験則はない
+
 ## 2026-09-18
 
 * **Skip**: [レビュー結果](raw/reviews/20260918T141825Z-pr-2963.md) — rite スキル記述の知見は plugin 側へ移す。新しいドメイン経験則はない
