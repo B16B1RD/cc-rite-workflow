@@ -1237,7 +1237,10 @@ rationale: references/rationale.md#resume-routes-no-state-read
 ```
 - この PR を停止のまま残して別 Issue へ移る: そのまま /rite:open <別 Issue 番号> を実行する
   （停止した run は status・stop_reason・観測・cycle counter ごと履歴へ退避される。前段の ownership
-  cleanup は要らない。この PR へ戻ると退避した run がそのまま復元されるので、停止は往復で消えない）
+  cleanup は要らない）
+- 退避したこの PR へ戻る: /rite:open {issue_number} の後に /rite:iterate {pr_number} を実行する
+  （退避した run がそのまま復元されるので停止は往復で消えない。復元直後は停止したままなので、
+  上の「戻る」を通すまで通常の phase 更新は拒否される）
 ```
 
 「legacy 再開」の行（`ITERATE_STAGNATION=legacy` のみ）:
