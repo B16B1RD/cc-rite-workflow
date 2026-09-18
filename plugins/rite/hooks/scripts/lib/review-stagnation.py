@@ -165,12 +165,19 @@ def restore(old, new):
         entry = history[index]
         if not (isinstance(entry, dict) and entry.get("pr_number") == new.get("pr_number")):
             continue
-        # Only a stop outlives the session that left it. A completed or deferred
-        # run has spent its counter and observations on a verdict that already
-        # landed; handing those back would carry its breaker budget into the next
-        # round of review instead of starting one.
-        if entry.get("status") != "stopped":
+        # What disqualifies a run is a settled end, not the absence of a stop.
+        # close and defer are what settle one, and they spend its counter and
+        # observations on the outcome they record; handing those back would carry
+        # its breaker budget into the next round of review instead of starting
+        # one. A run that left unsettled — stopped, or parked mid-flight after its
+        # cycle was abandoned — still owes this PR the count it reached.
+        if entry.get("completed_context") is not None or entry.get("deferred_context") is not None:
             continue
+        # Reading the exclusion the other way around widens what reaches the
+        # restore: anything that is not settled now qualifies, including a status
+        # this module never writes. Name the two it does.
+        require(entry.get("status") in ("active", "stopped"),
+                "archived review run for this PR has an unknown status: " + str(entry.get("status")))
         # Passing over a parked stop would hand back exactly the fresh run the
         # parking exists to withhold, so a stop this PR cannot restore stops the
         # set rather than falling through to one.
@@ -180,6 +187,16 @@ def restore(old, new):
         require(entry.get("issue_number") == new.get("issue_number")
                 and entry.get("session_id") == new.get("session_id"),
                 "archived review run for this PR belongs to another Issue or session")
+        # An active run parked without its cycle is the shape review-abandon
+        # produces, and only that. Restoring it on the strength of the missing
+        # cycle alone would let a truncated archive stand in for a run that never
+        # reached a verdict, so require the record that says why the cycle is gone.
+        if entry["status"] == "active" and not isinstance(entry["parked"].get("review_cycle"), dict):
+            require(any(isinstance(record, dict)
+                        and isinstance(record.get("review_context"), dict)
+                        and record["review_context"].get("run_id") == entry.get("run_id")
+                        for record in old.get("review_cycle_abandoned", [])),
+                    "archived review run for this PR has no frozen cycle and no abandonment record")
         run = dict(entry)
         parked = run.pop("parked")
         new["review_run"] = run
@@ -189,9 +206,11 @@ def restore(old, new):
         # Every other path that records a stop deactivates the session in the same
         # write. Restoring the reason without the flag would leave a combination
         # no stop produces, and the consumers that branch on `active` would read
-        # a frozen run as work in progress. Only a stopped entry reaches here.
-        new["stop_reason"] = run["stop_reason"]
-        new["active"] = False
+        # a frozen run as work in progress. A run parked while still active never
+        # recorded either, so it comes back the way it left.
+        if run["status"] == "stopped":
+            new["stop_reason"] = run["stop_reason"]
+            new["active"] = False
         history.pop(index)
         new["review_run_history"] = history
         return
@@ -208,7 +227,10 @@ def guard_set(old, new):
     # /rite:recover uses to restore `active`.
     retained = retained_run(old, old["session_id"])
     if retained is not None:
-        run, context = retained, None
+        # No context is bound here on purpose: the retained shape has no frozen
+        # cycle to compare against, and a None standing in for one would match a
+        # run that simply lacks the key if the comparison below ever moved.
+        run = retained
     else:
         run, context = current(old, old["session_id"], check_head=False)
     require(new.get("session_id") == old["session_id"], "foreign session transition")

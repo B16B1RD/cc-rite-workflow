@@ -224,6 +224,19 @@ with tempfile.TemporaryDirectory(prefix="rite-review-abandon-") as tmp:
         (lambda s: s["review_cycle_abandoned"][-1]["review_context"].update(run_id="bogus"),
          "abandonment record from another run",
          "abandonment record does not match the retained review run"),
+        # The equality chain cross-checks five fields; the two below and the run's
+        # own issue_number were the ones no shape reached, so each could be
+        # deleted with the suite still green. They are what keeps a record
+        # written for another session or another PR from legitimizing this run.
+        (lambda s: s["review_cycle_abandoned"][-1]["review_context"].update(session_id="other-session"),
+         "abandonment record from another session",
+         "abandonment record does not match the retained review run"),
+        (lambda s: s["review_cycle_abandoned"][-1]["review_context"].update(pr_number=1234),
+         "abandonment record from another PR",
+         "abandonment record does not match the retained review run"),
+        (lambda s: s["review_run"].update(issue_number=1234),
+         "run naming another Issue",
+         "abandonment record does not match the retained review run"),
         (lambda s: s["review_cycle_abandoned"][-1]["review_context"].update(cycle_count=99),
          "abandonment record from another cycle",
          "abandonment record does not match the retained review run"),
@@ -242,6 +255,14 @@ with tempfile.TemporaryDirectory(prefix="rite-review-abandon-") as tmp:
         # unrelated reason (a KeyError on the way past a dropped check) is not
         # the guard this shape needs.
         check(diagnostic in refusal.stderr, label + " names its reason")
+        # These refusals are raised inside review-stagnation, which reaches
+        # require() by importing this file under its own name. iterate tells a
+        # refusal from an environment failure by the prefix alone, so one that
+        # arrives without it is read as a broken plugin and stops the loop on the
+        # wrong diagnosis. T-04 pins the prefix on the local path; this is the
+        # half that travels through the import.
+        check("ERROR: review-cycle: " in refusal.stderr,
+              label + " carries the rejection-only marker through the import")
     dump(state_path, abandoned_state)
     flow("set", "--phase", "pr", "--next", "intact again")
     # Two abandonments in one state file: the record is append-only, so replacing
@@ -272,6 +293,58 @@ with tempfile.TemporaryDirectory(prefix="rite-review-abandon-") as tmp:
     check(len(switched["review_cycle_abandoned"]) == 2,
           "the abandonment history survives the switch")
     check(switched["cycle_count"] == 0, "the new Issue starts at a zero counter")
+
+    # The counter the abandoned run reached is the only copy: dropping the cycle
+    # left no frozen context to read it back from. Parking is what carries it,
+    # and coming back is what spends it — without the round trip the breaker
+    # budget restarts on a PR that already used part of it.
+    archived = switched["review_run_history"][-1]
+    check(isinstance(archived.get("parked"), dict),
+          "the archived retained run carries its parked counter")
+    parked_counter = archived["parked"]["cycle_count"]
+    check(parked_counter > 0,
+          "parking stores the counter the run reached, not the zero the switch wrote")
+    check("review_cycle" not in archived["parked"],
+          "a run whose cycle was abandoned parks without one")
+
+    flow("set", "--phase", "pr", "--issue", 99, "--pr", 99, "--branch", "fix/issue-99-x",
+         "--next", "review")
+    returned = state()
+    check(returned["review_run"]["run_id"] == archived["run_id"],
+          "returning to the PR brings back the same run rather than minting one")
+    check(returned["cycle_count"] == parked_counter, "the counter survives the round trip")
+    check(len(returned["review_run"]["observations"]) == len(archived["observations"]),
+          "the observations the breaker reads survive with it")
+    check(returned.get("stop_reason") is None and returned.get("active") is not False,
+          "a run parked while active comes back the way it left")
+    check(not returned.get("review_run_history"),
+          "the restored run leaves the history rather than being counted twice")
+
+    # The exclusion reads the other way around — anything not settled by close or
+    # defer reaches the restore — so the shapes that are neither settled nor
+    # legitimate have to be named rather than let through. Park the run again and
+    # corrupt the archive to reach them.
+    flow("set", "--phase", "init", "--issue", 98, "--pr", 0, "--branch", "fix/issue-98-z",
+         "--next", "branch")
+    parked_state = state()
+
+    for mutate, label, diagnostic in (
+        (lambda s: s["review_run_history"][-1].update(status="bogus"),
+         "archived run with an unknown status",
+         "archived review run for this PR has an unknown status"),
+        (lambda s: s["review_cycle_abandoned"].clear(),
+         "active archived run with no abandonment record",
+         "archived review run for this PR has no frozen cycle and no abandonment record"),
+    ):
+        corrupted = copy.deepcopy(parked_state)
+        mutate(corrupted)
+        dump(state_path, corrupted)
+        refusal = rejected(["set", "--phase", "pr", "--issue", 99, "--pr", 99,
+                            "--branch", "fix/issue-99-x", "--next", "review"], label)
+        check(diagnostic in refusal.stderr, label + " names its reason")
+    dump(state_path, parked_state)
+    flow("set", "--phase", "pr", "--issue", 99, "--pr", 99, "--branch", "fix/issue-99-x",
+         "--next", "review")
 
     # --- regression: abandon must not become a bypass ------------------------
     # Without abandoning, a HEAD-changed collecting cycle is still refused by

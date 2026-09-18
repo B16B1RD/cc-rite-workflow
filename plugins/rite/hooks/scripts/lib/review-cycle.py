@@ -421,13 +421,14 @@ def main():
 
 
 if __name__ == "__main__":
-    # Running this file as __main__ makes importlib load it a second time under
-    # its real name for review-stagnation, so a refusal raised through that copy
-    # is a different class object than the one defined here. Catch both.
-    REFUSAL = (InvalidReview, importlib.import_module("review-cycle").InvalidReview)
+    # review-stagnation imports this file by name. Claiming that name for the
+    # module already running keeps importlib from loading a second copy, so the
+    # refusal it raises is this very InvalidReview rather than a twin the handler
+    # below would miss.
+    sys.modules.setdefault("review-cycle", sys.modules["__main__"])
     try:
         main()
-    except REFUSAL as error:
+    except InvalidReview as error:
         # `ERROR: review-cycle:` means "this helper judged the input and refused".
         # Callers branch on it to tell a refusal from an environment failure, so
         # nothing but a require() violation may carry it.
