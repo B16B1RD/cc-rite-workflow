@@ -37,7 +37,17 @@ def caller_block(text, marker):
     return text[start + len('```bash\n'):end]
 
 
-for use_run in (False, True):
+# The third case scopes the plan to a directory so that a rename with both
+# endpoints inside the plan is expressible. The commit preflight lists changed
+# paths with --no-renames, exactly as verify() does, so a rename must not read as
+# an unplanned change when it stays in scope, and must still be refused when
+# either endpoint leaves it.
+# Its verification inputs stay file-scoped there so that a rename is observed by
+# the path check alone; a directory input would fingerprint the whole tree and
+# report a stale verification before the path check is reached.
+for use_run, plan_paths, full_inputs, rename_boundary in ((False, ['src/a.py'], ['src'], False),
+                                                          (True, ['src/a.py'], ['src'], False),
+                                                          (False, ['src'], ['src/a.py'], True)):
     with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
         root = Path(tmp)
         private = root / '.rite'
@@ -67,6 +77,10 @@ for use_run in (False, True):
         source.write_text('original\n')
         (root / 'protected').mkdir()
         (root / 'protected/secret.py').write_text('protected\n')
+        if rename_boundary:
+            # A planned file that no verification reads, so a rename of it is
+            # observed by the unplanned-path check rather than by a stale input.
+            (root / 'src/extra.py').write_text('extra\n')
         run(['git', 'add', 'src', 'protected'])
         run(['git', '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
              'commit', '-q', '-m', 'fixture'])
@@ -155,13 +169,13 @@ for use_run in (False, True):
                     constraints=dict(targets=['src/a.py'], non_targets=['protected'], closed_targets=False,
                                      rationale='Issue target候補なので開集合'),
                     groups=[dict(root_cause='共有する入力判定の欠落', finding_ids=['F-01', 'F-02'], action='fix',
-                                 paths=['src/a.py'], rationale='入力判定の修正で両指摘を解消する',
+                                 paths=plan_paths, rationale='入力判定の修正で両指摘を解消する',
                                  semantic=dict(approved=True, acceptance_criteria='全指摘を一括修正するACに適合',
                                                out_of_scope='protectedは変更しない'), verification_ids=['related'])],
                     verifications=[dict(id='related', kind='related', command=related_command,
                                         inputs=['src/a.py'], environment=['SCOPE_TEST_ENV']),
                                    dict(id='full', kind='full', command="printf 'full\\n' >> .rite/full.log; test ! -f .rite/full-fail",
-                                        inputs=['src'], environment=[])])
+                                        inputs=full_inputs, environment=[])])
         canonical = private / ('state/fix-plan-' + session + '.json')
         verification_file = private / ('state/fix-verification-' + session + '.json')
 
@@ -225,6 +239,25 @@ for use_run in (False, True):
             state_path.write_bytes(before_state)
         check(state_path.read_bytes() == before_state and verification_file.read_bytes() == before_receipt,
               'commit check is read only')
+        if rename_boundary:
+            # Renaming inside the plan is ordinary fix work and must stay allowed:
+            # --no-renames lists both endpoints, and both are in scope here.
+            run(['git', 'mv', 'src/extra.py', 'src/extra2.py'])
+            hook(allowed=True)
+            # Moving the file out of the plan is refused on the destination.
+            run(['git', 'mv', 'src/extra2.py', 'escaped.py'])
+            hook()
+            run(['git', 'mv', 'escaped.py', 'src/extra2.py'])
+            hook(allowed=True)
+            # Moving a Non-Target file into the plan is refused on the source,
+            # which only --no-renames keeps visible: rename detection would report
+            # the in-scope destination alone and let the Non-Target change through.
+            run(['git', 'mv', 'protected/secret.py', 'src/smuggled.py'])
+            hook()
+            run(['git', 'mv', 'src/smuggled.py', 'protected/secret.py'])
+            run(['git', 'mv', 'src/extra2.py', 'src/extra.py'])
+            hook(allowed=True)
+            check(source.read_text() == 'fixed\n', 'rename boundary restored the verified tree')
         source.write_text('changed after verification\n')
         hook()
         source.write_text('fixed\n')
