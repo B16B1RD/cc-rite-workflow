@@ -920,6 +920,36 @@ try:
 finally:
     f.close()
 
+# T-18: a parked stop this PR cannot restore stops the set instead of falling
+# through to the fresh run parking exists to withhold.
+f = Fixture()
+try:
+    diverge(f)
+    f.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--branch', 'chore/issue-43', '--pr', 0)
+    raw = json.loads(f.state_path.read_text())
+    legacy = {k: v for k, v in raw['review_run_history'][0].items() if k != 'parked'}
+    raw['review_run_history'] = [legacy]
+    f.state_path.write_text(json.dumps(raw))
+    f.reject(lambda: f.flow('set', '--phase', 'pr', '--next', 'review', '--issue', 42, '--pr', 71, ok=False),
+             'T-18: a stop parked without its frozen cycle and counter refuses the return')
+    check('review_run' not in f.state() and f.state().get('cycle_count', 0) == 0,
+          'T-18: the refused return starts no run of its own')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    diverge(f)
+    f.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--branch', 'chore/issue-43', '--pr', 0)
+    f.reject(lambda: f.flow('set', '--phase', 'pr', '--next', 'review', '--pr', 71, ok=False),
+             'T-18: raising the PR without its Issue refuses rather than skipping the parked stop')
+    check('review_run' not in f.state(), 'T-18: the refused return leaves the parked stop in the history')
+    f.flow('set', '--phase', 'pr', '--next', 'review', '--issue', 42, '--pr', 71)
+    check(f.state()['review_run']['status'] == 'stopped',
+          'T-18: naming the Issue restores the parked stop as usual')
+finally:
+    f.close()
+
 # T-17: a receipt swapped after the observation is not a retryable state.
 f = Fixture()
 try:

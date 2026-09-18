@@ -121,12 +121,19 @@ def restore(old, new):
     history = list(old.get("review_run_history", []))
     for index in range(len(history) - 1, -1, -1):
         entry = history[index]
-        if not (isinstance(entry, dict) and isinstance(entry.get("parked"), dict)):
+        if not (isinstance(entry, dict) and entry.get("pr_number") == new.get("pr_number")):
             continue
-        if entry.get("pr_number") != new.get("pr_number") or entry.get("issue_number") != new.get("issue_number"):
+        # Passing over a parked stop would hand back exactly the fresh run the
+        # parking exists to withhold, so anything this PR cannot restore stops
+        # the set rather than falling through to one.
+        if not isinstance(entry.get("parked"), dict):
+            require(entry.get("status") != "stopped",
+                    "archived review run for this PR was parked without its frozen cycle and counter; "
+                    "its stop cannot be restored in this session")
             continue
-        if entry.get("session_id") != new.get("session_id"):
-            continue
+        require(entry.get("issue_number") == new.get("issue_number")
+                and entry.get("session_id") == new.get("session_id"),
+                "archived review run for this PR belongs to another Issue or session")
         run = dict(entry)
         parked = run.pop("parked")
         new["review_run"] = run
