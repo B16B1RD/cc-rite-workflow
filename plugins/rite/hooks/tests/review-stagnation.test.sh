@@ -995,7 +995,10 @@ finally:
 # T-20: park() keeps the counter for a run with no frozen cycle. The set path
 # cannot deliver that shape here — current() requires the pairing before park()
 # is reached — so the contract is asserted against the function the caller that
-# drops an evidence-free cycle will call.
+# drops an evidence-free cycle will call. Being a contract check, it says nothing
+# about the system: it cannot see a caller that stops feeding park() that shape,
+# a current() that keeps rejecting it, or a counter lost before park() is reached.
+# Once a caller does deliver it, pin those three through the set path as well.
 sys.path.insert(0, str(plugin / 'hooks/scripts/lib'))
 stagnation = importlib.import_module('review-stagnation')
 
@@ -1005,8 +1008,10 @@ check(unpaired['parked'] == dict(cycle_count=4),
 paired = stagnation.park(dict(cycle_count=4, review_cycle=dict(status='completed')), dict(pr_number=71))
 check(paired['parked'] == dict(cycle_count=4, review_cycle=dict(status='completed')),
       'T-20: a state with a frozen cycle parks both')
-check(paired['pr_number'] == 71 and 'parked' not in dict(pr_number=71),
-      'T-20: parking leaves the run itself readable at the top level')
+subject = dict(pr_number=71)
+wrapped = stagnation.park(dict(cycle_count=4), subject)
+check(wrapped['pr_number'] == 71 and 'parked' not in subject,
+      'T-20: parking copies the run rather than writing the envelope into it')
 
 # T-17: a receipt swapped after the observation is not a retryable state.
 f = Fixture()

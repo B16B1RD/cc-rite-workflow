@@ -152,10 +152,9 @@ def restore(old, new):
         # Every other path that records a stop deactivates the session in the same
         # write. Restoring the reason without the flag would leave a combination
         # no stop produces, and the consumers that branch on `active` would read
-        # a frozen run as work in progress.
-        if run.get("status") == "stopped":
-            new["stop_reason"] = run["stop_reason"]
-            new["active"] = False
+        # a frozen run as work in progress. Only a stopped entry reaches here.
+        new["stop_reason"] = run["stop_reason"]
+        new["active"] = False
         history.pop(index)
         new["review_run_history"] = history
         return
