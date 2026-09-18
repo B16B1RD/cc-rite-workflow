@@ -3,6 +3,7 @@
 ## 2026-09-18
 
 * **Create**: [一致検証の照合先は判定対象の識別子から取り、確認した値を後続の実行コマンドに固定する](pages/patterns/verify-against-target-identifier-and-pin-to-action.md) — raw/reviews/20260918T122720Z-pr-2957.md を新規ページ化
+* **lint:clean** — contradictions=0 (新規ページ 1 件を index の同テーマ候補と照合。既存ページの全組合せ再評価は未実施), stale=66, orphans=0, missing_concept=0, unregistered_raw=520, broken_refs=0
 
 ## 2026-09-17
 
