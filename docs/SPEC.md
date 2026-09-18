@@ -1635,6 +1635,8 @@ When build/test/lint commands cannot be detected, the workflow provides interact
 | **Specify command** | User manually enters the command to execute |
 | **Abort** | Terminate the process and guide user to configure settings |
 
+**Lint under `/rite:batch-run`:** when `commands.lint` is unset and no lint command is auto-detected, the batch takes **Skip and continue** without asking. It emits `[lint:skipped]` with the reason and the `commands.lint` configuration guidance, never reports `[lint:success]`, and does not guess a project-specific lint script. A configured `commands.lint` always takes precedence, and its failure stays `[lint:error]` — it is not converted into a skip.
+
 **Skip behavior:**
 - The skip is recorded in the conversation context
 - When `/rite:pr-create` is called, the "Known Issues" section includes the skipped command
