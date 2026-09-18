@@ -1,8 +1,8 @@
 #!/bin/bash
 # rite workflow - 受入条件確認 (acceptance reviewer) の機械検査
 #
-# Responsibility: pr-review が acceptance reviewer を扱う 3 箇所の決定論的検査を担う。
-#   extract — 関連 Issue body から `## 5. Acceptance Criteria` 配下の `### AC-N` 集合を抽出する
+# Responsibility: pr-review と issue-implement が受入条件の決定論的検査に使う。
+#   extract — 対応する AC 節から `### AC-N` / `- [ ] AC-N` の明示 ID 集合を抽出する
 #   table   — acceptance reviewer の raw 出力の `### 受入条件確認` 表を、抽出集合と照合する
 #   final   — 降格ゲート適用後のレビュー結果 JSON で、判定行の AC-ID 集合・受入条件確認の対象判定と
 #             reviewers[] の整合・未充足行の finding が blocking に残るかを検査する
@@ -10,6 +10,7 @@
 #
 # Called from:
 #   - skills/pr-review/SKILL.md ステップ 1.3.1 (extract) / 5.1 (table) / 5.3 最終整合検査 (final)
+#   - skills/issue-implement/SKILL.md ステップ 5.1.0.6.1 (extract)
 #
 # Usage:
 #   acceptance-criteria-check.sh extract --body-file PATH
@@ -25,14 +26,14 @@
 #
 # stderr contract:
 #   [CONTEXT] ACCEPTANCE_SCOPE=target; ids={ids}
-#   [CONTEXT] ACCEPTANCE_SCOPE=skipped; reason=no_ac_section; headings={見出し or none}
+#   [CONTEXT] ACCEPTANCE_SCOPE=skipped; reason=no_ac_section
 #   [CONTEXT] ACCEPTANCE_TABLE=ok; rows={n}; unmet={ids}; unverified={ids}
 #   [CONTEXT] ACCEPTANCE_FINAL=ok; unmet={ids}; unverified={ids}
 #   [CONTEXT] ACCEPTANCE_FINAL=skipped; reason={no_issue|no_ac_section}
 #   [CONTEXT] ACCEPTANCE_CHECK_FAILED=1; mode={mode}; reason={reason}[; detail]
 #
 # Reason SoT:
-#   extract: input_missing / no_ac_ids / duplicate_ac_id
+#   extract: input_missing / input_parse_failed / unsupported_ac_section / no_ac_ids / malformed_ac_item / duplicate_ac_id
 #   table:   input_missing / expected_invalid / jq_missing / table_missing / table_malformed /
 #            table_empty / id_set_mismatch / status_invalid / evidence_missing /
 #            unmet_finding_missing / jq_transform_failed
@@ -113,30 +114,74 @@ case "$mode" in
   extract)
     [ -n "$body_file" ] || { usage >&2; exit 2; }
     [ -f "$body_file" ] || _fail input_missing "--body-file が存在しません: $body_file"
-    # fenced code block 内の見出しは数えない (テンプレート例示の混入を防ぐ)
-    parsed=$(_read_lf "$body_file" | awk '
-      /^[[:space:]]*```/ { in_fence = !in_fence; next }
-      in_fence { next }
-      /^## / {
-        in_ac = ($0 ~ /^## 5\. Acceptance Criteria[[:space:]]*$/)
-        if (in_ac) { found = 1 }
-        else if (tolower($0) ~ /acceptance|受入/) { other = other (other == "" ? "" : ",") substr($0, 4) }
+    # 有限の見出しと明示 ID だけを読む。フェンス内の例示から AC を作らない。
+    if ! parsed=$(set -o pipefail; _read_lf "$body_file" | awk '
+      function end_section() { if (in_ac && !items) empty = 1; in_ac = 0; items = 0 }
+      {
+        n = 0
+        while (n < 3 && substr($0, 1, 1) == " ") { $0 = substr($0, 2); n++ }
+      }
+      /^[[:space:]]*(```+|~~~+)/ {
+        token = $0; sub(/^[[:space:]]*/, "", token)
+        match(token, /^(```+|~~~+)/); marks = substr(token, 1, RLENGTH)
+        if (!fence) { fence = substr(marks, 1, 1); width = length(marks) }
+        else if (substr(marks, 1, 1) == fence && length(marks) >= width &&
+                 substr(token, length(marks) + 1) ~ /^[[:space:]]*$/) fence = ""
         next
       }
-      in_ac && match($0, /^### AC-[0-9]+([:[:space:]]|$)/) {
-        id = substr($0, 5, RLENGTH - 4); sub(/[:[:space:]]+$/, "", id)
-        print "ID " id
+      fence { next }
+      /^#+[[:space:]]/ {
+        heading = $0; match(heading, /^#+/); level = RLENGTH
+        sub(/^#+[[:space:]]+/, "", heading); sub(/[[:space:]]+$/, "", heading)
+        title = tolower(heading); sub(/^[0-9]+\.[[:space:]]+/, "", title)
+        if (in_ac && level != 3 && heading ~ /^AC-/) malformed = NR
+        if (level <= 2) end_section()
+        if (title ~ /^acceptance[[:space:]]+criteria|^受入(基準|条件)|^受け入れ条件/) {
+          exact = (title == "acceptance criteria" || title == "受入基準" ||
+                   title == "受入条件" || title == "受け入れ条件")
+          if (level == 2 && exact) {
+            in_ac = 1; found = 1; next
+          }
+          if (exact || level <= 2) other = other (other == "" ? "" : ",") heading
+        }
       }
-      END { print "FOUND " (found ? 1 : 0); print "OTHER " other }
-    ')
+      in_ac {
+        item = $0
+        if (item ~ /^###[[:space:]]+AC-/) sub(/^###[[:space:]]+/, "", item)
+        else if (item ~ /^[-*+][[:space:]]+\[[ xX]\][[:space:]]+/)
+          sub(/^[-*+][[:space:]]+\[[ xX]\][[:space:]]+/, "", item)
+        else {
+          if (item ~ /^[-*+][[:space:]]+(AC-|\[)/ ||
+              item ~ /^#+[[:space:]]+AC-/ || item ~ /^[0-9]+[.)][[:space:]]+(AC-|\[)/) malformed = NR
+          next
+        }
+        if (match(item, /^AC-[0-9]+([:[:space:]]|$)/)) {
+          id = substr(item, 1, RLENGTH); sub(/[:[:space:]]+$/, "", id)
+          print "ID " id; items++
+        } else malformed = NR
+      }
+      END {
+        if (fence) malformed = NR
+        end_section()
+        print "FOUND " (found ? 1 : 0); print "OTHER " other
+        print "EMPTY " (empty ? 1 : 0); print "MALFORMED " malformed
+      }
+    '); then
+      _fail input_parse_failed "Issue 本文の受入条件を解析できません"
+    fi
+    format_hint='## Acceptance Criteria / ## 受入基準 / ## 受入条件 / ## 受け入れ条件（番号 N. は任意）の下に ### AC-N または - [ ] AC-N: 内容を記載してください'
+    malformed=$(printf '%s\n' "$parsed" | sed -n 's/^MALFORMED //p')
+    [ -z "$malformed" ] || _fail malformed_ac_item "受入条件の形式が不正です（行 ${malformed}）。フェンスも閉じてください。$format_hint"
+    other=$(printf '%s\n' "$parsed" | sed -n 's/^OTHER //p')
+    [ -z "$other" ] || _fail unsupported_ac_section "未対応の受入条件見出し: ${other}。$format_hint"
     found=$(printf '%s\n' "$parsed" | sed -n 's/^FOUND //p')
     if [ "$found" != "1" ]; then
-      other=$(printf '%s\n' "$parsed" | sed -n 's/^OTHER //p')
-      echo "[CONTEXT] ACCEPTANCE_SCOPE=skipped; reason=no_ac_section; headings=${other:-none}" >&2
+      echo "[CONTEXT] ACCEPTANCE_SCOPE=skipped; reason=no_ac_section" >&2
       exit 0
     fi
     ids=$(printf '%s\n' "$parsed" | sed -n 's/^ID //p')
-    [ -n "$ids" ] || _fail no_ac_ids "## 5. Acceptance Criteria 見出しはあるが ### AC-N が 1 件もありません"
+    [ -n "$ids" ] && ! printf '%s\n' "$parsed" | grep -q '^EMPTY 1$' \
+      || _fail no_ac_ids "受入条件見出しの下に AC-ID がありません。$format_hint"
     dup=$(printf '%s\n' "$ids" | sort | uniq -d | paste -sd, -)
     [ -z "$dup" ] || _fail duplicate_ac_id "AC-ID が重複しています: $dup" "ids=$dup"
     joined=$(printf '%s\n' "$ids" | paste -sd, -)

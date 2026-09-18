@@ -403,8 +403,8 @@ rationale: references/rationale.md#no-flow-state
 - Out of scope: {out_of_scope}
 
 ## 3. 受入基準
-- AC-1: {ac1}
-- AC-2: {ac2}
+- [ ] AC-1: {ac1}
+- [ ] AC-2: {ac2}
 
 ## 4. 設計方針
 {design_approach}
