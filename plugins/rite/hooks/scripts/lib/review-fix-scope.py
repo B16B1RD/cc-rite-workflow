@@ -189,7 +189,10 @@ def verify(plan, paths, output, kind):
         result["results"][test["id"]] = dict(key=key, command=test["command"], exit_code=measured.returncode,
                                               stdout=measured.stdout, stderr=measured.stderr, executed_at=cycle.now())
         atomic_write(output, result)
-        require(measured.returncode == 0, "verification failed: " + test["id"] + "; evidence=" + str(output))
+        require(measured.returncode == 0,
+                "verification failed: " + test["id"] + "; actual_rc=" + str(measured.returncode)
+                + "; expected_rc=0; evidence=" + str(output)
+                + "; expected nonzero exits must be asserted by a wrapper that exits 0 on success")
         require(fingerprint(test) == key, "verification inputs changed during execution: " + test["id"])
         print("[CONTEXT] FIX_VERIFICATION=executed; id=" + test["id"])
     return result
