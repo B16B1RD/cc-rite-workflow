@@ -219,6 +219,24 @@ def peel_commit_prefixes(words):
     return words, peeled
 
 
+def git_subcommand_index(words, git_index):
+    """Advance past the same git global options the direct-commit path skips."""
+    index = git_index + 1
+    while index < len(words) and words[index].startswith("-"):
+        option = words[index]
+        if option in ("-C", "-c"):
+            if index + 1 >= len(words):
+                return None
+            index += 2
+        elif option.startswith("-C"):
+            index += 1
+        elif option.startswith("-c") or option in ("--no-pager", "--no-optional-locks"):
+            index += 1
+        else:
+            return index if "commit" in words[index:] else None
+    return index if index < len(words) else None
+
+
 def commit_check(args):
     """Read existing evidence before a direct commit; never run tests or write state."""
     state_path = Path(args.state)
@@ -275,8 +293,8 @@ def commit_check(args):
                 continue
             names = [Path(word).name for word in words]
             if "git" in names:
-                index = names.index("git")
-                if index + 1 < len(words) and words[index + 1] == "commit":
+                sub = git_subcommand_index(words, names.index("git"))
+                if sub is not None and "commit" in words[sub:]:
                     require(False, "run commit as a direct command in its own Bash call")
             continue
         target, index = cwd, 1

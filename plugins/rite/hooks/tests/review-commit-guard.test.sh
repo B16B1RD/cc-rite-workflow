@@ -128,6 +128,8 @@ for use_run, plan_paths, full_inputs, rename_boundary in ((False, ['src/a.py'], 
         hook('command git commit -m x', reason='review is incomplete')
         hook('env -u GIT_DIR git commit -m x', reason='run commit as a direct command')
         hook('sudo git commit -m x', reason='run commit as a direct command')
+        hook('sudo git -C . commit -m x', reason='run commit as a direct command')
+        hook('env -u GIT_DIR git --no-pager commit -m x', reason='run commit as a direct command')
         check(run(['git', 'rev-parse', 'HEAD']).stdout == old_head, 'denial precedes HEAD change')
         hook(ordinary_recipe, reason='review is incomplete')
         hook('git commit --dry-run', allowed=True)
