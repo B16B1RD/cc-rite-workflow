@@ -616,7 +616,7 @@ Step 4 の autonomous lint が emit した sentinel を会話 context から読�
 | Sentinel | 次のアクション |
 |---------|--------------|
 | `[lint:success]` | ステップ 6 へ進む |
-| `[lint:skipped]` | ステップ 6 へ進む（lint 未設定・未検出。batch の自動選択も同じ）。未実行の理由・`commands.lint` 設定案内を保持し、PR 本文の Known Issues に lint 未実行を反映する。成功扱い・再質問はしない |
+| `[lint:skipped]` | ステップ 6 へ進む（lint 未設定・未検出。batch の自動選択も同じ）。未実行の理由・`commands.lint` 設定案内を保持する。成功扱い・再質問はしない |
 | `[lint:error]` | `rite:lint` を **1 回だけ** 再 invoke。成功 / skipped ならステップ 6 へ。再失敗なら停止し、失敗理由と `/rite:recover` を案内する。AskUserQuestion は出さない（強制続行はしない） |
 | `[lint:aborted]` | エラー終了。ユーザーに復旧手順を案内 |
 | sentinel 不在 | `rite:lint` を **1 回だけ** invoke。sentinel が得られたら上表で分岐。再失敗（sentinel 不在）なら停止し `/rite:recover` を案内する。AskUserQuestion は出さない |

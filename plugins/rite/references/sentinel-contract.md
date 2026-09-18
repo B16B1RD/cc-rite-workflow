@@ -29,7 +29,7 @@ rite workflow のスキル間連携は、各 sub-skill が bash 出力に埋め�
 | `[fix:cancelled-by-user]` | fix | iterate, batch-run | ユーザーが fix 実行をキャンセル |
 | `[lint:success]` | lint | open, pr-create, ready | lint 全チェック pass |
 | `[lint:error]` | lint | issue-implement, open | lint でエラー検出、修正が必要 |
-| `[lint:skipped]` | lint | open, batch-run | lint 未設定・未検出のためスキップ（batch は質問なしで選ぶ） |
+| `[lint:skipped]` | lint | open | lint 未設定・未検出のためスキップ（batch は質問なしで選ぶ。batch-run へは bubble しない） |
 | `[lint:aborted]` | lint | issue-implement, open | lint 実行が中断 |
 | `[lint:returned-to-caller:auto]` | wiki-lint | wiki-ingest | `--auto` モードでの wiki-lint 完了、caller (wiki-ingest) へ制御を返す |
 | `[ready:returned-to-caller]` | ready | batch-run | Ready for review 化完了、caller へ制御を返す |
