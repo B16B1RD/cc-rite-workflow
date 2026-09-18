@@ -1041,7 +1041,7 @@ bash {plugin_root}/hooks/flow-state.sh review-start \
 
 固定した context ごとに `REVIEW_TMP_DIR/rite-review-{session_id}-{run_id}-{pr_number}-{cycle_count}/` を使用する。初回 spawn 前に manifest の名簿・context と全員の pending entry を Write し、各回収後に同じファイルを更新する。中断後も成功結果を保持して不足分だけ回収する。入力・raw が失われた場合は原因とパスを報告し、同一 cycle の不足結果を再取得する。
 
-Issue に関連付いたレビュー開始直後に [停滞診断の時計](../../references/review-stagnation.md) の共有ブロック `review-clock-open`（同参照の Bash ブロック名。`flow-state.sh` のサブコマンドは `review-clock` だけ）を `clock_kind=work` で実行する。CI・外部待ちへ入る前に区間を閉じ、待機区分で開き直す。中断復帰は同参照の回復規則を適用し、未閉区間を実作業と推測しない。時計の保存失敗は `[review:error]`。関連 Issue がない standalone レビューは仕様入力を持たないため診断を開始せず、既存のレビュー経路を維持する。
+Issue に関連付いたレビュー開始直後に [停滞診断の時計](../../references/review-stagnation.md) の共有ブロック `review-clock-open`（同参照の Bash ブロック名。時計の CLI 動詞は `review-clock` だけ）を `clock_kind=work` で実行する。CI・外部待ちへ入る前に区間を閉じ、待機区分で開き直す。中断復帰は同参照の回復規則を適用し、未閉区間を実作業と推測しない。時計の保存失敗は `[review:error]`。関連 Issue がない standalone レビューは仕様入力を持たないため診断を開始せず、既存のレビュー経路を維持する。
 
 ### 4.0.A Pre-Review State Snapshot
 

@@ -29,7 +29,7 @@ iterate の全品質ゲートと non-blocking sweep の成功後、`flow-state.s
 
 同一 ID・同一内容の再送は冪等で、異なる内容の上書きと区間の重なりは拒否する。`external_wait` と `interruption` は実作業に加算しない。reviewer の起動時刻、ファイルの保存間隔、run 開始からの差分だけで実作業時間を推定しない。
 
-caller は以下の共有ブロックを工程境界で実行する。`review-clock-open` / `review-clock-close` は本節の共有 Bash ブロックの名前であり、`flow-state.sh` が受け付けるサブコマンドは `review-clock` だけである。参照元はブロック全体を本節から取り、`{plugin_root}` は解決済み配布 root、`{clock_kind}` は上記3値、`{clock_close_mode}` は通常の `normal` または復旧時の `recover` へリテラル置換する。作業開始時に open、終了時と context を進める前に close する。CI 等の外部待機は work close → external_wait open、待機終了後は close → work open とする。
+caller は以下の共有ブロックを工程境界で実行する。`review-clock-open` / `review-clock-close` は本節の共有 Bash ブロックの名前であり、`flow-state.sh` が受け付ける時計の CLI 動詞は `review-clock` だけである。参照元はブロック全体を本節から取り、`{plugin_root}` は解決済み配布 root、`{clock_kind}` は上記3値、`{clock_close_mode}` は通常の `normal` または復旧時の `recover` へリテラル置換する。作業開始時に open、終了時と context を進める前に close する。CI 等の外部待機は work close → external_wait open、待機終了後は close → work open とする。
 
 recover は保存済み open があれば先に `recover` で close する。`ended_at` が未保存の区間全体は `interruption` として閉じ、不明な中断時刻を推測しない。`ended_at` がある保存再試行では時刻・種類を変更しない。open が無い未確定 gap を補って実作業へ算入しない。
 
