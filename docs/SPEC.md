@@ -295,7 +295,7 @@ rite-workflow/
 │ ├── review-cycle-scope.sh # pr-review 1.2.4 cycle 1 / cycle 2+ 差分スコープの決定
 │ ├── review-findings-maps.sh # fix.md severity_map build 委譲
 │ ├── review-measured-gate.sh # pr-review 5.3.0.M 実測必須ゲートの決定論的分類
-│ ├── acceptance-criteria-check.sh # pr-review 1.3.1 / 5.1.0.AC / 5.3.0.A 受入条件の抽出・判定表・最終整合検査
+│ ├── acceptance-criteria-check.sh # pr-review 1.3.1 / 5.1.0.AC / 5.3.0.A / issue-implement 5.1.0.6.1 受入条件の抽出・判定表・最終整合検査
 │ ├── review-source-resolve.sh # fix.md 1.2.0 review source Priority chain 解決
 │ ├── review-target-comment-fetch.sh # fix target-comment reference: fetch / PR validation / handoff
 │ ├── migrate-review-state-to-1.1.sh # review-result schema 1.1.0 移行

@@ -93,7 +93,7 @@ if [ "$CHECK_RC" -eq 0 ] && [ "$CHECK_STDOUT" = "AC-1,AC-2" ]; then
 else fail "extract crlf (rc=$CHECK_RC out=$CHECK_STDOUT)"; fi
 
 printf '## 概要\n\nAC なし\n\n## 受入基準\n\n- AC-1: 別形式\n' > "$TEST_DIR/body-other.md"
-expect_failure "extract: AC 節の非対応項目は対象外にしない" no_ac_ids extract --body-file "$TEST_DIR/body-other.md"
+expect_failure "extract: AC-ID がある非対応箇条書きは malformed とし no_ac_ids にしない" malformed_ac_item extract --body-file "$TEST_DIR/body-other.md"
 
 printf '## 概要\n\n本文のみ\n' > "$TEST_DIR/body-none.md"
 run_check extract --body-file "$TEST_DIR/body-none.md"
@@ -101,7 +101,7 @@ if [ "$CHECK_RC" -eq 0 ] && grep -Fxq '[CONTEXT] ACCEPTANCE_SCOPE=skipped; reaso
   pass "extract: AC 節なしは skipped"
 else fail "extract none (rc=$CHECK_RC err=$CHECK_STDERR)"; fi
 
-printf '## 5. Acceptance Criteria\n\n- AC-1: 小見出しなし\n\n## 6. Test\n' > "$TEST_DIR/body-noids.md"
+printf '## 5. Acceptance Criteria\n\n本文のみで ID なし\n\n## 6. Test\n' > "$TEST_DIR/body-noids.md"
 expect_failure "extract: 見出しありで AC-N 0 件は失敗" no_ac_ids extract --body-file "$TEST_DIR/body-noids.md"
 
 printf '## 5. Acceptance Criteria\n\n### AC-1: a\n\n### AC-1: b\n' > "$TEST_DIR/body-dup.md"
@@ -126,10 +126,15 @@ for row in '- [ ] IDなしの条件' '- [ ] AC-X: 非数値' '### AC-2x: 壊れ�
   expect_failure "extract: valid ACと混在する不正項目を落とさない: $row" malformed_ac_item extract --body-file "$TEST_DIR/body-malformed.md"
   if [ -z "$CHECK_STDOUT" ] && grep -Fq 'AC-N' <<<"$CHECK_STDERR"; then pass "extract: 不正形式に修正案内、部分集合出力なし"; else fail "extract: 不正形式の案内か空出力がない"; fi
 done
-for heading in '## Acceptance Criteria (draft)' '### 受入基準' '## 受入条件メモ'; do
+for heading in '## Acceptance Criteria (draft)' '## 受入条件メモ'; do
   printf '%s\n- [ ] AC-1: supported IDs alone do not excuse the heading\n' "$heading" > "$TEST_DIR/body-unsupported.md"
   expect_failure "extract: 非対応AC見出しをskippedにしない: $heading" unsupported_ac_section extract --body-file "$TEST_DIR/body-unsupported.md"
 done
+printf '### 受入基準\n- [ ] AC-1: level 3 exact title is not an AC section\n' > "$TEST_DIR/body-level3-exact.md"
+run_check extract --body-file "$TEST_DIR/body-level3-exact.md"
+if [ "$CHECK_RC" -eq 0 ] && grep -Fxq '[CONTEXT] ACCEPTANCE_SCOPE=skipped; reason=no_ac_section' <<<"$CHECK_STDERR"; then
+  pass "extract: レベル3の受入基準見出しは節候補にせず skipped"
+else fail "extract level3 exact (rc=$CHECK_RC err=$CHECK_STDERR)"; fi
 printf '## 受入条件\n## Acceptance Criteria\n### AC-1: valid\n' > "$TEST_DIR/body-empty-section.md"
 expect_failure "extract: 複数AC節の片方が空なら失敗" no_ac_ids extract --body-file "$TEST_DIR/body-empty-section.md"
 cat > "$TEST_DIR/body-fences.md" <<'EOF'
@@ -153,6 +158,34 @@ run_check extract --body-file "$TEST_DIR/body-fences.md"
 if [ "$CHECK_RC" -eq 0 ] && [ "$CHECK_STDOUT" = 'AC-1' ]; then pass "extract: tilde/long fencesと上位見出しで範囲を保つ"; else fail "extract fences (rc=$CHECK_RC out=$CHECK_STDOUT err=$CHECK_STDERR)"; fi
 printf '## 受入条件\n### AC-1\n```markdown\n- [ ] AC-2\n' > "$TEST_DIR/body-unclosed.md"
 expect_failure "extract: AC節内の未閉鎖fenceは一部だけtargetにしない" malformed_ac_item extract --body-file "$TEST_DIR/body-unclosed.md"
+
+# F-01 caller fixture: /rite:open 3.3 が Issue 本文へ書く ### 受入基準マッピング
+cat > "$TEST_DIR/body-open-mapping.md" <<'EOF'
+## 5. Acceptance Criteria
+### AC-1: a
+
+## 実装計画
+### 受入基準マッピング
+- AC1 → step 1
+EOF
+run_check extract --body-file "$TEST_DIR/body-open-mapping.md"
+if [ "$CHECK_RC" -eq 0 ] && [ "$CHECK_STDOUT" = "AC-1" ]   && grep -Fxq '[CONTEXT] ACCEPTANCE_SCOPE=target; ids=AC-1' <<<"$CHECK_STDERR"; then
+  pass "extract: open の ### 受入基準マッピング を誤拒否しない"
+else fail "extract open mapping (rc=$CHECK_RC out=$CHECK_STDOUT err=$CHECK_STDERR)"; fi
+
+# F-02: unclosed fence before the AC section must not skip
+printf '~~~\n## 5. Acceptance Criteria\n### AC-1: a\n' > "$TEST_DIR/body-fence-before.md"
+expect_failure "extract: AC節前の未閉鎖fenceは skipped にしない" malformed_ac_item extract --body-file "$TEST_DIR/body-fence-before.md"
+if grep -Fq 'ACCEPTANCE_SCOPE=skipped' <<<"$CHECK_STDERR"; then
+  fail "extract fence-before leaked skipped marker"
+else pass "extract: AC節前の未閉鎖fenceは skipped marker を出さない"; fi
+
+# F-03: XL parent template form after checkbox alignment
+printf '## 3. 受入基準\n- [ ] AC-1: aaa\n- [ ] AC-2: bbb\n' > "$TEST_DIR/body-xl-parent.md"
+run_check extract --body-file "$TEST_DIR/body-xl-parent.md"
+if [ "$CHECK_RC" -eq 0 ] && [ "$CHECK_STDOUT" = "AC-1,AC-2" ]; then
+  pass "extract: XL 親の checkbox 付き受入基準を抽出する"
+else fail "extract xl-parent (rc=$CHECK_RC out=$CHECK_STDOUT err=$CHECK_STDERR)"; fi
 
 printf '  ## 受入条件\n- [ ] AC-1: root\n  - [ ] AC-2: indented\n   ### AC-3: indented heading\n## Integration acceptance tests\nNot criteria\n' > "$TEST_DIR/body-indent.md"
 run_check extract --body-file "$TEST_DIR/body-indent.md"

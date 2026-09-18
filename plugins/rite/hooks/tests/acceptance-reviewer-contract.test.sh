@@ -94,6 +94,9 @@ pin "pr-review: acceptance には軽量レーン mandate を注入しない" "$P
 pin "generator: 受入条件確認の mandate 節" "$GENERATOR" "## 受入条件確認の mandate"
 pin "generator: 全 AC を毎 cycle 再確認" "$GENERATOR" "**全 AC を毎 cycle 再確認する**"
 pin "generator: 未変更部の再監査制限を適用しない" "$GENERATOR" "**未変更部の再監査制限を適用しない**"
+pin "generator: mandate 項目0 読み取り形式" "$GENERATOR" "0. **AC の読み取り形式**"
+pin "agent: Procedure 対応形式" "$AGENT" 'The section is a level-2 heading — `Acceptance Criteria`'
+pin "1.3.1: 対応形式段落" "$PR_REVIEW" '対応形式は `acceptance-criteria-check.sh extract` が正典'
 
 echo ""
 echo "=== TC-2: 1.3.1 の対象判定と停止 (T-09 / T-10 / T-11) ==="
