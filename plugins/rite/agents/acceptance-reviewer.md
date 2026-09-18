@@ -20,7 +20,7 @@ The shared principles (`_reviewer-base.md`) apply except for these four points, 
 
 ## Procedure
 
-1. Read the related Issue with `gh issue view <number> -R <owner>/<repo> --json body` and take every `### AC-N` under `## 5. Acceptance Criteria`.
+1. Read the related Issue with `gh issue view <number> -R <owner>/<repo> --json body` and take every criterion under its acceptance criteria section. The section is a level-2 heading — `Acceptance Criteria` (case-insensitive), `受入基準`, `受入条件` or `受け入れ条件`, optionally prefixed by `N. ` — and a criterion is `### AC-N` or `- [ ] AC-N: 内容` (`[x]` / `[X]` and `*` / `+` bullets count too; the checkbox state is not a verdict). Take the IDs in document order and do not infer an ID or a criterion from prose. `scripts/acceptance-criteria-check.sh extract` is the authority for this format, and your 受入条件確認 rows are checked against its ID set — a row set built from a different reading stops the review.
 2. For each criterion, set up the `Given`, perform the `When`, and observe the `Then` on HEAD with read-only commands (test runners, the documented commands, `grep` / `git show`). Experiments that change files follow the worktree-only procedure in the shared principles.
 3. Judge each criterion:
    - **充足** — you observed the `Then` outcome. Write the command and its observed output as the evidence.
