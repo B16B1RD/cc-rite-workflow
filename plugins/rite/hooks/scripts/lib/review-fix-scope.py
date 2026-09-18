@@ -39,7 +39,13 @@ def within(value, parent):
     return Path(value).resolve() == Path(parent).resolve() or Path(parent).resolve() in Path(value).resolve().parents
 
 
-def validate(plan, issue, state, session, root, allow_replan=False):
+def validate_context(plan, state, session, directory):
+    """Bind a plan to the frozen cycle, its HEAD and its saved receipt.
+
+    Split out from validate() because deciding *whether* a state may move
+    (plan_gate) and checking *what* a plan says are separate questions: the
+    retry path answers the first one itself and still needs both of these.
+    """
     require(state.get("session_id") == session, "foreign session state")
     current = state.get("review_cycle")
     require(isinstance(current, dict) and current.get("status") == "completed", "all reviews must be collected and saved")
@@ -47,9 +53,19 @@ def validate(plan, issue, state, session, root, allow_replan=False):
     require(context["session_id"] == session and context["pr_number"] == state.get("pr_number")
             and context["cycle_count"] == state.get("cycle_count"), "review context differs from current state")
     require(plan.get("review_context") == context and cycle.head() == context["commit_sha"], "stale or foreign review context / HEAD")
-    receipt = cycle.matching_receipt(root / ".rite/review-results", current)
+    receipt = cycle.matching_receipt(directory, current)
     require(receipt is not None, "saved review receipt missing")
+    return receipt
+
+
+def validate(plan, issue, state, session, root, allow_replan=False):
+    receipt = validate_context(plan, state, session, root / ".rite/review-results")
     importlib.import_module("review-stagnation").plan_gate(state, plan, session, allow_replan)
+    return validate_plan(plan, issue, state, receipt)
+
+
+def validate_plan(plan, issue, state, receipt):
+    """Everything a fix plan must say, independent of the transition it enables."""
     require(issue.get("number") == state.get("issue_number") == plan.get("issue_number")
             and text(issue.get("body")) and text(plan.get("issue_body"))
             and cycle.same_specification(plan["issue_body"], issue["body"]), "Issue specification changed or mismatched")
