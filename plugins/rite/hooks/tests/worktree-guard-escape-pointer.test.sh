@@ -21,14 +21,23 @@ CLAUSES=(
 )
 
 # ポインタの指す先が実在すること（リンク切れ・節名変更の検出）。
-# 契約が読めなければ以降の assert は grep exit 2 で落ち、原因より結果が先に出るため停止する。
+# 契約が読めないまま進むと、契約側 assert が全件 file-not-found で埋まり欠損 1 件が
+# assert 件数ぶんの fail に増幅して原因が埋もれる（`assert_file_exists_or_fail` の
+# docstring が述べる増幅）。ここで止めると ❌ 1 行と rc=1 だけが残る（print_summary を
+# 通らないため FAIL 集計行は出ない）。
 assert_file_exists_or_fail "worktree execution contract exists" "$CONTRACT" || exit 1
 assert_grep "contract has the Host worktree execution anchor" "$CONTRACT" \
   '^### Host worktree execution$'
 assert_grep "contract carries the post-entry guard-refusal escape" "$CONTRACT" \
   '入場後のガード拒否の退路'
+# 手順の各句はファイル全体ではなく退路節の内側に実在させる。ファイル全体を見ると、節を
+# 丸ごと削っても判定表の行に残る同じ語を拾って緑のままになる。
+# 節の開始は太字ラベル行。`^### Host worktree execution$` を開始に使うと、awk の範囲
+# パターンでは開始行自身が終了パターン `^###[^#]` にも一致して範囲が 1 行に潰れる。
+ESCAPE_SECTION='^\*\*入場後のガード拒否の退路\*\*'
 for clause in "${CLAUSES[@]}"; do
-  assert_grep "contract still carries the forbidden clause ($clause)" "$CONTRACT" "$clause"
+  assert_grep_in_section "contract still defines the escape step ($clause)" "$CONTRACT" \
+    "$ESCAPE_SECTION" '^###[^#]' "$clause"
 done
 
 POINTER='^> セッション worktree 入場後にシェルブロックがホストの隔離ガードに拒否されたら、\[共通作業先契約\]\(\.\./\.\./references/git-worktree-patterns\.md#host-worktree-execution\) の「入場後のガード拒否の退路」に従う。$'
