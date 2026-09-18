@@ -12,6 +12,8 @@ argument-hint: "<pr_number>"
 
 > 実行入口と工程境界は [Host Runtime Contract](../../references/host-runtime-contract.md#入口と工程境界)、native Skill / Task がない場合の実行は [Host workflow operations](../../references/host-workflow-operations.md) に従う。nested 呼出しは caller の runtime 選択を引き継ぐ。
 
+> セッション worktree 入場後にシェルブロックがホストの隔離ガードに拒否されたら、[共通作業先契約](../../references/git-worktree-patterns.md#host-worktree-execution) の「入場後のガード拒否の退路」に従う。
+
 > **質問規律**: すべての質問・再試行判断は [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) に従う。
 >
 > 実行開始時は [Autonomous Execution](../rite-workflow/references/autonomous-execution.md) を適用する。
