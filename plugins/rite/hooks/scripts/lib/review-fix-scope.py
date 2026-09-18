@@ -216,12 +216,17 @@ def main():
     directory.mkdir(parents=True, exist_ok=True)
     record = dict(plan=plan, plan_hash=digest(plan), review_hash=digest(receipt),
                   mechanical=dict(paths=paths, non_targets=plan["constraints"]["non_targets"]), checked_at=cycle.now())
+    # A reverted command can have an old plan hash; bind approval to its audit too.
+    for replan in state.get("review_run", {}).get("replans", []):
+        if replan["review_context"] == plan["review_context"] and replan.get("amendments"):
+            record["amendment_hash"] = digest(replan["amendments"])
     if args.operation == "check":
         atomic_write(saved, record)
         print("[CONTEXT] FIX_SCOPE=pass; record=" + str(saved))
     else:
         approved = read(saved)
         require(approved["plan_hash"] == record["plan_hash"] and approved["review_hash"] == record["review_hash"], "plan or review changed; check scope again")
+        require(approved.get("amendment_hash") == record.get("amendment_hash"), "plan amended; check scope again")
         result = verify(plan, paths, directory / ("fix-verification-" + args.session + ".json"), args.kind)
         if args.kind == "all" and "review_run" in state:
             importlib.import_module("review-stagnation").verified(state, plan, result, paths)

@@ -1,4 +1,5 @@
 """Persist review diagnostics in the same transaction as the owning review run."""
+import copy
 import datetime
 import hashlib
 import importlib
@@ -598,10 +599,59 @@ def existing_breaker(state, run):
     return "divergence" if marker["TREND_DIVERGENCE"] == "fire" else None
 
 
+def amend_replan(state, args, directory, run, context, plan, issue, previous):
+    # Correction changes execution instructions, not the diagnosed scope or budget.
+    gate(state, args.session)
+    require(previous is not None, "no registered replan to amend")
+    require(text(args.reason), "--reason must explain the command correction")
+    scope = importlib.import_module("review-fix-scope")
+    scope.validate(plan, issue, state, args.session, directory.parent.parent, allow_replan=True)
+    history = previous.get("amendments", [])
+    plan_hash = digest(plan)
+    if history and previous["plan_hash"] == plan_hash:
+        require(history[-1]["reason"] == args.reason, "amendment replay reason differs")
+        return state
+    for entry in history:
+        if entry.get("new_plan_hash") == plan_hash and entry.get("reason") == args.reason:
+            require(False, "superseded amendment cannot be replayed")
+    original, changed = copy.deepcopy(previous["plan"]), copy.deepcopy(plan)
+    require(cycle.same_specification(original["issue_body"], changed["issue_body"]),
+            "amendment changes Issue specification")
+    changed["issue_body"] = original["issue_body"]
+    for candidate in (original, changed):
+        for test in candidate["verifications"]:
+            test.pop("command", None)
+    require(original == changed, "amendment may change only verification commands")
+    require(previous["plan"].get("verifications") != plan.get("verifications"),
+            "amendment requires a command correction")
+    evidence = {}
+    for name in ("fix-plan", "fix-verification"):
+        path = directory.parent / "state" / (name + "-" + args.session + ".json")
+        if not path.exists():
+            evidence[name] = None
+            continue
+        payload = read(path)
+        if name == "fix-verification":
+            require(isinstance(payload, dict) and payload.get("review_context") == context,
+                    "verification receipt context differs")
+        evidence[name] = payload
+    entry = dict(old_plan=previous["plan"], old_plan_hash=previous["plan_hash"],
+                 new_plan_hash=plan_hash, reason=args.reason, evidence=evidence,
+                 pending_fix=run.get("pending_fix"), recorded_at=cycle.now())
+    previous["amendments"] = history + [entry]
+    previous.update(plan=plan, plan_hash=plan_hash)
+    run.pop("pending_fix", None)
+    state["updated_at"] = cycle.now()
+    return state
+
+
 def replan(state, args, directory):
     run, context = current(state, args.session, completed=True)
     plan, issue = read(args.plan), read(args.issue)
     previous = next((item for item in run["replans"] if item["review_context"] == context), None)
+    if getattr(args, "amend", False):
+        return amend_replan(state, args, directory, run, context, plan, issue, previous)
+    require(not args.reason, "--reason requires --amend")
     if previous:
         require(previous["plan_hash"] == digest(plan), "same replan cannot be overwritten")
         require(text(plan.get("issue_body")) and text(issue.get("body"))

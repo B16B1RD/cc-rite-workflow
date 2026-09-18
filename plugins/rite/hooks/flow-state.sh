@@ -778,8 +778,8 @@ cmd_review_cycle() {
   shift
   while [ $# -gt 0 ]; do
     case "$operation:$1" in
-      start:--stagnation) args+=("$1"); shift ;;
-      start:--selection|finish:--manifest|finish:--content-file|finish:--pending-id|clock:--input|observe:--input|observe:--issue|replan:--plan|replan:--issue|retry:--plan|retry:--issue|abandon:--reason)
+      start:--stagnation|replan:--amend) args+=("$1"); shift ;;
+      start:--selection|finish:--manifest|finish:--content-file|finish:--pending-id|clock:--input|observe:--input|observe:--issue|replan:--plan|replan:--issue|replan:--reason|retry:--plan|retry:--issue|abandon:--reason)
         [ $# -ge 2 ] || { echo "ERROR: missing value for $1" >&2; return 1; }
         args+=("$1" "$2"); shift 2 ;;
       *) echo "ERROR: unknown review-cycle option: $1" >&2; return 1 ;;
@@ -846,7 +846,7 @@ Usage: $0 {set|get|review-start|review-finish|review-retry|review-abandon|deacti
   review-start --selection /absolute/selection.json [--stagnation]
   review-clock --input /absolute/clock-segment.json
   review-observe --input /absolute/observation.json --issue /absolute/issue.json
-  review-replan --plan /absolute/fix-plan.json --issue /absolute/issue.json
+  review-replan --plan /absolute/fix-plan.json --issue /absolute/issue.json [--amend --reason TEXT]
   review-retry --plan /absolute/fix-plan.json --issue /absolute/issue.json
   review-close
   review-defer
