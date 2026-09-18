@@ -496,6 +496,57 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
     check(len(defined) == 1 and 'fix-plan-input-{session}.json' in defined[0] and
           '`.rite/state/fix-plan-{session}.json`' not in defined[0] and
           '検査記録は `.rite/state/fix-plan-{session}.json`' in guide, 'guide names input and check record separately')
+    # Execute the documented assertion bodies through the real verify helper.
+    script_a, script_b = private / 'a.sh', private / 'b.sh'
+    script_a.write_text('printf "target out\\n"; printf "target err\\n" >&2; exit 2\n')
+    script_b.write_text('exit 2\n')
+    for marker, cases in (
+        ('# assert-expected-exit-single', ((2, 2, True), (1, 2, False))),
+        ('# assert-expected-exit-multiple', ((2, 2, True), (2, 1, False), (1, 2, False))),
+    ):
+        body = caller_block(guide, marker).replace('scripts/a.sh', '.rite/a.sh').replace('scripts/b.sh', '.rite/b.sh')
+        candidate = copy.deepcopy(plan)
+        candidate['verifications'][0].update(command=body, inputs=['.rite/a.sh', '.rite/b.sh'])
+        save_plan(candidate)
+        invoke()
+        for rc_a, rc_b, success in cases:
+            script_a.write_text('printf "target out\\n"; printf "target err\\n" >&2; exit ' + str(rc_a) + '\n')
+            script_b.write_text('exit ' + str(rc_b) + '\n')
+            result = invoke('verify', 'all', ok=False)
+            check((result.returncode == 0) == success, marker + ': individually assert rc ' + str((rc_a, rc_b)))
+            saved = json.loads(verification_file.read_text())['results']['related']
+            check(saved['exit_code'] == (0 if success else 1), 'wrapper receipt retains measured assertion exit')
+            check('target out' in saved['stdout'] and 'target err' in saved['stderr'], 'wrapper output evidence retained')
+    body_and = caller_block(guide, '# assert-expected-exit-multiple').replace(
+        'scripts/a.sh', '.rite/a.sh').replace('scripts/b.sh', '.rite/b.sh')
+    body_semi = body_and.replace('&&', ';')
+    check('&&' in body_and and body_and != body_semi, 'documented multiple example joins with &&')
+    script_a.write_text('printf "target out\\n"; printf "target err\\n" >&2; exit 1\n')
+    script_b.write_text('exit 2\n')
+    candidate = copy.deepcopy(plan)
+    candidate['verifications'][0].update(command=body_and, inputs=['.rite/a.sh', '.rite/b.sh'])
+    save_plan(candidate)
+    invoke()
+    check(invoke('verify', 'all', ok=False).returncode != 0,
+          '&& does not conceal first-wrong/second-right')
+    candidate['verifications'][0]['command'] = body_semi
+    save_plan(candidate)
+    invoke()
+    check(invoke('verify', 'all', ok=False).returncode == 0,
+          '; conceals first-wrong/second-right')
+    candidate['verifications'][0]['command'] = 'bash .rite/a.sh'
+    script_a.write_text('printf "raw out\\n"; printf "raw err\\n" >&2; exit 2\n')
+    save_plan(candidate)
+    invoke()
+    result = invoke('verify', 'all', ok=False)
+    check(result.returncode != 0 and 'actual_rc=2' in result.stderr and 'expected_rc=0' in result.stderr
+          and str(verification_file) in result.stderr and 'wrapper that exits 0' in result.stderr,
+          'raw nonzero failure gives actual exit, evidence path and assertion guidance')
+    saved = json.loads(verification_file.read_text())['results']['related']
+    check(saved['exit_code'] == 2 and 'raw out' in saved['stdout'] and 'raw err' in saved['stderr'],
+          'raw nonzero exit and output evidence are preserved')
+    script_a.unlink()
+    script_b.unlink()
     save_plan()
     invoke()
     run(['git', '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',

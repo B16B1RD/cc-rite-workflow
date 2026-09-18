@@ -21,6 +21,32 @@ helper は標準 `### 4.2` 節内の backtick パスが `non_targets` に含ま�
 
 関連テストの `inputs` は実装・テスト・設定・依存lockfileを含め、影響するディレクトリを漏らさない。`environment` は必要な変数名を指定する。ツール版など環境変数にない関連環境は計画時にファイルへ実測出力し inputs に含め、再利用前に更新する。外部状態を固定できない検証は `full` として再実行する。stdout/stderr に秘密を出すコマンドは使わない。
 
+`verifications[].command` は `bash -c` で実行され、**検証コマンド自身の終了コード 0 を成功**とする。検査対象が異常系で rc=2 を返すことを期待する場合は、その値をアサートし、期待どおりなら検証自身を 0 で終える。対象コマンドを直接登録して非ゼロ終了を成功扱いさせることはできない。`check` はコマンドの期待終了値を推測・実行しない。
+
+次は `command` に入れるシェル本文の例（JSON では改行・引用符を適切にエスケープする）。`scripts/a.sh` が rc=2 を返すことを検査する:
+
+```bash
+# assert-expected-exit-single
+actual=0
+bash scripts/a.sh || actual=$?
+test "$actual" -eq 2
+```
+
+複数対象は各終了値を検査し、先行対象の不一致を後続成功で隠さない。`a; b` だけでは最後の終了値しか返らない:
+
+```bash
+# assert-expected-exit-multiple
+assert_rc2() {
+  local actual=0
+  "$@" || actual=$?
+  test "$actual" -eq 2
+}
+assert_rc2 bash scripts/a.sh &&
+  assert_rc2 bash scripts/b.sh
+```
+
+失敗時も実測終了コード・stdout/stderr は検証記録に残る。診断の `actual_rc` と証跡を確認し、対象の欠陥とアサーションの誤りを区別する。固定済みの見直し計画を任意に書き換えて再登録できるという意味ではない。
+
 修正中は `review-fix-scope-check.sh verify --plan ... --issue ... --kind related` を使う。内容（追加・削除・modeを含む）・コマンド・指定環境・作業先・基本runtimeが同一で、当該 context の実測成功がある関連テストだけ再利用する。失敗・入力変化・新しいreview contextは再実行する。全修正後は `fix` 本体の最終検証ブロックを実行し、関連結果の鮮度を確認した後、全体検証を全件実行する。検証コマンドは入力を変更しない。
 
 機械検査と意味判断を分けた検査記録は `.rite/state/fix-plan-{session}.json`、実測コマンド・終了コード・stdout/stderr・鮮度キーは `.rite/state/fix-verification-{session}.json` に保存する。検査記録は入力とは別ファイルであり、記録と同一実体を `--plan` に渡すと `check` は書き込み前に拒否する。保存失敗は成功にせず前の記録を保持する。復旧は同じ入力で check → verify。任意のファイル直接編集やホスト権限の遮断は保証しない。
