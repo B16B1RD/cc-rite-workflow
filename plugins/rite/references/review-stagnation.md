@@ -104,6 +104,8 @@ rm "$clock_file"
 
 `review-fix-scope-check.sh verify --kind all` の成功時に検証済み tree fingerprint と対象根因を保存する。次の `review-start` で新 HEAD・clean tree と検証済み内容の一致を検査して修正 HEAD を確定し、再発判定に用いる。コマンドの成功申告、未検証の commit、別 context の結果を修正履歴に加えない。
 
+証跡を 1 つも持たない `collecting` cycle を `flow-state.sh review-abandon --reason <理由>` で放棄した run は、cycle を失っても継続する。放棄記録（`review_cycle_abandoned` の最終要素）が session・PR・`run_id`・counter で run と一致する限り、cycle 不在の run を通常の `set` と `review-start` が受理する。再試行は同じ run・同じ counter・新しい HEAD で凍結し、`advance()` は呼ばない — 放棄された cycle は receipt も検証済み修正も持たないため計上する修正が無く、counter を進めると観測列に穴が開いて連続 cycle を要求する再発判定と矛盾する。一致しない記録や記録の無い cycle 不在は破損として全書き込みを拒否する。放棄後は検証済み receipt が無いため `fix` / `ready` への遷移も拒否し、別 Issue / PR へ切り替えるときは run を `review_run_history` へ退避する。
+
 停止は caller の既存失敗 sentinel へ返し、batch は cursor を当該 Issue に保ち `active=false` にする。PR・branch・作業差分・履歴・最後の検証済み状態を保持し、停止理由と復旧工程を報告する。同一 run の再開は保存済み判定と未完工程から続け、停止履歴を消して新しい見直し枠を作らない。
 
 helper が保証するのは context・保存証跡・入力構造・範囲・時計と回数・冪等性である。根因の意味的同一性、仕様解釈、受入条件の充足、代替案の妥当性は親の判断として根拠を残す。保証範囲は同梱 helper と通常 caller の経路に限り、任意の state 直接編集や未対応ホストの予告なし中断検出まで保証しない。

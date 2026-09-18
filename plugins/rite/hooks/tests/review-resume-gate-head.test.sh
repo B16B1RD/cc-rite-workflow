@@ -27,13 +27,13 @@ assert_file_exists_or_fail "iterate/SKILL.md exists" "$ITERATE" || exit 1
 # --- SKILL.md から再開ガードを抽出 ---------------------------------------------
 
 GATE="$TEST_DIR/gate.sh"
-awk '/^# review-cycle-resume-gate$/{f=1} f{print} f&&/^resume_head_state=\$\{resume_head_state:-absent\}$/{exit}' \
+awk '/^# review-cycle-resume-gate$/{f=1} f{print} f&&/^    \[ "\$abandon_state" = unavailable \] && exit 1$/{g=1} g&&/^fi$/{exit}' \
   "$ITERATE" > "$GATE"
 
 gate_lines=$(wc -l < "$GATE")
-if [ "$gate_lines" -lt 20 ] || [ "$gate_lines" -gt 60 ]; then
+if [ "$gate_lines" -lt 30 ] || [ "$gate_lines" -gt 80 ]; then
   fail "resume gate extraction is implausible ($gate_lines 行)。抽出アンカーが壊れている可能性があります"
-  print_summary "$(basename "$0")" "抽出アンカー: '# review-cycle-resume-gate' 〜 'resume_head_state=\${resume_head_state:-absent}'"
+  print_summary "$(basename "$0")" "抽出アンカー: '# review-cycle-resume-gate' 〜 abandon 分岐末尾の 'fi'"
   exit 1
 fi
 assert_grep "extracted gate reads the frozen commit_sha" "$GATE" 'review_context\.commit_sha'
@@ -45,11 +45,17 @@ RUNNER="$TEST_DIR/runner.sh"
 {
   printf '%s\n' '#!/bin/bash'
   printf '%s\n' 'marker_emit() { local key="$1" value="$2"; shift 2; printf "[CONTEXT] %s=%s" "$key" "$value"; for f in "$@"; do printf "; %s" "$f"; done; printf "\n"; }'
+  printf '%s\n' 'neutralize_ctrl() { cat; }'
   printf '%s\n' 'cc=1'
   printf '%s\n' 'max_cycles=15'
+  # state の読み取りと放棄呼び出しだけを差し替える。他は SKILL.md の literal のまま走らせる。
+  # 放棄は $ABANDON_RC / $ABANDON_OUT で結果を与え、成功時は $STATE_FILE_AFTER へ切り替える。
   sed -e 's#^review_state=\$(bash {plugin_root}/hooks/flow-state\.sh get --jq-filter \.) || exit 1$#review_state=$(cat "$STATE_FILE") || exit 1#' \
+      -e 's#^      review_state=\$(bash {plugin_root}/hooks/flow-state\.sh get --jq-filter \.) || exit 1$#      review_state=$(cat "${STATE_FILE_AFTER:-$STATE_FILE}") || exit 1#' \
+      -e 's#^    if abandon_out=\$(LC_ALL=C bash {plugin_root}/hooks/flow-state\.sh review-abandon \\$#    if abandon_out=$(printf "%s" "${ABANDON_OUT:-}"; exit "${ABANDON_RC:-0}") \\#' \
+      -e 's#^      --reason "HEAD changed before any evidence was recorded" 2>&1); then$#      ; then#' \
       -e 's#{issue_number}#99#g' "$GATE"
-  printf '%s\n' 'echo "FELL_THROUGH=1; resume_head_state=$resume_head_state"'
+  printf '%s\n' 'echo "FELL_THROUGH=1"'
 } > "$RUNNER"
 
 assert_not_grep "runner has no unsubstituted placeholder" "$RUNNER" '{plugin_root}'
@@ -111,7 +117,7 @@ for status in collecting completed; do
     *) pass "T-01 changed-HEAD ($status) suppresses REVIEW_RESUME" ;;
   esac
   case "$out" in
-    *"FELL_THROUGH=1; resume_head_state=changed"*) pass "T-01 changed-HEAD ($status) reaches the lost repair gate" ;;
+    *"FELL_THROUGH=1"*) pass "T-01 changed-HEAD ($status) reaches the lost repair gate" ;;
     *) fail "T-01 changed-HEAD ($status) reaches the lost repair gate (出力: $out)" ;;
   esac
   case "$out" in
@@ -119,6 +125,42 @@ for status in collecting completed; do
     *) fail "T-01 changed-HEAD ($status) reports the mismatch (出力: $out)" ;;
   esac
 done
+
+# 放棄は lost 修復ゲートの前に、その結果に依存せず走る。後段へ移すと前 cycle の JSON が
+# 残る経路で放棄されず、どの道も review-start の HEAD 一致要求で止まる。
+out=$(run_gate "$FROZEN_HEAD" collecting)
+case "$out" in
+  *"ITERATE_ABANDON=done"*) pass "collecting mismatch abandons before the lost gate is evaluated" ;;
+  *) fail "collecting mismatch abandons before the lost gate is evaluated (出力: $out)" ;;
+esac
+out=$(run_gate "$FROZEN_HEAD" completed)
+case "$out" in
+  *"ITERATE_ABANDON"*) fail "completed mismatch must not be abandoned (出力: $out)" ;;
+  *) pass "completed mismatch is left for the receipt path" ;;
+esac
+
+# helper を実行できないときは証跡の有無を判定できていないので、放棄も再レビューも成立しない。
+make_state "$FROZEN_HEAD" collecting > "$TEST_DIR/state.json"
+out=$( cd "$REPO" && STATE_FILE="$TEST_DIR/state.json" ABANDON_RC=127 \
+  ABANDON_OUT="bash: line 1: flow-state.sh: No such file or directory" bash "$RUNNER" 2>&1 ); rc=$?
+if [ "$rc" -ne 0 ]; then pass "unavailable abandon stops the loop"; else fail "unavailable abandon stops the loop (rc=$rc, 出力: $out)"; fi
+case "$out" in
+  *"ITERATE_ABANDON=unavailable"*) pass "unavailable abandon is reported as such" ;;
+  *) fail "unavailable abandon is reported as such (出力: $out)" ;;
+esac
+case "$out" in
+  *"FELL_THROUGH=1"*) fail "unavailable abandon must not fall through" ;;
+  *) pass "unavailable abandon stops before the lost gate" ;;
+esac
+
+# helper が証跡を検出して拒否したときは、断定してよいのはこの枝だけ。
+out=$( cd "$REPO" && STATE_FILE="$TEST_DIR/state.json" ABANDON_RC=1 \
+  ABANDON_OUT='ERROR: review-cycle: "cycle retains evidence at manifest_path=/x.json"' bash "$RUNNER" 2>&1 ); rc=$?
+case "$out" in
+  *"ITERATE_ABANDON=refused"*) pass "evidence-bearing refusal is reported as refused" ;;
+  *) fail "evidence-bearing refusal is reported as refused (出力: $out)" ;;
+esac
+if [ "$rc" -eq 0 ]; then pass "refused abandon still falls through to the lost gate"; else fail "refused abandon still falls through (rc=$rc)"; fi
 
 # --- 判定不能は HEAD 変更と混同せず停止 -----------------------------------------
 

@@ -64,26 +64,35 @@ def retained_run(state, session):
     `review-abandon` drops an evidence-free cycle and keeps the run, so the
     pairing `current()` requires is absent. The abandonment record is what makes
     that absence legitimate: without it a run with no cycle is corruption, so
-    every field `current()` cross-checks is re-checked against the record here.
+    every check `current()` makes is repeated here against the record instead of
+    the frozen cycle — except the HEAD comparison, since a moved HEAD is the
+    precondition for abandoning at all.
     """
-    run = state.get("review_run")
-    if not isinstance(run, dict) or isinstance(state.get("review_cycle"), dict):
+    if "review_run" not in state or isinstance(state.get("review_cycle"), dict):
         return None
+    run = state["review_run"]
+    require(isinstance(run, dict), "review run must be an object")
     history = state.get("review_cycle_abandoned")
     require(isinstance(history, list) and history,
             "review run without a frozen cycle requires an abandonment record")
     context = history[-1].get("review_context")
-    require(isinstance(context, dict)
-            and run["session_id"] == context["session_id"] == session == state.get("session_id")
+    require(isinstance(context, dict), "abandonment record must carry its review context")
+    for name in ("session_id", "pr_number", "run_id", "issue_number"):
+        require(name in run, "review run is missing " + name)
+    for name in ("session_id", "pr_number", "run_id", "cycle_count"):
+        require(name in context, "abandonment record is missing " + name)
+    require(run["session_id"] == context["session_id"] == session == state.get("session_id")
             and run["pr_number"] == context["pr_number"] == state.get("pr_number")
             and run["run_id"] == context["run_id"]
             and run["issue_number"] == state.get("issue_number")
             and context["cycle_count"] == state.get("cycle_count"),
             "abandonment record does not match the retained review run")
-    require(run["status"] in ("active", "stopped"), "invalid review run status")
+    require(run.get("status") in ("active", "stopped"), "invalid review run status")
     for name in ("clock", "observations", "fixes", "replans"):
         require(isinstance(run.get(name), list), "missing run history: " + name)
-    return run, context
+    require(type(run.get("diagnosed_work_seconds")) in (int, float)
+            and run["diagnosed_work_seconds"] >= 0, "invalid diagnostic clock")
+    return run
 
 
 def observation(run, context):
@@ -134,11 +143,21 @@ def guard_set(old, new):
     # shape into current() would reject every ordinary set, including the one
     # /rite:recover uses to restore `active`.
     retained = retained_run(old, old["session_id"])
-    run, context = retained if retained else current(old, old["session_id"], check_head=False)
+    if retained is not None:
+        run, context = retained, None
+    else:
+        run, context = current(old, old["session_id"], check_head=False)
     require(new.get("session_id") == old["session_id"], "foreign session transition")
     switching = (new.get("issue_number") != old.get("issue_number")
                  or new.get("pr_number") not in (old.get("pr_number"), 0))
     if switching:
+        if retained is not None:
+            # Abandoning strands no verified work — the record states why the cycle
+            # was dropped — so the run follows it into history instead of locking
+            # the session out of every other Issue for good.
+            new["cycle_count"] = 0
+            new["review_run_history"] = old.get("review_run_history", []) + [run]
+            return True
         closed = (run.get("completed_context") == context
                   or run.get("deferred_context") == context)
         require(closed or (old.get("phase") in ("cleanup", "completed") and old.get("active") is False),
@@ -153,6 +172,11 @@ def guard_set(old, new):
             "cannot reset cycle_count within a review run")
     require(new.get("pr_number") == old.get("pr_number"), "cannot detach the active review run PR")
     if new.get("phase") in ("fix", "ready") and new.get("phase") != old.get("phase"):
+        # Refusing is right — an abandoned cycle leaves no verified receipt at this
+        # counter — but the run does exist, so gate()'s "no run" wording would send
+        # the operator looking for the wrong thing.
+        require(retained is None,
+                "abandoned review has no verified receipt; start a new review before fix / ready")
         gate(old, old["session_id"], allow_replan=new.get("phase") == "fix", check_head=False)
     reason = new.get("stop_reason", "")
     if reason.startswith("circuit-breaker:") and run["status"] != "stopped":

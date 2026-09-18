@@ -143,6 +143,10 @@ with tempfile.TemporaryDirectory(prefix="rite-review-abandon-") as tmp:
         refusal = rejected(["review-abandon", "--reason", "should not pass"],
                            "T-04 abandon with " + key)
         check(value in refusal.stderr, "T-04 names the evidence path for " + key)
+        # Callers branch on this exact marker to tell a refusal from an environment
+        # failure, so a refusal that loses it would be read as "helper unavailable".
+        check("ERROR: review-cycle: " in refusal.stderr,
+              "T-04 refusal carries the rejection-only marker for " + key)
 
     # A saved receipt on disk is evidence even when the state forgot its path.
     fresh_collecting(pr=95, issue=95)
@@ -207,9 +211,28 @@ with tempfile.TemporaryDirectory(prefix="rite-review-abandon-") as tmp:
     for mutate, label, diagnostic in (
         (lambda s: s.pop("review_cycle_abandoned"), "missing abandonment record",
          "review run without a frozen cycle requires an abandonment record"),
+        (lambda s: s.__setitem__("review_cycle_abandoned", []), "empty abandonment history",
+         "review run without a frozen cycle requires an abandonment record"),
+        (lambda s: s.__setitem__("review_run", "not-a-dict"), "malformed review run",
+         "review run must be an object"),
+        (lambda s: s["review_cycle_abandoned"][-1].pop("review_context"), "record without a context",
+         "abandonment record must carry its review context"),
+        (lambda s: s["review_run"].pop("issue_number"), "run missing a cross-checked field",
+         "review run is missing issue_number"),
+        (lambda s: s["review_cycle_abandoned"][-1]["review_context"].pop("cycle_count"),
+         "record missing a cross-checked field", "abandonment record is missing cycle_count"),
         (lambda s: s["review_cycle_abandoned"][-1]["review_context"].update(run_id="bogus"),
          "abandonment record from another run",
          "abandonment record does not match the retained review run"),
+        (lambda s: s["review_cycle_abandoned"][-1]["review_context"].update(cycle_count=99),
+         "abandonment record from another cycle",
+         "abandonment record does not match the retained review run"),
+        (lambda s: s["review_run"].update(status="bogus"), "invalid run status",
+         "invalid review run status"),
+        (lambda s: s["review_run"].pop("observations"), "run missing its history",
+         "missing run history: observations"),
+        (lambda s: s["review_run"].update(diagnosed_work_seconds=-1), "negative diagnostic clock",
+         "invalid diagnostic clock"),
     ):
         corrupted = copy.deepcopy(abandoned_state)
         mutate(corrupted)
@@ -229,6 +252,26 @@ with tempfile.TemporaryDirectory(prefix="rite-review-abandon-") as tmp:
     check([r["reason"] for r in history]
           == ["restart with the run retained", "drop again for the corruption probe"],
           "abandonments accumulate in order")
+
+    # Advancing to fix/ready is still refused — an abandoned cycle leaves no
+    # verified receipt — but the run does exist, so the reason must say so.
+    refusal = rejected(["set", "--phase", "fix", "--next", "fix"], "fix transition after abandon")
+    check("abandoned review has no verified receipt" in refusal.stderr,
+          "fix transition after abandon names the missing receipt")
+
+    # T-06 on the shape the real workflow produces. Without this the session is
+    # locked out of every other Issue for good, which is the half of the Issue
+    # the non-stagnation T-06 above cannot observe.
+    flow("set", "--phase", "init", "--issue", 98, "--pr", 0, "--branch", "fix/issue-98-z",
+         "--next", "branch")
+    switched = state()
+    check(switched["issue_number"] == 98 and switched["pr_number"] == 0,
+          "T-06 another issue can be initialized after abandon with a run")
+    check("review_run" not in switched, "the retained run leaves the live slot on switch")
+    check(len(switched["review_run_history"]) == 1, "the retained run is archived, not dropped")
+    check(len(switched["review_cycle_abandoned"]) == 2,
+          "the abandonment history survives the switch")
+    check(switched["cycle_count"] == 0, "the new Issue starts at a zero counter")
 
     # --- regression: abandon must not become a bypass ------------------------
     # Without abandoning, a HEAD-changed collecting cycle is still refused by

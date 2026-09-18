@@ -180,6 +180,12 @@ def guard_set(path, new, directory):
     except (OSError, ValueError) as error:
         # Corruption cannot establish that a run has no retained review history.
         raise InvalidReview("existing state is unreadable; preserve it and recover before set") from error
+    # Carry the abandonment history before the stagnation guard can return: its
+    # switching branch returns early, and a record dropped there would take the
+    # only statement of why a cycle was abandoned with it.
+    history = old.get("review_cycle_abandoned")
+    if history:
+        new["review_cycle_abandoned"] = history
     if importlib.import_module("review-stagnation").guard_set(old, new):
         return new
     require(new.get("phase") != "review" or old.get("phase") == "review",
@@ -206,12 +212,6 @@ def guard_set(path, new, directory):
             # ready's existing HEAD/AC gate owns its reviewed-HEAD exception.
     if cycle:
         new["review_cycle"] = cycle
-    # cmd_set rebuilds the state from its own field list, so an abandonment that
-    # is not carried forward here disappears on the very next set — leaving the
-    # run with no record of why its cycle was dropped.
-    history = old.get("review_cycle_abandoned")
-    if history:
-        new["review_cycle_abandoned"] = history
     return new
 
 
@@ -229,7 +229,7 @@ def start(state, args, directory):
             # An abandoned cycle leaves the run with no frozen counterpart. The
             # abandonment record is what makes that shape legitimate, so validate
             # against it rather than trusting the run alone.
-            resumed_run, _ = stagnation.retained_run(state, args.session)
+            resumed_run = stagnation.retained_run(state, args.session)
             run = resumed_run
         require(run["status"] != "stopped", "review run stopped: " + str(run.get("stop_reason")))
     count = state.get("cycle_count", 0)
@@ -421,8 +421,18 @@ def main():
 
 
 if __name__ == "__main__":
+    # Running this file as __main__ makes importlib load it a second time under
+    # its real name for review-stagnation, so a refusal raised through that copy
+    # is a different class object than the one defined here. Catch both.
+    REFUSAL = (InvalidReview, importlib.import_module("review-cycle").InvalidReview)
     try:
         main()
-    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
+    except REFUSAL as error:
+        # `ERROR: review-cycle:` means "this helper judged the input and refused".
+        # Callers branch on it to tell a refusal from an environment failure, so
+        # nothing but a require() violation may carry it.
         print("ERROR: review-cycle: " + json.dumps(str(error), ensure_ascii=False), file=sys.stderr)
+        sys.exit(1)
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
+        print("ERROR: review-cycle failed: " + json.dumps(str(error), ensure_ascii=False), file=sys.stderr)
         sys.exit(1)
