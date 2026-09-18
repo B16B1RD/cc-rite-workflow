@@ -426,10 +426,38 @@ review_state=$(bash {plugin_root}/hooks/flow-state.sh get --jq-filter .) || exit
 iteration_phase=$(printf '%s' "$review_state" | jq -er ' .phase') || exit 1
 if printf '%s' "$review_state" | jq -e '.phase == "review" and (.cycle_count // 0) > 0 and
   (.review_cycle.status == "collecting" or .review_cycle.status == "completed")' >/dev/null; then
-  marker_emit ITERATE_LOST_GATE ok "cycle=$cc" "INC=held" "REVIEW_RESUME=1"
-  marker_emit ITERATE_CB ok "cycle=$cc" "max=$max_cycles" "INC=held" "REVIEW_RESUME=1"
-  exit 0
+  # 早期 exit は「同じ HEAD の同じ cycle を続ける」ときだけの縮退である。HEAD が動いていれば
+  # その cycle はもう続けられない（review-start / review-finish が HEAD 一致を要求する）ため、
+  # ここで exit すると後段の lost 修復ゲートが構造的に到達不能になる。
+  # SHA 欠落・git 失敗は HEAD 変更と混同せず停止する（証跡の有無を判定できないまま進ませない）。
+  cycle_status=$(printf '%s' "$review_state" | jq -er '.review_cycle.status') || exit 1
+  resume_head_state=undecidable
+  frozen_head=$(printf '%s' "$review_state" | jq -er '.review_cycle.review_context.commit_sha') || {
+    echo "ERROR: 凍結 context に commit_sha がありません（state 破損）。/rite:recover {issue_number} で証跡を確認してください" >&2
+    marker_emit ITERATE_RESUME_HEAD undecidable "cycle=$cc" "reason=frozen_sha_missing"
+    exit 1
+  }
+  current_head=$(git rev-parse HEAD 2>/dev/null) || current_head=""
+  if [ -z "$current_head" ]; then
+    echo "ERROR: 現 HEAD を取得できませんでした。HEAD 変更と区別できないため停止します" >&2
+    marker_emit ITERATE_RESUME_HEAD undecidable "cycle=$cc" "reason=git_head_failed"
+    exit 1
+  fi
+  if [ "$current_head" = "$frozen_head" ]; then
+    resume_head_state=match
+    marker_emit ITERATE_RESUME_HEAD match "cycle=$cc" "status=$cycle_status" "head=$current_head"
+    marker_emit ITERATE_LOST_GATE ok "cycle=$cc" "INC=held" "REVIEW_RESUME=1"
+    marker_emit ITERATE_CB ok "cycle=$cc" "max=$max_cycles" "INC=held" "REVIEW_RESUME=1"
+    exit 0
+  fi
+  # 不一致は早期 exit せず後段へ落とす。`collecting` は lost 修復ゲートの abandon 分岐が、
+  # `completed` は既存の receipt 検証経路がそれぞれ引き取る。
+  resume_head_state=changed
+  marker_emit ITERATE_RESUME_HEAD changed "cycle=$cc" "status=$cycle_status" \
+    "frozen=$frozen_head" "head=$current_head"
 fi
+# 再開ガードに入らなかった経路（review_cycle なし等）では照合そのものが無い。
+resume_head_state=${resume_head_state:-absent}
 
 
 # 収束トレンド判定。永続レビュー JSON から現 run の per-cycle blocking 列を復元し、
@@ -531,9 +559,28 @@ if [ "$lost_gate" = fire ]; then
     echo "WARNING: lost 修復ゲート発火時の handoff クリアに失敗（handoff が残り Stop hook が /rite:pr-review を再注入してゲートを迂回する恐れ）" >&2
   fi
   [ -n "$fire_out" ] && printf '%s\n' "$fire_out" | head -5 | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+  # HEAD が動いた collecting cycle は証跡ゼロなら放棄する。放棄しないまま pr-review を呼ぶと
+  # review-start が HEAD 一致を要求して再び停止し、修復ゲートが空転する。counter は据え置く。
+  # 証跡があるときは helper が拒否して停止するので、ここで判定を先取りしない（fail-loud）。
+  abandon_state=skipped
+  if printf '%s' "$review_state" | jq -e '.review_cycle.status == "collecting"' >/dev/null \
+    && [ "$resume_head_state" = changed ] \
+    && printf '%s' "$review_state" | jq -e '
+      (.review_cycle.manifest_path // "") == "" and (.review_cycle.content_file // "") == ""
+      and (.review_cycle.result_path // "") == ""' >/dev/null; then
+    if abandon_out=$(LC_ALL=C bash {plugin_root}/hooks/flow-state.sh review-abandon \
+      --reason "HEAD changed before any evidence was recorded (lost gate)" 2>&1); then
+      abandon_state=done
+    else
+      abandon_state=refused
+      echo "WARNING: 未完了 cycle の放棄が拒否されました。証跡が残っているため /rite:recover {issue_number} で回収してください" >&2
+    fi
+    [ -n "$abandon_out" ] && printf '%s\n' "$abandon_out" | head -5 | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+  fi
   marker_emit ITERATE_LOST_GATE fire "lost=$trend_lost" "cycle=$cc" "max=$max_cycles" \
     "TREND=$trend_series" "TREND_VERDICT=$trend_verdict" "TREND_REASON=$trend_reason" \
-    "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "INC=held" "HANDOFF_CLEAR=$handoff_clear"
+    "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "INC=held" "HANDOFF_CLEAR=$handoff_clear" \
+    "ABANDON=$abandon_state"
   marker_emit ITERATE_CB ok "cycle=$cc" "max=$max_cycles" \
     "TREND=$trend_series" "TREND_VERDICT=$trend_verdict" "TREND_REASON=$trend_reason" \
     "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "INC=held"

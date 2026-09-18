@@ -463,6 +463,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 | `collecting`、manifest / content が未登録 | 固定名簿と context から pr-review 4.0 のディレクトリを復元し manifest / raw を読む。成功分を保持し、不足 reviewer だけ同一 cycle で再取得する |
 | `collecting`、`manifest_path` / `content_file` あり | 下の `review-finish` を再実行する。保存前・保存直後・完了記録前の中断も同じ入力を使う。`pending_id` は helper が保存済みの値を再利用する |
 | `completed`、最終 gate 未完了 | `result_path` を読み、同じ `review-finish` で保存結果を再検証してから pr-review ステップ 6 の残作業〜8 の全 gate へ戻る。新 cycle や fix / ready を直接始めない |
+| `collecting`、HEAD 不一致、manifest / content / result のいずれも未登録 | `flow-state.sh review-abandon --reason "<理由>"` で空の記録を放棄し、現 HEAD で `review-start` から新しい cycle を始める。counter と session / Issue / PR / branch / worktree の対応は保持される。証跡があれば helper が拒否するので、その場合は上の 2 行へ戻る |
 | `review_cycle` なし | 既存の iterate の lost 修復と新規開始手順へ。過去の保存 JSON だけを新 cycle の完了証跡にしない |
 
 ```bash
