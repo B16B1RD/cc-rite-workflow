@@ -337,7 +337,7 @@ with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
     assert 'deferred_context' not in retained_run
 
     # A HEAD-changed collecting cycle with no evidence must reach the real
-    # review-abandon through the documented block, not just report the mismatch.
+    # review-abandon immediately after the resume guard, before the lost gate.
     state_path.unlink()
     (work / 'rite-config.yml').write_text('safety:\n  max_review_cycles: 15\n')
     for stale in (work / '.rite/review-results').glob('*.json'):
@@ -356,7 +356,7 @@ with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
     moved = execute(iterate_block)
     assert 'ITERATE_RESUME_HEAD=changed' in moved.stdout, 'resume gate hid the HEAD change'
     assert 'REVIEW_RESUME=1' not in moved.stdout, 'resume gate still exited early'
-    assert 'ABANDON=done' in moved.stdout, 'lost gate did not reach review-abandon'
+    assert 'ABANDON=done' in moved.stdout, 'resume guard did not reach review-abandon'
     assert 'review_cycle' not in state(), 'the empty cycle survived the abandon branch'
     assert state()['review_cycle_abandoned'][-1]['review_context'] == abandoned_context
     assert state()['cycle_count'] == 1, 'abandon moved the counter'

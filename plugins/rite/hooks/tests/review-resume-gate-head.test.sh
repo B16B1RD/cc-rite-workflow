@@ -196,6 +196,11 @@ case "$out" in
 esac
 if [ "$rc" -eq 0 ]; then pass "refused abandon still falls through to the lost gate"; else fail "refused abandon still falls through (rc=$rc)"; fi
 
+case "$out" in
+  *"FELL_THROUGH=1"*) pass "refused abandon reaches the lost gate" ;;
+  *) fail "refused abandon reaches the lost gate (出力: $out)" ;;
+esac
+
 # --- 判定不能は HEAD 変更と混同せず停止 -----------------------------------------
 
 jq -n '{phase:"review", cycle_count:1,
