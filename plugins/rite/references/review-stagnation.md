@@ -104,7 +104,7 @@ rm "$clock_file"
 
 `review-fix-scope-check.sh verify --kind all` の成功時に検証済み tree fingerprint と対象根因を保存する。次の `review-start` で新 HEAD・clean tree と検証済み内容の一致を検査して修正 HEAD を確定し、再発判定に用いる。コマンドの成功申告、未検証の commit、別 context の結果を修正履歴に加えない。
 
-証跡を 1 つも持たない `collecting` cycle を `flow-state.sh review-abandon --reason <理由>` で放棄した run は、cycle を失っても継続する。放棄記録（`review_cycle_abandoned` の最終要素）が session・PR・`run_id`・counter で run と一致する限り、cycle 不在の run を通常の `set` と `review-start` が受理する。再試行は同じ run・同じ counter・新しい HEAD で凍結し、`advance()` は呼ばない — 放棄された cycle は receipt も検証済み修正も持たないため計上する修正が無く、counter を進めると観測列に穴が開いて連続 cycle を要求する再発判定と矛盾する。一致しない記録や記録の無い cycle 不在は破損として全書き込みを拒否する。放棄後は検証済み receipt が無いため `fix` / `ready` への遷移も拒否し、別 Issue / PR へ切り替えるときは run を `review_run_history` へ退避する。退避の時点で live の counter は 0 に戻る（切替先は新しい run として数え直す）が、counter は退避する run に同梱されるため失われない。その PR へ戻ると同じ run が live に復元され、`run_id`・counter・観測・見直し履歴・再試行権の使用履歴をそのまま継続する。復元の対象は `close` / `defer` で終了が確定していない run に限る — 終了した run の counter と観測は記録した結論に使い切られており、戻すとその予算が次のレビューへ持ち越される。
+証跡を 1 つも持たない `collecting` cycle を `flow-state.sh review-abandon --reason <理由>` で放棄した run は、cycle を失っても継続する。放棄記録（`review_cycle_abandoned` のうち当該 `run_id` の最新要素。選択時は他 run の記録を除外し、最新要素が不正でも過去の要素へ戻らない）が session・PR・`run_id`・counter で run と一致する限り、cycle 不在の run を通常の `set` と `review-start` が受理する。再試行は同じ run・同じ counter・新しい HEAD で凍結し、`advance()` は呼ばない — 放棄された cycle は receipt も検証済み修正も持たないため計上する修正が無く、counter を進めると観測列に穴が開いて連続 cycle を要求する再発判定と矛盾する。一致しない記録や記録の無い cycle 不在は破損として全書き込みを拒否する。放棄後は検証済み receipt が無いため `fix` / `ready` への遷移も拒否し、別 Issue / PR へ切り替えるときは run を `review_run_history` へ退避する。退避の時点で live の counter は 0 に戻る（切替先に復元対象があればその counter を戻す）が、counter は退避する run に同梱されるため失われない。その PR へ戻ると同じ run が live に復元され、`run_id`・counter・観測・見直し履歴・再試行権の使用履歴をそのまま継続する。停止した run は過去の `close` / `defer` 記録にかかわらず復元する。停止していない run はそれらの記録が無い場合に復元し、cycle 不在なら当該 run の最新放棄記録で検証する。
 
 停止は caller の既存失敗 sentinel へ返し、batch は cursor を当該 Issue に保ち `active=false` にする。PR・branch・作業差分・履歴・最後の検証済み状態を保持し、停止理由と復旧工程を報告する。同一 run の再開は保存済み判定と未完工程から続け、停止履歴を消して新しい見直し枠を作らない。
 
@@ -112,17 +112,17 @@ rm "$clock_file"
 
 停止は「この run でのレビュー継続を止める」ことであり、「この run に触れる操作をすべて止める」ことではない。停止した run でレビューを進める操作は次の 2 つだけで、どちらも停止理由を消さない。
 
-**抜ける（全停止理由で可）**: 別 Issue 番号の `set` をそのまま実行する。旧 run は `review_run_history` へ退避され、live state の `cycle_count` は 0 から始まる。停止は「この run はもう cycle を積まない」判断が下りた状態なので、完了・保留と同格に扱ってセッションを手放す。ownership cleanup を前置きしても同じ結果になる。
+**抜ける（全停止理由で可）**: 別 Issue 番号の `set` をそのまま実行する。旧 run は `review_run_history` へ退避される。切替先に復元対象があればその counter を戻し、無ければ live state の `cycle_count` は 0 から始まる。停止は「この run はもう cycle を積まない」判断が下りた状態なので、完了・保留と同格に扱ってセッションを手放す。ownership cleanup を前置きしても同じ結果になる。
 
-停止していない run は従来どおり完了・保留・ownership cleanup のいずれかを要求される。この緩和は停止した run に限る。
+停止していない run は、上記の有効な放棄記録を持つ cycle 不在の run を除き、従来どおり完了・保留・ownership cleanup のいずれかを要求される。
 
-退避はセッションを手放すだけで停止を帳消しにしない。退避された記録は run（`status`・`stop_reason`・観測・修正履歴・使用済みの再試行権）に加えて、退避時点の `cycle_count` と、凍結 `review_cycle` があればそれも保持する。**同じ Issue 番号・同じ PR 番号へ戻る `set`（live state に run が無い状態から）は、その PR の退避記録のうち最も新しい停止済みのものを、そのまま復元する**（完了・保留で終わった run は復元しない — counter と観測は既に下りた判定に使い切っており、戻すと次のレビューへブレーカー予算を持ち越す） — 新しい run を作り直さないので、`review-start` は復元された停止理由で拒否され続け、counter もゼロから積み直されない。往復はどの停止理由でも解除にならない。復元された記録は履歴から取り除かれる。
+退避はセッションを手放すだけで停止を帳消しにしない。退避された記録は run（`status`・`stop_reason`・観測・修正履歴・使用済みの再試行権）に加えて、退避時点の `cycle_count` と、凍結 `review_cycle` があればそれも保持する。**同じ Issue 番号・同じ PR 番号へ戻る `set` は、その PR の退避記録を新しい順に検査し、停止済み、または完了・保留の記録が無い run を復元する**（停止済みなら過去の完了・保留記録が残っていても復元対象） — 新しい run を作り直さないので、停止した run の `review-start` は復元された停止理由で拒否され続け、counter もゼロから積み直されない。往復はどの停止理由でも解除にならない。復元された記録は履歴から取り除かれる。
 
-**戻り方**: 復元を起こすのは Issue を切り替える `set`（PR 番号 0）ではなく、PR 番号と Issue 番号が揃う取り込み `set` である。したがって退避した PR へ戻る順序は、まず元 Issue へ着手し、続けてその PR の iterate へ入る 2 手になる。PR 番号だけを指定して別 Issue の state から入ると、退避記録の Issue 番号が一致しないため `set` が `archived review run for this PR belongs to another Issue or session` で止まる。
+**戻り方**: PR 番号 0 で元 Issue へ着手し、その PR の iterate で Issue 番号と PR 番号を揃えると復元される。両番号を指定して直接切り替える `set` も、現在の run を退避してから切替先の run を復元する。切替先の復元に失敗した場合は退避も書き込まれず、元の state を保持する。PR 番号だけを指定して退避記録と異なる Issue の state から入ると、`archived review run for this PR belongs to another Issue or session` で拒否する。
 
-**復元直後の順序**: 復元された run は停止したままで、セッションも退避前と同じく非 active に戻る。通常の phase 更新はそこから拒否される（停止直後とまったく同じ挙動で、復元が新たに課す制約ではない）。先に再試行権を発行すれば、以後は通常の run として進む。
+**復元直後の順序**: 停止した run を復元した場合は停止したままで、セッションも退避前と同じく非 active に戻る。通常の phase 更新はそこから拒否される（停止直後とまったく同じ挙動で、復元が新たに課す制約ではない）。再試行条件を満たして権利を発行できた場合だけ、以後は通常の run として進む。active な retained run の復元では停止理由や `active=false` を追加せず、同じ run・counter で `review-start` へ進む。
 
-**復元できない退避記録は `set` を落とす**。同じ PR の停止した記録が、対の保存より前に作られていて `cycle_count` と凍結 `review_cycle` を持たない場合、および Issue 番号・`session_id` が一致しない場合は、読み飛ばさず停止理由を示して `set` を拒否する。読み飛ばすと、退避が差し止めているはずの新しい run をそのまま渡すことになる。停止していない記録は差し止めるものが無いので従来どおり読み飛ばす。
+**復元できない退避記録は `set` を落とす**。同じ PR の停止した記録が、対の保存より前に作られていて `cycle_count` と凍結 `review_cycle` を持たない場合、および Issue 番号・`session_id` が一致しない場合は、読み飛ばさず停止理由を示して `set` を拒否する。読み飛ばすと、退避が差し止めているはずの新しい run をそのまま渡すことになる。active な未終了 run も、退避時の counter や必要な放棄記録を検証できなければ拒否する。停止しておらず完了・保留の記録がある run のみ読み飛ばす。
 
 保持するのは `cycle_count` そのものであって凍結 context から導出した値ではない。凍結 `review_cycle` の有無に依らず counter は退避と復元を往復する。
 
@@ -133,7 +133,7 @@ rm "$clock_file"
 1. `stop_reason` が `circuit-breaker:divergence` である。`circuit-breaker:max-cycles` と `stagnation:*` は再開できない
 2. 停止時の context・HEAD・receipt・観測が一致し、変更されていない
 3. 全 blocking 指摘に、通常の fix 経路と同じ計画内容の検証（状態遷移の許可判定を除く）を通る修正計画と検証項目が対応している。`review-fix-scope-check.sh check` そのものを前段として実行する必要はない — 同コマンドは停止した run では状態遷移の許可判定で拒否される
-4. その run で再試行権が未使用である。権利は run に付いて回り、退避と復元を往復しても使用済みのまま戻る（完了・保留で終わった run は復元されないため、その PR の次のレビューは新しい run として始まる）
+4. その run で再試行権が未使用である。権利は run に付いて回り、退避と復元を往復しても使用済みのまま戻る（停止しておらず完了・保留の記録がある run は復元対象外。過去に保留していても、その後停止した run の再試行権は復元される）
 
 発行は条件をすべて検証したあとに一度だけ書き込む。1 つでも崩れていれば権利を発行せず、run は `stopped` のまま残る。人間の承認は条件に含めない。
 

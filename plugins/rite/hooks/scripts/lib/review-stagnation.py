@@ -76,8 +76,13 @@ def retained_run(state, session):
     history = state.get("review_cycle_abandoned")
     require(isinstance(history, list) and history,
             "review run without a frozen cycle requires an abandonment record")
-    context = history[-1].get("review_context")
-    require(isinstance(context, dict), "abandonment record must carry its review context")
+    require(all(isinstance(record, dict) and isinstance(record.get("review_context"), dict)
+                for record in history), "abandonment record must carry its review context")
+    # Select by run identity first, then validate the newest record. Never fall
+    # back to an older valid context when this run's latest record is invalid.
+    context = next((record["review_context"] for record in reversed(history)
+                    if record["review_context"].get("run_id") == run.get("run_id")), None)
+    require(context is not None, "abandonment record does not match the retained review run")
     for name in ("session_id", "pr_number", "run_id", "issue_number"):
         require(name in run, "review run is missing " + name)
     for name in ("session_id", "pr_number", "run_id", "cycle_count"):
@@ -136,16 +141,10 @@ def gate(state, session, allow_replan=False, check_head=True):
 
 
 def park(old, run):
-    """The run plus what a set would otherwise drop, so a return can restore it.
+    """Preserve the run, counter and optional cycle across an Issue switch.
 
-    `cycle_count` is stored outright rather than read back from the frozen
-    cycle's context, and the cycle itself is stored only when there is one. A run
-    that drops an evidence-free cycle keeps no frozen counterpart, and that shape
-    still has a counter to bring home; deriving the counter from the cycle would
-    leave it the one exit with no way back. On this module's own paths the cycle
-    is always present — current() requires the pairing before park() is reached —
-    so neither branch is exercised here. Keep them: they cost two untaken
-    branches, and the caller that parks the unpaired shape needs no second guard.
+    A retained run has no frozen cycle, so its counter must be saved separately.
+    Its abandonment record remains in the session history for restore validation.
     """
     parked = dict(run, parked=dict(cycle_count=old.get("cycle_count", 0)))
     frozen = old.get("review_cycle")
@@ -166,44 +165,36 @@ def restore(old, new):
         entry = history[index]
         if not (isinstance(entry, dict) and entry.get("pr_number") == new.get("pr_number")):
             continue
-        # What disqualifies a run is a settled end, not the absence of a stop.
-        # close and defer are what settle one, and they spend its counter and
-        # observations on the outcome they record; handing those back would carry
-        # its breaker budget into the next round of review instead of starting
-        # one. A run that left unsettled — stopped, or parked mid-flight after its
-        # cycle was abandoned — still owes this PR the count it reached.
-        if entry.get("completed_context") is not None or entry.get("deferred_context") is not None:
-            continue
-        # Reading the exclusion the other way around widens what reaches the
-        # restore: anything that is not settled now qualifies, including a status
-        # this module never writes. Name the two it does.
         require(entry.get("status") in ("active", "stopped"),
                 "archived review run for this PR has an unknown status: " + str(entry.get("status")))
+        # Historical close/defer markers cannot discharge a later stop. Active
+        # settled runs keep the existing exclusion; stopped runs retain all debt.
+        if entry["status"] != "stopped" and (entry.get("completed_context") is not None
+                                             or entry.get("deferred_context") is not None):
+            continue
         # Passing over a parked stop would hand back exactly the fresh run the
         # parking exists to withhold, so a stop this PR cannot restore stops the
         # set rather than falling through to one.
         require(isinstance(entry.get("parked"), dict),
                 "archived review run for this PR was parked without its frozen cycle and counter; "
-                "its stop cannot be restored in this session")
+                "its review state cannot be restored in this session")
         require(entry.get("issue_number") == new.get("issue_number")
                 and entry.get("session_id") == new.get("session_id"),
                 "archived review run for this PR belongs to another Issue or session")
-        # An active run parked without its cycle is the shape review-abandon
-        # produces, and only that. Restoring it on the strength of the missing
-        # cycle alone would let a truncated archive stand in for a run that never
-        # reached a verdict, so require the record that says why the cycle is gone.
-        if entry["status"] == "active" and not isinstance(entry["parked"].get("review_cycle"), dict):
-            require(any(isinstance(record, dict)
-                        and isinstance(record.get("review_context"), dict)
-                        and record["review_context"].get("run_id") == entry.get("run_id")
-                        for record in old.get("review_cycle_abandoned", [])),
-                    "archived review run for this PR has no frozen cycle and no abandonment record")
         run = dict(entry)
         parked = run.pop("parked")
         new["review_run"] = run
         new["cycle_count"] = parked["cycle_count"]
         if isinstance(parked.get("review_cycle"), dict):
             new["review_cycle"] = parked["review_cycle"]
+        elif run["status"] == "active":
+            # Use the same full validation as every later retained consumer,
+            # with the newest abandonment belonging to this run, not any match.
+            require(isinstance(old.get("review_cycle_abandoned"), list)
+                    and old["review_cycle_abandoned"],
+                    "archived review run for this PR has no frozen cycle and no abandonment record")
+            retained_run(dict(new, review_cycle_abandoned=old["review_cycle_abandoned"]),
+                         new["session_id"])
         # Every other path that records a stop deactivates the session in the same
         # write. Restoring the reason without the flag would leave a combination
         # no stop produces, and the consumers that branch on `active` would read
@@ -247,6 +238,8 @@ def guard_set(old, new):
             # refuses an archived run that arrives without its parked wrapper.
             new["cycle_count"] = 0
             new["review_run_history"] = old.get("review_run_history", []) + [park(old, run)]
+            # A direct PR switch must restore its destination in this same write.
+            restore(new, new)
             return True
         closed = (run.get("completed_context") == context
                   or run.get("deferred_context") == context)
@@ -268,6 +261,7 @@ def guard_set(old, new):
         # optional caller flag, authorizes this new run's initial zero.
         new["cycle_count"] = 0
         new["review_run_history"] = old.get("review_run_history", []) + [park(old, run)]
+        restore(new, new)
         return True
     require(new.get("cycle_count", 0) == old.get("cycle_count", 0),
             "cannot reset cycle_count within a review run")

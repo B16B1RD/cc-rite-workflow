@@ -801,7 +801,16 @@ finally:
 
 f = Fixture()
 try:
-    diverge(f)
+    # A historical defer marker remains when a later cycle stops this run.
+    f.cycle(roots=['input defect'])
+    f.flow('review-defer')
+    deferred = f.state()['review_run']['deferred_context']
+    f.fix()
+    f.cycle(roots=('input defect', 'second defect'))
+    f.fix()
+    f.cycle(roots=('input defect', 'second defect', 'third defect'), seconds=1801)
+    check(f.state()['review_run']['deferred_context'] == deferred,
+          'T-08: real defer survives the later divergence')
     f.plan()
     retry(f)
     f.cycle(roots=['input defect'])
@@ -815,6 +824,38 @@ try:
           'T-08: returning to the PR brings the spent grant back with the run')
     check(isinstance(f.state().get('review_cycle'), dict),
           'T-08: returning also brings back the frozen cycle the grant is checked against')
+    restored = f.state()
+    check(restored['review_run'] == archived, 'T-08: stale defer loses no run history on restore')
+    round_trip(f, restored['stop_reason'])
+    check(f.state()['review_run'] == archived, 'T-08: repeated restore preserves the spent retry')
+    f.reject(lambda: f.start(ok=False), 'T-08: restored stop refuses a fresh review')
+    # Direct switching must restore before a new review can mint another run.
+    stopped_snapshot = f.state()
+    f.flow('set', '--phase', 'pr', '--next', 'review', '--issue', 43, '--pr', 72)
+    f.start()
+    f.flow('review-abandon', '--reason', 'second PR retained')
+    retained_snapshot = f.state()
+    corrupted = copy.deepcopy(retained_snapshot)
+    corrupted['review_run_history'][-1].pop('parked')
+    dump(f.state_path, corrupted)
+    f.reject(lambda: f.flow('set', '--phase', 'pr', '--next', 'review', '--issue', 42, '--pr', 71, ok=False),
+             'T-08: failed direct restore preserves the source run and all history')
+    dump(f.state_path, retained_snapshot)
+    f.flow('set', '--phase', 'pr', '--next', 'review', '--issue', 42, '--pr', 71)
+    for key in ('review_run', 'review_cycle', 'cycle_count', 'stop_reason', 'active'):
+        check(f.state()[key] == stopped_snapshot[key], 'T-08: retained-to-stopped restores ' + key)
+    f.reject(lambda: f.start(ok=False), 'T-08: direct return cannot bypass the stop')
+    f.flow('set', '--phase', 'pr', '--next', 'review', '--issue', 43, '--pr', 72)
+    for key in ('review_run', 'cycle_count'):
+        check(f.state()[key] == retained_snapshot[key], 'T-08: stopped-to-retained restores ' + key)
+    check(not f.state().get('stop_reason') and f.state().get('active') is not False,
+          'T-08: stopped source does not poison active destination')
+    f.flow('set', '--phase', 'pr', '--next', 'resume')
+    f.start()
+    f.clock(60)
+    f.flow('review-abandon', '--reason', 'direct restore consumers passed')
+    f.flow('set', '--phase', 'pr', '--next', 'review', '--issue', 42, '--pr', 71)
+    check(f.state()['review_run'] == archived, 'T-08: direct roundtrips preserve used retry and observations')
     f.plan()
     f.reject(lambda: retry(f, ok=False), 'T-08: the restored run cannot be granted another retry')
 finally:

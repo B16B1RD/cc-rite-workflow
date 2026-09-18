@@ -463,7 +463,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 | 状態 | 再開位置 |
 |---|---|
 | `collecting`、HEAD 不一致、証跡（manifest / content / result、保存済み receipt）を 1 つも持たない | `flow-state.sh review-abandon --reason "<理由>"` で空の記録を放棄し、現 HEAD で `review-start` から新しい cycle を始める。`review_run` と session / Issue / PR / branch / worktree の対応は保持され、`review_run` を持つ run では counter も据え置かれる（run を持たない standalone レビューでは `review-start` が counter を進める） |
-| `collecting`、HEAD 不一致、証跡がある | 放棄は拒否され、helper が証跡のパスを示す。`review-finish` も HEAD 一致を要求するため再検証は成立しない。示されたパスを読むだけに留め、証跡を保持して停止する |
+| `collecting`、HEAD 不一致、証跡がある | 放棄は拒否される。helper の診断を確認し、証跡のパスが示された場合はそのファイルを読む。`review-finish` も HEAD 一致を要求するため再検証は成立せず、証跡を保持して停止する |
 | `collecting`、HEAD 一致、manifest / content が未登録 | 固定名簿と context から pr-review 4.0 のディレクトリを復元し manifest / raw を読む。成功分を保持し、不足 reviewer だけ同一 cycle で再取得する |
 | `collecting`、HEAD 一致、`manifest_path` / `content_file` あり | 下の `review-finish` を再実行する。保存前・保存直後・完了記録前の中断も同じ入力を使う。`pending_id` は helper が保存済みの値を再利用する |
 | `completed`、最終 gate 未完了、HEAD 一致 | `result_path` を読み、同じ `review-finish` で保存結果を再検証してから pr-review ステップ 6 の残作業〜8 の全 gate へ戻る。新 cycle や fix / ready を直接始めない |

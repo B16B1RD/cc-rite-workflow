@@ -221,7 +221,7 @@ with tempfile.TemporaryDirectory(prefix="rite-review-abandon-") as tmp:
          "review run is missing issue_number"),
         (lambda s: s["review_cycle_abandoned"][-1]["review_context"].pop("cycle_count"),
          "record missing a cross-checked field", "abandonment record is missing cycle_count"),
-        (lambda s: s["review_cycle_abandoned"][-1]["review_context"].update(run_id="bogus"),
+        (lambda s: [r["review_context"].update(run_id="bogus") for r in s["review_cycle_abandoned"]],
          "abandonment record from another run",
          "abandonment record does not match the retained review run"),
         # The equality chain cross-checks five fields; the two below and the run's
@@ -332,6 +332,12 @@ with tempfile.TemporaryDirectory(prefix="rite-review-abandon-") as tmp:
         (lambda s: s["review_run_history"][-1].update(status="bogus"),
          "archived run with an unknown status",
          "archived review run for this PR has an unknown status"),
+        (lambda s: s["review_run_history"][-1].update(status="bogus", deferred_context={}),
+         "settled archived run with an unknown status",
+         "archived review run for this PR has an unknown status"),
+        (lambda s: s["review_run_history"][-1].pop("parked"),
+         "legacy active archive without parked evidence",
+         "was parked without its frozen cycle and counter"),
         (lambda s: s["review_cycle_abandoned"].clear(),
          "active archived run with no abandonment record",
          "archived review run for this PR has no frozen cycle and no abandonment record"),
@@ -345,6 +351,59 @@ with tempfile.TemporaryDirectory(prefix="rite-review-abandon-") as tmp:
     dump(state_path, parked_state)
     flow("set", "--phase", "pr", "--issue", 99, "--pr", 99, "--branch", "fix/issue-99-x",
          "--next", "review")
+
+    # Two PRs each retain a run: the global last abandonment belongs to B,
+    # but returning to A must use A's latest record and remain usable.
+    expected_a = copy.deepcopy(state()["review_run"])
+    expected_a_count = state()["cycle_count"]
+    flow("set", "--phase", "init", "--issue", 98, "--pr", 0, "--next", "branch")
+    flow("set", "--phase", "pr", "--issue", 98, "--pr", 98, "--next", "review")
+    flow("review-start", "--selection", selection, "--stagnation")
+    flow("review-abandon", "--reason", "B also retained")
+    expected_b = copy.deepcopy(state()["review_run"])
+    expected_b_count = state()["cycle_count"]
+    flow("set", "--phase", "init", "--issue", 99, "--pr", 0, "--next", "branch")
+    both_parked = state()
+    # Return to B first, then switch directly to A (no pr=0 interlude).
+    flow("set", "--phase", "pr", "--issue", 98, "--pr", 98, "--next", "review")
+    flow("set", "--phase", "pr", "--issue", 99, "--pr", 99, "--next", "review")
+    check(state().get("review_run") == expected_a and state()["cycle_count"] == expected_a_count,
+          "direct retained-to-retained switch restores the existing run")
+    flow("set", "--phase", "pr", "--next", "resume")
+    flow("set", "--phase", "init", "--issue", 98, "--pr", 0, "--next", "branch")
+    for pr, expected, count in ((99, expected_a, expected_a_count), (98, expected_b, expected_b_count)):
+        flow("set", "--phase", "pr", "--issue", pr, "--pr", pr, "--next", "review")
+        check(state()["review_run"] == expected and state()["cycle_count"] == count,
+              "two PR roundtrip keeps the complete run and counter")
+        flow("set", "--phase", "pr", "--next", "resume")
+        flow("review-start", "--selection", selection, "--stagnation")
+        frozen = state()["review_cycle"]["review_context"]
+        check(frozen["run_id"] == expected["run_id"] and frozen["cycle_count"] == count,
+              "two PR roundtrip starts the same run and counter")
+        dump(clock, dict(review_context=frozen, segment_id="roundtrip-" + str(pr), kind="work",
+                         started_at="2026-01-02T00:00:00Z", ended_at="2026-01-02T00:01:00Z"))
+        flow("review-clock", "--input", clock)
+        flow("review-abandon", "--reason", "roundtrip consumer complete")
+        flow("set", "--phase", "init", "--issue", 98 if pr == 99 else 99,
+             "--pr", 0, "--next", "branch")
+
+    # A newer invalid record for A must not be skipped in favor of its older
+    # valid record, either while restoring or by a subsequent retained consumer.
+    for field, value in (("cycle_count", 999), ("session_id", "foreign"), ("pr_number", 123)):
+        corrupted = copy.deepcopy(both_parked)
+        record = copy.deepcopy(next(r for r in reversed(corrupted["review_cycle_abandoned"])
+                                    if r["review_context"]["run_id"] == expected_a["run_id"]))
+        record["review_context"][field] = value
+        corrupted["review_cycle_abandoned"].append(record)
+        dump(state_path, corrupted)
+        rejected(["set", "--phase", "pr", "--issue", 99, "--pr", 99, "--next", "review"],
+                 "restore rejects latest per-run invalid " + field)
+        live = copy.deepcopy(corrupted)
+        live.update(issue_number=99, pr_number=99, cycle_count=expected_a_count,
+                    review_run=copy.deepcopy(expected_a), phase="pr")
+        dump(state_path, live)
+        rejected(["set", "--phase", "pr", "--next", "resume"],
+                 "retained consumer rejects latest per-run invalid " + field)
 
     # --- regression: abandon must not become a bypass ------------------------
     # Without abandoning, a HEAD-changed collecting cycle is still refused by

@@ -647,7 +647,7 @@ fi
 | `ITERATE_RESUME_HEAD` | アクション |
 |---|---|
 | `match` | 凍結 context の HEAD と現 HEAD が一致。従来どおり `REVIEW_RESUME=1` で早期 exit する |
-| `changed` | 不一致。早期 exit せず後段へ落ちる。`status=collecting` は直後に放棄を試みる（下記 `ITERATE_ABANDON`）。`status=completed` はそのまま後段の新規 cycle 経路へ進む — `review_run` を持つ run では `review-start` が停滞ゲートで止め、run を持たない（関連 Issue の無い）PR では止まらず現 HEAD で新しい cycle を凍結する |
+| `changed` | 不一致。早期 exit せず後段へ落ちる。`status=collecting` は直後に放棄を試みる（下記 `ITERATE_ABANDON`）。`status=completed` はそのまま後段の新規 cycle 経路へ進む — `review_run` を持つ run では `review-start` が保存済み receipt・観測と検証済み修正（`pending_fix`）、新 HEAD・clean tree の一致など既存の advance 条件を検査し、満たせば次 cycle へ進み、不足すれば停止する。run を持たない（関連 Issue の無い）PR では止まらず現 HEAD で新しい cycle を凍結する |
 | `undecidable` | 凍結 `commit_sha` 欠落（`reason=frozen_sha_missing`）または `git rev-parse HEAD` 失敗（`reason=git_head_failed`）。HEAD 変更と混同せず `exit 1` で停止する |
 
 `ITERATE_ABANDON` は再開ガード直後の放棄の結果。`ITERATE_RESUME_HEAD=changed` かつ `status=collecting` のときだけ emit する。**lost 修復ゲートより前に評価する** — 後段に置くと前 cycle の JSON が残る経路で放棄されず、どの道も `review-start` の HEAD 一致要求で止まる:
@@ -655,8 +655,8 @@ fi
 | `ITERATE_ABANDON` | アクション |
 |---|---|
 | `done` | 証跡ゼロの cycle を放棄した。`review_cycle` は消え、counter・`review_run`・identity は保持される。後段は通常どおり進み、新しい cycle が現 HEAD を凍結する |
-| `refused` | helper が証跡を検出して拒否した。`review_cycle` は残るので後段の `review-start` が fail-loud で止める。`/rite:recover {issue_number}` で回収する |
-| `unavailable` | helper 自体を実行できなかった（不在 / プラグイン破損 / 版 skew）。証跡の有無を判定できておらず放棄も再レビューも成立しないため、その場で `exit 1` する |
+| `refused` | helper が放棄の前提を満たさず拒否した（証跡あり、名簿・context 不整合など）。診断を確認する。`review_cycle` は残るので後段の `review-start` が fail-loud で止める。`/rite:recover {issue_number}` で回収する |
+| `unavailable` | helper 自体を実行できなかった（不在 / プラグイン破損 / 版 skew）。証跡の有無を判定できておらず放棄も再レビューも成立しないため、その場で `exit 1` する。この分岐は handoff の clear を試み、成否を `HANDOFF_CLEAR` に出す。`refused` にはこの marker は出ない |
 
 | `ITERATE_LOST_GATE` | アクション |
 |---------|-----------|
