@@ -109,14 +109,19 @@ def guard_set(old, new):
     if switching:
         closed = (run.get("completed_context") == context
                   or run.get("deferred_context") == context)
-        require(closed or (old.get("phase") in ("cleanup", "completed") and old.get("active") is False),
+        # A stop is already the decision that this run takes no further cycle, so
+        # it releases the session exactly as a completed or deferred one does.
+        # Requiring ownership cleanup first would leave the lockout in place at
+        # the entry that matters: the switching set new-Issue entry performs has
+        # no cleanup step, and clear-worktree never reaches cmd_set.
+        stopped = run["status"] == "stopped"
+        require(closed or stopped
+                or (old.get("phase") in ("cleanup", "completed") and old.get("active") is False),
                 "new Issue / PR requires completed or deferred review, or ownership cleanup")
-        # A stopped run has no next cycle left to protect, and gating it here is
-        # what leaves a breaker-stopped session no way out of the Issue it froze
-        # on. The archived run keeps its status and reason, so the stop is not
-        # discharged — only the session moves. Exempting the call site rather
-        # than gate() itself keeps close() refusing a stopped run.
-        if run["status"] != "stopped":
+        # Releasing the session is not discharging the stop: the archived run
+        # keeps its status, reason and spent retry, and close() still refuses it
+        # because gate() itself is untouched.
+        if not stopped:
             gate(old, old["session_id"], check_head=False)
         # Ordinary setters merge counters; ownership completion, rather than an
         # optional caller flag, authorizes this new run's initial zero.

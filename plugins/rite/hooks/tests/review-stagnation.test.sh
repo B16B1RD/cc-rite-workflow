@@ -673,10 +673,8 @@ f = Fixture()
 try:
     diverge(f)
     stopped_run = f.state()['review_run']
-    f.reject(lambda: f.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--pr', 0, ok=False),
-             'stopped run still needs ownership cleanup before switching')
-    f.flow('set', '--phase', 'cleanup', '--next', 'cleanup', '--active', 'false')
-    f.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--pr', 0, '--active', 'true')
+    # No cleanup first: this is the shape the new-Issue entry writes.
+    f.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--branch', 'chore/issue-43', '--pr', 0)
     moved = f.state()
     check(moved['issue_number'] == 43 and moved.get('cycle_count', 0) == 0
           and 'review_run' not in moved and 'review_cycle' not in moved,
@@ -686,6 +684,19 @@ try:
     check(archived['status'] == 'stopped' and archived['stop_reason'] == 'circuit-breaker:divergence'
           and archived['observations'], 'T-02: archived run retains its stop, reason and observations')
     check(not moved.get('stop_reason'), 'T-11: the new Issue starts without the previous stop reason')
+    check(moved.get('active') is not False, 'T-11: the new Issue is not left deactivated by the previous stop')
+finally:
+    f.close()
+
+# T-01: the ownership-cleanup route keeps working; the direct one is an addition.
+f = Fixture()
+try:
+    diverge(f)
+    stopped_run = f.state()['review_run']
+    f.flow('set', '--phase', 'cleanup', '--next', 'cleanup', '--active', 'false')
+    f.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--pr', 0, '--active', 'true')
+    check(f.state()['issue_number'] == 43 and f.state()['review_run_history'] == [stopped_run],
+          'T-01: cleanup then switch still archives the stopped run')
 finally:
     f.close()
 
@@ -706,6 +717,9 @@ try:
     check(f.state()['review_run']['status'] == 'active', 'T-05: fixture run is not stopped')
     f.reject(lambda: f.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--pr', 0, ok=False),
              'T-05: active run still requires completed, deferred or cleaned-up ownership')
+    f.flow('set', '--phase', 'cleanup', '--next', 'cleanup', '--active', 'false')
+    f.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--pr', 0, '--active', 'true')
+    check(f.state()['issue_number'] == 43, 'T-05: the ownership-cleanup route is what releases an active run')
 finally:
     f.close()
 
@@ -762,9 +776,12 @@ try:
     diverge(f)
     f.plan()
     retry(f)
-    f.flow('set', '--phase', 'cleanup', '--next', 'cleanup', '--active', 'false')
-    f.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--pr', 0, '--active', 'true')
-    check('retry' in f.state()['review_run_history'][0], 'T-08: the grant follows its run into history')
+    f.cycle(roots=['input defect'])
+    check(f.state()['review_run']['status'] == 'stopped', 'T-08: the granted retry ended unresolved')
+    f.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--branch', 'chore/issue-43', '--pr', 0)
+    archived = f.state()['review_run_history'][0]
+    check('retry' in archived and archived['status'] == 'stopped',
+          'T-08: the direct exit archives the spent grant, it does not reset the gate')
     f.flow('set', '--phase', 'pr', '--next', 'review', '--issue', 42, '--pr', 71)
     diverge(f)
     check('retry' not in f.state()['review_run'], 'T-08: the fresh run carries no grant of its own')

@@ -1226,8 +1226,9 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 「抜ける」の行（全停止理由で共通）:
 
 ```
-- この PR を停止のまま残して別 Issue へ移る: `flow-state.sh set --phase cleanup --active false` の後に
-  別 Issue 番号の `set` を実行する（停止した run は status と stop_reason を保持したまま履歴へ退避される）
+- この PR を停止のまま残して別 Issue へ移る: そのまま /rite:open <別 Issue 番号> を実行する
+  （停止した run は status・stop_reason・使用済みの再試行権を保持したまま履歴へ退避される。
+  前段の ownership cleanup は要らない）
 ```
 
 

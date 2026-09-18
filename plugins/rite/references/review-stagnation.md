@@ -110,7 +110,9 @@ rm "$clock_file"
 
 停止は「この run でのレビュー継続を止める」ことであり、「この run に触れる操作をすべて止める」ことではない。停止した run に対してできることは次の 2 つだけで、どちらも停止理由を消さない。
 
-**抜ける（全停止理由で可）**: `set --phase cleanup --active false` で ownership cleanup を行い、続けて別 Issue 番号の `set` を実行する。旧 run は `status` と `stop_reason` を保持したまま `review_run_history` へ移り、`cycle_count` は 0 から始まる。停止していない run はこの 2 ステップでも従来どおり完了・保留・cleanup を要求される。
+**抜ける（全停止理由で可）**: 別 Issue 番号の `set` をそのまま実行する。旧 run は `status`・`stop_reason`・使用済みの再試行権を保持したまま `review_run_history` へ移り、`cycle_count` は 0 から始まる。停止は「この run はもう cycle を積まない」判断が下りた状態なので、完了・保留と同格に扱ってセッションを手放す。ownership cleanup を前置きしても同じ結果になる。
+
+停止していない run は従来どおり完了・保留・ownership cleanup のいずれかを要求される。この緩和は停止した run に限る。退避はセッションを手放すだけで停止を帳消しにしない — 退避先の `status` は `stopped` のままで、同じ PR で新しい run を始めても使用済みの再試行権は復活しない。
 
 **戻る（`circuit-breaker:divergence` のみ）**: `flow-state.sh review-retry --plan <一括修正計画の絶対パス> --issue <最新 Issue JSON の絶対パス>` が、次の条件をすべて満たすときに限り再試行権を 1 つ発行する。
 
