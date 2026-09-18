@@ -358,6 +358,8 @@ def abandon(state, args, directory):
         return state
     require(cycle.get("status") == "collecting",
             "only a collecting cycle can be abandoned; status is " + str(cycle.get("status")))
+    for key in ("review_context", "selected_reviewers"):
+        require(key in cycle, "collecting cycle is missing " + key + "; preserve the state and recover")
     for key in ("manifest_path", "content_file", "result_path"):
         require(not cycle.get(key), "cycle retains evidence at " + key + "=" + str(cycle.get(key))
                 + "; recover it instead of abandoning")
