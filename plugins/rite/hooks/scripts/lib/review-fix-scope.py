@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import platform
 import re
+import shlex
 import stat
 import subprocess
 import sys
@@ -195,13 +196,146 @@ def verify(plan, paths, output, kind):
     return result
 
 
+def commit_check(args):
+    """Read existing evidence before a direct commit; never run tests or write state."""
+    state_path = Path(args.state)
+    if not state_path.exists() and not state_path.is_symlink():
+        return  # A session that has never reviewed still commits normally.
+    state = read(state_path)
+    require(isinstance(state, dict) and state.get("session_id") == args.session,
+            "cannot read a valid session state before commit")
+    if state.get("review_cycle") is None and "review_run" not in state:
+        return
+    # This is a direct-command scanner, not a shell interpreter. Heredoc bodies
+    # have already been removed by the Bash guard's existing command surface.
+    lexer = shlex.shlex(args.command, posix=False, punctuation_chars=";&|()\n")
+    lexer.whitespace = " \t\r"
+    segments, segment = [], []
+    for token in lexer:
+        if token and all(ch in ";&|()\n" for ch in token):
+            if segment:
+                segments.append(segment)
+                segment = []
+        else:
+            # Keep quote information until separators have been classified:
+            # echo ';' git commit is one harmless command, not two commands.
+            # shlex's non-POSIX mode may split a quote beginning inside -mTEXT;
+            # join only that unfinished quoted word, then dequote with shlex.
+            while True:
+                try:
+                    values = shlex.split(token)
+                    break
+                except ValueError:
+                    tail = lexer.get_token()
+                    require(tail, "unfinished quoted commit command")
+                    token += " " + tail
+            require(len(values) == 1, "ambiguous shell word; run commit separately")
+            segment.append(values[0])
+    if segment:
+        segments.append(segment)
+    cwd = Path(args.cwd).resolve()
+    for words in segments:
+        while words and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", words[0]):
+            words = words[1:]
+        if not words:
+            continue
+        if words[0] == "cd" and len(words) == 2:
+            require(not any(c in words[1] for c in "$`~"),
+                    "commit target is dynamic; run commit separately from its resolved worktree")
+            cwd = (cwd / words[1]).resolve()
+            continue
+        if words[0] == "command":
+            words = words[1:]
+        if not words or Path(words[0]).name != "git":
+            continue
+        target, index = cwd, 1
+        while index < len(words) and words[index].startswith("-"):
+            option = words[index]
+            if option in ("-C", "-c"):
+                require(index + 1 < len(words), "incomplete git global option")
+                value = words[index + 1]
+                if option == "-C":
+                    require(not any(c in value for c in "$`~"), "commit target must be a literal worktree")
+                    target = (target / value).resolve()
+                index += 2
+            elif option.startswith("-C"):
+                target = (target / option[2:]).resolve()
+                index += 1
+            elif option.startswith("-c") or option in ("--no-pager", "--no-optional-locks"):
+                index += 1
+            else:
+                require("commit" not in words[index:],
+                        "use git -C <worktree> commit without alternate git-dir/work-tree options")
+                break
+        if index >= len(words) or words[index] != "commit":
+            continue
+        # Option values (notably -m '--dry-run') must not exempt a real commit.
+        dry_run, skip = False, False
+        for option in words[index + 1:]:
+            if skip:
+                skip = False
+            elif option == "--":
+                break
+            elif re.fullmatch(r"-[A-Za-z]*[mFCct]", option) or option in ("-m", "--message", "-F", "--file", "-C", "--reuse-message", "-c", "--reedit-message", "--author", "--date", "--fixup", "--squash", "--cleanup", "-t", "--template", "--trailer"):
+                skip = True
+            elif option == "--dry-run":
+                dry_run = True
+        if dry_run:
+            continue
+        # A review in another worktree must not prohibit unrelated work.
+        os.chdir(target)
+        actual = Path(subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip()).resolve()
+        owner = state.get("worktree") or args.state_root
+        if actual != Path(owner).resolve():
+            continue
+        frozen = state.get("review_cycle")
+        require(isinstance(frozen, dict), "review run has no frozen cycle; start its review before committing")
+        require(frozen.get("status") == "completed",
+                "review is incomplete; collect reviewers and run review-finish before committing")
+        directory = Path(args.state_root) / ".rite/state"
+        approved = read(directory / ("fix-plan-" + args.session + ".json"))
+        plan = approved["plan"]
+        issue = read(directory / ("fix-issue-" + args.session + ".json"))
+        receipt, paths = validate(plan, issue, state, args.session, Path(args.state_root))
+        require(approved["plan_hash"] == digest(plan) and approved["review_hash"] == digest(receipt),
+                "plan or review changed; check scope before committing")
+        result = read(directory / ("fix-verification-" + args.session + ".json"))
+        require(result.get("review_context") == plan["review_context"], "verification belongs to another review")
+        for test in plan["verifications"]:
+            measured = result["results"].get(test["id"])
+            require(measured and measured.get("exit_code") == 0 and measured.get("key") == fingerprint(test),
+                    "run fix-scope verify --kind all before committing; stale/missing verification: " + test["id"])
+        # Same unplanned-path condition as verify(), including its sandbox mask: a
+        # write-block device or its 0-byte read-only stub is not a real change, so a
+        # sandboxed run must not make the commit it just verified unreachable.
+        changed = subprocess.check_output(["git", "diff", "--no-renames", "HEAD", "--name-only", "-z"]).decode().split("\0")
+        untracked = subprocess.check_output(["git", "ls-files", "--others", "--exclude-standard", "-z"]).decode().split("\0")
+        changed += [p for p in untracked if p and not sandbox_mask(p)]
+        require(all(any(within(path(p), allowed) for allowed in paths) for p in changed if p),
+                "unplanned changed path; check scope and verify before committing")
+        if "review_run" in state:
+            pending = state["review_run"].get("pending_fix")
+            stagnation = importlib.import_module("review-stagnation")
+            require(isinstance(pending, dict) and pending.get("source_context") == plan["review_context"]
+                    and pending.get("plan_hash") == digest(plan)
+                    and pending.get("tree_hash") == stagnation.tree_fingerprint(),
+                    "fix tree changed; run fix-scope verify --kind all before committing")
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("operation", choices=("check", "verify"))
-    for name in ("plan", "issue", "state", "session", "state-root"):
+    parser.add_argument("operation", choices=("check", "verify", "commit-check"))
+    for name in ("state", "session", "state-root"):
         parser.add_argument("--" + name, required=True)
+    for name in ("plan", "issue", "command", "cwd"):
+        parser.add_argument("--" + name)
     parser.add_argument("--kind", choices=("related", "all"), default="all")
     args = parser.parse_args()
+    if args.operation == "commit-check":
+        require(args.command is not None and args.cwd, "commit-check requires command and cwd")
+        commit_check(args)
+        return
+    require(args.plan and args.issue, "check/verify require plan and issue")
     root = Path(args.state_root)
     directory = root / ".rite/state"
     saved = directory / ("fix-plan-" + args.session + ".json")

@@ -1649,6 +1649,10 @@ if ! bash {plugin_root}/hooks/scripts/review-fix-scope-check.sh verify \
 fi
 ```
 
+コミットを直接実行する Bash 呼び出しも、実行前 hook が未完了 cycle と保存済み計画・全件検証の鮮度を確認する。拒否された場合は理由に従って `review-finish` または上記の scope check / verify を完了し、commit は別の Bash 呼び出しで再実行する。凍結 HEAD を戻して検査を通してはならない。
+
+commit は作業 worktree で `git commit`（必要なら literal な `git -C <path> commit`）を直接呼ぶ。検証・編集・commit を同じ Bash 呼び出しにまとめない。hook は直接コマンドと既存 heredoc 除去後の表面を検査し、スクリプト内部・alias・動的に組み立てた subcommand は解釈しない。これらの間接実行を commit 手順に使わない。
+
 ### 3.1 Verify Changes
 
 **前置ガード**: 修正で作成した新規ファイルは対象パスを明示して `git add -- <path>` で stage してから判定する。tracked 差分が無ければ **ステップ 3 全体を skip** して 4.5 へ (全経路)。判定は **`git-status-filtered.sh --tracked-only`** (raw porcelain 禁止)。untracked は件数・名前を WARNING に残し、commit 対象の判定から除外する。
@@ -1977,12 +1981,19 @@ cosmetic は option 2 可。bypass は記録必須。
 
 ### 3.3 Execute the Commit
 
+先に作業 worktree 外の一時ファイル `{commit_message_file}` へメッセージを保存する。次の commit は別の Bash 呼び出しで実行し、成功後にメッセージファイルを削除する。
+
 ```bash
-git add {changed_files}
-git commit -m "$(cat <<'EOF'
+# fix-commit-message
+cat > "{commit_message_file}" <<'EOF'
 {commit_message}
 EOF
-)"
+```
+
+```bash
+# fix-commit-execute
+git add {changed_files}
+git commit -F "{commit_message_file}"
 ```
 
 ### 3.3.1 Fix-Cycle State Persistence
