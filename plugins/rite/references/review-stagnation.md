@@ -123,6 +123,8 @@ rm "$clock_file"
 
 発行すると `stop_reason` は run 直下から `review_run.retry.stop_reason` へ移り、`status` が `active` に戻る。権利が買えるのは fix → 検証 → review の 1 巡だけで、その review に blocking 指摘が残っていれば `retry.outcome=unresolved` を記録して元の停止理由で再停止する。残っていなければ `retry.outcome=resolved` として通常の run に戻る。いずれの場合も権利は再発行されない。
 
+発行後の run は本当に `active` なので、`review-close` / `review-defer` も通常の run と同じ条件で通る。`close` は未解決 blocking と未充足受入条件を従来どおり拒否し、`defer` は返信のみの draft を残す既存の意味のままである。これは「停止した run を閉じられる」ことではなく、再試行権を発行した run がその 1 巡の間は通常の run として扱われるということで、権利の使用済み記録は `close` / `defer` / 退避のいずれを経ても残る。
+
 再試行権は停止理由の解消認定ではない。計画の存在は収束を証明しないため、これは制限付きの再試行であって品質ゲートの解除ではない。`cycle_count` は run を通じて積み上がり続けるので、再試行を挟んでも最終的に再開不可の `circuit-breaker:max-cycles` に到達する。
 
 helper が保証するのは context・保存証跡・入力構造・範囲・時計と回数・冪等性である。根因の意味的同一性、仕様解釈、受入条件の充足、代替案の妥当性は親の判断として根拠を残す。保証範囲は同梱 helper と通常 caller の経路に限り、任意の state 直接編集や未対応ホストの予告なし中断検出まで保証しない。

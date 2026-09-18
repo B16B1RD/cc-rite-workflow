@@ -511,8 +511,12 @@ def replan(state, args, directory):
     return state
 
 
-def plan_specification(state, plan):
-    """Bind a plan to the observation that diagnosed it, without gating the state."""
+def plan_specification(state, plan, allow_replan=False):
+    """Bind a plan to the run that diagnosed it, without permitting a transition.
+
+    Everything plan_gate asserts about the plan itself, so the retry path — which
+    decides its own admissibility — reuses it instead of restating it.
+    """
     if "review_run" not in state:
         return
     run = state["review_run"]
@@ -520,19 +524,16 @@ def plan_specification(state, plan):
     require(observed is not None and text(plan.get("issue_body"))
             and cycle.same_specification(plan["issue_body"], observed["input"]["issue_body"]),
             "fix specification differs from diagnosed observation")
-
-
-def plan_gate(state, plan, session, allow_replan=False):
-    gate(state, session, allow_replan=allow_replan)
-    plan_specification(state, plan)
-    if "review_run" not in state:
-        return
-    run = state["review_run"]
     if allow_replan:
         return
     for record in run["replans"]:
         if record["review_context"] == plan["review_context"]:
             require(record["plan_hash"] == digest(plan), "fix plan differs from required replan")
+
+
+def plan_gate(state, plan, session, allow_replan=False):
+    gate(state, session, allow_replan=allow_replan)
+    plan_specification(state, plan, allow_replan)
 
 
 def tree_fingerprint():

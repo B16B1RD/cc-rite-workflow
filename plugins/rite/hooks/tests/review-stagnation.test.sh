@@ -797,6 +797,24 @@ try:
 finally:
     f.close()
 
+# T-09: a recorded replan still binds the plan a retry may be granted against.
+f = Fixture()
+try:
+    f.cycle(seconds=1801)
+    check(f.decision() == 'replan', 'fixture requires a replan at the stop context')
+    required = f.plan(replan=True)
+    f.replan()
+    f.flow('set', '--phase', 'review', '--next', 'stopped', '--active', 'false',
+           '--stop-reason', 'circuit-breaker:divergence')
+    check(f.state()['review_run']['status'] == 'stopped', 'fixture stopped at a replanned context')
+    f.plan()
+    f.reject(lambda: retry(f, ok=False), 'T-09: a retry cannot substitute a plan for the required replan')
+    dump(f.plan_path, required)
+    retry(f)
+    check(f.state()['review_run']['status'] == 'active', 'T-09: the required replan is a retryable plan')
+finally:
+    f.close()
+
 # T-10: the grant buys one review, and an unresolved one ends it.
 f = Fixture()
 try:

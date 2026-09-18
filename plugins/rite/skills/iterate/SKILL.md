@@ -1200,17 +1200,21 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 <!-- [iterate:max-cycles-stopped] -->
 ```
 
-#### `{resume_routes}`（6.2 のみ。`review_run` の有無で分岐する）
+#### `{resume_routes}`（6.2 のみ）
 
 `review_run` がある run は counter リセットによる fresh entry へ変換しない（ステップ 0.6）。停止した run に残る経路は「抜ける」と、`divergence` 限定の「戻る」の 2 本だけで、どちらも停止理由を消さない。契約の SoT は [review-stagnation.md 停止後の退路と再開](../../references/review-stagnation.md#停止後の退路と再開)。
 
-| 状態 | `{resume_routes}` |
-|---|---|
-| `review_run` なし（legacy） | `- ループを再開する: /rite:iterate {pr_number} を明示的に再実行する（cycle counter と run 開始点がリセットされ、新しい run として cycle 1 を full scope で回る。再び発散すればブレーカーは上限を待たずに再発火する）。/rite:recover 経由の再開も同じ経路` |
-| `review_run` あり・`{cb_reason}` が `divergence` 以外 | 下記「抜ける」1 行のみ |
-| `review_run` あり・`{cb_reason}` が `divergence` | 下記「戻る」「抜ける」の 2 行 |
+分岐は marker だけで行う（`ITERATE_STAGNATION` は ステップ 3 の `iterate-stagnation-route`、`CB_REASON` は ステップ 1 の `ITERATE_CB=fire` marker）。flow-state を読み直して条件を作らない:
 
-「戻る」の行（`divergence` のみ。この run で再試行権が未使用のときだけ通る）:
+| `ITERATE_STAGNATION` | `{cb_reason}` | `{resume_routes}` |
+|---|---|---|
+| `legacy`（`review_run` なし） | 任意 | `- ループを再開する: /rite:iterate {pr_number} を明示的に再実行する（cycle counter と run 開始点がリセットされ、新しい run として cycle 1 を full scope で回る。再び発散すればブレーカーは上限を待たずに再発火する）。/rite:recover 経由の再開も同じ経路` |
+| `stop` / `continue` / `replan` | `divergence` | 下記「戻る」「抜ける」の 2 行 |
+| `stop` / `continue` / `replan` | `divergence` 以外 | 下記「抜ける」1 行のみ |
+
+`divergence` で「戻る」行を出すときに、権利が既に使用済みかどうかは判定しない（そのための marker を増やさない）。使用済みなら `review-retry` 自身が `review run has already used its retry` で拒否する — 提示した経路が拒否で終わるのは fail-loud であり、案内側が state を追いかける理由にはならない。
+
+「戻る」の行（`divergence` のみ）:
 
 ```
 - この PR の修復を 1 巡だけ試す: 全 blocking 指摘に修正計画と検証項目を対応付けたうえで
@@ -1226,7 +1230,6 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
   別 Issue 番号の `set` を実行する（停止した run は status と stop_reason を保持したまま履歴へ退避される）
 ```
 
-発火直後は再試行権が未使用なので「戻る」行を出す。同じ run で既に権利を使っている場合（`review_run.retry` がある）は「戻る」行を出さず「抜ける」行だけにする。
 
 #### 発火理由の文面（6.1 / 6.2 共通の置換表）
 
