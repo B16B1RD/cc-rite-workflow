@@ -146,13 +146,13 @@ esac
 bash "$plugin_root/hooks/scripts/ready-pr-head-gate.sh" \
   --pr "$ready_pr_number" --repo {owner_repo} --plugin-root "$plugin_root" || exit
 
-# HEAD が最終レビュー済み commit と一致すること（sweep が push した 1 commit は
+# 対象 PR の head（headRefOid。チェックアウト位置ではない）が最終レビュー済み commit と一致すること（sweep が push した 1 commit は
 # nb-sweep-done 2 行目 SHA 一致で例外。JSON 不在 / 不一致 / 照合不能 / 2 行目不正は
 # fail-loud）。フィールドは schema の commit_sha。
 # reviewed HEAD と受入条件を同じ review JSON から inspect する。stderr を捕捉するのは
 # REVIEWED_AC marker を Phase 2 へ渡すためで、診断自体は直後に必ず再表示する。
 reviewed_gate_out=$(bash "$plugin_root/hooks/scripts/ready-reviewed-head-gate.sh" \
-  --pr "$ready_pr_number" --plugin-root "$plugin_root" {reviewed_head_inspect_args} 2>&1)
+  --pr "$ready_pr_number" --repo {owner_repo} --plugin-root "$plugin_root" {reviewed_head_inspect_args} 2>&1)
 reviewed_gate_rc=$?
 printf '%s\n' "$reviewed_gate_out" >&2
 reviewed_ac_state=$(printf '%s\n' "$reviewed_gate_out" | sed -n 's/^\[CONTEXT\] REVIEWED_AC=\([^;]*\);.*/\1/p' | tail -1)
@@ -303,7 +303,7 @@ The LLM reads the bash stdout (`in_e2e_flow=...`): when `in_e2e_flow=true`, skip
 
 ```bash
 bash "$plugin_root/hooks/scripts/ready-reviewed-head-gate.sh" \
-  --pr "$ready_pr_number" --plugin-root "$plugin_root" \
+  --pr "$ready_pr_number" --repo {owner_repo} --plugin-root "$plugin_root" \
   --attest "$reviewed_ac_ids" || { echo "[ready:error]"; exit 1; }
 ```
 
@@ -340,7 +340,7 @@ Ready 遷移の直前に必ず再検査する。Phase 1 の inspect 後に revie
 
 ```bash
 bash "$plugin_root/hooks/scripts/ready-reviewed-head-gate.sh" \
-  --pr "$ready_pr_number" --plugin-root "$plugin_root" --enforce-ac {reviewed_head_override_arg} \
+  --pr "$ready_pr_number" --repo {owner_repo} --plugin-root "$plugin_root" --enforce-ac {reviewed_head_override_arg} \
   || { echo "[ready:error]"; exit 1; }
 ```
 
