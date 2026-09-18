@@ -210,17 +210,15 @@ def guard_set(old, new):
     return False
 
 
-def retry_consumed(state, run):
-    """One grant per run, counted across the archive.
+def retry_consumed(run):
+    """One grant per run. The archive is not scanned.
 
-    A run that is switched away from carries its grant into history; starting a
-    fresh run on the same PR would otherwise hand out a second one and make the
-    limit a formality.
+    A parked run comes back through restore() rather than being replaced by a
+    fresh one, so a spent grant returns attached to the run that spent it. The
+    limit therefore holds at the run, and a second reading of the same rule from
+    the history would be a backstop for a case the return no longer produces.
     """
-    if "retry" in run:
-        return True
-    return any(isinstance(past, dict) and past.get("pr_number") == run["pr_number"] and "retry" in past
-               for past in state.get("review_run_history", []))
+    return "retry" in run
 
 
 def retry(state, args, directory):
@@ -235,7 +233,7 @@ def retry(state, args, directory):
     require(run["status"] == "stopped", "review run is not stopped")
     require(run.get("stop_reason") == "circuit-breaker:divergence",
             "only circuit-breaker:divergence can be retried; stopped: " + str(run.get("stop_reason")))
-    require(not retry_consumed(state, run), "review run has already used its retry")
+    require(not retry_consumed(run), "review run has already used its retry")
     saved = observation(run, context)
     require(saved is not None, "saved stagnation observation required before retry")
     require(unchanged_receipt(saved, read(saved["result_path"])), "observed review receipt is missing or changed")
