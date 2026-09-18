@@ -221,15 +221,16 @@ def start(state, args, directory):
     cycle = state.get("review_cycle")
     current_head = head()
     stagnation = importlib.import_module("review-stagnation")
+    resumed_run = None
     if "review_run" in state:
         if cycle:
             run, _ = stagnation.current(state, args.session, check_head=False)
         else:
-            # An abandoned cycle leaves the run with no frozen counterpart to
-            # cross-check against. The stop decision still has to be honored, so
-            # read it directly rather than skipping the check with the pairing.
-            run = state["review_run"]
-            require(isinstance(run, dict), "review run must be an object")
+            # An abandoned cycle leaves the run with no frozen counterpart. The
+            # abandonment record is what makes that shape legitimate, so validate
+            # against it rather than trusting the run alone.
+            resumed_run, _ = stagnation.retained_run(state, args.session)
+            run = resumed_run
         require(run["status"] != "stopped", "review run stopped: " + str(run.get("stop_reason")))
     count = state.get("cycle_count", 0)
     require(type(count) is int and count >= 0, "cycle_count must be a nonnegative integer")
@@ -251,10 +252,16 @@ def start(state, args, directory):
                 "previous review has no verified saved receipt")
         if "review_run" in state:
             stagnation.advance(state, args.session, current_head)
-    # Legacy callers already incremented before entering review. Adopt that count
-    # once; new runs and completed cycles increment here exclusively.
-    count = count if not cycle and state.get("phase") == "review" and count > 0 else count + 1
-    run_id = cycle["review_context"]["run_id"] if cycle and state.get("cycle_count", 0) > 0 else str(uuid.uuid4())
+    if resumed_run is not None:
+        # Retrying an abandoned cycle is the same run at the same counter on a new
+        # HEAD. A fresh run_id would strand review_run; a bumped counter would put
+        # a hole in the observation history the stagnation gates read as a series.
+        run_id = resumed_run["run_id"]
+    else:
+        # Legacy callers already incremented before entering review. Adopt that count
+        # once; new runs and completed cycles increment here exclusively.
+        count = count if not cycle and state.get("phase") == "review" and count > 0 else count + 1
+        run_id = cycle["review_context"]["run_id"] if cycle and state.get("cycle_count", 0) > 0 else str(uuid.uuid4())
     context = dict(session_id=args.session, run_id=run_id, pr_number=state["pr_number"],
                    cycle_count=count, commit_sha=current_head)
     state.update(phase="review", cycle_count=count, active=True, updated_at=now(),

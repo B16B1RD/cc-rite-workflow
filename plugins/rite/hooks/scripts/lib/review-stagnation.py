@@ -58,6 +58,34 @@ def current(state, session, completed=False, check_head=True):
     return run, context
 
 
+def retained_run(state, session):
+    """The one shape where a run legitimately outlives the cycle it froze.
+
+    `review-abandon` drops an evidence-free cycle and keeps the run, so the
+    pairing `current()` requires is absent. The abandonment record is what makes
+    that absence legitimate: without it a run with no cycle is corruption, so
+    every field `current()` cross-checks is re-checked against the record here.
+    """
+    run = state.get("review_run")
+    if not isinstance(run, dict) or isinstance(state.get("review_cycle"), dict):
+        return None
+    history = state.get("review_cycle_abandoned")
+    require(isinstance(history, list) and history,
+            "review run without a frozen cycle requires an abandonment record")
+    context = history[-1].get("review_context")
+    require(isinstance(context, dict)
+            and run["session_id"] == context["session_id"] == session == state.get("session_id")
+            and run["pr_number"] == context["pr_number"] == state.get("pr_number")
+            and run["run_id"] == context["run_id"]
+            and run["issue_number"] == state.get("issue_number")
+            and context["cycle_count"] == state.get("cycle_count"),
+            "abandonment record does not match the retained review run")
+    require(run["status"] in ("active", "stopped"), "invalid review run status")
+    for name in ("clock", "observations", "fixes", "replans"):
+        require(isinstance(run.get(name), list), "missing run history: " + name)
+    return run, context
+
+
 def observation(run, context):
     return next((item for item in run["observations"] if item["input"]["review_context"] == context), None)
 
@@ -102,7 +130,11 @@ def guard_set(old, new):
         new["review_run_history"] = old["review_run_history"]
     if "review_run" not in old:
         return False
-    run, context = current(old, old["session_id"], check_head=False)
+    # An abandoned cycle leaves the run without a frozen counterpart. Routing that
+    # shape into current() would reject every ordinary set, including the one
+    # /rite:recover uses to restore `active`.
+    retained = retained_run(old, old["session_id"])
+    run, context = retained if retained else current(old, old["session_id"], check_head=False)
     require(new.get("session_id") == old["session_id"], "foreign session transition")
     switching = (new.get("issue_number") != old.get("issue_number")
                  or new.get("pr_number") not in (old.get("pr_number"), 0))

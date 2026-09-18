@@ -456,14 +456,17 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 `review_run` がある場合は [停滞診断の回復規則](../../references/review-stagnation.md) を先に適用する。未閉の時計区間は中断として閉じ、保存済み区間の再送では時刻を変更しない。観測・修正・見直し履歴と counter は保持する。`current_decision.action=stop` は同じ停止理由を返し、再設計・counter reset・新 run 作成で迂回しない。保存済み観測がない completed cycle は pr-review の停滞観測保存へ戻る。
 
-`phase=review` では自セッションの `flow-state.sh get --jq-filter .` を読み、`review_cycle.review_context` の PR / HEAD を現在値と照合する。不一致・破損は理由を出して停止し、別 session の結果を流用しない。
+`phase=review` では自セッションの `flow-state.sh get --jq-filter .` を読み、`review_cycle.review_context` の PR / HEAD を現在値と照合する。PR 不一致・破損は理由を出して停止し、別 session の結果を流用しない。HEAD 不一致は下表の状態列が行き先を決める（証跡ゼロなら放棄、証跡があれば回収）。
+
+**下表は上から順に評価し、最初に一致した行を採る**（状態列は排他に書く）。
 
 | 状態 | 再開位置 |
 |---|---|
-| `collecting`、manifest / content が未登録 | 固定名簿と context から pr-review 4.0 のディレクトリを復元し manifest / raw を読む。成功分を保持し、不足 reviewer だけ同一 cycle で再取得する |
-| `collecting`、`manifest_path` / `content_file` あり | 下の `review-finish` を再実行する。保存前・保存直後・完了記録前の中断も同じ入力を使う。`pending_id` は helper が保存済みの値を再利用する |
-| `completed`、最終 gate 未完了 | `result_path` を読み、同じ `review-finish` で保存結果を再検証してから pr-review ステップ 6 の残作業〜8 の全 gate へ戻る。新 cycle や fix / ready を直接始めない |
-| `collecting`、HEAD 不一致、manifest / content / result のいずれも未登録 | `flow-state.sh review-abandon --reason "<理由>"` で空の記録を放棄し、現 HEAD で `review-start` から新しい cycle を始める。counter と session / Issue / PR / branch / worktree の対応は保持される。証跡があれば helper が拒否するので、その場合は上の 2 行へ戻る |
+| `collecting`、HEAD 不一致、manifest / content / result のいずれも未登録 | `flow-state.sh review-abandon --reason "<理由>"` で空の記録を放棄し、現 HEAD で `review-start` から新しい cycle を始める。counter・`review_run` と session / Issue / PR / branch / worktree の対応は保持される。証跡があれば helper が拒否するので、その場合は下の 2 行へ進む |
+| `collecting`、HEAD 一致、manifest / content が未登録 | 固定名簿と context から pr-review 4.0 のディレクトリを復元し manifest / raw を読む。成功分を保持し、不足 reviewer だけ同一 cycle で再取得する |
+| `collecting`、`manifest_path` / `content_file` あり | 下の `review-finish` を再実行する。保存前・保存直後・完了記録前の中断も同じ入力を使う。`pending_id` は helper が保存済みの値を再利用する。HEAD 不一致では `review-finish` が `HEAD differs from reviewed commit` で停止する — 証跡を保持したまま人間の判断へ返す |
+| `completed`、最終 gate 未完了、HEAD 一致 | `result_path` を読み、同じ `review-finish` で保存結果を再検証してから pr-review ステップ 6 の残作業〜8 の全 gate へ戻る。新 cycle や fix / ready を直接始めない |
+| `completed`、HEAD 不一致 | 再検証は成立しない（`review-finish` が HEAD 一致を無条件に要求する）。`result_path` の保存結果を読むだけに留め、証跡を保持して停止する。放棄の対象外 |
 | `review_cycle` なし | 既存の iterate の lost 修復と新規開始手順へ。過去の保存 JSON だけを新 cycle の完了証跡にしない |
 
 ```bash

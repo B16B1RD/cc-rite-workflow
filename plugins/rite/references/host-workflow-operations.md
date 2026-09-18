@@ -80,7 +80,7 @@ bash {plugin_root}/hooks/scripts/reviewer-completion-check.sh --input "{reviewer
 
 統合結果にも同一 `review_context` を記録し、pr-review の measured / AC ゲート適用後に `flow-state.sh review-finish --manifest <絶対パス> --content-file <絶対パス> [--pending-id <id>]` を実行する。completion helper と saver を再利用し、名簿全員・各 context・保存ファイルを検証する。失敗は未完了の state と成功結果を保持して停止し、fix / ready / 次 cycle へ進めない。通常の `flow-state.sh set` による未検証遷移も拒否する。
 
-工程の権威は自セッションの `review_cycle`。`collecting` は凍結 context の HEAD が現 HEAD と一致するときだけ同じ cycle で再開する。不一致で証跡（manifest / content / result、保存済み receipt）を 1 つも持たなければ `review-abandon` で放棄し、現 HEAD で新しい cycle を始める。`completed` は HEAD の一致に依らず保存先を再検証して未完了の後続ゲートに戻る。review-finish の成功だけで最終 sentinel / handoff を発行しない。
+工程の権威は自セッションの `review_cycle`。`collecting` は凍結 context の HEAD が現 HEAD と一致するときだけ同じ cycle で再開する。不一致で証跡（manifest / content / result、保存済み receipt）を 1 つも持たなければ `review-abandon` で放棄し、現 HEAD で新しい cycle を始める。`completed` は HEAD が一致するときだけ保存先を再検証して未完了の後続ゲートに戻る（`review-finish` は status に依らず HEAD 一致を要求する）。不一致なら再検証は成立しないので、保存済み `result_path` を読むだけに留めて証跡を保持したまま停止する。review-finish の成功だけで最終 sentinel / handoff を発行しない。
 
 この強制範囲は helper とそれを通る通常 caller である。state ファイルの直接編集や、ホストが公開していない自動イベントの遮断までは保証しない。明示的 host-runtime 呼出しの実測と、自動 hook の適用範囲を区別して報告する。
 

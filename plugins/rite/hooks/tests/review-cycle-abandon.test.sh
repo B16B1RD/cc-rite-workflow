@@ -159,16 +159,76 @@ with tempfile.TemporaryDirectory(prefix="rite-review-abandon-") as tmp:
     check(str(receipt) in refusal.stderr, "T-04 names the saved receipt path")
     receipt.unlink()
 
-    # A stagnation-tracked run outlives the cycle it froze: abandoning leaves the
-    # run with no frozen counterpart, and review-start still has to accept that.
+    # A stagnation-tracked run outlives the cycle it froze. This is the shape the
+    # real workflow produces (Issue-linked reviews always pass --stagnation), and
+    # everything downstream of the abandon has to keep working on it.
     fresh_collecting(pr=99, issue=99)
     flow("review-start", "--selection", selection, "--stagnation")
     check(state()["review_run"]["status"] == "active", "fixture arms a stagnation run")
+    run_id = state()["review_run"]["run_id"]
+    counter = state()["cycle_count"]
     commit("move HEAD with a run in flight")
     flow("review-abandon", "--reason", "restart with the run retained")
     check("review_run" in state(), "abandon keeps the stagnation run")
+
+    # The reported breakage: every ordinary set was refused while the run had no
+    # frozen cycle, including the one /rite:recover uses to restore `active`.
+    flow("deactivate")
+    flow("set", "--phase", "pr", "--next", "resume", "--active", "true", "--if-exists")
+    check(state()["active"] is True, "recover restores active after abandon")
+    flow("set", "--phase", "pr", "--next", "still here")
+    check(len(state()["review_cycle_abandoned"]) == 1, "ordinary set keeps the abandonment record")
+
+    # The retry is the same run at the same counter, so the run stays usable.
+    resumed_head = run(["git", "rev-parse", "HEAD"]).stdout.strip()
     flow("review-start", "--selection", selection, "--stagnation")
-    check(state()["review_cycle"]["status"] == "collecting", "review-start works with a retained run")
+    resumed = state()
+    check(resumed["review_cycle"]["status"] == "collecting", "review-start works with a retained run")
+    check(resumed["review_cycle"]["review_context"]["run_id"] == run_id,
+          "the retry inherits the retained run_id")
+    check(resumed["review_run"]["run_id"] == run_id, "the run itself is untouched")
+    check(resumed["cycle_count"] == counter, "the retry keeps the counter")
+    check(resumed["review_cycle"]["review_context"]["commit_sha"] == resumed_head,
+          "the retry freezes the current HEAD")
+    # A run/context pairing that disagrees makes every later stagnation call fail,
+    # so prove one of them actually goes through.
+    clock = root / "clock.json"
+    dump(clock, dict(review_context=resumed["review_cycle"]["review_context"], segment_id="probe",
+                     kind="work", started_at="2026-01-01T00:00:00Z", ended_at="2026-01-01T00:01:00Z"))
+    flow("review-clock", "--input", clock)
+    check(len(state()["review_run"]["clock"]) == 1, "the resumed run accepts a clock segment")
+
+    # The abandonment record is what makes a cycle-less run legitimate. Without it,
+    # or with one that disagrees, the shape is corruption and must be refused —
+    # otherwise the tolerance added for abandon becomes a hole in the run guard.
+    commit("move HEAD for the corruption probe")
+    flow("review-abandon", "--reason", "drop again for the corruption probe")
+    abandoned_state = json.loads(state_path.read_text())
+    for mutate, label, diagnostic in (
+        (lambda s: s.pop("review_cycle_abandoned"), "missing abandonment record",
+         "review run without a frozen cycle requires an abandonment record"),
+        (lambda s: s["review_cycle_abandoned"][-1]["review_context"].update(run_id="bogus"),
+         "abandonment record from another run",
+         "abandonment record does not match the retained review run"),
+    ):
+        corrupted = copy.deepcopy(abandoned_state)
+        mutate(corrupted)
+        dump(state_path, corrupted)
+        refusal = rejected(["set", "--phase", "pr", "--next", "should fail"], label)
+        # Pin the reason, not just the refusal: a guard that rejects for an
+        # unrelated reason (a KeyError on the way past a dropped check) is not
+        # the guard this shape needs.
+        check(diagnostic in refusal.stderr, label + " names its reason")
+    dump(state_path, abandoned_state)
+    flow("set", "--phase", "pr", "--next", "intact again")
+    # Two abandonments in one state file: the record is append-only, so replacing
+    # the append with a single-element assignment has to be observable. Nothing
+    # above reaches a second abandonment on the same file, so pin it here.
+    history = state()["review_cycle_abandoned"]
+    check(len(history) == 2, "abandonments accumulate rather than replace")
+    check([r["reason"] for r in history]
+          == ["restart with the run retained", "drop again for the corruption probe"],
+          "abandonments accumulate in order")
 
     # --- regression: abandon must not become a bypass ------------------------
     # Without abandoning, a HEAD-changed collecting cycle is still refused by
@@ -190,8 +250,11 @@ with tempfile.TemporaryDirectory(prefix="rite-review-abandon-") as tmp:
 
     # --reason is the record; an empty one cannot stand in for it.
     fresh_collecting(pr=96, issue=96)
-    rejected(["review-abandon", "--reason", "   "], "blank reason")
-    rejected(["review-abandon"], "missing reason")
+    for args, label in ((["review-abandon", "--reason", "   "], "blank reason"),
+                        (["review-abandon"], "missing reason")):
+        refusal = rejected(args, label)
+        check("--reason must record why the cycle is abandoned" in refusal.stderr,
+              label + " names the reason requirement")
 
     if probe:
         sys.exit(0)
@@ -209,6 +272,8 @@ with tempfile.TemporaryDirectory(prefix="rite-review-abandon-") as tmp:
         os.chmod(sessions, mode)
     if writable:
         # Running as root defeats the permission bit; the case cannot be staged.
+        # Say so on stderr — a silent pass here reads identically to a real one.
+        print("T-07 SKIPPED: sessions dir stayed writable (running as root?)", file=sys.stderr)
         check(True, "T-07 skipped: directory stayed writable")
     else:
         check(failed.returncode != 0, "T-07 failed write exits nonzero")
