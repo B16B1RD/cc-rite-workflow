@@ -298,7 +298,7 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 | `head` | string | `human-verified` のときだけ必須。確認時の HEAD SHA で、トップレベルの `commit_sha` と一致しなければならない。それ以外の status では持たない |
 | `at` | string | `human-verified` のときだけ必須。確認記録を書いた時刻（ISO 8601）。それ以外の status では持たない |
 
-対象外 cycle は object で、理由を 1 つ持つ: `{"skipped": "no_issue"}`（関連 Issue を特定できない）/ `{"skipped": "no_ac_section"}`（テンプレート形式の AC 節がない）。
+対象外 cycle は object で、理由を 1 つ持つ: `{"skipped": "no_issue"}`（関連 Issue を特定できない）/ `{"skipped": "no_ac_section"}`（`scripts/acceptance-criteria-check.sh extract` が対応する AC 見出しを本文に 1 つも見つけない）。未対応形式の AC 見出しや不正な AC 項目は skipped ではなく extract の停止であり、対象外 cycle にはならない。
 
 **`unmet` 行は降格されない**: 帰結クラス降格ゲート (`scripts/review-class-demotion-gate.sh`) は、`unmet` 行が `finding_id` で指す class B の finding に `consequence_exclusion: "ac_unmet:AC-N"` を付けて降格対象から外す。行の `finding_id` は降格ゲート適用後も `findings[]` の `scope == "current-pr"` に残っていなければならず、残っていなければ `pr-review.md` ステップ 5.3.0.A が停止する。`status` を `unverified` へ書き換えて通すことはない。`total_findings == 0` かつ `unverified` 行が 1 つ以上の cycle は保存後に `[review:error]` で停止する（ステップ 8.1）。
 

@@ -77,7 +77,7 @@ Mapping of reviewer identifiers (`reviewer_type`) to display names. Update this 
 
 **Note**: この表が SoT。`pr-review` も参照する。`code-quality` は no-match fallback、fenced-code co-reviewer、sole reviewer guard（上記規則）。`acceptance` は Available Reviewers 表に載らない（下記 Acceptance reviewer rule で選定する）。
 
-**Acceptance reviewer rule**: `pr-review` ステップ 1.3.1 の `ACCEPTANCE_SCOPE=target`（関連 Issue に `## 5. Acceptance Criteria` と `### AC-N` がある）のときだけ、ステップ 3.2.1 の cap 適用**後**に `selection_type: mandatory` で追加する。sole reviewer guard の人数判定にも `max_reviewers` / 軽量レーン上限の母数にも数えず、incremental cycle でも落とさない。
+**Acceptance reviewer rule**: `pr-review` ステップ 1.3.1 の `ACCEPTANCE_SCOPE=target`（関連 Issue の対応 AC 見出し — レベル 2 の `Acceptance Criteria`（大文字小文字不問）/ `受入基準` / `受入条件` / `受け入れ条件`、先頭の `N. ` は任意 — の配下に `### AC-N` または `- [ ] AC-N` がある）のときだけ、ステップ 3.2.1 の cap 適用**後**に `selection_type: mandatory` で追加する。sole reviewer guard の人数判定にも `max_reviewers` / 軽量レーン上限の母数にも数えず、incremental cycle でも落とさない。
 
 ## Legacy Reviewer Type Aliases
 

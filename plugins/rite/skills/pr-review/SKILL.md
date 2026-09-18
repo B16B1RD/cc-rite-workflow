@@ -595,6 +595,8 @@ Retain the Issue number in the conversation context for use in ステップ 6.4.
 
 ### 1.3.1 Load Issue Specification
 
+対応形式は `acceptance-criteria-check.sh extract` が正典。レベル2の `Acceptance Criteria`（大文字小文字不問）/ `受入基準` / `受入条件` / `受け入れ条件`（先頭の `N. ` は任意）配下の `### AC-N` または `- [ ] AC-N: 内容`（`[x]` / `[X]`、`*` / `+` も可）を抽出する。行頭3空白までは許容する。コードフェンス内は除外し、次のレベル1/2見出しで節を閉じる。未対応のAC見出し・不正項目は修正案内付きで停止し、IDを捏造しない。issue-implement 5.1.0.6.1 も同じ helper を使う。
+
 関連 Issue の「仕様詳細」「技術的決定事項」をレビュー基準としてロードし、受入条件確認の対象かを決める。ステップ 1.3 で Issue 番号が取れなかったときは本節を実行せず、`[CONTEXT] ACCEPTANCE_SCOPE=skipped; reason=no_issue` として `受入条件確認: 対象外（関連 Issue なし）` を 1 行表示し、`{acceptance_ids}` を空文字列としてステップ 5.3.0.A まで retain する。
 
 **Steps:**
@@ -615,8 +617,8 @@ Retain the Issue number in the conversation context for use in ステップ 6.4.
  | `ACCEPTANCE_SCOPE` | アクション |
  |---|---|
  | `target; ids=` | `ids=` を `{acceptance_ids}` として retain。ステップ 3.2.2 で acceptance reviewer を追加する |
- | `skipped; reason=no_ac_section; headings=` | `受入条件確認: 対象外（テンプレート形式の AC 節なし。見出し: {headings}）` を 1 行表示 |
- | 上記 bash が `[review:error]` で終了（`ACCEPTANCE_CHECK_FAILED` の `no_ac_ids` / `duplicate_ac_id` を含む） | 停止。受入条件確認を skip して続行しない |
+ | `skipped; reason=no_ac_section` | `受入条件確認: 対象外（AC 節なし）` を 1 行表示 |
+ | 上記 bash が `[review:error]` で終了（`ACCEPTANCE_CHECK_FAILED` の `unsupported_ac_section` / `no_ac_ids` / `malformed_ac_item` / `duplicate_ac_id` を含む） | 停止。受入条件確認を skip して続行しない |
 
  `ACCEPTANCE_SCOPE` の値（`target` / `skipped` と reason）と `{acceptance_ids}` はステップ 5.3.0.A まで retain する。`skipped; reason=no_ac_section` の cycle では `{acceptance_ids}` を空文字列とする。
 
