@@ -1,5 +1,9 @@
 # Directory Update Log
 
+## 2026-09-18
+
+* **Create**: [一致検証の照合先は判定対象の識別子から取り、確認した値を後続の実行コマンドに固定する](pages/patterns/verify-against-target-identifier-and-pin-to-action.md) — raw/reviews/20260918T122720Z-pr-2957.md を新規ページ化
+
 ## 2026-09-17
 
 * **Create**: [入力ファイルと記録先が同一実体になりうる helper は書き込み前に resolve 比較で拒否する](pages/patterns/guard-record-overwriting-its-own-input-before-write.md) — raw/reviews/20260917T073541Z-pr-2931.md を新規ページ化
