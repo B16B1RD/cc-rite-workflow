@@ -119,7 +119,7 @@ commands:
 cat rite-config.yml
 ```
 
-`commands.lint` があればそれを使う。
+`commands.lint` が非空なら必ずそれを使う。未設定 / `null` / 空文字のときだけ 1.2 へ進む。設定済みコマンドの実行失敗は `[lint:error]` とし、自動検出や未検出スキップへ切り替えない。
 
 ### 1.2 Auto-Detection (When No Configuration Exists)
 
@@ -149,7 +149,14 @@ ls package.json pyproject.toml Cargo.toml go.mod Makefile 2>/dev/null
 
 ### 1.3 When Command Cannot Be Detected
 
-検出できなければ `AskUserQuestion`:
+本節は **`commands.lint` が未設定かつ 1.2 の自動検出も該当しない場合のみ**。batch 判定は [open ステップ 3.4](../open/SKILL.md#34-計画承認batch-時は自動承認--standalone-は-askuserquestion) と同じく、自セッションの run-queue が `active=true` かつ cursor が対象 Issue に一致する場合。一般の E2E 呼出しだけでは batch とみなさない。
+
+| 呼出し | 未検出時の動作 |
+|---|---|
+| batch（recover からの active batch 継続を含む） | 質問せず **Skip and continue** を選び、下記 `[lint:skipped]`・理由・`commands.lint` 設定案内を必ず表示して caller に返す。独自 lint スクリプトを推測実行せず、`[lint:success]` とは報告しない |
+| standalone / batch 以外 | 下記 `AskUserQuestion` を維持する |
+
+batch 以外では `AskUserQuestion`:
 
 ```
 lint コマンドを検出できませんでした
@@ -178,7 +185,8 @@ lint コマンドを検出できませんでした
 ```
 [lint:skipped]
 lint をスキップしました。
-理由: lint コマンド未検出
+理由: lint コマンド未設定・自動検出にも該当なし
+設定: 独自 lint は rite-config.yml の commands.lint に指定し、/rite:lint を再実行してください。
 
 次のステップ:
 1. 必要に応じて `/rite:pr-create` で PR 作成
@@ -188,7 +196,8 @@ lint をスキップしました。
 ```
 [lint:skipped]
 lint をスキップしました。
-理由: lint コマンド未検出
+理由: lint コマンド未設定・自動検出にも該当なし
+設定: 独自 lint は rite-config.yml の commands.lint に指定し、/rite:lint を再実行してください。
 
 ---
 🔄 **フロー継続**: 呼び出し元の `/rite:open` が ステップ 6（PR 作成）を実行
@@ -701,7 +710,7 @@ rm -f "$next_steps_tmp"
 
 See [Common Error Handling](../../references/common-error-handling.md) for shared patterns (Not Found, Permission, Network errors).
 
-失敗パス (lint command 未検出で user skip / tool not found / work memory append 失敗) は plain `WARNING` を stderr に出力する。
+失敗パス (lint command 未検出で skip（batch 自動選択を含む） / tool not found / work memory append 失敗) は plain `WARNING` を stderr に出力する。
 
 | Error | Recovery |
 |-------|----------|
