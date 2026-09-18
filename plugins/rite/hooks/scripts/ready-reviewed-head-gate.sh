@@ -1,12 +1,15 @@
 #!/bin/bash
-# Block Ready when HEAD is not the latest reviewed commit.
+# Block Ready / merge when the target PR's head is not the latest reviewed commit.
+# The head under comparison is the PR's headRefOid in the named repository, never
+# the local checkout: a checkout of another commit must not reject a reviewed PR,
+# and a local match must not pass a PR whose head moved on.
 # Reviewed commit := .commit_sha of the newest .rite/review-results/{pr}-*.json
 # (schema field; PR-comment marker name is reviewed_commit). Archive is not
 # a current result, so this helper never reads it.
 # Sweep exception: after JSON mismatch, line 2 of
 # nb-sweep-done-{pr}.txt may name the one known sweep commit.
 set -u
-pr_number=""; plugin_root=""; results_dir=""; state_root=""
+pr_number=""; owner_repo=""; plugin_root=""; results_dir=""; state_root=""
 ac_mode="inspect"; attest_ids=""; skip_head_check=0
 results_dir_explicit=0
 state_root_explicit=0
@@ -15,6 +18,9 @@ while [ "$#" -gt 0 ]; do
     --pr)
       [ "$#" -ge 2 ] || { echo "ERROR: Ready reviewed-head gate: --pr requires a value" >&2; exit 2; }
       pr_number="$2"; shift 2 ;;
+    --repo)
+      [ "$#" -ge 2 ] || { echo "ERROR: Ready reviewed-head gate: --repo requires a value" >&2; exit 2; }
+      owner_repo="$2"; shift 2 ;;
     --plugin-root)
       [ "$#" -ge 2 ] || { echo "ERROR: Ready reviewed-head gate: --plugin-root requires a value" >&2; exit 2; }
       plugin_root="$2"; shift 2 ;;
@@ -38,6 +44,7 @@ while [ "$#" -gt 0 ]; do
 done
 [ "$skip_head_check" -eq 0 ] || [ "$ac_mode" = enforce ] || { echo "ERROR: Ready reviewed-head gate: --skip-head-check requires --enforce-ac" >&2; exit 2; }
 case "$pr_number" in ''|*[!0-9]*) echo "ERROR: Ready reviewed-head gate: PR number is required" >&2; exit 2 ;; esac
+[ -n "$owner_repo" ] || { echo "ERROR: Ready reviewed-head gate: --repo OWNER/REPO is required" >&2; exit 2; }
 if [ -z "$results_dir" ]; then
   [ -n "$plugin_root" ] || { echo "ERROR: Ready reviewed-head gate: --plugin-root is required when --results-dir is omitted" >&2; exit 2; }
   [ -x "$plugin_root/hooks/state-path-resolve.sh" ] || {
@@ -50,19 +57,20 @@ if [ -z "$results_dir" ]; then
   }
 fi
 
-if ! head_sha=$(git rev-parse HEAD); then
-  echo "ERROR: Ready reviewed-head gate: git rev-parse HEAD に失敗しました。照合不能のため Ready 化を拒否します。" >&2
-  echo "[CONTEXT] READY_REVIEWED_HEAD=rev_parse_failed; pr=$pr_number" >&2
+# No fallback to the local checkout: an unresolved PR head is a refusal.
+_pr_head_unresolved() {
+  echo "ERROR: Ready reviewed-head gate: PR #$pr_number ($owner_repo) の head を解決できません: $1。照合不能のため拒否します。" >&2
+  echo "[CONTEXT] READY_REVIEWED_HEAD=pr_head_unresolved; pr=$pr_number" >&2
   exit 1
-fi
+}
+head_sha=$(gh pr view "$pr_number" -R "$owner_repo" --json headRefOid --jq '.headRefOid') \
+  || _pr_head_unresolved "gh pr view に失敗しました"
 head_sha=$(printf '%s' "$head_sha" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
 case "$head_sha" in
-  ''|*[!0-9a-f]*)
-    echo "ERROR: Ready reviewed-head gate: HEAD が SHA ではありません (received: '$head_sha')。照合不能のため Ready 化を拒否します。" >&2
-    echo "[CONTEXT] READY_REVIEWED_HEAD=rev_parse_failed; pr=$pr_number" >&2
-    exit 1
-    ;;
+  '') _pr_head_unresolved "headRefOid が空です" ;;
+  *[!0-9a-f]*) _pr_head_unresolved "headRefOid が SHA ではありません (received: '$head_sha')" ;;
 esac
+[ "${#head_sha}" -eq 40 ] || _pr_head_unresolved "headRefOid が完全な SHA ではありません (received: '$head_sha')"
 
 _sha_matches() {
   [ "${#1}" -ge 7 ] && [ "${#2}" -ge 7 ] || return 1
@@ -282,11 +290,11 @@ if [ -n "$sweep_file" ] && [ -f "$sweep_file" ]; then
       _check_acceptance_criteria
       exit $?
     fi
-    echo "ERROR: Ready reviewed-head gate: 最終レビュー済み commit と HEAD が不一致です" >&2
+    echo "ERROR: Ready reviewed-head gate: 最終レビュー済み commit と PR head が不一致です" >&2
     echo "  reviewed_commit (review JSON の commit_sha): $reviewed" >&2
     echo "  sweep (nb-sweep-done 2 行目): $sweep" >&2
-    echo "  HEAD: $head_sha" >&2
-    echo "  意味: レビュー後に未レビューの commit が積まれているため、Ready 化を拒否します。" >&2
+    echo "  PR head (headRefOid): $head_sha" >&2
+    echo "  意味: PR head がレビュー済み commit ではないため、Ready 化を拒否します。" >&2
     echo "  次の行動: /rite:iterate $pr_number" >&2
     echo "  強行する場合: ユーザーが「未レビューのまま Ready 化を強行」と明示した再実行のみ（既定では拒否）。" >&2
     echo "[CONTEXT] READY_REVIEWED_HEAD=mismatch; reviewed=$reviewed; sweep=$sweep; head=$head_sha" >&2
@@ -294,10 +302,10 @@ if [ -n "$sweep_file" ] && [ -f "$sweep_file" ]; then
   fi
 fi
 
-echo "ERROR: Ready reviewed-head gate: 最終レビュー済み commit と HEAD が不一致です" >&2
+echo "ERROR: Ready reviewed-head gate: 最終レビュー済み commit と PR head が不一致です" >&2
 echo "  reviewed_commit (review JSON の commit_sha): $reviewed" >&2
-echo "  HEAD: $head_sha" >&2
-echo "  意味: レビュー後に未レビューの commit が積まれているため、Ready 化を拒否します。" >&2
+echo "  PR head (headRefOid): $head_sha" >&2
+echo "  意味: PR head がレビュー済み commit ではないため、Ready 化を拒否します。" >&2
 echo "  次の行動: /rite:iterate $pr_number" >&2
 echo "  強行する場合: ユーザーが「未レビューのまま Ready 化を強行」と明示した再実行のみ（既定では拒否）。" >&2
 echo "[CONTEXT] READY_REVIEWED_HEAD=mismatch; reviewed=$reviewed; head=$head_sha" >&2

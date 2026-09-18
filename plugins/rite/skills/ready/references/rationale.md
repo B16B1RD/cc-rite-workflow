@@ -20,7 +20,12 @@ Simplification Charter の重複 confirmation。side path / `active=false` / hel
 
 Ready は mergeable 判定後の追加 commit を見ていなかった。配布先で、人手の修正 commit を
 未レビューのまま Ready 化しかけた実測がある。照合不能（JSON 不在・archive のみ・
-`git rev-parse HEAD` 失敗・`commit_sha` 空）を Ready 許可に倒すと、その穴を残す。
+PR head の解決失敗・`commit_sha` 空）を Ready 許可に倒すと、その穴を残す。
+照合する HEAD は対象 PR の `headRefOid`（`--repo` で指定した repository の PR）であり、
+チェックアウト位置ではない。ローカルの commit と比べると、別 commit をチェックアウトした
+だけでレビュー済み PR を拒否し、逆に PR head が動いていてもローカルが一致すれば通してしまう。
+PR head を解決できないときにローカルへ代用しないのも同じ理由による。merge は最終照合で
+確認した OID を `--match-head-commit` に渡し、照合後に head が動いた PR をマージしない。
 schema のキーは `commit_sha`（Issue 文の `reviewed_commit` は PR コメント marker 名）。
 `--force` フラグは作らない。強行はユーザーの明示指示がある場合だけ `--skip-head-check` を
 `--enforce-ac` と組み合わせ、HEAD 照合のみを省略して AC 検査は維持する。
