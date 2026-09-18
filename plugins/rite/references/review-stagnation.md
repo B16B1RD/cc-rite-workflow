@@ -104,7 +104,7 @@ rm "$clock_file"
 
 `review-fix-scope-check.sh verify --kind all` の成功時に検証済み tree fingerprint と対象根因を保存する。次の `review-start` で新 HEAD・clean tree と検証済み内容の一致を検査して修正 HEAD を確定し、再発判定に用いる。コマンドの成功申告、未検証の commit、別 context の結果を修正履歴に加えない。
 
-証跡を 1 つも持たない `collecting` cycle を `flow-state.sh review-abandon --reason <理由>` で放棄した run は、cycle を失っても継続する。放棄記録（`review_cycle_abandoned` の最終要素）が session・PR・`run_id`・counter で run と一致する限り、cycle 不在の run を通常の `set` と `review-start` が受理する。再試行は同じ run・同じ counter・新しい HEAD で凍結し、`advance()` は呼ばない — 放棄された cycle は receipt も検証済み修正も持たないため計上する修正が無く、counter を進めると観測列に穴が開いて連続 cycle を要求する再発判定と矛盾する。一致しない記録や記録の無い cycle 不在は破損として全書き込みを拒否する。放棄後は検証済み receipt が無いため `fix` / `ready` への遷移も拒否し、別 Issue / PR へ切り替えるときは run を `review_run_history` へ退避する。
+証跡を 1 つも持たない `collecting` cycle を `flow-state.sh review-abandon --reason <理由>` で放棄した run は、cycle を失っても継続する。放棄記録（`review_cycle_abandoned` の最終要素）が session・PR・`run_id`・counter で run と一致する限り、cycle 不在の run を通常の `set` と `review-start` が受理する。再試行は同じ run・同じ counter・新しい HEAD で凍結し、`advance()` は呼ばない — 放棄された cycle は receipt も検証済み修正も持たないため計上する修正が無く、counter を進めると観測列に穴が開いて連続 cycle を要求する再発判定と矛盾する。一致しない記録や記録の無い cycle 不在は破損として全書き込みを拒否する。放棄後は検証済み receipt が無いため `fix` / `ready` への遷移も拒否し、別 Issue / PR へ切り替えるときは run を `review_run_history` へ退避する。退避の時点で live の counter は 0 に戻る（切替先は新しい run として数え直す）が、counter は退避する run に同梱されるため失われない。その PR へ戻ると同じ run が live に復元され、`run_id`・counter・観測・見直し履歴・再試行権の使用履歴をそのまま継続する。復元の対象は `close` / `defer` で終了が確定していない run に限る — 終了した run の counter と観測は記録した結論に使い切られており、戻すとその予算が次のレビューへ持ち越される。
 
 停止は caller の既存失敗 sentinel へ返し、batch は cursor を当該 Issue に保ち `active=false` にする。PR・branch・作業差分・履歴・最後の検証済み状態を保持し、停止理由と復旧工程を報告する。同一 run の再開は保存済み判定と未完工程から続け、停止履歴を消して新しい見直し枠を作らない。
 

@@ -463,14 +463,26 @@ if printf '%s' "$review_state" | jq -e '.phase == "review" and (.cycle_count // 
       iteration_phase=$(printf '%s' "$review_state" | jq -er ' .phase') || exit 1
     elif printf '%s' "$abandon_out" | grep -q 'ERROR: review-cycle:'; then
       abandon_state=refused
-      echo "WARNING: 未完了 cycle の放棄が拒否されました。証跡が残っているため /rite:recover {issue_number} で回収してください" >&2
+      # helper が判定して拒否した、までが分かること。prefix は require() 違反すべてに付くので
+      # 理由は証跡の残存とは限らない。断定せず、直後に出す helper の stderr に説明を委ねる。
+      echo "WARNING: 未完了 cycle の放棄が helper に拒否されました。下の理由を読み、回収が必要なら /rite:recover {issue_number} を実行してください" >&2
     else
       abandon_state=unavailable
-      echo "ERROR: 未完了 cycle の放棄を実行できませんでした（helper 不在 / プラグイン破損 / 版 skew の疑い）。下の stderr を確認してください" >&2
+      echo "ERROR: 未完了 cycle の放棄を実行できませんでした（helper 不在 / プラグイン破損 / 版 skew の疑い）。プラグインを取得し直してから /rite:iterate {pr_number} を再実行してください" >&2
     fi
     [ -n "$abandon_out" ] && printf '%s\n' "$abandon_out" | head -5 | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    if [ "$abandon_state" = unavailable ]; then
+      # 停止する前に handoff を落とす。Stop hook の consume-handoff は jq とシェルだけで
+      # 動くため、helper を実行できない版 skew でも handoff は消費され、/rite:pr-review が
+      # 再注入されて未放棄の cycle のままゲートを迂回する。他 2 つの停止点と同型に揃える。
+      handoff_clear=ok
+      bash {plugin_root}/hooks/flow-state.sh set --phase "$iteration_phase" --issue "{issue_number}" --branch "{branch_name}" --pr "{pr_number}" --next "放棄を実行できずに停止。プラグインを取得し直して再実行する" || handoff_clear=failed
+      [ "$handoff_clear" = failed ] && echo "WARNING: handoff を落とせませんでした。Stop hook が /rite:pr-review を再注入してゲートを迂回する恐れがあります" >&2
+      marker_emit ITERATE_ABANDON "$abandon_state" "cycle=$cc" "status=$cycle_status" \
+        "HANDOFF_CLEAR=$handoff_clear"
+      exit 1
+    fi
     marker_emit ITERATE_ABANDON "$abandon_state" "cycle=$cc" "status=$cycle_status"
-    [ "$abandon_state" = unavailable ] && exit 1
   fi
 fi
 
@@ -635,7 +647,7 @@ fi
 | `ITERATE_RESUME_HEAD` | アクション |
 |---|---|
 | `match` | 凍結 context の HEAD と現 HEAD が一致。従来どおり `REVIEW_RESUME=1` で早期 exit する |
-| `changed` | 不一致。早期 exit せず後段へ落ちる。`status=collecting` は直後に放棄を試み（下記 `ITERATE_ABANDON`）、`status=completed` はそのまま後段の新規 cycle 経路へ進み、`review-start` の receipt / HEAD 検証が fail-loud で止める |
+| `changed` | 不一致。早期 exit せず後段へ落ちる。`status=collecting` は直後に放棄を試みる（下記 `ITERATE_ABANDON`）。`status=completed` はそのまま後段の新規 cycle 経路へ進む — `review_run` を持つ run では `review-start` が停滞ゲートで止め、run を持たない（関連 Issue の無い）PR では止まらず現 HEAD で新しい cycle を凍結する |
 | `undecidable` | 凍結 `commit_sha` 欠落（`reason=frozen_sha_missing`）または `git rev-parse HEAD` 失敗（`reason=git_head_failed`）。HEAD 変更と混同せず `exit 1` で停止する |
 
 `ITERATE_ABANDON` は再開ガード直後の放棄の結果。`ITERATE_RESUME_HEAD=changed` かつ `status=collecting` のときだけ emit する。**lost 修復ゲートより前に評価する** — 後段に置くと前 cycle の JSON が残る経路で放棄されず、どの道も `review-start` の HEAD 一致要求で止まる:

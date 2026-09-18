@@ -65,8 +65,9 @@ def retained_run(state, session):
     pairing `current()` requires is absent. The abandonment record is what makes
     that absence legitimate: without it a run with no cycle is corruption, so
     every check `current()` makes is repeated here against the record instead of
-    the frozen cycle — except the HEAD comparison, since a moved HEAD is the
-    precondition for abandoning at all.
+    the frozen cycle — except the HEAD comparison, which compares a frozen cycle
+    against the current HEAD and so has nothing to compare in a shape that has no
+    cycle. Abandoning does not itself require a moved HEAD.
     """
     if "review_run" not in state or isinstance(state.get("review_cycle"), dict):
         return None

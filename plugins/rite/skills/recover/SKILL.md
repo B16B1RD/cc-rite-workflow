@@ -462,12 +462,12 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 | 状態 | 再開位置 |
 |---|---|
-| `collecting`、HEAD 不一致、manifest / content / result のいずれも未登録 | `flow-state.sh review-abandon --reason "<理由>"` で空の記録を放棄し、現 HEAD で `review-start` から新しい cycle を始める。`review_run` と session / Issue / PR / branch / worktree の対応は保持され、`review_run` を持つ run では counter も据え置かれる（run を持たない standalone レビューでは `review-start` が counter を進める）。**ディスク上に一致する receipt が残っていると helper が証跡ありとして拒否する** — その場合は次の行へ進む |
-| `collecting`、HEAD 不一致、保存済み receipt あり | 放棄は拒否される。`review-finish` も HEAD 一致を要求するため再検証は成立しない。helper が示した証跡パスを読むだけに留め、証跡を保持して停止する |
+| `collecting`、HEAD 不一致、証跡（manifest / content / result、保存済み receipt）を 1 つも持たない | `flow-state.sh review-abandon --reason "<理由>"` で空の記録を放棄し、現 HEAD で `review-start` から新しい cycle を始める。`review_run` と session / Issue / PR / branch / worktree の対応は保持され、`review_run` を持つ run では counter も据え置かれる（run を持たない standalone レビューでは `review-start` が counter を進める） |
+| `collecting`、HEAD 不一致、証跡がある | 放棄は拒否され、helper が証跡のパスを示す。`review-finish` も HEAD 一致を要求するため再検証は成立しない。示されたパスを読むだけに留め、証跡を保持して停止する |
 | `collecting`、HEAD 一致、manifest / content が未登録 | 固定名簿と context から pr-review 4.0 のディレクトリを復元し manifest / raw を読む。成功分を保持し、不足 reviewer だけ同一 cycle で再取得する |
 | `collecting`、HEAD 一致、`manifest_path` / `content_file` あり | 下の `review-finish` を再実行する。保存前・保存直後・完了記録前の中断も同じ入力を使う。`pending_id` は helper が保存済みの値を再利用する |
 | `completed`、最終 gate 未完了、HEAD 一致 | `result_path` を読み、同じ `review-finish` で保存結果を再検証してから pr-review ステップ 6 の残作業〜8 の全 gate へ戻る。新 cycle や fix / ready を直接始めない |
-| `completed`、HEAD 不一致 | 再検証は成立しない（`review-finish` が HEAD 一致を無条件に要求する）。`result_path` の保存結果を読むだけに留め、証跡を保持して停止する。放棄の対象外 |
+| `completed`、HEAD 不一致 | 再検証は成立しない（`review-finish` が HEAD 一致を無条件に要求する）。`result_path` の保存結果を読むだけに留め、証跡を保持して停止する。放棄の対象外。**この停止は `/rite:recover` から入った場合の話で**、iterate のループが修正を commit して次の cycle へ進む経路では同じ状態から新しい cycle を始めるのが正常系 |
 | `review_cycle` なし | 既存の iterate の lost 修復と新規開始手順へ。過去の保存 JSON だけを新 cycle の完了証跡にしない |
 
 ```bash

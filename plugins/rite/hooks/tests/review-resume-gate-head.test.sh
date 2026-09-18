@@ -27,13 +27,13 @@ assert_file_exists_or_fail "iterate/SKILL.md exists" "$ITERATE" || exit 1
 # --- SKILL.md から再開ガードを抽出 ---------------------------------------------
 
 GATE="$TEST_DIR/gate.sh"
-awk '/^# review-cycle-resume-gate$/{f=1} f{print} f&&/^    \[ "\$abandon_state" = unavailable \] && exit 1$/{g=1} g&&/^fi$/{exit}' \
+awk '/^# review-cycle-resume-gate$/{f=1} f{print} f&&/^    marker_emit ITERATE_ABANDON "\$abandon_state" "cycle=\$cc" "status=\$cycle_status"$/{g=1} g&&/^fi$/{exit}' \
   "$ITERATE" > "$GATE"
 
 gate_lines=$(wc -l < "$GATE")
 if [ "$gate_lines" -lt 30 ] || [ "$gate_lines" -gt 80 ]; then
   fail "resume gate extraction is implausible ($gate_lines 行)。抽出アンカーが壊れている可能性があります"
-  print_summary "$(basename "$0")" "抽出アンカー: '# review-cycle-resume-gate' 〜 abandon 分岐末尾の 'fi'"
+  print_summary "$(basename "$0")" "抽出アンカー: '# review-cycle-resume-gate' 〜 refused / done 側の marker_emit 直後の 'fi'"
   exit 1
 fi
 assert_grep "extracted gate reads the frozen commit_sha" "$GATE" 'review_context\.commit_sha'
@@ -53,9 +53,12 @@ RUNNER="$TEST_DIR/runner.sh"
   sed -e 's#^review_state=\$(bash {plugin_root}/hooks/flow-state\.sh get --jq-filter \.) || exit 1$#review_state=$(cat "$STATE_FILE") || exit 1#' \
       -e 's#^      review_state=\$(bash {plugin_root}/hooks/flow-state\.sh get --jq-filter \.) || exit 1$#      review_state=$(cat "${STATE_FILE_AFTER:-$STATE_FILE}") || exit 1#' \
       -e 's#^    if abandon_out=\$(LC_ALL=C bash {plugin_root}/hooks/flow-state\.sh review-abandon \\$#    if abandon_out=$(printf "%s" "${ABANDON_OUT:-}"; exit "${ABANDON_RC:-0}") \\#' \
+      -e 's#^      bash {plugin_root}/hooks/flow-state\.sh set --phase "\$iteration_phase" .*|| handoff_clear=failed$#      ( exit "${HANDOFF_CLEAR_RC:-0}" ) || handoff_clear=failed#' \
       -e 's#^      --reason "HEAD changed before any evidence was recorded" 2>&1); then$#      ; then#' \
       -e 's#{issue_number}#99#g' "$GATE"
-  printf '%s\n' 'echo "FELL_THROUGH=1"'
+  # 放棄後の state 読み直しが生きているかは iteration_phase にしか現れないので、
+  # 後段が読む値をそのまま出す。読み直しを消すと古い phase が出て固定が落ちる。
+  printf '%s\n' 'echo "FELL_THROUGH=1; ITERATE_PHASE=${iteration_phase:-}"'
 } > "$RUNNER"
 
 assert_not_grep "runner has no unsubstituted placeholder" "$RUNNER" '{plugin_root}'
@@ -151,6 +154,37 @@ esac
 case "$out" in
   *"FELL_THROUGH=1"*) fail "unavailable abandon must not fall through" ;;
   *) pass "unavailable abandon stops before the lost gate" ;;
+esac
+
+# 停止する前に handoff を落とす。Stop hook の consume-handoff は jq とシェルだけで動くので、
+# helper を実行できない版 skew でも handoff は消費され、/rite:pr-review が再注入されて
+# 未放棄の cycle のままゲートを迂回する。落とせたか落とせなかったかを marker に残す。
+case "$out" in
+  *"HANDOFF_CLEAR=ok"*) pass "the unavailable stop clears the handoff" ;;
+  *) fail "the unavailable stop clears the handoff (出力: $out)" ;;
+esac
+
+out=$( cd "$REPO" && STATE_FILE="$TEST_DIR/state.json" ABANDON_RC=127 HANDOFF_CLEAR_RC=1 \
+  ABANDON_OUT="bash: line 1: flow-state.sh: No such file or directory" bash "$RUNNER" 2>&1 ); rc=$?
+case "$out" in
+  *"HANDOFF_CLEAR=failed"*) pass "a failed handoff clear is reported rather than assumed" ;;
+  *) fail "a failed handoff clear is reported rather than assumed (出力: $out)" ;;
+esac
+case "$out" in
+  *"handoff を落とせませんでした"*) pass "a failed handoff clear warns about the bypass it leaves" ;;
+  *) fail "a failed handoff clear warns about the bypass it leaves (出力: $out)" ;;
+esac
+
+# 放棄は phase を pr へ戻す。後段の set が古い phase を書き戻さないよう、ガードは state を
+# 読み直して iteration_phase を作り直す。読み直しを消しても気づけるよう、放棄後の state を
+# 差し替えて、再計算された phase がそちらから来ることを固定する。
+make_state "$FROZEN_HEAD" collecting > "$TEST_DIR/state.json"
+jq '.phase = "pr" | del(.review_cycle)' "$TEST_DIR/state.json" > "$TEST_DIR/state-after.json"
+out=$( cd "$REPO" && STATE_FILE="$TEST_DIR/state.json" \
+  STATE_FILE_AFTER="$TEST_DIR/state-after.json" ABANDON_RC=0 bash "$RUNNER" 2>&1 ); rc=$?
+case "$out" in
+  *"ITERATE_PHASE=pr"*) pass "the phase is recomputed from the state the abandon left" ;;
+  *) fail "the phase is recomputed from the state the abandon left (出力: $out)" ;;
 esac
 
 # helper が証跡を検出して拒否したときは、断定してよいのはこの枝だけ。
