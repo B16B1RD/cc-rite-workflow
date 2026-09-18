@@ -779,7 +779,7 @@ cmd_review_cycle() {
   while [ $# -gt 0 ]; do
     case "$operation:$1" in
       start:--stagnation) args+=("$1"); shift ;;
-      start:--selection|finish:--manifest|finish:--content-file|finish:--pending-id|clock:--input|observe:--input|observe:--issue|replan:--plan|replan:--issue|retry:--plan|retry:--issue)
+      start:--selection|finish:--manifest|finish:--content-file|finish:--pending-id|clock:--input|observe:--input|observe:--issue|replan:--plan|replan:--issue|retry:--plan|retry:--issue|abandon:--reason)
         [ $# -ge 2 ] || { echo "ERROR: missing value for $1" >&2; return 1; }
         args+=("$1" "$2"); shift 2 ;;
       *) echo "ERROR: unknown review-cycle option: $1" >&2; return 1 ;;
@@ -798,6 +798,10 @@ cmd_review_cycle() {
   fi
   case "$operation" in
     clock|observe|replan|retry|close) printf '%s' "$updated" | jq '.review_run' ;;
+    # After abandon `.review_cycle` is gone; the appended record is the outcome.
+    # A no-op prints the last record, or null if none; REVIEW_ABANDON=noop
+    # on stderr distinguishes it from a new abandonment.
+    abandon) printf '%s' "$updated" | jq '.review_cycle_abandoned[-1]' ;;
     *) printf '%s' "$updated" | jq '.review_cycle' ;;
   esac
 }
@@ -822,6 +826,7 @@ case "${1:-}" in
   review-retry) shift; cmd_review_cycle retry "$@" ;;
   review-close) shift; cmd_review_cycle close "$@" ;;
   review-defer) shift; cmd_review_cycle defer "$@" ;;
+  review-abandon) shift; cmd_review_cycle abandon "$@" ;;
   get) shift; cmd_get "$@" ;;
   deactivate) shift; cmd_deactivate "$@" ;;
   reap-issue) shift; cmd_reap_issue "$@" ;;
@@ -831,7 +836,7 @@ case "${1:-}" in
   path) shift; cmd_path "$@" ;;
   *)
     cat >&2 <<EOF
-Usage: $0 {set|get|review-start|review-finish|review-retry|deactivate|reap-issue|clear-worktree|consume-handoff|migrate|path} [options]
+Usage: $0 {set|get|review-start|review-finish|review-retry|review-abandon|deactivate|reap-issue|clear-worktree|consume-handoff|migrate|path} [options]
   set --phase <P> --next <T> [--issue N] [--branch S] [--pr N] [--parent-issue N]
       [--active true|false] [--handoff CMD] [--session UUID] [--if-exists] [--preserve-error-count]
       [--worktree PATH] [--require-worktree]   # --require-worktree: warn + emit WORKTREE_INVARIANT marker when worktree empty (non-blocking)
@@ -845,6 +850,7 @@ Usage: $0 {set|get|review-start|review-finish|review-retry|deactivate|reap-issue
   review-retry --plan /absolute/fix-plan.json --issue /absolute/issue.json
   review-close
   review-defer
+  review-abandon --reason TEXT       # drop an evidence-free collecting cycle; keeps counter and identity
   review-finish --manifest /absolute/completions.json --content-file /absolute/result.json [--pending-id TOKEN]
   deactivate [--next T] [--session UUID]
   reap-issue --issue N               # cross-session active=false + lock reap for issue N (non-blocking)

@@ -389,7 +389,7 @@ rationale: references/rationale.md#reset-refire-run-since
 
 ## ステップ 1: 発火条件チェック → /rite:pr-review を invoke
 
-ループ頭で未完了の `review_cycle` を先に照合する。同一 cycle の回収・保存・最終ゲートの再開は counter を進めず、lost / breaker を評価しない。新規 cycle のみ **lost 修復ゲートを先に**評価し、穴が無いときだけサーキットブレーカーの **2 つの発火条件** を評価する。ゲートが fire なら increment も次 cycle の review も始めない。ゲートが ok で発火条件がどちらも不成立なら `/rite:pr-review` を invoke し、名簿確定後の `review-start` に counter 更新と `phase=review` を委譲、いずれかが成立したらサーキットブレーカー（ステップ 6）へ分岐する:
+ループ頭で未完了の `review_cycle` を先に照合する。**凍結 context の HEAD が現 HEAD と一致する**同一 cycle の回収・保存・最終ゲートの再開は counter を進めず、lost / breaker を評価しない。HEAD 不一致の未完了 cycle は早期 exit せず後段へ落ち、lost / breaker の評価を受ける。新規 cycle と HEAD 不一致の再開は **lost 修復ゲートを先に**評価し、穴が無いときだけサーキットブレーカーの **2 つの発火条件** を評価する。ゲートが fire なら increment も次 cycle の review も始めない。ゲートが ok で発火条件がどちらも不成立なら `/rite:pr-review` を invoke し、名簿確定後の `review-start` に counter 更新と `phase=review` を委譲、いずれかが成立したらサーキットブレーカー（ステップ 6）へ分岐する:
 
 1. **lost 修復ゲート** — helper の `lost=` が `0` より大きい（完了済み cycle に対して JSON 不足 = 増分）、または `cc>=1` かつ raw `lost=` 欠落かつ reason が `no_results_file` / `results_dir_missing` / `no_file_after_pin`（`_undecidable` は `lost=` を出さない）。次 cycle を始めず (a)/(b) へ。`cc=0` と `helper_unavailable` は発火させない
 2. **収束トレンドの発散**（主経路）— `hooks/scripts/review-trend-divergence.sh` が永続レビュー JSON から現 run の per-cycle blocking 列を復元し発散と判定した場合。`cycle_count` が上限未満でも発火する
@@ -427,9 +427,63 @@ review_state=$(bash {plugin_root}/hooks/flow-state.sh get --jq-filter .) || exit
 iteration_phase=$(printf '%s' "$review_state" | jq -er ' .phase') || exit 1
 if printf '%s' "$review_state" | jq -e '.phase == "review" and (.cycle_count // 0) > 0 and
   (.review_cycle.status == "collecting" or .review_cycle.status == "completed")' >/dev/null; then
-  marker_emit ITERATE_LOST_GATE ok "cycle=$cc" "INC=held" "REVIEW_RESUME=1"
-  marker_emit ITERATE_CB ok "cycle=$cc" "max=$max_cycles" "INC=held" "REVIEW_RESUME=1"
-  exit 0
+  # 早期 exit は「同じ HEAD の同じ cycle を続ける」ときだけの縮退である。HEAD が動いていれば
+  # その cycle はもう続けられない（review-start / review-finish が HEAD 一致を要求する）ため、
+  # ここで exit すると後段の lost 修復ゲートが構造的に到達不能になる。
+  # SHA 欠落・git 失敗は HEAD 変更と混同せず停止する（証跡の有無を判定できないまま進ませない）。
+  cycle_status=$(printf '%s' "$review_state" | jq -er '.review_cycle.status') || exit 1
+  frozen_head=$(printf '%s' "$review_state" | jq -er '.review_cycle.review_context.commit_sha') || {
+    echo "ERROR: 凍結 context に commit_sha がありません（state 破損）。/rite:recover {issue_number} で証跡を確認してください" >&2
+    marker_emit ITERATE_RESUME_HEAD undecidable "cycle=$cc" "reason=frozen_sha_missing"
+    exit 1
+  }
+  current_head=$(git rev-parse HEAD 2>/dev/null) || current_head=""
+  if [ -z "$current_head" ]; then
+    echo "ERROR: 現 HEAD を取得できませんでした。HEAD 変更と区別できないため停止します" >&2
+    marker_emit ITERATE_RESUME_HEAD undecidable "cycle=$cc" "reason=git_head_failed"
+    exit 1
+  fi
+  if [ "$current_head" = "$frozen_head" ]; then
+    marker_emit ITERATE_RESUME_HEAD match "cycle=$cc" "status=$cycle_status" "head=$current_head"
+    marker_emit ITERATE_LOST_GATE ok "cycle=$cc" "INC=held" "REVIEW_RESUME=1"
+    marker_emit ITERATE_CB ok "cycle=$cc" "max=$max_cycles" "INC=held" "REVIEW_RESUME=1"
+    exit 0
+  fi
+  marker_emit ITERATE_RESUME_HEAD changed "cycle=$cc" "status=$cycle_status" \
+    "frozen=$frozen_head" "head=$current_head"
+  # 証跡ゼロの collecting はここで放棄する。lost 修復ゲートの結果に依存させると、前 cycle の
+  # JSON が残っている経路（lost_gate=ok）では放棄されず、後段のどの道も review-start の HEAD
+  # 一致要求で止まる。証跡の有無は helper が判定するのでここで先取りしない。
+  if [ "$cycle_status" = collecting ]; then
+    if abandon_out=$(LC_ALL=C bash {plugin_root}/hooks/flow-state.sh review-abandon \
+      --reason "HEAD changed before any evidence was recorded" 2>&1); then
+      abandon_state=done
+      # 放棄は phase を pr へ戻す。後段の set が古い phase を書き戻さないよう読み直す。
+      review_state=$(bash {plugin_root}/hooks/flow-state.sh get --jq-filter .) || exit 1
+      iteration_phase=$(printf '%s' "$review_state" | jq -er ' .phase') || exit 1
+    elif printf '%s' "$abandon_out" | grep -q 'ERROR: review-cycle:'; then
+      abandon_state=refused
+      # helper が判定して拒否した、までが分かること。prefix は require() 違反すべてに付くので
+      # 理由は証跡の残存とは限らない。断定せず、直後に出す helper の stderr に説明を委ねる。
+      echo "WARNING: 未完了 cycle の放棄が helper に拒否されました。下の理由を読み、回収が必要なら /rite:recover {issue_number} を実行してください" >&2
+    else
+      abandon_state=unavailable
+      echo "ERROR: 未完了 cycle の放棄を実行できませんでした（helper 不在 / プラグイン破損 / 版 skew の疑い）。プラグインを取得し直してから /rite:iterate {pr_number} を再実行してください" >&2
+    fi
+    [ -n "$abandon_out" ] && printf '%s\n' "$abandon_out" | head -5 | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    if [ "$abandon_state" = unavailable ]; then
+      # 停止する前に handoff を落とす。Stop hook の consume-handoff は jq とシェルだけで
+      # 動くため、helper を実行できない版 skew でも handoff は消費され、/rite:pr-review が
+      # 再注入されて未放棄の cycle のままゲートを迂回する。他 2 つの停止点と同型に揃える。
+      handoff_clear=ok
+      bash {plugin_root}/hooks/flow-state.sh set --phase "$iteration_phase" --issue "{issue_number}" --branch "{branch_name}" --pr "{pr_number}" --next "放棄を実行できずに停止。プラグインを取得し直して再実行する" || handoff_clear=failed
+      [ "$handoff_clear" = failed ] && echo "WARNING: handoff を落とせませんでした。Stop hook が /rite:pr-review を再注入してゲートを迂回する恐れがあります" >&2
+      marker_emit ITERATE_ABANDON "$abandon_state" "cycle=$cc" "status=$cycle_status" \
+        "HANDOFF_CLEAR=$handoff_clear"
+      exit 1
+    fi
+    marker_emit ITERATE_ABANDON "$abandon_state" "cycle=$cc" "status=$cycle_status"
+  fi
 fi
 
 
@@ -587,6 +641,22 @@ else
     "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "INC=$inc_status"
 fi
 ```
+
+`ITERATE_RESUME_HEAD` は再開ガードの HEAD 照合結果。未完了 cycle が無い起動では emit されない:
+
+| `ITERATE_RESUME_HEAD` | アクション |
+|---|---|
+| `match` | 凍結 context の HEAD と現 HEAD が一致。従来どおり `REVIEW_RESUME=1` で早期 exit する |
+| `changed` | 不一致。早期 exit せず後段へ落ちる。`status=collecting` は直後に放棄を試みる（下記 `ITERATE_ABANDON`）。`status=completed` は後段の新規 cycle 経路へ進む。`review-start` は保存済み receipt を要求し、`review_run` があれば加えて advance 条件（観測・検証済み修正・clean tree）を検査する。満たせば現 HEAD で新しい cycle を凍結し、不足すれば停止する |
+| `undecidable` | 凍結 `commit_sha` 欠落（`reason=frozen_sha_missing`）または `git rev-parse HEAD` 失敗（`reason=git_head_failed`）。HEAD 変更と混同せず `exit 1` で停止する |
+
+`ITERATE_ABANDON` は再開ガード直後の放棄の結果。`ITERATE_RESUME_HEAD=changed` かつ `status=collecting` のときだけ emit する。**lost 修復ゲートより前に評価する** — 後段に置くと前 cycle の JSON が残る経路で放棄されず、どの道も `review-start` の HEAD 一致要求で止まる:
+
+| `ITERATE_ABANDON` | アクション |
+|---|---|
+| `done` | 証跡ゼロの cycle を放棄した。`review_cycle` は消え、counter・`review_run`・identity は保持される。後段は通常どおり進み、新しい cycle が現 HEAD を凍結する |
+| `refused` | helper が放棄の前提を満たさず拒否した（証跡あり、名簿・context 不整合など）。診断を確認する。`review_cycle` は残るので後段の `review-start` が fail-loud で止める。`/rite:recover {issue_number}` で回収する |
+| `unavailable` | helper 自体を実行できなかった（不在 / プラグイン破損 / 版 skew）。証跡の有無を判定できておらず放棄も再レビューも成立しないため、その場で `exit 1` する。この分岐は handoff の clear を試み、成否を `HANDOFF_CLEAR` に出す。`refused` にはこの marker は出ない |
 
 | `ITERATE_LOST_GATE` | アクション |
 |---------|-----------|

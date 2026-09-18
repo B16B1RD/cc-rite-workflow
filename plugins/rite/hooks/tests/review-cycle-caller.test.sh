@@ -336,8 +336,44 @@ with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
     assert retained_run == successful['review_run']
     assert 'deferred_context' not in retained_run
 
+    # A HEAD-changed collecting cycle with no evidence must reach the real
+    # review-abandon through the documented block, not just report the mismatch.
+    state_path.unlink()
+    (work / 'rite-config.yml').write_text('safety:\n  max_review_cycles: 15\n')
+    for stale in (work / '.rite/review-results').glob('*.json'):
+        stale.unlink()
+    # `pr_number` was retargeted earlier in this suite; follow it rather than
+    # hardcoding the original PR, or the caller block's own PR guard refuses.
+    abandon_pr = int(replacements['pr_number'])
+    replacements.update(issue_number='4241')
+    flow('set', '--phase', 'pr', '--pr', abandon_pr, '--issue', 4241,
+         '--branch', 'caller-test', '--next', 'review')
+    selection.write_text(json.dumps(['test-reviewer']))
+    execute(start_block)
+    abandoned_context = state()['review_cycle']['review_context']
+    run(['git', '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+         'commit', '-q', '--allow-empty', '-m', 'move HEAD past the frozen cycle'])
+    moved = execute(iterate_block)
+    assert 'ITERATE_RESUME_HEAD=changed' in moved.stdout, 'resume gate hid the HEAD change'
+    assert 'REVIEW_RESUME=1' not in moved.stdout, 'resume gate still exited early'
+    assert 'ABANDON=done' in moved.stdout, 'lost gate did not reach review-abandon'
+    assert 'review_cycle' not in state(), 'the empty cycle survived the abandon branch'
+    assert state()['review_cycle_abandoned'][-1]['review_context'] == abandoned_context
+    assert state()['cycle_count'] == 1, 'abandon moved the counter'
+
+    # With evidence recorded, the same block must be refused rather than obeyed.
+    execute(start_block)
+    evidenced = json.loads(state_path.read_text())
+    evidenced['review_cycle']['manifest_path'] = str(manifest)
+    state_path.write_text(json.dumps(evidenced))
+    run(['git', '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+         'commit', '-q', '--allow-empty', '-m', 'move HEAD again'])
+    refused = execute(iterate_block)
+    assert 'ABANDON=refused' in refused.stdout, 'evidence-bearing cycle was not protected'
+    assert state()['review_cycle']['manifest_path'] == str(manifest), 'evidence was dropped'
+
     # Existing output gates precede the deferred success handoff.
     assert '状態更新・result の前に記載順で評価する' in review
     assert '全 gate pass を確認してから 8.0 の該当する状態更新を実行する' in review
-    print('PASS: extracted start / finish / iterate / recover callers; partial waves; missing-call rejection; idempotent resume; lost/breaker phase preservation')
+    print('PASS: extracted start / finish / iterate / recover callers; partial waves; missing-call rejection; idempotent resume; lost/breaker phase preservation; HEAD-change abandon reach and evidence refusal')
 PY
