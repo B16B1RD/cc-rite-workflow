@@ -11,7 +11,7 @@
 | `review_context` | 保存済みレビューの context を完全コピー |
 | `issue_number`, `issue_body` | 最新 Issue の番号と本文を完全コピー。helper の照合は Decision Log のトリアージ行と非実測記録の marker 行を除外する（[レビュー停滞の診断](../../../references/review-stagnation.md)） |
 | `constraints` | `targets` / `non_targets`: repository 相対パス配列。`closed_targets`: boolean。`rationale`: 本文から採った解釈の根拠 |
-| `groups[]` | 同じ根因は1グループ。`root_cause`, `finding_ids`, `action`, `paths`, `rationale`, `semantic`, `verification_ids` |
+| `groups[]` | 同じ根因は1グループ。`root_cause`, `finding_ids`, `action`, `paths`, `rationale`, `semantic`, `verification_ids`。`rationale` に元要求との対応と、追加／削除／差し戻し／移動から選んだ処置の理由を短く書く（初回 finding でも。Escalation 段落の代用にしない） |
 | `groups[].semantic` | `approved`: boolean。`acceptance_criteria`: AC全体との照合根拠。`out_of_scope`: 要求外の動作変更を含まない根拠。違反・未判断は `approved:false` と理由を記録 |
 | `verifications[]` | `id`, `kind` (`related` / `full`), `command`, `inputs` (ファイル/ディレクトリ配列), `environment` (結果に影響する環境変数名配列) |
 

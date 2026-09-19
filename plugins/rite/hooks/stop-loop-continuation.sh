@@ -27,7 +27,7 @@
 #     **読み取り + 削除** する (one-shot)。継続 / WIKICHAIN / 未知 prefix は非空なら
 #     decision:block で差し戻す。FINALIZE は完了通知未出力 / 検査不能のときだけ block し、
 #     prefix で reason を分岐する: "/rite:..." は次コマンド再注入、"FINALIZE:..." は
-#     /rite:iterate ステップ5 完了通知の出力を要求、"WIKICHAIN:..." は cleanup チェーンの
+#     完了前確認（目的整合）を経てから /rite:iterate ステップ5 完了通知の出力を要求、"WIKICHAIN:..." は cleanup チェーンの
 #     残り step (ingest 残処理 → cleanup ステップ 10-12) の継続を要求する。
 #   - 削除済みのため、進捗 (次コマンド実行 / 完了通知出力) の後に再度停止すれば handoff は空
 #     → block しない (無限 block ループ防止)。handoff が空でも、自セッションの
@@ -242,7 +242,7 @@ fi
 # handoff pending: 停止を差し戻す。handoff の prefix で reason を分岐する。
 # 継続 / WIKICHAIN / 未知 prefix の block 可否は「handoff 非空」の軸のみ。FINALIZE は
 # 直近 assistant に完了通知が既にあるとき差し戻さない（未出力 / 検査不能は差し戻す側）。
-#   FINALIZE:{result}:{pr}  = 終了 sentinel 到達 → 完了通知未出力ならステップ5 完了通知を強制
+#   FINALIZE:{result}:{pr}  = 終了 sentinel 到達 → 完了通知未出力なら完了前確認を経てステップ5 完了通知を強制
 #   WIKICHAIN:{caller}:{pr} = cleanup チェーン未完走 → 残り step の継続を強制
 #   /rite:...               = 継続 sentinel 到達 → 次ループコマンドを再注入
 #   それ以外                 = 未知 prefix。silent に既定動作へ吸収せず WARNING で可視化した上で
@@ -306,11 +306,20 @@ case "$HANDOFF" in
       esac
     fi
     case "$_result" in
-      fix:non-fatal-only:*)
-        _nb_note="5.S 未実施なら先に NB digest sweep を実行し、成功後に完了通知へ進んでください。再フルレビューは禁止です。${_nb_note}"
+      fix:non-fatal-only:*|review:mergeable:*)
+        _nb_note="5.S 未実施なら先に NB digest sweep を実行し、成功後は完了前確認（目的整合）を経てから完了通知へ進んでください。再フルレビューは禁止です。${_nb_note}"
         ;;
     esac
-    _reason="rite の review↔fix ループ (/rite:iterate) が終了 sentinel (${_result}) に到達しました。停止する前に /rite:iterate ステップ5 の完了通知 (終了理由 + 次ステップ案内) を必ず出力してください。${_nb_note:+
+    _purpose_mid="ステップ5 の完了通知 (終了理由 + 次ステップ案内) を必ず出力してください。"
+    _purpose_extra=""
+    case "$_result" in
+      fix:cancelled-by-user:*) ;;
+      *)
+        _purpose_mid="の完了前確認（目的整合）を経てからステップ5 の完了通知 (終了理由 + 次ステップ案内) を必ず出力してください。"
+        _purpose_extra="目的逸脱なら完了通知は出さず REVIEW_STOP=purpose_unaligned で停止してください。"
+        ;;
+    esac
+    _reason="rite の review↔fix ループ (/rite:iterate) が終了 sentinel (${_result}) に到達しました。停止する前に /rite:iterate ${_purpose_mid}${_purpose_extra}${_nb_note:+
 $_nb_note}
 
 handoff は consume 済みのため、完了通知を出力した後に再度停止すれば停止が許可されます (無限 block しません)。"
