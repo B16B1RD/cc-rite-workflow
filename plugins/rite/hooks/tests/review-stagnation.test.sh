@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 python3 - "$SCRIPT_DIR/../.." <<'PYTEST'
 import copy
 import datetime
+import hashlib
 import importlib
 import json
 import os
@@ -16,6 +17,53 @@ import tempfile
 
 plugin = Path(sys.argv[1]).resolve()
 checks = 0
+
+# Production _atomic_write is not a CLI. Drive it through a copy of flow-state.sh
+# whose dispatcher is replaced, with SCRIPT_DIR pinned to the plugin hooks dir.
+_ATOMIC_DRIVER = (plugin / 'hooks/flow-state.sh').read_text().replace(
+    'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"',
+    'SCRIPT_DIR=' + json.dumps(str(plugin / 'hooks')),
+    1,
+).replace(
+    'case "${1:-}" in',
+    '''if [ -n "${RITE_ATOMIC_TARGET:-}" ]; then
+  if [ "${RITE_TEST_HIDE_FLOCK:-}" = 1 ]; then
+    command() {
+      if [ "$1" = "-v" ] && [ "$2" = "flock" ]; then
+        return 1
+      fi
+      builtin command "$@"
+    }
+    if command -v flock >/dev/null 2>&1; then
+      echo "ERROR: T-R09 hide-flock failed; flock still visible" >&2
+      exit 2
+    fi
+  fi
+  content=$(python3 -c 'import pathlib,sys; sys.stdout.write(pathlib.Path(sys.argv[1]).read_text())' "$RITE_ATOMIC_CONTENT")
+  _atomic_write "$RITE_ATOMIC_TARGET" "$content"
+  exit $?
+fi
+case "${1:-}" in''',
+    1,
+)
+
+
+def publish_stale(fixture, expected_hash, content, hide_flock=False):
+    driver = fixture.private / 'atomic-write-driver.sh'
+    driver.write_text(_ATOMIC_DRIVER)
+    payload = fixture.private / 'stale-payload.json'
+    if isinstance(content, bytes):
+        payload.write_bytes(content)
+    else:
+        payload.write_text(content)
+    env = dict(fixture.env,
+               RITE_ATOMIC_TARGET=str(fixture.state_path),
+               RITE_ATOMIC_CONTENT=str(payload),
+               RITE_STATE_IF_MATCH=expected_hash)
+    if hide_flock:
+        env['RITE_TEST_HIDE_FLOCK'] = '1'
+    return subprocess.run(['bash', str(driver)], cwd=fixture.root, env=env,
+                          text=True, capture_output=True)
 
 
 def check(value, label):
@@ -1361,6 +1409,284 @@ try:
 finally:
     f.close()
 
+
+def approval_record(fixture, reason='user asked for a new run'):
+    return dict(
+        kind='explicit-fresh-entry',
+        run_id=fixture.state()['review_run']['run_id'],
+        review_context=fixture.context(),
+        issue_number=42, pr_number=71,
+        reason=reason, requested_at='2026-01-02T00:00:00Z')
+
+
+def restart(fixture, record=None, run_id=None, ok=True):
+    record = record or approval_record(fixture)
+    path = fixture.private / 'approval.json'
+    dump(path, record)
+    run_id = run_id or record['run_id']
+    return fixture.flow('review-restart', '--selection', fixture.selection,
+                        '--expected-run-id', run_id, '--approval', path, ok=ok)
+
+
+# Explicit authorized fresh-entry: a new run, not retry, not a silent iterate reset.
+f = Fixture()
+try:
+    diverge(f)
+    stopped = f.state()
+    f.reject(lambda: f.start(ok=False), 'T-R01: start still refuses a stopped run')
+    empty = approval_record(f)
+    empty['reason'] = '   '
+    f.reject(lambda: restart(f, empty, ok=False), 'T-R01: empty approval reason is refused')
+    wrong = approval_record(f)
+    f.reject(lambda: restart(f, wrong, run_id='00000000-0000-0000-0000-000000000000', ok=False),
+             'T-R01: wrong expected run id is refused')
+    check(f.state() == stopped, 'T-R01: refused restart leaves state identical')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    diverge(f)
+    old = f.state()['review_run']
+    old_context = f.context()
+    old_id = old['run_id']
+    record = approval_record(f)
+    restart(f, record)
+    live = f.state()
+    parked = live['review_run_history'][-1]
+    check(live['review_run']['run_id'] != old_id and live['cycle_count'] == 1
+          and live['review_cycle']['status'] == 'collecting'
+          and live['review_cycle']['review_context']['cycle_count'] == 1,
+          'T-R02: restart freezes a new cycle-1 run')
+    check(parked['run_id'] == old_id and parked['status'] == 'stopped'
+          and parked['parked']['superseded_by'] == live['review_run']['run_id']
+          and parked['parked']['restart']['reason'] == record['reason']
+          and parked['parked']['restart']['requested_at'] == record['requested_at']
+          and parked['parked']['restart']['old_context'] == old_context,
+          'T-R02: archive keeps the stop and the approval body')
+    check(live['review_run']['clock'] == [] and live['review_run']['observations'] == []
+          and 'pending_fix' not in live['review_run'] and not live.get('stop_reason'),
+          'T-R02: new run does not inherit verification credit')
+    check(parked['clock'] and parked['observations'] and parked['fixes'] and parked['replans'] is not None,
+          'T-R02: parked histories stay on the old run')
+    replay = f.state_path.read_bytes()
+    restart(f, record, run_id=old_id)
+    check(f.state_path.read_bytes() == replay, 'T-R04: same approval does not mint another run')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    diverge(f)
+    f.plan()
+    retry(f)
+    check(f.state()['review_run']['status'] == 'active' and 'retry' in f.state()['review_run'],
+          'T-R03: review-retry still reopens the same run')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    (f.root / 'rite-config.yml').write_text('safety:\n  max_review_cycles: 1\n')
+    f.run(['git', 'add', 'rite-config.yml'])
+    f.run(['git', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+           'commit', '-q', '-m', 'fixture config'])
+    f.cycle(roots=['input defect'], seconds=1801)
+    check(f.state()['stop_reason'] == 'circuit-breaker:max-cycles', 'T-R03: fixture reached max-cycles')
+    f.plan()
+    f.reject(lambda: retry(f, ok=False), 'T-R03: max-cycles still cannot be retried')
+    restart(f)
+    check(f.state()['cycle_count'] == 1 and f.state()['review_run']['status'] == 'active',
+          'T-R03: max-cycles can take the explicit restart')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    diverge(f)
+    old_id = f.state()['review_run']['run_id']
+    restart(f)
+    new_id = f.state()['review_run']['run_id']
+    f.flow('review-abandon', '--reason', 'switch after authorized restart')
+    f.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--branch', 'chore/issue-43', '--pr', 0)
+    f.flow('set', '--phase', 'pr', '--next', 'review', '--issue', 42, '--pr', 71)
+    back = f.state()
+    check(back.get('review_run', {}).get('run_id') == new_id
+          and back['review_run']['status'] == 'active'
+          and back.get('review_run', {}).get('run_id') != old_id,
+          'T-R05: round trip restores the new run, not the superseded stop')
+    check(any(entry.get('run_id') == old_id and entry.get('parked', {}).get('superseded_by') == new_id
+              for entry in back.get('review_run_history', [])),
+          'T-R05: superseded stop stays archived')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    f.start()
+    f.reject(lambda: restart(f, approval_record(f), f.context()['run_id'], ok=False),
+             'T-R08: collecting cycle cannot restart')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    diverge(f)
+    clock_dir = f.root / '.rite' / 'state'
+    clock_dir.mkdir(parents=True, exist_ok=True)
+    (clock_dir / ('review-clock-' + f.session + '.json')).write_text('{}')
+    f.reject(lambda: restart(f, ok=False), 'T-R08: open clock refuses restart without inventing times')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    diverge(f)
+    (f.root / 'new-impl.sh').write_text('echo new\n')
+    f.reject(lambda: restart(f, ok=False), 'T-R10: untracked implementation files block restart')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    diverge(f)
+    old_id = f.state()['review_run']['run_id']
+    f.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--branch', 'chore/issue-43', '--pr', 0)
+    forged = f.state()
+    entry = forged['review_run_history'][-1]
+    check(entry['run_id'] == old_id and entry['status'] == 'stopped', 'T-R11: parked entry is the stop')
+    entry['parked']['superseded_by'] = 'forged-new-run'
+    entry['parked']['restart'] = dict(
+        old_run_id='00000000-0000-0000-0000-000000000000',
+        old_context={'run_id': 'other'},
+        reason='forged', requested_at='2026-01-02T00:00:00Z',
+        new_run_id='forged-new-run', head='deadbeef', at='2026-01-02T00:00:00Z')
+    dump(f.state_path, forged)
+    f.reject(lambda: f.flow('set', '--phase', 'pr', '--next', 'review', '--issue', 42, '--pr', 71, ok=False),
+             'T-R11: forged supersession does not skip restoring the stop')
+finally:
+    f.close()
+
+flow_src = (plugin / 'hooks/flow-state.sh').read_text()
+check('if [ "$operation" != finish ]' in flow_src
+      and 'RITE_STATE_IF_MATCH="$expected_hash" _atomic_write' in flow_src,
+      'T-R09: review mutators other than finish publish with expected-state')
+
+f = Fixture()
+try:
+    diverge(f)
+    f.plan()
+    stopped_bytes = f.state_path.read_bytes()
+    old_hash = hashlib.sha256(stopped_bytes).hexdigest()
+    copy_path = f.private / 'stopped-copy.json'
+    copy_path.write_bytes(stopped_bytes)
+    retry_out = subprocess.run(
+        ['python3', str(plugin / 'hooks/scripts/lib/review-cycle.py'), 'retry',
+         '--state', str(copy_path), '--session', f.session,
+         '--results-dir', str(f.root / '.rite/review-results'),
+         '--plan', str(f.plan_path), '--issue', str(f.issue_path)],
+        cwd=f.root, env=f.env, text=True, capture_output=True)
+    check(retry_out.returncode == 0, 'T-R09: retry against a stopped snapshot still computes')
+    stale_retry = retry_out.stdout
+    check(stale_retry.lstrip().startswith('{'), 'T-R09: retry emitted a candidate')
+    restart(f)
+    new_id = f.state()['review_run']['run_id']
+    live_hash = hashlib.sha256(f.state_path.read_bytes()).hexdigest()
+    check(live_hash != old_hash, 'T-R09: restart changed the bytes a stale retry hashed')
+    before = f.state_path.read_bytes()
+    for hide, label in ((False, 'flock'), (True, 'no-flock')):
+        published = publish_stale(f, old_hash, stale_retry, hide_flock=hide)
+        check(published.returncode != 0 and 'expected-state mismatch' in published.stderr,
+              'T-R09: stale retry publish is rejected (' + label + ')\n' + published.stderr)
+        check(f.state_path.read_bytes() == before,
+              'T-R09: new run remains after stale retry (' + label + ')')
+    published = publish_stale(f, old_hash, stopped_bytes, hide_flock=False)
+    check(published.returncode != 0 and 'expected-state mismatch' in published.stderr,
+          'T-R09: stale set snapshot publish is rejected\n' + published.stderr)
+    check(f.state()['review_run']['run_id'] == new_id
+          and f.state()['review_run']['status'] == 'active',
+          'T-R09: stale publishers do not replace the new run')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    f.cycle(['input defect'])
+    check(f.state()['cycle_count'] == 1 and f.state()['review_run']['status'] == 'active',
+          'T-R06: cycle 1 completed with counter still 1')
+    (f.root / 'source.txt').write_text('post-cycle-1 change\n')
+    f.commit()
+    results = f.root / '.rite/review-results'
+    scope = subprocess.run(
+        ['bash', str(plugin / 'scripts/review-cycle-scope.sh'), '--pr', '71',
+         '--results-dir', str(results)],
+        cwd=f.root, env=f.env, text=True, capture_output=True)
+    check(scope.returncode == 0 and 'REVIEW_CYCLE_SCOPE=incremental' in scope.stderr,
+          'T-R06: same-run cycle 2 is incremental while live cycle_count is 1\n' + scope.stderr)
+    check('new_run_first_cycle' not in scope.stderr,
+          'T-R06: cycle_count==1 is not a full-scope gate')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    diverge(f)
+    old_id = f.state()['review_run']['run_id']
+    restart(f)
+    new_id = f.state()['review_run']['run_id']
+    results = f.root / '.rite/review-results'
+    results.mkdir(parents=True, exist_ok=True)
+    head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=f.root, text=True,
+                          capture_output=True, check=True).stdout.strip()
+    dump(results / '71-19700101000000.json', dict(
+        schema_version='1.1.0', pr_number=71, commit_sha=head,
+        review_context=dict(session_id=f.session, run_id=old_id, pr_number=71,
+                            cycle_count=3, commit_sha=head),
+        findings=[], non_blocking_findings=[], reviewers=['code-quality-reviewer']))
+    scope = subprocess.run(
+        ['bash', str(plugin / 'scripts/review-cycle-scope.sh'), '--pr', '71',
+         '--results-dir', str(results)],
+        cwd=f.root, env=f.env, text=True, capture_output=True)
+    check(scope.returncode == 0 and 'reason=foreign_run_json' in scope.stderr,
+          'T-R06: leftover JSON from the old run is foreign, not previous\n' + scope.stderr)
+    check('REVIEW_CYCLE_SCOPE=incremental' not in scope.stderr,
+          'T-R06: leftover JSON does not become prev')
+    gh = f.root / 'bin'
+    gh.mkdir()
+    (gh / 'gh').write_text(
+        '#!/bin/bash\n'
+        'ROOT=' + json.dumps(str(f.root)) + '\n'
+        'if printf "%s" "$*" | grep -q headRefOid; then\n'
+        '  git -C "$ROOT" rev-parse HEAD\n'
+        '  exit 0\n'
+        'fi\n'
+        'exit 1\n')
+    os.chmod(gh / 'gh', 0o755)
+    ready_env = dict(f.env, PATH=str(gh) + os.pathsep + f.env.get('PATH', ''))
+    ready = subprocess.run(
+        ['bash', str(plugin / 'hooks/scripts/ready-reviewed-head-gate.sh'),
+         '--pr', '71', '--repo', 'B16B1RD/cc-rite-workflow',
+         '--plugin-root', str(plugin), '--results-dir', str(results),
+         '--state-root', str(f.root)],
+        cwd=f.root, env=ready_env, text=True, capture_output=True)
+    check(ready.returncode != 0 and 'live_run_receipt_missing' in ready.stderr,
+          'T-R07: old same-HEAD receipt does not ready the new live run')
+    dump(results / '71-19700101000001.json', dict(
+        schema_version='1.1.0', pr_number=71, commit_sha=head,
+        review_context=dict(session_id=f.session, run_id=new_id, pr_number=71,
+                            cycle_count=1, commit_sha=head),
+        findings=[], non_blocking_findings=[], reviewers=['code-quality-reviewer'],
+        acceptance_criteria=dict(skipped='no_ac_section')))
+    ready_ok = subprocess.run(
+        ['bash', str(plugin / 'hooks/scripts/ready-reviewed-head-gate.sh'),
+         '--pr', '71', '--repo', 'B16B1RD/cc-rite-workflow',
+         '--plugin-root', str(plugin), '--results-dir', str(results),
+         '--state-root', str(f.root)],
+        cwd=f.root, env=ready_env, text=True, capture_output=True)
+    check(ready_ok.returncode == 0 and 'READY_REVIEWED_HEAD=match' in ready_ok.stderr,
+          'T-R07: new-run receipt is the only match')
+finally:
+    f.close()
 
 print('PASS: review stagnation: ' + str(checks) + ' assertions; real clocks, receipts, repairs and retained stops')
 PYTEST

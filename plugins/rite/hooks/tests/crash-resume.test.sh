@@ -184,8 +184,13 @@ fi
 
 # F-02 fix: 末尾に kill しない 1 iter を追加し、jq empty 経路を mechanical に通す
 # (kill しない iter がないと jq empty 経路が dead code のまま残るため、実際に通して guard する)
+# SIGKILL は wrapper だけを殺し inner `flow-state.sh` が残りうる。expected-state
+# 照合はその writer と衝突して非ゼロになり、`set -e` だと TC-1.3 に到達せず
+# スイート全体が abort する。integrity 判定へ落とす。
+wait 2>/dev/null || true
+sleep 0.2
 (cd "$TD" && bash "$HOOK" set --session "$SID" \
-  --phase "phase_final" --issue 684 --branch "feat/final" --pr 0 --next "nfinal" >/dev/null 2>&1)
+  --phase "phase_final" --issue 684 --branch "feat/final" --pr 0 --next "nfinal" >/dev/null 2>&1) || true
 state_file=$(state_path "$TD" "$SID")
 if [ -f "$state_file" ] && jq empty "$state_file" 2>/dev/null; then
   pass "TC-1.3: kill しない iter で state file integral (jq empty 経路を mechanical に通過)"

@@ -382,7 +382,7 @@ def abandon(state, args, directory):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("operation", choices=("start", "finish", "guard-set", "clock", "observe", "replan", "retry", "close", "defer", "abandon"))
+    parser.add_argument("operation", choices=("start", "finish", "guard-set", "clock", "observe", "replan", "retry", "restart", "close", "defer", "abandon"))
     parser.add_argument("--state", required=True)
     parser.add_argument("--session", required=True)
     parser.add_argument("--results-dir", required=True)
@@ -395,6 +395,8 @@ def main():
     parser.add_argument("--issue")
     parser.add_argument("--plan")
     parser.add_argument("--reason")
+    parser.add_argument("--expected-run-id")
+    parser.add_argument("--approval")
     parser.add_argument("--amend", action="store_true")
     args = parser.parse_args()
     path, directory = Path(args.state), Path(args.results_dir)
@@ -403,12 +405,15 @@ def main():
         return
     required = dict(start=["selection"], finish=["manifest", "content_file"],
                     clock=["input"], observe=["input", "issue"], replan=["plan", "issue"],
-                    retry=["plan", "issue"], close=[], defer=[], abandon=[])
+                    retry=["plan", "issue"], restart=["selection", "approval"],
+                    close=[], defer=[], abandon=[])
     for name in required[args.operation]:
         value = getattr(args, name)
         require(value and Path(value).is_absolute(), name + " must be an absolute file path")
     if args.operation == "abandon":
         require(args.reason and args.reason.strip(), "--reason must record why the cycle is abandoned")
+    if args.operation == "restart":
+        require(args.expected_run_id and args.expected_run_id.strip(), "--expected-run-id required")
     state = read(path)
     require(state.get("session_id") == args.session, "state session_id differs from current session")
     if args.operation == "start":

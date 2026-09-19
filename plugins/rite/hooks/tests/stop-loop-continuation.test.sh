@@ -130,6 +130,11 @@ if grep -q "完了通知" <<< "$_reason7"; then
 else
   fail "TC-7: reason missing completion-notice directive: $out"
 fi
+if grep -q "完了前確認（目的整合）" <<< "$_reason7"; then
+  pass "TC-7: reason requires purpose check before completion notice"
+else
+  fail "TC-7: reason missing purpose-check directive: $out"
+fi
 # The FINALIZE branch must NOT re-inject a continuation command (would falsely restart the loop).
 if grep -q "停止せず、次を実行してください" <<< "$_reason7"; then
   fail "TC-7: FINALIZE reason wrongly used the continuation phrasing: $out"
@@ -160,10 +165,24 @@ for _ho in "FINALIZE:fix:replied-only:99" "FINALIZE:fix:cancelled-by-user:99" "F
     --next n --handoff "$_ho" --session "$SID" >/dev/null
   out=$(stop_payload "$d9" | bash "$HOOK")
   assert "TC-9: ${_ho} → decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
-  if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "完了通知"; then
+  _reason9=$(printf '%s' "$out" | jq -r '.reason // ""')
+  if grep -q "完了通知" <<< "$_reason9"; then
     pass "TC-9: ${_ho} reason requests the completion notice"
   else
     fail "TC-9: ${_ho} reason missing completion-notice directive: $out"
+  fi
+  if [ "$_ho" = "FINALIZE:fix:cancelled-by-user:99" ]; then
+    if grep -q "完了前確認（目的整合）" <<< "$_reason9"; then
+      fail "TC-9: ${_ho} reason must not require purpose check: $out"
+    else
+      pass "TC-9: ${_ho} reason omits purpose check"
+    fi
+  else
+    if grep -q "完了前確認（目的整合）" <<< "$_reason9"; then
+      pass "TC-9: ${_ho} reason requires purpose check"
+    else
+      fail "TC-9: ${_ho} reason missing purpose-check directive: $out"
+    fi
   fi
   # one-shot: second stop allows
   out_b=$(stop_payload "$d9" "$SID" true | bash "$HOOK")

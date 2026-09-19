@@ -312,6 +312,24 @@ for _f in "${_run_files[@]+"${_run_files[@]}"}"; do
   [ "$_producer" = "true" ] || _review_files+=("$_f")
 done
 _run_files=("${_review_files[@]+"${_review_files[@]}"}")
+_live_run=""
+if [ -x "$SCRIPT_DIR/../flow-state.sh" ]; then
+  _fs=$(bash "$SCRIPT_DIR/../flow-state.sh" path 2>/dev/null) || _fs=""
+  if [ -n "$_fs" ] && [ -f "$_fs" ]; then
+    _live_pr=$(jq -r '.pr_number // empty' "$_fs" 2>/dev/null) || _live_pr=""
+    if [ "$_live_pr" = "$pr_number" ]; then
+      _live_run=$(jq -r '.review_run.run_id // empty' "$_fs" 2>/dev/null) || _live_run=""
+    fi
+  fi
+fi
+if [ -n "$_live_run" ]; then
+  _matched=()
+  for _f in "${_run_files[@]+"${_run_files[@]}"}"; do
+    _rid=$(jq -r '.review_context.run_id // empty' "$_f" 2>/dev/null) || _rid=""
+    [ "$_rid" = "$_live_run" ] && _matched+=("$_f")
+  done
+  _run_files=("${_matched[@]+"${_matched[@]}"}")
+fi
 _run_total=${#_run_files[@]}
 # pin フィルタ後 0 件は「dir に該当 JSON が無い」(上の no_results_file) とは別条件。同じ reason に
 # 畳むと、再実行直後の 1 cycle 目 (pin = 直近ファイル、現 run はまだ 0 件) という**全再実行が必ず

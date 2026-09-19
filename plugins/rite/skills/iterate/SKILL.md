@@ -47,7 +47,7 @@ rationale: references/rationale.md#circuit-breaker-conditions
 ## Contract
 
 **Input**: PR number (required)
-**Output**: 完了通知（`[review:mergeable]` / `[fix:non-fatal-only]` 到達後 5.S sweep 完了（外向きは `[review:mergeable]`）or `[fix:replied-only]` 到達後 5.S sweep 完了（外向きも返信のみ） or `[fix:cancelled-by-user]` 中断 or サーキットブレーカー発火による停止（`[iterate:max-cycles-reached]` バッチ / `[iterate:max-cycles-stopped]` 対話。非収束による失敗で、マージには進まない）or sweep 失敗 `[iterate:nb-sweep-error]` or 5.S 後の目的逸脱 `[review:error]` + `[CONTEXT] REVIEW_STOP=purpose_unaligned`（完了通知へ進まない） or Ctrl+C 中断）。発火後に review / fix は invoke せず、再開は明示的な `/rite:iterate` 再実行に委ねる。
+**Output**: 完了通知（`[review:mergeable]` / `[fix:non-fatal-only]` 到達後 5.S sweep 完了（外向きは `[review:mergeable]`）or `[fix:replied-only]` 到達後 5.S sweep 完了（外向きも返信のみ） or `[fix:cancelled-by-user]` 中断 or サーキットブレーカー発火による停止（`[iterate:max-cycles-reached]` バッチ / `[iterate:max-cycles-stopped]` 対話。非収束による失敗で、マージには進まない）or sweep 失敗 `[iterate:nb-sweep-error]` or 5.S 後の目的逸脱 `[review:error]` + `[CONTEXT] REVIEW_STOP=purpose_unaligned`（完了通知へ進まない） or Ctrl+C 中断）。発火後に review / fix は invoke しない。再開は `review_run` が無い legacy state では `/rite:iterate` の明示再実行、`review_run` がある停止はステップ 6.2 の `{resume_routes}`（通常の再実行では新 run にならない）。
 
 ## E2E Output Minimization
 
@@ -1265,7 +1265,7 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 要対応:
 {action_items}
 
-再開方法: /rite:iterate {pr_number} を明示的に再実行する（fresh entry として run 開始点を更新し full scope から始める）。
+再開方法: `review_run` が無い legacy state では /rite:iterate {pr_number} を明示再実行する。`review_run` がある停止は通常の再実行では新 run にならない。発散なら限定 retry、回数上限を含む既知 breaker の completed 停止は明示承認の `review-restart`（契約は 6.2 と [review-stagnation.md](../../references/review-stagnation.md)）。
 
 <!-- [iterate:max-cycles-reached] -->
 ```
@@ -1303,15 +1303,16 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 
 #### `{resume_routes}`（6.2 のみ）
 
-停止した run に残る経路は「抜ける」と、`divergence` 限定の「戻る」の 2 本だけで、どちらも停止理由を消さない。契約の SoT は [review-stagnation.md 停止後の退路と再開](../../references/review-stagnation.md#停止後の退路と再開)。
+停止した run に残る経路は「抜ける」、`divergence` 限定の「戻る」、既知 breaker の completed 停止に対する明示承認の「新 run」の 3 本で、どれも通常 iterate / recover では停止理由を消さない。契約の SoT は [review-stagnation.md 停止後の退路と再開](../../references/review-stagnation.md#停止後の退路と再開)。
 
 分岐は marker だけで行う。flow-state を読み直して条件を作らない。`ITERATE_STAGNATION` は ステップ 3 の `iterate-stagnation-route` が emit するが、**ステップ 1 の fire 分岐はステップ 3 を通らずステップ 6 へ直行する**ため、この marker が出ないまま本節に到達する起動がある。既定は `legacy` ではなく marker 不在の行が担う:
 
 | `ITERATE_STAGNATION` | `{cb_reason}` | `{resume_routes}` |
 |---|---|---|
 | `legacy` | 任意 | 下記「legacy 再開」1 行のみ |
-| それ以外（`stop` / `continue` / `replan` / marker 不在） | `divergence` | 下記「戻る」「抜ける」の 2 行 |
-| それ以外（同上） | `divergence` 以外 | 下記「抜ける」1 行のみ |
+| それ以外（`stop` / `continue` / `replan` / marker 不在） | `divergence` | 下記「戻る」「抜ける」「新 run」 |
+| それ以外（同上） | `max-cycles` | 下記「抜ける」「新 run」 |
+| それ以外（同上） | 上記以外 | 下記「抜ける」1 行のみ |
 
 marker 不在を `legacy` に倒さない。
 rationale: references/rationale.md#resume-routes-no-state-read
@@ -1340,8 +1341,21 @@ rationale: references/rationale.md#resume-routes-no-state-read
   cleanup は要らない）
 - 退避したこの PR へ戻る: /rite:open {issue_number} の後に /rite:iterate {pr_number} を実行する
   （退避した run がそのまま復元されるので停止は往復で消えない。復元後も停止したままで通常の
-  phase 更新は拒否される。この停止から先へ進めるのは再試行権を発行できるときだけで、発行できるのは
-  circuit-breaker:divergence に限る）
+  phase 更新は拒否される。同一 run を進めるのは再試行権を発行できるときだけで、発行できるのは
+  circuit-breaker:divergence に限る。既知 breaker の completed 停止なら、下の明示承認
+  review-restart で新しい run を始めてもよい）
+```
+
+「新 run」の行（`divergence` / `max-cycles`）:
+
+```
+- この停止 run への明示承認で新しい run を始める:
+  `bash "{plugin_root}"/hooks/flow-state.sh review-restart --selection <名簿 JSON の絶対パス> --expected-run-id <停止した run_id> --approval <今回の承認 JSON の絶対パス>`
+  （名簿は `review_cycle.selected_reviewers` の dump。`run_id` は停止時の `.review_run.run_id`。
+  承認 JSON の必須フィールドは [review-stagnation.md](../../references/review-stagnation.md#停止後の退路と再開)。
+  `--session` は付けない。旧 run は reason・要求時刻・対象 context ごと保管する。通常の iterate / recover / 自動再試行では呼ばない。
+  collecting・未知の停止理由・未 close の clock は拒否する。tracked 差分も gitignore 対象外の
+  未追跡ファイルも無い作業ツリーが必須）
 ```
 
 「legacy 再開」の行（`ITERATE_STAGNATION=legacy` のみ）:
@@ -1457,7 +1471,7 @@ rationale: [stop-loop-continuation-contract.md#mechanism](../../references/stop-
 - **blocking 指摘ゼロ（mergeable）、または非 fatal のみを移送後に 5.S で消化した状態が正常出口** — blocking の定義式は本ファイルに複製せず [severity-levels.md §実測必須ゲート](../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) を SoT とする。**非実測指摘が N 件残った状態でも `[review:mergeable]` に到達しうる** — 残存分の消化は完了通知前の 5.S（`/rite:fix --nb-sweep`）が担い、人間の draft レビューに委ねない。正常出口は未消化 0 件
 - **ブレーカーの発火条件は「発散」であって「予算切れ」ではない** — 主経路は収束トレンドの発散検出、`safety.max_review_cycles`（既定 15）は backstop。**窓幅や閾値を config キーにしない**
 - **発火理由は停止 routing を変えない** — sentinel（`[iterate:max-cycles-reached]` / `[iterate:max-cycles-stopped]`）は理由に依らず不変
-- **発火後は停止** — batch は failed、対話は機械的に停止。再実行時の fresh entry が full scope を担う。
+- **発火後は停止** — batch は failed、対話は機械的に停止。legacy の再実行は fresh entry。停止した `review_run` の full scope は明示承認の `review-restart` が担う。
 - **cycle counter は flow-state に保持** — 専用 state file は持たない。resume 跨ぎ継続、fresh entry で 0 リセット。発火直前（ステップ 6 共有前段）と正常終了時（ステップ 5.0.1）でも 0 に戻す
 - 人間が skip → 別 Issue で loop 終了する経路は閉じた。残存 non-blocking の消化は機械 routing（完了通知前の 5.S `/rite:fix --nb-sweep` と、cleanup の follow-up Issue 起票）が担う
 rationale: references/rationale.md#design-decisions
