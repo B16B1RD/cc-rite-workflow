@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import platform
 import re
+import shlex
 import stat
 import subprocess
 import sys
@@ -39,7 +40,13 @@ def within(value, parent):
     return Path(value).resolve() == Path(parent).resolve() or Path(parent).resolve() in Path(value).resolve().parents
 
 
-def validate(plan, issue, state, session, root, allow_replan=False):
+def validate_context(plan, state, session, directory):
+    """Bind a plan to the frozen cycle, its HEAD and its saved receipt.
+
+    Split out from validate() because deciding *whether* a state may move
+    (plan_gate) and checking *what* a plan says are separate questions: the
+    retry path answers the first one itself and still needs both of these.
+    """
     require(state.get("session_id") == session, "foreign session state")
     current = state.get("review_cycle")
     require(isinstance(current, dict) and current.get("status") == "completed", "all reviews must be collected and saved")
@@ -47,9 +54,19 @@ def validate(plan, issue, state, session, root, allow_replan=False):
     require(context["session_id"] == session and context["pr_number"] == state.get("pr_number")
             and context["cycle_count"] == state.get("cycle_count"), "review context differs from current state")
     require(plan.get("review_context") == context and cycle.head() == context["commit_sha"], "stale or foreign review context / HEAD")
-    receipt = cycle.matching_receipt(root / ".rite/review-results", current)
+    receipt = cycle.matching_receipt(directory, current)
     require(receipt is not None, "saved review receipt missing")
+    return receipt
+
+
+def validate(plan, issue, state, session, root, allow_replan=False):
+    receipt = validate_context(plan, state, session, root / ".rite/review-results")
     importlib.import_module("review-stagnation").plan_gate(state, plan, session, allow_replan)
+    return validate_plan(plan, issue, state, receipt)
+
+
+def validate_plan(plan, issue, state, receipt):
+    """Everything a fix plan must say, independent of the transition it enables."""
     require(issue.get("number") == state.get("issue_number") == plan.get("issue_number")
             and text(issue.get("body")) and text(plan.get("issue_body"))
             and cycle.same_specification(plan["issue_body"], issue["body"]), "Issue specification changed or mismatched")
@@ -173,19 +190,218 @@ def verify(plan, paths, output, kind):
         result["results"][test["id"]] = dict(key=key, command=test["command"], exit_code=measured.returncode,
                                               stdout=measured.stdout, stderr=measured.stderr, executed_at=cycle.now())
         atomic_write(output, result)
-        require(measured.returncode == 0, "verification failed: " + test["id"] + "; evidence=" + str(output))
+        require(measured.returncode == 0,
+                "verification failed: " + test["id"] + "; actual_rc=" + str(measured.returncode)
+                + "; expected_rc=0; evidence=" + str(output)
+                + "; expected nonzero exits must be asserted by a wrapper that exits 0 on success")
         require(fingerprint(test) == key, "verification inputs changed during execution: " + test["id"])
         print("[CONTEXT] FIX_VERIFICATION=executed; id=" + test["id"])
     return result
 
 
+def peel_commit_prefixes(words):
+    """Strip a closed wrapper/keyword set. This is not a shell interpreter."""
+    prefixes = {"command", "env", "nohup", "time", "exec"}
+    keywords = {"if", "then", "else", "elif", "fi", "do", "done", "for", "while", "until", "in", "!", "{", "}"}
+    words = list(words)
+    peeled = False
+    while words:
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", words[0]):
+            words, peeled = words[1:], True
+            continue
+        if words[0] in prefixes:
+            words = words[1:]
+            while words and words[0].startswith("-"):
+                words = words[1:]
+            peeled = True
+            continue
+        if words[0] in keywords:
+            words, peeled = words[1:], True
+            continue
+        break
+    return words, peeled
+
+
+def git_subcommand_index(words, git_index):
+    """Advance past the same git global options the direct-commit path skips."""
+    index = git_index + 1
+    while index < len(words) and words[index].startswith("-"):
+        option = words[index]
+        if option in ("-C", "-c"):
+            if index + 1 >= len(words):
+                return None
+            index += 2
+        elif option.startswith("-C"):
+            index += 1
+        elif option.startswith("-c") or option in ("--no-pager", "--no-optional-locks"):
+            index += 1
+        else:
+            return index if "commit" in words[index:] else None
+    return index if index < len(words) else None
+
+
+def commit_check(args):
+    """Read existing evidence before a direct commit; never run tests or write state."""
+    state_path = Path(args.state)
+    if not state_path.exists() and not state_path.is_symlink():
+        return  # A session that has never reviewed still commits normally.
+    state = read(state_path)
+    require(isinstance(state, dict) and state.get("session_id") == args.session,
+            "cannot read a valid session state before commit")
+    stagnation = importlib.import_module("review-stagnation")
+    retained = None
+    if state.get("review_cycle") is None:
+        if "review_run" not in state:
+            return
+        retained = stagnation.retained_run(state, args.session)
+    # This is a direct-command scanner, not a shell interpreter. Heredoc bodies
+    # have already been removed by the Bash guard's existing command surface.
+    lexer = shlex.shlex(args.command, posix=False, punctuation_chars=";&|()\n")
+    lexer.whitespace = " \t\r"
+    segments, segment = [], []
+    for token in lexer:
+        if token and all(ch in ";&|()\n" for ch in token):
+            if segment:
+                segments.append(segment)
+                segment = []
+        else:
+            # Keep quote information until separators have been classified:
+            # echo ';' git commit is one harmless command, not two commands.
+            # shlex's non-POSIX mode may split a quote beginning inside -mTEXT;
+            # join only that unfinished quoted word, then dequote with shlex.
+            while True:
+                try:
+                    values = shlex.split(token)
+                    break
+                except ValueError:
+                    tail = lexer.get_token()
+                    require(tail, "unfinished quoted commit command")
+                    token += " " + tail
+            require(len(values) == 1, "ambiguous shell word; run commit separately")
+            segment.append(values[0])
+    if segment:
+        segments.append(segment)
+    cwd = Path(args.cwd).resolve()
+    for words in segments:
+        if words and words[0] == "cd" and len(words) == 2:
+            require(not any(c in words[1] for c in "$`~"),
+                    "commit target is dynamic; run commit separately from its resolved worktree")
+            cwd = (cwd / words[1]).resolve()
+            continue
+        words, peeled = peel_commit_prefixes(words)
+        if not words:
+            continue
+        if Path(words[0]).name != "git":
+            if Path(words[0]).name in {"echo", "printf"}:
+                continue
+            names = [Path(word).name for word in words]
+            if "git" in names:
+                sub = git_subcommand_index(words, names.index("git"))
+                if sub is not None and "commit" in words[sub:]:
+                    require(False, "run commit as a direct command in its own Bash call")
+            continue
+        target, index = cwd, 1
+        while index < len(words) and words[index].startswith("-"):
+            option = words[index]
+            if option in ("-C", "-c"):
+                require(index + 1 < len(words), "incomplete git global option")
+                value = words[index + 1]
+                if option == "-C":
+                    require(not any(c in value for c in "$`~"), "commit target must be a literal worktree")
+                    target = (target / value).resolve()
+                index += 2
+            elif option.startswith("-C"):
+                target = (target / option[2:]).resolve()
+                index += 1
+            elif option.startswith("-c") or option in ("--no-pager", "--no-optional-locks"):
+                index += 1
+            else:
+                require("commit" not in words[index:],
+                        "use git -C <worktree> commit without alternate git-dir/work-tree options")
+                break
+        if index >= len(words) or words[index] != "commit":
+            continue
+        # Option values (notably -m '--dry-run') must not exempt a real commit.
+        dry_run, skip = False, False
+        for option in words[index + 1:]:
+            if skip:
+                skip = False
+            elif option == "--":
+                break
+            elif re.fullmatch(r"-[A-Za-z]*[mFCct]", option) or option in ("-m", "--message", "-F", "--file", "-C", "--reuse-message", "-c", "--reedit-message", "--author", "--date", "--fixup", "--squash", "--cleanup", "-t", "--template", "--trailer"):
+                skip = True
+            elif option in ("--dry-run", "--help", "-h"):
+                dry_run = True
+        if dry_run:
+            continue
+        # A review in another worktree must not prohibit unrelated work.
+        os.chdir(target)
+        actual = Path(subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip()).resolve()
+        if "worktree" not in state:
+            require(actual == Path(args.state_root).resolve(),
+                    "session worktree path is missing from state; cannot tell if this commit belongs to the review")
+            owner = args.state_root
+        else:
+            owner = state["worktree"]
+        if actual != Path(owner).resolve():
+            continue
+        if retained is not None:
+            require(retained.get("status") != "stopped",
+                    "review run stopped: " + str(retained.get("stop_reason")))
+            return
+        frozen = state.get("review_cycle")
+        require(isinstance(frozen, dict), "review run has no frozen cycle; start its review before committing")
+        require(frozen.get("status") == "completed",
+                "review is incomplete; collect reviewers and run review-finish before committing")
+        directory = Path(args.state_root) / ".rite/state"
+        approved_path = directory / ("fix-plan-" + args.session + ".json")
+        require(approved_path.is_file(),
+                "fix plan record missing; run check --plan <plan> --issue <issue> before committing")
+        approved = read(approved_path)
+        plan = approved["plan"]
+        issue = approved.get("issue")
+        require(isinstance(issue, dict) and issue.get("number") == state.get("issue_number")
+                and text(issue.get("body")),
+                "fix-scope Issue snapshot missing; run check --plan <plan> --issue <issue> before committing")
+        receipt, paths = validate(plan, issue, state, args.session, Path(args.state_root))
+        require(approved["plan_hash"] == digest(plan) and approved["review_hash"] == digest(receipt),
+                "plan or review changed; check scope before committing")
+        result = read(directory / ("fix-verification-" + args.session + ".json"))
+        require(result.get("review_context") == plan["review_context"], "verification belongs to another review")
+        for test in plan["verifications"]:
+            measured = result["results"].get(test["id"])
+            require(measured and measured.get("exit_code") == 0 and measured.get("key") == fingerprint(test),
+                    "run fix-scope verify --kind all before committing; stale/missing verification: " + test["id"])
+        # Same unplanned-path condition as verify(), including its sandbox mask: a
+        # write-block device or its 0-byte read-only stub is not a real change, so a
+        # sandboxed run must not make the commit it just verified unreachable.
+        changed = subprocess.check_output(["git", "diff", "--no-renames", "HEAD", "--name-only", "-z"]).decode().split("\0")
+        untracked = subprocess.check_output(["git", "ls-files", "--others", "--exclude-standard", "-z"]).decode().split("\0")
+        changed += [p for p in untracked if p and not sandbox_mask(p)]
+        require(all(any(within(path(p), allowed) for allowed in paths) for p in changed if p),
+                "unplanned changed path; check scope and verify before committing")
+        if "review_run" in state:
+            pending = state["review_run"].get("pending_fix")
+            require(isinstance(pending, dict) and pending.get("source_context") == plan["review_context"]
+                    and pending.get("plan_hash") == digest(plan)
+                    and pending.get("tree_hash") == stagnation.tree_fingerprint(),
+                    "fix tree changed; run fix-scope verify --kind all before committing")
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("operation", choices=("check", "verify"))
-    for name in ("plan", "issue", "state", "session", "state-root"):
+    parser.add_argument("operation", choices=("check", "verify", "commit-check"))
+    for name in ("state", "session", "state-root"):
         parser.add_argument("--" + name, required=True)
+    for name in ("plan", "issue", "command", "cwd"):
+        parser.add_argument("--" + name)
     parser.add_argument("--kind", choices=("related", "all"), default="all")
     args = parser.parse_args()
+    if args.operation == "commit-check":
+        require(args.command is not None and args.cwd, "commit-check requires command and cwd")
+        commit_check(args)
+        return
+    require(args.plan and args.issue, "check/verify require plan and issue")
     root = Path(args.state_root)
     directory = root / ".rite/state"
     saved = directory / ("fix-plan-" + args.session + ".json")
@@ -195,14 +411,20 @@ def main():
     plan, issue, state = read(args.plan), read(args.issue), read(args.state)
     receipt, paths = validate(plan, issue, state, args.session, root)
     directory.mkdir(parents=True, exist_ok=True)
-    record = dict(plan=plan, plan_hash=digest(plan), review_hash=digest(receipt),
+    record = dict(plan=plan, issue={"number": issue["number"], "body": issue["body"]},
+                  plan_hash=digest(plan), review_hash=digest(receipt),
                   mechanical=dict(paths=paths, non_targets=plan["constraints"]["non_targets"]), checked_at=cycle.now())
+    # A reverted command can have an old plan hash; bind approval to its audit too.
+    for replan in state.get("review_run", {}).get("replans", []):
+        if replan["review_context"] == plan["review_context"] and replan.get("amendments"):
+            record["amendment_hash"] = digest(replan["amendments"])
     if args.operation == "check":
         atomic_write(saved, record)
         print("[CONTEXT] FIX_SCOPE=pass; record=" + str(saved))
     else:
         approved = read(saved)
         require(approved["plan_hash"] == record["plan_hash"] and approved["review_hash"] == record["review_hash"], "plan or review changed; check scope again")
+        require(approved.get("amendment_hash") == record.get("amendment_hash"), "plan amended; check scope again")
         result = verify(plan, paths, directory / ("fix-verification-" + args.session + ".json"), args.kind)
         if args.kind == "all" and "review_run" in state:
             importlib.import_module("review-stagnation").verified(state, plan, result, paths)

@@ -894,8 +894,40 @@ assert_grep "消費側: 分岐結果を ITERATE_LOST_REPAIR に記録する" "$I
   'marker_emit ITERATE_LOST_REPAIR'
 assert_grep "消費側: (a) は固定名簿と保存を検証する review-finish 経由" "$ITERATE_SKILL" \
   'pr-review ステップ 6.1.a の `review-finish` で保存・検証'
+assert_grep "消費側: (a) 条件列は ABANDON=done を先に除外する" "$ITERATE_SKILL" \
+  '`ABANDON=done` ではなく、直前 cycle のレビュー結果がセッションコンテキストに残存'
+assert_grep "消費側: (b) 条件列は ABANDON=done を含む" "$ITERATE_SKILL" \
+  '`ABANDON=done` / 残存しない'
 assert_grep "消費側: (b) は counter 不前進のまま pr-review" "$ITERATE_SKILL" \
   'counter 不前進のまま `/rite:pr-review`'
+assert_grep "消費側: ITERATE_CB 表に RESUME_HEAD=changed 行がある" "$ITERATE_SKILL" \
+  '`ok` かつ `ITERATE_LOST_GATE=ok` かつ `ITERATE_RESUME_HEAD=changed`'
+assert_grep "消費側: changed 行は collecting を done のみ現 HEAD へ進める" "$ITERATE_SKILL" \
+  '`collecting` は `ITERATE_ABANDON=done` の場合だけ現 HEAD のレビューへ進み'
+assert_grep "消費側: changed 行の completed は receipt・advance 条件" "$ITERATE_SKILL" \
+  '`completed` は `review-start` の receipt・advance 条件を満たす場合だけ次 cycle へ進む'
+_cb_row=$(mktemp) || { echo "ERROR: mktemp failed for T-01 row" >&2; exit 1; }
+_fence=$(mktemp) || { echo "ERROR: mktemp failed for T-02 fence" >&2; exit 1; }
+grep '`ok` かつ `ITERATE_LOST_GATE=ok` かつ `ITERATE_RESUME_HEAD=changed`' "$ITERATE_SKILL" \
+  | grep -v 'HEAD 変更分岐以外' | head -1 > "$_cb_row"
+assert_grep "T-01: changed 行の collecting 句は進みに隣接して invoke" "$_cb_row" \
+  '現 HEAD のレビューへ進み `/rite:pr-review` を invoke'
+assert_grep "T-01: changed 行の completed 句は進むに隣接して invoke" "$_cb_row" \
+  '次 cycle へ進む。`/rite:pr-review` を invoke'
+assert_grep "T-02: フェンスは HEAD 変更以外と changed+done/completed の OR" "$ITERATE_SKILL" \
+  'HEAD 変更分岐以外、または `ITERATE_RESUME_HEAD=changed` かつ \(`ITERATE_ABANDON=done` または `status=completed`\)'
+grep -A6 'HEAD 変更分岐以外、または `ITERATE_RESUME_HEAD=changed`' "$ITERATE_SKILL" > "$_fence"
+assert_grep "T-02: フェンス直後に skill-call ブロック" "$_fence" \
+  'skill: rite:pr-review'
+rm -f "$_cb_row" "$_fence"
+assert_grep "T-03: HEAD 表 completed は CB 表の changed 行" "$ITERATE_SKILL" \
+  '`status=completed` は ITERATE_CB 表の `changed` 行へ進む'
+assert_not_grep "T-03: HEAD 表 completed が後段の新規 cycle に戻らない" "$ITERATE_SKILL" \
+  '後段の新規 cycle 経路'
+assert_grep "T-04: refused は包括 invoke しない" "$ITERATE_SKILL" \
+  '`refused` は回収し、包括 invoke しない'
+assert_not_grep "T-04: refused をフェンス OR 項に入れない" "$ITERATE_SKILL" \
+  'status=completed` または.*refused'
 assert_grep "消費側: ゲート fire 時は次 cycle の review を開始しない" "$ITERATE_SKILL" \
   '次 cycle の review を開始しない'
 assert_grep "消費側: (a) 成功条件は JSON_SAVED=true" "$ITERATE_SKILL" \

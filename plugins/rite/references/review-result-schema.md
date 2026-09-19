@@ -275,7 +275,7 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 <a id="acceptance_criteria"></a>
 
-関連 Issue の `## 5. Acceptance Criteria` にある全 `### AC-N` を、acceptance reviewer が本 cycle の HEAD で確認した結果。`pr-review.md` ステップ 5.3.0.M step 1 が毎 cycle 書き、降格ゲート helper は読むだけで書き換えない。schema_version は bump しない（additive）。
+関連 Issue の受入条件節にある全 AC（`scripts/acceptance-criteria-check.sh extract` が返す ID 集合）を、acceptance reviewer が本 cycle の HEAD で確認した結果。`pr-review.md` ステップ 5.3.0.M step 1 が毎 cycle 書き、降格ゲート helper は読むだけで書き換えない。schema_version は bump しない（additive）。
 
 対象 cycle は配列で、AC ごとに 1 要素（Issue の AC-ID 集合と一致）:
 
@@ -298,7 +298,7 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 | `head` | string | `human-verified` のときだけ必須。確認時の HEAD SHA で、トップレベルの `commit_sha` と一致しなければならない。それ以外の status では持たない |
 | `at` | string | `human-verified` のときだけ必須。確認記録を書いた時刻（ISO 8601）。それ以外の status では持たない |
 
-対象外 cycle は object で、理由を 1 つ持つ: `{"skipped": "no_issue"}`（関連 Issue を特定できない）/ `{"skipped": "no_ac_section"}`（テンプレート形式の AC 節がない）。
+対象外 cycle は object で、理由を 1 つ持つ: `{"skipped": "no_issue"}`（関連 Issue を特定できない）/ `{"skipped": "no_ac_section"}`（`scripts/acceptance-criteria-check.sh extract` が対応する AC 見出しを本文に 1 つも見つけない）。未対応形式の AC 見出しや不正な AC 項目は skipped ではなく extract の停止であり、対象外 cycle にはならない。
 
 **`unmet` 行は降格されない**: 帰結クラス降格ゲート (`scripts/review-class-demotion-gate.sh`) は、`unmet` 行が `finding_id` で指す class B の finding に `consequence_exclusion: "ac_unmet:AC-N"` を付けて降格対象から外す。行の `finding_id` は降格ゲート適用後も `findings[]` の `scope == "current-pr"` に残っていなければならず、残っていなければ `pr-review.md` ステップ 5.3.0.A が停止する。`status` を `unverified` へ書き換えて通すことはない。`total_findings == 0` かつ `unverified` 行が 1 つ以上の cycle は保存後に `[review:error]` で停止する（ステップ 8.1）。
 

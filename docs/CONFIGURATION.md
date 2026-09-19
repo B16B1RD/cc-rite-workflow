@@ -424,7 +424,7 @@ These variables are used in `branch.pattern` to generate new branch names:
 |-------|------|---------|-------------|
 | `build` | string | `null` | Build command (auto-detected if null) |
 | `test` | string | `null` | Test command (auto-detected if null) |
-| `lint` | string | `null` | Lint command (auto-detected if null) |
+| `lint` | string | `null` | Lint command (auto-detected if null). When null and nothing is auto-detected, `/rite:lint` asks (skip / specify / abort); under `/rite:batch-run` it skips without asking, emits `[lint:skipped]` with this key as the configuration guidance, and never reports success. A configured command that fails stays `[lint:error]` |
 
 ### issue
 

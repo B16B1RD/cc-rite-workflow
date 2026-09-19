@@ -29,7 +29,7 @@ iterate の全品質ゲートと non-blocking sweep の成功後、`flow-state.s
 
 同一 ID・同一内容の再送は冪等で、異なる内容の上書きと区間の重なりは拒否する。`external_wait` と `interruption` は実作業に加算しない。reviewer の起動時刻、ファイルの保存間隔、run 開始からの差分だけで実作業時間を推定しない。
 
-caller は以下の共有ブロックを工程境界で実行する。`{plugin_root}` は解決済み配布 root、`{clock_kind}` は上記3値、`{clock_close_mode}` は通常の `normal` または復旧時の `recover` へリテラル置換する。作業開始時に open、終了時と context を進める前に close する。CI 等の外部待機は work close → external_wait open、待機終了後は close → work open とする。
+caller は以下の共有ブロックを工程境界で実行する。`review-clock-open` / `review-clock-close` は本節の共有 Bash ブロックの名前であり、`flow-state.sh` が受け付ける時計の CLI 動詞は `review-clock` だけである。参照元はブロック全体を本節から取り、`{plugin_root}` は解決済み配布 root、`{clock_kind}` は上記3値、`{clock_close_mode}` は通常の `normal` または復旧時の `recover` へリテラル置換する。作業開始時に open、終了時と context を進める前に close する。CI 等の外部待機は work close → external_wait open、待機終了後は close → work open とする。
 
 recover は保存済み open があれば先に `recover` で close する。`ended_at` が未保存の区間全体は `interruption` として閉じ、不明な中断時刻を推測しない。`ended_at` がある保存再試行では時刻・種類を変更しない。open が無い未確定 gap を補って実作業へ算入しない。
 
@@ -100,10 +100,55 @@ rm "$clock_file"
 
 ## 見直し・修正・再開
 
-`action=replan` のときは [一括修正計画](../skills/fix/references/fix-plan.md) に代替案・選択・再発防止検証を含め、`flow-state.sh review-replan --plan <絶対パス> --issue <最新 Issue JSON の絶対パス>` で保存する。通常の scope check は観測欠損・未完了の見直しを拒否する。見直しの保存前に編集を開始しない。
+`action=replan` のときは [一括修正計画](../skills/fix/references/fix-plan.md) に代替案・選択・再発防止検証を含め、`flow-state.sh review-replan --plan <絶対パス> --issue <最新 Issue JSON の絶対パス>` で保存する。通常の scope check は観測欠損・未完了の見直しを拒否する。見直しの保存前に編集を開始しない。診断用の保存と、下の検証コマンド訂正は別操作である。
+
+### 登録した検証コマンドの訂正
+
+登録済み replan の検証コマンドに誤りがあるときは、同じ completed context / HEAD の active run で `review-replan --amend --reason "訂正理由" --plan /absolute/fix-plan.json --issue /absolute/issue.json` を実行する。変更できるのは既存 `verifications` の `command` のみで、ID・kind・inputs・指摘の処置・範囲・代替案・Issue の仕様は維持する。仕様外の記録 marker 更新は通常と同じ扱いになる。非ゼロ終了を期待する試験は、その終了値を検査して期待どおりなら全体が 0 で終了するコマンドにする。
+
+旧計画・実際の検証証跡（失敗を含む）・旧 pending_fix・理由を当該 replan の `amendments` に保存する。診断用 replan 回数、cycle、観測、時計、retry 権は増減させず、訂正回数の追加上限は設けない。最新訂正の計画と理由が一致する再実行は履歴を増やさない。より新しい訂正がある状態で旧計画と旧理由を再実行しても成功 replay にはならない。stopped run の解除には使えない。
+
+訂正後は pending_fix が無効になり、必ず scope `check` と `verify --kind all` をやり直す。以前と同じ計画 hash に戻した場合も再 check が必要。変更したコマンドの成功結果は再利用しない。保存失敗時は旧 state と証跡を保持し、同じ訂正を再実行できる。訂正は品質判定ではなく、全検証と後続レビューを省略する許可にはならない。
 
 `review-fix-scope-check.sh verify --kind all` の成功時に検証済み tree fingerprint と対象根因を保存する。次の `review-start` で新 HEAD・clean tree と検証済み内容の一致を検査して修正 HEAD を確定し、再発判定に用いる。コマンドの成功申告、未検証の commit、別 context の結果を修正履歴に加えない。
 
+証跡を 1 つも持たない `collecting` cycle を `flow-state.sh review-abandon --reason <理由>` で放棄した run は、cycle を失っても継続する。放棄記録（`review_cycle_abandoned` のうち当該 `run_id` の最新要素。選択時は他 run の記録を除外し、最新要素が不正でも過去の要素へ戻らない）が session・PR・`run_id`・counter で run と一致する限り、cycle 不在の run を通常の `set` と `review-start` が受理する。再試行は同じ run・同じ counter・新しい HEAD で凍結し、`advance()` は呼ばない — 放棄された cycle は receipt も検証済み修正も持たないため計上する修正が無く、counter を進めると観測列に穴が開いて連続 cycle を要求する再発判定と矛盾する。一致しない記録や記録の無い cycle 不在は破損として全書き込みを拒否する。放棄後は検証済み receipt が無いため `fix` / `ready` への遷移も拒否し、別 Issue / PR へ切り替えるときは run を `review_run_history` へ退避する。退避の時点で live の counter は 0 に戻る（切替先に復元対象があればその counter を戻す）が、counter は退避する run に同梱されるため失われない。その PR へ戻ると同じ run が live に復元され、`run_id`・counter・観測・見直し履歴・再試行権の使用履歴をそのまま継続する。停止した run は過去の `close` / `defer` 記録にかかわらず復元する。停止していない run の除外は、退避した completed cycle の context と `close` / `defer` 記録が一致する場合に限る。過去 cycle の記録では除外せず、cycle 不在なら当該 run の最新放棄記録で検証する。
+
 停止は caller の既存失敗 sentinel へ返し、batch は cursor を当該 Issue に保ち `active=false` にする。PR・branch・作業差分・履歴・最後の検証済み状態を保持し、停止理由と復旧工程を報告する。同一 run の再開は保存済み判定と未完工程から続け、停止履歴を消して新しい見直し枠を作らない。
+
+## 停止後の退路と再開
+
+停止は「この run でのレビュー継続を止める」ことであり、「この run に触れる操作をすべて止める」ことではない。停止した run でレビューを進める操作は次の 2 つだけで、どちらも停止理由を消さない。
+
+**抜ける（全停止理由で可）**: 別 Issue 番号の `set` をそのまま実行する。旧 run は `review_run_history` へ退避される。切替先に復元対象があればその counter を戻し、無ければ live state の `cycle_count` は 0 から始まる。停止は「この run はもう cycle を積まない」判断が下りた状態なので、完了・保留と同格に扱ってセッションを手放す。ownership cleanup を前置きしても同じ結果になる。
+
+停止していない run は、上記の有効な放棄記録を持つ cycle 不在の run を除き、従来どおり完了・保留・ownership cleanup のいずれかを要求される。
+
+退避はセッションを手放すだけで停止を帳消しにしない。退避された記録は run（`status`・`stop_reason`・観測・修正履歴・使用済みの再試行権）に加えて、退避時点の `cycle_count` と、凍結 `review_cycle` があればそれも保持する。**同じ Issue 番号・同じ PR 番号へ戻る `set` は、その PR の退避記録を新しい順に検査し、停止済み、または退避した completed cycle と一致する完了・保留の記録が無い run を復元する**（停止済みなら過去の完了・保留記録が残っていても復元対象） — 新しい run を作り直さないので、停止した run の `review-start` は復元された停止理由で拒否され続け、counter もゼロから積み直されない。往復はどの停止理由でも解除にならない。復元された記録は履歴から取り除かれる。
+
+**戻り方**: PR 番号 0 で元 Issue へ着手し、その PR の iterate で Issue 番号と PR 番号を揃えると復元される。両番号を指定して直接切り替える `set` も、現在の run を退避してから切替先の run を復元する。切替先の復元に失敗した場合は退避も書き込まれず、元の state を保持する。 run を持たないレビューを間に挟んだ場合も、復元先の cycle を切替元の cycle で上書きしない。切替元に collecting cycle が残っていれば復元を拒否し、先に完了または許可された放棄を行う。PR 番号だけを指定して退避記録と異なる Issue の state から入ると、`archived review run for this PR belongs to another Issue or session` で拒否する。
+
+**復元直後の順序**: 停止した run を復元した場合は停止したままで、セッションも退避前と同じく非 active に戻る。通常の phase 更新はそこから拒否される（停止直後とまったく同じ挙動で、復元が新たに課す制約ではない）。再試行条件を満たして権利を発行できた場合だけ、以後は通常の run として進む。active な retained run の復元では停止理由や `active=false` を追加せず、同じ run・counter で `review-start` へ進む。
+
+**復元できない退避記録は `set` を落とす**。同じ PR の停止した記録が、対の保存より前に作られていて `cycle_count` と凍結 `review_cycle` を持たない場合、および Issue 番号・`session_id` が一致しない場合は、読み飛ばさず停止理由を示して `set` を拒否する。読み飛ばすと、退避が差し止めているはずの新しい run をそのまま渡すことになる。active な未終了 run も、退避時の counter や必要な放棄記録を検証できなければ拒否する。停止しておらず、退避した completed cycle と完了・保留の記録が一致する run のみ読み飛ばす。過去の marker だけを持つ旧形式の記録も、退避時点の cycle と counter を検証できなければ拒否する。
+
+保持するのは `cycle_count` そのものであって凍結 context から導出した値ではない。凍結 `review_cycle` の有無に依らず counter は退避と復元を往復する。
+
+この保持と復元はセッションの flow-state に載る。別セッション（別 `session_id`）では退避記録が見えないため、復元も再試行権の消費判定も効かない。`cycle_count` をはじめとする既存の counter と同じ性質である。
+
+**再試行権で再開する（`circuit-breaker:divergence` のみ）**: `flow-state.sh review-retry --plan <一括修正計画の絶対パス> --issue <最新 Issue JSON の絶対パス>` が、次の条件をすべて満たすときに限り再試行権を 1 つ発行する。
+
+1. `stop_reason` が `circuit-breaker:divergence` である。`circuit-breaker:max-cycles` と `stagnation:*` は再開できない
+2. 停止時の context・HEAD・receipt・観測が一致し、変更されていない
+3. 全 blocking 指摘に、通常の fix 経路と同じ計画内容の検証（状態遷移の許可判定を除く）を通る修正計画と検証項目が対応している。`review-fix-scope-check.sh check` そのものを前段として実行する必要はない — 同コマンドは停止した run では状態遷移の許可判定で拒否される
+4. その run で再試行権が未使用である。権利は run に付いて回り、退避と復元を往復しても使用済みのまま戻る（停止しておらず、退避した completed cycle と完了・保留の記録が一致する run は復元対象外。過去に保留していても、その後停止した run の再試行権は復元される）
+
+発行は条件をすべて検証したあとに一度だけ書き込む。1 つでも崩れていれば権利を発行せず、run は `stopped` のまま残る。人間の承認は条件に含めない。
+
+発行すると `stop_reason` は run 直下から `review_run.retry.stop_reason` へ移り、`status` が `active` に戻る。権利が買えるのは fix → 検証 → review の 1 巡だけで、その review に blocking 指摘が残っていれば `retry.outcome=unresolved` を記録して元の停止理由で再停止する。残っていなければ `retry.outcome=resolved` として通常の run に戻る。いずれの場合も権利は再発行されない。決着は観測が行うため、観測を経ずに閉じた run や別経路で再停止した run では `outcome` は未確定のまま残る。
+
+再試行権は退避された run にも復元された run にも等しく付いて回る。発行後の run は本当に `active` なので、`review-close` / `review-defer` も通常の run と同じ条件で通る。`close` は未解決 blocking と未充足受入条件を従来どおり拒否し、`defer` は返信のみの draft を残す既存の意味のままである。これは「停止した run を閉じられる」ことではなく、再試行権を発行した run がその 1 巡の間は通常の run として扱われるということで、権利の使用済み記録は `close` / `defer` / 退避のいずれを経ても残る。
+
+再試行権は停止理由の解消認定ではない。計画の存在は収束を証明しないため、これは制限付きの再試行であって品質ゲートの解除ではない。`cycle_count` は run を通じて積み上がり続けるので、再試行を挟んでも最終的に再開不可の `circuit-breaker:max-cycles` に到達する。
 
 helper が保証するのは context・保存証跡・入力構造・範囲・時計と回数・冪等性である。根因の意味的同一性、仕様解釈、受入条件の充足、代替案の妥当性は親の判断として根拠を残す。保証範囲は同梱 helper と通常 caller の経路に限り、任意の state 直接編集や未対応ホストの予告なし中断検出まで保証しない。

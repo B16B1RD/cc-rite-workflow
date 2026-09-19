@@ -125,6 +125,34 @@ assert_grep "T-03 open keeps dirty-overlap AskUserQuestion" "$OPEN" \
 assert_grep "T-03 open keeps plan-approval AskUserQuestion" "$OPEN" \
   'この計画で実装開始'
 
+# T-05: lint コマンド未設定・未検出。batch は質問なしで skipped、standalone は質問を保持
+LINT="$SCRIPT_DIR/../../skills/lint/SKILL.md"
+assert_grep "T-05 lint batch undetected auto-skips without question" "$LINT" \
+  '質問せず \*\*Skip and continue\*\* を選び'
+assert_grep "T-05 lint batch forbids guessed scripts and success report" "$LINT" \
+  '独自 lint スクリプトを推測実行せず、`\[lint:success\]` とは報告しない'
+assert_grep "T-05 lint configured command failure stays lint:error" "$LINT" \
+  '設定済みコマンドの実行失敗は `\[lint:error\]` とし、自動検出や未検出スキップへ切り替えない'
+assert_grep "T-05 lint standalone keeps skip option" "$LINT" 'スキップして続行（推奨）'
+assert_grep "T-05 lint standalone keeps specify-command option" "$LINT" \
+  'コマンドを指定: lint コマンドを手動で入力します'
+assert_grep "T-05 lint standalone keeps abort option" "$LINT" '中断: 処理を中断します'
+assert_grep "T-05 batch-run routes undetected lint to skipped without question" "$BATCH" \
+  '`\[lint:skipped\]` 経路を質問なしで選ぶ'
+assert_grep "T-05 batch-run keeps configured command failure" "$BATCH" \
+  '設定済みコマンドの失敗はこのスキップに変換しない'
+assert_grep "T-05 open consumes skipped without success or re-ask" "$OPEN" \
+  '成功扱い・再質問はしない'
+# skipped 出力 2 種の形: sentinel → (1 行) → 理由 → 設定案内 が隣接し、同じ fence 内に success が無い
+skipped_shape=$(awk '
+  $0 == "[lint:skipped]" { n = NR; inb = 1 }
+  inb && /^```/ { inb = 0 }
+  inb && /\[lint:success\]/ { bad++ }
+  n && NR == n + 2 && $0 != "理由: lint コマンド未設定・自動検出にも該当なし" { n = 0 }
+  n && NR == n + 3 { if ($0 ~ /^設定: .*commands\.lint/) ok++; n = 0 }
+  END { print (ok + 0) ":" (bad + 0) }' "$LINT")
+assert "T-05 both skipped outputs carry reason then commands.lint guidance, no success" "2:0" "$skipped_shape"
+
 if ! print_summary "$(basename "$0")"; then
   exit 1
 fi
