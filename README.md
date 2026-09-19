@@ -2,7 +2,7 @@
 
 > Universal Issue-Driven Development Workflow for Claude Code
 
-[![Version](https://img.shields.io/badge/version-0.16.1-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.16.1)
+[![Version](https://img.shields.io/badge/version-0.17.0-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.17.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **English** | [日本語](README.ja.md)

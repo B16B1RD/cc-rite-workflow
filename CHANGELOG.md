@@ -32,6 +32,14 @@ Past version sections carry none either — they have already been stripped.
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-09-19
+
+### Added
+
+- **Fix and iterate keep the original purpose and each file's role while resolving review findings** — a later cycle can treat the previous cycle's new rule or test as given, so the diff stays locally consistent while drifting from the original request and from who each file is for. The existing fix-plan, review integration, and pre-completion checks now ask whether a change belongs in the current file, whether a new constraint is justified by the original request, and whether useful Why and invariants should stay. Zero findings is not completion when that alignment is unexplained. The loop does not add a full re-review of every cycle or a large audit report in the product tree.
+- **A stopped review run becomes a new run only with explicit approval tied to that run and PR** — ordinary iterate, recover, automatic retry, and the existing divergence-only retry do not lift a stop. With that approval the old run is archived in full (clock, observations, replans, retry outcome, stop reason) and a new run starts at cycle 1 on the same PR with a full-scope review. The new run does not inherit the old receipt as credit for ready or merge. The same approval cannot allocate a second fresh budget.
+- **A review finding is adopted only when its evidence supports the defect it claims** — measured anchors already check that a command result is well-formed; a missing string or a table order could still be treated as a behavioural failure. The critic now matches the observation to the claimed defect and the reachable path before the finding is kept. Weak observations are recorded with a reason and stay out of `findings[]`. Reachable mis-branches and unmet acceptance criteria still go through the existing measured and outcome gates. No separate gate, generic schema, or standing human approval is added.
+
 ## [0.16.1] - 2026-09-18
 
 ### Fixed
@@ -1107,6 +1115,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.17.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.16.1...v0.17.0
 [0.16.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.16.0...v0.16.1
 [0.16.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.15.1...v0.16.0
 [0.15.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.15.0...v0.15.1
