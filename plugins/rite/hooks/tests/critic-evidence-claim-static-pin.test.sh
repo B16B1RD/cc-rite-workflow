@@ -48,6 +48,9 @@ PIN_ZERO_SKIP='指摘 0 件なら skip'
 PIN_FC_SKIP_RUN='Fact-Check skip（`enabled: false` または external 0）でも本節は実行する'
 PIN_VERIFY_SAME='verification モードも同一'
 PIN_NOT_IN_FINDINGS='findings\[\]` に入れない'
+PIN_EXCLUDE_ALL='全指摘事項から外'
+PIN_RETAIN_COUNT='evidence_claim_rejected_count ='
+PIN_M_NO_WRITE='5\.2\.2 不採用は `全指摘事項` に残さず'
 PIN_REJECT_HEADING='### 根拠と主張の不対応'
 PIN_ADOPT='既存 5\.3\.0\.M / 5\.3\.0\.C へ'
 PIN_NO_NEW_RULE='新規約を元要求違反の根拠にしない'
@@ -188,6 +191,11 @@ pin "5.2.2 same procedure in verification mode" \
   "$SKILL" "$CORR_START" "$FACT_START" "$PIN_VERIFY_SAME"
 pin "reject is not placed in findings[]" \
   "$SKILL" "$CORR_START" "$FACT_START" "$PIN_NOT_IN_FINDINGS"
+pin "reject is removed from 全指摘事項" \
+  "$SKILL" "$CORR_START" "$FACT_START" "$PIN_EXCLUDE_ALL"
+pin "5.2.2 retains rejected count after judgment" \
+  "$SKILL" "$CORR_START" "$FACT_START" "$PIN_RETAIN_COUNT"
+assert_grep "5.3.0.M step 1 does not write 5.2.2 rejects" "$SKILL" "$PIN_M_NO_WRITE"
 pin "reject records under dedicated heading" \
   "$SKILL" "$CORR_START" "$FACT_START" "$PIN_REJECT_HEADING"
 pin "valid proof stays on 5.3.0.M/C" \
@@ -236,6 +244,10 @@ assert_not_grep "no standing human approval added in 5.2.2" \
 
 negative_control "NC: PIN_NOT_IN_FINDINGS is live" \
   "$SKILL" "$CORR_START" "$FACT_START" "$PIN_NOT_IN_FINDINGS"
+negative_control "NC: PIN_EXCLUDE_ALL is live" \
+  "$SKILL" "$CORR_START" "$FACT_START" "$PIN_EXCLUDE_ALL"
+negative_control "NC: PIN_RETAIN_COUNT is live" \
+  "$SKILL" "$CORR_START" "$FACT_START" "$PIN_RETAIN_COUNT"
 negative_control "NC: PIN_NO_HELPER is live" \
   "$SKILL" "$CORR_START" "$FACT_START" "$PIN_NO_HELPER"
 negative_control "NC: PIN_E2E8 is live" \

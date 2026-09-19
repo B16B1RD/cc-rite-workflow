@@ -1893,13 +1893,13 @@ Read `review.debate` from `rite-config.yml` (defaults defined in [cross-validati
 
 #### 5.2.2 Evidence-Claim Correspondence
 
-Dedup 見出しの直後、Fact-Check の前。helper / 新スキーマ / 常設承認は増やさない。`findings[].verification` は書かない。指摘 0 件なら skip。Fact-Check skip（`enabled: false` または external 0）でも本節は実行する。verification モードも同一。
+Dedup 見出しの直後、Fact-Check の前。helper / 新スキーマ / 常設承認は増やさない。`findings[].verification` は書かない。指摘 0 件なら skip。判定直後に **`evidence_claim_rejected_count =` 不採用件数** を retain する（skip 時は 0）。E2E 例外 8 と 5.4 の唯一の値源。Fact-Check skip（`enabled: false` または external 0）でも本節は実行する。verification モードも同一。
 
 各指摘で観測（`Verification:` RHS / `Likelihood-Evidence:`）と主張する欠陥・到達経路・悪影響を分ける。元要求・既存契約と照合する。
 
 | 入力 | 判定 | 行先 |
 |---|---|---|
-| 文字列不在・件数・掲載順のみ。その形式を要求する契約も、その順を評価する consumer もない | 不採用 | `findings[]` に入れない。5.4 `### 根拠と主張の不対応` に理由を書く |
+| 文字列不在・件数・掲載順のみ。その形式を要求する契約も、その順を評価する consumer もない | 不採用 | 全指摘事項から外し `findings[]` に入れない。5.4 `### 根拠と主張の不対応` に理由を書く |
 | 到達可能な誤分岐の静的証明、実行失敗、合意済み AC の実際の未充足、明示形式契約の欠落 | 採用 | 既存 5.3.0.M / 5.3.0.C へ。動的再現は必須にしない |
 | 元要求にない形式規約の追加と、それだけを確認する新規テスト | 不採用 | 上と同じ記録。新規約を元要求違反の根拠にしない |
 | 実測阻害 / アンカー判定不能 / 根拠矛盾 | 既存経路 | Measurement-Blocked surface / `anchor_undetermined` reroll / debate。無条件の non-blocking 化・mergeable 化・verification 手編集はしない |
@@ -2074,7 +2074,7 @@ fi
 
 生成規約 (**ステップ 6.1.a / 6.1.b は本ファイルを読むだけで再生成しない** — 生成箇所を 2 つ以上に分けると、ゲート適用後のローカル JSON が `mergeable` なのに PR コメントの Raw JSON は `fix-needed` という乖離が出る):
 
-- `findings[]` = **post-5.3.0 の `全指摘事項`** (5.3.0 の Observed Likelihood Gate で `推奨事項` へ降格・削除した finding は含めない)。`scope == "nit-noted"` の finding も含める (本ゲートの対象外として helper が findings[] に残す)
+- `findings[]` = **post-5.3.0 の `全指摘事項`** (5.3.0 の Observed Likelihood Gate で `推奨事項` へ降格・削除した finding は含めない。5.2.2 不採用は `全指摘事項` に残さず本 step でも `findings[]` に書かない)。`scope == "nit-noted"` の finding も含める (本ゲートの対象外として helper が findings[] に残す)
 - `non_blocking_findings[]` = `[]` (本ゲート適用前は常に空。helper が移送先として使う)
 - `guardrail_audit_log[]` = ステップ 5.1 で収集した Category #2 audit rows (0 件でも `[]`)。ゲート helper は本配列を変更しない
 
@@ -2087,7 +2087,7 @@ fi
 - **アンカーの直前の境界を保つ** — `内容` 列を `description` へ転記するとき、`Verification:` / `Likelihood-Evidence:` / `Measurement-Blocked:` 直前の行頭・`<br>`・空白を保つ。`Verification: repro <cmd> => <観測>` または `Verification: failing_test <path> => <失敗出力>` と書き、raw pipe は `¦` で代替表記する。形式崩れで実測判定不能なら `reason=anchor_undetermined` で JSON を変更せず失敗し、step 3 で該当 reviewer 出力を再生成する。
 - **`review_context`** は 4.0 が返した object をそのまま転記する。manifest top-level と各 reviewer entry にも同じ object を記録する。推測・別 cycle からの転記は禁止。
 - `timestamp` は literal sentinel `"__RITE_TS_PLACEHOLDER_7f3a9b2c__"` (実値は ステップ 6.1.a の helper が注入する)
-- `suppressed_findings` 除外契約 (ステップ 5.1.2.A) を本 JSON 生成時に適用する — `findings[]` から除外し、Markdown 側 (ステップ 5.4 / 6.1.b) には audit log として残す
+- `suppressed_findings` 除外契約 (ステップ 5.1.2.A) を本 JSON 生成時に適用する — `findings[]` から除外し、Markdown 側 (ステップ 5.4 / 6.1.b) には audit log として残す。5.2.2 不採用も `findings[]` に書かない
 - **`findings[].scope` を必ず明示する** (`current-pr` / `follow-up` / `nit-noted`)。scope は本ゲートの blocking 判定の入力そのもので、**値が外れてもキーが欠落しても `reason=scope_enum_violation` で hard fail し、JSON も書き換えられない**（フラグ有無に依らず発火）。未知 / 欠落 scope が blocking 集合からも移送対象からも同時に外れ、mergeable を無音で確定させるのを防ぐため
 - **`findings[].pre_existing` は書かない** — canonical `schema_version: "1.1.0"` 内の additive optional field であり、現行 write path は reviewer の revert test 結果を収集しない。欠落時も read 側は default mapping を適用せず、Cross-field invariant #5 は発火しない
 - **`reviewer_timings[]` / `reviewer_spawn_serialized` / `reviewer_spawn_spread_seconds`** = ステップ 4.6 の `{spawn_timings_file}` を **Read tool で読んで転記する**（会話コンテキストの記憶から再構成しない — 記憶と実測がずれると、直列化の記録が実際の計測と別のことを主張する）。`reviewer_timings[]` は同ファイルの値をそのまま写す。後 2 者は**同ファイルに存在するときだけ**書き、計測不能で helper が書かなかった場合は**キーごと省略する**（欠落 = 計測不能）。上記 bash が `SPAWN_TIMINGS=not_run` を emit した場合は 3 者とも省略する（捏造しない。無言ではなく同 bash の WARNING で表面化済み）。ゲート helper は本キー群に触れず、`review-result-save.sh` も必須フィールドとして要求しないため、欠落しても保存・merge 判定は変わらない
@@ -2247,7 +2247,7 @@ bash {plugin_root}/scripts/acceptance-criteria-check.sh final \
 |---|---|
 | rc=0 + `ACCEPTANCE_FINAL=ok; unmet={ids}; unverified={ids}` | `unverified=` の値を `{acceptance_unverified}` として retain し 5.3.1 以降へ進む（ステップ 8.0 / 8.1 が使う） |
 | rc=0 + `ACCEPTANCE_FINAL=skipped` | `{acceptance_unverified}` を空として 5.3.1 以降へ進む |
-| rc=1 + `reason=unmet_finding_not_blocking`, first occurrence | reviewer 契約違反。acceptance reviewer を 1 回だけ reroll し（元 prompt + 診断 + 未充足の指摘に `[AC-N]` 接頭辞と正規形の `Verification:` アンカーを付ける要求）、5.1 の回収完了ゲート → 5.1.0.L → 5.1.0.AC → 5.1.2.A → 5.2 → 5.2.1 → Fact-Checking → 5.3.0 → 5.3.0.M step 1 → step 2 → step 3 → 5.3.0.C → 本検査を同 cycle 内で再実行する。`acceptance_criteria[].status` を `unverified` に書き換えて通してはならない。再実行する 5.2 / 5.2.1 / Fact-Checking の対象は reroll で置き換わった acceptance の finding（既存 finding との矛盾検出を含む）とし、他 reviewer の finding、初回に決まった矛盾の disposition、fact-check 判定は保持する |
+| rc=1 + `reason=unmet_finding_not_blocking`, first occurrence | reviewer 契約違反。acceptance reviewer を 1 回だけ reroll し（元 prompt + 診断 + 未充足の指摘に `[AC-N]` 接頭辞と正規形の `Verification:` アンカーを付ける要求）、5.1 の回収完了ゲート → 5.1.0.L → 5.1.0.AC → 5.1.2.A → 5.2 → 5.2.1 → 5.2.2 → Fact-Checking → 5.3.0 → 5.3.0.M step 1 → step 2 → step 3 → 5.3.0.C → 本検査を同 cycle 内で再実行する。`acceptance_criteria[].status` を `unverified` に書き換えて通してはならない。再実行する 5.2 / 5.2.1 / 5.2.2 / Fact-Checking の対象は reroll で置き換わった acceptance の finding（既存 finding との矛盾検出を含む）とし、他 reviewer の finding、初回に決まった矛盾の disposition、fact-check 判定は保持する。5.2.2 不採用は Verification 追加だけで再採用しない |
 | rc=1 after the one reroll、その他の reason、rc=2 | `[review:error]` を stdout に出力して停止する |
 
 `acceptance_final_retry_count` は int、初期 0。reroll を始める直前に +1 する。reroll 内で再実行する 5.3.0.M / 5.3.0.C は、それぞれ既存の `measured_gate_retry_count` / `class_gate_retry_count` を引き継ぐ。
