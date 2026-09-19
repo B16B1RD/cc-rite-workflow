@@ -30,6 +30,8 @@ blocking gate として実行する。
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-09-19
+
 ## [0.16.1] - 2026-09-18
 
 ### 修正
@@ -1104,6 +1106,7 @@ v0.4.0 では値は silent に無視されます。機能的な代替はあり�
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.17.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.16.1...v0.17.0
 [0.16.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.16.0...v0.16.1
 [0.16.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.15.1...v0.16.0
 [0.15.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.15.0...v0.15.1
