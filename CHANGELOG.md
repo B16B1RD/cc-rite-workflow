@@ -36,7 +36,7 @@ Past version sections carry none either — they have already been stripped.
 
 ### Fixed
 
-- **SessionEnd no longer deletes a per-session state file that still holds review history** — the session-end hook invalidated the file and then always removed it, including a stopped review run, an unfinished collecting cycle, or parked history. After that, resume helpers refused because the file was gone. The hook now keeps the original bytes when a live review run, parked stop, unfinished cycle, unreadable JSON, or a failed deactivate write is present. A terminal state with no review history is still deleted. Other sessions' files are not touched.
+- **SessionEnd no longer deletes a per-session state file that still holds review history** — the session-end hook invalidated the file and then always removed it, including a stopped review run, an unfinished collecting cycle, or parked history. After that, resume helpers refused because the file was gone. When a live review run, parked stop, or unfinished cycle is present, the hook keeps the file and does not rewrite review-history keys; a successful deactivate only sets `active=false` and `updated_at`. The original bytes are kept when the JSON cannot be read or the deactivate write fails. A terminal state with no review history is still deleted. Other sessions' files are not touched.
 
 ## [0.17.0] - 2026-09-19
 
