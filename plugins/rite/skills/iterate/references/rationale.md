@@ -156,10 +156,10 @@ batch / 対話それぞれの停止 sentinel を返す。Ready / merge へ進む
 自動フローが辿る分岐ではない。
 
 発火時には counter reset と失敗理由の記録だけを同じ atomic set で行い、run 開始点 pin は
-更新しない。明示的な `/rite:iterate` 再実行時に、既存のステップ 0.6 が counter 0 を検出して
-pin を更新する。`review-cycle-scope.sh` は pin より新しい JSON が 0 件のとき
-`REVIEW_CYCLE_SCOPE=full; reason=no_prev_json` を返すため、新しい run の最初の review は
-full scope になる。reset が失敗した場合は、停止通知の手動リセット手順を先に実行する。
+更新しない。この節の counter 0 / pin 更新は `review_run` が無い legacy state に限る。
+停止した run の新しい run は明示承認 `review-restart` だけが作り、初回 full は live
+`run_id` 境界（候補 JSON が無ければ `no_prev_json`、他 run の JSON なら `foreign_run_json`）
+で決まる。pin 一致を全経路のゲートにはしない。reset が失敗した場合は、停止通知の手動リセット手順を先に実行する。
 
 両分岐は挙動として同構造で、差は sentinel の消費者と対話側だけが持つ注意行の 2 点。共有前段
 の counter reset は batch 経路にも適用されるが、ステップ 6.1 のブロック自体は無変更であり
