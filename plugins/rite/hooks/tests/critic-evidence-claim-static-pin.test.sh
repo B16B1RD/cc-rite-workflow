@@ -50,7 +50,10 @@ PIN_VERIFY_SAME='verification モードも同一'
 PIN_NOT_IN_FINDINGS='findings\[\]` に入れない'
 PIN_EXCLUDE_ALL='全指摘事項から外'
 PIN_RETAIN_COUNT='evidence_claim_rejected_count ='
-PIN_M_NO_WRITE='5\.2\.2 不採用は `全指摘事項` に残さず'
+PIN_M_STEP_WRITE='本 step でも `findings\[\]` に書かない'
+PIN_M_SUPPRESSED='5\.2\.2 不採用も `findings\[\]` に書かない'
+S53M_START='^#### 5\.3\.0\.M '
+S53C_START='^#### 5\.3\.0\.C '
 PIN_REJECT_HEADING='### 根拠と主張の不対応'
 PIN_ADOPT='既存 5\.3\.0\.M / 5\.3\.0\.C へ'
 PIN_NO_NEW_RULE='新規約を元要求違反の根拠にしない'
@@ -195,7 +198,10 @@ pin "reject is removed from 全指摘事項" \
   "$SKILL" "$CORR_START" "$FACT_START" "$PIN_EXCLUDE_ALL"
 pin "5.2.2 retains rejected count after judgment" \
   "$SKILL" "$CORR_START" "$FACT_START" "$PIN_RETAIN_COUNT"
-assert_grep "5.3.0.M step 1 does not write 5.2.2 rejects" "$SKILL" "$PIN_M_NO_WRITE"
+pin "5.3.0.M step 1 does not write 5.2.2 rejects" \
+  "$SKILL" "$S53M_START" "$S53C_START" "$PIN_M_STEP_WRITE"
+pin "5.3.0.M suppressed bullet also excludes 5.2.2 rejects" \
+  "$SKILL" "$S53M_START" "$S53C_START" "$PIN_M_SUPPRESSED"
 pin "reject records under dedicated heading" \
   "$SKILL" "$CORR_START" "$FACT_START" "$PIN_REJECT_HEADING"
 pin "valid proof stays on 5.3.0.M/C" \
@@ -248,6 +254,10 @@ negative_control "NC: PIN_EXCLUDE_ALL is live" \
   "$SKILL" "$CORR_START" "$FACT_START" "$PIN_EXCLUDE_ALL"
 negative_control "NC: PIN_RETAIN_COUNT is live" \
   "$SKILL" "$CORR_START" "$FACT_START" "$PIN_RETAIN_COUNT"
+negative_control "NC: PIN_M_STEP_WRITE is live" \
+  "$SKILL" "$S53M_START" "$S53C_START" "$PIN_M_STEP_WRITE"
+negative_control "NC: PIN_M_SUPPRESSED is live" \
+  "$SKILL" "$S53M_START" "$S53C_START" "$PIN_M_SUPPRESSED"
 negative_control "NC: PIN_NO_HELPER is live" \
   "$SKILL" "$CORR_START" "$FACT_START" "$PIN_NO_HELPER"
 negative_control "NC: PIN_E2E8 is live" \
