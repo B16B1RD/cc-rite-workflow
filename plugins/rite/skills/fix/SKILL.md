@@ -1246,6 +1246,9 @@ rm -f "${TMPDIR:-/tmp}/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
 - [ ] 機構の**追加**（新しい分岐・ガード・規約・注記・例外条項）ではなく、既存機構の**削除・単純化**（分岐の統合、規則の一般化、複製の一本化）で指摘を解消できないか検討したか。「規則の一般化」は機械が評価する規則（分岐・ガード・述語）に限る。文書の主張（契約文・確認手順など人が読む記述）の最小差分は削除・限定を先に取る。主張を広げる／述語化するなら、主張が名指しする集合を実装で列挙し一致を確認した上で書く
 - [ ] 追加しようとしている分岐 / ガード / 規約は、指摘された 1 ケース専用になっていないか（1 ケース対応の追加は、次 cycle でその追加自体が新たなレビュー対象面となり指摘を再生産する）
 - [ ] 修正 diff は指摘の解消に必要な最小か。指摘されていない「ついで」の防御・柔軟性・将来対応を含んでいないか
+- [ ] 保存済み対象 finding は元 Issue の目的・非対象とファイルの読者/役割で配置したか。証拠は既存 PR details、恒久契約は規約、保守の Why はソース、再現はテスト。作業日誌を規約や判断文書へ残していないか
+- [ ] 恒久規約が凍結予定の作業文書を規範として指していないか。複数の正が衝突していないか。非規範の有用な資料参照・Why・不変条件は保持したか
+- [ ] 行順・見出し階層・表示パス等の新制約は元要求から必要か。前 cycle の規約やテスト一致だけでは根拠にしない。親発見と `non_blocking_findings[]` は対象外（1.3 は記録のみ。schema 受理は自動 fix ではない）
 
 対象は**機構の追加**。テスト追加・複製同期は対象外。[coding-principles.md](../../skills/rite-workflow/references/coding-principles.md) の `no_speculative_structure` と対。
 
@@ -1257,7 +1260,7 @@ rationale: references/design-rationale.md#simplification-first-rationale
 
 ### 2.1 Confirm Fix Approach
 
-全指摘の処置を編集前に一括で決める。個別指摘の読み取り・impact scan は先に行ってよいが、最初の編集前に [一括計画と検証](references/fix-plan.md) を読み、同一 HEAD の全員回収済み保存結果・最新 Issue 本文から `{fix_plan_file}` と `{fix_issue_file}`（絶対 JSON パス）を作る。root cause ごとに重複を関連付け、全 blocking 指摘へ処置と検証を割り当てる。人間由来の未解決指摘も計画へ記録し、既存の対応義務を維持する。
+全指摘の処置を編集前に一括で決める。個別指摘の読み取り・impact scan は先に行ってよいが、最初の編集前に [一括計画と検証](references/fix-plan.md) を読み、同一 HEAD の全員回収済み保存結果・最新 Issue 本文から `{fix_plan_file}` と `{fix_issue_file}`（絶対 JSON パス）を作る。root cause ごとに重複を関連付け、全 blocking 指摘へ処置と検証を割り当てる。人間由来の未解決指摘も計画へ記録し、既存の対応義務を維持する。対象は 1.3 の Required fix（`fatal_map[id] == true`）と未解決 External review。親の完了前発見を未保存 ID として計画へ足さない。`non_blocking_findings[]` が schema 上受理されていても 2.1 の修正対象ではない。
 
 `review_run.current_decision.action=replan` なら、[停滞診断](../../references/review-stagnation.md) の契約で全指摘と仕様を再照合し、代替案・選択理由・棄却理由・再発防止検証を同じ計画の `replan` に記録する。範囲内の選択は通常の承認待ちを挟まない。以下の保存後に通常の scope gate を通す。時計は同参照の共有ブロック `review-clock-open`（Bash ブロック名。時計の CLI 動詞は `review-clock` だけ）を `clock_kind=work` で実行し、外部待機は別区分にする。
 

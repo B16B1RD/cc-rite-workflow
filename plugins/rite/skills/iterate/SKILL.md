@@ -890,6 +890,19 @@ fi
 
 MUST NOT: 同一 PR で 5.S を 2 回走らせる。sweep でコードを修正・commit・push する。
 
+### 5.S 後の完了前確認（目的整合）
+
+5.S 成功後・5.0.1 の前に、確認時点の `git rev-parse HEAD` と、その HEAD の PR base...HEAD 全差分を元 Issue の目的・非対象・ファイル役割と照合する。sweep 正本はコード変更・commit・push を禁止するが、最終 HEAD を推測で省略しない。整合の確認観点（指摘 0 件でも未説明なら逸脱）: 配置（証拠→PR details / 契約→規約 / Why→ソース / 再現→テスト）、規範の正の逆転・重複、根拠のない新制約、有用な契約・保守理由の保持。
+
+| 結果 | 処置 |
+|------|------|
+| 整合 | ステップ 5（5.0 → 5.0.1）へ |
+| 逸脱（親の発見。findings[] に無い、または未実測） | 5.0.1 を呼ばない。完了を未確認とする。`[review:error]` で未完了停止。逸脱箇所・元要求・反証条件を既存 PR details に書く（新キーなし）。`/rite:iterate` 再実行だけで回復したとしない |
+
+同一 HEAD の次 cycle は incremental だと空 diff になり、未保存の逸脱を差分レビューが拾えない。復帰は、保存済み実測 finding が既存 scope を満たすときだけ通常 `/rite:fix`。それ以外は次の統合担当が PR details の逸脱記録を全差分確認の入力にする（pr-review ステップ 5）。`phase=pr` への set は一般回復に使わない（`review_run` ありなら 0.6 が resume を保つが、run なし legacy は fresh reset になる）。
+
+MUST NOT: 親発見を finding ID として `/rite:fix` 2.1 へ足す。8.1 を上書きしない。ステップ 2 の pr-review 1 回再試行表にこの `[review:error]` を載せない。成功を偽らない。
+
 ---
 
 ## ステップ 5: 完了通知

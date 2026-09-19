@@ -81,6 +81,38 @@ assert_grep "1.2.4 gates {previous_blocking_findings} to blocking scopes" "$PR_R
 assert_grep "1.2.4 reads both findings[] and non_blocking_findings[]" "$PR_REVIEW" \
   '\{previous_blocking_findings\}.*`findings\[\]` と `non_blocking_findings\[\]` の和'
 
+echo "=== 節目の全差分確認は全員フルレビューに戻さない ==="
+assert_grep "step 5 collates full PR diff at contract-changing milestones" "$PR_REVIEW" \
+  '前回 fix 差分だけでなく PR base\.\.\.HEAD の全差分'
+assert_grep "step 5 does not require all-reviewer restart" "$PR_REVIEW" \
+  '全員フルレビューは要求しない'
+assert_grep "parent-only discoveries stay out of findings[]" "$PR_REVIEW" \
+  'findings\[\] に挿入しない'
+assert_grep "8.1 total_findings SoT is unchanged" "$PR_REVIEW" \
+  '8\.1 の `total_findings` 単一 SoT は変えない'
+
+ITERATE="$SCRIPT_DIR/../../skills/iterate/SKILL.md"
+assert_grep "iterate purpose check uses actual HEAD after 5.S" "$ITERATE" \
+  '確認時点の `git rev-parse HEAD`'
+assert_grep "iterate purpose unmet uses existing review:error" "$ITERATE" \
+  '`\[review:error\]` で未完了停止'
+assert_grep "iterate purpose unmet does not auto-fix unsaved IDs" "$ITERATE" \
+  '親発見を finding ID として `/rite:fix` 2\.1 へ足す'
+assert_grep "iterate does not claim iterate rerun alone recovers" "$ITERATE" \
+  '`/rite:iterate` 再実行だけで回復したとしない'
+assert_grep "iterate records deviation in existing PR details" "$ITERATE" \
+  '逸脱箇所・元要求・反証条件を既存 PR details に書く'
+assert_grep "consolidator reads PR details deviation records" "$PR_REVIEW" \
+  '既存 PR details の逸脱箇所・元要求・反証条件を照合する'
+assert_grep "empty incremental diff must not drop unsaved deviations" "$PR_REVIEW" \
+  'incremental 空 diff だけを入力にして、未保存の逸脱記録を落とさない'
+assert_grep "consolidator placement and inversion viewpoints" "$PR_REVIEW" \
+  '証拠→PR details / 契約→規約 / Why→ソース / 再現→テスト'
+assert_grep "zero findings still unmet if purpose unexplained" "$PR_REVIEW" \
+  '指摘 0 件でも未説明なら逸脱'
+assert_grep "iterate completion uses the same placement viewpoints" "$ITERATE" \
+  '指摘 0 件でも未説明なら逸脱'
+
 echo "=== ステップ 2.2: 選抜は cap 後の filter でなくマッチ入力の差し替え (AC-2 / AC-4 / T-02 / T-04) ==="
 assert_grep "2.2 substitutes the matching input with the fix diff" "$PR_REVIEW" \
   '^\| `incremental` \| `git diff --name-only \{cycle_base_sha\}\.\.HEAD` の結果'
