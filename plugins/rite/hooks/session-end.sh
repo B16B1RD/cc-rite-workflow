@@ -212,6 +212,7 @@ WARN_MSG
           :
         else
           _mv_rc=$?
+          _session_end_deact_failed=1
           rm -f "$TMP_FILE"
           if command -v _log_flow_diag >/dev/null 2>&1; then
             _log_flow_diag "session_end_mv_failed rc=$_mv_rc state=$STATE_FILE"
@@ -222,6 +223,7 @@ WARN_MSG
         [ -n "$_deact_mv_err" ] && rm -f "$_deact_mv_err"
     else
         _deact_jq_rc=$?
+        _session_end_deact_failed=1
         if command -v _log_flow_diag >/dev/null 2>&1; then
             _log_flow_diag "session_end_jq_failed rc=$_deact_jq_rc state=$STATE_FILE"
         fi
@@ -233,20 +235,39 @@ WARN_MSG
     fi
     [ -n "$_deact_jq_err" ] && rm -f "$_deact_jq_err"
 
-    # Clean up per-session flow-state file on session end.
-    # Note: this block also runs after the jq deactivation `else` arm above —
-    # i.e. when the .active=false update failed. The per-session file is unique
-    # to this session, so even a corrupt one has no value post-termination, and
-    # leaving it would only confuse the next session-start defensive reset.
+    # Keep review history (live run, parked history, unfinished collecting,
+    # unreadable JSON) and any state whose deactivate write failed.
+    # Do not empty history keys before this check, and do not fill missing
+    # keys with [] / 0. States without that history still follow the existing
+    # per-session cleanup (deactivate then rm).
+    _session_end_preserve=0
+    if ! jq -e . "$STATE_FILE" >/dev/null 2>&1; then
+      _session_end_preserve=1
+    elif jq -e '
+        ((.review_run | type) == "object")
+        or ((.review_run_history | type) == "array" and (.review_run_history | length) > 0)
+        or ((.review_cycle_abandoned | type) == "array" and (.review_cycle_abandoned | length) > 0)
+        or ((.review_cycle.status // "") == "collecting")
+      ' "$STATE_FILE" >/dev/null 2>&1; then
+      _session_end_preserve=1
+    fi
+    if [ "${_session_end_deact_failed:-0}" = 1 ]; then
+      _session_end_preserve=1
+    fi
+
+    # Clean up per-session flow-state file on session end when there is no
+    # review history to keep and deactivation succeeded.
     # Detection: STATE_FILE matches `*/.rite/sessions/*.flow-state` (the per-session
     # path returned by `flow-state.sh path`, now the only resolved form).
     # A residual legacy `.rite-flow-state` single-file (left over from a pre-v3
     # checkout) is intentionally preserved here so the next session-start's
     # `flow-state.sh migrate` can absorb it into per-session/v3 rather than have it
     # silently deleted.
-    # Stale-file cleanup (long-running sessions / crash leftovers) is out of scope
-    # for this Issue (handled by a follow-up).
-    if [[ "$STATE_FILE" == *"/.rite/sessions/"*".flow-state" ]] && [ -f "$STATE_FILE" ]; then
+    if [ "$_session_end_preserve" = 1 ]; then
+        if command -v _log_flow_diag >/dev/null 2>&1; then
+          _log_flow_diag "session_end_preserve state=$STATE_FILE"
+        fi
+    elif [[ "$STATE_FILE" == *"/.rite/sessions/"*".flow-state" ]] && [ -f "$STATE_FILE" ]; then
         # Surface rm failure (readonly fs / permission denied) so the next
         # session doesn't silently read stale state.
         rm -f "$STATE_FILE" 2>/dev/null || echo "[rite] WARNING: session-end: failed to remove per-session state file: $STATE_FILE" >&2
