@@ -2,6 +2,11 @@
 
 ## 2026-09-19
 
+* **Skip**: [修正結果](raw/fixes/20260919T113732Z-pr-2976.md) — detector-candidate: 指摘の証拠が主張を裏付けるかはスキル本文と静的ピンで強制する
+* **Skip**: [修正結果](raw/fixes/20260919T120728Z-pr-2976.md) — detector-candidate: 指摘の証拠が主張を裏付けるかはスキル本文と静的ピンで強制する
+* **Skip**: [レビュー結果](raw/reviews/20260919T112923Z-pr-2976.md) — detector-candidate: 指摘の証拠が主張を裏付けるかはスキル本文と静的ピンで強制する
+* **Skip**: [レビュー結果](raw/reviews/20260919T120428Z-pr-2976.md) — detector-candidate: 指摘の証拠が主張を裏付けるかはスキル本文と静的ピンで強制する
+* **Skip**: [レビュー結果](raw/reviews/20260919T122624Z-pr-2976.md) — detector-candidate: 指摘の証拠が主張を裏付けるかはスキル本文と静的ピンで強制する
 * **Skip**: [レビュー結果](raw/reviews/20260919T073844Z-pr-2968.md) — rite スキル記述の知見は plugin 側へ移す。新しいドメイン経験則はない
 * **Skip**: [レビュー結果](raw/reviews/20260918T234656Z-pr-2967.md) — rite スキル記述の知見は plugin 側へ移す。新しいドメイン経験則はない
 * **Skip**: [レビュー結果](raw/reviews/20260918T162643Z-pr-2965.md) — rite スキル記述の知見は plugin 側へ移す。新しいドメイン経験則はない
