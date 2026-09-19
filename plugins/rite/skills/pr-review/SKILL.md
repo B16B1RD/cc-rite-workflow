@@ -56,7 +56,7 @@ rationale: references/design-rationale.md#e2e-askuser-split
 |-------|-----------|----------|
 | ステップ 3.3 (Confirm Reviewers) | `AskUserQuestion` で構成確認 | **`AskUserQuestion`（オプション選択）を skip**（pre-flight 確認のみ。flow-state ベース判定はステップ 3.3 参照）。`起動 reviewer {count} 名` サマリ行・省略された reviewer 表示は両経路で必須維持 |
 | ステップ 4 (Sub-Agent Execution) | Full execution | **Full execution** — sub-agents MUST run in parallel for every review cycle (including verification mode). No shortcut allowed. |
-| ステップ 5 (Consolidation) | Full findings table | Result pattern + summary counts only。**例外 1: ステップ 5.4 の `### レビュー範囲（cycle 2+ 差分スコープ）` section は `REVIEW_CYCLE_SCOPE == incremental` のとき E2E でも省略禁止** (cycle 2+ は E2E からしか発生しないため、ここを minimize すると「スキップした reviewer を記録する」要求が空文になる — SoT: [cycle-scope.md](references/cycle-scope.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 2: ステップ 5.4 の `### 実測なし指摘 (non-blocking)` section は `non_blocking_count > 0` のとき E2E でも省略禁止** (ステップ 7 AskUserQuestion と同じ identity 制約 — 関連 Issue 記録コメントはポインタのみで全文は載せない。既定 `post_comment: false` では統合レポートも PR に載らないため、この E2E 出力が非実測指摘の全文を人間が同期的に見る経路であり、省略は「非実測指摘を破棄しない」という記録契約の喪失に直結する)。**例外 3: ステップ 5.4 の `### レビューレーン（XS/S 軽量レーン）` section は `COMPLEXITY_LANE == light` のとき E2E でも省略禁止** (軽量レーンが動機づけられた Scenario 1「XS が 1 サイクル収束して自律マージされる」は E2E ループでしか起きず、そこを minimize すると観測性の MUST が主対象シナリオでだけ空文になる — SoT: [complexity-lane.md](references/complexity-lane.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 4: ステップ 5.4 の `### Guardrail 監査ログ` section は `guardrail_audit_count > 0` のとき E2E でも省略禁止** (既定 `post_comment: false` でも Category #2 の filter 判断を人間が確認できる同期経路を維持するため)。**例外 5: ステップ 5.4 の `### 総合評価` にある `**起動の直列化**` の 1 行は `SPAWN_SPREAD` が `serialized` / `undetermined` / 欠落を伴う `parallel` のとき E2E でも省略禁止** (直列化が起きるのは長時間 E2E セッションであり、そこを minimize すると本行が到達する経路が消える。既定 `post_comment: false` では統合レポートは PR にも載らないため、省略すると本行が主対象シナリオで空文になる。`serialized` / 欠落を伴う `parallel` では helper の stderr WARNING と結果 JSON のフラグが残るが、**`undetermined` では helper がフラグをキーごと書かない**ため、計測不能の**理由** (`reason=`) は揮発する stderr WARNING にしか残らない — 省略が最も高くつくのはこの条件。`reviewer_timings[]` はステップ 4.6 の timings ファイルが present のときだけ結果 JSON へ転記される)。**例外 6: ステップ 5.4 の `### 実測阻害` section は `measurement_blocked_count > 0` のとき E2E でも省略禁止** (既定 `post_comment: false` ではこの出力が実測阻害の件数・内訳を人間が見る同期経路であり、省略は無言の measured=false 降格を再導入する)。**例外 7: ステップ 5.4 の `### 受入条件確認` section は E2E でも省略禁止** (未検証 AC は人間が動作チェックする対象そのものであり、既定 `post_comment: false` ではこの出力が判定表を人間が同期的に見る唯一の経路) |
+| ステップ 5 (Consolidation) | Full findings table | Result pattern + summary counts only。**例外 1: ステップ 5.4 の `### レビュー範囲（cycle 2+ 差分スコープ）` section は `REVIEW_CYCLE_SCOPE == incremental` のとき E2E でも省略禁止** (cycle 2+ は E2E からしか発生しないため、ここを minimize すると「スキップした reviewer を記録する」要求が空文になる — SoT: [cycle-scope.md](references/cycle-scope.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 2: ステップ 5.4 の `### 実測なし指摘 (non-blocking)` section は `non_blocking_count > 0` のとき E2E でも省略禁止** (ステップ 7 AskUserQuestion と同じ identity 制約 — 関連 Issue 記録コメントはポインタのみで全文は載せない。既定 `post_comment: false` では統合レポートも PR に載らないため、この E2E 出力が非実測指摘の全文を人間が同期的に見る経路であり、省略は「非実測指摘を破棄しない」という記録契約の喪失に直結する)。**例外 3: ステップ 5.4 の `### レビューレーン（XS/S 軽量レーン）` section は `COMPLEXITY_LANE == light` のとき E2E でも省略禁止** (軽量レーンが動機づけられた Scenario 1「XS が 1 サイクル収束して自律マージされる」は E2E ループでしか起きず、そこを minimize すると観測性の MUST が主対象シナリオでだけ空文になる — SoT: [complexity-lane.md](references/complexity-lane.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 4: ステップ 5.4 の `### Guardrail 監査ログ` section は `guardrail_audit_count > 0` のとき E2E でも省略禁止** (既定 `post_comment: false` でも Category #2 の filter 判断を人間が確認できる同期経路を維持するため)。**例外 5: ステップ 5.4 の `### 総合評価` にある `**起動の直列化**` の 1 行は `SPAWN_SPREAD` が `serialized` / `undetermined` / 欠落を伴う `parallel` のとき E2E でも省略禁止** (直列化が起きるのは長時間 E2E セッションであり、そこを minimize すると本行が到達する経路が消える。既定 `post_comment: false` では統合レポートは PR にも載らないため、省略すると本行が主対象シナリオで空文になる。`serialized` / 欠落を伴う `parallel` では helper の stderr WARNING と結果 JSON のフラグが残るが、**`undetermined` では helper がフラグをキーごと書かない**ため、計測不能の**理由** (`reason=`) は揮発する stderr WARNING にしか残らない — 省略が最も高くつくのはこの条件。`reviewer_timings[]` はステップ 4.6 の timings ファイルが present のときだけ結果 JSON へ転記される)。**例外 6: ステップ 5.4 の `### 実測阻害` section は `measurement_blocked_count > 0` のとき E2E でも省略禁止** (既定 `post_comment: false` ではこの出力が実測阻害の件数・内訳を人間が見る同期経路であり、省略は無言の measured=false 降格を再導入する)。**例外 7: ステップ 5.4 の `### 受入条件確認` section は E2E でも省略禁止** (未検証 AC は人間が動作チェックする対象そのものであり、既定 `post_comment: false` ではこの出力が判定表を人間が同期的に見る唯一の経路)。**例外 8: ステップ 5.4 の `### 根拠と主張の不対応` section は `evidence_claim_rejected_count > 0` のとき E2E でも省略禁止** (既定 `post_comment: false` ではこの出力が不採用理由の人間同期経路。省略は記録契約の喪失) |
 | ステップ 6 (PR Comment) | Full comment + display | Post comment silently, output pattern only |
 | ステップ 7 (Triage) | Full report + guidance | **Recommendations only** — detect scope-irrelevant recommendations (findings/recommendations containing 別 Issue / スコープ外 keywords). Decision Log 記録の推奨は可逆なので自動処理し、ユーザー固有・不可逆な disposition だけ `AskUserQuestion` で確認する。`[review:mergeable]` と受入条件未検証の停止のときに実行し、`[review:fix-needed:N]` では skip する。 |
 
@@ -1810,7 +1810,7 @@ emit 形式 (Step 2 line で実装):
 
 ### 5.2 Cross-Validation
 
-**Same file/line**: `file:line` で束ね、2+ reviewer なら High Confidence + severity 昇格。
+**Same file/line**: `file:line` で束ねる。2+ reviewer でも人数・severity を証拠の代わりにせず、対応確認（5.2.2）の前に High Confidence 扱いへ上げない。
 **Contradiction detection**: 同じ `file:line` で両立できない評価、**or the same root cause is assigned both `current-pr` and `follow-up` scope** → debate（有効時）または `AskUserQuestion`。
 **Quality Signal 3**: 同じ `file:line` の矛盾評価。5.2.1 の帰結で発火する:
 
@@ -1889,10 +1889,22 @@ Read `review.debate` from `rite-config.yml` (defaults defined in [cross-validati
 **Steps:**
 
 1. Check multiple findings for the same `file:line`. `acceptance-reviewer` の指摘は他の指摘と統合しない（`[AC-N]` 接頭辞による判定表との紐付けを保つ）
-2. If the content is similar, merge into a single finding:
- - Severity: Adopt the highest
- - Description: Merge into a description integrating multiple perspectives
- - Note: Append "Flagged by multiple reviewers"
+2. 類似指摘の merge は 5.2.2 の**後**。根拠不足の複数件を最高 severity で 1 件にまとめない。`Flagged by multiple reviewers` は採用済み指摘の注記に限り、不採用の補強に使わない
+
+#### 5.2.2 Evidence-Claim Correspondence
+
+Dedup 見出しの直後、Fact-Check の前。helper / 新スキーマ / 常設承認は増やさない。`findings[].verification` は書かない。指摘 0 件なら skip。Fact-Check skip（`enabled: false` または external 0）でも本節は実行する。verification モードも同一。
+
+各指摘で観測（`Verification:` RHS / `Likelihood-Evidence:`）と主張する欠陥・到達経路・悪影響を分ける。元要求・既存契約と照合する。
+
+| 入力 | 判定 | 行先 |
+|---|---|---|
+| 文字列不在・件数・掲載順のみ。その形式を要求する契約も、その順を評価する consumer もない | 不採用 | `findings[]` に入れない。5.4 `### 根拠と主張の不対応` に理由を書く |
+| 到達可能な誤分岐の静的証明、実行失敗、合意済み AC の実際の未充足、明示形式契約の欠落 | 採用 | 既存 5.3.0.M / 5.3.0.C へ。動的再現は必須にしない |
+| 元要求にない形式規約の追加と、それだけを確認する新規テスト | 不採用 | 上と同じ記録。新規約を元要求違反の根拠にしない |
+| 実測阻害 / アンカー判定不能 / 根拠矛盾 | 既存経路 | Measurement-Blocked surface / `anchor_undetermined` reroll / debate。無条件の non-blocking 化・mergeable 化・verification 手編集はしない |
+
+不採用は `### 実測なし指摘` へ混ぜない。採用後の `measured=true` は観測記録であり、本節が主張の成立を確認したあとの 5.3.0.M 入力である。5.3.0.M の構文判定は置き換えない。
 
 #### Fact-Checking Phase
 
@@ -2373,6 +2385,7 @@ fi
 **`### 実測なし指摘 (non-blocking)` の情報源**: ゲート適用済 JSON の `non_blocking_findings[]` を Read して描画する。記憶から再構成しない。`{non_blocking_count}` は 5.3.0.C 発動 cycle は移送後配列長、それ以外は `MEASURED_GATE` の `non_blocking_total=`。**`demotion` 付きは `内容` 先頭に `[class B 降格: {demotion.reason}]`**。**列は追加しない**（6 列固定）。
 **`### 実測阻害` の情報源**: ゲート適用済 JSON の `findings[]` と `non_blocking_findings[]` の和から `description` に `Measurement-Blocked:` を含む要素を抽出し描画する。記憶から再構成しない。`{measurement_blocked_count}` はその件数。0 件ならセクションごと省略。helper は本 marker を実測アンカーとして読まないため、当該 finding は通常 `non_blocking_findings[]` に入る。**列は `実測なし指摘` 表に足さない**（6 列固定）。本 section は E2E でも省略禁止（上記 E2E Output Minimization 表の例外 6）。
 **`### 受入条件確認` の情報源**: ゲート適用済 JSON の `acceptance_criteria` を Read して描画する。記憶から再構成しない。配列なら全行を `| AC | 判定 | 根拠 |` で描画し、判定は `satisfied` → 充足 / `unmet` → 未充足 / `unverified` → 未検証、未充足行の根拠に `finding_id` を併記する。`skipped` なら `受入条件確認: 対象外（{理由}）` の 1 行。本 section は E2E でも省略禁止（上記 E2E Output Minimization 表の例外 7）。
+**`### 根拠と主張の不対応` の情報源**: 5.2.2 が不採用とした指摘。`### 全指摘事項` より前。`### 矛盾により除外された指摘` と見出しを共用せず、`### 実測なし指摘` へ混ぜない。fix 1.2.1 の `### 全指摘事項` 起点は壊さない。`evidence_claim_rejected_count > 0` のとき E2E でも省略禁止（例外 8）。0 件ならセクションごと省略。
 
 ---
 

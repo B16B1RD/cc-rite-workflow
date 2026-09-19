@@ -242,6 +242,8 @@ else:
 
 ## 5.3.1 Assessment Rules
 
+Critic 5.2.2 が根拠不足で `findings[]` から外した指摘は fix 対象に戻さない。人数・severity・`Flagged by multiple reviewers` を再採用の根拠にしない。
+
 **Red blocking rule: If even 1 finding with `scope ∈ {current-pr, follow-up}` and measured=true exists (after 5.3.0 / 5.3.0.M / 5.3.0.C demotion), it MUST NOT be assessed as "Merge OK"**
 
 All findings (CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW) with `scope ∈ {current-pr, follow-up}` remaining in `全指摘事項` after 5.3.0 **and 5.3.0.M (実測必須ゲート) and 5.3.0.C (帰結クラス降格政策)** demotion are always blocking regardless of loop count. There is no gradual relaxation — every remaining blocking finding must be resolved before merge. 実測 (repro / failing_test) を伴わない finding は 5.3.0.M で `non_blocking_findings` に分類済みのため本 rule の対象に残らない — blocking = 「runtime 実測を伴う CONFIRMED 指摘」のみであり、「指摘ゼロ」は到達可能な終了条件になる。
