@@ -1415,6 +1415,7 @@ bash {plugin_root}/hooks/scripts/review-spawn-spread-check.sh \
 
 ## ステップ 5: 結果検証と統合 (Critic フェーズ)
 
+直前の fix が契約・制約・ファイル役割を変えた節目、および完了前確認が PR details に残した逸脱記録があるときは、統合担当が前回 fix 差分だけでなく PR base...HEAD の全差分と、既存 PR details の逸脱箇所・元要求・反証条件を照合する。観点は配置（証拠→PR details / 契約→規約 / Why→ソース / 再現→テスト）、規範の正の逆転・重複、根拠のない新制約、有用な契約・保守理由の保持。指摘 0 件でも未説明なら逸脱。全員フルレビューは要求しない。発見が reviewer 出力として findings にあれば 5.3.0.M の通常分類へ。親だけの発見は PR details を正とし、5.4 なら既存の `### 仕様との整合性` に 1 行で残す。`### 実測なし指摘` へ混ぜず findings[] に挿入しない。8.1 の `total_findings` 単一 SoT は変えない。同一 HEAD の empty_diff→full 再起動を復帰に使わず、未保存の逸脱記録を PR details から落とさない。
 
 ### 5.0.A Post-Review State Verification
 

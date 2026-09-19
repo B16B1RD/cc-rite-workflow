@@ -5,7 +5,8 @@
 # outstanding-items-contract.test.sh と同じ static-contract 方式で literal を grep-pin する。
 # 判定ロジック本体 (JSON 探索・fail-safe 分岐) は scripts/review-cycle-scope.sh に切り出され
 # scripts/tests/review-cycle-scope.test.sh が挙動を検証するので、本 suite が守るのは
-# **散文側にしか存在しない契約** — 選抜の合成規則・テンプレート合成・観測性の 3 つに絞る。
+# **散文側にしか存在しない契約** — 選抜の合成規則・テンプレート合成・観測性に加え、
+# 節目の全差分確認と完了前目的整合の接続 pin を含む。
 #
 # 感度に関する注意 (outstanding-items-contract.test.sh が記録した教訓の適用):
 # 単語 1 個の pin はセクション内の別行にも同語が出現すると mutation を素通りさせる。
@@ -80,6 +81,63 @@ assert_grep "1.2.4 gates {previous_blocking_findings} to blocking scopes" "$PR_R
 # 守るが、consumer 側の散文は本 pin が唯一の防御。
 assert_grep "1.2.4 reads both findings[] and non_blocking_findings[]" "$PR_REVIEW" \
   '\{previous_blocking_findings\}.*`findings\[\]` と `non_blocking_findings\[\]` の和'
+
+echo "=== 節目の全差分確認は全員フルレビューに戻さない ==="
+assert_grep "step 5 collates full PR diff at contract-changing milestones" "$PR_REVIEW" \
+  '前回 fix 差分だけでなく PR base\.\.\.HEAD の全差分'
+assert_grep "step 5 does not require all-reviewer restart" "$PR_REVIEW" \
+  '全員フルレビューは要求しない'
+assert_grep "parent-only discoveries stay out of findings[]" "$PR_REVIEW" \
+  'findings\[\] に挿入しない'
+assert_grep "8.1 total_findings SoT is unchanged" "$PR_REVIEW" \
+  '8\.1 の `total_findings` 単一 SoT は変えない'
+
+ITERATE="$SCRIPT_DIR/../../skills/iterate/SKILL.md"
+assert_grep "iterate purpose check uses actual HEAD after 5.S" "$ITERATE" \
+  '確認時点の `git rev-parse HEAD`'
+assert_grep "iterate purpose unmet uses existing review:error" "$ITERATE" \
+  '`\[review:error\]` で未完了停止'
+assert_grep "iterate purpose unmet does not auto-fix unsaved IDs" "$ITERATE" \
+  'MUST NOT: 親発見を finding ID として'
+assert_grep "iterate does not claim iterate rerun alone recovers" "$ITERATE" \
+  '`/rite:iterate` 再実行だけで回復したとしない'
+assert_grep "iterate records deviation in existing PR details" "$ITERATE" \
+  '逸脱箇所・元要求・反証条件を既存 PR details に書く'
+assert_grep "consolidator reads PR details deviation records" "$PR_REVIEW" \
+  '既存 PR details の逸脱箇所・元要求・反証条件を照合する'
+assert_grep "empty_diff full restart is not the recovery path" "$PR_REVIEW" \
+  'empty_diff→full 再起動を復帰に使わず'
+assert_grep "consolidator placement and inversion viewpoints" "$PR_REVIEW" \
+  '証拠→PR details / 契約→規約 / Why→ソース / 再現→テスト'
+assert_grep "zero findings still unmet if purpose unexplained" "$PR_REVIEW" \
+  '指摘 0 件でも未説明なら逸脱'
+assert_grep "iterate completion uses the same placement viewpoints" "$ITERATE" \
+  '証拠→PR details / 契約→規約 / Why→ソース / 再現→テスト'
+assert_grep "purpose unmet is iterate-terminal not inner mergeable" "$ITERATE" \
+  '同一 invoke の pr-review `\[review:mergeable\]` と `FINALIZE:review:mergeable` を iterate 成功と読まない'
+assert_grep "purpose check sits after 5.S and before 5.0.1" "$ITERATE" \
+  '5\.S 成功後・5\.0\.1 の前に'
+assert_grep "purpose unmet uses REVIEW_STOP like ac_unverified" "$ITERATE" \
+  'REVIEW_STOP=purpose_unaligned'
+assert_grep "purpose unmet clears FINALIZE without --handoff" "$ITERATE" \
+  '`--handoff` なしで実行し FINALIZE を消す'
+assert_grep "overview routes sweep-done to purpose check" "$ITERATE" \
+  '`\[fix:sweep-done\]` → 完了前確認'
+assert_grep "purpose unmet fenced set has no --handoff" "$ITERATE" \
+  'purpose_unaligned: 完了前確認で目的逸脱'
+STOP_HOOK="$SCRIPT_DIR/../../hooks/stop-loop-continuation.sh"
+STOP_CONTRACT="$SCRIPT_DIR/../../references/stop-loop-continuation-contract.md"
+BATCH_RUN="$SCRIPT_DIR/../../skills/batch-run/SKILL.md"
+assert_grep "stop hook reason requires purpose check before step 5" "$STOP_HOOK" \
+  'の完了前確認（目的整合）を経てからステップ5 の完了通知'
+assert_grep "stop-loop contract lists purpose_unaligned beside ac_unverified" "$STOP_CONTRACT" \
+  '目的逸脱の `\[review:error\]`（`REVIEW_STOP=purpose_unaligned`）も handoff を持たない'
+pu_line=$(grep -nF 'REVIEW_STOP=purpose_unaligned' "$BATCH_RUN" | head -1 | cut -d: -f1)
+mg_line=$(grep -nF '[review:mergeable]` + `merge' "$BATCH_RUN" | head -1 | cut -d: -f1)
+assert "batch-run purpose_unaligned precedes mergeable" "true" \
+  "$( [ -n "$pu_line" ] && [ -n "$mg_line" ] && [ "$pu_line" -lt "$mg_line" ] && echo true || echo "false pu=$pu_line mg=$mg_line" )"
+assert_grep "parent discovery uses named 仕様との整合性 section" "$PR_REVIEW" \
+  '`### 仕様との整合性` に 1 行で残す'
 
 echo "=== ステップ 2.2: 選抜は cap 後の filter でなくマッチ入力の差し替え (AC-2 / AC-4 / T-02 / T-04) ==="
 assert_grep "2.2 substitutes the matching input with the fix diff" "$PR_REVIEW" \

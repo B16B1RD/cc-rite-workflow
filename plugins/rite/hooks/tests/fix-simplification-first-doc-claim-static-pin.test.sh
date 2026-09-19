@@ -61,6 +61,16 @@ PIN_GATE_CHECK='Escalation trigger 成立時は `simplification-first:` 段落�
 PIN_GATE_NOT_REQUIRED='trigger 不成立の cycle では `simplification-first:` 段落を要求しない'
 PIN_OPTION1='or \(Escalation trigger 成立時\) a `simplification-first: \{paragraph\}` paragraph'
 PIN_OPTION2='or \(Escalation trigger 成立時\) `simplification-first \(bypass\): \{理由\}`'
+PIN_PURPOSE_COLLATE='保存済み対象 finding は元 Issue の目的・非対象とファイルの読者/役割で配置したか'
+PIN_PLACEMENT='証拠は既存 PR details、恒久契約は規約、保守の Why はソース、再現はテスト'
+PIN_INVERSION='恒久規約が凍結予定の作業文書を規範として指していないか'
+PIN_RETAIN='非規範の有用な資料参照・Why・不変条件は保持したか'
+PIN_CONSTRAINT='前 cycle の規約やテスト一致だけでは根拠にしない'
+PIN_NB_NOT_FIX_TARGET='親発見と `non_blocking_findings\[\]` は対象外'
+PIN_SAVED_ONLY='親の完了前発見を未保存 ID として計画へ足さない'
+PIN_SCHEMA_NOT_AUTOFIX='schema 上受理されていても 2\.1 の修正対象ではない'
+PIN_AC1_RECORD='元要求との対応と、追加／削除／差し戻し／移動から選んだ処置の理由を短く書く'
+PIN_AC1_NOT_ESCALATION='`simplification-first:` 段落は Escalation trigger 専用であり、この記録の代用にしない'
 
 # pin: assert_grep_in_section, plus a stderr line naming the cause so a red run says
 # whether a rule literal disappeared or the section heading drifted (the helper's
@@ -90,8 +100,28 @@ assert_not_grep "T-01: old 'chat 1 行 + commit に書く' instruction is gone" 
   "$FIX_MD" '^追加で直すなら commit に「なぜ削除ではないか」を書く。$'
 
 # --- T-02 (AC-2): recommendation is a candidate; prose-claim fixes are cross-checked in 2.3 ---
+pin "T-01: saved findings collate original purpose and file roles" \
+  "$FIX_MD" "$SF_START" "$SF_END" "$PIN_PURPOSE_COLLATE"
+pin "T-01: placement is evidence/contract/why/reproduction" \
+  "$FIX_MD" "$SF_START" "$SF_END" "$PIN_PLACEMENT"
+pin "T-01: durable rule must not take frozen work as the norm" \
+  "$FIX_MD" "$SF_START" "$SF_END" "$PIN_INVERSION"
+pin "T-01: keep useful non-normative why and invariants" \
+  "$FIX_MD" "$SF_START" "$SF_END" "$PIN_RETAIN"
+pin "T-01: new constraints need original-requirement grounds" \
+  "$FIX_MD" "$SF_START" "$SF_END" "$PIN_CONSTRAINT"
+pin "T-01: parent discovery and non_blocking_findings are out of fix 2.1" \
+  "$FIX_MD" "$SF_START" "$SF_END" "$PIN_NB_NOT_FIX_TARGET"
 pin "T-02: 2.1 states recommendation is a candidate, not a design" \
   "$FIX_MD" "$S21_START" "$S21_END" "$PIN_CANDIDATE"
+pin "T-02: 2.1 does not add unsaved parent discoveries to the plan" \
+  "$FIX_MD" "$S21_START" "$S21_END" "$PIN_SAVED_ONLY"
+pin "T-02: schema acceptance is not auto-fix eligibility" \
+  "$FIX_MD" "$S21_START" "$S21_END" "$PIN_SCHEMA_NOT_AUTOFIX"
+pin "T-02: first finding records original-req correspondence and treatment reason" \
+  "$FIX_MD" "$S21_START" "$S21_END" "$PIN_AC1_RECORD"
+pin "T-02: escalation paragraph is not a substitute for that record" \
+  "$FIX_MD" "$S21_START" "$S21_END" "$PIN_AC1_NOT_ESCALATION"
 pin "T-02: 2.3 requires enumerate-and-match before applying a doc-claim fix" \
   "$FIX_MD" "$S23_START" "$S23_END" "$PIN_CROSSCHECK"
 pin "T-02: 2.3 shows the enumeration alongside the proposed fix" \
