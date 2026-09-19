@@ -45,7 +45,7 @@ assert_rc2 bash scripts/a.sh &&
   assert_rc2 bash scripts/b.sh
 ```
 
-失敗時も実測終了コード・stdout/stderr は検証記録に残る。診断の `actual_rc` と証跡を確認し、対象の欠陥とアサーションの誤りを区別する。固定済みの見直し計画を任意に書き換えて再登録できるという意味ではない。
+失敗時も実測終了コード・stdout/stderr は検証記録に残る。診断の `actual_rc` と証跡を確認し、対象の欠陥とアサーションの誤りを区別する。固定済みの見直し計画を任意に書き換えて再登録できるという意味ではない。検証コマンドだけを同じ run / context で直すときは `review-replan --amend --reason "訂正理由"` を使う。許可する差分は既存 `verifications[].command` のみで、診断用 `review-replan`（代替案の保存）とは別操作である。訂正後は scope `check` と `verify --kind all` をやり直す。
 
 修正中は `review-fix-scope-check.sh verify --plan ... --issue ... --kind related` を使う。内容（追加・削除・modeを含む）・コマンド・指定環境・作業先・基本runtimeが同一で、当該 context の実測成功がある関連テストだけ再利用する。失敗・入力変化・新しいreview contextは再実行する。全修正後は `fix` 本体の最終検証ブロックを実行し、関連結果の鮮度を確認した後、全体検証を全件実行する。検証コマンドは入力を変更しない。
 
