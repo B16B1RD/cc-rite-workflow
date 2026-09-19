@@ -25,9 +25,9 @@ argument-hint: "<pr_number>"
 1. lost 修復ゲート（前 cycle JSON 不在なら即時保存 or counter 不前進の再レビュー）→ 発火条件チェック（収束トレンドの発散 / `max_review_cycles` 到達）→ 不成立なら counter を +1 して `/rite:pr-review` を invoke / 成立なら サーキットブレーカー（ステップ 6）へ
 2. review sentinel を判定（`[review:mergeable]` → ステップ 5.S / `[review:fix-needed:N]` → ステップ 3 / error・不在 → 1 回自動再試行、再失敗時は停止）
 3. `/rite:fix` を invoke
-4. fix sentinel を判定（通常ループ: `[fix:pushed]` → ステップ 1 に戻る / `[fix:non-fatal-only]` / `[fix:replied-only]` → ステップ 5.S / `[fix:sweep-done]` → ステップ 5 / `[fix:cancelled-by-user]` → 終了 / error・不在 → 1 回自動再試行、再失敗時は停止。`--nb-sweep` 経由は 5.S 専用表 — ステップ 1 に戻らない）
-5.S. `[review:mergeable]` / `[fix:non-fatal-only]` / `[fix:replied-only]` 後の NB digest sweep（対象 0 は no-op。同一 PR で 2 回禁止）
-5. 完了通知を出す
+4. fix sentinel を判定（通常ループ: `[fix:pushed]` → ステップ 1 に戻る / `[fix:non-fatal-only]` / `[fix:replied-only]` → ステップ 5.S / `[fix:sweep-done]` → 完了前確認 / `[fix:cancelled-by-user]` → 終了 / error・不在 → 1 回自動再試行、再失敗時は停止。`--nb-sweep` 経由は 5.S 専用表 — ステップ 1 に戻らない）
+5.S. `[review:mergeable]` / `[fix:non-fatal-only]` / `[fix:replied-only]` 後の NB digest sweep（対象 0 は no-op。同一 PR で 2 回禁止）。成功後は完了前確認へ
+5. 完了前確認のあと完了通知を出す（目的逸脱時は出さない）
 6. （発火時のみ）サーキットブレーカー: counter と停止理由を記録し、batch は `[iterate:max-cycles-reached]`、対話は `[iterate:max-cycles-stopped]` と停止通知を出して終了する
 
 **サーキットブレーカーの発火条件は 2 つ**:
@@ -47,7 +47,7 @@ rationale: references/rationale.md#circuit-breaker-conditions
 ## Contract
 
 **Input**: PR number (required)
-**Output**: 完了通知（`[review:mergeable]` / `[fix:non-fatal-only]` 到達後 5.S sweep 完了（外向きは `[review:mergeable]`）or `[fix:replied-only]` 到達後 5.S sweep 完了（外向きも返信のみ） or `[fix:cancelled-by-user]` 中断 or サーキットブレーカー発火による停止（`[iterate:max-cycles-reached]` バッチ / `[iterate:max-cycles-stopped]` 対話。非収束による失敗で、マージには進まない）or sweep 失敗 `[iterate:nb-sweep-error]` or Ctrl+C 中断）。発火後に review / fix は invoke しない。再開は `review_run` が無い legacy state では `/rite:iterate` の明示再実行、`review_run` がある停止はステップ 6.2 の `{resume_routes}`（通常の再実行では新 run にならない）。
+**Output**: 完了通知（`[review:mergeable]` / `[fix:non-fatal-only]` 到達後 5.S sweep 完了（外向きは `[review:mergeable]`）or `[fix:replied-only]` 到達後 5.S sweep 完了（外向きも返信のみ） or `[fix:cancelled-by-user]` 中断 or サーキットブレーカー発火による停止（`[iterate:max-cycles-reached]` バッチ / `[iterate:max-cycles-stopped]` 対話。非収束による失敗で、マージには進まない）or sweep 失敗 `[iterate:nb-sweep-error]` or 5.S 後の目的逸脱 `[review:error]` + `[CONTEXT] REVIEW_STOP=purpose_unaligned`（完了通知へ進まない） or Ctrl+C 中断）。発火後に review / fix は invoke しない。再開は `review_run` が無い legacy state では `/rite:iterate` の明示再実行、`review_run` がある停止はステップ 6.2 の `{resume_routes}`（通常の再実行では新 run にならない）。
 
 ## E2E Output Minimization
 
@@ -711,6 +711,7 @@ args: "{pr_number}"
 | `[review:mergeable]` | ステップ 5.S（NB digest sweep。完了通知の前） |
 | `[review:fix-needed:N]` | ステップ 3 (fix invoke) へ |
 | `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=ac_unverified; ac={ids}` | 受入条件未検証の停止。再試行せず、下記の停止通知を出して終了する（成功 sentinel も新しい sentinel も出さない） |
+| `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=purpose_unaligned` | 5.S 後の目的逸脱。再試行せず終了する（成功 sentinel も新しい sentinel も出さない） |
 | `[review:error]` | 可逆な再試行を推奨として 1 回だけ自動実行し、work memory の既存決定事項へ理由を記録する。再失敗なら停止 |
 | sentinel 不在 | 可逆な再試行を推奨として 1 回だけ自動実行し、期待 sentinel と直近出力を既存 work memory へ記録する。再度不在なら停止 |
 
@@ -767,10 +768,10 @@ args: "{pr_number}"
 | Sentinel | アクション |
 |---------|-----------|
 | `[fix:pushed]` | ステップ 1 (cycle 上限チェック → review 再実行) に戻る — **ループ継続**（上限到達ならステップ 6 サーキットブレーカーへ） |
-| `[fix:sweep-done]` | ステップ 5（完了通知）。**ステップ 1 に戻らない**（再フルレビュー禁止） |
+| `[fix:sweep-done]` | 完了前確認（目的整合）のあとステップ 5。**ステップ 1 に戻らない**（再フルレビュー禁止） |
 | `[fix:pushed-wm-stale]` | ステップ 1 に戻る (WM stale 警告は表示するが loop は継続。上限チェックはステップ 1 が実施) |
-| `[fix:non-fatal-only]` | ステップ 5.S（移送した非 fatal 指摘を sweep し、成功後にステップ 5）。**ステップ 1 に戻らない** |
-| `[fix:replied-only]` | ステップ 5.S（成功後も返信のみで完了通知）。**ステップ 1 に戻らない** |
+| `[fix:non-fatal-only]` | ステップ 5.S（成功後に完了前確認）。**ステップ 1 に戻らない** |
+| `[fix:replied-only]` | ステップ 5.S（成功後に完了前確認。返信のみで完了通知）。**ステップ 1 に戻らない** |
 | `[fix:cancelled-by-user]` | **ループ終了**（ユーザーが fix.md 内 cancel 経路 — ステップ 1.4 Cancel option / Fast Path Cancel handoff 等 — で中止選択。`/rite:recover` で再開可） |
 | `[fix:error]` | 可逆な再試行を推奨として 1 回だけ自動実行し、work memory の既存決定事項へ理由を記録する。再失敗なら停止 |
 | sentinel 不在 | 可逆な再試行を推奨として 1 回だけ自動実行し、期待 sentinel・直近の fix 出力 100 行・flow-state phase を既存 work memory へ記録する。再度不在なら停止 |
@@ -781,7 +782,7 @@ args: "{pr_number}"
 
 ## ステップ 5.S: NB digest sweep
 
-`[review:mergeable]` / `[fix:non-fatal-only]` / `[fix:replied-only]` 到達後・完了通知前に **1 回**。対象 0 件は no-op（fix を invoke しない）。同一 PR の本 run で 2 回 invoke しない。silent skip 禁止。Stop hook が `review:mergeable` / `fix:non-fatal-only` / `fix:replied-only` の FINALIZE で完了通知を求めても、5.S 未実施なら先に本ステップを実行する。
+`[review:mergeable]` / `[fix:non-fatal-only]` / `[fix:replied-only]` 到達後・完了通知前に **1 回**。対象 0 件は no-op（fix を invoke しない）。同一 PR の本 run で 2 回 invoke しない。silent skip 禁止。Stop hook が `review:mergeable` / `fix:non-fatal-only` / `fix:replied-only` の FINALIZE で完了通知を求めても、5.S 未実施なら先に本ステップを実行する。成功後は完了前確認を経てからステップ 5 へ。Stop hook がステップ 5 を求めても完了前確認を飛ばさない。
 rationale: references/rationale.md#nb-sweep-step
 
 入口の通常ループ sentinel を `{sweep_origin}` として保持する。5.S 再入時も保持値を使い、内部の `[fix:sweep-done]` や handoff で上書きしない。
@@ -842,8 +843,8 @@ fi
 
 | `ITERATE_NB_SWEEP` | アクション |
 |---|---|
-| `skipped` | ステップ 5（完了通知）。collect / fix を invoke しない |
-| `noop` | ステップ 5（完了通知）。fix を invoke しない |
+| `skipped` | 完了前確認（目的整合）。collect / fix を invoke しない |
+| `noop` | 完了前確認（目的整合）。fix を invoke しない |
 | `pending` | `/rite:fix --nb-sweep` を invoke |
 | `failed` | `[iterate:nb-sweep-error]` で停止。完了通知へ進まない |
 
@@ -864,7 +865,7 @@ args: "--nb-sweep {pr_number}"
 
 | Sentinel | アクション |
 |---------|-----------|
-| `[fix:sweep-done]` | ステップ 5（完了通知）。ステップ 1 に戻らない |
+| `[fix:sweep-done]` | 完了前確認（目的整合）。ステップ 1 に戻らない |
 | `[fix:error]` / その他 / sentinel 不在 | `[iterate:nb-sweep-error]` で停止。完了通知へ進まない |
 
 fix が emit した `[CONTEXT] NB_SWEEP_RESULT=done; issued=K; recorded=M` を読み、`ITERATE_NB_SWEEP=done` を同カウントで emit する。ファイル未作成なら書く:
@@ -886,15 +887,44 @@ if [ -n "$nb_root" ] && [ ! -f "$nb_done_file" ]; then
 fi
 ```
 
-その後ステップ 5 へ。
+その後、完了前確認（目的整合）へ。
 
 MUST NOT: 同一 PR で 5.S を 2 回走らせる。sweep でコードを修正・commit・push する。
+
+### 5.S 後の完了前確認（目的整合）
+
+5.S 成功後・5.0.1 の前に、確認時点の `git rev-parse HEAD` と、その HEAD の PR base...HEAD 全差分を元 Issue の目的・非対象・ファイル役割と照合する。sweep 正本はコード変更・commit・push を禁止するが、最終 HEAD を推測で省略しない。整合の確認観点（指摘 0 件でも未説明なら逸脱）: 配置（証拠→PR details / 契約→規約 / Why→ソース / 再現→テスト）、規範の正の逆転・重複、根拠のない新制約、有用な契約・保守理由の保持。
+
+| 結果 | 処置 |
+|------|------|
+| 整合 | ステップ 5（5.0 → 5.0.1）へ |
+| 逸脱（親の発見。findings[] に無い、または未実測） | 5.0.1 を呼ばない。完了を未確認とする。受入条件未検証と同型で `flow-state.sh set` を `--handoff` なしで実行し FINALIZE を消す。`[CONTEXT] REVIEW_STOP=purpose_unaligned` と `[review:error]` で未完了停止。逸脱箇所・元要求・反証条件を既存 PR details に書く（新キーなし）。`/rite:iterate` 再実行だけで回復したとしない |
+
+逸脱時は CB fire と同型の fenced bash を実行する（`--handoff` なし。新 sentinel は出さない）:
+
+```bash
+# purpose-unaligned: `--handoff` なしの set で FINALIZE を default-clear する（CB fire / 受入条件未検証と同型）。
+iteration_phase=$(bash {plugin_root}/hooks/flow-state.sh get --field phase --default review) || iteration_phase=review
+if fire_out=$(LC_ALL=C bash {plugin_root}/hooks/flow-state.sh set \
+  --phase "$iteration_phase" --issue {issue_number} --branch {branch_name} --pr {pr_number} \
+  --next "purpose_unaligned: 完了前確認で目的逸脱" 2>&1); then
+  handoff_clear=ok
+else
+  handoff_clear=failed
+  echo "WARNING: 目的逸脱停止時の handoff クリアに失敗（handoff が残り Stop hook が完了通知を再注入して逸脱を迂回する恐れ）" >&2
+fi
+[ -n "$fire_out" ] && printf '%s\n' "$fire_out" | head -5 | sed 's/^/  /' >&2
+```
+
+復帰は、保存済み実測 finding が既存 scope を満たすときだけ通常 `/rite:fix`。それ以外は次の統合担当が PR details の逸脱記録を全差分確認の入力にする（pr-review ステップ 5 の `### 仕様との整合性`）。同一 HEAD で pr-review を再 invoke して empty_diff→full の全員再起動にしない。`phase=pr` への set は一般回復に使わない。
+
+MUST NOT: 親発見を finding ID として `/rite:fix` 2.1 へ足す。8.1 を上書きしない。ステップ 2 の汎用 `[review:error]` 再試行行にこの終端を載せない。成功を偽らない。同一 invoke の pr-review `[review:mergeable]` と `FINALIZE:review:mergeable` を iterate 成功と読まない。
 
 ---
 
 ## ステップ 5: 完了通知
 
-> **構造的保証**: 終了 sentinel (`[fix:sweep-done]` / `[review:mergeable]` または `[fix:non-fatal-only]` 経由 5.S 完了 / `[fix:replied-only]` / `[fix:cancelled-by-user]`) 到達時、sub-skill が `FINALIZE:...` handoff をセットしており、`Stop` hook が本ステップの完了通知を出力せず turn を終えようとする停止を **1 回だけ** 差し戻す。`[review:mergeable]` / `[fix:non-fatal-only]` / `[fix:replied-only]` 単体では完了通知へ進まない（5.S が先）。詳細は「ループ継続・終了の構造的保証」節を参照。完了通知は必ず出力すること。
+> **構造的保証**: 終了 sentinel (`[fix:sweep-done]` / `[review:mergeable]` または `[fix:non-fatal-only]` 経由 5.S 完了 / `[fix:replied-only]` / `[fix:cancelled-by-user]`) 到達時、sub-skill が `FINALIZE:...` handoff をセットしており、`Stop` hook が本ステップの完了通知を出力せず turn を終えようとする停止を **1 回だけ** 差し戻す。`[review:mergeable]` / `[fix:non-fatal-only]` / `[fix:replied-only]` 単体では完了通知へ進まない（5.S が先）。`REVIEW_STOP=purpose_unaligned` のときは本ステップへ進まず完了通知を出さない。詳細は「ループ継続・終了の構造的保証」節を参照。完了通知は（目的逸脱停止を除き）必ず出力すること。
 
 ### ステップ 5.0: 一時残骸の最終回収 (terminal cleanup)
 
