@@ -45,7 +45,7 @@ assert_grep 'breaker mode routes directly to batch stop' "$iterate" '| `batch` |
 assert_grep 'breaker mode routes directly to interactive stop' "$iterate" '| `interactive` | ステップ 6.2（機械的停止通知）|'
 assert_grep 'breaker preserves batch sentinel' "$iterate" '<!-- [iterate:max-cycles-reached] -->'
 assert_grep 'breaker preserves interactive sentinel' "$iterate" '<!-- [iterate:max-cycles-stopped] -->'
-assert_grep 'explicit restart starts full scope' "$iterate" 'fresh entry として run 開始点を更新し full scope から始める'
+assert_grep 'explicit restart starts full scope' "$iterate" 'がある停止は通常の再実行では新 run にならない'
 assert_grep 'reset failure warning controls notice' "$iterate" 'その WARNING（`サーキットブレーカー発火時の cycle counter リセットと stop_reason 永続化に失敗`）を停止通知の注意行判定に使う'
 assert_grep 'handoff risk needs both writes to fail' "$iterate" '**(c) `HANDOFF_CLEAR=failed` かつ 共有前段の atomic set 失敗**'
 assert_grep 'successful second write suppresses handoff warning' "$iterate" '`HANDOFF_CLEAR=failed` のみ（共有前段の atomic set 成功）では**追加しない**'

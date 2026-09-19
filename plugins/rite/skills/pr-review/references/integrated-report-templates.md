@@ -155,6 +155,15 @@
 **影響**: `verification_post_condition == warning` または `error` の場合、該当 reviewer の指摘は全件 blocking 扱いとなり、総合評価は **`修正必要`** に昇格する。
 ここでの「全件 blocking 扱い」は verification-mode / severity 軸での降格を禁止する意味であり、ステップ 5.3.0.M の実測必須ゲートは orthogonal に後段で適用される (`Verification:` アンカーを持たない指摘は non-blocking に分類され `total_findings` から外れる)。escalation は総合評価を昇格させるが sentinel routing は `total_findings` が確定させる (詳細は pr-review/SKILL.md ステップ 5.1.1.1 の「escalation の効力範囲」注記)。
 
+### 根拠と主張の不対応（該当がある場合のみ）
+<!-- ステップ 5.2.2 で不採用とした指摘。0 件なら省略。### 全指摘事項 より前。
+     ### 矛盾により除外された指摘 と見出しを共用しない。### 実測なし指摘 へ混ぜない。
+     E2E でも省略禁止（evidence_claim_rejected_count > 0）。
+     両 template で同一内容。 -->
+
+| レビュアー | 重要度 | ファイル:行 | 観測 | 主張 | 不採用理由 |
+|-----------|--------|------------|------|------|-----------|
+| {reviewer} | {severity} | {file:line} | {observation} | {claimed_defect} | {reason} |
 
 ### 全指摘事項
 
@@ -398,6 +407,15 @@
 **影響**: `verification_post_condition == warning` または `error` の場合、該当 reviewer の指摘は全件 blocking 扱いとなり、総合評価は **`修正必要`** に昇格する。
 ここでの「全件 blocking 扱い」は verification-mode / severity 軸での降格を禁止する意味であり、ステップ 5.3.0.M の実測必須ゲートは orthogonal に後段で適用される (`Verification:` アンカーを持たない指摘は non-blocking に分類され `total_findings` から外れる)。escalation は総合評価を昇格させるが sentinel routing は `total_findings` が確定させる (詳細は pr-review/SKILL.md ステップ 5.1.1.1 の「escalation の効力範囲」注記)。
 
+### 根拠と主張の不対応（該当がある場合のみ）
+<!-- ステップ 5.2.2 で不採用とした指摘。0 件なら省略。### 全指摘事項 より前。
+     ### 矛盾により除外された指摘 と見出しを共用しない。### 実測なし指摘 へ混ぜない。
+     E2E でも省略禁止（evidence_claim_rejected_count > 0）。
+     両 template で同一内容。 -->
+
+| レビュアー | 重要度 | ファイル:行 | 観測 | 主張 | 不採用理由 |
+|-----------|--------|------------|------|------|-----------|
+| {reviewer} | {severity} | {file:line} | {observation} | {claimed_defect} | {reason} |
 
 ### 全指摘事項
 

@@ -41,7 +41,7 @@ cycle 数が増えても挙動は一切変わらない（cycle 3 と cycle 5 に
 
 **PR コメントを使わない理由**: `pr_review.post_comment` の既定は `false` で、既定構成では PR コメントが投稿されない。コメントを入力にすると既定構成で差分スコープが一度も発動せず、「設定によってレビュー範囲が変わる」挙動になる。永続 JSON は `post_comment` の値に関わらず ステップ 6.1.a で**常に**保存されるため、入力として唯一安定している。
 
-**cycle 2+ であることの判定**: 「当該 PR の review-results JSON が 1 件以上存在し、その `commit_sha` が現在のリポジトリから到達可能」が成立することをもって cycle 2+ とする。ファイル件数を数えて cycle 番号を作る必要はない（前段の通り段階判定をしないため）。
+**cycle 2+ であることの判定**: 「当該 PR の review-results JSON が 1 件以上存在し、その `commit_sha` が現在のリポジトリから到達可能で、その `review_context.run_id` が session の live `review_run.run_id` と一致する」が成立することをもって cycle 2+ とする。ファイル件数や live `cycle_count` を数えて cycle 番号を作る必要はない（前段の通り段階判定をしないため。`pr-review` は scope を `review-start` より前に決めるので、同一 run の cycle 2 入場時も counter は 1 のまま）。他 run の JSON は `foreign_run_json` として full へ倒す。
 
 ## fail-safe は必ずフルレビューへ倒す
 
@@ -57,6 +57,7 @@ cycle 数が増えても挙動は一切変わらない（cycle 3 と cycle 5 に
 | `empty_diff` | `git diff {sha}..HEAD` は成功したが差分ゼロ行 | 前回起点から新規 commit が無く、審査対象も解消検証の材料も空になる |
 | `run_pin_unresolved` | state root を解決できず run 開始点 pin の在否を確認できない | 前 run の JSON を現 run と誤認しうる |
 | `run_pin_unreadable` | run 開始点 pin は存在するが読めない | 同上（不在と読取失敗を区別しないと、この経路だけが狭い側へ倒れる） |
+| `foreign_run_json` | 候補 prev JSON の `review_context.run_id` が session の live `review_run.run_id` と違う | 他 run の結果を現 run の前回として差分に使うと、未審査の新 run を狭いスコープで通す |
 | `jq_missing` | `jq` が PATH 上に無い | JSON を読む手段が無い。環境欠陥だが、状態を書き換えない本 helper には安全な既定（full）が常に存在するため、レビュー自体は止めずスコープだけ広い方へ倒す |
 
 fail-safe 発火時は WARNING を可視化する（silent fallback 禁止）。「なぜ今回フルに戻ったか」が見えないと、差分スコープが効いていないことに気付けない。WARNING には**対象**（読めなかった JSON のパス、解決できなかった `base_sha`）と**原因**（`jq` / `git` の stderr 先頭数行）を含める — reason だけでは、同一 PR の JSON を複数世代持つ `.rite/review-results/` のどれが壊れていたかを運用者が特定できない。
