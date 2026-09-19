@@ -768,10 +768,10 @@ args: "{pr_number}"
 | Sentinel | アクション |
 |---------|-----------|
 | `[fix:pushed]` | ステップ 1 (cycle 上限チェック → review 再実行) に戻る — **ループ継続**（上限到達ならステップ 6 サーキットブレーカーへ） |
-| `[fix:sweep-done]` | 完了前確認（目的整合）。**ステップ 1 に戻らない**（再フルレビュー禁止） |
+| `[fix:sweep-done]` | 完了前確認（目的整合）のあとステップ 5。**ステップ 1 に戻らない**（再フルレビュー禁止） |
 | `[fix:pushed-wm-stale]` | ステップ 1 に戻る (WM stale 警告は表示するが loop は継続。上限チェックはステップ 1 が実施) |
 | `[fix:non-fatal-only]` | ステップ 5.S（成功後に完了前確認）。**ステップ 1 に戻らない** |
-| `[fix:replied-only]` | ステップ 5.S（成功後に完了前確認。返信のみ）。**ステップ 1 に戻らない** |
+| `[fix:replied-only]` | ステップ 5.S（成功後に完了前確認。返信のみで完了通知）。**ステップ 1 に戻らない** |
 | `[fix:cancelled-by-user]` | **ループ終了**（ユーザーが fix.md 内 cancel 経路 — ステップ 1.4 Cancel option / Fast Path Cancel handoff 等 — で中止選択。`/rite:recover` で再開可） |
 | `[fix:error]` | 可逆な再試行を推奨として 1 回だけ自動実行し、work memory の既存決定事項へ理由を記録する。再失敗なら停止 |
 | sentinel 不在 | 可逆な再試行を推奨として 1 回だけ自動実行し、期待 sentinel・直近の fix 出力 100 行・flow-state phase を既存 work memory へ記録する。再度不在なら停止 |
@@ -914,8 +914,6 @@ else
   echo "WARNING: 目的逸脱停止時の handoff クリアに失敗（handoff が残り Stop hook が完了通知を再注入して逸脱を迂回する恐れ）" >&2
 fi
 [ -n "$fire_out" ] && printf '%s\n' "$fire_out" | head -5 | sed 's/^/  /' >&2
-echo "[CONTEXT] REVIEW_STOP=purpose_unaligned"
-echo "[review:error]"
 ```
 
 復帰は、保存済み実測 finding が既存 scope を満たすときだけ通常 `/rite:fix`。それ以外は次の統合担当が PR details の逸脱記録を全差分確認の入力にする（pr-review ステップ 5 の `### 仕様との整合性`）。同一 HEAD で pr-review を再 invoke して empty_diff→full の全員再起動にしない。`phase=pr` への set は一般回復に使わない。
