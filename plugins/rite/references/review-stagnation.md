@@ -136,7 +136,7 @@ rm "$clock_file"
 
 この保持と復元はセッションの flow-state に載る。別セッション（別 `session_id`）では退避記録が見えないため、復元も再試行権の消費判定も効かない。`cycle_count` をはじめとする既存の counter と同じ性質である。
 
-**明示承認で新しい run を始める（`circuit-breaker:divergence` と `circuit-breaker:max-cycles`）**: `flow-state.sh review-restart --selection <名簿 JSON の絶対パス> --expected-run-id <停止した run_id> --approval <今回の承認 JSON の絶対パス>` が、completed の観測・receipt が揃い、未 close の clock が無く、承認がこの停止 run / context / PR に結び付いているときに限り、旧 run を保管して cycle 1 の新しい run を作る。通常の iterate / recover / 自動再試行 / `review-start` はこれを呼ばない。`review-retry` とは別操作で、同じ run を reopen しない。同一承認の再実行は新予算を付けない。承認の reason・要求時刻・対象 context は parked 履歴に残す。superseded した archived run は同じ PR への往復で復元しない。
+**明示承認で新しい run を始める（`circuit-breaker:divergence` と `circuit-breaker:max-cycles`）**: `flow-state.sh review-restart --selection <名簿 JSON の絶対パス> --expected-run-id <停止した run_id> --approval <今回の承認 JSON の絶対パス>` が、completed の観測・receipt が揃い、未 close の clock が無く、承認がこの停止 run / context / PR に結び付いていて、作業ツリーに tracked 差分も gitignore 対象外の未追跡ファイルも無いときに限り、旧 run を保管して cycle 1 の新しい run を作る。通常の iterate / recover / 自動再試行 / `review-start` はこれを呼ばない。`review-retry` とは別操作で、同じ run を reopen しない。同一承認の再実行は新予算を付けない。承認の reason・要求時刻・対象 context は parked 履歴に残す。superseded した archived run は同じ PR への往復で復元しない。
 
 承認 JSON の必須フィールド（参照元が消えても履歴だけで説明できる実体）:
 

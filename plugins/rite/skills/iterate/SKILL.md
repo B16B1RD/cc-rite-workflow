@@ -1311,8 +1311,9 @@ rationale: references/rationale.md#resume-routes-no-state-read
   cleanup は要らない）
 - 退避したこの PR へ戻る: /rite:open {issue_number} の後に /rite:iterate {pr_number} を実行する
   （退避した run がそのまま復元されるので停止は往復で消えない。復元後も停止したままで通常の
-  phase 更新は拒否される。この停止から先へ進めるのは再試行権を発行できるときだけで、発行できるのは
-  circuit-breaker:divergence に限る）
+  phase 更新は拒否される。同一 run を進めるのは再試行権を発行できるときだけで、発行できるのは
+  circuit-breaker:divergence に限る。既知 breaker の completed 停止なら、下の明示承認
+  review-restart で新しい run を始めてもよい）
 ```
 
 「新 run」の行（`divergence` / `max-cycles`）:
@@ -1323,7 +1324,8 @@ rationale: references/rationale.md#resume-routes-no-state-read
   （名簿は `review_cycle.selected_reviewers` の dump。`run_id` は停止時の `.review_run.run_id`。
   承認 JSON の必須フィールドは [review-stagnation.md](../../references/review-stagnation.md#停止後の退路と再開)。
   `--session` は付けない。旧 run は reason・要求時刻・対象 context ごと保管する。通常の iterate / recover / 自動再試行では呼ばない。
-  collecting・未知の停止理由・未 close の clock は拒否する）
+  collecting・未知の停止理由・未 close の clock は拒否する。tracked 差分も gitignore 対象外の
+  未追跡ファイルも無い作業ツリーが必須）
 ```
 
 「legacy 再開」の行（`ITERATE_STAGNATION=legacy` のみ）:

@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 python3 - "$SCRIPT_DIR/../.." <<'PYTEST'
 import copy
 import datetime
+import hashlib
 import importlib
 import json
 import os
@@ -16,6 +17,53 @@ import tempfile
 
 plugin = Path(sys.argv[1]).resolve()
 checks = 0
+
+# Production _atomic_write is not a CLI. Drive it through a copy of flow-state.sh
+# whose dispatcher is replaced, with SCRIPT_DIR pinned to the plugin hooks dir.
+_ATOMIC_DRIVER = (plugin / 'hooks/flow-state.sh').read_text().replace(
+    'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"',
+    'SCRIPT_DIR=' + json.dumps(str(plugin / 'hooks')),
+    1,
+).replace(
+    'case "${1:-}" in',
+    '''if [ -n "${RITE_ATOMIC_TARGET:-}" ]; then
+  if [ "${RITE_TEST_HIDE_FLOCK:-}" = 1 ]; then
+    command() {
+      if [ "$1" = "-v" ] && [ "$2" = "flock" ]; then
+        return 1
+      fi
+      builtin command "$@"
+    }
+    if command -v flock >/dev/null 2>&1; then
+      echo "ERROR: T-R09 hide-flock failed; flock still visible" >&2
+      exit 2
+    fi
+  fi
+  content=$(python3 -c 'import pathlib,sys; sys.stdout.write(pathlib.Path(sys.argv[1]).read_text())' "$RITE_ATOMIC_CONTENT")
+  _atomic_write "$RITE_ATOMIC_TARGET" "$content"
+  exit $?
+fi
+case "${1:-}" in''',
+    1,
+)
+
+
+def publish_stale(fixture, expected_hash, content, hide_flock=False):
+    driver = fixture.private / 'atomic-write-driver.sh'
+    driver.write_text(_ATOMIC_DRIVER)
+    payload = fixture.private / 'stale-payload.json'
+    if isinstance(content, bytes):
+        payload.write_bytes(content)
+    else:
+        payload.write_text(content)
+    env = dict(fixture.env,
+               RITE_ATOMIC_TARGET=str(fixture.state_path),
+               RITE_ATOMIC_CONTENT=str(payload),
+               RITE_STATE_IF_MATCH=expected_hash)
+    if hide_flock:
+        env['RITE_TEST_HIDE_FLOCK'] = '1'
+    return subprocess.run(['bash', str(driver)], cwd=fixture.root, env=env,
+                          text=True, capture_output=True)
 
 
 def check(value, label):
@@ -1528,7 +1576,6 @@ f = Fixture()
 try:
     diverge(f)
     f.plan()
-    import hashlib
     stopped_bytes = f.state_path.read_bytes()
     old_hash = hashlib.sha256(stopped_bytes).hexdigest()
     copy_path = f.private / 'stopped-copy.json'
@@ -1540,13 +1587,44 @@ try:
          '--plan', str(f.plan_path), '--issue', str(f.issue_path)],
         cwd=f.root, env=f.env, text=True, capture_output=True)
     check(retry_out.returncode == 0, 'T-R09: retry against a stopped snapshot still computes')
+    stale_retry = retry_out.stdout
+    check(stale_retry.lstrip().startswith('{'), 'T-R09: retry emitted a candidate')
     restart(f)
     new_id = f.state()['review_run']['run_id']
     live_hash = hashlib.sha256(f.state_path.read_bytes()).hexdigest()
     check(live_hash != old_hash, 'T-R09: restart changed the bytes a stale retry hashed')
+    before = f.state_path.read_bytes()
+    for hide, label in ((False, 'flock'), (True, 'no-flock')):
+        published = publish_stale(f, old_hash, stale_retry, hide_flock=hide)
+        check(published.returncode != 0 and 'expected-state mismatch' in published.stderr,
+              'T-R09: stale retry publish is rejected (' + label + ')\n' + published.stderr)
+        check(f.state_path.read_bytes() == before,
+              'T-R09: new run remains after stale retry (' + label + ')')
+    published = publish_stale(f, old_hash, stopped_bytes, hide_flock=False)
+    check(published.returncode != 0 and 'expected-state mismatch' in published.stderr,
+          'T-R09: stale set snapshot publish is rejected\n' + published.stderr)
     check(f.state()['review_run']['run_id'] == new_id
           and f.state()['review_run']['status'] == 'active',
-          'T-R09: stale retry candidate is not published over the new run')
+          'T-R09: stale publishers do not replace the new run')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    f.cycle(['input defect'])
+    check(f.state()['cycle_count'] == 1 and f.state()['review_run']['status'] == 'active',
+          'T-R06: cycle 1 completed with counter still 1')
+    (f.root / 'source.txt').write_text('post-cycle-1 change\n')
+    f.commit()
+    results = f.root / '.rite/review-results'
+    scope = subprocess.run(
+        ['bash', str(plugin / 'scripts/review-cycle-scope.sh'), '--pr', '71',
+         '--results-dir', str(results)],
+        cwd=f.root, env=f.env, text=True, capture_output=True)
+    check(scope.returncode == 0 and 'REVIEW_CYCLE_SCOPE=incremental' in scope.stderr,
+          'T-R06: same-run cycle 2 is incremental while live cycle_count is 1\n' + scope.stderr)
+    check('new_run_first_cycle' not in scope.stderr,
+          'T-R06: cycle_count==1 is not a full-scope gate')
 finally:
     f.close()
 
@@ -1569,8 +1647,8 @@ try:
         ['bash', str(plugin / 'scripts/review-cycle-scope.sh'), '--pr', '71',
          '--results-dir', str(results)],
         cwd=f.root, env=f.env, text=True, capture_output=True)
-    check(scope.returncode == 0 and 'reason=new_run_first_cycle' in scope.stderr,
-          'T-R06: live cycle 1 is full even with leftover JSON from the old run')
+    check(scope.returncode == 0 and 'reason=foreign_run_json' in scope.stderr,
+          'T-R06: leftover JSON from the old run is foreign, not previous\n' + scope.stderr)
     check('REVIEW_CYCLE_SCOPE=incremental' not in scope.stderr,
           'T-R06: leftover JSON does not become prev')
     gh = f.root / 'bin'
