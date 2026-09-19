@@ -32,6 +32,12 @@ Past version sections carry none either — they have already been stripped.
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-09-20
+
+### Fixed
+
+- **SessionEnd no longer deletes a per-session state file that still holds review history** — the session-end hook invalidated the file and then always removed it, including a stopped review run, an unfinished collecting cycle, or parked history. After that, resume helpers refused because the file was gone. The hook now keeps the original bytes when a live review run, parked stop, unfinished cycle, unreadable JSON, or a failed deactivate write is present. A terminal state with no review history is still deleted. Other sessions' files are not touched.
+
 ## [0.17.0] - 2026-09-19
 
 ### Added
@@ -1115,6 +1121,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.17.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.17.0...v0.17.1
 [0.17.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.16.1...v0.17.0
 [0.16.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.16.0...v0.16.1
 [0.16.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.15.1...v0.16.0

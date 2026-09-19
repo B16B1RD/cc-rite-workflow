@@ -30,6 +30,12 @@ blocking gate として実行する。
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-09-20
+
+### 修正
+
+- **SessionEnd がレビュー履歴のある per-session 状態ファイルを消さなくなった** — セッション終了フックはファイルを無効化したあと必ず削除していたため、停止した review run、未完了の収集サイクル、保管済み履歴まで消えて、再開ヘルパーはファイル不在で拒否していた。live な review run、保管した停止、未完了サイクル、読めない JSON、deactivate の書込み失敗があるときは元のバイト列を残す。レビュー履歴の無い終端状態は従来どおり消す。別セッションのファイルには触れない。
+
 ## [0.17.0] - 2026-09-19
 
 ### 追加
@@ -1112,6 +1118,7 @@ v0.4.0 では値は silent に無視されます。機能的な代替はあり�
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.17.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.17.0...v0.17.1
 [0.17.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.16.1...v0.17.0
 [0.16.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.16.0...v0.16.1
 [0.16.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.15.1...v0.16.0
