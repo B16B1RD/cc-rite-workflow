@@ -82,13 +82,20 @@ state_file_path() {
   echo "$dir/.rite/sessions/${sid}.flow-state"
 }
 
-# Helper: run session-end hook with given CWD, capture stdout and stderr
+# Helper: run session-end hook with given CWD, capture stdout and stderr.
+# Optional $2 is payload reason (kept out of the keep/delete predicate).
 run_hook() {
   local cwd="$1"
+  local reason="${2:-}"
   local rc=0
-  local output
+  local output payload
   LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
-  output=$(echo "{\"cwd\": \"$cwd\"}" | bash "$HOOK" 2>"$LAST_STDERR_FILE") || rc=$?
+  if [ -n "$reason" ]; then
+    payload=$(jq -nc --arg cwd "$cwd" --arg reason "$reason" '{cwd:$cwd, reason:$reason}')
+  else
+    payload=$(jq -nc --arg cwd "$cwd" '{cwd:$cwd}')
+  fi
+  output=$(printf '%s' "$payload" | bash "$HOOK" 2>"$LAST_STDERR_FILE") || rc=$?
   echo "$output"
   return $rc
 }
@@ -221,6 +228,12 @@ if [ "$temp_files" -eq 0 ]; then
   pass "Corrupted JSON → temp files cleaned up (rc=$rc)"
 else
   fail "Temp files not cleaned: $temp_files files found"
+fi
+sf008=$(state_file_path "$dir008")
+if [ -f "$sf008" ] && grep -q '{broken json' "$sf008"; then
+  pass "Corrupted JSON → original bytes kept (AC-4)"
+else
+  fail "Corrupted JSON was deleted or rewritten"
 fi
 echo ""
 
@@ -757,6 +770,157 @@ else
   fail "TC-MV-FAIL: WARNING missing or rc collapsed. stderr: $(cat "$mvfail_stderr")"
 fi
 rm -f "$mvfail_stderr"
+echo ""
+
+# --------------------------------------------------------------------------
+# Review-history preserve (do not rm stopped / unfinished / parked / broken)
+# --------------------------------------------------------------------------
+digest_file() { sha256sum "$1" | awk '{print $1}'; }
+
+echo "T-01: stopped review_run is kept"
+dir_p01="$TEST_DIR/preserve-stopped"
+mkdir -p "$dir_p01"
+create_state_file "$dir_p01" '{"schema_version":3,"active":false,"phase":"review","stop_reason":"circuit-breaker:divergence","review_run":{"status":"stopped","run_id":"run-stopped","observations":[{"id":1}]}}'
+sf_p01=$(state_file_path "$dir_p01")
+before_p01=$(digest_file "$sf_p01")
+run_hook "$dir_p01" >/dev/null || true
+if [ -f "$sf_p01" ] && jq -e '.review_run.status=="stopped" and .review_run.run_id=="run-stopped" and (.review_run.observations|length)==1' "$sf_p01" >/dev/null; then
+  pass "T-01 stopped review_run kept"
+else
+  fail "T-01 stopped review_run missing or rewritten"
+fi
+echo ""
+
+echo "T-02: active live review_run is kept; only active flips"
+dir_p02="$TEST_DIR/preserve-active"
+mkdir -p "$dir_p02"
+create_state_file "$dir_p02" '{"schema_version":3,"active":true,"phase":"review","review_run":{"status":"active","run_id":"run-live","current_decision":{"action":"replan"},"observations":[{"id":1}]}}'
+sf_p02=$(state_file_path "$dir_p02")
+run_hook "$dir_p02" >/dev/null || true
+if [ -f "$sf_p02" ] && jq -e '.active==false and .review_run.status=="active" and .review_run.run_id=="run-live" and .review_run.current_decision.action=="replan" and (.review_run.observations|length)==1' "$sf_p02" >/dev/null; then
+  pass "T-02 live review_run kept with active=false"
+else
+  fail "T-02 live review_run not preserved as required"
+fi
+echo ""
+
+echo "T-03: parked review_run_history only is kept"
+dir_p03="$TEST_DIR/preserve-park"
+mkdir -p "$dir_p03"
+create_state_file "$dir_p03" '{"schema_version":3,"active":false,"phase":"review","review_run_history":[{"run_id":"old-stop","status":"stopped"}]}'
+sf_p03=$(state_file_path "$dir_p03")
+run_hook "$dir_p03" >/dev/null || true
+if [ -f "$sf_p03" ] && jq -e '.review_run_history[0].run_id=="old-stop" and (.review_run_history|length)==1 and (has("review_run")|not)' "$sf_p03" >/dev/null; then
+  pass "T-03 park history kept"
+else
+  fail "T-03 park history missing or rewritten"
+fi
+echo ""
+
+echo "T-04: collecting review_cycle is kept"
+dir_p04="$TEST_DIR/preserve-collecting"
+mkdir -p "$dir_p04"
+create_state_file "$dir_p04" '{"schema_version":3,"active":true,"phase":"review","review_cycle":{"status":"collecting","review_context":{"cycle_count":2}}}'
+sf_p04=$(state_file_path "$dir_p04")
+run_hook "$dir_p04" >/dev/null || true
+if [ -f "$sf_p04" ] && jq -e '.review_cycle.status=="collecting" and .review_cycle.review_context.cycle_count==2' "$sf_p04" >/dev/null; then
+  pass "T-04 collecting cycle kept"
+else
+  fail "T-04 collecting cycle missing"
+fi
+echo ""
+
+echo "T-05: jq deactivate failure keeps original bytes"
+dir_p05="$TEST_DIR/preserve-jqfail"
+mkdir -p "$dir_p05"
+create_state_file "$dir_p05" '{"schema_version":3,"active":true,"phase":"review","review_run":{"status":"stopped","run_id":"run-jqfail"}}'
+sf_p05=$(state_file_path "$dir_p05")
+before_p05=$(digest_file "$sf_p05")
+JQ_REAL="$(command -v jq)"
+fake_jq_p05="$(mktemp -d "$TEST_DIR/fakejq-p05-XXXXXX")"
+cat > "$fake_jq_p05/jq" <<FAKE_JQ_P05
+#!/bin/bash
+for arg in "\$@"; do
+  case "\$arg" in
+    *'.active'*'.updated_at'*) exit 1 ;;
+  esac
+done
+exec '$JQ_REAL' "\$@"
+FAKE_JQ_P05
+chmod +x "$fake_jq_p05/jq"
+PATH="$fake_jq_p05:$PATH" run_hook "$dir_p05" >/dev/null || true
+if [ -f "$sf_p05" ] && [ "$(digest_file "$sf_p05")" = "$before_p05" ]; then
+  pass "T-05 original bytes kept after jq fail"
+else
+  fail "T-05 state deleted or rewritten after jq fail"
+fi
+echo ""
+
+echo "T-06: no review history → existing delete"
+dir_p06="$TEST_DIR/preserve-none"
+mkdir -p "$dir_p06"
+create_state_file "$dir_p06" '{"schema_version":3,"active":true,"phase":"completed","issue_number":1}'
+sf_p06=$(state_file_path "$dir_p06")
+run_hook "$dir_p06" >/dev/null || true
+if [ ! -f "$sf_p06" ]; then
+  pass "T-06 history-less terminal state removed"
+else
+  fail "T-06 history-less state was kept"
+fi
+echo ""
+
+echo "T-07: other session file is not touched"
+dir_p07="$TEST_DIR/preserve-other"
+mkdir -p "$dir_p07/.rite/sessions"
+own_sid="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+other_sid="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+printf '%s' "$own_sid" > "$dir_p07/.rite-session-id"
+# Resolver returns own_sid path; payload session_id is other → ownership=other.
+printf '%s\n' '{"schema_version":3,"active":true,"phase":"review","review_run":{"status":"stopped","run_id":"foreign"}}' \
+  > "$dir_p07/.rite/sessions/${own_sid}.flow-state"
+sf_p07="$dir_p07/.rite/sessions/${own_sid}.flow-state"
+before_p07=$(digest_file "$sf_p07")
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+payload_p07=$(jq -nc --arg cwd "$dir_p07" --arg sid "$other_sid" '{cwd:$cwd, session_id:$sid}')
+printf '%s' "$payload_p07" | bash "$HOOK" 2>"$LAST_STDERR_FILE" >/dev/null || true
+if [ -f "$sf_p07" ] && [ "$(digest_file "$sf_p07")" = "$before_p07" ]; then
+  pass "T-07 other session state unchanged"
+else
+  fail "T-07 other session state was modified"
+fi
+echo ""
+
+echo "T-08: keep result does not depend on payload reason"
+dir_p08="$TEST_DIR/preserve-reason"
+mkdir -p "$dir_p08"
+create_state_file "$dir_p08" '{"schema_version":3,"active":false,"phase":"review","review_run":{"status":"stopped","run_id":"run-reason"}}'
+sf_p08=$(state_file_path "$dir_p08")
+ok_reasons=1
+for reason in other clear logout prompt_input_exit; do
+  run_hook "$dir_p08" "$reason" >/dev/null || true
+  if ! jq -e '.review_run.status=="stopped" and .review_run.run_id=="run-reason"' "$sf_p08" >/dev/null 2>&1; then
+    ok_reasons=0
+    break
+  fi
+done
+if [ "$ok_reasons" = 1 ] && [ -f "$sf_p08" ]; then
+  pass "T-08 keep is independent of payload reason"
+else
+  fail "T-08 reason=$reason changed keep result"
+fi
+echo ""
+
+echo "T-09: empty review_run_history is not enough to keep"
+dir_p09="$TEST_DIR/preserve-empty-hist"
+mkdir -p "$dir_p09"
+create_state_file "$dir_p09" '{"schema_version":3,"active":true,"phase":"completed","review_run_history":[]}'
+sf_p09=$(state_file_path "$dir_p09")
+run_hook "$dir_p09" >/dev/null || true
+if [ ! -f "$sf_p09" ]; then
+  pass "T-09 empty history array still deleted"
+else
+  fail "T-09 empty history array was kept"
+fi
 echo ""
 
 # --------------------------------------------------------------------------
