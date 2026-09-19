@@ -901,7 +901,7 @@ MUST NOT: 同一 PR で 5.S を 2 回走らせる。sweep でコードを修正�
 
 同一 HEAD の次 cycle は incremental だと空 diff になり、未保存の逸脱を差分レビューが拾えない。復帰は、保存済み実測 finding が既存 scope を満たすときだけ通常 `/rite:fix`。それ以外は次の統合担当が PR details の逸脱記録を全差分確認の入力にする（pr-review ステップ 5）。`phase=pr` への set は一般回復に使わない（`review_run` ありなら 0.6 が resume を保つが、run なし legacy は fresh reset になる）。
 
-MUST NOT: 親発見を finding ID として `/rite:fix` 2.1 へ足す。8.1 を上書きしない。ステップ 2 の pr-review 1 回再試行表にこの `[review:error]` を載せない。成功を偽らない。
+MUST NOT: 親発見を finding ID として `/rite:fix` 2.1 へ足す。8.1 を上書きしない。ステップ 2 の pr-review 1 回再試行表にこの `[review:error]` を載せない。成功を偽らない。目的逸脱の `[review:error]` は iterate 終端。同一 invoke の pr-review `[review:mergeable]` と `FINALIZE:review:mergeable` を iterate 成功と読まない。
 
 ---
 

@@ -112,6 +112,10 @@ assert_grep "zero findings still unmet if purpose unexplained" "$PR_REVIEW" \
   '指摘 0 件でも未説明なら逸脱'
 assert_grep "iterate completion uses the same placement viewpoints" "$ITERATE" \
   '指摘 0 件でも未説明なら逸脱'
+assert_grep "purpose unmet is iterate-terminal not inner mergeable" "$ITERATE" \
+  '同一 invoke の pr-review `\[review:mergeable\]` と `FINALIZE:review:mergeable` を iterate 成功と読まない'
+assert_grep "purpose check sits after 5.S and before 5.0.1" "$ITERATE" \
+  '5\.S 成功後・5\.0\.1 の前に'
 
 echo "=== ステップ 2.2: 選抜は cap 後の filter でなくマッチ入力の差し替え (AC-2 / AC-4 / T-02 / T-04) ==="
 assert_grep "2.2 substitutes the matching input with the fix diff" "$PR_REVIEW" \
