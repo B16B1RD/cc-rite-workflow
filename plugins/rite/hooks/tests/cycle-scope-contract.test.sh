@@ -5,7 +5,8 @@
 # outstanding-items-contract.test.sh と同じ static-contract 方式で literal を grep-pin する。
 # 判定ロジック本体 (JSON 探索・fail-safe 分岐) は scripts/review-cycle-scope.sh に切り出され
 # scripts/tests/review-cycle-scope.test.sh が挙動を検証するので、本 suite が守るのは
-# **散文側にしか存在しない契約** — 選抜の合成規則・テンプレート合成・観測性の 3 つに絞る。
+# **散文側にしか存在しない契約** — 選抜の合成規則・テンプレート合成・観測性に加え、
+# 節目の全差分確認と完了前目的整合の接続 pin を含む。
 #
 # 感度に関する注意 (outstanding-items-contract.test.sh が記録した教訓の適用):
 # 単語 1 個の pin はセクション内の別行にも同語が出現すると mutation を素通りさせる。
@@ -97,25 +98,31 @@ assert_grep "iterate purpose check uses actual HEAD after 5.S" "$ITERATE" \
 assert_grep "iterate purpose unmet uses existing review:error" "$ITERATE" \
   '`\[review:error\]` で未完了停止'
 assert_grep "iterate purpose unmet does not auto-fix unsaved IDs" "$ITERATE" \
-  '親発見を finding ID として `/rite:fix` 2\.1 へ足す'
+  'MUST NOT: 親発見を finding ID として'
 assert_grep "iterate does not claim iterate rerun alone recovers" "$ITERATE" \
   '`/rite:iterate` 再実行だけで回復したとしない'
 assert_grep "iterate records deviation in existing PR details" "$ITERATE" \
   '逸脱箇所・元要求・反証条件を既存 PR details に書く'
 assert_grep "consolidator reads PR details deviation records" "$PR_REVIEW" \
   '既存 PR details の逸脱箇所・元要求・反証条件を照合する'
-assert_grep "empty incremental diff must not drop unsaved deviations" "$PR_REVIEW" \
-  'incremental 空 diff だけを入力にして、未保存の逸脱記録を落とさない'
+assert_grep "empty_diff full restart is not the recovery path" "$PR_REVIEW" \
+  'empty_diff→full 再起動を復帰に使わず'
 assert_grep "consolidator placement and inversion viewpoints" "$PR_REVIEW" \
   '証拠→PR details / 契約→規約 / Why→ソース / 再現→テスト'
 assert_grep "zero findings still unmet if purpose unexplained" "$PR_REVIEW" \
   '指摘 0 件でも未説明なら逸脱'
 assert_grep "iterate completion uses the same placement viewpoints" "$ITERATE" \
-  '指摘 0 件でも未説明なら逸脱'
+  '証拠→PR details / 契約→規約 / Why→ソース / 再現→テスト'
 assert_grep "purpose unmet is iterate-terminal not inner mergeable" "$ITERATE" \
   '同一 invoke の pr-review `\[review:mergeable\]` と `FINALIZE:review:mergeable` を iterate 成功と読まない'
 assert_grep "purpose check sits after 5.S and before 5.0.1" "$ITERATE" \
   '5\.S 成功後・5\.0\.1 の前に'
+assert_grep "purpose unmet uses REVIEW_STOP like ac_unverified" "$ITERATE" \
+  'REVIEW_STOP=purpose_unaligned'
+assert_grep "purpose unmet clears FINALIZE without --handoff" "$ITERATE" \
+  '`--handoff` なしで実行し FINALIZE を消す'
+assert_grep "parent discovery uses named 仕様との整合性 section" "$PR_REVIEW" \
+  '`### 仕様との整合性` に 1 行で残す'
 
 echo "=== ステップ 2.2: 選抜は cap 後の filter でなくマッチ入力の差し替え (AC-2 / AC-4 / T-02 / T-04) ==="
 assert_grep "2.2 substitutes the matching input with the fix diff" "$PR_REVIEW" \

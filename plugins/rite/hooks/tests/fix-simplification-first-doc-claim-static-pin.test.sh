@@ -69,6 +69,8 @@ PIN_CONSTRAINT='前 cycle の規約やテスト一致だけでは根拠にしな
 PIN_NB_NOT_FIX_TARGET='親発見と `non_blocking_findings\[\]` は対象外'
 PIN_SAVED_ONLY='親の完了前発見を未保存 ID として計画へ足さない'
 PIN_SCHEMA_NOT_AUTOFIX='schema 上受理されていても 2\.1 の修正対象ではない'
+PIN_AC1_RECORD='元要求との対応と、追加／削除／差し戻し／移動から選んだ処置の理由を短く書く'
+PIN_AC1_NOT_ESCALATION='`simplification-first:` 段落は Escalation trigger 専用であり、この記録の代用にしない'
 
 # pin: assert_grep_in_section, plus a stderr line naming the cause so a red run says
 # whether a rule literal disappeared or the section heading drifted (the helper's
@@ -116,6 +118,10 @@ pin "T-02: 2.1 does not add unsaved parent discoveries to the plan" \
   "$FIX_MD" "$S21_START" "$S21_END" "$PIN_SAVED_ONLY"
 pin "T-02: schema acceptance is not auto-fix eligibility" \
   "$FIX_MD" "$S21_START" "$S21_END" "$PIN_SCHEMA_NOT_AUTOFIX"
+pin "T-02: first finding records original-req correspondence and treatment reason" \
+  "$FIX_MD" "$S21_START" "$S21_END" "$PIN_AC1_RECORD"
+pin "T-02: escalation paragraph is not a substitute for that record" \
+  "$FIX_MD" "$S21_START" "$S21_END" "$PIN_AC1_NOT_ESCALATION"
 pin "T-02: 2.3 requires enumerate-and-match before applying a doc-claim fix" \
   "$FIX_MD" "$S23_START" "$S23_END" "$PIN_CROSSCHECK"
 pin "T-02: 2.3 shows the enumeration alongside the proposed fix" \
