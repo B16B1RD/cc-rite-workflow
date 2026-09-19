@@ -2,16 +2,16 @@
 
 > **Charter**: Subject to [Simplification Charter](../../../skills/rite-workflow/references/simplification-charter.md). Runtime に効かない経緯記述は書かない。
 
-> **Source**: Referenced from `pr-review.md` ステップ 5 Critic Phase (`#### Fact-Check Phase`, between Deduplication and Specification Consistency Verification). This file is the source of truth for fact-check rules.
+> **Source**: Referenced from `pr-review.md` ステップ 5 Critic Phase (`#### Fact-Checking Phase`, after Deduplication and 5.2.2 Evidence-Claim Correspondence, before Specification Consistency Verification). This file is the source of truth for fact-check rules.
 
 ## Overview
 
 AI レビュアーが外部仕様（ライブラリ動作、ツール設定、バージョン互換性等）と内部実発生（call site / 頻度 / 到達経路）について行う主張を検証し、誤情報が PR コメントに永続化するリスクを排除する。
 
-Fact-Check Phase は Critic Phase パイプラインの Deduplication と Specification Consistency Verification の間に位置する:
+Fact-Check Phase は Critic Phase パイプラインの 5.2.2 Evidence-Claim Correspondence と Specification Consistency Verification の間に位置する:
 
 ```
-Debate → Dedup → Fact-Check (Sub-Phase A + B) → Spec Consistency → Assessment → Report
+Debate → Dedup → Evidence-Claim Correspondence → Fact-Check (Sub-Phase A + B) → Spec Consistency → Assessment → Report
 ```
 
 > **Sub-Phase 命名**: 本ファイル内の `Sub-Phase A` / `Sub-Phase B` は Fact-Check 内部の 2 段構成を示す独立 namespace であり、pr-review.md 上位の ステップ 5.1 Result Collection / ステップ 5.2 Cross-Validation / ステップ 5.2.1 Debate Phase とは別空間である。上位 Phase との混同を避けるため、本ファイルでは数字サブフェーズ番号（5.1 / 5.2 等）を使わず `Sub-Phase A` / `Sub-Phase B` で一貫表記する。
@@ -104,7 +104,7 @@ Finding の `内容` 列が「実発生」を主張する場合、Grep ベース
 
 ## Verification Execution
 
-Fact-Check Phase は以下 2 つのサブフェーズで構成される。Pipeline 順序 `Debate → Dedup → Fact-Check (Sub-Phase A + B) → Spec Consistency → Assessment` は不変:
+Fact-Check Phase は以下 2 つのサブフェーズで構成される。Pipeline 順序 `Debate → Dedup → Evidence-Claim Correspondence → Fact-Check (Sub-Phase A + B) → Spec Consistency → Assessment` は、対応確認を Dedup 直後・Fact-Check 前に置く:
 
 - **Sub-Phase A**: External Claim Verification — 外部仕様の主張を公式ドキュメント（context7 / WebSearch / WebFetch）で検証
 - **Sub-Phase B**: Internal Likelihood Claim Verification — 内部実発生の主張を Grep で検証（`verify_internal_likelihood: true` の場合のみ）
@@ -411,12 +411,13 @@ CONTRADICTED 指摘（Sub-Phase A または B 由来）が 1件以上ある場�
 
 ```
 ### 高信頼度の指摘（複数レビュアー合意）
-### 外部仕様の検証結果（該当がある場合のみ）    ← NEW
-### 矛盾により除外された指摘（該当がある場合のみ）  ← NEW
+### 外部仕様の検証結果（該当がある場合のみ）
+### 矛盾により除外された指摘（該当がある場合のみ）
+### 根拠と主張の不対応（該当がある場合のみ）
 ### 全指摘事項
 ### 推奨事項                                  ← HYPOTHETICAL 降格 finding の destination
 ```
 
 > **HYPOTHETICAL 降格 finding は 2 箇所に同時記録** (5.3.0 Observed Likelihood Gate の destination + audit trail パターン): (1) `### 推奨事項` セクション (destination)、(2) `### 外部仕様の検証結果` セクション (audit trail、status ⚠️)。
 
-> **fix.md 互換性**: `### 外部仕様の検証結果` および `### 矛盾により除外された指摘` セクションは `### 全指摘事項` の**前**に配置する。fix.md ステップ 1.2.1 は `### 全指摘事項` を起点にパースするため影響なし。VERIFIED findings の `推奨対応` 列へのソース URL 付記は column 4 のテキストとして無害にパースされる。
+> **fix.md 互換性**: `### 外部仕様の検証結果` / `### 矛盾により除外された指摘` / `### 根拠と主張の不対応` は `### 全指摘事項` の**前**に配置する。fix.md ステップ 1.2.1 は `### 全指摘事項` を起点にパースするため影響なし。VERIFIED findings の `推奨対応` 列へのソース URL 付記は column 4 のテキストとして無害にパースされる。
