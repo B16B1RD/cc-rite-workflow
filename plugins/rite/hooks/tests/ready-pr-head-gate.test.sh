@@ -9,9 +9,10 @@ LOG="$SB/calls.log"
 
 cat > "$SB/bin/gh" <<'EOF'
 #!/bin/bash
+printf 'gh %s\n' "$*" >> "$CALL_LOG"
 [ "${GH_FAIL:-0}" = 1 ] && exit 1
 case "$*" in *headRefName*) printf '%s\n' "${GH_WM_FIELDS:-}"; exit 0 ;; esac
-printf '%s\n' "${PR_HEAD:-head}"
+printf '%s\n' "${PR_HEAD-head}"
 EOF
 cat > "$SB/bin/git" <<'EOF'
 #!/bin/bash
@@ -154,20 +155,43 @@ write_review_json() {
     > "$RH_DIR/$name"
 }
 run_rh() {
-  PATH="$SB/bin:$PATH" bash "$RH" --pr 42 --plugin-root "$SB/plugin" --results-dir "$RH_DIR"
+  PATH="$SB/bin:$PATH" bash "$RH" --pr 42 --repo owner/repo --plugin-root "$SB/plugin" --results-dir "$RH_DIR"
 }
 chmod +x "$RH"
+# The local checkout never equals a SHA under comparison: only the PR head decides.
+LOCAL_HEAD=dddddddddddddddddddddddddddddddddddddddd
+export CURRENT_HEAD=$LOCAL_HEAD
 
-# T-01: matching commit_sha lets Ready proceed (rc=0).
+# T-01: review SHA equals the PR head while the local checkout differs -> Ready proceeds (rc=0),
+# the PR head is resolved for the named PR / repository, and the local checkout is never read.
 reset_case
-export CURRENT_HEAD=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+export PR_HEAD=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 rm -f "$RH_DIR"/42-*.json
-write_review_json "$CURRENT_HEAD" "42-20260101000000.json"
-run_rh >/dev/null 2>"$SB/rh-err" && grep -q 'READY_REVIEWED_HEAD=match' "$SB/rh-err" && ok || bad RH-T-01
+write_review_json "$PR_HEAD" "42-20260101000000.json"
+run_rh >/dev/null 2>"$SB/rh-err" && grep -q "READY_REVIEWED_HEAD=match; reviewed=$PR_HEAD; head=$PR_HEAD; via=json" "$SB/rh-err" \
+  && grep -q '^gh pr view 42 -R owner/repo .*headRefOid' "$LOG" \
+  && ! grep -q 'rev-parse' "$LOG" \
+  && ok || bad RH-T-01
+
+# Review SHA equals the local checkout while the PR head is an unreviewed commit -> mismatch.
+reset_case
+export PR_HEAD=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+rm -f "$RH_DIR"/42-*.json
+write_review_json "$LOCAL_HEAD" "42-20260101000000.json"
+rc=0; run_rh >/dev/null 2>"$SB/rh-err" || rc=$?
+[ "$rc" -eq 1 ] \
+  && grep -q "READY_REVIEWED_HEAD=mismatch; reviewed=$LOCAL_HEAD; head=$PR_HEAD" "$SB/rh-err" \
+  && ! grep -q 'READY_REVIEWED_HEAD=match' "$SB/rh-err" \
+  && ok || bad RH-local-match-pr-head-unreviewed
+
+# The repository is part of the PR identity: omitting it is a usage error, not a cwd guess.
+reset_case
+rc=0; PATH="$SB/bin:$PATH" bash "$RH" --pr 42 --plugin-root "$SB/plugin" --results-dir "$RH_DIR" >/dev/null 2>"$SB/rh-err" || rc=$?
+[ "$rc" -eq 2 ] && grep -q -- '--repo' "$SB/rh-err" && ! grep -q '^gh ' "$LOG" && ok || bad RH-repo-required
 
 # T-02: commit_sha older than HEAD is a fail-loud mismatch (rc=1) with both SHAs and iterate hint.
 reset_case
-export CURRENT_HEAD=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+export PR_HEAD=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 rm -f "$RH_DIR"/42-*.json
 write_review_json "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "42-20260101000000.json"
 rc=0; run_rh >/dev/null 2>"$SB/rh-err" || rc=$?
@@ -180,7 +204,7 @@ rc=0; run_rh >/dev/null 2>"$SB/rh-err" || rc=$?
 
 # T-03: missing review JSON (including archive-only) is fail-loud, never Ready.
 reset_case
-export CURRENT_HEAD=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+export PR_HEAD=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 rm -f "$RH_DIR"/42-*.json
 mkdir -p "$RH_DIR/archive"
 write_review_json "$CURRENT_HEAD" "archive/42-20260101000000.json"
@@ -191,41 +215,25 @@ rc=0; run_rh >/dev/null 2>"$SB/rh-err" || rc=$?
   && grep -q '/rite:iterate 42' "$SB/rh-err" \
   && ok || bad RH-T-03
 
-# git rev-parse failure is fail-loud (not a Ready permit).
-reset_case
-cat > "$SB/bin/git" <<'EOF'
-#!/bin/bash
-printf 'git %s\n' "$*" >> "$CALL_LOG"
-case "$1 $2" in
-  'rev-parse HEAD') exit 1 ;;
-esac
-exit 0
-EOF
-chmod +x "$SB/bin/git"
+# An unresolvable PR head is fail-loud (not a Ready permit) and never falls back to the local checkout.
 rm -f "$RH_DIR"/42-*.json
-write_review_json aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa "42-20260101000000.json"
-rc=0; run_rh >/dev/null 2>"$SB/rh-err" || rc=$?
-[ "$rc" -eq 1 ] && grep -q 'READY_REVIEWED_HEAD=rev_parse_failed' "$SB/rh-err" && ok || bad RH-rev-parse
-
-# Restore the PATH git stub used by RH-T-* (the rev-parse-fail stub replaced it).
-cat > "$SB/bin/git" <<'EOF'
-#!/bin/bash
-printf 'git %s\n' "$*" >> "$CALL_LOG"
-case "$1 $2" in
-  'rev-parse HEAD') printf '%s\n' "${CURRENT_HEAD:-head}" ;;
-  'fetch origin') [ "${FETCH_FAIL:-0}" = 1 ] && exit 1; exit 0 ;;
-  'worktree add')
-    [ "${ADD_FAIL:-0}" = 1 ] && exit 1
-    mkdir -p "$4"
-    printf '%s' "$4" > "$TMP_PATH_LOG"
-    ;;
-  'worktree remove')
-    [ "${REMOVE_FAIL:-0}" = 1 ] && exit 1
-    rm -rf "$4"
-    ;;
-esac
-EOF
-chmod +x "$SB/bin/git"
+write_review_json "$LOCAL_HEAD" "42-20260101000000.json"
+for kind in api_failure empty non_hex short; do
+  reset_case
+  case "$kind" in
+    api_failure) export GH_FAIL=1 PR_HEAD=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ;;
+    empty) export PR_HEAD="" ;;
+    non_hex) export PR_HEAD=not-a-sha ;;
+    short) export PR_HEAD=abc123 ;;
+  esac
+  rc=0; run_rh >/dev/null 2>"$SB/rh-err" || rc=$?
+  [ "$rc" -eq 1 ] \
+    && grep -q 'READY_REVIEWED_HEAD=pr_head_unresolved; pr=42' "$SB/rh-err" \
+    && ! grep -q 'READY_REVIEWED_HEAD=match' "$SB/rh-err" \
+    && ! grep -q "$LOCAL_HEAD" "$SB/rh-err" \
+    && ! grep -q 'rev-parse' "$LOG" \
+    && ok || bad "RH-pr-head-unresolved-$kind"
+done
 
 # ----- sweep SHA exception ----------------------------------------
 ST="$SB/state"
@@ -234,13 +242,13 @@ write_done_lines() {
   printf '%s\n' "$@" > "$ST/.rite/state/nb-sweep-done-42.txt"
 }
 run_rh_st() {
-  PATH="$SB/bin:$PATH" bash "$RH" --pr 42 --plugin-root "$SB/plugin" \
+  PATH="$SB/bin:$PATH" bash "$RH" --pr 42 --repo owner/repo --plugin-root "$SB/plugin" \
     --results-dir "$RH_DIR" --state-root "$ST"
 }
 # Production argv is --plugin-root only. JSON and done-file live under the
 # stubbed state-path-resolve.sh root.
 run_rh_prod() {
-  PATH="$SB/bin:$PATH" bash "$RH" --pr 42 --plugin-root "$SB/plugin"
+  PATH="$SB/bin:$PATH" bash "$RH" --pr 42 --repo owner/repo --plugin-root "$SB/plugin"
 }
 REV_A=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 REV_B=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
@@ -248,7 +256,7 @@ REV_C=cccccccccccccccccccccccccccccccccccccccc
 
 # RH-SW-T-01 / AC-1: JSON=A, line2=B, HEAD=B, JSON≠HEAD → via=sweep (not via=json).
 reset_case
-export CURRENT_HEAD=$REV_B
+export PR_HEAD=$REV_B
 rm -f "$RH_DIR"/42-*.json
 write_review_json "$REV_A" "42-20260101000000.json"
 write_done_lines done "$REV_B"
@@ -260,7 +268,7 @@ run_rh_st >/dev/null 2>"$SB/rh-err" \
 
 # RH-SW-T-02 / AC-2: JSON=A, line2=B, HEAD=C → rc=1, 3 SHA, not via=sweep pass.
 reset_case
-export CURRENT_HEAD=$REV_C
+export PR_HEAD=$REV_C
 rm -f "$RH_DIR"/42-*.json
 write_review_json "$REV_A" "42-20260101000000.json"
 write_done_lines done "$REV_B"
@@ -276,7 +284,7 @@ rc=0; run_rh_st >/dev/null 2>"$SB/rh-err" || rc=$?
 
 # RH-SW-T-03 / AC-3: done-file 不在の mismatch 文言は RH-T-02 と同一（--results-dir のみ）。
 reset_case
-export CURRENT_HEAD=$REV_B
+export PR_HEAD=$REV_B
 rm -f "$RH_DIR"/42-*.json "$ST/.rite/state/nb-sweep-done-42.txt"
 write_review_json "$REV_A" "42-20260101000000.json"
 rc=0; run_rh >/dev/null 2>"$SB/rh-err" || rc=$?
@@ -292,7 +300,7 @@ rc=0; run_rh >/dev/null 2>"$SB/rh-err" || rc=$?
 # RH-SW-T-04 / AC-3: 1 行 done / noop は既存 mismatch。sweep_sha_invalid に倒さない。
 for kind in done noop; do
   reset_case
-  export CURRENT_HEAD=$REV_B
+  export PR_HEAD=$REV_B
   rm -f "$RH_DIR"/42-*.json
   write_review_json "$REV_A" "42-20260101000000.json"
   write_done_lines "$kind"
@@ -309,7 +317,7 @@ done
 
 # RH-SW-T-05 / AC-4: 2 行目が空 / 非 hex → sweep_sha_invalid。既存判定へフォールバックしない。
 reset_case
-export CURRENT_HEAD=$REV_B
+export PR_HEAD=$REV_B
 rm -f "$RH_DIR"/42-*.json
 write_review_json "$REV_A" "42-20260101000000.json"
 write_done_lines done ""
@@ -319,7 +327,7 @@ rc=0; run_rh_st >/dev/null 2>"$SB/rh-err" || rc=$?
   && ! grep -q 'READY_REVIEWED_HEAD=mismatch' "$SB/rh-err" \
   && ok || bad RH-SW-T-05-empty
 reset_case
-export CURRENT_HEAD=$REV_B
+export PR_HEAD=$REV_B
 rm -f "$RH_DIR"/42-*.json
 write_review_json "$REV_A" "42-20260101000000.json"
 write_done_lines done not-a-sha
@@ -329,7 +337,7 @@ rc=0; run_rh_st >/dev/null 2>"$SB/rh-err" || rc=$?
   && ! grep -q 'READY_REVIEWED_HEAD=mismatch' "$SB/rh-err" \
   && ok || bad RH-SW-T-05-nonhex
 reset_case
-export CURRENT_HEAD=$REV_B
+export PR_HEAD=$REV_B
 rm -f "$RH_DIR"/42-*.json
 write_review_json "$REV_A" "42-20260101000000.json"
 write_done_lines done abc
@@ -341,7 +349,7 @@ rc=0; run_rh_st >/dev/null 2>"$SB/rh-err" || rc=$?
 
 # RH-SW-T-09 / AC-3: JSON==HEAD のとき不正 2 行 done-file があっても via=json（非読取の正対照）。
 reset_case
-export CURRENT_HEAD=$REV_A
+export PR_HEAD=$REV_A
 rm -f "$RH_DIR"/42-*.json
 write_review_json "$REV_A" "42-20260101000000.json"
 write_done_lines done not-a-sha
@@ -355,7 +363,7 @@ run_rh_st >/dev/null 2>"$SB/rh-err" \
 # RH-SW-T-10 / AC-1 production argv: --plugin-root only (no --results-dir /
 # --state-root). Pins the elif resolver that production ready actually runs.
 reset_case
-export CURRENT_HEAD=$REV_B
+export PR_HEAD=$REV_B
 mkdir -p "$SB/plugin/hooks" "$ST/.rite/review-results"
 cat > "$SB/plugin/hooks/state-path-resolve.sh" <<EOF
 #!/bin/bash
@@ -383,9 +391,9 @@ write_ac_json() {
       else $ac end)}' > "$RH_DIR/42-20260101000000.json"
 }
 run_rh_ac() {
-  PATH="$SB/bin:$PATH" bash "$RH" --pr 42 --plugin-root "$SB/plugin" --results-dir "$RH_DIR" "$@"
+  PATH="$SB/bin:$PATH" bash "$RH" --pr 42 --repo owner/repo --plugin-root "$SB/plugin" --results-dir "$RH_DIR" "$@"
 }
-export CURRENT_HEAD=$REV_A
+export PR_HEAD=$REV_A
 
 # Inspect reports unresolved states without blocking.
 write_ac_json '[{"id":"AC-1","status":"unverified","evidence":"manual"}]'
@@ -453,9 +461,14 @@ export JQ_FAILURE_MODE=query
 rc=0; run_rh_ac --enforce-ac >/dev/null 2>"$SB/rh-ac" || rc=$?
 unset JQ_FAILURE_MODE
 [ "$rc" -eq 1 ] && grep -q 'reason=ac_query_failed' "$SB/rh-ac" && ok || bad RH-AC-query-fail-closed
-export CURRENT_HEAD=$REV_B
+export PR_HEAD=$REV_B
 run_rh_ac --enforce-ac --skip-head-check >/dev/null 2>"$SB/rh-ac" && grep -q 'READY_REVIEWED_HEAD=override' "$SB/rh-ac" && grep -q 'REVIEWED_AC=satisfied' "$SB/rh-ac" && ok || bad RH-AC-explicit-head-override
-export CURRENT_HEAD=$REV_A
+# The explicit override skips the comparison only; an unresolvable PR head still stops.
+export GH_FAIL=1
+rc=0; run_rh_ac --enforce-ac --skip-head-check >/dev/null 2>"$SB/rh-ac" || rc=$?
+unset GH_FAIL
+[ "$rc" -eq 1 ] && grep -q 'READY_REVIEWED_HEAD=pr_head_unresolved' "$SB/rh-ac" && ! grep -q 'READY_REVIEWED_HEAD=override' "$SB/rh-ac" && ok || bad RH-AC-override-needs-pr-head
+export PR_HEAD=$REV_A
 write_ac_json '[{"id":"AC-1","status":"unmet","evidence":"failed"},{"id":"AC-2","status":"unverified","evidence":"manual"}]'
 rc=0; run_rh_ac --enforce-ac >/dev/null 2>"$SB/rh-ac" || rc=$?
 [ "$rc" -eq 1 ] && grep -q 'REVIEWED_AC=unmet; ac=AC-1' "$SB/rh-ac" && ok || bad RH-AC-enforce-unmet

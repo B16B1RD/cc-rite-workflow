@@ -97,7 +97,7 @@ Finding Quality Guardrail Category #2 で除外した候補を次の表へ必ず
 
 > ⚠️ **散文 (手順書・仕様書・references) への指摘では「観測される誤動作」は挙動的帰結に限る**。レビュー対象文書自身のテキスト差分を示す grep (文言非対称 / pin 不在 / 限定句不足 / 二重定義の未同期) はアンカー適格ではないため、アンカーを付けずに報告する。判別子と適用例は `_reviewer-base.md` §手順書・仕様書ドメイン Finding Gate を必ず通すこと。
 
-> ⚠️ **テスト網羅性への指摘 (mutation 生存 / assert の検証力不足 / pin 欠落) では、生存 mutant は「観測される誤動作」ではない**。アンカー適格性は変異が無効化する挙動が Issue 契約 (§4.4 MUST / §5 AC の `Then`) に現れるかで決まる。判別子と適用例は `_reviewer-base.md` §テスト網羅性 Finding Gate を必ず通すこと。
+> ⚠️ **テスト網羅性への指摘 (mutation 生存 / assert の検証力不足 / pin 欠落) では、生存 mutant は「観測される誤動作」ではない**。アンカー適格性は変異が無効化する挙動が Issue 契約 (§4.4 MUST / 受入条件節の各 AC の `Then`) に現れるかで決まる。判別子と適用例は `_reviewer-base.md` §テスト網羅性 Finding Gate を必ず通すこと。
 
 | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
 |--------|----------|------------|------|----------|
@@ -159,9 +159,10 @@ Finding Quality Guardrail Category #2 で除外した候補を次の表へ必ず
 `reviewer_type == acceptance` のとき、`{cycle_scope_mandate}` へ cycle-scope.md の本文ではなく以下の本文を注入する（`REVIEW_CYCLE_SCOPE` に依らない。`{issue_number}` を埋める）。
 
 ```
-このレビューは **受入条件確認**です。関連 Issue #{issue_number} の `## 5. Acceptance Criteria` にある全 AC を、**現 HEAD** に対して確認してください。
+このレビューは **受入条件確認**です。関連 Issue #{issue_number} の受入条件節にある全 AC を、**現 HEAD** に対して確認してください。
 
+0. **AC の読み取り形式**: 節はレベル 2 見出しの `Acceptance Criteria`（大文字小文字不問）/ `受入基準` / `受入条件` / `受け入れ条件`（先頭の `N. ` は任意）で、AC は `### AC-N` または `- [ ] AC-N: 内容`（`[x]` / `[X]`、`*` / `+` も可）です。checkbox の状態は判定ではありません。ID を散文から推測せず、`scripts/acceptance-criteria-check.sh extract` が返す ID 集合と文書順に一致させます。
 1. **全 AC を毎 cycle 再確認する**: 前 cycle の判定を再利用せず、充足と判定した AC も含めて全件を HEAD で確認します。差分スコープは適用しません。
 2. **未変更部の再監査制限を適用しない**: 変更の外にあるコードも、AC の `Then` を観測するために必要なら読み、実行してください。
-3. **判定表を出す**: `### 所見` と `### 指摘事項` の間に `### 受入条件確認` 表（`| AC | 判定 | 根拠 |`）を、Issue の AC と 1 対 1 で出力します。未充足の行は `内容` が `[AC-N]` で始まる CRITICAL / current-pr の指摘を持ちます。
+3. **判定表を出す**: `### 所見` と `### 指摘事項` の間に `### 受入条件確認` 表（`| AC | 判定 | 根拠 |`）を、Issue の AC と 1 対 1 で出力します。`判定` 列は `充足` / `未充足` / `未検証` の日本語 3 値です（JSON の `satisfied` / `unmet` / `unverified` は保存側の値で、表には書きません）。未充足の行は `内容` が `[AC-N]` で始まる CRITICAL / current-pr の指摘を持ちます。
 ```

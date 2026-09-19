@@ -7,6 +7,8 @@ import copy
 import json
 import os
 from pathlib import Path
+import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -181,6 +183,39 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
     check(invoke(ok=False).returncode != 0 and canonical.read_bytes() == previous, 'changed issue requires replanning')
     dump(issue_file, issue)
 
+    # Rows rite itself appends to the Issue (triage Decision Log entries, the non-blocking
+    # record marker) are not specification changes; anything else in the body still is.
+    row = '- 2026-01-02 D-01: defer the boundary / Reason: out of scope / Impact: none'
+    marker = '<!-- rite:nbr:comment-id:101 -->'
+    triaged = issue['body'] + '\n## 9. Decision Log\n\n' + row + '\n\n' + marker + '\n'
+    for body, label in ((issue['body'] + row + '\n', 'triage-format row outside the Decision Log'),
+                        (issue['body'] + '\n## 9. Decision Log\n\n- note: manual decision\n', 'free-form Decision Log row'),
+                        (issue['body'] + '\n<!-- note -->\n', 'HTML comment that is not the record marker'),
+                        (issue['body'] + '\n' + marker + ' trailing\n', 'record marker with trailing text'),
+                        (triaged + '\n## 9. Decision Log\n\n' + row + '\n', 'duplicated Decision Log heading')):
+        dump(issue_file, dict(issue, body=body))
+        result = invoke(ok=False)
+        check(result.returncode != 0 and canonical.read_bytes() == previous, label + ' requires replanning')
+    check('boundary undecidable' in result.stderr, 'duplicated heading is reported as an undecidable boundary')
+    dump(issue_file, dict(issue, body=triaged))
+    check(invoke().returncode == 0,
+          'created Decision Log row and record marker pass the specification check')
+    crlf = issue['body'].replace('\n', '\r\n') + '\r\n' + marker + '\r\n'
+    dump(issue_file, dict(issue, body=crlf))
+    check(invoke(ok=False).returncode != 0, 'CRLF rewrite of the specification text is still a change')
+    dump(plan_file, dict(plan, issue_body=issue['body'].replace('\n', '\r\n')))
+    check(invoke().returncode == 0, 'record marker on a CRLF body passes the specification check')
+    save_plan()
+    mutant = private / 'mutant-hooks'
+    shutil.copytree(plugin / 'hooks', mutant)
+    lib = mutant / 'scripts/lib/review-cycle.py'
+    lib.write_text(lib.read_text().replace('def normalize_issue_body(body):\n', 'def normalize_issue_body(body):\n    return body\n', 1))
+    mutation = run(['bash', str(mutant / 'scripts/review-fix-scope-check.sh'), 'check', '--plan', str(plan_file), '--issue', str(issue_file)], ok=False)
+    check(mutation.returncode != 0 and 'specification' in mutation.stderr, 'identity normalization mutation rejects the triaged Issue')
+    dump(issue_file, issue)
+    invoke()
+    previous = canonical.read_bytes()
+
     # Inject a physical replace failure after serialization, retaining the old canonical file.
     fault_dir = private / 'fault'
     fault_dir.mkdir()
@@ -255,6 +290,88 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
     extra.write_text('new unplanned change\n')
     check(invoke('verify', 'all', ok=False).returncode != 0, 'unplanned untracked changes rejected')
     extra.unlink()
+
+    # Sandbox write-block masks: a character device (simulated by a symlink to
+    # /dev/null, which stat follows) and a leftover 0-byte no-write stub are not
+    # untracked changes; every other untracked shape still is.
+    def fixture(name, mode, content=''):
+        target = root / name
+        target.write_text(content)
+        target.chmod(mode)
+        info = os.lstat(target)
+        if not (stat.S_ISREG(info.st_mode) and info.st_size == len(content) and stat.S_IMODE(info.st_mode) == mode):
+            raise SystemExit('ERROR: fixture ' + name + ' did not keep mode/size (filesystem does not keep modes?)')
+        return target
+
+    def stub_warnings(result):
+        return [line for line in result.stderr.splitlines() if 'sandbox stub file(s)' in line]
+
+    def filtered_untracked():
+        # The helper's own mktemp files must not land in the tree it inspects.
+        result = subprocess.run(['bash', str(plugin / 'hooks/scripts/lib/git-status-filtered.sh')], cwd=root,
+                                env=dict(env, TMPDIR=str(private)), text=True, capture_output=True)
+        check(result.returncode == 0, 'git-status-filtered.sh succeeds: ' + result.stderr)
+        return {line[3:] for line in result.stdout.splitlines() if line.startswith('?? ')}
+
+    ghost = root / 'ghost_devnull'
+    ghost.symlink_to('/dev/null')
+    check(stat.S_ISLNK(os.lstat(ghost).st_mode) and stat.S_ISCHR(os.stat(ghost).st_mode), 'device fixture is a symlink to a character device')
+    result = invoke('verify', 'all')
+    check(stub_warnings(result) == [], 'character device mask excluded silently')
+    check(filtered_untracked() == set(), 'git-status-filtered.sh also drops the device mask')
+    ghost.unlink()
+    mask = fixture('.bashrc', 0o444)
+    result = invoke('verify', 'all')
+    warnings = stub_warnings(result)
+    check(len(warnings) == 1 and ' 1 sandbox stub file(s)' in warnings[0] and '".bashrc"' in warnings[0],
+          'stub mask excluded with a single warning naming it')
+    check(filtered_untracked() == set(), 'git-status-filtered.sh also drops the stub')
+    link = root / 'stub_link'
+    link.symlink_to(mask.name)
+    check(stat.S_ISLNK(os.lstat(link).st_mode) and os.stat(link).st_size == 0, 'stub link fixture points at the stub')
+    result = invoke('verify', 'all', ok=False)
+    warnings = stub_warnings(result)
+    check(result.returncode != 0 and len(warnings) == 1 and ' 1 sandbox stub file(s)' in warnings[0]
+          and '"stub_link"' not in warnings[0] and 'unplanned changed path' in result.stderr,
+          'symlink to a stub stays an untracked change while the stub itself is still excluded')
+    check(filtered_untracked() == {link.name}, 'git-status-filtered.sh keeps the same symlink')
+    link.unlink()
+    mask.unlink()
+    # An untracked entry whose stat fails is not excluded. The shell helper keeps the
+    # same link only because find -type f does not match it, not through its own
+    # unreadable-entry path, so this pins the Python stat-failure branch.
+    dangling = root / 'dangling_link'
+    dangling.symlink_to('missing-target')
+    check(stat.S_ISLNK(os.lstat(dangling).st_mode) and not os.path.exists(dangling), 'dangling link fixture makes stat fail')
+    result = invoke('verify', 'all', ok=False)
+    check(result.returncode != 0 and 'unplanned changed path' in result.stderr and stub_warnings(result) == [],
+          'untracked entry whose stat fails stays a change')
+    check(filtered_untracked() == {dangling.name}, 'git-status-filtered.sh keeps the same dangling link')
+    dangling.unlink()
+    first, second = fixture('.bashrc', 0o444), fixture('.gitconfig', 0o444)
+    result = invoke('verify', 'all')
+    warnings = stub_warnings(result)
+    check(result.returncode == 0 and len(warnings) == 1 and ' 2 sandbox stub file(s)' in warnings[0]
+          and warnings[0].count('".bashrc"') == 1 and warnings[0].count('".gitconfig"') == 1
+          and warnings[0].endswith('".bashrc" ".gitconfig"'),
+          'several stubs share one warning line that names each once')
+    check(filtered_untracked() == set(), 'git-status-filtered.sh also drops both stubs')
+    first.unlink()
+    second.unlink()
+    check(filtered_untracked() == set(), 'stub fixtures leave no untracked entries behind')
+    for name, mode, content, label in (('.bashrc', 0o644, '', 'writable empty file'),
+                                       ('.bashrc', 0o444, 'alias ls=ls\n', 'read-only file with content'),
+                                       ('.gitconfig', 0o464, '', 'empty file with a group write bit')):
+        real = fixture(name, mode, content)
+        result = invoke('verify', 'all', ok=False)
+        check(result.returncode != 0 and stub_warnings(result) == [], label + ' rejected as untracked change')
+        check(filtered_untracked() == {name}, label + ' kept by git-status-filtered.sh too')
+        real.unlink()
+    tracked_stub = fixture('protected/secret.py', 0o444)
+    result = invoke('verify', 'all', ok=False)
+    check(result.returncode != 0 and stub_warnings(result) == [], 'tracked file emptied into stub shape is a change, not a mask')
+    tracked_stub.chmod(0o644)
+    tracked_stub.write_text('protected\n')
     protected = root / 'protected/secret.py'
     protected.write_text('forbidden change\n')
     check(invoke('verify', 'all', ok=False).returncode != 0, 'actual tracked non-target changes rejected')
@@ -335,6 +452,103 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
     check(result.returncode != 0 and 'REACHED_LATER_ACTION' not in result.stdout and
           '[fix:error]' in result.stdout + result.stderr, 'full-suite failure stops final caller after related success')
     (private / 'full-fail').unlink()
+
+    # A plan stored under the check record's own name must be refused before the record replaces it.
+    plan_bytes = json.dumps(plan).encode()
+    guard = 'plan input must not be the check record'
+
+    def check_record_guard(plan_arg, label, stored=plan_bytes):
+        canonical.write_bytes(stored)
+        for mode, kind in (('check', None), ('verify', 'related')):
+            args = ['bash', str(helper), mode, '--plan', plan_arg, '--issue', str(issue_file)]
+            if kind:
+                args += ['--kind', kind]
+            result = run(args, ok=False)
+            check(result.returncode != 0 and guard in result.stderr and
+                  '[fix:error]' in result.stdout + result.stderr, label + ': ' + mode + ' refused by guard')
+            check(canonical.read_bytes() == stored, label + ': ' + mode + ' leaves input intact')
+
+    check_record_guard(str(canonical), 'absolute record path')
+    check_record_guard('.rite/state/fix-plan-' + session + '.json', 'relative record path')
+    alias = private / 'alias-plan.json'
+    alias.symlink_to('state/fix-plan-' + session + '.json')
+    check_record_guard(str(alias), 'file symlink to record')
+    alias.unlink()
+    statelink = private / 'statelink'
+    statelink.symlink_to('state', target_is_directory=True)
+    check_record_guard(str(statelink / ('fix-plan-' + session + '.json')), 'directory symlink to record')
+    statelink.unlink()
+    overwritten = json.dumps(dict(plan=plan, plan_hash='x', review_hash='x', mechanical={}, checked_at='x')).encode()
+    check_record_guard(str(canonical), 'record already holding a check result', stored=overwritten)
+
+    input_file = private / ('state/fix-plan-input-' + session + '.json')
+    input_file.write_bytes(plan_bytes)
+    run(['bash', str(helper), 'check', '--plan', '.rite/state/fix-plan-input-' + session + '.json',
+         '--issue', str(issue_file)])
+    check(input_file.read_bytes() == plan_bytes and input_file.resolve() != canonical.resolve() and
+          json.loads(canonical.read_text())['plan'] == plan, 'documented input name keeps the plan and records separately')
+    result = run(['bash', str(helper), 'verify', '--plan', str(input_file), '--issue', str(issue_file), '--kind', 'all'])
+    check('FIX_VERIFICATION=pass' in result.stdout and input_file.read_bytes() == plan_bytes,
+          'documented input name verifies without touching the plan')
+    input_file.unlink()
+    guide = (plugin / 'skills/fix/references/fix-plan.md').read_text()
+    defined = [line for line in guide.splitlines() if '`{fix_plan_file}` は' in line]
+    check(len(defined) == 1 and 'fix-plan-input-{session}.json' in defined[0] and
+          '`.rite/state/fix-plan-{session}.json`' not in defined[0] and
+          '検査記録は `.rite/state/fix-plan-{session}.json`' in guide, 'guide names input and check record separately')
+    # Execute the documented assertion bodies through the real verify helper.
+    script_a, script_b = private / 'a.sh', private / 'b.sh'
+    script_a.write_text('printf "target out\\n"; printf "target err\\n" >&2; exit 2\n')
+    script_b.write_text('exit 2\n')
+    for marker, cases in (
+        ('# assert-expected-exit-single', ((2, 2, True), (1, 2, False), (0, 2, False))),
+        ('# assert-expected-exit-multiple', ((2, 2, True), (2, 1, False), (1, 2, False), (0, 2, False), (2, 0, False))),
+    ):
+        body = caller_block(guide, marker).replace('scripts/a.sh', '.rite/a.sh').replace('scripts/b.sh', '.rite/b.sh')
+        candidate = copy.deepcopy(plan)
+        candidate['verifications'][0].update(command=body, inputs=['.rite/a.sh', '.rite/b.sh'])
+        save_plan(candidate)
+        invoke()
+        for rc_a, rc_b, success in cases:
+            script_a.write_text('printf "target out\\n"; printf "target err\\n" >&2; exit ' + str(rc_a) + '\n')
+            script_b.write_text('exit ' + str(rc_b) + '\n')
+            result = invoke('verify', 'all', ok=False)
+            check((result.returncode == 0) == success, marker + ': individually assert rc ' + str((rc_a, rc_b)))
+            saved = json.loads(verification_file.read_text())['results']['related']
+            check(saved['exit_code'] == (0 if success else 1), 'wrapper receipt retains measured assertion exit')
+            check('target out' in saved['stdout'] and 'target err' in saved['stderr'], 'wrapper output evidence retained')
+    body_and = caller_block(guide, '# assert-expected-exit-multiple').replace(
+        'scripts/a.sh', '.rite/a.sh').replace('scripts/b.sh', '.rite/b.sh')
+    body_semi = body_and.replace('&&', ';')
+    check('&&' in body_and and body_and != body_semi, 'documented multiple example joins with &&')
+    script_a.write_text('printf "target out\\n"; printf "target err\\n" >&2; exit 1\n')
+    script_b.write_text('exit 2\n')
+    candidate = copy.deepcopy(plan)
+    candidate['verifications'][0].update(command=body_and, inputs=['.rite/a.sh', '.rite/b.sh'])
+    save_plan(candidate)
+    invoke()
+    check(invoke('verify', 'all', ok=False).returncode != 0,
+          '&& does not conceal first-wrong/second-right')
+    candidate['verifications'][0]['command'] = body_semi
+    save_plan(candidate)
+    invoke()
+    check(invoke('verify', 'all', ok=False).returncode == 0,
+          '; conceals first-wrong/second-right')
+    candidate['verifications'][0]['command'] = 'bash .rite/a.sh'
+    script_a.write_text('printf "raw out\\n"; printf "raw err\\n" >&2; exit 2\n')
+    save_plan(candidate)
+    invoke()
+    result = invoke('verify', 'all', ok=False)
+    check(result.returncode != 0 and 'actual_rc=2' in result.stderr and 'expected_rc=0' in result.stderr
+          and str(verification_file) in result.stderr and 'wrapper that exits 0' in result.stderr,
+          'raw nonzero failure gives actual exit, evidence path and assertion guidance')
+    saved = json.loads(verification_file.read_text())['results']['related']
+    check(saved['exit_code'] == 2 and 'raw out' in saved['stdout'] and 'raw err' in saved['stderr'],
+          'raw nonzero exit and output evidence are preserved')
+    script_a.unlink()
+    script_b.unlink()
+    save_plan()
+    invoke()
     run(['git', '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
          'commit', '-q', '--allow-empty', '-m', 'changed HEAD'])
     check(invoke(ok=False).returncode != 0, 'changed HEAD rejects stale review and plan')

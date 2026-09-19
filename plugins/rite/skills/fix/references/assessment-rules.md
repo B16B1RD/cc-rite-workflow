@@ -163,7 +163,7 @@ For each finding in 全指摘事項 (post-5.3.0) where scope ∈ {current-pr, fo
 
 **帰結クラス軸 (authoring 層の前段規約)**: 散文 (手順書・仕様書・reference) への指摘については、reviewer が `Verification:` アンカーを添付する時点で **帰結クラス** による適格性判定が先に働く。レビュー対象文書自身のテキスト差分のみを観測する repro (文言非対称 / pin 不在 / 限定句不足 / 二重定義の未同期 = 字面整合クラス) は**アンカー適格でない**ため、reviewer はアンカーを付けずに報告する。その結果として本ゲートの `else` 分岐 (アンカー文字列が存在しない正常系) に落ち、`non_blocking_findings` へ移送される — WARNING は出ない。**この経路は指摘の叙述が verification の語 + コロンを含まないことを要件とする** (検出層の literal は大文字小文字・装飾文字・全角コロンを吸収するため、JSON フィールド名としての言及も判定不能の母集団に入りうる)。記述された手順を実行して成果物の破損を観測する repro (挙動的帰結クラス) は従来どおりアンカー適格であり、blocking のまま §5.3.1 へ渡る。
 
-**同軸のテスト網羅性ドメイン**: 「テストが挙動を固定していない」型の指摘 (mutation 生存 / assert の検証力不足 / pin 欠落) にも同じ前段規約が働く。散文と違い mutation は実際に走らせるが、生存する mutant が示すのは HEAD の誤動作ではなく reviewer が持ち込んだ架空の欠陥に対する番人の不在であるため、アンカー適格性は「**その変異が無効化するのは Issue 契約が規定する挙動か**」で決まる。契約 (Issue の `## 4. Implementation Details` §4.4 MUST 箇条書き / `## 5. Acceptance Criteria` 各 AC の `Then` 節) が規定する挙動そのものの未 pin・検証力ゼロは**アンカー適格**で blocking のまま §5.3.1 へ渡る。fix が導入した実装内部に対する細粒度の pin 強化要求は**不適格**で、散文の字面整合クラスと同じく `else` 分岐から `non_blocking_findings` へ移送される。**PR から Issue を解決できない場合は blocking へ倒す** (non-blocking 既定は実指摘の無音の握り潰しになるため)。テストが名乗った挙動に対してどんな実装でも落ちない場合 (トートロジー assert / 空振り fixture / 仕様と逆を固定) は網羅性ではなく**正しさ**の欠陥であり、本軸の対象外として従来どおり blocking。
+**同軸のテスト網羅性ドメイン**: 「テストが挙動を固定していない」型の指摘 (mutation 生存 / assert の検証力不足 / pin 欠落) にも同じ前段規約が働く。散文と違い mutation は実際に走らせるが、生存する mutant が示すのは HEAD の誤動作ではなく reviewer が持ち込んだ架空の欠陥に対する番人の不在であるため、アンカー適格性は「**その変異が無効化するのは Issue 契約が規定する挙動か**」で決まる。契約 (Issue の `## 4. Implementation Details` §4.4 MUST 箇条書き / 受入条件節の各 AC の `Then` 節) が規定する挙動そのものの未 pin・検証力ゼロは**アンカー適格**で blocking のまま §5.3.1 へ渡る。fix が導入した実装内部に対する細粒度の pin 強化要求は**不適格**で、散文の字面整合クラスと同じく `else` 分岐から `non_blocking_findings` へ移送される。**PR から Issue を解決できない場合は blocking へ倒す** (non-blocking 既定は実指摘の無音の握り潰しになるため)。テストが名乗った挙動に対してどんな実装でも落ちない場合 (トートロジー assert / 空振り fixture / 仕様と逆を固定) は網羅性ではなく**正しさ**の欠陥であり、本軸の対象外として従来どおり blocking。
 
 本規約は **authoring 層に閉じており、本節の helper 実装契約は無変更**である。`scripts/review-measured-gate.sh` の 2 値 + error 判定 (`measured=true` / `false` / `anchor_undetermined`)・アンカー検出 regex・WARNING 発火条件・判別子はいずれも帰結クラスを参照しない。帰結クラスが作用するのは「アンカーが description に存在するか」の**上流**であり、形式崩れアンカーの実測判定不能を error として扱う挙動は本軸の導入前後で不変。両ドメインとも severity / scope は維持したまま blocking 集合から除外し、`scope=nit-noted` への転用は禁止する (nit-noted は `gated` 偽で `non_blocking_findings[]` に載らず 4 経路記録が失われるため)。判別子と適用例の SoT は [`_reviewer-base.md` §手順書・仕様書ドメイン Finding Gate](../../../agents/_reviewer-base.md#prose-domain-finding-gate) / [§テスト網羅性 Finding Gate](../../../agents/_reviewer-base.md#test-coverage-finding-gate)、語彙定義は [severity-levels.md §帰結クラス軸](../../../references/severity-levels.md#帰結クラス軸-consequence-class)。
 
@@ -241,6 +241,8 @@ else:
 **指摘ゼロの場合**: post-5.3.0.M の blocking が空なら本ゲートは no-op (JSON 無変更・分類判定もスキップ)。mergeable 判定は現行と同一。
 
 ## 5.3.1 Assessment Rules
+
+Critic 5.2.2 が根拠不足で `findings[]` から外した指摘は fix 対象に戻さない。人数・severity・`Flagged by multiple reviewers` を再採用の根拠にしない。
 
 **Red blocking rule: If even 1 finding with `scope ∈ {current-pr, follow-up}` and measured=true exists (after 5.3.0 / 5.3.0.M / 5.3.0.C demotion), it MUST NOT be assessed as "Merge OK"**
 

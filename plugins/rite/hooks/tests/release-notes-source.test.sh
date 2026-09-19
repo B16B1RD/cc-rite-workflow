@@ -1,0 +1,281 @@
+#!/bin/bash
+# Release skill Phase 3.3: the release notes and the release target come from the confirmed
+# origin/main SHA, never from the working tree. The bash blocks are extracted from the skill and
+# run against local fixtures, so an edit to the skill is exercised directly. Every stop case has
+# a success twin built by the same fixture generator: a fixture broken before the checked step
+# would also exit non-zero, and would otherwise pass as "stopped".
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT=$(cd "$SCRIPT_DIR/../../../.." && pwd)
+RELEASE_SKILL="$REPO_ROOT/.claude/skills/release/SKILL.md"
+TMP_ROOT=$(mktemp -d)
+trap 'rm -rf "$TMP_ROOT"' EXIT
+
+fail() { echo "FAIL: $*" >&2; exit 1; }
+
+# Pick the single fence inside "### 3.3 " (bounded by the next heading) that contains $1.
+extract_fence() {
+  local anchor=$1 out=$2 count
+  count=$(awk -v a="$anchor" -v out="$out" '
+    /^### 3\.3 /{s=1; next}
+    s && /^##+ /{exit}
+    s && !f && /^```bash$/{f=1; buf=""; next}
+    s && f && /^```$/{f=0; if (index(buf, a)) {n++; printf "%s", buf > out}; next}
+    s && f{buf = buf $0 "\n"}
+    END{print n+0}' "$RELEASE_SKILL")
+  [ "$count" = 1 ] || fail "expected exactly one 3.3 fence containing '$anchor', found $count"
+}
+
+notes_block="$TMP_ROOT/notes.sh"
+tag_block="$TMP_ROOT/tag.sh"
+create_block="$TMP_ROOT/create.sh"
+# The notes and the tag target must not depend on switching or updating the work tree.
+awk '/^### 3\.3 /{s=1; next} s && /^##+ /{exit} s' "$RELEASE_SKILL" | grep -E 'git (checkout|pull)' \
+  && fail "3.3 still switches or updates the work tree"
+# Nothing updates the local main branch anymore, so no check may compare against it.
+grep -nE 'git log main([^/[:alnum:]]|$)' "$RELEASE_SKILL" && fail "release skill still reads the local main branch"
+extract_fence 'RELEASE_NOTES_SHA=' "$notes_block"
+extract_fence 'git ls-remote --tags' "$tag_block"
+extract_fence 'gh release create' "$create_block"
+# The existing tag must be checked before the release is created, or the check cannot prevent it.
+tag_fence_line=$(grep -n 'git ls-remote --tags' "$RELEASE_SKILL" | head -1 | cut -d: -f1)
+create_fence_line=$(grep -n 'gh release create' "$RELEASE_SKILL" | head -1 | cut -d: -f1)
+[ "$tag_fence_line" -lt "$create_fence_line" ] || fail "the tag check comes after the release creation ($tag_fence_line >= $create_fence_line)"
+# 4.1 #3 must fetch the tag before it compares it, so pin the order inside that row.
+row3=$(grep -F 'タグがノート取得元と同じコミットを指している' "$RELEASE_SKILL")
+[ -n "$row3" ] || fail "4.1 row #3 not found"
+case "$row3" in
+  *'git fetch --tags origin'*'git rev-parse "v{VERSION}^{commit}"'*) ;;
+  *) fail "4.1 #3 does not fetch tags before comparing them: $row3" ;;
+esac
+for anchor in 'git fetch origin main' 'rev-parse --verify' 'git show "$release_sha:CHANGELOG.md"' \
+              '[CONTEXT] RELEASE_NOTES_SHA=' '[CONTEXT] RELEASE_NOTES_PATH='; do
+  grep -qF -- "$anchor" "$notes_block" || fail "extracted notes block lacks '$anchor'"
+done
+grep -qF -- 'CHANGELOG.md >' "$notes_block" && fail "notes block reads the working-tree CHANGELOG.md"
+grep -qF -- '--target "{RELEASE_NOTES_SHA}"' "$create_block" || fail "create block does not target {RELEASE_NOTES_SHA}"
+grep -qF -- '--target main' "$create_block" && fail "create block still targets main"
+grep -qF -- '--target main' "$RELEASE_SKILL" && fail "release skill still mentions --target main"
+grep -qF -- 'gh release view v{VERSION} --json body' "$RELEASE_SKILL" || fail "4.1 lacks the non-empty release body check"
+for block in "$notes_block" "$tag_block" "$create_block"; do
+  sed -i.bak 's/{VERSION}/9.9.9/g' "$block" && rm -f "$block.bak"
+done
+# Kept unsubstituted: every fixture is its own repository with its own SHA and notes file.
+create_tpl="$TMP_ROOT/create-template.sh"; cp "$create_block" "$create_tpl"
+
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null LC_ALL=C
+export GIT_AUTHOR_NAME=rite GIT_AUTHOR_EMAIL=rite@example.invalid
+export GIT_COMMITTER_NAME=rite GIT_COMMITTER_EMAIL=rite@example.invalid
+repo_head_before=$(git -C "$REPO_ROOT" rev-parse HEAD)
+
+# $2 selects the CHANGELOG.md content on origin/main. The work tree stays on develop, whose
+# CHANGELOG.md has no 9.9.9 section, and local main lags origin/main.
+make_fixture() {
+  local dir=$1 kind=$2
+  mkdir -p "$dir/tmp"
+  git init -q --bare -b main "$dir/origin.git"
+  git init -q -b main "$dir/work"
+  (
+    cd "$dir/work"
+    git remote add origin "$dir/origin.git"
+    printf '# Changelog\n\n## [9.9.8]\n\n- old\n' > CHANGELOG.md
+    git add CHANGELOG.md; git commit -qm base; git push -q origin main
+    git branch develop
+    case "$kind" in
+      ok) printf '# Changelog\n\n## [9.9.9] - 2026-01-01\n\n- new entry\n\n## [9.9.8]\n\n- old\n' > CHANGELOG.md ;;
+      no-heading) printf '# Changelog\n\n## [9.9.90]\n\n- other\n\n## [9.9.8]\n\n- old\n' > CHANGELOG.md ;;
+      near-heading) printf '# Changelog\n\n## [9x9x9]\n\n- other\n\n## [9.9.8]\n\n- old\n' > CHANGELOG.md ;;
+      blank) printf '# Changelog\n\n## [9.9.9]\n\n   \n\n## [9.9.8]\n\n- old\n' > CHANGELOG.md ;;
+      no-file) git rm -q CHANGELOG.md; printf 'x\n' > other.txt ;;
+    esac
+    git add -A; git commit -qm release; git push -q origin main
+    git reset -q --hard HEAD~1
+    git checkout -q develop
+  )
+}
+
+# Runs the notes block in fixture $1; sets rc, out (stdout), err (stderr).
+run_notes() {
+  local dir=$1
+  [ "$(git -C "$dir/work" rev-parse --show-toplevel)" = "$(cd "$dir/work" && pwd -P)" ] || fail "fixture work tree not resolved"
+  rc=0
+  (cd "$dir/work" && TMPDIR="$dir/tmp" bash "$notes_block" >"$dir/out" 2>"$dir/err") || rc=$?
+  out=$(cat "$dir/out"); err=$(cat "$dir/err")
+}
+
+# T-01: extraction from origin/main while the work tree is on develop.
+fx="$TMP_ROOT/ok"; make_fixture "$fx" ok
+origin_sha=$(git -C "$fx/work" rev-parse origin/main)
+[ "$origin_sha" != "$(git -C "$fx/work" rev-parse main)" ] || fail "T-01 fixture: local main must lag origin/main"
+[ "$(git -C "$fx/work" branch --show-current)" = develop ] || fail "T-01 fixture: work tree must stay on develop"
+run_notes "$fx"
+[ "$rc" = 0 ] || fail "T-01 rc=$rc err=$err"
+notes_path=$(printf '%s\n' "$out" | sed -n 's/^\[CONTEXT\] RELEASE_NOTES_PATH=//p')
+expected_markers=$(printf '[CONTEXT] RELEASE_NOTES_SHA=%s\n[CONTEXT] RELEASE_NOTES_PATH=%s' "$origin_sha" "$notes_path")
+[ "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ')" = "$expected_markers" ] || fail "T-01 markers: $out"
+[ "$(cat "$notes_path")" = "$(printf '\n- new entry\n')" ] || fail "T-01 notes content: $(cat "$notes_path")"
+
+# T-05: gh release create targets the same SHA and uses the same notes file.
+mkdir -p "$TMP_ROOT/bin"
+cat > "$TMP_ROOT/bin/gh" <<'EOF'
+#!/bin/bash
+{ printf '%s\n' "$@"; echo '--end--'; } >> "$GH_ARGV_LOG"
+# The notes file must still exist when the release is created.
+prev=""
+for arg in "$@"; do
+  [ "$prev" = --notes-file ] && { [ -f "$arg" ] || { echo "notes-file missing: $arg" >&2; exit 1; }; }
+  prev=$arg
+done
+EOF
+chmod +x "$TMP_ROOT/bin/gh"
+export GH_ARGV_LOG="$TMP_ROOT/gh-argv-t05.log"
+sed -i.bak -e "s|{RELEASE_NOTES_SHA}|$origin_sha|g" -e "s|{RELEASE_NOTES_PATH}|$notes_path|g" "$create_block" && rm -f "$create_block.bak"
+[ "$(PATH="$TMP_ROOT/bin:$PATH" command -v gh)" = "$TMP_ROOT/bin/gh" ] || fail "T-05 gh stub not first on PATH"
+PATH="$TMP_ROOT/bin:$PATH" bash "$create_block" || fail "T-05 create block failed"
+expected_argv=$(printf '%s\n' release create v9.9.9 --title v9.9.9 --notes-file "$notes_path" --target "$origin_sha" --end--)
+[ "$(cat "$GH_ARGV_LOG")" = "$expected_argv" ] || fail "T-05 gh argv: $(cat "$GH_ARGV_LOG")"
+rm -f "$notes_path"
+
+# T-02 / T-03 / T-04: stop before any marker, with the step-specific error, leaving no scratch file.
+for case_spec in 'no-heading|の節がありません' 'near-heading|の節がありません' 'blank|の節の本文が空です' 'no-file|の CHANGELOG.md を読めませんでした'; do
+  kind=${case_spec%%|*} msg=${case_spec#*|}
+  fx="$TMP_ROOT/$kind"; make_fixture "$fx" "$kind"
+  run_notes "$fx"
+  [ "$rc" = 1 ] || fail "$kind rc=$rc out=$out err=$err"
+  printf '%s\n' "$err" | grep -qF -- "$msg" || fail "$kind error message: $err"
+  [ "$(printf '%s\n' "$err" | grep -c '^ERROR: ')" = 1 ] || fail "$kind expected one ERROR line: $err"
+  printf '%s\n' "$out" | grep -q '^\[CONTEXT\] ' && fail "$kind emitted a marker: $out"
+  [ -z "$(ls -A "$fx/tmp")" ] || fail "$kind left scratch files: $(ls -A "$fx/tmp")"
+done
+
+# T-06 .. T-12, T-14 (AC-1 / AC-2): the existing remote tag decides whether the release may be created.
+# The tag check and the create block run as one script so a stop really keeps gh unused.
+chain="$TMP_ROOT/chain.sh"
+# $2 puts a tag on origin: "other" points elsewhere, "match"/"annotated" point at origin/main.
+tag_fixture() {
+  local dir=$1 kind=$2
+  make_fixture "$dir" ok
+  (
+    cd "$dir/work"
+    case "$kind" in
+      other) git tag v9.9.9 main && git push -q origin refs/tags/v9.9.9 ;;
+      # A sibling ref that ls-remote's pattern also returns, pointing at the notes SHA while the
+      # real tag points elsewhere: only an exact ref-name match keeps this from passing as "matched".
+      decoy)
+        git tag v9.9.9 main && git push -q origin refs/tags/v9.9.9
+        git tag -a -m decoy decoy origin/main && git push -q origin refs/tags/decoy:refs/tags/a/refs/tags/v9.9.9
+        git tag -d decoy >/dev/null ;;
+      # Only the sibling exists: the real tag is absent, so the release may be created.
+      # It sorts after the real tag's name, where the decoy above sorts before it.
+      sibling-only)
+        git tag -a -m decoy decoy origin/main && git push -q origin refs/tags/decoy:refs/tags/z/refs/tags/v9.9.9
+        git tag -d decoy >/dev/null ;;
+      match) git tag v9.9.9 origin/main && git push -q origin refs/tags/v9.9.9 ;;
+      annotated) git tag -a -m release v9.9.9 origin/main && git push -q origin refs/tags/v9.9.9 ;;
+      none) ;;
+    esac
+    git tag -d v9.9.9 >/dev/null 2>&1 || true
+  )
+}
+# Each fixture is its own repository, so the SHA and the notes file are substituted per fixture.
+# chain_sha / chain_notes carry the expected gh arguments to the caller.
+build_chain() {
+  local dir=$1
+  chain_sha=$(git -C "$dir/work" rev-parse origin/main)
+  chain_notes="$dir/notes.txt"; printf -- '- new entry\n' > "$chain_notes"
+  sed "s|{RELEASE_NOTES_SHA}|$chain_sha|g" "$tag_block" > "$chain"
+  sed -e "s|{RELEASE_NOTES_SHA}|$chain_sha|g" -e "s|{RELEASE_NOTES_PATH}|$chain_notes|g" "$create_tpl" >> "$chain"
+}
+run_chain() {
+  local dir=$1 label=$2
+  build_chain "$dir"
+  rc=0
+  GH_ARGV_LOG="$TMP_ROOT/gh-argv-$label.log"; : > "$GH_ARGV_LOG"
+  (cd "$dir/work" && GH_ARGV_LOG="$GH_ARGV_LOG" PATH="$TMP_ROOT/bin:$PATH" bash "$chain" >"$dir/out" 2>"$dir/err") || rc=$?
+  out=$(cat "$dir/out"); err=$(cat "$dir/err")
+}
+for stop_case in other:T-06 decoy:T-07; do
+  kind=${stop_case%%:*} id=${stop_case#*:}
+  fx="$TMP_ROOT/tag-$kind"; tag_fixture "$fx" "$kind"
+  if [ "$kind" = decoy ]; then
+    # The decoy only exercises the peeled branch if its "^{}" line comes back too.
+    git -C "$fx/work" ls-remote --tags origin "refs/tags/v9.9.9" "refs/tags/v9.9.9^{}" \
+      | grep -q 'refs/tags/a/refs/tags/v9.9.9\^{}' \
+      || fail "$id fixture: the sibling peeled ref is not returned by the pattern"
+  fi
+  run_chain "$fx" "tag-$kind"
+  [ "$rc" = 1 ] || fail "$id $kind mismatched tag rc=$rc out=$out"
+  printf '%s\n' "$err" | grep -qF -- 'と一致しません' || fail "$id $kind error message: $err"
+  printf '%s\n' "$out" | grep -q '^\[CONTEXT\] RELEASE_TAG_STATE=' && fail "$id $kind emitted a state marker: $out"
+  [ ! -s "$TMP_ROOT/gh-argv-tag-$kind.log" ] || fail "$id $kind called gh: $(cat "$TMP_ROOT/gh-argv-tag-$kind.log")"
+done
+for tag_case in none:absent:T-08 match:matched:T-09 annotated:matched:T-10 sibling-only:absent:T-14; do
+  kind=${tag_case%%:*} rest=${tag_case#*:} state=${rest%%:*} id=${rest#*:}
+  fx="$TMP_ROOT/tag-$kind"; tag_fixture "$fx" "$kind"
+  if [ "$kind" = sibling-only ]; then
+    # Without a sibling in the pattern's output this case would just repeat T-08.
+    git -C "$fx/work" ls-remote --tags origin "refs/tags/v9.9.9" "refs/tags/v9.9.9^{}" \
+      | grep -q 'refs/tags/z/refs/tags/v9.9.9' \
+      || fail "$id fixture: the sibling ref is not returned by the pattern"
+  fi
+  run_chain "$fx" "tag-$kind"
+  [ "$rc" = 0 ] || fail "$id $kind rc=$rc err=$err"
+  [ "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ')" = "[CONTEXT] RELEASE_TAG_STATE=$state" ] || fail "$id $kind markers: $out"
+  expected_argv=$(printf '%s\n' release create v9.9.9 --title v9.9.9 --notes-file "$chain_notes" --target "$chain_sha" --end--)
+  [ "$(cat "$TMP_ROOT/gh-argv-tag-$kind.log")" = "$expected_argv" ] || fail "$id $kind gh argv: $(cat "$TMP_ROOT/gh-argv-tag-$kind.log")"
+done
+# ls-remote failure stops the chain; the twin without the stub reaches gh.
+cat > "$TMP_ROOT/bin/git" <<'EOF'
+#!/bin/bash
+[ "$1" = ls-remote ] && [ "${FAIL_LS_REMOTE:-0}" = 1 ] && exit 1
+exec "$REAL_GIT" "$@"
+EOF
+chmod +x "$TMP_ROOT/bin/git"
+export REAL_GIT; REAL_GIT=$(command -v git)
+for mode in 1 0; do
+  fx="$TMP_ROOT/tag-lsremote-$mode"; tag_fixture "$fx" none
+  [ "$(PATH="$TMP_ROOT/bin:$PATH" command -v git)" = "$TMP_ROOT/bin/git" ] || fail "T-11 git stub not first on PATH"
+  build_chain "$fx"
+  rc=0
+  GH_ARGV_LOG="$TMP_ROOT/gh-argv-ls-$mode.log"; : > "$GH_ARGV_LOG"
+  (cd "$fx/work" && FAIL_LS_REMOTE=$mode GH_ARGV_LOG="$GH_ARGV_LOG" PATH="$TMP_ROOT/bin:$PATH" bash "$chain" >"$fx/out" 2>"$fx/err") || rc=$?
+  if [ "$mode" = 1 ]; then
+    [ "$rc" = 1 ] || fail "T-11 ls-remote failure rc=$rc"
+    grep -qF 'ERROR: 既存タグ v9.9.9 を確認できませんでした' "$fx/err" || fail "T-11 error message: $(cat "$fx/err")"
+    [ ! -s "$TMP_ROOT/gh-argv-ls-1.log" ] || fail "T-11 called gh after a failed tag check"
+  else
+    [ "$rc" = 0 ] || fail "T-12 twin rc=$rc err=$(cat "$fx/err")"
+    expected_argv=$(printf '%s\n' release create v9.9.9 --title v9.9.9 --notes-file "$chain_notes" --target "$chain_sha" --end--)
+    [ "$(cat "$TMP_ROOT/gh-argv-ls-0.log")" = "$expected_argv" ] || fail "T-12 twin gh argv: $(cat "$TMP_ROOT/gh-argv-ls-0.log")"
+  fi
+done
+rm -f "$TMP_ROOT/bin/git"
+
+# T-15 (AC-1): a failing awk must stop, not read as "the tag is absent".
+cat > "$TMP_ROOT/bin/awk" <<'EOF'
+#!/bin/bash
+exit 42
+EOF
+chmod +x "$TMP_ROOT/bin/awk"
+fx="$TMP_ROOT/tag-awk-fail"; tag_fixture "$fx" other
+build_chain "$fx"
+[ "$(PATH="$TMP_ROOT/bin:$PATH" command -v awk)" = "$TMP_ROOT/bin/awk" ] || fail "T-15 awk stub not first on PATH"
+rc=0
+GH_ARGV_LOG="$TMP_ROOT/gh-argv-awk-fail.log"; : > "$GH_ARGV_LOG"
+(cd "$fx/work" && GH_ARGV_LOG="$GH_ARGV_LOG" PATH="$TMP_ROOT/bin:$PATH" bash "$chain" >"$fx/out" 2>"$fx/err") || rc=$?
+[ "$rc" = 1 ] || fail "T-15 awk failure rc=$rc out=$(cat "$fx/out")"
+grep -qF 'ERROR: 既存タグ v9.9.9 の照合に失敗しました' "$fx/err" || fail "T-15 error message: $(cat "$fx/err")"
+grep -q '^\[CONTEXT\] RELEASE_TAG_STATE=' "$fx/out" && fail "T-15 emitted a state marker: $(cat "$fx/out")"
+[ ! -s "$GH_ARGV_LOG" ] || fail "T-15 called gh after a failed tag lookup: $(cat "$GH_ARGV_LOG")"
+rm -f "$TMP_ROOT/bin/awk"
+
+# T-13 (AC-3): 4.1 can only compare the tag after fetching it — the release creates it on the remote only.
+fx="$TMP_ROOT/tag-fetch"; tag_fixture "$fx" match
+git -C "$fx/work" rev-parse -q --verify "v9.9.9^{commit}" >/dev/null && fail "T-13 fixture: the tag must be remote-only"
+git -C "$fx/work" fetch --tags origin >/dev/null 2>&1 || fail "T-13 fetch --tags failed"
+[ "$(git -C "$fx/work" rev-parse "v9.9.9^{commit}")" = "$(git -C "$fx/work" rev-parse origin/main)" ] || fail "T-13 tag does not point at the notes SHA"
+
+[ "$(git -C "$REPO_ROOT" rev-parse HEAD)" = "$repo_head_before" ] || fail "repository HEAD changed"
+echo "PASS: release notes come from the confirmed origin/main SHA"

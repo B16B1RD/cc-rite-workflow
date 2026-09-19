@@ -76,6 +76,26 @@ if [ -n "$enforce_line" ] && [ -n "$merge_line" ] && [ "$enforce_line" -lt "$mer
 else
   fail "acceptance enforce must precede gh pr merge (enforce=$enforce_line merge=$merge_line)"
 fi
+gate_calls=$(grep -c 'ready-reviewed-head-gate.sh' "$MERGE" || true)
+gate_repo_calls=$(grep -c -- '--pr {pr_number} --repo {owner_repo} --plugin-root "{plugin_root}"' "$MERGE" || true)
+if [ "$gate_calls" -gt 0 ] && [ "$gate_calls" = "$gate_repo_calls" ]; then
+  pass "every merge reviewed-head call names the PR repository (n=$gate_calls)"
+else
+  fail "merge reviewed-head calls ($gate_calls) must all pass --repo {owner_repo} ($gate_repo_calls)"
+fi
+assert_grep "merge pins the verified PR head on the merge command itself" "$MERGE" \
+  '^if gh pr merge \{pr_number\} -R \{owner_repo\} --squash --delete-branch=false --match-head-commit "\$verified_head" '
+assert_grep "verified head extraction is anchored on the match marker" "$MERGE" \
+  'READY_REVIEWED_HEAD=match; reviewed=\[0-9a-f\]\*; head='
+ready_gate_calls=$(grep -c 'hooks/scripts/ready-reviewed-head-gate.sh' "$READY" || true)
+ready_gate_repo_calls=$(grep -c -- '--pr "$ready_pr_number" --repo {owner_repo} --plugin-root "$plugin_root"' "$READY" || true)
+# ready-pr-head-gate.sh shares the argv prefix, so it is part of the expected count.
+ready_pr_head_calls=$(grep -c 'hooks/scripts/ready-pr-head-gate.sh' "$READY" || true)
+if [ "$ready_gate_calls" -gt 0 ] && [ "$((ready_gate_calls + ready_pr_head_calls))" = "$ready_gate_repo_calls" ]; then
+  pass "every ready reviewed-head call names the PR repository (n=$ready_gate_calls)"
+else
+  fail "ready reviewed-head calls ($ready_gate_calls) must all pass --repo {owner_repo} (argv matches=$ready_gate_repo_calls, pr-head calls=$ready_pr_head_calls)"
+fi
 assert_grep "ready inspect uses reviewed-head helper" "$READY" \
   'reviewed_gate_out=\$\(bash .*ready-reviewed-head-gate.sh'
 assert_grep "ready Phase 1 override keeps acceptance enforcement" "$READY" \
@@ -341,6 +361,83 @@ fi
 first_state=$(printf '%s\n' "$STEP1_OUT" | sed -n 's/^\[CONTEXT\] MERGE_CHECKS_STATE=//p' | sed -n '1p')
 assert "mixed pending+FAILURE first state is pending" "pending" "$first_state"
 rm -rf "$STEP1_SANDBOX"
+
+# --- extracted step-2 execution: the merge target is the head the final gate verified ---
+
+extract_step2_bash() {
+  awk '
+    /^## ステップ 2: マージ実行$/ { s=1 }
+    s && /^```bash$/ { f=1; next }
+    f && /^```$/ { exit }
+    f { print }
+  ' "$MERGE"
+}
+
+run_step2() {
+  # args: reviewed_sha, head_at_gate, head_at_merge
+  local reviewed="$1" head_at_gate="$2" head_at_merge="$3"
+  local sandbox
+  sandbox=$(mktemp -d "${TMPDIR:-/tmp}/merge-head-pin-XXXXXX") || { echo "ERROR: mktemp failed" >&2; return 1; }
+  mkdir -p "$sandbox/bin" "$sandbox/plugin/hooks/scripts" "$sandbox/state/.rite/review-results"
+  cp "$SCRIPT_DIR/../scripts/ready-reviewed-head-gate.sh" "$sandbox/plugin/hooks/scripts/"
+  printf '#!/bin/bash\nprintf "%%s\\n" "%s"\n' "$sandbox/state" > "$sandbox/plugin/hooks/state-path-resolve.sh"
+  chmod +x "$sandbox/plugin/hooks/state-path-resolve.sh" "$sandbox/plugin/hooks/scripts/ready-reviewed-head-gate.sh"
+  jq -n --arg sha "$reviewed" '{commit_sha:$sha, acceptance_criteria:{skipped:"no_ac_section"}}' \
+    > "$sandbox/state/.rite/review-results/1-20260101000000.json"
+  : > "$sandbox/gh.log"
+  cat > "$sandbox/bin/gh" <<'STUB'
+#!/bin/bash
+echo "$*" >> "$MERGE_PIN_SANDBOX/gh.log"
+if [ "$1 $2" = "pr view" ]; then printf '%s\n' "$MERGE_PIN_HEAD_AT_GATE"; exit 0; fi
+if [ "$1 $2" = "pr merge" ]; then
+  pinned=""
+  while [ "$#" -gt 0 ]; do [ "$1" = "--match-head-commit" ] && pinned="${2:-}"; shift; done
+  # GitHub refuses the merge when the pinned OID is not the PR head at merge time.
+  [ "$pinned" = "$MERGE_PIN_HEAD_AT_MERGE" ] && exit 0
+  echo "head commit does not match" >&2
+  exit 1
+fi
+exit 0
+STUB
+  chmod +x "$sandbox/bin/gh"
+  extract_step2_bash \
+    | sed -e "s|{pr_number}|1|g" -e "s|{owner_repo}|owner/repo|g" -e "s|{plugin_root}|$sandbox/plugin|g" \
+    > "$sandbox/step2.sh"
+  MERGE_PIN_SANDBOX="$sandbox" MERGE_PIN_HEAD_AT_GATE="$head_at_gate" MERGE_PIN_HEAD_AT_MERGE="$head_at_merge" \
+    PATH="$sandbox/bin:$PATH" _timeout 8 bash "$sandbox/step2.sh" > "$sandbox/stdout" 2>"$sandbox/stderr"
+  STEP2_RC=$?
+  STEP2_OUT=$(cat "$sandbox/stdout")
+  STEP2_MERGE_ARGV=$(grep '^pr merge ' "$sandbox/gh.log" || true)
+  rm -rf "$sandbox"
+}
+
+echo "=== extracted step-2 execution (verified PR head is the merge target) ==="
+PIN_A=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+PIN_B=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+
+run_step2 "$PIN_A" "$PIN_A" "$PIN_A"
+assert "stable head: step 2 succeeds" "0" "$STEP2_RC"
+assert "stable head: merge is pinned to the verified head" \
+  "pr merge 1 -R owner/repo --squash --delete-branch=false --match-head-commit $PIN_A" "$STEP2_MERGE_ARGV"
+
+run_step2 "$PIN_A" "$PIN_A" "$PIN_B"
+assert "head moved after the gate: merge still carries only the verified head" \
+  "pr merge 1 -R owner/repo --squash --delete-branch=false --match-head-commit $PIN_A" "$STEP2_MERGE_ARGV"
+# The step reports a refused merge through its sentinel, not through the exit code.
+if printf '%s\n' "$STEP2_OUT" | grep -c >/dev/null '^\[merge:error\]$' \
+  && ! printf '%s\n' "$STEP2_OUT" | grep -c >/dev/null 'merge:returned-to-caller'; then
+  pass "head moved after the gate: the refused merge surfaces [merge:error] and no success signal"
+else
+  fail "head moved after the gate must end in [merge:error] without a success signal (out=$STEP2_OUT)"
+fi
+
+run_step2 "$PIN_A" "$PIN_B" "$PIN_B"
+assert "unreviewed PR head: gh pr merge is never called" "" "$STEP2_MERGE_ARGV"
+if [ "$STEP2_RC" -ne 0 ] && printf '%s\n' "$STEP2_OUT" | grep -c >/dev/null '^\[merge:not-ready\]$'; then
+  pass "unreviewed PR head: step 2 stops with [merge:not-ready]"
+else
+  fail "unreviewed PR head must stop with [merge:not-ready] (rc=$STEP2_RC out=$STEP2_OUT)"
+fi
 
 if ! print_summary "$(basename "$0")" "mergeStateStatus の CI gate・pending wait loop・jobs API 分類・明示 override contract (T-01〜T-09)"; then
   exit 1

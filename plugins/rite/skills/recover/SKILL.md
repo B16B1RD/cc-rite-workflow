@@ -11,6 +11,8 @@ argument-hint: ""
 
 > 実行入口と工程境界は [Host Runtime Contract](../../references/host-runtime-contract.md#入口と工程境界)、native Skill / Task がない場合の実行は [Host workflow operations](../../references/host-workflow-operations.md) に従う。nested 呼出しは caller の runtime 選択を引き継ぐ。
 
+> セッション worktree 入場後にシェルブロックがホストの隔離ガードに拒否されたら、[共通作業先契約](../../references/git-worktree-patterns.md#host-worktree-execution) の「入場後のガード拒否の退路」に従う。
+
 中断した rite ワークフローを再開する。flow-state (phase enum v3 SoT) と commit 数 / PR 状態 / work memory を cross-check して再開点を決める。
 
 **Use cases:** クラッシュ / セッション切断 / 手動中断 / **Context 枯渇**（`/clear` 後に本コマンド。これが **唯一の正規経路**。[workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md)）。
@@ -452,15 +454,20 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 ### review-cycle の再開
 
-`review_run` がある場合は [停滞診断の回復規則](../../references/review-stagnation.md) を先に適用する。未閉の時計区間は中断として閉じ、保存済み区間の再送では時刻を変更しない。観測・修正・見直し履歴と counter は保持する。`current_decision.action=stop` は同じ停止理由を返し、再設計・counter reset・新 run 作成で迂回しない。保存済み観測がない completed cycle は pr-review の停滞観測保存へ戻る。
+`review_run` がある場合は [停滞診断の回復規則](../../references/review-stagnation.md) を先に適用する。未閉の時計区間は同参照の共有ブロック `review-clock-close` を `clock_close_mode=recover` で実行して中断として閉じ、保存済み区間の再送では時刻を変更しない。観測・修正・見直し履歴と counter は保持する。`current_decision.action=stop` は同じ停止理由を返し、再設計・counter reset・`review-restart`・新 run 作成で迂回しない。明示承認の fresh entry は recover の仕事ではない。保存済み観測がない completed cycle は pr-review の停滞観測保存へ戻る。
 
-`phase=review` では自セッションの `flow-state.sh get --jq-filter .` を読み、`review_cycle.review_context` の PR / HEAD を現在値と照合する。不一致・破損は理由を出して停止し、別 session の結果を流用しない。
+`phase=review` では自セッションの `flow-state.sh get --jq-filter .` を読み、`review_cycle.review_context` の PR / HEAD を現在値と照合する。PR 不一致・破損は理由を出して停止し、別 session の結果を流用しない。HEAD 不一致は下表の状態列が行き先を決める（証跡ゼロなら放棄、証跡があれば回収）。
+
+**下表は上から順に評価し、最初に一致した行を採る**（状態列は排他に書く）。
 
 | 状態 | 再開位置 |
 |---|---|
-| `collecting`、manifest / content が未登録 | 固定名簿と context から pr-review 4.0 のディレクトリを復元し manifest / raw を読む。成功分を保持し、不足 reviewer だけ同一 cycle で再取得する |
-| `collecting`、`manifest_path` / `content_file` あり | 下の `review-finish` を再実行する。保存前・保存直後・完了記録前の中断も同じ入力を使う。`pending_id` は helper が保存済みの値を再利用する |
-| `completed`、最終 gate 未完了 | `result_path` を読み、同じ `review-finish` で保存結果を再検証してから pr-review ステップ 6 の残作業〜8 の全 gate へ戻る。新 cycle や fix / ready を直接始めない |
+| `collecting`、HEAD 不一致、証跡（manifest / content / result、保存済み receipt）を 1 つも持たない | `flow-state.sh review-abandon --reason "<理由>"` で空の記録を放棄し、現 HEAD で `review-start` から新しい cycle を始める。`review_run` と session / Issue / PR / branch / worktree の対応は保持され、`review_run` を持つ run では counter も据え置かれる（run を持たない standalone レビューでは `review-start` が counter を進める） |
+| `collecting`、HEAD 不一致、証跡がある | 放棄は拒否される。helper の診断を確認し、証跡のパスが示された場合はそのファイルを読む。`review-finish` も HEAD 一致を要求するため再検証は成立せず、証跡を保持して停止する |
+| `collecting`、HEAD 一致、manifest / content が未登録 | 固定名簿と context から pr-review 4.0 のディレクトリを復元し manifest / raw を読む。成功分を保持し、不足 reviewer だけ同一 cycle で再取得する |
+| `collecting`、HEAD 一致、`manifest_path` / `content_file` あり | 下の `review-finish` を再実行する。保存前・保存直後・完了記録前の中断も同じ入力を使う。`pending_id` は helper が保存済みの値を再利用する |
+| `completed`、最終 gate 未完了、HEAD 一致 | `result_path` を読み、同じ `review-finish` で保存結果を再検証してから pr-review ステップ 6 の残作業〜8 の全 gate へ戻る。新 cycle や fix / ready を直接始めない |
+| `completed`、HEAD 不一致 | 再検証は成立しない（`review-finish` が HEAD 一致を無条件に要求する）。`result_path` の保存結果を読むだけに留め、証跡を保持して停止する。放棄の対象外。**この停止は `/rite:recover` から入った場合の話で**、iterate のループが修正を commit して次の cycle へ進む経路では同じ状態から新しい cycle を始めるのが正常系 |
 | `review_cycle` なし | 既存の iterate の lost 修復と新規開始手順へ。過去の保存 JSON だけを新 cycle の完了証跡にしない |
 
 ```bash

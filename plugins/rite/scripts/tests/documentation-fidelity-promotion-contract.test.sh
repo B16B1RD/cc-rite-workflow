@@ -163,7 +163,9 @@ assert_grep_count 'fix question inventory is unchanged' "$ROOT/plugins/rite/skil
   "$ROOT/plugins/rite/skills/fix/references/"{target-comment,nb-sweep,accept-finding,wiki-recording}.md
 assert_grep_count 'ready question inventory includes AC attestation' "$ROOT/plugins/rite/skills/ready/SKILL.md" 'AskUserQuestion' 3
 assert_grep_count 'merge question inventory includes AC attestation' "$ROOT/plugins/rite/skills/merge/SKILL.md" 'AskUserQuestion' 3
-assert_grep_count 'cleanup question inventory is unchanged' "$ROOT/plugins/rite/skills/cleanup/SKILL.md" 'AskUserQuestion' 4
+# 5 件目は 4-W の登録から補完した作業ツリーで未コミット変更を stash してから削除するかの確認で、
+# 類型 (b) 不可逆操作（未コミット変更を持つ作業ツリーの削除）の承認に当たる。
+assert_grep_count 'cleanup question inventory is unchanged' "$ROOT/plugins/rite/skills/cleanup/SKILL.md" 'AskUserQuestion' 5
 # Reviewer resolution failures now stop with [review:error]; the three
 # references to bypassing missing reviewers through user confirmation are removed.
 assert_grep_count 'pr-review question inventory is unchanged' "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'AskUserQuestion' 32 \
