@@ -47,7 +47,7 @@ rationale: references/rationale.md#circuit-breaker-conditions
 ## Contract
 
 **Input**: PR number (required)
-**Output**: 完了通知（`[review:mergeable]` / `[fix:non-fatal-only]` 到達後 5.S sweep 完了（外向きは `[review:mergeable]`）or `[fix:replied-only]` 到達後 5.S sweep 完了（外向きも返信のみ） or `[fix:cancelled-by-user]` 中断 or サーキットブレーカー発火による停止（`[iterate:max-cycles-reached]` バッチ / `[iterate:max-cycles-stopped]` 対話。非収束による失敗で、マージには進まない）or sweep 失敗 `[iterate:nb-sweep-error]` or Ctrl+C 中断）。発火後に review / fix は invoke せず、再開は明示的な `/rite:iterate` 再実行に委ねる。
+**Output**: 完了通知（`[review:mergeable]` / `[fix:non-fatal-only]` 到達後 5.S sweep 完了（外向きは `[review:mergeable]`）or `[fix:replied-only]` 到達後 5.S sweep 完了（外向きも返信のみ） or `[fix:cancelled-by-user]` 中断 or サーキットブレーカー発火による停止（`[iterate:max-cycles-reached]` バッチ / `[iterate:max-cycles-stopped]` 対話。非収束による失敗で、マージには進まない）or sweep 失敗 `[iterate:nb-sweep-error]` or Ctrl+C 中断）。発火後に review / fix は invoke しない。再開は `review_run` が無い legacy state では `/rite:iterate` の明示再実行、`review_run` がある停止はステップ 6.2 の `{resume_routes}`（通常の再実行では新 run にならない）。
 
 ## E2E Output Minimization
 
@@ -1320,7 +1320,9 @@ rationale: references/rationale.md#resume-routes-no-state-read
 ```
 - この停止 run への明示承認で新しい run を始める:
   `bash "{plugin_root}"/hooks/flow-state.sh review-restart --selection <名簿 JSON の絶対パス> --expected-run-id <停止した run_id> --approval <今回の承認 JSON の絶対パス>`
-  （旧 run は reason・要求時刻・対象 context ごと保管する。通常の iterate / recover / 自動再試行では呼ばない。
+  （名簿は `review_cycle.selected_reviewers` の dump。`run_id` は停止時の `.review_run.run_id`。
+  承認 JSON の必須フィールドは [review-stagnation.md](../../references/review-stagnation.md#停止後の退路と再開)。
+  `--session` は付けない。旧 run は reason・要求時刻・対象 context ごと保管する。通常の iterate / recover / 自動再試行では呼ばない。
   collecting・未知の停止理由・未 close の clock は拒否する）
 ```
 
@@ -1437,7 +1439,7 @@ rationale: [stop-loop-continuation-contract.md#mechanism](../../references/stop-
 - **blocking 指摘ゼロ（mergeable）、または非 fatal のみを移送後に 5.S で消化した状態が正常出口** — blocking の定義式は本ファイルに複製せず [severity-levels.md §実測必須ゲート](../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) を SoT とする。**非実測指摘が N 件残った状態でも `[review:mergeable]` に到達しうる** — 残存分の消化は完了通知前の 5.S（`/rite:fix --nb-sweep`）が担い、人間の draft レビューに委ねない。正常出口は未消化 0 件
 - **ブレーカーの発火条件は「発散」であって「予算切れ」ではない** — 主経路は収束トレンドの発散検出、`safety.max_review_cycles`（既定 15）は backstop。**窓幅や閾値を config キーにしない**
 - **発火理由は停止 routing を変えない** — sentinel（`[iterate:max-cycles-reached]` / `[iterate:max-cycles-stopped]`）は理由に依らず不変
-- **発火後は停止** — batch は failed、対話は機械的に停止。再実行時の fresh entry が full scope を担う。
+- **発火後は停止** — batch は failed、対話は機械的に停止。legacy の再実行は fresh entry。停止した `review_run` の full scope は明示承認の `review-restart` が担う。
 - **cycle counter は flow-state に保持** — 専用 state file は持たない。resume 跨ぎ継続、fresh entry で 0 リセット。発火直前（ステップ 6 共有前段）と正常終了時（ステップ 5.0.1）でも 0 に戻す
 - 人間が skip → 別 Issue で loop 終了する経路は閉じた。残存 non-blocking の消化は機械 routing（完了通知前の 5.S `/rite:fix --nb-sweep` と、cleanup の follow-up Issue 起票）が担う
 rationale: references/rationale.md#design-decisions

@@ -118,7 +118,7 @@ rm "$clock_file"
 
 ## 停止後の退路と再開
 
-停止は「この run でのレビュー継続を止める」ことであり、「この run に触れる操作をすべて止める」ことではない。停止した run でレビューを進める操作は次の 2 つだけで、どちらも停止理由を消さない。
+停止は「この run でのレビュー継続を止める」ことであり、「この run に触れる操作をすべて止める」ことではない。停止した run でレビューを進める操作は次の 3 つで、どれも停止理由を消さない。通常の iterate / recover / 自動再試行はここに含まれない。
 
 **抜ける（全停止理由で可）**: 別 Issue 番号の `set` をそのまま実行する。旧 run は `review_run_history` へ退避される。切替先に復元対象があればその counter を戻し、無ければ live state の `cycle_count` は 0 から始まる。停止は「この run はもう cycle を積まない」判断が下りた状態なので、完了・保留と同格に扱ってセッションを手放す。ownership cleanup を前置きしても同じ結果になる。
 
@@ -128,7 +128,7 @@ rm "$clock_file"
 
 **戻り方**: PR 番号 0 で元 Issue へ着手し、その PR の iterate で Issue 番号と PR 番号を揃えると復元される。両番号を指定して直接切り替える `set` も、現在の run を退避してから切替先の run を復元する。切替先の復元に失敗した場合は退避も書き込まれず、元の state を保持する。 run を持たないレビューを間に挟んだ場合も、復元先の cycle を切替元の cycle で上書きしない。切替元に collecting cycle が残っていれば復元を拒否し、先に完了または許可された放棄を行う。PR 番号だけを指定して退避記録と異なる Issue の state から入ると、`archived review run for this PR belongs to another Issue or session` で拒否する。
 
-**復元直後の順序**: 停止した run を復元した場合は停止したままで、セッションも退避前と同じく非 active に戻る。通常の phase 更新はそこから拒否される（停止直後とまったく同じ挙動で、復元が新たに課す制約ではない）。再試行条件を満たして権利を発行できた場合だけ、以後は通常の run として進む。active な retained run の復元では停止理由や `active=false` を追加せず、同じ run・counter で `review-start` へ進む。
+**復元直後の順序**: 停止した run を復元した場合は停止したままで、セッションも退避前と同じく非 active に戻る。通常の phase 更新はそこから拒否される（停止直後とまったく同じ挙動で、復元が新たに課す制約ではない）。同一 run を進めるのは再試行条件を満たして権利を発行できた場合に限る。既知 breaker の completed 停止なら、下の明示承認 `review-restart` で新しい run を始めてもよい。active な retained run の復元では停止理由や `active=false` を追加せず、同じ run・counter で `review-start` へ進む。
 
 **復元できない退避記録は `set` を落とす**。同じ PR の停止した記録が、対の保存より前に作られていて `cycle_count` と凍結 `review_cycle` を持たない場合、および Issue 番号・`session_id` が一致しない場合は、読み飛ばさず停止理由を示して `set` を拒否する。読み飛ばすと、退避が差し止めているはずの新しい run をそのまま渡すことになる。active な未終了 run も、退避時の counter や必要な放棄記録を検証できなければ拒否する。停止しておらず、退避した completed cycle と完了・保留の記録が一致する run のみ読み飛ばす。過去の marker だけを持つ旧形式の記録も、退避時点の cycle と counter を検証できなければ拒否する。
 
@@ -136,7 +136,19 @@ rm "$clock_file"
 
 この保持と復元はセッションの flow-state に載る。別セッション（別 `session_id`）では退避記録が見えないため、復元も再試行権の消費判定も効かない。`cycle_count` をはじめとする既存の counter と同じ性質である。
 
-**明示承認で新しい run を始める（`circuit-breaker:divergence` と `circuit-breaker:max-cycles`）**: `flow-state.sh review-restart --selection <名簿 JSON> --expected-run-id <停止した run_id> --approval <今回の承認 JSON>` が、completed の観測・receipt が揃い、未 close の clock が無く、承認がこの停止 run / context / PR に結び付いているときに限り、旧 run を保管して cycle 1 の新しい run を作る。通常の iterate / recover / 自動再試行 / `review-start` はこれを呼ばない。`review-retry` とは別操作で、同じ run を reopen しない。承認の reason・要求時刻・対象 context は parked 履歴に残す。superseded した archived run は同じ PR への往復で復元しない。
+**明示承認で新しい run を始める（`circuit-breaker:divergence` と `circuit-breaker:max-cycles`）**: `flow-state.sh review-restart --selection <名簿 JSON の絶対パス> --expected-run-id <停止した run_id> --approval <今回の承認 JSON の絶対パス>` が、completed の観測・receipt が揃い、未 close の clock が無く、承認がこの停止 run / context / PR に結び付いているときに限り、旧 run を保管して cycle 1 の新しい run を作る。通常の iterate / recover / 自動再試行 / `review-start` はこれを呼ばない。`review-retry` とは別操作で、同じ run を reopen しない。同一承認の再実行は新予算を付けない。承認の reason・要求時刻・対象 context は parked 履歴に残す。superseded した archived run は同じ PR への往復で復元しない。
+
+承認 JSON の必須フィールド（参照元が消えても履歴だけで説明できる実体）:
+
+| フィールド | 内容 |
+|---|---|
+| `kind` | 必ず `explicit-fresh-entry` |
+| `run_id` | 停止した live run の ID。`--expected-run-id` と同じ |
+| `review_context` | 停止時 `review_cycle.review_context` の完全コピー |
+| `issue_number` | 正の Issue 番号 |
+| `pr_number` | 正の PR 番号 |
+| `reason` | 非空。今回の承認理由 |
+| `requested_at` | 今回の要求時刻（ISO 8601） |
 
 **再試行権で再開する（`circuit-breaker:divergence` のみ）**: `flow-state.sh review-retry --plan <一括修正計画の絶対パス> --issue <最新 Issue JSON の絶対パス>` が、次の条件をすべて満たすときに限り再試行権を 1 つ発行する。
 

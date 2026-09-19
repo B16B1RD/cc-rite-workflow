@@ -1550,5 +1550,65 @@ try:
 finally:
     f.close()
 
+f = Fixture()
+try:
+    diverge(f)
+    old_id = f.state()['review_run']['run_id']
+    restart(f)
+    new_id = f.state()['review_run']['run_id']
+    results = f.root / '.rite/review-results'
+    results.mkdir(parents=True, exist_ok=True)
+    head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=f.root, text=True,
+                          capture_output=True, check=True).stdout.strip()
+    dump(results / '71-19700101000000.json', dict(
+        schema_version='1.1.0', pr_number=71, commit_sha=head,
+        review_context=dict(session_id=f.session, run_id=old_id, pr_number=71,
+                            cycle_count=3, commit_sha=head),
+        findings=[], non_blocking_findings=[], reviewers=['code-quality-reviewer']))
+    scope = subprocess.run(
+        ['bash', str(plugin / 'scripts/review-cycle-scope.sh'), '--pr', '71',
+         '--results-dir', str(results)],
+        cwd=f.root, env=f.env, text=True, capture_output=True)
+    check(scope.returncode == 0 and 'reason=new_run_first_cycle' in scope.stderr,
+          'T-R06: live cycle 1 is full even with leftover JSON from the old run')
+    check('REVIEW_CYCLE_SCOPE=incremental' not in scope.stderr,
+          'T-R06: leftover JSON does not become prev')
+    gh = f.root / 'bin'
+    gh.mkdir()
+    (gh / 'gh').write_text(
+        '#!/bin/bash\n'
+        'ROOT=' + json.dumps(str(f.root)) + '\n'
+        'if printf "%s" "$*" | grep -q headRefOid; then\n'
+        '  git -C "$ROOT" rev-parse HEAD\n'
+        '  exit 0\n'
+        'fi\n'
+        'exit 1\n')
+    os.chmod(gh / 'gh', 0o755)
+    ready_env = dict(f.env, PATH=str(gh) + os.pathsep + f.env.get('PATH', ''))
+    ready = subprocess.run(
+        ['bash', str(plugin / 'hooks/scripts/ready-reviewed-head-gate.sh'),
+         '--pr', '71', '--repo', 'B16B1RD/cc-rite-workflow',
+         '--plugin-root', str(plugin), '--results-dir', str(results),
+         '--state-root', str(f.root)],
+        cwd=f.root, env=ready_env, text=True, capture_output=True)
+    check(ready.returncode != 0 and 'live_run_receipt_missing' in ready.stderr,
+          'T-R07: old same-HEAD receipt does not ready the new live run')
+    dump(results / '71-19700101000001.json', dict(
+        schema_version='1.1.0', pr_number=71, commit_sha=head,
+        review_context=dict(session_id=f.session, run_id=new_id, pr_number=71,
+                            cycle_count=1, commit_sha=head),
+        findings=[], non_blocking_findings=[], reviewers=['code-quality-reviewer'],
+        acceptance_criteria=dict(skipped='no_ac_section')))
+    ready_ok = subprocess.run(
+        ['bash', str(plugin / 'hooks/scripts/ready-reviewed-head-gate.sh'),
+         '--pr', '71', '--repo', 'B16B1RD/cc-rite-workflow',
+         '--plugin-root', str(plugin), '--results-dir', str(results),
+         '--state-root', str(f.root)],
+        cwd=f.root, env=ready_env, text=True, capture_output=True)
+    check(ready_ok.returncode == 0 and 'READY_REVIEWED_HEAD=match' in ready_ok.stderr,
+          'T-R07: new-run receipt is the only match')
+finally:
+    f.close()
+
 print('PASS: review stagnation: ' + str(checks) + ' assertions; real clocks, receipts, repairs and retained stops')
 PYTEST
