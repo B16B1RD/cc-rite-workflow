@@ -100,6 +100,21 @@ run_hook() {
   return $rc
 }
 
+# Portable digest (sha256sum is GNU coreutils; macOS CI keeps BSD tools).
+digest_file() {
+  local out=""
+  if command -v sha256sum >/dev/null 2>&1; then
+    out=$(sha256sum "$1" 2>/dev/null | awk '{print $1}') || out=""
+  fi
+  if [ -z "$out" ] && command -v shasum >/dev/null 2>&1; then
+    out=$(shasum -a 256 "$1" 2>/dev/null | awk '{print $1}') || out=""
+  fi
+  if [ -z "$out" ]; then
+    out=$(python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$1")
+  fi
+  printf '%s\n' "$out"
+}
+
 echo "=== session-end.sh tests ==="
 echo ""
 
@@ -218,6 +233,8 @@ mkdir -p "$dir008"
 # Write broken JSON via create_state_file so the per-session resolver finds it
 create_state_file "$dir008" "{broken json"
 
+sf008=$(state_file_path "$dir008")
+before008=$(digest_file "$sf008")
 # session-end.sh prioritizes cleanup over strict error propagation
 output=$(run_hook "$dir008") && rc=0 || rc=$?
 # Check that no temp files leak in the per-session directory (legacy
@@ -229,11 +246,10 @@ if [ "$temp_files" -eq 0 ]; then
 else
   fail "Temp files not cleaned: $temp_files files found"
 fi
-sf008=$(state_file_path "$dir008")
-if [ -f "$sf008" ] && grep -q '{broken json' "$sf008"; then
+if [ "$rc" -eq 0 ] && [ -f "$sf008" ] && [ "$(digest_file "$sf008")" = "$before008" ]; then
   pass "Corrupted JSON → original bytes kept (AC-4)"
 else
-  fail "Corrupted JSON was deleted or rewritten"
+  fail "Corrupted JSON was deleted or rewritten (rc=$rc)"
 fi
 echo ""
 
@@ -775,19 +791,38 @@ echo ""
 # --------------------------------------------------------------------------
 # Review-history preserve (do not rm stopped / unfinished / parked / broken)
 # --------------------------------------------------------------------------
-digest_file() { sha256sum "$1" | awk '{print $1}'; }
+install_deactivate_fail_jq() {
+  local dest="$1"
+  local jq_real
+  jq_real="$(command -v jq)"
+  mkdir -p "$dest"
+  cat > "$dest/jq" <<FAKE_JQ
+#!/bin/bash
+for arg in "\$@"; do
+  case "\$arg" in
+    *'.active'*'.updated_at'*) exit 1 ;;
+  esac
+done
+exec '$jq_real' "\$@"
+FAKE_JQ
+  chmod +x "$dest/jq"
+}
 
 echo "T-01: stopped review_run is kept"
 dir_p01="$TEST_DIR/preserve-stopped"
 mkdir -p "$dir_p01"
 create_state_file "$dir_p01" '{"schema_version":3,"active":false,"phase":"review","stop_reason":"circuit-breaker:divergence","review_run":{"status":"stopped","run_id":"run-stopped","observations":[{"id":1}]}}'
 sf_p01=$(state_file_path "$dir_p01")
-before_p01=$(digest_file "$sf_p01")
-run_hook "$dir_p01" >/dev/null || true
-if [ -f "$sf_p01" ] && jq -e '.review_run.status=="stopped" and .review_run.run_id=="run-stopped" and (.review_run.observations|length)==1' "$sf_p01" >/dev/null; then
+run_p01=$(jq -c '.review_run' "$sf_p01")
+stop_p01=$(jq -r '.stop_reason' "$sf_p01")
+rc_p01=0
+run_hook "$dir_p01" >/dev/null || rc_p01=$?
+if [ "$rc_p01" -eq 0 ] && [ -f "$sf_p01" ] \
+  && [ "$(jq -c '.review_run' "$sf_p01")" = "$run_p01" ] \
+  && [ "$(jq -r '.stop_reason' "$sf_p01")" = "$stop_p01" ]; then
   pass "T-01 stopped review_run kept"
 else
-  fail "T-01 stopped review_run missing or rewritten"
+  fail "T-01 stopped review_run missing or rewritten (rc=$rc_p01)"
 fi
 echo ""
 
@@ -796,11 +831,14 @@ dir_p02="$TEST_DIR/preserve-active"
 mkdir -p "$dir_p02"
 create_state_file "$dir_p02" '{"schema_version":3,"active":true,"phase":"review","review_run":{"status":"active","run_id":"run-live","current_decision":{"action":"replan"},"observations":[{"id":1}]}}'
 sf_p02=$(state_file_path "$dir_p02")
-run_hook "$dir_p02" >/dev/null || true
-if [ -f "$sf_p02" ] && jq -e '.active==false and .review_run.status=="active" and .review_run.run_id=="run-live" and .review_run.current_decision.action=="replan" and (.review_run.observations|length)==1' "$sf_p02" >/dev/null; then
+run_p02=$(jq -c '.review_run' "$sf_p02")
+rc_p02=0
+run_hook "$dir_p02" >/dev/null || rc_p02=$?
+if [ "$rc_p02" -eq 0 ] && [ -f "$sf_p02" ] \
+  && jq -e --argjson run "$run_p02" '.active==false and .review_run==$run' "$sf_p02" >/dev/null; then
   pass "T-02 live review_run kept with active=false"
 else
-  fail "T-02 live review_run not preserved as required"
+  fail "T-02 live review_run not preserved as required (rc=$rc_p02)"
 fi
 echo ""
 
@@ -809,11 +847,31 @@ dir_p03="$TEST_DIR/preserve-park"
 mkdir -p "$dir_p03"
 create_state_file "$dir_p03" '{"schema_version":3,"active":false,"phase":"review","review_run_history":[{"run_id":"old-stop","status":"stopped"}]}'
 sf_p03=$(state_file_path "$dir_p03")
-run_hook "$dir_p03" >/dev/null || true
-if [ -f "$sf_p03" ] && jq -e '.review_run_history[0].run_id=="old-stop" and (.review_run_history|length)==1 and (has("review_run")|not)' "$sf_p03" >/dev/null; then
+hist_p03=$(jq -c '.review_run_history' "$sf_p03")
+rc_p03=0
+run_hook "$dir_p03" >/dev/null || rc_p03=$?
+if [ "$rc_p03" -eq 0 ] && [ -f "$sf_p03" ] \
+  && [ "$(jq -c '.review_run_history' "$sf_p03")" = "$hist_p03" ] \
+  && jq -e 'has("review_run")|not' "$sf_p03" >/dev/null; then
   pass "T-03 park history kept"
 else
-  fail "T-03 park history missing or rewritten"
+  fail "T-03 park history missing or rewritten (rc=$rc_p03)"
+fi
+echo ""
+
+echo "T-03b: parked review_cycle_abandoned only is kept"
+dir_p03b="$TEST_DIR/preserve-abandoned"
+mkdir -p "$dir_p03b"
+create_state_file "$dir_p03b" '{"schema_version":3,"active":false,"phase":"review","review_cycle_abandoned":[{"run_id":"old-abandon","reason":"HEAD changed"}]}'
+sf_p03b=$(state_file_path "$dir_p03b")
+abd_p03b=$(jq -c '.review_cycle_abandoned' "$sf_p03b")
+rc_p03b=0
+run_hook "$dir_p03b" >/dev/null || rc_p03b=$?
+if [ "$rc_p03b" -eq 0 ] && [ -f "$sf_p03b" ] \
+  && [ "$(jq -c '.review_cycle_abandoned' "$sf_p03b")" = "$abd_p03b" ]; then
+  pass "T-03b abandoned history kept"
+else
+  fail "T-03b abandoned history missing or rewritten (rc=$rc_p03b)"
 fi
 echo ""
 
@@ -822,37 +880,69 @@ dir_p04="$TEST_DIR/preserve-collecting"
 mkdir -p "$dir_p04"
 create_state_file "$dir_p04" '{"schema_version":3,"active":true,"phase":"review","review_cycle":{"status":"collecting","review_context":{"cycle_count":2}}}'
 sf_p04=$(state_file_path "$dir_p04")
-run_hook "$dir_p04" >/dev/null || true
-if [ -f "$sf_p04" ] && jq -e '.review_cycle.status=="collecting" and .review_cycle.review_context.cycle_count==2' "$sf_p04" >/dev/null; then
+cyc_p04=$(jq -c '.review_cycle' "$sf_p04")
+rc_p04=0
+run_hook "$dir_p04" >/dev/null || rc_p04=$?
+if [ "$rc_p04" -eq 0 ] && [ -f "$sf_p04" ] \
+  && [ "$(jq -c '.review_cycle' "$sf_p04")" = "$cyc_p04" ]; then
   pass "T-04 collecting cycle kept"
 else
-  fail "T-04 collecting cycle missing"
+  fail "T-04 collecting cycle missing (rc=$rc_p04)"
 fi
 echo ""
 
-echo "T-05: jq deactivate failure keeps original bytes"
+echo "T-05: jq deactivate failure keeps original bytes (history present)"
 dir_p05="$TEST_DIR/preserve-jqfail"
 mkdir -p "$dir_p05"
 create_state_file "$dir_p05" '{"schema_version":3,"active":true,"phase":"review","review_run":{"status":"stopped","run_id":"run-jqfail"}}'
 sf_p05=$(state_file_path "$dir_p05")
 before_p05=$(digest_file "$sf_p05")
-JQ_REAL="$(command -v jq)"
 fake_jq_p05="$(mktemp -d "$TEST_DIR/fakejq-p05-XXXXXX")"
-cat > "$fake_jq_p05/jq" <<FAKE_JQ_P05
-#!/bin/bash
-for arg in "\$@"; do
-  case "\$arg" in
-    *'.active'*'.updated_at'*) exit 1 ;;
-  esac
-done
-exec '$JQ_REAL' "\$@"
-FAKE_JQ_P05
-chmod +x "$fake_jq_p05/jq"
-PATH="$fake_jq_p05:$PATH" run_hook "$dir_p05" >/dev/null || true
-if [ -f "$sf_p05" ] && [ "$(digest_file "$sf_p05")" = "$before_p05" ]; then
+install_deactivate_fail_jq "$fake_jq_p05"
+rc_p05=0
+PATH="$fake_jq_p05:$PATH" run_hook "$dir_p05" >/dev/null || rc_p05=$?
+if [ "$rc_p05" -eq 0 ] && [ -f "$sf_p05" ] && [ "$(digest_file "$sf_p05")" = "$before_p05" ]; then
   pass "T-05 original bytes kept after jq fail"
 else
-  fail "T-05 state deleted or rewritten after jq fail"
+  fail "T-05 state deleted or rewritten after jq fail (rc=$rc_p05)"
+fi
+echo ""
+
+echo "T-05b: history-less jq deactivate failure keeps original bytes"
+dir_p05b="$TEST_DIR/preserve-jqfail-none"
+mkdir -p "$dir_p05b"
+create_state_file "$dir_p05b" '{"schema_version":3,"active":true,"phase":"completed","issue_number":1}'
+sf_p05b=$(state_file_path "$dir_p05b")
+before_p05b=$(digest_file "$sf_p05b")
+fake_jq_p05b="$(mktemp -d "$TEST_DIR/fakejq-p05b-XXXXXX")"
+install_deactivate_fail_jq "$fake_jq_p05b"
+rc_p05b=0
+PATH="$fake_jq_p05b:$PATH" run_hook "$dir_p05b" >/dev/null || rc_p05b=$?
+if [ "$rc_p05b" -eq 0 ] && [ -f "$sf_p05b" ] && [ "$(digest_file "$sf_p05b")" = "$before_p05b" ]; then
+  pass "T-05b history-less jq fail kept original bytes"
+else
+  fail "T-05b history-less jq fail deleted or rewritten (rc=$rc_p05b)"
+fi
+echo ""
+
+echo "T-05c: history-less mv deactivate failure keeps original bytes"
+dir_p05c="$TEST_DIR/preserve-mvfail-none"
+mkdir -p "$dir_p05c"
+create_state_file "$dir_p05c" '{"schema_version":3,"active":true,"phase":"completed","issue_number":1}'
+sf_p05c=$(state_file_path "$dir_p05c")
+before_p05c=$(digest_file "$sf_p05c")
+shim_mv_p05c="$(mktemp -d "$TEST_DIR/shim-mv-p05c-XXXXXX")"
+cat > "$shim_mv_p05c/mv" <<'MV_SHIM_P05C'
+#!/bin/bash
+exit 19
+MV_SHIM_P05C
+chmod +x "$shim_mv_p05c/mv"
+rc_p05c=0
+PATH="$shim_mv_p05c:$PATH" run_hook "$dir_p05c" >/dev/null || rc_p05c=$?
+if [ "$rc_p05c" -eq 0 ] && [ -f "$sf_p05c" ] && [ "$(digest_file "$sf_p05c")" = "$before_p05c" ]; then
+  pass "T-05c history-less mv fail kept original bytes"
+else
+  fail "T-05c history-less mv fail deleted or rewritten (rc=$rc_p05c)"
 fi
 echo ""
 
@@ -861,11 +951,12 @@ dir_p06="$TEST_DIR/preserve-none"
 mkdir -p "$dir_p06"
 create_state_file "$dir_p06" '{"schema_version":3,"active":true,"phase":"completed","issue_number":1}'
 sf_p06=$(state_file_path "$dir_p06")
-run_hook "$dir_p06" >/dev/null || true
-if [ ! -f "$sf_p06" ]; then
+rc_p06=0
+run_hook "$dir_p06" >/dev/null || rc_p06=$?
+if [ "$rc_p06" -eq 0 ] && [ ! -f "$sf_p06" ]; then
   pass "T-06 history-less terminal state removed"
 else
-  fail "T-06 history-less state was kept"
+  fail "T-06 history-less state was kept (rc=$rc_p06)"
 fi
 echo ""
 
@@ -920,6 +1011,19 @@ if [ ! -f "$sf_p09" ]; then
   pass "T-09 empty history array still deleted"
 else
   fail "T-09 empty history array was kept"
+fi
+echo ""
+
+echo "T-09b: empty review_cycle_abandoned is not enough to keep"
+dir_p09b="$TEST_DIR/preserve-empty-abandoned"
+mkdir -p "$dir_p09b"
+create_state_file "$dir_p09b" '{"schema_version":3,"active":true,"phase":"completed","review_cycle_abandoned":[]}'
+sf_p09b=$(state_file_path "$dir_p09b")
+run_hook "$dir_p09b" >/dev/null || true
+if [ ! -f "$sf_p09b" ]; then
+  pass "T-09b empty abandoned array still deleted"
+else
+  fail "T-09b empty abandoned array was kept"
 fi
 echo ""
 
