@@ -109,7 +109,13 @@ _state_path() {
 # Windows Git Bash without util-linux) — matches _atomic_claim_write and the
 # wiki helpers; rename(2) atomicity holds without the advisory lock.
 _state_sha256() {
-  python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$1"
+  fi
 }
 
 _atomic_write() {
@@ -133,22 +139,27 @@ _atomic_write() {
     rm -f "$tmpfile" 2>/dev/null
     return 1
   }
-  _publish_state() {
+  if command -v flock >/dev/null 2>&1; then
+    ( flock -w 3 9 || { echo "ERROR: flock timeout: $lockfile" >&2; exit 1; }
+      if [ -n "$expected" ] && [ -f "$target" ]; then
+        current=$(_state_sha256 "$target") || exit 1
+        if [ "$current" != "$expected" ]; then
+          echo "ERROR: flow-state changed during write (expected-state mismatch)" >&2
+          exit 1
+        fi
+      fi
+      mv "$tmpfile" "$target" ) 9>"$lockfile" || rc=$?
+  else
+    # No flock (stock macOS / Windows Git Bash): lock skip + plain atomic mv.
     if [ -n "$expected" ] && [ -f "$target" ]; then
       current=$(_state_sha256 "$target") || return 1
       if [ "$current" != "$expected" ]; then
         echo "ERROR: flow-state changed during write (expected-state mismatch)" >&2
+        rm -f "$tmpfile" 2>/dev/null
         return 1
       fi
     fi
-    mv "$tmpfile" "$target"
-  }
-  if command -v flock >/dev/null 2>&1; then
-    ( flock -w 3 9 || { echo "ERROR: flock timeout: $lockfile" >&2; exit 1; }
-      _publish_state ) 9>"$lockfile" || rc=$?
-  else
-    # No flock (stock macOS / Windows Git Bash): lock skip + plain atomic mv.
-    _publish_state || rc=$?
+    mv "$tmpfile" "$target" || rc=$?
   fi
   [ -f "$tmpfile" ] && rm -f "$tmpfile" 2>/dev/null || true
   return $rc
@@ -807,26 +818,23 @@ cmd_review_cycle() {
   sid=$(_resolve_session_id) || return 1
   path=$(_state_path "$sid")
   local expected_hash=""
-  if [ "$operation" = restart ] && [ -f "$path" ]; then
+  # finish writes the file itself before returning; hashing here would race that write.
+  # Every other review mutator publishes only through this _atomic_write.
+  if [ "$operation" != finish ] && [ -f "$path" ]; then
     expected_hash=$(_state_sha256 "$path") || return 1
   fi
   updated=$(RITE_STATE_ROOT="$STATE_ROOT" python3 "$SCRIPT_DIR/scripts/lib/review-cycle.py" "$operation" \
     --state "$path" --session "$sid" --results-dir "$STATE_ROOT/.rite/review-results" "${args[@]}") || return 1
+  RITE_STATE_IF_MATCH="$expected_hash" _atomic_write "$path" "$updated" || {
+    echo "ERROR: review-cycle $operation persistence failed; retain evidence and retry the same operation" >&2
+    return 1
+  }
   if [ "$operation" = restart ]; then
-    RITE_STATE_IF_MATCH="$expected_hash" _atomic_write "$path" "$updated" || {
-      echo "ERROR: review-cycle $operation persistence failed; retain evidence and retry the same operation" >&2
-      return 1
-    }
     pr_number=$(printf '%s' "$updated" | jq -r '.pr_number // empty')
     case "$pr_number" in
       ''|*[!0-9]*) ;;
       *) rm -f "$STATE_ROOT/.rite/state/nb-sweep-done-${pr_number}.txt" ;;
     esac
-  else
-    _atomic_write "$path" "$updated" || {
-      echo "ERROR: review-cycle $operation persistence failed; retain evidence and retry the same operation" >&2
-      return 1
-    }
   fi
   if [ "$operation" = finish ]; then
     printf '%s' "$updated" | jq -r '.review_cycle | "[CONTEXT] REVIEW_CYCLE=completed; verdict=\(.verdict); result=\(.result_path)"' >&2

@@ -186,8 +186,12 @@ def restore(old, new):
         superseded = parked_meta.get("superseded_by") if isinstance(parked_meta, dict) else None
         if text(superseded):
             record = parked_meta.get("restart")
-            require(isinstance(record, dict) and text(record.get("old_run_id"))
-                    and isinstance(record.get("old_context"), dict)
+            frozen_ctx = None
+            if isinstance(parked_meta.get("review_cycle"), dict):
+                frozen_ctx = parked_meta["review_cycle"].get("review_context")
+            require(isinstance(record, dict)
+                    and record.get("old_run_id") == entry.get("run_id")
+                    and record.get("old_context") == frozen_ctx
                     and text(record.get("reason")) and text(record.get("requested_at"))
                     and record.get("new_run_id") == superseded,
                     "archived review run for this PR has an invalid supersession record")
@@ -405,9 +409,13 @@ def restart(state, args, directory):
     require(saved is not None, "saved stagnation observation required before restart")
     require(unchanged_receipt(saved, read(saved["result_path"])),
             "observed review receipt is missing or changed")
-    dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"],
-                           capture_output=True, text=True)
-    require(dirty.returncode == 0 and not dirty.stdout.strip(),
+    tracked = subprocess.run(["git", "status", "--porcelain", "-uno"],
+                             capture_output=True, text=True)
+    untracked = subprocess.run(["git", "ls-files", "--others", "--exclude-standard"],
+                               capture_output=True, text=True)
+    require(tracked.returncode == 0 and untracked.returncode == 0,
+            "git status failed; cannot verify a clean tree before restart")
+    require(not tracked.stdout.strip() and not untracked.stdout.strip(),
             "working tree is dirty; commit or restore before restart")
     root = os.environ.get("RITE_STATE_ROOT", "")
     if root:

@@ -1440,6 +1440,9 @@ finally:
 f = Fixture()
 try:
     (f.root / 'rite-config.yml').write_text('safety:\n  max_review_cycles: 1\n')
+    f.run(['git', 'add', 'rite-config.yml'])
+    f.run(['git', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+           'commit', '-q', '-m', 'fixture config'])
     f.cycle(roots=['input defect'], seconds=1801)
     check(f.state()['stop_reason'] == 'circuit-breaker:max-cycles', 'T-R03: fixture reached max-cycles')
     f.plan()
@@ -1485,6 +1488,65 @@ try:
     clock_dir.mkdir(parents=True, exist_ok=True)
     (clock_dir / ('review-clock-' + f.session + '.json')).write_text('{}')
     f.reject(lambda: restart(f, ok=False), 'T-R08: open clock refuses restart without inventing times')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    diverge(f)
+    (f.root / 'new-impl.sh').write_text('echo new\n')
+    f.reject(lambda: restart(f, ok=False), 'T-R10: untracked implementation files block restart')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    diverge(f)
+    old_id = f.state()['review_run']['run_id']
+    f.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--branch', 'chore/issue-43', '--pr', 0)
+    forged = f.state()
+    entry = forged['review_run_history'][-1]
+    check(entry['run_id'] == old_id and entry['status'] == 'stopped', 'T-R11: parked entry is the stop')
+    entry['parked']['superseded_by'] = 'forged-new-run'
+    entry['parked']['restart'] = dict(
+        old_run_id='00000000-0000-0000-0000-000000000000',
+        old_context={'run_id': 'other'},
+        reason='forged', requested_at='2026-01-02T00:00:00Z',
+        new_run_id='forged-new-run', head='deadbeef', at='2026-01-02T00:00:00Z')
+    dump(f.state_path, forged)
+    f.reject(lambda: f.flow('set', '--phase', 'pr', '--next', 'review', '--issue', 42, '--pr', 71, ok=False),
+             'T-R11: forged supersession does not skip restoring the stop')
+finally:
+    f.close()
+
+flow_src = (plugin / 'hooks/flow-state.sh').read_text()
+check('if [ "$operation" != finish ]' in flow_src
+      and 'RITE_STATE_IF_MATCH="$expected_hash" _atomic_write' in flow_src,
+      'T-R09: review mutators other than finish publish with expected-state')
+
+f = Fixture()
+try:
+    diverge(f)
+    f.plan()
+    import hashlib
+    stopped_bytes = f.state_path.read_bytes()
+    old_hash = hashlib.sha256(stopped_bytes).hexdigest()
+    copy_path = f.private / 'stopped-copy.json'
+    copy_path.write_bytes(stopped_bytes)
+    retry_out = subprocess.run(
+        ['python3', str(plugin / 'hooks/scripts/lib/review-cycle.py'), 'retry',
+         '--state', str(copy_path), '--session', f.session,
+         '--results-dir', str(f.root / '.rite/review-results'),
+         '--plan', str(f.plan_path), '--issue', str(f.issue_path)],
+        cwd=f.root, env=f.env, text=True, capture_output=True)
+    check(retry_out.returncode == 0, 'T-R09: retry against a stopped snapshot still computes')
+    restart(f)
+    new_id = f.state()['review_run']['run_id']
+    live_hash = hashlib.sha256(f.state_path.read_bytes()).hexdigest()
+    check(live_hash != old_hash, 'T-R09: restart changed the bytes a stale retry hashed')
+    check(f.state()['review_run']['run_id'] == new_id
+          and f.state()['review_run']['status'] == 'active',
+          'T-R09: stale retry candidate is not published over the new run')
 finally:
     f.close()
 
