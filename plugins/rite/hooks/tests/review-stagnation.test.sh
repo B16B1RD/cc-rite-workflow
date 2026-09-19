@@ -229,6 +229,140 @@ class Fixture:
         check(self.state_path.read_bytes() == before, label + ': last state retained')
 
 
+# Explicit command corrections preserve diagnosis and failed execution evidence.
+f = Fixture()
+try:
+    f.cycle(['input validation'], seconds=1801)
+    plan = f.plan(replan=True)
+    plan['verifications'].append(dict(id='related', kind='related', command='test -f source.txt',
+                                      inputs=['source.txt'], environment=[]))
+    plan['groups'][0]['verification_ids'] = ['full', 'related']
+    plan['verifications'][0]['command'] = "bash -c 'exit 2'"
+    dump(f.plan_path, plan)
+    def amend(ok=True, reason='assert the expected failure'):
+        return f.flow('review-replan', '--amend', '--reason', reason,
+                      '--plan', f.plan_path, '--issue', f.issue_path, ok=ok)
+    f.reject(lambda: amend(ok=False), 'amend without a registered replan is rejected')
+    f.replan()
+    f.scope()
+    f.reject(lambda: f.scope('verify', ok=False), 'bad expected-failure command fails')
+    before = f.state()
+    check(len(before['review_run']['replans']) == 1, 'one diagnostic replan before amendment')
+    plan['verifications'][0]['command'] = "bash -c 'exit 2'; actual=$?; test \"$actual\" -eq 2"
+    dump(f.plan_path, plan)
+    f.reject(lambda: f.replan(ok=False), 'ordinary replan rejects changed pinned command')
+    f.reject(lambda: f.flow('review-replan', '--reason', 'assert the expected failure',
+                            '--plan', f.plan_path, '--issue', f.issue_path, ok=False),
+             '--reason without --amend is rejected')
+    f.reject(lambda: f.flow('review-replan', '--amend', '--reason', '   ',
+                            '--plan', f.plan_path, '--issue', f.issue_path, ok=False),
+             'blank --reason is rejected')
+    unchanged = copy.deepcopy(plan)
+    dump(f.plan_path, f.state()['review_run']['replans'][0]['plan'])
+    f.reject(lambda: amend(ok=False), 'amendment requires a command correction')
+    dump(f.plan_path, plan)
+    state_before = f.state_path.read_bytes()
+    stopped = f.state()
+    stopped['review_run'].update(status='stopped', stop_reason='circuit-breaker:divergence')
+    dump(f.state_path, stopped)
+    f.reject(lambda: amend(ok=False), 'stopped run cannot amend')
+    f.state_path.write_bytes(state_before)
+    verification_path = f.private / 'state' / ('fix-verification-' + f.session + '.json')
+    checked_path = f.private / 'state' / ('fix-plan-' + f.session + '.json')
+    evidence_before = verification_path.read_bytes()
+    checked_before = checked_path.read_bytes()
+    fake_bin = f.private / 'amend-bin'
+    fake_bin.mkdir()
+    fake_mv = fake_bin / 'mv'
+    fake_mv.write_text('#!/bin/sh\nexit 7\n')
+    fake_mv.chmod(0o755)
+    old_path = f.env['PATH']
+    f.env['PATH'] = str(fake_bin) + ':' + old_path
+    f.reject(lambda: amend(ok=False), 'failed amendment persistence retains state')
+    f.env['PATH'] = old_path
+    check(verification_path.read_bytes() == evidence_before, 'failed persistence retains verification bytes')
+    check(checked_path.read_bytes() == checked_before, 'failed persistence retains checked-plan bytes')
+    broken = verification_path.read_bytes()
+    verification_path.write_text('not-json')
+    f.reject(lambda: amend(ok=False), 'malformed verification evidence fails loudly')
+    check(verification_path.read_text() == 'not-json', 'malformed verification file is left in place')
+    verification_path.write_bytes(broken)
+    # Workflow record markers are explicitly not specification changes.
+    f.with_issue(f.issue['body'] + '\n\n<!-- rite:nbr:comment-id:101 -->')
+    plan['issue_body'] = f.issue['body']
+    dump(f.plan_path, plan)
+    first_reason = 'assert the expected failure'
+    amend()
+    saved = f.state()['review_run']['replans'][0]
+    check(len(f.state()['review_run']['replans']) == 1, 'amendment does not add a diagnostic replan')
+    check(saved['amendments'][0]['evidence']['fix-verification']['results']['full']['exit_code'] == 2,
+          'amendment archives failed verification')
+    check(saved['amendments'][0]['evidence']['fix-plan'] is not None, 'amendment archives checked-plan')
+    check(f.state()['cycle_count'] == before['cycle_count'] and
+          f.state()['review_run']['observations'] == before['review_run']['observations'],
+          'amendment preserves cycle and observations')
+    check(verification_path.read_bytes() == evidence_before and checked_path.read_bytes() == checked_before,
+          'successful amendment does not rewrite external evidence files')
+    replay = f.state_path.read_bytes()
+    amend()
+    check(f.state_path.read_bytes() == replay, 'exact amendment replay is byte-identical')
+    f.reject(lambda: f.scope('verify', ok=False), 'amended plan requires fresh check')
+    f.scope()
+    related_verify = f.scope('verify')
+    check('FIX_VERIFICATION=executed; id=related' in related_verify.stdout, 'related command executes on first success')
+    check('pending_fix' in f.state()['review_run'], 'full corrected verification authorizes fix')
+    for bad in ('scope', 'spec'):
+        altered = copy.deepcopy(plan)
+        if bad == 'scope':
+            altered['constraints']['targets'].append('other.txt')
+        else:
+            altered['issue_body'] += '\n## Goal\nDifferent goal\n'
+        dump(f.plan_path, altered)
+        f.reject(lambda: amend(ok=False), 'amend rejects ' + bad + ' changes')
+    first_plan = copy.deepcopy(plan)
+    plan['verifications'][0]['command'] = 'test -s source.txt'
+    dump(f.plan_path, plan)
+    amend(reason='check source content too')
+    check('pending_fix' not in f.state()['review_run'], 'subsequent amendment invalidates pending fix')
+    audit = f.state()['review_run']['replans'][0]['amendments']
+    check(len(f.state()['review_run']['replans']) == 1 and len(audit) == 2,
+          'two corrections stay on one replan record')
+    check(audit[1]['pending_fix'] is not None,
+          'successive correction preserves old pending authorization as evidence only')
+    check(audit[0]['evidence']['fix-verification']['results']['full']['exit_code'] == 2,
+          'first amendment keeps archived exit 2')
+    check(audit[1]['old_plan_hash'] == audit[0]['new_plan_hash'],
+          'second amendment old hash is the first new hash')
+    dump(f.plan_path, first_plan)
+    f.reject(lambda: amend(ok=False, reason=first_reason),
+             'superseded amendment plan and reason cannot replay')
+    f.reject(lambda: f.scope('verify', ok=False), 'second correction needs fresh check')
+    # The checked-plan file still approves the first correction: hash alone is insufficient.
+    plan['verifications'][0]['command'] = "bash -c 'exit 2'; actual=$?; test \"$actual\" -eq 2"
+    dump(f.plan_path, plan)
+    amend(reason='restore the expected-failure assertion')
+    f.reject(lambda: f.scope('verify', ok=False), 'returning to an old approved hash still needs fresh check')
+    related_command = 'test -f source.txt && test -s source.txt'
+    plan['verifications'][1]['command'] = related_command
+    dump(f.plan_path, plan)
+    amend(reason='also assert related file is non-empty')
+    leftover = verification_path.read_bytes()
+    f.scope()
+    related_again = f.scope('verify')
+    check('FIX_VERIFICATION=executed; id=related' in related_again.stdout,
+          'changed related command re-executes despite leftover verification file')
+    check(leftover != verification_path.read_bytes(),
+          'changed related command rewrites leftover verification results')
+    f.scope()
+    (f.root / 'source.txt').write_text('corrected source\n')
+    f.scope('verify')
+    f.commit()
+    f.start()
+    check(f.state()['cycle_count'] == before['cycle_count'] + 1, 'corrected plan advances normal next review')
+    f.reject(lambda: amend(ok=False), 'old amendment cannot replay into next context')
+finally:
+    f.temp.cleanup()
+
 # A completed standalone cycle must not overwrite the run being restored.
 for original_count, pending in ((1, False), (2, False), (2, True)):
     f = Fixture()

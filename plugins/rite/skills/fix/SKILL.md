@@ -1277,6 +1277,8 @@ if printf '%s' "$fix_state" | jq -e '.review_run.current_decision.action == "sto
 fi
 ```
 
+登録済み replan の検証コマンドの誤りは、[停滞診断の訂正契約](../../references/review-stagnation.md#登録した検証コマンドの訂正) に従い `review-replan --amend --reason "訂正理由"` と同じ plan / issue 引数で訂正する。旧証跡を保持したまま、scope check と全検証を再実行する。
+
 解決不能は検討した範囲内代替と契約上の理由を保存して `stop` とする。保存・権限・証跡の失敗は `[fix:error]` のまま保持し、解決不能という判断へ変換しない。
 
 ```bash

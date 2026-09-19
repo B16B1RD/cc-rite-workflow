@@ -395,6 +395,7 @@ def main():
     parser.add_argument("--issue")
     parser.add_argument("--plan")
     parser.add_argument("--reason")
+    parser.add_argument("--amend", action="store_true")
     args = parser.parse_args()
     path, directory = Path(args.state), Path(args.results_dir)
     if args.operation == "guard-set":

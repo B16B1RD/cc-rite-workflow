@@ -100,7 +100,15 @@ rm "$clock_file"
 
 ## 見直し・修正・再開
 
-`action=replan` のときは [一括修正計画](../skills/fix/references/fix-plan.md) に代替案・選択・再発防止検証を含め、`flow-state.sh review-replan --plan <絶対パス> --issue <最新 Issue JSON の絶対パス>` で保存する。通常の scope check は観測欠損・未完了の見直しを拒否する。見直しの保存前に編集を開始しない。
+`action=replan` のときは [一括修正計画](../skills/fix/references/fix-plan.md) に代替案・選択・再発防止検証を含め、`flow-state.sh review-replan --plan <絶対パス> --issue <最新 Issue JSON の絶対パス>` で保存する。通常の scope check は観測欠損・未完了の見直しを拒否する。見直しの保存前に編集を開始しない。診断用の保存と、下の検証コマンド訂正は別操作である。
+
+### 登録した検証コマンドの訂正
+
+登録済み replan の検証コマンドに誤りがあるときは、同じ completed context / HEAD の active run で `review-replan --amend --reason "訂正理由" --plan /absolute/fix-plan.json --issue /absolute/issue.json` を実行する。変更できるのは既存 `verifications` の `command` のみで、ID・kind・inputs・指摘の処置・範囲・代替案・Issue の仕様は維持する。仕様外の記録 marker 更新は通常と同じ扱いになる。非ゼロ終了を期待する試験は、その終了値を検査して期待どおりなら全体が 0 で終了するコマンドにする。
+
+旧計画・実際の検証証跡（失敗を含む）・旧 pending_fix・理由を当該 replan の `amendments` に保存する。診断用 replan 回数、cycle、観測、時計、retry 権は増減させず、訂正回数の追加上限は設けない。最新訂正の計画と理由が一致する再実行は履歴を増やさない。より新しい訂正がある状態で旧計画と旧理由を再実行しても成功 replay にはならない。stopped run の解除には使えない。
+
+訂正後は pending_fix が無効になり、必ず scope `check` と `verify --kind all` をやり直す。以前と同じ計画 hash に戻した場合も再 check が必要。変更したコマンドの成功結果は再利用しない。保存失敗時は旧 state と証跡を保持し、同じ訂正を再実行できる。訂正は品質判定ではなく、全検証と後続レビューを省略する許可にはならない。
 
 `review-fix-scope-check.sh verify --kind all` の成功時に検証済み tree fingerprint と対象根因を保存する。次の `review-start` で新 HEAD・clean tree と検証済み内容の一致を検査して修正 HEAD を確定し、再発判定に用いる。コマンドの成功申告、未検証の commit、別 context の結果を修正履歴に加えない。
 
