@@ -1235,7 +1235,7 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 要対応:
 {action_items}
 
-再開方法: /rite:iterate {pr_number} を明示的に再実行する（fresh entry として run 開始点を更新し full scope から始める）。
+再開方法: `review_run` が無い legacy state では /rite:iterate {pr_number} を明示再実行する。`review_run` がある停止は通常の再実行では新 run にならない。発散なら限定 retry、回数上限を含む既知 breaker の completed 停止は明示承認の `review-restart`（契約は 6.2 と [review-stagnation.md](../../references/review-stagnation.md)）。
 
 <!-- [iterate:max-cycles-reached] -->
 ```
@@ -1273,15 +1273,16 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 
 #### `{resume_routes}`（6.2 のみ）
 
-停止した run に残る経路は「抜ける」と、`divergence` 限定の「戻る」の 2 本だけで、どちらも停止理由を消さない。契約の SoT は [review-stagnation.md 停止後の退路と再開](../../references/review-stagnation.md#停止後の退路と再開)。
+停止した run に残る経路は「抜ける」、`divergence` 限定の「戻る」、既知 breaker の completed 停止に対する明示承認の「新 run」の 3 本で、どれも通常 iterate / recover では停止理由を消さない。契約の SoT は [review-stagnation.md 停止後の退路と再開](../../references/review-stagnation.md#停止後の退路と再開)。
 
 分岐は marker だけで行う。flow-state を読み直して条件を作らない。`ITERATE_STAGNATION` は ステップ 3 の `iterate-stagnation-route` が emit するが、**ステップ 1 の fire 分岐はステップ 3 を通らずステップ 6 へ直行する**ため、この marker が出ないまま本節に到達する起動がある。既定は `legacy` ではなく marker 不在の行が担う:
 
 | `ITERATE_STAGNATION` | `{cb_reason}` | `{resume_routes}` |
 |---|---|---|
 | `legacy` | 任意 | 下記「legacy 再開」1 行のみ |
-| それ以外（`stop` / `continue` / `replan` / marker 不在） | `divergence` | 下記「戻る」「抜ける」の 2 行 |
-| それ以外（同上） | `divergence` 以外 | 下記「抜ける」1 行のみ |
+| それ以外（`stop` / `continue` / `replan` / marker 不在） | `divergence` | 下記「戻る」「抜ける」「新 run」 |
+| それ以外（同上） | `max-cycles` | 下記「抜ける」「新 run」 |
+| それ以外（同上） | 上記以外 | 下記「抜ける」1 行のみ |
 
 marker 不在を `legacy` に倒さない。
 rationale: references/rationale.md#resume-routes-no-state-read
@@ -1312,6 +1313,15 @@ rationale: references/rationale.md#resume-routes-no-state-read
   （退避した run がそのまま復元されるので停止は往復で消えない。復元後も停止したままで通常の
   phase 更新は拒否される。この停止から先へ進めるのは再試行権を発行できるときだけで、発行できるのは
   circuit-breaker:divergence に限る）
+```
+
+「新 run」の行（`divergence` / `max-cycles`）:
+
+```
+- この停止 run への明示承認で新しい run を始める:
+  `bash "{plugin_root}"/hooks/flow-state.sh review-restart --selection <名簿 JSON の絶対パス> --expected-run-id <停止した run_id> --approval <今回の承認 JSON の絶対パス>`
+  （旧 run は reason・要求時刻・対象 context ごと保管する。通常の iterate / recover / 自動再試行では呼ばない。
+  collecting・未知の停止理由・未 close の clock は拒否する）
 ```
 
 「legacy 再開」の行（`ITERATE_STAGNATION=legacy` のみ）:

@@ -10,6 +10,7 @@ import re
 import stat
 import subprocess
 import tempfile
+import uuid
 
 cycle = importlib.import_module("review-cycle")
 require, read = cycle.require, cycle.read
@@ -181,6 +182,16 @@ def restore(old, new):
                 and frozen.get("status") == "completed"
                 and (entry.get("completed_context") == context or entry.get("deferred_context") == context)):
             continue
+        parked_meta = entry.get("parked")
+        superseded = parked_meta.get("superseded_by") if isinstance(parked_meta, dict) else None
+        if text(superseded):
+            record = parked_meta.get("restart")
+            require(isinstance(record, dict) and text(record.get("old_run_id"))
+                    and isinstance(record.get("old_context"), dict)
+                    and text(record.get("reason")) and text(record.get("requested_at"))
+                    and record.get("new_run_id") == superseded,
+                    "archived review run for this PR has an invalid supersession record")
+            continue
         require(entry.get("issue_number") == new.get("issue_number")
                 and entry.get("session_id") == new.get("session_id"),
                 "archived review run for this PR belongs to another Issue or session")
@@ -334,6 +345,93 @@ def retry(state, args, directory):
     run.update(status="active", current_decision=dict(action="observe", reasons=[]))
     state.pop("stop_reason", None)
     state.update(active=True, updated_at=cycle.now())
+    return state
+
+
+ALLOWED_RESTART_REASONS = ("circuit-breaker:divergence", "circuit-breaker:max-cycles")
+
+
+def restart(state, args, directory):
+    """Archive a stopped run and freeze a new cycle-1 run against an explicit approval.
+
+    Distinct from retry(): a new run_id and counter, not the same run reopened.
+    The approval record is stored on the parked run so the tmp input can vanish.
+    """
+    approval = read(args.approval)
+    require(isinstance(approval, dict), "approval must be a JSON object")
+    require(approval.get("kind") == "explicit-fresh-entry", "approval kind must be explicit-fresh-entry")
+    require(text(approval.get("reason")), "approval reason required")
+    require(text(approval.get("requested_at")), "approval requested_at required")
+    require(isinstance(approval.get("review_context"), dict), "approval review_context required")
+    require(type(approval.get("issue_number")) is int and approval["issue_number"] > 0,
+            "approval issue_number must be a positive integer")
+    require(type(approval.get("pr_number")) is int and approval["pr_number"] > 0,
+            "approval pr_number must be a positive integer")
+    require(text(getattr(args, "expected_run_id", "")), "expected run id required")
+    selected = cycle.read(args.selection)
+    cycle.roster(selected)
+
+    history = list(state.get("review_run_history", []))
+    live = state.get("review_run")
+    if isinstance(live, dict) and live.get("status") == "active":
+        for entry in reversed(history):
+            parked = entry.get("parked") if isinstance(entry, dict) else None
+            record = parked.get("restart") if isinstance(parked, dict) else None
+            if (isinstance(parked, dict) and parked.get("superseded_by") == live.get("run_id")
+                    and isinstance(record, dict)
+                    and record.get("old_run_id") == args.expected_run_id
+                    and record.get("reason") == approval["reason"]
+                    and record.get("requested_at") == approval["requested_at"]
+                    and record.get("old_context") == approval["review_context"]):
+                return state
+
+    run, context = current(state, args.session, completed=True, check_head=False)
+    require(run["status"] == "stopped", "review run is not stopped")
+    require(run["run_id"] == args.expected_run_id, "expected run id does not match the stopped run")
+    require(run.get("stop_reason") in ALLOWED_RESTART_REASONS,
+            "only circuit-breaker:divergence or circuit-breaker:max-cycles can restart; stopped: "
+            + str(run.get("stop_reason")))
+    require(run.get("current_decision", {}).get("action") == "stop",
+            "stopped run is missing a stop decision")
+    require(approval.get("run_id") == run["run_id"] == context["run_id"],
+            "approval run id does not match the stopped run")
+    require(approval["review_context"] == context,
+            "approval review_context does not match the frozen context")
+    require(approval["issue_number"] == state.get("issue_number") == run["issue_number"],
+            "approval issue does not match the stopped run")
+    require(approval["pr_number"] == state.get("pr_number") == run["pr_number"] == context["pr_number"],
+            "approval PR does not match the stopped run")
+    saved = observation(run, context)
+    require(saved is not None, "saved stagnation observation required before restart")
+    require(unchanged_receipt(saved, read(saved["result_path"])),
+            "observed review receipt is missing or changed")
+    dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"],
+                           capture_output=True, text=True)
+    require(dirty.returncode == 0 and not dirty.stdout.strip(),
+            "working tree is dirty; commit or restore before restart")
+    root = os.environ.get("RITE_STATE_ROOT", "")
+    if root:
+        clock_file = Path(root) / ".rite" / "state" / ("review-clock-" + args.session + ".json")
+        require(not clock_file.exists(), "unresolved review clock is open; close or recover it first")
+
+    new_run_id = str(uuid.uuid4())
+    parked_run = park(state, copy.deepcopy(run))
+    parked_run["parked"]["superseded_by"] = new_run_id
+    parked_run["parked"]["restart"] = dict(
+        old_run_id=run["run_id"], old_context=copy.deepcopy(context),
+        reason=approval["reason"], requested_at=approval["requested_at"],
+        new_run_id=new_run_id, head=cycle.head(), at=cycle.now())
+    history.append(parked_run)
+    new_context = dict(session_id=args.session, run_id=new_run_id, pr_number=state["pr_number"],
+                       cycle_count=1, commit_sha=cycle.head())
+    state.update(phase="review", cycle_count=1, active=True, updated_at=cycle.now(),
+                 next_action="/rite:pr-review " + str(state["pr_number"]),
+                 review_cycle=dict(review_context=new_context, selected_reviewers=selected,
+                                   status="collecting"),
+                 review_run_history=history)
+    state.pop("stop_reason", None)
+    state.pop("handoff", None)
+    initialize(state)
     return state
 
 

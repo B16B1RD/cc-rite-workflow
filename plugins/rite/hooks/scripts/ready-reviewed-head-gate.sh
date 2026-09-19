@@ -212,6 +212,36 @@ if [ -d "$results_dir" ]; then
     exit 1
   }
   latest=$(printf '%s\n' "$find_raw" | LC_ALL=C sort -r | head -n 1)
+  _live_run=""
+  if [ -n "$plugin_root" ] && [ -x "$plugin_root/hooks/flow-state.sh" ]; then
+    _fs=$(bash "$plugin_root/hooks/flow-state.sh" path 2>/dev/null) || _fs=""
+    if [ -n "$_fs" ] && [ -f "$_fs" ]; then
+      _live_pr=$(jq -r '.pr_number // empty' "$_fs" 2>/dev/null) || _live_pr=""
+      if [ "$_live_pr" = "$pr_number" ]; then
+        _live_run=$(jq -r '.review_run.run_id // empty' "$_fs" 2>/dev/null) || _live_run=""
+      fi
+    fi
+  fi
+  if [ -n "$_live_run" ]; then
+    _matched=""
+    while IFS= read -r _cand; do
+      [ -n "$_cand" ] || continue
+      _rid=$(jq -r '.review_context.run_id // empty' "$_cand" 2>/dev/null) || _rid=""
+      if [ "$_rid" = "$_live_run" ]; then
+        _matched="$_cand"
+        break
+      fi
+    done <<EOF
+$(printf '%s\n' "$find_raw" | LC_ALL=C sort -r)
+EOF
+    if [ -z "$_matched" ]; then
+      echo "ERROR: Ready reviewed-head gate: PR #$pr_number の現在の review run に対応する review JSON がありません。Ready 化を拒否します。" >&2
+      echo "  次の行動: /rite:iterate $pr_number" >&2
+      echo "[CONTEXT] READY_REVIEWED_HEAD=missing_json; pr=$pr_number; reason=live_run_receipt_missing" >&2
+      exit 1
+    fi
+    latest="$_matched"
+  fi
 fi
 if [ -z "$latest" ] || [ ! -f "$latest" ]; then
   echo "ERROR: Ready reviewed-head gate: PR #$pr_number の review JSON がありません（レビュー未実施、または archive 済み）。Ready 化を拒否します。" >&2

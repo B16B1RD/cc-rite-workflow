@@ -60,6 +60,8 @@
 #                           /rite:fix の accept-only cycle で base_sha == HEAD となり必ず成立する)
 #   run_pin_unresolved    — state root を解決できず run 開始点 pin の在否を確認できない
 #   run_pin_unreadable    — run 開始点 pin は存在するが読めない
+#   new_run_first_cycle   — live review_run の cycle_count が 1（明示承認 fresh entry の初回）
+#   foreign_run_json      — 候補 prev JSON の review_context.run_id が live run と違う
 #   jq_missing            — jq が PATH 上に無い
 #
 # Exit codes:
@@ -200,6 +202,31 @@ fi
 
 prev_json="${cs_files[0]:-}"
 [ -n "$prev_json" ] || emit_full no_prev_json
+
+# Session live run is the scope boundary for an authorized fresh entry. Pin
+# files are not a second transaction; cycle 1 and a different run_id both mean
+# there is no previous result in this run.
+_live_run=""
+_live_cc=""
+if [ -x "$_rcs_dir/../hooks/flow-state.sh" ]; then
+  _fs=$(bash "$_rcs_dir/../hooks/flow-state.sh" path 2>/dev/null) || _fs=""
+  if [ -n "$_fs" ] && [ -f "$_fs" ]; then
+    _live_pr=$(jq -r '.pr_number // empty' "$_fs" 2>/dev/null) || _live_pr=""
+    if [ "$_live_pr" = "$PR_NUMBER" ]; then
+      _live_run=$(jq -r '.review_run.run_id // empty' "$_fs" 2>/dev/null) || _live_run=""
+      _live_cc=$(jq -r '.cycle_count // 0' "$_fs" 2>/dev/null) || _live_cc=0
+    fi
+  fi
+fi
+if [ -n "$_live_run" ] && [ "$_live_cc" = "1" ]; then
+  emit_full new_run_first_cycle
+fi
+if [ -n "$_live_run" ]; then
+  _prev_run=$(jq -r '.review_context.run_id // empty' "$prev_json" 2>/dev/null) || _prev_run=""
+  if [ "$_prev_run" != "$_live_run" ]; then
+    emit_full foreign_run_json
+  fi
+fi
 
 # 失敗経路の診断は捨てない。`.rite/review-results/` は同一 PR の JSON を timestamp 付きで複数世代
 # 持つため、reason だけでは「どのファイルが壊れていたか」を運用者が特定できない

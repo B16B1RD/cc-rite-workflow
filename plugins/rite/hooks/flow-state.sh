@@ -108,8 +108,13 @@ _state_path() {
 # Degrades to a plain atomic mv when flock is unavailable (stock macOS /
 # Windows Git Bash without util-linux) — matches _atomic_claim_write and the
 # wiki helpers; rename(2) atomicity holds without the advisory lock.
+_state_sha256() {
+  python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$1"
+}
+
 _atomic_write() {
   local target="$1" content="$2" lockfile="${1}.lock" tmpfile rc=0
+  local expected="${RITE_STATE_IF_MATCH:-}"
   tmpfile=$(mktemp "${target}.XXXXXX") || return 1
   # printf rc を必ず check し、disk-full / EROFS / quota exceeded で empty/partial tmpfile が
   # 生成されたまま下流の mv が "成功" して target を破損内容で上書きする経路を遮断する。
@@ -128,12 +133,22 @@ _atomic_write() {
     rm -f "$tmpfile" 2>/dev/null
     return 1
   }
+  _publish_state() {
+    if [ -n "$expected" ] && [ -f "$target" ]; then
+      current=$(_state_sha256 "$target") || return 1
+      if [ "$current" != "$expected" ]; then
+        echo "ERROR: flow-state changed during write (expected-state mismatch)" >&2
+        return 1
+      fi
+    fi
+    mv "$tmpfile" "$target"
+  }
   if command -v flock >/dev/null 2>&1; then
     ( flock -w 3 9 || { echo "ERROR: flock timeout: $lockfile" >&2; exit 1; }
-      mv "$tmpfile" "$target" ) 9>"$lockfile" || rc=$?
+      _publish_state ) 9>"$lockfile" || rc=$?
   else
     # No flock (stock macOS / Windows Git Bash): lock skip + plain atomic mv.
-    mv "$tmpfile" "$target" || rc=$?
+    _publish_state || rc=$?
   fi
   [ -f "$tmpfile" ] && rm -f "$tmpfile" 2>/dev/null || true
   return $rc
@@ -434,9 +449,13 @@ cmd_set() {
   # `_atomic_write` の header 契約 ("Callers MUST check rc") を遵守 (`_migrate_file` の
   # `_atomic_write` 呼び出し直前と対称化)。
   # The cycle object survives ordinary sets; only review-start/finish may advance it.
+  local expected_hash=""
+  if [ -f "$path" ]; then
+    expected_hash=$(_state_sha256 "$path") || return 1
+  fi
   new=$(printf '%s' "$new" | python3 "$SCRIPT_DIR/scripts/lib/review-cycle.py" guard-set \
     --state "$path" --session "$sid" --results-dir "$STATE_ROOT/.rite/review-results") || return 1
-  _atomic_write "$path" "$new" || return 1
+  RITE_STATE_IF_MATCH="$expected_hash" _atomic_write "$path" "$new" || return 1
   # Record only after the write physically landed, so the log never claims a
   # transition that failed to persist. Reuses `$now` (the same timestamp the
   # state file's `updated_at` carries) so a record can be cross-referenced with
@@ -779,7 +798,7 @@ cmd_review_cycle() {
   while [ $# -gt 0 ]; do
     case "$operation:$1" in
       start:--stagnation|replan:--amend) args+=("$1"); shift ;;
-      start:--selection|finish:--manifest|finish:--content-file|finish:--pending-id|clock:--input|observe:--input|observe:--issue|replan:--plan|replan:--issue|replan:--reason|retry:--plan|retry:--issue|abandon:--reason)
+      start:--selection|finish:--manifest|finish:--content-file|finish:--pending-id|clock:--input|observe:--input|observe:--issue|replan:--plan|replan:--issue|replan:--reason|retry:--plan|retry:--issue|restart:--selection|restart:--approval|restart:--expected-run-id|abandon:--reason)
         [ $# -ge 2 ] || { echo "ERROR: missing value for $1" >&2; return 1; }
         args+=("$1" "$2"); shift 2 ;;
       *) echo "ERROR: unknown review-cycle option: $1" >&2; return 1 ;;
@@ -787,17 +806,33 @@ cmd_review_cycle() {
   done
   sid=$(_resolve_session_id) || return 1
   path=$(_state_path "$sid")
-  updated=$(python3 "$SCRIPT_DIR/scripts/lib/review-cycle.py" "$operation" \
+  local expected_hash=""
+  if [ "$operation" = restart ] && [ -f "$path" ]; then
+    expected_hash=$(_state_sha256 "$path") || return 1
+  fi
+  updated=$(RITE_STATE_ROOT="$STATE_ROOT" python3 "$SCRIPT_DIR/scripts/lib/review-cycle.py" "$operation" \
     --state "$path" --session "$sid" --results-dir "$STATE_ROOT/.rite/review-results" "${args[@]}") || return 1
-  _atomic_write "$path" "$updated" || {
-    echo "ERROR: review-cycle $operation persistence failed; retain evidence and retry the same operation" >&2
-    return 1
-  }
+  if [ "$operation" = restart ]; then
+    RITE_STATE_IF_MATCH="$expected_hash" _atomic_write "$path" "$updated" || {
+      echo "ERROR: review-cycle $operation persistence failed; retain evidence and retry the same operation" >&2
+      return 1
+    }
+    pr_number=$(printf '%s' "$updated" | jq -r '.pr_number // empty')
+    case "$pr_number" in
+      ''|*[!0-9]*) ;;
+      *) rm -f "$STATE_ROOT/.rite/state/nb-sweep-done-${pr_number}.txt" ;;
+    esac
+  else
+    _atomic_write "$path" "$updated" || {
+      echo "ERROR: review-cycle $operation persistence failed; retain evidence and retry the same operation" >&2
+      return 1
+    }
+  fi
   if [ "$operation" = finish ]; then
     printf '%s' "$updated" | jq -r '.review_cycle | "[CONTEXT] REVIEW_CYCLE=completed; verdict=\(.verdict); result=\(.result_path)"' >&2
   fi
   case "$operation" in
-    clock|observe|replan|retry|close) printf '%s' "$updated" | jq '.review_run' ;;
+    clock|observe|replan|retry|restart|close) printf '%s' "$updated" | jq '.review_run' ;;
     # After abandon `.review_cycle` is gone; the appended record is the outcome.
     # A no-op prints the last record, or null if none; REVIEW_ABANDON=noop
     # on stderr distinguishes it from a new abandonment.
@@ -824,6 +859,7 @@ case "${1:-}" in
   review-observe) shift; cmd_review_cycle observe "$@" ;;
   review-replan) shift; cmd_review_cycle replan "$@" ;;
   review-retry) shift; cmd_review_cycle retry "$@" ;;
+  review-restart) shift; cmd_review_cycle restart "$@" ;;
   review-close) shift; cmd_review_cycle close "$@" ;;
   review-defer) shift; cmd_review_cycle defer "$@" ;;
   review-abandon) shift; cmd_review_cycle abandon "$@" ;;
@@ -836,7 +872,7 @@ case "${1:-}" in
   path) shift; cmd_path "$@" ;;
   *)
     cat >&2 <<EOF
-Usage: $0 {set|get|review-start|review-finish|review-retry|review-abandon|deactivate|reap-issue|clear-worktree|consume-handoff|migrate|path} [options]
+Usage: $0 {set|get|review-start|review-finish|review-retry|review-restart|review-abandon|deactivate|reap-issue|clear-worktree|consume-handoff|migrate|path} [options]
   set --phase <P> --next <T> [--issue N] [--branch S] [--pr N] [--parent-issue N]
       [--active true|false] [--handoff CMD] [--session UUID] [--if-exists] [--preserve-error-count]
       [--worktree PATH] [--require-worktree]   # --require-worktree: warn + emit WORKTREE_INVARIANT marker when worktree empty (non-blocking)
@@ -848,6 +884,7 @@ Usage: $0 {set|get|review-start|review-finish|review-retry|review-abandon|deacti
   review-observe --input /absolute/observation.json --issue /absolute/issue.json
   review-replan --plan /absolute/fix-plan.json --issue /absolute/issue.json [--amend --reason TEXT]
   review-retry --plan /absolute/fix-plan.json --issue /absolute/issue.json
+  review-restart --selection /absolute/selection.json --expected-run-id UUID --approval /absolute/approval.json
   review-close
   review-defer
   review-abandon --reason TEXT       # drop an evidence-free collecting cycle; keeps counter and identity

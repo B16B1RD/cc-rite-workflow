@@ -1362,5 +1362,131 @@ finally:
     f.close()
 
 
+def approval_record(fixture, reason='user asked for a new run'):
+    return dict(
+        kind='explicit-fresh-entry',
+        run_id=fixture.state()['review_run']['run_id'],
+        review_context=fixture.context(),
+        issue_number=42, pr_number=71,
+        reason=reason, requested_at='2026-01-02T00:00:00Z')
+
+
+def restart(fixture, record=None, run_id=None, ok=True):
+    record = record or approval_record(fixture)
+    path = fixture.private / 'approval.json'
+    dump(path, record)
+    run_id = run_id or record['run_id']
+    return fixture.flow('review-restart', '--selection', fixture.selection,
+                        '--expected-run-id', run_id, '--approval', path, ok=ok)
+
+
+# Explicit authorized fresh-entry: a new run, not retry, not a silent iterate reset.
+f = Fixture()
+try:
+    diverge(f)
+    stopped = f.state()
+    f.reject(lambda: f.start(ok=False), 'T-R01: start still refuses a stopped run')
+    empty = approval_record(f)
+    empty['reason'] = '   '
+    f.reject(lambda: restart(f, empty, ok=False), 'T-R01: empty approval reason is refused')
+    wrong = approval_record(f)
+    f.reject(lambda: restart(f, wrong, run_id='00000000-0000-0000-0000-000000000000', ok=False),
+             'T-R01: wrong expected run id is refused')
+    check(f.state() == stopped, 'T-R01: refused restart leaves state identical')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    diverge(f)
+    old = f.state()['review_run']
+    old_context = f.context()
+    old_id = old['run_id']
+    record = approval_record(f)
+    restart(f, record)
+    live = f.state()
+    parked = live['review_run_history'][-1]
+    check(live['review_run']['run_id'] != old_id and live['cycle_count'] == 1
+          and live['review_cycle']['status'] == 'collecting'
+          and live['review_cycle']['review_context']['cycle_count'] == 1,
+          'T-R02: restart freezes a new cycle-1 run')
+    check(parked['run_id'] == old_id and parked['status'] == 'stopped'
+          and parked['parked']['superseded_by'] == live['review_run']['run_id']
+          and parked['parked']['restart']['reason'] == record['reason']
+          and parked['parked']['restart']['requested_at'] == record['requested_at']
+          and parked['parked']['restart']['old_context'] == old_context,
+          'T-R02: archive keeps the stop and the approval body')
+    check(live['review_run']['clock'] == [] and live['review_run']['observations'] == []
+          and 'pending_fix' not in live['review_run'] and not live.get('stop_reason'),
+          'T-R02: new run does not inherit verification credit')
+    check(parked['clock'] and parked['observations'] and parked['fixes'] and parked['replans'] is not None,
+          'T-R02: parked histories stay on the old run')
+    replay = f.state_path.read_bytes()
+    restart(f, record, run_id=old_id)
+    check(f.state_path.read_bytes() == replay, 'T-R04: same approval does not mint another run')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    diverge(f)
+    f.plan()
+    retry(f)
+    check(f.state()['review_run']['status'] == 'active' and 'retry' in f.state()['review_run'],
+          'T-R03: review-retry still reopens the same run')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    (f.root / 'rite-config.yml').write_text('safety:\n  max_review_cycles: 1\n')
+    f.cycle(roots=['input defect'], seconds=1801)
+    check(f.state()['stop_reason'] == 'circuit-breaker:max-cycles', 'T-R03: fixture reached max-cycles')
+    f.plan()
+    f.reject(lambda: retry(f, ok=False), 'T-R03: max-cycles still cannot be retried')
+    restart(f)
+    check(f.state()['cycle_count'] == 1 and f.state()['review_run']['status'] == 'active',
+          'T-R03: max-cycles can take the explicit restart')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    diverge(f)
+    old_id = f.state()['review_run']['run_id']
+    restart(f)
+    new_id = f.state()['review_run']['run_id']
+    f.flow('review-abandon', '--reason', 'switch after authorized restart')
+    f.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--branch', 'chore/issue-43', '--pr', 0)
+    f.flow('set', '--phase', 'pr', '--next', 'review', '--issue', 42, '--pr', 71)
+    back = f.state()
+    check(back.get('review_run', {}).get('run_id') == new_id
+          and back['review_run']['status'] == 'active'
+          and back.get('review_run', {}).get('run_id') != old_id,
+          'T-R05: round trip restores the new run, not the superseded stop')
+    check(any(entry.get('run_id') == old_id and entry.get('parked', {}).get('superseded_by') == new_id
+              for entry in back.get('review_run_history', [])),
+          'T-R05: superseded stop stays archived')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    f.start()
+    f.reject(lambda: restart(f, approval_record(f), f.context()['run_id'], ok=False),
+             'T-R08: collecting cycle cannot restart')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    diverge(f)
+    clock_dir = f.root / '.rite' / 'state'
+    clock_dir.mkdir(parents=True, exist_ok=True)
+    (clock_dir / ('review-clock-' + f.session + '.json')).write_text('{}')
+    f.reject(lambda: restart(f, ok=False), 'T-R08: open clock refuses restart without inventing times')
+finally:
+    f.close()
+
 print('PASS: review stagnation: ' + str(checks) + ' assertions; real clocks, receipts, repairs and retained stops')
 PYTEST

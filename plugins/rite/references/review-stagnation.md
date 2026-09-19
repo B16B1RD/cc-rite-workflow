@@ -136,6 +136,8 @@ rm "$clock_file"
 
 この保持と復元はセッションの flow-state に載る。別セッション（別 `session_id`）では退避記録が見えないため、復元も再試行権の消費判定も効かない。`cycle_count` をはじめとする既存の counter と同じ性質である。
 
+**明示承認で新しい run を始める（`circuit-breaker:divergence` と `circuit-breaker:max-cycles`）**: `flow-state.sh review-restart --selection <名簿 JSON> --expected-run-id <停止した run_id> --approval <今回の承認 JSON>` が、completed の観測・receipt が揃い、未 close の clock が無く、承認がこの停止 run / context / PR に結び付いているときに限り、旧 run を保管して cycle 1 の新しい run を作る。通常の iterate / recover / 自動再試行 / `review-start` はこれを呼ばない。`review-retry` とは別操作で、同じ run を reopen しない。承認の reason・要求時刻・対象 context は parked 履歴に残す。superseded した archived run は同じ PR への往復で復元しない。
+
 **再試行権で再開する（`circuit-breaker:divergence` のみ）**: `flow-state.sh review-retry --plan <一括修正計画の絶対パス> --issue <最新 Issue JSON の絶対パス>` が、次の条件をすべて満たすときに限り再試行権を 1 つ発行する。
 
 1. `stop_reason` が `circuit-breaker:divergence` である。`circuit-breaker:max-cycles` と `stagnation:*` は再開できない
