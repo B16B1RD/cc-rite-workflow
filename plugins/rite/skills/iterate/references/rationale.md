@@ -156,10 +156,10 @@ batch / 対話それぞれの停止 sentinel を返す。Ready / merge へ進む
 自動フローが辿る分岐ではない。
 
 発火時には counter reset と失敗理由の記録だけを同じ atomic set で行い、run 開始点 pin は
-更新しない。明示的な `/rite:iterate` 再実行時に、既存のステップ 0.6 が counter 0 を検出して
-pin を更新する。`review-cycle-scope.sh` は pin より新しい JSON が 0 件のとき
-`REVIEW_CYCLE_SCOPE=full; reason=no_prev_json` を返すため、新しい run の最初の review は
-full scope になる。reset が失敗した場合は、停止通知の手動リセット手順を先に実行する。
+更新しない。この節の counter 0 / pin 更新は `review_run` が無い legacy state に限る。
+停止した run の新しい run は明示承認 `review-restart` だけが作り、初回 full は live
+`run_id` 境界（候補 JSON が無ければ `no_prev_json`、他 run の JSON なら `foreign_run_json`）
+で決まる。pin 一致を全経路のゲートにはしない。reset が失敗した場合は、停止通知の手動リセット手順を先に実行する。
 
 両分岐は挙動として同構造で、差は sentinel の消費者と対話側だけが持つ注意行の 2 点。共有前段
 の counter reset は batch 経路にも適用されるが、ステップ 6.1 のブロック自体は無変更であり
@@ -284,3 +284,18 @@ WARNING で続行し、偽 skip はしない。寿命は本 run — 0.6 の
 再 iterate の 5.S が skip され未消化 0 の再保証が死ぬ。write 失敗時は `rm -f`
 してファイル非存在として本体へ（偽 skip 禁止）。`--nb-sweep` 戻りはステップ 4 汎用表を使わず、
 `[fix:pushed]` / `[fix:pushed-wm-stale]` / `[fix:replied-only]` でもステップ 1 に戻らない。
+
+## resume-routes-no-state-read
+
+停止通知の再開経路を marker だけで決めるのは、この節が state を読みに行くと
+`iterate-stagnation-route` が存在する理由そのものを崩すため。分岐の権威を flow-state に置くと、
+同じ判定が 2 箇所に生まれ、片方だけが更新される形になる。
+
+marker 不在を `legacy` へ倒さないのは、`legacy` の行が counter リセットによる fresh entry の
+案内であり、ステップ 0.6 が `review_run` のある run に対して禁じた経路そのものになるため。
+不在は「legacy である」ことを意味しない — ステップ 1 の fire 分岐がステップ 3 を通らずに
+ステップ 6 へ直行した、という別の事実を意味する。安全側は「抜ける」を出すこと。
+
+再試行権の使用済み判定を案内側で行わないのは、そのための marker を増やさずに済むから。
+提示した経路が `review-retry` の拒否で終わるのは fail-loud であって、案内が state を
+追いかける理由にはならない。

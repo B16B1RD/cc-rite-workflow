@@ -12,6 +12,8 @@ user-invocable: false
 
 > 実行入口と工程境界は [Host Runtime Contract](../../references/host-runtime-contract.md#入口と工程境界)、native Skill / Task がない場合の実行は [Host workflow operations](../../references/host-workflow-operations.md) に従う。nested 呼出しは caller の runtime 選択を引き継ぐ。
 
+> セッション worktree 入場後にシェルブロックがホストの隔離ガードに拒否されたら、[共通作業先契約](../../references/git-worktree-patterns.md#host-worktree-execution) の「入場後のガード拒否の退路」に従う。
+
 > **質問規律**: すべての質問・fallback 判断は [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) に従う。
 
 PR レビューコメントを取得・整理し、指摘への対応を効率的に支援する。やることは以下のシーケンシャルなタスク列:
@@ -1244,6 +1246,9 @@ rm -f "${TMPDIR:-/tmp}/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
 - [ ] 機構の**追加**（新しい分岐・ガード・規約・注記・例外条項）ではなく、既存機構の**削除・単純化**（分岐の統合、規則の一般化、複製の一本化）で指摘を解消できないか検討したか。「規則の一般化」は機械が評価する規則（分岐・ガード・述語）に限る。文書の主張（契約文・確認手順など人が読む記述）の最小差分は削除・限定を先に取る。主張を広げる／述語化するなら、主張が名指しする集合を実装で列挙し一致を確認した上で書く
 - [ ] 追加しようとしている分岐 / ガード / 規約は、指摘された 1 ケース専用になっていないか（1 ケース対応の追加は、次 cycle でその追加自体が新たなレビュー対象面となり指摘を再生産する）
 - [ ] 修正 diff は指摘の解消に必要な最小か。指摘されていない「ついで」の防御・柔軟性・将来対応を含んでいないか
+- [ ] 保存済み対象 finding は元 Issue の目的・非対象とファイルの読者/役割で配置したか。証拠は既存 PR details、恒久契約は規約、保守の Why はソース、再現はテスト。作業日誌を規約や判断文書へ残していないか
+- [ ] 恒久規約が凍結予定の作業文書を規範として指していないか。複数の正が衝突していないか。非規範の有用な資料参照・Why・不変条件は保持したか
+- [ ] 行順・見出し階層・表示パス等の新制約は元要求から必要か。前 cycle の規約やテスト一致だけでは根拠にしない。親発見と `non_blocking_findings[]` は対象外（1.3 は記録のみ。schema 受理は自動 fix ではない）
 
 対象は**機構の追加**。テスト追加・複製同期は対象外。[coding-principles.md](../../skills/rite-workflow/references/coding-principles.md) の `no_speculative_structure` と対。
 
@@ -1255,9 +1260,9 @@ rationale: references/design-rationale.md#simplification-first-rationale
 
 ### 2.1 Confirm Fix Approach
 
-全指摘の処置を編集前に一括で決める。個別指摘の読み取り・impact scan は先に行ってよいが、最初の編集前に [一括計画と検証](references/fix-plan.md) を読み、同一 HEAD の全員回収済み保存結果・最新 Issue 本文から `{fix_plan_file}` と `{fix_issue_file}`（絶対 JSON パス）を作る。root cause ごとに重複を関連付け、全 blocking 指摘へ処置と検証を割り当てる。人間由来の未解決指摘も計画へ記録し、既存の対応義務を維持する。
+全指摘の処置を編集前に一括で決める。個別指摘の読み取り・impact scan は先に行ってよいが、最初の編集前に [一括計画と検証](references/fix-plan.md) を読み、同一 HEAD の全員回収済み保存結果・最新 Issue 本文から `{fix_plan_file}` と `{fix_issue_file}`（絶対 JSON パス）を作る。root cause ごとに重複を関連付け、全 blocking 指摘へ処置と検証を割り当てる。人間由来の未解決指摘も計画へ記録し、既存の対応義務を維持する。対象は 1.3 の Required fix（`fatal_map[id] == true`）と未解決 External review。親の完了前発見を未保存 ID として計画へ足さない。`non_blocking_findings[]` が schema 上受理されていても 2.1 の修正対象ではない。各 `groups[].rationale`（または既存 PR details）に、初回 finding でも元要求との対応と、追加／削除／差し戻し／移動から選んだ処置の理由を短く書く。`simplification-first:` 段落は Escalation trigger 専用であり、この記録の代用にしない。新 schema は足さない。
 
-`review_run.current_decision.action=replan` なら、[停滞診断](../../references/review-stagnation.md) の契約で全指摘と仕様を再照合し、代替案・選択理由・棄却理由・再発防止検証を同じ計画の `replan` に記録する。範囲内の選択は通常の承認待ちを挟まない。以下の保存後に通常の scope gate を通す。時計は同参照の `review-clock-open` を `clock_kind=work` で実行し、外部待機は別区分にする。
+`review_run.current_decision.action=replan` なら、[停滞診断](../../references/review-stagnation.md) の契約で全指摘と仕様を再照合し、代替案・選択理由・棄却理由・再発防止検証を同じ計画の `replan` に記録する。範囲内の選択は通常の承認待ちを挟まない。以下の保存後に通常の scope gate を通す。時計は同参照の共有ブロック `review-clock-open`（Bash ブロック名。時計の CLI 動詞は `review-clock` だけ）を `clock_kind=work` で実行し、外部待機は別区分にする。
 
 時計の open / close は `review_run` がある場合だけ実行する。中断からの再入場では既存区間を同参照の `recover` モードで閉じてから、新しい作業区間を開く。
 
@@ -1274,6 +1279,8 @@ if printf '%s' "$fix_state" | jq -e '.review_run.current_decision.action == "sto
   exit 1
 fi
 ```
+
+登録済み replan の検証コマンドの誤りは、[停滞診断の訂正契約](../../references/review-stagnation.md#登録した検証コマンドの訂正) に従い `review-replan --amend --reason "訂正理由"` と同じ plan / issue 引数で訂正する。旧証跡を保持したまま、scope check と全検証を再実行する。
 
 解決不能は検討した範囲内代替と契約上の理由を保存して `stop` とする。保存・権限・証跡の失敗は `[fix:error]` のまま保持し、解決不能という判断へ変換しない。
 
@@ -1636,7 +1643,7 @@ rationale: references/design-rationale.md#nit-noted-no-reply-notes
 
 > **Reference**: Apply [Comment Best Practices](../../skills/rite-workflow/references/comment-best-practices.md) when finalising fix commits — 生成コメント/散文に Issue/PR 番号・AC 番号を残さない。残す背景は現在形の制約文。ジャーナル/経緯文は禁止。file:line 参照と未検証ジャーゴンも diff に残さない。review/fix 履歴は commit message / PR description へ。
 
-一括修正完了後、最新 Issue を再取得し、検査済み計画に対して次を実行する。関連結果の鮮度確認後に、必要な全体検証を全件実行・記録する。失敗または保存不能なら commit / push / 次レビューへ進まない。既存の差分・schema・AC ゲートは引き続き実行する。成功後に `review-clock-close` で修正区間を保存する。検証済み修正は run 履歴へ結び付き、次の review-start が異なる HEAD と検証済み内容を照合して修正回数を確定する。
+一括修正完了後、最新 Issue を再取得し、検査済み計画に対して次を実行する。関連結果の鮮度確認後に、必要な全体検証を全件実行・記録する。失敗または保存不能なら commit / push / 次レビューへ進まない。既存の差分・schema・AC ゲートは引き続き実行する。成功後に [停滞診断](../../references/review-stagnation.md) の共有ブロック `review-clock-close` を `clock_close_mode=normal` で実行して修正区間を保存する。検証済み修正は run 履歴へ結び付き、次の review-start が異なる HEAD と検証済み内容を照合して修正回数を確定する。
 
 ```bash
 # fix-scope-final-verification
@@ -1646,6 +1653,14 @@ if ! bash {plugin_root}/hooks/scripts/review-fix-scope-check.sh verify \
   exit 1
 fi
 ```
+
+コミットを直接実行する Bash 呼び出しも、実行前 hook が未完了 cycle と保存済み計画・全件検証の鮮度を確認する。拒否された場合は理由に従って次を行う。凍結 HEAD を戻して検査を通してはならない。
+
+- 未完了 cycle: `review-finish` で結果を保存してから commit を別 Bash 呼び出しで再実行する
+- 計画・検証の鮮度: 上記の `check --plan "{fix_plan_file}" --issue "{fix_issue_file}"` と `verify --plan "{fix_plan_file}" --issue "{fix_issue_file}" --kind all` を完了してから commit する
+- `unplanned changed path`: `review-finish` と `verify` では解消しない。不要なら削除する。必要なら `groups[].paths` へ追加して `check --plan "{fix_plan_file}" --issue "{fix_issue_file}"` と `verify --kind all` からやり直す。計画内の新規ファイルを明示パスで stage する手順は 3.1 にある。stage だけではこの拒否は消えない
+
+commit は作業 worktree で `git commit`（必要なら literal な `git -C <path> commit`）を直接呼ぶ。検証・編集・commit を同じ Bash 呼び出しにまとめない。hook は直接コマンドと既存 heredoc 除去後の表面を検査し、スクリプト内部・alias・動的に組み立てた subcommand は解釈しない。これらの間接実行を commit 手順に使わない。メッセージファイル `{commit_message_file}` は作業 worktree 外の絶対パスにする。
 
 ### 3.1 Verify Changes
 
@@ -1975,12 +1990,19 @@ cosmetic は option 2 可。bypass は記録必須。
 
 ### 3.3 Execute the Commit
 
+先に作業 worktree 外の一時ファイル `{commit_message_file}` へメッセージを保存する。次の commit は別の Bash 呼び出しで実行し、成功後にメッセージファイルを削除する。
+
 ```bash
-git add {changed_files}
-git commit -m "$(cat <<'EOF'
+# fix-commit-message
+cat > "{commit_message_file}" <<'EOF'
 {commit_message}
 EOF
-)"
+```
+
+```bash
+# fix-commit-execute
+git add {changed_files}
+git commit -F "{commit_message_file}"
 ```
 
 ### 3.3.1 Fix-Cycle State Persistence

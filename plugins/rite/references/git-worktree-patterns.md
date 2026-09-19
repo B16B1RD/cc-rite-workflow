@@ -793,6 +793,10 @@ sandbox 設定に依存して変わる。ファイル名の allowlist で判定�
 copied）はそのまま通す。サイズやモードを読めないエントリは除外しない（dirty 扱い）。モードビットで判定
 するため root 実行でも結果は変わらない。除外したスタブは件数とパスを 1 行の stderr WARNING に出す。
 ファイル名 allowlist を持たない機構ベース設計のため、sandbox 設定が変わっても追随できる。
+例外: `hooks/scripts/lib/review-fix-scope.py` の `verify` は `git status` ではなく
+`git ls-files --others --exclude-standard` で未追跡を列挙するため、同じ機構ベース規則（`stat` で
+キャラクタデバイス、`lstat` で 0 バイト・書込ビット全落ちの通常ファイル、stat 失敗は残す、除外した
+スタブは stderr WARNING）を Python 側にも持つ。規則を変えるときは両方を同時に更新する。
 
 共通 git dir の直下（`*.lock`）に残ったスタブの lock は `hooks/session-start.sh` が main checkout での
 セッション開始時に検知し、パスと手動削除の手順を hook の stderr に WARNING として書く。直下以外の lock は

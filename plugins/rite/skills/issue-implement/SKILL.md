@@ -14,6 +14,8 @@ user-invocable: false
 
 > 実行入口と工程境界は [Host Runtime Contract](../../references/host-runtime-contract.md#入口と工程境界)、native Skill / Task がない場合の実行は [Host workflow operations](../../references/host-workflow-operations.md) に従う。nested 呼出しは caller の runtime 選択を引き継ぐ。
 
+> セッション worktree 入場後にシェルブロックがホストの隔離ガードに拒否されたら、[共通作業先契約](../../references/git-worktree-patterns.md#host-worktree-execution) の「入場後のガード拒否の退路」に従う。
+
 `skills/open/SKILL.md` ステップ 3 で承認した計画に従って実装する。
 
 > **Reference**: Apply the Phase 5.1 checklist from [AI Coding Principles](../../skills/rite-workflow/references/coding-principles.md).
@@ -423,29 +425,17 @@ E2E では結果を context に残す（`/rite:lint` Phase 3.4 が再利用で�
 
 ##### 5.1.0.6.1 Acceptance Criteria Check (Conditional)
 
-**Condition**: `verification.acceptance_criteria_check` is `true` (default: `true`) AND Issue body contains an acceptance criteria section.
+**Condition**: `verification.acceptance_criteria_check` is `true` (default: `true`). When false, skip to 5.1.0.7 → 5.1.0.8 → 5.1.1.
 
-**Heading match rules**: Match any of the following headings (case-insensitive, level 2 `##`):
-
-| Pattern | Examples |
-|---------|---------|
-| `## 受入条件` | Exact match (Japanese) |
-| `## Acceptance Criteria` / `## 5. Acceptance Criteria` | Exact match (English, unnumbered or template heading) |
-| `## 受け入れ条件` | Alternative Japanese form |
-
-The section extends from the matched heading to the next `##` heading or end of body.
-
-**Skip conditions** (any match → skip to 5.1.0.7, then 5.1.0.8, then 5.1.1):
-- `verification.acceptance_criteria_check` is `false`
-- Issue body does not contain an acceptance criteria section (none of the above headings found)
+**Format and scope**: Use `scripts/acceptance-criteria-check.sh extract`, the same parser as pr-review 1.3.1. It accepts level-2 headings `Acceptance Criteria` (case-insensitive), `受入基準`, `受入条件`, `受け入れ条件`, optionally prefixed by `N. `. Criteria must have explicit numeric IDs: `### AC-N` or `- [ ] AC-N: 内容` (`[x]` / `[X]` and `*` / `+` bullets also work). Up to three leading spaces are allowed. The section ends at the next level-1/2 heading; fenced examples do not count. Do not infer IDs or criteria from prose.
 
 > `{owner_repo}` は [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute する。
 
-**Issue body retrieval**: Use the Issue body already obtained at `skills/open/SKILL.md` ステップ 1.1 Issue 情報取得 (retained in conversation context). If context was compacted and the body is unavailable, re-fetch with `gh issue view {issue_number} -R {owner_repo} --json body --jq '.body'`. If retrieval fails, display `WARNING: Issue body の取得に失敗。受入条件チェックをスキップします` and skip to 5.1.0.7 (then 5.1.0.8, then 5.1.1).
+**Issue body retrieval**: Use the Issue body already obtained at `skills/open/SKILL.md` ステップ 1.1 Issue 情報取得 (retained in conversation context). If context was compacted and the body is unavailable, re-fetch with `gh issue view {issue_number} -R {owner_repo} --json body --jq '.body'`. If retrieval fails, report the error and stop; do not classify an unreadable body as having no AC.
 
 **Check procedure:**
 
-1. Extract acceptance criteria items from Issue body (lines matching `- [ ]` or `- [x]` under the acceptance criteria heading)
+1. Save the retrieved body unchanged to a temporary `{issue_body_file}` and run `bash {plugin_root}/scripts/acceptance-criteria-check.sh extract --body-file "{issue_body_file}"`; remove the temporary file after reading the result. `target` supplies the IDs to check; only `skipped; reason=no_ac_section` skips to 5.1.0.7. Any nonzero exit stops implementation with the helper diagnostic and format guidance, including unsupported AC headings, malformed/empty sections and duplicate IDs. Do not downgrade these errors to advisory warnings.
 2. For each criterion, evaluate whether the current implementation satisfies it based on:
    - Changed files and their content
    - Test results (if tests were run)
@@ -454,9 +444,8 @@ The section extends from the matched heading to the next `##` heading or end of 
 
 ```
 受入条件チェック:
-- {criterion_1} — 満たされています
-- {criterion_2} — 満たされています
-- {criterion_3} — 確認が必要です（理由: {reason}）
+- {id} — 満たされています
+- {id} — 確認が必要です（理由: {reason}）
 ```
 
 **Result handling:**

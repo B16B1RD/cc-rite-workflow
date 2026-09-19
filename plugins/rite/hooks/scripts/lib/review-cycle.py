@@ -72,6 +72,73 @@ def same_json(left, right):
     return json.dumps(left, sort_keys=True) == json.dumps(right, sort_keys=True)
 
 
+DECISION_LOG_HEADING = re.compile(r"^## 9\. Decision Log\s*$")
+DECISION_LOG_END = re.compile(r"^(## |---\s*$|</details>)")
+DECISION_LOG_ROW = re.compile(r"^- \d{4}-\d{2}-\d{2} D-\d{2,}: .+ / Reason: .+ / Impact: .+$")
+# Same line shape the non-blocking record helper accepts as its own marker.
+NBR_MARKER_LINE = re.compile(r"^\s*<!-- rite:nbr:comment-id:.*-->\s*$")
+FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}(?=[^`]*$)|~{3,})")
+
+
+def normalize_issue_body(body):
+    # Specification identity ignores what rite itself appends to the Issue body
+    # during a run: Decision Log rows in the triage format (inside section 9 only,
+    # whatever wrote them) and the non-blocking record's comment-id marker line.
+    # Everything else, including blank lines inside the specification sections
+    # and anything inside a code fence, is compared verbatim; only the gaps left
+    # by a removed line and trailing line breaks are closed. A body whose section
+    # boundary cannot be decided (the heading occurs more than once outside code
+    # fences) is compared
+    # verbatim, loudly, instead of guessing which section is the log.
+    require(isinstance(body, str), "Issue body must be a string")
+    lines = body.split("\n")
+    fenced = []
+    fence = None
+    for line in lines:
+        if fence is None:
+            opened = FENCE_OPEN.match(line)
+            if opened:
+                fence = opened.group(1)
+            fenced.append(fence is not None)
+        else:
+            fenced.append(True)
+            if re.fullmatch(r" {0,3}" + re.escape(fence[0]) + "{" + str(len(fence)) + r",}\s*", line):
+                fence = None
+    headings = sum(1 for line, inside in zip(lines, fenced) if not inside and DECISION_LOG_HEADING.match(line))
+    if headings > 1:
+        print("WARNING: review-cycle: Decision Log heading appears " + str(headings)
+              + " times; boundary undecidable, comparing the Issue body verbatim", file=sys.stderr)
+        return body.rstrip("\r\n")
+    keep, removed_at = [], set()
+    section, start = False, None
+    for line, inside in zip(lines, fenced):
+        if inside:
+            keep.append(line)
+            continue
+        if section and DECISION_LOG_END.match(line):
+            section = False
+            if all(not keep[i].strip() for i in range(start + 1, len(keep))):
+                del keep[start:]
+                removed_at = {i for i in removed_at if i < start} | {start}
+        if DECISION_LOG_HEADING.match(line):
+            section, start = True, len(keep)
+        elif (section and DECISION_LOG_ROW.match(line)) or NBR_MARKER_LINE.match(line):
+            removed_at.add(len(keep))
+            continue
+        keep.append(line)
+    if section and all(not keep[i].strip() for i in range(start + 1, len(keep))):
+        del keep[start:]
+        removed_at = {i for i in removed_at if i < start} | {start}
+    for index in sorted(removed_at, reverse=True):
+        while 0 < index < len(keep) and not keep[index - 1].strip() and not keep[index].strip():
+            del keep[index]
+    return "\n".join(keep).rstrip("\r\n")
+
+
+def same_specification(left, right):
+    return normalize_issue_body(left) == normalize_issue_body(right)
+
+
 def without_timestamp(result):
     return {key: value for key, value in result.items() if key != "timestamp"}
 
@@ -113,6 +180,12 @@ def guard_set(path, new, directory):
     except (OSError, ValueError) as error:
         # Corruption cannot establish that a run has no retained review history.
         raise InvalidReview("existing state is unreadable; preserve it and recover before set") from error
+    # Carry the abandonment history before the stagnation guard can return: its
+    # switching branch returns early, and a record dropped there would take the
+    # only statement of why a cycle was abandoned with it.
+    history = old.get("review_cycle_abandoned")
+    if history:
+        new["review_cycle_abandoned"] = history
     if importlib.import_module("review-stagnation").guard_set(old, new):
         return new
     require(new.get("phase") != "review" or old.get("phase") == "review",
@@ -148,8 +221,16 @@ def start(state, args, directory):
     cycle = state.get("review_cycle")
     current_head = head()
     stagnation = importlib.import_module("review-stagnation")
+    resumed_run = None
     if "review_run" in state:
-        run, _ = stagnation.current(state, args.session, check_head=False)
+        if cycle:
+            run, _ = stagnation.current(state, args.session, check_head=False)
+        else:
+            # An abandoned cycle leaves the run with no frozen counterpart. The
+            # abandonment record is what makes that shape legitimate, so validate
+            # against it rather than trusting the run alone.
+            resumed_run = stagnation.retained_run(state, args.session)
+            run = resumed_run
         require(run["status"] != "stopped", "review run stopped: " + str(run.get("stop_reason")))
     count = state.get("cycle_count", 0)
     require(type(count) is int and count >= 0, "cycle_count must be a nonnegative integer")
@@ -171,10 +252,16 @@ def start(state, args, directory):
                 "previous review has no verified saved receipt")
         if "review_run" in state:
             stagnation.advance(state, args.session, current_head)
-    # Legacy callers already incremented before entering review. Adopt that count
-    # once; new runs and completed cycles increment here exclusively.
-    count = count if not cycle and state.get("phase") == "review" and count > 0 else count + 1
-    run_id = cycle["review_context"]["run_id"] if cycle and state.get("cycle_count", 0) > 0 else str(uuid.uuid4())
+    if resumed_run is not None:
+        # Retrying an abandoned cycle is the same run at the same counter on a new
+        # HEAD. A fresh run_id would strand review_run; a bumped counter would put
+        # a hole in the observation history the stagnation gates read as a series.
+        run_id = resumed_run["run_id"]
+    else:
+        # Legacy callers already incremented before entering review. Adopt that count
+        # once; new runs and completed cycles increment here exclusively.
+        count = count if not cycle and state.get("phase") == "review" and count > 0 else count + 1
+        run_id = cycle["review_context"]["run_id"] if cycle and state.get("cycle_count", 0) > 0 else str(uuid.uuid4())
     context = dict(session_id=args.session, run_id=run_id, pr_number=state["pr_number"],
                    cycle_count=count, commit_sha=current_head)
     state.update(phase="review", cycle_count=count, active=True, updated_at=now(),
@@ -264,9 +351,38 @@ def finish(state, args, path, directory):
     return state
 
 
+def abandon(state, args, directory):
+    cycle = state.get("review_cycle")
+    if not cycle:
+        print("[CONTEXT] REVIEW_ABANDON=noop; reason=no_incomplete_cycle", file=sys.stderr)
+        return state
+    require(cycle.get("status") == "collecting",
+            "only a collecting cycle can be abandoned; status is " + str(cycle.get("status")))
+    for key in ("review_context", "selected_reviewers"):
+        require(key in cycle, "collecting cycle is missing " + key + "; preserve the state and recover")
+    for key in ("manifest_path", "content_file", "result_path"):
+        require(not cycle.get(key), "cycle retains evidence at " + key + "=" + str(cycle.get(key))
+                + "; recover it instead of abandoning")
+    receipt = matching_receipt(directory, cycle)
+    require(receipt is None, "a saved receipt matches this cycle at "
+            + (str(receipt[0]) if receipt else "") + "; recover it instead of abandoning")
+    record = dict(review_context=cycle["review_context"], selected_reviewers=cycle["selected_reviewers"],
+                  reason=args.reason, abandoned_at=now(), head_at_abandon=head())
+    # Identity (session/issue/pr/branch/worktree) and cycle_count stay untouched:
+    # abandoning an empty record is not a counter or ownership change.
+    state.setdefault("review_cycle_abandoned", []).append(record)
+    state.pop("review_cycle", None)
+    # Abandoning ends the review itself, so the phase must stop claiming one:
+    # guard_set treats phase=review without a completed cycle as still pending,
+    # which would keep blocking the very transitions this operation unblocks.
+    state.update(phase="pr", updated_at=now(),
+                 next_action="review-start で現 HEAD から新しい cycle を開始する")
+    return state
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("operation", choices=("start", "finish", "guard-set", "clock", "observe", "replan", "close", "defer"))
+    parser.add_argument("operation", choices=("start", "finish", "guard-set", "clock", "observe", "replan", "retry", "restart", "close", "defer", "abandon"))
     parser.add_argument("--state", required=True)
     parser.add_argument("--session", required=True)
     parser.add_argument("--results-dir", required=True)
@@ -278,22 +394,34 @@ def main():
     parser.add_argument("--input")
     parser.add_argument("--issue")
     parser.add_argument("--plan")
+    parser.add_argument("--reason")
+    parser.add_argument("--expected-run-id")
+    parser.add_argument("--approval")
+    parser.add_argument("--amend", action="store_true")
     args = parser.parse_args()
     path, directory = Path(args.state), Path(args.results_dir)
     if args.operation == "guard-set":
         print(json.dumps(guard_set(path, json.load(sys.stdin), directory)))
         return
     required = dict(start=["selection"], finish=["manifest", "content_file"],
-                    clock=["input"], observe=["input", "issue"], replan=["plan", "issue"], close=[], defer=[])
+                    clock=["input"], observe=["input", "issue"], replan=["plan", "issue"],
+                    retry=["plan", "issue"], restart=["selection", "approval"],
+                    close=[], defer=[], abandon=[])
     for name in required[args.operation]:
         value = getattr(args, name)
         require(value and Path(value).is_absolute(), name + " must be an absolute file path")
+    if args.operation == "abandon":
+        require(args.reason and args.reason.strip(), "--reason must record why the cycle is abandoned")
+    if args.operation == "restart":
+        require(args.expected_run_id and args.expected_run_id.strip(), "--expected-run-id required")
     state = read(path)
     require(state.get("session_id") == args.session, "state session_id differs from current session")
     if args.operation == "start":
         updated = start(state, args, directory)
     elif args.operation == "finish":
         updated = finish(state, args, path, directory)
+    elif args.operation == "abandon":
+        updated = abandon(state, args, directory)
     else:
         stagnation = importlib.import_module("review-stagnation")
         updated = stagnation.clock(state, args) if args.operation == "clock" else getattr(stagnation, args.operation)(state, args, directory)
@@ -301,8 +429,19 @@ def main():
 
 
 if __name__ == "__main__":
+    # review-stagnation imports this file by name. Claiming that name for the
+    # module already running keeps importlib from loading a second copy, so the
+    # refusal it raises is this very InvalidReview rather than a twin the handler
+    # below would miss.
+    sys.modules.setdefault("review-cycle", sys.modules["__main__"])
     try:
         main()
-    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
+    except InvalidReview as error:
+        # `ERROR: review-cycle:` means "this helper judged the input and refused".
+        # Callers branch on it to tell a refusal from an environment failure, so
+        # nothing but a require() violation may carry it.
         print("ERROR: review-cycle: " + json.dumps(str(error), ensure_ascii=False), file=sys.stderr)
+        sys.exit(1)
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
+        print("ERROR: review-cycle failed: " + json.dumps(str(error), ensure_ascii=False), file=sys.stderr)
         sys.exit(1)
