@@ -125,6 +125,19 @@ assert_grep "overview routes sweep-done to purpose check" "$ITERATE" \
   '`\[fix:sweep-done\]` → 完了前確認'
 assert_grep "purpose unmet fenced set has no --handoff" "$ITERATE" \
   'purpose_unaligned: 完了前確認で目的逸脱'
+purpose_set=$(awk '/^# purpose-unaligned:/{s=1} s{print} s && /^```$/{exit}' "$ITERATE")
+purpose_body=$(printf '%s\n' "$purpose_set" | grep -v '^#')
+if printf '%s\n' "$purpose_body" | grep -q 'flow-state.sh set' \
+   && ! printf '%s\n' "$purpose_body" | grep -q -- '--handoff'; then
+  pass "purpose unmet fenced set body has no --handoff"
+else
+  fail "purpose unmet fenced set body still has --handoff or missing set"
+fi
+if printf '%s\n' "$purpose_set" | grep -q 'WARNING: 目的逸脱停止時の handoff クリアに失敗'; then
+  pass "purpose unmet WARNING else remains"
+else
+  fail "purpose unmet WARNING else missing"
+fi
 STOP_HOOK="$SCRIPT_DIR/../../hooks/stop-loop-continuation.sh"
 STOP_CONTRACT="$SCRIPT_DIR/../../references/stop-loop-continuation-contract.md"
 BATCH_RUN="$SCRIPT_DIR/../../skills/batch-run/SKILL.md"

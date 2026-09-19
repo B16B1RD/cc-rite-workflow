@@ -332,7 +332,7 @@ iterate の終了 sentinel を `{run_mode}`（ステップ 1 の `mode=` marker�
 | `[fix:cancelled-by-user]`（両モード） | ユーザー中断 → ステップ 8（段階=iterate） |
 | `[iterate:nb-sweep-error]` / `[fix:error]` / sentinel 不在（両モード） | **失敗** → ステップ 8（段階=iterate） |
 
-<!-- run orchestration: after iterate returns a terminal sentinel, do NOT stop. merge mode + [review:mergeable] -> ステップ 4. default mode + [review:mergeable] or [fix:replied-only] -> ステップ 6 cursor advance (skip ready/merge/cleanup). [iterate:max-cycles-reached] (both modes) -> ステップ 8 (record failure and stop; do NOT advance cursor). -->
+<!-- run orchestration: after iterate returns a terminal sentinel, do NOT stop. [review:error] + REVIEW_STOP=purpose_unaligned (both modes) -> ステップ 8; 内側の [review:mergeable] は iterate 終端ではない. merge mode + [review:mergeable] (purpose_unaligned なし) -> ステップ 4. default mode + [review:mergeable] or [fix:replied-only] -> ステップ 6 cursor advance (skip ready/merge/cleanup). [iterate:max-cycles-reached] (both modes) -> ステップ 8 (record failure and stop; do NOT advance cursor). -->
 
 ---
 
