@@ -121,6 +121,21 @@ assert_grep "purpose unmet uses REVIEW_STOP like ac_unverified" "$ITERATE" \
   'REVIEW_STOP=purpose_unaligned'
 assert_grep "purpose unmet clears FINALIZE without --handoff" "$ITERATE" \
   '`--handoff` なしで実行し FINALIZE を消す'
+assert_grep "overview routes sweep-done to purpose check" "$ITERATE" \
+  '`\[fix:sweep-done\]` → 完了前確認'
+assert_grep "purpose unmet fenced set has no --handoff" "$ITERATE" \
+  'purpose_unaligned: 完了前確認で目的逸脱'
+STOP_HOOK="$SCRIPT_DIR/../../hooks/stop-loop-continuation.sh"
+STOP_CONTRACT="$SCRIPT_DIR/../../references/stop-loop-continuation-contract.md"
+BATCH_RUN="$SCRIPT_DIR/../../skills/batch-run/SKILL.md"
+assert_grep "stop hook reason requires purpose check before step 5" "$STOP_HOOK" \
+  'の完了前確認（目的整合）を経てからステップ5 の完了通知'
+assert_grep "stop-loop contract lists purpose_unaligned beside ac_unverified" "$STOP_CONTRACT" \
+  '目的逸脱の `\[review:error\]`（`REVIEW_STOP=purpose_unaligned`）も handoff を持たない'
+pu_line=$(grep -nF 'REVIEW_STOP=purpose_unaligned' "$BATCH_RUN" | head -1 | cut -d: -f1)
+mg_line=$(grep -nF '[review:mergeable]` + `merge' "$BATCH_RUN" | head -1 | cut -d: -f1)
+assert "batch-run purpose_unaligned precedes mergeable" "true" \
+  "$( [ -n "$pu_line" ] && [ -n "$mg_line" ] && [ "$pu_line" -lt "$mg_line" ] && echo true || echo "false pu=$pu_line mg=$mg_line" )"
 assert_grep "parent discovery uses named 仕様との整合性 section" "$PR_REVIEW" \
   '`### 仕様との整合性` に 1 行で残す'
 
