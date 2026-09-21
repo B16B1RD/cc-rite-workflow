@@ -1089,7 +1089,7 @@ echo "review_pre_state: branch=$ORIG_BR stash_count=$ORIG_SC branch_list_hash=$O
 
 > **Reference**: [Wiki Query](../wiki-query/SKILL.md) — `wiki-query-inject.sh` API
 
-reviewer ロード前に Wiki の経験知を注入する。`wiki.enabled: true` かつ `wiki.auto_query: true` のときだけ。それ以外は silent skip。
+reviewer ロード前に Wiki の経験知を注入する。会話へ注入するのは `wiki.enabled: true` かつ `wiki.auto_query: true` のとき。設定が false でもこの節は飛ばさず、capture を呼ぶ。既存の適用証跡は消さない。
 
 **Step 1**: Check Wiki configuration:
 
@@ -1110,11 +1110,13 @@ case "$auto_query" in true|yes|1) auto_query="true" ;; *) auto_query="false" ;; 
 echo "wiki_enabled=$wiki_enabled auto_query=$auto_query"
 ```
 
-設定が false でも capture は呼ぶ。契約は [wiki-apply-contract.md](../../references/wiki-apply-contract.md)。
+`{keywords}` は変更パスとファイル種別。`{changed_paths}` は存在する対象パスのカンマ区切りで、空なら `--paths` を省く。契約は [wiki-apply-contract.md](../../references/wiki-apply-contract.md)。
+
+**Step 3**: 先に既存の `### Wiki 適用証跡` を突合する。applied の各ページで、rev の実本文と excerpt、evidence パスの実差分、result のコマンド再実行を比べる。手順は [wiki-apply-contract.md](../../references/wiki-apply-contract.md) の「レビューの突合」。1 つでも違えば指摘にし、レビューを完了にしない。その後でゲートを呼ぶ。ゲートが deny なら完了にしない。
 
 ```bash
 wiki_context=$(bash {plugin_root}/hooks/scripts/wiki-apply-capture.sh \
-  --keywords "{keywords}" --paths "{changed_paths}") || {
+  --keep-record --keywords "{keywords}" --paths "{changed_paths}") || {
   echo "ERROR: Wiki 検索に失敗したため、レビューを完了扱いにしません" >&2
   exit 1
 }
@@ -1126,7 +1128,7 @@ gate_out=$(bash {plugin_root}/hooks/scripts/wiki-apply-gate.sh --mode review) ||
 }
 ```
 
-**Step 3**: ゲートが allow でも applied を承認しない。各ページで、rev の実本文と excerpt、evidence パスの実差分、result のコマンド再実行を突合する。手順は [wiki-apply-contract.md](../../references/wiki-apply-contract.md) の「レビューの突合」。1 つでも違えば指摘にし、レビューを完了にしない。`{wiki_context}` が空ならステップ 4.5 のプレースホルダも空にする。
+`{wiki_context}` が空ならステップ 4.5 のプレースホルダも空にする。`--keep-record` は既存の証跡節を置き換えない。
 
 ### 4.1 Reviewer Profiles (named subagent system prompt)
 

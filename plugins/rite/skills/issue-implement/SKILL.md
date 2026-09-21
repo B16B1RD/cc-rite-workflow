@@ -64,7 +64,7 @@ bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number}
 
 > **Reference**: [Wiki Query](../wiki-query/SKILL.md) — `wiki-query-inject.sh` API
 
-**Condition**: `wiki.enabled: true` AND `wiki.auto_query: true`。それ以外は silent skip。
+**Condition**: 会話へ注入するのは `wiki.enabled: true` かつ `wiki.auto_query: true` のとき。設定が false でもこの節は飛ばさない。capture を呼ばないと証跡が無く、コミット前ゲートが拒否する。
 
 **Step 1**: Wiki 設定:
 
@@ -87,7 +87,7 @@ echo "wiki_enabled=$wiki_enabled auto_query=$auto_query"
 
 設定が false でも capture は呼ぶ。呼ばないと証跡が無く、コミット前ゲートが拒否する。
 
-**Step 2**: 計画の対象パスと変更目的から keywords を作り、検索結果を作業メモリへ書く。契約は [wiki-apply-contract.md](../../references/wiki-apply-contract.md)。
+**Step 2**: `{keywords}` は計画の対象パスと変更目的。`{changed_paths}` は存在する対象パスのカンマ区切りで、空なら `--paths` を省く。未置換のリテラルは渡さない。契約は [wiki-apply-contract.md](../../references/wiki-apply-contract.md)。
 
 ```bash
 wiki_context=$(bash {plugin_root}/hooks/scripts/wiki-apply-capture.sh \

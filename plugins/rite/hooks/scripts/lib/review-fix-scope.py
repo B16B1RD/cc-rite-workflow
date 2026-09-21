@@ -325,12 +325,11 @@ def each_direct_commit(command, cwd):
             elif option in ("--dry-run", "--help", "-h"):
                 dry_run = True
             elif re.fullmatch(r"-[A-Za-z]*[mFCct]", option) or option in ("-m", "--message", "-F", "--file", "-C", "--reuse-message", "-c", "--reedit-message", "--author", "--date", "--fixup", "--squash", "--cleanup", "-t", "--template", "--trailer"):
-                if option.startswith("-") and not option.startswith("--") and "a" in option[1:]:
+                if re.fullmatch(r"-[A-Za-z]*a[A-Za-z]*", option):
                     index_only = False
                 skip = True
             elif option.startswith("-"):
-                if "a" in option[1:]:
-                    index_only = False
+                pass
             else:
                 index_only = False
         if dry_run:
@@ -423,8 +422,7 @@ def commit_target_main(argv):
     args = parser.parse_args(argv)
     for actual, index_only in each_direct_commit(args.command, args.cwd):
         require(actual is not None, "commit worktree cannot be resolved")
-        require(index_only, "commit does not use the checked index")
-        print(actual)
+        print(("index" if index_only else "other") + "\t" + str(actual))
 
 
 def main():

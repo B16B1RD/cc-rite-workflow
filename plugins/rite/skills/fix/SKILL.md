@@ -134,7 +134,7 @@ standalone: 引数なしなら現在ブランチの PR。work memory の関連 P
 
 > **Reference**: [Wiki Query](../wiki-query/SKILL.md) — `wiki-query-inject.sh` API
 
-レビュー取得前に Wiki 経験則を注入する。条件: `wiki.enabled: true` かつ `wiki.auto_query: true`。それ以外は silent skip。
+レビュー取得前に Wiki 経験則を注入する。会話へ注入するのは `wiki.enabled: true` かつ `wiki.auto_query: true` のとき。設定が false でもこの節は飛ばさず、capture を呼ぶ。
 
 ```bash
 wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
@@ -153,7 +153,7 @@ case "$auto_query" in true|yes|1) auto_query="true" ;; *) auto_query="false" ;; 
 echo "wiki_enabled=$wiki_enabled auto_query=$auto_query"
 ```
 
-設定が false でも capture は呼ぶ。キーワードは指摘カテゴリ、対象パス、失敗内容。契約は [wiki-apply-contract.md](../../references/wiki-apply-contract.md)。
+`{keywords}` は指摘カテゴリ、対象パス、失敗内容。`{changed_paths}` は存在する対象パスのカンマ区切りで、空なら `--paths` を省く。契約は [wiki-apply-contract.md](../../references/wiki-apply-contract.md)。
 
 ```bash
 wiki_context=$(bash {plugin_root}/hooks/scripts/wiki-apply-capture.sh \

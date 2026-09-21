@@ -12,6 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KEYWORDS=""
 PATHS=""
 CWD=""
+KEEP_RECORD=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --keywords) KEYWORDS="${2:-}"; shift 2 ;;
@@ -19,6 +20,7 @@ while [ $# -gt 0 ]; do
     --cwd) CWD="${2:-}"; shift 2 ;;
     --flow-state) WIKI_APPLY_FLOW_STATE="${2:-}"; shift 2 ;;
     --memory) WIKI_APPLY_MEMORY="${2:-}"; shift 2 ;;
+    --keep-record) KEEP_RECORD=1; shift ;;
     *) echo "ERROR: unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -145,6 +147,16 @@ paths: $PATHS
 ${BLOB_BLOCK}${PAGE_BLOCK}
 EOF
 )
+
+if [ "$KEEP_RECORD" -eq 1 ] && [ -f "$MEM" ] && grep -q '^### Wiki 適用証跡$' "$MEM"; then
+  echo "WIKI_APPLY_CAPTURE=$STATUS"
+  if [ "$STATUS" = "error" ] || [ "$STATUS" = "uninitialized" ]; then
+    printf '%s\n' "$STDOUT"
+    exit 2
+  fi
+  printf '%s\n' "$STDOUT"
+  exit 0
+fi
 
 mkdir -p "$(dirname "$MEM")"
 export WIKI_APPLY_MEM="$MEM"

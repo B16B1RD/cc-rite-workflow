@@ -101,6 +101,44 @@ case "$file_abs" in
     ;;
 esac
 
+# -a / pathspec は照合した index ではなく作業ツリーを記録する。
+_wiki_skip=0
+_wiki_dash=0
+for _wiki_arg in "${EXTRA[@]}"; do
+  if [ "$_wiki_dash" -eq 1 ]; then
+    echo "ERROR: pathspec は index の照合を外すため受け取れません: $_wiki_arg" >&2
+    exit 1
+  fi
+  if [ "$_wiki_skip" -eq 1 ]; then
+    _wiki_skip=0
+    continue
+  fi
+  case "$_wiki_arg" in
+    --)
+      _wiki_dash=1
+      ;;
+    -a|--all)
+      echo "ERROR: -a / --all は index の照合を外すため受け取れません" >&2
+      exit 1
+      ;;
+    -m|--message|-F|--file|--author|--date)
+      _wiki_skip=1
+      ;;
+    --*)
+      ;;
+    -*a*)
+      echo "ERROR: -a / --all は index の照合を外すため受け取れません" >&2
+      exit 1
+      ;;
+    -*)
+      ;;
+    *)
+      echo "ERROR: pathspec は index の照合を外すため受け取れません: $_wiki_arg" >&2
+      exit 1
+      ;;
+  esac
+done
+
 gate="$SCRIPT_DIR/wiki-apply-gate.sh"
 if [ ! -f "$gate" ]; then
   echo "ERROR: wiki apply gate が無いため commit できません" >&2

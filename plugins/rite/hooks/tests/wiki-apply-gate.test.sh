@@ -480,6 +480,40 @@ if grep -q 'wiki-apply-index' <<<"$gout"; then
 else
   fail "guard -a rc=$grc out=$gout"
 fi
+other_a=$(jq -n --arg cwd "$repo" --arg cmd "git -C $other commit -a -m x" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
+grc=0
+gout=$(printf '%s' "$other_a" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+if [ "$grc" -eq 0 ] && [ -z "$gout" ]; then
+  pass "guard allows git commit -a in another worktree"
+else
+  fail "guard other -a rc=$grc out=$gout"
+fi
+amend=$(jq -n --arg cwd "$repo" '{tool_name:"Bash", tool_input:{command:"git commit --amend -m x"}, cwd:$cwd}')
+grc=0
+gout=$(printf '%s' "$amend" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+if grep -q 'wiki-apply-gate' <<<"$gout" && ! grep -q 'wiki-apply-index' <<<"$gout"; then
+  pass "guard does not treat --amend as -a"
+else
+  fail "guard amend rc=$grc out=$gout"
+fi
+heredoc=$(jq -n --arg cwd "$repo" --arg cmd "$(printf '%s\n' "cat <<'EOF'" note EOF "git commit -m x")" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
+grc=0
+gout=$(printf '%s' "$heredoc" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+if grep -q 'wiki-apply-gate' <<<"$gout"; then
+  pass "guard sees a commit after a heredoc"
+else
+  fail "guard heredoc rc=$grc out=$gout"
+fi
+head_before=$(git -C "$repo" rev-parse HEAD)
+crc=0
+WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" \
+  bash "$COMMIT" --file "$msg" --worktree "$repo" -- -a >"$ROOT/extra.out" 2>"$ROOT/extra.err" || crc=$?
+head_after=$(git -C "$repo" rev-parse HEAD)
+if [ "$crc" -ne 0 ] && [ "$head_before" = "$head_after" ] && grep -q 'index の照合を外す' <<<"$(cat "$ROOT/extra.err")"; then
+  pass "git-commit-file rejects -a"
+else
+  fail "extra -a rc=$crc err=$(cat "$ROOT/extra.err")"
+fi
 
 echo "=== capture records auto_query_off without searching ==="
 cap_repo=$(new_repo cap)
