@@ -124,8 +124,14 @@ assert_grep "T-03 wiki-ingest 5.2 uses quoted heredoc" "$WIKI_INGEST_SKILL" \
   'ingest_msg" <<'\''EOF'\'''
 assert_grep "T-03 wiki-init 3.5.1 uses quoted heredoc" "$WIKI_INIT_SKILL" \
   'mig_msg" <<'\''EOF'\'''
+assert_grep "T-03 wiki-init 3.5.1 retry uses quoted heredoc" "$WIKI_INIT_SKILL" \
+  'mig_retry_msg" <<'\''EOF'\'''
+assert_grep "T-03 wiki-init 3.5.1 retry uses signal trap" "$WIKI_INIT_SKILL" \
+  '_cleanup_mig_retry; exit 130'
 assert_grep "T-03 wiki-lint 8.3 uses quoted heredoc" "$WIKI_LINT_SKILL" \
   'lint_sep_msg" <<'\''EOF'\'''
+assert_grep "T-03 wiki-lint 8.3 same_branch uses quoted heredoc" "$WIKI_LINT_SKILL" \
+  'lint_msg" <<'\''EOF'\'''
 
 # --- T-05: squash keeps delete-branch=false + match-head-commit; CI red does not reach merge ---
 assert_grep "T-05 squash keeps --delete-branch=false" "$MERGE" \

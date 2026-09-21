@@ -455,6 +455,8 @@ EOF
           echo "WARNING: wiki migrate コミットメッセージの placeholder が未置換です" >&2
           commit_out=""
           commit_rc=1
+          rm -f "$_mig_msg"
+          _mig_msg=""
           ;;
         *)
           # 2>&1 は付けない: 構造化 stdout (committed= 行) と WARNING stderr の分離を維持する
@@ -465,6 +467,8 @@ EOF
           ;;
       esac
     fi
+    rm -f "${_mig_msg:-}"
+    _mig_msg=""
     trap - EXIT INT TERM HUP
     echo "$commit_out"
     case "$commit_rc" in
@@ -511,6 +515,8 @@ EOF
       echo "WARNING: wiki migrate 再試行メッセージの placeholder が未置換です" >&2
       retry_out=""
       retry_rc=1
+      rm -f "$_mig_retry_msg"
+      _mig_retry_msg=""
       ;;
     *)
       retry_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --message-file "$_mig_retry_msg")
@@ -520,6 +526,8 @@ EOF
       ;;
   esac
 fi
+rm -f "${_mig_retry_msg:-}"
+_mig_retry_msg=""
 trap - EXIT INT TERM HUP
 echo "$retry_out"
 case "$retry_rc" in
