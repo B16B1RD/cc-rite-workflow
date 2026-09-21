@@ -42,7 +42,14 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --branch-strategy) branch_strategy="${2:-}"; shift; shift ;;
     --wiki-branch)     wiki_branch="${2:-}";     shift; shift ;;
-    --message-file)    MESSAGE_FILE="${2:-}";    shift; shift ;;
+    --message-file)
+      if [ $# -lt 2 ] || [ -z "${2:-}" ]; then
+        echo "ERROR: --message-file requires a value" >&2
+        exit 1
+      fi
+      MESSAGE_FILE="$2"
+      shift 2
+      ;;
     *)
       echo "ERROR: unknown argument: $1" >&2
       echo "Usage: wiki-branch-init.sh --branch-strategy <separate_branch|same_branch> --wiki-branch <name> [--message-file ABS]" >&2

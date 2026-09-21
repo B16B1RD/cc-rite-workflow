@@ -156,6 +156,34 @@ dir_rc=0
 dir_err=$(cd "$dir_repo" && bash "$LOCATE" 2>&1) || dir_rc=$?
 assert "CLAUDE.md directory exits 1" "1" "$dir_rc"
 
+# --- dangling symlink is fail-loud at root and nested (not missing) ---
+dang_repo="$(new_repo)"
+ln -s "$dang_repo/missing-claude" "$dang_repo/CLAUDE.md"
+dang_rc=0
+dang_err=$(cd "$dang_repo" && bash "$LOCATE" 2>&1) || dang_rc=$?
+assert "dangling root CLAUDE.md exits 1" "1" "$dang_rc"
+if grep -q '通常ファイルではありません' <<<"$dang_err"; then
+  pass "dangling root names not-regular"
+else
+  fail "dangling root diagnostic: $dang_err"
+fi
+if grep -q 'COMMIT_CONVENTION_PRESENT=0' <<<"$dang_err"; then
+  fail "dangling root must not degrade to PRESENT=0"
+else
+  pass "dangling root does not report PRESENT=0"
+fi
+mkdir -p "$dang_repo/pkg"
+ln -s "$dang_repo/missing-nested" "$dang_repo/pkg/CLAUDE.md"
+rm -f "$dang_repo/CLAUDE.md"
+nest_dang_rc=0
+nest_dang_err=$(cd "$dang_repo" && bash "$LOCATE" --path pkg/x 2>&1) || nest_dang_rc=$?
+assert "dangling nested CLAUDE.md exits 1" "1" "$nest_dang_rc"
+if grep -q 'ネストした規約ファイルが通常ファイルではありません' <<<"$nest_dang_err"; then
+  pass "dangling nested names not-regular"
+else
+  fail "dangling nested diagnostic: $nest_dang_err"
+fi
+
 # --- wiki worktree cwd still sees main-root convention (T-04) ---
 wiki_repo="$(new_repo)"
 orig_branch=$(git -C "$wiki_repo" branch --show-current)
@@ -185,6 +213,31 @@ if [ -f "$wiki_repo/.rite/wiki-worktree/CLAUDE.md" ]; then
   fail "wiki worktree unexpectedly has CLAUDE.md"
 else
   pass "wiki worktree has no CLAUDE.md of its own"
+fi
+ln -s "$wiki_repo/.rite/wiki-worktree/missing" "$wiki_repo/.rite/wiki-worktree/CLAUDE.md"
+wiki_dang_rc=0
+wiki_dang_err=$(cd "$wiki_repo/.rite/wiki-worktree" && bash "$LOCATE" 2>&1) || wiki_dang_rc=$?
+rm -f "$wiki_repo/.rite/wiki-worktree/CLAUDE.md"
+assert "wiki dangling CLAUDE.md exits 1" "1" "$wiki_dang_rc"
+if grep -q '通常ファイルではありません' <<<"$wiki_dang_err"; then
+  pass "wiki dangling does not fallback to shared root"
+else
+  fail "wiki dangling diagnostic: $wiki_dang_err"
+fi
+if grep -q 'COMMIT_CONVENTION_PRESENT=0' <<<"$wiki_dang_err"; then
+  fail "wiki dangling must not degrade to PRESENT=0"
+else
+  pass "wiki dangling does not report PRESENT=0"
+fi
+mkdir "$wiki_repo/.rite/wiki-worktree/CLAUDE.md"
+wiki_dir_rc=0
+wiki_dir_err=$(cd "$wiki_repo/.rite/wiki-worktree" && bash "$LOCATE" 2>&1) || wiki_dir_rc=$?
+rmdir "$wiki_repo/.rite/wiki-worktree/CLAUDE.md"
+assert "wiki directory CLAUDE.md exits 1" "1" "$wiki_dir_rc"
+if grep -q '通常ファイルではありません' <<<"$wiki_dir_err"; then
+  pass "wiki directory CLAUDE.md does not fallback"
+else
+  fail "wiki directory diagnostic: $wiki_dir_err"
 fi
 
 # --- --root override ---

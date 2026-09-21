@@ -488,6 +488,23 @@ else
   fail "expected fail-loud --message-file (rc=$HELPER_RC): $HELPER_OUTPUT"
 fi
 
+echo "TC-9b: --message-file without a value is fail-loud"
+repo=$(make_sandbox tc9b)
+run_helper "$repo" --branch-strategy same_branch --wiki-branch wiki --message-file
+if [ "$HELPER_RC" = "1" ] && [[ "$HELPER_OUTPUT" == *"requires a value"* ]]; then
+  pass "--message-file missing value → ERROR + exit 1"
+else
+  fail "expected missing-value fail-loud (rc=$HELPER_RC): $HELPER_OUTPUT"
+fi
+echo "TC-9c: --message-file empty value is fail-loud"
+repo=$(make_sandbox tc9c)
+run_helper "$repo" --branch-strategy same_branch --wiki-branch wiki --message-file ""
+if [ "$HELPER_RC" = "1" ] && [[ "$HELPER_OUTPUT" == *"requires a value"* ]]; then
+  pass "--message-file empty value → ERROR + exit 1"
+else
+  fail "expected empty-value fail-loud (rc=$HELPER_RC): $HELPER_OUTPUT"
+fi
+
 echo "TC-10: --message-file contents land in the commit"
 repo=$(make_sandbox tc10)
 printf 'English commits only.\n' > "$repo/CLAUDE.md"

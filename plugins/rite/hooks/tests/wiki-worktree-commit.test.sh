@@ -111,6 +111,8 @@ assert "rite-config.yml absent exits 1" "1" "$(rc_in "$norc_repo")"
 
 disabled_repo="$(new_repo false)"; SANDBOXES+=("$disabled_repo")
 assert "wiki disabled exits 2" "2" "$(rc_in "$disabled_repo")"
+printf 'English only.\n' > "$disabled_repo/CLAUDE.md"
+assert "wiki disabled with CLAUDE.md still exits 2" "2" "$(rc_in "$disabled_repo")"
 # Capture stdout to a variable first: run_in exits 2 here, and `set -o pipefail`
 # would make `run_in | grep` report the pipeline as failed even on a grep match.
 disabled_out="$(run_in "$disabled_repo")"
@@ -127,6 +129,9 @@ assert "worktree missing exits 1" "1" "$(rc_in "$missing_wt_repo")"
 nopending_repo="$(new_repo true)"; SANDBOXES+=("$nopending_repo")
 setup_wiki_worktree "$nopending_repo"
 assert "no pending changes exits 0" "0" "$(rc_in "$nopending_repo")"
+printf 'English only.\n' > "$nopending_repo/CLAUDE.md"
+assert "no-pending with CLAUDE.md still exits 0" "0" "$(rc_in "$nopending_repo")"
+rm -f "$nopending_repo/CLAUDE.md"
 nopending_out="$(run_in "$nopending_repo")"
 if printf '%s' "$nopending_out" | grep -c >/dev/null 'committed=0; branch=wiki; reason=no-pending'; then
   pass "no pending reports committed=0; reason=no-pending"

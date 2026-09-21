@@ -3,7 +3,9 @@
 #
 # Default root is the current git worktree (`git rev-parse --show-toplevel`).
 # Shared-root fallback is only when that worktree is the existing Wiki
-# worktree (state-root `.rite/wiki-worktree`) and has no convention files.
+# worktree (state-root `.rite/wiki-worktree`) and has no CLAUDE.md /
+# AGENTS.md entry. Dangling symlink and directory names count as present
+# so classify fail-loud; they do not hide behind fallback.
 # Nested files are collected by walking parent directories of --path (or of
 # cwd when it is under the root). There is no full-tree find.
 # The helper does not interpret file text.
@@ -94,15 +96,22 @@ if [ ! -d "$ROOT" ] || [ ! -r "$ROOT" ]; then
   exit 1
 fi
 
+# True when a convention name exists as any directory entry, including a
+# dangling symlink. `-f` is false for those, so fallback must not use it.
+convention_entry_exists() {
+  [ -e "$1" ] || [ -L "$1" ]
+}
+
 root_has_convention() {
   local tree="$1"
-  [ -f "$tree/CLAUDE.md" ] || [ -f "$tree/AGENTS.md" ]
+  convention_entry_exists "$tree/CLAUDE.md" || convention_entry_exists "$tree/AGENTS.md"
 }
 
 # Wiki worktree path is owned by wiki-worktree-setup.sh (always
 # `{state_root}/.rite/wiki-worktree`). Caller --root of that tree, or cwd
-# there, falls back to the shared project root when the wiki tree has no
-# convention files.
+# there, falls back to the shared project root only when the wiki tree
+# has no CLAUDE.md/AGENTS.md entry. Dangling symlink and directory names
+# stay on the wiki tree so classify fail-loud.
 shared=$("$SCRIPT_DIR/../state-path-resolve.sh" 2>/dev/null) || shared=""
 if [ -n "$shared" ]; then
   shared=$(canon_abs_path "$shared") || shared=""
@@ -117,6 +126,18 @@ fi
 classify() {
   local name="$1"
   local path="$ROOT/$name"
+  if [ -L "$path" ]; then
+    if [ ! -e "$path" ] || [ -d "$path" ] || [ ! -f "$path" ]; then
+      echo "ERROR: commit-convention-locate: $name が通常ファイルではありません: $path" >&2
+      return 1
+    fi
+    if [ ! -r "$path" ]; then
+      echo "ERROR: commit-convention-locate: $name を読めません: $path" >&2
+      return 1
+    fi
+    canon_abs_path "$path"
+    return
+  fi
   if [ ! -e "$path" ]; then
     printf 'missing'
     return 0
@@ -153,7 +174,14 @@ append_unique() {
 
 consider_nested_file() {
   local path="$1"
-  [ -e "$path" ] || return 0
+  if [ -L "$path" ]; then
+    if [ ! -e "$path" ] || [ -d "$path" ] || [ ! -f "$path" ]; then
+      echo "ERROR: commit-convention-locate: ネストした規約ファイルが通常ファイルではありません: $path" >&2
+      return 1
+    fi
+  else
+    [ -e "$path" ] || return 0
+  fi
   if [ -d "$path" ] || [ ! -f "$path" ]; then
     echo "ERROR: commit-convention-locate: ネストした規約ファイルが通常ファイルではありません: $path" >&2
     return 1

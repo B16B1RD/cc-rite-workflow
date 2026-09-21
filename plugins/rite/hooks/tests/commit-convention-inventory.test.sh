@@ -171,8 +171,14 @@ assert_grep "T-06 overflow failures are not success" "$CONV" \
   '成功扱いにしない'
 assert_grep "T-06 overflow read uses the same sections" "$CONV" \
   '同じ各 `\{section\}` について `commit-overflow-record.sh read'
+assert_grep "T-06 overflow inspection reads the same place" "$CONV" \
+  '検査も同じ場所を読む'
+assert_grep "T-06 gate inspects the overflow store" "$CONV" \
+  '無ければ同じ保存先の同じ節を読む'
 assert_grep "T-06 fix gate defers to overflow SoT" "$FIX" \
   '必須記録の保存・検査手順の正本'
+assert_grep "T-06 fix inspects the same overflow section" "$FIX" \
+  '正本の保存先から同じ節を読む'
 assert_grep "T-06 fix names Root cause and simplification-first sections" "$FIX" \
   '必要な節は `Root cause`'
 assert_not_grep "T-06 fix gate does not copy PR arrow steps" "$FIX" \
@@ -395,6 +401,10 @@ if grep -Fq "CLAUDE_MD=$(canon_abs_path "$feat_base/feature/CLAUDE.md")" <<<"$fe
 else
   fail "T-03 wiki-ingest-commit feature diagnostic: $feat_err"
 fi
+git -C "$feat_base" branch wiki
+git -C "$feat_base" worktree add -q "$feat_base/.rite/wiki-worktree" wiki
+mkdir -p "$feat_base/.rite/wiki-worktree/.rite/wiki/pages"
+printf '# page\n' > "$feat_base/.rite/wiki-worktree/.rite/wiki/pages/p.md"
 wt_rc=0
 wt_err=$(cd "$feat_base/feature" && bash "$WIKI_WT" --commit-only 2>&1) || wt_rc=$?
 assert "T-03 wiki-worktree-commit from feature without --message-file exits 1" "1" "$wt_rc"

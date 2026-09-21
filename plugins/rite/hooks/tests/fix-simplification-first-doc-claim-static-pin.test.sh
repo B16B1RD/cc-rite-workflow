@@ -58,7 +58,7 @@ PIN_MISMATCH='不一致なら修正案を適用せず、主張を限定するか
 PIN_TRIGGER_COMMIT='commit body の `simplification-first:` 段落（ステップ 3\.2）として書く'
 PIN_BODY_PARA='`simplification-first:` 段落（Escalation trigger 成立時のみ）'
 PIN_GATE_CHECK='Escalation trigger 成立時は `simplification-first:` 段落の有無も同じ規則で判定し、いずれかの欠落を `missing` とする'
-PIN_OVERFLOW_READ='必須記録の保存・検査手順の正本'
+PIN_OVERFLOW_READ='正本の保存先から同じ節を読む'
 PIN_OVERFLOW_NO_BYPASS='検査を外して通過させない'
 PIN_GATE_NOT_REQUIRED='trigger 不成立の cycle では `simplification-first:` 段落を要求しない'
 PIN_OPTION1='or \(Escalation trigger 成立時\) a `simplification-first: \{paragraph\}` paragraph'
@@ -183,6 +183,7 @@ negative_control "T-04: removing PIN_GENERALIZE breaks T-01" "$SF_START" "$SF_EN
 negative_control "T-04: removing PIN_CANDIDATE breaks T-02" "$S21_START" "$S21_END" "$PIN_CANDIDATE"
 negative_control "T-04: removing PIN_CROSSCHECK breaks T-02" "$S23_START" "$S23_END" "$PIN_CROSSCHECK"
 negative_control "T-04: removing PIN_GATE_CHECK breaks T-03" "$S321_START" "$S321_END" "$PIN_GATE_CHECK"
+negative_control "T-04: removing PIN_OVERFLOW_READ breaks T-03" "$S321_START" "$S321_END" "$PIN_OVERFLOW_READ"
 negative_control "T-04: removing PIN_GATE_NOT_REQUIRED breaks T-05" "$S321_START" "$S321_END" "$PIN_GATE_NOT_REQUIRED"
 
 print_summary "fix-simplification-first-doc-claim-static-pin.test.sh"

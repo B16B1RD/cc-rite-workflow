@@ -183,39 +183,6 @@ repo_root=$("$_SCRIPT_DIR/../state-path-resolve.sh" 2>/dev/null) || repo_root=""
 [ -n "$repo_root" ] || repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
 
-if [[ "$PUSH_ONLY" != "true" ]] && [[ "$DRY_RUN" != "true" ]]; then
- _wwc_default_file=""
- _wwc_resolved_file=""
- _wwc_msg_cleanup() { rm -f "${_wwc_default_file:-}" "${_wwc_resolved_file:-}"; return 0; }
- trap 'rc=$?; _wwc_msg_cleanup; exit $rc' EXIT
- trap '_wwc_msg_cleanup; exit 130' INT
- trap '_wwc_msg_cleanup; exit 143' TERM
- trap '_wwc_msg_cleanup; exit 129' HUP
- _wwc_default_file=$(mktemp "${TMPDIR:-/tmp}/rite-wwc-default-XXXXXX") || {
-  echo "ERROR: 既定メッセージ用一時ファイルを作成できません" >&2
-  exit 1
- }
- _wwc_resolved_file=$(mktemp "${TMPDIR:-/tmp}/rite-wwc-msg-XXXXXX") || {
-  echo "ERROR: コミットメッセージ用一時ファイルを作成できません" >&2
-  exit 1
- }
- printf '%s\n' "$COMMIT_MSG" > "$_wwc_default_file"
- _wwc_args=(--default-file "$_wwc_default_file" --root "${_convention_root:-$repo_root}")
- if [[ -n "$MESSAGE_FILE" ]]; then
-  _wwc_args+=(--message-file "$MESSAGE_FILE")
- elif [[ "$MESSAGE_SET" == "true" ]]; then
-  _wwc_args+=(--message-file "$_wwc_default_file")
- fi
- if ! bash "$_SCRIPT_DIR/commit-convention-message.sh" "${_wwc_args[@]}" > "$_wwc_resolved_file"; then
-  echo "ERROR: Wiki worktree コミットのメッセージを解決できません" >&2
-  exit 1
- fi
- COMMIT_MSG=$(cat "$_wwc_resolved_file")
- rm -f "$_wwc_default_file" "$_wwc_resolved_file"
- _wwc_default_file=""
- _wwc_resolved_file=""
-fi
-
 # Advisory lock (same pattern as wiki-ingest-commit.sh). flock may be
 # absent on minimal containers / macOS without util-linux; in that case
 # we skip the lock and accept the race (matching legacy behaviour).
@@ -406,6 +373,41 @@ if [[ "$DRY_RUN" == "true" ]]; then
  fi
  exit 0
 fi
+
+# Resolve convention after skip paths (wiki-disabled / missing worktree /
+# no-pending / dry-run / --push-only). Commit path still fail-loud when
+# convention files exist without --message-file.
+_wwc_default_file=""
+_wwc_resolved_file=""
+_wwc_msg_cleanup() { rm -f "${_wwc_default_file:-}" "${_wwc_resolved_file:-}"; return 0; }
+trap 'rc=$?; _wwc_msg_cleanup; exit $rc' EXIT
+trap '_wwc_msg_cleanup; exit 130' INT
+trap '_wwc_msg_cleanup; exit 143' TERM
+trap '_wwc_msg_cleanup; exit 129' HUP
+_wwc_default_file=$(mktemp "${TMPDIR:-/tmp}/rite-wwc-default-XXXXXX") || {
+ echo "ERROR: 既定メッセージ用一時ファイルを作成できません" >&2
+ exit 1
+}
+_wwc_resolved_file=$(mktemp "${TMPDIR:-/tmp}/rite-wwc-msg-XXXXXX") || {
+ echo "ERROR: コミットメッセージ用一時ファイルを作成できません" >&2
+ exit 1
+}
+printf '%s\n' "$COMMIT_MSG" > "$_wwc_default_file"
+_wwc_args=(--default-file "$_wwc_default_file" --root "${_convention_root:-$repo_root}")
+if [[ -n "$MESSAGE_FILE" ]]; then
+ _wwc_args+=(--message-file "$MESSAGE_FILE")
+elif [[ "$MESSAGE_SET" == "true" ]]; then
+ _wwc_args+=(--message-file "$_wwc_default_file")
+fi
+if ! bash "$_SCRIPT_DIR/commit-convention-message.sh" "${_wwc_args[@]}" > "$_wwc_resolved_file"; then
+ echo "ERROR: Wiki worktree コミットのメッセージを解決できません" >&2
+ exit 1
+fi
+COMMIT_MSG=$(cat "$_wwc_resolved_file")
+rm -f "$_wwc_default_file" "$_wwc_resolved_file"
+_wwc_default_file=""
+_wwc_resolved_file=""
+trap - EXIT INT TERM HUP
 
 # -----------------------------------------------------------------------
 # Admin dir write probe. Both the numref gate (`git add -N`) and the commit
