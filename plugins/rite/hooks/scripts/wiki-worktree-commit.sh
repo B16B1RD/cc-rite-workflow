@@ -111,7 +111,7 @@ while [[ $# -gt 0 ]]; do
  shift
  ;;
  --message)
- if [[ $# -lt 2 ]]; then
+ if [[ $# -lt 2 ]] || [[ -z "${2:-}" ]]; then
  echo "ERROR: --message requires a value" >&2
  exit 1
  fi
