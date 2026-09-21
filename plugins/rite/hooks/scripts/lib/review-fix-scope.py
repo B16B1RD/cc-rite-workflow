@@ -308,19 +308,33 @@ def each_direct_commit(command, cwd):
         if index >= len(words) or words[index] != "commit":
             continue
         # Option values (notably -m '--dry-run') must not exempt a real commit.
-        dry_run, skip = False, False
+        # -a / --all / a pathspec commit the worktree, not the index the gate hashed.
+        dry_run, skip, index_only, dashed = False, False, True, False
         for option in words[index + 1:]:
+            if dashed:
+                index_only = False
+                break
             if skip:
                 skip = False
-            elif option == "--":
-                break
-            elif re.fullmatch(r"-[A-Za-z]*[mFCct]", option) or option in ("-m", "--message", "-F", "--file", "-C", "--reuse-message", "-c", "--reedit-message", "--author", "--date", "--fixup", "--squash", "--cleanup", "-t", "--template", "--trailer"):
-                skip = True
+                continue
+            if option == "--":
+                dashed = True
+                continue
+            if option in ("-a", "--all"):
+                index_only = False
             elif option in ("--dry-run", "--help", "-h"):
                 dry_run = True
+            elif re.fullmatch(r"-[A-Za-z]*[mFCct]", option) or option in ("-m", "--message", "-F", "--file", "-C", "--reuse-message", "-c", "--reedit-message", "--author", "--date", "--fixup", "--squash", "--cleanup", "-t", "--template", "--trailer"):
+                if option.startswith("-") and not option.startswith("--") and "a" in option[1:]:
+                    index_only = False
+                skip = True
+            elif option.startswith("-"):
+                if "a" in option[1:]:
+                    index_only = False
+            else:
+                index_only = False
         if dry_run:
             continue
-        # A review in another worktree must not prohibit unrelated work.
         os.chdir(target)
         try:
             actual = Path(subprocess.check_output(
@@ -329,9 +343,9 @@ def each_direct_commit(command, cwd):
         except subprocess.CalledProcessError:
             # Not a repository, so it is not the session worktree. commit-target
             # still refuses this; a review check must not turn it into a deny.
-            yield None
+            yield None, True
             continue
-        yield actual
+        yield actual, index_only
 
 
 def commit_check(args):
@@ -348,7 +362,7 @@ def commit_check(args):
         if "review_run" not in state:
             return
         retained = stagnation.retained_run(state, args.session)
-    for actual in each_direct_commit(args.command, args.cwd):
+    for actual, _index_only in each_direct_commit(args.command, args.cwd):
         if actual is None:
             continue
         if "worktree" not in state:
@@ -407,8 +421,9 @@ def commit_target_main(argv):
     parser.add_argument("--command", required=True)
     parser.add_argument("--cwd", required=True)
     args = parser.parse_args(argv)
-    for actual in each_direct_commit(args.command, args.cwd):
+    for actual, index_only in each_direct_commit(args.command, args.cwd):
         require(actual is not None, "commit worktree cannot be resolved")
+        require(index_only, "commit does not use the checked index")
         print(actual)
 
 

@@ -48,8 +48,12 @@ if [ -z "$FLOW" ] || [ ! -f "$FLOW" ]; then
   _skip "no_session"
 fi
 
-PHASE=$(jq -r '.phase // ""' "$FLOW" 2>/dev/null) || PHASE=""
-FS_WT=$(jq -r '.worktree // ""' "$FLOW" 2>/dev/null) || FS_WT=""
+# A present file that jq cannot read is not an empty phase. Commit mode must
+# not skip that as "some other phase".
+if ! _flow_row=$(jq -r '[.phase // "", .worktree // "", (.issue_number // "")] | @tsv' "$FLOW" 2>/dev/null); then
+  _deny "state_unreadable"
+fi
+IFS=$'\t' read -r PHASE FS_WT ISSUE <<<"$_flow_row"
 if [ -z "$WORKTREE" ]; then
   WORKTREE=$(git rev-parse --show-toplevel 2>/dev/null) || WORKTREE=""
 fi
@@ -75,7 +79,6 @@ fi
 
 MEM="${WIKI_APPLY_MEMORY:-}"
 if [ -z "$MEM" ]; then
-  ISSUE=$(jq -r '.issue_number // ""' "$FLOW" 2>/dev/null) || ISSUE=""
   ROOT=$(bash "$SCRIPT_DIR/../state-path-resolve.sh" 2>/dev/null) || ROOT=""
   if [ -n "$ROOT" ] && [ -n "$ISSUE" ]; then
     MEM="$ROOT/.rite/work-memory/issue-${ISSUE}.md"

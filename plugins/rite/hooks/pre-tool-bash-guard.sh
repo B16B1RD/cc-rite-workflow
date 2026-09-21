@@ -963,9 +963,13 @@ if [ -z "$BLOCKED_PATTERN" ] && [[ "$CMD_CHECK" == *git* && "$CMD_CHECK" == *com
   fi
   _wiki_phase=""
   _wiki_fswt=""
+  _wiki_unreadable=0
   if [ -n "$_wiki_fs" ] && [ -f "$_wiki_fs" ]; then
-    _wiki_phase=$(jq -r '.phase // ""' "$_wiki_fs" 2>/dev/null) || _wiki_phase=""
-    _wiki_fswt=$(jq -r '.worktree // ""' "$_wiki_fs" 2>/dev/null) || _wiki_fswt=""
+    if ! _wiki_row=$(jq -r '[.phase // "", .worktree // ""] | @tsv' "$_wiki_fs" 2>/dev/null); then
+      _wiki_unreadable=1
+    else
+      IFS=$'\t' read -r _wiki_phase _wiki_fswt <<<"$_wiki_row"
+    fi
   fi
   _wiki_cwd=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || _wiki_cwd=""
   [ -n "$_wiki_cwd" ] || _wiki_cwd="$PWD"
@@ -975,7 +979,11 @@ if [ -z "$BLOCKED_PATTERN" ] && [[ "$CMD_CHECK" == *git* && "$CMD_CHECK" == *com
   if [ -d "$_wiki_fswt" ]; then
     _wiki_fswt=$(CDPATH= cd -- "$_wiki_fswt" && pwd -P)
   fi
-  if [ "$_wiki_phase" = "implement" ] || [ "$_wiki_phase" = "fix" ]; then
+  if [ "$_wiki_unreadable" -eq 1 ]; then
+    BLOCKED_PATTERN="wiki-apply-unreadable"
+    BLOCKED_REASON="Wiki apply gate cannot read flow-state, so this commit cannot be confirmed."
+    BLOCKED_ALTERNATIVE="Repair the session flow-state, then retry the commit. A missing session skips this check. An unreadable one does not."
+  elif [ "$_wiki_phase" = "implement" ] || [ "$_wiki_phase" = "fix" ]; then
     _wiki_err=$(mktemp "${TMPDIR:-/tmp}/wiki-apply-target.XXXXXX")
     _wiki_rc=0
     _wiki_targets=$(bash "$SCRIPT_DIR/scripts/review-fix-scope-check.sh" commit-target --command "$CMD_CHECK" --cwd "$_wiki_cwd" 2>"$_wiki_err") || _wiki_rc=$?
@@ -983,9 +991,15 @@ if [ -z "$BLOCKED_PATTERN" ] && [[ "$CMD_CHECK" == *git* && "$CMD_CHECK" == *com
     IFS= read -r _wiki_why < "$_wiki_err" || true
     rm -f "$_wiki_err"
     if [ "$_wiki_rc" -ne 0 ]; then
-      BLOCKED_PATTERN="wiki-apply-unresolved"
-      BLOCKED_REASON="Wiki apply gate cannot resolve this commit's worktree: ${_wiki_why}"
-      BLOCKED_ALTERNATIVE="Run a literal git commit, or git -C <worktree> commit, in its own Bash call. Do not hide the worktree in a variable."
+      if [[ "$_wiki_why" == *"checked index"* ]]; then
+        BLOCKED_PATTERN="wiki-apply-index"
+        BLOCKED_REASON="Wiki apply gate checked the index, and this commit would record other content: ${_wiki_why}"
+        BLOCKED_ALTERNATIVE="Stage the files and run git commit without -a, --all, or a pathspec."
+      else
+        BLOCKED_PATTERN="wiki-apply-unresolved"
+        BLOCKED_REASON="Wiki apply gate cannot resolve this commit's worktree: ${_wiki_why}"
+        BLOCKED_ALTERNATIVE="Run a literal git commit, or git -C <worktree> commit, in its own Bash call. Do not hide the worktree in a variable."
+      fi
     else
       _wiki_gate="${WIKI_APPLY_GATE_BIN:-$SCRIPT_DIR/scripts/wiki-apply-gate.sh}"
       while IFS= read -r _wiki_target; do

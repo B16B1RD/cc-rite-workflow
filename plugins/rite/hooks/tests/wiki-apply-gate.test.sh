@@ -349,6 +349,24 @@ else
   fail "review deny rc=$GRC out=$GOUT"
 fi
 
+echo "=== unreadable flow-state denies ==="
+bad="$ROOT/bad.flow-state"
+printf '{\n' > "$bad"
+run_gate --mode commit --worktree "$repo" --flow-state "$bad" --memory "$mem"
+if [ "$GRC" -eq 1 ] && grep -q 'reason=state_unreadable' <<<"$GOUT"; then
+  pass "corrupt flow-state denies commit"
+else
+  fail "corrupt flow rc=$GRC out=$GOUT"
+fi
+gin=$(jq -n --arg cwd "$repo" '{tool_name:"Bash", tool_input:{command:"git commit -m x"}, cwd:$cwd}')
+grc=0
+gout=$(printf '%s' "$gin" | WIKI_APPLY_FLOW_STATE="$bad" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+if grep -q 'wiki-apply-unreadable' <<<"$gout"; then
+  pass "guard denies commit when flow-state is unreadable"
+else
+  fail "guard corrupt rc=$grc out=$gout"
+fi
+
 echo "=== phase cleanup skips ==="
 clean="$ROOT/clean.flow-state"
 write_flow "$clean" cleanup 7 "$repo"
@@ -436,6 +454,31 @@ if grep -q 'wiki-apply-unresolved' <<<"$gout" || grep -q 'review-commit-evidence
   pass "guard denies an unresolvable git -C commit"
 else
   fail "guard dynamic -C rc=$grc out=$gout"
+fi
+mkdir -p "$repo/sub"
+sub_cmd=$(jq -n --arg cwd "$repo/sub" '{tool_name:"Bash", tool_input:{command:"git commit -m x"}, cwd:$cwd}')
+grc=0
+gout=$(printf '%s' "$sub_cmd" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+if grep -q 'wiki-apply-gate' <<<"$gout"; then
+  pass "guard denies commit from a subdirectory"
+else
+  fail "guard subdir rc=$grc out=$gout"
+fi
+away=$(jq -n --arg cwd "$repo" --arg cmd "cd $other && git commit -m x" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
+grc=0
+gout=$(printf '%s' "$away" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+if [ "$grc" -eq 0 ] && [ -z "$gout" ]; then
+  pass "guard allows cd to another repository"
+else
+  fail "guard cd rc=$grc out=$gout"
+fi
+alla=$(jq -n --arg cwd "$repo" '{tool_name:"Bash", tool_input:{command:"git commit -a -m x"}, cwd:$cwd}')
+grc=0
+gout=$(printf '%s' "$alla" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+if grep -q 'wiki-apply-index' <<<"$gout"; then
+  pass "guard denies git commit -a"
+else
+  fail "guard -a rc=$grc out=$gout"
 fi
 
 echo "=== capture records auto_query_off without searching ==="
