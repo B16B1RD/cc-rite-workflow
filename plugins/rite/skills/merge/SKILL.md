@@ -45,6 +45,8 @@ argument-hint: "[--force-ci] <pr_number>"
 | `{branch_name}` | ステップ 1 の `gh pr view --json headRefName` から取得 |
 | `{owner_repo}` | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute |
 | `{reviewed_ac_ids}` | reviewed-head helper の `REVIEWED_AC=unverified; ac=` marker（カンマ区切り） |
+| `{squash_subject_file}` | ステップ 2 直前に規約適用した squash 件名を書いた作業ツリー外ファイル |
+| `{squash_body_file}` | ステップ 2 直前に規約適用した squash 本文を書いた作業ツリー外ファイル |
 
 ---
 
@@ -241,8 +243,14 @@ fi
 
 # squash 件名・本文は [commit-convention.md](../../references/commit-convention.md) で生成し、
 # 作業ツリー外のファイルへ書く。未指定時の既定は PR タイトルと既存の squash 本文。
-# {squash_subject} / {squash_body_file} は直前の Write 結果を literal substitute する。
-if gh pr merge {pr_number} -R {owner_repo} --squash --delete-branch=false --match-head-commit "$verified_head" --subject "{squash_subject}" --body-file "{squash_body_file}" 2>"${gh_err:-/dev/null}"; then
+# {squash_subject_file} / {squash_body_file} は直前の Write 結果を literal substitute する。
+# 件名はファイルから読み、シェルが件名テキストを展開しないようにする。
+squash_subject=$(cat -- "{squash_subject_file}") || {
+  echo "ERROR: squash 件名ファイルを読めません: {squash_subject_file}" >&2
+  echo "[merge:not-ready]"
+  exit 1
+}
+if gh pr merge {pr_number} -R {owner_repo} --squash --delete-branch=false --match-head-commit "$verified_head" --subject "$squash_subject" --body-file "{squash_body_file}" 2>"${gh_err:-/dev/null}"; then
   echo "<!-- skill return signal: caller must continue next step -->"
   echo "<!-- [merge:returned-to-caller] -->"
   # 成功時のみ stderr の warning (deprecation / rate-limit) を surface する。

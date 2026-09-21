@@ -205,6 +205,9 @@ if [[ "$PUSH_ONLY" != "true" ]] && [[ "$DRY_RUN" != "true" ]]; then
   exit 1
  fi
  COMMIT_MSG=$(cat "$_wwc_resolved_file")
+ rm -f "$_wwc_default_file" "$_wwc_resolved_file"
+ _wwc_default_file=""
+ _wwc_resolved_file=""
 fi
 
 # Advisory lock (same pattern as wiki-ingest-commit.sh). flock may be

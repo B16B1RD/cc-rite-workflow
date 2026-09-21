@@ -163,6 +163,7 @@ if [ "$branch_strategy" = "separate_branch" ]; then
     stash_needed=false  # EXIT trap での二重 pop を防止
   fi
 
+  _rite_wiki_init_msg_cleanup
   # cleanup trap を解除（正常完了時は不要）
   trap - EXIT INT TERM HUP
 

@@ -358,11 +358,20 @@ sed "s/{initialized_date}/$initialized_date/g" \
 # ステップ 1.2 の値と ステップ 2.1 で解決済みの plugin_root をリテラルで埋め込む
 plugin_root="{plugin_root}"
 
-# 生成直前に commit-convention.md を適用し、メッセージを {wiki_init_msg_file} へ書く。
+# 生成直前に commit-convention.md を適用する。{wiki_init_commit_message} は適用後の値。
+# 未指定時の既定は wiki-branch-init.sh の現行初期文。
+wiki_init_msg_file=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-init-msg-XXXXXX") || {
+  echo "ERROR: コミットメッセージ用一時ファイルを作成できません" >&2
+  exit 1
+}
+trap 'rm -f "${wiki_init_msg_file:-}"' EXIT INT TERM HUP
+cat > "$wiki_init_msg_file" <<'EOF'
+{wiki_init_commit_message}
+EOF
 bash "$plugin_root/hooks/scripts/wiki-branch-init.sh" \
   --branch-strategy "{branch_strategy}" \
   --wiki-branch "{wiki_branch}" \
-  --message-file "{wiki_init_msg_file}"
+  --message-file "$wiki_init_msg_file"
 ```
 
 ## ステップ 3.5: Wiki Worktree セットアップ
@@ -413,6 +422,7 @@ if [ "$branch_strategy" = "separate_branch" ] && [ -d .rite/wiki-worktree/.rite/
   done
 
   if [ "$migration_needed" = "true" ]; then
+    # 規約適用後の値。未指定時の既定:
     commit_msg="chore(wiki): migrate pages/ directories with .gitkeep"
     _mig_msg=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-mig-msg-XXXXXX") || {
       echo "WARNING: コミットメッセージ用一時ファイルを作成できません" >&2
@@ -449,6 +459,7 @@ fi
 
 ```bash
 plugin_root="{plugin_root}"
+# 規約適用後の値。未指定時の既定:
 commit_msg="chore(wiki): migrate pages/ directories with .gitkeep"
 _mig_retry_msg=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-mig-retry-msg-XXXXXX") || {
   echo "WARNING: コミットメッセージ用一時ファイルを作成できません" >&2

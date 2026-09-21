@@ -133,6 +133,11 @@ if printf '%s' "$nopending_out" | grep -c >/dev/null 'committed=0; branch=wiki; 
 else
   fail "no-pending status line missing: $nopending_out"
 fi
+nopending_tmp="$nopending_repo/tmp"
+mkdir -p "$nopending_tmp"
+( cd "$nopending_repo" && TMPDIR="$nopending_tmp" bash "$SCRIPT" >/dev/null )
+leftover_wwc=$(find "$nopending_tmp" -name 'rite-wwc-*' | wc -l | tr -d '[:space:]')
+assert "no-pending leaves no rite-wwc tempfiles" "0" "$leftover_wwc"
 
 # Exercise the write probe against a writable linked-worktree admin dir. The
 # read-only fixture below cannot pin cleanup because mktemp never creates the

@@ -294,7 +294,7 @@ if [[ "${#pending_files[@]}" -eq 0 ]]; then
 fi
 
 # Resolve commit message before any branch switch. Convention files at the
-# shared root require --message-file; otherwise each path keeps its current default.
+# shared root require --message-file; otherwise the helper default is used.
 _wic_default_file=$(mktemp "${TMPDIR:-/tmp}/rite-wic-default-XXXXXX") || {
  echo "ERROR: 既定メッセージ用一時ファイルを作成できません" >&2
  exit 1
@@ -325,6 +325,11 @@ if [[ "$DRY_RUN" == "true" ]]; then
  done
  exit 0
 fi
+
+# Resolve once on the current tree, before git add / worktree copy / wiki
+# checkout. locate reads the shared-root working tree; an orphan wiki
+# checkout would hide CLAUDE.md and silently drop PRESENT to 0.
+commit_msg=$(_wic_resolve_msg "chore(wiki): ingest ${#pending_files[@]} raw source(s)") || exit 1
 
 # -----------------------------------------------------------------------
 # same_branch strategy short-circuit: when raw sources live on the
@@ -357,7 +362,6 @@ if [[ "$branch_strategy" == "same_branch" ]]; then
   echo "[wiki-ingest-commit] committed=0; branch=${wiki_branch}; reason=no-staged-diff"
   exit 0
  fi
- commit_msg=$(_wic_resolve_msg "chore(wiki): ingest ${#pending_files[@]} raw source(s)") || exit 1
  if ! bash "$_SCRIPT_DIR/git-commit-file.sh" --file "$_wic_resolved_file" -- --quiet 2>"${_sb_git_err:-/dev/null}"; then
   echo "ERROR: git commit failed" >&2
   _sb_dump "commit"
@@ -467,7 +471,6 @@ if [ "$wt_usable" = "true" ]; then
  # future enhancement (e.g. push retry with exponential backoff) lands
  # in one place.
  set +e
- commit_msg=$(_wic_resolve_msg "chore(wiki): ingest ${#pending_files[@]} raw source(s) (worktree path)") || exit 1
  wtcp_out=$(worktree_commit_push \
  "$worktree_path" \
  "$wiki_branch" \
@@ -989,7 +992,6 @@ case "$cached_check_rc" in
  exit 3
  ;;
 esac
-commit_msg=$(_wic_resolve_msg "chore(wiki): ingest ${#pending_files[@]} raw source(s) from ${current_branch}") || exit 1
 if ! bash "$_SCRIPT_DIR/git-commit-file.sh" --file "$_wic_resolved_file" -- --quiet >/dev/null 2>"${git_err:-/dev/null}"; then
  echo "ERROR: git commit failed on '$wiki_branch'" >&2
  dump_git_err "commit"

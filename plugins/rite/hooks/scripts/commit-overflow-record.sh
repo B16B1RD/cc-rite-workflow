@@ -141,18 +141,19 @@ fi
   exit 1
 }
 
-mv "$tmp" "$FILE" || {
-  echo "ERROR: 必須記録を保存できません: $FILE" >&2
-  exit 1
-}
-trap - EXIT INT TERM HUP
-
-# Read-back: never report the record as stored if the body is not there.
-verify=$(extract_section "$FILE")
+# Read-back the temp file before replacing the store. A failed verify must
+# leave $FILE untouched (trap still owns $tmp).
+verify=$(extract_section "$tmp")
 src_norm=$(sed -e 's/[[:space:]]*$//' -e '/^$/d' "$BODY_FILE")
 got_norm=$(printf '%s\n' "$verify" | sed -e 's/[[:space:]]*$//' -e '/^$/d')
 if [ -z "$src_norm" ] || [ "$got_norm" != "$src_norm" ]; then
   echo "ERROR: 必須記録の読み戻しが一致しません。検証済みとして扱いません: $FILE" >&2
   exit 1
 fi
+
+mv "$tmp" "$FILE" || {
+  echo "ERROR: 必須記録を保存できません: $FILE" >&2
+  exit 1
+}
+trap - EXIT INT TERM HUP
 exit 0

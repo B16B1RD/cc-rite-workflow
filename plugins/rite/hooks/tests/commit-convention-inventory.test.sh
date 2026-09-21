@@ -68,6 +68,8 @@ assert_not_grep "T-07 no CLAUDE-always-wins helper" "$PLUGIN_ROOT/hooks/scripts/
 # --- T-03: production paths wire --message-file / git-commit-file / -F / --body-file ---
 assert_grep "T-03 implement uses git-commit-file" "$IMPLEMENT" \
   'git-commit-file.sh --file'
+assert_grep "T-03 parallel merge uses -F" "$IMPLEMENT" \
+  'git merge --no-ff \{branch_name\}/\{task_id\} -F "\$_par_msg"'
 assert_grep "T-03 implement locates convention" "$IMPLEMENT" \
   'commit-convention.md'
 assert_grep "T-03 fix uses git commit -F" "$FIX" \
@@ -75,7 +77,7 @@ assert_grep "T-03 fix uses git commit -F" "$FIX" \
 assert_grep "T-03 setup uses git-commit-file" "$SETUP" \
   'git-commit-file.sh'
 assert_grep "T-03 wiki-init passes --message-file" "$WIKI_INIT_SKILL" \
-  'message-file "\{wiki_init_msg_file\}"'
+  'message-file "\$wiki_init_msg_file"'
 assert_grep "T-03 wiki-ingest 5.1 uses --message-file" "$WIKI_INGEST_SKILL" \
   'wiki-worktree-commit.sh" --commit-only --message-file'
 assert_grep "T-03 wiki-ingest 5.2 uses git-commit-file" "$WIKI_INGEST_SKILL" \
@@ -86,8 +88,10 @@ assert_grep "T-03 wiki-lint separate_branch uses --message-file" "$WIKI_LINT_SKI
   'wiki-worktree-commit.sh" --commit-only --message-file'
 assert_grep "T-03 wiki-ingest-commit helper accepts --message-file" "$WIKI_INGEST" \
   '\[--message-file ABS\]'
+assert_grep "T-03 squash reads subject from a file" "$MERGE" \
+  'squash_subject=\$\(cat -- "\{squash_subject_file\}"\)'
 assert_grep "T-03 squash passes --subject and --body-file" "$MERGE" \
-  'subject "\{squash_subject\}" --body-file "\{squash_body_file\}"'
+  'subject "\$squash_subject" --body-file "\{squash_body_file\}"'
 assert_grep "T-03 review wiki-recording passes --message-file" "$PR_WIKI" \
   'wiki-ingest-commit.sh --message-file'
 assert_grep "T-03 fix wiki-recording passes --message-file" "$FIX_WIKI" \
@@ -119,6 +123,14 @@ got=$(bash "$MSG" --default-file "$def" --root "$repo")
 assert "T-02 absent files use helper default" "chore(wiki): default-absent" "$(printf '%s' "$got" | tr -d '\n')"
 
 printf 'Commits must be English.\nSubject form: feat(scope): description\nBody is required.\n' > "$repo/CLAUDE.md"
+no_file_rc=0
+no_file_err=$(bash "$MSG" --default-file "$def" --root "$repo" 2>&1) || no_file_rc=$?
+assert "T-01 helper does not invent a message from CLAUDE.md" "1" "$no_file_rc"
+if printf '%s' "$no_file_err" | grep -q -- '--message-file'; then
+  pass "T-01 helper fail-loud names --message-file"
+else
+  fail "T-01 helper diagnostic: $no_file_err"
+fi
 en_msg=$(mktemp "${TMPDIR:-/tmp}/rite-inv-en-XXXXXX")
 printf 'feat(wiki): english subject\n\nwhy the first convention applies\n' > "$en_msg"
 printf 'first\n' >> "$repo/README"

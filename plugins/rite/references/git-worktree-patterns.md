@@ -161,9 +161,15 @@ All worktree branches are merged back to the Issue branch using `--no-ff` (no fa
 # Switch to the Issue's feature branch
 git checkout {issue_branch}
 
-# Merge each task branch (in dependency order if applicable)
-git merge --no-ff {issue_branch}/task-1 -m "chore(parallel): integrate task-1 ({task_description})"
-git merge --no-ff {issue_branch}/task-2 -m "chore(parallel): integrate task-2 ({task_description})"
+# Merge each task branch (in dependency order if applicable).
+# 件名は commit-convention.md 適用後の値を -F で渡す。未指定時の既定:
+# chore(parallel): integrate {task_id} ({task_description})
+_par_msg=$(mktemp "${TMPDIR:-/tmp}/rite-parallel-merge-XXXXXX") || exit 1
+trap 'rm -f "${_par_msg:-}"' EXIT INT TERM HUP
+cat > "$_par_msg" <<'EOF'
+{parallel_merge_message}
+EOF
+git merge --no-ff {issue_branch}/task-1 -F "$_par_msg"
 ```
 
 ### Why `--no-ff`

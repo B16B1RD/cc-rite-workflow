@@ -296,7 +296,17 @@ Merge each passing task branch back to the Issue branch using `--no-ff`:
 
 ```bash
 git checkout {branch_name}
-git merge --no-ff {branch_name}/{task_id} -m "chore(parallel): integrate {task_id} ({task_description})"
+# 生成直前に commit-convention.md を適用する。未指定時の既定:
+# chore(parallel): integrate {task_id} ({task_description})
+_par_msg=$(mktemp "${TMPDIR:-/tmp}/rite-parallel-merge-XXXXXX") || {
+  echo "ERROR: コミットメッセージ用一時ファイルを作成できません" >&2
+  exit 1
+}
+trap 'rm -f "${_par_msg:-}"' EXIT INT TERM HUP
+cat > "$_par_msg" <<'EOF'
+{parallel_merge_message}
+EOF
+git merge --no-ff {branch_name}/{task_id} -F "$_par_msg"
 ```
 
 On merge conflict, follow the [first-merge-wins convention](../../references/git-worktree-patterns.md#conflict-resolution-convention).

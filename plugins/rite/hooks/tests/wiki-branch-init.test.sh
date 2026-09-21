@@ -302,6 +302,16 @@ if grep -qF "$expected_wiki_body" <<<"$state"; then
 else
   fail "wiki commit body mismatch: $state"
 fi
+init_tmp=$(mktemp -d)
+leftover_repo=$(make_sandbox tc1-leftover)
+( cd "$leftover_repo" && TMPDIR="$init_tmp" bash "$TARGET" --branch-strategy separate_branch --wiki-branch wiki >/dev/null )
+leftover_init=$(find "$init_tmp" -name 'rite-wiki-init-*' | wc -l | tr -d '[:space:]')
+if [ "$leftover_init" = "0" ]; then
+  pass "separate_branch success leaves no rite-wiki-init tempfiles"
+else
+  fail "leftover rite-wiki-init files: $(find "$init_tmp" -name 'rite-wiki-init-*')"
+fi
+rm -rf "$init_tmp"
 
 # --------------------------------------------------------------------------
 # TC-2: separate_branch (dirty tree) — stash 退避/復帰で変更を保護

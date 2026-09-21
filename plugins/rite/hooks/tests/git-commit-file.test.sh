@@ -132,7 +132,27 @@ if [ -f "$nowrite/blocked.md" ]; then
 else
   pass "failed overflow write left no store file"
 fi
-rm -f "$store" "$bodyf"
+
+# verify-before-mv: a body with a nested ## heading must not mutate the store
+cut_store=$(mktemp "${TMPDIR:-/tmp}/rite-overflow-cut-XXXXXX")
+cut_body=$(mktemp "${TMPDIR:-/tmp}/rite-overflow-cut-body-XXXXXX")
+printf '## Unrelated\n\nkeep me\n' > "$cut_store"
+printf 'root cause paragraph\n## Details\nmore\n' > "$cut_body"
+before=$(cat "$cut_store")
+cut_rc=0
+bash "$OVERFLOW" write --file "$cut_store" --section "Root cause" --body-file "$cut_body" >/dev/null 2>&1 || cut_rc=$?
+assert "overflow nested heading write exits 1" "1" "$cut_rc"
+assert "overflow nested heading leaves store bytes unchanged" "$before" "$(cat "$cut_store")"
+miss_cut=0
+bash "$OVERFLOW" read --file "$cut_store" --section "Root cause" >/dev/null 2>&1 || miss_cut=$?
+assert "overflow nested heading read reports missing section" "2" "$miss_cut"
+empty_body=$(mktemp "${TMPDIR:-/tmp}/rite-overflow-empty-XXXXXX")
+: > "$empty_body"
+empty_rc=0
+bash "$OVERFLOW" write --file "$cut_store" --section "Root cause" --body-file "$empty_body" >/dev/null 2>&1 || empty_rc=$?
+assert "overflow empty body write exits 1" "1" "$empty_rc"
+assert "overflow empty body leaves store bytes unchanged" "$before" "$(cat "$cut_store")"
+rm -f "$store" "$bodyf" "$cut_store" "$cut_body" "$empty_body"
 
 if ! print_summary "git-commit-file.test.sh"; then
   exit 1

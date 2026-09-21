@@ -506,10 +506,10 @@ rationale: references/rationale.md#related-page-literal
 
 ### 5.0.c canonical commit message 契約
 
-ステップ 5.1 と ステップ 5.2 の commit message は、[commit-convention.md](../../references/commit-convention.md) 適用後の値を使う。規約が件名形式を指定しないときの既定は以下を **唯一の真実源** とする。両サイトで以下と literal 一致させる。
+ステップ 5.1 と ステップ 5.2 の commit message は、生成直前に [commit-convention.md](../../references/commit-convention.md) を適用した値を使う。規約が件名形式を指定しないときの既定テンプレートを **唯一の既定源** とする。カウンタ placeholder の residual gate は両サイトで以下と literal 一致させる。
 rationale: references/rationale.md#commit-msg-three-sites
 
-**canonical template**:
+**canonical default template**（規約未指定時。適用後の値は規約に従う）:
 
 ```
 docs(wiki): ingest {n_pages_created} new / {n_pages_updated} updated pages from {n_raw_sources} raw source(s) (skipped: {n_skipped})
@@ -527,7 +527,7 @@ case "$commit_msg" in
 esac
 ```
 
-ステップ 5.1 / 5.2 では `commit_msg=` 行を上記 canonical と literal 一致させ、placeholder-residue gate のサイト識別子 (`ステップ 5.{X}`) のみを 5.1 / 5.2 で置換する。template を変更する際は本セクション + ステップ 5.1 + ステップ 5.2 の **3 箇所を必ず同時に更新する**。
+ステップ 5.1 / 5.2 の `commit_msg=` 初期値はこの既定テンプレートでよい。生成直前の規約適用で件名が変わっても、カウンタ placeholder が残っていれば residual gate が止める。既定テンプレートを変更する際は本セクション + ステップ 5.1 + ステップ 5.2 の **3 箇所を必ず同時に更新する**。
 
 ### 5.0.n commit 前の番号参照検査 (両戦略共通)
 
@@ -658,6 +658,12 @@ if [ "$branch_strategy" = "separate_branch" ]; then
       ;;
   esac
 
+  _ingest_sep_msg=""
+  _cleanup_sep() { [ -n "${_ingest_sep_msg:-}" ] && rm -f "$_ingest_sep_msg"; return 0; }
+  trap 'rc=$?; _cleanup_sep; exit $rc' EXIT
+  trap '_cleanup_sep; exit 130' INT
+  trap '_cleanup_sep; exit 143' TERM
+  trap '_cleanup_sep; exit 129' HUP
   _ingest_sep_msg=$(mktemp "${TMPDIR:-/tmp}/rite-ingest-sep-msg-XXXXXX") || {
     echo "ERROR: コミットメッセージ用一時ファイルを作成できません" >&2
     exit 1
@@ -669,6 +675,8 @@ if [ "$branch_strategy" = "separate_branch" ]; then
   commit_rc=$?
   set -e
   rm -f "$_ingest_sep_msg"
+  _ingest_sep_msg=""
+  trap - EXIT INT TERM HUP
   echo "$commit_out"
 
   case "$commit_rc" in
