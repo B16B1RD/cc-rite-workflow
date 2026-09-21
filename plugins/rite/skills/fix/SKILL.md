@@ -1865,7 +1865,9 @@ fallback を選んだら commit body に「なぜ throw ではないか」を書
 
 **Commit message language:**
 
-Before generating the commit message, check the `language` field in `rite-config.yml` using the Read tool to determine the language:
+生成直前に [commit-convention.md](../../references/commit-convention.md) を適用する（locate + Read。結果は flow-state に残さない）。規約が言語・形式を指定していればそれに従う。未指定項目だけ下記の `language` 既定と Conventional Commits を使う。
+
+Before generating the commit message, check the `language` field in `rite-config.yml` using the Read tool to determine the language (規約未指定時のみ):
 
 | Setting | Behavior |
 |---------|----------|
@@ -1966,7 +1968,7 @@ fix(review): {description}
 
 Before committing a fix, the commit body **MUST** include a root-cause explanation. This gate implements Quality Signal 2 (root-cause-missing fix detection) — see the Quality Signal 1-4 table in `skills/pr-review/references/finding-cycling.md`.
 
-**Step 1**: 3.2 の commit body に `Root cause:` / `根本原因:` 段落があるか LLM が判定する (Bash 状態非依存)。Escalation trigger 成立時は `simplification-first:` 段落の有無も判定し、いずれかの欠落を `missing` とする。trigger 不成立の cycle では `simplification-first:` 段落を要求しない。
+**Step 1**: 3.2 の commit body に `Root cause:` / `根本原因:` 段落があるか LLM が判定する (Bash 状態非依存)。規約が本文・trailer を禁じて溢れさせた場合は、同じ必須記録を PR 本文または `commit-overflow-record.sh` の保存先から読む。どちらにも無ければ `missing`。検査を外して通過させない。Escalation trigger 成立時は `simplification-first:` 段落の有無も同じ規則で判定し、いずれかの欠落を `missing` とする。trigger 不成立の cycle では `simplification-first:` 段落を要求しない。溢れ先への書込失敗はコミットしない。
 
 Emit one of the two context markers so downstream logic can route:
 

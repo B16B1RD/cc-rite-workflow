@@ -424,5 +424,57 @@ run_pre_checkout_failure_case "pre-checkout failure"
 run_pre_checkout_failure_case "pre-checkout failure (apostrophe raw name)" "it's pr-test.md"
 echo ""
 
+echo "TC-MESSAGE: same_branch default / --message-file / convention fail-loud"
+make_same_branch_msg_fixture() {
+  local base repo
+  base=$(mktemp -d); fixture_dirs+=("$base")
+  repo="$base/repo"
+  git init -q "$repo"
+  git -C "$repo" config user.email test@example.com
+  git -C "$repo" config user.name test
+  git -C "$repo" config commit.gpgsign false
+  printf 'seed\n' > "$repo/README.md"
+  git -C "$repo" add README.md
+  git -C "$repo" commit -qm seed
+  git -C "$repo" branch -M develop
+  printf '%s\n' 'wiki:' '  enabled: true' '  branch_strategy: same_branch' '  branch_name: wiki' > "$repo/rite-config.yml"
+  git -C "$repo" add rite-config.yml
+  git -C "$repo" commit -qm config
+  mkdir -p "$repo/.rite/wiki/raw/reviews"
+  printf '%s\n' '---' 'ingested: false' '---' 'raw' > "$repo/.rite/wiki/raw/reviews/pr-test.md"
+  printf '%s' "$repo"
+}
+
+run_same_branch_message_cases() {
+  local repo rc out err msg
+  repo=$(make_same_branch_msg_fixture)
+  rc=0
+  out=$(cd "$repo" && bash "$HOOK_SRC" 2>/dev/null) || rc=$?
+  eq "same_branch default exits 0" "0" "$rc"
+  eq "same_branch default subject" "chore(wiki): ingest 1 raw source(s)" "$(git -C "$repo" log -1 --format=%s)"
+
+  repo=$(make_same_branch_msg_fixture)
+  printf 'English only.\n' > "$repo/CLAUDE.md"
+  rc=0
+  err=$(cd "$repo" && bash "$HOOK_SRC" 2>&1) || rc=$?
+  eq "CLAUDE.md without --message-file exits 1" "1" "$rc"
+  eq "fail-loud names --message-file" "1" "$(printf '%s' "$err" | grep -c -- '--message-file' || true)"
+
+  repo=$(make_same_branch_msg_fixture)
+  printf 'English only.\n' > "$repo/CLAUDE.md"
+  msg=$(mktemp)
+  printf 'docs(wiki): ingest with `tick`\n\n$(whoami) stays literal\n' > "$msg"
+  rc=0
+  (cd "$repo" && bash "$HOOK_SRC" --message-file "$msg") >/dev/null || rc=$?
+  eq "--message-file with CLAUDE.md exits 0" "0" "$rc"
+  eq "--message-file subject" "docs(wiki): ingest with \`tick\`" "$(git -C "$repo" log -1 --format=%s)"
+  eq "--message-file keeps command-like body" "1" \
+    "$(git -C "$repo" log -1 --format=%b | grep -cF '$(whoami) stays literal' || true)"
+  rm -f "$msg"
+}
+run_same_branch_message_cases
+
+echo ""
+
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [ "$FAIL" -eq 0 ] || exit 1

@@ -141,7 +141,7 @@ assert_grep_in_section "lint.md 8.3: --commit-only call exists in the section" \
   'wiki-worktree-commit\.sh" --commit-only'
 assert_grep_in_section "lint.md 8.3: standalone (non-auto) branch still commits + pushes immediately" \
   "$LINT_MD" '^### 8\.3 書き込み手順' '^## ステップ 9' \
-  'wiki-worktree-commit\.sh" --message "\$commit_msg"\)$'
+  'wiki-worktree-commit\.sh" --message-file "\$_lint_sep_msg"\)$'
 assert_grep_in_section "lint.md 8.3: rc=6 warns and points to the one-shot sandbox retry" \
   "$LINT_MD" '^### 8\.3 書き込み手順' '^## ステップ 9' \
   '^      6\) echo "WARNING: .*reason=sandbox-mask.*dangerouslyDisableSandbox: true を付けて 1 回だけ再実行.*" >&2 ;;$'
@@ -159,7 +159,7 @@ assert_grep_in_section "init.md 3.5.1: retry guidance requires a separate Bash t
   '以下の再試行専用 block を\*\*別の Bash tool call\*\*.*dangerouslyDisableSandbox: true.*確認なしで1回だけ実行'
 assert_grep_in_section "init.md 3.5.1: retry block calls the commit helper directly" \
   "$INIT_MD" '^### 3\.5\.1 ' '^## ステップ 4' \
-  '^retry_out=\$\(bash "\$plugin_root/hooks/scripts/wiki-worktree-commit\.sh" --message "\$commit_msg"\)$'
+  'retry_out=\$\(bash "\$plugin_root/hooks/scripts/wiki-worktree-commit\.sh" --message-file "\$_mig_retry_msg"\)'
 assert_grep_in_section "init.md 3.5.1: second rc=6 stops without another retry" \
   "$INIT_MD" '^### 3\.5\.1 ' '^## ステップ 4' \
   '^  6\) echo "WARNING: .*retry rc=6, reason=sandbox-mask.*これ以上は再試行せず.*" >&2 ;;$'

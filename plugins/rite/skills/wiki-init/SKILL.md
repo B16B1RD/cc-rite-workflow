@@ -358,9 +358,11 @@ sed "s/{initialized_date}/$initialized_date/g" \
 # ステップ 1.2 の値と ステップ 2.1 で解決済みの plugin_root をリテラルで埋め込む
 plugin_root="{plugin_root}"
 
+# 生成直前に commit-convention.md を適用し、メッセージを {wiki_init_msg_file} へ書く。
 bash "$plugin_root/hooks/scripts/wiki-branch-init.sh" \
   --branch-strategy "{branch_strategy}" \
-  --wiki-branch "{wiki_branch}"
+  --wiki-branch "{wiki_branch}" \
+  --message-file "{wiki_init_msg_file}"
 ```
 
 ## ステップ 3.5: Wiki Worktree セットアップ
@@ -412,9 +414,18 @@ if [ "$branch_strategy" = "separate_branch" ] && [ -d .rite/wiki-worktree/.rite/
 
   if [ "$migration_needed" = "true" ]; then
     commit_msg="chore(wiki): migrate pages/ directories with .gitkeep"
-    # 2>&1 は付けない: 構造化 stdout (committed= 行) と WARNING stderr の分離を維持する
-    commit_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --message "$commit_msg")
-    commit_rc=$?
+    _mig_msg=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-mig-msg-XXXXXX") || {
+      echo "WARNING: コミットメッセージ用一時ファイルを作成できません" >&2
+      commit_out=""
+      commit_rc=1
+    }
+    if [ -n "${_mig_msg:-}" ]; then
+      printf '%s\n' "$commit_msg" > "$_mig_msg"
+      # 2>&1 は付けない: 構造化 stdout (committed= 行) と WARNING stderr の分離を維持する
+      commit_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --message-file "$_mig_msg")
+      commit_rc=$?
+      rm -f "$_mig_msg"
+    fi
     echo "$commit_out"
     case "$commit_rc" in
       0) echo "✅ pages/ migration committed to wiki branch" ;;
@@ -439,8 +450,17 @@ fi
 ```bash
 plugin_root="{plugin_root}"
 commit_msg="chore(wiki): migrate pages/ directories with .gitkeep"
-retry_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --message "$commit_msg")
-retry_rc=$?
+_mig_retry_msg=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-mig-retry-msg-XXXXXX") || {
+  echo "WARNING: コミットメッセージ用一時ファイルを作成できません" >&2
+  retry_out=""
+  retry_rc=1
+}
+if [ -n "${_mig_retry_msg:-}" ]; then
+  printf '%s\n' "$commit_msg" > "$_mig_retry_msg"
+  retry_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --message-file "$_mig_retry_msg")
+  retry_rc=$?
+  rm -f "$_mig_retry_msg"
+fi
 echo "$retry_out"
 case "$retry_rc" in
   0) echo "✅ pages/ migration committed to wiki branch" ;;

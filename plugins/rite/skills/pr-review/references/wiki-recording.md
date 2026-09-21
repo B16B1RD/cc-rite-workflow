@@ -126,7 +126,9 @@ fi
 commit_rc=0
 wiki_push_attempt="review-{pr_number}-$(date +%s)-$$-$RANDOM"
 echo "[CONTEXT] WIKI_PUSH_ATTEMPT=$wiki_push_attempt; source=review; pr={pr_number}"
-if commit_out=$(bash {plugin_root}/hooks/scripts/wiki-ingest-commit.sh 2>"${commit_err}"); then
+# 生成直前に commit-convention-locate.sh を実行し、メッセージを作業ツリー外の
+# {wic_msg_file} へ Write してから渡す。規約なしなら helper 既定文をそのファイルへ書く。
+if commit_out=$(bash {plugin_root}/hooks/scripts/wiki-ingest-commit.sh --message-file "{wic_msg_file}" 2>"${commit_err}"); then
  # Success — the script prints exactly one status line to stdout, e.g.
  # [wiki-ingest-commit] committed=1; branch=wiki; head=<sha>; push=ok
  # [wiki-ingest-commit] committed=0; branch=wiki; reason=no-pending

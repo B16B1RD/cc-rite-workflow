@@ -464,6 +464,38 @@ run_differential() {
   fi
 }
 
+# --------------------------------------------------------------------------
+# TC-9: CLAUDE.md があるのに --message-file 未渡し → fail-loud
+# TC-10: --message-file の件名・本文が実コミットに残る（引用符・バッククォート）
+# --------------------------------------------------------------------------
+echo "TC-9: convention file without --message-file is fail-loud"
+repo=$(make_sandbox tc9)
+printf 'English commits only.\n' > "$repo/CLAUDE.md"
+run_helper "$repo" --branch-strategy same_branch --wiki-branch wiki
+if [ "$HELPER_RC" = "1" ] && [[ "$HELPER_OUTPUT" == *"--message-file"* ]]; then
+  pass "CLAUDE.md present without --message-file → ERROR + exit 1"
+else
+  fail "expected fail-loud --message-file (rc=$HELPER_RC): $HELPER_OUTPUT"
+fi
+
+echo "TC-10: --message-file contents land in the commit"
+repo=$(make_sandbox tc10)
+printf 'English commits only.\n' > "$repo/CLAUDE.md"
+msgf="$TEST_DIR/tc10-msg"
+printf 'feat(wiki): custom with `date`\n\nwhy from file\n' > "$msgf"
+run_helper "$repo" --branch-strategy same_branch --wiki-branch wiki --message-file "$msgf"
+state=$(dump_state "$repo")
+if [ "$HELPER_RC" = "0" ] && grep -q "main_subject=feat(wiki): custom with \`date\`" <<<"$state"; then
+  pass "--message-file subject is the commit subject"
+else
+  fail "unexpected (rc=$HELPER_RC) state=$state output=$HELPER_OUTPUT"
+fi
+if grep -qF 'why from file' <<<"$state"; then
+  pass "--message-file body is in the commit"
+else
+  fail "body missing: $state"
+fi
+
 run_differential "separate-clean" separate_branch wiki 0 0
 run_differential "separate-dirty" separate_branch wiki 1 0
 run_differential "same-branch" same_branch wiki 0 0

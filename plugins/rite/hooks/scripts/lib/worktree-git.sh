@@ -324,12 +324,27 @@ worktree_commit_push() {
  ;;
  esac
 
- # Step 3: commit
- if ! git -C "$worktree" commit --quiet -m "$commit_msg" 2>"${commit_err:-/dev/null}"; then
+ # Step 3: commit via -F so quotes/newlines in the message are data, not shell.
+ # The tempfile lives under TMPDIR (outside the worktree). argv contract is unchanged.
+ local msg_file=""
+ msg_file=$(mktemp "${TMPDIR:-/tmp}/rite-wtgit-msg-XXXXXX" 2>/dev/null) || msg_file=""
+ if [ -z "$msg_file" ]; then
+  echo "ERROR: worktree_commit_push: コミットメッセージ用一時ファイルを作成できません" >&2
+  rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}"
+  _wtgp_restore_caller_state
+  return 3
+ fi
+ trap 'rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${msg_file:-}"' EXIT INT TERM HUP
+ printf '%s' "$commit_msg" > "$msg_file"
+ case "$commit_msg" in
+  *$'\n') ;;
+  *) printf '\n' >> "$msg_file" ;;
+ esac
+ if ! git -C "$worktree" commit --quiet -F "$msg_file" 2>"${commit_err:-/dev/null}"; then
  echo "ERROR: git commit failed in worktree '$worktree'" >&2
  [ -n "$commit_err" ] && [ -s "$commit_err" ] && head -n 10 "$commit_err" | neutralize_ctrl --keep-newline | sed 's/^/ git: /' >&2
  echo " hint: pre-commit hook / gpg sign / author config / permission のいずれかを確認" >&2
- rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}"
+ rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${msg_file:-}"
  _wtgp_restore_caller_state
  return 3
  fi
@@ -342,7 +357,7 @@ worktree_commit_push() {
  local head_sha head_err=""
  # Extend internal trap to cover head_err so SIGINT / SIGTERM / SIGHUP during
  # the post-commit rev-parse cannot leak the tempfile. Must be set BEFORE mktemp.
- trap 'rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${head_err:-}"' EXIT INT TERM HUP
+ trap 'rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${msg_file:-}" "${head_err:-}"' EXIT INT TERM HUP
  head_err=$(mktemp "${TMPDIR:-/tmp}/rite-wtgit-head-err-XXXXXX" 2>/dev/null) || head_err=""
  if head_sha=$(git -C "$worktree" rev-parse HEAD 2>"${head_err:-/dev/null}"); then
  :
@@ -364,7 +379,7 @@ worktree_commit_push() {
  # wiki-lint) — untouched.
  if [[ "${WTGP_COMMIT_ONLY:-0}" == "1" ]]; then
  echo "head=${head_sha}"
- rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}"
+ rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${msg_file:-}"
  _wtgp_restore_caller_state
  return 0
  fi
@@ -379,7 +394,7 @@ worktree_commit_push() {
  push_rc=$?
  echo "$push_out"
 
- rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}"
+ rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${msg_file:-}"
  _wtgp_restore_caller_state
 
  if [[ $push_rc -ne 0 ]]; then

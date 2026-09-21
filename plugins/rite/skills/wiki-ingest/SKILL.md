@@ -506,7 +506,7 @@ rationale: references/rationale.md#related-page-literal
 
 ### 5.0.c canonical commit message 契約
 
-ステップ 5.1 と ステップ 5.2 の commit message は以下を **唯一の真実源** とする。両サイトで以下と literal 一致させる。
+ステップ 5.1 と ステップ 5.2 の commit message は、[commit-convention.md](../../references/commit-convention.md) 適用後の値を使う。規約が件名形式を指定しないときの既定は以下を **唯一の真実源** とする。両サイトで以下と literal 一致させる。
 rationale: references/rationale.md#commit-msg-three-sites
 
 **canonical template**:
@@ -658,11 +658,17 @@ if [ "$branch_strategy" = "separate_branch" ]; then
       ;;
   esac
 
+  _ingest_sep_msg=$(mktemp "${TMPDIR:-/tmp}/rite-ingest-sep-msg-XXXXXX") || {
+    echo "ERROR: コミットメッセージ用一時ファイルを作成できません" >&2
+    exit 1
+  }
+  printf '%s\n' "$commit_msg" > "$_ingest_sep_msg"
   # set -e 下で script の非 0 exit を許容して rc を capture する
   set +e
-  commit_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --commit-only --message "$commit_msg")
+  commit_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --commit-only --message-file "$_ingest_sep_msg")
   commit_rc=$?
   set -e
+  rm -f "$_ingest_sep_msg"
   echo "$commit_out"
 
   case "$commit_rc" in
@@ -736,10 +742,16 @@ esac
 branch_strategy="{branch_strategy}"
 
 if [ "$branch_strategy" = "same_branch" ]; then
-  # signal-specific trap (EXIT/INT/TERM/HUP) で _reset_err tempfile orphan 防止。
+  plugin_root="{plugin_root}"
+  # signal-specific trap (EXIT/INT/TERM/HUP) で _reset_err / _ingest_msg tempfile orphan 防止。
   # 詳細は ../../references/bash-trap-patterns.md#signal-specific-trap-template 参照。
   _reset_err=""
-  _cleanup() { [ -n "${_reset_err:-}" ] && rm -f "$_reset_err"; return 0; }
+  _ingest_msg=""
+  _cleanup() {
+    [ -n "${_reset_err:-}" ] && rm -f "$_reset_err"
+    [ -n "${_ingest_msg:-}" ] && rm -f "$_ingest_msg"
+    return 0
+  }
   trap 'rc=$?; _cleanup; exit $rc' EXIT
   trap '_cleanup; exit 130' INT
   trap '_cleanup; exit 143' TERM
@@ -776,7 +788,12 @@ if [ "$branch_strategy" = "same_branch" ]; then
       ;;
   esac
 
-  if ! git commit -m "$commit_msg"; then
+  _ingest_msg=$(mktemp "${TMPDIR:-/tmp}/rite-ingest-msg-XXXXXX") || {
+    echo "ERROR: コミットメッセージ用一時ファイルを作成できません" >&2
+    exit 1
+  }
+  printf '%s\n' "$commit_msg" > "$_ingest_msg"
+  if ! bash "$plugin_root/hooks/scripts/git-commit-file.sh" --file "$_ingest_msg"; then
     echo "ERROR: git commit failed" >&2
     echo "  ロールバック: staging area の .rite/wiki/ 変更を unstage します" >&2
     _reset_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-ingest-reset-err-XXXXXX" 2>/dev/null) || {
@@ -791,11 +808,15 @@ if [ "$branch_strategy" = "same_branch" ]; then
     fi
     [ -n "${_reset_err:-}" ] && rm -f "$_reset_err"
     _reset_err=""
+    rm -f "$_ingest_msg"
+    _ingest_msg=""
     echo "  注意: Write/Edit した ingested:true 化と index.md / log.md 変更はワークツリーに残っています" >&2
     echo "  対処: git status で変更内容を確認後、手動で commit するか git checkout で破棄してください" >&2
     exit 1
   fi
   # same_branch では raw cleanup は不要 (PR diff に含めるのが意図的選択)
+  rm -f "$_ingest_msg"
+  _ingest_msg=""
   trap - EXIT INT TERM HUP
 fi
 ```

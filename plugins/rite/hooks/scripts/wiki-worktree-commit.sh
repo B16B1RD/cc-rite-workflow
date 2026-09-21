@@ -30,8 +30,8 @@
 # raw-source staging, unchanged by this Issue)
 #
 # Usage:
-# bash wiki-worktree-commit.sh [--message "<msg>"] [--dry-run]
-# bash wiki-worktree-commit.sh --commit-only [--message "<msg>"]
+# bash wiki-worktree-commit.sh [--message "<msg>"] [--message-file ABS] [--dry-run]
+# bash wiki-worktree-commit.sh --commit-only [--message "<msg>"] [--message-file ABS]
 # bash wiki-worktree-commit.sh --push-only
 #
 # Options:
@@ -94,6 +94,8 @@ DRY_RUN=false
 COMMIT_ONLY=false
 PUSH_ONLY=false
 COMMIT_MSG="chore(wiki): ingest page integration"
+MESSAGE_SET=false
+MESSAGE_FILE=""
 while [[ $# -gt 0 ]]; do
  case "$1" in
  --dry-run)
@@ -114,6 +116,16 @@ while [[ $# -gt 0 ]]; do
  exit 1
  fi
  COMMIT_MSG="$2"
+ MESSAGE_SET=true
+ shift 2
+ ;;
+ --message-file)
+ if [[ $# -lt 2 ]]; then
+ echo "ERROR: --message-file requires a value" >&2
+ exit 1
+ fi
+ MESSAGE_FILE="$2"
+ MESSAGE_SET=true
  shift 2
  ;;
  --help|-h)
@@ -135,10 +147,14 @@ if [[ "$PUSH_ONLY" == "true" ]] && [[ "$DRY_RUN" == "true" ]]; then
  echo "ERROR: --push-only and --dry-run are mutually exclusive (push-only has no pending changes to preview)" >&2
  exit 1
 fi
+if [[ -n "$MESSAGE_FILE" ]] && [[ "$COMMIT_MSG" != "chore(wiki): ingest page integration" ]]; then
+ echo "ERROR: --message and --message-file are mutually exclusive" >&2
+ exit 1
+fi
 
-# Reject commit messages containing newlines or NUL to prevent smuggling
-# extra headers into `git commit -m`.
-if [[ "$COMMIT_MSG" =~ [$'\n'$'\r'] ]]; then
+# Reject --message containing newlines or NUL to prevent smuggling extra
+# headers. --message-file may contain newlines and is passed via git commit -F.
+if [[ -z "$MESSAGE_FILE" ]] && [[ "$COMMIT_MSG" =~ [$'\n'$'\r'] ]]; then
  echo "ERROR: --message must not contain newline or carriage return" >&2
  exit 1
 fi
@@ -165,6 +181,31 @@ source "$_SCRIPT_DIR/../control-char-neutralize.sh"
 repo_root=$("$_SCRIPT_DIR/../state-path-resolve.sh" 2>/dev/null) || repo_root=""
 [ -n "$repo_root" ] || repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
+
+if [[ "$PUSH_ONLY" != "true" ]] && [[ "$DRY_RUN" != "true" ]]; then
+ _wwc_default_file=$(mktemp "${TMPDIR:-/tmp}/rite-wwc-default-XXXXXX") || {
+  echo "ERROR: 既定メッセージ用一時ファイルを作成できません" >&2
+  exit 1
+ }
+ _wwc_resolved_file=$(mktemp "${TMPDIR:-/tmp}/rite-wwc-msg-XXXXXX") || {
+  echo "ERROR: コミットメッセージ用一時ファイルを作成できません" >&2
+  rm -f "$_wwc_default_file"
+  exit 1
+ }
+ trap 'rm -f "${_wwc_default_file:-}" "${_wwc_resolved_file:-}"' EXIT INT TERM HUP
+ printf '%s\n' "$COMMIT_MSG" > "$_wwc_default_file"
+ _wwc_args=(--default-file "$_wwc_default_file" --root "$repo_root")
+ if [[ -n "$MESSAGE_FILE" ]]; then
+  _wwc_args+=(--message-file "$MESSAGE_FILE")
+ elif [[ "$MESSAGE_SET" == "true" ]]; then
+  _wwc_args+=(--message-file "$_wwc_default_file")
+ fi
+ if ! bash "$_SCRIPT_DIR/commit-convention-message.sh" "${_wwc_args[@]}" > "$_wwc_resolved_file"; then
+  echo "ERROR: Wiki worktree コミットのメッセージを解決できません" >&2
+  exit 1
+ fi
+ COMMIT_MSG=$(cat "$_wwc_resolved_file")
+fi
 
 # Advisory lock (same pattern as wiki-ingest-commit.sh). flock may be
 # absent on minimal containers / macOS without util-linux; in that case

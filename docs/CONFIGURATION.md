@@ -824,6 +824,8 @@ tdd:
 | `ja` | Japanese |
 | `en` | English |
 
+Commit messages that rite generates follow the repository-root `CLAUDE.md` / `AGENTS.md` first. `language` fills in the LLM-path default only when those files do not specify a language. Helper auto-commits keep their current fixed text when both files are absent. See [`commit-convention.md`](../plugins/rite/references/commit-convention.md).
+
 ## Configuration for Host Validation
 
 The [runtime validation fixture](../tests/runtime-e2e/README.md) uses the existing configuration schema: `branch.base: main`, Python standard-library test/lint commands, `multi_session.enabled: true`, and Projects/Wiki disabled. This isolates GitHub changes to a dedicated repository; it does not validate Projects or Wiki integration. No host capability settings are added to `rite-config.yml`.

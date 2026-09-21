@@ -84,7 +84,7 @@ else
   fail "merge reviewed-head calls ($gate_calls) must all pass --repo {owner_repo} ($gate_repo_calls)"
 fi
 assert_grep "merge pins the verified PR head on the merge command itself" "$MERGE" \
-  '^if gh pr merge \{pr_number\} -R \{owner_repo\} --squash --delete-branch=false --match-head-commit "\$verified_head" '
+  '^if gh pr merge \{pr_number\} -R \{owner_repo\} --squash --delete-branch=false --match-head-commit "\$verified_head" --subject "\{squash_subject\}" --body-file "\{squash_body_file\}" '
 assert_grep "verified head extraction is anchored on the match marker" "$MERGE" \
   'READY_REVIEWED_HEAD=match; reviewed=\[0-9a-f\]\*; head='
 ready_gate_calls=$(grep -c 'hooks/scripts/ready-reviewed-head-gate.sh' "$READY" || true)
@@ -418,11 +418,11 @@ PIN_B=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 run_step2 "$PIN_A" "$PIN_A" "$PIN_A"
 assert "stable head: step 2 succeeds" "0" "$STEP2_RC"
 assert "stable head: merge is pinned to the verified head" \
-  "pr merge 1 -R owner/repo --squash --delete-branch=false --match-head-commit $PIN_A" "$STEP2_MERGE_ARGV"
+  "pr merge 1 -R owner/repo --squash --delete-branch=false --match-head-commit $PIN_A --subject {squash_subject} --body-file {squash_body_file}" "$STEP2_MERGE_ARGV"
 
 run_step2 "$PIN_A" "$PIN_A" "$PIN_B"
 assert "head moved after the gate: merge still carries only the verified head" \
-  "pr merge 1 -R owner/repo --squash --delete-branch=false --match-head-commit $PIN_A" "$STEP2_MERGE_ARGV"
+  "pr merge 1 -R owner/repo --squash --delete-branch=false --match-head-commit $PIN_A --subject {squash_subject} --body-file {squash_body_file}" "$STEP2_MERGE_ARGV"
 # The step reports a refused merge through its sentinel, not through the exit code.
 if printf '%s\n' "$STEP2_OUT" | grep -c >/dev/null '^\[merge:error\]$' \
   && ! printf '%s\n' "$STEP2_OUT" | grep -c >/dev/null 'merge:returned-to-caller'; then

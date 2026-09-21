@@ -140,7 +140,7 @@ This will:
                   → /rite:ready → /rite:merge → /rite:cleanup
 ```
 
-**Note:** The end-to-end flow is split across four single-responsibility commands. `/rite:open <issue>` handles branch creation, implementation, quality checks, and draft PR creation. `/rite:iterate <pr>` loops review and fix until mergeable. `/rite:ready <pr>` flips the PR to Ready for review. `/rite:merge <pr>` performs the squash-merge. If any step is interrupted (e.g. `Context limit reached`), run `/rite:recover` to recover.
+**Note:** The end-to-end flow is split across four single-responsibility commands. `/rite:open <issue>` handles branch creation, implementation, quality checks, and draft PR creation. `/rite:iterate <pr>` loops review and fix until mergeable. `/rite:ready <pr>` flips the PR to Ready for review. `/rite:merge <pr>` performs the squash-merge. If any step is interrupted (e.g. `Context limit reached`), run `/rite:recover` to recover. Commits rite creates (implementation, fix, Wiki, and squash) follow the repository-root `CLAUDE.md` / `AGENTS.md` conventions first, and fill unspecified items from Conventional Commits and `rite-config.yml` `language`.
 
 Status Transitions:
 ```

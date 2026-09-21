@@ -200,7 +200,7 @@ run ID を解決できない、または `gh api .../jobs` が 1 件でも失敗
 
 ## ステップ 2: マージ実行
 
-`gh pr merge` の直前に AC enforce を再実行し、そこで照合した PR head をマージ対象として固定する。`--force-ci` は CI だけの override であり、reviewed HEAD / AC gate を迂回しない。
+`gh pr merge` の直前に AC enforce を再実行し、そこで照合した PR head をマージ対象として固定する。`--force-ci` は CI だけの override であり、reviewed HEAD / AC gate を迂回しない。squash の件名・本文は [commit-convention.md](../../references/commit-convention.md) で生成し、本文ファイルは作業ツリー外へ置く。`--delete-branch=false` と `--match-head-commit "$verified_head"` は外さない。
 
 ```bash
 # inspect 後の差し替えを防ぐ最終 gate。unverified / unmet / missing / malformed はすべて停止する。
@@ -239,7 +239,10 @@ else
   gh_err=""
 fi
 
-if gh pr merge {pr_number} -R {owner_repo} --squash --delete-branch=false --match-head-commit "$verified_head" 2>"${gh_err:-/dev/null}"; then
+# squash 件名・本文は [commit-convention.md](../../references/commit-convention.md) で生成し、
+# 作業ツリー外のファイルへ書く。未指定時の既定は PR タイトルと既存の squash 本文。
+# {squash_subject} / {squash_body_file} は直前の Write 結果を literal substitute する。
+if gh pr merge {pr_number} -R {owner_repo} --squash --delete-branch=false --match-head-commit "$verified_head" --subject "{squash_subject}" --body-file "{squash_body_file}" 2>"${gh_err:-/dev/null}"; then
   echo "<!-- skill return signal: caller must continue next step -->"
   echo "<!-- [merge:returned-to-caller] -->"
   # 成功時のみ stderr の warning (deprecation / rate-limit) を surface する。

@@ -57,7 +57,9 @@ PIN_CROSSCHECK_SHOW='列挙結果は修正案の提示に併記する'
 PIN_MISMATCH='不一致なら修正案を適用せず、主張を限定するか削除する案に差し替える'
 PIN_TRIGGER_COMMIT='commit body の `simplification-first:` 段落（ステップ 3\.2）として書く'
 PIN_BODY_PARA='`simplification-first:` 段落（Escalation trigger 成立時のみ）'
-PIN_GATE_CHECK='Escalation trigger 成立時は `simplification-first:` 段落の有無も判定し、いずれかの欠落を `missing` とする'
+PIN_GATE_CHECK='Escalation trigger 成立時は `simplification-first:` 段落の有無も同じ規則で判定し、いずれかの欠落を `missing` とする'
+PIN_OVERFLOW_READ='規約が本文・trailer を禁じて溢れさせた場合は、同じ必須記録を PR 本文または `commit-overflow-record.sh` の保存先から読む'
+PIN_OVERFLOW_NO_BYPASS='検査を外して通過させない'
 PIN_GATE_NOT_REQUIRED='trigger 不成立の cycle では `simplification-first:` 段落を要求しない'
 PIN_OPTION1='or \(Escalation trigger 成立時\) a `simplification-first: \{paragraph\}` paragraph'
 PIN_OPTION2='or \(Escalation trigger 成立時\) `simplification-first \(bypass\): \{理由\}`'
@@ -134,6 +136,10 @@ pin "T-03: 3.2 commit body lists simplification-first paragraph (trigger only)" 
   "$FIX_MD" "$S32_START" "$S32_END" "$PIN_BODY_PARA"
 pin "T-03: 3.2.1 Step 1 treats missing simplification-first paragraph as missing" \
   "$FIX_MD" "$S321_START" "$S321_END" "$PIN_GATE_CHECK"
+pin "T-03: 3.2.1 overflow reads the same store as the write path" \
+  "$FIX_MD" "$S321_START" "$S321_END" "$PIN_OVERFLOW_READ"
+pin "T-03: 3.2.1 does not disable the Root Cause Gate on overflow" \
+  "$FIX_MD" "$S321_START" "$S321_END" "$PIN_OVERFLOW_NO_BYPASS"
 pin "T-03: 3.2.1 Step 2 option 1 can add the simplification-first paragraph" \
   "$FIX_MD" "$S321_START" "$S321_END" "$PIN_OPTION1"
 pin "T-03: 3.2.1 Step 2 option 2 bypass paragraph follows whichever kind is missing" \

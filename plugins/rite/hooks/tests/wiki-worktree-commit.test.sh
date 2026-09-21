@@ -426,4 +426,42 @@ else
   assert "sandbox-mask does not advance the wiki branch" "$wiki_before_mask" "$(git -C "$mask_repo" rev-parse wiki)"
 fi
 
+# --- --message-file may contain newlines; --message still rejects them ---
+nl_repo="$(new_repo true)"; SANDBOXES+=("$nl_repo")
+setup_wiki_worktree "$nl_repo"
+add_pending "$nl_repo"
+nl_msg=$(mktemp)
+printf 'docs(wiki): quotes '\'' and `date`\n\nsecond line\n' > "$nl_msg"
+nl_rc=0
+( cd "$nl_repo" && bash "$SCRIPT" --commit-only --message-file "$nl_msg" >/dev/null ) || nl_rc=$?
+assert "--message-file with newline commits (exit 0)" "0" "$nl_rc"
+nl_body=$(git -C "$nl_repo/.rite/wiki-worktree" log -1 --format=%B)
+if printf '%s' "$nl_body" | grep -q '`date`'; then
+  pass "--message-file keeps backtick text in the wiki commit"
+else
+  fail "--message-file lost backtick text: $nl_body"
+fi
+if printf '%s' "$nl_body" | grep -q 'second line'; then
+  pass "--message-file keeps a second body line"
+else
+  fail "--message-file lost second line: $nl_body"
+fi
+rm -f "$nl_msg"
+
+# --- convention files at shared root require --message-file ---
+conv_repo="$(new_repo true)"; SANDBOXES+=("$conv_repo")
+setup_wiki_worktree "$conv_repo"
+add_pending "$conv_repo"
+printf 'Commit messages must be English one-liners.\n' > "$conv_repo/CLAUDE.md"
+conv_rc=0
+conv_err=$(cd "$conv_repo" && bash "$SCRIPT" --commit-only 2>&1) || conv_rc=$?
+assert "CLAUDE.md present without --message-file exits 1" "1" "$conv_rc"
+if printf '%s' "$conv_err" | grep -q -- '--message-file'; then
+  pass "missing --message-file names the required flag"
+else
+  fail "convention-present diagnostic: $conv_err"
+fi
+wiki_before_conv=$(git -C "$conv_repo" rev-parse wiki)
+assert "convention-present failure does not advance wiki" "$wiki_before_conv" "$(git -C "$conv_repo" rev-parse wiki)"
+
 print_summary "wiki-worktree-commit.sh"

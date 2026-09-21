@@ -41,7 +41,7 @@
 # every review/fix/close cycle, even if step (3) is deferred.
 #
 # Usage:
-# bash wiki-ingest-commit.sh [--dry-run] [--push-only]
+# bash wiki-ingest-commit.sh [--dry-run] [--push-only] [--message-file ABS]
 #
 # Options:
 # --dry-run Report the pending raw sources and the target wiki branch
@@ -91,10 +91,19 @@ export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o BatchMode=yes}"
 # -----------------------------------------------------------------------
 DRY_RUN=false
 PUSH_ONLY=false
+MESSAGE_FILE=""
 while [[ $# -gt 0 ]]; do
  case "$1" in
  --dry-run) DRY_RUN=true; shift ;;
  --push-only) PUSH_ONLY=true; shift ;;
+ --message-file)
+  if [[ $# -lt 2 ]]; then
+   echo "ERROR: --message-file requires a value" >&2
+   exit 1
+  fi
+  MESSAGE_FILE="$2"
+  shift 2
+  ;;
  --help|-h)
  # Extract header block up to the `--- END HEADER ---` sentinel so the
  # help text never drifts out of sync with the documented surface.
@@ -284,6 +293,31 @@ if [[ "${#pending_files[@]}" -eq 0 ]]; then
  exit 0
 fi
 
+# Resolve commit message before any branch switch. Convention files at the
+# shared root require --message-file; otherwise each path keeps its current default.
+_wic_default_file=$(mktemp "${TMPDIR:-/tmp}/rite-wic-default-XXXXXX") || {
+ echo "ERROR: 既定メッセージ用一時ファイルを作成できません" >&2
+ exit 1
+}
+_wic_resolved_file=$(mktemp "${TMPDIR:-/tmp}/rite-wic-msg-XXXXXX") || {
+ echo "ERROR: コミットメッセージ用一時ファイルを作成できません" >&2
+ rm -f "$_wic_default_file"
+ exit 1
+}
+_wic_msg_cleanup() { rm -f "${_wic_default_file:-}" "${_wic_resolved_file:-}"; }
+trap '_wic_msg_cleanup' EXIT INT TERM HUP
+_wic_resolve_msg() {
+ local default="$1"
+ printf '%s\n' "$default" > "$_wic_default_file"
+ local args=(--default-file "$_wic_default_file" --root "$repo_root")
+ [ -n "$MESSAGE_FILE" ] && args+=(--message-file "$MESSAGE_FILE")
+ if ! bash "$_SCRIPT_DIR/commit-convention-message.sh" "${args[@]}" > "$_wic_resolved_file"; then
+  echo "ERROR: Wiki ingest コミットのメッセージを解決できません" >&2
+  return 1
+ fi
+ cat "$_wic_resolved_file"
+}
+
 if [[ "$DRY_RUN" == "true" ]]; then
  echo "[wiki-ingest-commit] dry-run; pending=${#pending_files[@]}; branch=${wiki_branch}"
  for f in "${pending_files[@]}"; do
@@ -323,7 +357,8 @@ if [[ "$branch_strategy" == "same_branch" ]]; then
   echo "[wiki-ingest-commit] committed=0; branch=${wiki_branch}; reason=no-staged-diff"
   exit 0
  fi
- if ! git commit -m "chore(wiki): ingest ${#pending_files[@]} raw source(s)" 2>"${_sb_git_err:-/dev/null}"; then
+ commit_msg=$(_wic_resolve_msg "chore(wiki): ingest ${#pending_files[@]} raw source(s)") || exit 1
+ if ! bash "$_SCRIPT_DIR/git-commit-file.sh" --file "$_wic_resolved_file" -- --quiet 2>"${_sb_git_err:-/dev/null}"; then
   echo "ERROR: git commit failed" >&2
   _sb_dump "commit"
   [ -n "$_sb_git_err" ] && rm -f "$_sb_git_err"
@@ -432,10 +467,11 @@ if [ "$wt_usable" = "true" ]; then
  # future enhancement (e.g. push retry with exponential backoff) lands
  # in one place.
  set +e
+ commit_msg=$(_wic_resolve_msg "chore(wiki): ingest ${#pending_files[@]} raw source(s) (worktree path)") || exit 1
  wtcp_out=$(worktree_commit_push \
  "$worktree_path" \
  "$wiki_branch" \
- "chore(wiki): ingest ${#pending_files[@]} raw source(s) (worktree path)" \
+ "$commit_msg" \
  "${wt_pending_paths[@]}")
  wtcp_rc=$?
  set -e
@@ -596,6 +632,7 @@ entered_wiki=false
 cleanup_body() {
  local rc="${1:-1}"
  set +e
+ rm -f "${_wic_default_file:-}" "${_wic_resolved_file:-}"
  # Values embedded in pasteable recovery commands are shell-quoted so a
  # branch name or TMPDIR with spaces / apostrophes stays one argument.
  local _q_current_branch _q_stage_dir
@@ -952,8 +989,8 @@ case "$cached_check_rc" in
  exit 3
  ;;
 esac
-commit_msg="chore(wiki): ingest ${#pending_files[@]} raw source(s) from ${current_branch}"
-if ! git commit -m "$commit_msg" >/dev/null 2>"${git_err:-/dev/null}"; then
+commit_msg=$(_wic_resolve_msg "chore(wiki): ingest ${#pending_files[@]} raw source(s) from ${current_branch}") || exit 1
+if ! bash "$_SCRIPT_DIR/git-commit-file.sh" --file "$_wic_resolved_file" -- --quiet >/dev/null 2>"${git_err:-/dev/null}"; then
  echo "ERROR: git commit failed on '$wiki_branch'" >&2
  dump_git_err "commit"
  exit 3

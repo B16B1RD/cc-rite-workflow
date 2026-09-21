@@ -31,7 +31,7 @@ and dynamically generates the Issue body based on Type and Complexity.
 rite には 2 つの正当な type 語彙が併存する:
 
 - **Contract Type** (Feature/BugFix/Refactor/Chore/Docs): Issue body の Section 3 名・本テーブルなど **body 構造選択**の語彙。
-- **Commit Type** (feat/fix/refactor/chore/docs): commit message / branch 名 / PR title の語彙（CLAUDE.md が必須と規定する Conventional Commits 由来。`pr/open.md` の branch type 派生もこの系列）。
+- **Commit Type** (feat/fix/refactor/chore/docs): commit message / branch 名 / PR title の語彙（リポジトリルートの CLAUDE.md / AGENTS.md が件名形式を指定していればそれに従い、未指定時は Conventional Commits。`pr/open.md` の branch type 派生もこの系列）。
 
 **判断**: どちらか一方へ統一せず、両系列を残し上表 `Commit Type` 列を単一 crosswalk SoT とする。**根拠**: 統一しても seam は消えず別境界（Issue body ↔ commit/branch）へ移動するだけで、Conventional Commits は外部標準として commit/branch に不可欠、Contract Type は section 名として可読。境界マッピングを 1 箇所で明示するのが drift を最小化する。非自明な対応は `feat↔Feature` / `fix↔BugFix` のみ（他は大文字小文字差）。
 
