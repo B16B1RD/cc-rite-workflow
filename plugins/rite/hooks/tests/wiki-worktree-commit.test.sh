@@ -492,4 +492,59 @@ else
 fi
 assert "empty --message-file does not advance wiki" "$wiki_before_conv" "$(git -C "$conv_repo" rev-parse wiki)"
 
+# --- empty --message is rejected at parse, before no-pending / dry-run / commit ---
+# An empty value used to set MESSAGE_SET and die later in worktree_commit_push.
+# Missing and empty values share the parse error. --dry-run before --message
+# must not take the dry-run exit 0 path.
+reject_empty_message() {
+  local label="$1" repo="$2"
+  shift 2
+  local rc=0 err wiki_before
+  wiki_before=$(git -C "$repo" rev-parse wiki)
+  err=$(cd "$repo" && bash "$SCRIPT" "$@" 2>&1) || rc=$?
+  assert "$label exits 1" "1" "$rc"
+  if grep -qF -- '--message requires a value' <<<"$err"; then
+    pass "$label names required value"
+  else
+    fail "$label diagnostic: $err"
+  fi
+  assert "$label does not advance wiki" "$wiki_before" "$(git -C "$repo" rev-parse wiki)"
+  if grep -qF 'reason=no-pending' <<<"$err"; then
+    fail "$label reached no-pending: $err"
+  else
+    pass "$label does not reach no-pending"
+  fi
+  if grep -qF 'dry-run; branch=wiki' <<<"$err"; then
+    fail "$label reached dry-run: $err"
+  else
+    pass "$label does not reach dry-run"
+  fi
+  if grep -qF 'WORKTREE / BRANCH / COMMIT_MSG' <<<"$err"; then
+    fail "$label reached commit-message required: $err"
+  else
+    pass "$label does not reach commit-message required"
+  fi
+  if grep -qF '適用規約ファイルがあるため --message-file が必要です' <<<"$err"; then
+    fail "$label took the convention path: $err"
+  else
+    pass "$label does not take the convention path"
+  fi
+}
+
+empty_msg_repo="$(new_repo true)"; SANDBOXES+=("$empty_msg_repo")
+setup_wiki_worktree "$empty_msg_repo"
+reject_empty_message "no-pending empty --message" "$empty_msg_repo" --message ""
+reject_empty_message "no-pending missing --message value" "$empty_msg_repo" --message
+
+pending_msg_repo="$(new_repo true)"; SANDBOXES+=("$pending_msg_repo")
+setup_wiki_worktree "$pending_msg_repo"
+add_pending "$pending_msg_repo"
+reject_empty_message "pending empty --message" "$pending_msg_repo" --commit-only --message ""
+reject_empty_message "pending missing --message value" "$pending_msg_repo" --commit-only --message
+reject_empty_message "dry-run before empty --message" "$pending_msg_repo" --dry-run --message ""
+reject_empty_message "dry-run before missing --message value" "$pending_msg_repo" --dry-run --message
+printf 'Commit messages must be English one-liners.\n' > "$pending_msg_repo/CLAUDE.md"
+reject_empty_message "CLAUDE.md empty --message" "$pending_msg_repo" --commit-only --message ""
+reject_empty_message "CLAUDE.md missing --message value" "$pending_msg_repo" --commit-only --message
+
 print_summary "wiki-worktree-commit.sh"
