@@ -2055,7 +2055,7 @@ create_state_file "$dir_rq08" '{"active":true,"issue_number":2502,"phase":"revie
 write_batch_queue "$dir_rq08" "own-sid" true 0
 write_queue_file "$dir_rq08" "other-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[9],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
 output=$(run_hook_with_session "$dir_rq08" "compact" "own-sid")
-if echo "$output" | grep -q "Batch: run-queue active" \
+if grep -q "Batch: run-queue active" <<<"$output" \
   && [ -f "$dir_rq08/.rite/state/run-queue-own-sid.json" ] \
   && [ ! -f "$dir_rq08/.rite/state/run-queue-other-sid.json" ]; then
   pass "RQ-08: compact Batch frame remains; own queue kept; other stale removed"

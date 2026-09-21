@@ -358,9 +358,31 @@ sed "s/{initialized_date}/$initialized_date/g" \
 # ステップ 1.2 の値と ステップ 2.1 で解決済みの plugin_root をリテラルで埋め込む
 plugin_root="{plugin_root}"
 
+# 生成直前に commit-convention.md を適用する。{wiki_init_commit_message} は適用後の値。
+# 未指定時の既定は wiki-branch-init.sh の現行初期文。
+wiki_init_msg_file=""
+_cleanup_wiki_init_msg() { [ -n "${wiki_init_msg_file:-}" ] && rm -f "$wiki_init_msg_file"; return 0; }
+trap 'rc=$?; _cleanup_wiki_init_msg; exit $rc' EXIT
+trap '_cleanup_wiki_init_msg; exit 130' INT
+trap '_cleanup_wiki_init_msg; exit 143' TERM
+trap '_cleanup_wiki_init_msg; exit 129' HUP
+wiki_init_msg_file=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-init-msg-XXXXXX") || {
+  echo "ERROR: コミットメッセージ用一時ファイルを作成できません" >&2
+  exit 1
+}
+cat > "$wiki_init_msg_file" <<'EOF'
+{wiki_init_commit_message}
+EOF
+case "$(cat -- "$wiki_init_msg_file")" in
+  "{"*"}")
+    echo "ERROR: {wiki_init_commit_message} が未置換です" >&2
+    exit 1
+    ;;
+esac
 bash "$plugin_root/hooks/scripts/wiki-branch-init.sh" \
   --branch-strategy "{branch_strategy}" \
-  --wiki-branch "{wiki_branch}"
+  --wiki-branch "{wiki_branch}" \
+  --message-file "$wiki_init_msg_file"
 ```
 
 ## ステップ 3.5: Wiki Worktree セットアップ
@@ -411,10 +433,43 @@ if [ "$branch_strategy" = "separate_branch" ] && [ -d .rite/wiki-worktree/.rite/
   done
 
   if [ "$migration_needed" = "true" ]; then
-    commit_msg="chore(wiki): migrate pages/ directories with .gitkeep"
-    # 2>&1 は付けない: 構造化 stdout (committed= 行) と WARNING stderr の分離を維持する
-    commit_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --message "$commit_msg")
-    commit_rc=$?
+    # {wiki_mig_commit_message} は規約適用後の全文。未指定時の既定:
+    # chore(wiki): migrate pages/ directories with .gitkeep
+    _mig_msg=""
+    _cleanup_mig() { [ -n "${_mig_msg:-}" ] && rm -f "$_mig_msg"; return 0; }
+    trap 'rc=$?; _cleanup_mig; exit $rc' EXIT
+    trap '_cleanup_mig; exit 130' INT
+    trap '_cleanup_mig; exit 143' TERM
+    trap '_cleanup_mig; exit 129' HUP
+    _mig_msg=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-mig-msg-XXXXXX") || {
+      echo "WARNING: コミットメッセージ用一時ファイルを作成できません" >&2
+      commit_out=""
+      commit_rc=1
+    }
+    if [ -n "${_mig_msg:-}" ]; then
+      cat > "$_mig_msg" <<'EOF'
+{wiki_mig_commit_message}
+EOF
+      case "$(cat -- "$_mig_msg")" in
+        "{"*"}")
+          echo "WARNING: wiki migrate コミットメッセージの placeholder が未置換です" >&2
+          commit_out=""
+          commit_rc=1
+          rm -f "$_mig_msg"
+          _mig_msg=""
+          ;;
+        *)
+          # 2>&1 は付けない: 構造化 stdout (committed= 行) と WARNING stderr の分離を維持する
+          commit_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --message-file "$_mig_msg")
+          commit_rc=$?
+          rm -f "$_mig_msg"
+          _mig_msg=""
+          ;;
+      esac
+    fi
+    rm -f "${_mig_msg:-}"
+    _mig_msg=""
+    trap - EXIT INT TERM HUP
     echo "$commit_out"
     case "$commit_rc" in
       0) echo "✅ pages/ migration committed to wiki branch" ;;
@@ -438,9 +493,42 @@ fi
 
 ```bash
 plugin_root="{plugin_root}"
-commit_msg="chore(wiki): migrate pages/ directories with .gitkeep"
-retry_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --message "$commit_msg")
-retry_rc=$?
+# {wiki_mig_commit_message} は規約適用後の全文。未指定時の既定:
+# chore(wiki): migrate pages/ directories with .gitkeep
+_mig_retry_msg=""
+_cleanup_mig_retry() { [ -n "${_mig_retry_msg:-}" ] && rm -f "$_mig_retry_msg"; return 0; }
+trap 'rc=$?; _cleanup_mig_retry; exit $rc' EXIT
+trap '_cleanup_mig_retry; exit 130' INT
+trap '_cleanup_mig_retry; exit 143' TERM
+trap '_cleanup_mig_retry; exit 129' HUP
+_mig_retry_msg=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-mig-retry-msg-XXXXXX") || {
+  echo "WARNING: コミットメッセージ用一時ファイルを作成できません" >&2
+  retry_out=""
+  retry_rc=1
+}
+if [ -n "${_mig_retry_msg:-}" ]; then
+  cat > "$_mig_retry_msg" <<'EOF'
+{wiki_mig_commit_message}
+EOF
+  case "$(cat -- "$_mig_retry_msg")" in
+    "{"*"}")
+      echo "WARNING: wiki migrate 再試行メッセージの placeholder が未置換です" >&2
+      retry_out=""
+      retry_rc=1
+      rm -f "$_mig_retry_msg"
+      _mig_retry_msg=""
+      ;;
+    *)
+      retry_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --message-file "$_mig_retry_msg")
+      retry_rc=$?
+      rm -f "$_mig_retry_msg"
+      _mig_retry_msg=""
+      ;;
+  esac
+fi
+rm -f "${_mig_retry_msg:-}"
+_mig_retry_msg=""
+trap - EXIT INT TERM HUP
 echo "$retry_out"
 case "$retry_rc" in
   0) echo "✅ pages/ migration committed to wiki branch" ;;

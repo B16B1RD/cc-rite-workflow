@@ -107,7 +107,12 @@ When the condition is not satisfied, skip this block.
 #
 # commit_err の signal trap 登録を block 冒頭で行う。
 commit_err=""
-trap 'rm -f "${commit_err:-}"' EXIT INT TERM HUP
+wic_msg_file=""
+_rite_wic_commit_cleanup() {
+  rm -f "${commit_err:-}"
+  [ -n "${wic_msg_file:-}" ] && rm -f "$wic_msg_file"
+}
+trap '_rite_wic_commit_cleanup' EXIT INT TERM HUP
 
 # mktemp failure must NOT silently swallow wiki-ingest-commit.sh stderr (review / fix / close で対称)。
 # rc 捕捉は `if cmd; then :; else rc=$?; fi` 形式 (「!」否定は $? を反転するため使用禁止)
@@ -123,7 +128,23 @@ fi
 wiki_ingest_commit_rc=0
 wiki_push_attempt="fix-{pr_number}-$(date +%s)-$$-$RANDOM"
 echo "[CONTEXT] WIKI_PUSH_ATTEMPT=$wiki_push_attempt; source=fix; pr={pr_number}"
-if commit_out=$(bash {plugin_root}/hooks/scripts/wiki-ingest-commit.sh 2>"${commit_err}"); then
+wic_msg_file=$(mktemp "${TMPDIR:-/tmp}/rite-wic-msg-XXXXXX") || {
+  echo "WARNING: コミットメッセージ用一時ファイルを作成できません。wiki ingest commit をスキップします" >&2
+  echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=msg_file_mktemp_failed; exit_code=1"
+  wic_msg_file=""
+}
+if [ -n "$wic_msg_file" ]; then
+cat > "$wic_msg_file" <<'WIC_EOF'
+{wic_commit_message}
+WIC_EOF
+case "$(cat -- "$wic_msg_file")" in
+  "{"*"}")
+    echo "ERROR: Wiki コミットメッセージの placeholder が未置換です" >&2
+    echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=msg_placeholder_residue; exit_code=1"
+    exit 1
+    ;;
+esac
+if commit_out=$(bash {plugin_root}/hooks/scripts/wiki-ingest-commit.sh --message-file "$wic_msg_file" 2>"${commit_err}"); then
   # Success — the script prints exactly one status line to stdout, e.g.
   #   [wiki-ingest-commit] committed=1; branch=wiki; head=<sha>; push=ok
   #   [wiki-ingest-commit] committed=0; branch=wiki; reason=no-pending
@@ -153,8 +174,11 @@ else
       ;;
   esac
 fi
+fi
 [ "$commit_err" != "/dev/null" ] && rm -f "$commit_err"
+[ -n "${wic_msg_file:-}" ] && rm -f "$wic_msg_file"
 commit_err=""
+wic_msg_file=""
 trap - EXIT INT TERM HUP
 ```
 

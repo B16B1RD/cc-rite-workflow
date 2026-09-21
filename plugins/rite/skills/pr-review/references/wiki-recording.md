@@ -110,7 +110,12 @@ When the condition is not satisfied, skip this block and proceed to ステップ
 # commit_err の signal trap 登録を block 冒頭で行う。
 # SIGINT/SIGTERM/SIGHUP で中断された場合でも /tmp の一時ファイルが orphan として残らない。
 commit_err=""
-trap 'rm -f "${commit_err:-}"' EXIT INT TERM HUP
+wic_msg_file=""
+_rite_wic_commit_cleanup() {
+  rm -f "${commit_err:-}"
+  [ -n "${wic_msg_file:-}" ] && rm -f "$wic_msg_file"
+}
+trap '_rite_wic_commit_cleanup' EXIT INT TERM HUP
 
 # mktemp failure must NOT silently swallow wiki-ingest-commit.sh stderr (fix / close と対称)。
 # rc 捕捉は `if cmd; then :; else rc=$?; fi` 形式 (「!」否定は $? を反転するため使用禁止)
@@ -126,7 +131,25 @@ fi
 commit_rc=0
 wiki_push_attempt="review-{pr_number}-$(date +%s)-$$-$RANDOM"
 echo "[CONTEXT] WIKI_PUSH_ATTEMPT=$wiki_push_attempt; source=review; pr={pr_number}"
-if commit_out=$(bash {plugin_root}/hooks/scripts/wiki-ingest-commit.sh 2>"${commit_err}"); then
+# 生成直前に commit-convention-locate.sh を実行し、返ったパスを Read する。
+# {wic_commit_message} は規約適用後の値。未指定時の既定は helper 現行固定文。
+wic_msg_file=$(mktemp "${TMPDIR:-/tmp}/rite-wic-msg-XXXXXX") || {
+  echo "WARNING: コミットメッセージ用一時ファイルを作成できません。wiki ingest commit をスキップします" >&2
+  echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=msg_file_mktemp_failed; exit_code=1"
+  wic_msg_file=""
+}
+if [ -n "$wic_msg_file" ]; then
+cat > "$wic_msg_file" <<'WIC_EOF'
+{wic_commit_message}
+WIC_EOF
+case "$(cat -- "$wic_msg_file")" in
+  "{"*"}")
+    echo "ERROR: Wiki コミットメッセージの placeholder が未置換です" >&2
+    echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=msg_placeholder_residue; exit_code=1"
+    exit 1
+    ;;
+esac
+if commit_out=$(bash {plugin_root}/hooks/scripts/wiki-ingest-commit.sh --message-file "$wic_msg_file" 2>"${commit_err}"); then
  # Success — the script prints exactly one status line to stdout, e.g.
  # [wiki-ingest-commit] committed=1; branch=wiki; head=<sha>; push=ok
  # [wiki-ingest-commit] committed=0; branch=wiki; reason=no-pending
@@ -157,8 +180,11 @@ else
  ;;
  esac
 fi
+fi
 [ "$commit_err" != "/dev/null" ] && rm -f "$commit_err"
+[ -n "${wic_msg_file:-}" ] && rm -f "$wic_msg_file"
 commit_err=""
+wic_msg_file=""
 trap - EXIT INT TERM HUP
 ```
 
