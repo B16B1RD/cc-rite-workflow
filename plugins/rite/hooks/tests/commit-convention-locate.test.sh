@@ -78,6 +78,42 @@ path_out=$(cd "$nested_repo" && bash "$LOCATE" --path README)
 assert "unrelated --path omits nested CLAUDE" "" "$(printf '%s\n' "$path_out" | sed -n 's/^NESTED_CLAUDE_MD=//p')"
 pkg_out=$(cd "$nested_repo" && bash "$LOCATE" --path pkg/x)
 assert "pkg --path keeps nested CLAUDE" "$(canon_abs_path "$nested_repo/pkg/CLAUDE.md")" "$(printf '%s\n' "$pkg_out" | sed -n 's/^NESTED_CLAUDE_MD=//p')"
+abs_rc=0
+abs_err=$(cd "$nested_repo" && bash "$LOCATE" --path /tmp/x 2>&1) || abs_rc=$?
+assert "absolute --path exits 1" "1" "$abs_rc"
+if grep -q '作業ツリー相対' <<<"$abs_err"; then
+  pass "absolute --path names the policy"
+else
+  fail "absolute --path diagnostic: $abs_err"
+fi
+esc_rc=0
+esc_err=$(cd "$nested_repo" && bash "$LOCATE" --path ../outside-leaf 2>&1) || esc_rc=$?
+assert "dotdot --path exits 1" "1" "$esc_rc"
+if grep -q '作業ツリーの外' <<<"$esc_err"; then
+  pass "dotdot --path names the escape"
+else
+  fail "dotdot --path diagnostic: $esc_err"
+fi
+chmod 000 "$nested_repo/pkg/CLAUDE.md"
+nest_unread_rc=0
+nest_unread_err=$(cd "$nested_repo" && bash "$LOCATE" --path pkg/x 2>&1) || nest_unread_rc=$?
+chmod 644 "$nested_repo/pkg/CLAUDE.md"
+assert "unreadable nested CLAUDE.md exits 1" "1" "$nest_unread_rc"
+if grep -q 'ネストした規約ファイルを読めません' <<<"$nest_unread_err"; then
+  pass "unreadable nested names the path"
+else
+  fail "unreadable nested diagnostic: $nest_unread_err"
+fi
+if grep -q 'COMMIT_CONVENTION_PRESENT=0' <<<"$nest_unread_err"; then
+  fail "unreadable nested must not degrade to PRESENT=0"
+else
+  pass "unreadable nested does not report PRESENT=0"
+fi
+cwd_unread_rc=0
+chmod 000 "$nested_repo/pkg/CLAUDE.md"
+cwd_unread_err=$(cd "$nested_repo/pkg" && bash "$LOCATE" 2>&1) || cwd_unread_rc=$?
+chmod 644 "$nested_repo/pkg/CLAUDE.md"
+assert "unreadable nested via cwd exits 1" "1" "$cwd_unread_rc"
 
 # --- unreadable file is fail-loud (not missing) ---
 unread_repo="$(new_repo)"
@@ -87,12 +123,12 @@ unread_rc=0
 unread_err=$(cd "$unread_repo" && bash "$LOCATE" 2>&1) || unread_rc=$?
 chmod 644 "$unread_repo/CLAUDE.md"
 assert "unreadable CLAUDE.md exits 1" "1" "$unread_rc"
-if printf '%s' "$unread_err" | grep -q '読めません'; then
+if grep -q '読めません' <<<"$unread_err"; then
   pass "unreadable file names the path"
 else
   fail "unreadable diagnostic missing: $unread_err"
 fi
-if printf '%s' "$unread_err" | grep -q 'COMMIT_CONVENTION_PRESENT=0'; then
+if grep -q 'COMMIT_CONVENTION_PRESENT=0' <<<"$unread_err"; then
   fail "unreadable must not degrade to PRESENT=0"
 else
   pass "unreadable does not report PRESENT=0"
@@ -150,7 +186,7 @@ assert "default used when files absent" "chore(wiki): default" "$(printf '%s' "$
 msg_rc=0
 msg_err=$(bash "$MSG" --default-file "$def" --root "$claude_repo" 2>&1) || msg_rc=$?
 assert "present without message-file exits 1" "1" "$msg_rc"
-if printf '%s' "$msg_err" | grep -q -- '--message-file'; then
+if grep -q -- '--message-file' <<<"$msg_err"; then
   pass "missing message-file names the required flag"
 else
   fail "missing message-file diagnostic: $msg_err"
@@ -161,7 +197,7 @@ ov=$(mktemp)
 printf 'feat: from file\n\nbody with quotes '\'' and `date`\n' > "$ov"
 got2=$(bash "$MSG" --default-file "$def" --message-file "$ov" --root "$claude_repo")
 assert "message-file used when present" "feat: from file" "$(printf '%s\n' "$got2" | head -1)"
-if printf '%s' "$got2" | grep -q '`date`'; then
+if grep -q '`date`' <<<"$got2"; then
   pass "message-file keeps backtick text as data"
 else
   fail "backtick text lost: $got2"

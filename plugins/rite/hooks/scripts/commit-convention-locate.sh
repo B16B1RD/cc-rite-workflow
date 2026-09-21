@@ -171,8 +171,30 @@ consider_nested_file() {
 
 walk_parents() {
   local rel_dir="$1"
-  local next
+  local next cand phys parent
   while [ -n "$rel_dir" ] && [ "$rel_dir" != "." ] && [ "$rel_dir" != "/" ]; do
+    cand="$ROOT/$rel_dir"
+    if [ -d "$cand" ]; then
+      phys=$(canon_abs_path "$cand") || {
+        echo "ERROR: commit-convention-locate: --path の親を解決できません: $rel_dir" >&2
+        return 1
+      }
+    elif [ -e "$(dirname -- "$cand")" ]; then
+      parent=$(canon_abs_path "$(dirname -- "$cand")") || {
+        echo "ERROR: commit-convention-locate: --path の親を解決できません: $rel_dir" >&2
+        return 1
+      }
+      phys="$parent/$(basename -- "$rel_dir")"
+    else
+      phys=$cand
+    fi
+    case "$phys" in
+      "$ROOT"|"$ROOT"/*) ;;
+      *)
+        echo "ERROR: commit-convention-locate: --path が作業ツリーの外です: $rel_dir" >&2
+        return 1
+        ;;
+    esac
     consider_nested_file "$ROOT/$rel_dir/CLAUDE.md" || return 1
     consider_nested_file "$ROOT/$rel_dir/AGENTS.md" || return 1
     next=$(dirname -- "$rel_dir")

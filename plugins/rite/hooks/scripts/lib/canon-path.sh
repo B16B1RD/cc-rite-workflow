@@ -11,7 +11,7 @@
 
 canon_abs_path() {
   local target="${1:-}"
-  local dir base resolved
+  local dir base resolved dest hops
   if [ -z "$target" ]; then
     return 1
   fi
@@ -21,12 +21,27 @@ canon_abs_path() {
       target="$(pwd)/$target" || return 1
       ;;
   esac
-  if [ -d "$target" ]; then
-    (cd "$target" && pwd -P) || return 1
+  hops=0
+  while [ "$hops" -lt 32 ]; do
+    hops=$((hops + 1))
+    if [ -d "$target" ]; then
+      (cd "$target" && pwd -P) || return 1
+      return 0
+    fi
+    dir=$(dirname -- "$target") || return 1
+    base=$(basename -- "$target") || return 1
+    resolved=$(cd "$dir" && pwd -P) || return 1
+    target="$resolved/$base"
+    if [ -L "$target" ]; then
+      dest=$(readlink "$target") || return 1
+      case "$dest" in
+        /*) target=$dest ;;
+        *) target="$resolved/$dest" ;;
+      esac
+      continue
+    fi
+    printf '%s/%s\n' "$resolved" "$base"
     return 0
-  fi
-  dir=$(dirname -- "$target") || return 1
-  base=$(basename -- "$target") || return 1
-  resolved=$(cd "$dir" && pwd -P) || return 1
-  printf '%s/%s\n' "$resolved" "$base"
+  done
+  return 1
 }

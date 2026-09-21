@@ -167,7 +167,7 @@ printf 'Commits must be English.\nSubject form: feat(scope): description\nBody i
 no_file_rc=0
 no_file_err=$(bash "$MSG" --default-file "$def" --root "$repo" 2>&1) || no_file_rc=$?
 assert "T-01 helper does not invent a message from CLAUDE.md" "1" "$no_file_rc"
-if printf '%s' "$no_file_err" | grep -q -- '--message-file'; then
+if grep -q -- '--message-file' <<<"$no_file_err"; then
   pass "T-01 helper fail-loud names --message-file"
 else
   fail "T-01 helper diagnostic: $no_file_err"
@@ -266,9 +266,9 @@ spec_rc=0
 bash "$COMMIT" --file "$spec_msg" --worktree "$spec_repo" -- --quiet || spec_rc=$?
 assert "T-10 git-commit-file special chars exit 0" "0" "$spec_rc"
 spec_body=$(git -C "$spec_repo" log -1 --format=%b)
-if printf '%s' "$spec_body" | grep -q '`date`' \
-   && printf '%s' "$spec_body" | grep -q '$(whoami)' \
-   && printf '%s' "$spec_body" | grep -q 'second line'; then
+if grep -q '`date`' <<<"$spec_body" \
+   && grep -q '$(whoami)' <<<"$spec_body" \
+   && grep -q 'second line' <<<"$spec_body"; then
   pass "T-10 -F keeps quotes/newlines/command-like text"
 else
   fail "T-10 -F mutated message: $spec_body"
@@ -295,7 +295,7 @@ printf 'English only.\n' > "$conv_repo/CLAUDE.md"
 conv_rc=0
 conv_err=$(cd "$conv_repo" && bash "$WIKI_INIT" --branch-strategy same_branch --wiki-branch wiki 2>&1) || conv_rc=$?
 assert "T-03 wiki-init CLAUDE.md without --message-file exits 1" "1" "$conv_rc"
-if printf '%s' "$conv_err" | grep -q -- '--message-file'; then
+if grep -q -- '--message-file' <<<"$conv_err"; then
   pass "T-03 wiki-init fail-loud names --message-file"
 else
   fail "T-03 wiki-init diagnostic: $conv_err"
@@ -337,6 +337,26 @@ printf 'English only.\n' > "$ing2/CLAUDE.md"
 ing2_rc=0
 ing2_err=$(cd "$ing2" && bash "$WIKI_INGEST" 2>&1) || ing2_rc=$?
 assert "T-03 wiki-ingest-commit CLAUDE.md without --message-file exits 1" "1" "$ing2_rc"
+
+feat_base="$(new_repo)"
+printf '%s\n' 'wiki:' '  enabled: true' '  branch_strategy: same_branch' '  branch_name: wiki' > "$feat_base/rite-config.yml"
+git -C "$feat_base" add rite-config.yml && git -C "$feat_base" commit -qm config
+mkdir -p "$feat_base/.rite/wiki/raw/reviews"
+printf '%s\n' '---' 'ingested: false' '---' 'raw' > "$feat_base/.rite/wiki/raw/reviews/pr-test.md"
+git -C "$feat_base" add .rite/wiki && git -C "$feat_base" commit -qm raw
+git -C "$feat_base" worktree add -q "$feat_base/feature" -b feat-conv
+printf 'English only.\n' > "$feat_base/feature/CLAUDE.md"
+feat_rc=0
+feat_err=$(cd "$feat_base/feature" && bash "$WIKI_INGEST" 2>&1) || feat_rc=$?
+assert "T-03 wiki-ingest-commit from feature worktree without --message-file exits 1" "1" "$feat_rc"
+if grep -Fq "CLAUDE_MD=$(canon_abs_path "$feat_base/feature/CLAUDE.md")" <<<"$feat_err"; then
+  pass "T-03 wiki-ingest-commit names the feature CLAUDE.md"
+else
+  fail "T-03 wiki-ingest-commit feature diagnostic: $feat_err"
+fi
+wt_rc=0
+wt_err=$(cd "$feat_base/feature" && bash "$WIKI_WT" --commit-only 2>&1) || wt_rc=$?
+assert "T-03 wiki-worktree-commit from feature without --message-file exits 1" "1" "$wt_rc"
 
 ing3="$(new_repo)"
 printf '%s\n' 'wiki:' '  enabled: true' '  branch_strategy: same_branch' '  branch_name: wiki' > "$ing3/rite-config.yml"

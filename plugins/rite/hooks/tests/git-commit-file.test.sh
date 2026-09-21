@@ -48,10 +48,24 @@ printf 'feat: inside\n' > "$inside"
 in_rc=0
 in_err=$(bash "$COMMIT" --file "$inside" --worktree "$repo" 2>&1) || in_rc=$?
 assert "in-tree message file exits 1" "1" "$in_rc"
-if printf '%s' "$in_err" | grep -q '作業ツリーの外'; then
+if grep -q '作業ツリーの外' <<<"$in_err"; then
   pass "in-tree file names the policy"
 else
   fail "in-tree diagnostic: $in_err"
+fi
+
+# physical in-tree via symlink (macOS /var vs /private/var class)
+link_dir="$(mktemp -d)"
+SANDBOXES+=("$link_dir")
+ln -s "$repo" "$link_dir/wt"
+ln -s "$inside" "$link_dir/msg.txt"
+link_rc=0
+link_err=$(bash "$COMMIT" --file "$link_dir/msg.txt" --worktree "$link_dir/wt" 2>&1) || link_rc=$?
+assert "symlink in-tree message file exits 1" "1" "$link_rc"
+if grep -q '作業ツリーの外' <<<"$link_err"; then
+  pass "symlink in-tree names the policy"
+else
+  fail "symlink in-tree diagnostic: $link_err"
 fi
 
 # outside-tree file with quotes, newline, command-like text
@@ -63,25 +77,25 @@ assert "outside-tree -F commit exits 0" "0" "$ok_rc"
 subj=$(git -C "$repo" log -1 --format=%s)
 body=$(git -C "$repo" log -1 --format=%b)
 assert "subject keeps quotes" "feat(wiki): quotes ' and \"double\"" "$subj"
-if printf '%s' "$body" | grep -q '`date`'; then
+if grep -q '`date`' <<<"$body"; then
   pass "body keeps backtick text"
 else
   fail "body lost backticks: $body"
 fi
-if printf '%s' "$body" | grep -q '$(whoami)'; then
+if grep -q '$(whoami)' <<<"$body"; then
   pass "body keeps command substitution text"
 else
   fail "body lost \$(whoami): $body"
 fi
-if printf '%s' "$body" | grep -q 'second line'; then
+if grep -q 'second line' <<<"$body"; then
   pass "body keeps newline-separated second line"
 else
   fail "body lost second line: $body"
 fi
 # the command-like strings must not have been executed as the subject/body
-if printf '%s' "$subj$body" | grep -qE '^[0-9]{4}|root|akiyoshi'; then
+if grep -qE '^[0-9]{4}|root|akiyoshi' <<<"$subj$body"; then
   # date output or whoami result would look like this if executed; allow author name only in commit metadata, not message
-  if printf '%s' "$subj$body" | grep -q '`date`'; then
+  if grep -q '`date`' <<<"$subj$body"; then
     pass "command-like tokens remain literal"
   else
     fail "command-like tokens look expanded: $subj $body"
@@ -104,7 +118,7 @@ w_rc=0
 bash "$OVERFLOW" write --file "$store" --section "Root cause" --body-file "$bodyf" || w_rc=$?
 assert "overflow write exits 0" "0" "$w_rc"
 got=$(bash "$OVERFLOW" read --file "$store" --section "Root cause")
-if printf '%s' "$got" | grep -q 'root cause text with `tick`'; then
+if grep -q 'root cause text with `tick`' <<<"$got"; then
   pass "overflow read returns stored body"
 else
   fail "overflow read mismatch: $got"
@@ -123,7 +137,7 @@ fail_rc=0
 fail_err=$(bash "$OVERFLOW" write --file "$nowrite/blocked.md" --section "Root cause" --body-file "$bodyf" 2>&1) || fail_rc=$?
 chmod 700 "$nowrite"
 assert "unwritable overflow store exits 1" "1" "$fail_rc"
-if printf '%s' "$fail_err" | grep -qE '作成できません|保存できません|書き込みに失敗'; then
+if grep -qE '作成できません|保存できません|書き込みに失敗' <<<"$fail_err"; then
   pass "overflow failure names the IO error"
 else
   fail "overflow failure diagnostic: $fail_err"
