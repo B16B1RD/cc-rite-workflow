@@ -251,7 +251,11 @@ if [[ -d ".rite/wiki/raw" ]]; then
  # Capture stderr to a tempfile and, if non-empty, emit a WARNING so the
  # operator understands why the file was treated as pending.
  fm_err=""
- trap 'rm -f "${fm_err:-}"' EXIT INT TERM HUP
+ _wic_fm_cleanup() { rm -f "${fm_err:-}"; return 0; }
+ trap 'rc=$?; _wic_fm_cleanup; exit $rc' EXIT
+ trap '_wic_fm_cleanup; exit 130' INT
+ trap '_wic_fm_cleanup; exit 143' TERM
+ trap '_wic_fm_cleanup; exit 129' HUP
  # Symmetric with stage_dir / git_err mktemp guards elsewhere in this file —
  # without a WARNING here, mktemp failure (full /tmp / inode exhaustion)
  # silently degrades awk stderr capture to /dev/null and operators can no
@@ -295,17 +299,21 @@ fi
 
 # Resolve commit message before any branch switch. Convention files at the
 # shared root require --message-file; otherwise the helper default is used.
+_wic_default_file=""
+_wic_resolved_file=""
+_wic_msg_cleanup() { rm -f "${_wic_default_file:-}" "${_wic_resolved_file:-}"; return 0; }
+trap 'rc=$?; _wic_msg_cleanup; exit $rc' EXIT
+trap '_wic_msg_cleanup; exit 130' INT
+trap '_wic_msg_cleanup; exit 143' TERM
+trap '_wic_msg_cleanup; exit 129' HUP
 _wic_default_file=$(mktemp "${TMPDIR:-/tmp}/rite-wic-default-XXXXXX") || {
  echo "ERROR: 既定メッセージ用一時ファイルを作成できません" >&2
  exit 1
 }
 _wic_resolved_file=$(mktemp "${TMPDIR:-/tmp}/rite-wic-msg-XXXXXX") || {
  echo "ERROR: コミットメッセージ用一時ファイルを作成できません" >&2
- rm -f "$_wic_default_file"
  exit 1
 }
-_wic_msg_cleanup() { rm -f "${_wic_default_file:-}" "${_wic_resolved_file:-}"; }
-trap '_wic_msg_cleanup' EXIT INT TERM HUP
 _wic_resolve_msg() {
  local default="$1"
  printf '%s\n' "$default" > "$_wic_default_file"
@@ -558,7 +566,11 @@ if ! git show-ref --verify --quiet "refs/heads/${wiki_branch}"; then
  # manual `rm -f "$ref_err"` on exit would orphan the tempfile. Guard with a
  # scope-limited mini-trap so SIGINT / SIGTERM / SIGHUP all remove ref_err.
  ref_err=""
- trap 'rm -f "${ref_err:-}"; _wic_msg_cleanup' EXIT INT TERM HUP
+ _wic_ref_cleanup() { rm -f "${ref_err:-}"; _wic_msg_cleanup; return 0; }
+ trap 'rc=$?; _wic_ref_cleanup; exit $rc' EXIT
+ trap '_wic_ref_cleanup; exit 130' INT
+ trap '_wic_ref_cleanup; exit 143' TERM
+ trap '_wic_ref_cleanup; exit 129' HUP
  ref_err=$(mktemp "${TMPDIR:-/tmp}/rite-wic-ref-err-XXXXXX" 2>/dev/null || echo "")
  if [[ -n "$ref_err" ]]; then
  git show-ref --verify "refs/heads/${wiki_branch}" >/dev/null 2>"$ref_err" || true
@@ -593,7 +605,11 @@ fi
 # Install the temporary trap before mktemp so no created directory is unguarded.
 # Report mktemp failure with context before exiting.
 stage_dir=""
-trap 'rm -rf "${stage_dir:-}" 2>/dev/null || true; _wic_msg_cleanup' EXIT INT TERM HUP
+_wic_stage_cleanup() { rm -rf "${stage_dir:-}" 2>/dev/null || true; _wic_msg_cleanup; return 0; }
+trap 'rc=$?; _wic_stage_cleanup; exit $rc' EXIT
+trap '_wic_stage_cleanup; exit 130' INT
+trap '_wic_stage_cleanup; exit 143' TERM
+trap '_wic_stage_cleanup; exit 129' HUP
 if ! stage_dir=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-stage-XXXXXX" 2>/dev/null); then
  echo "ERROR: failed to create staging directory under /tmp" >&2
  echo " hint: check /tmp permission / disk space / inode exhaustion / read-only filesystem" >&2

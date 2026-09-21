@@ -106,12 +106,26 @@ assert_grep "T-03 wiki-lint uses applied-message placeholder" "$WIKI_LINT_SKILL"
   '{wiki_lint_commit_message}'
 assert_grep "T-03 wiki-recording rejects leftover placeholder" "$PR_WIKI" \
   'msg_placeholder_residue'
+assert_grep "T-03 fix wiki-recording rejects leftover placeholder" "$FIX_WIKI" \
+  'msg_placeholder_residue'
+assert_grep "T-03 issue-close rejects leftover placeholder" "$CLOSE" \
+  'msg_placeholder_residue'
 assert_grep "T-03 wiki-init 3.1 uses signal trap" "$WIKI_INIT_SKILL" \
   '_cleanup_wiki_init_msg; exit 130'
+assert_grep "T-03 wiki-init 3.5.1 uses signal trap" "$WIKI_INIT_SKILL" \
+  '_cleanup_mig; exit 130'
 assert_grep "T-03 wiki-lint separate_branch uses signal trap" "$WIKI_LINT_SKILL" \
   '_cleanup_lint_sep; exit 130'
 assert_grep "T-03 parallel merge uses signal trap" "$IMPLEMENT" \
   '_cleanup_par; exit 130'
+assert_grep "T-03 wiki-ingest 5.1 uses quoted heredoc" "$WIKI_INGEST_SKILL" \
+  'ingest_sep_msg" <<'\''EOF'\'''
+assert_grep "T-03 wiki-ingest 5.2 uses quoted heredoc" "$WIKI_INGEST_SKILL" \
+  'ingest_msg" <<'\''EOF'\'''
+assert_grep "T-03 wiki-init 3.5.1 uses quoted heredoc" "$WIKI_INIT_SKILL" \
+  'mig_msg" <<'\''EOF'\'''
+assert_grep "T-03 wiki-lint 8.3 uses quoted heredoc" "$WIKI_LINT_SKILL" \
+  'lint_sep_msg" <<'\''EOF'\'''
 
 # --- T-05: squash keeps delete-branch=false + match-head-commit; CI red does not reach merge ---
 assert_grep "T-05 squash keeps --delete-branch=false" "$MERGE" \

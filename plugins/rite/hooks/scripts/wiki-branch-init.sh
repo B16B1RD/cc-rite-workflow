@@ -73,17 +73,21 @@ WIKI_INIT_DEFAULT="feat(wiki): initialize Wiki structure
 - 3-layer structure: Raw Sources / Wiki Pages / Schema
 - Templates: SCHEMA.md, index.md, log.md
 - Directories: raw/{reviews,retrospectives,fixes}, pages/{patterns,heuristics,anti-patterns}"
+_default_file=""
+_resolved_file=""
+_rite_wiki_init_msg_cleanup() { rm -f "${_default_file:-}" "${_resolved_file:-}"; return 0; }
+trap 'rc=$?; _rite_wiki_init_msg_cleanup; exit $rc' EXIT
+trap '_rite_wiki_init_msg_cleanup; exit 130' INT
+trap '_rite_wiki_init_msg_cleanup; exit 143' TERM
+trap '_rite_wiki_init_msg_cleanup; exit 129' HUP
 _default_file=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-init-default-XXXXXX") || {
   echo "ERROR: 既定メッセージ用一時ファイルを作成できません" >&2
   exit 1
 }
 _resolved_file=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-init-msg-XXXXXX") || {
   echo "ERROR: コミットメッセージ用一時ファイルを作成できません" >&2
-  rm -f "$_default_file"
   exit 1
 }
-_rite_wiki_init_msg_cleanup() { rm -f "${_default_file:-}" "${_resolved_file:-}"; }
-trap '_rite_wiki_init_msg_cleanup' EXIT INT TERM HUP
 printf '%s\n' "$WIKI_INIT_DEFAULT" > "$_default_file"
 _msg_args=(--default-file "$_default_file")
 [ -n "$MESSAGE_FILE" ] && _msg_args+=(--message-file "$MESSAGE_FILE")

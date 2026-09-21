@@ -263,10 +263,17 @@ worktree_commit_push() {
  if [[ $_wtgp_errexit -eq 1 ]]; then set -e; else set +e; fi
  }
 
- local add_err="" diff_err="" commit_err=""
- # Internal cleanup trap (EXIT only — caller's signal traps are
- # re-applied below on any non-signal return path).
- trap 'rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}"' EXIT INT TERM HUP
+ local add_err="" diff_err="" commit_err="" msg_file="" head_err=""
+ # Internal cleanup trap. INT/TERM/HUP must exit so SIGINT cannot continue
+ # into git commit. Caller's signal traps are re-applied on non-signal return.
+ _wtgp_tmp_cleanup() {
+  rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${msg_file:-}" "${head_err:-}"
+  return 0
+ }
+ trap 'rc=$?; _wtgp_tmp_cleanup; exit $rc' EXIT
+ trap '_wtgp_tmp_cleanup; exit 130' INT
+ trap '_wtgp_tmp_cleanup; exit 143' TERM
+ trap '_wtgp_tmp_cleanup; exit 129' HUP
 
  # mktemp failures are surfaced to stderr (not silently swallowed) so
  # operators can see when stderr capture is degraded to /dev/null.
@@ -326,7 +333,6 @@ worktree_commit_push() {
 
  # Step 3: commit via -F so quotes/newlines in the message are data, not shell.
  # The tempfile lives under TMPDIR (outside the worktree). argv contract is unchanged.
- local msg_file=""
  msg_file=$(mktemp "${TMPDIR:-/tmp}/rite-wtgit-msg-XXXXXX" 2>/dev/null) || msg_file=""
  if [ -z "$msg_file" ]; then
   echo "ERROR: worktree_commit_push: コミットメッセージ用一時ファイルを作成できません" >&2
@@ -334,7 +340,6 @@ worktree_commit_push() {
   _wtgp_restore_caller_state
   return 3
  fi
- trap 'rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${msg_file:-}"' EXIT INT TERM HUP
  printf '%s' "$commit_msg" > "$msg_file"
  case "$commit_msg" in
   *$'\n') ;;
@@ -354,10 +359,8 @@ worktree_commit_push() {
  # surface a WARNING rather than silently embedding "unknown" in the
  # status line — otherwise the caller sees `head=unknown` and treats it
  # as a successful commit.
- local head_sha head_err=""
- # Extend internal trap to cover head_err so SIGINT / SIGTERM / SIGHUP during
- # the post-commit rev-parse cannot leak the tempfile. Must be set BEFORE mktemp.
- trap 'rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${msg_file:-}" "${head_err:-}"' EXIT INT TERM HUP
+ local head_sha
+ # head_err is covered by the function-entry trap (declared empty before mktemp).
  head_err=$(mktemp "${TMPDIR:-/tmp}/rite-wtgit-head-err-XXXXXX" 2>/dev/null) || head_err=""
  if head_sha=$(git -C "$worktree" rev-parse HEAD 2>"${head_err:-/dev/null}"); then
  :

@@ -183,16 +183,21 @@ repo_root=$("$_SCRIPT_DIR/../state-path-resolve.sh" 2>/dev/null) || repo_root=""
 cd "$repo_root"
 
 if [[ "$PUSH_ONLY" != "true" ]] && [[ "$DRY_RUN" != "true" ]]; then
+ _wwc_default_file=""
+ _wwc_resolved_file=""
+ _wwc_msg_cleanup() { rm -f "${_wwc_default_file:-}" "${_wwc_resolved_file:-}"; return 0; }
+ trap 'rc=$?; _wwc_msg_cleanup; exit $rc' EXIT
+ trap '_wwc_msg_cleanup; exit 130' INT
+ trap '_wwc_msg_cleanup; exit 143' TERM
+ trap '_wwc_msg_cleanup; exit 129' HUP
  _wwc_default_file=$(mktemp "${TMPDIR:-/tmp}/rite-wwc-default-XXXXXX") || {
   echo "ERROR: 既定メッセージ用一時ファイルを作成できません" >&2
   exit 1
  }
  _wwc_resolved_file=$(mktemp "${TMPDIR:-/tmp}/rite-wwc-msg-XXXXXX") || {
   echo "ERROR: コミットメッセージ用一時ファイルを作成できません" >&2
-  rm -f "$_wwc_default_file"
   exit 1
  }
- trap 'rm -f "${_wwc_default_file:-}" "${_wwc_resolved_file:-}"' EXIT INT TERM HUP
  printf '%s\n' "$COMMIT_MSG" > "$_wwc_default_file"
  _wwc_args=(--default-file "$_wwc_default_file" --root "$repo_root")
  if [[ -n "$MESSAGE_FILE" ]]; then

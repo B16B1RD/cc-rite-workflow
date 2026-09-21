@@ -435,35 +435,36 @@ if [ "$branch_strategy" = "separate_branch" ] && [ -d .rite/wiki-worktree/.rite/
   if [ "$migration_needed" = "true" ]; then
     # {wiki_mig_commit_message} は規約適用後の全文。未指定時の既定:
     # chore(wiki): migrate pages/ directories with .gitkeep
-    commit_msg="{wiki_mig_commit_message}"
     _mig_msg=""
     _cleanup_mig() { [ -n "${_mig_msg:-}" ] && rm -f "$_mig_msg"; return 0; }
     trap 'rc=$?; _cleanup_mig; exit $rc' EXIT
     trap '_cleanup_mig; exit 130' INT
     trap '_cleanup_mig; exit 143' TERM
     trap '_cleanup_mig; exit 129' HUP
-    case "$commit_msg" in
-      "{"*"}")
-        echo "WARNING: wiki migrate コミットメッセージの placeholder が未置換です" >&2
-        commit_out=""
-        commit_rc=1
-        ;;
-      *)
     _mig_msg=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-mig-msg-XXXXXX") || {
       echo "WARNING: コミットメッセージ用一時ファイルを作成できません" >&2
       commit_out=""
       commit_rc=1
     }
     if [ -n "${_mig_msg:-}" ]; then
-      printf '%s\n' "$commit_msg" > "$_mig_msg"
-      # 2>&1 は付けない: 構造化 stdout (committed= 行) と WARNING stderr の分離を維持する
-      commit_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --message-file "$_mig_msg")
-      commit_rc=$?
-      rm -f "$_mig_msg"
-      _mig_msg=""
+      cat > "$_mig_msg" <<'EOF'
+{wiki_mig_commit_message}
+EOF
+      case "$(cat -- "$_mig_msg")" in
+        "{"*"}")
+          echo "WARNING: wiki migrate コミットメッセージの placeholder が未置換です" >&2
+          commit_out=""
+          commit_rc=1
+          ;;
+        *)
+          # 2>&1 は付けない: 構造化 stdout (committed= 行) と WARNING stderr の分離を維持する
+          commit_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --message-file "$_mig_msg")
+          commit_rc=$?
+          rm -f "$_mig_msg"
+          _mig_msg=""
+          ;;
+      esac
     fi
-        ;;
-    esac
     trap - EXIT INT TERM HUP
     echo "$commit_out"
     case "$commit_rc" in
@@ -490,34 +491,35 @@ fi
 plugin_root="{plugin_root}"
 # {wiki_mig_commit_message} は規約適用後の全文。未指定時の既定:
 # chore(wiki): migrate pages/ directories with .gitkeep
-commit_msg="{wiki_mig_commit_message}"
 _mig_retry_msg=""
 _cleanup_mig_retry() { [ -n "${_mig_retry_msg:-}" ] && rm -f "$_mig_retry_msg"; return 0; }
 trap 'rc=$?; _cleanup_mig_retry; exit $rc' EXIT
 trap '_cleanup_mig_retry; exit 130' INT
 trap '_cleanup_mig_retry; exit 143' TERM
 trap '_cleanup_mig_retry; exit 129' HUP
-case "$commit_msg" in
-  "{"*"}")
-    echo "WARNING: wiki migrate 再試行メッセージの placeholder が未置換です" >&2
-    retry_out=""
-    retry_rc=1
-    ;;
-  *)
 _mig_retry_msg=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-mig-retry-msg-XXXXXX") || {
   echo "WARNING: コミットメッセージ用一時ファイルを作成できません" >&2
   retry_out=""
   retry_rc=1
 }
 if [ -n "${_mig_retry_msg:-}" ]; then
-  printf '%s\n' "$commit_msg" > "$_mig_retry_msg"
-  retry_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --message-file "$_mig_retry_msg")
-  retry_rc=$?
-  rm -f "$_mig_retry_msg"
-  _mig_retry_msg=""
+  cat > "$_mig_retry_msg" <<'EOF'
+{wiki_mig_commit_message}
+EOF
+  case "$(cat -- "$_mig_retry_msg")" in
+    "{"*"}")
+      echo "WARNING: wiki migrate 再試行メッセージの placeholder が未置換です" >&2
+      retry_out=""
+      retry_rc=1
+      ;;
+    *)
+      retry_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --message-file "$_mig_retry_msg")
+      retry_rc=$?
+      rm -f "$_mig_retry_msg"
+      _mig_retry_msg=""
+      ;;
+  esac
 fi
-    ;;
-esac
 trap - EXIT INT TERM HUP
 echo "$retry_out"
 case "$retry_rc" in

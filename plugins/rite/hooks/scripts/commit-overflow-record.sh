@@ -110,12 +110,16 @@ mkdir -p "$dir" || {
   exit 1
 }
 
+tmp=""
+cleanup() { [ -n "${tmp:-}" ] && rm -f "$tmp"; return 0; }
+trap 'rc=$?; cleanup; exit $rc' EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
+trap 'cleanup; exit 129' HUP
 tmp=$(mktemp "${TMPDIR:-/tmp}/rite-overflow-XXXXXX") || {
   echo "ERROR: 記録用一時ファイルを作成できません" >&2
   exit 1
 }
-cleanup() { rm -f "$tmp"; }
-trap cleanup EXIT INT TERM HUP
 
 if [ -f "$FILE" ]; then
   awk -v name="$SECTION" '

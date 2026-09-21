@@ -835,13 +835,6 @@ esac
 
 # {wiki_lint_commit_message} は規約適用後の全文。未指定時の既定は
 # docs(wiki): lint report — ${log_entry}
-commit_msg="{wiki_lint_commit_message}"
-case "$commit_msg" in
-  "{"*"}")
-    echo "ERROR: ステップ 8.3 の commit_msg が未置換です (値: '$commit_msg')" >&2
-    exit 1
-    ;;
-esac
 
 case "$branch_strategy" in
   "{"*"}")
@@ -861,7 +854,15 @@ case "$branch_strategy" in
       echo "WARNING: コミットメッセージ用一時ファイルを作成できません" >&2
       exit 0
     }
-    printf '%s\n' "$commit_msg" > "$_lint_sep_msg"
+    cat > "$_lint_sep_msg" <<'EOF'
+{wiki_lint_commit_message}
+EOF
+    case "$(cat -- "$_lint_sep_msg")" in
+      "{"*"}")
+        echo "ERROR: ステップ 8.3 の commit message が未置換です" >&2
+        exit 1
+        ;;
+    esac
     set +e
     if [ "$auto_mode" = "true" ]; then
       # --auto: ingest から呼ばれている。push は ingest.md ステップ 8.6 の集約 push に委ね、
@@ -931,7 +932,15 @@ case "$branch_strategy" in
       echo "WARNING: コミットメッセージ用一時ファイルを作成できません" >&2
       exit 0
     }
-    printf '%s\n' "$commit_msg" > "$_lint_msg"
+    cat > "$_lint_msg" <<'EOF'
+{wiki_lint_commit_message}
+EOF
+    case "$(cat -- "$_lint_msg")" in
+      "{"*"}")
+        echo "ERROR: ステップ 8.3 の commit message が未置換です" >&2
+        exit 1
+        ;;
+    esac
     if ! bash "$plugin_root/hooks/scripts/git-commit-file.sh" --file "$_lint_msg" -- --quiet 2>"${commit_err:-/dev/null}"; then
       echo "WARNING: log.md のコミットに失敗しました" >&2
       [ -n "$commit_err" ] && [ -s "$commit_err" ] && head -3 "$commit_err" | sed 's/^/  /' >&2
