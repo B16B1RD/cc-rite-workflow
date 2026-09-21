@@ -97,7 +97,7 @@ while [[ $# -gt 0 ]]; do
  --dry-run) DRY_RUN=true; shift ;;
  --push-only) PUSH_ONLY=true; shift ;;
  --message-file)
-  if [[ $# -lt 2 ]]; then
+  if [[ $# -lt 2 ]] || [[ -z "${2:-}" ]]; then
    echo "ERROR: --message-file requires a value" >&2
    exit 1
   fi
