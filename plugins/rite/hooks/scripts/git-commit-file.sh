@@ -111,7 +111,8 @@ gate_out=$(bash "$gate" --mode commit --worktree "$tree") || {
   echo "ERROR: wiki apply gate が commit を拒否しました" >&2
   exit 1
 }
-printf '%s\n' "$gate_out" >&2
+# skip と allow は出さない。Wiki 初期化は stdout と stderr をまとめて旧実装と
+# 比較するため、通過時の表示が差分になる。拒否の理由だけを上で出している。
 
 if ! git "${git_c[@]}" commit -F "$FILE" "${EXTRA[@]}"; then
   echo "ERROR: git commit -F failed" >&2
