@@ -833,8 +833,15 @@ case "$log_entry" in
     ;;
 esac
 
-# 規約があるときは commit-convention.md 適用後の値。未指定時の既定:
-commit_msg="docs(wiki): lint report — ${log_entry}"
+# {wiki_lint_commit_message} は規約適用後の全文。未指定時の既定は
+# docs(wiki): lint report — ${log_entry}
+commit_msg="{wiki_lint_commit_message}"
+case "$commit_msg" in
+  "{"*"}")
+    echo "ERROR: ステップ 8.3 の commit_msg が未置換です (値: '$commit_msg')" >&2
+    exit 1
+    ;;
+esac
 
 case "$branch_strategy" in
   "{"*"}")
@@ -844,6 +851,12 @@ case "$branch_strategy" in
   separate_branch)
     # set -euo pipefail 下で commit_out=$(bash ...) が rc != 0 のとき bash が即時 exit する罠を回避。
     # set +e で囲み rc capture を保証する。2>&1 は付けない (構造化 stdout / WARNING stderr の責務分離維持)。
+    _lint_sep_msg=""
+    _cleanup_lint_sep() { [ -n "${_lint_sep_msg:-}" ] && rm -f "$_lint_sep_msg"; return 0; }
+    trap 'rc=$?; _cleanup_lint_sep; exit $rc' EXIT
+    trap '_cleanup_lint_sep; exit 130' INT
+    trap '_cleanup_lint_sep; exit 143' TERM
+    trap '_cleanup_lint_sep; exit 129' HUP
     _lint_sep_msg=$(mktemp "${TMPDIR:-/tmp}/rite-lint-sep-msg-XXXXXX") || {
       echo "WARNING: コミットメッセージ用一時ファイルを作成できません" >&2
       exit 0
@@ -861,6 +874,8 @@ case "$branch_strategy" in
     commit_rc=$?
     set -e
     rm -f "$_lint_sep_msg"
+    _lint_sep_msg=""
+    trap - EXIT INT TERM HUP
     echo "$commit_out"
     # lint は非ブロッキング契約のため exit 1 はせず、すべて WARNING のみで継続する。
     # 番号参照 hit/error も rc=1 で commit されない（wiki-worktree-commit.sh 内の

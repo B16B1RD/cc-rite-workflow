@@ -456,6 +456,8 @@ trap '_rite_wic_commit_cleanup' EXIT INT TERM HUP
 commit_rc=0
 wiki_push_attempt="issue-close-{issue_number}-$(date +%s)-$$-$RANDOM"
 echo "[CONTEXT] WIKI_PUSH_ATTEMPT=$wiki_push_attempt; source=issue-close; issue={issue_number}"
+# 生成直前に commit-convention-locate.sh を実行し、返ったパスを Read する。
+# {wic_commit_message} は規約適用後の値。未指定時の既定は helper 現行固定文。
 wic_msg_file=$(mktemp "${TMPDIR:-/tmp}/rite-wic-msg-XXXXXX") || {
   echo "WARNING: コミットメッセージ用一時ファイルを作成できません。wiki ingest commit をスキップします" >&2
   echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=msg_file_mktemp_failed; exit_code=1"
@@ -465,6 +467,13 @@ if [ -n "$wic_msg_file" ]; then
 cat > "$wic_msg_file" <<'WIC_EOF'
 {wic_commit_message}
 WIC_EOF
+case "$(cat -- "$wic_msg_file")" in
+  "{"*"}")
+    echo "ERROR: Wiki コミットメッセージの placeholder が未置換です" >&2
+    echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=msg_placeholder_residue; exit_code=1"
+    exit 1
+    ;;
+esac
 if commit_out=$(bash {plugin_root}/hooks/scripts/wiki-ingest-commit.sh --message-file "$wic_msg_file" 2>"${commit_err}"); then
   echo "$commit_out"
   echo "[CONTEXT] WIKI_INGEST_DONE=1; issue={issue_number}; type=retrospectives; attempt=$wiki_push_attempt"

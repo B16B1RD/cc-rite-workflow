@@ -1895,7 +1895,7 @@ Before generating the commit message, check the `language` field in `rite-config
 
 **Commit body:**
 
-Use a free-form commit body. Review-fix commits **MUST** include:
+規約が本文を禁じない限り、free-form の commit body を使う。Review-fix commits は次を **MUST** で残す（本文へ書くか、本文禁止なら 3.2.1 の前に overflow へ移す。body へ prepend しない）:
 - **対応方針** — 各 finding に対して何をしたか / なぜその方針か
 - **`Root cause:` / `根本原因:` 段落** — ステップ 3.2.1 Root Cause Gate が検査する
 - **`simplification-first:` 段落（Escalation trigger 成立時のみ）** — `simplification-first: 削除 — {何を削ったか}` または `simplification-first: 追加 — 理由: {なぜ削除ではないか}` の 1 段落。ステップ 3.2.1 Root Cause Gate が検査する。trigger 不成立の cycle では書かない
@@ -1904,7 +1904,7 @@ Use a free-form commit body. Review-fix commits **MUST** include:
 - Write in free-form — no specific prefix or template required
 - Focus on "why" the change was needed, not "what" was changed (the description line already covers "what")
 - Follow the same language setting as the description line
-- Why は必須（省略経路なし）。review-fix の対応方針 / Root cause は省略しない
+- Why は、規約が本文を禁じない限り必須（省略経路なし）。review-fix の対応方針 / Root cause は省略せず、本文禁止時は overflow へ移す
 
 **Trailer**: Generate in the configured language using the unified `{reviewer_display_N}` placeholder (展開ルールは ステップ 2.1 の `{reviewer_display}` 展開ルール表を参照 — Broad Retrieval 経由で `@{user}`、Fast Path 経由 + `target_author_mention_skip == "true"` で `(不明なレビュアー)` / `(unknown reviewer)` に展開される):
 
@@ -1968,7 +1968,7 @@ fix(review): {description}
 
 Before committing a fix, the commit body **MUST** include a root-cause explanation. This gate implements Quality Signal 2 (root-cause-missing fix detection) — see the Quality Signal 1-4 table in `skills/pr-review/references/finding-cycling.md`.
 
-**Step 1**: 3.2 の commit body に `Root cause:` / `根本原因:` 段落があるか LLM が判定する (Bash 状態非依存)。規約が本文・trailer を禁じて溢れさせた場合は、同じ必須記録を PR 本文または `commit-overflow-record.sh` の保存先から読む。どちらにも無ければ `missing`。検査を外して通過させない。Escalation trigger 成立時は `simplification-first:` 段落の有無も同じ規則で判定し、いずれかの欠落を `missing` とする。trigger 不成立の cycle では `simplification-first:` 段落を要求しない。溢れ先への書込失敗はコミットしない。
+**Step 1**: 規約が本文を禁じるときは、3.2 の body へ Root cause を書かず、先に `commit-overflow-record.sh write --file ABS --section 'Root cause' --body-file ABS` で同じ必須記録を書く。検査は同じ `--section` の `read` を使う。規約が本文を禁じないときは 3.2 の commit body に `Root cause:` / `根本原因:` 段落があるか LLM が判定する (Bash 状態非依存)。規約が本文・trailer を禁じて溢れさせた場合は、同じ必須記録を PR 本文または `commit-overflow-record.sh` の保存先から読む。どちらにも無ければ `missing`。検査を外して通過させない。Escalation trigger 成立時は `simplification-first:` 段落の有無も同じ規則で判定し、いずれかの欠落を `missing` とする。trigger 不成立の cycle では `simplification-first:` 段落を要求しない。溢れ先への書込失敗はコミットしない。body へ prepend しない。
 
 Emit one of the two context markers so downstream logic can route:
 

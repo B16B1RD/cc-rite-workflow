@@ -298,14 +298,25 @@ Merge each passing task branch back to the Issue branch using `--no-ff`:
 git checkout {branch_name}
 # 生成直前に commit-convention.md を適用する。未指定時の既定:
 # chore(parallel): integrate {task_id} ({task_description})
+_par_msg=""
+_cleanup_par() { [ -n "${_par_msg:-}" ] && rm -f "$_par_msg"; return 0; }
+trap 'rc=$?; _cleanup_par; exit $rc' EXIT
+trap '_cleanup_par; exit 130' INT
+trap '_cleanup_par; exit 143' TERM
+trap '_cleanup_par; exit 129' HUP
 _par_msg=$(mktemp "${TMPDIR:-/tmp}/rite-parallel-merge-XXXXXX") || {
   echo "ERROR: コミットメッセージ用一時ファイルを作成できません" >&2
   exit 1
 }
-trap 'rm -f "${_par_msg:-}"' EXIT INT TERM HUP
 cat > "$_par_msg" <<'EOF'
 {parallel_merge_message}
 EOF
+case "$(cat -- "$_par_msg")" in
+  "{"*"}")
+    echo "ERROR: {parallel_merge_message} が未置換です" >&2
+    exit 1
+    ;;
+esac
 git merge --no-ff {branch_name}/{task_id} -F "$_par_msg"
 ```
 
@@ -551,14 +562,25 @@ if [ -z "$status_out" ]; then
   exit 1
 fi
 git add {changed_files}
+commit_msg_file=""
+_cleanup_impl_msg() { [ -n "${commit_msg_file:-}" ] && rm -f "$commit_msg_file"; return 0; }
+trap 'rc=$?; _cleanup_impl_msg; exit $rc' EXIT
+trap '_cleanup_impl_msg; exit 130' INT
+trap '_cleanup_impl_msg; exit 143' TERM
+trap '_cleanup_impl_msg; exit 129' HUP
 commit_msg_file=$(mktemp "${TMPDIR:-/tmp}/rite-impl-msg-XXXXXX") || {
   echo "ERROR: コミットメッセージ用一時ファイルを作成できません" >&2
   exit 1
 }
-trap 'rm -f "$commit_msg_file"' EXIT
 cat > "$commit_msg_file" <<'EOF'
 {commit_message}
 EOF
+case "$(cat -- "$commit_msg_file")" in
+  "{"*"}")
+    echo "ERROR: {commit_message} が未置換です" >&2
+    exit 1
+    ;;
+esac
 bash {plugin_root}/hooks/scripts/git-commit-file.sh --file "$commit_msg_file"
 git push origin {branch_name}
 ```

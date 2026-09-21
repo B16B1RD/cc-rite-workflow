@@ -558,7 +558,7 @@ if ! git show-ref --verify --quiet "refs/heads/${wiki_branch}"; then
  # manual `rm -f "$ref_err"` on exit would orphan the tempfile. Guard with a
  # scope-limited mini-trap so SIGINT / SIGTERM / SIGHUP all remove ref_err.
  ref_err=""
- trap 'rm -f "${ref_err:-}"' EXIT INT TERM HUP
+ trap 'rm -f "${ref_err:-}"; _wic_msg_cleanup' EXIT INT TERM HUP
  ref_err=$(mktemp "${TMPDIR:-/tmp}/rite-wic-ref-err-XXXXXX" 2>/dev/null || echo "")
  if [[ -n "$ref_err" ]]; then
  git show-ref --verify "refs/heads/${wiki_branch}" >/dev/null 2>"$ref_err" || true
@@ -577,6 +577,7 @@ if ! git show-ref --verify --quiet "refs/heads/${wiki_branch}"; then
  # (installed later — see `cleanup_body` definition and `trap cleanup_body`
  # install commands further down) can take over without double-remove.
  [[ -n "$ref_err" ]] && rm -f "$ref_err"
+ _wic_msg_cleanup
  trap - EXIT INT TERM HUP
  exit 2
 fi
@@ -592,10 +593,11 @@ fi
 # Install the temporary trap before mktemp so no created directory is unguarded.
 # Report mktemp failure with context before exiting.
 stage_dir=""
-trap 'rm -rf "${stage_dir:-}" 2>/dev/null || true' EXIT INT TERM HUP
+trap 'rm -rf "${stage_dir:-}" 2>/dev/null || true; _wic_msg_cleanup' EXIT INT TERM HUP
 if ! stage_dir=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-stage-XXXXXX" 2>/dev/null); then
  echo "ERROR: failed to create staging directory under /tmp" >&2
  echo " hint: check /tmp permission / disk space / inode exhaustion / read-only filesystem" >&2
+ _wic_msg_cleanup
  trap - EXIT INT TERM HUP
  exit 3
 fi

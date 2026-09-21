@@ -98,6 +98,20 @@ assert_grep "T-03 fix wiki-recording passes --message-file" "$FIX_WIKI" \
   'wiki-ingest-commit.sh --message-file'
 assert_grep "T-03 issue-close passes --message-file" "$CLOSE" \
   'wiki-ingest-commit.sh --message-file'
+assert_grep "T-03 wiki-ingest uses applied-message placeholder" "$WIKI_INGEST_SKILL" \
+  '{wiki_ingest_commit_message}'
+assert_grep "T-03 wiki-init migrate uses applied-message placeholder" "$WIKI_INIT_SKILL" \
+  '{wiki_mig_commit_message}'
+assert_grep "T-03 wiki-lint uses applied-message placeholder" "$WIKI_LINT_SKILL" \
+  '{wiki_lint_commit_message}'
+assert_grep "T-03 wiki-recording rejects leftover placeholder" "$PR_WIKI" \
+  'msg_placeholder_residue'
+assert_grep "T-03 wiki-init 3.1 uses signal trap" "$WIKI_INIT_SKILL" \
+  '_cleanup_wiki_init_msg; exit 130'
+assert_grep "T-03 wiki-lint separate_branch uses signal trap" "$WIKI_LINT_SKILL" \
+  '_cleanup_lint_sep; exit 130'
+assert_grep "T-03 parallel merge uses signal trap" "$IMPLEMENT" \
+  '_cleanup_par; exit 130'
 
 # --- T-05: squash keeps delete-branch=false + match-head-commit; CI red does not reach merge ---
 assert_grep "T-05 squash keeps --delete-branch=false" "$MERGE" \

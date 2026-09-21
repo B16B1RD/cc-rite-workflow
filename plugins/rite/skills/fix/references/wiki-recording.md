@@ -137,6 +137,13 @@ if [ -n "$wic_msg_file" ]; then
 cat > "$wic_msg_file" <<'WIC_EOF'
 {wic_commit_message}
 WIC_EOF
+case "$(cat -- "$wic_msg_file")" in
+  "{"*"}")
+    echo "ERROR: Wiki コミットメッセージの placeholder が未置換です" >&2
+    echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=msg_placeholder_residue; exit_code=1"
+    exit 1
+    ;;
+esac
 if commit_out=$(bash {plugin_root}/hooks/scripts/wiki-ingest-commit.sh --message-file "$wic_msg_file" 2>"${commit_err}"); then
   # Success — the script prints exactly one status line to stdout, e.g.
   #   [wiki-ingest-commit] committed=1; branch=wiki; head=<sha>; push=ok

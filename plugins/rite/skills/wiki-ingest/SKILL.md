@@ -527,7 +527,7 @@ case "$commit_msg" in
 esac
 ```
 
-ステップ 5.1 / 5.2 の `commit_msg=` 初期値はこの既定テンプレートでよい。生成直前の規約適用で件名が変わっても、カウンタ placeholder が残っていれば residual gate が止める。既定テンプレートを変更する際は本セクション + ステップ 5.1 + ステップ 5.2 の **3 箇所を必ず同時に更新する**。
+ステップ 5.1 / 5.2 は `{wiki_ingest_commit_message}`（規約適用後の全文）を代入する。未指定時だけ上の既定テンプレートへカウンタを埋め込んだ値を書く。残渣ゲートは未置換の `{...}` 形状とカウンタ placeholder の両方を止める。既定テンプレートを変更する際は本セクション + ステップ 5.1 + ステップ 5.2 の **3 箇所を必ず同時に更新する**。
 
 ### 5.0.n commit 前の番号参照検査 (両戦略共通)
 
@@ -645,15 +645,19 @@ if [ "$branch_strategy" = "separate_branch" ]; then
     exit 1
   fi
 
-  # {n_pages_created} / {n_pages_updated} / {n_raw_sources} / {n_skipped} は
-  # ステップ 2.1 で初期化され ステップ 4 / 5.0 step 5 で incrementate されたカウンター値を literal substitute する。
-  # ステップ 5.0.c canonical commit message と literal 一致させること。
-  commit_msg="docs(wiki): ingest {n_pages_created} new / {n_pages_updated} updated pages from {n_raw_sources} raw source(s) (skipped: {n_skipped})"
+  # {wiki_ingest_commit_message} は規約適用後の全文。未指定時の既定は 5.0.c の canonical template（カウンタ substitute 済み）。
+  commit_msg="{wiki_ingest_commit_message}"
 
+  case "$commit_msg" in
+    "{"*"}")
+      echo "ERROR: ステップ 5.1 の commit_msg が未置換です (値: '$commit_msg')" >&2
+      exit 1
+      ;;
+  esac
   case "$commit_msg" in
     *"{n_pages_created}"*|*"{n_pages_updated}"*|*"{n_raw_sources}"*|*"{n_skipped}"*)
       echo "ERROR: ステップ 5.1 の commit_msg placeholder が literal substitute されていません (値: '$commit_msg')" >&2
-      echo "  対処: ステップ 2.1 / 4 / 5.0 step 5 で incrementate したカウンタ値を本 bash block の commit_msg= 行で literal substitute する" >&2
+      echo "  対処: ステップ 2.1 / 4 / 5.0 step 5 で incrementate したカウンタ値を規約適用後メッセージへ literal substitute する" >&2
       exit 1
       ;;
   esac
@@ -784,14 +788,19 @@ if [ "$branch_strategy" = "same_branch" ]; then
   fi
   [ -n "$add_err" ] && rm -f "$add_err"
 
-  # {n_pages_created} / {n_pages_updated} / {n_raw_sources} / {n_skipped} を literal substitute する。
-  # ステップ 5.0.c canonical commit message と literal 一致させること。
-  commit_msg="docs(wiki): ingest {n_pages_created} new / {n_pages_updated} updated pages from {n_raw_sources} raw source(s) (skipped: {n_skipped})"
+  # {wiki_ingest_commit_message} は規約適用後の全文。未指定時の既定は 5.0.c の canonical template（カウンタ substitute 済み）。
+  commit_msg="{wiki_ingest_commit_message}"
 
+  case "$commit_msg" in
+    "{"*"}")
+      echo "ERROR: ステップ 5.2 の commit_msg が未置換です (値: '$commit_msg')" >&2
+      exit 1
+      ;;
+  esac
   case "$commit_msg" in
     *"{n_pages_created}"*|*"{n_pages_updated}"*|*"{n_raw_sources}"*|*"{n_skipped}"*)
       echo "ERROR: ステップ 5.2 の commit_msg placeholder が literal substitute されていません (値: '$commit_msg')" >&2
-      echo "  対処: ステップ 2.1 / 4 / 5.0 step 5 で incrementate したカウンタ値を本 bash block の commit_msg= 行で literal substitute する" >&2
+      echo "  対処: ステップ 2.1 / 4 / 5.0 step 5 で incrementate したカウンタ値を規約適用後メッセージへ literal substitute する" >&2
       exit 1
       ;;
   esac
