@@ -496,6 +496,22 @@ if grep -q 'wiki-apply-gate' <<<"$gout" && ! grep -q 'wiki-apply-index' <<<"$gou
 else
   fail "guard amend rc=$grc out=$gout"
 fi
+patchc=$(jq -n --arg cwd "$repo" '{tool_name:"Bash", tool_input:{command:"git commit -p -m x"}, cwd:$cwd}')
+grc=0
+gout=$(printf '%s' "$patchc" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+if grep -q 'wiki-apply-index' <<<"$gout"; then
+  pass "guard denies git commit -p"
+else
+  fail "guard -p rc=$grc out=$gout"
+fi
+longpatch=$(jq -n --arg cwd "$repo" '{tool_name:"Bash", tool_input:{command:"git commit --patch -m x"}, cwd:$cwd}')
+grc=0
+gout=$(printf '%s' "$longpatch" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+if grep -q 'wiki-apply-index' <<<"$gout"; then
+  pass "guard denies git commit --patch"
+else
+  fail "guard --patch rc=$grc out=$gout"
+fi
 heredoc=$(jq -n --arg cwd "$repo" --arg cmd "$(printf '%s\n' "cat <<'EOF'" note EOF "git commit -m x")" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
 grc=0
 gout=$(printf '%s' "$heredoc" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
@@ -513,6 +529,15 @@ if [ "$crc" -ne 0 ] && [ "$head_before" = "$head_after" ] && grep -q 'index の�
   pass "git-commit-file rejects -a"
 else
   fail "extra -a rc=$crc err=$(cat "$ROOT/extra.err")"
+fi
+crc=0
+WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" \
+  bash "$COMMIT" --file "$msg" --worktree "$repo" -- -p >"$ROOT/extra-p.out" 2>"$ROOT/extra-p.err" || crc=$?
+head_after=$(git -C "$repo" rev-parse HEAD)
+if [ "$crc" -ne 0 ] && [ "$head_before" = "$head_after" ] && grep -q 'index の照合を外す' <<<"$(cat "$ROOT/extra-p.err")"; then
+  pass "git-commit-file rejects -p"
+else
+  fail "extra -p rc=$crc err=$(cat "$ROOT/extra-p.err")"
 fi
 
 echo "=== capture records auto_query_off without searching ==="
@@ -532,6 +557,21 @@ if [ "$crc" -eq 0 ] && grep -q 'status: auto_query_off' "$cap_mem" && grep -q '^
   fi
 else
   fail "capture rc=$crc mem=$(cat "$cap_mem" 2>/dev/null) err=$(cat "$ROOT/cap.err")"
+fi
+
+echo "=== capture from a subdirectory reads the worktree config ==="
+sub_repo=$(new_repo subcap)
+write_config "$sub_repo" true true
+mkdir -p "$sub_repo/nested"
+sub_flow="$ROOT/subcap.flow-state"
+write_flow "$sub_flow" implement 7 "$sub_repo"
+sub_mem="$ROOT/subcap.md"
+crc=0
+bash "$CAPTURE" --keywords widget --cwd "$sub_repo/nested" --flow-state "$sub_flow" --memory "$sub_mem" >"$ROOT/subcap.out" 2>"$ROOT/subcap.err" || crc=$?
+if [ -f "$sub_mem" ] && ! grep -q 'status: auto_query_off' "$sub_mem"; then
+  pass "subdir capture keeps the worktree auto_query"
+else
+  fail "subdir capture rc=$crc mem=$(cat "$sub_mem" 2>/dev/null) err=$(cat "$ROOT/subcap.err")"
 fi
 
 echo "=== git-commit-file refreshes head; a later edit is stale ==="

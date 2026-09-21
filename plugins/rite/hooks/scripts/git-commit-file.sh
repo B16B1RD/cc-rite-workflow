@@ -101,7 +101,7 @@ case "$file_abs" in
     ;;
 esac
 
-# -a / pathspec は照合した index ではなく作業ツリーを記録する。
+# -a / -p / pathspec は照合した index ではなく作業ツリーを記録する。
 _wiki_skip=0
 _wiki_dash=0
 for _wiki_arg in "${EXTRA[@]}"; do
@@ -117,8 +117,8 @@ for _wiki_arg in "${EXTRA[@]}"; do
     --)
       _wiki_dash=1
       ;;
-    -a|--all)
-      echo "ERROR: -a / --all は index の照合を外すため受け取れません" >&2
+    -a|--all|-p|--patch)
+      echo "ERROR: -a / --all / -p / --patch は index の照合を外すため受け取れません" >&2
       exit 1
       ;;
     -m|--message|-F|--file|--author|--date)
@@ -126,8 +126,8 @@ for _wiki_arg in "${EXTRA[@]}"; do
       ;;
     --*)
       ;;
-    -*a*)
-      echo "ERROR: -a / --all は index の照合を外すため受け取れません" >&2
+    -*[ap]*)
+      echo "ERROR: -a / --all / -p / --patch は index の照合を外すため受け取れません" >&2
       exit 1
       ;;
     -*)

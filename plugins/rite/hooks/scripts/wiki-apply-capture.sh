@@ -53,12 +53,12 @@ if [ -z "$MEM" ]; then
 fi
 
 _yaml() {
-  local key="$1"
+  local file="$1" key="$2"
   awk -v k="$key" '
     /^wiki:/ {s=1; next}
     s && /^[^ ]/ {exit}
     s && $0 ~ "^[[:space:]]+" k ":" {print; exit}
-  ' rite-config.yml 2>/dev/null \
+  ' "$file" 2>/dev/null \
     | sed 's/[[:space:]]#.*//' \
     | sed "s/.*${key}:[[:space:]]*//" \
     | tr -d '[:space:]"'"'"'' \
@@ -66,9 +66,10 @@ _yaml() {
 }
 enabled="true"
 auto_query=""
-if [ -f rite-config.yml ]; then
-  enabled=$(_yaml enabled)
-  auto_query=$(_yaml auto_query)
+# cwd にファイルが無いことを設定オフと扱わない。gate と同じ worktree 根を読む。
+if [ -n "$WT" ] && [ -f "$WT/rite-config.yml" ]; then
+  enabled=$(_yaml "$WT/rite-config.yml" enabled)
+  auto_query=$(_yaml "$WT/rite-config.yml" auto_query)
 fi
 case "$enabled" in
   false|no|0) enabled="false" ;;
@@ -102,17 +103,17 @@ else
 fi
 
 if [ -z "$PATHS" ]; then
-  PATHS=$(git status --porcelain | awk '{print $NF}' | paste -sd, -)
+  PATHS=$(git -C "$WT" status --porcelain | awk '{print $NF}' | paste -sd, -)
 fi
 
 EXECUTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-HEAD_SHA=$(git rev-parse HEAD) || { echo "ERROR: HEAD を読めません" >&2; exit 1; }
+HEAD_SHA=$(git -C "$WT" rev-parse HEAD) || { echo "ERROR: HEAD を読めません" >&2; exit 1; }
 BLOB_BLOCK=""
 if [ -n "$PATHS" ]; then
   IFS=',' read -r -a _wiki_paths <<<"$PATHS"
   for _wiki_path in "${_wiki_paths[@]}"; do
     [ -n "$_wiki_path" ] || continue
-    _wiki_oid=$(git hash-object -- "$_wiki_path") || {
+    _wiki_oid=$(git -C "$WT" hash-object -- "$_wiki_path") || {
       echo "ERROR: blob を計算できません: $_wiki_path" >&2
       exit 1
     }

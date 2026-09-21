@@ -71,4 +71,4 @@ ok の各ページは、rev の blob 本文に含まれる 1 行を excerpt に�
 
 ## 境界
 
-`git-commit-file.sh` は commit の前に gate を呼ぶ。deny、または gate スクリプトが無いときは commit しない。allow で commit できたときだけ、証跡の head を新しい HEAD に更新する。`pre-tool-bash-guard.sh` は、phase が implement または fix の git commit に同じ gate を使う。literal な `git -C <path> commit` の対象は hook の cwd ではなくその path である。対象 worktree を解決できない commit は拒否する。別の worktree への commit は止めない。その経路は commit 後に head を更新してから次の commit に進む。phase がそれ以外の commit は止めない。
+`git-commit-file.sh` は commit の前に gate を呼ぶ。deny、または gate スクリプトが無いときは commit しない。allow で commit できたときだけ、証跡の head を新しい HEAD に更新する。`pre-tool-bash-guard.sh` は、phase が implement または fix の git commit に同じ gate を使う。literal な `git -C <path> commit` の対象は hook の cwd ではなくその path である。対象 worktree を解決できない commit は拒否する。別の worktree への commit は止めない。head を新しい HEAD へ更新するのは、セッション worktree の commit が allow になったときだけである。phase がそれ以外の commit は止めない。

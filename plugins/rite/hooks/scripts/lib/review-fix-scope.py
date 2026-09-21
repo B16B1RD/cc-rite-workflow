@@ -308,7 +308,7 @@ def each_direct_commit(command, cwd):
         if index >= len(words) or words[index] != "commit":
             continue
         # Option values (notably -m '--dry-run') must not exempt a real commit.
-        # -a / --all / a pathspec commit the worktree, not the index the gate hashed.
+        # -a / --all / -p / --patch / a pathspec commit the worktree, not the index the gate hashed.
         dry_run, skip, index_only, dashed = False, False, True, False
         for option in words[index + 1:]:
             if dashed:
@@ -320,12 +320,12 @@ def each_direct_commit(command, cwd):
             if option == "--":
                 dashed = True
                 continue
-            if option in ("-a", "--all"):
+            if option in ("-a", "--all", "-p", "--patch"):
                 index_only = False
             elif option in ("--dry-run", "--help", "-h"):
                 dry_run = True
             elif re.fullmatch(r"-[A-Za-z]*[mFCct]", option) or option in ("-m", "--message", "-F", "--file", "-C", "--reuse-message", "-c", "--reedit-message", "--author", "--date", "--fixup", "--squash", "--cleanup", "-t", "--template", "--trailer"):
-                if re.fullmatch(r"-[A-Za-z]*a[A-Za-z]*", option):
+                if re.fullmatch(r"-[A-Za-z]*[ap][A-Za-z]*", option):
                     index_only = False
                 skip = True
             elif option.startswith("-"):
