@@ -473,6 +473,35 @@ run_same_branch_message_cases() {
   eq "--message-file keeps command-like body" "1" \
     "$(git -C "$repo" log -1 --format=%b | grep -cF '$(whoami) stays literal' || true)"
   rm -f "$msg"
+
+  # Empty and missing values must fail at parse time. Folding either into
+  # "unspecified" would commit the default subject when no convention file
+  # exists, and would take the convention fail-loud path only when one does.
+  reject_message_file() {
+    local label="$1" repo="$2"
+    shift 2
+    local rc=0 err head_before
+    head_before=$(git -C "$repo" rev-parse HEAD)
+    err=$(cd "$repo" && bash "$HOOK_SRC" "$@" 2>&1) || rc=$?
+    eq "$label exits 1" "1" "$rc"
+    eq "$label names required value" "1" \
+      "$(printf '%s' "$err" | grep -cF -- '--message-file requires a value' || true)"
+    eq "$label does not move HEAD" "$head_before" "$(git -C "$repo" rev-parse HEAD)"
+    eq "$label stays on develop" "develop" "$(git -C "$repo" branch --show-current)"
+    eq "$label does not commit the default subject" "0" \
+      "$(git -C "$repo" log --format=%s | grep -cF 'chore(wiki): ingest 1 raw source(s)' || true)"
+  }
+
+  repo=$(make_same_branch_msg_fixture)
+  reject_message_file "no convention empty --message-file" "$repo" --message-file ""
+  repo=$(make_same_branch_msg_fixture)
+  reject_message_file "no convention missing --message-file value" "$repo" --message-file
+  repo=$(make_same_branch_msg_fixture)
+  printf 'English only.\n' > "$repo/CLAUDE.md"
+  reject_message_file "CLAUDE.md empty --message-file" "$repo" --message-file ""
+  repo=$(make_same_branch_msg_fixture)
+  printf 'English only.\n' > "$repo/CLAUDE.md"
+  reject_message_file "CLAUDE.md missing --message-file value" "$repo" --message-file
 }
 run_same_branch_message_cases
 
