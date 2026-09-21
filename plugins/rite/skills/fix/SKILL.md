@@ -1916,6 +1916,8 @@ rationale: references/design-rationale.md#reviewer-display-single-source
 
 **Acknowledged-finding trailer (accept で `status: acknowledged` 化された finding 用)**:
 
+規約が trailer を禁じるときはコミットに付けず、[commit-convention.md 必須記録](../../references/commit-convention.md#必須記録が規約に収まらないとき) の手順で節 `Acknowledged-finding` へ移し、検査も同じ節を読む。
+
 ステップ 2.1 で `accept (認知のみ)` を選択した finding が 1 件以上含まれる commit では、commit message の trailer に以下の形式の行を **per-acknowledged-finding で反復生成** する (Co-Authored-By / Addresses review comments trailer と並存):
 
 ```
@@ -1968,18 +1970,9 @@ fix(review): {description}
 
 Before committing a fix, a root-cause explanation **MUST** be in the commit body when the convention allows a body, or in the convention's overflow store when the body is forbidden. This gate implements Quality Signal 2 (root-cause-missing fix detection) — see the Quality Signal 1-4 table in `skills/pr-review/references/finding-cycling.md`.
 
-**Step 1**: 規約が本文を禁じるときは、3.2 の body へ Root cause を書かず、先に溢れ先 `{overflow_store}` へ同じ必須記録を書く。検査は同じ `--file` の `read` を使う。helper は絶対パスのローカルファイルだけを受け取り、PR 本文や work-memory へは書かない。
+**Step 1**: 規約が本文を禁じるときは、3.2 の body へ Root cause を書かず、必須記録の保存・検査手順の正本 [commit-convention.md](../../references/commit-convention.md#必須記録が規約に収まらないとき) に従う。必要な節は `Root cause`。Escalation trigger 成立時は `simplification-first` も同じ手順で足す。検査は正本どおり同じ各節の helper `read`。helper は絶対パスのローカルファイルだけを受け取り、PR 本文や work-memory へは書かない。
 
-- PR あり:
-  1. `gh pr view {pr_number} --json body -q .body` を作業ツリー外の `{overflow_store}` へ書く
-  2. `commit-overflow-record.sh write --file "{overflow_store}" --section 'Root cause' --body-file ABS`
-  3. `gh pr edit {pr_number} --body-file "{overflow_store}"`
-  4. 同じ `{overflow_store}` へ `gh pr view {pr_number} --json body -q .body` で更新済み本文を再取得する
-  5. 同じ `{overflow_store}` を `read` する
-  `gh pr view` / `gh pr edit` の失敗はゲート成功にしない。
-- PR なし: `{overflow_store}` は `{state_root}/.rite/commit-records/issue-{issue_number}.md`
-
-規約が本文を禁じないときは 3.2 の commit body に `Root cause:` / `根本原因:` 段落があるか LLM が判定する (Bash 状態非依存)。規約が本文・trailer を禁じて溢れさせた場合は、同じ `{overflow_store}` から読む。どちらにも無ければ `missing`。検査を外して通過させない。Escalation trigger 成立時は `simplification-first:` 段落の有無も同じ規則で判定し、いずれかの欠落を `missing` とする。trigger 不成立の cycle では `simplification-first:` 段落を要求しない。溢れ先への書込失敗、および PR 経路の `gh pr view` / `gh pr edit` 失敗はコミットしない。body へ prepend しない。work-memory を溢れ先にしない。
+規約が本文を禁じないときは 3.2 の commit body に `Root cause:` / `根本原因:` 段落があるか LLM が判定する (Bash 状態非依存)。規約が本文・trailer を禁じて溢れさせた場合は、正本の保存先から同じ節を読む。どちらにも無ければ `missing`。検査を外して通過させない。Escalation trigger 成立時は `simplification-first:` 段落の有無も同じ規則で判定し、いずれかの欠落を `missing` とする。trigger 不成立の cycle では `simplification-first:` 段落を要求しない。正本の view / edit / write / read 失敗はコミットしない。body へ prepend しない。work-memory を溢れ先にしない。
 
 Emit one of the two context markers so downstream logic can route:
 
@@ -1994,8 +1987,8 @@ echo "[CONTEXT] ROOT_CAUSE_GATE=missing"
 
 | Option | Action |
 |--------|--------|
-| 不足段落を追記して再コミット（推奨） | Ask the user for a short paragraph for whichever Step 1 found missing: prepend a `Root cause: {paragraph}` / `根本原因: {paragraph}` paragraph, or (Escalation trigger 成立時) a `simplification-first: {paragraph}` paragraph, to the commit body when the convention allows a body; if the convention forbids a body, write the same paragraph to `{overflow_store}` with the Step 1 procedure（`gh pr view` → helper write → `gh pr edit --body-file` → `gh pr view` で同じ `{overflow_store}` へ再取得 → `read`。PR なしは `{state_root}/.rite/commit-records/issue-{issue_number}.md`）。and do not prepend to the commit. Do not use work-memory as the overflow store. 書込失敗および `gh pr view` / `gh pr edit` 失敗はコミットしない。re-invoke Step 1. The retry count is tracked in conversation context by the LLM — after one retry the LLM falls through to the second option to avoid an infinite prompt loop |
-| 意図的な補足コミットとして通過 | Prepend a bypass paragraph for whichever Step 1 found missing — `Root cause (bypass): {理由}`, or (Escalation trigger 成立時) `simplification-first (bypass): {理由}` — to the commit body when the convention allows a body (the bypass rationale recorded alongside the commit for machine-traceability). If the convention forbids a body, write the same rationale to `{overflow_store}` with the same Step 1 procedure. AND append the same rationale to work memory `決定事項・メモ`. The bypass is still recorded. 溢れ先への書込失敗はコミットしない |
+| 不足段落を追記して再コミット（推奨） | Ask the user for a short paragraph for whichever Step 1 found missing: prepend a `Root cause: {paragraph}` / `根本原因: {paragraph}` paragraph, or (Escalation trigger 成立時) a `simplification-first: {paragraph}` paragraph, to the commit body when the convention allows a body; if the convention forbids a body, write the missing paragraphs via the canonical overflow procedure with those section names (`Root cause` and, when the trigger holds, `simplification-first`). Do not prepend to the commit. Do not use work-memory as the overflow store. 正本の失敗はコミットしない。re-invoke Step 1. The retry count is tracked in conversation context by the LLM — after one retry the LLM falls through to the second option to avoid an infinite prompt loop |
+| 意図的な補足コミットとして通過 | Prepend a bypass paragraph for whichever Step 1 found missing — `Root cause (bypass): {理由}`, or (Escalation trigger 成立時) `simplification-first (bypass): {理由}` — to the commit body when the convention allows a body (the bypass rationale recorded alongside the commit for machine-traceability). If the convention forbids a body, write the same rationale via the canonical overflow procedure with the missing section names. AND append the same rationale to work memory `決定事項・メモ`. The bypass is still recorded. 正本の失敗はコミットしない |
 | Abort | Skip this fix cycle; emit `[fix:error]` and return control to the caller |
 
 cosmetic は option 2 可。bypass は記録必須。

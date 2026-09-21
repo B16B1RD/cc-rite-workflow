@@ -36,19 +36,23 @@ helper の固定文へ LLM 経路の既定を置き換えない。
 
 ## 必須記録が規約に収まらないとき
 
-根本原因・simplification-first・Acknowledged-finding などの必須記録は削除しない。コミットに書けないときは次へ移し、検査も同じ場所を読む。
+根本原因・simplification-first・Acknowledged-finding などの必須記録は削除しない。コミットに書けないときは次へ移し、検査も同じ場所を読む。必要な節（`Root cause` / `simplification-first` / `Acknowledged-finding`）だけを列挙して同じ手順を使う。Root cause だけに固定しない。work-memory を溢れ先にしない。
 
-| 経路 | 保存先 |
-|------|--------|
-| PR がある | PR 本文の該当節（下書きへ helper write → `gh pr edit --body-file` → `gh pr view` で同じファイルへ再取得してから `read`。view/edit 失敗は成功扱いにしない）、および既存 `.rite/review-results/` |
-| PR がない | `{state_root}/.rite/commit-records/issue-{issue_number}.md`（`commit-overflow-record.sh` が書く）。cleanup の作業メモリ削除では消えない |
+`{overflow_store}` は絶対パス。PR があるときは PR 本文の一時下書きで、作業ツリー外に置く。PR がないときは共有ルート `{state_root}/.rite/commit-records/issue-{issue_number}.md` の永続ファイル。cleanup の作業メモリ削除では消えない。
 
-```bash
-bash {plugin_root}/hooks/scripts/commit-overflow-record.sh write \
-  --file "{store_file}" --section "{section}" --body-file "{body_file}"
-```
+手順の失敗（`gh pr view` / `gh pr edit` / helper write / helper read）は成功扱いにしない。途中で止める。
 
-書込が失敗したら成功扱いにしない。検査（Root Cause Gate を含む）はコミット本文を先に見し、無ければ同じ保存先を読む。どちらにも無ければ `missing` のまま止める。ゲート自体は無効化しない。
+PR がある:
+
+1. `gh pr view {pr_number} --json body -q .body` を `{overflow_store}` へ書く
+2. 必要な各 `{section}` について `commit-overflow-record.sh write --file "{overflow_store}" --section "{section}" --body-file "{body_file}"`
+3. `gh pr edit {pr_number} --body-file "{overflow_store}"`
+4. 同じ `{overflow_store}` へ `gh pr view {pr_number} --json body -q .body` で更新済み本文を再取得する
+5. 同じ各 `{section}` について `commit-overflow-record.sh read --file "{overflow_store}" --section "{section}"`
+
+PR がない: `{overflow_store}` は共有ルートの永続 commit-records。必要な各 `{section}` を同じ helper で write し、同じ各 `{section}` を read する。
+
+検査（Root Cause Gate を含む）はコミット本文を先に見て、無ければ同じ保存先の同じ節を読む。どちらにも無ければ `missing` のまま止める。ゲート自体は無効化しない。
 
 ## helper への受渡し
 

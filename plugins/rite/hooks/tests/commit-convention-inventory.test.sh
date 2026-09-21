@@ -150,27 +150,37 @@ assert_grep "T-05 CI unhealthy forbids gh pr merge" "$MERGE" \
 assert_grep "T-06 overflow write helper is named" "$CONV" \
   'commit-overflow-record.sh write'
 assert_grep "T-06 PR-less path is commit-records" "$CONV" \
-  '.rite/commit-records/'
+  '.rite/commit-records/issue-{issue_number}.md'
+assert_grep "T-06 PR-less store is shared-root persistent" "$CONV" \
+  '共有ルート `{state_root}/.rite/commit-records/issue-{issue_number}.md` の永続ファイル'
+assert_grep "T-06 PR overflow draft is outside the worktree" "$CONV" \
+  '一時下書きで、作業ツリー外に置く'
+assert_not_grep "T-06 overflow_store is not always outside the worktree" "$CONV" \
+  '`\{overflow_store\}` は作業ツリー外の絶対パス'
 assert_grep "T-06 gate stays enabled" "$CONV" \
   'ゲート自体は無効化しない'
-assert_grep "T-06 fix Root Cause Gate reads overflow" "$FIX" \
-  'commit-overflow-record.sh'
-assert_grep "T-06 fix overflow store is commit-records when no PR" "$FIX" \
-  '.rite/commit-records/issue-{issue_number}.md'
-assert_grep "T-06 PR overflow fetches body to a draft file" "$FIX" \
+assert_grep "T-06 overflow sections are enumerated" "$CONV" \
+  'Root cause だけに固定しない'
+assert_grep "T-06 PR overflow initial fetch" "$CONV" \
   'gh pr view {pr_number} --json body -q .body'
-assert_grep "T-06 PR overflow applies via gh pr edit --body-file" "$FIX" \
+assert_grep "T-06 PR overflow applies via gh pr edit --body-file" "$CONV" \
   'gh pr edit {pr_number} --body-file "{overflow_store}"'
-assert_grep "T-06 PR overflow re-fetches updated body before read" "$FIX" \
+assert_grep "T-06 PR overflow re-fetches updated body before read" "$CONV" \
   '更新済み本文を再取得する'
-assert_grep "T-06 PR view/edit failure is not gate success" "$FIX" \
-  '失敗はゲート成功にしない'
+assert_grep "T-06 overflow failures are not success" "$CONV" \
+  '成功扱いにしない'
+assert_grep "T-06 overflow read uses the same sections" "$CONV" \
+  '同じ各 `\{section\}` について `commit-overflow-record.sh read'
+assert_grep "T-06 fix gate defers to overflow SoT" "$FIX" \
+  '必須記録の保存・検査手順の正本'
+assert_grep "T-06 fix names Root cause and simplification-first sections" "$FIX" \
+  '必要な節は `Root cause`'
+assert_not_grep "T-06 fix gate does not copy PR arrow steps" "$FIX" \
+  'gh pr view {pr_number} --json body -q .body'
 assert_grep "T-06 root-cause may live in overflow store" "$FIX" \
   "or in the convention's overflow store when the body is forbidden"
 assert_not_grep "T-06 gate opener does not require body always" "$FIX" \
   'the commit body \*\*MUST\*\* include a root-cause explanation'
-assert_grep "T-06 PR SoT re-fetches via gh pr view" "$CONV" \
-  'gh pr view'
 assert_not_grep "T-06 fix overflow store is not work memory" "$FIX" \
   'PR body or work memory'
 assert_not_grep "T-06 overflow helper header is not work memory" "$OVERFLOW" \
