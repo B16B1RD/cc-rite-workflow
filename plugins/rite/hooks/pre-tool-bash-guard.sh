@@ -953,8 +953,10 @@ if [ -z "$BLOCKED_PATTERN" ] && [[ "$COMMAND" == *git* && "$COMMAND" == *commit*
 fi
 
 # Pattern 9: implement/fix commits in this session worktree need a wiki record.
-# Other phases and other worktrees are outside this check.
-if [ -z "$BLOCKED_PATTERN" ] && [[ "$CMD_CHECK" =~ (^|[^[:alnum:]_])git[[:space:]]+commit([^[:alnum:]_-]|$) ]]; then
+# literal `git -C <path> commit` uses that path, not the hook cwd. Other phases
+# and other worktrees are outside this check. An unresolvable commit target
+# is denied, because the check cannot be confirmed.
+if [ -z "$BLOCKED_PATTERN" ] && [[ "$CMD_CHECK" == *git* && "$CMD_CHECK" == *commit* ]]; then
   _wiki_fs="${WIKI_APPLY_FLOW_STATE:-}"
   if [ -z "$_wiki_fs" ]; then
     _wiki_fs=$(bash "$SCRIPT_DIR/flow-state.sh" path 2>/dev/null) || _wiki_fs=""
@@ -974,21 +976,41 @@ if [ -z "$BLOCKED_PATTERN" ] && [[ "$CMD_CHECK" =~ (^|[^[:alnum:]_])git[[:space:
     _wiki_fswt=$(CDPATH= cd -- "$_wiki_fswt" && pwd -P)
   fi
   if [ "$_wiki_phase" = "implement" ] || [ "$_wiki_phase" = "fix" ]; then
-    if [ -n "$_wiki_fswt" ] && [ "$_wiki_fswt" = "$_wiki_cwd" ]; then
+    _wiki_err=$(mktemp "${TMPDIR:-/tmp}/wiki-apply-target.XXXXXX")
+    _wiki_rc=0
+    _wiki_targets=$(bash "$SCRIPT_DIR/scripts/review-fix-scope-check.sh" commit-target --command "$CMD_CHECK" --cwd "$_wiki_cwd" 2>"$_wiki_err") || _wiki_rc=$?
+    _wiki_why=""
+    IFS= read -r _wiki_why < "$_wiki_err" || true
+    rm -f "$_wiki_err"
+    if [ "$_wiki_rc" -ne 0 ]; then
+      BLOCKED_PATTERN="wiki-apply-unresolved"
+      BLOCKED_REASON="Wiki apply gate cannot resolve this commit's worktree: ${_wiki_why}"
+      BLOCKED_ALTERNATIVE="Run a literal git commit, or git -C <worktree> commit, in its own Bash call. Do not hide the worktree in a variable."
+    else
       _wiki_gate="${WIKI_APPLY_GATE_BIN:-$SCRIPT_DIR/scripts/wiki-apply-gate.sh}"
-      if [ ! -f "$_wiki_gate" ]; then
-        BLOCKED_PATTERN="wiki-apply-missing"
-        BLOCKED_REASON="Wiki apply gate is missing, so this commit cannot be confirmed."
-        BLOCKED_ALTERNATIVE="Restore plugins/rite/hooks/scripts/wiki-apply-gate.sh and retry the commit."
-      else
+      while IFS= read -r _wiki_target; do
+        [ -n "$_wiki_target" ] || continue
+        if [ -d "$_wiki_target" ]; then
+          _wiki_target=$(CDPATH= cd -- "$_wiki_target" && pwd -P)
+        fi
+        if [ -z "$_wiki_fswt" ] || [ "$_wiki_fswt" != "$_wiki_target" ]; then
+          continue
+        fi
+        if [ ! -f "$_wiki_gate" ]; then
+          BLOCKED_PATTERN="wiki-apply-missing"
+          BLOCKED_REASON="Wiki apply gate is missing, so this commit cannot be confirmed."
+          BLOCKED_ALTERNATIVE="Restore plugins/rite/hooks/scripts/wiki-apply-gate.sh and retry the commit."
+          break
+        fi
         _wiki_rc=0
-        _wiki_out=$(bash "$_wiki_gate" --mode commit --worktree "$_wiki_cwd" 2>&1) || _wiki_rc=$?
+        _wiki_out=$(bash "$_wiki_gate" --mode commit --worktree "$_wiki_target" 2>&1) || _wiki_rc=$?
         if [ "$_wiki_rc" -ne 0 ]; then
           BLOCKED_PATTERN="wiki-apply-gate"
           BLOCKED_REASON="Wiki apply gate denied the commit: ${_wiki_out}"
           BLOCKED_ALTERNATIVE="Record a fresh wiki search for this work before committing. Disabled, auto_query off, and a real zero-hit result are recorded states. A missing record, a failed search, and an uninitialized wiki stop the commit."
+          break
         fi
-      fi
+      done <<<"$_wiki_targets"
     fi
   fi
 fi

@@ -2,6 +2,9 @@
 # Check a collected review's fix plan or execute its verification plan.
 set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ "${1:-}" = "commit-target" ]; then
+  exec python3 "$script_dir/lib/review-fix-scope.py" "$@"
+fi
 if [ "${1:-}" = "commit-check" ]; then
   # This preflight must not create state directories merely to resolve a path.
   root=$(bash "$script_dir/../state-path-resolve.sh")

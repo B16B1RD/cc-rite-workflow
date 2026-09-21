@@ -240,23 +240,9 @@ def git_subcommand_index(words, git_index):
     return index if index < len(words) else None
 
 
-def commit_check(args):
-    """Read existing evidence before a direct commit; never run tests or write state."""
-    state_path = Path(args.state)
-    if not state_path.exists() and not state_path.is_symlink():
-        return  # A session that has never reviewed still commits normally.
-    state = read(state_path)
-    require(isinstance(state, dict) and state.get("session_id") == args.session,
-            "cannot read a valid session state before commit")
-    stagnation = importlib.import_module("review-stagnation")
-    retained = None
-    if state.get("review_cycle") is None:
-        if "review_run" not in state:
-            return
-        retained = stagnation.retained_run(state, args.session)
-    # This is a direct-command scanner, not a shell interpreter. Heredoc bodies
-    # have already been removed by the Bash guard's existing command surface.
-    lexer = shlex.shlex(args.command, posix=False, punctuation_chars=";&|()\n")
+def each_direct_commit(command, cwd):
+    """Yield the toplevel of each direct git commit. This is not a shell interpreter."""
+    lexer = shlex.shlex(command, posix=False, punctuation_chars=";&|()\n")
     lexer.whitespace = " \t\r"
     segments, segment = [], []
     for token in lexer:
@@ -281,7 +267,7 @@ def commit_check(args):
             segment.append(values[0])
     if segment:
         segments.append(segment)
-    cwd = Path(args.cwd).resolve()
+    cwd = Path(cwd).resolve()
     for words in segments:
         if words and words[0] == "cd" and len(words) == 2:
             require(not any(c in words[1] for c in "$`~"),
@@ -336,7 +322,35 @@ def commit_check(args):
             continue
         # A review in another worktree must not prohibit unrelated work.
         os.chdir(target)
-        actual = Path(subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip()).resolve()
+        try:
+            actual = Path(subprocess.check_output(
+                ["git", "rev-parse", "--show-toplevel"], text=True, stderr=subprocess.DEVNULL
+            ).strip()).resolve()
+        except subprocess.CalledProcessError:
+            # Not a repository, so it is not the session worktree. commit-target
+            # still refuses this; a review check must not turn it into a deny.
+            yield None
+            continue
+        yield actual
+
+
+def commit_check(args):
+    """Read existing evidence before a direct commit; never run tests or write state."""
+    state_path = Path(args.state)
+    if not state_path.exists() and not state_path.is_symlink():
+        return  # A session that has never reviewed still commits normally.
+    state = read(state_path)
+    require(isinstance(state, dict) and state.get("session_id") == args.session,
+            "cannot read a valid session state before commit")
+    stagnation = importlib.import_module("review-stagnation")
+    retained = None
+    if state.get("review_cycle") is None:
+        if "review_run" not in state:
+            return
+        retained = stagnation.retained_run(state, args.session)
+    for actual in each_direct_commit(args.command, args.cwd):
+        if actual is None:
+            continue
         if "worktree" not in state:
             require(actual == Path(args.state_root).resolve(),
                     "session worktree path is missing from state; cannot tell if this commit belongs to the review")
@@ -388,7 +402,20 @@ def commit_check(args):
                     "fix tree changed; run fix-scope verify --kind all before committing")
 
 
+def commit_target_main(argv):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--command", required=True)
+    parser.add_argument("--cwd", required=True)
+    args = parser.parse_args(argv)
+    for actual in each_direct_commit(args.command, args.cwd):
+        require(actual is not None, "commit worktree cannot be resolved")
+        print(actual)
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "commit-target":
+        commit_target_main(sys.argv[2:])
+        return
     parser = argparse.ArgumentParser()
     parser.add_argument("operation", choices=("check", "verify", "commit-check"))
     for name in ("state", "session", "state-root"):

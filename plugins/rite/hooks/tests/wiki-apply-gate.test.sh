@@ -412,6 +412,31 @@ if grep -q 'wiki-apply-missing' <<<"$gout"; then
 else
   fail "guard missing rc=$grc out=$gout"
 fi
+dash_c=$(jq -n --arg cwd "/tmp" --arg cmd "git -C $repo commit -m x" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
+grc=0
+gout=$(printf '%s' "$dash_c" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+if grep -q 'permissionDecision' <<<"$gout" && grep -q 'deny' <<<"$gout" && grep -q 'wiki-apply-gate' <<<"$gout"; then
+  pass "guard denies git -C of the session worktree"
+else
+  fail "guard -C rc=$grc out=$gout"
+fi
+other=$(new_repo other)
+other_cmd=$(jq -n --arg cwd "$repo" --arg cmd "git -C $other commit -m x" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
+grc=0
+gout=$(printf '%s' "$other_cmd" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+if [ "$grc" -eq 0 ] && [ -z "$gout" ]; then
+  pass "guard allows git -C of another worktree"
+else
+  fail "guard other -C rc=$grc out=$gout"
+fi
+dyn_cmd=$(jq -n --arg cwd "$repo" '{tool_name:"Bash", tool_input:{command:"git -C \"$wt\" commit -m x"}, cwd:$cwd}')
+grc=0
+gout=$(printf '%s' "$dyn_cmd" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+if grep -q 'wiki-apply-unresolved' <<<"$gout" || grep -q 'review-commit-evidence' <<<"$gout"; then
+  pass "guard denies an unresolvable git -C commit"
+else
+  fail "guard dynamic -C rc=$grc out=$gout"
+fi
 
 echo "=== capture records auto_query_off without searching ==="
 cap_repo=$(new_repo cap)
