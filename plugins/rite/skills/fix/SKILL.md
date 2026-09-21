@@ -164,7 +164,7 @@ wiki_context=$(bash {plugin_root}/hooks/scripts/wiki-apply-capture.sh \
 printf '%s\n' "$wiki_context"
 ```
 
-status が ok の各ページは本文を読み、`### Wiki 適用証跡` に確認と判断を書く。ゲートが deny なら commit しない。
+status が ok の各ページは rev の本文を読み、excerpt、判断、applied なら evidence と result を証跡に書く。`body: read` だけでは commit しない。ゲートが deny なら commit しない。commit 後に head が現在の HEAD と違うとき、または blob がファイルと違うときは capture からやり直す。
 
 ---
 

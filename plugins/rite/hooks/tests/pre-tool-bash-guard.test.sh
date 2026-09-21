@@ -1767,12 +1767,16 @@ EOF
 }
 
 _mrg_run() {
-  # run_guard under RITE_STATE_ROOT; prints stdout, returns hook rc
+  # run_guard under RITE_STATE_ROOT; prints stdout, returns hook rc.
+  # A host runtime session outranks the fixture .rite-session-id. These cases
+  # read pr_number from that fixture, so they drop the host session first.
   local root="$1" cmd="$2"
   local rc=0 output
   output=$(RITE_STATE_ROOT="$root" jq -n --arg tn "Bash" --arg cmd "$cmd" \
     '{tool_name: $tn, tool_input: {command: $cmd}, cwd: "/tmp"}' \
-    | RITE_STATE_ROOT="$root" bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+    | env -u GROK_SESSION_ID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID \
+        -u CODEX_THREAD_ID -u RITE_HOST \
+        RITE_STATE_ROOT="$root" bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
   printf '%s' "$output"
   return $rc
 }

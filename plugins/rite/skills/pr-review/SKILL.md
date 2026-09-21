@@ -1126,7 +1126,7 @@ gate_out=$(bash {plugin_root}/hooks/scripts/wiki-apply-gate.sh --mode review) ||
 }
 ```
 
-**Step 3**: 反映済みの自己申告だけでは承認しない。`--mode review` が `evidence_mismatch` を返したら指摘にする。`{wiki_context}` が空なら ステップ 4.5 のプレースホルダも空にする。
+**Step 3**: ゲートが allow でも applied を承認しない。各ページで、rev の実本文と excerpt、evidence パスの実差分、result のコマンド再実行を突合する。手順は [wiki-apply-contract.md](../../references/wiki-apply-contract.md) の「レビューの突合」。1 つでも違えば指摘にし、レビューを完了にしない。`{wiki_context}` が空ならステップ 4.5 のプレースホルダも空にする。
 
 ### 4.1 Reviewer Profiles (named subagent system prompt)
 

@@ -103,6 +103,21 @@ if [ -z "$PATHS" ]; then
   PATHS=$(git status --porcelain | awk '{print $NF}' | paste -sd, -)
 fi
 
+EXECUTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+HEAD_SHA=$(git rev-parse HEAD) || { echo "ERROR: HEAD を読めません" >&2; exit 1; }
+BLOB_BLOCK=""
+if [ -n "$PATHS" ]; then
+  IFS=',' read -r -a _wiki_paths <<<"$PATHS"
+  for _wiki_path in "${_wiki_paths[@]}"; do
+    [ -n "$_wiki_path" ] || continue
+    _wiki_oid=$(git hash-object -- "$_wiki_path") || {
+      echo "ERROR: blob を計算できません: $_wiki_path" >&2
+      exit 1
+    }
+    BLOB_BLOCK="${BLOB_BLOCK}blob: ${_wiki_path}=${_wiki_oid}"$'\n'
+  done
+fi
+
 PAGE_BLOCK=""
 if [ "$STATUS" = "ok" ]; then
   PAGE_BLOCK=$(printf '%s\n' "$STDOUT" | awk '
@@ -110,7 +125,7 @@ if [ "$STATUS" = "ok" ]; then
     /^- \*\*パス\*\*: / { path=$0; sub(/^- \*\*パス\*\*: /, "", path); next }
     /^- \*\*版\*\*: / {
       rev=$0; sub(/^- \*\*版\*\*: /, "", rev)
-      printf "page: %s\nrev: %s\nbody: -\ndecision: -\nreason: -\nevidence: -\n", path, rev
+      printf "page: %s\nrev: %s\nexcerpt: -\nbody: -\ndecision: -\nreason: -\nevidence: -\nresult: -\n", path, rev
     }
   ')
 fi
@@ -121,11 +136,13 @@ issue: $ISSUE
 session: $SESSION
 worktree: $WT
 query: $KEYWORDS
+executed_at: $EXECUTED_AT
 status: $STATUS
 attempts: $ATTEMPTS
 diagnostic: $DIAG
+head: $HEAD_SHA
 paths: $PATHS
-$PAGE_BLOCK
+${BLOB_BLOCK}${PAGE_BLOCK}
 EOF
 )
 

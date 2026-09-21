@@ -106,13 +106,60 @@ if [ ! -f "$gate" ]; then
   echo "ERROR: wiki apply gate が無いため commit できません" >&2
   exit 1
 fi
-if ! bash "$gate" --mode commit --worktree "$tree" >&2; then
+gate_out=$(bash "$gate" --mode commit --worktree "$tree") || {
+  printf '%s\n' "$gate_out" >&2
   echo "ERROR: wiki apply gate が commit を拒否しました" >&2
   exit 1
-fi
+}
+printf '%s\n' "$gate_out" >&2
 
 if ! git "${git_c[@]}" commit -F "$FILE" "${EXTRA[@]}"; then
   echo "ERROR: git commit -F failed" >&2
   exit 3
+fi
+
+# The allowing record named the pre-commit HEAD. Leaving it there makes the
+# next gate treat this commit as a stale success.
+if grep -q '^WIKI_APPLY_GATE=allow$' <<<"$gate_out"; then
+  mem=""
+  while IFS= read -r line; do
+    case "$line" in
+      memory=*) mem=${line#memory=}; break ;;
+    esac
+  done <<<"$gate_out"
+  new_head=$(git -C "$tree" rev-parse HEAD)
+  if [ -z "$mem" ] || [ ! -f "$mem" ]; then
+    echo "ERROR: commit 後に Wiki 適用証跡の head を更新できません" >&2
+    exit 1
+  fi
+  if ! WIKI_APPLY_MEM="$mem" WIKI_APPLY_HEAD="$new_head" python3 - <<'PY'
+import os, re, sys
+path = os.environ["WIKI_APPLY_MEM"]
+head = os.environ["WIKI_APPLY_HEAD"]
+text = open(path, encoding="utf-8").read()
+marker = "### Wiki 適用証跡"
+start = text.find(marker)
+if start < 0:
+    sys.exit(1)
+rest_start = start + len(marker)
+next_h = len(text)
+for match in re.finditer(r"^#{2,3} ", text[rest_start:], re.M):
+    next_h = rest_start + match.start()
+    break
+section = text[start:next_h]
+new_section, count = re.subn(
+    r"^head: [0-9a-f]{40}$", "head: " + head, section, count=1, flags=re.M
+)
+if count != 1:
+    sys.exit(1)
+tmp = path + ".tmp"
+with open(tmp, "w", encoding="utf-8") as fh:
+    fh.write(text[:start] + new_section + text[next_h:])
+os.replace(tmp, path)
+PY
+  then
+    echo "ERROR: commit 後に Wiki 適用証跡の head を更新できません" >&2
+    exit 1
+  fi
 fi
 exit 0

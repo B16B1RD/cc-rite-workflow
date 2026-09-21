@@ -98,7 +98,7 @@ wiki_context=$(bash {plugin_root}/hooks/scripts/wiki-apply-capture.sh \
 printf '%s\n' "$wiki_context"
 ```
 
-**Step 3**: status が ok の各ページは本文を読み、同じ `### Wiki 適用証跡` へ `body: read`、`decision: applied|out`、`reason`、applied なら `evidence` を書く。本文を読んでいないページを applied にしない。ゲートが deny なら commit しない。
+**Step 3**: status が ok の各ページは rev の本文を読み、本文中の 1 行を excerpt に書く。applied は evidence と、実行した検証コマンドおよび結果を result に書く。out は reason に理由を書く。`body: read` だけでは次へ進まない。ゲートが deny なら commit しない。`git-commit-file.sh` は成功後に head を更新する。それ以外の commit のあとは、証跡の head を新しい HEAD に更新する。blob が現在のファイルと違うときは capture からやり直す。
 
 ### 5.0.T Canon TDD Cycle (Conditional)
 
