@@ -1110,24 +1110,23 @@ case "$auto_query" in true|yes|1) auto_query="true" ;; *) auto_query="false" ;; 
 echo "wiki_enabled=$wiki_enabled auto_query=$auto_query"
 ```
 
-If `wiki_enabled=false` or `auto_query=false`, skip this section and set `{wiki_context}` to empty string in ステップ 4.5.
-**Step 2**: Generate keywords from the PR context and invoke the query:
-Keywords are derived from: changed file paths (from ステップ 1.2) and file type categories (e.g., `hooks`, `commands`, `review`, `security`).
+設定が false でも capture は呼ぶ。契約は [wiki-apply-contract.md](../../references/wiki-apply-contract.md)。
 
 ```bash
-# {plugin_root} はリテラル値で埋め込む
-# {keywords} は変更ファイルパス + ファイル種別をカンマ区切りで生成
-# （他コーラー skills/issue-create/SKILL.md / skills/fix/SKILL.md /
-#   skills/issue-implement/SKILL.md / skills/unknowns/SKILL.md と同形式）
-wiki_context=$(bash {plugin_root}/hooks/wiki-query-inject.sh \
- --keywords "{keywords}" \
- --format compact 2>/dev/null) || wiki_context=""
-if [ -n "$wiki_context" ]; then
- echo "$wiki_context"
-fi
+wiki_context=$(bash {plugin_root}/hooks/scripts/wiki-apply-capture.sh \
+  --keywords "{keywords}" --paths "{changed_paths}") || {
+  echo "ERROR: Wiki 検索に失敗したため、レビューを完了扱いにしません" >&2
+  exit 1
+}
+printf '%s\n' "$wiki_context"
+gate_out=$(bash {plugin_root}/hooks/scripts/wiki-apply-gate.sh --mode review) || {
+  echo "ERROR: Wiki 適用証跡が変更と対応していません" >&2
+  printf '%s\n' "$gate_out"
+  exit 1
+}
 ```
 
-**Step 3**: If `wiki_context` is non-empty, retain it for injection into the review instruction template (ステップ 4.5) via the `{wiki_context}` placeholder. If empty, set `{wiki_context}` to empty string (the placeholder section will be omitted).
+**Step 3**: 反映済みの自己申告だけでは承認しない。`--mode review` が `evidence_mismatch` を返したら指摘にする。`{wiki_context}` が空なら ステップ 4.5 のプレースホルダも空にする。
 
 ### 4.1 Reviewer Profiles (named subagent system prompt)
 

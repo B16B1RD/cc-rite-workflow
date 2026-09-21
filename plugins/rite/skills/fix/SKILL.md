@@ -153,24 +153,18 @@ case "$auto_query" in true|yes|1) auto_query="true" ;; *) auto_query="false" ;; 
 echo "wiki_enabled=$wiki_enabled auto_query=$auto_query"
 ```
 
-`wiki_enabled=false` または `auto_query=false` なら ステップ 1 へ。キーワードは指摘カテゴリ・対象パス・finding 種別。
+設定が false でも capture は呼ぶ。キーワードは指摘カテゴリ、対象パス、失敗内容。契約は [wiki-apply-contract.md](../../references/wiki-apply-contract.md)。
 
 ```bash
-# {plugin_root} はリテラル値で埋め込む
-# {keywords} はレビュー指摘のカテゴリ + 対象ファイルパスをカンマ区切りで生成
-# （他コーラー skills/issue-create/SKILL.md / skills/pr-review/SKILL.md /
-#   skills/issue-implement/SKILL.md / skills/unknowns/SKILL.md と同形式）
-wiki_context=$(bash {plugin_root}/hooks/wiki-query-inject.sh \
-  --keywords "{keywords}" \
-  --format compact 2>/dev/null) || wiki_context=""
-if [ -n "$wiki_context" ]; then
-  echo "$wiki_context"
-else
-  echo "(Wiki から関連経験則は見つかりませんでした)"
-fi
+wiki_context=$(bash {plugin_root}/hooks/scripts/wiki-apply-capture.sh \
+  --keywords "{keywords}" --paths "{changed_paths}") || {
+  echo "ERROR: Wiki 検索に失敗したため、コミットへ進みません" >&2
+  exit 1
+}
+printf '%s\n' "$wiki_context"
 ```
 
-非空なら context に残し、ステップ 2 の修正方針に使う。
+status が ok の各ページは本文を読み、`### Wiki 適用証跡` に確認と判断を書く。ゲートが deny なら commit しない。
 
 ---
 

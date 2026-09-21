@@ -2,6 +2,10 @@
 
 [Host Runtime Contract](host-runtime-contract.md) の具体的な呼出し手順。実行時に公開された tool schema を用い、ホスト名から能力を推測しない。工程・引数・sentinel は各 SKILL.md が SoT。
 
+## Wiki 適用のコミット境界
+
+実装と修正の commit は、同じ `wiki-apply-gate.sh` が合否を決める。Claude の PreToolUse は `pre-tool-bash-guard.sh` から、Codex と Grok の明示実行は `git-commit-file.sh` から、この gate を呼ぶ。phase が implement または fix で、そのセッションの worktree にいるときだけ検査する。ゲートスクリプトが無い、flow-state を読んでも検査を確認できない、または gate が deny のときは commit しない。cleanup など他の phase は止めない。証跡の形は [wiki-apply-contract.md](wiki-apply-contract.md)。
+
 ## Skill と caller
 
 1. native Skill があれば使用する。無ければ、解決済み plugin root の `skills/{name}/SKILL.md` と必要な同梱参照を読み、親が同じ手順を実行する。`user-invocable: false` は nested 実行を省略する理由にしない。

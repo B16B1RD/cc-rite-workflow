@@ -85,26 +85,20 @@ case "$auto_query" in true|yes|1) auto_query="true" ;; *) auto_query="false" ;; 
 echo "wiki_enabled=$wiki_enabled auto_query=$auto_query"
 ```
 
-`wiki_enabled=false` または `auto_query=false` なら実装へ。
+設定が false でも capture は呼ぶ。呼ばないと証跡が無く、コミット前ゲートが拒否する。
 
-**Step 2**: 計画のステップ記述・対象パス・ドメイン用語から keywords を生成して query:
+**Step 2**: 計画の対象パスと変更目的から keywords を作り、検索結果を作業メモリへ書く。契約は [wiki-apply-contract.md](../../references/wiki-apply-contract.md)。
 
 ```bash
-# {plugin_root} はリテラル値で埋め込む
-# {keywords} は実装計画のキーワード（ファイルパス、ドメイン用語等）をカンマ区切りで生成
-# （他コーラー skills/issue-create/SKILL.md / skills/fix/SKILL.md /
-#   skills/pr-review/SKILL.md / skills/unknowns/SKILL.md と同形式）
-wiki_context=$(bash {plugin_root}/hooks/wiki-query-inject.sh \
-  --keywords "{keywords}" \
-  --format compact 2>/dev/null) || wiki_context=""
-if [ -n "$wiki_context" ]; then
-  echo "$wiki_context"
-else
-  echo "(Wiki から関連経験則は見つかりませんでした)"
-fi
+wiki_context=$(bash {plugin_root}/hooks/scripts/wiki-apply-capture.sh \
+  --keywords "{keywords}" --paths "{changed_paths}") || {
+  echo "ERROR: Wiki 検索に失敗したため、コミットへ進みません" >&2
+  exit 1
+}
+printf '%s\n' "$wiki_context"
 ```
 
-**Step 3**: `wiki_context` が非空なら会話 context に保持し、実装中に参照する。
+**Step 3**: status が ok の各ページは本文を読み、同じ `### Wiki 適用証跡` へ `body: read`、`decision: applied|out`、`reason`、applied なら `evidence` を書く。本文を読んでいないページを applied にしない。ゲートが deny なら commit しない。
 
 ### 5.0.T Canon TDD Cycle (Conditional)
 

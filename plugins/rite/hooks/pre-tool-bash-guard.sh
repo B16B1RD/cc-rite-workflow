@@ -952,6 +952,47 @@ if [ -z "$BLOCKED_PATTERN" ] && [[ "$COMMAND" == *git* && "$COMMAND" == *commit*
   fi
 fi
 
+# Pattern 9: implement/fix commits in this session worktree need a wiki record.
+# Other phases and other worktrees are outside this check.
+if [ -z "$BLOCKED_PATTERN" ] && [[ "$CMD_CHECK" =~ (^|[^[:alnum:]_])git[[:space:]]+commit([^[:alnum:]_-]|$) ]]; then
+  _wiki_fs="${WIKI_APPLY_FLOW_STATE:-}"
+  if [ -z "$_wiki_fs" ]; then
+    _wiki_fs=$(bash "$SCRIPT_DIR/flow-state.sh" path 2>/dev/null) || _wiki_fs=""
+  fi
+  _wiki_phase=""
+  _wiki_fswt=""
+  if [ -n "$_wiki_fs" ] && [ -f "$_wiki_fs" ]; then
+    _wiki_phase=$(jq -r '.phase // ""' "$_wiki_fs" 2>/dev/null) || _wiki_phase=""
+    _wiki_fswt=$(jq -r '.worktree // ""' "$_wiki_fs" 2>/dev/null) || _wiki_fswt=""
+  fi
+  _wiki_cwd=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || _wiki_cwd=""
+  [ -n "$_wiki_cwd" ] || _wiki_cwd="$PWD"
+  if [ -d "$_wiki_cwd" ]; then
+    _wiki_cwd=$(CDPATH= cd -- "$_wiki_cwd" && pwd -P)
+  fi
+  if [ -d "$_wiki_fswt" ]; then
+    _wiki_fswt=$(CDPATH= cd -- "$_wiki_fswt" && pwd -P)
+  fi
+  if [ "$_wiki_phase" = "implement" ] || [ "$_wiki_phase" = "fix" ]; then
+    if [ -n "$_wiki_fswt" ] && [ "$_wiki_fswt" = "$_wiki_cwd" ]; then
+      _wiki_gate="${WIKI_APPLY_GATE_BIN:-$SCRIPT_DIR/scripts/wiki-apply-gate.sh}"
+      if [ ! -f "$_wiki_gate" ]; then
+        BLOCKED_PATTERN="wiki-apply-missing"
+        BLOCKED_REASON="Wiki apply gate is missing, so this commit cannot be confirmed."
+        BLOCKED_ALTERNATIVE="Restore plugins/rite/hooks/scripts/wiki-apply-gate.sh and retry the commit."
+      else
+        _wiki_rc=0
+        _wiki_out=$(bash "$_wiki_gate" --mode commit --worktree "$_wiki_cwd" 2>&1) || _wiki_rc=$?
+        if [ "$_wiki_rc" -ne 0 ]; then
+          BLOCKED_PATTERN="wiki-apply-gate"
+          BLOCKED_REASON="Wiki apply gate denied the commit: ${_wiki_out}"
+          BLOCKED_ALTERNATIVE="Record a fresh wiki search for this work before committing. Disabled, auto_query off, and a real zero-hit result are recorded states. A missing record, a failed search, and an uninitialized wiki stop the commit."
+        fi
+      fi
+    fi
+  fi
+fi
+
 # --- Result ---
 
 if [ -z "$BLOCKED_PATTERN" ]; then

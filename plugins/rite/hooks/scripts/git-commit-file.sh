@@ -101,6 +101,16 @@ case "$file_abs" in
     ;;
 esac
 
+gate="$SCRIPT_DIR/wiki-apply-gate.sh"
+if [ ! -f "$gate" ]; then
+  echo "ERROR: wiki apply gate が無いため commit できません" >&2
+  exit 1
+fi
+if ! bash "$gate" --mode commit --worktree "$tree" >&2; then
+  echo "ERROR: wiki apply gate が commit を拒否しました" >&2
+  exit 1
+fi
+
 if ! git "${git_c[@]}" commit -F "$FILE" "${EXTRA[@]}"; then
   echo "ERROR: git commit -F failed" >&2
   exit 3
