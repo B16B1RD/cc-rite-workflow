@@ -134,7 +134,7 @@ The `knowledge_routing` principle additionally draws on t-wada's four quadrants 
 
 **Rules**:
 1. Route each kind of knowledge to its one channel; do not record the same knowledge in two channels.
-2. Defer each channel's detailed rules to its SoT — do not duplicate them here: comments → [comment-best-practices.md](./comment-best-practices.md), tests → [test-reviewer.md](../../../agents/test-reviewer.md). For commits, record the "why" in the commit message body (free-form prose).
+2. Defer each channel's detailed rules to its SoT — do not duplicate them here: comments → [comment-best-practices.md](./comment-best-practices.md), tests → [test-reviewer.md](../../../agents/test-reviewer.md). For commits, record the "why" in the commit message body (free-form prose). When the project convention forbids a body, keep the same why in the overflow store named by [commit-convention.md](../../../references/commit-convention.md).
 3. Transport misplaced knowledge to its correct medium rather than leaving it: change history found in a comment → move it to the commit; How found in a comment → promote it to naming and delete the comment.
 
 ### prefer_partial_edit (Prefer Partial Edit)

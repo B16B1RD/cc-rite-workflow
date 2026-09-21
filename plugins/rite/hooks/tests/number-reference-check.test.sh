@@ -685,6 +685,8 @@ assert_grep "T-11 issue-implement forbids number/AC tokens in generated prose" "
   '番号・AC番号を書かない'
 assert_grep "T-11 issue-implement commit body Why is required" "$IMPLEMENT_SKILL" \
   'body は why を自由形式'
+assert_grep "T-11 issue-implement locates convention before commit" "$IMPLEMENT_SKILL" \
+  'commit-convention.md'
 assert_not_grep "T-11 issue-implement trivial body omit withdrawn" "$IMPLEMENT_SKILL" \
   'trivial は省略可'
 

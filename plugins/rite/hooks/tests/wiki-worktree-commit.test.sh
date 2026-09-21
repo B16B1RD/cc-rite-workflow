@@ -111,6 +111,8 @@ assert "rite-config.yml absent exits 1" "1" "$(rc_in "$norc_repo")"
 
 disabled_repo="$(new_repo false)"; SANDBOXES+=("$disabled_repo")
 assert "wiki disabled exits 2" "2" "$(rc_in "$disabled_repo")"
+printf 'English only.\n' > "$disabled_repo/CLAUDE.md"
+assert "wiki disabled with CLAUDE.md still exits 2" "2" "$(rc_in "$disabled_repo")"
 # Capture stdout to a variable first: run_in exits 2 here, and `set -o pipefail`
 # would make `run_in | grep` report the pipeline as failed even on a grep match.
 disabled_out="$(run_in "$disabled_repo")"
@@ -127,12 +129,20 @@ assert "worktree missing exits 1" "1" "$(rc_in "$missing_wt_repo")"
 nopending_repo="$(new_repo true)"; SANDBOXES+=("$nopending_repo")
 setup_wiki_worktree "$nopending_repo"
 assert "no pending changes exits 0" "0" "$(rc_in "$nopending_repo")"
+printf 'English only.\n' > "$nopending_repo/CLAUDE.md"
+assert "no-pending with CLAUDE.md still exits 0" "0" "$(rc_in "$nopending_repo")"
+rm -f "$nopending_repo/CLAUDE.md"
 nopending_out="$(run_in "$nopending_repo")"
 if printf '%s' "$nopending_out" | grep -c >/dev/null 'committed=0; branch=wiki; reason=no-pending'; then
   pass "no pending reports committed=0; reason=no-pending"
 else
   fail "no-pending status line missing: $nopending_out"
 fi
+nopending_tmp="$nopending_repo/tmp"
+mkdir -p "$nopending_tmp"
+( cd "$nopending_repo" && TMPDIR="$nopending_tmp" bash "$SCRIPT" >/dev/null )
+leftover_wwc=$(find "$nopending_tmp" -name 'rite-wwc-*' | wc -l | tr -d '[:space:]')
+assert "no-pending leaves no rite-wwc tempfiles" "0" "$leftover_wwc"
 
 # Exercise the write probe against a writable linked-worktree admin dir. The
 # read-only fixture below cannot pin cleanup because mktemp never creates the
@@ -166,6 +176,15 @@ if printf '%s' "$dry_out" | grep -cE >/dev/null 'dry-run; branch=wiki'; then
 else
   fail "dry-run status line missing: $dry_out"
 fi
+printf 'English only.\n' > "$dryrun_repo/CLAUDE.md"
+assert "dry-run with CLAUDE.md exits 0" "0" "$(rc_in "$dryrun_repo" --dry-run)"
+dry_conv_out="$(run_in "$dryrun_repo" --dry-run)"
+if printf '%s' "$dry_conv_out" | grep -cE >/dev/null 'dry-run; branch=wiki'; then
+  pass "dry-run with CLAUDE.md still reports dry-run"
+else
+  fail "dry-run with CLAUDE.md status: $dry_conv_out"
+fi
+rm -f "$dryrun_repo/CLAUDE.md"
 
 # --- Happy path: commit + push to LOCAL bare origin (AC-4) --------------------
 commit_repo="$(new_repo true)"; SANDBOXES+=("$commit_repo")
@@ -425,5 +444,52 @@ else
     "$(git -C "$mask_wt" ls-files --others --exclude-standard -- .rite/wiki)"
   assert "sandbox-mask does not advance the wiki branch" "$wiki_before_mask" "$(git -C "$mask_repo" rev-parse wiki)"
 fi
+
+# --- --message-file may contain newlines; --message still rejects them ---
+nl_repo="$(new_repo true)"; SANDBOXES+=("$nl_repo")
+setup_wiki_worktree "$nl_repo"
+add_pending "$nl_repo"
+nl_msg=$(mktemp)
+printf 'docs(wiki): quotes '\'' and `date`\n\nsecond line\n' > "$nl_msg"
+nl_rc=0
+( cd "$nl_repo" && bash "$SCRIPT" --commit-only --message-file "$nl_msg" >/dev/null ) || nl_rc=$?
+assert "--message-file with newline commits (exit 0)" "0" "$nl_rc"
+nl_body=$(git -C "$nl_repo/.rite/wiki-worktree" log -1 --format=%B)
+if printf '%s' "$nl_body" | grep -q '`date`'; then
+  pass "--message-file keeps backtick text in the wiki commit"
+else
+  fail "--message-file lost backtick text: $nl_body"
+fi
+if printf '%s' "$nl_body" | grep -q 'second line'; then
+  pass "--message-file keeps a second body line"
+else
+  fail "--message-file lost second line: $nl_body"
+fi
+rm -f "$nl_msg"
+
+# --- convention files at shared root require --message-file ---
+conv_repo="$(new_repo true)"; SANDBOXES+=("$conv_repo")
+setup_wiki_worktree "$conv_repo"
+add_pending "$conv_repo"
+printf 'Commit messages must be English one-liners.\n' > "$conv_repo/CLAUDE.md"
+conv_rc=0
+conv_err=$(cd "$conv_repo" && bash "$SCRIPT" --commit-only 2>&1) || conv_rc=$?
+assert "CLAUDE.md present without --message-file exits 1" "1" "$conv_rc"
+if printf '%s' "$conv_err" | grep -q -- '--message-file'; then
+  pass "missing --message-file names the required flag"
+else
+  fail "convention-present diagnostic: $conv_err"
+fi
+wiki_before_conv=$(git -C "$conv_repo" rev-parse wiki)
+assert "convention-present failure does not advance wiki" "$wiki_before_conv" "$(git -C "$conv_repo" rev-parse wiki)"
+empty_rc=0
+empty_err=$(cd "$conv_repo" && bash "$SCRIPT" --commit-only --message-file "" 2>&1) || empty_rc=$?
+assert "empty --message-file exits 1" "1" "$empty_rc"
+if printf '%s' "$empty_err" | grep -q 'requires a value'; then
+  pass "empty --message-file names the required value"
+else
+  fail "empty --message-file diagnostic: $empty_err"
+fi
+assert "empty --message-file does not advance wiki" "$wiki_before_conv" "$(git -C "$conv_repo" rev-parse wiki)"
 
 print_summary "wiki-worktree-commit.sh"

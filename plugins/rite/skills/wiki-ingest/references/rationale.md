@@ -98,9 +98,10 @@ confidence）が無い。raw 由来の値で代用すると実在しないパス
 
 ## commit-msg-three-sites
 
-5.1 と 5.2 は独立した bash block で、Bash ツール間にシェル状態は継承されない。両サイトで
-canonical と literal 一致させ、サイト識別子（`ステップ 5.{X}`）だけ置換する。template 変更時に
-3 箇所を同時更新しないと drift する。
+5.1 と 5.2 は独立した bash block で、Bash ツール間にシェル状態は継承されない。残渣ゲート
+bash は両サイトで canonical と literal 一致させ、サイト識別子とメッセージファイル変数は
+5.0.c 凡例の置換に従う。既定テンプレートの既定源は 5.0.c のみであり、template 変更で
+5.1 / 5.2 の quoted heredoc へ既定英文を複製すると drift する。
 
 ## push-defer-1941
 

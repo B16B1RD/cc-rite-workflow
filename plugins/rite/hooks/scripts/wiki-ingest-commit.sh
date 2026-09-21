@@ -41,7 +41,7 @@
 # every review/fix/close cycle, even if step (3) is deferred.
 #
 # Usage:
-# bash wiki-ingest-commit.sh [--dry-run] [--push-only]
+# bash wiki-ingest-commit.sh [--dry-run] [--push-only] [--message-file ABS]
 #
 # Options:
 # --dry-run Report the pending raw sources and the target wiki branch
@@ -91,10 +91,19 @@ export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o BatchMode=yes}"
 # -----------------------------------------------------------------------
 DRY_RUN=false
 PUSH_ONLY=false
+MESSAGE_FILE=""
 while [[ $# -gt 0 ]]; do
  case "$1" in
  --dry-run) DRY_RUN=true; shift ;;
  --push-only) PUSH_ONLY=true; shift ;;
+ --message-file)
+  if [[ $# -lt 2 ]]; then
+   echo "ERROR: --message-file requires a value" >&2
+   exit 1
+  fi
+  MESSAGE_FILE="$2"
+  shift 2
+  ;;
  --help|-h)
  # Extract header block up to the `--- END HEADER ---` sentinel so the
  # help text never drifts out of sync with the documented surface.
@@ -133,6 +142,7 @@ source "$_SCRIPT_DIR/../control-char-neutralize.sh"
 # run after the `cd "$repo_root"` on the next line) only sees what trigger wrote
 # if both stay keyed off state-path-resolve.sh — do not switch this scan to a
 # `$PWD`-relative root or raw sources written from a linked worktree go missing.
+_convention_root=$(git rev-parse --show-toplevel 2>/dev/null) || _convention_root=""
 repo_root=$("$_SCRIPT_DIR/../state-path-resolve.sh" 2>/dev/null) || repo_root=""
 [ -n "$repo_root" ] || repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
@@ -242,7 +252,11 @@ if [[ -d ".rite/wiki/raw" ]]; then
  # Capture stderr to a tempfile and, if non-empty, emit a WARNING so the
  # operator understands why the file was treated as pending.
  fm_err=""
- trap 'rm -f "${fm_err:-}"' EXIT INT TERM HUP
+ _wic_fm_cleanup() { rm -f "${fm_err:-}"; return 0; }
+ trap 'rc=$?; _wic_fm_cleanup; exit $rc' EXIT
+ trap '_wic_fm_cleanup; exit 130' INT
+ trap '_wic_fm_cleanup; exit 143' TERM
+ trap '_wic_fm_cleanup; exit 129' HUP
  # Symmetric with stage_dir / git_err mktemp guards elsewhere in this file —
  # without a WARNING here, mktemp failure (full /tmp / inode exhaustion)
  # silently degrades awk stderr capture to /dev/null and operators can no
@@ -284,6 +298,37 @@ if [[ "${#pending_files[@]}" -eq 0 ]]; then
  exit 0
 fi
 
+# Resolve commit message before any branch switch. Convention files at the
+# locate root (cwd show-toplevel; Wiki worktree falls back to the shared
+# root) require --message-file, including nested files; otherwise the
+# helper default is used.
+_wic_default_file=""
+_wic_resolved_file=""
+_wic_msg_cleanup() { rm -f "${_wic_default_file:-}" "${_wic_resolved_file:-}"; return 0; }
+trap 'rc=$?; _wic_msg_cleanup; exit $rc' EXIT
+trap '_wic_msg_cleanup; exit 130' INT
+trap '_wic_msg_cleanup; exit 143' TERM
+trap '_wic_msg_cleanup; exit 129' HUP
+_wic_default_file=$(mktemp "${TMPDIR:-/tmp}/rite-wic-default-XXXXXX") || {
+ echo "ERROR: 既定メッセージ用一時ファイルを作成できません" >&2
+ exit 1
+}
+_wic_resolved_file=$(mktemp "${TMPDIR:-/tmp}/rite-wic-msg-XXXXXX") || {
+ echo "ERROR: コミットメッセージ用一時ファイルを作成できません" >&2
+ exit 1
+}
+_wic_resolve_msg() {
+ local default="$1"
+ printf '%s\n' "$default" > "$_wic_default_file"
+ local args=(--default-file "$_wic_default_file" --root "${_convention_root:-$repo_root}")
+ [ -n "$MESSAGE_FILE" ] && args+=(--message-file "$MESSAGE_FILE")
+ if ! bash "$_SCRIPT_DIR/commit-convention-message.sh" "${args[@]}" > "$_wic_resolved_file"; then
+  echo "ERROR: Wiki ingest コミットのメッセージを解決できません" >&2
+  return 1
+ fi
+ cat "$_wic_resolved_file"
+}
+
 if [[ "$DRY_RUN" == "true" ]]; then
  echo "[wiki-ingest-commit] dry-run; pending=${#pending_files[@]}; branch=${wiki_branch}"
  for f in "${pending_files[@]}"; do
@@ -291,6 +336,12 @@ if [[ "$DRY_RUN" == "true" ]]; then
  done
  exit 0
 fi
+
+# Resolve once on the current tree, before git add / worktree copy / wiki
+# checkout. Pass cwd's show-toplevel as --root. locate falls back to the
+# shared root only for the Wiki worktree; an orphan wiki checkout would
+# hide CLAUDE.md and silently drop PRESENT to 0.
+commit_msg=$(_wic_resolve_msg "chore(wiki): ingest ${#pending_files[@]} raw source(s)") || exit 1
 
 # -----------------------------------------------------------------------
 # same_branch strategy short-circuit: when raw sources live on the
@@ -323,7 +374,7 @@ if [[ "$branch_strategy" == "same_branch" ]]; then
   echo "[wiki-ingest-commit] committed=0; branch=${wiki_branch}; reason=no-staged-diff"
   exit 0
  fi
- if ! git commit -m "chore(wiki): ingest ${#pending_files[@]} raw source(s)" 2>"${_sb_git_err:-/dev/null}"; then
+ if ! bash "$_SCRIPT_DIR/git-commit-file.sh" --file "$_wic_resolved_file" -- --quiet 2>"${_sb_git_err:-/dev/null}"; then
   echo "ERROR: git commit failed" >&2
   _sb_dump "commit"
   [ -n "$_sb_git_err" ] && rm -f "$_sb_git_err"
@@ -435,7 +486,7 @@ if [ "$wt_usable" = "true" ]; then
  wtcp_out=$(worktree_commit_push \
  "$worktree_path" \
  "$wiki_branch" \
- "chore(wiki): ingest ${#pending_files[@]} raw source(s) (worktree path)" \
+ "$commit_msg" \
  "${wt_pending_paths[@]}")
  wtcp_rc=$?
  set -e
@@ -519,7 +570,11 @@ if ! git show-ref --verify --quiet "refs/heads/${wiki_branch}"; then
  # manual `rm -f "$ref_err"` on exit would orphan the tempfile. Guard with a
  # scope-limited mini-trap so SIGINT / SIGTERM / SIGHUP all remove ref_err.
  ref_err=""
- trap 'rm -f "${ref_err:-}"' EXIT INT TERM HUP
+ _wic_ref_cleanup() { rm -f "${ref_err:-}"; _wic_msg_cleanup; return 0; }
+ trap 'rc=$?; _wic_ref_cleanup; exit $rc' EXIT
+ trap '_wic_ref_cleanup; exit 130' INT
+ trap '_wic_ref_cleanup; exit 143' TERM
+ trap '_wic_ref_cleanup; exit 129' HUP
  ref_err=$(mktemp "${TMPDIR:-/tmp}/rite-wic-ref-err-XXXXXX" 2>/dev/null || echo "")
  if [[ -n "$ref_err" ]]; then
  git show-ref --verify "refs/heads/${wiki_branch}" >/dev/null 2>"$ref_err" || true
@@ -538,6 +593,7 @@ if ! git show-ref --verify --quiet "refs/heads/${wiki_branch}"; then
  # (installed later — see `cleanup_body` definition and `trap cleanup_body`
  # install commands further down) can take over without double-remove.
  [[ -n "$ref_err" ]] && rm -f "$ref_err"
+ _wic_msg_cleanup
  trap - EXIT INT TERM HUP
  exit 2
 fi
@@ -553,10 +609,15 @@ fi
 # Install the temporary trap before mktemp so no created directory is unguarded.
 # Report mktemp failure with context before exiting.
 stage_dir=""
-trap 'rm -rf "${stage_dir:-}" 2>/dev/null || true' EXIT INT TERM HUP
+_wic_stage_cleanup() { rm -rf "${stage_dir:-}" 2>/dev/null || true; _wic_msg_cleanup; return 0; }
+trap 'rc=$?; _wic_stage_cleanup; exit $rc' EXIT
+trap '_wic_stage_cleanup; exit 130' INT
+trap '_wic_stage_cleanup; exit 143' TERM
+trap '_wic_stage_cleanup; exit 129' HUP
 if ! stage_dir=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-stage-XXXXXX" 2>/dev/null); then
  echo "ERROR: failed to create staging directory under /tmp" >&2
  echo " hint: check /tmp permission / disk space / inode exhaustion / read-only filesystem" >&2
+ _wic_msg_cleanup
  trap - EXIT INT TERM HUP
  exit 3
 fi
@@ -596,6 +657,7 @@ entered_wiki=false
 cleanup_body() {
  local rc="${1:-1}"
  set +e
+ rm -f "${_wic_default_file:-}" "${_wic_resolved_file:-}"
  # Values embedded in pasteable recovery commands are shell-quoted so a
  # branch name or TMPDIR with spaces / apostrophes stays one argument.
  local _q_current_branch _q_stage_dir
@@ -952,8 +1014,7 @@ case "$cached_check_rc" in
  exit 3
  ;;
 esac
-commit_msg="chore(wiki): ingest ${#pending_files[@]} raw source(s) from ${current_branch}"
-if ! git commit -m "$commit_msg" >/dev/null 2>"${git_err:-/dev/null}"; then
+if ! bash "$_SCRIPT_DIR/git-commit-file.sh" --file "$_wic_resolved_file" -- --quiet >/dev/null 2>"${git_err:-/dev/null}"; then
  echo "ERROR: git commit failed on '$wiki_branch'" >&2
  dump_git_err "commit"
  exit 3
