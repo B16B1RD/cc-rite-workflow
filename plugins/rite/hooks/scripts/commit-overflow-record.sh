@@ -94,8 +94,7 @@ if [ "$CMD" = read ]; then
     echo "ERROR: 必須記録セクションが見つかりません: ## $SECTION ($FILE)" >&2
     exit 2
   fi
-  printf '%s' "$body"
-  printf '%s' "$body" | grep -q $'\n$' || printf '\n'
+  printf '%s\n' "$body"
   exit 0
 fi
 

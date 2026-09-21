@@ -146,7 +146,7 @@ assert_grep "T-05 squash keeps --delete-branch=false" "$MERGE" \
 assert_grep "T-05 CI unhealthy forbids gh pr merge" "$MERGE" \
   'ステップ 2 の `gh pr merge` は実行しない'
 
-# --- T-06: overflow store + inspection reads the same place; PR-less is WM ---
+# --- T-06: overflow store + inspection reads the same place; PR-less is commit-records ---
 assert_grep "T-06 overflow write helper is named" "$CONV" \
   'commit-overflow-record.sh write'
 assert_grep "T-06 PR-less path is commit-records" "$CONV" \
@@ -155,6 +155,10 @@ assert_grep "T-06 gate stays enabled" "$CONV" \
   'ゲート自体は無効化しない'
 assert_grep "T-06 fix Root Cause Gate reads overflow" "$FIX" \
   'commit-overflow-record.sh'
+assert_grep "T-06 fix overflow store is commit-records when no PR" "$FIX" \
+  '.rite/commit-records/issue-'
+assert_not_grep "T-06 fix overflow store is not work memory" "$FIX" \
+  'PR body or work memory'
 
 # --- T-01 / T-02 / T-09: locator and --message-file handoff (no NL stand-in) ---
 repo="$(new_repo)"
@@ -357,6 +361,11 @@ fi
 wt_rc=0
 wt_err=$(cd "$feat_base/feature" && bash "$WIKI_WT" --commit-only 2>&1) || wt_rc=$?
 assert "T-03 wiki-worktree-commit from feature without --message-file exits 1" "1" "$wt_rc"
+if grep -Fq "CLAUDE_MD=$(canon_abs_path "$feat_base/feature/CLAUDE.md")" <<<"$wt_err"; then
+  pass "T-03 wiki-worktree-commit names the feature CLAUDE.md"
+else
+  fail "T-03 wiki-worktree-commit feature diagnostic: $wt_err"
+fi
 
 ing3="$(new_repo)"
 printf '%s\n' 'wiki:' '  enabled: true' '  branch_strategy: same_branch' '  branch_name: wiki' > "$ing3/rite-config.yml"

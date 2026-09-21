@@ -336,8 +336,9 @@ if [[ "$DRY_RUN" == "true" ]]; then
 fi
 
 # Resolve once on the current tree, before git add / worktree copy / wiki
-# checkout. locate reads the shared-root working tree; an orphan wiki
-# checkout would hide CLAUDE.md and silently drop PRESENT to 0.
+# checkout. Pass cwd's show-toplevel as --root. locate falls back to the
+# shared root only for the Wiki worktree; an orphan wiki checkout would
+# hide CLAUDE.md and silently drop PRESENT to 0.
 commit_msg=$(_wic_resolve_msg "chore(wiki): ingest ${#pending_files[@]} raw source(s)") || exit 1
 
 # -----------------------------------------------------------------------
