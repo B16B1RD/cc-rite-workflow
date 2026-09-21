@@ -142,6 +142,7 @@ source "$_SCRIPT_DIR/../control-char-neutralize.sh"
 # run after the `cd "$repo_root"` on the next line) only sees what trigger wrote
 # if both stay keyed off state-path-resolve.sh — do not switch this scan to a
 # `$PWD`-relative root or raw sources written from a linked worktree go missing.
+_convention_root=$(git rev-parse --show-toplevel 2>/dev/null) || _convention_root=""
 repo_root=$("$_SCRIPT_DIR/../state-path-resolve.sh" 2>/dev/null) || repo_root=""
 [ -n "$repo_root" ] || repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
@@ -317,7 +318,7 @@ _wic_resolved_file=$(mktemp "${TMPDIR:-/tmp}/rite-wic-msg-XXXXXX") || {
 _wic_resolve_msg() {
  local default="$1"
  printf '%s\n' "$default" > "$_wic_default_file"
- local args=(--default-file "$_wic_default_file" --root "$repo_root")
+ local args=(--default-file "$_wic_default_file" --root "${_convention_root:-$repo_root}")
  [ -n "$MESSAGE_FILE" ] && args+=(--message-file "$MESSAGE_FILE")
  if ! bash "$_SCRIPT_DIR/commit-convention-message.sh" "${args[@]}" > "$_wic_resolved_file"; then
   echo "ERROR: Wiki ingest コミットのメッセージを解決できません" >&2

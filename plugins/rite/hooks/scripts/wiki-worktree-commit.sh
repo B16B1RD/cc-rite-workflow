@@ -178,6 +178,7 @@ source "$_SCRIPT_DIR/../control-char-neutralize.sh"
 # for rationale — a linked-worktree session must land its wiki worktree + flock
 # on the main checkout's single inode (multi-session design §1). Byte-identical
 # to `git rev-parse --show-toplevel` for non-worktree sessions.
+_convention_root=$(git rev-parse --show-toplevel 2>/dev/null) || _convention_root=""
 repo_root=$("$_SCRIPT_DIR/../state-path-resolve.sh" 2>/dev/null) || repo_root=""
 [ -n "$repo_root" ] || repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
@@ -199,7 +200,7 @@ if [[ "$PUSH_ONLY" != "true" ]] && [[ "$DRY_RUN" != "true" ]]; then
   exit 1
  }
  printf '%s\n' "$COMMIT_MSG" > "$_wwc_default_file"
- _wwc_args=(--default-file "$_wwc_default_file" --root "$repo_root")
+ _wwc_args=(--default-file "$_wwc_default_file" --root "${_convention_root:-$repo_root}")
  if [[ -n "$MESSAGE_FILE" ]]; then
   _wwc_args+=(--message-file "$MESSAGE_FILE")
  elif [[ "$MESSAGE_SET" == "true" ]]; then

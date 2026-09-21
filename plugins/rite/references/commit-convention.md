@@ -1,26 +1,29 @@
 # コミット規約の適用
 
-rite が作るコミットは、対象リポジトリのルートにある CLAUDE.md と AGENTS.md のコミット規約を優先する。指定のない項目だけを rite の既定で補う。自然言語の解釈は LLM が行い、helper は解釈しない。
+rite が作るコミットは、今いる作業ツリーの CLAUDE.md と AGENTS.md のコミット規約を優先する。対象変更パスに適用するネストした同名ファイルも、ホストの指示階層に従って読む。指定のない項目だけを rite の既定で補う。自然言語の解釈は LLM が行い、helper は解釈しない。
 
 ## いつ読むか
 
-メッセージを生成する直前に、毎回 `commit-convention-locate.sh` を実行し、返ったパスを Read する。結果を flow-state に保存して再利用しない。
+メッセージを生成する直前に、毎回 `commit-convention-locate.sh` を実行し、返ったパスを Read する。結果を flow-state に保存して再利用しない。コミット対象の相対パスがあるときは `--path` で渡す。
 
 ```bash
-bash {plugin_root}/hooks/scripts/commit-convention-locate.sh
+bash {plugin_root}/hooks/scripts/commit-convention-locate.sh --path {changed_path}
 ```
 
 | 出力 | 意味 |
 |------|------|
-| `COMMIT_CONVENTION_PRESENT=0` | 両ファイル不在。下記「既定」を使う |
-| `CLAUDE_MD=` / `AGENTS_MD=` が絶対パス | そのファイルを Read する |
+| `COMMIT_CONVENTION_PRESENT=0` | 適用ファイル不在。下記「既定」を使う |
+| `CLAUDE_MD=` / `AGENTS_MD=` が絶対パス | 作業ツリー根のファイルを Read する |
+| `NESTED_CLAUDE_MD=` / `NESTED_AGENTS_MD=` | 対象パスに適用するネストしたファイル（コロン区切り）。空なら根だけ |
 | helper が非ゼロ | 読取失敗。規約なしへ倒さず、対象コミットを止める |
 
-locate は `state-path-resolve.sh` の共有ルートを見る。Wiki の分離ブランチ / worktree に規約ファイルが無くても、元プロジェクトのファイルを使う。サブディレクトリの同名ファイルは読まない。
+locate の既定ルートは `git rev-parse --show-toplevel`（当該作業ツリー）。共有ルート（`state-path-resolve.sh`）へ倒すのは、Wiki 分離ツリーに規約ファイルが無いときだけである。通常の feature worktree は、そのツリーに置いた最新の規約を読む。
+
+ネストした CLAUDE.md / AGENTS.md は対象変更パスの祖先ディレクトリにあるものだけを適用する。`--path` が無いときは、cwd が根の下ならその親連鎖だけを辿る。全ツリー検索はしない。ホストの指示階層では、対象パスにより近いネストが根より優先する。同じディレクトリの CLAUDE.md と AGENTS.md が同一項目で食い違うなど、階層で解決できないときだけ食い違い箇所を示してコミットしない。ホストの managed / user 指示ファイルは読まない。
 
 ## 指定項目と既定
 
-両ファイルを同じ適用対象として読む。一方を常時優先しない。同一項目（言語、件名形式、本文の可否、trailer の可否）が食い違うときは、食い違い箇所を示してコミットしない。
+両ファイルを同じ適用対象として読む。一方を常時優先しない。同一項目が食い違うときは、食い違い箇所を示してコミットしない。
 
 | 項目 | 規約に指定があるとき | 未指定の既定 |
 |------|----------------------|--------------|
@@ -38,7 +41,7 @@ helper の固定文へ LLM 経路の既定を置き換えない。
 | 経路 | 保存先 |
 |------|--------|
 | PR がある | PR 本文の該当節、および既存 `.rite/review-results/` |
-| PR がない | 作業メモリの「決定事項・メモ」、または `commit-overflow-record.sh` が書いた既存ストア |
+| PR がない | 共有ルート `{state_root}/.rite/commit-records/`（`commit-overflow-record.sh` が書く）。cleanup の作業メモリ削除では消えない |
 
 ```bash
 bash {plugin_root}/hooks/scripts/commit-overflow-record.sh write \

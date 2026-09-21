@@ -8,6 +8,8 @@ source "$SCRIPT_DIR/_test-helpers.sh"
 
 LOCATE="$SCRIPT_DIR/../scripts/commit-convention-locate.sh"
 MSG="$SCRIPT_DIR/../scripts/commit-convention-message.sh"
+# shellcheck source=../scripts/lib/canon-path.sh
+source "$SCRIPT_DIR/../scripts/lib/canon-path.sh"
 
 echo "=== commit-convention-locate.sh tests ==="
 
@@ -28,6 +30,7 @@ trap 'rc=$?; cleanup; exit $rc' EXIT INT TERM HUP
 new_repo() {
   local repo
   repo="$(mktemp -d)"
+  repo=$(CDPATH= cd -- "$repo" && pwd -P)
   SANDBOXES+=("$repo")
   git -C "$repo" init -q \
     && git -C "$repo" config user.email t@test.local \
@@ -51,7 +54,7 @@ claude_repo="$(new_repo)"
 printf 'Commits must be English.\n' > "$claude_repo/CLAUDE.md"
 claude_out=$(cd "$claude_repo" && bash "$LOCATE")
 assert "CLAUDE present: PRESENT=1" "1" "$(printf '%s\n' "$claude_out" | sed -n 's/^COMMIT_CONVENTION_PRESENT=//p')"
-assert "CLAUDE path is absolute file" "$claude_repo/CLAUDE.md" "$(printf '%s\n' "$claude_out" | sed -n 's/^CLAUDE_MD=//p')"
+assert "CLAUDE path is absolute file" "$(canon_abs_path "$claude_repo/CLAUDE.md")" "$(printf '%s\n' "$claude_out" | sed -n 's/^CLAUDE_MD=//p')"
 
 # --- AGENTS.md present ---
 agents_repo="$(new_repo)"
@@ -59,14 +62,22 @@ printf 'Subject only.\n' > "$agents_repo/AGENTS.md"
 agents_out=$(cd "$agents_repo" && bash "$LOCATE")
 assert "AGENTS present: PRESENT=1" "1" "$(printf '%s\n' "$agents_out" | sed -n 's/^COMMIT_CONVENTION_PRESENT=//p')"
 
-# --- nested files ignored ---
+# --- nested files are listed (host hierarchy); not uniformly ignored ---
 nested_repo="$(new_repo)"
 mkdir -p "$nested_repo/pkg"
 printf 'nested\n' > "$nested_repo/pkg/CLAUDE.md"
 printf 'nested\n' > "$nested_repo/pkg/AGENTS.md"
+root_nested_out=$(cd "$nested_repo" && bash "$LOCATE")
+assert "root cwd without --path omits nested" "" "$(printf '%s\n' "$root_nested_out" | sed -n 's/^NESTED_CLAUDE_MD=//p')"
+assert "root cwd nested-only PRESENT=0" "0" "$(printf '%s\n' "$root_nested_out" | sed -n 's/^COMMIT_CONVENTION_PRESENT=//p')"
 nested_out=$(cd "$nested_repo/pkg" && bash "$LOCATE")
-assert "nested only: PRESENT=0" "0" "$(printf '%s\n' "$nested_out" | sed -n 's/^COMMIT_CONVENTION_PRESENT=//p')"
-assert "nested CLAUDE ignored" "missing" "$(printf '%s\n' "$nested_out" | sed -n 's/^CLAUDE_MD=//p')"
+assert "pkg cwd PRESENT=1" "1" "$(printf '%s\n' "$nested_out" | sed -n 's/^COMMIT_CONVENTION_PRESENT=//p')"
+assert "nested root CLAUDE missing" "missing" "$(printf '%s\n' "$nested_out" | sed -n 's/^CLAUDE_MD=//p')"
+assert "pkg cwd lists nested CLAUDE" "$(canon_abs_path "$nested_repo/pkg/CLAUDE.md")" "$(printf '%s\n' "$nested_out" | sed -n 's/^NESTED_CLAUDE_MD=//p')"
+path_out=$(cd "$nested_repo" && bash "$LOCATE" --path README)
+assert "unrelated --path omits nested CLAUDE" "" "$(printf '%s\n' "$path_out" | sed -n 's/^NESTED_CLAUDE_MD=//p')"
+pkg_out=$(cd "$nested_repo" && bash "$LOCATE" --path pkg/x)
+assert "pkg --path keeps nested CLAUDE" "$(canon_abs_path "$nested_repo/pkg/CLAUDE.md")" "$(printf '%s\n' "$pkg_out" | sed -n 's/^NESTED_CLAUDE_MD=//p')"
 
 # --- unreadable file is fail-loud (not missing) ---
 unread_repo="$(new_repo)"
@@ -108,7 +119,17 @@ git -C "$wiki_repo" checkout -q "$orig_branch"
 git -C "$wiki_repo" worktree add -q "$wiki_repo/.rite/wiki-worktree" wiki
 wiki_out=$(cd "$wiki_repo/.rite/wiki-worktree" && bash "$LOCATE")
 assert "wiki cwd PRESENT=1" "1" "$(printf '%s\n' "$wiki_out" | sed -n 's/^COMMIT_CONVENTION_PRESENT=//p')"
-assert "wiki cwd CLAUDE is main root" "$wiki_repo/CLAUDE.md" "$(printf '%s\n' "$wiki_out" | sed -n 's/^CLAUDE_MD=//p')"
+assert "wiki cwd CLAUDE is main root" "$(canon_abs_path "$wiki_repo/CLAUDE.md")" "$(printf '%s\n' "$wiki_out" | sed -n 's/^CLAUDE_MD=//p')"
+
+# --- feature worktree reads its own CLAUDE.md (not the shared checkout) ---
+feat_repo="$(new_repo)"
+printf 'Commit messages must be English.\n' > "$feat_repo/CLAUDE.md"
+git -C "$feat_repo" add CLAUDE.md && git -C "$feat_repo" commit -qm claude-en
+git -C "$feat_repo" worktree add -q "$feat_repo/feature" -b feature
+printf 'コミットメッセージは日本語にする。\n' > "$feat_repo/feature/CLAUDE.md"
+feat_out=$(cd "$feat_repo/feature" && bash "$LOCATE")
+assert "feature cwd PRESENT=1" "1" "$(printf '%s\n' "$feat_out" | sed -n 's/^COMMIT_CONVENTION_PRESENT=//p')"
+assert "feature cwd CLAUDE is the feature tree" "$(canon_abs_path "$feat_repo/feature/CLAUDE.md")" "$(printf '%s\n' "$feat_out" | sed -n 's/^CLAUDE_MD=//p')"
 if [ -f "$wiki_repo/.rite/wiki-worktree/CLAUDE.md" ]; then
   fail "wiki worktree unexpectedly has CLAUDE.md"
 else

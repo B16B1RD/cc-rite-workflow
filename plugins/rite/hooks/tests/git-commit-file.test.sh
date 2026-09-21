@@ -26,6 +26,7 @@ trap 'rc=$?; cleanup; exit $rc' EXIT INT TERM HUP
 new_repo() {
   local repo
   repo="$(mktemp -d)"
+  repo=$(CDPATH= cd -- "$repo" && pwd -P)
   SANDBOXES+=("$repo")
   git -C "$repo" init -q \
     && git -C "$repo" config user.email t@test.local \

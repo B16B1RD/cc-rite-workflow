@@ -17,6 +17,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../control-char-neutralize.sh
 source "$SCRIPT_DIR/../control-char-neutralize.sh"
+# shellcheck source=lib/canon-path.sh
+source "$SCRIPT_DIR/lib/canon-path.sh"
 
 FILE=""
 WORKTREE=""
@@ -84,7 +86,14 @@ else
   }
 fi
 
-file_abs=$(cd "$(dirname "$FILE")" && pwd)/$(basename "$FILE")
+tree=$(canon_abs_path "$tree") || {
+  echo "ERROR: 作業ツリーの物理パスを解決できません: $tree" >&2
+  exit 1
+}
+file_abs=$(canon_abs_path "$FILE") || {
+  echo "ERROR: メッセージファイルの物理パスを解決できません: $FILE" >&2
+  exit 1
+}
 case "$file_abs" in
   "$tree"|"$tree"/*)
     echo "ERROR: メッセージファイルは作業ツリーの外に置く必要があります: $file_abs (tree=$tree)" >&2

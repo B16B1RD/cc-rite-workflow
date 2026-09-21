@@ -7,6 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_test-helpers.sh"
 
 PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
+# shellcheck source=../scripts/lib/canon-path.sh
+source "$PLUGIN_ROOT/hooks/scripts/lib/canon-path.sh"
 LOCATE="$PLUGIN_ROOT/hooks/scripts/commit-convention-locate.sh"
 MSG="$PLUGIN_ROOT/hooks/scripts/commit-convention-message.sh"
 COMMIT="$PLUGIN_ROOT/hooks/scripts/git-commit-file.sh"
@@ -44,6 +46,7 @@ trap 'rc=$?; cleanup; exit $rc' EXIT INT TERM HUP
 new_repo() {
   local repo
   repo="$(mktemp -d)"
+  repo=$(CDPATH= cd -- "$repo" && pwd -P)
   SANDBOXES+=("$repo")
   git -C "$repo" init -q \
     && git -C "$repo" config user.email t@test.local \
@@ -55,12 +58,16 @@ new_repo() {
   printf '%s' "$repo"
 }
 
-# --- T-07: equal-priority files, conflict fail-loud, nested ignored ---
+# --- T-07: equal-priority files, conflict fail-loud, nested files apply ---
 assert_grep "T-07 both files are equal-priority" "$CONV" \
   '両ファイルを同じ適用対象として読む'
-assert_grep "T-07 conflict is fail-loud" "$CONV" \
-  '同一項目.*食い違うときは、食い違い箇所を示してコミットしない'
-assert_grep "T-07 nested files are ignored" "$CONV" \
+assert_grep "T-07 conflict is fail-loud when hierarchy cannot resolve" "$CONV" \
+  '階層で解決できないときだけ食い違い箇所を示してコミットしない'
+assert_grep "T-07 nested files apply along the changed path" "$CONV" \
+  'ネストした CLAUDE.md / AGENTS.md は対象変更パスの祖先ディレクトリにあるものだけを適用する'
+assert_grep "T-07 nested wins over root" "$CONV" \
+  '対象パスにより近いネストが根より優先する'
+assert_not_grep "T-07 nested files are not uniformly ignored" "$CONV" \
   'サブディレクトリの同名ファイルは読まない'
 assert_not_grep "T-07 no CLAUDE-always-wins helper" "$PLUGIN_ROOT/hooks/scripts/commit-convention-message.sh" \
   'CLAUDE.md を優先'
@@ -142,14 +149,14 @@ assert_grep "T-05 CI unhealthy forbids gh pr merge" "$MERGE" \
 # --- T-06: overflow store + inspection reads the same place; PR-less is WM ---
 assert_grep "T-06 overflow write helper is named" "$CONV" \
   'commit-overflow-record.sh write'
-assert_grep "T-06 PR-less path is work memory" "$CONV" \
-  '作業メモリの「決定事項・メモ」'
+assert_grep "T-06 PR-less path is commit-records" "$CONV" \
+  '.rite/commit-records/'
 assert_grep "T-06 gate stays enabled" "$CONV" \
   'ゲート自体は無効化しない'
 assert_grep "T-06 fix Root Cause Gate reads overflow" "$FIX" \
   'commit-overflow-record.sh'
 
-# --- T-01 / T-02 / T-09: fixture convention → generated message; rewrite is re-read ---
+# --- T-01 / T-02 / T-09: locator and --message-file handoff (no NL stand-in) ---
 repo="$(new_repo)"
 def=$(mktemp "${TMPDIR:-/tmp}/rite-inv-def-XXXXXX")
 printf 'chore(wiki): default-absent\n' > "$def"
@@ -165,45 +172,56 @@ if printf '%s' "$no_file_err" | grep -q -- '--message-file'; then
 else
   fail "T-01 helper diagnostic: $no_file_err"
 fi
-en_msg=$(mktemp "${TMPDIR:-/tmp}/rite-inv-en-XXXXXX")
-printf 'feat(wiki): english subject\n\nwhy the first convention applies\n' > "$en_msg"
-printf 'first\n' >> "$repo/README"
-git -C "$repo" add README
-en_rc=0
-bash "$COMMIT" --file "$en_msg" --worktree "$repo" -- --quiet || en_rc=$?
-assert "T-01 first convention commit exits 0" "0" "$en_rc"
-assert "T-01 first subject follows English fixture" "feat(wiki): english subject" "$(git -C "$repo" log -1 --format=%s)"
-if git -C "$repo" log -1 --format=%b | grep -q 'why the first convention applies'; then
-  pass "T-01 first body follows English fixture"
-else
-  fail "T-01 first body missing: $(git -C "$repo" log -1 --format=%b)"
-fi
+en_out=$(cd "$repo" && bash "$LOCATE")
+assert "T-01 locate returns the worktree CLAUDE.md" "$(canon_abs_path "$repo/CLAUDE.md")" "$(printf '%s\n' "$en_out" | sed -n 's/^CLAUDE_MD=//p')"
 
 printf '件名は日本語。形式: 種別: 説明。本文に理由を書く。\n' > "$repo/CLAUDE.md"
-ja_msg=$(mktemp "${TMPDIR:-/tmp}/rite-inv-ja-XXXXXX")
-printf 'docs(wiki): 日本語の件名\n\n二回目の規約を使う\n' > "$ja_msg"
-printf 'second\n' >> "$repo/README"
-git -C "$repo" add README
-ja_rc=0
-bash "$COMMIT" --file "$ja_msg" --worktree "$repo" -- --quiet || ja_rc=$?
-assert "T-09 second generation after rewrite exits 0" "0" "$ja_rc"
-assert "T-09 second subject follows rewritten fixture" "docs(wiki): 日本語の件名" "$(git -C "$repo" log -1 --format=%s)"
-if git -C "$repo" log -1 --format=%b | grep -q '二回目の規約を使う'; then
-  pass "T-09 second body follows rewritten fixture"
+ja_out=$(cd "$repo" && bash "$LOCATE")
+assert "T-09 locate after rewrite is still the worktree file" "$(canon_abs_path "$repo/CLAUDE.md")" "$(printf '%s\n' "$ja_out" | sed -n 's/^CLAUDE_MD=//p')"
+if grep -q '件名は日本語' "$repo/CLAUDE.md" && ! grep -q 'must be English' "$repo/CLAUDE.md"; then
+  pass "T-09 worktree file holds the rewritten convention"
 else
-  fail "T-09 second body missing: $(git -C "$repo" log -1 --format=%b)"
-fi
-if git -C "$repo" log -1 --format=%s | grep -q 'english subject'; then
-  fail "T-09 second commit reused the first convention"
-else
-  pass "T-09 second commit does not reuse the first subject"
+  fail "T-09 rewrite did not stick: $(cat "$repo/CLAUDE.md")"
 fi
 if find "$repo/.rite" -name '*.flow-state' 2>/dev/null | grep -q .; then
   fail "T-09 flow-state cache appeared under the fixture"
 else
   pass "T-09 no flow-state convention cache"
 fi
-rm -f "$def" "$en_msg" "$ja_msg"
+rm -f "$def"
+
+# --- T-07 nested files are returned for the changed path ---
+hier_repo="$(new_repo)"
+mkdir -p "$hier_repo/pkg"
+printf 'Commits must be English.\n' > "$hier_repo/CLAUDE.md"
+printf 'コミットメッセージは日本語にする。\n' > "$hier_repo/pkg/CLAUDE.md"
+hier_out=$(cd "$hier_repo" && bash "$LOCATE" --path pkg/x)
+assert "T-07 --path pkg lists nested CLAUDE" "$(canon_abs_path "$hier_repo/pkg/CLAUDE.md")" "$(printf '%s\n' "$hier_out" | sed -n 's/^NESTED_CLAUDE_MD=//p')"
+assert "T-07 --path pkg still reports root CLAUDE" "$(canon_abs_path "$hier_repo/CLAUDE.md")" "$(printf '%s\n' "$hier_out" | sed -n 's/^CLAUDE_MD=//p')"
+
+# --- T-06 PR-less overflow store survives work-memory cleanup ---
+one_repo="$(new_repo)"
+state_root=$(cd "$one_repo" && bash "$PLUGIN_ROOT/hooks/state-path-resolve.sh")
+mkdir -p "$state_root/.rite/commit-records" "$state_root/.rite/work-memory"
+store="$state_root/.rite/commit-records/issue-1.md"
+bodyf=$(mktemp "${TMPDIR:-/tmp}/rite-inv-one-body-XXXXXX")
+printf 'root cause kept off the commit\n' > "$bodyf"
+bash "$OVERFLOW" write --file "$store" --section "Root cause" --body-file "$bodyf"
+printf '# 📜 rite 作業メモリ\n' > "$state_root/.rite/work-memory/issue-1.md"
+wm_rc=0
+(cd "$one_repo" && bash "$PLUGIN_ROOT/hooks/cleanup-work-memory.sh" --issue 1) || wm_rc=$?
+assert "T-06 cleanup-work-memory --issue 1 exits 0" "0" "$wm_rc"
+if [ -f "$store" ] && grep -q 'root cause kept off the commit' "$store"; then
+  pass "T-06 PR-less commit-records survive work-memory cleanup"
+else
+  fail "T-06 commit-records lost after cleanup: $(ls -la "$state_root/.rite/commit-records" 2>/dev/null || true)"
+fi
+if [ -f "$state_root/.rite/work-memory/issue-1.md" ]; then
+  fail "T-06 work-memory was not deleted"
+else
+  pass "T-06 work-memory deleted while commit-records remain"
+fi
+rm -f "$bodyf"
 
 # --- T-04 already covered by locate test; re-observe wiki cwd here ---
 wiki_repo="$(new_repo)"
@@ -219,7 +237,7 @@ git -C "$wiki_repo" checkout -q "$orig"
 git -C "$wiki_repo" worktree add -q "$wiki_repo/.rite/wiki-worktree" wiki
 wiki_out=$(cd "$wiki_repo/.rite/wiki-worktree" && bash "$LOCATE")
 assert "T-04 wiki cwd PRESENT=1" "1" "$(printf '%s\n' "$wiki_out" | sed -n 's/^COMMIT_CONVENTION_PRESENT=//p')"
-assert "T-04 wiki cwd CLAUDE is shared root" "$wiki_repo/CLAUDE.md" "$(printf '%s\n' "$wiki_out" | sed -n 's/^CLAUDE_MD=//p')"
+assert "T-04 wiki cwd CLAUDE is shared root" "$(canon_abs_path "$wiki_repo/CLAUDE.md")" "$(printf '%s\n' "$wiki_out" | sed -n 's/^CLAUDE_MD=//p')"
 
 # --- T-08: overflow write failure is not reported as stored ---
 nowrite="$(mktemp -d)"

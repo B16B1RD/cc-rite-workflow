@@ -515,7 +515,7 @@ rationale: references/rationale.md#commit-msg-three-sites
 docs(wiki): ingest {n_pages_created} new / {n_pages_updated} updated pages from {n_raw_sources} raw source(s) (skipped: {n_skipped})
 ```
 
-**canonical placeholder-residue gate**（メッセージファイルの内容を見る。`{X}` は 5.1 では `_ingest_sep_msg`、5.2 では `_ingest_msg`）:
+**canonical placeholder-residue gate**（メッセージファイルの内容を見る。`{X}` はステップ番号。5.1 なら 1、5.2 なら 2。ファイルは `$msg_file`。5.1 は `$_ingest_sep_msg`、5.2 は `$_ingest_msg`）:
 
 ```bash
 case "$(cat -- "$msg_file")" in
@@ -533,7 +533,7 @@ case "$(cat -- "$msg_file")" in
 esac
 ```
 
-ステップ 5.1 / 5.2 は `{wiki_ingest_commit_message}`（規約適用後の全文）を quoted heredoc でメッセージファイルへ書く。未指定時だけ上の既定テンプレートへカウンタを埋め込んだ値を書く。残渣ゲートはファイル内容の未置換 `{...}` 形状とカウンタ placeholder の両方を止める。既定テンプレートを変更する際は本セクション + ステップ 5.1 + ステップ 5.2 の **3 箇所を必ず同時に更新する**。
+ステップ 5.1 / 5.2 は `{wiki_ingest_commit_message}`（規約適用後の全文）を quoted heredoc でメッセージファイルへ書く。未指定時だけ上の既定テンプレートへカウンタを埋め込んだ値を書く。残渣ゲートはファイル内容の未置換 `{...}` 形状とカウンタ placeholder の両方を止める。残渣ゲート bash を変えるときは本節のゲートとステップ 5.1 / 5.2 の複製を同時に更新する。既定テンプレートの既定源は本節だけであり、5.1 / 5.2 の quoted heredoc へ既定英文を焼き戻さない。
 
 ### 5.0.n commit 前の番号参照検査 (両戦略共通)
 
