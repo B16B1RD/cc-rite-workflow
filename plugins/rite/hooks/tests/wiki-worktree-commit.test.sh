@@ -493,7 +493,6 @@ fi
 assert "empty --message-file does not advance wiki" "$wiki_before_conv" "$(git -C "$conv_repo" rev-parse wiki)"
 
 # --- empty --message is rejected at parse, before no-pending / dry-run / commit ---
-# An empty value used to set MESSAGE_SET and die later in worktree_commit_push.
 # Missing and empty values share the parse error. --dry-run before --message
 # must not take the dry-run exit 0 path.
 reject_empty_message() {
