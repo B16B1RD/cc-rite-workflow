@@ -21,6 +21,60 @@ def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
+# git commit の内容指定。照合した index ではなく作業ツリーを記録する。
+_CONTENT_SHORT = re.compile(r"-[A-Za-z]*[aiop][A-Za-z]*\Z")
+_VALUE_SHORT_END = re.compile(r"-[A-Za-z]*[mFCct]\Z")
+_CONTENT_LONG = {
+    "--all", "--include", "--interactive", "--only", "--patch",
+    "--pathspec-file-nul", "--pathspec-from-file",
+}
+_VALUE_LONG = {
+    "-C", "-F", "-c", "-m", "-t", "--author", "--cleanup", "--date", "--file",
+    "--fixup", "--message", "--reedit-message", "--reuse-message", "--squash",
+    "--template", "--trailer",
+}
+
+
+def classify_commit_args(args):
+    """Return whether these tokens after `commit` are a dry run, and whether
+    they record the index. A value glued on with '=' is not a following pathspec.
+    `--amend` stays an index commit. Short clusters record other content when
+    they contain a, i, o, or p."""
+    dry_run, skip, index_only, dashed = False, False, True, False
+    for option in args:
+        if dashed:
+            index_only = False
+            break
+        if skip:
+            skip = False
+            continue
+        if option == "--":
+            dashed = True
+            continue
+        if option in ("--dry-run", "--help", "-h"):
+            dry_run = True
+            continue
+        name, eq, _value = option.partition("=")
+        if name in _CONTENT_LONG:
+            index_only = False
+            if eq == "" and name == "--pathspec-from-file":
+                skip = True
+            continue
+        if _CONTENT_SHORT.fullmatch(option):
+            index_only = False
+            if _VALUE_SHORT_END.fullmatch(option):
+                skip = True
+            continue
+        if name in _VALUE_LONG:
+            if eq == "":
+                skip = True
+            continue
+        if option.startswith("-"):
+            continue
+        index_only = False
+    return dry_run, index_only
+
+
 def text(value):
     return isinstance(value, str) and bool(value.strip())
 
@@ -308,30 +362,7 @@ def each_direct_commit(command, cwd):
         if index >= len(words) or words[index] != "commit":
             continue
         # Option values (notably -m '--dry-run') must not exempt a real commit.
-        # -a / --all / -p / --patch / a pathspec commit the worktree, not the index the gate hashed.
-        dry_run, skip, index_only, dashed = False, False, True, False
-        for option in words[index + 1:]:
-            if dashed:
-                index_only = False
-                break
-            if skip:
-                skip = False
-                continue
-            if option == "--":
-                dashed = True
-                continue
-            if option in ("-a", "--all", "-p", "--patch"):
-                index_only = False
-            elif option in ("--dry-run", "--help", "-h"):
-                dry_run = True
-            elif re.fullmatch(r"-[A-Za-z]*[mFCct]", option) or option in ("-m", "--message", "-F", "--file", "-C", "--reuse-message", "-c", "--reedit-message", "--author", "--date", "--fixup", "--squash", "--cleanup", "-t", "--template", "--trailer"):
-                if re.fullmatch(r"-[A-Za-z]*[ap][A-Za-z]*", option):
-                    index_only = False
-                skip = True
-            elif option.startswith("-"):
-                pass
-            else:
-                index_only = False
+        dry_run, index_only = classify_commit_args(words[index + 1:])
         if dry_run:
             continue
         os.chdir(target)
@@ -428,6 +459,13 @@ def commit_target_main(argv):
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "commit-target":
         commit_target_main(sys.argv[2:])
+        return
+    if len(sys.argv) > 1 and sys.argv[1] == "classify-extras":
+        extras = sys.argv[2:]
+        if extras[:1] == ["--"]:
+            extras = extras[1:]
+        dry_run, index_only = classify_commit_args(extras)
+        print("dry-run" if dry_run else ("index" if index_only else "other"))
         return
     parser = argparse.ArgumentParser()
     parser.add_argument("operation", choices=("check", "verify", "commit-check"))

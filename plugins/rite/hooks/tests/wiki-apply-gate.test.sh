@@ -539,6 +539,49 @@ if [ "$crc" -ne 0 ] && [ "$head_before" = "$head_after" ] && grep -q 'index の�
 else
   fail "extra -p rc=$crc err=$(cat "$ROOT/extra-p.err")"
 fi
+for _cluster in "-av -m x" "-qa -m x" "-pv -m x" "--interactive -m x" "--pathspec-from-file=paths.txt -m x"; do
+  cluster=$(jq -n --arg cwd "$repo" --arg cmd "git commit $_cluster" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
+  grc=0
+  gout=$(printf '%s' "$cluster" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+  if grep -q 'wiki-apply-index' <<<"$gout"; then
+    pass "guard denies git commit $_cluster"
+  else
+    fail "guard cluster $_cluster rc=$grc out=$gout"
+  fi
+done
+crc=0
+WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" \
+  bash "$COMMIT" --file "$msg" --worktree "$repo" -- -av >"$ROOT/extra-av.out" 2>"$ROOT/extra-av.err" || crc=$?
+head_after=$(git -C "$repo" rev-parse HEAD)
+if [ "$crc" -ne 0 ] && [ "$head_before" = "$head_after" ] && grep -q 'index の照合を外す' <<<"$(cat "$ROOT/extra-av.err")"; then
+  pass "git-commit-file rejects -av in scope"
+else
+  fail "extra -av rc=$crc err=$(cat "$ROOT/extra-av.err")"
+fi
+crc=0
+WIKI_APPLY_FLOW_STATE="$clean" WIKI_APPLY_MEMORY="$ROOT/no-such.md" \
+  bash "$COMMIT" --file "$msg" --worktree "$repo" -- -a >"$ROOT/extra-clean.out" 2>"$ROOT/extra-clean.err" || crc=$?
+if ! grep -q 'index の照合を外す' <<<"$(cat "$ROOT/extra-clean.err")"; then
+  pass "git-commit-file cleanup does not reject -a"
+else
+  fail "cleanup -a rc=$crc err=$(cat "$ROOT/extra-clean.err")"
+fi
+crc=0
+WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" \
+  bash "$COMMIT" --file "$msg" --worktree "$other" -- -a >"$ROOT/extra-other.out" 2>"$ROOT/extra-other.err" || crc=$?
+if ! grep -q 'index の照合を外す' <<<"$(cat "$ROOT/extra-other.err")"; then
+  pass "git-commit-file other worktree does not reject -a"
+else
+  fail "other -a rc=$crc err=$(cat "$ROOT/extra-other.err")"
+fi
+crc=0
+WIKI_APPLY_FLOW_STATE="$clean" WIKI_APPLY_MEMORY="$ROOT/no-such.md" \
+  bash "$COMMIT" --file "$msg" --worktree "$repo" -- --trailer 'Signed-off-by: T <t@t.example>' >"$ROOT/extra-trailer.out" 2>"$ROOT/extra-trailer.err" || crc=$?
+if ! grep -q 'index の照合を外す' <<<"$(cat "$ROOT/extra-trailer.err")" && ! grep -q 'pathspec' <<<"$(cat "$ROOT/extra-trailer.err")"; then
+  pass "git-commit-file keeps a trailer value"
+else
+  fail "trailer rc=$crc err=$(cat "$ROOT/extra-trailer.err")"
+fi
 
 echo "=== capture records auto_query_off without searching ==="
 cap_repo=$(new_repo cap)

@@ -4,7 +4,7 @@
 
 ## Wiki 適用のコミット境界
 
-実装と修正の commit は、同じ `wiki-apply-gate.sh` が合否を決める。Claude の PreToolUse は `pre-tool-bash-guard.sh` から、Codex と Grok の明示実行は `git-commit-file.sh` から、この gate を呼ぶ。phase が implement または fix で、そのセッションの worktree にいるときだけ検査する。`git commit -a`、`--all`、`-p`、`--patch`、pathspec は照合した index と違うため、gate の前に拒否する。ゲートスクリプトが無い、flow-state を読んでも検査を確認できない、または gate が deny のときは commit しない。cleanup など他の phase は止めない。合否は証跡の自己申告では決まらない。ゲートが現在の設定、HEAD、対象ファイルの内容と照合する。literal な `git -C <path> commit` も、その path がセッションの worktree なら同じ gate を通す。対象を解決できない commit は拒否する。証跡の形は [wiki-apply-contract.md](wiki-apply-contract.md)。
+実装と修正の commit は、同じ `wiki-apply-gate.sh` が合否を決める。Claude の PreToolUse は `pre-tool-bash-guard.sh` から、Codex と Grok の明示実行は `git-commit-file.sh` から、この gate を呼ぶ。phase が implement または fix で、そのセッションの worktree にいるときだけ検査する。その範囲では、照合した index と違う内容指定（`-a` / `--all`、`-i` / `--include`、`-o` / `--only`、`-p` / `--patch`、`--interactive`、`--pathspec-from-file`、pathspec、および `a` `i` `o` `p` を含む短い束ね）を、guard も `git-commit-file.sh` も gate の前に拒否する。別の worktree と他の phase では、これらの引数も止めない。ゲートスクリプトが無い、flow-state を読んでも検査を確認できない、または gate が deny のときは commit しない。合否は証跡の自己申告では決まらない。ゲートが現在の設定、HEAD、対象ファイルの内容と照合する。literal な `git -C <path> commit` も、その path がセッションの worktree なら同じ gate を通す。対象を解決できない commit は拒否する。証跡の形は [wiki-apply-contract.md](wiki-apply-contract.md)。
 
 ## Skill と caller
 

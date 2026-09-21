@@ -1036,7 +1036,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [[ "$_wiki_surface" == *git* && "$_wiki_surface"
         if [ "$_wiki_kind" != "index" ]; then
           BLOCKED_PATTERN="wiki-apply-index"
           BLOCKED_REASON="Wiki apply gate checked the index, and this commit would record other content."
-          BLOCKED_ALTERNATIVE="Stage the files and run git commit without -a, --all, or a pathspec."
+          BLOCKED_ALTERNATIVE="Stage the files and run git commit without -a, --all, -i, --include, -o, --only, -p, --patch, --interactive, --pathspec-from-file, or a pathspec."
           break
         fi
         if [ ! -f "$_wiki_gate" ]; then

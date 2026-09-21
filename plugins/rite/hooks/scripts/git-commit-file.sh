@@ -101,49 +101,41 @@ case "$file_abs" in
     ;;
 esac
 
-# -a / -p / pathspec は照合した index ではなく作業ツリーを記録する。
-_wiki_skip=0
-_wiki_dash=0
-for _wiki_arg in "${EXTRA[@]}"; do
-  if [ "$_wiki_dash" -eq 1 ]; then
-    echo "ERROR: pathspec は index の照合を外すため受け取れません: $_wiki_arg" >&2
-    exit 1
-  fi
-  if [ "$_wiki_skip" -eq 1 ]; then
-    _wiki_skip=0
-    continue
-  fi
-  case "$_wiki_arg" in
-    --)
-      _wiki_dash=1
-      ;;
-    -a|--all|-p|--patch)
-      echo "ERROR: -a / --all / -p / --patch は index の照合を外すため受け取れません" >&2
-      exit 1
-      ;;
-    -m|--message|-F|--file|--author|--date)
-      _wiki_skip=1
-      ;;
-    --*)
-      ;;
-    -*[ap]*)
-      echo "ERROR: -a / --all / -p / --patch は index の照合を外すため受け取れません" >&2
-      exit 1
-      ;;
-    -*)
-      ;;
-    *)
-      echo "ERROR: pathspec は index の照合を外すため受け取れません: $_wiki_arg" >&2
-      exit 1
-      ;;
-  esac
-done
-
 gate="$SCRIPT_DIR/wiki-apply-gate.sh"
 if [ ! -f "$gate" ]; then
   echo "ERROR: wiki apply gate が無いため commit できません" >&2
   exit 1
 fi
+
+# 引数の分類は commit-target と同じ関数。gate が検査する commit だけ、index 以外を先に止める。
+_wiki_in_scope=0
+_wiki_flow="${WIKI_APPLY_FLOW_STATE:-}"
+if [ -z "$_wiki_flow" ]; then
+  _wiki_flow=$(bash "$SCRIPT_DIR/../flow-state.sh" path 2>/dev/null) || _wiki_flow=""
+fi
+if [ -n "$_wiki_flow" ] && [ -f "$_wiki_flow" ] \
+  && _wiki_row=$(jq -r '[.phase // "", .worktree // ""] | @tsv' "$_wiki_flow" 2>/dev/null); then
+  IFS=$'\t' read -r _wiki_phase _wiki_fswt <<<"$_wiki_row"
+  case "$_wiki_phase" in
+    implement|fix)
+      if [ -n "$_wiki_fswt" ]; then
+        _wiki_fswt=$(canon_abs_path "$_wiki_fswt") || _wiki_fswt=""
+      fi
+      if [ -n "$_wiki_fswt" ] && [ "$_wiki_fswt" = "$tree" ]; then
+        _wiki_in_scope=1
+      fi
+      ;;
+  esac
+fi
+_wiki_kind=$(python3 "$SCRIPT_DIR/lib/review-fix-scope.py" classify-extras -- "${EXTRA[@]}") || {
+  echo "ERROR: commit 引数を判定できません" >&2
+  exit 1
+}
+if [ "$_wiki_in_scope" -eq 1 ] && [ "$_wiki_kind" = other ]; then
+  echo "ERROR: index の照合を外す引数は受け取れません" >&2
+  exit 1
+fi
+
 gate_out=$(bash "$gate" --mode commit --worktree "$tree") || {
   printf '%s\n' "$gate_out" >&2
   echo "ERROR: wiki apply gate が commit を拒否しました" >&2
