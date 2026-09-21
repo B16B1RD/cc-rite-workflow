@@ -101,6 +101,7 @@ run_hook() {
 }
 
 # Portable digest (sha256sum is GNU coreutils; macOS CI keeps BSD tools).
+# Empty output is fail-loud: callers must not treat "" == "" as byte identity.
 digest_file() {
   local out=""
   if command -v sha256sum >/dev/null 2>&1; then
@@ -110,10 +111,75 @@ digest_file() {
     out=$(shasum -a 256 "$1" 2>/dev/null | awk '{print $1}') || out=""
   fi
   if [ -z "$out" ]; then
-    out=$(python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$1")
+    out=$(python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$1") || out=""
+  fi
+  if [ -z "$out" ]; then
+    echo "ERROR: digest_file: empty digest: $1" >&2
+    return 1
   fi
   printf '%s\n' "$out"
 }
+
+echo "=== digest_file helper ==="
+digest_sample="$TEST_DIR/digest-sample"
+printf 'payload\n' > "$digest_sample"
+
+echo "digest_file: swallowed rc form is absent"
+swallowed_needle='if [ "$('
+swallowed_needle="${swallowed_needle}digest_file"
+if grep -F "$swallowed_needle" "$SCRIPT_DIR/session-end.test.sh" >/dev/null; then
+  fail "if-condition still swallows digest_file rc"
+else
+  pass "callers capture digest_file before if"
+fi
+echo ""
+
+echo "digest_file: sha256sum miss falls through portable chain"
+fb_dir=$(mktemp -d "$TEST_DIR/hasher-fallback-XXXXXX")
+printf '%s\n' '#!/bin/bash' 'exit 1' > "$fb_dir/sha256sum"
+chmod +x "$fb_dir/sha256sum"
+fb_rc=0
+fb_out=$(
+  PATH="$fb_dir:$PATH"
+  case "$(command -v sha256sum)" in
+    "$fb_dir"/*) ;;
+    *) echo "STUB_MISS"; exit 2 ;;
+  esac
+  digest_file "$digest_sample"
+) || fb_rc=$?
+if [ "$fb_rc" -eq 0 ] && [ -n "$fb_out" ]; then
+  pass "sha256sum failure falls through to a nonempty digest"
+else
+  fail "portable chain did not fall through (rc=$fb_rc out='$fb_out')"
+fi
+echo ""
+
+echo "digest_file: hasher wipeout is fail-loud"
+wipe_dir=$(mktemp -d "$TEST_DIR/hasher-wipe-XXXXXX")
+for cmd in sha256sum shasum python3; do
+  printf '%s\n' '#!/bin/bash' 'exit 1' > "$wipe_dir/$cmd"
+  chmod +x "$wipe_dir/$cmd"
+done
+wipe_err=$(mktemp "$TEST_DIR/wipe-err.XXXXXX")
+wipe_rc=0
+wipe_out=$(
+  PATH="$wipe_dir:/usr/bin:/bin"
+  for cmd in sha256sum shasum python3; do
+    resolved=$(command -v "$cmd" || true)
+    case "$resolved" in
+      "$wipe_dir"/*) ;;
+      *) echo "STUB_MISS=$cmd:$resolved"; exit 2 ;;
+    esac
+  done
+  digest_file "$digest_sample" 2>"$wipe_err"
+) || wipe_rc=$?
+if [ "$wipe_rc" -eq 1 ] && [ -z "$wipe_out" ] \
+  && grep -q 'digest_file: empty digest' "$wipe_err"; then
+  pass "hasher wipeout → rc=1, empty stdout, empty-digest stderr"
+else
+  fail "hasher wipeout did not fail-loud (rc=$wipe_rc out='$wipe_out' err='$(cat "$wipe_err")')"
+fi
+echo ""
 
 echo "=== session-end.sh tests ==="
 echo ""
@@ -246,7 +312,8 @@ if [ "$temp_files" -eq 0 ]; then
 else
   fail "Temp files not cleaned: $temp_files files found"
 fi
-if [ "$rc" -eq 0 ] && [ -f "$sf008" ] && [ "$(digest_file "$sf008")" = "$before008" ]; then
+after008=$(digest_file "$sf008")
+if [ "$rc" -eq 0 ] && [ -f "$sf008" ] && [ "$after008" = "$before008" ]; then
   pass "Corrupted JSON → original bytes kept (AC-4)"
 else
   fail "Corrupted JSON was deleted or rewritten (rc=$rc)"
@@ -901,7 +968,8 @@ fake_jq_p05="$(mktemp -d "$TEST_DIR/fakejq-p05-XXXXXX")"
 install_deactivate_fail_jq "$fake_jq_p05"
 rc_p05=0
 PATH="$fake_jq_p05:$PATH" run_hook "$dir_p05" >/dev/null || rc_p05=$?
-if [ "$rc_p05" -eq 0 ] && [ -f "$sf_p05" ] && [ "$(digest_file "$sf_p05")" = "$before_p05" ]; then
+after_p05=$(digest_file "$sf_p05")
+if [ "$rc_p05" -eq 0 ] && [ -f "$sf_p05" ] && [ "$after_p05" = "$before_p05" ]; then
   pass "T-05 original bytes kept after jq fail"
 else
   fail "T-05 state deleted or rewritten after jq fail (rc=$rc_p05)"
@@ -918,7 +986,8 @@ fake_jq_p05b="$(mktemp -d "$TEST_DIR/fakejq-p05b-XXXXXX")"
 install_deactivate_fail_jq "$fake_jq_p05b"
 rc_p05b=0
 PATH="$fake_jq_p05b:$PATH" run_hook "$dir_p05b" >/dev/null || rc_p05b=$?
-if [ "$rc_p05b" -eq 0 ] && [ -f "$sf_p05b" ] && [ "$(digest_file "$sf_p05b")" = "$before_p05b" ]; then
+after_p05b=$(digest_file "$sf_p05b")
+if [ "$rc_p05b" -eq 0 ] && [ -f "$sf_p05b" ] && [ "$after_p05b" = "$before_p05b" ]; then
   pass "T-05b history-less jq fail kept original bytes"
 else
   fail "T-05b history-less jq fail deleted or rewritten (rc=$rc_p05b)"
@@ -939,7 +1008,8 @@ MV_SHIM_P05C
 chmod +x "$shim_mv_p05c/mv"
 rc_p05c=0
 PATH="$shim_mv_p05c:$PATH" run_hook "$dir_p05c" >/dev/null || rc_p05c=$?
-if [ "$rc_p05c" -eq 0 ] && [ -f "$sf_p05c" ] && [ "$(digest_file "$sf_p05c")" = "$before_p05c" ]; then
+after_p05c=$(digest_file "$sf_p05c")
+if [ "$rc_p05c" -eq 0 ] && [ -f "$sf_p05c" ] && [ "$after_p05c" = "$before_p05c" ]; then
   pass "T-05c history-less mv fail kept original bytes"
 else
   fail "T-05c history-less mv fail deleted or rewritten (rc=$rc_p05c)"
@@ -974,7 +1044,8 @@ before_p07=$(digest_file "$sf_p07")
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
 payload_p07=$(jq -nc --arg cwd "$dir_p07" --arg sid "$other_sid" '{cwd:$cwd, session_id:$sid}')
 printf '%s' "$payload_p07" | bash "$HOOK" 2>"$LAST_STDERR_FILE" >/dev/null || true
-if [ -f "$sf_p07" ] && [ "$(digest_file "$sf_p07")" = "$before_p07" ]; then
+after_p07=$(digest_file "$sf_p07")
+if [ -f "$sf_p07" ] && [ "$after_p07" = "$before_p07" ]; then
   pass "T-07 other session state unchanged"
 else
   fail "T-07 other session state was modified"
