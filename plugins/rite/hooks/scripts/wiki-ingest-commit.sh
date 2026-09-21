@@ -299,7 +299,9 @@ if [[ "${#pending_files[@]}" -eq 0 ]]; then
 fi
 
 # Resolve commit message before any branch switch. Convention files at the
-# shared root require --message-file; otherwise the helper default is used.
+# locate root (cwd show-toplevel; Wiki worktree falls back to the shared
+# root) require --message-file, including nested files; otherwise the
+# helper default is used.
 _wic_default_file=""
 _wic_resolved_file=""
 _wic_msg_cleanup() { rm -f "${_wic_default_file:-}" "${_wic_resolved_file:-}"; return 0; }

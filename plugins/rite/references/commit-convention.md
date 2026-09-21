@@ -40,8 +40,8 @@ helper の固定文へ LLM 経路の既定を置き換えない。
 
 | 経路 | 保存先 |
 |------|--------|
-| PR がある | PR 本文の該当節、および既存 `.rite/review-results/` |
-| PR がない | 共有ルート `{state_root}/.rite/commit-records/`（`commit-overflow-record.sh` が書く）。cleanup の作業メモリ削除では消えない |
+| PR がある | PR 本文の該当節（下書きへ helper write → `gh pr edit --body-file` → `gh pr view` で同じファイルへ再取得してから `read`。view/edit 失敗は成功扱いにしない）、および既存 `.rite/review-results/` |
+| PR がない | `{state_root}/.rite/commit-records/issue-{issue_number}.md`（`commit-overflow-record.sh` が書く）。cleanup の作業メモリ削除では消えない |
 
 ```bash
 bash {plugin_root}/hooks/scripts/commit-overflow-record.sh write \

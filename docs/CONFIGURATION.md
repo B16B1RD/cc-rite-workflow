@@ -824,7 +824,7 @@ tdd:
 | `ja` | Japanese |
 | `en` | English |
 
-Commit messages that rite generates follow the repository-root `CLAUDE.md` / `AGENTS.md` first. `language` fills in the LLM-path default only when those files do not specify a language. Helper auto-commits keep their current fixed text when both files are absent. See [`commit-convention.md`](../plugins/rite/references/commit-convention.md).
+Commit messages that rite generates follow the worktree `CLAUDE.md` / `AGENTS.md`; nested files nearer the changed path take priority over the worktree root. `language` fills in the LLM-path default only when those files do not specify a language. Helper auto-commits keep their current fixed text when both files are absent. See [`commit-convention.md`](../plugins/rite/references/commit-convention.md).
 
 ## Configuration for Host Validation
 

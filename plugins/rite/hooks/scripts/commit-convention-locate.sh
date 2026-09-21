@@ -169,6 +169,35 @@ consider_nested_file() {
   esac
 }
 
+# Resolve --path itself (not only dirname) against ROOT. dirname of ../ is
+# ., so walk_parents would otherwise skip the out-of-tree argument.
+assert_path_in_tree() {
+  local p="$1"
+  local rel phys parent_phys
+  rel="${p%/}"
+  [ -z "$rel" ] && rel="."
+  [ "$rel" = "." ] && return 0
+  if [ -e "$ROOT/$rel" ] || [ -d "$ROOT/$rel" ]; then
+    phys=$(canon_abs_path "$ROOT/$rel") || {
+      echo "ERROR: commit-convention-locate: --path を解決できません: $p" >&2
+      return 1
+    }
+  else
+    parent_phys=$(canon_abs_path "$ROOT/$(dirname -- "$rel")") || {
+      echo "ERROR: commit-convention-locate: --path が作業ツリーの外です: $p" >&2
+      return 1
+    }
+    phys="$parent_phys/$(basename -- "$rel")"
+  fi
+  case "$phys" in
+    "$ROOT"|"$ROOT"/*) return 0 ;;
+    *)
+      echo "ERROR: commit-convention-locate: --path が作業ツリーの外です: $p" >&2
+      return 1
+      ;;
+  esac
+}
+
 walk_parents() {
   local rel_dir="$1"
   local next cand phys parent
@@ -221,6 +250,7 @@ if [ "${#PATHS[@]}" -gt 0 ]; then
       echo "ERROR: commit-convention-locate: --path に制御文字が含まれます" >&2
       exit 1
     fi
+    assert_path_in_tree "$p" || exit 1
     walk_parents "$(dirname -- "$p")" || exit 1
   done
 else

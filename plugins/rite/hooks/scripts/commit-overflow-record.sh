@@ -1,8 +1,9 @@
 #!/bin/bash
 # Blocking write/read for required commit records that do not fit the
 # project commit convention (root cause, acknowledged-finding audit).
-# Callers pass an existing store path (PR body draft, local work memory,
-# or review-results sidecar). This helper does not interpret conventions.
+# Callers pass an existing store path (PR body draft file, or
+# {state_root}/.rite/commit-records/issue-{issue_number}.md). This helper
+# does not interpret conventions and does not write GitHub or work-memory.
 #
 # Usage:
 #   bash commit-overflow-record.sh write --file ABS --section NAME --body-file ABS

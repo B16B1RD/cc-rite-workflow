@@ -94,6 +94,21 @@ if grep -q '作業ツリーの外' <<<"$esc_err"; then
 else
   fail "dotdot --path diagnostic: $esc_err"
 fi
+for p in '../' '..'; do
+  p_rc=0
+  p_err=$(cd "$nested_repo" && bash "$LOCATE" --path "$p" 2>&1) || p_rc=$?
+  assert "dotdot path $p exits 1" "1" "$p_rc"
+  if grep -q '作業ツリーの外' <<<"$p_err"; then
+    pass "dotdot path $p names the escape"
+  else
+    fail "dotdot path $p diagnostic: $p_err"
+  fi
+  if grep -q 'COMMIT_CONVENTION_PRESENT=0' <<<"$p_err"; then
+    fail "dotdot path $p must not degrade to PRESENT=0"
+  else
+    pass "dotdot path $p does not report PRESENT=0"
+  fi
+done
 chmod 000 "$nested_repo/pkg/CLAUDE.md"
 nest_unread_rc=0
 nest_unread_err=$(cd "$nested_repo" && bash "$LOCATE" --path pkg/x 2>&1) || nest_unread_rc=$?

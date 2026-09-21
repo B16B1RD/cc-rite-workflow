@@ -3,8 +3,9 @@
 #
 # Does not interpret CLAUDE.md / AGENTS.md text. A caller that already
 # generated a message passes --message-file. If convention files exist at
-# the shared root and no file is passed, this fails loudly. If neither
-# file exists, the caller default is used.
+# the locate root (cwd show-toplevel; Wiki worktree falls back to the
+# shared root) and no file is passed, this fails loudly. Nested files
+# also count as present. If none exist, the caller default is used.
 #
 # Usage (stdout = message bytes, no trailing status line):
 #   bash commit-convention-message.sh --default-file D [--message-file M] [--root DIR]

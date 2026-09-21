@@ -156,9 +156,36 @@ assert_grep "T-06 gate stays enabled" "$CONV" \
 assert_grep "T-06 fix Root Cause Gate reads overflow" "$FIX" \
   'commit-overflow-record.sh'
 assert_grep "T-06 fix overflow store is commit-records when no PR" "$FIX" \
-  '.rite/commit-records/issue-'
+  '.rite/commit-records/issue-{issue_number}.md'
+assert_grep "T-06 PR overflow fetches body to a draft file" "$FIX" \
+  'gh pr view {pr_number} --json body -q .body'
+assert_grep "T-06 PR overflow applies via gh pr edit --body-file" "$FIX" \
+  'gh pr edit {pr_number} --body-file "{overflow_store}"'
+assert_grep "T-06 PR overflow re-fetches updated body before read" "$FIX" \
+  '更新済み本文を再取得する'
+assert_grep "T-06 PR view/edit failure is not gate success" "$FIX" \
+  '失敗はゲート成功にしない'
+assert_grep "T-06 root-cause may live in overflow store" "$FIX" \
+  "or in the convention's overflow store when the body is forbidden"
+assert_not_grep "T-06 gate opener does not require body always" "$FIX" \
+  'the commit body \*\*MUST\*\* include a root-cause explanation'
+assert_grep "T-06 PR SoT re-fetches via gh pr view" "$CONV" \
+  'gh pr view'
 assert_not_grep "T-06 fix overflow store is not work memory" "$FIX" \
   'PR body or work memory'
+assert_not_grep "T-06 overflow helper header is not work memory" "$OVERFLOW" \
+  'local work memory'
+assert_grep "T-06 message helper fail-loud is locate root" "$MSG" \
+  'the locate root'
+assert_not_grep "T-06 message helper header is not shared-root only" "$MSG" \
+  'the shared root and no file is passed'
+assert_grep "T-06 ingest fail-loud comment is locate root" "$WIKI_INGEST" \
+  'locate root'
+assert_not_grep "T-06 ingest comment is not shared-root only" "$WIKI_INGEST" \
+  'Convention files at the shared root require --message-file'
+assert_grep "T-06 README nested wins over root" \
+  "$PLUGIN_ROOT/../../README.md" \
+  'nested files nearer the changed path take priority'
 
 # --- T-01 / T-02 / T-09: locator and --message-file handoff (no NL stand-in) ---
 repo="$(new_repo)"

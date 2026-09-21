@@ -1254,7 +1254,7 @@ rm -f "${TMPDIR:-/tmp}/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
 
 **Escalation trigger（パッチの重ね掛け停止）**: 対応中の finding が**同一 PR の前 cycle の fix が導入・変更した箇所**への指摘である場合（description が「cycle N で導入した」「前 cycle で追加した」等で当該 fix を名指しする場合を含む）、同じ機構への追加パッチを既定選択にしないこと。まず「当該機構ごと削除・単純化して指摘群を根から消せないか」を検討し、修正案の提示（ステップ 2.3）の前にその判断を chat へ 1 行明示する（例: `simplification-first: 削除 — 分岐機構を削除し行全体再生成へ単純化` / `simplification-first: 追加 — 理由: {なぜ削除ではないか}`。書式はステップ 3.2 の必須段落と同一）。
 
-Escalation trigger 成立時は、この判断を commit body の `simplification-first:` 段落（ステップ 3.2）として書く。ステップ 3.2.1 Root Cause Gate が段落の有無を検査する。
+Escalation trigger 成立時は、この判断を commit body の `simplification-first:` 段落（ステップ 3.2）として書く。本文禁止時は 3.2.1 の溢れ先へ移す。ステップ 3.2.1 Root Cause Gate が段落の有無を検査する。
 
 rationale: references/design-rationale.md#simplification-first-rationale
 
@@ -1897,8 +1897,8 @@ Before generating the commit message, check the `language` field in `rite-config
 
 規約が本文を禁じない限り、free-form の commit body を使う。Review-fix commits は次を **MUST** で残す（本文へ書くか、本文禁止なら 3.2.1 の前に overflow へ移す。body へ prepend しない）:
 - **対応方針** — 各 finding に対して何をしたか / なぜその方針か
-- **`Root cause:` / `根本原因:` 段落** — ステップ 3.2.1 Root Cause Gate が検査する
-- **`simplification-first:` 段落（Escalation trigger 成立時のみ）** — `simplification-first: 削除 — {何を削ったか}` または `simplification-first: 追加 — 理由: {なぜ削除ではないか}` の 1 段落。ステップ 3.2.1 Root Cause Gate が検査する。trigger 不成立の cycle では書かない
+- **`Root cause:` / `根本原因:` 段落** — ステップ 3.2.1 Root Cause Gate が検査する（本文禁止時は `{overflow_store}`）
+- **`simplification-first:` 段落（Escalation trigger 成立時のみ）** — `simplification-first: 削除 — {何を削ったか}` または `simplification-first: 追加 — 理由: {なぜ削除ではないか}` の 1 段落。ステップ 3.2.1 Root Cause Gate が検査する（本文禁止時は `{overflow_store}`）。trigger 不成立の cycle では書かない
 
 - Leave a blank line between the description line and the body
 - Write in free-form — no specific prefix or template required
@@ -1966,14 +1966,25 @@ fix(review): {description}
 
 ### 3.2.1 Root Cause Gate
 
-Before committing a fix, the commit body **MUST** include a root-cause explanation. This gate implements Quality Signal 2 (root-cause-missing fix detection) — see the Quality Signal 1-4 table in `skills/pr-review/references/finding-cycling.md`.
+Before committing a fix, a root-cause explanation **MUST** be in the commit body when the convention allows a body, or in the convention's overflow store when the body is forbidden. This gate implements Quality Signal 2 (root-cause-missing fix detection) — see the Quality Signal 1-4 table in `skills/pr-review/references/finding-cycling.md`.
 
-**Step 1**: 規約が本文を禁じるときは、3.2 の body へ Root cause を書かず、先に `commit-overflow-record.sh write --file ABS --section 'Root cause' --body-file ABS` で同じ必須記録を書く。検査は同じ `--section` の `read` を使う。規約が本文を禁じないときは 3.2 の commit body に `Root cause:` / `根本原因:` 段落があるか LLM が判定する (Bash 状態非依存)。規約が本文・trailer を禁じて溢れさせた場合は、同じ必須記録を PR 本文または `commit-overflow-record.sh` の保存先から読む。どちらにも無ければ `missing`。検査を外して通過させない。Escalation trigger 成立時は `simplification-first:` 段落の有無も同じ規則で判定し、いずれかの欠落を `missing` とする。trigger 不成立の cycle では `simplification-first:` 段落を要求しない。溢れ先への書込失敗はコミットしない。body へ prepend しない。
+**Step 1**: 規約が本文を禁じるときは、3.2 の body へ Root cause を書かず、先に溢れ先 `{overflow_store}` へ同じ必須記録を書く。検査は同じ `--file` の `read` を使う。helper は絶対パスのローカルファイルだけを受け取り、PR 本文や work-memory へは書かない。
+
+- PR あり:
+  1. `gh pr view {pr_number} --json body -q .body` を作業ツリー外の `{overflow_store}` へ書く
+  2. `commit-overflow-record.sh write --file "{overflow_store}" --section 'Root cause' --body-file ABS`
+  3. `gh pr edit {pr_number} --body-file "{overflow_store}"`
+  4. 同じ `{overflow_store}` へ `gh pr view {pr_number} --json body -q .body` で更新済み本文を再取得する
+  5. 同じ `{overflow_store}` を `read` する
+  `gh pr view` / `gh pr edit` の失敗はゲート成功にしない。
+- PR なし: `{overflow_store}` は `{state_root}/.rite/commit-records/issue-{issue_number}.md`
+
+規約が本文を禁じないときは 3.2 の commit body に `Root cause:` / `根本原因:` 段落があるか LLM が判定する (Bash 状態非依存)。規約が本文・trailer を禁じて溢れさせた場合は、同じ `{overflow_store}` から読む。どちらにも無ければ `missing`。検査を外して通過させない。Escalation trigger 成立時は `simplification-first:` 段落の有無も同じ規則で判定し、いずれかの欠落を `missing` とする。trigger 不成立の cycle では `simplification-first:` 段落を要求しない。溢れ先への書込失敗、および PR 経路の `gh pr view` / `gh pr edit` 失敗はコミットしない。body へ prepend しない。work-memory を溢れ先にしない。
 
 Emit one of the two context markers so downstream logic can route:
 
 ```bash
-# LLM-side determination: examine the commit body generated in ステップ 3.2 and emit one of:
+# LLM-side determination: examine the commit body from ステップ 3.2, or `{overflow_store}` from Step 1 when the body is forbidden, and emit one of:
 echo "[CONTEXT] ROOT_CAUSE_GATE=ok"
 # or
 echo "[CONTEXT] ROOT_CAUSE_GATE=missing"
@@ -1983,8 +1994,8 @@ echo "[CONTEXT] ROOT_CAUSE_GATE=missing"
 
 | Option | Action |
 |--------|--------|
-| 不足段落を追記して再コミット（推奨） | Ask the user for a short paragraph for whichever Step 1 found missing: prepend a `Root cause: {paragraph}` / `根本原因: {paragraph}` paragraph, or (Escalation trigger 成立時) a `simplification-first: {paragraph}` paragraph, to the commit body when the convention allows a body; if the convention forbids a body, write the same paragraph with `commit-overflow-record.sh write` to the PR body (when a PR exists) or `{state_root}/.rite/commit-records/issue-{N}.md` (when there is no PR), and do not prepend to the commit. Do not use work-memory as the overflow store. 書込失敗はコミットしない。re-invoke Step 1. The retry count is tracked in conversation context by the LLM — after one retry the LLM falls through to the second option to avoid an infinite prompt loop |
-| 意図的な補足コミットとして通過 | Prepend a bypass paragraph for whichever Step 1 found missing — `Root cause (bypass): {理由}`, or (Escalation trigger 成立時) `simplification-first (bypass): {理由}` — to the commit body when the convention allows a body (the bypass rationale recorded alongside the commit for machine-traceability). If the convention forbids a body, write the same rationale to the overflow store. AND append the same rationale to work memory `決定事項・メモ`. The bypass is still recorded. 溢れ先への書込失敗はコミットしない |
+| 不足段落を追記して再コミット（推奨） | Ask the user for a short paragraph for whichever Step 1 found missing: prepend a `Root cause: {paragraph}` / `根本原因: {paragraph}` paragraph, or (Escalation trigger 成立時) a `simplification-first: {paragraph}` paragraph, to the commit body when the convention allows a body; if the convention forbids a body, write the same paragraph to `{overflow_store}` with the Step 1 procedure（`gh pr view` → helper write → `gh pr edit --body-file` → `gh pr view` で同じ `{overflow_store}` へ再取得 → `read`。PR なしは `{state_root}/.rite/commit-records/issue-{issue_number}.md`）。and do not prepend to the commit. Do not use work-memory as the overflow store. 書込失敗および `gh pr view` / `gh pr edit` 失敗はコミットしない。re-invoke Step 1. The retry count is tracked in conversation context by the LLM — after one retry the LLM falls through to the second option to avoid an infinite prompt loop |
+| 意図的な補足コミットとして通過 | Prepend a bypass paragraph for whichever Step 1 found missing — `Root cause (bypass): {理由}`, or (Escalation trigger 成立時) `simplification-first (bypass): {理由}` — to the commit body when the convention allows a body (the bypass rationale recorded alongside the commit for machine-traceability). If the convention forbids a body, write the same rationale to `{overflow_store}` with the same Step 1 procedure. AND append the same rationale to work memory `決定事項・メモ`. The bypass is still recorded. 溢れ先への書込失敗はコミットしない |
 | Abort | Skip this fix cycle; emit `[fix:error]` and return control to the caller |
 
 cosmetic は option 2 可。bypass は記録必須。
