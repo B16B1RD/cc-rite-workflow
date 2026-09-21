@@ -176,6 +176,15 @@ if printf '%s' "$dry_out" | grep -cE >/dev/null 'dry-run; branch=wiki'; then
 else
   fail "dry-run status line missing: $dry_out"
 fi
+printf 'English only.\n' > "$dryrun_repo/CLAUDE.md"
+assert "dry-run with CLAUDE.md exits 0" "0" "$(rc_in "$dryrun_repo" --dry-run)"
+dry_conv_out="$(run_in "$dryrun_repo" --dry-run)"
+if printf '%s' "$dry_conv_out" | grep -cE >/dev/null 'dry-run; branch=wiki'; then
+  pass "dry-run with CLAUDE.md still reports dry-run"
+else
+  fail "dry-run with CLAUDE.md status: $dry_conv_out"
+fi
+rm -f "$dryrun_repo/CLAUDE.md"
 
 # --- Happy path: commit + push to LOCAL bare origin (AC-4) --------------------
 commit_repo="$(new_repo true)"; SANDBOXES+=("$commit_repo")
@@ -473,5 +482,14 @@ else
 fi
 wiki_before_conv=$(git -C "$conv_repo" rev-parse wiki)
 assert "convention-present failure does not advance wiki" "$wiki_before_conv" "$(git -C "$conv_repo" rev-parse wiki)"
+empty_rc=0
+empty_err=$(cd "$conv_repo" && bash "$SCRIPT" --commit-only --message-file "" 2>&1) || empty_rc=$?
+assert "empty --message-file exits 1" "1" "$empty_rc"
+if printf '%s' "$empty_err" | grep -q 'requires a value'; then
+  pass "empty --message-file names the required value"
+else
+  fail "empty --message-file diagnostic: $empty_err"
+fi
+assert "empty --message-file does not advance wiki" "$wiki_before_conv" "$(git -C "$conv_repo" rev-parse wiki)"
 
 print_summary "wiki-worktree-commit.sh"

@@ -217,10 +217,10 @@ fi
 ln -s "$wiki_repo/.rite/wiki-worktree/missing" "$wiki_repo/.rite/wiki-worktree/CLAUDE.md"
 wiki_dang_rc=0
 wiki_dang_err=$(cd "$wiki_repo/.rite/wiki-worktree" && bash "$LOCATE" 2>&1) || wiki_dang_rc=$?
-rm -f "$wiki_repo/.rite/wiki-worktree/CLAUDE.md"
 assert "wiki dangling CLAUDE.md exits 1" "1" "$wiki_dang_rc"
-if grep -q '通常ファイルではありません' <<<"$wiki_dang_err"; then
-  pass "wiki dangling does not fallback to shared root"
+if grep -q 'commit-convention-locate: CLAUDE.md が通常ファイルではありません' <<<"$wiki_dang_err" \
+  && ! grep -q 'ネストした規約ファイル' <<<"$wiki_dang_err"; then
+  pass "wiki dangling uses classify diagnostic not nested"
 else
   fail "wiki dangling diagnostic: $wiki_dang_err"
 fi
@@ -229,16 +229,24 @@ if grep -q 'COMMIT_CONVENTION_PRESENT=0' <<<"$wiki_dang_err"; then
 else
   pass "wiki dangling does not report PRESENT=0"
 fi
+wiki_root_rc=0
+wiki_root_err=$(cd "$wiki_repo" && bash "$LOCATE" --root "$wiki_repo/.rite/wiki-worktree" 2>&1) || wiki_root_rc=$?
+assert "wiki dangling via --root exits 1" "1" "$wiki_root_rc"
+rm -f "$wiki_repo/.rite/wiki-worktree/CLAUDE.md"
 mkdir "$wiki_repo/.rite/wiki-worktree/CLAUDE.md"
 wiki_dir_rc=0
 wiki_dir_err=$(cd "$wiki_repo/.rite/wiki-worktree" && bash "$LOCATE" 2>&1) || wiki_dir_rc=$?
-rmdir "$wiki_repo/.rite/wiki-worktree/CLAUDE.md"
 assert "wiki directory CLAUDE.md exits 1" "1" "$wiki_dir_rc"
-if grep -q '通常ファイルではありません' <<<"$wiki_dir_err"; then
-  pass "wiki directory CLAUDE.md does not fallback"
+if grep -q 'commit-convention-locate: CLAUDE.md が通常ファイルではありません' <<<"$wiki_dir_err" \
+  && ! grep -q 'ネストした規約ファイル' <<<"$wiki_dir_err"; then
+  pass "wiki directory uses classify diagnostic not nested"
 else
   fail "wiki directory diagnostic: $wiki_dir_err"
 fi
+wiki_dir_root_rc=0
+wiki_dir_root_err=$(cd "$wiki_repo" && bash "$LOCATE" --root "$wiki_repo/.rite/wiki-worktree" 2>&1) || wiki_dir_root_rc=$?
+assert "wiki directory via --root exits 1" "1" "$wiki_dir_root_rc"
+rmdir "$wiki_repo/.rite/wiki-worktree/CLAUDE.md"
 
 # --- --root override ---
 root_out=$(bash "$LOCATE" --root "$claude_repo")

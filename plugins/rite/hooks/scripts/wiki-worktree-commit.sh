@@ -120,7 +120,7 @@ while [[ $# -gt 0 ]]; do
  shift 2
  ;;
  --message-file)
- if [[ $# -lt 2 ]]; then
+ if [[ $# -lt 2 ]] || [[ -z "${2:-}" ]]; then
  echo "ERROR: --message-file requires a value" >&2
  exit 1
  fi
