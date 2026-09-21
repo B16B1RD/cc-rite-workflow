@@ -125,7 +125,7 @@ digest_sample="$TEST_DIR/digest-sample"
 printf 'payload\n' > "$digest_sample"
 
 echo "digest_file: swallowed rc form is absent"
-swallowed_needle='if [ "$('
+swallowed_needle='[ "$('
 swallowed_needle="${swallowed_needle}digest_file"
 if grep -F "$swallowed_needle" "$SCRIPT_DIR/session-end.test.sh" >/dev/null; then
   fail "if-condition still swallows digest_file rc"
