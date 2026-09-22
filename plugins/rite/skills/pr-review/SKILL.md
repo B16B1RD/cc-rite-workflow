@@ -1089,7 +1089,7 @@ echo "review_pre_state: branch=$ORIG_BR stash_count=$ORIG_SC branch_list_hash=$O
 
 > **Reference**: [Wiki Query](../wiki-query/SKILL.md) — `wiki-query-inject.sh` API
 
-reviewer ロード前に Wiki の経験知を注入する。`wiki.enabled: true` かつ `wiki.auto_query: true` のときだけ。それ以外は silent skip。
+reviewer ロード前に Wiki の経験知を注入する。会話へ注入するのは `wiki.enabled: true` かつ `wiki.auto_query: true` のとき。設定が false でもこの節は飛ばさず、capture を呼ぶ。既存の適用証跡は消さない。
 
 **Step 1**: Check Wiki configuration:
 
@@ -1110,24 +1110,25 @@ case "$auto_query" in true|yes|1) auto_query="true" ;; *) auto_query="false" ;; 
 echo "wiki_enabled=$wiki_enabled auto_query=$auto_query"
 ```
 
-If `wiki_enabled=false` or `auto_query=false`, skip this section and set `{wiki_context}` to empty string in ステップ 4.5.
-**Step 2**: Generate keywords from the PR context and invoke the query:
-Keywords are derived from: changed file paths (from ステップ 1.2) and file type categories (e.g., `hooks`, `commands`, `review`, `security`).
+`{keywords}` は変更パスとファイル種別。`{changed_paths}` は存在する対象パスのカンマ区切りで、空なら `--paths` を省く。契約は [wiki-apply-contract.md](../../references/wiki-apply-contract.md)。
+
+**Step 3**: 先に既存の `### Wiki 適用証跡` を突合する。applied の各ページで、rev の実本文と excerpt、evidence パスの実差分、result のコマンド再実行を比べる。手順は [wiki-apply-contract.md](../../references/wiki-apply-contract.md) の「レビューの突合」。1 つでも違えば指摘にし、レビューを完了にしない。その後でゲートを呼ぶ。ゲートが deny なら完了にしない。
 
 ```bash
-# {plugin_root} はリテラル値で埋め込む
-# {keywords} は変更ファイルパス + ファイル種別をカンマ区切りで生成
-# （他コーラー skills/issue-create/SKILL.md / skills/fix/SKILL.md /
-#   skills/issue-implement/SKILL.md / skills/unknowns/SKILL.md と同形式）
-wiki_context=$(bash {plugin_root}/hooks/wiki-query-inject.sh \
- --keywords "{keywords}" \
- --format compact 2>/dev/null) || wiki_context=""
-if [ -n "$wiki_context" ]; then
- echo "$wiki_context"
-fi
+wiki_context=$(bash {plugin_root}/hooks/scripts/wiki-apply-capture.sh \
+  --keep-record --keywords "{keywords}" --paths "{changed_paths}") || {
+  echo "ERROR: Wiki 検索に失敗したため、レビューを完了扱いにしません" >&2
+  exit 1
+}
+printf '%s\n' "$wiki_context"
+gate_out=$(bash {plugin_root}/hooks/scripts/wiki-apply-gate.sh --mode review) || {
+  echo "ERROR: Wiki 適用証跡が変更と対応していません" >&2
+  printf '%s\n' "$gate_out"
+  exit 1
+}
 ```
 
-**Step 3**: If `wiki_context` is non-empty, retain it for injection into the review instruction template (ステップ 4.5) via the `{wiki_context}` placeholder. If empty, set `{wiki_context}` to empty string (the placeholder section will be omitted).
+`{wiki_context}` が空ならステップ 4.5 のプレースホルダも空にする。`--keep-record` は既存の証跡節を置き換えない。
 
 ### 4.1 Reviewer Profiles (named subagent system prompt)
 

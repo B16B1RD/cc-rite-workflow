@@ -64,7 +64,7 @@ bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number}
 
 > **Reference**: [Wiki Query](../wiki-query/SKILL.md) — `wiki-query-inject.sh` API
 
-**Condition**: `wiki.enabled: true` AND `wiki.auto_query: true`。それ以外は silent skip。
+**Condition**: 会話へ注入するのは `wiki.enabled: true` かつ `wiki.auto_query: true` のとき。設定が false でもこの節は飛ばさない。capture を呼ばないと証跡が無く、コミット前ゲートが拒否する。
 
 **Step 1**: Wiki 設定:
 
@@ -85,26 +85,20 @@ case "$auto_query" in true|yes|1) auto_query="true" ;; *) auto_query="false" ;; 
 echo "wiki_enabled=$wiki_enabled auto_query=$auto_query"
 ```
 
-`wiki_enabled=false` または `auto_query=false` なら実装へ。
+設定が false でも capture は呼ぶ。呼ばないと証跡が無く、コミット前ゲートが拒否する。
 
-**Step 2**: 計画のステップ記述・対象パス・ドメイン用語から keywords を生成して query:
+**Step 2**: `{keywords}` は計画の対象パスと変更目的。`{changed_paths}` は存在する対象パスのカンマ区切りで、空なら `--paths` を省く。未置換のリテラルは渡さない。契約は [wiki-apply-contract.md](../../references/wiki-apply-contract.md)。
 
 ```bash
-# {plugin_root} はリテラル値で埋め込む
-# {keywords} は実装計画のキーワード（ファイルパス、ドメイン用語等）をカンマ区切りで生成
-# （他コーラー skills/issue-create/SKILL.md / skills/fix/SKILL.md /
-#   skills/pr-review/SKILL.md / skills/unknowns/SKILL.md と同形式）
-wiki_context=$(bash {plugin_root}/hooks/wiki-query-inject.sh \
-  --keywords "{keywords}" \
-  --format compact 2>/dev/null) || wiki_context=""
-if [ -n "$wiki_context" ]; then
-  echo "$wiki_context"
-else
-  echo "(Wiki から関連経験則は見つかりませんでした)"
-fi
+wiki_context=$(bash {plugin_root}/hooks/scripts/wiki-apply-capture.sh \
+  --keywords "{keywords}" --paths "{changed_paths}") || {
+  echo "ERROR: Wiki 検索に失敗したため、コミットへ進みません" >&2
+  exit 1
+}
+printf '%s\n' "$wiki_context"
 ```
 
-**Step 3**: `wiki_context` が非空なら会話 context に保持し、実装中に参照する。
+**Step 3**: status が ok の各ページは rev の本文を読み、本文中の 1 行を excerpt に書く。applied は evidence と、実行した検証コマンドおよび結果を result に書く。out は reason に理由を書く。`body: read` だけでは次へ進まない。ゲートが deny なら commit しない。`git-commit-file.sh` は成功後に head を更新する。それ以外の commit のあとは、証跡の head を新しい HEAD に更新する。blob が現在のファイルと違うときは capture からやり直す。
 
 ### 5.0.T Canon TDD Cycle (Conditional)
 

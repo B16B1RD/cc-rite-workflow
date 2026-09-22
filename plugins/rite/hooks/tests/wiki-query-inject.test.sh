@@ -165,8 +165,8 @@ else
   fail "TC-2 (rc=$QRC hi=$hi_line lo=$lo_line out=$QOUT)"
 fi
 
-# --- TC-3 (T-08): unreadable candidate page → non-blocking skip ---
-echo "=== TC-3: 候補 page 読取失敗で WARNING + 非ブロッキング継続 (他候補は表示) ==="
+# --- TC-3 (T-08): unreadable candidate page fails the query ---
+echo "=== TC-3: 候補 page 読取失敗は再試行後に exit 2、stdout は空 ==="
 INDEX_3='# Wiki Index
 
 * [Good Page](pages/heuristics/good.md) - gizmo の良いページ
@@ -182,11 +182,12 @@ confidence: medium
 ---'
 # missing.md は作らない
 run_query "$repo" --keywords "gizmo" --format compact
-if [ "$QRC" -eq 0 ] \
-   && printf '%s' "$QOUT" | grep -c >/dev/null 'Good Page' \
-   && printf '%s' "$QERR" | grep -c >/dev/null 'pages/heuristics/missing.md' \
-   && printf '%s' "$QERR" | grep -ci >/dev/null 'skipping candidate'; then
-  pass "TC-3 missing.md は WARNING + skip、Good Page は表示、exit 0"
+if [ "$QRC" -eq 2 ] \
+   && [ -z "$QOUT" ] \
+   && grep -q 'WIKI_QUERY_STATUS=error' <<<"$QERR" \
+   && grep -q 'WIKI_QUERY_ATTEMPTS=2' <<<"$QERR" \
+   && grep -q 'pages/heuristics/missing.md' <<<"$QERR"; then
+  pass "TC-3 missing.md は再試行後に error、stdout 空、Good Page は出ない"
 else
   fail "TC-3 (rc=$QRC out=$QOUT err=$QERR)"
 fi
@@ -199,10 +200,11 @@ INDEX_4='# Wiki Index
 '
 repo=$(make_query_sandbox tc4 "$INDEX_4")
 run_query "$repo" --keywords "anything" --format compact
-if [ "$QRC" -eq 0 ] && [ -z "$QOUT" ]; then
-  pass "TC-4 候補なしで空出力 exit 0"
+if [ "$QRC" -eq 0 ] && [ -z "$QOUT" ] \
+   && grep -q 'WIKI_QUERY_STATUS=none' <<<"$QERR"; then
+  pass "TC-4 候補なしで空出力 exit 0 status=none"
 else
-  fail "TC-4 (rc=$QRC out=$QOUT)"
+  fail "TC-4 (rc=$QRC out=$QOUT err=$QERR)"
 fi
 
 # --- TC-5 (F-01): HTML comment bullet example is NOT parsed as candidate ---
@@ -332,10 +334,10 @@ INDEX_9='# Wiki Index
 '
 repo=$(make_query_sandbox tc9 "$INDEX_9")
 run_query "$repo" --keywords "anything" --format compact
-if [ "$QRC" -eq 0 ] \
-   && printf '%s' "$QOUT" | grep -c >/dev/null 'Wiki 経験則は注入されていません' \
-   && printf '%s' "$QERR" | grep -c >/dev/null '候補を 1 件も抽出できませんでした'; then
-  pass "TC-9 形式未対応による 0 件が stderr と stdout の両方で可視化される"
+if [ "$QRC" -eq 2 ] && [ -z "$QOUT" ] \
+   && grep -q 'WIKI_QUERY_STATUS=error' <<<"$QERR" \
+   && grep -q '候補を 1 件も抽出できませんでした' <<<"$QERR"; then
+  pass "TC-9 形式未対応は error、stdout は空"
 else
   fail "TC-9 (rc=$QRC out=$QOUT err=$QERR)"
 fi
@@ -532,11 +534,11 @@ echo "=== TC-15: パイプバッファ超の index でも 0 件 WARNING が出�
 repo=$(make_query_sandbox tc15 "$(cat "$TEST_DIR/big_index.md")")
 idx_size=$(wc -c < "$repo/.rite/wiki/index.md")
 run_query "$repo" --keywords "anything" --format compact
-if [ "$QRC" -eq 0 ] \
+if [ "$QRC" -eq 2 ] && [ -z "$QOUT" ] \
    && [ "$idx_size" -gt 65536 ] \
-   && printf '%s' "$QOUT" | grep -c >/dev/null 'Wiki 経験則は注入されていません' \
-   && printf '%s' "$QERR" | grep -c >/dev/null '候補を 1 件も抽出できませんでした'; then
-  pass "TC-15 ${idx_size} バイトの index でも 0 件 WARNING が発火する"
+   && grep -q 'WIKI_QUERY_STATUS=error' <<<"$QERR" \
+   && grep -q '候補を 1 件も抽出できませんでした' <<<"$QERR"; then
+  pass "TC-15 ${idx_size} バイトの index でも error が発火する"
 else
   fail "TC-15 size=$idx_size (rc=$QRC out=$QOUT err=$QERR)"
 fi
@@ -684,6 +686,88 @@ if [ "$QRC" -eq 0 ] \
   pass "TC-19 部分脱落 sample 行に日本語が残り ESC は ? 化される"
 else
   fail "TC-19 (rc=$QRC)"
+fi
+
+echo "=== TC-20: enabled false は disabled、stdout 空、exit 0 ==="
+repo=$(make_query_sandbox tc20 '# Wiki Index
+')
+cat > "$repo/rite-config.yml" <<'CFG'
+wiki:
+  enabled: false
+  branch_strategy: "same_branch"
+CFG
+run_query "$repo" --keywords "anything" --format compact
+if [ "$QRC" -eq 0 ] && [ -z "$QOUT" ] \
+   && grep -q 'WIKI_QUERY_STATUS=disabled' <<<"$QERR"; then
+  pass "TC-20 disabled"
+else
+  fail "TC-20 (rc=$QRC out=$QOUT err=$QERR)"
+fi
+
+echo "=== TC-21: auto_query false は auto_query_off、disabled ではない ==="
+repo=$(make_query_sandbox tc21 '# Wiki Index
+')
+cat > "$repo/rite-config.yml" <<'CFG'
+wiki:
+  enabled: true
+  auto_query: false
+  branch_strategy: "same_branch"
+CFG
+run_query "$repo" --keywords "anything" --format compact
+if [ "$QRC" -eq 0 ] && [ -z "$QOUT" ] \
+   && grep -q 'WIKI_QUERY_STATUS=auto_query_off' <<<"$QERR" \
+   && ! grep -q 'WIKI_QUERY_STATUS=disabled' <<<"$QERR"; then
+  pass "TC-21 auto_query_off"
+else
+  fail "TC-21 (rc=$QRC out=$QOUT err=$QERR)"
+fi
+
+echo "=== TC-22: 有効だが index が無いのは uninitialized、exit 2 ==="
+repo=$(make_query_sandbox tc22 '# Wiki Index
+')
+rm -f "$repo/.rite/wiki/index.md"
+run_query "$repo" --keywords "anything" --format compact
+if [ "$QRC" -eq 2 ] && [ -z "$QOUT" ] \
+   && grep -q 'WIKI_QUERY_STATUS=uninitialized' <<<"$QERR"; then
+  pass "TC-22 uninitialized"
+else
+  fail "TC-22 (rc=$QRC out=$QOUT err=$QERR)"
+fi
+
+echo "=== TC-23: index を読めないときは 2 回試して error ==="
+repo=$(make_query_sandbox tc23 '# Wiki Index
+')
+chmod 000 "$repo/.rite/wiki/index.md"
+run_query "$repo" --keywords "anything" --format compact
+chmod 644 "$repo/.rite/wiki/index.md" || true
+if [ "$QRC" -eq 2 ] && [ -z "$QOUT" ] \
+   && grep -q 'WIKI_QUERY_STATUS=error' <<<"$QERR" \
+   && grep -q 'WIKI_QUERY_ATTEMPTS=2' <<<"$QERR"; then
+  pass "TC-23 retry then error"
+else
+  fail "TC-23 (rc=$QRC out=$QOUT err=$QERR)"
+fi
+
+echo "=== TC-24: ヒット時の stdout は Markdown、status=ok ==="
+repo=$(make_query_sandbox tc24 '# Wiki Index
+
+* [Hit Page](pages/heuristics/hit.md) - widget のページ
+')
+write_page "$repo" pages/heuristics/hit.md '---
+title: "Hit Page"
+domain: heuristics
+description: "widget のページ"
+generated: { by: "rite-wiki-ingest/test", at: "2026-06-15" }
+confidence: medium
+---'
+run_query "$repo" --keywords "widget" --format compact
+if [ "$QRC" -eq 0 ] \
+   && grep -q '### 📚 Wiki 経験則' <<<"$QOUT" \
+   && grep -q 'Hit Page' <<<"$QOUT" \
+   && grep -q 'WIKI_QUERY_STATUS=ok' <<<"$QERR"; then
+  pass "TC-24 ok markdown"
+else
+  fail "TC-24 (rc=$QRC out=$QOUT err=$QERR)"
 fi
 
 echo ""

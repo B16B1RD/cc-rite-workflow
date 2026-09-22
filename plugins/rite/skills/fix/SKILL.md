@@ -134,7 +134,7 @@ standalone: 引数なしなら現在ブランチの PR。work memory の関連 P
 
 > **Reference**: [Wiki Query](../wiki-query/SKILL.md) — `wiki-query-inject.sh` API
 
-レビュー取得前に Wiki 経験則を注入する。条件: `wiki.enabled: true` かつ `wiki.auto_query: true`。それ以外は silent skip。
+レビュー取得前に Wiki 経験則を注入する。会話へ注入するのは `wiki.enabled: true` かつ `wiki.auto_query: true` のとき。設定が false でもこの節は飛ばさず、capture を呼ぶ。
 
 ```bash
 wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
@@ -153,24 +153,18 @@ case "$auto_query" in true|yes|1) auto_query="true" ;; *) auto_query="false" ;; 
 echo "wiki_enabled=$wiki_enabled auto_query=$auto_query"
 ```
 
-`wiki_enabled=false` または `auto_query=false` なら ステップ 1 へ。キーワードは指摘カテゴリ・対象パス・finding 種別。
+`{keywords}` は指摘カテゴリ、対象パス、失敗内容。`{changed_paths}` は存在する対象パスのカンマ区切りで、空なら `--paths` を省く。契約は [wiki-apply-contract.md](../../references/wiki-apply-contract.md)。
 
 ```bash
-# {plugin_root} はリテラル値で埋め込む
-# {keywords} はレビュー指摘のカテゴリ + 対象ファイルパスをカンマ区切りで生成
-# （他コーラー skills/issue-create/SKILL.md / skills/pr-review/SKILL.md /
-#   skills/issue-implement/SKILL.md / skills/unknowns/SKILL.md と同形式）
-wiki_context=$(bash {plugin_root}/hooks/wiki-query-inject.sh \
-  --keywords "{keywords}" \
-  --format compact 2>/dev/null) || wiki_context=""
-if [ -n "$wiki_context" ]; then
-  echo "$wiki_context"
-else
-  echo "(Wiki から関連経験則は見つかりませんでした)"
-fi
+wiki_context=$(bash {plugin_root}/hooks/scripts/wiki-apply-capture.sh \
+  --keywords "{keywords}" --paths "{changed_paths}") || {
+  echo "ERROR: Wiki 検索に失敗したため、コミットへ進みません" >&2
+  exit 1
+}
+printf '%s\n' "$wiki_context"
 ```
 
-非空なら context に残し、ステップ 2 の修正方針に使う。
+status が ok の各ページは rev の本文を読み、excerpt、判断、applied なら evidence と result を証跡に書く。`body: read` だけでは commit しない。ゲートが deny なら commit しない。commit 後に head が現在の HEAD と違うとき、または blob がファイルと違うときは capture からやり直す。
 
 ---
 
