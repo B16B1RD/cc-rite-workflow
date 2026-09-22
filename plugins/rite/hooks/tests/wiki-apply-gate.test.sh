@@ -539,7 +539,7 @@ if [ "$crc" -ne 0 ] && [ "$head_before" = "$head_after" ] && grep -q 'index の�
 else
   fail "extra -p rc=$crc err=$(cat "$ROOT/extra-p.err")"
 fi
-for _cluster in "-av -m x" "-qa -m x" "-pv -m x" "--interactive -m x" "--pathspec-from-file=paths.txt -m x"; do
+for _cluster in "-av -m x" "-qa -m x" "-pv -m x" "-am msg" "--interactive -m x" "--pathspec-from-file=paths.txt -m x"; do
   cluster=$(jq -n --arg cwd "$repo" --arg cmd "git commit $_cluster" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
   grc=0
   gout=$(printf '%s' "$cluster" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
@@ -549,6 +549,23 @@ for _cluster in "-av -m x" "-qa -m x" "-pv -m x" "--interactive -m x" "--pathspe
     fail "guard cluster $_cluster rc=$grc out=$gout"
   fi
 done
+# 値の三形態: 束ねの末尾が値を取る、同じトークンに値が続く、次トークンが値。
+for _index_args in "-qm msg" "-qF file" "-mfix" "-uno" "-q -m msg"; do
+  got=$(python3 "$SCRIPT_DIR/../scripts/lib/review-fix-scope.py" classify-extras -- $_index_args)
+  if [ "$got" = index ]; then
+    pass "classify keeps index for $_index_args"
+  else
+    fail "classify $_index_args got $got"
+  fi
+done
+qm=$(jq -n --arg cwd "$repo" '{tool_name:"Bash", tool_input:{command:"git commit -qm message"}, cwd:$cwd}')
+grc=0
+gout=$(printf '%s' "$qm" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+if grep -q 'wiki-apply-gate' <<<"$gout" && ! grep -q 'wiki-apply-index' <<<"$gout"; then
+  pass "guard does not treat -qm message as a pathspec"
+else
+  fail "guard -qm rc=$grc out=$gout"
+fi
 crc=0
 WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" \
   bash "$COMMIT" --file "$msg" --worktree "$repo" -- -av >"$ROOT/extra-av.out" 2>"$ROOT/extra-av.err" || crc=$?
@@ -575,10 +592,24 @@ else
   fail "other -a rc=$crc err=$(cat "$ROOT/extra-other.err")"
 fi
 crc=0
-WIKI_APPLY_FLOW_STATE="$clean" WIKI_APPLY_MEMORY="$ROOT/no-such.md" \
+WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" \
+  bash "$COMMIT" --file "$msg" --worktree "$repo" -- -qm x >"$ROOT/extra-qm.out" 2>"$ROOT/extra-qm.err" || crc=$?
+head_after=$(git -C "$repo" rev-parse HEAD)
+if [ "$crc" -ne 0 ] && [ "$head_before" = "$head_after" ] \
+  && grep -q 'record_missing' <<<"$(cat "$ROOT/extra-qm.err")" \
+  && ! grep -q 'index の照合を外す' <<<"$(cat "$ROOT/extra-qm.err")"; then
+  pass "git-commit-file keeps -qm as an index commit"
+else
+  fail "extra -qm rc=$crc err=$(cat "$ROOT/extra-qm.err")"
+fi
+crc=0
+WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" \
   bash "$COMMIT" --file "$msg" --worktree "$repo" -- --trailer 'Signed-off-by: T <t@t.example>' >"$ROOT/extra-trailer.out" 2>"$ROOT/extra-trailer.err" || crc=$?
-if ! grep -q 'index の照合を外す' <<<"$(cat "$ROOT/extra-trailer.err")" && ! grep -q 'pathspec' <<<"$(cat "$ROOT/extra-trailer.err")"; then
-  pass "git-commit-file keeps a trailer value"
+head_after=$(git -C "$repo" rev-parse HEAD)
+if [ "$crc" -ne 0 ] && [ "$head_before" = "$head_after" ] \
+  && grep -q 'record_missing' <<<"$(cat "$ROOT/extra-trailer.err")" \
+  && ! grep -q 'index の照合を外す' <<<"$(cat "$ROOT/extra-trailer.err")"; then
+  pass "git-commit-file keeps an in-scope trailer value"
 else
   fail "trailer rc=$crc err=$(cat "$ROOT/extra-trailer.err")"
 fi

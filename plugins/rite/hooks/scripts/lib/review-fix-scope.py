@@ -22,8 +22,9 @@ def digest(value):
 
 
 # git commit の内容指定。照合した index ではなく作業ツリーを記録する。
-_CONTENT_SHORT = re.compile(r"-[A-Za-z]*[aiop][A-Za-z]*\Z")
-_VALUE_SHORT_END = re.compile(r"-[A-Za-z]*[mFCct]\Z")
+_CONTENT_FLAGS = set("aiop")
+_REQUIRED_VALUE = set("mFCct")
+_OPTIONAL_VALUE = set("uS")
 _CONTENT_LONG = {
     "--all", "--include", "--interactive", "--only", "--patch",
     "--pathspec-file-nul", "--pathspec-from-file",
@@ -35,11 +36,33 @@ _VALUE_LONG = {
 }
 
 
+def _scan_short_cluster(body):
+    """Read one short cluster from the left, the way git does.
+
+    a/i/o/p are content flags. m/F/C/c/t take a required value: the rest of
+    this token, or the next token when nothing remains. u/S take the rest of
+    this token as an optional value. Letters inside a value are not flags.
+    """
+    index_only = True
+    i = 0
+    while i < len(body):
+        ch = body[i]
+        if ch in _CONTENT_FLAGS:
+            index_only = False
+            i += 1
+            continue
+        if ch in _REQUIRED_VALUE:
+            return index_only, body[i + 1:] == ""
+        if ch in _OPTIONAL_VALUE:
+            return index_only, False
+        i += 1
+    return index_only, False
+
+
 def classify_commit_args(args):
     """Return whether these tokens after `commit` are a dry run, and whether
     they record the index. A value glued on with '=' is not a following pathspec.
-    `--amend` stays an index commit. Short clusters record other content when
-    they contain a, i, o, or p."""
+    `--amend` stays an index commit."""
     dry_run, skip, index_only, dashed = False, False, True, False
     for option in args:
         if dashed:
@@ -60,9 +83,11 @@ def classify_commit_args(args):
             if eq == "" and name == "--pathspec-from-file":
                 skip = True
             continue
-        if _CONTENT_SHORT.fullmatch(option):
-            index_only = False
-            if _VALUE_SHORT_END.fullmatch(option):
+        if option.startswith("-") and not option.startswith("--") and eq == "" and len(option) > 1 and option[1].isalpha():
+            cluster_index, skip_next = _scan_short_cluster(option[1:])
+            if not cluster_index:
+                index_only = False
+            if skip_next:
                 skip = True
             continue
         if name in _VALUE_LONG:
