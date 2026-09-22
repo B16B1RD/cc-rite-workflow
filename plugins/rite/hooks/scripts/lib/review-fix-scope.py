@@ -21,6 +21,85 @@ def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
+# git commit の内容指定。照合した index ではなく作業ツリーを記録する。
+_CONTENT_FLAGS = set("aiop")
+_REQUIRED_VALUE = set("mFCct")
+_OPTIONAL_VALUE = set("uS")
+_CONTENT_LONG = {
+    "--all", "--include", "--interactive", "--only", "--patch",
+    "--pathspec-file-nul", "--pathspec-from-file",
+}
+_VALUE_LONG = {
+    "-C", "-F", "-c", "-m", "-t", "--author", "--cleanup", "--date", "--file",
+    "--fixup", "--message", "--reedit-message", "--reuse-message", "--squash",
+    "--template", "--trailer",
+}
+
+
+def _scan_short_cluster(body):
+    """Read one short cluster from the left, the way git does.
+
+    a/i/o/p are content flags. m/F/C/c/t take a required value: the rest of
+    this token, or the next token when nothing remains. u/S take the rest of
+    this token as an optional value. Letters inside a value are not flags.
+    """
+    index_only = True
+    i = 0
+    while i < len(body):
+        ch = body[i]
+        if ch in _CONTENT_FLAGS:
+            index_only = False
+            i += 1
+            continue
+        if ch in _REQUIRED_VALUE:
+            return index_only, body[i + 1:] == ""
+        if ch in _OPTIONAL_VALUE:
+            return index_only, False
+        i += 1
+    return index_only, False
+
+
+def classify_commit_args(args):
+    """Return whether these tokens after `commit` are a dry run, and whether
+    they record the index. A value glued on with '=' is not a following pathspec.
+    `--amend` stays an index commit."""
+    dry_run, skip, index_only, dashed = False, False, True, False
+    for option in args:
+        if dashed:
+            index_only = False
+            break
+        if skip:
+            skip = False
+            continue
+        if option == "--":
+            dashed = True
+            continue
+        if option in ("--dry-run", "--help", "-h"):
+            dry_run = True
+            continue
+        name, eq, _value = option.partition("=")
+        if name in _CONTENT_LONG:
+            index_only = False
+            if eq == "" and name == "--pathspec-from-file":
+                skip = True
+            continue
+        if option.startswith("-") and not option.startswith("--") and eq == "" and len(option) > 1 and option[1].isalpha():
+            cluster_index, skip_next = _scan_short_cluster(option[1:])
+            if not cluster_index:
+                index_only = False
+            if skip_next:
+                skip = True
+            continue
+        if name in _VALUE_LONG:
+            if eq == "":
+                skip = True
+            continue
+        if option.startswith("-"):
+            continue
+        index_only = False
+    return dry_run, index_only
+
+
 def text(value):
     return isinstance(value, str) and bool(value.strip())
 
@@ -240,23 +319,9 @@ def git_subcommand_index(words, git_index):
     return index if index < len(words) else None
 
 
-def commit_check(args):
-    """Read existing evidence before a direct commit; never run tests or write state."""
-    state_path = Path(args.state)
-    if not state_path.exists() and not state_path.is_symlink():
-        return  # A session that has never reviewed still commits normally.
-    state = read(state_path)
-    require(isinstance(state, dict) and state.get("session_id") == args.session,
-            "cannot read a valid session state before commit")
-    stagnation = importlib.import_module("review-stagnation")
-    retained = None
-    if state.get("review_cycle") is None:
-        if "review_run" not in state:
-            return
-        retained = stagnation.retained_run(state, args.session)
-    # This is a direct-command scanner, not a shell interpreter. Heredoc bodies
-    # have already been removed by the Bash guard's existing command surface.
-    lexer = shlex.shlex(args.command, posix=False, punctuation_chars=";&|()\n")
+def each_direct_commit(command, cwd):
+    """Yield the toplevel of each direct git commit. This is not a shell interpreter."""
+    lexer = shlex.shlex(command, posix=False, punctuation_chars=";&|()\n")
     lexer.whitespace = " \t\r"
     segments, segment = [], []
     for token in lexer:
@@ -281,7 +346,7 @@ def commit_check(args):
             segment.append(values[0])
     if segment:
         segments.append(segment)
-    cwd = Path(args.cwd).resolve()
+    cwd = Path(cwd).resolve()
     for words in segments:
         if words and words[0] == "cd" and len(words) == 2:
             require(not any(c in words[1] for c in "$`~"),
@@ -322,21 +387,39 @@ def commit_check(args):
         if index >= len(words) or words[index] != "commit":
             continue
         # Option values (notably -m '--dry-run') must not exempt a real commit.
-        dry_run, skip = False, False
-        for option in words[index + 1:]:
-            if skip:
-                skip = False
-            elif option == "--":
-                break
-            elif re.fullmatch(r"-[A-Za-z]*[mFCct]", option) or option in ("-m", "--message", "-F", "--file", "-C", "--reuse-message", "-c", "--reedit-message", "--author", "--date", "--fixup", "--squash", "--cleanup", "-t", "--template", "--trailer"):
-                skip = True
-            elif option in ("--dry-run", "--help", "-h"):
-                dry_run = True
+        dry_run, index_only = classify_commit_args(words[index + 1:])
         if dry_run:
             continue
-        # A review in another worktree must not prohibit unrelated work.
         os.chdir(target)
-        actual = Path(subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip()).resolve()
+        try:
+            actual = Path(subprocess.check_output(
+                ["git", "rev-parse", "--show-toplevel"], text=True, stderr=subprocess.DEVNULL
+            ).strip()).resolve()
+        except subprocess.CalledProcessError:
+            # Not a repository, so it is not the session worktree. commit-target
+            # still refuses this; a review check must not turn it into a deny.
+            yield None, True
+            continue
+        yield actual, index_only
+
+
+def commit_check(args):
+    """Read existing evidence before a direct commit; never run tests or write state."""
+    state_path = Path(args.state)
+    if not state_path.exists() and not state_path.is_symlink():
+        return  # A session that has never reviewed still commits normally.
+    state = read(state_path)
+    require(isinstance(state, dict) and state.get("session_id") == args.session,
+            "cannot read a valid session state before commit")
+    stagnation = importlib.import_module("review-stagnation")
+    retained = None
+    if state.get("review_cycle") is None:
+        if "review_run" not in state:
+            return
+        retained = stagnation.retained_run(state, args.session)
+    for actual, _index_only in each_direct_commit(args.command, args.cwd):
+        if actual is None:
+            continue
         if "worktree" not in state:
             require(actual == Path(args.state_root).resolve(),
                     "session worktree path is missing from state; cannot tell if this commit belongs to the review")
@@ -388,7 +471,27 @@ def commit_check(args):
                     "fix tree changed; run fix-scope verify --kind all before committing")
 
 
+def commit_target_main(argv):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--command", required=True)
+    parser.add_argument("--cwd", required=True)
+    args = parser.parse_args(argv)
+    for actual, index_only in each_direct_commit(args.command, args.cwd):
+        require(actual is not None, "commit worktree cannot be resolved")
+        print(("index" if index_only else "other") + "\t" + str(actual))
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "commit-target":
+        commit_target_main(sys.argv[2:])
+        return
+    if len(sys.argv) > 1 and sys.argv[1] == "classify-extras":
+        extras = sys.argv[2:]
+        if extras[:1] == ["--"]:
+            extras = extras[1:]
+        dry_run, index_only = classify_commit_args(extras)
+        print("dry-run" if dry_run else ("index" if index_only else "other"))
+        return
     parser = argparse.ArgumentParser()
     parser.add_argument("operation", choices=("check", "verify", "commit-check"))
     for name in ("state", "session", "state-root"):

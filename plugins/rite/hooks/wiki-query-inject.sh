@@ -26,17 +26,20 @@
 #   --format      full (include full page body) or compact (summary only, default)
 #
 # Output:
-#   stdout: Markdown context block with matching pages, or empty if no matches
-#   stderr: warnings (Wiki disabled, not initialized, parse failures)
+#   stdout: Markdown context block when status is ok. Empty for every other status.
+#   stderr: one `WIKI_QUERY_STATUS=<status>` line, plus warnings.
+#           status is ok, none, disabled, auto_query_off, uninitialized, or error.
 #
 # Exit codes:
-#   0  success (including "no matches" and "Wiki disabled" — always non-blocking)
-#   1  argument validation error
+#   0  ok, none, disabled, or auto_query_off
+#   1  argument validation error (no STATUS line)
+#   2  uninitialized or error. Empty stdout is not a zero-hit success.
 #
 # Design notes:
-#   - Always non-blocking: missing Wiki, disabled Wiki, uninitialized Wiki, or
-#     zero matches all exit 0 with no stdout. The caller must treat empty
-#     stdout as "no context to inject" and continue.
+#   - disabled is wiki.enabled false. auto_query_off is an explicit false
+#     auto_query. uninitialized is enabled but the wiki branch or index is
+#     missing. none is a completed search with zero hits. error is a read or
+#     parse failure after one retry. Those are not interchangeable.
 #   - Reads index.md via `git show` for separate_branch strategy, via direct
 #     file read for same_branch strategy.
 #   - OKF 2-pass: Pass 1 parses both catalog forms — the 5-column table
@@ -75,8 +78,14 @@ _git_show_err=""
 _git_show_err_failed=0
 _awk_err=""
 _drop_meta=""
+WIKI_QUERY_STATE=""
+WIKI_QUERY_ATTEMPTS=1
 _rite_wiki_query_cleanup() {
   rm -f "${_yaml_err:-}" "${_index_err:-}" "${_git_show_err:-}" "${_awk_err:-}" "${_drop_meta:-}"
+  if [ -n "$WIKI_QUERY_STATE" ]; then
+    echo "WIKI_QUERY_STATUS=$WIKI_QUERY_STATE" >&2
+    echo "WIKI_QUERY_ATTEMPTS=$WIKI_QUERY_ATTEMPTS" >&2
+  fi
 }
 trap 'rc=$?; _rite_wiki_query_cleanup; exit $rc' EXIT
 trap '_rite_wiki_query_cleanup; exit 130' INT
@@ -93,8 +102,9 @@ usage() {
 Usage: wiki-query-inject.sh --keywords "kw1,kw2,..." [--max-pages N] [--min-score N] [--format full|compact]
 
 Searches .rite/wiki/index.md for pages matching the given keywords and prints
-a Markdown context block to stdout. Silent (exit 0, no stdout) when Wiki is
-disabled, uninitialized, or has no matches.
+a Markdown context block to stdout when the search hits. Disabled, explicit
+auto_query off, and zero hits exit 0 with empty stdout and a STATUS line.
+Uninitialized and read failures exit 2 with empty stdout.
 
 Required:
   --keywords    comma-separated keywords
@@ -106,8 +116,9 @@ Optional:
   --format      full | compact (default: compact)
 
 Exit codes:
-  0  success (always non-blocking)
+  0  ok, none, disabled, or auto_query_off
   1  argument validation error
+  2  uninitialized or error
 USAGE
 }
 
@@ -188,8 +199,9 @@ if [[ -f "$STATE_ROOT/rite-config.yml" ]]; then
     _sed_rc=$?
     echo "WARNING: failed to read wiki section from rite-config.yml (sed rc=$_sed_rc)" >&2
     [ -n "$_yaml_err" ] && [ -s "$_yaml_err" ] && head -3 "$_yaml_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-    echo "  lenient fallback: treating wiki as disabled and exiting silently" >&2
-    exit 0
+    echo "  設定を読めないため検索失敗として停止します" >&2
+    WIKI_QUERY_STATE=error
+    exit 2
   fi
 fi
 
@@ -256,8 +268,9 @@ wiki_enabled=$(printf '%s' "$wiki_enabled_raw" | LC_ALL=C tr '[:upper:]' '[:lowe
 # that is a real parse failure — warn the user before falling back.
 if [[ "$wiki_enabled_line_present" == "true" ]] && [[ -z "$wiki_enabled" ]]; then
   echo "WARNING: failed to parse wiki.enabled in rite-config.yml (raw value extracted as empty)" >&2
-  echo "  treating wiki as disabled and exiting silently (non-blocking)" >&2
-  exit 0
+  echo "  検索失敗として停止します。無効設定とは区別します" >&2
+  WIKI_QUERY_STATE=error
+  exit 2
 fi
 
 case "$wiki_enabled" in
@@ -267,8 +280,18 @@ case "$wiki_enabled" in
 esac
 
 if [[ "$wiki_enabled" != "true" ]]; then
+  WIKI_QUERY_STATE=disabled
   exit 0
 fi
+
+auto_query_raw=$(_extract_yaml_value "auto_query")
+auto_query=$(printf '%s' "$auto_query_raw" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+case "$auto_query" in
+  false|no|0)
+    WIKI_QUERY_STATE=auto_query_off
+    exit 0
+    ;;
+esac
 
 branch_strategy=$(_extract_yaml_value "branch_strategy")
 branch_strategy="${branch_strategy:-separate_branch}"
@@ -282,52 +305,67 @@ index_content=""
 # even when origin/wiki is available. Reading content via the bare branch
 # name (`git show wiki:...`) fails in that case with "fatal: invalid object
 # name 'wiki'". Mirror the ref-selection pattern used by cleanup.md
-# ステップ 9 (Wiki Ingest 条件付き、旧 Phase 4.W.1 Step 2) and wiki-growth-check.sh
-# to fall back to origin.
+# ステップ 9 and wiki-growth-check.sh to fall back to origin.
 ref=""
-if [[ "$branch_strategy" == "separate_branch" ]]; then
-  if git rev-parse --verify "$wiki_branch" >/dev/null 2>&1; then
-    ref="$wiki_branch"
-  elif git rev-parse --verify "origin/$wiki_branch" >/dev/null 2>&1; then
-    ref="origin/$wiki_branch"
-  else
-    echo "WARNING: wiki branch '$wiki_branch' not found — Wiki not initialized" >&2
-    exit 0
-  fi
-  # index.md is the gating resource for the whole query path. Capture stderr
-  # to a tempfile so legitimate IO errors (permission denied / object corrupt
-  # / submodule drift) surface as a WARNING with diagnostic detail, matching
-  # the F-22 "silent-swallow to surface" policy applied elsewhere.
-  if ! _index_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-query-index-err-XXXXXX"); then
-    echo "WARNING: mktemp failed for index.md stderr capture; falling back to /dev/null" >&2
-    _index_err=""
-  fi
-  # `if ! var=$(git show ...)` collapses the exit status to 0 inside the
-  # then-branch (POSIX `!`), masking the real git rc (128 = ref absent,
-  # 129 = object corrupt). if/else preserves the diagnostic rc.
-  if index_content=$(git show "${ref}:.rite/wiki/index.md" 2>"${_index_err:-/dev/null}"); then
-    :
-  else
+if ! _index_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-query-index-err-XXXXXX"); then
+  echo "WARNING: mktemp failed for index.md stderr capture; falling back to /dev/null" >&2
+  _index_err=""
+fi
+# return 0 read, 2 missing wiki (no retry), 1 IO failure (one retry).
+_load_index() {
+  : > "${_index_err:-/dev/null}" 2>/dev/null || true
+  if [[ "$branch_strategy" == "separate_branch" ]]; then
+    if git rev-parse --verify "$wiki_branch" >/dev/null 2>&1; then
+      ref="$wiki_branch"
+    elif git rev-parse --verify "origin/$wiki_branch" >/dev/null 2>&1; then
+      ref="origin/$wiki_branch"
+    else
+      echo "WARNING: wiki branch '$wiki_branch' not found — Wiki not initialized" >&2
+      return 2
+    fi
+    if index_content=$(git show "${ref}:.rite/wiki/index.md" 2>"${_index_err:-/dev/null}"); then
+      return 0
+    fi
     _index_rc=$?
     echo "WARNING: cannot read index.md from ref '$ref' (git show rc=$_index_rc)" >&2
     [ -n "$_index_err" ] && [ -s "$_index_err" ] && head -3 "$_index_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-    exit 0
+    return 1
   fi
-else
   if [[ ! -f ".rite/wiki/index.md" ]]; then
     echo "WARNING: .rite/wiki/index.md not found — Wiki not initialized" >&2
-    exit 0
+    return 2
   fi
-  # Guard against TOCTOU races / permission denied / IO errors — do not let
-  # `cat` silently collapse to an empty string, which would be indistinguishable
-  # from "matched zero pages".
-  if ! index_content=$(cat .rite/wiki/index.md); then
-    echo "WARNING: cannot read .rite/wiki/index.md (permission denied / IO error)" >&2
-    exit 0
+  if index_content=$(cat .rite/wiki/index.md); then
+    return 0
   fi
+  echo "WARNING: cannot read .rite/wiki/index.md (permission denied / IO error)" >&2
+  return 1
+}
+_idx_rc=1
+_try=0
+while [ "$_try" -lt 2 ]; do
+  WIKI_QUERY_ATTEMPTS=$((_try + 1))
+  if _load_index; then
+    _idx_rc=0
+  else
+    _idx_rc=$?
+  fi
+  if [ "$_idx_rc" -eq 0 ] || [ "$_idx_rc" -eq 2 ]; then
+    break
+  fi
+  _try=$((_try + 1))
+done
+if [ "$_idx_rc" -eq 2 ]; then
+  WIKI_QUERY_STATE=uninitialized
+  exit 2
+fi
+if [ "$_idx_rc" -ne 0 ]; then
+  WIKI_QUERY_STATE=error
+  exit 2
 fi
 
 if [[ -z "$index_content" ]]; then
+  WIKI_QUERY_STATE=none
   exit 0
 fi
 
@@ -509,16 +547,10 @@ if [[ -z "$candidates" ]]; then
   if grep -q '](pages/' <<< "$stripped"; then
     echo "WARNING: .rite/wiki/index.md に登録リンク (](pages/...)) を含む行がありますが、候補を 1 件も抽出できませんでした" >&2
     echo "  カタログの形式が Pass 1 の対応形式 (5 列テーブル / OKF 箇条書き) と異なる可能性があります" >&2
-    # Also on stdout. Five of the six callers invoke this script with
-    # `2>/dev/null` (pr-review, fix, issue-implement, issue-create, unknowns);
-    # only the manual `/rite:wiki-query` path keeps stderr. So in every path
-    # that runs inside a workflow the line above reaches nobody — and an empty
-    # stdout is exactly
-    # what "no matching pages" looks like, which is the misattribution this
-    # guard exists to break. One line, marked as a notice rather than content,
-    # so a reader of the injected block can tell the wiki was not consulted.
-    printf '> ⚠️ Wiki index に登録行がありますが、そこから候補を抽出できませんでした（カタログ形式が Pass 1 の対応形式と異なる可能性）。今回、Wiki 経験則は注入されていません。\n'
+    WIKI_QUERY_STATE=error
+    exit 2
   fi
+  WIKI_QUERY_STATE=none
   exit 0
 fi
 
@@ -581,16 +613,23 @@ done
 scored=""
 while IFS=$'\x1f' read -r title path description; do
   [[ -z "$path" ]] && continue
-  # Pass 2: read page frontmatter for metadata. Non-blocking — a candidate whose
-  # page is unreadable (stale index → page drift) is skipped with a WARNING and
-  # the remaining candidates still render.
-  if ! meta=$(read_page_meta "$path"); then
-    # `path` comes from index.md too, so it goes through the same neutralizer as
-    # the drop samples above (this site became reachable for 360 candidates once
-    # table rows started producing candidates).
-    printf 'WARNING: cannot read frontmatter of %s - skipping candidate (index.md may be stale)\n' "$path" \
+  # A page read failure is not a partial success. Retry once, then stop
+  # with empty stdout so callers cannot treat the remaining pages as ok.
+  meta=""
+  _page_try=0
+  while [ "$_page_try" -lt 2 ]; do
+    if meta=$(read_page_meta "$path"); then
+      break
+    fi
+    meta=""
+    _page_try=$((_page_try + 1))
+  done
+  if [ -z "$meta" ]; then
+    WIKI_QUERY_ATTEMPTS=2
+    printf 'WARNING: cannot read frontmatter of %s after retry\n' "$path" \
       | neutralize_ctrl --keep-newline >&2
-    continue
+    WIKI_QUERY_STATE=error
+    exit 2
   fi
   IFS=$'\x1f' read -r domain confidence updated <<< "$meta"
   [[ -z "$confidence" ]] && confidence="medium"  # default mirrors page-template.md
@@ -623,6 +662,7 @@ while IFS=$'\x1f' read -r title path description; do
 done <<< "$candidates"
 
 if [[ -z "$scored" ]]; then
+  WIKI_QUERY_STATE=none
   exit 0
 fi
 
@@ -632,15 +672,56 @@ fi
 # of being masked by the downstream `head` closing the pipe early and
 # returning a benign exit 0 to the caller.
 if ! sorted=$(printf '%s' "$scored" | sort -t$'\x1f' -k1,1 -nr); then
-  echo "WARNING: sort of scored rows failed — skipping output (non-blocking)" >&2
-  exit 0
+  echo "WARNING: sort of scored rows failed" >&2
+  WIKI_QUERY_STATE=error
+  exit 2
 fi
 top_rows=$(printf '%s' "$sorted" | head -n "$MAX_PAGES")
 if [[ -z "$top_rows" ]]; then
+  WIKI_QUERY_STATE=none
   exit 0
 fi
 
+# full format reads page bodies. A failed body read must not leave a partial
+# Markdown block on stdout, so read them before any success output.
+if [[ "$FORMAT" == "full" ]]; then
+  while IFS=$'\x1f' read -r score title path domain summary updated confidence; do
+    [[ -z "$path" ]] && continue
+    _body_ok=0
+    _body_try=0
+    while [ "$_body_try" -lt 2 ]; do
+      if [[ "$branch_strategy" == "separate_branch" ]]; then
+        if git show "${ref}:.rite/wiki/${path}" >/dev/null 2>&1; then
+          _body_ok=1
+          break
+        fi
+      elif [[ -f ".rite/wiki/${path}" ]] && cat ".rite/wiki/${path}" >/dev/null; then
+        _body_ok=1
+        break
+      fi
+      _body_try=$((_body_try + 1))
+    done
+    if [ "$_body_ok" -ne 1 ]; then
+      WIKI_QUERY_ATTEMPTS=2
+      echo "WARNING: cannot read body of ${path} after retry" >&2
+      WIKI_QUERY_STATE=error
+      exit 2
+    fi
+  done <<< "$top_rows"
+fi
+
+_page_rev() {
+  local p="$1" rev=""
+  if [[ "$branch_strategy" == "separate_branch" ]]; then
+    rev=$(git rev-parse "${ref}:.rite/wiki/${p}" 2>/dev/null) || rev=""
+  else
+    rev=$(git hash-object ".rite/wiki/${p}" 2>/dev/null) || rev=""
+  fi
+  printf '%s' "$rev"
+}
+
 # --- Render output ---
+WIKI_QUERY_STATE=ok
 printf '\n'
 printf '### 📚 Wiki 経験則（自動参照）\n\n'
 printf 'キーワード: `%s`\n\n' "$KEYWORDS"
@@ -648,6 +729,8 @@ printf 'キーワード: `%s`\n\n' "$KEYWORDS"
 while IFS=$'\x1f' read -r score title path domain summary updated confidence; do
   [[ -z "$path" ]] && continue
   printf '#### %s\n' "$title"
+  printf '%s\n' "- **パス**: ${path}"
+  printf '%s\n' "- **版**: $(_page_rev "$path")"
   printf '%s\n' "- **ドメイン**: ${domain} / **確信度**: ${confidence} / **更新日**: ${updated}"
   printf '%s\n' "- **サマリー**: ${summary}"
 
