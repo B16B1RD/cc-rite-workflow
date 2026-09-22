@@ -3,6 +3,7 @@
 ## 2026-09-22
 
 * **Skip**: [20260922T012303Z-pr-2998.md](raw/reviews/20260922T012303Z-pr-2998.md) — この回の差分は短い commit 引数束ねの分類と回帰テストだけで、再利用できる経験則は抽出できない
+* **lint:clean** — contradictions=0 (ページ変更なし。既存ページの全組合せ再評価は未実施), stale=66, orphans=0, missing_concept=0, unregistered_raw=534, broken_refs=0
 
 ## 2026-09-19
 
