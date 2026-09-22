@@ -1656,15 +1656,17 @@ create_state_file "$dir_t09" '{
 write_batch_queue "$dir_t09"
 output=$(run_hook_with_source "$dir_t09" "compact")
 _ci_needle="current_issue=#2502" # drift-check-ignore
-if echo "$output" | grep -q "Auto-compact recovery" \
-  && echo "$output" | grep -q "Batch: run-queue active" \
-  && echo "$output" | grep -q "mode=merge" \
-  && echo "$output" | grep -q "cursor=0/1" \
-  && echo "$output" | grep -q "$_ci_needle" \
-  && echo "$output" | grep -q "pr=#99" \
-  && echo "$output" | grep -q "queue_file=" \
-  && echo "$output" | grep -q "Continue /rite:batch-run" \
-  && ! echo "$output" | grep -q "/rite:recover"; then
+# Already-captured output: grep -q on a pipe exits at the first match and
+# SIGPIPEs echo under pipefail, so a present Batch line fails the assertion.
+if grep -q "Auto-compact recovery" <<<"$output" \
+  && grep -q "Batch: run-queue active" <<<"$output" \
+  && grep -q "mode=merge" <<<"$output" \
+  && grep -q "cursor=0/1" <<<"$output" \
+  && grep -q "$_ci_needle" <<<"$output" \
+  && grep -q "pr=#99" <<<"$output" \
+  && grep -q "queue_file=" <<<"$output" \
+  && grep -q "Continue /rite:batch-run" <<<"$output" \
+  && ! grep -q "/rite:recover" <<<"$output"; then
   pass "T-09: compact Batch frame fields present, no /rite:recover"
 else
   fail "T-09: unexpected output: $output"
@@ -2055,7 +2057,7 @@ create_state_file "$dir_rq08" '{"active":true,"issue_number":2502,"phase":"revie
 write_batch_queue "$dir_rq08" "own-sid" true 0
 write_queue_file "$dir_rq08" "other-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[9],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
 output=$(run_hook_with_session "$dir_rq08" "compact" "own-sid")
-if echo "$output" | grep -q "Batch: run-queue active" \
+if grep -q "Batch: run-queue active" <<<"$output" \
   && [ -f "$dir_rq08/.rite/state/run-queue-own-sid.json" ] \
   && [ ! -f "$dir_rq08/.rite/state/run-queue-other-sid.json" ]; then
   pass "RQ-08: compact Batch frame remains; own queue kept; other stale removed"

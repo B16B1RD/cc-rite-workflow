@@ -64,7 +64,7 @@ bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number}
 
 > **Reference**: [Wiki Query](../wiki-query/SKILL.md) — `wiki-query-inject.sh` API
 
-**Condition**: `wiki.enabled: true` AND `wiki.auto_query: true`。それ以外は silent skip。
+**Condition**: 会話へ注入するのは `wiki.enabled: true` かつ `wiki.auto_query: true` のとき。設定が false でもこの節は飛ばさない。capture を呼ばないと証跡が無く、コミット前ゲートが拒否する。
 
 **Step 1**: Wiki 設定:
 
@@ -85,26 +85,20 @@ case "$auto_query" in true|yes|1) auto_query="true" ;; *) auto_query="false" ;; 
 echo "wiki_enabled=$wiki_enabled auto_query=$auto_query"
 ```
 
-`wiki_enabled=false` または `auto_query=false` なら実装へ。
+設定が false でも capture は呼ぶ。呼ばないと証跡が無く、コミット前ゲートが拒否する。
 
-**Step 2**: 計画のステップ記述・対象パス・ドメイン用語から keywords を生成して query:
+**Step 2**: `{keywords}` は計画の対象パスと変更目的。`{changed_paths}` は存在する対象パスのカンマ区切りで、空なら `--paths` を省く。未置換のリテラルは渡さない。契約は [wiki-apply-contract.md](../../references/wiki-apply-contract.md)。
 
 ```bash
-# {plugin_root} はリテラル値で埋め込む
-# {keywords} は実装計画のキーワード（ファイルパス、ドメイン用語等）をカンマ区切りで生成
-# （他コーラー skills/issue-create/SKILL.md / skills/fix/SKILL.md /
-#   skills/pr-review/SKILL.md / skills/unknowns/SKILL.md と同形式）
-wiki_context=$(bash {plugin_root}/hooks/wiki-query-inject.sh \
-  --keywords "{keywords}" \
-  --format compact 2>/dev/null) || wiki_context=""
-if [ -n "$wiki_context" ]; then
-  echo "$wiki_context"
-else
-  echo "(Wiki から関連経験則は見つかりませんでした)"
-fi
+wiki_context=$(bash {plugin_root}/hooks/scripts/wiki-apply-capture.sh \
+  --keywords "{keywords}" --paths "{changed_paths}") || {
+  echo "ERROR: Wiki 検索に失敗したため、コミットへ進みません" >&2
+  exit 1
+}
+printf '%s\n' "$wiki_context"
 ```
 
-**Step 3**: `wiki_context` が非空なら会話 context に保持し、実装中に参照する。
+**Step 3**: status が ok の各ページは rev の本文を読み、本文中の 1 行を excerpt に書く。applied は evidence と、実行した検証コマンドおよび結果を result に書く。out は reason に理由を書く。`body: read` だけでは次へ進まない。ゲートが deny なら commit しない。`git-commit-file.sh` は成功後に head を更新する。それ以外の commit のあとは、証跡の head を新しい HEAD に更新する。blob が現在のファイルと違うときは capture からやり直す。
 
 ### 5.0.T Canon TDD Cycle (Conditional)
 
@@ -296,7 +290,28 @@ Merge each passing task branch back to the Issue branch using `--no-ff`:
 
 ```bash
 git checkout {branch_name}
-git merge --no-ff {branch_name}/{task_id} -m "chore(parallel): integrate {task_id} ({task_description})"
+# 生成直前に commit-convention.md を適用する。未指定時の既定:
+# chore(parallel): integrate {task_id} ({task_description})
+_par_msg=""
+_cleanup_par() { [ -n "${_par_msg:-}" ] && rm -f "$_par_msg"; return 0; }
+trap 'rc=$?; _cleanup_par; exit $rc' EXIT
+trap '_cleanup_par; exit 130' INT
+trap '_cleanup_par; exit 143' TERM
+trap '_cleanup_par; exit 129' HUP
+_par_msg=$(mktemp "${TMPDIR:-/tmp}/rite-parallel-merge-XXXXXX") || {
+  echo "ERROR: コミットメッセージ用一時ファイルを作成できません" >&2
+  exit 1
+}
+cat > "$_par_msg" <<'EOF'
+{parallel_merge_message}
+EOF
+case "$(cat -- "$_par_msg")" in
+  "{"*"}")
+    echo "ERROR: {parallel_merge_message} が未置換です" >&2
+    exit 1
+    ;;
+esac
+git merge --no-ff {branch_name}/{task_id} -F "$_par_msg"
 ```
 
 On merge conflict, follow the [first-merge-wins convention](../../references/git-worktree-patterns.md#conflict-resolution-convention).
@@ -524,15 +539,15 @@ rationale: references/rationale.md#production-constraint-churn
 
 1. `git status --porcelain` で変更ファイルを確認。出力が空なら stderr に `ERROR: コミット対象の変更がありません` を出して停止する。commit / push / pr-create へ進まない。`git status` 自体が失敗したら既存の bash 失敗処理に従い `ERROR` で停止する。変更がある場合は手順 2 以降を従来どおり進め、この分岐からの追加出力は出さない。
 2. `git add {changed_files}` で明示 stage（**not** `git add .`）
-3. Conventional Commits でメッセージ生成
-4. `git commit`
+3. [commit-convention.md](../../references/commit-convention.md) に従いメッセージを生成する（生成直前に locate + Read。未指定時の既定は `rite-config.yml` の `language` と Conventional Commits + why 本文）
+4. 作業ツリー外のメッセージファイルへ書き `git-commit-file.sh` で commit する
 5. `git push origin {branch_name}`（`-u` なし）
 rationale: references/rationale.md#git-add-dot-sandbox
 rationale: references/rationale.md#push-no-upstream
 
-> **⚠️ CRITICAL**: commit message の `description` は `language` 設定に従う。例の言語をコピーしない。
+> **⚠️ CRITICAL**: 規約が言語・形式を指定していればそれに従う。未指定の `description` だけ `language` 設定に従う。例の言語をコピーしない。
 
-形式 `{type}({scope}): {description}`。言語は `rite-config.yml` の `language`（`auto` は日本語文字の有無）。type/scope は常に英語。body は why を自由形式（必須。typo 以外も含め省略しない）。description との間に空行。
+未指定時の形式 `{type}({scope}): {description}`。type/scope は常に英語。規約が本文を禁じない限り body は why を自由形式（必須。typo 以外も含め省略しない）。description との間に空行。
 
 ```bash
 status_out=$(git status --porcelain) || { echo "ERROR: git status に失敗しました" >&2; exit 1; }
@@ -541,10 +556,26 @@ if [ -z "$status_out" ]; then
   exit 1
 fi
 git add {changed_files}
-git commit -m "$(cat <<'EOF'
+commit_msg_file=""
+_cleanup_impl_msg() { [ -n "${commit_msg_file:-}" ] && rm -f "$commit_msg_file"; return 0; }
+trap 'rc=$?; _cleanup_impl_msg; exit $rc' EXIT
+trap '_cleanup_impl_msg; exit 130' INT
+trap '_cleanup_impl_msg; exit 143' TERM
+trap '_cleanup_impl_msg; exit 129' HUP
+commit_msg_file=$(mktemp "${TMPDIR:-/tmp}/rite-impl-msg-XXXXXX") || {
+  echo "ERROR: コミットメッセージ用一時ファイルを作成できません" >&2
+  exit 1
+}
+cat > "$commit_msg_file" <<'EOF'
 {commit_message}
 EOF
-)"
+case "$(cat -- "$commit_msg_file")" in
+  "{"*"}")
+    echo "ERROR: {commit_message} が未置換です" >&2
+    exit 1
+    ;;
+esac
+bash {plugin_root}/hooks/scripts/git-commit-file.sh --file "$commit_msg_file"
 git push origin {branch_name}
 ```
 

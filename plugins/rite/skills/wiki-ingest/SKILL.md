@@ -506,28 +506,34 @@ rationale: references/rationale.md#related-page-literal
 
 ### 5.0.c canonical commit message 契約
 
-ステップ 5.1 と ステップ 5.2 の commit message は以下を **唯一の真実源** とする。両サイトで以下と literal 一致させる。
+ステップ 5.1 と ステップ 5.2 の commit message は、生成直前に [commit-convention.md](../../references/commit-convention.md) を適用した値を使う。規約が件名形式を指定しないときの既定テンプレートを **唯一の既定源** とする。カウンタ placeholder の residual gate は両サイトで以下と literal 一致させる。
 rationale: references/rationale.md#commit-msg-three-sites
 
-**canonical template**:
+**canonical default template**（規約未指定時。適用後の値は規約に従う）:
 
 ```
 docs(wiki): ingest {n_pages_created} new / {n_pages_updated} updated pages from {n_raw_sources} raw source(s) (skipped: {n_skipped})
 ```
 
-**canonical placeholder-residue gate**:
+**canonical placeholder-residue gate**（メッセージファイルの内容を見る。`{X}` はステップ番号。5.1 なら 1、5.2 なら 2。ファイルは `$msg_file`。5.1 は `$_ingest_sep_msg`、5.2 は `$_ingest_msg`）:
 
 ```bash
-case "$commit_msg" in
+case "$(cat -- "$msg_file")" in
+  "{"*"}")
+    echo "ERROR: ステップ 5.{X} の commit message が未置換です" >&2
+    exit 1
+    ;;
+esac
+case "$(cat -- "$msg_file")" in
   *"{n_pages_created}"*|*"{n_pages_updated}"*|*"{n_raw_sources}"*|*"{n_skipped}"*)
-    echo "ERROR: ステップ 5.{X} の commit_msg placeholder が literal substitute されていません (値: '$commit_msg')" >&2
-    echo "  対処: ステップ 2.1 / 4 / 5.0 step 5 で incrementate したカウンタ値を本 bash block の commit_msg= 行で literal substitute する" >&2
+    echo "ERROR: ステップ 5.{X} の commit message placeholder が literal substitute されていません" >&2
+    echo "  対処: ステップ 2.1 / 4 / 5.0 step 5 で incrementate したカウンタ値を規約適用後メッセージへ literal substitute する" >&2
     exit 1
     ;;
 esac
 ```
 
-ステップ 5.1 / 5.2 では `commit_msg=` 行を上記 canonical と literal 一致させ、placeholder-residue gate のサイト識別子 (`ステップ 5.{X}`) のみを 5.1 / 5.2 で置換する。template を変更する際は本セクション + ステップ 5.1 + ステップ 5.2 の **3 箇所を必ず同時に更新する**。
+ステップ 5.1 / 5.2 は `{wiki_ingest_commit_message}`（規約適用後の全文）を quoted heredoc でメッセージファイルへ書く。未指定時だけ上の既定テンプレートへカウンタを埋め込んだ値を書く。残渣ゲートはファイル内容の未置換 `{...}` 形状とカウンタ placeholder の両方を止める。残渣ゲート bash を変えるときは本節のゲートとステップ 5.1 / 5.2 の複製を同時に更新する。既定テンプレートの既定源は本節だけであり、5.1 / 5.2 の quoted heredoc へ既定英文を焼き戻さない。
 
 ### 5.0.n commit 前の番号参照検査 (両戦略共通)
 
@@ -645,24 +651,41 @@ if [ "$branch_strategy" = "separate_branch" ]; then
     exit 1
   fi
 
-  # {n_pages_created} / {n_pages_updated} / {n_raw_sources} / {n_skipped} は
-  # ステップ 2.1 で初期化され ステップ 4 / 5.0 step 5 で incrementate されたカウンター値を literal substitute する。
-  # ステップ 5.0.c canonical commit message と literal 一致させること。
-  commit_msg="docs(wiki): ingest {n_pages_created} new / {n_pages_updated} updated pages from {n_raw_sources} raw source(s) (skipped: {n_skipped})"
-
-  case "$commit_msg" in
-    *"{n_pages_created}"*|*"{n_pages_updated}"*|*"{n_raw_sources}"*|*"{n_skipped}"*)
-      echo "ERROR: ステップ 5.1 の commit_msg placeholder が literal substitute されていません (値: '$commit_msg')" >&2
-      echo "  対処: ステップ 2.1 / 4 / 5.0 step 5 で incrementate したカウンタ値を本 bash block の commit_msg= 行で literal substitute する" >&2
+  # {wiki_ingest_commit_message} は規約適用後の全文。未指定時の既定は 5.0.c の canonical template（カウンタ substitute 済み）。
+  _ingest_sep_msg=""
+  _cleanup_sep() { [ -n "${_ingest_sep_msg:-}" ] && rm -f "$_ingest_sep_msg"; return 0; }
+  trap 'rc=$?; _cleanup_sep; exit $rc' EXIT
+  trap '_cleanup_sep; exit 130' INT
+  trap '_cleanup_sep; exit 143' TERM
+  trap '_cleanup_sep; exit 129' HUP
+  _ingest_sep_msg=$(mktemp "${TMPDIR:-/tmp}/rite-ingest-sep-msg-XXXXXX") || {
+    echo "ERROR: コミットメッセージ用一時ファイルを作成できません" >&2
+    exit 1
+  }
+  cat > "$_ingest_sep_msg" <<'EOF'
+{wiki_ingest_commit_message}
+EOF
+  case "$(cat -- "$_ingest_sep_msg")" in
+    "{"*"}")
+      echo "ERROR: ステップ 5.1 の commit message が未置換です" >&2
       exit 1
       ;;
   esac
-
+  case "$(cat -- "$_ingest_sep_msg")" in
+    *"{n_pages_created}"*|*"{n_pages_updated}"*|*"{n_raw_sources}"*|*"{n_skipped}"*)
+      echo "ERROR: ステップ 5.1 の commit message placeholder が literal substitute されていません" >&2
+      echo "  対処: ステップ 2.1 / 4 / 5.0 step 5 で incrementate したカウンタ値を規約適用後メッセージへ literal substitute する" >&2
+      exit 1
+      ;;
+  esac
   # set -e 下で script の非 0 exit を許容して rc を capture する
   set +e
-  commit_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --commit-only --message "$commit_msg")
+  commit_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --commit-only --message-file "$_ingest_sep_msg")
   commit_rc=$?
   set -e
+  rm -f "$_ingest_sep_msg"
+  _ingest_sep_msg=""
+  trap - EXIT INT TERM HUP
   echo "$commit_out"
 
   case "$commit_rc" in
@@ -736,10 +759,16 @@ esac
 branch_strategy="{branch_strategy}"
 
 if [ "$branch_strategy" = "same_branch" ]; then
-  # signal-specific trap (EXIT/INT/TERM/HUP) で _reset_err tempfile orphan 防止。
+  plugin_root="{plugin_root}"
+  # signal-specific trap (EXIT/INT/TERM/HUP) で _reset_err / _ingest_msg tempfile orphan 防止。
   # 詳細は ../../references/bash-trap-patterns.md#signal-specific-trap-template 参照。
   _reset_err=""
-  _cleanup() { [ -n "${_reset_err:-}" ] && rm -f "$_reset_err"; return 0; }
+  _ingest_msg=""
+  _cleanup() {
+    [ -n "${_reset_err:-}" ] && rm -f "$_reset_err"
+    [ -n "${_ingest_msg:-}" ] && rm -f "$_ingest_msg"
+    return 0
+  }
   trap 'rc=$?; _cleanup; exit $rc' EXIT
   trap '_cleanup; exit 130' INT
   trap '_cleanup; exit 143' TERM
@@ -764,19 +793,28 @@ if [ "$branch_strategy" = "same_branch" ]; then
   fi
   [ -n "$add_err" ] && rm -f "$add_err"
 
-  # {n_pages_created} / {n_pages_updated} / {n_raw_sources} / {n_skipped} を literal substitute する。
-  # ステップ 5.0.c canonical commit message と literal 一致させること。
-  commit_msg="docs(wiki): ingest {n_pages_created} new / {n_pages_updated} updated pages from {n_raw_sources} raw source(s) (skipped: {n_skipped})"
-
-  case "$commit_msg" in
-    *"{n_pages_created}"*|*"{n_pages_updated}"*|*"{n_raw_sources}"*|*"{n_skipped}"*)
-      echo "ERROR: ステップ 5.2 の commit_msg placeholder が literal substitute されていません (値: '$commit_msg')" >&2
-      echo "  対処: ステップ 2.1 / 4 / 5.0 step 5 で incrementate したカウンタ値を本 bash block の commit_msg= 行で literal substitute する" >&2
+  # {wiki_ingest_commit_message} は規約適用後の全文。未指定時の既定は 5.0.c の canonical template（カウンタ substitute 済み）。
+  _ingest_msg=$(mktemp "${TMPDIR:-/tmp}/rite-ingest-msg-XXXXXX") || {
+    echo "ERROR: コミットメッセージ用一時ファイルを作成できません" >&2
+    exit 1
+  }
+  cat > "$_ingest_msg" <<'EOF'
+{wiki_ingest_commit_message}
+EOF
+  case "$(cat -- "$_ingest_msg")" in
+    "{"*"}")
+      echo "ERROR: ステップ 5.2 の commit message が未置換です" >&2
       exit 1
       ;;
   esac
-
-  if ! git commit -m "$commit_msg"; then
+  case "$(cat -- "$_ingest_msg")" in
+    *"{n_pages_created}"*|*"{n_pages_updated}"*|*"{n_raw_sources}"*|*"{n_skipped}"*)
+      echo "ERROR: ステップ 5.2 の commit message placeholder が literal substitute されていません" >&2
+      echo "  対処: ステップ 2.1 / 4 / 5.0 step 5 で incrementate したカウンタ値を規約適用後メッセージへ literal substitute する" >&2
+      exit 1
+      ;;
+  esac
+  if ! bash "$plugin_root/hooks/scripts/git-commit-file.sh" --file "$_ingest_msg"; then
     echo "ERROR: git commit failed" >&2
     echo "  ロールバック: staging area の .rite/wiki/ 変更を unstage します" >&2
     _reset_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-ingest-reset-err-XXXXXX" 2>/dev/null) || {
@@ -791,11 +829,15 @@ if [ "$branch_strategy" = "same_branch" ]; then
     fi
     [ -n "${_reset_err:-}" ] && rm -f "$_reset_err"
     _reset_err=""
+    rm -f "$_ingest_msg"
+    _ingest_msg=""
     echo "  注意: Write/Edit した ingested:true 化と index.md / log.md 変更はワークツリーに残っています" >&2
     echo "  対処: git status で変更内容を確認後、手動で commit するか git checkout で破棄してください" >&2
     exit 1
   fi
   # same_branch では raw cleanup は不要 (PR diff に含めるのが意図的選択)
+  rm -f "$_ingest_msg"
+  _ingest_msg=""
   trap - EXIT INT TERM HUP
 fi
 ```

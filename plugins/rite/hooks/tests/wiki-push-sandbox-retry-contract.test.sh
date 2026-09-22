@@ -22,6 +22,8 @@ check_caller() {
     "$(printf '%s\n' "$section" | grep -cF -- 'date +%s%N' || true)"
   assert "$label: retry uses push-only helper" "1" \
     "$(( $(printf '%s\n' "$section" | grep -cF 'wiki-ingest-commit.sh --push-only' || true) >= 1 ))"
+  assert "$label: raw commit passes --message-file" "1" \
+    "$(( $(printf '%s\n' "$section" | grep -cF 'wiki-ingest-commit.sh --message-file' || true) >= 1 ))"
   assert "$label: retry is gated on caller exit 4" "1" \
     "$(printf '%s\n' "$section" | grep -cF "$rc_predicate" || true)"
   assert "$label: retry explicitly disables sandbox" "1" \

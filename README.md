@@ -2,7 +2,7 @@
 
 > Universal Issue-Driven Development Workflow for Claude Code
 
-[![Version](https://img.shields.io/badge/version-0.17.1-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.17.1)
+[![Version](https://img.shields.io/badge/version-0.18.0-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.18.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **English** | [日本語](README.ja.md)
@@ -140,7 +140,7 @@ This will:
                   → /rite:ready → /rite:merge → /rite:cleanup
 ```
 
-**Note:** The end-to-end flow is split across four single-responsibility commands. `/rite:open <issue>` handles branch creation, implementation, quality checks, and draft PR creation. `/rite:iterate <pr>` loops review and fix until mergeable. `/rite:ready <pr>` flips the PR to Ready for review. `/rite:merge <pr>` performs the squash-merge. If any step is interrupted (e.g. `Context limit reached`), run `/rite:recover` to recover.
+**Note:** The end-to-end flow is split across four single-responsibility commands. `/rite:open <issue>` handles branch creation, implementation, quality checks, and draft PR creation. `/rite:iterate <pr>` loops review and fix until mergeable. `/rite:ready <pr>` flips the PR to Ready for review. `/rite:merge <pr>` performs the squash-merge. If any step is interrupted (e.g. `Context limit reached`), run `/rite:recover` to recover. Commits rite creates (implementation, fix, Wiki, and squash) follow the worktree `CLAUDE.md` / `AGENTS.md` conventions; nested files nearer the changed path take priority over the worktree root. Unspecified items on the LLM path use Conventional Commits and `rite-config.yml` `language`. Helper auto-commits keep their current fixed text when both files are absent.
 
 Status Transitions:
 ```

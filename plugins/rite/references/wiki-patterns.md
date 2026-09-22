@@ -84,7 +84,8 @@ git checkout --orphan "$wiki_branch" || { echo "ERROR: git checkout --orphan fai
 git rm -rf . 2>/dev/null || true
 # Wiki ファイルを配置してコミット
 git add .rite/wiki/ || { echo "ERROR: git add .rite/wiki/ failed" >&2; exit 1; }
-git commit -m "feat(wiki): initialize Wiki structure" || { echo "ERROR: git commit failed" >&2; exit 1; }
+# "$wiki_init_msg_file" は作業ツリー外の絶対パス。生成手順は plugins/rite/references/commit-convention.md の「helper への受渡し」。
+bash "{plugin_root}/hooks/scripts/git-commit-file.sh" --file "$wiki_init_msg_file" || { echo "ERROR: git commit failed" >&2; exit 1; }
 git push origin "$wiki_branch" || { echo "ERROR: git push failed" >&2; exit 1; }
 
 # 元のブランチに戻る（git checkout - は --orphan 後に動作しないため明示的に指定）
@@ -139,7 +140,7 @@ git checkout "$wiki_branch" || { echo "ERROR: git checkout '$wiki_branch' failed
 # ... (ingest/update operations)
 
 git add .rite/wiki/ || { echo "ERROR: git add .rite/wiki/ failed" >&2; exit 1; }
-git commit -m "docs(wiki): {action} - {description}" || { echo "ERROR: git commit failed" >&2; exit 1; }
+bash "{plugin_root}/hooks/scripts/git-commit-file.sh" --file "$wiki_msg_file" || { echo "ERROR: git commit failed" >&2; exit 1; }
 git push origin "$wiki_branch" || { echo "ERROR: git push failed" >&2; exit 1; }
 
 # 元のブランチに戻る
@@ -185,7 +186,7 @@ fi
 # 直接ファイル操作（ブランチ切り替え不要）
 # .rite/wiki/ 配下のファイルを Read/Write ツールで操作
 git add .rite/wiki/ || { echo "ERROR: git add .rite/wiki/ failed" >&2; exit 1; }
-git commit -m "docs(wiki): {action} - {description}" || { echo "ERROR: git commit failed" >&2; exit 1; }
+bash "{plugin_root}/hooks/scripts/git-commit-file.sh" --file "$wiki_msg_file" || { echo "ERROR: git commit failed" >&2; exit 1; }
 ```
 
 ## テンプレート展開パターン

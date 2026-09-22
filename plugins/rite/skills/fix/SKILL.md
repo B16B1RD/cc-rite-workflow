@@ -134,7 +134,7 @@ standalone: 引数なしなら現在ブランチの PR。work memory の関連 P
 
 > **Reference**: [Wiki Query](../wiki-query/SKILL.md) — `wiki-query-inject.sh` API
 
-レビュー取得前に Wiki 経験則を注入する。条件: `wiki.enabled: true` かつ `wiki.auto_query: true`。それ以外は silent skip。
+レビュー取得前に Wiki 経験則を注入する。会話へ注入するのは `wiki.enabled: true` かつ `wiki.auto_query: true` のとき。設定が false でもこの節は飛ばさず、capture を呼ぶ。
 
 ```bash
 wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
@@ -153,24 +153,18 @@ case "$auto_query" in true|yes|1) auto_query="true" ;; *) auto_query="false" ;; 
 echo "wiki_enabled=$wiki_enabled auto_query=$auto_query"
 ```
 
-`wiki_enabled=false` または `auto_query=false` なら ステップ 1 へ。キーワードは指摘カテゴリ・対象パス・finding 種別。
+`{keywords}` は指摘カテゴリ、対象パス、失敗内容。`{changed_paths}` は存在する対象パスのカンマ区切りで、空なら `--paths` を省く。契約は [wiki-apply-contract.md](../../references/wiki-apply-contract.md)。
 
 ```bash
-# {plugin_root} はリテラル値で埋め込む
-# {keywords} はレビュー指摘のカテゴリ + 対象ファイルパスをカンマ区切りで生成
-# （他コーラー skills/issue-create/SKILL.md / skills/pr-review/SKILL.md /
-#   skills/issue-implement/SKILL.md / skills/unknowns/SKILL.md と同形式）
-wiki_context=$(bash {plugin_root}/hooks/wiki-query-inject.sh \
-  --keywords "{keywords}" \
-  --format compact 2>/dev/null) || wiki_context=""
-if [ -n "$wiki_context" ]; then
-  echo "$wiki_context"
-else
-  echo "(Wiki から関連経験則は見つかりませんでした)"
-fi
+wiki_context=$(bash {plugin_root}/hooks/scripts/wiki-apply-capture.sh \
+  --keywords "{keywords}" --paths "{changed_paths}") || {
+  echo "ERROR: Wiki 検索に失敗したため、コミットへ進みません" >&2
+  exit 1
+}
+printf '%s\n' "$wiki_context"
 ```
 
-非空なら context に残し、ステップ 2 の修正方針に使う。
+status が ok の各ページは rev の本文を読み、excerpt、判断、applied なら evidence と result を証跡に書く。`body: read` だけでは commit しない。ゲートが deny なら commit しない。commit 後に head が現在の HEAD と違うとき、または blob がファイルと違うときは capture からやり直す。
 
 ---
 
@@ -1254,7 +1248,7 @@ rm -f "${TMPDIR:-/tmp}/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
 
 **Escalation trigger（パッチの重ね掛け停止）**: 対応中の finding が**同一 PR の前 cycle の fix が導入・変更した箇所**への指摘である場合（description が「cycle N で導入した」「前 cycle で追加した」等で当該 fix を名指しする場合を含む）、同じ機構への追加パッチを既定選択にしないこと。まず「当該機構ごと削除・単純化して指摘群を根から消せないか」を検討し、修正案の提示（ステップ 2.3）の前にその判断を chat へ 1 行明示する（例: `simplification-first: 削除 — 分岐機構を削除し行全体再生成へ単純化` / `simplification-first: 追加 — 理由: {なぜ削除ではないか}`。書式はステップ 3.2 の必須段落と同一）。
 
-Escalation trigger 成立時は、この判断を commit body の `simplification-first:` 段落（ステップ 3.2）として書く。ステップ 3.2.1 Root Cause Gate が段落の有無を検査する。
+Escalation trigger 成立時は、この判断を commit body の `simplification-first:` 段落（ステップ 3.2）として書く。本文禁止時は 3.2.1 の溢れ先へ移す。ステップ 3.2.1 Root Cause Gate が段落の有無を検査する。
 
 rationale: references/design-rationale.md#simplification-first-rationale
 
@@ -1865,7 +1859,9 @@ fallback を選んだら commit body に「なぜ throw ではないか」を書
 
 **Commit message language:**
 
-Before generating the commit message, check the `language` field in `rite-config.yml` using the Read tool to determine the language:
+生成直前に [commit-convention.md](../../references/commit-convention.md) を適用する（locate + Read。結果は flow-state に残さない）。規約が言語・形式を指定していればそれに従う。未指定項目だけ下記の `language` 既定と Conventional Commits を使う。
+
+Before generating the commit message, check the `language` field in `rite-config.yml` using the Read tool to determine the language (規約未指定時のみ):
 
 | Setting | Behavior |
 |---------|----------|
@@ -1893,16 +1889,16 @@ Before generating the commit message, check the `language` field in `rite-config
 
 **Commit body:**
 
-Use a free-form commit body. Review-fix commits **MUST** include:
+規約が本文を禁じない限り、free-form の commit body を使う。Review-fix commits は次を **MUST** で残す（本文へ書くか、本文禁止なら 3.2.1 の前に overflow へ移す。body へ prepend しない）:
 - **対応方針** — 各 finding に対して何をしたか / なぜその方針か
-- **`Root cause:` / `根本原因:` 段落** — ステップ 3.2.1 Root Cause Gate が検査する
-- **`simplification-first:` 段落（Escalation trigger 成立時のみ）** — `simplification-first: 削除 — {何を削ったか}` または `simplification-first: 追加 — 理由: {なぜ削除ではないか}` の 1 段落。ステップ 3.2.1 Root Cause Gate が検査する。trigger 不成立の cycle では書かない
+- **`Root cause:` / `根本原因:` 段落** — ステップ 3.2.1 Root Cause Gate が検査する（本文禁止時は `{overflow_store}`）
+- **`simplification-first:` 段落（Escalation trigger 成立時のみ）** — `simplification-first: 削除 — {何を削ったか}` または `simplification-first: 追加 — 理由: {なぜ削除ではないか}` の 1 段落。ステップ 3.2.1 Root Cause Gate が検査する（本文禁止時は `{overflow_store}`）。trigger 不成立の cycle では書かない
 
 - Leave a blank line between the description line and the body
 - Write in free-form — no specific prefix or template required
 - Focus on "why" the change was needed, not "what" was changed (the description line already covers "what")
 - Follow the same language setting as the description line
-- Why は必須（省略経路なし）。review-fix の対応方針 / Root cause は省略しない
+- Why は、規約が本文を禁じない限り必須（省略経路なし）。review-fix の対応方針 / Root cause は省略せず、本文禁止時は overflow へ移す
 
 **Trailer**: Generate in the configured language using the unified `{reviewer_display_N}` placeholder (展開ルールは ステップ 2.1 の `{reviewer_display}` 展開ルール表を参照 — Broad Retrieval 経由で `@{user}`、Fast Path 経由 + `target_author_mention_skip == "true"` で `(不明なレビュアー)` / `(unknown reviewer)` に展開される):
 
@@ -1913,6 +1909,8 @@ Use a free-form commit body. Review-fix commits **MUST** include:
 rationale: references/design-rationale.md#reviewer-display-single-source
 
 **Acknowledged-finding trailer (accept で `status: acknowledged` 化された finding 用)**:
+
+規約が trailer を禁じるときはコミットに付けず、[commit-convention.md 必須記録](../../references/commit-convention.md#必須記録が規約に収まらないとき) の手順で節 `Acknowledged-finding` へ移し、検査も同じ節を読む。
 
 ステップ 2.1 で `accept (認知のみ)` を選択した finding が 1 件以上含まれる commit では、commit message の trailer に以下の形式の行を **per-acknowledged-finding で反復生成** する (Co-Authored-By / Addresses review comments trailer と並存):
 
@@ -1964,14 +1962,16 @@ fix(review): {description}
 
 ### 3.2.1 Root Cause Gate
 
-Before committing a fix, the commit body **MUST** include a root-cause explanation. This gate implements Quality Signal 2 (root-cause-missing fix detection) — see the Quality Signal 1-4 table in `skills/pr-review/references/finding-cycling.md`.
+Before committing a fix, a root-cause explanation **MUST** be in the commit body when the convention allows a body, or in the convention's overflow store when the body is forbidden. This gate implements Quality Signal 2 (root-cause-missing fix detection) — see the Quality Signal 1-4 table in `skills/pr-review/references/finding-cycling.md`.
 
-**Step 1**: 3.2 の commit body に `Root cause:` / `根本原因:` 段落があるか LLM が判定する (Bash 状態非依存)。Escalation trigger 成立時は `simplification-first:` 段落の有無も判定し、いずれかの欠落を `missing` とする。trigger 不成立の cycle では `simplification-first:` 段落を要求しない。
+**Step 1**: 規約が本文を禁じるときは、3.2 の body へ Root cause を書かず、必須記録の保存・検査手順の正本 [commit-convention.md](../../references/commit-convention.md#必須記録が規約に収まらないとき) に従う。必要な節は `Root cause`。Escalation trigger 成立時は `simplification-first` も同じ手順で足す。検査は正本どおり同じ各節の helper `read`。helper は絶対パスのローカルファイルだけを受け取り、PR 本文や work-memory へは書かない。
+
+規約が本文を禁じないときは 3.2 の commit body に `Root cause:` / `根本原因:` 段落があるか LLM が判定する (Bash 状態非依存)。規約が本文・trailer を禁じて溢れさせた場合は、正本の保存先から同じ節を読む。どちらにも無ければ `missing`。検査を外して通過させない。Escalation trigger 成立時は `simplification-first:` 段落の有無も同じ規則で判定し、いずれかの欠落を `missing` とする。trigger 不成立の cycle では `simplification-first:` 段落を要求しない。正本の view / edit / write / read 失敗はコミットしない。body へ prepend しない。work-memory を溢れ先にしない。
 
 Emit one of the two context markers so downstream logic can route:
 
 ```bash
-# LLM-side determination: examine the commit body generated in ステップ 3.2 and emit one of:
+# LLM-side determination: examine the commit body from ステップ 3.2, or `{overflow_store}` from Step 1 when the body is forbidden, and emit one of:
 echo "[CONTEXT] ROOT_CAUSE_GATE=ok"
 # or
 echo "[CONTEXT] ROOT_CAUSE_GATE=missing"
@@ -1981,8 +1981,8 @@ echo "[CONTEXT] ROOT_CAUSE_GATE=missing"
 
 | Option | Action |
 |--------|--------|
-| 不足段落を追記して再コミット（推奨） | Ask the user for a short paragraph for whichever Step 1 found missing: prepend a `Root cause: {paragraph}` / `根本原因: {paragraph}` paragraph, or (Escalation trigger 成立時) a `simplification-first: {paragraph}` paragraph, to the commit body; re-invoke Step 1. The retry count is tracked in conversation context by the LLM — after one retry the LLM falls through to the second option to avoid an infinite prompt loop |
-| 意図的な補足コミットとして通過 | Prepend a bypass paragraph for whichever Step 1 found missing — `Root cause (bypass): {理由}`, or (Escalation trigger 成立時) `simplification-first (bypass): {理由}` — to the commit body (the bypass rationale recorded alongside the commit for machine-traceability) AND append the same rationale to work memory `決定事項・メモ`. The bypass is still recorded |
+| 不足段落を追記して再コミット（推奨） | Ask the user for a short paragraph for whichever Step 1 found missing: prepend a `Root cause: {paragraph}` / `根本原因: {paragraph}` paragraph, or (Escalation trigger 成立時) a `simplification-first: {paragraph}` paragraph, to the commit body when the convention allows a body; if the convention forbids a body, write the missing paragraphs via the canonical overflow procedure with those section names (`Root cause` and, when the trigger holds, `simplification-first`). Do not prepend to the commit. Do not use work-memory as the overflow store. 正本の失敗はコミットしない。re-invoke Step 1. The retry count is tracked in conversation context by the LLM — after one retry the LLM falls through to the second option to avoid an infinite prompt loop |
+| 意図的な補足コミットとして通過 | Prepend a bypass paragraph for whichever Step 1 found missing — `Root cause (bypass): {理由}`, or (Escalation trigger 成立時) `simplification-first (bypass): {理由}` — to the commit body when the convention allows a body (the bypass rationale recorded alongside the commit for machine-traceability). If the convention forbids a body, write the same rationale via the canonical overflow procedure with the missing section names. AND append the same rationale to work memory `決定事項・メモ`. The bypass is still recorded. 正本の失敗はコミットしない |
 | Abort | Skip this fix cycle; emit `[fix:error]` and return control to the caller |
 
 cosmetic は option 2 可。bypass は記録必須。

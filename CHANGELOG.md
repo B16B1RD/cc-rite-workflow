@@ -32,6 +32,18 @@ Past version sections carry none either — they have already been stripped.
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-09-22
+
+### Added
+
+- **An implement or fix commit proceeds only when the wiki record of the search, the page text, and the apply judgment matches the current work** — the work-memory record keeps that a search ran, an excerpt taken from the page text, whether that page was applied or set aside and why, the paths that changed, and the verification result. The commit is refused when the record is missing, when it is older than the current HEAD or file contents, when the excerpt is not in the page, or when the search or the index cannot be read. Claude, Codex, and Grok run this same check before an implement or fix commit.
+- **Messages rite generates follow `CLAUDE.md` and `AGENTS.md` in the worktree being committed** — rite reads those files in that worktree immediately before it generates a message and applies the language and form they specify. Items they leave unspecified stay on the built-in default. A required record that does not fit the subject or body is kept in the pull-request body or in `commit-records` under the shared root. The lookup uses the shared root only when the wiki is on a separate branch and the convention entry is absent. A dangling path fails instead of being skipped.
+
+### Fixed
+
+- **An empty commit-message argument and an empty message-file argument are rejected when the command is parsed** — an empty string is not treated as unspecified. A commit with no changes is not reported as success, and a commit is not given the default subject in place of a message the user left empty.
+- **Short options do not reject an ordinary commit specification** — a normal way of passing the commit message is not refused as if it committed different content from the checked files.
+
 ## [0.17.1] - 2026-09-20
 
 ### Fixed
@@ -1121,6 +1133,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.18.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.17.1...v0.18.0
 [0.17.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.17.0...v0.17.1
 [0.17.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.16.1...v0.17.0
 [0.16.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.16.0...v0.16.1

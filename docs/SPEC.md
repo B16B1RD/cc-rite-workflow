@@ -331,7 +331,7 @@ Plugin metadata file format:
 ```json
 {
  "name": "rite",
- "version": "0.17.1",
+ "version": "0.18.0",
  "description": "Universal Issue-driven development workflow for Claude Code",
  "author": { "name": "B16B1RD" },
  "license": "MIT"
@@ -1999,7 +1999,7 @@ Details: {technical details for debugging}
 
 > **Status: Retired**. The runtime i18n mechanism (`{i18n:key_name}` placeholder substitution, the `plugins/rite/i18n/` directory tree with `ja.yml` / `en.yml` legacy monolithic files and `ja/` / `en/` per-domain split files, and the `references/i18n-usage.md` reference doc) was deleted entirely (commit `d3a105f1`). All 364 placeholders across 10 remaining command/sub-skill files were resolved to inline Japanese, removing the runtime i18n resolution dependency. No language file structure remains in the plugin source tree.
 >
-> The remaining language-related controls are documentation-side conventions only. The `language` setting in `rite-config.yml` (still live) controls the output language of LLM-generated content — including commit messages (`skills/issue-implement/SKILL.md`, `skills/fix/SKILL.md`), PR title and body (`skills/pr-create/SKILL.md`), Issue creation prompts (`skills/issue-create/SKILL.md`), workflow / list output (`skills/workflow/SKILL.md`, `skills/issue-list/SKILL.md`). It does not select a runtime UI message catalog (no such catalog exists after the i18n retirement).
+> The remaining language-related controls are documentation-side conventions only. The `language` setting in `rite-config.yml` (still live) controls the output language of LLM-generated content — PR title and body (`skills/pr-create/SKILL.md`), Issue creation prompts (`skills/issue-create/SKILL.md`), workflow / list output (`skills/workflow/SKILL.md`, `skills/issue-list/SKILL.md`), and LLM-path commit messages when the worktree `CLAUDE.md` / `AGENTS.md` (nested files nearer the changed path take priority) do not specify a language (`skills/issue-implement/SKILL.md`, `skills/fix/SKILL.md`; see [`commit-convention.md`](../plugins/rite/references/commit-convention.md)). It does not select a runtime UI message catalog (no such catalog exists after the i18n retirement).
 
 ### Documentation language conventions
 

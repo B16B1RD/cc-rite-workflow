@@ -273,6 +273,8 @@ Branch: feat/issue-721
 
 The stock `Phase:` / `Branch:` lines at the top of `## Detail` are regenerated with the latest values on every write (`work-memory-update.sh`); the free-form text after them is carried over verbatim.
 
+`### Wiki 適用証跡` は Detail の自由記述に置く。検索状態、実行時刻、HEAD、対象パスの blob、ページの版、本文の抜粋、適用判断、検証結果をこの節だけに書く。別ファイルや frontmatter には複製しない。形は [wiki-apply-contract.md](../../../references/wiki-apply-contract.md)。
+
 ### Frontmatter Fields
 
 | Field | Type | Required | Description |

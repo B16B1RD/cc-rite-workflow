@@ -424,5 +424,206 @@ run_pre_checkout_failure_case "pre-checkout failure"
 run_pre_checkout_failure_case "pre-checkout failure (apostrophe raw name)" "it's pr-test.md"
 echo ""
 
+echo "TC-MESSAGE: same_branch default / --message-file / convention fail-loud"
+make_same_branch_msg_fixture() {
+  local base repo
+  base=$(mktemp -d); fixture_dirs+=("$base")
+  repo="$base/repo"
+  git init -q "$repo"
+  git -C "$repo" config user.email test@example.com
+  git -C "$repo" config user.name test
+  git -C "$repo" config commit.gpgsign false
+  printf 'seed\n' > "$repo/README.md"
+  git -C "$repo" add README.md
+  git -C "$repo" commit -qm seed
+  git -C "$repo" branch -M develop
+  printf '%s\n' 'wiki:' '  enabled: true' '  branch_strategy: same_branch' '  branch_name: wiki' > "$repo/rite-config.yml"
+  git -C "$repo" add rite-config.yml
+  git -C "$repo" commit -qm config
+  mkdir -p "$repo/.rite/wiki/raw/reviews"
+  printf '%s\n' '---' 'ingested: false' '---' 'raw' > "$repo/.rite/wiki/raw/reviews/pr-test.md"
+  printf '%s' "$repo"
+}
+
+run_same_branch_message_cases() {
+  local repo rc out err msg
+  repo=$(make_same_branch_msg_fixture)
+  rc=0
+  out=$(cd "$repo" && bash "$HOOK_SRC" 2>/dev/null) || rc=$?
+  eq "same_branch default exits 0" "0" "$rc"
+  eq "same_branch default subject" "chore(wiki): ingest 1 raw source(s)" "$(git -C "$repo" log -1 --format=%s)"
+
+  repo=$(make_same_branch_msg_fixture)
+  printf 'English only.\n' > "$repo/CLAUDE.md"
+  rc=0
+  err=$(cd "$repo" && bash "$HOOK_SRC" 2>&1) || rc=$?
+  eq "CLAUDE.md without --message-file exits 1" "1" "$rc"
+  eq "fail-loud names --message-file" "1" "$(printf '%s' "$err" | grep -c -- '--message-file' || true)"
+  eq "fail-loud leaves no staged raw" "" "$(git -C "$repo" diff --cached --name-only)"
+  eq "fail-loud leaves working tree on develop" "develop" "$(git -C "$repo" branch --show-current)"
+
+  repo=$(make_same_branch_msg_fixture)
+  printf 'English only.\n' > "$repo/CLAUDE.md"
+  msg=$(mktemp)
+  printf 'docs(wiki): ingest with `tick`\n\n$(whoami) stays literal\n' > "$msg"
+  rc=0
+  (cd "$repo" && bash "$HOOK_SRC" --message-file "$msg") >/dev/null || rc=$?
+  eq "--message-file with CLAUDE.md exits 0" "0" "$rc"
+  eq "--message-file subject" "docs(wiki): ingest with \`tick\`" "$(git -C "$repo" log -1 --format=%s)"
+  eq "--message-file keeps command-like body" "1" \
+    "$(git -C "$repo" log -1 --format=%b | grep -cF '$(whoami) stays literal' || true)"
+  rm -f "$msg"
+
+  # Empty and missing values must fail at parse time. Folding either into
+  # "unspecified" would commit the default subject when no convention file
+  # exists, and would take the convention fail-loud path only when one does.
+  reject_message_file() {
+    local label="$1" repo="$2"
+    shift 2
+    local rc=0 err head_before
+    head_before=$(git -C "$repo" rev-parse HEAD)
+    err=$(cd "$repo" && bash "$HOOK_SRC" "$@" 2>&1) || rc=$?
+    eq "$label exits 1" "1" "$rc"
+    eq "$label names required value" "1" \
+      "$(printf '%s' "$err" | grep -cF -- '--message-file requires a value' || true)"
+    eq "$label does not move HEAD" "$head_before" "$(git -C "$repo" rev-parse HEAD)"
+    eq "$label stays on develop" "develop" "$(git -C "$repo" branch --show-current)"
+    eq "$label does not commit the default subject" "0" \
+      "$(git -C "$repo" log --format=%s | grep -cF 'chore(wiki): ingest 1 raw source(s)' || true)"
+  }
+
+  repo=$(make_same_branch_msg_fixture)
+  reject_message_file "no convention empty --message-file" "$repo" --message-file ""
+  repo=$(make_same_branch_msg_fixture)
+  reject_message_file "no convention missing --message-file value" "$repo" --message-file
+  repo=$(make_same_branch_msg_fixture)
+  printf 'English only.\n' > "$repo/CLAUDE.md"
+  reject_message_file "CLAUDE.md empty --message-file" "$repo" --message-file ""
+  repo=$(make_same_branch_msg_fixture)
+  printf 'English only.\n' > "$repo/CLAUDE.md"
+  reject_message_file "CLAUDE.md missing --message-file value" "$repo" --message-file
+}
+run_same_branch_message_cases
+
+echo ""
+
+echo "TC-MESSAGE: separate_branch legacy resolves before wiki checkout"
+run_legacy_convention_fail_loud() {
+  local base repo rc=0 err wiki_before
+  base=$(mktemp -d); fixture_dirs+=("$base")
+  repo="$base/repo"
+  git init -q "$repo"
+  git -C "$repo" config user.email test@example.com
+  git -C "$repo" config user.name test
+  git -C "$repo" config commit.gpgsign false
+  printf 'seed\n' > "$repo/README.md"
+  git -C "$repo" add README.md
+  git -C "$repo" commit -qm seed
+  git -C "$repo" branch -M develop
+  git -C "$repo" switch -qc wiki
+  printf 'wiki seed\n' > "$repo/wiki.md"
+  git -C "$repo" add wiki.md
+  git -C "$repo" commit -qm 'wiki seed'
+  git -C "$repo" switch -q develop
+  printf '%s\n' 'wiki:' '  enabled: true' '  branch_strategy: separate_branch' '  branch_name: wiki' > "$repo/rite-config.yml"
+  git -C "$repo" add rite-config.yml
+  git -C "$repo" commit -qm config
+  printf 'English only.\n' > "$repo/CLAUDE.md"
+  git -C "$repo" add CLAUDE.md
+  git -C "$repo" commit -qm claude
+  mkdir -p "$repo/.rite/wiki/raw/reviews"
+  printf '%s\n' '---' 'ingested: false' '---' 'raw' > "$repo/.rite/wiki/raw/reviews/pr-test.md"
+  git init -q --bare "$base/origin.git"
+  git -C "$repo" remote add origin "$base/origin.git"
+  git -C "$repo" push -q origin wiki
+  wiki_before=$(git -C "$repo" rev-parse wiki)
+  err=$(cd "$repo" && bash "$HOOK_SRC" 2>&1) || rc=$?
+  eq "legacy CLAUDE.md without --message-file exits 1" "1" "$rc"
+  eq "legacy fail-loud names --message-file" "1" "$(printf '%s' "$err" | grep -c -- '--message-file' || true)"
+  eq "legacy fail-loud ends on develop" "develop" "$(git -C "$repo" branch --show-current)"
+  eq "legacy fail-loud does not move wiki HEAD" "$wiki_before" "$(git -C "$repo" rev-parse wiki)"
+  eq "legacy fail-loud leaves no wiki worktree residue" "0" \
+    "$([ -d "$repo/.rite/wiki-worktree" ] && echo 1 || echo 0)"
+}
+run_legacy_convention_fail_loud
+
+echo ""
+
+echo "TC-MESSAGE: leftover tempfile pins"
+leftover_wic() {
+  find "$1" -name 'rite-wic-*' 2>/dev/null | wc -l | tr -d '[:space:]'
+}
+
+run_same_branch_fail_loud_leftover() {
+  local repo tmp rc=0
+  repo=$(make_same_branch_msg_fixture)
+  printf 'English only.\n' > "$repo/CLAUDE.md"
+  tmp=$(mktemp -d); fixture_dirs+=("$tmp")
+  ( cd "$repo" && TMPDIR="$tmp" bash "$HOOK_SRC" ) >/dev/null 2>&1 || rc=$?
+  eq "same_branch fail-loud leftover exits 1" "1" "$rc"
+  eq "same_branch fail-loud leftover rite-wic count" "0" "$(leftover_wic "$tmp")"
+}
+run_same_branch_fail_loud_leftover
+
+run_legacy_fail_loud_leftover() {
+  local base repo tmp rc=0
+  base=$(mktemp -d); fixture_dirs+=("$base")
+  repo="$base/repo"
+  git init -q "$repo"
+  git -C "$repo" config user.email test@example.com
+  git -C "$repo" config user.name test
+  git -C "$repo" config commit.gpgsign false
+  printf 'seed\n' > "$repo/README.md"
+  git -C "$repo" add README.md
+  git -C "$repo" commit -qm seed
+  git -C "$repo" branch -M develop
+  git -C "$repo" switch -qc wiki
+  printf 'wiki seed\n' > "$repo/wiki.md"
+  git -C "$repo" add wiki.md
+  git -C "$repo" commit -qm 'wiki seed'
+  git -C "$repo" switch -q develop
+  printf '%s\n' 'wiki:' '  enabled: true' '  branch_strategy: separate_branch' '  branch_name: wiki' > "$repo/rite-config.yml"
+  git -C "$repo" add rite-config.yml
+  git -C "$repo" commit -qm config
+  printf 'English only.\n' > "$repo/CLAUDE.md"
+  git -C "$repo" add CLAUDE.md
+  git -C "$repo" commit -qm claude
+  mkdir -p "$repo/.rite/wiki/raw/reviews"
+  printf '%s\n' '---' 'ingested: false' '---' 'raw' > "$repo/.rite/wiki/raw/reviews/pr-test.md"
+  tmp=$(mktemp -d); fixture_dirs+=("$tmp")
+  ( cd "$repo" && TMPDIR="$tmp" bash "$HOOK_SRC" ) >/dev/null 2>&1 || rc=$?
+  eq "legacy fail-loud leftover exits 1" "1" "$rc"
+  eq "legacy fail-loud leftover rite-wic count" "0" "$(leftover_wic "$tmp")"
+}
+run_legacy_fail_loud_leftover
+
+run_missing_branch_leftover() {
+  local repo tmp msg rc=0
+  repo=$(mktemp -d); fixture_dirs+=("$repo")
+  git init -q "$repo"
+  git -C "$repo" config user.email test@example.com
+  git -C "$repo" config user.name test
+  git -C "$repo" config commit.gpgsign false
+  printf 'seed\n' > "$repo/README.md"
+  git -C "$repo" add README.md
+  git -C "$repo" commit -qm seed
+  git -C "$repo" branch -M develop
+  printf '%s\n' 'wiki:' '  enabled: true' '  branch_strategy: separate_branch' '  branch_name: wiki' > "$repo/rite-config.yml"
+  git -C "$repo" add rite-config.yml
+  git -C "$repo" commit -qm config
+  mkdir -p "$repo/.rite/wiki/raw/reviews"
+  printf '%s\n' '---' 'ingested: false' '---' 'raw' > "$repo/.rite/wiki/raw/reviews/pr-test.md"
+  msg=$(mktemp)
+  printf 'docs(wiki): leftover fixture\n' > "$msg"
+  tmp=$(mktemp -d); fixture_dirs+=("$tmp")
+  ( cd "$repo" && TMPDIR="$tmp" bash "$HOOK_SRC" --message-file "$msg" ) >/dev/null 2>&1 || rc=$?
+  eq "missing wiki branch leftover exits 2" "2" "$rc"
+  eq "missing wiki branch leftover rite-wic count" "0" "$(leftover_wic "$tmp")"
+  rm -f "$msg"
+}
+run_missing_branch_leftover
+
+echo ""
+
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [ "$FAIL" -eq 0 ] || exit 1

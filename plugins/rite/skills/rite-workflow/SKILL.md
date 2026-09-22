@@ -13,7 +13,7 @@ user-invocable: false
 
 rite workflow 操作のコンテキスト: 状態検出・コマンド案内・共有原則。
 
-- Workflow Awareness / Command Guidance / Best Practices（Conventional Commits・ブランチ命名・PR テンプレート）
+- Workflow Awareness / Command Guidance / Best Practices（コミットは [commit-convention.md](../../references/commit-convention.md)・ブランチ命名・PR テンプレート）
 - [coding-principles.md](./references/coding-principles.md) / [common-principles.md](./references/common-principles.md) / [comment-best-practices.md](./references/comment-best-practices.md)
 
 実行ホストの操作対応は [Host Runtime Contract](../../references/host-runtime-contract.md) と [Host workflow operations](../../references/host-workflow-operations.md) に従う。スキル入口で runtime 初期化を行い、native / 明示実行の選択と現在 session を固定する。ホスト名から能力を推測せず、既存 Claude Code 経路・工程・sentinel を維持する。
