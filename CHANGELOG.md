@@ -43,7 +43,6 @@ Past version sections carry none either — they have already been stripped.
 
 - **An empty commit-message argument and an empty message-file argument are rejected when the command is parsed** — an empty string is not treated as unspecified. A commit with no changes is not reported as success, and a commit is not given the default subject in place of a message the user left empty.
 - **Short options do not reject an ordinary commit specification** — a normal way of passing the commit message is not refused as if it committed different content from the checked files.
-- **Session end fails when no hasher can produce a digest** — two empty results are not treated as a match. If every hasher comes back empty, session end reports the failure and stops.
 
 ## [0.17.1] - 2026-09-20
 
