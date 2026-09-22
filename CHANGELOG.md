@@ -36,13 +36,14 @@ Past version sections carry none either — they have already been stripped.
 
 ### Added
 
+- **An implement or fix commit proceeds only when the wiki record of the search, the page text, and the apply judgment matches the current work** — the work-memory record keeps that a search ran, an excerpt taken from the page text, whether that page was applied or set aside and why, the paths that changed, and the verification result. The commit is refused when the record is missing, when it is older than the current HEAD or file contents, when the excerpt is not in the page, or when the search or the index cannot be read. Claude, Codex, and Grok run this same check before an implement or fix commit.
 - **Messages rite generates follow `CLAUDE.md` and `AGENTS.md` in the worktree being committed** — rite reads those files in that worktree immediately before it generates a message and applies the language and form they specify. Items they leave unspecified stay on the built-in default. A required record that does not fit the subject or body is kept in the pull-request body or in `commit-records` under the shared root. The lookup uses the shared root only when the wiki is on a separate branch and the convention entry is absent. A dangling path fails instead of being skipped.
-- **A failed wiki search stops the commit** — the check before commit no longer treats a wiki search failure as a successful completion. A short cluster that names content is still rejected. A flag that takes a value is classified as an index flag.
 
 ### Fixed
 
-- **An empty commit-message argument and an empty message-file argument are rejected at parse time** — treating an empty string as unspecified made a tree with no changes exit 0 as no-pending, made a tree with changes stop later because `COMMIT_MSG` was required, made a run without a convention commit under the default subject, and made a run with a convention fail on another path. A missing value and an empty string now share one parse error, including when `--dry-run` comes first. The sample message-file path in the procedure is a single line back to the generation source, and the regression comment no longer reads as though the no-change path and `--dry-run` die in a later step.
-- **SessionEnd fails when every portable hasher returns an empty digest** — two empty digests no longer compare as a byte match. The portable hasher chain remains. When every hasher is empty, the hook writes the failure to stderr and exits non-zero. The swallowed-rc pin matches the parent shape: the needle covers command substitution inside the test brackets and detects a `digest_file` call placed inside an `if`.
+- **An empty commit-message argument and an empty message-file argument are rejected when the command is parsed** — an empty string is not treated as unspecified. A commit with no changes is not reported as success, and a commit is not given the default subject in place of a message the user left empty.
+- **Short options do not reject an ordinary commit specification** — a normal way of passing the commit message is not refused as if it committed different content from the checked files.
+- **Session end fails when no hasher can produce a digest** — two empty results are not treated as a match. If every hasher comes back empty, session end reports the failure and stops.
 
 ## [0.17.1] - 2026-09-20
 
