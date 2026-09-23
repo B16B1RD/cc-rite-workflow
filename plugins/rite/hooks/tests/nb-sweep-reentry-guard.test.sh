@@ -257,8 +257,10 @@ run_entry() {
   mkdir -p "$root/.rite/review-results" "$root/.rite/state"
   printf '{}\n' > "$root/.rite/review-results/42-20200101000000.json"
   printf '{}\n' > "$root/.rite/review-results/42-20200202000000.json"
-  touch -d '2020-01-02 00:00:00' "$root/.rite/review-results/42-20200202000000.json"
-  touch -d '2020-03-03 00:00:00' "$root/.rite/review-results/42-20200101000000.json"
+  touch -d '2020-01-02 00:00:00' "$root/.rite/review-results/42-20200202000000.json" \
+    || touch -t 202001020000 "$root/.rite/review-results/42-20200202000000.json"
+  touch -d '2020-03-03 00:00:00' "$root/.rite/review-results/42-20200101000000.json" \
+    || touch -t 202003030000 "$root/.rite/review-results/42-20200101000000.json"
   if [ -n "${2:-}" ]; then
     printf '%s\n' "$2" > "$root/.rite/state/nb-sweep-done-42.txt"
   fi
@@ -270,7 +272,18 @@ lexical_tail=42-20200202000000.json
 mtime_max=42-20200101000000.json
 
 match_root=$(run_entry match "$(printf 'done %s\n%s\n' "$lexical_tail" 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb')")
-assert "T-11 lexical tail is not the mtime max" "$mtime_max" "$(find "$match_root/.rite/review-results" -maxdepth 1 -type f -printf '%T@ %f\n' | sort -n | tail -1 | awk '{print $2}')"
+nb_mtime() { stat -c '%Y' "$1" 2>/dev/null || stat -f '%m' "$1"; }
+nb_mtime_max_base() {
+  local older newer
+  older="$1/.rite/review-results/42-20200202000000.json"
+  newer="$1/.rite/review-results/42-20200101000000.json"
+  if [ "$(nb_mtime "$newer")" -ge "$(nb_mtime "$older")" ]; then
+    basename "$newer"
+  else
+    basename "$older"
+  fi
+}
+assert "T-11 lexical tail is not the mtime max" "$mtime_max" "$(nb_mtime_max_base "$match_root")"
 assert "T-11 match skips" "1" "$(grep -c "ITERATE_NB_SWEEP=skipped" "$match_root/out.txt" || true)"
 assert "T-11 match kind is done not concatenated" "1" "$(grep -c 'kind=done;' "$match_root/out.txt" || true)"
 assert "T-11 match record is lexical tail" "1" "$(grep -c "record=$lexical_tail" "$match_root/out.txt" || true)"
@@ -287,6 +300,12 @@ bare_root=$(run_entry bare $'done')
 assert "T-11 missing range does not skip" "0" "$(grep -c 'ITERATE_NB_SWEEP=skipped' "$bare_root/out.txt" || true)"
 assert "T-11 missing range calls collect" "1" "$(grep -c called "$bare_root/collect.log" || true)"
 rm -rf -- "$bare_root"
+
+sha_keep=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+sha_root=$(run_entry sha "$(printf 'done\n%s\n' "$sha_keep")")
+assert "T-11 legacy sha line survives rewrite" "$sha_keep" "$(sed -n '2p' "$sha_root/.rite/state/nb-sweep-done-42.txt" | tr -d '[:space:]')"
+assert "T-11 legacy rewrite records lexical tail" "noop $lexical_tail" "$(awk 'NR==1{print}' "$sha_root/.rite/state/nb-sweep-done-42.txt")"
+rm -rf -- "$sha_root"
 
 empty_root=$(run_entry empty-record "" missing)
 assert "T-11 empty record leaves no rangeless file" "0" "$([ -f "$empty_root/.rite/state/nb-sweep-done-42.txt" ] && echo 1 || echo 0)"

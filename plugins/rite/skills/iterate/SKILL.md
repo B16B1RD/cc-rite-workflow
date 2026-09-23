@@ -832,7 +832,21 @@ case "$collect_rc:$status" in
     nb_record=$(printf '%s' "$collect_out" | jq -r '.record // empty')
     nb_record_base=""
     [ -n "$nb_record" ] && nb_record_base=$(basename "$nb_record")
-    if [ -z "$nb_record_base" ] || ! printf 'noop %s\n' "$nb_record_base" > "$nb_done_file"; then
+    nb_keep=""
+    if [ -f "$nb_done_file" ]; then
+      nb_keep=$(sed -n '2p' "$nb_done_file" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+      case "$nb_keep" in ''|*[!0-9a-f]*) nb_keep="" ;; esac
+      [ "${#nb_keep}" -ge 7 ] || nb_keep=""
+    fi
+    if [ -z "$nb_record_base" ]; then
+      echo "WARNING: nb-sweep-done marker を書けませんでした ($nb_done_file)。次回 5.S は再実行されます" >&2
+      rm -f "$nb_done_file"
+    elif [ -n "$nb_keep" ]; then
+      if ! printf 'noop %s\n%s\n' "$nb_record_base" "$nb_keep" > "$nb_done_file"; then
+        echo "WARNING: nb-sweep-done marker を書けませんでした ($nb_done_file)。次回 5.S は再実行されます" >&2
+        rm -f "$nb_done_file"
+      fi
+    elif ! printf 'noop %s\n' "$nb_record_base" > "$nb_done_file"; then
       echo "WARNING: nb-sweep-done marker を書けませんでした ($nb_done_file)。次回 5.S は再実行されます" >&2
       rm -f "$nb_done_file"
     fi
@@ -878,7 +892,7 @@ args: "--nb-sweep {pr_number}"
 | `[fix:sweep-done]` | 完了前確認（目的整合）。ステップ 1 に戻らない |
 | `[fix:error]` / その他 / sentinel 不在 | `[iterate:nb-sweep-error]` で停止。完了通知へ進まない |
 
-fix が emit した `[CONTEXT] NB_SWEEP_RESULT=done; issued=K; recorded=M` を読み、`ITERATE_NB_SWEEP=done` を同カウントで emit する。記録した basename が最新 JSON と違う、またはファイルが無いときは、collect と同じ選び方（`LC_ALL=C` sort の末尾）で 1 行 `done <basename>` を書く。basename が取れないときは範囲なしの行を残さない:
+fix が emit した `[CONTEXT] NB_SWEEP_RESULT=done; issued=K; recorded=M` を読み、`ITERATE_NB_SWEEP=done` を同カウントで emit する。記録した basename が最新 JSON と違う、またはファイルが無いときは、collect と同じ選び方（`LC_ALL=C` sort の末尾）で 1 行目を `done <basename>` にする。既存の 2 行目が SHA なら残し、新しい SHA は足さない。basename が取れないときは範囲なしの行を残さない:
 
 ```bash
 nb_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || nb_root=""
@@ -898,7 +912,18 @@ if [ -n "$nb_root" ] && [ -n "$nb_latest_base" ] && [ "$nb_have" != "$nb_latest_
     echo "WARNING: $nb_root/.rite/state/.gitignore を作成できませんでした。nb-sweep-done が git の追跡対象になる恐れがあります" >&2
     [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
   fi
-  if ! printf 'done %s\n' "$nb_latest_base" > "$nb_done_file"; then
+  nb_keep=""
+  if [ -f "$nb_done_file" ]; then
+    nb_keep=$(sed -n '2p' "$nb_done_file" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+    case "$nb_keep" in ''|*[!0-9a-f]*) nb_keep="" ;; esac
+    [ "${#nb_keep}" -ge 7 ] || nb_keep=""
+  fi
+  if [ -n "$nb_keep" ]; then
+    nb_write_ok=$(printf 'done %s\n%s\n' "$nb_latest_base" "$nb_keep" > "$nb_done_file" && echo ok || true)
+  else
+    nb_write_ok=$(printf 'done %s\n' "$nb_latest_base" > "$nb_done_file" && echo ok || true)
+  fi
+  if [ "$nb_write_ok" != ok ]; then
     echo "WARNING: nb-sweep-done marker を書けませんでした ($nb_done_file)" >&2
     rm -f "$nb_done_file"
   fi
