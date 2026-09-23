@@ -2628,11 +2628,21 @@ fi
 
 lock failure は WARNING で継続。non-lock は WARNING + stderr 5 行で継続。分岐は exact phrase ([common-error-handling.md](../../references/common-error-handling.md#hook-lock-contention-classification-canonical))。
 
-行 1.5/1.6 の `NB_SWEEP_DONE_FILE` は会話 marker 欠落時の代替。評価前に永続ファイルの有無を emit する（通常ループは行 1.5 が `NB_SWEEP=1` を要求するため本 marker だけでは分岐しない）:
+行 1.5/1.6 の `NB_SWEEP_DONE_FILE` は会話 marker 欠落時の代替。`-f` 単独は成功にしない。1 行目の第 2 フィールドが、collect と同じ選び方（`LC_ALL=C` sort の末尾）の最新 review JSON basename と一致するときだけ `1`（通常ループは行 1.5 が `NB_SWEEP=1` を要求するため本 marker だけでは分岐しない）:
 
 ```bash
 _nb_done_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || _nb_done_root=""
-if [ -n "$_nb_done_root" ] && [ -f "$_nb_done_root/.rite/state/nb-sweep-done-{pr_number}.txt" ]; then
+_nb_done_file=""
+_nb_range=""
+_nb_latest=""
+_nb_latest_base=""
+if [ -n "$_nb_done_root" ]; then
+  _nb_done_file="$_nb_done_root/.rite/state/nb-sweep-done-{pr_number}.txt"
+  [ -f "$_nb_done_file" ] && _nb_range=$(awk 'NR==1 { print $2 }' "$_nb_done_file")
+  _nb_latest=$(find "$_nb_done_root/.rite/review-results" -maxdepth 1 -type f -name "{pr_number}-*.json" 2>/dev/null | LC_ALL=C sort | tail -1)
+  [ -n "$_nb_latest" ] && _nb_latest_base=$(basename "$_nb_latest")
+fi
+if [ -n "$_nb_range" ] && [ "$_nb_range" = "$_nb_latest_base" ]; then
   echo "[CONTEXT] NB_SWEEP_DONE_FILE=1" >&2
 else
   echo "[CONTEXT] NB_SWEEP_DONE_FILE=0" >&2

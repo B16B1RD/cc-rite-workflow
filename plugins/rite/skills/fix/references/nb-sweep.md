@@ -1,6 +1,6 @@
 ### 1.3.S `--nb-sweep` consume（5.S 専用）
 
-`[CONTEXT] NB_SWEEP=1` のときだけ評価する。通常ループでは本節を skip。fix/SKILL.md のステップ 2–4 は評価せず、本節の後に fix/SKILL.md の 5.1 へ進む。
+`[CONTEXT] NB_SWEEP=1` のときだけ評価する。通常ループでは本節を skip。既存の `nb-sweep-done-{pr_number}.txt` があっても consume を skip しない。成功した書込が 1 行を上書きする。入口でファイルの有無を見て return しない。fix/SKILL.md のステップ 2–4 は評価せず、本節の後に fix/SKILL.md の 5.1 へ進む。
 rationale: ../../iterate/references/rationale.md#nb-sweep-step
 
 1. **collect**（iterate 5.S と同 helper。冪等）:
@@ -29,7 +29,10 @@ case "$collect_rc:$sweep_status" in
       echo "WARNING: $sweep_root/.rite/state/.gitignore を作成できませんでした。nb-sweep-done が git の追跡対象になる恐れがあります" >&2
       [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
     fi
-    if ! printf 'noop\n' > "$sweep_root/.rite/state/nb-sweep-done-{pr_number}.txt"; then
+    nb_record=$(printf '%s' "$collect_out" | jq -r '.record // empty')
+    nb_record_base=""
+    [ -n "$nb_record" ] && nb_record_base=$(basename "$nb_record")
+    if [ -z "$nb_record_base" ] || ! printf 'noop %s\n' "$nb_record_base" > "$sweep_root/.rite/state/nb-sweep-done-{pr_number}.txt"; then
       echo "WARNING: nb-sweep-done marker を書けませんでした" >&2
       rm -f "$sweep_root/.rite/state/nb-sweep-done-{pr_number}.txt"
     fi
@@ -200,7 +203,7 @@ fi
 [CONTEXT] NB_SWEEP_RESULT=done; issued=K; recorded=M
 ```
 
-全件の台帳 persist 成功後に 1 行 `done` を書く。sweep は HEAD を変更しないため SHA を追記しない。
+全件の台帳 persist 成功後に 1 行 `done <basename>` を書く。basename は collect が `--pr` で選ぶのと同じ最新 JSON（`LC_ALL=C` sort の末尾。collect 出力 `.record` の basename と同一）。この bash は別シェルなので `.record` を再計算する。sweep は HEAD を変更しないため SHA を追記しない。既存ファイルでも上書きする（ファイルが無いときだけ書く形にはしない）。
 
 ```bash
 sweep_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || sweep_root=""
@@ -212,7 +215,10 @@ if [ -n "$sweep_root" ]; then
     [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
   fi
   sweep_done_file="$sweep_root/.rite/state/nb-sweep-done-{pr_number}.txt"
-  if ! printf 'done\n' > "$sweep_done_file"; then
+  nb_record=$(find "$sweep_root/.rite/review-results" -maxdepth 1 -type f -name "{pr_number}-*.json" 2>/dev/null | LC_ALL=C sort | tail -1)
+  nb_record_base=""
+  [ -n "$nb_record" ] && nb_record_base=$(basename "$nb_record")
+  if [ -z "$nb_record_base" ] || ! printf 'done %s\n' "$nb_record_base" > "$sweep_done_file"; then
     echo "WARNING: nb-sweep-done marker を書けませんでした" >&2
     rm -f "$sweep_done_file"
   fi

@@ -337,7 +337,7 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 <a id="nb-sweep-ledger"></a>
 
-`/rite:iterate` の `[review:mergeable]` 後 sweep が残存 NB を消化した記録。永続チャネルは 6.1.d の関連 Issue コメント（新チャネルを作らない）。**JSON トップレベルへキーを足さない** — 台帳はコメント本文の `### 却下台帳`、消化内訳は iterate 完了通知と `[CONTEXT] ITERATE_NB_SWEEP=` / `NB_SWEEP_RESULT=` marker。再入ガードの権威は `.rite/state/nb-sweep-done-{pr_number}.txt`（1 行目 `noop` または `done`。**存在が skip**。新規書込は 1 行のみ。既存の 2 行形式は読取互換として残す）。会話 marker は観測用。
+`/rite:iterate` の `[review:mergeable]` 後 sweep が残存 NB を消化した記録。永続チャネルは 6.1.d の関連 Issue コメント（新チャネルを作らない）。**JSON トップレベルへキーを足さない** — 台帳はコメント本文の `### 却下台帳`、消化内訳は iterate 完了通知と `[CONTEXT] ITERATE_NB_SWEEP=` / `NB_SWEEP_RESULT=` marker。再入ガードの権威は `.rite/state/nb-sweep-done-{pr_number}.txt`（1 行目の第 1 フィールドは `noop` または `done`、第 2 フィールドは sweep した review JSON の basename。その basename が現在の最新 JSON と一致するときだけ skip。第 2 フィールドの欠落は skip しない。新規書込は 1 行のみ。既存の 2 行形式は読取互換で、kind は第 1 フィールド、2 行目 SHA は範囲に使わない）。会話 marker は観測用。
 
 **台帳エントリ**（コメント本文、`📎 non_blocking_count:` の直前）:
 
@@ -361,7 +361,7 @@ collect は `targets[]` に `verification` と `route` を返す。実測あり 
 [CONTEXT] ITERATE_NB_SWEEP=done|noop|skipped|failed
 ```
 
-`done` のとき完了通知の残件欄は `未処理 non-blocking: 0 件` を維持し、消化内訳 `sweep: issued=K / recorded=M` を併記する。`noop`（対象 0 件）は従来の 0 件通知のまま追加行を出さない。`skipped` は `nb-sweep-done-{pr_number}.txt` 既存（本 run で 5.S 済み）。書き込み失敗・JSON 取得失敗は `failed` で iterate を停止する（完了通知へ進まない）。意図的な再 sweep は当該ファイルを削除する。
+`done` のとき完了通知の残件欄は `未処理 non-blocking: 0 件` を維持し、消化内訳 `sweep: issued=K / recorded=M` を併記する。`noop`（対象 0 件）は従来の 0 件通知のまま追加行を出さない。`skipped` は記録した basename が最新 review JSON と一致するとき（本 JSON は 5.S 済み）。新しい JSON はファイルを消さなくても再 sweep する。書き込み失敗・JSON 取得失敗は `failed` で iterate を停止する（完了通知へ進まない）。同じ JSON をもう一度 sweep するときは当該ファイルを削除する。
 
 **`id` は 2 配列の和集合で一意**: 5.3.0.M の降格時に `id` を振り直さず元の `F-NN` を維持する。根拠は **JSON 単体の監査可読性** — 永続 JSON を読む人間が 2 配列を跨いで finding を一意に参照できるようにするため (5.4 統合レポートのテーブルは `id` 列を持たないので、JSON ↔ レポート間の id 相互参照は成立しない。それを目的とした規則ではない)。強制層は `hooks/review-result-save.sh` の id 検証で、`findings[]` と `non_blocking_findings[]` の和集合に対して書式 + 一意性を評価する。**書式違反は和集合のどちら側でも hard fail** (保存しない)、**一意性違反は `findings[]` 側だけ hard fail** で、本配列側に閉じた重複は上記の非ブロッキング marker で報告され保存は続行する。
 

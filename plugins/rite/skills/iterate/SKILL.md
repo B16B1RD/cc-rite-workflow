@@ -782,12 +782,12 @@ args: "{pr_number}"
 
 ## ステップ 5.S: NB digest sweep
 
-`[review:mergeable]` / `[fix:non-fatal-only]` / `[fix:replied-only]` 到達後・完了通知前に **1 回**。対象 0 件は no-op（fix を invoke しない）。同一 PR の本 run で 2 回 invoke しない。silent skip 禁止。Stop hook が `review:mergeable` / `fix:non-fatal-only` / `fix:replied-only` の FINALIZE で完了通知を求めても、5.S 未実施なら先に本ステップを実行する。成功後は完了前確認を経てからステップ 5 へ。Stop hook がステップ 5 を求めても完了前確認を飛ばさない。
+`[review:mergeable]` / `[fix:non-fatal-only]` / `[fix:replied-only]` 到達後・完了通知前に、未 sweep の最新 review JSON につき **1 回**。対象 0 件は no-op（fix を invoke しない）。同一 review JSON では 2 回 invoke しない。新しい JSON では再 sweep する。silent skip 禁止。Stop hook が `review:mergeable` / `fix:non-fatal-only` / `fix:replied-only` の FINALIZE で完了通知を求めても、5.S 未実施なら先に本ステップを実行する。成功後は完了前確認を経てからステップ 5 へ。Stop hook がステップ 5 を求めても完了前確認を飛ばさない。
 rationale: references/rationale.md#nb-sweep-step
 
 入口の通常ループ sentinel を `{sweep_origin}` として保持する。5.S 再入時も保持値を使い、内部の `[fix:sweep-done]` や handoff で上書きしない。
 
-会話の `[CONTEXT] ITERATE_NB_SWEEP=done|noop` は観測用。skip 判定はファイル存在のみ（下の bash）。marker 既出でも bash を省略しない。
+会話の `[CONTEXT] ITERATE_NB_SWEEP=done|noop` は観測用。skip 判定は done ファイル 1 行目の第 2 フィールドが最新 review JSON の basename と一致するときだけ（欠落は skip しない。下の bash）。marker 既出でも bash を省略しない。
 
 ```bash
 source {plugin_root}/hooks/scripts/lib/context-marker.sh || { echo "ERROR: context-marker.sh を読み込めませんでした（プラグインの破損 / 版 skew）。marker を emit できないため中止します" >&2; echo "[iterate:nb-sweep-error]"; exit 1; }
@@ -799,13 +799,20 @@ if [ -z "$nb_root" ]; then
   exit 1
 fi
 nb_done_file="$nb_root/.rite/state/nb-sweep-done-{pr_number}.txt"
+nb_latest=$(find "$nb_root/.rite/review-results" -maxdepth 1 -type f -name "{pr_number}-*.json" 2>/dev/null | LC_ALL=C sort | tail -1)
+nb_latest_base=""
+[ -n "$nb_latest" ] && nb_latest_base=$(basename "$nb_latest")
+nb_range=""
 if [ -f "$nb_done_file" ]; then
-  skipped_kind=$(head -1 "$nb_done_file" | tr -d '[:space:]')
+  nb_range=$(awk 'NR==1 { print $2 }' "$nb_done_file")
+fi
+if [ -n "$nb_range" ] && [ "$nb_range" = "$nb_latest_base" ]; then
+  skipped_kind=$(awk 'NR==1 { print $1 }' "$nb_done_file")
   case "$skipped_kind" in
     done|noop) ;;
     *) skipped_kind=done ;;
   esac
-  marker_emit ITERATE_NB_SWEEP skipped "reason=already_done" "kind=$skipped_kind"
+  marker_emit ITERATE_NB_SWEEP skipped "reason=already_done" "kind=$skipped_kind" "record=$nb_range"
 else
 collect_err=$(mktemp "${TMPDIR:-/tmp}/rite-nb-sweep-collect-XXXXXX") || { echo "ERROR: mktemp failed" >&2; echo "[iterate:nb-sweep-error]"; exit 1; }
 collect_out=$(bash {plugin_root}/hooks/scripts/nb-sweep-collect.sh --pr {pr_number} --state-root "$nb_root" 2>"$collect_err") || collect_rc=$?
@@ -822,7 +829,10 @@ case "$collect_rc:$status" in
       echo "WARNING: $nb_root/.rite/state/.gitignore を作成できませんでした。nb-sweep-done が git の追跡対象になる恐れがあります" >&2
       [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
     fi
-    if ! printf 'noop\n' > "$nb_done_file"; then
+    nb_record=$(printf '%s' "$collect_out" | jq -r '.record // empty')
+    nb_record_base=""
+    [ -n "$nb_record" ] && nb_record_base=$(basename "$nb_record")
+    if [ -z "$nb_record_base" ] || ! printf 'noop %s\n' "$nb_record_base" > "$nb_done_file"; then
       echo "WARNING: nb-sweep-done marker を書けませんでした ($nb_done_file)。次回 5.S は再実行されます" >&2
       rm -f "$nb_done_file"
     fi
@@ -868,28 +878,38 @@ args: "--nb-sweep {pr_number}"
 | `[fix:sweep-done]` | 完了前確認（目的整合）。ステップ 1 に戻らない |
 | `[fix:error]` / その他 / sentinel 不在 | `[iterate:nb-sweep-error]` で停止。完了通知へ進まない |
 
-fix が emit した `[CONTEXT] NB_SWEEP_RESULT=done; issued=K; recorded=M` を読み、`ITERATE_NB_SWEEP=done` を同カウントで emit する。ファイル未作成なら書く:
+fix が emit した `[CONTEXT] NB_SWEEP_RESULT=done; issued=K; recorded=M` を読み、`ITERATE_NB_SWEEP=done` を同カウントで emit する。記録した basename が最新 JSON と違う、またはファイルが無いときは、collect と同じ選び方（`LC_ALL=C` sort の末尾）で 1 行 `done <basename>` を書く。basename が取れないときは範囲なしの行を残さない:
 
 ```bash
 nb_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || nb_root=""
 nb_done_file="$nb_root/.rite/state/nb-sweep-done-{pr_number}.txt"
-if [ -n "$nb_root" ] && [ ! -f "$nb_done_file" ]; then
+nb_latest=""
+nb_latest_base=""
+nb_have=""
+if [ -n "$nb_root" ]; then
+  nb_latest=$(find "$nb_root/.rite/review-results" -maxdepth 1 -type f -name "{pr_number}-*.json" 2>/dev/null | LC_ALL=C sort | tail -1)
+  [ -n "$nb_latest" ] && nb_latest_base=$(basename "$nb_latest")
+  [ -f "$nb_done_file" ] && nb_have=$(awk 'NR==1 { print $2 }' "$nb_done_file")
+fi
+if [ -n "$nb_root" ] && [ -n "$nb_latest_base" ] && [ "$nb_have" != "$nb_latest_base" ]; then
   mkdir -p "$nb_root/.rite/state" || true
   source {plugin_root}/hooks/gitignore-ensure.sh
   if ! _ensure_dir_gitignore "$nb_root/.rite/state"; then
     echo "WARNING: $nb_root/.rite/state/.gitignore を作成できませんでした。nb-sweep-done が git の追跡対象になる恐れがあります" >&2
     [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
   fi
-  if ! printf 'done\n' > "$nb_done_file"; then
+  if ! printf 'done %s\n' "$nb_latest_base" > "$nb_done_file"; then
     echo "WARNING: nb-sweep-done marker を書けませんでした ($nb_done_file)" >&2
     rm -f "$nb_done_file"
   fi
+elif [ -n "$nb_root" ] && [ -z "$nb_latest_base" ] && [ -f "$nb_done_file" ] && [ -z "$nb_have" ]; then
+  rm -f "$nb_done_file"
 fi
 ```
 
 その後、完了前確認（目的整合）へ。
 
-MUST NOT: 同一 PR で 5.S を 2 回走らせる。sweep でコードを修正・commit・push する。
+MUST NOT: 同一 review JSON で 5.S を 2 回走らせる。sweep でコードを修正・commit・push する。ステップ 1 に戻らない。
 
 ### 5.S 後の完了前確認（目的整合）
 
@@ -1023,7 +1043,7 @@ marker_emit ITERATE_NB_REMAINING 0 "status=ok" "record=" "by_severity=" "overlay
 |---|---|
 | `ITERATE_NB_SWEEP=noop` | 0 件テンプレ。消化内訳行は出さない |
 | `ITERATE_NB_SWEEP=done`（`NB_SWEEP_RESULT=done`） | 0 件テンプレ + `- sweep: issued={sweep_issued} / recorded={sweep_recorded}` |
-| `ITERATE_NB_SWEEP=skipped` | ファイル 1 行目が `noop` なら 0 件テンプレ（digest 行なし）。`done` なら 0 件テンプレ + digest 行（件数が取れなければ 0） |
+| `ITERATE_NB_SWEEP=skipped` | kind（1 行目の第 1 フィールド。emit 済み `kind=`）が `noop` なら 0 件テンプレ（digest 行なし）。`done` なら 0 件テンプレ + digest 行（件数が取れなければ 0） |
 | `ITERATE_NB_SWEEP=failed` | 到達不能（5.S で停止） |
 
 非 0 件テンプレ / 「取得失敗」テンプレは overlay 後到達不能。
