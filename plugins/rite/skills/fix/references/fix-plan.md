@@ -45,7 +45,7 @@ assert_rc2 bash scripts/a.sh &&
   assert_rc2 bash scripts/b.sh
 ```
 
-失敗時も実測終了コード・stdout/stderr は検証記録に残る。診断の `actual_rc` と証跡を確認し、対象の欠陥とアサーションの誤りを区別する。固定済みの見直し計画を任意に書き換えて再登録できるという意味ではない。検証コマンドだけを同じ run / context で直すときは `review-replan --amend --reason "訂正理由"` を使う。許可する差分は既存 `verifications[].command` のみで、診断用 `review-replan`（代替案の保存）とは別操作である。訂正後は scope `check` と `verify --kind all` をやり直す。
+失敗時も実測終了コード・stdout/stderr は検証記録に残る。診断の `actual_rc` と証跡を確認し、対象の欠陥とアサーションの誤りを区別する。通常の計画で検証コマンドが誤っているときは、入力を直し、scope `check` と `verify --kind all` をやり直す。
 
 修正中は `review-fix-scope-check.sh verify --plan ... --issue ... --kind related` を使う。内容（追加・削除・modeを含む）・コマンド・指定環境・作業先・基本runtimeが同一で、当該 context の実測成功がある関連テストだけ再利用する。失敗・入力変化・新しいreview contextは再実行する。全修正後は `fix` 本体の最終検証ブロックを実行し、関連結果の鮮度を確認した後、全体検証を全件実行する。検証コマンドは入力を変更しない。
 
@@ -65,5 +65,7 @@ assert_rc2 bash scripts/a.sh &&
 選択案の `paths` 集合は全 `groups[].paths` の集合と一致させる。非選択案には棄却理由を必須とし、`insoluble` は全案の棄却理由を保持する。再発防止検証は各案の根因を再現・検出できる内容を示し、選択案では `groups[].verification_ids` と `verifications[]` に接続する。未検証、証跡欠損、権限拒否を解決不能という意味判断に置き換えない。
 
 編集前に `flow-state.sh review-replan --plan "{fix_plan_file}" --issue "{fix_issue_file}"` を実行する。helper は既存の範囲検査を適用して見直し結果を run に保存する。失敗時は計画・履歴を保持して編集せず、同じ工程を復旧する。通常の scope check も、診断 run の観測欠損や未完了の見直しを拒否する。
+
+登録済み replan の検証コマンドだけを同じ run / context で直すときは `review-replan --amend --reason "訂正理由"` を使う。許可する差分は既存 `verifications[].command` のみで、診断用 `review-replan`（代替案の保存）とは別操作である。訂正後は scope `check` と `verify --kind all` をやり直す。固定済みの見直し計画を任意に書き換えて再登録できるという意味ではない。
 
 最終 `verify --kind all` の成功で検証済み tree fingerprint と対象根因を保存する。次レビュー開始時の新 HEAD・clean tree と検証済み内容の照合を経て修正履歴を確定するため、検証後に入力が変わった場合は最終検証をやり直す。同じ run の再開で見直し回数や観測履歴をリセットしない。
