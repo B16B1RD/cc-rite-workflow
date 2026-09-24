@@ -173,7 +173,7 @@ assert_grep "(7) Total line is on stderr" "$ERR" 'Total distribution-docs-link f
 assert_not_grep "(7) Total line is not on stdout" "$OUT" 'Total distribution-docs-link findings:'
 # The lint cell uses Python-style (\d+). Portable ERE is [0-9]+; pin both the
 # cell literal and a line that cell would extract.
-if printf '%s\n' "$(cat "$ERR")" | grep -qE 'Total distribution-docs-link findings: [0-9]+' \
+if grep -qE 'Total distribution-docs-link findings: [0-9]+' "$ERR" \
   && [ "$COUNT_CELL" = 'Total distribution-docs-link findings: (\d+)' ]; then
   pass "(7) stderr Total matches the lint Count line regex"
 else

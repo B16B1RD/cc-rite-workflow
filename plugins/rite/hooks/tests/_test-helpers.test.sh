@@ -146,7 +146,7 @@ if [ "$mfail" = "2" ]; then
 else
   outer_fail "TC-4.2: expected FAIL=2 got FAIL=$mfail"
 fi
-if echo "$missing_state" | grep -q 'file not found'; then
+if grep -q 'file not found' <<< "$missing_state"; then
   outer_pass "TC-4.3: file-not-found diagnostic message is emitted"
 else
   outer_fail "TC-4.3: 'file not found' diagnostic missing in output"
@@ -175,7 +175,7 @@ echo
 echo "TC-6: print_summary drift hint propagation"
 
 summary_output=$(bash -c "source '$HELPERS'; fail 'sample' >/dev/null; print_summary 'self-test' 'CUSTOM-DRIFT-HINT' || true")
-if echo "$summary_output" | grep -q 'CUSTOM-DRIFT-HINT'; then
+if grep -q 'CUSTOM-DRIFT-HINT' <<< "$summary_output"; then
   outer_pass "TC-6.1: drift hint text appears in summary output"
 else
   outer_fail "TC-6.1: drift hint not found in: $summary_output"
@@ -435,7 +435,7 @@ out_of_scope_state=$(bash -c "
   echo \"FAIL=\$FAIL\"
 ")
 oof=$(echo "$out_of_scope_state" | grep -oE 'FAIL=[0-9]+' | tail -1 | cut -d= -f2)
-if [ "$oof" = "1" ] && echo "$out_of_scope_state" | grep -q 'pattern not found in section'; then
+if [ "$oof" = "1" ] && grep -q 'pattern not found in section' <<< "$out_of_scope_state"; then
   outer_pass "TC-12.2: pattern outside section fails with section-bound diagnostic"
 else
   outer_fail "TC-12.2: expected FAIL=1 + 'pattern not found in section' diagnostic, got '$out_of_scope_state'"
@@ -448,7 +448,7 @@ missing_file_state=$(bash -c "
   echo \"FAIL=\$FAIL\"
 ")
 mff=$(echo "$missing_file_state" | grep -oE 'FAIL=[0-9]+' | tail -1 | cut -d= -f2)
-if [ "$mff" = "1" ] && echo "$missing_file_state" | grep -q 'file not found'; then
+if [ "$mff" = "1" ] && grep -q 'file not found' <<< "$missing_file_state"; then
   outer_pass "TC-12.3: file-not-found path emits diagnostic and increments FAIL"
 else
   outer_fail "TC-12.3: expected FAIL=1 + 'file not found' got '$missing_file_state'"
@@ -461,7 +461,7 @@ empty_section_state=$(bash -c "
   echo \"FAIL=\$FAIL\"
 ")
 ess=$(echo "$empty_section_state" | grep -oE 'FAIL=[0-9]+' | tail -1 | cut -d= -f2)
-if [ "$ess" = "1" ] && echo "$empty_section_state" | grep -q 'empty section'; then
+if [ "$ess" = "1" ] && grep -q 'empty section' <<< "$empty_section_state"; then
   outer_pass "TC-12.4: empty section distinguished from pattern-not-found with explicit diagnostic"
 else
   outer_fail "TC-12.4: expected FAIL=1 + 'empty section' diagnostic, got '$empty_section_state'"
@@ -511,7 +511,7 @@ missing_state=$(bash -c "
 mp=$(echo "$missing_state" | grep -oE 'PASS=[0-9]+' | tail -1 | cut -d= -f2)
 mf=$(echo "$missing_state" | grep -oE 'FAIL=[0-9]+' | tail -1 | cut -d= -f2)
 mrc=$(echo "$missing_state" | grep -oE 'RC=[0-9]+' | tail -1 | cut -d= -f2)
-if [ "$mp" = "0" ] && [ "$mf" = "1" ] && [ "$mrc" = "1" ] && echo "$missing_state" | grep -q 'file not found'; then
+if [ "$mp" = "0" ] && [ "$mf" = "1" ] && [ "$mrc" = "1" ] && grep -q 'file not found' <<< "$missing_state"; then
   outer_pass "TC-13.2: missing file → FAIL=1 RC=1 + 'file not found' diagnostic (caller skips via || continue)"
 else
   outer_fail "TC-13.2: expected PASS=0 FAIL=1 RC=1 + diagnostic, got PASS=$mp FAIL=$mf RC=$mrc state='$missing_state'"
@@ -593,7 +593,7 @@ rm -rf "$tc14_real"
 # the ⏭️ line would still print and every suite would still be green, which is the
 # exact "green says nothing about what did not run" failure skip() was added for.
 skip_state=$(bash -c "source '$HELPERS'; skip TC-dummy >/dev/null; skip TC-dummy2 >/dev/null; print_summary skip-probe")
-if echo "$skip_state" | grep -qx 'SKIP: 2'; then
+if grep -qx 'SKIP: 2' <<< "$skip_state"; then
   outer_pass "TC-15.1: skip() increments SKIP and print_summary reports it"
 else
   # Newlines are folded out of the captured summary before it lands in the message:
@@ -603,7 +603,7 @@ else
   outer_fail "TC-15.1: expected 'SKIP: 2' in print_summary output, got: $(printf '%s' "$skip_state" | tr '\n' '|')"
 fi
 no_skip_state=$(bash -c "source '$HELPERS'; print_summary skip-probe-zero")
-if echo "$no_skip_state" | grep -q 'SKIP:'; then
+if grep -q 'SKIP:' <<< "$no_skip_state"; then
   outer_fail "TC-15.2: print_summary printed a SKIP line with SKIP=0 (should be omitted): $(printf '%s' "$no_skip_state" | tr '\n' '|')"
 else
   outer_pass "TC-15.2: print_summary omits the SKIP line when nothing was skipped"

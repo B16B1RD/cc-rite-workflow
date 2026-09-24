@@ -77,7 +77,7 @@ bash command directly: gh issue create --title "x" --body "y"
 EOF
 rc=0
 output=$(bash "$TARGET" "$violation_file" 2>&1) || rc=$?
-if [ "$rc" -eq 1 ] && echo "$output" | grep -q "VIOLATION"; then
+if [ "$rc" -eq 1 ] && grep -q "VIOLATION" <<< "$output"; then
   pass "Direct invocation detected → exit 1 + VIOLATION message"
 else
   fail "Expected exit 1 + VIOLATION, got rc=$rc, output='$output'"
@@ -209,7 +209,7 @@ fi
 echo "TC-009: Mixed files (1 clean + 1 violation) → exit 1"
 rc=0
 output=$(bash "$TARGET" "$clean_file" "$violation_file" 2>&1) || rc=$?
-if [ "$rc" -eq 1 ] && echo "$output" | grep -q "Total files with violations: 1"; then
+if [ "$rc" -eq 1 ] && grep -q "Total files with violations: 1" <<< "$output"; then
   pass "Mixed files → exit 1 + violation count"
 else
   fail "Expected exit 1 with violation count, got rc=$rc, output='$output'"
@@ -265,7 +265,7 @@ rc=0
 output=$(bash "$TARGET" --all --repo-root "$REPO_ROOT" 2>&1) || rc=$?
 cleanup_planted
 trap cleanup EXIT
-if [ "$rc" -eq 1 ] && echo "$output" | grep -q "__tc012_violation_fixture__.md"; then
+if [ "$rc" -eq 1 ] && grep -q "__tc012_violation_fixture__.md" <<< "$output"; then
   pass "--all mode: planted regression detected → exit 1 with fixture path"
 else
   fail "Expected exit 1 with planted fixture path, got rc=$rc, output='$output'"
@@ -297,7 +297,7 @@ fi
 echo "TC-014: --all --repo-root (missing arg) → exit 2 (cycle 2)"
 rc=0
 output=$(bash "$TARGET" --all --repo-root 2>&1) || rc=$?
-if [ "$rc" -eq 2 ] && echo "$output" | grep -q "requires a directory argument"; then
+if [ "$rc" -eq 2 ] && grep -q "requires a directory argument" <<< "$output"; then
   pass "--all --repo-root <missing>: exit 2 + clear error message"
 else
   fail "Expected exit 2 with 'requires a directory argument', got rc=$rc, output='$output'"
@@ -311,7 +311,7 @@ fi
 echo "TC-015: --all --repo-root /nonexistent → exit 2 (cycle 2)"
 rc=0
 output=$(bash "$TARGET" --all --repo-root "/nonexistent/path/__rite_tc015__" 2>&1) || rc=$?
-if [ "$rc" -eq 2 ] && echo "$output" | grep -q "repository root not found"; then
+if [ "$rc" -eq 2 ] && grep -q "repository root not found" <<< "$output"; then
   pass "--all --repo-root <nonexistent>: exit 2 + recovery guidance"
 else
   fail "Expected exit 2 with 'repository root not found', got rc=$rc, output='$output'"

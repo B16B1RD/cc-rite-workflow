@@ -64,10 +64,10 @@ run() {
   ERR=$(cat "$TEST_DIR/err")
 }
 assert_rc()        { [ "$RC" = "$1" ] && pass "$2 (rc=$RC)" || fail "$2 (rc=$RC, want $1)"; }
-assert_err_has()   { printf '%s' "$ERR" | grep -qF "$1" && pass "$2" || fail "$2 — stderr missing: $1"; }
+assert_err_has()   { grep -qF "$1" <<< "$ERR" && pass "$2" || fail "$2 — stderr missing: $1"; }
 assert_stdout_empty() { [ -z "$OUT" ] && pass "$1 (stdout empty)" || fail "$1 — stdout NOT empty: [$OUT]"; }
-assert_no_fixerror_stdout() { printf '%s' "$OUT" | grep -qF "[fix:error]" && fail "$1 — [fix:error] leaked to stdout" || pass "$1 ([fix:error] not on stdout)"; }
-assert_err_lacks() { printf '%s' "$ERR" | grep -qF "$1" && fail "$2 — stderr unexpectedly has: $1" || pass "$2"; }
+assert_no_fixerror_stdout() { grep -qF "[fix:error]" <<< "$OUT" && fail "$1 — [fix:error] leaked to stdout" || pass "$1 ([fix:error] not on stdout)"; }
+assert_err_lacks() { grep -qF "$1" <<< "$ERR" && fail "$2 — stderr unexpectedly has: $1" || pass "$2"; }
 
 valid_json() {
   # $1 = path, $2 = overall_assessment (default fix-needed). No commit_sha => stale skip.

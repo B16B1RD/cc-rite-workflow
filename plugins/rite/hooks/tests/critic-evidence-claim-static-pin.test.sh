@@ -161,7 +161,7 @@ negative_control() {
   fi
   local section
   section=$(SEC_START="$start" SEC_END="$end" awk '$0 ~ ENVIRON["SEC_START"], $0 ~ ENVIRON["SEC_END"]' "$mutant")
-  if printf '%s\n' "$section" | grep -qE "$pattern"; then
+  if grep -qE "$pattern" <<< "$section"; then
     fail "$label (pin still matches after removing literal — pin is not live: $pattern)"
   else
     pass "$label"

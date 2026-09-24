@@ -136,7 +136,7 @@ create_state_file "$dir002" '{"active": true, "phase": "impl"}'
 if run_hook "$dir002"; then
   updated_at=$(jq -r '.updated_at' "$(state_file_path "$dir002")")
   # Verify ISO 8601 format: YYYY-MM-DDTHH:MM:SS+00:00
-  if echo "$updated_at" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\+00:00$'; then
+  if grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\+00:00$' <<< "$updated_at"; then
     # Also verify year is reasonable (>= 2024) to catch bogus values
     year002=$(echo "$updated_at" | cut -c1-4)
     if [ "$year002" -ge 2024 ]; then

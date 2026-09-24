@@ -47,7 +47,7 @@ fi
 echo "TC-002: nonexistent file → exit 2"
 rc=0
 output=$(bash "$TARGET" "$TEST_DIR/nonexistent.md" 2>&1) || rc=$?
-if [ "$rc" -eq 2 ] && echo "$output" | grep -q "file not found"; then
+if [ "$rc" -eq 2 ] && grep -q "file not found" <<< "$output"; then
   pass "nonexistent file → exit 2"
 else
   fail "expected rc=2 + 'file not found', got rc=$rc, output: $output"
@@ -60,7 +60,7 @@ echo "TC-003: orphan file → exit 1"
 echo "# Orphan" > "$TEST_DIR/plugins/rite/skills/issue/references/orphan-doc.md"
 rc=0
 output=$(bash "$TARGET" --repo-root "$TEST_DIR" "$TEST_DIR/plugins/rite/skills/issue/references/orphan-doc.md" 2>&1) || rc=$?
-if [ "$rc" -eq 1 ] && echo "$output" | grep -q "ORPHAN: plugins/rite/skills/issue/references/orphan-doc.md"; then
+if [ "$rc" -eq 1 ] && grep -q "ORPHAN: plugins/rite/skills/issue/references/orphan-doc.md" <<< "$output"; then
   pass "orphan file detected → exit 1"
 else
   fail "expected rc=1 + ORPHAN line, got rc=$rc, output: $output"
@@ -109,7 +109,7 @@ See self-only-doc.md for the spec (this is a self-reference and must not count).
 EOF
 rc=0
 output=$(bash "$TARGET" --repo-root "$TEST_DIR" "$TEST_DIR/plugins/rite/skills/issue/references/self-only-doc.md" 2>&1) || rc=$?
-if [ "$rc" -eq 1 ] && echo "$output" | grep -q "ORPHAN: plugins/rite/skills/issue/references/self-only-doc.md"; then
+if [ "$rc" -eq 1 ] && grep -q "ORPHAN: plugins/rite/skills/issue/references/self-only-doc.md" <<< "$output"; then
   pass "self-reference excluded, orphan detected → exit 1"
 else
   fail "expected rc=1 + ORPHAN (self-ref should not count), got rc=$rc, output: $output"
@@ -155,7 +155,7 @@ fi
 echo "TC-009: --all with non-existent repo-root → exit 2"
 rc=0
 output=$(bash "$TARGET" --all --repo-root "$TEST_DIR/nonexistent" 2>&1) || rc=$?
-if [ "$rc" -eq 2 ] && echo "$output" | grep -q "repo-root not a directory"; then
+if [ "$rc" -eq 2 ] && grep -q "repo-root not a directory" <<< "$output"; then
   pass "non-existent repo-root → exit 2"
 else
   fail "expected rc=2 + 'repo-root not a directory', got rc=$rc, output: $output"
@@ -176,9 +176,9 @@ rc=0
 output=$(bash "$TARGET" --all --repo-root "$WT_ROOT" 2>&1) || rc=$?
 # Must NOT be the empty-expansion usage error (exit 2). The orphan should be
 # detected (exit 1), proving the find walked the worktree subtree.
-if [ "$rc" -eq 1 ] && echo "$output" | grep -q "ORPHAN: plugins/rite/skills/issue/references/wt-orphan-doc.md"; then
+if [ "$rc" -eq 1 ] && grep -q "ORPHAN: plugins/rite/skills/issue/references/wt-orphan-doc.md" <<< "$output"; then
   pass "worktree-like REPO_ROOT scanned, orphan detected → exit 1"
-elif [ "$rc" -eq 2 ] && echo "$output" | grep -q "expansion empty"; then
+elif [ "$rc" -eq 2 ] && grep -q "expansion empty" <<< "$output"; then
   fail "regression: --all expansion empty under worktree-like REPO_ROOT (the bug), output: $output"
 else
   fail "expected rc=1 + wt-orphan-doc ORPHAN, got rc=$rc, output: $output"
