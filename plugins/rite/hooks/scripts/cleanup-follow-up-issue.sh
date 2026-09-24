@@ -56,7 +56,7 @@
 #     no_findings  : parse できた JSON の和集合が、除外を適用する前から 0 件
 #     all_resolved : 除外**後**に 0 件になった (再検証で全件が解消済みと判定された)
 #     all_issued   : sweep 起票済みの除外**後**に 0 件になった (残りが全件 sweep で Issue 化済み)
-#   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=lookup_api|create_api|create_script_missing|json_undecidable; pr=<n>
+#   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=lookup_api|create_api|create_script_missing|json_undecidable|preview_write; pr=<n>
 #   [CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=<r>; count=<n|unknown>; pr=<n>
 #     除外要求どおりに除外できなかったことを cleanup ステップ 12 へ通知する。
 #     marker 不在から除外適用・起票の成功を推定しない。起票結果は FOLLOW_UP_ISSUE で判定する。
@@ -558,11 +558,18 @@ fi
 
 if [ -n "$PREVIEW_BODY" ]; then
   if ! cp "$body_file" "$PREVIEW_BODY"; then
-    echo "WARNING: follow-up 本文を ${PREVIEW_BODY} に書き出せませんでした" >&2
-    emit_failed create_api
+    echo "WARNING: follow-up 本文を ${PREVIEW_BODY} に書き出せませんでした。起票前の確認ができないため起票しません" >&2
+    emit_failed preview_write
     exit 0
   fi
-  preview_n=$(printf '%s' "$findings_json" | jq 'length')
+  preview_n=$(printf '%s' "$findings_json" | jq 'length') || preview_n=""
+  case "$preview_n" in
+    ''|*[!0-9]*)
+      echo "WARNING: follow-up の転記件数を確定できません。起票前の確認ができないため起票しません" >&2
+      emit_failed preview_write
+      exit 0
+      ;;
+  esac
   echo "[CONTEXT] FOLLOW_UP_ISSUE=preview; count=${preview_n}; body=${PREVIEW_BODY}; pr=${PR_NUMBER}" >&2
   echo "[cleanup-follow-up-issue] result=preview; count=${preview_n}; pr=${PR_NUMBER}"
   exit 0

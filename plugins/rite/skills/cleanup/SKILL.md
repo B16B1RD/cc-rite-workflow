@@ -692,26 +692,30 @@ echo "[CONTEXT] FOLLOW_UP_REVERIFY=done; resolved={n_resolved}; remains={n_remai
 
 #### 6.0.C 起票前の確認（単独実行のとき）
 
-follow-up Issue の起票は外部公開なので、手動の `/rite:cleanup` では起票前に確認する。`/rite:batch-run --merge` から呼ばれたとき（自セッションの run-queue が `active: true` かつ `mode: merge`）は、利用者が完全自律に同意済みなので確認しない。判定できないときは確認する側に倒す:
+follow-up Issue の起票は外部公開なので、手動の `/rite:cleanup` では起票前に確認する。`/rite:batch-run --merge` から呼ばれたとき（自セッションの run-queue が `active: true` かつ `mode: merge` で、cursor の Issue が今回の `{issue_number}` と一致する）は、利用者が完全自律に同意済みなので確認しない。中断した batch のキューは `active: true` のまま残るため、cursor の照合を省かない。判定できないときは確認する側に倒す:
 
 ```bash
 _state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
 _fu_flow=$(bash {plugin_root}/hooks/flow-state.sh path 2>/dev/null) || _fu_flow=""
 _fu_queue="${_state_root}/.rite/state/run-queue-$(basename "$_fu_flow" .flow-state).json"
-if [ -n "$_state_root" ] && [ -n "$_fu_flow" ] && [ -f "$_fu_queue" ] \
-  && jq -e '.active == true and .mode == "merge"' "$_fu_queue" >/dev/null 2>&1; then
+if [ -z "$_state_root" ] || [ -z "$_fu_flow" ]; then
+  echo "[CONTEXT] FOLLOW_UP_CONFIRM=ask; reason=state_unresolved"
+elif [ ! -f "$_fu_queue" ]; then
+  echo "[CONTEXT] FOLLOW_UP_CONFIRM=ask; reason=no_queue"
+elif jq -e --argjson i "{issue_number}" \
+    '.active == true and .mode == "merge" and (.issues[.cursor // 0] == $i)' "$_fu_queue" >/dev/null 2>&1; then
   echo "[CONTEXT] FOLLOW_UP_CONFIRM=skip; reason=batch_merge"
 else
-  echo "[CONTEXT] FOLLOW_UP_CONFIRM=ask"
+  echo "[CONTEXT] FOLLOW_UP_CONFIRM=ask; reason=not_this_batch"
 fi
 ```
 
 - `skip` → 下の helper 呼び出しを `{preview_option}` を空にして実行する（従来どおり起票する）。
 - `ask` → `{preview_option}` を `--preview-body "${TMPDIR:-/tmp}/rite-follow-up-preview-{pr_number}.md"` にして実行する。helper は起票せず、`[CONTEXT] FOLLOW_UP_ISSUE=preview; count=<n>; body=<path>; pr={pr_number}` を出す。0 件・既存あり・失敗は通常どおりの marker で終わるので、そのときは質問しない。
-- `preview` のとき AskUserQuestion で「起票する / 起票しない / 本文を確認してから決める」を確認する。説明には転記件数 `<n>` と、6.0.V の内訳（残存 {n_remains} / 判定不能 {n_undecidable}）を入れる。
+- `preview` のとき AskUserQuestion で「起票する / 起票しない / 本文を確認してから決める」を確認する。説明には転記件数 `{fu_count}`（preview marker の `count=` の値）と、6.0.V の内訳（`done` なら「残存 {n_remains} / 判定不能 {n_undecidable}」、`unavailable` なら「再検証未実施（全件を判定不能扱い）」）を入れる。件数は重複の集約と sweep 起票済みの除外の後の値なので、内訳の合計と一致しないことがある。
   - 「起票する」→ `{preview_option}` を空にして helper 呼び出しをもう一度実行する（入力が同じなのでプレビューと同じ本文で起票される）。
-  - 「起票しない」→ `echo "[CONTEXT] FOLLOW_UP_ISSUE=declined; count=<n>; pr={pr_number}" >&2` を実行し、Issue は作らずに下の state 削除（archive）へ進む。
-  - 「本文を確認してから決める」→ marker の `body=` のファイルを Read で表示し、AskUserQuestion で「起票する / 起票しない」を確認して上と同じに進む。
+  - 「起票しない」→ `echo "[CONTEXT] FOLLOW_UP_ISSUE=declined; count={fu_count}; pr={pr_number}" >&2`（`{fu_count}` は preview marker の `count=` の値をリテラル置換する） を実行し、Issue は作らずに下の state 削除（archive）へ進む。
+  - 「本文を確認してから決める」→ marker の `body=` のファイルを Read し、その本文を加工せず応答本文にそのまま出力する（Read の結果は利用者の画面に出ないことがある）。そのあと AskUserQuestion で「起票する / 起票しない」を確認して上と同じに進む。
 
 > **下段の helper 呼び出しは別 Bash 呼び出しである**。Bash tool 呼び出し間でシェル変数は保持されないため、`{resolved_ids_csv}` を実値へ**リテラル置換**してから実行する（`$_fu_exclude_ids` のようなシェル変数経由で渡さない。同型の規約: [recover Phase 5.2 (flow-state の active=true 復元)](../recover/SKILL.md)）。判定結果を運ぶ経路はリテラル置換のみで、marker の `resolved_ids=` は監査用の記録であって受け渡し経路ではない。
 
@@ -1046,11 +1050,11 @@ rationale: references/rationale.md#marker-data-delimiter
 
   | 検出 | 側の判定 | 付記 |
   |---|---|---|
-  | `FOLLOW_UP_ISSUE=failed`（reason 問わず。`helper_rc` / `lookup_api` / `create_api` / `create_script_missing` / `json_undecidable` を含む） | 未完了 | `⚠️ follow-up Issue の起票に失敗しました。review-results JSON の non_blocking_findings[] を元に follow-up ラベル付き Issue を手動作成してください` |
+  | `FOLLOW_UP_ISSUE=failed`（reason 問わず。`helper_rc` / `lookup_api` / `create_api` / `create_script_missing` / `json_undecidable` / `preview_write` を含む） | 未完了 | `⚠️ follow-up Issue の起票に失敗しました。review-results JSON の non_blocking_findings[] を元に follow-up ラベル付き Issue を手動作成してください` |
   | `skipped; reason=no_json` | 未完了 | 同上（レビュー結果 JSON 不在） |
   | `skipped; reason=jq_missing` | 未完了 | `⚠️ jq が見つからず follow-up 起票を skip しました。jq を導入したうえで、残存非実測指摘があれば follow-up Issue を手動作成してください` |
   | `created` / `skipped; reason=no_findings` / `skipped; reason=already_exists` / `skipped; reason=all_issued` / `skipped; reason=all_resolved` | x 相当 | — |
-  | `declined`（ステップ 6.0.C で「起票しない」を選んだ） | x 相当 | `ℹ️ 確認のうえ follow-up Issue の起票を見送りました（{count} 件）。指摘の全文は review-results/archive/ の JSON にあります` |
+  | `declined`（ステップ 6.0.C で「起票しない」を選んだ） | x 相当（付記は `{review_cleanup_check}` の行に続けて出す） | `ℹ️ 確認のうえ follow-up Issue の起票を見送りました（{count} 件。declined marker の `count=` の値）。指摘の全文は review-results/archive/ の JSON にあります` |
   | `preview`（確認の回答前に止まった） | 未完了 | `⚠️ follow-up 起票の確認が完了していません。残存非実測指摘を起票する場合は follow-up ラベル付き Issue を手動作成してください` |
   | `[CONTEXT] FOLLOW_UP_ISSUE=` かつ `pr={pr_number}` の行が無い | 未完了 | `⚠️ follow-up 起票の実行結果が確認できませんでした。残存非実測指摘があれば follow-up ラベル付き Issue を手動作成してください` |
 

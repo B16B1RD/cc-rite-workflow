@@ -73,6 +73,13 @@
 #   T-43 1 フィールドでも異なる finding はまとめない
 #   T-44 再検証による除外後に完全一致を判定し、残った finding を転記する
 #   T-45 集約判定に失敗したら WARNING を出し、全 finding を元の順序で転記する
+#
+# Coverage (起票前の確認):
+#   T-46 --preview-body は起票せず、起票時と同じ本文を書き出す
+#   T-47 --preview-body でも 0 件・全件解消・既存ありは従来の skip で終わる
+#   T-48 preview 本文を書き出せなければ起票も preview もしない
+#   T-49 SKILL 6.0.C の確認判定（batch --merge が今の Issue を処理中のときだけ確認しない）と
+#        helper 呼び出しの配線、完了報告の declined / preview 行
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -1397,6 +1404,63 @@ printf '%s\n' '[{"number":77,"body":"<!-- [rite-follow-up-from-pr:9] -->\nbody"}
 run_target "$r" --preview-body "$TMP_ROOT/preview-t47b.md"
 assert_grep "T-47 既存は already_exists" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=already_exists; issue=77; pr=9'
 assert_not_grep "T-47 既存でも preview を出さない" "$ERR" 'FOLLOW_UP_ISSUE=preview'
+reset_stubs
+r=$(new_root t47c)
+put_json "$r" "9-20260101120000.json" "$FINDING_JSON"
+run_target "$r" --exclude-ids "9-20260101120000.json#F-01" --preview-body "$TMP_ROOT/preview-t47c.md"
+assert_grep "T-47 全件解消は all_resolved" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=all_resolved; pr=9'
+assert_not_grep "T-47 全件解消でも preview を出さない" "$ERR" 'FOLLOW_UP_ISSUE=preview'
+assert "T-47 全件解消は起票しない" "0" "$(create_count)"
+
+echo "--- T-48: preview 本文を書き出せなければ起票も preview もしない ---"
+reset_stubs
+r=$(new_root t48)
+put_json "$r" "9-20260101120000.json" "$FINDING_JSON"
+run_target "$r" --preview-body "$TMP_ROOT/no-such-dir/preview.md"
+assert "T-48 exit 0" "0" "$RC"
+assert_grep "T-48 failed marker" "$ERR" 'FOLLOW_UP_ISSUE=failed; reason=preview_write; pr=9'
+assert_not_grep "T-48 preview marker を出さない" "$ERR" 'FOLLOW_UP_ISSUE=preview'
+assert "T-48 起票しない" "0" "$(create_count)"
+assert_not_grep "T-48 label を作らない" "$GH_LOG" 'label create'
+
+echo "--- T-49: SKILL 6.0.C の確認判定と helper 呼び出しの配線 ---"
+# helper 呼び出しが preview の配線を持つ（外すと手動 cleanup が確認なしで起票する）
+assert_grep "T-49 helper 呼び出しに {preview_option}" "$CLEANUP_MD" '[-]-exclude-ids "\{resolved_ids_csv\}" \{preview_option\} \|\| _fu_rc=\$\?'
+# 6.0.C の判定 bash を抽出し、state root / flow-state path / issue 番号を fixture に置き換えて実行する
+t49_root="$TMP_ROOT/root-t49"
+mkdir -p "$t49_root/.rite/state"
+awk -v root="$t49_root" '
+  /^#### 6\.0\.C / {c=1}
+  c && /^```bash/ {p=1; next}
+  p && /^```/ {exit}
+  p && /^_state_root=\$\(bash / {print "_state_root=\"${T49_ROOT-" root "}\""; next}
+  p && /^_fu_flow=\$\(bash / {print "_fu_flow=\"${T49_FLOW-/x/.rite/sessions/sess-49.flow-state}\""; next}
+  p {gsub(/\{issue_number\}/, "42"); print}
+' "$CLEANUP_MD" > "$TMP_ROOT/confirm.sh"
+t49_queue="$t49_root/.rite/state/run-queue-sess-49.json"
+t49_run() { bash "$TMP_ROOT/confirm.sh" 2>/dev/null; }
+if ! grep -q 'FOLLOW_UP_CONFIRM=skip' "$TMP_ROOT/confirm.sh"; then
+  fail "T-49 6.0.C の判定ブロックを抽出できない"
+else
+  printf '%s\n' '{"issues":[41,42,43],"cursor":1,"active":true,"mode":"merge"}' > "$t49_queue"
+  assert "T-49 batch --merge が今の Issue を処理中なら確認しない" "[CONTEXT] FOLLOW_UP_CONFIRM=skip; reason=batch_merge" "$(t49_run)"
+  printf '%s\n' '{"issues":[41,42,43],"cursor":0,"active":true,"mode":"merge"}' > "$t49_queue"
+  assert "T-49 別 Issue を指す active キューは確認する" "[CONTEXT] FOLLOW_UP_CONFIRM=ask; reason=not_this_batch" "$(t49_run)"
+  printf '%s\n' '{"issues":[42],"cursor":0,"active":true,"mode":"default"}' > "$t49_queue"
+  assert "T-49 default モードは確認する" "[CONTEXT] FOLLOW_UP_CONFIRM=ask; reason=not_this_batch" "$(t49_run)"
+  printf '%s\n' '{"issues":[42],"cursor":0,"active":false,"mode":"merge"}' > "$t49_queue"
+  assert "T-49 inactive は確認する" "[CONTEXT] FOLLOW_UP_CONFIRM=ask; reason=not_this_batch" "$(t49_run)"
+  printf '%s\n' '{broken' > "$t49_queue"
+  assert "T-49 壊れたキューは確認する" "[CONTEXT] FOLLOW_UP_CONFIRM=ask; reason=not_this_batch" "$(t49_run)"
+  rm -f "$t49_queue"
+  assert "T-49 キューが無ければ確認する" "[CONTEXT] FOLLOW_UP_CONFIRM=ask; reason=no_queue" "$(t49_run)"
+  printf '%s\n' '{"issues":[42],"cursor":0,"active":true,"mode":"merge"}' > "$t49_queue"
+  assert "T-49 flow-state が解決できなければ確認する" "[CONTEXT] FOLLOW_UP_CONFIRM=ask; reason=state_unresolved" "$(T49_FLOW="" t49_run)"
+  assert "T-49 state root が解決できなければ確認する" "[CONTEXT] FOLLOW_UP_CONFIRM=ask; reason=state_unresolved" "$(T49_ROOT="" t49_run)"
+fi
+# 完了報告の判定表が見送りと確認未完了を持つ
+assert_grep "T-49 完了報告に declined 行（x 相当）" "$CLEANUP_MD" '^  \| `declined`（ステップ 6.0.C で「起票しない」を選んだ） \| x 相当'
+assert_grep "T-49 完了報告に preview 行（未完了）" "$CLEANUP_MD" '^  \| `preview`（確認の回答前に止まった） \| 未完了'
 
 echo "--- T-arg: 引数 gate ---"
 bash "$TARGET" --pr abc --state-root "$TMP_ROOT" --owner a --repo b >"$OUT" 2>"$ERR"; RC=$?
@@ -1406,5 +1470,10 @@ assert "T-arg --state-root 欠落は exit 1" "1" "$RC"
 r=$(new_root targ)
 run_target "$r" --bogus x
 assert "T-arg 未知オプションは exit 1" "1" "$RC"
+reset_stubs
+put_json "$r" "9-20260101120000.json" "$FINDING_JSON"
+run_target "$r" --preview-body ""
+assert "T-arg --preview-body の空値は exit 1" "1" "$RC"
+assert "T-arg --preview-body の空値で起票しない" "0" "$(create_count)"
 
 print_summary "cleanup-follow-up-issue.test.sh"
