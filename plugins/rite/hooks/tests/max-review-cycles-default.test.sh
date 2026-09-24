@@ -52,21 +52,17 @@ if ! grep -qE '^case "\$raw_max" in' "$STEP06" || ! grep -qx 'esac' "$STEP06" \
   exit 1
 fi
 
-# ステップ 1 の silent 再読込は 1 行の case。直前の raw_max= 代入 (2 行) と組で意味を持つため、
-# 「最後に現れた raw_max= から silent fallback 行まで」を取る。ステップ 0.6 側の raw_max= で
-# 一度バッファが立つが、ステップ 1 の raw_max= で捨てて取り直すので混線しない。
+# ステップ 1 の再読込は config 解決 (rc 分岐) + raw_max= 代入 + 1 行の case。
+# 「(2) の見出しコメントから silent fallback 行まで」を取る。
 STEP1="$TEST_DIR/step1.sh"
-awk '/^raw_max=\$\(awk/ { buf=$0; c=1; next }
-     c { buf = buf "\n" $0; if (/silent fallback/) { print buf; exit } }' \
+awk '/^# \(2\) max_review_cycles の再読込/{f=1} f{print} f&&/silent fallback/{exit}' \
   "$ITERATE_STEP" > "$STEP1"
 printf 'echo "max_cycles=$max_cycles"\n' >> "$STEP1"
-# ステップ 0.6 側と同じ理由で行数上限を課す。こちらは開始アンカーが「最後の raw_max=」という
-# 相対位置なので、iterate-step.sh 側の些細な整形 (`$(awk` の前後に空白が入る等) で開始点がステップ 0.6 側へ
-# 巻き戻ると 170 行超のステップ 0.6 本体を実行してしまう。存在検査 2 本はどちらもそれを通過させる。
+# 行数上限は、終端アンカーを取り逃して後続ブロックを巻き込む over-extraction の検出を担う。
 if ! grep -q 'silent fallback' "$STEP1" || ! grep -q '^raw_max=' "$STEP1" \
-   || [ "$(wc -l < "$STEP1")" -gt 6 ]; then
-  echo "FATAL: ステップ 1 の silent fallback 抽出に失敗しました (アンカーが変更された可能性)" >&2
-  echo "  抽出結果: $(wc -l < "$STEP1") 行 (期待: 6 行以下)" >&2
+   || [ "$(wc -l < "$STEP1")" -gt 16 ]; then
+  echo "FATAL: ステップ 1 の再読込ブロック抽出に失敗しました (アンカーが変更された可能性)" >&2
+  echo "  抽出結果: $(wc -l < "$STEP1") 行 (期待: 16 行以下)" >&2
   exit 1
 fi
 
@@ -127,7 +123,7 @@ assert "T-02f: ステップ 1 — 非数値は既定へフォールバック" \
 run_snippet "$STEP1" "$CFG_ZERO" >/dev/null
 assert "T-02g: ステップ 1 の無効値フォールバックは silent" "" "$(cat "$STDERR_LOG")"
 
-echo "=== T-06: config ファイル自体が無いときはステップ 0.6 だけが試したパス付きで WARNING ==="
+echo "=== T-06: config ファイル自体が無いときは両ステップが試したパス付きで WARNING ==="
 # run_snippet_no_config <snippet> — rite-config.yml を置かない sandbox (リポジトリ外 = cwd のみを探す)
 run_snippet_no_config() {
   local sandbox="$TEST_DIR/sandbox"
@@ -137,7 +133,22 @@ run_snippet_no_config() {
 assert "T-06a: ステップ 0.6 — config 不在は既定値" "$DEFAULT_CYCLES" "$(run_snippet_no_config "$STEP06")"
 assert_grep "T-06b: WARNING に試したパスが入る" "$STDERR_LOG" "WARNING: .*$TEST_DIR/sandbox/rite-config.yml"
 assert "T-06c: ステップ 1 — config 不在も既定値" "$DEFAULT_CYCLES" "$(run_snippet_no_config "$STEP1")"
-assert "T-06d: ステップ 1 の config 不在は silent" "" "$(cat "$STDERR_LOG")"
+# ステップ 1 は ステップ 0.6 と別の Bash 呼び出しで毎 cycle 実行されるため、自分で告知する
+assert_grep "T-06d: ステップ 1 の WARNING にも試したパスが入る" "$STDERR_LOG" "WARNING: .*$TEST_DIR/sandbox/rite-config.yml"
+# 読めない config は既定値へ倒さず止める (root は権限を無視して読めるため検証できない)
+if [ "$(id -u)" != 0 ]; then
+  for step in "$STEP06" "$STEP1"; do
+    sandbox="$TEST_DIR/sandbox"; rm -rf "$sandbox"; mkdir -p "$sandbox"
+    printf '%s\n' "$CFG_EXPLICIT" > "$sandbox/rite-config.yml"; chmod 000 "$sandbox/rite-config.yml"
+    out=$( (cd "$sandbox" && bash "$step" 2>"$STDERR_LOG") ); rc=$?
+    chmod 644 "$sandbox/rite-config.yml"
+    assert "T-06g: $(basename "$step") — 読めない config は非ゼロで止まる" "1" "$rc"
+    assert "T-06h: $(basename "$step") — 読めない config で既定値を出さない" "" "$out"
+    assert_grep "T-06i: $(basename "$step") — ERROR に読めないパスが入る" "$STDERR_LOG" "ERROR: .*$TEST_DIR/sandbox/rite-config.yml"
+  done
+else
+  echo "  SKIP: root では読み取り権限を外せないため T-06g〜i を検証しない"
+fi
 # 追跡外 config は main checkout にだけある。linked worktree から両ステップが main の値を読む
 WT_MAIN=$(make_sandbox --branch develop)
 WT_DIR="${WT_MAIN}-wt"

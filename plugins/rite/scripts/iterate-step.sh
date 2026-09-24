@@ -302,9 +302,19 @@ source "$plugin_root"/hooks/scripts/lib/context-marker.sh || { echo "ERROR: cont
 
 cc=$(bash "$plugin_root"/hooks/flow-state.sh get --field cycle_count --default 0) || cc=0
 case "$cc" in ''|*[!0-9]*) cc=0 ;; esac
-raw_max=$(awk '/^safety:/{s=1;next} s&&/^[a-zA-Z]/{exit} s&&/^[[:space:]]+max_review_cycles:/{print;exit}' "$(bash "$plugin_root"/hooks/scripts/lib/rite-config-path.sh 2>/dev/null || echo /dev/null)" 2>/dev/null \
+# (2) max_review_cycles の再読込。config の解決は (1) と同じ（不在は WARNING + 既定値、読めなければ止める）
+cfg_rc=0
+cfg=$(bash "$plugin_root"/hooks/scripts/lib/rite-config-path.sh 2>&1) || cfg_rc=$?
+if [ "$cfg_rc" -eq 1 ]; then
+  echo "WARNING: ${cfg}。safety.max_review_cycles は既定値 15 を使用します" >&2
+  cfg=/dev/null
+elif [ "$cfg_rc" -ne 0 ]; then
+  echo "ERROR: $cfg" >&2
+  exit 1
+fi
+raw_max=$(awk '/^safety:/{s=1;next} s&&/^[a-zA-Z]/{exit} s&&/^[[:space:]]+max_review_cycles:/{print;exit}' "$cfg" 2>/dev/null \
   | sed 's/[[:space:]]#.*//' | sed 's/.*max_review_cycles:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
-case "$raw_max" in ''|0|*[!0-9]*) max_cycles=15 ;; *) max_cycles=$raw_max ;; esac  # 検証済。ここは silent fallback
+case "$raw_max" in ''|0|*[!0-9]*) max_cycles=15 ;; *) max_cycles=$raw_max ;; esac  # 無効値は (1) で検証済。ここは silent fallback
 
 # review-cycle-resume-gate
 review_state=$(bash "$plugin_root"/hooks/flow-state.sh get --jq-filter .) || exit 1
