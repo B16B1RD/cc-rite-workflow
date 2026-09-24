@@ -222,7 +222,7 @@ parent_number=$(echo "$issue_body" | grep -A2 '^## 親 Issue' | grep -oE '#[0-9]
 ISSUE_NUMBER=$(printf '%s\n' "$ISSUE_URL" | grep -oE '[0-9]+$' || true)
 ```
 
-**Failure mode**: `pipefail` 有効時、`head -N` / `grep -m 1` / `grep -q` が早期終了すると downstream の reader が閉じる。upstream の `echo` / `printf` がまだ書き込み中の場合（変数の内容が pipe buffer 64KB を超えるとき）、SIGPIPE (rc=141) が upstream に届き、pipeline 全体の exit code が 141 になる。`|| true` で吸収しても SIGPIPE と「マッチなし」が区別できない。
+**Failure mode**: `pipefail` 有効時、`head -N` / `grep -m 1` / `grep -q` が早期終了すると downstream の reader が閉じる。upstream の `echo` / `printf` がまだ書き込み中の場合（変数の内容が pipe buffer 64KB を超えるときに限らず、数行の `echo "$output" | grep -q` でも CI で観測されている）、SIGPIPE (rc=141) が upstream に届き、pipeline 全体の exit code が 141 になる。`|| true` で吸収しても SIGPIPE と「マッチなし」が区別できない。
 
 ### Defensive Pattern
 

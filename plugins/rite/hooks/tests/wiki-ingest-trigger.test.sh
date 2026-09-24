@@ -60,7 +60,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-001: --help → exit 0 with usage"
 output=$(bash "$HOOK" --help 2>&1) && rc=0 || rc=$?
-if [ $rc -eq 0 ] && echo "$output" | grep -q "Usage: wiki-ingest-trigger.sh"; then
+if [ $rc -eq 0 ] && grep -q "Usage: wiki-ingest-trigger.sh" <<< "$output"; then
   pass "--help prints usage and exits 0"
 else
   fail "Expected usage output and rc=0, got rc=$rc"
@@ -434,7 +434,7 @@ echo "Fix details" > "$dir11/body.md"
   --source-ref pr-456 \
   --content-file body.md > out.log 2>err.log ) && rc=0 || rc=$?
 target_path="$(cat "$dir11/out.log" 2>/dev/null | tr -d '[:space:]' || true)"
-if [ $rc -eq 0 ] && echo "$target_path" | grep -q '^\.rite/wiki/raw/fixes/' && \
+if [ $rc -eq 0 ] && grep -q '^\.rite/wiki/raw/fixes/' <<< "$target_path" && \
    [ -f "$dir11/$target_path" ] && \
    grep -q '^type: fixes$' "$dir11/$target_path" && \
    grep -q 'Fix details' "$dir11/$target_path"; then
@@ -481,7 +481,7 @@ _src_ref="PR #123/:: Review" # drift-check-ignore
 target_path="$(cat "$dir13/out.log" 2>/dev/null || true)"
 filename="$(basename "$target_path" 2>/dev/null || true)"
 # Filename should have only [a-z0-9-] after the timestamp prefix
-if [ $rc -eq 0 ] && echo "$filename" | grep -qE '^[0-9]+T[0-9]+Z-pr-123-review\.md$'; then
+if [ $rc -eq 0 ] && grep -qE '^[0-9]+T[0-9]+Z-pr-123-review\.md$' <<< "$filename"; then
   pass "Slug sanitization works (PR/:: Review → pr-123-review)"
 else
   fail "Slug sanitization failed: filename='$filename'"
@@ -955,7 +955,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-037: --type without value at end → exit 1"
 output=$(bash "$HOOK" --type 2>&1) && rc=0 || rc=$?
-if [ $rc -eq 1 ] && echo "$output" | grep -q "requires a value"; then
+if [ $rc -eq 1 ] && grep -q "requires a value" <<< "$output"; then
   pass "--type without value exits 1 with requires a value"
 else
   fail "Expected exit 1 + 'requires a value', got rc=$rc output=$output"
@@ -967,7 +967,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-038: --source-ref without value at end → exit 1"
 output=$(bash "$HOOK" --source-ref 2>&1) && rc=0 || rc=$?
-if [ $rc -eq 1 ] && echo "$output" | grep -q "requires a value"; then
+if [ $rc -eq 1 ] && grep -q "requires a value" <<< "$output"; then
   pass "--source-ref without value exits 1 with requires a value"
 else
   fail "Expected exit 1 + 'requires a value', got rc=$rc output=$output"
@@ -979,7 +979,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-039: --content-file without value at end → exit 1"
 output=$(bash "$HOOK" --content-file 2>&1) && rc=0 || rc=$?
-if [ $rc -eq 1 ] && echo "$output" | grep -q "requires a value"; then
+if [ $rc -eq 1 ] && grep -q "requires a value" <<< "$output"; then
   pass "--content-file without value exits 1 with requires a value"
 else
   fail "Expected exit 1 + 'requires a value', got rc=$rc output=$output"
@@ -1299,7 +1299,7 @@ if git -C "$dir51" worktree add -q "$wt51" -b wt-issue-1664 2>"$dir51/wt-add-err
   # 直接検証する — cd リダイレクト後も worktree の content が正しく書かれたことを確認する
   # (TC-010/TC-011 の body grep 規約に揃える)。
   if [ $rc -eq 0 ] && \
-     echo "$target_path" | grep -q '^\.rite/wiki/raw/reviews/' && \
+     grep -q '^\.rite/wiki/raw/reviews/' <<< "$target_path" && \
      [ -f "$dir51/$target_path" ] && \
      grep -q 'Review body in worktree' "$dir51/$target_path" && \
      [ ! -e "$wt51/.rite/wiki/raw" ] && \
@@ -1335,7 +1335,7 @@ target_path="$(cat "$dir52/out.log" 2>/dev/null | tr -d '[:space:]' || true)"
 # STATE_ROOT == $PWD == git root → cd は no-op、NOTE は出さない。body grep で
 # 単一セッション時も content が正しく書かれることを確認 (TC-051 と対称)。
 if [ $rc -eq 0 ] && \
-   echo "$target_path" | grep -q '^\.rite/wiki/raw/reviews/' && \
+   grep -q '^\.rite/wiki/raw/reviews/' <<< "$target_path" && \
    [ -f "$dir52/$target_path" ] && \
    grep -q 'Review body at root' "$dir52/$target_path" && \
    ! grep -q 'NOTE:' "$dir52/err.log"; then

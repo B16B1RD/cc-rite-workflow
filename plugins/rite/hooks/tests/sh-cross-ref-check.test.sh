@@ -73,7 +73,7 @@ if [ "$rc" -eq 2 ]; then pass "no args → exit 2"; else fail "expected rc=2, go
 # --------------------------------------------------------------------------
 echo "TC-002: non-existent repo-root → exit 2"
 rc=0; output=$(bash "$TARGET" --all --repo-root "$TEST_DIR/nope" 2>&1) || rc=$?
-if [ "$rc" -eq 2 ] && echo "$output" | grep -q "repo-root not a directory"; then
+if [ "$rc" -eq 2 ] && grep -q "repo-root not a directory" <<< "$output"; then
   pass "bad repo-root → exit 2"
 else fail "expected rc=2 + message, got rc=$rc: $output"; fi
 
@@ -85,8 +85,8 @@ echo "TC-003: cycle-4 fixture (skills/issue-close/SKILL.md ステップ 4.4.W.2)
 f="$TEST_DIR/plugins/rite/hooks/scripts/fixture.sh"
 echo 'echo "Verify skills/issue-close/SKILL.md ステップ 4.4.W.2 execution."' > "$f"
 rc=0; output=$(run "plugins/rite/hooks/scripts/fixture.sh") || rc=$?
-if [ "$rc" -eq 1 ] && echo "$output" | grep -q "keyword mismatch" \
-   && echo "$output" | grep -q "skills/issue-close/SKILL.md ステップ 4.4.W.2"; then
+if [ "$rc" -eq 1 ] && grep -q "keyword mismatch" <<< "$output" \
+   && grep -q "skills/issue-close/SKILL.md ステップ 4.4.W.2" <<< "$output"; then
   pass "cycle-4 overshoot detected as keyword mismatch"
 else fail "expected rc=1 + keyword mismatch, got rc=$rc: $output"; fi
 
@@ -96,7 +96,7 @@ else fail "expected rc=1 + keyword mismatch, got rc=$rc: $output"; fi
 echo "TC-004: correct refs (ステップ + Phase) → exit 0"
 echo 'echo "Verify skills/pr-review/SKILL.md ステップ 6.5.W.2 / skills/issue-close/SKILL.md Phase 4.4.W.2."' > "$f"
 rc=0; output=$(run "plugins/rite/hooks/scripts/fixture.sh") || rc=$?
-if [ "$rc" -eq 0 ] && echo "$output" | grep -q "Total sh-cross-ref findings: 0"; then
+if [ "$rc" -eq 0 ] && grep -q "Total sh-cross-ref findings: 0" <<< "$output"; then
   pass "correct refs not flagged → exit 0"
 else fail "expected rc=0 + 0 findings, got rc=$rc: $output"; fi
 
@@ -106,7 +106,7 @@ else fail "expected rc=0 + 0 findings, got rc=$rc: $output"; fi
 echo "TC-005: dangling number (skills/issue-close/SKILL.md Phase 9.9.9) → exit 1"
 echo 'echo "See skills/issue-close/SKILL.md Phase 9.9.9 for nothing."' > "$f"
 rc=0; output=$(run "plugins/rite/hooks/scripts/fixture.sh") || rc=$?
-if [ "$rc" -eq 1 ] && echo "$output" | grep -q "dangling number"; then
+if [ "$rc" -eq 1 ] && grep -q "dangling number" <<< "$output"; then
   pass "dangling number detected → exit 1"
 else fail "expected rc=1 + dangling number, got rc=$rc: $output"; fi
 
@@ -125,7 +125,7 @@ else fail "expected rc=0 (whitelisted), got rc=$rc: $output"; fi
 echo "TC-007: comment-line reference is scanned"
 echo '# skills/issue-close/SKILL.md ステップ 4.4.W.2 runs the commit' > "$f"
 rc=0; output=$(run "plugins/rite/hooks/scripts/fixture.sh") || rc=$?
-if [ "$rc" -eq 1 ] && echo "$output" | grep -q "keyword mismatch"; then
+if [ "$rc" -eq 1 ] && grep -q "keyword mismatch" <<< "$output"; then
   pass "comment reference scanned → keyword mismatch"
 else fail "expected rc=1 from comment ref, got rc=$rc: $output"; fi
 
@@ -135,7 +135,7 @@ else fail "expected rc=1 from comment ref, got rc=$rc: $output"; fi
 echo "TC-008: inverse mismatch (skills/pr-review/SKILL.md Phase 6.5.W.2)"
 echo 'echo "Verify skills/pr-review/SKILL.md Phase 6.5.W.2 path."' > "$f"
 rc=0; output=$(run "plugins/rite/hooks/scripts/fixture.sh") || rc=$?
-if [ "$rc" -eq 1 ] && echo "$output" | grep -q "keyword mismatch"; then
+if [ "$rc" -eq 1 ] && grep -q "keyword mismatch" <<< "$output"; then
   pass "Phase-on-ステップ-file detected"
 else fail "expected rc=1 keyword mismatch, got rc=$rc: $output"; fi
 

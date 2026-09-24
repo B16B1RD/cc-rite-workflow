@@ -133,7 +133,7 @@ sleep 1
 out=$(cd "$d" && bash "$HOOK" migrate --verbose 2>&1)
 after=$(jq -r .updated_at "$state_file")
 assert "v3 file is skipped" "$before" "$after"
-echo "$out" | grep -q "skip (already v3)" && pass "TC-7: skip message shown" || fail "TC-7: no skip message"
+grep -q "skip (already v3)" <<< "$out" && pass "TC-7: skip message shown" || fail "TC-7: no skip message"
 
 # --- TC-8: migrate maps various legacy phases correctly ---
 echo ""
@@ -187,7 +187,7 @@ rc=0; err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 ) || rc=$?
 assert_migrate_rc "TC-8b-a" "$rc"
 # Why: grep specificity に v[12]→v3 矢印と phase 変換 token を要求することで、emission format が
 # `migrate done:` 等にリネームされた場合も regression を検出できる (format stability invariant)。
-echo "$err" | grep -qE 'migrated:.*v[12]→v3.*[a-z_]+→[a-z_]+' \
+grep -qE 'migrated:.*v[12]→v3.*[a-z_]+→[a-z_]+' <<< "$err" \
   && pass "TC-8b-a: non-verbose migrate announces 'migrated:' on stderr with v→v3 + phase tokens" \
   || fail "TC-8b-a: non-verbose migrate format mismatch (expected 'migrated:.*v[12]→v3.*phase→phase'): '$err'"
 
@@ -216,7 +216,7 @@ cat > "$d/.rite/sessions/${sid}.flow-state" <<EOF
 EOF
 rc=0; err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 ) || rc=$?
 assert_migrate_rc "TC-8b-c" "$rc"
-echo "$err" | grep -qE 'migrated:.*v1→v3.*[a-z_]+→[a-z_]+' \
+grep -qE 'migrated:.*v1→v3.*[a-z_]+→[a-z_]+' <<< "$err" \
   && pass "TC-8b-c: non-verbose migrate of v1 (schema_version 欠落) announces 'migrated:' on stderr" \
   || fail "TC-8b-c: v1 schema 欠落 migrate did not emit expected 'migrated:.*v1→v3.*phase→phase' format: '$err'"
 
@@ -304,7 +304,7 @@ else
     migrated_lines=$(echo "$combined" | grep -c '^  migrated:' || true)
     # Why: counter が inflate しない invariant の direct verification。`_atomic_write` 失敗時に
     # `_migrate_file` が rc=1 を返し counter が 0 のままであることを確認する。
-    if [ "$migrated_lines" = "0" ] && echo "$combined" | grep -qE 'Migration complete: 0 file'; then
+    if [ "$migrated_lines" = "0" ] && grep -qE 'Migration complete: 0 file' <<< "$combined"; then
       pass "TC-8b-e/g: write-failure path emits no 'migrated:' and counter stays 0 (AC-8 negative regression + counter invariant)"
     else
       fail "TC-8b-e/g: write-failure path leaked output: migrated_lines=$migrated_lines; combined='$combined'"

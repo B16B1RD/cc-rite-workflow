@@ -190,11 +190,11 @@ create_state_file "$dir006b" '{
   "stop_reason": "circuit-breaker:max-cycles"
 }'
 output=$(run_hook_with_source "$dir006b" "compact")
-if echo "$output" | grep -q "Auto-compact recovery" && \
-   echo "$output" | grep -q "$(issue_text 2045)" && \
-   ! echo "$output" | grep -q "失敗停止した rite workflow" && \
-   ! echo "$output" | grep -q "中断した rite workflow" && \
-   ! echo "$output" | grep -q "/rite:recover"; then
+if grep -q "Auto-compact recovery" <<< "$output" && \
+   grep -q "$(issue_text 2045)" <<< "$output" && \
+   ! grep -q "失敗停止した rite workflow" <<< "$output" && \
+   ! grep -q "中断した rite workflow" <<< "$output" && \
+   ! grep -q "/rite:recover" <<< "$output"; then
   pass "compact + stop_reason emits recovery, not recover/failure notice"
 else
   fail "Expected compact recovery without recover notice, got: $output"
@@ -215,8 +215,8 @@ create_state_file "$dir006c" '{
   "stop_reason": "circuit-breaker:divergence"
 }'
 output=$(run_hook_with_source "$dir006c" "startup")
-if echo "$output" | grep -q "失敗停止した rite workflow の状態をリセット" && \
-   echo "$output" | grep -q "収束トレンドの発散を検出"; then
+if grep -q "失敗停止した rite workflow の状態をリセット" <<< "$output" && \
+   grep -q "収束トレンドの発散を検出" <<< "$output"; then
   pass "startup defensive reset surfaces the durable failure reason"
 else
   fail "Expected failure-specific startup reset notice, got: $output"
@@ -299,11 +299,11 @@ create_state_file "$dir006" '{
 }'
 
 output=$(run_hook_with_source "$dir006" "compact")
-if echo "$output" | grep -q "Auto-compact recovery" && \
-   echo "$output" | grep -q "$(issue_text 42)" && \
-   echo "$output" | grep -q "Phase: implementing" && \
-   echo "$output" | grep -q "then continue" && \
-   ! echo "$output" | grep -q "/rite:recover"; then
+if grep -q "Auto-compact recovery" <<< "$output" && \
+   grep -q "$(issue_text 42)" <<< "$output" && \
+   grep -q "Phase: implementing" <<< "$output" && \
+   grep -q "then continue" <<< "$output" && \
+   ! grep -q "/rite:recover" <<< "$output"; then
   pass "compact recovery contains issue + phase + continue, no recover notice"
 else
   fail "compact recovery missing expected fields, got: $output"
@@ -324,8 +324,8 @@ mkdir -p "$dir007"
 create_state_file "$dir007" '{"active": true, "phase": "test"}'
 
 output=$(run_hook_with_source "$dir007" "compact")
-if echo "$output" | grep -q "issue_number is missing" && \
-   echo "$output" | grep -q "/rite:recover"; then
+if grep -q "issue_number is missing" <<< "$output" && \
+   grep -q "/rite:recover" <<< "$output"; then
   pass "Missing issue_number → empty ISSUE guard fires with recovery hint (IFS=\$'\\x1f' correctly preserves empty field)"
 else
   fail "Expected 'issue_number is missing' + '/rite:recover' guard (cycle 11 IFS fix should have eliminated field shift), got: $output"
@@ -341,8 +341,8 @@ mkdir -p "$dir008"
 create_state_file "$dir008" '{"active": true, "issue_number": 99}'
 
 output=$(run_hook_with_source "$dir008" "compact")
-if echo "$output" | grep -q "$(issue_text 99)" && \
-   echo "$output" | grep -q "Phase: unknown"; then
+if grep -q "$(issue_text 99)" <<< "$output" && \
+   grep -q "Phase: unknown" <<< "$output"; then
   pass "Missing optional fields → phase defaults to unknown"
 else
   fail "Expected phase default (unknown), got: $output"
@@ -423,8 +423,8 @@ create_state_file "$dir011" '{
 }'
 
 output=$(run_hook_with_source "$dir011" "compact")
-if echo "$output" | grep -q "$(issue_text 77)" && \
-   echo "$output" | grep -q "Phase: Phase with spaces"; then
+if grep -q "$(issue_text 77)" <<< "$output" && \
+   grep -q "Phase: Phase with spaces" <<< "$output"; then
   pass "Unit-separator-delimited field extraction handles spaces in phase"
 else
   fail "Field extraction failed with spaces, got: $output"
@@ -441,9 +441,9 @@ create_state_file "$dir012" '{"active": true, "issue_number": 55, "phase": "impl
 echo '{"compact_state": "recovering", "active_issue": 55}' > "$dir012/.rite-compact-state"
 
 output=$(run_hook_with_source "$dir012" "compact")
-if echo "$output" | grep -q "Auto-compact recovery" && \
-   echo "$output" | grep -q "$(issue_text 55)" && \
-   ! echo "$output" | grep -q "/rite:recover"; then
+if grep -q "Auto-compact recovery" <<< "$output" && \
+   grep -q "$(issue_text 55)" <<< "$output" && \
+   ! grep -q "/rite:recover" <<< "$output"; then
   pass "source=compact + recovering → recovery text"
 else
   fail "Expected recovery text with issue 55, got: $output"
@@ -460,9 +460,9 @@ create_state_file "$dir013" '{"active": true, "issue_number": 56, "phase": "revi
 echo '{"compact_state": "normal"}' > "$dir013/.rite-compact-state"
 
 output=$(run_hook_with_source "$dir013" "compact")
-if echo "$output" | grep -q "Auto-compact recovery" && \
-   echo "$output" | grep -q "$(issue_text 56)" && \
-   ! echo "$output" | grep -q "/rite:recover"; then
+if grep -q "Auto-compact recovery" <<< "$output" && \
+   grep -q "$(issue_text 56)" <<< "$output" && \
+   ! grep -q "/rite:recover" <<< "$output"; then
   pass "source=compact + normal → recovery text"
 else
   fail "Expected recovery text, got: $output"
@@ -478,10 +478,10 @@ mkdir -p "$dir014"
 create_state_file "$dir014" '{"active": true, "issue_number": 57, "phase": "testing"}'
 
 output=$(run_hook_with_source "$dir014" "compact")
-if echo "$output" | grep -q "Auto-compact recovery" && \
-   echo "$output" | grep -q "$(issue_text 57)" && \
-   echo "$output" | grep -q "then continue" && \
-   ! echo "$output" | grep -q "/rite:recover"; then
+if grep -q "Auto-compact recovery" <<< "$output" && \
+   grep -q "$(issue_text 57)" <<< "$output" && \
+   grep -q "then continue" <<< "$output" && \
+   ! grep -q "/rite:recover" <<< "$output"; then
   pass "source=compact + no compact state file → auto recovery (missing trigger)"
 else
   fail "Expected auto recovery text, got: $output"
@@ -502,7 +502,7 @@ output=$(run_hook_with_source "$dir015" "clear")
 ACTIVE_VAL=$(jq -r '.active' "$(state_file_path "$dir015")" 2>/dev/null)
 if [ "$ACTIVE_VAL" = "false" ] && \
    ! [ -f "$dir015/.rite-compact-state" ] && \
-   echo "$output" | grep -q "リセットしました"; then
+   grep -q "リセットしました" <<< "$output"; then
   pass "source=clear + recovering → defensive reset (active=false, compact state cleaned)"
 else
   fail "Expected defensive reset, got active=$ACTIVE_VAL, compact_exists=$([ -f "$dir015/.rite-compact-state" ] && echo yes || echo no), output: $output"
@@ -683,7 +683,7 @@ create_state_file "$dir024" '{"active": true, "issue_number": 71, "branch": "fea
 
 output=$(run_hook_with_source "$dir024" "startup") && rc=0 || rc=$?
 ACTIVE_AFTER=$(jq -r '.active' "$(state_file_path "$dir024")" 2>/dev/null)
-if [ $rc -eq 0 ] && [ "$ACTIVE_AFTER" = "false" ] && echo "$output" | grep -q "前回のセッション状態が残っていたためリセットしました"; then
+if [ $rc -eq 0 ] && [ "$ACTIVE_AFTER" = "false" ] && grep -q "前回のセッション状態が残っていたためリセットしました" <<< "$output"; then
   pass "source=startup + phase=implementing → reset message shown and active=false"
 else
   fail "Expected reset message and active=false, got rc=$rc, active=$ACTIVE_AFTER, output='$output'"
@@ -756,7 +756,7 @@ create_state_file "$dirT01" \
 
 output=$(run_hook_with_session "$dirT01" "startup" "$sid_t01") && rc=0 || rc=$?
 ACTIVE_AFTER=$(jq -r '.active' "$(state_file_path "$dirT01" "$sid_t01")" 2>/dev/null)
-if [ $rc -eq 0 ] && [ "$ACTIVE_AFTER" = "false" ] && echo "$output" | grep -q "前回のセッション状態が残っていたためリセットしました"; then
+if [ $rc -eq 0 ] && [ "$ACTIVE_AFTER" = "false" ] && grep -q "前回のセッション状態が残っていたためリセットしました" <<< "$output"; then
   pass "TC-T01: own-session → reset (active=false, message shown)"
 else
   fail "TC-T01: expected own-session reset; got rc=$rc, active=$ACTIVE_AFTER, output='$output'"
@@ -811,7 +811,7 @@ create_state_file "$dirT03" \
 
 output=$(run_hook_with_session "$dirT03" "startup" "$sid_t03") && rc=0 || rc=$?
 ACTIVE_AFTER=$(jq -r '.active' "$(state_file_path "$dirT03" "$sid_t03")" 2>/dev/null)
-if [ $rc -eq 0 ] && [ "$ACTIVE_AFTER" = "false" ] && echo "$output" | grep -q "前回のセッション状態が残っていたためリセットしました"; then
+if [ $rc -eq 0 ] && [ "$ACTIVE_AFTER" = "false" ] && grep -q "前回のセッション状態が残っていたためリセットしました" <<< "$output"; then
   pass "TC-T03: per-session state (no internal session_id) → reset (active=false, message shown)"
 else
   fail "TC-T03: expected per-session reset; got rc=$rc, active=$ACTIVE_AFTER, output='$output'"
@@ -859,7 +859,7 @@ output=$(jq -n --arg cwd "$dirT04" --arg src "startup" --arg sid "$sid_t04" \
   '{cwd: $cwd, source: $src, session_id: $sid}' \
   | bash "$sandbox_hook_dir/session-start.sh" 2>"$LAST_STDERR_FILE") && rc=0 || rc=$?
 ACTIVE_AFTER=$(jq -r '.active' "$dirT04/.rite/sessions/${sid_t04}.flow-state" 2>/dev/null)
-if [ $rc -eq 0 ] && [ "$ACTIVE_AFTER" = "false" ] && echo "$output" | grep -q "前回のセッション状態が残っていたためリセットしました"; then
+if [ $rc -eq 0 ] && [ "$ACTIVE_AFTER" = "false" ] && grep -q "前回のセッション状態が残っていたためリセットしました" <<< "$output"; then
   pass "TC-T04: check_session_ownership undefined → fail-safe reset (active=false)"
 else
   fail "TC-T04: expected fail-safe reset; got rc=$rc, active=$ACTIVE_AFTER, output='$output'"
@@ -906,8 +906,8 @@ output=$(jq -n --arg cwd "$dirT04b" --arg src "startup" --arg sid "$sid_t04b" \
 stderr_content=$(cat "$LAST_STDERR_FILE")
 ACTIVE_AFTER=$(jq -r '.active' "$dirT04b/.rite/sessions/${sid_t04b}.flow-state" 2>/dev/null)
 if [ $rc -eq 0 ] && [ "$ACTIVE_AFTER" = "false" ] \
-   && echo "$stderr_content" | grep -q "ownership check unavailable" \
-   && echo "$stderr_content" | grep -q "check_session_ownership not sourced"; then
+   && grep -q "ownership check unavailable" <<< "$stderr_content" \
+   && grep -q "check_session_ownership not sourced" <<< "$stderr_content"; then
   pass "TC-T04b: helper undefined + RITE_DEBUG → debug log 'ownership check unavailable' shown"
 else
   fail "TC-T04b: expected debug log 'ownership check unavailable'; got rc=$rc, active=$ACTIVE_AFTER, stderr='$stderr_content'"
@@ -946,8 +946,8 @@ cat > "$dir680a/.rite/sessions/${sid680a}.flow-state" <<EOF
 {"active": true, "issue_number": 680, "branch": "refactor/issue-680-test", "phase": "phase5_review", "next_action": "review", "loop_count": 0, "session_id": "$sid680a", "updated_at": "$ts_t680a"}
 EOF
 output=$(run_hook_with_session "$dir680a" "resume" "$sid680a") && rc=0 || rc=$?
-if [ $rc -eq 0 ] && echo "$output" | grep -q "中断した rite workflow を検出" \
-   && echo "$output" | grep -q "$(issue_text 680)"; then
+if [ $rc -eq 0 ] && grep -q "中断した rite workflow を検出" <<< "$output" \
+   && grep -q "$(issue_text 680)" <<< "$output"; then
   pass "TC-per-session-detect-A: per-session file read → interruption notice fired (AC-LOCAL-2)"
 else
   fail "TC-per-session-detect-A: expected workflow-detected output from per-session file; got rc=$rc, output='$output'"
@@ -1748,9 +1748,9 @@ create_state_file "$dir_t12" "$T10_STATE"
 printf 'not-json{{' > "$(compact_state_path "$dir_t12")"
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
 output=$(echo "{\"cwd\": \"$dir_t12\", \"source\": \"compact\"}" | bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
-if echo "$output" | grep -q "Auto-compact recovery" \
-  && echo "$output" | grep -q "then continue" \
-  && ! echo "$output" | grep -q "/rite:recover" \
+if grep -q "Auto-compact recovery" <<< "$output" \
+  && grep -q "then continue" <<< "$output" \
+  && ! grep -q "/rite:recover" <<< "$output" \
   && grep -q "jq parse of compact-state.trigger failed" "$LAST_STDERR_FILE"; then
   pass "T-12: corrupt compact-state warns and still emits auto recovery"
 else
@@ -1773,9 +1773,9 @@ T13_STATE=$(jq -nc --arg na $'line1\nline2' '{
 create_state_file "$dir_t13" "$T13_STATE"
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
 output=$(echo "{\"cwd\": \"$dir_t13\", \"source\": \"compact\"}" | bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
-if echo "$output" | grep -q "Next action: line1 line2" \
-  && echo "$output" | grep -q "Loop: 7 | PR: #99" \
-  && echo "$output" | grep -q "Branch: feat/issue-42-test" \
+if grep -q "Next action: line1 line2" <<< "$output" \
+  && grep -q "Loop: 7 | PR: #99" <<< "$output" \
+  && grep -q "Branch: feat/issue-42-test" <<< "$output" \
   && grep -q "next_action contained a newline" "$LAST_STDERR_FILE"; then
   pass "T-13: newline in next_action collapsed; Loop/PR/Branch kept"
 else
@@ -1792,12 +1792,12 @@ mkdir -p "$dir_t11/.rite/state"
 printf 'not-json{{' > "$dir_t11/.rite/state/run-queue-${sid_t11}.json"
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
 output=$(echo "{\"cwd\": \"$dir_t11\", \"source\": \"compact\"}" | bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
-if echo "$output" | grep -q "Auto-compact recovery" \
-  && echo "$output" | grep -q "Batch: run-queue unreadable" \
-  && echo "$output" | grep -q "queue_file=" \
-  && ! echo "$output" | grep -q "Batch: run-queue active" \
-  && ! echo "$output" | grep -q "mode=" \
-  && ! echo "$output" | grep -q "/rite:recover" \
+if grep -q "Auto-compact recovery" <<< "$output" \
+  && grep -q "Batch: run-queue unreadable" <<< "$output" \
+  && grep -q "queue_file=" <<< "$output" \
+  && ! grep -q "Batch: run-queue active" <<< "$output" \
+  && ! grep -q "mode=" <<< "$output" \
+  && ! grep -q "/rite:recover" <<< "$output" \
   && grep -q "WARNING: run-queue が破損しています" "$LAST_STDERR_FILE"; then
   pass "T-11 corrupt: unreadable Batch line + WARNING, no invented fields"
 else
@@ -1817,9 +1817,9 @@ create_state_file "$dir_t10c" '{
 }'
 write_batch_queue "$dir_t10c"
 output=$(run_hook_with_source "$dir_t10c" "startup")
-if echo "$output" | grep -q "前回のセッション状態が残っていたためリセットしました" \
-  && echo "$output" | grep -q "/rite:recover" \
-  && ! echo "$output" | grep -q "/rite:batch-run"; then
+if grep -q "前回のセッション状態が残っていたためリセットしました" <<< "$output" \
+  && grep -q "/rite:recover" <<< "$output" \
+  && ! grep -q "/rite:batch-run" <<< "$output"; then
   pass "T-10c: startup reset wording unchanged with active queue"
 else
   fail "T-10c: $output"

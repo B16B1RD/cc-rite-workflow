@@ -227,7 +227,7 @@ if [ "$LAST_RC" -ne 0 ]; then
   reg=$(json_field '.project_registration')
   warn_msg=$(json_field '.warnings[0] // empty')
   if [ "$reg" = "failed" ]; then
-    if [ -n "$warn_msg" ] && echo "$warn_msg" | grep -qi "failed"; then
+    if [ -n "$warn_msg" ] && grep -qi "failed" <<< "$warn_msg"; then
       if [ -z "$stderr_content" ]; then
         pass "Issue create failure: exit=$LAST_RC, reg=$reg, warning='$warn_msg', stderr empty (JSON-only error output)"
       else
@@ -435,9 +435,9 @@ if [ "$LAST_RC" -eq 0 ]; then
   reg=$(json_field '.project_registration')
   stderr_content=$(cat "$LAST_STDERR" 2>/dev/null)
   if [ "$reg" = "partial" ] \
-     && echo "$stderr_content" | grep -q "ERROR: Projects registration failed:" \
-     && echo "$stderr_content" | grep -q "Failed to set" \
-     && echo "$stderr_content" | grep -q "after 3 attempts"; then
+     && grep -q "ERROR: Projects registration failed:" <<< "$stderr_content" \
+     && grep -q "Failed to set" <<< "$stderr_content" \
+     && grep -q "after 3 attempts" <<< "$stderr_content"; then
     pass "Field edit failure: exit=0, reg=$reg + stderr emit + retry-count message"
   else
     fail "Expected reg=partial + stderr 'ERROR: Projects registration failed:' + 'Failed to set' + 'after 3 attempts', got reg=$reg, stderr='$(printf '%s' "$stderr_content" | head -2)'"
@@ -704,9 +704,9 @@ if [ "$LAST_RC" -eq 0 ]; then
   reg=$(json_field '.project_registration')
   stderr_content=$(cat "$LAST_STDERR" 2>/dev/null)
   if [ "$reg" = "partial" ] \
-     && echo "$stderr_content" | grep -q "ERROR: Projects registration failed:" \
-     && echo "$stderr_content" | grep -q "Iteration assignment failed" \
-     && echo "$stderr_content" | grep -q "after 3 attempts"; then
+     && grep -q "ERROR: Projects registration failed:" <<< "$stderr_content" \
+     && grep -q "Iteration assignment failed" <<< "$stderr_content" \
+     && grep -q "after 3 attempts" <<< "$stderr_content"; then
     pass "Iteration mutation failure: exit=0, reg=$reg + stderr emit + retry-count message"
   else
     fail "Expected reg=partial + stderr 'Iteration assignment failed' + 'after 3 attempts', got reg=$reg, stderr='$(printf '%s' "$stderr_content" | head -3)'"
@@ -738,9 +738,9 @@ if [ "$LAST_RC" -eq 0 ]; then
   reg=$(json_field '.project_registration')
   stderr_content=$(cat "$LAST_STDERR" 2>/dev/null)
   if [ "$reg" = "partial" ] \
-     && echo "$stderr_content" | grep -q "ERROR: Projects registration failed:" \
-     && echo "$stderr_content" | grep -q "GraphQL items lookup query failed" \
-     && echo "$stderr_content" | grep -q "after 3 attempts"; then
+     && grep -q "ERROR: Projects registration failed:" <<< "$stderr_content" \
+     && grep -q "GraphQL items lookup query failed" <<< "$stderr_content" \
+     && grep -q "after 3 attempts" <<< "$stderr_content"; then
     pass "items lookup fail → exit=0, reg=$reg + stderr emit + retry-count message"
   else
     fail "Expected reg=partial + stderr 'GraphQL items lookup query failed' + 'after 3 attempts', got reg=$reg, stderr='$(printf '%s' "$stderr_content" | head -3)'"
@@ -955,7 +955,7 @@ LAST_RC=$rc
 if [ "$LAST_RC" -eq 0 ]; then
   warns=$(json_field '.warnings | length')
   first_warn=$(json_field '.warnings[0] // empty')
-  if [ "$warns" -gt 0 ] && echo "$first_warn" | grep -q "RETRY_DELAY"; then
+  if [ "$warns" -gt 0 ] && grep -q "RETRY_DELAY" <<< "$first_warn"; then
     pass "Invalid RETRY_DELAY → warning generated: '$first_warn'"
   else
     fail "Expected RETRY_DELAY warning, got warns=$warns, first='$first_warn'"
@@ -981,9 +981,9 @@ if [ "$LAST_RC" -eq 0 ]; then
   warn_count=$(json_field '.warnings | length')
   # cycle 2 follow-up: "gh project item-add failed" literal assert を追加
   # silent-fail 復帰 regression を厳密に検出可能化
-  if echo "$stderr_content" | grep -q "ERROR: Projects registration failed:" \
-     && echo "$stderr_content" | grep -q "gh project item-add failed" \
-     && echo "$stderr_content" | grep -q "after 3 attempts" \
+  if grep -q "ERROR: Projects registration failed:" <<< "$stderr_content" \
+     && grep -q "gh project item-add failed" <<< "$stderr_content" \
+     && grep -q "after 3 attempts" <<< "$stderr_content" \
      && [ "$reg" = "failed" ] \
      && [ "$warn_count" -gt 0 ]; then
     pass "item-add fail → stderr emit + 'gh project item-add failed' literal + reg=$reg + warnings=$warn_count"
@@ -1008,8 +1008,8 @@ run_script "$(jq -n --arg bf "$body_file" '{
 if [ "$LAST_RC" -eq 0 ]; then
   stderr_content=$(cat "$LAST_STDERR" 2>/dev/null)
   reg=$(json_field '.project_registration')
-  if echo "$stderr_content" | grep -q "ERROR: Projects registration failed:" \
-     && echo "$stderr_content" | grep -q "after 3 attempts" \
+  if grep -q "ERROR: Projects registration failed:" <<< "$stderr_content" \
+     && grep -q "after 3 attempts" <<< "$stderr_content" \
      && [ "$reg" = "partial" ]; then
     pass "graphql fail → stderr emit + reg=$reg + retry-count message (F-04)"
   else
@@ -1153,10 +1153,10 @@ if [ "$LAST_RC" -eq 0 ]; then
   stderr_content=$(cat "$LAST_STDERR" 2>/dev/null)
   # Warning must name the canonical field and the tried candidates (built-in alias 優先度 + Priority).
   if [ "$reg" = "partial" ] \
-     && echo "$warns_text" | grep -q "Field 'Priority' not found" \
-     && echo "$warns_text" | grep -q "優先度" \
-     && echo "$warns_text" | grep -q "tried:" \
-     && echo "$stderr_content" | grep -q "ERROR: Projects registration failed:"; then
+     && grep -q "Field 'Priority' not found" <<< "$warns_text" \
+     && grep -q "優先度" <<< "$warns_text" \
+     && grep -q "tried:" <<< "$warns_text" \
+     && grep -q "ERROR: Projects registration failed:" <<< "$stderr_content"; then
     pass "Missing field: reg=partial, warning lists tried candidates (優先度, Priority) + stderr emit"
   else
     fail "Expected reg=partial + warning with tried candidates + stderr, got reg=$reg, warns='$warns_text'"

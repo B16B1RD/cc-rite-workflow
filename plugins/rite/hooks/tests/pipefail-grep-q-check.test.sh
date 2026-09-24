@@ -27,6 +27,13 @@ assert "immediate jq stage is reported" "1" "$(printf '%s' "$out" | grep -c "pro
 assert "bounded enable probe is exempt" "0" "$(printf '%s' "$out" | grep -c 'producer.*enable -p' || true)"
 assert "pipeline after pipefail disable is not reported" "0" "$(printf '%s' "$out" | grep -c 'producer.*stream_many' || true)"
 
+printf '%s\n' 'set -o pipefail' 'echo "$output" | grep -q x' 'echo "prefix ${name}" | grep -q x' 'echo literal | grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "echo of an expansion is not exempt" "1" "$rc"
+assert "echo of a variable is reported" "1" "$(printf '%s\n' "$out" | grep -c 'producer before grep -q: echo "\$output"$' || true)"
+assert "echo of a string with an expansion is reported" "1" "$(printf '%s\n' "$out" | grep -c 'producer before grep -q: echo "prefix' || true)"
+assert "echo of a literal stays exempt" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*echo literal' || true)"
+
 printf '%s\n' 'stream_many | grep -q x' > "$fixture"
 out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
 assert "same pipeline without pipefail is clean" "0" "$rc"
