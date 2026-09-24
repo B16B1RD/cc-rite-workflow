@@ -4,10 +4,12 @@ title: "分岐を足したら、後ろのアームの出力がまだ使われる
 description: "判定の鎖に広い条件の分岐を先に足すと、後ろのアームは実行されても、その出力が後段で必ず捨てられる状態になりうる。挙動は変わらないためテストは通るが、使われない文言がデッドコードとして残り、読み手に誤った分岐を想像させる。分岐の追加後は、各アームの出力が後段で使われる経路が残っているかを確かめる。"
 domain: "heuristics"
 created: "2026-09-24T07:45:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5[1m]", at: "2026-09-24T07:45:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5[1m]", at: "2026-09-24T08:10:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260924T073243Z-pr-3034.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260924T080138Z-pr-3036.md"
 tags: ["branching", "dead-code", "case-arm", "behavior-equivalence"]
 confidence: medium
 promote: rite-plugin
@@ -27,6 +29,8 @@ promote: rite-plugin
 
 **使われなくなったアームは空にし、既定アームへの fall-through にはしない。** 既定アームが別の意味（「判定できなかった」など）の文言を持つ場合、fall-through させると誤った文言が出る。何もしないアームとして明示的に残す。
 
+**削除の後も、変更前後を全入力で突き合わせる。** 使われなくなった文言や死に代入を消すときは、変更前と変更後の実装を別々に展開し、判定に効く入力の全組み合わせで stdout・stderr・終了コードをバイト単位で比べる。差分 0 件を示せれば、テストが見ていない出力まで含めて挙動を変えていないと言える。初期値の代入を消す場合は、`set -u` の下で未設定のまま参照される経路がないことを、初期化箇所と全分岐の代入箇所を列挙して確かめる。
+
 ## 関連ページ
 
 - [prefix 分岐 case の `*)` catch-all は未知の将来 prefix を silent に default 動作へ吸収する](../anti-patterns/catch-all-case-arm-absorbs-future-prefix.md)
@@ -34,3 +38,4 @@ promote: rite-plugin
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20260924T073243Z-pr-3034.md)
+- [使われない文言を除いた修正のレビュー結果](../../raw/reviews/20260924T080138Z-pr-3036.md)
