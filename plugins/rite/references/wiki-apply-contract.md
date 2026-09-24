@@ -29,7 +29,7 @@
 - paths の各 blob が、そのパスが stage 済みなら index、そうでなければ作業ツリーの `git hash-object` と一致
 - 今回 stage したパスが記録した paths の部分集合
 
-どれかが違えば拒否する。同じ issue、session、worktree、paths でも、HEAD やファイル内容が変わった記録は通さない。commit では別セッションの成功を通さない。review は commit を許可しないため session を照合しない。別セッションから再開したレビューは、実装・修正したセッションの記録を HEAD・blob の一致と下の突合で検証する。
+どれかが違えば拒否する。同じ issue、session、worktree、paths でも、HEAD やファイル内容が変わった記録は通さない。commit では別セッションの成功を通さない。review は commit を許可しないため session を照合しない。別セッションから再開したレビューは、実装・修正したセッションの記録を HEAD・blob の一致と「レビューの突合」節の突合で検証する。
 
 ## 証跡
 
