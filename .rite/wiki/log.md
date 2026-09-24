@@ -5,6 +5,7 @@
 * **Update**: [@tsv+IFS read の field-shift hazard 横断監査は cut-f免除と空フィールド可否の2条件で判定する](pages/heuristics/tsv-ifs-field-shift-hazard-audit-criteria.md) — raw/reviews/20260924T033414Z-pr-3018.md を統合（一括統一のあとに足した読取での再発と、回帰テストの観測点）
 * **lint:clean** — contradictions=0 (更新ページのみ再評価。既存ページの全組合せ再評価は未実施), stale=67, orphans=0, missing_concept=0, unregistered_raw=534, broken_refs=0
 * **Create**: [照合を外すときは、代わりに守る照合を 1 つずつテストで固定する](pages/heuristics/relaxed-check-names-and-pins-remaining-defenses.md) — raw/reviews/20260924T040209Z-pr-3019.md を新規ページ化
+* **lint:clean** — contradictions=0 (新規ページと関連ページのみ評価。既存ページの全組合せ再評価は未実施), stale=67, orphans=0, missing_concept=0, unregistered_raw=534, broken_refs=0
 
 ## 2026-09-22
 
