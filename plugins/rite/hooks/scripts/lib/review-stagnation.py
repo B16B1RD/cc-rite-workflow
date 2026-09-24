@@ -126,8 +126,28 @@ def same_observation(saved, data):
     return left == right and cycle.same_specification(saved.get("issue_body", ""), data.get("issue_body", ""))
 
 
+def without_attestation(receipt):
+    """Undo the ready / merge helper's human attestation of unverified criteria.
+
+    The helper rewrites exactly status, head and at on the rows it attests, and
+    only for the reviewed HEAD. Anything else still changes the digest.
+    """
+    table = receipt.get("acceptance_criteria")
+    if not isinstance(table, list):
+        return receipt
+    restored = copy.deepcopy(receipt)
+    for row in restored["acceptance_criteria"]:
+        if (isinstance(row, dict) and row.get("status") == "human-verified"
+                and row.get("head") == receipt.get("commit_sha")):
+            row["status"] = "unverified"
+            row.pop("head", None)
+            row.pop("at", None)
+    return restored
+
+
 def unchanged_receipt(saved, receipt):
-    return digest(receipt) in (saved["review_hash"], saved.get("triaged_hash"))
+    known = (saved["review_hash"], saved.get("triaged_hash"))
+    return digest(receipt) in known or digest(without_attestation(receipt)) in known
 
 
 def gate(state, session, allow_replan=False, check_head=True):
