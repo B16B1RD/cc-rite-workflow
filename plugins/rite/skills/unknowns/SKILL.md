@@ -73,7 +73,9 @@ unknowns は 4 象限で捉える:
 Step 1: `wiki.enabled: true` かつ `wiki.auto_query: true`（`rite-config.yml`）のときのみ実行する。いずれか false なら以下を silent skip し、通常の盲点洗い出しのみ行う（エラー・警告は出さない）:
 
 ```bash
-wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
+# config は worktree 自身のもの、無ければ main checkout のものを読む
+rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
+wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$rite_config" 2>/dev/null) || wiki_section=""
 wiki_enabled=""
 if [[ -n "$wiki_section" ]]; then
   wiki_enabled=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' \

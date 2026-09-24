@@ -14,6 +14,9 @@
 #   cleanup-session-worktree-teardown.sh remove --worktree <path> --pr-merged <true|false> \
 #     --self-root <pid> [--dry-run]
 #
+# detect の `--config` 省略時は lib/rite-config-path.sh が解決した config（worktree 自身のもの、
+# 無ければ main checkout のもの）を読む。
+#
 # detect の `--issue` は空値・省略を許容する（関連 Issue 未識別は cleanup の正規経路で、ここで
 # 落とすと marker が 1 本も出ず、呼び出し側が marker 不在を「削除成功」と読むため）。ただし空 issue
 # では物理 cwd からの `in_worktree_unrecorded` 導出（cleanup-worktree-detect.sh の physical
@@ -162,7 +165,7 @@ _physical_path() {
 }
 
 cmd_detect() {
-  local issue="" config="rite-config.yml"
+  local issue="" config=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       # `--issue` は値の欠落も空値として受ける（SKILL.md が `--issue {issue_number}` を
@@ -198,6 +201,10 @@ cmd_detect() {
   # なお空 issue では physical derivation が働かず `none` に落ちる（docstring 冒頭を参照）。
 
   local ms_section ms_enabled ms_base flow_wt cur_top main_root detect cleanup_wt dirty
+  # --config が無ければ worktree 自身の config、無ければ main checkout の config を読む
+  if [ -z "$config" ]; then
+    config=$(bash "$(dirname "${BASH_SOURCE[0]}")/lib/rite-config-path.sh" --or-devnull) || return 2
+  fi
   ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' "$config" 2>/dev/null) || ms_section=""
   ms_enabled=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+enabled:/ {print; exit}' \
     | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')

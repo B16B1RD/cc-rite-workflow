@@ -196,19 +196,24 @@ fi
 # --- Step 3: rite-config.yml の pr_review.post_comment 読取 (C-2: SIGPIPE-safe) ---
 # 多段 pipeline は禁止 (SIGPIPE rc=141 で config が silent false 化する)
 # rationale: references/design-rationale.md#argument-parsing-notes
-repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || repo_root=""
+# config の場所は helper が決める（worktree 自身のもの、無ければ main checkout のもの）
+config_rc=0
+config_file=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh 2>&1) || config_rc=$?
 config_post_comment="false"
 
-if [ -z "$repo_root" ]; then
- echo "WARNING: git rev-parse --show-toplevel に失敗しました (現在地が git repo 内ではない可能性)。post_comment=false (default) で続行します" >&2
-elif [ ! -f "$repo_root/rite-config.yml" ]; then
- echo "WARNING: $repo_root/rite-config.yml が見つかりません。post_comment=false (default) で続行します" >&2
+if [ "$config_rc" -eq 1 ]; then
+ echo "WARNING: ${config_file}。post_comment=false (default) で続行します" >&2
+elif [ "$config_rc" -ne 0 ]; then
+ echo "ERROR: $config_file" >&2
+ echo "[CONTEXT] REVIEW_ARG_PARSE_FAILED=1; reason=config_unreadable" >&2
+ echo "[review:error]"
+ exit 1
 else
  # 抽出は helper (実ファイル) に委譲する。skill 本文の fenced bash に awk を書くと、
  # Skill loader が位置パラメータを起動引数へ展開して行参照が壊れ、値が silent に空へ倒れる
  # (静的検出: hooks/scripts/dollar-zero-check.sh)。単一 awk / SIGPIPE 禁止契約は helper 側で維持
  helper_err=$(mktemp "${TMPDIR:-/tmp}/rite-review-helper-err-XXXXXX" 2>/dev/null) || helper_err=""
- if raw=$(bash {plugin_root}/hooks/scripts/pr-review-post-comment-read.sh "$repo_root/rite-config.yml" 2>"${helper_err:-/dev/null}"); then
+ if raw=$(bash {plugin_root}/hooks/scripts/pr-review-post-comment-read.sh "$config_file" 2>"${helper_err:-/dev/null}"); then
  config_post_comment="$raw"
  else
  helper_rc=$?
@@ -260,14 +265,15 @@ echo "[CONTEXT] REMAINING_ARGS=$remaining_args" >&2
 | 3 | `pr_review.post_comment: true` in config | `true` |
 | 4 | Default | `false` |
 
-**ステップ 1.0 failure reasons**: (`bash_version_incompatible` / `post_and_no_post_conflict`)
+**ステップ 1.0 failure reasons**: (`bash_version_incompatible` / `post_and_no_post_conflict` / `config_unreadable`)
 
 | reason | Description |
 |--------|-------------|
 | `bash_version_incompatible` | Step 0 の `command -v mapfile` チェックが失敗 (bash 3.2 等の旧バージョン) |
 | `post_and_no_post_conflict` | `--post-comment` と `--no-post-comment` が同時指定された (Step 2、`REVIEW_ARG_PARSE_FAILED=1` retained flag を emit して `[review:error]` で exit 1) |
+| `config_unreadable` | rite-config.yml が存在するのに読めない、または main checkout root を解決できない (Step 3。既定値へは倒さず `[review:error]` で exit 1) |
 
-**Eval-order enumeration** (Pattern-2 documented-union input): ステップ 1.0 emit sequence = (`bash_version_incompatible` / `post_and_no_post_conflict`)
+**Eval-order enumeration** (Pattern-2 documented-union input): ステップ 1.0 emit sequence = (`bash_version_incompatible` / `post_and_no_post_conflict` / `config_unreadable`)
 
 ### 1.1 Identify the PR
 
@@ -1094,7 +1100,9 @@ reviewer ロード前に Wiki の経験知を注入する。会話へ注入す�
 **Step 1**: Check Wiki configuration:
 
 ```bash
-wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
+# config は worktree 自身のもの、無ければ main checkout のものを読む
+rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
+wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$rite_config" 2>/dev/null) || wiki_section=""
 wiki_enabled=""
 if [[ -n "$wiki_section" ]]; then
  wiki_enabled=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' \
@@ -2940,7 +2948,9 @@ rationale: references/design-rationale.md#wiki-skip-emit-and-write-failed
 **Step 1**: Check Wiki configuration (same pattern as ステップ 4.0.W Step 1, replacing `auto_query` with `auto_ingest`):
 
 ```bash
-wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
+# config は worktree 自身のもの、無ければ main checkout のものを読む
+rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
+wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$rite_config" 2>/dev/null) || wiki_section=""
 wiki_enabled=""
 if [[ -n "$wiki_section" ]]; then
  wiki_enabled=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' \

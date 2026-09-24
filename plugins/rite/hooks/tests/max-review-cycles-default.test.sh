@@ -46,9 +46,9 @@ printf 'echo "max_cycles=$max_cycles"\n' >> "$STEP06"
 # 行数上限は over-extraction (終端アンカーを取り逃して後続ブロックを巻き込む) の検出を担う。
 # アンカー literal の存在検査だけでは、途中に別の `esac` が挿入されて範囲が伸びても通過してしまう。
 if ! grep -qE '^case "\$raw_max" in' "$STEP06" || ! grep -qx 'esac' "$STEP06" \
-   || [ "$(wc -l < "$STEP06")" -gt 12 ]; then
+   || [ "$(wc -l < "$STEP06")" -gt 20 ]; then
   echo "FATAL: ステップ 0.6 の fallback ブロック抽出に失敗しました (アンカーが変更された可能性)" >&2
-  echo "  抽出結果: $(wc -l < "$STEP06") 行 (期待: 12 行以下)" >&2
+  echo "  抽出結果: $(wc -l < "$STEP06") 行 (期待: 20 行以下)" >&2
   exit 1
 fi
 
@@ -71,6 +71,8 @@ if ! grep -q 'silent fallback' "$STEP1" || ! grep -q '^raw_max=' "$STEP1" \
 fi
 
 STDERR_LOG="$TEST_DIR/stderr.log"
+# 抽出したブロックは config の場所を plugin 同梱の helper で解決する
+export plugin_root="$PLUGIN_ROOT"
 
 # run_snippet <snippet> <config-body> — sandbox に rite-config.yml を置いて解決値を返す
 run_snippet() {
@@ -124,6 +126,28 @@ assert "T-02f: ステップ 1 — 非数値は既定へフォールバック" \
 # ステップ 1 は検証済み前提の silent 再読込。ここで WARNING を出すと cycle ごとに重複告知になる
 run_snippet "$STEP1" "$CFG_ZERO" >/dev/null
 assert "T-02g: ステップ 1 の無効値フォールバックは silent" "" "$(cat "$STDERR_LOG")"
+
+echo "=== T-06: config ファイル自体が無いときはステップ 0.6 だけが試したパス付きで WARNING ==="
+# run_snippet_no_config <snippet> — rite-config.yml を置かない sandbox (リポジトリ外 = cwd のみを探す)
+run_snippet_no_config() {
+  local sandbox="$TEST_DIR/sandbox"
+  rm -rf "$sandbox"; mkdir -p "$sandbox"
+  ( cd "$sandbox" && bash "$1" 2>"$STDERR_LOG" ) | sed -n 's/^max_cycles=//p'
+}
+assert "T-06a: ステップ 0.6 — config 不在は既定値" "$DEFAULT_CYCLES" "$(run_snippet_no_config "$STEP06")"
+assert_grep "T-06b: WARNING に試したパスが入る" "$STDERR_LOG" "WARNING: .*$TEST_DIR/sandbox/rite-config.yml"
+assert "T-06c: ステップ 1 — config 不在も既定値" "$DEFAULT_CYCLES" "$(run_snippet_no_config "$STEP1")"
+assert "T-06d: ステップ 1 の config 不在は silent" "" "$(cat "$STDERR_LOG")"
+# 追跡外 config は main checkout にだけある。linked worktree から両ステップが main の値を読む
+WT_MAIN=$(make_sandbox --branch develop)
+WT_DIR="${WT_MAIN}-wt"
+trap 'rm -rf "$TEST_DIR" "$WT_MAIN" "$WT_DIR"' EXIT
+git -C "$WT_MAIN" worktree add -q -b feat/cfg "$WT_DIR" >/dev/null 2>&1
+printf '%s\n' "$CFG_EXPLICIT" > "$WT_MAIN/rite-config.yml"
+assert "T-06e: ステップ 0.6 — worktree から main の明示値 7" "7" \
+  "$( (cd "$WT_DIR" && bash "$STEP06" 2>/dev/null) | sed -n 's/^max_cycles=//p')"
+assert "T-06f: ステップ 1 — worktree から main の明示値 7" "7" \
+  "$( (cd "$WT_DIR" && bash "$STEP1" 2>/dev/null) | sed -n 's/^max_cycles=//p')"
 
 echo "=== T-03: 明示設定は既定値に上書きされない (AC-3) ==="
 assert "T-03a: ステップ 0.6 — 明示値 7 をそのまま使う" \

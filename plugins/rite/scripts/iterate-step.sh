@@ -119,7 +119,18 @@ source "$plugin_root"/hooks/scripts/lib/context-marker.sh || { echo "ERROR: cont
 
 # ⚠ 下行はテスト hooks/tests/max-review-cycles-default.test.sh が awk 抽出アンカーとして参照する。変更時はテスト側の awk パターンも同時更新すること
 # (1) max_review_cycles を rite-config.yml から読取・検証。無効値（0 以下 / 非数値）は WARNING + 既定値 15
-raw_max=$(awk '/^safety:/{s=1;next} s&&/^[a-zA-Z]/{exit} s&&/^[[:space:]]+max_review_cycles:/{print;exit}' rite-config.yml 2>/dev/null \
+# config の場所は helper が決める（worktree 自身のもの、無ければ main checkout のもの）。
+# 見つからなければ試したパスを WARNING に出して既定値、読めなければ既定値へ倒さず止める
+cfg_rc=0
+cfg=$(bash "$plugin_root"/hooks/scripts/lib/rite-config-path.sh 2>&1) || cfg_rc=$?
+if [ "$cfg_rc" -eq 1 ]; then
+  echo "WARNING: ${cfg}。safety.max_review_cycles は既定値 15 を使用します" >&2
+  cfg=/dev/null
+elif [ "$cfg_rc" -ne 0 ]; then
+  echo "ERROR: $cfg" >&2
+  exit 1
+fi
+raw_max=$(awk '/^safety:/{s=1;next} s&&/^[a-zA-Z]/{exit} s&&/^[[:space:]]+max_review_cycles:/{print;exit}' "$cfg" 2>/dev/null \
   | sed 's/[[:space:]]#.*//' | sed 's/.*max_review_cycles:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 case "$raw_max" in
   '')            max_cycles=15 ;;                                  # キー欠落 = 既定（正常系、WARNING なし）
@@ -291,7 +302,7 @@ source "$plugin_root"/hooks/scripts/lib/context-marker.sh || { echo "ERROR: cont
 
 cc=$(bash "$plugin_root"/hooks/flow-state.sh get --field cycle_count --default 0) || cc=0
 case "$cc" in ''|*[!0-9]*) cc=0 ;; esac
-raw_max=$(awk '/^safety:/{s=1;next} s&&/^[a-zA-Z]/{exit} s&&/^[[:space:]]+max_review_cycles:/{print;exit}' rite-config.yml 2>/dev/null \
+raw_max=$(awk '/^safety:/{s=1;next} s&&/^[a-zA-Z]/{exit} s&&/^[[:space:]]+max_review_cycles:/{print;exit}' "$(bash "$plugin_root"/hooks/scripts/lib/rite-config-path.sh 2>/dev/null || echo /dev/null)" 2>/dev/null \
   | sed 's/[[:space:]]#.*//' | sed 's/.*max_review_cycles:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 case "$raw_max" in ''|0|*[!0-9]*) max_cycles=15 ;; *) max_cycles=$raw_max ;; esac  # 検証済。ここは silent fallback
 

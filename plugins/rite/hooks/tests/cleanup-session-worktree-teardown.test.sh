@@ -73,6 +73,11 @@ assert_contains "detect: worktree 内は in_worktree_unrecorded に分類する"
   "[CONTEXT] CLEANUP_WT=in_worktree_unrecorded; worktree=$wt; main_root=$main_root"
 assert_contains "detect: 退出不能な入場は委譲 marker を出す" "$out" \
   "[CONTEXT] CLEANUP_DELEGATED=1; reason=exit_worktree_unavailable"
+# --config 省略時: worktree に config が無くても main checkout の config で multi_session を判定する
+rm -f "$wt/rite-config.yml"
+out=$(cd "$wt" && bash "$HELPER" detect --issue 1 2>/dev/null)
+assert_contains "detect: --config 省略時は main checkout の config を読む" "$out" \
+  "[CONTEXT] CLEANUP_WT=in_worktree_unrecorded; worktree=$wt; main_root=$main_root"
 
 # AC-2: 対象外の cwd（main checkout）で、当該 Issue の worktree も登録されていなければ
 # worktree を触らず none を返して exit 0（issue-1 は登録済みなので未登録の issue-2 で呼ぶ）。

@@ -657,8 +657,13 @@ ensure_session_worktree() {
   esac
 
   # --- read multi_session (same parser as open Step 2.1-G / recover.md Phase 1.1) ---
-  local ms_section ms_enabled ms_base
-  ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || ms_section=""
+  local ms_section ms_enabled ms_base rite_config
+  # worktree 自身の config、無ければ main checkout の config を読む（不在なら WARNING で無効扱い）
+  rite_config=$(bash "$(dirname "${BASH_SOURCE[0]}")/rite-config-path.sh" --or-devnull) || {
+    echo "[CONTEXT] WT_ENSURE=failed; path=; branch=$branch; reason=config_unreadable"
+    return 1
+  }
+  ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' "$rite_config" 2>/dev/null) || ms_section=""
   ms_enabled=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+enabled:/ {print; exit}' \
     | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
   case "$ms_enabled" in true|yes|1) ms_enabled=true ;; *) ms_enabled=false ;; esac

@@ -105,8 +105,21 @@ if [ -z "$MEM" ] || [ ! -f "$MEM" ]; then
   _deny "record_missing"
 fi
 
-if [ -z "$BASE" ] && [ -n "$WORKTREE" ] && [ -f "$WORKTREE/rite-config.yml" ]; then
-  BASE=$(awk '/^branch:/{f=1;next} f&&/^[^ ]/{exit} f&&/base:/{print;exit}' "$WORKTREE/rite-config.yml" \
+# config は worktree 自身のもの、無ければ main checkout のものを読む。空の WORKTREE では読まない
+CFG=""
+if [ -n "$WORKTREE" ]; then
+  cfg_rc=0
+  CFG=$(bash "$SCRIPT_DIR/lib/rite-config-path.sh" "$WORKTREE" 2>&1) || cfg_rc=$?
+  if [ "$cfg_rc" -eq 1 ]; then
+    echo "WARNING: ${CFG}。branch.base / wiki 設定は既定値で続行します" >&2
+    CFG=""
+  elif [ "$cfg_rc" -ne 0 ]; then
+    echo "ERROR: $CFG" >&2
+    _deny "config_unreadable"
+  fi
+fi
+if [ -z "$BASE" ] && [ -n "$CFG" ]; then
+  BASE=$(awk '/^branch:/{f=1;next} f&&/^[^ ]/{exit} f&&/base:/{print;exit}' "$CFG" \
     | sed 's/.*base:[[:space:]]*//' | tr -d '[:space:]"'"'"'') || BASE=""
 fi
 [ -n "$BASE" ] || BASE="develop"
@@ -127,9 +140,9 @@ _yaml_at() {
 }
 enabled="true"
 auto_query=""
-if [ -n "$WORKTREE" ] && [ -f "$WORKTREE/rite-config.yml" ]; then
-  enabled=$(_yaml_at "$WORKTREE/rite-config.yml" enabled)
-  auto_query=$(_yaml_at "$WORKTREE/rite-config.yml" auto_query)
+if [ -n "$CFG" ]; then
+  enabled=$(_yaml_at "$CFG" enabled)
+  auto_query=$(_yaml_at "$CFG" auto_query)
 fi
 case "$enabled" in
   false|no|0) enabled="false" ;;

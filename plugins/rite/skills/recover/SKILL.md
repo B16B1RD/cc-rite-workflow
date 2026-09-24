@@ -73,7 +73,9 @@ fi
 if [ -z "$issue_arg" ]; then
   # multi_session fallback: クラッシュ後の新セッションは repo root (branch=base) で
   # 開始されるため branch 抽出が失敗する。登録済みセッション worktree から候補を列挙する。
-  ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || ms_section=""
+  # config は worktree 自身のもの、無ければ main checkout のものを読む
+  rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
+  ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' "$rite_config" 2>/dev/null) || ms_section=""
   ms_base=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+worktree_base:/ {print; exit}' \
     | sed 's/[[:space:]]#.*//' | sed 's/.*worktree_base:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
   [ -n "$ms_base" ] || ms_base=".rite/worktrees"

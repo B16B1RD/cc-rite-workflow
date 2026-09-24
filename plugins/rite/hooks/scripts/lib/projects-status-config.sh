@@ -1,16 +1,15 @@
 # shellcheck shell=bash
 # Function-only library: callers own shell options, traps, and error handling.
-# Config queries read the current repository root (or cwd outside Git). No cache:
-# helpers and tests can change configuration between calls in the same shell.
+# Config queries read the rite-config.yml that rite-config-path.sh resolves (the
+# worktree's own, else the main checkout's; cwd outside Git). No cache: helpers
+# and tests can change configuration between calls in the same shell.
 
 _projects_status_read() {
-  local root config
-  root=$(git rev-parse --show-toplevel 2>/dev/null) || root="$PWD"
-  config="$root/rite-config.yml"
-  if [[ ! -r "$config" ]]; then
+  local config
+  config=$(bash "$(dirname "${BASH_SOURCE[0]}")/rite-config-path.sh" 2>&1) || {
     printf 'ERROR: projects status config is missing or unreadable: %s\n' "$config" >&2
     return 1
-  fi
+  }
   # Environment bindings preserve literal backslashes in lookup names; awk -v
   # would interpret them as escapes before comparing them with parsed values.
   RITE_STATUS_QUERY="$1" RITE_STATUS_VALUE="${2-}" awk '

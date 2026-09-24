@@ -14,7 +14,8 @@
 #
 # Convention: source the lib and call the function in-process (it is a
 # source-only helper, not a standalone script). parse_wiki_scalar reads
-# rite-config.yml from the current directory, so each case cd's into a sandbox.
+# the rite-config.yml resolved from the current directory, so each case cd's into
+# a sandbox.
 
 set -uo pipefail
 
@@ -140,5 +141,21 @@ assert "value case is preserved (caller lowercases if needed)" "TRUE" \
   "$(parse_wiki_scalar enabled)"
 assert "branch_name case is preserved" "Wiki-Notes" \
   "$(parse_wiki_scalar branch_name)"
+
+# An untracked config lives only in the main checkout; a linked worktree reads it,
+# and a missing config warns with the tried paths instead of defaulting silently.
+LW_MAIN=$(make_sandbox --branch develop)
+LW="${LW_MAIN}-wt"
+git -C "$LW_MAIN" worktree add -q -b feat/cfg "$LW" >/dev/null 2>&1
+printf 'wiki:\n  branch_name: main-wiki\n' > "$LW_MAIN/rite-config.yml"
+assert "linked worktree reads the main checkout config" "main-wiki" \
+  "$(cd "$LW" && parse_wiki_scalar branch_name)"
+rm -f "$LW_MAIN/rite-config.yml"
+lw_err=$(cd "$LW" && parse_wiki_scalar branch_name 2>&1 >/dev/null)
+case "$lw_err" in
+  WARNING:*"$LW_MAIN/rite-config.yml"*) pass "missing config warns with the tried path" ;;
+  *) fail "missing config warns with the tried path (got '$lw_err')" ;;
+esac
+rm -rf "$LW_MAIN" "$LW"
 
 print_summary "$(basename "$0")"

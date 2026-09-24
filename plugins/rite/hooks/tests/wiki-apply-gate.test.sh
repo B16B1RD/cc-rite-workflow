@@ -754,6 +754,45 @@ else
   fail "subdir capture rc=$crc mem=$(cat "$sub_mem" 2>/dev/null) err=$(cat "$ROOT/subcap.err")"
 fi
 
+echo "=== a linked worktree reads the main checkout config ==="
+lw_main=$(new_repo lwmain)
+# enabled: false にするのは、gate が worktree 側（config なし = 有効扱い）を読むと
+# disabled の記録を拒否し、main の config を読んだときだけ許可するため
+printf '%s\n' 'wiki:' '  enabled: false' > "$lw_main/rite-config.yml"
+lw="$ROOT/lwwt"
+git -C "$lw_main" worktree add -q -b feat/lw "$lw" >/dev/null 2>&1
+lw=$(CDPATH= cd -- "$lw" && pwd -P)
+lw_flow="$ROOT/lw.flow-state"
+write_flow "$lw_flow" implement 7 "$lw"
+lw_mem="$ROOT/lw.md"
+crc=0
+bash "$CAPTURE" --keywords widget --cwd "$lw" --flow-state "$lw_flow" --memory "$lw_mem" >"$ROOT/lw.out" 2>"$ROOT/lw.err" || crc=$?
+if [ "$crc" -eq 0 ] && grep -q 'status: disabled' "$lw_mem"; then
+  run_gate --mode commit --worktree "$lw" --flow-state "$lw_flow" --memory "$lw_mem"
+  if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
+    pass "worktree capture and gate use the main checkout wiki.enabled"
+  else
+    fail "worktree gate rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
+  fi
+else
+  fail "worktree capture rc=$crc mem=$(cat "$lw_mem" 2>/dev/null) err=$(cat "$ROOT/lw.err")"
+fi
+rm -f "$lw_main/rite-config.yml" "$lw_mem"
+crc=0
+bash "$CAPTURE" --keywords widget --cwd "$lw" --flow-state "$lw_flow" --memory "$lw_mem" >"$ROOT/lw2.out" 2>"$ROOT/lw2.err" || crc=$?
+if grep -q "WARNING: .*$lw/rite-config.yml.*$lw_main/rite-config.yml" "$ROOT/lw2.err" \
+  && ! grep -q 'WARNING' "$ROOT/lw2.out"; then
+  pass "capture without any config warns on stderr with both tried paths"
+else
+  fail "no-config capture rc=$crc out=$(cat "$ROOT/lw2.out") err=$(cat "$ROOT/lw2.err")"
+fi
+run_gate --mode commit --worktree "$lw" --flow-state "$lw_flow" --memory "$lw_mem"
+if grep -q "WARNING: .*$lw_main/rite-config.yml" "$ROOT/gate.err" && ! grep -q 'WARNING' <<<"$GOUT"; then
+  pass "gate without any config warns on stderr with the tried path"
+else
+  fail "no-config gate rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
+fi
+
 echo "=== git-commit-file refreshes head; a later edit is stale ==="
 land=$(new_repo land)
 write_config "$land" true true

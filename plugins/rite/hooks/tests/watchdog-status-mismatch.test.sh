@@ -218,7 +218,8 @@ trap 'rm -rf "$T9F_DIR" "$RULES_DIR"' EXIT
 mkdir -p "$RULES_DIR/plugin/scripts" "$RULES_DIR/plugin/hooks/scripts/lib" "$RULES_DIR/repo/bin"
 cp "$WATCHDOG_SH" "$RULES_DIR/plugin/scripts/watchdog-status-mismatch.sh"
 cp "$REPO_ROOT/plugins/rite/hooks/control-char-neutralize.sh" "$RULES_DIR/plugin/hooks/"
-cp "$REPO_ROOT/plugins/rite/hooks/scripts/lib/git-remote.sh" "$REPO_ROOT/plugins/rite/hooks/scripts/lib/projects-status-config.sh" "$RULES_DIR/plugin/hooks/scripts/lib/"
+cp "$REPO_ROOT/plugins/rite/hooks/scripts/lib/git-remote.sh" "$REPO_ROOT/plugins/rite/hooks/scripts/lib/projects-status-config.sh" "$REPO_ROOT/plugins/rite/hooks/scripts/lib/rite-config-path.sh" "$RULES_DIR/plugin/hooks/scripts/lib/"
+cp "$REPO_ROOT/plugins/rite/hooks/state-path-resolve.sh" "$RULES_DIR/plugin/hooks/"
 cat > "$RULES_DIR/plugin/scripts/projects-status-update.sh" <<'RECON_SHIM'
 #!/bin/bash
 # Mock reconciler: records the status_role it was asked for so the caller's per-rule

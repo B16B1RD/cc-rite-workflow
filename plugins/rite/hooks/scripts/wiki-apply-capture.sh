@@ -66,10 +66,20 @@ _yaml() {
 }
 enabled="true"
 auto_query=""
-# cwd にファイルが無いことを設定オフと扱わない。gate と同じ worktree 根を読む。
-if [ -n "$WT" ] && [ -f "$WT/rite-config.yml" ]; then
-  enabled=$(_yaml "$WT/rite-config.yml" enabled)
-  auto_query=$(_yaml "$WT/rite-config.yml" auto_query)
+# cwd にファイルが無いことを設定オフと扱わない。gate と同じ worktree 根から、
+# worktree 自身の config、無ければ main checkout の config を読む。
+if [ -n "$WT" ]; then
+  cfg_rc=0
+  cfg=$(bash "$SCRIPT_DIR/lib/rite-config-path.sh" "$WT" 2>&1) || cfg_rc=$?
+  if [ "$cfg_rc" -eq 0 ]; then
+    enabled=$(_yaml "$cfg" enabled)
+    auto_query=$(_yaml "$cfg" auto_query)
+  elif [ "$cfg_rc" -eq 1 ]; then
+    echo "WARNING: ${cfg}。wiki.enabled / wiki.auto_query は既定値で続行します" >&2
+  else
+    echo "ERROR: $cfg" >&2
+    exit 1
+  fi
 fi
 case "$enabled" in
   false|no|0) enabled="false" ;;
