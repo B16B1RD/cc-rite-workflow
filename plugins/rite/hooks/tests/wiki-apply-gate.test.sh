@@ -353,6 +353,39 @@ if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
 else
   fail "review allow rc=$GRC out=$GOUT"
 fi
+
+# A review resumed from another session reads the record written by the session
+# that implemented or fixed. Review does not authorize a commit, so it does not
+# bind the record to the current session; the other checks still apply.
+later_flow="$ROOT/later.flow-state"
+write_flow "$later_flow" implement 7 "$repo"
+run_gate --mode review --worktree "$repo" --base "$review_base" --flow-state "$later_flow" --memory "$mem"
+if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT" && ! grep -q 'session_mismatch' <<<"$GOUT"; then
+  pass "review from another session allows"
+else
+  fail "review other session rc=$GRC out=$GOUT"
+fi
+run_gate --mode commit --worktree "$repo" --flow-state "$later_flow" --memory "$mem"
+if [ "$GRC" -eq 1 ] && grep -q 'reason=session_mismatch' <<<"$GOUT"; then
+  pass "commit from another session still denies"
+else
+  fail "commit other session rc=$GRC out=$GOUT"
+fi
+later_mem="$ROOT/later-mem.md"
+write_mem "$later_mem" "$(applied_page '対象の識別子を照合してから実行する。' README 'printf ok' | sed -e 's#^worktree: .*#worktree: /tmp/not-the-repo#')"
+run_gate --mode review --worktree "$repo" --base "$review_base" --flow-state "$later_flow" --memory "$later_mem"
+if [ "$GRC" -eq 1 ] && grep -q 'reason=worktree_mismatch' <<<"$GOUT"; then
+  pass "review from another session still checks worktree"
+else
+  fail "review other session worktree rc=$GRC out=$GOUT"
+fi
+write_mem "$later_mem" "$(applied_page '対象の識別子を照合してから実行する。' README 'printf ok' | sed -e 's#^head: .*#head: 0000000000000000000000000000000000000000#')"
+run_gate --mode review --worktree "$repo" --base "$review_base" --flow-state "$later_flow" --memory "$later_mem"
+if [ "$GRC" -eq 1 ] && grep -q 'reason=stale_head' <<<"$GOUT"; then
+  pass "review from another session still checks head"
+else
+  fail "review other session head rc=$GRC out=$GOUT"
+fi
 write_mem "$mem" "$(applied_page '対象の識別子を照合してから実行する。' README -)"
 run_gate --mode review --worktree "$repo" --base "$review_base" --flow-state "$flow" --memory "$mem"
 if [ "$GRC" -eq 1 ] && grep -q 'reason=result_missing' <<<"$GOUT"; then
