@@ -4,9 +4,9 @@
 # `safety.max_review_cycles` の既定値 15 を pin する。
 #
 # 2 系統の検査を持つ:
-#   1. 挙動 (T-01〜T-03) — iterate/SKILL.md から fallback ブロックを literal 抽出し、
-#      sandbox の rite-config.yml に対して実行して解決値を確かめる。テストへコピーすると
-#      SKILL.md 側の変更が反映されず drift するため、base-update-classify.test.sh と同じ
+#   1. 挙動 (T-01〜T-03) — scripts/iterate-step.sh (iterate の各ステップ本体) から fallback
+#      ブロックを literal 抽出し、sandbox の rite-config.yml に対して実行して解決値を確かめる。
+#      テストへコピーすると iterate-step.sh 側の変更が反映されず drift するため、base-update-classify.test.sh と同じ
 #      抽出実行方式を取る。抽出アンカーが壊れたらテスト自体が FATAL で落ちる。
 #   2. 記述の一致 (T-04) / 契約の不変 (T-05) — 既定値は 8 ファイルに複製されており、
 #      1 箇所でも取り残されると読者が「その経路は別の値」と誤読する。cycle-scope-contract.test.sh
@@ -23,6 +23,7 @@ PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
 
 ITERATE="$PLUGIN_ROOT/skills/iterate/SKILL.md"
+ITERATE_STEP="$PLUGIN_ROOT/scripts/iterate-step.sh"
 TEMPLATE_CFG="$PLUGIN_ROOT/templates/config/rite-config.yml"
 EXEC_METRICS="$PLUGIN_ROOT/references/execution-metrics.md"
 CONFIG_DOC="$REPO_ROOT/docs/CONFIGURATION.md"
@@ -36,11 +37,11 @@ BACKSTOP_CYCLE=$((DEFAULT_CYCLES + 1))
 TEST_DIR="$(mktemp -d)"
 trap 'rm -rf "$TEST_DIR"' EXIT
 
-# --- SKILL.md から 2 つの fallback サイトを抽出 ---------------------------------
+# --- iterate-step.sh から 2 つの fallback サイトを抽出 --------------------------
 
 STEP06="$TEST_DIR/step06.sh"
 awk '/^# \(1\) max_review_cycles を rite-config\.yml から読取・検証/{f=1} f{print} f&&/^esac$/{exit}' \
-  "$ITERATE" > "$STEP06"
+  "$ITERATE_STEP" > "$STEP06"
 printf 'echo "max_cycles=$max_cycles"\n' >> "$STEP06"
 # 行数上限は over-extraction (終端アンカーを取り逃して後続ブロックを巻き込む) の検出を担う。
 # アンカー literal の存在検査だけでは、途中に別の `esac` が挿入されて範囲が伸びても通過してしまう。
@@ -57,11 +58,11 @@ fi
 STEP1="$TEST_DIR/step1.sh"
 awk '/^raw_max=\$\(awk/ { buf=$0; c=1; next }
      c { buf = buf "\n" $0; if (/silent fallback/) { print buf; exit } }' \
-  "$ITERATE" > "$STEP1"
+  "$ITERATE_STEP" > "$STEP1"
 printf 'echo "max_cycles=$max_cycles"\n' >> "$STEP1"
 # ステップ 0.6 側と同じ理由で行数上限を課す。こちらは開始アンカーが「最後の raw_max=」という
-# 相対位置なので、SKILL.md 側の些細な整形 (`$(awk` の前後に空白が入る等) で開始点がステップ 0.6 側へ
-# 巻き戻ると 200 行超の markdown スラブを実行してしまう。存在検査 2 本はどちらもそれを通過させる。
+# 相対位置なので、iterate-step.sh 側の些細な整形 (`$(awk` の前後に空白が入る等) で開始点がステップ 0.6 側へ
+# 巻き戻ると 170 行超のステップ 0.6 本体を実行してしまう。存在検査 2 本はどちらもそれを通過させる。
 if ! grep -q 'silent fallback' "$STEP1" || ! grep -q '^raw_max=' "$STEP1" \
    || [ "$(wc -l < "$STEP1")" -gt 6 ]; then
   echo "FATAL: ステップ 1 の silent fallback 抽出に失敗しました (アンカーが変更された可能性)" >&2
@@ -137,17 +138,17 @@ assert "T-03d: ステップ 1 — 行末コメント付きの明示値も 7" \
 echo "=== T-04: 既定値の記述が全複製箇所で揃っている (AC-4) ==="
 # 実装 fallback は 3 サイト (ステップ 0.6 のキー欠落 / 無効値、ステップ 1 の silent)。
 # 数まで pin するのは、1 サイトだけ書き換えて残りが取り残される drift が本 Issue の主因のため。
-assert "T-04a: iterate/SKILL.md の fallback 3 サイトすべてが $DEFAULT_CYCLES" \
-  "3" "$(grep -c "max_cycles=$DEFAULT_CYCLES" "$ITERATE")"
-assert_not_grep "T-04b: iterate/SKILL.md に旧 fallback (max_cycles=5) が残っていない" "$ITERATE" \
+assert "T-04a: iterate-step.sh の fallback 3 サイトすべてが $DEFAULT_CYCLES" \
+  "3" "$(grep -c "max_cycles=$DEFAULT_CYCLES" "$ITERATE_STEP")"
+assert_not_grep "T-04b: iterate-step.sh に旧 fallback (max_cycles=5) が残っていない" "$ITERATE_STEP" \
   'max_cycles=5([^0-9]|$)'
-assert_grep "T-04c: 無効値 WARNING の文言も $DEFAULT_CYCLES" "$ITERATE" \
+assert_grep "T-04c: 無効値 WARNING の文言も $DEFAULT_CYCLES" "$ITERATE_STEP" \
   "既定値 $DEFAULT_CYCLES を使用します"
 
 # AC-4 が名指しする 3 ファイル + 既定値を書いている他 2 ファイル。
 # 「既定 N」「default: N」形式の断定的な記述だけを見る (「引き上げ前の 5」のような
 # 履歴の言及は誤検出しない)。
-for f in "$ITERATE" "$TEMPLATE_CFG" "$CONFIG_DOC" "$SPEC_DOC" "$EXEC_METRICS" "$FIX_RELAXATION" "$TREND_HELPER"; do
+for f in "$ITERATE" "$ITERATE_STEP" "$TEMPLATE_CFG" "$CONFIG_DOC" "$SPEC_DOC" "$EXEC_METRICS" "$FIX_RELAXATION" "$TREND_HELPER"; do
   base="$(basename "$f")"
   assert_file_exists_or_fail "T-04: $base が存在する" "$f" || continue
   # `既定(値)?` とグループ化する。`既定値?` は ERE の `?` が多バイト文字 `値` の最終バイトに
@@ -210,9 +211,9 @@ assert_grep "T-04s: trend helper header の既定値と導出 cycle が同期" "
 
 echo "=== T-05: backstop の発火条件と sentinel が不変 (AC-5) ==="
 # 既定値の引き上げは backstop を撤廃しない (D-01 / MUST NOT)。
-assert_grep "T-05a: ステップ 1 の backstop 判定 (cc >= max_cycles) が残っている" "$ITERATE" \
+assert_grep "T-05a: ステップ 1 の backstop 判定 (cc >= max_cycles) が残っている" "$ITERATE_STEP" \
   '^if \[ "\$cc" -ge "\$max_cycles" \] 2>/dev/null; then'
-assert_grep "T-05b: ステップ 0.6 の再発火述語 (cur_cc >= max_cycles) が残っている" "$ITERATE" \
+assert_grep "T-05b: ステップ 0.6 の再発火述語 (cur_cc >= max_cycles) が残っている" "$ITERATE_STEP" \
   '^if \[ "\$cur_cc" -ge "\$max_cycles" \] 2>/dev/null; then'
 assert_grep "T-05c: batch 側 sentinel が変わっていない" "$ITERATE" \
   '<!-- \[iterate:max-cycles-reached\] -->'

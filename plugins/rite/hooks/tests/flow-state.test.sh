@@ -1335,16 +1335,17 @@ assert "TC-27b: ordinary set default-clears stop_reason" "false" "$(jq -r 'has("
 # --- TC-27c: iterate producer persists the breaker reason in the reset set ---
 echo ""
 echo "=== TC-27c: iterate breaker preamble owns the stop_reason producer contract ==="
-iterate_skill="$PLUGIN_ROOT/skills/iterate/SKILL.md"
+# The breaker preamble body lives in scripts/iterate-step.sh (step_breaker); the skill only calls it.
+iterate_step="$PLUGIN_ROOT/scripts/iterate-step.sh"
 breaker_set_block="$(awk '
   /if cb_reset_out=.*flow-state\.sh set/ { capture=1 }
   capture { print }
   capture && /2>&1\); then/ { exit }
-' "$iterate_skill")"
+' "$iterate_step")"
 assert "TC-27c: breaker reset call resets cycle_count" "1" \
   "$(printf '%s\n' "$breaker_set_block" | grep -c -- '--cycle-count 0' || true)"
 assert "TC-27c: same breaker reset call persists the reason token" "1" \
-  "$(printf '%s\n' "$breaker_set_block" | grep -cF -- '--stop-reason "circuit-breaker:{cb_reason}"' || true)"
+  "$(printf '%s\n' "$breaker_set_block" | grep -cF -- '--stop-reason "circuit-breaker:$cb_reason"' || true)"
 
 # A failure of that one atomic set loses both writes. Pin the user-visible
 # diagnostic so the recovery path cannot silently promise that the reason survived.
@@ -1353,7 +1354,7 @@ breaker_failure_block="$(awk '
   /if cb_reset_out=.*flow-state\.sh set/ { seen_set=1 }
   capture { print }
   capture && /^fi$/ { exit }
-' "$iterate_skill")"
+' "$iterate_step")"
 assert "TC-27c: failed atomic set diagnoses counter reset" "1" \
   "$(printf '%s\n' "$breaker_failure_block" | grep -cF -- 'cycle counter リセット' || true)"
 assert "TC-27c: failed atomic set diagnoses missing reason persistence" "1" \

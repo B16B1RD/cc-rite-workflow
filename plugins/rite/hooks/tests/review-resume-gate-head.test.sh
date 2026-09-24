@@ -1,11 +1,11 @@
 #!/bin/bash
 # review-resume-gate-head.test.sh
 #
-# iterate/SKILL.md の review-cycle-resume-gate が、凍結 context の HEAD と現 HEAD を
-# 照合してから早期 exit することを pin する（T-01 / T-02）。
+# iterate の review-cycle-resume-gate（scripts/iterate-step.sh の cycle-gate 本体）が、
+# 凍結 context の HEAD と現 HEAD を照合してから早期 exit することを pin する（T-01 / T-02）。
 #
-# ゲートはテストへコピーせず SKILL.md から literal 抽出して実行する。コピーすると
-# SKILL.md 側の変更が反映されず drift するため、max-review-cycles-default.test.sh と
+# ゲートはテストへコピーせず iterate-step.sh から literal 抽出して実行する。コピーすると
+# iterate-step.sh 側の変更が反映されず drift するため、max-review-cycles-default.test.sh と
 # 同じ抽出実行方式を取る。抽出アンカーが壊れたらテスト自体が FATAL で落ちる。
 #
 # 早期 exit の観測条件は「exit 0 かつ REVIEW_RESUME=1 を出す」。単に exit code を見るだけでは
@@ -17,18 +17,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_test-helpers.sh"
 
 PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
-ITERATE="$PLUGIN_ROOT/skills/iterate/SKILL.md"
+ITERATE_STEP="$PLUGIN_ROOT/scripts/iterate-step.sh"
 
 TEST_DIR="$(mktemp -d)"
 trap 'rm -rf "$TEST_DIR"' EXIT
 
-assert_file_exists_or_fail "iterate/SKILL.md exists" "$ITERATE" || exit 1
+assert_file_exists_or_fail "iterate-step.sh exists" "$ITERATE_STEP" || exit 1
 
-# --- SKILL.md から再開ガードを抽出 ---------------------------------------------
+# --- iterate-step.sh から再開ガードを抽出 --------------------------------------
 
 GATE="$TEST_DIR/gate.sh"
 awk '/^# review-cycle-resume-gate$/{f=1} f{print} f&&/^    marker_emit ITERATE_ABANDON "\$abandon_state" "cycle=\$cc" "status=\$cycle_status"$/{g=1} g&&/^fi$/{exit}' \
-  "$ITERATE" > "$GATE"
+  "$ITERATE_STEP" > "$GATE"
 
 gate_lines=$(wc -l < "$GATE")
 if [ "$gate_lines" -lt 30 ] || [ "$gate_lines" -gt 80 ]; then
@@ -39,8 +39,10 @@ fi
 assert_grep "extracted gate reads the frozen commit_sha" "$GATE" 'review_context\.commit_sha'
 assert_grep "extracted gate reads the current HEAD" "$GATE" 'git rev-parse HEAD'
 
-# 抽出した本文は `bash {plugin_root}/hooks/flow-state.sh get` を呼ぶ。テストでは state を
+# 抽出した本文は `bash "$plugin_root"/hooks/flow-state.sh get` を呼ぶ。テストでは state を
 # 直接与えたいので、その 1 行だけを固定の読み取りへ差し替える（他行は literal のまま）。
+# 本文が参照する引数（iterate-step.sh では --pr / --issue / --branch から入る変数）は冒頭で定義する。
+# plugin_root は定義しない — 差し替え漏れの helper 呼び出しが実 helper へ届かず loud に落ちる。
 RUNNER="$TEST_DIR/runner.sh"
 {
   printf '%s\n' '#!/bin/bash'
@@ -48,20 +50,21 @@ RUNNER="$TEST_DIR/runner.sh"
   printf '%s\n' 'neutralize_ctrl() { cat; }'
   printf '%s\n' 'cc=1'
   printf '%s\n' 'max_cycles=15'
-  # state の読み取りと放棄呼び出しだけを差し替える。他は SKILL.md の literal のまま走らせる。
+  printf '%s\n' 'pr_number=99' 'issue_number=99' 'branch_name=fix/issue-99-test'
+  # state の読み取りと放棄呼び出しだけを差し替える。他は iterate-step.sh の literal のまま走らせる。
   # 放棄は $ABANDON_RC / $ABANDON_OUT で結果を与え、成功時は $STATE_FILE_AFTER へ切り替える。
-  sed -e 's#^review_state=\$(bash {plugin_root}/hooks/flow-state\.sh get --jq-filter \.) || exit 1$#review_state=$(cat "$STATE_FILE") || exit 1#' \
-      -e 's#^      review_state=\$(bash {plugin_root}/hooks/flow-state\.sh get --jq-filter \.) || exit 1$#      review_state=$(cat "${STATE_FILE_AFTER:-$STATE_FILE}") || exit 1#' \
-      -e 's#^    if abandon_out=\$(LC_ALL=C bash {plugin_root}/hooks/flow-state\.sh review-abandon \\$#    if abandon_out=$(printf "%s" "${ABANDON_OUT:-}"; exit "${ABANDON_RC:-0}") \\#' \
-      -e 's#^      bash {plugin_root}/hooks/flow-state\.sh set --phase "\$iteration_phase" .*|| handoff_clear=failed$#      ( exit "${HANDOFF_CLEAR_RC:-0}" ) || handoff_clear=failed#' \
+  sed -e 's#^review_state=\$(bash "\$plugin_root"/hooks/flow-state\.sh get --jq-filter \.) || exit 1$#review_state=$(cat "$STATE_FILE") || exit 1#' \
+      -e 's#^      review_state=\$(bash "\$plugin_root"/hooks/flow-state\.sh get --jq-filter \.) || exit 1$#      review_state=$(cat "${STATE_FILE_AFTER:-$STATE_FILE}") || exit 1#' \
+      -e 's#^    if abandon_out=\$(LC_ALL=C bash "\$plugin_root"/hooks/flow-state\.sh review-abandon \\$#    if abandon_out=$(printf "%s" "${ABANDON_OUT:-}"; exit "${ABANDON_RC:-0}") \\#' \
+      -e 's#^      bash "\$plugin_root"/hooks/flow-state\.sh set --phase "\$iteration_phase" .*|| handoff_clear=failed$#      ( exit "${HANDOFF_CLEAR_RC:-0}" ) || handoff_clear=failed#' \
       -e 's#^      --reason "HEAD changed before any evidence was recorded" 2>&1); then$#      ; then#' \
-      -e 's#{issue_number}#99#g' "$GATE"
+      "$GATE"
   # 放棄後の state 読み直しが生きているかは iteration_phase にしか現れないので、
   # 後段が読む値をそのまま出す。読み直しを消すと古い phase が出て固定が落ちる。
   printf '%s\n' 'echo "FELL_THROUGH=1; ITERATE_PHASE=${iteration_phase:-}"'
 } > "$RUNNER"
 
-assert_not_grep "runner has no unsubstituted placeholder" "$RUNNER" '{plugin_root}'
+assert_not_grep "runner has no unsubstituted helper call" "$RUNNER" '\$plugin_root'
 
 # --- git fixture ---------------------------------------------------------------
 
@@ -242,6 +245,6 @@ if assert_mutant_changed "HEAD comparison removal" "$RUNNER" "$MUTANT"; then
 fi
 
 if ! print_summary "$(basename "$0")" \
-  "再開ガードの本体は plugins/rite/skills/iterate/SKILL.md が SoT。本テストは抽出して実行する。"; then
+  "再開ガードの本体は plugins/rite/scripts/iterate-step.sh が SoT。本テストは抽出して実行する。"; then
   exit 1
 fi

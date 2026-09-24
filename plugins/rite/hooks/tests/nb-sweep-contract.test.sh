@@ -298,6 +298,9 @@ assert_grep "invalid ledger response is loud" "$sandbox/invalid-ledger.err" 'rea
 
 # --- rails pin (SKILL.md 機械レール) ---
 ITERATE="$PLUGIN_ROOT/skills/iterate/SKILL.md"
+# iterate の各ステップのシェル本体（marker_emit / helper 呼び出し）は iterate-step.sh にある。
+# SKILL.md 側は分岐表・sentinel ルーティングの散文を持つ。
+ITERATE_STEP="$PLUGIN_ROOT/scripts/iterate-step.sh"
 FIX="$PLUGIN_ROOT/skills/fix/references/nb-sweep.md"
 REVIEW="$PLUGIN_ROOT/skills/pr-review/SKILL.md"
 PROMPT="$PLUGIN_ROOT/skills/pr-review/references/reviewer-prompt-generator.md"
@@ -305,7 +308,7 @@ assert_grep "T-07 iterate mergeable→5.S" "$ITERATE" '\[review:mergeable\].*5\.
 assert_grep "T-07 iterate sweep-done no re-review" "$ITERATE" '\[fix:sweep-done\].*ステップ 5'
 assert_grep "T-07 iterate nb-sweep-error" "$ITERATE" '\[iterate:nb-sweep-error\]'
 assert_grep "T-07 iterate --nb-sweep invoke" "$ITERATE" 'args: "--nb-sweep \{pr_number\}"'
-assert_grep "T-07 iterate empty is noop" "$ITERATE" 'marker_emit ITERATE_NB_SWEEP noop'
+assert_grep "T-07 iterate empty is noop" "$ITERATE_STEP" 'marker_emit ITERATE_NB_SWEEP noop'
 assert_grep "T-07 iterate no second sweep" "$ITERATE" '同一 review JSON で 5\.S を 2 回'
 assert_grep "T-07 iterate sweep-done ステップ1禁止" "$ITERATE" 'ステップ 1 に戻らない'
 assert_grep "T-07 fix --nb-sweep" "$FIX" '\-\-nb-sweep'
@@ -472,8 +475,9 @@ assert "successful sweep keeps reply-only exit" 1 "$(printf '%s\n' "$sweep_exit"
 assert "other successful entries remain mergeable" 1 "$(printf '%s\n' "$sweep_exit" | grep -c '^| `\[review:mergeable\]` / `\[fix:non-fatal-only\]` | `\[review:mergeable\]` |')"
 run_close_section=$(sed -n '/^### ステップ 5\.0\.1:/,/^### ステップ 5\.0\.2:/p' "$ITERATE")
 assert "reply-only records deferred context" 1 "$(printf '%s\n' "$run_close_section" | grep -c '返信のみは `review-defer` で `deferred` として終了記録を保存')"
-assert "reply-only defers through the flow-state helper" 1 "$(printf '%s\n' "$run_close_section" | grep -c 'bash {plugin_root}/hooks/flow-state.sh review-defer')"
-assert "reply-only emits deferred run-close state" 1 "$(printf '%s\n' "$run_close_section" | grep -c 'marker_emit ITERATE_RUN_CLOSE deferred')"
+run_close_body=$(awk '/^step_run_close\(\) \{$/{f=1} f{print} f && /^}$/{exit}' "$ITERATE_STEP")
+assert "reply-only defers through the flow-state helper" 1 "$(printf '%s\n' "$run_close_body" | grep -c 'bash "$plugin_root"/hooks/flow-state.sh review-defer')"
+assert "reply-only emits deferred run-close state" 1 "$(printf '%s\n' "$run_close_body" | grep -c 'marker_emit ITERATE_RUN_CLOSE deferred')"
 assert "interruption retains the unfinished run" 1 "$(printf '%s\n' "$run_close_section" | grep -c '中断は `retained` として未完了 run を閉じない')"
 assert "stale reply-only retained wording is absent" 0 "$(printf '%s\n' "$run_close_section" | grep -c '中断・返信のみは `retained`')"
 assert_grep "reentry and nested sweep cannot overwrite entry reason" "$ITERATE" '5\.S 再入時も保持値を使い、内部の `\[fix:sweep-done\]` や handoff で上書きしない'
@@ -818,6 +822,6 @@ SH
   done
 fi
 
-if ! print_summary "$(basename "$0")" "nb-sweep helper contract drift — check SKILL.md 5.S / 6.1.d preserve"; then
+if ! print_summary "$(basename "$0")" "nb-sweep helper contract drift — check iterate SKILL.md / iterate-step.sh 5.S / 6.1.d preserve"; then
   exit 1
 fi

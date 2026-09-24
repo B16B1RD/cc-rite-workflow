@@ -8,6 +8,7 @@ review_main="$ROOT/plugins/rite/skills/pr-review/SKILL.md"
 fix="$ROOT/plugins/rite/skills/fix/SKILL.md"
 accept="$ROOT/plugins/rite/skills/fix/references/accept-finding.md"
 iterate="$ROOT/plugins/rite/skills/iterate/SKILL.md"
+iterate_step="$ROOT/plugins/rite/scripts/iterate-step.sh"
 test_reviewer="$ROOT/plugins/rite/agents/test-reviewer.md"
 error_reviewer="$ROOT/plugins/rite/agents/error-handling-reviewer.md"
 failures=0
@@ -54,9 +55,10 @@ assert_grep 'unresolved root must retain stop sentinel' "$iterate" '停止 senti
 
 state_dir=$(mktemp -d "${TMPDIR:-/tmp}/rite-breaker-test-XXXXXX")
 trap 'rm -rf "$state_dir"' EXIT
-# Execute the shared step 6 bash block from the skill, using the real state
-# writer. The wrapper only records atomic writes and injects a write failure.
-awk '/^## ステップ 6:/ {section=1; next} section && /^```bash$/ {code=1; next} code && /^```$/ {exit} code {print}' "$iterate" > "$state_dir/step6.template"
+# Execute the shared step 6 body (step_breaker in iterate-step.sh, which the
+# skill calls as `iterate-step.sh breaker`), using the real state writer. The
+# wrapper only records atomic writes and injects a write failure.
+awk '/^step_breaker\(\) \{$/ {body=1; next} body && /^}$/ {exit} body {print}' "$iterate_step" > "$state_dir/step6.template"
 if [ ! -s "$state_dir/step6.template" ]; then
   fail 'step 6 shared block is present'
 fi
@@ -90,9 +92,9 @@ for reason in max-cycles divergence; do
       if [ "$mode" = batch ]; then active=true; else active=false; fi
       jq -n --argjson active "$active" '{issues:[2567],cursor:0,active:$active}' \
         > "$case_dir/.rite/state/run-queue-$sid.json"
-      sed -e "s|{plugin_root}|$ROOT/plugins/rite|g" -e 's/{issue_number}/2567/g' \
-        -e 's/{branch_name}/issue-2567/g' -e 's/{pr_number}/2600/g' \
-        -e "s/{cb_reason}/$reason/g" "$state_dir/step6.template" > "$case_dir/step6.sh"
+      { printf 'plugin_root=%q\nissue_number=2567\nbranch_name=issue-2567\npr_number=2600\ncb_reason=%q\n' \
+          "$ROOT/plugins/rite" "$reason"
+        cat "$state_dir/step6.template"; } > "$case_dir/step6.sh"
       cat "$state_dir/wrapper.sh" "$case_dir/step6.sh" > "$case_dir/run.sh"
       if [ "$write_result" = failure ]; then fail_set=1; else fail_set=0; fi
       output=$(cd "$case_dir" && env RITE_STATE_ROOT="$case_dir" CLAUDE_CODE_SESSION_ID="$sid" \
