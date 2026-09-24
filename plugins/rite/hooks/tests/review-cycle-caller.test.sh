@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Execute the documented caller blocks against isolated real workflow helpers.
+# iterate's caller blocks are one-line calls into scripts/iterate-step.sh; each is
+# located by the anchor comment inside the step function it runs, then the
+# documented SKILL.md call for that subcommand is executed.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 python3 - "$SCRIPT_DIR/../.." <<'PY'
@@ -14,6 +17,7 @@ import tempfile
 plugin = Path(sys.argv[1]).resolve()
 review = (plugin / 'skills/pr-review/SKILL.md').read_text()
 iterate = (plugin / 'skills/iterate/SKILL.md').read_text()
+iterate_step = (plugin / 'scripts/iterate-step.sh').read_text()
 recover = (plugin / 'skills/recover/SKILL.md').read_text()
 batch = (plugin / 'skills/batch-run/SKILL.md').read_text()
 diagnostic = (plugin / 'references/review-stagnation.md').read_text()
@@ -26,12 +30,23 @@ def block(text, marker):
     assert start >= len('```bash\n') and start <= at < end
     return text[start:end]
 
+def iterate_block_for(marker):
+    """The SKILL.md call of the iterate-step.sh subcommand whose function holds marker."""
+    assert iterate_step.count(marker) == 1, 'iterate step anchor missing or ambiguous: ' + marker
+    at = iterate_step.index(marker)
+    heads = list(re.finditer(r'^step_([a-z_]+)\(\) \{$', iterate_step[:at], re.M))
+    assert heads, 'iterate step anchor outside any step function: ' + marker
+    close = iterate_step.find('\n}\n', heads[-1].end())
+    assert heads[-1].end() < at < close, 'iterate step anchor outside its step function: ' + marker
+    subcommand = heads[-1].group(1).replace('_', '-')
+    return block(iterate, 'bash {plugin_root}/scripts/iterate-step.sh ' + subcommand)
+
 start_block = block(review, '# review-cycle-start')
 finish_block = block(review, '# review-cycle-finish')
 recover_block = block(recover, '# review-cycle-recover')
-iterate_block = block(iterate, '# review-cycle-resume-gate')
+iterate_block = iterate_block_for('# review-cycle-resume-gate')
 entry_block = block(review, '# review-cycle-e2e-entry')
-breaker_block = block(iterate, '# review-cycle-breaker-reset')
+breaker_block = iterate_block_for('# review-cycle-breaker-reset')
 
 with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
     work = Path(temp)
@@ -75,7 +90,7 @@ with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
          'commit', '-q', '--allow-empty', '-m', 'fixture'])
     # Disabled worktree entry reaches the actual initializer without pre-created state.
     (work / 'rite-config.yml').write_text('multi_session:\n  enabled: false\n')
-    init_block = block(iterate, '# review-state-initialize')
+    init_block = iterate_block_for('# review-state-initialize')
     state_path = Path(flow('path').stdout.strip())
     state_path.parent.mkdir(parents=True, exist_ok=True)
     # Both documented entrances must preserve malformed existing state byte-for-byte.
@@ -222,7 +237,7 @@ with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
     execute(observe_block)
     execute(observe_block)
     assert len(state()['review_run']['observations']) == 1, 'observation replay duplicated'
-    assert 'ITERATE_STAGNATION=continue' in execute(block(iterate, '# iterate-stagnation-route')).stdout
+    assert 'ITERATE_STAGNATION=continue' in execute(iterate_block_for('# iterate-stagnation-route')).stdout
     successful = state()
     flow('set', '--phase', 'ready', '--next', 'verified')
 
@@ -262,7 +277,7 @@ with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
     # Default draft batches close the verified review, then execute the real next-Issue initializer.
     state_path.write_text(json.dumps(successful))
     replacements.update(sweep_origin='[review:mergeable]')
-    closed = execute(block(iterate, 'close_phase=$(bash'))
+    closed = execute(iterate_block_for('close_phase=$(bash'))
     assert 'ITERATE_RUN_CLOSE=completed' in closed.stdout
     completed = state()['review_run']
     assert completed['completed_context'] == context and state()['cycle_count'] == 1
@@ -310,7 +325,7 @@ with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
     receipt_bytes = receipt_path.read_bytes()
     flow('set', '--phase', 'fix', '--next', 'reply only')
     replacements.update(sweep_origin='[fix:replied-only]')
-    deferred = execute(block(iterate, 'close_phase=$(bash'))
+    deferred = execute(iterate_block_for('close_phase=$(bash'))
     assert 'ITERATE_RUN_CLOSE=deferred' in deferred.stdout
     deferred_run = state()['review_run']
     assert deferred_run['deferred_context'] == context
@@ -330,7 +345,7 @@ with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
     # An interrupted run retains its review context instead of deferring it.
     state_path.write_text(json.dumps(successful))
     replacements.update(sweep_origin='[fix:cancelled-by-user]')
-    interrupted = execute(block(iterate, 'close_phase=$(bash'))
+    interrupted = execute(iterate_block_for('close_phase=$(bash'))
     assert 'ITERATE_RUN_CLOSE=retained' in interrupted.stdout
     retained_run = state()['review_run']
     assert retained_run == successful['review_run']

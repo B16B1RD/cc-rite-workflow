@@ -1,6 +1,9 @@
 #!/bin/bash
 # Contract tests for persistent NB sweep re-entry guard.
 #
+# 5.S / 0.6 のシェル本体は scripts/iterate-step.sh の step_nb_sweep_collect / step_nb_sweep_record /
+# step_init_cycle 関数にある。コード片はその関数範囲、分岐表・散文は SKILL.md の節を見る。
+#
 # T-01 5.S entry: file exists → skipped, no collect / no --nb-sweep invoke in that branch
 # T-02 empty collect writes noop; write-failure must not leave a skip file
 # T-03 --nb-sweep return never uses step-4 generic table to re-enter step 1
@@ -17,6 +20,7 @@ source "$SCRIPT_DIR/_test-helpers.sh"
 
 PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 ITERATE="$PLUGIN_ROOT/skills/iterate/SKILL.md"
+ITERATE_STEP="$PLUGIN_ROOT/scripts/iterate-step.sh"
 FIX="$PLUGIN_ROOT/skills/fix/SKILL.md"
 FIX_SWEEP="$PLUGIN_ROOT/skills/fix/references/nb-sweep.md"
 SETUP="$PLUGIN_ROOT/skills/setup/SKILL.md"
@@ -30,41 +34,48 @@ CONTRACT="$PLUGIN_ROOT/hooks/tests/nb-sweep-contract.test.sh"
 echo "=== nb-sweep re-entry guard ==="
 
 assert_file_exists_or_fail "iterate skill" "$ITERATE" || true
+assert_file_exists_or_fail "iterate-step.sh" "$ITERATE_STEP" || true
 assert_file_exists_or_fail "fix skill" "$FIX" || true
 assert_file_exists_or_fail "setup skill" "$SETUP" || true
 assert_file_exists_or_fail "cleanup skill" "$CLEANUP_SKILL" || true
 assert_file_exists_or_fail "pr-cycle-cleanup.sh" "$PR_CYCLE" || true
 
 # --- T-01: 5.S 入口はファイル存在で skipped、同一ブロックで collect/--nb-sweep に進まない ---
-assert_grep "T-01 done-file path in 5.S" "$ITERATE" 'nb-sweep-done-\{pr_number\}\.txt'
-assert_grep "T-01 skipped emit" "$ITERATE" 'marker_emit ITERATE_NB_SWEEP skipped'
-assert_grep "T-01 already_done reason" "$ITERATE" 'reason=already_done'
-assert_grep_in_section "T-01 file-guard precedes collect" "$ITERATE" \
-  '## ステップ 5.S: NB digest sweep' '## ステップ 5: 完了通知' \
+assert_grep_in_section "T-01 done-file path in 5.S" "$ITERATE_STEP" \
+  '^step_nb_sweep_collect[(][)] [{]$' '^}$' \
+  'nb-sweep-done-\$pr_number\.txt'
+assert_grep_in_section "T-01 skipped emit" "$ITERATE_STEP" \
+  '^step_nb_sweep_collect[(][)] [{]$' '^}$' \
+  'marker_emit ITERATE_NB_SWEEP skipped'
+assert_grep_in_section "T-01 already_done reason" "$ITERATE_STEP" \
+  '^step_nb_sweep_collect[(][)] [{]$' '^}$' \
+  'reason=already_done'
+assert_grep_in_section "T-01 file-guard precedes collect" "$ITERATE_STEP" \
+  '^step_nb_sweep_collect[(][)] [{]$' '^}$' \
   'nb_done_file=.*nb-sweep-done'
-assert_grep_in_section "T-01 skipped branch skips collect helper" "$ITERATE" \
-  '## ステップ 5.S: NB digest sweep' '## ステップ 5: 完了通知' \
+assert_grep_in_section "T-01 skipped branch skips collect helper" "$ITERATE_STEP" \
+  '^step_nb_sweep_collect[(][)] [{]$' '^}$' \
   'nb-sweep-collect.sh'
-assert_grep_in_section "T-01 skip predicate is recorded basename" "$ITERATE" \
-  '## ステップ 5.S: NB digest sweep' '## ステップ 5: 完了通知' \
+assert_grep_in_section "T-01 skip predicate is recorded basename" "$ITERATE_STEP" \
+  '^step_nb_sweep_collect[(][)] [{]$' '^}$' \
   'if \[ -n "\$nb_range" \] && \[ "\$nb_range" = "\$nb_latest_base" \]; then'
 then_collect=$(awk '
-  /## ステップ 5.S: NB digest sweep/ {sec=1}
-  sec && /## ステップ 5: 完了通知/ {exit}
+  /^step_nb_sweep_collect\(\) \{$/ {sec=1}
+  sec && /^}$/ {exit}
   sec && /if \[ -n "\$nb_range" \] && \[ "\$nb_range" = "\$nb_latest_base" \]/ {thenb=1; next}
   thenb && /^else$/ {exit}
   thenb && /nb-sweep-collect\.sh/ {hit=1}
   END { print hit+0 }
-' "$ITERATE")
+' "$ITERATE_STEP")
 assert "T-01 match branch has no collect helper" "0" "$then_collect"
 else_collect=$(awk '
-  /## ステップ 5.S: NB digest sweep/ {sec=1}
-  sec && /## ステップ 5: 完了通知/ {exit}
+  /^step_nb_sweep_collect\(\) \{$/ {sec=1}
+  sec && /^}$/ {exit}
   sec && /if \[ -n "\$nb_range" \] && \[ "\$nb_range" = "\$nb_latest_base" \]/ {thenb=1; next}
   thenb && /^else$/ {elseb=1; next}
   elseb && /nb-sweep-collect\.sh/ {hit=1}
   END { print hit+0 }
-' "$ITERATE")
+' "$ITERATE_STEP")
 assert "T-01 mismatch else calls collect helper" "1" "$else_collect"
 assert_not_grep "T-01 no conversation-marker skip" "$ITERATE" '既出ならステップ 5'
 assert_grep_in_section "T-01 skip authority is basename match" "$ITERATE" \
@@ -72,20 +83,20 @@ assert_grep_in_section "T-01 skip authority is basename match" "$ITERATE" \
   '第 2 フィールドが最新 review JSON の basename と一致するときだけ'
 
 # --- T-02: empty → noop ファイル write。失敗時はファイルを残さない（偽 skip 禁止） ---
-assert_grep_in_section "T-02 empty writes noop basename" "$ITERATE" \
-  '## ステップ 5.S: NB digest sweep' '## ステップ 5: 完了通知' \
+assert_grep_in_section "T-02 empty writes noop basename" "$ITERATE_STEP" \
+  '^step_nb_sweep_collect[(][)] [{]$' '^}$' \
   "printf 'noop %s\\\\n"
-assert_grep_in_section "T-02 write-fail removes skip file" "$ITERATE" \
-  '## ステップ 5.S: NB digest sweep' '## ステップ 5: 完了通知' \
+assert_grep_in_section "T-02 write-fail removes skip file" "$ITERATE_STEP" \
+  '^step_nb_sweep_collect[(][)] [{]$' '^}$' \
   'rm -f "\$nb_done_file"'
 noop_rm=$(awk '
-  /## ステップ 5.S: NB digest sweep/ {sec=1}
-  sec && /## ステップ 5: 完了通知/ {exit}
+  /^step_nb_sweep_collect\(\) \{$/ {sec=1}
+  sec && /^}$/ {exit}
   sec && /printf .noop/ {p=1}
   p && /rm -f / && /nb_done_file/ {hit=1}
   p && $0 ~ /^[[:space:]]*fi$/ {exit}
   END { print hit+0 }
-' "$ITERATE")
+' "$ITERATE_STEP")
 assert "T-02 empty-collect write-fail rm is in noop then" "1" "$noop_rm"
 
 # --- T-03: --nb-sweep 戻りはステップ 4 汎用表を使わず、pushed でもステップ 1 に戻らない ---
@@ -104,8 +115,8 @@ assert_grep "T-03 existing MUST NOT second 5.S" "$ITERATE" '同一 review JSON �
 assert_grep "T-03 existing step-1 ban" "$ITERATE" 'ステップ 1 に戻らない'
 
 # --- T-04: done ファイルの書き手 ---
-assert_grep_in_section "T-04 iterate post-return writes done basename" "$ITERATE" \
-  '## ステップ 5.S: NB digest sweep' '## ステップ 5: 完了通知' \
+assert_grep_in_section "T-04 iterate post-return writes done basename" "$ITERATE_STEP" \
+  '^step_nb_sweep_record[(][)] [{]$' '^}$' \
   "printf 'done %s\\\\n"
 assert_grep_in_section "T-04 fix empty writes noop basename" "$FIX_SWEEP" \
   '### 1.3.S `--nb-sweep` consume' '### 1.4 Display Comment List' \
@@ -148,24 +159,26 @@ classify_hit=$(awk '/^### 1.3 Classify Comments/,/^### 1.3.S/' "$FIX" | grep -c 
 assert "T-06 1.3 classify has no done-file refs" "0" "$classify_hit"
 
 # --- T-07: 既存 rails + skipped 完了通知 + 0.6 で新 run 時に削除 ---
-assert_grep "T-07 existing noop emit rail" "$ITERATE" 'marker_emit ITERATE_NB_SWEEP noop'
+assert_grep "T-07 existing noop emit rail" "$ITERATE_STEP" 'marker_emit ITERATE_NB_SWEEP noop'
 assert_grep "T-07 existing contract test still pins 5.S rails" "$CONTRACT" 'T-07 iterate no second sweep'
 assert_grep_in_section "T-07 5.0.2 skipped row" "$ITERATE" \
   '### ステップ 5.0.2:' '### 正常終了 (`\[review:mergeable\]`)' \
   'ITERATE_NB_SWEEP=skipped'
-assert_grep_in_section "T-07 0.6 deletes done-file on new run" "$ITERATE" \
-  '## ステップ 0.6:' '## ステップ 1:' \
+assert_grep_in_section "T-07 0.6 deletes done-file on new run" "$ITERATE_STEP" \
+  '^step_init_cycle[(][)] [{]$' '^}$' \
   'rm -f "\$pin_root/\.rite/state/nb-sweep-done-\$\{pr_number\}\.txt"'
 
 # --- T-08: AC-6 gitignore — sidecar * + setup nested 3-line。git check-ignore -q rc=0 ---
 assert_grep_in_section "T-08 setup Phase 4.6 calls nested gitignore helper" "$SETUP" \
   '## Phase 4.6:' '## Phase 4.7:' \
   '_ensure_rite_nested_gitignore'
-iter_ensure=$(awk '/## ステップ 5.S: NB digest sweep/,/## ステップ 5: 完了通知/' "$ITERATE" \
-  | grep -c '_ensure_dir_gitignore' || true)
+# 5.S の書き込みブロックは collect（noop 書き込み）と record（done 書き込み）の 2 関数。
+iter_5s_bodies() {
+  awk '/^step_nb_sweep_(collect|record)\(\) \{$/,/^}$/' "$ITERATE_STEP"
+}
+iter_ensure=$(iter_5s_bodies | grep -c '_ensure_dir_gitignore' || true)
 assert "T-08 5.S has two _ensure_dir_gitignore calls" "2" "$iter_ensure"
-iter_src=$(awk '/## ステップ 5.S: NB digest sweep/,/## ステップ 5: 完了通知/' "$ITERATE" \
-  | grep -c 'gitignore-ensure.sh' || true)
+iter_src=$(iter_5s_bodies | grep -c '^[[:space:]]*source .*gitignore-ensure.sh' || true)
 assert "T-08 5.S sources gitignore-ensure in each write block" "2" "$iter_src"
 fix_ensure=$(awk '/### 1.3.S `--nb-sweep` consume/,/### 1.4 Display Comment List/' "$FIX_SWEEP" \
   | grep -c '_ensure_dir_gitignore' || true)
@@ -202,8 +215,8 @@ assert "T-08 nested 3-line git add -A does not stage nb-sweep-done" "0" "$gi_set
 rm -rf -- "$gi_setup"
 
 # --- T-09: kind は第 1 フィールド。fix 5.1 は -f 単独を成功にしない ---
-assert_grep_in_section "T-09 iterate kind is field 1" "$ITERATE" \
-  '## ステップ 5.S: NB digest sweep' '## ステップ 5: 完了通知' \
+assert_grep_in_section "T-09 iterate kind is field 1" "$ITERATE_STEP" \
+  '^step_nb_sweep_collect[(][)] [{]$' '^}$' \
   'awk '"'"'NR==1 \{ print \$1 \}'"'"
 assert_grep_in_section "T-09 fix 1.5 matches recorded basename" "$FIX" \
   '### 5.1 Output Pattern' '### 5.2 Standalone Execution Behavior' \
@@ -220,15 +233,14 @@ assert_grep_in_section "T-10 digest writes one-line done basename" "$FIX_SWEEP" 
 assert "T-10 no SHA printf in sweep" "0" "$(printf '%s\n' "$sweep_section" | grep -c 'done\\n%s' || true)"
 assert "T-10 digest write is not inside ! -f" "0" "$(printf '%s\n' "$sweep_section" | grep -c '! -f' || true)"
 
-# --- T-11: 5.S 入口 fence を抽出して実行する。述語はテスト内に再実装しない ---
-entry_fence=$(awk '
-  /## ステップ 5.S: NB digest sweep/ {sec=1}
-  sec && /## ステップ 5: 完了通知/ {exit}
-  sec && /```bash/ {grab=1; next}
-  grab && /```/ {exit}
-  grab {print}
-' "$ITERATE")
+# --- T-11: 5.S 入口（step_nb_sweep_collect 関数）を抽出して実行する。述語はテスト内に再実装しない ---
+entry_fence=$(awk '/^step_nb_sweep_collect\(\) \{$/{f=1} f{print} f && /^}$/{exit}' "$ITERATE_STEP")
 [ -n "$entry_fence" ] || { echo "FAIL: T-11 entry fence missing"; exit 1; }
+# 行数上限は終端アンカー (`^}$`) を取り逃して後続関数を巻き込む over-extraction を loud にする。
+entry_lines=$(printf '%s\n' "$entry_fence" | wc -l | tr -d '[:space:]')
+if [ "$entry_lines" -gt 100 ] || ! printf '%s\n' "$entry_fence" | tail -1 | grep -qx '}'; then
+  echo "FAIL: T-11 entry fence extraction overran or lost its end anchor ($entry_lines lines)"; exit 1
+fi
 nb_collect_stub=$(mktemp "${TMPDIR:-/tmp}/rite-nb-collect-stub-XXXXXX")
 cat > "$nb_collect_stub" <<'STUB'
 #!/bin/bash
@@ -242,13 +254,14 @@ fi
 exit 0
 STUB
 chmod +x "$nb_collect_stub"
+# 関数定義の前に引数と plugin_root を置き、末尾で呼ぶ。source 行は plugin_root で解決させ、
+# 外部 helper 2 つだけを stub に差し替える。
 render_entry() {
+  printf 'pr_number=42\nplugin_root=%q\n' "$PLUGIN_ROOT"
   printf '%s\n' "$entry_fence" | sed \
-    -e "s#{pr_number}#42#g" \
-    -e 's#bash {plugin_root}/hooks/state-path-resolve.sh#printf %s "$NB_FIX_ROOT"#g' \
-    -e "s#source {plugin_root}/hooks/scripts/lib/context-marker.sh#source \"$PLUGIN_ROOT/hooks/scripts/lib/context-marker.sh\"#g" \
-    -e "s#bash {plugin_root}/hooks/scripts/nb-sweep-collect.sh#bash \"$nb_collect_stub\"#g" \
-    -e "s#source {plugin_root}/hooks/gitignore-ensure.sh#source \"$PLUGIN_ROOT/hooks/gitignore-ensure.sh\"#g"
+    -e 's#bash "$plugin_root"/hooks/state-path-resolve.sh#printf %s "$NB_FIX_ROOT"#g' \
+    -e "s#bash \"\$plugin_root\"/hooks/scripts/nb-sweep-collect.sh#bash \"$nb_collect_stub\"#g"
+  printf 'step_nb_sweep_collect\n'
 }
 run_entry() {
   local label="$1" root out log

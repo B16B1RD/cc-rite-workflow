@@ -142,10 +142,11 @@ for f in $caller_files; do
     continue
   fi
   checked=$((checked + 1))
-  # source 行は `source "$SCRIPT_DIR/..."` と `source "$(dirname "${BASH_SOURCE[0]}")/..."`
-  # の両形式 (path 内に入れ子クォートあり) を許容する
+  # source 行は `source "$SCRIPT_DIR/..."` / `source "$(dirname "${BASH_SOURCE[0]}")/..."`
+  # (path 内に入れ子クォートあり) / `source "$plugin_root"/hooks/...` (変数だけを引用し
+  # path 末尾はクォートの外) の 3 形式を許容する
   assert_grep "TC-2: $(basename "$f") sources control-char-neutralize.sh" \
-    "$f" 'source ".*control-char-neutralize\.sh"'
+    "$f" 'source ".*control-char-neutralize\.sh"?'
 done
 # sweep 自体が空回りしていないことを pin (rollout 対象は 24 ファイル以上)
 if [ "$checked" -ge 24 ]; then

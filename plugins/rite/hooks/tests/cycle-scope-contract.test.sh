@@ -123,9 +123,11 @@ assert_grep "purpose unmet clears FINALIZE without --handoff" "$ITERATE" \
   '`--handoff` なしで実行し FINALIZE を消す'
 assert_grep "overview routes sweep-done to purpose check" "$ITERATE" \
   '`\[fix:sweep-done\]` → 完了前確認'
-assert_grep "purpose unmet fenced set has no --handoff" "$ITERATE" \
+# purpose-unaligned の set 本体は iterate-step.sh の step_purpose_unaligned 関数に置かれている。
+ITERATE_STEP="$SCRIPT_DIR/../../scripts/iterate-step.sh"
+assert_grep "purpose unmet fenced set has no --handoff" "$ITERATE_STEP" \
   'purpose_unaligned: 完了前確認で目的逸脱'
-purpose_set=$(awk '/^# purpose-unaligned:/{s=1} s{print} s && /^```$/{exit}' "$ITERATE")
+purpose_set=$(awk '/^# purpose-unaligned:/{s=1} s{print} s && /^}$/{exit}' "$ITERATE_STEP")
 purpose_body=$(printf '%s\n' "$purpose_set" | grep -v '^#')
 if grep -q 'flow-state.sh set' <<< "$purpose_body" \
    && ! grep -q -- '--handoff' <<< "$purpose_body"; then
