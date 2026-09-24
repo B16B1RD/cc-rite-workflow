@@ -692,7 +692,7 @@ echo "[CONTEXT] FOLLOW_UP_REVERIFY=done; resolved={n_resolved}; remains={n_remai
 
 #### 6.0.C 起票前の確認（単独実行のとき）
 
-follow-up Issue の起票は外部公開なので、手動の `/rite:cleanup` では起票前に確認する。`/rite:batch-run --merge` から呼ばれたとき（自セッションの run-queue が `active: true` かつ `mode: merge` で、cursor の Issue が今回の `{issue_number}` と一致する）は、利用者が完全自律に同意済みなので確認しない。中断した batch のキューは `active: true` のまま残るため、cursor の照合を省かない。判定できないときは確認する側に倒す:
+follow-up Issue の起票は外部公開なので、手動の `/rite:cleanup` では起票前に確認する。`/rite:batch-run --merge` から呼ばれたとき（自セッションの run-queue が `active: true` かつ `mode: merge` で、cursor の Issue が今回の `{issue_number}` と一致する）は、利用者が完全自律に同意済みなので確認しない。中断した batch のキューは `active: true` のまま残るため、cursor の照合を省かない（照合で確認に倒せるのは別 Issue を cleanup するときで、中断した Issue 自体の cleanup は `--merge` の同意の範囲として確認しない）。判定できないときは確認する側に倒す:
 
 ```bash
 _state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
@@ -1054,13 +1054,15 @@ rationale: references/rationale.md#marker-data-delimiter
   | `skipped; reason=no_json` | 未完了 | 同上（レビュー結果 JSON 不在） |
   | `skipped; reason=jq_missing` | 未完了 | `⚠️ jq が見つからず follow-up 起票を skip しました。jq を導入したうえで、残存非実測指摘があれば follow-up Issue を手動作成してください` |
   | `created` / `skipped; reason=no_findings` / `skipped; reason=already_exists` / `skipped; reason=all_issued` / `skipped; reason=all_resolved` | x 相当 | — |
-  | `declined`（ステップ 6.0.C で「起票しない」を選んだ） | x 相当（付記は `{review_cleanup_check}` の行に続けて出す） | `ℹ️ 確認のうえ follow-up Issue の起票を見送りました（{count} 件。declined marker の `count=` の値）。指摘の全文は review-results/archive/ の JSON にあります` |
+  | `declined`（ステップ 6.0.C で「起票しない」を選んだ） | x 相当 | `ℹ️ 確認のうえ follow-up Issue の起票を見送りました（{count} 件）。指摘の全文は review-results/archive/ の JSON にあります` |
   | `preview`（確認の回答前に止まった） | 未完了 | `⚠️ follow-up 起票の確認が完了していません。残存非実測指摘を起票する場合は follow-up ラベル付き Issue を手動作成してください` |
   | `[CONTEXT] FOLLOW_UP_ISSUE=` かつ `pr={pr_number}` の行が無い | 未完了 | `⚠️ follow-up 起票の実行結果が確認できませんでした。残存非実測指摘があれば follow-up ラベル付き Issue を手動作成してください` |
 
   **FOLLOW_UP_ISSUE marker 不在を成功と読んではならない。**
 
   `skipped; reason=all_resolved` を x 相当に置くのは、ステップ 6.0.V の再検証で残存 0 件が確定した**正常完了**だから（起票すべきものが無い）。`no_findings` と同じ扱いであり「起票に失敗した」ではない。`skipped; reason=all_issued` も、残りが全件 sweep で起票済みの正常完了として同じ扱いにする。
+
+  `declined` の付記の `{count}` は declined marker の `count=` の値。x 相当でもこの付記は `{review_cleanup_check}` の行に続けて出す。
 
   **state 削除側**（`REVIEW_CLEANUP_PARTIAL_FAILURE=1` を上から評価し最初の一致。各行は presence 検査。こちら側に marker が 1 本も無ければ x 相当）:
 

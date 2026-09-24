@@ -1425,7 +1425,7 @@ assert_not_grep "T-48 label を作らない" "$GH_LOG" 'label create'
 
 echo "--- T-49: SKILL 6.0.C の確認判定と helper 呼び出しの配線 ---"
 # helper 呼び出しが preview の配線を持つ（外すと手動 cleanup が確認なしで起票する）
-assert_grep "T-49 helper 呼び出しに {preview_option}" "$CLEANUP_MD" '[-]-exclude-ids "\{resolved_ids_csv\}" \{preview_option\} \|\| _fu_rc=\$\?'
+assert_grep "T-49 helper 呼び出しが確認用の本文書き出しオプションを受け取れる" "$CLEANUP_MD" '[-]-exclude-ids "\{resolved_ids_csv\}" \{preview_option\} \|\| _fu_rc=\$\?'
 # 6.0.C の判定 bash を抽出し、state root / flow-state path / issue 番号を fixture に置き換えて実行する
 t49_root="$TMP_ROOT/root-t49"
 mkdir -p "$t49_root/.rite/state"
@@ -1458,6 +1458,11 @@ else
   assert "T-49 flow-state が解決できなければ確認する" "[CONTEXT] FOLLOW_UP_CONFIRM=ask; reason=state_unresolved" "$(T49_FLOW="" t49_run)"
   assert "T-49 state root が解決できなければ確認する" "[CONTEXT] FOLLOW_UP_CONFIRM=ask; reason=state_unresolved" "$(T49_ROOT="" t49_run)"
 fi
+# 判定結果を helper のオプションと marker に結ぶ手順（外すと確認なしの起票・batch での確認・見送りの記録漏れになる）
+assert_grep "T-49 ask なら本文を書き出して起票しない" "$CLEANUP_MD" '^- `ask` → `\{preview_option\}` を `--preview-body "\$\{TMPDIR:-/tmp\}/rite-follow-up-preview-\{pr_number\}\.md"` にして実行する'
+assert_grep "T-49 skip なら確認せず起票する" "$CLEANUP_MD" '^- `skip` → 下の helper 呼び出しを `\{preview_option\}` を空にして実行する'
+assert_grep "T-49 起票するを選んだら確認なしで再実行する" "$CLEANUP_MD" '^  - 「起票する」→ `\{preview_option\}` を空にして helper 呼び出しをもう一度実行する'
+assert_grep "T-49 起票しないを選んだら declined を出す" "$CLEANUP_MD" '^  - 「起票しない」→ `echo "\[CONTEXT\] FOLLOW_UP_ISSUE=declined; count=\{fu_count\}; pr=\{pr_number\}" >&2`'
 # 完了報告の判定表が見送りと確認未完了を持つ
 assert_grep "T-49 完了報告に declined 行（x 相当）" "$CLEANUP_MD" '^  \| `declined`（ステップ 6.0.C で「起票しない」を選んだ） \| x 相当'
 assert_grep "T-49 完了報告に preview 行（未完了）" "$CLEANUP_MD" '^  \| `preview`（確認の回答前に止まった） \| 未完了'
