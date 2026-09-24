@@ -520,9 +520,10 @@ okf_version: "0.2"
 | [入力ファイルと記録先が同一実体になりうる helper は書き込み前に resolve 比較で拒否する](pages/patterns/guard-record-overwriting-its-own-input-before-write.md) | patterns | 入力ファイルを読み、その検査結果を固定名の記録ファイルへ atomic write する helper は、呼び出し側が記録名を入力名に流用すると入力を記録で上書きし、直後の照合が「入力が別物になった」形で失敗する。読み込みより前に Path.resolve() 同士を比較して同一実体を拒否すれば、絶対・相対・ファイル symlink・ディレクトリ symlink の各表記を単一の比較で覆える。 | 2026-09-17T07:50:00Z | high |
 | [同じ判定規則を別言語で二重実装するときは、同一 fixture で SoT 実装の実行結果と突合する parity assert を置く](pages/patterns/dual-implementation-rule-parity-assert-against-sot-executable.md) | patterns | bash の SoT helper と同じ除外規則を Python 側にも持たせる変更では、Python 側の期待値を手書きせず、同じ fixture tree に対して SoT helper を実際に実行し、その出力集合と Python 側が「残す」と判定した集合の一致を assert する。規則本文の複製は文書で「同時更新」と宣言するだけでは守れず、実行結果の突合だけが drift を検出する。 | 2026-09-17T10:34:18Z | high |
 | [一致検証の照合先は判定対象の識別子から取り、確認した値を後続の実行コマンドに固定する](pages/patterns/verify-against-target-identifier-and-pin-to-action.md) | patterns | 「レビュー済み commit と head の一致」のような検証を手元のチェックアウトの状態で代用すると、別 commit から実行しただけで誤拒否し、対象側の未検証の更新は見逃す。照合先は判定対象の識別子から取得し、確認した値を後続の実行コマンドへ渡して、検証と実行の間に対象が動く窓を塞ぐ。 | 2026-09-18T13:52:45+00:00 | high |
+| [照合を外すときは、代わりに守る照合を 1 つずつテストで固定する](pages/heuristics/relaxed-check-names-and-pins-remaining-defenses.md) | heuristics | 書き込みを許可しない検査では、記録の出自（どのセッションが書いたか）の照合を外してよい。内容の新しさの照合が残っていれば古い成功の流用は防げる。ただし、文書に挙げた代わりの防御は 1 つずつ変異で落ちることを確かめないと、そのうち 1 つの退行はテストをすり抜ける。 | 2026-09-24T05:10:00Z | high |
 ## 統計
 
-- 総ページ数: 510
-- ドメイン別: patterns=120, heuristics=225, anti-patterns=165
-- 最終更新: 2026-09-24T12:45:00+09:00
+- 総ページ数: 511
+- ドメイン別: patterns=120, heuristics=226, anti-patterns=165
+- 最終更新: 2026-09-24T05:10:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
