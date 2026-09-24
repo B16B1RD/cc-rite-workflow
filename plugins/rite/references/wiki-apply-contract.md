@@ -23,13 +23,13 @@
 
 再利用できるのは、次がすべて現在の作業と一致するときだけ。
 
-- flow-state の issue、session、worktree
+- flow-state の issue、worktree。commit では session も
 - query、executed_at（`YYYY-MM-DDTHH:MM:SSZ`）、attempts（ok と none は 1 以上、disabled と auto_query_off は 0）
 - head が `git rev-parse HEAD` と一致
 - paths の各 blob が、そのパスが stage 済みなら index、そうでなければ作業ツリーの `git hash-object` と一致
 - 今回 stage したパスが記録した paths の部分集合
 
-どれかが違えば拒否する。同じ issue、session、worktree、paths でも、HEAD やファイル内容が変わった記録は通さない。別セッションの成功では通さない。
+どれかが違えば拒否する。同じ issue、session、worktree、paths でも、HEAD やファイル内容が変わった記録は通さない。commit では別セッションの成功を通さない。review は commit を許可しないため session を照合しない。別セッションから再開したレビューは、実装・修正したセッションの記録を HEAD・blob の一致と下の突合で検証する。
 
 ## 証跡
 

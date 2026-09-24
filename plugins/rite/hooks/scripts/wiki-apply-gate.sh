@@ -4,7 +4,9 @@
 # The record's own status is not enough. This gate re-reads rite-config.yml,
 # HEAD, and the blob of each recorded path, and refuses a stale or mismatched
 # success. Commit mode skips unless flow-state phase is implement or fix and
-# this worktree is that session's worktree. Review mode checks the record.
+# this worktree is that session's worktree. Review mode checks the record but
+# not its session: review authorizes no commit, and a review resumed from
+# another session reads the record the implementing session wrote.
 # WIKI_APPLY_FLOW_STATE and WIKI_APPLY_MEMORY select files for tests.
 #
 # Exit 0: WIKI_APPLY_GATE=allow or =skip, plus reason=
@@ -213,7 +215,7 @@ for line in lines:
 
 if fields.get("issue") != issue:
     fail("issue_mismatch")
-if fields.get("session") != session:
+if mode != "review" and fields.get("session") != session:
     fail("session_mismatch")
 if fields.get("worktree") != worktree:
     fail("worktree_mismatch")
