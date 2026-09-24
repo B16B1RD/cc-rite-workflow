@@ -278,7 +278,7 @@ rationale: references/rationale.md#conflict-priority
 
 続けて AskUserQuestion で以下を提示する（rite は**コンフリクトを自動解消・自動コミットしない** — 本 Issue の Non-goal）:
 
-- **解消してから継続（推奨）** — ユーザーがコンフリクトを手動解消（`git` の merge/rebase 続行 or `--abort`）した後、`/rite:recover {issue_arg}` を再実行する旨を案内していったん終了する。レビューを始めた PR ブランチへの base 取り込み（`PR_MERGEABLE=CONFLICTING` の解消など）は merge を自動 commit させず、[fix-plan reference の base 取り込み](../fix/references/fix-plan.md#base-取り込み) の手順で確定する解消により上記 signal が消えれば、再実行時は本判定を通過して従来の cross-check に進む
+- **解消してから継続（推奨）** — ユーザーがコンフリクトを手動解消（`git` の merge/rebase 続行 or `--abort`）した後、`/rite:recover {issue_arg}` を再実行する旨を案内していったん終了する。レビューを始めた PR ブランチへの base 取り込み（`PR_MERGEABLE=CONFLICTING` の解消など）は merge を自動 commit させず、[fix-plan reference の base 取り込み](../fix/references/fix-plan.md#base-取り込み) の手順で確定する。解消により上記 signal が消えれば、再実行時は本判定を通過して従来の cross-check に進む
 - **中止** — 何もせず終了する
 
 非コンフリクト時（上記 4 条件すべて不成立）は本判定を skip し、Phase 3.5 の従来 4 指標クロスチェックへそのまま進む。

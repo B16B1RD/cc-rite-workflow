@@ -150,6 +150,7 @@ for use_run, plan_paths, full_inputs, rename_boundary in ((False, ['src/a.py'], 
         normal.pop('review_run', None)
         dump(state_path, normal)
         hook(allowed=True)
+        hook('git merge main', allowed=True)
         state_path.write_bytes(saved)
         with tempfile.TemporaryDirectory(prefix='rite-unrelated-') as other:
             run(['git', 'worktree', 'add', '--detach', other, 'HEAD'])
@@ -639,22 +640,31 @@ for closed_targets in (False, True):
             return result
 
         run(['git', 'init', '-q', '-b', 'main'])
-        (root / '.git/info/exclude').write_text('.rite/\n')
+        (root / '.git/info/exclude').write_text('.rite/\nrite-config.yml\n')
+        (root / 'rite-config.yml').write_text('branch:\n  base: "main"  # reviewed PRs merge here\n')
         (root / 'src').mkdir()
         (root / 'src/a.py').write_text('original\n')
         (root / 'protected').mkdir()
         (root / 'protected/secret.py').write_text('original\n')
         run(['git', 'add', 'src', 'protected'])
         run(['git', 'commit', '-q', '-m', 'fixture'])
+        # A branch that is not the base: its Non-Target change is Issue work, never intake.
+        run(['git', 'switch', '-q', '-c', 'side'])
+        (root / 'protected/secret.py').write_text('side\n')
+        run(['git', 'commit', '-q', '-am', 'side'])
+        run(['git', 'switch', '-q', 'main'])
         run(['git', 'switch', '-q', '-c', 'feat'])
         (root / 'src/a.py').write_text('feature\n')
-        run(['git', 'commit', '-q', '-am', 'feature'])
+        (root / 'src/feature.py').write_text('feature only\n')
+        run(['git', 'add', '-A'])
+        run(['git', 'commit', '-q', '-m', 'feature'])
         run(['git', 'switch', '-q', 'main'])
         (root / 'src/a.py').write_text('base\n')
         (root / 'protected/secret.py').write_text('base\n')
         (root / 'src/base-only.py').write_text('base only\n')
         run(['git', 'add', '-A'])
         run(['git', 'commit', '-q', '-m', 'base'])
+        run(['git', 'update-ref', 'refs/remotes/origin/main', 'main'])
         run(['git', 'switch', '-q', 'feat'])
         body = '## Acceptance Criteria\n- [ ] AC-1 pass\n\n### 4.2 Non-Target Files\n\n- `protected/secret.py`: keep\n'
         issue_file = private / 'issue.json'
@@ -702,26 +712,35 @@ for closed_targets in (False, True):
         hook('git -C ' + str(root) + ' merge main', reason='cannot be verified during review')
         hook('git merge -m --no-commit main', reason='cannot be verified during review')
         hook('git merge main; echo done', reason='cannot be verified during review')
+        steps = hook('git merge origin/main', reason='cannot be verified during review')
+        check('git merge --no-commit --no-ff origin/<base>' in steps.stdout and 'verify --kind all' in steps.stdout
+              and 'push' in steps.stdout, 'the refusal carries the intake steps: ' + steps.stdout)
+        # git reads these options last-one-wins, so a later option overrides an exemption.
+        for command in ('git merge --no-commit --commit main', 'git merge --ff-only --no-ff main',
+                        'git merge --squash --no-squash main', 'git merge --message --no-commit main',
+                        'git merge -nm --no-commit main'):
+            hook(command, reason='cannot be verified during review')
+        for command in ('sudo git merge main', 'env -u GIT_DIR git merge --continue', 'timeout 60 git merge main'):
+            hook(command, reason='run merge as a direct command')
         for command in (intake + ' main', 'git merge --squash main', 'git merge --abort',
-                        'git merge --quit', 'git merge --ff-only main'):
+                        'git merge --quit', 'git merge --ff-only main', 'git merge --commit --no-commit main',
+                        'git log --merges', 'cd "$HOME" && git merge-base HEAD main',
+                        'NOTE="?? (merge check failed)"; git status'):
             hook(command, allowed=True)
+        # cleanup's base update runs in a reviewed session and only fast-forwards.
+        cleanup = caller_block((plugin / 'skills/cleanup/SKILL.md').read_text(),
+                               'git merge --ff-only origin/{base_branch} 2>/dev/null; do')
+        hook(cleanup, allowed=True)
         # Pattern 9 keeps reading only git commit: merges do not become wiki-gated commits.
         targets = run(['bash', str(helper), 'commit-target', '--command', 'git merge --continue',
                        '--cwd', str(root)])
         check(targets.stdout.strip() == '', 'commit-target does not report git merge')
-        hook(intake + ' main && git commit -m intake', reason='fix plan record missing')
+        plain = hook(intake + ' main && git commit -m intake', reason='fix plan record missing')
+        check('this concludes a merge' not in plain.stdout, 'no merge in progress, no intake hint: ' + plain.stdout)
         # A merge outside the reviewed worktree is not this review's business.
         with tempfile.TemporaryDirectory(prefix='rite-other-repo-') as other:
             run(['git', 'init', '-q'], cwd=other)
             hook('git merge main', allowed=True, cwd=Path(other))
-
-        merge = run(['git', 'merge', '--no-commit', '--no-ff', 'main'], ok=False)
-        check(merge.returncode != 0 and (root / '.git/MERGE_HEAD').exists(), 'base intake stops on the conflict')
-        (root / 'src/a.py').write_text('resolved\n')
-        run(['git', 'add', '-A'])
-        # Both conclusion routes wait for the same plan, and name the intake route.
-        hook('git commit --no-edit', reason='this concludes a merge')
-        hook('git merge --continue', reason='this concludes a merge')
 
         def plan_for(groups, **constraints):
             plan = dict(review_context=context, issue_number=42, issue_body=body,
@@ -746,6 +765,20 @@ for closed_targets in (False, True):
                          ok=False)
             check(result.returncode != 0 and reason in result.stderr, 'expected ' + reason + ': ' + result.stderr)
 
+        # A base-intake plan exempts nothing without a merge of the base in progress.
+        rejected(plan_for([group(['src/a.py'])]), 'base intake requires a merge in progress')
+        run(['git', 'merge', '--no-commit', '--no-ff', 'side'], ok=False)
+        run(['git', 'add', '-A'])
+        rejected(plan_for([group(['protected/secret.py'])]), 'is not origin/main or its ancestor')
+        run(['git', 'merge', '--abort'])
+        merge = run(['git', 'merge', '--no-commit', '--no-ff', 'origin/main'], ok=False)
+        check(merge.returncode != 0 and (root / '.git/MERGE_HEAD').exists(), 'base intake stops on the conflict')
+        (root / 'src/a.py').write_text('resolved\n')
+        run(['git', 'add', '-A'])
+        # Both conclusion routes wait for the same plan, and name the intake route.
+        hook('git commit --no-edit', reason='this concludes a merge')
+        hook('git merge --continue', reason='this concludes a merge')
+
         merged = ['protected/secret.py', 'src/a.py', 'src/base-only.py']
         # A path the base did not change keeps the Issue's target constraints.
         rejected(plan_for([group(merged + ['protected'])]), 'Non-Target violation: protected')
@@ -759,6 +792,11 @@ for closed_targets in (False, True):
         rejected(plan_for([group(merged), group(['src/a.py'], cause='again')]), 'combine base intake into one group')
         rejected(plan_for([group(merged, verification=[])]), 'every disposition requires verification')
         rejected(plan_for([group([])]), 'base intake requires the merged paths')
+        rejected(plan_for([group(merged), group(['src/a.py'], action='fix', cause='fix')]), 'group finding IDs required')
+        if closed_targets:
+            # A file only the feature changed is Issue work and keeps the closed targets.
+            rejected(plan_for([group(merged + ['src/feature.py'])], targets=['protected']),
+                     'closed target violation: src/feature.py')
         good = plan_for([group(merged)])
         run(['bash', str(helper), 'check', '--plan', str(good), '--issue', str(issue_file)])
         run(['bash', str(helper), 'verify', '--plan', str(good), '--issue', str(issue_file), '--kind', 'all'])
@@ -777,19 +815,5 @@ for closed_targets in (False, True):
         check(next_context['commit_sha'] == run(['git', 'rev-parse', 'HEAD']).stdout.strip(),
               'next cycle reviews the intake commit')
 
-    # Without a merge in progress a base-intake plan has nothing to exempt.
-    with tempfile.TemporaryDirectory(prefix='rite-base-intake-none-') as tmp:
-        root = Path(tmp)
-        run(['git', 'init', '-q'], cwd=root)
-        (root / 'a').write_text('a\n')
-        run(['git', 'add', 'a'], cwd=root)
-        run(['git', 'commit', '-q', '-m', 'a'], cwd=root)
-        probe = subprocess.run([sys.executable, '-c',
-                                'import sys; sys.path.insert(0, sys.argv[1]); import importlib; '
-                                'm = importlib.import_module("review-fix-scope"); m.base_intake_paths()',
-                                str(plugin / 'hooks/scripts/lib')],
-                               cwd=root, env=env, text=True, capture_output=True)
-        check(probe.returncode != 0 and 'base intake requires a merge in progress' in probe.stderr,
-              'base intake needs a merge in progress: ' + probe.stderr)
 print(str(checks) + ' checks passed')
 PYTEST

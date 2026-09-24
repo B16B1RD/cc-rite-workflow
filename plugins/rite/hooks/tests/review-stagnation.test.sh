@@ -661,7 +661,7 @@ try:
     f.commit()
     f.reject(lambda: f.start(ok=False), 'unverified changed HEAD cannot start review')
     refused = f.start(ok=False)
-    check('fix-plan reference: base intake' in refused.stderr,
+    check('base-intake fix plan' in refused.stderr and 'fix-plan.md, section: base 取り込み' in refused.stderr,
           'changed HEAD refusal points to the base intake route: ' + refused.stderr)
 finally:
     f.close()

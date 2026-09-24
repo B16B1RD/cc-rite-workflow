@@ -55,12 +55,15 @@ assert_rc2 bash scripts/a.sh &&
 
 レビューを始めた PR ブランチへ base ブランチを取り込む正規の手順。レビュー中の作業先では、検証を経ない merge commit は拒否される（自動で commit する `git merge <ref>`、計画なしの `git commit` / `git merge --continue`）。取り込み後の HEAD は次の `review-start` で検証済みでなければ再レビューできず、ready / merge にも進めないため、この順で行う:
 
-1. `git merge --no-commit --no-ff <base>` で取り込み、競合を解消して `git add` する（HEAD はレビュー済み commit のまま）
-2. `git diff --name-only HEAD` の全パスを 1 つの `action: "base-intake"` グループの `paths` に並べ、全体検証を対応付ける。`finding_ids` は空でよい。base 側が変更したファイルは Issue の Non-Target / 閉じた対象の制約から外れる。それ以外のパス（競合解消で手を入れた自ブランチのファイル等）は制約を受ける
+1. `git fetch origin <base>` のあと `git merge --no-commit --no-ff origin/<base>` で取り込み、競合を解消して `git add` する（HEAD はレビュー済み commit のまま）。`<base>` は `rite-config.yml` の `branch.base`。merge が既に進行中（`MERGE_HEAD` がある）なら、競合解消と `git add` から始める
+2. `git diff --no-renames --name-only HEAD` の全パスを 1 つの `action: "base-intake"` グループの `paths` に並べ、全体検証を対応付ける。`finding_ids` は空でよい。改名は旧パスと新パスの 2 つとして並ぶ
 3. `check` → `verify --kind all` を通し、`git commit` で取り込みを確定する（`git merge --continue` も同じ検査を受ける）
-4. `/rite:iterate` で次のレビュー cycle を回し、mergeable になってから ready / merge へ進む
+4. `git push origin HEAD` で取り込み commit を PR に反映する
+5. `/rite:iterate` で次のレビュー cycle を回し、mergeable になってから ready / merge へ進む
 
-`base-intake` は merge 進行中（`MERGE_HEAD` がある状態）でだけ有効で、計画に 1 グループまで。`--no-commit` / `--squash` / `--abort` / `--quit` / `--ff-only` の merge は拒否されない。`git pull` / rebase 等でレビュー済み HEAD を動かした場合は次の `review-start` が拒否するので、動かす前の commit に戻してからこの手順で取り込む。
+制約の除外はファイル単位で、base 側が変更したファイル（merge-base から取り込み相手までの差分に出るファイル）だけが Issue の Non-Target / 閉じた対象の検査から外れる。競合を解消したファイルは base 側も変更しているので外れる。base 側が変更していないファイル（base の変更に合わせて直した自ブランチのファイル等）は制約を受ける。
+
+`base-intake` は merge 進行中（`MERGE_HEAD` がある状態）でだけ有効で、取り込み相手は `origin/<base>` またはその祖先に限る（別ブランチや別の worktree で作った commit は取り込めない）。計画に 1 グループまで。`--no-commit` / `--squash` / `--abort` / `--quit` / `--ff-only` の merge は拒否されない（オプションは git と同じく後に書いたものが勝つ）。`git pull` / rebase 等でレビュー済み HEAD を動かした場合は次の `review-start` が拒否する。レビュー済み commit（`flow-state.sh get --jq-filter .review_cycle.review_context.commit_sha`）に戻してからこの手順で取り込む。
 
 ## 停滞時の見直し計画
 
