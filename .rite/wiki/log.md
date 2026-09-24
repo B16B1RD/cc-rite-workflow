@@ -3013,3 +3013,4 @@ T02:22:43+09:00 — review ingest (skip pages)
 - 2026-09-24T08:37:09Z ingest: pages_updated=1 (explicit-option-tests-bypass-default-resolution) raw=1
 - 2026-09-24T08:38:02Z lint:clean contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=534, broken_refs=0
 - 2026-09-24T09:00:26Z ingest: skipped raw=1 (pr-3039)
+- 2026-09-24T09:01:19Z lint:clean contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=535, broken_refs=0
