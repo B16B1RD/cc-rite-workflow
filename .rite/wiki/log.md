@@ -3002,3 +3002,4 @@ T02:22:43+09:00 — review ingest (skip pages)
 - 2026-09-17T13:38:37Z ingest: pages_updated=1 (fixture-mutation-isolates-invariants) raw=1
 - 2026-09-24T05:29:20Z ingest: pages_created=2 (stub-ignored-argument-escapes-test, record-readers-and-writers-share-identification-rule) raw=3
 - 2026-09-24T05:30:17Z lint:clean contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=534, broken_refs=0
+- 2026-09-24T06:09:40Z ingest: pages_created=1 (no-fallback-contract-needs-bait-at-fallback-target) raw=1
