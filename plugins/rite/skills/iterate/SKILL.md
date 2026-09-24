@@ -78,7 +78,7 @@ rationale: references/rationale.md#circuit-breaker-conditions
 | `{nb_count}` | ステップ 5.0.2 の `ITERATE_NB_REMAINING` marker 値（overlay 後は 0。取得失敗は 5.S で停止しここへ来ない） |
 | `{nb_record}` | 同 marker の `record=`（review JSON パス。失敗時は空） |
 | `{nb_by_severity}` | 同 marker の `by_severity=`（`SEVERITY:count` のカンマ区切り。0 件 / 失敗時は空） |
-| `{sweep_origin}` | ステップ 5.S へ入った通常ループの sentinel。sweep 内の sentinel で上書きしない |
+| `{sweep_origin}` | ステップ 5.S へ入った通常ループの sentinel。sweep 内の sentinel で上書きしない。5.S を経由せずにステップ 5.0.1 へ来た終端（`[fix:cancelled-by-user]` / ステップ 4 の `[fix:sweep-done]`）ではその終端 sentinel |
 | `{sweep_issued}` / `{sweep_recorded}` | ステップ 5.S の `NB_SWEEP_RESULT` / `ITERATE_NB_SWEEP=done` の `issued=` / `recorded=` |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
 | `{action_items}` | 本ループの最終試行に残った、ユーザーの操作が必要な WARNING / ERROR。ステップ 5 / 6 の `要対応:` 欄へ転記する（0 件なら欄ごと省略） |
