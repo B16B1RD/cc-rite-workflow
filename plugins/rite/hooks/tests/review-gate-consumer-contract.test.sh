@@ -59,31 +59,38 @@ with tempfile.TemporaryDirectory() as temp:
               'triage_helper_source': 'explicit_file', 'pr_number': '42',
               'owner_repo': 'owner/repo', 'review_cycle_id': '42-test', 'non_fatal_moved_count': '1'}
     # gh stub: answers only the calls the record makes, so a real gh is never reached.
+    # The comments call applies the record's own --jq to a JSON array, so the selection is tested too.
     stub_dir = temp / 'bin'
     stub_dir.mkdir()
     gh_log = temp / 'gh-calls'
     pr_json = temp / 'pr.json'
-    comments = temp / 'comments'
+    comments = temp / 'comments.json'
     (stub_dir / 'gh').write_text(f"""#!/bin/bash
 printf '%s\\n' "$*" >> '{gh_log}'
 if [ "$*" = "pr view 42 -R owner/repo --json body,headRefName" ]; then cat '{pr_json}'; exit 0; fi
-if [ "$1 $2 $3" = "api repos/owner/repo/issues/7/comments --paginate" ]; then
+if [ "$1 $2 $3 $4" = "api repos/owner/repo/issues/7/comments --paginate --jq" ] && [ "$#" -eq 5 ]; then
   [ -f '{temp}/comments-fail' ] && exit 1
-  cat '{comments}'; exit 0
+  exec jq -r "$5" '{comments}'
 fi
 exit 97
 """)
     (stub_dir / 'gh').chmod(0o755)
     env = {**os.environ, 'PATH': f"{stub_dir}:{os.environ['PATH']}"}
     ledger_row = '| F-09 | b.sh:3 | recorded | severity=LOW; measured=false |'
-    existing_with_ledger = '\n'.join([
+    # A non-record comment carrying a ledger comes first: taking it instead of the record must fail.
+    other_comment = '\n'.join([
+        'progress note', '', '### 却下台帳', '', '| finding_id | file:line | 判定 | 判定文 |',
+        '|------------|-----------|------|--------|', '| F-77 | z.sh:1 | recorded | severity=LOW; measured=false |', ''])
+    record_with_ledger = '\n'.join([
         '## 📜 rite 非実測指摘の記録 (non-blocking)', '', 'old', '',
         '### 却下台帳', '', '| finding_id | file:line | 判定 | 判定文 |',
         '|------------|-----------|------|--------|', ledger_row, '',
         '📎 non_blocking_count: 0', '', '<!-- rite:nbr:v1 -->', ''])
-    existing_without_ledger = '\n'.join([
+    record_without_ledger = '\n'.join([
         '## 📜 rite 非実測指摘の記録 (non-blocking)', '', 'old', '',
         '📎 non_blocking_count: 0', '', '<!-- rite:nbr:v1 -->', ''])
+    existing_with_ledger = json.dumps([{'body': other_comment}, {'body': record_with_ledger}])
+    existing_without_ledger = json.dumps([{'body': other_comment}, {'body': record_without_ledger}])
     def set_pr(body, head):
         pr_json.write_text(json.dumps({'body': body, 'headRefName': head}))
     set_pr('Closes #7', 'fix/issue-8-other')
@@ -128,11 +135,13 @@ exit 0
             assert '[fix:error] reason=nonblocking_record_failed' in result.stdout
     # The ledger of the record being replaced survives, spliced right before the count line.
     set_outcome('updated')
+    gh_log.write_text('')
     result = run(record)
     assert result.returncode == 0, result
     assert 'REJECTED_LEDGER_PRESERVE=ok' in result.stderr
     lines = record_body.read_text().splitlines()
     assert lines.count('### 却下台帳') == 1 and lines.count(ledger_row) == 1
+    assert not [l for l in lines if 'F-77' in l]
     count_at = next(i for i, l in enumerate(lines) if l.startswith('📎 non_blocking_count:'))
     assert lines.index('### 却下台帳') < count_at
     assert [l for l in lines[:count_at] if l.strip()][-1] == ledger_row
@@ -141,8 +150,9 @@ exit 0
     without_ledger = lines[:lines.index('### 却下台帳')] + lines[count_at:]
     # The closing keyword wins over the branch name, as in the helper.
     assert 'api repos/owner/repo/issues/7/comments --paginate' in gh_log.read_text()
+    assert 'issues/8/' not in gh_log.read_text()
     # No ledger to carry: the body is the generated one, without a heading.
-    for existing in (existing_without_ledger, ''):
+    for existing in (existing_without_ledger, json.dumps([{'body': other_comment}]), '[]'):
         comments.write_text(existing)
         result = run(record)
         assert result.returncode == 0, result
