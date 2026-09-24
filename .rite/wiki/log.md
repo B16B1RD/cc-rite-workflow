@@ -1,5 +1,9 @@
 # Directory Update Log
 
+## 2026-09-24
+
+* **Update**: [@tsv+IFS read の field-shift hazard 横断監査は cut-f免除と空フィールド可否の2条件で判定する](pages/heuristics/tsv-ifs-field-shift-hazard-audit-criteria.md) — raw/reviews/20260924T033414Z-pr-3018.md を統合（一括統一のあとに足した読取での再発と、回帰テストの観測点）
+
 ## 2026-09-22
 
 * **Skip**: [20260922T012303Z-pr-2998.md](raw/reviews/20260922T012303Z-pr-2998.md) — この回の差分は短い commit 引数束ねの分類と回帰テストだけで、再利用できる経験則は抽出できない

@@ -8,9 +8,13 @@ created: "2026-07-06T23:20:00+09:00"
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260706T141300Z-pr-1767.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260924T033414Z-pr-3018.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-06T23:20:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-24T12:45:00+09:00" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-24T12:45:00+09:00" }
 ---
 
 # @tsv+IFS read の field-shift hazard 横断監査は cut-f免除と空フィールド可否の2条件で判定する
@@ -51,6 +55,10 @@ hazard ありと判定した箇所のみ、`jq` 側を `@tsv` → `join("")`、
 - hazard なしと判定した箇所を「念のため」書き換えない。既存の `@tsv`+`cut`パターンや全フィールド非空パターンは動作上問題がなく、不要な書き換えはスコープ逸脱になる
 - 実機での挙動再現（`printf`/`echo` で疑似データを流し込み修正前後を比較）により、判定の正しさを客観的に検証できる
 
+### 一括統一のあとに足した読取で再発する
+
+既存の読取箇所を一度そろえても、あとから新しく書いた hook が `@tsv` と tab の IFS で同じ flow-state を読むと、同じ欠陥がそのまま戻る。Wiki 適用ゲートでは phase / worktree / issue_number の 3 列を tab で読み、worktree を記録しないセッション（キーが無い場合を含む）で Issue 番号が worktree 欄にずれて、作業メモリを見つけられずにレビューが毎回拒否された。空欄が構造的に起こる列（記録されないことがある worktree など）を中間に置いた読取は、書いた時点で本ページの 2 条件にかける。回帰テストは、空欄の列を持つ入力で後続の値が正しい変数に入ったことを観測できる形にする（例: 後続の値の食い違いを示す拒否理由が出る。空欄時の失敗理由が出ない）。
+
 ## 関連ページ
 
 - （関連ページなし）
@@ -58,3 +66,4 @@ hazard ありと判定した箇所のみ、`jq` 側を `@tsv` → `join("")`、
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20260706T141300Z-pr-1767.md)
+- [レビュー結果](../../raw/reviews/20260924T033414Z-pr-3018.md)

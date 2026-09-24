@@ -205,7 +205,7 @@ okf_version: "0.2"
 | [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) | heuristics | 複数の不変量（集合差分 I1/I2 + 行内整合 I3 等）を持つ検証スクリプトのテストでは、fixture 変異の設計を誤ると「テストは green だが特定の不変量・guard を削除しても green のまま」という vacuous coverage が生まれる。 | 2026-09-14T09:23:49Z | high |
 | [提示順ルールを計画テンプレートに追加する際は depends_on 列の有無を確認する](pages/heuristics/presentation-order-rule-requires-depends-on-column-check.md) | heuristics | 実装計画テンプレートに「ユーザーの判断で変わりやすい項目を先頭に提示する」ような提示順ルールを追加する際、対象テンプレートが `depends_on` 列を持つ依存グラフ形式か、`depends_on` 列を持たないプレーン番号リスト形式かで、そのルールが「実行順」にまで波及するかどうかが変わる。 | 2026-07-06T02:34:59Z | high |
 | [Orchestrator は reviewer 間の反証と reviewer 自身の自己矛盾（指摘記載 vs 結論）を解決してから blocking 判定する](pages/heuristics/orchestrator-resolves-reviewer-self-contradiction-and-counter-evidence.md) | heuristics | 過去のレビュー事例の 2 cycle レビューで、orchestrator（consolidation 担当）が単純な「指摘事項テーブルの件数 = blocking 件数」という機械的合算をせず、(1) 複数 reviewer 間の反証関係、(2) reviewer 自身の総合評価と個別指摘の矛盾、の 2 つを見て blocking findings を確定させた 2 つの実例。 | 2026-08-08T14:00:41+09:00 | medium |
-| [@tsv+IFS read の field-shift hazard 横断監査は cut-f免除と空フィールド可否の2条件で判定する](pages/heuristics/tsv-ifs-field-shift-hazard-audit-criteria.md) | heuristics | `jq '[...] \| @tsv'` の出力を `IFS=$'\\t' read -r a b c` で読む実装は、POSIX の IFS whitespace 規則により、tab を含む IFS では連続する区切り文字が1個に圧縮される。 | 2026-07-06T23:20:00+09:00 | high |
+| [@tsv+IFS read の field-shift hazard 横断監査は cut-f免除と空フィールド可否の2条件で判定する](pages/heuristics/tsv-ifs-field-shift-hazard-audit-criteria.md) | heuristics | `jq '[...] \| @tsv'` の出力を `IFS=$'\\\\t' read -r a b c` で読む実装は、POSIX の IFS whitespace 規則により、tab を含む IFS では連続する区切り文字が1個に圧縮される。 | 2026-09-24T12:45:00+09:00 | high |
 | [新設要約文の「N 個の~系統」的な断定は対象外の類似構造を見落としやすい](pages/anti-patterns/unscoped-enumeration-claim-in-new-summary.md) | anti-patterns | ドキュメントに新しく要約セクションを書く際、「rite workflow has 3 independently-versioned schemas」のように件数を断定すると、リポジトリ内に実在する類似だが対象外の構造（本件では他にも `schema_version` を持つ work-memory ローカルファイルや issue-claim JSON）を見落として、読者に「これが全てだ」という誤読を与える。 | 2026-07-07T02:00:00+00:00 | medium |
 | [アンインストール/クリーンアップ手順の rm -rf 推奨は git worktree 等の live 状態管理対象を見落としやすい](pages/anti-patterns/cleanup-docs-must-exclude-live-git-worktrees.md) | anti-patterns | アンインストール手順やクリーンアップ手順のドキュメントで、gitignore 済みディレクトリを「安全に削除してよい」と単純化すると、その配下に git worktree のような live な状態管理対象が含まれるケースを見落とす。 | 2026-07-07T22:03:17+00:00 | high |
 | [過剰マッチ防止の精緻化修正は、実装が許容する全形状を再確認しないと過小マッチという別の欠陥を生む (振り子現象)](pages/anti-patterns/precision-tightening-pendulum-regression.md) | anti-patterns | reviewer の false-positive 指摘 (「この記述は無関係な対象まで拾ってしまう」) を受けて記述を厳密化する修正は、対象実装 (正規表現・マッチングロジック等) が実際に許容する**全ての**正当な形状を再確認せずに行うと、修正前には正しくカバーできていた別の形状を取りこぼす under-match を新規に導入する。 | 2026-09-14T16:45:05Z | high |
@@ -524,5 +524,5 @@ okf_version: "0.2"
 
 - 総ページ数: 510
 - ドメイン別: patterns=120, heuristics=225, anti-patterns=165
-- 最終更新: 2026-09-18T13:52:45+00:00
+- 最終更新: 2026-09-24T12:45:00+09:00
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
