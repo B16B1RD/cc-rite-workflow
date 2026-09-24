@@ -6,6 +6,7 @@
 * **Update**: [手順を helper へ移して入口検証を足すと、未定義 placeholder で流れていた終端経路が停止に変わる](pages/anti-patterns/entry-validation-on-extraction-stops-undefined-placeholder-paths.md) — raw/fixes/20260924T153248Z-pr-3055.md を統合
 * **Update**: [手順を helper へ移して入口検証を足すと、未定義 placeholder で流れていた終端経路が停止に変わる](pages/anti-patterns/entry-validation-on-extraction-stops-undefined-placeholder-paths.md) — raw/reviews/20260924T154135Z-pr-3055.md を統合
 * **Update**: [アサーションの検証強度は「該当行を壊して赤くなるか」でしか測れない](pages/heuristics/mutation-testing-measures-assertion-strength.md) — raw/reviews/20260924T152559Z-pr-3055.md を統合（複数の検証に掛かる入力による空振り）
+* **lint:clean** — contradictions=0 (新規ページと関連ページのみ評価。既存ページの全組合せ再評価は未実施), stale=67, orphans=0, missing_concept=0, unregistered_raw=535, broken_refs=0
 
 ## 2026-09-24
 
