@@ -319,13 +319,6 @@ if [ "$GRC" -eq 1 ] && grep -q 'reason=stale_content' <<<"$GOUT"; then
 else
   fail "stale content rc=$GRC out=$GOUT"
 fi
-# --mode を省略したときは commit と同じ照合を行う
-run_gate --worktree "$age" --flow-state "$age_flow" --memory "$age_mem"
-if [ "$GRC" -eq 1 ] && grep -q 'reason=stale_content' <<<"$GOUT"; then
-  pass "omitted mode checks like commit"
-else
-  fail "omitted mode rc=$GRC out=$GOUT"
-fi
 # review でも blob を照合する。別セッションの記録で blob だけを書き換える
 other_blob=$(printf 'other\n' | git -C "$age" hash-object --stdin)
 write_mem "$age_mem" "$(fresh_header none other-session "$age" 1 README \
@@ -336,6 +329,14 @@ if [ "$GRC" -eq 1 ] && grep -q 'reason=stale_content' <<<"$GOUT"; then
 else
   fail "review stale content rc=$GRC out=$GOUT"
 fi
+# --mode を省略したときは commit として照合する。別セッションの記録は、commit なら
+# session で拒否され、review なら session を見ずに stale_content へ進むので区別できる
+run_gate --worktree "$age" --flow-state "$age_flow" --memory "$age_mem"
+if [ "$GRC" -eq 1 ] && grep -q 'reason=session_mismatch' <<<"$GOUT"; then
+  pass "omitted mode rejects another session's record like commit"
+else
+  fail "omitted mode rc=$GRC out=$GOUT"
+fi
 
 echo "=== unknown mode ==="
 for bad_mode in bogus reveiw ""; do
@@ -345,6 +346,17 @@ for bad_mode in bogus reveiw ""; do
     pass "mode '$bad_mode' is rejected with the accepted values"
   else
     fail "mode '$bad_mode' rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
+  fi
+done
+
+echo "=== flag without a value ==="
+for flag in --mode --worktree --base --flow-state --memory; do
+  run_gate "$flag"
+  if [ "$GRC" -ne 0 ] && ! grep -q 'WIKI_APPLY_GATE=' <<<"$GOUT" \
+    && grep -q -- "$flag requires a value" "$ROOT/gate.err"; then
+    pass "$flag without a value is rejected with a reason"
+  else
+    fail "$flag without value rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
   fi
 done
 

@@ -11,6 +11,7 @@
 #
 # Exit 0: WIKI_APPLY_GATE=allow or =skip, plus reason=
 # Exit 1: WIKI_APPLY_GATE=deny plus reason=<name>
+# Exit 1 without a WIKI_APPLY_GATE= line: argument error, reason on stderr
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -18,6 +19,10 @@ MODE="commit"
 WORKTREE=""
 BASE=""
 while [ $# -gt 0 ]; do
+  case "$1" in
+    --mode|--worktree|--base|--flow-state|--memory)
+      [ $# -ge 2 ] || { echo "ERROR: $1 requires a value" >&2; exit 1; } ;;
+  esac
   case "$1" in
     --mode) MODE="${2:-}"; shift 2 ;;
     --worktree) WORKTREE="${2:-}"; shift 2 ;;
