@@ -271,7 +271,6 @@ case "$HANDOFF" in
     case "$_result" in
       review:mergeable:*|fix:non-fatal-only:*)
         # 残件欄検査。判定不能は差し戻す側へ fail-safe。1 回制限は既存 consume に相乗り。
-        _nb_status=unknown
         if [ "$_notice_status" = unknown ]; then
           _nb_status=unknown
         elif [ "$_notice_status" = missing ]; then
@@ -282,7 +281,7 @@ case "$HANDOFF" in
           _nb_status=missing
         fi
         case "$_nb_status" in
-          present) _nb_note="完了通知に「未処理 non-blocking:」欄を必ず含めてください（0 件でも省略しない）。" ;;
+          present) ;;  # 通知と欄がそろっていれば下で停止を許可するため、差し戻し文言は要らない
           missing) _nb_note="直前の完了通知に「未処理 non-blocking:」欄がありません。欄を含む完了通知を再出力してください（0 件でも省略しない）。" ;;
           no_notice) _nb_note="直前の応答に完了通知が出力されていません。「未処理 non-blocking:」欄を含む完了通知を出力してください（0 件でも省略しない）。" ;;
           *)       _nb_note="残件欄の有無を判定できなかったため、確認を出す側へ倒します。「未処理 non-blocking:」欄を含む完了通知を再出力してください（0 件でも省略しない）。" ;;
