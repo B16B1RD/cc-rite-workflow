@@ -31,9 +31,19 @@ sources:
     resource: "raw/reviews/20260911T154811Z-pr-2694.md"
   - type: "reviews"
     resource: "raw/reviews/20260913T073838Z-pr-2773.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260924T063133Z-pr-3032.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260924T064703Z-pr-3032.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260924T070032Z-pr-3032.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260924T070547Z-pr-3032.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260924T070926Z-pr-3032.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-17T00:06:13Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5[1m]", at: "2026-09-24T07:30:00Z" }
 verified:
   - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-07T23:54:45Z" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-11T16:00:00Z" }
@@ -157,7 +167,7 @@ extract_section "$file" ¦ awk 'done { next } /^BEGIN$/ { a=1; next } a && /^END
 
 `done { next }` は**先頭ルールでなければならない**。末尾に置くと、`a` が立ったままのため終端行より後ろの行も print される。書き換えの前後で抽出結果がバイト単位で一致することを `cmp` で確認してから差し替える。
 
-上流がファイルを直接読む `awk ... "$file"` の `exit` は入力側にパイプを持たないため対象外。writer の出力が数十バイトで 1 回の write に収まる場合も、reader が終了する時点で書き終えているため発火しない。
+上流がファイルを直接読む `awk ... "$file"` の `exit` は入力側にパイプを持たないため対象外。writer の出力が小さければ発火しにくいが、発火しないとは言えない。`echo "$output" ¦ grep -q` では、出力が 3 行・約 260 バイトでも CI で `echo: write error: Broken pipe` が観測された（ローカルでは数千回の繰り返しでも再現しない）。
 
 ### 全量読取と抽出境界を同時に検証する
 
@@ -170,6 +180,15 @@ extract_section "$file" ¦ awk 'done { next } /^BEGIN$/ { a=1; next } a && /^END
 並列テストでは、同じ条件がローカルで成功していてもCIで `printf: write error: Broken pipe` となり得る。実際に複数の肯定・否定アサーションで発生し、hook suiteの偽失敗によって後続suiteも実行されなかった。並列化だけを原因として再試行で隠すと、判定方法の欠陥が残る。
 
 検索対象が既に変数にある場合は、`grep -qE "$pattern" <<< "$text"` のように直接渡せる。パターンと条件分岐を維持し、書き込み側の終了コードが真偽へ混入する経路を除く。here-stringは末尾改行を加えるため、その差が意味を変えない行・部分一致の判定に適用する。小さい入力の繰り返しだけで安全とは判断せず、実測した失敗箇所と同じ入力経路を検証する。
+
+### 検出器の出力から置換対象を選ぶと、前置きと例外の形が漏れる
+
+同型の直接パイプを一覧化して機械置換するとき、一覧を検出器（lint）の出力の文字列から作ると、出力の表層に依存した取りこぼしが起きる。producer 文字列を「`echo` / `printf` で始まる」で絞ったため、`if echo ...` / `! echo ...` のように前置語が付く行が丸ごと漏れた。さらに、検出器が例外として扱う形（`printf '%s' "$var"`）は、そもそも一覧に上がってこない。
+
+- 対象の選別は、検出器と同じ字句解析で producer の実体（前置語を外した部分）を取り出して行う。
+- 置換の対象ディレクトリは明示的に制限する。一覧に範囲外（本番コード）の行が混ざっていると、制限しない変換は範囲外まで書き換える。変更後は計画の範囲と実際の変更パスを突き合わせる。
+- 完了条件は「置換した行が正しい」ではなく「対象が残っていない」にする。受入条件が検出器の例外より広いときは、受入条件の文言をそのまま検索式にした残件検索を検証に加える。raw 検索は誤ヒット（`-eq`、`grep -c`、fixture 文字列、コメント）も多いので、ヒットごとに対象外の理由を分類して、対象の残件 0 を示す。
+- テストが書き出す別プロセスの stub 本文は、親の `set -o pipefail` を継承しないため、同じ字面でも欠陥クラスに当たらない。
 
 ## 関連ページ
 
@@ -195,3 +214,9 @@ extract_section "$file" ¦ awk 'done { next } /^BEGIN$/ { a=1; next } a && /^END
 - [並列runnerの実測と修正記録](../../raw/reviews/20260916T170221Z-pr-2920-cycle2-incomplete.md)
 
 - [並列CIの同型偽失敗を全量読取へ伝播修正](../../raw/fixes/20260916T235140Z-pr-2920.md)
+
+- [echo の grep -q パイプを here-string へ置換したレビュー（cycle 1）](../../raw/reviews/20260924T063133Z-pr-3032.md)
+- [前置き付きの置換漏れの修正](../../raw/fixes/20260924T064703Z-pr-3032.md)
+- [検出器の例外に隠れた残件（cycle 2）](../../raw/reviews/20260924T070032Z-pr-3032.md)
+- [見直しで PR 内に取り込んだ修正](../../raw/fixes/20260924T070547Z-pr-3032.md)
+- [受入条件どおりの残件検索（cycle 3）](../../raw/reviews/20260924T070926Z-pr-3032.md)
