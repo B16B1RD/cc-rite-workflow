@@ -13,11 +13,16 @@ sources:
     resource: "raw/reviews/20260901T160818Z-pr-2500.md"
   - type: "fixes"
     resource: "raw/fixes/20260901T162955Z-pr-2500.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260924T163426Z-pr-3058.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260924T164422Z-pr-3058.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-24T17:20:00Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-24T17:20:00Z" }
 ---
 
 # インライン処理の helper 抽出は「helper が起動しない」経路を新設し、marker 不在＝成功の消費規則を破る
@@ -56,6 +61,8 @@ fi
 
 **非ブロッキング helper を rc だけで判定すると残置が完了として報告される。** 「全運用経路で rc=0、部分失敗は marker のみ」契約の helper（`cleanup-pr-state-purge.sh` / `flow-state.sh reap-issue`）は `REVIEW_CLEANUP_PARTIAL_FAILURE=1` や専用 WARNING 行でしか失敗を通知しない。新しい呼び出し側を書くときは、同じ helper を呼ぶ hardened sibling の判定表を必ず突き合わせる。marker 判定を持たない caller が増えると、sibling が持つ検出がその caller でだけ失われる。helper が弾いた入力クラスに対して呼び出し側が直接破壊的操作へ進むのも同型で、marker family の一部だけを見て残りを無視すると helper の fail-fast が無効化される。marker 不在を「成功」と読まない。
 
+**「失敗も marker で返す」契約の helper に `return N` 型の失敗経路を足すと、同じ罠を helper の内側で作る。** 失敗時も marker（`unknown` 等）を出して rc=0 で返す契約の検出関数に、新しい前提（設定ファイルの所在解決など）の失敗を `|| return 2` の形で足したところ、dispatcher がその関数の rc を捨てていたため、marker 0 本・rc=0 で終わった。消費側は「marker 不在＝成功」と読むので、呼び出し側の委譲ガードはこの失敗に反応しない。新しい失敗経路は rc で表さず、既存の失敗経路と同じ marker 形（分類不能を表す `unknown` と reason）へ寄せる。rc で返したくなったら、まずその rc を誰が読むかを dispatcher まで辿って確かめる。
+
 ## 関連ページ
 
 - [Exit code semantic preservation: caller は case で語彙を保持する](../patterns/exit-code-semantic-preservation.md)
@@ -68,3 +75,5 @@ fi
 - [fix 結果](../../raw/fixes/20260901T055639Z-pr-2498.md)
 - [レビュー結果](../../raw/reviews/20260901T160818Z-pr-2500.md)
 - [fix 結果](../../raw/fixes/20260901T162955Z-pr-2500.md)
+- [レビュー結果](../../raw/reviews/20260924T163426Z-pr-3058.md)
+- [fix 結果](../../raw/fixes/20260924T164422Z-pr-3058.md)

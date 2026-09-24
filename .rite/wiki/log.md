@@ -7,6 +7,14 @@
 * **Update**: [手順を helper へ移して入口検証を足すと、未定義 placeholder で流れていた終端経路が停止に変わる](pages/anti-patterns/entry-validation-on-extraction-stops-undefined-placeholder-paths.md) — raw/reviews/20260924T154135Z-pr-3055.md を統合
 * **Update**: [アサーションの検証強度は「該当行を壊して赤くなるか」でしか測れない](pages/heuristics/mutation-testing-measures-assertion-strength.md) — raw/reviews/20260924T152559Z-pr-3055.md を統合（複数の検証に掛かる入力による空振り）
 * **lint:clean** — contradictions=0 (新規ページと関連ページのみ評価。既存ページの全組合せ再評価は未実施), stale=67, orphans=0, missing_concept=0, unregistered_raw=535, broken_refs=0
+* **Update**: [placeholder 伝播は実行主体の解決経路を確認してから適用する](pages/heuristics/placeholder-propagation-requires-resolver-context.md) — raw/reviews/20260924T163426Z-pr-3058.md を統合（同じ手順書内で解決手順より前に placeholder を使う順序の問題）
+* **Update**: [インライン処理の helper 抽出は「helper が起動しない」経路を新設し、marker 不在＝成功の消費規則を破る](pages/anti-patterns/helper-extraction-creates-unstarted-path.md) — raw/reviews/20260924T163426Z-pr-3058.md を統合（marker 契約の helper に rc で返す失敗経路を足すと dispatcher が rc を捨てる）
+* **Update**: [無音失敗を可視化する防御コードには、その防御コード自体を守る失敗パステストを追加する](pages/heuristics/defensive-code-needs-its-own-failure-path-test.md) — raw/reviews/20260924T163426Z-pr-3058.md を統合（helper 単体の pin では caller 側の stderr 破棄が生き残る）
+* **Update**: [placeholder 伝播は実行主体の解決経路を確認してから適用する](pages/heuristics/placeholder-propagation-requires-resolver-context.md) — raw/fixes/20260924T164422Z-pr-3058.md を統合
+* **Update**: [インライン処理の helper 抽出は「helper が起動しない」経路を新設し、marker 不在＝成功の消費規則を破る](pages/anti-patterns/helper-extraction-creates-unstarted-path.md) — raw/fixes/20260924T164422Z-pr-3058.md を統合
+* **Create**: [同じ設定値を独立した bash 呼び出しで複数回読むなら、不在・読み取り不能の扱いを読み取り箇所ごとに揃える](pages/heuristics/config-read-sites-each-handle-absence-and-unreadable.md) — raw/reviews/20260924T165521Z-pr-3058.md を新規ページ化
+* **Update**: [同じ設定値を独立した bash 呼び出しで複数回読むなら、不在・読み取り不能の扱いを読み取り箇所ごとに揃える](pages/heuristics/config-read-sites-each-handle-absence-and-unreadable.md) — raw/fixes/20260924T170034Z-pr-3058.md を統合
+* **Update**: [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) — raw/reviews/20260924T170741Z-pr-3058.md を統合（挙動を変える fix で説明散文の断定が残る）
 
 ## 2026-09-24
 

@@ -43,9 +43,11 @@ sources:
     resource: "raw/reviews/20260830T044223Z-pr-2475.md"
   - type: "reviews"
     resource: "raw/reviews/20260831T074623Z-pr-2494.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260924T170741Z-pr-3058.md"
 tags: ["comment-rot", "cause-neutral", "exclusivity-claim", "doc-sync", "not-grep-pin", "quantifier-strengthening", "birth-defect"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-16T12:05:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-24T17:20:00Z" }
 verified:
   - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
   - { by: "rite-wiki-ingest/gpt-6", at: "2026-09-05T12:10:29.806932+00:00" }
@@ -55,6 +57,8 @@ verified:
     at: "2026-08-30T04:57:39Z"
   - by: "rite-wiki-ingest/claude-opus-5"
     at: "2026-08-31T14:09:34Z"
+  - by: "rite-wiki-ingest/claude-opus-5-5"
+    at: "2026-09-24T17:20:00Z"
 ---
 
 # 全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin
@@ -134,6 +138,11 @@ consumer ごとに読取り・書込み・同期という責務を確認して�
 
 実装が実際に分岐している軸で書く。この事例では「現在列の role を先に解決してから判断する caller は未マップ列を skip + WARNING」対「destination の role だけを解決する helper は書く」が分岐軸で、drift check は列を読んで role が無くても書く意図的な例外として個別に書く。修正案の限定句（`Only …`、`read-side`）を置く前に、その限定句で名指しされる集合を実装の call site で列挙し、限定句の外にある consumer が同じ挙動をしていないかを確認する。
 
+### 挙動を変える fix は、その挙動を説明する散文の断定も同じ diff で直す
+
+設定ファイルが無いとき既定値へ無言で倒れていた読み取りを、WARNING を出して続行・読み取り不能なら ERROR で停止する形へ直した fix で、コードとテストは直ったが、同じ手順を説明するスキル本文の散文は「config から silent に再読込する」「検証は実施済み」という断定のまま残った。最終サイクルのレビューは blocking 0 で mergeable と判定したうえで、この文面の食い違いを non-blocking として 2 件挙げた。
+
+挙動の変更は、その挙動を名指しで説明している散文を偽にする。特に「silent」「実施済」「常に」のような状態を断定する語は、挙動が変わった瞬間に反対の意味になる。**挙動を変える fix では、変えた挙動を説明している散文を同じ diff の変更対象に最初から数える。** 探し方は本ページ冒頭の手順と同じで、変えた挙動を表す旧来の語（この事例なら「silent」）を grep して全 hit を当たる。
 
 ## 関連ページ
 
@@ -158,3 +167,4 @@ consumer ごとに読取り・書込み・同期という責務を確認して�
 - [括弧で列挙を添えた全称量化が執筆時点から偽だった](../../raw/reviews/20260830T043014Z-pr-2475.md)
 - [同一文への「ついでの限定」は over-fix ではないと判定](../../raw/reviews/20260830T044223Z-pr-2475.md)
 - [無条件主張を直した修正文が別の無条件主張になる / 件数断定の列挙は構造的根拠で破れる](../../raw/reviews/20260831T074623Z-pr-2494.md)
+- [挙動を変えた fix の後に説明散文の断定が残った最終レビュー結果](../../raw/reviews/20260924T170741Z-pr-3058.md)
