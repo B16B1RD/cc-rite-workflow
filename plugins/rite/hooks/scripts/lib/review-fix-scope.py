@@ -148,6 +148,10 @@ BASE_INTAKE_STEPS = ("git fetch origin <base>, take it in with git merge --no-co
                      "resolve and stage it, add a base-intake group to the fix plan, run check and "
                      "verify --kind all, commit, push, then re-run /rite:iterate "
                      "(skills/fix/references/fix-plan.md, section: base 取り込み)")
+# The same route, entered with a merge already in progress.
+BASE_INTAKE_CONCLUDE = ("if it takes in origin/<base>, resolve and stage it, add a base-intake group to the fix plan, "
+                        "run check and verify --kind all, then commit; otherwise git merge --abort and follow "
+                        "skills/fix/references/fix-plan.md, section: base 取り込み")
 
 
 def merge_head():
@@ -157,22 +161,29 @@ def merge_head():
 
 
 def base_branch():
-    """branch.base from rite-config.yml; its documented default is main."""
+    """branch.base from rite-config.yml. It decides what base intake may exempt, so it has no default."""
     located = subprocess.run(["bash", str(Path(__file__).with_name("rite-config-path.sh"))],
                              capture_output=True, text=True)
-    require(located.returncode in (0, 1), "cannot read rite-config.yml: " + located.stderr.strip())
-    if located.returncode == 1:
-        return "main"
+    require(located.returncode != 1, "branch.base is not set: " + located.stderr.strip()
+            + "; base intake cannot identify the base branch")
+    require(located.returncode == 0, "cannot read rite-config.yml: " + located.stderr.strip())
+    config = Path(located.stdout.strip())
+    try:
+        lines = config.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError) as error:
+        require(False, "cannot read rite-config.yml: " + str(config) + ": " + str(error))
     in_branch = False
-    for line in Path(located.stdout.strip()).read_text(encoding="utf-8").splitlines():
+    for line in lines:
         if re.match(r"[A-Za-z_]", line):
             in_branch = line.split("#", 1)[0].strip() == "branch:"
             continue
         match = re.match(r"\s+base:\s*(.*)", line)
         if in_branch and match:
             value = re.sub(r"\s#.*", "", match.group(1)).strip().strip("\"'")
-            return value if value and value != "null" else "main"
-    return "main"
+            if value and value != "null":
+                return value
+            break
+    require(False, "branch.base is not set in " + str(config) + "; base intake cannot identify the base branch")
 
 
 def base_intake_paths():
@@ -184,7 +195,9 @@ def base_intake_paths():
     require(subprocess.run(["git", "rev-parse", "-q", "--verify", remote], capture_output=True).returncode == 0,
             "base intake needs origin/" + base + "; run git fetch origin " + base)
     # Only what the base itself carries is exempt: another branch or a side commit is Issue work.
-    require(subprocess.run(["git", "merge-base", "--is-ancestor", other, remote]).returncode == 0,
+    ancestor = subprocess.run(["git", "merge-base", "--is-ancestor", other, remote], capture_output=True, text=True)
+    require(ancestor.returncode in (0, 1), "git merge-base --is-ancestor failed: " + ancestor.stderr.strip())
+    require(ancestor.returncode == 0,
             "the merge in progress is not origin/" + base + " or its ancestor; base intake takes in the base branch only")
     fork = subprocess.check_output(["git", "merge-base", "HEAD", other], text=True).strip()
     names = subprocess.check_output(["git", "diff", "--no-renames", "--name-only", "-z", fork, other]).decode()
@@ -363,11 +376,37 @@ _HEAD_MOVERS = ("commit", "merge")
 _SEPARATORS = ";&|()\n"
 
 
+def _substitution_end(command, start):
+    """Index just past the ')' closing the $( that ends at start. Not a shell interpreter."""
+    depth, index, quote = 1, start, None
+    while index < len(command):
+        ch = command[index]
+        if quote:
+            if ch == quote:
+                quote = None
+            elif ch == "\\" and quote == '"':
+                index += 1
+        elif ch in "'\"":
+            quote = ch
+        elif ch == "\\":
+            index += 1
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return index + 1
+        index += 1
+    require(False, "unfinished command substitution; run git commit / git merge separately")
+
+
 def shell_segments(command):
     """Split a command into simple commands of dequoted words. Not a shell interpreter.
 
     Quotes are tracked across a whole word, so a separator inside quotes (echo ';',
     NAME="a (b) c") stays in its word, and a quote may open in the middle of a word.
+    A command substitution inside double quotes or backquotes runs too, so its body
+    is split as commands of its own, ahead of the command that contains it.
     """
     segments, words, word, quoted, quote = [], [], [], False, None
     index, length = 0, len(command)
@@ -385,6 +424,20 @@ def shell_segments(command):
                 quote = None
             else:
                 word.append(ch)
+        elif quote == '"' and command.startswith("$(", index):
+            end = _substitution_end(command, index + 2)
+            segments.extend(shell_segments(command[index + 2:end - 1]))
+            word.append(command[index:end])
+            index = end
+            continue
+        elif ch == "`" and quote in (None, '"'):
+            end = command.find("`", index + 1)
+            require(end >= 0, "unfinished command substitution; run git commit / git merge separately")
+            segments.extend(shell_segments(command[index + 1:end]))
+            word.append(command[index:end + 1])
+            quoted = True
+            index = end + 1
+            continue
         elif quote == '"':
             if ch == '"':
                 quote = None
@@ -440,10 +493,11 @@ def git_subcommand_index(words, git_index):
 
 
 def each_git_target(command, cwd):
-    """Yield (subcommand, toplevel, arguments) for each direct git commit / merge, in order.
+    """Yield (subcommand, toplevel, arguments, problem) for each git commit / merge, in order.
 
-    Each yield changes into its target, so a caller must use a target before
-    asking for the next one. A dynamic target only matters for these subcommands.
+    problem names why the target cannot be checked (a wrapper, a dynamic cd / -C, an
+    alternate git dir); the caller refuses it only when the command would move HEAD.
+    toplevel is None when there is a problem or the target is not a repository.
     """
     cwd, dynamic = Path(cwd).resolve(), False
     for words in shell_segments(command):
@@ -464,66 +518,83 @@ def each_git_target(command, cwd):
                 sub = git_subcommand_index(words, names.index("git"))
                 for name in _HEAD_MOVERS:
                     if sub is not None and name in words[sub:]:
-                        require(False, "run " + name + " as a direct command in its own Bash call")
+                        yield name, None, words[words.index(name, sub) + 1:], \
+                            "run " + name + " as a direct command in its own Bash call"
             continue
-        target, unknown, index = cwd, dynamic, 1
+        target, unknown, index, alternate = cwd, dynamic, 1, False
         while index < len(words) and words[index].startswith("-"):
             option = words[index]
-            if option in ("-C", "-c"):
-                require(index + 1 < len(words), "incomplete git global option")
-                value = words[index + 1]
-                if option == "-C":
+            if option in ("-C", "-c") or option.startswith("-C"):
+                joined = option.startswith("-C") and option != "-C"
+                if not joined:
+                    require(index + 1 < len(words), "incomplete git global option")
+                value = option[2:] if joined else words[index + 1]
+                if option.startswith("-C"):
                     if any(c in value for c in "$`~"):
                         unknown = True
                     else:
                         target = (target / value).resolve()
                         unknown = unknown and not Path(value).is_absolute()
-                index += 2
-            elif option.startswith("-C"):
-                target = (target / option[2:]).resolve()
-                index += 1
+                index += 1 if joined else 2
             elif option.startswith("-c") or option in ("--no-pager", "--no-optional-locks"):
                 index += 1
             else:
-                for name in _HEAD_MOVERS:
-                    require(name not in words[index:],
-                            "use git -C <worktree> " + name + " without alternate git-dir/work-tree options")
+                alternate = True
                 break
+        if alternate:
+            for name in _HEAD_MOVERS:
+                if name in words[index:]:
+                    yield name, None, words[words.index(name, index) + 1:], \
+                        "use git -C <worktree> " + name + " without alternate git-dir/work-tree options"
+            continue
         if index >= len(words) or words[index] not in _HEAD_MOVERS:
             continue
         name = words[index]
-        require(not unknown, name + " target is dynamic; run it separately from its resolved worktree")
-        os.chdir(target)
+        if unknown:
+            yield name, None, words[index + 1:], \
+                name + " target is dynamic; run it separately from its resolved worktree"
+            continue
         try:
             actual = Path(subprocess.check_output(
-                ["git", "rev-parse", "--show-toplevel"], text=True, stderr=subprocess.DEVNULL
+                ["git", "-C", str(target), "rev-parse", "--show-toplevel"], text=True, stderr=subprocess.DEVNULL
             ).strip()).resolve()
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, FileNotFoundError, NotADirectoryError):
             # Not a repository, so it is not the session worktree. commit-target
             # still refuses this; a review check must not turn it into a deny.
             actual = None
-        yield name, actual, words[index + 1:]
+        yield name, actual, words[index + 1:], None
+
+
+def head_move(name, args):
+    """How a git commit / merge moves HEAD: "commit" (checked evidence), "merge" (refused) or None."""
+    if name == "commit":
+        # Option values (notably -m '--dry-run') must not exempt a real commit.
+        return None if classify_commit_args(args)[0] else "commit"
+    moves = merge_kind(args)
+    return {"concludes": "commit", "commits": "merge"}.get(moves)
 
 
 def each_direct_commit(command, cwd):
     """Yield the toplevel of each direct git commit. This is not a shell interpreter."""
-    for name, actual, args in each_git_target(command, cwd):
-        if name != "commit":
+    for name, actual, args, problem in each_git_target(command, cwd):
+        if name != "commit" or head_move(name, args) is None:
             continue
-        # Option values (notably -m '--dry-run') must not exempt a real commit.
-        dry_run, index_only = classify_commit_args(args)
-        if not dry_run:
-            yield actual, index_only if actual is not None else True
+        require(problem is None, problem or "")
+        yield actual, classify_commit_args(args)[1] if actual is not None else True
 
 
 _MERGE_VALUE = {"-m", "-F", "-s", "-X", "--message", "--file", "--strategy", "--strategy-option", "--into-name"}
+_MERGE_SWITCHES = {"--commit", "--no-commit", "--squash", "--no-squash", "--ff", "--no-ff", "--ff-only",
+                   "--continue", "--abort", "--quit"}
 
 
 def merge_kind(args):
     """How a git merge moves HEAD: "concludes" (--continue), "commits" (by itself) or None.
 
     git reads --commit/--no-commit, --squash/--no-squash and --ff/--no-ff/--ff-only
-    as last-one-wins, so a later option overrides an earlier exemption.
+    as last-one-wins, so a later option overrides an earlier exemption. git also takes
+    a unique prefix of a long option; an abbreviation of these options cannot be read
+    safely, so it counts as a merge that commits.
     """
     commits, squash, ff_only, action = True, False, False, None
     index = 0
@@ -536,6 +607,9 @@ def merge_kind(args):
             continue
         if word.startswith("--"):
             name = word.split("=", 1)[0]
+            known = _MERGE_SWITCHES | {option for option in _MERGE_VALUE if option.startswith("--")}
+            if name not in known and any(option.startswith(name) for option in known):
+                return "commits"
             if name in ("--continue", "--abort", "--quit"):
                 action = name
             elif name in ("--commit", "--no-commit"):
@@ -575,16 +649,11 @@ def commit_check(args):
         retained = stagnation.retained_run(state, args.session)
     # A merge that concludes with --continue records the same staged state as
     # git commit; a merge that commits by itself cannot be verified beforehand.
-    for name, actual, arguments in each_git_target(args.command, args.cwd):
-        if name == "commit":
-            if classify_commit_args(arguments)[0]:
-                continue  # --dry-run
-            kind = "commit"
-        else:
-            moves = merge_kind(arguments)
-            if moves is None:
-                continue
-            kind = "commit" if moves == "concludes" else "merge"
+    for name, actual, arguments, problem in each_git_target(args.command, args.cwd):
+        kind = head_move(name, arguments)
+        if kind is None:
+            continue  # a dry run, or a merge that leaves HEAD where it is
+        require(problem is None, problem or "")
         if actual is None:
             continue
         os.chdir(actual)
@@ -610,7 +679,7 @@ def commit_check(args):
         approved_path = directory / ("fix-plan-" + args.session + ".json")
         require(approved_path.is_file(),
                 "fix plan record missing; run check --plan <plan> --issue <issue> before committing"
-                + ("; this concludes a merge: " + BASE_INTAKE_STEPS if merge_head() else ""))
+                + ("; this concludes a merge: " + BASE_INTAKE_CONCLUDE if merge_head() else ""))
         approved = read(approved_path)
         plan = approved["plan"]
         issue = approved.get("issue")

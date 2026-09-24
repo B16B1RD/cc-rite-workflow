@@ -639,9 +639,9 @@ for closed_targets in (False, True):
                     check(reason in text, 'expected reason ' + reason + ' in ' + text)
             return result
 
-        run(['git', 'init', '-q', '-b', 'main'])
+        run(['git', 'init', '-q', '-b', 'trunk'])
         (root / '.git/info/exclude').write_text('.rite/\nrite-config.yml\n')
-        (root / 'rite-config.yml').write_text('branch:\n  base: "main"  # reviewed PRs merge here\n')
+        (root / 'rite-config.yml').write_text('branch:\n  base: "trunk"  # reviewed PRs merge here\n')
         (root / 'src').mkdir()
         (root / 'src/a.py').write_text('original\n')
         (root / 'protected').mkdir()
@@ -652,19 +652,23 @@ for closed_targets in (False, True):
         run(['git', 'switch', '-q', '-c', 'side'])
         (root / 'protected/secret.py').write_text('side\n')
         run(['git', 'commit', '-q', '-am', 'side'])
-        run(['git', 'switch', '-q', 'main'])
+        run(['git', 'switch', '-q', 'trunk'])
         run(['git', 'switch', '-q', '-c', 'feat'])
         (root / 'src/a.py').write_text('feature\n')
         (root / 'src/feature.py').write_text('feature only\n')
         run(['git', 'add', '-A'])
         run(['git', 'commit', '-q', '-m', 'feature'])
-        run(['git', 'switch', '-q', 'main'])
+        run(['git', 'switch', '-q', 'trunk'])
         (root / 'src/a.py').write_text('base\n')
         (root / 'protected/secret.py').write_text('base\n')
         (root / 'src/base-only.py').write_text('base only\n')
         run(['git', 'add', '-A'])
         run(['git', 'commit', '-q', '-m', 'base'])
-        run(['git', 'update-ref', 'refs/remotes/origin/main', 'main'])
+        run(['git', 'update-ref', 'refs/remotes/origin/trunk', 'trunk'])
+        # A commit on top of the base is not the base either.
+        run(['git', 'switch', '-q', '-c', 'desc'])
+        (root / 'protected/secret.py').write_text('desc\n')
+        run(['git', 'commit', '-q', '-am', 'desc'])
         run(['git', 'switch', '-q', 'feat'])
         body = '## Acceptance Criteria\n- [ ] AC-1 pass\n\n### 4.2 Non-Target Files\n\n- `protected/secret.py`: keep\n'
         issue_file = private / 'issue.json'
@@ -722,10 +726,18 @@ for closed_targets in (False, True):
             hook(command, reason='cannot be verified during review')
         for command in ('sudo git merge main', 'env -u GIT_DIR git merge --continue', 'timeout 60 git merge main'):
             hook(command, reason='run merge as a direct command')
+        # A substitution runs its command even inside double quotes or backquotes.
+        hook('out="$(git merge origin/trunk 2>&1)"', reason='cannot be verified during review')
+        hook('echo "`git merge main`"', reason='cannot be verified during review')
+        hook('x="$(git commit -m y)"', reason='fix plan record missing')
+        # git takes a unique prefix of a long option; an abbreviation cannot be read safely.
+        for command in ('git merge --no-commit --commi main', 'git merge --mess --no-commit main'):
+            hook(command, reason='cannot be verified during review')
         for command in (intake + ' main', 'git merge --squash main', 'git merge --abort',
                         'git merge --quit', 'git merge --ff-only main', 'git merge --commit --no-commit main',
                         'git log --merges', 'cd "$HOME" && git merge-base HEAD main',
-                        'NOTE="?? (merge check failed)"; git status'):
+                        'NOTE="?? (merge check failed)"; git status', 'NOTE="x; git merge main"; git status',
+                        'cd "$HOME" && git merge --abort', 'sudo git merge --abort', 'git -C "$HOME" merge --quit'):
             hook(command, allowed=True)
         # cleanup's base update runs in a reviewed session and only fast-forwards.
         cleanup = caller_block((plugin / 'skills/cleanup/SKILL.md').read_text(),
@@ -735,12 +747,22 @@ for closed_targets in (False, True):
         targets = run(['bash', str(helper), 'commit-target', '--command', 'git merge --continue',
                        '--cwd', str(root)])
         check(targets.stdout.strip() == '', 'commit-target does not report git merge')
+        targets = run(['bash', str(helper), 'commit-target', '--command', 'sudo git merge --abort; echo commit',
+                       '--cwd', str(root)])
+        check(targets.stdout.strip() == '', 'commit-target ignores a wrapped merge')
         plain = hook(intake + ' main && git commit -m intake', reason='fix plan record missing')
         check('this concludes a merge' not in plain.stdout, 'no merge in progress, no intake hint: ' + plain.stdout)
         # A merge outside the reviewed worktree is not this review's business.
         with tempfile.TemporaryDirectory(prefix='rite-other-repo-') as other:
             run(['git', 'init', '-q'], cwd=other)
             hook('git merge main', allowed=True, cwd=Path(other))
+        # From another worktree of the same repository, a merge aimed back at the review is refused.
+        with tempfile.TemporaryDirectory(prefix='rite-linked-') as linked:
+            run(['git', 'worktree', 'add', '-q', '--detach', linked, 'HEAD'])
+            hook('git merge main', allowed=True, cwd=Path(linked))
+            hook('cd "$WT" && git merge main', reason='target is dynamic', cwd=Path(linked))
+            hook('git -C "$WT" merge main', reason='target is dynamic', cwd=Path(linked))
+            run(['git', 'worktree', 'remove', '--force', linked])
 
         def plan_for(groups, **constraints):
             plan = dict(review_context=context, issue_number=42, issue_body=body,
@@ -769,9 +791,13 @@ for closed_targets in (False, True):
         rejected(plan_for([group(['src/a.py'])]), 'base intake requires a merge in progress')
         run(['git', 'merge', '--no-commit', '--no-ff', 'side'], ok=False)
         run(['git', 'add', '-A'])
-        rejected(plan_for([group(['protected/secret.py'])]), 'is not origin/main or its ancestor')
+        rejected(plan_for([group(['protected/secret.py'])]), 'is not origin/trunk or its ancestor')
         run(['git', 'merge', '--abort'])
-        merge = run(['git', 'merge', '--no-commit', '--no-ff', 'origin/main'], ok=False)
+        run(['git', 'merge', '--no-commit', '--no-ff', 'desc'], ok=False)
+        run(['git', 'add', '-A'])
+        rejected(plan_for([group(['protected/secret.py'])]), 'is not origin/trunk or its ancestor')
+        run(['git', 'merge', '--abort'])
+        merge = run(['git', 'merge', '--no-commit', '--no-ff', 'origin/trunk'], ok=False)
         check(merge.returncode != 0 and (root / '.git/MERGE_HEAD').exists(), 'base intake stops on the conflict')
         (root / 'src/a.py').write_text('resolved\n')
         run(['git', 'add', '-A'])
@@ -797,11 +823,24 @@ for closed_targets in (False, True):
             # A file only the feature changed is Issue work and keeps the closed targets.
             rejected(plan_for([group(merged + ['src/feature.py'])], targets=['protected']),
                      'closed target violation: src/feature.py')
+        config = root / 'rite-config.yml'
+        saved_config = config.read_text()
+        config.unlink()
+        rejected(plan_for([group(merged)]), 'branch.base is not set')
+        config.write_text('branch:\n  prefix: x\n')
+        rejected(plan_for([group(merged)]), 'branch.base is not set in')
+        if os.getuid() != 0:
+            config.write_text(saved_config)
+            config.chmod(0)
+            rejected(plan_for([group(merged)]), 'cannot read rite-config.yml')
+            config.chmod(0o644)
+        config.write_text(saved_config)
         good = plan_for([group(merged)])
         run(['bash', str(helper), 'check', '--plan', str(good), '--issue', str(issue_file)])
         run(['bash', str(helper), 'verify', '--plan', str(good), '--issue', str(issue_file), '--kind', 'all'])
         hook('git commit --no-edit', allowed=True)
         hook('git merge --continue', allowed=True)
+        hook('git -C src commit --no-edit', allowed=True)
         run(['git', 'commit', '--no-edit'])
         check(run(['git', 'rev-parse', 'HEAD^1']).stdout.strip() == reviewed_head, 'intake is a merge onto the reviewed HEAD')
         before = json.loads(state_path.read_text())
