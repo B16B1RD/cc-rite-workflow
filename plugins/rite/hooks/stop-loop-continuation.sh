@@ -254,7 +254,8 @@ case "$HANDOFF" in
     _last_text=""
     _notice_status=unknown
     _text_note=""
-    # 最終テキストは Stop payload の last_assistant_message（Grok は lastAssistantMessage）から読む。
+    # 最終テキストは Stop payload の last_assistant_message から読む（lastAssistantMessage は Grok 形式の
+    # キー名。Grok の payload は session_id を持たず上流で素通りするため、現状この分岐には届かない）。
     # transcript は非同期に書かれて遅れうるため、欠落時も transcript へは戻らず差し戻す側へ倒す。
     if printf '%s' "$INPUT" | jq -e '(.last_assistant_message // .lastAssistantMessage) | type == "string"' >/dev/null 2>&1; then
       _last_text=$(printf '%s' "$INPUT" | jq -r '.last_assistant_message // .lastAssistantMessage')
@@ -273,6 +274,8 @@ case "$HANDOFF" in
         _nb_status=unknown
         if [ "$_notice_status" = unknown ]; then
           _nb_status=unknown
+        elif [ "$_notice_status" = missing ]; then
+          _nb_status=no_notice
         elif grep -q '未処理 non-blocking' <<< "$_last_text"; then
           _nb_status=present
         else
@@ -281,6 +284,7 @@ case "$HANDOFF" in
         case "$_nb_status" in
           present) _nb_note="完了通知に「未処理 non-blocking:」欄を必ず含めてください（0 件でも省略しない）。" ;;
           missing) _nb_note="直前の完了通知に「未処理 non-blocking:」欄がありません。欄を含む完了通知を再出力してください（0 件でも省略しない）。" ;;
+          no_notice) _nb_note="直前の応答に完了通知が出力されていません。「未処理 non-blocking:」欄を含む完了通知を出力してください（0 件でも省略しない）。" ;;
           *)       _nb_note="残件欄の有無を判定できなかったため、確認を出す側へ倒します。「未処理 non-blocking:」欄を含む完了通知を再出力してください（0 件でも省略しない）。" ;;
         esac
         ;;
