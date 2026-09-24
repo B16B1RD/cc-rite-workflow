@@ -6,7 +6,7 @@
 # 出した直後に turn を終了してしまっても、構造的な層で差し戻すことを保証する。
 #   - 継続 sentinel ([review:fix-needed:N] / [fix:pushed] / [fix:pushed-wm-stale]) → 次ループへ自動継続
 #   - 終了 sentinel ([review:mergeable] / [fix:non-fatal-only] / [fix:replied-only] / [fix:cancelled-by-user]) → 完了通知を強制
-#     FINALIZE:* では transcript 最終 assistant に完了通知（`## /rite:iterate 完了` /
+#     FINALIZE:* では Stop payload の最終 assistant テキスト（last_assistant_message）に完了通知（`## /rite:iterate 完了` /
 #     `## /rite:iterate 中断`）があるか検査し、出力済みなら差し戻さない。検査不能は差し戻す側へ
 #     fail-safe。FINALIZE:review:mergeable / FINALIZE:fix:non-fatal-only では加えて「未処理 non-blocking」欄を検査し、
 #     欠落 / 判定不能は差し戻し reason に欄の再出力を要求する（1 回制限は consume に相乗り）
@@ -58,11 +58,10 @@ source "$SCRIPT_DIR/control-char-neutralize.sh"
 # cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
 
-# Parse session_id + cwd + transcript_path from the Stop payload (single jq invocation).
+# Parse session_id + cwd from the Stop payload (single jq invocation).
 # Unit separator (\x1f) avoids IFS collapsing an empty field and left-shifting cwd.
-# transcript_path が string 以外（array/object）なら空扱い = 残件欄検査不能 → fail-safe 差し戻し。
-_jq_out=$(printf '%s' "$INPUT" | jq -r '[(.session_id // ""), (.cwd // ""), ((.transcript_path | if type == "string" then . else "" end) // "")] | join("")' 2>/dev/null) || _jq_out=$'\x1f\x1f'
-IFS=$'\x1f' read -r SESSION_ID CWD TRANSCRIPT_PATH <<< "$_jq_out"
+_jq_out=$(printf '%s' "$INPUT" | jq -r '[(.session_id // ""), (.cwd // "")] | join("")' 2>/dev/null) || _jq_out=$'\x1f'
+IFS=$'\x1f' read -r SESSION_ID CWD <<< "$_jq_out"
 
 # session_id 不在 → loop state を解決できない → 停止許可 (fail-open)。
 # Claude Code の Stop payload は常に session_id を含むため、空は非 Claude Code クライアント等の例外。
@@ -254,30 +253,25 @@ case "$HANDOFF" in
     _nb_status=""
     _last_text=""
     _notice_status=unknown
-    if [ -n "${TRANSCRIPT_PATH:-}" ] && [ -f "$TRANSCRIPT_PATH" ] && [ -r "$TRANSCRIPT_PATH" ]; then
-      _last_text=$(tail -n 200 "$TRANSCRIPT_PATH" | jq -rs '
-        [ .[]
-          | select(.type == "assistant")
-          | .message.content
-          | if type == "string" then .
-            elif type == "array" then ([.[] | select(.type == "text") | .text] | join("\n"))
-            else empty end
-        ] | last // empty
-      ' 2>/dev/null) || _last_text=""
-      if [ -z "$_last_text" ]; then
-        _notice_status=unknown
-      elif grep -qE '## /rite:iterate (完了|中断)' <<< "$_last_text"; then
+    _text_note=""
+    # 最終テキストは Stop payload の last_assistant_message（Grok は lastAssistantMessage）から読む。
+    # transcript は非同期に書かれて遅れうるため、欠落時も transcript へは戻らず差し戻す側へ倒す。
+    if printf '%s' "$INPUT" | jq -e '(.last_assistant_message // .lastAssistantMessage) | type == "string"' >/dev/null 2>&1; then
+      _last_text=$(printf '%s' "$INPUT" | jq -r '.last_assistant_message // .lastAssistantMessage')
+      if grep -qE '## /rite:iterate (完了|中断)' <<< "$_last_text"; then
         _notice_status=present
       else
         _notice_status=missing
       fi
+    else
+      echo "WARNING: Stop payload に last_assistant_message（string）が無いため、完了通知を判定できません" >&2
+      _text_note="Stop hook の payload に最終テキスト（last_assistant_message）が無いため、完了通知を判定できませんでした。"
     fi
     case "$_result" in
       review:mergeable:*|fix:non-fatal-only:*)
         # 残件欄検査。判定不能は差し戻す側へ fail-safe。1 回制限は既存 consume に相乗り。
-        # transcript 抽出は上で済んでいるので、空 / grep だけ見る。
         _nb_status=unknown
-        if [ -z "$_last_text" ]; then
+        if [ "$_notice_status" = unknown ]; then
           _nb_status=unknown
         elif grep -q '未処理 non-blocking' <<< "$_last_text"; then
           _nb_status=present
@@ -319,7 +313,8 @@ case "$HANDOFF" in
         _purpose_extra="目的逸脱なら完了通知は出さず REVIEW_STOP=purpose_unaligned で停止してください。"
         ;;
     esac
-    _reason="rite の review↔fix ループ (/rite:iterate) が終了 sentinel (${_result}) に到達しました。停止する前に /rite:iterate ${_purpose_mid}${_purpose_extra}${_nb_note:+
+    _reason="rite の review↔fix ループ (/rite:iterate) が終了 sentinel (${_result}) に到達しました。停止する前に /rite:iterate ${_purpose_mid}${_purpose_extra}${_text_note:+
+$_text_note}${_nb_note:+
 $_nb_note}
 
 handoff は consume 済みのため、完了通知を出力した後に再度停止すれば停止が許可されます (無限 block しません)。"
