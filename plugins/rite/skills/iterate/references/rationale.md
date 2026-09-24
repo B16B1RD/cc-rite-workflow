@@ -275,14 +275,17 @@ consume を `/rite:fix --nb-sweep` に閉じ、collect helper の issued/recorde
 
 再入の権威を会話 marker に置かないのは、`[fix:pushed]` でステップ 1 に戻ったあとに marker が
 見えなくなり 5.S が再走する実測があるため。会話 marker 既出を skip 条件に残すと、0.6 が
-ファイルを消した同一会話の再 iterate で再 sweep が死ぬ。`.rite/state/nb-sweep-done-{pr}.txt` の存在が
-skip（中身 1 行は完了通知の noop/done 出し分け）。書込直前に既存 `_ensure_dir_gitignore` を
+ファイルを消した同一会話の再 iterate で再 sweep が死ぬ。`.rite/state/nb-sweep-done-{pr}.txt` の
+1 行目は `noop` または `done` と、sweep した review JSON の basename。skip はその第 2 フィールドが
+最新 JSON（`LC_ALL=C` sort の末尾）と一致するときだけ。フィールド欠落は skip しない。review_run の
+再開は counter を残すため 0.6 がファイルを消さず、存在だけで skip すると後続 JSON の非実測指摘が
+残る。書込直前に既存 `_ensure_dir_gitignore` を
 呼ぶのは、setup の dir_entry が `.rite/state/` を含まない消費者が `git add -A` で skip 権威
 ファイルを stage する穴を、setup 再実行に依存せず塞ぐため。新 helper は増やさない。失敗は
 WARNING で続行し、偽 skip はしない。寿命は本 run — 0.6 の
-`fresh || cur_cc == 0`（pin 書換と同条件）で消し、cleanup でも回収する。cleanup まで残すと
-再 iterate の 5.S が skip され未消化 0 の再保証が死ぬ。write 失敗時は `rm -f`
-してファイル非存在として本体へ（偽 skip 禁止）。`--nb-sweep` 戻りはステップ 4 汎用表を使わず、
+`fresh || cur_cc == 0`（pin 書換と同条件）で消し、cleanup でも回収する。同一 run の新しい JSON は
+ファイルを消さなくても再 sweep する。basename が取れない書込は `rm -f` して範囲なしの行を残さない
+（偽 skip 禁止）。`--nb-sweep` 戻りはステップ 4 汎用表を使わず、
 `[fix:pushed]` / `[fix:pushed-wm-stale]` / `[fix:replied-only]` でもステップ 1 に戻らない。
 
 ## resume-routes-no-state-read

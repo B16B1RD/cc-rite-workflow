@@ -166,9 +166,11 @@ dirty な基点ブランチを黙って上書きしないため。破棄・stash
 
 ## nb-sweep-done-sweep
 
-`nb-sweep-done-{pr}.txt` は 5.S 再入の権威（会話 marker は観測用）。寿命は本 run — 0.6 の
-`fresh || cur_cc == 0` で消し、cleanup でも回収する。cleanup まで残すと再 iterate の
-5.S が skip され、未消化 0 の再保証が死ぬ。
+`nb-sweep-done-{pr}.txt` は 5.S 再入の権威（会話 marker は観測用）。1 行目の第 2 フィールドが
+最新 review JSON の basename と一致するときだけ skip し、欠落や新しい JSON は skip しない。
+寿命は本 run — 0.6 の `fresh || cur_cc == 0` で消し、cleanup でも回収する。cleanup まで残すと
+次の run の 0.6 が消す前に同じ JSON への再入が skip されうる。新しい JSON はファイルが残っていても
+再 sweep する。
 
 ## wiki-worktree-persist
 

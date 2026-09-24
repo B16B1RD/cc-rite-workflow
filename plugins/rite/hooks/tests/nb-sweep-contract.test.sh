@@ -306,7 +306,7 @@ assert_grep "T-07 iterate sweep-done no re-review" "$ITERATE" '\[fix:sweep-done\
 assert_grep "T-07 iterate nb-sweep-error" "$ITERATE" '\[iterate:nb-sweep-error\]'
 assert_grep "T-07 iterate --nb-sweep invoke" "$ITERATE" 'args: "--nb-sweep \{pr_number\}"'
 assert_grep "T-07 iterate empty is noop" "$ITERATE" 'marker_emit ITERATE_NB_SWEEP noop'
-assert_grep "T-07 iterate no second sweep" "$ITERATE" '同一 PR で 5\.S を 2 回'
+assert_grep "T-07 iterate no second sweep" "$ITERATE" '同一 review JSON で 5\.S を 2 回'
 assert_grep "T-07 iterate sweep-done ステップ1禁止" "$ITERATE" 'ステップ 1 に戻らない'
 assert_grep "T-07 fix --nb-sweep" "$FIX" '\-\-nb-sweep'
 assert_grep "T-07 fix sweep-done sentinel" "$FIX" '\[fix:sweep-done\]'

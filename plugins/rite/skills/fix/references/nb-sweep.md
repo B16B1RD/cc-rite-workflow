@@ -1,6 +1,6 @@
 ### 1.3.S `--nb-sweep` consume（5.S 専用）
 
-`[CONTEXT] NB_SWEEP=1` のときだけ評価する。通常ループでは本節を skip。fix/SKILL.md のステップ 2–4 は評価せず、本節の後に fix/SKILL.md の 5.1 へ進む。
+`[CONTEXT] NB_SWEEP=1` のときだけ評価する。通常ループでは本節を skip。既存の `nb-sweep-done-{pr_number}.txt` があっても consume を skip しない。成功した書込は 1 行目を上書きする。既存の 2 行目が SHA なら残し、新しい SHA は足さない。入口でファイルの有無を見て return しない。fix/SKILL.md のステップ 2–4 は評価せず、本節の後に fix/SKILL.md の 5.1 へ進む。
 rationale: ../../iterate/references/rationale.md#nb-sweep-step
 
 1. **collect**（iterate 5.S と同 helper。冪等）:
@@ -29,7 +29,22 @@ case "$collect_rc:$sweep_status" in
       echo "WARNING: $sweep_root/.rite/state/.gitignore を作成できませんでした。nb-sweep-done が git の追跡対象になる恐れがあります" >&2
       [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
     fi
-    if ! printf 'noop\n' > "$sweep_root/.rite/state/nb-sweep-done-{pr_number}.txt"; then
+    nb_record=$(printf '%s' "$collect_out" | jq -r '.record // empty')
+    nb_record_base=""
+    [ -n "$nb_record" ] && nb_record_base=$(basename "$nb_record")
+    nb_done_file="$sweep_root/.rite/state/nb-sweep-done-{pr_number}.txt"
+    nb_keep=""
+    if [ -f "$nb_done_file" ]; then
+      nb_keep=$(sed -n '2p' "$nb_done_file" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+      case "$nb_keep" in ''|*[!0-9a-f]*) nb_keep="" ;; esac
+      [ "${#nb_keep}" -ge 7 ] || nb_keep=""
+    fi
+    if [ -n "$nb_keep" ]; then
+      nb_write_ok=$(printf 'noop %s\n%s\n' "$nb_record_base" "$nb_keep" > "$nb_done_file" && echo ok || true)
+    else
+      nb_write_ok=$(printf 'noop %s\n' "$nb_record_base" > "$nb_done_file" && echo ok || true)
+    fi
+    if [ -z "$nb_record_base" ] || [ "$nb_write_ok" != ok ]; then
       echo "WARNING: nb-sweep-done marker を書けませんでした" >&2
       rm -f "$sweep_root/.rite/state/nb-sweep-done-{pr_number}.txt"
     fi
@@ -200,7 +215,7 @@ fi
 [CONTEXT] NB_SWEEP_RESULT=done; issued=K; recorded=M
 ```
 
-全件の台帳 persist 成功後に 1 行 `done` を書く。sweep は HEAD を変更しないため SHA を追記しない。
+全件の台帳 persist 成功後に 1 行目を `done <basename>` にする。basename は collect が `--pr` で選ぶのと同じ最新 JSON（`LC_ALL=C` sort の末尾。collect 出力 `.record` の basename と同一）。この bash は別シェルなので `.record` を再計算する。既存の 2 行目が SHA なら残し、新しい SHA は足さない。既存ファイルでも 1 行目は上書きする（ファイルが無いときだけ書く形にはしない）。
 
 ```bash
 sweep_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || sweep_root=""
@@ -212,7 +227,21 @@ if [ -n "$sweep_root" ]; then
     [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
   fi
   sweep_done_file="$sweep_root/.rite/state/nb-sweep-done-{pr_number}.txt"
-  if ! printf 'done\n' > "$sweep_done_file"; then
+  nb_record=$(find "$sweep_root/.rite/review-results" -maxdepth 1 -type f -name "{pr_number}-*.json" 2>/dev/null | LC_ALL=C sort | tail -1)
+  nb_record_base=""
+  [ -n "$nb_record" ] && nb_record_base=$(basename "$nb_record")
+  nb_keep=""
+  if [ -f "$sweep_done_file" ]; then
+    nb_keep=$(sed -n '2p' "$sweep_done_file" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+    case "$nb_keep" in ''|*[!0-9a-f]*) nb_keep="" ;; esac
+    [ "${#nb_keep}" -ge 7 ] || nb_keep=""
+  fi
+  if [ -n "$nb_keep" ]; then
+    nb_write_ok=$(printf 'done %s\n%s\n' "$nb_record_base" "$nb_keep" > "$sweep_done_file" && echo ok || true)
+  else
+    nb_write_ok=$(printf 'done %s\n' "$nb_record_base" > "$sweep_done_file" && echo ok || true)
+  fi
+  if [ -z "$nb_record_base" ] || [ "$nb_write_ok" != ok ]; then
     echo "WARNING: nb-sweep-done marker を書けませんでした" >&2
     rm -f "$sweep_done_file"
   fi
