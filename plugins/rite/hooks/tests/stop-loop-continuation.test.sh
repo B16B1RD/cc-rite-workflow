@@ -122,7 +122,7 @@ echo "=== TC-7: FINALIZE handoff → decision:block re-injects the completion-no
 d7=$(new_sandbox)
 RITE_STATE_ROOT="$d7" bash "$FS" set --phase review --issue 1176 --branch b --pr 99 \
   --next n --handoff "FINALIZE:review:mergeable:99" --session "$SID" >/dev/null
-out=$(stop_payload "$d7" | bash "$HOOK")
+out=$(stop_payload "$d7" | bash "$HOOK" 2>/dev/null)
 assert "TC-7: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
 _reason7=$(printf '%s' "$out" | jq -r '.reason // ""')
 if grep -q "完了通知" <<< "$_reason7"; then
@@ -163,7 +163,7 @@ for _ho in "FINALIZE:fix:replied-only:99" "FINALIZE:fix:cancelled-by-user:99" "F
   d9=$(new_sandbox)
   RITE_STATE_ROOT="$d9" bash "$FS" set --phase fix --issue 1176 --branch b --pr 99 \
     --next n --handoff "$_ho" --session "$SID" >/dev/null
-  out=$(stop_payload "$d9" | bash "$HOOK")
+  out=$(stop_payload "$d9" | bash "$HOOK" 2>/dev/null)
   assert "TC-9: ${_ho} → decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
   _reason9=$(printf '%s' "$out" | jq -r '.reason // ""')
   if grep -q "完了通知" <<< "$_reason9"; then
@@ -198,7 +198,7 @@ echo "=== TC-10: FINALIZE: (empty result part) still blocks with the completion-
 d10=$(new_sandbox)
 RITE_STATE_ROOT="$d10" bash "$FS" set --phase review --issue 1176 --branch b --pr 99 \
   --next n --handoff "FINALIZE:" --session "$SID" >/dev/null
-out=$(stop_payload "$d10" | bash "$HOOK")
+out=$(stop_payload "$d10" | bash "$HOOK" 2>/dev/null)
 assert "TC-10: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
 if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "完了通知"; then
   pass "TC-10: empty-result FINALIZE still requests the completion notice"
@@ -476,9 +476,7 @@ assert "TC-17: second stop allows (one-shot consume preserved through placeholde
 
 # Emit a Stop payload that carries the final assistant text (last_assistant_message).
 final_payload() {
-  local cwd="$1" text="$2" active="${3:-false}"
-  jq -nc --arg c "$cwd" --arg s "$SID" --arg t "$text" --argjson a "$active" \
-    '{session_id:$s, cwd:$c, hook_event_name:"Stop", stop_hook_active:$a, last_assistant_message:$t}'
+  stop_payload "$1" "$SID" "${3:-false}" | jq -c --arg t "$2" '. + {last_assistant_message:$t}'
 }
 
 # --- TC-18: FINALIZE:review:mergeable + 最終テキストに残件欄なし → 差し戻し (AC-3 / T-03) ---
@@ -537,7 +535,12 @@ d19=$(new_sandbox)
 RITE_STATE_ROOT="$d19" bash "$FS" set --phase review --issue 2346 --branch b --pr 99 \
   --next n --handoff "FINALIZE:review:mergeable:99" --session "$SID" >/dev/null
 err19=$(mktemp)
-out=$(stop_payload "$d19" | bash "$HOOK" 2>"$err19")
+# transcript に完了通知と残件欄を置く。キー欠落時に transcript へ戻ると停止が許可されるため、
+# 戻らないことを固定できる。
+tp19=$(mktemp)
+jq -nc '{type:"assistant",message:{content:"## /rite:iterate 完了\n- 未処理 non-blocking: 0 件"}}' > "$tp19"
+out=$(stop_payload "$d19" | jq -c --arg tp "$tp19" '. + {transcript_path:$tp}' | bash "$HOOK" 2>"$err19")
+rm -f "$tp19"
 assert "TC-19: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
 _reason19=$(printf '%s' "$out" | jq -r '.reason // ""')
 if grep -q "payload に最終テキスト" <<< "$_reason19"; then
@@ -702,9 +705,23 @@ out=$(jq -nc --arg c "$d28b" --arg s "$SID" --arg t "$text21" \
   '{session_id:$s, cwd:$c, hook_event_name:"Stop", stop_hook_active:false, lastAssistantMessage:$t}' | bash "$HOOK")
 assert "TC-28b: camelCase notice allows stop" "" "$out"
 
-# --- TC-29: heading at start of 128KiB last text → allow (pipefail SIGPIPE pin) ---
+# --- TC-28c: 完了通知そのものが無い最終テキスト（空文字列を含む）は「通知が無い」と伝える ---
 echo ""
-echo "=== TC-29: heading at start of large last text allows stop (no SIGPIPE false missing) ==="
+echo "=== TC-28c: mergeable without any notice asks for the notice, not for a missing field ==="
+for text28c in "" $'作業を続けます\n'; do
+  d28c=$(new_sandbox)
+  RITE_STATE_ROOT="$d28c" bash "$FS" set --phase review --issue 2349 --branch b --pr 99 \
+    --next n --handoff "FINALIZE:review:mergeable:99" --session "$SID" >/dev/null
+  out=$(final_payload "$d28c" "$text28c" | bash "$HOOK")
+  reason28c=$(printf '%s' "$out" | jq -r '.reason // ""')
+  assert "TC-28c ($(printf '%q' "$text28c")): decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+  assert "TC-28c ($(printf '%q' "$text28c")): reason says the notice is absent" yes "$([[ "$reason28c" == *'完了通知が出力されていません'* ]] && echo yes || echo no)"
+  assert "TC-28c ($(printf '%q' "$text28c")): reason does not claim a notice lacks the field" no "$([[ "$reason28c" == *'欄がありません'* ]] && echo yes || echo no)"
+done
+
+# --- TC-29: heading at start of a 128KiB last text → allow (large payload is read whole) ---
+echo ""
+echo "=== TC-29: heading at start of large last text allows stop (large payload read whole) ==="
 d29=$(new_sandbox)
 RITE_STATE_ROOT="$d29" bash "$FS" set --phase fix --issue 2349 --branch b --pr 99 \
   --next n --handoff "FINALIZE:fix:replied-only:99" --session "$SID" >/dev/null
