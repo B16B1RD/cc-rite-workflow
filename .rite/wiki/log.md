@@ -7,6 +7,7 @@
 * **Create**: [照合を外すときは、代わりに守る照合を 1 つずつテストで固定する](pages/heuristics/relaxed-check-names-and-pins-remaining-defenses.md) — raw/reviews/20260924T040209Z-pr-3019.md を新規ページ化
 * **lint:clean** — contradictions=0 (新規ページと関連ページのみ評価。既存ページの全組合せ再評価は未実施), stale=67, orphans=0, missing_concept=0, unregistered_raw=534, broken_refs=0
 * **Create**: [再入ガードは「実行したか」ではなく「何を対象に実行したか」を記録する](pages/heuristics/reentry-guard-records-processed-range.md) — raw/reviews/20260924T044346Z-pr-3017.md を新規ページ化
+* **lint:clean** — contradictions=0 (新規ページと関連ページのみ評価。既存ページの全組合せ再評価は未実施), stale=67, orphans=0, missing_concept=0, unregistered_raw=534, broken_refs=0
 
 ## 2026-09-22
 
