@@ -243,7 +243,7 @@ echo "TC-014: --all excludes tests/"
   echo '```'
 } > "$F"
 rc=0; output=$(bash "$TARGET" --all --repo-root "$TEST_DIR" 2>&1) || rc=$?
-if [ "$rc" -eq 0 ] && ! echo "$output" | grep -q "bad-fixture.md"; then
+if [ "$rc" -eq 0 ] && ! grep -q "bad-fixture.md" <<< "$output"; then
   pass "tests/ fixtures excluded from --all → exit 0"
 else fail "expected rc=0 with no tests/ finding, got rc=$rc: $output"; fi
 

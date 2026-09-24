@@ -912,7 +912,7 @@ else
   fail "TC-116 expected deny with gh-pr-diff-stat via fallback, got decision=$decision reason=$reason"
 fi
 # raw C0 バイト (ESC 等) の非漏出 — neutralize_ctrl --c0-only の挙動 pin
-if printf '%s' "$output" | LC_ALL=C grep -q $'\x1b'; then
+if LC_ALL=C grep -q $'\x1b' <<< "$output"; then
   fail "TC-116 fallback JSON leaked a raw ESC byte: $(printf '%s' "$output" | cat -v)"
 else
   pass "TC-116 fallback JSON contains no raw ESC byte"

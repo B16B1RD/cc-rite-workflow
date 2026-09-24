@@ -378,7 +378,7 @@ if [ -n "$out16" ]; then
 else
   fail "TC-16: no output — fallback path not reached: $(cat -v "$err16")"
 fi
-if printf '%s' "$out16" | LC_ALL=C grep -q $'\x1b'; then
+if LC_ALL=C grep -q $'\x1b' <<< "$out16"; then
   fail "TC-16: fallback JSON leaked a raw ESC byte: $(printf '%s' "$out16" | cat -v)"
 else
   pass "TC-16: fallback JSON contains no raw C0 bytes"

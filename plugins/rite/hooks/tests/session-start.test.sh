@@ -392,7 +392,7 @@ if [ $rc -eq 0 ]; then
   if [ -s "$LAST_STDERR_FILE" ]; then
     stderr_content=$(cat "$LAST_STDERR_FILE")
     # Only jq parse errors are unexpected; rite: warnings are expected (defense-in-depth)
-    if echo "$stderr_content" | grep -qv "^rite:"; then
+    if grep -qv "^rite:" <<< "$stderr_content"; then
       fail "Unexpected stderr output: $stderr_content"
     else
       pass "Invalid JSON → exit 0 (line 111 ACTIVE fallback, no jq error on stderr)"
@@ -543,8 +543,8 @@ create_state_file "$dir016" '{"active": true, "issue_number": 59, "phase": "revi
 echo '{"compact_state": "recovering", "active_issue": 59}' > "$dir016/.rite-compact-state"
 
 output=$(run_hook_with_source "$dir016" "startup")
-if echo "$output" | grep -q "前回のセッション状態が残っていたためリセットしました" && \
-   ! echo "$output" | grep -q "STOP. DO NOT CONTINUE"; then
+if grep -q "前回のセッション状態が残っていたためリセットしました" <<< "$output" && \
+   ! grep -q "STOP. DO NOT CONTINUE" <<< "$output"; then
   pass "source=startup + blocked → defensive reset message (not STOP, not CRITICAL)"
 else
   fail "Expected defensive reset message (not STOP), got: $output"
@@ -1685,9 +1685,9 @@ create_state_file "$dir_t09b" '{
 }'
 write_batch_queue "$dir_t09b"
 output=$(run_hook_with_source "$dir_t09b" "compact")
-if echo "$output" | grep -q "/rite:batch-run" \
-  && ! echo "$output" | grep -q "再開するには /rite:recover" \
-  && ! echo "$output" | grep -q "失敗停止した rite workflow"; then
+if grep -q "/rite:batch-run" <<< "$output" \
+  && ! grep -q "再開するには /rite:recover" <<< "$output" \
+  && ! grep -q "失敗停止した rite workflow" <<< "$output"; then
   pass "T-09b: failure-stop compact notice replaced by batch continuation"
 else
   fail "T-09b: unexpected output: $output"

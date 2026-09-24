@@ -455,12 +455,12 @@ nl_rc=0
 ( cd "$nl_repo" && bash "$SCRIPT" --commit-only --message-file "$nl_msg" >/dev/null ) || nl_rc=$?
 assert "--message-file with newline commits (exit 0)" "0" "$nl_rc"
 nl_body=$(git -C "$nl_repo/.rite/wiki-worktree" log -1 --format=%B)
-if printf '%s' "$nl_body" | grep -q '`date`'; then
+if grep -q '`date`' <<< "$nl_body"; then
   pass "--message-file keeps backtick text in the wiki commit"
 else
   fail "--message-file lost backtick text: $nl_body"
 fi
-if printf '%s' "$nl_body" | grep -q 'second line'; then
+if grep -q 'second line' <<< "$nl_body"; then
   pass "--message-file keeps a second body line"
 else
   fail "--message-file lost second line: $nl_body"
@@ -475,7 +475,7 @@ printf 'Commit messages must be English one-liners.\n' > "$conv_repo/CLAUDE.md"
 conv_rc=0
 conv_err=$(cd "$conv_repo" && bash "$SCRIPT" --commit-only 2>&1) || conv_rc=$?
 assert "CLAUDE.md present without --message-file exits 1" "1" "$conv_rc"
-if printf '%s' "$conv_err" | grep -q -- '--message-file'; then
+if grep -q -- '--message-file' <<< "$conv_err"; then
   pass "missing --message-file names the required flag"
 else
   fail "convention-present diagnostic: $conv_err"
@@ -485,7 +485,7 @@ assert "convention-present failure does not advance wiki" "$wiki_before_conv" "$
 empty_rc=0
 empty_err=$(cd "$conv_repo" && bash "$SCRIPT" --commit-only --message-file "" 2>&1) || empty_rc=$?
 assert "empty --message-file exits 1" "1" "$empty_rc"
-if printf '%s' "$empty_err" | grep -q 'requires a value'; then
+if grep -q 'requires a value' <<< "$empty_err"; then
   pass "empty --message-file names the required value"
 else
   fail "empty --message-file diagnostic: $empty_err"

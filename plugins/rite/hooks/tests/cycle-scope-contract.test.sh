@@ -127,13 +127,13 @@ assert_grep "purpose unmet fenced set has no --handoff" "$ITERATE" \
   'purpose_unaligned: 完了前確認で目的逸脱'
 purpose_set=$(awk '/^# purpose-unaligned:/{s=1} s{print} s && /^```$/{exit}' "$ITERATE")
 purpose_body=$(printf '%s\n' "$purpose_set" | grep -v '^#')
-if printf '%s\n' "$purpose_body" | grep -q 'flow-state.sh set' \
-   && ! printf '%s\n' "$purpose_body" | grep -q -- '--handoff'; then
+if grep -q 'flow-state.sh set' <<< "$purpose_body" \
+   && ! grep -q -- '--handoff' <<< "$purpose_body"; then
   pass "purpose unmet fenced set body has no --handoff"
 else
   fail "purpose unmet fenced set body still has --handoff or missing set"
 fi
-if printf '%s\n' "$purpose_set" | grep -q 'WARNING: 目的逸脱停止時の handoff クリアに失敗'; then
+if grep -q 'WARNING: 目的逸脱停止時の handoff クリアに失敗' <<< "$purpose_set"; then
   pass "purpose unmet WARNING else remains"
 else
   fail "purpose unmet WARNING else missing"

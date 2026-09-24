@@ -5,9 +5,10 @@
 # Precision rules:
 # - shell quotes/comments are lexed before splitting raw `|` operators;
 # - the immediate stage before grep is reported (not the pipeline head);
-# - direct literal echo / printf '%s' -> grep and `{ ...; } -> grep` are exempt
-#   proxies for bounded fixture/control output; an echo of an expansion is not
-#   exempt (use a here-string). Command name is only a proxy: an unbounded
+# - direct echo whose arguments contain no `$` or backquote, printf '%s', and
+#   `{ ...; } -> grep` are exempt proxies for bounded fixture/control output;
+#   an echo with `$` or a backquote is not exempt (use a here-string). The test
+#   is textual, so a literal `'$'` is also reported. Command name is only a proxy: an unbounded
 #   printf can still SIGPIPE, so adding such a site requires removing the proxy
 #   or inserting a real streaming stage; `drift-check-ignore` is the explicit
 #   audited escape hatch;
@@ -301,7 +302,7 @@ def exempt(prod, pipeline_len):
     cmd=os.path.basename(ws[0])
     # Only a literal echo stays exempt. `echo "$output" | grep -q` has been
     # observed to die of SIGPIPE on CI even when the output was a few lines.
-    if cmd == "echo" and not any("$" in w for w in ws[1:]): return True
+    if cmd == "echo" and "$" not in p and "`" not in p: return True
     # `%s` (without newline/repetition) is retained as a bounded-output proxy
     # for small status probes. `%s\n` repository lists are deliberately not.
     if "printf" in ws:

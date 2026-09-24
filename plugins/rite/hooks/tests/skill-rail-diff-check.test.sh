@@ -304,7 +304,7 @@ if [ -n "$REPO_ROOT_REAL" ] && git -C "$PLUGIN_ROOT" rev-parse --verify -q origi
   output=$(bash "$TARGET" --repo-root "$REPO_ROOT_REAL" --skill "plugins/rite/skills/open/SKILL.md" 2>&1) || rc=$?
   case "$rc" in
     0)
-      if echo "$output" | grep -q "machine rail identical"; then
+      if grep -q "machine rail identical" <<< "$output"; then
         pass "open/SKILL.md rail identical to origin/develop"
       else
         fail "rc=0 but no 'machine rail identical' — comparison did not run: $output"

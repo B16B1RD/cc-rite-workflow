@@ -17,8 +17,7 @@ scan_root=${scan_root%/}
 # environment-bound examples. Keep this allowlist narrow and line-oriented.
 is_allowed() {
   local file=$1 line=$2
-  if printf '%s\n' "$line" \
-    | grep -Eq 'https://github\.com/B16B1RD/cc-rite-workflow($|[/#?[:space:])])'; then
+  if grep -Eq 'https://github\.com/B16B1RD/cc-rite-workflow($|[/#?[:space:])])' <<< "$line"; then
     return 0
   fi
   [[ "$file" == "$PLUGIN_ROOT/.claude-plugin/plugin.json" ]] \

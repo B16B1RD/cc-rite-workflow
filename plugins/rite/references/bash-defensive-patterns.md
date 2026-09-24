@@ -251,8 +251,9 @@ ISSUE_NUMBER=$(grep -oE '[0-9]+$' <<< "$ISSUE_URL" || true)
 |---------|------|
 | `echo "$var" \| grep -c` | `grep -c` は全入力を消費（早期終了しない） |
 | `echo "$var" \| sort -u \| grep -v` | `sort` が全入力をバッファリング |
-| `echo "$small_var" \| grep` (`$small_var` < 64KB 確定) | pipe buffer 内で echo が完了 |
-| テストコード内の `echo "$output" \| grep -q` | テスト出力は通常小さい |
+| `echo "$var" \| grep`（`-q` / `-m` なし） | `grep` は全入力を消費（早期終了しない） |
+
+`grep -q` / `grep -m` と組み合わせる場合は、出力の大きさやテストコードかどうかによらず here-string に変換する。
 
 ### Buffered Writer + Early-Exit `awk`
 

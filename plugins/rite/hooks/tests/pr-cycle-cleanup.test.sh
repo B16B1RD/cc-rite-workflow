@@ -373,7 +373,7 @@ cleanup_temp_repo "$TEST_REPO"
 echo "T-05: idempotent (no-op when nothing matches)"
 TEST_REPO=$(make_temp_repo)
 output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
-if echo "$output" | grep -q 'status=noop'; then
+if grep -q 'status=noop' <<< "$output"; then
   pass "T-05: noop status returned on clean repo"
 else
   fail "T-05: expected status=noop, got: $output"

@@ -217,7 +217,7 @@ mkdir -p "$git_repo_003"
 (cd "$git_repo_003" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q && git checkout -b "feat/issue-456-cleanup" -q)
 
 output=$(run_hook "$git_repo_003")
-if echo "$output" | grep -q "Saving final state for $(issue_text 456)"; then
+if grep -q "Saving final state for $(issue_text 456)" <<< "$output"; then
   pass "Branch detection found the expected issue in output"
 else
   fail "Expected '$(issue_text 456)' in output, got: $output"
@@ -237,7 +237,7 @@ mkdir -p "$git_repo_004"
 (cd "$git_repo_004" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q && git checkout -B "main" -q)
 
 output=$(run_hook "$git_repo_004")
-if ! echo "$output" | grep -q "Saving final state for Issue"; then
+if ! grep -q "Saving final state for Issue" <<< "$output"; then
   pass "No issue branch → no issue-specific message"
 else
   fail "Expected no issue message, got: $output"
