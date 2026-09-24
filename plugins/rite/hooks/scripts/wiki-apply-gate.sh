@@ -11,8 +11,10 @@
 #
 # Exit 0: WIKI_APPLY_GATE=allow or =skip, plus reason=
 # Exit 1: WIKI_APPLY_GATE=deny plus reason=<name>
-# Exit 1 without a WIKI_APPLY_GATE= line: argument error or internal failure
-#   (for example a record that is not valid UTF-8), reason on stderr
+# Non-zero without a WIKI_APPLY_GATE= line: argument error (exit 1, reason on
+#   stderr) or internal failure, whose exit code and stderr come from the
+#   failing command (for example a record that is not valid UTF-8, or python3
+#   missing). Callers treat any non-zero exit as a denial.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
