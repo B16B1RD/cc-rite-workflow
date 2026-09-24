@@ -30,9 +30,11 @@
 # Contract:
 #   - No side effects at source time (function definitions only).
 #   - Does NOT set `set -euo pipefail` — the caller owns that.
-#   - Assumes the working directory is the repo root and rite-config.yml
-#     exists. Callers that need to tolerate a missing config file should
-#     guard with `[[ -f rite-config.yml ]]` before calling parse_wiki_scalar.
+#   - Reads the rite-config.yml that lib/rite-config-path.sh resolves from the
+#     working directory (the worktree's own, else the main checkout's). A
+#     missing file prints a WARNING naming the tried paths and yields empty
+#     values (callers apply their defaults); an unreadable file prints an ERROR
+#     and returns 1.
 
 # -----------------------------------------------------------------------
 # parse_wiki_scalar KEY
@@ -51,8 +53,16 @@
 # -----------------------------------------------------------------------
 parse_wiki_scalar() {
   local key="$1"
-  local section line val
-  section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null || true)
+  local section line val cfg cfg_rc=0
+  cfg=$(bash "$(dirname "${BASH_SOURCE[0]}")/rite-config-path.sh" 2>&1) || cfg_rc=$?
+  if [[ "$cfg_rc" -eq 1 ]]; then
+    printf 'WARNING: %s。wiki.%s は既定値で続行します\n' "$cfg" "$key" >&2
+    return 0
+  elif [[ "$cfg_rc" -ne 0 ]]; then
+    printf 'ERROR: %s\n' "$cfg" >&2
+    return 1
+  fi
+  section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$cfg" 2>/dev/null || true)
   [[ -z "$section" ]] && return 0
   line=$(printf '%s\n' "$section" | awk -v k="$key" '
     BEGIN { pat = "^[[:space:]]+" k ":" }

@@ -115,8 +115,9 @@ commands:
 ```
 
 ```bash
-# rite-config.yml を読み取り
-cat rite-config.yml
+# rite-config.yml を読み取り（worktree 自身のもの、無ければ main checkout のもの）
+rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
+cat "$rite_config"
 ```
 
 `commands.lint` が非空なら必ずそれを使う。未設定 / `null` / 空文字のときだけ 1.2 へ進む。設定済みコマンドの実行失敗は `[lint:error]` とし、自動検出や未検出スキップへ切り替えない。

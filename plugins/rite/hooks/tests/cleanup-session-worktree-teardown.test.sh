@@ -73,6 +73,23 @@ assert_contains "detect: worktree 内は in_worktree_unrecorded に分類する"
   "[CONTEXT] CLEANUP_WT=in_worktree_unrecorded; worktree=$wt; main_root=$main_root"
 assert_contains "detect: 退出不能な入場は委譲 marker を出す" "$out" \
   "[CONTEXT] CLEANUP_DELEGATED=1; reason=exit_worktree_unavailable"
+# --config 省略時: worktree に config が無くても main checkout の config で multi_session を判定する
+rm -f "$wt/rite-config.yml"
+out=$(cd "$wt" && bash "$HELPER" detect --issue 1 2>/dev/null)
+assert_contains "detect: --config 省略時は main checkout の config を読む" "$out" \
+  "[CONTEXT] CLEANUP_WT=in_worktree_unrecorded; worktree=$wt; main_root=$main_root"
+# --config 省略時に config を読めなければ marker なしで抜けず、分類不能の unknown を出す
+# （marker 不在は消費側が削除成功と読む）。root は権限を無視して読めるため検証できない。
+if [ "$(id -u)" != 0 ]; then
+  chmod 000 "$r/rite-config.yml"
+  out=$(cd "$wt" && bash "$HELPER" detect --issue 1 2>/dev/null); rc=$?
+  chmod 644 "$r/rite-config.yml"
+  assert_eq "detect: config を読めなくても exit 0（非ブロッキング）" "$rc" "0"
+  assert_contains "detect: config を読めないときは unknown を出す" "$out" \
+    "[CONTEXT] CLEANUP_WT=unknown; reason=config_unreadable"
+else
+  echo "  SKIP: root では読み取り権限を外せないため config_unreadable を検証しない"
+fi
 
 # AC-2: 対象外の cwd（main checkout）で、当該 Issue の worktree も登録されていなければ
 # worktree を触らず none を返して exit 0（issue-1 は登録済みなので未登録の issue-2 で呼ぶ）。

@@ -53,7 +53,9 @@ Wiki データは開発ブランチとは別に管理し、PR diff との分離�
 > **Runtime 実装**: 初期化時のブランチ作成は `hooks/scripts/wiki-branch-init.sh` が単一プロセスで実行する (`/rite:wiki-init` ステップ 3.1 から委譲呼び出し)。下記は操作パターンの参照実装であり、動作を変更する際は helper 側を SoT として同期すること。
 
 ```bash
-wiki_branch=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+# config は worktree 自身のもの、無ければ main checkout のものを読む
+rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
+wiki_branch=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$rite_config" 2>/dev/null \
   | grep -E '^[[:space:]]+branch_name:' | head -1 | sed 's/[[:space:]]#.*//' \
   | sed 's/.*branch_name:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 wiki_branch="${wiki_branch:-wiki}"
@@ -107,7 +109,9 @@ trap - EXIT INT TERM HUP
 #### Wiki ブランチへの書き込み（Ingest 時）
 
 ```bash
-wiki_branch=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+# config は worktree 自身のもの、無ければ main checkout のものを読む
+rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
+wiki_branch=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$rite_config" 2>/dev/null \
   | grep -E '^[[:space:]]+branch_name:' | head -1 | sed 's/[[:space:]]#.*//' \
   | sed 's/.*branch_name:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 wiki_branch="${wiki_branch:-wiki}"
@@ -162,7 +166,9 @@ trap - EXIT INT TERM HUP
 #### Wiki ブランチからの読み込み（Query 時）
 
 ```bash
-wiki_branch=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+# config は worktree 自身のもの、無ければ main checkout のものを読む
+rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
+wiki_branch=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$rite_config" 2>/dev/null \
   | grep -E '^[[:space:]]+branch_name:' | head -1 | sed 's/[[:space:]]#.*//' \
   | sed 's/.*branch_name:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 wiki_branch="${wiki_branch:-wiki}"
@@ -310,7 +316,9 @@ Wiki 操作の前に必ず有効判定を行います。**Wiki は opt-out**: `w
 
 ```bash
 # Wiki は opt-out — section/key 未指定時のデフォルトは true
-wiki_enabled=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+# config は worktree 自身のもの、無ければ main checkout のものを読む
+rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
+wiki_enabled=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$rite_config" 2>/dev/null \
   | grep -E '^[[:space:]]+enabled:' | head -1 | sed 's/[[:space:]]#.*//' \
   | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]')
 wiki_enabled=$(echo "$wiki_enabled" | tr '[:upper:]' '[:lower:]')
@@ -356,11 +364,13 @@ fi
 Wiki が既に初期化済みかを判定します:
 
 ```bash
-wiki_branch=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+# config は worktree 自身のもの、無ければ main checkout のものを読む
+rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
+wiki_branch=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$rite_config" 2>/dev/null \
   | grep -E '^[[:space:]]+branch_name:' | head -1 | sed 's/[[:space:]]#.*//' \
   | sed 's/.*branch_name:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 wiki_branch="${wiki_branch:-wiki}"
-branch_strategy=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+branch_strategy=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$rite_config" 2>/dev/null \
   | grep -E '^[[:space:]]+branch_strategy:' | head -1 | sed 's/[[:space:]]#.*//' \
   | sed 's/.*branch_strategy:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 branch_strategy="${branch_strategy:-separate_branch}"

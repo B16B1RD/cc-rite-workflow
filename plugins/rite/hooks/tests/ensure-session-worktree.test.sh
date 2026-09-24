@@ -120,6 +120,11 @@ echo "=== TC-5: cwd inside worktree → already_in ==="
 setup_repo; M="$REPO_MAIN"
 ens_case "$M" --issue 42 >/dev/null   # create+register it first
 assert "TC-5 already_in token" "already_in" "$(ens_case "$M/.rite/worktrees/issue-42" --issue 42)"
+# An untracked config exists only in the main checkout: the worktree must still read
+# multi_session from main instead of degrading to disabled.
+rm -f "$M/.rite/worktrees/issue-42/rite-config.yml"
+assert "TC-5b worktree without its own config reads main's multi_session" "already_in" \
+  "$(ens_case "$M/.rite/worktrees/issue-42" --issue 42)"
 
 # --- TC-6: reenter (registered, cwd elsewhere) + path= field is load-bearing ---
 echo "=== TC-6: registered, cwd=main → reenter, path= points at the worktree ==="

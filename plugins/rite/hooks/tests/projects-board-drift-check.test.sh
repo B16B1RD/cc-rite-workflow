@@ -909,7 +909,8 @@ YAML
 mkdir -p "$T12_DIR/role-plugin/scripts" "$T12_DIR/role-plugin/hooks/scripts/lib"
 cp "$DRIFT_SH" "$T12_DIR/role-plugin/hooks/scripts/projects-board-drift-check.sh"
 cp "$REPO_ROOT/plugins/rite/hooks/control-char-neutralize.sh" "$T12_DIR/role-plugin/hooks/"
-cp "$REPO_ROOT/plugins/rite/hooks/scripts/lib/git-remote.sh" "$REPO_ROOT/plugins/rite/hooks/scripts/lib/projects-status-config.sh" "$T12_DIR/role-plugin/hooks/scripts/lib/"
+cp "$REPO_ROOT/plugins/rite/hooks/scripts/lib/git-remote.sh" "$REPO_ROOT/plugins/rite/hooks/scripts/lib/projects-status-config.sh" "$REPO_ROOT/plugins/rite/hooks/scripts/lib/rite-config-path.sh" "$T12_DIR/role-plugin/hooks/scripts/lib/"
+cp "$REPO_ROOT/plugins/rite/hooks/state-path-resolve.sh" "$T12_DIR/role-plugin/hooks/"
 cat > "$T12_DIR/role-plugin/scripts/projects-status-update.sh" <<'RECON_SHIM'
 #!/bin/bash
 printf '%s' "$1" > "$RITE_TEST_RECON_PAYLOAD"

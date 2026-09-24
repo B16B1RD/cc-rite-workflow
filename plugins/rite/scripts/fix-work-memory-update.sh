@@ -126,7 +126,9 @@ fi
 
 [ "$wm_emit_done" = "0" ] || exit 0
 
-base_branch=$(grep -E '^\s*base:' rite-config.yml 2>/dev/null | head -1 \
+# worktree 自身の config、無ければ main checkout の config を読む
+rite_config=$(bash "$(dirname "${BASH_SOURCE[0]}")/../hooks/scripts/lib/rite-config-path.sh" --or-devnull) || exit 1
+base_branch=$(grep -E '^\s*base:' "$rite_config" 2>/dev/null | head -1 \
   | sed 's/.*base:[[:space:]]*"\?\([^"]*\)"\?.*/\1/')
 [ -z "$base_branch" ] && base_branch="develop"
 

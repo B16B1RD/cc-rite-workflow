@@ -70,10 +70,17 @@ unknowns は 4 象限で捉える:
 
 **Wiki 連携（Conditional）**: 盲点候補の材料としてプロジェクトの蓄積経験則を注入する。
 
-Step 1: `wiki.enabled: true` かつ `wiki.auto_query: true`（`rite-config.yml`）のときのみ実行する。いずれか false なら以下を silent skip し、通常の盲点洗い出しのみ行う（エラー・警告は出さない）:
+Step 1: `wiki.enabled: true` かつ `wiki.auto_query: true`（`rite-config.yml`）のときのみ実行する。いずれか false なら以下を silent skip し、通常の盲点洗い出しのみ行う（config ファイル自体が無いときの WARNING を除き、エラー・警告は出さない）:
 
 ```bash
-wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
+# config は worktree 自身のもの、無ければ main checkout のものを読む（plugin_root は Step 2 と同じ one-liner で先に解決する。
+# 解決できなければ Step 2 と同じく Wiki 連携を skip する）
+plugin_root=$(cat .rite/plugin-root 2>/dev/null || cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
+rite_config=/dev/null
+if [ -n "$plugin_root" ] && [ -f "$plugin_root/hooks/scripts/lib/rite-config-path.sh" ]; then
+  rite_config=$(bash "$plugin_root/hooks/scripts/lib/rite-config-path.sh" --or-devnull) || exit 1
+fi
+wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$rite_config" 2>/dev/null) || wiki_section=""
 wiki_enabled=""
 if [[ -n "$wiki_section" ]]; then
   wiki_enabled=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' \
