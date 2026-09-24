@@ -50,10 +50,13 @@ fi
 
 # A present file that jq cannot read is not an empty phase. Commit mode must
 # not skip that as "some other phase".
-if ! _flow_row=$(jq -r '[.phase // "", .worktree // "", (.issue_number // "")] | @tsv' "$FLOW" 2>/dev/null); then
+# Fields are joined on the unit separator, not a tab: a tab is IFS whitespace,
+# so an empty worktree field would collapse and shift the issue number into
+# FS_WT. Sessions that never record a worktree leave that field empty.
+if ! _flow_row=$(jq -r '[.phase // "", .worktree // "", (.issue_number // "" | tostring)] | join("\u001f")' "$FLOW" 2>/dev/null); then
   _deny "state_unreadable"
 fi
-IFS=$'\t' read -r PHASE FS_WT ISSUE <<<"$_flow_row"
+IFS=$'\x1f' read -r PHASE FS_WT ISSUE <<<"$_flow_row"
 if [ -z "$WORKTREE" ]; then
   WORKTREE=$(git rev-parse --show-toplevel 2>/dev/null) || WORKTREE=""
 fi
