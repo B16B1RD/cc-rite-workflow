@@ -727,20 +727,51 @@ for closed_targets in (False, True):
             hook(command, reason='cannot be verified during review')
         for command in ('sudo git merge main', 'env -u GIT_DIR git merge --continue', 'timeout 60 git merge main'):
             hook(command, reason='run merge as a direct command')
-        # A substitution runs its command even inside double quotes or backquotes, in a subshell.
+        # A substitution or a ( ) group runs its command in a subshell, quoted or not.
         hook('out="$(git merge origin/trunk 2>&1)"', reason='run merge as a direct command')
         hook('echo "`git merge main`"', reason='run merge as a direct command')
         hook('v=`git merge main`', reason='run merge as a direct command')
         hook('x="$(git commit -m y)"', reason='run commit as a direct command')
         hook('x="$(echo "(a (b) c)"; git -C .. merge main)"', reason='run merge as a direct command')
-        # A cd inside a substitution stays in its subshell.
-        hook('x="$(cd "$HOME" && pwd)"; git merge main', reason='cannot be verified during review')
-        hook('x="$(cd "$HOME")"; git commit -m y', reason='fix plan record missing')
-        hook('git commit -m "$(cat <<\'EOF\'\nno end\n)"', reason='unfinished heredoc')
-        hook('git commit -m "$(echo x"', reason='unfinished command substitution')
+        hook('(git merge main)', reason='run merge as a direct command')
+        hook('x=$(git commit -m y)', reason='run commit as a direct command')
+        # Only the subcommand position counts, as for a direct git.
+        for command in ('x="$(git log --oneline --grep merge -1)"; git status',
+                        'git status "$(git branch --merged | head -1)"', 'x="$(git help commit)"'):
+            hook(command, allowed=True)
+        # A cd inside a subshell stays there.
+        for command in ('x="$(cd "$HOME" && pwd)"; git merge main', 'x=$(cd /tmp); git merge origin/main',
+                        '(cd /tmp); git merge origin/main', '(cd /tmp && ls); git merge main'):
+            hook(command, reason='cannot be verified during review')
+        for command in ('x="$(cd "$HOME")"; git commit -m y', '(cd /tmp && ls); git merge --continue',
+                        '( cd /tmp ); git commit -m y'):
+            hook(command, reason='fix plan record missing')
+        # A parse the check cannot finish is refused and points to a message file.
+        for command in ('git commit -m "$(cat <<\'EOF\'\nit\'s\n)"', 'git commit -m "$(echo x"'):
+            unfinished = hook(command, reason='unfinished command substitution')
+            check('git commit -F <message-file>' in unfinished.stdout, 'parse errors name the message file')
+        # Only the standard message form is data; any other << leaves the commands to be read.
+        for command in ('x="$(cat <<<EOF\ngit commit -m y\nEOF\n)"', 'x="$(echo hi # <<EOF\ngit commit -m y\nEOF\n)"',
+                        'x="$(echo $((1<<n))\ngit commit -m y\nn\n)"', 'x="`cat <<<EOF\ngit commit -m y\nEOF\n`"',
+                        'x="$(cat <<A <<B\na\nA\nb\nB\ngit commit -m y\n)"',
+                        'x="$(cat <<-EOF\n\tbody\n\tEOF\ngit commit -m y\n)"',
+                        'git commit -m "$(cat <<\'EOF\'\nx\nEOF\ngit commit -m y\nEOF\n)"'):
+            hook(command, reason='run commit as a direct command')
+        for command in ('x="$(cat <<<EOF\ngit merge main\nEOF\n)"', 'x="$(echo \\<<EOF\ngit merge main\nEOF\n)"',
+                        'x="$(cat <<EOF.\nhi\nEOF.\ngit merge main\nEOF\n)"',
+                        'x="$(true\ncat <<<EOF\ngit merge main\nEOF\n)"',
+                        'git commit -m "$(cat <<EOF\nfix: refuse `git merge origin/main`\nEOF\n)"',
+                        'git commit -m "$(cat <<EOF\nfix: a\n$(git merge origin/main)\nEOF\n)"'):
+            hook(command, reason='run merge as a direct command')
+        for command in ('x="$(cat <<<EOF\n)"\ngit merge main\nEOF\n# )"', 'x="$(echo # <<EOF\n)"\ngit merge main\nEOF\n# )"'):
+            hook(command, reason='cannot be verified during review')
+        # The guard reads a << inside a multi-line quoted string as text, not as a heredoc.
+        hook('x="a\n<<EOF\n"; git merge main\nEOF', reason='cannot be verified during review')
         # git takes a unique prefix of a long option; an abbreviation cannot be read safely.
         for command in ('git merge --no-commit --commi main', 'git merge --mess --no-commit main'):
-            hook(command, reason='abbreviated git merge option')
+            abbreviated = hook(command, reason='abbreviated git merge option')
+            check(command.split()[3 if '--commi ' in command else 2] in abbreviated.stdout,
+                  'the refusal names the abbreviated option: ' + abbreviated.stdout)
         for command in (intake + ' main', 'git merge --squash main', 'git merge --abort',
                         'git merge --quit', 'git merge --ff-only main', 'git merge --commit --no-commit main',
                         'git log --merges', 'cd "$HOME" && git merge-base HEAD main',
@@ -756,7 +787,14 @@ for closed_targets in (False, True):
             return verb + ' "$(cat <<\'EOF\'\n' + text + '\n\nCo-Authored-By: x <y@z>\nEOF\n)"'
         bodies = ("fix: it's done", 'fix: tidy\n\ncd ..', 'fix: explain\n\nrun git merge origin/main first',
                   'fix: explain\n\nthen git commit -m again', 'fix: handle (edge) case)',
-                  'fix: quote "x" and `y`')
+                  'fix: quote "x" and `y`', 'fix: tabs\n<<EOF inside')
+        # Delimiter spellings bash accepts for the same message form.
+        for command in ('git commit -m "$(cat <<\\EOF\nit\'s\nEOF\n)"',
+                        'git commit -m "$(cat <<\'COMMIT-MSG\'\nit\'s\nCOMMIT-MSG\n)"',
+                        'git commit -m "$(cat <<"EOF"\nit\'s\nEOF\n)"',
+                        'git commit -m "$(cat <<-\'EOF\'\n\tit\'s\n\tEOF\n)"',
+                        'git commit -m "$(cat <<EOF\nfix: it\'s $HOME\nEOF\n)"'):
+            hook(command, reason='fix plan record missing')
         for text in bodies:
             targets = run(['bash', str(helper), 'commit-target', '--command', heredoc(text), '--cwd', str(root)])
             lines = targets.stdout.splitlines()
@@ -774,8 +812,7 @@ for closed_targets in (False, True):
         check(len(blocks) >= 10, 'the corpus finds the plugin commit blocks')
         for block in blocks:
             parsed = run(['bash', str(helper), 'commit-target', '--command', block, '--cwd', str(root)], ok=False)
-            check(not any(word in parsed.stderr for word in ('unfinished', 'ambiguous', 'Traceback')),
-                  'plugin block parses: ' + block[:80] + '\n' + parsed.stderr)
+            check(parsed.returncode == 0, 'plugin block parses: ' + block[:80] + '\n' + parsed.stderr)
         # Pattern 9 keeps reading only git commit: merges do not become wiki-gated commits.
         targets = run(['bash', str(helper), 'commit-target', '--command', 'git merge --continue',
                        '--cwd', str(root)])
@@ -883,6 +920,9 @@ for closed_targets in (False, True):
         hook('git merge --continue', allowed=True)
         hook('git -C src commit --no-edit', allowed=True)
         hook('git commit --no-edit', allowed=True, cwd=root / 'src')
+        for text in ("fix: it's done", 'fix: tidy\n\ncd ..', 'fix: explain\n\nrun git merge origin/main first',
+                     'fix: tabs\n<<EOF inside'):
+            hook(heredoc(text), allowed=True)
         run(['git', 'commit', '--no-edit'])
         check(run(['git', 'rev-parse', 'HEAD^1']).stdout.strip() == reviewed_head, 'intake is a merge onto the reviewed HEAD')
         before = json.loads(state_path.read_text())

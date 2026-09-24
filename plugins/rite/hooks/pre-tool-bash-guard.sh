@@ -220,12 +220,16 @@ _rite_btg_pattern6_fail_closed() {
 # splits the command into words. This small parser intentionally supports the
 # conventional unquoted, single-quoted, and double-quoted identifier delimiters
 # used by the repository's Bash commands. The declaration scanner ignores `<<`
-# inside shell quotes so a literal string cannot suppress later command lines.
+# inside shell quotes, across lines, so a literal string cannot suppress later
+# command lines.
 _rite_btg_pattern6_command_surface() {
   local _source="$1" _line _delimiter="" _strip_tabs=0 _candidate _decl
   local _surface="" _i _len _ch _next _state _quoted _start
   _source="${_source//$'\r'/}"
   _source="${_source//$'\\\n'/}"
+  # Quote state carries across lines, as in bash: a << inside a multi-line quoted
+  # string (a commit message) is text, not a heredoc declaration.
+  _state=plain
   while IFS= read -r _line || [ -n "$_line" ]; do
     if [ -n "$_delimiter" ]; then
       _candidate="$_line"
@@ -241,7 +245,6 @@ _rite_btg_pattern6_command_surface() {
 
     _surface+="$_line"$'\n'
     _decl=""
-    _state=plain
     _len=${#_line}
     _i=0
     while [ "$_i" -lt "$_len" ]; do
