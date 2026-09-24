@@ -302,7 +302,7 @@ okf_version: "0.2"
 | [変更・削除の掃き出しは旧語彙・置換した条件式・別記法トークンまで広げる](pages/heuristics/change-sweep-spans-old-vocabulary-and-notations.md) | heuristics | 散文が実行契約であるリポジトリでは、機構を 1 つ変更・削除するたびに、その機構を名指しする散文が各所に取り残される。 | 2026-09-15T03:40:00Z | high |
 | [検出器が「走査できなかった」を「問題なし」に畳むと、ガードが黙って無検査になる](pages/anti-patterns/checker-conflates-unscannable-with-clean.md) | anti-patterns | 静的チェックスクリプトの exit code 設計に「検出できなかった」状態が無いと、走査失敗（対象ファイルを開けない / パーサが fatal で落ちた / 対象が 1 件も見つからない）がすべて「findings 0 件 = 問題なし」として rc=0 で返る。 | 2026-08-12T18:34:40Z | high |
 | [自前 sentinel exit code は呼び出す外部コマンドの予約値を避けて選ぶ](pages/anti-patterns/custom-sentinel-collides-with-tool-exit-code.md) | anti-patterns | awk プログラムなどに「この状態を呼び出し側へ伝えたい」という独自の意味を持たせた exit code を割り当てるとき、値を 2 にすると gawk / mawk が fatal error で返す 2 と区別できなくなる。 | 2026-07-30T01:30:00+09:00 | high |
-| [アサーションの検証強度は「該当行を壊して赤くなるか」でしか測れない](pages/heuristics/mutation-testing-measures-assertion-strength.md) | heuristics | テストの存在はカバレッジを保証しない。 | 2026-08-02T09:53:11+09:00 | high |
+| [アサーションの検証強度は「該当行を壊して赤くなるか」でしか測れない](pages/heuristics/mutation-testing-measures-assertion-strength.md) | heuristics | テストの存在はカバレッジを保証しない。 | 2026-09-25T00:50:10+09:00 | high |
 | [除外契約のテストは境界の両側に対で書く](pages/patterns/exclusion-test-requires-both-sides-of-boundary.md) | patterns | 除外契約（「実スクリプトは走査しない」「コードフェンス外は対象外」「このディレクトリは除く」）のテストは、fixture の置き方を誤ると恒真になる。 | 2026-09-17T13:08:59Z | high |
 | [`$( )` でコマンド置換したヘルパーの `exit` は呼び出し元を止めない](pages/anti-patterns/command-substitution-helper-exit-does-not-stop-caller.md) | anti-patterns | シェル関数の中に書いた `exit 1` は、その関数が `$( )` の中で呼ばれた場合、**コマンド置換のサブシェルを終了させるだけ**で呼び出し元スクリプトは走り続ける。 | 2026-07-30T01:30:00+09:00 | high |
 | [集合演算で検証するときは入力集合が空である可能性を成功と区別する](pages/anti-patterns/empty-set-difference-passes-as-success.md) | anti-patterns | 「A に含まれて B に含まれない要素が無いこと」を差集合の空で検証する形は、**A 自体が空でも成立する**。 | 2026-07-30T01:30:00+09:00 | high |
@@ -527,9 +527,10 @@ okf_version: "0.2"
 | [「戻らない」契約は、戻り先に戻ると結果が変わる内容を置いたテストでしか固定できない](pages/heuristics/no-fallback-contract-needs-bait-at-fallback-target.md) | heuristics | 入力源を切り替えて「旧入力源へは戻らない」と定めた契約は、旧入力源を渡さないテストでは固定されない。フォールバックが復活しても読む対象が無く、結果が変わらないからである。契約の入口ごとに、戻り先へ成功側の内容（餌）を置き、それでも差し戻されることを確かめる。 | 2026-09-24T06:20:00Z | high |
 | [分岐を足したら、後ろのアームの出力がまだ使われるかを確かめる](pages/heuristics/new-branch-leaves-later-arm-output-discarded.md) | heuristics | 判定の鎖に広い条件の分岐を先に足すと、後ろのアームは実行されても、その出力が後段で必ず捨てられる状態になりうる。挙動は変わらないためテストは通るが、使われない文言がデッドコードとして残り、読み手に誤った分岐を想像させる。分岐の追加後は、各アームの出力が後段で使われる経路が残っているかを確かめる。 | 2026-09-24T08:10:00Z | medium |
 | [終了コードの契約は、その形を作る経路をすべて数え上げてから書く](pages/heuristics/exit-contract-enumerate-producing-paths.md) | heuristics | スクリプト冒頭の終了コード契約を「exit 1 は引数エラー」のように特定の値と原因で書くと、埋め込みインタプリタの例外、インタプリタの欠落（127）、pipefail 経由の外部コマンドの終了コード（2）など、同じ出力の形を作る別の経路が漏れる。経路を実装から数え上げ、入力を壊して一つずつ実行してから、呼び出し元の扱い（非 0 はすべて拒否など）に合わせた粒度で書く。 | 2026-09-24T11:10:00Z | medium |
+| [手順を helper へ移して入口検証を足すと、未定義 placeholder で流れていた終端経路が停止に変わる](pages/anti-patterns/entry-validation-on-extraction-stops-undefined-placeholder-paths.md) | anti-patterns | 手順書のシェルブロックを helper のサブコマンドへ移し、入口に必須・数値・未置換検査を足すと、旧ブロックでは空値のまま既定分岐へ落ちていた経路が exit 2 で止まる。移設時は placeholder を読む全経路で値が決まるかを列挙し、関数内に残る旧 guard とそれを前提にした文書・テストも入口の出力へ寄せる。 | 2026-09-25T00:50:10+09:00 | high |
 ## 統計
 
-- 総ページ数: 517
-- ドメイン別: patterns=120, heuristics=232, anti-patterns=165
-- 最終更新: 2026-09-24T13:40:00Z
+- 総ページ数: 518
+- ドメイン別: patterns=120, heuristics=232, anti-patterns=166
+- 最終更新: 2026-09-25T00:50:10+09:00
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |

@@ -1,5 +1,12 @@
 # Directory Update Log
 
+## 2026-09-25
+
+* **Create**: [手順を helper へ移して入口検証を足すと、未定義 placeholder で流れていた終端経路が停止に変わる](pages/anti-patterns/entry-validation-on-extraction-stops-undefined-placeholder-paths.md) — raw/reviews/20260924T152559Z-pr-3055.md を新規ページ化
+* **Update**: [手順を helper へ移して入口検証を足すと、未定義 placeholder で流れていた終端経路が停止に変わる](pages/anti-patterns/entry-validation-on-extraction-stops-undefined-placeholder-paths.md) — raw/fixes/20260924T153248Z-pr-3055.md を統合
+* **Update**: [手順を helper へ移して入口検証を足すと、未定義 placeholder で流れていた終端経路が停止に変わる](pages/anti-patterns/entry-validation-on-extraction-stops-undefined-placeholder-paths.md) — raw/reviews/20260924T154135Z-pr-3055.md を統合
+* **Update**: [アサーションの検証強度は「該当行を壊して赤くなるか」でしか測れない](pages/heuristics/mutation-testing-measures-assertion-strength.md) — raw/reviews/20260924T152559Z-pr-3055.md を統合（複数の検証に掛かる入力による空振り）
+
 ## 2026-09-24
 
 * **Update**: [@tsv+IFS read の field-shift hazard 横断監査は cut-f免除と空フィールド可否の2条件で判定する](pages/heuristics/tsv-ifs-field-shift-hazard-audit-criteria.md) — raw/reviews/20260924T033414Z-pr-3018.md を統合（一括統一のあとに足した読取での再発と、回帰テストの観測点）

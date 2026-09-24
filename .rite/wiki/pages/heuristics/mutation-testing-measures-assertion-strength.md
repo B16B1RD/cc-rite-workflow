@@ -29,9 +29,13 @@ sources:
     resource: "raw/fixes/20260801T185220Z-pr-2070.md"
   - type: "reviews"
     resource: "raw/reviews/20260802T000641Z-pr-2070.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260924T152559Z-pr-3055.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-02T09:53:11+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-25T00:50:10+09:00" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-25T00:50:10+09:00" }
 ---
 
 # アサーションの検証強度は「該当行を壊して赤くなるか」でしか測れない
@@ -100,6 +104,7 @@ mutation を回したうえでの「指摘 0 件」と、回さずに出した�
 - **anti-pin**（「この文字列が出ないこと」）は、pin する文字列が実装に実在するかを確かめないと恒久的に緑になる
 - **報告文字列の assert に部分一致 glob を使わない**（`*"PR #N"*` は末尾に残余があっても一致するため trim を削除しても緑）
 - **権限を落とす対象の取り違え**（ファイル chmod では親ディレクトリ経由の書き込みが通る）
+- **同じ入力が複数の検証に掛かる**と、目的の分岐を削除しても別の検証が同じ exit code で拒否して緑のままになる。入力は検証したい分岐だけが拒否するものを選ぶ（例: 未置換 placeholder の拒否は数値検査の掛からない自由文字列オプションで試す）
 
 いずれも「assertion を書いた直後に隔離コピーへ 1 トークン変異を入れて 1 回通す」手順で捕まる。なお **sed による変異はクォート起因で silent に失敗しうる**ため、変異後の該当行を表示して適用を確認してからテストを回す（実際に 1 回目の変異適用が失敗したまま「全 pass」を得た事例がある）。
 
@@ -126,6 +131,7 @@ mutation を回したうえでの「指摘 0 件」と、回さずに出した�
 - [除外契約のテストは境界の両側に対で書く](../patterns/exclusion-test-requires-both-sides-of-boundary.md)
 - [累積対策 PR の 3 cycle 収束記録: cross-validation boost + cycle 2 minor drift + cycle 3 mergeable](./accumulated-pr-three-cycle-convergence.md)
 - [grep (BRE) と grep -E (ERE) のメタ文字反転で assert ヘルパーが常時緑の dead assertion になる](../anti-patterns/bre-ere-metachar-inversion-dead-assertion.md)
+- [手順を helper へ移して入口検証を足すと、未定義 placeholder で流れていた終端経路が停止に変わる](../anti-patterns/entry-validation-on-extraction-stops-undefined-placeholder-paths.md)
 
 ## ソース
 
@@ -137,3 +143,4 @@ mutation を回したうえでの「指摘 0 件」と、回さずに出した�
 - [レビュー結果](../../raw/reviews/20260801T184452Z-pr-2070.md)
 - [fix 結果](../../raw/fixes/20260801T185220Z-pr-2070.md)
 - [レビュー結果](../../raw/reviews/20260802T000641Z-pr-2070.md)
+- [レビュー結果](../../raw/reviews/20260924T152559Z-pr-3055.md)
