@@ -41,6 +41,9 @@
 #      none へ戻さず、削除を試みさせない)
 #   [CONTEXT] CLEANUP_WT=unknown; reason=candidate_unresolved
 #     (補完の候補パスを物理パスへ解決できず、登録との関係を判定できない)
+#   [CONTEXT] CLEANUP_WT=unknown; reason=config_unreadable
+#     (--config 省略時に rite-config.yml を読めない、または main checkout を解決できない。
+#      multi_session の有効性が判定できないため none へ落とさない)
 #   source=git_worktree_list の in_main は登録情報の branch（detached なら空）を出す。実体が無い登録
 #   （prunable）は dirty の代わりに missing=yes を出す。
 #   in_worktree と実体のある source=git_worktree_list の in_main は dirty を出し、非空なら
@@ -203,7 +206,10 @@ cmd_detect() {
   local ms_section ms_enabled ms_base flow_wt cur_top main_root detect cleanup_wt dirty
   # --config が無ければ worktree 自身の config、無ければ main checkout の config を読む
   if [ -z "$config" ]; then
-    config=$(bash "$(dirname "${BASH_SOURCE[0]}")/lib/rite-config-path.sh" --or-devnull) || return 2
+    config=$(bash "$(dirname "${BASH_SOURCE[0]}")/lib/rite-config-path.sh" --or-devnull) || {
+      echo "[CONTEXT] CLEANUP_WT=unknown; reason=config_unreadable"
+      return 0
+    }
   fi
   ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' "$config" 2>/dev/null) || ms_section=""
   ms_enabled=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+enabled:/ {print; exit}' \

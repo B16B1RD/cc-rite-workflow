@@ -36,8 +36,10 @@ argument-hint: "<keywords>"
 rationale: references/rationale.md#wiki-config-probe
 
 ```bash
-# config は worktree 自身のもの、無ければ main checkout のものを読む
-rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
+# config は worktree 自身のもの、無ければ main checkout のものを読む（plugin_root は 1.2 と同じ one-liner で先に解決する）
+plugin_root=$(cat .rite/plugin-root 2>/dev/null || cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
+[ -n "$plugin_root" ] || { echo "ERROR: plugin_root resolution failed" >&2; exit 1; }
+rite_config=$(bash "$plugin_root/hooks/scripts/lib/rite-config-path.sh" --or-devnull) || exit 1
 wiki_enabled=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$rite_config" 2>/dev/null \
  | awk '/^[[:space:]]+enabled:/ { print; exit }' \
  | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' \
