@@ -164,7 +164,7 @@ class Fixture:
     def start(self, ok=True):
         return self.flow('review-start', '--selection', self.selection, '--stagnation', ok=ok)
 
-    def finish(self, roots=None, satisfied=(), non_blocking=False, severities=None):
+    def finish(self, roots=None, satisfied=(), non_blocking=False, severities=None, unverified=()):
         if roots is None:
             roots = ['input defect']
         context = self.context()
@@ -192,7 +192,9 @@ class Fixture:
                            reviewers=['code-quality-reviewer'], findings=findings, non_blocking_findings=notes,
                            guardrail_audit_log=[], acceptance_criteria=[
                                dict(id=criterion, status='satisfied', evidence='measured fixture => pass', finding_id=None)
-                               for criterion in satisfied]))
+                               for criterion in satisfied] + [
+                               dict(id=criterion, status='unverified', evidence='needs a human check', finding_id=None)
+                               for criterion in unverified]))
         self.run(['bash', str(plugin / 'scripts/review-measured-gate.sh'), '--input', str(content),
                   '--reject-preset-verification'])
         self.flow('review-finish', '--manifest', manifest, '--content-file', content)
@@ -1685,6 +1687,104 @@ try:
         cwd=f.root, env=ready_env, text=True, capture_output=True)
     check(ready_ok.returncode == 0 and 'READY_REVIEWED_HEAD=match' in ready_ok.stderr,
           'T-R07: new-run receipt is the only match')
+finally:
+    f.close()
+
+# A human attestation of unverified acceptance criteria is the ready / merge
+# helper's own rewrite of the observed receipt; the run must still advance.
+def attest(f, ids):
+    stub = f.root / 'bin'
+    if not stub.exists():
+        stub.mkdir()
+        (stub / 'gh').write_text(
+            '#!/bin/bash\n'
+            'ROOT=' + json.dumps(str(f.root)) + '\n'
+            'if printf "%s" "$*" | grep -q headRefOid; then\n'
+            '  git -C "$ROOT" rev-parse HEAD\n'
+            '  exit 0\n'
+            'fi\n'
+            'exit 1\n')
+        os.chmod(stub / 'gh', 0o755)
+    env = dict(f.env, PATH=str(stub) + os.pathsep + f.env.get('PATH', ''))
+    result = subprocess.run(
+        ['bash', str(plugin / 'hooks/scripts/ready-reviewed-head-gate.sh'),
+         '--pr', '71', '--repo', 'B16B1RD/cc-rite-workflow', '--plugin-root', str(plugin),
+         '--results-dir', str(f.root / '.rite/review-results'), '--state-root', str(f.root),
+         '--attest', ids],
+        cwd=f.root, env=env, text=True, capture_output=True)
+    check(result.returncode == 0 and 'REVIEWED_AC=attested' in result.stderr,
+          'ready helper attests ' + ids + '\n' + result.stderr)
+
+
+def attested_receipt(f, unverified=['AC-1'], roots=(), severities=None, triage=False):
+    f.start()
+    f.finish(list(roots), satisfied=['AC-4'], unverified=list(unverified), severities=severities)
+    f.clock()
+    f.observe()
+    path = Path(f.state()['review_cycle']['result_path'])
+    if triage:
+        f.run(['bash', str(plugin / 'scripts/review-findings-maps.sh'), '--review-source', 'local_file',
+               '--review-source-path', str(path)])
+    before = json.loads(path.read_text())
+    f.reject(lambda: f.flow('review-close', ok=False), 'unattested unverified criterion prevents completion')
+    attest(f, ','.join(unverified))
+    after = json.loads(path.read_text())
+    rows = {row['id']: row for row in before['acceptance_criteria']}
+    for row in after['acceptance_criteria']:
+        if row['id'] in unverified:
+            check(row['status'] == 'human-verified' and row['head'] == after['commit_sha']
+                  and {k: v for k, v in row.items() if k not in ('status', 'head', 'at')}
+                  == {k: v for k, v in rows[row['id']].items() if k != 'status'},
+                  'attest changes only status, head and at of ' + row['id'])
+        else:
+            check(row == rows[row['id']], 'attest leaves ' + row['id'] + ' untouched')
+    check({k: v for k, v in after.items() if k != 'acceptance_criteria'}
+          == {k: v for k, v in before.items() if k != 'acceptance_criteria'},
+          'attest leaves the rest of the receipt untouched')
+    return path, after
+
+
+f = Fixture()
+try:
+    path, receipt = attested_receipt(f)
+    for label, tamper in (
+            ('audit log added after attest', lambda r: r['guardrail_audit_log'].append(dict(note='late'))),
+            ('satisfied criterion evidence changed', lambda r: r['acceptance_criteria'][0].update(evidence='edited')),
+            ('attested criterion evidence changed', lambda r: r['acceptance_criteria'][1].update(evidence='edited')),
+            ('attested criterion gains an unknown key', lambda r: r['acceptance_criteria'][1].update(note='extra')),
+            ('attestation for another HEAD', lambda r: r['acceptance_criteria'][1].update(head='0' * 40)),
+            ('unverified criterion rewritten as satisfied',
+             lambda r: r['acceptance_criteria'][1].update(status='satisfied')),
+            ('satisfied criterion rewritten as attested',
+             lambda r: r['acceptance_criteria'][0].update(status='human-verified', head=r['commit_sha'],
+                                                          at='2026-01-01T00:00:00Z'))):
+        changed = copy.deepcopy(receipt)
+        tamper(changed)
+        dump(path, changed)
+        f.reject(lambda: f.flow('set', '--phase', 'ready', '--next', 'merge', ok=False),
+                 'attested receipt rejects ' + label)
+    dump(path, receipt)
+    before = f.state_path.read_bytes()
+    f.observe(ok=False)
+    check(f.state_path.read_bytes() == before, 'observation replay after attest adds no observation')
+    f.flow('set', '--phase', 'ready', '--next', 'merge')
+    check(f.state()['phase'] == 'ready', 'attested unverified criterion permits ready')
+    f.flow('review-close')
+    check(f.state()['review_run'].get('completed_context') == f.context(),
+          'attested unverified criterion permits completion')
+    f.flow('set', '--phase', 'init', '--next', 'next', '--issue', 43, '--pr', 0)
+    check(f.state()['issue_number'] == 43, 'attested run releases the session to the next Issue')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    path, receipt = attested_receipt(f, roots=['advisory defect'], severities=['MEDIUM'], triage=True)
+    check(not receipt['findings'], 'triage moved the advisory finding before attest')
+    f.flow('set', '--phase', 'ready', '--next', 'merge')
+    f.flow('review-close')
+    check(f.state()['review_run'].get('completed_context') == f.context(),
+          'attest over a triaged receipt permits ready and completion')
 finally:
     f.close()
 

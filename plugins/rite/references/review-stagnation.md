@@ -8,7 +8,7 @@ Issue に関連付いた通常 caller は `flow-state.sh review-start --stagnati
 2. 未完了 cycle は同じ cycle の回収・保存を再開する。完了済み cycle の欠損修復と既存の発散・回数 breaker を先に適用する。
 3. 未観測を示す `action:observe` のまま先へ進めず、保存済み全指摘を観測し、`review_run.current_decision` の `action: continue|replan|stop` と `reasons: []` に従う。`continue` は通常の品質ゲートへ戻す意味で、merge の許可ではない。
 
-観測時には元 receipt のハッシュと、既存 fatal triage helper がそのコピーから生成した派生 receipt のハッシュを保存する。以降はこの2種類だけを許可し、正規の分類後も観測・見直しの再送と履歴検証を継続できる。それ以外の証跡・指摘・受入条件の変更は拒否する。
+観測時には元 receipt のハッシュと、既存 fatal triage helper がそのコピーから生成した派生 receipt のハッシュを保存する。以降はこの2種類だけを許可し、正規の分類後も観測・見直しの再送と履歴検証を継続できる。ready / merge の attest が `unverified` 行を `human-verified` にした receipt も、その行の `status` / `head` / `at` だけを戻せばどちらかに一致する場合に限り同じ receipt とみなす（`head` が receipt の `commit_sha` と違う記録は戻さない）。それ以外の証跡・指摘・受入条件の変更は拒否する。
 
 iterate の全品質ゲートと non-blocking sweep の成功後、`flow-state.sh review-close` が現在の観測・receipt・未解決指摘・受入条件を確認して `review_run.completed_context` を保存する。返信のみで draft を残す場合は `review-defer` が `deferred_context` と `deferred_reason:replied-only` を保存する。後者は品質上の完了を意味せず、未解決指摘と判定を変更しない。phase・counter・履歴は維持する。次 Issue への切替時だけ旧 run を `review_run_history` に移すため、default draft batch は cleanup を挟まず継続できる。同じ Issue の再開や次 cycle には終了記録を流用しない。両コマンドとも未回収・観測欠損・見直し未完了・停止済み run を拒否する。停止済み run の具体的な停止理由は通常の終了通知でも上書きしない。
 
