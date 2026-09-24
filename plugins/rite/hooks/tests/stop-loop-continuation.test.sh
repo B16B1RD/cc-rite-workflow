@@ -474,19 +474,21 @@ rm -rf "$fake_bin17" "$err17"
 out17b=$(stop_payload "$d17" "$SID" true | bash "$HOOK")
 assert "TC-17: second stop allows (one-shot consume preserved through placeholder path)" "" "$out17b"
 
-# --- TC-18: FINALIZE:review:mergeable + transcript に残件欄なし → 差し戻し (AC-3 / T-03) ---
+# Emit a Stop payload that carries the final assistant text (last_assistant_message).
+final_payload() {
+  local cwd="$1" text="$2" active="${3:-false}"
+  jq -nc --arg c "$cwd" --arg s "$SID" --arg t "$text" --argjson a "$active" \
+    '{session_id:$s, cwd:$c, hook_event_name:"Stop", stop_hook_active:$a, last_assistant_message:$t}'
+}
+
+# --- TC-18: FINALIZE:review:mergeable + 最終テキストに残件欄なし → 差し戻し (AC-3 / T-03) ---
 echo ""
-echo "=== TC-18: FINALIZE:review:mergeable transcript missing remaining field → bounce once ==="
+echo "=== TC-18: FINALIZE:review:mergeable last message missing remaining field → bounce once ==="
 d18=$(new_sandbox)
 RITE_STATE_ROOT="$d18" bash "$FS" set --phase review --issue 2346 --branch b --pr 99 \
   --next n --handoff "FINALIZE:review:mergeable:99" --session "$SID" >/dev/null
-tp18=$(mktemp)
-cat > "$tp18" <<'EOF'
-{"type":"user","message":{"role":"user","content":"ok"}}
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"## /rite:iterate 完了\n\n- PR: #99\n- 終了理由: review:mergeable\n- ブランチ: b\n"}]}}
-EOF
-out=$(jq -nc --arg c "$d18" --arg s "$SID" --arg tp "$tp18" \
-  '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:false}' | bash "$HOOK")
+text18=$'## /rite:iterate 完了\n\n- PR: #99\n- 終了理由: review:mergeable\n- ブランチ: b\n'
+out=$(final_payload "$d18" "$text18" | bash "$HOOK")
 assert "TC-18: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
 _reason18=$(printf '%s' "$out" | jq -r '.reason // ""')
 if grep -q "未処理 non-blocking" <<< "$_reason18"; then
@@ -501,10 +503,8 @@ else
 fi
 sf18=$(state_file_for "$d18")
 assert "TC-18: handoff deleted after block (one-shot)" "ABSENT" "$(jq -r '.handoff // "ABSENT"' "$sf18")"
-out18b=$(jq -nc --arg c "$d18" --arg s "$SID" --arg tp "$tp18" \
-  '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:true}' | bash "$HOOK")
+out18b=$(final_payload "$d18" "$text18" true | bash "$HOOK")
 assert "TC-18: second stop allows (one-shot / no infinite block)" "" "$out18b"
-rm -f "$tp18"
 
 # non-fatal-only requires sweep-first + remaining field; both notice outcomes consume once.
 for notice_kind in missing-field complete; do
@@ -515,9 +515,7 @@ for notice_kind in missing-field complete; do
   if [ "$notice_kind" = complete ]; then
     nb_text+=$'\n- 未処理 non-blocking: 0 件\n- sweep: issued=0 / recorded=2'
   fi
-  tp_nb="$d_nb/transcript.jsonl"
-  jq -nc --arg text "$nb_text" '{type:"assistant",message:{content:$text}}' > "$tp_nb"
-  out=$(stop_payload "$d_nb" | jq --arg tp "$tp_nb" '. + {transcript_path:$tp}' | bash "$HOOK")
+  out=$(final_payload "$d_nb" "$nb_text" | bash "$HOOK")
   if [ "$notice_kind" = missing-field ]; then
     assert "non-fatal-only missing field bounces" block "$(jq -r '.decision' <<< "$out")"
     reason_nb=$(jq -r '.reason' <<< "$out")
@@ -532,25 +530,32 @@ for notice_kind in missing-field complete; do
   assert "non-fatal-only $notice_kind second stop allows" "" "$out"
 done
 
-# --- TC-19: FINALIZE:review:mergeable + transcript_path 欠落 → 検査不能 fail-safe 差し戻し ---
+# --- TC-19: FINALIZE:review:mergeable + payload に最終テキストが無い → 明示理由で差し戻し ---
 echo ""
-echo "=== TC-19: FINALIZE:review:mergeable without transcript → fail-safe bounce ==="
+echo "=== TC-19: FINALIZE:review:mergeable without last_assistant_message → explicit bounce ==="
 d19=$(new_sandbox)
 RITE_STATE_ROOT="$d19" bash "$FS" set --phase review --issue 2346 --branch b --pr 99 \
   --next n --handoff "FINALIZE:review:mergeable:99" --session "$SID" >/dev/null
-out=$(stop_payload "$d19" | bash "$HOOK")
+err19=$(mktemp)
+out=$(stop_payload "$d19" | bash "$HOOK" 2>"$err19")
 assert "TC-19: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
 _reason19=$(printf '%s' "$out" | jq -r '.reason // ""')
-if grep -q "判定できなかった" <<< "$_reason19"; then
-  pass "TC-19: inspect-fail fail-safe asks to re-output the remaining field"
+if grep -q "payload に最終テキスト" <<< "$_reason19"; then
+  pass "TC-19: reason names the missing payload text"
 else
-  fail "TC-19: inspect-fail reason missing fail-safe wording: $out"
+  fail "TC-19: reason does not name the missing payload text: $out"
 fi
 if grep -q "未処理 non-blocking" <<< "$_reason19"; then
-  pass "TC-19: inspect-fail reason still requires the remaining field"
+  pass "TC-19: reason still requires the remaining field"
 else
-  fail "TC-19: inspect-fail reason missing remaining-field directive: $out"
+  fail "TC-19: reason missing remaining-field directive: $out"
 fi
+if grep -q "last_assistant_message" "$err19"; then
+  pass "TC-19: stderr reports the missing payload key"
+else
+  fail "TC-19: stderr did not report the missing payload key: $(cat "$err19")"
+fi
+rm -f "$err19"
 
 # --- TC-20: FINALIZE:fix:replied-only は残件欄検査の対象外 ---
 echo ""
@@ -558,7 +563,7 @@ echo "=== TC-20: FINALIZE:fix:replied-only does not require remaining-field insp
 d20=$(new_sandbox)
 RITE_STATE_ROOT="$d20" bash "$FS" set --phase fix --issue 2346 --branch b --pr 99 \
   --next n --handoff "FINALIZE:fix:replied-only:99" --session "$SID" >/dev/null
-out=$(stop_payload "$d20" | bash "$HOOK")
+out=$(stop_payload "$d20" | bash "$HOOK" 2>/dev/null)
 assert "TC-20: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
 _reason20=$(printf '%s' "$out" | jq -r '.reason // ""')
 if grep -q "未処理 non-blocking" <<< "$_reason20"; then
@@ -571,6 +576,11 @@ if grep -q "完了通知" <<< "$_reason20"; then
 else
   fail "TC-20: replied-only reason lost the completion-notice directive: $out"
 fi
+if grep -q "payload に最終テキスト" <<< "$_reason20"; then
+  pass "TC-20: replied-only reason names the missing payload text"
+else
+  fail "TC-20: replied-only reason does not name the missing payload text: $out"
+fi
 
 # --- TC-21: FINALIZE:review:mergeable + 完了通知 + 残件欄あり → 差し戻さない (AC-1 / T-01) ---
 echo ""
@@ -578,19 +588,13 @@ echo "=== TC-21: FINALIZE:review:mergeable with notice + remaining field allows 
 d21=$(new_sandbox)
 RITE_STATE_ROOT="$d21" bash "$FS" set --phase review --issue 2349 --branch b --pr 99 \
   --next n --handoff "FINALIZE:review:mergeable:99" --session "$SID" >/dev/null
-tp21=$(mktemp)
-cat > "$tp21" <<'EOF'
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"## /rite:iterate 完了\n\n- PR: #99\n- 終了理由: review:mergeable\n- 未処理 non-blocking: 0 件\n"}]}}
-EOF
-out=$(jq -nc --arg c "$d21" --arg s "$SID" --arg tp "$tp21" \
-  '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:false}' | bash "$HOOK")
+text21=$'## /rite:iterate 完了\n\n- PR: #99\n- 終了理由: review:mergeable\n- 未処理 non-blocking: 0 件\n'
+out=$(final_payload "$d21" "$text21" | bash "$HOOK")
 assert "TC-21: notice+field allows stop (no output)" "" "$out"
 sf21=$(state_file_for "$d21")
 assert "TC-21: handoff consumed even when allowing" "ABSENT" "$(jq -r '.handoff // "ABSENT"' "$sf21")"
-out21b=$(jq -nc --arg c "$d21" --arg s "$SID" --arg tp "$tp21" \
-  '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:true}' | bash "$HOOK")
+out21b=$(final_payload "$d21" "$text21" true | bash "$HOOK")
 assert "TC-21: second stop still allows" "" "$out21b"
-rm -f "$tp21"
 
 # --- TC-22: FINALIZE:fix:replied-only + 完了通知あり → 差し戻さない (AC-1 / T-01) ---
 echo ""
@@ -598,16 +602,10 @@ echo "=== TC-22: FINALIZE:fix:replied-only with completion notice allows stop ==
 d22=$(new_sandbox)
 RITE_STATE_ROOT="$d22" bash "$FS" set --phase fix --issue 2349 --branch b --pr 99 \
   --next n --handoff "FINALIZE:fix:replied-only:99" --session "$SID" >/dev/null
-tp22=$(mktemp)
-cat > "$tp22" <<'EOF'
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"## /rite:iterate 完了\n\n- PR: #99\n- 終了理由: fix:replied-only\n"}]}}
-EOF
-out=$(jq -nc --arg c "$d22" --arg s "$SID" --arg tp "$tp22" \
-  '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:false}' | bash "$HOOK")
+out=$(final_payload "$d22" $'## /rite:iterate 完了\n\n- PR: #99\n- 終了理由: fix:replied-only\n' | bash "$HOOK")
 assert "TC-22: replied-only notice allows stop (no output)" "" "$out"
 sf22=$(state_file_for "$d22")
 assert "TC-22: handoff consumed even when allowing" "ABSENT" "$(jq -r '.handoff // "ABSENT"' "$sf22")"
-rm -f "$tp22"
 
 # --- TC-23: FINALIZE:fix:cancelled-by-user + 中断通知あり → 差し戻さない (AC-1) ---
 echo ""
@@ -615,33 +613,26 @@ echo "=== TC-23: FINALIZE:fix:cancelled-by-user with interrupt notice allows sto
 d23=$(new_sandbox)
 RITE_STATE_ROOT="$d23" bash "$FS" set --phase fix --issue 2349 --branch b --pr 99 \
   --next n --handoff "FINALIZE:fix:cancelled-by-user:99" --session "$SID" >/dev/null
-tp23=$(mktemp)
-cat > "$tp23" <<'EOF'
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"## /rite:iterate 中断\n\n- PR: #99\n- 終了理由: fix:cancelled-by-user\n"}]}}
-EOF
-out=$(jq -nc --arg c "$d23" --arg s "$SID" --arg tp "$tp23" \
-  '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:false}' | bash "$HOOK")
+out=$(final_payload "$d23" $'## /rite:iterate 中断\n\n- PR: #99\n- 終了理由: fix:cancelled-by-user\n' | bash "$HOOK")
 assert "TC-23: cancelled notice allows stop (no output)" "" "$out"
 sf23=$(state_file_for "$d23")
 assert "TC-23: handoff consumed even when allowing" "ABSENT" "$(jq -r '.handoff // "ABSENT"' "$sf23")"
-rm -f "$tp23"
 
-# --- TC-24: FINALIZE + 最終 assistant が空 / jq 不能 → 差し戻す (AC-3 / T-03) ---
+# --- TC-24: FINALIZE + 最終テキストが string でない → transcript に戻らず差し戻す (AC-3 / T-03) ---
 echo ""
-echo "=== TC-24: FINALIZE with unparseable transcript fail-safe bounces ==="
+echo "=== TC-24: FINALIZE with non-string last_assistant_message bounces without transcript fallback ==="
 d24=$(new_sandbox)
 RITE_STATE_ROOT="$d24" bash "$FS" set --phase review --issue 2349 --branch b --pr 99 \
   --next n --handoff "FINALIZE:review:mergeable:99" --session "$SID" >/dev/null
 tp24=$(mktemp)
-printf 'not-json\n' > "$tp24"
+jq -nc '{type:"assistant",message:{content:"## /rite:iterate 完了\n- 未処理 non-blocking: 0 件"}}' > "$tp24"
 out=$(jq -nc --arg c "$d24" --arg s "$SID" --arg tp "$tp24" \
-  '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:false}' | bash "$HOOK")
-assert "TC-24: decision=block (inspect-fail fail-safe)" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
-_reason24=$(printf '%s' "$out" | jq -r '.reason // ""')
-if grep -q "完了通知" <<< "$_reason24"; then
-  pass "TC-24: inspect-fail still requests the completion notice"
+  '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:false, last_assistant_message:["x"]}' | bash "$HOOK" 2>/dev/null)
+assert "TC-24: decision=block (transcript notice is not used)" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "payload に最終テキスト"; then
+  pass "TC-24: reason names the missing payload text"
 else
-  fail "TC-24: inspect-fail reason missing completion-notice directive: $out"
+  fail "TC-24: reason does not name the missing payload text: $out"
 fi
 rm -f "$tp24"
 
@@ -651,39 +642,33 @@ echo "=== TC-25: continuation handoff still blocks even when iterate notice is p
 d25=$(new_sandbox)
 RITE_STATE_ROOT="$d25" bash "$FS" set --phase review --issue 2349 --branch b --pr 99 \
   --next n --handoff "/rite:fix 99" --session "$SID" >/dev/null
-tp25=$(mktemp)
-cat > "$tp25" <<'EOF'
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"## /rite:iterate 完了\n"}]}}
-EOF
-out=$(jq -nc --arg c "$d25" --arg s "$SID" --arg tp "$tp25" \
-  '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:false}' | bash "$HOOK")
+out=$(final_payload "$d25" $'## /rite:iterate 完了\n' | bash "$HOOK")
 assert "TC-25: decision=block (notice does not suppress continuation)" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
 if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "/rite:fix 99"; then
   pass "TC-25: continuation reason still re-injects /rite:fix"
 else
   fail "TC-25: continuation reason lost the command: $out"
 fi
-rm -f "$tp25"
 
-# --- TC-26: parseable transcript, last assistant has no notice heading → bounce (AC-2 production) ---
+# --- TC-26: last message has no notice heading → bounce (AC-2 production) ---
 echo ""
-echo "=== TC-26: parseable transcript without notice heading bounces (AC-2 missing branch) ==="
+echo "=== TC-26: last message without notice heading bounces (AC-2 missing branch) ==="
 d26=$(new_sandbox)
 RITE_STATE_ROOT="$d26" bash "$FS" set --phase fix --issue 2349 --branch b --pr 99 \
   --next n --handoff "FINALIZE:fix:replied-only:99" --session "$SID" >/dev/null
-tp26=$(mktemp)
-cat > "$tp26" <<'EOF'
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"[fix:replied-only] 指摘に返信して完了しました\n"}]}}
-EOF
-out=$(jq -nc --arg c "$d26" --arg s "$SID" --arg tp "$tp26" \
-  '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:false}' | bash "$HOOK")
-assert "TC-26: decision=block (missing notice with parseable last text)" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
-if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "完了通知"; then
+out=$(final_payload "$d26" $'[fix:replied-only] 指摘に返信して完了しました\n' | bash "$HOOK")
+assert "TC-26: decision=block (missing notice in last text)" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+_reason26=$(printf '%s' "$out" | jq -r '.reason // ""')
+if grep -q "完了通知" <<< "$_reason26"; then
   pass "TC-26: missing-notice path still requests the completion notice"
 else
   fail "TC-26: missing-notice reason lost completion-notice directive: $out"
 fi
-rm -f "$tp26"
+if grep -q "payload に最終テキスト" <<< "$_reason26"; then
+  fail "TC-26: present payload text wrongly reported as missing: $out"
+else
+  pass "TC-26: present payload text is not reported as missing"
+fi
 
 # --- TC-27: mergeable remaining field present but heading absent → bounce ---
 echo ""
@@ -691,27 +676,31 @@ echo "=== TC-27: mergeable remaining field without heading still bounces ==="
 d27=$(new_sandbox)
 RITE_STATE_ROOT="$d27" bash "$FS" set --phase review --issue 2349 --branch b --pr 99 \
   --next n --handoff "FINALIZE:review:mergeable:99" --session "$SID" >/dev/null
-tp27=$(mktemp)
-cat > "$tp27" <<'EOF'
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"未処理 non-blocking: 0 件\n"}]}}
-EOF
-out=$(jq -nc --arg c "$d27" --arg s "$SID" --arg tp "$tp27" \
-  '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:false}' | bash "$HOOK")
+out=$(final_payload "$d27" $'未処理 non-blocking: 0 件\n' | bash "$HOOK")
 assert "TC-27: decision=block (remaining field does not substitute for heading)" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
-rm -f "$tp27"
 
-# --- TC-28: replied-only + unparseable transcript → bounce (AC-3 isolated from remaining-field) ---
+# --- TC-28: transcript 末尾が tool_use だけでも payload の最終テキストで判定する（遅延回帰） ---
 echo ""
-echo "=== TC-28: replied-only unparseable transcript fail-safe bounces (AC-3 isolated) ==="
+echo "=== TC-28: transcript tail without text still allows when payload has the notice ==="
 d28=$(new_sandbox)
-RITE_STATE_ROOT="$d28" bash "$FS" set --phase fix --issue 2349 --branch b --pr 99 \
-  --next n --handoff "FINALIZE:fix:replied-only:99" --session "$SID" >/dev/null
+RITE_STATE_ROOT="$d28" bash "$FS" set --phase review --issue 2349 --branch b --pr 99 \
+  --next n --handoff "FINALIZE:review:mergeable:99" --session "$SID" >/dev/null
 tp28=$(mktemp)
-printf 'not-json\n' > "$tp28"
-out=$(jq -nc --arg c "$d28" --arg s "$SID" --arg tp "$tp28" \
-  '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:false}' | bash "$HOOK")
-assert "TC-28: decision=block (inspect-fail without remaining-field contract)" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+jq -nc '{type:"assistant",message:{content:[{type:"tool_use",id:"t1",name:"Bash",input:{}}]}}' > "$tp28"
+out=$(jq -nc --arg c "$d28" --arg s "$SID" --arg tp "$tp28" --arg t "$text21" \
+  '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:false, last_assistant_message:$t}' | bash "$HOOK")
+assert "TC-28: payload notice allows stop despite lagging transcript" "" "$out"
 rm -f "$tp28"
+
+# --- TC-28b: camelCase キー（lastAssistantMessage）も最終テキストとして読む ---
+echo ""
+echo "=== TC-28b: camelCase lastAssistantMessage is read as the final text ==="
+d28b=$(new_sandbox)
+RITE_STATE_ROOT="$d28b" bash "$FS" set --phase review --issue 2349 --branch b --pr 99 \
+  --next n --handoff "FINALIZE:review:mergeable:99" --session "$SID" >/dev/null
+out=$(jq -nc --arg c "$d28b" --arg s "$SID" --arg t "$text21" \
+  '{session_id:$s, cwd:$c, hook_event_name:"Stop", stop_hook_active:false, lastAssistantMessage:$t}' | bash "$HOOK")
+assert "TC-28b: camelCase notice allows stop" "" "$out"
 
 # --- TC-29: heading at start of 128KiB last text → allow (pipefail SIGPIPE pin) ---
 echo ""
@@ -719,19 +708,18 @@ echo "=== TC-29: heading at start of large last text allows stop (no SIGPIPE fal
 d29=$(new_sandbox)
 RITE_STATE_ROOT="$d29" bash "$FS" set --phase fix --issue 2349 --branch b --pr 99 \
   --next n --handoff "FINALIZE:fix:replied-only:99" --session "$SID" >/dev/null
-tp29=$(mktemp)
-python3 - "$tp29" <<'PY'
+pl29=$(mktemp)
+python3 - "$pl29" "$d29" "$SID" <<'PY'
 import json, sys
-path = sys.argv[1]
+path, cwd, sid = sys.argv[1:4]
 text = "## /rite:iterate 完了\n" + ("x" * 131072)
-rec = {"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": text}]}}
+rec = {"session_id": sid, "cwd": cwd, "hook_event_name": "Stop", "stop_hook_active": False, "last_assistant_message": text}
 with open(path, "w", encoding="utf-8") as f:
-    f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    f.write(json.dumps(rec, ensure_ascii=False))
 PY
-out=$(jq -nc --arg c "$d29" --arg s "$SID" --arg tp "$tp29" \
-  '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:false}' | bash "$HOOK")
+out=$(bash "$HOOK" < "$pl29")
 assert "TC-29: large heading-at-start allows stop (no output)" "" "$out"
-rm -f "$tp29"
+rm -f "$pl29"
 
 write_queue() {
   local dir="$1" sid="${2:-$SID}"
