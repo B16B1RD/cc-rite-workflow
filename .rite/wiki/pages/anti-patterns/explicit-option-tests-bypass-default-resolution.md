@@ -11,9 +11,11 @@ sources:
     resource: "raw/fixes/20260806T181047Z-pr-2126-c5.md"
   - type: "reviews"
     resource: "raw/reviews/20260807T011214Z-pr-2130.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260924T083006Z-pr-3037.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-07T18:40:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5[1m]", at: "2026-09-24T08:40:00Z" }
 ---
 
 # オプションを常に明示するテストは、既定値解決という最も壊れやすい経路を丸ごと素通りさせる
@@ -42,6 +44,8 @@ helper のテストがすべての TC でオプションを明示すると、pro
 3. 既定解決に複数の分岐（ファイルあり / 無し / 読めない）があるなら、それぞれに TC を置く。「省略した TC が 1 本ある」だけでは、分岐のうち 1 本しか守らない
 4. 契約テストが consumer の呼び出し literal を pin しているなら、**その literal が既定経路への依存を宣言している**と読む。宣言に対応する挙動テストがあるかを確認する
 
+5. 省略した TC は、**既定値と他の値で結果が分かれる入力**で書く。どの値でも同じ結果になる fixture（例: 2 つのモードが同じ理由で拒否する記録）では、省略時の既定を別の値に変える変異が生き残り、TC の名前が名乗る性質を固定しない。候補の値ごとに結果を並べ、既定値だけが出す結果を assert する
+
 **判定の目安**: テストスイートを開いて、helper 呼び出し行のオプションが全 TC で同一なら疑う。production の呼び出し形が grep で 1 件も出てこないなら確定。
 
 ## 関連ページ
@@ -54,3 +58,4 @@ helper のテストがすべての TC でオプションを明示すると、pro
 - [fix 結果](../../raw/fixes/20260806T153014Z-pr-2126.md)
 - [fix 結果](../../raw/fixes/20260806T181047Z-pr-2126-c5.md)
 - [同一 helper で 3 度目の再発](../../raw/reviews/20260807T011214Z-pr-2130.md)
+- [省略時の既定を区別できない fixture を使った TC](../../raw/reviews/20260924T083006Z-pr-3037.md)

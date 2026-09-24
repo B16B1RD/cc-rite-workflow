@@ -397,7 +397,7 @@ okf_version: "0.2"
 | [検出範囲を広げる修正は「広がった」と「広がりすぎていない」を対で pin する](pages/patterns/detector-widening-pins-both-bounds.md) | patterns | 検出器が取りこぼしていた入力を拾えるようにする修正で、positive fixture（新しく拾えるようになった形）だけを足すと**拡張の上限が守られない**。 | 2026-08-06T22:40:00+09:00 | high |
 | [bash は `$` の後の `[A-Za-z0-9_]` 連続を 1 つの変数名として読む — 無括弧の `$v_suffix` は派生ではなく別変数](pages/patterns/bash-variable-name-lexing-defeats-prefix-derivation-regex.md) | patterns | 「変数 `$v` から派生したパス」を追跡する検出器で、**変数名の接頭辞一致を派生と読むと誤検知する**。 | 2026-08-06T22:40:00+09:00 | high |
 | [既存の永続データを新規 consumer が読むときは、集合の意味を書込側の定義から引く](pages/heuristics/persisted-collection-semantics-from-writer-not-name.md) | heuristics | 永続化された配列を新しい consumer が読むとき、配列名から意味を推測すると書込側が定義した実際の集合とずれる。 | 2026-08-07T07:55:00+09:00 | high |
-| [オプションを常に明示するテストは、既定値解決という最も壊れやすい経路を丸ごと素通りさせる](pages/anti-patterns/explicit-option-tests-bypass-default-resolution.md) | anti-patterns | helper のテストがすべての TC でオプションを明示すると、production が実際に通る「オプション省略時の既定値解決」経路にテストが 1 本も当たらない。 | 2026-08-07T18:40:00+09:00 | high |
+| [オプションを常に明示するテストは、既定値解決という最も壊れやすい経路を丸ごと素通りさせる](pages/anti-patterns/explicit-option-tests-bypass-default-resolution.md) | anti-patterns | helper のテストがすべての TC でオプションを明示すると、production が実際に通る「オプション省略時の既定値解決」経路にテストが 1 本も当たらない。 | 2026-09-24T08:40:00Z | high |
 | [配列間で要素を移送するゲートの consumer は、入ってくる余分と出ていく不足の両方向を見る](pages/anti-patterns/transporting-gate-consumer-must-check-both-directions.md) | anti-patterns | ゲートが要素を配列 A から配列 B へ*移送*する設計では、A だけを読む consumer に 2 方向の欠陥が同時に成立する — 「A に残るべきでない余分が入る」と「B へ出ていった分が抜ける」。 | 2026-08-07T07:57:00+09:00 | high |
 | [検査と使用は同一の式に畳む — 分けると述語ずれ・到達不能 fail-safe・診断ゼロ行の 3 欠陥が同時に生える](pages/patterns/fold-validation-and-use-into-one-expression.md) | patterns | 「入力を検査してから使う」を 2 つの式（guard と抽出、validate と transform）に分けた瞬間、3 種類の欠陥が同時に生える。 | 2026-08-07T07:58:00+09:00 | high |
 | [jq / Oniguruma の $ は末尾改行の直前にも match する — 文字列全体一致は \\A / \\z を使う](pages/patterns/regex-absolute-anchors-for-whole-string-match.md) | patterns | jq の `test()` が使う Oniguruma（および Perl / Ruby 系の正規表現エンジン）では、`$` は「文字列末尾」ではなく「文字列末尾**または末尾改行の直前**」に match する。 | 2026-08-07T07:59:00+09:00 | high |
@@ -530,5 +530,5 @@ okf_version: "0.2"
 
 - 総ページ数: 516
 - ドメイン別: patterns=120, heuristics=231, anti-patterns=165
-- 最終更新: 2026-09-24T08:10:00Z
+- 最終更新: 2026-09-24T08:40:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
