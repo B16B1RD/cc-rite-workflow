@@ -28,6 +28,9 @@
 #   --project-owner      Projects owner。省略時は --owner
 #   --projects-enabled   true|false。省略時 false
 #   --create-script      create-issue-with-projects.sh のパス。テスト注入用。省略時は plugin 内の実体
+#   --preview-body       起票せずに本文を書き出すパス。既存 follow-up の確認までは通常と同じに行い、
+#                        起票する場合と同じ本文をこのパスへ書いて終える（label 作成・起票・元 Issue への
+#                        コメントはしない）。0 件・既存ありは通常と同じ skip で終える
 #   --exclude-ids        転記から除外する finding の key の CSV。key は出典 JSON の basename と id を
 #                        `#` で連結した値 (例: "9-20260101120000.json#F-01,9-20260102120000~1a2b.json#F-05")。
 #                        cleanup ステップ 6.0 がマージ後 HEAD で再検証し `resolved` と判定した key だけを
@@ -48,6 +51,7 @@
 #
 # Emitted markers (stderr):
 #   [CONTEXT] FOLLOW_UP_ISSUE=created; issue=<n>; pr=<n>
+#   [CONTEXT] FOLLOW_UP_ISSUE=preview; count=<n>; body=<path>; pr=<n>   (--preview-body のとき)
 #   [CONTEXT] FOLLOW_UP_ISSUE=skipped; reason=no_findings|all_resolved|all_issued|no_json|already_exists|jq_missing; pr=<n>
 #     no_findings  : parse できた JSON の和集合が、除外を適用する前から 0 件
 #     all_resolved : 除外**後**に 0 件になった (再検証で全件が解消済みと判定された)
@@ -71,7 +75,7 @@
 #       reason=apply_failed    : 最新のレビュー結果 JSON を選べない / 照合できない、または除外適用の jq が失敗
 #
 # Emitted summary (stdout, 1 行):
-#   [cleanup-follow-up-issue] result=<created|skipped|failed>; ...
+#   [cleanup-follow-up-issue] result=<created|preview|skipped|failed>; ...
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -94,6 +98,7 @@ PROJECT_OWNER=""
 PROJECTS_ENABLED="false"
 CREATE_SCRIPT=""
 EXCLUDE_IDS=""
+PREVIEW_BODY=""
 
 _require_option_value() {
   if [ -z "${2:-}" ]; then
@@ -113,6 +118,7 @@ while [ $# -gt 0 ]; do
     --project-owner)    PROJECT_OWNER="${2:-}"; shift 2 ;;
     --projects-enabled) PROJECTS_ENABLED="${2:-false}"; shift 2 ;;
     --create-script)    CREATE_SCRIPT="${2:-}"; shift 2 ;;
+    --preview-body)     _require_option_value "$1" "${2:-}"; PREVIEW_BODY="$2"; shift 2 ;;
     # 空値許容 option。`_require_option_value` を使わないのは、空文字列が「除外なし」という
     # 正当な入力であり引数不正ではないため (再検証が undecidable / skip の呼び出し側は空で渡す)。
     # ここを exit 1 にすると呼び出し側が helper_rc 失敗に落ち、完了報告で「未完了」に倒れる。
@@ -547,6 +553,18 @@ fi
 if [ ! -s "$body_file" ]; then
   echo "WARNING: follow-up Issue body の生成に失敗しました (tmpfile が空)。起票しません" >&2
   emit_failed create_api
+  exit 0
+fi
+
+if [ -n "$PREVIEW_BODY" ]; then
+  if ! cp "$body_file" "$PREVIEW_BODY"; then
+    echo "WARNING: follow-up 本文を ${PREVIEW_BODY} に書き出せませんでした" >&2
+    emit_failed create_api
+    exit 0
+  fi
+  preview_n=$(printf '%s' "$findings_json" | jq 'length')
+  echo "[CONTEXT] FOLLOW_UP_ISSUE=preview; count=${preview_n}; body=${PREVIEW_BODY}; pr=${PR_NUMBER}" >&2
+  echo "[cleanup-follow-up-issue] result=preview; count=${preview_n}; pr=${PR_NUMBER}"
   exit 0
 fi
 

@@ -1362,6 +1362,42 @@ assert "T-45 全件を元の順序で維持" "first,second" "$(sed -n 's/^- 説�
 assert_grep "T-45 WARNING" "$ERR" 'WARNING: 完全一致する指摘の集約に失敗したため全件を転記します'
 assert "T-45 故障注入 1 回" "1" "$(grep -c '^dedupe$' "$STUB_DIR/jq-fail.log" | tr -d ' ')"
 
+echo "--- T-46: --preview-body は起票せず、起票時と同じ本文を書き出す ---"
+reset_stubs
+r=$(new_root t46)
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-01","reviewer":"test-reviewer","severity":"LOW","file":"a.md","line":1,"description":"first","suggestion":"fix"},{"id":"F-02","reviewer":"test-reviewer","severity":"LOW","file":"b.md","line":2,"description":"second","suggestion":"fix"}]}'
+preview="$TMP_ROOT/preview-t46.md"
+run_target "$r" --preview-body "$preview"
+assert "T-46 exit 0" "0" "$RC"
+assert_grep "T-46 preview marker（件数と本文パス）" "$ERR" "FOLLOW_UP_ISSUE=preview; count=2; body=${preview}; pr=9"
+assert_grep "T-46 stdout summary" "$OUT" 'result=preview; count=2; pr=9'
+assert "T-46 起票しない" "0" "$(create_count)"
+assert_not_grep "T-46 label を作らない" "$GH_LOG" 'label create'
+assert "T-46 元 Issue へコメントしない" "0" "$(wc -l < "$GH_COMMENT_LOG" | tr -d ' ')"
+# 同じ入力で起票すると、プレビューと同じ本文で作られる
+run_target "$r"
+assert_grep "T-46 通常実行は起票する" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
+if cmp -s "$preview" "$STUB_DIR/body.md"; then
+  pass "T-46 プレビュー本文と起票本文が一致"
+else
+  fail "T-46 プレビュー本文と起票本文が一致しない"
+fi
+
+echo "--- T-47: --preview-body でも 0 件・既存は従来の skip で終わる ---"
+reset_stubs
+r=$(new_root t47)
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[]}'
+run_target "$r" --preview-body "$TMP_ROOT/preview-t47.md"
+assert_grep "T-47 0 件は no_findings" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=no_findings; pr=9'
+assert_not_grep "T-47 preview marker を出さない" "$ERR" 'FOLLOW_UP_ISSUE=preview'
+reset_stubs
+r=$(new_root t47b)
+put_json "$r" "9-20260101120000.json" "$FINDING_JSON"
+printf '%s\n' '[{"number":77,"body":"<!-- [rite-follow-up-from-pr:9] -->\nbody"}]' > "$GH_LIST_JSON"
+run_target "$r" --preview-body "$TMP_ROOT/preview-t47b.md"
+assert_grep "T-47 既存は already_exists" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=already_exists; issue=77; pr=9'
+assert_not_grep "T-47 既存でも preview を出さない" "$ERR" 'FOLLOW_UP_ISSUE=preview'
+
 echo "--- T-arg: 引数 gate ---"
 bash "$TARGET" --pr abc --state-root "$TMP_ROOT" --owner a --repo b >"$OUT" 2>"$ERR"; RC=$?
 assert "T-arg --pr 非数値は exit 1" "1" "$RC"
