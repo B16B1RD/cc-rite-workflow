@@ -11,7 +11,8 @@
 #
 # Exit 0: WIKI_APPLY_GATE=allow or =skip, plus reason=
 # Exit 1: WIKI_APPLY_GATE=deny plus reason=<name>
-# Exit 1 without a WIKI_APPLY_GATE= line: argument error, reason on stderr
+# Exit 1 without a WIKI_APPLY_GATE= line: argument error or internal failure
+#   (for example a record that is not valid UTF-8), reason on stderr
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
