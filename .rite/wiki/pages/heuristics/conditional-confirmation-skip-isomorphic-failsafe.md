@@ -8,9 +8,15 @@ created: "2026-07-16T09:37:48+09:00"
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260716T002919Z-pr-1868.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260924T115807Z-pr-3045.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260924T120808Z-pr-3045.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260924T122856Z-pr-3045.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-16T09:37:48+09:00" }
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-09-24T13:40:00Z" }
 ---
 
 # 条件付き確認 skip は既存 in-flow 判定と同型にし fail-safe を「確認を出す」側へ倒す
@@ -38,6 +44,16 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-16T09:37:48+09:00" }
 - flow-state E2E 判定（ready 2.1 / pr-review 3.3）は **E2E 途中の read 失敗が真に想定外**のため、helper 失敗時は stderr へ loud WARNING + `[CONTEXT] STATE_READ_FAILED=1` marker を出す（`[[silent-fallback-observability-via-debug-log]]` の系統）。
 - 同じ「fail-safe」でも失敗セマンティクスが異なるため、各判定は正しい sibling（run-queue 系 or flow-state 系）の WARNING 方針に従う。
 
+**4. キューの状態だけでなく、キューが今の対象を処理中であることまで照合する**
+- run-queue は中断しても `active: true` のまま残る。「自セッションのキューが active かつ merge モード」だけで skip すると、中断した batch と同じセッションで別の対象を手動実行したときに、確認なしの自動経路と取り違える。
+- skip の条件には cursor が指す対象と今回の対象の一致を含める（例: `.issues[.cursor // 0] == $i`）。兄弟の判定（iterate の run-queue 判定）がすでに持っている束縛を引き継ぐ。
+- 照合で確認側に倒せるのは「別の対象を手動実行したとき」までである。中断した対象そのものを手動実行した場合は、自動実行に同意した範囲として skip のまま残る。
+
+**5. 判定・受け渡し・記録の各段をそれぞれテストで固定する**
+- 修正の本体が手順書（skill）側にあるとき、helper のテストが全件通っても修正は固定されていない。手順書の判定 bash を抽出して fixture で実行するテストと、判定結果を後段へ渡す行（skip / ask で helper に渡すオプション、選択肢ごとの marker）を固定する grep テストは別物で、両方が要る。
+- 判定だけを固定すると、判定が正しいまま受け渡し行が書き換わる変異（ask で確認用オプションを渡さない、見送り marker を出さない）が生き残る。各段に変異をかけ、どの段もテストで検出されることを確かめる。
+- 利用者に出す文面のテンプレート（完了報告の表のセル）に置換規則の説明を書き込まない。字義どおり展開すると説明文ごと表示されるため、出所の説明はテンプレートの外に書く。
+
 **補足**: `set -euo pipefail` はこの種の検出ブロックに足さない。`flow-state.sh path` 失敗時にブロックが `[CONTEXT] ...MODE=` marker を emit する前に abort すると、LLM が判定行を得られなくなる。`set -e` なし + marker 常時 emit + 初期値=確認を出す、の組み合わせが全経路で確定的な安全 verdict を保証する。
 
 ## 関連ページ
@@ -47,3 +63,6 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-16T09:37:48+09:00" }
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20260716T002919Z-pr-1868.md)
+- [キュー照合と手順書側の配線のレビュー結果](../../raw/reviews/20260924T115807Z-pr-3045.md)
+- [手順書側の配線をテストで固定した fix 結果](../../raw/fixes/20260924T120808Z-pr-3045.md)
+- [判定結果の受け渡し行を固定した fix 結果](../../raw/fixes/20260924T122856Z-pr-3045.md)
