@@ -181,6 +181,39 @@ write_flow "$issue_flow" implement 8 "$repo"
 run_gate --mode commit --worktree "$repo" --flow-state "$issue_flow" --memory "$mem"
 if [ "$GRC" -eq 1 ] && grep -q 'reason=issue_mismatch' <<<"$GOUT"; then pass "issue mismatch"; else fail "issue rc=$GRC out=$GOUT"; fi
 
+echo "=== empty worktree field still resolves the memory from the issue ==="
+# Without --memory the gate builds the path from the flow-state issue number.
+# The worktree field is empty for sessions that never record one; it must not
+# shift the issue number out of place. The record says issue 7 and the flow says
+# 8, so issue_mismatch proves both the issue and the memory path were resolved.
+write_mem "$repo/.rite/work-memory/issue-8.md" "$(ok_page read out '対象外' -)"
+empty_wt_flow="$ROOT/emptywt.flow-state"
+jq -n '{phase:"review", issue_number:8, worktree:""}' > "$empty_wt_flow"
+no_wt_flow="$ROOT/nowt.flow-state"
+jq -n '{phase:"review", issue_number:8}' > "$no_wt_flow"
+pushd "$repo" >/dev/null
+for case_flow in "$empty_wt_flow" "$no_wt_flow"; do
+  rc=0
+  GOUT=$(env -u WIKI_APPLY_MEMORY -u WIKI_APPLY_FLOW_STATE bash "$GATE" \
+    --mode review --worktree "$repo" --flow-state "$case_flow" 2>"$ROOT/gate.err") || rc=$?
+  if [ "$rc" -eq 1 ] && grep -q 'reason=issue_mismatch' <<<"$GOUT" && ! grep -q 'record_missing' <<<"$GOUT"; then
+    pass "review resolves memory: $(basename "$case_flow")"
+  else
+    fail "review $(basename "$case_flow") rc=$rc out=$GOUT"
+  fi
+done
+jq -n '{phase:"implement", issue_number:8, worktree:""}' > "$empty_wt_flow"
+rc=0
+GOUT=$(env -u WIKI_APPLY_MEMORY -u WIKI_APPLY_FLOW_STATE bash "$GATE" \
+  --mode commit --worktree "$repo" --flow-state "$empty_wt_flow" 2>"$ROOT/gate.err") || rc=$?
+if [ "$rc" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=skip' <<<"$GOUT" && grep -q 'reason=worktree' <<<"$GOUT"; then
+  pass "commit with empty worktree skips"
+else
+  fail "commit empty worktree rc=$rc out=$GOUT"
+fi
+popd >/dev/null
+rm -rf "$repo/.rite"
+
 wt_flow="$ROOT/wt.flow-state"
 write_flow "$wt_flow" implement 7 "$repo"
 write_mem "$mem" "$(ok_page read out '対象外' - | sed -e 's#^worktree: .*#worktree: /tmp/not-the-repo#' -e 's#^session: .*#session: wt#')"
