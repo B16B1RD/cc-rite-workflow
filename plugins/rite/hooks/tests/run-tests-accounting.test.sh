@@ -358,7 +358,7 @@ tc10() {
   assert_contains "TC-10/$tag surrounding lines survive" "before-c1"
   assert_contains "TC-10/$tag trailing line survives" "after-c1"
   assert_contains "TC-10/$tag success line is printed" "$success_marker"
-  if printf '%s' "$RUN_OUT" | LC_ALL=C grep -qF "$(printf '\x9b')"; then
+  if LC_ALL=C grep -qF "$(printf '\x9b')" <<< "$RUN_OUT"; then
     fail "TC-10/$tag runner reprinted raw C1 (0x9b)"
   else
     pass "TC-10/$tag runner did not reprint raw C1 (0x9b)"
