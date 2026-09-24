@@ -4,10 +4,12 @@ title: "終了コードの契約は、その形を作る経路をすべて数え
 description: "スクリプト冒頭の終了コード契約を「exit 1 は引数エラー」のように特定の値と原因で書くと、埋め込みインタプリタの例外、インタプリタの欠落（127）、pipefail 経由の外部コマンドの終了コード（2）など、同じ出力の形を作る別の経路が漏れる。経路を実装から数え上げ、入力を壊して一つずつ実行してから、呼び出し元の扱い（非 0 はすべて拒否など）に合わせた粒度で書く。"
 domain: "heuristics"
 created: "2026-09-24T09:40:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5[1m]", at: "2026-09-24T09:40:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5[1m]", at: "2026-09-24T11:10:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260924T091612Z-pr-3042.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260924T105539Z-pr-3044.md"
 tags: ["exit-code", "contract", "documentation", "pipefail", "set-e"]
 confidence: medium
 promote: rite-plugin
@@ -27,6 +29,8 @@ promote: rite-plugin
 
 **粒度は呼び出し元の扱いに合わせる。** 呼び出し元がすべて「非 0 なら拒否」で扱うなら、契約は「非 0（判定行なし）」と書き、具体的な値は例として挙げる。特定の値を契約にすると、実装の変更で値が変わったときに契約だけが古くなる。
 
+**約束しないことは約束しない書き方にする。** 「stderr は失敗したコマンドのもの」と書けば、中身が空かどうかは約束しない。空になる条件まで書こうとすると、引数の組み合わせで経路が変わるため、呼び出し元が実際に通る経路と文書の例がずれやすい。
+
 ## 関連ページ
 
 - [分岐を足したら、後ろのアームの出力がまだ使われるかを確かめる](./new-branch-leaves-later-arm-output-discarded.md)
@@ -34,3 +38,4 @@ promote: rite-plugin
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20260924T091612Z-pr-3042.md)
+- [契約を非 0 に一般化したレビュー結果](../../raw/reviews/20260924T105539Z-pr-3044.md)
