@@ -319,6 +319,34 @@ if [ "$GRC" -eq 1 ] && grep -q 'reason=stale_content' <<<"$GOUT"; then
 else
   fail "stale content rc=$GRC out=$GOUT"
 fi
+# --mode を省略したときは commit と同じ照合を行う
+run_gate --worktree "$age" --flow-state "$age_flow" --memory "$age_mem"
+if [ "$GRC" -eq 1 ] && grep -q 'reason=stale_content' <<<"$GOUT"; then
+  pass "omitted mode checks like commit"
+else
+  fail "omitted mode rc=$GRC out=$GOUT"
+fi
+# review でも blob を照合する。別セッションの記録で blob だけを書き換える
+other_blob=$(printf 'other\n' | git -C "$age" hash-object --stdin)
+write_mem "$age_mem" "$(fresh_header none other-session "$age" 1 README \
+  | sed -e "s#^blob: README=.*#blob: README=${other_blob}#")"
+run_gate --mode review --worktree "$age" --flow-state "$age_flow" --memory "$age_mem"
+if [ "$GRC" -eq 1 ] && grep -q 'reason=stale_content' <<<"$GOUT"; then
+  pass "review denies a changed blob"
+else
+  fail "review stale content rc=$GRC out=$GOUT"
+fi
+
+echo "=== unknown mode ==="
+for bad_mode in bogus reveiw ""; do
+  run_gate --mode "$bad_mode" --worktree "$age" --flow-state "$age_flow" --memory "$age_mem"
+  if [ "$GRC" -ne 0 ] && ! grep -q 'WIKI_APPLY_GATE=' <<<"$GOUT" \
+    && grep -q 'commit' "$ROOT/gate.err" && grep -q 'review' "$ROOT/gate.err"; then
+    pass "mode '$bad_mode' is rejected with the accepted values"
+  else
+    fail "mode '$bad_mode' rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
+  fi
+done
 
 echo "=== review evidence ==="
 page_rev=$(printf '対象の識別子を照合してから実行する。\n' | git -C "$repo" hash-object -w --stdin)

@@ -27,6 +27,10 @@ while [ $# -gt 0 ]; do
     *) echo "ERROR: unknown argument: $1" >&2; exit 1 ;;
   esac
 done
+case "$MODE" in
+  commit|review) ;;
+  *) echo "ERROR: --mode must be commit or review (got: '$MODE')" >&2; exit 1 ;;
+esac
 
 _skip() { echo "WIKI_APPLY_GATE=skip"; echo "reason=$1"; exit 0; }
 _deny() { echo "WIKI_APPLY_GATE=deny"; echo "reason=$1"; exit 1; }
