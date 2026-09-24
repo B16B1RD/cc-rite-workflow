@@ -6,6 +6,7 @@ python3 - "$SCRIPT_DIR/../.." <<'PYTEST'
 import copy
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import stat
@@ -726,13 +727,20 @@ for closed_targets in (False, True):
             hook(command, reason='cannot be verified during review')
         for command in ('sudo git merge main', 'env -u GIT_DIR git merge --continue', 'timeout 60 git merge main'):
             hook(command, reason='run merge as a direct command')
-        # A substitution runs its command even inside double quotes or backquotes.
-        hook('out="$(git merge origin/trunk 2>&1)"', reason='cannot be verified during review')
-        hook('echo "`git merge main`"', reason='cannot be verified during review')
-        hook('x="$(git commit -m y)"', reason='fix plan record missing')
+        # A substitution runs its command even inside double quotes or backquotes, in a subshell.
+        hook('out="$(git merge origin/trunk 2>&1)"', reason='run merge as a direct command')
+        hook('echo "`git merge main`"', reason='run merge as a direct command')
+        hook('v=`git merge main`', reason='run merge as a direct command')
+        hook('x="$(git commit -m y)"', reason='run commit as a direct command')
+        hook('x="$(echo "(a (b) c)"; git -C .. merge main)"', reason='run merge as a direct command')
+        # A cd inside a substitution stays in its subshell.
+        hook('x="$(cd "$HOME" && pwd)"; git merge main', reason='cannot be verified during review')
+        hook('x="$(cd "$HOME")"; git commit -m y', reason='fix plan record missing')
+        hook('git commit -m "$(cat <<\'EOF\'\nno end\n)"', reason='unfinished heredoc')
+        hook('git commit -m "$(echo x"', reason='unfinished command substitution')
         # git takes a unique prefix of a long option; an abbreviation cannot be read safely.
         for command in ('git merge --no-commit --commi main', 'git merge --mess --no-commit main'):
-            hook(command, reason='cannot be verified during review')
+            hook(command, reason='abbreviated git merge option')
         for command in (intake + ' main', 'git merge --squash main', 'git merge --abort',
                         'git merge --quit', 'git merge --ff-only main', 'git merge --commit --no-commit main',
                         'git log --merges', 'cd "$HOME" && git merge-base HEAD main',
@@ -743,6 +751,31 @@ for closed_targets in (False, True):
         cleanup = caller_block((plugin / 'skills/cleanup/SKILL.md').read_text(),
                                'git merge --ff-only origin/{base_branch} 2>/dev/null; do')
         hook(cleanup, allowed=True)
+        # The heredoc message form is the everyday commit: its body is data, whatever it says.
+        def heredoc(text, verb='git commit -m'):
+            return verb + ' "$(cat <<\'EOF\'\n' + text + '\n\nCo-Authored-By: x <y@z>\nEOF\n)"'
+        bodies = ("fix: it's done", 'fix: tidy\n\ncd ..', 'fix: explain\n\nrun git merge origin/main first',
+                  'fix: explain\n\nthen git commit -m again', 'fix: handle (edge) case)',
+                  'fix: quote "x" and `y`')
+        for text in bodies:
+            targets = run(['bash', str(helper), 'commit-target', '--command', heredoc(text), '--cwd', str(root)])
+            lines = targets.stdout.splitlines()
+            check(len(lines) == 1 and lines[0].split('\t')[0] == 'index'
+                  and Path(lines[0].split('\t')[1]) == root.resolve(), 'heredoc commit targets the index: ' + text)
+            hook(heredoc(text), reason='fix plan record missing')
+            hook(heredoc(text, 'gh pr comment 71 --body'), allowed=True)
+        for command in ('git commit -F /tmp/msg.txt', 'git add -A && git commit -m "fix: a\n\nbody"'):
+            hook(command, reason='fix plan record missing')
+        # Every fenced bash block in the plugin that runs git commit / git merge still parses.
+        docs = [path for folder in ('skills', 'references') for path in sorted((plugin / folder).rglob('*.md'))]
+        blocks = [block for path in docs
+                  for block in re.findall(r'```bash\n(.*?)\n```', path.read_text(encoding='utf-8'), re.S)
+                  if re.search(r'git[^\n]*\b(commit|merge)\b', block)]
+        check(len(blocks) >= 10, 'the corpus finds the plugin commit blocks')
+        for block in blocks:
+            parsed = run(['bash', str(helper), 'commit-target', '--command', block, '--cwd', str(root)], ok=False)
+            check(not any(word in parsed.stderr for word in ('unfinished', 'ambiguous', 'Traceback')),
+                  'plugin block parses: ' + block[:80] + '\n' + parsed.stderr)
         # Pattern 9 keeps reading only git commit: merges do not become wiki-gated commits.
         targets = run(['bash', str(helper), 'commit-target', '--command', 'git merge --continue',
                        '--cwd', str(root)])
@@ -762,6 +795,7 @@ for closed_targets in (False, True):
             hook('git merge main', allowed=True, cwd=Path(linked))
             hook('cd "$WT" && git merge main', reason='target is dynamic', cwd=Path(linked))
             hook('git -C "$WT" merge main', reason='target is dynamic', cwd=Path(linked))
+            hook('git -C"$WT" merge main', reason='target is dynamic', cwd=Path(linked))
             run(['git', 'worktree', 'remove', '--force', linked])
 
         def plan_for(groups, **constraints):
@@ -803,7 +837,11 @@ for closed_targets in (False, True):
         run(['git', 'add', '-A'])
         # Both conclusion routes wait for the same plan, and name the intake route.
         hook('git commit --no-edit', reason='this concludes a merge')
-        hook('git merge --continue', reason='this concludes a merge')
+        concludes = hook('git merge --continue', reason='this concludes a merge')
+        check('push' in concludes.stdout and '/rite:iterate' in concludes.stdout
+              and 'otherwise git merge --abort' in concludes.stdout, 'the hint carries the rest of the route')
+        hook('git --git-dir=.git merge main', reason='without alternate git-dir')
+        hook('git --git-dir=.git merge --abort', allowed=True)
 
         merged = ['protected/secret.py', 'src/a.py', 'src/base-only.py']
         # A path the base did not change keeps the Issue's target constraints.
@@ -826,9 +864,12 @@ for closed_targets in (False, True):
         config = root / 'rite-config.yml'
         saved_config = config.read_text()
         config.unlink()
-        rejected(plan_for([group(merged)]), 'branch.base is not set')
-        config.write_text('branch:\n  prefix: x\n')
-        rejected(plan_for([group(merged)]), 'branch.base is not set in')
+        rejected(plan_for([group(merged)]), 'rite-config.yml not found')
+        for text in ('branch:\n  prefix: x\n', 'branch:\n  base: null\n', 'wiki:\n  base: trunk\n'):
+            config.write_text(text)
+            rejected(plan_for([group(merged)]), 'branch.base is not set in')
+        config.write_bytes(b'branch:\n  base: \xff\n')
+        rejected(plan_for([group(merged)]), 'cannot read rite-config.yml')
         if os.getuid() != 0:
             config.write_text(saved_config)
             config.chmod(0)
@@ -841,6 +882,7 @@ for closed_targets in (False, True):
         hook('git commit --no-edit', allowed=True)
         hook('git merge --continue', allowed=True)
         hook('git -C src commit --no-edit', allowed=True)
+        hook('git commit --no-edit', allowed=True, cwd=root / 'src')
         run(['git', 'commit', '--no-edit'])
         check(run(['git', 'rev-parse', 'HEAD^1']).stdout.strip() == reviewed_head, 'intake is a merge onto the reviewed HEAD')
         before = json.loads(state_path.read_text())

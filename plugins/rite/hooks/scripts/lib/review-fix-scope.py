@@ -150,8 +150,8 @@ BASE_INTAKE_STEPS = ("git fetch origin <base>, take it in with git merge --no-co
                      "(skills/fix/references/fix-plan.md, section: base 取り込み)")
 # The same route, entered with a merge already in progress.
 BASE_INTAKE_CONCLUDE = ("if it takes in origin/<base>, resolve and stage it, add a base-intake group to the fix plan, "
-                        "run check and verify --kind all, then commit; otherwise git merge --abort and follow "
-                        "skills/fix/references/fix-plan.md, section: base 取り込み")
+                        "run check and verify --kind all, commit, push, then re-run /rite:iterate; otherwise "
+                        "git merge --abort and start over (skills/fix/references/fix-plan.md, section: base 取り込み)")
 
 
 def merge_head():
@@ -164,13 +164,13 @@ def base_branch():
     """branch.base from rite-config.yml. It decides what base intake may exempt, so it has no default."""
     located = subprocess.run(["bash", str(Path(__file__).with_name("rite-config-path.sh"))],
                              capture_output=True, text=True)
-    require(located.returncode != 1, "branch.base is not set: " + located.stderr.strip()
+    require(located.returncode != 1, "rite-config.yml not found: " + located.stderr.strip()
             + "; base intake cannot identify the base branch")
     require(located.returncode == 0, "cannot read rite-config.yml: " + located.stderr.strip())
     config = Path(located.stdout.strip())
     try:
         lines = config.read_text(encoding="utf-8").splitlines()
-    except (OSError, UnicodeDecodeError) as error:
+    except UnicodeDecodeError as error:
         require(False, "cannot read rite-config.yml: " + str(config) + ": " + str(error))
     in_branch = False
     for line in lines:
@@ -376,9 +376,29 @@ _HEAD_MOVERS = ("commit", "merge")
 _SEPARATORS = ";&|()\n"
 
 
+_HEREDOC = re.compile(r"<<(-?)[ \t]*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")
+
+
+def _skip_heredoc(command, index, delimiters):
+    """Index of the line after the heredoc bodies that start at the newline at index."""
+    for strip, word in delimiters:
+        while True:
+            end = command.find("\n", index + 1)
+            line = command[index + 1:] if end < 0 else command[index + 1:end]
+            if (line.lstrip("\t") if strip else line) == word:
+                index = len(command) if end < 0 else end
+                break
+            require(end >= 0, "unfinished heredoc; run git commit / git merge separately")
+            index = end
+    return index
+
+
 def _substitution_end(command, start):
-    """Index just past the ')' closing the $( that ends at start. Not a shell interpreter."""
-    depth, index, quote = 1, start, None
+    """Index just past the ')' closing the $( that ends at start. Not a shell interpreter.
+
+    A heredoc body inside the substitution is data, so its quotes and parentheses do not count.
+    """
+    depth, index, quote, pending = 1, start, None, []
     while index < len(command):
         ch = command[index]
         if quote:
@@ -390,6 +410,14 @@ def _substitution_end(command, start):
             quote = ch
         elif ch == "\\":
             index += 1
+        elif command.startswith("<<", index) and _HEREDOC.match(command, index):
+            match = _HEREDOC.match(command, index)
+            pending.append((match.group(1) == "-", match.group(3)))
+            index = match.end()
+            continue
+        elif ch == "\n" and pending:
+            index = _skip_heredoc(command, index, pending)
+            pending = []
         elif ch == "(":
             depth += 1
         elif ch == ")":
@@ -400,13 +428,40 @@ def _substitution_end(command, start):
     require(False, "unfinished command substitution; run git commit / git merge separately")
 
 
-def shell_segments(command):
-    """Split a command into simple commands of dequoted words. Not a shell interpreter.
+def _without_heredoc_bodies(command):
+    """The command with every heredoc body removed; the << operators stay."""
+    out, index, pending, quote = [], 0, [], None
+    while index < len(command):
+        ch = command[index]
+        if quote:
+            if ch == quote:
+                quote = None
+        elif ch in "'\"":
+            quote = ch
+        elif command.startswith("<<", index) and _HEREDOC.match(command, index):
+            match = _HEREDOC.match(command, index)
+            pending.append((match.group(1) == "-", match.group(3)))
+            out.append(match.group(0))
+            index = match.end()
+            continue
+        elif ch == "\n" and pending:
+            out.append("\n")
+            index = _skip_heredoc(command, index, pending) + 1
+            pending = []
+            continue
+        out.append(ch)
+        index += 1
+    return "".join(out)
+
+
+def shell_segments(command, nested=False):
+    """Split a command into (words, nested) simple commands of dequoted words. Not a shell interpreter.
 
     Quotes are tracked across a whole word, so a separator inside quotes (echo ';',
     NAME="a (b) c") stays in its word, and a quote may open in the middle of a word.
-    A command substitution inside double quotes or backquotes runs too, so its body
-    is split as commands of its own, ahead of the command that contains it.
+    A command substitution inside double quotes or backquotes runs in a subshell, so
+    its commands come back marked nested, ahead of the command that contains it,
+    with heredoc bodies (data) left out.
     """
     segments, words, word, quoted, quote = [], [], [], False, None
     index, length = 0, len(command)
@@ -417,6 +472,9 @@ def shell_segments(command):
             words.append("".join(word))
         word, quoted = [], False
 
+    def substitution(body):
+        segments.extend((inner, True) for inner, _nested in shell_segments(_without_heredoc_bodies(body), True))
+
     while index < length:
         ch = command[index]
         if quote == "'":
@@ -426,14 +484,14 @@ def shell_segments(command):
                 word.append(ch)
         elif quote == '"' and command.startswith("$(", index):
             end = _substitution_end(command, index + 2)
-            segments.extend(shell_segments(command[index + 2:end - 1]))
+            substitution(command[index + 2:end - 1])
             word.append(command[index:end])
             index = end
             continue
         elif ch == "`" and quote in (None, '"'):
             end = command.find("`", index + 1)
             require(end >= 0, "unfinished command substitution; run git commit / git merge separately")
-            segments.extend(shell_segments(command[index + 1:end]))
+            substitution(command[index + 1:end])
             word.append(command[index:end + 1])
             quoted = True
             index = end + 1
@@ -462,7 +520,7 @@ def shell_segments(command):
         elif ch in _SEPARATORS:
             end_word()
             if words:
-                segments.append(words)
+                segments.append((words, nested))
                 words = []
         else:
             word.append(ch)
@@ -470,7 +528,7 @@ def shell_segments(command):
     require(quote is None, "unfinished quoted command; run git commit / git merge separately")
     end_word()
     if words:
-        segments.append(words)
+        segments.append((words, nested))
     return segments
 
 
@@ -495,13 +553,14 @@ def git_subcommand_index(words, git_index):
 def each_git_target(command, cwd):
     """Yield (subcommand, toplevel, arguments, problem) for each git commit / merge, in order.
 
-    problem names why the target cannot be checked (a wrapper, a dynamic cd / -C, an
-    alternate git dir); the caller refuses it only when the command would move HEAD.
+    problem names why the target cannot be checked (a wrapper, a command substitution,
+    a dynamic cd / -C, an alternate git dir); the caller refuses it only when the command would move HEAD.
     toplevel is None when there is a problem or the target is not a repository.
     """
     cwd, dynamic = Path(cwd).resolve(), False
-    for words in shell_segments(command):
-        if words and words[0] == "cd" and len(words) == 2:
+    for words, nested in shell_segments(command):
+        # A substitution runs in a subshell: its cd stays there, and its git is not direct.
+        if not nested and words and words[0] == "cd" and len(words) == 2:
             if any(c in words[1] for c in "$`~"):
                 dynamic = True
             elif not dynamic or Path(words[1]).is_absolute():
@@ -510,7 +569,7 @@ def each_git_target(command, cwd):
         words, _peeled = peel_commit_prefixes(words)
         if not words:
             continue
-        if Path(words[0]).name != "git":
+        if nested or Path(words[0]).name != "git":
             if Path(words[0]).name in {"echo", "printf"}:
                 continue
             names = [Path(word).name for word in words]
@@ -558,7 +617,7 @@ def each_git_target(command, cwd):
             actual = Path(subprocess.check_output(
                 ["git", "-C", str(target), "rev-parse", "--show-toplevel"], text=True, stderr=subprocess.DEVNULL
             ).strip()).resolve()
-        except (subprocess.CalledProcessError, FileNotFoundError, NotADirectoryError):
+        except subprocess.CalledProcessError:
             # Not a repository, so it is not the session worktree. commit-target
             # still refuses this; a review check must not turn it into a deny.
             actual = None
@@ -571,7 +630,7 @@ def head_move(name, args):
         # Option values (notably -m '--dry-run') must not exempt a real commit.
         return None if classify_commit_args(args)[0] else "commit"
     moves = merge_kind(args)
-    return {"concludes": "commit", "commits": "merge"}.get(moves)
+    return {"concludes": "commit", "commits": "merge", "unreadable": "unreadable"}.get(moves)
 
 
 def each_direct_commit(command, cwd):
@@ -586,15 +645,16 @@ def each_direct_commit(command, cwd):
 _MERGE_VALUE = {"-m", "-F", "-s", "-X", "--message", "--file", "--strategy", "--strategy-option", "--into-name"}
 _MERGE_SWITCHES = {"--commit", "--no-commit", "--squash", "--no-squash", "--ff", "--no-ff", "--ff-only",
                    "--continue", "--abort", "--quit"}
+_MERGE_LONG = _MERGE_SWITCHES | {option for option in _MERGE_VALUE if option.startswith("--")}
 
 
 def merge_kind(args):
-    """How a git merge moves HEAD: "concludes" (--continue), "commits" (by itself) or None.
+    """How a git merge moves HEAD: "concludes" (--continue), "commits" (by itself), "unreadable" or None.
 
     git reads --commit/--no-commit, --squash/--no-squash and --ff/--no-ff/--ff-only
     as last-one-wins, so a later option overrides an earlier exemption. git also takes
     a unique prefix of a long option; an abbreviation of these options cannot be read
-    safely, so it counts as a merge that commits.
+    safely, so it is "unreadable" and refused like a merge that commits.
     """
     commits, squash, ff_only, action = True, False, False, None
     index = 0
@@ -607,9 +667,8 @@ def merge_kind(args):
             continue
         if word.startswith("--"):
             name = word.split("=", 1)[0]
-            known = _MERGE_SWITCHES | {option for option in _MERGE_VALUE if option.startswith("--")}
-            if name not in known and any(option.startswith(name) for option in known):
-                return "commits"
+            if name not in _MERGE_LONG and any(option.startswith(name) for option in _MERGE_LONG):
+                return "unreadable"
             if name in ("--continue", "--abort", "--quit"):
                 action = name
             elif name in ("--commit", "--no-commit"):
@@ -669,6 +728,9 @@ def commit_check(args):
             require(retained.get("status") != "stopped",
                     "review run stopped: " + str(retained.get("stop_reason")))
             return
+        require(kind != "unreadable",
+                "an abbreviated git merge option cannot be read during review; spell --commit, --no-commit, "
+                "--squash, --ff-only, --abort, --quit and --continue in full")
         require(kind != "merge",
                 "a merge that commits by itself cannot be verified during review; " + BASE_INTAKE_STEPS)
         frozen = state.get("review_cycle")
