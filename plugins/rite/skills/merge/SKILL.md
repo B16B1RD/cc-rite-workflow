@@ -167,7 +167,7 @@ bash "{plugin_root}/hooks/scripts/ready-reviewed-head-gate.sh" \
 | 状態 | アクション |
 |------|-----------|
 | `isDraft == true` | `[merge:not-ready]` emit + 「先に `/rite:ready {pr_number}` を実行してください」案内 + 終了 |
-| `mergeable != "MERGEABLE"` | 再判定は可逆なので、原因 (`mergeStateStatus`) を表示・既存 work memory に記録して 1 回だけ自動再判定する。再度非 MERGEABLE なら `[merge:not-ready]` を emit して終了 |
+| `mergeable != "MERGEABLE"` | 再判定は可逆なので、原因 (`mergeStateStatus`) を表示・既存 work memory に記録して 1 回だけ自動再判定する。再度非 MERGEABLE なら `[merge:not-ready]` を emit して終了。`CONFLICTING` の解消は [base 取り込み](../fix/references/fix-plan.md#base-取り込み) の手順で行う |
 | `mergeable == "MERGEABLE"` + checks 0 件 | CI 未設定リポジトリとして従来どおりステップ 2 へ |
 | `mergeable == "MERGEABLE"` + checks が pending + `force_ci == false` | 上の bash が待ち loop を実行済み。`MERGE_CHECKS_STATE` の**最終行**で既存分類へ合流する。最終行がまだ `pending`（上限到達）なら `[merge:not-ready]` emit + 「checks の完了を待って再実行」と表示して終了（未完了 check 名は bash が stderr 済み） |
 | checks が pending + `force_ci == true` | 待ち loop に入らない。未完了 check の一覧を表示した後、ステップ 2 へ |

@@ -911,7 +911,8 @@ def advance(state, session, current_head):
         return
     pending = run.get("pending_fix")
     require(isinstance(pending, dict) and pending.get("source_context") == context,
-            "changed HEAD requires completed full fix verification")
+            "changed HEAD requires completed full fix verification; taking in the base branch"
+            " goes through a base-intake fix plan before its commit (fix-plan reference: base intake)")
     require(pending["tree_hash"] == tree_fingerprint(), "HEAD content differs from verified fix tree")
     scope = importlib.import_module("review-fix-scope")
     for test in pending["tests"]:

@@ -939,7 +939,8 @@ fi
 
 # Pattern 8: review/fix evidence must exist before changing the reviewed HEAD.
 # Reuse the heredoc surface, not CMD_CHECK which drops later command lines.
-if [ -z "$BLOCKED_PATTERN" ] && [[ "$COMMAND" == *git* && "$COMMAND" == *commit* ]]; then
+# git merge also moves HEAD (--continue, or a merge that commits by itself).
+if [ -z "$BLOCKED_PATTERN" ] && [[ "$COMMAND" == *git* && ( "$COMMAND" == *commit* || "$COMMAND" == *merge* ) ]]; then
   if _commit_surface=$(_rite_btg_pattern6_command_surface "$COMMAND") \
      && _commit_cwd=$(printf '%s' "$INPUT" | jq -r '.cwd // empty') \
      && _commit_reason=$(bash "$SCRIPT_DIR/scripts/review-fix-scope-check.sh" commit-check \
@@ -948,7 +949,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [[ "$COMMAND" == *git* && "$COMMAND" == *commit*
   else
     BLOCKED_PATTERN="review-commit-evidence"
     BLOCKED_REASON="Commit evidence check failed: ${_commit_reason:-cannot inspect command or state}"
-    BLOCKED_ALTERNATIVE="Save the current review with review-finish, then run review-fix-scope-check.sh check --plan <plan> --issue <issue> and review-fix-scope-check.sh verify --plan <plan> --issue <issue> --kind all. If denied for an unplanned changed path, delete the path when it is not needed, or add it to the plan and re-check; staging it does not clear that denial, and review-finish and verify alone will not either. Run commit in a separate Bash call from verification. If the reason is a quoting or parse error, write the message to a file outside the work tree and commit with git commit -F <message-file> in its own Bash call. Keep state and evidence intact."
+    BLOCKED_ALTERNATIVE="Save the current review with review-finish, then run review-fix-scope-check.sh check --plan <plan> --issue <issue> and review-fix-scope-check.sh verify --plan <plan> --issue <issue> --kind all. If denied for an unplanned changed path, delete the path when it is not needed, or add it to the plan and re-check; staging it does not clear that denial, and review-finish and verify alone will not either. Run commit in a separate Bash call from verification. If the reason is a quoting or parse error, write the message to a file outside the work tree and commit with git commit -F <message-file> in its own Bash call. To take in the base branch, use git merge --no-commit with a base-intake fix plan (fix-plan reference: base intake); a git merge that commits by itself is refused. Keep state and evidence intact."
   fi
 fi
 

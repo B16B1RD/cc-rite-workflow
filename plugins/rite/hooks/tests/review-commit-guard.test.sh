@@ -583,11 +583,213 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-retained-') as tmp:
     abandoned = json.loads(Path(flow('path').stdout.strip()).read_text())
     check(abandoned.get('review_cycle') is None and 'review_run' in abandoned, 'abandon retains the run')
     hook(allowed=True)
+    hook('git merge --continue', allowed=True)
+    hook('git merge main', allowed=True)
     state_path = Path(flow('path').stdout.strip())
     stopped = json.loads(state_path.read_text())
     stopped['review_run']['status'] = 'stopped'
     stopped['review_run']['stop_reason'] = 'circuit-breaker:max-cycles'
     dump(state_path, stopped)
     hook(reason='review run stopped')
+    hook('git merge --continue', reason='review run stopped')
+    hook('git merge main', reason='review run stopped')
+# Taking the base branch into a reviewed branch: every merge route that moves HEAD
+# meets the same evidence check, and a base-intake plan carries the intake into the
+# next cycle of the same run even when the base touches the Issue's Non-Target files.
+for closed_targets in (False, True):
+    with tempfile.TemporaryDirectory(prefix='rite-base-intake-') as tmp:
+        root = Path(tmp)
+        private = root / '.rite'
+        private.mkdir()
+        env = dict(os.environ)
+        for key in ('CODEX_THREAD_ID', 'GROK_SESSION_ID', 'CLAUDE_SESSION_ID',
+                    'CLAUDE_CODE_SESSION_ID', 'RITE_SESSION_ID', 'RITE_HOST', 'RITE_STATE_ROOT',
+                    'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE'):
+            env.pop(key, None)
+        session = 'fix-scope-test'
+        env.update(RITE_HOST='claude', CLAUDE_CODE_SESSION_ID=session, RITE_STATE_ROOT=tmp, TMPDIR=tmp,
+                   GIT_AUTHOR_NAME='Test', GIT_AUTHOR_EMAIL='test@example.invalid',
+                   GIT_COMMITTER_NAME='Test', GIT_COMMITTER_EMAIL='test@example.invalid')
+
+        def run(args, ok=True, cwd=None):
+            result = subprocess.run(args, cwd=cwd or root, env=env, text=True, capture_output=True)
+            if ok:
+                check(result.returncode == 0, repr(args) + '\n' + result.stdout + result.stderr)
+            return result
+
+        def flow(*args, ok=True):
+            return run(['bash', str(plugin / 'hooks/flow-state.sh'), *map(str, args)], ok=ok)
+
+        guard = plugin / 'hooks/pre-tool-bash-guard.sh'
+
+        def hook(command, allowed=False, reason=None, cwd=None):
+            payload = json.dumps(dict(tool_name='Bash', cwd=str(cwd or root), tool_input=dict(command=command)))
+            result = subprocess.run(['bash', str(guard)], input=payload, cwd=cwd or root, env=env,
+                                    text=True, capture_output=True)
+            denied = bool(result.stdout.strip()) and json.loads(result.stdout).get('hookSpecificOutput', {}).get('permissionDecision') == 'deny'
+            check(not denied if allowed else denied, command + ': ' + result.stdout + result.stderr)
+            if not allowed:
+                text = result.stdout + result.stderr
+                check('review-commit-evidence' in result.stdout, 'merge denial is the review evidence check: ' + command)
+                # The existing guidance stays; the intake route is added to it.
+                check('review-finish' in text and 'git commit -F <message-file>' in text
+                      and 'base-intake fix plan' in text, 'denial keeps and extends the guidance: ' + text)
+                if reason:
+                    check(reason in text, 'expected reason ' + reason + ' in ' + text)
+            return result
+
+        run(['git', 'init', '-q', '-b', 'main'])
+        (root / '.git/info/exclude').write_text('.rite/\n')
+        (root / 'src').mkdir()
+        (root / 'src/a.py').write_text('original\n')
+        (root / 'protected').mkdir()
+        (root / 'protected/secret.py').write_text('original\n')
+        run(['git', 'add', 'src', 'protected'])
+        run(['git', 'commit', '-q', '-m', 'fixture'])
+        run(['git', 'switch', '-q', '-c', 'feat'])
+        (root / 'src/a.py').write_text('feature\n')
+        run(['git', 'commit', '-q', '-am', 'feature'])
+        run(['git', 'switch', '-q', 'main'])
+        (root / 'src/a.py').write_text('base\n')
+        (root / 'protected/secret.py').write_text('base\n')
+        (root / 'src/base-only.py').write_text('base only\n')
+        run(['git', 'add', '-A'])
+        run(['git', 'commit', '-q', '-m', 'base'])
+        run(['git', 'switch', '-q', 'feat'])
+        body = '## Acceptance Criteria\n- [ ] AC-1 pass\n\n### 4.2 Non-Target Files\n\n- `protected/secret.py`: keep\n'
+        issue_file = private / 'issue.json'
+        dump(issue_file, dict(number=42, body=body))
+        flow('set', '--phase', 'pr', '--next', 'review', '--pr', 71, '--issue', 42, '--branch', 'feat',
+             '--worktree', str(root), '--require-worktree')
+        selection = private / 'selection.json'
+        selected = ['code-quality-reviewer', 'acceptance-reviewer']
+        dump(selection, selected)
+        flow('review-start', '--selection', selection, '--stagnation')
+        state_path = Path(flow('path').stdout.strip())
+        context = json.loads(state_path.read_text())['review_cycle']['review_context']
+        records = []
+        for index, reviewer in enumerate(selected):
+            raw = private / (reviewer + '.md')
+            raw.write_text('### 評価: 可\n### 所見\n確認済み\n### 指摘事項\n\n| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |\n|--------|----------|------------|------|----------|\n\n### 監査ログ\nなし\n')
+            records.append(dict(reviewer=reviewer, review_context=context, agent_id='child-' + str(index),
+                                status='completed', started_at='2026-01-01T00:00:00Z',
+                                ended_at='2026-01-01T00:01:00Z', output_file=str(raw)))
+        manifest = private / 'manifest.json'
+        dump(manifest, dict(schema_version=1, parent_agent_id=session, review_context=context,
+                            selected_reviewers=selected, reviewers=records))
+        content = private / 'review.json'
+        dump(content, dict(schema_version='1.1.0', pr_number=71, review_context=context,
+                           timestamp='__RITE_TS_PLACEHOLDER_7f3a9b2c__', commit_sha=context['commit_sha'],
+                           reviewers=selected, findings=[], non_blocking_findings=[], guardrail_audit_log=[],
+                           acceptance_criteria=[]))
+        run(['bash', str(plugin / 'scripts/review-measured-gate.sh'), '--input', str(content),
+             '--reject-preset-verification'])
+        flow('review-finish', '--manifest', manifest, '--content-file', content)
+        clock_file = private / 'clock.json'
+        dump(clock_file, dict(review_context=context, segment_id='intake-test', kind='work',
+                              started_at='2026-01-01T00:00:00Z', ended_at='2026-01-01T00:01:00Z'))
+        flow('review-clock', '--input', clock_file)
+        observation = private / 'observation.json'
+        dump(observation, dict(review_context=context, issue_number=42, issue_body=body, roots=[],
+                               acceptance=dict(satisfied=[], evidence='saved measurements')))
+        flow('review-observe', '--input', observation, '--issue', issue_file)
+        flow('review-close')
+        reviewed_head = run(['git', 'rev-parse', 'HEAD']).stdout.strip()
+
+        # Routes that would move HEAD without verified evidence are refused alike.
+        intake = 'git merge --no-commit --no-ff'
+        hook('git merge main', reason='cannot be verified during review')
+        hook('git -C ' + str(root) + ' merge main', reason='cannot be verified during review')
+        hook('git merge -m --no-commit main', reason='cannot be verified during review')
+        hook('git merge main; echo done', reason='cannot be verified during review')
+        for command in (intake + ' main', 'git merge --squash main', 'git merge --abort',
+                        'git merge --quit', 'git merge --ff-only main'):
+            hook(command, allowed=True)
+        # Pattern 9 keeps reading only git commit: merges do not become wiki-gated commits.
+        targets = run(['bash', str(helper), 'commit-target', '--command', 'git merge --continue',
+                       '--cwd', str(root)])
+        check(targets.stdout.strip() == '', 'commit-target does not report git merge')
+        hook(intake + ' main && git commit -m intake', reason='fix plan record missing')
+        # A merge outside the reviewed worktree is not this review's business.
+        with tempfile.TemporaryDirectory(prefix='rite-other-repo-') as other:
+            run(['git', 'init', '-q'], cwd=other)
+            hook('git merge main', allowed=True, cwd=Path(other))
+
+        merge = run(['git', 'merge', '--no-commit', '--no-ff', 'main'], ok=False)
+        check(merge.returncode != 0 and (root / '.git/MERGE_HEAD').exists(), 'base intake stops on the conflict')
+        (root / 'src/a.py').write_text('resolved\n')
+        run(['git', 'add', '-A'])
+        # Both conclusion routes wait for the same plan, and name the intake route.
+        hook('git commit --no-edit', reason='this concludes a merge')
+        hook('git merge --continue', reason='this concludes a merge')
+
+        def plan_for(groups, **constraints):
+            plan = dict(review_context=context, issue_number=42, issue_body=body,
+                        constraints=dict(targets=['src'] if closed_targets else [],
+                                         non_targets=['protected/secret.py'],
+                                         closed_targets=closed_targets, rationale='base intake test'),
+                        groups=groups,
+                        verifications=[dict(id='V-full', kind='full', command='true', inputs=['src'],
+                                            environment=[])])
+            plan['constraints'].update(constraints)
+            path = private / 'intake-plan.json'
+            dump(path, plan)
+            return path
+
+        def group(paths, action='base-intake', verification=None, cause='base intake'):
+            return dict(root_cause=cause, finding_ids=[], action=action, paths=paths, rationale='merged base',
+                        semantic=dict(approved=True, acceptance_criteria='AC-1', out_of_scope='base content'),
+                        verification_ids=['V-full'] if verification is None else verification)
+
+        def rejected(plan_path, reason):
+            result = run(['bash', str(helper), 'check', '--plan', str(plan_path), '--issue', str(issue_file)],
+                         ok=False)
+            check(result.returncode != 0 and reason in result.stderr, 'expected ' + reason + ': ' + result.stderr)
+
+        merged = ['protected/secret.py', 'src/a.py', 'src/base-only.py']
+        # A path the base did not change keeps the Issue's target constraints.
+        rejected(plan_for([group(merged + ['protected'])]), 'Non-Target violation: protected')
+        # The intake exemption belongs to the intake group, not to a fix group.
+        other_fix = dict(group(['protected/secret.py'], action='fix', cause='other'), finding_ids=['EXT-1'])
+        external = plan_for([group(merged), other_fix])
+        with_external = json.loads(external.read_text())
+        with_external['external_findings'] = [dict(id='EXT-1', thread_id='t', description='d')]
+        dump(external, with_external)
+        rejected(external, 'Non-Target violation: protected/secret.py')
+        rejected(plan_for([group(merged), group(['src/a.py'], cause='again')]), 'combine base intake into one group')
+        rejected(plan_for([group(merged, verification=[])]), 'every disposition requires verification')
+        rejected(plan_for([group([])]), 'base intake requires the merged paths')
+        good = plan_for([group(merged)])
+        run(['bash', str(helper), 'check', '--plan', str(good), '--issue', str(issue_file)])
+        run(['bash', str(helper), 'verify', '--plan', str(good), '--issue', str(issue_file), '--kind', 'all'])
+        hook('git commit --no-edit', allowed=True)
+        hook('git merge --continue', allowed=True)
+        run(['git', 'commit', '--no-edit'])
+        check(run(['git', 'rev-parse', 'HEAD^1']).stdout.strip() == reviewed_head, 'intake is a merge onto the reviewed HEAD')
+        before = json.loads(state_path.read_text())
+        flow('review-start', '--selection', selection, '--stagnation')
+        after = json.loads(state_path.read_text())
+        next_context = after['review_cycle']['review_context']
+        check(next_context['run_id'] == context['run_id'], 'intake continues the same run')
+        check(after['cycle_count'] == before['cycle_count'] + 1 == 2, 'intake opens exactly the next cycle')
+        check('pending_fix' not in after['review_run'] and len(after['review_run']['fixes']) == 1,
+              'verified intake is consumed as the change between cycles')
+        check(next_context['commit_sha'] == run(['git', 'rev-parse', 'HEAD']).stdout.strip(),
+              'next cycle reviews the intake commit')
+
+    # Without a merge in progress a base-intake plan has nothing to exempt.
+    with tempfile.TemporaryDirectory(prefix='rite-base-intake-none-') as tmp:
+        root = Path(tmp)
+        run(['git', 'init', '-q'], cwd=root)
+        (root / 'a').write_text('a\n')
+        run(['git', 'add', 'a'], cwd=root)
+        run(['git', 'commit', '-q', '-m', 'a'], cwd=root)
+        probe = subprocess.run([sys.executable, '-c',
+                                'import sys; sys.path.insert(0, sys.argv[1]); import importlib; '
+                                'm = importlib.import_module("review-fix-scope"); m.base_intake_paths()',
+                                str(plugin / 'hooks/scripts/lib')],
+                               cwd=root, env=env, text=True, capture_output=True)
+        check(probe.returncode != 0 and 'base intake requires a merge in progress' in probe.stderr,
+              'base intake needs a merge in progress: ' + probe.stderr)
 print(str(checks) + ' checks passed')
 PYTEST

@@ -144,6 +144,28 @@ def validate(plan, issue, state, session, root, allow_replan=False):
     return validate_plan(plan, issue, state, receipt)
 
 
+# The one supported way to take the base branch into a reviewed PR branch.
+BASE_INTAKE_STEPS = ("take the base in with git merge --no-commit --no-ff <base>, resolve and stage it, "
+                     "add a base-intake group to the fix plan, run check and verify --kind all, "
+                     "commit, then re-run /rite:iterate (fix-plan reference: base intake)")
+
+
+def merge_in_progress():
+    return subprocess.run(["git", "rev-parse", "-q", "--verify", "MERGE_HEAD"],
+                          capture_output=True, text=True).returncode == 0
+
+
+def base_intake_paths():
+    """Paths the in-progress merge brings in from its other side."""
+    merge = subprocess.run(["git", "rev-parse", "-q", "--verify", "MERGE_HEAD"], capture_output=True, text=True)
+    require(merge.returncode == 0 and merge.stdout.strip(),
+            "base intake requires a merge in progress; start it with git merge --no-commit --no-ff <base>")
+    other = merge.stdout.strip()
+    base = subprocess.check_output(["git", "merge-base", "HEAD", other], text=True).strip()
+    names = subprocess.check_output(["git", "diff", "--no-renames", "--name-only", "-z", base, other]).decode()
+    return {path(name) for name in names.split("\0") if name}
+
+
 def validate_plan(plan, issue, state, receipt):
     """Everything a fix plan must say, independent of the transition it enables."""
     require(issue.get("number") == state.get("issue_number") == plan.get("issue_number")
@@ -180,13 +202,15 @@ def validate_plan(plan, issue, state, receipt):
                 and text(finding["description"]), "invalid external finding provenance")
         known.add(finding["id"])
         blocking.add(finding["id"])
-    covered, paths, causes = [], [], []
+    covered, paths, causes, constrained = [], [], [], []
     require(isinstance(plan["groups"], list) and plan["groups"], "root-cause groups required")
+    require(sum(g["action"] == "base-intake" for g in plan["groups"]) <= 1, "combine base intake into one group")
     for group in plan["groups"]:
         require(text(group["root_cause"]) and text(group["rationale"]), "root cause and disposition rationale required")
         causes.append(group["root_cause"])
-        require(group["action"] in ("fix", "reply", "accept", "nit-noted"), "invalid disposition")
-        require(isinstance(group["finding_ids"], list) and group["finding_ids"], "group finding IDs required")
+        require(group["action"] in ("fix", "reply", "accept", "nit-noted", "base-intake"), "invalid disposition")
+        require(isinstance(group["finding_ids"], list)
+                and (group["finding_ids"] or group["action"] == "base-intake"), "group finding IDs required")
         covered.extend(group["finding_ids"])
         semantic = group["semantic"]
         require(semantic.get("approved") is True and text(semantic.get("acceptance_criteria"))
@@ -196,9 +220,17 @@ def validate_plan(plan, issue, state, receipt):
         require(isinstance(group["verification_ids"], list) and group["verification_ids"]
                 and set(group["verification_ids"]) <= set(ids), "every disposition requires verification")
         require(group["action"] != "fix" or group_paths, "fix disposition requires paths")
+        if group["action"] == "base-intake":
+            # Files the base changed are not this Issue's work, so its target
+            # constraints do not apply to them; any other listed path stays checked.
+            require(group_paths, "base intake requires the merged paths")
+            merged = base_intake_paths()
+            constrained.extend(p for p in group_paths if p not in merged)
+        else:
+            constrained.extend(group_paths)
     require(len(set(causes)) == len(causes), "combine duplicate root-cause groups")
     require(len(covered) == len(set(covered)) and set(covered) <= known and blocking <= set(covered), "all blocking findings need one disposition; unknown or duplicate finding IDs")
-    for entry in paths:
+    for entry in constrained:
         require(not any(within(entry, p) or within(p, entry) for p in excluded), "Non-Target violation: " + entry)
         require(not constraints["closed_targets"] or any(within(entry, p) for p in targets), "closed target violation: " + entry)
     return receipt[1], sorted(set(paths))
@@ -321,6 +353,42 @@ def git_subcommand_index(words, git_index):
 
 def each_direct_commit(command, cwd):
     """Yield the toplevel of each direct git commit. This is not a shell interpreter."""
+    for actual, args in each_direct_git(command, cwd, "commit"):
+        # Option values (notably -m '--dry-run') must not exempt a real commit.
+        dry_run, index_only = classify_commit_args(args)
+        if not dry_run:
+            yield actual, index_only if actual is not None else True
+
+
+# git merge options that leave HEAD where it is (or, for --ff-only, cannot make a
+# merge commit). --continue is not here: it concludes a staged merge with a commit.
+_MERGE_NO_COMMIT = {"--no-commit", "--squash", "--abort", "--quit", "--ff-only"}
+_MERGE_VALUE = {"-m", "-F", "-s", "-X", "--file", "--strategy", "--strategy-option", "--into-name"}
+
+
+def each_direct_merge(command, cwd):
+    """Yield (toplevel, concludes) for each direct git merge that makes a commit.
+
+    concludes=True is --continue: the same staged state git commit would record.
+    concludes=False is a merge that commits by itself, which cannot be verified first.
+    """
+    for actual, args in each_direct_git(command, cwd, "merge"):
+        index, options = 0, set()
+        while index < len(args):
+            word = args[index]
+            if word in _MERGE_VALUE:
+                index += 2
+                continue
+            options.add(word.split("=", 1)[0])
+            index += 1
+        if "--continue" in options:
+            yield actual, True
+        elif not options & _MERGE_NO_COMMIT:
+            yield actual, False
+
+
+def each_direct_git(command, cwd, subcommand):
+    """Yield (toplevel, arguments) for each direct git <subcommand>. Not a shell interpreter."""
     lexer = shlex.shlex(command, posix=False, punctuation_chars=";&|()\n")
     lexer.whitespace = " \t\r"
     segments, segment = [], []
@@ -340,9 +408,9 @@ def each_direct_commit(command, cwd):
                     break
                 except ValueError:
                     tail = lexer.get_token()
-                    require(tail, "unfinished quoted commit command")
+                    require(tail, "unfinished quoted " + subcommand + " command")
                     token += " " + tail
-            require(len(values) == 1, "ambiguous shell word; run commit separately")
+            require(len(values) == 1, "ambiguous shell word; run " + subcommand + " separately")
             segment.append(values[0])
     if segment:
         segments.append(segment)
@@ -350,7 +418,7 @@ def each_direct_commit(command, cwd):
     for words in segments:
         if words and words[0] == "cd" and len(words) == 2:
             require(not any(c in words[1] for c in "$`~"),
-                    "commit target is dynamic; run commit separately from its resolved worktree")
+                    subcommand + " target is dynamic; run it separately from its resolved worktree")
             cwd = (cwd / words[1]).resolve()
             continue
         words, peeled = peel_commit_prefixes(words)
@@ -360,7 +428,7 @@ def each_direct_commit(command, cwd):
             if Path(words[0]).name in {"echo", "printf"}:
                 continue
             names = [Path(word).name for word in words]
-            if "git" in names:
+            if subcommand == "commit" and "git" in names:
                 sub = git_subcommand_index(words, names.index("git"))
                 if sub is not None and "commit" in words[sub:]:
                     require(False, "run commit as a direct command in its own Bash call")
@@ -372,7 +440,7 @@ def each_direct_commit(command, cwd):
                 require(index + 1 < len(words), "incomplete git global option")
                 value = words[index + 1]
                 if option == "-C":
-                    require(not any(c in value for c in "$`~"), "commit target must be a literal worktree")
+                    require(not any(c in value for c in "$`~"), subcommand + " target must be a literal worktree")
                     target = (target / value).resolve()
                 index += 2
             elif option.startswith("-C"):
@@ -381,14 +449,10 @@ def each_direct_commit(command, cwd):
             elif option.startswith("-c") or option in ("--no-pager", "--no-optional-locks"):
                 index += 1
             else:
-                require("commit" not in words[index:],
-                        "use git -C <worktree> commit without alternate git-dir/work-tree options")
+                require(subcommand not in words[index:],
+                        "use git -C <worktree> " + subcommand + " without alternate git-dir/work-tree options")
                 break
-        if index >= len(words) or words[index] != "commit":
-            continue
-        # Option values (notably -m '--dry-run') must not exempt a real commit.
-        dry_run, index_only = classify_commit_args(words[index + 1:])
-        if dry_run:
+        if index >= len(words) or words[index] != subcommand:
             continue
         os.chdir(target)
         try:
@@ -398,9 +462,9 @@ def each_direct_commit(command, cwd):
         except subprocess.CalledProcessError:
             # Not a repository, so it is not the session worktree. commit-target
             # still refuses this; a review check must not turn it into a deny.
-            yield None, True
+            yield None, words[index + 1:]
             continue
-        yield actual, index_only
+        yield actual, words[index + 1:]
 
 
 def commit_check(args):
@@ -417,7 +481,12 @@ def commit_check(args):
         if "review_run" not in state:
             return
         retained = stagnation.retained_run(state, args.session)
-    for actual, _index_only in each_direct_commit(args.command, args.cwd):
+    # A merge that concludes with --continue records the same staged state as
+    # git commit; a merge that commits by itself cannot be verified beforehand.
+    targets = [(actual, "commit") for actual, _index_only in each_direct_commit(args.command, args.cwd)]
+    targets += [(actual, "commit" if concludes else "merge")
+                for actual, concludes in each_direct_merge(args.command, args.cwd)]
+    for actual, kind in targets:
         if actual is None:
             continue
         if "worktree" not in state:
@@ -432,6 +501,8 @@ def commit_check(args):
             require(retained.get("status") != "stopped",
                     "review run stopped: " + str(retained.get("stop_reason")))
             return
+        require(kind != "merge",
+                "a merge that commits by itself cannot be verified during review; " + BASE_INTAKE_STEPS)
         frozen = state.get("review_cycle")
         require(isinstance(frozen, dict), "review run has no frozen cycle; start its review before committing")
         require(frozen.get("status") == "completed",
@@ -439,7 +510,8 @@ def commit_check(args):
         directory = Path(args.state_root) / ".rite/state"
         approved_path = directory / ("fix-plan-" + args.session + ".json")
         require(approved_path.is_file(),
-                "fix plan record missing; run check --plan <plan> --issue <issue> before committing")
+                "fix plan record missing; run check --plan <plan> --issue <issue> before committing"
+                + ("; this concludes a merge: " + BASE_INTAKE_STEPS if merge_in_progress() else ""))
         approved = read(approved_path)
         plan = approved["plan"]
         issue = approved.get("issue")
