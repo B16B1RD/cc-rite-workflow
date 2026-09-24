@@ -3006,3 +3006,4 @@ T02:22:43+09:00 — review ingest (skip pages)
 - 2026-09-24T06:10:30Z lint:clean contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=534, broken_refs=0
 - 2026-09-24T07:20:43Z ingest: pages_updated=1 (pipefail-grep-q-sigpipe-false-failure) raw=5
 - 2026-09-24T07:21:44Z lint:clean contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=534, broken_refs=0
+- 2026-09-24T07:39:37Z ingest: pages_created=1 (new-branch-leaves-later-arm-output-discarded) raw=1

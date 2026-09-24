@@ -525,9 +525,10 @@ okf_version: "0.2"
 | [同じ記録を読み書きする経路は、対象の同定規則を 1 か所で共有する](pages/heuristics/record-readers-and-writers-share-identification-rule.md) | heuristics | 同じ記録を書き換える経路が複数あると、「どの記録を読み、どの記録を書くか」の選択規則が経路ごとにずれやすい。読み手が前方一致で全件を連結し、書き手が最新 1 件に絞ると、記録が重複した状態で古い内容を引き継ぐ。同定規則は 1 か所にまとめ、読み手も書き手と同じ述語を使う。 | 2026-09-24T05:40:00Z | medium |
 | [外部コマンドの stub が無視した引数は、その引数が担う処理ごとテストから外れる](pages/heuristics/stub-ignored-argument-escapes-test.md) | heuristics | 引数の一部だけで分岐して固定出力を返す stub は、無視した引数（フィルタ式・クエリ・選択条件）が担う処理を丸ごとテスト対象から外す。stub は受け取った式を実物の処理系で fixture に適用し、fixture には選ばれてはいけないが選ばれると結果が変わる要素を混ぜる。 | 2026-09-24T05:40:00Z | high |
 | [「戻らない」契約は、戻り先に戻ると結果が変わる内容を置いたテストでしか固定できない](pages/heuristics/no-fallback-contract-needs-bait-at-fallback-target.md) | heuristics | 入力源を切り替えて「旧入力源へは戻らない」と定めた契約は、旧入力源を渡さないテストでは固定されない。フォールバックが復活しても読む対象が無く、結果が変わらないからである。契約の入口ごとに、戻り先へ成功側の内容（餌）を置き、それでも差し戻されることを確かめる。 | 2026-09-24T06:20:00Z | high |
+| [分岐を足したら、後ろのアームの出力がまだ使われるかを確かめる](pages/heuristics/new-branch-leaves-later-arm-output-discarded.md) | heuristics | 判定の鎖に広い条件の分岐を先に足すと、後ろのアームは実行されても、その出力が後段で必ず捨てられる状態になりうる。挙動は変わらないためテストは通るが、使われない文言がデッドコードとして残り、読み手に誤った分岐を想像させる。分岐の追加後は、各アームの出力が後段で使われる経路が残っているかを確かめる。 | 2026-09-24T07:45:00Z | medium |
 ## 統計
 
-- 総ページ数: 515
-- ドメイン別: patterns=120, heuristics=230, anti-patterns=165
-- 最終更新: 2026-09-24T07:30:00Z
+- 総ページ数: 516
+- ドメイン別: patterns=120, heuristics=231, anti-patterns=165
+- 最終更新: 2026-09-24T07:45:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
