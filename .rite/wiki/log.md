@@ -3000,3 +3000,4 @@ T02:22:43+09:00 — review ingest (skip pages)
 * **Create**: [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) — [最終レビューと計測](raw/reviews/20260917T031500Z-pr-2920-final.md) を統合（旧目標未達記録を最終達成値で更新）
 - 2026-09-17T13:08:59Z ingest: pages_updated=1 (exclusion-test-requires-both-sides-of-boundary) raw=7
 - 2026-09-17T13:38:37Z ingest: pages_updated=1 (fixture-mutation-isolates-invariants) raw=1
+- 2026-09-24T05:29:20Z ingest: pages_created=2 (stub-ignored-argument-escapes-test, record-readers-and-writers-share-identification-rule) raw=3
