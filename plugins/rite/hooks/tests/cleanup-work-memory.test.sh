@@ -302,25 +302,32 @@ echo ""
 
 # ─── TC-parked-history: 別 Issue の cleanup が保留中の他 PR の run を消さない ─────────
 # 別 Issue の cleanup は自 Issue の lifecycle だけを終える。flow-state の書き直しで
-# review_run_history (保留した他 PR の run) と、その復元が検証に使う review_cycle_abandoned を
-# 落とすと、元の PR へ戻っても run・観測・counter が戻らない。
+# review_run_history (退避した他 PR の run) と、凍結 cycle を持たない退避 run の復元が検証に使う
+# review_cycle_abandoned を落とすと、元の PR へ戻っても run・観測・counter が戻らない。
+# 放棄記録は退避 run のものだけを残し、cleanup 対象 Issue 自身の記録は持ち越さない。
 echo "TC-parked-history: full cleanup keeps other PRs' parked review runs"
 dirph="$TEST_DIR/tcph"
 sidph="22222222-2222-4222-8222-222222222222"
 mkdir -p "$dirph"
 git -C "$dirph" init -q
 ctxph='{"session_id":"'"$sidph"'","run_id":"r-a","pr_number":100,"cycle_count":2,"commit_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}'
-seed_session_flow_state "$dirph" "$sidph" "$(jq -n --arg sid "$sidph" --argjson ctx "$ctxph" '{
+# r-c は cycle を放棄して凍結 cycle を持たずに退避した run。復元は放棄記録で検証される
+ctxpc='{"session_id":"'"$sidph"'","run_id":"r-c","pr_number":101,"issue_number":11,"cycle_count":3,"commit_sha":"cccccccccccccccccccccccccccccccccccccccc"}'
+ctxpb='{"session_id":"'"$sidph"'","run_id":"r-b","pr_number":200,"issue_number":20,"cycle_count":1,"commit_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}'
+seed_session_flow_state "$dirph" "$sidph" "$(jq -n --arg sid "$sidph" --argjson ctx "$ctxph" --argjson ctxc "$ctxpc" --argjson ctxb "$ctxpb" '{
   active: true, issue_number: 20, branch: "fix/b", phase: "cleanup", pr_number: 200, next_action: "x",
   session_id: $sid, schema_version: 3,
   review_run: {run_id: "r-b", status: "active", pr_number: 200},
-  review_cycle_abandoned: [{run_id: "r-a", reason: "no evidence"}],
-  review_run_history: [{run_id: "r-a", status: "active", pr_number: 100, issue_number: 10, session_id: $sid,
-    parked: {cycle_count: 2, review_cycle: {status: "completed", review_context: $ctx}}}]}')"
+  review_cycle_abandoned: [{review_context: $ctxc, reason: "no evidence"}, {review_context: $ctxb, reason: "no evidence"}],
+  review_run_history: [
+    {run_id: "r-c", status: "active", pr_number: 101, issue_number: 11, session_id: $sid,
+     clock: [], observations: [], fixes: [], replans: [], diagnosed_work_seconds: 0, parked: {cycle_count: 3}},
+    {run_id: "r-a", status: "active", pr_number: 100, issue_number: 10, session_id: $sid,
+     parked: {cycle_count: 2, review_cycle: {status: "completed", review_context: $ctx}}}]}')"
 ( cd "$dirph" && bash "$HOOK" >/dev/null 2>&1 ) || true
 fph="$dirph/.rite/sessions/${sidph}.flow-state"
-if [ "$(jq -c '[.active, .phase, .pr_number, (.review_run_history | length), (.review_run_history[0].run_id), (.review_cycle_abandoned | length)]' "$fph" 2>/dev/null)" = '[false,"completed",0,1,"r-a",1]' ]; then
-  pass "TC-parked-history: lifecycle reset, review_run_history and review_cycle_abandoned kept (AC-1)"
+if [ "$(jq -c '[.active, .phase, .pr_number, [.review_run_history[].run_id], [.review_cycle_abandoned[].review_context.run_id]]' "$fph" 2>/dev/null)" = '[false,"completed",0,["r-c","r-a"],["r-c"]]' ]; then
+  pass "TC-parked-history: lifecycle reset, parked runs and their abandonment records kept, the cleaned Issue's record dropped (AC-1)"
 else
   fail "TC-parked-history: got $(jq -c . "$fph" 2>/dev/null)"
 fi
@@ -329,19 +336,35 @@ if [ "$(jq -r 'has("review_run")' "$fph" 2>/dev/null)" = "false" ]; then
 else
   fail "TC-parked-history: review_run of the cleaned Issue survived"
 fi
-# 元の PR へ戻る set が run を復元する (AC-2)
-( cd "$dirph" && CLAUDE_CODE_SESSION_ID="$sidph" bash "$SCRIPT_DIR/../flow-state.sh" set --issue 10 --pr 100 --phase pr --next "back" >/dev/null 2>&1 ) || true
-if [ "$(jq -c '[.review_run.run_id, .cycle_count, .pr_number, (.review_run_history | length)]' "$fph" 2>/dev/null)" = '["r-a",2,100,0]' ]; then
+# 元の PR へ戻る set が run を復元する (AC-2)。凍結 cycle を持つ退避 run と、放棄記録で検証される退避 run の両方
+set_err="$TEST_DIR/tcph-set.err"
+( cd "$dirph" && CLAUDE_CODE_SESSION_ID="$sidph" bash "$SCRIPT_DIR/../flow-state.sh" set --issue 10 --pr 100 --phase pr --next "back" >/dev/null 2>"$set_err" ) || true
+if [ "$(jq -c '[.review_run.run_id, .cycle_count, .pr_number, [.review_run_history[].run_id]]' "$fph" 2>/dev/null)" = '["r-a",2,100,["r-c"]]' ]; then
   pass "TC-parked-history: returning to the parked PR restores its run and counter (AC-2)"
 else
-  fail "TC-parked-history: run not restored: $(jq -c '{run: .review_run.run_id, cycle_count, pr_number, h: (.review_run_history | length)}' "$fph" 2>/dev/null)"
+  fail "TC-parked-history: run not restored: $(jq -c '{run: .review_run.run_id, cycle_count, pr_number, h: [.review_run_history[].run_id]}' "$fph" 2>/dev/null) $(head -3 "$set_err")"
+fi
+# r-a を完了扱いにせず別 Issue の cleanup を経た状態を作り直し、放棄記録で検証される r-c へ戻る
+seed_session_flow_state "$dirph" "$sidph" "$(jq -n --arg sid "$sidph" --argjson ctxc "$ctxpc" --argjson ctxb "$ctxpb" '{
+  active: true, issue_number: 20, branch: "fix/b", phase: "cleanup", pr_number: 200, next_action: "x",
+  session_id: $sid, schema_version: 3, review_run: {run_id: "r-b", status: "active", pr_number: 200},
+  review_cycle_abandoned: [{review_context: $ctxc, reason: "no evidence"}, {review_context: $ctxb, reason: "no evidence"}],
+  review_run_history: [{run_id: "r-c", status: "active", pr_number: 101, issue_number: 11, session_id: $sid,
+    clock: [], observations: [], fixes: [], replans: [], diagnosed_work_seconds: 0, parked: {cycle_count: 3}}]}')"
+( cd "$dirph" && bash "$HOOK" >/dev/null 2>&1 ) || true
+( cd "$dirph" && CLAUDE_CODE_SESSION_ID="$sidph" bash "$SCRIPT_DIR/../flow-state.sh" set --issue 11 --pr 101 --phase pr --next "back" >/dev/null 2>"$set_err" ) || true
+if [ "$(jq -c '[.review_run.run_id, .cycle_count, .pr_number]' "$fph" 2>/dev/null)" = '["r-c",3,101]' ]; then
+  pass "TC-parked-history: a parked run without a frozen cycle is restored through its kept abandonment record (AC-2)"
+else
+  fail "TC-parked-history: abandoned-shape run not restored: $(jq -c '{run: .review_run.run_id, cycle_count, pr_number}' "$fph" 2>/dev/null) $(head -3 "$set_err")"
 fi
 echo ""
 
 # ─── TC-no-history: 退避記録が無ければ従来どおりのリセット ─────────
 echo "TC-no-history: full cleanup without parked runs resets as before"
 dirnh="$TEST_DIR/tcnh"
-seed_session_flow_state "$dirnh" "tcnh-sid" '{"active":true,"issue_number":44,"branch":"fix/x","phase":"cleanup","pr_number":300,"session_id":"tcnh-sid","schema_version":3,"review_run":{"run_id":"r-x"}}'
+# cleanup 対象 Issue 自身の放棄記録だけを持つ state も、退避記録が無いので従来どおりのキーに戻る
+seed_session_flow_state "$dirnh" "tcnh-sid" '{"active":true,"issue_number":44,"branch":"fix/x","phase":"cleanup","pr_number":300,"session_id":"tcnh-sid","schema_version":3,"review_run":{"run_id":"r-x"},"review_cycle_abandoned":[{"review_context":{"run_id":"r-x"},"reason":"no evidence"}]}'
 ( cd "$dirnh" && bash "$HOOK" >/dev/null 2>&1 ) || true
 if [ "$(jq -c '[.active, .phase, .pr_number, .issue_number, (keys | sort)]' "$dirnh/.rite/sessions/tcnh-sid.flow-state" 2>/dev/null)" = '[false,"completed",0,44,["active","branch","issue_number","next_action","phase","pr_number","schema_version","session_id","updated_at"]]' ]; then
   pass "TC-no-history: active=false, phase=completed, pr_number=0 and no extra keys (AC-3)"
