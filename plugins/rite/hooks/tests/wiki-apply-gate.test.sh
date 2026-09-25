@@ -406,7 +406,8 @@ cp "$ROOT/cfg.bak" "$repo/rite-config.yml"
 printf '%s\n' 'branch:' '  base: "no-such-base-ref"    # base branch' >> "$repo/rite-config.yml"
 run_gate --mode review --worktree "$repo" --flow-state "$flow" --memory "$mem"
 if [ "$GRC" -eq 1 ] && grep -q 'reason=base_diff_unreadable' <<<"$GOUT" \
-   && grep -q 'ERROR: git diff no-such-base-ref...HEAD' "$ROOT/gate.err"; then
+   && grep -qF 'ERROR: git diff no-such-base-ref...HEAD' "$ROOT/gate.err" \
+   && grep -q 'unknown revision' "$ROOT/gate.err"; then
   pass "review denies an unreadable base diff instead of matching an empty diff"
 else
   fail "unreadable base rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
@@ -427,6 +428,17 @@ else
   fail "commit unreadable base rc=$GRC out=$GOUT"
 fi
 cp "$ROOT/cfg.bak" "$repo/rite-config.yml"
+# a failing textconv driver must not break the evidence diff (textconv is not used)
+printf '%s\n' 'README diff=broken' > "$repo/.git/info/attributes"
+git -C "$repo" config diff.broken.textconv false
+run_gate --mode review --worktree "$repo" --base "$review_base" --flow-state "$flow" --memory "$mem"
+git -C "$repo" config --unset diff.broken.textconv
+rm -f "$repo/.git/info/attributes"
+if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
+  pass "review evidence diff ignores a failing textconv driver"
+else
+  fail "textconv review rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
+fi
 
 # A review resumed from another session reads the record written by the session
 # that implemented or fixed. Review does not authorize a commit, so it does not

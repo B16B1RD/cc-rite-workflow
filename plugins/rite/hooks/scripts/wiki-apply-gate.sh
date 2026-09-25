@@ -156,9 +156,13 @@ esac
 STAGED=$(git -C "$WORKTREE" diff --cached --name-only 2>/dev/null || true)
 # review は applied の evidence をこの差分と照合する。取得に失敗した空の差分で照合すると
 # 正しい evidence も evidence_mismatch になるため、照合が要るときに理由を分けて拒否する
+# 失敗時の git の出力は元の実行から保持する（再実行では失敗した側を再現できない）。
+# 外部 diff と textconv は固定し、ユーザーの diff 設定で照合対象の本文を変えない
 DIFF_OK=1
-DIFF_NAMES=$(git -C "$WORKTREE" diff --name-only "${BASE}...HEAD" 2>/dev/null) || DIFF_OK=0
-DIFF_TEXT=$(git -C "$WORKTREE" diff "${BASE}...HEAD" 2>/dev/null) || DIFF_OK=0
+DIFF_ERRF=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-apply-gate-XXXXXX") || _deny "tmp_unavailable"
+trap 'rm -f "$DIFF_ERRF"' EXIT
+DIFF_NAMES=$(git -C "$WORKTREE" diff --no-ext-diff --no-textconv --name-only "${BASE}...HEAD" 2>>"$DIFF_ERRF") || DIFF_OK=0
+DIFF_TEXT=$(git -C "$WORKTREE" diff --no-ext-diff --no-textconv "${BASE}...HEAD" 2>>"$DIFF_ERRF") || DIFF_OK=0
 
 reason=$(
   WIKI_APPLY_FLOW="$FLOW" \
@@ -347,8 +351,7 @@ case "$reason" in
   "") _deny "record_corrupt" ;;
   base_diff_unreadable)
     # どの base で差分を取れなかったかを利用者に見せる（base の読み違いを原因まで辿れるように）
-    diff_err=$(git -C "$WORKTREE" diff --name-only "${BASE}...HEAD" 2>&1 >/dev/null || true)
-    echo "ERROR: git diff ${BASE}...HEAD に失敗しました: ${diff_err:-(git の出力なし)}" >&2
+    echo "ERROR: git diff ${BASE}...HEAD に失敗しました: $(cat "$DIFF_ERRF")" >&2
     _deny "$reason"
     ;;
   *) _deny "$reason" ;;
