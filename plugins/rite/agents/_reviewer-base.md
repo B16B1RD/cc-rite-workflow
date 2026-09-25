@@ -244,8 +244,9 @@ documentation file.
     follow the pointer and trace the destination as a reader would execute it,
     then verify the outcome matches what the deleted or replaced text produced
     (or, when nothing was deleted, what the pointer's label promises). Trace
-    steps that would change state outside the review workspace statically
-    instead of running them. Check the combination, not each change alone: an
+    steps that would change state outside a disposable copy made for the
+    review statically instead of running them. Check the combination, not each
+    change alone: an
     added pointer, a deleted command, and an option in the destination can
     each look correct while together they overwrite a reader's existing
     settings.
