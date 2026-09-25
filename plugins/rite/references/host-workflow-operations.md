@@ -46,13 +46,13 @@ named agent が公開されないホストでは、reviewer 本文を prompt へ
 - 解決済み plugin root 配下の `agents/{type}-reviewer.md` と `agents/_reviewer-base.md` の絶対パス。profile 内の相対参照に頼らず個別に列挙する。他に読ませる参照も同様に絶対パスで列挙する
 - 列挙した全ファイルを着手前に全文読み取り、raw 出力の先頭行に `読取完了: {絶対パス}; {絶対パス}` の形式で列挙した全パスを申告する義務
 - 制約（読取専用・時刻記録・結果形式）、差分、仕様、絶対 workdir
-- pr-review 4.5 の placeholder 表が定義する `{shared_reviewer_principles}`（4.5 テンプレートと 4.5.1 検証テンプレートの双方の出現箇所）は inline せず、`_reviewer-base.md` の絶対パス行（読取義務付き）に置き換える。その他の placeholder（差分・仕様・CI 状態・Wiki 等）は 4.5 のまま渡す。制約・絶対 workdir は上記の項目として別途明示する
+- pr-review 4.5 の placeholder 表が定義する `{shared_reviewer_principles}`（4.5 テンプレートと 4.5.1 検証テンプレートの双方の出現箇所）は named 経路と同じく `_reviewer-base.md` の絶対パス行（読取義務付き）で渡す。その他の placeholder（差分・仕様・CI 状態・Wiki 等）は 4.5 のまま渡す。制約・絶対 workdir は上記の項目として別途明示する
 
-親は回収ゲートで申告行を読み、渡したパス集合と一致することを確認する。申告行が無い、または 1 件でも欠ける raw 出力は未読とみなし、当該 reviewer を失敗として既存の 1 回再試行を適用する。再失敗は incomplete として停止する。申告は helper ではなく親が確認する。named agent 経路の子は本文を system prompt で受け取りファイルを読まないため、申告の対象外とする。
+親は回収ゲートで申告行を読み、渡したパス集合と一致することを確認する。申告行が無い、または 1 件でも欠ける raw 出力は未読とみなし、当該 reviewer を失敗として既存の 1 回再試行を適用する。再失敗は incomplete として停止する。申告は helper ではなく親が確認する。named agent 経路の子も profile だけを system prompt で受け取り、`_reviewer-base.md` は同じ絶対パス行で受け取って読むため、その 1 パスの申告を同じ規則で確認する。
 
 ### 回収ゲート
 
-選定名簿は起動前の値を固定し、回収不能な reviewer を削除しない。raw 出力は編集せず絶対パスのファイルへ保存する。ホストの実出力から次の manifest を `REVIEW_TMP_DIR/rite-review-{session_id}-{run_id}-{pr_number}-{cycle_count}/reviewer-completions.json` に保存する（各値は `review-start` が返した context）。同じディレクトリに reviewer ごとの raw 出力を置き、別 session / cycle の manifest を流用しない。本文の引き渡し経路では、helper を実行する前に各 raw 出力の先頭行の読取完了申告が渡した全パスと一致することを確認する。
+選定名簿は起動前の値を固定し、回収不能な reviewer を削除しない。raw 出力は編集せず絶対パスのファイルへ保存する。ホストの実出力から次の manifest を `REVIEW_TMP_DIR/rite-review-{session_id}-{run_id}-{pr_number}-{cycle_count}/reviewer-completions.json` に保存する（各値は `review-start` が返した context）。同じディレクトリに reviewer ごとの raw 出力を置き、別 session / cycle の manifest を流用しない。どの経路でも、helper を実行する前に各 raw 出力の先頭行の読取完了申告が渡した全パスと一致することを確認する。
 
 ```json
 {
