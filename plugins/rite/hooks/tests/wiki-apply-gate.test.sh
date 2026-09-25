@@ -441,10 +441,12 @@ else
 fi
 
 # a diff larger than one environment value (128 KiB) still reaches the evidence check
+# the evidence is only in the last line of the body, so allow needs the whole diff text
 head -c 300000 /dev/zero | tr '\0' 'x' | fold -w 100 > "$repo/large.txt"
+printf 'tail-only-evidence-marker\n' >> "$repo/large.txt"
 git -C "$repo" add large.txt
 git -C "$repo" commit -qm 'large change'
-write_mem "$mem" "$(applied_page '対象の識別子を照合してから実行する。' README 'printf ok')"
+write_mem "$mem" "$(applied_page '対象の識別子を照合してから実行する。' tail-only-evidence-marker 'printf ok')"
 run_gate --mode review --worktree "$repo" --base "$review_base" --flow-state "$flow" --memory "$mem"
 if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
   pass "review handles a diff larger than one environment value"
@@ -462,10 +464,27 @@ fi
 gate_tmp="$ROOT/gate-tmp"
 mkdir -p "$gate_tmp"
 TMPDIR="$gate_tmp" run_gate --mode review --worktree "$repo" --base "$review_base" --flow-state "$flow" --memory "$mem"
-if [ -z "$(ls -A "$gate_tmp")" ]; then
+if [ "$GRC" -eq 1 ] && grep -q 'reason=evidence_mismatch' <<<"$GOUT" && [ -z "$(ls -A "$gate_tmp")" ]; then
   pass "gate leaves no diff files behind"
 else
-  fail "gate left files: $(ls -A "$gate_tmp")"
+  fail "gate cleanup rc=$GRC out=$GOUT left=$(ls -A "$gate_tmp")"
+fi
+# the diff files go under TMPDIR; an unusable TMPDIR is a deny, not a silent skip
+TMPDIR="$ROOT/no-such-tmp" run_gate --mode review --worktree "$repo" --base "$review_base" --flow-state "$flow" --memory "$mem"
+if [ "$GRC" -eq 1 ] && grep -q 'reason=tmp_unavailable' <<<"$GOUT"; then
+  pass "unusable TMPDIR denies with tmp_unavailable"
+else
+  fail "tmp_unavailable rc=$GRC out=$GOUT"
+fi
+# a staged listing that cannot be read is a deny, not an empty list
+cp "$repo/.git/index" "$ROOT/index.bak"
+printf 'broken' > "$repo/.git/index"
+run_gate --mode review --worktree "$repo" --base "$review_base" --flow-state "$flow" --memory "$mem"
+cp "$ROOT/index.bak" "$repo/.git/index"
+if [ "$GRC" -eq 1 ] && grep -q 'reason=staged_unreadable' <<<"$GOUT" && grep -q 'ERROR: staged' "$ROOT/gate.err"; then
+  pass "unreadable staged listing denies with staged_unreadable"
+else
+  fail "staged_unreadable rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
 fi
 write_mem "$mem" "$(applied_page '対象の識別子を照合してから実行する。' README 'printf ok')"
 

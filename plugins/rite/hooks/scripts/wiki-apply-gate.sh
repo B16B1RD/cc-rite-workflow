@@ -158,7 +158,11 @@ esac
 DIFF_DIR=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-apply-gate-XXXXXX") || _deny "tmp_unavailable"
 trap 'rm -rf "$DIFF_DIR"' EXIT
 DIFF_ERRF="$DIFF_DIR/err"
-git -C "$WORKTREE" diff --cached --name-only >"$DIFF_DIR/staged" 2>/dev/null || : >"$DIFF_DIR/staged"
+# staged の一覧を取れないまま空として続けると paths と blob の照合が黙って外れるため拒否する
+if ! git -C "$WORKTREE" diff --cached --name-only >"$DIFF_DIR/staged" 2>>"$DIFF_DIR/err"; then
+  echo "ERROR: staged の一覧を取得できません: $(cat "$DIFF_DIR/err")" >&2
+  _deny "staged_unreadable"
+fi
 # review は applied の evidence をこの差分と照合する。取得に失敗した空の差分で照合すると
 # 正しい evidence も evidence_mismatch になるため、照合が要るときに理由を分けて拒否する
 # 失敗時の git の出力は元の実行から保持する（再実行では失敗した側を再現できない）。
