@@ -55,6 +55,8 @@ cycle 数が増えても挙動は一切変わらない（cycle 3 と cycle 5 に
 | `commit_sha_unreachable` | `git cat-file -e {sha}` が失敗（force-push / rebase で消失） | 起点 commit が履歴に無く diff を取れない |
 | `diff_failed` | `git diff {sha}..HEAD` が失敗 | 差分自体を取得できない |
 | `empty_diff` | `git diff {sha}..HEAD` は成功したが差分ゼロ行 | 前回起点から新規 commit が無く、審査対象も解消検証の材料も空になる |
+| `base_only_diff` | 差分はあるが、すべて base の取り込みで入ったもの | PR 自身の変更が無く、fix diff が空になる |
+| `scope_files_unwritable` | fix diff の一覧を `files=` のパスへ書き出せない | caller が審査対象の一覧を読めない |
 | `run_pin_unresolved` | state root を解決できず run 開始点 pin の在否を確認できない | 前 run の JSON を現 run と誤認しうる |
 | `run_pin_unreadable` | run 開始点 pin は存在するが読めない | 同上（不在と読取失敗を区別しないと、この経路だけが狭い側へ倒れる） |
 | `foreign_run_json` | 候補 prev JSON の `review_context.run_id` が session の live `review_run.run_id` と違う | 他 run の結果を現 run の前回として差分に使うと、未審査の新 run を狭いスコープで通す |
@@ -124,6 +126,8 @@ cap 後のフィルタにすると、これらのフロアと `mandatory` 保護
 
 cycle 2+ で変わるのは表そのものではなく、表に**何を照合させるか**（PR 全体の変更ファイル → fix diff のファイル）だけである。
 
+fix diff のファイルは、起点からの差分のうち PR 自身が変えたもの（first-parent 上の非 merge commit の変更と、first-parent 上の merge で競合を解消したファイル）に限る。起点の後に base ブランチを取り込むと、base 側の変更も起点からの差分に入る。PR が触っていないファイルでパターンマッチすると、無関係な reviewer が起動し、PR の変更ではないコードを審査する。merge の second parent 側から入った変更は base の取り込みとして除く。rite で PR ブランチへ merge するのは base 取り込みの手順だけだからである。除外はファイル単位で、PR と base の両方が変えたファイルの diff には base 由来の hunk も含まれる。
+
 ## 選抜の最低人数フロアを新設しない理由
 
 「選抜が少なくなりすぎないよう N 名の下限を置くか」は設計時の Open Question だったが、**置かない**。
@@ -146,11 +150,11 @@ cycle 2+ で変わるのは表そのものではなく、表に**何を照合さ
 
 {previous_blocking_findings}
 
-2. **fix diff のフルレビュー**: `{cycle_base_sha}..HEAD` の差分は**通常のフルレビューと同じ深さと厳しさ**で審査する。差分スコープはレビュー対象の**範囲**を絞るものであって、範囲内の**基準**を緩めるものではない。指摘の採否基準（4 必須自問・Confidence・Observed Likelihood・実測アンカー）は cycle 1 と完全に同一。
+2. **fix diff のフルレビュー**: レビュー対象ファイル一覧のファイルの `{cycle_base_sha}..HEAD` の差分は**通常のフルレビューと同じ深さと厳しさ**で審査する。起点の後に取り込んだ base ブランチ由来の変更は対象外で、一覧のファイルの diff に base 由来の hunk が混ざっていても審査しない。差分スコープはレビュー対象の**範囲**を絞るものであって、範囲内の**基準**を緩めるものではない。指摘の採否基準（4 必須自問・Confidence・Observed Likelihood・実測アンカー）は cycle 1 と完全に同一。
 
 3. **Cross-File Impact Check は縮小しない**: fix が触った symbol（関数・変数・設定キー・sentinel・marker 名）の波及は、差分の**外**にあるファイルも含めて grep で確認する。呼び出し側の未更新・契約の非対称・二重定義の片側だけ更新、はこの検査でしか捕まらない。
 
-4. **未変更部の再監査はしない**: `{cycle_base_sha}..HEAD` に現れないコードを新たに読み直して指摘を作らない。それは cycle 1 で審査済みであり、再監査は重複調査にあたる。ただし**上記 1 の解消検証**と、上記 3 の波及確認で**実際に問題が観測された**場合はこの限りではない（前回指摘の在り処と波及先は差分外でも読んでよい）。
+4. **未変更部の再監査はしない**: 上記 2 の fix diff に現れないコードを新たに読み直して指摘を作らない。それは cycle 1 で審査済みであり、再監査は重複調査にあたる。ただし**上記 1 の解消検証**と、上記 3 の波及確認で**実際に問題が観測された**場合はこの限りではない（前回指摘の在り処と波及先は差分外でも読んでよい）。
 
 fix が前回レビュー範囲外のファイルへ触れている場合、そのファイルは「新しい面」なのでフルスコープで審査してください（レビュー対象ファイル一覧に含まれています）。
 ```

@@ -32,13 +32,13 @@ assert_grep "1.2.4 declares the persistent JSON as the sole input" "$PR_REVIEW" 
   '判定入力は ステップ 6\.1\.a が書く永続レビュー JSON のみ'
 # full/incremental の 2 値分岐表が本体に残っていること (marker を読んだ後の行動を決める唯一の表)
 assert_grep "1.2.4 keeps the full/incremental branch table in the body" "$PR_REVIEW" \
-  '^\| `incremental` \| `\{cycle_base_sha\}\.\.HEAD` の diff \+ 前回 blocking の解消検証'
+  '^\| `incremental` \| `\{cycle_scope_files\}` に列挙されたファイルの `\{cycle_base_sha\}\.\.HEAD` の diff \+ 前回 blocking の解消検証'
 
 echo "=== ステップ 1.2.4: fail-safe は必ず full へ倒れる (AC-3 / T-03) ==="
 # reason 語彙の列挙と「reason は分岐を変えない (全て full)」が 1 行に同居していることを pin する。
 # 語彙だけの pin だと「full へ倒す」規則が消えても green のままになる。
 assert_grep "1.2.4 enumerates every fail-safe reason and pins that they all fall back to full" "$PR_REVIEW" \
-  'no_prev_json.*prev_json_unreadable.*commit_sha_missing.*commit_sha_unreachable.*diff_failed.*empty_diff.*run_pin_unresolved.*run_pin_unreadable.*foreign_run_json.*jq_missing.*reason は分岐を変えない.*`full`'
+  'no_prev_json.*prev_json_unreadable.*commit_sha_missing.*commit_sha_unreachable.*diff_failed.*empty_diff.*base_only_diff.*scope_files_unwritable.*run_pin_unresolved.*run_pin_unreadable.*foreign_run_json.*jq_missing.*reason は分岐を変えない.*`full`'
 assert_grep "helper docstring is the reason SoT" "$HELPER" \
   'Fallback reason 語彙 \(SoT'
 assert_grep "cycle-scope.md forbids narrowing on missing information" "$CYCLE_SCOPE" \
@@ -49,7 +49,7 @@ assert_grep "cycle-scope.md states the safe side is always the wider scope" "$CY
 # 3 コピーのどれかが欠けると「その経路は fail-safe しない」と読める記述が残る。
 # jq_missing は cycle-scope.md の表から実際に欠落していた (SKILL.md と helper には存在)。
 for _f in "$HELPER" "$PR_REVIEW" "$CYCLE_SCOPE"; do
-  for _r in no_prev_json prev_json_unreadable commit_sha_missing commit_sha_unreachable diff_failed empty_diff run_pin_unresolved run_pin_unreadable foreign_run_json jq_missing; do
+  for _r in no_prev_json prev_json_unreadable commit_sha_missing commit_sha_unreachable diff_failed empty_diff base_only_diff scope_files_unwritable run_pin_unresolved run_pin_unreadable foreign_run_json jq_missing; do
     assert_grep "$(basename "$_f") documents reason '$_r'" "$_f" "$_r"
   done
 done
@@ -156,7 +156,7 @@ assert_grep "parent discovery uses named 仕様との整合性 section" "$PR_REV
 
 echo "=== ステップ 2.2: 選抜は cap 後の filter でなくマッチ入力の差し替え (AC-2 / AC-4 / T-02 / T-04) ==="
 assert_grep "2.2 substitutes the matching input with the fix diff" "$PR_REVIEW" \
-  '^\| `incremental` \| `git diff --name-only \{cycle_base_sha\}\.\.HEAD` の結果'
+  '^\| `incremental` \| `\{cycle_scope_files\}` の一覧（= fix diff）に差し替える'
 assert_grep "2.2 keeps the pattern table itself unchanged across cycles" "$PR_REVIEW" \
   'パターン表は cycle で変わらない'
 # AC-2 の核: 前サイクル finder の合流が **mandatory** であること。`recommended` では
@@ -172,7 +172,7 @@ echo "=== reviewers/SKILL.md: 選抜表は複製せず入力定義だけを追�
 assert_grep "Phase 1 redefines 'changed file' per REVIEW_CYCLE_SCOPE" "$REVIEWERS" \
   '"changed file" の定義は review cycle で変わる'
 assert_grep "Phase 1 states the incremental input is the fix diff" "$REVIEWERS" \
-  '`incremental`（cycle 2\+）.*git diff --name-only \{cycle_base_sha\}\.\.HEAD'
+  '`incremental`（cycle 2\+）.*`\{cycle_scope_files\}` の一覧。起点の後に取り込んだ base ブランチ由来のファイルは含まない'
 assert_grep "Phase 1 pins the mandatory merge and its cap rationale" "$REVIEWERS" \
   'mandatory.*として合流.*Phase 5 が落とさないことを保証しているのは `mandatory` のみ'
 # 選抜表の複製を禁じる: Available Reviewers 表は 1 つだけであること
@@ -188,7 +188,7 @@ assert_grep "prompt template marks the section conditional on incremental" "$PRO
 assert_grep "4.5 placeholder table wires cycle_scope_mandate to cycle-scope.md" "$PR_REVIEW" \
   '\| `\{cycle_scope_mandate\}` \|.*cycle-scope\.md'
 assert_grep "4.5 scopes relevant_files to the fix diff under incremental" "$PR_REVIEW" \
-  '\{relevant_files\}.*REVIEW_CYCLE_SCOPE == incremental.*\{cycle_base_sha\}\.\.HEAD'
+  '\{relevant_files\}.*REVIEW_CYCLE_SCOPE == incremental.*`\{cycle_scope_files\}` の一覧から抽出する'
 assert_grep "4.5 scopes diff_content to the fix diff under incremental" "$PR_REVIEW" \
   '\{diff_content\}.*REVIEW_CYCLE_SCOPE == incremental.*\{cycle_base_sha\}\.\.HEAD'
 

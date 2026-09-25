@@ -33,7 +33,12 @@
 # git 操作は cwd のリポジトリに対して行う (caller はセッション worktree 内で実行する)。
 #
 # Output — stderr (observability contract。stdout は使わない):
-#   [CONTEXT] REVIEW_CYCLE_SCOPE=incremental; base_sha=<sha>; prev_json=<path>; prev_finders=<csv>
+#   [CONTEXT] REVIEW_CYCLE_SCOPE=incremental; base_sha=<sha>; prev_json=<path>; prev_finders=<csv>; files=<path>
+#
+#   files は fix diff のファイル一覧 (1 行 1 パス) を書いた `${TMPDIR:-/tmp}/rite-cycle-scope-files-{pr}.txt`。
+#   fix diff = 起点からの差分のうち PR 自身が変えたファイル (first-parent 上の非 merge commit の変更と、
+#   first-parent 上の merge で競合を解消したファイル)。merge の second parent 側から入った変更は
+#   base の取り込みとして除く。full へ倒れるときは同じパスの一覧を削除する。
 #   [CONTEXT] REVIEW_CYCLE_SCOPE=full; reason=<reason>
 #   [CONTEXT] REVIEW_CYCLE_SCOPE_FALLBACK=1; reason=<reason>   ← no_prev_json 以外で追加 emit
 #   ⚠️ 差分スコープのフォールバック: ...                        ← 同上 (人間向け)
@@ -58,6 +63,8 @@
 #   diff_failed           — git diff {sha}..HEAD が失敗
 #   empty_diff            — git diff {sha}..HEAD は成功したが差分ゼロ行 (前回起点から新規 commit なし。
 #                           /rite:fix の accept-only cycle で base_sha == HEAD となり必ず成立する)
+#   base_only_diff        — 差分はあるが、すべて base の取り込みで入ったもの (PR 自身の変更なし)
+#   scope_files_unwritable— fix diff の一覧を files= のパスへ書き出せない
 #   run_pin_unresolved    — state root を解決できず run 開始点 pin の在否を確認できない
 #   run_pin_unreadable    — run 開始点 pin は存在するが読めない
 #   foreign_run_json      — 候補 prev JSON の review_context.run_id が live run と違う
@@ -108,9 +115,14 @@ case "$PR_NUMBER" in
     exit 2 ;;
 esac
 
+# fix diff のファイル一覧。caller は別の Bash 呼び出しで読むため、終了時に消える tempfile ではなく
+# PR ごとの固定パスに置く。full へ倒れるときは前 cycle の一覧を消し、古い一覧を読ませない。
+SCOPE_FILES="${TMPDIR:-/tmp}/rite-cycle-scope-files-${PR_NUMBER}.txt"
+
 # full へ倒して終了する共通経路。no_prev_json だけは cycle 1 の正常経路なので WARNING を出さない。
 emit_full() {
   local reason="$1"
+  rm -f "$SCOPE_FILES"
   echo "[CONTEXT] REVIEW_CYCLE_SCOPE=full; reason=$reason" >&2
   if [ "$reason" != "no_prev_json" ]; then
     echo "⚠️ 差分スコープのフォールバック: reason=${reason}。フルレビュー (全 reviewer・フル diff) で実行します。" >&2
@@ -275,6 +287,33 @@ if [ -z "$diff_names" ]; then
   emit_full empty_diff
 fi
 
+# 起点からの差分には、その後に取り込んだ base ブランチの変更も入る。PR 自身が変えたファイルは
+# first-parent 上の非 merge commit が変えたものと、first-parent 上の merge で競合を解消したもの
+# (`diff-tree --cc` はどの親とも異なるファイルだけを出す) に限り、その積を fix diff とする。
+# merge の second parent 側から入った変更は base の取り込みとして除く。
+own_names=$( {
+  git log --first-parent --no-merges --name-only --format= "${base_sha}..HEAD" || exit 1
+  merges=$(git rev-list --first-parent --merges "${base_sha}..HEAD") || exit 1
+  for merge in $merges; do
+    git diff-tree --cc --name-only --no-commit-id "$merge" || exit 1
+  done
+} 2>"$probe_err") || {
+  echo "WARNING: review-cycle-scope: PR 自身の変更を取得できません (${base_sha}..HEAD)" >&2
+  head -3 "$probe_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+  emit_full diff_failed
+}
+scope_names=$(comm -12 <(printf '%s\n' "$diff_names" | LC_ALL=C sort -u) \
+                       <(printf '%s\n' "$own_names" | LC_ALL=C sort -u) | sed '/^$/d')
+if [ -z "$scope_names" ]; then
+  echo "WARNING: review-cycle-scope: 前回レビュー起点からの差分は base の取り込みだけです (base_sha=$base_sha)" >&2
+  emit_full base_only_diff
+fi
+if ! printf '%s\n' "$scope_names" > "$SCOPE_FILES" 2>"$probe_err"; then
+  echo "WARNING: review-cycle-scope: fix diff の一覧を書き出せません: $SCOPE_FILES" >&2
+  head -3 "$probe_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+  emit_full scope_files_unwritable
+fi
+
 # 前サイクルで gated scope (current-pr / follow-up) の指摘を出した reviewer を、健全性検査と
 # 同一の jq で抽出する。非 fatal 移送分は解消検証の対象から除く。
 #
@@ -344,5 +383,5 @@ case "$scope_probe" in
   OK*) prev_finders="${scope_probe#OK	}" ;;
 esac
 
-echo "[CONTEXT] REVIEW_CYCLE_SCOPE=incremental; base_sha=$base_sha; prev_json=$prev_json; prev_finders=$prev_finders" >&2
+echo "[CONTEXT] REVIEW_CYCLE_SCOPE=incremental; base_sha=$base_sha; prev_json=$prev_json; prev_finders=$prev_finders; files=$SCOPE_FILES" >&2
 exit 0

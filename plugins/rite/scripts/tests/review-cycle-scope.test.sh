@@ -18,6 +18,9 @@ FAIL=0
 
 cleanup() { rm -rf "$TEST_DIR"; }
 trap cleanup EXIT
+# helper は fix diff の一覧を ${TMPDIR}/rite-cycle-scope-files-{pr}.txt に書く。実 /tmp を汚さない
+export TMPDIR="$TEST_DIR/tmp"
+mkdir -p "$TMPDIR"
 
 pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
@@ -517,6 +520,84 @@ fi
 # (d) --since 明示は pin より優先される
 SCOPE_STDERR=$(cd "$PRODROOT" && bash "$TARGET" --pr 42 --since "" 2>&1) || true
 assert_contains "TC-24.6: --since 明示が既定 pin を上書きする" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
+
+echo "=== TC-25: fix diff は base の取り込みで入ったファイルを含まない ==="
+# 前回レビュー起点の後に base を merge すると、起点からの差分に base 側のファイルが入る。
+# fix diff の一覧は PR 自身が変えたファイルと完全一致しなければならない (件数や部分一致では
+# 取りこぼしも混入も見逃す)。
+MREPO="$TEST_DIR/merge-repo"
+mkdir -p "$MREPO"
+git -C "$MREPO" init -q -b main
+git -C "$MREPO" config user.email t@example.com
+git -C "$MREPO" config user.name t
+printf 'doc\n' > "$MREPO/doc.md"
+printf 'shared\n' > "$MREPO/shared.txt"
+printf 'top\nmiddle\nbottom\n' > "$MREPO/both.txt"
+git -C "$MREPO" add -A
+git -C "$MREPO" commit -qm init
+git -C "$MREPO" switch -qc feat
+printf 'reviewed\n' >> "$MREPO/doc.md"
+git -C "$MREPO" commit -qam reviewed
+MBASE=$(git -C "$MREPO" rev-parse HEAD)
+# (a) fix commit だけが変えたファイル / (c) fix と base の両方が変えたファイル (競合なし)
+printf 'fix\n' >> "$MREPO/doc.md"
+printf 'TOP\nmiddle\nbottom\n' > "$MREPO/both.txt"
+printf 'feat\n' >> "$MREPO/shared.txt"
+git -C "$MREPO" commit -qam fix
+# (e) PR ブランチへ merge した別ブランチの変更 (second parent 側)
+git -C "$MREPO" switch -qc side
+printf 'side\n' > "$MREPO/side.txt"
+git -C "$MREPO" add side.txt
+git -C "$MREPO" commit -qm side
+git -C "$MREPO" switch -q feat
+git -C "$MREPO" merge -q --no-ff side -m "merge side"
+# (b) base だけが変えたファイル / (d) base と競合して解消したファイル
+git -C "$MREPO" switch -q main
+mkdir -p "$MREPO/src"
+printf 'app\n' > "$MREPO/src/app.ts"
+printf 'top\nmiddle\nBOTTOM\n' > "$MREPO/both.txt"
+printf 'main\n' >> "$MREPO/shared.txt"
+git -C "$MREPO" add -A
+git -C "$MREPO" commit -qm main
+git -C "$MREPO" switch -q feat
+git -C "$MREPO" merge -q main -m "merge main" >/dev/null 2>&1
+printf 'shared\nfeat\nmain\n' > "$MREPO/shared.txt"
+git -C "$MREPO" add shared.txt
+git -C "$MREPO" commit -qm "merge main"
+MRESULTS="$TEST_DIR/results-merge"
+mkdir -p "$MRESULTS"
+mk_result_json "$MRESULTS/42-20260806-000000.json" "$MBASE"
+cd "$MREPO" || exit 1
+run_scope --pr 42 --results-dir "$MRESULTS"
+assert_contains "TC-25.1: base 取り込み後も incremental" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
+scope_list=$(marker_value_of "$SCOPE_STDERR" "files")
+assert_rc "TC-25.2: files= の一覧が存在する" 0 "$([ -f "$scope_list" ]; echo $?)"
+actual_files=$(LC_ALL=C sort "$scope_list" 2>/dev/null | paste -sd, -)
+if [ "$actual_files" = "both.txt,doc.md,shared.txt" ]; then
+  pass "TC-25.3: fix diff は fix / 両側変更 / 競合解消のファイルだけで、base と side 由来を含まない"
+else
+  fail "TC-25.3: fix diff の一覧"
+  echo "     期待値: 'both.txt,doc.md,shared.txt'"
+  echo "     実際:   '$actual_files'"
+fi
+
+# base の取り込みだけの差分は PR の変更が無い。差分スコープの対象が無いので full へ倒す
+git -C "$MREPO" switch -qc only-merge "$MBASE"
+git -C "$MREPO" merge -q --no-ff main -m "merge only" >/dev/null 2>&1
+run_scope --pr 42 --results-dir "$MRESULTS"
+assert_contains "TC-25.4: base 取り込みだけなら base_only_diff で full" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=full; reason=base_only_diff"
+assert_contains "TC-25.5: fallback marker を出す" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE_FALLBACK=1; reason=base_only_diff"
+assert_not_contains "TC-25.6: incremental を出さない" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
+assert_not_contains "TC-25.7: files= を出さない" "$SCOPE_STDERR" "files="
+assert_rc "TC-25.8: full へ倒れたら前 cycle の一覧を残さない" 1 "$([ -e "$scope_list" ]; echo $?)"
+
+# 一覧を書き出せないときは incremental を名乗らず full へ倒す
+git -C "$MREPO" switch -q feat
+mkdir -p "$TMPDIR/rite-cycle-scope-files-42.txt"
+run_scope --pr 42 --results-dir "$MRESULTS"
+rmdir "$TMPDIR/rite-cycle-scope-files-42.txt"
+assert_contains "TC-25.9: 一覧を書き出せなければ scope_files_unwritable で full" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=full; reason=scope_files_unwritable"
+assert_not_contains "TC-25.10: incremental を出さない" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
 
 echo "=== 結果: PASS=$PASS FAIL=$FAIL ==="
 [ "$FAIL" -eq 0 ] || exit 1

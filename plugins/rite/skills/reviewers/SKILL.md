@@ -109,7 +109,7 @@ For each changed file:
 | `REVIEW_CYCLE_SCOPE` | Phase 1 の "changed file" |
 |---|---|
 | `full`（cycle 1 / fail-safe） | PR 全体の変更ファイル |
-| `incremental`（cycle 2+） | 前回レビュー起点からの fix diff (`git diff --name-only {cycle_base_sha}..HEAD`) |
+| `incremental`（cycle 2+） | 前回レビュー起点からの fix diff（`{cycle_scope_files}` の一覧。起点の後に取り込んだ base ブランチ由来のファイルは含まない） |
 
 `incremental` では、Phase 1 の結果に**前サイクルで blocking を出した reviewer を `selection_type: mandatory` として合流**させる（Phase 5 が落とさないことを保証しているのは `mandatory` のみのため）。ただし `acceptance` は合流させない（cap 適用後に毎 cycle 追加する）。設計根拠: [`cycle-scope.md`](../pr-review/references/cycle-scope.md)。
 rationale: references/rationale.md#incremental-mandatory-merge
