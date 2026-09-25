@@ -405,10 +405,26 @@ fi
 cp "$ROOT/cfg.bak" "$repo/rite-config.yml"
 printf '%s\n' 'branch:' '  base: "no-such-base-ref"    # base branch' >> "$repo/rite-config.yml"
 run_gate --mode review --worktree "$repo" --flow-state "$flow" --memory "$mem"
-if [ "$GRC" -eq 1 ] && grep -q 'reason=base_diff_unreadable' <<<"$GOUT"; then
+if [ "$GRC" -eq 1 ] && grep -q 'reason=base_diff_unreadable' <<<"$GOUT" \
+   && grep -q 'ERROR: git diff no-such-base-ref...HEAD' "$ROOT/gate.err"; then
   pass "review denies an unreadable base diff instead of matching an empty diff"
 else
-  fail "unreadable base rc=$GRC out=$GOUT"
+  fail "unreadable base rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
+fi
+# with the same unreadable base, a review whose pages are all out and a commit do not deny
+write_mem "$mem" "$(applied_page '対象の識別子を照合してから実行する。' README 'printf ok' | sed 's/^decision: applied/decision: out/')"
+run_gate --mode review --worktree "$repo" --flow-state "$flow" --memory "$mem"
+if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
+  pass "review without applied pages ignores an unreadable base diff"
+else
+  fail "out-only review rc=$GRC out=$GOUT"
+fi
+write_mem "$mem" "$(applied_page '対象の識別子を照合してから実行する。' README 'printf ok')"
+run_gate --mode commit --worktree "$repo" --flow-state "$flow" --memory "$mem"
+if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
+  pass "commit ignores an unreadable base diff"
+else
+  fail "commit unreadable base rc=$GRC out=$GOUT"
 fi
 cp "$ROOT/cfg.bak" "$repo/rite-config.yml"
 

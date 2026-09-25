@@ -345,5 +345,11 @@ PY
 case "$reason" in
   allow) _allow ;;
   "") _deny "record_corrupt" ;;
+  base_diff_unreadable)
+    # どの base で差分を取れなかったかを利用者に見せる（base の読み違いを原因まで辿れるように）
+    diff_err=$(git -C "$WORKTREE" diff --name-only "${BASE}...HEAD" 2>&1 >/dev/null || true)
+    echo "ERROR: git diff ${BASE}...HEAD に失敗しました: ${diff_err:-(git の出力なし)}" >&2
+    _deny "$reason"
+    ;;
   *) _deny "$reason" ;;
 esac
