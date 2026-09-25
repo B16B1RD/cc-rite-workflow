@@ -761,6 +761,21 @@ else
   fail "documented suffix diverges from helper output"
 fi
 
+# 文書に字義どおり従う実行者の誤動作を実行で観測した指摘は class A。分類を書く 3 か所が同じ規則を持つ
+doc_follower_rule='記述に字義どおり従う実行者が誤動作に至ることを、記述された手順の実行で観測した指摘'
+doc_follower_missing=""
+for f in "$pr_review_skill" "$PLUGIN_ROOT/skills/fix/references/assessment-rules.md" "$PLUGIN_ROOT/references/severity-levels.md"; do
+  line=$(grep -F -- "$doc_follower_rule" "$f" || true)
+  if [ -z "$line" ] || ! printf '%s\n' "$line" | grep -qF 'class A'; then
+    doc_follower_missing="$doc_follower_missing $f"
+  fi
+done
+if [ -z "$doc_follower_missing" ]; then
+  pass "doc-follower malfunction is class A in all three classification sites"
+else
+  fail "doc-follower class A rule missing:$doc_follower_missing"
+fi
+
 repo_root=$(cd "$PLUGIN_ROOT/../.." && pwd)
 old_phrase_one="blocking のまま"'残した形'
 old_phrase_two="3 値モデルの保証を"'第 2 軸'
