@@ -29,6 +29,7 @@
 * **Update**: [jq -n create mode: 既存値を読み取ってから再構築する](pages/patterns/jq-create-mode-preserve-existing.md) — raw/reviews/20260925T094210Z-pr-3077.md を統合（リセット側でも固定キーの書き直しが別用途の記録を落とす）
 * **Update**: [pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する](pages/patterns/pin-literal-uniqueness-verified-by-mutation.md) — raw/reviews/20260925T095339Z-pr-3078.md を統合（停止する bash ブロックは実行で固定する）
 * **Skip**: [20260925T094152Z-pr-3069.md](raw/reviews/20260925T094152Z-pr-3069.md) — 必須引数の呼び出し元の洗い出しと入力検証の前置は既存の経験則で覆われ、新しい経験則がない
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=536, broken_refs=0
 
 ## 2026-09-24
 
