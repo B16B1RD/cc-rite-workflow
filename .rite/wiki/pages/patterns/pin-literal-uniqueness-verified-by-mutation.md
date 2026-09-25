@@ -37,9 +37,11 @@ sources:
     resource: "raw/reviews/20260925T102510Z-pr-3081.md"
   - type: "reviews"
     resource: "raw/reviews/20260925T110204Z-pr-3084.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260925T115338Z-pr-3086.md"
 tags: ["pin", "mutation-testing", "static-assert", "producer-consumer-symmetry", "drift-detection"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5[1m]", at: "2026-09-25T11:08:57Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5[1m]", at: "2026-09-25T11:57:22Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5"
     at: "2026-08-30T05:20:00Z"
@@ -236,6 +238,14 @@ negative assert は静かに通る。`[[:space:]]` を使う。
 - 判定語を取る前に、同じ判定語を含む既知の句（但し書き等）を文字列として除く。除く句そのものの存在は別の assert で固定しておけば、句の文言が変わったときは先にそちらが赤くなり、除去の空振りで素通りする経路は残らない
 - pin の設計と、pin が読む行への文言追加を同じ変更で行うときは、追加後の本文の上で変異実験をやり直す。pin を書いた時点の前提（その行に判定語は 1 つ）は追加で崩れる
 
+### 折り返した散文は行ではなく文で pin する
+
+折り返した英文の各要点を「1 物理行に収まる固定文字列」で pin したところ、pin は行の断片になり、折り返しの直後に来た述語・否定・発火条件が固定から外れた。漏れた行を足しても、次に段落を折り返し直した時点で既存の pin が短くなり、固定していた要点がまた外れる回帰が起きた。
+
+- 対象の節を切り出して空白を 1 つに正規化し、その文字列に対して文全体を `grep -F` で固定する。折り返し位置に依らなくなる
+- 折り返しだけを変える変異が green のままであることを陽性対照として実測し、pin が折り返しに依存していないことを確かめる
+- 節への帰属を範囲で固定するときは、終端を特定の見出し名ではなく「次の同レベル見出し」で決める。見出しの改名や間への節の挿入で範囲がずれないようにする
+
 ## 関連ページ
 
 - [assert_not_grep は「対象が fixture に存在する」ことを前提にしないと恒真になる — positive control を対で置く](../anti-patterns/assert-not-grep-vacuous-without-fixture-scope.md)
@@ -259,3 +269,4 @@ negative assert は静かに通る。`[[:space:]]` を使う。
 - [レビュー結果（同じ文字列を持つ 2 行の片方を消す変異が生存）](../../raw/reviews/20260925T095339Z-pr-3078.md)
 - [レビュー結果（複数箇所の規則一致の pin が判定句の反転を検出しない）](../../raw/reviews/20260925T102510Z-pr-3081.md)
 - [レビュー結果（但し書きの判定語を主語と取り違える位置 pin）](../../raw/reviews/20260925T110204Z-pr-3084.md)
+- [レビュー結果（折り返し行の断片 pin が要点を取りこぼす）](../../raw/reviews/20260925T115338Z-pr-3086.md)
