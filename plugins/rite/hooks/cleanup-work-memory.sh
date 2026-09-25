@@ -126,6 +126,10 @@ if [ "$CLOSE_MODE" = false ]; then
       trap 'rm -f "$TMP_STATE" 2>/dev/null' EXIT TERM INT
       _jq_err=$(mktemp 2>/dev/null) || _jq_err=""
       # Keep the per-session owner and schema when resetting lifecycle fields.
+      # Also keep other PRs' parked review runs (review_run_history) and the
+      # abandonment records restore() validates them against: this reset ends
+      # only the cleaned Issue, and dropping them would make a deferred PR come
+      # back without its run, observations and counter.
       if jq \
         --argjson active false \
         --argjson issue "${ISSUE_NUMBER:-0}" \
@@ -135,7 +139,8 @@ if [ "$CLOSE_MODE" = false ]; then
         --arg next "none" \
         --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
         '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, pr_number: $pr, next_action: $next, updated_at: $ts}
-         + (if .session_id then {session_id, schema_version: (.schema_version // 3)} else {} end)' "$FLOW_STATE" \
+         + (if .session_id then {session_id, schema_version: (.schema_version // 3)} else {} end)
+         + with_entries(select(.key == "review_run_history" or .key == "review_cycle_abandoned"))' "$FLOW_STATE" \
         > "$TMP_STATE" 2>"${_jq_err:-/dev/null}"; then
         _mv_err=$(mktemp 2>/dev/null) || _mv_err=""
         # if/else over `if !` preserves the real mv rc (EXDEV=18, EACCES=13,
