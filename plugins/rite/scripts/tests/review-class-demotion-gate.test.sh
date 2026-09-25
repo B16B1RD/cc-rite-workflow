@@ -764,7 +764,8 @@ fi
 # 文書に字義どおり従う実行者の誤動作を実行で観測した指摘は class A。分類を書く 3 か所が同じ規則を持つ
 doc_follower_rule='記述に字義どおり従う実行者が誤動作に至ることを、記述された手順（仕様書が記述する実装を含む）の実行で観測した指摘'
 # 判定句は規則文より後ろで最初に現れる class A / class B で見る (同じ行の既存の class A に一致させない)。
-# SKILL.md は 5.3.0.C 節の中に限る
+# SKILL.md は 5.3.0.C 節の中に限る。但し書き自体が class B を含むため、判定句と限定の主語を取る前に除く
+doc_follower_exemption='不確実を理由に class B へ倒さない'
 doc_follower_missing=""
 doc_follower_narrowing_missing=""
 doc_follower_exemption_missing=""
@@ -772,7 +773,7 @@ for f in "$pr_review_skill" "$PLUGIN_ROOT/skills/fix/references/assessment-rules
   if [ "$f" = "$pr_review_skill" ]; then body=$class_section; else body=$(cat "$f"); fi
   line=$(printf '%s\n' "$body" | grep -F -- "$doc_follower_rule" || true)
   rest=${line#*"$doc_follower_rule"}
-  verdict=$(printf '%s\n' "$rest" | grep -oE 'class [AB]' | head -1)
+  verdict=$(printf '%s\n' "${rest//"$doc_follower_exemption"/}" | grep -oE 'class [AB]' | head -1)
   if [ -z "$line" ]; then
     doc_follower_missing="$doc_follower_missing $f(no rule)"
   elif [ "$verdict" != "class A" ]; then
@@ -780,13 +781,15 @@ for f in "$pr_review_skill" "$PLUGIN_ROOT/skills/fix/references/assessment-rules
   fi
   # 規則文の後ろに「不確実を理由に class B へ倒さない」が同じ行で続く (一般の B 倒し既定より優先する)
   case "$rest" in
-    *'不確実を理由に class B へ倒さない'*) ;;
+    *"$doc_follower_exemption"*) ;;
     *) doc_follower_exemption_missing="$doc_follower_exemption_missing $f" ;;
   esac
   # class B の「文書整合」は字面整合クラス (テキスト差分だけの観測) に限る。限定句より前で最後に現れる
-  # class A / class B が class B であること (同じ行の class A 規則に限定が付け替わっても検出する)
+  # class A / class B が class B であること (但し書きを除いて見るので、限定が class A 規則の後ろへ
+  # 移る変更や主語「class B の」を消す変更も検出する)
   nline=$(printf '%s\n' "$body" | grep -F -- 'テキスト差分だけを観測' | grep -F '字面整合クラス' | head -1)
-  subject=$(printf '%s\n' "${nline%%テキスト差分だけを観測*}" | grep -oE 'class [AB]' | tail -1)
+  pre=${nline%%テキスト差分だけを観測*}
+  subject=$(printf '%s\n' "${pre//"$doc_follower_exemption"/}" | grep -oE 'class [AB]' | tail -1)
   if [ "$subject" != "class B" ]; then
     doc_follower_narrowing_missing="$doc_follower_narrowing_missing $f(${subject:-no narrowing})"
   fi
@@ -808,6 +811,12 @@ else
 fi
 
 repo_root=$(cd "$PLUGIN_ROOT/../.." && pwd)
+# SPEC の class B 定義も同じ但し書きを持つ (規則文と同じく仕様書が記述する実装を含む)
+if grep -qF 'uncertain cases fall to B, except a prose finding whose repro executes the described procedure or the implementation a spec describes' "$repo_root/docs/SPEC.md"; then
+  pass "SPEC keeps the doc-follower uncertainty exemption"
+else
+  fail "SPEC uncertainty exemption missing"
+fi
 old_phrase_one="blocking のまま"'残した形'
 old_phrase_two="3 値モデルの保証を"'第 2 軸'
 old_terms=$(grep -R -n -F -e "$old_phrase_one" -e "$old_phrase_two" -e "$retired_marker" \
