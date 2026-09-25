@@ -6,7 +6,12 @@
 #
 # Modes (exactly one):
 #   --all                 git ls-files 全件 − 除外パス
-#   --diff <base_ref>     git diff <base_ref> の追加行（未 commit を含む）
+#   --diff <base_ref>     git diff --no-renames <base_ref> の追加行（未 commit を含む）。
+#                         同じ diff の除外外パスの削除行と内容が一致する追加行は
+#                         移動した行として検出しない（削除 1 行につき追加 1 行まで）。
+#                         rename 検出は使わない（ユーザー設定に依らず、除外パスからの
+#                         rename も行単位の追加として見る）。prefix・外部 diff・textconv
+#                         も固定し、ユーザーの diff 設定で走査対象の形を変えない
 #                         --path DIR で走査範囲を DIR 配下へ限定できる
 #                         (DIR に tracked も staged も 0 件なら invocation error)
 #   --stdin --label NAME  stdin を NAME として走査（除外パスなら走査しない）
@@ -53,7 +58,9 @@ Usage: number-reference-check.sh --all [--repo-root DIR] [--quiet]
 
 Options:
   --all              Scan all git-tracked files minus path exclusions
-  --diff BASE        Scan added lines of git diff BASE (includes uncommitted)
+  --diff BASE        Scan added lines of git diff --no-renames BASE (includes
+                     uncommitted); an added line equal to a removed line outside
+                     the excluded paths in the same diff is a move (one for one)
   --stdin            Scan stdin (requires --label)
   --label NAME       Path label for --stdin findings
   --path DIR         Limit --diff to this pathspec (repo-root relative)
@@ -311,16 +318,19 @@ scan_diff() {
   local diff_out diff_rc=0
   # pathspec は `--` の後ろへ置く（ref と紛れないため）。DIFF_PATH が空ならツリー全体。
   if [ -n "$DIFF_PATH" ]; then
-    diff_out=$(git -c core.quotePath=false diff -U0 --no-color "$base" -- "$DIFF_PATH") || diff_rc=$?
+    diff_out=$(git -c core.quotePath=false diff --no-renames --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ -U0 --no-color "$base" -- "$DIFF_PATH") || diff_rc=$?
   else
-    diff_out=$(git -c core.quotePath=false diff -U0 --no-color "$base") || diff_rc=$?
+    diff_out=$(git -c core.quotePath=false diff --no-renames --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ -U0 --no-color "$base") || diff_rc=$?
   fi
   if [ "$diff_rc" -ne 0 ]; then
     echo "ERROR: git diff failed for base: $base" >&2
     exit 2
   fi
   local hits
-  hits=$(printf '%s\n' "$diff_out" | awk -v excluded_paths="$EXCLUDED_PATHS" "$AWK_HAS_HIT"'
+  # 同じ diff を 2 回流す。1 回目は除外外パスの削除行の内容を数え、2 回目で一致する追加行を
+  # 移動として相殺する。区切り行は `#` で始まり、git diff の出力行とは衝突しない。
+  hits=$(printf '%s\n#rite-second-pass\n%s\n' "$diff_out" "$diff_out" \
+    | awk -v excluded_paths="$EXCLUDED_PATHS" "$AWK_HAS_HIT"'
     function excluded(p,    paths, count, i, candidate) {
       count = split(excluded_paths, paths, " ")
       for (i = 1; i <= count; i++) {
@@ -337,6 +347,18 @@ scan_diff() {
         sub(/"$/, "", p)
       }
       return p
+    }
+    $0 == "#rite-second-pass" { second = 1; next }
+    !second {
+      if (/^diff --git /) { in_hunk = 0; rm_skip = 1 }
+      else if (!in_hunk && /^--- /) {
+        rm_path = unquote(substr($0, 5))
+        if (index(rm_path, "a/") == 1) rm_path = substr(rm_path, 3)
+        rm_skip = (rm_path == "/dev/null") || excluded(rm_path)
+      }
+      else if (/^@@ /) in_hunk = 1
+      else if (in_hunk && !rm_skip && /^-/) removed[substr($0, 2)]++
+      next
     }
     /^diff --git / { skip = 0; path = ""; next }
     /^Binary files / { skip = 1; next }
@@ -359,7 +381,8 @@ scan_diff() {
     /^\+/ && !/^\+\+\+/ {
       content = substr($0, 2)
       if (index(content, "drift-check-ignore") == 0 && has_hit(content)) {
-        printf "%s:%d: %s\n", path, line, content
+        if (removed[content] > 0) removed[content]--
+        else printf "%s:%d: %s\n", path, line, content
       }
       line++
       next

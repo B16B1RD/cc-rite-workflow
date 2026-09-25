@@ -143,6 +143,109 @@ rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
 assert "T-01(d) deleted numbered line is not a hit" "0" "$rc"
 
 # --------------------------------------------------------------------------
+# T-01(e) moved lines: an added line equal to a removed line in the same diff
+# is a move, not a new reference (split / rewrite / renames off)
+# --------------------------------------------------------------------------
+mv_dir="$sb/plugins/rite/references"
+mkdir -p "$mv_dir"
+printf 'intro prose\nfirst ref (#2101)\nmiddle prose\nsecond ref (#2102)\nthird ref (#2103)\n' > "$mv_dir/guide.md"
+printf 'halves prose\nleft ref (#2111)\nright ref (#2112)\n' > "$mv_dir/halves.md"
+commit_all "$sb" move-base
+# 2-way split with the prose rewritten
+git -C "$sb" rm -q plugins/rite/references/halves.md
+printf 'left prose\nleft ref (#2111)\n' > "$mv_dir/left.md"
+printf 'right prose\nright ref (#2112)\n' > "$mv_dir/right.md"
+commit_all "$sb" move-halves
+rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+assert "T-01(e0) 2-way split of moved numbered lines is not a hit" "0" "$rc"
+# 3-way split with every prose line rewritten; numbered lines are unchanged
+git -C "$sb" rm -q plugins/rite/references/guide.md
+mkdir -p "$mv_dir"
+printf 'rewritten a\nfirst ref (#2101)\n' > "$mv_dir/part-a.md"
+printf 'rewritten b\nsecond ref (#2102)\n' > "$mv_dir/part-b.md"
+printf 'rewritten c\nthird ref (#2103)\n' > "$mv_dir/part-c.md"
+commit_all "$sb" move-split
+rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+assert "T-01(e1) split + rewrite of moved numbered lines is not a hit" "0" "$rc"
+
+# pure mv with renames disabled in the user config
+git -C "$sb" config diff.renames false
+git -C "$sb" mv plugins/rite/references/part-a.md plugins/rite/references/moved-a.md
+commit_all "$sb" move-renames-off
+rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+git -C "$sb" config --unset diff.renames
+assert "T-01(e2) pure mv under diff.renames=false is not a hit" "0" "$rc"
+
+# a move plus a new reference: only the new one is a hit
+git -C "$sb" rm -q plugins/rite/references/part-b.md
+mkdir -p "$mv_dir"
+printf 'second ref (#2102)\nnew ref (#2104)\n' > "$mv_dir/merged.md"
+commit_all "$sb" move-plus-new
+rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q '#2104' \
+   && ! printf '%s' "$out" | grep -q '#2102' \
+   && printf '%s' "$out" | grep -q 'Total number-ref findings: 1'; then
+  pass "T-01(e3) move plus new reference detects only the new one"
+else
+  fail "T-01(e3) expected only #2104, got rc=$rc: $out"
+fi
+
+# one removal offsets one addition: removed once, added twice → one hit
+git -C "$sb" rm -q plugins/rite/references/part-c.md
+mkdir -p "$mv_dir"
+printf 'third ref (#2103)\n' > "$mv_dir/copy-1.md"
+printf 'third ref (#2103)\n' > "$mv_dir/copy-2.md"
+commit_all "$sb" move-duplicated
+rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'Total number-ref findings: 1'; then
+  pass "T-01(e4) a removed line offsets only one identical addition"
+else
+  fail "T-01(e4) expected exactly one hit, got rc=$rc: $out"
+fi
+
+# a line removed from an excluded path is not a move source
+mkdir -p "$sb/.rite/wiki/raw/reviews"
+printf 'raw ref (#2105)\n' > "$sb/.rite/wiki/raw/reviews/r.md"
+commit_all "$sb" excluded-base
+git -C "$sb" rm -q .rite/wiki/raw/reviews/r.md
+mkdir -p "$mv_dir"
+printf 'raw ref (#2105)\n' > "$mv_dir/from-raw.md"
+commit_all "$sb" excluded-move
+# rename detection on in the user config: the same-content rename must still be scanned
+git -C "$sb" config diff.renames true
+rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+git -C "$sb" config --unset diff.renames
+if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q '^plugins/rite/references/from-raw.md:1: raw ref (#2105)$'; then
+  pass "T-01(e5) a reference renamed out of an excluded path is a hit under diff.renames=true"
+else
+  fail "T-01(e5) expected from-raw.md hit, got rc=$rc: $out"
+fi
+
+# prefix settings in the user config must not break the excluded-path check
+for prefix_cfg in diff.mnemonicPrefix diff.noprefix; do
+  git -C "$sb" config "$prefix_cfg" true
+  rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+  git -C "$sb" config --unset "$prefix_cfg"
+  if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q '^plugins/rite/references/from-raw.md:1: raw ref (#2105)$'; then
+    pass "T-01(e6) move out of an excluded path is a hit under $prefix_cfg=true"
+  else
+    fail "T-01(e6) expected from-raw.md hit under $prefix_cfg=true, got rc=$rc: $out"
+  fi
+done
+
+# a moved line that starts with "-- " is a content line, not a file header
+printf 'intro\n-- see (#2106)\n' > "$mv_dir/dash-src.md"
+commit_all "$sb" dash-base
+git -C "$sb" rm -q plugins/rite/references/dash-src.md
+mkdir -p "$mv_dir"
+printf 'other intro\n-- see (#2106)\n' > "$mv_dir/dash-dst.md"
+commit_all "$sb" dash-move
+rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+assert "T-01(e7) a moved line starting with -- is not a hit" "0" "$rc"
+git -C "$sb" rm -q -r plugins/rite/references
+commit_all "$sb" move-cleanup
+
+# --------------------------------------------------------------------------
 # T-02 Issue #N / PR #N share the same grammar
 # --------------------------------------------------------------------------
 issue_label=Issue
