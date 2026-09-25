@@ -411,13 +411,14 @@ fi
 #### 1.2.0 Hybrid Review Source Resolution <!-- D-01 -->
 
 
-> 取得元の優先順位: 会話 > ローカル JSON > PR コメント。
+> 取得元の優先順位: コメント URL の指定 > 明示ファイル > 会話 > ローカル JSON > PR コメント。
 rationale: references/design-rationale.md#hybrid-source-priority
 
 **Priority chain**:
 
 | Priority | Source | Condition | Action |
 |----------|--------|-----------|--------|
+| T | Target comment (comment URL) | `{target_comment_id}` set in ステップ 1.0 | P0〜P2 を評価せず `review_source=pr_comment` に確定し、Target Comment Fast Path で指定コメントを読む。`--review-file` との同時指定は `[fix:error]`（`reason=target_comment_conflicts_review_file`） |
 | 0 | `--review-file <path>` (explicit) | `{review_file_path}` set in ステップ 1.0.1 | Read and parse the specified file. On failure, go directly to Priority 4 (fallback) |
 | 1 | Conversation context | Same session has a recent `/rite:pr-review` result in context | Parse conversation findings, then persist and run common triage (1.2.2) |
 | 2 | Local JSON file | `.rite/review-results/{pr_number}-*.json` exists | Read latest timestamp file; parse per schema |
@@ -432,6 +433,7 @@ Selection logic は `scripts/review-source-resolve.sh` に委譲。下記引数�
 - `{review_file_path_from_phase_1_0_1}` — ステップ 1.0.1 の `[CONTEXT] REVIEW_FILE_PATH=...` 値を会話コンテキストから読み取る (未指定時は `__RITE_UNSET__`)。
 - `{conversation_review_decision}` — **Priority 1 判定**: Priority 0 が未発火の前提で、同一 session の直前 assistant turn に `## 📜 rite レビュー結果` を含む `/rite:pr-review` 出力が残っていれば、その findings を会話コンテキストから読み取り `use` を渡す。なければ `none` を渡す。
 - `{p1_scan_turns}` / `{p1_scan_found}` — Priority 1 receipt: scan した assistant turn 数 (use 時 1 以上) と発見有無 (`use`→`true` / `none`→`false`)。
+- `{target_comment_id}` — ステップ 1.0 がコメント URL から取り出したコメント ID (数値)。`{target_comment_id} = null` の経路（PR 番号・PR URL・引数なし）は `__RITE_UNSET__` を渡す。空・未置換・非数値は helper が fail-loud で止める。
 
 helper は `[CONTEXT] REVIEW_SOURCE*` を **stderr** に出す。最終 marker `[CONTEXT] REVIEW_SOURCE=<source>; review_source_path=<path or empty>; pr_number=<n>` のフォーマットは不変。fatal は helper が `FIX_FALLBACK_FAILED` + 非ゼロ、caller が `[fix:error]` stdout (**stdout 分離**)。
 
@@ -439,11 +441,12 @@ helper は `[CONTEXT] REVIEW_SOURCE*` を **stderr** に出す。最終 marker `
 
 ```bash
 # ステップ 1.2.0 Hybrid Review Source Resolution — scripts/review-source-resolve.sh へ委譲
-# ⚠️ Claude は以下4つの引数を ステップ 1.0 / 1.0.1 / Priority 1 会話判定に基づき literal substitute すること。
+# ⚠️ Claude は以下の引数を ステップ 1.0 / 1.0.1 / Priority 1 会話判定に基づき literal substitute すること。
 #   {pr_number}                          : ステップ 1.0 正規化済み PR 番号 (数値)
 #   {review_file_path_from_phase_1_0_1}  : ステップ 1.0.1 の [CONTEXT] REVIEW_FILE_PATH=... 値 (未指定: __RITE_UNSET__)
 #   {conversation_review_decision}       : Priority 1 — 直前 assistant turn に `## 📜 rite レビュー結果` があれば use、なければ none
 #   {p1_scan_turns} / {p1_scan_found}    : Priority 1 receipt (use→turns>=1,found=true / none→found=false)
+#   {target_comment_id}                  : ステップ 1.0 のコメント ID (数値)。コメント URL でなければ __RITE_UNSET__
 # {plugin_root} は [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) で解決する。
 # caller guard: helper の非ゼロ exit で `[fix:error]` を stdout 出力する (helper 自身は [fix:error] を出さない = stdout 分離)。
 # rationale: references/design-rationale.md#review-source-resolution
@@ -452,7 +455,8 @@ bash {plugin_root}/scripts/review-source-resolve.sh \
   --review-file-path "{review_file_path_from_phase_1_0_1}" \
   --conversation-decision "{conversation_review_decision}" \
   --p1-scan-turns "{p1_scan_turns}" \
-  --p1-scan-found "{p1_scan_found}" || {
+  --p1-scan-found "{p1_scan_found}" \
+  --target-comment-id "{target_comment_id}" || {
   echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=review_source_resolve_failed" >&2
   echo "[fix:error]"
   exit 1
@@ -486,6 +490,8 @@ case "$review_source" in
     ;;
 esac
 ```
+
+**On target comment** (`[CONTEXT] REVIEW_SOURCE_TARGET_COMMENT=1`): `review_source=pr_comment` として Target Comment Fast Path へ進む。ローカル JSON・会話の結果は読まない。Broad Retrieval は実行しない。
 
 **On Priority 0 failure**: `review_source="fallback"` → 1.2.0.1。`--review-file` 明示時に P1–P3 へ silent fallthrough しない。
 
