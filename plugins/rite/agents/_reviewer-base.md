@@ -231,11 +231,31 @@ documentation file.
    of success. When cwd or another prerequisite can disappear during the
    lifecycle, verify the prerequisite independently as well as hardening the
    final predicate.
+10. **Relocation, promotion, and deletion**: Trigger on any of these diffs:
+    prose that moves, splits, or is extracted; an added normative keyword
+    (MUST, SHALL, 必須); a raised document status (for example `accepted`).
+    `Read` the implementation each carried claim names and verify the claim
+    holds there. Agreement with the source text proves only a faithful copy,
+    not a true claim.
+    When the diff deletes or stubs out procedures, commands, or guidance,
+    inventory every deleted item and locate where it now lives. Report each
+    deleted item with no destination as a lost instruction.
+    When the diff adds a pointer (an index entry, "see §N") to other content,
+    follow the pointer and trace the destination as a reader would execute it,
+    then verify the outcome matches what the deleted or replaced text produced
+    (or, when nothing was deleted, what the pointer's label promises). Trace
+    steps that would change state outside a disposable copy made for the
+    review statically instead of running them. Check the combination, not each
+    change alone: an
+    added pointer, a deleted command, and an option in the destination can
+    each look correct while together they overwrite a reader's existing
+    settings.
 
 Report a current-PR finding only when the changed explanation, command, citation,
-or sample fails one of these checks and the resulting contradiction or wrong
-target is demonstrable. Record the exact source and consumer in
-`Likelihood-Evidence`; do not infer a mismatch from naming alone.
+or sample fails one of these checks and the resulting contradiction,
+wrong target, lost instruction, or outcome mismatch is demonstrable. Record
+the exact source and consumer in `Likelihood-Evidence`; do not infer a
+mismatch from naming alone.
 
 ### Documentation Fidelity Checklist
 
@@ -244,6 +264,9 @@ target is demonstrable. Record the exact source and consumer in
   sample blocks against their actual source and execution context. Also verify
   consumer portability, aggregation/provenance claims, counterfactual and
   executable backing, command-filter semantics, and complete success predicates.
+  For moved, promoted, or deleted prose, verify carried claims against the
+  implementation, inventory where deleted items went, and compare the outcome of
+  following added pointers with the text they replace, in combination.
 
 ## Confidence Scoring
 

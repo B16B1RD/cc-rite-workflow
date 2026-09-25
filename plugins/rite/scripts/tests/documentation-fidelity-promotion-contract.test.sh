@@ -88,6 +88,40 @@ assert_grep 'sample comparison includes caller contract' "$reviewer" \
   'prerequisites supplied by the caller'
 assert_grep 'nonidentical samples narrow their claim' "$reviewer" \
   'narrow the claim instead of saying "verbatim" or "identical"'
+# 移動・格上げ・削除の検査はゲート節（次の `## ` 見出しまで）の中に置く。折り返し位置に
+# 依存しないよう、節の空白を 1 つの空白に正規化してから文単位で固定する
+gate_text=$(awk '/^## /{in_gate = ($0 == "## Documentation Fidelity Gate")} in_gate' "$reviewer" | tr -s '[:space:]' ' ')
+assert_sentence() {
+  local label=$1 sentence=$2
+  if grep -Fq -- "$sentence" <<<"$gate_text"; then
+    printf 'PASS: %s\n' "$label"
+  else
+    printf 'FAIL: %s\n' "$label" >&2
+    failures=$((failures + 1))
+  fi
+}
+assert_sentence 'gate section ends at its checklist' \
+  '### Documentation Fidelity Checklist'
+assert_sentence 'relocation item and its triggers are inside the gate' \
+  '10. **Relocation, promotion, and deletion**: Trigger on any of these diffs: prose that moves, splits, or is extracted; an added normative keyword (MUST, SHALL, 必須); a raised document status (for example `accepted`).'
+assert_sentence 'carried claims must hold in the implementation' \
+  '`Read` the implementation each carried claim names and verify the claim holds there.'
+assert_sentence 'source agreement is not claim truth' \
+  'Agreement with the source text proves only a faithful copy, not a true claim.'
+assert_sentence 'deletions and stubs are inventoried' \
+  'When the diff deletes or stubs out procedures, commands, or guidance, inventory every deleted item and locate where it now lives.'
+assert_sentence 'items with no destination are reported' \
+  'Report each deleted item with no destination as a lost instruction.'
+assert_sentence 'added pointers are followed and their outcome compared' \
+  'When the diff adds a pointer (an index entry, "see §N") to other content, follow the pointer and trace the destination as a reader would execute it, then verify the outcome matches what the deleted or replaced text produced (or, when nothing was deleted, what the pointer'"'"'s label promises).'
+assert_sentence 'state-changing steps are traced statically' \
+  'Trace steps that would change state outside a disposable copy made for the review statically instead of running them.'
+assert_sentence 'changes are checked in combination' \
+  'Check the combination, not each change alone: an added pointer, a deleted command, and an option in the destination can each look correct while together they overwrite a reader'"'"'s existing settings.'
+assert_sentence 'lost instructions and outcome mismatches are reportable' \
+  'fails one of these checks and the resulting contradiction, wrong target, lost instruction, or outcome mismatch is demonstrable.'
+assert_sentence 'shared checklist names relocation checks' \
+  'For moved, promoted, or deleted prose, verify carried claims against the implementation, inventory where deleted items went, and compare the outcome of following added pointers with the text they replace, in combination.'
 assert_grep 'findings remain evidence gated' "$reviewer" \
   'or sample fails one of these checks'
 assert_grep 'shared checklist maps the gate' "$reviewer" \
