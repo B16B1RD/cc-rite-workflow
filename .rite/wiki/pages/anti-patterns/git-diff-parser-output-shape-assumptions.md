@@ -4,7 +4,7 @@ title: "git diff の出力形状を前提にしたパーサは、git の設定�
 domain: "anti-patterns"
 description: "git diff の出力形式と rename 検出は、変更パスの列挙結果を変える。対象範囲を検査する場合は引用・prefix の正規化に加え、移動元と移動先の両方を含む列挙契約が必要になる。"
 created: "2026-09-06T16:10:23Z"
-generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-09-16T07:23:24Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5[1m]", at: "2026-09-25T12:47:28Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260906T125803Z-pr-2582.md"
@@ -12,6 +12,8 @@ sources:
     resource: "raw/reviews/20260916T070028Z-pr-2906.md"
   - type: "fixes"
     resource: "raw/fixes/20260916T070742Z-pr-2906.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260925T124519Z-pr-3087.md"
 tags: ["git-diff", "parser", "silent-degradation", "portability"]
 confidence: high
 ---
@@ -48,6 +50,14 @@ confidence: high
 
 rename 検出が有効な `--name-only` は、移動先だけを返すことがある。変更を許可したディレクトリへの移動であっても、対象外ディレクトリからの削除を伴うため、移動先だけの照合では範囲違反が通過する。範囲検査には `git diff --no-renames HEAD --name-only -z` を使い、削除元と追加先を別々に検査する。対象外から対象内へ staged rename する回帰テストを置くと、この列挙契約を実測できる。
 
+### 形はパース側で正規化せず、呼び出し側で固定する
+
+削除行と追加行を別々に走査する検出器で、削除側のヘッダから `a/` だけを剥がしていた。`diff.mnemonicPrefix=true` の環境ではヘッダが `c/` で始まり、除外パスの判定が外れて、検出すべき移動が見逃された。パース側で `a/` `c/` `i/` `w/` を列挙して剥がす方法もあるが、次に増える設定（外部 diff・textconv など）でまた漏れる。
+
+- 呼び出し側で `--no-renames --src-prefix=a/ --dst-prefix=b/ --no-ext-diff --no-textconv` のように形を決める設定をすべて明示し、ユーザー設定を中和する
+- 固定した項目ごとに、その設定を入れた sandbox で結果が変わらないことをテストで確かめる（固定しただけでテストが無い項目は、後の整理で外れても気付かない）
+- 内容行の先頭が `-- ` や `++ ` だと diff 上では `--- ` / `+++ ` になる。ヘッダの判定は `diff --git` から最初の `@@` までに限り、削除側と追加側で同じガードを持たせる
+
 ## 関連ページ
 
 - [変数名の字句解析に依存した prefix 導出は壊れる](../patterns/bash-variable-name-lexing-defeats-prefix-derivation-regex.md)
@@ -58,3 +68,4 @@ rename 検出が有効な `--name-only` は、移動先だけを返すことが�
 
 - [レビュー結果](../../raw/reviews/20260916T070028Z-pr-2906.md)
 - [修正と回帰検証](../../raw/fixes/20260916T070742Z-pr-2906.md)
+- [レビュー結果（diff の prefix 設定で除外判定が外れる移動の相殺）](../../raw/reviews/20260925T124519Z-pr-3087.md)
