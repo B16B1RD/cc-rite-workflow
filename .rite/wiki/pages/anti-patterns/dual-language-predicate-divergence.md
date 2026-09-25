@@ -14,9 +14,15 @@ sources:
     resource: "raw/fixes/20260728T070208Z-pr-2038.md"
   - type: "reviews"
     resource: "raw/reviews/20260728T081222Z-pr-2038.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260924T231240Z-pr-3060.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260924T224558Z-pr-3060.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-28T21:30:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-25T03:58:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-25T03:58:00Z" }
 ---
 
 # 同じ述語を 2 言語で並行実装すると受理集合が環境で割れる — 定義を 1 本に寄せるまで症状は再発し続ける
@@ -90,6 +96,10 @@ _body_last_line=$(jq -Rrs "$LAST_CONTENT_LINE_JQ"' last_content_line' < "$CONTEN
 - 「対称に保つ」「同一述語」と書いた時点で、**それを機械で担保する層があるか**を問う。無ければコメントは願望
 - 症状を潰す修正が複数 cycle 続いたら、述語を強化するのをやめて**実装が何本あるか**を数える
 
+### 追記: 検査用パーサが 2 本あると、片方の修正が不一致を増やす
+
+commit 前検査の guard が、helper に生のコマンドではなく自前の弱い heredoc 除去を通した surface を渡していた。解析器が bash 版（surface の生成）と Python 版（tokenizer）の 2 本あり、文法が食い違っていた。片方を直すと他方との不一致が別の形で表に出て、blocking 件数は cycle ごとに増えた。検査用の字句解析は 1 本にし、上流で入力を加工してから渡さない。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -102,3 +112,5 @@ _body_last_line=$(jq -Rrs "$LAST_CONTENT_LINE_JQ"' last_content_line' < "$CONTEN
 - [fix 結果](../../raw/fixes/20260728T090203Z-pr-2038.md)
 - [fix 結果](../../raw/fixes/20260728T070208Z-pr-2038.md)
 - [レビュー結果](../../raw/reviews/20260728T081222Z-pr-2038.md)
+- [レビュー結果](../../raw/reviews/20260924T231240Z-pr-3060.md)
+- [fix 結果](../../raw/fixes/20260924T224558Z-pr-3060.md)

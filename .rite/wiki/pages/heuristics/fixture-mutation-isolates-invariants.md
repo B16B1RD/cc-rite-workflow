@@ -37,9 +37,13 @@ sources:
     resource: "raw/reviews/20260914T091626Z-pr-2813.md"
   - type: "reviews"
     resource: "raw/reviews/20260917T132504Z-pr-2936.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260925T005035Z-pr-3063.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260925T005815Z-pr-3063.md"
 tags: ["test", "fixture", "mutation", "invariant", "coverage"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-14T09:23:49Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-25T03:58:00Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T18:43:00+00:00" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T23:20:00+00:00" }
@@ -47,6 +51,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-13T02:07:58+00:00" }
   - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-14T03:36:26Z" }
   - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-14T09:23:49Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-25T03:58:00Z" }
 ---
 
 # テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する
@@ -153,6 +158,10 @@ guard・不変量の TC を追加したら、worktree-only mutation（当該 gua
 
 例外経路を固定する fixture は、その経路に本当に入る前提（例: dangling symlink なら「lstat では symlink」かつ「exists は偽」）を同じテスト内で check しておく。環境の違いで fixture が別の経路に落ちたとき、assert が何も確かめずに通ってしまうのを防げる。
 
+## 経路ごとの結果を固定する fixture は、各要素が 1 経路でだけ入るように分ける
+
+ファイル集合を複数の経路の和や積で求める処理（例: fix commit の変更 + merge で競合を解消したファイル）では、fixture の各ファイルが 1 経路でだけ結果に入るようにする。競合を解消したファイルを fix commit でも変えていると、merge 経路を空にする変異を入れても結果が変わらず、テストは名乗った分岐を検証しない。経路ごとに変異を当て、赤くなることを確かめる。
+
 ## 関連ページ
 
 - [位置依存の表パースには検査行数ガードを対にする（silent false-pass 遮断）](../patterns/positional-parse-row-count-guard.md)
@@ -178,3 +187,5 @@ guard・不変量の TC を追加したら、worktree-only mutation（当該 gua
 - [symlink 対照が単独の条件を固定していないことを実測したレビュー結果](../../raw/reviews/20260914T025734Z-pr-2798.md)
 - [入力ラベルの値が否定の assert の単独の検出力を奪うことを変異で示したレビュー結果](../../raw/reviews/20260914T091626Z-pr-2813.md)
 - [件数の数え方の変異を、対象と対象外が混在するケースの assert で検出したレビュー結果](../../raw/reviews/20260917T132504Z-pr-2936.md)
+- [レビュー結果](../../raw/reviews/20260925T005035Z-pr-3063.md)
+- [fix 結果](../../raw/fixes/20260925T005815Z-pr-3063.md)

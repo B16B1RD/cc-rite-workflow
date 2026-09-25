@@ -11,12 +11,16 @@ sources:
     resource: "raw/reviews/20260728T081222Z-pr-2038.md"
   - type: "reviews"
     resource: "raw/reviews/20260830T093009Z-pr-2483.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260925T010623Z-pr-3063.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-30T09:45:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-25T03:58:00Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-30T09:45:00Z"
+  - by: "rite-wiki-ingest/claude-opus-5-5"
+    at: "2026-09-25T03:58:00Z"
 ---
 
 # assert_not_grep は「対象が fixture に存在する」ことを前提にしないと恒真になる — positive control を対で置く
@@ -91,6 +95,10 @@ positive control は「除外側が全滅して否定が恒真になる」変異
 
 positive control を置いても「その control が本当に検査対象を守っているか」は別問題である。実装側のガードを反転（`if _predicate ...` → `if false ...`）して suite を回し、**狙った assert だけが落ちる**ことを確認すれば非 vacuity が実証できる。実測では 49 件中 1 件だけが FAIL し、落ちたのが意図した absence assert であることを確認できた。mutation は作業ツリーの複製上で行い、確認後に復元する。
 
+### 追記: 「削除されること」のテストは、先に対象を置いてから通す
+
+「失敗経路で古いファイルを消す」ことを検証するテストが、直前のテストが既にそのファイルを消した状態で走り、削除しない実装でも pass していた。不在を assert するテストは、検証前に対象が存在する状態を明示的に作る（例: 失敗経路を通す直前に古い一覧を書いておく）。
+
 ## 関連ページ
 
 - [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](../patterns/absence-pin-base-present-head-absent-single-line.md)
@@ -101,3 +109,4 @@ positive control を置いても「その control が本当に検査対象を守
 
 - [fix 結果](../../raw/fixes/20260728T093135Z-pr-2038.md)
 - [レビュー結果](../../raw/reviews/20260728T081222Z-pr-2038.md)
+- [レビュー結果](../../raw/reviews/20260925T010623Z-pr-3063.md)

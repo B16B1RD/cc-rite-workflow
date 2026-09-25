@@ -16,6 +16,13 @@
 * **Update**: [同じ設定値を独立した bash 呼び出しで複数回読むなら、不在・読み取り不能の扱いを読み取り箇所ごとに揃える](pages/heuristics/config-read-sites-each-handle-absence-and-unreadable.md) — raw/fixes/20260924T170034Z-pr-3058.md を統合
 * **Update**: [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) — raw/reviews/20260924T170741Z-pr-3058.md を統合（挙動を変える fix で説明散文の断定が残る）
 * **lint:clean** — contradictions=0 (新規ページと更新ページ・関連ページのみ評価。既存ページの全組合せ再評価は未実施), stale=67, orphans=0, missing_concept=0, unregistered_raw=535, broken_refs=0
+* **Create**: [検査用のシェル字句解析は判定対象を標準形に絞り、それ以外を fail-closed にする](pages/heuristics/inspection-parser-narrow-to-standard-form-fail-closed.md) — raw/reviews/20260924T212015Z-pr-3060.md、raw/reviews/20260924T215513Z-pr-3060.md、raw/reviews/20260924T231240Z-pr-3060.md、raw/fixes/20260924T212910Z-pr-3060.md、raw/fixes/20260924T220725Z-pr-3060.md、raw/fixes/20260924T224558Z-pr-3060.md を新規ページ化
+* **Create**: [制約を外す分岐は外す根拠を機械的に検証し、判定の基準値に既定値を持たせない](pages/patterns/constraint-lift-branch-verifies-its-grounds.md) — raw/reviews/20260924T202641Z-pr-3060.md、raw/reviews/20260924T212015Z-pr-3060.md、raw/fixes/20260924T204531Z-pr-3060.md、raw/fixes/20260924T212910Z-pr-3060.md を新規ページ化
+* **Create**: [merge で解消した競合のファイルは git show --remerge-diff で求める（diff-tree --cc は clean merge も返す）](pages/patterns/merge-conflict-resolution-via-remerge-diff.md) — raw/reviews/20260925T005035Z-pr-3063.md、raw/fixes/20260925T005815Z-pr-3063.md を新規ページ化
+* **Create**: [fix diff などのファイル集合は取得コマンドごとに rename 検出を揃える](pages/patterns/file-set-commands-align-rename-detection.md) — raw/reviews/20260924T202641Z-pr-3060.md を新規ページ化
+* **Update**: [同じ述語を 2 言語で並行実装すると受理集合が環境で割れる — 定義を 1 本に寄せるまで症状は再発し続ける](pages/anti-patterns/dual-language-predicate-divergence.md) — raw/reviews/20260924T231240Z-pr-3060.md、raw/fixes/20260924T224558Z-pr-3060.md を統合
+* **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — raw/reviews/20260925T005035Z-pr-3063.md、raw/fixes/20260925T005815Z-pr-3063.md を統合
+* **Update**: [assert_not_grep は「対象が fixture に存在する」ことを前提にしないと恒真になる — positive control を対で置く](pages/anti-patterns/assert-not-grep-vacuous-without-fixture-scope.md) — raw/reviews/20260925T010623Z-pr-3063.md を統合
 
 ## 2026-09-24
 
