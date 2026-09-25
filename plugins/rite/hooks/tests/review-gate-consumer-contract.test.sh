@@ -58,8 +58,8 @@ with tempfile.TemporaryDirectory() as temp:
     values = {'plugin_root': str(plugin), 'triage_review_path': str(source),
               'triage_helper_source': 'explicit_file', 'pr_number': '42',
               'owner_repo': 'owner/repo', 'review_cycle_id': '42-test', 'non_fatal_moved_count': '1'}
-    # gh stub: answers only the calls the record makes, so a real gh is never reached.
-    # The comments call applies the record's own --jq to a JSON array, so the selection is tested too.
+    # gh stub: answers only the calls the real record helper's read-only mode makes, so a real gh is
+    # never reached. The helper selects the record comment itself, so the selection is tested too.
     stub_dir = temp / 'bin'
     stub_dir.mkdir()
     gh_log = temp / 'gh-calls'
@@ -67,11 +67,20 @@ with tempfile.TemporaryDirectory() as temp:
     comments = temp / 'comments.json'
     (stub_dir / 'gh').write_text(f"""#!/bin/bash
 printf '%s\\n' "$*" >> '{gh_log}'
-if [ "$*" = "pr view 42 -R owner/repo --json body,headRefName" ]; then cat '{pr_json}'; exit 0; fi
-if [ "$1 $2 $3 $4" = "api repos/owner/repo/issues/7/comments --paginate --jq" ] && [ "$#" -eq 5 ]; then
+case "$1 $2" in
+  'pr view')
+    case " $* " in *' headRefName '*) jq -r '.headRefName' '{pr_json}' ;; *) jq -r '.body' '{pr_json}' ;; esac
+    exit 0 ;;
+  'api user') printf 'rite-bot\\n'; exit 0 ;;
+  'issue view') exit 0 ;;
+esac
+if [ "$*" = "api --paginate --slurp repos/owner/repo/issues/7/comments" ]; then
   [ -f '{temp}/comments-fail' ] && exit 1
-  exec jq -r "$5" '{comments}'
+  exec jq '[.]' '{comments}'
 fi
+case "$1 $2" in
+  'api repos/owner/repo/issues/comments/'*) exec jq --argjson id "${{2##*/}}" '.[] | select(.id == $id)' '{comments}' ;;
+esac
 exit 97
 """)
     (stub_dir / 'gh').chmod(0o755)
@@ -89,16 +98,27 @@ exit 97
     record_without_ledger = '\n'.join([
         '## 📜 rite 非実測指摘の記録 (non-blocking)', '', 'old', '',
         '📎 non_blocking_count: 0', '', '<!-- rite:nbr:v1 -->', ''])
-    existing_with_ledger = json.dumps([{'body': other_comment}, {'body': record_with_ledger}])
-    existing_without_ledger = json.dumps([{'body': other_comment}, {'body': record_without_ledger}])
+    # An older duplicate record (ledger F-55) and a same-marker comment by another author (ledger F-66)
+    # surround the record the helper PATCHes: only its ledger may be carried.
+    def ledger_record(row):
+        return record_with_ledger.replace(ledger_row, row)
+    def comment(cid, body, login='rite-bot'):
+        return {'id': cid, 'user': {'login': login}, 'body': body}
+    stale_row = '| F-55 | old.sh:1 | recorded | severity=LOW; measured=false |'
+    foreign_row = '| F-66 | x.sh:1 | recorded | severity=LOW; measured=false |'
+    existing_with_ledger = json.dumps([
+        comment(1, ledger_record(stale_row)), comment(2, other_comment), comment(3, record_with_ledger),
+        comment(4, ledger_record(foreign_row), 'someone-else')])
+    existing_without_ledger = json.dumps([comment(2, other_comment), comment(3, record_without_ledger)])
     def set_pr(body, head):
         pr_json.write_text(json.dumps({'body': body, 'headRefName': head}))
     set_pr('Closes #7', 'fix/issue-8-other')
     comments.write_text(existing_with_ledger)
-    def run(block):
+    def run(block, extra_env=None):
         for key, value in values.items():
             block = block.replace('{' + key + '}', value)
-        return subprocess.run(['bash', '-c', block], text=True, capture_output=True, timeout=10, env=env)
+        return subprocess.run(['bash', '-c', block], text=True, capture_output=True, timeout=10,
+                              env={**env, **(extra_env or {})})
     findings = [{'id':'F-01', 'severity':'MEDIUM', 'scope':'current-pr', 'file':'a.sh', 'line':1,
                  'reviewer':'test-reviewer', 'description':'private-detail', 'verification':{'measured':True}}]
     source.write_text(json.dumps({'findings': findings}))
@@ -111,8 +131,10 @@ exit 97
     stub = plugin / 'hooks/review-nonblocking-record.sh'
     record_body = temp / 'record-body'
     count_arg = temp / 'count-arg'
+    real_helper = root / 'plugins/rite/hooks/review-nonblocking-record.sh'
     def set_outcome(outcome):
         stub.write_text("""#!/bin/bash
+[ "$1" = --print-record-body ] && exec bash REAL_HELPER "$@"
 while [ \"$#\" -gt 0 ]; do
   case \"$1\" in
     --count) printf '%s' \"$2\" > COUNT_ARG ;;
@@ -122,7 +144,7 @@ while [ \"$#\" -gt 0 ]; do
 done
 printf '[CONTEXT] NONBLOCKING_RECORD_DONE=1; pr=42; outcome=%s; count=1; iteration_id=42-test; comment_id=1; degraded=0\n' OUTCOME >&2
 exit 0
-""".replace('OUTCOME', outcome).replace('BODY_COPY', str(record_body)).replace('COUNT_ARG', str(count_arg)))
+""".replace('OUTCOME', outcome).replace('REAL_HELPER', str(real_helper)).replace('BODY_COPY', str(record_body)).replace('COUNT_ARG', str(count_arg)))
     for outcome, expected in [('updated',0), ('failed',1), ('skipped',1)]:
         set_outcome(outcome)
         result = run(record)
@@ -141,7 +163,7 @@ exit 0
     assert 'REJECTED_LEDGER_PRESERVE=ok' in result.stderr
     lines = record_body.read_text().splitlines()
     assert lines.count('### 却下台帳') == 1 and lines.count(ledger_row) == 1
-    assert not [l for l in lines if 'F-77' in l]
+    assert not [l for l in lines if 'F-77' in l or 'F-55' in l or 'F-66' in l]
     count_at = next(i for i, l in enumerate(lines) if l.startswith('📎 non_blocking_count:'))
     assert lines.index('### 却下台帳') < count_at
     assert [l for l in lines[:count_at] if l.strip()][-1] == ledger_row
@@ -149,10 +171,11 @@ exit 0
     assert [l for l in lines if l.strip()][-1] == '<!-- rite:nbr:v1 -->'
     without_ledger = lines[:lines.index('### 却下台帳')] + lines[count_at:]
     # The closing keyword wins over the branch name, as in the helper.
-    assert 'api repos/owner/repo/issues/7/comments --paginate' in gh_log.read_text()
-    assert 'issues/8/' not in gh_log.read_text()
+    assert 'api --paginate --slurp repos/owner/repo/issues/7/comments' in gh_log.read_text()
+    # The read never writes.
+    assert not [l for l in gh_log.read_text().splitlines() if ' -X PATCH' in l or l.startswith(('issue comment', 'issue edit'))]
     # No ledger to carry: the body is the generated one, without a heading.
-    for existing in (existing_without_ledger, json.dumps([{'body': other_comment}]), '[]'):
+    for existing in (existing_without_ledger, json.dumps([comment(2, other_comment)]), '[]'):
         comments.write_text(existing)
         result = run(record)
         assert result.returncode == 0, result
@@ -164,10 +187,10 @@ exit 0
     set_pr('no keyword', 'fix/issue-7-branch')
     result = run(record)
     assert result.returncode == 0, result
-    assert 'api repos/owner/repo/issues/7/comments --paginate' in gh_log.read_text()
+    assert 'api --paginate --slurp repos/owner/repo/issues/7/comments' in gh_log.read_text()
     # Failures stop before the helper, so nothing replaces the record.
     for setup, reason in [
-            (lambda: set_pr('no keyword', 'topic-branch'), 'nonblocking_record_issue_unresolved'),
+            (lambda: set_pr('no keyword', 'topic-branch'), 'nonblocking_record_ledger_fetch_failed'),
             (lambda: (temp / 'comments-fail').write_text(''), 'nonblocking_record_ledger_fetch_failed')]:
         set_pr('Closes #7', 'fix/issue-7-branch')
         setup()
@@ -175,8 +198,44 @@ exit 0
         result = run(record)
         assert result.returncode != 0, result
         assert f'[fix:error] reason={reason}' in result.stdout, result
+        assert f'[CONTEXT] FIX_FALLBACK_FAILED=1; reason={reason}' in result.stderr, result
+        assert 'NONBLOCKING_RECORD_BODY=failed' in result.stderr, result
         assert not record_body.exists()
     (temp / 'comments-fail').unlink()
+    # The ledger tempfile, extract and merge-into failures after a readable record stop the same way.
+    real_ledger = root / 'plugins/rite/hooks/scripts/nb-sweep-ledger.sh'
+    ledger_link = plugin / 'hooks/scripts/nb-sweep-ledger.sh'
+    failing_ledger = temp / 'failing-ledger.sh'
+    failing_ledger.write_text(f"""#!/bin/bash
+[ "$1" = "$LEDGER_FAIL_OP" ] && exit 1
+exec bash '{real_ledger}' "$@"
+""")
+    failing_ledger.chmod(0o755)
+    shim_dir = temp / 'mktemp-shim'
+    shim_dir.mkdir()
+    real_mktemp = subprocess.run(['bash', '-c', 'command -v mktemp'], text=True, capture_output=True).stdout.strip()
+    (shim_dir / 'mktemp').write_text(f"""#!/bin/bash
+case "$*" in *rite-fix-nbr-existing-*) exit 1 ;; esac
+exec '{real_mktemp}' "$@"
+""")
+    (shim_dir / 'mktemp').chmod(0o755)
+    set_pr('Closes #7', 'fix/issue-7-branch')
+    comments.write_text(existing_with_ledger)
+    ledger_link.unlink()
+    ledger_link.symlink_to(failing_ledger)
+    for extra, reason in [
+            ({'PATH': f"{shim_dir}:{env['PATH']}"}, 'nonblocking_record_tempfile_failed'),
+            ({'LEDGER_FAIL_OP': 'extract'}, 'nonblocking_record_ledger_extract_failed'),
+            ({'LEDGER_FAIL_OP': 'merge-into'}, 'nonblocking_record_ledger_merge_failed')]:
+        record_body.unlink(missing_ok=True)
+        result = run(record, extra)
+        assert result.returncode != 0, (reason, result)
+        assert f'[fix:error] reason={reason}' in result.stdout, (reason, result)
+        assert f'[CONTEXT] FIX_FALLBACK_FAILED=1; reason={reason}' in result.stderr, (reason, result)
+        assert 'REJECTED_LEDGER_PRESERVE=ok' not in result.stderr, (reason, result)
+        assert not record_body.exists(), reason
+    ledger_link.unlink()
+    ledger_link.symlink_to(real_ledger)
     source.write_text(json.dumps({'findings':[], 'non_blocking_findings':[]}))
     result = run(record)
     assert result.returncode == 0, result  # skipped with zero findings is valid

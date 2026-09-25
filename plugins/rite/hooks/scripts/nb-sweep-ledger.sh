@@ -17,6 +17,9 @@
 #          `📎 non_blocking_count:`. Replaces an existing ### 却下台帳.
 #          Empty ledger-file is a no-op (does not insert a heading).
 #
+# extract の出力は節末尾の空行を含まない。merge-into は台帳の前後を空行 1 行ずつに揃える。
+# このため同じ本文に extract → merge-into を繰り返しても本文は変わらず、空行も増えない。
+#
 # Heading / section-boundary matching ignores a trailing CR and uses index()
 # prefix matches (macOS awk compares `==` by locale collation and treats a
 # different Japanese heading as equal). extract output and a spliced
@@ -65,6 +68,9 @@ extract_section() {
     in_sec {
       if (index($0, "📎 non_blocking_count:") == 1) { exit }
       if (index($0, "### ") == 1 && !is_head) { exit }
+      # 空行は次の非空行を出すときにまとめて出す。節末尾の空行は出力に含めない
+      if ($0 ~ /^[ \t]*$/) { pend = pend $0 "\n"; next }
+      printf "%s", pend; pend = ""
       print
     }
   ' "$src"
@@ -164,13 +170,25 @@ case "$cmd" in
         else next
       }
       is_count {
+        # count 行の直前の空行は捨て、空行 1 行 + 台帳 (前後の空行を除く) + 空行 1 行に揃える
+        pend = ""
         if (ledger_file != "") {
-          while ((getline line < ledger_file) > 0) print line
+          print ""
+          lpend = ""; started = 0
+          while ((getline line < ledger_file) > 0) {
+            sub(/\r$/, "", line)
+            if (line ~ /^[ \t]*$/) { if (started) lpend = lpend line "\n"; continue }
+            printf "%s", lpend; lpend = ""
+            print line; started = 1
+          }
           close(ledger_file)
           print ""
         }
       }
-      { print }
+      # 空行は次の非空行を出すときにまとめて出す (count 行の直前では上で捨てる)
+      $0 ~ /^[ \t]*$/ { pend = pend $0 "\n"; next }
+      { printf "%s", pend; pend = ""; print }
+      END { printf "%s", pend }
     ' "$body_file" > "$tmp"
     if [ ! -s "$tmp" ]; then
       echo "ERROR: merge-into produced empty body" >&2

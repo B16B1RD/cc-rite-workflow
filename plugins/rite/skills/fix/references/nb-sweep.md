@@ -147,15 +147,13 @@ if [ ! -s "$entries_file" ]; then
 else
   ledger=$(mktemp "${TMPDIR:-/tmp}/rite-nb-ledger-XXXXXX") || { echo "[fix:error]"; exit 1; }
   body=$(mktemp "${TMPDIR:-/tmp}/rite-nb-body-XXXXXX") || { echo "[fix:error]"; exit 1; }
-  related={issue_number}
-  if [ -n "$related" ] && [ "$related" != "0" ]; then
-    gh api "repos/{owner_repo}/issues/${related}/comments" --paginate \
-      --jq '.[] | select(.body | startswith("## 📜 rite 非実測指摘の記録")) | .body' > "$body" || {
-      echo "ERROR: 6.1.d コメント取得失敗" >&2
-      echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_fetch_failed" >&2
-      echo "[fix:error]"; exit 1
-    }
-  fi
+  # 既存本文は記録 helper が PATCH する 1 件を、同じ helper の読み取り専用モードで読む（関連 Issue の解決も helper が行う）
+  bash {plugin_root}/hooks/review-nonblocking-record.sh --print-record-body \
+    --pr {pr_number} --owner-repo {owner_repo} > "$body" || {
+    echo "ERROR: 6.1.d コメント取得失敗" >&2
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_fetch_failed" >&2
+    echo "[fix:error]"; exit 1
+  }
   if [ ! -s "$body" ]; then
     printf '%s\n\n%s\n\n%s\n%s\n\n%s\n' \
       '## 📜 rite 非実測指摘の記録 (non-blocking)' \

@@ -22,6 +22,27 @@
 #     2. ステップ 6.1.a step 0 の [CONTEXT] REVIEW_CYCLE_ID= を --iteration-id に渡す。
 #     3. 本 helper を 1 回だけ実行する。
 #
+#   読み取り専用モード (記録コメントの却下台帳を読む側):
+#   bash review-nonblocking-record.sh --print-record-body --pr <number> --owner-repo <owner/repo>
+#
+#   - 書き込み経路が PATCH するコメントを、書き込み経路と同じ関数 (`_resolve_record_comment`:
+#     関連 Issue → 自 login → durable id → 本文照合) で 1 件に決め、その本文を stdout に出す。
+#     読み手と書き手が同じ述語で同じ 1 件を指すため、記録コメントが重複しても古い台帳を読まない。
+#     本文の CRLF は LF に正規化して出す (nb-sweep-collect.sh / cleanup-follow-up-issue.sh は CRLF を
+#     自前で正規化しない)。
+#   - 記録なし: stdout 空・rc=0・`[CONTEXT] NONBLOCKING_RECORD_BODY=absent; pr=N`。
+#     記録あり: rc=0・`[CONTEXT] NONBLOCKING_RECORD_BODY=found; pr=N; comment_id=<id>`。
+#     解決・取得の失敗: rc=1 (signal 中断は 128+n)・stdout 空・`[CONTEXT] NONBLOCKING_RECORD_BODY=failed; pr=N; reason=<...>`。
+#     reason 語彙: related_issue_unresolved (closing keyword も issue-N branch も無い。決定的) /
+#       pr_view_failed / own_login_unavailable /
+#       lookup_failed / body_fetch_failed / conflicting_options / signal_aborted。
+#     引数 gate (unknown_option / pr_number_placeholder_residue / owner_repo_placeholder_residue) も
+#     同じ `NONBLOCKING_RECORD_BODY=failed; pr=<解析済みの値 (未知のオプションが --pr より前なら空)>; reason=<gate>`
+#     を出して rc=1 で終わる。
+#   - --count / --iteration-id / --content-file は受けない (渡すと conflicting_options)。
+#     terminal sentinel (NONBLOCKING_RECORD_DONE) と NONBLOCKING_RECORD_FAILED を出さず、pending marker
+#     に触れず、PATCH / POST / Issue body の書き換えを行わない。
+#
 # 契約 (pr-review.md ステップ 6.1.d と verbatim 一致):
 #   - **単一 invocation**: 既存コメント lookup → skip 判定 → PATCH / create を 1 プロセスに閉じる。
 #     lookup だけ実行して記録を skip した状態が構造的に存在しえないため、terminal sentinel の
@@ -116,12 +137,16 @@
 #     ないため 0 件でも作成する。台帳エントリを数えられないときは body_check_unavailable で failed にする。
 #   - [CONTEXT] / WARNING は stderr (6.1.a/b/c の 3 兄弟 helper と同一)。
 #
-# Exit codes:
+# Exit codes (書き込み経路):
 #   0: 記録成功 / 正当な skip / 非ブロッキングな失敗 (gh・IO)。
 #   1: placeholder residue / content_file 不在 等の caller 契約違反 (skill 定義のバグ)。
 #      加えて related_issue_unresolved (trap 設置後。terminal sentinel は outcome=failed。
 #      pending marker は残さない — 差し戻しても収束しない。caller は rc=1 を skill 全体の
 #      hard fail と読まず sentinel を読んで 6.1.d step 3 / 8.0.3 へ進む)。
+# Exit codes (読み取り専用モード):
+#   0: found / absent。
+#   1: signal 中断以外の失敗 (gh・IO の失敗も含む。読み手が空の stdout を「記録なし」と読まないため)。
+#   128+n: signal 中断 (INT=130 / TERM=143 / HUP=129。reason=signal_aborted)。
 set -uo pipefail
 # shellcheck source=control-char-neutralize.sh
 source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
@@ -197,11 +222,33 @@ NB_COUNT=""
 ITERATION_ID=""
 CONTENT_FILE=""
 ISSUE_NUMBER=""
+PRINT_MODE=0
+
+# 読み取り専用モードかどうかを引数解析の前に決める。引数 gate (unknown_option / placeholder residue) は
+# 解析の途中で落ちるため、モードを知らないまま落ちると読み手に書き込み経路の marker を返してしまう。
+for _arg in "$@"; do
+  [ "$_arg" = "--print-record-body" ] && PRINT_MODE=1
+done
+
+# 読み取り専用モードと書き込み経路で共通の引数 gate の失敗。読み取り専用モードは読み手が待つ
+# NONBLOCKING_RECORD_BODY=failed を出し、書き込み経路の NONBLOCKING_RECORD_FAILED は出さない。
+# pr= は検証前の値なので neutralize_ctrl で 1 行に収める (改行入りの値で偽の control line を作らせない)。
+_arg_gate_failed() {  # $1=reason $2=書き込み経路の marker に pr= を付けるか (1 / 0)
+  if [ "$PRINT_MODE" = "1" ]; then
+    echo "[CONTEXT] NONBLOCKING_RECORD_BODY=failed; pr=$(printf '%s' "$PR_NUMBER" | neutralize_ctrl); reason=$1" >&2
+  elif [ "$2" = "1" ]; then
+    echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=$1" >&2
+  else
+    echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; reason=$1" >&2
+  fi
+  exit 1
+}
 
 # 各値付きフラグは `shift; shift` で消費する (値なしフラグが末尾に来た場合の無限ループ回避。
 # review-comment-post.sh と同一 idiom)。
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --print-record-body) shift ;;
     --pr)           PR_NUMBER="${2:-}"; shift; shift ;;
     --owner-repo)   OWNER_REPO="${2:-}"; shift; shift ;;
     --count)        NB_COUNT="${2:-}"; shift; shift ;;
@@ -210,8 +257,7 @@ while [[ $# -gt 0 ]]; do
     # 値の verbatim echo は禁止 (下記 iteration_id gate と同根)。本分岐は trap 設置**前**のため
     # real sentinel が 1 本も出ず、偽 sentinel が唯一の sentinel になりうる。
     *) echo "ERROR: review-nonblocking-record: unknown option: $(printf '%s' "$1" | neutralize_ctrl)" >&2
-       echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; reason=unknown_option" >&2
-       exit 1 ;;
+       _arg_gate_failed unknown_option 0 ;;
   esac
 done
 
@@ -223,8 +269,7 @@ done
 case "$PR_NUMBER" in
   ''|*[!0-9]*)
     echo "ERROR: review-nonblocking-record: pr_number が数値ではありません (値: '$(printf '%s' "$PR_NUMBER" | neutralize_ctrl)', 期待: 数値のみ非空)" >&2
-    echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; reason=pr_number_placeholder_residue" >&2
-    exit 1
+    _arg_gate_failed pr_number_placeholder_residue 0
     ;;
 esac
 # owner_repo は `gh issue comment -R` に渡る。gh は `[HOST/]OWNER/REPO` を受けるため、3 セグメント値は
@@ -234,62 +279,70 @@ case "$OWNER_REPO" in
   */*/*|*[!A-Za-z0-9._/-]*|*/|/*|""|*..*)
     echo "ERROR: review-nonblocking-record: owner_repo が owner/repo 形式ではありません (値: '$(printf '%s' "$OWNER_REPO" | neutralize_ctrl)')" >&2
     echo "  期待: 英数字 / '.' / '_' / '-' からなる 2 セグメント (例: owner/repo)。HOST/OWNER/REPO の 3 セグメント形は別ホストへの送出になるため拒否する" >&2
-    echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=owner_repo_placeholder_residue" >&2
-    exit 1
+    _arg_gate_failed owner_repo_placeholder_residue 1
     ;;
   */*) ;;
   *)
     echo "ERROR: review-nonblocking-record: owner_repo が owner/repo 形式ではありません (値: '$(printf '%s' "$OWNER_REPO" | neutralize_ctrl)')" >&2
-    echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=owner_repo_placeholder_residue" >&2
-    exit 1
+    _arg_gate_failed owner_repo_placeholder_residue 1
     ;;
 esac
-case "$NB_COUNT" in
-  ''|*[!0-9]*)
-    echo "ERROR: review-nonblocking-record: count が数値ではありません (値: '$(printf '%s' "$NB_COUNT" | neutralize_ctrl)')" >&2
-    echo "  0 件のときも明示的に --count 0 を渡してください (空文字は substitute 漏れと区別できません)" >&2
-    echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=non_blocking_count_placeholder_residue" >&2
+# 読み取り専用モードは記録経路の引数 (--count / --iteration-id / --content-file) を受けない。
+# 黙って無視すると、書き込むつもりの caller が読み取りだけで終わったことに気づけない。
+if [ "$PRINT_MODE" = "1" ]; then
+  if [ -n "$NB_COUNT$ITERATION_ID$CONTENT_FILE" ]; then
+    echo "ERROR: review-nonblocking-record: --print-record-body は --count / --iteration-id / --content-file と併用できません" >&2
+    echo "[CONTEXT] NONBLOCKING_RECORD_BODY=failed; pr=$PR_NUMBER; reason=conflicting_options" >&2
     exit 1
-    ;;
-esac
-# iteration_id は terminal sentinel に無加工で埋め込まれ、その sentinel は 6.1.d step 3 / 8.0.3 の
-# 2 gate が唯一の pass 条件として読む機械可読 control line である。denylist だけでは改行入りの値を
-# 通してしまい、完全な形の 2 本目の sentinel 行 (= gate 入力の偽装) を生成できる。形状 allowlist で
-# 弾く (REVIEW_CYCLE_ID の実値は `{pr}-{epoch}` 形式でこの範囲に収まる)。
-case "$ITERATION_ID" in
-  ''|*'{'*|*'}'*|*[!A-Za-z0-9._-]*)
-    # 値の verbatim echo は禁止 — 改行入りの値をそのまま出すと、診断行の中に完全な形の
-    # `[CONTEXT] NONBLOCKING_RECORD_DONE=1; ...` を再現でき、gate を読む LLM を欺ける。
-    # neutralize_ctrl で改行ごと `?` 化してから 1 行に収める。
-    echo "ERROR: review-nonblocking-record: iteration_id が literal substitute されていないか不正な文字を含みます (値: '$(printf '%s' "$ITERATION_ID" | neutralize_ctrl)')" >&2
-    echo "  期待: 英数字 / '.' / '_' / '-' のみからなる非空文字列 (例: 2038-1799999999)" >&2
-    echo "  caller は ステップ 6.1.a step 0 の [CONTEXT] REVIEW_CYCLE_ID= emit 値を --iteration-id に渡す必要があります" >&2
-    echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=iteration_id_placeholder_residue" >&2
+  fi
+else
+  case "$NB_COUNT" in
+    ''|*[!0-9]*)
+      echo "ERROR: review-nonblocking-record: count が数値ではありません (値: '$(printf '%s' "$NB_COUNT" | neutralize_ctrl)')" >&2
+      echo "  0 件のときも明示的に --count 0 を渡してください (空文字は substitute 漏れと区別できません)" >&2
+      echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=non_blocking_count_placeholder_residue" >&2
+      exit 1
+      ;;
+  esac
+  # iteration_id は terminal sentinel に無加工で埋め込まれ、その sentinel は 6.1.d step 3 / 8.0.3 の
+  # 2 gate が唯一の pass 条件として読む機械可読 control line である。denylist だけでは改行入りの値を
+  # 通してしまい、完全な形の 2 本目の sentinel 行 (= gate 入力の偽装) を生成できる。形状 allowlist で
+  # 弾く (REVIEW_CYCLE_ID の実値は `{pr}-{epoch}` 形式でこの範囲に収まる)。
+  case "$ITERATION_ID" in
+    ''|*'{'*|*'}'*|*[!A-Za-z0-9._-]*)
+      # 値の verbatim echo は禁止 — 改行入りの値をそのまま出すと、診断行の中に完全な形の
+      # `[CONTEXT] NONBLOCKING_RECORD_DONE=1; ...` を再現でき、gate を読む LLM を欺ける。
+      # neutralize_ctrl で改行ごと `?` 化してから 1 行に収める。
+      echo "ERROR: review-nonblocking-record: iteration_id が literal substitute されていないか不正な文字を含みます (値: '$(printf '%s' "$ITERATION_ID" | neutralize_ctrl)')" >&2
+      echo "  期待: 英数字 / '.' / '_' / '-' のみからなる非空文字列 (例: 2038-1799999999)" >&2
+      echo "  caller は ステップ 6.1.a step 0 の [CONTEXT] REVIEW_CYCLE_ID= emit 値を --iteration-id に渡す必要があります" >&2
+      echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=iteration_id_placeholder_residue" >&2
+      exit 1
+      ;;
+  esac
+  # content-file のブレース残留は content_file_missing (Write 呼び出し漏れ) と別 reason にする。
+  # 未置換パスは存在しないパスなので、専用 gate が無ければ後続の存在検査に潰れる。どちらも caller
+  # 契約違反だが、前者は skill テンプレートの substitution 漏れ、後者は step 1 の Write 呼び出し漏れで
+  # 復旧手順が異なるため独立の reason を持たせる。
+  case "$CONTENT_FILE" in
+    ''|*'{'*|*'}'*)
+      echo "ERROR: review-nonblocking-record: content_file のパスが literal substitute されていません (値: '$(printf '%s' "$CONTENT_FILE" | neutralize_ctrl)')" >&2
+      echo "  caller は ステップ 6.1.a step 0 の [CONTEXT] REVIEW_TMP_DIR= emit 値でパスを解決する必要があります" >&2
+      echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=content_file_placeholder_residue" >&2
+      exit 1
+      ;;
+  esac
+  # ファイル**不在**は caller 契約違反 (step 1 の Write tool 呼び出し漏れ) であり IO 失敗ではない。
+  # 後段の非空検査 (`[ ! -s ]`) に潰すと、記録が一度も行われないまま outcome=failed で exit 0 し、
+  # 8.0.3 gate は「評価された」として pass する — D-01 の記録が無音で失われる。placeholder residue
+  # 5 gate と同じ loud fail に揃える (兄弟 review-comment-post.sh の --content-file 不在 reject と対称)。
+  # 「存在するが空」は本 gate を通過し、後段で非ブロッキング body_file_empty として扱う。
+  if [ ! -f "$CONTENT_FILE" ]; then
+    echo "ERROR: review-nonblocking-record: content_file が存在しません (値: '$(printf '%s' "$CONTENT_FILE" | neutralize_ctrl)')" >&2
+    echo "  caller は ステップ 6.1.d step 1 の Write tool による本文保存を先に実行する必要があります" >&2
+    echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=content_file_missing" >&2
     exit 1
-    ;;
-esac
-# content-file のブレース残留は content_file_missing (Write 呼び出し漏れ) と別 reason にする。
-# 未置換パスは存在しないパスなので、専用 gate が無ければ後続の存在検査に潰れる。どちらも caller
-# 契約違反だが、前者は skill テンプレートの substitution 漏れ、後者は step 1 の Write 呼び出し漏れで
-# 復旧手順が異なるため独立の reason を持たせる。
-case "$CONTENT_FILE" in
-  ''|*'{'*|*'}'*)
-    echo "ERROR: review-nonblocking-record: content_file のパスが literal substitute されていません (値: '$(printf '%s' "$CONTENT_FILE" | neutralize_ctrl)')" >&2
-    echo "  caller は ステップ 6.1.a step 0 の [CONTEXT] REVIEW_TMP_DIR= emit 値でパスを解決する必要があります" >&2
-    echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=content_file_placeholder_residue" >&2
-    exit 1
-    ;;
-esac
-# ファイル**不在**は caller 契約違反 (step 1 の Write tool 呼び出し漏れ) であり IO 失敗ではない。
-# 後段の非空検査 (`[ ! -s ]`) に潰すと、記録が一度も行われないまま outcome=failed で exit 0 し、
-# 8.0.3 gate は「評価された」として pass する — D-01 の記録が無音で失われる。placeholder residue
-# 5 gate と同じ loud fail に揃える (兄弟 review-comment-post.sh の --content-file 不在 reject と対称)。
-# 「存在するが空」は本 gate を通過し、後段で非ブロッキング body_file_empty として扱う。
-if [ ! -f "$CONTENT_FILE" ]; then
-  echo "ERROR: review-nonblocking-record: content_file が存在しません (値: '$(printf '%s' "$CONTENT_FILE" | neutralize_ctrl)')" >&2
-  echo "  caller は ステップ 6.1.d step 1 の Write tool による本文保存を先に実行する必要があります" >&2
-  echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=content_file_missing" >&2
-  exit 1
+  fi
 fi
 
 # --- terminal sentinel (EXIT trap) ---
@@ -321,6 +374,8 @@ id_persist_err=""
 # **これもグローバルに持つ** — 関数ローカルに退避すると、差し替え中 (gh issue view + gh issue edit の
 # 2 往復) に signal を受けたとき退避先が trap から見えず、上の 2 本と同じ窓が 1 本ぶん開いたままになる。
 id_persist_prev_err=""
+# 関連 Issue を解決できなかった理由 (読み取り専用モードの reason)。_related_issue_failed が置く。
+related_fail_reason=""
 # ステップ 8.0.3 の機械強制 marker。パスは SKILL.md ステップ 6.1.a step 0 が作る側と同じ規則
 # (`${TMPDIR:-/tmp}/rite-nbr-pending-<iteration_id>`) で導出する。引数として受け取らないのは、
 # placeholder を 1 つ増やすと residue gate も 1 本増えるため — 導出が外れた場合は marker が
@@ -384,6 +439,8 @@ _gh_err_detail() {  # $1=gh|jq|awk (省略時 gh)
 # **結末を断定せず** 「update-in-place を諦める」ことだけを述べる (結末は terminal sentinel の
 # `outcome=` が担う)。
 _record_degraded_hint() {
+  # 読み取り専用モードは update-in-place を行わず、縮退を失敗として返す (この案内は事実と異なる)
+  [ "$PRINT_MODE" = "1" ] && return 0
   echo "  対処: gh auth status を確認してください。既存コメントを特定できないため update-in-place を諦めます" >&2
   echo "  mergeable 判定には影響しません (非ブロッキング)。以降の結末は terminal sentinel の outcome= を参照してください" >&2
 }
@@ -428,6 +485,16 @@ _record_id_persist_failure_hint() {  # $1=reason
   esac
   echo "  mergeable 判定には影響しません (非ブロッキング)" >&2
 }
+# 関連 Issue の解決失敗を記録する。書き込み経路の marker は gh 失敗と決定的な不在を分けない
+# (`related_issue_unresolved`)。読み取り専用モードは呼び出し元が NONBLOCKING_RECORD_BODY=failed を
+# reason 付きで出すため、記録失敗の marker は出さない (6.1.d step 3 の ERROR ACTION が読み取りの失敗を
+# 記録の失敗と取り違えないため)。読み取り側は決定的な不在 (related_issue_unresolved) と gh の失敗
+# (pr_view_failed) を分けて受け取る — 前者は再実行しても変わらず、書き込み経路も同じ理由で何も書かない。
+_related_issue_failed() {  # $1=読み取り専用モードの reason
+  related_fail_reason="$1"
+  [ "$PRINT_MODE" = "1" ] && return 0
+  echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=related_issue_unresolved" >&2
+}
 # 関連 Issue を解決する。第一候補 = PR body の GitHub closing keyword (`Closes #N` 等)、
 # 第二候補 = head branch 名に含まれる `issue-{N}`。どちらも無ければ fail-loud
 # (`related_issue_unresolved`)。抽出パターンは scripts/watchdog-status-mismatch.sh と同型。
@@ -436,7 +503,7 @@ _resolve_related_issue() {
   if ! _pr_body=$(gh pr view "$PR_NUMBER" -R "$OWNER_REPO" --json body --jq '.body' 2>"${gh_err:-/dev/null}"); then
     echo "ERROR: review-nonblocking-record: 関連 Issue を解決できません (PR #${PR_NUMBER} の body を読めません)" >&2
     _gh_err_detail
-    echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=related_issue_unresolved" >&2
+    _related_issue_failed pr_view_failed
     return 1
   fi
   _n=$(printf '%s' "$_pr_body" | grep -ioE '(close[sd]?|fix(e[sd])?|resolve[sd]?) #[0-9]+' | head -1 | grep -oE '[0-9]+$' || true)
@@ -444,7 +511,7 @@ _resolve_related_issue() {
     if ! _head_ref=$(gh pr view "$PR_NUMBER" -R "$OWNER_REPO" --json headRefName --jq '.headRefName' 2>"${gh_err:-/dev/null}"); then
       echo "ERROR: review-nonblocking-record: 関連 Issue を解決できません (PR #${PR_NUMBER} の headRefName を読めません)" >&2
       _gh_err_detail
-      echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=related_issue_unresolved" >&2
+      _related_issue_failed pr_view_failed
       return 1
     fi
     if [[ "$_head_ref" =~ issue-([0-9]+) ]]; then
@@ -454,7 +521,7 @@ _resolve_related_issue() {
   case "$_n" in
     ''|*[!0-9]*)
       echo "ERROR: review-nonblocking-record: 関連 Issue を解決できません (PR #${PR_NUMBER}: closing keyword も issue-N branch 命名もありません)" >&2
-      echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=related_issue_unresolved" >&2
+      _related_issue_failed related_issue_unresolved
       return 1
       ;;
   esac
@@ -580,7 +647,7 @@ _decide_existing_id() {
   # ここで degraded を立てると「既存コメントを特定できない」という事実と異なる案内が出るうえ、
   # 本 helper が消そうとしている「degraded 縮退による重複作成」を自分で再導入することになる。
   if [ -n "$existing_id" ]; then
-    echo "  注意: 記録コメント id で PATCH 先を確定したため update-in-place は継続します (本 cycle は孤児 / 重複の走査を行えていません)" >&2
+    [ "$PRINT_MODE" = "1" ] || echo "  注意: 記録コメント id で PATCH 先を確定したため update-in-place は継続します (本 cycle は孤児 / 重複の走査を行えていません)" >&2
     return 0
   fi
   _record_degraded_hint
@@ -646,124 +713,191 @@ _rite_p61d_signal_abort() {  # $1=rc $2=signal
   echo "  中断が繰り返される場合のみ Issue #${ISSUE_NUMBER} の '$MARKER' コメントを目視で確認してください (mergeable 判定には影響しません)" >&2
   echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=signal_aborted; rc=$1; signal=$2" >&2
 }
+# PATCH 先の解決 (関連 Issue → 自 login → 段 1 durable id → 段 2 本文照合 → 段 3 決定)。書き込み経路と
+# 読み取り専用モード (--print-record-body) がこの 1 関数を共有する — 読み手が別の述語で記録コメントを
+# 探すと、重複した記録コメントのうち書き手が PATCH しない方 (古い台帳) を読んで引き継いでしまう。
+# 結果は existing_id / lookup_degraded / gh_login に置く。rc=1 は関連 Issue を解決できなかったときだけ
+# (理由は related_fail_reason)。それ以外の縮退は rc=0 のまま lookup_degraded=1 で表す。
+_resolve_record_comment() {
+  if ! _resolve_related_issue; then
+    return 1
+  fi
+
+  # **author 条件は必須**: 前方一致だけでは、marker で始まるコメントを第三者が 1 件投稿するだけで
+  # `last` がそれを掴み PATCH 先を奪われる (書込権限があれば他人のコメントを破壊、無ければ 403 で
+  # 記録が恒久的に失われる)。自分の login と一致する投稿のみを対象にする。
+  # **機械専用 sentinel 条件も必須**: author + startswith だけでは、同一 author が marker で始まる
+  # 見出しの人間コメント (記録の対応状況メモ等) を書いた場合にそれを掴み、PATCH が人間の本文を
+  # 丸ごと上書き破壊する。sentinel を **最終非空行の等値** で見て残余を塞ぐ (`contains` は本文中に引用として
+  # 現れた sentinel も拾うため不可 — 上記 RECORD_SENTINEL の注記参照)。
+  #
+  # 述語は 2 段構えにする。`$near` (author ∧ marker 前方一致 = 「記録コメントの候補」) と `$hit`
+  # (さらに最終非空行が sentinel と等しい = 「本 helper が投稿したと確定できるもの」) を別々に数え、差分を
+  # **sentinel を持たない候補の件数**として可視化する。差分の正体は (a) sentinel 導入前に投稿された
+  # 記録コメント (migration)、または (b) 同一 author が書いた marker 前方一致の手書きコメント の
+  # いずれかで、どちらも update-in-place の対象にならず関連 Issue 上に孤児として残る。述語変更由来のこの
+  # 縮退だけを無音にすると観測手段が無くなるため (本 helper は他の全 degraded 経路で WARNING を出す)。
+  # rc も見る (F-01, cycle 4 review, error-handling-reviewer): `gh api` は HTTP エラー時に
+  # `--jq` フィルタを適用せずレスポンス body をそのまま stdout へ書いて rc!=0 で終了する
+  # (gh 2.96.0 で実測)。空文字判定だけに依存すると、この非空な JSON エラー body が
+  # `gh_login` として通過し degraded 検出が素通りする (existing_id="" のまま degraded=0 で
+  # 新規作成へ縮退し、WARNING も出ない)。
+  if ! gh_login=$(gh api user --jq '.login' 2>"${gh_err:-/dev/null}") || [ -z "$gh_login" ]; then
+    echo "WARNING: gh api user による自 login の取得に失敗しました。既存コメントを特定できないため存在不明として扱います" >&2
+    _gh_err_detail
+    _record_degraded_hint
+    existing_id=""
+    lookup_degraded=1
+    # 自 login が無いと durable id の author 検証も本文照合の author 条件も評価できない。
+    # 段 1-3 をまとめて skip し「存在不明」で確定させる (誤 PATCH より新規作成を選ぶ既存の縮退方針)。
+    gh_login=""
+  fi
+
+  # 段 1: durable id (第一候補)
+  [ -n "$gh_login" ] && _resolve_persisted_id
+
+  # 段 2: 本文照合による fallback。**id 解決の成否に依らず常に走らせる** — id で PATCH 先が確定した
+  # cycle でも孤児 / 重複の観測 (NONBLOCKING_LEGACY_ORPHAN / NONBLOCKING_DUPLICATE_RECORD) を
+  # 落とすと、関連 Issue 上の残骸が silent になる。
+  # `--paginate --slurp` + 外側 jq で全ページ走査する (非 paginate は既定 30 件・昇順のため
+  # コメント 30 件超の Issue で marker を miss し、update-in-place が silent に破綻する)。
+  # pipefail なしでは gh 失敗が末尾 jq の rc=0 に mask され degraded 分岐が dead code になる。
+  if [ -z "$gh_login" ]; then
+    :   # 自 login 不明。上の分岐で degraded 確定済み
+  elif lookup_out=$(gh api --paginate --slurp "repos/$OWNER_REPO/issues/$ISSUE_NUMBER/comments" 2>"${gh_err:-/dev/null}" \
+       | jq -r --arg marker "$MARKER" --arg me "$gh_login" --arg sentinel "$RECORD_SENTINEL" \
+           "$LAST_CONTENT_LINE_JQ"'
+           (add // [])
+           | [.[] | select(((.body // "") | startswith($marker)) and ((.user.login // "") == $me))] as $near
+           | [$near[] | select((.body | last_content_line) == $sentinel)] as $hit
+           | ((($hit | last | .id) // "") | tostring)
+             + "\t" + ((($near | length) - ($hit | length)) | tostring)
+             + "\t" + (($hit | length) | tostring)
+         ' 2>>"${gh_err:-/dev/null}"); then
+    # タブ 3 フィールド。フィールド数が想定と違うときは lookup 出力の形状 drift なので、
+    # 既存の degraded 境界へ合流させる (silent な default 補填にしない — jq filter を壊す編集が
+    # 入っても孤児検出が signal ゼロの dead code に変わるだけで誰も気づけなくなる)。
+    # `IFS=$'\t' read` は使わない — タブは IFS の *空白* 扱いなので**先頭の空フィールドが食われ**、
+    # 「既存なし」(第 1 フィールドが空) のとき件数が 1 つずつ前へずれて existing_id に件数が入る
+    # (実測: `read -r a b c <<< $'\t0\t0'` は a=0 b=0 c=空)。パラメータ展開で位置を固定する。
+    fallback_id="${lookup_out%%$'\t'*}"
+    _lookup_rest="${lookup_out#*$'\t'}"
+    legacy_orphan_count="${_lookup_rest%%$'\t'*}"
+    canonical_hit_count="${_lookup_rest#*$'\t'}"
+    if [ "$(printf '%s' "$lookup_out" | awk -F'\t' '{print NF}')" != "3" ]; then
+      echo "WARNING: lookup の出力形状が想定 (タブ 3 フィールド) と異なります。存在不明として扱います" >&2
+      fallback_id=""; legacy_orphan_count=0; canonical_hit_count=0
+      list_failed=1
+    fi
+    # fallback_id は mutating な API path (`issues/comments/$existing_id` の PATCH) へ補間されうる。
+    # 同じ jq 出力から取る件数側には数値 guard があるのに書き込み先だけ無検証、という非対称を作らない
+    # (owner_repo / iteration_id が allowlist を持つのと同じ方針)。空へ倒せば既存の「既存なし」経路に乗る。
+    # 段 1 の durable id も同一の述語を通す (_resolve_persisted_id 内)。
+    case "$fallback_id" in *[!0-9]*) fallback_id="" ;; esac
+    case "$legacy_orphan_count" in ''|*[!0-9]*) legacy_orphan_count=0 ;; esac
+    case "$canonical_hit_count" in ''|*[!0-9]*) canonical_hit_count=0 ;; esac
+    if [ "$legacy_orphan_count" -gt 0 ]; then
+      echo "WARNING: marker 前方一致だが最終非空行が機械専用 sentinel でない自分のコメントが ${legacy_orphan_count} 件あります。update-in-place の対象外として扱います" >&2
+      echo "  該当は (a) sentinel 導入前に投稿された記録コメント、または (b) marker で始まる見出しの手書きコメント のいずれかです" >&2
+      echo "  (a) なら Issue #${ISSUE_NUMBER} 上で古い記録コメントを手動削除してください (次に指摘が 1 件以上ある cycle で新しい 1 件が作られ、以後 update-in-place で維持されます)" >&2
+      echo "  (b) なら意図どおりの除外です (本 helper が人間のコメントを PATCH で上書きしないための条件)" >&2
+      echo "[CONTEXT] NONBLOCKING_LEGACY_ORPHAN=1; pr=$PR_NUMBER; count=$legacy_orphan_count" >&2
+    fi
+    # canonical な記録コメントが 2 件以上 = 過去の degraded 縮退が生んだ重複。`last` を採るため
+    # 古い方は恒久的に stale で残る。legacy_orphan とは原因も復旧手順も違う (あちらは sentinel を
+    # 持たない別種のコメント) ので合算せず別 marker にする — 合算すると WARNING の文面が事実と
+    # 異なり、operator を誤った削除対象へ誘導する。
+    if [ "$canonical_hit_count" -gt 1 ]; then
+      echo "WARNING: 機械専用 sentinel を持つ自分の記録コメントが ${canonical_hit_count} 件あります。最新の 1 件だけを update-in-place し、古い方は stale のまま残ります" >&2
+      echo "  原因は (a) 過去の cycle で lookup が degraded し新規作成へ縮退した、または (b) 同一 author が" >&2
+      echo "  marker 前方一致かつ最終非空行が sentinel のコメントを投稿し update-in-place の対象になった のいずれかです" >&2
+      echo "  (b) の場合、直前の PATCH が当該コメントを上書きしている可能性があります。GitHub のコメント編集履歴を確認してください" >&2
+      echo "  対処: Issue #${ISSUE_NUMBER} 上で古い方を手動削除してください (mergeable 判定には影響しません)" >&2
+      echo "[CONTEXT] NONBLOCKING_DUPLICATE_RECORD=1; pr=$PR_NUMBER; count=$canonical_hit_count" >&2
+    fi
+  else
+    echo "WARNING: 既存の非実測記録コメントの検索に失敗しました (gh/jq)。存在不明として扱います" >&2
+    _gh_err_detail
+    fallback_id=""
+    list_failed=1
+  fi
+
+  # 段 3: PATCH 先の決定 (durable id > 本文照合 fallback)
+  [ -n "$gh_login" ] && _decide_existing_id
+  return 0
+}
+
+# 読み取り専用モードの失敗 marker。stdout には何も出さない (呼び出し元が空の本文を「記録なし」と読まないよう
+# rc と marker で失敗を伝える)。
+_print_failed() {  # $1=reason
+  echo "ERROR: review-nonblocking-record: 記録コメントの本文を読めません (reason=$1)" >&2
+  echo "[CONTEXT] NONBLOCKING_RECORD_BODY=failed; pr=$PR_NUMBER; reason=$1" >&2
+}
+# 読み取り専用モード本体。書き込み経路と同じ `_resolve_record_comment` が選んだ 1 件の本文だけを出す。
+# 「存在不明」(自 login を取れない / 本文照合が失敗して durable id でも確定しない) を「記録なし」に
+# 倒さない — 倒すと読み手は台帳を空と読み、却下済みの指摘を再審査・再起票する。
+_print_record_body() {
+  local _body=""
+  if ! _resolve_record_comment; then
+    # _resolve_record_comment の rc=1 は必ず related_fail_reason を置く。空なら不変条件違反として
+    # 既定値へ倒さず止まる (related_issue_unresolved は読み手が「台帳なしで続行」と読む reason のため)。
+    _print_failed "${related_fail_reason:?_resolve_record_comment が理由を置かずに失敗しました}"
+    return 1
+  fi
+  if [ -z "$gh_login" ]; then
+    _print_failed own_login_unavailable
+    return 1
+  fi
+  if [ "$lookup_degraded" = "1" ]; then
+    _print_failed lookup_failed
+    return 1
+  fi
+  if [ -z "$existing_id" ]; then
+    echo "[CONTEXT] NONBLOCKING_RECORD_BODY=absent; pr=$PR_NUMBER" >&2
+    return 0
+  fi
+  # CRLF の正規化はここで 1 回だけ行う (読み手ごとに持たない)。`--jq` ではなく実 jq へ繋ぎ、
+  # グローバルの pipefail で gh / jq どちらの失敗も rc に伝える (gh は HTTP エラー時にも stdout へ
+  # レスポンス body を出すため、出力の有無では成否を判定しない)。
+  if ! _body=$( ( gh api "repos/$OWNER_REPO/issues/comments/$existing_id" \
+      | jq -r '(.body // "") | gsub("\r\n"; "\n")' ) 2>"${gh_err:-/dev/null}" ); then
+    _gh_err_detail
+    _print_failed body_fetch_failed
+    return 1
+  fi
+  printf '%s\n' "$_body"
+  echo "[CONTEXT] NONBLOCKING_RECORD_BODY=found; pr=$PR_NUMBER; comment_id=$existing_id" >&2
+  return 0
+}
+
+# 読み取り専用モードは記録経路の trap (terminal sentinel / pending marker の削除) を設置しない。
+if [ "$PRINT_MODE" = "1" ]; then
+  trap 'rc=$?; rm -f "${gh_err:-}"; exit $rc' EXIT
+  trap '_print_failed signal_aborted; exit 130' INT
+  trap '_print_failed signal_aborted; exit 143' TERM
+  trap '_print_failed signal_aborted; exit 129' HUP
+  gh_err=$(bash "$(dirname "${BASH_SOURCE[0]}")/_mktemp-stderr-guard.sh" \
+    review-nonblocking-record p61d-lookup-err "lookup 失敗時の gh/jq 詳細が表示されません")
+  _print_record_body
+  exit $?
+fi
+
 trap 'rc=$?; _rite_p61d_emit_terminal; _rite_p61d_cleanup; exit $rc' EXIT
 trap '_rite_p61d_signal_abort 130 2; _rite_p61d_emit_terminal; _rite_p61d_cleanup; exit 130' INT
 trap '_rite_p61d_signal_abort 143 15; _rite_p61d_emit_terminal; _rite_p61d_cleanup; exit 143' TERM
 trap '_rite_p61d_signal_abort 129 1; _rite_p61d_emit_terminal; _rite_p61d_cleanup; exit 129' HUP
 
 # --- 既存記録コメントの探索 ---
-# `--paginate --slurp` + 外側 jq で全ページ走査する (非 paginate は既定 30 件・昇順のため
-# コメント 30 件超の Issue で marker を miss し、update-in-place が silent に破綻する)。
-# pipefail なしでは gh 失敗が末尾 jq の rc=0 に mask され degraded 分岐が dead code になる。
 gh_err=$(bash "$(dirname "${BASH_SOURCE[0]}")/_mktemp-stderr-guard.sh" \
   review-nonblocking-record p61d-lookup-err "lookup 失敗時の gh/jq 詳細が表示されません")
 
 # 関連 Issue を先に確定する。lookup / persist / create はすべて ISSUE_NUMBER を使う。
 # trap 設置後なので失敗時も terminal sentinel が出る。pending marker は残さない
 # (PR body / branch を同 cycle 内で直せないため、差し戻しても収束しない)。
-if ! _resolve_related_issue; then
+if ! _resolve_record_comment; then
   outcome="failed"
   exit 1
 fi
-
-# **author 条件は必須**: 前方一致だけでは、marker で始まるコメントを第三者が 1 件投稿するだけで
-# `last` がそれを掴み PATCH 先を奪われる (書込権限があれば他人のコメントを破壊、無ければ 403 で
-# 記録が恒久的に失われる)。自分の login と一致する投稿のみを対象にする。
-# **機械専用 sentinel 条件も必須**: author + startswith だけでは、同一 author が marker で始まる
-# 見出しの人間コメント (記録の対応状況メモ等) を書いた場合にそれを掴み、PATCH が人間の本文を
-# 丸ごと上書き破壊する。sentinel を **最終非空行の等値** で見て残余を塞ぐ (`contains` は本文中に引用として
-# 現れた sentinel も拾うため不可 — 上記 RECORD_SENTINEL の注記参照)。
-#
-# 述語は 2 段構えにする。`$near` (author ∧ marker 前方一致 = 「記録コメントの候補」) と `$hit`
-# (さらに最終非空行が sentinel と等しい = 「本 helper が投稿したと確定できるもの」) を別々に数え、差分を
-# **sentinel を持たない候補の件数**として可視化する。差分の正体は (a) sentinel 導入前に投稿された
-# 記録コメント (migration)、または (b) 同一 author が書いた marker 前方一致の手書きコメント の
-# いずれかで、どちらも update-in-place の対象にならず関連 Issue 上に孤児として残る。述語変更由来のこの
-# 縮退だけを無音にすると観測手段が無くなるため (本 helper は他の全 degraded 経路で WARNING を出す)。
-# rc も見る (F-01, cycle 4 review, error-handling-reviewer): `gh api` は HTTP エラー時に
-# `--jq` フィルタを適用せずレスポンス body をそのまま stdout へ書いて rc!=0 で終了する
-# (gh 2.96.0 で実測)。空文字判定だけに依存すると、この非空な JSON エラー body が
-# `gh_login` として通過し degraded 検出が素通りする (existing_id="" のまま degraded=0 で
-# 新規作成へ縮退し、WARNING も出ない)。
-if ! gh_login=$(gh api user --jq '.login' 2>"${gh_err:-/dev/null}") || [ -z "$gh_login" ]; then
-  echo "WARNING: gh api user による自 login の取得に失敗しました。既存コメントを特定できないため存在不明として扱います" >&2
-  _gh_err_detail
-  _record_degraded_hint
-  existing_id=""
-  lookup_degraded=1
-  # 自 login が無いと durable id の author 検証も本文照合の author 条件も評価できない。
-  # 段 1-3 をまとめて skip し「存在不明」で確定させる (誤 PATCH より新規作成を選ぶ既存の縮退方針)。
-  gh_login=""
-fi
-
-# 段 1: durable id (第一候補)
-[ -n "$gh_login" ] && _resolve_persisted_id
-
-# 段 2: 本文照合による fallback。**id 解決の成否に依らず常に走らせる** — id で PATCH 先が確定した
-# cycle でも孤児 / 重複の観測 (NONBLOCKING_LEGACY_ORPHAN / NONBLOCKING_DUPLICATE_RECORD) を
-# 落とすと、関連 Issue 上の残骸が silent になる。
-if [ -z "$gh_login" ]; then
-  :   # 自 login 不明。上の分岐で degraded 確定済み
-elif lookup_out=$(gh api --paginate --slurp "repos/$OWNER_REPO/issues/$ISSUE_NUMBER/comments" 2>"${gh_err:-/dev/null}" \
-     | jq -r --arg marker "$MARKER" --arg me "$gh_login" --arg sentinel "$RECORD_SENTINEL" \
-         "$LAST_CONTENT_LINE_JQ"'
-         (add // [])
-         | [.[] | select(((.body // "") | startswith($marker)) and ((.user.login // "") == $me))] as $near
-         | [$near[] | select((.body | last_content_line) == $sentinel)] as $hit
-         | ((($hit | last | .id) // "") | tostring)
-           + "\t" + ((($near | length) - ($hit | length)) | tostring)
-           + "\t" + (($hit | length) | tostring)
-       ' 2>>"${gh_err:-/dev/null}"); then
-  # タブ 3 フィールド。フィールド数が想定と違うときは lookup 出力の形状 drift なので、
-  # 既存の degraded 境界へ合流させる (silent な default 補填にしない — jq filter を壊す編集が
-  # 入っても孤児検出が signal ゼロの dead code に変わるだけで誰も気づけなくなる)。
-  # `IFS=$'\t' read` は使わない — タブは IFS の *空白* 扱いなので**先頭の空フィールドが食われ**、
-  # 「既存なし」(第 1 フィールドが空) のとき件数が 1 つずつ前へずれて existing_id に件数が入る
-  # (実測: `read -r a b c <<< $'\t0\t0'` は a=0 b=0 c=空)。パラメータ展開で位置を固定する。
-  fallback_id="${lookup_out%%$'\t'*}"
-  _lookup_rest="${lookup_out#*$'\t'}"
-  legacy_orphan_count="${_lookup_rest%%$'\t'*}"
-  canonical_hit_count="${_lookup_rest#*$'\t'}"
-  if [ "$(printf '%s' "$lookup_out" | awk -F'\t' '{print NF}')" != "3" ]; then
-    echo "WARNING: lookup の出力形状が想定 (タブ 3 フィールド) と異なります。存在不明として扱います" >&2
-    fallback_id=""; legacy_orphan_count=0; canonical_hit_count=0
-    list_failed=1
-  fi
-  # fallback_id は mutating な API path (`issues/comments/$existing_id` の PATCH) へ補間されうる。
-  # 同じ jq 出力から取る件数側には数値 guard があるのに書き込み先だけ無検証、という非対称を作らない
-  # (owner_repo / iteration_id が allowlist を持つのと同じ方針)。空へ倒せば既存の「既存なし」経路に乗る。
-  # 段 1 の durable id も同一の述語を通す (_resolve_persisted_id 内)。
-  case "$fallback_id" in *[!0-9]*) fallback_id="" ;; esac
-  case "$legacy_orphan_count" in ''|*[!0-9]*) legacy_orphan_count=0 ;; esac
-  case "$canonical_hit_count" in ''|*[!0-9]*) canonical_hit_count=0 ;; esac
-  if [ "$legacy_orphan_count" -gt 0 ]; then
-    echo "WARNING: marker 前方一致だが最終非空行が機械専用 sentinel でない自分のコメントが ${legacy_orphan_count} 件あります。update-in-place の対象外として扱います" >&2
-    echo "  該当は (a) sentinel 導入前に投稿された記録コメント、または (b) marker で始まる見出しの手書きコメント のいずれかです" >&2
-    echo "  (a) なら Issue #${ISSUE_NUMBER} 上で古い記録コメントを手動削除してください (次に指摘が 1 件以上ある cycle で新しい 1 件が作られ、以後 update-in-place で維持されます)" >&2
-    echo "  (b) なら意図どおりの除外です (本 helper が人間のコメントを PATCH で上書きしないための条件)" >&2
-    echo "[CONTEXT] NONBLOCKING_LEGACY_ORPHAN=1; pr=$PR_NUMBER; count=$legacy_orphan_count" >&2
-  fi
-  # canonical な記録コメントが 2 件以上 = 過去の degraded 縮退が生んだ重複。`last` を採るため
-  # 古い方は恒久的に stale で残る。legacy_orphan とは原因も復旧手順も違う (あちらは sentinel を
-  # 持たない別種のコメント) ので合算せず別 marker にする — 合算すると WARNING の文面が事実と
-  # 異なり、operator を誤った削除対象へ誘導する。
-  if [ "$canonical_hit_count" -gt 1 ]; then
-    echo "WARNING: 機械専用 sentinel を持つ自分の記録コメントが ${canonical_hit_count} 件あります。最新の 1 件だけを update-in-place し、古い方は stale のまま残ります" >&2
-    echo "  原因は (a) 過去の cycle で lookup が degraded し新規作成へ縮退した、または (b) 同一 author が" >&2
-    echo "  marker 前方一致かつ最終非空行が sentinel のコメントを投稿し update-in-place の対象になった のいずれかです" >&2
-    echo "  (b) の場合、直前の PATCH が当該コメントを上書きしている可能性があります。GitHub のコメント編集履歴を確認してください" >&2
-    echo "  対処: Issue #${ISSUE_NUMBER} 上で古い方を手動削除してください (mergeable 判定には影響しません)" >&2
-    echo "[CONTEXT] NONBLOCKING_DUPLICATE_RECORD=1; pr=$PR_NUMBER; count=$canonical_hit_count" >&2
-  fi
-else
-  echo "WARNING: 既存の非実測記録コメントの検索に失敗しました (gh/jq)。存在不明として扱います" >&2
-  _gh_err_detail
-  fallback_id=""
-  list_failed=1
-fi
-
-# 段 3: PATCH 先の決定 (durable id > 本文照合 fallback)
-[ -n "$gh_login" ] && _decide_existing_id
 [ -n "$gh_err" ] && { rm -f "$gh_err"; gh_err=""; }
 
 # --- 本文検査 (非空 → 1 行目 marker → 最終非空行 sentinel → count/body 整合) ---

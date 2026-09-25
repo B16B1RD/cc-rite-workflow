@@ -52,14 +52,16 @@
 # Coverage (sweep 起票済み除外):
 #   T-29 全件が sweep で issued なら all_issued で起票しない (--exclude-ids との合成を含む)
 #   T-30 issued だけを除き recorded は転記する / 記録コメント以外・issued 以外の行では除外しない
-#   T-31 台帳を読めない (API 失敗 / 解析不能 / 関連 Issue 無し) ときは WARNING + marker で全件転記
+#   T-31 台帳を読めない (記録コメントの取得失敗 / 解析不能 / 関連 Issue 無し) ときは WARNING + marker で全件転記
 #   T-32 台帳が無い PR は従来どおり全件転記
 #   T-33 除外は最新 JSON 由来で台帳の issued 行と組が一致する finding に限る。先行 cycle の finding は
 #        id・位置が同じでも転記し、同じ file:line のものだけ重複候補として WARNING に出す。
 #        行がずれた再報告は WARNING なしで重複しうる / 最新 JSON を照合できなければ apply_failed
 #   T-34 cleanup SKILL.md が all_issued と除外不能 note を完了報告へ配線する
-#   T-35 台帳の選別述語が nb-sweep-collect.sh と揃っている (CRLF 正規化の位置を含む)
-#   T-36 CRLF 本文の却下台帳も issued 行を読める
+#   T-35 記録コメントは nb-sweep-collect.sh と同じく review-nonblocking-record.sh --print-record-body で読み
+#        (前方一致の全件連結をしない)、台帳行の分解式も揃っている。CRLF の正規化は helper の 1 か所
+#   T-35b 記録コメントが 2 件あっても helper が PATCH する 1 件の台帳だけを読む
+#   T-36 CRLF 本文の却下台帳も (helper の正規化を経て) issued 行を読める
 #
 # Coverage (出典 JSON + id の除外 key):
 #   T-37 別 JSON の同じ id は key が指す finding だけを除外し (同秒衝突 suffix `~{4 桁小文字 hex}` 付きの
@@ -143,6 +145,15 @@ case "$cmd" in
     echo "gh $*" >> "${GH_COMMENT_LOG:-/dev/null}"
     exit "${GH_COMMENT_RC:-0}"
     ;;
+  # 記録 helper の読み取り専用モード: 自 login / 関連 Issue の解決 (closing keyword) / Issue body (durable id なし)
+  "api user --jq .login") echo rite-bot; exit 0 ;;
+  "pr view 9 -R acme/demo --json body --jq .body") echo "Closes #42"; exit 0 ;;
+  "issue view 42 -R acme/demo --json body --jq .body") exit 0 ;;
+  # 記録 helper が PATCH 先と決めた 1 件の GET
+  "api repos/acme/demo/issues/comments/"*)
+    jq --argjson id "${cmd##*/}" '[.[][] | select(.id == $id)][0]' "${GH_API_JSON:-/dev/null}"
+    exit 0
+    ;;
   # 却下台帳の取得元は関連 Issue のコメント全ページ。取得先と pagination 指定まで一致したときだけ応答する
   "api --paginate --slurp repos/acme/demo/issues/42/comments")
     if [ -n "${GH_API_RC:-}" ] && [ "${GH_API_RC}" != "0" ]; then
@@ -164,7 +175,7 @@ cat > "$TMP_ROOT/bin/jq" <<'JQ'
 #!/bin/bash
 for arg in "$@"; do
   case "${RITE_TEST_JQ_FAIL:-}:$arg" in
-    parse:*'split("\n") | join(",") | split(",")'*|ambiguity:*'map(select(length > 1)'*|release:'. - $amb'|apply:*'[.[] | select(key as $k'*|dedupe:*'reduce .[] as $finding'*)
+    ledger:*'split("### 却下台帳'*|parse:*'split("\n") | join(",") | split(",")'*|ambiguity:*'map(select(length > 1)'*|release:'. - $amb'|apply:*'[.[] | select(key as $k'*|dedupe:*'reduce .[] as $finding'*)
       printf '%s\n' "$RITE_TEST_JQ_FAIL" >> "$STUB_DIR/jq-fail.log"
       cat >/dev/null
       echo "jq: injected $RITE_TEST_JQ_FAIL failure" >&2
@@ -991,7 +1002,8 @@ else
 fi
 
 # $1=本文。関連 Issue 記録コメント 1 件分の JSON object を出す
-comment_obj() { jq -n --arg b "$1" '{body: $b}'; }
+# $1=本文 $2=comment id (省略時 1) $3=author (省略時 rite-bot)。記録 helper は author と id で 1 件に決める
+comment_obj() { jq -n --arg b "$1" --argjson id "${2:-1}" --arg login "${3:-rite-bot}" '{id: $id, user: {login: $login}, body: $b}'; }
 # $1=台帳行 (改行区切り)。見出し + 却下台帳 + 最終行 sentinel を持つ記録コメント本文
 record_body() {
   printf '%s\n' '## 📜 rite 非実測指摘の記録 (non-blocking)' '' '本 cycle の非実測指摘: 2 件' '' \
@@ -1029,7 +1041,7 @@ reset_stubs
 r=$(new_root t30)
 put_json "$r" "9-20260101120000.json" "$TWO_FINDING_JSON"
 jq -n --argjson u "$(comment_obj '作業メモリ')" \
-  --argjson c "$(comment_obj "$(record_body "$(printf '%s\n%s' "$ISSUED_A" '| F-05 | b.md:9 | recorded | severity=LOW; measured=false |')")")" \
+  --argjson c "$(comment_obj "$(record_body "$(printf '%s\n%s' "$ISSUED_A" '| F-05 | b.md:9 | recorded | severity=LOW; measured=false |')")" 2)" \
   '[[$u],[$c]]' > "$GH_API_JSON"
 run_target "$r"
 assert "T-30 exit 0" "0" "$RC"
@@ -1064,7 +1076,8 @@ r=$(new_root t31)
 put_json "$r" "9-20260101120000.json" "$TWO_FINDING_JSON"
 run_target "$r"
 assert "T-31 exit 0" "0" "$RC"
-assert_grep "T-31 WARNING" "$ERR" 'WARNING: 関連 Issue #42 のコメント取得に失敗しました'
+assert_grep "T-31 WARNING" "$ERR" 'WARNING: 関連 Issue の記録コメントを取得できませんでした'
+assert_grep "T-31 helper の失敗理由を surface" "$ERR" 'NONBLOCKING_RECORD_BODY=failed; pr=9; reason=lookup_failed'
 assert_grep "T-31 unavailable marker" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=comments_api; pr=9'
 assert_grep "T-31 gh の原因行を surface" "$ERR" 'simulated api failure'
 assert_grep "T-31 全件転記 (a.md)" "$STUB_DIR/body.md" 'a.md:3'
@@ -1076,8 +1089,17 @@ printf '%s\n' '{"message":"not pages"}' > "$GH_API_JSON"
 r=$(new_root t31b)
 put_json "$r" "9-20260101120000.json" "$TWO_FINDING_JSON"
 run_target "$r"
-assert_grep "T-31b 解析不能は ledger_invalid" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=ledger_invalid; pr=9'
+assert_grep "T-31b 記録コメントを同定できない応答は comments_api" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=comments_api; pr=9'
 assert "T-31b 起票は継続する" "1" "$(create_count)"
+
+reset_stubs
+jq -n --argjson c "$(comment_obj "$(record_body "$ISSUED_A")")" '[[$c]]' > "$GH_API_JSON"
+r=$(new_root t31b2)
+put_json "$r" "9-20260101120000.json" "$TWO_FINDING_JSON"
+RITE_TEST_JQ_FAIL=ledger run_target "$r"
+assert_grep "T-31b 台帳行を分解できなければ ledger_invalid" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=ledger_invalid; pr=9'
+assert_grep "T-31b 台帳行の分解の失敗を実際に注入した" "$STUB_DIR/jq-fail.log" '^ledger$'
+assert_grep "T-31b 除外せず転記 (a.md)" "$STUB_DIR/body.md" 'a.md:3'
 
 reset_stubs
 r=$(new_root t31c)
@@ -1200,18 +1222,38 @@ assert_grep "T-34 sweep note の定義" "$CLEANUP_MD" '^- `\{follow_up_sweep_not
 assert_grep "T-34 sweep note は unavailable marker を読む" "$CLEANUP_MD" 'FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=\{r\}; pr=\{pr_number\}'
 assert_grep "T-34 完了報告に sweep note を差し込む" "$CLEANUP_MD" '\{follow_up_reverify_note\}\{follow_up_ambiguous_note\}\{follow_up_sweep_note\}'
 
-echo "--- T-35: 台帳の選別述語が nb-sweep-collect.sh と揃っている ---"
+echo "--- T-35: 記録コメントは書き込み経路と同じ helper で読み、台帳行の分解式が nb-sweep-collect.sh と揃っている ---"
 COLLECT_SH="$SCRIPT_DIR/../scripts/nb-sweep-collect.sh"
+NBR_HELPER="$SCRIPT_DIR/../review-nonblocking-record.sh"
 for f in "$TARGET" "$COLLECT_SH"; do
-  assert_grep "T-35 見出し ($(basename "$f"))" "$f" 'select\(startswith\("## 📜 rite 非実測指摘の記録"\)\)'
-  assert_grep "T-35 sentinel ($(basename "$f"))" "$f" '== "<!-- rite:nbr:v1 -->"\)'
+  assert "T-35 読み取り専用モードを 1 回呼ぶ ($(basename "$f"))" "1" "$(grep -cE '^[^#]*--print-record-body' "$f")"
+  assert "T-35 記録見出しの前方一致で選ばない ($(basename "$f"))" "0" "$(grep -cF 'startswith("## 📜 rite 非実測指摘の記録")' "$f")"
+  assert "T-35 コメント一覧を直接読まない ($(basename "$f"))" "0" "$(grep -cE 'issues/[^ ]*/comments' "$f")"
   assert_grep "T-35 台帳節の切り出し ($(basename "$f"))" "$f" 'split\("### 却下台帳\\n"\)\[1:\]\[\]'
-  # CRLF 正規化は本文取得の直後・台帳切り出しより前に置く (離れた場所の gsub では pin にならない)
-  assert_grep "T-35 CRLF 正規化が本文取得に隣接 ($(basename "$f"))" "$f" '^ *\| \.body // "" \| gsub\("\\r\\n"; "\\n"\)$'
-  norm_line=$(grep -n '\.body // "" | gsub("\\r\\n"; "\\n")' "$f" | head -1 | cut -d: -f1)
-  split_line=$(grep -n 'split("### 却下台帳\\n")\[1:\]\[\]' "$f" | head -1 | cut -d: -f1)
-  assert "T-35 CRLF 正規化が台帳切り出しより前 ($(basename "$f"))" "yes" "$([ -n "$norm_line" ] && [ -n "$split_line" ] && [ "$norm_line" -lt "$split_line" ] && echo yes || echo no)"
+  # CRLF は helper が正規化して渡す。読み手ごとに正規化を持たない
+  assert "T-35 読み手は CRLF を正規化しない ($(basename "$f"))" "0" "$(grep -cF 'gsub("\r\n"; "\n")' "$f")"
 done
+# CRLF の正規化は読み取り専用モードが PATCH 先の本文を取る 1 か所だけにある
+assert "T-35 helper の CRLF 正規化は 1 か所" "1" "$(grep -cF 'gsub("\r\n"; "\n")' "$NBR_HELPER")"
+assert_grep "T-35 helper の CRLF 正規化は PATCH 先の本文取得と同じパイプライン" "$NBR_HELPER" \
+  "jq -r '\(\.body // \"\"\) \| gsub\(\"\\\\r\\\\n\"; \"\\\\n\"\)'"
+
+echo "--- T-35b: 記録コメントが 2 件あっても helper が PATCH する 1 件の台帳だけを読む ---"
+reset_stubs
+r=$(new_root t35b)
+put_json "$r" "9-20260101120000.json" "$TWO_FINDING_JSON"
+# 古い記録 (id 11) は F-05 を issued、新しい記録 (id 13 = PATCH 先) は F-01 を issued、他人のコメント (id 99) は F-05 を issued
+ISSUED_B='| F-05 | b.md:9 | issued | #78 https://example.test/issues/78 |'
+jq -n --argjson old "$(comment_obj "$(record_body "$ISSUED_B")" 11)" \
+  --argjson new "$(comment_obj "$(record_body "$ISSUED_A")" 13)" \
+  --argjson foreign "$(comment_obj "$(record_body "$ISSUED_B")" 99 someone-else)" \
+  '[[$old, $new], [$foreign]]' > "$GH_API_JSON"
+run_target "$r"
+assert "T-35b exit 0" "0" "$RC"
+assert_not_grep "T-35b PATCH 先の台帳 (F-01 issued) は除外する" "$STUB_DIR/body.md" 'a.md:3'
+assert_grep "T-35b 古い記録・他人のコメントの台帳 (F-05 issued) は使わない" "$STUB_DIR/body.md" 'b.md:9'
+assert_grep "T-35b 除外件数 1" "$ERR" 'sweep_issued: pr=9; excluded=1; possible_duplicates=0$'
+assert_grep "T-35b 読み取りは PATCH 先 (id 13) を指す" "$ERR" 'NONBLOCKING_RECORD_BODY=found; pr=9; comment_id=13$'
 
 echo "--- T-36: CRLF 本文の却下台帳も issued 行を読める ---"
 reset_stubs

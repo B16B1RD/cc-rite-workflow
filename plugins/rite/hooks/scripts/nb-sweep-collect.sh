@@ -77,24 +77,13 @@ if [ -n "$pr" ]; then
   case "$pr" in ''|*[!0-9]*|0) echo "ERROR: --pr must be a positive integer" >&2; exit 2 ;; esac
   owner_repo=$(gh repo view --json nameWithOwner --jq '.nameWithOwner') || collect_fail repo_unresolved
   [ -n "$owner_repo" ] || collect_fail repo_unresolved
-  pr_body=$(gh pr view "$pr" -R "$owner_repo" --json body --jq '.body') || collect_fail related_issue_unresolved
-  # Keep the same closing-keyword / issue-N branch precedence as
-  # review-nonblocking-record.sh::_resolve_related_issue.
-  issue=$(printf '%s' "$pr_body" | grep -ioE '(close[sd]?|fix(e[sd])?|resolve[sd]?) #[0-9]+' | head -1 | grep -oE '[0-9]+$' || true)
-  if [ -z "$issue" ]; then
-    head_ref=$(gh pr view "$pr" -R "$owner_repo" --json headRefName --jq '.headRefName') || collect_fail related_issue_unresolved
-    if [[ "$head_ref" =~ issue-([0-9]+) ]]; then issue=${BASH_REMATCH[1]}; fi
-  fi
-  case "$issue" in ''|*[!0-9]*|0) collect_fail related_issue_unresolved ;; esac
-  comments=$(gh api --paginate --slurp "repos/$owner_repo/issues/$issue/comments") || collect_fail comments_unreadable
-  if ! ledger_keys=$(printf '%s' "$comments" | jq -ce '
+  # 記録コメントは書き込み経路 (review-nonblocking-record.sh) が PATCH する 1 件だけを読む。
+  # 関連 Issue の解決・記録コメントの同定・CRLF の正規化は helper が行う (失敗の詳細は helper の stderr)。
+  record_body=$(bash "$(dirname "${BASH_SOURCE[0]}")/../review-nonblocking-record.sh" \
+    --print-record-body --pr "$pr" --owner-repo "$owner_repo") || collect_fail comments_unreadable
+  if ! ledger_keys=$(printf '%s' "$record_body" | jq -Rsce '
     def trim: gsub("^\\s+|\\s+$"; "");
-    if type != "array" or any(.[]; type != "array") then error("invalid comment pages") else . end
-    | [ .[][]
-        | .body // "" | gsub("\r\n"; "\n")
-        | select(startswith("## 📜 rite 非実測指摘の記録"))
-        | select((split("\n") | map(sub("\r$"; "")) | map(select(test("\\S"))) | last) == "<!-- rite:nbr:v1 -->")
-        | split("### 却下台帳\n")[1:][]
+    [ split("### 却下台帳\n")[1:][]
         | split("📎 non_blocking_count:")[0] | split("\n### ")[0]
         | split("\n")[] | select(startswith("|"))
         | split("|") | map(trim)

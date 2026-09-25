@@ -271,8 +271,9 @@ consume を `/rite:fix --nb-sweep` に閉じ、collect helper の issued/recorde
 取得・起票・台帳保存の失敗を停止させ、未消化のまま正常出口へ進む経路を閉じる。
 6.1.d 本文へ `### 却下台帳` を足すのは新チャネル禁止（既存コメントの拡張）。次 cycle の
 `{rejected_ledger}` 注入は記録コメントの書き換えが台帳を消すと無意味になるため、書き換える
-2 経路（pr-review 6.1.d と fix の非実測指摘の記録）とも merge-into helper で count 行直前へ機械
-splice する。
+3 経路（pr-review 6.1.d、fix の非実測指摘の記録、NB sweep）とも merge-into helper で count 行直前へ機械
+splice する。引き継ぐ台帳は記録 helper の `--print-record-body` が返す 1 件（helper が PATCH する
+記録コメント）から取る。前方一致で全件を連結すると、重複した記録コメントの古い台帳を引き継ぐ。
 
 再入の権威を会話 marker に置かないのは、`[fix:pushed]` でステップ 1 に戻ったあとに marker が
 見えなくなり 5.S が再走する実測があるため。会話 marker 既出を skip 条件に残すと、0.6 が
