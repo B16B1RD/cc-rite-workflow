@@ -37,7 +37,8 @@
 #
 #   files は fix diff のファイル一覧 (1 行 1 パス) を書いた `${TMPDIR:-/tmp}/rite-cycle-scope-files-{pr}.txt`。
 #   fix diff = 起点からの差分のうち PR 自身が変えたファイル (first-parent 上の非 merge commit の変更と、
-#   first-parent 上の merge で競合を解消したファイル)。merge の second parent 側から入った変更は
+#   first-parent 上の merge で競合を解消したファイル。git 2.36 以上の `show --remerge-diff` を使い、
+#   使えなければ diff_failed で full へ倒す)。merge の second parent 側から入った変更は
 #   base の取り込みとして除く。full へ倒れるときは同じパスの一覧を削除する。
 #   [CONTEXT] REVIEW_CYCLE_SCOPE=full; reason=<reason>
 #   [CONTEXT] REVIEW_CYCLE_SCOPE_FALLBACK=1; reason=<reason>   ← no_prev_json 以外で追加 emit
@@ -60,7 +61,7 @@
 #   prev_json_unreadable  — JSON が壊れている / jq で読めない / 探索中に IO エラー
 #   commit_sha_missing    — .commit_sha が空 / null / キー欠落 (旧形式)
 #   commit_sha_unreachable— 起点 commit が履歴から消失 (force-push / rebase)
-#   diff_failed           — git diff {sha}..HEAD が失敗
+#   diff_failed           — git diff {sha}..HEAD、PR 自身の変更の取得、またはその積の計算が失敗
 #   empty_diff            — git diff {sha}..HEAD は成功したが差分ゼロ行 (前回起点から新規 commit なし。
 #                           /rite:fix の accept-only cycle で base_sha == HEAD となり必ず成立する)
 #   base_only_diff        — 差分はあるが、すべて base の取り込みで入ったもの (PR 自身の変更なし)
@@ -289,21 +290,27 @@ fi
 
 # 起点からの差分には、その後に取り込んだ base ブランチの変更も入る。PR 自身が変えたファイルは
 # first-parent 上の非 merge commit が変えたものと、first-parent 上の merge で競合を解消したもの
-# (`diff-tree --cc` はどの親とも異なるファイルだけを出す) に限り、その積を fix diff とする。
+# (`show --remerge-diff` は自動 merge の結果と commit の差だけを出す。`diff-tree --cc` は clean に
+# 自動 merge されたファイルも返すので使わない) に限り、その積を fix diff とする。
 # merge の second parent 側から入った変更は base の取り込みとして除く。
 own_names=$( {
   git log --first-parent --no-merges --name-only --format= "${base_sha}..HEAD" || exit 1
   merges=$(git rev-list --first-parent --merges "${base_sha}..HEAD") || exit 1
   for merge in $merges; do
-    git diff-tree --cc --name-only --no-commit-id "$merge" || exit 1
+    git show --remerge-diff --name-only --format= "$merge" || exit 1
   done
 } 2>"$probe_err") || {
   echo "WARNING: review-cycle-scope: PR 自身の変更を取得できません (${base_sha}..HEAD)" >&2
   head -3 "$probe_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   emit_full diff_failed
 }
-scope_names=$(comm -12 <(printf '%s\n' "$diff_names" | LC_ALL=C sort -u) \
-                       <(printf '%s\n' "$own_names" | LC_ALL=C sort -u) | sed '/^$/d')
+# comm は入力と同じ照合順で動かす。ロケールが違うと片側を読み切って共通要素を落とす。
+scope_names=$(LC_ALL=C comm -12 <(printf '%s\n' "$diff_names" | LC_ALL=C sort -u) \
+                                <(printf '%s\n' "$own_names" | LC_ALL=C sort -u) 2>"$probe_err" | sed '/^$/d') || {
+  echo "WARNING: review-cycle-scope: fix diff の積を計算できません (${base_sha}..HEAD)" >&2
+  head -3 "$probe_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+  emit_full diff_failed
+}
 if [ -z "$scope_names" ]; then
   echo "WARNING: review-cycle-scope: 前回レビュー起点からの差分は base の取り込みだけです (base_sha=$base_sha)" >&2
   emit_full base_only_diff

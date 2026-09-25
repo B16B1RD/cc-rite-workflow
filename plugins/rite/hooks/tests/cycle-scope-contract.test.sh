@@ -190,7 +190,13 @@ assert_grep "4.5 placeholder table wires cycle_scope_mandate to cycle-scope.md" 
 assert_grep "4.5 scopes relevant_files to the fix diff under incremental" "$PR_REVIEW" \
   '\{relevant_files\}.*REVIEW_CYCLE_SCOPE == incremental.*`\{cycle_scope_files\}` の一覧から抽出する'
 assert_grep "4.5 scopes diff_content to the fix diff under incremental" "$PR_REVIEW" \
-  '\{diff_content\}.*REVIEW_CYCLE_SCOPE == incremental.*\{cycle_base_sha\}\.\.HEAD'
+  '\{diff_content\}.*REVIEW_CYCLE_SCOPE == incremental.*`\{cycle_scope_files\}` のファイルの `\{cycle_base_sha\}\.\.HEAD` の diff'
+assert_grep "1.2 limits the incremental diff to the listed files" "$PR_REVIEW" \
+  '`\{cycle_scope_files\}` に列挙されたファイルだけを対象に `git diff \{cycle_base_sha\}\.\.HEAD -- <列挙ファイル>`'
+assert_grep "1.2.4 treats an incremental marker without files= as full" "$PR_REVIEW" \
+  '`files=` が欠落した incremental は helper 失敗と同じく `full` として扱い.*reason=helper_failed'
+assert_grep "mandate 2 gives the command that tells PR hunks from base hunks" "$CYCLE_SCOPE" \
+  'git log --first-parent --no-merges -p \{cycle_base_sha\}\.\.HEAD -- <file>.*git show --remerge-diff <merge> -- <file>.*判別できない hunk は審査対象に含める'
 
 echo "=== mandate 4 項目: 解消検証 / fix diff フル / Cross-File 維持 / 未変更部の再監査禁止 ==="
 # mandate 1 の語は SoT 宣言・合成理由・注入本文の 3 箇所に出るため、単語 pin だと

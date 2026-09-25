@@ -27,7 +27,7 @@
      E2E フローでも省略禁止 — cycle 2+ は E2E からしか発生しないため、ここを minimize すると
      観測性の要求が空文になる（SoT: cycle-scope.md §選抜結果の記録を E2E で省略しない理由）。 -->
 
-- **スコープ**: 差分（`{cycle_base_sha}`..HEAD のうち `{cycle_scope_files}` のファイル。base の取り込み分は除く） — 未変更部は cycle 1 のフルレビューで審査済み
+- **スコープ**: 差分（`{cycle_base_sha}`..HEAD のうち fix diff の {n} ファイル: {files}。base の取り込み分は除く） — 未変更部は cycle 1 のフルレビューで審査済み（`{n}` / `{files}` は `{cycle_scope_files}` が指す一覧の件数とパスで埋める。一覧ファイルのパス自体は書かない）
 - **起動した reviewer**: {selected_reviewers_with_reason}
 - **今サイクルはスキップした reviewer**: {skipped_reviewers_with_reason}
 

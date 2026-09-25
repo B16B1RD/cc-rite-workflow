@@ -16,6 +16,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOKS_DIR="$SCRIPT_DIR/.."
 TEST_DIR="$(mktemp -d)"
+# review-cycle-scope.sh は fix diff の一覧を ${TMPDIR}/rite-cycle-scope-files-{pr}.txt に書く。実 /tmp を汚さない
+export TMPDIR="$TEST_DIR"
 PASS=0
 FAIL=0
 

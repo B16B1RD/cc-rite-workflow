@@ -53,7 +53,7 @@ cycle 数が増えても挙動は一切変わらない（cycle 3 と cycle 5 に
 | `prev_json_unreadable` | JSON が壊れている / 読めない | 前回 blocking の集合が不明。解消検証を組めない |
 | `commit_sha_missing` | `commit_sha` が空 / null / キー欠落（旧形式） | 差分の起点が無い |
 | `commit_sha_unreachable` | `git cat-file -e {sha}` が失敗（force-push / rebase で消失） | 起点 commit が履歴に無く diff を取れない |
-| `diff_failed` | `git diff {sha}..HEAD` が失敗 | 差分自体を取得できない |
+| `diff_failed` | `git diff {sha}..HEAD`、PR 自身の変更の取得（`git log` / `git rev-list` / `git show --remerge-diff`）、またはその積の計算が失敗 | 差分自体、または PR 自身の変更を特定できない |
 | `empty_diff` | `git diff {sha}..HEAD` は成功したが差分ゼロ行 | 前回起点から新規 commit が無く、審査対象も解消検証の材料も空になる |
 | `base_only_diff` | 差分はあるが、すべて base の取り込みで入ったもの | PR 自身の変更が無く、fix diff が空になる |
 | `scope_files_unwritable` | fix diff の一覧を `files=` のパスへ書き出せない | caller が審査対象の一覧を読めない |
@@ -126,7 +126,7 @@ cap 後のフィルタにすると、これらのフロアと `mandatory` 保護
 
 cycle 2+ で変わるのは表そのものではなく、表に**何を照合させるか**（PR 全体の変更ファイル → fix diff のファイル）だけである。
 
-fix diff のファイルは、起点からの差分のうち PR 自身が変えたもの（first-parent 上の非 merge commit の変更と、first-parent 上の merge で競合を解消したファイル）に限る。起点の後に base ブランチを取り込むと、base 側の変更も起点からの差分に入る。PR が触っていないファイルでパターンマッチすると、無関係な reviewer が起動し、PR の変更ではないコードを審査する。merge の second parent 側から入った変更は base の取り込みとして除く。rite で PR ブランチへ merge するのは base 取り込みの手順だけだからである。除外はファイル単位で、PR と base の両方が変えたファイルの diff には base 由来の hunk も含まれる。
+fix diff のファイルは、起点からの差分のうち PR 自身が変えたもの（first-parent 上の非 merge commit の変更と、first-parent 上の merge で競合を解消したファイル）に限る。起点の後に base ブランチを取り込むと、base 側の変更も起点からの差分に入る。PR が触っていないファイルでパターンマッチすると、無関係な reviewer が起動し、PR の変更ではないコードを審査する。merge の second parent 側から入った変更は base の取り込みとして除く。review cycle の間（起点より後）に rite の手順が PR ブランチへ作る merge は base の取り込みだけで、それ以外の merge（手動の non-ff `git pull` で remote の PR commit を second parent 側に取り込む等）の変更は fix diff から落ちる。競合の解消は `git show --remerge-diff`（git 2.36 以上）で、自動 merge の結果と merge commit の差として求める。競合なしに自動 merge されたファイルは PR の変更に数えない。除外はファイル単位で、PR と base の両方が変えたファイルの diff には base 由来の hunk も含まれる。
 
 ## 選抜の最低人数フロアを新設しない理由
 
@@ -150,7 +150,7 @@ fix diff のファイルは、起点からの差分のうち PR 自身が変え�
 
 {previous_blocking_findings}
 
-2. **fix diff のフルレビュー**: レビュー対象ファイル一覧のファイルの `{cycle_base_sha}..HEAD` の差分は**通常のフルレビューと同じ深さと厳しさ**で審査する。起点の後に取り込んだ base ブランチ由来の変更は対象外で、一覧のファイルの diff に base 由来の hunk が混ざっていても審査しない。差分スコープはレビュー対象の**範囲**を絞るものであって、範囲内の**基準**を緩めるものではない。指摘の採否基準（4 必須自問・Confidence・Observed Likelihood・実測アンカー）は cycle 1 と完全に同一。
+2. **fix diff のフルレビュー**: レビュー対象ファイル一覧のファイルの `{cycle_base_sha}..HEAD` の差分は**通常のフルレビューと同じ深さと厳しさ**で審査する。起点の後に取り込んだ base ブランチ由来の変更は対象外とする。一覧のファイルの diff に base 由来の hunk が混ざることがあるので、PR 自身の hunk は `git log --first-parent --no-merges -p {cycle_base_sha}..HEAD -- <file>` と、起点の後の first-parent 上の merge（`git rev-list --first-parent --merges {cycle_base_sha}..HEAD`）の `git show --remerge-diff <merge> -- <file>` に現れるものとして判別する。どちらにも現れない hunk は base 由来として審査しない。判別できない hunk は審査対象に含める。差分スコープはレビュー対象の**範囲**を絞るものであって、範囲内の**基準**を緩めるものではない。指摘の採否基準（4 必須自問・Confidence・Observed Likelihood・実測アンカー）は cycle 1 と完全に同一。
 
 3. **Cross-File Impact Check は縮小しない**: fix が触った symbol（関数・変数・設定キー・sentinel・marker 名）の波及は、差分の**外**にあるファイルも含めて grep で確認する。呼び出し側の未更新・契約の非対称・二重定義の片側だけ更新、はこの検査でしか捕まらない。
 
