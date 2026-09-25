@@ -360,9 +360,11 @@ scan_diff() {
       else if (in_hunk && !rm_skip && /^-/) removed[substr($0, 2)]++
       next
     }
-    /^diff --git / { skip = 0; path = ""; next }
-    /^Binary files / { skip = 1; next }
-    /^\+\+\+ / {
+    # ヘッダ区間（diff --git から最初の @@ まで）だけで +++ をファイルヘッダとして読む。
+    # hunk の中では内容が "++ " で始まる追加行も diff 上は "+++ " になるため内容行として扱う
+    /^diff --git / { skip = 0; path = ""; in_hunk2 = 0; next }
+    !in_hunk2 && /^Binary files / { skip = 1; next }
+    !in_hunk2 && /^\+\+\+ / {
       rest = substr($0, 5)
       rest = unquote(rest)
       if (rest == "/dev/null") { skip = 1; path = ""; next }
@@ -372,13 +374,14 @@ scan_diff() {
       next
     }
     /^@@ / {
+      in_hunk2 = 1
       if (match($0, /\+[0-9]+/)) line = substr($0, RSTART + 1, RLENGTH - 1) + 0
       else line = 0
       next
     }
     skip { next }
     path == "" { next }
-    /^\+/ && !/^\+\+\+/ {
+    /^\+/ {
       content = substr($0, 2)
       if (index(content, "drift-check-ignore") == 0 && has_hit(content)) {
         if (removed[content] > 0) removed[content]--

@@ -242,6 +242,20 @@ printf 'other intro\n-- see (#2106)\n' > "$mv_dir/dash-dst.md"
 commit_all "$sb" dash-move
 rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
 assert "T-01(e7) a moved line starting with -- is not a hit" "0" "$rc"
+
+# an added line whose content starts with "++ " is content, not a file header
+printf 'intro\n' > "$mv_dir/plus.md"
+commit_all "$sb" plus-base
+printf 'intro\n++ plus ref (#2107)\ntrailing ref (#2108)\n' > "$mv_dir/plus.md"
+commit_all "$sb" plus-add
+rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 1 ] \
+   && printf '%s\n' "$out" | grep -qxF 'plugins/rite/references/plus.md:2: ++ plus ref (#2107)' \
+   && printf '%s\n' "$out" | grep -qxF 'plugins/rite/references/plus.md:3: trailing ref (#2108)'; then
+  pass "T-01(e8) a line starting with ++ is scanned and later lines keep their path"
+else
+  fail "T-01(e8) expected plus.md:2 and plus.md:3 hits, got rc=$rc: $out"
+fi
 git -C "$sb" rm -q -r plugins/rite/references
 commit_all "$sb" move-cleanup
 
