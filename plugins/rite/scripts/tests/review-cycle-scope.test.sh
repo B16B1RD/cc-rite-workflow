@@ -15,6 +15,7 @@ TARGET="$SCRIPT_DIR/../review-cycle-scope.sh"
 TEST_DIR="$(mktemp -d)"
 PASS=0
 FAIL=0
+SKIP=0
 
 cleanup() { rm -rf "$TEST_DIR"; }
 trap cleanup EXIT
@@ -24,6 +25,8 @@ mkdir -p "$TMPDIR"
 
 pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
+# run-all.sh は ⏭️ の数と集計行 SKIP: N の一致を検査するので、skip は必ずこれを通す
+skip() { SKIP=$((SKIP + 1)); echo "  ⏭️  $1"; }
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "ERROR: jq is required but not installed" >&2
@@ -418,7 +421,7 @@ echo "=== TC-21: 探索段の IO エラーは no_prev_json に落とさず loud 
 # 読めない results dir が「JSON が無い (= cycle 1)」と誤認されると、探索に失敗しただけの状態が
 # 6 reason 中で唯一 WARNING も FALLBACK marker も出さない no_prev_json へ silent に落ちる。
 if [ "$(id -u)" -eq 0 ]; then
-  echo "  ⏭️  TC-21: root では chmod 000 が効かず find がエラーを出さないため skip"
+  skip "TC-21: root では chmod 000 が効かず find がエラーを出さないため skip"
 else
   IOERR="$TEST_DIR/results-ioerr"
   mkdir -p "$IOERR"
@@ -508,7 +511,7 @@ assert_not_contains "TC-24.3: incremental を出さない" "$SCOPE_STDERR" "REVI
 
 # (c) pin が存在するが読めない → 不在と区別して広い側へ倒す（狭い側へ倒さない）
 if [ "$(id -u)" -eq 0 ]; then
-  echo "  ⏭️  TC-24.4: root では chmod 000 が効かないため skip"
+  skip "TC-24.4: root では chmod 000 が効かないため skip"
 else
   chmod 000 "$PRODROOT/.rite/state/review-run-since-42.txt"
   SCOPE_STDERR=$(cd "$PRODROOT" && bash "$TARGET" --pr 42 2>&1) || true
@@ -597,7 +600,7 @@ else
   echo "     実際:   '$actual_files'"
 fi
 # 大文字と小文字のパスが混ざっても、照合順の違うロケールで積を取りこぼさない
-if locale -a 2>/dev/null | grep -qix 'en_US.utf8'; then
+if locale -a 2>/dev/null | grep -qiE '^en_US\.utf-?8$'; then
   SCOPE_STDERR=$(LC_ALL=en_US.UTF-8 bash "$TARGET" --pr 42 --results-dir "$MRESULTS" 2>&1) || true
   actual_files=$(LC_ALL=C sort "$scope_list" 2>/dev/null | paste -sd, -)
   if [ "$actual_files" = "$expected_files" ]; then
@@ -608,7 +611,7 @@ if locale -a 2>/dev/null | grep -qix 'en_US.utf8'; then
     echo "     実際:   '$actual_files'"
   fi
 else
-  echo "  ⏭️  TC-25.3b: en_US.UTF-8 ロケールが無いため skip"
+  skip "TC-25.3b: en_US.UTF-8 ロケールが無いため skip"
 fi
 
 # base の取り込みだけの差分は PR の変更が無い。差分スコープの対象が無いので full へ倒す。
@@ -687,4 +690,5 @@ else
 fi
 
 echo "=== 結果: PASS=$PASS FAIL=$FAIL ==="
+if [ "$SKIP" -gt 0 ]; then echo "SKIP: $SKIP"; fi
 [ "$FAIL" -eq 0 ] || exit 1
