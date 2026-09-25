@@ -32,12 +32,13 @@
 #     自前で正規化しない)。
 #   - 記録なし: stdout 空・rc=0・`[CONTEXT] NONBLOCKING_RECORD_BODY=absent; pr=N`。
 #     記録あり: rc=0・`[CONTEXT] NONBLOCKING_RECORD_BODY=found; pr=N; comment_id=<id>`。
-#     解決・取得の失敗: rc=1・stdout 空・`[CONTEXT] NONBLOCKING_RECORD_BODY=failed; pr=N; reason=<...>`。
+#     解決・取得の失敗: rc=1 (signal 中断は 128+n)・stdout 空・`[CONTEXT] NONBLOCKING_RECORD_BODY=failed; pr=N; reason=<...>`。
 #     reason 語彙: related_issue_unresolved (closing keyword も issue-N branch も無い。決定的) /
-#       pr_view_failed / resolve_failed (関連 Issue を解決できず理由も取れない) / own_login_unavailable /
+#       pr_view_failed / own_login_unavailable /
 #       lookup_failed / body_fetch_failed / conflicting_options / signal_aborted。
 #     引数 gate (unknown_option / pr_number_placeholder_residue / owner_repo_placeholder_residue) も
-#     同じ `NONBLOCKING_RECORD_BODY=failed; pr=<渡された値>; reason=<gate>` を出して rc=1 で終わる。
+#     同じ `NONBLOCKING_RECORD_BODY=failed; pr=<解析済みの値 (未知のオプションが --pr より前なら空)>; reason=<gate>`
+#     を出して rc=1 で終わる。
 #   - --count / --iteration-id / --content-file は受けない (渡すと conflicting_options)。
 #     terminal sentinel (NONBLOCKING_RECORD_DONE) と NONBLOCKING_RECORD_FAILED を出さず、pending marker
 #     に触れず、PATCH / POST / Issue body の書き換えを行わない。
@@ -144,7 +145,8 @@
 #      hard fail と読まず sentinel を読んで 6.1.d step 3 / 8.0.3 へ進む)。
 # Exit codes (読み取り専用モード):
 #   0: found / absent。
-#   1: 失敗はすべて rc=1 (gh・IO の失敗も含む。読み手が空の stdout を「記録なし」と読まないため)。
+#   1: signal 中断以外の失敗 (gh・IO の失敗も含む。読み手が空の stdout を「記録なし」と読まないため)。
+#   128+n: signal 中断 (INT=130 / TERM=143 / HUP=129。reason=signal_aborted)。
 set -uo pipefail
 # shellcheck source=control-char-neutralize.sh
 source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
@@ -837,9 +839,9 @@ _print_failed() {  # $1=reason
 _print_record_body() {
   local _body=""
   if ! _resolve_record_comment; then
-    # 既定値は失敗側に置く。related_issue_unresolved は読み手が「台帳なしで続行」と読む唯一の reason のため、
-    # 理由を取り損ねたときにそこへ倒すと、解決の失敗が空台帳として通ってしまう。
-    _print_failed "${related_fail_reason:-resolve_failed}"
+    # _resolve_record_comment の rc=1 は必ず related_fail_reason を置く。空なら不変条件違反として
+    # 既定値へ倒さず止まる (related_issue_unresolved は読み手が「台帳なしで続行」と読む reason のため)。
+    _print_failed "${related_fail_reason:?_resolve_record_comment が理由を置かずに失敗しました}"
     return 1
   fi
   if [ -z "$gh_login" ]; then
