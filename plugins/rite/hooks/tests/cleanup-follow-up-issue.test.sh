@@ -82,12 +82,24 @@
 #   T-48 preview 本文を書き出せなければ起票も preview もしない
 #   T-49 SKILL 6.0.C の確認判定（batch --merge が今の Issue を処理中のときだけ確認しない）と
 #        helper 呼び出しの配線、完了報告の declined / preview 行
+#
+# Coverage (archive/ にある JSON):
+#   T-50 読み元の列挙は直下と archive/ を basename のバイト順で合わせ、同名は直下だけを返す
+#        (呼び出し元が C 以外の照合でも同秒衝突の `{ts}.json` → `{ts}~{hex}.json` の順)
+#   T-51 archive/ にだけある JSON から転記する (no_json にしない)
+#   T-52 直下と archive/ の同名 JSON は 1 回だけ数え、除外 key を曖昧にしない
+#   T-53 最新 JSON が archive/ にあっても sweep 起票済みを除外する
+#   T-54 6.0.V の再検証も archive/ の JSON を読む
+#   T-55 マージ後に orphan 回収 → follow-up 起票 → cleanup の archive → orphan 回収の順で転記でき、
+#        archive/ の JSON を二重に退避しない
+#   T-56 C 以外の照合でも、最新 JSON は nb-sweep-collect.sh と同じ同秒衝突側 (archive/) を選ぶ
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_test-helpers.sh"
 
 TARGET="$SCRIPT_DIR/../scripts/cleanup-follow-up-issue.sh"
+PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 [ -f "$TARGET" ] || { echo "FATAL: target not found: $TARGET" >&2; exit 1; }
 
 TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/rite-fu-test-XXXXXX")
@@ -149,6 +161,8 @@ case "$cmd" in
   "api user --jq .login") echo rite-bot; exit 0 ;;
   "pr view 9 -R acme/demo --json body --jq .body") echo "Closes #42"; exit 0 ;;
   "issue view 42 -R acme/demo --json body --jq .body") exit 0 ;;
+  # pr-cycle-cleanup.sh の orphan review 回収が見る PR の状態
+  "pr view 9 -R acme/demo --json state --jq .state") echo MERGED; exit 0 ;;
   # 記録 helper が PATCH 先と決めた 1 件の GET
   "api repos/acme/demo/issues/comments/"*)
     jq --argjson id "${cmd##*/}" '[.[][] | select(.id == $id)][0]' "${GH_API_JSON:-/dev/null}"
@@ -983,11 +997,11 @@ put_json "$r" "9-20260101120000.json" "$FINDING_JSON"
 # SKILL の 6.0.V 実ブロックを実行する。state root だけ fixture に置換する。
 # ステップ 3 と 6.0 helper 呼び出しも `_state_root=$(bash` で始まるため先頭一致では
 # 6.0.V を取れない。SKILL.md の T-28 アンカーコメントを起点にする。
-awk -v root="$r" '
+awk -v root="$r" -v plugin="$PLUGIN_ROOT" '
   /cleanup-follow-up-issue.test.sh T-28/ {p=1}
   p && /^_state_root=\$\(bash / {print "_state_root=\"" root "\""; next}
   p && /^```/ {exit}
-  p {gsub(/\{pr_number\}/, "9"); print}
+  p {gsub(/\{pr_number\}/, "9"); gsub(/\{plugin_root\}/, plugin); print}
 ' "$CLEANUP_MD" > "$TMP_ROOT/reverify.sh"
 if ! grep -q 'rite-fu-reverify-union' "$TMP_ROOT/reverify.sh"; then
   fail "T-28 6.0.V 再検証ブロックを抽出できない"
@@ -1341,11 +1355,11 @@ put_json "$r" "9-20260102120000~1a2b.json" '{"non_blocking_findings":[{"id":"F-0
 put_json "$r" "9-20260102120000~ABCD.json" '{"non_blocking_findings":[{"id":"F-05","file":"a.md","line":4,"description":"p6"}]}'
 put_json "$r" "9-20260102120000~1a2b.json.corrupt-1" '{"non_blocking_findings":[{"id":"F-06","file":"a.md","line":5,"description":"p7"}]}'
 # T-28 と同じアンカーから 6.0.V の実ブロックを抽出し、state root だけ fixture に置換する
-awk -v root="$r" '
+awk -v root="$r" -v plugin="$PLUGIN_ROOT" '
   /cleanup-follow-up-issue.test.sh T-28/ {p=1}
   p && /^_state_root=\$\(bash / {print "_state_root=\"" root "\""; next}
   p && /^```/ {exit}
-  p {gsub(/\{pr_number\}/, "9"); print}
+  p {gsub(/\{pr_number\}/, "9"); gsub(/\{plugin_root\}/, plugin); print}
 ' "$CLEANUP_MD" > "$TMP_ROOT/reverify-t41.sh"
 if ! grep -q 'rite-fu-reverify-union' "$TMP_ROOT/reverify-t41.sh"; then
   fail "T-41 6.0.V 再検証ブロックを抽出できない"
@@ -1508,6 +1522,125 @@ assert_grep "T-49 起票しないを選んだら declined を出す" "$CLEANUP_M
 # 完了報告の判定表が見送りと確認未完了を持つ
 assert_grep "T-49 完了報告に declined 行（x 相当）" "$CLEANUP_MD" '^  \| `declined`（ステップ 6.0.C で「起票しない」を選んだ） \| x 相当'
 assert_grep "T-49 完了報告に preview 行（未完了）" "$CLEANUP_MD" '^  \| `preview`（確認の回答前に止まった） \| 未完了'
+
+# archive/ に JSON を置く
+put_archived() { mkdir -p "$1/.rite/review-results/archive"; printf '%s\n' "$3" > "$1/.rite/review-results/archive/$2"; }
+SOURCES_LIB="$PLUGIN_ROOT/hooks/scripts/lib/review-results-sources.sh"
+# $1=results_dir $2=suffix。呼び出し元の照合は T50_LOCALE (C 以外の照合を持つ環境ではそれ)
+list_sources() { LC_ALL="$T50_LOCALE" bash -c '. "$1"; rite_review_results_sources "$2" 9 "$3"' _ "$SOURCES_LIB" "$1" "$2"; }
+# en_US.UTF-8 の照合は `.` と `~` を第 1 段階で無視し、同秒衝突の 2 本を C と逆に並べる。
+# 無い環境では C のまま実行する (順序の assert は C でも成り立つので fail しない)
+T50_LOCALE=C
+t50_utf8=$(locale -a 2>/dev/null | grep -iE '^en_US\.utf-?8$' | head -1)
+if [ -n "$t50_utf8" ]; then T50_LOCALE="$t50_utf8"; else echo "  (en_US.UTF-8 が無いため C 照合で実行)"; fi
+
+echo "--- T-50: 読み元の列挙は直下と archive/ を basename 昇順で合わせる ---"
+r=$(new_root t50)
+put_archived "$r" "9-20260101120000.json" '{}'
+put_json "$r" "9-20260102120000.json" '{}'
+put_archived "$r" "9-20260103120000.json" '{}'
+put_json "$r" "9-20260104120000.json.corrupt-1" '{}'
+put_json "$r" "9-20260105120000.json" '{"where":"top"}'
+put_archived "$r" "9-20260105120000.json" '{"where":"archive"}'
+put_json "$r" "9-20260106120000.json" '{}'
+put_archived "$r" "9-20260106120000~1a2b.json" '{}'
+put_json "$r" "9-20260107120000.json.corrupt-1" '{}'
+put_archived "$r" "19-20260101120000.json" '{}'
+d="$r/.rite/review-results"
+t50_want=$(printf '%s\n' "$d/archive/9-20260101120000.json" "$d/9-20260102120000.json" \
+  "$d/archive/9-20260103120000.json" "$d/9-20260104120000.json.corrupt-1" "$d/9-20260105120000.json" \
+  "$d/9-20260106120000.json" "$d/archive/9-20260106120000~1a2b.json" "$d/9-20260107120000.json.corrupt-1")
+assert "T-50 basename のバイト順で合わせ、同名は直下だけ、別 PR は含めない ($T50_LOCALE)" "$t50_want" "$(list_sources "$d" '.json*')"
+t50_want_json=$(printf '%s\n' "$d/archive/9-20260101120000.json" "$d/9-20260102120000.json" \
+  "$d/archive/9-20260103120000.json" "$d/9-20260105120000.json" \
+  "$d/9-20260106120000.json" "$d/archive/9-20260106120000~1a2b.json")
+assert "T-50 .json 指定は corrupt 退避ファイルを含めない ($T50_LOCALE)" "$t50_want_json" "$(list_sources "$d" '.json')"
+assert "T-50 ディレクトリが無ければ何も返さない" "" "$(list_sources "$TMP_ROOT/absent" '.json*')"
+
+echo "--- T-51: archive/ にだけある JSON から転記する ---"
+reset_stubs
+r=$(new_root t51)
+put_archived "$r" "9-20260101120000.json" "$FINDING_JSON"
+run_target "$r"
+assert "T-51 exit 0" "0" "$RC"
+assert_grep "T-51 created" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
+assert_not_grep "T-51 no_json にしない" "$ERR" 'reason=no_json'
+assert_grep "T-51 archive の JSON を和集合に数える" "$ERR" 'union: pr=9; json_total=1; json_parsed=1; json_unparsed=0'
+assert_grep "T-51 archive の指摘を転記する" "$STUB_DIR/body.md" '実測なしの指摘本文'
+
+echo "--- T-52: 直下と archive/ の同名 JSON は 1 回だけ数える ---"
+reset_stubs
+r=$(new_root t52)
+put_json "$r" "9-20260101120000.json" "$TWO_FINDING_JSON"
+put_archived "$r" "9-20260101120000.json" "$TWO_FINDING_JSON"
+run_target "$r" --exclude-ids "9-20260101120000.json#F-05"
+assert_grep "T-52 同名は 1 本として数える" "$ERR" 'union: pr=9; json_total=1; json_parsed=1; json_unparsed=0'
+assert_not_grep "T-52 除外 key を曖昧にしない" "$ERR" 'FOLLOW_UP_EXCLUDE_AMBIGUOUS'
+assert_not_grep "T-52 除外した指摘は転記しない" "$STUB_DIR/body.md" '解消済みの指摘の本文'
+assert_grep "T-52 残った指摘は転記する" "$STUB_DIR/body.md" '残存する指摘の本文'
+
+echo "--- T-53: 最新 JSON が archive/ にあっても sweep 起票済みを除外する ---"
+reset_stubs
+r=$(new_root t53)
+put_archived "$r" "9-20260101120000.json" "$FINDING_JSON"
+jq -n --argjson c "$(comment_obj "$(record_body '| F-01 | plugins/rite/skills/cleanup/SKILL.md:12 | issued | #77 https://example.test/issues/77 |')")" '[[$c]]' > "$GH_API_JSON"
+run_target "$r"
+assert_grep "T-53 all_issued" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=all_issued; pr=9'
+assert_not_grep "T-53 最新 JSON を見失わない" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable'
+assert "T-53 create 0 回" "0" "$(create_count)"
+
+echo "--- T-54: 6.0.V の再検証も archive/ の JSON を読む ---"
+reset_stubs
+r=$(new_root t54)
+put_archived "$r" "9-20260101120000.json" "$FINDING_JSON"
+awk -v root="$r" -v plugin="$PLUGIN_ROOT" '
+  /cleanup-follow-up-issue.test.sh T-28/ {p=1}
+  p && /^_state_root=\$\(bash / {print "_state_root=\"" root "\""; next}
+  p && /^```/ {exit}
+  p {gsub(/\{pr_number\}/, "9"); gsub(/\{plugin_root\}/, plugin); print}
+' "$CLEANUP_MD" > "$TMP_ROOT/reverify-t54.sh"
+bash "$TMP_ROOT/reverify-t54.sh" > "$OUT" 2> "$ERR"; RC=$?
+assert "T-54 exit 0" "0" "$RC"
+assert_not_grep "T-54 no_json にしない" "$OUT" 'reason=no_json'
+assert "T-54 archive の指摘に key を付ける" "9-20260101120000.json#F-01" "$(jq -r '.key' "$OUT")"
+
+echo "--- T-55: マージ後・cleanup 前の orphan 回収を挟んでも転記できる ---"
+reset_stubs
+r=$(new_root t55)
+git -C "$r" init --quiet
+git -C "$r" -c user.email=t@example.test -c user.name=t commit --quiet --allow-empty -m init
+git -C "$r" remote add origin git@github.com:acme/demo.git
+put_json "$r" "9-20260101120000.json" "$FINDING_JSON"
+cp "$r/.rite/review-results/9-20260101120000.json" "$TMP_ROOT/t55-original.json"
+# $1=出力先。回収は TMPDIR 配下の古い rite-* ディレクトリも掃除するため、テスト専用の TMPDIR で実行する
+mkdir -p "$TMP_ROOT/t55-tmp"
+t55_gc() { (cd "$r" && TMPDIR="$TMP_ROOT/t55-tmp" PATH="$TMP_ROOT/bin:$PATH" bash "$PLUGIN_ROOT/hooks/scripts/pr-cycle-cleanup.sh") > "$1" 2>&1; }
+t55_gc "$TMP_ROOT/t55-gc1.out"
+assert_grep "T-55 マージ済み PR の JSON は orphan 回収で archive/ へ移る" "$TMP_ROOT/t55-gc1.out" 'orphan_reviews_archived=1'
+assert "T-55 直下には残らない" "no" "$([ -e "$r/.rite/review-results/9-20260101120000.json" ] && echo yes || echo no)"
+run_target "$r"
+assert_grep "T-55 cleanup の follow-up 起票は archive/ の JSON から転記する" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
+bash "$PLUGIN_ROOT/hooks/scripts/cleanup-pr-state-purge.sh" --pr 9 --state-root "$r" > "$TMP_ROOT/t55-purge.out" 2>&1
+assert_not_grep "T-55 cleanup の archive は失敗しない" "$TMP_ROOT/t55-purge.out" 'REVIEW_CLEANUP_PARTIAL_FAILURE'
+if cmp -s "$TMP_ROOT/t55-original.json" "$r/.rite/review-results/archive/9-20260101120000.json"; then
+  pass "T-55 archive/ の JSON は二重に退避されず元の内容のまま"
+else
+  fail "T-55 archive/ の JSON が変わった / 消えた"
+fi
+assert "T-55 archive/ の JSON は 1 本" "1" "$(find "$r/.rite/review-results/archive" -type f -name '9-*' | wc -l | tr -d ' ')"
+t55_gc "$TMP_ROOT/t55-gc2.out"
+assert_grep "T-55 2 回目の orphan 回収は何も移さない" "$TMP_ROOT/t55-gc2.out" 'orphan_reviews_archived=0'
+
+echo "--- T-56: C 以外の照合でも最新 JSON は同秒衝突側を選ぶ ---"
+reset_stubs
+r=$(new_root t56)
+# 直下に古い cycle、archive/ に同秒衝突の新しい側。sweep (nb-sweep-collect.sh は LC_ALL=C) が読むのは ~1a2b
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[]}'
+put_archived "$r" "9-20260101120000~1a2b.json" "$FINDING_JSON"
+jq -n --argjson c "$(comment_obj "$(record_body '| F-01 | plugins/rite/skills/cleanup/SKILL.md:12 | issued | #77 https://example.test/issues/77 |')")" '[[$c]]' > "$GH_API_JSON"
+LC_ALL="$T50_LOCALE" run_target "$r"
+assert_grep "T-56 sweep 起票済みを除外して all_issued ($T50_LOCALE)" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=all_issued; pr=9'
+assert "T-56 create 0 回" "0" "$(create_count)"
 
 echo "--- T-arg: 引数 gate ---"
 bash "$TARGET" --pr abc --state-root "$TMP_ROOT" --owner a --repo b >"$OUT" 2>"$ERR"; RC=$?
