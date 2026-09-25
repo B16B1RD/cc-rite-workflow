@@ -2205,6 +2205,7 @@ rationale: references/design-rationale.md#class-demotion-policy
 - **`exclusion` キーを書くなら非空文字列**。空文字や非文字列は helper が判定不能 = class A に倒す。キーごと欠落は除外しない (従来どおり降格対象)
 - **不確実な場合は class B へ倒す** (攻め側既定 — 保守既定は判定者の萎縮で現状維持に退化する。誤降格は record で可視、最終防衛線は人間のマージ判断)。ただし既存記述の削除/弱体化が観測できるなら `exclusion` を省略してはならない
 - **ファイルパスで機械分類しない** — テストへの指摘でも「clean fixture のため本番バグを検出できない」類は実行時帰結を持つ class A である
+- **手順書・仕様書の散文への指摘でも、記述に字義どおり従う実行者が誤動作に至ることを、記述された手順の実行で観測した指摘（authoring 層の挙動的帰結クラス。`Verification:` 付き）は class A** — 手順書に従って動く成果物の実行時挙動が変わるので、文書だけの PR でも実行時シナリオを書ける。判別は `Verification:` の観測対象で行う: `=>` の左辺が記述された手順、または仕様書が記述する実装の実行で、右辺がその誤動作の出力なら該当する（[_reviewer-base.md §手順書・仕様書ドメイン Finding Gate](../../agents/_reviewer-base.md#prose-domain-finding-gate) の例 3 を含む）。左辺が grep / diff / git show で文書のテキストを並べるだけなら該当しない。class B の「文書整合」は、文書のテキスト差分だけを観測した字面整合クラスを指す
 - **`scenario` (判定文) は 1 行で書き、raw `|` (パイプ) と改行を含めない** (パイプを含む表記は `¦` U+00A6 で代替)。判定文は helper が `demotion.reason` へそのまま写し、5.4 の `### 実測なし指摘 (non-blocking)` section の `内容` セル先頭と 6.1.d 記録コメントの降格理由列へ verbatim で差し込まれる — raw パイプは `/rite:fix` ステップ 1.2.1 の 6 列パースを列ズレさせる (`_reviewer-base.md` の `内容` 列規約と同じ理由)
 - 分類は本 consolidation コンテキストが行う (finding を発行した reviewer の自己申告は入力にしない)
 - **`category == "number_reference"` は class A 固定** — Number-reference `--diff` 節の「ゲート後も findings[] に残す」を拘束する。class B に倒さない。helper も map にかかわらずこの固定を強制する
