@@ -393,6 +393,52 @@ if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
 else
   fail "review allow rc=$GRC out=$GOUT"
 fi
+# branch.base read from rite-config.yml with a trailing comment
+cp "$repo/rite-config.yml" "$ROOT/cfg.bak"
+printf '%s\n' 'branch:' "  base: \"$review_base\"    # base branch" >> "$repo/rite-config.yml"
+run_gate --mode review --worktree "$repo" --flow-state "$flow" --memory "$mem"
+if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
+  pass "review reads branch.base with a trailing comment"
+else
+  fail "commented base rc=$GRC out=$GOUT"
+fi
+cp "$ROOT/cfg.bak" "$repo/rite-config.yml"
+printf '%s\n' 'branch:' '  base: "no-such-base-ref"    # base branch' >> "$repo/rite-config.yml"
+run_gate --mode review --worktree "$repo" --flow-state "$flow" --memory "$mem"
+if [ "$GRC" -eq 1 ] && grep -q 'reason=base_diff_unreadable' <<<"$GOUT" \
+   && grep -qF 'ERROR: git diff no-such-base-ref...HEAD' "$ROOT/gate.err" \
+   && grep -q 'unknown revision' "$ROOT/gate.err"; then
+  pass "review denies an unreadable base diff instead of matching an empty diff"
+else
+  fail "unreadable base rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
+fi
+# with the same unreadable base, a review whose pages are all out and a commit do not deny
+write_mem "$mem" "$(applied_page '対象の識別子を照合してから実行する。' README 'printf ok' | sed 's/^decision: applied/decision: out/')"
+run_gate --mode review --worktree "$repo" --flow-state "$flow" --memory "$mem"
+if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
+  pass "review without applied pages ignores an unreadable base diff"
+else
+  fail "out-only review rc=$GRC out=$GOUT"
+fi
+write_mem "$mem" "$(applied_page '対象の識別子を照合してから実行する。' README 'printf ok')"
+run_gate --mode commit --worktree "$repo" --flow-state "$flow" --memory "$mem"
+if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
+  pass "commit ignores an unreadable base diff"
+else
+  fail "commit unreadable base rc=$GRC out=$GOUT"
+fi
+cp "$ROOT/cfg.bak" "$repo/rite-config.yml"
+# a failing textconv driver must not break the evidence diff (textconv is not used)
+printf '%s\n' 'README diff=broken' > "$repo/.git/info/attributes"
+git -C "$repo" config diff.broken.textconv false
+run_gate --mode review --worktree "$repo" --base "$review_base" --flow-state "$flow" --memory "$mem"
+git -C "$repo" config --unset diff.broken.textconv
+rm -f "$repo/.git/info/attributes"
+if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
+  pass "review evidence diff ignores a failing textconv driver"
+else
+  fail "textconv review rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
+fi
 
 # A review resumed from another session reads the record written by the session
 # that implemented or fixed. Review does not authorize a commit, so it does not

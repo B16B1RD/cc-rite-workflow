@@ -120,7 +120,7 @@ if [ -n "$WORKTREE" ]; then
 fi
 if [ -z "$BASE" ] && [ -n "$CFG" ]; then
   BASE=$(awk '/^branch:/{f=1;next} f&&/^[^ ]/{exit} f&&/base:/{print;exit}' "$CFG" \
-    | sed 's/.*base:[[:space:]]*//' | tr -d '[:space:]"'"'"'') || BASE=""
+    | sed 's/[[:space:]]#.*//' | sed 's/.*base:[[:space:]]*//' | tr -d '[:space:]"'"'"'') || BASE=""
 fi
 [ -n "$BASE" ] || BASE="develop"
 
@@ -154,8 +154,15 @@ case "$auto_query" in
 esac
 
 STAGED=$(git -C "$WORKTREE" diff --cached --name-only 2>/dev/null || true)
-DIFF_NAMES=$(git -C "$WORKTREE" diff --name-only "${BASE}...HEAD" 2>/dev/null || true)
-DIFF_TEXT=$(git -C "$WORKTREE" diff "${BASE}...HEAD" 2>/dev/null || true)
+# review は applied の evidence をこの差分と照合する。取得に失敗した空の差分で照合すると
+# 正しい evidence も evidence_mismatch になるため、照合が要るときに理由を分けて拒否する
+# 失敗時の git の出力は元の実行から保持する（再実行では失敗した側を再現できない）。
+# 外部 diff と textconv は固定し、ユーザーの diff 設定で照合対象の本文を変えない
+DIFF_OK=1
+DIFF_ERRF=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-apply-gate-XXXXXX") || _deny "tmp_unavailable"
+trap 'rm -f "$DIFF_ERRF"' EXIT
+DIFF_NAMES=$(git -C "$WORKTREE" diff --no-ext-diff --no-textconv --name-only "${BASE}...HEAD" 2>>"$DIFF_ERRF") || DIFF_OK=0
+DIFF_TEXT=$(git -C "$WORKTREE" diff --no-ext-diff --no-textconv "${BASE}...HEAD" 2>>"$DIFF_ERRF") || DIFF_OK=0
 
 reason=$(
   WIKI_APPLY_FLOW="$FLOW" \
@@ -167,6 +174,7 @@ reason=$(
   WIKI_APPLY_STAGED="$STAGED" \
   WIKI_APPLY_DIFF_NAMES="$DIFF_NAMES" \
   WIKI_APPLY_DIFF_TEXT="$DIFF_TEXT" \
+  WIKI_APPLY_DIFF_OK="$DIFF_OK" \
   python3 - <<'PY'
 import json, os, re, subprocess, sys
 
@@ -331,6 +339,8 @@ if status == "ok":
                 fail("evidence_missing")
             if blank(page.get("result")):
                 fail("result_missing")
+            if mode == "review" and os.environ.get("WIKI_APPLY_DIFF_OK") != "1":
+                fail("base_diff_unreadable")
             if mode == "review" and evidence not in names and evidence not in diff_text:
                 fail("evidence_mismatch")
 print("allow")
@@ -339,5 +349,10 @@ PY
 case "$reason" in
   allow) _allow ;;
   "") _deny "record_corrupt" ;;
+  base_diff_unreadable)
+    # どの base で差分を取れなかったかを利用者に見せる（base の読み違いを原因まで辿れるように）
+    echo "ERROR: git diff ${BASE}...HEAD に失敗しました: $(cat "$DIFF_ERRF")" >&2
+    _deny "$reason"
+    ;;
   *) _deny "$reason" ;;
 esac
