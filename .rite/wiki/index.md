@@ -355,7 +355,7 @@ okf_version: "0.2"
 | [レビュアーの結論が正面から割れたら、勝敗を決める前に語の多義性を疑う](pages/heuristics/reviewer-verdict-split-signals-term-ambiguity.md) | heuristics | `/rite:pr-review` の cross-validation で 2 レビュアーが同一箇所に対して逆の総合評価（修正必要 / マージ可）を出したとき、討論フェーズの既定の動きは「どちらの主張が正しいか」を決めることになりがちだが、**割れたこと自体が本文の曖昧性の兆候**であることが多い。 | 2026-08-02T11:59:42+09:00 | medium |
 | [穴を塞ぐ構文置換は、新しい構文が実行環境固有の制約に触れないかを検出器のローカル実行で確かめる](pages/heuristics/syntax-swap-must-clear-host-environment-constraints.md) | heuristics | 複数の指摘を 1 つの構文置換で同時に閉じられるとき、その置換は正しい判断であることが多い。 | 2026-08-02T22:05:00+09:00 | high |
 | [散文で機械的述語を定義したら、字義どおりの実装を実データ全件へ当ててから書く](pages/heuristics/prose-predicate-must-be-run-against-full-real-data.md) | heuristics | 散文が実行契約であるリポジトリでは、手順書に書く「対象行の同定述語」「値の抽出規則」はコードと同じ厳密さを要求される。 | 2026-08-02T22:05:00+09:00 | high |
-| [pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する](pages/patterns/pin-literal-uniqueness-verified-by-mutation.md) | patterns | 散文の実行契約を守る静的 assert（pin）は、**張っただけでは守れていない**。 | 2026-09-25T10:29:43Z | high |
+| [pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する](pages/patterns/pin-literal-uniqueness-verified-by-mutation.md) | patterns | 散文の実行契約を守る静的 assert（pin）は、**張っただけでは守れていない**。 | 2026-09-25T11:08:57Z | high |
 | [配布テンプレートへの内部参照流入は 1 箇所直しても閉じない — 同一配布単位の sibling を base 件数と比較する](pages/anti-patterns/internal-reference-leaks-into-distributed-template.md) | anti-patterns | `templates/` 配下のように **ユーザープロジェクトへ展開される成果物** は、開発リポジトリの内部とは別の名前空間に着地する。 | 2026-09-10T03:26:20Z | high |
 | [同一欠陥に対し reviewer の scope が割れたらユーザー判断へエスカレートする — follow-up は current-pr と同義ではない](pages/heuristics/reviewer-scope-split-escalates-to-user.md) | heuristics | 複数の reviewer が **独立に同じ欠陥へ到達しながら、処置の scope が割れる**ことがある。 | 2026-08-03T23:41:26+09:00 | high |
 | [記録義務を規約に書く前に、その記録先を読む consumer が実在するかを grep で確かめる](pages/patterns/obligation-requires-existing-consumer-before-writing.md) | patterns | 「条件 X に当たる指摘は filter する。 | 2026-08-03T00:55:00+09:00 | high |
@@ -539,5 +539,5 @@ okf_version: "0.2"
 
 - 総ページ数: 525
 - ドメイン別: patterns=124, heuristics=234, anti-patterns=167
-- 最終更新: 2026-09-25T10:29:43Z
+- 最終更新: 2026-09-25T11:08:57Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |

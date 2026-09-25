@@ -35,9 +35,11 @@ sources:
     resource: "raw/reviews/20260925T095339Z-pr-3078.md"
   - type: "reviews"
     resource: "raw/reviews/20260925T102510Z-pr-3081.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260925T110204Z-pr-3084.md"
 tags: ["pin", "mutation-testing", "static-assert", "producer-consumer-symmetry", "drift-detection"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5[1m]", at: "2026-09-25T10:29:43Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5[1m]", at: "2026-09-25T11:08:57Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5"
     at: "2026-08-30T05:20:00Z"
@@ -227,6 +229,13 @@ negative assert は静かに通る。`[[:space:]]` を使う。
 - 判定句は「規則文より後ろで最初に現れる判定語」、主語は「限定句より前で最後に現れる判定語」のように、**規則文からの相対位置**で読む
 - 複数箇所の一致を固定するときは、各箇所で判定語を反転する変異をそれぞれ注入して、どの箇所でも赤くなるかを実測する
 
+### 位置で判定語を読む pin は、同じ語を含む句が同じ行に足されると崩れる
+
+上の「規則文からの相対位置で読む」pin を入れた直後、同じ行に「不確実を理由に class B へ倒さない」という但し書きを足した。「限定句より前で最後の判定語」を主語とみなす pin は、この但し書きの `class B` を主語と取り違え、限定を class A 側の行末へ移す変異も、主語「class B の」を消す変異も緑のまま通した。
+
+- 判定語を取る前に、同じ判定語を含む既知の句（但し書き等）を文字列として除く。除く句そのものの存在は別の assert で固定しておけば、句の文言が変わったときは先にそちらが赤くなり、除去の空振りで素通りする経路は残らない
+- pin の設計と、pin が読む行への文言追加を同じ変更で行うときは、追加後の本文の上で変異実験をやり直す。pin を書いた時点の前提（その行に判定語は 1 つ）は追加で崩れる
+
 ## 関連ページ
 
 - [assert_not_grep は「対象が fixture に存在する」ことを前提にしないと恒真になる — positive control を対で置く](../anti-patterns/assert-not-grep-vacuous-without-fixture-scope.md)
@@ -249,3 +258,4 @@ negative assert は静かに通る。`[[:space:]]` を使う。
 - [行順 assert の探索パターンが別の行にも当たり案内の削除を見逃した](../../raw/reviews/20260914T083015Z-pr-2808.md)
 - [レビュー結果（同じ文字列を持つ 2 行の片方を消す変異が生存）](../../raw/reviews/20260925T095339Z-pr-3078.md)
 - [レビュー結果（複数箇所の規則一致の pin が判定句の反転を検出しない）](../../raw/reviews/20260925T102510Z-pr-3081.md)
+- [レビュー結果（但し書きの判定語を主語と取り違える位置 pin）](../../raw/reviews/20260925T110204Z-pr-3084.md)
