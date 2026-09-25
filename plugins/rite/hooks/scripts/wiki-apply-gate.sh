@@ -153,16 +153,23 @@ case "$auto_query" in
   *) auto_query="" ;;
 esac
 
-STAGED=$(git -C "$WORKTREE" diff --cached --name-only 2>/dev/null || true)
+# 差分と staged の一覧はファイルで python へ渡す。環境変数に載せると 1 つの値の長さ上限を
+# 超えた大きな差分で python の起動自体が失敗し、判定行を出さずに終わる
+DIFF_DIR=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-apply-gate-XXXXXX") || _deny "tmp_unavailable"
+trap 'rm -rf "$DIFF_DIR"' EXIT
+DIFF_ERRF="$DIFF_DIR/err"
+# staged の一覧を取れないまま空として続けると paths と blob の照合が黙って外れるため拒否する
+if ! git -C "$WORKTREE" diff --cached --name-only >"$DIFF_DIR/staged" 2>>"$DIFF_DIR/err"; then
+  echo "ERROR: staged の一覧を取得できません: $(cat "$DIFF_DIR/err")" >&2
+  _deny "staged_unreadable"
+fi
 # review は applied の evidence をこの差分と照合する。取得に失敗した空の差分で照合すると
 # 正しい evidence も evidence_mismatch になるため、照合が要るときに理由を分けて拒否する
 # 失敗時の git の出力は元の実行から保持する（再実行では失敗した側を再現できない）。
 # 外部 diff と textconv は固定し、ユーザーの diff 設定で照合対象の本文を変えない
 DIFF_OK=1
-DIFF_ERRF=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-apply-gate-XXXXXX") || _deny "tmp_unavailable"
-trap 'rm -f "$DIFF_ERRF"' EXIT
-DIFF_NAMES=$(git -C "$WORKTREE" diff --no-ext-diff --no-textconv --name-only "${BASE}...HEAD" 2>>"$DIFF_ERRF") || DIFF_OK=0
-DIFF_TEXT=$(git -C "$WORKTREE" diff --no-ext-diff --no-textconv "${BASE}...HEAD" 2>>"$DIFF_ERRF") || DIFF_OK=0
+git -C "$WORKTREE" diff --no-ext-diff --no-textconv --name-only "${BASE}...HEAD" >"$DIFF_DIR/names" 2>>"$DIFF_ERRF" || DIFF_OK=0
+git -C "$WORKTREE" diff --no-ext-diff --no-textconv "${BASE}...HEAD" >"$DIFF_DIR/text" 2>>"$DIFF_ERRF" || DIFF_OK=0
 
 reason=$(
   WIKI_APPLY_FLOW="$FLOW" \
@@ -171,9 +178,7 @@ reason=$(
   WIKI_APPLY_WT="$WORKTREE" \
   WIKI_APPLY_ENABLED="$enabled" \
   WIKI_APPLY_AUTO="$auto_query" \
-  WIKI_APPLY_STAGED="$STAGED" \
-  WIKI_APPLY_DIFF_NAMES="$DIFF_NAMES" \
-  WIKI_APPLY_DIFF_TEXT="$DIFF_TEXT" \
+  WIKI_APPLY_DIFF_DIR="$DIFF_DIR" \
   WIKI_APPLY_DIFF_OK="$DIFF_OK" \
   python3 - <<'PY'
 import json, os, re, subprocess, sys
@@ -293,7 +298,11 @@ if not re.fullmatch(r"[0-9a-f]{40}", recorded_head):
 if recorded_head != current:
     fail("stale_head")
 recorded_paths = [p for p in (fields.get("paths") or "").split(",") if p]
-staged = [p for p in os.environ.get("WIKI_APPLY_STAGED", "").splitlines() if p]
+diff_dir = os.environ["WIKI_APPLY_DIFF_DIR"]
+def diff_file(name):
+    with open(os.path.join(diff_dir, name), encoding="utf-8", errors="surrogateescape") as f:
+        return f.read()
+staged = [p for p in diff_file("staged").splitlines() if p]
 staged_set = set(staged)
 for path in recorded_paths:
     parts = path.split("/")
@@ -313,8 +322,8 @@ for path in staged:
 if status == "ok":
     if not pages:
         fail("pages_missing")
-    names = set(p for p in os.environ.get("WIKI_APPLY_DIFF_NAMES", "").splitlines() if p)
-    diff_text = os.environ.get("WIKI_APPLY_DIFF_TEXT", "")
+    names = set(p for p in diff_file("names").splitlines() if p)
+    diff_text = diff_file("text")
     for page in pages:
         if page.get("body") != "read":
             fail("body_missing")
