@@ -9,7 +9,12 @@
 # later cleanup of another PR). Reading only the top level turns that order
 # into `no_json` and the remaining findings are never transcribed.
 #
-# Output: one path per line, ordered by basename (= cycle order). The two
+# Output: one path per line, ordered by basename in byte order (LC_ALL=C,
+# = cycle order; the same order nb-sweep-collect.sh uses to pick the latest
+# JSON, where a same-second `{ts}.json` sorts before `{ts}~{hex}.json`). The
+# collation is pinned inside the function because both the glob expansion and
+# `[[ < ]]` follow the caller's locale, and en_US.UTF-8 ignores the
+# punctuation that separates those two names. The two
 # directories are merged by basename, not concatenated, so an archived cycle
 # does not sort after every top-level one. When the same basename exists in
 # both, only the top-level path is printed: the reap and the cleanup archive
@@ -25,7 +30,7 @@
 # Missing directories contribute nothing. Pure bash (no pipes), bash 3.2 safe.
 
 rite_review_results_sources() {
-  local results_dir="$1" pr="$2" suffix="$3" f
+  local LC_ALL=C results_dir="$1" pr="$2" suffix="$3" f
   local -a top=() arc=()
   # $suffix is intentionally unquoted so its `*` stays a glob.
   # shellcheck disable=SC2086
