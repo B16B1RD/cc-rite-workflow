@@ -149,7 +149,15 @@ assert "T-01(d) deleted numbered line is not a hit" "0" "$rc"
 mv_dir="$sb/plugins/rite/references"
 mkdir -p "$mv_dir"
 printf 'intro prose\nfirst ref (#2101)\nmiddle prose\nsecond ref (#2102)\nthird ref (#2103)\n' > "$mv_dir/guide.md"
+printf 'halves prose\nleft ref (#2111)\nright ref (#2112)\n' > "$mv_dir/halves.md"
 commit_all "$sb" move-base
+# 2-way split with the prose rewritten
+git -C "$sb" rm -q plugins/rite/references/halves.md
+printf 'left prose\nleft ref (#2111)\n' > "$mv_dir/left.md"
+printf 'right prose\nright ref (#2112)\n' > "$mv_dir/right.md"
+commit_all "$sb" move-halves
+rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+assert "T-01(e0) 2-way split of moved numbered lines is not a hit" "0" "$rc"
 # 3-way split with every prose line rewritten; numbered lines are unchanged
 git -C "$sb" rm -q plugins/rite/references/guide.md
 mkdir -p "$mv_dir"
@@ -203,12 +211,37 @@ git -C "$sb" rm -q .rite/wiki/raw/reviews/r.md
 mkdir -p "$mv_dir"
 printf 'raw ref (#2105)\n' > "$mv_dir/from-raw.md"
 commit_all "$sb" excluded-move
+# rename detection on in the user config: the same-content rename must still be scanned
+git -C "$sb" config diff.renames true
 rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
-if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'from-raw.md:1: raw ref (#2105)'; then
-  pass "T-01(e5) a reference moved out of an excluded path is a hit"
+git -C "$sb" config --unset diff.renames
+if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q '^plugins/rite/references/from-raw.md:1: raw ref (#2105)$'; then
+  pass "T-01(e5) a reference renamed out of an excluded path is a hit under diff.renames=true"
 else
   fail "T-01(e5) expected from-raw.md hit, got rc=$rc: $out"
 fi
+
+# prefix settings in the user config must not break the excluded-path check
+for prefix_cfg in diff.mnemonicPrefix diff.noprefix; do
+  git -C "$sb" config "$prefix_cfg" true
+  rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+  git -C "$sb" config --unset "$prefix_cfg"
+  if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q '^plugins/rite/references/from-raw.md:1: raw ref (#2105)$'; then
+    pass "T-01(e6) move out of an excluded path is a hit under $prefix_cfg=true"
+  else
+    fail "T-01(e6) expected from-raw.md hit under $prefix_cfg=true, got rc=$rc: $out"
+  fi
+done
+
+# a moved line that starts with "-- " is a content line, not a file header
+printf 'intro\n-- see (#2106)\n' > "$mv_dir/dash-src.md"
+commit_all "$sb" dash-base
+git -C "$sb" rm -q plugins/rite/references/dash-src.md
+mkdir -p "$mv_dir"
+printf 'other intro\n-- see (#2106)\n' > "$mv_dir/dash-dst.md"
+commit_all "$sb" dash-move
+rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+assert "T-01(e7) a moved line starting with -- is not a hit" "0" "$rc"
 git -C "$sb" rm -q -r plugins/rite/references
 commit_all "$sb" move-cleanup
 
