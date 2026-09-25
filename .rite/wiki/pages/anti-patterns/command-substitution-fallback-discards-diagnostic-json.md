@@ -11,9 +11,11 @@ sources:
     resource: "raw/fixes/20260713T043947Z-pr-1847.md"
   - type: "reviews"
     resource: "raw/reviews/20260713T123348Z-pr-1851.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260925T133358Z-pr-3091.md"
 tags: ["bash", "command-substitution", "error-handling", "diagnostics", "sentinel"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-13T21:55:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5[1m]", at: "2026-09-25T13:39:08Z" }
 ---
 
 # `cmd=$(...) || cmd=""` は非ゼロ終了時に stdout 済みの診断 JSON を空文字列で上書きする
@@ -75,6 +77,14 @@ esac
 - **fallback が下流の check を殺していた実害の特定**: issue-close の site では、fallback が「JSON emit + exit 1」経路の JSON を破棄した結果、後続の `-z "$status_json"` check（JSON-emit 前死亡の補足用）が誤発火し、かつ stderr は空のため診断が完全喪失していた。除去により `-z` check は本来の「emit 前死亡」ケースのみに正しく限定される — fallback 除去が周辺の error handling をむしろ修復する例。
 - **誤帰属コメントも同時に修正する**: 旧コメントは「fallback が silent fall-through を防ぐ」と防御機構に誤帰属していた。実際に防ぐのは `jq '.result // "failed"'` と `failed|*)` catch-all であり、コメントの誤った安心感は将来の再複製源になるため文言ごと置換する。
 
+### 取得失敗を空の結果として握ると、別の拒否理由に化ける
+
+`DIFF_NAMES=$(git diff --name-only "$BASE...HEAD" 2>/dev/null || true)` のように取得失敗を空として続けると、空の差分での照合が「証跡が差分に無い」という別の拒否理由を返す。利用者は証跡の書き方を疑い、本当の原因（設定の読み違いで base が壊れていた）に辿り着けない。
+
+- 取得の成否を記録し、その結果を実際に使う判定で理由を分けて止める（全体を止めると、既定値のブランチが無い構成で無関係な経路まで止まる）。止めない側の経路もテストで固定する
+- 止めるときは失敗した値と外部コマンドのエラーを示す。エラーは元の実行の stderr を保持して出す。診断のために再実行すると、失敗した側を再現できない（名前一覧だけの再実行は成功し、全文の取得だけが失敗していた）
+- 修正の回帰テストは、直した経路だけが失敗する fixture を置いて、修正と巻き戻しを区別できるかを確かめる
+
 ## 関連ページ
 
 - [Exit code semantic preservation: caller は case で語彙を保持する](../patterns/exit-code-semantic-preservation.md)
@@ -85,3 +95,4 @@ esac
 - [rite workflow 全体で繰り返される `|| status_json=""` パターンの系統的検出](../../raw/reviews/20260713T043138Z-pr-1847.md)
 - [open.md / cleanup.md の2箇所を修正、command substitution の exit-code非依存挙動を根拠に説明](../../raw/fixes/20260713T043947Z-pr-1847.md)
 - [残存 4 箇所の一掃 — 被委譲 script 契約の実確認による除去正当性検証、issue-close の -z check 誤発火の実害特定](../../raw/reviews/20260713T123348Z-pr-1851.md)
+- [レビュー結果（差分取得の失敗が evidence_mismatch に化ける）](../../raw/reviews/20260925T133358Z-pr-3091.md)
