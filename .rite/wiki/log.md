@@ -24,6 +24,11 @@
 * **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — raw/reviews/20260925T005035Z-pr-3063.md、raw/fixes/20260925T005815Z-pr-3063.md を統合
 * **Update**: [assert_not_grep は「対象が fixture に存在する」ことを前提にしないと恒真になる — positive control を対で置く](pages/anti-patterns/assert-not-grep-vacuous-without-fixture-scope.md) — raw/reviews/20260925T010623Z-pr-3063.md を統合
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=535, broken_refs=0
+* **Create**: [同じ記録を書く側と読む側が別々の同定規則を持つ](pages/anti-patterns/writer-reader-divergent-record-identity.md) — raw/reviews/20260925T094206Z-pr-3072.md を新規ページ化
+* **Create**: [「最新」を選ぶ列挙は照合順を LC_ALL=C に固定する](pages/patterns/latest-selection-pins-byte-collation.md) — raw/reviews/20260925T094208Z-pr-3075.md を新規ページ化
+* **Update**: [jq -n create mode: 既存値を読み取ってから再構築する](pages/patterns/jq-create-mode-preserve-existing.md) — raw/reviews/20260925T094210Z-pr-3077.md を統合（リセット側でも固定キーの書き直しが別用途の記録を落とす）
+* **Update**: [pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する](pages/patterns/pin-literal-uniqueness-verified-by-mutation.md) — raw/reviews/20260925T095339Z-pr-3078.md を統合（停止する bash ブロックは実行で固定する）
+* **Skip**: [20260925T094152Z-pr-3069.md](raw/reviews/20260925T094152Z-pr-3069.md) — 必須引数の呼び出し元の洗い出しと入力検証の前置は既存の経験則で覆われ、新しい経験則がない
 
 ## 2026-09-24
 

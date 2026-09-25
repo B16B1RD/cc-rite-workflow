@@ -15,9 +15,11 @@ sources:
     resource: "raw/reviews/20260709T104501Z-pr-1812.md"
   - type: "fixes"
     resource: "raw/fixes/20260709T101456Z-pr-1812.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260925T094210Z-pr-3077.md"
 tags: ["jq", "state-file", "persistence", "flow-state"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-09T19:44:33+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5[1m]", at: "2026-09-25T09:56:20Z" }
 ---
 
 # jq -n create mode: 既存値を読み取ってから再構築する
@@ -113,6 +115,14 @@ grep -rnE 'jq -n' --include='*.sh' --include='*.md' .
 
 **教訓**: preserve whitelist に新フィールドを追加する際、既存フィールドと型が異なる（特に文字列以外への変換を伴う）場合は、その型変換の失敗経路がもたらす新しい failure surface（診断メッセージの生成方法・出力経路）を既存の同ファイル内規約と照合すること。
 
+### リセット側でも同じ: 固定キーで書き直すと別用途の記録を落とす
+
+「lifecycle を終える」リセットも、固定キーで state を組み立て直すと同じ欠陥を持つ。観測例では cleanup のリセットが lifecycle フィールドと識別子だけで state を書き直し、同じセッションが保留していた別 PR の退避記録（と、その復元の検証に使う放棄記録）を落とした。元の PR へ戻っても run・観測・counter が復元されなかった。
+
+- 残すキーを明示し、**その記録を読む側が検証に使う記録も一緒に残す**（復元が別の記録で検証されるなら、片方だけ残しても復元は失敗する）
+- 無条件に残すと、今回の対象自身の記録まで残り、別の consumer（保持判定を持つ終了処理など）の挙動が変わる。残すのは復元対象に対応するものだけに絞る
+- fixture は producer が実際に書く形に合わせる。形が違うと、その記録を読む経路をテストが通らない
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -124,3 +134,4 @@ grep -rnE 'jq -n' --include='*.sh' --include='*.md' .
 - [wm_comment_id 追加、型変換フィールドの指摘](../../raw/reviews/20260709T100928Z-pr-1812.md)
 - [mergeable 到達](../../raw/reviews/20260709T104501Z-pr-1812.md)
 - [エラーメッセージ文脈追加](../../raw/fixes/20260709T101456Z-pr-1812.md)
+- [レビュー結果（固定キーのリセットが退避 run を落とす）](../../raw/reviews/20260925T094210Z-pr-3077.md)

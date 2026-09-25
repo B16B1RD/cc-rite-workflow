@@ -31,9 +31,11 @@ sources:
     resource: "raw/reviews/20260911T120212Z-pr-2684.md"
   - type: "reviews"
     resource: "raw/reviews/20260914T083015Z-pr-2808.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260925T095339Z-pr-3078.md"
 tags: ["pin", "mutation-testing", "static-assert", "producer-consumer-symmetry", "drift-detection"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-14T08:45:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5[1m]", at: "2026-09-25T09:56:20Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5"
     at: "2026-08-30T05:20:00Z"
@@ -209,6 +211,13 @@ negative assert は静かに通る。`[[:space:]]` を使う。
 - 順序 assert は「A が B より前」という 2 点の関係なので、A と B の **それぞれ** を消す変異で赤くなるかを実測する。順序入れ替えの変異だけでは、どちらかの行が別の行へ乗り換える穴を検出しない
 - 否定側（「gh の接頭辞で出ない」）の `assert_not_grep` は、肯定側と揃えて行頭アンカーを足すと条件が緩くなる。否定 assert ではアンカーなしの方が厳しい
 
+### 停止する bash ブロックは文字列ではなく実行で固定する
+
+失敗時に `[review:error]` を出して止まる bash ブロックを `echo "[review:error]"; exit 1` の部分文字列で pin したところ、同じ文字列がブロック内の 2 つの検査行（絶対パス判定と読取確認）の両方にあった。どちらか一方の検査を消す変異は、もう一方が文字列を満たすため緑のまま生存し、読めないパスでも処理が先へ進む状態を検出しなかった。
+
+- 複数の検査が同じ停止文字列を共有するブロックは、文字列の存在ではなく**ブロックを抽出して実行し、rc と出力を assert する**（正常入力・各検査に掛かる入力をそれぞれ 1 ケース）
+- 実行による固定なら、どの検査行を消しても対応するケースが赤くなる
+
 ## 関連ページ
 
 - [assert_not_grep は「対象が fixture に存在する」ことを前提にしないと恒真になる — positive control を対で置く](../anti-patterns/assert-not-grep-vacuous-without-fixture-scope.md)
@@ -229,3 +238,4 @@ negative assert は静かに通る。`[[:space:]]` を使う。
 - [fix 結果](../../raw/fixes/20260906T135449Z-pr-2582.md)
 - [レビュー結果（部分文字列 pin と限定句の削除、真部分文字列の置換）](../../raw/reviews/20260911T120212Z-pr-2684.md)
 - [行順 assert の探索パターンが別の行にも当たり案内の削除を見逃した](../../raw/reviews/20260914T083015Z-pr-2808.md)
+- [レビュー結果（同じ文字列を持つ 2 行の片方を消す変異が生存）](../../raw/reviews/20260925T095339Z-pr-3078.md)
