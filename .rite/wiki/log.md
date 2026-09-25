@@ -40,6 +40,7 @@
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=536, broken_refs=0
 * **Update**: [`cmd=$(...) || cmd=\"\"` は非ゼロ終了時に stdout 済みの診断 JSON を空文字列で上書きする](pages/anti-patterns/command-substitution-fallback-discards-diagnostic-json.md) — raw/reviews/20260925T133358Z-pr-3091.md を統合（取得失敗は空として握らず理由を分けて止める）
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=536, broken_refs=0
+* **Update**: [git diff の出力形状を前提にしたパーサは、git の設定と変更種別で黙って空振りする](pages/anti-patterns/git-diff-parser-output-shape-assumptions.md) — raw/reviews/20260925T140903Z-pr-3095.md を統合（兄弟パーサを洗う・ヘッダ区間の状態をテストで押さえる）
 
 ## 2026-09-24
 

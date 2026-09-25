@@ -4,7 +4,7 @@ title: "git diff の出力形状を前提にしたパーサは、git の設定�
 domain: "anti-patterns"
 description: "git diff の出力形式と rename 検出は、変更パスの列挙結果を変える。対象範囲を検査する場合は引用・prefix の正規化に加え、移動元と移動先の両方を含む列挙契約が必要になる。"
 created: "2026-09-06T16:10:23Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5[1m]", at: "2026-09-25T12:47:28Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5[1m]", at: "2026-09-25T14:17:42Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260906T125803Z-pr-2582.md"
@@ -14,6 +14,8 @@ sources:
     resource: "raw/fixes/20260916T070742Z-pr-2906.md"
   - type: "reviews"
     resource: "raw/reviews/20260925T124519Z-pr-3087.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260925T140903Z-pr-3095.md"
 tags: ["git-diff", "parser", "silent-degradation", "portability"]
 confidence: high
 ---
@@ -58,6 +60,10 @@ rename 検出が有効な `--name-only` は、移動先だけを返すことが�
 - 固定した項目ごとに、その設定を入れた sandbox で結果が変わらないことをテストで確かめる（固定しただけでテストが無い項目は、後の整理で外れても気付かない）
 - 内容行の先頭が `-- ` や `++ ` だと diff 上では `--- ` / `+++ ` になる。ヘッダの判定は `diff --git` から最初の `@@` までに限り、削除側と追加側で同じガードを持たせる
 
+### 1 つのパーサを直したら、同じ diff を読む兄弟パーサを洗う
+
+ヘッダ区間を区別しない誤読は、同じ `-U0` diff を行頭の記号で読む別のスクリプトにも同じ形で残っていた。1 か所を直したら、`+++` / `---` / `diff --git` / `@@` を自前で解釈している箇所を grep で列挙し、同じガードを持つかを確かめる。ヘッダ区間の状態は、`diff --git` でのリセットと `@@` での遷移の両方をテストで押さえる（リセット漏れは複数ファイルの diff、遷移漏れは `++ ` / `-- ` で始まる内容行で検出できる）。
+
 ## 関連ページ
 
 - [変数名の字句解析に依存した prefix 導出は壊れる](../patterns/bash-variable-name-lexing-defeats-prefix-derivation-regex.md)
@@ -69,3 +75,4 @@ rename 検出が有効な `--name-only` は、移動先だけを返すことが�
 - [レビュー結果](../../raw/reviews/20260916T070028Z-pr-2906.md)
 - [修正と回帰検証](../../raw/fixes/20260916T070742Z-pr-2906.md)
 - [レビュー結果（diff の prefix 設定で除外判定が外れる移動の相殺）](../../raw/reviews/20260925T124519Z-pr-3087.md)
+- [レビュー結果（++ で始まる追加行のヘッダ誤読）](../../raw/reviews/20260925T140903Z-pr-3095.md)
