@@ -126,6 +126,13 @@ if [ "$CLOSE_MODE" = false ]; then
       trap 'rm -f "$TMP_STATE" 2>/dev/null' EXIT TERM INT
       _jq_err=$(mktemp 2>/dev/null) || _jq_err=""
       # Keep the per-session owner and schema when resetting lifecycle fields.
+      # Also keep other PRs' parked review runs (review_run_history) and, of the
+      # abandonment records, only those of a parked run (restore() in
+      # scripts/lib/review-stagnation.py validates a parked run without a frozen
+      # cycle against its record). This reset ends only the cleaned Issue:
+      # dropping the parked runs would make a parked PR come back without its
+      # run, observations and counter, while the cleaned Issue's own records
+      # would only keep session-end.sh from removing a state with nothing to restore.
       if jq \
         --argjson active false \
         --argjson issue "${ISSUE_NUMBER:-0}" \
@@ -135,7 +142,13 @@ if [ "$CLOSE_MODE" = false ]; then
         --arg next "none" \
         --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
         '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, pr_number: $pr, next_action: $next, updated_at: $ts}
-         + (if .session_id then {session_id, schema_version: (.schema_version // 3)} else {} end)' "$FLOW_STATE" \
+         + (if .session_id then {session_id, schema_version: (.schema_version // 3)} else {} end)
+         + (if ((.review_run_history // []) | length) > 0 then
+              {review_run_history}
+              + ([.review_run_history[].run_id] as $parked
+                 | [(.review_cycle_abandoned // [])[] | select(.review_context.run_id as $id | any($parked[]; . == $id))]
+                 | if length > 0 then {review_cycle_abandoned: .} else {} end)
+            else {} end)' "$FLOW_STATE" \
         > "$TMP_STATE" 2>"${_jq_err:-/dev/null}"; then
         _mv_err=$(mktemp 2>/dev/null) || _mv_err=""
         # if/else over `if !` preserves the real mv rc (EXDEV=18, EACCES=13,

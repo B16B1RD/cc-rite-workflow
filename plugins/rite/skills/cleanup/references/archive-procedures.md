@@ -655,7 +655,7 @@ Resolve `{plugin_root}` per [Plugin Path Resolution](../../../references/plugin-
 
 After the Fail-Closed Gate, run the cleanup-work-memory script. This script performs all cleanup steps in a single deterministic invocation:
 
-1. Resets flow state to `active: false` (prevents `post-tool-wm-sync.sh` from recreating files)
+1. Resets flow state to `active: false` (prevents `post-tool-wm-sync.sh` from recreating files). Other PRs' parked review runs (`review_run_history`) and the abandonment records of those runs (`review_cycle_abandoned`) are kept, so returning to such a PR can restore its run under the rules in [review-stagnation.md](../../../references/review-stagnation.md)
 2. Deletes the per-session compact-state (`.rite/sessions/{session_id}.compact-state`) and its lockdir, plus the legacy shared `.rite-compact-state` and lockdir (retained for migration)
 3. Deletes ALL `.rite/work-memory/issue-*.md` files and their lockdirs (both current Issue and stale leftovers)
 4. Reports deletion results (deleted/failed/remaining counts)
