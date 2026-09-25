@@ -762,28 +762,44 @@ else
 fi
 
 # 文書に字義どおり従う実行者の誤動作を実行で観測した指摘は class A。分類を書く 3 か所が同じ規則を持つ
-doc_follower_rule='記述に字義どおり従う実行者が誤動作に至ることを、記述された手順の実行で観測した指摘'
+doc_follower_rule='記述に字義どおり従う実行者が誤動作に至ることを、記述された手順（仕様書が記述する実装を含む）の実行で観測した指摘'
 # 判定句は規則文より後ろで最初に現れる class A / class B で見る (同じ行の既存の class A に一致させない)。
 # SKILL.md は 5.3.0.C 節の中に限る
 doc_follower_missing=""
 doc_follower_narrowing_missing=""
+doc_follower_exemption_missing=""
 for f in "$pr_review_skill" "$PLUGIN_ROOT/skills/fix/references/assessment-rules.md" "$PLUGIN_ROOT/references/severity-levels.md"; do
   if [ "$f" = "$pr_review_skill" ]; then body=$class_section; else body=$(cat "$f"); fi
   line=$(printf '%s\n' "$body" | grep -F -- "$doc_follower_rule" || true)
   rest=${line#*"$doc_follower_rule"}
   verdict=$(printf '%s\n' "$rest" | grep -oE 'class [AB]' | head -1)
-  if [ -z "$line" ] || [ "$verdict" != "class A" ]; then
-    doc_follower_missing="$doc_follower_missing $f(${verdict:-no rule})"
+  if [ -z "$line" ]; then
+    doc_follower_missing="$doc_follower_missing $f(no rule)"
+  elif [ "$verdict" != "class A" ]; then
+    doc_follower_missing="$doc_follower_missing $f(${verdict:-no verdict})"
   fi
-  # class B の「文書整合」は字面整合クラス (テキスト差分だけの観測) に限る
-  if ! printf '%s\n' "$body" | grep -F -- 'テキスト差分だけを観測' | grep -qF '字面整合クラス'; then
-    doc_follower_narrowing_missing="$doc_follower_narrowing_missing $f"
+  # 規則文の後ろに「不確実を理由に class B へ倒さない」が同じ行で続く (一般の B 倒し既定より優先する)
+  case "$rest" in
+    *'不確実を理由に class B へ倒さない'*) ;;
+    *) doc_follower_exemption_missing="$doc_follower_exemption_missing $f" ;;
+  esac
+  # class B の「文書整合」は字面整合クラス (テキスト差分だけの観測) に限る。限定句より前で最後に現れる
+  # class A / class B が class B であること (同じ行の class A 規則に限定が付け替わっても検出する)
+  nline=$(printf '%s\n' "$body" | grep -F -- 'テキスト差分だけを観測' | grep -F '字面整合クラス' | head -1)
+  subject=$(printf '%s\n' "${nline%%テキスト差分だけを観測*}" | grep -oE 'class [AB]' | tail -1)
+  if [ "$subject" != "class B" ]; then
+    doc_follower_narrowing_missing="$doc_follower_narrowing_missing $f(${subject:-no narrowing})"
   fi
 done
 if [ -z "$doc_follower_missing" ]; then
   pass "doc-follower malfunction is class A in all three classification sites"
 else
   fail "doc-follower rule is not class A:$doc_follower_missing"
+fi
+if [ -z "$doc_follower_exemption_missing" ]; then
+  pass "doc-follower rule is not demoted on uncertainty in all three sites"
+else
+  fail "uncertainty exemption missing:$doc_follower_exemption_missing"
 fi
 if [ -z "$doc_follower_narrowing_missing" ]; then
   pass "class B document consistency is narrowed to the literal-consistency class in all three sites"
