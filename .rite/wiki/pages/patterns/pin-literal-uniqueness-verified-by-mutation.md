@@ -33,9 +33,11 @@ sources:
     resource: "raw/reviews/20260914T083015Z-pr-2808.md"
   - type: "reviews"
     resource: "raw/reviews/20260925T095339Z-pr-3078.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260925T102510Z-pr-3081.md"
 tags: ["pin", "mutation-testing", "static-assert", "producer-consumer-symmetry", "drift-detection"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5[1m]", at: "2026-09-25T09:56:20Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5[1m]", at: "2026-09-25T10:29:43Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5"
     at: "2026-08-30T05:20:00Z"
@@ -218,6 +220,13 @@ negative assert は静かに通る。`[[:space:]]` を使う。
 - 複数の検査が同じ停止文字列を共有するブロックは、文字列の存在ではなく**ブロックを抽出して実行し、rc と出力を assert する**（正常入力・各検査に掛かる入力をそれぞれ 1 ケース）
 - 実行による固定なら、どの検査行を消しても対応するケースが赤くなる
 
+### 「複数の定義箇所が同じ規則を持つ」は判定語の位置まで拘束する
+
+3 つの文書が同じ分類規則を持つことを「規則文を含む行に `class A` がある」で固定したところ、2 つの文書では同じ行に既存の `class A` があり、規則の判定句を `class B` に反転させても緑のまま通った。直した後に足した限定文の pin（2 語句の同一行共起）も、限定の主語を書き換える変異で同じように生存した。
+
+- 判定句は「規則文より後ろで最初に現れる判定語」、主語は「限定句より前で最後に現れる判定語」のように、**規則文からの相対位置**で読む
+- 複数箇所の一致を固定するときは、各箇所で判定語を反転する変異をそれぞれ注入して、どの箇所でも赤くなるかを実測する
+
 ## 関連ページ
 
 - [assert_not_grep は「対象が fixture に存在する」ことを前提にしないと恒真になる — positive control を対で置く](../anti-patterns/assert-not-grep-vacuous-without-fixture-scope.md)
@@ -239,3 +248,4 @@ negative assert は静かに通る。`[[:space:]]` を使う。
 - [レビュー結果（部分文字列 pin と限定句の削除、真部分文字列の置換）](../../raw/reviews/20260911T120212Z-pr-2684.md)
 - [行順 assert の探索パターンが別の行にも当たり案内の削除を見逃した](../../raw/reviews/20260914T083015Z-pr-2808.md)
 - [レビュー結果（同じ文字列を持つ 2 行の片方を消す変異が生存）](../../raw/reviews/20260925T095339Z-pr-3078.md)
+- [レビュー結果（複数箇所の規則一致の pin が判定句の反転を検出しない）](../../raw/reviews/20260925T102510Z-pr-3081.md)
