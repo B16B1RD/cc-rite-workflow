@@ -14,10 +14,13 @@
 # T-11 a body without ledger entries keeps the no-op skip; count mismatch and uncountable ledger fail instead (the awk diagnostic surfaces with the awk: prefix above the awk-specific guidance, the pending marker is removed; an unknown _gh_err_detail label warns and falls back to the gh: prefix)
 # T-12 an existing record comment is updated in place even when the body carries a ledger
 # T-13 the record helper and nb-sweep-ledger.sh read the same ledger range (row counts agree on LF / CRLF / trailing-section bodies; extract and merge-into ignore a trailing CR, skip rows outside the section, splice before the count line; predicates pinned statically)
-# T-14 extract → merge-into is idempotent: the first pass leaves one ledger section right before the count line with one blank line on each side, and the second pass is byte-identical
-# T-15 --print-record-body: prints only the comment the write path would PATCH (CRLF → LF); no record → empty stdout + absent; resolution / lookup failures → rc=1 + reason; never writes, never emits the terminal sentinel, never touches pending markers
+# T-14 extract → merge-into is idempotent: the first pass leaves one ledger section right before the count line with one blank line on each side, and the second pass is byte-identical; extract output never ends in a blank line; an in-place extract → merge-into leaves no consecutive blank lines
+# T-15 --print-record-body: prints only the comment the write path would PATCH (CRLF → LF; durable id first); no record → empty stdout + absent; argument gates / resolution / lookup / body fetch / own login / signal failures → rc=1 + NONBLOCKING_RECORD_BODY=failed reason (pr_view_failed is never folded into related_issue_unresolved); never writes, never emits the terminal sentinel or NONBLOCKING_RECORD_FAILED, never touches pending markers
 # T-16 with two record comments, collect excludes only the ledger of the comment the helper PATCHes; the four SKILL / reference readers read through --print-record-body once per site and never prefix-match the record heading
-# T-17 6.1.d step 1.5 stops before the record helper when extract fails (REJECTED_LEDGER_PRESERVE=failed, nothing written); an unresolvable related Issue continues with no ledger
+# T-17 6.1.d step 1.5 stops before the record helper when extract fails or the PR cannot be read (REJECTED_LEDGER_PRESERVE=failed, nothing written); an unresolvable related Issue continues with no ledger
+# T-18 step 1.5 / step 3 / 8.0.3 agree on what follows REJECTED_LEDGER_PRESERVE=failed: no step 2, one re-run of step 1.5, then [review:error]; every re-run goes step 1 → step 1.5 → step 2
+# T-19 the {rejected_ledger} block run with the real helper: ok prints the rows; lookup / PR read / extract failures → REJECTED_LEDGER=failed + WARNING; an unresolvable related Issue → empty
+# T-20 nb-sweep.md step 3 run with the real helper for both the read and the write: the PATCHed body carries the PATCH target's ledger plus this sweep's rows, and never an older record's or another author's ledger
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -518,19 +521,32 @@ assert_grep "merge-mode batch still stops on reply-only" "$PLUGIN_ROOT/skills/ba
 # helper / sweep ブロックの実行中だけ PATH の先頭へ入れる。
 nbr_bin="$sandbox/nbr-bin"
 mkdir -p "$nbr_bin"
+# 失敗注入: NBR_USER_FAIL (自 login) / NBR_PR_VIEW_FAIL (PR body・headRefName) / NBR_GET_FAIL (単一コメント GET)。
+# NBR_ISSUE_BODY は関連 Issue body を返すファイル (durable id)。NBR_USER_READY を置くと自 login の取得で
+# そのファイルを作ってから NBR_USER_SLEEP 秒待つ (signal のテスト用)。
 cat > "$nbr_bin/gh" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$NBR_GH_LOG"
 case "${1:-} ${2:-}" in
-  'api user') printf 'rite-bot\n'; exit 0 ;;
+  'api user')
+    [ "${NBR_USER_FAIL:-0}" = 0 ] || exit 1
+    if [ -n "${NBR_USER_READY:-}" ]; then
+      : > "$NBR_USER_READY"
+      sleep "${NBR_USER_SLEEP:-1}"
+    fi
+    printf 'rite-bot\n'; exit 0 ;;
   'pr view')
+    [ "${NBR_PR_VIEW_FAIL:-0}" = 0 ] || exit 1
     if [ "${NBR_NO_ISSUE:-0}" = 1 ]; then
       case " $* " in *" headRefName "*) printf 'topic-branch\n' ;; *) printf 'no keyword\n' ;; esac
       exit 0
     fi
     case " $* " in *" headRefName "*) printf 'feat/issue-42-test\n' ;; *) printf 'Closes #42\n' ;; esac
     exit 0 ;;
-  'issue view'|'issue edit') exit 0 ;;
+  'issue view')
+    [ -z "${NBR_ISSUE_BODY:-}" ] || cat "$NBR_ISSUE_BODY"
+    exit 0 ;;
+  'issue edit') exit 0 ;;
   'issue comment')
     args=("$@")
     for ((i = 0; i < ${#args[@]}; i++)); do
@@ -549,6 +565,7 @@ esac
 case "${1:-} ${2:-}" in
   # 単一コメントの GET (読み取り専用モードが PATCH 先の本文を取る)
   'api repos/test/repo/issues/comments/'*)
+    [ "${NBR_GET_FAIL:-0}" = 0 ] || exit 1
     jq --argjson id "${2##*/}" '[.[][] | select(.id == $id)][0]' "$NBR_COMMENTS"
     exit 0 ;;
 esac
@@ -913,6 +930,18 @@ if cmp -s "$sandbox/t14-p1.md" "$sandbox/t14-p3.md"; then
 else
   fail "T-14 新本文への 2 cycle 目の引き継ぎで本文が変わった"
 fi
+# extract 単体: 台帳の後に空行が 2 行ある本文でも、出力は空行で終わらない
+"$LEDGER" extract --body-file "$t14_src" > "$sandbox/t14-extract.md" 2>/dev/null
+if [ -s "$sandbox/t14-extract.md" ] && [ -n "$(tail -n 1 "$sandbox/t14-extract.md")" ]; then
+  pass "T-14 extract の出力は節末尾の空行を含まない"
+else
+  fail "T-14 extract の出力が空行で終わる (または空)"
+fi
+# 同じ本文への extract → merge-into (NB sweep 手順 3 の形): 台帳の前に積もった空行も 1 行に揃う
+cp "$t14_src" "$sandbox/t14-inplace.md"
+t14_pass "$sandbox/t14-inplace.md" "$sandbox/t14-inplace.md"
+assert "T-14 同じ本文への extract → merge-into で連続する空行が無い" 0 "$(awk 'prev == "" && $0 == "" && NR > 1 { n++ } { prev = $0 } END { print n + 0 }' "$sandbox/t14-inplace.md")"
+assert "T-14 同じ本文への extract → merge-into で行 T14-1 は 1 回" 1 "$(grep -c '^| T14-1 ' "$sandbox/t14-inplace.md")"
 
 # --- T-15: --print-record-body (読み取り専用モード) ---
 t15_tmp="$sandbox/t15-tmp"
@@ -967,7 +996,83 @@ run_print --count 1
 assert "T-15 記録経路の引数との併用: rc=1" 1 "$print_rc"
 assert_grep "T-15 記録経路の引数との併用: reason" "$sandbox/print.err" 'NONBLOCKING_RECORD_BODY=failed; pr=7; reason=conflicting_options'
 assert "T-15 記録経路の引数との併用: gh を呼ばない" 0 "$(wc -l < "$NBR_GH_LOG" | tr -d ' ')"
-assert "T-15 既存の pending marker は最後まで残る" yes "$([ -e "$t15_tmp/rite-nbr-pending-x" ] && echo yes || echo no)"
+# 引数 gate も読み取り専用モードでは NONBLOCKING_RECORD_BODY=failed で返す (書き込み経路の marker を出さない)
+assert_print_gate() {  # $1=label $2=reason
+  assert "T-15 $1: rc=1" 1 "$print_rc"
+  assert "T-15 $1: stdout は空" 0 "$(wc -c < "$sandbox/print.out" | tr -d ' ')"
+  assert "T-15 $1: reason=$2 の failed marker を 1 回" 1 \
+    "$(grep -c "^\[CONTEXT\] NONBLOCKING_RECORD_BODY=failed; pr=[^;]*; reason=$2\$" "$sandbox/print.err")"
+  assert "T-15 $1: 記録失敗の marker を出さない" 0 "$(grep -c 'NONBLOCKING_RECORD_FAILED' "$sandbox/print.err")"
+  assert "T-15 $1: terminal sentinel を出さない" 0 "$(grep -c 'NONBLOCKING_RECORD_DONE' "$sandbox/print.err")"
+  assert "T-15 $1: gh を呼ばない" 0 "$(wc -l < "$NBR_GH_LOG" | tr -d ' ')"
+}
+run_print --bogus
+assert_print_gate "未知のオプション" unknown_option
+# モードは引数解析の前に決まる: 未知のオプションが --print-record-body より前にあっても同じ marker で返す
+: > "$NBR_GH_LOG"
+print_rc=0
+TMPDIR="$t15_tmp" PATH="$nbr_bin:$PATH" bash "$NBR_SH" --bogus --print-record-body --pr 7 --owner-repo test/repo \
+  > "$sandbox/print.out" 2> "$sandbox/print.err" || print_rc=$?
+assert_print_gate "--print-record-body より前の未知のオプション" unknown_option
+run_print --pr '{pr_number}'
+assert_print_gate "pr の placeholder 残留" pr_number_placeholder_residue
+assert_grep "T-15 pr の placeholder 残留: pr= は渡された値" "$sandbox/print.err" 'NONBLOCKING_RECORD_BODY=failed; pr=[{]pr_number[}]; '
+run_print --owner-repo '{owner_repo}'
+assert_print_gate "owner_repo の placeholder 残留" owner_repo_placeholder_residue
+assert "T-15 引数 gate の後も既存の pending marker は残る" yes "$([ -e "$t15_tmp/rite-nbr-pending-x" ] && echo yes || echo no)"
+
+# PR を読めない (gh 起因) は related_issue_unresolved (台帳なしで続行してよい決定的な不在) と区別する
+NBR_PR_VIEW_FAIL=1 run_print
+assert "T-15 PR を読めない: rc=1" 1 "$print_rc"
+assert "T-15 PR を読めない: stdout は空" 0 "$(wc -c < "$sandbox/print.out" | tr -d ' ')"
+assert_grep "T-15 PR を読めない: reason=pr_view_failed" "$sandbox/print.err" '^\[CONTEXT\] NONBLOCKING_RECORD_BODY=failed; pr=7; reason=pr_view_failed$'
+assert "T-15 PR を読めない: related_issue_unresolved と言わない" 0 "$(grep -c 'related_issue_unresolved' "$sandbox/print.err")"
+assert_print_readonly "PR を読めない"
+# 自 login を取れない: 書き込み経路が PATCH 先を決められないので「記録なし」と読まない
+NBR_USER_FAIL=1 run_print
+assert "T-15 自 login なし: rc=1" 1 "$print_rc"
+assert "T-15 自 login なし: stdout は空" 0 "$(wc -c < "$sandbox/print.out" | tr -d ' ')"
+assert_grep "T-15 自 login なし: reason" "$sandbox/print.err" '^\[CONTEXT\] NONBLOCKING_RECORD_BODY=failed; pr=7; reason=own_login_unavailable$'
+assert_not_grep "T-15 自 login なし: absent と言わない" "$sandbox/print.err" 'NONBLOCKING_RECORD_BODY=absent'
+assert_print_readonly "自 login なし"
+# PATCH 先は決まったが本文を取れない
+NBR_GET_FAIL=1 run_print
+assert "T-15 本文取得失敗: rc=1" 1 "$print_rc"
+assert "T-15 本文取得失敗: stdout は空" 0 "$(wc -c < "$sandbox/print.out" | tr -d ' ')"
+assert_grep "T-15 本文取得失敗: reason" "$sandbox/print.err" '^\[CONTEXT\] NONBLOCKING_RECORD_BODY=failed; pr=7; reason=body_fetch_failed$'
+assert_not_grep "T-15 本文取得失敗: absent / found と言わない" "$sandbox/print.err" 'NONBLOCKING_RECORD_BODY=(absent|found)'
+assert_print_readonly "本文取得失敗"
+# durable id: 関連 Issue body の id が古い記録 (id 21) を指すときは、書き込み経路と同じくそれを読む
+jq '[.[] | map(. + {issue_url: "https://api.github.com/repos/test/repo/issues/42"})]' "$NBR_COMMENTS" > "$NBR_COMMENTS.tmp"
+mv "$NBR_COMMENTS.tmp" "$NBR_COMMENTS"
+printf '## 概要\n\n<!-- rite:nbr:comment-id:21 -->\n' > "$sandbox/t15-issue-body.md"
+NBR_ISSUE_BODY="$sandbox/t15-issue-body.md" run_print
+assert "T-15 durable id: rc=0" 0 "$print_rc"
+assert_grep "T-15 durable id: id 21 を PATCH 先として読む" "$sandbox/print.err" '^\[CONTEXT\] NONBLOCKING_RECORD_BODY=found; pr=7; comment_id=21$'
+assert_grep "T-15 durable id: 古い記録の本文を出す" "$sandbox/print.out" '^old ledger$'
+assert "T-15 durable id: 本文照合の候補 (id 23)・他人のコメントを出さない" 0 "$(grep -cE 'new ledger|foreign ledger' "$sandbox/print.out")"
+assert "T-15 durable id: id で解決できている (fallback しない)" 0 "$(grep -c 'NONBLOCKING_ID_UNRESOLVED' "$sandbox/print.err")"
+assert_print_readonly "durable id"
+# signal: 中断は failed で返し、stderr の一時ファイルを残さない
+t15_ready="$sandbox/t15-user-ready"
+rm -f "$t15_ready"
+: > "$NBR_GH_LOG"
+NBR_USER_READY="$t15_ready" NBR_USER_SLEEP=1 TMPDIR="$t15_tmp" PATH="$nbr_bin:$PATH" \
+  bash "$NBR_SH" --print-record-body --pr 7 --owner-repo test/repo > "$sandbox/print.out" 2> "$sandbox/print.err" &
+t15_pid=$!
+for _t15_wait in $(seq 1 200); do
+  [ -e "$t15_ready" ] && break
+  sleep 0.05
+done
+assert "T-15 signal: 中断前は stderr の一時ファイルがある" 1 "$(find "$t15_tmp" -name 'rite-p61d-lookup-err-*' | wc -l | tr -d ' ')"
+kill -TERM "$t15_pid"
+print_rc=0
+wait "$t15_pid" || print_rc=$?
+assert "T-15 signal: rc=143" 143 "$print_rc"
+assert "T-15 signal: stdout は空" 0 "$(wc -c < "$sandbox/print.out" | tr -d ' ')"
+assert_grep "T-15 signal: reason" "$sandbox/print.err" '^\[CONTEXT\] NONBLOCKING_RECORD_BODY=failed; pr=7; reason=signal_aborted$'
+assert "T-15 signal: stderr の一時ファイルを残さない" 0 "$(find "$t15_tmp" -name 'rite-p61d-lookup-err-*' | wc -l | tr -d ' ')"
+assert_print_readonly "signal"
 
 # --- T-16 (静的): SKILL / reference の読み手は site ごとに --print-record-body を 1 回呼び、前方一致で読まない ---
 # $1=file $2=needle。needle を含む bash fence (字下げ付きを含む) を 1 つ取り出す
@@ -1042,6 +1147,105 @@ NBR_NO_ISSUE=1 run_step15
 assert "T-17 関連 Issue なし: 引き継ぎなしで続行する" 0 "$t17_rc"
 assert_grep "T-17 関連 Issue なし: REJECTED_LEDGER_PRESERVE=ok" "$sandbox/t17.err" '^\[CONTEXT\] REJECTED_LEDGER_PRESERVE=ok$'
 assert_grep "T-17 関連 Issue なし: 後続へ進む" "$sandbox/t17.out" '^REACHED$'
+# PR を読めない (gh 起因) は「関連 Issue なし」と違い、引き継ぎなしで続行しない
+NBR_PR_VIEW_FAIL=1 run_step15
+assert "T-17 PR を読めない: rc≠0" 1 "$([ "$t17_rc" -ne 0 ] && echo 1 || echo 0)"
+assert "T-17 PR を読めない: REJECTED_LEDGER_PRESERVE=failed" 1 "$(grep -c '^\[CONTEXT\] REJECTED_LEDGER_PRESERVE=failed$' "$sandbox/t17.err")"
+assert "T-17 PR を読めない: merge-into へ進まない" 0 "$(grep -c '^merge-into$' "$sandbox/t17-ledger.log")"
+assert_not_grep "T-17 PR を読めない: 後続へ進まない" "$sandbox/t17.out" '^REACHED$'
+assert "T-17 PR を読めない: 記録を置き換えない (PATCH / 投稿なし)" 0 "$(grep -cE -- '-X PATCH|^issue comment |^issue edit ' "$NBR_GH_LOG")"
+
+# --- T-18 (静的): step 1.5 の失敗後の手順を step 1.5 / step 3 / 8.0.3 がそろって示す ---
+t18_step15=$(grep -F '**step 1.5 却下台帳保全**' "$REVIEW")
+t18_step3=$(sed -n '/^3\. \*\*integrity check (6\.1\.d 内部)\*\*/,/^### 6\.2 /p' "$REVIEW")
+t18_p803=$(sed -n '/^### 8\.0\.3 /,/^### 8\.0\.4 /p' "$REVIEW")
+assert "T-18 step 1.5 の段落を 1 つ抽出できる" 1 "$(printf '%s\n' "$t18_step15" | grep -c .)"
+assert "T-18 step 1.5: failed の後は step 2 を実行しない" 1 "$(printf '%s' "$t18_step15" | grep -cF 'REJECTED_LEDGER_PRESERVE=failed` で止まったら **step 2 を実行しない**')"
+assert "T-18 step 1.5: 再実行は 1 回だけで、再発は [review:error] で停止する" 1 "$(printf '%s' "$t18_step15" | grep -cF 'step 1.5 を 1 回だけ再実行し、再び `failed` なら `[review:error]` を stdout に出力してレビューを停止')"
+assert "T-18 step 1.5: 停止は 8.0.3 が差し戻さない hard fail" 1 "$(printf '%s' "$t18_step15" | grep -cF 'この停止はステップ 6 の hard fail で、8.0.3 は 6.1.d へ差し戻さない')"
+assert "T-18 step 1.5: step 1 の再実行も step 1.5 を経て step 2 へ進む" 1 "$(printf '%s' "$t18_step15" | grep -cF 'step 1 を再実行したときも step 1.5 を経てから step 2 へ進む')"
+# step 3: step 1.5 の失敗を「6.1.d 未実行」と読まない。分岐は未実行の判定より前に置く
+t18_s3_preserve=$(printf '%s\n' "$t18_step3" | grep -nF 'REJECTED_LEDGER_PRESERVE=failed があれば step 1.5 の失敗 (6.1.d 未実行ではない)' | head -1 | cut -d: -f1)
+t18_s3_unrun=$(printf '%s\n' "$t18_step3" | grep -nF '無ければ 6.1.d 未実行' | head -1 | cut -d: -f1)
+if [ -n "$t18_s3_preserve" ] && [ -n "$t18_s3_unrun" ] && [ "$t18_s3_preserve" -lt "$t18_s3_unrun" ]; then
+  pass "T-18 step 3: step 1.5 の失敗の分岐が「6.1.d 未実行」より前にある"
+else
+  fail "T-18 step 3: step 1.5 の失敗の分岐が無いか、「6.1.d 未実行」より後にある (preserve=${t18_s3_preserve:-none} unrun=${t18_s3_unrun:-none})"
+fi
+assert "T-18 step 3: 再実行は step 1 → step 1.5 → step 2" 1 "$(printf '%s' "$t18_step3" | grep -cF 'step 1 → step 1.5 → step 2 を再実行')"
+assert "T-18 step 3: step 1-2 だけの再実行を案内しない" 0 "$(printf '%s' "$t18_step3" | grep -cF 'step 1-2 再実行')"
+# 8.0.3: 機械強制の復旧文と On ERROR の両方が step 1.5 を通す
+assert "T-18 8.0.3: 未実行の復旧は step 1 → step 1.5 → step 2" 1 "$(printf '%s' "$t18_p803" | grep -cF 'step 1 (本文 Write) → step 1.5 (却下台帳の引き継ぎ) → step 2 (helper 実行) の順に実行')"
+assert "T-18 8.0.3: step 1.5 を飛ばした step 2 を禁じる" 1 "$(printf '%s' "$t18_p803" | grep -cF 'step 1.5 を飛ばして step 2 を実行してはなりません')"
+assert "T-18 8.0.3: 本文の作り直しも step 1.5 を通す" 1 "$(printf '%s' "$t18_p803" | grep -cF '本文を作り直してから** step 1.5 → step 2 を再実行')"
+assert "T-18 8.0.3: REJECTED_LEDGER_PRESERVE=failed は step 1.5 の規定に従う (機械強制と On ERROR)" 2 "$(printf '%s' "$t18_p803" | grep -cF 'REJECTED_LEDGER_PRESERVE=failed')"
+assert "T-18 8.0.3: step 1.5 を欠いた旧手順を残さない" 0 "$(printf '%s' "$t18_p803" | grep -cE 'step 1 \(本文 Write\) と step 2|step 1-2 再実行')"
+
+# --- T-19: {rejected_ledger} 抽出を実 helper で実行する ---
+ln -sfn "$PLUGIN_ROOT/hooks/scripts/lib" "$t17_plugin/hooks/scripts/lib"
+extract_block_of "$REVIEW" 'rite-rejected-src' | sed -e "s|{plugin_root}|$t17_plugin|g" \
+  -e 's|{pr_number}|7|g' -e 's|{owner_repo}|test/repo|g' > "$sandbox/t19.sh"
+assert "T-19 {rejected_ledger} の block を抽出できる" 1 "$(grep -c 'rite-rejected-src' "$sandbox/t19.sh")"
+assert "T-19 {rejected_ledger} の placeholder をすべて置換できる" 0 "$(grep -c '{[a-z_]*}' "$sandbox/t19.sh")"
+t19_tmp="$sandbox/t19-tmp"
+mkdir -p "$t19_tmp"
+run_rejected_ledger() {
+  : > "$NBR_GH_LOG"; : > "$sandbox/t17-ledger.log"
+  t19_rc=0
+  TMPDIR="$t19_tmp" PATH="$nbr_bin:$PATH" bash "$sandbox/t19.sh" > "$sandbox/t19.out" 2> "$sandbox/t19.err" || t19_rc=$?
+}
+jq -n --rawfile body "$ledger_body" '[[{id:31,user:{login:"rite-bot"},body:$body}]]' > "$NBR_COMMENTS"
+run_rejected_ledger
+assert "T-19 正常: rc=0" 0 "$t19_rc"
+assert_grep "T-19 正常: REJECTED_LEDGER=ok" "$sandbox/t19.err" '^\[CONTEXT\] REJECTED_LEDGER=ok$'
+assert "T-19 正常: 台帳の行を出す" 2 "$(grep -c '^| NB-' "$sandbox/t19.out")"
+assert_not_grep "T-19 正常: 取得失敗と言わない" "$sandbox/t19.err" 'REJECTED_LEDGER=failed|WARNING: 却下台帳取得失敗'
+assert "T-19 正常: 一時ファイルを残さない" 0 "$(find "$t19_tmp" -name 'rite-rejected-*' | wc -l | tr -d ' ')"
+for t19_case in "lookup 失敗|NBR_LOOKUP_FAIL" "PR を読めない|NBR_PR_VIEW_FAIL" "extract 失敗|T17_EXTRACT_FAIL"; do
+  t19_label="${t19_case%%|*}"
+  export "${t19_case##*|}=1"
+  run_rejected_ledger
+  unset "${t19_case##*|}"
+  assert_grep "T-19 $t19_label: REJECTED_LEDGER=failed" "$sandbox/t19.err" '^\[CONTEXT\] REJECTED_LEDGER=failed$'
+  assert_grep "T-19 $t19_label: WARNING を出す" "$sandbox/t19.err" '^WARNING: 却下台帳取得失敗'
+  assert_grep "T-19 $t19_label: placeholder に取得失敗を載せる" "$sandbox/t19.out" '台帳取得失敗 — 却下済み指摘の再訴訟の可能性'
+  assert "T-19 $t19_label: 台帳の行を出さない" 0 "$(grep -c '^| NB-' "$sandbox/t19.out")"
+  assert "T-19 $t19_label: empty / ok と言わない" 0 "$(grep -cE 'REJECTED_LEDGER=(empty|ok)' "$sandbox/t19.err")"
+done
+NBR_NO_ISSUE=1 run_rejected_ledger
+assert "T-19 関連 Issue なし: rc=0" 0 "$t19_rc"
+assert_grep "T-19 関連 Issue なし: REJECTED_LEDGER=empty" "$sandbox/t19.err" '^\[CONTEXT\] REJECTED_LEDGER=empty$'
+assert_not_grep "T-19 関連 Issue なし: 取得失敗と言わない" "$sandbox/t19.err" 'REJECTED_LEDGER=failed|WARNING: 却下台帳取得失敗'
+assert "T-19 関連 Issue なし: stdout は空" 0 "$(wc -c < "$sandbox/t19.out" | tr -d ' ')"
+
+# --- T-20: NB sweep 手順 3 を実 helper で実行する (読み取り → extract → append → merge-into → 記録) ---
+# 古い記録 (id 41, 台帳 OLD-1) → 新しい記録 (id 43, 台帳 NEW-1 = PATCH 先) → 他人の同 marker コメント (id 49, 台帳 FOR-1)
+t20_tmp="$sandbox/t20-tmp"
+mkdir -p "$t20_tmp"
+sed -e "s|{plugin_root}|$t17_plugin|g" -e 's|{pr_number}|7|g' -e 's|{issue_number}|42|g' \
+  -e 's|{owner_repo}|test/repo|g' "$record_block" > "$sandbox/t20.sh"
+printf '\nprintf "REACHED\\n"\n' >> "$sandbox/t20.sh"
+assert "T-20 手順 3 の placeholder をすべて置換できる" 0 "$(grep -c '{[a-z_]*}' "$sandbox/t20.sh")"
+cp "$nbr_entries" "$t20_tmp/rite-nb-entries-7.md"
+jq -n --arg a "$(t16_body OLD-1 src/old.ts:1)" --arg b "$(t16_body NEW-1 src/new.ts:2)" --arg c "$(t16_body FOR-1 src/for.ts:3)" \
+  '[[{id:41,user:{login:"rite-bot"},body:$a},{id:43,user:{login:"rite-bot"},body:$b}],[{id:49,user:{login:"someone-else"},body:$c}]]' \
+  > "$NBR_COMMENTS"
+: > "$NBR_GH_LOG"
+rm -f "$NBR_POSTED"
+t20_rc=0
+TMPDIR="$t20_tmp" PATH="$nbr_bin:$PATH" bash "$sandbox/t20.sh" > "$sandbox/t20.out" 2> "$sandbox/t20.err" || t20_rc=$?
+assert "T-20 手順 3: rc=0" 0 "$t20_rc"
+assert_grep "T-20 手順 3: 後続へ進む" "$sandbox/t20.out" '^REACHED$'
+assert_grep "T-20 手順 3: 読み取りは PATCH 先 (id 43) を指す" "$sandbox/t20.err" 'NONBLOCKING_RECORD_BODY=found; pr=7; comment_id=43$'
+assert_grep "T-20 手順 3: id 43 を PATCH する" "$NBR_GH_LOG" 'repos/test/repo/issues/comments/43 -X PATCH'
+if [ ! -f "$NBR_POSTED" ]; then
+  fail "T-20 手順 3: 記録 helper へ本文が渡っていない"
+else
+  assert "T-20 手順 3: PATCH 先の台帳 (NEW-1) を引き継ぐ" 1 "$(grep -c '^| NEW-1 ' "$NBR_POSTED")"
+  assert "T-20 手順 3: 今回の sweep の行 (NB-1 / NB-2) を足す" 2 "$(grep -c '^| NB-[12] ' "$NBR_POSTED")"
+  assert "T-20 手順 3: 古い記録・他人のコメントの台帳を持ち込まない" 0 "$(grep -cE '^\| (OLD|FOR)-1 ' "$NBR_POSTED")"
+  assert "T-20 手順 3: 台帳見出しは 1 つ" 1 "$(grep -c '^### 却下台帳$' "$NBR_POSTED")"
+fi
 
 if ! print_summary "$(basename "$0")" "nb-sweep helper contract drift — check iterate SKILL.md / iterate-step.sh 5.S / 6.1.d preserve"; then
   exit 1

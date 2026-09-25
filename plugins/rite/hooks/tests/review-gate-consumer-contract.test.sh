@@ -114,10 +114,11 @@ exit 97
         pr_json.write_text(json.dumps({'body': body, 'headRefName': head}))
     set_pr('Closes #7', 'fix/issue-8-other')
     comments.write_text(existing_with_ledger)
-    def run(block):
+    def run(block, extra_env=None):
         for key, value in values.items():
             block = block.replace('{' + key + '}', value)
-        return subprocess.run(['bash', '-c', block], text=True, capture_output=True, timeout=10, env=env)
+        return subprocess.run(['bash', '-c', block], text=True, capture_output=True, timeout=10,
+                              env={**env, **(extra_env or {})})
     findings = [{'id':'F-01', 'severity':'MEDIUM', 'scope':'current-pr', 'file':'a.sh', 'line':1,
                  'reviewer':'test-reviewer', 'description':'private-detail', 'verification':{'measured':True}}]
     source.write_text(json.dumps({'findings': findings}))
@@ -201,6 +202,40 @@ exit 0
         assert 'NONBLOCKING_RECORD_BODY=failed' in result.stderr, result
         assert not record_body.exists()
     (temp / 'comments-fail').unlink()
+    # The ledger tempfile, extract and merge-into failures after a readable record stop the same way.
+    real_ledger = root / 'plugins/rite/hooks/scripts/nb-sweep-ledger.sh'
+    ledger_link = plugin / 'hooks/scripts/nb-sweep-ledger.sh'
+    failing_ledger = temp / 'failing-ledger.sh'
+    failing_ledger.write_text(f"""#!/bin/bash
+[ "$1" = "$LEDGER_FAIL_OP" ] && exit 1
+exec bash '{real_ledger}' "$@"
+""")
+    failing_ledger.chmod(0o755)
+    shim_dir = temp / 'mktemp-shim'
+    shim_dir.mkdir()
+    real_mktemp = subprocess.run(['bash', '-c', 'command -v mktemp'], text=True, capture_output=True).stdout.strip()
+    (shim_dir / 'mktemp').write_text(f"""#!/bin/bash
+case "$*" in *rite-fix-nbr-existing-*) exit 1 ;; esac
+exec '{real_mktemp}' "$@"
+""")
+    (shim_dir / 'mktemp').chmod(0o755)
+    set_pr('Closes #7', 'fix/issue-7-branch')
+    comments.write_text(existing_with_ledger)
+    ledger_link.unlink()
+    ledger_link.symlink_to(failing_ledger)
+    for extra, reason in [
+            ({'PATH': f"{shim_dir}:{env['PATH']}"}, 'nonblocking_record_tempfile_failed'),
+            ({'LEDGER_FAIL_OP': 'extract'}, 'nonblocking_record_ledger_extract_failed'),
+            ({'LEDGER_FAIL_OP': 'merge-into'}, 'nonblocking_record_ledger_merge_failed')]:
+        record_body.unlink(missing_ok=True)
+        result = run(record, extra)
+        assert result.returncode != 0, (reason, result)
+        assert f'[fix:error] reason={reason}' in result.stdout, (reason, result)
+        assert f'[CONTEXT] FIX_FALLBACK_FAILED=1; reason={reason}' in result.stderr, (reason, result)
+        assert 'REJECTED_LEDGER_PRESERVE=ok' not in result.stderr, (reason, result)
+        assert not record_body.exists(), reason
+    ledger_link.unlink()
+    ledger_link.symlink_to(real_ledger)
     source.write_text(json.dumps({'findings':[], 'non_blocking_findings':[]}))
     result = run(record)
     assert result.returncode == 0, result  # skipped with zero findings is valid

@@ -65,10 +65,12 @@
 **読み取り専用モード (`--print-record-body`) の reasons** (`[CONTEXT] NONBLOCKING_RECORD_BODY=failed; pr=N; reason=...` を emit して `exit 1`。台帳を読む側 — `{rejected_ledger}` 抽出 / 6.1.d step 1.5 / fix の非実測指摘の記録 / NB sweep / `nb-sweep-collect.sh` / `cleanup-follow-up-issue.sh` — が使う。記録は書かず、terminal sentinel・`NONBLOCKING_RECORD_FAILED`・pending marker には触れない。成功時は `=found; comment_id=<id>` (本文を stdout へ) または `=absent` (stdout 空)):
 - `related_issue_unresolved`: closing keyword も `issue-{N}` branch 命名も無い (決定的)。書き込み経路も同じ理由で何も書かないため、`{rejected_ledger}` 抽出は空台帳、6.1.d step 1.5 は引き継ぎなしで続行する
 - `pr_view_failed`: PR body / headRefName を読めない (gh 起因)
+- `resolve_failed`: 関連 Issue を解決できず、理由も取れない。`related_issue_unresolved` とは読まない (空台帳で続行しない)
 - `own_login_unavailable`: `gh api user` で自 login を取れない。書き込み経路が PATCH 先を決められない状態なので「記録なし」とは読まない
 - `lookup_failed`: 本文照合の lookup が失敗し、durable id でも PATCH 先が確定しない。同上
 - `body_fetch_failed`: 決まった記録コメントの本文を取得できない
 - `conflicting_options`: `--count` / `--iteration-id` / `--content-file` と併用された (caller 契約違反)
+- `unknown_option` / `pr_number_placeholder_residue` / `owner_repo_placeholder_residue`: 引数 gate (書き込み経路と同じ判定)。`pr=` には渡された値 (制御文字は `?` に置換) を出す
 - `signal_aborted`: INT / TERM / HUP で中断された
 
 **ステップ 8.0.3 reasons** (機械強制 = pending marker 検査。emit 元は helper ではなく **SKILL.md ステップ 8.0.3 の bash block 自身**。gate の可否のみを決め `overall_assessment` は変えない。本表を 8.0.3 節ではなくここに置くのは、8.0.3 節の表が TC-5e の gate 別 per-row pin の対象であり、同節に 2 つ目の表を置くと「gate 表」の同定が曖昧になるため):

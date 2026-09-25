@@ -2645,7 +2645,7 @@ rationale: references/design-rationale.md#6.1d-always-eval
    `outcome=skipped` ではなく `outcome=failed` になる (Write は「投稿されない」という意味での no-op
    であり、検査対象外という意味ではない)。
 
-   **step 1.5 却下台帳保全**: Write 後・helper 前に、既存 6.1.d 本文の `### 却下台帳` を新本文へ splice する。既存本文は step 2 の helper が PATCH する 1 件を、同 helper の `--print-record-body` で読む。空 ledger は no-op。取得・extract・merge-into の失敗は fail-loud（本文を helper に渡さず、記録を置き換えない）。関連 Issue を解決できない PR（`reason=related_issue_unresolved`）は引き継ぐ台帳が無いため続行し、step 2 が同じ理由で `outcome=failed` を出す。本文は列 0 から。
+   **step 1.5 却下台帳保全**: Write 後・helper 前に、既存 6.1.d 本文の `### 却下台帳` を新本文へ splice する。既存本文は step 2 の helper が PATCH する 1 件を、同 helper の `--print-record-body` で読む。空 ledger は no-op。取得・extract・merge-into の失敗は fail-loud（本文を helper に渡さず、記録を置き換えない）。`[CONTEXT] REJECTED_LEDGER_PRESERVE=failed` で止まったら **step 2 を実行しない**。step 1.5 を 1 回だけ再実行し、再び `failed` なら `[review:error]` を stdout に出力してレビューを停止し、直前の helper の reason（`NONBLOCKING_RECORD_BODY=failed; ...; reason=` または `NB_SWEEP_LEDGER=failed; ...; reason=`）を completion report に転記する（再試行は 1 回まで。この停止はステップ 6 の hard fail で、8.0.3 は 6.1.d へ差し戻さない）。step 1 を再実行したときも step 1.5 を経てから step 2 へ進む（step 1.5 を飛ばした step 2 は台帳の無い本文で記録を置き換える）。関連 Issue を解決できない PR（`reason=related_issue_unresolved`）は引き継ぐ台帳が無いため続行し、step 2 が同じ理由で `outcome=failed` を出す。本文は列 0 から。
 
    ```bash
    # ステップ 6.1.d step 1.5: 却下台帳を新本文へ splice（空なら no-op）
@@ -2706,8 +2706,10 @@ rationale: references/design-rationale.md#6.1d-always-eval
    ```
    ERROR: ステップ 6.1.d integrity check failed.
    No current-cycle [CONTEXT] NONBLOCKING_RECORD_DONE=1 sentinel found.
-   ACTION: 本 cycle の NONBLOCKING_RECORD_FAILED を探す (step 2 より後ろの行のみ。iteration_id 無し)。
-   あれば reason を直し step 1-2 再実行。iteration_id_placeholder_residue は 6.1.a step 0 まで戻る。
+   ACTION: 本 cycle に [CONTEXT] REJECTED_LEDGER_PRESERVE=failed があれば step 1.5 の失敗 (6.1.d 未実行ではない)。
+   step 2 を実行せず step 1.5 を 1 回だけ再実行し、再び failed なら [review:error] で停止する (step 1.5 の規定)。
+   それ以外は本 cycle の NONBLOCKING_RECORD_FAILED を探す (step 2 より後ろの行のみ。iteration_id 無し)。
+   あれば reason を直し step 1 → step 1.5 → step 2 を再実行。iteration_id_placeholder_residue は 6.1.a step 0 まで戻る。
    無ければ 6.1.d 未実行 — step 1 から実行。Do NOT emit result pattern without current-cycle sentinel.
    ```
 
@@ -3211,7 +3213,7 @@ rationale: references/design-rationale.md#phase7-gate-notes
 ### 8.0.3 ステップ 6.1.d Post-condition Gate Reference
 
 6.1.d 全体 skip の最終防波堤（ステップ 6 全体は 8.0.4）。[measured-gate-record.md#dual-gate](references/measured-gate-record.md#dual-gate)
-**Condition**: 常時。ただし **ステップ 6 が hard fail した場合を除く**。
+**Condition**: 常時。ただし **ステップ 6 が hard fail した場合を除く**（6.1.d step 1.5 の再試行後の `[review:error]` 停止を含む）。
 **Pre-Check**: `{pending_marker}` は本 cycle の `NONBLOCKING_PENDING_MARKER`（epoch 最大。空 emit なら空優先）。[measured-gate-record.md#pending-marker](references/measured-gate-record.md#pending-marker)
 
 ```bash
@@ -3229,8 +3231,9 @@ case "$pending_marker" in
     if [ -e "$pending_marker" ]; then
       echo "ERROR: ステップ 8.0.3 gate failed (機械強制)。pending marker が残存しています: $pending_marker" >&2
       echo "  ACTION: まず会話に [CONTEXT] NONBLOCKING_RECORD_FAILED=1; reason=body_file_empty / body_marker_missing / body_sentinel_missing / count_body_mismatch のいずれかがあるか確認してください (body_check_unavailable は対象外)。" >&2
-      echo "    あれば caller 契約違反です — step 1 の**本文を作り直してから** step 2 を再実行します。" >&2
-      echo "    無ければ 6.1.d 自体が未実行です — step 1 (本文 Write) と step 2 (helper 実行) を実行してください。" >&2
+      echo "    あれば caller 契約違反です — step 1 の**本文を作り直してから** step 1.5 → step 2 を再実行します。" >&2
+      echo "    無ければ 6.1.d 自体が未実行です — step 1 (本文 Write) → step 1.5 (却下台帳の引き継ぎ) → step 2 (helper 実行) の順に実行してください。step 1.5 を飛ばして step 2 を実行してはなりません。" >&2
+      echo "    REJECTED_LEDGER_PRESERVE=failed がある場合は step 1.5 の規定 (1 回だけ再実行し、再び failed なら [review:error] で停止) に従ってください。" >&2
       echo "  そのうえで ステップ 8.0 を再評価。marker はここでは削除しません。" >&2
       echo "  ⚠️ 本 gate を pass せずに ステップ 8.1 の result pattern を emit してはなりません。" >&2
       echo "[CONTEXT] NONBLOCKING_GATE_FAILED=1; reason=pending_marker_present; marker=$pending_marker" >&2
@@ -3268,8 +3271,9 @@ esac
 ERROR: ステップ 8.0.3 ステップ 6.1.d Post-condition Gate failed.
 No current-cycle [CONTEXT] NONBLOCKING_RECORD_DONE=1 sentinel found (absent, or iteration_id != REVIEW_CYCLE_ID).
 (注: pending_marker_present 時は sentinel があっても caller 契約違反の差し戻し — body_* / count_body_mismatch reason を読む)
-ACTION: 本 cycle の NONBLOCKING_RECORD_FAILED があれば reason を直して 6.1.d step 1-2 再実行。
-iteration_id_placeholder_residue は 6.1.a step 0 まで戻る。無ければ 6.1.d steps 1-3 を実行し re-enter ステップ 8.0。
+ACTION: 本 cycle に [CONTEXT] REJECTED_LEDGER_PRESERVE=failed があれば step 1.5 の失敗 — step 2 を実行せず 6.1.d step 1.5 の規定に従う。
+本 cycle の NONBLOCKING_RECORD_FAILED があれば reason を直して 6.1.d step 1 → step 1.5 → step 2 を再実行。
+iteration_id_placeholder_residue は 6.1.a step 0 まで戻る。無ければ 6.1.d steps 1-3 (step 1.5 を含む) を実行し re-enter ステップ 8.0。
 ⚠️ MUST NOT emit result pattern until 6.1.d has been executed for the current cycle.
 ```
 

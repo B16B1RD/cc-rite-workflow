@@ -28,14 +28,16 @@
 #   - 書き込み経路が PATCH するコメントを、書き込み経路と同じ関数 (`_resolve_record_comment`:
 #     関連 Issue → 自 login → durable id → 本文照合) で 1 件に決め、その本文を stdout に出す。
 #     読み手と書き手が同じ述語で同じ 1 件を指すため、記録コメントが重複しても古い台帳を読まない。
-#     本文の CRLF は LF に正規化して出す (読み手は CR を扱わない)。
+#     本文の CRLF は LF に正規化して出す (nb-sweep-collect.sh / cleanup-follow-up-issue.sh は CRLF を
+#     自前で正規化しない)。
 #   - 記録なし: stdout 空・rc=0・`[CONTEXT] NONBLOCKING_RECORD_BODY=absent; pr=N`。
 #     記録あり: rc=0・`[CONTEXT] NONBLOCKING_RECORD_BODY=found; pr=N; comment_id=<id>`。
 #     解決・取得の失敗: rc=1・stdout 空・`[CONTEXT] NONBLOCKING_RECORD_BODY=failed; pr=N; reason=<...>`。
 #     reason 語彙: related_issue_unresolved (closing keyword も issue-N branch も無い。決定的) /
-#       pr_view_failed / own_login_unavailable / lookup_failed / body_fetch_failed /
-#       conflicting_options / signal_aborted。
-#     引数 gate (unknown_option / pr・owner_repo の placeholder residue) は書き込み経路と共通で rc=1。
+#       pr_view_failed / resolve_failed (関連 Issue を解決できず理由も取れない) / own_login_unavailable /
+#       lookup_failed / body_fetch_failed / conflicting_options / signal_aborted。
+#     引数 gate (unknown_option / pr_number_placeholder_residue / owner_repo_placeholder_residue) も
+#     同じ `NONBLOCKING_RECORD_BODY=failed; pr=<渡された値>; reason=<gate>` を出して rc=1 で終わる。
 #   - --count / --iteration-id / --content-file は受けない (渡すと conflicting_options)。
 #     terminal sentinel (NONBLOCKING_RECORD_DONE) と NONBLOCKING_RECORD_FAILED を出さず、pending marker
 #     に触れず、PATCH / POST / Issue body の書き換えを行わない。
@@ -134,12 +136,15 @@
 #     ないため 0 件でも作成する。台帳エントリを数えられないときは body_check_unavailable で failed にする。
 #   - [CONTEXT] / WARNING は stderr (6.1.a/b/c の 3 兄弟 helper と同一)。
 #
-# Exit codes:
+# Exit codes (書き込み経路):
 #   0: 記録成功 / 正当な skip / 非ブロッキングな失敗 (gh・IO)。
 #   1: placeholder residue / content_file 不在 等の caller 契約違反 (skill 定義のバグ)。
 #      加えて related_issue_unresolved (trap 設置後。terminal sentinel は outcome=failed。
 #      pending marker は残さない — 差し戻しても収束しない。caller は rc=1 を skill 全体の
 #      hard fail と読まず sentinel を読んで 6.1.d step 3 / 8.0.3 へ進む)。
+# Exit codes (読み取り専用モード):
+#   0: found / absent。
+#   1: 失敗はすべて rc=1 (gh・IO の失敗も含む。読み手が空の stdout を「記録なし」と読まないため)。
 set -uo pipefail
 # shellcheck source=control-char-neutralize.sh
 source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
@@ -217,11 +222,31 @@ CONTENT_FILE=""
 ISSUE_NUMBER=""
 PRINT_MODE=0
 
+# 読み取り専用モードかどうかを引数解析の前に決める。引数 gate (unknown_option / placeholder residue) は
+# 解析の途中で落ちるため、モードを知らないまま落ちると読み手に書き込み経路の marker を返してしまう。
+for _arg in "$@"; do
+  [ "$_arg" = "--print-record-body" ] && PRINT_MODE=1
+done
+
+# 読み取り専用モードと書き込み経路で共通の引数 gate の失敗。読み取り専用モードは読み手が待つ
+# NONBLOCKING_RECORD_BODY=failed を出し、書き込み経路の NONBLOCKING_RECORD_FAILED は出さない。
+# pr= は検証前の値なので neutralize_ctrl で 1 行に収める (改行入りの値で偽の control line を作らせない)。
+_arg_gate_failed() {  # $1=reason $2=書き込み経路の marker に pr= を付けるか (1 / 0)
+  if [ "$PRINT_MODE" = "1" ]; then
+    echo "[CONTEXT] NONBLOCKING_RECORD_BODY=failed; pr=$(printf '%s' "$PR_NUMBER" | neutralize_ctrl); reason=$1" >&2
+  elif [ "$2" = "1" ]; then
+    echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=$1" >&2
+  else
+    echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; reason=$1" >&2
+  fi
+  exit 1
+}
+
 # 各値付きフラグは `shift; shift` で消費する (値なしフラグが末尾に来た場合の無限ループ回避。
 # review-comment-post.sh と同一 idiom)。
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --print-record-body) PRINT_MODE=1; shift ;;
+    --print-record-body) shift ;;
     --pr)           PR_NUMBER="${2:-}"; shift; shift ;;
     --owner-repo)   OWNER_REPO="${2:-}"; shift; shift ;;
     --count)        NB_COUNT="${2:-}"; shift; shift ;;
@@ -230,8 +255,7 @@ while [[ $# -gt 0 ]]; do
     # 値の verbatim echo は禁止 (下記 iteration_id gate と同根)。本分岐は trap 設置**前**のため
     # real sentinel が 1 本も出ず、偽 sentinel が唯一の sentinel になりうる。
     *) echo "ERROR: review-nonblocking-record: unknown option: $(printf '%s' "$1" | neutralize_ctrl)" >&2
-       echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; reason=unknown_option" >&2
-       exit 1 ;;
+       _arg_gate_failed unknown_option 0 ;;
   esac
 done
 
@@ -243,8 +267,7 @@ done
 case "$PR_NUMBER" in
   ''|*[!0-9]*)
     echo "ERROR: review-nonblocking-record: pr_number が数値ではありません (値: '$(printf '%s' "$PR_NUMBER" | neutralize_ctrl)', 期待: 数値のみ非空)" >&2
-    echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; reason=pr_number_placeholder_residue" >&2
-    exit 1
+    _arg_gate_failed pr_number_placeholder_residue 0
     ;;
 esac
 # owner_repo は `gh issue comment -R` に渡る。gh は `[HOST/]OWNER/REPO` を受けるため、3 セグメント値は
@@ -254,14 +277,12 @@ case "$OWNER_REPO" in
   */*/*|*[!A-Za-z0-9._/-]*|*/|/*|""|*..*)
     echo "ERROR: review-nonblocking-record: owner_repo が owner/repo 形式ではありません (値: '$(printf '%s' "$OWNER_REPO" | neutralize_ctrl)')" >&2
     echo "  期待: 英数字 / '.' / '_' / '-' からなる 2 セグメント (例: owner/repo)。HOST/OWNER/REPO の 3 セグメント形は別ホストへの送出になるため拒否する" >&2
-    echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=owner_repo_placeholder_residue" >&2
-    exit 1
+    _arg_gate_failed owner_repo_placeholder_residue 1
     ;;
   */*) ;;
   *)
     echo "ERROR: review-nonblocking-record: owner_repo が owner/repo 形式ではありません (値: '$(printf '%s' "$OWNER_REPO" | neutralize_ctrl)')" >&2
-    echo "[CONTEXT] NONBLOCKING_RECORD_FAILED=1; pr=$PR_NUMBER; reason=owner_repo_placeholder_residue" >&2
-    exit 1
+    _arg_gate_failed owner_repo_placeholder_residue 1
     ;;
 esac
 # 読み取り専用モードは記録経路の引数 (--count / --iteration-id / --content-file) を受けない。
@@ -816,7 +837,9 @@ _print_failed() {  # $1=reason
 _print_record_body() {
   local _body=""
   if ! _resolve_record_comment; then
-    _print_failed "${related_fail_reason:-related_issue_unresolved}"
+    # 既定値は失敗側に置く。related_issue_unresolved は読み手が「台帳なしで続行」と読む唯一の reason のため、
+    # 理由を取り損ねたときにそこへ倒すと、解決の失敗が空台帳として通ってしまう。
+    _print_failed "${related_fail_reason:-resolve_failed}"
     return 1
   fi
   if [ -z "$gh_login" ]; then
