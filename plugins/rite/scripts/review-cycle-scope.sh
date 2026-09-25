@@ -272,7 +272,9 @@ if ! git cat-file -e "${base_sha}^{commit}" 2>"$probe_err"; then
   emit_full commit_sha_unreachable
 fi
 
-diff_names=$(git diff --name-only "${base_sha}..HEAD" 2>"$probe_err") || {
+# 改名は元パスと新パスの 2 つとして数える。PR 自身の変更 (commit ごと) と起点からの差分 (範囲全体) で
+# rename 検出が食い違うと、積から元パスが落ちる。
+diff_names=$(git diff --no-renames --name-only "${base_sha}..HEAD" 2>"$probe_err") || {
   echo "WARNING: review-cycle-scope: 差分を取得できません (${base_sha}..HEAD)" >&2
   head -3 "$probe_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   emit_full diff_failed
@@ -294,10 +296,10 @@ fi
 # 自動 merge されたファイルも返すので使わない) に限り、その積を fix diff とする。
 # merge の second parent 側から入った変更は base の取り込みとして除く。
 own_names=$( {
-  git log --first-parent --no-merges --name-only --format= "${base_sha}..HEAD" || exit 1
+  git log --no-renames --first-parent --no-merges --name-only --format= "${base_sha}..HEAD" || exit 1
   merges=$(git rev-list --first-parent --merges "${base_sha}..HEAD") || exit 1
   for merge in $merges; do
-    git show --remerge-diff --name-only --format= "$merge" || exit 1
+    git show --no-renames --remerge-diff --name-only --format= "$merge" || exit 1
   done
 } 2>"$probe_err") || {
   echo "WARNING: review-cycle-scope: PR 自身の変更を取得できません (${base_sha}..HEAD)" >&2
@@ -306,7 +308,7 @@ own_names=$( {
 }
 # comm は入力と同じ照合順で動かす。ロケールが違うと片側を読み切って共通要素を落とす。
 scope_names=$(LC_ALL=C comm -12 <(printf '%s\n' "$diff_names" | LC_ALL=C sort -u) \
-                                <(printf '%s\n' "$own_names" | LC_ALL=C sort -u) 2>"$probe_err" | sed '/^$/d') || {
+                                <(printf '%s\n' "$own_names" | LC_ALL=C sort -u) 2>"$probe_err") || {
   echo "WARNING: review-cycle-scope: fix diff の積を計算できません (${base_sha}..HEAD)" >&2
   head -3 "$probe_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   emit_full diff_failed
@@ -315,7 +317,8 @@ if [ -z "$scope_names" ]; then
   echo "WARNING: review-cycle-scope: 前回レビュー起点からの差分は base の取り込みだけです (base_sha=$base_sha)" >&2
   emit_full base_only_diff
 fi
-if ! printf '%s\n' "$scope_names" > "$SCOPE_FILES" 2>"$probe_err"; then
+# リダイレクトの失敗はシェル自身が出すので、グループの外で受けないと probe_err に入らない
+if ! { printf '%s\n' "$scope_names" > "$SCOPE_FILES"; } 2>"$probe_err"; then
   echo "WARNING: review-cycle-scope: fix diff の一覧を書き出せません: $SCOPE_FILES" >&2
   head -3 "$probe_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   emit_full scope_files_unwritable

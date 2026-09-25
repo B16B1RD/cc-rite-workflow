@@ -627,6 +627,13 @@ git -C "$MREPO" switch -q feat
 mkdir -p "$TMPDIR/rite-cycle-scope-files-42.txt"
 run_scope --pr 42 --results-dir "$MRESULTS"
 rmdir "$TMPDIR/rite-cycle-scope-files-42.txt"
+# 原因 (シェルのリダイレクト失敗) は WARNING の直後に字下げして出る。column 0 に漏らさない
+# 原因行は制御文字の中和で非 UTF-8 のバイトを含みうるので、バイト列として grep する
+unwritable_cause=$(printf '%s\n' "$SCOPE_STDERR" | LC_ALL=C grep -a -A1 'fix diff の一覧を書き出せません' | sed -n '2p')
+case "$unwritable_cause" in
+  "  "?*) pass "TC-25.9b: 書き出し失敗の原因を字下げして診断に出す" ;;
+  *) fail "TC-25.9b: 書き出し失敗の原因"; echo "     実際: '$unwritable_cause'" ;;
+esac
 assert_contains "TC-25.9: 一覧を書き出せなければ scope_files_unwritable で full" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=full; reason=scope_files_unwritable"
 assert_not_contains "TC-25.10: incremental を出さない" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
 assert_contains "TC-25.11: fallback marker を出す" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE_FALLBACK=1; reason=scope_files_unwritable"
@@ -638,11 +645,46 @@ mkdir -p "$SHIM"
 REAL_GIT=$(command -v git)
 printf '#!/bin/bash\n[ "$1" = rev-list ] && { echo "rev-list failed" >&2; exit 1; }\nexec "%s" "$@"\n' "$REAL_GIT" > "$SHIM/git"
 chmod +x "$SHIM/git"
+# 前 cycle の一覧が残っている状態から、取得失敗で full へ倒れたら消えることを見る
+printf 'stale\n' > "$scope_list"
 SCOPE_STDERR=$(PATH="$SHIM:$PATH" bash "$TARGET" --pr 42 --results-dir "$MRESULTS" 2>&1) || true
 assert_contains "TC-25.13: PR 自身の変更を取得できなければ diff_failed で full" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=full; reason=diff_failed"
 assert_contains "TC-25.14: 取得失敗の WARNING を出す" "$SCOPE_STDERR" "PR 自身の変更を取得できません"
 assert_not_contains "TC-25.15: files= を出さない" "$SCOPE_STDERR" "files="
 assert_rc "TC-25.16: full へ倒れたら一覧を残さない" 1 "$([ -e "$scope_list" ]; echo $?)"
+
+echo "=== TC-26: fix commit の改名は元パスと新パスの両方を一覧に入れる ==="
+# 範囲全体の差分と commit ごとの変更で rename 検出が食い違うと、元パスが一覧から落ち、
+# reviewer に新パスが新規ファイルとして渡る
+RREPO="$TEST_DIR/rename-repo"
+mkdir -p "$RREPO"
+git -C "$RREPO" init -q -b main
+git -C "$RREPO" config user.email t@example.com
+git -C "$RREPO" config user.name t
+printf 'one\ntwo\nthree\nfour\nfive\n' > "$RREPO/old.txt"
+printf 'keep\n' > "$RREPO/moved.txt"
+git -C "$RREPO" add -A
+git -C "$RREPO" commit -qm init
+RBASE=$(git -C "$RREPO" rev-parse HEAD)
+git -C "$RREPO" mv old.txt new.txt
+git -C "$RREPO" mv moved.txt renamed.txt
+git -C "$RREPO" commit -qm rename
+printf 'one\ntwo\nTHREE\nfour\nfive\nsix\n' > "$RREPO/new.txt"
+git -C "$RREPO" commit -qam edit
+RRESULTS="$TEST_DIR/results-rename"
+mkdir -p "$RRESULTS"
+mk_result_json "$RRESULTS/42-20260806-000000.json" "$RBASE"
+cd "$RREPO" || exit 1
+run_scope --pr 42 --results-dir "$RRESULTS"
+rename_list=$(marker_value_of "$SCOPE_STDERR" "files")
+actual_files=$(LC_ALL=C sort "$rename_list" 2>/dev/null | paste -sd, -)
+if [ "$actual_files" = "moved.txt,new.txt,old.txt,renamed.txt" ]; then
+  pass "TC-26.1: 改名の元パスと新パスが両方入る (書き換えあり / なし)"
+else
+  fail "TC-26.1: 改名の一覧"
+  echo "     期待値: 'moved.txt,new.txt,old.txt,renamed.txt'"
+  echo "     実際:   '$actual_files'"
+fi
 
 echo "=== 結果: PASS=$PASS FAIL=$FAIL ==="
 [ "$FAIL" -eq 0 ] || exit 1
