@@ -763,17 +763,32 @@ fi
 
 # 文書に字義どおり従う実行者の誤動作を実行で観測した指摘は class A。分類を書く 3 か所が同じ規則を持つ
 doc_follower_rule='記述に字義どおり従う実行者が誤動作に至ることを、記述された手順の実行で観測した指摘'
+# 判定句は規則文より後ろで最初に現れる class A / class B で見る (同じ行の既存の class A に一致させない)。
+# SKILL.md は 5.3.0.C 節の中に限る
 doc_follower_missing=""
+doc_follower_narrowing_missing=""
 for f in "$pr_review_skill" "$PLUGIN_ROOT/skills/fix/references/assessment-rules.md" "$PLUGIN_ROOT/references/severity-levels.md"; do
-  line=$(grep -F -- "$doc_follower_rule" "$f" || true)
-  if [ -z "$line" ] || ! printf '%s\n' "$line" | grep -qF 'class A'; then
-    doc_follower_missing="$doc_follower_missing $f"
+  if [ "$f" = "$pr_review_skill" ]; then body=$class_section; else body=$(cat "$f"); fi
+  line=$(printf '%s\n' "$body" | grep -F -- "$doc_follower_rule" || true)
+  rest=${line#*"$doc_follower_rule"}
+  verdict=$(printf '%s\n' "$rest" | grep -oE 'class [AB]' | head -1)
+  if [ -z "$line" ] || [ "$verdict" != "class A" ]; then
+    doc_follower_missing="$doc_follower_missing $f(${verdict:-no rule})"
+  fi
+  # class B の「文書整合」は字面整合クラス (テキスト差分だけの観測) に限る
+  if ! printf '%s\n' "$body" | grep -F -- 'テキスト差分だけを観測' | grep -qF '字面整合クラス'; then
+    doc_follower_narrowing_missing="$doc_follower_narrowing_missing $f"
   fi
 done
 if [ -z "$doc_follower_missing" ]; then
   pass "doc-follower malfunction is class A in all three classification sites"
 else
-  fail "doc-follower class A rule missing:$doc_follower_missing"
+  fail "doc-follower rule is not class A:$doc_follower_missing"
+fi
+if [ -z "$doc_follower_narrowing_missing" ]; then
+  pass "class B document consistency is narrowed to the literal-consistency class in all three sites"
+else
+  fail "literal-consistency narrowing missing:$doc_follower_narrowing_missing"
 fi
 
 repo_root=$(cd "$PLUGIN_ROOT/../.." && pwd)
