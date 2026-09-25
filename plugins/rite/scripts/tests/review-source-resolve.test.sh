@@ -91,22 +91,22 @@ UNSET="__RITE_UNSET__"
 
 # -----------------------------------------------------------------
 echo "--- Test 1: input placeholder / usage fail-fast ---"
-run --pr-number "{pr_number}" --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+run --pr-number "{pr_number}" --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 1 "pr_number 非数値 -> exit 1"
 assert_err_has "reason=pr_number_placeholder_residue" "pr_number placeholder reason"
 assert_no_fixerror_stdout "pr_number fatal"
 
-run --pr-number 123 --review-file-path "{review_file_path_from_phase_1_0_1}" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+run --pr-number 123 --review-file-path "{review_file_path_from_phase_1_0_1}" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 1 "review_file_path placeholder -> exit 1"
 assert_err_has "reason=review_file_path_placeholder_residue" "review_file_path placeholder reason"
 assert_no_fixerror_stdout "review_file_path fatal"
 
-run --pr-number 123 --review-file-path "$UNSET" --conversation-decision "{conversation_review_decision}" --p1-scan-turns 0 --p1-scan-found false
+run --pr-number 123 --review-file-path "$UNSET" --conversation-decision "{conversation_review_decision}" --p1-scan-turns 0 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 1 "conversation_decision unsubstituted -> exit 1"
 assert_err_has "reason=priority1_decision_unset" "decision unset reason"
 assert_no_fixerror_stdout "decision unset fatal"
 
-run --pr-number 123 --review-file-path "$UNSET" --conversation-decision bogus --p1-scan-turns 0 --p1-scan-found false
+run --pr-number 123 --review-file-path "$UNSET" --conversation-decision bogus --p1-scan-turns 0 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 1 "conversation_decision invalid -> exit 1"
 assert_err_has "reason=priority1_decision_invalid" "decision invalid reason"
 assert_no_fixerror_stdout "decision invalid fatal"
@@ -117,45 +117,45 @@ RC=0; { (cd "$SANDBOX" && bash "$TARGET" --bogus x) >/dev/null 2>&1; } || RC=$?
 # -----------------------------------------------------------------
 echo "--- Test 2: Priority 1 conversation receipt ---"
 # p1_scan_turns の placeholder 残留 ({p1_scan_turns}) は helper が unset sentinel にマップする
-run --pr-number 123 --review-file-path "$UNSET" --conversation-decision use --p1-scan-turns "{p1_scan_turns}" --p1-scan-found true
+run --pr-number 123 --review-file-path "$UNSET" --conversation-decision use --p1-scan-turns "{p1_scan_turns}" --p1-scan-found true --target-comment-id "$UNSET"
 assert_rc 1 "use + receipt missing -> exit 1"
 assert_err_has "reason=priority1_receipt_missing" "receipt missing reason"
 assert_no_fixerror_stdout "receipt missing fatal"
 
-run --pr-number 123 --review-file-path "$UNSET" --conversation-decision use --p1-scan-turns abc --p1-scan-found true
+run --pr-number 123 --review-file-path "$UNSET" --conversation-decision use --p1-scan-turns abc --p1-scan-found true --target-comment-id "$UNSET"
 assert_rc 1 "use + receipt non-numeric -> exit 1"
 assert_err_has "reason=priority1_receipt_invalid" "receipt invalid reason"
 assert_no_fixerror_stdout "receipt invalid fatal"
 
-run --pr-number 123 --review-file-path "$UNSET" --conversation-decision use --p1-scan-turns 1 --p1-scan-found false
+run --pr-number 123 --review-file-path "$UNSET" --conversation-decision use --p1-scan-turns 1 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 1 "use + found!=true -> exit 1"
 assert_err_has "reason=priority1_receipt_inconsistent" "receipt inconsistent reason"
 assert_no_fixerror_stdout "receipt inconsistent fatal"
 
-run --pr-number 123 --review-file-path "$UNSET" --conversation-decision use --p1-scan-turns 2 --p1-scan-found true
+run --pr-number 123 --review-file-path "$UNSET" --conversation-decision use --p1-scan-turns 2 --p1-scan-found true --target-comment-id "$UNSET"
 assert_rc 0 "use valid -> exit 0"
 assert_err_has "[CONTEXT] REVIEW_SOURCE=conversation;" "conversation marker"
 
 # -----------------------------------------------------------------
 echo "--- Test 3: Priority 0 explicit file ---"
 valid_json "$SANDBOX/explicit.json"
-run --pr-number 123 --review-file-path "$SANDBOX/explicit.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+run --pr-number 123 --review-file-path "$SANDBOX/explicit.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "explicit valid -> exit 0"
 assert_err_has "[CONTEXT] REVIEW_SOURCE=explicit_file; review_source_path=$SANDBOX/explicit.json" "explicit_file marker + path"
 assert_stdout_empty "explicit valid"
 
-run --pr-number 123 --review-file-path "$SANDBOX/nope.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+run --pr-number 123 --review-file-path "$SANDBOX/nope.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "explicit missing -> exit 0 (fallback)"
 assert_err_has "[CONTEXT] REVIEW_SOURCE=fallback;" "fallback marker"
 assert_err_has "reason=explicit_file_not_found" "explicit_file_not_found reason"
 
 printf 'not json{' > "$SANDBOX/bad.json"
-run --pr-number 123 --review-file-path "$SANDBOX/bad.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+run --pr-number 123 --review-file-path "$SANDBOX/bad.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "explicit invalid JSON -> fallback"
 assert_err_has "reason=explicit_file_parse" "explicit_file_parse reason"
 
 valid_json "$SANDBOX/mergeable.json" "mergeable"
-run --pr-number 123 --review-file-path "$SANDBOX/mergeable.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+run --pr-number 123 --review-file-path "$SANDBOX/mergeable.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "explicit mergeable+open-blocker -> fallback"
 assert_err_has "reason=mergeable_has_open_blockers" "cross-field invariant reason"
 
@@ -163,13 +163,13 @@ assert_err_has "reason=mergeable_has_open_blockers" "cross-field invariant reaso
 echo "--- Test 4: Priority 2 local file ---"
 mkdir -p "$SANDBOX/.rite/review-results"
 valid_json "$SANDBOX/.rite/review-results/123-20260101000000.json"
-run --pr-number 123 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+run --pr-number 123 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "local file valid -> exit 0"
 assert_err_has "[CONTEXT] REVIEW_SOURCE=local_file; review_source_path=$SANDBOX_ROOT/.rite/review-results/123-20260101000000.json" "local_file marker + path"
 
 # corrupt local file -> renamed + pr_comment routing
 printf 'not json{' > "$SANDBOX/.rite/review-results/123-20260102000000.json"
-run --pr-number 123 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+run --pr-number 123 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "local corrupt -> pr_comment"
 assert_err_has "reason=local_file_json_parse_failure" "corrupt parse reason"
 if ls "$SANDBOX"/.rite/review-results/123-20260102000000.json.corrupt-* >/dev/null 2>&1; then
@@ -183,7 +183,7 @@ echo "--- Test 5: Priority 3 fall-through ---"
 EMPTY="$TEST_DIR/emptyrepo"; mkdir -p "$EMPTY"
 ( cd "$EMPTY"; git init -q; git config user.email t@e.com; git config user.name t; git commit -q --allow-empty -m init )
 set +e
-OUT=$(cd "$EMPTY" && bash "$TARGET" --pr-number 999 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 3 --p1-scan-found false 2>"$TEST_DIR/err")
+OUT=$(cd "$EMPTY" && bash "$TARGET" --pr-number 999 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 3 --p1-scan-found false --target-comment-id "$UNSET" 2>"$TEST_DIR/err")
 RC=$?
 set -e
 ERR=$(cat "$TEST_DIR/err")
@@ -196,14 +196,14 @@ assert_no_fixerror_stdout "pr_comment path"
 echo "--- Test 6: Priority 0 commit_sha stale detection ---"
 # match: commit_sha == HEAD -> explicit_file resolves, no STALE marker
 valid_json_sha "$SANDBOX/sha-match.json" "$HEAD_SHA"
-run --pr-number 123 --review-file-path "$SANDBOX/sha-match.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+run --pr-number 123 --review-file-path "$SANDBOX/sha-match.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p0 commit_sha match -> exit 0"
 assert_err_has "[CONTEXT] REVIEW_SOURCE=explicit_file;" "p0 match resolves explicit_file"
 assert_err_lacks "REVIEW_SOURCE_STALE=1" "p0 match does NOT emit STALE"
 
 # mismatch: commit_sha != HEAD -> fallback + STALE marker
 valid_json_sha "$SANDBOX/sha-stale.json" "$BOGUS_SHA"
-run --pr-number 123 --review-file-path "$SANDBOX/sha-stale.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+run --pr-number 123 --review-file-path "$SANDBOX/sha-stale.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p0 commit_sha mismatch -> exit 0 (fallback)"
 assert_err_has "[CONTEXT] REVIEW_SOURCE=fallback;" "p0 mismatch -> fallback marker"
 assert_err_has "REVIEW_SOURCE_STALE=1; reason=explicit_file_commit_sha_mismatch" "p0 stale reason"
@@ -215,7 +215,7 @@ echo "--- Test 7: Priority 0 invariant #4 / enum / schema_version unknown ---"
 cat > "$SANDBOX/p0-inv4.json" <<'JSON'
 {"schema_version":"1.1.0","pr_number":123,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"nit-noted"}]}
 JSON
-run --pr-number 123 --review-file-path "$SANDBOX/p0-inv4.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+run --pr-number 123 --review-file-path "$SANDBOX/p0-inv4.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p0 invariant #4 -> exit 0 (fallback)"
 assert_err_has "[CONTEXT] REVIEW_SOURCE=fallback;" "p0 invariant #4 -> fallback marker"
 assert_err_has "REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=explicit_file_critical_high_scope_nit_noted" "p0 invariant #4 reason"
@@ -224,7 +224,7 @@ assert_err_has "REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=explicit_
 cat > "$SANDBOX/p0-enum.json" <<'JSON'
 {"schema_version":"1.1.0","pr_number":123,"overall_assessment":"bogus","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr"}]}
 JSON
-run --pr-number 123 --review-file-path "$SANDBOX/p0-enum.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+run --pr-number 123 --review-file-path "$SANDBOX/p0-enum.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p0 enum unknown -> exit 0 (fallback)"
 assert_err_has "REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=overall_assessment_unknown_value" "p0 enum unknown reason"
 
@@ -232,7 +232,7 @@ assert_err_has "REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=overall_assessment_unknown_
 cat > "$SANDBOX/p0-sv.json" <<'JSON'
 {"schema_version":"9.9.9","pr_number":123,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr"}]}
 JSON
-run --pr-number 123 --review-file-path "$SANDBOX/p0-sv.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+run --pr-number 123 --review-file-path "$SANDBOX/p0-sv.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p0 schema_version unknown -> exit 0 (fallback)"
 assert_err_has "REVIEW_SOURCE_SCHEMA_UNKNOWN=1; reason=explicit_file_schema_version_unknown" "p0 schema_version unknown reason"
 
@@ -245,14 +245,14 @@ mkdir -p "$RR"
 
 # match: commit_sha == HEAD -> local_file resolves, no STALE
 valid_json_sha "$RR/600-20260101000000.json" "$HEAD_SHA"
-run --pr-number 600 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+run --pr-number 600 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p2 commit_sha match -> exit 0"
 assert_err_has "[CONTEXT] REVIEW_SOURCE=local_file;" "p2 match resolves local_file"
 assert_err_lacks "REVIEW_SOURCE_STALE=1" "p2 match does NOT emit STALE"
 
 # mismatch: commit_sha != HEAD -> pr_comment + STALE
 valid_json_sha "$RR/601-20260101000000.json" "$BOGUS_SHA"
-run --pr-number 601 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+run --pr-number 601 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p2 commit_sha mismatch -> exit 0 (pr_comment)"
 assert_err_has "[CONTEXT] REVIEW_SOURCE=pr_comment;" "p2 mismatch -> pr_comment marker"
 assert_err_has "REVIEW_SOURCE_STALE=1; reason=local_file_commit_sha_mismatch" "p2 stale reason"
@@ -264,7 +264,7 @@ echo "--- Test 9: Priority 2 invariant #4 / enum / schema / corrupt-rename 呼�
 cat > "$RR/700-20260101000000.json" <<'JSON'
 {"schema_version":"1.1.0","pr_number":700,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"CRITICAL","status":"open","scope":"nit-noted"}]}
 JSON
-run --pr-number 700 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+run --pr-number 700 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p2 invariant #4 -> exit 0 (pr_comment)"
 assert_err_has "REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=local_file_critical_high_scope_nit_noted" "p2 invariant #4 reason"
 
@@ -272,7 +272,7 @@ assert_err_has "REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=local_fil
 cat > "$RR/701-20260101000000.json" <<'JSON'
 {"schema_version":"1.1.0","pr_number":701,"overall_assessment":"bogus","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr"}]}
 JSON
-run --pr-number 701 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+run --pr-number 701 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p2 enum unknown -> exit 0 (pr_comment)"
 assert_err_has "REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=overall_assessment_unknown_value" "p2 enum unknown reason"
 
@@ -280,13 +280,13 @@ assert_err_has "REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=overall_assessment_unknown_
 cat > "$RR/702-20260101000000.json" <<'JSON'
 {"schema_version":"9.9.9","pr_number":702,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr"}]}
 JSON
-run --pr-number 702 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+run --pr-number 702 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p2 schema_version unknown -> exit 0 (pr_comment)"
 assert_err_has "REVIEW_SOURCE_SCHEMA_UNKNOWN=1; reason=local_file_schema_version_unknown" "p2 schema_version unknown reason"
 
 # corrupt-rename 呼び出し元 (schema-invalid path): valid JSON but required fields missing -> rename + pr_comment
 printf '{"foo":"bar"}' > "$RR/703-20260101000000.json"
-run --pr-number 703 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+run --pr-number 703 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p2 schema_required_fields_missing -> exit 0 (pr_comment)"
 assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_schema_required_fields_missing" "p2 schema_required_fields_missing reason"
 if ls "$RR"/703-20260101000000.json.corrupt-* >/dev/null 2>&1; then
@@ -307,7 +307,7 @@ echo "--- Test 10: verification 型ガード / default mapping (Priority 0) ---"
 cat > "$SANDBOX/p0-verif-canonical.json" <<'JSON'
 {"schema_version":"1.1.0","pr_number":123,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":{"measured":false,"repro":null,"failing_test":null}}]}
 JSON
-run --pr-number 123 --review-file-path "$SANDBOX/p0-verif-canonical.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+run --pr-number 123 --review-file-path "$SANDBOX/p0-verif-canonical.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p0 canonical non-measured verification -> exit 0"
 assert_err_has "[CONTEXT] REVIEW_SOURCE=explicit_file; review_source_path=$SANDBOX/p0-verif-canonical.json" "p0 canonical verification accepted"
 assert_err_lacks "reason=explicit_file_verification_type_invalid" "p0 canonical: type guard must not fire"
@@ -316,14 +316,14 @@ assert_err_lacks "reason=explicit_file_verification_type_invalid" "p0 canonical:
 cat > "$SANDBOX/p0-verif-measured.json" <<'JSON'
 {"schema_version":"1.1.0","pr_number":123,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":{"measured":true,"repro":"bash cmd => observed failure","failing_test":null}}]}
 JSON
-run --pr-number 123 --review-file-path "$SANDBOX/p0-verif-measured.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+run --pr-number 123 --review-file-path "$SANDBOX/p0-verif-measured.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p0 measured verification -> exit 0"
 assert_err_has "[CONTEXT] REVIEW_SOURCE=explicit_file; review_source_path=$SANDBOX/p0-verif-measured.json" "p0 measured verification accepted"
 
 # verification 欠落の旧形式が受理される (後方互換 — 型ガードは verification の存在を要求しない)
 # fixture は valid_json helper と同一形状のため helper を使う (schema 変更時に追従漏れしない)
 valid_json "$SANDBOX/p0-verif-absent.json"
-run --pr-number 123 --review-file-path "$SANDBOX/p0-verif-absent.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+run --pr-number 123 --review-file-path "$SANDBOX/p0-verif-absent.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p0 verification absent (legacy shape) -> exit 0"
 assert_err_has "[CONTEXT] REVIEW_SOURCE=explicit_file; review_source_path=$SANDBOX/p0-verif-absent.json" "p0 verification absent accepted"
 assert_err_lacks "reason=explicit_file_verification_type_invalid" "p0 verification absent: type guard must not fire"
@@ -333,7 +333,7 @@ assert_err_lacks "reason=explicit_file_verification_type_invalid" "p0 verificati
 cat > "$SANDBOX/p0-verif-empty.json" <<'JSON'
 {"schema_version":"1.1.0","pr_number":123,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":{}}]}
 JSON
-run --pr-number 123 --review-file-path "$SANDBOX/p0-verif-empty.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+run --pr-number 123 --review-file-path "$SANDBOX/p0-verif-empty.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p0 empty verification object -> exit 0"
 assert_err_has "[CONTEXT] REVIEW_SOURCE=explicit_file; review_source_path=$SANDBOX/p0-verif-empty.json" "p0 empty verification accepted (measured absent = default mapping)"
 assert_err_lacks "reason=explicit_file_verification_type_invalid" "p0 verification:{}: type guard must not fire"
@@ -343,7 +343,7 @@ assert_err_lacks "reason=explicit_file_verification_type_invalid" "p0 verificati
 cat > "$SANDBOX/p0-verif-bool.json" <<'JSON'
 {"schema_version":"1.1.0","pr_number":123,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":true}]}
 JSON
-run --pr-number 123 --review-file-path "$SANDBOX/p0-verif-bool.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+run --pr-number 123 --review-file-path "$SANDBOX/p0-verif-bool.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p0 verification type invalid (bool) -> exit 0 (fallback)"
 assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_verification_type_invalid" "p0 verification type guard reason"
 assert_err_has "[CONTEXT] REVIEW_SOURCE=fallback;" "p0 type guard -> fallback (no silent fall-through)"
@@ -360,7 +360,7 @@ fi
 cat > "$SANDBOX/p0-measured-string.json" <<'JSON'
 {"schema_version":"1.1.0","pr_number":123,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":{"measured":"true","repro":"cmd => boom","failing_test":null}}]}
 JSON
-run --pr-number 123 --review-file-path "$SANDBOX/p0-measured-string.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+run --pr-number 123 --review-file-path "$SANDBOX/p0-measured-string.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p0 measured type invalid (string) -> exit 0 (fallback)"
 assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_verification_type_invalid" "p0 measured type guard reason"
 assert_err_lacks "[CONTEXT] REVIEW_SOURCE=explicit_file;" "p0 measured type invalid must not be accepted"
@@ -373,7 +373,7 @@ assert_err_has "[CONTEXT] REVIEW_SOURCE=fallback;" "p0 measured type invalid -> 
 cat > "$SANDBOX/p0-verif-multi.json" <<'JSON'
 {"schema_version":"1.1.0","pr_number":123,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"LOW","status":"open","scope":"nit-noted","verification":{"measured":false,"repro":null,"failing_test":null}},{"file":"b.ts","line":2,"severity":"HIGH","status":"open","scope":"current-pr","verification":true}]}
 JSON
-run --pr-number 123 --review-file-path "$SANDBOX/p0-verif-multi.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+run --pr-number 123 --review-file-path "$SANDBOX/p0-verif-multi.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p0 multi-finding type guard -> exit 0 (fallback)"
 assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_verification_type_invalid" "p0 all() detects 2nd finding"
 assert_err_has "[CONTEXT] REVIEW_SOURCE=fallback;" "p0 multi-finding type guard -> fallback routing"
@@ -385,7 +385,7 @@ assert_err_has "[CONTEXT] REVIEW_SOURCE=fallback;" "p0 multi-finding type guard 
 cat > "$SANDBOX/p0-verif-order.json" <<'JSON'
 {"schema_version":"1.1.0","pr_number":123,"overall_assessment":"mergeable","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":true}]}
 JSON
-run --pr-number 123 --review-file-path "$SANDBOX/p0-verif-order.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+run --pr-number 123 --review-file-path "$SANDBOX/p0-verif-order.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p0 guard-before-invariant2 -> exit 0 (fallback)"
 assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_verification_type_invalid" "p0 型ガードが invariant #2 より先に発火する"
 assert_err_lacks "reason=mergeable_has_open_blockers" "p0 invariant #2 は型ガードの後段に留まる"
@@ -395,7 +395,7 @@ assert_err_lacks "reason=mergeable_has_open_blockers" "p0 invariant #2 は型ガ
 cat > "$SANDBOX/p0-verif-jqfail.json" <<'JSON'
 {"schema_version":"1.1.0","pr_number":123,"overall_assessment":"fix-needed","findings":[1]}
 JSON
-run --pr-number 123 --review-file-path "$SANDBOX/p0-verif-jqfail.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+run --pr-number 123 --review-file-path "$SANDBOX/p0-verif-jqfail.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p0 guard jq runtime failure -> exit 0 (fallback)"
 assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_verification_guard_jq_failed" "p0 jq 失敗は専用 reason"
 assert_err_lacks "reason=explicit_file_verification_type_invalid" "p0 jq 失敗を型崩れ reason に融合しない"
@@ -409,7 +409,7 @@ assert_err_lacks "reason=explicit_file_verification_type_invalid" "p0 jq 失敗�
 cat > "$SANDBOX/p0-verif-upper.json" <<'JSON'
 {"schema_version":"1.1.0","pr_number":123,"overall_assessment":"fix-needed","findings":{"a":1}}
 JSON
-run --pr-number 123 --review-file-path "$SANDBOX/p0-verif-upper.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+run --pr-number 123 --review-file-path "$SANDBOX/p0-verif-upper.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p0 guard-after-required-fields -> exit 0 (fallback)"
 assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_schema_required_fields_missing" "p0 required-fields が型ガードより先に発火する"
 assert_err_lacks "reason=explicit_file_verification_guard_jq_failed" "p0 型ガードは required-fields の後段に留まる"
@@ -422,7 +422,7 @@ echo "--- Test 11: verification 型ガード / default mapping (Priority 2) ---"
 cat > "$RR/704-20260101000000.json" <<'JSON'
 {"schema_version":"1.1.0","pr_number":704,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":{"measured":false,"repro":null,"failing_test":null}}]}
 JSON
-run --pr-number 704 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+run --pr-number 704 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p2 canonical non-measured verification -> exit 0"
 assert_err_has "[CONTEXT] REVIEW_SOURCE=local_file;" "p2 canonical verification accepted"
 assert_err_lacks "reason=local_file_verification_type_invalid" "p2 canonical: type guard must not fire"
@@ -430,7 +430,7 @@ assert_err_lacks "reason=local_file_verification_type_invalid" "p2 canonical: ty
 cat > "$RR/705-20260101000000.json" <<'JSON'
 {"schema_version":"1.1.0","pr_number":705,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":{}}]}
 JSON
-run --pr-number 705 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+run --pr-number 705 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p2 empty verification object -> exit 0"
 assert_err_has "[CONTEXT] REVIEW_SOURCE=local_file;" "p2 empty verification accepted (measured absent = default mapping)"
 assert_err_lacks "reason=local_file_verification_type_invalid" "p2 verification:{}: type guard must not fire"
@@ -438,7 +438,7 @@ assert_err_lacks "reason=local_file_verification_type_invalid" "p2 verification:
 cat > "$RR/706-20260101000000.json" <<'JSON'
 {"schema_version":"1.1.0","pr_number":706,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":true}]}
 JSON
-run --pr-number 706 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+run --pr-number 706 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p2 verification type invalid (bool) -> exit 0 (pr_comment)"
 assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_verification_type_invalid" "p2 verification type guard reason"
 assert_err_lacks "[CONTEXT] REVIEW_SOURCE=local_file;" "p2 type invalid must not be accepted as local_file"
@@ -455,7 +455,7 @@ fi
 cat > "$RR/707-20260101000000.json" <<'JSON'
 {"schema_version":"1.1.0","pr_number":707,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":{"measured":"true","repro":"cmd => boom","failing_test":null}}]}
 JSON
-run --pr-number 707 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+run --pr-number 707 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p2 measured type invalid (string) -> exit 0 (pr_comment)"
 assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_verification_type_invalid" "p2 measured type guard reason"
 assert_err_lacks "[CONTEXT] REVIEW_SOURCE=local_file;" "p2 measured type invalid must not be accepted as local_file"
@@ -463,7 +463,7 @@ assert_err_lacks "[CONTEXT] REVIEW_SOURCE=local_file;" "p2 measured type invalid
 cat > "$RR/708-20260101000000.json" <<'JSON'
 {"schema_version":"1.1.0","pr_number":708,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"LOW","status":"open","scope":"nit-noted","verification":{"measured":false,"repro":null,"failing_test":null}},{"file":"b.ts","line":2,"severity":"HIGH","status":"open","scope":"current-pr","verification":true}]}
 JSON
-run --pr-number 708 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+run --pr-number 708 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p2 multi-finding type guard -> exit 0 (pr_comment)"
 assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_verification_type_invalid" "p2 all() detects 2nd finding"
 assert_err_lacks "[CONTEXT] REVIEW_SOURCE=local_file;" "p2 multi-finding type invalid must not be accepted as local_file"
@@ -474,7 +474,7 @@ assert_err_lacks "[CONTEXT] REVIEW_SOURCE=local_file;" "p2 multi-finding type in
 cat > "$RR/709-20260101000000.json" <<'JSON'
 {"schema_version":"1.1.0","pr_number":709,"overall_assessment":"mergeable","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":true}]}
 JSON
-run --pr-number 709 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+run --pr-number 709 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p2 guard-before-invariant2 -> exit 0 (pr_comment)"
 assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_verification_type_invalid" "p2 型ガードが invariant #2 より先に発火する"
 assert_err_lacks "reason=local_file_cross_field_invariant_violated" "p2 invariant #2 は型ガードの後段に留まる"
@@ -489,7 +489,7 @@ fi
 cat > "$RR/710-20260101000000.json" <<'JSON'
 {"schema_version":"1.1.0","pr_number":710,"overall_assessment":"fix-needed","findings":[1]}
 JSON
-run --pr-number 710 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+run --pr-number 710 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p2 guard jq runtime failure -> exit 0 (pr_comment)"
 assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_verification_guard_jq_failed" "p2 jq 失敗は専用 reason"
 assert_err_lacks "reason=local_file_verification_type_invalid" "p2 jq 失敗を型崩れ reason に融合しない"
@@ -505,7 +505,7 @@ fi
 cat > "$RR/711-20260101000000.json" <<'JSON'
 {"schema_version":"1.1.0","pr_number":711,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr","verification":{"measured":true,"repro":"bash cmd => observed failure","failing_test":null}}]}
 JSON
-run --pr-number 711 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+run --pr-number 711 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p2 measured verification -> exit 0"
 assert_err_has "[CONTEXT] REVIEW_SOURCE=local_file;" "p2 measured verification accepted"
 assert_err_lacks "reason=local_file_verification_type_invalid" "p2 measured=true: type guard must not fire"
@@ -519,7 +519,7 @@ assert_err_lacks "reason=local_file_verification_type_invalid" "p2 measured=true
 cat > "$RR/712-20260101000000.json" <<'JSON'
 {"schema_version":"1.1.0","pr_number":712,"overall_assessment":"fix-needed","findings":{"a":1}}
 JSON
-run --pr-number 712 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+run --pr-number 712 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false --target-comment-id "$UNSET"
 assert_rc 0 "p2 guard-after-required-fields -> exit 0 (pr_comment)"
 assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_schema_required_fields_missing" "p2 required-fields が型ガードより先に発火する"
 assert_err_lacks "reason=local_file_verification_guard_jq_failed" "p2 型ガードは required-fields の後段に留まる"
@@ -546,12 +546,12 @@ set +e
 hyg_err_p0="$hyg_dir/run-p0.err"
 (cd "$SANDBOX" && TMPDIR="$hyg_dir" bash "$TARGET" --pr-number 123 \
   --review-file-path "$SANDBOX/hygiene-ok.json" --conversation-decision none \
-  --p1-scan-turns 0 --p1-scan-found false) >/dev/null 2>"$hyg_err_p0"
+  --p1-scan-turns 0 --p1-scan-found false --target-comment-id "$UNSET") >/dev/null 2>"$hyg_err_p0"
 hyg_rc_p0=$?
 hyg_err_p2="$hyg_dir/run-p2.err"
 (cd "$SANDBOX" && TMPDIR="$hyg_dir" bash "$TARGET" --pr-number 713 \
   --review-file-path "$UNSET" --conversation-decision none \
-  --p1-scan-turns 1 --p1-scan-found false) >/dev/null 2>"$hyg_err_p2"
+  --p1-scan-turns 1 --p1-scan-found false --target-comment-id "$UNSET") >/dev/null 2>"$hyg_err_p2"
 hyg_rc_p2=$?
 set -e
 # positive control: 両 run が型ガードを通過して当該 Priority で解決したことを固定する
@@ -574,6 +574,96 @@ if ls "$hyg_dir"/rite-verif-guard-err-p2-* >/dev/null 2>&1; then
 else
   pass "P2 成功経路で jq stderr tempfile が残らない"
 fi
+
+# -----------------------------------------------------------------
+echo "--- Test 13: コメント URL 指定 (--target-comment-id) はローカル JSON より優先する ---"
+RR="$SANDBOX/.rite/review-results"
+rm -rf "$RR"; mkdir -p "$RR"
+# HEAD と一致する有効な JSON を置き、Priority 2 が確実に成立する状態を作る
+valid_json_sha "$RR/123-20260301000000.json" "$HEAD_SHA"
+target_marker="[CONTEXT] REVIEW_SOURCE=pr_comment; review_source_path=; pr_number=123"
+
+# (a) positive control: 同じ状態でコメント指定なしなら local_file (既存経路は不変)
+run --pr-number 123 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false --target-comment-id "$UNSET"
+assert_rc 0 "T13-a: コメント指定なし"
+assert_err_has "[CONTEXT] REVIEW_SOURCE=local_file; review_source_path=$SANDBOX_ROOT/.rite/review-results/123-20260301000000.json" "T13-a: ローカル JSON を選ぶ (Priority 2 が成立する状態)"
+assert_err_lacks "REVIEW_SOURCE_TARGET_COMMENT" "T13-a: target marker を出さない"
+
+# (b) コメント指定あり → ローカル JSON があっても pr_comment
+run --pr-number 123 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false --target-comment-id 4567890
+assert_rc 0 "T13-b: コメント指定"
+assert_err_has "$target_marker" "T13-b: pr_comment に確定する"
+assert_err_lacks "REVIEW_SOURCE=local_file" "T13-b: ローカル JSON を選ばない"
+assert_stdout_empty "T13-b"
+t_line=$(grep -nF "[CONTEXT] REVIEW_SOURCE_TARGET_COMMENT=1; comment_id=4567890" <<< "$ERR" | head -1 | cut -d: -f1)
+f_line=$(grep -nF "$target_marker" <<< "$ERR" | head -1 | cut -d: -f1)
+f_count=$(grep -cF "[CONTEXT] REVIEW_SOURCE=" <<< "$ERR" || true)
+if [ -n "$t_line" ] && [ -n "$f_line" ] && [ "$t_line" -lt "$f_line" ]; then
+  pass "T13-b: target marker が最終 marker より前に出る"
+else
+  fail "T13-b: marker の順序 (target=$t_line final=$f_line)"
+fi
+[ "$f_count" = 1 ] && pass "T13-b: 最終 marker はちょうど 1 回" || fail "T13-b: 最終 marker の件数 $f_count"
+
+# (c) Priority 2 を評価しない: 最新が壊れた JSON でも rename されず、P2 の WARNING も出ない
+printf 'not json{' > "$RR/123-20260302000000.json"
+run --pr-number 123 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false --target-comment-id 4567890
+assert_rc 0 "T13-c: 壊れた最新 JSON + コメント指定"
+assert_err_has "$target_marker" "T13-c: pr_comment に確定する"
+if ls "$RR"/123-20260302000000.json.corrupt-* >/dev/null 2>&1; then
+  fail "T13-c: Priority 2 が評価され壊れた JSON が rename された"
+else
+  pass "T13-c: 壊れた JSON は rename されない (Priority 2 を評価しない)"
+fi
+assert_err_lacks "Priority 3 (PR コメント) に routing" "T13-c: Priority 2 の routing WARNING を出さない"
+rm -f "$RR/123-20260302000000.json"
+
+# (d) 会話にレビュー結果があってもコメント指定を優先する
+run --pr-number 123 --review-file-path "$UNSET" --conversation-decision use --p1-scan-turns 1 --p1-scan-found true --target-comment-id 4567890
+assert_rc 0 "T13-d: 会話 use + コメント指定"
+assert_err_has "$target_marker" "T13-d: pr_comment に確定する"
+assert_err_lacks "REVIEW_SOURCE=conversation" "T13-d: 会話の結果を選ばない"
+
+# (e) --review-file との同時指定は fail-loud
+valid_json_sha "$SANDBOX/explicit13.json" "$HEAD_SHA"
+run --pr-number 123 --review-file-path "$SANDBOX/explicit13.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false --target-comment-id 4567890
+assert_rc 1 "T13-e: --review-file と同時指定"
+assert_err_has "reason=target_comment_conflicts_review_file" "T13-e: 固有 reason"
+assert_stdout_empty "T13-e"
+assert_no_fixerror_stdout "T13-e"
+assert_err_lacks "[CONTEXT] REVIEW_SOURCE=" "T13-e: 最終 marker を出さない"
+
+# (f) 未設定・placeholder 残留・非数値は fail-loud
+for tc in "unset||target_comment_id_unset" "placeholder|{target_comment_id}|target_comment_id_placeholder_residue" "alpha|abc|target_comment_id_invalid" "mixed|12a|target_comment_id_invalid"; do
+  label=${tc%%|*}; rest=${tc#*|}; val=${rest%%|*}; reason=${rest#*|}
+  run --pr-number 123 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false --target-comment-id "$val"
+  assert_rc 1 "T13-f ($label)"
+  assert_err_has "reason=$reason" "T13-f ($label): 固有 reason"
+  assert_stdout_empty "T13-f ($label)"
+  assert_no_fixerror_stdout "T13-f ($label)"
+  assert_err_lacks "[CONTEXT] REVIEW_SOURCE=" "T13-f ($label): 最終 marker を出さない"
+done
+run --pr-number 123 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+assert_rc 1 "T13-f (flag 省略)"
+assert_err_has "reason=target_comment_id_unset" "T13-f (flag 省略): 固有 reason"
+
+# (g) 引数検証はコメント指定でも飛ばさない
+run --pr-number "{pr_number}" --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false --target-comment-id 4567890
+assert_err_has "reason=pr_number_placeholder_residue" "T13-g: pr_number の検証を先に行う"
+run --pr-number 123 --review-file-path "$UNSET" --conversation-decision bogus --p1-scan-turns 0 --p1-scan-found false --target-comment-id 4567890
+assert_err_has "reason=priority1_decision_invalid" "T13-g: conversation_decision の検証を先に行う"
+run --pr-number 123 --review-file-path "$UNSET" --conversation-decision "{conversation_review_decision}" --p1-scan-turns 0 --p1-scan-found false --target-comment-id 4567890
+assert_err_has "reason=priority1_decision_unset" "T13-g: conversation_decision の未 substitute を先に検出する"
+
+# (h) 呼び出し側の配線: fix SKILL.md ステップ 1.2.0 の helper 呼び出しがコメント ID を渡す
+FIX_SKILL="$(cd "$(dirname "$TARGET")/.." && pwd)/skills/fix/SKILL.md"
+call_block=$(awk '/^bash \{plugin_root\}\/scripts\/review-source-resolve\.sh/{f=1} f{print} f&&/\|\| \{$/{exit}' "$FIX_SKILL")
+n_wire=$(grep -cF -- '--target-comment-id "{target_comment_id}"' <<< "$call_block" || true)
+[ "$n_wire" = 1 ] && pass "T13-h: fix SKILL の helper 呼び出しが --target-comment-id を 1 回渡す" \
+  || fail "T13-h: fix SKILL の helper 呼び出しの --target-comment-id が $n_wire 回"
+grep -qF -- '--pr-number "{pr_number}"' <<< "$call_block" \
+  && pass "T13-h: 抽出した範囲が helper 呼び出しである (positive control)" \
+  || fail "T13-h: helper 呼び出しを抽出できていない (pin が vacuous)"
 
 # -----------------------------------------------------------------
 echo ""

@@ -100,7 +100,8 @@ echo "TC-2: review-source-resolve Priority 2 reads main-root JSON from worktree 
 out2=$(cd "$REPO/.rite/worktrees/issue-99" && \
   bash "$REPO/scripts/review-source-resolve.sh" \
     --pr-number 99 --review-file-path "__RITE_UNSET__" \
-    --conversation-decision none --p1-scan-turns 0 --p1-scan-found false 2>&1) || true
+    --conversation-decision none --p1-scan-turns 0 --p1-scan-found false \
+    --target-comment-id "__RITE_UNSET__" 2>&1) || true
 if printf '%s' "$out2" | grep -c >/dev/null 'REVIEW_SOURCE=local_file' && \
    printf '%s' "$out2" | grep -c >/dev/null "review_source_path=$MAIN_ROOT/.rite/review-results/99-"; then
   pass "TC-2: Priority 2 resolved to main-root local file"

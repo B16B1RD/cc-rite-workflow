@@ -3,6 +3,7 @@
 #
 # Resolves WHICH review-result source `/rite:fix` should consume, following
 # the Priority chain documented in skills/fix/SKILL.md ステップ 1.2.0:
+#   Target    : comment URL (caller's --target-comment-id) — P0〜P2 を評価せず pr_comment に確定
 #   Priority 0: explicit --review-file (caller's --review-file-path)
 #   Priority 1: conversation context  (caller's --conversation-decision + receipt)
 #   Priority 2: latest local JSON file (.rite/review-results/{pr_number}-*.json)
@@ -23,11 +24,17 @@
 #     --review-file-path <path|__RITE_UNSET__> \
 #     --conversation-decision <use|none> \
 #     --p1-scan-turns <n> \
-#     --p1-scan-found <true|false>
+#     --p1-scan-found <true|false> \
+#     --target-comment-id <id|__RITE_UNSET__>
 #
 # Arguments (all required; the caller substitutes them from ステップ 1.0 / 1.0.1
 # values and the LLM's Priority 1 conversation judgement):
 #   --pr-number             正規化済み PR 番号 (数値)。非数値は「未 substitute」とみなす。
+#   --target-comment-id     ステップ 1.0 がコメント URL から取り出したコメント ID (数値)。
+#                           コメント URL でない呼び出しは sentinel `__RITE_UNSET__`。
+#                           数値なら P0〜P2 を評価せず review_source=pr_comment に確定し、
+#                           ステップ 1.2 の Target Comment Fast Path がそのコメントを読む。
+#                           --review-file との同時指定は、どちらを読むか決められないため fatal。
 #   --review-file-path      ステップ 1.0.1 の [CONTEXT] REVIEW_FILE_PATH=... 値。
 #                           sentinel `__RITE_UNSET__` = --review-file 未指定。
 #   --conversation-decision Priority 1 判定: 直前 assistant turn に `## 📜 rite レビュー結果`
@@ -50,7 +57,8 @@
 #
 # Exit codes:
 #   0 = review_source 解決成功 (fallback を含む — fallback は interactive への正常 routing)
-#   1 = fatal (placeholder 残留 / Priority 1 receipt 不整合 / review_source 未解決) — caller が [fix:error] 出力
+#   1 = fatal (placeholder 残留 / Priority 1 receipt 不整合 / target_comment_id 未設定・不正 /
+#       target_comment_id と --review-file の同時指定 / review_source 未解決) — caller が [fix:error] 出力
 #   2 = usage error (引数欠落 / 不正)
 #
 # NOTE: `set -e` は意図的に省略する。本 helper は Priority chain を明示分岐
@@ -79,6 +87,7 @@ review_file_path=""
 conversation_review_decision=""
 p1_scan_turns=""
 p1_scan_found=""
+target_comment_id=""
 # 各値付きフラグは `shift; shift` で消費する。値なしフラグが末尾に来た場合 ($#=1)、
 # `shift 2` は $# を減らせず set -e 非設定 + `${2:-}` (nounset 非発火) の下で無限ループに
 # 陥る。1 回目の shift で $# を確実に 0 にし、2 回目は no-op で安全に抜ける。
@@ -89,6 +98,7 @@ while [ $# -gt 0 ]; do
     --conversation-decision) conversation_review_decision="${2:-}"; shift; shift ;;
     --p1-scan-turns)         p1_scan_turns="${2:-}"; shift; shift ;;
     --p1-scan-found)         p1_scan_found="${2:-}"; shift; shift ;;
+    --target-comment-id)     target_comment_id="${2:-}"; shift; shift ;;
     *)
       echo "ERROR: review-source-resolve.sh: 未知の引数: $1" >&2
       exit 2
@@ -132,8 +142,60 @@ case "$pr_number" in
     ;;
 esac
 
+# conversation_review_decision の値検証は Priority chain の評価より前に行う。
+# 評価順に依存させると、先に取得元が決まる経路 (Target / Priority 0) で substitute 漏れが素通りする。
+case "$conversation_review_decision" in
+  use|none) ;;
+  __RITE_CONVERSATION_DECISION_UNSET__)
+    echo "ERROR: Priority 1 conversation_review_decision が literal substitute されていません" >&2
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=priority1_decision_unset" >&2
+    exit 1
+    ;;
+  *)
+    echo "ERROR: Priority 1 conversation_review_decision に未知の値: '$conversation_review_decision'" >&2
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=priority1_decision_invalid" >&2
+    exit 1
+    ;;
+esac
+
+# target_comment_id の検証。コメント URL 以外の呼び出しは sentinel `__RITE_UNSET__` を渡す。
+# 空・placeholder 残留・非数値を「コメント指定なし」と読み替えると、呼び出し側の渡し忘れで
+# 指定コメントがローカル JSON に黙って置き換わる元の不具合が再発するため fail-loud にする。
+case "$target_comment_id" in
+  __RITE_UNSET__) ;;
+  "")
+    echo "ERROR: --target-comment-id が指定されていません (コメント URL でない呼び出しは __RITE_UNSET__ を渡す)" >&2
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=target_comment_id_unset" >&2
+    exit 1
+    ;;
+  "{target_comment_id}")
+    echo "ERROR: target_comment_id placeholder が literal substitute されていません: '$target_comment_id'" >&2
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=target_comment_id_placeholder_residue" >&2
+    exit 1
+    ;;
+  *[!0-9]*)
+    echo "ERROR: --target-comment-id が数値ではありません: '$target_comment_id'" >&2
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=target_comment_id_invalid" >&2
+    exit 1
+    ;;
+esac
+
 review_source=""
 review_source_path=""
+
+# Target: コメント URL の指定は他のどの取得元より優先する。ローカル JSON は毎回の
+# /rite:pr-review が保存するため、ここで確定しないと Priority 2 がほぼ常に成立し、
+# 指定したコメントが読まれない。
+if [ "$target_comment_id" != "__RITE_UNSET__" ]; then
+  if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; then
+    echo "ERROR: --review-file とコメント URL が同時に指定されています。どちらを読むか決められないため中止します" >&2
+    echo "  対処: どちらか一方だけを指定して /rite:fix を再実行してください" >&2
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=target_comment_conflicts_review_file" >&2
+    exit 1
+  fi
+  echo "[CONTEXT] REVIEW_SOURCE_TARGET_COMMENT=1; comment_id=$target_comment_id" >&2
+  review_source="pr_comment"
+fi
 
 # signal-specific trap を block 冒頭で設置する (find_err tempfile の orphan 防止)。
 # canonical pattern: references/bash-trap-patterns.md#signal-specific-trap-template を参照。
@@ -208,7 +270,7 @@ _rite_verification_type_check() {
 # sentinel `__RITE_UNSET__` (旧 `null` から変更) 以外で
 # かつ非空の場合に Priority 0 を発火させる。`null` という literal 文字列を持つファイル名
 # (`./null` ではない `null` 単独) も legitimate な path として処理される。
-if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; then
+if [ -z "$review_source" ] && [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; then
   if [ ! -f "$review_file_path" ]; then
     echo "エラー: --review-file で指定されたパスが存在しません: $review_file_path" >&2
     echo "[CONTEXT] REVIEW_SOURCE_MISSING=1; reason=explicit_file_not_found" >&2
@@ -374,7 +436,8 @@ fi
 # assistant turn に `## 📜 rite レビュー結果` を含む /rite:pr-review 出力が残っていれば、
 # 会話コンテキストから findings を読み取り --conversation-decision use を渡す。
 # 会話に review 結果がなければ --conversation-decision none を渡す。
-# substitute 漏れ (literal placeholder 残留) は silent fallthrough / silent P1 hijack を起こすため fail-fast する。
+# substitute 漏れ (literal placeholder 残留) は silent fallthrough / silent P1 hijack を起こすため
+# chain 評価前の引数検証で fail-fast 済み。
 if [ -z "$review_source" ]; then
   case "$conversation_review_decision" in
     use)
@@ -411,16 +474,7 @@ if [ -z "$review_source" ]; then
       esac
       :  # Priority 2 以降に fallthrough
       ;;
-    __RITE_CONVERSATION_DECISION_UNSET__)
-      echo "ERROR: Priority 1 conversation_review_decision が literal substitute されていません" >&2
-      echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=priority1_decision_unset" >&2
-      exit 1
-      ;;
-    *)
-      echo "ERROR: Priority 1 conversation_review_decision に未知の値: '$conversation_review_decision'" >&2
-      echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=priority1_decision_invalid" >&2
-      exit 1
-      ;;
+    # use / none 以外の値は chain 評価前の引数検証で停止済み
   esac
 fi
 

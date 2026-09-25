@@ -577,6 +577,7 @@ emit の目的は observability — 「どの review-result file が 1.0 schema 
 
 | Priority | ソース | 発動条件 | 失敗時の動作 |
 |----------|-------|---------|-------------|
+| T | **対象コメント (コメント URL)** | `/rite:fix` にコメント URL (`.../pull/N#issuecomment-ID`) を渡したとき | Priority 0〜2 を評価せず PR コメント経路に確定し、指定コメントを直接読む (ローカル JSON があっても読まない)。`--review-file` との同時指定は、どちらを読むか決められないため `[fix:error]` で止める |
 | 0 | **明示的ファイル指定** | `--review-file <path>` 指定時 | 指定パスを読取。**6 種の失敗モード** (パス不在 / JSON 不正 / schema_version 不明 / `explicit_file_verification_type_invalid` (verification が object/null 以外、または measured が boolean/null 以外 — 型ガード) / `explicit_file_verification_guard_jq_failed` (型ガードの jq が rc>=2 で失敗) / `explicit_file_commit_sha_mismatch` (json commit_sha が HEAD と不一致、stale file protection)) のいずれでも Priority 1-3 にフォールスルーせず直接 Priority 4 (対話式 fallback) へ遷移 (ユーザーの明示意図を尊重) |
 | 1 | **会話コンテキスト** | 同一セッション内で `/rite:pr-review` が直前に実行されていれば、その結果を直接利用。**採用時は `[CONTEXT] REVIEW_SOURCE=conversation; pr_number={pr_number}` を stderr に emit する義務がある** (observability 義務、後段の provenance log に必要) | Claude が会話履歴に rite review 結果を見つけられなかった場合は次の Priority へ |
 | 2 | **ローカルファイル** | `.rite/review-results/{pr_number}-*.json` の中で最新 `timestamp` のファイル (lexicographic sort) | **6 種の失敗モードいずれも** WARNING を出して **Priority 3 (PR コメント) に直接 routing** する: (a) `local_file_json_parse_failure` (`jq empty` で JSON syntax invalid、`.corrupt-{epoch}` rename あり)、(b) `local_file_schema_required_fields_missing` (parse 可能だが `schema_version` 非空文字列 / `pr_number` 数値型 / `findings[]` 配列型のいずれかが欠落、rename あり)、(c) `local_file_verification_type_invalid` (verification が object/null 以外、または measured が boolean/null 以外 — 型ガード、rename あり)、(d) `local_file_verification_guard_jq_failed` (型ガードの jq が rc>=2 で失敗 — **rename なし**。破損が未証明のため破壊的操作をしない)、(e) `local_file_schema_version_unknown` (schema_version 未知、**rename なし**)、(f) `local_file_commit_sha_mismatch` (json commit_sha が現 HEAD と不一致、stale file protection、**rename なし**)。古い timestamp ファイルには fallback しない |
@@ -599,7 +600,7 @@ retained flag: `[CONTEXT] REVIEW_SOURCE_STALE=1; reason={explicit_file|local_fil
 
 ## 明示的ファイル指定
 
-`/rite:fix --review-file <path>` で任意のファイルパスを直接指定可能。パスが存在しない / JSON パース失敗時はエラーを表示して対話式 fallback に誘導する (上記 Priority 0 行参照)。fix.md ステップ 1.0.1 で `$ARGUMENTS` から `--review-file` トークンを pre-strip し、ステップ 1.0 Detection rules は残りの引数のみを評価する。
+`/rite:fix --review-file <path>` で任意のファイルパスを直接指定可能。パスが存在しない / JSON パース失敗時はエラーを表示して対話式 fallback に誘導する (上記 Priority 0 行参照)。fix.md ステップ 1.0.1 で `$ARGUMENTS` から `--review-file` トークンを pre-strip し、ステップ 1.0 Detection rules は残りの引数のみを評価する。コメント URL と同時に指定した場合は止まる (上記 T 行参照)。
 
 ## エラーハンドリング
 
@@ -618,6 +619,7 @@ retained flag: `[CONTEXT] REVIEW_SOURCE_STALE=1; reason={explicit_file|local_fil
 | 条件 | 挙動 |
 |------|------|
 | `--post-comment` と `--no-post-comment` 同時指定 | エラーメッセージを表示して終了（レビューもコメント投稿も実行しない） |
+| `/rite:fix` で `--review-file` とコメント URL を同時指定 | `[fix:error]` で終了（`reason=target_comment_conflicts_review_file`。どちらのレビュー結果も読まない） |
 
 ## クリーンアップ
 
