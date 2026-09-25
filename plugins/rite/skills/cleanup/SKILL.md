@@ -557,7 +557,7 @@ rationale: references/rationale.md#remote-delete-markers
 
 ### 6.0 残存非実測指摘から follow-up Issue を起票
 
-archive より前に実行する（JSON が元の場所にあるうちに読む）。0 件は起票しない。同定不能は起票せず WARNING。cleanup は止めない。
+archive より前に実行する（JSON が元の場所にあるうちに読む）。先に orphan 回収が `archive/` へ移した JSON も読む。0 件は起票しない。同定不能は起票せず WARNING。cleanup は止めない。
 rationale: references/rationale.md#follow-up-before-archive
 
 iterate の NB sweep で起票済みの指摘（関連 Issue 記録コメントの却下台帳で判定=`issued`）は helper が台帳を読んで転記から除く。台帳か最新のレビュー結果 JSON を読めなければ、sweep で Issue 化済みの指摘も転記対象とし（再検証による除外は適用済みのまま）、WARNING と `FOLLOW_UP_SWEEP_ISSUED=unavailable` を出す。
@@ -567,7 +567,7 @@ rationale: references/rationale.md#follow-up-sweep-issued-dedup
 
 `non_blocking_findings[]` は**指摘が出た cycle** の観測であり、その後の fix cycle で解消されても JSON は更新されない。無条件に転記すると**マージ時点で既に存在しない drift** の follow-up Issue が起票される。helper（bash）は「この指摘は既に解消済みか」という散文の意味判定を持てないため、再検証は本ステップ（LLM 層）で行う。
 
-対象 JSON は helper と同一の選び方（`{state_root}/.rite/review-results/{pr_number}-*.json*` の**全ファイルの `non_blocking_findings[]` を和集合**し、basename 昇順（= cycle 昇順）に**そのまま連結する**。`id` は各 JSON 内の連番で cycle 跨ぎの identity を持たないため畳み込み key に使わない）で確定する。最新 1 本だけを見ると helper が転記する集合と食い違い、先行 cycle にのみ載る指摘が再検証を経ずに転記される:
+対象 JSON は helper と同一の選び方（`{state_root}/.rite/review-results/` 直下と `archive/` の `{pr_number}-*.json*` の**全ファイルの `non_blocking_findings[]` を和集合**し、basename 昇順（= cycle 昇順）に**そのまま連結する**。列挙は helper と同じ `lib/review-results-sources.sh`。`id` は各 JSON 内の連番で cycle 跨ぎの identity を持たないため畳み込み key に使わない）で確定する。最新 1 本だけを見ると helper が転記する集合と食い違い、先行 cycle にのみ載る指摘が再検証を経ずに転記される:
 
 ```bash
 # ⚠ 下行はテスト hooks/tests/cleanup-follow-up-issue.test.sh T-28 / T-41 が awk 抽出アンカーとして参照する。変更時はテスト側の awk パターンも同時更新すること
@@ -580,16 +580,18 @@ if [ -z "$_state_root" ]; then
   echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=state_root_unresolved"
 elif ! command -v jq >/dev/null 2>&1; then
   echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=jq_missing"
+elif ! . {plugin_root}/hooks/scripts/lib/review-results-sources.sh; then
+  echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=sources_lib_unavailable"
 else
   # helper と同じく basename 昇順（= cycle 昇順）で全 JSON を走査し、そのまま連結する。
   # `id` は各 JSON 内の連番で cycle を跨いだ identity を持たないため、畳み込み key に使わない
   # （同じ `F-07` が cycle ごとに別の指摘を指す。畳むと別々の指摘が黙って 1 件に潰れる）。
-  # bash の glob 展開は昇順で確定するため for がそのまま順序保証になる。
+  # 読み元は直下と archive/。cleanup より先に orphan 回収が走るとマージ済み PR の JSON は archive/ にある。
+  # 列挙は basename 昇順で確定するため、配列の順がそのまま順序保証になる。
   _rv_srcs=(); _rv_bad=0
-  for f in "$_state_root/.rite/review-results/{pr_number}"-*.json*; do
-    { [ -e "$f" ] || [ -L "$f" ]; } || continue
-    _rv_srcs+=("$f")
-  done
+  while IFS= read -r f; do
+    [ -n "$f" ] && _rv_srcs+=("$f")
+  done <<< "$(rite_review_results_sources "$_state_root/.rite/review-results" "{pr_number}" '.json*')"
   if [ "${#_rv_srcs[@]}" -eq 0 ]; then
     echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=no_json"
   else

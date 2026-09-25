@@ -10,7 +10,8 @@
 # 除外は cleanup ステップ 6.0.V の再検証が `--exclude-ids` で担う。iterate の NB sweep で起票済みの
 # 指摘 (関連 Issue 記録コメントの却下台帳で判定=issued) は本 helper が台帳を読んで除外する。
 #
-# 転記元は archive 前の JSON。archive helper は本スクリプトの後に走る (D-04)。
+# 転記元は直下と archive/ の JSON。cleanup の archive helper は本スクリプトの後に走る (D-04) が、
+# pr-cycle-cleanup.sh の orphan 回収が cleanup より先に archive/ へ移した JSON もここで読む。
 #
 # Usage:
 #   cleanup-follow-up-issue.sh --state-root <dir> --pr <n> \
@@ -88,6 +89,8 @@ source "$SCRIPT_DIR/lib/tempfile.sh"
 # 診断スニペットの制御文字を潰す canonical helper (SoT: control-char-neutralize.sh header)
 # shellcheck source=../control-char-neutralize.sh
 source "$SCRIPT_DIR/../control-char-neutralize.sh"
+# shellcheck source=lib/review-results-sources.sh
+source "$SCRIPT_DIR/lib/review-results-sources.sh"
 
 MARKER_PREFIX='[rite-follow-up-from-pr:'
 
@@ -206,7 +209,8 @@ fi
 # 取りこぼしそのものになる。よってここでは全 cycle 分をそのまま連結し、出典別の除外を終えた後で
 # `_src` 以外が完全一致する再報告だけをまとめる。同一 id でも内容が異なる指摘は独立して残る。
 # 走査順は basename 昇順 (= cycle 昇順) に固定する。
-# glob 未展開の pattern 文字列は実在検査で弾く (archive-or-rm と同型)。
+# 読み元は直下と archive/ の両方。cleanup より先に pr-cycle-cleanup.sh の orphan 回収が走ると、
+# マージ済み PR の JSON は archive/ へ移っている。列挙と同名の扱いは lib/review-results-sources.sh。
 findings_json="[]"
 matched=0
 parsed=0
@@ -215,9 +219,10 @@ rite_tempfile_new union_tmp "fu-union" || exit 1
 printf '[]\n' > "$union_tmp"
 # jq の原因行を捨てない。除外の理由 (どの key が壊れているか) は stderr にしか出ない。
 rite_tempfile_new union_err "fu-union-err" || exit 1
-# bash の glob 展開は basename 昇順で確定するため、この for がそのまま cycle 昇順の連結になる。
-for f in "$results_dir/${PR_NUMBER}"-*.json*; do
-  { [ -e "$f" ] || [ -L "$f" ]; } || continue
+# 列挙は basename 昇順で確定するため、このループがそのまま cycle 昇順の連結になる。
+sources=$(rite_review_results_sources "$results_dir" "$PR_NUMBER" '.json*')
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
   matched=$((matched + 1))
   : > "$union_err"
   # 各 finding に出典 JSON のパス (`_src`) を持たせる。再検証による除外の key (basename + id) と、
@@ -240,7 +245,7 @@ for f in "$results_dir/${PR_NUMBER}"-*.json*; do
   fi
   printf '%s\n' "$merged" > "$union_tmp"
   parsed=$((parsed + 1))
-done
+done <<< "$sources"
 
 if [ "$matched" -eq 0 ]; then
   echo "WARNING: PR #${PR_NUMBER} のレビュー結果 JSON が見つかりません。follow-up 起票を skip します (別環境での cleanup の可能性。cycle 中記録は関連 Issue コメントを参照)" >&2
@@ -366,7 +371,7 @@ fi
 # iterate の NB sweep が既に Issue 化した指摘 (関連 Issue 記録コメントの却下台帳で判定=issued) を
 # 転記から除く。sweep の起票には follow-up ラベルも先頭行 marker も付かないため、下の既存判定では
 # 見分けられず同じ指摘が二重に Issue 化される。recorded / rejected 行は従来どおり転記する。
-# 除外するのは、sweep が読んだ最新 JSON (nb-sweep-collect.sh と同じ選び方) 由来の finding のうち、
+# 除外するのは、sweep が読んだ最新 JSON (nb-sweep-collect.sh と同じ basename 最大の 1 本。archive/ へ移っていても同じ) 由来の finding のうち、
 # 台帳の issued 行と [finding_id, file:line] の組が一致するものだけ。台帳が判定したのは最新 JSON の
 # 指摘であり、別 PR の台帳行も同じ関連 Issue に並ぶため、組が最新 JSON と一致して初めて本 PR の sweep
 # 起票と言える。先行 cycle の finding は id や位置が同じでも転記する。台帳は cycle 属性も指摘の内容も
@@ -400,8 +405,8 @@ else
         | [.[1], .[2]] ] | unique' 2>"$comments_err"); then
     sweep_issued_unavailable ledger_invalid "関連 Issue の却下台帳を解析できません"
     [ -s "$comments_err" ] && head -3 "$comments_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-  elif ! latest_json=$(find "$results_dir" -maxdepth 1 -type f -name "${PR_NUMBER}-*.json" | LC_ALL=C sort | tail -1) \
-    || [ -z "$latest_json" ] \
+  elif ! latest_json=$(rite_review_results_sources "$results_dir" "$PR_NUMBER" '.json' | tail -1) \
+    || [ -z "$latest_json" ] || [ ! -f "$latest_json" ] \
     || ! jq -e 'if (.non_blocking_findings | type) != "array" then error("non_blocking_findings is not an array") else true end' \
       "$latest_json" >/dev/null 2>"$comments_err"; then
     sweep_issued_unavailable apply_failed "sweep 起票済みの指摘を最新のレビュー結果 JSON と照合できません"

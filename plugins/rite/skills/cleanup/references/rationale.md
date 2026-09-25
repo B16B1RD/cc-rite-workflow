@@ -15,6 +15,13 @@ WARNING から手動復旧できるから (D-03)。helper は API 失敗でも e
 `FOLLOW_UP_ISSUE` だけである。完了報告がこれを見ず `REVIEW_CLEANUP_PARTIAL_FAILURE` だけを見ると、
 起票失敗が「なし」に倒れる。marker 不在を成功と読まない規約はステップ 5 と同型。
 
+ただし転記元は cleanup の archive だけが動かすのではない。`pr-cycle-cleanup.sh` の orphan 回収は
+session start など cleanup 以外の契機でも走り、マージ済み PR の JSON を cleanup より先に `archive/`
+へ移しうる。回収側で cleanup 済みかを判定する記録は無く、マージ後に cleanup しない PR の JSON を
+回収する既存の契約も崩せないため、読む側 (helper と 6.0.V) が直下と `archive/` の両方を読む。
+同じ basename が両方にあるときは直下だけを採る (回収も cleanup の archive も同名衝突では直下を
+残すため、両方を読むと 1 cycle を 2 回数え、除外 key が曖昧になる)。
+
 ## follow-up-sweep-issued-dedup
 
 sweep の起票 Issue に follow-up ラベルと先頭行 marker を付けて既存判定に乗せる方式は採らない。
