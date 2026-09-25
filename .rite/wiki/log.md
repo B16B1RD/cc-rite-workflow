@@ -33,6 +33,7 @@
 * **Update**: [pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する](pages/patterns/pin-literal-uniqueness-verified-by-mutation.md) — raw/reviews/20260925T102510Z-pr-3081.md を統合（複数箇所の規則一致は判定語の位置まで拘束する）
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=536, broken_refs=0
 * **Update**: [pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する](pages/patterns/pin-literal-uniqueness-verified-by-mutation.md) — raw/reviews/20260925T110204Z-pr-3084.md を統合（同じ判定語を含む句は判定語を取る前に除く）
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=536, broken_refs=0
 
 ## 2026-09-24
 
