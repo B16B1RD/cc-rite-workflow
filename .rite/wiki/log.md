@@ -37,6 +37,7 @@
 * **Update**: [pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する](pages/patterns/pin-literal-uniqueness-verified-by-mutation.md) — raw/reviews/20260925T115338Z-pr-3086.md を統合（折り返した散文は空白を正規化して文単位で pin する）
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=536, broken_refs=0
 * **Update**: [git diff の出力形状を前提にしたパーサは、git の設定と変更種別で黙って空振りする](pages/anti-patterns/git-diff-parser-output-shape-assumptions.md) — raw/reviews/20260925T124519Z-pr-3087.md を統合（diff の形は呼び出し側のオプションで固定する）
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=536, broken_refs=0
 
 ## 2026-09-24
 
