@@ -440,6 +440,35 @@ else
   fail "textconv review rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
 fi
 
+# a diff larger than one environment value (128 KiB) still reaches the evidence check
+head -c 300000 /dev/zero | tr '\0' 'x' | fold -w 100 > "$repo/large.txt"
+git -C "$repo" add large.txt
+git -C "$repo" commit -qm 'large change'
+write_mem "$mem" "$(applied_page '対象の識別子を照合してから実行する。' README 'printf ok')"
+run_gate --mode review --worktree "$repo" --base "$review_base" --flow-state "$flow" --memory "$mem"
+if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
+  pass "review handles a diff larger than one environment value"
+else
+  fail "large diff review rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
+fi
+write_mem "$mem" "$(applied_page '対象の識別子を照合してから実行する。' not-in-diff.txt 'printf ok')"
+run_gate --mode review --worktree "$repo" --base "$review_base" --flow-state "$flow" --memory "$mem"
+if [ "$GRC" -eq 1 ] && grep -q 'reason=evidence_mismatch' <<<"$GOUT"; then
+  pass "large diff review still denies evidence outside the diff"
+else
+  fail "large diff mismatch rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
+fi
+# the diff files are removed when the gate exits
+gate_tmp="$ROOT/gate-tmp"
+mkdir -p "$gate_tmp"
+TMPDIR="$gate_tmp" run_gate --mode review --worktree "$repo" --base "$review_base" --flow-state "$flow" --memory "$mem"
+if [ -z "$(ls -A "$gate_tmp")" ]; then
+  pass "gate leaves no diff files behind"
+else
+  fail "gate left files: $(ls -A "$gate_tmp")"
+fi
+write_mem "$mem" "$(applied_page '対象の識別子を照合してから実行する。' README 'printf ok')"
+
 # A review resumed from another session reads the record written by the session
 # that implemented or fixed. Review does not authorize a commit, so it does not
 # bind the record to the current session; the other checks still apply.
