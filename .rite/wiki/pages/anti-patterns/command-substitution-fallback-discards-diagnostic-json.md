@@ -13,9 +13,11 @@ sources:
     resource: "raw/reviews/20260713T123348Z-pr-1851.md"
   - type: "reviews"
     resource: "raw/reviews/20260925T133358Z-pr-3091.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260925T151839Z-pr-3097.md"
 tags: ["bash", "command-substitution", "error-handling", "diagnostics", "sentinel"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5[1m]", at: "2026-09-25T13:39:08Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5[1m]", at: "2026-09-25T15:24:22Z" }
 ---
 
 # `cmd=$(...) || cmd=""` は非ゼロ終了時に stdout 済みの診断 JSON を空文字列で上書きする
@@ -85,6 +87,13 @@ esac
 - 止めるときは失敗した値と外部コマンドのエラーを示す。エラーは元の実行の stderr を保持して出す。診断のために再実行すると、失敗した側を再現できない（名前一覧だけの再実行は成功し、全文の取得だけが失敗していた）
 - 修正の回帰テストは、直した経路だけが失敗する fixture を置いて、修正と巻き戻しを区別できるかを確かめる
 
+### 上限のない値は環境変数で渡さない
+
+差分の全文を環境変数で python に渡していたため、差分が環境変数 1 つの長さ上限（Linux で 128 KiB）を超えると exec 自体が失敗し、`set -e` のスクリプトは判定行を出さずに終わった。上限のない値は一時ファイルか stdin で渡し、終了時に消す。
+
+- 大きな入力の回帰テストは、判定がその入力の後半を読まないと成り立たない形にする（ファイル名一覧にも載る値を evidence にすると、本文を切り詰めても通る）
+- 取得失敗を空として続けるフォールバックが触る行に残っていれば、あわせて理由を分けて止める形に直す
+
 ## 関連ページ
 
 - [Exit code semantic preservation: caller は case で語彙を保持する](../patterns/exit-code-semantic-preservation.md)
@@ -96,3 +105,4 @@ esac
 - [open.md / cleanup.md の2箇所を修正、command substitution の exit-code非依存挙動を根拠に説明](../../raw/fixes/20260713T043947Z-pr-1847.md)
 - [残存 4 箇所の一掃 — 被委譲 script 契約の実確認による除去正当性検証、issue-close の -z check 誤発火の実害特定](../../raw/reviews/20260713T123348Z-pr-1851.md)
 - [レビュー結果（差分取得の失敗が evidence_mismatch に化ける）](../../raw/reviews/20260925T133358Z-pr-3091.md)
+- [レビュー結果（差分全文を環境変数で渡して起動に失敗する）](../../raw/reviews/20260925T151839Z-pr-3097.md)

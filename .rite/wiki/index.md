@@ -23,7 +23,7 @@ okf_version: "0.2"
 | [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) | heuristics | 「本経路に来るのは別 live セッション在席時のみ」「3 gates all pass のときのみ reap」のような**全称主張（排他性・網羅性）を含む散文**は、新しい到達経路やゲート例外が追加されると、**その行自体は未変更のまま偽になる**（comment rot: 周辺コードの変更が未変更行を偽化する）。 | 2026-09-24T17:20:00Z | high |
 | [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](pages/patterns/absence-pin-base-present-head-absent-single-line.md) | patterns | 旧文面の除去を drift ガードとして固定する `assert_not_grep` pin には 2 つの構造的な罠がある。 | 2026-09-14T11:20:00Z | high |
 | [rationale ポインタ形式は bare `rationale:` 形式に統一する](pages/heuristics/rationale-pointer-format-unification.md) | heuristics | 実行パスの設計解説(rationale)を references へ退避する際、元位置に残すポインタの形式が 3 種類(bare `rationale: <path>#<anchor>` / markdown link `[text](path#anchor)` / hybrid `rationale: [text](path#anchor)`)に分裂しやすい。 | 2026-07-17 | medium |
-| [`cmd=$(...) \|\| cmd=\\"\\"` は非ゼロ終了時に stdout 済みの診断 JSON を空文字列で上書きする](pages/anti-patterns/command-substitution-fallback-discards-diagnostic-json.md) | anti-patterns | `status_json=$(bash script.sh args) \|\| status_json=\\"\\"` という一見安全な defensive fallback は、`script.sh` が非ゼロ終了したときに **既に stdout へ出力済みの診断 JSON（失敗理由を含む）を空文字列で上書き・破棄する**。 | 2026-09-25T13:39:08Z | high |
+| [`cmd=$(...) \|\| cmd=\\"\\"` は非ゼロ終了時に stdout 済みの診断 JSON を空文字列で上書きする](pages/anti-patterns/command-substitution-fallback-discards-diagnostic-json.md) | anti-patterns | `status_json=$(bash script.sh args) \|\| status_json=\\"\\"` という一見安全な defensive fallback は、`script.sh` が非ゼロ終了したときに **既に stdout へ出力済みの診断 JSON（失敗理由を含む）を空文字列で上書き・破棄する**。 | 2026-09-25T15:24:22Z | high |
 | [pathspec 不一致の git diff --quiet は exit 0 を返し「差分なし」ガードを無効化する](pages/anti-patterns/pathspec-miss-exit-zero-defeats-diff-guard.md) | anti-patterns | `git diff --quiet <rev> -- <pathspec>` は pathspec がどのファイルにも一致しないとき「比較対象なし = 差分なし = exit 0」を返す。 | 2026-07-13T09:15:00+00:00 | high |
 | [破壊的操作を承認する分類器は判定・実行・承認文言が同じ対象を見ることを保証する](pages/heuristics/classifier-destructive-action-same-tree-alignment.md) | heuristics | 「検証してから破棄」型のフローでは、(1) 判定が読む対象、(2) 破棄コマンドが作用する対象、(3) ユーザー承認文言が主張する対象、の 3 者が一致していないと、承認プロンプトが未検証の内容について「確認済み」と過大主張し、承認の informed consent が壊れる。 | 2026-07-13T09:15:00+00:00 | high |
 | [保存パス基準の変更は観測面と全 caller 引数の同時スイープが必要](pages/heuristics/path-basis-change-observation-surface-sweep.md) | heuristics | 状態ファイルの保存パス基準を変更する PR (例: cwd 相対 → 共有 state root) では、実装本体の 3 経路 (save / read / delete) を揃えるだけでは不十分。 | 2026-09-10T11:05:00Z | high |
@@ -539,5 +539,5 @@ okf_version: "0.2"
 
 - 総ページ数: 525
 - ドメイン別: patterns=124, heuristics=234, anti-patterns=167
-- 最終更新: 2026-09-25T14:17:42Z
+- 最終更新: 2026-09-25T15:24:22Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
