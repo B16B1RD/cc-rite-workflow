@@ -1175,9 +1175,15 @@ rationale: references/design-rationale.md#verification-inline-ban
  ```
  Example: `security` -> `{plugin_root}/agents/security-reviewer.md`
 2. ロード失敗は当該 reviewer の失敗として 4.4 で再試行し、再失敗は `[review:error]`。名簿から削除しない
-3. **Extract `{shared_reviewer_principles}`** (`_reviewer-base.md` の文書先頭〜`## Input` 直前の連続範囲)。個別見出しだけ拾わない。
+3. **`{shared_reviewer_principles}` の読み元を確定する**: `_reviewer-base.md` は全文 inline せず、絶対パスを 4.5 の placeholder 表どおりに渡す（named / 独立子の両経路）。次が非ゼロ終了なら `[review:error]` で停止する（空で起動しない）。
+ ```bash
+ base="{plugin_root}/agents/_reviewer-base.md"
+ case "$base" in /*) ;; *) echo "ERROR: 共通レビュー原則のパスが絶対パスではありません: $base" >&2; echo "[review:error]"; exit 1 ;; esac
+ [ -r "$base" ] && grep -q '^## Output Format' "$base" \
+   || { echo "ERROR: 共通レビュー原則を読めません: $base" >&2; echo "[review:error]"; exit 1; }
+ echo "[CONTEXT] SHARED_REVIEWER_PRINCIPLES=$base"
+ ```
 rationale: references/design-rationale.md#shared-principles-hybrid
- **Fallback**: 抽出失敗 / 空なら空文字列。
 **並列（MUST）**: 利用可能な子枠内で同じ組の Task を 1 メッセージで invoke する。全名簿が枠を超える場合は組に分け、完了した枠を解放して次の組を実行する。全組回収まで統合・修正へ進まない（失敗した Task の retry は 4.4 に従う）。各 agent に diff / 変更ファイル / `{issue_spec}` / `{shared_reviewer_principles}` を渡す。
 
 
@@ -1193,7 +1199,7 @@ If the following issues occur with the sub-agent approach:
 
 ### 4.3.1 Task Tool Sub-Agent Invocation
 
-ホストに named Agent/Task が無い場合は [Host workflow operations](../../references/host-workflow-operations.md#独立-reviewer) の絶対パスと読取義務の明示による独立子を使う。これは未登録 named agent の無条件 fallback ではない。起動前に選定名簿を固定し、実際の親/子 ID・開始/終了時刻・raw 完了出力を保持する。必要な独立性または並列性を作れなければ `[review:error]`。独立子の prompt では 4.5 の placeholder 表が定義する `{shared_reviewer_principles}`（4.5 テンプレートと 4.5.1 検証テンプレートの双方の出現箇所）は inline せず、`_reviewer-base.md` の絶対パス行（読取義務付き）に置き換える。その他の placeholder（差分・仕様・CI 状態・Wiki 等）は 4.5 のまま渡す。
+ホストに named Agent/Task が無い場合は [Host workflow operations](../../references/host-workflow-operations.md#独立-reviewer) の絶対パスと読取義務の明示による独立子を使う。これは未登録 named agent の無条件 fallback ではない。起動前に選定名簿を固定し、実際の親/子 ID・開始/終了時刻・raw 完了出力を保持する。必要な独立性または並列性を作れなければ `[review:error]`。placeholder は named 経路と同じく 4.5 のまま渡す（`{shared_reviewer_principles}` も named 経路と同じ絶対パス行）。独立子には加えて `agents/{reviewer_type}-reviewer.md` の絶対パスを同じ読取義務・読取完了申告の対象として渡す（named 経路は profile を system prompt で受け取る）。
 
 **⚠️ IMPORTANT — Named Subagent Invocation**: `rite:{reviewer_type}-reviewer` で **named subagent** として呼ぶ。
 rationale: references/design-rationale.md#named-subagent-and-foreground
@@ -1249,6 +1255,7 @@ Retry procedure when a completion notification fails or is missing. 4.4 と 5.1.
 | Timeout | Yes (up to 1 time) | Re-execute with the same prompt |
 | Network error | Yes (up to 1 time) | Re-execute with the same prompt |
 | Invalid output format | Yes (up to 1 time) | Re-execute with "output in the exact format" appended to the prompt |
+| Missing read declaration | Yes (up to 1 time) | Re-execute with the read obligation of `{shared_reviewer_principles}` restated |
 | Skill file load failure | No | Fall back to the built-in pattern table (ステップ 2.2) for reviewer selection |
 | subagent resolution failure | No | Fail immediately. Display the scoped name used (`rite:{reviewer_type}-reviewer`) and the error message. Mark the reviewer as "incomplete", retain other results, and return `[review:error]`. Do NOT silently fall back to `general-purpose` or reduce the selected roster. |
 
@@ -1261,6 +1268,7 @@ Determine the error type from the completion notification (failure payload or ab
 | Timeout | Response contains keywords like "timeout", "timed out", "exceeded" |
 | Network error | Response contains "network", "connection", "ECONNREFUSED", "unreachable", etc. |
 | Invalid output format | Does not match the above and does not contain expected output format (e.g., `### 評価:` section) |
+| Missing read declaration | raw 出力の先頭行が `読取完了:` で始まらない、または 4.3 で渡した絶対パスを 1 件でも欠く（渡していないファイルを読んだ申告にはならない） |
 | Skill file load failure | Read tool returned an error (occurs before Task execution) |
 | subagent resolution failure | completion notification の失敗メッセージ / 欠落が `Agent type 'rite:{reviewer_type}-reviewer' not found. Available agents: ...` を含む。This indicates the named subagent is not registered in the current Claude Code installation (plugin not installed, version mismatch, or agent file moved) |
 
@@ -1299,7 +1307,7 @@ Determine the error type from the completion notification (failure payload or ab
 | `{complexity_lane_mandate}` | [complexity-lane.md](references/complexity-lane.md#reviewer-mandate軽量レーン適用時に注入する本文) の Reviewer mandate 節 | **Conditional extraction**: `COMPLEXITY_LANE == light`（ステップ 1.3.2）のときのみ、同節の fenced block 本文を抽出し `{complexity}` を埋めて注入する。`full` のときは空文字列（セクションごと省略 — 空見出しが残ると M+ の prompt が変化し、M+ の挙動を変えないという契約に反する）。`{cycle_scope_mandate}` とは直交し、両方が非空になりうる（cycle 2+ の XS Issue）。両者が同時に届いても矛盾しない: 差分スコープは審査**範囲**を、軽量レーンは検証の**実行コスト**を絞るもので、いずれも採否基準を変えない。**`reviewer_type == acceptance`** のときは `COMPLEXITY_LANE` に依らず空文字列（セクションごと省略）とする |
 | `{issue_spec}` | Issue specification obtained in ステップ 1.3.1 | Content of the "仕様詳細" section (if empty, write "仕様情報なし") |
 | `{change_intelligence_summary}` | Change Intelligence Summary from ステップ 1.2.6 | One-paragraph summary of change type, file classification, and focus area |
-| `{shared_reviewer_principles}` | `_reviewer-base.md` (shared) | Extract all sections from the document start to the `## Input` heading (exclusive). This covers `## READ-ONLY Enforcement`, `## Reviewer Mindset`, `## Cross-File Impact Check`, and `## Confidence Scoring` as a contiguous block. Agent-specific identity is NOT included here — it is delivered via the named subagent's system prompt (Phase B). See ステップ 4.3 step 3 for the full extraction procedure |
+| `{shared_reviewer_principles}` | ステップ 4.3 step 3 の `SHARED_REVIEWER_PRINCIPLES=`（`_reviewer-base.md` の絶対パス） | **全文 inline しない**。絶対パスを埋めた次の指示を渡す: 「共通レビュー原則は `{絶対パス}` にある。着手前に Read tool で先頭から末尾まで全文読むこと（1 回で読み切れなければ offset / limit で分割して末尾まで読む）。raw 出力の先頭行に `読取完了: {絶対パス}` と書くこと」。独立子は profile の絶対パスも `; ` 区切りで同じ行に並べる。named / 独立子の両経路で同じ。4.5 テンプレートと 4.5.1 検証テンプレートの双方の出現箇所に適用する |
 | `{change_summary}` | Scale information from ステップ 1.2.1 | Used only for large diffs. Change summary table |
 | `{doc_heavy_pr}` | ステップ 1.2.7 result | Boolean flag (`true` / `false`). Inject only when reviewer is `tech-writer`. If `false` or reviewer != tech-writer, set to empty string |
 | `{doc_heavy_mode_instructions}` | `agents/tech-writer-reviewer.md` `## Doc-Heavy PR Mode (Conditional)` section | **Conditional extraction**: Only populated when `reviewer_type == tech-writer` AND `{doc_heavy_pr} == true`. Extract the entire section from `## Doc-Heavy PR Mode (Conditional)` heading down to (but excluding) the next `##` heading. Otherwise set to empty string |
@@ -1495,6 +1503,8 @@ WARNING は stderr、JSON line は stdout。drift は **non-blocking** で ス�
 ### 5.1 Result Collection
 
 **回収契約**: 全 reviewer の completion notification が揃うまで 5.1 を開始しない。未着の結果を推測・補完しない。
+
+**読取完了申告の照合（全経路）**: 各 raw 出力の先頭行の `読取完了:` を、4.3 で渡した絶対パス集合と照合する。欠ければ 4.4 の Missing read declaration として再試行し、再失敗は incomplete として停止する。
 
 **回収完了ゲート（全ホスト必須）**: [manifest 形式](../../references/host-workflow-operations.md#回収ゲート) に従い、起動前の選定名簿と実際の回収結果を保存する。`{reviewer_completions_file}` は `REVIEW_TMP_DIR/rite-review-{session_id}-{run_id}-{pr_number}-{cycle_count}/reviewer-completions.json` の絶対パス。失敗を観測した reviewer を名簿から除去しない。
 

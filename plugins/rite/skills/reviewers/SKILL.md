@@ -53,7 +53,7 @@ rationale: references/rationale.md#code-quality-co-reviewer
 
 ## Finding Quality Policy
 
-Finding Quality Policy の SoT は [`agents/_reviewer-base.md`](../../agents/_reviewer-base.md)。`{shared_reviewer_principles}` として `pr-review` ステップ 4.5 が注入する。各 reviewer の checklist は `agents/{reviewer_type}-reviewer.md`。
+Finding Quality Policy の SoT は [`agents/_reviewer-base.md`](../../agents/_reviewer-base.md)。`pr-review` ステップ 4.5 が `{shared_reviewer_principles}` として絶対パスと読取義務で渡す。各 reviewer の checklist は `agents/{reviewer_type}-reviewer.md`。
 rationale: references/rationale.md#finding-quality-location
 
 > **Reference**: See [Finding Examples](./references/finding-examples.md) for concrete Few-shot examples of good findings, findings that should NOT be reported, and borderline judgment cases.

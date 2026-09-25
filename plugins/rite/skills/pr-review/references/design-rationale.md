@@ -217,9 +217,11 @@ inline / 手動 verification は Detection Process・Confidence・Cross-File を
 
 ## shared-principles-hybrid
 
-`_reviewer-base.md` を user prompt の `{shared_reviewer_principles}` として渡す理由。
+`_reviewer-base.md` を `{shared_reviewer_principles}` として絶対パスと読取義務で渡す理由。
 
-named subagent の system prompt は各 agent ファイル本体だけで、別ファイルの共有原則は自動注入されない。READ-ONLY / Mindset / Cross-File / Confidence を全 reviewer に届けるため、`## Input` 直前までの連続範囲を抽出する。個別見出しだけ拾うと間の節が落ちる。
+named subagent の system prompt は各 agent ファイル本体だけで、別ファイルの共有原則は自動注入されない。共有原則は約 90KB あり、選定人数分を user prompt へ inline すると親が数百 KB を生成し、prompt の起動上限にも近づく。独立子の経路で採った絶対パス方式を named 経路にも使い、両経路の契約を 1 つにする。
+
+読まずに進む reviewer は無言で共有原則を欠くため、先頭行の読取完了申告を親が照合し、欠ければ再試行する。1 回の Read で読み切れない大きさなので、分割して末尾まで読む義務を明示する。パスを解決・読取できないときに空で起動すると同じ欠落が起動側で起きるため、`[review:error]` で止める。
 
 ## recommendation-classification
 

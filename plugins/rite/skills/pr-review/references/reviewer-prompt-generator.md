@@ -39,7 +39,7 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 <!-- 番号種別判定（url パスセグメント / title・state が使えない理由）の同旨記述: skills/issue-create/references/body-fact-check.md のクラス 1。reviewer prompt は subagent に注入されるため本文は自己完結させるが、gh の挙動が変わったときは両方を更新すること -->
 
 ## 共通レビュー原則
-<!-- `_reviewer-base.md` から抽出される全 reviewer 共通の原則。READ-ONLY Enforcement / Mindset / Cross-File Impact Check / Confidence Scoring が含まれる。reviewer 固有の identity (Role / Core Principles / Detection Process / Detailed Checklist (Expertise Areas, Review Checklist, Severity Definitions, Finding Quality Guidelines) / Output Format) は named subagent の system prompt (agents/{reviewer_type}-reviewer.md) として自動注入されるためここには含めない -->
+<!-- 全 reviewer 共通の原則 (`_reviewer-base.md`) の絶対パスと着手前の全文読取義務・読取完了申告 (ステップ 4.5 の placeholder 表)。本文は inline しない。reviewer 固有の identity は named subagent の system prompt (agents/{reviewer_type}-reviewer.md) として届く -->
 {shared_reviewer_principles}
 
 ## Doc-Heavy PR Mode (Conditional — 適用時のみ非空)

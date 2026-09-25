@@ -38,7 +38,7 @@ PR #{number}: {title} の検証レビューを {reviewer_type} として実行�
 **重要（Part 2 スコープのみに適用）**: 前回の Fix サイクルで変更されていないコードに対して新規の MEDIUM/LOW-MEDIUM/LOW 指摘を生成しないこと。未変更コードの CRITICAL/HIGH 指摘のみ「見落とし」として報告可。この制約は Part 2（リグレッションチェック）にのみ適用されます。フルレビュー（ステップ 4.5 の通常テンプレート）では、すべてのコードを対象にレビューを行ってください。
 
 ## 共通レビュー原則
-<!-- `_reviewer-base.md` から抽出される全 reviewer 共通の原則。READ-ONLY Enforcement / Mindset / Cross-File Impact Check / Confidence Scoring が含まれる。reviewer 固有の identity は named subagent の system prompt (agents/{reviewer_type}-reviewer.md) として自動注入される -->
+<!-- 全 reviewer 共通の原則 (`_reviewer-base.md`) の絶対パスと着手前の全文読取義務・読取完了申告 (ステップ 4.5 の placeholder 表)。本文は inline しない。reviewer 固有の identity は named subagent の system prompt (agents/{reviewer_type}-reviewer.md) として届く -->
 {shared_reviewer_principles}
 
 ## 出力フォーマット

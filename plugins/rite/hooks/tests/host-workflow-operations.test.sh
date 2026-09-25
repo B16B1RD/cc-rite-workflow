@@ -228,18 +228,42 @@ class WorkflowContracts(unittest.TestCase):
                        "絶対パス方式による選定 reviewer 全員の回収は未検証",
                        "Codex を含むどのホストでも設計記録は裏付けていない"]:
             self.assertIn(clause, reviewer_part)
-        # The placeholder substitution rule lives in the handoff subsection and at the
-        # independent-child entry of pr-review, so both call sites agree on it.
+        # The shared reviewer principles travel as an absolute path with a read
+        # obligation on both the named and the independent-child path; neither
+        # path inlines them, and the independent child only adds its profile path.
         handoff_part = reviewer_part.split("### 本文の引き渡し\n", 1)[1].split("\n### ", 1)[0]
         self.assertNotIn("読取完了申告が渡した全パスと一致", handoff_part)
-        pr_review = (plugin / "skills/pr-review/SKILL.md").read_text(encoding="utf-8")
-        entry_part = pr_review.split("### 4.3.1 Task Tool Sub-Agent Invocation\n", 1)[1].split("\n### 4.4 ", 1)[0]
         for clause in ["4.5 の placeholder 表が定義する `{shared_reviewer_principles}`",
                        "4.5 テンプレートと 4.5.1 検証テンプレートの双方の出現箇所",
-                       "絶対パス行（読取義務付き）に置き換える",
-                       "その他の placeholder（差分・仕様・CI 状態・Wiki 等）は 4.5 のまま渡す"]:
+                       "named 経路と同じく `_reviewer-base.md` の絶対パス行（読取義務付き）で渡す",
+                       "その他の placeholder（差分・仕様・CI 状態・Wiki 等）は 4.5 のまま渡す",
+                       "その 1 パスの申告を同じ規則で確認する"]:
             self.assertIn(clause, handoff_part)
+        self.assertNotIn("申告の対象外", reviewer_part)
+        self.assertIn("どの経路でも、helper を実行する前に各 raw 出力の先頭行の読取完了申告",
+                      reviewer_part.split("### 回収ゲート\n", 1)[1])
+        pr_review = (plugin / "skills/pr-review/SKILL.md").read_text(encoding="utf-8")
+        entry_part = pr_review.split("### 4.3.1 Task Tool Sub-Agent Invocation\n", 1)[1].split("\n### 4.4 ", 1)[0]
+        for clause in ["`{shared_reviewer_principles}` も named 経路と同じ絶対パス行",
+                       "`agents/{reviewer_type}-reviewer.md` の絶対パスを同じ読取義務・読取完了申告の対象として渡す"]:
             self.assertIn(clause, entry_part)
+        # 4.3 resolves the path and stops instead of launching with empty principles.
+        load_part = pr_review.split("**Loading sub-agent definition files:**\n", 1)[1].split("\n**並列（MUST）**", 1)[0]
+        self.assertNotIn("空なら空文字列", load_part)
+        self.assertNotIn("Extract `{shared_reviewer_principles}`", load_part)
+        for clause in ['base="{plugin_root}/agents/_reviewer-base.md"', "[CONTEXT] SHARED_REVIEWER_PRINCIPLES=$base",
+                       'echo "[review:error]"; exit 1', "全文 inline せず"]:
+            self.assertIn(clause, load_part)
+        row = next(line for line in pr_review.splitlines() if line.startswith("| `{shared_reviewer_principles}` |"))
+        for clause in ["全文 inline しない", "SHARED_REVIEWER_PRINCIPLES=", "着手前に Read tool で先頭から末尾まで全文読む",
+                       "offset / limit で分割して末尾まで", "読取完了: {絶対パス}", "named / 独立子の両経路で同じ"]:
+            self.assertIn(clause, row)
+        retry_part = pr_review.split("### 4.4 Retry Logic\n", 1)[1].split("\n### ", 1)[0]
+        self.assertEqual(2, retry_part.count("| Missing read declaration |"))
+        self.assertIn("**読取完了申告の照合（全経路）**", pr_review.split("### 5.1 Result Collection\n", 1)[1].split("\n### ", 1)[0])
+        # Distributed agent bodies must not point at a development-repository path.
+        for agent in sorted((plugin / "agents").glob("*-reviewer.md")):
+            self.assertNotIn("plugins/rite/agents/_reviewer-base.md", agent.read_text(encoding="utf-8"), agent.name)
         # workdir is not a 4.5 placeholder; the handoff names it as a separately supplied item.
         self.assertNotIn("制約 / workdir）は 4.5 のまま", handoff_part)
         self.assertIn("制約・絶対 workdir は上記の項目として別途明示する", handoff_part)

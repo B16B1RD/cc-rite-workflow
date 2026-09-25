@@ -46,7 +46,7 @@ The Confidence ≥ 80 gate and Fail-Fast First protocol from [`agents/_reviewer-
 
 ## Output Format
 
-Read `plugins/rite/agents/_reviewer-base.md` for format specification.
+The format specification is in `_reviewer-base.md`. The caller passes its absolute path with an obligation to read it in full before starting; read that path, not a repository-relative one.
 
 **Output example:**
 
