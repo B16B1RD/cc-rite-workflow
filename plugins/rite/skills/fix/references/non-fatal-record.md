@@ -38,41 +38,31 @@ if ! jq -r --arg pr "{pr_number}" --arg pointer "$triage_review_path" \
   exit 1
 fi
 # helper は既存の記録を全文 PATCH で置き換えるので、その却下台帳を新本文へ引き継ぐ。
-# 関連 Issue は helper と同じ規則（PR body の closing keyword → branch 名の issue-N）で決める。
-ledger_issue=""
-if ledger_pr=$(gh pr view "{pr_number}" -R "{owner_repo}" --json body,headRefName) \
-  && ledger_pr_body=$(printf '%s' "$ledger_pr" | jq -r '.body // ""') \
-  && ledger_head=$(printf '%s' "$ledger_pr" | jq -r '.headRefName // ""'); then
-  ledger_issue=$(printf '%s' "$ledger_pr_body" | grep -ioE '(close[sd]?|fix(e[sd])?|resolve[sd]?) #[0-9]+' | head -1 | grep -oE '[0-9]+$')
-  if [ -z "$ledger_issue" ] && [[ "$ledger_head" =~ issue-([0-9]+) ]]; then
-    ledger_issue="${BASH_REMATCH[1]}"
-  fi
-fi
-if [ -z "$ledger_issue" ]; then
-  rm -f "$record_body" "$record_log"
-  echo "[fix:error] reason=nonblocking_record_issue_unresolved"
-  exit 1
-fi
+# 既存本文は helper が PATCH する 1 件を、同じ helper の読み取り専用モードで読む（関連 Issue の解決も helper が行う）。
 ledger_existing=$(mktemp "${TMPDIR:-/tmp}/rite-fix-nbr-existing-XXXXXX") \
   && ledger_file=$(mktemp "${TMPDIR:-/tmp}/rite-fix-nbr-ledger-XXXXXX") || {
   rm -f "$record_body" "$record_log" "${ledger_existing:-}"
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nonblocking_record_tempfile_failed" >&2
   echo "[fix:error] reason=nonblocking_record_tempfile_failed"
   exit 1
 }
-if ! gh api "repos/{owner_repo}/issues/$ledger_issue/comments" --paginate \
-  --jq '.[] | select(.body | startswith("## 📜 rite 非実測指摘の記録")) | .body' > "$ledger_existing"; then
+if ! bash {plugin_root}/hooks/review-nonblocking-record.sh --print-record-body \
+  --pr "{pr_number}" --owner-repo "{owner_repo}" > "$ledger_existing"; then
   rm -f "$record_body" "$record_log" "$ledger_existing" "$ledger_file"
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nonblocking_record_ledger_fetch_failed" >&2
   echo "[fix:error] reason=nonblocking_record_ledger_fetch_failed"
   exit 1
 fi
 if [ -s "$ledger_existing" ] \
   && ! bash {plugin_root}/hooks/scripts/nb-sweep-ledger.sh extract --body-file "$ledger_existing" > "$ledger_file"; then
   rm -f "$record_body" "$record_log" "$ledger_existing" "$ledger_file"
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nonblocking_record_ledger_extract_failed" >&2
   echo "[fix:error] reason=nonblocking_record_ledger_extract_failed"
   exit 1
 fi
 if ! bash {plugin_root}/hooks/scripts/nb-sweep-ledger.sh merge-into --body-file "$record_body" --ledger-file "$ledger_file"; then
   rm -f "$record_body" "$record_log" "$ledger_existing" "$ledger_file"
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nonblocking_record_ledger_merge_failed" >&2
   echo "[fix:error] reason=nonblocking_record_ledger_merge_failed"
   exit 1
 fi

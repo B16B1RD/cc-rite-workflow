@@ -2715,13 +2715,14 @@ else
   #     CI が green のまま)。行頭 anchor にすると `# bash ...` は 0 件になり検出される。
   #     fence 検査は「行頭 anchor で拾えた行が実際に bash fence の内側にあるか」を確認する
   #     (fence は番号付きリスト内にありインデントされるため fence 側も行頭 anchor は使えない)。
-  nbr_invoke_line=$(grep -nE '^[[:space:]]*bash \{plugin_root\}/hooks/review-nonblocking-record\.sh' "$REVIEW_MD" | cut -d: -f1)
+  #     読み取り専用モード (`--print-record-body`、台帳の読み手) の呼び出しは記録経路ではないため数えない。
+  nbr_invoke_line=$(grep -nE '^[[:space:]]*bash \{plugin_root\}/hooks/review-nonblocking-record\.sh' "$REVIEW_MD" | grep -v -- '--print-record-body' | cut -d: -f1)
   nbr_invoke_count=$(printf '%s\n' "$nbr_invoke_line" | grep -c '[0-9]' || true)
   assert "TC-5a 6.1.d の helper 呼び出しが live な行として 1 箇所" "1" "$nbr_invoke_count"
   # [伝播修正, cycle 2 F-04 と同型]: 上記はファイル全体の件数で、ラベルが表明する scope (6.1.d) を
   # 検査していない。呼び出しを 6.1.d の外へ移しても件数は 1 のままだが、6.1.d を読む LLM には
   # 呼び出しが見えなくなり記録経路が実行されない。区間限定でも 1 本であることを併せて固定する。
-  nbr_invoke_in_section=$(_sec_610d | grep -cE '^[[:space:]]*bash \{plugin_root\}/hooks/review-nonblocking-record\.sh' || true)
+  nbr_invoke_in_section=$(_sec_610d | grep -E '^[[:space:]]*bash \{plugin_root\}/hooks/review-nonblocking-record\.sh' | grep -cv -- '--print-record-body' || true)
   assert "TC-5a 6.1.d 区間に helper 呼び出しが 1 箇所" "1" "$nbr_invoke_in_section"
   # 到達性 assertion を件数 pin の内側に入れない。gate すると件数 pin が落ちたとき到達性側が
   # 無言で実行されず、総 assertion 数だけが減る (赤にはなるが「何本走ったか」が変わる)。

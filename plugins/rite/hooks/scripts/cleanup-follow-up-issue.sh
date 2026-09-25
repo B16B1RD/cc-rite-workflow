@@ -21,8 +21,10 @@
 #   --pr                 PR 番号 (数値)。必須
 #   --owner              repo owner (-R 用)。必須
 #   --repo               repo name。必須
-#   --source-issue       元 Issue 番号。空 / 省略可。却下台帳 (sweep 起票済み判定) の取得元でもあり、
-#                        空なら除外不能として FOLLOW_UP_SWEEP_ISSUED=unavailable (no_source_issue) を出す
+#   --source-issue       元 Issue 番号。空 / 省略可。空なら却下台帳 (sweep 起票済み判定) を読まず、
+#                        除外不能として FOLLOW_UP_SWEEP_ISSUED=unavailable (no_source_issue) を出す。
+#                        台帳を読む記録コメントは review-nonblocking-record.sh --print-record-body が
+#                        PR から解決する関連 Issue 上の 1 件 (書き込み経路が PATCH するもの)
 #   --project-number     Projects 番号。projects-enabled=true のとき必須。
 #                        非数値なら WARNING のうえ Projects を無効化して起票する
 #   --project-owner      Projects owner。省略時は --owner
@@ -70,8 +72,9 @@
 #     sweep 起票済みの除外を適用できず、sweep で Issue 化済みの指摘も転記対象にした
 #     (再検証による除外は適用済みのまま。成功経路では出さない)。
 #       reason=no_source_issue : --source-issue が空
-#       reason=comments_api    : 関連 Issue のコメント取得に失敗
-#       reason=ledger_invalid  : 取得したコメントから却下台帳を解析できない
+#       reason=comments_api    : 記録コメントを取得できない (review-nonblocking-record.sh --print-record-body の失敗。
+#                                関連 Issue の解決・記録コメントの同定は同 helper の書き込み経路と同じ)
+#       reason=ledger_invalid  : 取得した記録コメントから却下台帳を解析できない
 #       reason=apply_failed    : 最新のレビュー結果 JSON を選べない / 照合できない、または除外適用の jq が失敗
 #
 # Emitted summary (stdout, 1 行):
@@ -381,24 +384,21 @@ if [ -z "$SOURCE_ISSUE" ]; then
   sweep_issued_unavailable no_source_issue "関連 Issue が無いため却下台帳を読めません"
 else
   rite_tempfile_new comments_err "fu-comments" || exit 1
-  if ! comments_json=$(gh api --paginate --slurp "repos/${OWNER}/${REPO}/issues/${SOURCE_ISSUE}/comments" 2>"$comments_err"); then
-    sweep_issued_unavailable comments_api "関連 Issue #${SOURCE_ISSUE} のコメント取得に失敗しました"
-    [ -s "$comments_err" ] && tr -d '\r' < "$comments_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-  # 記録コメントの選別 (見出し + 最終非空行 sentinel) と台帳行の分解は nb-sweep-collect.sh と同じ述語。
-  elif ! issued_keys=$(printf '%s' "$comments_json" | jq -ce '
+  # 記録コメントは書き込み経路 (review-nonblocking-record.sh) が PATCH する 1 件だけを読む。関連 Issue の解決・
+  # 記録コメントの同定・CRLF の正規化は helper が行い、その診断 (失敗理由・重複した記録コメントの WARNING) は
+  # helper が stderr へ直接出す。台帳行の分解は nb-sweep-collect.sh と同じ述語。
+  if ! record_body=$(bash "$SCRIPT_DIR/../review-nonblocking-record.sh" --print-record-body \
+      --pr "$PR_NUMBER" --owner-repo "${OWNER}/${REPO}"); then
+    sweep_issued_unavailable comments_api "関連 Issue の記録コメントを取得できませんでした"
+  elif ! issued_keys=$(printf '%s' "$record_body" | jq -Rsce '
     def trim: gsub("^\\s+|\\s+$"; "");
-    if type != "array" or any(.[]; type != "array") then error("invalid comment pages") else . end
-    | [ .[][]
-        | .body // "" | gsub("\r\n"; "\n")
-        | select(startswith("## 📜 rite 非実測指摘の記録"))
-        | select((split("\n") | map(sub("\r$"; "")) | map(select(test("\\S"))) | last) == "<!-- rite:nbr:v1 -->")
-        | split("### 却下台帳\n")[1:][]
+    [ split("### 却下台帳\n")[1:][]
         | split("📎 non_blocking_count:")[0] | split("\n### ")[0]
         | split("\n")[] | select(startswith("|"))
         | split("|") | map(trim)
         | select(.[3] == "issued")
         | [.[1], .[2]] ] | unique' 2>"$comments_err"); then
-    sweep_issued_unavailable ledger_invalid "関連 Issue #${SOURCE_ISSUE} の却下台帳を解析できません"
+    sweep_issued_unavailable ledger_invalid "関連 Issue の却下台帳を解析できません"
     [ -s "$comments_err" ] && head -3 "$comments_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   elif ! latest_json=$(find "$results_dir" -maxdepth 1 -type f -name "${PR_NUMBER}-*.json" | LC_ALL=C sort | tail -1) \
     || [ -z "$latest_json" ] \

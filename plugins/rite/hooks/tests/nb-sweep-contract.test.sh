@@ -14,6 +14,10 @@
 # T-11 a body without ledger entries keeps the no-op skip; count mismatch and uncountable ledger fail instead (the awk diagnostic surfaces with the awk: prefix above the awk-specific guidance, the pending marker is removed; an unknown _gh_err_detail label warns and falls back to the gh: prefix)
 # T-12 an existing record comment is updated in place even when the body carries a ledger
 # T-13 the record helper and nb-sweep-ledger.sh read the same ledger range (row counts agree on LF / CRLF / trailing-section bodies; extract and merge-into ignore a trailing CR, skip rows outside the section, splice before the count line; predicates pinned statically)
+# T-14 extract → merge-into is idempotent: the first pass leaves one ledger section right before the count line with one blank line on each side, and the second pass is byte-identical
+# T-15 --print-record-body: prints only the comment the write path would PATCH (CRLF → LF); no record → empty stdout + absent; resolution / lookup failures → rc=1 + reason; never writes, never emits the terminal sentinel, never touches pending markers
+# T-16 with two record comments, collect excludes only the ledger of the comment the helper PATCHes; the four SKILL / reference readers read through --print-record-body once per site and never prefix-match the record heading
+# T-17 6.1.d step 1.5 stops before the record helper when extract fails (REJECTED_LEDGER_PRESERVE=failed, nothing written); an unresolvable related Issue continues with no ledger
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -198,9 +202,14 @@ case "$*" in
   'pr view '*--json\ body*)
     [ "${NB_TEST_BRANCH_ONLY:-0}" = 1 ] || printf 'Closes #42\n' ;;
   'pr view '*--json\ headRefName*) printf 'feat/issue-42-test\n' ;;
+  # 記録 helper の読み取り専用モードが使う自 login / 関連 Issue body (durable id なし) / 単一コメント GET
+  'api user '*) printf 'rite-bot\n' ;;
+  'issue view '*) : ;;
   'api --paginate --slurp repos/test/repo/issues/42/comments')
     [ "${NB_TEST_FAIL:-0}" = 0 ] || exit 1
     cat "$NB_TEST_COMMENTS" ;;
+  'api repos/test/repo/issues/comments/'*)
+    jq --argjson id "${2##*/}" '[.[][] | select(.id == $id)][0]' "$NB_TEST_COMMENTS" ;;
   *) exit 97 ;;
 esac
 SH
@@ -263,7 +272,7 @@ ${MARKER}
 📎 non_blocking_count: 4
 ${SENTINEL}
 EOF
-jq -n --rawfile body "$ledger_body" '[[{body:$body}]]' > "$NB_TEST_COMMENTS"
+jq -n --rawfile body "$ledger_body" '[[{id:11,user:{login:"rite-bot"},body:$body}]]' > "$NB_TEST_COMMENTS"
 live_json="$sandbox/live.json"
 jq -n --slurpfile guard "$guard_json" '{non_blocking_findings:[
 {id:"old",file:"src/old.ts",line:1}, {id:"rec",file:"src/rec.ts",line:2},
@@ -279,22 +288,41 @@ assert "same id different location retained" "src/different.ts" "$(printf '%s' "
 crlf_ledger_body="$sandbox/live-ledger-crlf.md"
 sed 's/$/\r/' "$ledger_body" > "$crlf_ledger_body"
 assert "CRLF fixture contains CR" "yes" "$(grep -q $'\r' "$crlf_ledger_body" && echo yes || echo no)"
-jq -n --rawfile body "$crlf_ledger_body" '[[{body:$body}]]' > "$NB_TEST_COMMENTS"
+jq -n --rawfile body "$crlf_ledger_body" '[[{id:11,user:{login:"rite-bot"},body:$body}]]' > "$NB_TEST_COMMENTS"
 crlf_out=$("$COLLECT" --json "$live_json" --pr 1)
 assert "CRLF ledger excludes the same three dispositions" "2" "$(printf '%s' "$crlf_out" | jq '.count')"
 assert "CRLF targets equal LF targets" "$(printf '%s' "$live_out" | jq -cS '[.targets[] | {id, file, line}]')" "$(printf '%s' "$crlf_out" | jq -cS '[.targets[] | {id, file, line}]')"
 assert "CRLF keeps the collision row outside the ledger" "1" "$(printf '%s' "$crlf_out" | jq '[.targets[] | select(.id=="collision")] | length')"
-jq -n --rawfile body "$ledger_body" '[[{body:$body}]]' > "$NB_TEST_COMMENTS"
+jq -n --rawfile body "$ledger_body" '[[{id:11,user:{login:"rite-bot"},body:$body}]]' > "$NB_TEST_COMMENTS"
 NB_TEST_BRANCH_ONLY=1 "$COLLECT" --json "$live_json" --pr 1 > "$sandbox/branch.out"
 assert "branch fallback gets same ledger" "$live_out" "$(cat "$sandbox/branch.out")"
 assert_grep "ledger loaded from related Issue" "$NB_TEST_GH_LOG" 'repos/test/repo/issues/42/comments'
 NB_TEST_FAIL=1 "$COLLECT" --json "$live_json" --pr 1 > /dev/null 2> "$sandbox/read-fail.err"
 assert "ledger read failure rc=1" "1" "$?"
 assert_grep "ledger read failure is loud" "$sandbox/read-fail.err" 'reason=comments_unreadable'
-printf '{}\n' > "$NB_TEST_COMMENTS"
+# 記録コメントを同定できない応答は「記録なし」に倒さず、読み取り失敗として止める
+printf '[1]\n' > "$NB_TEST_COMMENTS"
 "$COLLECT" --json "$live_json" --pr 1 > /dev/null 2> "$sandbox/invalid-ledger.err"
 assert "invalid comment response rc=1" "1" "$?"
-assert_grep "invalid ledger response is loud" "$sandbox/invalid-ledger.err" 'reason=ledger_invalid'
+assert_grep "invalid comment response is loud" "$sandbox/invalid-ledger.err" 'reason=comments_unreadable'
+assert_grep "invalid comment response surfaces the helper reason" "$sandbox/invalid-ledger.err" 'NONBLOCKING_RECORD_BODY=failed; pr=1; reason=lookup_failed'
+
+# --- T-16: 記録コメントが 2 件あっても、helper が PATCH する 1 件の台帳だけを読む ---
+# 古い記録 (id 11, 台帳 A) → 新しい記録 (id 13, 台帳 B) → 他人の同 marker コメント (id 99, 台帳 C) の順に並べる。
+t16_body() {  # $1=finding_id $2=file:line
+  printf '%s\n' "$MARKER" '' '### 却下台帳' '' '| finding_id | file:line | 判定 | 判定文 |' \
+    '|------------|-----------|------|--------|' "| $1 | $2 | issued | #9 |" '' '📎 non_blocking_count: 0' '' "$SENTINEL"
+}
+jq -n --arg a "$(t16_body A-1 src/a.ts:1)" --arg b "$(t16_body B-1 src/b.ts:2)" --arg c "$(t16_body C-1 src/c.ts:3)" \
+  '[[{id:11,user:{login:"rite-bot"},body:$a},{id:13,user:{login:"rite-bot"},body:$b}],[{id:99,user:{login:"someone-else"},body:$c}]]' \
+  > "$NB_TEST_COMMENTS"
+t16_json="$sandbox/t16.json"
+jq -n '{non_blocking_findings:[{id:"A-1",file:"src/a.ts",line:1},{id:"B-1",file:"src/b.ts",line:2},{id:"C-1",file:"src/c.ts",line:3}]}' > "$t16_json"
+t16_out=$("$COLLECT" --json "$t16_json" --pr 1 2> "$sandbox/t16.err")
+assert "T-16 collect rc=0" "0" "$?"
+assert "T-16 台帳 B (PATCH 先) の行だけを除外する" "A-1,C-1" "$(printf '%s' "$t16_out" | jq -r '[.targets[].id] | sort | join(",")')"
+assert_grep "T-16 読み取りは PATCH 先 (id 13) を指す" "$sandbox/t16.err" 'NONBLOCKING_RECORD_BODY=found; pr=1; comment_id=13$'
+assert_grep "T-16 重複した記録コメントを観測する" "$sandbox/t16.err" 'NONBLOCKING_DUPLICATE_RECORD=1; pr=1; count=2'
 
 # --- rails pin (SKILL.md 機械レール) ---
 ITERATE="$PLUGIN_ROOT/skills/iterate/SKILL.md"
@@ -496,6 +524,10 @@ printf '%s\n' "$*" >> "$NBR_GH_LOG"
 case "${1:-} ${2:-}" in
   'api user') printf 'rite-bot\n'; exit 0 ;;
   'pr view')
+    if [ "${NBR_NO_ISSUE:-0}" = 1 ]; then
+      case " $* " in *" headRefName "*) printf 'topic-branch\n' ;; *) printf 'no keyword\n' ;; esac
+      exit 0
+    fi
     case " $* " in *" headRefName "*) printf 'feat/issue-42-test\n' ;; *) printf 'Closes #42\n' ;; esac
     exit 0 ;;
   'issue view'|'issue edit') exit 0 ;;
@@ -513,8 +545,12 @@ case "${1:-} ${2:-}" in
 esac
 case " $* " in
   *" -X PATCH "*) jq -j '.body' > "$NBR_POSTED"; exit 0 ;;
-  # nb-sweep.md 手順 3 の既存記録コメント取得。記録コメントなしを返す
-  *" --paginate --jq "*) exit 0 ;;
+esac
+case "${1:-} ${2:-}" in
+  # 単一コメントの GET (読み取り専用モードが PATCH 先の本文を取る)
+  'api repos/test/repo/issues/comments/'*)
+    jq --argjson id "${2##*/}" '[.[][] | select(.id == $id)][0]' "$NBR_COMMENTS"
+    exit 0 ;;
 esac
 exit 97
 SH
@@ -796,6 +832,11 @@ else
   ln -sf "$LEDGER" "$sweep_plugin/hooks/scripts/nb-sweep-ledger.sh"
   cat > "$sweep_plugin/hooks/review-nonblocking-record.sh" <<'SH'
 #!/usr/bin/env bash
+# 手順 3 の既存記録コメントの読み取り (記録なし)
+if [ "$1" = --print-record-body ]; then
+  echo "[CONTEXT] NONBLOCKING_RECORD_BODY=absent; pr=7" >&2
+  exit 0
+fi
 [ "$SWEEP_STUB_OUTCOME" = none ] ||
   echo "[CONTEXT] NONBLOCKING_RECORD_DONE=1; pr=7; outcome=$SWEEP_STUB_OUTCOME; count=0; iteration_id=nb-sweep-7; comment_id=; degraded=0" >&2
 exit "$SWEEP_STUB_RC"
@@ -821,6 +862,186 @@ SH
     assert_not_grep "T-10 $record_case は [fix:error] を出さない" "$sandbox/record-block.out" '\[fix:error\]'
   done
 fi
+
+# --- T-14: extract → merge-into は冪等 (2 回かけても本文が変わらず、空行が増えない) ---
+t14_src="$sandbox/t14-src.md"
+# 既存本文の台帳の前後に空行が 2 行ずつある (旧形式の繰り返しで空行が積もった本文)
+printf '%s\n' "$MARKER" '' '| レビュアー | 重要度 |' '|---|---|' '| r | HIGH |' '' '' '### 却下台帳' '' \
+  '| finding_id | file:line | 判定 | 判定文 |' '|------------|-----------|------|--------|' \
+  '| T14-1 | src/a.ts:1 | rejected | r1 |' '| T14-2 | src/b.ts:2 | issued | #9 |' '' '' \
+  '📎 non_blocking_count: 1' '📎 reviewed_commit: abc' '' "$SENTINEL" > "$t14_src"
+t14_new="$sandbox/t14-new.md"
+printf '%s\n' "$MARKER" '' '| レビュアー | 重要度 |' '|---|---|' '| r | HIGH |' '' \
+  '📎 non_blocking_count: 1' '📎 reviewed_commit: def' '' "$SENTINEL" > "$t14_new"
+t14_pass() {  # $1=既存本文 $2=新本文 (書き換える)
+  "$LEDGER" extract --body-file "$1" > "$sandbox/t14-ledger.md" 2>/dev/null \
+    && "$LEDGER" merge-into --body-file "$2" --ledger-file "$sandbox/t14-ledger.md" 2>/dev/null
+}
+cp "$t14_new" "$sandbox/t14-p1.md"
+if t14_pass "$t14_src" "$sandbox/t14-p1.md"; then
+  pass "T-14 1 回目の extract → merge-into が成功する"
+else
+  fail "T-14 1 回目の extract → merge-into が失敗した"
+fi
+assert "T-14 1 回目: 台帳見出しは 1 つ" 1 "$(grep -c '^### 却下台帳$' "$sandbox/t14-p1.md")"
+assert "T-14 1 回目: 行 T14-1 は 1 回" 1 "$(grep -c '^| T14-1 ' "$sandbox/t14-p1.md")"
+assert "T-14 1 回目: 行 T14-2 は 1 回" 1 "$(grep -c '^| T14-2 ' "$sandbox/t14-p1.md")"
+t14_head=$(grep -n '^### 却下台帳$' "$sandbox/t14-p1.md" | head -1 | cut -d: -f1)
+t14_last=$(grep -n '^| T14-2 ' "$sandbox/t14-p1.md" | head -1 | cut -d: -f1)
+t14_count=$(grep -n '^📎 non_blocking_count:' "$sandbox/t14-p1.md" | head -1 | cut -d: -f1)
+if [ -n "$t14_head" ] && [ -n "$t14_last" ] && [ -n "$t14_count" ] \
+  && [ "$t14_count" -eq $((t14_last + 2)) ] && [ -z "$(sed -n "$((t14_last + 1))p" "$sandbox/t14-p1.md")" ] \
+  && [ -z "$(sed -n "$((t14_head - 1))p" "$sandbox/t14-p1.md")" ] \
+  && [ -n "$(sed -n "$((t14_head - 2))p" "$sandbox/t14-p1.md")" ]; then
+  pass "T-14 1 回目: 台帳は count 行の直前にあり、前後の空行はちょうど 1 行"
+else
+  fail "T-14 1 回目: 台帳の位置か前後の空行が違う (head=${t14_head:-none} last=${t14_last:-none} count=${t14_count:-none})"
+fi
+assert "T-14 1 回目: 連続する空行が無い" 0 "$(awk 'prev == "" && $0 == "" && NR > 1 { n++ } { prev = $0 } END { print n + 0 }' "$sandbox/t14-p1.md")"
+cp "$sandbox/t14-p1.md" "$sandbox/t14-p2.md"
+t14_pass "$sandbox/t14-p1.md" "$sandbox/t14-p2.md"
+if cmp -s "$sandbox/t14-p1.md" "$sandbox/t14-p2.md"; then
+  pass "T-14 2 回目は本文を変えない (byte 一致)"
+else
+  fail "T-14 2 回目で本文が変わった"
+fi
+# 新本文へ引き継ぐ経路 (6.1.d / fix) も、2 cycle 目で 1 cycle 目と同じ本文になる
+cp "$t14_new" "$sandbox/t14-p3.md"
+t14_pass "$sandbox/t14-p1.md" "$sandbox/t14-p3.md"
+if cmp -s "$sandbox/t14-p1.md" "$sandbox/t14-p3.md"; then
+  pass "T-14 新本文への 2 cycle 目の引き継ぎも 1 cycle 目と同じ本文になる"
+else
+  fail "T-14 新本文への 2 cycle 目の引き継ぎで本文が変わった"
+fi
+
+# --- T-15: --print-record-body (読み取り専用モード) ---
+t15_tmp="$sandbox/t15-tmp"
+mkdir -p "$t15_tmp"
+: > "$t15_tmp/rite-nbr-pending-x"
+run_print() {  # 追加引数をそのまま渡す
+  : > "$NBR_GH_LOG"
+  print_rc=0
+  TMPDIR="$t15_tmp" PATH="$nbr_bin:$PATH" bash "$NBR_SH" --print-record-body --pr 7 --owner-repo test/repo "$@" \
+    > "$sandbox/print.out" 2> "$sandbox/print.err" || print_rc=$?
+}
+assert_print_readonly() {  # $1=label
+  assert "T-15 $1: terminal sentinel を出さない" 0 "$(grep -c 'NONBLOCKING_RECORD_DONE' "$sandbox/print.err")"
+  assert "T-15 $1: 記録失敗の marker を出さない" 0 "$(grep -c 'NONBLOCKING_RECORD_FAILED' "$sandbox/print.err")"
+  assert "T-15 $1: PATCH / 投稿 / Issue body 更新をしない" 0 \
+    "$(grep -cE -- '-X PATCH|^issue comment |^issue edit ' "$NBR_GH_LOG")"
+  assert "T-15 $1: 既存の pending marker に触れない" yes "$([ -e "$t15_tmp/rite-nbr-pending-x" ] && echo yes || echo no)"
+  assert "T-15 $1: pending marker を作らない" 1 "$(find "$t15_tmp" -name 'rite-nbr-pending-*' | wc -l | tr -d ' ')"
+}
+printf '[[]]\n' > "$NBR_COMMENTS"
+run_print
+assert "T-15 記録なし: rc=0" 0 "$print_rc"
+assert "T-15 記録なし: stdout は空" 0 "$(wc -c < "$sandbox/print.out" | tr -d ' ')"
+assert_grep "T-15 記録なし: absent marker" "$sandbox/print.err" '^\[CONTEXT\] NONBLOCKING_RECORD_BODY=absent; pr=7$'
+assert_print_readonly "記録なし"
+# 古い記録 (id 21) / 新しい記録 (id 23、CRLF) / 他人の同 marker コメント (id 29)
+printf '%s\r\n\r\nnew ledger\r\n\r\n%s\r\n' "$MARKER" "$SENTINEL" > "$sandbox/t15-new.md"
+jq -n --arg old "$(printf '%s\n\nold ledger\n\n%s\n' "$MARKER" "$SENTINEL")" \
+  --rawfile new "$sandbox/t15-new.md" \
+  --arg foreign "$(printf '%s\n\nforeign ledger\n\n%s\n' "$MARKER" "$SENTINEL")" \
+  '[[{id:21,user:{login:"rite-bot"},body:$old},{id:23,user:{login:"rite-bot"},body:$new},{id:29,user:{login:"someone-else"},body:$foreign}]]' \
+  > "$NBR_COMMENTS"
+run_print
+assert "T-15 記録あり: rc=0" 0 "$print_rc"
+assert_grep "T-15 記録あり: PATCH 先 (id 23) の本文を出す" "$sandbox/print.out" '^new ledger$'
+assert "T-15 記録あり: 古い記録・他人のコメントを出さない" 0 "$(grep -cE 'old ledger|foreign ledger' "$sandbox/print.out")"
+assert "T-15 記録あり: CRLF を LF に正規化する" 0 "$(grep -c $'\r' "$sandbox/print.out")"
+assert_grep "T-15 記録あり: found marker" "$sandbox/print.err" '^\[CONTEXT\] NONBLOCKING_RECORD_BODY=found; pr=7; comment_id=23$'
+assert_print_readonly "記録あり"
+NBR_NO_ISSUE=1 run_print
+assert "T-15 関連 Issue なし: rc=1" 1 "$print_rc"
+assert "T-15 関連 Issue なし: stdout は空" 0 "$(wc -c < "$sandbox/print.out" | tr -d ' ')"
+assert_grep "T-15 関連 Issue なし: reason" "$sandbox/print.err" '^\[CONTEXT\] NONBLOCKING_RECORD_BODY=failed; pr=7; reason=related_issue_unresolved$'
+assert_print_readonly "関連 Issue なし"
+NBR_LOOKUP_FAIL=1 run_print
+assert "T-15 lookup 失敗: rc=1 (記録なしに倒さない)" 1 "$print_rc"
+assert "T-15 lookup 失敗: stdout は空" 0 "$(wc -c < "$sandbox/print.out" | tr -d ' ')"
+assert_grep "T-15 lookup 失敗: reason" "$sandbox/print.err" '^\[CONTEXT\] NONBLOCKING_RECORD_BODY=failed; pr=7; reason=lookup_failed$'
+assert_not_grep "T-15 lookup 失敗: absent と言わない" "$sandbox/print.err" 'NONBLOCKING_RECORD_BODY=absent'
+assert_print_readonly "lookup 失敗"
+run_print --count 1
+assert "T-15 記録経路の引数との併用: rc=1" 1 "$print_rc"
+assert_grep "T-15 記録経路の引数との併用: reason" "$sandbox/print.err" 'NONBLOCKING_RECORD_BODY=failed; pr=7; reason=conflicting_options'
+assert "T-15 記録経路の引数との併用: gh を呼ばない" 0 "$(wc -l < "$NBR_GH_LOG" | tr -d ' ')"
+assert "T-15 既存の pending marker は最後まで残る" yes "$([ -e "$t15_tmp/rite-nbr-pending-x" ] && echo yes || echo no)"
+
+# --- T-16 (静的): SKILL / reference の読み手は site ごとに --print-record-body を 1 回呼び、前方一致で読まない ---
+# $1=file $2=needle。needle を含む bash fence (字下げ付きを含む) を 1 つ取り出す
+extract_block_of() {
+  awk -v needle="$2" '
+    /^[[:space:]]*```bash$/ {inside=1; block=""; next}
+    /^[[:space:]]*```$/ {if (inside && index(block, needle)) {printf "%s", block; exit}; inside=0}
+    inside {block=block $0 "\n"}
+  ' "$1"
+}
+NFR="$PLUGIN_ROOT/skills/fix/references/non-fatal-record.md"
+for t16_file in "$REVIEW" "$NFR" "$FIX"; do
+  assert "T-16 ${t16_file#"$PLUGIN_ROOT"/} は記録見出しを前方一致で読まない" 0 \
+    "$(grep -cF 'startswith("## 📜 rite 非実測指摘の記録")' "$t16_file")"
+done
+for t16_site in "$REVIEW|rite-rejected-src" "$REVIEW|rite-nb-existing" "$NFR|nonblocking_record_ledger_fetch_failed" "$FIX|nb_sweep_ledger_fetch_failed"; do
+  t16_block=$(extract_block_of "${t16_site%%|*}" "${t16_site##*|}")
+  if [ -z "$t16_block" ]; then
+    fail "T-16 ${t16_site##*|} の bash block を抽出できない"
+    continue
+  fi
+  assert "T-16 ${t16_site##*|} の block は --print-record-body を 1 回呼ぶ" 1 \
+    "$(printf '%s' "$t16_block" | grep -cF 'review-nonblocking-record.sh --print-record-body')"
+  assert "T-16 ${t16_site##*|} の block はコメント一覧を直接読まない" 0 \
+    "$(printf '%s' "$t16_block" | grep -cE 'issues/[^ ]*/comments')"
+done
+
+# --- T-17: 6.1.d step 1.5 は extract が失敗したら記録 helper の前で止まる ---
+step15=$(extract_block_of "$REVIEW" 'rite-nb-existing')
+t17_tmp="$sandbox/t17-tmp"
+t17_plugin="$sandbox/t17-plugin"
+mkdir -p "$t17_tmp" "$t17_plugin/hooks/scripts"
+# 読み取りは実 helper (同じディレクトリの依存を並べる)。台帳 helper だけ extract を失敗させ、呼び出しを記録する
+for t17_dep in review-nonblocking-record.sh control-char-neutralize.sh _mktemp-stderr-guard.sh; do
+  ln -sf "$PLUGIN_ROOT/hooks/$t17_dep" "$t17_plugin/hooks/$t17_dep"
+done
+cat > "$t17_plugin/hooks/scripts/nb-sweep-ledger.sh" <<SH
+#!/usr/bin/env bash
+printf '%s\n' "\$1" >> "$sandbox/t17-ledger.log"
+[ "\$1" = extract ] && [ "\${T17_EXTRACT_FAIL:-0}" = 1 ] && exit 1
+exec bash "$LEDGER" "\$@"
+SH
+chmod +x "$t17_plugin/hooks/scripts/nb-sweep-ledger.sh"
+printf '%s\n' "$step15" | sed -e "s|{plugin_root}|$t17_plugin|g" -e "s|{review_tmp_dir}|$t17_tmp|g" \
+  -e 's|{pr_number}|7|g' -e 's|{review_cycle_id}|7-1|g' -e 's|{owner_repo}|test/repo|g' > "$sandbox/t17.sh"
+printf '\nprintf "REACHED\\n"\n' >> "$sandbox/t17.sh"
+assert "T-17 step 1.5 の placeholder をすべて置換できる" 0 "$(grep -c '{[a-z_]*}' "$sandbox/t17.sh")"
+jq -n --rawfile body "$ledger_body" '[[{id:31,user:{login:"rite-bot"},body:$body}]]' > "$NBR_COMMENTS"
+run_step15() {
+  : > "$NBR_GH_LOG"; : > "$sandbox/t17-ledger.log"
+  zero_body "$t17_tmp/rite-nonblocking-7-7-1.md"
+  PATH="$nbr_bin:$PATH" bash "$sandbox/t17.sh" > "$sandbox/t17.out" 2> "$sandbox/t17.err"
+  t17_rc=$?
+}
+T17_EXTRACT_FAIL=1 run_step15
+assert "T-17 extract 失敗: rc≠0" 1 "$([ "$t17_rc" -ne 0 ] && echo 1 || echo 0)"
+assert_grep "T-17 extract 失敗: 台帳 helper の extract を実際に呼んだ" "$sandbox/t17-ledger.log" '^extract$'
+assert "T-17 extract 失敗: REJECTED_LEDGER_PRESERVE=failed を 1 回" 1 "$(grep -c '^\[CONTEXT\] REJECTED_LEDGER_PRESERVE=failed$' "$sandbox/t17.err")"
+assert "T-17 extract 失敗: REJECTED_LEDGER_PRESERVE=ok を出さない" 0 "$(grep -c 'REJECTED_LEDGER_PRESERVE=ok' "$sandbox/t17.err")"
+assert "T-17 extract 失敗: merge-into へ進まない" 0 "$(grep -c '^merge-into$' "$sandbox/t17-ledger.log")"
+assert_not_grep "T-17 extract 失敗: 後続へ進まない" "$sandbox/t17.out" '^REACHED$'
+assert "T-17 extract 失敗: 記録を置き換えない (PATCH / 投稿なし)" 0 "$(grep -cE -- '-X PATCH|^issue comment |^issue edit ' "$NBR_GH_LOG")"
+run_step15
+assert "T-17 正常: rc=0" 0 "$t17_rc"
+assert_grep "T-17 正常: REJECTED_LEDGER_PRESERVE=ok" "$sandbox/t17.err" '^\[CONTEXT\] REJECTED_LEDGER_PRESERVE=ok$'
+assert "T-17 正常: 既存の台帳を新本文へ引き継ぐ" 2 "$(grep -c '^| NB-' "$t17_tmp/rite-nonblocking-7-7-1.md")"
+NBR_LOOKUP_FAIL=1 run_step15
+assert "T-17 記録コメントを同定できない: rc≠0" 1 "$([ "$t17_rc" -ne 0 ] && echo 1 || echo 0)"
+assert "T-17 記録コメントを同定できない: REJECTED_LEDGER_PRESERVE=failed" 1 "$(grep -c '^\[CONTEXT\] REJECTED_LEDGER_PRESERVE=failed$' "$sandbox/t17.err")"
+assert_not_grep "T-17 記録コメントを同定できない: 後続へ進まない" "$sandbox/t17.out" '^REACHED$'
+NBR_NO_ISSUE=1 run_step15
+assert "T-17 関連 Issue なし: 引き継ぎなしで続行する" 0 "$t17_rc"
+assert_grep "T-17 関連 Issue なし: REJECTED_LEDGER_PRESERVE=ok" "$sandbox/t17.err" '^\[CONTEXT\] REJECTED_LEDGER_PRESERVE=ok$'
+assert_grep "T-17 関連 Issue なし: 後続へ進む" "$sandbox/t17.out" '^REACHED$'
 
 if ! print_summary "$(basename "$0")" "nb-sweep helper contract drift — check iterate SKILL.md / iterate-step.sh 5.S / 6.1.d preserve"; then
   exit 1

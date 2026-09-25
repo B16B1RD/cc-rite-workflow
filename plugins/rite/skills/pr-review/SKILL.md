@@ -1304,24 +1304,29 @@ Determine the error type from the completion notification (failure payload or ab
 | `{doc_heavy_pr}` | ステップ 1.2.7 result | Boolean flag (`true` / `false`). Inject only when reviewer is `tech-writer`. If `false` or reviewer != tech-writer, set to empty string |
 | `{doc_heavy_mode_instructions}` | `agents/tech-writer-reviewer.md` `## Doc-Heavy PR Mode (Conditional)` section | **Conditional extraction**: Only populated when `reviewer_type == tech-writer` AND `{doc_heavy_pr} == true`. Extract the entire section from `## Doc-Heavy PR Mode (Conditional)` heading down to (but excluding) the next `##` heading. Otherwise set to empty string |
 | `{wiki_context}` | ステップ 4.0.W Wiki Query result | Non-empty when Wiki is enabled and related experiential knowledge was found. Empty string when Wiki is disabled, `auto_query` is false, or no matches found. One more non-empty shape exists: when the index carries registration rows but Pass 1 extracted no candidate, the value is a single `> ⚠️ …` notice line and carries no heuristics — treat it as "no context" for review purposes and surface the notice as-is |
-| `{rejected_ledger}` | 関連 Issue の 6.1.d コメント `### 却下台帳` | `nb-sweep-ledger.sh extract`。空ならセクションごと省略。同内容の指摘を blocking / non-blocking に再報告しない |
+| `{rejected_ledger}` | 関連 Issue の 6.1.d コメント `### 却下台帳` | `review-nonblocking-record.sh --print-record-body` + `nb-sweep-ledger.sh extract`。空ならセクションごと省略。同内容の指摘を blocking / non-blocking に再報告しない |
 
-**`{rejected_ledger}` 抽出**（空ならセクション省略。取得失敗は WARNING を placeholder に載せ、空台帳として再訴訟させない）:
+**`{rejected_ledger}` 抽出**（空ならセクション省略。取得失敗は WARNING を placeholder に載せ、空台帳として再訴訟させない。記録コメントは 6.1.d の helper が PATCH する 1 件を同 helper の読み取り専用モードで読む。関連 Issue を解決できない PR (`reason=related_issue_unresolved`) は記録コメントも無いため空台帳）:
 
 ```bash
 source {plugin_root}/hooks/scripts/lib/context-marker.sh || true
 rejected_ledger=""
 ledger_status=empty
 existing=$(mktemp "${TMPDIR:-/tmp}/rite-rejected-src-XXXXXX") || existing=""
-if [ -z "$existing" ]; then
+existing_err=$(mktemp "${TMPDIR:-/tmp}/rite-rejected-err-XXXXXX") || existing_err=""
+if [ -z "$existing" ] || [ -z "$existing_err" ]; then
   ledger_status=failed
   echo "WARNING: 却下台帳取得失敗 (mktemp)。空台帳として再訴訟させない" >&2
-elif [ -n "{issue_number}" ] && [ "{issue_number}" != "0" ]; then
-  if ! gh api "repos/{owner_repo}/issues/{issue_number}/comments" --paginate \
-    --jq '.[] | select(.body | startswith("## 📜 rite 非実測指摘の記録")) | .body' \
-    > "$existing"; then
-    ledger_status=failed
-    echo "WARNING: 却下台帳取得失敗 (gh api)。空台帳として再訴訟させない" >&2
+else
+  record_rc=0
+  bash {plugin_root}/hooks/review-nonblocking-record.sh --print-record-body --pr {pr_number} --owner-repo {owner_repo} \
+    > "$existing" 2> "$existing_err" || record_rc=$?
+  cat "$existing_err" >&2
+  if [ "$record_rc" -ne 0 ]; then
+    if ! grep -q '^\[CONTEXT\] NONBLOCKING_RECORD_BODY=failed; .*reason=related_issue_unresolved' "$existing_err"; then
+      ledger_status=failed
+      echo "WARNING: 却下台帳取得失敗 (記録コメント)。空台帳として再訴訟させない" >&2
+    fi
   elif [ -s "$existing" ]; then
     if rejected_ledger=$(bash {plugin_root}/hooks/scripts/nb-sweep-ledger.sh extract --body-file "$existing"); then
       [ -n "$rejected_ledger" ] && ledger_status=ok
@@ -1332,7 +1337,7 @@ elif [ -n "{issue_number}" ] && [ "{issue_number}" != "0" ]; then
     fi
   fi
 fi
-rm -f -- "$existing"
+rm -f -- "$existing" "$existing_err"
 case "$ledger_status" in
   ok)
     echo "[CONTEXT] REJECTED_LEDGER=ok" >&2
@@ -2640,24 +2645,28 @@ rationale: references/design-rationale.md#6.1d-always-eval
    `outcome=skipped` ではなく `outcome=failed` になる (Write は「投稿されない」という意味での no-op
    であり、検査対象外という意味ではない)。
 
-   **step 1.5 却下台帳保全**: Write 後・helper 前に、既存 6.1.d 本文の `### 却下台帳` を新本文へ splice する。空 ledger は no-op。merge-into 失敗は fail-loud（本文を helper に渡さない）。本文は列 0 から。
+   **step 1.5 却下台帳保全**: Write 後・helper 前に、既存 6.1.d 本文の `### 却下台帳` を新本文へ splice する。既存本文は step 2 の helper が PATCH する 1 件を、同 helper の `--print-record-body` で読む。空 ledger は no-op。取得・extract・merge-into の失敗は fail-loud（本文を helper に渡さず、記録を置き換えない）。関連 Issue を解決できない PR（`reason=related_issue_unresolved`）は引き継ぐ台帳が無いため続行し、step 2 が同じ理由で `outcome=failed` を出す。本文は列 0 から。
 
    ```bash
    # ステップ 6.1.d step 1.5: 却下台帳を新本文へ splice（空なら no-op）
    body_file={review_tmp_dir}/rite-nonblocking-{pr_number}-{review_cycle_id}.md
    ledger_file={review_tmp_dir}/rite-rejected-ledger-{pr_number}-{review_cycle_id}.md
    existing_file={review_tmp_dir}/rite-nb-existing-{pr_number}-{review_cycle_id}.md
+   existing_err={review_tmp_dir}/rite-nb-existing-err-{pr_number}-{review_cycle_id}.txt
    : > "$ledger_file"
-   related={issue_number}
-   if [ -n "$related" ] && [ "$related" != "0" ]; then
-     if gh api "repos/{owner_repo}/issues/${related}/comments" --paginate \
-       --jq '.[] | select(.body | startswith("## 📜 rite 非実測指摘の記録")) | .body' \
-       > "$existing_file"; then
-       if [ -s "$existing_file" ]; then
-         bash {plugin_root}/hooks/scripts/nb-sweep-ledger.sh extract --body-file "$existing_file" > "$ledger_file" || true
-       fi
-     else
+   record_rc=0
+   bash {plugin_root}/hooks/review-nonblocking-record.sh --print-record-body --pr {pr_number} --owner-repo {owner_repo} \
+     > "$existing_file" 2> "$existing_err" || record_rc=$?
+   cat "$existing_err" >&2
+   if [ "$record_rc" -ne 0 ]; then
+     if ! grep -q '^\[CONTEXT\] NONBLOCKING_RECORD_BODY=failed; .*reason=related_issue_unresolved' "$existing_err"; then
        echo "ERROR: 既存 6.1.d コメント取得失敗" >&2
+       echo "[CONTEXT] REJECTED_LEDGER_PRESERVE=failed" >&2
+       exit 1
+     fi
+   elif [ -s "$existing_file" ]; then
+     if ! bash {plugin_root}/hooks/scripts/nb-sweep-ledger.sh extract --body-file "$existing_file" > "$ledger_file"; then
+       echo "ERROR: 既存 6.1.d コメントの却下台帳 extract 失敗" >&2
        echo "[CONTEXT] REJECTED_LEDGER_PRESERVE=failed" >&2
        exit 1
      fi
