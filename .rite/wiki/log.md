@@ -23,6 +23,7 @@
 * **Update**: [同じ述語を 2 言語で並行実装すると受理集合が環境で割れる — 定義を 1 本に寄せるまで症状は再発し続ける](pages/anti-patterns/dual-language-predicate-divergence.md) — raw/reviews/20260924T231240Z-pr-3060.md、raw/fixes/20260924T224558Z-pr-3060.md を統合
 * **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — raw/reviews/20260925T005035Z-pr-3063.md、raw/fixes/20260925T005815Z-pr-3063.md を統合
 * **Update**: [assert_not_grep は「対象が fixture に存在する」ことを前提にしないと恒真になる — positive control を対で置く](pages/anti-patterns/assert-not-grep-vacuous-without-fixture-scope.md) — raw/reviews/20260925T010623Z-pr-3063.md を統合
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=535, broken_refs=0
 
 ## 2026-09-24
 
