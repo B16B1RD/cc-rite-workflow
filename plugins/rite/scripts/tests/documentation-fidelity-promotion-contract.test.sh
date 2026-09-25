@@ -88,20 +88,38 @@ assert_grep 'sample comparison includes caller contract' "$reviewer" \
   'prerequisites supplied by the caller'
 assert_grep 'nonidentical samples narrow their claim' "$reviewer" \
   'narrow the claim instead of saying "verbatim" or "identical"'
-assert_grep 'relocation item exists' "$reviewer" \
-  '**Relocation, promotion, and deletion**'
-assert_grep 'promoted claims are verified against the implementation' "$reviewer" \
-  'each carried claim names and verify the claim holds there.'
-assert_grep 'source agreement is not claim truth' "$reviewer" \
-  'the source text proves only a faithful copy, not a true claim.'
-assert_grep 'deleted items are inventoried' "$reviewer" \
-  'deleted item and locate where it now lives; an item with no destination is'
-assert_grep 'added pointers are followed and executed' "$reviewer" \
-  'follow the pointer, execute the destination as a'
-assert_grep 'changes are checked in combination' "$reviewer" \
+# 移動・格上げ・削除の検査はゲート節の中に置く (節の外へ移すと固定が外れる)
+gate_section=$(mktemp)
+trap 'rm -f "$gate_section"' EXIT
+sed -n '/^## Documentation Fidelity Gate/,/^## Confidence Scoring/p' "$reviewer" > "$gate_section"
+assert_grep 'relocation item is inside the gate' "$gate_section" \
+  '10. **Relocation, promotion, and deletion**'
+assert_grep 'moves and extraction trigger the check' "$gate_section" \
+  'prose that moves, splits, or is extracted; an added normative keyword'
+assert_grep 'normative keywords and status raises trigger the check' "$gate_section" \
+  '(MUST, SHALL, 必須); a raised document status (for example `accepted`).'
+assert_grep 'promoted claims are verified against the implementation' "$gate_section" \
+  '`Read` the implementation each carried claim names and verify the claim'
+assert_grep 'source agreement is not claim truth' "$gate_section" \
+  'Agreement with the source text proves only a faithful copy,'
+assert_grep 'deletions and stubs trigger the inventory' "$gate_section" \
+  'When the diff deletes or stubs out procedures, commands, or guidance,'
+assert_grep 'deleted items are inventoried' "$gate_section" \
+  'inventory every deleted item and locate where it now lives. Report each'
+assert_grep 'items with no destination are reported' "$gate_section" \
+  'deleted item with no destination as a lost instruction.'
+assert_grep 'added pointers are followed' "$gate_section" \
+  'follow the pointer and trace the destination as a reader would execute it,'
+assert_grep 'pointer outcomes are compared with the replaced text' "$gate_section" \
+  'then verify the outcome matches what the deleted or replaced text produced'
+assert_grep 'changes are checked in combination' "$gate_section" \
   'Check the combination, not each change alone'
-assert_grep 'shared checklist names relocation checks' "$reviewer" \
+assert_grep 'lost instructions and outcome mismatches are reportable' "$gate_section" \
+  'wrong target, lost instruction, or outcome mismatch is demonstrable.'
+assert_grep 'shared checklist names relocation checks' "$gate_section" \
   'For moved, promoted, or deleted prose, verify carried claims against the'
+assert_grep 'shared checklist compares pointer outcomes' "$gate_section" \
+  'implementation, inventory where deleted items went, and compare the outcome of'
 assert_grep 'findings remain evidence gated' "$reviewer" \
   'or sample fails one of these checks'
 assert_grep 'shared checklist maps the gate' "$reviewer" \
