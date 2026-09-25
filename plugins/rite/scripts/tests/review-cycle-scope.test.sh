@@ -15,12 +15,18 @@ TARGET="$SCRIPT_DIR/../review-cycle-scope.sh"
 TEST_DIR="$(mktemp -d)"
 PASS=0
 FAIL=0
+SKIP=0
 
 cleanup() { rm -rf "$TEST_DIR"; }
 trap cleanup EXIT
+# helper は fix diff の一覧を ${TMPDIR}/rite-cycle-scope-files-{pr}.txt に書く。実 /tmp を汚さない
+export TMPDIR="$TEST_DIR/tmp"
+mkdir -p "$TMPDIR"
 
 pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
+# run-all.sh は ⏭️ の数と集計行 SKIP: N の一致を検査するので、skip は必ずこれを通す
+skip() { SKIP=$((SKIP + 1)); echo "  ⏭️  $1"; }
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "ERROR: jq is required but not installed" >&2
@@ -415,7 +421,7 @@ echo "=== TC-21: 探索段の IO エラーは no_prev_json に落とさず loud 
 # 読めない results dir が「JSON が無い (= cycle 1)」と誤認されると、探索に失敗しただけの状態が
 # 6 reason 中で唯一 WARNING も FALLBACK marker も出さない no_prev_json へ silent に落ちる。
 if [ "$(id -u)" -eq 0 ]; then
-  echo "  ⏭️  TC-21: root では chmod 000 が効かず find がエラーを出さないため skip"
+  skip "TC-21: root では chmod 000 が効かず find がエラーを出さないため skip"
 else
   IOERR="$TEST_DIR/results-ioerr"
   mkdir -p "$IOERR"
@@ -505,7 +511,7 @@ assert_not_contains "TC-24.3: incremental を出さない" "$SCOPE_STDERR" "REVI
 
 # (c) pin が存在するが読めない → 不在と区別して広い側へ倒す（狭い側へ倒さない）
 if [ "$(id -u)" -eq 0 ]; then
-  echo "  ⏭️  TC-24.4: root では chmod 000 が効かないため skip"
+  skip "TC-24.4: root では chmod 000 が効かないため skip"
 else
   chmod 000 "$PRODROOT/.rite/state/review-run-since-42.txt"
   SCOPE_STDERR=$(cd "$PRODROOT" && bash "$TARGET" --pr 42 2>&1) || true
@@ -518,5 +524,171 @@ fi
 SCOPE_STDERR=$(cd "$PRODROOT" && bash "$TARGET" --pr 42 --since "" 2>&1) || true
 assert_contains "TC-24.6: --since 明示が既定 pin を上書きする" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
 
+echo "=== TC-25: fix diff は base の取り込みで入ったファイルを含まない ==="
+# 前回レビュー起点の後に base を merge すると、起点からの差分に base 側のファイルが入る。
+# fix diff の一覧は PR 自身が変えたファイルと完全一致しなければならない (件数や部分一致では
+# 取りこぼしも混入も見逃す)。
+MREPO="$TEST_DIR/merge-repo"
+mkdir -p "$MREPO"
+git -C "$MREPO" init -q -b main
+git -C "$MREPO" config user.email t@example.com
+git -C "$MREPO" config user.name t
+printf 'doc\n' > "$MREPO/doc.md"
+printf 'shared\n' > "$MREPO/shared.txt"
+printf 'top\nmiddle\nbottom\n' > "$MREPO/both.txt"
+printf 'a\nb\nc\nd\ne\n' > "$MREPO/clean.txt"
+printf 'readme\n' > "$MREPO/README.md"
+git -C "$MREPO" add -A
+git -C "$MREPO" commit -qm init
+git -C "$MREPO" switch -qc feat
+# 起点より前の PR の変更。shared.txt は後の base merge で競合し、clean.txt は競合せず merge される
+printf 'reviewed\n' >> "$MREPO/doc.md"
+printf 'feat\n' >> "$MREPO/shared.txt"
+printf 'A\nb\nc\nd\ne\n' > "$MREPO/clean.txt"
+git -C "$MREPO" commit -qam reviewed
+MBASE=$(git -C "$MREPO" rev-parse HEAD)
+# (a) fix commit だけが変えたファイル (大文字の root ファイルと小文字のディレクトリを混ぜる)
+# (c) fix と base の両方が変えたファイル (競合なし)
+printf 'fix\n' >> "$MREPO/doc.md"
+printf 'TOP\nmiddle\nbottom\n' > "$MREPO/both.txt"
+mkdir -p "$MREPO/docs"
+printf 'changes\n' > "$MREPO/CHANGELOG.md"
+printf 'spec\n' > "$MREPO/docs/spec.md"
+git -C "$MREPO" add -A
+git -C "$MREPO" commit -qm fix
+# (e) PR ブランチへ merge した別ブランチの変更 (second parent 側)
+git -C "$MREPO" switch -qc side
+printf 'side\n' > "$MREPO/side.txt"
+git -C "$MREPO" add side.txt
+git -C "$MREPO" commit -qm side
+git -C "$MREPO" switch -q feat
+git -C "$MREPO" merge -q --no-ff side -m "merge side"
+# (b) base だけが変えたファイル / (d) base と競合して解消したファイル
+git -C "$MREPO" switch -q main
+mkdir -p "$MREPO/src"
+printf 'app\n' > "$MREPO/src/app.ts"
+printf 'top\nmiddle\nBOTTOM\n' > "$MREPO/both.txt"
+printf 'a\nb\nc\nd\nE\n' > "$MREPO/clean.txt"
+printf 'README\n' > "$MREPO/README.md"
+git -C "$MREPO" add -A
+git -C "$MREPO" commit -qm main-clean
+MCLEAN=$(git -C "$MREPO" rev-parse HEAD)
+printf 'main\n' >> "$MREPO/shared.txt"
+git -C "$MREPO" commit -qam main-conflict
+git -C "$MREPO" switch -q feat
+git -C "$MREPO" merge -q main -m "merge main" >/dev/null 2>&1
+printf 'shared\nfeat\nmain\n' > "$MREPO/shared.txt"
+git -C "$MREPO" add shared.txt
+git -C "$MREPO" commit -qm "merge main"
+MRESULTS="$TEST_DIR/results-merge"
+mkdir -p "$MRESULTS"
+mk_result_json "$MRESULTS/42-20260806-000000.json" "$MBASE"
+cd "$MREPO" || exit 1
+run_scope --pr 42 --results-dir "$MRESULTS"
+assert_contains "TC-25.1: base 取り込み後も incremental" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
+scope_list=$(marker_value_of "$SCOPE_STDERR" "files")
+assert_rc "TC-25.2: files= の一覧が存在する" 0 "$([ -f "$scope_list" ]; echo $?)"
+# shared.txt は競合解消でだけ、それ以外は fix commit でだけ入る。clean.txt (競合なしで merge)・
+# README.md / src/app.ts (base だけ)・side.txt (second parent) は入らない
+expected_files="CHANGELOG.md,both.txt,doc.md,docs/spec.md,shared.txt"
+actual_files=$(LC_ALL=C sort "$scope_list" 2>/dev/null | paste -sd, -)
+if [ "$actual_files" = "$expected_files" ]; then
+  pass "TC-25.3: fix diff は fix / 両側変更 / 競合解消のファイルだけで、base・clean merge・side 由来を含まない"
+else
+  fail "TC-25.3: fix diff の一覧"
+  echo "     期待値: '$expected_files'"
+  echo "     実際:   '$actual_files'"
+fi
+# 大文字と小文字のパスが混ざっても、照合順の違うロケールで積を取りこぼさない
+if locale -a 2>/dev/null | grep -qiE '^en_US\.utf-?8$'; then
+  SCOPE_STDERR=$(LC_ALL=en_US.UTF-8 bash "$TARGET" --pr 42 --results-dir "$MRESULTS" 2>&1) || true
+  actual_files=$(LC_ALL=C sort "$scope_list" 2>/dev/null | paste -sd, -)
+  if [ "$actual_files" = "$expected_files" ]; then
+    pass "TC-25.3b: en_US.UTF-8 でも一覧が一致する"
+  else
+    fail "TC-25.3b: en_US.UTF-8 での一覧"
+    echo "     期待値: '$expected_files'"
+    echo "     実際:   '$actual_files'"
+  fi
+else
+  skip "TC-25.3b: en_US.UTF-8 ロケールが無いため skip"
+fi
+
+# base の取り込みだけの差分は PR の変更が無い。差分スコープの対象が無いので full へ倒す。
+# PR が起点より前に変えた clean.txt にも競合なしで触れるが、PR の変更ではない
+git -C "$MREPO" switch -qc only-merge "$MBASE"
+git -C "$MREPO" merge -q --no-ff "$MCLEAN" -m "merge only" >/dev/null 2>&1
+run_scope --pr 42 --results-dir "$MRESULTS"
+assert_contains "TC-25.4: base 取り込みだけなら base_only_diff で full" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=full; reason=base_only_diff"
+assert_contains "TC-25.5: fallback marker を出す" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE_FALLBACK=1; reason=base_only_diff"
+assert_not_contains "TC-25.6: incremental を出さない" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
+assert_not_contains "TC-25.7: files= を出さない" "$SCOPE_STDERR" "files="
+assert_rc "TC-25.8: full へ倒れたら前 cycle の一覧を残さない" 1 "$([ -e "$scope_list" ]; echo $?)"
+
+# 一覧を書き出せないときは incremental を名乗らず full へ倒す
+git -C "$MREPO" switch -q feat
+mkdir -p "$TMPDIR/rite-cycle-scope-files-42.txt"
+run_scope --pr 42 --results-dir "$MRESULTS"
+rmdir "$TMPDIR/rite-cycle-scope-files-42.txt"
+# 原因 (シェルのリダイレクト失敗) は WARNING の直後に字下げして出る。column 0 に漏らさない
+# 原因行は制御文字の中和で非 UTF-8 のバイトを含みうるので、バイト列として grep する
+unwritable_cause=$(printf '%s\n' "$SCOPE_STDERR" | LC_ALL=C grep -a -A1 'fix diff の一覧を書き出せません' | sed -n '2p')
+case "$unwritable_cause" in
+  "  "?*) pass "TC-25.9b: 書き出し失敗の原因を字下げして診断に出す" ;;
+  *) fail "TC-25.9b: 書き出し失敗の原因"; echo "     実際: '$unwritable_cause'" ;;
+esac
+assert_contains "TC-25.9: 一覧を書き出せなければ scope_files_unwritable で full" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=full; reason=scope_files_unwritable"
+assert_not_contains "TC-25.10: incremental を出さない" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
+assert_contains "TC-25.11: fallback marker を出す" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE_FALLBACK=1; reason=scope_files_unwritable"
+assert_not_contains "TC-25.12: files= を出さない" "$SCOPE_STDERR" "files="
+
+# PR 自身の変更を取得できないときは狭い側へ倒さず full へ倒す
+SHIM="$TEST_DIR/git-shim"
+mkdir -p "$SHIM"
+REAL_GIT=$(command -v git)
+printf '#!/bin/bash\n[ "$1" = rev-list ] && { echo "rev-list failed" >&2; exit 1; }\nexec "%s" "$@"\n' "$REAL_GIT" > "$SHIM/git"
+chmod +x "$SHIM/git"
+# 前 cycle の一覧が残っている状態から、取得失敗で full へ倒れたら消えることを見る
+printf 'stale\n' > "$scope_list"
+SCOPE_STDERR=$(PATH="$SHIM:$PATH" bash "$TARGET" --pr 42 --results-dir "$MRESULTS" 2>&1) || true
+assert_contains "TC-25.13: PR 自身の変更を取得できなければ diff_failed で full" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=full; reason=diff_failed"
+assert_contains "TC-25.14: 取得失敗の WARNING を出す" "$SCOPE_STDERR" "PR 自身の変更を取得できません"
+assert_not_contains "TC-25.15: files= を出さない" "$SCOPE_STDERR" "files="
+assert_rc "TC-25.16: full へ倒れたら一覧を残さない" 1 "$([ -e "$scope_list" ]; echo $?)"
+
+echo "=== TC-26: fix commit の改名は元パスと新パスの両方を一覧に入れる ==="
+# 範囲全体の差分と commit ごとの変更で rename 検出が食い違うと、元パスが一覧から落ち、
+# reviewer に新パスが新規ファイルとして渡る
+RREPO="$TEST_DIR/rename-repo"
+mkdir -p "$RREPO"
+git -C "$RREPO" init -q -b main
+git -C "$RREPO" config user.email t@example.com
+git -C "$RREPO" config user.name t
+printf 'one\ntwo\nthree\nfour\nfive\n' > "$RREPO/old.txt"
+printf 'keep\n' > "$RREPO/moved.txt"
+git -C "$RREPO" add -A
+git -C "$RREPO" commit -qm init
+RBASE=$(git -C "$RREPO" rev-parse HEAD)
+git -C "$RREPO" mv old.txt new.txt
+git -C "$RREPO" mv moved.txt renamed.txt
+git -C "$RREPO" commit -qm rename
+printf 'one\ntwo\nTHREE\nfour\nfive\nsix\n' > "$RREPO/new.txt"
+git -C "$RREPO" commit -qam edit
+RRESULTS="$TEST_DIR/results-rename"
+mkdir -p "$RRESULTS"
+mk_result_json "$RRESULTS/42-20260806-000000.json" "$RBASE"
+cd "$RREPO" || exit 1
+run_scope --pr 42 --results-dir "$RRESULTS"
+rename_list=$(marker_value_of "$SCOPE_STDERR" "files")
+actual_files=$(LC_ALL=C sort "$rename_list" 2>/dev/null | paste -sd, -)
+if [ "$actual_files" = "moved.txt,new.txt,old.txt,renamed.txt" ]; then
+  pass "TC-26.1: 改名の元パスと新パスが両方入る (書き換えあり / なし)"
+else
+  fail "TC-26.1: 改名の一覧"
+  echo "     期待値: 'moved.txt,new.txt,old.txt,renamed.txt'"
+  echo "     実際:   '$actual_files'"
+fi
+
 echo "=== 結果: PASS=$PASS FAIL=$FAIL ==="
+if [ "$SKIP" -gt 0 ]; then echo "SKIP: $SKIP"; fi
 [ "$FAIL" -eq 0 ] || exit 1
