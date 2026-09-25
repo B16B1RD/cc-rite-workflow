@@ -393,6 +393,24 @@ if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
 else
   fail "review allow rc=$GRC out=$GOUT"
 fi
+# branch.base read from rite-config.yml with a trailing comment
+cp "$repo/rite-config.yml" "$ROOT/cfg.bak"
+printf '%s\n' 'branch:' "  base: \"$review_base\"    # base branch" >> "$repo/rite-config.yml"
+run_gate --mode review --worktree "$repo" --flow-state "$flow" --memory "$mem"
+if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
+  pass "review reads branch.base with a trailing comment"
+else
+  fail "commented base rc=$GRC out=$GOUT"
+fi
+cp "$ROOT/cfg.bak" "$repo/rite-config.yml"
+printf '%s\n' 'branch:' '  base: "no-such-base-ref"    # base branch' >> "$repo/rite-config.yml"
+run_gate --mode review --worktree "$repo" --flow-state "$flow" --memory "$mem"
+if [ "$GRC" -eq 1 ] && grep -q 'reason=base_diff_unreadable' <<<"$GOUT"; then
+  pass "review denies an unreadable base diff instead of matching an empty diff"
+else
+  fail "unreadable base rc=$GRC out=$GOUT"
+fi
+cp "$ROOT/cfg.bak" "$repo/rite-config.yml"
 
 # A review resumed from another session reads the record written by the session
 # that implemented or fixed. Review does not authorize a commit, so it does not
