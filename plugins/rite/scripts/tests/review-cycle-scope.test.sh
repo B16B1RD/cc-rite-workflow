@@ -656,6 +656,28 @@ assert_contains "TC-25.14: 取得失敗の WARNING を出す" "$SCOPE_STDERR" "P
 assert_not_contains "TC-25.15: files= を出さない" "$SCOPE_STDERR" "files="
 assert_rc "TC-25.16: full へ倒れたら一覧を残さない" 1 "$([ -e "$scope_list" ]; echo $?)"
 
+# 日本語ロケールの git が出す原因行は、字下げされて WARNING の直後に読める形で出る。
+# 文言は固定バイト列で渡す (ランナーの locale に依存しない)。WARNING 見出しに無い字を使い、
+# 見出しの日本語で空振り PASS しないようにする。同じ行に ESC / 完結した文字の直後の単独 0x9b /
+# U+009B (c2 9b) を載せ、制御側は潰れたままであることも同じ行で見る
+JA_ERR="$TEST_DIR/ja-stderr"
+printf 'fatal: そのようなファイルやディレクトリはありません\033ホ\233\302\233x\n' > "$JA_ERR"
+printf '#!/bin/bash\n[ "$1" = rev-list ] && { cat "%s" >&2; exit 1; }\nexec "%s" "$@"\n' "$JA_ERR" "$REAL_GIT" > "$SHIM/git"
+SCOPE_STDERR=$(PATH="$SHIM:$PATH" bash "$TARGET" --pr 42 --results-dir "$MRESULTS" 2>&1) || true
+ja_cause_hex=$(printf '%s\n' "$SCOPE_STDERR" | LC_ALL=C grep -a -A1 'PR 自身の変更を取得できません' | sed -n '2p' \
+  | LC_ALL=C od -An -tx1 | LC_ALL=C tr -d ' \n')
+ja_expected_hex=$(printf '  fatal: そのようなファイルやディレクトリはありません?ホ?\302?x\n' | LC_ALL=C od -An -tx1 | LC_ALL=C tr -d ' \n')
+if [ "$ja_cause_hex" = "$ja_expected_hex" ]; then
+  pass "TC-25.17: 日本語の原因行が WARNING の直後に字下げされ、日本語は無傷・ESC / 0x9b / U+009B は ?"
+else
+  fail "TC-25.17: 日本語の原因行"
+  echo "     期待値 (hex): $ja_expected_hex"
+  echo "     実際 (hex):   $ja_cause_hex"
+fi
+# hex 文字列の部分一致はバイト境界をまたいで誤検出するので、バイト列のまま数える
+ja_ctrl_count=$(printf '%s' "$SCOPE_STDERR" | LC_ALL=C grep -c -e $'\033' -e $'\302\233') || true
+assert_rc "TC-25.18: stderr 全体に ESC / U+009B が残らない" 0 "$ja_ctrl_count"
+
 echo "=== TC-26: fix commit の改名は元パスと新パスの両方を一覧に入れる ==="
 # --name-only は検出した改名の移動先しか出さないため、rename 検出が有効だと元パスが一覧から落ち、
 # reviewer に新パスが新規ファイルとして渡る

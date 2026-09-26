@@ -8,7 +8,8 @@
 #   分類しない C1 8-bit 制御バイト (0x80-0x9f、特に CSI introducer 0x9b) を
 #   バイト単位で `?` 置換することを直接 pin する (jq / state file を介さない
 #   単体層 — 統合層は flow-state.test.sh TC-23 / stop-loop-continuation.test.sh
-#   TC-14 が担う)。
+#   TC-14 が担う)。--keep-newline だけは整形式 UTF-8 列の継続バイトを残す
+#   (TC-22 / TC-23)。
 #
 # Test cases:
 #   TC-1: C0 制御文字 (0x01 / TAB / ESC) → ?
@@ -17,7 +18,7 @@
 #   TC-4: 0xa0 (C1 上限 +1) は保持される (過剰置換しない上側境界 pin)
 #   TC-5: UTF-8 U+009B (0xc2 0x9b) の 0x9b バイトが ? 化され生 0x9b が残らない
 #   TC-6: default モード: \n も ? 化 (旧 ${var//[[:cntrl:]]/?} の 1 行化挙動と同じ)
-#   TC-7: --keep-newline: \n は保持、他の制御文字は ? (旧 sed 行指向挙動と同じ)
+#   TC-7: --keep-newline: \n は保持、ASCII の後の制御文字 (C0 / 単独 C1) は ?
 #   TC-8: 可読 ASCII は無傷 + 1:1 置換 (削除ではない — 長さ保存)
 #   TC-9: NUL バイト (0x00) → ? (LC_ALL=C tr のバイトストリーム性 pin)
 #   TC-10: --c0-only: C0 (0x01 / TAB / ESC) + DEL → ?
@@ -37,6 +38,12 @@
 #           検査する call site 用。未知の第 2 引数は default 範囲へ倒す fail-closed も pin)
 #   TC-21: neutralize_ctrl --c0-only --keep-newline: 同一入力で日本語+改行保持・ESC は ?
 #          ・生 C1 は素通し。未知第2引数は default 範囲へ倒す fail-closed
+#   TC-22: --keep-newline: 日本語ロケールの git / シェルの原因行 (継続バイトに 0x80-0x9f を
+#          含む) が無傷で、ESC・単独 0x9b・U+009B・途中で切れた多バイト列・overlong は ?
+#   TC-23: --keep-newline: UTF-8 整形式判定の境界 (E0 / ED / F0 / F4 の 2 バイト目制約、
+#          4 バイト列、継続バイト 0x80 / 0x9f) と隣接の形 (完結した文字の直後の余分な
+#          継続バイト / 途中で切れた列の直後の正しい文字 / 列の途中の改行)、長さ保存、
+#          NUL / 空入力、単独 --keep-newlin (typo) の default 範囲への fail-closed
 #
 # Usage: bash plugins/rite/hooks/tests/control-char-neutralize.test.sh
 set -euo pipefail
@@ -86,7 +93,7 @@ echo "=== TC-6: default モード — \\n も ? 化 (1 行 WARNING 埋め込み�
 assert "TC-6: newline neutralized in default mode" "l1?l2" "$(printf 'l1\nl2' | neutralize_ctrl)"
 
 echo ""
-echo "=== TC-7: --keep-newline — \\n は保持、他は ? (行構造保持 snippet 用) ==="
+echo "=== TC-7: --keep-newline — \\n は保持、ASCII の後の制御文字は ? (行構造保持 snippet 用) ==="
 assert "TC-7: newline preserved, others neutralized" "6c313f0a6c323f0a" "$(printf 'l1\x9b\nl2\x1b\n' | neutralize_ctrl --keep-newline | to_hex)"
 
 echo ""
@@ -196,6 +203,64 @@ else
   assert "TC-21: unknown 2nd arg falls back to default range" "destroyed" "intact"
 fi
 
-if ! print_summary "$(basename "$0")" "control-char-neutralize.sh — C0+DEL+C1 byte-wise neutralization + detection shared helper"; then
+echo ""
+echo "=== TC-22: --keep-newline — 日本語の原因行は無傷 / C1 と壊れた列は ? ==="
+# ja_JP.UTF-8 の git / bash が出す文言を固定バイト列で渡す (ランナーの locale に依存しない)。
+# 「ディ」(e3 83 87) や「ホ」(e3 83 9b) の継続バイトは C1 範囲と重なる — 旧実装はここを ? にしていた。
+_tc22_msg=$'fatal: そのようなファイルやディレクトリはありません\nディレクトリです\nホ'
+assert "TC-22: localized stderr lines pass through byte-for-byte" \
+  "$(printf '%s' "$_tc22_msg" | to_hex)" "$(printf '%s' "$_tc22_msg" | neutralize_ctrl --keep-newline | to_hex)"
+# 制御側は同じ呼び出しで潰れたまま。1 行に 1 種類ずつ置き、どの腕が外れても hex がずれる:
+#   ESC 1b / 単独 0x9b / U+009B (c2 9b — c2 は残す、TC-5 と同じ) / 途中で切れた「デ」(e3 83 + 改行) /
+#   overlong の U+009B (e0 82 9b) / 範囲外の先頭バイト (c0 9b)
+_tc22_ctrl=$(printf 'a\x1bb\nc\x9bd\ne\xc2\x9bf\ng\xe3\x83\nh\xe0\x82\x9bi\nj\xc0\x9bk' | neutralize_ctrl --keep-newline | to_hex)
+assert "TC-22: control and malformed bytes neutralized, newlines kept" \
+  "613f620a633f640a65c23f660a67e33f0a68e03f3f690a6ac03f6b" "$_tc22_ctrl"
+# 末尾改行の有無を変えない (awk が改行を足したり落としたりしない)
+assert "TC-22: no trailing newline added" "6e6f2d6e6c" "$(printf 'no-nl' | neutralize_ctrl --keep-newline | to_hex)"
+assert "TC-22: trailing newline kept" "6e6c0a" "$(printf 'nl\n' | neutralize_ctrl --keep-newline | to_hex)"
+
+echo ""
+echo "=== TC-23: --keep-newline — 整形式判定の境界と隣接の形 ==="
+kn_hex() { printf "$1" | neutralize_ctrl --keep-newline | to_hex; }
+# 残す: 継続バイト 0x80 / 0x9f の境界、E0 / ED / F0 / F4 の 2 バイト目の許容端、4 バイト列
+for _tc23_keep in 'e38080' 'e3819f' 'e0a080' 'ed9fbf' 'f09f9880' 'f0908080' 'f48fbfbf' 'c2a0'; do
+  _tc23_in=$(printf '%s' "$_tc23_keep" | sed 's/../\\x&/g')
+  assert "TC-23: well-formed $_tc23_keep kept" "$_tc23_keep" "$(kn_hex "$_tc23_in")"
+done
+# ? にする: 単独の境界バイト (0xa0 は範囲外なので残す)、overlong、サロゲート、U+10FFFF 超、
+# 範囲外の先頭バイト。先頭バイトは 0xa0 以上なので残り、後続の 0x80-0x9f だけが ? になる
+assert "TC-23: lone 0x80 / 0x9f neutralized, 0xa0 kept" "3f3fa0" "$(kn_hex '\x80\x9f\xa0')"
+assert "TC-23: overlong 2-byte (c1 9b)" "c13f" "$(kn_hex '\xc1\x9b')"
+assert "TC-23: overlong 3-byte (e0 9f 80)" "e03f3f" "$(kn_hex '\xe0\x9f\x80')"
+assert "TC-23: surrogate (ed a0 80)" "eda03f" "$(kn_hex '\xed\xa0\x80')"
+assert "TC-23: overlong 4-byte (f0 8f 80 80)" "f03f3f3f" "$(kn_hex '\xf0\x8f\x80\x80')"
+assert "TC-23: above U+10FFFF (f4 90 80 80)" "f43f3f3f" "$(kn_hex '\xf4\x90\x80\x80')"
+assert "TC-23: invalid lead f5" "f53f" "$(kn_hex '\xf5\x9b')"
+# 隣接の形: 完結した文字の直後の余分な継続バイト / 途中で切れた列の直後の正しい文字 / 列の途中の改行
+assert "TC-23: stray continuation after complete char" "e381823f" "$(kn_hex '\xe3\x81\x82\x9b')"
+assert "TC-23: extra continuation after complete char" "e381823f" "$(kn_hex '\xe3\x81\x82\x81')"
+assert "TC-23: truncated sequence resyncs on next char" "e33fe38182" "$(kn_hex '\xe3\x81\xe3\x81\x82')"
+assert "TC-23: newline inside a sequence" "e30a3f" "$(kn_hex '\xe3\x0a\x81')"
+# 長さ保存: 置換は 1:1 で、awk がバイトを足したり落としたりしない
+_tc23_big=$(for _i in $(seq 1 200); do printf 'そのようなファイルやディレクトリはありません %s\n' "$_i"; done)
+assert "TC-23: multi-KB Japanese input byte count preserved" \
+  "$(printf '%s' "$_tc23_big" | LC_ALL=C wc -c | tr -d ' ')" \
+  "$(printf '%s' "$_tc23_big" | neutralize_ctrl --keep-newline | LC_ALL=C wc -c | tr -d ' ')"
+assert "TC-23: empty input stays empty" "" "$(printf '' | neutralize_ctrl --keep-newline | to_hex)"
+assert "TC-23: NUL and 0x01 neutralized" "613f623f63" "$(printf 'a\x00b\x01c' | neutralize_ctrl --keep-newline | to_hex)"
+# 不正バイトでも rc 0 (set -euo pipefail の診断経路を止めない)
+set +e
+printf '\xe3\x81\x9b\xff\xfe\x80' | neutralize_ctrl --keep-newline >/dev/null
+_tc23_rc=$?
+set -e
+assert "TC-23: malformed input exits 0" "0" "$_tc23_rc"
+# 単独 --keep-newlin (typo) は default 範囲 (改行も ?、日本語は壊れる) へ倒す
+assert "TC-23: typo single flag falls back to default range" "613f623f" \
+  "$(printf 'a\nb\x9b' | neutralize_ctrl --keep-newlin | to_hex)"
+_tc23_typo_jp=$(printf 'ディ' | neutralize_ctrl --keep-newlin | to_hex)
+assert "TC-23: typo single flag destroys Japanese (default range)" "e33f3fe33fa3" "$_tc23_typo_jp"
+
+if ! print_summary "$(basename "$0")" "control-char-neutralize.sh — C0+DEL+C1 neutralization (--keep-newline keeps well-formed UTF-8) + detection shared helper"; then
   exit 1
 fi
