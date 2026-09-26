@@ -2,6 +2,7 @@
 
 ## 2026-09-27
 
+* **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=553, broken_refs=0
 * **Skip**: [20260926T153759Z-pr-3188.md](raw/reviews/20260926T153759Z-pr-3188.md) — 既存経験則の範囲内: 受入条件を検査ツールの 0 件で書くなら構造 pin ではなく性質を直接 pin する（static-pin-semantic-allowlist-not-notation-denylist）、書き方が変わると識別力を失う静的 pin は不変部分を観測する形へ寄せる（pin-observes-invariant-not-incidental-representation）
 * **Update**: [エラーメッセージが案内するコマンドは、テストで出力から抽出して逐語実行する](pages/patterns/guidance-command-test-by-verbatim-execution.md) — raw/reviews/20260926T150855Z-pr-3171.md を統合
 * **Skip**: [20260926T150340Z-pr-3180.md](raw/reviews/20260926T150340Z-pr-3180.md) — detector-candidate: YAML 節の終端判定を英字始まり限定の正規表現で書いている箇所を grep で洗い出す
