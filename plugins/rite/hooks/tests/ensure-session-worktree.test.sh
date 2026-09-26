@@ -125,6 +125,26 @@ assert "TC-5 already_in token" "already_in" "$(ens_case "$M/.rite/worktrees/issu
 rm -f "$M/.rite/worktrees/issue-42/rite-config.yml"
 assert "TC-5b worktree without its own config reads main's multi_session" "already_in" \
   "$(ens_case "$M/.rite/worktrees/issue-42" --issue 42)"
+# Unreadable main config: stop with config_unreadable instead of degrading to disabled.
+# (root ignores mode bits, so this cannot be exercised as root.)
+if [ "$(id -u)" != 0 ]; then
+  chmod 000 "$M/rite-config.yml"
+  out=$( (cd "$M/.rite/worktrees/issue-42" && bash "$HELPER" ensure-session-worktree --issue 42 2>/dev/null) ); rc=$?
+  chmod 644 "$M/rite-config.yml"
+  assert "TC-5c unreadable config exits 1" "1" "$rc"
+  assert "TC-5c unreadable config reports config_unreadable" "yes" \
+    "$(case "$out" in *"WT_ENSURE=failed; path=; branch="*"; reason=config_unreadable"*) echo yes ;; *) echo no ;; esac)"
+else
+  echo "  SKIP: TC-5c (root ignores mode bits)"
+fi
+# No config anywhere: continue as disabled, and the WARNING names both tried paths.
+rm -f "$M/rite-config.yml"
+errf="$M/.rite/ens-missing.err"
+out=$( (cd "$M/.rite/worktrees/issue-42" && bash "$HELPER" ensure-session-worktree --issue 42 2>"$errf") )
+assert "TC-5d missing config continues as disabled" "yes" \
+  "$(case "$out" in *"WT_ENSURE=disabled"*) echo yes ;; *) echo no ;; esac)"
+assert "TC-5d missing config warns with both tried paths" "yes" \
+  "$(case "$(cat "$errf")" in *"WARNING:"*"$M/.rite/worktrees/issue-42/rite-config.yml"*"$M/rite-config.yml"*) echo yes ;; *) echo no ;; esac)"
 
 # --- TC-6: reenter (registered, cwd elsewhere) + path= field is load-bearing ---
 echo "=== TC-6: registered, cwd=main → reenter, path= points at the worktree ==="

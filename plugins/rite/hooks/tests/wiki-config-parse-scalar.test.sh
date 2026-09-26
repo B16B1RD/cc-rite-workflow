@@ -156,6 +156,23 @@ case "$lw_err" in
   WARNING:*"$LW_MAIN/rite-config.yml"*) pass "missing config warns with the tried path" ;;
   *) fail "missing config warns with the tried path (got '$lw_err')" ;;
 esac
+# An unreadable config stops the read instead of falling back to defaults.
+# (root ignores mode bits, so this cannot be exercised as root.)
+if [ "$(id -u)" != 0 ]; then
+  printf 'wiki:\n  branch_name: main-wiki\n' > "$LW_MAIN/rite-config.yml"
+  chmod 000 "$LW_MAIN/rite-config.yml"
+  lw_rc=0
+  lw_out=$(cd "$LW" && parse_wiki_scalar branch_name 2>"$SANDBOX/unreadable.err") || lw_rc=$?
+  chmod 644 "$LW_MAIN/rite-config.yml"
+  assert "unreadable config returns 1" "1" "$lw_rc"
+  assert "unreadable config prints no value" "" "$lw_out"
+  case "$(cat "$SANDBOX/unreadable.err")" in
+    ERROR:*"$LW_MAIN/rite-config.yml"*) pass "unreadable config errors with the path" ;;
+    *) fail "unreadable config errors with the path (got '$(cat "$SANDBOX/unreadable.err")')" ;;
+  esac
+else
+  echo "  SKIP: unreadable config (root ignores mode bits)"
+fi
 rm -rf "$LW_MAIN" "$LW"
 
 print_summary "$(basename "$0")"

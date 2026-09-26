@@ -46,13 +46,13 @@ printf 'echo "max_cycles=$max_cycles"\n' >> "$STEP06"
 # 行数上限は over-extraction (終端アンカーを取り逃して後続ブロックを巻き込む) の検出を担う。
 # アンカー literal の存在検査だけでは、途中に別の `esac` が挿入されて範囲が伸びても通過してしまう。
 if ! grep -qE '^case "\$raw_max" in' "$STEP06" || ! grep -qx 'esac' "$STEP06" \
-   || [ "$(wc -l < "$STEP06")" -gt 20 ]; then
+   || [ "$(wc -l < "$STEP06")" -gt 12 ]; then
   echo "FATAL: ステップ 0.6 の fallback ブロック抽出に失敗しました (アンカーが変更された可能性)" >&2
-  echo "  抽出結果: $(wc -l < "$STEP06") 行 (期待: 20 行以下)" >&2
+  echo "  抽出結果: $(wc -l < "$STEP06") 行 (期待: 12 行以下)" >&2
   exit 1
 fi
 
-# ステップ 1 の再読込は config 解決 (rc 分岐) + raw_max= 代入 + 1 行の case。
+# ステップ 1 の再読込は config 解決 (--or-devnull の 1 行) + raw_max= 代入 + 1 行の case。
 # 「(2) の見出しコメントから silent fallback 行まで」を取る。
 STEP1="$TEST_DIR/step1.sh"
 awk '/^# \(2\) max_review_cycles の再読込/{f=1} f{print} f&&/silent fallback/{exit}' \
@@ -60,9 +60,9 @@ awk '/^# \(2\) max_review_cycles の再読込/{f=1} f{print} f&&/silent fallback
 printf 'echo "max_cycles=$max_cycles"\n' >> "$STEP1"
 # 行数上限は、終端アンカーを取り逃して後続ブロックを巻き込む over-extraction の検出を担う。
 if ! grep -q 'silent fallback' "$STEP1" || ! grep -q '^raw_max=' "$STEP1" \
-   || [ "$(wc -l < "$STEP1")" -gt 16 ]; then
+   || [ "$(wc -l < "$STEP1")" -gt 6 ]; then
   echo "FATAL: ステップ 1 の再読込ブロック抽出に失敗しました (アンカーが変更された可能性)" >&2
-  echo "  抽出結果: $(wc -l < "$STEP1") 行 (期待: 16 行以下)" >&2
+  echo "  抽出結果: $(wc -l < "$STEP1") 行 (期待: 6 行以下)" >&2
   exit 1
 fi
 
@@ -145,6 +145,9 @@ if [ "$(id -u)" != 0 ]; then
     assert "T-06g: $(basename "$step") — 読めない config は非ゼロで止まる" "1" "$rc"
     assert "T-06h: $(basename "$step") — 読めない config で既定値を出さない" "" "$out"
     assert_grep "T-06i: $(basename "$step") — ERROR に読めないパスが入る" "$STDERR_LOG" "ERROR: .*$TEST_DIR/sandbox/rite-config.yml"
+    # ERROR は helper が 1 回だけ出す。呼び出し側が再 echo すると 2 行・二重前置になる
+    assert "T-06j: $(basename "$step") — ERROR 行はちょうど 1 行" "1" "$(grep -c '^ERROR:' "$STDERR_LOG")"
+    assert_not_grep "T-06k: $(basename "$step") — ERROR が二重前置されない" "$STDERR_LOG" 'ERROR: ERROR:'
   done
 else
   echo "  SKIP: root では読み取り権限を外せないため T-06g〜i を検証しない"

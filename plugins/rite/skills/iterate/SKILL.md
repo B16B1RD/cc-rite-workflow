@@ -187,7 +187,7 @@ rationale: references/rationale.md#reset-refire-run-since
 3. **`max_review_cycles` 到達**（保険）— 発散判定をすり抜けた非収束を受け止める backstop（既定 15 では 16 cycle 以上を要する収束中の run にも届きうる）
 rationale: references/rationale.md#lost-repair-gate
 
-`max_review_cycles` は marker 依存を避けるため config から silent 再読込する（検証・WARNING はステップ 0.6 で実施済）:
+`max_review_cycles` は marker 依存を避けるため config から再読込する（無効値はステップ 0.6 で検証済みのため silent。config 不在は試したパス付き WARNING + 既定値、読めない config は ERROR で marker を出さずに停止）:
 
 ```bash
 bash {plugin_root}/scripts/iterate-step.sh cycle-gate --pr {pr_number} --issue {issue_number} --branch {branch_name}
@@ -796,6 +796,7 @@ rationale: references/rationale.md#resume-routes-no-state-read
 
 - ユーザーが Ctrl+C で中断した場合: flow-state に現 phase (review or fix) が残るので `/rite:recover` で本コマンドが再起動する (詳細な phase → command routing は [skills/recover/SKILL.md](../recover/SKILL.md) Phase 5.3 を参照)
 - `iterate-step.sh` が exit 2（`ERROR: iterate-step.sh:`）で止まった場合: marker を待たずに停止し、未置換の placeholder や数値でない引数を直して当該ステップから再実行する
+- ステップ 0.6 / 1 の `iterate-step.sh` が exit 1 と `ERROR: rite-config.yml を読めません: <path>` または `ERROR: main checkout root を解決できません` で止まった場合: 既定値で続行せずに停止し、表示されたパスの権限を直してから当該ステップを再実行する
 - `[fix:error]` 時: [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) に従い 1 回だけ自動再試行し、再失敗時は停止する
 - reviewer が non-deterministic に振動する場合: 収束トレンドの発散または `safety.max_review_cycles`（既定 15）到達でステップ 6 に進み、人間に問わず停止する。batch は `[iterate:max-cycles-reached]` で当該 Issue を failed 扱いにしてバッチを停止し、対話は `[iterate:max-cycles-stopped]` で終了する。再開は `review_run` がない legacy state では `/rite:iterate {pr_number}` の明示的な再実行、`review_run` がある run ではステップ 6.2 の `{resume_routes}` が名指しする経路で行う。
 

@@ -127,7 +127,10 @@ fi
 [ "$wm_emit_done" = "0" ] || exit 0
 
 # worktree 自身の config、無ければ main checkout の config を読む
-rite_config=$(bash "$(dirname "${BASH_SOURCE[0]}")/../hooks/scripts/lib/rite-config-path.sh" --or-devnull) || exit 1
+rite_config=$(bash "$plugin_root/hooks/scripts/lib/rite-config-path.sh" --or-devnull) || {
+  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=config_unreadable; issue_number=${issue_number}" >&2
+  exit 1
+}
 base_branch=$(awk '
   /^branch:/ { in_branch=1; next }
   in_branch && /^[[:space:]]+base:/ { print; exit }

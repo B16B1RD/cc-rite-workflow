@@ -53,15 +53,8 @@
 # -----------------------------------------------------------------------
 parse_wiki_scalar() {
   local key="$1"
-  local section line val cfg cfg_rc=0
-  cfg=$(bash "$(dirname "${BASH_SOURCE[0]}")/rite-config-path.sh" 2>&1) || cfg_rc=$?
-  if [[ "$cfg_rc" -eq 1 ]]; then
-    printf 'WARNING: %s。wiki.%s は既定値で続行します\n' "$cfg" "$key" >&2
-    return 0
-  elif [[ "$cfg_rc" -ne 0 ]]; then
-    printf 'ERROR: %s\n' "$cfg" >&2
-    return 1
-  fi
+  local section line val cfg
+  cfg=$(bash "$(dirname "${BASH_SOURCE[0]}")/rite-config-path.sh" --or-devnull) || return 1
   section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$cfg" 2>/dev/null || true)
   [[ -z "$section" ]] && return 0
   line=$(printf '%s\n' "$section" | awk -v k="$key" '
