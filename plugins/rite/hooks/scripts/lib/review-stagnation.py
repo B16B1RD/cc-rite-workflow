@@ -309,7 +309,18 @@ def guard_set(old, new):
         # restore() never resumes it, so leaving does not re-read its receipt:
         # cleanup deletes that file once the review has ended.
         if not (stopped or closed):
-            gate(old, old["session_id"], check_head=False)
+            try:
+                gate(old, old["session_id"], check_head=False)
+            except FileNotFoundError as error:
+                # Cleanup deletes the receipt once the review has ended, so name the ways to end it.
+                require(False, "saved review receipt is missing: " + str(error.filename)
+                        + ". End this review before switching: restore that file unchanged (cleanup keeps "
+                        "a copy in .rite/review-results/archive/ only when it has non-blocking findings) and, "
+                        "at the reviewed commit, run `flow-state.sh review-close` if no blocking finding "
+                        "remains or `flow-state.sh review-defer` to keep the draft unresolved; if it cannot "
+                        "be restored, stop the run with `flow-state.sh set --phase " + str(old.get("phase"))
+                        + " --next retry-the-switch --active false"
+                        " --stop-reason circuit-breaker:receipt-missing`. Then retry the switch")
         # Ordinary setters merge counters; ownership completion, rather than an
         # optional caller flag, authorizes this new run's initial zero.
         new["cycle_count"] = 0
