@@ -128,8 +128,12 @@ fi
 
 # worktree 自身の config、無ければ main checkout の config を読む
 rite_config=$(bash "$(dirname "${BASH_SOURCE[0]}")/../hooks/scripts/lib/rite-config-path.sh" --or-devnull) || exit 1
-base_branch=$(grep -E '^\s*base:' "$rite_config" 2>/dev/null | head -1 \
-  | sed 's/.*base:[[:space:]]*"\?\([^"]*\)"\?.*/\1/')
+base_branch=$(awk '
+  /^branch:/ { in_branch=1; next }
+  in_branch && /^[[:space:]]+base:/ { print; exit }
+  in_branch && /^[a-zA-Z]/ { in_branch=0 }
+' "$rite_config" 2>/dev/null \
+  | sed 's/[[:space:]]#.*//' | sed 's/.*base:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 [ -z "$base_branch" ] && base_branch="develop"
 
 git_diff_failed=0
