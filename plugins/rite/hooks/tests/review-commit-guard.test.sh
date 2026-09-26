@@ -647,7 +647,9 @@ for closed_targets in (False, True):
         (root / 'src/a.py').write_text('original\n')
         (root / 'protected').mkdir()
         (root / 'protected/secret.py').write_text('original\n')
-        run(['git', 'add', 'src', 'protected'])
+        (root / 'docs').mkdir()
+        (root / 'docs/guide.md').write_text('original\n')
+        run(['git', 'add', 'src', 'protected', 'docs'])
         run(['git', 'commit', '-q', '-m', 'fixture'])
         # A branch that is not the base: its Non-Target change is Issue work, never intake.
         run(['git', 'switch', '-q', '-c', 'side'])
@@ -670,11 +672,12 @@ for closed_targets in (False, True):
         run(['git', 'switch', '-q', '-c', 'desc'])
         (root / 'protected/secret.py').write_text('desc\n')
         run(['git', 'commit', '-q', '-am', 'desc'])
-        # A base that adds symlinks: one into the Non-Target, one into ordinary content.
+        # A base that adds symlinks: into the Non-Target, into the targets, and outside them.
         run(['git', 'switch', '-q', '-c', 'linked', 'trunk'])
         (root / 'link').symlink_to('protected')
         (root / 'srclink').symlink_to('src')
-        run(['git', 'add', 'link', 'srclink'])
+        (root / 'doclink').symlink_to('docs')
+        run(['git', 'add', 'link', 'srclink', 'doclink'])
         run(['git', 'commit', '-q', '-m', 'links'])
         run(['git', 'switch', '-q', 'feat'])
         body = '## Acceptance Criteria\n- [ ] AC-1 pass\n\n### 4.2 Non-Target Files\n\n- `protected/secret.py`: keep\n'
@@ -910,17 +913,47 @@ for closed_targets in (False, True):
         run(['git', 'add', '-A'])
         rejected(plan_for([group(['protected/secret.py'])]), 'is not origin/trunk or its ancestor')
         run(['git', 'merge', '--abort'])
-        # A symlink the base changed keeps the Non-Target check for what it points at.
+        # A symlink the base changed is taken in wherever it points, and covers only
+        # itself: a change behind it that the base did not make stays unplanned.
         base_tip = run(['git', 'rev-parse', 'origin/trunk']).stdout.strip()
         run(['git', 'update-ref', 'refs/remotes/origin/trunk', 'linked'])
         run(['git', 'merge', '--no-commit', '--no-ff', 'origin/trunk'], ok=False)
         (root / 'src/a.py').write_text('resolved\n')
         run(['git', 'add', '-A'])
-        base_files = ['protected/secret.py', 'src/a.py', 'src/base-only.py']
-        rejected(plan_for([group(base_files + ['link', 'srclink'])]), 'Non-Target violation: link')
-        run(['bash', str(helper), 'check', '--plan', str(plan_for([group(base_files + ['srclink'])])),
-             '--issue', str(issue_file)])
-        (Path(tmp) / '.rite/state' / ('fix-plan-' + session + '.json')).unlink()
+        fork = run(['git', 'merge-base', 'HEAD', 'MERGE_HEAD']).stdout.strip()
+        taken = run(['git', 'diff', '--name-only', fork, 'MERGE_HEAD']).stdout.split()
+        check({'link', 'srclink', 'doclink'} <= set(taken) and 'docs/guide.md' not in taken,
+              'the base changes the links, not what is behind them: ' + repr(taken))
+        linked_plan = plan_for([group(['protected/secret.py', 'src/a.py', 'src/base-only.py',
+                                       'link', 'srclink', 'doclink'])])
+        run(['bash', str(helper), 'check', '--plan', str(linked_plan), '--issue', str(issue_file)])
+        verify = ['bash', str(helper), 'verify', '--plan', str(linked_plan), '--issue', str(issue_file), '--kind', 'all']
+        run(verify)
+        (root / 'docs/guide.md').write_text('issue work\n')
+        result = run(verify, ok=False)
+        check(result.returncode != 0 and 'unplanned changed path; revise plan before continuing' in result.stderr,
+              'a change behind a base symlink is unplanned: ' + result.stderr)
+        hook('git commit --no-edit', reason='unplanned changed path; check scope and verify before committing')
+        run(['git', 'checkout', '--', 'docs/guide.md'])
+        (root / 'link/new.py').write_text('issue work\n')
+        result = run(verify, ok=False)
+        check(result.returncode != 0 and 'unplanned changed path; revise plan before continuing' in result.stderr,
+              'a file created through a base symlink is unplanned: ' + result.stderr)
+        (root / 'protected/new.py').unlink()
+        if not closed_targets:
+            # A symlink another group also plans keeps covering what it points at.
+            both = plan_for([group(['protected/secret.py', 'src/a.py', 'src/base-only.py',
+                                    'link', 'srclink', 'doclink']),
+                             dict(group(['doclink'], action='fix', cause='docs'), finding_ids=['EXT-1'])])
+            with_fix = json.loads(both.read_text())
+            with_fix['external_findings'] = [dict(id='EXT-1', thread_id='t', description='d')]
+            dump(both, with_fix)
+            run(['bash', str(helper), 'check', '--plan', str(both), '--issue', str(issue_file)])
+            (root / 'docs/guide.md').write_text('issue work\n')
+            run(['bash', str(helper), 'verify', '--plan', str(both), '--issue', str(issue_file), '--kind', 'all'])
+            run(['git', 'checkout', '--', 'docs/guide.md'])
+        for record in ('fix-plan-', 'fix-verification-'):
+            (Path(tmp) / '.rite/state' / (record + session + '.json')).unlink()
         run(['git', 'merge', '--abort'])
         run(['git', 'update-ref', 'refs/remotes/origin/trunk', base_tip])
         merge = run(['git', 'merge', '--no-commit', '--no-ff', 'origin/trunk'], ok=False)
