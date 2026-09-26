@@ -71,6 +71,7 @@
 * **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=545, broken_refs=0
 * **Update**: [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](pages/anti-patterns/consumer-allowlist-wedges-producer-value-range.md) — raw/reviews/20260926T103101Z-pr-3148.md を統合
 * **Skip**: [20260926T103230Z-pr-3138.md](raw/reviews/20260926T103230Z-pr-3138.md) — 検出器化候補: 検証入力の fingerprint が __pycache__ を入力変化とみなす挙動と、Wiki 適用記録の --keep-record が base 取り込み後に stale_head を招く挙動（rite 本体の機構で直すべき）
+* **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=546, broken_refs=0
 
 ## 2026-09-25
 
