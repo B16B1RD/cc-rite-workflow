@@ -17,11 +17,14 @@ sources:
     resource: "raw/fixes/20260813T093419Z-pr-2306.md"
   - type: "reviews"
     resource: "raw/reviews/20260914T224913Z-pr-2826.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260926T103101Z-pr-3148.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-14T23:10:01Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T10:45:00Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-14T23:10:01Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T10:45:00Z" }
 ---
 
 # 消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る
@@ -89,6 +92,14 @@ verified:
 - 同じ形を判定する消費側が複数あれば、同じバイト列で同時に広げ、片方だけの変更を静的 pin で止める
 - 説明文にも上限を書く。「4 桁 hex」とだけ書くと、regex より広い範囲を宣言したことになる
 
+### 消費側に新しい必須入力を足すと、その値を運べない producer 経路で停止が必ず起きる
+
+値域の食い違いは値の形だけでなく、**フィールドの有無**でも起きる。判定 helper に新しい入力フィールド（帰結クラスなど）を必須として要求し、欠けていれば fail-loud で止める検証を足した。ところが同じ helper を呼ぶ入力経路のうち、会話や legacy Markdown から JSON を再構成する経路はそのフィールドを運ぶ手段を持たず、その経路では新設の停止が毎回発火した。独立した 3 名の reviewer が同じ根因を指摘している。
+
+consumer 側に検証を足すときは、呼び出し元を 1 本ずつ辿り、**全 producer 経路がその値を渡せるか**を経路ごとに確かめる。渡せない経路があるなら、検証を足す前にその経路へ値を運ぶ手段を作るか、経路ごとに扱いを分ける。
+
+既存テストの fixture に新フィールドを後付けして green に戻すと、本来の producer がその値を渡さない欠落がかえって隠れる。fixture を直す前に、その値を実際に作る producer がどこかを確認する。
+
 ## 関連ページ
 
 - [非収束の review ループは個別修正ではなく構造を疑う](../heuristics/non-converging-review-loop-suspect-structure.md)
@@ -102,3 +113,4 @@ verified:
 - [消費側ゲートの値域が helper 契約と食い違い主シナリオで発火しなかった](../../raw/reviews/20260813T093122Z-pr-2306.md)
 - [判定を helper 契約の値域へ揃え、保存観測を成功時 marker に限定](../../raw/fixes/20260813T093419Z-pr-2306.md)
 - [同秒衝突 suffix を受理形と射影の両方で同時に受け付けたレビュー結果](../../raw/reviews/20260914T224913Z-pr-2826.md)
+- [新しい必須入力を運べない producer 経路で停止が必ず発火したレビュー結果](../../raw/reviews/20260926T103101Z-pr-3148.md)
