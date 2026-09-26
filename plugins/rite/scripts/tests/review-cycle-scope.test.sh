@@ -657,7 +657,7 @@ assert_not_contains "TC-25.15: files= を出さない" "$SCOPE_STDERR" "files="
 assert_rc "TC-25.16: full へ倒れたら一覧を残さない" 1 "$([ -e "$scope_list" ]; echo $?)"
 
 echo "=== TC-26: fix commit の改名は元パスと新パスの両方を一覧に入れる ==="
-# 範囲全体の差分と commit ごとの変更で rename 検出が食い違うと、元パスが一覧から落ち、
+# --name-only は検出した改名の移動先しか出さないため、rename 検出が有効だと元パスが一覧から落ち、
 # reviewer に新パスが新規ファイルとして渡る
 RREPO="$TEST_DIR/rename-repo"
 mkdir -p "$RREPO"
