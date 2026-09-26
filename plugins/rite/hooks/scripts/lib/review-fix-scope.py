@@ -380,8 +380,8 @@ def peel_commit_prefixes(words):
 # The git subcommands that move HEAD and are checked before they run.
 _HEAD_MOVERS = ("commit", "merge")
 _SEPARATORS = ";&|\n"
-# Stands in for an outer ( ) group; no dequoted word of a shell command can hold a NUL.
-_GROUP_WORD = "\0()"
+# Words that open a compound command or a function; a cd inside one runs only when the shell gets there.
+_COMPOUND = {"if", "while", "until", "for", "case", "select", "{", "function"}
 
 
 # A parse the check cannot finish is refused; the message form below always parses.
@@ -449,9 +449,9 @@ def shell_segments(command):
 
     Quotes are tracked across a whole word, so a separator inside quotes (echo ';',
     NAME="a (b) c") stays in its word, and a quote may open in the middle of a word.
-    A command or process substitution or a ( ) group runs in a subshell, so its commands
-    come back marked nested and come ahead of the command that contains them. An outer
-    ( ) group stays one command of its list, with the words around it and _GROUP_WORD in its place.
+    A command substitution or a ( ) group runs in a subshell, so its commands come back
+    marked nested (True for a substitution, "group" for a group); a substitution's commands
+    come ahead of the command that contains it.
     The standard message form $(cat <<DELIM ... DELIM) is data and stays in its word.
     before / after are the control operators around a command: ";" (also a newline),
     "&&", "||", "|" (also |&), "&", or "" at the start, the end and around a substitution.
@@ -459,7 +459,7 @@ def shell_segments(command):
     (&>, >&, <&) stays in its word.
     """
     segments, words, word, quoted, quote, depth = [], [], [], False, None, 0
-    index, length, pending, group, redirect = 0, len(command), "", None, -1
+    index, length, pending, redirect = 0, len(command), "", -2
 
     def end_word():
         nonlocal word, quoted
@@ -471,7 +471,7 @@ def shell_segments(command):
         nonlocal words, pending
         end_word()
         if words:
-            segments.append((words, depth > 0, pending, operator))
+            segments.append((words, "group" if depth else False, pending, operator))
             pending = operator
         elif operator and pending not in ("&&", "||", "|"):
             # A newline right after && / || / | continues the list.
@@ -523,28 +523,12 @@ def shell_segments(command):
                 index += 1
         elif ch in " \t\r":
             end_word()
-        elif ch == "(" and redirect == index - 1:
-            # A process substitution <( ) / >( ) is data of its command, like $( ).
-            end = _substitution_end(command, index + 1)
-            segments.extend((inner, True, "", "") for inner, *_rest in shell_segments(command[index + 1:end - 1]))
-            word.append(command[index:end])
-            quoted = True
-            index = end
-            continue
         elif ch == "(":
-            if depth:
-                end_segment()
-            else:
-                # Hold the outer command until the group closes.
-                end_word()
-                group, words, pending = (words, pending), [], ""
+            end_segment()
             depth += 1
         elif ch == ")":
             end_segment()
             depth = max(depth - 1, 0)
-            if not depth and group:
-                (words, pending), group = group, None
-                words.append(_GROUP_WORD)
         elif ch == "&" and (command.startswith(">", index + 1) or redirect == index - 1):
             word.append(ch)
         elif ch in _SEPARATORS:
@@ -592,24 +576,17 @@ def each_git_target(command, cwd):
 
     A cd moves the target only where the shell is known to run it: a plain cd <literal> that
     starts a list (after ; / a newline / & or at the start), or one in an && chain, which
-    reaches only the rest of that chain. Any other cd (after ||, in a pipeline or the
-    background, cd -, with options, redirections or no directory, behind a keyword) makes
-    the target dynamic, and later lists cannot know it either.
+    reaches only the rest of that chain, in a command with no ( ) group, compound command,
+    function or background &. Any other cd (after ||, in a pipeline, cd -, with options,
+    redirections or no directory, or anywhere in a command with one of those) makes the
+    target dynamic, and later lists cannot know it either.
     """
     segments = shell_segments(command)
-    # A list ended by & runs in a subshell, so its cd never reaches the next list.
-    background, members = set(), []
-    for position, (_words, nested, before, after) in enumerate(segments):
-        if nested:
-            continue
-        if before in ("", ";", "&"):
-            members = []
-        members.append(position)
-        if after == "&":
-            background.update(members)
+    structured = any(nested == "group" or (not nested and (after == "&" or next(
+        (w for w in words if w != "!"), "") in _COMPOUND)) for words, nested, _before, after in segments)
     cwd, dynamic = Path(cwd).resolve(), False  # where the next list starts
     here, unsure, first, alternative, moved = cwd, dynamic, True, False, False
-    for position, (words, nested, before, after) in enumerate(segments):
+    for words, nested, before, after in segments:
         # A subshell keeps its cd, and its git is not direct.
         if not nested:
             if before in ("", ";", "&"):
@@ -619,21 +596,20 @@ def each_git_target(command, cwd):
         starts = first and not nested
         if not nested:
             first = False
+        if structured and not nested and "cd" in words:
+            unsure = dynamic = moved = True
         bare = words
-        if not nested and _GROUP_WORD in words:
-            # A function or case body behind "()" is like a body behind a keyword.
-            bare = words[words.index(_GROUP_WORD) + 1:]
         while not nested and bare and bare[0] in _KEYWORDS:
             bare = bare[1:]
         if not nested and bare and bare[0] == "cd":
             plain = (bare is words and len(words) == 2 and words[1] != "-"
                      and not any(c in words[1] for c in "$`~"))
-            if plain and not alternative and after not in ("|", "&") and before != "|":
+            if plain and not structured and not alternative and after != "|" and before != "|":
                 if not unsure or Path(words[1]).is_absolute():
                     here, unsure = (here / words[1]).resolve(), False
             else:
                 unsure = True
-            if starts and position not in background:
+            if starts:
                 cwd, dynamic = here, unsure
             else:
                 dynamic = True
