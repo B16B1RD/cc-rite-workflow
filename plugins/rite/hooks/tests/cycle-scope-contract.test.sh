@@ -200,8 +200,8 @@ assert_grep "mandate 2 reviews the whole diff of each listed file (no hunk-level
 # 帰属判定は mandate 2 の行形に 1 本で pin する。rationale 節にも同じ照合の説明があるため、
 # 語ごとの pin では注入本文から文を消しても green のまま残る。審査範囲の文 → 帰属の文 →
 # 回し先の順序もこの 1 本で固定する。
-assert_grep "mandate 2 attributes findings per line against origin-first base...HEAD (範囲は維持)" "$CYCLE_SCOPE" \
-  '^2\. \*\*fix diff のフルレビュー\*\*.*hunk を選り分けず diff 全体を審査する.*ただし指摘の帰属は行単位で判定する.*`git diff origin/\{base_branch\}\.\.\.HEAD -- <file>`（`origin/\{base_branch\}` が無ければ `\{base_branch\}`）に現れる行の問題に限る.*pre-existing として指摘にしない（追加調査の価値があるものだけ `### 調査推奨` に書く）'
+assert_grep "mandate 2 attributes findings to +/- lines of origin-first base...HEAD, not context lines (範囲は維持)" "$CYCLE_SCOPE" \
+  '^2\. \*\*fix diff のフルレビュー\*\*.*hunk を選り分けず diff 全体を審査する.*ただし指摘の帰属は行単位で判定する.*`git diff origin/\{base_branch\}\.\.\.HEAD -- <file>`（`origin/\{base_branch\}` が無ければ `\{base_branch\}`）に `\+` / `-` 行として現れる行に依存する問題に限る.*先頭が `\+` / `-` でない context 行と差分に現れない行は PR の変更ではない.*pre-existing として指摘にしない（追加調査の価値があるものだけ `### 調査推奨` に書く）'
 assert_grep "4.5 fills base_branch into the cycle-scope mandate" "$PR_REVIEW" \
   '\| `\{cycle_scope_mandate\}` \|.*`\{previous_blocking_findings\}` / `\{cycle_base_sha\}` / `\{base_branch\}` を埋めて注入する'
 
