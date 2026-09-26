@@ -1072,6 +1072,30 @@ if [ -n "$commit_block" ] && ! grep -qE '\{[a-z_]+\}' <<<"$commit_block" && [ "$
 else
   fail "implement commit block guard rc=$grc out=$gout block=$commit_block"
 fi
+# A commit the gate refuses must stop the block before it pushes the branch.
+stub_root="$ROOT/stub-root"
+mkdir -p "$stub_root/hooks/scripts" "$ROOT/stub-bin"
+printf '#!/bin/bash\necho commit >> "$STUB_LOG"\nexit "$STUB_COMMIT_RC"\n' > "$stub_root/hooks/scripts/git-commit-file.sh"
+printf '#!/bin/bash\nif [ "$1" = push ]; then echo push >> "$STUB_LOG"; exit 0; fi\nexec %q "$@"\n' "$(command -v git)" > "$ROOT/stub-bin/git"
+chmod +x "$ROOT/stub-bin/git"
+stub_block=${commit_block//"$PLUGIN_ROOT"/$stub_root}
+for stub_rc in 1 0; do
+  stub_repo=$(new_repo "commit-stub-$stub_rc")
+  printf 'stub\n' >> "$stub_repo/README"
+  stub_log="$ROOT/commit-stub-$stub_rc.log"
+  : > "$stub_log"
+  brc=0
+  (cd "$stub_repo" && PATH="$ROOT/stub-bin:$PATH" STUB_LOG="$stub_log" STUB_COMMIT_RC="$stub_rc" \
+    bash -c "$stub_block") >/dev/null 2>"$ROOT/commit-stub.err" || brc=$?
+  stub_calls=$(tr '\n' ' ' < "$stub_log")
+  if [ "$stub_rc" -eq 1 ] && [ "$brc" -ne 0 ] && [ "$stub_calls" = "commit " ]; then
+    pass "a failed implement commit stops the block before git push"
+  elif [ "$stub_rc" -eq 0 ] && [ "$brc" -eq 0 ] && [ "$stub_calls" = "commit push " ]; then
+    pass "a successful implement commit is followed by git push"
+  else
+    fail "implement commit stub rc=$stub_rc block rc=$brc calls=$stub_calls err=$(cat "$ROOT/commit-stub.err")"
+  fi
+done
 open_msg="$ROOT/open-msg.txt"
 printf 'fix: implement commit\n\nwhy\n' > "$open_msg"
 crc=0
