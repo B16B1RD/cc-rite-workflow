@@ -344,15 +344,15 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 ```markdown
 ### 却下台帳
 
-| finding_id | file:line | 判定 | 判定文 |
-|------------|-----------|------|--------|
-| F-01 | src/foo.ts:10 | recorded | severity=LOW; measured=false |
-| F-02 | src/bar.ts:4 | issued | <必須。起票先 #N を含む> |
+| finding_id | file:line | 判定 | 判定文 | 出典 |
+|------------|-----------|------|--------|------|
+| F-01 | src/foo.ts:10 | recorded | severity=LOW; measured=false | 12-20260101120000.json |
+| F-02 | src/bar.ts:4 | issued | <必須。起票先 #N を含む> | 12-20260101120000.json |
 ```
 
-`判定` の書込値: `issued` / `recorded`。既存の `rejected` は `recorded` 相当として読み、再判断しない。`recorded` の機械理由は `severity={sev}; measured={bool}`。`guardrail_audit_log[]` / `already_rejected[]` は `recorded` として転記する。
+`判定` の書込値: `issued` / `recorded`。`出典` は sweep が読んだ review JSON の basename（collect の `record`）。`nb-sweep-ledger.sh append` は出典を欠く行を `entries_source_invalid` で拒否し、既存台帳の 4 列の列ヘッダを 5 列へ置き換える（出典の無い既存の 4 列行はそのまま読める）。既存の `rejected` は `recorded` 相当として読み、再判断しない。`recorded` の機械理由は `severity={sev}; measured={bool}`。`guardrail_audit_log[]` / `already_rejected[]` は `recorded` として転記する。
 
-collect は `targets[]` に `verification` と `route` を返す。実測あり MEDIUM は `issued`、それ以外と nit-noted は `recorded`。`--pr` は関連 Issue の記録コメントの台帳を読み、既存の issued/recorded/rejected を対象から除外する。台帳を読む側（collect / cleanup / pr-review / fix）はいずれも `review-nonblocking-record.sh --print-record-body` で、記録 helper が PATCH する 1 件だけを読む（記録コメントが重複しても古い台帳を読まない）。`--json` 単独はオフライン収集。count は targets と未転記 already_rejected の合計で、guardrail のみでも sweep を実行する。`/rite:cleanup` ステップ 6.0 の follow-up 起票も台帳の issued 行を読み、最新 JSON 由来で同じ `[finding_id, file:line]` を持つ指摘を転記から除外する。先行 cycle の指摘は id や位置が同じでも転記する（欠落防止を重複防止より優先する）。そのうち最新 JSON の起票済み指摘と同じ `file:line` にあるものだけ、重複しうる件数と位置を WARNING で出す。行がずれた再報告は台帳から判別できず、WARNING なしで重複しうる。
+collect は `targets[]` に `verification` と `route` を返す。実測あり MEDIUM は `issued`、それ以外と nit-noted は `recorded`。`--pr` は関連 Issue の記録コメントの台帳を読み、既存の issued/recorded/rejected を対象から除外する。台帳を読む側（collect / cleanup / pr-review / fix）はいずれも `review-nonblocking-record.sh --print-record-body` で、記録 helper が PATCH する 1 件だけを読む（記録コメントが重複しても古い台帳を読まない）。`--json` 単独はオフライン収集。count は targets と未転記 already_rejected の合計で、guardrail のみでも sweep を実行する。`/rite:cleanup` ステップ 6.0 の follow-up 起票も台帳の issued 行を読み、同じ `[finding_id, file:line]` を持ち、出典 JSON の basename が行の `出典` と一致する指摘を転記から除外する（sweep 後に別の cycle が走っても除外できる）。出典の無い 4 列行は最新 JSON 由来の指摘とだけ照合する。出典が一致しない指摘は id や位置が同じでも転記する（欠落防止を重複防止より優先する）。そのうち最新 JSON 由来で除外した指摘と同じ `file:line` にある先行 cycle の指摘だけ、重複しうる件数と位置を WARNING で出す。行がずれた再報告は台帳から判別できず、WARNING なしで重複しうる。
 
 **sweep 消化結果 marker**（iterate 完了通知の値源。JSON フィールドではない）:
 

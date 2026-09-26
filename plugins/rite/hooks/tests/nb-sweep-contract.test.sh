@@ -20,7 +20,8 @@
 # T-17 6.1.d step 1.5 stops before the record helper when extract fails, the PR or its headRefName cannot be read, or the new body's first line is indented (merge-into body_marker_missing) (REJECTED_LEDGER_PRESERVE=failed, nothing written); an unresolvable related Issue continues with no ledger, but a pr= value carrying a forged reason=related_issue_unresolved does not (the reader anchors the reason at end of line)
 # T-18 step 1.5 / step 3 / 8.0.3 agree on what follows REJECTED_LEDGER_PRESERVE=failed (judged by the last emitted value): no step 2; a merge-into body_* reason rewrites the body in step 1; any other failure re-runs step 1.5 once, then [review:error] shown in the same response; every re-run goes step 1 → step 1.5 → step 2 (output-diagnostics.md included)
 # T-19 the {rejected_ledger} block run with the real helper: ok prints the rows; lookup / PR read / headRefName read / extract failures → REJECTED_LEDGER=failed + WARNING; an unresolvable related Issue → empty, but a pr= value carrying a forged reason=related_issue_unresolved → failed
-# T-20 nb-sweep.md step 3 run with the real helper for both the read and the write: the PATCHed body carries the PATCH target's ledger plus this sweep's rows, and never an older record's or another author's ledger
+# T-20 nb-sweep.md step 3 run with the real helper for both the read and the write: the PATCHed body carries the PATCH target's ledger plus this sweep's rows, and never an older record's or another author's ledger; the carried 4-column header becomes one 5-column header and this sweep's rows end with the source basename
+# T-21 ledger source column: append writes a 5-column header, accepts only rows ending with a review JSON basename (suffix / trailing blanks / escaped pipes ok; otherwise entries_source_invalid with the ledger untouched), upgrades a 4-column header and separator once while keeping old rows byte-identical and in order; mixed ledgers survive extract → merge-into unchanged; the record helper count, header-only skip and collect exclusion read 5-column ledgers like 4-column ones; nb-sweep.md step 3 names the source column and its value source
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -89,7 +90,7 @@ assert_grep "T-01 CONTEXT ok" "$sandbox/t01.err" 'NB_SWEEP_COLLECT=ok; count=2'
 # --- T-02 (AC-2): 却下判定文を台帳へ ---
 ledger="$sandbox/ledger.md"
 entries="$sandbox/entries.md"
-printf '| F-01 | src/a.ts:10 | rejected | 本 PR のスコープ外（判定文） |\n' > "$entries"
+printf '| F-01 | src/a.ts:10 | rejected | 本 PR のスコープ外（判定文） | 7-20260101120000.json |\n' > "$entries"
 "$LEDGER" append --ledger-file "$ledger" --entries-file "$entries" 2>"$sandbox/t02.err"
 assert_grep "T-02 heading" "$ledger" '^### 却下台帳$'
 assert_grep "T-02 rationale row" "$ledger" '本 PR のスコープ外（判定文）'
@@ -475,7 +476,7 @@ medium_collect=$("$COLLECT" --json "$medium_json")
 assert "sweep sees both moved findings" 2 "$(jq '.count' <<< "$medium_collect")"
 assert "measured MEDIUM keeps existing issued route" true "$(jq 'all(.targets[]; .route == "issued")' <<< "$medium_collect")"
 medium_entries="$sandbox/medium-entries.md"
-jq -r '.targets[] | "| \(.id) | \(.file):\(.line) | issued | fixture issue for \(.id) |"' \
+jq -r '.targets[] | "| \(.id) | \(.file):\(.line) | issued | fixture issue for \(.id) | 7-20260101120000.json |"' \
   <<< "$medium_collect" > "$medium_entries"
 "$LEDGER" append --ledger-file "$sandbox/medium-ledger.md" --entries-file "$medium_entries"
 assert "sweep persists two digest rows" 2 "$(grep -c '^| M-' "$sandbox/medium-ledger.md")"
@@ -603,8 +604,8 @@ zero_body() {  # $1=out
     '📎 non_blocking_count: 0' '📎 reviewed_commit: unknown' "$SENTINEL" > "$1"
 }
 nbr_entries="$sandbox/nbr-entries.md"
-printf '%s\n' '| NB-1 | src/a.ts:1 | recorded | severity=MEDIUM; measured=false |' \
-  '| NB-2 | src/b.ts:2 | recorded | severity=LOW; measured=false |' > "$nbr_entries"
+printf '%s\n' '| NB-1 | src/a.ts:1 | recorded | severity=MEDIUM; measured=false | 7-20260101120000.json |' \
+  '| NB-2 | src/b.ts:2 | recorded | severity=LOW; measured=false | 7-20260101120000.json |' > "$nbr_entries"
 ledger_body="$sandbox/nbr-ledger-body.md"
 zero_body "$ledger_body"
 "$LEDGER" append --ledger-file "$sandbox/nbr-ledger.md" --entries-file "$nbr_entries" 2>/dev/null
@@ -788,7 +789,7 @@ fi
 
 # merge-into: 既存台帳の後に別の節がある本文で、台帳節だけを置き換えて count 行の直前へ差し込む
 t13_new_ledger="$sandbox/t13-new-ledger.md"
-printf '%s\n' '| NB-9 | src/z.ts:9 | recorded | severity=LOW; measured=false |' > "$sandbox/t13-entries.md"
+printf '%s\n' '| NB-9 | src/z.ts:9 | recorded | severity=LOW; measured=false | 7-20260101120000.json |' > "$sandbox/t13-entries.md"
 "$LEDGER" append --ledger-file "$t13_new_ledger" --entries-file "$sandbox/t13-entries.md" 2>/dev/null
 t13_merge="$sandbox/t13-merge.md"
 printf '%s\n\n%s\n\n%s\n%s\n%s\n\n%s\n%s\n\n%s\n%s\n%s\n\n%s\n' "$MARKER" '### 却下台帳' \
@@ -1349,7 +1350,91 @@ else
   assert "T-20 手順 3: 今回の sweep の行 (NB-1 / NB-2) を足す" 2 "$(grep -c '^| NB-[12] ' "$NBR_POSTED")"
   assert "T-20 手順 3: 古い記録・他人のコメントの台帳を持ち込まない" 0 "$(grep -cE '^\| (OLD|FOR)-1 ' "$NBR_POSTED")"
   assert "T-20 手順 3: 台帳見出しは 1 つ" 1 "$(grep -c '^### 却下台帳$' "$NBR_POSTED")"
+  # 引き継いだ 4 列の台帳へ足すと列ヘッダは 5 列 1 つに揃い、今回の行は出典の basename で終わる
+  assert "T-20 手順 3: 列ヘッダは 5 列で 1 つ" 1 "$(grep -c '^| finding_id | file:line | 判定 | 判定文 | 出典 |$' "$NBR_POSTED")"
+  assert "T-20 手順 3: 4 列の列ヘッダを残さない" 0 "$(grep -c '^| finding_id | file:line | 判定 | 判定文 |$' "$NBR_POSTED")"
+  assert "T-20 手順 3: 今回の行の最終列は出典の basename" 2 "$(grep -cE '^\| NB-[12] .*\| 7-20260101120000\.json \|$' "$NBR_POSTED")"
 fi
+
+# --- T-21: 台帳の出典列 (append の 5 列ヘッダ・出典の検証・旧ヘッダの昇格、既存 reader の 5 列互換) ---
+t21_row='| NB-5 | src/e.ts:5 | issued | #12 https://example.test/issues/12 | 7-20260101120000.json |'
+printf '%s\n' "$t21_row" > "$sandbox/t21-entries.md"
+rm -f "$sandbox/t21-new.md"
+"$LEDGER" append --ledger-file "$sandbox/t21-new.md" --entries-file "$sandbox/t21-entries.md" 2>/dev/null
+assert "T-21 新規台帳の列ヘッダは 5 列" "| finding_id | file:line | 判定 | 判定文 | 出典 |" "$(sed -n '3p' "$sandbox/t21-new.md")"
+assert "T-21 新規台帳の区切り行は 5 列" "|------------|-----------|------|--------|------|" "$(sed -n '4p' "$sandbox/t21-new.md")"
+assert "T-21 行はそのまま最終列に出典を持つ" "$t21_row" "$(sed -n '5p' "$sandbox/t21-new.md")"
+# 同秒衝突 suffix 付き・末尾空白・判定文内のエスケープ済みパイプも出典として受理する
+printf '%s\n' '| NB-6 | src/f.ts:6 | recorded | a \| b | 7-20260101120000~1a2b.json |  ' > "$sandbox/t21-entries-ok.md"
+t21_ok_rc=0
+"$LEDGER" append --ledger-file "$sandbox/t21-new.md" --entries-file "$sandbox/t21-entries-ok.md" 2>/dev/null || t21_ok_rc=$?
+assert "T-21 suffix 付き出典・末尾空白・エスケープ済みパイプを受理" 0 "$t21_ok_rc"
+assert "T-21 5 列台帳への追記で列ヘッダは変わらない" 1 "$(grep -c '^| finding_id | file:line | 判定 | 判定文 | 出典 |$' "$sandbox/t21-new.md")"
+# 出典を欠く・形が合わない行を 1 行でも含む entries は何も書かない
+cp "$sandbox/t21-new.md" "$sandbox/t21-before.md"
+for t21_bad in '| NB-7 | src/g.ts:7 | recorded | severity=LOW; measured=false |' \
+               '| NB-7 | src/g.ts:7 | recorded | severity=LOW; measured=false | review.json |' \
+               '| NB-7 | src/g.ts:7 | recorded | severity=LOW; measured=false | 7-20260101120000.json.corrupt-1 |'; do
+  printf '%s\n%s\n' "$t21_row" "$t21_bad" > "$sandbox/t21-entries-bad.md"
+  t21_bad_rc=0
+  "$LEDGER" append --ledger-file "$sandbox/t21-new.md" --entries-file "$sandbox/t21-entries-bad.md" 2>"$sandbox/t21-bad.err" || t21_bad_rc=$?
+  assert "T-21 出典不正の entries は rc=1 ($t21_bad)" 1 "$t21_bad_rc"
+  assert_grep "T-21 出典不正の reason ($t21_bad)" "$sandbox/t21-bad.err" 'NB_SWEEP_LEDGER=failed; op=append; reason=entries_source_invalid'
+  if cmp -s "$sandbox/t21-before.md" "$sandbox/t21-new.md"; then
+    pass "T-21 出典不正の entries は台帳を変えない ($t21_bad)"
+  else
+    fail "T-21 出典不正の entries は台帳を変えない ($t21_bad)"
+  fi
+done
+# 旧 4 列台帳: 列ヘッダと区切り行だけを 1 回ずつ 5 列へ置き換え、旧行はバイト一致のまま順序を保つ
+for t21_sep in '|------------|-----------|------|--------|' '|:---|:---:|---|---:|'; do
+  printf '%s\n' '### 却下台帳' '' '| finding_id | file:line | 判定 | 判定文 |' "$t21_sep" \
+    '| OLD-1 | src/o.ts:1 | issued | #9 https://example.test/issues/9 |' \
+    '| OLD-2 | src/p.ts:2 | recorded | severity=LOW; measured=false |' > "$sandbox/t21-legacy.md"
+  "$LEDGER" append --ledger-file "$sandbox/t21-legacy.md" --entries-file "$sandbox/t21-entries.md" 2>/dev/null
+  assert "T-21 旧台帳の列ヘッダを 5 列へ ($t21_sep)" "| finding_id | file:line | 判定 | 判定文 | 出典 |" "$(sed -n '3p' "$sandbox/t21-legacy.md")"
+  assert "T-21 旧台帳の区切り行を 5 列へ ($t21_sep)" "|------------|-----------|------|--------|------|" "$(sed -n '4p' "$sandbox/t21-legacy.md")"
+  assert "T-21 旧行 1 はそのまま ($t21_sep)" '| OLD-1 | src/o.ts:1 | issued | #9 https://example.test/issues/9 |' "$(sed -n '5p' "$sandbox/t21-legacy.md")"
+  assert "T-21 旧行 2 はそのまま ($t21_sep)" '| OLD-2 | src/p.ts:2 | recorded | severity=LOW; measured=false |' "$(sed -n '6p' "$sandbox/t21-legacy.md")"
+  assert "T-21 新しい行は末尾 ($t21_sep)" "$t21_row" "$(sed -n '7p' "$sandbox/t21-legacy.md")"
+  assert "T-21 行数 ($t21_sep)" 7 "$(wc -l < "$sandbox/t21-legacy.md" | tr -d ' ')"
+done
+# 4 列・5 列が混在する台帳も extract → merge-into を繰り返して本文が変わらない
+printf '%s\n' "$MARKER" '' '📎 non_blocking_count: 0' '📎 reviewed_commit: abc' '' "$SENTINEL" > "$sandbox/t21-body.md"
+"$LEDGER" merge-into --body-file "$sandbox/t21-body.md" --ledger-file "$sandbox/t21-legacy.md" 2>/dev/null
+cp "$sandbox/t21-body.md" "$sandbox/t21-body-1.md"
+"$LEDGER" extract --body-file "$sandbox/t21-body.md" > "$sandbox/t21-extracted.md" 2>/dev/null
+"$LEDGER" merge-into --body-file "$sandbox/t21-body.md" --ledger-file "$sandbox/t21-extracted.md" 2>/dev/null
+if cmp -s "$sandbox/t21-body-1.md" "$sandbox/t21-body.md"; then
+  pass "T-21 混在台帳の extract → merge-into は冪等"
+else
+  fail "T-21 混在台帳の extract → merge-into は冪等"
+fi
+assert "T-21 混在台帳の旧行を保持" 2 "$(grep -c '^| OLD-[12] ' "$sandbox/t21-body.md")"
+assert "T-21 混在台帳の新しい行を保持" 1 "$(grep -cF "$t21_row" "$sandbox/t21-body.md")"
+# 変更しない reader (記録 helper の集計 / nb-sweep-collect.sh) が 5 列の台帳を 4 列と同じに読む
+if [ -n "$t13_prog" ]; then
+  assert "T-21 記録 helper は混在台帳を 3 件と数える" 3 "$(awk -v head='### 却下台帳' "$t13_prog" "$sandbox/t21-body.md")"
+  printf '%s\n\n%s\n\n%s\n%s\n\n%s\n%s\n\n%s\n' "$MARKER" '### 却下台帳' \
+    '| finding_id | file:line | 判定 | 判定文 | 出典 |' '|------------|-----------|------|--------|------|' \
+    '📎 non_blocking_count: 0' '📎 reviewed_commit: unknown' "$SENTINEL" > "$sandbox/t21-header-only.md"
+  assert "T-21 記録 helper は 5 列の列ヘッダだけの台帳を 0 件と数える" 0 "$(awk -v head='### 却下台帳' "$t13_prog" "$sandbox/t21-header-only.md")"
+fi
+printf '[[]]\n' > "$NBR_COMMENTS"
+run_nbr_helper 0 "$sandbox/t21-header-only.md"
+assert "T-21 5 列の列ヘッダだけの台帳は outcome=skipped" skipped "$nbr_outcome"
+sed -e 's/^| finding_id | file:line | 判定 | 判定文 |$/| finding_id | file:line | 判定 | 判定文 | 出典 |/' \
+    -e 's/^| iss | src\/iss.ts:3 | issued | follow-up #99 |$/| iss | src\/iss.ts:3 | issued | follow-up #99 | 1-20260101120000.json |/' \
+    "$sandbox/live-ledger.md" > "$sandbox/t21-live-ledger.md"
+assert "T-21 collect fixture は 5 列の issued 行を持つ" 1 "$(grep -c '^| iss .*| 1-20260101120000\.json |$' "$sandbox/t21-live-ledger.md")"
+jq -n --rawfile body "$sandbox/t21-live-ledger.md" '[[{id:11,user:{login:"rite-bot"},body:$body}]]' > "$NB_TEST_COMMENTS"
+t21_collect=$("$COLLECT" --json "$live_json" --pr 1)
+assert "T-21 collect は 5 列の台帳でも 4 列と同じ対象を返す" \
+  "$(printf '%s' "$live_out" | jq -cS '[.targets[] | {id, file, line}]')" "$(printf '%s' "$t21_collect" | jq -cS '[.targets[] | {id, file, line}]')"
+assert "T-21 collect は 5 列の issued 行を除外する" 0 "$(printf '%s' "$t21_collect" | jq '[.targets[] | select(.id=="iss")] | length')"
+# 手順 3 の行形式は 5 セルで、最終セルが collect の record の basename
+assert "T-21 手順 3 の行形式は出典列で終わる" 1 "$(grep -cF '行形式 `| {id} | {file}:{line} | issued|recorded | {起票先 or 機械理由} | {record_basename} |`' "$FIX")"
+assert "T-21 手順 3 は出典の値源を collect の record= に置く" 1 "$(grep -cF '`[CONTEXT] NB_SWEEP_COLLECT=ok; ...; record=` の値の basename' "$FIX")"
 
 if ! print_summary "$(basename "$0")" "nb-sweep helper contract drift — check iterate SKILL.md / iterate-step.sh 5.S / 6.1.d preserve"; then
   exit 1

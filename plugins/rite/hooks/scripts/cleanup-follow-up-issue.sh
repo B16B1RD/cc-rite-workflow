@@ -8,7 +8,8 @@
 # 転記対象は**同一 PR の全 JSON の `non_blocking_findings[]` の和集合**。各 JSON はその cycle の
 # 観測にすぎず、最新 1 本は残存集合ではない (先行 cycle にのみ載る指摘を取りこぼす)。解消済みの
 # 除外は cleanup ステップ 6.0.V の再検証が `--exclude-ids` で担う。iterate の NB sweep で起票済みの
-# 指摘 (関連 Issue 記録コメントの却下台帳で判定=issued) は本 helper が台帳を読んで除外する。
+# 指摘 (関連 Issue 記録コメントの却下台帳で判定=issued) は本 helper が台帳を読み、行の出典 JSON と
+# 照合して除外する。
 #
 # 転記元は直下と archive/ の JSON。cleanup の archive helper は本スクリプトの後に走る (D-04) が、
 # pr-cycle-cleanup.sh の orphan 回収が cleanup より先に archive/ へ移した JSON もここで読む。
@@ -226,7 +227,7 @@ while IFS= read -r f; do
   matched=$((matched + 1))
   : > "$union_err"
   # 各 finding に出典 JSON のパス (`_src`) を持たせる。再検証による除外の key (basename + id) と、
-  # sweep 起票済みの除外を最新 JSON 由来の要素に限る照合 (フルパス一致) の両方が使う。
+  # sweep 起票済みの除外 (台帳行の出典 basename との一致、出典の無い行は最新 JSON とのフルパス一致) の両方が使う。
   # 本文の生成は明示したフィールドだけを読むので転記には出ない。
   if ! part=$(jq -c --arg src "$f" 'if (.non_blocking_findings | type) == "array" then .non_blocking_findings | map(if type == "object" then . + {_src: $src} else . end) else error("non_blocking_findings is not an array") end' "$f" 2>"$union_err"); then
     # 部分的な parse 失敗で全滅させない。健全な側の和集合で続行し、全滅時だけ json_undecidable。
@@ -371,14 +372,17 @@ fi
 # iterate の NB sweep が既に Issue 化した指摘 (関連 Issue 記録コメントの却下台帳で判定=issued) を
 # 転記から除く。sweep の起票には follow-up ラベルも先頭行 marker も付かないため、下の既存判定では
 # 見分けられず同じ指摘が二重に Issue 化される。recorded / rejected 行は従来どおり転記する。
-# 除外するのは、sweep が読んだ最新 JSON (nb-sweep-collect.sh と同じ basename 最大の 1 本。archive/ へ移っていても同じ) 由来の finding のうち、
-# 台帳の issued 行と [finding_id, file:line] の組が一致するものだけ。台帳が判定したのは最新 JSON の
-# 指摘であり、別 PR の台帳行も同じ関連 Issue に並ぶため、組が最新 JSON と一致して初めて本 PR の sweep
-# 起票と言える。先行 cycle の finding は id や位置が同じでも転記する。台帳は cycle 属性も指摘の内容も
-# 持たず、同じ指摘の再報告か同じ位置の別の指摘かを判定できないため、除外すると sweep 未実施の指摘が
-# どの Issue にも残らなくなる (欠落より重複を選ぶ)。最新 JSON の起票済み指摘と同じ file:line にある
-# 先行 cycle の指摘だけを重複候補として WARNING に出す。行がずれた同一指摘の再報告は台帳から
-# 判別できず、WARNING なしで sweep の Issue と重複しうる。
+# 除外するのは、台帳の issued 行と [finding_id, file:line] の組が一致し、かつ出典も一致する finding だけ。
+# issued 行の最終列 (出典) は sweep が読んだレビュー結果 JSON の basename で、finding の出典 JSON
+# (`_src`、archive/ へ移っていても basename は同じ) の basename と比べる。sweep 後に別の cycle が
+# 走って最新 JSON が変わっても、起票した cycle の finding を除外できる。basename は PR 番号で始まるため
+# 同じ関連 Issue に並ぶ別 PR の台帳行とは一致しない。出典の無い (空・形の合わない) issued 行は、sweep が
+# 読んだ最新 JSON (nb-sweep-collect.sh と同じ basename 最大の 1 本) 由来の finding とだけ照合する。
+# 出典が一致しない finding は id や位置が同じでも転記する。台帳は指摘の内容を持たず、別 cycle の同じ
+# 位置の指摘か同じ指摘の再報告かを判定できないため、除外すると sweep 未実施の指摘がどの Issue にも
+# 残らなくなる (欠落より重複を選ぶ)。最新 JSON 由来で除外した指摘と同じ file:line にある先行 cycle の
+# 指摘だけを重複候補として WARNING に出す。行がずれた同一指摘の再報告は台帳から判別できず、
+# WARNING なしで sweep の Issue と重複しうる。
 # 台帳や最新 JSON を読めないときは sweep 起票済みの除外だけを適用せずに転記し (上の再検証による除外は
 # 適用済みのまま)、WARNING と marker で surface する (sweep 起票済みを黙って全件除外にも全件転記にも倒さない)。
 sweep_issued_unavailable() {
@@ -402,7 +406,10 @@ else
         | split("\n")[] | select(startswith("|"))
         | split("|") | map(trim)
         | select(.[3] == "issued")
-        | [.[1], .[2]] ] | unique' 2>"$comments_err"); then
+        | [.[1], .[2],
+           (.[-2] as $s
+            | if length >= 7 and ($s | test("^[0-9]+-[0-9]{14}(~[0-9a-f]{4})?\\.json$")) then $s else "" end)] ]
+    | unique' 2>"$comments_err"); then
     sweep_issued_unavailable ledger_invalid "関連 Issue の却下台帳を解析できません"
     [ -s "$comments_err" ] && head -3 "$comments_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   elif ! latest_json=$(rite_review_results_sources "$results_dir" "$PR_NUMBER" '.json' | tail -1) \
@@ -413,8 +420,9 @@ else
     [ -s "$comments_err" ] && head -3 "$comments_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   elif ! issued_split=$(printf '%s' "$findings_json" | jq -c --arg latest "$latest_json" --argjson keys "$issued_keys" '
     def loc: (.file // "") + ":" + (.line | tostring);
-    def issued: ._src == $latest and ([(.id // ""), loc] as $k | any($keys[]; . == $k));
-    ([.[] | select(issued) | loc] | unique) as $locs
+    def issued: ._src as $s | (($s // "") | split("/") | last) as $b | [(.id // ""), loc] as $k
+      | any($keys[]; .[0:2] == $k and (if .[2] == "" then $s == $latest else .[2] == $b end));
+    ([.[] | select(issued and ._src == $latest) | loc] | unique) as $locs
     | [.[] | select((issued | not) and ._src != $latest and (loc as $l | any($locs[]; . == $l))) | loc] as $dups
     | {kept: [.[] | select(issued | not)],
        excluded: ([.[] | select(issued)] | length),
