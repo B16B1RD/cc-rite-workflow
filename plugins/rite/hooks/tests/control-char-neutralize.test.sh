@@ -206,7 +206,7 @@ fi
 echo ""
 echo "=== TC-22: --keep-newline — 日本語の原因行は無傷 / C1 と壊れた列は ? ==="
 # ja_JP.UTF-8 の git / bash が出す文言を固定バイト列で渡す (ランナーの locale に依存しない)。
-# 「ディ」(e3 83 87) や「ホ」(e3 83 9b) の継続バイトは C1 範囲と重なる — 旧実装はここを ? にしていた。
+# 「ディ」(e3 83 87) や「ホ」(e3 83 9b) の継続バイトは C1 範囲と重なるため、ここを ? にしてはならない。
 _tc22_msg=$'fatal: そのようなファイルやディレクトリはありません\nディレクトリです\nホ'
 assert "TC-22: localized stderr lines pass through byte-for-byte" \
   "$(printf '%s' "$_tc22_msg" | to_hex)" "$(printf '%s' "$_tc22_msg" | neutralize_ctrl --keep-newline | to_hex)"
