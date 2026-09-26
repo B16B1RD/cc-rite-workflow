@@ -769,7 +769,13 @@ doc_follower_exemption='不確実を理由に class B へ倒さない'
 doc_follower_missing=""
 doc_follower_narrowing_missing=""
 doc_follower_exemption_missing=""
+doc_follower_exemption_tail_drift=""
 for f in "$pr_review_skill" "$PLUGIN_ROOT/skills/fix/references/assessment-rules.md" "$PLUGIN_ROOT/references/severity-levels.md"; do
+  case "$f" in
+    "$pr_review_skill") exemption_tail='（上の既定より優先する）' ;;
+    */assessment-rules.md) exemption_tail=')' ;;
+    */severity-levels.md) exemption_tail='（上の表の既定より優先する）' ;;
+  esac
   if [ "$f" = "$pr_review_skill" ]; then body=$class_section; else body=$(cat "$f"); fi
   line=$(printf '%s\n' "$body" | grep -F -- "$doc_follower_rule" || true)
   rest=${line#*"$doc_follower_rule"}
@@ -779,9 +785,16 @@ for f in "$pr_review_skill" "$PLUGIN_ROOT/skills/fix/references/assessment-rules
   elif [ "$verdict" != "class A" ]; then
     doc_follower_missing="$doc_follower_missing $f(${verdict:-no verdict})"
   fi
-  # 規則文の後ろに「不確実を理由に class B へ倒さない」が同じ行で続く (一般の B 倒し既定より優先する)
+  # 規則文の後ろに「不確実を理由に class B へ倒さない」が同じ行で続く (一般の B 倒し既定より優先する)。
+  # 但し書きがある箇所では直後の文字列をファイルごとに 1 つに固定し、否定化や優先関係の反転を検出する
   case "$rest" in
-    *"$doc_follower_exemption"*) ;;
+    *"$doc_follower_exemption"*)
+      exemption_after=${rest#*"$doc_follower_exemption"}
+      case "$exemption_after" in
+        "$exemption_tail"*) ;;
+        *) doc_follower_exemption_tail_drift="$doc_follower_exemption_tail_drift $f(${exemption_after:0:20})" ;;
+      esac
+      ;;
     *) doc_follower_exemption_missing="$doc_follower_exemption_missing $f" ;;
   esac
   # class B の「文書整合」は字面整合クラス (テキスト差分だけの観測) に限る。限定句より前で最後に現れる
@@ -803,6 +816,19 @@ if [ -z "$doc_follower_exemption_missing" ]; then
   pass "doc-follower rule is not demoted on uncertainty in all three sites"
 else
   fail "uncertainty exemption missing:$doc_follower_exemption_missing"
+fi
+if [ -z "$doc_follower_exemption_tail_drift" ]; then
+  pass "uncertainty exemption ends with the expected precedence in all three sites"
+else
+  fail "uncertainty exemption tail drift:$doc_follower_exemption_tail_drift"
+fi
+# class B の既定「不確実なら B へ倒す」の直後に、散文への実行観測の指摘を除く句が隣接して続く
+class_b_lines=$(grep -F -- '- **class B** —' "$PLUGIN_ROOT/skills/fix/references/assessment-rules.md" || true)
+if [ "$(printf '%s\n' "$class_b_lines" | grep -c .)" -eq 1 ] \
+   && grep -qF '不確実な場合も class B へ倒す (上の散文への実行観測の指摘を除く。' <<<"$class_b_lines"; then
+  pass "class B default keeps the prose-observation exclusion adjacent"
+else
+  fail "class B default exclusion clause missing or class B line not unique"
 fi
 if [ -z "$doc_follower_narrowing_missing" ]; then
   pass "class B document consistency is narrowed to the literal-consistency class in all three sites"
