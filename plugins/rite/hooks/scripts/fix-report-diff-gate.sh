@@ -133,29 +133,40 @@ plus_hunks=""
 minus_hunks=""
 current_file=""
 current_src=""
+in_hunk=0
 
+# ヘッダ区間（diff --git から最初の @@ まで）でだけ --- / +++ をファイルヘッダとして読む。
+# -U0 の diff では hunk 内の内容行の先頭 "++ " / "-- " がそれぞれ "+++ " / "--- " になり、
+# in_hunk のガードが無いとファイルヘッダと誤読して current_file / current_src を上書きする
+# (number-reference-check.sh の同種の欠陥修正と同じ形)。
 while IFS= read -r line || [ -n "$line" ]; do
   case "$line" in
     diff\ --git\ *)
       current_file=""
       current_src=""
+      in_hunk=0
       ;;
     ---\ a/*)
-      current_src=${line#--- a/}
-      current_src=${current_src%%$'\t'*}
+      if [ "$in_hunk" -eq 0 ]; then
+        current_src=${line#--- a/}
+        current_src=${current_src%%$'\t'*}
+      fi
       ;;
     ---\ /dev/null)
-      current_src=""
+      [ "$in_hunk" -eq 0 ] && current_src=""
       ;;
     +++\ b/*)
-      dest=${line#+++ b/}
-      dest=${dest%%$'\t'*}
-      current_file="$dest"
+      if [ "$in_hunk" -eq 0 ]; then
+        dest=${line#+++ b/}
+        dest=${dest%%$'\t'*}
+        current_file="$dest"
+      fi
       ;;
     +++\ /dev/null)
-      current_file="$current_src"
+      [ "$in_hunk" -eq 0 ] && current_file="$current_src"
       ;;
     @@\ *)
+      in_hunk=1
       [ -n "$current_file" ] || continue
       minus=${line#@@ -}
       minus=${minus%% *}
