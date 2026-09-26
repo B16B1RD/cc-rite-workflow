@@ -550,9 +550,10 @@ okf_version: "0.2"
 | [テスト用の偽コマンドは入力を読み切ってから終了する](pages/heuristics/test-shim-drain-inputs-before-exit.md) | heuristics | パイプやプロセス置換から入力を受ける偽コマンドが入力を読まずに終了すると、書き手のプロセスが壊れたパイプに当たる。SIGPIPE で黙って終わるか EPIPE のエラー行を出すかは OS ごとに違うため、stderr を検査するテストが一部の CI ランナーでだけ非決定的に落ちる。 | 2026-09-26T08:23:48Z | high |
 | [除外は字面で、許可判定は symlink 解決後で比べる二重基準は、symlink 経由で許可集合を広げる](pages/anti-patterns/literal-exclusion-with-resolved-allow-check-leaks-via-symlink.md) | anti-patterns | 検査対象からの除外を文字列一致で決め、許可判定は symlink を解決したパスで比べると、除外対象に symlink が混ざったとき解決先のツリー全体が許可集合に入る。片方の検査だけ直しても、同じ仕組みの別の検査から抜ける。 | 2026-09-26T08:46:38Z | medium |
 | [ゲートの検査範囲を広げると、それまで skip で素通りしていた呼び出し元も新たに検査対象へ入る](pages/heuristics/widening-gate-scope-pulls-in-previously-skipped-callers.md) | heuristics | 検査を skip していた経路を検査対象へ広げると、同じ helper を通る別の呼び出し元も一緒に対象へ入る。拒否されたときの後始末をしていない呼び出し元があれば、後続のゲートが別の理由で止まる。範囲を広げる変更は、新たに対象へ入る全呼び出し元の拒否時の挙動まで確認する。 | 2026-09-26T08:46:38Z | medium |
+| [ガードの対象を種別で狭めると、広い対象に付随して効いていた制約が機械的な裏付けを失う](pages/heuristics/narrowing-guard-scope-drops-incidental-enforcement.md) | heuristics | 「全員を止める」ガードを「特定の種別だけ止める」ように狭めると、対象外になった者のうち、別の理由で同じ制約を約束していたものは文言上の禁止だけで守られる状態になる。種別で判定するガードは、止めるべき者が別の種別の子へ作業を委ねる経路も素通りさせる。狭める変更では、対象外に出る者と委譲経路を列挙し、失う担保を受け入れるか別の手段で補うかを決めておく。 | 2026-09-26T09:40:00Z | medium |
 ## 統計
 
-- 総ページ数: 540
-- ドメイン別: patterns=124, heuristics=244, anti-patterns=172
-- 最終更新: 2026-09-26T09:08:27Z
+- 総ページ数: 541
+- ドメイン別: patterns=124, heuristics=245, anti-patterns=172
+- 最終更新: 2026-09-26T09:40:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |

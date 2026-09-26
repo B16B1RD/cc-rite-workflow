@@ -2,6 +2,7 @@
 
 ## 2026-09-26
 
+* **Create**: [ガードの対象を種別で狭めると、広い対象に付随して効いていた制約が機械的な裏付けを失う](pages/heuristics/narrowing-guard-scope-drops-incidental-enforcement.md) — raw/reviews/20260926T092324Z-pr-3134.md を新規ページ化
 * **Update**: [実測の有無と severity は独立した 2 軸で、両方を満たさないと修正対象にならない](pages/heuristics/evidence-and-severity-are-independent-gates.md) — raw/fixes/20260926T085821Z-pr-3125.md を統合
 * **Update**: [hook のテストスイートは ambient な session-id 環境変数 (CLAUDE_CODE_SESSION_ID 等) に依存させない (non-hermetic test)](pages/heuristics/test-hermeticity-ambient-session-id-env-leak.md) — raw/reviews/20260926T090314Z-pr-3129.md を統合
 * **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=544, broken_refs=0
