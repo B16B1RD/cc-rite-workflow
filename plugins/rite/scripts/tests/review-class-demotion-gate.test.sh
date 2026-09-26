@@ -771,10 +771,12 @@ doc_follower_narrowing_missing=""
 doc_follower_exemption_missing=""
 doc_follower_exemption_tail_drift=""
 for f in "$pr_review_skill" "$PLUGIN_ROOT/skills/fix/references/assessment-rules.md" "$PLUGIN_ROOT/references/severity-levels.md"; do
+  # exemption_rest は tail の後ろに続いてよい部分 (case パターンとして展開する)。assessment-rules.md は
+  # 但し書きの閉じ括弧で行末に達するので空 (完全一致) にし、括弧の後ろに足した反転文も検出する
   case "$f" in
-    "$pr_review_skill") exemption_tail='（上の既定より優先する）' ;;
-    */assessment-rules.md) exemption_tail=')' ;;
-    */severity-levels.md) exemption_tail='（上の表の既定より優先する）' ;;
+    "$pr_review_skill") exemption_tail='（上の既定より優先する）'; exemption_rest='*' ;;
+    */assessment-rules.md) exemption_tail=')'; exemption_rest='' ;;
+    */severity-levels.md) exemption_tail='（上の表の既定より優先する）'; exemption_rest='*' ;;
   esac
   if [ "$f" = "$pr_review_skill" ]; then body=$class_section; else body=$(cat "$f"); fi
   line=$(printf '%s\n' "$body" | grep -F -- "$doc_follower_rule" || true)
@@ -786,12 +788,13 @@ for f in "$pr_review_skill" "$PLUGIN_ROOT/skills/fix/references/assessment-rules
     doc_follower_missing="$doc_follower_missing $f(${verdict:-no verdict})"
   fi
   # 規則文の後ろに「不確実を理由に class B へ倒さない」が同じ行で続く (一般の B 倒し既定より優先する)。
-  # 但し書きがある箇所では直後の文字列をファイルごとに 1 つに固定し、否定化や優先関係の反転を検出する
+  # 但し書きの直後は、assessment-rules.md では tail で行末まで完全一致、SKILL.md / severity-levels.md では
+  # tail の後ろに本文が続くため tail の前方一致で照合し、否定化や優先関係の反転を検出する
   case "$rest" in
     *"$doc_follower_exemption"*)
       exemption_after=${rest#*"$doc_follower_exemption"}
       case "$exemption_after" in
-        "$exemption_tail"*) ;;
+        "$exemption_tail"$exemption_rest) ;;
         *) doc_follower_exemption_tail_drift="$doc_follower_exemption_tail_drift $f(${exemption_after:0:20})" ;;
       esac
       ;;
