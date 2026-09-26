@@ -4,10 +4,16 @@ title: "実測の有無と severity は独立した 2 軸で、両方を満た�
 domain: "heuristics"
 description: "実測必須ゲートは「測っていない指摘を blocking にしない」ためのもので、測ってあっても重要度が閾値に届かなければ fatal にならない。実行時に何かが壊れる帰結クラスでも、severity が中位なら修正ループは動かない。"
 created: "2026-09-06T16:10:23Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-06T16:10:23Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T08:46:38Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T08:46:38Z" }
 sources:
   - type: "fixes"
     resource: "raw/fixes/20260906T144434Z-pr-2582.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260926T083923Z-pr-3129.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260926T084101Z-pr-3126.md"
 tags: ["review-loop", "severity", "evidence-gate", "convergence"]
 confidence: high
 ---
@@ -28,6 +34,10 @@ confidence: high
 
 fatal 0 件は「何もしない」ではない。移送した件数と記録先を報告して通常完了へ進む。ここを「0 件だったので終了」に丸めると、記録契約が空文になり、次の cycle が「前 cycle で何が記録されたか」を読めなくなる。修正コミットの有無に関わらず state の永続化と報告は必須である。
 
+### 同じ PR で直したい実行時帰結は severity 判定で詰める
+
+ガード迂回や後続ゲートの停止のように実行時帰結を持つ指摘でも、実測付き MEDIUM は non-blocking へ移送され、修正コミットは作られない。その PR の中で直すべきだと考えるなら、fix 側で扱いを変えるのではなく、reviewer 側で HIGH 以上が妥当かを severity 判定の段階で詰める。移送された指摘は non-blocking 記録と follow-up Issue で追跡され、PR 自体はそのまま収束する。
+
 ## 関連ページ
 
 - [実測 likelihood ゲートは evidence アンカーとセットで運用する](./observed-likelihood-gate-with-evidence-anchors.md)
@@ -36,3 +46,5 @@ fatal 0 件は「何もしない」ではない。移送した件数と記録先
 ## ソース
 
 - [fix 結果](../../raw/fixes/20260906T144434Z-pr-2582.md)
+- [fix 結果](../../raw/reviews/20260926T083923Z-pr-3129.md)
+- [fix 結果](../../raw/fixes/20260926T084101Z-pr-3126.md)

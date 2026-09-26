@@ -477,7 +477,7 @@ okf_version: "0.2"
 | [GNU 形式の `sed -i '<expr>' file` は BSD sed で fixture を書き換えないまま失敗する](pages/anti-patterns/gnu-sed-inplace-silently-noop-on-bsd.md) | anti-patterns | BSD sed は `-i` の次の引数を backup 拡張子と解釈するため、式が拡張子・ファイル名が script として扱われ parse error になる。`set -e` の無いテストでは無言で先へ進み、fixture 不変のまま突合系 assertion だけが落ちる。 | 2026-09-16T15:08:04Z | high |
 | [CI の観測をレビューへ渡し、失敗の帰属と採否を分ける](pages/heuristics/review-loop-has-no-ci-result-input.md) | heuristics | レビュー対象コミットの CI check を入力とレポートに含めることで、ローカルと異なる環境での失敗を早期に確認できる。赤い check だけでは原因を断定せず、変更との対応と失敗出力を確認して既存の実測基準で採否する。 | 2026-09-07T11:07:42Z | high |
 | [規約の主文は、実行者が観測できる単位で書く](pages/heuristics/rule-stated-in-units-the-executor-observes.md) | heuristics | 編集の単位で書かれた規約は、機械が hunk 単位でしか観測できない場面で字義どおり適用すると判定と食い違う。正しく直した対応が「未対応」に落ち、ループが空転する。 | 2026-09-06T16:10:23Z | high |
-| [実測の有無と severity は独立した 2 軸で、両方を満たさないと修正対象にならない](pages/heuristics/evidence-and-severity-are-independent-gates.md) | heuristics | 実測必須ゲートは「測っていない指摘を blocking にしない」ためのもので、測ってあっても重要度が閾値に届かなければ fatal にならない。実行時に何かが壊れる帰結クラスでも、severity が中位なら修正ループは動かない。 | 2026-09-06T16:10:23Z | high |
+| [実測の有無と severity は独立した 2 軸で、両方を満たさないと修正対象にならない](pages/heuristics/evidence-and-severity-are-independent-gates.md) | heuristics | 実測必須ゲートは「測っていない指摘を blocking にしない」ためのもので、測ってあっても重要度が閾値に届かなければ fatal にならない。実行時に何かが壊れる帰結クラスでも、severity が中位なら修正ループは動かない。 | 2026-09-26T08:46:38Z | high |
 | [同型テンプレートが N 本ある欄は「本数の literal pin」と「欄とプレースホルダの隣接 pin」の 2 本立てで守る](pages/patterns/homogeneous-template-pins-count-and-adjacency.md) | patterns | 同じ報告欄を複数のテンプレートへ横展開したとき、presence-only の grep pin は 1 本でも残っていれば通るため N-1 本からの欠落を検出できない。本数を literal で固定する pin と、欄行の直下にプレースホルダが並ぶことを数える pin の 2 本立てにする。期待値を実測から作ると 0 == 0 の真空パスで通るので、期待値は必ず literal で書く。 | 2026-09-07T10:00:00Z | high |
 | [警告集約は最終試行・同一目的・正規化先の単一性で判定する](pages/heuristics/warning-aggregation-final-attempt-purpose-normalization.md) | heuristics | 複数段の処理ログから要対応項目を集約するとき、同じ処理の最終試行だけを評価し、別目的の成功を解消証拠に使わず、raw 警告と詳細な復旧項目を一つの表現へ正規化する。件数一致だけでは配線の誤りを検出できないため、実 emit と分類規則の対応を文字列単位で固定する。 | 2026-09-07T19:47:59Z | high |
 | [手順書を別経路へ転記するとき画像参照例と添付パスの解決基準を揃える — gh の添付置換は絶対パス同値でのみ成立する](pages/heuristics/image-ref-and-attach-path-same-absolute-basis.md) | heuristics | gh の添付置換は本文の画像参照先と --attach パスを双方絶対パスへ解決して一致したものだけ書き換える。手順書で参照例を相対形、添付を絶対パスと別基準で書くと参照が残り画像が末尾へ追記される。単発経路の手順を分解経路へ転記するときは参照例と添付側を同じ絶対パス形で写し、再添付の案内も本文に残った参照と同じ絶対パスへの再生成に限定する。 | 2026-09-10T09:11:04Z | high |
@@ -548,9 +548,11 @@ okf_version: "0.2"
 | [再開手順は後段ゲートが要求する証跡を作るコマンドを名指しし、静的検査で順序も固定する](pages/heuristics/recovery-instructions-name-gate-evidence-commands-order-pinned.md) | heuristics | 停止後の再開手順が一般的な案内文だけで、後段のゲートが要求する証跡（特定コマンドの実行結果）を作るコマンドを名指ししないと、利用者はゲートを満たせず同じ停止を繰り返す。手順内のコマンド順序も静的検査で固定すると、順序 drift による停止の再発を防げる。 | 2026-09-26T08:23:48Z | medium |
 | [名前順で最新を読む判定をテストする fixture は、cycle ごとに保存秒をずらして衝突を避ける](pages/heuristics/test-fixture-staggers-save-second-avoid-name-order-collision.md) | heuristics | 結果ファイルの保存時刻が秒単位で衝突すると、同秒内では乱数 suffix によって名前の並びが不定になる。名前順で「最新」を選ぶ実装を検証するテストの fixture は、cycle ごとに保存秒をずらして、この不定な並びに依存せず結果を再現可能にする。 | 2026-09-26T07:15:00+00:00 | medium |
 | [テスト用の偽コマンドは入力を読み切ってから終了する](pages/heuristics/test-shim-drain-inputs-before-exit.md) | heuristics | パイプやプロセス置換から入力を受ける偽コマンドが入力を読まずに終了すると、書き手のプロセスが壊れたパイプに当たる。SIGPIPE で黙って終わるか EPIPE のエラー行を出すかは OS ごとに違うため、stderr を検査するテストが一部の CI ランナーでだけ非決定的に落ちる。 | 2026-09-26T08:23:48Z | high |
+| [除外は字面で、許可判定は symlink 解決後で比べる二重基準は、symlink 経由で許可集合を広げる](pages/anti-patterns/literal-exclusion-with-resolved-allow-check-leaks-via-symlink.md) | anti-patterns | 検査対象からの除外を文字列一致で決め、許可判定は symlink を解決したパスで比べると、除外対象に symlink が混ざったとき解決先のツリー全体が許可集合に入る。片方の検査だけ直しても、同じ仕組みの別の検査から抜ける。 | 2026-09-26T08:46:38Z | medium |
+| [ゲートの検査範囲を広げると、それまで skip で素通りしていた呼び出し元も新たに検査対象へ入る](pages/heuristics/widening-gate-scope-pulls-in-previously-skipped-callers.md) | heuristics | 検査を skip していた経路を検査対象へ広げると、同じ helper を通る別の呼び出し元も一緒に対象へ入る。拒否されたときの後始末をしていない呼び出し元があれば、後続のゲートが別の理由で止まる。範囲を広げる変更は、新たに対象へ入る全呼び出し元の拒否時の挙動まで確認する。 | 2026-09-26T08:46:38Z | medium |
 ## 統計
 
-- 総ページ数: 538
-- ドメイン別: patterns=124, heuristics=243, anti-patterns=171
-- 最終更新: 2026-09-26T08:23:48Z
+- 総ページ数: 540
+- ドメイン別: patterns=124, heuristics=244, anti-patterns=172
+- 最終更新: 2026-09-26T08:46:38Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
