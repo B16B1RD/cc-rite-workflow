@@ -7,6 +7,7 @@
 * **Create**: [除外は字面で、許可判定は symlink 解決後で比べる二重基準は、symlink 経由で許可集合を広げる](pages/anti-patterns/literal-exclusion-with-resolved-allow-check-leaks-via-symlink.md) — raw/reviews/20260926T083635Z-pr-3129.md を新規ページ化
 * **Create**: [ゲートの検査範囲を広げると、それまで skip で素通りしていた呼び出し元も新たに検査対象へ入る](pages/heuristics/widening-gate-scope-pulls-in-previously-skipped-callers.md) — raw/reviews/20260926T083836Z-pr-3126.md を新規ページ化
 * **Skip**: [20260926T083916Z-pr-3128.md](raw/reviews/20260926T083916Z-pr-3128.md) — 指摘 0 件で、PR 固有の実装説明のみのため一般化できる経験則なし
+* **lint:clean** — contradictions=0 (更新・新規ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=544, broken_refs=0
 
 * **Create**: [再開手順は後段ゲートが要求する証跡を作るコマンドを名指しし、静的検査で順序も固定する](pages/heuristics/recovery-instructions-name-gate-evidence-commands-order-pinned.md) — raw/fixes/20260926T071224Z-pr-3120.md を新規ページ化
 * **Create**: [名前順で最新を読む判定をテストする fixture は、cycle ごとに保存秒をずらして衝突を避ける](pages/heuristics/test-fixture-staggers-save-second-avoid-name-order-collision.md) — raw/fixes/20260926T071224Z-pr-3120.md を新規ページ化
