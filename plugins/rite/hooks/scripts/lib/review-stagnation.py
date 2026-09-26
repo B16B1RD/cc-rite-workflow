@@ -300,7 +300,10 @@ def guard_set(old, new):
         # Releasing the session is not discharging the stop: the archived run
         # keeps its status, reason and spent retry, and close() still refuses it
         # because gate() itself is untouched.
-        if not stopped:
+        # A closed run already passed gate() when close / defer recorded it, and
+        # restore() never resumes it, so leaving does not re-read its receipt:
+        # cleanup deletes that file once the review has ended.
+        if not (stopped or closed):
             gate(old, old["session_id"], check_head=False)
         # Ordinary setters merge counters; ownership completion, rather than an
         # optional caller flag, authorizes this new run's initial zero.

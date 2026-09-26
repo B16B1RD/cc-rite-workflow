@@ -1791,5 +1791,61 @@ try:
 finally:
     f.close()
 
+# T-22 / T-23 / T-24: cleanup deletes the saved receipt after the review has
+# ended. Leaving the PR must not depend on that file when the run is closed,
+# deferred or stopped, and must still depend on it when the run is none of those.
+def drop_receipt(fixture):
+    path = Path(fixture.state()['review_run']['observations'][-1]['result_path'])
+    path.unlink()
+    check(not path.exists(), 'fixture deleted the observed receipt')
+    return path
+
+
+def leave(fixture, ok=True):
+    fixture.flow('set', '--phase', 'cleanup', '--next', 'cleanup', '--active', 'false')
+    return fixture.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43,
+                        '--branch', 'chore/issue-43', '--pr', 0, '--active', 'true', ok=ok)
+
+
+for marker in ('review-close', 'review-defer'):
+    f = Fixture()
+    try:
+        f.cycle(roots=[])
+        f.flow(marker)
+        ended_run = f.state()['review_run']
+        drop_receipt(f)
+        leave(f)
+        state = f.state()
+        check(state['issue_number'] == 43 and 'review_run' not in state and state.get('cycle_count', 0) == 0
+              and archived_run(state) == ended_run,
+              'T-22 (AC-1): a run ended by ' + marker + ' releases the session after cleanup deleted its receipt')
+    finally:
+        f.close()
+
+f = Fixture()
+try:
+    f.cycle()
+    missing = drop_receipt(f)
+    result = leave(f, ok=False)
+    check(result.returncode != 0 and str(missing) in result.stderr
+          and 'requires completed or deferred review' not in result.stderr,
+          'T-23 (AC-2): an unended run still re-reads its receipt when leaving the PR\n' + result.stderr)
+    check(f.state()['issue_number'] == 42, 'T-23 (AC-2): the refused switch keeps the current Issue')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    diverge(f)
+    stopped_run = f.state()['review_run']
+    drop_receipt(f)
+    f.flow('set', '--phase', 'init', '--next', 'branch', '--issue', 43, '--branch', 'chore/issue-43', '--pr', 0)
+    archived = archived_run(f.state())
+    check(f.state()['issue_number'] == 43 and archived == stopped_run
+          and archived['status'] == 'stopped' and archived['stop_reason'] == 'circuit-breaker:divergence',
+          'T-24 (AC-3): a stopped run releases the session without its receipt and keeps its stop')
+finally:
+    f.close()
+
 print('PASS: review stagnation: ' + str(checks) + ' assertions; real clocks, receipts, repairs and retained stops')
 PYTEST
