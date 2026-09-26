@@ -928,6 +928,93 @@ else
   fail "stale after commit rc=$GRC out=$GOUT"
 fi
 
+echo "=== open writes phase=implement before issue-implement commits ==="
+# The block and the commit resolve the same flow-state through the session env,
+# so the commit reads what open wrote instead of a hand-made flow file.
+OPEN_MD="$SCRIPT_DIR/../../skills/open/SKILL.md"
+FS="$SCRIPT_DIR/../flow-state.sh"
+PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+tag_lines=$(grep -n '^# open-implement-state$' "$OPEN_MD" | cut -d: -f1)
+step4_line=$(grep -n '^## ステップ 4: 実装$' "$OPEN_MD" | cut -d: -f1)
+invoke_line=$(grep -n '^skill: rite:issue-implement$' "$OPEN_MD" | cut -d: -f1)
+if [ "$(printf '%s\n' "$tag_lines" | grep -c .)" -eq 1 ] && [ -n "$step4_line" ] && [ -n "$invoke_line" ] \
+  && [ "$tag_lines" -gt "$step4_line" ] && [ "$tag_lines" -lt "$invoke_line" ]; then
+  pass "the implement-state block appears once, inside ステップ 4 before the invoke"
+else
+  fail "implement-state block placement tag=$tag_lines step4=$step4_line invoke=$invoke_line"
+fi
+impl_block="$ROOT/open-implement-state.sh"
+awk -v root="$PLUGIN_ROOT" '
+  /^# open-implement-state$/ { copy=1; next }
+  copy && /^```$/ { exit }
+  copy { gsub(/\{plugin_root\}/, root); gsub(/\{issue_number\}/, "7");
+         gsub(/\{branch_name\}/, "fix/issue-7-x"); print }
+' "$OPEN_MD" > "$impl_block"
+if [ -s "$impl_block" ] && ! grep -q '{' "$impl_block"; then
+  pass "the extracted block is complete"
+else
+  fail "extracted block is empty or keeps a placeholder: $(cat "$impl_block")"
+fi
+opn=$(new_repo open-implement)
+write_config "$opn" true true
+open_state="$ROOT/open-state"
+mkdir -p "$open_state"
+open_env() {
+  env -u CLAUDE_SESSION_ID -u CODEX_THREAD_ID -u GROK_SESSION_ID RITE_HOST=claude \
+    CLAUDE_CODE_SESSION_ID=550e8400-e29b-41d4-a716-446655440077 RITE_STATE_ROOT="$open_state" "$@"
+}
+open_env bash "$FS" set --phase plan --issue 7 --branch fix/issue-7-x --pr 0 \
+  --worktree "$opn" --parent-issue 5 --next test >/dev/null
+open_flow=$(open_env bash "$FS" path)
+before=$(jq -c '{worktree, branch, issue_number, parent_issue_number}' "$open_flow")
+open_env bash "$impl_block" >"$ROOT/open-block.out" 2>&1
+after=$(jq -c '{worktree, branch, issue_number, parent_issue_number}' "$open_flow")
+if [ "$(jq -r '.phase' "$open_flow")" = implement ] && [ "$before" = "$after" ]; then
+  pass "the block sets phase=implement and keeps worktree, branch, issue and parent"
+else
+  fail "block state phase=$(jq -r '.phase' "$open_flow") before=$before after=$after out=$(cat "$ROOT/open-block.out")"
+fi
+open_mem="$ROOT/open.md"
+old_head=$(git -C "$opn" rev-parse HEAD)
+printf 'open\n' >> "$opn/README"
+git -C "$opn" add README
+write_mem "$open_mem" "$(fresh_header none 550e8400-e29b-41d4-a716-446655440077 "$opn" 1 README)"
+# The guard parses the documented commit block before it runs; an unparsable
+# block is denied under phase=implement and never reaches git-commit-file.sh.
+IMPL_MD="$SCRIPT_DIR/../../skills/issue-implement/SKILL.md"
+commit_block=$(awk -v root="$PLUGIN_ROOT" '
+  /^# implement-commit$/ { copy=1; next }
+  copy && /^```$/ { exit }
+  copy { gsub(/\{plugin_root\}/, root); gsub(/\{changed_files\}/, "README");
+         gsub(/\{branch_name\}/, "fix/issue-7-x"); gsub(/\{commit_message\}/, "fix: x"); print }
+' "$IMPL_MD")
+impl_gin=$(jq -n --arg cwd "$opn" --arg cmd "$commit_block" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
+grc=0
+gout=$(printf '%s' "$impl_gin" | open_env WIKI_APPLY_MEMORY="$open_mem" bash "$GUARD" 2>"$ROOT/impl-guard.err") || grc=$?
+if [ -n "$commit_block" ] && ! grep -qE '\{[a-z_]+\}' <<<"$commit_block" && [ "$grc" -eq 0 ] && ! grep -q 'deny' <<<"$gout"; then
+  pass "the guard lets the documented implement commit block through under phase=implement"
+else
+  fail "implement commit block guard rc=$grc out=$gout block=$commit_block"
+fi
+open_msg="$ROOT/open-msg.txt"
+printf 'fix: implement commit\n\nwhy\n' > "$open_msg"
+crc=0
+open_env WIKI_APPLY_MEMORY="$open_mem" \
+  bash "$COMMIT" --file "$open_msg" --worktree "$opn" >"$ROOT/open.out" 2>"$ROOT/open.err" || crc=$?
+new_head=$(git -C "$opn" rev-parse HEAD)
+recorded=$(sed -n 's/^head: //p' "$open_mem")
+if [ "$crc" -eq 0 ] && [ "$old_head" != "$new_head" ] && [ "$recorded" = "$new_head" ]; then
+  pass "the implement commit passes the gate and refreshes head"
+else
+  fail "implement commit rc=$crc old=$old_head new=$new_head recorded=$recorded err=$(cat "$ROOT/open.err")"
+fi
+run_gate --mode review --worktree "$opn" --flow-state "$open_flow" --memory "$open_mem"
+if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
+  pass "review after the implement commit allows"
+else
+  fail "review after implement rc=$GRC out=$GOUT"
+fi
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

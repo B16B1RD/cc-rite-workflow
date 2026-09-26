@@ -598,6 +598,15 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 ## ステップ 4: 実装
 
+invoke の前に `phase=implement` を書く。rationale: references/rationale.md#implement-phase-gate
+
+```bash
+# open-implement-state
+bash {plugin_root}/hooks/flow-state.sh set \
+  --phase implement --issue {issue_number} --branch {branch_name} --pr 0 \
+  --next "実装・コミット後に rite:lint へ進む"
+```
+
 ```text
 skill: rite:issue-implement
 args: "{issue_number}"
