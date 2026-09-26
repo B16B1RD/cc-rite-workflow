@@ -68,6 +68,7 @@
 * **Update**: [検査用のシェル字句解析は判定対象を標準形に絞り、それ以外を fail-closed にする](pages/heuristics/inspection-parser-narrow-to-standard-form-fail-closed.md) — raw/reviews/20260926T101537Z-pr-3147.md を統合
 * **Update**: [検査用のシェル字句解析は判定対象を標準形に絞り、それ以外を fail-closed にする](pages/heuristics/inspection-parser-narrow-to-standard-form-fail-closed.md) — raw/fixes/20260926T102601Z-pr-3147.md を統合
 * **Update**: [否定形の assert は前提条件が崩れると fail-silent になる](pages/anti-patterns/negative-assertion-vacuous-without-precondition-floor.md) — raw/reviews/20260926T102245Z-pr-3139.md を統合
+* **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=545, broken_refs=0
 
 ## 2026-09-25
 
