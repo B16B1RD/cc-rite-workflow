@@ -43,6 +43,7 @@
 * **Skip**: [20260926T070111Z-pr-3121.md](raw/reviews/20260926T070111Z-pr-3121.md) — mutation testing で検出した pin 網羅性 nit（non-blocking）で既存ページを超える新規知見なし
 * **Update**: [再開手順は後段ゲートが要求する証跡を作るコマンドを名指しし、静的検査で順序も固定する](pages/heuristics/recovery-instructions-name-gate-evidence-commands-order-pinned.md) — raw/reviews/20260926T075636Z-pr-3120.md を統合
 * **Create**: [テスト用の偽コマンドは入力を読み切ってから終了する](pages/heuristics/test-shim-drain-inputs-before-exit.md) — raw/reviews/20260926T081826Z-pr-3124.md を新規ページ化
+* **lint:clean** — contradictions=0 (更新・新規ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=543, broken_refs=0
 
 ## 2026-09-25
 
