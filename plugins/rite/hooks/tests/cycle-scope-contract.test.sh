@@ -197,6 +197,13 @@ assert_grep "1.2.4 treats an incremental marker without files= as full" "$PR_REV
   '`files=` が欠落した incremental は helper 失敗と同じく `full` として扱い.*reason=helper_failed'
 assert_grep "mandate 2 reviews the whole diff of each listed file (no hunk-level exclusion)" "$CYCLE_SCOPE" \
   'hunk を選り分けず diff 全体を審査する'
+# 帰属判定は mandate 2 の行形に 1 本で pin する。rationale 節にも同じ照合の説明があるため、
+# 語ごとの pin では注入本文から文を消しても green のまま残る。審査範囲の文 → 帰属の文 →
+# 回し先の順序もこの 1 本で固定する。
+assert_grep "mandate 2 attributes findings per line against origin-first base...HEAD (範囲は維持)" "$CYCLE_SCOPE" \
+  '^2\. \*\*fix diff のフルレビュー\*\*.*hunk を選り分けず diff 全体を審査する.*ただし指摘の帰属は行単位で判定する.*`git diff origin/\{base_branch\}\.\.\.HEAD -- <file>`（`origin/\{base_branch\}` が無ければ `\{base_branch\}`）に現れる行の問題に限る.*pre-existing として指摘にしない（追加調査の価値があるものだけ `### 調査推奨` に書く）'
+assert_grep "4.5 fills base_branch into the cycle-scope mandate" "$PR_REVIEW" \
+  '\| `\{cycle_scope_mandate\}` \|.*`\{previous_blocking_findings\}` / `\{cycle_base_sha\}` / `\{base_branch\}` を埋めて注入する'
 
 echo "=== mandate 4 項目: 解消検証 / fix diff フル / Cross-File 維持 / 未変更部の再監査禁止 ==="
 # mandate 1 の語は SoT 宣言・合成理由・注入本文の 3 箇所に出るため、単語 pin だと
