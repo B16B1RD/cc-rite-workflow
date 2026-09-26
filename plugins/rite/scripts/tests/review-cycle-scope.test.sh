@@ -681,10 +681,12 @@ assert_rc "TC-25.18: stderr 全体に ESC / U+009B が残らない" 0 "$ja_ctrl_
 # 両側の一覧は取れても積 (comm) を計算できなければ、狭い側へ倒さず full へ倒す。
 # 上の git shim は rev-list で先に失敗させるので PATH に入れない (comm まで届かなくなる)。
 # shim は実在パスを 1 行出してから失敗する。rc を見落とすと、その 1 行で incremental へ進むので、
-# 下の incremental / files= / 一覧削除の assert も rc の見落としを捕らえる
+# 下の incremental / files= / 一覧削除の assert も rc の見落としを捕らえる。
+# shim は両入力を読み切ってから失敗する。読まずに終わると、入力を書く sort が
+# 同じ stderr に Broken pipe を先に出すことがあり、原因行の検査が非決定的になる
 COMM_SHIM="$TEST_DIR/comm-shim"
 mkdir -p "$COMM_SHIM"
-printf '#!/bin/bash\necho doc.md\necho "comm: write error" >&2\nexit 1\n' > "$COMM_SHIM/comm"
+printf '#!/bin/bash\ncat "$2" "$3" >/dev/null\necho doc.md\necho "comm: write error" >&2\nexit 1\n' > "$COMM_SHIM/comm"
 chmod +x "$COMM_SHIM/comm"
 comm_stale_list="$TMPDIR/rite-cycle-scope-files-42.txt"
 printf 'stale\n' > "$comm_stale_list"
