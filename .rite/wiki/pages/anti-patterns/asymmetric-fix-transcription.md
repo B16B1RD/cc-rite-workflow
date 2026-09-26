@@ -6,6 +6,8 @@ promote: rite-plugin
 created: "2026-04-16T19:37:16Z"
 sources:
   - type: "reviews"
+    resource: "raw/reviews/20260926T155826Z-pr-3189.md"
+  - type: "reviews"
     resource: "raw/reviews/20260901T110702Z-pr-2498.md"
   - type: "reviews"
     resource: "raw/reviews/20260901T092252Z-pr-2498.md"
@@ -595,7 +597,8 @@ sources:
     resource: "raw/fixes/20260729T151517Z-pr-2051-c2.md"
 tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift", "sibling-issue-symmetric-application", "caller-context-difference", "inverse-failure-defect-transcription", "self-referential-prevention-violation", "anchor-scope-limit", "frontmatter-body-sync-drift", "caller-template-mirror-symmetry", "multi-stub-marker-prefix-symmetry", "helper-docstring-caller-extension-drift", "prose-first-paragraph-stale", "sentinel-sub-discriminator-suffix", "placeholder-pair-value-source-symmetry", "canonical-source-declaration", "archive-doc-tail-residue", "intra-document-contradiction", "reference-path-depth-drift", "grep-at-start-preventive-application", "extension-scope-limited-grep-sweep", "structural-doc-list-sync-on-new-file", "rationale-link-target-stale", "both-sides-claim-unverified", "over-propagation-boundary-unverified", "relocation-old-site-reference-drift"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-01T20:31:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T16:15:00Z" }
+verified: [{ by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T16:15:00Z" }]
 ---
 
 # Asymmetric Fix Transcription (対称位置への伝播漏れ)
@@ -2052,3 +2055,17 @@ helper へ実体を移設したとき、**移設先の新シンボル名で grep
 
 - [兄弟統一の境界未確認による over-fix](../../raw/reviews/20260901T110702Z-pr-2498.md)
 - [移設に伴うドキュメント所有権の伝播漏れ](../../raw/reviews/20260901T092252Z-pr-2498.md)
+
+## 変種: 判定式の再掲は、更新したファイルの中の別の再掲も数える
+
+判定式を変えて、その式を再掲している文書を同期するとき、漏れは**別ファイルより、更新したファイル自身の中**に出やすい。ある変更では fatal 判定式を 7 文書で更新した。そのうち schema 文書では 2 行を直したが、同じファイルの注記と隣接する表の行に再掲された旧式が残った。3 名の reviewer がこの漏れを独立に検出した。
+
+観測: 旧式の文字列で grep すれば残存はすぐに見つかった。「このファイルは直した」という認識が、同じファイルの中の再掲を探す動機を消していた。
+
+帰結: 判定の実体が helper の述語 1 箇所に集約されていて LLM が再分類しない構成では、文書の式が古くても triage の結果は変わらない。そのため指摘は記述整合の class B として降格し、follow-up に回った。
+
+対処: 式を変えたら、**旧式の特徴的な部分文字列で repo 全体を grep し、ヒットが 0 になるまで**同期する。すでに更新したファイルも grep の対象から外さない。再掲が何度も漏れる式は、本文に書き写すのをやめて正本（SoT）へのポインタにする。
+
+## ソース（追記分 6）
+
+- [レビュー結果](../../raw/reviews/20260926T155826Z-pr-3189.md)

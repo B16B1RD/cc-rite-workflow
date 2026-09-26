@@ -15,10 +15,12 @@ sources:
     resource: "raw/reviews/20260906T134450Z-pr-2582.md"
   - type: "reviews"
     resource: "raw/reviews/20260926T140708Z-pr-3168.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260926T153549Z-pr-3183.md"
 tags: ["fail-loud", "guard", "exit-exhaustive", "sibling-exit", "trap", "boundary-tc", "static-pin"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T14:20:00Z" }
-verified: [{ by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T14:20:00Z" }]
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T16:15:00Z" }
+verified: [{ by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T14:20:00Z" }, { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T16:15:00Z" }]
 ---
 
 # fail-loud ガードは同じ帰結を持つ全出口に張る（症状側から出口を網羅する）
@@ -70,6 +72,14 @@ skill 定義の評価順テーブルが marker ベースで fatal を判定す�
 
 テスト側では、手順書から抽出したブロックを実行し、helper の絶対パスだけを stub へ置き換えて stub の呼び出しを記録する形が有効だった。置き換えが効かず本物の helper が走っても記録が残らないため、テストは FAIL する。stub が差し替わったこと自体をテストが確かめている。
 
+### 追記: 足した停止経路は、兄弟の呼び出し元と同じ形で pin する
+
+修正で新しい fail-loud 経路（config を読めない・入力が欠落する・state root を解決できない）を足すと、その停止自体が新しい未 pin 面になる。ある変更の再レビューでは、前 cycle の blocking はすべて解消していた。しかし新しく足した停止経路のひとつが、どのテストにも固定されていないまま残った。同じ系統の別の呼び出し元は、同じ停止をすでに pin していた。
+
+対処: 停止経路を足したら、同系統の呼び出し元が既に持っている pin の形（停止すること・marker・後続の副作用が走らないこと）を探し、新しい呼び出し元にも同じ形で置く。前例の pin があることが、「この停止も守る対象だ」という判断の根拠になる。
+
+同じレビューでは、段を足した実行経路の古い記述も問題になった。前提の sentinel が別経路でしか出ないため、その行には実際には到達しない。それでも読み手には第 2 の経路に見えた。到達しない行は、どの経路専用かを明記するか、削る。
+
 ## 関連ページ
 
 - [trap 登録 → mktemp の順序で tempfile lifecycle を守る](../patterns/trap-register-before-mktemp.md)
@@ -82,3 +92,4 @@ skill 定義の評価順テーブルが marker ベースで fatal を判定す�
 - [pin が守る対象の兄弟を数える](../../raw/fixes/20260805T110153Z-pr-2114.md)
 - [レビュー結果](../../raw/reviews/20260906T134450Z-pr-2582.md)
 - [レビュー結果](../../raw/reviews/20260926T140708Z-pr-3168.md)
+- [レビュー結果](../../raw/reviews/20260926T153549Z-pr-3183.md)

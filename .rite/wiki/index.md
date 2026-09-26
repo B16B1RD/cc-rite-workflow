@@ -29,7 +29,7 @@ okf_version: "0.2"
 | [保存パス基準の変更は観測面と全 caller 引数の同時スイープが必要](pages/heuristics/path-basis-change-observation-surface-sweep.md) | heuristics | 状態ファイルの保存パス基準を変更する PR (例: cwd 相対 → 共有 state root) では、実装本体の 3 経路 (save / read / delete) を揃えるだけでは不十分。 | 2026-09-10T11:05:00Z | high |
 | [全域で成功する resolver への委譲が既存 fail-fast ガードを silent success 化する](pages/anti-patterns/total-resolver-delegation-defeats-fail-fast-gate.md) | anti-patterns | 「入力がどうであれ必ず非空値を返す (total な)」helper に値の解決を委譲すると、その値の空チェックに依存していた既存の fail-fast ERROR ガードが到達不能な dead code になり、従来エラーだった状況が silent success に変わる。 | 2026-09-15T00:45:00Z | high |
 | [Fix の完成判定は shell script 単体動作ではなく実ワークフロー発火実績で行う](pages/heuristics/fix-verification-requires-natural-workflow-firing.md) | heuristics | 修正が動いていると主張する前に、shell script 単体のテストデータではなく、自然な workflow 経路を通った commit 履歴上の発火実績を確認する。 | 2028-04-17T00:15:00+00:00 | high |
-| [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | anti-patterns | fix を 1 箇所に適用したとき、同じパターンを持つ「対称位置」（ペア/トリオの兄弟スクリプト、同型 idiom の別 phase、相互参照の Phase 番号等）に同じ fix を伝播させ忘れる failure mode。 | 2026-09-01T20:31:00+09:00 | high |
+| [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | anti-patterns | fix を 1 箇所に適用したとき、同じパターンを持つ「対称位置」（ペア/トリオの兄弟スクリプト、同型 idiom の別 phase、相互参照の Phase 番号等）に同じ fix を伝播させ忘れる failure mode。 | 2026-09-26T16:15:00Z | high |
 | [`if ! cmd; then rc=$?` は常に 0 を捕捉する](pages/anti-patterns/bash-if-bang-rc-capture.md) | anti-patterns | bash の `!` 演算子は直前コマンドの exit status を boolean で反転するため、`if ! cmd; then ...` ブロック内での `$?` は `!` の結果 (= 0) を返す。 | 2026-09-01T20:32:00+09:00 | high |
 | [PIPESTATUS はコマンド置換 `$(...)` のサブシェル境界を越えない](pages/heuristics/pipestatus-subshell-scoping-command-substitution.md) | heuristics | bash の `$(...)` コマンド置換は内部でサブシェルを生成して実行される。PIPESTATUS だけでなく、sourced スクリプトが親シェルへ残す変数（LAST_STDERR_FILE 等）も境界を越えない。 | 2026-09-03T07:05:00Z | high |
 | [stderr ノイズ削減: truncate ではなく selective surface で解く](pages/heuristics/stderr-selective-surface-over-truncate.md) | heuristics | success path で git などのコマンドが出す stderr の「ノイズ」を抑えたい場面で、`2>/dev/null` や無条件 truncate を使うと legitimate な warning（`unable to rmdir` / remote hook advice など）まで silent drop してしまう。 | 2026-07-24T17:00:00+09:00 | high |
@@ -376,7 +376,7 @@ okf_version: "0.2"
 | [同じ機構への N 回目のパッチは、その機構が依拠する述語が proxy である信号](pages/heuristics/nth-patch-signals-proxy-predicate.md) | heuristics | review-fix loop で「前 cycle の fix が導入・変更した箇所」への指摘を受けたとき、既定の反応は同じ機構へのパッチ追加になりやすい。 | 2026-08-11T01:20:00+09:00 | medium |
 | [テスト検出力の回復は個別 assert の増築より golden 全文比較への置換を先に検討する](pages/patterns/golden-full-comparison-over-assert-accretion.md) | patterns | mutation testing で「grep 断片照合のみで検出力が無い」と判明した TC を修理するとき、生存した変異ごとに assert を 1 本ずつ足していく増築は保守コストが上がるわりに変異耐性が伸びない。 | 2026-08-05T09:26:00+09:00 | medium |
 | [委譲リファクタの呼び出しシームは invocation-symmetry test で機械固定する](pages/patterns/invocation-symmetry-test-for-delegation-seam.md) | patterns | 散文手順を helper script へ降ろすリファクタでは、helper 本体はテストで固定できるが、**SKILL.md（呼び出し側）→ helper の呼び出し契約は放置するとどちらか片側の編集で silent に壊れる**。 | 2026-08-05T09:26:00+09:00 | medium |
-| [fail-loud ガードは同じ帰結を持つ全出口に張る（症状側から出口を網羅する）](pages/heuristics/fail-loud-guard-covers-all-sibling-exits.md) | heuristics | silent データ損失（空文字が返る等）に fail-loud ガードを追加するとき、**指摘された 1 出口だけを塞ぐと、同じ帰結に至る兄弟出口が残って次サイクルで同型指摘として返ってくる**。 | 2026-09-26T14:20:00Z | high |
+| [fail-loud ガードは同じ帰結を持つ全出口に張る（症状側から出口を網羅する）](pages/heuristics/fail-loud-guard-covers-all-sibling-exits.md) | heuristics | silent データ損失（空文字が返る等）に fail-loud ガードを追加するとき、**指摘された 1 出口だけを塞ぐと、同じ帰結に至る兄弟出口が残って次サイクルで同型指摘として返ってくる**。 | 2026-09-26T16:15:00Z | high |
 | [防御は攻撃面と同じ粒度で張る — 過剰防御は「安全側」ではなく別の実害](pages/heuristics/defense-granularity-matches-attack-surface.md) | heuristics | 注入・詐称への防御（中和・棄却ガード）を攻撃が実際に成立する形より広い範囲へ適用すると、**正当な値を棄却・破壊する別の実害**になる。 | 2026-08-05T09:26:00+09:00 | high |
 | [ガードの識別力は「そのガード単独で発火する形状」の fixture とガード固有文言 assert で担保する](pages/heuristics/guard-discriminating-power-requires-solo-firing-fixture.md) | heuristics | エラーガードのテストが (a) rc の非ゼロ性と (b) 総称的な `grep -q 'ERROR'` しか assert していないと、**兄弟ガードが同じ rc・同じ総称文言で発火するため、対象ガードを削除してもテストは全緑で通る**。 | 2026-09-26T05:05:00Z | high |
 | [シェル層で閉じられない注入防御は値を substitute する側（LLM）の実行前ゲートとして書く](pages/heuristics/shell-unclosable-defense-goes-to-substituting-side.md) | heuristics | LLM が値を literal substitute する bash block では、**防御の層を 1 つ塞ぐたびに同じ機構の中の「次の層」が露出する**。 | 2026-08-05T09:26:00+09:00 | medium |
@@ -566,5 +566,5 @@ okf_version: "0.2"
 
 - 総ページ数: 552
 - ドメイン別: patterns=125, heuristics=253, anti-patterns=174
-- 最終更新: 2026-09-26T15:24:48Z
+- 最終更新: 2026-09-26T16:15:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |

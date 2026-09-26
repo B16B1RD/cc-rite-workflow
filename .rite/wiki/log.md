@@ -15,6 +15,8 @@
 * **Update**: [明示的 Phase 遷移で駆動する SKILL.md に新規 Phase を挿入する際、既存の終端ルーティング更新漏れで到達不能になる](pages/anti-patterns/unrouted-phase-insertion-in-explicit-transition-skill.md) — raw/fixes/20260926T152317Z-pr-3183.md を統合
 * **Update**: [新規テストは、それが実際に生成している出力のうち契約が不変と規定するものを行まるごと固定する](pages/heuristics/new-test-pins-the-contract-output-it-already-produces.md) — raw/reviews/20260926T152022Z-pr-3186.md を統合
 * **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=552, broken_refs=0
+* **Update**: [fail-loud ガードは同じ帰結を持つ全出口に張る（症状側から出口を網羅する）](pages/heuristics/fail-loud-guard-covers-all-sibling-exits.md) — raw/reviews/20260926T153549Z-pr-3183.md を統合
+* **Update**: [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) — raw/reviews/20260926T155826Z-pr-3189.md を統合
 
 ## 2026-09-26
 
