@@ -595,8 +595,8 @@ assert_rc 0 "T13-b: コメント指定"
 assert_err_has "$target_marker" "T13-b: pr_comment に確定する"
 assert_err_lacks "REVIEW_SOURCE=local_file" "T13-b: ローカル JSON を選ばない"
 assert_stdout_empty "T13-b"
-t_line=$(grep -nF "[CONTEXT] REVIEW_SOURCE_TARGET_COMMENT=1; comment_id=4567890" <<< "$ERR" | head -1 | cut -d: -f1)
-f_line=$(grep -nF "$target_marker" <<< "$ERR" | head -1 | cut -d: -f1)
+t_line=$(grep -nF "[CONTEXT] REVIEW_SOURCE_TARGET_COMMENT=1; comment_id=4567890" <<< "$ERR" | head -1 | cut -d: -f1) || true
+f_line=$(grep -nF "$target_marker" <<< "$ERR" | head -1 | cut -d: -f1) || true
 f_count=$(grep -cF "[CONTEXT] REVIEW_SOURCE=" <<< "$ERR" || true)
 if [ -n "$t_line" ] && [ -n "$f_line" ] && [ "$t_line" -lt "$f_line" ]; then
   pass "T13-b: target marker が最終 marker より前に出る"
@@ -654,6 +654,15 @@ run --pr-number 123 --review-file-path "$UNSET" --conversation-decision bogus --
 assert_err_has "reason=priority1_decision_invalid" "T13-g: conversation_decision の検証を先に行う"
 run --pr-number 123 --review-file-path "$UNSET" --conversation-decision "{conversation_review_decision}" --p1-scan-turns 0 --p1-scan-found false --target-comment-id 4567890
 assert_err_has "reason=priority1_decision_unset" "T13-g: conversation_decision の未 substitute を先に検出する"
+
+# (g2) --review-file 成功経路でも会話判定の未置換は検証で止める（検証前倒しの契約を固定する）
+valid_json_sha "$SANDBOX/explicit13g2.json" "$HEAD_SHA"
+run --pr-number 123 --review-file-path "$SANDBOX/explicit13g2.json" --conversation-decision "{conversation_review_decision}" --p1-scan-turns 0 --p1-scan-found false --target-comment-id "$UNSET"
+assert_rc 1 "T13-g2: --review-file 成功経路でも conversation_decision の未置換を検出する"
+assert_err_has "reason=priority1_decision_unset" "T13-g2: 固有 reason"
+assert_stdout_empty "T13-g2"
+assert_no_fixerror_stdout "T13-g2"
+assert_err_lacks "[CONTEXT] REVIEW_SOURCE=" "T13-g2: 最終 marker を出さない (Priority 0 まで到達しない)"
 
 # (h) 呼び出し側の配線: fix SKILL.md ステップ 1.2.0 の helper 呼び出しがコメント ID を渡す
 FIX_SKILL="$(cd "$(dirname "$TARGET")/.." && pwd)/skills/fix/SKILL.md"

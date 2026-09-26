@@ -197,7 +197,7 @@ fix はステップ 2 以降で作業ツリーを Edit/Write する。session wo
 
 ## hybrid-source-priority
 
-会話 > ローカルファイル > PR コメントのハイブリッドは、同一セッションの即時連携とセッション横断再開を両立するため。`--review-file` 明示時に P1–P3 へ silent fallthrough しないのは、ユーザーがそのファイルを使う意図を捨てないため。コメント URL の指定を最上位に置くのも同じ理由で、`/rite:pr-review` は毎回ローカル JSON を保存するため、順位を下げると Priority 2 がほぼ常に成立して指定コメントが読まれない。
+会話 > ローカルファイル > PR コメントのハイブリッドは、同一セッションの即時連携とセッション横断再開を両立するため。`--review-file` 明示時に P1–P3 へ silent fallthrough しないのは、ユーザーがそのファイルを使う意図を捨てないため。コメント URL の指定を最上位に置くのは、指定したコメントを読む意図をユーザーが捨てないため。加えて機構上の理由もある: `/rite:pr-review` は毎回ローカル JSON を保存するため、順位を下げると Priority 2 がほぼ常に成立し、指定コメントが読まれない。
 
 ## priority2-helper-delegation
 
