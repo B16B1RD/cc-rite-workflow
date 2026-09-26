@@ -285,6 +285,12 @@ assert_grep "T-01 projects enabled true" "$STUB_DIR/args.json" '"enabled": true'
 assert_grep "T-01 gh --label follow-up" "$GH_LOG" 'label follow-up'
 assert_not_grep "T-01 gh は Search API を使わない" "$GH_LOG" 'rite-follow-up-from-pr'
 assert_grep "T-02 元 Issue へコメント" "$GH_COMMENT_LOG" 'issue comment 42'
+# 残存指摘には実測済みの非 fatal 指摘も含まれるため、タイトル・節名・概要・元 Issue コメントは非実測と断定しない。
+assert "T-02 title は非実測と断定しない" "follow-up: PR #9 の残存 non-blocking 指摘" "$(jq -r '.issue.title' "$STUB_DIR/args.json")"
+assert "T-02 概要文" "1" "$(grep -cxF 'PR #9 のマージ時点で残った non-blocking 指摘を follow-up として切り出す。' "$STUB_DIR/body.md")"
+assert "T-02 節名" "1" "$(grep -cxF '## 残存 non-blocking 指摘' "$STUB_DIR/body.md")"
+assert "T-02 元 Issue コメント文" "1" "$(grep -cF '"マージ時の残存 non-blocking 指摘の follow-up: #${new_n}"' "$TARGET")"
+assert "T-02 本文・タイトルに非実測の断定なし" "0" "$(cat "$STUB_DIR/body.md" "$STUB_DIR/args.json" | grep -c '非実測' || true)"
 assert_not_grep "T-01 台帳取得は成功経路" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable'
 
 echo "--- T-03: 起票 API 失敗は WARNING + exit 0 ---"
@@ -1559,7 +1565,7 @@ assert "T-49 declined 付記の count 由来を全行 pin する" "1" \
   "$(grep -cxF '  `declined` の付記の `{count}` は declined marker の `count=` の値。x 相当でもこの付記は `{review_cleanup_check}` の行に続けて出す。' "$CLEANUP_MD")"
 # AC-2: failed; reason=preview_write 専用行・汎用行からの除外・評価順（上から最初に一致が preview_write 側に落ちること）
 assert "T-49 preview_write 専用行を完全一致で固定する" "1" \
-  "$(grep -cxF '  | `FOLLOW_UP_ISSUE=failed; reason=preview_write` | 未完了 | `⚠️ follow-up 起票の確認用の本文を書き出せず、起票を試みていません。残存非実測指摘があれば follow-up ラベル付き Issue を手動作成してください` |' "$CLEANUP_MD")"
+  "$(grep -cxF '  | `FOLLOW_UP_ISSUE=failed; reason=preview_write` | 未完了 | `⚠️ follow-up 起票の確認用の本文を書き出せず、起票を試みていません。残存 non-blocking 指摘があれば follow-up ラベル付き Issue を手動作成してください` |' "$CLEANUP_MD")"
 assert_not_grep "T-49 汎用 failed 行に preview_write を残さない" "$CLEANUP_MD" 'reason 問わず。`helper_rc` / `lookup_api` / `create_api` / `create_script_missing` / `json_undecidable` / `preview_write`'
 assert_grep "T-49 汎用 failed 行は preview_write 以外と明記する" "$CLEANUP_MD" 'reason 問わず。preview_write 以外。'
 t49_pw_line=$(grep -nF '`FOLLOW_UP_ISSUE=failed; reason=preview_write`' "$CLEANUP_MD" | head -1 | cut -d: -f1)

@@ -18,6 +18,12 @@ check() {
 
 check "fix は file JSON の receipt を検査" '.measured_gate.commit_sha == .commit_sha' "$FIX"
 check "fix は未適用 JSON で停止" '[fix:error] reason=gate_not_applied' "$FIX"
+# 非 fatal の移送は実測済みの指摘も含むため、fix の表示は実測の有無を断定しない。
+if [ "$(grep -cF 'non-blocking（fix 対象外）' "$FIX")" -eq 4 ] && ! grep -qF '非 fatal・実測なし' "$FIX"; then
+  echo "  ✅ fix の non-blocking 表示は実測なしと断定しない"; pass=$((pass + 1))
+else
+  echo "  ❌ fix の non-blocking 表示は実測なしと断定しない"; fail=$((fail + 1))
+fi
 check "pr-review は incremental も連続レール" 'full / incremental を問わない単一の連続レール' "$REVIEW"
 check "pr-review は gate helper を実行" 'bash {plugin_root}/scripts/review-measured-gate.sh' "$REVIEW"
 check "pr-review は検証済み終了操作を実行" 'bash {plugin_root}/hooks/flow-state.sh review-finish' "$REVIEW"
@@ -272,6 +278,25 @@ exit 0
         lines = record_body.read_text().splitlines()
         assert lines == without_ledger, lines
     comments.write_text(existing_with_ledger)
+    # Non-fatal moves carry measured findings too, so each row names its own reason and no heading says unmeasured.
+    mixed = temp / 'mixed.json'
+    mixed.write_text(json.dumps({'findings': [], 'non_blocking_findings': [
+        {'id':'F-02', 'reviewer':'r', 'severity':'MEDIUM', 'file':'b.sh', 'line':2, 'scope':'current-pr',
+         'verification':{'measured':True}, 'demotion_reason':'non_fatal'},
+        {'id':'F-03', 'reviewer':'r', 'severity':'HIGH', 'file':'c.sh', 'line':3, 'scope':'current-pr',
+         'verification':{'measured':False}, 'demotion_reason':'non_fatal'},
+        {'id':'F-04', 'reviewer':'r', 'severity':'LOW', 'file':'d.sh', 'line':4, 'scope':'current-pr',
+         'verification':{'measured':True}, 'demotion':{'policy':'class-b-demotion', 'reason':'局所的'}}]}))
+    values['triage_review_path'] = str(mixed)
+    result = run(record)
+    values['triage_review_path'] = str(source)
+    assert result.returncode == 0, result
+    lines = record_body.read_text().splitlines()
+    assert lines[0] == '## 📜 rite 非実測指摘の記録'
+    assert [l for l in lines if l.startswith('### non-blocking')] == ['### non-blocking（fix 対象外）']
+    assert not [l for l in lines if l.startswith('#') and '実測なし' in l]
+    labels = {l.split('\t')[0]: l.split('\t')[-1] for l in lines if '\t' in l}
+    assert labels == {'F-02':'実測済み（非 fatal）', 'F-03':'実測なし', 'F-04':'class B 降格: 局所的'}, labels
     # Without a closing keyword the branch name decides.
     gh_log.write_text('')
     set_pr('no keyword', 'fix/issue-7-branch')

@@ -18,7 +18,7 @@
 #     削除対象の完全な列挙は本ファイルの `rite_rm` 呼び出し列が SoT。
 #   --dry-run では削除せず `[DRY-RUN] <label> を削除対象として検出: <path>` を **stdout** に出す。
 #
-# ステップ 6.0（残存非実測指摘からの follow-up Issue 起票）は本 helper の対象外。起票は既に
+# ステップ 6.0（残存 non-blocking 指摘からの follow-up Issue 起票）は本 helper の対象外。起票は既に
 # cleanup-follow-up-issue.sh が担っており、Issue 中止の経路では起票自体が不要なため、
 # ここへ引き込む理由がない。
 #
@@ -82,7 +82,7 @@ rite_rm() {
   done
 }
 
-# レビュー結果 JSON は一律削除しない。**非実測指摘 (non_blocking_findings[]) を持つものは
+# レビュー結果 JSON は一律削除しない。**non-blocking 指摘 (non_blocking_findings[]) を持つものは
 # 削除せず archive/ へ退避する** — 関連 Issue 記録コメントはポインタ (reviewer / severity /
 # file:line) + 降格理由 (判定文) しか載せないため、無条件削除すると非実測 CRITICAL の詳細が
 # merge 直後に失われ、人間が拾い直せなくなる。
