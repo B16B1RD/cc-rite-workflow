@@ -881,7 +881,9 @@ for closed_targets in (False, True):
                             'cd ' + other + ' && time (true) & git commit -m x',
                             'cd ' + other + ' || ! (false) && git commit -m x',
                             'f() { cd ' + other + '; }; f; git commit -m x',
-                            'case a in (a) cd ' + other + ';; esac; git commit -m x'):
+                            'case a in (a) cd ' + other + ';; esac; git commit -m x',
+                            'cd ' + other + '; cd ' + str(root) + ' < <(true); git commit -m x',
+                            'cd ' + other + '; cd ' + str(root) + ' 2> >(cat); git commit -m x'):
                 hook(command, reason='target is dynamic')
             # An absolute cd that always runs makes the target known again.
             hook('false && cd ' + other + '; cd ' + str(root) + '; git commit -m x', reason='fix plan record missing')
@@ -897,7 +899,7 @@ for closed_targets in (False, True):
                         'cd ' + str(root) + ' && git add -A &>/dev/null && git commit -m x',
                         'cd ' + str(root) + ' && git add -A && ' + heredoc('fix: x'),
                         'cd ' + str(root) + ' &&\ngit add -A &&\ngit commit -m x',
-                        'echo a\\>& git commit -m x'):
+                        'echo a\\>& git commit -m x', 'git commit -m < <(true) cd', "git commit -m '()' cd"):
             hook(command, reason='fix plan record missing')
         # The wiki-apply gate reads the same targets through commit-target.
         dynamic = run(['bash', str(helper), 'commit-target', '--command', 'false && cd /tmp; git commit -m x',

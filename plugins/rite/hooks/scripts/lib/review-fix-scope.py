@@ -380,6 +380,8 @@ def peel_commit_prefixes(words):
 # The git subcommands that move HEAD and are checked before they run.
 _HEAD_MOVERS = ("commit", "merge")
 _SEPARATORS = ";&|\n"
+# Stands in for an outer ( ) group; no dequoted word of a shell command can hold a NUL.
+_GROUP_WORD = "\0()"
 
 
 # A parse the check cannot finish is refused; the message form below always parses.
@@ -447,9 +449,9 @@ def shell_segments(command):
 
     Quotes are tracked across a whole word, so a separator inside quotes (echo ';',
     NAME="a (b) c") stays in its word, and a quote may open in the middle of a word.
-    A command substitution or a ( ) group runs in a subshell, so its commands come back
-    marked nested and come ahead of the command that contains them. An outer ( ) group
-    stays one command of its list, with the words around it and the word "()" in its place.
+    A command or process substitution or a ( ) group runs in a subshell, so its commands
+    come back marked nested and come ahead of the command that contains them. An outer
+    ( ) group stays one command of its list, with the words around it and _GROUP_WORD in its place.
     The standard message form $(cat <<DELIM ... DELIM) is data and stays in its word.
     before / after are the control operators around a command: ";" (also a newline),
     "&&", "||", "|" (also |&), "&", or "" at the start, the end and around a substitution.
@@ -521,6 +523,14 @@ def shell_segments(command):
                 index += 1
         elif ch in " \t\r":
             end_word()
+        elif ch == "(" and redirect == index - 1:
+            # A process substitution <( ) / >( ) is data of its command, like $( ).
+            end = _substitution_end(command, index + 1)
+            segments.extend((inner, True, "", "") for inner, *_rest in shell_segments(command[index + 1:end - 1]))
+            word.append(command[index:end])
+            quoted = True
+            index = end
+            continue
         elif ch == "(":
             if depth:
                 end_segment()
@@ -534,7 +544,7 @@ def shell_segments(command):
             depth = max(depth - 1, 0)
             if not depth and group:
                 (words, pending), group = group, None
-                words.append("()")
+                words.append(_GROUP_WORD)
         elif ch == "&" and (command.startswith(">", index + 1) or redirect == index - 1):
             word.append(ch)
         elif ch in _SEPARATORS:
@@ -610,9 +620,9 @@ def each_git_target(command, cwd):
         if not nested:
             first = False
         bare = words
-        if not nested and "()" in words:
+        if not nested and _GROUP_WORD in words:
             # A function or case body behind "()" is like a body behind a keyword.
-            bare = words[words.index("()") + 1:]
+            bare = words[words.index(_GROUP_WORD) + 1:]
         while not nested and bare and bare[0] in _KEYWORDS:
             bare = bare[1:]
         if not nested and bare and bare[0] == "cd":
