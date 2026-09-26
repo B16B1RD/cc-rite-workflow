@@ -4,14 +4,17 @@ title: "入力経路を合流点へ加えるときは、経路の出所の識別
 domain: "heuristics"
 description: "複数の入力経路が同じ処理へ合流する設計で経路を 1 本足すと、その経路のデータが別の対象について作られたものでも、合流点は区別できずに処理してしまう。経路の出所の識別子と、合流点が処理しようとしている対象の識別子を照合してから受け入れる。"
 created: "2026-09-26T13:04:23Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:19:35Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:30:43Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:19:35Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:30:43Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260926T125534Z-pr-3148.md"
   - type: "fixes"
     resource: "raw/fixes/20260926T130536Z-pr-3148.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260926T131901Z-pr-3148.md"
 tags: ["merge-point", "provenance", "precondition", "mutation"]
 confidence: medium
 ---
@@ -36,6 +39,12 @@ confidence: medium
 
 AND で書いた停止条件の片側を外す変異を当てると、テストが落ちない条件が見つかることがある。marker と終了コードのように常に同時に成り立つ 2 条件は、片側を外しても挙動が変わらない等価変異になる。この場合はテストを足すのではなく、重複した条件を削除する。
 
+### 照合は合流点を呼ぶ側に置く — helper が引数を自分で置き換える場合（レビュー結果）
+
+合流点が使う helper が、受け取った識別子を自分で検証し直し、食い違えば自分で求めた値に差し替える設計のことがある（例: 渡された commit SHA が作業ツリーの HEAD と違えば古い anchor とみなして捨て、自分で取得した HEAD で探し直す）。この場合、出所の識別子を引数として helper に渡すだけでは照合にならない。helper は食い違いを黙って HEAD に置き換え、別の対象の結果を返す。
+
+照合の本体は、helper を呼ぶ前に呼び出し側で比較して分岐することである（一致するときだけ helper を呼ぶ）。引数に正しい値を渡すのは二重化にとどまる。分岐を常に真にする変異を入れてテストが落ちることを確かめ、引数だけを差し替える変異が生き残るのは等価変異として扱う。helper の入力検証が「拒否する」のか「黙って置き換える」のかを読んでから、照合をどちらの層に置くかを決める。
+
 ## 関連ページ
 
 - [検査先の解決に失敗した入力を「対象外」に合流させると、拒否していた入力が許可に変わる](../anti-patterns/resolution-failure-merged-into-out-of-scope-flips-reject-to-allow.md)
@@ -45,3 +54,4 @@ AND で書いた停止条件の片側を外す変異を当てると、テスト�
 
 - [レビュー結果](../../raw/reviews/20260926T125534Z-pr-3148.md)
 - [fix 結果](../../raw/fixes/20260926T130536Z-pr-3148.md)
+- [レビュー結果](../../raw/reviews/20260926T131901Z-pr-3148.md)

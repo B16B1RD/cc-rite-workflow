@@ -169,9 +169,13 @@ sources:
     resource: "raw/reviews/20260810T042756Z-pr-2227.md"
   - type: "reviews"
     resource: "raw/reviews/20260810T045310Z-pr-2227.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260926T132826Z-pr-3147.md"
 tags: ["review-loop", "cumulative-defense", "convergence", "quality-signal", "architectural-surface", "literal-syntax-validity", "anchor-prose-propagation", "self-meta-drift", "propagation-scan-pattern", "self-referential-learned-section", "cycle-14-15-chain", "review-attention-bias-blind-spot", "anchor-specificity-retreat", "doc-precision-regression-cascade", "self-referential-prevention-violation", "section-relative-prevention-success", "successive-prevention-replication", "doc-heavy-fractal-pattern", "systemic-mass-fix", "auto-demote-low-override", "fix-over-correction", "enforcement-locus-misattribution"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-10T05:20:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:30:43Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:30:43Z" }
 ---
 
 # 累積対策 PR の review-fix loop で fix 自体が drift を導入する
@@ -537,6 +541,7 @@ blocking 件数の推移は **4 → 3 → 4 → 1 → 0**。cycle 3 で増えた
 - [CHANGELOG enforcement-locus stale → 修正で新誤認導入](../../raw/reviews/20260528T055956Z-pr-1166.md)
 - [-over-correction: enforcement 主体取り違え](../../raw/reviews/20260528T060938Z-pr-1166.md)
 - [over-correction 再訂正 / 3 層 enforcement locus 区別](../../raw/fixes/20260528T061125Z-pr-1166.md)
+- [fix 結果](../../raw/fixes/20260926T132826Z-pr-3147.md)
 
 ## 累積 17 回目の state-read.test.sh retrofit (4 cycle 収束) で観測した sub-pattern: anchor specificity retreat doctrine
 
@@ -905,3 +910,13 @@ cycle 4 は「pin 書込失敗時に stale pin を残さない」ために `rm -
 
 1. 指摘が使った行番号を成果物へ持ち込んでいないか — 対象は構造名（どの `echo` 文か、どの関数か）で書き直す
 2. その文が原因を断定していないか — 断定するなら、そのチャネルに何が流れ込みうるかを helper 実装まで遡って確認する。遡れないなら中立な表現のままにする方が安全で、情報量も減らない
+
+## 構文ごとの特例を積み重ねた修正が互いに衝突した事例（5 cycle）— 特例を捨てて 1 つの粗い規則に戻す
+
+commit 検査の対象ディレクトリを判定する処理で、判定できない構造（グループ・プロセス置換・関数・case・バックグラウンド実行）を構文ごとに表し分ける修正を 5 cycle 続けた。各 cycle の修正は直前の指摘形を正しく扱えたが、足した表し方同士が衝突し、前の版が正しく扱えていた形を壊すことを繰り返した。
+
+**抜けた方法**: 構文ごとの表し方をすべて削除し、括弧の扱いを base ブランチと同じに戻したうえで、「構造を含むコマンドの移動先は一律に動的（判定不能）として扱う」という 1 つの粗い規則に置き換えた。差分は追加より削除が多い形になった。粗い規則は個々の形を精密には扱わないが、判定不能を安全側（検査を素通りさせない側）に倒すので、特例同士の衝突という指摘面そのものが消える。
+
+**退行の検出に効いたもの**: 今回の指摘形だけでなく、全 cycle の指摘形を base・修正前・修正後の 3 版に通す累積の検査を用意した。確認する条件は「実行先に解決されるか、拒否される」「base が検出していた commit が修正後も消えない」の 2 つ。直前 cycle の指摘だけを再現する検査では、過去 cycle で直した形が壊れても気付けない。
+
+**教訓**: 同じ判定器への特例追加が 3 cycle 以上続き、各 cycle で前の形が壊れるなら、特例をもう 1 つ足すのではなく、判定不能を安全側に倒す粗い規則への置き換えを先に検討する。検査は全 cycle の指摘形を累積して複数版に通す。
