@@ -137,7 +137,7 @@ Finding Quality Guardrail Category #2 で除外した候補を次の表へ必ず
 
 | 分類 | 意味 | 対応経路 |
 |------|------|---------|
-| `actionable` | follow-up 対応が妥当な改善提案 (本 PR の diff と無関係で `別 Issue` / `スコープ外` キーワードを含む or それに該当する内容) | ステップ 7.2 で `AskUserQuestion` 必須起動 → Decision Log 記録または Issue 化（推奨機械決定表に従う） |
+| `actionable` | 対応が妥当な改善提案。本 PR が追加した行の欠陥（誤ったコメント・到達しない分岐・テストの粗さ等）なら `ファイル:行` を併記する。本 PR の diff と無関係なものは `別 Issue` / `スコープ外` キーワードを含める | 本 PR の追加行を指し mergeable の cycle なら同じ PR で修正（ステップ 5.3.0.R。1 review run につき 1 回）。それ以外はステップ 7.2 で `AskUserQuestion` 必須起動 → Decision Log 記録または Issue 化（推奨機械決定表に従う） |
 | `design_confirmation` | reviewer 自身が「現状の判断は妥当」「対応不要」「informational 寄り」と結論しており、action 要求を伴わない観察事項 | ステップ 7 で起票・記録なし、completion report に件数のみ表示 |
 | `boundary` | reviewer が action 要否を judgement できず user 判断を要する境界事案 | ステップ 7.2 で `AskUserQuestion` 必須起動 → user が「Decision Log 記録/起票/対応/無視」を選択 |
 

@@ -985,7 +985,7 @@ rite 結果がない場合も空の `findings` / `non_blocking_findings` を持�
 
 **全通常入力経路の合流点**。P0 明示ファイル、P1 会話、P2 ローカル JSON、P3 Raw JSON / legacy Markdown、Target Comment Fast Path は分類・選択・0 件終了の前に必ず本節を実行する。`--nb-sweep` の専用経路は変更しない。
 
-1. P0/P2 は選択した元のファイルを `{triage_review_path}` とし、producer を変更しない。P1、Raw JSON の無い P3、rite レビュー結果コメントを表パースした Target Comment Fast Path は表から組み立て直さず、下の bash で作業ツリー HEAD の保存済み JSON を複写し、`FIX_MATERIALIZED_JSON=` の値を `{triage_review_path}` とする（表には `consequence_class` が無い）。`{reviewed_commit_sha}` は表の出所（統合レポートまたはコメント）末尾の `📎 reviewed_commit` の値で、HEAD と一致するときだけ複写する。helper が見つかった・該当なしのどちらでもない結果で終わったら停止する。値が空（commit が一致しない、または HEAD の保存済み JSON が無い）のときだけ、および P3 の Raw JSON は、解析結果を JSON オブジェクト（`findings[]` / `non_blocking_findings[]`、PR 番号、commit SHA、元の gate receipt と verification、`acceptance_criteria` を保持）にし、`state-path-resolve.sh` が返すルートの `.rite/review-results/` に `{pr_number}-{timestamp}.json`（timestamp は `YYYYMMDDHHMMSS`、同名があれば一意になるまで新しい時刻を取得） として atomic write する。Write 失敗は `[fix:error]` で終了する。新規 JSON のトップレベルに `producer: "fix"` を設定する（元 JSON に producer があっても上書き）。元ソースの `{review_source}` は provenance として保持する。
+1. P0/P2 は選択した元のファイルを `{triage_review_path}` とし、producer を変更しない。P1、Raw JSON の無い P3、rite レビュー結果コメントを表パースした Target Comment Fast Path は表から組み立て直さず、下の bash で作業ツリー HEAD の保存済み JSON を複写し、`FIX_MATERIALIZED_JSON=` の値を `{triage_review_path}` とする（表には `consequence_class` が無い）。`{reviewed_commit_sha}` は表の出所（統合レポートまたはコメント）末尾の `📎 reviewed_commit` の値で、HEAD と一致するときだけ複写する。helper が見つかった・該当なしのどちらでもない結果で終わったら停止する。値が空（commit が一致しない、または HEAD の保存済み JSON が無い）のときだけ、および P3 の Raw JSON は、解析結果を JSON オブジェクト（`findings[]` / `non_blocking_findings[]` / `pr_recommendations[]`、PR 番号、commit SHA、元の gate receipt と verification、`acceptance_criteria` を保持）にし、`state-path-resolve.sh` が返すルートの `.rite/review-results/` に `{pr_number}-{timestamp}.json`（timestamp は `YYYYMMDDHHMMSS`、同名があれば一意になるまで新しい時刻を取得） として atomic write する。Write 失敗は `[fix:error]` で終了する。新規 JSON のトップレベルに `producer: "fix"` を設定する（元 JSON に producer があっても上書き）。元ソースの `{review_source}` は provenance として保持する。
 
 ```bash
 # fix-conversation-review-json
@@ -1105,6 +1105,7 @@ helper の ID-keyed `fatal_map` / `severity_map` / `scope_map` と reload 済み
 | Classification | Criteria | Action |
 |---------------|----------|--------|
 | **Required fix** | `fatal_map[id] == true` | 修正対象 |
+| **PR 内推奨** | 永続 JSON の `pr_recommendations[]`（`R-NN`。pr-review 5.3.0.R が mergeable の cycle で登録） | 修正対象。map には載らないので ID で直接扱う |
 | **nit (認知のみ)** | `scope_map[id] == "nit-noted"` | PR reply / fix 対象外。`acknowledged_nit_count` に算入 |
 | **non-blocking（fix 対象外）** | 永続 JSON の `non_blocking_findings[]`（nit 除外） | 記録・表示のみ。修正選択肢に出さない |
 | **External review** | 未解決の人間・外部ツールのコメント | Action required |
@@ -1125,7 +1126,7 @@ helper の ID-keyed `fatal_map` / `severity_map` / `scope_map` と reload 済み
 
 | Caller | Option Selection | Target |
 |--------|-----------------|--------|
-| Within `/rite:iterate` review-fix loop | **Skip** (auto-select) | Fatal findings + unresolved external reviews |
+| Within `/rite:iterate` review-fix loop | **Skip** (auto-select) | Fatal findings + PR 内推奨 + unresolved external reviews |
 | Manual `/rite:fix` | Display | User-selected |
 
 
@@ -1219,7 +1220,7 @@ exit 0
 
 **When there are no comments:**
 
-本分岐も 1.2.2 の記録と state persistence 完了後だけ実行する。fatal / 外部レビューが 0 件で non-blocking が残る場合は「コメントなし」と表示せず、移送件数と JSON pointer を報告して 4.6 → 5.1 の通常完了へ進む。
+本分岐も 1.2.2 の記録と state persistence 完了後だけ実行する。fatal / PR 内推奨 / 外部レビューが 0 件のときだけ本分岐に入る。fatal / 外部レビューが 0 件で non-blocking が残る場合は「コメントなし」と表示せず、移送件数と JSON pointer を報告して 4.6 → 5.1 の通常完了へ進む。
 
 ```
 PR #{number} にはレビューコメントがありません
@@ -1310,7 +1311,7 @@ rationale: references/design-rationale.md#simplification-first-rationale
 
 ### 2.1 Confirm Fix Approach
 
-全指摘の処置を編集前に一括で決める。個別指摘の読み取り・impact scan は先に行ってよいが、最初の編集前に [一括計画と検証](references/fix-plan.md) を読み、同一 HEAD の全員回収済み保存結果・最新 Issue 本文から `{fix_plan_file}` と `{fix_issue_file}`（絶対 JSON パス）を作る。root cause ごとに重複を関連付け、全 blocking 指摘へ処置と検証を割り当てる。人間由来の未解決指摘も計画へ記録し、既存の対応義務を維持する。対象は 1.3 の Required fix（`fatal_map[id] == true`）と未解決 External review。親の完了前発見を未保存 ID として計画へ足さない。`non_blocking_findings[]` が schema 上受理されていても 2.1 の修正対象ではない。各 `groups[].rationale`（または既存 PR details）に、初回 finding でも元要求との対応と、追加／削除／差し戻し／移動から選んだ処置の理由を短く書く。`simplification-first:` 段落は Escalation trigger 専用であり、この記録の代用にしない。新 schema は足さない。
+全指摘の処置を編集前に一括で決める。個別指摘の読み取り・impact scan は先に行ってよいが、最初の編集前に [一括計画と検証](references/fix-plan.md) を読み、同一 HEAD の全員回収済み保存結果・最新 Issue 本文から `{fix_plan_file}` と `{fix_issue_file}`（絶対 JSON パス）を作る。root cause ごとに重複を関連付け、全 blocking 指摘へ処置と検証を割り当てる。人間由来の未解決指摘も計画へ記録し、既存の対応義務を維持する。対象は 1.3 の Required fix（`fatal_map[id] == true`）、PR 内推奨（`pr_recommendations[]` の `R-NN`。scope gate が各 ID に 1 つの処置を要求する）と未解決 External review。親の完了前発見を未保存 ID として計画へ足さない。`non_blocking_findings[]` が schema 上受理されていても 2.1 の修正対象ではない。各 `groups[].rationale`（または既存 PR details）に、初回 finding でも元要求との対応と、追加／削除／差し戻し／移動から選んだ処置の理由を短く書く。`simplification-first:` 段落は Escalation trigger 専用であり、この記録の代用にしない。新 schema は足さない。
 
 `review_run.current_decision.action=replan` なら、[停滞診断](../../references/review-stagnation.md) の契約で全指摘と仕様を再照合し、代替案・選択理由・棄却理由・再発防止検証を同じ計画の `replan` に記録する。範囲内の選択は通常の承認待ちを挟まない。以下の保存後に通常の scope gate を通す。時計は同参照の共有ブロック `review-clock-open`（Bash ブロック名。時計の CLI 動詞は `review-clock` だけ）を `clock_kind=work` で実行し、外部待機は別区分にする。
 
@@ -1353,7 +1354,7 @@ reviewer の推奨対応（`recommendation` 列）は候補であって設計で
 
 1. 未解決の External review は通常通り対応する。rite finding の map で skip しない。
 2. rite finding の `scope_map[id] == "nit-noted"` は 2.1 / 2.4 を skip し、2.4.N で認知件数に算入する。
-3. `fatal_map[id] == true` のみ通常の修正・accept/rejection 判断へ進む。
+3. `fatal_map[id] == true` と `pr_recommendations[]` の `R-NN` だけが通常の修正・accept/rejection 判断へ進む。
 4. `non_blocking_findings[]` は選択 UI / fix commit / reply の対象外。記録は 1.2.2 で完了済み。
 5. map 欠落を blocking の代替条件にしない。必要な triage 結果が無ければ `[fix:error]`。
 
@@ -2597,7 +2598,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase "fix" \
   --active true \
-  --next "rite:fix completed. [fix:non-fatal-only]->caller の iterate ステップ 5.S NB digest sweep、成功後にステップ 5 完了通知. Do NOT re-enter /rite:pr-review." \
+  --next "rite:fix completed. [fix:non-fatal-only]->caller の iterate ステップ 5.S NB digest sweep → PR 内推奨の修正 → 完了前確認 → ステップ 5 完了通知. Do NOT re-enter /rite:pr-review otherwise." \
   --handoff "FINALIZE:fix:non-fatal-only:{pr_number}" \
   --if-exists
 
@@ -2613,7 +2614,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase "fix" \
   --active true \
-  --next "rite:fix completed. Check recent result pattern in context: [fix:sweep-done]->caller の iterate ステップ 5 完了通知. Do NOT re-enter /rite:pr-review." \
+  --next "rite:fix completed. Check recent result pattern in context: [fix:sweep-done]->caller の iterate 5.S 後の PR 内推奨の修正（未着手の推奨があれば /rite:fix の後にステップ 1）→ 完了前確認 → ステップ 5 完了通知. Do NOT re-enter /rite:pr-review otherwise." \
   --handoff "FINALIZE:fix:sweep-done:{pr_number}" \
   --if-exists
 

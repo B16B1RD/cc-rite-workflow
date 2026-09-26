@@ -519,7 +519,8 @@ for notice_kind in missing-field complete; do
     reason_nb=$(jq -r '.reason' <<< "$out")
     assert "non-fatal-only sweep precedes notice" yes "$([[ "$reason_nb" == *'5.S 未実施なら先に NB digest sweep'* ]] && echo yes || echo no)"
     assert "non-fatal-only requires remaining field" yes "$([[ "$reason_nb" == *'未処理 non-blocking'* ]] && echo yes || echo no)"
-    assert "non-fatal-only forbids re-review" yes "$([[ "$reason_nb" == *'再フルレビューは禁止'* ]] && echo yes || echo no)"
+    assert "non-fatal-only forbids re-review" yes "$([[ "$reason_nb" == *'それ以外の再フルレビューは禁止'* ]] && echo yes || echo no)"
+    assert "non-fatal-only routes pending recommendations to fix" yes "$([[ "$reason_nb" == *'PR 内推奨の修正（未着手の推奨があれば /rite:fix の後にステップ 1 の再レビュー）'* ]] && echo yes || echo no)"
   else
     assert "non-fatal-only complete notice allows stop" "" "$out"
   fi
@@ -527,6 +528,15 @@ for notice_kind in missing-field complete; do
   out=$(stop_payload "$d_nb" "$SID" true | bash "$HOOK")
   assert "non-fatal-only $notice_kind second stop allows" "" "$out"
 done
+
+# sweep-done precedes the in-PR recommendation fix: the bounce must not send the run straight to the notice.
+d_sd=$(new_sandbox)
+RITE_STATE_ROOT="$d_sd" bash "$FS" set --phase fix --issue 2583 --branch b --pr 99 \
+  --next n --handoff "FINALIZE:fix:sweep-done:99" --session "$SID" >/dev/null
+out=$(final_payload "$d_sd" "sweep 完了" | bash "$HOOK")
+assert "sweep-done without notice bounces" block "$(jq -r '.decision' <<< "$out")"
+reason_sd=$(jq -r '.reason' <<< "$out")
+assert "sweep-done routes pending recommendations to fix before the notice" yes "$([[ "$reason_sd" == *'PR 内推奨の修正（未着手の推奨があれば /rite:fix の後にステップ 1 の再レビュー）'* ]] && echo yes || echo no)"
 
 # --- TC-19: FINALIZE:review:mergeable + payload に最終テキストが無い → 明示理由で差し戻し ---
 echo ""

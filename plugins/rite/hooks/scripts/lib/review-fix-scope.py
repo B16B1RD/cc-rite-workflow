@@ -243,6 +243,11 @@ def validate_plan(plan, issue, state, receipt):
     findings = receipt[1]["findings"]
     blocking = {f["id"] for f in findings if f.get("scope") in ("current-pr", "follow-up")}
     known = {f["id"] for f in findings + receipt[1].get("non_blocking_findings", [])}
+    # Recommendations registered for an in-PR fix after mergeable each need one
+    # disposition, like a blocking finding, so none is silently dropped.
+    recommended = {r["id"] for r in receipt[1].get("pr_recommendations", [])}
+    known |= recommended
+    blocking |= recommended
     external = plan.get("external_findings", [])
     require(isinstance(external, list), "external findings must be an array")
     for finding in external:

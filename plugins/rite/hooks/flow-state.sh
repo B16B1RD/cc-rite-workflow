@@ -833,7 +833,7 @@ cmd_review_cycle() {
     pr_number=$(printf '%s' "$updated" | jq -r '.pr_number // empty')
     case "$pr_number" in
       ''|*[!0-9]*) ;;
-      *) rm -f "$STATE_ROOT/.rite/state/nb-sweep-done-${pr_number}.txt" ;;
+      *) rm -f "$STATE_ROOT/.rite/state/nb-sweep-done-${pr_number}.txt" "$STATE_ROOT/.rite/state/pr-recommendations-done-${pr_number}.txt" ;;
     esac
   fi
   if [ "$operation" = finish ]; then

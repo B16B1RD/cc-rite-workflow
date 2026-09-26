@@ -123,101 +123,10 @@ if ! diff_out=$(git -C "$REPO_ROOT" diff -U0 "${before}..HEAD" 2>"$diff_err"); t
 fi
 rm -f "$diff_err"
 
-# Parse unified=0:
-#   plus_hunks  = "path:start:end" inclusive new-file ranges (new_count > 0)
-#   minus_hunks = "path:start:end" inclusive old-file ranges of pure-delete
-#                 hunks only (new_count == 0). A hunk that also adds lines is
-#                 matched through plus_hunks, so a modified line's old number
-#                 never verifies a citation.
-plus_hunks=""
-minus_hunks=""
-current_file=""
-current_src=""
-in_hunk=0
-
-# ヘッダ区間（diff --git から最初の @@ まで）でだけ --- / +++ をファイルヘッダとして読む。
-# -U0 の diff では hunk 内の内容行の先頭 "++ " / "-- " がそれぞれ "+++ " / "--- " になり、
-# in_hunk のガードが無いとファイルヘッダと誤読して current_file / current_src を上書きする
-# (number-reference-check.sh の同種の欠陥修正と同じ形)。
-while IFS= read -r line || [ -n "$line" ]; do
-  case "$line" in
-    diff\ --git\ *)
-      current_file=""
-      current_src=""
-      in_hunk=0
-      ;;
-    ---\ a/*)
-      if [ "$in_hunk" -eq 0 ]; then
-        current_src=${line#--- a/}
-        current_src=${current_src%%$'\t'*}
-      fi
-      ;;
-    ---\ /dev/null)
-      [ "$in_hunk" -eq 0 ] && current_src=""
-      ;;
-    +++\ b/*)
-      if [ "$in_hunk" -eq 0 ]; then
-        dest=${line#+++ b/}
-        dest=${dest%%$'\t'*}
-        current_file="$dest"
-      fi
-      ;;
-    +++\ /dev/null)
-      [ "$in_hunk" -eq 0 ] && current_file="$current_src"
-      ;;
-    @@\ *)
-      in_hunk=1
-      [ -n "$current_file" ] || continue
-      minus=${line#@@ -}
-      minus=${minus%% *}
-      old_start=${minus%%,*}
-      if [ "$minus" = "$old_start" ]; then
-        old_count=1
-      else
-        old_count=${minus#*,}
-      fi
-      case "$old_start" in ''|*[!0-9]*) old_start="" ;; esac
-      case "$old_count" in ''|*[!0-9]*) old_start="" ;; esac
-      plus=${line#* +}
-      plus=${plus%% *}
-      new_start=${plus%%,*}
-      if [ "$plus" = "$new_start" ]; then
-        new_count=1
-      else
-        new_count=${plus#*,}
-      fi
-      case "$new_start" in ''|*[!0-9]*) continue ;; esac
-      case "$new_count" in ''|*[!0-9]*) continue ;; esac
-      if [ "$new_count" -gt 0 ]; then
-        new_end=$((new_start + new_count - 1))
-        plus_hunks="${plus_hunks}${current_file}:${new_start}:${new_end}"$'\n'
-      elif [ -n "$old_start" ] && [ "$old_count" -gt 0 ]; then
-        old_end=$((old_start + old_count - 1))
-        minus_hunks="${minus_hunks}${current_file}:${old_start}:${old_end}"$'\n'
-      fi
-      ;;
-  esac
-done <<< "$diff_out"
-
-range_overlaps() {
-  local hunks="$1" f="$2" start="$3" end="$4" rec h_start h_end rest
-  while IFS= read -r rec || [ -n "$rec" ]; do
-    [ -n "$rec" ] || continue
-    case "$rec" in
-      "$f":*)
-        rest=${rec#"$f":}
-        h_start=${rest%%:*}
-        h_end=${rest#*:}
-        if [ "$start" -le "$h_end" ] && [ "$h_start" -le "$end" ]; then
-          return 0
-        fi
-        ;;
-    esac
-  done <<EOF
-$hunks
-EOF
-  return 1
-}
+# plus_hunks / minus_hunks: see lib/diff-hunks.sh.
+# shellcheck source=lib/diff-hunks.sh
+source "$SCRIPT_DIR/lib/diff-hunks.sh"
+diff_hunks_parse <<< "$diff_out"
 
 parse_change() {
   # Sets CHANGE_PATH CHANGE_START CHANGE_END. Returns 1 if unparseable.

@@ -115,8 +115,8 @@ assert_grep "iterate completion uses the same placement viewpoints" "$ITERATE" \
   '証拠→PR details / 契約→規約 / Why→ソース / 再現→テスト'
 assert_grep "purpose unmet is iterate-terminal not inner mergeable" "$ITERATE" \
   '同一 invoke の pr-review `\[review:mergeable\]` と `FINALIZE:review:mergeable` を iterate 成功と読まない'
-assert_grep "purpose check sits after 5.S and before 5.0.1" "$ITERATE" \
-  '5\.S 成功後・5\.0\.1 の前に'
+assert_grep "purpose check sits after 5.S and the in-PR recommendation fix, before 5.0.1" "$ITERATE" \
+  '5\.S と PR 内推奨の修正の後・5\.0\.1 の前に'
 assert_grep "purpose unmet uses REVIEW_STOP like ac_unverified" "$ITERATE" \
   'REVIEW_STOP=purpose_unaligned'
 assert_grep "purpose unmet clears FINALIZE without --handoff" "$ITERATE" \

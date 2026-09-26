@@ -307,3 +307,26 @@ marker 不在を `legacy` へ倒さないのは、`legacy` の行が counter リ
 再試行権の使用済み判定を案内側で行わないのは、そのための marker を増やさずに済むから。
 提示した経路が `review-retry` の拒否で終わるのは fail-loud であって、案内が state を
 追いかける理由にはならない。
+
+## pr-recommendation-fix
+
+reviewer の推奨事項は finding ではないので、mergeable の review JSON には fix が処置できる ID が無い。
+その状態で PR 自身が追加した行の欠陥を手で直して commit すると、fix の検証記録（`pending_fix`）の無い
+HEAD になり、次のレビューは「変更された HEAD には完了した fix 検証が要る」で開始できない。戻す手段は
+レビュー済み commit への巻き戻ししか残らない。そこで pr-review が mergeable の cycle で、actionable かつ
+PR の追加行を指す推奨事項を `pr_recommendations[]`（`R-NN`）として保存前の結果 JSON に登録し、fix の
+計画はその ID を blocking と同じく処置必須として受け付ける。修正は通常の fix を通るので、検証記録と
+再レビューの経路は既存のまま使える。
+
+`non_blocking_findings[]` に入れないのは、そこが「降格された finding」の出口（非実測記録・NB sweep・
+follow-up 転記・完了通知の残件）だから。推奨事項を混ぜると、その出口が同じ PR で直すものまで起票・記録する。
+blocking に数えないので発散判定は空転を止めない。止めるのは「1 つの review run につき登録は 1 回」の
+上限で、以後の推奨事項はステップ 7 の Decision Log へ流れる。`safety.max_review_cycles` に達した cycle でも登録しない。その修正は次のレビューが max-cycles で止まるため、未レビューの HEAD を残すことになる。上限の判定から入力と同じ review_context の
+保存済み JSON を除くのは、同じ cycle の再実行で結果が変わると review-finish の一致検査で止まるため。
+
+5.S の後に置くのは、修正後の差分再レビューが前の JSON の non-blocking を引き継がないため。先に sweep
+しておけば、落ちるものは無い。同じレビュー済み commit を fix へ二度渡さない記録
+（`.rite/state/pr-recommendations-done-{pr}.txt`、1 行目は basename と commit_sha）を fix の invoke 前に
+書くのは、再入（Stop hook / recover）で同じ修正を繰り返さないため。ファイル名ではなく commit で比べるのは、
+fix が同じレビューの複写を別名で保存することがあるから。寿命は nb-sweep-done と同じで、0.6 の fresh run・
+`review-restart`・cleanup で消す。

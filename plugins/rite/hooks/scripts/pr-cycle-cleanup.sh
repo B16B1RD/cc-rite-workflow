@@ -1676,13 +1676,15 @@ if [ "$review_gc_safe" -eq 1 ] && [ -d "$review_dir" ]; then
         errors=$((errors + 1))
       fi
     fi
-    sweep_done_file="$repo_root/.rite/state/nb-sweep-done-${review_pr}.txt"
-    if [ -e "$sweep_done_file" ] || [ -L "$sweep_done_file" ]; then
-      if ! rm -f "$sweep_done_file" 2>/dev/null; then
-        echo "WARNING: orphan NB sweep marker '$(printf '%s' "$sweep_done_file" | neutralize_ctrl)' の削除に失敗しました" >&2
-        errors=$((errors + 1))
+    for sweep_done_file in "$repo_root/.rite/state/nb-sweep-done-${review_pr}.txt" \
+                           "$repo_root/.rite/state/pr-recommendations-done-${review_pr}.txt"; do
+      if [ -e "$sweep_done_file" ] || [ -L "$sweep_done_file" ]; then
+        if ! rm -f "$sweep_done_file" 2>/dev/null; then
+          echo "WARNING: orphan review marker '$(printf '%s' "$sweep_done_file" | neutralize_ctrl)' の削除に失敗しました" >&2
+          errors=$((errors + 1))
+        fi
       fi
-    fi
+    done
   done < <(find "$review_dir" -maxdepth 1 -type f -name '[0-9]*-*.json' -print 2>/dev/null)
 fi
 

@@ -15,7 +15,7 @@
 | `groups[].semantic` | `approved`: boolean。`acceptance_criteria`: AC全体との照合根拠。`out_of_scope`: 要求外の動作変更を含まない根拠。違反・未判断は `approved:false` と理由を記録 |
 | `verifications[]` | `id`, `kind` (`related` / `full`), `command`, `inputs` (ファイル/ディレクトリ配列), `environment` (結果に影響する環境変数名配列) |
 
-`action` は `fix` / `reply` / `accept` / `nit-noted` と、base 取り込み専用の `base-intake`（下記「base 取り込み」）。全 blocking finding ID を重複なく処置へ対応付ける。fix は予定パスを持ち、全処置は検証 ID と根拠を持つ。全体検証 (`kind:full`) を最低1件定める。未解決の人間由来指摘は `external_findings` に `id`・元の `thread_id`・`description` を記録し、同じグループと検証に対応付ける。
+`action` は `fix` / `reply` / `accept` / `nit-noted` と、base 取り込み専用の `base-intake`（下記「base 取り込み」）。全 blocking finding ID と、保存済み結果の `pr_recommendations[]` の ID（`R-NN`）を重複なく処置へ対応付ける。fix は予定パスを持ち、全処置は検証 ID と根拠を持つ。全体検証 (`kind:full`) を最低1件定める。未解決の人間由来指摘は `external_findings` に `id`・元の `thread_id`・`description` を記録し、同じグループと検証に対応付ける。
 
 helper は標準 `### 4.2` 節内の backtick パスが `non_targets` に含まれることを確認する。それ以外の書式や散文制約は caller が全件抽出し根拠を記録する。パス検査は意味判断を代行しない。予定パスは相対表記とし親参照を含めない。Non-Target に達する symlink も対象外と扱う。
 
@@ -50,6 +50,10 @@ assert_rc2 bash scripts/a.sh &&
 修正中は `review-fix-scope-check.sh verify --plan ... --issue ... --kind related` を使う。内容（追加・削除・modeを含む）・コマンド・指定環境・作業先・基本runtimeが同一で、当該 context の実測成功がある関連テストだけ再利用する。失敗・入力変化・新しいreview contextは再実行する。全修正後は `fix` 本体の最終検証ブロックを実行し、関連結果の鮮度を確認した後、全体検証を全件実行する。検証コマンドは入力を変更しない。
 
 機械検査と意味判断を分けた検査記録は `.rite/state/fix-plan-{session}.json`、実測コマンド・終了コード・stdout/stderr・鮮度キーは `.rite/state/fix-verification-{session}.json` に保存する。検査記録は入力とは別ファイルであり、記録と同一実体を `--plan` に渡すと `check` は書き込み前に拒否する。保存失敗は成功にせず前の記録を保持する。復旧は同じ入力で check → verify。任意のファイル直接編集やホスト権限の遮断は保証しない。
+
+## mergeable の後の修正
+
+mergeable のレビューの後に手で commit すると、その HEAD には fix の検証記録が無いため、次のレビューは「変更された HEAD には完了した fix 検証が要る」で開始できない。PR 自身が追加した行への推奨事項は、pr-review が mergeable の cycle で `pr_recommendations[]` に登録し、iterate が本計画を通して修正する。登録されなかった推奨事項は pr-review ステップ 7 の Decision Log に残る。手で commit してしまったときの回復は、その commit を取り消してレビュー済み commit へ戻すことだけである。
 
 ## base 取り込み
 

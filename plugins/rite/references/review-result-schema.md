@@ -197,6 +197,7 @@
 | `reviewers` | array (string) | ✅ (非空) | 本 cycle で **ステップ 5.1 が Task 結果を回収できた** reviewer agent の名簿。`findings` とは独立で、findings 0 件の mergeable cycle でも非空になる。値は `plugins/rite/agents/*-reviewer.md` の basename (拡張子を除く、接尾辞 `-reviewer` を含む) と一致する — `findings[].reviewer` と同じ参照整合性規則。下記 [verdict と reviewers](#verdict-と-reviewers) 参照 |
 | `findings` | array | ✅ | producer 保存時は `/rite:pr-review` のゲート通過後の `全指摘事項`（blocking + nit-noted、0 件でも `[]`）。fix consumer の共通ステップ 1.2.2 適用後は fatal（CRITICAL/HIGH、および PR 起因の class A の MEDIUM/LOW-MEDIUM/LOW）+ nit-noted を保持し、それ以外の gated な非 fatal（実測なし、class B、`pre_existing: true`）は `non_blocking_findings[]` へ移送済みとなる。`measured_gate` / `overall_assessment` / `verdict` は producer の観測を維持し、consumer は `fatal_map` と分類後の配列を使う |
 | `non_blocking_findings` | array | **write 側 ✅ (0 件でも `[]`)** / read 側は欠落許容 | 実測必須ゲート ([severity-levels.md §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate)) で non-blocking に降格した非実測指摘、および帰結クラス降格政策 (§5.3.0.C) で降格した class B 指摘の配列 (要素の形は `findings[]` と同一。class B 降格分のみ `demotion` オブジェクトを持つ)。fix consumer による非 fatal 移送分も保持し、`demotion_reason: non_fatal` で識別する。下記 [non_blocking_findings 配列](#non_blocking_findings-配列) 参照 |
+| `pr_recommendations` | array | (任意、1.1.0+) | mergeable の cycle で、PR の追加行を指す actionable な推奨事項を同じ PR の fix へ渡すための登録。書き手は `scripts/review-pr-recommendations.sh register` のみ。下記 [pr_recommendations 配列](#pr_recommendations-配列) 参照 |
 | `guardrail_audit_log` | array | **write 側 ✅ (0 件でも `[]`)** / read 側は欠落許容 | Finding Quality Guardrail Category #2 で `指摘事項` から除外した候補の監査記録。audit-only で判定 consumer は無視する。各要素は `reviewer`, `filter_category` (`Category #2`), `original_severity`, `file_line`, `description`, `filter_reason`, `verification` を持つ（reviewer 表: 除外した内容→`description`、除外理由→`filter_reason`。write 側のキー集合検証は `hooks/review-result-save.sh`） |
 | `reviewer_timings` | array | (任意、1.1.0+) | 本 cycle で回収できた各 reviewer の起動時刻。要素は `{reviewer, started_at}` で、`reviewer` は `findings[].reviewer` と同じ参照整合性規則 (`agents/*-reviewer.md` の basename)、`started_at` は ISO 8601 UTC の正規形 (`YYYY-MM-DDThh:mm:ssZ`) または `null` (取得不能)。値源は `pr-review.md` ステップ 4.3.1（orchestrator が Task spawn 直前に記録した時刻）。ステップ 4.6 が timings JSON に書く。audit-only で、判定 consumer (`/rite:fix` / merge ゲート / 収束トレンド判定) は無視する。下記 [reviewer_timings と直列化フラグ](#reviewer_timings-と直列化フラグ) 参照 |
 | `reviewer_spawn_serialized` | bool | (任意、1.1.0+) | 起動時刻の拡がり (spawn spread) が閾値を超えたか。書き手は `hooks/scripts/review-spawn-spread-check.sh` のみ。**計測不能のときはキーごと欠落する** — `true` / `false` / 欠落 (= 未判定) の 3 値モデルである |
@@ -332,6 +333,14 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 また型 check は id 検証より**前**に置く — 後ろに置くと非配列で `length` が非 0 になる値 (`"abc"`→3 / `3`→3 / `{"a":1}`→1) が和集合の件数を水増しし、非ブロッキングと宣言した重複判定が型によって hard fail に化ける。
 
 > 本 hard fail は**本 gate を通る保存を止めるだけ**で、gate を通さずに `.rite/review-results/` 直下へ永続化された書式外 id JSON は移行しない (gate 導入前の JSON、および gate を経由しない `/rite:fix` の write 経路 — P1/P3 の直接 write と P0 ファイルの copy。一度きりの実行のために恒久的な複雑さを残さない)。したがって読み側 (6.0.V の `id` / `key` の null 写像、および `key: null` を必ず `undecidable` とする規則) はそのまま維持する。
+
+### `pr_recommendations` 配列
+
+<a id="pr_recommendations-配列"></a>
+
+要素は `{id, reviewer, file, line, description}`。`id` は `R-NN`（`R-01` から登録順）、`reviewer` は推奨事項を出した reviewer_type、`file` / `line` は PR の追加行（base...HEAD の + hunk）上の位置、`description` は推奨事項の本文。登録条件は `overall_assessment == "mergeable"`、`review_context.cycle_count` が `safety.max_review_cycles` 未満（修正後の再レビューを開始できる）、分類 `actionable`、位置が追加行と重なること、同じ review run で未登録であること（同じ `review_context` の再実行は除く。保存済み結果がまだ無いことは未登録と同じ）。書き込むのは保存前の作業コピーだけで、保存済みファイルは書き換えない。
+
+finding ではないので `findings[]` / `non_blocking_findings[]` の契約と件数には入らない。fix の scope gate は各 ID に処置を 1 つ要求し（blocking と同じ）、`/rite:iterate` は未着手の登録があれば 5.S の後に `/rite:fix` を invoke する。同じレビュー済み commit を二度渡さない記録は `.rite/state/pr-recommendations-done-{pr_number}.txt`（1 行目は basename と commit_sha）。キー欠落は「登録なし」と同じ。
 
 ### 却下台帳と sweep 消化結果（additive、schema_version 非 bump）
 
