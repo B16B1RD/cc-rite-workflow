@@ -66,8 +66,20 @@ with tempfile.TemporaryDirectory() as directory:
     matrix_nonfatal += [finding(f'U-{s}', s, measured=False, cls='A') for s in lower]
     matrix_nonfatal += [finding(f'P-{s}', s, cls='A', pre_existing=True) for s in lower]
     matrix = matrix_fatal + matrix_nonfatal
-    matrix_result = json.loads(run(dict(findings=matrix)).stdout)
+    matrix_run = run(dict(findings=matrix))
+    matrix_result = json.loads(matrix_run.stdout)
     assert matrix_result['fatal_map'] == {**{f['id']:True for f in matrix_fatal}, **{f['id']:False for f in matrix_nonfatal}}
+    # The persisted document and the counts are what fix reloads, so pin them alongside the map.
+    assert 'fatal=14; moved=21' in matrix_run.stderr, matrix_run
+    saved = json.loads(source.read_text())
+    assert saved['findings'] == matrix_fatal
+    assert saved['non_blocking_findings'] == [dict(f, demotion_reason='non_fatal') for f in matrix_nonfatal]
+
+    # A class A document below HIGH stays blocking: nothing moves and the document is unchanged.
+    class_a = [f for f in matrix_fatal if f['id'].startswith(('A-', 'AF-'))]
+    class_a_run = run(dict(findings=class_a))
+    assert 'fatal=6; moved=0' in class_a_run.stderr, class_a_run
+    assert json.loads(source.read_text()) == dict(findings=class_a)
 
     # The measured mixed review keeps six HIGH and moves eleven MEDIUM plus four LOW.
     fatal = [finding(f'H-{i}') for i in range(6)]
