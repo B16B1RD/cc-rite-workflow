@@ -233,6 +233,49 @@ for prefix_cfg in diff.mnemonicPrefix diff.noprefix; do
   fi
 done
 
+# a user-configured diff.external must not replace the internal diff (--no-ext-diff pin,
+# both the --path DIR call and the whole-tree call)
+ext_dir=$(make_plain_sandbox) && cleanup_dirs+=("$ext_dir") || { echo "ERROR: ext_dir sandbox" >&2; exit 1; }
+noop_ext="$ext_dir/noop-ext.sh"
+printf '#!/bin/sh\nexit 0\n' > "$noop_ext"
+chmod +x "$noop_ext"
+git -C "$sb" config diff.external "$noop_ext"
+plain_out=$(git -C "$sb" diff HEAD~1 -- plugins/rite/references/from-raw.md 2>&1)
+if printf '%s' "$plain_out" | grep -q 'raw ref (#2105)'; then
+  fail "T-01(e6b) setup: expected diff.external to suppress the plain diff output, got: $plain_out"
+else
+  for path_args in "" "--path plugins/rite/references"; do
+    rc=0; out=$(run_diff "$sb" HEAD~1 --quiet $path_args 2>&1) || rc=$?
+    if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q '^plugins/rite/references/from-raw.md:1: raw ref (#2105)$'; then
+      pass "T-01(e6b) move out of an excluded path is a hit under diff.external (path_args='${path_args:-<none>}')"
+    else
+      fail "T-01(e6b) expected from-raw.md hit under diff.external (path_args='${path_args:-<none>}'), got rc=$rc: $out"
+    fi
+  done
+fi
+git -C "$sb" config --unset diff.external
+
+# a user-configured textconv driver must not replace the internal diff (--no-textconv pin,
+# both the --path DIR call and the whole-tree call)
+attrs_file="$sb/.gitattributes"
+printf '*.md diff=strip\n' > "$attrs_file"
+git -C "$sb" config diff.strip.textconv 'sed s/#/N/g'
+plain_out=$(git -C "$sb" diff HEAD~1 -- plugins/rite/references/from-raw.md 2>&1)
+if ! printf '%s' "$plain_out" | grep -q 'N2105'; then
+  fail "T-01(e6c) setup: expected textconv to rewrite # to N in the plain diff, got: $plain_out"
+else
+  for path_args in "" "--path plugins/rite/references"; do
+    rc=0; out=$(run_diff "$sb" HEAD~1 --quiet $path_args 2>&1) || rc=$?
+    if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q '^plugins/rite/references/from-raw.md:1: raw ref (#2105)$'; then
+      pass "T-01(e6c) move out of an excluded path is a hit under textconv (path_args='${path_args:-<none>}')"
+    else
+      fail "T-01(e6c) expected from-raw.md hit under textconv (path_args='${path_args:-<none>}'), got rc=$rc: $out"
+    fi
+  done
+fi
+git -C "$sb" config --unset diff.strip.textconv
+rm -f "$attrs_file"
+
 # a moved line that starts with "-- " is a content line, not a file header
 printf 'intro\n-- see (#2106)\n' > "$mv_dir/dash-src.md"
 commit_all "$sb" dash-base
