@@ -82,7 +82,7 @@ with tempfile.TemporaryDirectory() as directory:
     matrix_result = json.loads(matrix_run.stdout)
     assert matrix_result['fatal_map'] == {**{f['id']:True for f in matrix_fatal}, **{f['id']:False for f in matrix_nonfatal}}
     # The persisted document and the counts are what fix reloads, so pin them alongside the map.
-    assert 'fatal=14; moved=21' in matrix_run.stderr, matrix_run
+    assert 'fatal=20; moved=36' in matrix_run.stderr, matrix_run
     saved = json.loads(source.read_text())
     assert saved['findings'] == matrix_fatal
     assert saved['non_blocking_findings'] == [dict(f, demotion_reason='non_fatal') for f in matrix_nonfatal]
