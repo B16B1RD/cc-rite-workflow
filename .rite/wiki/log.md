@@ -5,6 +5,7 @@
 * **Update**: [ガードの識別力は「そのガード単独で発火する形状」の fixture とガード固有文言 assert で担保する](pages/heuristics/guard-discriminating-power-requires-solo-firing-fixture.md) — raw/reviews/20260926T045233Z-pr-3112.md で失敗注入 shim の出力設計を補強
 * **Create**: [検査先の解決に失敗した入力を「対象外」に合流させると、拒否していた入力が許可に変わる](pages/anti-patterns/resolution-failure-merged-into-out-of-scope-flips-reject-to-allow.md) — raw/reviews/20260926T045844Z-pr-3060.md を新規ページ化
 * **Skip**: [20260926T045249Z-pr-3109.md](raw/reviews/20260926T045249Z-pr-3109.md) — 既存テストへの pin 追加を変異で確かめた記録で、既存ページを超える経験則を含まない
+* **lint:clean** — contradictions=0 (更新・新規ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=539, broken_refs=0
 * **Create**: [0x80-0x9F をバイト単位で潰す制御文字の中和は、UTF-8 の日本語を壊して診断を読めなくする](pages/anti-patterns/bytewise-c1-neutralization-breaks-utf8-diagnostics.md) — raw/reviews/20260926T043640Z-pr-3108.md を新規ページ化
 * **lint:clean** — contradictions=0 (新規ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=538, broken_refs=0
 * **Update**: [同じ処理を 2 経路で実装したら fixture の「意地悪さ」も 2 経路で揃える](pages/heuristics/dual-path-implementation-needs-matching-adversarial-fixture.md) — raw/reviews/20260926T035155Z-pr-3106.md で同じフラグを 2 経路で使う場合を補強
