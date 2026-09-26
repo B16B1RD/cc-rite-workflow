@@ -220,12 +220,16 @@ _rite_btg_pattern6_fail_closed() {
 # splits the command into words. This small parser intentionally supports the
 # conventional unquoted, single-quoted, and double-quoted identifier delimiters
 # used by the repository's Bash commands. The declaration scanner ignores `<<`
-# inside shell quotes so a literal string cannot suppress later command lines.
+# inside shell quotes, across lines, so a literal string cannot suppress later
+# command lines.
 _rite_btg_pattern6_command_surface() {
   local _source="$1" _line _delimiter="" _strip_tabs=0 _candidate _decl
   local _surface="" _i _len _ch _next _state _quoted _start
   _source="${_source//$'\r'/}"
   _source="${_source//$'\\\n'/}"
+  # Quote state carries across lines, as in bash: a << inside a multi-line quoted
+  # string (a commit message) is text, not a heredoc declaration.
+  _state=plain
   while IFS= read -r _line || [ -n "$_line" ]; do
     if [ -n "$_delimiter" ]; then
       _candidate="$_line"
@@ -241,7 +245,6 @@ _rite_btg_pattern6_command_surface() {
 
     _surface+="$_line"$'\n'
     _decl=""
-    _state=plain
     _len=${#_line}
     _i=0
     while [ "$_i" -lt "$_len" ]; do
@@ -939,7 +942,8 @@ fi
 
 # Pattern 8: review/fix evidence must exist before changing the reviewed HEAD.
 # Reuse the heredoc surface, not CMD_CHECK which drops later command lines.
-if [ -z "$BLOCKED_PATTERN" ] && [[ "$COMMAND" == *git* && "$COMMAND" == *commit* ]]; then
+# git merge also moves HEAD (--continue, or a merge that commits by itself).
+if [ -z "$BLOCKED_PATTERN" ] && [[ "$COMMAND" == *git* && ( "$COMMAND" == *commit* || "$COMMAND" == *merge* ) ]]; then
   if _commit_surface=$(_rite_btg_pattern6_command_surface "$COMMAND") \
      && _commit_cwd=$(printf '%s' "$INPUT" | jq -r '.cwd // empty') \
      && _commit_reason=$(bash "$SCRIPT_DIR/scripts/review-fix-scope-check.sh" commit-check \
@@ -948,7 +952,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [[ "$COMMAND" == *git* && "$COMMAND" == *commit*
   else
     BLOCKED_PATTERN="review-commit-evidence"
     BLOCKED_REASON="Commit evidence check failed: ${_commit_reason:-cannot inspect command or state}"
-    BLOCKED_ALTERNATIVE="Save the current review with review-finish, then run review-fix-scope-check.sh check --plan <plan> --issue <issue> and review-fix-scope-check.sh verify --plan <plan> --issue <issue> --kind all. If denied for an unplanned changed path, delete the path when it is not needed, or add it to the plan and re-check; staging it does not clear that denial, and review-finish and verify alone will not either. Run commit in a separate Bash call from verification. If the reason is a quoting or parse error, write the message to a file outside the work tree and commit with git commit -F <message-file> in its own Bash call. Keep state and evidence intact."
+    BLOCKED_ALTERNATIVE="Save the current review with review-finish, then run review-fix-scope-check.sh check --plan <plan> --issue <issue> and review-fix-scope-check.sh verify --plan <plan> --issue <issue> --kind all. If denied for an unplanned changed path, delete the path when it is not needed, or add it to the plan and re-check; staging it does not clear that denial, and review-finish and verify alone will not either. Run commit in a separate Bash call from verification. If the reason is a quoting or parse error, write the message to a file outside the work tree and commit with git commit -F <message-file> in its own Bash call. To take in the base branch, use git merge --no-commit --no-ff origin/<base> with a base-intake fix plan (skills/fix/references/fix-plan.md, section: base 取り込み); a git merge that commits by itself is refused. Keep state and evidence intact."
   fi
 fi
 

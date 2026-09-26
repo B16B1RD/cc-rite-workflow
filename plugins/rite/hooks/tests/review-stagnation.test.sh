@@ -660,6 +660,9 @@ try:
     (f.root / 'source.txt').write_text('unverified\n')
     f.commit()
     f.reject(lambda: f.start(ok=False), 'unverified changed HEAD cannot start review')
+    refused = f.start(ok=False)
+    check('base-intake fix plan' in refused.stderr and 'fix-plan.md, section: base 取り込み' in refused.stderr,
+          'changed HEAD refusal points to the base intake route: ' + refused.stderr)
 finally:
     f.close()
 

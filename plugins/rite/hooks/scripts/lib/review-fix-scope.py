@@ -8,7 +8,6 @@ import os
 from pathlib import Path
 import platform
 import re
-import shlex
 import stat
 import subprocess
 import sys
@@ -144,6 +143,67 @@ def validate(plan, issue, state, session, root, allow_replan=False):
     return validate_plan(plan, issue, state, receipt)
 
 
+# The one supported way to take the base branch into a reviewed PR branch.
+BASE_INTAKE_STEPS = ("git fetch origin <base>, take it in with git merge --no-commit --no-ff origin/<base>, "
+                     "resolve and stage it, add a base-intake group to the fix plan, run check and "
+                     "verify --kind all, commit, push, then re-run /rite:iterate "
+                     "(skills/fix/references/fix-plan.md, section: base 取り込み)")
+# The same route, entered with a merge already in progress.
+BASE_INTAKE_CONCLUDE = ("if it takes in origin/<base>, resolve and stage it, add a base-intake group to the fix plan, "
+                        "run check and verify --kind all, commit, push, then re-run /rite:iterate; otherwise "
+                        "git merge --abort and start over (skills/fix/references/fix-plan.md, section: base 取り込み)")
+
+
+def merge_head():
+    """The commit an in-progress merge brings in, or None when no merge is in progress."""
+    merge = subprocess.run(["git", "rev-parse", "-q", "--verify", "MERGE_HEAD"], capture_output=True, text=True)
+    return merge.stdout.strip() if merge.returncode == 0 and merge.stdout.strip() else None
+
+
+def base_branch():
+    """branch.base from rite-config.yml. It decides what base intake may exempt, so it has no default."""
+    located = subprocess.run(["bash", str(Path(__file__).with_name("rite-config-path.sh"))],
+                             capture_output=True, text=True)
+    require(located.returncode != 1, "rite-config.yml not found: " + located.stderr.strip()
+            + "; base intake cannot identify the base branch")
+    require(located.returncode == 0, "cannot read rite-config.yml: " + located.stderr.strip())
+    config = Path(located.stdout.strip())
+    try:
+        lines = config.read_text(encoding="utf-8").splitlines()
+    except UnicodeDecodeError as error:
+        require(False, "cannot read rite-config.yml: " + str(config) + ": " + str(error))
+    in_branch = False
+    for line in lines:
+        if re.match(r"[A-Za-z_]", line):
+            in_branch = line.split("#", 1)[0].strip() == "branch:"
+            continue
+        match = re.match(r"\s+base:\s*(.*)", line)
+        if in_branch and match:
+            value = re.sub(r"\s#.*", "", match.group(1)).strip().strip("\"'")
+            if value and value != "null":
+                return value
+            break
+    require(False, "branch.base is not set in " + str(config) + "; base intake cannot identify the base branch")
+
+
+def base_intake_paths():
+    """Paths the in-progress merge brings in from origin/<branch.base>."""
+    other = merge_head()
+    require(other, "base intake requires a merge in progress; start it with git merge --no-commit --no-ff origin/<base>")
+    base = base_branch()
+    remote = "refs/remotes/origin/" + base
+    require(subprocess.run(["git", "rev-parse", "-q", "--verify", remote], capture_output=True).returncode == 0,
+            "base intake needs origin/" + base + "; run git fetch origin " + base)
+    # Only what the base itself carries is exempt: another branch or a side commit is Issue work.
+    ancestor = subprocess.run(["git", "merge-base", "--is-ancestor", other, remote], capture_output=True, text=True)
+    require(ancestor.returncode in (0, 1), "git merge-base --is-ancestor failed: " + ancestor.stderr.strip())
+    require(ancestor.returncode == 0,
+            "the merge in progress is not origin/" + base + " or its ancestor; base intake takes in the base branch only")
+    fork = subprocess.check_output(["git", "merge-base", "HEAD", other], text=True).strip()
+    names = subprocess.check_output(["git", "diff", "--no-renames", "--name-only", "-z", fork, other]).decode()
+    return {path(name) for name in names.split("\0") if name}
+
+
 def validate_plan(plan, issue, state, receipt):
     """Everything a fix plan must say, independent of the transition it enables."""
     require(issue.get("number") == state.get("issue_number") == plan.get("issue_number")
@@ -180,13 +240,15 @@ def validate_plan(plan, issue, state, receipt):
                 and text(finding["description"]), "invalid external finding provenance")
         known.add(finding["id"])
         blocking.add(finding["id"])
-    covered, paths, causes = [], [], []
+    covered, paths, causes, constrained = [], [], [], []
     require(isinstance(plan["groups"], list) and plan["groups"], "root-cause groups required")
+    require(sum(g["action"] == "base-intake" for g in plan["groups"]) <= 1, "combine base intake into one group")
     for group in plan["groups"]:
         require(text(group["root_cause"]) and text(group["rationale"]), "root cause and disposition rationale required")
         causes.append(group["root_cause"])
-        require(group["action"] in ("fix", "reply", "accept", "nit-noted"), "invalid disposition")
-        require(isinstance(group["finding_ids"], list) and group["finding_ids"], "group finding IDs required")
+        require(group["action"] in ("fix", "reply", "accept", "nit-noted", "base-intake"), "invalid disposition")
+        require(isinstance(group["finding_ids"], list)
+                and (group["finding_ids"] or group["action"] == "base-intake"), "group finding IDs required")
         covered.extend(group["finding_ids"])
         semantic = group["semantic"]
         require(semantic.get("approved") is True and text(semantic.get("acceptance_criteria"))
@@ -196,9 +258,17 @@ def validate_plan(plan, issue, state, receipt):
         require(isinstance(group["verification_ids"], list) and group["verification_ids"]
                 and set(group["verification_ids"]) <= set(ids), "every disposition requires verification")
         require(group["action"] != "fix" or group_paths, "fix disposition requires paths")
+        if group["action"] == "base-intake":
+            # Files the base changed are not this Issue's work, so its target
+            # constraints do not apply to them; any other listed path stays checked.
+            require(group_paths, "base intake requires the merged paths")
+            merged = base_intake_paths()
+            constrained.extend(p for p in group_paths if p not in merged)
+        else:
+            constrained.extend(group_paths)
     require(len(set(causes)) == len(causes), "combine duplicate root-cause groups")
     require(len(covered) == len(set(covered)) and set(covered) <= known and blocking <= set(covered), "all blocking findings need one disposition; unknown or duplicate finding IDs")
-    for entry in paths:
+    for entry in constrained:
         require(not any(within(entry, p) or within(p, entry) for p in excluded), "Non-Target violation: " + entry)
         require(not constraints["closed_targets"] or any(within(entry, p) for p in targets), "closed target violation: " + entry)
     return receipt[1], sorted(set(paths))
@@ -301,8 +371,158 @@ def peel_commit_prefixes(words):
     return words, peeled
 
 
+# The git subcommands that move HEAD and are checked before they run.
+_HEAD_MOVERS = ("commit", "merge")
+_SEPARATORS = ";&|\n"
+
+
+# A parse the check cannot finish is refused; the message form below always parses.
+_PARSE_HINT = "; write the message to a file outside the work tree and commit with git commit -F <message-file>"
+# The standard message form: a substitution that is exactly cat of one heredoc.
+_MESSAGE = re.compile(r"\$\([ \t]*cat[ \t]+<<(-?)[ \t]*(?:'([^'\n]+)'|\"([^\"\n]+)\"|\\([A-Za-z_][A-Za-z0-9_]*)"
+                      r"|([A-Za-z_][A-Za-z0-9_]*))[ \t]*\n")
+_MESSAGE_CLOSE = re.compile(r"[ \t\n]*\)")
+
+
+def _message_end(command, index):
+    """Index just past a $( at index that is the standard message form, else None.
+
+    bash ends a heredoc at its first delimiter line, so only whitespace may follow that
+    line before the ')'. An unquoted delimiter lets bash expand the body, so such a body
+    is data only when it holds no command substitution.
+    """
+    match = _MESSAGE.match(command, index)
+    if not match:
+        return None
+    strip = match.group(1) == "-"
+    delimiter = next(group for group in match.group(2, 3, 4, 5) if group is not None)
+    start = line_start = match.end()
+    while True:
+        end = command.find("\n", line_start)
+        if end < 0:
+            return None
+        line = command[line_start:end]
+        if (line.lstrip("\t") if strip else line) == delimiter:
+            break
+        line_start = end + 1
+    if match.group(5) is not None and ("$(" in command[start:line_start] or "`" in command[start:line_start]):
+        return None
+    close = _MESSAGE_CLOSE.match(command, end + 1)
+    return close.end() if close else None
+
+
+def _substitution_end(command, start):
+    """Index just past the ')' closing the $( that ends at start. Not a shell interpreter."""
+    depth, index, quote = 1, start, None
+    while index < len(command):
+        ch = command[index]
+        if quote:
+            if ch == quote:
+                quote = None
+            elif ch == "\\" and quote == '"':
+                index += 1
+        elif ch in "'\"":
+            quote = ch
+        elif ch == "\\":
+            index += 1
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return index + 1
+        index += 1
+    require(False, "unfinished command substitution" + _PARSE_HINT)
+
+
+def shell_segments(command):
+    """Split a command into (words, nested) simple commands of dequoted words. Not a shell interpreter.
+
+    Quotes are tracked across a whole word, so a separator inside quotes (echo ';',
+    NAME="a (b) c") stays in its word, and a quote may open in the middle of a word.
+    A command substitution or a ( ) group runs in a subshell, so its commands come back
+    marked nested; a substitution's commands come ahead of the command that contains it.
+    The standard message form $(cat <<DELIM ... DELIM) is data and stays in its word.
+    """
+    segments, words, word, quoted, quote, depth = [], [], [], False, None, 0
+    index, length = 0, len(command)
+
+    def end_word():
+        nonlocal word, quoted
+        if word or quoted:
+            words.append("".join(word))
+        word, quoted = [], False
+
+    def end_segment():
+        nonlocal words
+        end_word()
+        if words:
+            segments.append((words, depth > 0))
+        words = []
+
+    while index < length:
+        ch = command[index]
+        if quote == "'":
+            if ch == "'":
+                quote = None
+            else:
+                word.append(ch)
+        elif quote in (None, '"') and command.startswith("$(", index):
+            end = _message_end(command, index)
+            if end is None:
+                end = _substitution_end(command, index + 2)
+                segments.extend((inner, True) for inner, _nested in shell_segments(command[index + 2:end - 1]))
+            word.append(command[index:end])
+            quoted = True
+            index = end
+            continue
+        elif ch == "`" and quote in (None, '"'):
+            end = command.find("`", index + 1)
+            require(end >= 0, "unfinished command substitution" + _PARSE_HINT)
+            segments.extend((inner, True) for inner, _nested in shell_segments(command[index + 1:end]))
+            word.append(command[index:end + 1])
+            quoted = True
+            index = end + 1
+            continue
+        elif quote == '"':
+            if ch == '"':
+                quote = None
+            elif ch == "\\" and index + 1 < length and command[index + 1] in '"\\$`\n':
+                index += 1
+                if command[index] != "\n":
+                    word.append(command[index])
+            else:
+                word.append(ch)
+        elif ch in "'\"":
+            quote, quoted = ch, True
+        elif ch == "\\" and index + 1 < length:
+            index += 1
+            if command[index] != "\n":
+                word.append(command[index])
+                quoted = True
+        elif ch == "#" and not word and not quoted:
+            while index + 1 < length and command[index + 1] != "\n":
+                index += 1
+        elif ch in " \t\r":
+            end_word()
+        elif ch == "(":
+            end_segment()
+            depth += 1
+        elif ch == ")":
+            end_segment()
+            depth = max(depth - 1, 0)
+        elif ch in _SEPARATORS:
+            end_segment()
+        else:
+            word.append(ch)
+        index += 1
+    require(quote is None, "unfinished quoted command" + _PARSE_HINT)
+    end_segment()
+    return segments
+
+
 def git_subcommand_index(words, git_index):
-    """Advance past the same git global options the direct-commit path skips."""
+    """Advance past the same git global options the direct path skips."""
     index = git_index + 1
     while index < len(words) and words[index].startswith("-"):
         option = words[index]
@@ -315,45 +535,27 @@ def git_subcommand_index(words, git_index):
         elif option.startswith("-c") or option in ("--no-pager", "--no-optional-locks"):
             index += 1
         else:
-            return index if "commit" in words[index:] else None
+            return index if any(name in words[index:] for name in _HEAD_MOVERS) else None
     return index if index < len(words) else None
 
 
-def each_direct_commit(command, cwd):
-    """Yield the toplevel of each direct git commit. This is not a shell interpreter."""
-    lexer = shlex.shlex(command, posix=False, punctuation_chars=";&|()\n")
-    lexer.whitespace = " \t\r"
-    segments, segment = [], []
-    for token in lexer:
-        if token and all(ch in ";&|()\n" for ch in token):
-            if segment:
-                segments.append(segment)
-                segment = []
-        else:
-            # Keep quote information until separators have been classified:
-            # echo ';' git commit is one harmless command, not two commands.
-            # shlex's non-POSIX mode may split a quote beginning inside -mTEXT;
-            # join only that unfinished quoted word, then dequote with shlex.
-            while True:
-                try:
-                    values = shlex.split(token)
-                    break
-                except ValueError:
-                    tail = lexer.get_token()
-                    require(tail, "unfinished quoted commit command")
-                    token += " " + tail
-            require(len(values) == 1, "ambiguous shell word; run commit separately")
-            segment.append(values[0])
-    if segment:
-        segments.append(segment)
-    cwd = Path(cwd).resolve()
-    for words in segments:
-        if words and words[0] == "cd" and len(words) == 2:
-            require(not any(c in words[1] for c in "$`~"),
-                    "commit target is dynamic; run commit separately from its resolved worktree")
-            cwd = (cwd / words[1]).resolve()
+def each_git_target(command, cwd):
+    """Yield (subcommand, toplevel, arguments, problem) for each git commit / merge, in order.
+
+    problem names why the target cannot be checked (a wrapper, a command substitution,
+    a dynamic cd / -C, a target that does not resolve to a repository, an alternate git dir); the caller
+    refuses it only when the command would move HEAD. toplevel is None exactly when there is a problem.
+    """
+    cwd, dynamic = Path(cwd).resolve(), False
+    for words, nested in shell_segments(command):
+        # A subshell keeps its cd, and its git is not direct.
+        if not nested and words and words[0] == "cd" and len(words) == 2:
+            if any(c in words[1] for c in "$`~"):
+                dynamic = True
+            elif not dynamic or Path(words[1]).is_absolute():
+                cwd, dynamic = (cwd / words[1]).resolve(), False
             continue
-        words, peeled = peel_commit_prefixes(words)
+        words, _peeled = peel_commit_prefixes(words)
         if not words:
             continue
         if Path(words[0]).name != "git":
@@ -362,45 +564,131 @@ def each_direct_commit(command, cwd):
             names = [Path(word).name for word in words]
             if "git" in names:
                 sub = git_subcommand_index(words, names.index("git"))
-                if sub is not None and "commit" in words[sub:]:
-                    require(False, "run commit as a direct command in its own Bash call")
+                for name in _HEAD_MOVERS:
+                    if sub is not None and name in words[sub:]:
+                        yield name, None, words[words.index(name, sub) + 1:], \
+                            "run " + name + " as a direct command in its own Bash call"
             continue
-        target, index = cwd, 1
+        target, unknown, index, alternate = cwd, dynamic, 1, False
         while index < len(words) and words[index].startswith("-"):
             option = words[index]
-            if option in ("-C", "-c"):
-                require(index + 1 < len(words), "incomplete git global option")
-                value = words[index + 1]
-                if option == "-C":
-                    require(not any(c in value for c in "$`~"), "commit target must be a literal worktree")
-                    target = (target / value).resolve()
-                index += 2
-            elif option.startswith("-C"):
-                target = (target / option[2:]).resolve()
-                index += 1
+            if option in ("-C", "-c") or option.startswith("-C"):
+                joined = option.startswith("-C") and option != "-C"
+                if not joined:
+                    require(index + 1 < len(words), "incomplete git global option")
+                value = option[2:] if joined else words[index + 1]
+                if option.startswith("-C"):
+                    if any(c in value for c in "$`~"):
+                        unknown = True
+                    else:
+                        target = (target / value).resolve()
+                        unknown = unknown and not Path(value).is_absolute()
+                index += 1 if joined else 2
             elif option.startswith("-c") or option in ("--no-pager", "--no-optional-locks"):
                 index += 1
             else:
-                require("commit" not in words[index:],
-                        "use git -C <worktree> commit without alternate git-dir/work-tree options")
+                alternate = True
                 break
-        if index >= len(words) or words[index] != "commit":
+        if alternate:
+            for name in _HEAD_MOVERS:
+                if name in words[index:]:
+                    yield name, None, words[words.index(name, index) + 1:], \
+                        "use git -C <worktree> " + name + " without alternate git-dir/work-tree options"
             continue
+        if index >= len(words) or words[index] not in _HEAD_MOVERS:
+            continue
+        name = words[index]
+        if nested:
+            yield name, None, words[index + 1:], "run " + name + " as a direct command in its own Bash call"
+            continue
+        if unknown:
+            yield name, None, words[index + 1:], \
+                name + " target is dynamic; run it separately from its resolved worktree"
+            continue
+        # A target that does not resolve to a repository (missing, unenterable or not
+        # a repository) cannot be matched to a worktree; a failed cd may even leave
+        # bash in the reviewed one.
+        resolved = subprocess.run(["git", "-C", str(target), "rev-parse", "--show-toplevel"],
+                                  capture_output=True, text=True)
+        if resolved.returncode != 0:
+            yield name, None, words[index + 1:], \
+                name + " target cannot be resolved to a repository: " + str(target) + "; run it from an existing worktree"
+            continue
+        yield name, Path(resolved.stdout.strip()).resolve(), words[index + 1:], None
+
+
+def head_move(name, args):
+    """How a git commit / merge moves HEAD: "commit" (checked evidence), "merge" (refused),
+    "unreadable" (refused: an abbreviated merge option) or None."""
+    if name == "commit":
         # Option values (notably -m '--dry-run') must not exempt a real commit.
-        dry_run, index_only = classify_commit_args(words[index + 1:])
-        if dry_run:
+        return None if classify_commit_args(args)[0] else "commit"
+    moves = merge_kind(args)
+    return {"concludes": "commit", "commits": "merge", "unreadable": "unreadable"}.get(moves)
+
+
+def each_direct_commit(command, cwd):
+    """Yield the toplevel of each direct git commit. This is not a shell interpreter."""
+    for name, actual, args, problem in each_git_target(command, cwd):
+        if name != "commit" or head_move(name, args) is None:
             continue
-        os.chdir(target)
-        try:
-            actual = Path(subprocess.check_output(
-                ["git", "rev-parse", "--show-toplevel"], text=True, stderr=subprocess.DEVNULL
-            ).strip()).resolve()
-        except subprocess.CalledProcessError:
-            # Not a repository, so it is not the session worktree. commit-target
-            # still refuses this; a review check must not turn it into a deny.
-            yield None, True
+        require(problem is None, problem or "")
+        yield actual, classify_commit_args(args)[1]
+
+
+_MERGE_VALUE = {"-m", "-F", "-s", "-X", "--message", "--file", "--strategy", "--strategy-option", "--into-name"}
+_MERGE_SWITCHES = {"--commit", "--no-commit", "--squash", "--no-squash", "--ff", "--no-ff", "--ff-only",
+                   "--continue", "--abort", "--quit"}
+_MERGE_LONG = _MERGE_SWITCHES | {option for option in _MERGE_VALUE if option.startswith("--")}
+
+
+def abbreviated_merge_option(name):
+    """True for a unique-prefix spelling of a long merge option, which git accepts."""
+    return name not in _MERGE_LONG and any(option.startswith(name) for option in _MERGE_LONG)
+
+
+def merge_kind(args):
+    """How a git merge moves HEAD: "concludes" (--continue), "commits" (by itself), "unreadable" or None.
+
+    git reads --commit/--no-commit, --squash/--no-squash and --ff/--no-ff/--ff-only
+    as last-one-wins, so a later option overrides an earlier exemption. git also takes
+    a unique prefix of a long option; an abbreviation of these options cannot be read
+    safely, so it is "unreadable" and refused like a merge that commits.
+    """
+    commits, squash, ff_only, action = True, False, False, None
+    index = 0
+    while index < len(args):
+        word = args[index]
+        if word == "--":
+            break
+        if word in _MERGE_VALUE:
+            index += 2
             continue
-        yield actual, index_only
+        if word.startswith("--"):
+            name = word.split("=", 1)[0]
+            if abbreviated_merge_option(name):
+                return "unreadable"
+            if name in ("--continue", "--abort", "--quit"):
+                action = name
+            elif name in ("--commit", "--no-commit"):
+                commits = name == "--commit"
+            elif name in ("--squash", "--no-squash"):
+                squash = name == "--squash"
+            elif name in ("--ff", "--no-ff", "--ff-only"):
+                ff_only = name == "--ff-only"
+        elif word.startswith("-") and len(word) > 1:
+            # A short cluster ends at its first value-taking letter (-nm msg, -mmsg).
+            for position, letter in enumerate(word[1:], 1):
+                if letter in "mFsX":
+                    if position == len(word) - 1:
+                        index += 1
+                    break
+        index += 1
+    if action == "--continue":
+        return "concludes"
+    if action or not commits or squash or ff_only:
+        return None
+    return "commits"
 
 
 def commit_check(args):
@@ -417,9 +705,14 @@ def commit_check(args):
         if "review_run" not in state:
             return
         retained = stagnation.retained_run(state, args.session)
-    for actual, _index_only in each_direct_commit(args.command, args.cwd):
-        if actual is None:
-            continue
+    # A merge that concludes with --continue records the same staged state as
+    # git commit; a merge that commits by itself cannot be verified beforehand.
+    for name, actual, arguments, problem in each_git_target(args.command, args.cwd):
+        kind = head_move(name, arguments)
+        if kind is None:
+            continue  # a dry run, or a merge that leaves HEAD where it is
+        require(problem is None, problem or "")
+        os.chdir(actual)
         if "worktree" not in state:
             require(actual == Path(args.state_root).resolve(),
                     "session worktree path is missing from state; cannot tell if this commit belongs to the review")
@@ -432,6 +725,13 @@ def commit_check(args):
             require(retained.get("status") != "stopped",
                     "review run stopped: " + str(retained.get("stop_reason")))
             return
+        require(kind != "unreadable",
+                "abbreviated git merge option " + ", ".join(
+                    word.split("=", 1)[0] for word in arguments
+                    if word.startswith("--") and abbreviated_merge_option(word.split("=", 1)[0]))
+                + " cannot be read during review; spell every long merge option in full")
+        require(kind != "merge",
+                "a merge that commits by itself cannot be verified during review; " + BASE_INTAKE_STEPS)
         frozen = state.get("review_cycle")
         require(isinstance(frozen, dict), "review run has no frozen cycle; start its review before committing")
         require(frozen.get("status") == "completed",
@@ -439,7 +739,8 @@ def commit_check(args):
         directory = Path(args.state_root) / ".rite/state"
         approved_path = directory / ("fix-plan-" + args.session + ".json")
         require(approved_path.is_file(),
-                "fix plan record missing; run check --plan <plan> --issue <issue> before committing")
+                "fix plan record missing; run check --plan <plan> --issue <issue> before committing"
+                + ("; this concludes a merge: " + BASE_INTAKE_CONCLUDE if merge_head() else ""))
         approved = read(approved_path)
         plan = approved["plan"]
         issue = approved.get("issue")
@@ -477,7 +778,6 @@ def commit_target_main(argv):
     parser.add_argument("--cwd", required=True)
     args = parser.parse_args(argv)
     for actual, index_only in each_direct_commit(args.command, args.cwd):
-        require(actual is not None, "commit worktree cannot be resolved")
         print(("index" if index_only else "other") + "\t" + str(actual))
 
 
