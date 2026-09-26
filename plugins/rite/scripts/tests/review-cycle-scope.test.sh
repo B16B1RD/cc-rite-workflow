@@ -678,6 +678,31 @@ fi
 ja_ctrl_count=$(printf '%s' "$SCOPE_STDERR" | LC_ALL=C grep -c -e $'\033' -e $'\302\233') || true
 assert_rc "TC-25.18: stderr 全体に ESC / U+009B が残らない" 0 "$ja_ctrl_count"
 
+# 両側の一覧は取れても積 (comm) を計算できなければ、狭い側へ倒さず full へ倒す。
+# 上の git shim は rev-list で先に失敗させるので PATH に入れない (comm まで届かなくなる)。
+# shim は実在パスを 1 行出してから失敗する。rc を見落とすと、その 1 行で incremental へ進むので、
+# 下の incremental / files= / 一覧削除の assert も rc の見落としを捕らえる
+COMM_SHIM="$TEST_DIR/comm-shim"
+mkdir -p "$COMM_SHIM"
+printf '#!/bin/bash\necho doc.md\necho "comm: write error" >&2\nexit 1\n' > "$COMM_SHIM/comm"
+chmod +x "$COMM_SHIM/comm"
+comm_stale_list="$TMPDIR/rite-cycle-scope-files-42.txt"
+printf 'stale\n' > "$comm_stale_list"
+assert_rc "TC-25.19a: 前提として前 cycle の一覧がある" 0 "$([ -f "$comm_stale_list" ]; echo $?)"
+SCOPE_STDERR=$(PATH="$COMM_SHIM:$PATH" bash "$TARGET" --pr 42 --results-dir "$MRESULTS" 2>&1) || true
+assert_contains "TC-25.19: 積を計算できなければ diff_failed で full" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=full; reason=diff_failed"
+assert_contains "TC-25.20: 積の計算失敗の WARNING を出す" "$SCOPE_STDERR" "fix diff の積を計算できません"
+# 原因 (comm の stderr) は WARNING の直後に字下げして出る
+comm_cause=$(printf '%s\n' "$SCOPE_STDERR" | LC_ALL=C grep -a -A1 'fix diff の積を計算できません' | sed -n '2p')
+if [ "$comm_cause" = "  comm: write error" ]; then
+  pass "TC-25.21: comm の原因行を WARNING の直後に字下げして出す"
+else
+  fail "TC-25.21: comm の原因行"; echo "     実際: '$comm_cause'"
+fi
+assert_not_contains "TC-25.22: incremental を出さない" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
+assert_not_contains "TC-25.23: files= を出さない" "$SCOPE_STDERR" "files="
+assert_rc "TC-25.24: full へ倒れたら前 cycle の一覧を残さない" 1 "$([ -e "$comm_stale_list" ]; echo $?)"
+
 echo "=== TC-26: fix commit の改名は元パスと新パスの両方を一覧に入れる ==="
 # --name-only は検出した改名の移動先しか出さないため、rename 検出が有効だと元パスが一覧から落ち、
 # reviewer に新パスが新規ファイルとして渡る
