@@ -457,7 +457,7 @@ def shell_segments(command):
     (&>, >&, <&) stays in its word.
     """
     segments, words, word, quoted, quote, depth = [], [], [], False, None, 0
-    index, length, pending, group = 0, len(command), "", None
+    index, length, pending, group, redirect = 0, len(command), "", None, -1
 
     def end_word():
         nonlocal word, quoted
@@ -535,7 +535,7 @@ def shell_segments(command):
             if not depth and group:
                 (words, pending), group = group, None
                 words.append("()")
-        elif ch == "&" and (command.startswith(">", index + 1) or (index and command[index - 1] in "<>")):
+        elif ch == "&" and (command.startswith(">", index + 1) or redirect == index - 1):
             word.append(ch)
         elif ch in _SEPARATORS:
             operator = ";" if ch == "\n" else ch
@@ -547,6 +547,8 @@ def shell_segments(command):
             end_segment(operator)
         else:
             word.append(ch)
+            if ch in "<>":
+                redirect = index  # an unquoted, unescaped redirection sign
         index += 1
     require(quote is None, "unfinished quoted command" + _PARSE_HINT)
     end_segment()
@@ -608,6 +610,9 @@ def each_git_target(command, cwd):
         if not nested:
             first = False
         bare = words
+        if not nested and "()" in words:
+            # A function or case body behind "()" is like a body behind a keyword.
+            bare = words[words.index("()") + 1:]
         while not nested and bare and bare[0] in _KEYWORDS:
             bare = bare[1:]
         if not nested and bare and bare[0] == "cd":
