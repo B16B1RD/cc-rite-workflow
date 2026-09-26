@@ -60,6 +60,8 @@ fi
 unset CLAUDE_SUBAGENT_TYPE CLAUDE_AGENT_TYPE
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=_hermetic-env.sh
+source "$SCRIPT_DIR/_hermetic-env.sh" || { echo "ERROR: cannot source _hermetic-env.sh" >&2; exit 1; }
 HOOK="$SCRIPT_DIR/../pre-tool-bash-guard.sh"
 PASS=0
 FAIL=0
