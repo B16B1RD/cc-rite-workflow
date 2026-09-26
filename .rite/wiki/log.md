@@ -52,6 +52,7 @@
 * **Create**: [テスト用の偽コマンドは入力を読み切ってから終了する](pages/heuristics/test-shim-drain-inputs-before-exit.md) — raw/reviews/20260926T081826Z-pr-3124.md を新規ページ化
 * **lint:clean** — contradictions=0 (更新・新規ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=543, broken_refs=0
 * **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — raw/reviews/20260926T085328Z-pr-3130.md を統合
+* **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=544, broken_refs=0
 
 ## 2026-09-25
 
