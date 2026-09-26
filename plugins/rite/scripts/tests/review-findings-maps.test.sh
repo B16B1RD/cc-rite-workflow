@@ -34,13 +34,16 @@ with tempfile.TemporaryDirectory() as directory:
         checks += 1
         return result
     missing = object()
-    def finding(id, severity='HIGH', scope='current-pr', measured=True, cls=missing, pre_existing=missing):
+    def finding(id, severity='HIGH', scope='current-pr', measured=True, cls=missing, pre_existing=missing,
+                exclusion=missing):
         item = dict(id=id, file='src/shared.ts', line=None, severity=severity, scope=scope,
                     verification=dict(measured=measured, evidence=['retained']), suggestion='retained')
         if cls is not missing:
             item['consequence_class'] = cls
         if pre_existing is not missing:
             item['pre_existing'] = pre_existing
+        if exclusion is not missing:
+            item['consequence_exclusion'] = exclusion
         return item
 
     # Exercise the severity, scope, measured, class and origin boundaries separately.
@@ -52,6 +55,9 @@ with tempfile.TemporaryDirectory() as directory:
     # Canonical reviews omit pre_existing; an explicit false must behave the same.
     matrix_fatal += [finding(f'A-{s}', s, cls='A') for s in lower]
     matrix_fatal += [finding(f'AF-{s}', s, 'follow-up', cls='A', pre_existing=False) for s in lower]
+    # A class B that the demotion gate kept blocking takes the class A route.
+    matrix_fatal += [finding(f'XB-{s}', s, cls='B', exclusion='ac_unmet:AC-1') for s in lower]
+    matrix_fatal += [finding(f'XBF-{s}', s, 'follow-up', cls='B', exclusion='既存の禁止文を削除') for s in lower]
     matrix_nonfatal = [finding(f'N-{i}', s, scope, measured, cls='B' if measured else missing)
                        for i, (s, scope, measured) in enumerate([
         ('HIGH','current-pr',False), ('CRITICAL','follow-up',False),
@@ -65,6 +71,12 @@ with tempfile.TemporaryDirectory() as directory:
     # Each row flips exactly one condition of the class A route.
     matrix_nonfatal += [finding(f'U-{s}', s, measured=False, cls='A') for s in lower]
     matrix_nonfatal += [finding(f'P-{s}', s, cls='A', pre_existing=True) for s in lower]
+    # Each row flips exactly one condition of the excluded class B route.
+    matrix_nonfatal += [finding(f'XE-{s}', s, cls='B', exclusion='') for s in lower]
+    matrix_nonfatal += [finding(f'XN-{s}', s, cls='B', exclusion=None) for s in lower]
+    matrix_nonfatal += [finding(f'XT-{s}', s, cls='B', exclusion=1) for s in lower]
+    matrix_nonfatal += [finding(f'XU-{s}', s, measured=False, cls='B', exclusion='ac_unmet:AC-1') for s in lower]
+    matrix_nonfatal += [finding(f'XP-{s}', s, cls='B', pre_existing=True, exclusion='ac_unmet:AC-1') for s in lower]
     matrix = matrix_fatal + matrix_nonfatal
     matrix_result = json.loads(run(dict(findings=matrix)).stdout)
     assert matrix_result['fatal_map'] == {**{f['id']:True for f in matrix_fatal}, **{f['id']:False for f in matrix_nonfatal}}

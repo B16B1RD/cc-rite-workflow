@@ -8,7 +8,7 @@ The configuration file should be named `rite-config.yml` and placed in:
 - Project root (`./rite-config.yml`)
 - Or `.claude/` directory (`./.claude/rite-config.yml`)
 
-レビュー修正対象は設定によらず fatal（実測あり、current-pr/follow-up で、CRITICAL/HIGH または PR が持ち込んだ class A）に限定されます。非 fatal 指摘は severity を維持して記録され、nit への自動変更は行いません。
+レビュー修正対象は設定によらず fatal（実測あり、current-pr/follow-up で、CRITICAL/HIGH または PR が持ち込んだ class A・降格の除外判別子が付いた class B）に限定されます。非 fatal 指摘は severity を維持して記録され、nit への自動変更は行いません。
 
 ## Full Configuration Example
 
