@@ -3145,3 +3145,5 @@ T02:22:43+09:00 — review ingest (skip pages)
 - 2026-09-24T10:49:25Z lint:clean contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=535, broken_refs=0
 - 2026-09-24T11:06:17Z ingest: pages_updated=1 (exit-contract-enumerate-producing-paths) raw=1
 - 2026-09-24T11:06:54Z lint:clean contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=535, broken_refs=0
+- 2026-09-26T11:26:03Z ingest: pages_updated=2 (mutation-axes-beyond-predicate, inspection-parser-narrow-to-standard-form-fail-closed) raw=2
+- 2026-09-26T11:26:03Z ingest: skipped raw=2
