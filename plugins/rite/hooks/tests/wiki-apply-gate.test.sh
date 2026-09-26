@@ -447,11 +447,15 @@ printf 'tail-only-evidence-marker\n' >> "$repo/large.txt"
 git -C "$repo" add large.txt
 git -C "$repo" commit -qm 'large change'
 write_mem "$mem" "$(applied_page '対象の識別子を照合してから実行する。' tail-only-evidence-marker 'printf ok')"
-run_gate --mode review --worktree "$repo" --base "$review_base" --flow-state "$flow" --memory "$mem"
-if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
-  pass "review handles a diff larger than one environment value"
+# gate_tmp is reset immediately before each TMPDIR-scoped call below (allow / evidence_mismatch /
+# staged_unreadable) so a leftover from one exit path cannot be mistaken for another's residue
+gate_tmp="$ROOT/gate-tmp"
+rm -rf "$gate_tmp" && mkdir -p "$gate_tmp"
+TMPDIR="$gate_tmp" run_gate --mode review --worktree "$repo" --base "$review_base" --flow-state "$flow" --memory "$mem"
+if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT" && [ -z "$(ls -A "$gate_tmp")" ]; then
+  pass "review handles a diff larger than one environment value and leaves no residue"
 else
-  fail "large diff review rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
+  fail "large diff review rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err") left=$(ls -A "$gate_tmp")"
 fi
 write_mem "$mem" "$(applied_page '対象の識別子を照合してから実行する。' not-in-diff.txt 'printf ok')"
 run_gate --mode review --worktree "$repo" --base "$review_base" --flow-state "$flow" --memory "$mem"
@@ -461,8 +465,7 @@ else
   fail "large diff mismatch rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
 fi
 # the diff files are removed when the gate exits
-gate_tmp="$ROOT/gate-tmp"
-mkdir -p "$gate_tmp"
+rm -rf "$gate_tmp" && mkdir -p "$gate_tmp"
 TMPDIR="$gate_tmp" run_gate --mode review --worktree "$repo" --base "$review_base" --flow-state "$flow" --memory "$mem"
 if [ "$GRC" -eq 1 ] && grep -q 'reason=evidence_mismatch' <<<"$GOUT" && [ -z "$(ls -A "$gate_tmp")" ]; then
   pass "gate leaves no diff files behind"
@@ -479,12 +482,14 @@ fi
 # a staged listing that cannot be read is a deny, not an empty list
 cp "$repo/.git/index" "$ROOT/index.bak"
 printf 'broken' > "$repo/.git/index"
-run_gate --mode review --worktree "$repo" --base "$review_base" --flow-state "$flow" --memory "$mem"
+rm -rf "$gate_tmp" && mkdir -p "$gate_tmp"
+TMPDIR="$gate_tmp" run_gate --mode review --worktree "$repo" --base "$review_base" --flow-state "$flow" --memory "$mem"
 cp "$ROOT/index.bak" "$repo/.git/index"
-if [ "$GRC" -eq 1 ] && grep -q 'reason=staged_unreadable' <<<"$GOUT" && grep -q 'ERROR: staged' "$ROOT/gate.err"; then
-  pass "unreadable staged listing denies with staged_unreadable"
+if [ "$GRC" -eq 1 ] && grep -q 'reason=staged_unreadable' <<<"$GOUT" && grep -q 'ERROR: staged' "$ROOT/gate.err" \
+   && [ -z "$(ls -A "$gate_tmp")" ]; then
+  pass "unreadable staged listing denies with staged_unreadable and leaves no residue"
 else
-  fail "staged_unreadable rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
+  fail "staged_unreadable rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err") left=$(ls -A "$gate_tmp")"
 fi
 write_mem "$mem" "$(applied_page '対象の識別子を照合してから実行する。' README 'printf ok')"
 
