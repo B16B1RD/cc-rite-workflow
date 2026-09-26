@@ -22,7 +22,7 @@ PR マージ後のクリーンアップを実行する。やることは以下�
 3. 未完了タスクをチェック (あれば Issue 化を提示)
 4. base ブランチを更新 (fetch + merge --ff-only)
 5. ローカル / リモートブランチを削除
-6. 残存非実測指摘の follow-up 起票 + PR-specific state ファイルを削除
+6. 残存 non-blocking 指摘の follow-up 起票 + PR-specific state ファイルを削除
 7. transient cycle ブランチを削除
 8. Projects Status を Done に更新
 9. (Wiki が有効なら) `rite:wiki-ingest` で raw source を統合
@@ -555,7 +555,7 @@ rationale: references/rationale.md#remote-delete-markers
 
 > **双方向リンク**: [review-result-schema.md](../../references/review-result-schema.md#クリーンアップ) のクリーンアップ節と対になる。
 
-### 6.0 残存非実測指摘から follow-up Issue を起票
+### 6.0 残存 non-blocking 指摘から follow-up Issue を起票
 
 archive より前に実行する（JSON が元の場所にあるうちに読む）。先に orphan 回収が `archive/` へ移した JSON も読む。0 件は起票しない。同定不能は起票せず WARNING。cleanup は止めない。
 rationale: references/rationale.md#follow-up-before-archive
@@ -1056,14 +1056,14 @@ rationale: references/rationale.md#marker-data-delimiter
 
   | 検出 | 側の判定 | 付記 |
   |---|---|---|
-  | `FOLLOW_UP_ISSUE=failed; reason=preview_write` | 未完了 | `⚠️ follow-up 起票の確認用の本文を書き出せず、起票を試みていません。残存非実測指摘があれば follow-up ラベル付き Issue を手動作成してください` |
+  | `FOLLOW_UP_ISSUE=failed; reason=preview_write` | 未完了 | `⚠️ follow-up 起票の確認用の本文を書き出せず、起票を試みていません。残存 non-blocking 指摘があれば follow-up ラベル付き Issue を手動作成してください` |
   | `FOLLOW_UP_ISSUE=failed`（reason 問わず。preview_write 以外。`helper_rc` / `lookup_api` / `create_api` / `create_script_missing` / `json_undecidable` を含む） | 未完了 | `⚠️ follow-up Issue の起票に失敗しました。review-results JSON の non_blocking_findings[] を元に follow-up ラベル付き Issue を手動作成してください` |
   | `skipped; reason=no_json` | 未完了 | 同上（レビュー結果 JSON 不在） |
-  | `skipped; reason=jq_missing` | 未完了 | `⚠️ jq が見つからず follow-up 起票を skip しました。jq を導入したうえで、残存非実測指摘があれば follow-up Issue を手動作成してください` |
+  | `skipped; reason=jq_missing` | 未完了 | `⚠️ jq が見つからず follow-up 起票を skip しました。jq を導入したうえで、残存 non-blocking 指摘があれば follow-up Issue を手動作成してください` |
   | `created` / `skipped; reason=no_findings` / `skipped; reason=already_exists` / `skipped; reason=all_issued` / `skipped; reason=all_resolved` | x 相当 | — |
   | `declined`（ステップ 6.0.C で「起票しない」を選んだ） | x 相当 | `ℹ️ 確認のうえ follow-up Issue の起票を見送りました（{count} 件）。指摘の全文は review-results/archive/ の JSON にあります` |
-  | `preview`（確認の回答前に止まった） | 未完了 | `⚠️ follow-up 起票の確認が完了していません。残存非実測指摘を起票する場合は follow-up ラベル付き Issue を手動作成してください` |
-  | `[CONTEXT] FOLLOW_UP_ISSUE=` かつ `pr={pr_number}` の行が無い | 未完了 | `⚠️ follow-up 起票の実行結果が確認できませんでした。残存非実測指摘があれば follow-up ラベル付き Issue を手動作成してください` |
+  | `preview`（確認の回答前に止まった） | 未完了 | `⚠️ follow-up 起票の確認が完了していません。残存 non-blocking 指摘を起票する場合は follow-up ラベル付き Issue を手動作成してください` |
+  | `[CONTEXT] FOLLOW_UP_ISSUE=` かつ `pr={pr_number}` の行が無い | 未完了 | `⚠️ follow-up 起票の実行結果が確認できませんでした。残存 non-blocking 指摘があれば follow-up ラベル付き Issue を手動作成してください` |
 
   **FOLLOW_UP_ISSUE marker 不在を成功と読んではならない。**
 

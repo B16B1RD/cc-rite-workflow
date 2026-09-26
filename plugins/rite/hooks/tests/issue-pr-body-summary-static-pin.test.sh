@@ -261,7 +261,7 @@ if cmp -s "$work/footer-expected.md" "$work/footer.edited"; then pass 'marker bo
 assert 'footer body heading appears once' 1 "$(heading_count footer)"
 
 # Free-text rule / </details> lines are not boundaries; the section goes to the end.
-printf '<!-- rite:follow-up -->\n## 残存非実測指摘\n\n- 説明: before\n---\n</details>\n- 提案: after\n' > "$work/freetext-body.md"
+printf '<!-- rite:follow-up -->\n## 残存 non-blocking 指摘\n\n- 説明: before\n---\n</details>\n- 提案: after\n' > "$work/freetext-body.md"
 { cat "$work/freetext-body.md"; printf '\n## 9. Decision Log\n\n%s\n' "$dl_line"; } > "$work/freetext-expected.md"
 run_decision_log freetext "$work/freetext-body.md"
 if cmp -s "$work/freetext-expected.md" "$work/freetext.edited"; then pass 'free-text rule body gets section at end'; else fail 'free-text rule body insertion'; fi
@@ -280,7 +280,7 @@ else fail 'D-02 position'; fi
 cat > "$work/prose-body.md" <<'BODY'
 **Type**: fix
 
-## 残存非実測指摘
+## 残存 non-blocking 指摘
 
 - 説明: 2 件目が D-04 に飛ぶ
 

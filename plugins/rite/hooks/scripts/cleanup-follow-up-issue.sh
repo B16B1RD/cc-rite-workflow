@@ -1,7 +1,7 @@
 #!/bin/bash
 # cleanup-follow-up-issue.sh — /rite:cleanup ステップ 6.0
 #
-# マージ済み PR の review-results JSON から残存非実測指摘 (non_blocking_findings[]) を読み、
+# マージ済み PR の review-results JSON から残存 non-blocking 指摘 (non_blocking_findings[]) を読み、
 # follow-up Issue を 1 件起票する。0 件なら起票しない。同一 PR 由来の既存 follow-up があれば
 # 重複起票しない。cleanup 全体は止めない (引数不正のみ exit 1)。
 #
@@ -191,7 +191,7 @@ rite_tempfile_new list_err "fu-list" || exit 1
 rite_tempfile_new create_err_file "fu-create" || exit 1
 
 if ! command -v jq >/dev/null 2>&1; then
-  echo "WARNING: jq が見つからないため残存非実測指摘を判定できません。follow-up 起票を skip します (PR #${PR_NUMBER})" >&2
+  echo "WARNING: jq が見つからないため残存 non-blocking 指摘を判定できません。follow-up 起票を skip します (PR #${PR_NUMBER})" >&2
   echo "  対処: jq を導入してください" >&2
   emit_skip jq_missing
   exit 0
@@ -542,7 +542,7 @@ fi
   printf '%s\n' ""
   printf '%s\n' "## 概要"
   printf '%s\n' ""
-  printf '%s\n' "PR #${PR_NUMBER} のマージ時点で残った非実測指摘を follow-up として切り出す。"
+  printf '%s\n' "PR #${PR_NUMBER} のマージ時点で残った non-blocking 指摘を follow-up として切り出す。"
   printf '%s\n' ""
   printf '%s\n' "## 出典"
   printf '%s\n' ""
@@ -550,7 +550,7 @@ fi
   [ -n "$source_issue_line" ] && printf '%s\n' "$source_issue_line"
   printf '%s\n' "- 機械同定: \`${MARKER}\`"
   printf '%s\n' ""
-  printf '%s\n' "## 残存非実測指摘"
+  printf '%s\n' "## 残存 non-blocking 指摘"
   printf '%s\n' ""
   printf '%s\n' "$findings_md"
 } > "$body_file"
@@ -581,9 +581,9 @@ if [ -n "$PREVIEW_BODY" ]; then
 fi
 
 gh label create follow-up -R "${OWNER}/${REPO}" \
-  --description "マージ時の残存非実測指摘" --color "c5def5" >/dev/null 2>&1 || true
+  --description "マージ時の残存 non-blocking 指摘" --color "c5def5" >/dev/null 2>&1 || true
 
-title="follow-up: PR #${PR_NUMBER} の残存非実測指摘"
+title="follow-up: PR #${PR_NUMBER} の残存 non-blocking 指摘"
 args_json=$(jq -n \
   --arg title "$title" \
   --arg body_file "$body_file" \
@@ -647,7 +647,7 @@ esac
 
 if [ -n "$SOURCE_ISSUE" ]; then
   {
-    printf '%s\n' "マージ時の残存非実測指摘の follow-up: #${new_n}"
+    printf '%s\n' "マージ時の残存 non-blocking 指摘の follow-up: #${new_n}"
     printf '%s\n' ""
     printf '%s\n' "${new_url}"
   } > "$comment_file"

@@ -21,16 +21,19 @@ if ! non_blocking_count=$(jq '[.non_blocking_findings[]? | select(.scope != "nit
   exit 1
 fi
 # 既存 marker / count / 最終行 sentinel を維持し、pointer と降格理由を記録する（全文・証跡は永続 JSON のみに保持）。
+# 非 fatal の移送は実測済みの指摘も運ぶため、見出しは実測の有無を断定せず、行ごとの理由で区別する。
 if ! jq -r --arg pr "{pr_number}" --arg pointer "$triage_review_path" \
   --arg moved "{non_fatal_moved_count}" --arg count "$non_blocking_count" '
   "## 📜 rite 非実測指摘の記録",
   "", "PR #" + $pr, "",
-  "### non-blocking (非 fatal・実測なし)",
+  "### non-blocking（fix 対象外）",
   "今回の移送: " + $moved + "件", "記録 JSON: " + $pointer,
   "", "📎 non_blocking_count: " + $count, "",
   (.non_blocking_findings[]? | select(.scope != "nit-noted")
     | [.id, (.reviewer // ""), .severity, (.file + ":" + ((.line // "anchor") | tostring)),
-       (.demotion_reason // .demotion.reason // "unmeasured")] | @tsv),
+       (if has("demotion") then "class B 降格: " + (.demotion.reason | tostring)
+        elif (.verification | if type == "object" then .measured else null end) == true then "実測済み（非 fatal）"
+        else "実測なし" end)] | @tsv),
   "", "<!-- rite:nbr:v1 -->"
 ' "$triage_review_path" > "$record_body"; then
   rm -f "$record_body" "$record_log"
