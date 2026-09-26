@@ -2,6 +2,7 @@
 
 ## 2026-09-26
 
+* **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0
 * **Create**: [共有 helper への置き換えは既定値そのものではなく既定値の成り立ち方を変える](pages/heuristics/shared-helper-migration-changes-default-value-mechanism.md) — raw/reviews/20260926T135844Z-pr-3165.md を新規ページ化
 * **Create**: [検出規則を広げても走査範囲が先頭語限定のままだと同型の取りこぼしが残る](pages/heuristics/broadening-detection-rule-requires-broadening-scan-scope.md) — raw/reviews/20260926T134852Z-pr-3147.md を新規ページ化
 * **Create**: [検出規則を広げても走査範囲が先頭語限定のままだと同型の取りこぼしが残る](pages/heuristics/broadening-detection-rule-requires-broadening-scan-scope.md) — raw/fixes/20260926T135505Z-pr-3147.md を統合
