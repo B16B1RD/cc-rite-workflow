@@ -448,8 +448,8 @@ def shell_segments(command):
     Quotes are tracked across a whole word, so a separator inside quotes (echo ';',
     NAME="a (b) c") stays in its word, and a quote may open in the middle of a word.
     A command substitution or a ( ) group runs in a subshell, so its commands come back
-    marked nested; a substitution's commands come ahead of the command that contains it,
-    and a group leaves an empty command in its place in the outer list.
+    marked nested and come ahead of the command that contains them. An outer ( ) group
+    stays one command of its list, with the words around it and the word "()" in its place.
     The standard message form $(cat <<DELIM ... DELIM) is data and stays in its word.
     before / after are the control operators around a command: ";" (also a newline),
     "&&", "||", "|" (also |&), "&", or "" at the start, the end and around a substitution.
@@ -457,7 +457,7 @@ def shell_segments(command):
     (&>, >&, <&) stays in its word.
     """
     segments, words, word, quoted, quote, depth = [], [], [], False, None, 0
-    index, length, pending = 0, len(command), ""
+    index, length, pending, group = 0, len(command), "", None
 
     def end_word():
         nonlocal word, quoted
@@ -522,15 +522,19 @@ def shell_segments(command):
         elif ch in " \t\r":
             end_word()
         elif ch == "(":
-            end_segment()
-            if not depth:
-                # The group takes its place in the outer list as an empty command.
-                segments.append(([], False, pending, ""))
-                pending = ""
+            if depth:
+                end_segment()
+            else:
+                # Hold the outer command until the group closes.
+                end_word()
+                group, words, pending = (words, pending), [], ""
             depth += 1
         elif ch == ")":
             end_segment()
             depth = max(depth - 1, 0)
+            if not depth and group:
+                (words, pending), group = group, None
+                words.append("()")
         elif ch == "&" and (command.startswith(">", index + 1) or (index and command[index - 1] in "<>")):
             word.append(ch)
         elif ch in _SEPARATORS:
@@ -587,8 +591,6 @@ def each_git_target(command, cwd):
         if nested:
             continue
         if before in ("", ";", "&"):
-            if before == "&":
-                background.update(members)
             members = []
         members.append(position)
         if after == "&":

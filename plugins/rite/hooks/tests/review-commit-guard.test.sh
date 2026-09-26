@@ -875,7 +875,11 @@ for closed_targets in (False, True):
                             'false &&\ncd ' + other + '\ngit commit -m x', 'true ||\n\ncd ' + other + '; git commit -m x',
                             'true |\ncd ' + other + '\ngit commit -m x', '(false) && cd ' + other + '; git commit -m x',
                             'cd ' + other + ' && git add -A & git commit -m x',
-                            'cd ' + other + ' && (true) & git commit -m x'):
+                            'cd ' + other + ' && (true) & git commit -m x',
+                            'cd ' + other + ' && (true) &\ngit commit -m x',
+                            'cd ' + other + ' && ! (true) & git commit -m x',
+                            'cd ' + other + ' && time (true) & git commit -m x',
+                            'cd ' + other + ' || ! (false) && git commit -m x'):
                 hook(command, reason='target is dynamic')
             # An absolute cd that always runs makes the target known again.
             hook('false && cd ' + other + '; cd ' + str(root) + '; git commit -m x', reason='fix plan record missing')
