@@ -347,7 +347,7 @@ okf_version: "0.2"
 | [grep (BRE) と grep -E (ERE) のメタ文字反転で assert ヘルパーが常時緑の dead assertion になる](pages/anti-patterns/bre-ere-metachar-inversion-dead-assertion.md) | anti-patterns | `grep` と `grep -E` はメタ文字の意味が反転する。 | 2026-09-14T14:12:00Z | high |
 | [外部依存の挙動は hedge か断定かの二択ではない — 既定形は「断定 + 出典 + 確認日 + 再検証手順」](pages/heuristics/external-dependency-claim-hedge-vs-citation.md) | heuristics | 管理外の上流ツール・ライブラリの挙動をドキュメントに書くとき、「断定するか / 『要検証』と逃げるか」の二択で考えると、どちらを選んでも欠陥になる。 | 2026-08-02T09:53:11+09:00 | high |
 | [新設した出力フィールドは producer と consumer の両側を pin する — consumer が表なら行単位で pin する](pages/patterns/new-output-field-pin-producer-and-consumer.md) | patterns | stdout フィールド・sentinel・marker など「出力の契約」を新設したとき、producer 側の emit だけを assert するテストは **「値が出ること」しか保証せず、「値が使われること」は保証しない**。 | 2026-09-06T16:10:23Z | high |
-| [同じ処理を 2 経路で実装したら fixture の「意地悪さ」も 2 経路で揃える](pages/heuristics/dual-path-implementation-needs-matching-adversarial-fixture.md) | heuristics | 同じ処理を 2 つの入力形式・2 つの経路で実装したとき、新しく足した側の fixture が「素朴な形」しか持たないと、経路の**存在**は測れても経路の**正しさ**は測れない。 | 2026-08-02T09:53:11+09:00 | high |
+| [同じ処理を 2 経路で実装したら fixture の「意地悪さ」も 2 経路で揃える](pages/heuristics/dual-path-implementation-needs-matching-adversarial-fixture.md) | heuristics | 同じ処理を 2 つの入力形式・2 つの経路で実装したとき、新しく足した側の fixture が「素朴な形」しか持たないと、経路の**存在**は測れても経路の**正しさ**は測れない。 | 2026-09-26T04:05:00Z | high |
 | [増え続ける corpus の実測値は絶対値ではなく下限 + caveat で書く](pages/heuristics/growing-corpus-measurement-lower-bound-not-absolute.md) | heuristics | ドキュメントやコメントに実測値を書くとき、その値が **サイクルごとに増え続ける corpus** から取られたものなら、絶対値のまま書くと確実に陳腐化する。 | 2026-08-02T09:53:11+09:00 | high |
 | [「N 種を禁止し行き先を示す」規則は禁止列挙と行き先を 1 つの対リストに畳む](pages/patterns/deny-list-paired-with-destination.md) | patterns | 「A・B・C をここに書くな。 | 2026-08-02T11:59:42+09:00 | high |
 | [禁止規則が自分のワークフローと衝突したら、例外条項を足す前に規則の軸を言い換える](pages/heuristics/reframe-rule-predicate-over-carve-out.md) | heuristics | 「X を書くな」型の禁止規則を新設したとき、その場所へ書き込む既存経路が X の形をしたものを書いていると規則が自分のワークフローを違反者にする。 | 2026-08-02T11:59:42+09:00 | high |
@@ -536,10 +536,10 @@ okf_version: "0.2"
 | [同じ記録を書く側と読む側が別々の同定規則を持つ](pages/anti-patterns/writer-reader-divergent-record-identity.md) | anti-patterns | 書き手が「自分の・最新の 1 件」に絞って更新する記録を、読み手が別の規則（見出しの前方一致で全件連結など）で読むと、重複が生じたときだけ書き手が更新しない古い内容を引き継ぐ。読み手は書き手と同じ同定処理を共有する。 | 2026-09-25T09:56:20Z | medium |
 | [「最新」を選ぶ列挙は照合順を LC_ALL=C に固定する](pages/patterns/latest-selection-pins-byte-collation.md) | patterns | glob 展開と [[ < ]] は呼び出し元のロケールの照合順に従い、en_US.UTF-8 では記号を第 1 段階で無視するため、同じ秒に保存した名前の並びが C と逆になる。最新を選ぶ列挙は関数内で照合順を固定し、同じ記録を選ぶ他の処理とそろえる。 | 2026-09-25T09:56:20Z | medium |
 | [差分の帰属を「どの diff に行が現れるか」で決めると、PR 自身の変更を base 由来と誤分類する](pages/anti-patterns/position-based-diff-attribution-misclassifies-own-changes.md) | anti-patterns | レビュー指摘の帰属（PR の変更か base 由来か）を行の位置、つまり 3 点 diff に現れるかどうかで決める規則は、context 行を含む読みと、PR 自身が前サイクルで足した行を後の修正で消すケースの両方で誤分類する。帰属は行の位置ではなく原因（どの commit が変えたか、revert で直るか）に置く。 | 2026-09-26T03:45:00Z | medium |
-| [ゲートを有効化する変更は、同じ条件で動く全 hook を通した経路で既存手順を検証する](pages/heuristics/enabling-a-gate-verify-every-hook-sharing-its-condition.md) | heuristics | 状態値を書き足してあるゲートを有効化すると、同じ状態値を条件にする別の hook も同時に有効化され、既存手順が初めてその hook の拒否経路に入ることがある。helper を直接呼ぶテストは hook を経由しないため、この退行を検出できない。 | 2026-09-26T03:45:00Z | medium |
+| [ゲートを有効化する変更は、同じ条件で動く全 hook を通した経路で既存手順を検証する](pages/heuristics/enabling-a-gate-verify-every-hook-sharing-its-condition.md) | heuristics | 状態値を書き足してあるゲートを有効化すると、同じ状態値を条件にする別の hook も同時に有効化され、既存手順が初めてその hook の拒否経路に入ることがある。helper を直接呼ぶテストは hook を経由しないため、この退行を検出できない。 | 2026-09-26T04:05:00Z | medium |
 ## 統計
 
 - 総ページ数: 527
 - ドメイン別: patterns=124, heuristics=235, anti-patterns=168
-- 最終更新: 2026-09-26T03:45:00Z
+- 最終更新: 2026-09-26T04:05:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |

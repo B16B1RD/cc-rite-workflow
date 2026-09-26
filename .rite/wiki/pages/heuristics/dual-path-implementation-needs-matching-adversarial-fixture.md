@@ -9,9 +9,13 @@ sources:
     resource: "raw/reviews/20260801T184452Z-pr-2070.md"
   - type: "fixes"
     resource: "raw/fixes/20260801T185220Z-pr-2070.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260926T035155Z-pr-3106.md"
 tags: ["fixture-design", "dual-path", "mutation-testing", "test-strength"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-02T09:53:11+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T04:05:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T04:05:00Z" }
 ---
 
 # 同じ処理を 2 経路で実装したら fixture の「意地悪さ」も 2 経路で揃える
@@ -55,6 +59,10 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-02T09:53:11+09:00" }
 
 「2 経路で同じ処理をする」と実装で宣言しながら、その宣言を破る変異が kill されない状態になっている。同ファイル内に既に対称の pin があるなら、その存在自体が「新設側にも要る」というシグナルである。
 
+**同じフラグを 2 経路で使うときも同じ**
+
+差分から変更ファイルを取る処理が、通常 commit では `git diff --no-renames`、merge commit では `git show --no-renames --remerge-diff` と 2 経路でフラグを使っていた。改名のテストの fixture に merge commit が無いため、merge 側の `--no-renames` を外す変異はテストで検出できない。フラグの意味をコメントで説明するときは、一時 repo で実挙動を確かめてから書く。「rename 検出が食い違うと元パスが落ちる」という説明は実測で外れていた（実際は `--name-only` が検出した改名の移動先しか出さないため）。
+
 ## 関連ページ
 
 - [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](./fixture-mutation-isolates-invariants.md)
@@ -65,3 +73,4 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-02T09:53:11+09:00" }
 
 - [レビュー結果](../../raw/reviews/20260801T184452Z-pr-2070.md)
 - [fix 結果](../../raw/fixes/20260801T185220Z-pr-2070.md)
+- [レビュー結果](../../raw/reviews/20260926T035155Z-pr-3106.md)
