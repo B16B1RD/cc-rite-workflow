@@ -151,7 +151,7 @@ Finding Quality Guardrail Category #2 で除外した候補を次の表へ必ず
 | {file} | {concern_description} | {notes — e.g., `/rite:investigate {file}` で追加調査推奨 / 本 PR のスコープ外} |
 
 ## 制約
-[READ-ONLY RULE] このレビューは読み取り専用。`Edit`/`Write` 禁止、問題は指摘事項として報告し修正は `/rite:fix` に委譲する。許可/禁止コマンドの完全一覧は上記「共通レビュー原則」に注入済みの `_reviewer-base.md` `## READ-ONLY Enforcement` を SoT として参照。
+[READ-ONLY RULE] このレビューは読み取り専用。`Edit`/`Write` 禁止、問題は指摘事項として報告し修正は `/rite:fix` に委譲する。許可/禁止コマンドの完全一覧は上記「共通レビュー原則」で読取義務を課した `_reviewer-base.md`（絶対パス）の `## READ-ONLY Enforcement` を SoT として参照。
 ````
 
 ## 受入条件確認の mandate

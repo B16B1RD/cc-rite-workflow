@@ -1285,7 +1285,7 @@ Determine the error type from the completion notification (failure payload or ab
  - Retain successful results and return `[review:error]`; do not enter ステップ 5 or issue a mergeable verdict
  - Include "{reviewer_type}: レビュー失敗" and the recovery step in the error report
 
-**Note**: Timeout / network / invalid format は質問せず 1 回だけ自動再試行する。再失敗後は incomplete として停止する。委譲不能をユーザー承認で mergeable に変換しない。
+**Note**: Timeout / network / invalid format / missing read declaration は質問せず 1 回だけ自動再試行する。再失敗後は incomplete として停止する。委譲不能をユーザー承認で mergeable に変換しない。
 
 ### 4.5 Review Instruction Format
 
@@ -1504,9 +1504,7 @@ WARNING は stderr、JSON line は stdout。drift は **non-blocking** で ス�
 
 **回収契約**: 全 reviewer の completion notification が揃うまで 5.1 を開始しない。未着の結果を推測・補完しない。
 
-**読取完了申告の照合（全経路）**: 各 raw 出力の先頭行の `読取完了:` を、4.3 で渡した絶対パス集合と照合する。欠ければ 4.4 の Missing read declaration として再試行し、再失敗は incomplete として停止する。
-
-**回収完了ゲート（全ホスト必須）**: [manifest 形式](../../references/host-workflow-operations.md#回収ゲート) に従い、起動前の選定名簿と実際の回収結果を保存する。`{reviewer_completions_file}` は `REVIEW_TMP_DIR/rite-review-{session_id}-{run_id}-{pr_number}-{cycle_count}/reviewer-completions.json` の絶対パス。失敗を観測した reviewer を名簿から除去しない。
+**回収完了ゲート（全ホスト必須）**: ゲート helper の前に読取完了申告を照合する（全経路）。各 raw 出力の先頭行の `読取完了:` を 4.3 で渡した絶対パス集合と比べる。欠ければ 4.4 の Missing read declaration として再試行し、再失敗は incomplete として停止する。続けて [manifest 形式](../../references/host-workflow-operations.md#回収ゲート) に従い、起動前の選定名簿と実際の回収結果を保存する。`{reviewer_completions_file}` は `REVIEW_TMP_DIR/rite-review-{session_id}-{run_id}-{pr_number}-{cycle_count}/reviewer-completions.json` の絶対パス。失敗を観測した reviewer を名簿から除去しない。
 
 ```bash
 # reviewer-completion-gate
@@ -1560,7 +1558,7 @@ Route the result mechanically per reviewer:
 | Result | Action |
 |---|---|
 | rc=0 + `LIKELIHOOD_EVIDENCE_GATE=passed` | Accept the raw output and continue |
-| rc=1 + `reason ∈ {anchor_missing, findings_heading_missing, table_header_missing, table_malformed}`, first occurrence | Retry that reviewer once with the original review prompt plus the reason-specific diagnostic and the strict requirement to emit the canonical five-column findings table with a canonical anchor in every realistic finding's `内容` cell; replace the original output with the retry output and rerun this helper |
+| rc=1 + `reason ∈ {anchor_missing, findings_heading_missing, table_header_missing, table_malformed}`, first occurrence | Retry that reviewer once with the original review prompt plus the reason-specific diagnostic and the strict requirement to emit the canonical five-column findings table with a canonical anchor in every realistic finding's `内容` cell; replace the original output with the retry output, apply the 読取完了申告の照合 of the 5.1 回収完了ゲート to it, and rerun this helper |
 | rc=1 with any producer-contract reason after the one retry | Mark the reviewer `incomplete`, set `likelihood_evidence_post_condition=error`, and stop this review with `[review:error]`; do not pass the output to aggregation or 5.3.0 |
 | rc=2, or a missing success marker | Treat as producer-gate infrastructure failure and stop with `[review:error]` |
 
