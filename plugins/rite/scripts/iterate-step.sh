@@ -458,9 +458,20 @@ fi
 # 発火理由を決める。**cycle 上限を先に評価する** — 両方成立しているとき、上限到達は
 # 従来からの契約（収束トレンド判定の backstop）であり、そちらを理由として報告するほうが挙動の説明として正確。
 # lost ゲートが fire のときは下の分岐で CB を保留する（本算出は行わないわけではない）。
+# 未決着の再試行権は fix → 検証 → review の 1 巡を買っている。その review は発散を止めた推移の
+# まま始まるので、発散判定をここで保留しないと権利を発行しても review に届かない。保留するのは
+# 権利を発行した cycle のうち（review-start が counter を進める前）だけで、上限判定は保留しない。
+# 決着（blocking が残れば同じ理由で再停止）は観測が行う。
+retry_pending=$(printf '%s' "$review_state" | jq -r '
+  .review_run as $run
+  | ($run.status == "active" and ($run.retry | type) == "object" and $run.retry.outcome == null
+     and (.cycle_count // 0) == ($run.retry.stop_context.cycle_count // -1))') || exit 1
 cb_reason=""
+retry_hold=0
 if [ "$cc" -ge "$max_cycles" ] 2>/dev/null; then
   cb_reason=max-cycles
+elif [ "$trend_verdict" = fire ] && [ "$retry_pending" = true ]; then
+  retry_hold=1
 elif [ "$trend_verdict" = fire ]; then
   cb_reason=divergence
 fi
@@ -532,7 +543,7 @@ else
     "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "INC=$inc_status"
   marker_emit ITERATE_CB ok "cycle=$new_cc" "max=$max_cycles" \
     "TREND=$trend_series" "TREND_VERDICT=$trend_verdict" "TREND_REASON=$trend_reason" \
-    "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "INC=$inc_status"
+    "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "INC=$inc_status" "RETRY_HOLD=$retry_hold"
 fi
 }
 

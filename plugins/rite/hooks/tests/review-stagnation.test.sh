@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 plugin = Path(sys.argv[1]).resolve()
 checks = 0
@@ -1413,6 +1414,93 @@ try:
           'T-10: a retry that clears every blocking finding continues the run')
 finally:
     f.close()
+
+
+# T-22: iterate's cycle gate lets a granted retry reach its review. The divergence
+# verdict is held only in the cycle the grant was issued in; the cycle cap, the
+# lost-result gate, a stopped run and a spent grant are not held.
+def gate(fixture):
+    return fixture.run(['bash', str(plugin / 'scripts/iterate-step.sh'), 'cycle-gate',
+                        '--pr', '71', '--issue', '42', '--branch', 'fix/issue-42']).stdout
+
+
+def marker(output, key):
+    lines = [line for line in output.splitlines() if line.startswith('[CONTEXT] ' + key + '=')]
+    check(len(lines) == 1, key + ' is emitted once:\n' + output)
+    return lines[0]
+
+
+f = Fixture()
+try:
+    # The gate reads the trend from saved results in file-name order. Results saved in the
+    # same second get random collision suffixes, so keep each cycle in its own second.
+    for roots in (['input defect'], ('input defect', 'second defect')):
+        f.cycle(roots=roots)
+        f.fix()
+        time.sleep(1.1)
+    f.cycle(roots=('input defect', 'second defect', 'third defect'), seconds=1801)
+    check(f.state()['stop_reason'] == 'circuit-breaker:divergence', 'T-22: fixture reached divergence stop')
+    f.plan()
+    retry(f)
+    f.fix()
+    granted = f.state_path.read_bytes()
+    output = gate(f)
+    held = marker(output, 'ITERATE_CB')
+    check(held.startswith('[CONTEXT] ITERATE_CB=ok;') and 'RETRY_HOLD=1' in held
+          and 'TREND=1,2,3;' in held and 'TREND_VERDICT=fire;' in held,
+          'T-22: a granted retry holds the divergence verdict:\n' + output)
+    check(marker(output, 'ITERATE_LOST_GATE').startswith('[CONTEXT] ITERATE_LOST_GATE=ok;')
+          and 'ITERATE_RESUME_HEAD=changed' in output and 'REVIEW_RESUME=1' not in output,
+          'T-22: the hold comes from the divergence branch, not the resume or lost gate:\n' + output)
+    check(f.state_path.read_bytes() == granted, 'T-22: the held gate writes no state')
+
+    def held_not(label, expected, edit=None, receipt=None):
+        results = sorted((f.root / '.rite/review-results').glob('71-*.json'))
+        saved = {path: path.read_bytes() for path in results}
+        if edit:
+            state = f.state()
+            edit(state)
+            dump(f.state_path, state)
+        if receipt:
+            receipt(results)
+        output = gate(f)
+        check(expected in output and 'RETRY_HOLD=1' not in output, label + ':\n' + output)
+        f.state_path.write_bytes(granted)
+        for path, content in saved.items():
+            path.write_bytes(content)
+
+    held_not('T-22: the cycle cap fires during a retry', 'ITERATE_CB=fire; cycle=3; max=3; CB_REASON=max-cycles',
+             receipt=lambda _: (f.root / 'rite-config.yml').write_text('safety:\n  max_review_cycles: 3\n'))
+    (f.root / 'rite-config.yml').unlink()
+    held_not('T-22: a run stopped with an undecided grant is not held', 'CB_REASON=divergence',
+             edit=lambda state: state['review_run'].update(status='stopped'))
+    held_not('T-22: the hold ends once the grant cycle has moved on', 'CB_REASON=divergence',
+             edit=lambda state: state['review_run']['retry']['stop_context'].update(cycle_count=2))
+    held_not('T-22: a lost result is repaired before the hold', 'ITERATE_LOST_GATE=fire',
+             receipt=lambda results: results[-1].unlink())
+    held_not('T-22: a converging trend needs no hold', 'ITERATE_CB=ok',
+             receipt=lambda results: results[-1].write_text(json.dumps(
+                 dict(json.loads(results[-1].read_text()), findings=[]))))
+
+    f.cycle(roots=('input defect', 'second defect', 'third defect', 'fourth defect'))
+    check(f.state()['review_run']['retry']['outcome'] == 'unresolved', 'T-22: the retry review left blocking findings')
+    (f.root / 'source.txt').write_text('another repair\n')
+    f.commit()
+    output = gate(f)
+    check('ITERATE_CB=fire;' in output and 'CB_REASON=divergence' in output and 'RETRY_HOLD=1' not in output,
+          'T-22: a spent grant lets divergence fire again:\n' + output)
+finally:
+    f.close()
+
+iterate = (plugin / 'skills/iterate/SKILL.md').read_text()
+back = iterate.split('「戻る」の行（`divergence` のみ）:', 1)[1].split('```', 2)[1]
+# The way back must name the only path the retry review accepts: the fix-scope check
+# before the repair and verify before the commit, as f.fix() does above.
+check(back.index('review-retry') < back.index('review-fix-scope-check.sh check')
+      < back.index('review-fix-scope-check.sh verify') < back.index('/rite:iterate {pr_number}'),
+      'T-22: the way back names the checked and verified repair before re-running iterate')
+check('再試行権が未決着の間は' in (plugin / 'references/review-stagnation.md').read_text(),
+      'T-22: the retry contract states the held divergence verdict')
 
 
 def approval_record(fixture, reason='user asked for a new run'):
