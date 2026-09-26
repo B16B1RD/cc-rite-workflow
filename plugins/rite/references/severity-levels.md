@@ -211,11 +211,12 @@ blocking = CONFIRMED (全指摘事項に残存)
 
 ```text
 fatal = verification.measured == true
-        AND severity in {CRITICAL, HIGH}
         AND scope in {current-pr, follow-up}
+        AND (severity in {CRITICAL, HIGH}
+             OR (consequence_class == "A" AND pre_existing != true))
 ```
 
-`/rite:fix` はこの集合のみを修正対象とする。gated な非 fatal 指摘は severity / scope / id を維持し、`non_blocking_findings[]` へ `demotion_reason: non_fatal` で移送する。nit-noted は認知のみのまま維持する。gated finding の measured 未判定・未知 severity は `[fix:error]` とし、元 JSON を変更しない。外部・人間 thread の出自判定と解決済み判定は既存経路を維持する。
+`/rite:fix` はこの集合のみを修正対象とする。PR 起因の class A（帰結クラス軸。放置すると今回の成果物の実行時挙動が変わる）は、重要度ラベルが MEDIUM 以下でも同じ PR で修正する。gated finding は revert test を通過しているため PR 起因とみなし、明示的な `pre_existing: true` だけを除外する。`consequence_class` は上記「ゲート層の class A/B 降格政策」の helper が書いた値を使う。gated な非 fatal 指摘は severity / scope / id を維持し、`non_blocking_findings[]` へ `demotion_reason: non_fatal` で移送する。nit-noted は認知のみのまま維持する。gated finding の measured 未判定・未知 severity、および実測済み MEDIUM 以下の `consequence_class` が `A` / `B` でないもの（`class_undetermined`）は `[fix:error]` とし、元 JSON を変更しない。外部・人間 thread の出自判定と解決済み判定は既存経路を維持する。
 
 - **producer の severity 閾値**: 実測必須ゲート自体は **全 severity 帯** (CRITICAL〜LOW) が対象。修正対象は次段の fix consumer が上式で決める。
 - **実測 (measured=true) の受理形式**: (a) 再現コマンド + 観測される誤動作 (`repro`)、または (b) failing test のパス + 失敗出力 (`failing_test`) のいずれか。形式は [`review-result-schema.md` §verification サブフィールド](./review-result-schema.md#verification-サブフィールド) で固定し、LLM の自由裁量に委ねない。**静的検証（grep / ファイル対照 / 配布物読解 / コマンド実行）で欠陥を確認した指摘に `Verification: repro` を添付すれば measured 判定の対象になる** — runtime に限らない。検証を実施したのに添付しない authoring は禁止する ([_reviewer-base.md §Verification: runtime 実測の添付](../agents/_reviewer-base.md#verification-runtime-measurement))。受理記法は `Verification: repro <cmd> => <観測>` / `Verification: failing_test <path> => <失敗出力>`。raw pipe は `¦` で代替表記する。`measured=true` はアンカーが構文として受理された観測記録であり、主張する欠陥の成立そのものではない。観測と主張の対応は Critic 5.2.2 が確認する。採用済みの静的証明・実行失敗・AC 未充足に `Verification: repro` を付けた指摘の measured 判定対象と 5.3.0.M の blocking 分類は維持する。

@@ -27,7 +27,7 @@ PR レビューコメントを取得・整理し、指摘への対応を効率�
 
 途中で止まったら flow-state に `phase=fix` が残るので `/rite:recover` で再開する。
 
-`/rite:iterate` の review-fix loop から「not mergeable」評価時に自動 invoke される。**fatal finding と未解決の外部レビューを修正対象とする**。fatal は実測済みの CRITICAL/HIGH かつ current-pr/follow-up のみ。完了後 machine-readable output pattern を emit し caller に制御返却。
+`/rite:iterate` の review-fix loop から「not mergeable」評価時に自動 invoke される。**fatal finding と未解決の外部レビューを修正対象とする**。fatal は実測済みの current-pr/follow-up のうち、CRITICAL/HIGH か、PR 起因の class A のみ。完了後 machine-readable output pattern を emit し caller に制御返却。
 
 `{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) で解決する。
 
@@ -974,7 +974,7 @@ The rite review result comment (output format of `/rite:pr-review`) has the foll
 4. Determine column count by header row to support both schema 1.0 (4-column) and 1.1.0 (5-column):
    - **5-column (schema 1.1.0)**: severity (column 1), **scope (column 2)**, file:line (column 3), content (column 4), recommended action (column 5)
    - **4-column (schema 1.0 backward compat)**: severity (column 1), file:line (column 2), content (column 3), recommended action (column 4) — `scope` is back-filled from severity using the default mapping in [`severity-levels.md` §自動 default mapping](../../references/severity-levels.md#自動-default-mapping-schema-10-後方互換)
-5. finding ごとに元の ID、severity、scope、file、line、message、recommendation、verification、status、出自を保持する。ID が無い Markdown 行には reviewer と出現順から一意な ID を付け、同じ file:line の別指摘を統合しない。
+5. finding ごとに元の ID、severity、scope、file、line、message、recommendation、verification、status、出自を保持する。`consequence_class` / `pre_existing` は元 JSON にある値だけを複写し、新たに書かない。ID が無い Markdown 行には reviewer と出現順から一意な ID を付け、同じ file:line の別指摘を統合しない。
 6. `### 実測なし指摘 (non-blocking)` は前方一致で 6 列パースし、`non_blocking_findings[]` に保持する。gated な rite 出力の `### 全指摘事項` / `### 実測なし指摘 (non-blocking)` は既存のセクション契約に従い、それぞれ明示的な `verification.measured=true` / `false` として移す。元の JSON がある場合はその verification をそのまま使い、欠落を見出しから補わない。未検証の legacy 表・自由文には measured を推測で付けない。
 
 rite 結果がない場合も空の `findings` / `non_blocking_findings` を持つ JSON を作成してステップ 1.2.2 を通す。人間・外部ツールのコメントは rite finding に変換せず、未解決の外部レビューとして保持する。
@@ -984,7 +984,7 @@ rite 結果がない場合も空の `findings` / `non_blocking_findings` を持�
 **全通常入力経路の合流点**。P0 明示ファイル、P1 会話、P2 ローカル JSON、P3 Raw JSON / legacy Markdown、Target Comment Fast Path は分類・選択・0 件終了の前に必ず本節を実行する。`--nb-sweep` の専用経路は変更しない。
 
 1. P0/P2 は選択した元のファイルを `{triage_review_path}` とし、producer を変更しない。P1/P3 は解析結果を JSON オブジェクト（`findings[]` / `non_blocking_findings[]`、PR 番号、commit SHA、元の gate receipt と verification、`acceptance_criteria` を保持）にし、`state-path-resolve.sh` が返すルートの `.rite/review-results/` に `{pr_number}-{timestamp}.json`（timestamp は `YYYYMMDDHHMMSS`、同名があれば一意になるまで新しい時刻を取得） として atomic write する。Write 失敗は `[fix:error]` で終了する。新規 JSON のトップレベルに `producer: "fix"` を設定する（元 JSON に producer があっても上書き）。元ソースの `{review_source}` は provenance として保持する。
-2. P0 の helper source は `explicit_file`、それ以外は `local_file`。次を実行する。helper は **元 JSON に persist してから** ID-keyed `fatal_map` / `severity_map` / `scope_map` を返す。`fatal = verification.measured == true AND severity ∈ {CRITICAL, HIGH} AND scope ∈ {current-pr, follow-up}` の判定はこの helper だけが担い、LLM は再分類しない。gated な非 fatal を `demotion_reason: "non_fatal"` 付きで `non_blocking_findings[]` へ移送し、nit は保持する。
+2. P0 の helper source は `explicit_file`、それ以外は `local_file`。次を実行する。helper は **元 JSON に persist してから** ID-keyed `fatal_map` / `severity_map` / `scope_map` を返す。`fatal = verification.measured == true AND scope ∈ {current-pr, follow-up} AND (severity ∈ {CRITICAL, HIGH} OR (consequence_class == "A" AND pre_existing != true))` の判定はこの helper だけが担い、LLM は再分類しない。MEDIUM 以下の実測済み gated finding に class A/B が無ければ `class_undetermined` で停止する。gated な非 fatal を `demotion_reason: "non_fatal"` 付きで `non_blocking_findings[]` へ移送し、nit は保持する。
 
 ```bash
 triage_review_path="{triage_review_path}"
@@ -1088,7 +1088,7 @@ PR #{number} のレビューコメント
 
 ## 未対応の指摘 ({count}件)
 
-### 必須修正（CRITICAL/HIGH）({count}件)
+### 必須修正（fatal）({count}件)
 | # | 重要度 | ファイル | 行 | 指摘内容 | レビュアー |
 |---|--------|----------|-----|----------|------------|
 | 1 | {severity} | {path} | {line} | {body_preview} | @{user} |

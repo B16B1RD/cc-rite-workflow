@@ -120,7 +120,8 @@ exit 97
         return subprocess.run(['bash', '-c', block], text=True, capture_output=True, timeout=10,
                               env={**env, **(extra_env or {})})
     findings = [{'id':'F-01', 'severity':'MEDIUM', 'scope':'current-pr', 'file':'a.sh', 'line':1,
-                 'reviewer':'test-reviewer', 'description':'private-detail', 'verification':{'measured':True}}]
+                 'reviewer':'test-reviewer', 'description':'private-detail', 'verification':{'measured':True},
+                 'consequence_class':'B'}]
     source.write_text(json.dumps({'findings': findings}))
     result = run(triage)
     assert result.returncode == 0, result

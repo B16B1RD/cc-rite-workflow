@@ -33,15 +33,27 @@ with tempfile.TemporaryDirectory() as directory:
             assert 'FIX_FATAL_TRIAGE=applied' in result.stderr, result
         checks += 1
         return result
-    def finding(id, severity='HIGH', scope='current-pr', measured=True):
-        return dict(id=id, file='src/shared.ts', line=None, severity=severity, scope=scope,
+    missing = object()
+    def finding(id, severity='HIGH', scope='current-pr', measured=True, cls=missing, pre_existing=missing):
+        item = dict(id=id, file='src/shared.ts', line=None, severity=severity, scope=scope,
                     verification=dict(measured=measured, evidence=['retained']), suggestion='retained')
+        if cls is not missing:
+            item['consequence_class'] = cls
+        if pre_existing is not missing:
+            item['pre_existing'] = pre_existing
+        return item
 
-    # Exercise the severity, scope and measured boundaries separately.
+    # Exercise the severity, scope, measured, class and origin boundaries separately.
+    lower = ['MEDIUM', 'LOW-MEDIUM', 'LOW']
     matrix_fatal = [finding(f'F-{i}', s, scope) for i, (s, scope) in enumerate([
         ('CRITICAL','current-pr'), ('HIGH','current-pr'), ('HIGH','follow-up'),
         ('CRITICAL','follow-up'), ('HIGH','current-pr'), ('CRITICAL','current-pr')])]
-    matrix_nonfatal = [finding(f'N-{i}', s, scope, measured) for i, (s, scope, measured) in enumerate([
+    matrix_fatal += [finding('F-HB', 'HIGH', cls='B'), finding('F-CB', 'CRITICAL', 'follow-up', cls='B')]
+    # Canonical reviews omit pre_existing; an explicit false must behave the same.
+    matrix_fatal += [finding(f'A-{s}', s, cls='A') for s in lower]
+    matrix_fatal += [finding(f'AF-{s}', s, 'follow-up', cls='A', pre_existing=False) for s in lower]
+    matrix_nonfatal = [finding(f'N-{i}', s, scope, measured, cls='B' if measured else missing)
+                       for i, (s, scope, measured) in enumerate([
         ('HIGH','current-pr',False), ('CRITICAL','follow-up',False),
         ('MEDIUM','current-pr',True), ('MEDIUM','follow-up',True),
         ('LOW-MEDIUM','current-pr',True), ('LOW','current-pr',True),
@@ -50,13 +62,16 @@ with tempfile.TemporaryDirectory() as directory:
         ('HIGH','follow-up',False), ('CRITICAL','current-pr',False),
         ('MEDIUM','follow-up',False), ('LOW-MEDIUM','current-pr',False),
         ('LOW','follow-up',False)])]
+    # Each row flips exactly one condition of the class A route.
+    matrix_nonfatal += [finding(f'U-{s}', s, measured=False, cls='A') for s in lower]
+    matrix_nonfatal += [finding(f'P-{s}', s, cls='A', pre_existing=True) for s in lower]
     matrix = matrix_fatal + matrix_nonfatal
     matrix_result = json.loads(run(dict(findings=matrix)).stdout)
     assert matrix_result['fatal_map'] == {**{f['id']:True for f in matrix_fatal}, **{f['id']:False for f in matrix_nonfatal}}
 
     # The measured mixed review keeps six HIGH and moves eleven MEDIUM plus four LOW.
     fatal = [finding(f'H-{i}') for i in range(6)]
-    nonfatal = [finding(f'M-{i}', 'MEDIUM') for i in range(11)] + [finding(f'L-{i}', 'LOW') for i in range(4)]
+    nonfatal = [finding(f'M-{i}', 'MEDIUM', cls='B') for i in range(11)] + [finding(f'L-{i}', 'LOW', cls='B') for i in range(4)]
     prior = dict(id='old', arbitrary={'keep':[1,2]})
     doc = dict(metadata={'keep':'yes'}, findings=fatal+nonfatal, non_blocking_findings=[prior])
     result = run(doc)
@@ -86,6 +101,19 @@ with tempfile.TemporaryDirectory() as directory:
         assert 'findings=bad' in result.stdout
     bad = finding('missing'); del bad['verification']
     run(dict(findings=[bad]), 'measured_undetermined')
+    # measured is resolved first, so an unmeasured MEDIUM without a class reports that reason.
+    bad = finding('missing-both', 'MEDIUM'); del bad['verification']
+    run(dict(findings=[bad]), 'measured_undetermined')
+
+    # A measured MEDIUM-or-lower finding without a gate-written class cannot be triaged.
+    for index, (severity, scope, cls) in enumerate([
+            ('MEDIUM','current-pr',missing), ('LOW-MEDIUM','current-pr',missing), ('LOW','follow-up',missing),
+            ('MEDIUM','current-pr',None), ('MEDIUM','current-pr','C'), ('MEDIUM','current-pr','a'),
+            ('MEDIUM','follow-up',1)]):
+        bad = finding(f'class-{index}', severity, scope, cls=cls)
+        result = run(dict(findings=[fatal[0], bad, nonfatal[0], finding('nit-class', 'MEDIUM', 'nit-noted')]),
+                     'class_undetermined')
+        assert result.stdout.strip() == f'[fix:error] reason=class_undetermined; findings=class-{index}', result
     for verification in [None, [], 'true', 1]:
         bad = finding('bad-verification'); bad['verification'] = verification
         run(dict(findings=[bad]), 'measured_undetermined')
@@ -108,17 +136,24 @@ with tempfile.TemporaryDirectory() as directory:
         stub.unlink()
         assert not list(root.glob('review.json.triage.*')), 'tempfile leaked'
 
+    # Archived cycles predate the class gate: measured MEDIUM-or-lower cycles now stop instead of moving.
     archive=json.loads((scripts/'fixtures/fatal-triage-archive.json').read_text())
     observed=[]
     for cycle in archive['cycles']:
+        gated_ids=[f['id'] for f in cycle['findings'] if f['scope'] != 'nit-noted']
+        undetermined=[f['id'] for f in cycle['findings'] if f['scope'] != 'nit-noted'
+                      and f['severity'] not in ('CRITICAL','HIGH')]
+        if undetermined:
+            result=run(cycle, 'class_undetermined')
+            assert result.stdout.strip() == '[fix:error] reason=class_undetermined; findings=' + ','.join(undetermined)
+            assert undetermined == gated_ids
+            observed.append('class_undetermined')
+            continue
         output=json.loads(run(cycle).stdout)
         observed.append(sum(output['fatal_map'].values()))
         persisted=json.loads(source.read_text())
         run()
         assert json.loads(source.read_text()) == persisted
-    assert observed == archive['expected_fatal'] == [0,0,1,0]
-    assert sum(bool(c['findings']) for c in archive['cycles']) == 4
-    assert sum(bool(n) for n in observed) == 1
-    print('Archived cycle eligibility: 4 before, 1 after (classification replay, not a live cycle prediction).')
+    assert observed == archive['expected'] == ['class_undetermined','class_undetermined',1,0]
 print(f'{checks} helper invocations passed')
 PY

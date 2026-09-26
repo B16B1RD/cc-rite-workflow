@@ -42,8 +42,12 @@ trap 'exit 143' TERM
 result=$(jq -c '
   def gated: .scope == "current-pr" or .scope == "follow-up";
   def measured: if (.verification | type) == "object" then .verification.measured else null end;
-  def fatal: gated and (.severity == "CRITICAL" or .severity == "HIGH")
-    and measured == true;
+  def blocker_severity: .severity == "CRITICAL" or .severity == "HIGH";
+  # Every gated finding passed the revert test, so only an explicit pre_existing=true
+  # excludes it; canonical reviews omit the field.
+  def fatal: gated and measured == true
+    and (blocker_severity
+      or (.consequence_class == "A" and .pre_existing != true));
   def invalid($reason; $items): {error: $reason, findings: [$items[] | .id]};
   if (.findings | type) != "array"
     or ((.non_blocking_findings // []) | type) != "array" then
@@ -54,10 +58,13 @@ result=$(jq -c '
     | [.findings[] | select(.scope as $s |
       ["current-pr", "follow-up", "nit-noted"] | index($s) | not)] as $scope
     | [.findings[] | select(gated) | select((measured | type) != "boolean")] as $measured
+    | [.findings[] | select(gated and measured == true and (blocker_severity | not))
+      | select(.consequence_class as $c | ["A", "B"] | index($c) | not)] as $class
     | [.findings[] | select((.id | type) != "string" or .id == "")] as $ids
     | if ($severity | length) > 0 then invalid("severity_enum_violation"; $severity)
       elif ($scope | length) > 0 then invalid("scope_enum_violation"; $scope)
       elif ($measured | length) > 0 then invalid("measured_undetermined"; $measured)
+      elif ($class | length) > 0 then invalid("class_undetermined"; $class)
       elif ($ids | length) > 0 then invalid("finding_id_invalid"; $ids)
       elif ([.findings[].id] | length) != ([.findings[].id] | unique | length) then
         {error: "finding_id_duplicate", findings: [.findings[].id]}

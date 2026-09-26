@@ -449,13 +449,13 @@ fi
 # 式が完全に一致していても production では count_body_mismatch が出る。
 assert_grep "T-08 fix が数えた本文をそのまま helper へ渡す" "$FIX" '\-\-content-file "\$body"'
 
-# measured MEDIUM is moved by the real triage helper and consumed by the existing sweep.
+# measured class B MEDIUM is moved by the real triage helper and consumed by the existing sweep.
 FIX_SKILL="$PLUGIN_ROOT/skills/fix/SKILL.md"
 medium_json="$sandbox/non-fatal-only.json"
 write_json "$medium_json" <<'JSON'
 {"pr_number":1,"findings":[
-  {"id":"M-1","severity":"MEDIUM","scope":"current-pr","file":"src/a.ts","line":10,"verification":{"measured":true}},
-  {"id":"M-2","severity":"MEDIUM","scope":"follow-up","file":"src/b.ts","line":20,"verification":{"measured":true}}
+  {"id":"M-1","severity":"MEDIUM","scope":"current-pr","file":"src/a.ts","line":10,"verification":{"measured":true},"consequence_class":"B"},
+  {"id":"M-2","severity":"MEDIUM","scope":"follow-up","file":"src/b.ts","line":20,"verification":{"measured":true},"consequence_class":"B"}
 ],"non_blocking_findings":[]}
 JSON
 bash "$PLUGIN_ROOT/scripts/review-findings-maps.sh" --review-source explicit_file \

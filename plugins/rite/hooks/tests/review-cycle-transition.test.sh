@@ -244,6 +244,7 @@ with tempfile.TemporaryDirectory(prefix="rite-review-cycle-") as tmp:
     flow("review-start", "--selection", selection)
     manifest, content = fixtures(True)
     content["findings"][0]["severity"] = "MEDIUM"
+    content["findings"][0]["consequence_class"] = "B"
     dump(content_file, content)
     flow(*finish_args)
     flow("set", "--phase", "fix", "--next", "triage")
