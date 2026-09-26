@@ -13,6 +13,11 @@
 # extract  stdout: the ### 却下台帳 section (empty if absent). exit 0 when
 #          the body is readable even if no ledger exists.
 # append   appends table rows to a ledger file (creates header if missing).
+#          Every appended row must end with a 出典 cell holding the basename of
+#          the review JSON the sweep read ({pr}-{14 digits}[~{4 hex}].json);
+#          otherwise nothing is appended (reason=entries_source_invalid).
+#          An existing 4-column header and its separator are upgraded to the
+#          5-column form; existing 4-column rows are kept as they are.
 # merge-into  splices --ledger-file into --body-file immediately before
 #          `📎 non_blocking_count:`. Replaces an existing ### 却下台帳.
 #          Empty ledger-file is a no-op (does not insert a heading).
@@ -56,8 +61,8 @@ COUNT_LINE='📎 non_blocking_count:'
 
 ledger_header() {
   printf '%s\n\n' "$LEDGER_HEAD"
-  printf '%s\n' '| finding_id | file:line | 判定 | 判定文 |'
-  printf '%s\n' '|------------|-----------|------|--------|'
+  printf '%s\n' '| finding_id | file:line | 判定 | 判定文 | 出典 |'
+  printf '%s\n' '|------------|-----------|------|--------|------|'
 }
 
 extract_section() {
@@ -106,23 +111,51 @@ case "$cmd" in
       echo "[CONTEXT] NB_SWEEP_LEDGER=failed; op=append; reason=mktemp_failed" >&2
       exit 1
     }
-    cleanup() { rm -f -- "$tmp"; }
+    rows=""
+    cleanup() { rm -f -- "$tmp" "$rows"; }
     trap cleanup EXIT HUP INT TERM
+    rows=$(mktemp "${TMPDIR:-/tmp}/rite-nb-rows-XXXXXX") || {
+      echo "ERROR: mktemp failed" >&2
+      echo "[CONTEXT] NB_SWEEP_LEDGER=failed; op=append; reason=mktemp_failed" >&2
+      exit 1
+    }
+    # drop header-only lines from entries (caller may paste a full table)
+    grep -E '^\| ' "$entries_file" | grep -Ev '^\|[-: |]+\|$' | grep -Ev '^\| finding_id ' > "$rows" || true
+    # cleanup の follow-up 起票は出典セルで起票済みの指摘を同定する。出典を欠いた行を書くと、
+    # その行は最新 JSON とだけ照合される旧形式に黙って戻るため、1 行でも欠ければ何も書かない。
+    if bad=$(grep -Ev '^\|.*\|.*\|.*\|.*\|[[:space:]]*[0-9]+-[0-9]{14}(~[0-9a-f]{4})?\.json[[:space:]]*\|[[:space:]]*$' "$rows"); then
+      echo "ERROR: entries row lacks a 出典 cell (review JSON basename) as its last column:" >&2
+      # shellcheck source=../control-char-neutralize.sh
+      source "$(dirname "${BASH_SOURCE[0]}")/../control-char-neutralize.sh"
+      printf '%s\n' "$bad" | head -3 | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+      echo "[CONTEXT] NB_SWEEP_LEDGER=failed; op=append; reason=entries_source_invalid" >&2
+      exit 1
+    fi
     if [ ! -f "$ledger_file" ] || [ ! -s "$ledger_file" ]; then
       ledger_header > "$tmp"
     else
-      cat "$ledger_file" > "$tmp"
+      # 4 列の列ヘッダと直後の区切り行だけを 5 列へ置き換える。既存の 4 列行は書き換えない
+      awk '
+        { line = $0; sub(/\r$/, "", line) }
+        index(line, "| finding_id ") == 1 && split(line, c, "|") == 6 {
+          print "| finding_id | file:line | 判定 | 判定文 | 出典 |"; upgraded = 1; next
+        }
+        upgraded == 1 && line ~ /^[|][-: |]+[|]$/ && split(line, c, "|") == 6 {
+          print "|------------|-----------|------|--------|------|"; upgraded = 0; next
+        }
+        { upgraded = 0; print }
+      ' "$ledger_file" > "$tmp"
       # ensure trailing newline before appending rows
       [ -n "$(tail -c 1 "$tmp" 2>/dev/null)" ] && printf '\n' >> "$tmp"
     fi
-    # drop header-only lines from entries (caller may paste a full table)
-    grep -E '^\| ' "$entries_file" | grep -Ev '^\|[-: |]+\|$' | grep -Ev '^\| finding_id ' >> "$tmp" || true
+    cat "$rows" >> "$tmp"
     if ! mv -- "$tmp" "$ledger_file"; then
       echo "ERROR: ledger write failed: $ledger_file" >&2
       echo "[CONTEXT] NB_SWEEP_LEDGER=failed; op=append; reason=write_failed" >&2
       exit 1
     fi
     tmp=""
+    rm -f -- "$rows"
     trap - EXIT HUP INT TERM
     echo "[CONTEXT] NB_SWEEP_LEDGER=ok; op=append" >&2
     ;;

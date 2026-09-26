@@ -560,7 +560,7 @@ rationale: references/rationale.md#remote-delete-markers
 archive より前に実行する（JSON が元の場所にあるうちに読む）。先に orphan 回収が `archive/` へ移した JSON も読む。0 件は起票しない。同定不能は起票せず WARNING。cleanup は止めない。
 rationale: references/rationale.md#follow-up-before-archive
 
-iterate の NB sweep で起票済みの指摘（関連 Issue 記録コメントの却下台帳で判定=`issued`）は helper が台帳を読んで転記から除く。台帳か最新のレビュー結果 JSON を読めなければ、sweep で Issue 化済みの指摘も転記対象とし（再検証による除外は適用済みのまま）、WARNING と `FOLLOW_UP_SWEEP_ISSUED=unavailable` を出す。
+iterate の NB sweep で起票済みの指摘（関連 Issue 記録コメントの却下台帳で判定=`issued`）は helper が台帳を読んで転記から除く。照合は `[finding_id, file:line]` と、行の出典（sweep が読んだ JSON の basename）と指摘の出典 JSON の一致で行う。出典の無い旧形式の行は最新のレビュー結果 JSON 由来の指摘とだけ照合する。台帳か最新のレビュー結果 JSON を読めなければ、sweep で Issue 化済みの指摘も転記対象とし（再検証による除外は適用済みのまま）、WARNING と `FOLLOW_UP_SWEEP_ISSUED=unavailable` を出す。
 rationale: references/rationale.md#follow-up-sweep-issued-dedup
 
 #### 6.0.V helper 呼び出し前の再検証（マージ後 HEAD）

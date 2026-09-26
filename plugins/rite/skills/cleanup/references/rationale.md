@@ -33,17 +33,23 @@ sweep の起票 Issue に follow-up ラベルと先頭行 marker を付けて既
 `{resolved_ids_csv}` を `{pr_number}-{14 桁}.json#F-NN`（同秒衝突時は `{pr_number}-{14 桁}~{4 桁小文字 hex}.json#F-NN`）の形のトークンに限っているのと同じ理由で、
 パス入りの値を二重引用符内へリテラル置換で渡す経路を増やさない。
 
-除外するのは、sweep が読んだ最新 JSON 由来の finding のうち、台帳の issued 行 `[finding_id, file:line]`
-と組が一致するものだけ。組は `nb-sweep-collect.sh` が台帳と照合する identity で、最新 JSON と一致すれば
-本 PR の sweep が起票した行だと言える（同じ関連 Issue には別 PR の台帳行も並びうる）。
+除外するのは、台帳の issued 行と `[finding_id, file:line]` の組が一致し、かつ行の出典（sweep が読んだ
+JSON の basename）が finding の出典 JSON と一致するものだけ。組は `nb-sweep-collect.sh` が台帳と照合する
+identity で、`id` は JSON ごとに振り直されるため、どの JSON の組かを出典で確定して初めて sweep が起票した
+その指摘だと言える。出典は sweep の完了記録（最後に sweep した JSON 1 本しか持たない）からは復元できない
+ため台帳行に持たせる。sweep 後に別の cycle が走って最新 JSON が変わっても、起票した cycle の指摘を
+除外できる。basename は PR 番号で始まるので、同じ関連 Issue に並ぶ別 PR の台帳行とは一致しない。
+出典の無い旧形式の行は、どの JSON を読んだかが分からないため最新 JSON 由来の finding とだけ照合する。
 
-先行 cycle の finding は、id や位置が最新 JSON の起票済み指摘と同じでも除外しない。重複防止
-（id が振り直された同じ指摘を二重に起票しない）と欠落防止（sweep 未実施の指摘は転記する）は、台帳が
-cycle 属性も指摘の内容も持たない現状では機械的に両立しない。同じ位置には cycle を跨いで別の指摘が
-並ぶことも多く、位置や id で推定して除外するとその本文がどの Issue にも残らない。欠落は共有経路から
-本文が消える取り返しのつかない損失で、重複は人が閉じれば済む損失なので、**欠落防止を優先する**。
-最新 JSON の起票済み指摘と同じ `file:line` にある先行 cycle の指摘に限り、重複しうる件数と
-位置を WARNING で出す。行がずれた再報告は台帳から判別できないため、WARNING なしで重複しうる。
+出典が一致しない finding は、id や位置が起票済み指摘と同じでも除外しない。台帳は指摘の内容を持たず、
+別 cycle の同じ位置の指摘か、id が振り直された同じ指摘の再報告かを判定できない。位置や id で推定して
+除外するとその本文がどの Issue にも残らない。欠落は共有経路から本文が消える取り返しのつかない損失で、
+重複は人が閉じれば済む損失なので、**欠落防止を優先する**。最新 JSON 由来で除外した指摘と同じ
+`file:line` にある先行 cycle の指摘に限り、重複しうる件数と位置を WARNING で出す。行がずれた再報告は
+台帳から判別できないため、WARNING なしで重複しうる。
+
+出典を欠く新規行は、`nb-sweep-ledger.sh append` が書き込み前に拒否する。黙って書くと cleanup がその行を
+旧形式として最新 JSON とだけ照合し、先行 cycle の起票済み指摘を再び転記する挙動へ戻るため。
 
 ## follow-up-exclude-key
 

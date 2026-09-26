@@ -137,7 +137,7 @@ fi
 
 3. **台帳 persist**（issued / recorded / already_rejected 全件）:
 
-Write tool で entries を `{tmp}/rite-nb-entries-{pr_number}.md` に保存（列 0。行形式 `| {id} | {file}:{line} | issued|recorded | {起票先 or 機械理由} |`）。`issued` は起票先 `#N` と URL、`recorded` は `severity={sev}; measured={bool}`。`already_rejected` は id=`reviewer`、位置=`file_line`、severity=`original_severity`、measured=false とする。セル内のパイプ・改行はエスケープする。
+Write tool で entries を `{tmp}/rite-nb-entries-{pr_number}.md` に保存（列 0。行形式 `| {id} | {file}:{line} | issued|recorded | {起票先 or 機械理由} | {record_basename} |`）。`issued` は起票先 `#N` と URL、`recorded` は `severity={sev}; measured={bool}`。`{record_basename}` は手順 1 の stderr に出る `[CONTEXT] NB_SWEEP_COLLECT=ok; ...; record=` の値の basename（全行同じ値）。cleanup の follow-up 起票はこの出典で sweep 起票済みの指摘を同定するため、最終列を欠いた entries は append が `reason=entries_source_invalid` で拒否する。`already_rejected` は id=`reviewer`、位置=`file_line`、severity=`original_severity`、measured=false とする。セル内のパイプ・改行はエスケープする。
 
 ```bash
 entries_file="${TMPDIR:-/tmp}/rite-nb-entries-{pr_number}.md"

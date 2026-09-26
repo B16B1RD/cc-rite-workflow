@@ -54,7 +54,7 @@
 #   T-30 issued だけを除き recorded は転記する / 記録コメント以外・issued 以外の行では除外しない
 #   T-31 台帳を読めない (記録コメントの取得失敗 / 解析不能 / 関連 Issue 無し) ときは WARNING + marker で全件転記
 #   T-32 台帳が無い PR は従来どおり全件転記
-#   T-33 除外は最新 JSON 由来で台帳の issued 行と組が一致する finding に限る。先行 cycle の finding は
+#   T-33 出典の無い 4 列の issued 行では、除外は最新 JSON 由来で組が一致する finding に限る。先行 cycle の finding は
 #        id・位置が同じでも転記し、同じ file:line のものだけ重複候補として WARNING に出す。
 #        行がずれた再報告は WARNING なしで重複しうる / 最新 JSON を照合できなければ apply_failed
 #   T-34 cleanup SKILL.md が all_issued と除外不能 note を完了報告へ配線する
@@ -97,6 +97,16 @@
 #   T-56 C 以外の照合でも、最新 JSON は nb-sweep-collect.sh と同じ同秒衝突側 (archive/) を選ぶ
 #   T-57 6.0.V で review-results-sources.sh を source できない場合は sources_lib_unavailable を出し、
 #        no_json とは区別する
+#
+# Coverage (台帳の出典列):
+#   T-58 先行 cycle の JSON を出典とする issued 行は、最新 JSON が変わっても (archive/ にあっても) 除外する
+#   T-59 出典が最新 JSON の 5 列行は 4 列行と除外件数・重複候補・WARNING が一致する
+#   T-60 出典の無い 4 列行は最新 JSON とだけ照合し、判定文のエスケープ済みパイプを出典と読まない
+#   T-61 出典が一致しない finding は id・位置が同じでも転記し、出典で除外した先行 cycle 指摘の位置は
+#        重複候補に数えない
+#   T-62 存在しない JSON を指す出典は除外しない / 形の合わない出典は出典無しとして扱う
+#   T-63 末尾空白・エスケープ済みパイプ・CRLF の行からも出典を読む
+#   T-64 記録コメントの取得失敗・最新 JSON の照合失敗では出典付きの行でも除外しない
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -723,7 +733,8 @@ else
   # helper の受理形と 6.0.V の射影が同じ basename 形を使う (片方だけ広げると key が一致しなくなる)
   _basename_re='test("^[0-9]+-[0-9]{14}(~[0-9a-f]{4})?\\.json'
   assert "T-15 射影の basename 形" "1" "$(grep -cF "$_basename_re" "$CLEANUP_MD" | tr -d ' ')"
-  assert "T-15 helper の受理形も同じ basename 形" "1" "$(grep -cF "$_basename_re" "$TARGET" | tr -d ' ')"
+  # helper は除外 key の受理形と、却下台帳の出典列の受理形の 2 か所で同じ basename 形を使う
+  assert "T-15 helper の受理形も同じ basename 形" "2" "$(grep -cF "$_basename_re" "$TARGET" | tr -d ' ')"
   assert_not_grep "T-15 件数カウント機構を残さない" "$CLEANUP_MD" 'dropped_id_format'
   # 抽出成功時は marker を出さない。判定後の done が唯一の成功 marker (0 件時に抽出 marker が
   # 最後に残ると判定表が「未完了」と誤報告し、done の前置詞として前方一致でも衝突する)
@@ -1717,6 +1728,144 @@ else
     "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=sources_lib_unavailable" \
     "$(grep '^\[CONTEXT\] FOLLOW_UP_REVERIFY=' "$OUT")"
 fi
+
+# $1=finding_id $2=file:line $3=出典 JSON の basename。sweep が書く 5 列の issued 行
+issued_row5() { printf '| %s | %s | issued | #77 https://example.test/issues/77 | %s |' "$1" "$2" "$3"; }
+CYCLE_A=9-20260101120000.json
+CYCLE_B=9-20260102120000.json
+
+echo "--- T-58: 先行 cycle の JSON を出典とする issued 行は、最新 JSON が変わっても除外する ---"
+reset_stubs
+r=$(new_root t58)
+put_json "$r" "$CYCLE_A" '{"non_blocking_findings":[{"id":"F-01","file":"a.md","line":3,"description":"cycle A で起票済みの指摘"}]}'
+put_json "$r" "$CYCLE_B" '{"non_blocking_findings":[{"id":"F-02","file":"c.md","line":1,"description":"cycle B の指摘"}]}'
+jq -n --argjson c "$(comment_obj "$(record_body "$(issued_row5 F-01 a.md:3 "$CYCLE_A")")")" '[[$c]]' > "$GH_API_JSON"
+run_target "$r"
+assert "T-58 exit 0" "0" "$RC"
+assert_not_grep "T-58 起票済みの指摘は転記しない" "$STUB_DIR/body.md" 'cycle A で起票済みの指摘'
+assert_grep "T-58 他の指摘は転記する" "$STUB_DIR/body.md" 'cycle B の指摘'
+assert_grep "T-58 除外件数 1、重複候補 0" "$ERR" '^\[cleanup-follow-up-issue\] sweep_issued: pr=9; excluded=1; possible_duplicates=0$'
+assert_not_grep "T-58 重複 WARNING を出さない" "$ERR" 'WARNING: sweep 起票済みの指摘と同じ位置'
+assert_not_grep "T-58 除外不能に倒さない" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable'
+
+# 出典 JSON が archive/ へ移っていても、finding の出典 basename と台帳の出典で照合する
+reset_stubs
+r=$(new_root t58-archive)
+put_archived "$r" "$CYCLE_A" '{"non_blocking_findings":[{"id":"F-01","file":"a.md","line":3,"description":"cycle A で起票済みの指摘"}]}'
+put_json "$r" "$CYCLE_B" '{"non_blocking_findings":[]}'
+jq -n --argjson c "$(comment_obj "$(record_body "$(issued_row5 F-01 a.md:3 "$CYCLE_A")")")" '[[$c]]' > "$GH_API_JSON"
+run_target "$r"
+assert_grep "T-58 archive/ の出典でも all_issued" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=all_issued; pr=9'
+assert "T-58 archive/ の出典でも起票しない" "0" "$(create_count)"
+
+echo "--- T-59: 出典が最新 JSON の 5 列行は 4 列行と同じ結果になる ---"
+for t59_row in "$ISSUED_A" "$(issued_row5 F-01 a.md:3 "$CYCLE_B")"; do
+  reset_stubs
+  r=$(new_root "t59-$(printf '%s' "$t59_row" | awk -F'|' '{print NF}')")
+  put_json "$r" "$CYCLE_A" '{"non_blocking_findings":[{"id":"F-01","file":"a.md","line":3,"description":"cycle1"}]}'
+  put_json "$r" "$CYCLE_B" '{"non_blocking_findings":[{"id":"F-01","file":"a.md","line":3,"description":"cycle2"},{"id":"F-02","file":"c.md","line":1,"description":"別の指摘"}]}'
+  jq -n --argjson c "$(comment_obj "$(record_body "$t59_row")")" '[[$c]]' > "$GH_API_JSON"
+  run_target "$r"
+  assert_not_grep "T-59 最新 JSON の起票済み指摘は転記しない ($t59_row)" "$STUB_DIR/body.md" '説明: cycle2$'
+  assert_grep "T-59 出典の違う先行 cycle の指摘は転記 ($t59_row)" "$STUB_DIR/body.md" '説明: cycle1$'
+  assert_grep "T-59 除外件数 1、重複候補 1 ($t59_row)" "$ERR" 'sweep_issued: pr=9; excluded=1; possible_duplicates=1$'
+  assert_grep "T-59 重複 WARNING ($t59_row)" "$ERR" 'WARNING: sweep 起票済みの指摘と同じ位置に先行 cycle の指摘が 1 件あります \(a.md:3\)'
+done
+
+echo "--- T-60: 出典の無い 4 列行は最新 JSON とだけ照合する (判定文にエスケープ済みパイプがあっても出典と読まない) ---"
+reset_stubs
+r=$(new_root t60)
+put_json "$r" "$CYCLE_A" '{"non_blocking_findings":[{"id":"F-01","file":"a.md","line":3,"description":"先行 cycle の同じ組の指摘"}]}'
+put_json "$r" "$CYCLE_B" '{"non_blocking_findings":[{"id":"F-01","file":"a.md","line":3,"description":"最新 cycle の起票済み指摘"}]}'
+jq -n --argjson c "$(comment_obj "$(record_body '| F-01 | a.md:3 | issued | #77 a \| b |')")" '[[$c]]' > "$GH_API_JSON"
+run_target "$r"
+assert_not_grep "T-60 最新 JSON 由来は除外" "$STUB_DIR/body.md" '最新 cycle の起票済み指摘'
+assert_grep "T-60 先行 cycle 由来は転記" "$STUB_DIR/body.md" '先行 cycle の同じ組の指摘'
+assert_grep "T-60 除外件数 1" "$ERR" 'sweep_issued: pr=9; excluded=1; possible_duplicates=1$'
+
+echo "--- T-61: 出典が一致しない finding は id・位置が同じでも除外しない ---"
+reset_stubs
+r=$(new_root t61)
+put_json "$r" "$CYCLE_A" '{"non_blocking_findings":[{"id":"F-09","file":"z.md","line":1,"description":"cycle A の別の指摘"}]}'
+put_json "$r" "$CYCLE_B" '{"non_blocking_findings":[{"id":"F-01","file":"a.md","line":3,"description":"cycle B にだけある同じ組の指摘"}]}'
+jq -n --argjson c "$(comment_obj "$(record_body "$(issued_row5 F-01 a.md:3 "$CYCLE_A")")")" '[[$c]]' > "$GH_API_JSON"
+run_target "$r"
+assert_grep "T-61 出典不一致の指摘は転記" "$STUB_DIR/body.md" 'cycle B にだけある同じ組の指摘'
+assert_grep "T-61 除外件数 0" "$ERR" 'sweep_issued: pr=9; excluded=0; possible_duplicates=0$'
+assert_not_grep "T-61 除外不能に倒さない" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable'
+
+# 出典で先行 cycle の指摘を除外しても、最新 JSON の同じ位置の指摘は重複候補に数えない
+reset_stubs
+r=$(new_root t61-same-loc)
+put_json "$r" "$CYCLE_A" '{"non_blocking_findings":[{"id":"F-01","file":"a.md","line":3,"description":"cycle A で起票済みの指摘"}]}'
+put_json "$r" "$CYCLE_B" '{"non_blocking_findings":[{"id":"F-01","file":"a.md","line":3,"description":"cycle B の同じ位置の指摘"}]}'
+jq -n --argjson c "$(comment_obj "$(record_body "$(issued_row5 F-01 a.md:3 "$CYCLE_A")")")" '[[$c]]' > "$GH_API_JSON"
+run_target "$r"
+assert_not_grep "T-61 出典一致の先行 cycle 指摘は除外" "$STUB_DIR/body.md" 'cycle A で起票済みの指摘'
+assert_grep "T-61 最新 cycle の同じ位置の指摘は転記" "$STUB_DIR/body.md" 'cycle B の同じ位置の指摘'
+assert_grep "T-61 除外件数 1、重複候補 0" "$ERR" 'sweep_issued: pr=9; excluded=1; possible_duplicates=0$'
+assert_not_grep "T-61 重複 WARNING を出さない" "$ERR" 'WARNING: sweep 起票済みの指摘と同じ位置'
+
+echo "--- T-62: 出典の値が JSON を指さない / 形が合わないとき ---"
+# 存在しない JSON を指す出典: どの finding とも一致せず、除外しない (重複側に倒す)
+reset_stubs
+r=$(new_root t62-missing)
+put_json "$r" "$CYCLE_B" '{"non_blocking_findings":[{"id":"F-01","file":"a.md","line":3,"description":"最新 cycle の指摘"}]}'
+jq -n --argjson c "$(comment_obj "$(record_body "$(issued_row5 F-01 a.md:3 9-20250101120000.json)")")" '[[$c]]' > "$GH_API_JSON"
+run_target "$r"
+assert_grep "T-62 存在しない出典では除外しない" "$STUB_DIR/body.md" '最新 cycle の指摘'
+assert_grep "T-62 存在しない出典の除外件数 0" "$ERR" 'sweep_issued: pr=9; excluded=0; possible_duplicates=0$'
+assert_not_grep "T-62 存在しない出典で除外不能に倒さない" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable'
+# 形の合わない出典: 出典無しの行として最新 JSON とだけ照合する
+for t62_src in review.json "$CYCLE_A.corrupt-1" ''; do
+  reset_stubs
+  r=$(new_root "t62-invalid-${t62_src:-empty}")
+  put_json "$r" "$CYCLE_A" '{"non_blocking_findings":[{"id":"F-01","file":"a.md","line":3,"description":"先行 cycle の指摘"}]}'
+  put_json "$r" "$CYCLE_B" '{"non_blocking_findings":[{"id":"F-01","file":"a.md","line":3,"description":"最新 cycle の指摘"}]}'
+  jq -n --argjson c "$(comment_obj "$(record_body "$(issued_row5 F-01 a.md:3 "$t62_src")")")" '[[$c]]' > "$GH_API_JSON"
+  run_target "$r"
+  assert_not_grep "T-62 形の合わない出典 '$t62_src' は最新 JSON 由来を除外" "$STUB_DIR/body.md" '最新 cycle の指摘'
+  assert_grep "T-62 形の合わない出典 '$t62_src' は先行 cycle 由来を転記" "$STUB_DIR/body.md" '先行 cycle の指摘'
+  assert_grep "T-62 形の合わない出典 '$t62_src' の除外件数 1" "$ERR" 'sweep_issued: pr=9; excluded=1; possible_duplicates=1$'
+done
+
+echo "--- T-63: 出典セルの読み取り (末尾空白・エスケープ済みパイプ・CRLF) ---"
+for t63_variant in trailing escaped crlf; do
+  reset_stubs
+  r=$(new_root "t63-$t63_variant")
+  put_json "$r" "$CYCLE_A" '{"non_blocking_findings":[{"id":"F-01","file":"a.md","line":3,"description":"cycle A で起票済みの指摘"}]}'
+  put_json "$r" "$CYCLE_B" '{"non_blocking_findings":[]}'
+  case "$t63_variant" in
+    trailing) _t63_body=$(record_body "$(issued_row5 F-01 a.md:3 "$CYCLE_A")   ") ;;
+    escaped)  _t63_body=$(record_body "| F-01 | a.md:3 | issued | #77 a \| b | $CYCLE_A |") ;;
+    crlf)     _t63_body=$(record_body "$(issued_row5 F-01 a.md:3 "$CYCLE_A")" | sed 's/$/\r/') ;;
+  esac
+  jq -n --argjson c "$(comment_obj "$_t63_body")" '[[$c]]' > "$GH_API_JSON"
+  run_target "$r"
+  assert_grep "T-63 $t63_variant でも出典を読んで all_issued" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=all_issued; pr=9'
+  assert_grep "T-63 $t63_variant の除外件数 1" "$ERR" 'sweep_issued: pr=9; excluded=1; possible_duplicates=0$'
+done
+
+echo "--- T-64: 台帳・JSON を読めないときは出典付きの行でも除外しない ---"
+reset_stubs
+export GH_API_RC=1
+r=$(new_root t64-comments)
+put_json "$r" "$CYCLE_A" '{"non_blocking_findings":[{"id":"F-01","file":"a.md","line":3,"description":"cycle A の指摘"}]}'
+jq -n --argjson c "$(comment_obj "$(record_body "$(issued_row5 F-01 a.md:3 "$CYCLE_A")")")" '[[$c]]' > "$GH_API_JSON"
+run_target "$r"
+assert_grep "T-64 取得失敗は comments_api" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=comments_api; pr=9'
+assert_grep "T-64 取得失敗の WARNING" "$ERR" 'WARNING: 関連 Issue の記録コメントを取得できませんでした'
+assert_grep "T-64 取得失敗では除外せず転記" "$STUB_DIR/body.md" 'cycle A の指摘'
+# 最新 JSON を照合できないときは、出典が先行 cycle を指す行も含めて除外を適用しない
+reset_stubs
+r=$(new_root t64-latest)
+put_json "$r" "$CYCLE_A" '{"non_blocking_findings":[{"id":"F-01","file":"a.md","line":3,"description":"cycle A の指摘"}]}'
+put_json "$r" "$CYCLE_B" '{broken'
+jq -n --argjson c "$(comment_obj "$(record_body "$(issued_row5 F-01 a.md:3 "$CYCLE_A")")")" '[[$c]]' > "$GH_API_JSON"
+run_target "$r"
+assert_grep "T-64 最新 JSON を読めなければ apply_failed" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=apply_failed; pr=9'
+assert_grep "T-64 最新 JSON を読めなければ除外せず転記" "$STUB_DIR/body.md" 'cycle A の指摘'
+assert_not_grep "T-64 最新 JSON を読めなければ除外件数を出さない" "$ERR" 'sweep_issued:'
 
 echo "--- T-arg: 引数 gate ---"
 bash "$TARGET" --pr abc --state-root "$TMP_ROOT" --owner a --repo b >"$OUT" 2>"$ERR"; RC=$?
