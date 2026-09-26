@@ -4,9 +4,10 @@ title: "実測の有無と severity は独立した 2 軸で、両方を満た�
 domain: "heuristics"
 description: "実測必須ゲートは「測っていない指摘を blocking にしない」ためのもので、測ってあっても重要度が閾値に届かなければ fatal にならない。実行時に何かが壊れる帰結クラスでも、severity が中位なら修正ループは動かない。"
 created: "2026-09-06T16:10:23Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T08:46:38Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T09:08:27Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T08:46:38Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T09:08:27Z" }
 sources:
   - type: "fixes"
     resource: "raw/fixes/20260906T144434Z-pr-2582.md"
@@ -14,6 +15,8 @@ sources:
     resource: "raw/reviews/20260926T083923Z-pr-3129.md"
   - type: "fixes"
     resource: "raw/fixes/20260926T084101Z-pr-3126.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260926T085821Z-pr-3125.md"
 tags: ["review-loop", "severity", "evidence-gate", "convergence"]
 confidence: high
 ---
@@ -38,6 +41,12 @@ fatal 0 件は「何もしない」ではない。移送した件数と記録先
 
 ガード迂回や後続ゲートの停止のように実行時帰結を持つ指摘でも、実測付き MEDIUM は non-blocking へ移送され、修正コミットは作られない。その PR の中で直すべきだと考えるなら、fix 側で扱いを変えるのではなく、reviewer 側で HIGH 以上が妥当かを severity 判定の段階で詰める。移送された指摘は non-blocking 記録と follow-up Issue で追跡され、PR 自体はそのまま収束する。
 
+### レビューの fix-needed と修正 0 件の fix 完了は矛盾しない
+
+レビュー側の blocking 判定は実測の有無で決まり、severity に依存しない。実測付きの LOW-MEDIUM でも blocking として数えられ、総合評価は fix-needed になる。一方、fix 側の fatal 判定は severity が CRITICAL / HIGH のものに限る。そのため、レビューが fix-needed を返した直後の fix が、コードを 1 行も変えずに非 fatal 移送だけで正常終了することがある。これは想定された経路であり、どちらかのゲートの不具合ではない。
+
+複数の reviewer の評価が割れた指摘（一方は仮説として自らの監査ログで除外し、他方は blocking として提出した）も、統合側が主観で先に握り潰さず、機械ゲート（Likelihood-Evidence と実測必須ゲート）へそのまま通す。評価の相違はゲートの判定と記録に残り、後から追える。
+
 ## 関連ページ
 
 - [実測 likelihood ゲートは evidence アンカーとセットで運用する](./observed-likelihood-gate-with-evidence-anchors.md)
@@ -48,3 +57,4 @@ fatal 0 件は「何もしない」ではない。移送した件数と記録先
 - [fix 結果](../../raw/fixes/20260906T144434Z-pr-2582.md)
 - [fix 結果](../../raw/reviews/20260926T083923Z-pr-3129.md)
 - [fix 結果](../../raw/fixes/20260926T084101Z-pr-3126.md)
+- [fix 結果](../../raw/fixes/20260926T085821Z-pr-3125.md)

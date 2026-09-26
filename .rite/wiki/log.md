@@ -2,6 +2,8 @@
 
 ## 2026-09-26
 
+* **Update**: [実測の有無と severity は独立した 2 軸で、両方を満たさないと修正対象にならない](pages/heuristics/evidence-and-severity-are-independent-gates.md) — raw/fixes/20260926T085821Z-pr-3125.md を統合
+* **Update**: [hook のテストスイートは ambient な session-id 環境変数 (CLAUDE_CODE_SESSION_ID 等) に依存させない (non-hermetic test)](pages/heuristics/test-hermeticity-ambient-session-id-env-leak.md) — raw/reviews/20260926T090314Z-pr-3129.md を統合
 * **Update**: [実測の有無と severity は独立した 2 軸で、両方を満たさないと修正対象にならない](pages/heuristics/evidence-and-severity-are-independent-gates.md) — raw/reviews/20260926T083923Z-pr-3129.md を統合
 * **Update**: [実測の有無と severity は独立した 2 軸で、両方を満たさないと修正対象にならない](pages/heuristics/evidence-and-severity-are-independent-gates.md) — raw/fixes/20260926T084101Z-pr-3126.md を統合
 * **Create**: [除外は字面で、許可判定は symlink 解決後で比べる二重基準は、symlink 経由で許可集合を広げる](pages/anti-patterns/literal-exclusion-with-resolved-allow-check-leaks-via-symlink.md) — raw/reviews/20260926T083635Z-pr-3129.md を新規ページ化

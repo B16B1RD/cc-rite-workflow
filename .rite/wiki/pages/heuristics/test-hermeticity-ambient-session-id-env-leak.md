@@ -12,11 +12,14 @@ sources:
     resource: "raw/reviews/20260720T142626Z-pr-1932.md"
   - type: "reviews"
     resource: "raw/reviews/20260915T132416Z-pr-2871.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260926T090314Z-pr-3129.md"
 tags: ["test", "hermeticity", "env-var-leak", "session-id", "flow-state", "sandbox"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-15T13:31:28Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T09:08:27Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-15T13:31:28Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T09:08:27Z" }
 ---
 
 # hook のテストスイートは ambient な session-id 環境変数 (CLAUDE_CODE_SESSION_ID 等) に依存させない (non-hermetic test)
@@ -67,6 +70,13 @@ session-id の 2 変数を unset しても、同じテストが稼働中のセ�
 - **対策は runner の一覧に合わせる**: 冒頭の unset は、session 解決と state root に効く変数（`CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID CODEX_THREAD_ID GROK_SESSION_ID RITE_HOST RITE_STATE_ROOT`）まで含める。一覧を各テストへ手でコピーするとずれていくため、共通の読み込み元でまとめて unset する方法も候補になる。
 - **CI では検出できない**: CI はランナー経由でしか走らないので、テスト側の unset から変数を外しても green のままになる。効き目を確かめるには、該当変数を設定したまま単体実行する。
 
+### レビュー中のセッションで検証コマンドを走らせると commit 拒否側に倒れる
+
+fix-scope の検証コマンドは実行中のセッションから `bash -c` で起動されるため、session-id の環境変数をそのまま継承する。レビュー cycle が進行中のセッションでは、その環境変数からレビュー状態が解決され、commit / merge を検査する hook のテストが「計画・検証が揃っていない commit」として拒否側の結果を返す。`pre-tool-bash-guard.test.sh` はこの経路で 6 件落ち、同じテストをセッション変数を外して実行すると全件 pass した。テスト冒頭で unset しているのは subagent 種別の変数だけで、session 解決の変数は外していない。
+
+- **検証コマンドは CI と同じ条件で書く**: 計画の検証コマンドに `env -u CLAUDE_CODE_SESSION_ID -u RITE_HOST -u RITE_PLUGIN_ROOT` を前置し、ランナー経由と同じ環境で走らせる。失敗を見たら、取り込んだ変更を疑う前にセッション変数を外した単体実行で再現するか確かめる。
+- **reviewer に渡すテスト実行手順にも同じ前置を付ける**: 付けないと reviewer がこの偽の失敗を指摘として報告する。
+
 ## 関連ページ
 
 - [owner/repo 解決テストは ambient な git remote 状態に依存させない (non-hermetic test)](./test-hermeticity-ambient-git-remote-dependency.md)
@@ -76,3 +86,4 @@ session-id の 2 変数を unset しても、同じテストが稼働中のセ�
 - [post-compact.test.sh の ambient session-id 環境変数漏洩を遮断](../../raw/reviews/20260720T094042Z-pr-1928.md)
 - [hooks/tests 全体の悉皆監査で7ファイルを修正](../../raw/reviews/20260720T142626Z-pr-1932.md)
 - [reap テストの単体実行でホスト選択の環境変数を除去するレビュー結果](../../raw/reviews/20260915T132416Z-pr-2871.md)
+- [base 取り込み後の検証でレビュー中のセッション状態がテストへ漏れたレビュー結果](../../raw/reviews/20260926T090314Z-pr-3129.md)
