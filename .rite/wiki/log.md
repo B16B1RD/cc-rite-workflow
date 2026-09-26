@@ -57,6 +57,7 @@
 * **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — raw/reviews/20260926T085328Z-pr-3130.md を統合
 * **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=544, broken_refs=0
 * **Skip**: [20260926T091203Z-pr-3128.md](raw/reviews/20260926T091203Z-pr-3128.md) — 検出器化候補: base 取り込みで同一テストファイルに両側が追加した連番テスト ID の重複と、モジュールレベルの名前をループ変数が上書きする衝突を機械検出する
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=545, broken_refs=0
 
 ## 2026-09-25
 
