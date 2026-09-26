@@ -36,7 +36,7 @@ rationale: references/rationale.md#helper-delegation
 | **未登録 raw (unregistered_raw)** | `ingested: true` で `sources.ref` 未登録だが、raw frontmatter に `ingest_status: skipped` 記録がある raw。意図的に経験則化しなかった件数の informational 指標 | **No** (`n_warnings` 不加算) |
 | **番号参照 (descriptive_number_ref)** | ページ本文・`## ソース` 節の bullet・`index.md` のエントリサマリー・`log.md` に残った Issue/PR 番号参照。検出文法は `number-reference-check.sh` に委譲する（3-4 桁の番号トークン。キーワードの有無を問わない）。Wiki は番号の受け皿ではなく Why 散文の場のため surface する。frontmatter の `sources:` ブロック・コードフェンス / スパン・TODO/FIXME は除外。`raw/**` / `SCHEMA.md` は走査しない（意図的除外） | **No** (`n_warnings` 不加算、ステップ 7.5) |
 
-**設計契約**: lint は **読み取り専用** (`log.md` への追記を除く)。**原則 exit 0**で終了し、検出件数・事前チェック失敗 (下記 (c) を除く)・ブランチ読取失敗は非ブロッキングとして扱う。例外は (a) `branch_strategy` 未知値検出 (ステップ 2.2 / 4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.2 / 8.3 で同型 fail-fast。うち 4 / 5 / 6.0 / 6.2 / 7 / 7.5 は helper 内で実行)、(b) `{mode}` / `{pages_list}` / `{log_entry}` / counter 等の Claude placeholder 残留検知 (各 site で同型 fail-fast)、(c) `lib/wiki-config.sh` の source 失敗 (ステップ 1.1)。
+**設計契約**: lint は **読み取り専用** (`log.md` への追記を除く)。**原則 exit 0**で終了し、検出件数・事前チェック失敗 (下記 (c) を除く)・ブランチ読取失敗は非ブロッキングとして扱う。例外は (a) `branch_strategy` 未知値検出 (ステップ 2.2 / 4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.2 / 8.3 で同型 fail-fast。うち 4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.3 は helper 内で実行)、(b) `{mode}` / `{pages_list}` / `{log_entry}` / counter 等の Claude placeholder 残留検知 (各 site で同型 fail-fast)、(c) `lib/wiki-config.sh` の source 失敗 (ステップ 1.1)。
 rationale: references/rationale.md#fail-loud-contract
 
 矛盾検出 (ステップ 3) と欠落概念検出 (ステップ 6) は LLM のセマンティック読解に依存する。`{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md) で解決する。共通パターンは [Wiki Patterns](../../references/wiki-patterns.md) を参照。
@@ -112,7 +112,7 @@ rationale: references/rationale.md#wiki-config-opt-out
 **Wiki が無効の場合**: 早期 return (`--auto` モードでは ステップ 9.2 の 3 行出力契約を必ず守る):
 
 ```bash
-# Claude placeholder {mode} 残留 fail-fast gate (glob pattern 版、同型 gate: ステップ 1.1 / 1.3 / 8.1 / 8.3 + helper 内 (4 / 5 / 6.0 / 6.2 / 7 / 7.5))
+# Claude placeholder {mode} 残留 fail-fast gate (glob pattern 版、同型 gate: ステップ 1.1 / 1.3 / 8.1 + helper 内 (4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.3))
 mode="{mode}"
 case "$mode" in
   "{"*"}")
@@ -727,7 +727,7 @@ n_broken_refs={n_broken_refs}
 # 参考: n_stale={n_stale} — informational のため判定式から意図的に除外
 # 参考: n_unregistered_raw={n_unregistered_raw} — informational のため判定式から意図的に除外
 
-# Placeholder residue fail-fast gate (同型 gate: ステップ 1.1 / 1.3 / 8.1 / 8.3 + helper 内 (4 / 5 / 6.0 / 6.2 / 7 / 7.5)): LLM が literal substitute を忘れると
+# Placeholder residue fail-fast gate (同型 gate: ステップ 1.1 / 1.3 / 8.1 + helper 内 (4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.3)): LLM が literal substitute を忘れると
 # `[ "{n_contradictions}" -gt 0 ]` が rc=2 を返し、set -o pipefail のみでは検知できず else 分岐に
 # 流れて `lint_action="lint:clean"` が silent emit される fail-silent regression を防ぐ。
 for _n_var in n_contradictions n_orphans n_missing_concept n_broken_refs; do
@@ -755,7 +755,7 @@ echo "[CONTEXT] lint_action=$lint_action"
 
 ### 8.2 書き込み先パスの決定
 
-`branch_strategy` の値に応じて書き込み先パスを決定する (ステップ 2.2 / 6.0 / 6.2 / 8.2 / 8.3 で同型の case 文 + fail-fast。うち 6.0 / 6.2 は helper 内):
+`branch_strategy` の値に応じて書き込み先パスを決定する (ステップ 2.2 / 6.0 / 6.2 / 8.2 / 8.3 で同型の case 文 + fail-fast。うち 6.0 / 6.2 / 8.3 は helper 内):
 
 ```bash
 branch_strategy="{branch_strategy}"
@@ -774,193 +774,32 @@ case "$branch_strategy" in
     ;;
 esac
 echo "log_path=$log_path"
+# ステップ 8.3 の commit メッセージの書き先 (作業ツリー外。ファイルは Write が作る)
+echo "wiki_lint_msg_file=${TMPDIR:-/tmp}/rite-wiki-lint-msg-$(date +%s)-${RANDOM}.txt"
 ```
 
 ### 8.3 書き込み手順
 
-**`{log_entry}` / `{log_path}` placeholder source 契約**:
+**`{log_entry}` / `{log_path}` / `{wiki_lint_msg_file}` placeholder source 契約**:
 
 | placeholder | source | 責務 |
 |-------------|--------|------|
 | `{log_path}` | ステップ 8.2 bash block の `echo "log_path=$log_path"` | LLM は会話コンテキストから `log_path=` 行を grep し literal substitute |
+| `{wiki_lint_msg_file}` | ステップ 8.2 bash block の `echo "wiki_lint_msg_file=..."` | LLM は `wiki_lint_msg_file=` 行の絶対パスを literal substitute する（Write はシェル変数を展開できない） |
 | `{log_entry}` | **LLM が ステップ 8.1 の OKF bullet 形式から組み立てる** | LLM は ステップ 1.4 / 3-7 で蓄積された Lint カウンタ値を 6 フィールド形式 (`contradictions={n}, stale={n}, ...`) に埋め込み、`* **{lint_action}** — {6 フィールド}` の OKF bullet を生成する。**`{lint_action}` は LLM 独自判定ではなく、ステップ 8.1 bash block が emit する `[CONTEXT] lint_action=...` 行を first-match で抽出し、`=` 右辺の enum 値 (`lint:clean` / `lint:warning`) を literal 代入する**。追記時は今日の日付見出し `## YYYY-MM-DD` がログ先頭に無ければ追加し（新しい順）、その配下に bullet を append する |
 
 **書き込み手順**:
 
 1. Edit ツールで `{log_path}` (ステップ 8.2 で出力された値を literal substitute) に ステップ 8.1 の OKF bullet（必要なら日付見出し）を **append-only** で追加する。**注意**: シェル変数 `$log_path` は Bash ツール呼び出し境界を超えると失われ、Edit ツールはシェル変数を解釈しない。`echo "log_path=..."` 出力を会話文脈から拾って literal value で置換する
-2. 以下の bash ブロックで commit + push する (`{log_entry}` は LLM が上記契約に従い ステップ 8.1 の OKF bullet 形式から生成した literal 文字列で substitute する)
+2. Write ツールで `{wiki_lint_msg_file}` に commit メッセージ `{wiki_lint_commit_message}`（[commit-convention.md](../../references/commit-convention.md) 適用後の全文。未指定時の既定は `docs(wiki): lint report — {log_entry}`）を書く。メッセージはシェルを通さずファイルで渡す
+3. 次の 1 文で commit する（`--auto` のときは commit のみで push は ingest ステップ 8.6 に委ねる。standalone は commit + push）
 
 ```bash
-# ステップ 8.3: log.md 追記後の commit
-# lint.md 内で唯一 set -euo pipefail を使う phase。他 phase は set -o pipefail のみ (非ブロッキング契約のため
-# stdout 空吐き出し経路を意図的に許容)。本 phase は外部 script 呼出 + commit msg placeholder gate を持つため
-# set -e が必要。外部 script rc capture は separate_branch 経路の commit_out capture 直前で `set +e` する。
-set -euo pipefail
-
-# plugin_root の inline 解決 (lint.md には専用解決ステップがないため inline)
-branch_strategy="{branch_strategy}"
-plugin_root=$(cat .rite/plugin-root 2>/dev/null || cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi' || true)
-if [ -z "$plugin_root" ] || [ ! -d "$plugin_root/templates/wiki" ]; then
-  echo "WARNING: plugin_root resolution failed (resolved: '${plugin_root:-<empty>}'). log.md 追記の commit を skip します (非ブロッキング契約)" >&2
-  exit 0
-fi
-
-# Claude placeholder {mode} 残留 fail-fast gate (同型 gate: ステップ 1.1 / 1.3)。 wiki push
-# batch/defer: --auto (ingest から呼ばれた) なら push を ingest 側の集約 push (ingest.md ステップ 8.6)
-# に委ね、ここでは --commit-only で commit のみ行う。standalone 実行 (mode 空) は従来どおり commit + push
-# を即座に行う (standalone lint はそれ自身で完結した 1 フローのため、集約する相手が存在しない)。
-mode="{mode}"
-case "$mode" in
-  "{"*"}")
-    echo "ERROR: ステップ 8.3 の {mode} placeholder が literal substitute されていません (値: '$mode')" >&2
-    echo "  Claude は lint skill 呼び出し時の args 文字列 (--auto / 空) を literal で置換する必要があります" >&2
-    exit 1
-    ;;
-esac
-if printf '%s' "$mode" | grep -qE '(^|[[:space:]])--auto([[:space:]]|$)'; then
-  auto_mode=true
-else
-  auto_mode=false
-fi
-
-# {log_entry} placeholder 残留検知 fail-fast gate (同型 gate: ステップ 1.1 / 1.3 / 8.1 / 8.3 + helper 内 (4 / 5 / 6.0 / 6.2 / 7 / 7.5))
-log_entry="{log_entry}"
-case "$log_entry" in
-  "{"*"}")
-    echo "ERROR: ステップ 8.3 の {log_entry} placeholder が literal substitute されていません (値: '$log_entry')" >&2
-    echo "  対処: LLM は ステップ 8.1 の OKF bullet 形式に Lint カウンタ値を埋め込んで 6 フィールド形式の 1 行文字列を組み立て、本 bash block 冒頭の log_entry= 行を実際の値で置換する必要があります" >&2
-    exit 1
-    ;;
-esac
-
-# {wiki_lint_commit_message} は規約適用後の全文。未指定時の既定は
-# docs(wiki): lint report — ${log_entry}
-
-case "$branch_strategy" in
-  "{"*"}")
-    echo "ERROR: ステップ 8.3 の {branch_strategy} placeholder が literal substitute されていません (値: '$branch_strategy')" >&2
-    exit 1
-    ;;
-  separate_branch)
-    # set -euo pipefail 下で commit_out=$(bash ...) が rc != 0 のとき bash が即時 exit する罠を回避。
-    # set +e で囲み rc capture を保証する。2>&1 は付けない (構造化 stdout / WARNING stderr の責務分離維持)。
-    _lint_sep_msg=""
-    _cleanup_lint_sep() { [ -n "${_lint_sep_msg:-}" ] && rm -f "$_lint_sep_msg"; return 0; }
-    trap 'rc=$?; _cleanup_lint_sep; exit $rc' EXIT
-    trap '_cleanup_lint_sep; exit 130' INT
-    trap '_cleanup_lint_sep; exit 143' TERM
-    trap '_cleanup_lint_sep; exit 129' HUP
-    _lint_sep_msg=$(mktemp "${TMPDIR:-/tmp}/rite-lint-sep-msg-XXXXXX") || {
-      echo "WARNING: コミットメッセージ用一時ファイルを作成できません" >&2
-      exit 0
-    }
-    cat > "$_lint_sep_msg" <<'EOF'
-{wiki_lint_commit_message}
-EOF
-    case "$(cat -- "$_lint_sep_msg")" in
-      "{"*"}")
-        echo "ERROR: ステップ 8.3 の commit message が未置換です" >&2
-        exit 1
-        ;;
-    esac
-    set +e
-    if [ "$auto_mode" = "true" ]; then
-      # --auto: ingest から呼ばれている。push は ingest.md ステップ 8.6 の集約 push に委ね、
-      # ここでは commit のみ行う。
-      commit_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --commit-only --message-file "$_lint_sep_msg")
-    else
-      # standalone: この lint 実行自身が唯一のフローのため、従来どおり即座に commit + push する。
-      commit_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --message-file "$_lint_sep_msg")
-    fi
-    commit_rc=$?
-    set -e
-    rm -f "$_lint_sep_msg"
-    _lint_sep_msg=""
-    trap - EXIT INT TERM HUP
-    echo "$commit_out"
-    # lint は非ブロッキング契約のため exit 1 はせず、すべて WARNING のみで継続する。
-    # 番号参照 hit/error も rc=1 で commit されない（wiki-worktree-commit.sh 内の
-    # wiki-numref-precommit.sh）。安全条件は commit されないことであり、本 case を fail-fast にしない。
-    case "$commit_rc" in
-      0) : ;;
-      2) echo "[CONTEXT] WIKI_LINT_COMMIT=skipped; reason=wiki-disabled-or-no-pending" >&2 ;;
-      3) echo "WARNING: wiki-worktree-commit.sh で git 操作失敗 (rc=3)。log.md 追記は非ブロッキングのため継続します" >&2 ;;
-      4) echo "WARNING: wiki-worktree-commit.sh で commit landed but push 失敗 (rc=4)。次回再 push が必要 (standalone 実行時のみ到達 — --commit-only は push を行わない)" >&2 ;;
-      6) echo "WARNING: wiki worktree の管理ディレクトリに書き込めないため commit しませんでした (rc=6, reason=sandbox-mask)。実行エージェントはこの bash block を別の Bash tool call で dangerouslyDisableSandbox: true を付けて 1 回だけ再実行する (確認不要)。再実行でも rc=6 なら sandbox 起因ではないため再試行せず、stderr の管理ディレクトリの権限・容量を確認する" >&2 ;;
-      *) echo "WARNING: wiki-worktree-commit.sh が予期しない rc=$commit_rc で失敗しました。log.md 追記は非ブロッキングのため継続します" >&2 ;;
-    esac
-    ;;
-  same_branch)
-    # signal-specific trap (canonical 4 行パターン)
-    add_err=""
-    commit_err=""
-    _lint_msg=""
-    _cleanup() {
-      [ -n "${add_err:-}" ] && rm -f "$add_err"
-      [ -n "${commit_err:-}" ] && rm -f "$commit_err"
-      [ -n "${_lint_msg:-}" ] && rm -f "$_lint_msg"
-      return 0
-    }
-    trap 'rc=$?; _cleanup; exit $rc' EXIT
-    trap '_cleanup; exit 130' INT
-    trap '_cleanup; exit 143' TERM
-    trap '_cleanup; exit 129' HUP
-
-    # mktemp 失敗時の loud WARNING (Pattern 3 規範): silent fallback では pre-commit hook /
-    # gpg sign / index lock 等の根本原因が不可視になる。
-    add_err=$(mktemp "${TMPDIR:-/tmp}/rite-lint-add-err-XXXXXX" 2>/dev/null) || {
-      echo "WARNING: stderr 退避 tempfile (add_err) の mktemp に失敗しました。git add の詳細エラー情報は失われます" >&2
-      echo "  対処: /tmp の容量 / permission / inode 枯渇を確認してください" >&2
-      echo "  影響: index lock / permission denied 等の根本原因が不可視になります" >&2
-      add_err=""
-    }
-    commit_err=$(mktemp "${TMPDIR:-/tmp}/rite-lint-commit-err-XXXXXX" 2>/dev/null) || {
-      echo "WARNING: stderr 退避 tempfile (commit_err) の mktemp に失敗しました。git commit の詳細エラー情報は失われます" >&2
-      echo "  対処: /tmp の容量 / permission / inode 枯渇を確認してください" >&2
-      echo "  影響: pre-commit hook / gpg sign / author config 失敗の根本原因が不可視になります" >&2
-      commit_err=""
-    }
-
-    if ! git add .rite/wiki/log.md 2>"${add_err:-/dev/null}"; then
-      echo "WARNING: git add .rite/wiki/log.md に失敗しました" >&2
-      [ -n "$add_err" ] && [ -s "$add_err" ] && head -3 "$add_err" | sed 's/^/  /' >&2
-      echo "  対処: index lock / permission denied / path error のいずれかを確認してください" >&2
-      exit 0
-    fi
-
-    _lint_msg=$(mktemp "${TMPDIR:-/tmp}/rite-lint-msg-XXXXXX") || {
-      echo "WARNING: コミットメッセージ用一時ファイルを作成できません" >&2
-      exit 0
-    }
-    cat > "$_lint_msg" <<'EOF'
-{wiki_lint_commit_message}
-EOF
-    case "$(cat -- "$_lint_msg")" in
-      "{"*"}")
-        echo "ERROR: ステップ 8.3 の commit message が未置換です" >&2
-        exit 1
-        ;;
-    esac
-    if ! bash "$plugin_root/hooks/scripts/git-commit-file.sh" --file "$_lint_msg" -- --quiet 2>"${commit_err:-/dev/null}"; then
-      echo "WARNING: log.md のコミットに失敗しました" >&2
-      [ -n "$commit_err" ] && [ -s "$commit_err" ] && head -3 "$commit_err" | sed 's/^/  /' >&2
-      echo "  対処: pre-commit hook / gpg sign / author config / permission のいずれかを確認してください" >&2
-    fi
-
-    [ -n "$add_err" ] && rm -f "$add_err"
-    [ -n "$commit_err" ] && rm -f "$commit_err"
-    rm -f "$_lint_msg"
-    _lint_msg=""
-    trap - EXIT INT TERM HUP
-    ;;
-  *)
-    echo "ERROR: 未知の branch_strategy 値を検出しました: '$branch_strategy' (ステップ 8.3)" >&2
-    echo "  対処: rite-config.yml の wiki.branch_strategy を 'separate_branch' または 'same_branch' に設定してください" >&2
-    exit 1
-    ;;
-esac
-# 非ブロッキング契約: 失敗しても exit 0 で継続
+bash {plugin_root}/hooks/scripts/wiki-lint-log-commit.sh --branch-strategy "{branch_strategy}" --mode "{mode}" --message-file "{wiki_lint_msg_file}"
 ```
+
+helper の契約（SoT は helper docstring）: placeholder 残留（`{branch_strategy}` / `{mode}` / `{wiki_lint_msg_file}`）、メッセージファイルの不在・空、未置換メッセージ（全体が `{...}` または `{log_entry}` を含む）、未知の `branch_strategy` は exit 1 で止まる。commit 失敗は WARNING だけ出して exit 0 で続ける（非ブロッキング）。helper が見つからないときは bash が非 0 で止まる（WARNING で skip しない）。`rc=6`（sandbox-mask）の WARNING が出たら、Edit と Write はやり直さず、上の 1 文だけを別の Bash tool call で `dangerouslyDisableSandbox: true` を付けて 1 回だけ再実行する（helper はこのときだけメッセージファイルを残す）。
+rationale: references/rationale.md#log-commit-helper
 
 **書き込み失敗時**: 検出結果は既に stdout に表示済みのため、log.md 追記失敗は WARNING を出して exit 0 で継続する (非ブロッキング契約維持)。
 
@@ -1098,11 +937,11 @@ rationale: references/rationale.md#returned-to-caller
 - **原則 exit 0**: 検出件数・事前チェック失敗 (下記 helper 解決失敗を除く)・ブランチ読取失敗のいずれも非ブロッキング
 - **例外 (`exit 1` fail-fast)**:
   - `lib/wiki-config.sh` の source 失敗 (ステップ 1.1、`WIKI_CONFIG_HELPER_UNAVAILABLE`)
-  - `branch_strategy` 未知値 (ステップ 2.2 / 8.2 / 8.3 + helper 内 (4 / 5 / 6.0 / 6.2 / 7 / 7.5) で同型)
-  - `{mode}` placeholder 残留 (ステップ 1.1 / 1.3 / 8.3)
+  - `branch_strategy` 未知値 (ステップ 2.2 / 8.2 + helper 内 (4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.3) で同型)
+  - `{mode}` placeholder 残留 (ステップ 1.1 / 1.3 + ステップ 8.3 helper 内)
   - helper 委譲ステップ (4 / 5 / 6.0 / 6.2 / 7 / 7.5) の placeholder 残留 (`{branch_strategy}` / `{wiki_branch}` / `{stale_days}` / `{pages_list}` + 6.2 / 7.5 の partial pollution gate。各 helper 内で検知)
   - ステップ 8.1 の counter placeholder (`n_*` 4 種) 残留 / 非整数検知
-  - ステップ 8.3 の placeholder 残留 (`{log_entry}` / `{branch_strategy}` の 2 種)
+  - ステップ 8.3 helper の fail-fast (`{branch_strategy}` / `{mode}` / `{wiki_lint_msg_file}` の残留、メッセージファイルの不在・空、未置換メッセージ)
   - GNU realpath (-m -s) 不在 (ステップ 7 helper 内)
 - 内部 bash 構文エラー等の unrecoverable error のみ非 0 exit となる可能性あり
 rationale: references/rationale.md#fail-loud-contract
@@ -1117,12 +956,13 @@ rationale: references/rationale.md#fail-loud-contract
 | `lib/wiki-config.sh` 読込失敗 (helper 不在 / 解決失敗) | **exit 1 で fail-fast** (`[CONTEXT] WIKI_CONFIG_HELPER_UNAVAILABLE=1`。設定不明のまま「Wiki 無効」へ倒す silent default の防止。plugin インストール状態を確認するか `/rite:setup` を再実行) | ステップ 1.1 |
 | GNU date 非互換環境 | 陳腐化検出 skip（exit 0 + WARNING + `stale_check_ok=skipped_no_gnu_date`） | ステップ 4 (helper 内) |
 | Wiki 未初期化 | `/rite:wiki-init` を案内 (`--auto` モード時は ステップ 9.2 の 3 行出力後 exit 0) | ステップ 1.3 |
-| `{mode}` placeholder 残留 (各 site で同型) | **exit 1 で fail-fast** | ステップ 1.1 / 1.3 / 8.3 |
+| `{mode}` placeholder 残留 (各 site で同型) | **exit 1 で fail-fast** | ステップ 1.1 / 1.3 / 8.3 (helper 内) |
 | helper 委譲ステップの placeholder 残留 (`{branch_strategy}` / `{wiki_branch}` / `{stale_days}` / `{pages_list}` + 6.2 / 7.5 の partial pollution) | **exit 1 で fail-fast** (silent 誤分類防止、各 helper 内で検知) | ステップ 4 / 5 / 6.0 / 6.2 / 7 / 7.5 |
 | ステップ 8.1 の counter placeholder (`n_*` 4 種) 残留 / 非整数 | **exit 1 で fail-fast** (silent `lint:clean` 誤 emit 防止) | ステップ 8.1 |
-| ステップ 8.3 の placeholder 残留 (`{log_entry}` / `{branch_strategy}` の 2 種) | **exit 1 で fail-fast** (literal 残留 commit landed 防止) | ステップ 8.3 |
+| ステップ 8.3 helper の placeholder 残留 (`{branch_strategy}` / `{mode}` / `{wiki_lint_msg_file}`) / メッセージファイルの不在・空 / 未置換メッセージ | **exit 1 で fail-fast** (literal 残留 commit landed 防止) | ステップ 8.3 (helper 内) |
+| ステップ 8.3 helper (`wiki-lint-log-commit.sh`) 不在 | bash が非 0 で止まる (WARNING で skip しない) | ステップ 8.3 |
 | `git ls-tree` 失敗 | WARNING + `pages_list=""`/`raw_list=""` で継続（exit 0） | ステップ 2.2 |
-| `branch_strategy` 未知値 (各 site で同型) | **exit 1 で fail-fast** | ステップ 2.2 / 8.2 / 8.3 + helper 内 (4 / 5 / 6.0 / 6.2 / 7 / 7.5) |
+| `branch_strategy` 未知値 (各 site で同型) | **exit 1 で fail-fast** | ステップ 2.2 / 8.2 + helper 内 (4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.3) |
 | `index.md` 読出失敗 | WARNING + 孤児検出 skip（exit 0 + `orphan_check_ok=index_unreadable`） | ステップ 5 (helper 内) |
 | raw 走査対象の正当な不在 (same_branch: `.rite/wiki/raw/` 不在 / separate_branch: wiki branch ref 不在) | WARNING 抑制 + `skipped_refs=""` + `log_read_ok=absent`（exit 0） | ステップ 6.0 |
 | raw frontmatter 読出失敗 (真の IO error) | WARNING + `skipped_refs=""` + `log_read_ok=io_error` + ステップ 9.1 で false positive note 表示（exit 0） | ステップ 6.0 |
