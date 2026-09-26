@@ -834,11 +834,19 @@ for closed_targets in (False, True):
             hook('git -C "$WT" merge main', reason='target is dynamic', cwd=Path(linked))
             hook('git -C"$WT" merge main', reason='target is dynamic', cwd=Path(linked))
             run(['git', 'worktree', 'remove', '--force', linked])
-        # A cd that fails leaves bash in the reviewed worktree, so a missing target is refused.
-        for moved in ('git commit -m fix', 'git merge main'):
-            for prefix in ('cd no-such-dir; ', 'cd -; ', 'mkdir -p new-dir && cd new-dir && '):
-                hook(prefix + moved, reason='target directory does not exist')
-            hook('git -C no-such-dir ' + moved.split(' ', 1)[1], reason='target directory does not exist')
+        # During the review, a commit or merge whose target does not resolve to a repository is refused.
+        (root / 'locked').mkdir()
+        os.chmod(root / 'locked', 0)
+        try:
+            for moved in ('git commit -m fix', 'git merge main'):
+                # root enters a mode 000 directory, so that case only means something for other users.
+                unenterable = ('cd locked; ',) if os.geteuid() != 0 else ()
+                for prefix in ('cd no-such-dir; ', 'cd -; ', 'mkdir -p new-dir && cd new-dir && ') + unenterable:
+                    hook(prefix + moved, reason='target cannot be resolved to a repository')
+                hook('git -C no-such-dir ' + moved.split(' ', 1)[1], reason='target cannot be resolved to a repository')
+        finally:
+            os.chmod(root / 'locked', 0o755)
+            (root / 'locked').rmdir()
         check(not (root / 'new-dir').exists(), 'the guard only reads the command')
 
         def plan_for(groups, **constraints):

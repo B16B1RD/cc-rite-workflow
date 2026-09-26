@@ -543,9 +543,8 @@ def each_git_target(command, cwd):
     """Yield (subcommand, toplevel, arguments, problem) for each git commit / merge, in order.
 
     problem names why the target cannot be checked (a wrapper, a command substitution,
-    a dynamic cd / -C, a missing directory, an alternate git dir); the caller refuses it only when the
-    command would move HEAD.
-    toplevel is None when there is a problem or the target is not a repository.
+    a dynamic cd / -C, a target that does not resolve to a repository, an alternate git dir); the caller
+    refuses it only when the command would move HEAD. toplevel is None exactly when there is a problem.
     """
     cwd, dynamic = Path(cwd).resolve(), False
     for words, nested in shell_segments(command):
@@ -606,21 +605,16 @@ def each_git_target(command, cwd):
             yield name, None, words[index + 1:], \
                 name + " target is dynamic; run it separately from its resolved worktree"
             continue
-        # bash runs the git in the current directory when the cd fails, so a
-        # missing target cannot be told apart from the reviewed worktree.
-        if not target.is_dir():
+        # A target that does not resolve to a repository (missing, unenterable or not
+        # a repository) cannot be matched to a worktree; a failed cd may even leave
+        # bash in the reviewed one.
+        resolved = subprocess.run(["git", "-C", str(target), "rev-parse", "--show-toplevel"],
+                                  capture_output=True, text=True)
+        if resolved.returncode != 0:
             yield name, None, words[index + 1:], \
-                name + " target directory does not exist: " + str(target) + "; run it from an existing worktree"
+                name + " target cannot be resolved to a repository: " + str(target) + "; run it from an existing worktree"
             continue
-        try:
-            actual = Path(subprocess.check_output(
-                ["git", "-C", str(target), "rev-parse", "--show-toplevel"], text=True, stderr=subprocess.DEVNULL
-            ).strip()).resolve()
-        except subprocess.CalledProcessError:
-            # Not a repository, so it is not the session worktree. commit-target
-            # still refuses this; a review check must not turn it into a deny.
-            actual = None
-        yield name, actual, words[index + 1:], None
+        yield name, Path(resolved.stdout.strip()).resolve(), words[index + 1:], None
 
 
 def head_move(name, args):
@@ -639,7 +633,7 @@ def each_direct_commit(command, cwd):
         if name != "commit" or head_move(name, args) is None:
             continue
         require(problem is None, problem or "")
-        yield actual, classify_commit_args(args)[1] if actual is not None else True
+        yield actual, classify_commit_args(args)[1]
 
 
 _MERGE_VALUE = {"-m", "-F", "-s", "-X", "--message", "--file", "--strategy", "--strategy-option", "--into-name"}
@@ -718,8 +712,6 @@ def commit_check(args):
         if kind is None:
             continue  # a dry run, or a merge that leaves HEAD where it is
         require(problem is None, problem or "")
-        if actual is None:
-            continue
         os.chdir(actual)
         if "worktree" not in state:
             require(actual == Path(args.state_root).resolve(),
@@ -786,7 +778,6 @@ def commit_target_main(argv):
     parser.add_argument("--cwd", required=True)
     args = parser.parse_args(argv)
     for actual, index_only in each_direct_commit(args.command, args.cwd):
-        require(actual is not None, "commit worktree cannot be resolved")
         print(("index" if index_only else "other") + "\t" + str(actual))
 
 
