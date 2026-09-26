@@ -21,9 +21,13 @@ sources:
     resource: "raw/fixes/20260715T195606Z-pr-1865.md"
   - type: "reviews"
     resource: "raw/reviews/20260715T203920Z-pr-1865.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260926T104224Z-pr-3147.md"
 tags: ["security", "static-matcher", "allowlist", "common-set", "whack-a-mole", "review-loop", "scope", "layer-1", "mergeable", "hardening"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-16T06:07:53+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T10:50:02Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T10:50:02Z" }
 ---
 
 # best-effort な静的 matcher hardening は allowlist を COMMON-SET（非網羅）と宣言して review の whack-a-mole を止める
@@ -56,6 +60,12 @@ whack-a-mole を止める宣言があっても、**すべての指摘を非 bloc
 - 収束判断: 全 reviewer が「可」かつ blocking finding ゼロなら mergeable。cycle 2 で mergeable 到達後、substantive な within-scope 推奨（同種 drift の doc sync・test coverage）は user 承認のうえ 1 polish commit で反映し cycle 3 で再収束させたが、それ以降の optional doc-note は反映しない。「もう 1 つ out-of-scope ベクタを documentation できる」は diminishing-returns の rabbit hole。
 - pre-existing の同型パターン（兄弟の unquote glob loop 等）は複数 cycle で調査推奨に挙がり続けるが、revert test 上スコープ外のため本 PR で対応せず follow-up Issue として切り出す（scope discipline）。
 
+### 解析器の境界を 1 つずつ本物のシェルへ寄せる修正は、足した構造同士の組み合わせで新しい抜けを生む
+
+検出器側の構造欠陥を直す場合にも、同型の反復が起きる。commit 検査の前段で「実行されないかもしれない `cd` の先」を追う解析器では、演算子直後の改行や `( )` グループといった bash の文法境界を 1 cycle に 1 つずつ本物のシェルの挙動へ寄せていった。その結果、前 cycle の指摘は解消されたものの、修正が足した構造（グループ用の空セグメント、改行の継続規則）同士の組み合わせが新しい抜けになった。たとえば `)` の直後の `&` は空セグメントの末尾ではなく次セグメントの先頭にだけ残るため、続く改行で `;` に上書きされる。また `!` や `time` のような前置語が `(` の前にあると、空セグメントの先頭が空になり新しいリストの開始と誤認される。
+
+複数の reviewer が同じ組み合わせを独立に実測で指摘した点は、これが列挙の穴ではなく解析器の構造欠陥であることを示す。境界を足すたびに、足した構造と既存構造の組み合わせ（直前・直後に来うる演算子、前置語、改行）を表にして実測で確かめる。組み合わせが閉じない場合は、境界の追加ではなく解析の対象を狭める（読めない形は fail-closed で拒否する）方へ切り替える。
+
 ### 併走する副次教訓
 
 - **behavioral 主張を含むコメントは実挙動で実証する（comment rot 防止）**: 「noglob 下で `.git*/config` は literal 保持され component glob に不一致 → allow」のような runtime 挙動主張は、reviewer が実フックを直接叩いて確認する。doc テーブルの verb 列挙と code 側 allowlist は cycle をまたいで語彙同期を保ち、非網羅リストには「等」を明示する（片方だけ verb を追加すると deny メッセージの参照先契約と runtime deny がドリフトする）。
@@ -76,3 +86,4 @@ whack-a-mole を止める宣言があっても、**すべての指摘を非 bloc
 - [(follow-up cycle1) — 検出機構の構造欠陥（unquote for-loop の glob 汚染）を列挙完全性とは別クラスの blocking HIGH として切り分け](../../raw/reviews/20260715T194532Z-pr-1865.md)
 - [(follow-up cycle1) — noglob 化 + scope discipline（pre-existing 兄弟ループは follow-up へ）](../../raw/fixes/20260715T195606Z-pr-1865.md)
 - [(follow-up cycle3) — 全 reviewer「可」で mergeable 収束、out-of-scope doc-note は網羅不能につき polish 無限ループに入らない判断](../../raw/reviews/20260715T203920Z-pr-1865.md)
+- [解析器の境界追加が足した構造同士の組み合わせで新しい抜けを生んだレビュー結果](../../raw/reviews/20260926T104224Z-pr-3147.md)
