@@ -10,6 +10,9 @@
 * **Create**: [ゲートを有効化する変更は、同じ条件で動く全 hook を通した経路で既存手順を検証する](pages/heuristics/enabling-a-gate-verify-every-hook-sharing-its-condition.md) — raw/reviews/20260926T033819Z-pr-3099.md を新規ページ化
 * **Skip**: [20260926T033335Z-pr-3100.md](raw/fixes/20260926T033335Z-pr-3100.md) — 既存の分類規則の適用結果の記述で、新しい経験則を含まない
 * **lint:clean** — contradictions=0 (新規ページと関連ページのみ評価。既存ページの全組合せ再評価は未実施), stale=67, orphans=0, missing_concept=0, unregistered_raw=537, broken_refs=0
+* **Update**: [LLM substitute placeholder は bash residue gate で fail-fast 化する](pages/patterns/placeholder-residue-gate-bash-fail-fast.md) — raw/reviews/20260926T040720Z-pr-3099.md と raw/fixes/20260926T041334Z-pr-3099.md で gate の構文を書き換えるときも判定の形を保つ点を補強
+* **Update**: [ゲートを有効化する変更は、同じ条件で動く全 hook を通した経路で既存手順を検証する](pages/heuristics/enabling-a-gate-verify-every-hook-sharing-its-condition.md) — raw/reviews/20260926T040720Z-pr-3099.md と raw/fixes/20260926T041334Z-pr-3099.md で状態を書いたステップに足す復帰手順も同じ罠に掛かる点を補強
+* **Update**: [実装が Issue の MUST と原則の両方に挟まれたら、実装を戻さず契約側（Decision Log と AC の例外）を更新する](pages/heuristics/contract-update-over-revert-on-must-conflict.md) — raw/reviews/20260926T040720Z-pr-3099.md・raw/fixes/20260926T041334Z-pr-3099.md・raw/reviews/20260926T042414Z-pr-3099.md でレビューループ中は AC 本文を変えず Decision Log で範囲を決める点を統合
 
 ## 2026-09-25
 

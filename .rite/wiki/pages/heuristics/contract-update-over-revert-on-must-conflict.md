@@ -4,7 +4,7 @@ title: "実装が Issue の MUST と原則の両方に挟まれたら、実装�
 domain: "heuristics"
 description: "純粋抽出リファクタの「振る舞い不変」MUST と fail-loud 原則のように、実装を直すことが別の MUST 違反になる衝突では、実装を機械的に復元しても同じ reviewer が同じ指摘を再発行する往復になる。契約側へ例外を明記して閉じるほうが収束する。"
 created: "2026-09-01T20:26:00+09:00"
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T15:25:00+00:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T04:29:37Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260901T092252Z-pr-2498.md"
@@ -16,6 +16,12 @@ sources:
     resource: "raw/fixes/20260912T145412Z-pr-2741.md"
   - type: "reviews"
     resource: "raw/reviews/20260912T150939Z-pr-2741.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260926T040720Z-pr-3099.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260926T041334Z-pr-3099.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260926T042414Z-pr-3099.md"
 tags: []
 confidence: high
 ---
@@ -50,6 +56,8 @@ confidence: high
 
 これで残る指摘は記述の精度（警告が拾う範囲の書きすぎ等）に収束した。
 
+**レビューループの途中では AC 本文を書き換えず、Decision Log だけで範囲を決める**: 上の 3 点セットの 2 番目（AC の `Then` へ例外を書く）は、レビューループが走っている最中には使えない場合がある。停滞診断が同じ run 内での AC 変更をエラーとして扱うためである。観測された事例では、AC が既存設計（状態を記録しない実行形態ではゲートを skip する）にまで及ぶかが争点になった。AC 本文は変えず、Decision Log に「この AC はどの実行形態を対象にするか」を記録し、範囲外の実行形態は別 Issue に切り出した。残る実測指摘は削除と差し戻しで解消し、次の cycle は指摘 0 件で収束した。追加の機構は要らなかった。範囲の判断そのものはユーザーの判断事項なので、記録の前に確認を取る。
+
 **revert を選んだ場合の検証 baseline は「導入 commit の親」**: 逆に実装を戻す判断をしたときは、`develop` との照合で検証してはならない。当該 call site が `develop` に存在しない（この PR で初めて入った）場合、その照合は成立しない。最も強い証拠は `git diff <その hunk を導入した commit の親>..HEAD -- <file>` が空であること。
 
 ## 関連ページ
@@ -64,3 +72,6 @@ confidence: high
 - [レビュー結果](../../raw/reviews/20260901T095150Z-pr-2498.md)
 - [fix 結果](../../raw/fixes/20260912T145412Z-pr-2741.md)
 - [レビュー結果](../../raw/reviews/20260912T150939Z-pr-2741.md)
+- [レビュー結果](../../raw/reviews/20260926T040720Z-pr-3099.md)
+- [fix 結果](../../raw/fixes/20260926T041334Z-pr-3099.md)
+- [レビュー結果](../../raw/reviews/20260926T042414Z-pr-3099.md)

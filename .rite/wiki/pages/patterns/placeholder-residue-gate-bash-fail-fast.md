@@ -18,12 +18,17 @@ sources:
     resource: "raw/fixes/20260904T092650Z-pr-2549.md"
   - type: "reviews"
     resource: "raw/reviews/20260912T094630Z-pr-2731.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260926T040720Z-pr-3099.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260926T041334Z-pr-3099.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T10:05:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T04:29:37Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-04T13:54:13Z" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T10:05:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T04:29:37Z" }
 ---
 
 # LLM substitute placeholder は bash residue gate で fail-fast 化する
@@ -76,6 +81,10 @@ placeholder が state ファイル名に直接入る場合（`.rite/state/review
 
 この形をテストで検証するときは、SKILL.md から gate と対象部を literal 抽出し、置換は gate 行の `"{pr_number}"` だけに当てる。全文を機械置換すると `${pr_number}` の内側まで書き換わり、テスト自体が本番と違う bash を走らせる。不正値（未置換・空・数字混じり・先頭空白・負号）では書込側がファイルを作らず、読込側が後段の helper 呼び出しに進まないことを観測点にする。
 
+### gate を別の構文へ書き換えるときも、判定する形は変えない
+
+別の制約（commit と同じ Bash 呼び出しに `case` 文を置けない解析規則など）のために gate を `case` から `if grep` へ書き換える場面がある。このとき判定対象を「特定の placeholder 名との完全一致」に狭めると、書き換え後の gate は名前を知っている 1 種類の漏れしか止めず、テンプレート形の置換漏れを素通しする退行になる。書き換え前と同じく**形**を検査する — 行全体が波括弧で囲まれているか（`grep -qx '[{].*[}]'`）を見る。構文の都合で gate を書き直すときは、検出できる入力の集合が狭まっていないかを書き換えの前後で比べる。
+
 ### LLM 内部状態 vs shell 変数の境界
 
 bash tool 呼び出し境界を跨いで shell 変数は保持されない。Phase A で `count=5` を定義しても Phase B からは参照不能で、LLM は自身の内部状態 (会話コンテキスト) から literal 値を substitute する責務を負う。この契約は bash コメントで明示することで、将来の読者が「なぜ placeholder が多いのか」を理解できる。
@@ -94,3 +103,5 @@ bash tool 呼び出し境界を跨いで shell 変数は保持されない。Pha
 - [レビュー結果](../../raw/reviews/20260904T091303Z-pr-2549.md)
 - [fix 結果](../../raw/fixes/20260904T092650Z-pr-2549.md)
 - [レビュー結果](../../raw/reviews/20260912T094630Z-pr-2731.md)
+- [レビュー結果](../../raw/reviews/20260926T040720Z-pr-3099.md)
+- [fix 結果](../../raw/fixes/20260926T041334Z-pr-3099.md)

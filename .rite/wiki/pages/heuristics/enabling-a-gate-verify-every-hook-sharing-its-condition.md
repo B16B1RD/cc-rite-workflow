@@ -5,14 +5,19 @@ description: "状態値を書き足してあるゲートを有効化すると、
 domain: "heuristics"
 promote: rite-plugin
 created: "2026-09-26T03:45:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T04:05:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T04:29:37Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T04:05:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T04:29:37Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260926T033819Z-pr-3099.md"
   - type: "fixes"
     resource: "raw/fixes/20260926T034712Z-pr-3099.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260926T040720Z-pr-3099.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260926T041334Z-pr-3099.md"
 tags: []
 confidence: medium
 ---
@@ -33,6 +38,8 @@ confidence: medium
 
 修正では、手順ブロックを 1 回の Bash 呼び出しのまま hook の解析を通る形（commit と同じ呼び出しに case 文を置かず、未置換ガードを if grep で書く）に直した。回帰防止には、SKILL の手順ブロックを抽出して実際の guard に通す assert を足した。helper 直呼びではなく、手順そのものを hook に通すことで hook 経路の退行を捕まえる。guard を通すテストは実行中のセッションの状態ファイルを拾うため、セッション ID を隔離して走らせないと環境由来の失敗が混ざる。
 
+**同じ罠は、状態を書き込んだステップに後から足す手順にも掛かる**: 状態を書き込むステップへ「失敗時の復帰手順」を追記すると、その手順は書き込まれた状態の下で走る。観測された事例では、phase を記録した直後に足した復帰ブロックが、まさにその phase で有効になる guard に拒否された。追記した手順を、それが実行される時点の状態で hook に通して確かめる。復帰手順が前段で既に済んでいる確認の繰り返しなら、hook に合わせて書き直すより削除するほうが単純に収束する。
+
 ## 関連ページ
 
 - [セキュリティ境界 hook の timeout は fail-open — 評価コストは入力サイズで O(1) 上限を設けて bound する](./security-hook-timeout-is-fail-open-bound-cost-by-input-size.md)
@@ -41,3 +48,5 @@ confidence: medium
 
 - [レビュー結果](../../raw/reviews/20260926T033819Z-pr-3099.md)
 - [fix 結果](../../raw/fixes/20260926T034712Z-pr-3099.md)
+- [レビュー結果](../../raw/reviews/20260926T040720Z-pr-3099.md)
+- [fix 結果](../../raw/fixes/20260926T041334Z-pr-3099.md)
