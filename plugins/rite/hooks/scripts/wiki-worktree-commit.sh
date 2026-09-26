@@ -11,7 +11,7 @@
 # several raw sources (wiki-ingest) or delegating to wiki-lint mid-flow can
 # commit each one locally and push ONCE at the end of the flow, instead of
 # once per commit — see skills/wiki-ingest/SKILL.md ステップ 5.1 / 8.6 and
-# skills/wiki-lint/SKILL.md ステップ 8.3.
+# hooks/scripts/wiki-lint-log-commit.sh (called from skills/wiki-lint/SKILL.md ステップ 8.3).
 #
 # Design rationale: this script replaces the Block A/B
 # shell contract in ingest.md. Because the worktree lives at a stable

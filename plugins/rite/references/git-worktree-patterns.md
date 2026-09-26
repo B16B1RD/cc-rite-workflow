@@ -739,7 +739,7 @@ flock 排他の前提）ため、worktree cwd からの state 書込は構造的
 ### main checkout cwd から wiki worktree の管理ディレクトリへの書き込みが sandbox にブロックされる
 
 sandbox が有効な環境で、main checkout を cwd として `wiki-numref-precommit.sh`（`/rite:wiki-ingest` ステップ 5.0.n）
-や `wiki-worktree-commit.sh --commit-only`（ingest ステップ 5.1、`/rite:wiki-lint` ステップ 8.3）を実行すると、
+や `wiki-worktree-commit.sh --commit-only`（ingest ステップ 5.1、`/rite:wiki-lint` ステップ 8.3 の `wiki-lint-log-commit.sh` 経由）を実行すると、
 wiki worktree の管理ディレクトリ（`.git/worktrees/wiki-worktree/`）に `index.lock` を作れず失敗することがある。
 
 **症状**: `Unable to create '.git/worktrees/wiki-worktree/index.lock'`（読み込み専用ファイルシステム）。wiki worktree

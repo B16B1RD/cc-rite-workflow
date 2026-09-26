@@ -16,6 +16,7 @@ OVERFLOW="$PLUGIN_ROOT/hooks/scripts/commit-overflow-record.sh"
 WIKI_INIT="$PLUGIN_ROOT/hooks/scripts/wiki-branch-init.sh"
 WIKI_INGEST="$PLUGIN_ROOT/hooks/scripts/wiki-ingest-commit.sh"
 WIKI_WT="$PLUGIN_ROOT/hooks/scripts/wiki-worktree-commit.sh"
+WIKI_LINT_COMMIT="$PLUGIN_ROOT/hooks/scripts/wiki-lint-log-commit.sh"
 CONV="$PLUGIN_ROOT/references/commit-convention.md"
 
 IMPLEMENT="$PLUGIN_ROOT/skills/issue-implement/SKILL.md"
@@ -89,9 +90,9 @@ assert_grep "T-03 wiki-ingest 5.1 uses --message-file" "$WIKI_INGEST_SKILL" \
   'wiki-worktree-commit.sh" --commit-only --message-file'
 assert_grep "T-03 wiki-ingest 5.2 uses git-commit-file" "$WIKI_INGEST_SKILL" \
   'git-commit-file.sh" --file "\$_ingest_msg"'
-assert_grep "T-03 wiki-lint same_branch uses git-commit-file" "$WIKI_LINT_SKILL" \
-  'git-commit-file.sh" --file "\$_lint_msg"'
-assert_grep "T-03 wiki-lint separate_branch uses --message-file" "$WIKI_LINT_SKILL" \
+assert_grep "T-03 wiki-lint same_branch uses git-commit-file" "$WIKI_LINT_COMMIT" \
+  'git-commit-file.sh" --file "\$message_file"'
+assert_grep "T-03 wiki-lint separate_branch uses --message-file" "$WIKI_LINT_COMMIT" \
   'wiki-worktree-commit.sh" --commit-only --message-file'
 assert_grep "T-03 wiki-ingest-commit helper accepts --message-file" "$WIKI_INGEST" \
   '\[--message-file ABS\]'
@@ -121,8 +122,8 @@ assert_grep "T-03 wiki-init 3.1 uses signal trap" "$WIKI_INIT_SKILL" \
   '_cleanup_wiki_init_msg; exit 130'
 assert_grep "T-03 wiki-init 3.5.1 uses signal trap" "$WIKI_INIT_SKILL" \
   '_cleanup_mig; exit 130'
-assert_grep "T-03 wiki-lint separate_branch uses signal trap" "$WIKI_LINT_SKILL" \
-  '_cleanup_lint_sep; exit 130'
+assert_grep "T-03 wiki-lint commit helper uses signal trap" "$WIKI_LINT_COMMIT" \
+  'cleanup; exit 130'
 assert_grep "T-03 parallel merge uses signal trap" "$IMPLEMENT" \
   '_cleanup_par; exit 130'
 assert_grep "T-03 wiki-ingest 5.1 uses quoted heredoc" "$WIKI_INGEST_SKILL" \
@@ -135,10 +136,16 @@ assert_grep "T-03 wiki-init 3.5.1 retry uses quoted heredoc" "$WIKI_INIT_SKILL" 
   'mig_retry_msg" <<'\''EOF'\'''
 assert_grep "T-03 wiki-init 3.5.1 retry uses signal trap" "$WIKI_INIT_SKILL" \
   '_cleanup_mig_retry; exit 130'
-assert_grep "T-03 wiki-lint 8.3 uses quoted heredoc" "$WIKI_LINT_SKILL" \
-  'lint_sep_msg" <<'\''EOF'\'''
-assert_grep "T-03 wiki-lint 8.3 same_branch uses quoted heredoc" "$WIKI_LINT_SKILL" \
-  'lint_msg" <<'\''EOF'\'''
+# wiki-lint 8.3 hands the message over as a file written by Write, never through the shell.
+assert_grep_in_section "T-03 wiki-lint 8.3 writes the message to the message file" "$WIKI_LINT_SKILL" \
+  '^### 8\.3 書き込み手順' '^## ステップ 9' \
+  'Write ツールで `\{wiki_lint_msg_file\}` に commit メッセージ `\{wiki_lint_commit_message\}`'
+lint83=$(awk '/^### 8\.3 書き込み手順/,/^## ステップ 9/' "$WIKI_LINT_SKILL")
+if [ -n "$lint83" ] && ! grep -qE '<<|--message "' <<<"$lint83"; then
+  pass "T-03 wiki-lint 8.3 has no heredoc or --message argument"
+else
+  fail "T-03 wiki-lint 8.3 passes the message through the shell (or section missing)"
+fi
 
 # --- T-05: squash keeps delete-branch=false + match-head-commit; CI red does not reach merge ---
 assert_grep "T-05 squash keeps --delete-branch=false" "$MERGE" \
@@ -432,6 +439,43 @@ else
   fail "T-10 wiki-ingest-commit mutated body: $(git -C "$ing3" log -1 --format=%b)"
 fi
 rm -f "$ing3_msg"
+
+# --- T-03: wiki-lint-log-commit.sh commits log.md from the message file and removes it ---
+lint_repo="$(new_repo)"
+mkdir -p "$lint_repo/.rite/wiki"
+printf '# log\n' > "$lint_repo/.rite/wiki/log.md"
+git -C "$lint_repo" add .rite/wiki/log.md && git -C "$lint_repo" commit -qm log
+printf '* **lint:clean** — contradictions=0\n' >> "$lint_repo/.rite/wiki/log.md"
+printf 'unrelated\n' >> "$lint_repo/README"
+lint_msg=$(mktemp "${TMPDIR:-/tmp}/rite-inv-lint-XXXXXX")
+printf 'docs(wiki): lint report — {x} with $(whoami)\n' > "$lint_msg"
+lint_rc=0
+(cd "$lint_repo" && bash "$WIKI_LINT_COMMIT" --branch-strategy same_branch --mode "" --message-file "$lint_msg") >/dev/null 2>&1 || lint_rc=$?
+assert "T-03 wiki-lint-log-commit same_branch rc 0" "0" "$lint_rc"
+assert "T-03 wiki-lint-log-commit commits only log.md" ".rite/wiki/log.md" "$(git -C "$lint_repo" show --name-only --format= HEAD)"
+assert "T-10 wiki-lint-log-commit keeps the message verbatim" 'docs(wiki): lint report — {x} with $(whoami)' "$(git -C "$lint_repo" log -1 --format=%s)"
+if [ -e "$lint_msg" ]; then fail "T-03 wiki-lint-log-commit left the message file"; else pass "T-03 wiki-lint-log-commit removed the message file"; fi
+
+lint_fail_case() {
+  local label="$1" expect="$2" strategy="$3" mode="$4" body="$5" rc=0 f
+  f=$(mktemp "${TMPDIR:-/tmp}/rite-inv-lint-XXXXXX")
+  [ -n "$body" ] && printf '%s\n' "$body" > "$f"
+  (cd "$lint_repo" && bash "$WIKI_LINT_COMMIT" --branch-strategy "$strategy" --mode "$mode" --message-file "$f") >/dev/null 2>&1 || rc=$?
+  assert "T-03 wiki-lint-log-commit $label exits $expect" "$expect" "$rc"
+  if [ -e "$f" ]; then fail "T-03 wiki-lint-log-commit $label left the message file"; rm -f "$f"; else pass "T-03 wiki-lint-log-commit $label removed the message file"; fi
+}
+lint_fail_case "branch_strategy residue" 1 "{branch_strategy}" "" "docs(wiki): lint report"
+lint_fail_case "mode residue" 1 same_branch "{mode}" "docs(wiki): lint report"
+lint_fail_case "unknown strategy" 1 other_branch "" "docs(wiki): lint report"
+lint_fail_case "unsubstituted message" 1 same_branch "" "{wiki_lint_commit_message}"
+lint_fail_case "log_entry residue" 1 same_branch "" "docs(wiki): lint report — {log_entry}"
+lint_fail_case "empty message file" 1 same_branch "" ""
+lint_res_rc=0
+(cd "$lint_repo" && bash "$WIKI_LINT_COMMIT" --branch-strategy same_branch --mode "" --message-file "{wiki_lint_msg_file}") >/dev/null 2>&1 || lint_res_rc=$?
+assert "T-03 wiki-lint-log-commit message-file residue exits 1" "1" "$lint_res_rc"
+lint_missing_rc=0
+(cd "$lint_repo" && bash "$WIKI_LINT_COMMIT" --branch-strategy same_branch --mode "" --message-file "$lint_repo/no-such-msg") >/dev/null 2>&1 || lint_missing_rc=$?
+assert "T-03 wiki-lint-log-commit missing message file exits 1" "1" "$lint_missing_rc"
 
 # worktree-git argv contract remains 3rd-argument message (internal -F)
 assert_grep "T-03 worktree_commit_push argv is still COMMIT_MSG" \

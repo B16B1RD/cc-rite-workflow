@@ -5,7 +5,8 @@
 # /rite:wiki-ingest flow, `git push origin {wiki_branch}` must land at most
 # once (AC-1), regardless of how many raw sources are processed and whether
 # auto_lint runs. The guarantee is implemented as markdown orchestration
-# (wiki-ingest/SKILL.md ステップ 5.1 / 8.6, wiki-lint/SKILL.md ステップ 8.3)
+# (wiki-ingest/SKILL.md ステップ 5.1 / 8.6, hooks/scripts/wiki-lint-log-commit.sh called
+# from wiki-lint/SKILL.md ステップ 8.3)
 # calling `wiki-worktree-commit.sh --commit-only` / `--push-only`
 # (hooks/tests/wiki-worktree-commit.test.sh proves the script contract) —
 # nothing at the shell-script level would fail if a future edit quietly
@@ -14,9 +15,9 @@
 # loudly instead of silently reintroducing per-page pushes.
 #
 # When this test fails:
-#   One of ingest.md ステップ 5.1 / 8.6 or lint.md ステップ 8.3 no longer
+#   One of ingest.md ステップ 5.1 / 8.6, lint.md ステップ 8.3 or wiki-lint-log-commit.sh no longer
 # matches the batch/defer contract. Re-read 's Before/After Contract
-#   and restore --commit-only (5.1, lint 8.3 --auto branch) / --push-only
+#   and restore --commit-only (5.1, wiki-lint-log-commit.sh --auto branch) / --push-only
 #   (8.6), or update this test if the contract has legitimately changed.
 
 set -euo pipefail
@@ -27,6 +28,7 @@ source "$SCRIPT_DIR/_test-helpers.sh"
 PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 INGEST_MD="$PLUGIN_ROOT/skills/wiki-ingest/SKILL.md"
 LINT_MD="$PLUGIN_ROOT/skills/wiki-lint/SKILL.md"
+LINT_COMMIT_SH="$PLUGIN_ROOT/hooks/scripts/wiki-lint-log-commit.sh"
 INIT_MD="$PLUGIN_ROOT/skills/wiki-init/SKILL.md"
 
 if [ ! -f "$INGEST_MD" ]; then
@@ -130,23 +132,24 @@ assert_grep "ingest.md auto_lint=false does NOT skip ステップ 8.6 (push must
   "$INGEST_MD" 'ステップ 8\.6.*スキップしない'
 
 # --- lint.md ステップ 8.3: --auto (from ingest) defers to --commit-only; standalone still pushes ---
-# (grep -E has no cross-line match, so the "auto_mode=true branch calls --commit-only" contract
-# is pinned as two independent assertions — the gate exists, and --commit-only exists in the
-# same section — rather than one pattern spanning both lines.)
-assert_grep_in_section "lint.md 8.3: auto_mode gate is present" \
+# The commit logic lives in wiki-lint-log-commit.sh; lint.md 8.3 only calls it. Both ends are pinned:
+# the call must forward {mode} (otherwise an ingest-driven lint would push immediately), and the
+# helper's --auto branch must hold --commit-only while the standalone branch must not.
+assert_grep_in_section "lint.md 8.3: calls the commit helper with the lint mode and a message file" \
   "$LINT_MD" '^### 8\.3 書き込み手順' '^## ステップ 9' \
-  'if \[ "\$auto_mode" = "true" \]'
-assert_grep_in_section "lint.md 8.3: --commit-only call exists in the section" \
-  "$LINT_MD" '^### 8\.3 書き込み手順' '^## ステップ 9' \
+  '^bash \{plugin_root\}/hooks/scripts/wiki-lint-log-commit\.sh --branch-strategy "\{branch_strategy\}" --mode "\{mode\}" --message-file "\{wiki_lint_msg_file\}"$'
+assert_grep_in_section "wiki-lint-log-commit.sh: --auto branch calls --commit-only" \
+  "$LINT_COMMIT_SH" 'auto_mode" = "true" ]; then$' '^    else$' \
   'wiki-worktree-commit\.sh" --commit-only'
-assert_grep_in_section "lint.md 8.3: standalone (non-auto) branch still commits + pushes immediately" \
-  "$LINT_MD" '^### 8\.3 書き込み手順' '^## ステップ 9' \
-  'wiki-worktree-commit\.sh" --message-file "\$_lint_sep_msg"\)$'
-assert_grep_in_section "lint.md 8.3: rc=6 warns and points to the one-shot sandbox retry" \
-  "$LINT_MD" '^### 8\.3 書き込み手順' '^## ステップ 9' \
-  '^      6\) echo "WARNING: .*reason=sandbox-mask.*dangerouslyDisableSandbox: true を付けて 1 回だけ再実行.*" >&2 ;;$'
-assert_not_grep "lint.md 8.3: rc=6 stays non-blocking (no exit 1 on the branch)" \
-  "$LINT_MD" '^      6\).*exit 1'
+assert_grep_in_section "wiki-lint-log-commit.sh: standalone (non-auto) branch still commits + pushes immediately" \
+  "$LINT_COMMIT_SH" '^    else$' '^    fi$' \
+  'wiki-worktree-commit\.sh" --message-file "\$message_file"\)$'
+assert_grep "wiki-lint-log-commit.sh: rc=6 arm exists" \
+  "$LINT_COMMIT_SH" '^[[:space:]]*6\)$'
+assert_grep "wiki-lint-log-commit.sh: rc=6 warns and points to the one-shot sandbox retry" \
+  "$LINT_COMMIT_SH" 'reason=sandbox-mask.*dangerouslyDisableSandbox: true を付けて 1 回だけ再実行'
+assert_not_grep "wiki-lint-log-commit.sh: rc=6 stays non-blocking (no exit 1 on the branch)" \
+  "$LINT_COMMIT_SH" '^[[:space:]]*6\).*exit 1'
 
 # --- init.md ステップ 3.5.1: migration commit keeps sandbox-mask recovery actionable ---
 assert_grep_in_section "init.md 3.5.1: rc=6 warns and points to the one-shot sandbox retry" \
