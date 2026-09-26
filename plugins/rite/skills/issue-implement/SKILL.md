@@ -576,7 +576,10 @@ if grep -qx '[{].*[}]' "$commit_msg_file"; then
   echo "ERROR: コミットメッセージが未置換です" >&2
   exit 1
 fi
-bash {plugin_root}/hooks/scripts/git-commit-file.sh --file "$commit_msg_file"
+if ! bash {plugin_root}/hooks/scripts/git-commit-file.sh --file "$commit_msg_file"; then
+  echo "ERROR: コミットに失敗したため push しません" >&2
+  exit 1
+fi
 git push origin {branch_name}
 ```
 
