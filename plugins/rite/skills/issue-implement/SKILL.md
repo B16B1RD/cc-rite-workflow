@@ -309,7 +309,7 @@ _par_msg=$(mktemp "${TMPDIR:-/tmp}/rite-parallel-merge-XXXXXX") || {
 cat > "$_par_msg" <<'EOF'
 {parallel_merge_message}
 EOF
-if grep -qx '[{]parallel_merge_message[}]' "$_par_msg"; then
+if grep -qx '[{].*[}]' "$_par_msg"; then
   echo "ERROR: マージメッセージが未置換です" >&2
   exit 1
 fi
@@ -572,7 +572,7 @@ commit_msg_file=$(mktemp "${TMPDIR:-/tmp}/rite-impl-msg-XXXXXX") || {
 cat > "$commit_msg_file" <<'EOF'
 {commit_message}
 EOF
-if grep -qx '[{]commit_message[}]' "$commit_msg_file"; then
+if grep -qx '[{].*[}]' "$commit_msg_file"; then
   echo "ERROR: コミットメッセージが未置換です" >&2
   exit 1
 fi

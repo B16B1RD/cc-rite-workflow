@@ -598,7 +598,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 ## ステップ 4: 実装
 
-invoke の前に `phase=implement` を書く。Wiki 適用証跡のコミット前ゲート（`git-commit-file.sh` / `pre-tool-bash-guard.sh`）は phase が `implement` / `fix` の commit だけを検査するため、`plan` のまま実装コミットするとゲートを素通りする:
+invoke の前に `phase=implement` を書く。rationale: references/rationale.md#implement-phase-gate
 
 ```bash
 # open-implement-state
@@ -606,8 +606,6 @@ bash {plugin_root}/hooks/flow-state.sh set \
   --phase implement --issue {issue_number} --branch {branch_name} --pr 0 \
   --next "実装・コミット後に rite:lint へ進む"
 ```
-
-`MULTI_SESSION_ENABLED=true` のときは 2.6 と同じく末尾に `--worktree "{wt_path}" --require-worktree` を追加する。`WORKTREE_INVARIANT=missing` を観測したら実装へ進まず 2.2-W へ戻る。
 
 ```text
 skill: rite:issue-implement
