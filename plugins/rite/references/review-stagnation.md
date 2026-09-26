@@ -8,7 +8,7 @@ Issue に関連付いた通常 caller は `flow-state.sh review-start --stagnati
 2. 未完了 cycle は同じ cycle の回収・保存を再開する。完了済み cycle の欠損修復と既存の発散・回数 breaker を先に適用する。
 3. 未観測を示す `action:observe` のまま先へ進めず、保存済み全指摘を観測し、`review_run.current_decision` の `action: continue|replan|stop` と `reasons: []` に従う。`continue` は通常の品質ゲートへ戻す意味で、merge の許可ではない。
 
-観測時には元 receipt のハッシュと、既存 fatal triage helper がそのコピーから生成した派生 receipt のハッシュを保存する。以降はこの2種類だけを許可し、正規の分類後も観測・見直しの再送と履歴検証を継続できる。ready / merge の attest が `unverified` 行を `human-verified` にした receipt も、その行の `status` / `head` / `at` だけを戻せばどちらかに一致する場合に限り同じ receipt とみなす（`head` が receipt の `commit_sha` と違う記録は戻さない）。それ以外の証跡・指摘・受入条件の変更は拒否する。
+観測時には元 receipt のハッシュと、既存 fatal triage helper がそのコピーから生成した派生 receipt のハッシュを保存する。以降はこの2種類だけを許可し、正規の分類後も観測・見直しの再送と履歴検証を継続できる。ready / merge の attest が `unverified` 行を `human-verified` にした receipt も、その行の `status` / `head` / `at` だけを戻せばどちらかに一致する場合に限り、ハッシュの照合では同じ receipt とみなす（`head` が receipt の `commit_sha` と違う記録と、`at` が文字列でない記録は戻さない）。それ以外の証跡・指摘・受入条件の変更は拒否する。この同一視はハッシュの照合に限る。attest 後に観測を再送すると受入条件の進捗が保存時と変わるため、再送は拒否される。
 
 iterate の全品質ゲートと non-blocking sweep の成功後、`flow-state.sh review-close` が現在の観測・receipt・未解決指摘・受入条件を確認して `review_run.completed_context` を保存する。返信のみで draft を残す場合は `review-defer` が `deferred_context` と `deferred_reason:replied-only` を保存する。後者は品質上の完了を意味せず、未解決指摘と判定を変更しない。phase・counter・履歴は維持する。次 Issue への切替時だけ旧 run を `review_run_history` に移すため、default draft batch は cleanup を挟まず継続できる。切替時は終了記録が現在の context と一致すれば receipt を再読込しないため、cleanup が receipt を削除した後でも切り替えられる。同じ Issue の再開や次 cycle には終了記録を流用しない。両コマンドとも未回収・観測欠損・見直し未完了・停止済み run を拒否する。停止済み run の具体的な停止理由は通常の終了通知でも上書きしない。
 
@@ -94,7 +94,7 @@ rm "$clock_file"
 
 保存済み全 blocking finding を根因へ漏れなく対応付ける。helper は対応する `verification.measured=true` の `repro` / `failing_test` を保存結果からコピーする。表示ラベルだけの根因や caller が作った未測定の再現証跡を代用しない。同一観測の同一入力は冪等とし、異なる入力で履歴を上書きしない。
 
-`acceptance.satisfied` は保存結果の `acceptance_criteria[]` のうち `status:satisfied`、または `status:human-verified` かつ `head` が保存結果の `commit_sha` と一致する行の `id` 集合に完全一致させる。各行の evidence は非空とする。受入条件表が `skipped:no_issue|no_ac_section` の場合は空配列、表の欠損は error とする。
+`acceptance.satisfied` は保存結果の `acceptance_criteria[]` のうち `status:satisfied`、または `status:human-verified` かつ `head` が保存結果の `commit_sha` と一致し `at` が文字列の行の `id` 集合に完全一致させる。各行の evidence は非空とする。受入条件表が `skipped:no_issue|no_ac_section` の場合は空配列、表の欠損は error とする。
 
 欠陥・再現条件・違反契約の組が同じものを同一根因とする。親は過去の根因記述と照合し、言い換えや指摘 ID の変化だけで別根因にしない。解消は全指摘・実測の再現結果から判断し、指摘数の減少だけで扱わない。受入条件の識別文は同じ意味なら維持し、保存済み充足集合と最新仕様を照合する。同一 run で Issue 本文が変わった場合は旧仕様の進展を流用せず error とする。本文の照合（観測・`check` / `verify`・見直し・修正計画の gate の全経路で共通）は、`## 9. Decision Log` 節内のトリアージ書式行（`- YYYY-MM-DD D-NN: … / Reason: … / Impact: …`）と、行全体が `<!-- rite:nbr:comment-id:… -->` の行（非実測記録 helper が自分の marker と認める形。CRLF 行末・値の空白を含む）を除いて行う。この 2 種は rite 自身が review 中に Issue へ追記する記録であり、誰が書いたかを問わず仕様変更とみなさない（追記と同様に、これらの行の削除・差し替えも検出しない）。節は見出し行の完全一致で始まり、次の `## ` 見出し・`---`・`</details>`・本文末のいずれかで終わる（トリアージの追記先と同じ境界）。除外行と空行だけになった節は見出しごと除外し、除去した行が残す空行と本文末尾の改行は照合しない（本文末尾の空白は照合する）。コードフェンス（行頭の空白 3 つまでに続く 3 つ以上の backtick（後続に backtick を含まない行）または `~` で開き、同じ文字が同数以上並ぶ行で閉じる。閉じなければ本文末まで続く）内の行は除外も見出しの計数もしない。フェンス外で見出しが 2 回以上現れる本文は境界を一意に決められないため、除外せず原文どおり比較し、その理由を stderr に出す。節外の同書式行・自由書式の Decision Log 行・それ以外の HTML コメント・Goal / 受入条件の変更は仕様変更として error になる。観測に保存する `issue_body` は原文のまま置く。書式変更やラベル追加を進展とせず、新たな充足の実測根拠を `acceptance.evidence` に保存する。
 

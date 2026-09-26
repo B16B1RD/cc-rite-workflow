@@ -126,6 +126,12 @@ def same_observation(saved, data):
     return left == right and cycle.same_specification(saved.get("issue_body", ""), data.get("issue_body", ""))
 
 
+def attested(row, commit):
+    """A criterion the ready / merge helper attested for this HEAD, with its time."""
+    return (isinstance(row, dict) and row.get("status") == "human-verified"
+            and row.get("head") == commit and isinstance(row.get("at"), str))
+
+
 def without_attestation(receipt):
     """Undo the ready / merge helper's human attestation of unverified criteria.
 
@@ -137,8 +143,7 @@ def without_attestation(receipt):
         return receipt
     restored = copy.deepcopy(receipt)
     for row in restored["acceptance_criteria"]:
-        if (isinstance(row, dict) and row.get("status") == "human-verified"
-                and row.get("head") == receipt.get("commit_sha")):
+        if attested(row, receipt.get("commit_sha")):
             row["status"] = "unverified"
             row.pop("head", None)
             row.pop("at", None)
@@ -488,8 +493,8 @@ def close(state, args, directory):
     table = saved.get("acceptance_criteria")
     require((isinstance(table, dict) and table.get("skipped") in ("no_issue", "no_ac_section"))
             or (isinstance(table, list) and all(row.get("status") == "satisfied"
-                or (row.get("status") == "human-verified" and row.get("head") == context["commit_sha"])
-                for row in table)), "cannot close review with unmet or unverified acceptance criteria")
+                or attested(row, context["commit_sha"]) for row in table)),
+            "cannot close review with unmet or unverified acceptance criteria")
     if run.get("completed_context") != context:
         run["completed_context"] = context.copy()
         state["updated_at"] = cycle.now()
@@ -585,7 +590,7 @@ def validate_input(state, args, data, receipt):
                     and row.get("status") in ("satisfied", "unmet", "unverified", "human-verified")
                     for row in table), "saved acceptance evidence is invalid")
         satisfied = {row["id"] for row in table if row["status"] == "satisfied"
-                     or (row["status"] == "human-verified" and row.get("head") == receipt["commit_sha"])}
+                     or attested(row, receipt["commit_sha"])}
     else:
         require(isinstance(table, dict) and table.get("skipped") in ("no_issue", "no_ac_section"),
                 "saved acceptance evidence is missing")

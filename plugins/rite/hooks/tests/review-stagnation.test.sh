@@ -165,7 +165,7 @@ class Fixture:
     def start(self, ok=True):
         return self.flow('review-start', '--selection', self.selection, '--stagnation', ok=ok)
 
-    def finish(self, roots=None, satisfied=(), non_blocking=False, severities=None, unverified=()):
+    def finish(self, roots=None, satisfied=(), non_blocking=False, severities=None, unverified=(), unmet=()):
         if roots is None:
             roots = ['input defect']
         context = self.context()
@@ -195,7 +195,9 @@ class Fixture:
                                dict(id=criterion, status='satisfied', evidence='measured fixture => pass', finding_id=None)
                                for criterion in satisfied] + [
                                dict(id=criterion, status='unverified', evidence='needs a human check', finding_id=None)
-                               for criterion in unverified]))
+                               for criterion in unverified] + [
+                               dict(id=criterion, status='unmet', evidence='measured fixture => fail', finding_id='F-01')
+                               for criterion in unmet]))
         self.run(['bash', str(plugin / 'scripts/review-measured-gate.sh'), '--input', str(content),
                   '--reject-preset-verification'])
         self.flow('review-finish', '--manifest', manifest, '--content-file', content)
@@ -273,10 +275,11 @@ class Fixture:
         self.clock(seconds)
         self.observe()
 
-    def reject(self, operation, label):
+    def reject(self, operation, label, reason=None):
         before = self.state_path.read_bytes()
         result = operation()
-        check(result.returncode != 0 and 'ERROR:' in result.stderr, label)
+        check(result.returncode != 0 and 'ERROR:' in result.stderr
+              and (reason is None or reason in result.stderr), label)
         check(self.state_path.read_bytes() == before, label + ': last state retained')
 
 
@@ -1795,7 +1798,8 @@ finally:
 # A human attestation of unverified acceptance criteria is the ready / merge
 # helper's own rewrite of the observed receipt; the run must still advance.
 def attest(f, ids):
-    stub = f.root / 'bin'
+    # Kept under the excluded .rite/ so a later fix cycle sees no unplanned path.
+    stub = f.private / 'bin'
     if not stub.exists():
         stub.mkdir()
         (stub / 'gh').write_text(
@@ -1818,9 +1822,9 @@ def attest(f, ids):
           'ready helper attests ' + ids + '\n' + result.stderr)
 
 
-def attested_receipt(f, unverified=['AC-1'], roots=(), severities=None, triage=False):
+def attested_receipt(f, unverified=['AC-1'], roots=(), severities=None, triage=False, unmet=()):
     f.start()
-    f.finish(list(roots), satisfied=['AC-4'], unverified=list(unverified), severities=severities)
+    f.finish(list(roots), satisfied=['AC-4'], unverified=list(unverified), severities=severities, unmet=list(unmet))
     f.clock()
     f.observe()
     path = Path(f.state()['review_cycle']['result_path'])
@@ -1846,29 +1850,56 @@ def attested_receipt(f, unverified=['AC-1'], roots=(), severities=None, triage=F
     return path, after
 
 
+def criterion(receipt, criterion_id):
+    return next(row for row in receipt['acceptance_criteria'] if row['id'] == criterion_id)
+
+
+def reject_ready(f, label):
+    f.reject(lambda: f.flow('set', '--phase', 'ready', '--next', 'merge', ok=False),
+             label, reason='observed review receipt is missing or changed')
+
+
 f = Fixture()
 try:
     path, receipt = attested_receipt(f)
     for label, tamper in (
             ('audit log added after attest', lambda r: r['guardrail_audit_log'].append(dict(note='late'))),
-            ('satisfied criterion evidence changed', lambda r: r['acceptance_criteria'][0].update(evidence='edited')),
-            ('attested criterion evidence changed', lambda r: r['acceptance_criteria'][1].update(evidence='edited')),
-            ('attested criterion gains an unknown key', lambda r: r['acceptance_criteria'][1].update(note='extra')),
-            ('attestation for another HEAD', lambda r: r['acceptance_criteria'][1].update(head='0' * 40)),
+            ('satisfied criterion evidence changed', lambda r: criterion(r, 'AC-4').update(evidence='edited')),
+            ('attested criterion evidence changed', lambda r: criterion(r, 'AC-1').update(evidence='edited')),
+            ('attested criterion gains an unknown key', lambda r: criterion(r, 'AC-1').update(note='extra')),
+            ('attestation for another HEAD', lambda r: criterion(r, 'AC-1').update(head='0' * 40)),
+            ('attestation without its time', lambda r: criterion(r, 'AC-1').pop('at')),
+            ('attestation with a null time', lambda r: criterion(r, 'AC-1').update(at=None)),
+            ('attestation with a numeric time', lambda r: criterion(r, 'AC-1').update(at=0)),
             ('unverified criterion rewritten as satisfied',
-             lambda r: r['acceptance_criteria'][1].update(status='satisfied')),
+             lambda r: criterion(r, 'AC-1').update(status='satisfied')),
             ('satisfied criterion rewritten as attested',
-             lambda r: r['acceptance_criteria'][0].update(status='human-verified', head=r['commit_sha'],
-                                                          at='2026-01-01T00:00:00Z'))):
+             lambda r: criterion(r, 'AC-4').update(status='human-verified', head=r['commit_sha'],
+                                                   at='2026-01-01T00:00:00Z'))):
         changed = copy.deepcopy(receipt)
         tamper(changed)
         dump(path, changed)
-        f.reject(lambda: f.flow('set', '--phase', 'ready', '--next', 'merge', ok=False),
-                 'attested receipt rejects ' + label)
+        reject_ready(f, 'attested receipt rejects ' + label)
     dump(path, receipt)
+    # The receipt digest treats the attestation as the same receipt, but a replayed
+    # observation still carries the pre-attest acceptance progress, so it is rejected.
     before = f.state_path.read_bytes()
-    f.observe(ok=False)
+    replay = f.observe(ok=False)
+    check(replay.returncode != 0 and 'acceptance progress differs from saved receipt' in replay.stderr,
+          'observation replay after attest is rejected for its stale acceptance progress')
     check(f.state_path.read_bytes() == before, 'observation replay after attest adds no observation')
+    observed = copy.deepcopy(f.observed)
+    replayed = dict(observed, acceptance=dict(observed['acceptance'], satisfied=['AC-4', 'AC-1']))
+    dump(f.input, replayed)
+    f.reject(lambda: f.observe(ok=False), 'observation counting the attested criterion cannot overwrite the saved one',
+             reason='same observation cannot be overwritten with different content')
+    untimed = copy.deepcopy(receipt)
+    criterion(untimed, 'AC-1').pop('at')
+    dump(path, untimed)
+    f.reject(lambda: f.observe(ok=False), 'attestation without its time does not count as satisfied progress',
+             reason='acceptance progress differs from saved receipt')
+    dump(path, receipt)
+    dump(f.input, observed)
     f.flow('set', '--phase', 'ready', '--next', 'merge')
     check(f.state()['phase'] == 'ready', 'attested unverified criterion permits ready')
     f.flow('review-close')
@@ -1887,6 +1918,55 @@ try:
     f.flow('review-close')
     check(f.state()['review_run'].get('completed_context') == f.context(),
           'attest over a triaged receipt permits ready and completion')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    attested_receipt(f, unverified=['AC-1', 'AC-2'])
+    f.flow('set', '--phase', 'ready', '--next', 'merge')
+    f.flow('review-close')
+    check(f.state()['review_run'].get('completed_context') == f.context(),
+          'attesting several criteria at once permits ready and completion')
+finally:
+    f.close()
+
+# An unmet criterion is not the helper's to attest: undoing a human-verified row
+# restores unverified, so an unmet row rewritten by hand no longer matches.
+f = Fixture()
+try:
+    path, receipt = attested_receipt(f, roots=['input defect'], unmet=['AC-5'])
+    check(criterion(receipt, 'AC-5')['status'] == 'unmet', 'attest leaves the unmet criterion unmet')
+    changed = copy.deepcopy(receipt)
+    criterion(changed, 'AC-5').update(status='human-verified', head=changed['commit_sha'],
+                                      at='2026-01-01T00:00:00Z')
+    dump(path, changed)
+    reject_ready(f, 'attested receipt rejects an unmet criterion rewritten as attested')
+finally:
+    f.close()
+
+# A later cycle re-reads every saved receipt, including one the ready helper has
+# already attested, so the attested history must still validate.
+f = Fixture()
+try:
+    first, receipt = attested_receipt(f, roots=['input defect'])
+    f.fix()
+    f.start()
+    f.finish(['second defect'], satisfied=['AC-4'])
+    f.clock()
+    on_disk = criterion(json.loads(first.read_text()), 'AC-1')
+    check(on_disk['status'] == 'human-verified' and on_disk.get('head') == receipt['commit_sha']
+          and isinstance(on_disk.get('at'), str),
+          'the first cycle receipt is still attested when the next cycle is observed')
+    changed = copy.deepcopy(receipt)
+    criterion(changed, 'AC-1').update(evidence='edited')
+    dump(first, changed)
+    f.reject(lambda: f.observe(ok=False), 'next cycle rejects a tampered attested history',
+             reason='saved historical receipt is missing or changed')
+    dump(first, receipt)
+    f.observe()
+    check(len(f.state()['review_run']['observations']) == 2,
+          'next cycle observation validates the attested history')
 finally:
     f.close()
 
