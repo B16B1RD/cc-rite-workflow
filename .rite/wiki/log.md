@@ -3,8 +3,8 @@
 ## 2026-09-27
 
 * **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=551, broken_refs=0
-
 * **Update**: [SoT から事実を 1 つ引くとき、その事実に付いた強度 qualifier ごと持ってこないと別種の不正確さを新設する](pages/anti-patterns/sot-quote-drops-strength-qualifier.md) — raw/reviews/20260926T145932Z-pr-3181.md を統合
+* **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=551, broken_refs=0
 
 ## 2026-09-26
 
