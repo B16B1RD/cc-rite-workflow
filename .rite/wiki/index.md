@@ -560,9 +560,10 @@ okf_version: "0.2"
 | [入力経路を合流点へ加えるときは、経路の出所の識別子と合流点が探す対象の識別子の一致を前提条件にする](pages/heuristics/merge-point-input-source-identity-must-match-target.md) | heuristics | 複数の入力経路が同じ処理へ合流する設計で経路を 1 本足すと、その経路のデータが別の対象について作られたものでも、合流点は区別できずに処理してしまう。経路の出所の識別子と、合流点が処理しようとしている対象の識別子を照合してから受け入れる。 | 2026-09-26T13:30:43Z | medium |
 | [検出規則を広げても走査範囲が先頭語限定のままだと同型の取りこぼしが残る](pages/heuristics/broadening-detection-rule-requires-broadening-scan-scope.md) | heuristics | 複合コマンドの構造検出をセグメント先頭語だけに限定すると、time や coproc のような前置語を伴う構造を取りこぼす。判定基準を広げる際は、走査対象の範囲も同じ粒度に広げる必要がある。 | 2026-09-26T14:05:00Z | high |
 | [共有 helper への置き換えは既定値そのものではなく既定値の成り立ち方を変える](pages/heuristics/shared-helper-migration-changes-default-value-mechanism.md) | heuristics | 個別の既定値ロジックを共有 helper へ委譲すると、値が不在のときに続行する既定値そのものは同じでも、その既定値を生成する経路（リテラル初期化 → 空値を読んで case 分岐）が変わる。既定値の中身を assert しないテストは、この変化を検出できない。 | 2026-09-26T14:08:00Z | high |
+| [エラーメッセージが案内するコマンドは、テストで出力から抽出して逐語実行する](pages/patterns/guidance-command-test-by-verbatim-execution.md) | patterns | エラーメッセージが利用者に打たせるコマンドを文字列の部分一致だけで固定すると、案内先 CLI の必須引数が欠けていても検出できない。テストは出力から案内コマンドを抽出してそのまま実行し、文言と実行可能性を 1 つの assert で結ぶ。 | 2026-09-26T14:50:00Z | high |
 ## 統計
 
-- 総ページ数: 550
-- ドメイン別: patterns=124, heuristics=252, anti-patterns=174
-- 最終更新: 2026-09-26T14:30:00Z
+- 総ページ数: 551
+- ドメイン別: patterns=125, heuristics=252, anti-patterns=174
+- 最終更新: 2026-09-26T14:50:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
