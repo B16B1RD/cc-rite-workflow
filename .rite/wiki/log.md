@@ -2,6 +2,7 @@
 
 ## 2026-09-26
 
+* **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=551, broken_refs=0
 * **Create**: [エラーメッセージが案内するコマンドは、テストで出力から抽出して逐語実行する](pages/patterns/guidance-command-test-by-verbatim-execution.md) — raw/reviews/20260926T142952Z-pr-3171.md を新規ページ化
 * **Skip**: [20260926T143749Z-pr-3173.md](raw/reviews/20260926T143749Z-pr-3173.md) — 既存規約の範囲内: 経緯文を現在形の制約文へ直す規約の適用例で、新しい経験則を含まない
 * **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0
