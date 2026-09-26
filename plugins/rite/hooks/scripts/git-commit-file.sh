@@ -118,6 +118,12 @@ if [ -n "$_wiki_flow" ] && [ -f "$_wiki_flow" ] \
   IFS=$'\t' read -r _wiki_phase _wiki_fswt <<<"$_wiki_row"
   case "$_wiki_phase" in
     implement|fix)
+      # worktree を記録しないセッションの作業ツリーは flow-state を持つ checkout（gate と同じ導出）
+      if [ -z "$_wiki_fswt" ]; then
+        case "$_wiki_flow" in
+          */.rite/sessions/*.flow-state) _wiki_fswt="${_wiki_flow%/.rite/sessions/*}" ;;
+        esac
+      fi
       if [ -n "$_wiki_fswt" ]; then
         _wiki_fswt=$(canon_abs_path "$_wiki_fswt") || _wiki_fswt=""
       fi

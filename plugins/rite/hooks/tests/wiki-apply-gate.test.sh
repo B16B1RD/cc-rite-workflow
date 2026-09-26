@@ -207,7 +207,7 @@ rc=0
 GOUT=$(env -u WIKI_APPLY_MEMORY -u WIKI_APPLY_FLOW_STATE bash "$GATE" \
   --mode commit --worktree "$repo" --flow-state "$empty_wt_flow" 2>"$ROOT/gate.err") || rc=$?
 if [ "$rc" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=skip' <<<"$GOUT" && grep -q 'reason=worktree' <<<"$GOUT"; then
-  pass "commit with empty worktree skips"
+  pass "commit with empty worktree and a flow-state outside .rite/sessions skips"
 else
   fail "commit empty worktree rc=$rc out=$GOUT"
 fi
@@ -1064,6 +1064,107 @@ if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
   pass "review after the implement commit allows"
 else
   fail "review after implement rc=$GRC out=$GOUT"
+fi
+
+echo "=== a session without a recorded worktree is gated in its own checkout ==="
+# The flow-state sits at <checkout>/.rite/sessions/, which is how every session
+# resolves it; that checkout is the session's work tree.
+sgl=$(new_repo single)
+write_config "$sgl" true false
+sgl_sid=550e8400-e29b-41d4-a716-446655440078
+sgl_env() {
+  env -u CLAUDE_SESSION_ID -u CODEX_THREAD_ID -u GROK_SESSION_ID -u WIKI_APPLY_FLOW_STATE RITE_HOST=claude \
+    CLAUDE_CODE_SESSION_ID="$sgl_sid" RITE_STATE_ROOT="$sgl" "$@"
+}
+sgl_flow="$sgl/.rite/sessions/$sgl_sid.flow-state"
+mkdir -p "$sgl/.rite/sessions"
+for sgl_phase in implement fix; do
+  for sgl_shape in empty missing; do
+    if [ "$sgl_shape" = empty ]; then
+      jq -n --arg p "$sgl_phase" '{phase:$p, issue_number:7, worktree:""}' > "$sgl_flow"
+    else
+      jq -n --arg p "$sgl_phase" '{phase:$p, issue_number:7}' > "$sgl_flow"
+    fi
+    run_gate --mode commit --worktree "$sgl" --flow-state "$sgl_flow" --memory "$ROOT/no-such.md"
+    if [ "$GRC" -eq 1 ] && grep -q 'reason=record_missing' <<<"$GOUT" && ! grep -q 'WIKI_APPLY_GATE=skip' <<<"$GOUT"; then
+      pass "$sgl_phase with $sgl_shape worktree checks the checkout holding the flow-state"
+    else
+      fail "$sgl_phase $sgl_shape worktree rc=$GRC out=$GOUT"
+    fi
+    sgl_gin=$(jq -n --arg cwd "$sgl" '{tool_name:"Bash", tool_input:{command:"git commit -m x"}, cwd:$cwd}')
+    grc=0
+    gout=$(cd "$ROOT" && printf '%s' "$sgl_gin" | WIKI_APPLY_FLOW_STATE="$sgl_flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+    if grep -q 'deny' <<<"$gout" && grep -q 'wiki-apply-gate' <<<"$gout"; then
+      pass "guard denies a $sgl_phase commit without a record ($sgl_shape worktree)"
+    else
+      fail "guard $sgl_phase $sgl_shape rc=$grc out=$gout"
+    fi
+  done
+done
+sgl_linked="$ROOT/single-linked"
+git -C "$sgl" worktree add -q -b linked "$sgl_linked" >/dev/null 2>&1
+sgl_linked=$(CDPATH= cd -- "$sgl_linked" && pwd -P)
+sgl_other=$(new_repo single-other)
+for sgl_target in "$sgl_linked" "$sgl_other"; do
+  run_gate --mode commit --worktree "$sgl_target" --flow-state "$sgl_flow" --memory "$ROOT/no-such.md"
+  if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=skip' <<<"$GOUT" && grep -q 'reason=worktree' <<<"$GOUT"; then
+    pass "commit to $(basename "$sgl_target") outside the session checkout skips"
+  else
+    fail "outside $(basename "$sgl_target") rc=$GRC out=$GOUT"
+  fi
+done
+sgl_all=$(jq -n --arg cwd "$sgl" '{tool_name:"Bash", tool_input:{command:"git commit -a -m x"}, cwd:$cwd}')
+grc=0
+gout=$(printf '%s' "$sgl_all" | WIKI_APPLY_FLOW_STATE="$sgl_flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+if grep -q 'wiki-apply-index' <<<"$gout"; then
+  pass "guard denies git commit -a in the session checkout"
+else
+  fail "single -a rc=$grc out=$gout"
+fi
+sgl_msg="$ROOT/single-msg.txt"
+printf 'fix: single\n\nwhy\n' > "$sgl_msg"
+sgl_before=$(git -C "$sgl" rev-parse HEAD)
+crc=0
+WIKI_APPLY_FLOW_STATE="$sgl_flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" \
+  bash "$COMMIT" --file "$sgl_msg" --worktree "$sgl" -- -a >/dev/null 2>"$ROOT/single.err" || crc=$?
+if [ "$crc" -eq 1 ] && [ "$(git -C "$sgl" rev-parse HEAD)" = "$sgl_before" ] && grep -q 'index の照合を外す引数' "$ROOT/single.err"; then
+  pass "git-commit-file refuses -a in the session checkout"
+else
+  fail "single helper -a rc=$crc err=$(cat "$ROOT/single.err")"
+fi
+jq -n '{phase:"cleanup", issue_number:7}' > "$sgl_flow"
+grc=0
+gout=$(printf '%s' "$sgl_all" | WIKI_APPLY_FLOW_STATE="$sgl_flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+if [ "$grc" -eq 0 ] && [ -z "$gout" ]; then
+  pass "guard allows git commit -a in the session checkout under phase=cleanup"
+else
+  fail "single cleanup -a rc=$grc out=$gout"
+fi
+# Captured record, commit, then review: the record the capture writes is the
+# one the commit gate compares, and the commit refreshes its head.
+rm -f "$sgl_flow"
+sgl_env bash "$FS" set --phase implement --issue 7 --branch fix/issue-7-x --pr 0 --next test >/dev/null
+sgl_resolved=$(sgl_env bash "$FS" path)
+sgl_mem="$ROOT/single.md"
+write_mem "$sgl_mem" ""
+printf 'single\n' >> "$sgl/README"
+git -C "$sgl" add README
+(cd "$sgl" && sgl_env WIKI_APPLY_MEMORY="$sgl_mem" bash "$CAPTURE" --keywords widget --paths README >/dev/null 2>"$ROOT/single-capture.err")
+sgl_old=$(git -C "$sgl" rev-parse HEAD)
+crc=0
+(cd "$sgl" && sgl_env WIKI_APPLY_MEMORY="$sgl_mem" bash "$COMMIT" --file "$sgl_msg" >"$ROOT/single.out" 2>"$ROOT/single.err") || crc=$?
+sgl_new=$(git -C "$sgl" rev-parse HEAD)
+if [ "$sgl_resolved" = "$sgl/.rite/sessions/$sgl_sid.flow-state" ] && [ "$(jq -r '.worktree // ""' "$sgl_resolved")" = "" ] \
+  && [ "$crc" -eq 0 ] && [ "$sgl_old" != "$sgl_new" ] && [ "$(sed -n 's/^head: //p' "$sgl_mem")" = "$sgl_new" ]; then
+  pass "a captured record lets the commit through and the commit refreshes head"
+else
+  fail "single commit flow=$sgl_resolved rc=$crc old=$sgl_old new=$sgl_new err=$(cat "$ROOT/single.err") capture=$(cat "$ROOT/single-capture.err")"
+fi
+run_gate --mode review --worktree "$sgl" --flow-state "$sgl_resolved" --memory "$sgl_mem"
+if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT" && grep -q 'reason=ok' <<<"$GOUT"; then
+  pass "review after the commit allows"
+else
+  fail "single review rc=$GRC out=$GOUT"
 fi
 
 echo ""

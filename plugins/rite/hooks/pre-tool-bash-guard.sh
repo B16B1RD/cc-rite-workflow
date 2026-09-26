@@ -978,7 +978,7 @@ _rite_btg_pattern9_fail_closed() {
   exit 2
 }
 
-# Pattern 9: implement/fix commits in this session worktree need a wiki record.
+# Pattern 9: implement/fix commits in this session's work tree need a wiki record.
 # The command surface keeps a commit that follows a heredoc. literal git -C uses
 # that path. Another worktree is not checked. An unresolvable target is denied.
 _wiki_surface=""
@@ -1004,6 +1004,13 @@ if [ -z "$BLOCKED_PATTERN" ] && [[ "$_wiki_surface" == *git* && "$_wiki_surface"
   [ -n "$_wiki_cwd" ] || _wiki_cwd="$PWD"
   if [ -d "$_wiki_cwd" ]; then
     _wiki_cwd=$(CDPATH= cd -- "$_wiki_cwd" && pwd -P)
+  fi
+  # A session that records no worktree works in the checkout holding its
+  # flow-state; wiki-apply-gate.sh derives the same tree.
+  if [ -z "$_wiki_fswt" ]; then
+    case "$_wiki_fs" in
+      */.rite/sessions/*.flow-state) _wiki_fswt="${_wiki_fs%/.rite/sessions/*}" ;;
+    esac
   fi
   if [ -d "$_wiki_fswt" ]; then
     _wiki_fswt=$(CDPATH= cd -- "$_wiki_fswt" && pwd -P)
