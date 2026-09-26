@@ -36,6 +36,8 @@
 * **Create**: [並行セッションの別 Issue ブランチ作成が post-review state verify の branch_list drift を誤検出させる](pages/anti-patterns/concurrent-session-branch-creation-false-positive-drift.md) — raw/reviews/20260926T062846Z-pr-3117.md を新規ページ化
 * **Skip**: [20260926T064944Z-pr-3117.md](raw/reviews/20260926T064944Z-pr-3117.md) — cycle 2 推奨の適用完了報告に留まり既存ページを超える新規知見なし
 * **Skip**: [20260926T065047Z-pr-3119.md](raw/reviews/20260926T065047Z-pr-3119.md) — 既存 mutation-testing-test-fidelity.md の適用実績の再確認に留まり新規知見なし
+* **Update**: [否定形の assert は前提条件が崩れると fail-silent になる](pages/anti-patterns/negative-assertion-vacuous-without-precondition-floor.md) — raw/reviews/20260926T070442Z-pr-3120.md でテスト fixture の前提成立自体を assert する観点を追記
+* **Skip**: [20260926T070111Z-pr-3121.md](raw/reviews/20260926T070111Z-pr-3121.md) — mutation testing で検出した pin 網羅性 nit（non-blocking）で既存ページを超える新規知見なし
 
 ## 2026-09-25
 

@@ -9,11 +9,14 @@ sources:
     resource: "raw/fixes/20260725T103734Z-pr-2017-cycle3.md"
   - type: "reviews"
     resource: "raw/reviews/20260916T125101Z-pr-2914.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260926T070442Z-pr-3120.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-16T12:58:00Z" }
+generated: { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T07:10:00Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-16T12:58:00Z" }
+  - { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T07:10:00Z" }
 ---
 
 # 否定形の assert は前提条件が崩れると fail-silent になる
@@ -107,6 +110,16 @@ FAIL_SWITCH=1 run_hook "$dir"; [ ! -f "$dir/helper-call.json" ] || fail "helper 
 
 失敗分岐を通ったことの positive control（失敗時にだけ出る診断トークンの存在）も同じ走行で assert すると、不在 assert が 2 方向から支えられる。
 
+### 対処 5: fixture が作る前提の成立そのものを assert する
+
+テスト fixture が「結果ファイルを削除して lost 状態を作る」のような操作で前提条件を組み立てる場合、その操作自体が意図どおり効いたことを assert しないと、fixture が想定と異なる分岐（例: 発散判定なしの短い推移）へ黙って落ち、テストが検証しようと名乗っている優先順位を一度も経由しないまま緑になる。これは本ページの否定形 assert の vacuous 化と同型の構造で、前提を「作った」というコードの実行ではなく、前提が「成立している」という状態を fixture 内で直接確認することで防ぐ。
+
+```bash
+rm -f "$result_dir"/*.json
+# 前提の成立を確認: この時点で結果ファイルが本当に無いこと
+[ -z "$(ls -A "$result_dir" 2>/dev/null)" ] || fail "fixture precondition not met: result files still present"
+```
+
 ### 検出方法
 
 否定形 pin の vacuous 化は、通常の mutation testing では見つからない（blocking gate の環境では pin が機能するため mutation は kill される）。**環境変数や cwd を振って同じ mutation を再実行する** ことで初めて見える。移植性・環境依存を扱う PR では、mutation matrix に「環境軸」を 1 本足す。
@@ -121,3 +134,4 @@ FAIL_SWITCH=1 run_hook "$dir"; [ ! -f "$dir/helper-call.json" ] || fail "helper 
 
 - [fix 結果](../../raw/fixes/20260725T103734Z-pr-2017-cycle3.md)
 - [レビュー結果](../../raw/reviews/20260916T125101Z-pr-2914.md)
+- [レビュー結果](../../raw/reviews/20260926T070442Z-pr-3120.md)
