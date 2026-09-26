@@ -90,6 +90,13 @@ if [ "$(id -u)" != 0 ]; then
 else
   echo "  SKIP: root では読み取り権限を外せないため config_unreadable を検証しない"
 fi
+# --config 省略時に config がどこにも無ければ、試したパスを WARNING に出して multi_session 無効で続行する
+r2=$(make_repo); wt2="$r2/.rite/worktrees/issue-1"
+rm -f "$wt2/rite-config.yml" "$r2/rite-config.yml"
+out=$(cd "$wt2" && bash "$HELPER" detect --issue 1 2>"$TMP_ROOT/detect-missing.err")
+assert_contains "detect: config 不在は multi_session 無効として none に分類する" "$out" "[CONTEXT] CLEANUP_WT=none;"
+assert_contains "detect: config 不在の WARNING に worktree 側の試したパスが入る" "$(cat "$TMP_ROOT/detect-missing.err")" \
+  "WARNING: rite-config.yml が見つかりません (試したパス: $wt2/rite-config.yml, $r2/rite-config.yml)"
 
 # AC-2: 対象外の cwd（main checkout）で、当該 Issue の worktree も登録されていなければ
 # worktree を触らず none を返して exit 0（issue-1 は登録済みなので未登録の issue-2 で呼ぶ）。

@@ -942,6 +942,31 @@ if grep -q "WARNING: .*$lw_main/rite-config.yml" "$ROOT/gate.err" && ! grep -q '
 else
   fail "no-config gate rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
 fi
+# 読めない config は既定値へ倒さず、capture は記録を書かずに止まり、gate は拒否する
+# （root は権限を無視して読めるため検証できない）
+if [ "$(id -u)" != 0 ]; then
+  printf '%s\n' 'wiki:' '  enabled: true' > "$lw_main/rite-config.yml"
+  chmod 000 "$lw_main/rite-config.yml"
+  ur_mem="$ROOT/lw-unreadable.md"
+  crc=0
+  bash "$CAPTURE" --keywords widget --cwd "$lw" --flow-state "$lw_flow" --memory "$ur_mem" >"$ROOT/lw3.out" 2>"$ROOT/lw3.err" || crc=$?
+  if [ "$crc" -ne 0 ] && [ ! -e "$ur_mem" ] && grep -q "ERROR: .*$lw_main/rite-config.yml" "$ROOT/lw3.err"; then
+    pass "capture with an unreadable config stops without writing a record"
+  else
+    fail "unreadable capture rc=$crc mem=$(cat "$ur_mem" 2>/dev/null) err=$(cat "$ROOT/lw3.err")"
+  fi
+  write_mem "$ur_mem" "x"
+  run_gate --mode commit --worktree "$lw" --flow-state "$lw_flow" --memory "$ur_mem"
+  if [ "$GRC" -eq 1 ] && grep -q 'reason=config_unreadable' <<<"$GOUT" && ! grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
+    pass "gate with an unreadable config denies with config_unreadable"
+  else
+    fail "unreadable gate rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
+  fi
+  chmod 644 "$lw_main/rite-config.yml"
+  rm -f "$lw_main/rite-config.yml" "$ur_mem"
+else
+  echo "  SKIP: unreadable config (root ignores mode bits)"
+fi
 
 echo "=== git-commit-file refreshes head; a later edit is stale ==="
 land=$(new_repo land)

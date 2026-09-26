@@ -11,7 +11,7 @@ fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
 check() { local label=$1; shift; if "$@"; then pass "$label"; else fail "$label"; fi; }
 contains() { "$REAL_GREP" -qF -- "$2" "$1"; }
 lacks() { ! contains "$1" "$2"; }
-export REAL_GREP=$(command -v grep) REAL_MKTEMP=$(command -v mktemp)
+export REAL_GREP=$(command -v grep) REAL_MKTEMP=$(command -v mktemp) REAL_GIT=$(command -v git)
 export CASE_DIR="$TEST_DIR/case"
 SANDBOX="$TEST_DIR/plugin"
 mkdir -p "$SANDBOX/scripts" "$SANDBOX/hooks" "$TEST_DIR/bin" "$CASE_DIR/tmp"
@@ -32,6 +32,8 @@ case "$1" in
     if [ -n "$TEST_SIGNAL" ]; then kill -s "$TEST_SIGNAL" "$(cat "$CASE_DIR/helper.pid")"; fi
     [ "$DIFF_RC" = 0 ] || { echo 'diff IO error' >&2; exit "$DIFF_RC"; }
     cat "$CASE_DIR/diff.fixture" ;;
+  # config の解決（rite-config-path.sh / state-path-resolve.sh）は実 git で行う
+  rev-parse) exec "$REAL_GIT" "$@" ;;
   *) exit 99 ;;
 esac
 STUB
@@ -161,6 +163,7 @@ cleaned normal
 reset_case; printf 'No issue reference\n' > "$CASE_DIR/pr body.txt"; rm "$CASE_DIR/rite-config.yml"; run
 marker fallback success 77
 check 'default base branch preserved' contains "$CASE_DIR/git.log" 'origin/develop...HEAD'
+check 'missing config warns with tried path' contains "$CASE_DIR/err" "WARNING: rite-config.yml が見つかりません (試したパス: $CASE_DIR/rite-config.yml)"
 
 # 引用符なしの値 + 行末コメントがコメントごと base_branch に紛れ込まないことを確認する
 reset_case; printf 'branch:\n  base: develop    # 開発ベース\n' > "$CASE_DIR/rite-config.yml"; run
@@ -170,6 +173,30 @@ check 'unquoted base strips trailing comment' contains "$CASE_DIR/git.log" 'orig
 reset_case; printf 'other:\n  base: wrong\nbranch:\n  base: "main"\n' > "$CASE_DIR/rite-config.yml"; run
 check 'base outside branch section is not picked up' contains "$CASE_DIR/git.log" 'origin/main...HEAD'
 check 'base outside branch section does not leak into diff range' lacks "$CASE_DIR/git.log" 'origin/wrong...HEAD'
+
+# 追跡外 config は main checkout にだけある。linked worktree から main の base を読む
+WT_MAIN="$TEST_DIR/wtmain"; WT_DIR="$TEST_DIR/wtwt"
+"$REAL_GIT" init -q "$WT_MAIN"
+"$REAL_GIT" -C "$WT_MAIN" -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -q --allow-empty -m init
+"$REAL_GIT" -C "$WT_MAIN" worktree add -q -b feat/wm "$WT_DIR" >/dev/null 2>&1
+printf 'branch:\n  base: "trunk"\n' > "$WT_MAIN/rite-config.yml"
+reset_case; rm "$CASE_DIR/rite-config.yml"; RC=0
+(cd "$WT_DIR" && bash "$TARGET" --pr-body-file "$CASE_DIR/pr body.txt" --history-file "$HISTORY_FILE" \
+  --impl-status "$IMPL" --test-status "$TEST_STATUS" --doc-status "$DOC") > "$CASE_DIR/out" 2> "$CASE_DIR/err" || RC=$?
+check 'worktree reads base from the main checkout config' contains "$CASE_DIR/git.log" 'origin/trunk...HEAD'
+check 'worktree with main config does not warn' lacks "$CASE_DIR/err" 'WARNING: rite-config.yml'
+
+# 読めない config は既定値へ倒さず、reason 付きの retained flag を出して止まる
+# （root は権限を無視して読めるため検証できない）
+if [ "$(id -u)" != 0 ]; then
+  reset_case; chmod 000 "$CASE_DIR/rite-config.yml"; run; chmod 644 "$CASE_DIR/rite-config.yml"
+  check 'unreadable config exits nonzero' test "$RC" -ne 0
+  reason 'unreadable config' config_unreadable
+  check 'unreadable config does not diff with the default base' lacks "$CASE_DIR/git.log" 'origin/develop...HEAD'
+  no_calls 'unreadable config'
+else
+  echo '  SKIP: root では読み取り権限を外せないため unreadable config を検証しない'
+fi
 
 reset_case; printf 'Resolves #12\n' > "$CASE_DIR/pr body.txt"; run; marker resolves success 12
 reset_case; printf 'Closes #45\n' > "$CASE_DIR/pr body.txt"; run; marker closes success 45

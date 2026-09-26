@@ -137,6 +137,24 @@ case "$got" in
   *"WARNING:"*"$MAIN/rite-config.yml"*"post=false"*) pass "T-10 missing config warns with tried path and defaults to false" ;;
   *) fail "T-10 missing config warns with tried path and defaults to false (got '$got')" ;;
 esac
+if [ "$(id -u)" -eq 0 ]; then
+  skip "T-10 unreadable config (root ignores mode bits)"
+else
+  printf 'pr_review:\n  post_comment: true\n' > "$MAIN/rite-config.yml"
+  chmod 000 "$MAIN/rite-config.yml"
+  rc=0; got=$(cd "$WT" && bash -c "$block"$'\necho "post=$config_post_comment"' 2>&1) || rc=$?
+  chmod 644 "$MAIN/rite-config.yml"
+  assert "T-10 unreadable config exits 1" "1" "$rc"
+  case "$got" in
+    *"reason=config_unreadable"*"[review:error]"*) pass "T-10 unreadable config stops with review:error" ;;
+    *) fail "T-10 unreadable config stops with review:error (got '$got')" ;;
+  esac
+  case "$got" in
+    *"post="*) fail "T-10 unreadable config does not continue with a default (got '$got')" ;;
+    *) pass "T-10 unreadable config does not continue with a default" ;;
+  esac
+  rm -f "$MAIN/rite-config.yml"
+fi
 
 print_summary "$(basename "$0")" \
   "Drift hint: rite-config-path.sh — worktree toplevel first, then main checkout root; rc=1 lists tried paths, rc=2 never falls through."
