@@ -1468,6 +1468,7 @@ try:
         f.state_path.write_bytes(granted)
         for path, content in saved.items():
             path.write_bytes(content)
+        return output
 
     held_not('T-22: the cycle cap fires during a retry', 'ITERATE_CB=fire; cycle=3; max=3; CB_REASON=max-cycles',
              receipt=lambda _: (f.root / 'rite-config.yml').write_text('safety:\n  max_review_cycles: 3\n'))
@@ -1476,8 +1477,18 @@ try:
              edit=lambda state: state['review_run'].update(status='stopped'))
     held_not('T-22: the hold ends once the grant cycle has moved on', 'CB_REASON=divergence',
              edit=lambda state: state['review_run']['retry']['stop_context'].update(cycle_count=2))
-    held_not('T-22: a lost result is repaired before the hold', 'ITERATE_LOST_GATE=fire',
-             receipt=lambda results: results[-1].unlink())
+    # A cycle past the three saved results leaves one lost while the divergence verdict and
+    # the pending grant still stand, so without the lost gate going first this cycle is held.
+    lost = held_not('T-22: a lost result is repaired before the hold', 'ITERATE_LOST_GATE=fire',
+                    edit=lambda state: (state.__setitem__('cycle_count', 4),
+                                        state['review_run']['retry']['stop_context'].update(cycle_count=4)))
+    lost_gate = marker(lost, 'ITERATE_LOST_GATE')
+    check(lost_gate.startswith('[CONTEXT] ITERATE_LOST_GATE=fire;')
+          and all(field in lost_gate for field in ('lost=1;', 'cycle=4;', 'max=15;', 'TREND=1,2,3;', 'TREND_VERDICT=fire;')),
+          'T-22: the lost case keeps the divergence verdict the hold applies to:\n' + lost)
+    lost_cb = marker(lost, 'ITERATE_CB')
+    check(lost_cb.startswith('[CONTEXT] ITERATE_CB=ok;') and 'INC=held' in lost_cb,
+          'T-22: the lost gate holds the counter instead of the verdict:\n' + lost)
     held_not('T-22: a converging trend needs no hold', 'ITERATE_CB=ok',
              receipt=lambda results: results[-1].write_text(json.dumps(
                  dict(json.loads(results[-1].read_text()), findings=[]))))
