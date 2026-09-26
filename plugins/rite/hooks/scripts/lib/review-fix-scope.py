@@ -184,7 +184,7 @@ def base_branch():
         require(False, "cannot read rite-config.yml: " + str(config) + ": " + str(error))
     in_branch = False
     for line in lines:
-        if re.match(r"[A-Za-z_]", line):
+        if re.match(r"[^ ]", line):
             in_branch = line.split("#", 1)[0].strip() == "branch:"
             continue
         match = re.match(r"\s+base:\s*(.*)", line)

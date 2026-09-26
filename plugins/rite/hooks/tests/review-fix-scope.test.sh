@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 python3 - "$SCRIPT_DIR/../.." <<'PYTEST'
 import copy
+import importlib
 import json
 import os
 from pathlib import Path
@@ -552,5 +553,32 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
     run(['git', '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
          'commit', '-q', '--allow-empty', '-m', 'changed HEAD'])
     check(invoke(ok=False).returncode != 0, 'changed HEAD rejects stale review and plan')
+
+    # base_branch(): branch: 節が数字始まりのトップレベルキー（例: 2fa:）で終わることを
+    # 確認する。branch: に base: を持たせず、直後の 2fa: 配下にだけ base: wrong を置く。
+    # 旧実装 ([A-Za-z_]) は "2fa:" で節終了を検出できず base: wrong を拾ってしまう。
+    lib_dir = plugin / 'hooks/scripts/lib'
+    if str(lib_dir) not in sys.path:
+        sys.path.insert(0, str(lib_dir))
+    review_fix_scope = importlib.import_module('review-fix-scope')
+    with tempfile.TemporaryDirectory(prefix='rite-fix-scope-basebranch-') as bb_tmp:
+        bb_root = Path(bb_tmp)
+        subprocess.run(['git', 'init', '-q'], cwd=bb_root, check=True)
+        (bb_root / 'rite-config.yml').write_text(
+            'branch:\n  pattern: "{type}/issue-{number}-{slug}"\n2fa:\n  base: wrong\n',
+            encoding='utf-8')
+        cwd_before = os.getcwd()
+        os.chdir(bb_root)
+        try:
+            leaked = None
+            try:
+                leaked = review_fix_scope.base_branch()
+            except Exception:
+                pass
+        finally:
+            os.chdir(cwd_before)
+        check(leaked != 'wrong',
+              'base_branch() does not leak base: from a non-alpha top-level key section (got %r)' % leaked)
+
     print('PASS: review fix scope: ' + str(checks) + ' assertions; real receipts, cache, failures and documented callers')
 PYTEST
