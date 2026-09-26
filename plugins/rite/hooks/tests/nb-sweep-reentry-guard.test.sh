@@ -4,14 +4,22 @@
 # 5.S / 0.6 のシェル本体は scripts/iterate-step.sh の step_nb_sweep_collect / step_nb_sweep_record /
 # step_init_cycle 関数にある。コード片はその関数範囲、分岐表・散文は SKILL.md の節を見る。
 #
-# T-01 5.S entry: file exists → skipped, no collect / no --nb-sweep invoke in that branch
+# T-01 5.S entry: skipped only when line 1 field 2 equals the latest review JSON basename;
+#      the skip branch runs neither collect nor --nb-sweep, the other branch calls collect
 # T-02 empty collect writes noop; write-failure must not leave a skip file
 # T-03 --nb-sweep return never uses step-4 generic table to re-enter step 1
 # T-04 done-file writers (iterate post-return + fix 1.3.S empty + digest)
 # T-05 cleanup rite_rm AND pr-cycle-cleanup.sh both name the file
 # T-06 fix 5.1 row 1.5/1.6; regular loop does not consult the file
-# T-07 existing nb-sweep-contract rails remain; 5.0.2 has skipped; 0.6 run-start deletes the file
+# T-07 existing nb-sweep-contract rails remain; 5.0.2 has skipped; 0.6 deletes the file only for
+#      a fresh run or a run whose counter is 0 (review-restart also deletes it)
 # T-08 AC-6 sidecar _ensure_dir_gitignore + setup dir_entry; git check-ignore -q rc=0
+# T-09 kind is line 1 field 1; fix 5.1 never treats the file's existence alone as done
+# T-10 sweep writers keep a one-line done marker and never add a SHA or run git
+# T-11 5.S entry executed: skip only on basename match; latest JSON is the lexical tail, not
+#      the mtime max; a missing record removes an existing file instead of leaving a rangeless one
+# T-12 fix 5.1 reader, the digest writer and the iterate post-return writer executed: each
+#      picks the lexical tail even when another JSON has the newer mtime
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -40,7 +48,8 @@ assert_file_exists_or_fail "setup skill" "$SETUP" || true
 assert_file_exists_or_fail "cleanup skill" "$CLEANUP_SKILL" || true
 assert_file_exists_or_fail "pr-cycle-cleanup.sh" "$PR_CYCLE" || true
 
-# --- T-01: 5.S 入口はファイル存在で skipped、同一ブロックで collect/--nb-sweep に進まない ---
+# --- T-01: 5.S 入口は第 2 フィールドが最新 JSON の basename と一致するときだけ skipped。
+#     skip 分岐では collect/--nb-sweep に進まず、それ以外は collect を呼ぶ ---
 assert_grep_in_section "T-01 done-file path in 5.S" "$ITERATE_STEP" \
   '^step_nb_sweep_collect[(][)] [{]$' '^}$' \
   'nb-sweep-done-\$pr_number\.txt'
@@ -323,7 +332,113 @@ rm -rf -- "$sha_root"
 empty_root=$(run_entry empty-record "" missing)
 assert "T-11 empty record leaves no rangeless file" "0" "$([ -f "$empty_root/.rite/state/nb-sweep-done-42.txt" ] && echo 1 || echo 0)"
 rm -rf -- "$empty_root"
+
+# 既存の done ファイル（最新 JSON と食い違う basename + 旧版の 2 行目 SHA）があり record が得られないとき、
+# 削除する側の分岐を通す
+stale_root=$(run_entry stale-empty-record "$(printf 'done %s\n%s\n' "$mtime_max" "$sha_keep")" missing)
+assert "T-11 empty record reached collect over an existing file" "1" "$(grep -c called "$stale_root/collect.log" || true)"
+assert "T-11 empty record warns that the marker was not written" "1" "$(grep -c 'nb-sweep-done marker を書けませんでした' "$stale_root/out.txt" || true)"
+assert "T-11 empty record removes an existing file" "0" "$([ -f "$stale_root/.rite/state/nb-sweep-done-42.txt" ] && echo 1 || echo 0)"
+rm -rf -- "$stale_root"
 rm -f -- "$nb_collect_stub"
+
+# --- T-12: 5.S 入口以外の読み手・書き手も、字句順の末尾と mtime 最大が食い違う fixture で実行する ---
+# fixture の JSON 2 本と done ファイルは T-11 の run_entry と同じ配置（字句順の末尾 = mtime が古い側）。
+nb_fixture() {
+  local root
+  root=$(make_sandbox)
+  mkdir -p "$root/.rite/review-results" "$root/.rite/state"
+  printf '{}\n' > "$root/.rite/review-results/42-20200101000000.json"
+  printf '{}\n' > "$root/.rite/review-results/42-20200202000000.json"
+  touch -d '2020-01-02 00:00:00' "$root/.rite/review-results/42-20200202000000.json" \
+    || touch -t 202001020000 "$root/.rite/review-results/42-20200202000000.json"
+  touch -d '2020-03-03 00:00:00' "$root/.rite/review-results/42-20200101000000.json" \
+    || touch -t 202003030000 "$root/.rite/review-results/42-20200101000000.json"
+  [ -n "${1:-}" ] && printf '%s\n' "$1" > "$root/.rite/state/nb-sweep-done-42.txt"
+  echo "$root"
+}
+# fenced bash ブロックのうち、指定の行を含むものだけを取り出す。一致が 1 件でなければ空を返す。
+fenced_block_with() {
+  awk -v needle="$2" '
+    /^```bash$/ { inb=1; buf=""; hit=0; next }
+    inb && /^```$/ { if (hit) { n++; out=buf } inb=0; next }
+    inb { buf = buf $0 "\n"; if (index($0, needle)) hit=1 }
+    END { if (n == 1) printf "%s", out }
+  ' "$1"
+}
+# state-path-resolve の呼び出しを fixture root へ差し替え、placeholder を置換する。
+# 置換漏れがあると本物の state root に書き込むか、find が 0 件になって判定 0 側が空振りするので止める。
+render_fenced() {
+  local rendered
+  rendered=$(printf '%s' "$1" | sed \
+    -e 's#bash {plugin_root}/hooks/state-path-resolve.sh#printf %s "$NB_FIX_ROOT"#g' \
+    -e "s#{plugin_root}#$PLUGIN_ROOT#g" \
+    -e 's#{pr_number}#42#g')
+  if printf '%s' "$rendered" | grep -qE '\{(plugin_root|pr_number)\}|state-path-resolve\.sh'; then
+    echo "FAIL: T-12 rendered block still has a placeholder or a real state-path-resolve call" >&2
+    return 1
+  fi
+  printf '%s\n' "$rendered"
+}
+fenced_ok() {
+  [ -n "$2" ] && [ "$(printf '%s\n' "$2" | wc -l | tr -d '[:space:]')" -le 60 ] \
+    || { echo "FAIL: T-12 $1 fence missing, ambiguous or overran"; exit 1; }
+}
+
+fix51_block=$(fenced_block_with "$FIX" 'echo "[CONTEXT] NB_SWEEP_DONE_FILE=1"')
+fenced_ok "fix 5.1 NB_SWEEP_DONE_FILE" "$fix51_block"
+render_fenced "$fix51_block" >/dev/null || exit 1
+fix51_run() {
+  local root out
+  root=$(nb_fixture "$1")
+  out=$(NB_FIX_ROOT="$root" bash -c "$(render_fenced "$fix51_block")" 2>&1) || true
+  rm -rf -- "$root"
+  printf '%s\n' "$out" | sed -n 's/^\[CONTEXT\] NB_SWEEP_DONE_FILE=\([01]\)$/\1/p'
+}
+assert "T-12 fix 5.1 done on lexical tail" "1" "$(fix51_run "done $lexical_tail")"
+assert "T-12 fix 5.1 not done on mtime max" "0" "$(fix51_run "done $mtime_max")"
+
+digest_block=$(fenced_block_with "$FIX_SWEEP" 'sweep_done_file="$sweep_root/.rite/state/nb-sweep-done-{pr_number}.txt"')
+fenced_ok "digest writer" "$digest_block"
+render_fenced "$digest_block" >/dev/null || exit 1
+digest_run() {
+  local root
+  root=$(nb_fixture "$1")
+  NB_FIX_ROOT="$root" bash -c "$(render_fenced "$digest_block")" >/dev/null 2>&1 || true
+  echo "$root"
+}
+digest_root=$(digest_run "")
+assert "T-12 digest writer records lexical tail" "done $lexical_tail" "$(awk 'NR==1{print}' "$digest_root/.rite/state/nb-sweep-done-42.txt" 2>/dev/null)"
+rm -rf -- "$digest_root"
+digest_root=$(digest_run "$(printf 'noop %s\n%s\n' "$mtime_max" "$sha_keep")")
+assert "T-12 digest rewrite records lexical tail" "done $lexical_tail" "$(awk 'NR==1{print}' "$digest_root/.rite/state/nb-sweep-done-42.txt" 2>/dev/null)"
+assert "T-12 digest rewrite keeps the legacy sha line" "$sha_keep" "$(sed -n '2p' "$digest_root/.rite/state/nb-sweep-done-42.txt" 2>/dev/null)"
+rm -rf -- "$digest_root"
+
+# step_nb_sweep_record は関数なので T-11 と同じく関数範囲を抽出し、state-path-resolve だけを差し替える
+record_fence=$(awk '/^step_nb_sweep_record\(\) \{$/{f=1} f{print} f && /^}$/{exit}' "$ITERATE_STEP")
+[ -n "$record_fence" ] && printf '%s\n' "$record_fence" | tail -1 | grep -qx '}' \
+  || { echo "FAIL: T-12 record fence extraction lost its end anchor"; exit 1; }
+record_run() {
+  local root
+  root=$(nb_fixture "$1")
+  NB_FIX_ROOT="$root" bash -c "$(
+    printf 'pr_number=42\nplugin_root=%q\n' "$PLUGIN_ROOT"
+    printf '%s\n' "$record_fence" | sed -e 's#bash "$plugin_root"/hooks/state-path-resolve.sh#printf %s "$NB_FIX_ROOT"#g'
+    printf 'step_nb_sweep_record\n'
+  )" >/dev/null 2>&1 || true
+  echo "$root"
+}
+record_root=$(record_run "")
+assert "T-12 iterate post-return writer records lexical tail" "done $lexical_tail" "$(awk 'NR==1{print}' "$record_root/.rite/state/nb-sweep-done-42.txt" 2>/dev/null)"
+rm -rf -- "$record_root"
+record_root=$(record_run "$(printf 'noop %s\n%s\n' "$mtime_max" "$sha_keep")")
+assert "T-12 iterate post-return rewrite records lexical tail" "done $lexical_tail" "$(awk 'NR==1{print}' "$record_root/.rite/state/nb-sweep-done-42.txt" 2>/dev/null)"
+assert "T-12 iterate post-return rewrite keeps the legacy sha line" "$sha_keep" "$(sed -n '2p' "$record_root/.rite/state/nb-sweep-done-42.txt" 2>/dev/null)"
+rm -rf -- "$record_root"
+record_root=$(record_run "noop $lexical_tail")
+assert "T-12 iterate post-return leaves a matching file untouched" "noop $lexical_tail" "$(awk 'NR==1{print}' "$record_root/.rite/state/nb-sweep-done-42.txt" 2>/dev/null)"
+rm -rf -- "$record_root"
 
 if ! print_summary "$(basename "$0")" "nb-sweep re-entry guard drift — iterate 5.S / fix 1.3.S / cleanup / 0.6"; then
   exit 1

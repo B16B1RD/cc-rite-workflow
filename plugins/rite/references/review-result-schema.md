@@ -337,7 +337,7 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 <a id="nb-sweep-ledger"></a>
 
-`/rite:iterate` の `[review:mergeable]` 後 sweep が残存 NB を消化した記録。永続チャネルは 6.1.d の関連 Issue コメント（新チャネルを作らない）。**JSON トップレベルへキーを足さない** — 台帳はコメント本文の `### 却下台帳`、消化内訳は iterate 完了通知と `[CONTEXT] ITERATE_NB_SWEEP=` / `NB_SWEEP_RESULT=` marker。再入ガードの権威は `.rite/state/nb-sweep-done-{pr_number}.txt`（1 行目の第 1 フィールドは `noop` または `done`、第 2 フィールドは sweep した review JSON の basename。その basename が現在の最新 JSON と一致するときだけ skip。第 2 フィールドの欠落は skip しない。新規書込は 1 行のみ。既存の 2 行形式は読取互換で、kind は第 1 フィールド、2 行目 SHA は範囲に使わない）。会話 marker は観測用。
+`/rite:iterate` の `[review:mergeable]` 後 sweep が残存 NB を消化した記録。永続チャネルは 6.1.d の関連 Issue コメント（新チャネルを作らない）。**JSON トップレベルへキーを足さない** — 台帳はコメント本文の `### 却下台帳`、消化内訳は iterate 完了通知と `[CONTEXT] ITERATE_NB_SWEEP=` / `NB_SWEEP_RESULT=` marker。再入ガードの権威は `.rite/state/nb-sweep-done-{pr_number}.txt`（1 行目の第 1 フィールドは `noop` または `done`、第 2 フィールドは sweep した review JSON の basename。その basename が現在の最新 JSON と一致するときだけ skip。第 2 フィールドの欠落は skip しない。新規作成は 1 行。旧版が書いたファイルは 2 行目に SHA を持つことがあり、書き直しても 2 行目は残すが、新しい SHA は足さない。2 行目は skip の判定には使わない）。会話 marker は観測用。
 
 **台帳エントリ**（コメント本文、`📎 non_blocking_count:` の直前）:
 

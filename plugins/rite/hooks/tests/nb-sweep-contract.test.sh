@@ -226,10 +226,17 @@ cp "$nb_json" "$pr_dir/1-20260101T000000.json"
 cat > "$pr_dir/1-20260102T000000.json" <<'JSON'
 {"schema_version":"1.1.0","pr_number":1,"overall_assessment":"mergeable","findings":[],"non_blocking_findings":[{"id":"F-NEW","severity":"HIGH","file":"src/n.ts","line":1,"scope":"current-pr","description":"newer"}],"guardrail_audit_log":[]}
 JSON
+# 字句順の末尾（F-NEW）の mtime を古くし、選び方が mtime 順へずれたら F-NEW を取り逃すようにする
+touch -d '2020-01-02 00:00:00' "$pr_dir/1-20260102T000000.json" || touch -t 202001020000 "$pr_dir/1-20260102T000000.json"
+touch -d '2020-03-03 00:00:00' "$pr_dir/1-20260101T000000.json" || touch -t 202003030000 "$pr_dir/1-20260101T000000.json"
 pr_out=$("$COLLECT" --pr 1 --state-root "$sandbox/state" 2>"$sandbox/tpr.err") || pr_rc=$?
 pr_rc=${pr_rc:-0}
 assert "T-01 --pr rc=0" "0" "$pr_rc"
 assert "T-01 --pr picks F-NEW" "F-NEW" "$(printf '%s' "$pr_out" | jq -r '.targets[0].id')"
+pr_mtime() { stat -c '%Y' "$1" 2>/dev/null || stat -f '%m' "$1"; }
+assert "T-01 --pr fixture: lexical tail is not the mtime max" "1" \
+  "$([ "$(pr_mtime "$pr_dir/1-20260101T000000.json")" -gt "$(pr_mtime "$pr_dir/1-20260102T000000.json")" ] && echo 1 || echo 0)"
+assert "T-01 --pr record is the lexical tail" "1-20260102T000000.json" "$(printf '%s' "$pr_out" | jq -r '.record' | xargs basename)"
 
 # --- Routing preserves evidence and only issues boolean measured MEDIUM ---
 route_json="$sandbox/routes.json"

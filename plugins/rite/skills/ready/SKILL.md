@@ -146,7 +146,7 @@ esac
 bash "$plugin_root/hooks/scripts/ready-pr-head-gate.sh" \
   --pr "$ready_pr_number" --repo {owner_repo} --plugin-root "$plugin_root" || exit
 
-# 対象 PR の head（headRefOid。チェックアウト位置ではない）が最終レビュー済み commit と一致すること（sweep が push した 1 commit は
+# 対象 PR の head（headRefOid。チェックアウト位置ではない）が最終レビュー済み commit と一致すること（旧版の sweep が push した 1 commit は
 # nb-sweep-done 2 行目 SHA 一致で例外。JSON 不在 / 不一致 / 照合不能 / 2 行目不正は
 # fail-loud）。フィールドは schema の commit_sha。
 # reviewed HEAD と受入条件を同じ review JSON から inspect する。stderr を捕捉するのは

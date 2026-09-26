@@ -173,11 +173,10 @@ dirty な基点ブランチを黙って上書きしないため。破棄・stash
 
 ## nb-sweep-done-sweep
 
-`nb-sweep-done-{pr}.txt` は 5.S 再入の権威（会話 marker は観測用）。1 行目の第 2 フィールドが
-最新 review JSON の basename と一致するときだけ skip し、欠落や新しい JSON は skip しない。
-寿命は本 run — 0.6 の `fresh || cur_cc == 0` で消し、cleanup でも回収する。cleanup まで残すと
-次の run の 0.6 が消す前に同じ JSON への再入が skip されうる。新しい JSON はファイルが残っていても
-再 sweep する。
+`nb-sweep-done-{pr}.txt` は 5.S 再入の権威（形式は review-result-schema.md の却下台帳節）。
+cleanup が回収するのは、PR 単位の state の後片付けのため。同じ呼び出しでその PR の review JSON も
+削除・退避するので、残したファイルが同じ JSON への再入を skip させる状況は起きない。残しても害は
+ないが、参照先の JSON が消えた孤児を PR ごとに積み上げない（`review-run-since-{pr}.txt` と同じ扱い）。
 
 ## wiki-worktree-persist
 
