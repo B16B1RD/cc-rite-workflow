@@ -81,6 +81,10 @@
 * **Create**: [既存 helper を別工程から再利用するとき marker 行だけの grep で呼ぶと helper 障害を「該当なし」と誤認する](pages/anti-patterns/helper-reuse-marker-only-grep-loses-error-signal.md) — raw/reviews/20260926T110024Z-pr-3148.md を新規ページ化
 * **Create**: [手書きシェル解析器では複合構造を特別扱いせず通常コマンドとして返す](pages/heuristics/handwritten-shell-parser-treat-compound-structures-as-ordinary-commands.md) — raw/reviews/20260926T110551Z-pr-3147.md, raw/fixes/20260926T105012Z-pr-3147.md を新規ページ化
 * **lint:clean** — contradictions=0 (更新・新規ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=553, broken_refs=0
+* **Update**: [除外は字面で、許可判定は symlink 解決後で比べる二重基準は、symlink 経由で許可集合を広げる](pages/anti-patterns/literal-exclusion-with-resolved-allow-check-leaks-via-symlink.md) — raw/reviews/20260926T125643Z-pr-3155.md を統合
+* **Create**: [入力経路を合流点へ加えるときは、経路の出所の識別子と合流点が探す対象の識別子の一致を前提条件にする](pages/heuristics/merge-point-input-source-identity-must-match-target.md) — raw/reviews/20260926T125534Z-pr-3148.md を新規ページ化
+* **Update**: [同定に使う needle は位置まで固定し、人間が複製できる文字列を使わない](pages/anti-patterns/identity-needle-position-and-machine-only-sentinel.md) — raw/reviews/20260926T125425Z-pr-3147.md を統合
+* **Update**: [同定に使う needle は位置まで固定し、人間が複製できる文字列を使わない](pages/anti-patterns/identity-needle-position-and-machine-only-sentinel.md) — raw/fixes/20260926T130048Z-pr-3147.md を統合
 
 ## 2026-09-25
 

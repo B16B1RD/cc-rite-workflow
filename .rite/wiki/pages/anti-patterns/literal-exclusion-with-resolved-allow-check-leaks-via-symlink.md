@@ -4,10 +4,14 @@ title: "除外は字面で、許可判定は symlink 解決後で比べる二重
 domain: "anti-patterns"
 description: "検査対象からの除外を文字列一致で決め、許可判定は symlink を解決したパスで比べると、除外対象に symlink が混ざったとき解決先のツリー全体が許可集合に入る。片方の検査だけ直しても、同じ仕組みの別の検査から抜ける。"
 created: "2026-09-26T08:46:38Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T08:46:38Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:04:23Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:04:23Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260926T083635Z-pr-3129.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260926T125643Z-pr-3155.md"
 tags: ["symlink", "path-check", "allowlist", "test-fixture"]
 confidence: medium
 ---
@@ -26,6 +30,10 @@ confidence: medium
 
 分岐を分けて片側だけを除外する変更では、除外される側の挙動をテストで固定しておく。固定が無いと、逆向きの「簡約」（除外を外す、分岐を統合する）も green のまま通る。境界の両側、つまり許可される例と拒否される例を同じ fixture で pin する。
 
+許可集合を作る段階で寄与を止める具体形として、検査を免除されたエントリに限り、許可判定でも symlink を解決せず字面一致だけで比べる方法がある。免除されたエントリはそのパス自体しか覆わないので、指す先の変更は計画外として止まり、除外側・許可側の両方の穴が一度に閉じる。ただし、どのエントリを字面一致にするかを作業ツリーの状態（その時点で symlink かどうか）で決めると、判定時点までにエントリの種類が変わった場合に抜ける。免除の根拠が「取り込み元が変えたパス」なら、字面一致の集合もその差分から決める方が堅い。
+
+挙動を変えたら、それを説明する手順書の文を「何が覆われるか」「何を並べれば通るか」「並べなければどの段階で拒否されるか」の 3 条件に分けて書く。1 文で「こう変えると拒否される」とだけ書くと、隣の手順（変更したパスはすべて並べる等）と組み合わせたときに条件が抜け、字義どおり従う読み手は拒否されない操作を拒否されると読む。
+
 ## 関連ページ
 
 - [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](../heuristics/fixture-mutation-isolates-invariants.md)
@@ -33,3 +41,4 @@ confidence: medium
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20260926T083635Z-pr-3129.md)
+- [レビュー結果](../../raw/reviews/20260926T125643Z-pr-3155.md)
