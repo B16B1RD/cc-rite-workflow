@@ -838,12 +838,18 @@ for closed_targets in (False, True):
         (root / 'locked').mkdir()
         os.chmod(root / 'locked', 0)
         try:
-            for moved in ('git commit -m fix', 'git merge main'):
-                # root enters a mode 000 directory, so that case only means something for other users.
-                unenterable = ('cd locked; ',) if os.geteuid() != 0 else ()
-                for prefix in ('cd no-such-dir; ', 'cd -; ', 'mkdir -p new-dir && cd new-dir && ') + unenterable:
-                    hook(prefix + moved, reason='target cannot be resolved to a repository')
-                hook('git -C no-such-dir ' + moved.split(' ', 1)[1], reason='target cannot be resolved to a repository')
+            with tempfile.TemporaryDirectory(prefix='rite-plain-') as plain:
+                prefixes = ['cd no-such-dir; ', 'cd -; ', 'mkdir -p new-dir && cd new-dir && ', 'cd ' + plain + '; ']
+                # Only a directory this user really cannot enter exercises the unenterable case.
+                if not os.access(root / 'locked', os.X_OK):
+                    prefixes.append('cd locked; ')
+                for moved in ['git commit -m fix', 'git merge main']:
+                    for prefix in prefixes:
+                        hook(prefix + moved, reason='target cannot be resolved to a repository')
+                    hook('git -C no-such-dir ' + moved.split(' ', 1)[1], reason='target cannot be resolved to a repository')
+                # Commands that leave HEAD where it is stay allowed there.
+                for kept in ['git commit --dry-run -m fix', 'git merge --no-commit main']:
+                    hook('cd ' + plain + '; ' + kept, allowed=True)
         finally:
             os.chmod(root / 'locked', 0o755)
             (root / 'locked').rmdir()
