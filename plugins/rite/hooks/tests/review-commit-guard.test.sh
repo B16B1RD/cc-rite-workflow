@@ -856,12 +856,52 @@ for closed_targets in (False, True):
             hook('git -C "$WT" merge main', reason='target is dynamic', cwd=Path(linked))
             hook('git -C"$WT" merge main', reason='target is dynamic', cwd=Path(linked))
             run(['git', 'worktree', 'remove', '--force', linked])
+        # A cd the shell may skip, or runs outside the current shell, leaves the target unknown.
+        with tempfile.TemporaryDirectory(prefix='rite-cd-other-') as other:
+            run(['git', 'init', '-q'], cwd=other)
+            # Control: the same repository is exempt when the cd always runs.
+            for command in ('cd ' + other + '; git commit -m x', 'cd ' + other + ' && git commit -m x',
+                            'cd ' + other + ' && git add -A && ' + heredoc('fix: x')):
+                hook(command, allowed=True)
+            for command in ('false && cd ' + other + '; git commit -m x', 'cd ' + other + ' | true; git commit -m x',
+                            'cd ' + other + ' |& true; git commit -m x', 'cd ' + other + ' & git commit -m x',
+                            'cd ' + other + ' || git commit -m x', 'true || cd ' + other + '; git commit -m x',
+                            'cd ' + other + ' && cd - && git commit -m x', 'cd -P ' + other + '; git commit -m x',
+                            'cd ' + other + ' >/dev/null; git commit -m x', '{ cd ' + other + '; }; git commit -m x',
+                            'if cd ' + other + '; then git commit -m x; fi', 'cd; git commit -m x',
+                            'false && cd ' + other + '; cd sub; git commit -m x',
+                            'false && cd ' + other + '; git merge main'):
+                hook(command, reason='target is dynamic')
+            # An absolute cd that always runs makes the target known again.
+            hook('false && cd ' + other + '; cd ' + str(root) + '; git commit -m x', reason='fix plan record missing')
+        for command in ('cd /tmp && cd - && git commit -m x', 'false && cd /tmp; git commit -m x',
+                        'cd /tmp | true; git commit -m x', 'cd -; git commit -m x'):
+            hook(command, reason='target is dynamic')
+        # The everyday forms still target the reviewed worktree.
+        for command in ('cd ' + str(root) + ' && git add -A && git commit -m x',
+                        'cd ' + str(root) + ' && git add -A; git commit -m x',
+                        'cd ' + str(root) + ' || exit 1; git commit -m x',
+                        'cd ' + str(root) + ' || exit 1\ngit commit -m x',
+                        'cd ' + str(root) + ' && git add -A 2>&1 && git commit -m x',
+                        'cd ' + str(root) + ' && git add -A &>/dev/null && git commit -m x',
+                        'cd ' + str(root) + ' && git add -A && ' + heredoc('fix: x')):
+            hook(command, reason='fix plan record missing')
+        # The wiki-apply gate reads the same targets through commit-target.
+        dynamic = run(['bash', str(helper), 'commit-target', '--command', 'false && cd /tmp; git commit -m x',
+                       '--cwd', str(root)], ok=False)
+        check(dynamic.returncode != 0 and 'target is dynamic' in dynamic.stderr,
+              'commit-target refuses a conditional cd: ' + dynamic.stdout + dynamic.stderr)
+        chained = run(['bash', str(helper), 'commit-target', '--command',
+                       'cd ' + str(root) + ' && git add -A && git commit -m x', '--cwd', str(root)])
+        lines = chained.stdout.splitlines()
+        check(len(lines) == 1 and lines[0].split('\t')[0] == 'index' and Path(lines[0].split('\t')[1]) == root.resolve(),
+              'commit-target keeps the && chain target: ' + chained.stdout)
         # During the review, a commit or merge whose target does not resolve to a repository is refused.
         (root / 'locked').mkdir()
         os.chmod(root / 'locked', 0)
         try:
             with tempfile.TemporaryDirectory(prefix='rite-plain-') as plain:
-                prefixes = ['cd no-such-dir; ', 'cd -; ', 'mkdir -p new-dir && cd new-dir && ', 'cd ' + plain + '; ']
+                prefixes = ['cd no-such-dir; ', 'mkdir -p new-dir && cd new-dir && ', 'cd ' + plain + '; ']
                 # Only a directory this user really cannot enter exercises the unenterable case.
                 if not os.access(root / 'locked', os.X_OK):
                     prefixes.append('cd locked; ')
