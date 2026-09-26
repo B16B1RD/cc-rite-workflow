@@ -43,9 +43,11 @@ sources:
     resource: "raw/fixes/20260925T005815Z-pr-3063.md"
   - type: "reviews"
     resource: "raw/reviews/20260926T060817Z-pr-3060.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260926T085328Z-pr-3130.md"
 tags: ["test", "fixture", "mutation", "invariant", "coverage"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T06:12:43Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T08:57:51Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T18:43:00+00:00" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T23:20:00+00:00" }
@@ -55,6 +57,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-14T09:23:49Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-25T03:58:00Z" }
   - { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T06:12:43Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T08:57:51Z" }
 ---
 
 # テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する
@@ -147,7 +150,15 @@ negative control の fixture は、**検証したい分岐に確実に入る形�
 - 入力値が「実装を壊したときの壊れ方」を変えていないかを確かめる。壊れ方が変われば、否定の assert は探す行そのものが出ないことで通ってしまう
 - 単独の検出力が要るなら、壊れ方を変えない値（`/` を含まないラベル）に替える。壊れ方を実演できる値を残すなら、その否定の assert は補助だと分かる名前にし、保証を担う assert を別に置く
 
-### 10. 拒否判定を固定するときは、同じ操作で結果が変わらない許可対照も併記する
+### 10. 正規表現の一部（行末 anchor 等）を固定する入力は、その部分の有無だけで判定が分かれる値を選ぶ
+
+reader の正規表現にある行末 anchor `$` を固定するテストで、当初の案は改行を含む値を helper に渡すものだった。helper は制御文字を中和して 1 行にするため、その出力は anchor より手前の部分（`pr=[0-9]*;` のような数字だけを許す箇所）で先に不一致になる。anchor を外す変異を当てても結果は変わらず、テストは anchor を何も固定しない。改行を含まず、手前の部分はすべて一致し、行末だけが違う値に替えて初めて、anchor の有無で判定が分かれた。
+
+- 正規表現の特定の部分を固定したいときは、**その部分を外した正規表現なら一致する**入力を選ぶ。手前で先に落ちる入力は、変異を当てる前から識別力がない
+- 「anchor を外した正規表現はこの行に一致する」という前提の assert を同じテストに置く。helper の出力形式が後で変わって入力が的外れになったとき、素通りの green ではなく前提側の失敗で気付ける（6 の「到達したうえで発火しない」と同じ考え方を入力の選択に当てたもの）
+- 同じ正規表現を複数の reader が持つなら、reader ごとに変異を 1 つずつ当て、それぞれが独立に落ちることを確かめる
+
+### 11. 拒否判定を固定するときは、同じ操作で結果が変わらない許可対照も併記する
 
 参照が動いたことを拒否する検査で、拒否側の fixture だけを固定すると「拒否条件を緩めて許可へ寄せる」変異が生き残ることがある。同じ操作カテゴリで結果が変わらない（HEAD を動かさない等）許可対照を fixture に併記し、拒否と許可の両方を assert すると、拒否側へ寄せすぎる変異（許可されるべき操作まで拒否してしまう）も同時に検出できる。原則は 8 の「除外側の対照は判定式の条件を 1 つだけ外す」と同型で、二値判定（許可 / 拒否）一般に適用できる。
 
@@ -197,3 +208,4 @@ guard・不変量の TC を追加したら、worktree-only mutation（当該 gua
 - [レビュー結果](../../raw/reviews/20260925T005035Z-pr-3063.md)
 - [fix 結果](../../raw/fixes/20260925T005815Z-pr-3063.md)
 - [拒否 fixture と許可対照を両方固定する原則を検出したレビュー結果](../../raw/reviews/20260926T060817Z-pr-3060.md)
+- [行末 anchor の有無だけで判定が分かれる入力と前提の assert で anchor を固定したレビュー結果](../../raw/reviews/20260926T085328Z-pr-3130.md)
