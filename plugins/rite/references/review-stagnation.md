@@ -161,6 +161,8 @@ rm "$clock_file"
 
 発行すると `stop_reason` は run 直下から `review_run.retry.stop_reason` へ移り、`status` が `active` に戻る。権利が買えるのは fix → 検証 → review の 1 巡だけで、その review に blocking 指摘が残っていれば `retry.outcome=unresolved` を記録して元の停止理由で再停止する。残っていなければ `retry.outcome=resolved` として通常の run に戻る。いずれの場合も権利は再発行されない。決着は観測が行うため、観測を経ずに閉じた run や別経路で再停止した run では `outcome` は未確定のまま残る。
 
+再試行権が未決着の間は、権利を発行した cycle（次の `review-start` が counter を進める前）に限り、iterate の cycle-gate が発散判定を保留して review へ進む。停止時と同じ推移のままでも再試行の review に届くようにするためで、cycle 上限（`max_review_cycles`）と lost 修復ゲートは保留しない。発行後は計画どおりに修正・検証・commit・push してから `/rite:iterate {pr}` を再実行する。
+
 再試行権は退避された run にも復元された run にも等しく付いて回る。発行後の run は本当に `active` なので、`review-close` / `review-defer` も通常の run と同じ条件で通る。`close` は未解決 blocking と未充足受入条件を従来どおり拒否し、`defer` は返信のみの draft を残す既存の意味のままである。これは「停止した run を閉じられる」ことではなく、再試行権を発行した run がその 1 巡の間は通常の run として扱われるということで、権利の使用済み記録は `close` / `defer` / 退避のいずれを経ても残る。
 
 再試行権は停止理由の解消認定ではない。計画の存在は収束を証明しないため、これは制限付きの再試行であって品質ゲートの解除ではない。`cycle_count` は run を通じて積み上がり続けるので、再試行を挟んでも最終的に再開不可の `circuit-breaker:max-cycles` に到達する。

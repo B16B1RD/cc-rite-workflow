@@ -239,6 +239,8 @@ bash {plugin_root}/scripts/iterate-step.sh lost-repair --repair {repair} --cycle
 | `divergence` | 収束トレンドが発散と判定された（`cycle_count < max_review_cycles` でも発火する）。無駄な cycle を早期に切る主経路 |
 | `max-cycles` | `cycle_count >= max_review_cycles`。発散判定をすり抜けた非収束を受け止める保険（既定 15 では 16 cycle 以上を要する収束中の run にも届く。両方成立する場合もこちらを理由として報告する） |
 
+`RETRY_HOLD=1`（`ok` 分岐）は、`review-retry` が発行した未決着の再試行権により、発行した cycle に限って発散判定を保留したことを示す。分岐は通常の `ok` と同じく review を invoke する。`max-cycles` と lost 修復ゲートは保留しない。決着は再試行の review の観測が行う（[review-stagnation.md](../../references/review-stagnation.md)）。
+
 `TREND_VERDICT` は**両分岐に載る**トレンド判定の診断値。`ok`（収束中・下降中）/ `fire`（発散）/ `insufficient`（データ不足・データ異常で判定不能）/ `unavailable`（helper 自体を実行できなかった）を取る。`insufficient` / `unavailable` は発火しない側へ倒れ、`max_review_cycles` が従来どおり backstop として働く。**`fire` 分岐にも載せる**のは、`CB_REASON=max-cycles` で停止したときに発散判定が下りていたのか未実施だったのかをステップ 6.2 が読み分ける必要があるため（下記 `TREND_REASON` と組で使う）。
 
 `TREND_REASON` は helper が返した `reason=` の値で、**判定が下りなかったときにその理由を運ぶ唯一の経路**。helper は理由を stdout の `reason=` に載せるため、ここで抽出して marker に載せないと呼び出し側からは消える。主な値: `need_3_cycles`（現 run の結果が 3 件に満たない。全 run が cycle 2〜3 で必ず通る正常系）/ `no_file_after_pin`（run 開始点 pin より新しい結果が 0 件。**再実行直後の 1 cycle 目は正常系**で、全面不作動を疑うのは helper が stderr WARNING を併発したとき = `cycle_count>=1`）/ `run_boundary_unresolved`（実在数が `cycle_count` を超え、他 run の結果が混ざっている。pin が無い / 古い。誤発火を避けて判定を降ろした状態で、`RUN_SINCE_USED` が原因を示す）/ `no_results_file`・`results_dir_missing`（結果ディレクトリ自体を読めない = 発散検出の全面不作動。cycle_count>=1 なら helper が stderr にも WARNING を出す）/ `json_parse_failure`・`schema_version_unknown`・`scope_enum_violation`・`pr_number_mismatch`・`blocking_count_failed`（データ異常。いずれも helper の stderr WARNING に詳細）/ `helper_unavailable`（helper 自体を実行できなかった。上記 WARNING が対）/ 判定が下りた場合は `converging_or_descending`・`no_new_minimum_and_not_descending`。
@@ -599,7 +601,7 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 要対応:
 {action_items}
 
-再開方法: `review_run` が無い legacy state では /rite:iterate {pr_number} を明示再実行する。`review_run` がある停止は通常の再実行では新 run にならない。発散なら限定 retry、回数上限を含む既知 breaker の completed 停止は明示承認の `review-restart`（契約は 6.2 と [review-stagnation.md](../../references/review-stagnation.md)）。
+再開方法: `review_run` が無い legacy state では /rite:iterate {pr_number} を明示再実行する。`review_run` がある停止は通常の再実行では新 run にならない。発散なら限定 retry（発行後に修正・検証・commit・push してから /rite:iterate {pr_number} を再実行）、回数上限を含む既知 breaker の completed 停止は明示承認の `review-restart`（契約は 6.2 と [review-stagnation.md](../../references/review-stagnation.md)）。
 
 <!-- [iterate:max-cycles-reached] -->
 ```
@@ -663,6 +665,8 @@ rationale: references/rationale.md#resume-routes-no-state-read
   `bash "{plugin_root}"/hooks/flow-state.sh review-retry --plan <一括修正計画の絶対パス> --issue <最新 Issue JSON の絶対パス>` を実行する
   （run 生涯 1 回。計画が blocking を覆えない・HEAD や receipt が動いている・権利が使用済みなら拒否される。
   許可されるのは fix → 検証 → review の 1 巡で、その review に blocking が残れば同じ理由で再停止する）
+  発行後は計画どおりに修正・検証・commit・push してから /rite:iterate {pr_number} を再実行する
+  （ステップ 1 はこの 1 巡に限り発散判定を保留して review へ進む。cycle 上限は保留しない）
 ```
 
 `{plugin_root}` は解決済み絶対パスへリテラル置換する（注意行 (b) と同じ形。配布先の plugin root は人間が推測できない）。`--session` は付けない — `cmd_review_cycle` は session override を受け付けない。
