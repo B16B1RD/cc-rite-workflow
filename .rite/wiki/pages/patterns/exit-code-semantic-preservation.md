@@ -24,11 +24,14 @@ sources:
     resource: "raw/fixes/20260713T045756Z-pr-1847-cycle2.md"
   - type: "reviews"
     resource: "raw/reviews/20260912T105243Z-pr-2732.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260926T052407Z-pr-3110.md"
 tags: ["bash", "exit-code", "api-contract", "sentinel"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T11:30:00Z" }
+generated: { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T05:45:00Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T11:30:00Z" }
+  - { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T05:45:00Z" }
 ---
 
 # Exit code semantic preservation: caller は case で語彙を保持する
@@ -127,6 +130,10 @@ caller 側の case routing だけでなく、**script 自身のすべての内�
 - **canonical fix**: exit code 契約を変える変更では、script のファイル名で repo 全体を grep し、ヒットした全 caller の `case` を同じ語彙に揃える。揃えないと判断した caller は理由を残す
 - **`*)` の役割との関係**: 上の「双方向契約」で置く `*)` は未知の code を silent OK にしないための保険であり、新しい code 固有の案内を届ける手段ではない。`*)` があるから追加漏れは安全、とは読まない
 
+### 実測 mutation 検証で確認された再現インスタンス
+
+判定 bash を `if/elif` の 2 値分岐から単一コマンド呼び出し + `$?` キャプチャ + `case` の 3 値以上分岐へ書き換えた事例で、複数レビュアーが隔離環境で実際に対象コマンドを実行し、各 exit code（正常/不一致/エラー）が期待した `case` の分岐へ正しく落ちることを実測で確認した。本パターンが定める「caller は case で語彙を保持する」contract の遵守を、実装レビューだけでなく mutation 実験（分岐の削除・退行）で検証する手法が有効であることの追加事例。
+
 ## 関連ページ
 
 - [`if ! cmd; then rc=$?` は常に 0 を捕捉する](../anti-patterns/bash-if-bang-rc-capture.md)
@@ -143,3 +150,4 @@ caller 側の case routing だけでなく、**script 自身のすべての内�
 - [markdown 表示ロジックでの legitimate-skip/failure 混同を cross-validation で検出](../../raw/reviews/20260713T045650Z-pr-1847-cycle2.md)
 - [`{wiki_ingest_check}` パターンを参照した多分岐への再設計](../../raw/fixes/20260713T045756Z-pr-1847-cycle2.md)
 - [新しい exit code を一部の caller にしか反映しなかったレビュー結果](../../raw/reviews/20260912T105243Z-pr-2732.md)
+- [判定 bash の 2 値分岐から case 3 値分岐への書き換えを mutation 実験で検証したレビュー結果](../../raw/reviews/20260926T052407Z-pr-3110.md)

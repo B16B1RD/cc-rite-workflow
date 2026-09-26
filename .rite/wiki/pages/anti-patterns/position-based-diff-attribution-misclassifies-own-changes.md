@@ -5,12 +5,16 @@ domain: "anti-patterns"
 description: "レビュー指摘の帰属（PR の変更か base 由来か）を行の位置、つまり 3 点 diff に現れるかどうかで決める規則は、context 行を含む読みと、PR 自身が前サイクルで足した行を後の修正で消すケースの両方で誤分類する。帰属は行の位置ではなく原因（どの commit が変えたか、revert で直るか）に置く。"
 promote: rite-plugin
 created: "2026-09-26T03:45:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T03:45:00Z" }
+generated: { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T05:45:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260926T033118Z-pr-3100.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260926T052619Z-pr-3114.md"
 tags: []
 confidence: medium
+verified:
+  - { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T05:45:00Z" }
 ---
 
 # 差分の帰属を「どの diff に行が現れるか」で決めると、PR 自身の変更を base 由来と誤分類する
@@ -29,6 +33,10 @@ confidence: medium
 
 審査範囲を変えない規則でも、報告対象を「〜に限る」と限定する文を足すと実効範囲は狭まる。限定を足すときは、限定の外に落ちる正当な指摘の経路（削除・波及・意味的衝突）を列挙してから書く。
 
+### 修正の再検証
+
+上記の欠陥を修正した後続 PR のレビュー（reviewer 指示文を「行の位置」ではなく「原因（どのコミットが変えたか）」ベースへ書き直したもの）では、blocking 指摘 0 件で、Cross-File Impact Check でも旧文言の取り残しがないことを確認した。修正が意図した契約（差分スコープで base 由来の前後行を PR の指摘にしない）が実際の reviewer 指示文と契約 test の両方に反映されたことの実測確認。
+
 ## 関連ページ
 
 - [re-review / verification mode でも初回レビューと同等の網羅性を確保する (Anti-Degradation Guardrail)](../heuristics/reviewer-scope-antidegradation.md)
@@ -36,3 +44,4 @@ confidence: medium
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20260926T033118Z-pr-3100.md)
+- [修正の再検証レビュー結果](../../raw/reviews/20260926T052619Z-pr-3114.md)

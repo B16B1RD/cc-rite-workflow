@@ -2,6 +2,11 @@
 
 ## 2026-09-26
 
+* **Update**: [判定手段を差し替えるときは、旧手段が暗黙に提供していた失敗条件を列挙してから移す](pages/heuristics/replacing-a-judgment-mechanism-drops-its-implicit-failure-conditions.md) — raw/reviews/20260926T052722Z-pr-3060.md / raw/fixes/20260926T053540Z-pr-3060.md / raw/fixes/20260926T051339Z-pr-3060.md で拒否理由のクラス判定と仕様書同期の観点を補強
+* **Create**: [実行先を静的に決められない入力は、HEAD を動かす操作に限って拒否側へ倒す](pages/heuristics/undecidable-target-fail-closed-head-moving-ops.md) — raw/fixes/20260926T051339Z-pr-3060.md を新規ページ化
+* **Create**: [検証コマンドの環境指定に PATH を入れると hook 実行環境との差で stale 判定になる](pages/heuristics/verification-command-path-env-causes-stale-drift.md) — raw/fixes/20260926T051339Z-pr-3060.md を新規ページ化
+* **Update**: [Exit code semantic preservation: caller は case で語彙を保持する](pages/patterns/exit-code-semantic-preservation.md) — raw/reviews/20260926T052407Z-pr-3110.md で mutation 実験による実測検証の事例を補強
+* **Update**: [差分の帰属を「どの diff に行が現れるか」で決めると、PR 自身の変更を base 由来と誤分類する](pages/anti-patterns/position-based-diff-attribution-misclassifies-own-changes.md) — raw/reviews/20260926T052619Z-pr-3114.md で修正の再検証結果を補強
 * **Update**: [ガードの識別力は「そのガード単独で発火する形状」の fixture とガード固有文言 assert で担保する](pages/heuristics/guard-discriminating-power-requires-solo-firing-fixture.md) — raw/reviews/20260926T045233Z-pr-3112.md で失敗注入 shim の出力設計を補強
 * **Create**: [検査先の解決に失敗した入力を「対象外」に合流させると、拒否していた入力が許可に変わる](pages/anti-patterns/resolution-failure-merged-into-out-of-scope-flips-reject-to-allow.md) — raw/reviews/20260926T045844Z-pr-3060.md を新規ページ化
 * **Skip**: [20260926T045249Z-pr-3109.md](raw/reviews/20260926T045249Z-pr-3109.md) — 既存テストへの pin 追加を変異で確かめた記録で、既存ページを超える経験則を含まない

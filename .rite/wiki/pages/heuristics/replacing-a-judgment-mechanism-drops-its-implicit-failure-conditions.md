@@ -7,9 +7,15 @@ created: "2026-08-10T11:55:05Z"
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260810T080754Z-pr-2229.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260926T052722Z-pr-3060.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260926T053540Z-pr-3060.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260926T051339Z-pr-3060.md"
 tags: ["jq", "exit-code", "fail-loud", "refactor", "review-fix-loop"]
 confidence: medium
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-10T11:55:05Z" }
+generated: { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T05:45:00Z" }
 ---
 
 # 判定手段を差し替えるときは、旧手段が暗黙に提供していた失敗条件を列挙してから移す
@@ -40,6 +46,12 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-10T11:55:05Z" }
 
 この欠陥は散文レビューでは検出されなかった。検出したのは、旧実装と新実装の両方に同じ異常入力（空ドキュメント）を流して rc を比較した 2 名だけだった。**判定手段の差し替えは「新実装が正しいか」ではなく「旧実装が落ちた入力で新実装も落ちるか」で検証する。**
 
+### 個別の失敗理由を列挙するとクラスの取りこぼしが起きる
+
+別事例（base 取り込みの検証済み経路への一本化）では、暗黙の失敗条件を「移植する」段階の前に、そもそも失敗理由を個別列挙で書いていたことが原因だった。「存在しない」「入れない」「リポジトリでない」のように取り込み先の失敗パターンを 1 つずつ列挙すると、新しい失敗理由（例: 別の理由で解決できない状態）が増えるたびに列挙漏れが起きる。「解決できない」を単一のクラスとして判定する述語に置き換えると、旧手段が個別に区別していた失敗条件をすべて内包したまま、将来の新しい失敗理由も自動的に拒否側へ含まれる。
+
+拒否の種類を実装側で変えたときは、同じ拒否条件を列挙している仕様書・コメントも同じ修正の中で更新する。実装だけをクラス判定に直し、仕様書側の個別列挙を直さないと、両者が指す集合がずれ、次のレビューで「仕様書に書かれていない拒否理由」として再び指摘される。
+
 ## 関連ページ
 
 - [Exit code semantic preservation: caller は case で語彙を保持する](../patterns/exit-code-semantic-preservation.md)
@@ -49,3 +61,6 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-10T11:55:05Z" }
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20260810T080754Z-pr-2229.md)
+- [レビュー結果（base 取り込みの検証済み経路への一本化）](../../raw/reviews/20260926T052722Z-pr-3060.md)
+- [修正結果（base 取り込みの検証済み経路への一本化）](../../raw/fixes/20260926T053540Z-pr-3060.md)
+- [修正結果（旧手段が区別していた失敗理由の移植）](../../raw/fixes/20260926T051339Z-pr-3060.md)
