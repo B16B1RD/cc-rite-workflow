@@ -167,7 +167,7 @@ diet 後の `/rite:open` を 1 回実行し、以下が従来どおりである�
 
 - [ ] `[CONTEXT] RESUME_DISPATCH=` / `MULTI_SESSION_ENABLED=`（`SOURCE=branch-gate` 付き）/ `WT_CASE=` /
       `WORKTREE_INVARIANT=ok` / `OPEN_PLAN_MODE=` が順に emit される
-- [ ] flow-state の phase が `init → branch → plan → lint → pr` と進む
+- [ ] flow-state の phase が `init → branch → plan → implement → lint → pr` と進む
 - [ ] `[lint:*]` と `[pr:created:N]` を受け取って完了通知に到達する
 - [ ] batch 実行時にステップ 3.4 で停止しない（`OPEN_PLAN_MODE=batch`）
 
