@@ -161,6 +161,16 @@ cleaned normal
 reset_case; printf 'No issue reference\n' > "$CASE_DIR/pr body.txt"; rm "$CASE_DIR/rite-config.yml"; run
 marker fallback success 77
 check 'default base branch preserved' contains "$CASE_DIR/git.log" 'origin/develop...HEAD'
+
+# 引用符なしの値 + 行末コメントがコメントごと base_branch に紛れ込まないことを確認する
+reset_case; printf 'branch:\n  base: develop    # 開発ベース\n' > "$CASE_DIR/rite-config.yml"; run
+check 'unquoted base strips trailing comment' contains "$CASE_DIR/git.log" 'origin/develop...HEAD'
+
+# branch: 節より前に別の節が base: キーを持っていても、branch: 節の値だけを拾うことを確認する
+reset_case; printf 'other:\n  base: wrong\nbranch:\n  base: "main"\n' > "$CASE_DIR/rite-config.yml"; run
+check 'base outside branch section is not picked up' contains "$CASE_DIR/git.log" 'origin/main...HEAD'
+check 'base outside branch section does not leak into diff range' lacks "$CASE_DIR/git.log" 'origin/wrong...HEAD'
+
 reset_case; printf 'Resolves #12\n' > "$CASE_DIR/pr body.txt"; run; marker resolves success 12
 reset_case; printf 'Closes #45\n' > "$CASE_DIR/pr body.txt"; run; marker closes success 45
 reset_case; BODY_GREP_RC=1; run
