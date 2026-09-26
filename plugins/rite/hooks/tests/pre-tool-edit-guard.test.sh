@@ -342,6 +342,97 @@ assert_deny_gitdir "write into .git/config blocked" "$out"
 echo ""
 
 # --------------------------------------------------------------------------
+# Reviewer classification: only a subagent whose type names a reviewer (or whose type is
+# unknown) is guarded. Every case below runs on the SUBAGENT transcript, so an implementation
+# that denies on Tier 1 alone fails the allow cases.
+#   $1 path  $2 agent_type ("" = omit)  $3 subagent_type ("" = omit)
+# --------------------------------------------------------------------------
+run_typed() {
+  local path="$1" agent_type="$2" subagent_type="$3" rc=0 output
+  output=$(jq -n --arg p "$path" --arg cwd "$TEST_REPO" --arg tp "$SUBAGENT_TRANSCRIPT" \
+    --arg at "$agent_type" --arg st "$subagent_type" \
+    '{tool_name: "Edit", tool_input: {file_path: $p}, cwd: $cwd, transcript_path: $tp}
+     + (if $at == "" then {} else {agent_type: $at} end)
+     + (if $st == "" then {} else {subagent_type: $st} end)' \
+    | bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+  echo "$output"
+  return $rc
+}
+assert_reason_has() {
+  local label="$1" out="$2" needle="$3"
+  if [[ "$(reason_of "$out")" == *"$needle"* ]]; then
+    pass "$label"
+  else
+    fail "$label — reason lacks '$needle': $(reason_of "$out")"
+  fi
+}
+
+echo "TC-NR-general: non-reviewer subagent (agent_type=general-purpose) → allow"
+out=$(run_typed "$TEST_REPO/src/x.py" "general-purpose" "") && rc=0 || rc=$?
+assert_allow "general-purpose subagent edits the parent tree" "$out" "$rc"
+echo ""
+
+echo "TC-NR-control: same input with a plugin-scoped reviewer type → deny, reason names the type"
+out=$(run_typed "$TEST_REPO/src/x.py" "plugin:rite:code-quality-reviewer" "") || true
+assert_deny "plugin-scoped reviewer type blocked" "$out"
+assert_reason_has "reason carries the reviewer type" "$out" "type=plugin:rite:code-quality-reviewer"
+echo ""
+
+for t in "rite:code-quality-reviewer" "rite:_reviewer-base" "reviewer"; do
+  echo "TC-NR-reviewer-form: agent_type=$t → deny"
+  out=$(run_typed "$TEST_REPO/src/x.py" "$t" "") || true
+  assert_deny "reviewer type '$t' blocked" "$out"
+  echo ""
+done
+
+for t in "code-quality-reviewer-helper" "reviewer-general"; do
+  echo "TC-NR-suffix: agent_type=$t (reviewer only as a non-suffix) → allow"
+  out=$(run_typed "$TEST_REPO/src/x.py" "$t" "") && rc=0 || rc=$?
+  assert_allow "'$t' is not a reviewer type" "$out" "$rc"
+  echo ""
+done
+
+echo "TC-NR-mixed-json: subagent_type reviewer + agent_type general-purpose → deny"
+out=$(run_typed "$TEST_REPO/src/x.py" "general-purpose" "code-quality-reviewer") || true
+assert_deny "any reviewer type field wins over a non-reviewer one" "$out"
+echo ""
+
+echo "TC-NR-mixed-env: agent_type general-purpose + env CLAUDE_SUBAGENT_TYPE reviewer → deny"
+out=$(jq -n --arg p "$TEST_REPO/src/x.py" --arg cwd "$TEST_REPO" --arg tp "$SUBAGENT_TRANSCRIPT" \
+  '{tool_name: "Edit", tool_input: {file_path: $p}, cwd: $cwd, transcript_path: $tp, agent_type: "general-purpose"}' \
+  | CLAUDE_SUBAGENT_TYPE="code-quality-reviewer" bash "$HOOK" 2>"$STDERR_FILE") || true
+assert_deny "env reviewer type wins over a JSON non-reviewer type" "$out"
+echo ""
+
+echo "TC-NR-env: env-only non-reviewer type (CLAUDE_AGENT_TYPE=general-purpose) → allow"
+out=$(jq -n --arg p "$TEST_REPO/src/x.py" --arg cwd "$TEST_REPO" --arg tp "$MAIN_TRANSCRIPT" \
+  '{tool_name: "Edit", tool_input: {file_path: $p}, cwd: $cwd, transcript_path: $tp}' \
+  | CLAUDE_AGENT_TYPE="general-purpose" bash "$HOOK" 2>"$STDERR_FILE") && rc=0 || rc=$?
+assert_allow "env non-reviewer type edits the parent tree" "$out" "$rc"
+echo ""
+
+echo "TC-NR-unknown: transcript-only subagent (no type) → deny, reason says the type is unknown"
+out=$(run_typed "$TEST_REPO/src/x.py" "" "") || true
+assert_deny "untyped subagent stays blocked" "$out"
+assert_reason_has "reason states the type is unknown" "$out" "type unknown"
+echo ""
+
+echo "TC-NR-gitdir: non-reviewer subagent Write into .git/hooks → allow"
+out=$(run_typed "$TEST_REPO/.git/hooks/pre-commit" "general-purpose" "") && rc=0 || rc=$?
+assert_allow "non-reviewer is not subject to the git-dir deny" "$out" "$rc"
+echo ""
+
+echo "TC-NR-gitdir-reviewer: typed reviewer Write into .git/hooks → deny (git-dir)"
+out=$(run_typed "$TEST_REPO/.git/hooks/pre-commit" "plugin:rite:code-quality-reviewer" "") || true
+assert_deny_gitdir "typed reviewer git-dir write blocked" "$out"
+echo ""
+
+echo "TC-NR-iso-reviewer: typed reviewer Edit inside rite-review-mutation-* worktree → allow"
+out=$(run_typed "$ISO_MUT_DIR/src/x.py" "plugin:rite:code-quality-reviewer" "") && rc=0 || rc=$?
+assert_allow "typed reviewer keeps the isolation allowance" "$out" "$rc"
+echo ""
+
+# --------------------------------------------------------------------------
 # Final-element symlink resolution (AC-2): a symlink dropped INSIDE a
 # sanctioned isolation worktree that points at the parent repo's .git / working tree
 # is dereferenced BEFORE the isolation decision, so it can no longer dodge the guard

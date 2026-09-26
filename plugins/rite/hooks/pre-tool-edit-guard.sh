@@ -14,7 +14,9 @@
 #
 # Scope (all must hold to deny):
 #   1. tool_name ∈ {Edit, Write, MultiEdit, NotebookEdit}
-#   2. subagent context (reviewer) — same 3-tier detection as pre-tool-bash-guard.sh
+#   2. subagent context — same 3-tier detection as pre-tool-bash-guard.sh — whose reported
+#      type names a reviewer, or which reports no type at all. A subagent that reports any
+#      other type (general-purpose, …) is not a reviewer and is never blocked here.
 #   3. the target's OWN git worktree (resolved by walking the target path up to its
 #      nearest existing ancestor, then `git -C <ancestor> rev-parse`) is a real
 #      parent working tree — i.e. its toplevel is NOT a sanctioned reviewer isolation
@@ -121,9 +123,8 @@ CWD=$(printf '%s' "$JQ_OUT" | cut -f2)
 #   Tier 2 (fallback): hook input JSON `subagent_type` / `agent_type` STRING field
 #                      (numeric/array/object rejected via `| strings`).
 #   Tier 3 (fallback): env vars CLAUDE_SUBAGENT_TYPE / CLAUDE_AGENT_TYPE (presence-only).
-# Forward-compat caveat: presence-only fires on any non-empty string; if a future
-# SDK emits sentinel values like "main"/"none" on main-session hooks this would
-# false-positive — upgrade to an allow-list glob (e.g. `*-reviewer`) at that point.
+# Detection stays presence-only; which subagents are guarded is decided by the reviewer
+# classification below, so a non-reviewer value never reaches the deny.
 _jq_sa_err=$(mktemp 2>/dev/null) || _jq_sa_err=""
 JQ_SA=$(echo "$INPUT" | jq -r '[(.transcript_path // ""), (.subagent_type | strings // ""), (.agent_type | strings // "")] | @tsv' 2>"${_jq_sa_err:-/dev/null}") || JQ_SA=$'\t\t'
 if [ -n "${RITE_DEBUG:-}" ] && [ -n "$_jq_sa_err" ] && [ -s "$_jq_sa_err" ]; then
@@ -146,9 +147,35 @@ fi
 if [ "$IS_SUBAGENT" = "0" ] && { [ -n "${CLAUDE_SUBAGENT_TYPE:-}" ] || [ -n "${CLAUDE_AGENT_TYPE:-}" ]; }; then
   IS_SUBAGENT=1
 fi
-# Main session (not a reviewer subagent) → never blocked. This is the primary
-# guarantee that /rite:open → implement.md Edit/Write is unaffected.
+# Main session → never blocked. This is the primary guarantee that /rite:open →
+# implement.md Edit/Write is unaffected.
 [ "$IS_SUBAGENT" = "1" ] || exit 0
+
+# --- Reviewer classification ---
+# Only reviewers are read-only; an implementation subagent (general-purpose, …) edits the
+# parent tree like the main session does. Claude Code reports a plugin agent as
+# `plugin:rite:<name>` while the Task call names it `rite:<name>`, so the match is on the
+# suffix: any reported type ending in `reviewer` or naming the shared `_reviewer-base` is a
+# reviewer, and one reviewer-typed field outweighs non-reviewer ones. A subagent that reports
+# no type at all (Tier 1 transcript only) cannot be told apart from a reviewer, so it stays
+# guarded and the deny reason says the type was unknown. This classification is edit-guard
+# only; the detection above is what stays in sync with pre-tool-bash-guard.sh.
+_has_type=0
+_reviewer_type=""
+for _t in "$INPUT_SUBAGENT_TYPE" "$INPUT_AGENT_TYPE" "${CLAUDE_SUBAGENT_TYPE:-}" "${CLAUDE_AGENT_TYPE:-}"; do
+  [ -n "$_t" ] || continue
+  _has_type=1
+  case "$_t" in
+    *reviewer|*_reviewer-base) _reviewer_type="$_t"; break ;;
+  esac
+done
+if [ -n "$_reviewer_type" ]; then
+  TYPE_BASIS="type=$_reviewer_type"
+elif [ "$_has_type" = "1" ]; then
+  exit 0
+else
+  TYPE_BASIS="type unknown"
+fi
 
 # --- Absolute path resolution (join relative against cwd, then normalize lexically) ---
 # A raw substring match would let a reviewer forge an isolation path —
@@ -333,9 +360,9 @@ PATH_SUMMARY="${PATH_SUMMARY//\"/\\\"}"
 echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] edit-guard: BLOCKED kind=$_deny_kind tool=$TOOL_NAME path=\"$PATH_SUMMARY\"" >&2
 
 if [ "$_deny_kind" = "git-dir" ]; then
-  _deny_reason="BLOCKED (reviewer-edit-git-dir): Reviewer subagents must not write into a Git internal directory. The ${TOOL_NAME} tool targeted '${ABS_PATH}', which is inside a .git directory. Writing there — .git/hooks/*, .git/config (core.hooksPath / alias / core.fsmonitor), etc. — can execute arbitrary code in the non-sandboxed main session on the next git operation. Reviewers are strictly read-only: inspect refs/blobs with 'git show', 'git cat-file', 'git rev-parse' instead. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement)."
+  _deny_reason="BLOCKED (reviewer-edit-git-dir): This subagent is treated as a reviewer (${TYPE_BASIS}), and reviewer subagents must not write into a Git internal directory. The ${TOOL_NAME} tool targeted '${ABS_PATH}', which is inside a .git directory. Writing there — .git/hooks/*, .git/config (core.hooksPath / alias / core.fsmonitor), etc. — can execute arbitrary code in the non-sandboxed main session on the next git operation. Reviewers are strictly read-only: inspect refs/blobs with 'git show', 'git cat-file', 'git rev-parse' instead. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement)."
 else
-  _deny_reason="BLOCKED (reviewer-edit-parent-tree): Reviewer subagents must not mutate the parent working tree. The ${TOOL_NAME} tool targeted '${ABS_PATH}', which resolves inside the repository working tree (${TARGET_ROOT}). Reviewers are strictly read-only — inspect files with Read/Grep and compare historical content with 'git show <ref>:<file>'. If you need a mutation/verification experiment, do it in an isolated detached worktree under \$TMPDIR: 'git worktree add --detach \$(mktemp -d -t rite-review-mutation-XXXXXX) HEAD' and edit files THERE (a real worktree whose root is named rite-review-mutation-* / rite-revert-test-* is allowed). See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement / Mutation experiments)."
+  _deny_reason="BLOCKED (reviewer-edit-parent-tree): This subagent is treated as a reviewer (${TYPE_BASIS}), and reviewer subagents must not mutate the parent working tree. The ${TOOL_NAME} tool targeted '${ABS_PATH}', which resolves inside the repository working tree (${TARGET_ROOT}). Reviewers are strictly read-only — inspect files with Read/Grep and compare historical content with 'git show <ref>:<file>'. If you need a mutation/verification experiment, do it in an isolated detached worktree under \$TMPDIR: 'git worktree add --detach \$(mktemp -d -t rite-review-mutation-XXXXXX) HEAD' and edit files THERE (a real worktree whose root is named rite-review-mutation-* / rite-revert-test-* is allowed). See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement / Mutation experiments)."
 fi
 # jq is required to emit the permission payload; an intermittent jq failure would
 # silently downgrade the deny to allow, so the fail-CLOSED trap catches a crash

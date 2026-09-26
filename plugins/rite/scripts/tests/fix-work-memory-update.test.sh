@@ -126,15 +126,15 @@ reset_case; run
 check 'normal rc' test "$RC" = 0
 marker normal success 42
 check 'body first match overrides branch' lacks "$CASE_DIR/git.log" 'branch --show-current'
-# Frozen pre-extraction resolver: compare platform-local legacy behavior, since
-# its GNU regex extensions do not promise the same value under BSD tools.
-# Keep this oracle independent of the extracted helper; config changes belong
-# to a separate change, not this compatibility-preserving extraction.
+# Frozen pre-extraction resolver: kept independent of the extracted helper so this
+# check compares against the original inline behavior, not a copy of the new code.
+# Uses `sed -E` (POSIX ERE) rather than a `\?` BRE extension, since the latter is a
+# GNU-only extension that BSD sed (macOS) does not interpret the same way.
 legacy_base=$(
   set +e
   cd "$CASE_DIR"
   base_branch=$(grep -E '^\s*base:' rite-config.yml 2>/dev/null | head -1 \
-    | sed 's/.*base:[[:space:]]*"\?\([^"]*\)"\?.*/\1/')
+    | sed -E 's/.*base:[[:space:]]*"?([^"]*)"?.*/\1/')
   [ -z "$base_branch" ] && base_branch="develop"
   printf '%s' "$base_branch"
 )
