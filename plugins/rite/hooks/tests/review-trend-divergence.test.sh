@@ -954,15 +954,17 @@ assert_not_grep "非退行: helper の lost= 算出を iterate 側で上書き�
 # ---------------------------------------------------------------------------
 # iterate 消費側: run 開始点 pin の pr_number guard
 # pin の state パスは PR 番号から組むため、未置換（`{pr_number}` のまま / 空 / 非数値）なら
-# ファイルに触れる前に止まる。guard と pin 読み書き部を iterate-step.sh のステップ 0.6
-# (step_init_cycle) / ステップ 1 (step_cycle_gate) 関数本体から literal 抽出して実行する。
+# ファイルに触れる前に止まる。止めるのは iterate-step.sh の引数検査で、sandbox へ複製した
+# 実入口に不正値を渡して検査する。pin 読み書き部はステップ 0.6 (step_init_cycle) /
+# ステップ 1 (step_cycle_gate) 関数本体から literal 抽出して実行する。
 # 抽出本文が参照する pr_number / plugin_root 等は runner 冒頭で定義する。
 # ---------------------------------------------------------------------------
 echo "--- iterate run 開始点 pin の pr_number guard (消費側契約) ---"
 
 PG="$SANDBOX/pin-guard"
-mkdir -p "$PG/plugin/hooks"
+mkdir -p "$PG/plugin/hooks" "$PG/plugin/scripts"
 printf '#!/bin/bash\nprintf "%%s\\n" "$PIN_STATE_ROOT"\n' > "$PG/plugin/hooks/state-path-resolve.sh"
+cp "$ITERATE_STEP" "$PG/plugin/scripts/iterate-step.sh"
 
 # fence_of <function>: iterate-step.sh の step 関数本体（`<function>() {` 行と閉じ `}` を除く）
 fence_of() {
@@ -973,24 +975,17 @@ fence_of() {
 }
 fence_of step_init_cycle > "$PG/fence06.sh"
 fence_of step_cycle_gate > "$PG/fence1.sh"
-guard_of() { awk '$0 == "pr_number=\"$pr_number\"" { f = 1 } f { print } f && $0 == "esac" { exit }' "$1"; }
-guard_of "$PG/fence06.sh" > "$PG/guard06.sh"
-guard_of "$PG/fence1.sh" > "$PG/guard1.sh"
 awk '$0 == "run_since_status=none" { f = 1 } /^marker_emit ITERATE_CYCLE_MAX/ { exit } f { print }' \
   "$PG/fence06.sh" > "$PG/write06.sh"
 awk '$0 == "pin_root=$(bash \"$plugin_root\"/hooks/state-path-resolve.sh) || pin_root=\"\"" { f = 1 } f { print } f && $0 == "fi" { exit }' \
   "$PG/fence1.sh" > "$PG/read1.sh"
 # 行数の上限は終端アンカーを取り逃した over-extraction を検出する
-if [ "$(wc -l < "$PG/guard06.sh")" -ne 4 ] || [ "$(wc -l < "$PG/guard1.sh")" -ne 4 ] \
-   || ! grep -q 'review-run-since-' "$PG/write06.sh" || [ "$(wc -l < "$PG/write06.sh")" -gt 50 ] \
+if ! grep -q 'review-run-since-' "$PG/write06.sh" || [ "$(wc -l < "$PG/write06.sh")" -gt 50 ] \
    || ! grep -q 'review-run-since-' "$PG/read1.sh" || [ "$(wc -l < "$PG/read1.sh")" -gt 20 ]; then
-  echo "FATAL: iterate の pin guard / pin 読み書き部の抽出に失敗しました (アンカーが変更された可能性)" >&2
+  echo "FATAL: iterate の pin 読み書き部の抽出に失敗しました (アンカーが変更された可能性)" >&2
   exit 1
 fi
 
-first_code() { awk '!/^[[:space:]]*(#|$)/ { print; exit }' "$1"; }
-assert "静的: ステップ 0.6 の関数本体は guard から始まる" 'pr_number="$pr_number"' "$(first_code "$PG/fence06.sh")"
-assert "静的: ステップ 1 の関数本体は guard から始まる" 'pr_number="$pr_number"' "$(first_code "$PG/fence1.sh")"
 for lit in 'nb-sweep-done-${pr_number}.txt' 'review-run-since-${pr_number}.txt' '-name "${pr_number}-*.json"'; do
   assert "静的: ステップ 0.6 は $lit でパスを組む" "1" "$(grep -cF -- "$lit" "$PG/fence06.sh")"
 done
@@ -1015,7 +1010,6 @@ pin_state_root() {
 # run_write <root> <value> <cb_mode_init> <cur_cc> / run_read <root> <value>
 run_write() {
   { printf 'pr_number=%q\nplugin_root=%q\n' "$2" "$PG/plugin"
-    cat "$PG/guard06.sh"
     printf 'cb_mode_init=%s\ncur_cc=%s\n' "$3" "$4"
     cat "$PG/write06.sh"
     printf 'echo "RUN_SINCE=$run_since_status"\n'; } > "$PG/run-write.sh"
@@ -1023,7 +1017,6 @@ run_write() {
 }
 run_read() {
   { printf 'pr_number=%q\nplugin_root=%q\n' "$2" "$PG/plugin"
-    cat "$PG/guard1.sh"
     cat "$PG/read1.sh"
     printf 'printf "%%s\\n" "$run_since" > "$PIN_STATE_ROOT/helper-called"\necho "RUN_SINCE_USED=$run_since_used"\n'; } > "$PG/run-read.sh"
   PIN_STATE_ROOT="$1" bash "$PG/run-read.sh" >"$PG/out" 2>"$PG/err"
@@ -1037,21 +1030,26 @@ assert "書込: pin は同じ PR の最新結果 basename" "42-20260101000002.js
 assert "書込: 新しい run では同じ PR の sweep 済み marker を消す" "absent" \
   "$([ -e "$r/.rite/state/nb-sweep-done-42.txt" ] && echo present || echo absent)"
 
+# 実入口は step 関数に入る前に止める。止めた検査を stderr の文言で見分ける（どれかが外れても
+# 別の検査が同じ rc=2 を返すため、rc だけでは検査の欠落を見逃す）。
 for bad in '{pr_number}' '' '12a' '#12' ' 12' '-1'; do
-  r=$(pin_state_root bad)
-  run_write "$r" "$bad" fresh 0; rc=$?
-  assert "書込 [$bad]: 非ゼロで止まる" "1" "$rc"
-  assert_grep "書込 [$bad]: 受けた値つきの ERROR を出す" "$PG/err" "^ERROR: .*pr_number が数値に置換されていません"
-  assert "書込 [$bad]: marker を消さず pin を作らない" "nb-sweep-done-42.txt nb-sweep-done-{pr_number}.txt" \
-    "$(ls "$r/.rite/state" | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"
-
-  r=$(pin_state_root bad-read)
-  printf 'stale.json\n' > "$r/.rite/state/review-run-since-{pr_number}.txt"
-  run_read "$r" "$bad"; rc=$?
-  assert "読込 [$bad]: 非ゼロで止まる" "1" "$rc"
-  assert_grep "読込 [$bad]: 受けた値つきの ERROR を出す" "$PG/err" "^ERROR: .*pr_number が数値に置換されていません"
-  assert "読込 [$bad]: helper へ --since を渡す段に進まない" "absent" \
-    "$([ -e "$r/helper-called" ] && echo present || echo absent)"
+  case "$bad" in
+    '{pr_number}') gate='--pr received an unsubstituted placeholder' ;;
+    '') gate='requires --pr' ;;
+    *) gate='--pr must be a number' ;;
+  esac
+  for sub in init-cycle cycle-gate; do
+    r=$(pin_state_root "bad-$sub")
+    printf 'stale.json\n' > "$r/.rite/state/review-run-since-{pr_number}.txt"
+    ls "$r/.rite/state" | LC_ALL=C sort > "$PG/state-before"
+    PIN_STATE_ROOT="$r" bash "$PG/plugin/scripts/iterate-step.sh" "$sub" --pr "$bad" --issue 1 --branch b \
+      >"$PG/out" 2>"$PG/err"; rc=$?
+    assert "$sub [$bad]: exit 2 で止まる" "2" "$rc"
+    assert_grep "$sub [$bad]: 止めた検査の ERROR を出す" "$PG/err" "^ERROR: iterate-step.sh: .*$gate"
+    assert "$sub [$bad]: marker を出さない" "0" "$(grep -c . "$PG/out")"
+    assert "$sub [$bad]: marker を消さず pin を作らない" "same" \
+      "$(ls "$r/.rite/state" | LC_ALL=C sort | cmp -s - "$PG/state-before" && echo same || echo changed)"
+  done
 done
 
 r=$(pin_state_root resume)
