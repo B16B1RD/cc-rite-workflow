@@ -160,7 +160,7 @@ esac
 
 # target_comment_id の検証。コメント URL 以外の呼び出しは sentinel `__RITE_UNSET__` を渡す。
 # 空・placeholder 残留・非数値を「コメント指定なし」と読み替えると、呼び出し側の渡し忘れで
-# 指定コメントがローカル JSON に黙って置き換わる元の不具合が再発するため fail-loud にする。
+# 指定コメントが別の取得元に黙って置き換わるため、fail-loud にする。
 case "$target_comment_id" in
   __RITE_UNSET__) ;;
   "")
@@ -170,11 +170,13 @@ case "$target_comment_id" in
     ;;
   "{target_comment_id}")
     echo "ERROR: target_comment_id placeholder が literal substitute されていません: '$target_comment_id'" >&2
+    echo "  対処: コメント URL でない呼び出しは __RITE_UNSET__ を渡してください" >&2
     echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=target_comment_id_placeholder_residue" >&2
     exit 1
     ;;
   *[!0-9]*)
     echo "ERROR: --target-comment-id が数値ではありません: '$target_comment_id'" >&2
+    echo "  対処: コメント URL でない呼び出しは __RITE_UNSET__ を渡してください" >&2
     echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=target_comment_id_invalid" >&2
     exit 1
     ;;
@@ -270,7 +272,9 @@ _rite_verification_type_check() {
 # sentinel `__RITE_UNSET__` (旧 `null` から変更) 以外で
 # かつ非空の場合に Priority 0 を発火させる。`null` という literal 文字列を持つファイル名
 # (`./null` ではない `null` 単独) も legitimate な path として処理される。
-if [ -z "$review_source" ] && [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; then
+# `review_source` が既に "pr_comment" のケースはここに到達しない
+# （--review-file との同時指定は上の target_comment_conflicts_review_file で先に止まる）。
+if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; then
   if [ ! -f "$review_file_path" ]; then
     echo "エラー: --review-file で指定されたパスが存在しません: $review_file_path" >&2
     echo "[CONTEXT] REVIEW_SOURCE_MISSING=1; reason=explicit_file_not_found" >&2

@@ -411,7 +411,7 @@ fi
 #### 1.2.0 Hybrid Review Source Resolution <!-- D-01 -->
 
 
-> 取得元の優先順位: コメント URL の指定 > 明示ファイル > 会話 > ローカル JSON > PR コメント。
+> 取得元の優先順位: コメント URL の指定（`--review-file` との併用はエラー）> 明示ファイル > 会話 > ローカル JSON > PR コメント。
 rationale: references/design-rationale.md#hybrid-source-priority
 
 **Priority chain**:
@@ -431,7 +431,7 @@ Selection logic は `scripts/review-source-resolve.sh` に委譲。下記引数�
 
 - `{pr_number}` — ステップ 1.0 で正規化された PR 番号 (数値)。非数値は「未 substitute」として `reason=pr_number_placeholder_residue` で fail-fast。
 - `{review_file_path_from_phase_1_0_1}` — ステップ 1.0.1 の `[CONTEXT] REVIEW_FILE_PATH=...` 値を会話コンテキストから読み取る (未指定時は `__RITE_UNSET__`)。
-- `{conversation_review_decision}` — **Priority 1 判定**: Priority 0 が未発火の前提で、同一 session の直前 assistant turn に `## 📜 rite レビュー結果` を含む `/rite:pr-review` 出力が残っていれば、その findings を会話コンテキストから読み取り `use` を渡す。なければ `none` を渡す。
+- `{conversation_review_decision}` — **Priority 1 判定**: 値の検証は取得元の評価より前に行われるため、コメント URL / `--review-file` 指定時も含めて常に `use` / `none` のいずれかを渡す。同一 session の直前 assistant turn に `## 📜 rite レビュー結果` を含む `/rite:pr-review` 出力が残っていれば、その findings を会話コンテキストから読み取り `use` を渡す。なければ `none` を渡す。
 - `{p1_scan_turns}` / `{p1_scan_found}` — Priority 1 receipt: scan した assistant turn 数 (use 時 1 以上) と発見有無 (`use`→`true` / `none`→`false`)。
 - `{target_comment_id}` — ステップ 1.0 がコメント URL から取り出したコメント ID (数値)。`{target_comment_id} = null` の経路（PR 番号・PR URL・引数なし）は `__RITE_UNSET__` を渡す。空・未置換・非数値は helper が fail-loud で止める。
 
@@ -495,9 +495,9 @@ esac
 
 **On Priority 0 failure**: `review_source="fallback"` → 1.2.0.1。`--review-file` 明示時に P1–P3 へ silent fallthrough しない。
 
-**On Priority 0 / 2 success**: Skip "Target Comment Fast Path" and "Broad Comment Retrieval"。選択した JSON をステップ 1.2.2 に渡す。Priority 1 の会話結果も同じステップへ合流する。各経路で独自に map / fatal を判定しない。
+**On Priority 0 / 2 success**: Skip "Broad Comment Retrieval"（コメント指定時には起きない組合せのため "Target Comment Fast Path" は言及しない）。選択した JSON をステップ 1.2.2 に渡す。Priority 1 の会話結果も同じステップへ合流する。各経路で独自に map / fatal を判定しない。
 
-**On Priority 3**: Broad Retrieval 後に `### 📄 Raw JSON` fence を読む。parser は当該 section 以降にスコープする。
+**On Priority 3**: `[CONTEXT] REVIEW_SOURCE_TARGET_COMMENT=1` marker が出ている場合は本 block を実行しない。Broad Retrieval 後に `### 📄 Raw JSON` fence を読む。parser は当該 section 以降にスコープする。
 
 
 ```bash
