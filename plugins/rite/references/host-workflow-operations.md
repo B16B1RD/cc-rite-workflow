@@ -29,7 +29,7 @@ native task 機能があれば既存手順で使う。無い実行面では、�
 
 | 経路 | 実行 |
 |---|---|
-| native named Agent/Task | 選定済み `rite:{type}-reviewer` を指定し、実 ID と completion notification を回収する |
+| native named Agent/Task | 選定済み `rite:{type}-reviewer` を指定し、`_reviewer-base.md` の絶対パスと着手前の全文読取義務を prompt へ明示する。子は raw 出力の先頭行で読取完了を申告する。実 ID と completion notification を回収する |
 | named agent が公開されず独立子は利用可能 | 配布内 `agents/{type}-reviewer.md` と `agents/_reviewer-base.md`、必要な参照の絶対パスと着手前の全文読取義務、制約・差分・仕様・絶対 workdir を native 子の prompt へ明示する。子は raw 出力の先頭行で読取完了を申告する（[本文の引き渡し](#本文の引き渡し)） |
 | 独立子・利用可能な子枠・読取専用制約を維持できない | 起動前に不足能力を診断し `[review:error]`。自己レビューや人数削減で代替しない |
 
@@ -39,7 +39,7 @@ Codex の `spawn_agent` では named reviewer の frontmatter `model: inherit` �
 
 ### 本文の引き渡し
 
-named agent が公開されないホストでは、reviewer 本文を prompt へ全文 inline せず、絶対パス方式だけを契約とする。`_reviewer-base.md` だけで約 90KB あり、選定人数分を inline すると prompt が起動できる上限を超えて reviewer を回収できない。Codex の実機セッションでは独立した計画/実装子の起動と完了回収を観測している。絶対パス方式による選定 reviewer 全員の回収は未検証である。Codex を含むどのホストでも設計記録は裏付けていない。
+`_reviewer-base.md` はどの経路でも prompt へ全文 inline せず、絶対パス方式だけを契約とする。named agent が公開されないホストでは reviewer profile も同じ方式で渡す。`_reviewer-base.md` だけで約 90KB あり、選定人数分を inline すると親が数百 KB を生成し、prompt の起動上限にも近づく。Codex の実機セッションでは独立した計画/実装子の起動と完了回収を観測している。絶対パス方式による選定 reviewer 全員の回収は未検証である。Codex を含むどのホストでも設計記録は裏付けていない。
 
 親が子の prompt へ明示する項目:
 
