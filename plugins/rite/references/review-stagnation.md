@@ -122,7 +122,7 @@ rm "$clock_file"
 
 **抜ける（全停止理由で可）**: 別 Issue 番号の `set` をそのまま実行する。旧 run は `review_run_history` へ退避される。切替先に復元対象があればその counter を戻し、無ければ live state の `cycle_count` は 0 から始まる。停止は「この run はもう cycle を積まない」判断が下りた状態なので、完了・保留と同格に扱ってセッションを手放す。ownership cleanup を前置きしても同じ結果になる。
 
-停止していない run は、上記の有効な放棄記録を持つ cycle 不在の run を除き、従来どおり完了・保留・ownership cleanup のいずれかを要求される。
+停止していない run は、上記の有効な放棄記録を持つ cycle 不在の run を除き、従来どおり完了・保留・ownership cleanup のいずれかを要求される。終了していない run の receipt が cleanup で消えている場合は、そのパスと次の操作（receipt を無変更で復元してレビュー対象 commit のまま `review-close` / `review-defer` で終了する、復元できなければ `--stop-reason circuit-breaker:receipt-missing` で停止する）を示して切替を拒否する。
 
 退避はセッションを手放すだけで停止を帳消しにしない。退避された記録は run（`status`・`stop_reason`・観測・修正履歴・使用済みの再試行権）に加えて、退避時点の `cycle_count` と、凍結 `review_cycle` があればそれも保持する。**同じ Issue 番号・同じ PR 番号へ戻る `set` は、その PR の退避記録を新しい順に検査し、停止済み、または退避した completed cycle と一致する完了・保留の記録が無い run を復元する**（停止済みなら過去の完了・保留記録が残っていても復元対象） — 新しい run を作り直さないので、停止した run の `review-start` は復元された停止理由で拒否され続け、counter もゼロから積み直されない。往復はどの停止理由でも解除にならない。復元された記録は履歴から取り除かれる。
 

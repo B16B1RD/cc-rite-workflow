@@ -174,6 +174,12 @@ reset_case; printf 'other:\n  base: wrong\nbranch:\n  base: "main"\n' > "$CASE_D
 check 'base outside branch section is not picked up' contains "$CASE_DIR/git.log" 'origin/main...HEAD'
 check 'base outside branch section does not leak into diff range' lacks "$CASE_DIR/git.log" 'origin/wrong...HEAD'
 
+# branch: 節の直後に数字始まりのトップレベルキー（例: 2fa:）が来ても節終了を検出し、
+# その配下の base: を branch.base として誤取り込みしないことを確認する
+reset_case; printf 'branch:\n  pattern: "{type}/issue-{number}-{slug}"\n2fa:\n  base: wrong\n' > "$CASE_DIR/rite-config.yml"; run
+check 'non-alpha top-level key ends branch section' contains "$CASE_DIR/git.log" 'origin/develop...HEAD'
+check 'base outside branch via non-alpha key does not leak into diff range' lacks "$CASE_DIR/git.log" 'origin/wrong...HEAD'
+
 # 追跡外 config は main checkout にだけある。linked worktree から main の base を読む
 WT_MAIN="$TEST_DIR/wtmain"; WT_DIR="$TEST_DIR/wtwt"
 "$REAL_GIT" init -q "$WT_MAIN"
