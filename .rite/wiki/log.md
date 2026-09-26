@@ -2,6 +2,7 @@
 
 ## 2026-09-26
 
+* **lint:clean** — contradictions=0 (更新・新規ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=540, broken_refs=0
 * **Update**: [CI が pending のまま閉じたレビューは失敗 job を観測できない — 完了後に担当 reviewer を CI 状態付きで reroll する](pages/heuristics/ci-pending-at-review-close-reroll-finder-after-completion.md) — raw/reviews/20260926T054854Z-pr-3060.md で再発を確認
 * **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — raw/reviews/20260926T060817Z-pr-3060.md で拒否/許可対照の原則を追記
 * **Create**: [リポジトリ全体を走査する検査は変更ファイルだけの reviewer / テストには見えない — 修正後は全体検査も含めて実行する](pages/heuristics/repo-wide-check-catches-what-diff-scoped-tests-miss.md) — raw/reviews/20260926T054854Z-pr-3060.md / raw/fixes/20260926T055557Z-pr-3060.md を新規ページ化
