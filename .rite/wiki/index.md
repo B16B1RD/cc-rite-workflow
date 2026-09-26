@@ -558,9 +558,11 @@ okf_version: "0.2"
 | [既存 helper を別工程から再利用するとき marker 行だけの grep で呼ぶと helper 障害を「該当なし」と誤認する](pages/anti-patterns/helper-reuse-marker-only-grep-loses-error-signal.md) | anti-patterns | 既存 helper を別の呼び出し工程から再利用する際、`\|\| true` と marker 行だけの grep で結果を判定すると、helper 自体の不在・異常終了と正規の「該当なし」を区別できなくなる。再利用側は元の呼び出し側と同じ「marker なしの非ゼロ終了は停止」という規約を引き継ぐ必要がある。 | 2026-09-26T11:20:00Z | medium |
 | [手書きシェル解析器では複合構造を特別扱いせず通常コマンドとして返す](pages/heuristics/handwritten-shell-parser-treat-compound-structures-as-ordinary-commands.md) | heuristics | 手書きのシェルコマンド境界解析器で `( )` グループ・関数定義・case パターンなどの複合構造を「外側リストの特殊セグメント」として個別に扱うと、その特殊扱いが前後の語・演算子の通常処理と食い違い、境界追跡から漏れる。複合構造も前後の語・演算子を含めた通常の 1 コマンドとして返す方が、特別扱いの分岐を減らして食い違いの発生源を消せる。 | 2026-09-26T11:20:00Z | medium |
 | [入力経路を合流点へ加えるときは、経路の出所の識別子と合流点が探す対象の識別子の一致を前提条件にする](pages/heuristics/merge-point-input-source-identity-must-match-target.md) | heuristics | 複数の入力経路が同じ処理へ合流する設計で経路を 1 本足すと、その経路のデータが別の対象について作られたものでも、合流点は区別できずに処理してしまう。経路の出所の識別子と、合流点が処理しようとしている対象の識別子を照合してから受け入れる。 | 2026-09-26T13:30:43Z | medium |
+| [検出規則を広げても走査範囲が先頭語限定のままだと同型の取りこぼしが残る](pages/heuristics/broadening-detection-rule-requires-broadening-scan-scope.md) | heuristics | 複合コマンドの構造検出をセグメント先頭語だけに限定すると、time や coproc のような前置語を伴う構造を取りこぼす。判定基準を広げる際は、走査対象の範囲も同じ粒度に広げる必要がある。 | 2026-09-26T14:05:00Z | high |
+| [共有 helper への置き換えは既定値そのものではなく既定値の成り立ち方を変える](pages/heuristics/shared-helper-migration-changes-default-value-mechanism.md) | heuristics | 個別の既定値ロジックを共有 helper へ委譲すると、値が不在のときに続行する既定値そのものは同じでも、その既定値を生成する経路（リテラル初期化 → 空値を読んで case 分岐）が変わる。既定値の中身を assert しないテストは、この変化を検出できない。 | 2026-09-26T14:08:00Z | high |
 ## 統計
 
-- 総ページ数: 548
-- ドメイン別: patterns=124, heuristics=250, anti-patterns=174
-- 最終更新: 2026-09-26T13:47:53Z
+- 総ページ数: 550
+- ドメイン別: patterns=124, heuristics=252, anti-patterns=174
+- 最終更新: 2026-09-26T14:08:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
