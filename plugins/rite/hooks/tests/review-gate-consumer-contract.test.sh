@@ -41,7 +41,9 @@ import tempfile
 root = Path(sys.argv[1])
 fix = (root / 'plugins/rite/skills/fix/SKILL.md').read_text()
 common = fix.split('### 1.2.2 Common Fatal Triage and Recording', 1)[1].split('### 1.3 Classify Comments', 1)[0]
-triage = re.search(r'```bash\n(.*?)\n```', common, re.S).group(1)
+blocks = re.findall(r'```bash\n(.*?)\n```', common, re.S)
+triage = next(b for b in blocks if 'review-findings-maps.sh' in b)
+materialize = next(b for b in blocks if '# fix-conversation-review-json' in b)
 record = re.search(r'```bash\n(.*?)\n```', (root / 'plugins/rite/skills/fix/references/non-fatal-record.md').read_text(), re.S).group(1)
 # The ledger splice must stop on failure, not fall through to an unspliced PATCH.
 assert 'reason=nonblocking_record_ledger_extract_failed' in record
@@ -128,6 +130,54 @@ exit 97
     assert json.loads(source.read_text())['findings'] == []
     assert json.loads(result.stdout)['fatal_map'] == {'F-01':False}
     assert 'FIX_TRIAGE_REVIEW_PATH=' in result.stderr
+
+    # The conversation route copies the saved review JSON of the reviewed commit, so the
+    # gate-written class reaches triage instead of being lost by the report table.
+    state = temp / 'state'
+    results = state / '.rite/review-results'
+    results.mkdir(parents=True)
+    copier = temp / 'copier'
+    (copier / 'hooks/scripts').mkdir(parents=True)
+    for name in ('review-save-json-verify.sh', 'lib'):
+        (copier / 'hooks/scripts' / name).symlink_to(root / 'plugins/rite/hooks/scripts' / name)
+    (copier / 'hooks/state-path-resolve.sh').write_text(f"#!/bin/bash\nprintf '%s\\n' '{state}'\n")
+    repo = temp / 'repo'
+    repo.mkdir()
+    git = ['git', '-C', str(repo), '-c', 'user.name=t', '-c', 'user.email=t@example.invalid']
+    subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+    subprocess.run(git + ['commit', '-q', '--allow-empty', '-m', 'reviewed'], check=True)
+    sha = subprocess.run(git + ['rev-parse', 'HEAD'], text=True, capture_output=True, check=True).stdout.strip()
+    saved_review = {'commit_sha': sha, 'findings': [
+        {'id': 'F-01', 'severity': 'MEDIUM', 'scope': 'current-pr', 'file': 'a.sh', 'line': 1,
+         'verification': {'measured': True}, 'consequence_class': 'A'}],
+        'measured_gate': {'commit_sha': sha, 'applied_at': '2026-01-01T00:00:00Z',
+                          'blocking': 1, 'demoted': 0, 'anchor_undetermined': 0}}
+    def copy_run(commit):
+        block = materialize
+        for key, value in {'plugin_root': str(copier), 'pr_number': '42',
+                           'reviewed_commit_sha': commit, 'review_source': 'conversation'}.items():
+            block = block.replace('{' + key + '}', value)
+        result = subprocess.run(['bash', '-c', block], text=True, capture_output=True, timeout=30, cwd=repo)
+        assert result.returncode == 0, result
+        line = [l for l in result.stderr.splitlines() if l.startswith('[CONTEXT] FIX_MATERIALIZED_JSON=')]
+        assert len(line) == 1, result
+        assert all(l.startswith('[CONTEXT] ') for l in result.stderr.splitlines()), result
+        return line[0].split('=', 1)[1]
+    assert copy_run(sha) == ''  # nothing saved yet: the caller falls back to the table
+    # A saved JSON of another commit is never borrowed.
+    (results / '42-20260101000000.json').write_text(json.dumps(
+        dict(saved_review, commit_sha='b' * 40, measured_gate=dict(saved_review['measured_gate'], commit_sha='b' * 40))))
+    assert copy_run(sha) == ''
+    (results / '42-20260101000001.json').write_text(json.dumps(saved_review))
+    copied = Path(copy_run(sha))
+    assert copied.parent == results and copied.name.startswith('42-') and copied.name != '42-20260101000001.json'
+    copied_doc = json.loads(copied.read_text())
+    assert copied_doc['producer'] == 'fix' and copied_doc['review_source'] == 'conversation'
+    assert copied_doc['findings'] == saved_review['findings']
+    triaged = subprocess.run(['bash', str(root / 'plugins/rite/scripts/review-findings-maps.sh'),
+                              '--review-source', 'local_file', '--review-source-path', str(copied)],
+                             text=True, capture_output=True, timeout=30)
+    assert triaged.returncode == 0 and json.loads(triaged.stdout)['fatal_map'] == {'F-01': True}, triaged
     saved = source.read_bytes()
     stub = plugin / 'hooks/review-nonblocking-record.sh'
     record_body = temp / 'record-body'

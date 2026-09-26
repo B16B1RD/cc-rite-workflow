@@ -765,6 +765,7 @@ exit 1
 | `pr_comment_tempfile_read_io_error` | Priority 3 で `pr_comment_body_file` の cat が IO エラーで失敗 (permission 変更 / NFS timeout / TOCTOU truncate) |
 | `pr_number_placeholder_residue` | ステップ 1.2.0 冒頭の `pr_number="{pr_number}"` literal substitute が忘れられ、数値以外 (空文字 / placeholder 残留) のまま bash block に入った (cleanup.md ステップ 6 / pr-review.md ステップ 6.1.a と対称化、`[fix:error]` 昇格) |
 | `review_source_resolve_failed` | ステップ 1.2.0 caller が `scripts/review-source-resolve.sh` の非ゼロ exit を検知した際の caller-side retained-flag (helper が具体 reason を `FIX_FALLBACK_FAILED` で stderr emit 済み、本 reason は drift Pattern 1 充足用の generic guard、`[fix:error]` 昇格) |
+| `conversation_json_copy_failed` | ステップ 1.2.2 step 1 で、レビュー対象 commit の保存済み JSON は特定できたが複写（state root 解決 / mktemp / jq / mv）に失敗した。表からの組み立てへ倒さず `[fix:error]` |
 | `fatal_triage_failed` | ステップ 1.2.2 helper の非ゼロ終了。原因と finding ID を保持して `[fix:error]`、legacy fallback 禁止 |
 | `pr_comment_schema_version_jq_failed` | Priority 3 で PR コメント Raw JSON の `schema_version` 抽出 jq が失敗 (jq バイナリ異常 / OOM / pipe write error、`schema_version="unknown"` で継続し legacy Markdown parser へ fallthrough、`REVIEW_SOURCE_PARSE_FAILED` flag) |
 | `broad_retrieval_jq_extraction_failed` | ステップ 1.2.0 Priority 3 Broad Comment Retrieval で `pr_comments` からの rite review コメント抽出 jq が失敗 (jq バイナリ異常 / OOM / GitHub API レスポンスの JSON 破損、tempfile 不在として `BROAD_RETRIEVAL_SKIPPED_OR_NO_COMMENT` へ routing、`REVIEW_SOURCE_PARSE_FAILED` flag) |
@@ -772,10 +773,10 @@ exit 1
 
 > P0/P2 map reason は helper docstring が SoT。委譲済は **table 行にせず bullet**。
 
-**review-findings-maps.sh reasons**: 共通 triage (1.2.2) の helper が返す reason をそのまま報告する。measured 未判定、scope / severity 不正、map / persist / reload の失敗はいずれも `[fix:error]`。空 map・元 JSON・legacy parser で続行しない。
+**review-findings-maps.sh reasons**: 共通 triage (1.2.2) の helper が返す reason をそのまま報告する。measured 未判定、class 未判定（`class_undetermined`）、scope / severity 不正、map / persist / reload の失敗はいずれも `[fix:error]`。空 map・元 JSON・legacy parser で続行しない。
 
 
-**Eval-order enumeration** (Pattern-2 documented-union): emit reasons sequence = (`bash_version_incompatible` / `pr_number_placeholder_residue` / `overall_assessment_unknown_value` / `pr_comment_raw_json_awk_failed` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_cross_field_invariant_violated` / `pr_comment_critical_high_scope_nit_noted` / `pr_comment_schema_version_unknown` / `user_cancelled` / `user_file_path_invalid` / `review_file_path_empty_value` / `comment_body_tempfile_empty` / `pr_comment_commit_sha_mismatch` / `jq_error_on_commit_sha` / `pr_comment_tempfile_read_io_error` / `review_source_resolve_failed` / `fatal_triage_failed`)
+**Eval-order enumeration** (Pattern-2 documented-union): emit reasons sequence = (`bash_version_incompatible` / `pr_number_placeholder_residue` / `overall_assessment_unknown_value` / `pr_comment_raw_json_awk_failed` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_cross_field_invariant_violated` / `pr_comment_critical_high_scope_nit_noted` / `pr_comment_schema_version_unknown` / `user_cancelled` / `user_file_path_invalid` / `review_file_path_empty_value` / `comment_body_tempfile_empty` / `pr_comment_commit_sha_mismatch` / `jq_error_on_commit_sha` / `pr_comment_tempfile_read_io_error` / `review_source_resolve_failed` / `conversation_json_copy_failed` / `fatal_triage_failed`)
 
 #### Legacy Branching (PR Comment Path Only)
 
@@ -983,7 +984,42 @@ rite 結果がない場合も空の `findings` / `non_blocking_findings` を持�
 
 **全通常入力経路の合流点**。P0 明示ファイル、P1 会話、P2 ローカル JSON、P3 Raw JSON / legacy Markdown、Target Comment Fast Path は分類・選択・0 件終了の前に必ず本節を実行する。`--nb-sweep` の専用経路は変更しない。
 
-1. P0/P2 は選択した元のファイルを `{triage_review_path}` とし、producer を変更しない。P1/P3 は解析結果を JSON オブジェクト（`findings[]` / `non_blocking_findings[]`、PR 番号、commit SHA、元の gate receipt と verification、`acceptance_criteria` を保持）にし、`state-path-resolve.sh` が返すルートの `.rite/review-results/` に `{pr_number}-{timestamp}.json`（timestamp は `YYYYMMDDHHMMSS`、同名があれば一意になるまで新しい時刻を取得） として atomic write する。Write 失敗は `[fix:error]` で終了する。新規 JSON のトップレベルに `producer: "fix"` を設定する（元 JSON に producer があっても上書き）。元ソースの `{review_source}` は provenance として保持する。
+1. P0/P2 は選択した元のファイルを `{triage_review_path}` とし、producer を変更しない。P1 と Raw JSON の無い P3 は表から組み立て直さず、レビュー対象 commit（レポート / コメントの `📎 reviewed_commit`）の保存済み JSON を下の bash で複写し、`FIX_MATERIALIZED_JSON=` の値を `{triage_review_path}` とする（表には `consequence_class` が無い）。値が空のときだけ、および P3 の Raw JSON は、解析結果を JSON オブジェクト（`findings[]` / `non_blocking_findings[]`、PR 番号、commit SHA、元の gate receipt と verification、`acceptance_criteria` を保持）にし、`state-path-resolve.sh` が返すルートの `.rite/review-results/` に `{pr_number}-{timestamp}.json`（timestamp は `YYYYMMDDHHMMSS`、同名があれば一意になるまで新しい時刻を取得） として atomic write する。Write 失敗は `[fix:error]` で終了する。新規 JSON のトップレベルに `producer: "fix"` を設定する（元 JSON に producer があっても上書き）。元ソースの `{review_source}` は provenance として保持する。
+
+```bash
+# fix-conversation-review-json
+materialized=""
+# helper は作業ツリーの実 HEAD の JSON を探す。診断本文は pr-review 8.0.4 向けなので marker だけ残す。
+verify_out=$(bash {plugin_root}/hooks/scripts/review-save-json-verify.sh \
+  --pr "{pr_number}" --commit-sha "{reviewed_commit_sha}" 2>&1) || true
+printf '%s\n' "$verify_out" | grep '^\[CONTEXT\] ' >&2
+source_name=$(printf '%s\n' "$verify_out" | sed -n 's/^\[CONTEXT\] REVIEW_SAVE_JSON_OK=1; pr=[0-9]*; result_json=//p' | tail -1)
+if [ -n "$source_name" ]; then
+  if ! state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || [ -z "$state_root" ]; then
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=conversation_json_copy_failed" >&2
+    echo "[fix:error] reason=conversation_json_copy_failed"
+    exit 1
+  fi
+  results_dir="$state_root/.rite/review-results"
+  target="$results_dir/{pr_number}-$(date +%Y%m%d%H%M%S).json"
+  while [ -e "$target" ]; do
+    sleep 1
+    target="$results_dir/{pr_number}-$(date +%Y%m%d%H%M%S).json"
+  done
+  copy_tmp=$(mktemp "$target.XXXXXX") || copy_tmp=""
+  if [ -z "$copy_tmp" ] \
+    || ! jq --arg src "{review_source}" '.producer = "fix" | .review_source = $src' "$results_dir/$source_name" > "$copy_tmp" \
+    || [ ! -s "$copy_tmp" ] || ! mv "$copy_tmp" "$target"; then
+    [ -n "$copy_tmp" ] && rm -f "$copy_tmp"
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=conversation_json_copy_failed" >&2
+    echo "[fix:error] reason=conversation_json_copy_failed"
+    exit 1
+  fi
+  materialized="$target"
+fi
+echo "[CONTEXT] FIX_MATERIALIZED_JSON=$materialized" >&2
+```
+
 2. P0 の helper source は `explicit_file`、それ以外は `local_file`。次を実行する。helper は **元 JSON に persist してから** ID-keyed `fatal_map` / `severity_map` / `scope_map` を返す。`fatal = verification.measured == true AND scope ∈ {current-pr, follow-up} AND (severity ∈ {CRITICAL, HIGH} OR (consequence_class == "A" AND pre_existing != true))` の判定はこの helper だけが担い、LLM は再分類しない。MEDIUM 以下の実測済み gated finding に class A/B が無ければ `class_undetermined` で停止する。gated な非 fatal を `demotion_reason: "non_fatal"` 付きで `non_blocking_findings[]` へ移送し、nit は保持する。
 
 ```bash
@@ -1007,7 +1043,7 @@ printf '%s\n' "$triage_maps"
 echo "[CONTEXT] FIX_TRIAGE_REVIEW_PATH=$triage_review_path" >&2
 ```
 
-helper の `[fix:error] reason=measured_undetermined; findings=...` は該当 ID をそのまま報告して停止する。scope / severity / IO の異常も停止する。**triage エラーから legacy parser / Interactive Fallback への遷移は禁止**。missing/null/string の measured を true や false に補完しない。
+helper の `[fix:error] reason=measured_undetermined; findings=...` / `reason=class_undetermined; findings=...` は該当 ID をそのまま報告して停止する。`class_undetermined` は保存済み JSON を特定できず表から組み立てた入力で起きる。class を補わず、同じ commit の `.rite/review-results/{pr_number}-*.json` を `--review-file` に渡すか `/rite:pr-review` を再実行する。scope / severity / IO の異常も停止する。**triage エラーから legacy parser / Interactive Fallback への遷移は禁止**。missing/null/string の measured を true や false に補完しない。
 
 3. helper の `FIX_FATAL_TRIAGE=applied; fatal=N; moved=M` から `{fatal_count}=N` / `{non_fatal_moved_count}=M` を保持する。reload した `non_blocking_findings[]` の nit 以外の件数を `{non_blocking_count}` とし、全経路で同じ母集団を使う。P0 など元ファイルが `.rite/review-results/` 外の場合は、コピー側のトップレベルを `producer: "fix"` にした更新後 JSON を同ディレクトリに atomic copy し、そのパスを `{triage_review_path}` に更新する。後続 review / nb sweep が読める永続ファイルを残す。
 4. [Non-fatal Record](references/non-fatal-record.md) を実行し、既存の関連 Issue コメントを更新する。既存記録の `### 却下台帳` は新本文へ引き継いでから helper に渡す（全文置換で消さない）。JSON / Issue 記録 / 表示の non-blocking section / E2E 1 行の **4 経路**に同じ件数・JSON pointer を渡す。Issue 記録失敗時は fatal が 0 件でも `[fix:error]`。記録を終える前に 0 件扱いで return しない。
