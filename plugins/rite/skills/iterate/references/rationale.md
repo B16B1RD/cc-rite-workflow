@@ -275,9 +275,12 @@ consume を `/rite:fix --nb-sweep` に閉じ、collect helper の issued/recorde
 splice する。引き継ぐ台帳は記録 helper の `--print-record-body` が返す 1 件（helper が PATCH する
 記録コメント）から取る。前方一致で全件を連結すると、重複した記録コメントの古い台帳を引き継ぐ。
 
-再入の権威を会話 marker に置かないのは、`[fix:pushed]` でステップ 1 に戻ったあとに marker が
-見えなくなり 5.S が再走する実測があるため。会話 marker 既出を skip 条件に残すと、0.6 が
-ファイルを消した同一会話の再 iterate で再 sweep が死ぬ。`.rite/state/nb-sweep-done-{pr}.txt` の
+sweep の後にフルレビューへ戻って 2 回目の sweep が走る経路は、再入ガードのファイルでは閉じない
+（フルレビューは新しい review JSON を作り、新しい JSON は再 sweep の対象になる）。この経路を閉じるのは
+「sweep はコードの修正も git 操作もしない」と「`--nb-sweep` の戻りはステップ 1 に戻らない」の 2 規則である。
+ファイルが防ぐのは、同じ review JSON への 5.S の再入だけ。その権威を会話 marker に置かないのは、
+会話 marker 既出を skip 条件に残すと、0.6 がファイルを消した同一会話の再 iterate で再 sweep が
+死ぬため。`.rite/state/nb-sweep-done-{pr}.txt` の
 1 行目は `noop` または `done` と、sweep した review JSON の basename。skip はその第 2 フィールドが
 最新 JSON（`LC_ALL=C` sort の末尾）と一致するときだけ。フィールド欠落は skip しない。review_run の
 再開は counter を残すため 0.6 がファイルを消さず、存在だけで skip すると後続 JSON の非実測指摘が
@@ -285,7 +288,7 @@ splice する。引き継ぐ台帳は記録 helper の `--print-record-body` が
 呼ぶのは、setup の dir_entry が `.rite/state/` を含まない消費者が `git add -A` で skip 権威
 ファイルを stage する穴を、setup 再実行に依存せず塞ぐため。新 helper は増やさない。失敗は
 WARNING で続行し、偽 skip はしない。寿命は本 run — 0.6 の
-`fresh || cur_cc == 0`（pin 書換と同条件）で消し、cleanup でも回収する。同一 run の新しい JSON は
+`fresh || cur_cc == 0`（pin 書換と同条件）で消し、`review-restart` と cleanup でも消す。同一 run の新しい JSON は
 ファイルを消さなくても再 sweep する。basename が取れない書込は `rm -f` して範囲なしの行を残さない
 （偽 skip 禁止）。`--nb-sweep` 戻りはステップ 4 汎用表を使わず、
 `[fix:pushed]` / `[fix:pushed-wm-stale]` / `[fix:replied-only]` でもステップ 1 に戻らない。

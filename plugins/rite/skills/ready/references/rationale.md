@@ -30,7 +30,8 @@ schema のキーは `commit_sha`（Issue 文の `reviewed_commit` は PR コメ�
 `--force` フラグは作らない。強行はユーザーの明示指示がある場合だけ `--skip-head-check` を
 `--enforce-ac` と組み合わせ、HEAD 照合のみを省略して AC 検査は維持する。
 
-NB sweep が `fixed ≥ 1` で push した commit は例外とする。reviewed-head ゲートは
+旧版の NB sweep が `fixed ≥ 1` で push した commit は例外とする（現在の sweep は commit も push も
+しないため新しい SHA は書かれないが、旧版が 2 行目を書いた done-file は書き直しでも残る）。reviewed-head ゲートは
 `commit_sha == HEAD` を要求するが、sweep 経路は sweep を再フルレビューの
 引き金にしない。sweep は review JSON を更新しないため、`--merge` は構造的に
 ready を通過できなかった。受理するのは done-file 2 行目が指す **その 1 commit
