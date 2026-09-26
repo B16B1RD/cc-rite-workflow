@@ -381,7 +381,7 @@ def peel_commit_prefixes(words):
 _HEAD_MOVERS = ("commit", "merge")
 _SEPARATORS = ";&|\n"
 # Words that open a compound command or a function; a cd inside one runs only when the shell gets there.
-_COMPOUND = {"if", "while", "until", "for", "case", "select", "{", "function"}
+_COMPOUND = {"if", "while", "until", "for", "case", "select", "{", "function", "coproc"}
 
 
 # A parse the check cannot finish is refused; the message form below always parses.
@@ -575,15 +575,15 @@ def each_git_target(command, cwd):
     refuses it only when the command would move HEAD. toplevel is None exactly when there is a problem.
 
     A cd moves the target only where the shell is known to run it: a plain cd <literal> that
-    starts a list (after ; / a newline / & or at the start), or one in an && chain, which
+    starts a list (after ; / a newline or at the start), or one in an && chain, which
     reaches only the rest of that chain, in a command with no ( ) group, compound command,
     function or background &. Any other cd (after ||, in a pipeline, cd -, with options,
     redirections or no directory, or anywhere in a command with one of those) makes the
     target dynamic, and later lists cannot know it either.
     """
     segments = shell_segments(command)
-    structured = any(nested == "group" or (not nested and (after == "&" or next(
-        (w for w in words if w != "!"), "") in _COMPOUND)) for words, nested, _before, after in segments)
+    structured = any(nested == "group" or (not nested and (after == "&" or not _COMPOUND.isdisjoint(words)))
+                     for words, nested, _before, after in segments)
     cwd, dynamic = Path(cwd).resolve(), False  # where the next list starts
     here, unsure, first, alternative, moved = cwd, dynamic, True, False, False
     for words, nested, before, after in segments:
