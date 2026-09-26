@@ -5,6 +5,7 @@
 * **Update**: [同じ処理を 2 経路で実装したら fixture の「意地悪さ」も 2 経路で揃える](pages/heuristics/dual-path-implementation-needs-matching-adversarial-fixture.md) — raw/reviews/20260926T035155Z-pr-3106.md で同じフラグを 2 経路で使う場合を補強
 * **Update**: [ゲートを有効化する変更は、同じ条件で動く全 hook を通した経路で既存手順を検証する](pages/heuristics/enabling-a-gate-verify-every-hook-sharing-its-condition.md) — raw/fixes/20260926T034712Z-pr-3099.md で修正手段と回帰テストの形を補強
 * **Skip**: [20260926T035336Z-pr-3102.md](raw/reviews/20260926T035336Z-pr-3102.md) — 変異で新規 assertion の実効性を確かめる手法は既存ページと同内容で、新しい経験則を含まない
+* **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=538, broken_refs=0
 * **Create**: [差分の帰属を「どの diff に行が現れるか」で決めると、PR 自身の変更を base 由来と誤分類する](pages/anti-patterns/position-based-diff-attribution-misclassifies-own-changes.md) — raw/reviews/20260926T033118Z-pr-3100.md を新規ページ化
 * **Create**: [ゲートを有効化する変更は、同じ条件で動く全 hook を通した経路で既存手順を検証する](pages/heuristics/enabling-a-gate-verify-every-hook-sharing-its-condition.md) — raw/reviews/20260926T033819Z-pr-3099.md を新規ページ化
 * **Skip**: [20260926T033335Z-pr-3100.md](raw/fixes/20260926T033335Z-pr-3100.md) — 既存の分類規則の適用結果の記述で、新しい経験則を含まない
