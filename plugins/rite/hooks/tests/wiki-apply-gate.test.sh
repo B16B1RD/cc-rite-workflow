@@ -974,6 +974,23 @@ old_head=$(git -C "$opn" rev-parse HEAD)
 printf 'open\n' >> "$opn/README"
 git -C "$opn" add README
 write_mem "$open_mem" "$(fresh_header none 550e8400-e29b-41d4-a716-446655440077 "$opn" 1 README)"
+# The guard parses the documented commit block before it runs; an unparsable
+# block is denied under phase=implement and never reaches git-commit-file.sh.
+IMPL_MD="$SCRIPT_DIR/../../skills/issue-implement/SKILL.md"
+commit_block=$(awk -v root="$PLUGIN_ROOT" '
+  /^# implement-commit$/ { copy=1; next }
+  copy && /^```$/ { exit }
+  copy { gsub(/\{plugin_root\}/, root); gsub(/\{changed_files\}/, "README");
+         gsub(/\{branch_name\}/, "fix/issue-7-x"); gsub(/\{commit_message\}/, "fix: x"); print }
+' "$IMPL_MD")
+impl_gin=$(jq -n --arg cwd "$opn" --arg cmd "$commit_block" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
+grc=0
+gout=$(printf '%s' "$impl_gin" | open_env WIKI_APPLY_MEMORY="$open_mem" bash "$GUARD" 2>"$ROOT/impl-guard.err") || grc=$?
+if [ -n "$commit_block" ] && ! grep -qE '\{[a-z_]+\}' <<<"$commit_block" && [ "$grc" -eq 0 ] && ! grep -q 'deny' <<<"$gout"; then
+  pass "the guard lets the documented implement commit block through under phase=implement"
+else
+  fail "implement commit block guard rc=$grc out=$gout block=$commit_block"
+fi
 open_msg="$ROOT/open-msg.txt"
 printf 'fix: implement commit\n\nwhy\n' > "$open_msg"
 crc=0

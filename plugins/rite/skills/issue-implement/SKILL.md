@@ -309,12 +309,10 @@ _par_msg=$(mktemp "${TMPDIR:-/tmp}/rite-parallel-merge-XXXXXX") || {
 cat > "$_par_msg" <<'EOF'
 {parallel_merge_message}
 EOF
-case "$(cat -- "$_par_msg")" in
-  "{"*"}")
-    echo "ERROR: {parallel_merge_message} が未置換です" >&2
-    exit 1
-    ;;
-esac
+if grep -qx '[{]parallel_merge_message[}]' "$_par_msg"; then
+  echo "ERROR: マージメッセージが未置換です" >&2
+  exit 1
+fi
 git merge --no-ff {branch_name}/{task_id} -F "$_par_msg"
 ```
 
@@ -554,6 +552,7 @@ rationale: references/rationale.md#push-no-upstream
 未指定時の形式 `{type}({scope}): {description}`。type/scope は常に英語。規約が本文を禁じない限り body は why を自由形式（必須。typo 以外も含め省略しない）。description との間に空行。
 
 ```bash
+# implement-commit
 status_out=$(git status --porcelain) || { echo "ERROR: git status に失敗しました" >&2; exit 1; }
 if [ -z "$status_out" ]; then
   echo "ERROR: コミット対象の変更がありません" >&2
@@ -573,12 +572,10 @@ commit_msg_file=$(mktemp "${TMPDIR:-/tmp}/rite-impl-msg-XXXXXX") || {
 cat > "$commit_msg_file" <<'EOF'
 {commit_message}
 EOF
-case "$(cat -- "$commit_msg_file")" in
-  "{"*"}")
-    echo "ERROR: {commit_message} が未置換です" >&2
-    exit 1
-    ;;
-esac
+if grep -qx '[{]commit_message[}]' "$commit_msg_file"; then
+  echo "ERROR: コミットメッセージが未置換です" >&2
+  exit 1
+fi
 bash {plugin_root}/hooks/scripts/git-commit-file.sh --file "$commit_msg_file"
 git push origin {branch_name}
 ```
