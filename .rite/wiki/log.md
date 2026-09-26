@@ -76,6 +76,7 @@
 * **Create**: [base 取り込み後の再レビューは、同じ差分の再確認ではなく取り込み側との契約整合の確認として指示する](pages/heuristics/rereview-after-base-intake-checks-contract-consistency.md) — raw/reviews/20260926T104438Z-pr-3137.md を新規ページ化
 * **Update**: [best-effort な静的 matcher hardening は allowlist を COMMON-SET（非網羅）と宣言して review の whack-a-mole を止める](pages/heuristics/best-effort-matcher-declare-common-set-to-stop-whackamole.md) — raw/reviews/20260926T104224Z-pr-3147.md を統合
 * **Create**: [consumer に新しい判定入力を要求したら、表示用の表から組み立て直さず producer が保存した正本を渡す](pages/heuristics/consumer-new-input-from-producer-canonical-artifact.md) — raw/fixes/20260926T104508Z-pr-3148.md を新規ページ化
+* **lint:clean** — contradictions=0 (更新・新規ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=547, broken_refs=0
 
 ## 2026-09-25
 
