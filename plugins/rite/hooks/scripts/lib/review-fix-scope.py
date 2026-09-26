@@ -360,10 +360,12 @@ def verify(plan, paths, output, kind):
     return result
 
 
+_KEYWORDS = {"if", "then", "else", "elif", "fi", "do", "done", "for", "while", "until", "in", "!", "{", "}"}
+
+
 def peel_commit_prefixes(words):
     """Strip a closed wrapper/keyword set. This is not a shell interpreter."""
     prefixes = {"command", "env", "nohup", "time", "exec"}
-    keywords = {"if", "then", "else", "elif", "fi", "do", "done", "for", "while", "until", "in", "!", "{", "}"}
     words = list(words)
     peeled = False
     while words:
@@ -376,7 +378,7 @@ def peel_commit_prefixes(words):
                 words = words[1:]
             peeled = True
             continue
-        if words[0] in keywords:
+        if words[0] in _KEYWORDS:
             words, peeled = words[1:], True
             continue
         break
@@ -386,6 +388,8 @@ def peel_commit_prefixes(words):
 # The git subcommands that move HEAD and are checked before they run.
 _HEAD_MOVERS = ("commit", "merge")
 _SEPARATORS = ";&|\n"
+# Words that open a compound command or a function; a cd inside one runs only when the shell gets there.
+_COMPOUND = {"if", "while", "until", "for", "case", "select", "{", "function", "coproc"}
 
 
 # A parse the check cannot finish is refused; the message form below always parses.
@@ -448,16 +452,22 @@ def _substitution_end(command, start):
 
 
 def shell_segments(command):
-    """Split a command into (words, nested) simple commands of dequoted words. Not a shell interpreter.
+    """Split a command into (words, nested, before, after) simple commands of dequoted words.
+    Not a shell interpreter.
 
     Quotes are tracked across a whole word, so a separator inside quotes (echo ';',
     NAME="a (b) c") stays in its word, and a quote may open in the middle of a word.
     A command substitution or a ( ) group runs in a subshell, so its commands come back
-    marked nested; a substitution's commands come ahead of the command that contains it.
+    marked nested (True for a substitution, "group" for a group); a substitution's commands
+    come ahead of the command that contains it.
     The standard message form $(cat <<DELIM ... DELIM) is data and stays in its word.
+    before / after are the control operators around a command: ";" (also a newline),
+    "&&", "||", "|" (also |&), "&", or "" at the start, the end and around a substitution.
+    A newline right after &&, || or | continues the list. The & of a redirection
+    (&>, >&, <&) stays in its word.
     """
     segments, words, word, quoted, quote, depth = [], [], [], False, None, 0
-    index, length = 0, len(command)
+    index, length, pending, redirect = 0, len(command), "", -2
 
     def end_word():
         nonlocal word, quoted
@@ -465,11 +475,15 @@ def shell_segments(command):
             words.append("".join(word))
         word, quoted = [], False
 
-    def end_segment():
-        nonlocal words
+    def end_segment(operator=""):
+        nonlocal words, pending
         end_word()
         if words:
-            segments.append((words, depth > 0))
+            segments.append((words, "group" if depth else False, pending, operator))
+            pending = operator
+        elif operator and pending not in ("&&", "||", "|"):
+            # A newline right after && / || / | continues the list.
+            pending = operator
         words = []
 
     while index < length:
@@ -483,7 +497,7 @@ def shell_segments(command):
             end = _message_end(command, index)
             if end is None:
                 end = _substitution_end(command, index + 2)
-                segments.extend((inner, True) for inner, _nested in shell_segments(command[index + 2:end - 1]))
+                segments.extend((inner, True, "", "") for inner, *_rest in shell_segments(command[index + 2:end - 1]))
             word.append(command[index:end])
             quoted = True
             index = end
@@ -491,7 +505,7 @@ def shell_segments(command):
         elif ch == "`" and quote in (None, '"'):
             end = command.find("`", index + 1)
             require(end >= 0, "unfinished command substitution" + _PARSE_HINT)
-            segments.extend((inner, True) for inner, _nested in shell_segments(command[index + 1:end]))
+            segments.extend((inner, True, "", "") for inner, *_rest in shell_segments(command[index + 1:end]))
             word.append(command[index:end + 1])
             quoted = True
             index = end + 1
@@ -523,10 +537,20 @@ def shell_segments(command):
         elif ch == ")":
             end_segment()
             depth = max(depth - 1, 0)
+        elif ch == "&" and (command.startswith(">", index + 1) or redirect == index - 1):
+            word.append(ch)
         elif ch in _SEPARATORS:
-            end_segment()
+            operator = ";" if ch == "\n" else ch
+            if ch in "&|;" and command.startswith(ch, index + 1):
+                index += 1
+                operator = ";" if ch == ";" else ch * 2
+            elif ch == "|" and command.startswith("&", index + 1):
+                index += 1
+            end_segment(operator)
         else:
             word.append(ch)
+            if ch in "<>":
+                redirect = index  # an unquoted, unescaped redirection sign
         index += 1
     require(quote is None, "unfinished quoted command" + _PARSE_HINT)
     end_segment()
@@ -557,15 +581,47 @@ def each_git_target(command, cwd):
     problem names why the target cannot be checked (a wrapper, a command substitution,
     a dynamic cd / -C, a target that does not resolve to a repository, an alternate git dir); the caller
     refuses it only when the command would move HEAD. toplevel is None exactly when there is a problem.
+
+    A cd moves the target only where the shell is known to run it: a plain cd <literal> that
+    starts a list (after ; / a newline or at the start), or one in an && chain, which
+    reaches only the rest of that chain, in a command with no ( ) group, compound command,
+    function or background &. Any other cd (after ||, in a pipeline, cd -, with options,
+    redirections or no directory, or anywhere in a command with one of those) makes the
+    target dynamic, and later lists cannot know it either.
     """
-    cwd, dynamic = Path(cwd).resolve(), False
-    for words, nested in shell_segments(command):
+    segments = shell_segments(command)
+    structured = any(nested == "group" or (not nested and (after == "&" or not _COMPOUND.isdisjoint(words)))
+                     for words, nested, _before, after in segments)
+    cwd, dynamic = Path(cwd).resolve(), False  # where the next list starts
+    here, unsure, first, alternative, moved = cwd, dynamic, True, False, False
+    for words, nested, before, after in segments:
         # A subshell keeps its cd, and its git is not direct.
-        if not nested and words and words[0] == "cd" and len(words) == 2:
-            if any(c in words[1] for c in "$`~"):
+        if not nested:
+            if before in ("", ";", "&"):
+                here, unsure, first, alternative, moved = cwd, dynamic, True, False, False
+            elif before == "||":
+                alternative = True
+        starts = first and not nested
+        if not nested:
+            first = False
+        if structured and not nested and "cd" in words:
+            unsure = dynamic = moved = True
+        bare = words
+        while not nested and bare and bare[0] in _KEYWORDS:
+            bare = bare[1:]
+        if not nested and bare and bare[0] == "cd":
+            plain = (bare is words and len(words) == 2 and words[1] != "-"
+                     and not any(c in words[1] for c in "$`~"))
+            if plain and not structured and not alternative and after != "|" and before != "|":
+                if not unsure or Path(words[1]).is_absolute():
+                    here, unsure = (here / words[1]).resolve(), False
+            else:
+                unsure = True
+            if starts:
+                cwd, dynamic = here, unsure
+            else:
                 dynamic = True
-            elif not dynamic or Path(words[1]).is_absolute():
-                cwd, dynamic = (cwd / words[1]).resolve(), False
+            moved = True
             continue
         words, _peeled = peel_commit_prefixes(words)
         if not words:
@@ -581,7 +637,8 @@ def each_git_target(command, cwd):
                         yield name, None, words[words.index(name, sub) + 1:], \
                             "run " + name + " as a direct command in its own Bash call"
             continue
-        target, unknown, index, alternate = cwd, dynamic, 1, False
+        # After ||, a git runs only when something before it failed, perhaps the cd.
+        target, unknown, index, alternate = here, unsure or (alternative and moved), 1, False
         while index < len(words) and words[index].startswith("-"):
             option = words[index]
             if option in ("-C", "-c") or option.startswith("-C"):
