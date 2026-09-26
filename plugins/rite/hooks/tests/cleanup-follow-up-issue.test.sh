@@ -93,6 +93,8 @@
 #   T-55 マージ後に orphan 回収 → follow-up 起票 → cleanup の archive → orphan 回収の順で転記でき、
 #        archive/ の JSON を二重に退避しない
 #   T-56 C 以外の照合でも、最新 JSON は nb-sweep-collect.sh と同じ同秒衝突側 (archive/) を選ぶ
+#   T-57 6.0.V で review-results-sources.sh を source できない場合は sources_lib_unavailable を出し、
+#        no_json とは区別する
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -1641,6 +1643,32 @@ jq -n --argjson c "$(comment_obj "$(record_body '| F-01 | plugins/rite/skills/cl
 LC_ALL="$T50_LOCALE" run_target "$r"
 assert_grep "T-56 sweep 起票済みを除外して all_issued ($T50_LOCALE)" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=all_issued; pr=9'
 assert "T-56 create 0 回" "0" "$(create_count)"
+
+echo "--- T-57: review-results-sources.sh を source できないと sources_lib_unavailable ---"
+reset_stubs
+r=$(new_root t57)
+put_json "$r" "9-20260101120000.json" "$FINDING_JSON"
+# {plugin_root} を存在しないディレクトリへ向け、review-results-sources.sh の source 失敗を再現する。
+# _state_root は T-28/T-54 と同じくアンカー直後の行を fixture root の literal に差し替えるため、
+# 1 つ目の分岐 (state_root_unresolved) は通らない。
+awk -v root="$r" -v plugin="$TMP_ROOT/nonexistent-plugin-root-xyz" '
+  /cleanup-follow-up-issue.test.sh T-28/ {p=1}
+  p && /^_state_root=\$\(bash / {print "_state_root=\"" root "\""; next}
+  p && /^```/ {exit}
+  p {gsub(/\{pr_number\}/, "9"); gsub(/\{plugin_root\}/, plugin); print}
+' "$CLEANUP_MD" > "$TMP_ROOT/reverify-t57.sh"
+if ! grep -q 'rite-fu-reverify-union' "$TMP_ROOT/reverify-t57.sh"; then
+  fail "T-57 6.0.V 再検証ブロックを抽出できない"
+else
+  bash "$TMP_ROOT/reverify-t57.sh" > "$OUT" 2> "$ERR"; RC=$?
+  assert "T-57 exit 0" "0" "$RC"
+  # 部分一致だけだと、elif 連鎖が崩れて sources_lib_unavailable の後に別の
+  # FOLLOW_UP_REVERIFY マーカーが続けて出る退行 (else 側へ抜けて no_json 等を追加出力する)
+  # を見逃す。マーカー行の集合を完全一致で固定する。
+  assert "T-57 sources_lib_unavailable marker のみ (完全一致)" \
+    "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=sources_lib_unavailable" \
+    "$(grep '^\[CONTEXT\] FOLLOW_UP_REVERIFY=' "$OUT")"
+fi
 
 echo "--- T-arg: 引数 gate ---"
 bash "$TARGET" --pr abc --state-root "$TMP_ROOT" --owner a --repo b >"$OUT" 2>"$ERR"; RC=$?
