@@ -85,6 +85,7 @@
 * **Create**: [入力経路を合流点へ加えるときは、経路の出所の識別子と合流点が探す対象の識別子の一致を前提条件にする](pages/heuristics/merge-point-input-source-identity-must-match-target.md) — raw/reviews/20260926T125534Z-pr-3148.md を新規ページ化
 * **Update**: [同定に使う needle は位置まで固定し、人間が複製できる文字列を使わない](pages/anti-patterns/identity-needle-position-and-machine-only-sentinel.md) — raw/reviews/20260926T125425Z-pr-3147.md を統合
 * **Update**: [同定に使う needle は位置まで固定し、人間が複製できる文字列を使わない](pages/anti-patterns/identity-needle-position-and-machine-only-sentinel.md) — raw/fixes/20260926T130048Z-pr-3147.md を統合
+* **lint:clean** — contradictions=0 (更新・新規ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=549, broken_refs=0
 
 ## 2026-09-25
 
