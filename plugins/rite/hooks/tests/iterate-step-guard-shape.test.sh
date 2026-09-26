@@ -118,6 +118,20 @@ if [ -n "$MUT_DIR" ]; then
       fail "an unregistered subcommand is reported"
     fi
   fi
+
+  # purpose-unaligned は handoff のクリアに成功したら rc=0 で終わる。set が何も出力しないとき、
+  # 末尾の診断表示が失敗扱いの rc を返すと、成功したクリアが停止の失敗に見える。
+  PU="$MUT_DIR/purpose-unaligned/plugin"
+  mkdir -p "$PU/scripts" "$PU/hooks"
+  cp "$STEP" "$PU/scripts/iterate-step.sh"
+  cp "$PLUGIN_ROOT/hooks/control-char-neutralize.sh" "$PU/hooks/control-char-neutralize.sh"
+  printf '%s\n' '#!/bin/bash' 'printf "%s\n" "$1" >> "$(dirname "$0")/calls"' \
+    '[ "$1" = get ] && echo review' 'exit 0' > "$PU/hooks/flow-state.sh"
+  bash "$PU/scripts/iterate-step.sh" purpose-unaligned --pr 1 --issue 1 --branch b \
+    >/dev/null 2>"$MUT_DIR/purpose-unaligned/err"
+  assert "purpose-unaligned exits 0 when the handoff clear succeeds silently" "0" "$?"
+  assert "purpose-unaligned clears the handoff with flow-state set" "get set" "$(tr '\n' ' ' < "$PU/hooks/calls" | sed 's/ $//')"
+  assert_not_grep "purpose-unaligned reports no handoff clear failure" "$MUT_DIR/purpose-unaligned/err" 'handoff クリアに失敗'
 else
   fail "mutant workspace could not be created (mktemp -d)"
 fi
@@ -133,6 +147,13 @@ run_step no-such-step; assert "unknown subcommand exits 2" "2" "$?"
 run_step nb-sweep-collect; assert "missing required --pr exits 2" "2" "$?"
 run_step nb-sweep-collect --pr; assert "option without a value exits 2" "2" "$?"
 run_step nb-sweep-collect --pr '{pr_number}'; assert "unsubstituted placeholder exits 2" "2" "$?"
+# 数値検査の対象外の値は placeholder 検査だけが止める。
+placeholder_err=$(bash "$STEP" lost-repair --repair '{repair}' --cycle 1 --lost 1 2>&1 >/dev/null)
+assert "unsubstituted placeholder in a non-numeric option exits 2" "2" "$?"
+case "$placeholder_err" in
+  *"--repair received an unsubstituted placeholder"*) pass "the placeholder check names the option" ;;
+  *) fail "the placeholder check names the option (stderr: $placeholder_err)" ;;
+esac
 run_step nb-sweep-collect --pr 12a; assert "non-numeric --pr exits 2" "2" "$?"
 run_step nb-sweep-collect --pr 1 --bogus x; assert "unknown option exits 2" "2" "$?"
 

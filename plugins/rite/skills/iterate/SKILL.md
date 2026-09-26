@@ -795,7 +795,7 @@ rationale: references/rationale.md#resume-routes-no-state-read
 ## エラー時の方針
 
 - ユーザーが Ctrl+C で中断した場合: flow-state に現 phase (review or fix) が残るので `/rite:recover` で本コマンドが再起動する (詳細な phase → command routing は [skills/recover/SKILL.md](../recover/SKILL.md) Phase 5.3 を参照)
-- ステップ 0.6 / 1 が `pr_number が数値に置換されていません` の ERROR で止まった場合: marker を待たずに停止し、PR 番号を数値で置換して当該ステップから再実行する
+- `iterate-step.sh` が exit 2（`ERROR: iterate-step.sh:`）で止まった場合: marker を待たずに停止し、未置換の placeholder や数値でない引数を直して当該ステップから再実行する
 - `[fix:error]` 時: [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) に従い 1 回だけ自動再試行し、再失敗時は停止する
 - reviewer が non-deterministic に振動する場合: 収束トレンドの発散または `safety.max_review_cycles`（既定 15）到達でステップ 6 に進み、人間に問わず停止する。batch は `[iterate:max-cycles-reached]` で当該 Issue を failed 扱いにしてバッチを停止し、対話は `[iterate:max-cycles-stopped]` で終了する。再開は `review_run` がない legacy state では `/rite:iterate {pr_number}` の明示的な再実行、`review_run` がある run ではステップ 6.2 の `{resume_routes}` が名指しする経路で行う。
 

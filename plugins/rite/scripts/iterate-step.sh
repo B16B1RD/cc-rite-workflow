@@ -27,8 +27,10 @@
 #   bash iterate-step.sh nb-remaining
 #   bash iterate-step.sh breaker --pr N --issue N --branch B --cb-reason R
 #
-# Exit 2: unknown subcommand, unknown option, missing required argument, or an
-# argument value still carrying an unsubstituted `{placeholder}`.
+# Exit 2: unknown subcommand, unknown option, missing required argument, an
+# argument value still carrying an unsubstituted `{placeholder}`, or a non-numeric
+# --pr / --issue / --cycle / --lost. The PR number becomes part of state file
+# names, so a bad value must stop here, before any step touches a file.
 
 plugin_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -67,13 +69,6 @@ fi
 
 # --- init-cycle ----------------------------------------------------------------
 step_init_cycle() {
-# PR 番号は state ファイル名に直接入る。未置換のまま進むと字面どおりの名前のファイル同士で辻褄が
-# 合ってしまうため、数値でなければファイルに触れる前に止める（ステップ 1 も同じ）。
-pr_number="$pr_number"
-case "$pr_number" in
-  ''|*[!0-9]*) echo "ERROR: iterate ステップ 0.6: pr_number が数値に置換されていません (値: '$pr_number')。PR 番号を確認して再実行してください" >&2; exit 1 ;;
-esac
-
 # review-state-initialize
 review_state_path=$(bash "$plugin_root"/hooks/flow-state.sh path) || exit 1
 review_state='{}'
@@ -281,12 +276,6 @@ marker_emit ITERATE_CYCLE_MAX "$max_cycles" "ITERATE_CYCLE=$cur_cc" "ITERATE_CYC
 
 # --- cycle-gate ----------------------------------------------------------------
 step_cycle_gate() {
-# ステップ 0.6 と同じ pr_number guard（未置換のパスで pin を読まない）。
-pr_number="$pr_number"
-case "$pr_number" in
-  ''|*[!0-9]*) echo "ERROR: iterate ステップ 1: pr_number が数値に置換されていません (値: '$pr_number')。PR 番号を確認して再実行してください" >&2; exit 1 ;;
-esac
-
 # 診断スニペット用 helper（ステップ 0.6 (0) と同型 — 縮退時の WARNING 告知まで含めて同じ。
 # Bash tool 呼び出し間でシェル状態は引き継がれないため、fire_out を表示する本ブロックでも
 # 独立に読み込む）。
