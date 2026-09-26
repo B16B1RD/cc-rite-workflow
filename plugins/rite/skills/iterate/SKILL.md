@@ -26,7 +26,7 @@ argument-hint: "<pr_number>"
 2. review sentinel を判定（`[review:mergeable]` → ステップ 5.S / `[review:fix-needed:N]` → ステップ 3 / error・不在 → 1 回自動再試行、再失敗時は停止）
 3. `/rite:fix` を invoke
 4. fix sentinel を判定（通常ループ: `[fix:pushed]` → ステップ 1 に戻る / `[fix:non-fatal-only]` / `[fix:replied-only]` → ステップ 5.S / `[fix:sweep-done]` → 完了前確認 / `[fix:cancelled-by-user]` → 終了 / error・不在 → 1 回自動再試行、再失敗時は停止。`--nb-sweep` 経由は 5.S 専用表 — ステップ 1 に戻らない）
-5.S. `[review:mergeable]` / `[fix:non-fatal-only]` / `[fix:replied-only]` 後の NB digest sweep（対象 0 は no-op。同一 review JSON で 2 回禁止。新しい JSON は再 sweep する）。成功後は完了前確認へ
+5.S. `[review:mergeable]` / `[fix:non-fatal-only]` / `[fix:replied-only]` 後の NB digest sweep（対象 0 は no-op。同一 review JSON で 2 回禁止。新しい JSON は再 sweep する）。成功後は PR 内推奨の修正（未着手の `pr_recommendations[]` があれば `/rite:fix` → ステップ 1）、無ければ完了前確認へ
 5. 完了前確認のあと完了通知を出す（目的逸脱時は出さない）
 6. （発火時のみ）サーキットブレーカー: counter と停止理由を記録し、batch は `[iterate:max-cycles-reached]`、対話は `[iterate:max-cycles-stopped]` と停止通知を出して終了する
 
@@ -311,8 +311,8 @@ args: "{pr_number}"
 | `[fix:pushed]` | ステップ 1 (cycle 上限チェック → review 再実行) に戻る — **ループ継続**（上限到達ならステップ 6 サーキットブレーカーへ） |
 | `[fix:sweep-done]` | 完了前確認（目的整合）のあとステップ 5。**ステップ 1 に戻らない**（再フルレビュー禁止） |
 | `[fix:pushed-wm-stale]` | ステップ 1 に戻る (WM stale 警告は表示するが loop は継続。上限チェックはステップ 1 が実施) |
-| `[fix:non-fatal-only]` | ステップ 5.S（成功後に完了前確認）。**ステップ 1 に戻らない** |
-| `[fix:replied-only]` | ステップ 5.S（成功後に完了前確認。返信のみで完了通知）。**ステップ 1 に戻らない** |
+| `[fix:non-fatal-only]` | ステップ 5.S（成功後に PR 内推奨の修正・完了前確認）。**ステップ 1 に戻らない** |
+| `[fix:replied-only]` | ステップ 5.S（成功後に PR 内推奨の修正・完了前確認。返信のみで完了通知）。**ステップ 1 に戻らない** |
 | `[fix:cancelled-by-user]` | **ループ終了**（ユーザーが fix.md 内 cancel 経路 — ステップ 1.4 Cancel option / Fast Path Cancel handoff 等 — で中止選択。`/rite:recover` で再開可） |
 | `[fix:error]` | 可逆な再試行を推奨として 1 回だけ自動実行し、work memory の既存決定事項へ理由を記録する。再失敗なら停止 |
 | sentinel 不在 | 可逆な再試行を推奨として 1 回だけ自動実行し、期待 sentinel・直近の fix 出力 100 行・flow-state phase を既存 work memory へ記録する。再度不在なら停止 |
@@ -323,7 +323,7 @@ args: "{pr_number}"
 
 ## ステップ 5.S: NB digest sweep
 
-`[review:mergeable]` / `[fix:non-fatal-only]` / `[fix:replied-only]` 到達後・完了通知前に、未 sweep の最新 review JSON につき **1 回**。対象 0 件は no-op（fix を invoke しない）。同一 review JSON では 2 回 invoke しない。新しい JSON では再 sweep する。silent skip 禁止。Stop hook が `review:mergeable` / `fix:non-fatal-only` / `fix:replied-only` の FINALIZE で完了通知を求めても、5.S 未実施なら先に本ステップを実行する。成功後は完了前確認を経てからステップ 5 へ。Stop hook がステップ 5 を求めても完了前確認を飛ばさない。
+`[review:mergeable]` / `[fix:non-fatal-only]` / `[fix:replied-only]` 到達後・完了通知前に、未 sweep の最新 review JSON につき **1 回**。対象 0 件は no-op（fix を invoke しない）。同一 review JSON では 2 回 invoke しない。新しい JSON では再 sweep する。silent skip 禁止。Stop hook が `review:mergeable` / `fix:non-fatal-only` / `fix:replied-only` の FINALIZE で完了通知を求めても、5.S 未実施なら先に本ステップを実行する。成功後は PR 内推奨の修正と完了前確認を経てからステップ 5 へ。Stop hook がステップ 5 を求めてもこの 2 つを飛ばさない。
 rationale: references/rationale.md#nb-sweep-step
 
 入口の通常ループ sentinel を `{sweep_origin}` として保持する。5.S 再入時も保持値を使い、内部の `[fix:sweep-done]` や handoff で上書きしない。
@@ -336,8 +336,8 @@ bash {plugin_root}/scripts/iterate-step.sh nb-sweep-collect --pr {pr_number}
 
 | `ITERATE_NB_SWEEP` | アクション |
 |---|---|
-| `skipped` | 完了前確認（目的整合）。collect / fix を invoke しない |
-| `noop` | 完了前確認（目的整合）。fix を invoke しない |
+| `skipped` | PR 内推奨の修正。collect / fix を invoke しない |
+| `noop` | PR 内推奨の修正。fix を invoke しない |
 | `pending` | `/rite:fix --nb-sweep` を invoke |
 | `failed` | `[iterate:nb-sweep-error]` で停止。完了通知へ進まない |
 
@@ -358,7 +358,7 @@ args: "--nb-sweep {pr_number}"
 
 | Sentinel | アクション |
 |---------|-----------|
-| `[fix:sweep-done]` | 完了前確認（目的整合）。ステップ 1 に戻らない |
+| `[fix:sweep-done]` | PR 内推奨の修正。ステップ 1 に戻らない |
 | `[fix:error]` / その他 / sentinel 不在 | `[iterate:nb-sweep-error]` で停止。完了通知へ進まない |
 
 fix が emit した `[CONTEXT] NB_SWEEP_RESULT=done; issued=K; recorded=M` を読み、`ITERATE_NB_SWEEP=done` を同カウントで emit する。記録した basename が最新 JSON と違う、またはファイルが無いときは、collect と同じ選び方（`LC_ALL=C` sort の末尾）で 1 行目を `done <basename>` にする。既存の 2 行目が SHA なら残し、新しい SHA は足さない。basename が取れないときは範囲なしの行を残さない:
@@ -367,13 +367,58 @@ fix が emit した `[CONTEXT] NB_SWEEP_RESULT=done; issued=K; recorded=M` を�
 bash {plugin_root}/scripts/iterate-step.sh nb-sweep-record --pr {pr_number}
 ```
 
-その後、完了前確認（目的整合）へ。
+その後、PR 内推奨の修正へ。
 
 MUST NOT: 同一 review JSON で 5.S を 2 回走らせる。sweep でコードを修正・commit・push する。ステップ 1 に戻らない。
 
+### 5.S 後の PR 内推奨の修正
+
+5.S 成功後・完了前確認の前に、最新の保存済み review JSON に未着手の `pr_recommendations[]`（pr-review ステップ 5.3.0.R が mergeable の cycle で登録した、PR が追加した行への推奨事項）があるかを確かめる。先に 5.S を済ませるのは、修正後の差分再レビューの JSON にこの JSON の non-blocking が引き継がれないため。marker 既出でも bash を省略しない。
+
+```bash
+bash {plugin_root}/scripts/review-pr-recommendations.sh check --pr {pr_number}
+```
+
+| `PR_RECOMMENDATIONS_CHECK` | アクション |
+|---|---|
+| `none` | 完了前確認（目的整合） |
+| `pending` | 下の記録のあと `/rite:fix` を invoke |
+| 非ゼロ終了 / marker 不在 | 停止する。完了通知へ進まず、成功 sentinel を出さない |
+
+`pending` のとき、同じレビュー済み commit を fix へ二度渡さない記録を書く。非ゼロ終了なら停止する（fix を invoke しない）:
+
+```bash
+bash {plugin_root}/scripts/review-pr-recommendations.sh mark --pr {pr_number}
+```
+
+記録できたら invoke する:
+
+```bash
+bash {plugin_root}/hooks/flow-state.sh set \
+  --phase fix --issue {issue_number} --branch {branch_name} --pr {pr_number} \
+  --next "PR 内推奨の修正"
+```
+
+```text
+skill: rite:fix
+args: "{pr_number}"
+```
+
+| Sentinel | アクション |
+|---------|-----------|
+| `[fix:pushed]` / `[fix:pushed-wm-stale]` | ステップ 1 に戻る（修正後の再レビュー。上限チェックはステップ 1） |
+| `[fix:replied-only]` / `[fix:non-fatal-only]` | 完了前確認（目的整合）。push が無いので再レビューしない |
+| `[fix:cancelled-by-user]` | ループ終了（ステップ 4 と同じ） |
+| `[fix:error]` / sentinel 不在 | ステップ 4 と同じく `iterate-step.sh stagnation-route` のあと 1 回だけ再試行。再失敗なら停止 |
+
+登録は 1 つの review run につき 1 回なので、修正後の再レビューが mergeable でも本ステップは `none` になる。そこで出た推奨事項は pr-review ステップ 7 の Decision Log へ流れる。
+rationale: references/rationale.md#pr-recommendation-fix
+
+MUST NOT: mergeable の後に手で commit する（fix の検証記録が無い HEAD では次のレビューを開始できない）。
+
 ### 5.S 後の完了前確認（目的整合）
 
-5.S 成功後・5.0.1 の前に、確認時点の `git rev-parse HEAD` と、その HEAD の PR base...HEAD 全差分を元 Issue の目的・非対象・ファイル役割と照合する。sweep 正本はコード変更・commit・push を禁止するが、最終 HEAD を推測で省略しない。整合の確認観点（指摘 0 件でも未説明なら逸脱）: 配置（証拠→PR details / 契約→規約 / Why→ソース / 再現→テスト）、規範の正の逆転・重複、根拠のない新制約、有用な契約・保守理由の保持。
+5.S と PR 内推奨の修正の後・5.0.1 の前に、確認時点の `git rev-parse HEAD` と、その HEAD の PR base...HEAD 全差分を元 Issue の目的・非対象・ファイル役割と照合する。sweep 正本はコード変更・commit・push を禁止するが、最終 HEAD を推測で省略しない。整合の確認観点（指摘 0 件でも未説明なら逸脱）: 配置（証拠→PR details / 契約→規約 / Why→ソース / 再現→テスト）、規範の正の逆転・重複、根拠のない新制約、有用な契約・保守理由の保持。
 
 | 結果 | 処置 |
 |------|------|

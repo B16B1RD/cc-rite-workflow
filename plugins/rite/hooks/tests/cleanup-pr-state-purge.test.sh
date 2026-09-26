@@ -34,6 +34,7 @@ seed(){
     printf 'x\n' > "$root/.rite/state/accepted-fingerprints-${pr}.txt"
     printf 'x\n' > "$root/.rite/state/review-run-since-${pr}.txt"
     printf 'x\n' > "$root/.rite/state/nb-sweep-done-${pr}.txt"
+    printf 'x\n' > "$root/.rite/state/pr-recommendations-done-${pr}.txt"
     printf '{"non_blocking_findings":[]}\n' > "$root/.rite/review-results/${pr}-cycle1.json"
   done
   printf 'x\n' > "$root/.rite/fix-cycle-state.json"   # legacy（PR 非依存）
@@ -49,6 +50,8 @@ assert_absent "対象 PR の fix_cycle_state を削除する" "$r/.rite/fix-cycl
 assert_absent "対象 PR の accepted_fingerprints を削除する" "$r/.rite/state/accepted-fingerprints-42.txt"
 assert_absent "対象 PR の review_run_since を削除する" "$r/.rite/state/review-run-since-42.txt"
 assert_absent "対象 PR の nb_sweep_done を削除する" "$r/.rite/state/nb-sweep-done-42.txt"
+assert_absent "対象 PR の pr_recommendations_done を削除する" "$r/.rite/state/pr-recommendations-done-42.txt"
+assert_present "別 PR (4) の pr_recommendations_done を巻き込まない" "$r/.rite/state/pr-recommendations-done-4.txt"
 assert_absent "legacy fix_cycle_state を削除する" "$r/.rite/fix-cycle-state.json"
 # 別 PR は残る（AC-5 の Then）。
 assert_present "別 PR (4) の state を巻き込まない" "$r/.rite/state/nb-sweep-done-4.txt"

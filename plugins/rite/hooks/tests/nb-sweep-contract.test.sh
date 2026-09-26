@@ -344,6 +344,14 @@ FIX="$PLUGIN_ROOT/skills/fix/references/nb-sweep.md"
 REVIEW="$PLUGIN_ROOT/skills/pr-review/SKILL.md"
 PROMPT="$PLUGIN_ROOT/skills/pr-review/references/reviewer-prompt-generator.md"
 assert_grep "T-07 iterate mergeable→5.S" "$ITERATE" '\[review:mergeable\].*5\.S'
+# 5.S → PR 内推奨の修正 → 完了前確認 の順序。見出しの並びで固定する（本文の語句一致では順序を検出できない）。
+order=$(grep -nE '^### 5\.S 後の PR 内推奨の修正$|^### 5\.S 後の完了前確認' "$ITERATE" | cut -d: -f2 | tr '\n' '|')
+if [ "$order" = "### 5.S 後の PR 内推奨の修正|### 5.S 後の完了前確認（目的整合）|" ] \
+   && [ "$(grep -n '^## ステップ 5.S: NB digest sweep$' "$ITERATE" | cut -d: -f1)" -lt "$(grep -n '^### 5.S 後の PR 内推奨の修正$' "$ITERATE" | cut -d: -f1)" ]; then
+  pass "T-07 iterate 5.S → in-PR recommendation fix → purpose check order"
+else
+  fail "T-07 iterate 5.S → in-PR recommendation fix → purpose check order (got: $order)"
+fi
 assert_grep "T-07 iterate sweep-done no re-review" "$ITERATE" '\[fix:sweep-done\].*ステップ 5'
 assert_grep "T-07 iterate nb-sweep-error" "$ITERATE" '\[iterate:nb-sweep-error\]'
 assert_grep "T-07 iterate --nb-sweep invoke" "$ITERATE" 'args: "--nb-sweep \{pr_number\}"'

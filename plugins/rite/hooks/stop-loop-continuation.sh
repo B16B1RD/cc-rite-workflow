@@ -304,7 +304,7 @@ case "$HANDOFF" in
     fi
     case "$_result" in
       fix:non-fatal-only:*|review:mergeable:*)
-        _nb_note="5.S 未実施なら先に NB digest sweep を実行し、成功後は完了前確認（目的整合）を経てから完了通知へ進んでください。再フルレビューは禁止です。${_nb_note}"
+        _nb_note="5.S 未実施なら先に NB digest sweep を実行し、成功後は PR 内推奨の修正（未着手の推奨があれば /rite:fix の後にステップ 1 の再レビュー）と完了前確認（目的整合）を経てから完了通知へ進んでください。それ以外の再フルレビューは禁止です。${_nb_note}"
         ;;
     esac
     _purpose_mid="ステップ5 の完了通知 (終了理由 + 次ステップ案内) を必ず出力してください。"

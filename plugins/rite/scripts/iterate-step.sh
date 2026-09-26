@@ -226,7 +226,7 @@ if [ "$cb_mode_init" = fresh ] || [ "$cur_cc" -eq 0 ] 2>/dev/null; then
     echo "WARNING: state-path-resolve.sh を実行できませんでした（プラグインの破損 / 版 skew）。run 開始点 pin を記録できないため、発散判定は前 run の JSON を含んだ列を読んで判定を降ろします" >&2
     run_since_status=unresolved-root
   else
-    rm -f "$pin_root/.rite/state/nb-sweep-done-${pr_number}.txt"
+    rm -f "$pin_root/.rite/state/nb-sweep-done-${pr_number}.txt" "$pin_root/.rite/state/pr-recommendations-done-${pr_number}.txt"
     pin_file="$pin_root/.rite/state/review-run-since-${pr_number}.txt"
     # 現時点で最新の結果ファイル basename（1 件も無ければ空 = pin 無し = 全件が現 run）。
     # ソート順は helper 側の選別と揃える（LC_ALL=C 昇順 = 時系列昇順）。

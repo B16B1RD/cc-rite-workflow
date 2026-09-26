@@ -519,7 +519,8 @@ for notice_kind in missing-field complete; do
     reason_nb=$(jq -r '.reason' <<< "$out")
     assert "non-fatal-only sweep precedes notice" yes "$([[ "$reason_nb" == *'5.S 未実施なら先に NB digest sweep'* ]] && echo yes || echo no)"
     assert "non-fatal-only requires remaining field" yes "$([[ "$reason_nb" == *'未処理 non-blocking'* ]] && echo yes || echo no)"
-    assert "non-fatal-only forbids re-review" yes "$([[ "$reason_nb" == *'再フルレビューは禁止'* ]] && echo yes || echo no)"
+    assert "non-fatal-only forbids re-review" yes "$([[ "$reason_nb" == *'それ以外の再フルレビューは禁止'* ]] && echo yes || echo no)"
+    assert "non-fatal-only routes pending recommendations to fix" yes "$([[ "$reason_nb" == *'PR 内推奨の修正（未着手の推奨があれば /rite:fix の後にステップ 1 の再レビュー）'* ]] && echo yes || echo no)"
   else
     assert "non-fatal-only complete notice allows stop" "" "$out"
   fi

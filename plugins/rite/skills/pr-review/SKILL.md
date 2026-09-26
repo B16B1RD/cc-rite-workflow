@@ -2018,8 +2018,9 @@ If reviewers have written items in the "仕様への疑問" section, prompt the 
 2. **5.3.0.M 実測必須ゲート** — **`scripts/review-measured-gate.sh` を実行する**。分類は helper。Claude は判定しない。SoT: [severity-levels.md §実測必須ゲート](../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) / [assessment-rules.md §5.3.0.M](../fix/references/assessment-rules.md)。
 3. **5.3.0.C 帰結クラス降格政策** — 分類 map の Write と `scripts/review-class-demotion-gate.sh`。`blocking=0` なら本ゲート全体を skip。A=0 で exclusion なし B を降格し、exclusion 付き B は blocking 維持。SoT: [severity-levels.md §帰結クラス軸](../../references/severity-levels.md#帰結クラス軸-consequence-class) / [assessment-rules.md §5.3.0.C](../fix/references/assessment-rules.md)。
 4. **5.3.0.A 受入条件の最終整合検査** — `scripts/acceptance-criteria-check.sh final` を実行する。判定行の AC-ID 集合・対象判定と reviewers[] の整合、未充足行の finding が降格後も blocking に残ることを検査し、未検証 AC を 8.0 / 8.1 へ渡す。
-5. **5.3.1-5.3.7** を降格後の `全指摘事項` に適用。件数は marker とゲート後 JSON から読む（再分類しない）。
-5.3.0 / 5.3.0.M / 5.3.0.C / 5.3.0.A を 5.3.1 の前に飛ばすことは **禁止**。
+5. **5.3.0.R PR 内推奨の登録** — `scripts/review-pr-recommendations.sh register` を実行する。mergeable のときだけ、actionable かつ PR の追加行を指す推奨事項を `pr_recommendations[]` へ登録する。
+6. **5.3.1-5.3.7** を降格後の `全指摘事項` に適用。件数は marker とゲート後 JSON から読む（再分類しない）。
+5.3.0 / 5.3.0.M / 5.3.0.C / 5.3.0.A / 5.3.0.R を 5.3.1 の前に飛ばすことは **禁止**。
 rationale: references/design-rationale.md#5.3-execution-order-why
 
 #### Number-reference `--diff` (every cycle)
@@ -2276,6 +2277,26 @@ bash {plugin_root}/scripts/acceptance-criteria-check.sh final \
 
 `acceptance_final_retry_count` は int、初期 0。reroll を始める直前に +1 する。reroll 内で再実行する 5.3.0.M / 5.3.0.C は、それぞれ既存の `measured_gate_retry_count` / `class_gate_retry_count` を引き継ぐ。
 rationale: references/design-rationale.md#acceptance-reviewer
+
+#### 5.3.0.R PR 内推奨の登録
+
+5.3.0.A の後・6.1.a の保存の前に、毎 cycle 実行する。5.1 の `recommendation_items` を Write tool で `{review_tmp_dir}/rite-review-recs-{pr_number}-{current_commit_sha}.json` に `{"recommendation_items": [...]}` の形で保存する（0 件でも空配列で書く）。
+
+```bash
+bash {plugin_root}/scripts/review-pr-recommendations.sh register \
+  --input {review_tmp_dir}/rite-review-result-{pr_number}.json \
+  --items {review_tmp_dir}/rite-review-recs-{pr_number}-{current_commit_sha}.json \
+  --base-ref "$(git rev-parse --verify -q "origin/{base_branch}^{commit}" >/dev/null && echo "origin/{base_branch}" || echo "{base_branch}")"
+```
+
+| Result | Action |
+|---|---|
+| rc=0 + `PR_RECOMMENDATIONS=registered; count=N; ids=...; positions=...` | `positions=` を `{registered_recommendation_positions}` として retain し、ステップ 7.1 の Source B から除外する。登録した推奨事項は iterate が同じ PR で `/rite:fix` に渡す |
+| rc=0 + `PR_RECOMMENDATIONS=none; reason=...` | `{registered_recommendation_positions}` を空として進む |
+| rc≠0 | `[review:error]` を stdout に出力して停止する |
+
+登録は保存前の作業コピーだけに行う（保存済み JSON は停滞判定の受領記録と照合されるため書き換えない）。上限は 1 つの review run につき 1 回。
+rationale: ../iterate/references/rationale.md#pr-recommendation-fix
 
 
 ### 5.3.8 Fix-Introduced Finding Attribution
@@ -3054,7 +3075,7 @@ loop 内では pattern だけ出す。続きは `/rite:iterate` ステップ 1-4
 
 候補は **2 source**:
 **Source A**: MEDIUM+ かつキーワード（`スコープ外` / `別 Issue` / `out of scope` / `separate issue` 等）。
-**Source B**: `recommendation_items` の `actionable` または `boundary`。`design_confirmation` は除外。
+**Source B**: `recommendation_items` の `actionable` または `boundary`。`design_confirmation` は除外。5.3.0.R が登録した `{registered_recommendation_positions}`（`recommendation_items` の 0 始まり位置）も除外する（同じ PR で修正するため。判定を再計算しない）。
 
 **`candidate_count` assignment**:
 

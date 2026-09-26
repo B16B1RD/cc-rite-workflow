@@ -184,7 +184,7 @@
 
 | レビュアー | 分類 | 内容 | トリアージ対象 |
 |-----------|------|------|:------------:|
-| {reviewer_type} | {actionable / design_confirmation / boundary} | {recommendation_content} | {✅ if classification == actionable OR (boundary AND user approves), — otherwise} |
+| {reviewer_type} | {actionable / design_confirmation / boundary} | {recommendation_content} | {`R-NN（PR 内修正）` if registered in 5.3.0.R, ✅ if classification == actionable OR (boundary AND user approves), — otherwise} |
 
 
 ### Observed Likelihood 降格結果（該当がある場合のみ）
@@ -436,7 +436,7 @@
 
 | レビュアー | 分類 | 内容 | トリアージ対象 |
 |-----------|------|------|:------------:|
-| {reviewer_type} | {actionable / design_confirmation / boundary} | {recommendation_content} | {✅ if classification == actionable OR (boundary AND user approves), — otherwise} |
+| {reviewer_type} | {actionable / design_confirmation / boundary} | {recommendation_content} | {`R-NN（PR 内修正）` if registered in 5.3.0.R, ✅ if classification == actionable OR (boundary AND user approves), — otherwise} |
 
 
 ### Observed Likelihood 降格結果（該当がある場合のみ）

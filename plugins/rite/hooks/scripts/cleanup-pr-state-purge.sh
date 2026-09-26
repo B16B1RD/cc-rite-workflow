@@ -124,5 +124,6 @@ rite_rm legacy_fix_cycle_state "$state_root/.rite/fix-cycle-state.json"
 rite_rm accepted_fingerprints "$state_root/.rite/state/accepted-fingerprints-${pr_number}.txt"
 rite_rm review_run_since "$state_root/.rite/state/review-run-since-${pr_number}.txt"
 rite_rm nb_sweep_done "$state_root/.rite/state/nb-sweep-done-${pr_number}.txt"
+rite_rm pr_recommendations_done "$state_root/.rite/state/pr-recommendations-done-${pr_number}.txt"
 
 exit 0

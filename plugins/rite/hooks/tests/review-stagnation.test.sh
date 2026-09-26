@@ -165,7 +165,8 @@ class Fixture:
     def start(self, ok=True):
         return self.flow('review-start', '--selection', self.selection, '--stagnation', ok=ok)
 
-    def finish(self, roots=None, satisfied=(), non_blocking=False, severities=None, unverified=(), unmet=()):
+    def finish(self, roots=None, satisfied=(), non_blocking=False, severities=None, unverified=(), unmet=(),
+               recommendations=None):
         if roots is None:
             roots = ['input defect']
         context = self.context()
@@ -201,6 +202,10 @@ class Fixture:
                                for criterion in unverified] + [
                                dict(id=criterion, status='unmet', evidence='measured fixture => fail', finding_id='F-01')
                                for criterion in unmet]))
+        if recommendations is not None:
+            document = json.loads(content.read_text())
+            document['pr_recommendations'] = recommendations
+            dump(content, document)
         self.run(['bash', str(plugin / 'scripts/review-measured-gate.sh'), '--input', str(content),
                   '--reject-preset-verification'])
         self.flow('review-finish', '--manifest', manifest, '--content-file', content)
@@ -2026,6 +2031,59 @@ try:
     check(f.state()['issue_number'] == 43 and archived == stopped_run
           and archived['status'] == 'stopped' and archived['stop_reason'] == 'circuit-breaker:divergence',
           'T-25 (AC-3): a stopped run releases the session without its receipt and keeps its stop')
+finally:
+    f.close()
+
+# A mergeable review has no finding to fix. A hand commit after it cannot start the
+# next review; a recommendation registered in the receipt goes through a verified fix.
+f = Fixture()
+try:
+    f.start()
+    f.finish(roots=[], recommendations=[dict(id='R-01', reviewer='code-quality-reviewer', file='source.txt',
+                                             line=1, description='comment contradicts the code')])
+    f.clock(1)
+    f.observe()
+    check(f.state()['review_cycle']['verdict'] == 'mergeable', 'recommendation receipt stays mergeable')
+    (f.root / 'source.txt').write_text('hand edit\n')
+    f.commit()
+    f.reject(lambda: f.start(ok=False), 'hand commit after mergeable cannot start the next review',
+             'changed HEAD requires completed full fix verification')
+    f.run(['git', 'reset', '-q', '--hard', 'HEAD~1'])
+    plan = f.plan()
+    plan['groups'][0]['finding_ids'] = ['R-02']
+    dump(f.plan_path, plan)
+    f.reject(lambda: f.scope(ok=False), 'unregistered recommendation ID is refused', 'unknown or duplicate finding IDs')
+    second = copy.deepcopy(plan['groups'][0])
+    second['root_cause'] = 'another cause'
+    plan['groups'] = [dict(plan['groups'][0], finding_ids=['R-01']), dict(second, finding_ids=['R-01'])]
+    dump(f.plan_path, plan)
+    f.reject(lambda: f.scope(ok=False), 'recommendation in two groups is refused', 'unknown or duplicate finding IDs')
+    plan = f.plan()
+    plan['groups'][0]['finding_ids'] = ['R-01']
+    dump(f.plan_path, plan)
+    f.scope()
+    (f.root / 'source.txt').write_text('recommendation applied\n')
+    f.scope('verify')
+    f.commit()
+    f.start()
+    check(len(f.state()['review_run']['fixes']) == 1, 'recommendation fix is a verified fix for the next review')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    f.start()
+    f.finish(recommendations=[dict(id='R-01', reviewer='code-quality-reviewer', file='source.txt',
+                                   line=1, description='comment contradicts the code')])
+    f.clock(1)
+    f.observe()
+    f.plan()
+    f.reject(lambda: f.scope(ok=False), 'a registered recommendation needs a disposition like a blocking finding',
+             'all blocking findings need one disposition')
+    plan = f.plan()
+    plan['groups'][0]['finding_ids'] = ['F-01', 'R-01']
+    dump(f.plan_path, plan)
+    f.scope()
 finally:
     f.close()
 

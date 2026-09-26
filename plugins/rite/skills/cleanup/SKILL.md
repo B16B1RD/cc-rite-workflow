@@ -768,7 +768,7 @@ fi
 `review-run-since-{pr}.txt` は `/rite:iterate` の収束トレンド判定が現 run の境界に使う pin。直上で削除する `review-results/` と同じライフサイクルのため同列挙で掃除する。
 rationale: references/rationale.md#review-run-since-sweep
 
-`nb-sweep-done-{pr}.txt` は iterate 5.S の再入ガード（形式は [review-result-schema.md](../../references/review-result-schema.md#nb-sweep-ledger)）。マージ済み PR の state として他の PR 単位ファイルと一緒に片付ける。
+`nb-sweep-done-{pr}.txt` は iterate 5.S の再入ガード（形式は [review-result-schema.md](../../references/review-result-schema.md#nb-sweep-ledger)）、`pr-recommendations-done-{pr}.txt` は 5.S 後の PR 内推奨の修正の再入ガード（[review-result-schema.md](../../references/review-result-schema.md#pr_recommendations-配列)）。マージ済み PR の state として他の PR 単位ファイルと一緒に片付ける。
 rationale: references/rationale.md#nb-sweep-done-sweep
 
 `.rite/wiki-worktree/` は永続 worktree のため削除しない。手動削除が必要なら `git worktree remove .rite/wiki-worktree && git worktree prune`。
