@@ -200,8 +200,12 @@ assert_grep "mandate 2 reviews the whole diff of each listed file (no hunk-level
 # 帰属判定は mandate 2 の行形に 1 本で pin する。rationale 節にも同じ照合の説明があるため、
 # 語ごとの pin では注入本文から文を消しても green のまま残る。審査範囲の文 → 帰属の文 →
 # 回し先の順序もこの 1 本で固定する。
-assert_grep "mandate 2 attributes findings to +/- lines of origin-first base...HEAD, not context lines (範囲は維持)" "$CYCLE_SCOPE" \
-  '^2\. \*\*fix diff のフルレビュー\*\*.*hunk を選り分けず diff 全体を審査する.*ただし指摘の帰属は行単位で判定する.*`git diff origin/\{base_branch\}\.\.\.HEAD -- <file>`（`origin/\{base_branch\}` が無ければ `\{base_branch\}`）に `\+` / `-` 行として現れる行に依存する問題に限る.*先頭が `\+` / `-` でない context 行と差分に現れない行は PR の変更ではない.*pre-existing として指摘にしない（追加調査の価値があるものだけ `### 調査推奨` に書く）'
+assert_grep "mandate 2 attributes findings to +/- lines of origin-first base...HEAD, relocates fix-removed PR lines, not context lines (範囲は維持)" "$CYCLE_SCOPE" \
+  '^2\. \*\*fix diff のフルレビュー\*\*.*hunk を選り分けず diff 全体を審査する.*ただし指摘の帰属は行単位で判定する.*`git diff origin/\{base_branch\}\.\.\.HEAD -- <file>`（`origin/\{base_branch\}` が無ければ `\{base_branch\}`）に `\+` / `-` 行として現れる行に依存する問題に限る.*例外として、fix diff の `-` 行のうち `origin/\{base_branch\}\.\.\.HEAD` に現れないものは、PR 自身が前 cycle で足した行を fix が消したものでありうる（足して消した行は差し引きで base との差分から消える。base の取り込みが無くても起きる）。その削除が生む問題は、影響を受ける行が `origin/\{base_branch\}\.\.\.HEAD` の `\+` / `-` 行に現れるならその行へ位置を付け替えて PR の指摘とし、現れなければ PR の正味の変更に影響しないので pre-existing として扱う。先頭が `\+` / `-` でない context 行と、差分に現れない行のうち上記の例外に当たらないものは PR の変更ではない.*pre-existing として指摘にしない（追加調査の価値があるものだけ `### 調査推奨` に書く）'
+# fix が消した PR 自身の行は base との差分に現れない。rationale がそれを否定する旧文言に戻ると
+# 例外の理由が消えるので、旧文言の不在を固定する（rationale 節は上の行形 pin の対象外）。
+assert_not_grep "rationale no longer claims every PR line appears in base...HEAD" "$CYCLE_SCOPE" \
+  'PR 自身の行は必ずこの差分の'
 assert_grep "4.5 fills base_branch into the cycle-scope mandate" "$PR_REVIEW" \
   '\| `\{cycle_scope_mandate\}` \|.*`\{previous_blocking_findings\}` / `\{cycle_base_sha\}` / `\{base_branch\}` を埋めて注入する'
 
