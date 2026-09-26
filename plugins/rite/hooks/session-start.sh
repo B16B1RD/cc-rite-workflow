@@ -629,6 +629,8 @@ _rite_stop_reason_phrase() {
       echo "サーキットブレーカー発火 (review⇄fix cycle が上限に到達)" ;;
     circuit-breaker:divergence)
       echo "サーキットブレーカー発火 (収束トレンドの発散を検出)" ;;
+    circuit-breaker:receipt-missing)
+      echo "サーキットブレーカー発火 (未完了レビューの結果ファイルが消失)" ;;
     *)
       echo "未知の停止理由トークン '$(printf '%s' "$_sr" | neutralize_ctrl)' (rite の更新で追加された可能性)" ;;
   esac

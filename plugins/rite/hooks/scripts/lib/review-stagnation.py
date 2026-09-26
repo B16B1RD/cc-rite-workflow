@@ -319,7 +319,8 @@ def guard_set(old, new):
                         "at the reviewed commit, run `flow-state.sh review-close` if no blocking finding "
                         "remains or `flow-state.sh review-defer` to keep the draft unresolved; if it cannot "
                         "be restored, stop the run with `flow-state.sh set --phase " + str(old.get("phase"))
-                        + " --active false --stop-reason circuit-breaker:receipt-missing`. Then retry the switch")
+                        + " --next retry-the-switch --active false"
+                        " --stop-reason circuit-breaker:receipt-missing`. Then retry the switch")
         # Ordinary setters merge counters; ownership completion, rather than an
         # optional caller flag, authorizes this new run's initial zero.
         new["cycle_count"] = 0

@@ -10,6 +10,7 @@ import importlib
 import json
 import os
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import sys
@@ -2013,13 +2014,15 @@ try:
           and 'requires completed or deferred review' not in result.stderr,
           'T-24 (AC-2): an unended run still re-reads its receipt when leaving the PR\n' + result.stderr)
     check(f.state()['issue_number'] == 42, 'T-24 (AC-2): the refused switch keeps the current Issue')
-    for step in ('review-close', 'review-defer', 'restore that file unchanged',
-                 'flow-state.sh set --phase cleanup --active false --stop-reason circuit-breaker:receipt-missing'):
+    for step in ('review-close', 'review-defer', 'restore that file unchanged', 'stop the run with `'):
         check(step in result.stderr and 'review-cycle failed' not in result.stderr,
               'T-24: the refusal names the next operation: ' + step + '\n' + result.stderr)
-    # The stop the refusal names is enough to leave without the receipt.
-    f.flow('set', '--phase', 'cleanup', '--next', 'cleanup', '--active', 'false',
-           '--stop-reason', 'circuit-breaker:receipt-missing')
+    # Run the stop command exactly as the refusal prints it, so the wording cannot drift from what works.
+    named = shlex.split(result.stderr.split('stop the run with `', 1)[1].split('`', 1)[0])
+    check(named[0] == 'flow-state.sh' and named[1] == 'set'
+          and '--stop-reason' in named and 'circuit-breaker:receipt-missing' in named,
+          'T-24: the refusal names the stop command\n' + result.stderr)
+    f.flow(*named[1:])
     leave(f)
     archived = archived_run(f.state())
     check(f.state()['issue_number'] == 43 and archived['status'] == 'stopped'

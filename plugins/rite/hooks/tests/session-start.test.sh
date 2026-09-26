@@ -223,6 +223,25 @@ else
 fi
 echo ""
 
+echo "TC-006d: startup reset names the receipt-missing stop as a known reason"
+dir006d="$TEST_DIR/tc006d"
+mkdir -p "$dir006d"
+create_state_file "$dir006d" '{
+  "active": true,
+  "issue_number": 2045,
+  "branch": "fix/issue-2045",
+  "phase": "cleanup",
+  "stop_reason": "circuit-breaker:receipt-missing"
+}'
+output=$(run_hook_with_source "$dir006d" "startup")
+if grep -q "未完了レビューの結果ファイルが消失" <<< "$output" && \
+   ! grep -q "未知の停止理由トークン" <<< "$output"; then
+  pass "startup defensive reset surfaces the receipt-missing stop reason"
+else
+  fail "Expected receipt-missing stop reason in startup reset notice, got: $output"
+fi
+echo ""
+
 # --------------------------------------------------------------------------
 # TC-002: CWD is not a directory → exit 0
 # --------------------------------------------------------------------------
