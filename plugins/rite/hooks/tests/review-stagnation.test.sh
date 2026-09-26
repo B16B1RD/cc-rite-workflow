@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 plugin = Path(sys.argv[1]).resolve()
 checks = 0
@@ -1431,7 +1432,14 @@ def marker(output, key):
 
 f = Fixture()
 try:
-    diverge(f)
+    # The gate reads the trend from saved results in file-name order. Results saved in the
+    # same second get random collision suffixes, so keep each cycle in its own second.
+    for roots in (['input defect'], ('input defect', 'second defect')):
+        f.cycle(roots=roots)
+        f.fix()
+        time.sleep(1.1)
+    f.cycle(roots=('input defect', 'second defect', 'third defect'), seconds=1801)
+    check(f.state()['stop_reason'] == 'circuit-breaker:divergence', 'T-22: fixture reached divergence stop')
     f.plan()
     retry(f)
     f.fix()
@@ -1486,8 +1494,11 @@ finally:
 
 iterate = (plugin / 'skills/iterate/SKILL.md').read_text()
 back = iterate.split('「戻る」の行（`divergence` のみ）:', 1)[1].split('```', 2)[1]
-check(back.index('review-retry') < back.index('/rite:iterate {pr_number}'),
-      'T-22: the way back names re-running iterate after the grant')
+# The way back must name the only path the retry review accepts: the fix-scope check
+# before the repair and verify before the commit, as f.fix() does above.
+check(back.index('review-retry') < back.index('review-fix-scope-check.sh check')
+      < back.index('review-fix-scope-check.sh verify') < back.index('/rite:iterate {pr_number}'),
+      'T-22: the way back names the checked and verified repair before re-running iterate')
 check('再試行権が未決着の間は' in (plugin / 'references/review-stagnation.md').read_text(),
       'T-22: the retry contract states the held divergence verdict')
 

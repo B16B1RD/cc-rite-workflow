@@ -601,7 +601,7 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 要対応:
 {action_items}
 
-再開方法: `review_run` が無い legacy state では /rite:iterate {pr_number} を明示再実行する。`review_run` がある停止は通常の再実行では新 run にならない。発散なら限定 retry（発行後に修正・検証・commit・push してから /rite:iterate {pr_number} を再実行）、回数上限を含む既知 breaker の completed 停止は明示承認の `review-restart`（契約は 6.2 と [review-stagnation.md](../../references/review-stagnation.md)）。
+再開方法: `review_run` が無い legacy state では /rite:iterate {pr_number} を明示再実行する。`review_run` がある停止は通常の再実行では新 run にならない。発散なら限定 retry（発行後は fix-scope helper の check → 修正 → verify --kind all → commit・push の順に進めてから /rite:iterate {pr_number} を再実行）、回数上限を含む既知 breaker の completed 停止は明示承認の `review-restart`（契約は 6.2 と [review-stagnation.md](../../references/review-stagnation.md)）。
 
 <!-- [iterate:max-cycles-reached] -->
 ```
@@ -665,8 +665,10 @@ rationale: references/rationale.md#resume-routes-no-state-read
   `bash "{plugin_root}"/hooks/flow-state.sh review-retry --plan <一括修正計画の絶対パス> --issue <最新 Issue JSON の絶対パス>` を実行する
   （run 生涯 1 回。計画が blocking を覆えない・HEAD や receipt が動いている・権利が使用済みなら拒否される。
   許可されるのは fix → 検証 → review の 1 巡で、その review に blocking が残れば同じ理由で再停止する）
-  発行後は計画どおりに修正・検証・commit・push してから /rite:iterate {pr_number} を再実行する
-  （ステップ 1 はこの 1 巡に限り発散判定を保留して review へ進む。cycle 上限は保留しない）
+  発行後は同じ計画・Issue JSON で `bash "{plugin_root}"/hooks/scripts/review-fix-scope-check.sh check --plan <計画> --issue <Issue JSON>`
+  を実行してから計画どおりに修正し、`bash "{plugin_root}"/hooks/scripts/review-fix-scope-check.sh verify --plan <計画> --issue <Issue JSON> --kind all`
+  が通ってから commit・push して /rite:iterate {pr_number} を再実行する（check / verify を経ない commit は review-start が拒否する。
+  再実行した iterate はこの 1 巡に限り発散判定で止まらず review へ進む。cycle 上限は保留しない）
 ```
 
 `{plugin_root}` は解決済み絶対パスへリテラル置換する（注意行 (b) と同じ形。配布先の plugin root は人間が推測できない）。`--session` は付けない — `cmd_review_cycle` は session override を受け付けない。
