@@ -3,6 +3,7 @@
 ## 2026-09-26
 
 * **Create**: [0x80-0x9F をバイト単位で潰す制御文字の中和は、UTF-8 の日本語を壊して診断を読めなくする](pages/anti-patterns/bytewise-c1-neutralization-breaks-utf8-diagnostics.md) — raw/reviews/20260926T043640Z-pr-3108.md を新規ページ化
+* **lint:clean** — contradictions=0 (新規ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=538, broken_refs=0
 * **Update**: [同じ処理を 2 経路で実装したら fixture の「意地悪さ」も 2 経路で揃える](pages/heuristics/dual-path-implementation-needs-matching-adversarial-fixture.md) — raw/reviews/20260926T035155Z-pr-3106.md で同じフラグを 2 経路で使う場合を補強
 * **Update**: [ゲートを有効化する変更は、同じ条件で動く全 hook を通した経路で既存手順を検証する](pages/heuristics/enabling-a-gate-verify-every-hook-sharing-its-condition.md) — raw/fixes/20260926T034712Z-pr-3099.md で修正手段と回帰テストの形を補強
 * **Skip**: [20260926T035336Z-pr-3102.md](raw/reviews/20260926T035336Z-pr-3102.md) — 変異で新規 assertion の実効性を確かめる手法は既存ページと同内容で、新しい経験則を含まない
