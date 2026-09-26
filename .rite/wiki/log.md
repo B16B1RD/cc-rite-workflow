@@ -2,6 +2,8 @@
 
 ## 2026-09-27
 
+* **Update**: [エラーメッセージが案内するコマンドは、テストで出力から抽出して逐語実行する](pages/patterns/guidance-command-test-by-verbatim-execution.md) — raw/reviews/20260926T150855Z-pr-3171.md を統合
+* **Skip**: [20260926T150340Z-pr-3180.md](raw/reviews/20260926T150340Z-pr-3180.md) — detector-candidate: YAML 節の終端判定を英字始まり限定の正規表現で書いている箇所を grep で洗い出す
 * **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=551, broken_refs=0
 * **Update**: [SoT から事実を 1 つ引くとき、その事実に付いた強度 qualifier ごと持ってこないと別種の不正確さを新設する](pages/anti-patterns/sot-quote-drops-strength-qualifier.md) — raw/reviews/20260926T145932Z-pr-3181.md を統合
 * **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=551, broken_refs=0

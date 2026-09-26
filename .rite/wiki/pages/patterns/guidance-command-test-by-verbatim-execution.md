@@ -4,8 +4,10 @@ title: "エラーメッセージが案内するコマンドは、テストで出
 domain: "patterns"
 description: "エラーメッセージが利用者に打たせるコマンドを文字列の部分一致だけで固定すると、案内先 CLI の必須引数が欠けていても検出できない。テストは出力から案内コマンドを抽出してそのまま実行し、文言と実行可能性を 1 つの assert で結ぶ。"
 created: "2026-09-26T14:50:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T14:57:57Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T15:13:54Z" }
 sources:
+  - type: "reviews"
+    resource: "raw/reviews/20260926T150855Z-pr-3171.md"
   - type: "reviews"
     resource: "raw/reviews/20260926T142952Z-pr-3171.md"
   - type: "fixes"
@@ -13,6 +15,7 @@ sources:
 tags: []
 confidence: high
 verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T15:13:54Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T14:57:57Z" }
 ---
 
@@ -44,6 +47,10 @@ verified:
 
 エラーメッセージが JSON 文字列として出力される経路では、案内コマンドの値に引用符を入れると出力に `\"` が残り、コピーして打つとコマンドが壊れる。案内コマンドに埋める値は引用符なしで 1 語になる形に選ぶ。修正ではテストが stderr から案内コマンドを抽出して shlex で分割し、そのまま実行する形にした。文言と実行可能性を同じ確認で結ぶことで、引用のされ方が変わって打てなくなる乖離も検出できる。
 
+### 修正の解消は逆向き変異で確かめる
+
+再レビューでは、案内コマンドを逐語実行する形に直したテストが本当に欠陥を捉えるかを、修正を戻した隔離コピーで確かめた。必須引数を外すとテストが案内先 CLI のエラーで落ち、列挙値の分岐を外すと再開案内のテストが「未知の値」表示を観測して落ちた。修正を戻すとテストが落ちることを示せば、テストが空振りしていないと言える。一方、仕様書の列挙表（SoT）への値の追記漏れは文書同士の突合でしか示せず、実測アンカーを持てないため non-blocking として残る。consumer 側の列挙を直しても、SoT 文書は別の経路で拾う必要がある。
+
 ## 関連ページ
 
 - [エラーメッセージ文字列の grep assert は locale 依存で dead assertion 化する](../anti-patterns/locale-dependent-error-message-grep-assertion.md)
@@ -53,3 +60,4 @@ verified:
 
 - [レビュー結果](../../raw/reviews/20260926T142952Z-pr-3171.md)
 - [fix 結果](../../raw/fixes/20260926T144658Z-pr-3171.md)
+- [レビュー結果（再レビュー）](../../raw/reviews/20260926T150855Z-pr-3171.md)
