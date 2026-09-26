@@ -4,12 +4,16 @@ title: "エラーメッセージが案内するコマンドは、テストで出
 domain: "patterns"
 description: "エラーメッセージが利用者に打たせるコマンドを文字列の部分一致だけで固定すると、案内先 CLI の必須引数が欠けていても検出できない。テストは出力から案内コマンドを抽出してそのまま実行し、文言と実行可能性を 1 つの assert で結ぶ。"
 created: "2026-09-26T14:50:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T14:50:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T14:57:57Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260926T142952Z-pr-3171.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260926T144658Z-pr-3171.md"
 tags: []
 confidence: high
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T14:57:57Z" }
 ---
 
 # エラーメッセージが案内するコマンドは、テストで出力から抽出して逐語実行する
@@ -35,6 +39,11 @@ confidence: high
 - 新しい列挙値（停止理由のトークン）を導入したとき、既知の値を明示的に列挙している consumer（再開案内）と仕様書の列挙表への反映が漏れた。列挙値を足す変更では、その値を列挙している箇所を grep で洗い出す。
 - 受入条件が「選び方とコマンド」を要求していたのに、テストはコマンド名だけを固定し、条件句を固定していなかった。条件句を削る変異がテストをすり抜けた。受入条件が文言の複数要素を要求するときは、要素ごとに固定する。
 
+
+### 案内コマンドの値は引用符の要らない 1 語にする
+
+エラーメッセージが JSON 文字列として出力される経路では、案内コマンドの値に引用符を入れると出力に `\"` が残り、コピーして打つとコマンドが壊れる。案内コマンドに埋める値は引用符なしで 1 語になる形に選ぶ。修正ではテストが stderr から案内コマンドを抽出して shlex で分割し、そのまま実行する形にした。文言と実行可能性を同じ確認で結ぶことで、引用のされ方が変わって打てなくなる乖離も検出できる。
+
 ## 関連ページ
 
 - [エラーメッセージ文字列の grep assert は locale 依存で dead assertion 化する](../anti-patterns/locale-dependent-error-message-grep-assertion.md)
@@ -43,3 +52,4 @@ confidence: high
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20260926T142952Z-pr-3171.md)
+- [fix 結果](../../raw/fixes/20260926T144658Z-pr-3171.md)

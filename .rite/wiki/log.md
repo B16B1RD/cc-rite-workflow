@@ -2,6 +2,10 @@
 
 ## 2026-09-26
 
+* **Create**: [他セッションの成果物を回収する処理は、進捗時刻ではなく所有者の生存信号で判定し、判定不能は残す側へ倒す](pages/heuristics/liveness-reaper-keeps-undecidable-and-guards-json-shape.md) — raw/reviews/20260926T144808Z-pr-3174.md を新規ページ化
+* **Update**: [新規テストは、それが実際に生成している出力のうち契約が不変と規定するものを行まるごと固定する](pages/heuristics/new-test-pins-the-contract-output-it-already-produces.md) — raw/reviews/20260926T144808Z-pr-3174.md を統合
+* **Update**: [エラーメッセージが案内するコマンドは、テストで出力から抽出して逐語実行する](pages/patterns/guidance-command-test-by-verbatim-execution.md) — raw/fixes/20260926T144658Z-pr-3171.md を統合
+* **Update**: [検証コマンドの環境指定に PATH を入れると hook 実行環境との差で stale 判定になる](pages/heuristics/verification-command-path-env-causes-stale-drift.md) — raw/fixes/20260926T144658Z-pr-3171.md を統合
 * **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=551, broken_refs=0
 * **Create**: [エラーメッセージが案内するコマンドは、テストで出力から抽出して逐語実行する](pages/patterns/guidance-command-test-by-verbatim-execution.md) — raw/reviews/20260926T142952Z-pr-3171.md を新規ページ化
 * **Skip**: [20260926T143749Z-pr-3173.md](raw/reviews/20260926T143749Z-pr-3173.md) — 既存規約の範囲内: 経緯文を現在形の制約文へ直す規約の適用例で、新しい経験則を含まない

@@ -20,12 +20,15 @@ sources:
     resource: "raw/reviews/20260826T125608Z-pr-2383.md"
   - type: "fixes"
     resource: "raw/fixes/20260826T131353Z-pr-2383.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260926T144808Z-pr-3174.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-26T22:40:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T14:57:57Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-25T21:06:14+09:00" }
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-26T22:40:00+09:00" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T14:57:57Z" }
 ---
 
 # 新規テストは、それが実際に生成している出力のうち契約が不変と規定するものを行まるごと固定する
@@ -77,6 +80,11 @@ helper の投稿先を PR コメントから関連 Issue コメントへ移す�
 
 スタブは本番と同じ入力軸（URL・`--jq`）を区別し、契約が不変と規定したコマンド行は肯定と否定の両方を固定する。静的 grep だけでは closed skip や番号取り違えの回帰を止められない。
 
+
+### 受入条件が出力要素を名指しするなら、要素ごとに固定する
+
+受入条件の Then が「対象パスを含む警告が出る」のように出力の要素を名指ししている場合、実装が警告に複数のパス（処理対象と、判定に使った記録の両方）を出していても、テストが片方しか照合しないと、もう片方を落とす変異が生き残る。どちらのパスを指すか受入条件が特定していないときほど、実装が出している全要素を照合しておけば解釈の違いに関係なく閉じられる。
+
 ## 関連ページ
 
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
@@ -92,3 +100,4 @@ helper の投稿先を PR コメントから関連 Issue コメントへ移す�
 - [fix 結果](../../raw/fixes/20260825T112921Z-pr-2357.md)
 - [レビュー結果](../../raw/reviews/20260826T125608Z-pr-2383.md)
 - [fix 結果](../../raw/fixes/20260826T131353Z-pr-2383.md)
+- [レビュー結果](../../raw/reviews/20260926T144808Z-pr-3174.md)
