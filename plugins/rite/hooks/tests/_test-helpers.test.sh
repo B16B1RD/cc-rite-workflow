@@ -734,7 +734,8 @@ fi
 
 # These tests do not source _test-helpers.sh, so they read the list directly.
 for t in post-compact post-tool-wm-sync crash-resume cleanup-on-session-end cleanup-work-memory \
-  issue-comment-wm-sync pre-compact session-ownership-regression session-end session-start; do
+  issue-comment-wm-sync pre-compact session-ownership-regression session-end session-start \
+  pre-tool-bash-guard; do
   if grep -Fxq "$hermetic_source_line" "$SCRIPT_DIR/$t.test.sh"; then
     outer_pass "TC-18.7: $t.test.sh fail-loud sources _hermetic-env.sh"
   else
