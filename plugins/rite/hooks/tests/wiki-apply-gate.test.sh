@@ -428,6 +428,34 @@ else
   fail "commit unreadable base rc=$GRC out=$GOUT"
 fi
 cp "$ROOT/cfg.bak" "$repo/rite-config.yml"
+# a diff whose full text fails while --name-only succeeds must keep its own stderr;
+# a base ref that doesn't exist fails both calls the same way and can't tell this
+# fix from a revert that re-runs --name-only for the diagnostic
+old_blob=$(git -C "$repo" rev-parse "$review_base:README")
+obj_path="$repo/.git/objects/${old_blob:0:2}/${old_blob:2}"
+if [ ! -f "$obj_path" ]; then
+  fail "full-diff-only setup: $old_blob blob object not found as a loose object at $obj_path"
+else
+  obj_backup="$ROOT/README-obj.bak"
+  mv "$obj_path" "$obj_backup"
+  if git -C "$repo" diff --no-ext-diff --no-textconv --name-only "$review_base...HEAD" >/dev/null 2>&1 \
+     && ! git -C "$repo" diff --no-ext-diff --no-textconv "$review_base...HEAD" >/dev/null 2>&1; then
+    run_gate --mode review --worktree "$repo" --base "$review_base" --flow-state "$flow" --memory "$mem"
+    mv "$obj_backup" "$obj_path"
+    if [ "$GRC" -eq 1 ] && grep -q 'reason=base_diff_unreadable' <<<"$GOUT" \
+       && grep -qF "ERROR: git diff ${review_base}...HEAD" "$ROOT/gate.err" \
+       && grep -q "$old_blob" "$ROOT/gate.err" \
+       && ! grep -q 'unknown revision' "$ROOT/gate.err"; then
+      pass "review denies when only the full diff fails, keeping its own stderr"
+    else
+      fail "full-diff-only failure rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
+    fi
+  else
+    mv "$obj_backup" "$obj_path"
+    fail "full-diff-only setup: expected --name-only to succeed and the full diff to fail"
+  fi
+  git -C "$repo" cat-file -e "$old_blob" || fail "full-diff-only cleanup: blob $old_blob not restored"
+fi
 # a failing textconv driver must not break the evidence diff (textconv is not used)
 printf '%s\n' 'README diff=broken' > "$repo/.git/info/attributes"
 git -C "$repo" config diff.broken.textconv false
@@ -438,6 +466,22 @@ if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
   pass "review evidence diff ignores a failing textconv driver"
 else
   fail "textconv review rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
+fi
+
+# --no-ext-diff pins the evidence diff against a user-configured diff.external, not
+# only diff.*.textconv (a plain `git diff` fails hard when diff.external is broken)
+git -C "$repo" config diff.external false
+if ! git -C "$repo" diff "$review_base...HEAD" >/dev/null 2>&1; then
+  run_gate --mode review --worktree "$repo" --base "$review_base" --flow-state "$flow" --memory "$mem"
+  git -C "$repo" config --unset diff.external
+  if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
+    pass "review evidence diff ignores a configured diff.external"
+  else
+    fail "diff.external review rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
+  fi
+else
+  git -C "$repo" config --unset diff.external
+  fail "diff.external setup: expected a plain git diff to fail with diff.external=false configured"
 fi
 
 # a diff larger than one environment value (128 KiB) still reaches the evidence check
@@ -478,6 +522,13 @@ if [ "$GRC" -eq 1 ] && grep -q 'reason=tmp_unavailable' <<<"$GOUT"; then
   pass "unusable TMPDIR denies with tmp_unavailable"
 else
   fail "tmp_unavailable rc=$GRC out=$GOUT"
+fi
+# an unusable TMPDIR also denies a commit-mode run, not only review
+TMPDIR="$ROOT/no-such-tmp-commit" run_gate --mode commit --worktree "$repo" --flow-state "$flow" --memory "$mem"
+if [ "$GRC" -eq 1 ] && grep -q 'reason=tmp_unavailable' <<<"$GOUT" && ! grep -q 'WIKI_APPLY_GATE=skip' <<<"$GOUT"; then
+  pass "unusable TMPDIR denies a commit-mode run with tmp_unavailable"
+else
+  fail "commit tmp_unavailable rc=$GRC out=$GOUT"
 fi
 # a staged listing that cannot be read is a deny, not an empty list
 cp "$repo/.git/index" "$ROOT/index.bak"
