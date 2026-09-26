@@ -81,7 +81,9 @@
 #   T-47 --preview-body でも 0 件・全件解消・既存ありは従来の skip で終わる
 #   T-48 preview 本文を書き出せなければ起票も preview もしない
 #   T-49 SKILL 6.0.C の確認判定（batch --merge が今の Issue を処理中のときだけ確認しない）と
-#        helper 呼び出しの配線、完了報告の declined / preview 行
+#        helper 呼び出しの配線、完了報告の declined / preview 行。壊れた・空・未置換の
+#        run-queue は区別できる reason=queue_unreadable で確認する。完了報告の
+#        failed; reason=preview_write 行は起票未試行の文言で汎用 failed 行と分離する
 #
 # Coverage (archive/ にある JSON):
 #   T-50 読み元の列挙は直下と archive/ を basename のバイト順で合わせ、同名は直下だけを返す
@@ -1484,6 +1486,8 @@ assert_not_grep "T-48 label を作らない" "$GH_LOG" 'label create'
 echo "--- T-49: SKILL 6.0.C の確認判定と helper 呼び出しの配線 ---"
 # helper 呼び出しが preview の配線を持つ（外すと手動 cleanup が確認なしで起票する）
 assert_grep "T-49 helper 呼び出しが確認用の本文書き出しオプションを受け取れる" "$CLEANUP_MD" '[-]-exclude-ids "\{resolved_ids_csv\}" \{preview_option\} \|\| _fu_rc=\$\?'
+# 中断時の非確認は cursor が当該 Issue を指す run に限る限定句
+assert_grep "T-49 非確認は cursor が当該 Issue を指す run に限る" "$CLEANUP_MD" 'この非確認は cursor が中断時点でまだ当該 Issue を指している run に限る'
 # 6.0.C の判定 bash を抽出し、state root / flow-state path / issue 番号を fixture に置き換えて実行する
 t49_root="$TMP_ROOT/root-t49"
 mkdir -p "$t49_root/.rite/state"
@@ -1495,10 +1499,24 @@ awk -v root="$t49_root" '
   p && /^_fu_flow=\$\(bash / {print "_fu_flow=\"${T49_FLOW-/x/.rite/sessions/sess-49.flow-state}\""; next}
   p {gsub(/\{issue_number\}/, "42"); print}
 ' "$CLEANUP_MD" > "$TMP_ROOT/confirm.sh"
+# 未置換 {issue_number} を再現する別抽出（gsub しない）。caller 側の substitute 漏れを検出する経路
+awk -v root="$t49_root" '
+  /^#### 6\.0\.C / {c=1}
+  c && /^```bash/ {p=1; next}
+  p && /^```/ {exit}
+  p && /^_state_root=\$\(bash / {print "_state_root=\"${T49_ROOT-" root "}\""; next}
+  p && /^_fu_flow=\$\(bash / {print "_fu_flow=\"${T49_FLOW-/x/.rite/sessions/sess-49.flow-state}\""; next}
+  p {print}
+' "$CLEANUP_MD" > "$TMP_ROOT/confirm-raw.sh"
 t49_queue="$t49_root/.rite/state/run-queue-sess-49.json"
 t49_run() { bash "$TMP_ROOT/confirm.sh" 2>/dev/null; }
+t49_run_raw() { bash "$TMP_ROOT/confirm-raw.sh" 2>/dev/null; }
 if ! grep -q 'FOLLOW_UP_CONFIRM=skip' "$TMP_ROOT/confirm.sh"; then
   fail "T-49 6.0.C の判定ブロックを抽出できない"
+elif grep -qF '{issue_number}' "$TMP_ROOT/confirm.sh"; then
+  fail "T-49 issue_number の置換が効いていない fixture になっている"
+elif ! grep -qF '{issue_number}' "$TMP_ROOT/confirm-raw.sh"; then
+  fail "T-49 未置換 issue_number 再現用の抽出まで置換されてしまっている"
 else
   printf '%s\n' '{"issues":[41,42,43],"cursor":1,"active":true,"mode":"merge"}' > "$t49_queue"
   assert "T-49 batch --merge が今の Issue を処理中なら確認しない" "[CONTEXT] FOLLOW_UP_CONFIRM=skip; reason=batch_merge" "$(t49_run)"
@@ -1509,7 +1527,11 @@ else
   printf '%s\n' '{"issues":[42],"cursor":0,"active":false,"mode":"merge"}' > "$t49_queue"
   assert "T-49 inactive は確認する" "[CONTEXT] FOLLOW_UP_CONFIRM=ask; reason=not_this_batch" "$(t49_run)"
   printf '%s\n' '{broken' > "$t49_queue"
-  assert "T-49 壊れたキューは確認する" "[CONTEXT] FOLLOW_UP_CONFIRM=ask; reason=not_this_batch" "$(t49_run)"
+  assert "T-49 壊れたキューは区別できる reason で確認する" "[CONTEXT] FOLLOW_UP_CONFIRM=ask; reason=queue_unreadable" "$(t49_run)"
+  : > "$t49_queue"
+  assert "T-49 空のキューは区別できる reason で確認する" "[CONTEXT] FOLLOW_UP_CONFIRM=ask; reason=queue_unreadable" "$(t49_run)"
+  printf '%s\n' '{"issues":[42],"cursor":0,"active":true,"mode":"merge"}' > "$t49_queue"
+  assert "T-49 未置換 issue_number は区別できる reason で確認する" "[CONTEXT] FOLLOW_UP_CONFIRM=ask; reason=queue_unreadable" "$(t49_run_raw)"
   rm -f "$t49_queue"
   assert "T-49 キューが無ければ確認する" "[CONTEXT] FOLLOW_UP_CONFIRM=ask; reason=no_queue" "$(t49_run)"
   printf '%s\n' '{"issues":[42],"cursor":0,"active":true,"mode":"merge"}' > "$t49_queue"
@@ -1521,9 +1543,29 @@ assert_grep "T-49 ask なら本文を書き出して起票しない" "$CLEANUP_M
 assert_grep "T-49 skip なら確認せず起票する" "$CLEANUP_MD" '^- `skip` → 下の helper 呼び出しを `\{preview_option\}` を空にして実行する'
 assert_grep "T-49 起票するを選んだら確認なしで再実行する" "$CLEANUP_MD" '^  - 「起票する」→ `\{preview_option\}` を空にして helper 呼び出しをもう一度実行する'
 assert_grep "T-49 起票しないを選んだら declined を出す" "$CLEANUP_MD" '^  - 「起票しない」→ `echo "\[CONTEXT\] FOLLOW_UP_ISSUE=declined; count=\{fu_count\}; pr=\{pr_number\}" >&2`'
+# item 1: 「起票しない」後は起票せず state 削除（archive）へ進む契約を全行 pin
+assert "T-49 起票しない後は起票せず state 削除へ進む（全行一致）" "1" \
+  "$(grep -cxF '  - 「起票しない」→ `echo "[CONTEXT] FOLLOW_UP_ISSUE=declined; count={fu_count}; pr={pr_number}" >&2`（`{fu_count}` は preview marker の `count=` の値をリテラル置換する） を実行し、Issue は作らずに下の state 削除（archive）へ進む。' "$CLEANUP_MD")"
+# item 2: 6.0.V 内訳（marker 不在は unavailable と同じ書き方）を全行 pin
+assert "T-49 preview 説明に 6.0.V 内訳と marker 不在時の扱いを pin する（全行一致）" "1" \
+  "$(grep -cxF -- '- `preview` のとき AskUserQuestion で「起票する / 起票しない / 本文を確認してから決める」を確認する。説明には転記件数 `{fu_count}`（preview marker の `count=` の値）と、6.0.V の内訳（`done` なら「残存 {n_remains} / 判定不能 {n_undecidable}」、`unavailable` なら「再検証未実施（全件を判定不能扱い）」）を入れる。6.0.V の marker が 1 つも出ていない場合も `unavailable` と同じ書き方にする。件数は重複の集約と sweep 起票済みの除外の後の値なので、内訳の合計と一致しないことがある。' "$CLEANUP_MD")"
 # 完了報告の判定表が見送りと確認未完了を持つ
-assert_grep "T-49 完了報告に declined 行（x 相当）" "$CLEANUP_MD" '^  \| `declined`（ステップ 6.0.C で「起票しない」を選んだ） \| x 相当'
+# item 3: declined 行の完全一致（セル追記でも通る前方一致を排除）
+assert "T-49 完了報告の declined 行を完全一致で固定する" "1" \
+  "$(grep -cxF '  | `declined`（ステップ 6.0.C で「起票しない」を選んだ） | x 相当 | `ℹ️ 確認のうえ follow-up Issue の起票を見送りました（{count} 件）。指摘の全文は review-results/archive/ の JSON にあります` |' "$CLEANUP_MD")"
 assert_grep "T-49 完了報告に preview 行（未完了）" "$CLEANUP_MD" '^  \| `preview`（確認の回答前に止まった） \| 未完了'
+# item 4: declined 付記の count 由来を全行 pin
+assert "T-49 declined 付記の count 由来を全行 pin する" "1" \
+  "$(grep -cxF '  `declined` の付記の `{count}` は declined marker の `count=` の値。x 相当でもこの付記は `{review_cleanup_check}` の行に続けて出す。' "$CLEANUP_MD")"
+# AC-2: failed; reason=preview_write 専用行・汎用行からの除外・評価順（上から最初に一致が preview_write 側に落ちること）
+assert "T-49 preview_write 専用行を完全一致で固定する" "1" \
+  "$(grep -cxF '  | `FOLLOW_UP_ISSUE=failed; reason=preview_write` | 未完了 | `⚠️ follow-up 起票の確認用の本文を書き出せず、起票を試みていません。残存非実測指摘があれば follow-up ラベル付き Issue を手動作成してください` |' "$CLEANUP_MD")"
+assert_not_grep "T-49 汎用 failed 行に preview_write を残さない" "$CLEANUP_MD" 'reason 問わず。`helper_rc` / `lookup_api` / `create_api` / `create_script_missing` / `json_undecidable` / `preview_write`'
+assert_grep "T-49 汎用 failed 行は preview_write 以外と明記する" "$CLEANUP_MD" 'reason 問わず。preview_write 以外。'
+t49_pw_line=$(grep -nF '`FOLLOW_UP_ISSUE=failed; reason=preview_write`' "$CLEANUP_MD" | head -1 | cut -d: -f1)
+t49_generic_line=$(grep -nF 'reason 問わず。preview_write 以外。' "$CLEANUP_MD" | head -1 | cut -d: -f1)
+assert "T-49 preview_write 専用行は汎用 failed 行より先に評価される" "true" \
+  "$([ -n "$t49_pw_line" ] && [ -n "$t49_generic_line" ] && [ "$t49_pw_line" -lt "$t49_generic_line" ] && echo true || echo false)"
 
 # archive/ に JSON を置く
 put_archived() { mkdir -p "$1/.rite/review-results/archive"; printf '%s\n' "$3" > "$1/.rite/review-results/archive/$2"; }
