@@ -9,9 +9,11 @@ sources:
     resource: "raw/reviews/20260807T235335Z-pr-2142.md"
   - type: "fixes"
     resource: "raw/fixes/20260808T001157Z-pr-2142.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260926T100457Z-pr-3140.md"
 tags: ["portability", "posix", "sed", "regex", "simplification"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T14:00:41+09:00" }
+generated: { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T10:20:00+09:00" }
 ---
 
 # 移植性の指摘は「環境分岐を足す」より先に「その正規表現機能が本当に要るか」を疑う
@@ -44,6 +46,10 @@ GNU 拡張の再混入を止めるために静的 denylist probe を書いたが
 - haystack の非空を precondition として先に assert する
 - 走査軸を「実装の形」ではなく「コメント以外の本文全体」のように壊れにくいものにする
 - denylist の語彙を、宣言した規範（POSIX BRE のみ）に対して網羅する — `\b` `\|` だけ挙げて `\+` `\?` を漏らすと、最も自然な書き換え形が素通りする
+
+### 実例: `\?` が漏れ穴になった別ケース
+
+別のテストファイルで、抽出後ヘルパーとの比較用に旧実装を凍結コピーしたオラクルが `sed 's/.*"\?\(...\)\?.*/\1/'` という GNU BRE 拡張 `\?` に依存していた。Linux（GNU sed）では動くが macOS（BSD sed）では `\?` が拡張として解釈されず、置換が不成立のまま素通りして期待値と食い違う non-deterministic な CI 失敗になった。修正は同じパターン（`sed -E` で ERE の `?` へ切り替え）。上の「denylist に `\+` `\?` を漏らすと素通りする」という予測どおりの実例であり、GNU sed 拡張の暗黙依存は 1 回直しても定常的に再発するリスクであることを裏付ける。
 
 ## 関連ページ
 

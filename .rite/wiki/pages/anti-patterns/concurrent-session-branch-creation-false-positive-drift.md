@@ -4,10 +4,12 @@ title: "並行セッションの別 Issue ブランチ作成が post-review stat
 domain: "anti-patterns"
 description: "レビュー前後の branch 一覧ハッシュを比較して reviewer の READ-ONLY 違反を検出する仕組みは、別の並行セッションが同時に別 Issue 用のブランチを作成/削除しただけでも drift を報告する。検出対象（このレビューの reviewer）と観測対象（リポジトリ全体の branch 一覧）が一致していないための false positive。"
 created: "2026-09-26T07:00:00+00:00"
-generated: { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T07:00:00+00:00" }
+generated: { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T10:20:00+09:00" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260926T062846Z-pr-3117.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260926T093831Z-pr-3139.md"
 tags: ["multi-session", "false-positive", "branch-list-hash", "post-review-state-verify", "concurrent-session"]
 confidence: medium
 ---
@@ -35,3 +37,4 @@ drift の原因は reviewer の READ-ONLY 違反ではなく、無関係な並�
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20260926T062846Z-pr-3117.md)
+- [レビュー結果](../../raw/reviews/20260926T093831Z-pr-3139.md)
