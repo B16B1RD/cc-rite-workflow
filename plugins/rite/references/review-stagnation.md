@@ -154,12 +154,14 @@ rm "$clock_file"
 
 1. `stop_reason` が `circuit-breaker:divergence` である。`circuit-breaker:max-cycles` と `stagnation:*` は再開できない
 2. 停止時の context・HEAD・receipt・観測が一致し、変更されていない
-3. 全 blocking 指摘に、通常の fix 経路と同じ計画内容の検証（状態遷移の許可判定を除く）を通る修正計画と検証項目が対応している。`review-fix-scope-check.sh check` そのものを前段として実行する必要はない — 同コマンドは停止した run では状態遷移の許可判定で拒否される
+3. 全 blocking 指摘に、通常の fix 経路と同じ計画内容の検証（状態遷移の許可判定を除く）を通る修正計画と検証項目が対応している。発行の条件として `review-fix-scope-check.sh check` そのものを前段として実行する必要はない — 同コマンドは停止した run では状態遷移の許可判定で拒否される
 4. その run で再試行権が未使用である。権利は run に付いて回り、退避と復元を往復しても使用済みのまま戻る（停止しておらず、退避した completed cycle と完了・保留の記録が一致する run は復元対象外。過去に保留していても、その後停止した run の再試行権は復元される）
 
 発行は条件をすべて検証したあとに一度だけ書き込む。1 つでも崩れていれば権利を発行せず、run は `stopped` のまま残る。人間の承認は条件に含めない。
 
 発行すると `stop_reason` は run 直下から `review_run.retry.stop_reason` へ移り、`status` が `active` に戻る。権利が買えるのは fix → 検証 → review の 1 巡だけで、その review に blocking 指摘が残っていれば `retry.outcome=unresolved` を記録して元の停止理由で再停止する。残っていなければ `retry.outcome=resolved` として通常の run に戻る。いずれの場合も権利は再発行されない。決着は観測が行うため、観測を経ずに閉じた run や別経路で再停止した run では `outcome` は未確定のまま残る。
+
+再試行権が未決着の間は、権利を発行した cycle（次の `review-start` が counter を進める前）に限り、iterate の cycle-gate が発散判定を保留して review へ進む。停止時と同じ推移のままでも再試行の review に届くようにするためで、cycle 上限（`max_review_cycles`）と lost 修復ゲートは保留しない。発行後は同じ計画と Issue JSON で `review-fix-scope-check.sh check` を実行してから計画どおりに修正し、`review-fix-scope-check.sh verify --kind all` が通ってから commit・push して `/rite:iterate {pr}` を再実行する。check / verify を経ない commit は検証済み修正として記録されず、`review-start` が拒否する。
 
 再試行権は退避された run にも復元された run にも等しく付いて回る。発行後の run は本当に `active` なので、`review-close` / `review-defer` も通常の run と同じ条件で通る。`close` は未解決 blocking と未充足受入条件を従来どおり拒否し、`defer` は返信のみの draft を残す既存の意味のままである。これは「停止した run を閉じられる」ことではなく、再試行権を発行した run がその 1 巡の間は通常の run として扱われるということで、権利の使用済み記録は `close` / `defer` / 退避のいずれを経ても残る。
 

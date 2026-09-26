@@ -4,7 +4,10 @@
 # The record's own status is not enough. This gate re-reads rite-config.yml,
 # HEAD, and the blob of each recorded path, and refuses a stale or mismatched
 # success. Commit mode skips unless flow-state phase is implement or fix and
-# this worktree is that session's worktree. Review mode checks the record but
+# this worktree is that session's worktree. A session whose flow-state records
+# no worktree works in the checkout that holds its flow-state
+# (<root>/.rite/sessions/<id>.flow-state), so that <root> is its worktree.
+# Review mode checks the record but
 # not its session: review authorizes no commit, and a review resumed from
 # another session reads the record the implementing session wrote.
 # WIKI_APPLY_FLOW_STATE and WIKI_APPLY_MEMORY select files for tests.
@@ -82,6 +85,11 @@ _canon() {
   fi
 }
 WORKTREE=$(_canon "$WORKTREE")
+if [ -z "$FS_WT" ]; then
+  case "$FLOW" in
+    */.rite/sessions/*.flow-state) FS_WT="${FLOW%/.rite/sessions/*}" ;;
+  esac
+fi
 FS_WT_C=$(_canon "$FS_WT")
 
 if [ "$MODE" = "commit" ]; then
