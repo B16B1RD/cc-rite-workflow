@@ -1,8 +1,8 @@
 {
   "provenance": "Four consecutive archived review cycles, anonymized paths and IDs; severity, scope and measured values preserved.",
-  "expected_fatal": [
-    0,
-    0,
+  "expected": [
+    "class_undetermined",
+    "class_undetermined",
     1,
     0
   ],

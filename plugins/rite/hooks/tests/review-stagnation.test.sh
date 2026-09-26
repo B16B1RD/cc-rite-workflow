@@ -186,6 +186,9 @@ class Fixture:
         if severities:
             for finding, severity in zip(findings, severities):
                 finding['severity'] = severity
+                # Lower severities stay advisory only as class B, as the class gate would record.
+                if severity not in ('CRITICAL', 'HIGH'):
+                    finding['consequence_class'] = 'B'
         notes = [dict(id='F-99', reviewer='code-quality-reviewer', severity='LOW', scope='nit-noted',
                       status='open', file='source.txt', line=1, description='Informational note', suggestion='consider')] if non_blocking else []
         dump(content, dict(schema_version='1.1.0', pr_number=context['pr_number'], review_context=context,

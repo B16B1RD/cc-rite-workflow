@@ -41,7 +41,9 @@ import tempfile
 root = Path(sys.argv[1])
 fix = (root / 'plugins/rite/skills/fix/SKILL.md').read_text()
 common = fix.split('### 1.2.2 Common Fatal Triage and Recording', 1)[1].split('### 1.3 Classify Comments', 1)[0]
-triage = re.search(r'```bash\n(.*?)\n```', common, re.S).group(1)
+blocks = re.findall(r'```bash\n(.*?)\n```', common, re.S)
+triage = next(b for b in blocks if 'review-findings-maps.sh' in b)
+materialize = next(b for b in blocks if '# fix-conversation-review-json' in b)
 record = re.search(r'```bash\n(.*?)\n```', (root / 'plugins/rite/skills/fix/references/non-fatal-record.md').read_text(), re.S).group(1)
 # The ledger splice must stop on failure, not fall through to an unspliced PATCH.
 assert 'reason=nonblocking_record_ledger_extract_failed' in record
@@ -120,13 +122,101 @@ exit 97
         return subprocess.run(['bash', '-c', block], text=True, capture_output=True, timeout=10,
                               env={**env, **(extra_env or {})})
     findings = [{'id':'F-01', 'severity':'MEDIUM', 'scope':'current-pr', 'file':'a.sh', 'line':1,
-                 'reviewer':'test-reviewer', 'description':'private-detail', 'verification':{'measured':True}}]
+                 'reviewer':'test-reviewer', 'description':'private-detail', 'verification':{'measured':True},
+                 'consequence_class':'B'}]
     source.write_text(json.dumps({'findings': findings}))
     result = run(triage)
     assert result.returncode == 0, result
     assert json.loads(source.read_text())['findings'] == []
     assert json.loads(result.stdout)['fatal_map'] == {'F-01':False}
     assert 'FIX_TRIAGE_REVIEW_PATH=' in result.stderr
+
+    # The conversation route copies the saved review JSON of HEAD, so the gate-written
+    # class reaches triage instead of being lost by the report table.
+    state = temp / 'state'
+    results = state / '.rite/review-results'
+    results.mkdir(parents=True)
+    copier = temp / 'copier'
+    (copier / 'hooks/scripts').mkdir(parents=True)
+    for name in ('review-save-json-verify.sh', 'lib'):
+        (copier / 'hooks/scripts' / name).symlink_to(root / 'plugins/rite/hooks/scripts' / name)
+    (copier / 'hooks/state-path-resolve.sh').write_text(f"#!/bin/bash\nprintf '%s\\n' '{state}'\n")
+    repo = temp / 'repo'
+    repo.mkdir()
+    git = ['git', '-C', str(repo), '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false']
+    subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+    subprocess.run(git + ['commit', '-q', '--allow-empty', '-m', 'reviewed'], check=True)
+    sha = subprocess.run(git + ['rev-parse', 'HEAD'], text=True, capture_output=True, check=True).stdout.strip()
+    saved_review = {'commit_sha': sha, 'findings': [
+        {'id': 'F-01', 'severity': 'MEDIUM', 'scope': 'current-pr', 'file': 'a.sh', 'line': 1,
+         'verification': {'measured': True}, 'consequence_class': 'A'}],
+        'non_blocking_findings': [], 'acceptance_criteria': {'skipped': 'no_ac_section'},
+        'measured_gate': {'commit_sha': sha, 'applied_at': '2026-01-01T00:00:00Z',
+                          'blocking': 1, 'demoted': 0, 'anchor_undetermined': 0}}
+    def copy_block(plugin_dir, reviewed=sha):
+        block = materialize
+        for key, value in {'plugin_root': str(plugin_dir), 'pr_number': '42', 'review_source': 'conversation',
+                           'reviewed_commit_sha': reviewed}.items():
+            block = block.replace('{' + key + '}', value)
+        assert not re.search(r'\{[a-z_]+\}', block), block
+        return subprocess.run(['bash', '-c', block], text=True, capture_output=True, timeout=30, cwd=repo)
+    def copy_run(reviewed=sha):
+        before = sorted(results.iterdir())
+        result = copy_block(copier, reviewed)
+        assert result.returncode == 0, result
+        # Only the fix marker is emitted: helper markers of pr-review 8.0.4 are not re-emitted.
+        lines = result.stderr.splitlines()
+        assert len(lines) == 1 and lines[0].startswith('[CONTEXT] FIX_MATERIALIZED_JSON='), result
+        copied = lines[0].split('=', 1)[1]
+        if not copied:
+            assert sorted(results.iterdir()) == before, result
+        return copied
+    def copy_fail(plugin_dir, reason):
+        before = sorted(results.iterdir())
+        result = copy_block(plugin_dir)
+        assert result.returncode == 1 and f'[fix:error] reason={reason}' in result.stdout, result
+        assert 'FIX_MATERIALIZED_JSON=' not in result.stderr, result
+        assert sorted(results.iterdir()) == before, result
+        return result
+    assert copy_run() == ''  # nothing saved yet: the caller falls back to the table
+    # A saved JSON of another commit is never borrowed.
+    (results / '42-20260101000000.json').write_text(json.dumps(
+        dict(saved_review, commit_sha='b' * 40, measured_gate=dict(saved_review['measured_gate'], commit_sha='b' * 40))))
+    assert copy_run() == ''
+    # A missing helper is a failure, not "no saved JSON": the block stops with the helper output.
+    broken = temp / 'broken'
+    (broken / 'hooks/scripts').mkdir(parents=True)
+    failed = copy_fail(broken, 'conversation_json_verify_failed')
+    assert 'review-save-json-verify.sh' in failed.stderr, failed
+    # An undecidable helper result (exit 0 without the found marker) also stops.
+    degraded = temp / 'degraded'
+    (degraded / 'hooks/scripts').mkdir(parents=True)
+    for name in ('review-save-json-verify.sh', 'lib'):
+        (degraded / 'hooks/scripts' / name).symlink_to(root / 'plugins/rite/hooks/scripts' / name)
+    (degraded / 'hooks/state-path-resolve.sh').write_text("#!/bin/bash\nprintf '\\n'\n")
+    failed = copy_fail(degraded, 'conversation_json_verify_failed')
+    assert 'REVIEW_SAVE_GATE=degraded' in failed.stderr, failed
+    # A HEAD JSON whose gate receipt is broken stops instead of counting as "no saved JSON".
+    (results / '42-20260101000001.json').write_text(json.dumps(
+        dict(saved_review, measured_gate={k: v for k, v in saved_review['measured_gate'].items() if k != 'applied_at'})))
+    failed = copy_fail(copier, 'conversation_json_verify_failed')
+    assert 'reason=gate_record_mismatch' in failed.stderr, failed
+    (results / '42-20260101000002.json').write_text(json.dumps(saved_review))
+    # A table reviewed at another commit never takes the HEAD review's findings.
+    assert copy_run('c' * 40) == ''
+    # A copy that cannot be written stops instead of falling back to the table.
+    results.chmod(0o555)
+    try:
+        copy_fail(copier, 'conversation_json_copy_failed')
+    finally:
+        results.chmod(0o755)
+    copied = Path(copy_run())
+    assert copied.parent == results and copied.name.startswith('42-') and copied.name not in ('42-20260101000001.json', '42-20260101000002.json')
+    assert json.loads(copied.read_text()) == dict(saved_review, producer='fix', review_source='conversation')
+    triaged = subprocess.run(['bash', str(root / 'plugins/rite/scripts/review-findings-maps.sh'),
+                              '--review-source', 'local_file', '--review-source-path', str(copied)],
+                             text=True, capture_output=True, timeout=30)
+    assert triaged.returncode == 0 and json.loads(triaged.stdout)['fatal_map'] == {'F-01': True}, triaged
     saved = source.read_bytes()
     stub = plugin / 'hooks/review-nonblocking-record.sh'
     record_body = temp / 'record-body'
