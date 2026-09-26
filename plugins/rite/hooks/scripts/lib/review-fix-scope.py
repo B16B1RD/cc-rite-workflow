@@ -543,7 +543,8 @@ def each_git_target(command, cwd):
     """Yield (subcommand, toplevel, arguments, problem) for each git commit / merge, in order.
 
     problem names why the target cannot be checked (a wrapper, a command substitution,
-    a dynamic cd / -C, an alternate git dir); the caller refuses it only when the command would move HEAD.
+    a dynamic cd / -C, a missing directory, an alternate git dir); the caller refuses it only when the
+    command would move HEAD.
     toplevel is None when there is a problem or the target is not a repository.
     """
     cwd, dynamic = Path(cwd).resolve(), False
@@ -604,6 +605,12 @@ def each_git_target(command, cwd):
         if unknown:
             yield name, None, words[index + 1:], \
                 name + " target is dynamic; run it separately from its resolved worktree"
+            continue
+        # bash runs the git in the current directory when the cd fails, so a
+        # missing target cannot be told apart from the reviewed worktree.
+        if not target.is_dir():
+            yield name, None, words[index + 1:], \
+                name + " target directory does not exist: " + str(target) + "; run it from an existing worktree"
             continue
         try:
             actual = Path(subprocess.check_output(
