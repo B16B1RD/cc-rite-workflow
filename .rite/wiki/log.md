@@ -95,6 +95,9 @@
 * **Update**: [同定に使う needle は位置まで固定し、人間が複製できる文字列を使わない](pages/anti-patterns/identity-needle-position-and-machine-only-sentinel.md) — raw/fixes/20260926T130048Z-pr-3147.md を統合
 * **lint:clean** — contradictions=0 (更新・新規ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=549, broken_refs=0
 
+* **Update**: [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) — raw/reviews/20260926T134048Z-pr-3161.md を統合
+* **Update**: [`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) — raw/reviews/20260926T134206Z-pr-3160.md を統合
+
 ## 2026-09-25
 
 * **Create**: [手順を helper へ移して入口検証を足すと、未定義 placeholder で流れていた終端経路が停止に変わる](pages/anti-patterns/entry-validation-on-extraction-stops-undefined-placeholder-paths.md) — raw/reviews/20260924T152559Z-pr-3055.md を新規ページ化

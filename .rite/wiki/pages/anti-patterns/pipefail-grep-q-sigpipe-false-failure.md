@@ -5,6 +5,8 @@ domain: "anti-patterns"
 description: "`grep -q` は最初の一致で即座に終了する。"
 created: "2026-08-03T07:46:56Z"
 sources:
+  - type: "reviews"
+    resource: "raw/reviews/20260926T134206Z-pr-3160.md"
   - type: "fixes"
     resource: "raw/fixes/20260916T235140Z-pr-2920.md"
   - type: "fixes"
@@ -45,8 +47,9 @@ sources:
     resource: "raw/reviews/20260926T105711Z-pr-3149.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T11:20:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:47:53Z" }
 verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:47:53Z" }
   - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-07T23:54:45Z" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-11T16:00:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T07:45:50Z" }
@@ -209,6 +212,12 @@ bash helper.sh --stdin --label "$excluded_path" --quiet <<< "$body"
 - 完了条件は「置換した行が正しい」ではなく「対象が残っていない」にする。受入条件が検出器の例外より広いときは、受入条件の文言をそのまま検索式にした残件検索を検証に加える。raw 検索は誤ヒット（`-eq`、`grep -c`、fixture 文字列、コメント）も多いので、ヒットごとに対象外の理由を分類して、対象の残件 0 を示す。
 - テストが書き出す別プロセスの stub 本文は、親の `set -o pipefail` を継承しないため、同じ字面でも欠陥クラスに当たらない。
 
+### 診断用の `printf ... | head -N` も同じ欠陥クラスに入る
+
+`set -euo pipefail` の下で、失敗時の診断として長い値を `printf '%s' "$x" | head -5` のように先頭だけ表示する形は、入力が大きいと `head` が先に終了し、書き手の `printf` が SIGPIPE を受ける。パイプラインの rc が非ゼロになり、直後に出すはずの reason marker ごと処理が止まる。診断を出したい経路でこそ診断が消える。
+
+入力はヒアストリング（`head -5 <<< "$x"`）で渡すか、入力を最後まで読むコマンド（`sed -n '1,5p'` 等）で切り出す。
+
 ## 関連ページ
 
 - [function 内 `local v=$(...)` と top-level `v=$(...)` の `set -e` 伝播差で writer/reader 非対称が偶然 mask される](./bash-local-vs-toplevel-pipefail-asymmetry.md)
@@ -240,3 +249,4 @@ bash helper.sh --stdin --label "$excluded_path" --quiet <<< "$body"
 - [見直しで PR 内に取り込んだ修正](../../raw/fixes/20260924T070547Z-pr-3032.md)
 - [受入条件どおりの残件検索（cycle 3）](../../raw/reviews/20260924T070926Z-pr-3032.md)
 - [引数駆動の早期 return によるヒアストリング化のレビュー結果](../../raw/reviews/20260926T105711Z-pr-3149.md)
+- [診断用の printf と head の組み合わせで reason marker が消える経路を指摘したレビュー結果](../../raw/reviews/20260926T134206Z-pr-3160.md)
