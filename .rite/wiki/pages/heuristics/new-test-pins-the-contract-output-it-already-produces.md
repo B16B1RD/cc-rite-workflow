@@ -22,13 +22,16 @@ sources:
     resource: "raw/fixes/20260826T131353Z-pr-2383.md"
   - type: "reviews"
     resource: "raw/reviews/20260926T144808Z-pr-3174.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260926T152022Z-pr-3186.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T14:57:57Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T15:24:48Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-25T21:06:14+09:00" }
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-26T22:40:00+09:00" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T14:57:57Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T15:24:48Z" }
 ---
 
 # 新規テストは、それが実際に生成している出力のうち契約が不変と規定するものを行まるごと固定する
@@ -85,6 +88,10 @@ helper の投稿先を PR コメントから関連 Issue コメントへ移す�
 
 受入条件の Then が「対象パスを含む警告が出る」のように出力の要素を名指ししている場合、実装が警告に複数のパス（処理対象と、判定に使った記録の両方）を出していても、テストが片方しか照合しないと、もう片方を落とす変異が生き残る。どちらのパスを指すか受入条件が特定していないときほど、実装が出している全要素を照合しておけば解釈の違いに関係なく閉じられる。
 
+### consumer が読み直す副作用出力も契約出力である
+
+helper の返り値（stdout の map）だけを assert するテストでは、consumer が実際に読み直す副作用出力、つまり永続化した document と stderr の件数行を壊す変異が生き残った。移送対象・件数・document の絞り込みの 3 箇所を 1 つずつ旧式へ戻しても、スイートは green のままだった。consumer が読む出力をすべて assert に含め、変異を 1 箇所ずつ単独で当てて落ちることを確かめると、テストが名乗る挙動を本当に固定できているかが確かめられる。永続化 JSON は部分比較ではなく document 全体を等値比較すると、配列の順序、追加されるキー、キーが増えないことまで一度に固定できる。
+
 ## 関連ページ
 
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
@@ -101,3 +108,4 @@ helper の投稿先を PR コメントから関連 Issue コメントへ移す�
 - [レビュー結果](../../raw/reviews/20260826T125608Z-pr-2383.md)
 - [fix 結果](../../raw/fixes/20260826T131353Z-pr-2383.md)
 - [レビュー結果](../../raw/reviews/20260926T144808Z-pr-3174.md)
+- [レビュー結果](../../raw/reviews/20260926T152022Z-pr-3186.md)

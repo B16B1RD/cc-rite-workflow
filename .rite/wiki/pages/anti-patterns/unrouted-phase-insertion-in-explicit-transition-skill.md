@@ -10,11 +10,16 @@ sources:
     resource: "raw/fixes/20260720T071821Z-pr-1925.md"
   - type: "reviews"
     resource: "raw/reviews/20260914T151507Z-pr-2822.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260926T151345Z-pr-3183.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260926T152317Z-pr-3183.md"
 tags: ["skill-authoring", "phase-routing", "prompt-engineering", "dead-code"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-15T00:45:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T15:24:48Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-15T00:45:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T15:24:48Z" }
 ---
 
 # 明示的 Phase 遷移で駆動する SKILL.md に新規 Phase を挿入する際、既存の終端ルーティング更新漏れで到達不能になる
@@ -41,6 +46,15 @@ batch-run にステップ 1.5（再開段階の振り分け）を挿入し、ス
 
 新ステップの冒頭に前提文を置いても、既存の**分岐表の行**がその新ステップを名指ししていなければ経路は繋がらない。修正は `process` 行を「run 起動後の最初の process は 1.5 へ、再入は 2 へ」に書き換え、その行を静的 pin（行頭の `| \`process\` |` から新ステップ番号までを 1 本の ERE で固定）で守ること。pin の ERE で表のパイプを `\|` にエスケープしないと交替になり、pin 自体が空虚に真になる。
 
+### 再発: ループの途中に段を足すと、終端を指す指示が複数箇所に散っている
+
+レビューループの「mergeable の後」に、PR 内で扱える推奨を fix へ渡す段を差し込んだ変更で、実測付きの blocking が 6 件出た。原因はすべて、差し込んだ段が既存の終端と噛み合っていないことだった。
+
+- **終端を指す指示の更新漏れ**: ループの終端を実行者に伝える文言は、Stop hook の差し戻し文言、sub-skill が書く次アクション、契約文書にある sentinel の意味、と複数の場所に分かれている。一部だけ新しい段を指すように直すと、turn 終了や compact の後に古い終端へ戻される。差し込み位置の直前にある sentinel ごとに、終端を指す文言を列挙して同時に直す。
+- **前段の成果物が無いことを異常として扱う**: 保存済みレビュー結果のディレクトリは、保存したときに初めて作られる。これを「無い = エラー」とすると、初回にだけ現れる正常な状態でループが止まる。過去の記録を数えるような処理では、置き場が無いことを空集合として扱えるかを先に確かめる。
+- **後続の検証を始められるかを確かめずに差し込む**: 修正を差し込む段は、その後に次のレビューを始められること（cycle 上限に達していないこと）を先に確かめる。確かめないと、上限の mergeable で修正を始め、未レビューの HEAD を残して止まる。満たさないときは差し込まず、従来の記録経路に残す。
+- **複合条件の一部が固定されていない**: 上限判定のような複合条件は、各項を 1 つだけ外す変異ごとに負の対照テストを置く。変異が赤になるのを確かめてから pin したとみなす。
+
 ## 関連ページ
 
 - [新規 helper は既存 sibling の安全規約に整合させる（trap・tree 解決・制御文字無害化）](../heuristics/new-helper-conform-to-sibling-safety-conventions.md)
@@ -50,3 +64,5 @@ batch-run にステップ 1.5（再開段階の振り分け）を挿入し、ス
 
 - [fix 結果](../../raw/fixes/20260720T071821Z-pr-1925.md)
 - [レビュー結果](../../raw/reviews/20260914T151507Z-pr-2822.md)
+- [レビュー結果](../../raw/reviews/20260926T151345Z-pr-3183.md)
+- [fix 結果](../../raw/fixes/20260926T152317Z-pr-3183.md)

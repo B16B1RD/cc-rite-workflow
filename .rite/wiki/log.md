@@ -9,6 +9,9 @@
 * **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=551, broken_refs=0
 
 * **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=552, broken_refs=0
+* **Update**: [明示的 Phase 遷移で駆動する SKILL.md に新規 Phase を挿入する際、既存の終端ルーティング更新漏れで到達不能になる](pages/anti-patterns/unrouted-phase-insertion-in-explicit-transition-skill.md) — raw/reviews/20260926T151345Z-pr-3183.md を統合
+* **Update**: [明示的 Phase 遷移で駆動する SKILL.md に新規 Phase を挿入する際、既存の終端ルーティング更新漏れで到達不能になる](pages/anti-patterns/unrouted-phase-insertion-in-explicit-transition-skill.md) — raw/fixes/20260926T152317Z-pr-3183.md を統合
+* **Update**: [新規テストは、それが実際に生成している出力のうち契約が不変と規定するものを行まるごと固定する](pages/heuristics/new-test-pins-the-contract-output-it-already-produces.md) — raw/reviews/20260926T152022Z-pr-3186.md を統合
 
 ## 2026-09-26
 
