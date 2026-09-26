@@ -240,7 +240,7 @@ def validate_plan(plan, issue, state, receipt):
                 and text(finding["description"]), "invalid external finding provenance")
         known.add(finding["id"])
         blocking.add(finding["id"])
-    covered, paths, causes, constrained = [], [], [], []
+    covered, paths, causes, constrained, aliases = [], [], [], [], []
     require(isinstance(plan["groups"], list) and plan["groups"], "root-cause groups required")
     require(sum(g["action"] == "base-intake" for g in plan["groups"]) <= 1, "combine base intake into one group")
     for group in plan["groups"]:
@@ -264,12 +264,16 @@ def validate_plan(plan, issue, state, receipt):
             require(group_paths, "base intake requires the merged paths")
             merged = base_intake_paths()
             constrained.extend(p for p in group_paths if p not in merged)
+            # A symlink the base changed still opens whatever it points at, so it
+            # keeps the Non-Target check; the closed targets do not apply to base files.
+            aliases.extend(p for p in group_paths if p in merged and Path(p).is_symlink())
         else:
             constrained.extend(group_paths)
     require(len(set(causes)) == len(causes), "combine duplicate root-cause groups")
     require(len(covered) == len(set(covered)) and set(covered) <= known and blocking <= set(covered), "all blocking findings need one disposition; unknown or duplicate finding IDs")
-    for entry in constrained:
+    for entry in constrained + aliases:
         require(not any(within(entry, p) or within(p, entry) for p in excluded), "Non-Target violation: " + entry)
+    for entry in constrained:
         require(not constraints["closed_targets"] or any(within(entry, p) for p in targets), "closed target violation: " + entry)
     return receipt[1], sorted(set(paths))
 
@@ -678,7 +682,10 @@ def merge_kind(args):
                 ff_only = name == "--ff-only"
         elif word.startswith("-") and len(word) > 1:
             # A short cluster ends at its first value-taking letter (-nm msg, -mmsg).
+            # S takes only the rest of this word (-S, -SKEYID), never the next word.
             for position, letter in enumerate(word[1:], 1):
+                if letter == "S":
+                    break
                 if letter in "mFsX":
                     if position == len(word) - 1:
                         index += 1
