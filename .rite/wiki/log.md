@@ -1,5 +1,9 @@
 # Directory Update Log
 
+## 2026-09-27
+
+* **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=551, broken_refs=0
+
 ## 2026-09-26
 
 * **Create**: [他セッションの成果物を回収する処理は、進捗時刻ではなく所有者の生存信号で判定し、判定不能は残す側へ倒す](pages/heuristics/liveness-reaper-keeps-undecidable-and-guards-json-shape.md) — raw/reviews/20260926T144808Z-pr-3174.md を新規ページ化
