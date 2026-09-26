@@ -61,7 +61,7 @@ assert_rc2 bash scripts/a.sh &&
 4. `git push origin HEAD` で取り込み commit を PR に反映する
 5. `/rite:iterate` で次のレビュー cycle を回し、mergeable になってから ready / merge へ進む
 
-制約の除外はファイル単位で、base 側が変更したファイル（merge-base から取り込み相手までの差分に出るファイル）だけが Issue の Non-Target / 閉じた対象の検査から外れる。競合を解消したファイルは base 側も変更しているので外れる。ただし base 側が変更した symlink は、指す先が Non-Target に届けば Non-Target 違反になる（閉じた対象の検査からは外れる）。base 側が変更していないファイル（base の変更に合わせて直した自ブランチのファイル等）は制約を受ける。
+制約の除外はファイル単位で、base 側が変更したファイル（merge-base から取り込み相手までの差分に出るファイル）だけが Issue の Non-Target / 閉じた対象の検査から外れる。競合を解消したファイルは base 側も変更しているので外れる。base 側が変更した symlink は、そのパス自体の変更だけが取り込みとして許可される。指す先で base 側が変更していないファイルを変えると、verify / commit で計画外の変更として拒否される。base 側が変更していないファイル（base の変更に合わせて直した自ブランチのファイル等）は制約を受ける。
 
 `base-intake` は merge 進行中（`MERGE_HEAD` がある状態）でだけ有効で、取り込み相手は `origin/<base>` またはその祖先に限る（別ブランチや別の worktree で作った commit は取り込めない）。計画に 1 グループまで。`--no-commit` / `--squash` / `--abort` / `--quit` / `--ff-only` の merge は拒否されない（オプションは git と同じく後に書いたものが勝つ。これらのオプションの省略形は判定できないため拒否される）。`git pull` / rebase 等でレビュー済み HEAD を動かした場合は次の `review-start` が拒否する。レビュー済み commit（`flow-state.sh get --jq-filter .review_cycle.review_context.commit_sha`）へ `git reset --keep` で戻してから、この手順で取り込む。ただし、`git fetch origin <PR ブランチ>` のあと `git merge-base --is-ancestor origin/<PR ブランチ> <レビュー済み commit>` が失敗するなら、戻すと push 済みの commit を巻き戻すことになるため、戻さずに止まり、その状況を報告する（公開済み履歴の書き換えは人間が判断する）。
 

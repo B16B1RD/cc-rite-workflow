@@ -118,6 +118,16 @@ def within(value, parent):
     return Path(value).resolve() == Path(parent).resolve() or Path(parent).resolve() in Path(value).resolve().parents
 
 
+def planned(changed, plan, paths):
+    """Whether a changed path is covered by the plan's paths."""
+    # A symlink listed only for the base intake skips the target checks, so it
+    # covers the link itself and never the tree behind it.
+    others = {path(p) for g in plan["groups"] if g["action"] != "base-intake" for p in g["paths"]}
+    exact = {path(p) for g in plan["groups"] if g["action"] == "base-intake" for p in g["paths"]
+             if Path(p).is_symlink() and path(p) not in others}
+    return any(changed == allowed if allowed in exact else within(changed, allowed) for allowed in paths)
+
+
 def validate_context(plan, state, session, directory):
     """Bind a plan to the frozen cycle, its HEAD and its saved receipt.
 
@@ -240,7 +250,7 @@ def validate_plan(plan, issue, state, receipt):
                 and text(finding["description"]), "invalid external finding provenance")
         known.add(finding["id"])
         blocking.add(finding["id"])
-    covered, paths, causes, constrained, aliases = [], [], [], [], []
+    covered, paths, causes, constrained = [], [], [], []
     require(isinstance(plan["groups"], list) and plan["groups"], "root-cause groups required")
     require(sum(g["action"] == "base-intake" for g in plan["groups"]) <= 1, "combine base intake into one group")
     for group in plan["groups"]:
@@ -261,17 +271,15 @@ def validate_plan(plan, issue, state, receipt):
         if group["action"] == "base-intake":
             # Files the base changed are not this Issue's work, so its target
             # constraints do not apply to them; any other listed path stays checked.
+            # A symlink among them covers only itself when changes are matched (planned).
             require(group_paths, "base intake requires the merged paths")
             merged = base_intake_paths()
             constrained.extend(p for p in group_paths if p not in merged)
-            # A symlink the base changed still opens whatever it points at, so it
-            # keeps the Non-Target check; the closed targets do not apply to base files.
-            aliases.extend(p for p in group_paths if p in merged and Path(p).is_symlink())
         else:
             constrained.extend(group_paths)
     require(len(set(causes)) == len(causes), "combine duplicate root-cause groups")
     require(len(covered) == len(set(covered)) and set(covered) <= known and blocking <= set(covered), "all blocking findings need one disposition; unknown or duplicate finding IDs")
-    for entry in constrained + aliases:
+    for entry in constrained:
         require(not any(within(entry, p) or within(p, entry) for p in excluded), "Non-Target violation: " + entry)
     for entry in constrained:
         require(not constraints["closed_targets"] or any(within(entry, p) for p in targets), "closed target violation: " + entry)
@@ -326,7 +334,7 @@ def verify(plan, paths, output, kind):
               + " from unplanned path check; user action: delete them by hand once no sandboxed command is running: "
               + " ".join(json.dumps(p, ensure_ascii=False) for p in stubs), file=sys.stderr)
     changed += [p for p, mask in untracked.items() if not mask]
-    require(all(any(within(path(p), allowed) for allowed in paths) for p in changed if p), "unplanned changed path; revise plan before continuing")
+    require(all(planned(path(p), plan, paths) for p in changed if p), "unplanned changed path; revise plan before continuing")
     result = read(output) if output.exists() else {"review_context": plan["review_context"], "results": {}}
     require(result["review_context"]["session_id"] == plan["review_context"]["session_id"], "verification receipt belongs to another session")
     if result["review_context"] != plan["review_context"]:
@@ -769,7 +777,7 @@ def commit_check(args):
         changed = subprocess.check_output(["git", "diff", "--no-renames", "HEAD", "--name-only", "-z"]).decode().split("\0")
         untracked = subprocess.check_output(["git", "ls-files", "--others", "--exclude-standard", "-z"]).decode().split("\0")
         changed += [p for p in untracked if p and not sandbox_mask(p)]
-        require(all(any(within(path(p), allowed) for allowed in paths) for p in changed if p),
+        require(all(planned(path(p), plan, paths) for p in changed if p),
                 "unplanned changed path; check scope and verify before committing")
         if "review_run" in state:
             pending = state["review_run"].get("pending_fix")
