@@ -13,9 +13,12 @@ sources:
     resource: "raw/fixes/20260805T110153Z-pr-2114.md"
   - type: "reviews"
     resource: "raw/reviews/20260906T134450Z-pr-2582.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260926T140708Z-pr-3168.md"
 tags: ["fail-loud", "guard", "exit-exhaustive", "sibling-exit", "trap", "boundary-tc", "static-pin"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-06T16:10:23Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T14:20:00Z" }
+verified: [{ by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T14:20:00Z" }]
 ---
 
 # fail-loud ガードは同じ帰結を持つ全出口に張る（症状側から出口を網羅する）
@@ -61,6 +64,12 @@ wiki-index-update helper の cycle 4 で「行末区切り欠落 = 捨てフラ�
 
 skill 定義の評価順テーブルが marker ベースで fatal を判定する設計のとき、新しく足した失敗経路が素の非ゼロ終了で終わると、どの row にも一致せず失敗の理由が失われる。分類器から不可視な fail-loud は、実質 silent failure と同じである。同一ブロック内の兄弟出口が marker を emit しているかどうかが、非対称の目印になる。
 
+### 追記: 手順書のブロックでは「後続の副作用より前の出口」を数え、最終行は数えない
+
+手順書の fenced bash で「helper が失敗したら後続の push を止める」ガードを足すときも、列挙は帰結側（未 commit のまま push される）から行う。数える対象は、**止めたい副作用より前にあって失敗しうる手順**だけで足りる。状態確認の失敗・変更なし・一時ファイル作成失敗・未置換検査が既に exit 1 していれば、残る出口は helper 呼び出しの 1 本になる。副作用そのものがブロックの最終行なら、その終了コードがそのままブロックの終了コードになるので、別のガードは要らない。レビューでは複数の reviewer が独立にこの列挙を確かめ、指摘 0 件で収束した。
+
+テスト側では、手順書から抽出したブロックを実行し、helper の絶対パスだけを stub へ置き換えて stub の呼び出しを記録する形が有効だった。置き換えが効かず本物の helper が走っても記録が残らないため、テストは FAIL する。stub が差し替わったこと自体をテストが確かめている。
+
 ## 関連ページ
 
 - [trap 登録 → mktemp の順序で tempfile lifecycle を守る](../patterns/trap-register-before-mktemp.md)
@@ -72,3 +81,4 @@ skill 定義の評価順テーブルが marker ベースで fatal を判定す�
 - [Fix cycle 5: exit-exhaustive fail-loud guards, canonical trap, honest safety-net docs](../../raw/fixes/20260804T155921Z-pr-2111-cycle5.md)
 - [pin が守る対象の兄弟を数える](../../raw/fixes/20260805T110153Z-pr-2114.md)
 - [レビュー結果](../../raw/reviews/20260906T134450Z-pr-2582.md)
+- [レビュー結果](../../raw/reviews/20260926T140708Z-pr-3168.md)
