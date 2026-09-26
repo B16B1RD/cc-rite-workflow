@@ -500,6 +500,24 @@ assert_grep "mixed triage retains fatal=1 moved=2" "$sandbox/mixed.triage" 'FIX_
 assert "fatal finding remains after triage" F-03 "$(jq -r '.findings[0].id' "$mixed_json")"
 assert "sweep consumes transfers without consuming fatal replies" 2 "$("$COLLECT" --json "$mixed_json" | jq '.count')"
 
+# A class B the demotion gate kept blocking stays fatal; only the plain class B moves to the sweep.
+excluded_json="$sandbox/excluded-class-b.json"
+write_json "$excluded_json" <<'JSON'
+{"pr_number":1,"findings":[
+  {"id":"X-1","severity":"MEDIUM","scope":"current-pr","file":"src/a.ts","line":10,"verification":{"measured":true},"consequence_class":"B","consequence_exclusion":"ac_unmet:AC-1"},
+  {"id":"B-1","severity":"MEDIUM","scope":"current-pr","file":"src/b.ts","line":20,"verification":{"measured":true},"consequence_class":"B"},
+  {"id":"X-2","severity":"LOW","scope":"follow-up","file":"src/c.ts","line":30,"verification":{"measured":true},"consequence_class":"B","consequence_exclusion":"既存の禁止文を削除"}
+],"non_blocking_findings":[]}
+JSON
+bash "$PLUGIN_ROOT/scripts/review-findings-maps.sh" --review-source explicit_file \
+  --review-source-path "$excluded_json" > "$sandbox/excluded.maps" 2> "$sandbox/excluded.triage"
+assert "excluded class B triage succeeds" 0 "$?"
+assert_grep "excluded class B → fatal=2 moved=1" "$sandbox/excluded.triage" 'FIX_FATAL_TRIAGE=applied; fatal=2; moved=1'
+assert "fatal_map splits excluded from plain class B" '{"B-1":false,"X-1":true,"X-2":true}' "$(jq -cS '.fatal_map' "$sandbox/excluded.maps")"
+assert "excluded class B stays blocking in input order" 'X-1,X-2' "$(jq -r '[.findings[].id] | join(",")' "$excluded_json")"
+assert "retained findings carry no demotion reason" false "$(jq 'any(.findings[]; has("demotion_reason"))' "$excluded_json")"
+assert "only plain class B moves as non_fatal" 'B-1:non_fatal' "$(jq -r '[.non_blocking_findings[] | "\(.id):\(.demotion_reason)"] | join(",")' "$excluded_json")"
+
 # Pin the actual prompt routing, including precedence and the outer batch success gate.
 assert_grep "fix retains fatal and moved counts" "$FIX_SKILL" '\{fatal_count\}=N.*\{non_fatal_moved_count\}=M'
 assert_grep "non-fatal-only requires no push/accept, fatal=0 and moved>0" "$FIX_SKILL" '^\| 4\.5 \| Push なし.*accept 決定なし.*\{fatal_count\}=0.*\{non_fatal_moved_count\}>0.*All findings replied.*\[fix:non-fatal-only\]'

@@ -43,11 +43,14 @@ result=$(jq -c '
   def gated: .scope == "current-pr" or .scope == "follow-up";
   def measured: if (.verification | type) == "object" then .verification.measured else null end;
   def blocker_severity: .severity == "CRITICAL" or .severity == "HIGH";
+  # The demotion gate keeps a class B with an exclusion blocking, so it counts as class A here.
+  def excluded_b: .consequence_class == "B"
+    and (.consequence_exclusion | type) == "string" and .consequence_exclusion != "";
   # Every gated finding passed the revert test, so only an explicit pre_existing=true
   # excludes it; canonical reviews omit the field.
   def fatal: gated and measured == true
     and (blocker_severity
-      or (.consequence_class == "A" and .pre_existing != true));
+      or ((.consequence_class == "A" or excluded_b) and .pre_existing != true));
   def invalid($reason; $items): {error: $reason, findings: [$items[] | .id]};
   if (.findings | type) != "array"
     or ((.non_blocking_findings // []) | type) != "array" then
