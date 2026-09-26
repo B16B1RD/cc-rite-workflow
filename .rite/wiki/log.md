@@ -2,6 +2,12 @@
 
 ## 2026-09-26
 
+* **Update**: [CI が pending のまま閉じたレビューは失敗 job を観測できない — 完了後に担当 reviewer を CI 状態付きで reroll する](pages/heuristics/ci-pending-at-review-close-reroll-finder-after-completion.md) — raw/reviews/20260926T054854Z-pr-3060.md で再発を確認
+* **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — raw/reviews/20260926T060817Z-pr-3060.md で拒否/許可対照の原則を追記
+* **Create**: [リポジトリ全体を走査する検査は変更ファイルだけの reviewer / テストには見えない — 修正後は全体検査も含めて実行する](pages/heuristics/repo-wide-check-catches-what-diff-scoped-tests-miss.md) — raw/reviews/20260926T054854Z-pr-3060.md / raw/fixes/20260926T055557Z-pr-3060.md を新規ページ化
+* **Create**: [権限に依存するテストの前提は euid のような代理条件ではなく os.access で実際に確かめる](pages/heuristics/env-precondition-verified-via-os-access-not-proxy.md) — raw/reviews/20260926T060817Z-pr-3060.md / raw/fixes/20260926T055557Z-pr-3060.md を新規ページ化
+* **Create**: [スキル文書の分岐規則は実際に注入される本文に書く — 注入されない rationale 段落だけに書くと reviewer にも実行時にも届かない](pages/heuristics/skill-branch-rule-belongs-in-injected-text-not-rationale.md) — raw/reviews/20260926T060418Z-pr-3117.md を新規ページ化
+* **Skip**: [20260926T055802Z-pr-3115.md](raw/reviews/20260926T055802Z-pr-3115.md) — 指摘 0 件で抽出可能な経験則なし
 * **lint:clean** — contradictions=0 (更新・新規ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=539, broken_refs=0
 * **Update**: [判定手段を差し替えるときは、旧手段が暗黙に提供していた失敗条件を列挙してから移す](pages/heuristics/replacing-a-judgment-mechanism-drops-its-implicit-failure-conditions.md) — raw/reviews/20260926T052722Z-pr-3060.md / raw/fixes/20260926T053540Z-pr-3060.md / raw/fixes/20260926T051339Z-pr-3060.md で拒否理由のクラス判定と仕様書同期の観点を補強
 * **Create**: [実行先を静的に決められない入力は、HEAD を動かす操作に限って拒否側へ倒す](pages/heuristics/undecidable-target-fail-closed-head-moving-ops.md) — raw/fixes/20260926T051339Z-pr-3060.md を新規ページ化

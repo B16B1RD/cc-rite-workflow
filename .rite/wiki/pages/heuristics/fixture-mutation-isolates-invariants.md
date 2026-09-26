@@ -41,9 +41,11 @@ sources:
     resource: "raw/reviews/20260925T005035Z-pr-3063.md"
   - type: "fixes"
     resource: "raw/fixes/20260925T005815Z-pr-3063.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260926T060817Z-pr-3060.md"
 tags: ["test", "fixture", "mutation", "invariant", "coverage"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-25T03:58:00Z" }
+generated: { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T06:12:43Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T18:43:00+00:00" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T23:20:00+00:00" }
@@ -52,6 +54,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-14T03:36:26Z" }
   - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-14T09:23:49Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-25T03:58:00Z" }
+  - { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T06:12:43Z" }
 ---
 
 # テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する
@@ -144,6 +147,10 @@ negative control の fixture は、**検証したい分岐に確実に入る形�
 - 入力値が「実装を壊したときの壊れ方」を変えていないかを確かめる。壊れ方が変われば、否定の assert は探す行そのものが出ないことで通ってしまう
 - 単独の検出力が要るなら、壊れ方を変えない値（`/` を含まないラベル）に替える。壊れ方を実演できる値を残すなら、その否定の assert は補助だと分かる名前にし、保証を担う assert を別に置く
 
+### 10. 拒否判定を固定するときは、同じ操作で結果が変わらない許可対照も併記する
+
+参照が動いたことを拒否する検査で、拒否側の fixture だけを固定すると「拒否条件を緩めて許可へ寄せる」変異が生き残ることがある。同じ操作カテゴリで結果が変わらない（HEAD を動かさない等）許可対照を fixture に併記し、拒否と許可の両方を assert すると、拒否側へ寄せすぎる変異（許可されるべき操作まで拒否してしまう）も同時に検出できる。原則は 8 の「除外側の対照は判定式の条件を 1 つだけ外す」と同型で、二値判定（許可 / 拒否）一般に適用できる。
+
 ### 検証の決定打
 
 guard・不変量の TC を追加したら、worktree-only mutation（当該 guard / report_diff 呼び出しの削除、列挿入等）を実機注入して「その TC だけが FAIL する」ことを確認する。見た目の構造同型ではなく mutation の kill 実績が non-vacuous coverage の証明になる。
@@ -189,3 +196,4 @@ guard・不変量の TC を追加したら、worktree-only mutation（当該 gua
 - [件数の数え方の変異を、対象と対象外が混在するケースの assert で検出したレビュー結果](../../raw/reviews/20260917T132504Z-pr-2936.md)
 - [レビュー結果](../../raw/reviews/20260925T005035Z-pr-3063.md)
 - [fix 結果](../../raw/fixes/20260925T005815Z-pr-3063.md)
+- [拒否 fixture と許可対照を両方固定する原則を検出したレビュー結果](../../raw/reviews/20260926T060817Z-pr-3060.md)
