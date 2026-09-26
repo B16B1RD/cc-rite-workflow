@@ -535,9 +535,11 @@ okf_version: "0.2"
 | [fix diff などのファイル集合は取得コマンドごとに rename 検出を揃える](pages/patterns/file-set-commands-align-rename-detection.md) | patterns | --name-only は検出した改名の移動先しか出さないため、rename 検出が有効なまま取ったファイル集合からは元パスが落ちる。集合を比べる・積を取る・検証側と照合するなら、すべての取得に --no-renames を揃えて付ける。 | 2026-09-25T03:58:00Z | medium |
 | [同じ記録を書く側と読む側が別々の同定規則を持つ](pages/anti-patterns/writer-reader-divergent-record-identity.md) | anti-patterns | 書き手が「自分の・最新の 1 件」に絞って更新する記録を、読み手が別の規則（見出しの前方一致で全件連結など）で読むと、重複が生じたときだけ書き手が更新しない古い内容を引き継ぐ。読み手は書き手と同じ同定処理を共有する。 | 2026-09-25T09:56:20Z | medium |
 | [「最新」を選ぶ列挙は照合順を LC_ALL=C に固定する](pages/patterns/latest-selection-pins-byte-collation.md) | patterns | glob 展開と [[ < ]] は呼び出し元のロケールの照合順に従い、en_US.UTF-8 では記号を第 1 段階で無視するため、同じ秒に保存した名前の並びが C と逆になる。最新を選ぶ列挙は関数内で照合順を固定し、同じ記録を選ぶ他の処理とそろえる。 | 2026-09-25T09:56:20Z | medium |
+| [差分の帰属を「どの diff に行が現れるか」で決めると、PR 自身の変更を base 由来と誤分類する](pages/anti-patterns/position-based-diff-attribution-misclassifies-own-changes.md) | anti-patterns | レビュー指摘の帰属（PR の変更か base 由来か）を行の位置、つまり 3 点 diff に現れるかどうかで決める規則は、context 行を含む読みと、PR 自身が前サイクルで足した行を後の修正で消すケースの両方で誤分類する。帰属は行の位置ではなく原因（どの commit が変えたか、revert で直るか）に置く。 | 2026-09-26T03:45:00Z | medium |
+| [ゲートを有効化する変更は、同じ条件で動く全 hook を通した経路で既存手順を検証する](pages/heuristics/enabling-a-gate-verify-every-hook-sharing-its-condition.md) | heuristics | 状態値を書き足してあるゲートを有効化すると、同じ状態値を条件にする別の hook も同時に有効化され、既存手順が初めてその hook の拒否経路に入ることがある。helper を直接呼ぶテストは hook を経由しないため、この退行を検出できない。 | 2026-09-26T03:45:00Z | medium |
 ## 統計
 
-- 総ページ数: 525
-- ドメイン別: patterns=124, heuristics=234, anti-patterns=167
-- 最終更新: 2026-09-25T15:24:22Z
+- 総ページ数: 527
+- ドメイン別: patterns=124, heuristics=235, anti-patterns=168
+- 最終更新: 2026-09-26T03:45:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
