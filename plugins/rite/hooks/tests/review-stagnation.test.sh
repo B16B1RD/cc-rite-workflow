@@ -2013,6 +2013,34 @@ try:
           and 'requires completed or deferred review' not in result.stderr,
           'T-24 (AC-2): an unended run still re-reads its receipt when leaving the PR\n' + result.stderr)
     check(f.state()['issue_number'] == 42, 'T-24 (AC-2): the refused switch keeps the current Issue')
+    for step in ('review-close', 'review-defer', 'restore that file unchanged',
+                 'flow-state.sh set --phase cleanup --active false --stop-reason circuit-breaker:receipt-missing'):
+        check(step in result.stderr and 'review-cycle failed' not in result.stderr,
+              'T-24: the refusal names the next operation: ' + step + '\n' + result.stderr)
+    # The stop the refusal names is enough to leave without the receipt.
+    f.flow('set', '--phase', 'cleanup', '--next', 'cleanup', '--active', 'false',
+           '--stop-reason', 'circuit-breaker:receipt-missing')
+    leave(f)
+    archived = archived_run(f.state())
+    check(f.state()['issue_number'] == 43 and archived['status'] == 'stopped'
+          and archived['stop_reason'] == 'circuit-breaker:receipt-missing',
+          'T-24: stopping the run as the refusal says releases the session')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    f.cycle(roots=[])
+    receipt = Path(f.state()['review_run']['observations'][-1]['result_path'])
+    kept = receipt.read_bytes()
+    drop_receipt(f)
+    leave(f, ok=False)
+    # Restoring the unchanged receipt at the reviewed commit lets the review end as the refusal says.
+    receipt.write_bytes(kept)
+    f.flow('review-close')
+    leave(f)
+    check(f.state()['issue_number'] == 43,
+          'T-24: restoring the receipt and closing as the refusal says releases the session')
 finally:
     f.close()
 
