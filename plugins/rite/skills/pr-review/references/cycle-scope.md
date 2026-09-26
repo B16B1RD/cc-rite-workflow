@@ -126,7 +126,7 @@ cap 後のフィルタにすると、これらのフロアと `mandatory` 保護
 
 cycle 2+ で変わるのは表そのものではなく、表に**何を照合させるか**（PR 全体の変更ファイル → fix diff のファイル）だけである。
 
-fix diff のファイルは、起点からの差分のうち PR 自身が変えたもの（first-parent 上の非 merge commit の変更と、first-parent 上の merge で競合を解消したファイル）に限る。起点の後に base ブランチを取り込むと、base 側の変更も起点からの差分に入る。PR が触っていないファイルでパターンマッチすると、無関係な reviewer が起動し、PR の変更ではないコードを審査する。merge の second parent 側から入った変更は base の取り込みとして除く。review cycle の間（起点より後）に rite の手順が PR ブランチへ作る merge は base の取り込みだけで、それ以外の merge（手動の non-ff `git pull` で remote の PR commit を second parent 側に取り込む等）の変更は fix diff から落ちる。競合の解消は `git show --remerge-diff`（git 2.36 以上）で、自動 merge の結果と merge commit の差として求める。競合なしに自動 merge されたファイルは PR の変更に数えない。除外はファイル単位で、PR と base の両方が変えたファイルの diff には base 由来の hunk も含まれる。hunk 単位では除外しない。累積差分の hunk と commit ごとの hunk は形が一致せず、判別を reviewer に委ねると PR 自身の変更を落とす側へ倒れうるため。指摘の帰属だけは行単位で `origin/{base_branch}...HEAD` と照合する。PR 自身の行は必ずこの差分に現れるので、照合で PR の変更は落ちず、審査範囲も狭まらない。改名は元パスと新パスの 2 つとして数える（`--no-renames`）。`--name-only` は検出した改名の移動先しか出さないため、rename 検出が有効だと元パスが一覧から落ちる。
+fix diff のファイルは、起点からの差分のうち PR 自身が変えたもの（first-parent 上の非 merge commit の変更と、first-parent 上の merge で競合を解消したファイル）に限る。起点の後に base ブランチを取り込むと、base 側の変更も起点からの差分に入る。PR が触っていないファイルでパターンマッチすると、無関係な reviewer が起動し、PR の変更ではないコードを審査する。merge の second parent 側から入った変更は base の取り込みとして除く。review cycle の間（起点より後）に rite の手順が PR ブランチへ作る merge は base の取り込みだけで、それ以外の merge（手動の non-ff `git pull` で remote の PR commit を second parent 側に取り込む等）の変更は fix diff から落ちる。競合の解消は `git show --remerge-diff`（git 2.36 以上）で、自動 merge の結果と merge commit の差として求める。競合なしに自動 merge されたファイルは PR の変更に数えない。除外はファイル単位で、PR と base の両方が変えたファイルの diff には base 由来の hunk も含まれる。hunk 単位では除外しない。累積差分の hunk と commit ごとの hunk は形が一致せず、判別を reviewer に委ねると PR 自身の変更を落とす側へ倒れうるため。指摘の帰属だけは行単位で `origin/{base_branch}...HEAD` の `+` / `-` 行と照合する。PR 自身の行は必ずこの差分の `+` / `-` 行に現れるので、照合で PR の変更は落ちず、審査範囲も狭まらない。context 行は照合に使わない。PR の変更から 3 行以内に取り込んだ base 由来の行は merge-base にも含まれ、context 行として出力されるため。改名は元パスと新パスの 2 つとして数える（`--no-renames`）。`--name-only` は検出した改名の移動先しか出さないため、rename 検出が有効だと元パスが一覧から落ちる。
 
 ## 選抜の最低人数フロアを新設しない理由
 
@@ -150,7 +150,7 @@ fix diff のファイルは、起点からの差分のうち PR 自身が変え�
 
 {previous_blocking_findings}
 
-2. **fix diff のフルレビュー**: レビュー対象ファイル一覧のファイルの `{cycle_base_sha}..HEAD` の差分は**通常のフルレビューと同じ深さと厳しさ**で審査する。base の取り込みの除外はファイル単位で済んでいる。一覧のファイルの diff に base 由来の hunk が混ざることがあるが、hunk を選り分けず diff 全体を審査する（PR 自身の変更を取りこぼさないため）。ただし指摘の帰属は行単位で判定する。指摘として出せるのは `git diff origin/{base_branch}...HEAD -- <file>`（`origin/{base_branch}` が無ければ `{base_branch}`）に現れる行の問題に限る。現れない行は起点の後に取り込んだ base 由来なので、その問題は pre-existing として指摘にしない（追加調査の価値があるものだけ `### 調査推奨` に書く）。差分スコープはレビュー対象の**範囲**を絞るものであって、範囲内の**基準**を緩めるものではない。指摘の採否基準（4 必須自問・Confidence・Observed Likelihood・実測アンカー）は cycle 1 と完全に同一。
+2. **fix diff のフルレビュー**: レビュー対象ファイル一覧のファイルの `{cycle_base_sha}..HEAD` の差分は**通常のフルレビューと同じ深さと厳しさ**で審査する。base の取り込みの除外はファイル単位で済んでいる。一覧のファイルの diff に base 由来の hunk が混ざることがあるが、hunk を選り分けず diff 全体を審査する（PR 自身の変更を取りこぼさないため）。ただし指摘の帰属は行単位で判定する。指摘として出せるのは `git diff origin/{base_branch}...HEAD -- <file>`（`origin/{base_branch}` が無ければ `{base_branch}`）に `+` / `-` 行として現れる行に依存する問題に限る（表面化する位置が context 行や差分外でもよい）。先頭が `+` / `-` でない context 行と差分に現れない行は PR の変更ではない（起点の後に取り込んだ base 由来の行も含む）ので、それらだけに依存する問題は pre-existing として指摘にしない（追加調査の価値があるものだけ `### 調査推奨` に書く）。差分スコープはレビュー対象の**範囲**を絞るものであって、範囲内の**基準**を緩めるものではない。指摘の採否基準（4 必須自問・Confidence・Observed Likelihood・実測アンカー）は cycle 1 と完全に同一。
 
 3. **Cross-File Impact Check は縮小しない**: fix が触った symbol（関数・変数・設定キー・sentinel・marker 名）の波及は、差分の**外**にあるファイルも含めて grep で確認する。呼び出し側の未更新・契約の非対称・二重定義の片側だけ更新、はこの検査でしか捕まらない。
 
