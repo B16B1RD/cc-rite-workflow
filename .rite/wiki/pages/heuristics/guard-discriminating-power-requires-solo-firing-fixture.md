@@ -9,9 +9,13 @@ sources:
     resource: "raw/reviews/20260804T173728Z-pr-2111.md"
   - type: "fixes"
     resource: "raw/fixes/20260804T175004Z-pr-2111.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260926T045233Z-pr-3112.md"
 tags: ["guard", "discriminating-power", "diagnostic-literal", "fixture-design", "sibling-tc-transcription"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-05T09:26:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T05:05:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T05:05:00Z" }
 ---
 
 # ガードの識別力は「そのガード単独で発火する形状」の fixture とガード固有文言 assert で担保する
@@ -47,6 +51,8 @@ cycle 1 で TC-13b（読み取り不能）にガード固有文言 assert の ra
 | 横展開 | 同じ assert 形を持つ兄弟 TC を grep で列挙し、同時に是正したか |
 | 検証 | 対象ガードを削除する変異で当該 TC だけが fail するか |
 
+**失敗を注入する shim は「何も出さずに失敗」にしない**: 外部コマンドの失敗分岐を shim で踏むとき、shim が何も出力せずに失敗すると、分岐の処理（fallback の呼び出し）を消した変異でも結果が空のまま進む。そのまま別の経路で同じ fallback に落ちるため、観測は元と変わらず、変異を見分けられるのは reason の 1 本だけになる。shim に実在の値を 1 行出させてから失敗させると、rc を見落とす変異は狭い側（incremental・一覧の書き出し）へ進む。その結果、状態を見る複数の assert がこの変異を捕らえる。同じ reason を複数の分岐が共有するときは、分岐固有の WARNING 文言も assert して、別の分岐で PASS する空振りを防ぐ。
+
 ## 関連ページ
 
 - [HINT-specific 文言 pin で case arm 削除 regression を検知する](../patterns/hint-specific-assertion-pin.md)
@@ -56,3 +62,4 @@ cycle 1 で TC-13b（読み取り不能）にガード固有文言 assert の ra
 
 - [レビュー結果](../../raw/reviews/20260804T173728Z-pr-2111.md)
 - [fix 結果](../../raw/fixes/20260804T175004Z-pr-2111.md)
+- [レビュー結果](../../raw/reviews/20260926T045233Z-pr-3112.md)

@@ -378,7 +378,7 @@ okf_version: "0.2"
 | [委譲リファクタの呼び出しシームは invocation-symmetry test で機械固定する](pages/patterns/invocation-symmetry-test-for-delegation-seam.md) | patterns | 散文手順を helper script へ降ろすリファクタでは、helper 本体はテストで固定できるが、**SKILL.md（呼び出し側）→ helper の呼び出し契約は放置するとどちらか片側の編集で silent に壊れる**。 | 2026-08-05T09:26:00+09:00 | medium |
 | [fail-loud ガードは同じ帰結を持つ全出口に張る（症状側から出口を網羅する）](pages/heuristics/fail-loud-guard-covers-all-sibling-exits.md) | heuristics | silent データ損失（空文字が返る等）に fail-loud ガードを追加するとき、**指摘された 1 出口だけを塞ぐと、同じ帰結に至る兄弟出口が残って次サイクルで同型指摘として返ってくる**。 | 2026-09-06T16:10:23Z | high |
 | [防御は攻撃面と同じ粒度で張る — 過剰防御は「安全側」ではなく別の実害](pages/heuristics/defense-granularity-matches-attack-surface.md) | heuristics | 注入・詐称への防御（中和・棄却ガード）を攻撃が実際に成立する形より広い範囲へ適用すると、**正当な値を棄却・破壊する別の実害**になる。 | 2026-08-05T09:26:00+09:00 | high |
-| [ガードの識別力は「そのガード単独で発火する形状」の fixture とガード固有文言 assert で担保する](pages/heuristics/guard-discriminating-power-requires-solo-firing-fixture.md) | heuristics | エラーガードのテストが (a) rc の非ゼロ性と (b) 総称的な `grep -q 'ERROR'` しか assert していないと、**兄弟ガードが同じ rc・同じ総称文言で発火するため、対象ガードを削除してもテストは全緑で通る**。 | 2026-08-05T09:26:00+09:00 | high |
+| [ガードの識別力は「そのガード単独で発火する形状」の fixture とガード固有文言 assert で担保する](pages/heuristics/guard-discriminating-power-requires-solo-firing-fixture.md) | heuristics | エラーガードのテストが (a) rc の非ゼロ性と (b) 総称的な `grep -q 'ERROR'` しか assert していないと、**兄弟ガードが同じ rc・同じ総称文言で発火するため、対象ガードを削除してもテストは全緑で通る**。 | 2026-09-26T05:05:00Z | high |
 | [シェル層で閉じられない注入防御は値を substitute する側（LLM）の実行前ゲートとして書く](pages/heuristics/shell-unclosable-defense-goes-to-substituting-side.md) | heuristics | LLM が値を literal substitute する bash block では、**防御の層を 1 つ塞ぐたびに同じ機構の中の「次の層」が露出する**。 | 2026-08-05T09:26:00+09:00 | medium |
 | [抽出述語の厳格化は「壊れた入力」と「入力なし」を同一経路へ畳み、fail-loud を構造的に壊す](pages/anti-patterns/strict-predicate-collapses-broken-into-absent.md) | anti-patterns | 「散文中の同形文字列を誤検出しない」ために抽出述語へアンカーや厳密条件を足すと、**正規の入力でも表記の揺れ（行末 CR・字下げ・末尾空白）があれば不一致になる**。 | 2026-09-16T01:27:23Z | high |
 | [同定手段の取得経路を差し替えるときは、旧経路が構造的に保証していた述語を先に全部列挙する](pages/heuristics/identity-path-swap-enumerate-old-invariants.md) | heuristics | 同定子・キー・参照を取りに行く経路（API エンドポイント・クエリ・検索式）を差し替えると、**旧経路がパスやクエリの形で暗黙に保証していた制約が落ちる**。 | 2026-08-05T05:30:00+00:00 | high |
@@ -538,9 +538,10 @@ okf_version: "0.2"
 | [差分の帰属を「どの diff に行が現れるか」で決めると、PR 自身の変更を base 由来と誤分類する](pages/anti-patterns/position-based-diff-attribution-misclassifies-own-changes.md) | anti-patterns | レビュー指摘の帰属（PR の変更か base 由来か）を行の位置、つまり 3 点 diff に現れるかどうかで決める規則は、context 行を含む読みと、PR 自身が前サイクルで足した行を後の修正で消すケースの両方で誤分類する。帰属は行の位置ではなく原因（どの commit が変えたか、revert で直るか）に置く。 | 2026-09-26T03:45:00Z | medium |
 | [ゲートを有効化する変更は、同じ条件で動く全 hook を通した経路で既存手順を検証する](pages/heuristics/enabling-a-gate-verify-every-hook-sharing-its-condition.md) | heuristics | 状態値を書き足してあるゲートを有効化すると、同じ状態値を条件にする別の hook も同時に有効化され、既存手順が初めてその hook の拒否経路に入ることがある。helper を直接呼ぶテストは hook を経由しないため、この退行を検出できない。 | 2026-09-26T04:29:37Z | medium |
 | [0x80-0x9F をバイト単位で潰す制御文字の中和は、UTF-8 の日本語を壊して診断を読めなくする](pages/anti-patterns/bytewise-c1-neutralization-breaks-utf8-diagnostics.md) | anti-patterns | C1 制御文字の範囲 0x80-0x9F は UTF-8 の継続バイトと重なるため、バイト単位で ? にすると日本語ロケールの git やシェルの原因行が文字化けする。整形式 UTF-8 列の継続バイトだけを残し、それ以外を潰す判定にすれば、制御文字の中和を保ったまま本文を読める。 | 2026-09-26T04:45:00Z | high |
+| [検査先の解決に失敗した入力を「対象外」に合流させると、拒否していた入力が許可に変わる](pages/anti-patterns/resolution-failure-merged-into-out-of-scope-flips-reject-to-allow.md) | anti-patterns | ガードの判定前に対象を解決する処理を置き換えるとき、解決の失敗理由（存在しない / 対象でない）を区別しないと、以前は例外で拒否していた入力が「対象外 = 許可」の経路に流れる。判定不能は拒否に倒し、除外判定と許可判定は同じ正規化で比べる。 | 2026-09-26T05:05:00Z | medium |
 ## 統計
 
-- 総ページ数: 528
-- ドメイン別: patterns=124, heuristics=235, anti-patterns=169
-- 最終更新: 2026-09-26T04:45:00Z
+- 総ページ数: 529
+- ドメイン別: patterns=124, heuristics=235, anti-patterns=170
+- 最終更新: 2026-09-26T05:05:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
