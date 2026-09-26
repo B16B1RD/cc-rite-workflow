@@ -448,11 +448,13 @@ def shell_segments(command):
     Quotes are tracked across a whole word, so a separator inside quotes (echo ';',
     NAME="a (b) c") stays in its word, and a quote may open in the middle of a word.
     A command substitution or a ( ) group runs in a subshell, so its commands come back
-    marked nested; a substitution's commands come ahead of the command that contains it.
+    marked nested; a substitution's commands come ahead of the command that contains it,
+    and a group leaves an empty command in its place in the outer list.
     The standard message form $(cat <<DELIM ... DELIM) is data and stays in its word.
     before / after are the control operators around a command: ";" (also a newline),
     "&&", "||", "|" (also |&), "&", or "" at the start, the end and around a substitution.
-    The & of a redirection (&>, >&, <&) stays in its word.
+    A newline right after &&, || or | continues the list. The & of a redirection
+    (&>, >&, <&) stays in its word.
     """
     segments, words, word, quoted, quote, depth = [], [], [], False, None, 0
     index, length, pending = 0, len(command), ""
@@ -468,10 +470,11 @@ def shell_segments(command):
         end_word()
         if words:
             segments.append((words, depth > 0, pending, operator))
-            pending = ""
-        words = []
-        if operator:
             pending = operator
+        elif operator and pending not in ("&&", "||", "|"):
+            # A newline right after && / || / | continues the list.
+            pending = operator
+        words = []
 
     while index < length:
         ch = command[index]
@@ -520,6 +523,10 @@ def shell_segments(command):
             end_word()
         elif ch == "(":
             end_segment()
+            if not depth:
+                # The group takes its place in the outer list as an empty command.
+                segments.append(([], False, pending, ""))
+                pending = ""
             depth += 1
         elif ch == ")":
             end_segment()
@@ -573,9 +580,22 @@ def each_git_target(command, cwd):
     background, cd -, with options, redirections or no directory, behind a keyword) makes
     the target dynamic, and later lists cannot know it either.
     """
+    segments = shell_segments(command)
+    # A list ended by & runs in a subshell, so its cd never reaches the next list.
+    background, members = set(), []
+    for position, (_words, nested, before, after) in enumerate(segments):
+        if nested:
+            continue
+        if before in ("", ";", "&"):
+            if before == "&":
+                background.update(members)
+            members = []
+        members.append(position)
+        if after == "&":
+            background.update(members)
     cwd, dynamic = Path(cwd).resolve(), False  # where the next list starts
     here, unsure, first, alternative, moved = cwd, dynamic, True, False, False
-    for words, nested, before, after in shell_segments(command):
+    for position, (words, nested, before, after) in enumerate(segments):
         # A subshell keeps its cd, and its git is not direct.
         if not nested:
             if before in ("", ";", "&"):
@@ -596,7 +616,7 @@ def each_git_target(command, cwd):
                     here, unsure = (here / words[1]).resolve(), False
             else:
                 unsure = True
-            if starts:
+            if starts and position not in background:
                 cwd, dynamic = here, unsure
             else:
                 dynamic = True
