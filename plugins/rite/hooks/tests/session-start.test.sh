@@ -1917,23 +1917,88 @@ write_queue_file() {
   printf '%s\n' "$json" > "$dir/.rite/state/run-queue-${sid}.json"
 }
 
-echo "RQ-01: own stale queue and watchdog remain; other stale json+watchdog are removed (same fixture)"
+write_owner_flow_state() {
+  local dir="$1" sid="$2" content="$3"
+  mkdir -p "$dir/.rite/sessions"
+  printf '%s\n' "$content" > "$dir/.rite/sessions/${sid}.flow-state"
+}
+
+echo "RQ-01: own stale queue remains; other stale queues with absent or old owner flow-state are removed (same fixture)"
 dir_rq01="$TEST_DIR/rq-01"
 mkdir -p "$dir_rq01"
 stale_ts=$(iso8601_now -8000)
 write_queue_file "$dir_rq01" "own-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[1],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
 write_queue_file "$dir_rq01" "other-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[2],cursor:0,mode:"default",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+write_queue_file "$dir_rq01" "old-fs-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[3],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+write_owner_flow_state "$dir_rq01" "own-sid" "$(jq -n --arg ts "$stale_ts" '{active:true,updated_at:$ts}')"
+write_owner_flow_state "$dir_rq01" "old-fs-sid" "$(jq -n --arg ts "$stale_ts" '{active:true,updated_at:$ts}')"
 : > "$dir_rq01/.rite/state/run-queue-own-sid.watchdog"
 : > "$dir_rq01/.rite/state/run-queue-other-sid.watchdog"
+: > "$dir_rq01/.rite/state/run-queue-old-fs-sid.watchdog"
 RITE_STATE_ROOT="$dir_rq01" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq01-out" 2>"$TEST_DIR/rq01-err" || true
 if [ -f "$dir_rq01/.rite/state/run-queue-own-sid.json" ] \
   && [ -f "$dir_rq01/.rite/state/run-queue-own-sid.watchdog" ] \
   && [ ! -f "$dir_rq01/.rite/state/run-queue-other-sid.json" ] \
   && [ ! -f "$dir_rq01/.rite/state/run-queue-other-sid.watchdog" ] \
+  && [ ! -f "$dir_rq01/.rite/state/run-queue-old-fs-sid.json" ] \
+  && [ ! -f "$dir_rq01/.rite/state/run-queue-old-fs-sid.watchdog" ] \
   && [ ! -s "$TEST_DIR/rq01-out" ]; then
-  pass "RQ-01: own stale remains, other stale (active=true) json+watchdog removed, stdout silent"
+  pass "RQ-01: own stale remains; other stale (flow-state absent / old) json+watchdog removed; stdout silent"
 else
-  fail "RQ-01: own=$(ls "$dir_rq01/.rite/state/run-queue-own-sid.json" 2>/dev/null && echo y || echo n) other=$(ls "$dir_rq01/.rite/state/run-queue-other-sid.json" 2>/dev/null && echo y || echo n) stdout=$(cat "$TEST_DIR/rq01-out")"
+  fail "RQ-01: own=$( [ -f "$dir_rq01/.rite/state/run-queue-own-sid.json" ] && echo y || echo n ) other=$( [ -f "$dir_rq01/.rite/state/run-queue-other-sid.json" ] && echo y || echo n ) old_fs=$( [ -f "$dir_rq01/.rite/state/run-queue-old-fs-sid.json" ] && echo y || echo n ) stdout=$(cat "$TEST_DIR/rq01-out")"
+fi
+echo ""
+
+echo "RQ-11: other stale queue remains while its owner flow-state is fresh"
+dir_rq11="$TEST_DIR/rq-11"
+mkdir -p "$dir_rq11"
+write_queue_file "$dir_rq11" "other-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[4],cursor:0,mode:"merge",failed:[11],outstanding:[],active:true,updated_at:$ts}')"
+write_owner_flow_state "$dir_rq11" "other-sid" "$(jq -n --arg ts "$(iso8601_now -60)" '{active:true,updated_at:$ts}')"
+: > "$dir_rq11/.rite/state/run-queue-other-sid.watchdog"
+rc_rq11=0
+RITE_STATE_ROOT="$dir_rq11" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq11-out" 2>"$TEST_DIR/rq11-err" || rc_rq11=$?
+if [ "$rc_rq11" -eq 0 ] \
+  && [ -f "$dir_rq11/.rite/state/run-queue-other-sid.json" ] \
+  && [ -f "$dir_rq11/.rite/state/run-queue-other-sid.watchdog" ] \
+  && ! grep -q 'leftover failed/outstanding' "$TEST_DIR/rq11-err" \
+  && ! grep -q 'run-queue-reap: failed=11' "$TEST_DIR/rq11-err" \
+  && [ ! -s "$TEST_DIR/rq11-out" ]; then
+  pass "RQ-11: live owner keeps its stale queue and watchdog; no leftover output; rc=0"
+else
+  fail "RQ-11: rc=$rc_rq11 exists=$( [ -f "$dir_rq11/.rite/state/run-queue-other-sid.json" ] && echo y || echo n ) err=$(cat "$TEST_DIR/rq11-err")"
+fi
+echo ""
+
+echo "RQ-12: broken or non-object owner flow-state keeps the queue; missing or unparsable updated_at reaps with a reason"
+dir_rq12="$TEST_DIR/rq-12"
+mkdir -p "$dir_rq12"
+for sid in broken-sid array-sid missing-sid badts-sid; do
+  write_queue_file "$dir_rq12" "$sid" "$(jq -n --arg ts "$stale_ts" '{issues:[5],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+  : > "$dir_rq12/.rite/state/run-queue-${sid}.watchdog"
+done
+write_owner_flow_state "$dir_rq12" "broken-sid" 'not-json{{'
+write_owner_flow_state "$dir_rq12" "array-sid" '[]'
+write_owner_flow_state "$dir_rq12" "missing-sid" '{"active":true}'
+write_owner_flow_state "$dir_rq12" "badts-sid" '{"active":true,"updated_at":"not-iso"}'
+rc_rq12=0
+RITE_STATE_ROOT="$dir_rq12" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq12-out" 2>"$TEST_DIR/rq12-err" || rc_rq12=$?
+fs_broken="$dir_rq12/.rite/sessions/broken-sid.flow-state"
+fs_array="$dir_rq12/.rite/sessions/array-sid.flow-state"
+if [ "$rc_rq12" -eq 0 ] \
+  && [ -f "$dir_rq12/.rite/state/run-queue-broken-sid.json" ] \
+  && [ -f "$dir_rq12/.rite/state/run-queue-broken-sid.watchdog" ] \
+  && grep 'WARNING' "$TEST_DIR/rq12-err" | grep -F "$fs_broken" | grep -q 'keep queue' \
+  && [ -f "$dir_rq12/.rite/state/run-queue-array-sid.json" ] \
+  && grep 'WARNING' "$TEST_DIR/rq12-err" | grep -F "$fs_array" | grep -q 'keep queue' \
+  && [ ! -f "$dir_rq12/.rite/state/run-queue-missing-sid.json" ] \
+  && [ ! -f "$dir_rq12/.rite/state/run-queue-missing-sid.watchdog" ] \
+  && [ "$(grep -c 'missing-sid.flow-state' "$TEST_DIR/rq12-err")" -eq 1 ] \
+  && [ ! -f "$dir_rq12/.rite/state/run-queue-badts-sid.json" ] \
+  && [ "$(grep -c 'badts-sid.flow-state' "$TEST_DIR/rq12-err")" -eq 1 ] \
+  && [ ! -s "$TEST_DIR/rq12-out" ]; then
+  pass "RQ-12: broken / non-object flow-state keeps queue with path WARNING; missing / unparsable updated_at reaps with one reason line each"
+else
+  fail "RQ-12: rc=$rc_rq12 err=$(cat "$TEST_DIR/rq12-err") stdout=$(cat "$TEST_DIR/rq12-out")"
 fi
 echo ""
 
