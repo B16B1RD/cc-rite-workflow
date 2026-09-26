@@ -537,9 +537,10 @@ okf_version: "0.2"
 | [「最新」を選ぶ列挙は照合順を LC_ALL=C に固定する](pages/patterns/latest-selection-pins-byte-collation.md) | patterns | glob 展開と [[ < ]] は呼び出し元のロケールの照合順に従い、en_US.UTF-8 では記号を第 1 段階で無視するため、同じ秒に保存した名前の並びが C と逆になる。最新を選ぶ列挙は関数内で照合順を固定し、同じ記録を選ぶ他の処理とそろえる。 | 2026-09-25T09:56:20Z | medium |
 | [差分の帰属を「どの diff に行が現れるか」で決めると、PR 自身の変更を base 由来と誤分類する](pages/anti-patterns/position-based-diff-attribution-misclassifies-own-changes.md) | anti-patterns | レビュー指摘の帰属（PR の変更か base 由来か）を行の位置、つまり 3 点 diff に現れるかどうかで決める規則は、context 行を含む読みと、PR 自身が前サイクルで足した行を後の修正で消すケースの両方で誤分類する。帰属は行の位置ではなく原因（どの commit が変えたか、revert で直るか）に置く。 | 2026-09-26T03:45:00Z | medium |
 | [ゲートを有効化する変更は、同じ条件で動く全 hook を通した経路で既存手順を検証する](pages/heuristics/enabling-a-gate-verify-every-hook-sharing-its-condition.md) | heuristics | 状態値を書き足してあるゲートを有効化すると、同じ状態値を条件にする別の hook も同時に有効化され、既存手順が初めてその hook の拒否経路に入ることがある。helper を直接呼ぶテストは hook を経由しないため、この退行を検出できない。 | 2026-09-26T04:29:37Z | medium |
+| [0x80-0x9F をバイト単位で潰す制御文字の中和は、UTF-8 の日本語を壊して診断を読めなくする](pages/anti-patterns/bytewise-c1-neutralization-breaks-utf8-diagnostics.md) | anti-patterns | C1 制御文字の範囲 0x80-0x9F は UTF-8 の継続バイトと重なるため、バイト単位で ? にすると日本語ロケールの git やシェルの原因行が文字化けする。整形式 UTF-8 列の継続バイトだけを残し、それ以外を潰す判定にすれば、制御文字の中和を保ったまま本文を読める。 | 2026-09-26T04:45:00Z | high |
 ## 統計
 
-- 総ページ数: 527
-- ドメイン別: patterns=124, heuristics=235, anti-patterns=168
-- 最終更新: 2026-09-26T04:29:37Z
+- 総ページ数: 528
+- ドメイン別: patterns=124, heuristics=235, anti-patterns=169
+- 最終更新: 2026-09-26T04:45:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
