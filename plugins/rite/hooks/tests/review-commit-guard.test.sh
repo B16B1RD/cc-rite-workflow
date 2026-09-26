@@ -670,6 +670,12 @@ for closed_targets in (False, True):
         run(['git', 'switch', '-q', '-c', 'desc'])
         (root / 'protected/secret.py').write_text('desc\n')
         run(['git', 'commit', '-q', '-am', 'desc'])
+        # A base that adds symlinks: one into the Non-Target, one into ordinary content.
+        run(['git', 'switch', '-q', '-c', 'linked', 'trunk'])
+        (root / 'link').symlink_to('protected')
+        (root / 'srclink').symlink_to('src')
+        run(['git', 'add', 'link', 'srclink'])
+        run(['git', 'commit', '-q', '-m', 'links'])
         run(['git', 'switch', '-q', 'feat'])
         body = '## Acceptance Criteria\n- [ ] AC-1 pass\n\n### 4.2 Non-Target Files\n\n- `protected/secret.py`: keep\n'
         issue_file = private / 'issue.json'
@@ -723,16 +729,22 @@ for closed_targets in (False, True):
         # git reads these options last-one-wins, so a later option overrides an exemption.
         for command in ('git merge --no-commit --commit main', 'git merge --ff-only --no-ff main',
                         'git merge --squash --no-squash main', 'git merge --message --no-commit main',
-                        'git merge -nm --no-commit main'):
+                        'git merge -nm --no-commit main',
+                        # -S takes only the rest of its own word, so the next option is still read.
+                        'git merge --no-commit -SABCDEF --commit main', 'git merge --no-commit -S --commit main'):
             hook(command, reason='cannot be verified during review')
         for command in ('sudo git merge main', 'env -u GIT_DIR git merge --continue', 'timeout 60 git merge main'):
             hook(command, reason='run merge as a direct command')
         # A substitution or a ( ) group runs its command in a subshell, quoted or not.
         hook('out="$(git merge origin/trunk 2>&1)"', reason='run merge as a direct command')
         hook('echo "`git merge main`"', reason='run merge as a direct command')
+        hook('echo `git merge main`', reason='run merge as a direct command')
         hook('v=`git merge main`', reason='run merge as a direct command')
         hook('x="$(git commit -m y)"', reason='run commit as a direct command')
         hook('x="$(echo "(a (b) c)"; git -C .. merge main)"', reason='run merge as a direct command')
+        # The substitution ends at its own ')', past quoted and nested parentheses.
+        hook('x="$(echo ")"; git merge main)"', reason='run merge as a direct command')
+        hook('x="$(echo $(date); git merge main)"', reason='run merge as a direct command')
         hook('(git merge main)', reason='run merge as a direct command')
         hook('x=$(git commit -m y)', reason='run commit as a direct command')
         # Only the subcommand position counts, as for a direct git.
@@ -761,7 +773,9 @@ for closed_targets in (False, True):
                         'x="$(cat <<EOF.\nhi\nEOF.\ngit merge main\nEOF\n)"',
                         'x="$(true\ncat <<<EOF\ngit merge main\nEOF\n)"',
                         'git commit -m "$(cat <<EOF\nfix: refuse `git merge origin/main`\nEOF\n)"',
-                        'git commit -m "$(cat <<EOF\nfix: a\n$(git merge origin/main)\nEOF\n)"'):
+                        'git commit -m "$(cat <<EOF\nfix: a\n$(git merge origin/main)\nEOF\n)"',
+                        # Only cat makes a heredoc body data, whatever the delimiter quoting.
+                        'x="$(sh <<EOF\ngit merge main\nEOF\n)"', 'x="$(sh <<\'EOF\'\ngit merge main\nEOF\n)"'):
             hook(command, reason='run merge as a direct command')
         for command in ('x="$(cat <<<EOF\n)"\ngit merge main\nEOF\n# )"', 'x="$(echo # <<EOF\n)"\ngit merge main\nEOF\n# )"'):
             hook(command, reason='cannot be verified during review')
@@ -772,7 +786,8 @@ for closed_targets in (False, True):
             abbreviated = hook(command, reason='abbreviated git merge option')
             check(command.split()[3 if '--commi ' in command else 2] in abbreviated.stdout,
                   'the refusal names the abbreviated option: ' + abbreviated.stdout)
-        for command in (intake + ' main', 'git merge --squash main', 'git merge --abort',
+        for command in (intake + ' main', 'git merge -SABCDEF --no-commit --no-ff main',
+                        'git merge -S --no-commit main', 'git merge --squash main', 'git merge --abort',
                         'git merge --quit', 'git merge --ff-only main', 'git merge --commit --no-commit main',
                         'git log --merges', 'cd "$HOME" && git merge-base HEAD main',
                         'NOTE="?? (merge check failed)"; git status', 'NOTE="x; git merge main"; git status',
@@ -787,7 +802,8 @@ for closed_targets in (False, True):
             return verb + ' "$(cat <<\'EOF\'\n' + text + '\n\nCo-Authored-By: x <y@z>\nEOF\n)"'
         bodies = ("fix: it's done", 'fix: tidy\n\ncd ..', 'fix: explain\n\nrun git merge origin/main first',
                   'fix: explain\n\nthen git commit -m again', 'fix: handle (edge) case)',
-                  'fix: quote "x" and `y`', 'fix: tabs\n<<EOF inside')
+                  'fix: quote "x" and `y`', 'fix: tabs\n<<EOF inside', "fix: don't drop `x`",
+                  'fix: explain\n\nnever run $(git merge x) here')
         # Delimiter spellings bash accepts for the same message form.
         for command in ('git commit -m "$(cat <<\\EOF\nit\'s\nEOF\n)"',
                         'git commit -m "$(cat <<\'COMMIT-MSG\'\nit\'s\nCOMMIT-MSG\n)"',
@@ -820,6 +836,12 @@ for closed_targets in (False, True):
         targets = run(['bash', str(helper), 'commit-target', '--command', 'sudo git merge --abort; echo commit',
                        '--cwd', str(root)])
         check(targets.stdout.strip() == '', 'commit-target ignores a wrapped merge')
+        # A commit inside a substitution is refused there too, before any target is reported.
+        nested = run(['bash', str(helper), 'commit-target', '--command', 'x="$(git commit -m y)"',
+                      '--cwd', str(root)], ok=False)
+        check(nested.returncode != 0 and nested.stdout.strip() == ''
+              and 'run commit as a direct command' in nested.stderr, 'commit-target refuses a nested commit: '
+              + nested.stdout + nested.stderr)
         plain = hook(intake + ' main && git commit -m intake', reason='fix plan record missing')
         check('this concludes a merge' not in plain.stdout, 'no merge in progress, no intake hint: ' + plain.stdout)
         # A merge outside the reviewed worktree is not this review's business.
@@ -888,6 +910,19 @@ for closed_targets in (False, True):
         run(['git', 'add', '-A'])
         rejected(plan_for([group(['protected/secret.py'])]), 'is not origin/trunk or its ancestor')
         run(['git', 'merge', '--abort'])
+        # A symlink the base changed keeps the Non-Target check for what it points at.
+        base_tip = run(['git', 'rev-parse', 'origin/trunk']).stdout.strip()
+        run(['git', 'update-ref', 'refs/remotes/origin/trunk', 'linked'])
+        run(['git', 'merge', '--no-commit', '--no-ff', 'origin/trunk'], ok=False)
+        (root / 'src/a.py').write_text('resolved\n')
+        run(['git', 'add', '-A'])
+        base_files = ['protected/secret.py', 'src/a.py', 'src/base-only.py']
+        rejected(plan_for([group(base_files + ['link', 'srclink'])]), 'Non-Target violation: link')
+        run(['bash', str(helper), 'check', '--plan', str(plan_for([group(base_files + ['srclink'])])),
+             '--issue', str(issue_file)])
+        (Path(tmp) / '.rite/state' / ('fix-plan-' + session + '.json')).unlink()
+        run(['git', 'merge', '--abort'])
+        run(['git', 'update-ref', 'refs/remotes/origin/trunk', base_tip])
         merge = run(['git', 'merge', '--no-commit', '--no-ff', 'origin/trunk'], ok=False)
         check(merge.returncode != 0 and (root / '.git/MERGE_HEAD').exists(), 'base intake stops on the conflict')
         (root / 'src/a.py').write_text('resolved\n')
@@ -940,8 +975,7 @@ for closed_targets in (False, True):
         hook('git merge --continue', allowed=True)
         hook('git -C src commit --no-edit', allowed=True)
         hook('git commit --no-edit', allowed=True, cwd=root / 'src')
-        for text in ("fix: it's done", 'fix: tidy\n\ncd ..', 'fix: explain\n\nrun git merge origin/main first',
-                     'fix: tabs\n<<EOF inside'):
+        for text in bodies:
             hook(heredoc(text), allowed=True)
         run(['git', 'commit', '--no-edit'])
         check(run(['git', 'rev-parse', 'HEAD^1']).stdout.strip() == reviewed_head, 'intake is a merge onto the reviewed HEAD')
