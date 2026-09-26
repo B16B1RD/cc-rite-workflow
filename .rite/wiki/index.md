@@ -294,7 +294,7 @@ okf_version: "0.2"
 | [同定に使う needle は位置まで固定し、人間が複製できる文字列を使わない](pages/anti-patterns/identity-needle-position-and-machine-only-sentinel.md) | anti-patterns | 「この文書は自分が生成したものか」を本文の文字列で判定する場面（update-in-place する PR コメント、生成物の再認識など）では、**needle の一致方法**が破壊的操作の安全性を直接決める。 | 2026-09-26T13:04:23Z | high |
 | [assert_not_grep は「対象が fixture に存在する」ことを前提にしないと恒真になる — positive control を対で置く](pages/anti-patterns/assert-not-grep-vacuous-without-fixture-scope.md) | anti-patterns | `assert_not_grep \\"$LOG\\" 'pattern'` 型の否定 assertion は、**その run の入力に対象が含まれていなければ、実装が何をしても pass する**。 | 2026-09-25T03:58:00Z | high |
 | [commit 前にリポジトリ自身の checker を全変更ファイルへ回す — 機械検出できる違反を reviewer に探させない](pages/heuristics/run-repo-own-checkers-before-commit.md) | heuristics | リポジトリが規約 checker（ハードコード行番号検出、コメント品質検出、スキーマ drift 検出など）を持っているなら、**commit 前に変更ファイル全件へ回す**。 | 2026-08-06T22:40:00+09:00 | medium |
-| [SoT から事実を 1 つ引くとき、その事実に付いた強度 qualifier ごと持ってこないと別種の不正確さを新設する](pages/anti-patterns/sot-quote-drops-strength-qualifier.md) | anti-patterns | SoT が複数の要素を列挙し、要素ごとに「無条件」「best-effort」「実行モード依存」のような**強度分類**を持っているとき、consumer 側の文書がそこから事実だけを抜き出すと強度が脱落する。 | 2026-07-29T02:10:00+09:00 | high |
+| [SoT から事実を 1 つ引くとき、その事実に付いた強度 qualifier ごと持ってこないと別種の不正確さを新設する](pages/anti-patterns/sot-quote-drops-strength-qualifier.md) | anti-patterns | SoT が複数の要素を列挙し、要素ごとに「無条件」「best-effort」「実行モード依存」のような**強度分類**を持っているとき、consumer 側の文書がそこから事実だけを抜き出すと強度が脱落する。 | 2026-09-26T15:10:00Z | high |
 | [「SoT が N 個と書いている」だけでは load-bearing 性は決まらない — 依存側が名指ししている要素を読む](pages/heuristics/load-bearing-by-named-dependency-not-count.md) | heuristics | consumer 側の文書が SoT の N 要素のうち M 個（M < N）しか列挙していないとき、「SoT は N と書いているから欠落は欠陥だ」という推論は一段飛ばしになっている。 | 2026-07-29T02:10:00+09:00 | medium |
 | [終端状態は「到達した事実」で記録し、可変値との境界比較で代用しない](pages/heuristics/terminal-state-recorded-not-boundary-compared.md) | heuristics | サーキットブレーカーの「発火後か」を `cycle_count >= max_review_cycles` で判定していたが、この等式は**最終 cycle を実行している間ずっと成立する通常状態**でもあった。 | 2026-07-29T21:32:36+09:00 | high |
 | [失敗状態のクリアは失敗の記録より後に置く](pages/patterns/clear-failure-state-after-recording-it.md) | patterns | サーキットブレーカー発火時に cycle counter を 0 へリセットする設計（「再実行でループを再開できる」ため）を入れたが、そのリセットは発火を記録する唯一の手段である sentinel emit より**手前**にあった。 | 2026-09-16T10:24:00Z | high |
@@ -566,5 +566,5 @@ okf_version: "0.2"
 
 - 総ページ数: 552
 - ドメイン別: patterns=125, heuristics=253, anti-patterns=174
-- 最終更新: 2026-09-26T14:57:57Z
+- 最終更新: 2026-09-26T15:10:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
