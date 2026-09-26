@@ -338,7 +338,7 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 <a id="pr_recommendations-配列"></a>
 
-要素は `{id, reviewer, file, line, description}`。`id` は `R-NN`（`R-01` から登録順）、`reviewer` は推奨事項を出した reviewer_type、`file` / `line` は PR の追加行（base...HEAD の + hunk）上の位置、`description` は推奨事項の本文。登録条件は `overall_assessment == "mergeable"`、分類 `actionable`、位置が追加行と重なること、同じ review run で未登録であること（同じ `review_context` の再実行は除く）。書き込むのは保存前の作業コピーだけで、保存済みファイルは書き換えない。
+要素は `{id, reviewer, file, line, description}`。`id` は `R-NN`（`R-01` から登録順）、`reviewer` は推奨事項を出した reviewer_type、`file` / `line` は PR の追加行（base...HEAD の + hunk）上の位置、`description` は推奨事項の本文。登録条件は `overall_assessment == "mergeable"`、`review_context.cycle_count` が `safety.max_review_cycles` 未満（修正後の再レビューを開始できる）、分類 `actionable`、位置が追加行と重なること、同じ review run で未登録であること（同じ `review_context` の再実行は除く。保存済み結果がまだ無いことは未登録と同じ）。書き込むのは保存前の作業コピーだけで、保存済みファイルは書き換えない。
 
 finding ではないので `findings[]` / `non_blocking_findings[]` の契約と件数には入らない。fix の scope gate は各 ID に処置を 1 つ要求し（blocking と同じ）、`/rite:iterate` は未着手の登録があれば 5.S の後に `/rite:fix` を invoke する。同じレビュー済み commit を二度渡さない記録は `.rite/state/pr-recommendations-done-{pr_number}.txt`（1 行目は basename と commit_sha）。キー欠落は「登録なし」と同じ。
 

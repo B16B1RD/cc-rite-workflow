@@ -2598,7 +2598,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase "fix" \
   --active true \
-  --next "rite:fix completed. [fix:non-fatal-only]->caller の iterate ステップ 5.S NB digest sweep、成功後にステップ 5 完了通知. Do NOT re-enter /rite:pr-review." \
+  --next "rite:fix completed. [fix:non-fatal-only]->caller の iterate ステップ 5.S NB digest sweep → PR 内推奨の修正 → 完了前確認 → ステップ 5 完了通知. Do NOT re-enter /rite:pr-review otherwise." \
   --handoff "FINALIZE:fix:non-fatal-only:{pr_number}" \
   --if-exists
 
@@ -2614,7 +2614,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase "fix" \
   --active true \
-  --next "rite:fix completed. Check recent result pattern in context: [fix:sweep-done]->caller の iterate ステップ 5 完了通知. Do NOT re-enter /rite:pr-review." \
+  --next "rite:fix completed. Check recent result pattern in context: [fix:sweep-done]->caller の iterate 5.S 後の PR 内推奨の修正（未着手の推奨があれば /rite:fix の後にステップ 1）→ 完了前確認 → ステップ 5 完了通知. Do NOT re-enter /rite:pr-review otherwise." \
   --handoff "FINALIZE:fix:sweep-done:{pr_number}" \
   --if-exists
 

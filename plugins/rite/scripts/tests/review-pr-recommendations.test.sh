@@ -103,6 +103,30 @@ review "$WORK/r3.json" mergeable run2 1 c1
 register "$WORK/r3.json"
 check "another run registers again" '[ $RC -eq 0 ] && [[ "$OUT" == *"=registered; count=3"* ]]'
 rm -f "$STATE/.rite/review-results/"*
+review "$STATE/.rite/review-results/7-20260101000002.json" fix-needed run1 1
+review "$WORK/r4.json" mergeable run1 2 c1
+register "$WORK/r4.json"
+check "a same-run earlier cycle without recommendations does not use up the registration" \
+  '[ $RC -eq 0 ] && [[ "$OUT" == *"=registered; count=3"* ]]'
+rm -f "$STATE/.rite/review-results/"*
+FRESH="$TEST_DIR/fresh-state"
+mkdir -p "$FRESH"
+review "$WORK/r5.json" mergeable run1 1
+run register --input "$WORK/r5.json" --items "$WORK/items.json" --base-ref base --state-root "$FRESH"
+check "a state root with no saved review yet registers (no results dir is an empty set)" \
+  '[ $RC -eq 0 ] && [[ "$OUT" == *"=registered; count=3"* ]] && [ ! -e "$FRESH/.rite/review-results" ]'
+
+echo "=== register: not at the last allowed cycle ==="
+printf 'safety:\n  max_review_cycles: 2\n' > "$REPO/rite-config.yml"
+review "$WORK/c2.json" mergeable run3 2 c1
+cp "$WORK/c2.json" "$WORK/c2.orig.json"
+register "$WORK/c2.json"
+check "a mergeable at max_review_cycles does not register (its fix could not be re-reviewed)" \
+  '[ $RC -eq 0 ] && [ "$OUT" = "[CONTEXT] PR_RECOMMENDATIONS=none; reason=cycle_cap" ] && cmp -s "$WORK/c2.json" "$WORK/c2.orig.json"'
+review "$WORK/c1.json" mergeable run3 1 c1
+register "$WORK/c1.json"
+check "a mergeable below max_review_cycles registers" '[ $RC -eq 0 ] && [[ "$OUT" == *"=registered; count=3"* ]]'
+rm -f "$REPO/rite-config.yml"
 
 echo "=== register: no registration ==="
 review "$WORK/f.json" fix-needed run1 1

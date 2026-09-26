@@ -22,15 +22,16 @@
 #   overall_assessment is mergeable, and at most once per review run: a saved
 #   result with the same review_context.run_id, a different review_context and a
 #   non-empty pr_recommendations[] means the run already had its in-PR fix, so
-#   later recommendations go to the Decision Log as before. Re-running the same
-#   cycle gives the same bytes. Nothing else in the input changes.
+#   later recommendations go to the Decision Log as before. Nor at a cycle at or
+#   past safety.max_review_cycles, whose fix could not be re-reviewed. Re-running
+#   the same cycle gives the same bytes. Nothing else in the input changes.
 #   The input must be the unsaved working copy. The saved result is what the
 #   stagnation receipt and review-finish compare against, so a path under
 #   .rite/review-results/ is refused.
 #   --items is {"recommendation_items": [{reviewer_type, content, classification, file_line}]}.
 #   Markers (stdout):
 #     [CONTEXT] PR_RECOMMENDATIONS=registered; count=N; ids=R-01,...; positions=I,...
-#     [CONTEXT] PR_RECOMMENDATIONS=none; reason=not_mergeable|cap_reached|no_candidates
+#     [CONTEXT] PR_RECOMMENDATIONS=none; reason=not_mergeable|cycle_cap|cap_reached|no_candidates
 #   positions are 0-based indexes into recommendation_items, in id order; step 7
 #   of pr-review leaves exactly those out of its triage candidates.
 #
@@ -49,8 +50,8 @@
 #
 # Errors (stderr, exit 1): [CONTEXT] PR_RECOMMENDATIONS_FAILED=1; reason=<reason>
 #   jq_missing / input_unreadable / saved_result_path / json_invalid /
-#   items_invalid / results_dir_missing / json_missing / diff_failed /
-#   write_failure
+#   items_invalid / config_unreadable / state_root_unresolved /
+#   results_dir_missing / json_missing / diff_failed / write_failure
 # Exit 2: usage.
 
 set -uo pipefail
@@ -118,19 +119,39 @@ case "$mode" in
       exit 0
     fi
 
-    resolve_results_dir
+    # A fix after the last allowed cycle could never be re-reviewed: the next
+    # review would trip max-cycles and leave the fix commit unreviewed.
+    cfg=$(bash "$HOOKS_DIR/scripts/lib/rite-config-path.sh" --or-devnull) || fail config_unreadable "rite-config.yml unreadable"
+    max_cycles=$(awk '/^safety:/{s=1;next} s&&/^[a-zA-Z]/{exit} s&&/^[[:space:]]+max_review_cycles:/{print;exit}' "$cfg" \
+      | sed 's/[[:space:]]#.*//; s/.*max_review_cycles:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
+    case "$max_cycles" in ''|0|*[!0-9]*) max_cycles=15 ;; esac
+    cycle=$(jq -r '.review_context.cycle_count // empty' "$input")
+    case "$cycle" in ''|*[!0-9]*) fail json_invalid "review_context.cycle_count missing: $input" ;; esac
+    if [ "$cycle" -ge "$max_cycles" ]; then
+      echo "[CONTEXT] PR_RECOMMENDATIONS=none; reason=cycle_cap"
+      exit 0
+    fi
+
+    if [ -z "$state_root" ]; then
+      state_root=$(bash "$HOOKS_DIR/state-path-resolve.sh") || fail state_root_unresolved "state root unresolved"
+    fi
+    results_dir="$state_root/.rite/review-results"
     context=$(jq -c '.review_context' "$input")
     run_id=$(jq -r '.review_context.run_id // empty' "$input")
     [ -n "$run_id" ] || fail json_invalid "review_context.run_id missing: $input"
-    while IFS= read -r saved; do
-      [ -n "$saved" ] || continue
-      if jq -e --arg run "$run_id" --argjson ctx "$context" \
-          '.review_context.run_id == $run and .review_context != $ctx and ((.pr_recommendations // []) | length > 0)' \
-          "$saved" >/dev/null 2>&1; then
-        echo "[CONTEXT] PR_RECOMMENDATIONS=none; reason=cap_reached"
-        exit 0
-      fi
-    done < <(find "$results_dir" -maxdepth 1 -type f -name "$(jq -r '.pr_number' "$input")-*.json")
+    # No saved result yet (the directory is created by the first save) is an
+    # empty set: the run has not used its registration.
+    if [ -d "$results_dir" ]; then
+      while IFS= read -r saved; do
+        [ -n "$saved" ] || continue
+        if jq -e --arg run "$run_id" --argjson ctx "$context" \
+            '.review_context.run_id == $run and .review_context != $ctx and ((.pr_recommendations // []) | length > 0)' \
+            "$saved" >/dev/null 2>&1; then
+          echo "[CONTEXT] PR_RECOMMENDATIONS=none; reason=cap_reached"
+          exit 0
+        fi
+      done < <(find "$results_dir" -maxdepth 1 -type f -name "$(jq -r '.pr_number' "$input")-*.json")
+    fi
 
     diff_out=$(git diff -U0 "${base_ref}...HEAD") || fail diff_failed "git diff ${base_ref}...HEAD failed"
     # shellcheck source=../hooks/scripts/lib/diff-hunks.sh

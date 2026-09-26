@@ -321,7 +321,7 @@ PR の追加行を指す推奨事項を `pr_recommendations[]`（`R-NN`）とし
 `non_blocking_findings[]` に入れないのは、そこが「降格された finding」の出口（非実測記録・NB sweep・
 follow-up 転記・完了通知の残件）だから。推奨事項を混ぜると、その出口が同じ PR で直すものまで起票・記録する。
 blocking に数えないので発散判定は空転を止めない。止めるのは「1 つの review run につき登録は 1 回」の
-上限で、以後の推奨事項はステップ 7 の Decision Log へ流れる。上限の判定から入力と同じ review_context の
+上限で、以後の推奨事項はステップ 7 の Decision Log へ流れる。`safety.max_review_cycles` に達した cycle でも登録しない。その修正は次のレビューが max-cycles で止まるため、未レビューの HEAD を残すことになる。上限の判定から入力と同じ review_context の
 保存済み JSON を除くのは、同じ cycle の再実行で結果が変わると review-finish の一致検査で止まるため。
 
 5.S の後に置くのは、修正後の差分再レビューが前の JSON の non-blocking を引き継がないため。先に sweep

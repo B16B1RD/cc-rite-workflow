@@ -529,6 +529,15 @@ for notice_kind in missing-field complete; do
   assert "non-fatal-only $notice_kind second stop allows" "" "$out"
 done
 
+# sweep-done precedes the in-PR recommendation fix: the bounce must not send the run straight to the notice.
+d_sd=$(new_sandbox)
+RITE_STATE_ROOT="$d_sd" bash "$FS" set --phase fix --issue 2583 --branch b --pr 99 \
+  --next n --handoff "FINALIZE:fix:sweep-done:99" --session "$SID" >/dev/null
+out=$(final_payload "$d_sd" "sweep 完了" | bash "$HOOK")
+assert "sweep-done without notice bounces" block "$(jq -r '.decision' <<< "$out")"
+reason_sd=$(jq -r '.reason' <<< "$out")
+assert "sweep-done routes pending recommendations to fix before the notice" yes "$([[ "$reason_sd" == *'PR 内推奨の修正（未着手の推奨があれば /rite:fix の後にステップ 1 の再レビュー）'* ]] && echo yes || echo no)"
+
 # --- TC-19: FINALIZE:review:mergeable + payload に最終テキストが無い → 明示理由で差し戻し ---
 echo ""
 echo "=== TC-19: FINALIZE:review:mergeable without last_assistant_message → explicit bounce ==="

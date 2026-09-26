@@ -369,7 +369,7 @@ bash {plugin_root}/scripts/iterate-step.sh nb-sweep-record --pr {pr_number}
 
 その後、PR 内推奨の修正へ。
 
-MUST NOT: 同一 review JSON で 5.S を 2 回走らせる。sweep でコードを修正・commit・push する。ステップ 1 に戻らない。
+MUST NOT: 同一 review JSON で 5.S を 2 回走らせる。sweep でコードを修正・commit・push する。sweep の戻りでステップ 1 に戻る。
 
 ### 5.S 後の PR 内推奨の修正
 
