@@ -1,9 +1,15 @@
 #!/bin/bash
-# Reap other-session run-queue files that can no longer be resumed.
+# Reap other-session run-queue files whose owner session has gone away.
 #
-# Resume is same-session only. A queue whose updated_at is older than the
-# existing 2h liveness window (or missing / unparsable) cannot be continued,
-# including when active=true. Own-session files are never touched.
+# Resume is same-session only. A queue is reaped when its updated_at is older
+# than 2h (or missing / unparsable) and its owner session is not live. The
+# queue's updated_at moves only at batch start and cursor advance, so a live
+# session routinely exceeds 2h on one Issue. Liveness is the owner's
+# flow-state updated_at, which moves on every phase transition, within the
+# same 2h window. An owner flow-state that is not a readable JSON object keeps
+# the queue with a WARNING. One without a parsable updated_at cannot prove
+# liveness, so the queue's own staleness decides and the reason is printed.
+# Own-session files are never touched.
 #
 # Stale failed[] / outstanding[] are printed to stderr one item per line
 # before deletion — the record must not vanish silently.
@@ -65,6 +71,7 @@ _emit_leftover_items() {
   done < <(jq -r "$expr" "$q")
 }
 
+STALE_SECONDS=7200
 now_epoch=$(date +%s)
 shopt -s nullglob
 for q in "$queue_dir"/run-queue-*.json; do
@@ -86,11 +93,28 @@ for q in "$queue_dir"/run-queue-*.json; do
   else
     state_epoch=$(parse_iso8601_to_epoch "$updated_at")
     diff_seconds=$((now_epoch - state_epoch))
-    if [ "$state_epoch" -eq 0 ] || [ "$diff_seconds" -gt 7200 ]; then
+    if [ "$state_epoch" -eq 0 ] || [ "$diff_seconds" -gt "$STALE_SECONDS" ]; then
       stale=1
     fi
   fi
   [ "$stale" -eq 1 ] || continue
+
+  fs="$STATE_ROOT/.rite/sessions/${sid}.flow-state"
+  if [ -f "$fs" ]; then
+    fs_disp=$(printf '%s' "$fs" | neutralize_ctrl)
+    if ! jq -e 'type == "object"' "$fs" >/dev/null 2>&1; then
+      echo "WARNING: run-queue-reap: owner flow-state unreadable, keep queue: $q_disp (flow-state: $fs_disp)" >&2
+      continue
+    fi
+    fs_updated=$(jq -r '.updated_at // empty' "$fs")
+    fs_epoch=0
+    [ -n "$fs_updated" ] && fs_epoch=$(parse_iso8601_to_epoch "$fs_updated")
+    if [ "$fs_epoch" -eq 0 ]; then
+      echo "WARNING: run-queue-reap: owner flow-state updated_at missing or unparsable, reap stale queue: $q_disp (flow-state: $fs_disp)" >&2
+    elif [ $((now_epoch - fs_epoch)) -le "$STALE_SECONDS" ]; then
+      continue
+    fi
+  fi
 
   failed_n=$(jq '(.failed // []) | length' "$q")
   outstanding_n=$(jq '(.outstanding // []) | length' "$q")
