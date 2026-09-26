@@ -11,8 +11,10 @@
 # T-04 done-file writers (iterate post-return + fix 1.3.S empty + digest)
 # T-05 cleanup rite_rm AND pr-cycle-cleanup.sh both name the file
 # T-06 fix 5.1 row 1.5/1.6; regular loop does not consult the file
-# T-07 existing nb-sweep-contract rails remain; 5.0.2 has skipped; 0.6 deletes the file only for
-#      a fresh run or a run whose counter is 0 (review-restart also deletes it)
+# T-07 existing nb-sweep-contract rails remain; 5.0.2 has skipped; step_init_cycle (0.6) has the
+#      line that removes the file (the removal on a fresh run is executed in
+#      review-trend-divergence.test.sh; the resume keep and the review-restart removal are not
+#      pinned by any test)
 # T-08 AC-6 sidecar _ensure_dir_gitignore + setup dir_entry; git check-ignore -q rc=0
 # T-09 kind is line 1 field 1; fix 5.1 never treats the file's existence alone as done
 # T-10 sweep writers keep a one-line done marker and never add a SHA or run git
@@ -167,13 +169,13 @@ assert_not_grep "T-06 classify table ignores done-file" "$FIX" \
 classify_hit=$(awk '/^### 1.3 Classify Comments/,/^### 1.3.S/' "$FIX" | grep -c 'nb-sweep-done' || true)
 assert "T-06 1.3 classify has no done-file refs" "0" "$classify_hit"
 
-# --- T-07: 既存 rails + skipped 完了通知 + 0.6 で新 run 時に削除 ---
+# --- T-07: 既存 rails + skipped 完了通知 + 0.6 の step_init_cycle に done ファイル削除行がある ---
 assert_grep "T-07 existing noop emit rail" "$ITERATE_STEP" 'marker_emit ITERATE_NB_SWEEP noop'
 assert_grep "T-07 existing contract test still pins 5.S rails" "$CONTRACT" 'T-07 iterate no second sweep'
 assert_grep_in_section "T-07 5.0.2 skipped row" "$ITERATE" \
   '### ステップ 5.0.2:' '### 正常終了 (`\[review:mergeable\]`)' \
   'ITERATE_NB_SWEEP=skipped'
-assert_grep_in_section "T-07 0.6 deletes done-file on new run" "$ITERATE_STEP" \
+assert_grep_in_section "T-07 step_init_cycle has done-file rm line" "$ITERATE_STEP" \
   '^step_init_cycle[(][)] [{]$' '^}$' \
   'rm -f "\$pin_root/\.rite/state/nb-sweep-done-\$\{pr_number\}\.txt"'
 
