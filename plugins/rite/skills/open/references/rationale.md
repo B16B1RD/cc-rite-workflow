@@ -100,8 +100,9 @@ batch 判定と同型で read-only。helper 失敗 / session_id 解決不可 / �
 
 Wiki 適用証跡のコミット前ゲート（`git-commit-file.sh` / `pre-tool-bash-guard.sh`）は phase が
 `implement` / `fix` の commit だけを検査する。`plan` のまま実装コミットするとゲートを素通りし、証跡の
-`head` が更新されないため、続くレビューが `stale_head` で拒否する。worktree の記録は 2.6 が済ませて
-おり、ステップ 4 の set は merge-preserve でそれを保つ。
+`head` が更新されないため、続くレビューが `stale_head` で拒否する。セッション worktree の記録は 2.6 が
+済ませており、ステップ 4 の set は merge-preserve でそれを保つ。worktree を記録しない単一セッションでは、
+ゲートは flow-state を持つ checkout をセッションの作業ツリーとして検査する。
 
 ## autonomous-lint
 

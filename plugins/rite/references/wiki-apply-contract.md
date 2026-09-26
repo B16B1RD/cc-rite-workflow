@@ -23,7 +23,7 @@
 
 再利用できるのは、次がすべて現在の作業と一致するときだけ。
 
-- flow-state の issue、worktree。commit では session も
+- flow-state の issue、worktree（flow-state に worktree が無いときは capture を実行した作業ツリーの物理パス）。commit では session も
 - query、executed_at（`YYYY-MM-DDTHH:MM:SSZ`）、attempts（ok と none は 1 以上、disabled と auto_query_off は 0）
 - head が `git rev-parse HEAD` と一致
 - paths の各 blob が、そのパスが stage 済みなら index、そうでなければ作業ツリーの `git hash-object` と一致
@@ -71,4 +71,4 @@ ok の各ページは、rev の blob 本文に含まれる 1 行を excerpt に�
 
 ## 境界
 
-`git-commit-file.sh` は commit の前に gate を呼ぶ。deny、または gate スクリプトが無いときは commit しない。allow で commit できたときだけ、証跡の head を新しい HEAD に更新する。`pre-tool-bash-guard.sh` は、phase が implement または fix の git commit に同じ gate を使う。literal な `git -C <path> commit` の対象は hook の cwd ではなくその path である。対象 worktree を解決できない commit は拒否する。別の worktree への commit は止めない。head を新しい HEAD へ更新するのは、セッション worktree の commit が allow になったときだけである。phase がそれ以外の commit は止めない。
+`git-commit-file.sh` は commit の前に gate を呼ぶ。deny、または gate スクリプトが無いときは commit しない。allow で commit できたときだけ、証跡の head を新しい HEAD に更新する。`pre-tool-bash-guard.sh` は、phase が implement または fix の git commit に同じ gate を使う。literal な `git -C <path> commit` の対象は hook の cwd ではなくその path である。対象 worktree を解決できない commit は拒否する。別の worktree への commit は止めない。セッション worktree は flow-state の worktree で、flow-state に worktree が無いときは flow-state を持つ checkout（`<root>/.rite/sessions/` の `<root>`）である。head を新しい HEAD へ更新するのは、セッション worktree の commit が allow になったときだけである。phase がそれ以外の commit は止めない。
