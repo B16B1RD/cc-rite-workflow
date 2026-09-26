@@ -41,13 +41,16 @@ sources:
     resource: "raw/fixes/20260924T070547Z-pr-3032.md"
   - type: "reviews"
     resource: "raw/reviews/20260924T070926Z-pr-3032.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260926T105711Z-pr-3149.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5[1m]", at: "2026-09-24T07:30:00Z" }
+generated: { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T11:20:00Z" }
 verified:
   - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-07T23:54:45Z" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-11T16:00:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T07:45:50Z" }
+  - { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T11:20:00Z" }
 ---
 
 # `set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる
@@ -181,6 +184,22 @@ extract_section "$file" ¦ awk 'done { next } /^BEGIN$/ { a=1; next } a && /^END
 
 検索対象が既に変数にある場合は、`grep -qE "$pattern" <<< "$text"` のように直接渡せる。パターンと条件分岐を維持し、書き込み側の終了コードが真偽へ混入する経路を除く。here-stringは末尾改行を加えるため、その差が意味を変えない行・部分一致の判定に適用する。小さい入力の繰り返しだけで安全とは判断せず、実測した失敗箇所と同じ入力経路を検証する。
 
+### 早期 return は引数駆動でも起きる — バッファサイズに依存しない確定的トリガー
+
+これまでの事例は、下流コマンドが**入力の内容やサイズ**（一致位置・終端行の位置）によって早期終了するかどうかが決まっていた。別の実例では、下流の helper が `--stdin` フラグで入力を受け取りつつ、**別の引数（`--label` に渡すパス文字列）が特定パターンに一致したときだけ、stdin を一切読まずに早期 return する**という契約になっていた。この場合、早期 return はバッファ境界や一致位置とは無関係に、**呼び出し引数だけで確定的に発火する**。
+
+```bash
+# ✗ label が除外パターンに一致すると helper は stdin を読まずに return し、
+#   printf の書き込みと衝突して SIGPIPE (rc=141) になる
+printf '%s\n' "$body" | bash helper.sh --stdin --label "$excluded_path" --quiet
+
+# ✓ ヒアストリングなら reader が起動する前に入力が用意されるため、
+#   reader が読まなくても書き手が SIGPIPE を受ける余地がない
+bash helper.sh --stdin --label "$excluded_path" --quiet <<< "$body"
+```
+
+この変種は「200 回に 1 回」のような確率的な flakiness ではなく、**同じ引数の組み合わせなら並列負荷下で毎回発火しうる**（単独実行では基盤プロセスの起動順序が安定しているため再現しにくい）。対処は同じ — reader が入力を読むとは限らない契約のときは、パイプではなくヒアストリング / 一時ファイルで渡す。
+
 ### 検出器の出力から置換対象を選ぶと、前置きと例外の形が漏れる
 
 同型の直接パイプを一覧化して機械置換するとき、一覧を検出器（lint）の出力の文字列から作ると、出力の表層に依存した取りこぼしが起きる。producer 文字列を「`echo` / `printf` で始まる」で絞ったため、`if echo ...` / `! echo ...` のように前置語が付く行が丸ごと漏れた。さらに、検出器が例外として扱う形（`printf '%s' "$var"`）は、そもそも一覧に上がってこない。
@@ -220,3 +239,4 @@ extract_section "$file" ¦ awk 'done { next } /^BEGIN$/ { a=1; next } a && /^END
 - [検出器の例外に隠れた残件（cycle 2）](../../raw/reviews/20260924T070032Z-pr-3032.md)
 - [見直しで PR 内に取り込んだ修正](../../raw/fixes/20260924T070547Z-pr-3032.md)
 - [受入条件どおりの残件検索（cycle 3）](../../raw/reviews/20260924T070926Z-pr-3032.md)
+- [引数駆動の早期 return によるヒアストリング化のレビュー結果](../../raw/reviews/20260926T105711Z-pr-3149.md)

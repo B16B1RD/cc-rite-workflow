@@ -368,7 +368,7 @@ okf_version: "0.2"
 | [fail-closed ガードは「異常を検出したら止める」ではなく「正常を確認できなければ止める」で書く](pages/patterns/fail-closed-confirms-normal-not-detects-abnormal.md) | patterns | cross-Issue の値転写を遮断する fail-closed ガードが、「identity が**食い違う**」ときにしか発火しない実装になっていた。 | 2026-08-03T07:46:56Z | high |
 | [特定の 1 バイト・1 条件で書いた防御は、defect class 全体を覆うか修正直後に自問する](pages/heuristics/single-condition-defense-vs-defect-class.md) | heuristics | レビュー指摘は具体的な 1 ケースで届く。 | 2026-08-03T07:46:56Z | high |
 | [bash の算術比較は非数値入力で rc=2 を返し、fail-closed の意図が else 側へ倒れる](pages/anti-patterns/bash-numeric-test-fail-open-on-nonnumeric.md) | anti-patterns | `[ "$x" -eq 0 ]` は `$x` が非数値のとき「偽」ではなく **rc=2（エラー）** を返す。 | 2026-08-03T07:46:56Z | high |
-| [`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) | anti-patterns | `grep -q` は最初の一致で即座に終了する。 | 2026-09-24T07:30:00Z | high |
+| [`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) | anti-patterns | `grep -q` は最初の一致で即座に終了する。 | 2026-09-26T11:20:00Z | high |
 | [mutation は適用前に一致件数を、適用後に構文を検証してから結論に使う](pages/heuristics/mutation-validate-before-and-after-application.md) | heuristics | mutation テストの結論（「このアサーションは守れている / 守れていない」）は、mutation 自体が正しく適用されて初めて意味を持つ。 | 2026-09-12T12:57:28Z | high |
 | [自身の検出を避けるために崩した書式は、読者に「こう書け」と読まれる](pages/anti-patterns/self-detection-evasion-format-read-as-prescription.md) | anti-patterns | 検出ゲートの仕様を記述する文書は、その仕様が検出する文字列を本文に書いた瞬間に自分自身が検出対象になる。 | 2026-08-03T23:41:26+09:00 | medium |
 | [テストの gate 条件がプラットフォーム事実を環境 capability の代理にすると恒常 red 化する](pages/anti-patterns/test-gate-proxy-indicator-drift.md) | anti-patterns | テストの floor（skip を禁じて fail させるガード）が、守りたい性質そのものではなく「プラットフォーム事実」を代理指標にしていると、代理の成立しない環境で恒常的に赤くなりスイート全体の signal を劣化させる。 | 2026-08-04T00:55:00+09:00 | medium |
@@ -555,9 +555,11 @@ okf_version: "0.2"
 | [文言直後を前方一致で固定する pin は、接頭辞が短いほど後続の付け足しで意味を反転させる変異を通す](pages/anti-patterns/short-prefix-pin-vulnerable-to-suffix-append.md) | anti-patterns | 固定した接頭辞が短い箇所（閉じ括弧 1 文字など）ほど、その後ろへの付け足しで意味を反転させる変異を通す。行末まで続く箇所は完全一致（行末まで）で固定し、後続文がある箇所だけ前方一致にする。 | 2026-09-26T10:20:00+09:00 | high |
 | [base 取り込み後の再レビューは、同じ差分の再確認ではなく取り込み側との契約整合の確認として指示する](pages/heuristics/rereview-after-base-intake-checks-contract-consistency.md) | heuristics | 前回レビュー以降の差分が base の取り込みだけのとき、差分スコープは空になりフルレビューへ倒れる。そのまま同じ指示を渡すと再レビューは同じ差分の再確認に終わる。取り込みで変わった base 側ファイルと PR が触れた契約の矛盾を探すよう指示すると、再レビューが取り込み後の整合確認になる。 | 2026-09-26T10:50:02Z | medium |
 | [consumer に新しい判定入力を要求したら、表示用の表から組み立て直さず producer が保存した正本を渡す](pages/heuristics/consumer-new-input-from-producer-canonical-artifact.md) | heuristics | consumer 側に新しい判定入力を要求すると、表示用に最小化された表から入力を組み立て直す経路ではその値が必ず失われる。既定値で補うと判定が黙って変わるため、producer が保存した正本をそのまま consumer へ渡す形で直す。 | 2026-09-26T10:50:02Z | medium |
+| [既存 helper を別工程から再利用するとき marker 行だけの grep で呼ぶと helper 障害を「該当なし」と誤認する](pages/anti-patterns/helper-reuse-marker-only-grep-loses-error-signal.md) | anti-patterns | 既存 helper を別の呼び出し工程から再利用する際、`\|\| true` と marker 行だけの grep で結果を判定すると、helper 自体の不在・異常終了と正規の「該当なし」を区別できなくなる。再利用側は元の呼び出し側と同じ「marker なしの非ゼロ終了は停止」という規約を引き継ぐ必要がある。 | 2026-09-26T11:20:00Z | medium |
+| [手書きシェル解析器では複合構造を特別扱いせず通常コマンドとして返す](pages/heuristics/handwritten-shell-parser-treat-compound-structures-as-ordinary-commands.md) | heuristics | 手書きのシェルコマンド境界解析器で `( )` グループ・関数定義・case パターンなどの複合構造を「外側リストの特殊セグメント」として個別に扱うと、その特殊扱いが前後の語・演算子の通常処理と食い違い、境界追跡から漏れる。複合構造も前後の語・演算子を含めた通常の 1 コマンドとして返す方が、特別扱いの分岐を減らして食い違いの発生源を消せる。 | 2026-09-26T11:20:00Z | medium |
 ## 統計
 
-- 総ページ数: 545
-- ドメイン別: patterns=124, heuristics=248, anti-patterns=173
-- 最終更新: 2026-09-26T10:50:02Z
+- 総ページ数: 547
+- ドメイン別: patterns=124, heuristics=249, anti-patterns=174
+- 最終更新: 2026-09-26T11:20:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |

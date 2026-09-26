@@ -77,6 +77,9 @@
 * **Update**: [best-effort な静的 matcher hardening は allowlist を COMMON-SET（非網羅）と宣言して review の whack-a-mole を止める](pages/heuristics/best-effort-matcher-declare-common-set-to-stop-whackamole.md) — raw/reviews/20260926T104224Z-pr-3147.md を統合
 * **Create**: [consumer に新しい判定入力を要求したら、表示用の表から組み立て直さず producer が保存した正本を渡す](pages/heuristics/consumer-new-input-from-producer-canonical-artifact.md) — raw/fixes/20260926T104508Z-pr-3148.md を新規ページ化
 * **lint:clean** — contradictions=0 (更新・新規ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=547, broken_refs=0
+* **Update**: [`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) — raw/reviews/20260926T105711Z-pr-3149.md を統合
+* **Create**: [既存 helper を別工程から再利用するとき marker 行だけの grep で呼ぶと helper 障害を「該当なし」と誤認する](pages/anti-patterns/helper-reuse-marker-only-grep-loses-error-signal.md) — raw/reviews/20260926T110024Z-pr-3148.md を新規ページ化
+* **Create**: [手書きシェル解析器では複合構造を特別扱いせず通常コマンドとして返す](pages/heuristics/handwritten-shell-parser-treat-compound-structures-as-ordinary-commands.md) — raw/reviews/20260926T110551Z-pr-3147.md, raw/fixes/20260926T105012Z-pr-3147.md を新規ページ化
 
 ## 2026-09-25
 
