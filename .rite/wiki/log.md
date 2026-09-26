@@ -2,6 +2,7 @@
 
 ## 2026-09-26
 
+* **lint:clean** — contradictions=0 (更新・新規ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=539, broken_refs=0
 * **Update**: [判定手段を差し替えるときは、旧手段が暗黙に提供していた失敗条件を列挙してから移す](pages/heuristics/replacing-a-judgment-mechanism-drops-its-implicit-failure-conditions.md) — raw/reviews/20260926T052722Z-pr-3060.md / raw/fixes/20260926T053540Z-pr-3060.md / raw/fixes/20260926T051339Z-pr-3060.md で拒否理由のクラス判定と仕様書同期の観点を補強
 * **Create**: [実行先を静的に決められない入力は、HEAD を動かす操作に限って拒否側へ倒す](pages/heuristics/undecidable-target-fail-closed-head-moving-ops.md) — raw/fixes/20260926T051339Z-pr-3060.md を新規ページ化
 * **Create**: [検証コマンドの環境指定に PATH を入れると hook 実行環境との差で stale 判定になる](pages/heuristics/verification-command-path-env-causes-stale-drift.md) — raw/fixes/20260926T051339Z-pr-3060.md を新規ページ化
