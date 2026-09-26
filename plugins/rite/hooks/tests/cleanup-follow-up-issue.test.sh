@@ -1662,8 +1662,12 @@ if ! grep -q 'rite-fu-reverify-union' "$TMP_ROOT/reverify-t57.sh"; then
 else
   bash "$TMP_ROOT/reverify-t57.sh" > "$OUT" 2> "$ERR"; RC=$?
   assert "T-57 exit 0" "0" "$RC"
-  assert_grep "T-57 sources_lib_unavailable marker" "$OUT" 'FOLLOW_UP_REVERIFY=unavailable; reason=sources_lib_unavailable'
-  assert_not_grep "T-57 no_json にしない" "$OUT" 'reason=no_json'
+  # 部分一致だけだと、elif 連鎖が崩れて sources_lib_unavailable の後に別の
+  # FOLLOW_UP_REVERIFY マーカーが続けて出る退行 (else 側へ抜けて no_json 等を追加出力する)
+  # を見逃す。マーカー行の集合を完全一致で固定する。
+  assert "T-57 sources_lib_unavailable marker のみ (完全一致)" \
+    "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=sources_lib_unavailable" \
+    "$(grep '^\[CONTEXT\] FOLLOW_UP_REVERIFY=' "$OUT")"
 fi
 
 echo "--- T-arg: 引数 gate ---"
