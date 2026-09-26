@@ -13,13 +13,16 @@ sources:
     resource: "raw/reviews/20260926T070442Z-pr-3120.md"
   - type: "reviews"
     resource: "raw/reviews/20260926T102245Z-pr-3139.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260926T131154Z-pr-3156.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T10:30:52Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:19:35Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-16T12:58:00Z" }
   - { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T07:10:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T10:30:52Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:19:35Z" }
 ---
 
 # 否定形の assert は前提条件が崩れると fail-silent になる
@@ -131,6 +134,12 @@ rm -f "$result_dir"/*.json
 
 否定形 pin の vacuous 化は、通常の mutation testing では見つからない（blocking gate の環境では pin が機能するため mutation は kill される）。**環境変数や cwd を振って同じ mutation を再実行する** ことで初めて見える。移植性・環境依存を扱う PR では、mutation matrix に「環境軸」を 1 本足す。
 
+### 実例 4: sandbox の依存が足りず、step が観測点の手前で止まる（レビュー結果）
+
+不正な引数を渡したときに「marker を出さない」「pin を作らない」を確かめる assert が、sandbox に入口スクリプトと一部の stub しか置いていなかったため、引数検査をすべて外した変異でも緑のままだった。変異後の step は本体の 1 行目で必要な依存スクリプトを見つけられずに非ゼロで止まり、marker の出力や pin の書き込みまで進まない。止まった理由は検査ではなく依存の欠落だが、否定形の assert はこの 2 つを区別できない。同じループにある終了コードと stderr 文言の assert は変異で赤くなったので、空振りしていたのは否定形の 2 種だけだった。
+
+対処は観測対象を「step 本体に入らなかったこと」へ移すことである。依存の位置に呼び出しを記録する stub を置き、記録ファイルが無いことを assert する。あわせて本体が使う実物の依存も sandbox へ複製し、検査を外した変異で本体が観測点まで進むことを確かめる。これは対処 4 の対照走行と同じ構造で、「本体が観測点まで進める環境」という前提が成り立っていることを先に確かめている。
+
 ## 関連ページ
 
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
@@ -143,3 +152,4 @@ rm -f "$result_dir"/*.json
 - [レビュー結果](../../raw/reviews/20260916T125101Z-pr-2914.md)
 - [レビュー結果](../../raw/reviews/20260926T070442Z-pr-3120.md)
 - [レビュー結果](../../raw/reviews/20260926T102245Z-pr-3139.md)
+- [レビュー結果](../../raw/reviews/20260926T131154Z-pr-3156.md)

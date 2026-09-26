@@ -4,10 +4,14 @@ title: "入力経路を合流点へ加えるときは、経路の出所の識別
 domain: "heuristics"
 description: "複数の入力経路が同じ処理へ合流する設計で経路を 1 本足すと、その経路のデータが別の対象について作られたものでも、合流点は区別できずに処理してしまう。経路の出所の識別子と、合流点が処理しようとしている対象の識別子を照合してから受け入れる。"
 created: "2026-09-26T13:04:23Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:04:23Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:19:35Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:19:35Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260926T125534Z-pr-3148.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260926T130536Z-pr-3148.md"
 tags: ["merge-point", "provenance", "precondition", "mutation"]
 confidence: medium
 ---
@@ -26,6 +30,12 @@ confidence: medium
 
 こうした停止条件は複数の条件の AND で書かれることが多い。AND の分岐は、条件の片側だけを外す変異でテストが落ちるかを確かめる。正常系 1 ケースと異常系 1 ケースだけでは、どちらか一方の条件が無くても通ってしまい、片側が固定されない。
 
+### 前提条件は合流点に 1 か所だけ置き、等価な条件は削る（fix 結果）
+
+出所の一致は全経路に共通する前提条件として合流点に 1 か所だけ置き、経路ごとに分岐を足さない。経路ごとに照合を書くと、次に経路を足したときに照合が抜けても気づけない。
+
+AND で書いた停止条件の片側を外す変異を当てると、テストが落ちない条件が見つかることがある。marker と終了コードのように常に同時に成り立つ 2 条件は、片側を外しても挙動が変わらない等価変異になる。この場合はテストを足すのではなく、重複した条件を削除する。
+
 ## 関連ページ
 
 - [検査先の解決に失敗した入力を「対象外」に合流させると、拒否していた入力が許可に変わる](../anti-patterns/resolution-failure-merged-into-out-of-scope-flips-reject-to-allow.md)
@@ -34,3 +44,4 @@ confidence: medium
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20260926T125534Z-pr-3148.md)
+- [fix 結果](../../raw/fixes/20260926T130536Z-pr-3148.md)

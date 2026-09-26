@@ -2,6 +2,10 @@
 
 ## 2026-09-26
 
+* **Update**: [否定形の assert は前提条件が崩れると fail-silent になる](pages/anti-patterns/negative-assertion-vacuous-without-precondition-floor.md) — raw/reviews/20260926T131154Z-pr-3156.md を統合
+* **Update**: [検査用のシェル字句解析は判定対象を標準形に絞り、それ以外を fail-closed にする](pages/heuristics/inspection-parser-narrow-to-standard-form-fail-closed.md) — raw/reviews/20260926T131728Z-pr-3147.md を統合
+* **Update**: [入力経路を合流点へ加えるときは、経路の出所の識別子と合流点が探す対象の識別子の一致を前提条件にする](pages/heuristics/merge-point-input-source-identity-must-match-target.md) — raw/fixes/20260926T130536Z-pr-3148.md を統合
+* **Skip**: [20260926T131400Z-pr-3156.md](raw/fixes/20260926T131400Z-pr-3156.md) — 実測付き MEDIUM 指摘を non-blocking へ移送した経過の記録のみで、一般化できる経験則を含まない
 * **Create**: [ガードの対象を種別で狭めると、広い対象に付随して効いていた制約が機械的な裏付けを失う](pages/heuristics/narrowing-guard-scope-drops-incidental-enforcement.md) — raw/reviews/20260926T092324Z-pr-3134.md を新規ページ化
 * **lint:clean** — contradictions=0 (更新・新規ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=545, broken_refs=0
 * **Update**: [実測の有無と severity は独立した 2 軸で、両方を満たさないと修正対象にならない](pages/heuristics/evidence-and-severity-are-independent-gates.md) — raw/fixes/20260926T085821Z-pr-3125.md を統合

@@ -4,10 +4,11 @@ title: "検査用のシェル字句解析は判定対象を標準形に絞り、
 domain: "heuristics"
 description: "コマンドを検査する guard で bash の字句規則を近似する自前パーサを直し続けると、指摘は前回の修正の隣の形として増え続ける。理解すると主張する範囲を実運用の標準形に絞り、それ以外は分類したうえで止める方が収束する。"
 created: "2026-09-25T03:58:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T11:40:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:19:35Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T10:30:52Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T11:40:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:19:35Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260924T212015Z-pr-3060.md"
@@ -27,6 +28,8 @@ sources:
     resource: "raw/fixes/20260926T102601Z-pr-3147.md"
   - type: "fixes"
     resource: "raw/fixes/20260926T111331Z-pr-3147.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260926T131728Z-pr-3147.md"
 tags: ["guard", "parser", "fail-closed", "heredoc", "divergence"]
 confidence: high
 ---
@@ -72,6 +75,12 @@ blocking 件数は 2 → 2 → 5 → 7 → 14 と増え、サーキットブレ�
 
 発散（blocking の増加）は個別指摘への対処ではなく構造の見直しが必要な合図である。同じ方針の変種を試すのではなく、パーサが理解すると主張する範囲を狭める方向へ切り替える。
 
+### 回帰 probe を累積しないと、構文ごとの修正が前の版の正しい扱いを壊す（レビュー結果）
+
+前の cycle の指摘を「グループを外側の 1 コマンドにまとめる」表し方で直したところ、同じ表し方から新しい fail-open が 2 件出た。1 つは先頭の `(` をプロセス置換と誤認し、コメント中の `)` で区切りがずれる形。もう 1 つは、関数名が `echo` や `git` の関数本体にある commit が検出から消える形である。5 cycle にわたり、構文ごとに表し方を足す修正が別の構文との組み合わせで前の版の正しい扱いを壊し続けた。各 cycle の probe が「今回指摘された形」しか試していなかったため、この退行は検出されなかった。
+
+修正のたびに、それまでの cycle で指摘された形をすべて probe し直す（回帰 probe を累積する）。それでも隣の形が出続けるなら、構文ごとの例外を重ねるのをやめ、判定できない構造を含むコマンドを一律に安全側へ倒す粗い規則に切り替える。手書きの解析器では、粗い規則のほうが退行を生みにくい。
+
 ## 関連ページ
 
 - [同じ述語を 2 言語で並行実装すると受理集合が環境で割れる — 定義を 1 本に寄せるまで症状は再発し続ける](../anti-patterns/dual-language-predicate-divergence.md)
@@ -89,3 +98,4 @@ blocking 件数は 2 → 2 → 5 → 7 → 14 と増え、サーキットブレ�
 - [レビュー結果](../../raw/reviews/20260926T101537Z-pr-3147.md)
 - [fix 結果](../../raw/fixes/20260926T102601Z-pr-3147.md)
 - [グループ復元の単純化で関数・case 本体の境界が抜けた fix 結果](../../raw/fixes/20260926T111331Z-pr-3147.md)
+- [レビュー結果](../../raw/reviews/20260926T131728Z-pr-3147.md)
