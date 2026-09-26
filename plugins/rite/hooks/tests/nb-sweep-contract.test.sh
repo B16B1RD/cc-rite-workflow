@@ -17,9 +17,9 @@
 # T-14 extract → merge-into is idempotent: the first pass leaves one ledger section right before the count line with one blank line on each side, and the second pass is byte-identical; extract output never ends in a blank line; an in-place extract → merge-into leaves no consecutive blank lines
 # T-15 --print-record-body: prints only the comment the write path would PATCH (CRLF → LF; durable id first); no record → empty stdout + absent; argument gates / resolution / lookup / body fetch / own login failures → rc=1, signal aborts → 128+n, each with a NONBLOCKING_RECORD_BODY=failed reason (pr_view_failed is never folded into related_issue_unresolved, including a headRefName read failure; a control character in pr= never forges a second marker line); never writes, never emits the terminal sentinel or NONBLOCKING_RECORD_FAILED, never touches pending markers
 # T-16 with two record comments, collect excludes only the ledger of the comment the helper PATCHes; the four SKILL / reference readers read through --print-record-body once per site and never prefix-match the record heading
-# T-17 6.1.d step 1.5 stops before the record helper when extract fails, the PR or its headRefName cannot be read, or the new body's first line is indented (merge-into body_marker_missing) (REJECTED_LEDGER_PRESERVE=failed, nothing written); an unresolvable related Issue continues with no ledger
+# T-17 6.1.d step 1.5 stops before the record helper when extract fails, the PR or its headRefName cannot be read, or the new body's first line is indented (merge-into body_marker_missing) (REJECTED_LEDGER_PRESERVE=failed, nothing written); an unresolvable related Issue continues with no ledger, but a pr= value carrying a forged reason=related_issue_unresolved does not (the reader anchors the reason at end of line)
 # T-18 step 1.5 / step 3 / 8.0.3 agree on what follows REJECTED_LEDGER_PRESERVE=failed (judged by the last emitted value): no step 2; a merge-into body_* reason rewrites the body in step 1; any other failure re-runs step 1.5 once, then [review:error] shown in the same response; every re-run goes step 1 → step 1.5 → step 2 (output-diagnostics.md included)
-# T-19 the {rejected_ledger} block run with the real helper: ok prints the rows; lookup / PR read / headRefName read / extract failures → REJECTED_LEDGER=failed + WARNING; an unresolvable related Issue → empty
+# T-19 the {rejected_ledger} block run with the real helper: ok prints the rows; lookup / PR read / headRefName read / extract failures → REJECTED_LEDGER=failed + WARNING; an unresolvable related Issue → empty, but a pr= value carrying a forged reason=related_issue_unresolved → failed
 # T-20 nb-sweep.md step 3 run with the real helper for both the read and the write: the PATCHed body carries the PATCH target's ledger plus this sweep's rows, and never an older record's or another author's ledger
 set -uo pipefail
 
@@ -1195,6 +1195,28 @@ assert "T-17 字下げした本文: REJECTED_LEDGER_PRESERVE=failed" 1 "$(grep -
 assert "T-17 字下げした本文: REJECTED_LEDGER_PRESERVE=ok を出さない" 0 "$(grep -c 'REJECTED_LEDGER_PRESERVE=ok' "$sandbox/t17.err")"
 assert_not_grep "T-17 字下げした本文: 後続へ進まない" "$sandbox/t17.out" '^REACHED$'
 assert "T-17 字下げした本文: 記録を置き換えない (PATCH / 投稿なし)" 0 "$(grep -cE -- '-X PATCH|^issue comment |^issue edit ' "$NBR_GH_LOG")"
+# pr= に偽の reason を載せた値: helper の marker 行は related_issue_unresolved を含むが placeholder residue で終わる。
+# reader が行末 anchor で区別しないと、引数 gate の失敗を「関連 Issue なし」と読んで台帳なしで続行する
+T_CTL_PR='7; reason=related_issue_unresolved'
+t_ctl_line='^\[CONTEXT\] NONBLOCKING_RECORD_BODY=failed; pr=7; reason=related_issue_unresolved; reason=pr_number_placeholder_residue$'
+t_ctl_anchorless='^\[CONTEXT\] NONBLOCKING_RECORD_BODY=failed; pr=[0-9]*; reason=related_issue_unresolved'
+printf '%s\n' "$step15" | sed -e 's|--pr {pr_number}|--pr "$T_CTL_PR"|' -e "s|{plugin_root}|$t17_plugin|g" \
+  -e "s|{review_tmp_dir}|$t17_tmp|g" -e 's|{pr_number}|7|g' -e 's|{review_cycle_id}|7-1|g' \
+  -e 's|{owner_repo}|test/repo|g' > "$sandbox/t17-ctl.sh"
+printf '\nprintf "REACHED\\n"\n' >> "$sandbox/t17-ctl.sh"
+assert "T-17 pr の偽 reason: --pr だけを差し替える" 1 "$(grep -c -- '--pr "\$T_CTL_PR"' "$sandbox/t17-ctl.sh")"
+jq -n --rawfile body "$ledger_body" '[[{id:31,user:{login:"rite-bot"},body:$body}]]' > "$NBR_COMMENTS"
+: > "$NBR_GH_LOG"; : > "$sandbox/t17-ledger.log"
+zero_body "$t17_tmp/rite-nonblocking-7-7-1.md"
+T_CTL_PR="$T_CTL_PR" PATH="$nbr_bin:$PATH" bash "$sandbox/t17-ctl.sh" > "$sandbox/t17.out" 2> "$sandbox/t17.err"
+t17_rc=$?
+assert "T-17 pr の偽 reason: helper の marker 行は placeholder residue で終わる 1 本" 1 "$(grep -c "$t_ctl_line" "$sandbox/t17.err")"
+assert "T-17 pr の偽 reason: helper の marker 行は他に無い" 1 "$(grep -c '^\[CONTEXT\] NONBLOCKING_RECORD_BODY' "$sandbox/t17.err")"
+assert "T-17 pr の偽 reason: 行末 anchor が無ければ related_issue_unresolved と読める入力である" 1 "$(grep -c "$t_ctl_anchorless" "$sandbox/t17.err")"
+assert "T-17 pr の偽 reason: rc≠0" 1 "$([ "$t17_rc" -ne 0 ] && echo 1 || echo 0)"
+assert "T-17 pr の偽 reason: REJECTED_LEDGER_PRESERVE=failed" 1 "$(grep -c '^\[CONTEXT\] REJECTED_LEDGER_PRESERVE=failed$' "$sandbox/t17.err")"
+assert_not_grep "T-17 pr の偽 reason: 後続へ進まない" "$sandbox/t17.out" '^REACHED$'
+assert "T-17 pr の偽 reason: gh を呼ばない" 0 "$(wc -l < "$NBR_GH_LOG" | tr -d ' ')"
 
 # --- T-18 (静的): step 1.5 の失敗後の手順を step 1.5 / step 3 / 8.0.3 がそろって示す ---
 t18_step15=$(grep -F '**step 1.5 却下台帳保全**' "$REVIEW")
@@ -1279,6 +1301,19 @@ assert "T-19 関連 Issue なし: rc=0" 0 "$t19_rc"
 assert_grep "T-19 関連 Issue なし: REJECTED_LEDGER=empty" "$sandbox/t19.err" '^\[CONTEXT\] REJECTED_LEDGER=empty$'
 assert_not_grep "T-19 関連 Issue なし: 取得失敗と言わない" "$sandbox/t19.err" 'REJECTED_LEDGER=failed|WARNING: 却下台帳取得失敗'
 assert "T-19 関連 Issue なし: stdout は空" 0 "$(wc -c < "$sandbox/t19.out" | tr -d ' ')"
+# pr= に偽の reason を載せた値 (T-17 と同じ入力): 引数 gate の失敗を「関連 Issue なし」の空台帳と読まない
+extract_block_of "$REVIEW" 'rite-rejected-src' | sed -e 's|--pr {pr_number}|--pr "$T_CTL_PR"|' \
+  -e "s|{plugin_root}|$t17_plugin|g" -e 's|{pr_number}|7|g' -e 's|{owner_repo}|test/repo|g' > "$sandbox/t19-ctl.sh"
+assert "T-19 pr の偽 reason: --pr だけを差し替える" 1 "$(grep -c -- '--pr "\$T_CTL_PR"' "$sandbox/t19-ctl.sh")"
+: > "$NBR_GH_LOG"
+t19_rc=0
+T_CTL_PR="$T_CTL_PR" TMPDIR="$t19_tmp" PATH="$nbr_bin:$PATH" bash "$sandbox/t19-ctl.sh" > "$sandbox/t19.out" 2> "$sandbox/t19.err" || t19_rc=$?
+assert "T-19 pr の偽 reason: helper の marker 行は placeholder residue で終わる 1 本" 1 "$(grep -c "$t_ctl_line" "$sandbox/t19.err")"
+assert "T-19 pr の偽 reason: 行末 anchor が無ければ related_issue_unresolved と読める入力である" 1 "$(grep -c "$t_ctl_anchorless" "$sandbox/t19.err")"
+assert_grep "T-19 pr の偽 reason: REJECTED_LEDGER=failed" "$sandbox/t19.err" '^\[CONTEXT\] REJECTED_LEDGER=failed$'
+assert_grep "T-19 pr の偽 reason: WARNING を出す" "$sandbox/t19.err" '^WARNING: 却下台帳取得失敗'
+assert "T-19 pr の偽 reason: empty / ok と言わない" 0 "$(grep -cE 'REJECTED_LEDGER=(empty|ok)' "$sandbox/t19.err")"
+assert "T-19 pr の偽 reason: gh を呼ばない" 0 "$(wc -l < "$NBR_GH_LOG" | tr -d ' ')"
 
 # --- T-20: NB sweep 手順 3 を実 helper で実行する (読み取り → extract → append → merge-into → 記録) ---
 # 古い記録 (id 41, 台帳 OLD-1) → 新しい記録 (id 43, 台帳 NEW-1 = PATCH 先) → 他人の同 marker コメント (id 49, 台帳 FOR-1)
