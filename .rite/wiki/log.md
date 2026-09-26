@@ -41,6 +41,8 @@
 * **Skip**: [20260926T065047Z-pr-3119.md](raw/reviews/20260926T065047Z-pr-3119.md) — 既存 mutation-testing-test-fidelity.md の適用実績の再確認に留まり新規知見なし
 * **Update**: [否定形の assert は前提条件が崩れると fail-silent になる](pages/anti-patterns/negative-assertion-vacuous-without-precondition-floor.md) — raw/reviews/20260926T070442Z-pr-3120.md でテスト fixture の前提成立自体を assert する観点を追記
 * **Skip**: [20260926T070111Z-pr-3121.md](raw/reviews/20260926T070111Z-pr-3121.md) — mutation testing で検出した pin 網羅性 nit（non-blocking）で既存ページを超える新規知見なし
+* **Update**: [再開手順は後段ゲートが要求する証跡を作るコマンドを名指しし、静的検査で順序も固定する](pages/heuristics/recovery-instructions-name-gate-evidence-commands-order-pinned.md) — raw/reviews/20260926T075636Z-pr-3120.md を統合
+* **Create**: [テスト用の偽コマンドは入力を読み切ってから終了する](pages/heuristics/test-shim-drain-inputs-before-exit.md) — raw/reviews/20260926T081826Z-pr-3124.md を新規ページ化
 
 ## 2026-09-25
 
