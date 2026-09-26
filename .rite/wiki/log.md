@@ -2,10 +2,6 @@
 
 ## 2026-09-26
 
-* **Update**: [移植性の指摘は「環境分岐を足す」より先に「その正規表現機能が本当に要るか」を疑う](pages/heuristics/portability-fix-questions-the-regex-feature-first.md) — raw/reviews/20260926T100457Z-pr-3140.md を統合
-* **Create**: [検査を独立した段落ではなくゲート段落自体へ統合すると、再回収経路にも自動で効く](pages/heuristics/gate-paragraph-consolidation-covers-retry-paths.md) — raw/reviews/20260926T093207Z-pr-3137.md を新規ページ化
-* **Create**: [文言直後を前方一致で固定する pin は、接頭辞が短いほど後続の付け足しで意味を反転させる変異を通す](pages/anti-patterns/short-prefix-pin-vulnerable-to-suffix-append.md) — raw/reviews/20260926T093421Z-pr-3138.md を新規ページ化
-* **Update**: [並行セッションの別 Issue ブランチ作成が post-review state verify の branch_list drift を誤検出させる](pages/anti-patterns/concurrent-session-branch-creation-false-positive-drift.md) — raw/reviews/20260926T093831Z-pr-3139.md を統合
 * **Create**: [ガードの対象を種別で狭めると、広い対象に付随して効いていた制約が機械的な裏付けを失う](pages/heuristics/narrowing-guard-scope-drops-incidental-enforcement.md) — raw/reviews/20260926T092324Z-pr-3134.md を新規ページ化
 * **lint:clean** — contradictions=0 (更新・新規ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=545, broken_refs=0
 * **Update**: [実測の有無と severity は独立した 2 軸で、両方を満たさないと修正対象にならない](pages/heuristics/evidence-and-severity-are-independent-gates.md) — raw/fixes/20260926T085821Z-pr-3125.md を統合
@@ -64,6 +60,11 @@
 * **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=544, broken_refs=0
 * **Skip**: [20260926T091203Z-pr-3128.md](raw/reviews/20260926T091203Z-pr-3128.md) — 検出器化候補: base 取り込みで同一テストファイルに両側が追加した連番テスト ID の重複と、モジュールレベルの名前をループ変数が上書きする衝突を機械検出する
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=545, broken_refs=0
+* **Update**: [移植性の指摘は「環境分岐を足す」より先に「その正規表現機能が本当に要るか」を疑う](pages/heuristics/portability-fix-questions-the-regex-feature-first.md) — raw/reviews/20260926T100457Z-pr-3140.md を統合
+* **Create**: [検査を独立した段落ではなくゲート段落自体へ統合すると、再回収経路にも自動で効く](pages/heuristics/gate-paragraph-consolidation-covers-retry-paths.md) — raw/reviews/20260926T093207Z-pr-3137.md を新規ページ化
+* **Create**: [文言直後を前方一致で固定する pin は、接頭辞が短いほど後続の付け足しで意味を反転させる変異を通す](pages/anti-patterns/short-prefix-pin-vulnerable-to-suffix-append.md) — raw/reviews/20260926T093421Z-pr-3138.md を新規ページ化
+* **Update**: [並行セッションの別 Issue ブランチ作成が post-review state verify の branch_list drift を誤検出させる](pages/anti-patterns/concurrent-session-branch-creation-false-positive-drift.md) — raw/reviews/20260926T093831Z-pr-3139.md を統合
+* **lint:clean** — contradictions=0 (更新・新規ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=545, broken_refs=0
 
 ## 2026-09-25
 
