@@ -544,9 +544,10 @@ okf_version: "0.2"
 | [リポジトリ全体を走査する検査は変更ファイルだけの reviewer / テストには見えない — 修正後は全体検査も含めて実行する](pages/heuristics/repo-wide-check-catches-what-diff-scoped-tests-miss.md) | heuristics | 変更ファイルだけを見る reviewer やテスト実行は、リポジトリ全体を走査する静的検査（番号参照検査等）が拾う drift を観測できない。修正が正しく効いたかは、変更ファイルのテストだけでなく全体検査を実行して確認する。Python の 1 要素タプル `(x,)` は末尾が `,)` になるため、削除痕を検出する検査の pattern に偶発的に一致することがある。 | 2026-09-26T06:12:43Z | medium |
 | [権限に依存するテストの前提は euid のような代理条件ではなく os.access で実際に確かめる](pages/heuristics/env-precondition-verified-via-os-access-not-proxy.md) | heuristics | root や CAP_DAC_OVERRIDE のような権限で成立しない前提を持つテストケースを書くとき、euid が 0 かどうかのような代理条件だけで判定すると、代理条件が実際の可否と一致しない環境で偽の失敗になる。os.access で実際にその操作ができるかを確かめてから加えると、root 環境でも偽の失敗にならない。 | 2026-09-26T06:12:43Z | medium |
 | [スキル文書の分岐規則は実際に注入される本文に書く — 注入されない rationale 段落だけに書くと reviewer にも実行時にも届かない](pages/heuristics/skill-branch-rule-belongs-in-injected-text-not-rationale.md) | heuristics | スキル/prompt 文書で、ケースによって振る舞いが変わる規則（例: 付け替え先が無い場合の扱い）を、実行時に注入される mandate 本文と、注入されない rationale 段落の両方に分けて書くと、規則が注入されない側にしか書かれていない状態になりやすい。分岐規則は reviewer と実行時の LLM が実際に読む注入本文の側に書く必要がある。行形の pin に `.*` を使うと、補足句（例外の適用条件）を固定できず、適用範囲を狭める書き換えが green のまま通ることがある。 | 2026-09-26T06:12:43Z | medium |
+| [並行セッションの別 Issue ブランチ作成が post-review state verify の branch_list drift を誤検出させる](pages/anti-patterns/concurrent-session-branch-creation-false-positive-drift.md) | anti-patterns | レビュー前後の branch 一覧ハッシュを比較して reviewer の READ-ONLY 違反を検出する仕組みは、別の並行セッションが同時に別 Issue 用のブランチを作成/削除しただけでも drift を報告する。検出対象（このレビューの reviewer）と観測対象（リポジトリ全体の branch 一覧）が一致していないための false positive。 | 2026-09-26T07:00:00+00:00 | medium |
 ## 統計
 
-- 総ページ数: 534
-- ドメイン別: patterns=124, heuristics=240, anti-patterns=170
-- 最終更新: 2026-09-26T06:12:43Z
+- 総ページ数: 535
+- ドメイン別: patterns=124, heuristics=240, anti-patterns=171
+- 最終更新: 2026-09-26T07:00:00+00:00
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
