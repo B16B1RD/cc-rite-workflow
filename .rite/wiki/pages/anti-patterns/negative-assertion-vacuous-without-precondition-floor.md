@@ -11,12 +11,15 @@ sources:
     resource: "raw/reviews/20260916T125101Z-pr-2914.md"
   - type: "reviews"
     resource: "raw/reviews/20260926T070442Z-pr-3120.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260926T102245Z-pr-3139.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T07:10:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T10:30:52Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-16T12:58:00Z" }
   - { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T07:10:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T10:30:52Z" }
 ---
 
 # 否定形の assert は前提条件が崩れると fail-silent になる
@@ -120,6 +123,10 @@ rm -f "$result_dir"/*.json
 [ -z "$(ls -A "$result_dir" 2>/dev/null)" ] || fail "fixture precondition not met: result files still present"
 ```
 
+前提を作る操作は、前提そのものを壊さない形を選ぶ。「優先順位 A が保留 B より先に働く」ことを確かめるテストで、A の発火条件（結果の欠落）を結果ファイルの削除で作ると、B の成立条件（直近 3 件の推移がそろっていること）まで一緒に崩れ、B が立たないまま A だけが発火して緑になる。結果は残したまま、状態側のカウンタを進めて欠落を作れば、A と B の前提が同時に成立した入力になる。
+
+さらに、A が発火した出力には B の前提が現れないことがある（A の分岐は B の判定結果を出力しない）。その場合、出力の assert だけでは「B が立つ入力だった」ことを示せない。**A を B の後ろへ回す変異を 1 回当て、テストが A のケースで落ち、変異側の出力に B の発火（保留の marker）が現れることを実測する**と、fixture が狙った優先順位の分岐点に届いていることを確認できる。変異前のテストに同じ変異を当てて通ることも確かめると、修正前の空振りも同じ実行で示せる。
+
 ### 検出方法
 
 否定形 pin の vacuous 化は、通常の mutation testing では見つからない（blocking gate の環境では pin が機能するため mutation は kill される）。**環境変数や cwd を振って同じ mutation を再実行する** ことで初めて見える。移植性・環境依存を扱う PR では、mutation matrix に「環境軸」を 1 本足す。
@@ -135,3 +142,4 @@ rm -f "$result_dir"/*.json
 - [fix 結果](../../raw/fixes/20260725T103734Z-pr-2017-cycle3.md)
 - [レビュー結果](../../raw/reviews/20260916T125101Z-pr-2914.md)
 - [レビュー結果](../../raw/reviews/20260926T070442Z-pr-3120.md)
+- [レビュー結果](../../raw/reviews/20260926T102245Z-pr-3139.md)

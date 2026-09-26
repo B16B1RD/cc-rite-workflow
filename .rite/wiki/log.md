@@ -65,6 +65,9 @@
 * **Create**: [文言直後を前方一致で固定する pin は、接頭辞が短いほど後続の付け足しで意味を反転させる変異を通す](pages/anti-patterns/short-prefix-pin-vulnerable-to-suffix-append.md) — raw/reviews/20260926T093421Z-pr-3138.md を新規ページ化
 * **Update**: [並行セッションの別 Issue ブランチ作成が post-review state verify の branch_list drift を誤検出させる](pages/anti-patterns/concurrent-session-branch-creation-false-positive-drift.md) — raw/reviews/20260926T093831Z-pr-3139.md を統合
 * **lint:clean** — contradictions=0 (更新・新規ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=545, broken_refs=0
+* **Update**: [検査用のシェル字句解析は判定対象を標準形に絞り、それ以外を fail-closed にする](pages/heuristics/inspection-parser-narrow-to-standard-form-fail-closed.md) — raw/reviews/20260926T101537Z-pr-3147.md を統合
+* **Update**: [検査用のシェル字句解析は判定対象を標準形に絞り、それ以外を fail-closed にする](pages/heuristics/inspection-parser-narrow-to-standard-form-fail-closed.md) — raw/fixes/20260926T102601Z-pr-3147.md を統合
+* **Update**: [否定形の assert は前提条件が崩れると fail-silent になる](pages/anti-patterns/negative-assertion-vacuous-without-precondition-floor.md) — raw/reviews/20260926T102245Z-pr-3139.md を統合
 
 ## 2026-09-25
 
