@@ -58,6 +58,9 @@ trap 'cleanup; exit 129' HUP
 STUB_DIR="$(mktemp -d)"; SANDBOXES+=("$STUB_DIR")
 cat > "$STUB_DIR/gh" <<'EOF'
 #!/bin/bash
+# Record the full invocation so tests can assert which --base value was used
+# (the growth-stall base_branch extraction is otherwise opaque to the caller).
+if [ -n "${GH_STUB_ARGS_LOG:-}" ]; then printf '%s\n' "$*" >> "$GH_STUB_ARGS_LOG"; fi
 printf '%s\n' "${GH_STUB_PRS:-[]}"
 exit 0
 EOF
@@ -120,6 +123,23 @@ stall_repo="$(make_wiki_repo true yes)"; SANDBOXES+=("$stall_repo")
 assert "merged PRs >= threshold with stalled wiki → finding (exit 1)" "1" \
   "$(PATH="$STUB_DIR:$PATH" GH_STUB_PRS='[{"number":1}]' bash "$SCRIPT" \
       --repo-root "$stall_repo" --threshold 1 --pr-raw-threshold 999 --quiet >/dev/null 2>&1; echo $?)"
+
+# --- branch: 節の直後に数字始まりのトップレベルキーが来ても節終了を検出する -----
+# branch: に base: を持たせず、直後の 2fa: 配下に base: wrong を置く。旧実装
+# (/^[a-zA-Z]/) は "2fa:" で節終了を検出できず base: wrong を拾ってしまう。
+nonalpha_repo="$(make_wiki_repo true yes)"; SANDBOXES+=("$nonalpha_repo")
+printf 'wiki:\n  enabled: true\n  branch_name: wiki\nbranch:\n  pattern: "{type}/issue-{number}-{slug}"\n2fa:\n  base: wrong\n' \
+  > "$nonalpha_repo/rite-config.yml"
+git -C "$nonalpha_repo" add rite-config.yml \
+  && git -C "$nonalpha_repo" commit -q -m "reconfigure base" \
+  || { echo "FAIL: nonalpha_repo config commit failed" >&2; exit 1; }
+args_log="$(mktemp)"; SANDBOXES+=("$args_log")
+PATH="$STUB_DIR:$PATH" GH_STUB_PRS='[]' GH_STUB_ARGS_LOG="$args_log" \
+  bash "$SCRIPT" --repo-root "$nonalpha_repo" --quiet >/dev/null 2>&1
+assert "non-alpha top-level key ends branch section (falls back to develop)" "2" \
+  "$(grep -c -- '--base develop' "$args_log")"
+assert "base outside branch via non-alpha key is not used" "0" \
+  "$(grep -c -- '--base wrong' "$args_log")"
 
 # --- Findings line always emitted --------------------------------------------
 findings_out="$(PATH="$STUB_DIR:$PATH" GH_STUB_PRS='[]' bash "$SCRIPT" --repo-root "$healthy_repo" --quiet 2>/dev/null || true)"

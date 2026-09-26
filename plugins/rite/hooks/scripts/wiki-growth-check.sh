@@ -221,7 +221,7 @@ fi
 base_branch=$(awk '
   /^branch:/ { in_branch=1; next }
   in_branch && /^[[:space:]]+base:/ { print; exit }
-  in_branch && /^[a-zA-Z]/ { in_branch=0 }
+  in_branch && /^[^ ]/ { in_branch=0 }
 ' "$config_file" 2>/dev/null \
   | sed 's/[[:space:]]#.*//' | sed 's/.*base:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 [ -z "$base_branch" ] && base_branch="develop"
