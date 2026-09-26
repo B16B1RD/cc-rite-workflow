@@ -2,6 +2,7 @@
 
 ## 2026-09-26
 
+* **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=550, broken_refs=0
 * **Update**: [入力経路を合流点へ加えるときは、経路の出所の識別子と合流点が探す対象の識別子の一致を前提条件にする](pages/heuristics/merge-point-input-source-identity-must-match-target.md) — raw/reviews/20260926T131901Z-pr-3148.md を統合
 * **Update**: [累積対策 PR の review-fix loop で fix 自体が drift を導入する](pages/anti-patterns/fix-induced-drift-in-cumulative-defense.md) — raw/fixes/20260926T132826Z-pr-3147.md を統合
 * **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=550, broken_refs=0
