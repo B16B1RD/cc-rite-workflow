@@ -4,9 +4,10 @@ title: "論理式を日本語へ書き起こすときは、正本の括弧構造
 domain: "heuristics"
 description: "「A、または B で、C なら」のような書き起こしは、C が B だけに掛かるのか A と B の両方に掛かるのかが一意に決まらない。正本が (A OR B) AND C なら、文章でも「(A、または B) かつ C」と括弧を残して係り先を固定する。"
 created: "2026-09-27T03:27:52Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:18:40Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T20:37:28Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:18:40Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T20:37:28Z" }
 sources:
   - type: "fixes"
     resource: "raw/fixes/20260927T031606Z-pr-3202.md"
@@ -16,6 +17,8 @@ sources:
     resource: "raw/reviews/20260927T045530Z-pr-3214.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T191609Z-pr-3328.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T203603Z-pr-3341.md"
 tags: ["prose-contract", "logical-formula", "ambiguity"]
 confidence: medium
 ---
@@ -44,6 +47,10 @@ confidence: medium
 
 複数の分岐軸（例: branch_strategy とモード）を持つ helper の説明を 1 文に並べると、片方の軸の区別がもう片方の軸の中だけのものであることが読み取れず、存在しない組み合わせを示唆する。外側の軸で区切り、その中で内側の軸を分けて書く。照合先は docstring だけでなく実装の case 分岐と、同じ helper を説明する呼び出し側の手順書にも広げる。
 
+### 省略できる要素は「省略可」と明示する
+
+正本の文法で optional な要素（例: リダイレクトの前に置く fd 番号）を「X か Y に続く」と書き起こすと、日本語では前置きが必須に読める。英語の optional に当たる限定を「（省略可の）」のように文章へ補う。同じ規則を複数の場所（配布リファレンス・テスト見出し・仕様書）が述べているなら、限定は全箇所で同じ形にそろえる。1 か所だけ直すと、残りの箇所が必須と読める形のまま残る。
+
 ## 関連ページ
 
 - [散文が引用する実装 (regex literal / 帰属ファイル / 挙動) は文字一致・帰属・behavioral test の 3 点で裏取りする](./prose-cited-implementation-behavioral-verification.md)
@@ -55,3 +62,4 @@ confidence: medium
 - [新ケースの理由を実装の条件式から読み取って書き分けた fix 結果](../../raw/fixes/20260927T045009Z-pr-3214.md)
 - [並べた因果節の係り先が曖昧と指摘したレビュー結果](../../raw/reviews/20260927T045530Z-pr-3214.md)
 - [2 軸の分岐を外側の軸で区切って書き直した仕様書の修正のレビュー結果](../../raw/reviews/20260927T191609Z-pr-3328.md)
+- [規則文の省略可の前置きを明示した fix 結果](../../raw/fixes/20260927T203603Z-pr-3341.md)
