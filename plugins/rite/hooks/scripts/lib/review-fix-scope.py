@@ -390,6 +390,19 @@ def peel_commit_prefixes(words):
     return words, peeled
 
 
+# The builtins that change the working directory.
+_DIRECTORY_MOVERS = {"cd", "pushd", "popd"}
+
+
+def moves_directory(words):
+    """True when words run a directory change, past assignments, keywords and wrappers."""
+    while True:
+        words = peel_commit_prefixes(words)[0]
+        if words[:1] != ["builtin"]:
+            return bool(words) and words[0] in _DIRECTORY_MOVERS
+        words = words[1:]
+
+
 # The git subcommands that move HEAD and are checked before they run.
 _HEAD_MOVERS = ("commit", "merge")
 _SEPARATORS = ";&|\n"
@@ -591,7 +604,8 @@ def each_git_target(command, cwd):
     starts a list (after ; / a newline or at the start), or one in an && chain, which
     reaches only the rest of that chain, in a command with no ( ) group, compound command,
     function or background &. Any other cd (after ||, in a pipeline, cd -, with options,
-    redirections or no directory, or anywhere in a command with one of those) makes the
+    redirections or no directory, behind an assignment or a builtin / command / time
+    wrapper, or anywhere in a command with one of those) and any pushd / popd make the
     target dynamic, and later lists cannot know it either.
     """
     segments = shell_segments(command)
@@ -609,13 +623,13 @@ def each_git_target(command, cwd):
         starts = first and not nested
         if not nested:
             first = False
-        if structured and not nested and "cd" in words:
+        if structured and not nested and not _DIRECTORY_MOVERS.isdisjoint(words):
             unsure = dynamic = moved = True
         bare = words
         while not nested and bare and bare[0] in _KEYWORDS:
             bare = bare[1:]
-        if not nested and bare and bare[0] == "cd":
-            plain = (bare is words and len(words) == 2 and words[1] != "-"
+        if not nested and moves_directory(bare):
+            plain = (bare is words and len(words) == 2 and words[0] == "cd" and words[1] != "-"
                      and not any(c in words[1] for c in "$`~"))
             if plain and not structured and not alternative and after != "|" and before != "|":
                 if not unsure or Path(words[1]).is_absolute():
