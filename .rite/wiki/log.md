@@ -148,6 +148,7 @@
 * **Update**: [否定形の assert は前提条件が崩れると fail-silent になる](pages/anti-patterns/negative-assertion-vacuous-without-precondition-floor.md) — raw/reviews/20260927T105021Z-pr-3265.md を統合
 * **Create**: [手順書の限定条件には、実行者が自分で確かめられる観測対象を併記する](pages/heuristics/limitation-clause-needs-executor-observable-cue.md) — raw/fixes/20260927T105924Z-pr-3265.md を新規ページ化
 * **Skip**: [20260927T104834Z-pr-3262.md](raw/reviews/20260927T104834Z-pr-3262.md) — 当該 cycle の運用観察（mandate と却下台帳の重なりは同 cycle 内で収束済み）と既存 bash ページで扱い済みの errexit 挙動のみで、新しい経験則を含まない
+* **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=66, orphans=0, missing_concept=0, unregistered_raw=562, broken_refs=0
 
 ## 2026-09-26
 
