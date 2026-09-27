@@ -9,6 +9,7 @@
 * **Update**: [エラーメッセージが案内するコマンドは、テストで出力から抽出して逐語実行する](pages/patterns/guidance-command-test-by-verbatim-execution.md) — raw/reviews/20260927T091721Z-pr-3251.md, raw/fixes/20260927T092425Z-pr-3251.md を統合
 * **Update**: [除外契約のテストは境界の両側に対で書く](pages/patterns/exclusion-test-requires-both-sides-of-boundary.md) — raw/reviews/20260927T091721Z-pr-3251.md, raw/reviews/20260927T093452Z-pr-3251.md を統合
 * **Update**: [再開手順は後段ゲートが要求する証跡を作るコマンドを名指しし、静的検査で順序も固定する](pages/heuristics/recovery-instructions-name-gate-evidence-commands-order-pinned.md) — raw/reviews/20260927T093553Z-pr-3253.md を統合
+* **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=560, broken_refs=0
 * **Create**: [手順の直し方は追加と置換を 1 つの動詞でまとめず、操作ごとに動詞を分ける](pages/heuristics/add-and-replace-use-separate-verbs.md) — raw/fixes/20260927T082530Z-pr-3221.md, raw/reviews/20260927T082009Z-pr-3221.md を新規ページ化
 * **Update**: [失敗時の復旧ヒントは呼び出し元の切り詰めと cwd の違いを越えて届く形で書く](pages/heuristics/recovery-hint-survives-caller-truncation-and-cwd.md) — raw/reviews/20260927T082009Z-pr-3221.md を統合
 * **Update**: [エラーメッセージが案内するコマンドは、テストで出力から抽出して逐語実行する](pages/patterns/guidance-command-test-by-verbatim-execution.md) — raw/reviews/20260927T083236Z-pr-3221.md を統合
