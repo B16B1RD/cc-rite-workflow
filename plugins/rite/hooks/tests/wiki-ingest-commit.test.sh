@@ -558,8 +558,9 @@ run_pre_checkout_failure_case "pre-checkout failure (apostrophe raw name)" "it's
 echo ""
 
 echo "TC-MESSAGE: same_branch default / --message-file / convention fail-loud"
+# make_same_branch_msg_fixture: sets base / repo for a same_branch repo with one pending raw source.
+# Call it directly, not via $(...): a subshell would drop the fixture_dirs entry and leak $base.
 make_same_branch_msg_fixture() {
-  local base repo
   base=$(mktemp -d); fixture_dirs+=("$base")
   repo="$base/repo"
   git init -q "$repo"
@@ -575,18 +576,22 @@ make_same_branch_msg_fixture() {
   git -C "$repo" commit -qm config
   mkdir -p "$repo/.rite/wiki/raw/reviews"
   printf '%s\n' '---' 'ingested: false' '---' 'raw' > "$repo/.rite/wiki/raw/reviews/pr-test.md"
-  printf '%s' "$repo"
 }
 
 run_same_branch_message_cases() {
-  local repo rc out err msg
-  repo=$(make_same_branch_msg_fixture)
+  local base repo rc out err msg n_dirs
+  n_dirs=${#fixture_dirs[@]}
+  make_same_branch_msg_fixture
+  eq "same_branch fixture registers one dir for cleanup" "$((n_dirs + 1))" "${#fixture_dirs[@]}"
+  eq "same_branch fixture registers its base for cleanup" "$base" "${fixture_dirs[n_dirs]:-}"
+  eq "same_branch fixture repo lives under its base" "$base/repo" "$repo"
+  eq "same_branch fixture repo is a git repository" "1" "$([ -d "$repo/.git" ] && echo 1 || echo 0)"
   rc=0
   out=$(cd "$repo" && bash "$HOOK_SRC" 2>/dev/null) || rc=$?
   eq "same_branch default exits 0" "0" "$rc"
   eq "same_branch default subject" "chore(wiki): ingest 1 raw source(s)" "$(git -C "$repo" log -1 --format=%s)"
 
-  repo=$(make_same_branch_msg_fixture)
+  make_same_branch_msg_fixture
   printf 'English only.\n' > "$repo/CLAUDE.md"
   rc=0
   err=$(cd "$repo" && bash "$HOOK_SRC" 2>&1) || rc=$?
@@ -595,7 +600,7 @@ run_same_branch_message_cases() {
   eq "fail-loud leaves no staged raw" "" "$(git -C "$repo" diff --cached --name-only)"
   eq "fail-loud leaves working tree on develop" "develop" "$(git -C "$repo" branch --show-current)"
 
-  repo=$(make_same_branch_msg_fixture)
+  make_same_branch_msg_fixture
   printf 'English only.\n' > "$repo/CLAUDE.md"
   msg=$(mktemp)
   printf 'docs(wiki): ingest with `tick`\n\n$(whoami) stays literal\n' > "$msg"
@@ -625,14 +630,14 @@ run_same_branch_message_cases() {
       "$(git -C "$repo" log --format=%s | grep -cF 'chore(wiki): ingest 1 raw source(s)' || true)"
   }
 
-  repo=$(make_same_branch_msg_fixture)
+  make_same_branch_msg_fixture
   reject_message_file "no convention empty --message-file" "$repo" --message-file ""
-  repo=$(make_same_branch_msg_fixture)
+  make_same_branch_msg_fixture
   reject_message_file "no convention missing --message-file value" "$repo" --message-file
-  repo=$(make_same_branch_msg_fixture)
+  make_same_branch_msg_fixture
   printf 'English only.\n' > "$repo/CLAUDE.md"
   reject_message_file "CLAUDE.md empty --message-file" "$repo" --message-file ""
-  repo=$(make_same_branch_msg_fixture)
+  make_same_branch_msg_fixture
   printf 'English only.\n' > "$repo/CLAUDE.md"
   reject_message_file "CLAUDE.md missing --message-file value" "$repo" --message-file
 }
@@ -649,8 +654,8 @@ run_same_branch_failure_case() {
   local label="$1" reset="$2" from="${3:-main}"
   local -x GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
   local base repo err rc=0 n line cmd words ok=1 path_prefix="" run_dir
-  repo=$(make_same_branch_msg_fixture)
-  base=$(dirname "$repo"); err="$base/err"
+  make_same_branch_msg_fixture
+  err="$base/err"
   printf '%s\n' '#!/bin/sh' 'exit 1' > "$repo/.git/hooks/pre-commit"
   chmod +x "$repo/.git/hooks/pre-commit"
   printf '%s\n' '---' 'ingested: true' '---' 'done' > "$repo/.rite/wiki/raw/reviews/done.md"
@@ -746,8 +751,8 @@ leftover_wic() {
 }
 
 run_same_branch_fail_loud_leftover() {
-  local repo tmp rc=0
-  repo=$(make_same_branch_msg_fixture)
+  local base repo tmp rc=0
+  make_same_branch_msg_fixture
   printf 'English only.\n' > "$repo/CLAUDE.md"
   tmp=$(mktemp -d); fixture_dirs+=("$tmp")
   ( cd "$repo" && TMPDIR="$tmp" bash "$HOOK_SRC" ) >/dev/null 2>&1 || rc=$?
