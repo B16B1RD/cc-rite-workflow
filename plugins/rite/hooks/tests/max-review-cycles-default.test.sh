@@ -150,7 +150,7 @@ if [ "$(id -u)" != 0 ]; then
     assert_not_grep "T-06k: $(basename "$step") — ERROR が二重前置されない" "$STDERR_LOG" 'ERROR: ERROR:'
   done
 else
-  echo "  SKIP: root では読み取り権限を外せないため T-06g〜i を検証しない"
+  echo "  SKIP: root では読み取り権限を外せないため T-06g〜k を検証しない"
 fi
 # 追跡外 config は main checkout にだけある。linked worktree から両ステップが main の値を読む
 WT_MAIN=$(make_sandbox --branch develop)
