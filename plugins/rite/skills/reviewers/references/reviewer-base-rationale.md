@@ -23,7 +23,7 @@ The `[READ-ONLY RULE]` is not just a tool-level (`Edit`/`Write`) restriction —
 
 | 禁止経路 | 代替 (worktree-only pattern) |
 |---------|-----------------------------|
-| `git checkout -b pr-N-test` → file 変更 → `git checkout <orig>` | `git worktree add --detach $(mktemp -d -t rite-review-mutation-XXXXXX) HEAD` |
+| `git checkout -b pr-N-test` → file 変更 → `git checkout <orig>` | 単独の呼び出しで `mktemp -d -t rite-review-mutation-XXXXXX` を実行し、別の呼び出しでその path を渡して `git worktree add --detach <path> HEAD` |
 | `git stash` → file 変更 → test → `git stash pop` | 同上 (stash は禁止) |
 | `cp file file.bak` → file 変更 → test → `mv file.bak file` (parent working tree 内) | 同上 (parent working tree の file 変更自体が禁止 — `Edit`/`Write` tool レベル違反でもある) |
 | `git checkout HEAD~1 -- file` → test → `git checkout HEAD -- file` | `git show HEAD~1:file` で blob を取得し、worktree 内で適用 |

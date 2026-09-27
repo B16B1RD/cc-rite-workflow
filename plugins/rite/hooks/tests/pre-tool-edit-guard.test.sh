@@ -168,6 +168,16 @@ echo "TC-A: subagent Edit to parent working tree → deny"
 out=$(run_edit_guard "Edit" "$TEST_REPO/src/bets.py" "$TEST_REPO" "$SUBAGENT_TRANSCRIPT") || true
 assert_deny "subagent Edit to repo file blocked" "$out"
 if grep -q "edit-guard: BLOCKED" "$STDERR_FILE"; then pass "stderr contains block log"; else fail "stderr block log missing: $(cat "$STDERR_FILE")"; fi
+# The suggested procedure runs mktemp on its own: a worktree-isolated session refuses the
+# worktree command when mktemp is embedded in it.
+tca_reason=$(reason_of "$out")
+if [[ "$tca_reason" == *"'mktemp -d -t rite-review-mutation-XXXXXX' on its own"* ]] \
+  && [[ "$tca_reason" == *"'git worktree add --detach <that literal path> HEAD'"* ]] \
+  && [[ "$tca_reason" != *'$(mktemp'* ]]; then
+  pass "deny reason suggests mktemp and worktree add as separate calls"
+else
+  fail "deny reason does not suggest separate mktemp / worktree add calls: $tca_reason"
+fi
 echo ""
 
 # (a2) subagent Edit with RELATIVE path (cwd=repo) → deny (relative join)
