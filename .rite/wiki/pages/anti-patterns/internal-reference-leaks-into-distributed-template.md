@@ -12,11 +12,14 @@ sources:
     resource: "raw/fixes/20260802T103655Z-pr-2052.md"
   - type: "reviews"
     resource: "raw/reviews/20260910T024945Z-pr-2645.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T151255Z-pr-3290.md"
 tags: ["distribution-boundary", "template", "propagation-scan", "implicit-invariant", "lint-blind-spot"]
 confidence: high
-generated: { by: "rite-wiki-ingest/grok", at: "2026-09-10T03:26:20Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:25:53Z" }
 verified:
   - { by: "rite-wiki-ingest/grok", at: "2026-09-10T03:26:20Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:25:53Z" }
 ---
 
 # 配布テンプレートへの内部参照流入は 1 箇所直しても閉じない — 同一配布単位の sibling を base 件数と比較する
@@ -80,6 +83,8 @@ develop 時点で全 4 テンプレートが **0 件** だったことを確認�
 | 直すべき範囲はどこまでか | `git show <base>:<path>` で base 件数を測り不変条件を復元 |
 | lint が走査しているか | 走査対象外のファイル（SCHEMA.md 等）は緑を根拠にしない |
 
+**根拠文も内部参照になりうる**: 配布物の rationale が「開発リポジトリの実データではこう分布している」を根拠にすると、配布先では検証できない主張になる。パスや番号を書かなくても、根拠の出所が開発リポジトリに閉じていれば同じ種類の流入である。根拠はテストで固定した境界（結ぶ条件と結ばない条件）に置くと、配布先でも成り立つ。
+
 ## 関連ページ
 
 - [自 repo 固有 anchor を Edit old_string に hardcode すると consumer project で hard fail する (dogfooding bias)](./dogfooding-anchor-hardcode.md)
@@ -91,3 +96,4 @@ develop 時点で全 4 テンプレートが **0 件** だったことを確認�
 - [レビュー結果](../../raw/reviews/20260802T102657Z-pr-2052.md)
 - [fix 結果](../../raw/fixes/20260802T103655Z-pr-2052.md)
 - [レビュー結果](../../raw/reviews/20260910T024945Z-pr-2645.md)
+- [配布物の根拠文に開発リポジトリの実データを使っていたことを検出したレビュー結果](../../raw/reviews/20260927T151255Z-pr-3290.md)

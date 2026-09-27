@@ -4,9 +4,10 @@ title: "散文の主張を実装に合わせて絞るときは、限定の外側
 domain: "heuristics"
 description: "散文の主張を実装の範囲へ絞ると、絞った外側の扱いや、指示語の参照先、別言語の要約・テストのコメント・配布物に残る同じ主張の言い過ぎが見落とされやすい。実装の分岐ごとに突き合わせ、同じ主張を横断で探してから直す。"
 created: "2026-09-27T08:00:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:56:46Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:25:53Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:56:46Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:25:53Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260927T074341Z-pr-3242.md"
@@ -20,6 +21,8 @@ sources:
     resource: "raw/reviews/20260927T143833Z-pr-3291.md"
   - type: "fixes"
     resource: "raw/fixes/20260927T144331Z-pr-3291.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T152300Z-pr-3290.md"
 tags: ["prose", "docs", "scope", "sweep"]
 confidence: medium
 ---
@@ -49,6 +52,7 @@ confidence: medium
 
 - 散文を直したときは、同じ主張を持つテストのコメントにも同じ言い過ぎが残っていないかを grep する
 - 文書の一文を直す変更でも、同じ主張を持つ別の文書（詳細リファレンス・README の両言語）と配布物（スキル本文）を横断で探す。配布物に同じ文言が残っていれば、範囲外として記録するか一緒に直すかをその場で決める
+- 規則そのものを変えた修正では、詳細コメントと本体の説明は追従しても、要約コメントと「なぜ許容するか」の根拠文が元の前提のまま残りやすい。規則を変えたら、要約と根拠文を名指しで読み直す
 
 ## 関連ページ
 
@@ -63,3 +67,4 @@ confidence: medium
 - [レビュー結果](../../raw/reviews/20260927T075115Z-pr-3244.md)
 - [参照先の番号の所有者と条件付き要約の限定を検出したレビュー結果](../../raw/reviews/20260927T143833Z-pr-3291.md)
 - [参照先の番号に所有者を付け、限定を書き写した fix 結果](../../raw/fixes/20260927T144331Z-pr-3291.md)
+- [規則の変更後に残った要約コメントと根拠文を直した fix 結果](../../raw/fixes/20260927T152300Z-pr-3290.md)

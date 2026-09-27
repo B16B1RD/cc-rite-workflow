@@ -4,14 +4,17 @@ title: "再入ガードは「実行したか」ではなく「何を対象に実
 description: "完了済みを示すだけの再入ガードは、同じ run の途中で処理対象が増えたときに古い完了記録で新しい対象を覆い隠し、未処理のまま素通りさせる。ガードには処理本体が読む対象と同じ単位で範囲を記録し、最新の対象と一致するときだけ skip する。"
 domain: "heuristics"
 created: "2026-09-24T05:30:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:06:36Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:25:53Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:06:36Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:25:53Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260924T044346Z-pr-3017.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T145506Z-pr-3292.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T151743Z-pr-3292.md"
 tags: ["reentry-guard", "idempotency", "state-file", "test-fixture"]
 confidence: high
 promote: rite-plugin
@@ -35,6 +38,8 @@ promote: rite-plugin
 
 「処理済み」の記録を後段の片付け処理の成否だけで書くと、前段の判定が失敗で終わったケースまで完了扱いに反転する。記録は判定そのものの結果に結び付ける。同じ入力を読む 2 つの helper が異常値（配列でない JSON）を片方は 0 件、片方は判定不能と読むと、その食い違いが反転の入口になるため、異常値の読み方を揃える。対象ファイルを glob で選ぶ場合、先頭アンカーを固定するテストには prefix が伸びた番号だけでなく末尾一致する番号のケースも置かないと、アンカーを緩める変異が生き残る。
 
+記録の書き手は、判定そのものを行う処理に置く。片付け側が判定の成否をフラグで受け取って書く形は、フラグの配線が 1 本外れるだけで反転が戻る。書き手を判定側へ移せば、片付け側のフラグ・配線・テストは不要になり削除できる（追加ではなく移動と削除で解消する）。回帰テストは「判定不能 → 記録なし → 片付け → 再実行しても未完了のまま」を実 helper の連結で固定する。
+
 ## 関連ページ
 
 - [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](./fixture-mutation-isolates-invariants.md)
@@ -44,3 +49,4 @@ promote: rite-plugin
 
 - [レビュー結果](../../raw/reviews/20260924T044346Z-pr-3017.md)
 - [完了記録を判定の結果に結び付けるべきことを指摘したレビュー結果](../../raw/reviews/20260927T145506Z-pr-3292.md)
+- [記録の書き手を判定側の helper へ移した fix 結果](../../raw/fixes/20260927T151743Z-pr-3292.md)

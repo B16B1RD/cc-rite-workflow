@@ -190,6 +190,14 @@
 * **Update**: [Step 番号参照は relative (Step N + 1) ではなく absolute (heading title 名 + Step 番号) で書く](pages/patterns/step-reference-absolute-heading-over-relative.md) — raw/reviews/20260927T145617Z-pr-3291.md を統合
 * **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=64, orphans=0, missing_concept=0, unregistered_raw=564, broken_refs=0
 
+* **Update**: [他セッションの成果物を回収する処理は、進捗時刻ではなく所有者の生存信号で判定し、判定不能は残す側へ倒す](pages/heuristics/liveness-reaper-keeps-undecidable-and-guards-json-shape.md) — raw/fixes/20260927T150459Z-pr-3293.md を統合（現在時刻を先に読み、失敗段ごとに ERROR を分ける）
+* **Create**: [失敗経路の ERROR 文を段ごとに分けたら、分割後の各分岐に入るテストを 1 つずつ用意し、文面で照合する](pages/heuristics/split-error-message-needs-test-per-branch.md) — raw/reviews/20260927T151821Z-pr-3293.md を新規ページ化
+* **Update**: [再入ガードは「実行したか」ではなく「何を対象に実行したか」を記録する](pages/heuristics/reentry-guard-records-processed-range.md) — raw/fixes/20260927T151743Z-pr-3292.md を統合（記録の書き手を判定側へ移す）
+* **Update**: [散文の主張を実装に合わせて絞るときは、限定の外側・指示語・同じ主張の別箇所まで突き合わせる](pages/heuristics/narrowed-prose-claim-check-outside-scope-and-same-claims.md) — raw/fixes/20260927T152300Z-pr-3290.md を統合（規則の変更後に要約と根拠文を読み直す）
+* **Update**: [配布テンプレートへの内部参照流入は 1 箇所直しても閉じない — 同一配布単位の sibling を base 件数と比較する](pages/anti-patterns/internal-reference-leaks-into-distributed-template.md) — raw/reviews/20260927T151255Z-pr-3290.md を統合（配布物の根拠文を開発リポジトリの実データに置かない）
+* **Skip**: [20260927T150527Z-pr-3294.md](raw/fixes/20260927T150527Z-pr-3294.md) — 既存ページに無い一般則を含まない 2 行の冗長な絞り込みの削除記録
+* **Skip**: [20260927T151101Z-pr-3294.md](raw/reviews/20260927T151101Z-pr-3294.md) — 差分スコープの再レビューで指摘 0 件。新しい経験則を含まない
+
 ## 2026-09-26
 
 * **Create**: [他セッションの成果物を回収する処理は、進捗時刻ではなく所有者の生存信号で判定し、判定不能は残す側へ倒す](pages/heuristics/liveness-reaper-keeps-undecidable-and-guards-json-shape.md) — raw/reviews/20260926T144808Z-pr-3174.md を新規ページ化

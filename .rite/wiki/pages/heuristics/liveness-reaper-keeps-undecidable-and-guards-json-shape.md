@@ -4,14 +4,17 @@ title: "他セッションの成果物を回収する処理は、進捗時刻で
 domain: "heuristics"
 description: "進捗のたびにしか更新されない時刻を回収条件にすると、1 工程が長い生存中の所有者の成果物まで消える。生存は所有者側で頻繁に動く別の時刻で判定し、その記録が読めないときは黙って消さず警告して残す。記録を読む前に JSON object であることを確かめ、後段の読み取り失敗で回収ループ全体が止まらないようにする。"
 created: "2026-09-26T14:57:57Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:56:46Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:25:53Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:56:46Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:25:53Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260926T144808Z-pr-3174.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T145232Z-pr-3293.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T150459Z-pr-3293.md"
 tags: ["bash", "multi-session", "fail-loud", "jq"]
 confidence: medium
 ---
@@ -47,6 +50,10 @@ confidence: medium
 
 **現在時刻を取れないときは何も消さない**: 現在時刻の取得失敗を「生きていない」に倒すと、回収経路が他セッションの生きたロックを消してから停止する。時刻を取れないときは削除せずに止める。判定不能を残す側へ倒す原則を、比較の相手側（現在時刻）にも適用する。
 
+現在時刻は、記録の時刻を解析するより前に読む。解析の途中で現在時刻を使う実装だと、時計が読めない失敗が「記録を解析できない = 古い」と同じ戻り値にすり替わり、回収経路へ流れる。判定に必要な値を取れないときは、判定関数の中で ERROR を出して止める（「古い」と同じ戻り値で返さない）。
+
+失敗段（時刻の取得・書き込み）ごとに ERROR の文面を分ける。1 つの文面に束ねると、どの段で止まったかを診断できない。テストは件数ではなく文面で各分岐を照合する。
+
 ## 関連ページ
 
 - [共有リソースの type/名前空間を再利用する新機能は、既存消費者のコード内契約（コメント明示の不変条件）を見落として生存中のリソースを破壊しうる](../anti-patterns/shared-resource-type-reuse-without-consumer-contract-check.md)
@@ -55,3 +62,4 @@ confidence: medium
 
 - [レビュー結果](../../raw/reviews/20260926T144808Z-pr-3174.md)
 - [時間窓の内側と現在時刻の取得失敗の扱いを検出したレビュー結果](../../raw/reviews/20260927T145232Z-pr-3293.md)
+- [現在時刻を先に読み、失敗段ごとに ERROR を分けた fix 結果](../../raw/fixes/20260927T150459Z-pr-3293.md)
