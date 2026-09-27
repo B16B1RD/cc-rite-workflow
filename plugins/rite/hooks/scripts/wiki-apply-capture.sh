@@ -56,7 +56,7 @@ _yaml() {
   local file="$1" key="$2"
   awk -v k="$key" '
     /^wiki:/ {s=1; next}
-    s && /^[^ ]/ {exit}
+    s && /^[^[:space:]#]/ {exit}
     s && $0 ~ "^[[:space:]]+" k ":" {print; exit}
   ' "$file" 2>/dev/null \
     | sed 's/[[:space:]]#.*//' \

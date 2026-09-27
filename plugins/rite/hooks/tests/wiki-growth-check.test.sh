@@ -134,12 +134,28 @@ git -C "$nonalpha_repo" add rite-config.yml \
   && git -C "$nonalpha_repo" commit -q -m "reconfigure base" \
   || { echo "FAIL: nonalpha_repo config commit failed" >&2; exit 1; }
 args_log="$(mktemp)"; SANDBOXES+=("$args_log")
+nonalpha_err="$(mktemp)"; SANDBOXES+=("$nonalpha_err")
 PATH="$STUB_DIR:$PATH" GH_STUB_PRS='[]' GH_STUB_ARGS_LOG="$args_log" \
-  bash "$SCRIPT" --repo-root "$nonalpha_repo" --quiet >/dev/null 2>&1
-assert "non-alpha top-level key ends branch section (falls back to develop)" "2" \
-  "$(grep -c -- '--base develop' "$args_log")"
-assert "base outside branch via non-alpha key is not used" "0" \
-  "$(grep -c -- '--base wrong' "$args_log")"
+  bash "$SCRIPT" --repo-root "$nonalpha_repo" --quiet >/dev/null 2>"$nonalpha_err"
+assert "branch section without base does not query gh with any base" "0" \
+  "$(grep -c -- '--base' "$args_log")"
+assert "branch section without base warns instead of assuming develop" "1" \
+  "$(grep -c 'WARNING: .*branch\.base' "$nonalpha_err")"
+
+# --- 節の中の列 0 コメントで branch: 節を閉じない ------------------------------
+comment_repo="$(make_wiki_repo true yes)"; SANDBOXES+=("$comment_repo")
+printf 'wiki:\n  enabled: true\n  branch_name: wiki\nbranch:\n# note\n  base: main\n' \
+  > "$comment_repo/rite-config.yml"
+git -C "$comment_repo" add rite-config.yml \
+  && git -C "$comment_repo" commit -q -m "comment inside branch" \
+  || { echo "FAIL: comment_repo config commit failed" >&2; exit 1; }
+comment_log="$(mktemp)"; SANDBOXES+=("$comment_log")
+PATH="$STUB_DIR:$PATH" GH_STUB_PRS='[]' GH_STUB_ARGS_LOG="$comment_log" \
+  bash "$SCRIPT" --repo-root "$comment_repo" --quiet >/dev/null 2>&1
+assert "column-0 comment keeps branch section open (base main)" "2" \
+  "$(grep -c -- '--base main' "$comment_log")"
+assert "column-0 comment does not fall back to develop" "0" \
+  "$(grep -c -- '--base develop' "$comment_log")"
 
 # --- Findings line always emitted --------------------------------------------
 findings_out="$(PATH="$STUB_DIR:$PATH" GH_STUB_PRS='[]' bash "$SCRIPT" --repo-root "$healthy_repo" --quiet 2>/dev/null || true)"

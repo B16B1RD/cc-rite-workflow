@@ -2289,7 +2289,7 @@ rationale: references/design-rationale.md#work-memory-update-rationale
 
 #### 4.5.2 Retrieve and Update Work Memory Comment
 
-進捗ステータスはステップ 3 の検証済み変更一覧から判断し、不足時は `rite-config.yml` の base（未設定時 `develop`）を解決し、helper と同じ `git diff --name-status "origin/{base_branch}...HEAD"` を取得する。履歴本文は 4.5.3 のテンプレートから生成する。本文をコードへ展開せず、Write ツールで下記の所有ファイルへ保存する（履歴は `### レビュー対応履歴` 見出しなし）。別 Bash のローカル変数は引き継がない。
+進捗ステータスはステップ 3 の検証済み変更一覧から判断し、不足時は `rite-config.yml` の `branch.base`（未設定なら helper は `base_branch_unresolved` で停止）を解決し、helper と同じ `git diff --name-status "origin/{base_branch}...HEAD"` を取得する。履歴本文は 4.5.3 のテンプレートから生成する。本文をコードへ展開せず、Write ツールで下記の所有ファイルへ保存する（履歴は `### レビュー対応履歴` 見出しなし）。別 Bash のローカル変数は引き継がない。
 
 1. `mktemp` で PR 本文ファイルを確保する。失敗時は `WM_UPDATE_FAILED=1; reason=mktemp_failed_pr_body_tmp` を stderr に出し、更新を実行せず 5.1 へ進む。取得済み PR 本文を保存し、空/書込失敗は空ファイルとして helper に渡す。
 2. `mktemp` で履歴ファイルを確保し本文を保存する。準備失敗時は確保済みの履歴ファイルを削除してからパスを空文字にする。helper は進捗更新成功後にだけ `wm_sync_history_failed` と判定するため、この時点で失敗フラグを追加しない。
@@ -2778,6 +2778,7 @@ bash {plugin_root}/hooks/scripts/fix-reason-coverage-check.sh
 | `jq_current_body_extract_failed` | ステップ 1.2 Fast Path | `jq -r '.body // empty'` が exit != 0 で失敗 (同上) |
 | `current_body_empty` | ステップ 1.2 Fast Path | gh api 成功だが `.body` フィールド抽出が空 |
 | `config_unreadable` | ステップ 4.5.2 | rite-config.yml が存在するのに読めない、または main checkout root を解決できない。base branch を決められないため git diff と helper を呼ばない |
+| `base_branch_unresolved` | ステップ 4.5.2 | rite-config.yml が無い、または `branch.base` を読めない。既定の base で補わず、git diff と helper を呼ばない |
 | `git_diff_failed` | ステップ 4.5.2 | changed-files-file 用 mktemp の失敗、または `git diff --name-status origin/{base_branch}...HEAD` の失敗 (shallow clone / 無効な base / git リポジトリ外)。helper を呼ばず work memory comment を不変に保つ (原実装が git diff 失敗時に PATCH 前で exit したのと等価) |
 | `wm_sync_progress_failed` | ステップ 4.5.2 | `issue-comment-wm-sync.sh ... --transform update-progress` が no_comment 以外の skipped/error status を返した (必須引数欠落 invalid_args / body 取得失敗 / safety check 失敗 / transform 失敗 / PATCH 失敗を helper が内部処理し status= 行で通知) |
 | `wm_update_helper_failed` | ステップ 4.5.2 caller | helper の結果 marker 不在（欠落・起動不能・引数不正等） |

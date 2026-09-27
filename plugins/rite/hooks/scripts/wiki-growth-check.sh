@@ -3,7 +3,7 @@
 #
 # Detect Wiki growth stalls — fires when the last commit on the `wiki` branch
 # is older than `wiki.growth_check.threshold_prs` consecutive merged PRs on
-# the development base branch (default: develop). This catches "Wiki ingest is
+# the development base branch (`branch.base`). This catches "Wiki ingest is
 # silently broken" regressions where review/fix/close skip Phase X.X.W and the
 # wiki branch never grows even though PRs are landing.
 #
@@ -28,7 +28,8 @@
 #   -h, --help             Show this help
 #
 # Exit codes (drift-check と同一の非ブロッキング契約):
-#   0  Wiki growth healthy (or wiki branch absent / wiki disabled — skip silently)
+#   0  Wiki growth healthy (or wiki branch absent / wiki disabled — skip silently;
+#      branch.base unreadable — skip with a WARNING)
 #   1  Wiki growth threshold exceeded (warning — caller MUST keep [lint:success])
 #   2  Invocation error (bad args, missing repo, missing gh CLI)
 #
@@ -218,14 +219,18 @@ if [ -z "$last_wiki" ]; then
   exit 0
 fi
 
-# --- Determine base branch (default: develop, fallback: main) ---
+# --- Determine base branch (branch.base; no default) ---
 base_branch=$(awk '
   /^branch:/ { in_branch=1; next }
   in_branch && /^[[:space:]]+base:/ { print; exit }
-  in_branch && /^[^ ]/ { in_branch=0 }
+  in_branch && /^[^[:space:]#]/ { in_branch=0 }
 ' "$config_file" 2>/dev/null \
   | sed 's/[[:space:]]#.*//' | sed 's/.*base:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
-[ -z "$base_branch" ] && base_branch="develop"
+if [ -z "$base_branch" ]; then
+  echo "WARNING: rite-config.yml の branch.base を読めないため wiki-growth-check を skip します ($config_file)" >&2
+  echo "==> Total wiki-growth-check findings: 0"
+  exit 0
+fi
 
 # --- Count merged PRs since last wiki commit ---
 if ! command -v gh >/dev/null 2>&1; then

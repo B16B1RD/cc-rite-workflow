@@ -429,6 +429,49 @@ else
   fail "commit unreadable base rc=$GRC out=$GOUT"
 fi
 cp "$ROOT/cfg.bak" "$repo/rite-config.yml"
+# a column-0 comment inside branch: keeps the section open; a commented-out base is not a value
+printf '%s\n' 'branch:' '# base: no-such-base-ref' "  base: \"$review_base\"" >> "$repo/rite-config.yml"
+run_gate --mode review --worktree "$repo" --flow-state "$flow" --memory "$mem"
+if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
+  pass "review reads branch.base past a column-0 comment"
+else
+  fail "column-0 comment base rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
+fi
+cp "$ROOT/cfg.bak" "$repo/rite-config.yml"
+# without branch.base the gate does not diff against a default base
+run_gate --mode review --worktree "$repo" --flow-state "$flow" --memory "$mem"
+if [ "$GRC" -eq 1 ] && grep -q 'reason=base_diff_unreadable' <<<"$GOUT" \
+   && ! grep -q 'reason=evidence_mismatch' <<<"$GOUT" \
+   && grep -q 'ERROR: .*branch\.base' "$ROOT/gate.err" && ! grep -q 'develop' "$ROOT/gate.err"; then
+  pass "review without branch.base denies as an unreadable base diff"
+else
+  fail "missing base review rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
+fi
+run_gate --mode commit --worktree "$repo" --flow-state "$flow" --memory "$mem"
+if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT" \
+   && grep -q 'WARNING: .*branch\.base' "$ROOT/gate.err"; then
+  pass "commit without branch.base allows and warns"
+else
+  fail "missing base commit rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
+fi
+write_mem "$mem" "$(applied_page '対象の識別子を照合してから実行する。' README 'printf ok' | sed 's/^decision: applied/decision: out/')"
+run_gate --mode review --worktree "$repo" --flow-state "$flow" --memory "$mem"
+if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT" \
+   && grep -q 'WARNING: .*branch\.base' "$ROOT/gate.err"; then
+  pass "review without applied pages allows without branch.base and warns"
+else
+  fail "missing base out-only review rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
+fi
+write_mem "$mem" "$(applied_page '対象の識別子を照合してから実行する。' README 'printf ok')"
+# a column-0 comment inside wiki: keeps the section open, so auto_query below it is read
+printf '%s\n' 'wiki:' '  enabled: true' '# note' '  auto_query: true' > "$repo/rite-config.yml"
+run_gate --mode commit --worktree "$repo" --flow-state "$flow" --memory "$mem"
+if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT"; then
+  pass "gate reads wiki.auto_query past a column-0 comment"
+else
+  fail "column-0 comment wiki rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
+fi
+cp "$ROOT/cfg.bak" "$repo/rite-config.yml"
 # a diff whose full text fails while --name-only succeeds must keep its own stderr;
 # a base ref that doesn't exist fails both calls the same way and can't tell this
 # fix from a revert that re-runs --name-only for the diagnostic
@@ -903,6 +946,20 @@ if [ -f "$sub_mem" ] && ! grep -q 'status: auto_query_off' "$sub_mem"; then
   pass "subdir capture keeps the worktree auto_query"
 else
   fail "subdir capture rc=$crc mem=$(cat "$sub_mem" 2>/dev/null) err=$(cat "$ROOT/subcap.err")"
+fi
+
+echo "=== capture reads wiki keys past a column-0 comment ==="
+com_repo=$(new_repo comcap)
+printf '%s\n' 'wiki:' '  enabled: true' '# note' '  auto_query: true' > "$com_repo/rite-config.yml"
+com_flow="$ROOT/comcap.flow-state"
+write_flow "$com_flow" implement 7 "$com_repo"
+com_mem="$ROOT/comcap.md"
+crc=0
+bash "$CAPTURE" --keywords widget --cwd "$com_repo" --flow-state "$com_flow" --memory "$com_mem" >"$ROOT/comcap.out" 2>"$ROOT/comcap.err" || crc=$?
+if [ -f "$com_mem" ] && ! grep -q 'status: auto_query_off' "$com_mem"; then
+  pass "capture reads wiki.auto_query past a column-0 comment"
+else
+  fail "column-0 comment capture rc=$crc mem=$(cat "$com_mem" 2>/dev/null) err=$(cat "$ROOT/comcap.err")"
 fi
 
 echo "=== a linked worktree reads the main checkout config ==="
