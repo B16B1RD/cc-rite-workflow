@@ -428,11 +428,13 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
     before_edit = caller_block(docs, '# fix-scope-before-edit')
     final_verify = caller_block(docs, '# fix-scope-final-verification')
 
+    # caller は helper の 1 行呼び出しなので、失敗は呼び出しの終了コードとして後続へ伝わる。
+    # 後続の操作は別の Bash 呼び出しで実行されるため、ここでは -e で「失敗した呼び出しの後へ進まない」を再現する。
     def execute(body):
         for key, value in {'plugin_root': str(plugin), 'fix_plan_file': str(plan_file),
                            'fix_issue_file': str(issue_file)}.items():
             body = body.replace('{' + key + '}', value)
-        return run(['bash', '-c', body + '\nprintf "REACHED_LATER_ACTION\\n"'], ok=False)
+        return run(['bash', '-e', '-c', body + '\nprintf "REACHED_LATER_ACTION\\n"'], ok=False)
 
     save_plan()
     result = execute(before_edit)

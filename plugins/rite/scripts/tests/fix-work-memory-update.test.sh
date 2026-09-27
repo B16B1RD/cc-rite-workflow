@@ -16,6 +16,8 @@ export CASE_DIR="$TEST_DIR/case"
 SANDBOX="$TEST_DIR/plugin"
 mkdir -p "$SANDBOX/scripts" "$SANDBOX/hooks" "$TEST_DIR/bin" "$CASE_DIR/tmp"
 cp "$PLUGIN_ROOT/scripts/fix-work-memory-update.sh" "$SANDBOX/scripts/fix-work-memory-update.sh"
+# SKILL.md 4.5.2 の caller は fix-step.sh の 1 行呼び出し。helper は自分の位置から plugin_root を決める。
+cp "$PLUGIN_ROOT/scripts/fix-step.sh" "$SANDBOX/scripts/fix-step.sh"
 cp "$PLUGIN_ROOT/hooks/control-char-neutralize.sh" "$SANDBOX/hooks/control-char-neutralize.sh"
 mkdir -p "$SANDBOX/hooks/scripts/lib"
 cp "$PLUGIN_ROOT/hooks/scripts/lib/rite-config-path.sh" "$SANDBOX/hooks/scripts/lib/rite-config-path.sh"

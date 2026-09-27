@@ -41,7 +41,7 @@ SKILL.md 内の `verified-review` 注釈は `/verified-review` コマンドに�
 
 ## bash-compat-guard
 
-`mapfile` builtin は bash 4.0 で導入されたため、bash 3.2 (macOS default) では `mapfile -t < <(...)` が silent 失敗し、下流経路へ silent routing する regression を起こす。guard は prose 参照ではなく inline 実行可能コードとしてエントリ引数 parse bash block 冒頭 (fix: ステップ 1.0.1 Step 0 / review: ステップ 1.0 Step 0) に配置する (C-3 対応)。Source: GNU Bash 4.0 NEWS (https://tiswww.case.edu/php/chet/bash/NEWS)
+`mapfile` builtin は bash 4.0 で導入されたため、bash 3.2 (macOS default) では `mapfile -t < <(...)` が silent 失敗し、下流経路へ silent routing する regression を起こす。guard は prose 参照ではなく inline 実行可能コードとしてエントリ引数 parse の冒頭 (fix: ステップ 1.0.1 が呼ぶ `scripts/fix-step.sh parse-args` の Step 0 / review: ステップ 1.0 Step 0) に配置する (C-3 対応)。Source: GNU Bash 4.0 NEWS (https://tiswww.case.edu/php/chet/bash/NEWS)
 
 ## review-source-resolution
 

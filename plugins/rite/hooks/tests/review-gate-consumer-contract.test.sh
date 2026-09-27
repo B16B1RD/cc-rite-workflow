@@ -3,6 +3,8 @@ set -u
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)
 FIX="$ROOT/plugins/rite/skills/fix/SKILL.md"
+# fix の検査・停止のコード片は scripts/fix-step.sh にあり、SKILL.md はその 1 行呼び出しを持つ
+FIX_STEP="$ROOT/plugins/rite/scripts/fix-step.sh"
 REVIEW="$ROOT/plugins/rite/skills/pr-review/SKILL.md"
 pass=0
 fail=0
@@ -16,8 +18,8 @@ check() {
   fi
 }
 
-check "fix は file JSON の receipt を検査" '.measured_gate.commit_sha == .commit_sha' "$FIX"
-check "fix は未適用 JSON で停止" '[fix:error] reason=gate_not_applied' "$FIX"
+check "fix は file JSON の receipt を検査" '.measured_gate.commit_sha == .commit_sha' "$FIX_STEP"
+check "fix は未適用 JSON で停止" '[fix:error] reason=gate_not_applied' "$FIX_STEP"
 # 非 fatal の移送は実測済みの指摘も含むため、fix の表示は実測の有無を断定しない。
 if [ "$(grep -cF 'non-blocking（fix 対象外）' "$FIX")" -eq 4 ] && ! grep -qF '非 fatal・実測なし' "$FIX"; then
   echo "  ✅ fix の non-blocking 表示は実測なしと断定しない"; pass=$((pass + 1))
@@ -66,8 +68,15 @@ root = Path(sys.argv[1])
 fix = (root / 'plugins/rite/skills/fix/SKILL.md').read_text()
 common = fix.split('### 1.2.2 Common Fatal Triage and Recording', 1)[1].split('### 1.3 Classify Comments', 1)[0]
 blocks = re.findall(r'```bash\n(.*?)\n```', common, re.S)
-triage = next(b for b in blocks if 'review-findings-maps.sh' in b)
+triage = next(b for b in blocks if 'scripts/fix-step.sh triage ' in b)
 materialize = next(b for b in blocks if '# fix-conversation-review-json' in b)
+# SKILL.md の caller は scripts/fix-step.sh の 1 行呼び出し。fixture の plugin にも helper と、
+# helper が読み込む control-char-neutralize.sh を置く（helper は自分の位置から plugin_root を決める）。
+def link_fix_step(plugin_dir):
+    (plugin_dir / 'scripts').mkdir(parents=True, exist_ok=True)
+    (plugin_dir / 'hooks').mkdir(parents=True, exist_ok=True)
+    (plugin_dir / 'scripts/fix-step.sh').symlink_to(root / 'plugins/rite/scripts/fix-step.sh')
+    (plugin_dir / 'hooks/control-char-neutralize.sh').symlink_to(root / 'plugins/rite/hooks/control-char-neutralize.sh')
 record = re.search(r'```bash\n(.*?)\n```', (root / 'plugins/rite/skills/fix/references/non-fatal-record.md').read_text(), re.S).group(1)
 # The ledger splice must stop on failure, not fall through to an unspliced PATCH.
 assert 'reason=nonblocking_record_ledger_extract_failed' in record
@@ -80,6 +89,7 @@ with tempfile.TemporaryDirectory() as temp:
     (plugin / 'hooks/scripts').mkdir(parents=True)
     (plugin / 'scripts/review-findings-maps.sh').symlink_to(root / 'plugins/rite/scripts/review-findings-maps.sh')
     (plugin / 'hooks/scripts/nb-sweep-ledger.sh').symlink_to(root / 'plugins/rite/hooks/scripts/nb-sweep-ledger.sh')
+    link_fix_step(plugin)
     source = temp / 'review.json'
     values = {'plugin_root': str(plugin), 'triage_review_path': str(source),
               'triage_helper_source': 'explicit_file', 'pr_number': '42',
@@ -165,6 +175,7 @@ exit 97
     for name in ('review-save-json-verify.sh', 'lib'):
         (copier / 'hooks/scripts' / name).symlink_to(root / 'plugins/rite/hooks/scripts' / name)
     (copier / 'hooks/state-path-resolve.sh').write_text(f"#!/bin/bash\nprintf '%s\\n' '{state}'\n")
+    link_fix_step(copier)
     repo = temp / 'repo'
     repo.mkdir()
     git = ['git', '-C', str(repo), '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false']
@@ -211,6 +222,7 @@ exit 97
     # A missing helper is a failure, not "no saved JSON": the block stops with the helper output.
     broken = temp / 'broken'
     (broken / 'hooks/scripts').mkdir(parents=True)
+    link_fix_step(broken)
     failed = copy_fail(broken, 'conversation_json_verify_failed')
     assert 'review-save-json-verify.sh' in failed.stderr, failed
     # An undecidable helper result (exit 0 without the found marker) also stops.
@@ -219,6 +231,7 @@ exit 97
     for name in ('review-save-json-verify.sh', 'lib'):
         (degraded / 'hooks/scripts' / name).symlink_to(root / 'plugins/rite/hooks/scripts' / name)
     (degraded / 'hooks/state-path-resolve.sh').write_text("#!/bin/bash\nprintf '\\n'\n")
+    link_fix_step(degraded)
     failed = copy_fail(degraded, 'conversation_json_verify_failed')
     assert 'REVIEW_SAVE_GATE=degraded' in failed.stderr, failed
     # A HEAD JSON whose gate receipt is broken stops instead of counting as "no saved JSON".
@@ -236,6 +249,7 @@ exit 97
     (flaky / 'hooks/scripts').mkdir(parents=True)
     for name in ('review-save-json-verify.sh', 'lib'):
         (flaky / 'hooks/scripts' / name).symlink_to(root / 'plugins/rite/hooks/scripts' / name)
+    link_fix_step(flaky)
     calls = temp / 'resolve-calls'
     (flaky / 'hooks/state-path-resolve.sh').write_text(
         f"#!/bin/bash\necho x >> '{calls}'\n[ \"$(wc -l < '{calls}')\" -eq 1 ] || exit 1\nprintf '%s\\n' '{state}'\n")
@@ -251,7 +265,8 @@ exit 97
     assert Path(copy_run(json.loads(external.read_text())['commit_sha'])) == original
     compare = next(b for b in blocks if '# fix-explicit-review-json' in b)
     def compare_run(given):
-        block = compare.replace('{review_source_path}', str(given)).replace('{materialized_json}', str(original))
+        block = compare.replace('{review_source_path}', str(given)).replace('{materialized_json}', str(original)) \
+            .replace('{plugin_root}', str(root / 'plugins/rite'))
         assert not re.search(r'\{[a-z_]+\}', block), block
         return subprocess.run(['bash', '-c', block], text=True, capture_output=True, timeout=10)
     same = compare_run(external)

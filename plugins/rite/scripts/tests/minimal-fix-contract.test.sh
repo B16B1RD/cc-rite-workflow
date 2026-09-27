@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)
 fix_skill="$ROOT/plugins/rite/skills/fix/SKILL.md"
+# fix-cycle の数値永続化のコード片は scripts/fix-step.sh にあり、SKILL.md は 1 行呼び出しを持つ
+fix_step="$ROOT/plugins/rite/scripts/fix-step.sh"
 reviewer="$ROOT/plugins/rite/agents/_reviewer-base.md"
 failures=0
 
@@ -38,31 +40,33 @@ assert_grep 'fix limits additive defenses and explanation' "$fix_skill" \
 
 # Pin the complete fix-cycle range and its numeric persistence. In particular,
 # HEAD~1 would silently shrink a multi-commit cycle to its final commit.
-assert_grep 'fix records the pre-commit cycle baseline' "$fix_skill" \
+assert_grep 'fix records the pre-commit cycle baseline' "$fix_step" \
   'FIX_CYCLE_BASE_SHA=%s'
-assert_grep 'fix consumes the retained cycle baseline' "$fix_skill" \
-  'commit_sha_before="{fix_cycle_base_sha_from_context}"'
-assert_grep 'fix rejects an invalid or unexpanded baseline' "$fix_skill" \
+assert_grep 'fix passes the retained cycle baseline to the helper' "$fix_skill" \
+  '--fix-cycle-base-sha {fix_cycle_base_sha_from_context}'
+assert_grep 'fix consumes the retained cycle baseline' "$fix_step" \
+  'commit_sha_before="${fix_cycle_base_sha}"'
+assert_grep 'fix rejects an invalid or unexpanded baseline' "$fix_step" \
   'git cat-file -e "${commit_sha_before}^{commit}"'
-assert_block 'invalid cycle baseline fails closed' "$fix_skill" \
+assert_block 'invalid cycle baseline fails closed' "$fix_step" \
   'if ! git cat-file -e "${commit_sha_before}^{commit}" 2>/dev/null; then
   echo "ERROR: FIX_CYCLE_BASE_SHA が未展開または無効です: $commit_sha_before" >&2
   echo "[fix:error]"
   exit 1
 fi'
-assert_grep 'fix uses the cycle baseline for numstat' "$fix_skill" \
+assert_grep 'fix uses the cycle baseline for numstat' "$fix_step" \
   'git diff --numstat "$commit_sha_before"..HEAD'
-assert_grep 'fix excludes binary additions from line totals' "$fix_skill" \
+assert_grep 'fix excludes binary additions from line totals' "$fix_step" \
   '$1 ~ /^[0-9]+$/ { added += $1 }'
-assert_grep 'fix excludes binary deletions from line totals' "$fix_skill" \
+assert_grep 'fix excludes binary deletions from line totals' "$fix_step" \
   '$2 ~ /^[0-9]+$/ { deleted += $2 }'
-assert_grep 'fix persists additions as a JSON number' "$fix_skill" \
+assert_grep 'fix persists additions as a JSON number' "$fix_step" \
   '--argjson added "$lines_added"'
-assert_grep 'fix persists deletions as a JSON number' "$fix_skill" \
+assert_grep 'fix persists deletions as a JSON number' "$fix_step" \
   '--argjson deleted "$lines_deleted"'
-assert_grep 'fix maps the numeric additions into the cycle entry' "$fix_skill" \
+assert_grep 'fix maps the numeric additions into the cycle entry' "$fix_step" \
   '"lines_added": $added'
-assert_grep 'fix maps the numeric deletions into the cycle entry' "$fix_skill" \
+assert_grep 'fix maps the numeric deletions into the cycle entry' "$fix_step" \
   '"lines_deleted": $deleted'
 
 assert_grep 'reviewer defines over-fix' "$reviewer" \

@@ -41,6 +41,8 @@ PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 ITERATE="$PLUGIN_ROOT/skills/iterate/SKILL.md"
 ITERATE_STEP="$PLUGIN_ROOT/scripts/iterate-step.sh"
 FIX="$PLUGIN_ROOT/skills/fix/SKILL.md"
+# fix 5.1 の NB_SWEEP_DONE_FILE 判定のコード片は scripts/fix-step.sh の step_nb_sweep_done_file にある
+FIX_STEP="$PLUGIN_ROOT/scripts/fix-step.sh"
 FIX_SWEEP="$PLUGIN_ROOT/skills/fix/references/nb-sweep.md"
 SETUP="$PLUGIN_ROOT/skills/setup/SKILL.md"
 CLEANUP_SKILL="$PLUGIN_ROOT/skills/cleanup/SKILL.md"
@@ -241,10 +243,10 @@ rm -rf -- "$gi_setup"
 assert_grep_in_section "T-09 iterate kind is field 1" "$ITERATE_STEP" \
   '^step_nb_sweep_collect[(][)] [{]$' '^}$' \
   'awk '"'"'NR==1 \{ print \$1 \}'"'"
-assert_grep_in_section "T-09 fix 1.5 matches recorded basename" "$FIX" \
-  '### 5.1 Output Pattern' '### 5.2 Standalone Execution Behavior' \
+assert_grep_in_section "T-09 fix 1.5 matches recorded basename" "$FIX_STEP" \
+  '^step_nb_sweep_done_file[(][)] [{]$' '^}$' \
   'if \[ -n "\$_nb_range" \] && \[ "\$_nb_range" = "\$_nb_latest_base" \]; then'
-fix_dash_f=$(awk '/^### 5.1 Output Pattern/,/^### 5.2 Standalone Execution Behavior/' "$FIX" | grep -c '\[ -f "\$_nb_done_root' || true)
+fix_dash_f=$(awk '/^step_nb_sweep_done_file\(\) \{$/,/^}$/' "$FIX_STEP" | grep -c '\[ -f "\$_nb_done_root' || true)
 assert "T-09 fix 5.1 no longer treats -f alone as done" "0" "$fix_dash_f"
 
 # New sweep writers keep a one-line done marker and never grant a new HEAD.
@@ -399,13 +401,19 @@ fenced_ok() {
     || { echo "FAIL: T-12 $1 fence missing, ambiguous or overran"; exit 1; }
 }
 
-fix51_block=$(fenced_block_with "$FIX" 'echo "[CONTEXT] NB_SWEEP_DONE_FILE=1"')
-fenced_ok "fix 5.1 NB_SWEEP_DONE_FILE" "$fix51_block"
-render_fenced "$fix51_block" >/dev/null || exit 1
+# step_nb_sweep_done_file は関数なので関数範囲を抽出し、state-path-resolve だけを fixture root へ差し替える
+fix51_fence=$(awk '/^step_nb_sweep_done_file\(\) \{$/{f=1} f{print} f && /^}$/{exit}' "$FIX_STEP")
+[ -n "$fix51_fence" ] && printf '%s\n' "$fix51_fence" | tail -1 | grep -qx '}' \
+  && printf '%s\n' "$fix51_fence" | grep -qF 'bash "$plugin_root"/hooks/state-path-resolve.sh' \
+  || { echo "FAIL: T-12 fix 5.1 function extraction lost its end anchor or its state-path-resolve call"; exit 1; }
 fix51_run() {
   local root out
   root=$(nb_fixture "$1")
-  out=$(NB_FIX_ROOT="$root" bash -c "$(render_fenced "$fix51_block")" 2>&1) || true
+  out=$(NB_FIX_ROOT="$root" bash -c "$(
+    printf 'pr_number=42\nplugin_root=%q\n' "$PLUGIN_ROOT"
+    printf '%s\n' "$fix51_fence" | sed -e 's#bash "$plugin_root"/hooks/state-path-resolve.sh#printf %s "$NB_FIX_ROOT"#g'
+    printf 'step_nb_sweep_done_file\n'
+  )" 2>&1) || true
   rm -rf -- "$root"
   printf '%s\n' "$out" | sed -n 's/^\[CONTEXT\] NB_SWEEP_DONE_FILE=\([01]\)$/\1/p'
 }
