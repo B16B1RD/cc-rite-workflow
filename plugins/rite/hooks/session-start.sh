@@ -640,9 +640,11 @@ _rite_stop_reason_phrase() {
 
 # 停止した review_run は active=false と stop_reason を同じ更新で書き、run が停止している間は
 # 以後の set でも理由が残る。inactive だからと無言で exit すると、その失敗停止は起動時に一度も
-# 案内されない。startup / clear では停止理由だけを案内し、state は書き換えない (停止は停止のまま残す)。
+# 案内されない。flow state はセッション単位で、停止した run の state を読めるのは同じ session_id の
+# 起動 (ホストが id を引き継ぐ resume を含む) だけ。startup / clear / resume では停止理由だけを案内し、
+# state は書き換えない (停止は停止のまま残す)。
 if [ "$ACTIVE" != "true" ]; then
-  if [ "$SOURCE" = "startup" ] || [ "$SOURCE" = "clear" ]; then
+  if [ "$SOURCE" = "startup" ] || [ "$SOURCE" = "clear" ] || [ "$SOURCE" = "resume" ]; then
     _inactive_stop=""
     if ! _inactive_stop=$(jq -r '[(.phase // ""), (.issue_number // "" | tostring), (.branch // ""), (.stop_reason // "")] | join("\u001f")' "$STATE_FILE" 2>/dev/null); then
       echo "rite: session-start: WARNING: jq read of .stop_reason failed (STATE_FILE may be corrupt)" >&2
