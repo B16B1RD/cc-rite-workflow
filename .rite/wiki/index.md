@@ -574,9 +574,10 @@ okf_version: "0.2"
 | [シェルの前置きラッパーを剥がす判定は、ラッパーごとのオプション終端の扱いを bash の実挙動と突き合わせる](pages/heuristics/shell-wrapper-strip-end-of-options-per-wrapper.md) | heuristics | シェルコマンドの先頭語を判定する処理で builtin / command / time などの前置きを剥がすとき、ラッパーごとに剥がす経路が分かれていると、オプション終端 -- を剥がさない経路が残り、同じ意味の変種が判定から漏れる。剥がし方の非対称は揃えるのではなく、各ラッパーの bash 上の実挙動と一致しているかを確かめる。 | 2026-09-27T09:40:29Z | high |
 | [セッション単位の state を読む案内は、同じ session_id で入る入口を基準に選ぶ — テストはホストの入力形で呼ぶ](pages/heuristics/session-scoped-guidance-targets-same-session-entry.md) | heuristics | 起動時の案内がセッション単位の state ファイルを読むとき、案内を出せるのは同じ session_id で起動した入口だけである。別経路の対象 source を流用すると実際の入口が抜け、harness が session id を事前設定するテストではその欠落が見えない。 | 2026-09-27T11:07:00Z | high |
 | [手順書の限定条件には、実行者が自分で確かめられる観測対象を併記する](pages/heuristics/limitation-clause-needs-executor-observable-cue.md) | heuristics | 「同じ会話に限る」のような限定を手順書に書くとき、条件を満たしているかを実行者が判定する手がかりが無いと、文脈が要約された後も満たしていると誤認したまま続行しうる。保持しているべき値の名前を併記し、読めなければ続けないと書く。 | 2026-09-27T11:07:00Z | medium |
+| [記録の同定キーが文脈の一部しか含まないと、同じ HEAD の再実行で前回の記録を今回のものと誤認する](pages/anti-patterns/record-identity-must-cover-every-context-key.md) | anti-patterns | 追記した記録を後で「今回の分がある」と確認する仕組みで、同定キーが run と commit だけなど文脈キーの一部しか持たないと、同じ HEAD を再レビューしたとき前 cycle の記録が一致して完了扱いになる。同定キーは記録を生んだ文脈の全キー（cycle を含む）で一意にし、確認は再取得の失敗と記録不在を別分岐にする。 | 2026-09-27T11:30:00Z | high |
 ## 統計
 
-- 総ページ数: 564
-- ドメイン別: patterns=126, heuristics=263, anti-patterns=175
-- 最終更新: 2026-09-27T11:13:23Z
+- 総ページ数: 565
+- ドメイン別: patterns=126, heuristics=263, anti-patterns=176
+- 最終更新: 2026-09-27T11:30:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
