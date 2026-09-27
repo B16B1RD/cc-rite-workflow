@@ -74,6 +74,7 @@
 * **Skip**: [20260927T045014Z-pr-3207.md](raw/reviews/20260927T045014Z-pr-3207.md) — 経験則なし: cycle の判定と反映状況の要約のみで、抽出できる規則は同じ PR の fix 結果に含まれる
 * **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=557, broken_refs=0
 * **Update**: [静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く](pages/heuristics/static-pin-semantic-allowlist-not-notation-denylist.md) — raw/fixes/20260927T050634Z-pr-3211.md を統合
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=558, broken_refs=0
 
 ## 2026-09-26
 
