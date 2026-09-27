@@ -13,8 +13,8 @@
 # T-06 fix 5.1 row 1.5/1.6; regular loop does not consult the file
 # T-07 existing nb-sweep-contract rails remain; 5.0.2 has skipped; step_init_cycle (0.6) has the
 #      line that removes the file (the removal on a fresh run is executed in
-#      review-trend-divergence.test.sh; the resume keep and the review-restart removal are not
-#      pinned by any test)
+#      review-trend-divergence.test.sh; the removal on a resume whose counter is 0, the keep on a
+#      resume with a nonzero counter and the review-restart removal are not pinned by any test)
 # T-08 AC-6 sidecar _ensure_dir_gitignore + setup dir_entry; git check-ignore -q rc=0
 # T-09 kind is line 1 field 1; fix 5.1 never treats the file's existence alone as done
 # T-10 sweep writers keep a one-line done marker and never add a SHA or run git
