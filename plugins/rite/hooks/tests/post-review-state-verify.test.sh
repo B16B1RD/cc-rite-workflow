@@ -333,9 +333,10 @@ base_repro_ok=no
 # The path comes from a separate mktemp call, so that call is named first.
 if [ "$(printf '%s\n' "$wt_span" | grep -c .)" = 1 ] && [ -n "$mk_span" ] \
   && [ "${#before_mk}" -lt "${#before_wt}" ]; then
+  # The worktree path must be the placeholder for mktemp's output, not a literal path.
   case "$wt_span" in
     *'$('*|*'../'*) ;;
-    *" --detach "*) case "$mk_span" in *"rite-review-mutation-"*) base_repro_ok=yes ;; esac ;;
+    *" --detach <"*) case "$mk_span" in *"rite-review-mutation-"*) base_repro_ok=yes ;; esac ;;
   esac
 fi
 assert "base-branch reproduction uses a detached worktree in the reviewer namespace" yes "$base_repro_ok"
@@ -344,7 +345,8 @@ assert "base-branch reproduction uses a detached worktree in the reviewer namesp
 # session refuses that form because it cannot see the created path.
 for doc in "$SCRIPT_DIR/../../agents/_reviewer-base.md" \
   "$SCRIPT_DIR/../../skills/reviewers/references/reviewer-base-rationale.md"; do
-  assert "no embedded mktemp in ${doc##*/}" 0 "$(grep -cF '$(mktemp -d -t rite-' "$doc")"
+  assert "no embedded mktemp in ${doc##*/}" 0 \
+    "$(grep -cE '\$\(mktemp[^)]*rite-(review-mutation|revert-test)-' "$doc")"
 done
 
 # A stash made on another branch in the reviewed worktree counts after switching back.
