@@ -155,13 +155,19 @@ sources:
     resource: "raw/reviews/20260927T145653Z-pr-3294.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T153355Z-pr-3292.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T160944Z-pr-3307.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T161319Z-pr-3292.md"
 tags: ["test", "mutation-testing", "false-positive", "dead-code", "verification", "bytes-exact-pin", "trailing-newline-strip", "self-grep-tautology", "count-threshold-mutation-evasion", "path-filter-coverage-gap", "load-bearing-whitespace-pin", "regex-alternation-per-branch-coverage", "regex-quantifier-semantic-coverage", "symmetry-claim-bidirectional-pin", "negative-assert", "non-blocking-contract-mutation"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:39:40Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:16:02Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:05:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:06:36Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:39:40Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:16:02Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:16:02Z" }
 ---
 
 # Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する
@@ -940,6 +946,10 @@ reviewer は式やファイルを書き換えずに、変異後の入力（旧�
 
 記録の書き手を別の場所へ移すときは、移動元にあった失敗分岐のテストも移動先へ移す。移さないと同じ分岐が無テストのまま残る。手動実行の既定経路が preview 付きの呼び出しになる helper では、受入条件の再現を preview 付きの経路でも固定しないと、その経路だけを壊す変異が生き残る。
 
+既存テストの入力値が検証述語の境界文字（`-` や `/` など）を含まないと、述語を過剰一致させる変異が suite を素通りする。実運用で使う命名形式の値を 1 ケース足すだけで、その変異を検出できるようになる。エラー文言を grep で数える補助 assert は文言変更で検出力を失うため、終了コードの assert と組にして失敗原因の切り分けにだけ使う。
+
+base の取り込みで両側が同じテスト番号を追加したときは、片側の番号を振り直すだけでなく、作業ディレクトリ名など番号から作る名前も衝突しないよう改める（`mkdir -p` は既存ディレクトリを使い回すため、名前が重なるとテスト間で状態が漏れる）。振り直しの正しさは「旧ブロックに機械置換をかけた結果が新ブロックと一致するか」「取り込み側だけにある行が 0 か」の 2 点で機械的に確かめられる。
+
 ## 関連ページ
 
 - [否定形の assert は前提条件が崩れると fail-silent になる](../anti-patterns/negative-assertion-vacuous-without-precondition-floor.md)
@@ -1024,3 +1034,5 @@ reviewer は式やファイルを書き換えずに、変異後の入力（旧�
 - [前置部分だけの pin が payload 差し替え変異を見逃すことを指摘したレビュー結果](../../raw/reviews/20260927T094529Z-pr-3256.md)
 - [変異を stdout で再現し dead filter と floor の抜けを指摘したレビュー結果](../../raw/reviews/20260927T145653Z-pr-3294.md)
 - [書き手の移動と preview 経路の固定漏れを指摘したレビュー結果](../../raw/reviews/20260927T153355Z-pr-3292.md)
+- [実運用の命名形式を入力に足して過剰一致の変異を検出したレビュー結果](../../raw/reviews/20260927T160944Z-pr-3307.md)
+- [取り込み後のテスト番号の振り直しを機械的に確かめたレビュー結果](../../raw/reviews/20260927T161319Z-pr-3292.md)

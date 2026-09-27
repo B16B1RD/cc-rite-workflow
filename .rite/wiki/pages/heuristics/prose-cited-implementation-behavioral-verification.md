@@ -16,12 +16,15 @@ sources:
     resource: "raw/reviews/20260927T032116Z-pr-3202.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T152733Z-pr-3299.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T161451Z-pr-3305.md"
 tags: ["verification-protocol", "prose-implementation-sync", "regex", "behavioral-test", "attribution"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:39:40Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:16:02Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:27:52Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:39:40Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:16:02Z" }
 ---
 
 # 散文が引用する実装 (regex literal / 帰属ファイル / 挙動) は文字一致・帰属・behavioral test の 3 点で裏取りする
@@ -77,6 +80,8 @@ canonical: helper を散文参照するときは「regex 実体ファイル (`.p
 
 条件付きの委譲（「このモードでは push を呼び出し側に委ねる」）を要約する散文は、helper の case 分岐の全組み合わせ（ブランチ戦略 × モード）を列挙して照合する。委譲先が no-op になる組み合わせでは「委ねる」と書けず、限定を省いた要約は一部の組み合わせで偽になる。同じ分岐の要約は手順書・仕様書・helper の docstring に分散しやすいので、1 箇所を直したら残りの写しを grep で探し、差分外なら別の修正に回す。
 
+実装の挙動を一般化して述べる散文（「引用符なしのリダイレクトは数えない」）は、実装の例外（パイプ分割で数えられる形）より広く言い切っていないかを確かめる。共有パーサの戻り値に印を付けて特定の経路だけ挙動を変える方式は、消費側が等値比較や slice しか使わないことを確かめてから採る。
+
 ## 関連ページ
 
 - [Documentation review は対応する実装側 (commands/scripts/templates) の grep verify を必須 step とする](./docs-review-implementation-grep-verification.md)
@@ -91,3 +96,4 @@ canonical: helper を散文参照するときは「regex 実体ファイル (`.p
 - [fix 結果](../../raw/fixes/20260601T190814Z-pr-1238.md)
 - [条件式の説明を helper の実行結果で照合したレビュー](../../raw/reviews/20260927T032116Z-pr-3202.md)
 - [委譲の要約を helper の分岐の全組み合わせと照合したレビュー結果](../../raw/reviews/20260927T152733Z-pr-3299.md)
+- [一般化した散文と実装の例外の境界ずれを指摘したレビュー結果](../../raw/reviews/20260927T161451Z-pr-3305.md)
