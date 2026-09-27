@@ -83,8 +83,12 @@ def _without_redirections(args):
 def classify_commit_args(args):
     """Return whether these tokens after `commit` are a dry run, and whether
     they record the index. A value glued on with '=' is not a following pathspec.
-    `--amend` stays an index commit. A shell redirection and its target are not
-    arguments, so they are dropped before any option takes its value."""
+    `--amend` stays an index commit. A redirection word (one whose first unquoted
+    `<` or `>` has only a file-descriptor number or the `&` of `&>` before it) is
+    not an argument, and neither is the word after it when the redirection word is
+    only an optional fd number or `&` followed by `<`, `>` and `&`; these are dropped
+    before any option takes its value. `>|` and `{fd}>out` are not redirection
+    words here and still count."""
     args = _without_redirections(args)
     dry_run, skip, index_only, dashed = False, False, True, False
     for option in args:
