@@ -58,7 +58,8 @@
 #     漏出名に当たらないもの (他セッションの branch と区別できない)
 #
 # Exit codes:
-#   0 — no drift, or drift detected and (branch) successfully recovered,
+#   0 — no drift, or drift detected and (branch) successfully recovered
+#       (HEAD is back on the original branch after the switch),
 #       or advisory drift only (stash / branch_list / worktree), or --snapshot
 #   1 — branch drift detected and recovery failed (manual intervention required)
 #   2 — invalid arguments
@@ -228,15 +229,16 @@ if [ -z "$ORIGINAL_BRANCH" ]; then
 fi
 
 # --- ORIGINAL_BRANCH の charset validation ---
-# `git checkout` に `--orphan=evil` 等の option-like 値が渡って recovery 経路自身が
-# branch leak を起こす経路を防ぐ。git branch 名として valid な ASCII allowlist のみ受理:
+# recovery の `git switch` に `--orphan=evil` / `-c` 等の option-like 値が渡って recovery 経路自身が
+# branch leak を起こす経路を防ぐ。git は `-` で始まる branch 名を認めないため、`-*` の拒否で
+# 正当な branch 名は失われない。git branch 名として valid な ASCII allowlist のみ受理:
 #   - 英数字 / `_` / `-` / `.` / `/` (refs/heads/foo/bar 階層)
 #   - `DETACHED:` prefix (snapshot の detached HEAD sentinel、+ short hash 7-40 chars)
 case "$ORIGINAL_BRANCH" in
   DETACHED:*)
     # detached HEAD sentinel — branch drift check は skip し、他の軸のみ評価
     ;;
-  --*|-=*|*=*|*$'\n'*|*$'\r'*|*$'\t'*)
+  -*|*=*|*$'\n'*|*$'\r'*|*$'\t'*)
     echo "ERROR: --original-branch contains disallowed characters (option-like prefix, '=' or control char): '$ORIGINAL_BRANCH'" >&2
     exit 2
     ;;
@@ -317,16 +319,23 @@ for drift_type in "${drift_types[@]}"; do
   case "$drift_type" in
     branch)
       if [ "$AUTO_RECOVER" = "true" ]; then
-        # `refs/heads/<name>` 経由で明示参照することで `git checkout <option-like-value>` の
-        # option injection 経路を遮断する。ORIGINAL_BRANCH は冒頭の charset validation 通過済だが、
-        # defense-in-depth で refs/heads/ prefix を付与し、`git checkout` の flag 解釈経路を確実に閉じる。
-        echo "  recovery: attempting 'git checkout refs/heads/$ORIGINAL_BRANCH'..." >&2
-        if checkout_output=$(git checkout "refs/heads/$ORIGINAL_BRANCH" 2>&1); then
-          recovered="true"
-          echo "  recovery: succeeded" >&2
+        # `--` で option 解釈を閉じる。`--no-guess` は local branch が消えていたときに
+        # remote-tracking branch から作り直して未 push の commit の消失を隠すのを防ぐ。
+        # 完全な ref 名 (refs/heads/<b>) は detached HEAD になるため使わない。
+        echo "  recovery: attempting 'git switch --no-guess -- $ORIGINAL_BRANCH'..." >&2
+        if switch_output=$(git switch --no-guess -- "$ORIGINAL_BRANCH" 2>&1); then
+          # switch の exit 0 だけでは元の branch に戻った証拠にならないため、HEAD を照合する。
+          after_branch=$(git branch --show-current 2>/dev/null || echo "")
+          if [ "$after_branch" = "$ORIGINAL_BRANCH" ]; then
+            recovered="true"
+            echo "  recovery: succeeded" >&2
+          else
+            echo "  recovery: FAILED — HEAD is on '${after_branch:-<detached>}', not '$ORIGINAL_BRANCH', after git switch" >&2
+            echo "  manual action: run 'git switch --no-guess -- $ORIGINAL_BRANCH' to restore the working tree" >&2
+          fi
         else
-          echo "  recovery: FAILED — git checkout error: $checkout_output" >&2
-          echo "  manual action: run 'git checkout $ORIGINAL_BRANCH' to restore the working tree" >&2
+          echo "  recovery: FAILED — git switch error: $switch_output" >&2
+          echo "  manual action: run 'git switch --no-guess -- $ORIGINAL_BRANCH' to restore the working tree" >&2
         fi
       fi
       ;;
