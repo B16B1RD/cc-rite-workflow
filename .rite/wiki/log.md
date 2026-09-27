@@ -157,6 +157,7 @@
 * **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — raw/reviews/20260927T112645Z-pr-3275.md を統合
 * **Create**: [設定の存在確認は読み手の解決処理に委ね、自前の候補リストを持たない](pages/heuristics/existence-check-delegates-to-reader-resolver.md) — raw/reviews/20260927T112311Z-pr-3272.md を新規ページ化
 * **Create**: [記録の同定 marker は、正規の経路で重複しうる軸をすべてキーに含める](pages/heuristics/record-identity-marker-includes-all-context-keys.md) — raw/fixes/20260927T112450Z-pr-3267.md を新規ページ化
+* **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=66, orphans=0, missing_concept=0, unregistered_raw=562, broken_refs=0
 
 ## 2026-09-26
 
