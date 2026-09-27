@@ -1556,9 +1556,9 @@ assert "T-23 iterate 5.S の停止行は sweep-done 行から続けるのを停�
 assert "T-23 手順 3 は sweep-done 行から続けるのを停止したのと同じ会話に限る" 1 \
   "$(printf '%s\n' "$t23_step3" | grep -F '`[fix:sweep-done]` 行から続ける' | grep -F 'この続け方は停止したのと同じ会話に限る' | grep -cF '別の会話からは続けず、停止のままにする')"
 assert "T-23 iterate 5.S の停止行は続きに使う 2 値のどちらかを会話から読めなければ同じ会話でも続けない" 1 \
-  "$(printf '%s\n' "$t23_iterate_row" | grep -F '`{sweep_origin}`' | grep -F '`NB_SWEEP_RESULT`' | grep -cF '（続きの手順は会話にしか残らない `{sweep_origin}` と fix が出した `NB_SWEEP_RESULT` の件数を使う。どちらかを会話から読めなければ同じ会話でも続けない）')"
+  "$(printf '%s\n' "$t23_iterate_row" | grep -cF '（続きの手順は会話にしか残らない `{sweep_origin}` と fix が出した `NB_SWEEP_RESULT` の件数を使う。どちらかを会話から読めなければ同じ会話でも続けない）')"
 assert "T-23 手順 3 は続きに使う 2 値のどちらかを会話から読めなければ同じ会話でも続けない" 1 \
-  "$(printf '%s\n' "$t23_step3" | grep -F '`{sweep_origin}`' | grep -F '`NB_SWEEP_RESULT`' | grep -cF '（続きの手順は会話にしか残らない iterate の `{sweep_origin}` と手順 4 の `NB_SWEEP_RESULT` の件数を使う。どちらかを会話から読めなければ同じ会話でも続けない）')"
+  "$(printf '%s\n' "$t23_step3" | grep -cF '（続きの手順は会話にしか残らない iterate の `{sweep_origin}` と手順 4 の `NB_SWEEP_RESULT` の件数を使う。どちらかを会話から読めなければ同じ会話でも続けない）')"
 assert "T-23 iterate 5.S の停止行は理由名の接頭辞で対象を絞らない" 0 "$(printf '%s\n' "$t23_iterate_row" | grep -cF 'nb_sweep_ledger_')"
 t23_schema=$(grep -F 'entries_source_invalid' "$PLUGIN_ROOT/references/review-result-schema.md")
 assert "T-23 schema は 1 行でも不正なら全体を拒否すると書く" 1 "$(printf '%s\n' "$t23_schema" | grep -F '1 行でも' | grep -cF '台帳を変更しない')"
