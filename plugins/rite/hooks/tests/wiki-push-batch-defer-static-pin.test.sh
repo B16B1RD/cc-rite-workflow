@@ -178,12 +178,22 @@ assert "wiki-lint-log-commit.sh: the retry after rc=6 succeeds" "0" "$lint_retry
 assert_grep "wiki-lint-log-commit.sh: the retry reaches the stub" "$route_tmp/lint-mask/retry.err" 'stub rc=0'
 assert "wiki-lint-log-commit.sh: the successful retry removes the message file" "0" \
   "$([ -e "$route_tmp/lint-mask/msg.txt" ] && echo 1 || echo 0)"
-lint_commit_run gitfail 3
-assert "wiki-lint-log-commit.sh: rc=3 removes the message file" "0" \
-  "$([ -e "$route_tmp/lint-gitfail/msg.txt" ] && echo 1 || echo 0)"
-assert_grep "wiki-lint-log-commit.sh: rc=3 reports its own rc" "$route_tmp/lint-gitfail/err" 'rc=3\)'
-assert_not_grep "wiki-lint-log-commit.sh: rc=3 does not show the sandbox retry" "$route_tmp/lint-gitfail/err" \
-  'reason=sandbox-mask'
+# Every other rc removes the message file. Each rc runs on its own copy, so keeping the file
+# in any single arm (rc=4, the default arm, ...) fails that rc's case.
+for lint_rc in 0 1 2 3 4 5; do
+  lint_commit_run "rc$lint_rc" "$lint_rc"
+  lint_err="$route_tmp/lint-rc$lint_rc/err"
+  assert "wiki-lint-log-commit.sh: rc=$lint_rc removes the message file" "0" \
+    "$([ -e "$route_tmp/lint-rc$lint_rc/msg.txt" ] && echo 1 || echo 0)"
+  case "$lint_rc" in
+    0) assert_not_grep "wiki-lint-log-commit.sh: rc=0 warns nothing" "$lint_err" 'WARNING' ;;
+    2) assert_grep "wiki-lint-log-commit.sh: rc=2 reports the skip" "$lint_err" '\[CONTEXT\] WIKI_LINT_COMMIT=skipped' ;;
+    3|4) assert_grep "wiki-lint-log-commit.sh: rc=$lint_rc reports its own rc" "$lint_err" "rc=$lint_rc\\)" ;;
+    *) assert_grep "wiki-lint-log-commit.sh: rc=$lint_rc reaches the unexpected-rc arm" "$lint_err" "予期しない rc=$lint_rc " ;;
+  esac
+  assert_not_grep "wiki-lint-log-commit.sh: rc=$lint_rc does not show the sandbox retry" "$lint_err" \
+    'reason=sandbox-mask'
+done
 
 # --- init.md ステップ 3.5.1: migration commit keeps sandbox-mask recovery actionable ---
 assert_grep_in_section "init.md 3.5.1: rc=6 warns and points to the one-shot sandbox retry" \
