@@ -17,6 +17,7 @@
 * **lint:clean** — contradictions=0, stale=64, orphans=0, missing_concept=0, unregistered_raw=567, broken_refs=0
 * **Update**: [過剰マッチ防止の精緻化修正は、実装が許容する全形状を再確認しないと過小マッチという別の欠陥を生む (振り子現象)](pages/anti-patterns/precision-tightening-pendulum-regression.md) — raw/reviews/20260927T163943Z-pr-3305.md を統合
 * **Update**: [終了コードの契約は、その形を作る経路をすべて数え上げてから書く](pages/heuristics/exit-contract-enumerate-producing-paths.md) — raw/reviews/20260927T163905Z-pr-3312.md を統合
+* **lint:clean** — contradictions=0, stale=64, orphans=0, missing_concept=0, unregistered_raw=567, broken_refs=0
 
 
 ## 2026-09-27
