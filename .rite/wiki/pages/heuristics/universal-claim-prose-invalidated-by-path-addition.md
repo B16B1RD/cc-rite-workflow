@@ -53,9 +53,11 @@ sources:
     resource: "raw/fixes/20260927T115318Z-pr-3279.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T115824Z-pr-3279.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T192744Z-pr-3329.md"
 tags: ["comment-rot", "cause-neutral", "exclusivity-claim", "doc-sync", "not-grep-pin", "quantifier-strengthening", "birth-defect"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:20:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:38:00Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:47:53Z" }
   - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
@@ -69,6 +71,7 @@ verified:
   - by: "rite-wiki-ingest/claude-opus-5-5"
     at: "2026-09-24T17:20:00Z"
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:54:08Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:38:00Z" }
 ---
 
 # 全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin
@@ -169,6 +172,13 @@ consumer ごとに読取り・書込み・同期という責務を確認して�
 - 隣接する別枠の行（nit-noted など）も、行ごとの条件を同じ構造で書く。構造が揃っていないと、行どうしの重なりを読み手が同じ手順で確かめられない
 - 排他性の確かめ方は、各行の述語を正本の helper の定義に書き写し、全組合せを数えることである。句読点の解釈に頼らずに確定でき、対象を絞らず scope の全値を入れて数えれば、別枠の行との重なりも同じ検査で拾える
 
+### 方針を変えたら、その方針を理由に使っている rationale も探す
+
+表示や扱いの方針を変える修正（例: 「exit 0 の WARNING は表示しない」から「表示する」へ）は、旧方針を前提に書かれた既存の設計理由を、その行を触らないまま偽にする。旧方針を根拠に「だから別の手段を選ぶ」と書いた rationale は、方針が変わった時点で前提が崩れる。方針を変えたら、その方針を根拠として引いている rationale を旧方針の語で grep して探し、結論が別の理由で保てるなら結論は残して前提の記述だけを狭める。
+
+- 表示先を変えるときは、主経路（E2E など）でその表示が届くかも確かめる。表示先を standalone 専用の出力だけに足すと、主経路では理由が見えないまま残る。範囲を広げるかは Issue の範囲に従い、見送るなら見送った判断を記録する
+- 散文の規則を複数箇所に足したときは、固定する grep pin も同じ数だけそろえる。1 箇所だけ pin が無いと、その箇所の規則を消してもテストをすり抜ける
+
 ## 関連ページ
 
 - [実装の分岐を散文へ落とす前に、フラグの状態数と観測ラベルの値域を機械的に数える](./count-implementation-states-before-writing-prose.md)
@@ -197,3 +207,4 @@ consumer ごとに読取り・書込み・同期という責務を確認して�
 - [レビュー結果](../../raw/reviews/20260927T114354Z-pr-3279.md)
 - [先頭の限定を全選言に掛ける書き方へ直した fix 結果](../../raw/fixes/20260927T115318Z-pr-3279.md)
 - [述語を helper の定義に書き写して排他性を数えたレビュー結果](../../raw/reviews/20260927T115824Z-pr-3279.md)
+- [方針変更が既存の設計理由の前提を崩したレビュー結果](../../raw/reviews/20260927T192744Z-pr-3329.md)

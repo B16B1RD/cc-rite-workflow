@@ -20,11 +20,14 @@ sources:
     resource: "raw/reviews/20260910T135544Z-pr-2659.md"
   - type: "reviews"
     resource: "raw/reviews/20260910T140012Z-pr-2659-fix.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T193310Z-pr-3330.md"
 tags: ["bash", "test-quality", "locale", "dead-assertion", "identification-power", "degrade-path", "LC_ALL"]
 confidence: high
-generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-10T14:23:18Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:38:00Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-10T14:23:18Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:38:00Z" }
 ---
 
 # エラーメッセージ文字列の grep assert は locale 依存で dead assertion 化する
@@ -103,6 +106,12 @@ flock 不在環境の degrade 分岐（`command -v flock` ガード）を検証�
 
 assert は**自分が中和した行に限定**する必要がある（メッセージ末尾のリテラルで grep を絞る）。部分的に中和した経路への assert を全体で見る形にすると、未中和の隣接行が常に混ざって最初から赤いか、逆に緩めすぎて何も検出しなくなる。
 
+## 変種: 診断の原因行を pin するときはコマンド名の接頭辞に留める
+
+失敗しても結果を変えず、WARNING・原因行・影響行を出して続行する分岐をテストで固定するとき、原因行は外部コマンドのエラーメッセージをそのまま転記しているため、本文は OS（GNU / BSD）とロケールで変わる。assert は `^  mkdir: ` のようにコマンド名とインデントの接頭辞までに留め、メッセージ本文は固定しない。本文まで固定すると、非英語ロケールや別 OS の CI で落ちるか、逆に英語文字列の不一致を許す緩い形へ崩れる。
+
+その分岐へ確実に到達させる fixture は、書込先ディレクトリの位置に通常ファイルを置いて mkdir を失敗させる形にする。権限を落とす fixture は root 実行では書込が成功して空振りするが、ファイル種別の衝突は権限に依らず失敗する。
+
 ## ソース（追記分）
 
 - [フィルタ経路の locale 依存](../../raw/reviews/20260729T061547Z-pr-2044.md)
@@ -110,3 +119,4 @@ assert は**自分が中和した行に限定**する必要がある（メッセ
 - [中和済み出力への assert が不正 UTF-8 で vacuous pass](../../raw/fixes/20260805T234810Z-pr-2120.md)
 - [レビュー結果](../../raw/reviews/20260910T135544Z-pr-2659.md)
 - [fix 結果](../../raw/reviews/20260910T140012Z-pr-2659-fix.md)
+- [書込失敗の診断を接頭辞で固定したレビュー結果](../../raw/reviews/20260927T193310Z-pr-3330.md)

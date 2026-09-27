@@ -13,9 +13,13 @@ sources:
     resource: "raw/fixes/20260721T173955Z-pr-1959.md"
   - type: "fixes"
     resource: "raw/fixes/20260731T021333Z-pr-2070.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T192507Z-pr-3322.md"
 tags: ["silent-skip", "guard-ordering", "visibility", "case-arm-enumeration"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:38:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:38:00Z" }
 ---
 
 # 新設 logged ガードの上流に同一判定の silent 経路が残ると支配的入力で可視化が無効化される
@@ -55,9 +59,16 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 
 同時に観測された 2 点。**除外規則の適用位置は意味を変える** — TODO/FIXME 除外を行単位の前段で行うと、コードスパン内に引用されただけの TODO でも行ごと落ちる。コードスパンのマスク（引用は主張ではない）より後に判定すると引用が救われる。前段の除外は「安い」が、後段のマスクと組み合わせたときの順序が結果を決める。そして**上流ガードと同一の regex を下流で再判定する分岐は到達不能になる** — `match()` を副作用（RSTART 設定）目的で呼ぶ場合は、rc 判定を残さず呼び出しだけにする。
 
+## 追記: 下流に分岐を足したら、上流がその状態で下流を呼ぶかを確かめる
+
+同じ構造は分岐の追加でも起きる。下流の処理に後始末の分岐（途中で止まった状態からの再開など）を足しても、上流の判定がその状態で下流を呼ばなければ、足した分岐には到達しない。上流の判定側で「残った状態ファイルがあれば下流へ渡す」ように合わせ、処理本体は下流の 1 箇所に保つ。上流にも同じ処理を複製すると、2 箇所の挙動が後で割れる。
+
+ガードの復旧手順を書くときは、欠落の補完と、別の記録に属するものの持ち越しを分けて書く。持ち越しは元の出典のまま記録へ載せてから消す。まとめて「今回のもの」として扱うと、ガードが防いでいた取り違えを復旧手順自身が起こす。
+
 ## ソース
 
 - [free-claim fresh corpse の silent skip 検出](../../raw/reviews/20260721T171603Z-pr-1959.md)
 - [silent continue の非 corpse 限定化](../../raw/fixes/20260721T172102Z-pr-1959.md)
 - [Gate 2 全 arm の可視化完遂](../../raw/fixes/20260721T173955Z-pr-1959.md)
 - [ガードに到達しない 3 経路](../../raw/fixes/20260731T021333Z-pr-2070.md)
+- [上流の判定を下流の再開分岐に合わせた fix 結果](../../raw/fixes/20260927T192507Z-pr-3322.md)
