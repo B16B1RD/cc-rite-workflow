@@ -177,12 +177,12 @@ check_init_section() {
     *) fail "T-12 $1 keeps the not-initialized message" ;;
   esac
   # set -e 下で一致なしの grep がスイートを止めないよう、空行として受けて fail に回す
-  rc2_line=$(printf '%s\n' "$sec" | grep -E '^(\| 2 \||rc=2 )' | head -n 1) || rc2_line=""
+  rc2_line=$(printf '%s\n' "$sec" | grep -E '^\| 2 \|' | head -n 1) || rc2_line=""
   case "$rc2_line" in
     *stop*) pass "T-12 $1 stops on rc=2" ;;
     *) fail "T-12 $1 stops on rc=2 (line: '$rc2_line')" ;;
   esac
-  other_line=$(printf '%s\n' "$sec" | grep -E '^\| other \||any other non-zero rc' | head -n 1) || other_line=""
+  other_line=$(printf '%s\n' "$sec" | grep -E '^\| other \|' | head -n 1) || other_line=""
   case "$other_line" in
     *stop*) pass "T-12 $1 stops when the resolver cannot run" ;;
     *) fail "T-12 $1 stops when the resolver cannot run (line: '$other_line')" ;;

@@ -179,7 +179,12 @@ Resolve `rite-config.yml` with the shared resolver (a session worktree falls bac
 bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh
 ```
 
-rc=2 means the file is unreadable or the main checkout root cannot be resolved, and any other non-zero rc means the resolver could not run: in both cases show the resolver's stderr and stop.
+| rc | Action |
+|----|--------|
+| 0 | Show "If rc=0" below and continue |
+| 1 | Show "If rc=1" below |
+| 2 | The file is unreadable or the main checkout root cannot be resolved. Show the resolver's stderr and stop |
+| other | The resolver could not run. Show its stderr and stop |
 
 **If rc=0 (found):**
 
