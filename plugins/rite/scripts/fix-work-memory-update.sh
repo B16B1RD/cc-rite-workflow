@@ -10,8 +10,10 @@
 #         owns the final [fix:*] outcome; this script does not emit it.
 # Exit: 0 on success, no_comment, or retained soft failure; 1 on existing fatal
 #       input/tempfile failures or when rite-config.yml cannot be resolved (the file is
-#       unreadable or state-path-resolve.sh cannot run; reason=config_unreadable);
-#       2 on invalid arguments; INT=130, TERM=143, HUP=129.
+#       unreadable or state-path-resolve.sh cannot run; reason=config_unreadable),
+#       or when rite-config.yml is absent or has no readable branch.base
+#       (reason=base_branch_unresolved); 2 on invalid arguments;
+#       INT=130, TERM=143, HUP=129.
 # A completion marker is emitted on EXIT after argument validation, including
 # failures/signals. The caller detects startup failure when it is absent.
 

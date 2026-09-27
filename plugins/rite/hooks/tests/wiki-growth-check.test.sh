@@ -146,6 +146,34 @@ assert "branch section without base does not query gh with any base" "0" \
 assert "branch section without base warns instead of assuming develop" "1" \
   "$(grep -c 'WARNING: .*branch\.base' "$nonalpha_err")"
 
+# --- gh が無いときは exit 0 で skip し、理由を WARNING で出す -----------------
+# gh 以外の PATH 上のコマンドだけを並べた bin を作り、gh 不在を再現する。
+nogh_bin="$(mktemp -d)"; SANDBOXES+=("$nogh_bin")
+IFS=: read -r -a _path_dirs <<<"$PATH"
+for _d in "${_path_dirs[@]}"; do
+  for _f in "$_d"/*; do
+    _n="${_f##*/}"
+    [ "$_n" = gh ] && continue
+    [ -x "$_f" ] && [ ! -e "$nogh_bin/$_n" ] && ln -s "$_f" "$nogh_bin/$_n"
+  done
+done
+nogh_repo="$(make_wiki_repo true yes)"; SANDBOXES+=("$nogh_repo")
+nogh_err="$(mktemp)"; SANDBOXES+=("$nogh_err")
+nogh_rc=0
+nogh_out="$(PATH="$nogh_bin" bash "$SCRIPT" --repo-root "$nogh_repo" --quiet 2>"$nogh_err")" || nogh_rc=$?
+assert "gh absent skips with exit 0" "0" "$nogh_rc"
+assert "gh absent still prints the findings summary line" "1" \
+  "$(grep -c '^==> Total wiki-growth-check findings: 0$' <<<"$nogh_out")"
+assert "gh absent explains the skip with a WARNING line" "1" \
+  "$(grep -c '^WARNING: gh CLI not found' "$nogh_err")"
+
+# --- /rite:lint が exit 0 の WARNING を 4.3 に表示する規則 -----------------------
+LINT_SKILL="$SCRIPT_DIR/../../skills/lint/SKILL.md"
+assert "lint 3.8 lists branch.base and gh among the skips that carry a WARNING" "1" \
+  "$(grep -c 'WARNING 付き（`branch.base` 未解決 / `gh` 不在 / `jq` 不在' "$LINT_SKILL")"
+assert "lint 4.3 shows the WARNING lines of a success row" "1" \
+  "$(grep -c '行頭 `WARNING:` の行があれば、`success (0 findings)` の後ろに' "$LINT_SKILL")"
+
 # --- 節の中の列 0 コメントで branch: 節を閉じない ------------------------------
 comment_repo="$(make_wiki_repo true yes)"; SANDBOXES+=("$comment_repo")
 printf 'wiki:\n  enabled: true\n  branch_name: wiki\nbranch:\n# note\n  base: main\n' \
