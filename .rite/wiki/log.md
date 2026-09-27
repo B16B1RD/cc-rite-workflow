@@ -151,6 +151,7 @@
 * **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=66, orphans=0, missing_concept=0, unregistered_raw=562, broken_refs=0
 * **Update**: [追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない](pages/patterns/mutation-prove-new-pin.md) — raw/reviews/20260927T110720Z-pr-3259.md, raw/reviews/20260927T110746Z-pr-3265.md を統合
 * **Update**: [複数の書き手が更新する記録の説明は値の和集合に揃え、値の列挙は括弧に入れず別の文にする](pages/heuristics/multi-writer-record-docs-describe-union-and-unnest-enumerations.md) — raw/reviews/20260927T110537Z-pr-3268.md を統合
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=562, broken_refs=0
 
 ## 2026-09-26
 
