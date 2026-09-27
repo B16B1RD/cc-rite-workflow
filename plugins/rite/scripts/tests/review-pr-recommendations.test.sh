@@ -253,7 +253,7 @@ echo "=== pr-review keeps unlocated actionables in the triage source ==="
 # the only thing that keeps it in Source B instead of dropping it. The expected text lives
 # outside check's eval because it carries backquotes.
 UNLOCATED_LINE='marker 末尾の `unlocated=`（file:line を読めない actionable の位置）は Source B から除外しない。行き先はステップ 7 の処分で決まる（Decision Log に記録する場合は 7.4.3 の先送り欠陥トークン付きになり、cleanup が follow-up へ転記する）。'
-UNLOCATED_COUNT=$(awk '/^#### 5\.3\.0\.R /{ f = 1; next } f && /^#{2,4} /{ exit } f' "$PLUGIN_ROOT/skills/pr-review/SKILL.md" | grep -cxF -- "$UNLOCATED_LINE")
+UNLOCATED_COUNT=$(awk '/^#### 5\.3\.0\.R /{ f = 1; next } f && /^(##|###|####) /{ exit } f' "$PLUGIN_ROOT/skills/pr-review/SKILL.md" | grep -cxF -- "$UNLOCATED_LINE")
 check "pr-review 5.3.0.R states once that unlocated actionables stay in Source B" '[ "$UNLOCATED_COUNT" = 1 ]'
 
 echo ""
