@@ -11,7 +11,10 @@
 #   - a regex literal that starts with a line-anchored bracket class,
 #     `/^[...]/` or `/^[...]<rest>/`, whatever the quoting, range or action
 #     around it (sed ranges, awk `{ exit }`, `{ exit 0 }`, `{ var=0; next }`, ...)
-#   - a Python lookahead `(?=^[...]|...)`
+#   - a Python lookahead `(?=^[...]|...)` or `(?=^[...]<rest>|...)`, where
+#     <rest> holds neither `|` nor `)`. A <rest> with a group that holds `|`
+#     (`(?: |$)`) is cut at that `|`, and the detector stops on the broken
+#     regex instead of checking it
 # NOT_TERMINATORS lists the literals of that shape that do not end a section.
 #
 # Each terminator is evaluated by the engine that runs it (sed for lines that
@@ -30,13 +33,16 @@
 #
 # A literal with more after the bracket, `/^[...]<rest>/` (`/^[a-zA-Z]+:/`,
 # `/^[a-zA-Z_]*:/`), is checked for one thing only: if it matches some of the
-# top-level keys above, it must match all of them.
+# top-level key lines, it must match all of them. The key lines are the ones
+# above and the same keys as heading lines with no value (`2fa:`, `wiki:`).
 #
 # EXPECTED_COUNTS pins how many bracket-only terminators each file has, so a
 # terminator that is added, removed or moved to another file changes the table.
 # A terminator written without a `/^[...` literal (a grep pattern, an awk string
 # regex, a Python `re.match`), or with a `/` inside the literal, is not extracted
-# and is not checked.
+# and is not checked. Neither is a lookahead whose bracket branch is not the
+# first (`(?=\Z|^[...])`), has no `|` after it (`(?=^[...]:)`), or holds `)`
+# before the `|`.
 
 set -uo pipefail
 
@@ -64,7 +70,7 @@ root, mode = sys.argv[1], sys.argv[2]
 # No `/` inside the literal, so an extracted end cannot close a sed address.
 BRACKET = r"\^\[(?:\[:[a-z]+:\]|[^\]\\/]|\\[^/])*\]"
 LITERAL = re.compile(r"/(" + BRACKET + r"[^/]*)/")
-LOOKAHEAD = re.compile(r"\(\?=(" + BRACKET + r")\|")
+LOOKAHEAD = re.compile(r"\(\?=(" + BRACKET + r"[^|)]*)\|")
 SED_RANGE_START = re.compile(r"/\^([A-Za-z0-9_]+):/,/$")
 
 # Literals of the terminator shape that do not end a section.
@@ -126,6 +132,9 @@ EXPECTED_COUNTS = {
 }
 
 ENDS = ("2fa: x", "_x: y", "safety: x", "wiki: x")
+# Section heading lines carry no value; only a literal with more after the
+# bracket can tell them apart from the lines above.
+HEADINGS = ("2fa:", "_x:", "safety:", "wiki:")
 CONTINUES = ("", "  k: v")
 
 
@@ -138,7 +147,9 @@ def run(cmd, text):
 
 def matches(engine, end, line):
     if engine == "python":
-        return re.match(end, line) is not None
+        # Python readers search the whole text with re.M, so every line they
+        # see is followed by a newline; `\s` and `$` depend on it.
+        return re.match(end, line + "\n", re.M) is not None
     if engine == "sed":
         return run(["sed", "-n", "/" + end + "/p"], line + "\n") != ""
     return run(["awk", "/" + end + "/ { print }"], line + "\n") != ""
@@ -171,9 +182,9 @@ for d, dirs, files in os.walk(root):
                     continue
                 where = f"{rel}:{n} [{engine}] {end}"
                 if not re.fullmatch(BRACKET, end):
-                    hits = [matches(engine, end, probe) for probe in ENDS]
+                    hits = [matches(engine, end, probe) for probe in ENDS + HEADINGS]
                     if any(hits):
-                        for probe, hit in zip(ENDS, hits):
+                        for probe, hit in zip(ENDS + HEADINGS, hits):
                             if not hit:
                                 violations.append(f"{where}: does not end the section at '{probe}'")
                     continue
@@ -236,9 +247,15 @@ section=$(sed -n '/^wiki:/,/^[^ ]/p' "$cfg")
 max=$(awk '/^safety:/{s=1;next} s && /^[a-zA-Z]+:/ {exit} s && /k:/{print;exit}' "$cfg")
 section=$(sed -n '/^wiki:/,/^[a-zA-Z_]*:/p' "$cfg")
 max=$(awk '/^safety:/{s=1;next} s && /^[^[:space:]#][^:]*:/ {exit} s && /k:/{print;exit}' "$cfg")
+max=$(awk '/^safety:/{s=1;next} s && /^[a-zA-Z_]+:$/ {exit} s && /k:/{print;exit}' "$cfg")
+section=$(sed -n '/^wiki:/,/^[a-zA-Z_]*:$/p' "$cfg")
 EOF
 cat > "$SANDBOX/scripts/old.py" <<'EOF'
 section = re.search(r"^safety:\s*\n(.*?)(?=^[a-zA-Z]|\Z)", text, re.M | re.S)
+section = re.search(r"^safety:\s*\n(.*?)(?=^[a-zA-Z]+:|\Z)", text, re.M | re.S)
+section = re.search(r"^safety:\s*\n(.*?)(?=^[^\s#][^:]*:|\Z)", text, re.M | re.S)
+section = re.search(r"^safety:\s*\n(.*?)(?=^[a-z_0-9]+:\s|\Z)", text, re.M | re.S)
+section = re.search(r"^safety:\s*\n(.*?)(?=^[a-zA-Z_]+:$|\Z)", text, re.M | re.S)
 EOF
 self_out=$(check_tree "$SANDBOX" self)
 self_rc=$?
@@ -258,8 +275,32 @@ assert "space-only end is reported for a column-0 comment" "1" "$(count_of "old.
 assert "letter-only end with more after the bracket is reported" "1" "$(count_of "old.sh:11 \[awk\].*at '2fa: x'")"
 assert "sed range end with more after the bracket is reported" "1" "$(count_of "old.sh:12 \[sed\].*at '2fa: x'")"
 assert "end with more after the bracket that matches every key is not reported" "0" "$(count_of "old.sh:13 ")"
+assert "end that matches only letter-led heading lines is reported" "1" "$(count_of "old.sh:14 \[awk\] \^\[a-zA-Z_\]+:\$: .*at '2fa:'$")"
+assert "end that matches only letter-led heading lines is reported for every other key line" "5" "$(count_of "old.sh:14 ")"
+assert "sed range end that matches only letter-led heading lines is reported" "1" "$(count_of "old.sh:15 \[sed\] \^\[a-zA-Z_\]\*:\$: .*at '2fa:'$")"
+assert "sed range end that matches only letter-led heading lines is reported for every other key line" "5" "$(count_of "old.sh:15 ")"
 assert "python lookahead with a letter-only end is reported" "1" "$(count_of "old.py:1 \[python\].*at '2fa: x'")"
+assert "python lookahead with more after the bracket is reported with its rest" "1" "$(count_of "old.py:2 \[python\] \^\[a-zA-Z\]+:: .*at '2fa: x'")"
+assert "python lookahead with more after the bracket is reported for every missed key line" "4" "$(count_of "old.py:2 ")"
+assert "python lookahead with more after the bracket that matches every key line is not reported" "0" "$(count_of "old.py:3 ")"
+assert "python lookahead ending on whitespace after the key is not reported" "0" "$(count_of "old.py:4 ")"
+assert "python lookahead that matches only letter-led heading lines is reported" "1" "$(count_of "old.py:5 \[python\] \^\[a-zA-Z_\]+:\$: .*at '2fa:'$")"
+assert "python lookahead that matches only letter-led heading lines is reported for every other key line" "5" "$(count_of "old.py:5 ")"
 assert "sed range leak is observed on the fixture" "1" "$(count_of "old.sh:1 \[sed\].*range reads")"
+
+# A grouped `|` cuts the extracted lookahead into a broken regex. The detector
+# must stop on it rather than pass it; a separate tree keeps the stop from
+# hiding the reports asserted above.
+BROKEN="$(make_plain_sandbox)" || { echo "ERROR: make_plain_sandbox failed" >&2; exit 1; }
+[ -n "$BROKEN" ] || { echo "ERROR: make_plain_sandbox returned an empty path" >&2; exit 1; }
+trap 'rm -rf "$SANDBOX" "$BROKEN"' EXIT
+mkdir -p "$BROKEN/scripts"
+cat > "$BROKEN/scripts/grouped.py" <<'EOF'
+section = re.search(r"^safety:\s*\n(.*?)(?=^[a-zA-Z_]+:(?: |$)|\Z)", text, re.M | re.S)
+EOF
+check_tree "$BROKEN" self >/dev/null 2>&1
+broken_rc=$?
+assert "detector stops on a lookahead cut at a grouped |" "1" "$([ "$broken_rc" -ne 0 ] && echo 1 || echo 0)"
 
 # The table checks run only against the plugin tree, so a sandbox checked as
 # "real" must report the missing files and the stale table entries.
