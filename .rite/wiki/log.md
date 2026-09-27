@@ -21,6 +21,10 @@
 * **Update**: [fix diff などのファイル集合は取得コマンドごとに rename 検出を揃える](pages/patterns/file-set-commands-align-rename-detection.md) — raw/reviews/20260927T030248Z-pr-3194.md を統合
 * **Create**: [失敗時の復旧ヒントは呼び出し元の切り詰めと cwd の違いを越えて届く形で書く](pages/heuristics/recovery-hint-survives-caller-truncation-and-cwd.md) — raw/reviews/20260927T030348Z-pr-3196.md を新規ページ化
 * **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=553, broken_refs=0
+* **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — raw/reviews/20260927T031018Z-pr-3199.md を統合
+* **Update**: [「N 箇所で同期が必要」と指摘されたら、同期する前に N を減らせないか検討する](pages/heuristics/reduce-sync-sites-before-syncing-them.md) — raw/reviews/20260927T031113Z-pr-3202.md を統合
+* **Create**: [jq は入力が 0 ドキュメントだとフィルタを評価せず rc=0 で終わる — 形の検証は jq -n と input で 1 ドキュメントを要求する](pages/anti-patterns/jq-empty-input-skips-filter-rc-zero.md) — raw/reviews/20260927T031103Z-pr-3200.md を新規ページ化
+* **Update**: [失敗時の復旧ヒントは呼び出し元の切り詰めと cwd の違いを越えて届く形で書く](pages/heuristics/recovery-hint-survives-caller-truncation-and-cwd.md) — raw/fixes/20260927T031119Z-pr-3196.md を統合
 
 ## 2026-09-26
 

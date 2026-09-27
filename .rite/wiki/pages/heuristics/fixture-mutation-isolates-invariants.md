@@ -49,9 +49,11 @@ sources:
     resource: "raw/reviews/20260926T141701Z-pr-3147.md"
   - type: "reviews"
     resource: "raw/reviews/20260926T141827Z-pr-3170.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T031018Z-pr-3199.md"
 tags: ["test", "fixture", "mutation", "invariant", "coverage"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T14:30:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:16:22Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T18:43:00+00:00" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T23:20:00+00:00" }
@@ -63,6 +65,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T06:12:43Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T08:57:51Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T14:30:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:16:22Z" }
 ---
 
 # テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する
@@ -200,6 +203,12 @@ guard・不変量の TC を追加したら、worktree-only mutation（当該 gua
 
 ファイル集合を複数の経路の和や積で求める処理（例: fix commit の変更 + merge で競合を解消したファイル）では、fixture の各ファイルが 1 経路でだけ結果に入るようにする。競合を解消したファイルを fix commit でも変えていると、merge 経路を空にする変異を入れても結果が変わらず、テストは名乗った分岐を検証しない。経路ごとに変異を当て、赤くなることを確かめる。
 
+## 固定したい条件以外の経路で既に拒否される入力を選ぶと、その条件の変異は生き残る
+
+判定器の特定の条件を固定するテスト入力は、その条件を外したときだけ結果が変わる形でなければならない。別の経路（キーワードとして語が剥がれる、改行でリストが分かれる、括弧でグループ扱いになる等）でも同じ結果になる入力を選ぶと、条件を外しても結果が変わらず、テストは何も固定しない。たとえば `for i in; do cd X; done` では `do` が keyword として剥がれた時点で別経路が判定を決めてしまうため、`do true; cd X` のように対象の要素を独立した位置へ置く。
+
+「この変異は等価 mutant なのでテスト不要」と主張するときも、反例入力を 1 つ探してから書く。構造語を 1 つだけ含む入力（例: 本体が別の構造語を伴わない形）で差が出るなら、厳密な等価ではなく「fail-open 方向にのみ等価」のような限定付きの主張に留める。
+
 ## 関連ページ
 
 - [位置依存の表パースには検査行数ガードを対にする（silent false-pass 遮断）](../patterns/positional-parse-row-count-guard.md)
@@ -228,6 +237,7 @@ guard・不変量の TC を追加したら、worktree-only mutation（当該 gua
 - [レビュー結果](../../raw/reviews/20260925T005035Z-pr-3063.md)
 - [fix 結果](../../raw/fixes/20260925T005815Z-pr-3063.md)
 - [拒否 fixture と許可対照を両方固定する原則を検出したレビュー結果](../../raw/reviews/20260926T060817Z-pr-3060.md)
+- [別経路で既に拒否される形では条件を区別できないことを確かめたレビュー結果](../../raw/reviews/20260927T031018Z-pr-3199.md)
 - [行末 anchor の有無だけで判定が分かれる入力と前提の assert で anchor を固定したレビュー結果](../../raw/reviews/20260926T085328Z-pr-3130.md)
 - [集合の要素ごとに他の構造を含まない形の固定が要ることを示したレビュー結果](../../raw/reviews/20260926T141701Z-pr-3147.md)
 - [行末に達する tail を完全一致で固定して後ろへの反転追記を検出したレビュー結果](../../raw/reviews/20260926T141827Z-pr-3170.md)
