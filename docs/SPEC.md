@@ -449,7 +449,7 @@ Agent documentation...
 
 ### rite-config.yml
 
-Place in project root or `.claude/` directory. Uses YAML format for readability and comment support.
+Place in the project root (`./rite-config.yml`). Uses YAML format for readability and comment support.
 
 Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, which is kept in sync with `plugins/rite/templates/config/rite-config.yml` — the minimal default that `/rite:setup` distributes. The template intentionally omits advanced keys; enable them by copying the key declarations from CONFIGURATION.md as needed.
 
