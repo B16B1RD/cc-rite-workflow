@@ -173,10 +173,10 @@ schema が古いときは fresh setup ではなく upgrade を案内する。手
 は `を実行してください。`）、CHANGELOG の新セクション欠落、`schema_version` の乖離。
 rationale: references/rationale.md#upgrade-delegate
 
-Check if `rite-config.yml` exists:
+Check if `rite-config.yml` exists in the project root:
 
 ```bash
-ls rite-config.yml 2>/dev/null || ls .claude/rite-config.yml 2>/dev/null
+ls rite-config.yml 2>/dev/null
 ```
 
 **If it exists:**
