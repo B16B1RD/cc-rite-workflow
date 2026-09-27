@@ -208,6 +208,7 @@
 * **Update**: [再入ガードは「実行したか」ではなく「何を対象に実行したか」を記録する](pages/heuristics/reentry-guard-records-processed-range.md) — raw/fixes/20260927T154455Z-pr-3292.md を統合（記録の有無を既存ケースへ assert し、意味が変わった識別子を改名する）
 * **Create**: [復旧ヒントに表示するパスは、処理が cd した先ではなく利用者が貼り付ける場所から正しく解決できる絶対パスで示す](pages/heuristics/recovery-hint-path-absolute-for-paste-cwd.md) — raw/fixes/20260927T155256Z-pr-3298.md を新規ページ化
 * **Skip**: [20260927T155342Z-pr-3292.md](raw/reviews/20260927T155342Z-pr-3292.md) — 差分スコープのレビューで指摘 0 件。既存ページにない新しい経験則を含まない
+* **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=64, orphans=0, missing_concept=0, unregistered_raw=567, broken_refs=0
 
 ## 2026-09-26
 
