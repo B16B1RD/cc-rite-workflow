@@ -964,9 +964,9 @@ echo "--- iterate run 開始点 pin の pr_number guard (消費側契約) ---"
 PG="$SANDBOX/pin-guard"
 mkdir -p "$PG/plugin/hooks/scripts/lib" "$PG/plugin/scripts"
 printf '#!/bin/bash\nprintf "%%s\\n" "$PIN_STATE_ROOT"\n' > "$PG/plugin/hooks/state-path-resolve.sh"
-# step 本体が最初に呼ぶ外部コマンドは flow-state.sh。呼ばれたら calls に記録するスタブと、その手前で
-# source される実物の helper を置く。欠けていると引数検査を外しても step 本体が sandbox の欠落で止まり、
-# 「step 本体に入らない」ことを観測できない
+# step 本体が最初に呼ぶ外部コマンドは flow-state.sh で、呼ばれたら calls に記録するスタブを置く。
+# cycle-gate はその前に context-marker.sh を source し、無ければ exit 1 するため実物を置く。
+# control-char-neutralize.sh は欠けても WARNING で縮退するだけだが、実入口と同じ構成にそろえる
 printf '#!/bin/bash\nprintf "%%s\\n" "$*" >> "$(dirname "$0")/calls"\nexit 0\n' > "$PG/plugin/hooks/flow-state.sh"
 cp "$SCRIPT_DIR/../control-char-neutralize.sh" "$PG/plugin/hooks/"
 cp "$SCRIPT_DIR/../scripts/lib/context-marker.sh" "$PG/plugin/hooks/scripts/lib/"
@@ -1002,7 +1002,7 @@ assert "静的: pin パスに未置換 placeholder が残っていない" "0" \
 assert "静的: helper への --pr \$pr_number 引数は変えていない" "1" \
   "$(grep -cF -- '--pr $pr_number --cycle-count' "$PG/fence1.sh")"
 
-# pin_state_root <name>: 結果 JSON (PR 42 の 2 件 + 別 PR 1 件) と sweep 済み marker を置いた state root
+# pin_state_root <name>: 結果 JSON (PR 42 の 2 件 + 別 PR 1 件) と PR 42 の sweep 済み marker を置いた state root
 pin_state_root() {
   local r="$PG/$1"
   rm -rf "$r"; mkdir -p "$r/.rite/review-results" "$r/.rite/state"
@@ -1010,7 +1010,6 @@ pin_state_root() {
   : > "$r/.rite/review-results/42-20260101000002.json"
   : > "$r/.rite/review-results/43-20260101000009.json"
   : > "$r/.rite/state/nb-sweep-done-42.txt"
-  : > "$r/.rite/state/nb-sweep-done-{pr_number}.txt"
   printf '%s\n' "$r"
 }
 # run_write <root> <value> <cb_mode_init> <cur_cc> / run_read <root> <value>
