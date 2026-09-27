@@ -25,9 +25,11 @@ sources:
     resource: "raw/reviews/20260927T095151Z-pr-3248.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T105021Z-pr-3265.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T141600Z-pr-3281.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:07:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:25:00Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-16T12:58:00Z" }
   - { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T07:10:00Z" }
@@ -37,6 +39,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T09:40:29Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:05:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:07:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:25:00Z" }
 ---
 
 # 否定形の assert は前提条件が崩れると fail-silent になる
@@ -170,6 +173,12 @@ rm -f "$result_dir"/*.json
 
 同じ検査に足した新しい走査枝（行範囲を切り出す `sed -n`）は、`sed -ne` や `sed -n -e` の綴り違いを拾っていなかった。既存の枝が書き方の揺れまで拾う規則を持つなら、新しい枝にも同じ揺れの一覧を適用する。そうしないと書き換え一つで中和漏れが無検出になる。
 
+### 実例 8: 陽性対照の識別力は、経路ごとに観測点より前にある依存で確かめる（レビュー結果）
+
+実例 4 の「step 本体に入らない」assert に、同じ sandbox へ正しい入力を渡して呼び出し記録ができることを確かめる陽性対照を足した。識別力を確かめる変異として「sandbox に必須の helper を置かない」を当てると、落ちたのは 2 つのサブコマンドのうち片方だけだった。片方は記録用 stub を呼ぶ前にその helper を読み込むので変異で本体が止まる。もう片方は先に stub を呼び、helper の読み込みはその後なので、変異しても記録は残る。
+
+陽性対照が守れるのは「観測点より前で必要になる依存の欠落」だけで、どの依存がそこに入るかはサブコマンドごとの実行順で決まる。変異点は経路ごとに、観測点より手前にある依存から選ぶ。記録用 stub 自体を置かない変異は全経路で陽性対照を落とすが、これは stub の存在しか確かめていない。経路の先頭に依存が増えたときは、その経路について変異検証をやり直す。
+
 ## 関連ページ
 
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
@@ -188,3 +197,4 @@ rm -f "$result_dir"/*.json
 - [否定 assert の前提を陽性 assert 1 行で固定した fix 結果](../../raw/fixes/20260927T093844Z-pr-3248.md)
 - [記録先を捨て先へ向ける変異で陽性 assert の識別力を実測したレビュー結果](../../raw/reviews/20260927T095151Z-pr-3248.md)
 - [除外フィルタを floor と共有させる指摘のレビュー結果](../../raw/reviews/20260927T105021Z-pr-3265.md)
+- [陽性対照の変異点が経路ごとに異なることを実測したレビュー結果](../../raw/reviews/20260927T141600Z-pr-3281.md)
