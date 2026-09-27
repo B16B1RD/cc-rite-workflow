@@ -12,6 +12,7 @@
 * **Update**: [1 つの skip ガードの背後に AC の全カバレッジを置かない — permission 非依存の失敗誘発で床を残す](pages/heuristics/skip-guarded-coverage-needs-permission-free-floor.md) — raw/fixes/20260927T083553Z-pr-3246.md を統合
 * **Update**: [否定形の assert は前提条件が崩れると fail-silent になる](pages/anti-patterns/negative-assertion-vacuous-without-precondition-floor.md) — raw/reviews/20260927T084223Z-pr-3248.md を統合
 * **Update**: [変更・削除の掃き出しは旧語彙・置換した条件式・別記法トークンまで広げる](pages/heuristics/change-sweep-spans-old-vocabulary-and-notations.md) — raw/reviews/20260927T084223Z-pr-3248.md を統合
+* **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=560, broken_refs=0
 * **Create**: [長い表セルの競合は両側の word-diff を列挙してから片側へ差分だけを載せる](pages/heuristics/long-table-cell-conflict-word-diff-both-sides.md) — raw/reviews/20260927T051531Z-pr-3215.md を新規ページ化
 * **Skip**: [20260927T051714Z-pr-3211.md](raw/reviews/20260927T051714Z-pr-3211.md) — rite workflow 自体の挙動の記述で既存機構が強制済み
 * **lint:clean** — contradictions=0 (新規ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=559, broken_refs=0
