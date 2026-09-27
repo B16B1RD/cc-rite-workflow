@@ -34,6 +34,24 @@ else
   echo '  ❌ documented review-finish persistence'; fail=$((fail + 1))
 fi
 
+# The triage-target rules are read only inside 1.2.2, and each pinned sentence must appear there exactly once,
+# so a copy of the sentence elsewhere or a leftover old sentence cannot satisfy the pin. Occurrences are
+# counted, not lines: a step is one long line, and a duplicate on the same line must still be caught.
+FIX_TRIAGE=$(awk '/^### 1\.2\.2 Common Fatal Triage and Recording/ { f = 1 } /^### 1\.3 Classify Comments/ { f = 0 } f' "$FIX")
+triage_count() {
+  label=$1 pattern=$2 want=$3
+  if [ "$(printf '%s\n' "$FIX_TRIAGE" | grep -oF -- "$pattern" | wc -l)" -eq "$want" ]; then
+    echo "  ✅ $label"; pass=$((pass + 1))
+  else
+    echo "  ❌ $label"; fail=$((fail + 1))
+  fi
+}
+triage_count "外部ファイルは HEAD の保存済み JSON を特定する" 'P0 で選んだファイルが `.rite/review-results/` の外にある（外部ファイル）ときは、下の bash で HEAD の保存済み JSON を特定する' 1
+triage_count "外部ファイルの複写は保存済み JSON が無いときだけ" 'P0 の外部ファイルで HEAD の保存済み JSON が無かった場合だけ、新しいファイルのトップレベルを `producer: "fix"` にした' 1
+triage_count "外部ファイルを無条件に複写しない" 'P0 など元ファイルが `.rite/review-results/` 外の場合は、コピー側の' 0
+triage_count "P0 の中のファイルと P2 は元のファイルを triage し producer を変えない" 'P0（`.rite/review-results/` の中のファイル）/P2 は選択した元のファイルを `{triage_review_path}` とし、producer を変更しない' 1
+triage_count "表から組み立てた JSON は producer: fix" '新規 JSON のトップレベルに `producer: "fix"` を設定する' 1
+
 # Execute the documented callers so a zero exit from a failed record cannot pass.
 if python3 - "$ROOT" <<'PY_CHECK'
 import json
@@ -226,6 +244,25 @@ exit 97
     assert resolve_calls == 2, f'flaky resolver assumes one call by the verify helper, then the block; got {resolve_calls} calls'
     # The triage target is the saved file itself, the receipt that completion and the plan check read.
     assert Path(copy_run()) == original
+    assert json.loads(original.read_text()) == saved_review
+    # An external file of HEAD resolves to the same saved JSON, so the receipt is triaged instead of a copy.
+    external = temp / 'external.json'
+    external.write_text(json.dumps(dict(saved_review, timestamp='__RITE_TS_PLACEHOLDER__')))
+    assert Path(copy_run(json.loads(external.read_text())['commit_sha'])) == original
+    compare = next(b for b in blocks if '# fix-explicit-review-json' in b)
+    def compare_run(given):
+        block = compare.replace('{review_source_path}', str(given)).replace('{materialized_json}', str(original))
+        assert not re.search(r'\{[a-z_]+\}', block), block
+        return subprocess.run(['bash', '-c', block], text=True, capture_output=True, timeout=10)
+    same = compare_run(external)
+    assert same.returncode == 0 and '[fix:error]' not in same.stdout, same
+    # The saved JSON is not triaged in place of a file whose findings differ from it.
+    differs = temp / 'differs.json'
+    differs.write_text(json.dumps(dict(saved_review, findings=saved_review['findings'][:1])))
+    differ = compare_run(differs)
+    assert differ.returncode == 1 and '[fix:error] reason=explicit_json_differs_from_saved' in differ.stdout, differ
+    unreadable = compare_run(temp / 'missing.json')
+    assert unreadable.returncode == 1 and '[fix:error] reason=explicit_json_compare_failed' in unreadable.stdout, unreadable
     assert json.loads(original.read_text()) == saved_review
     def triage_original():
         return subprocess.run(['bash', str(root / 'plugins/rite/scripts/review-findings-maps.sh'),
