@@ -759,7 +759,7 @@ fi
 #
 # helper の rc は捨てない。rationale: references/rationale.md#helper-rc-capture
 _sp_rc=0
-bash {plugin_root}/hooks/scripts/cleanup-pr-state-purge.sh --pr "{pr_number}" --record-processed || _sp_rc=$?
+bash {plugin_root}/hooks/scripts/cleanup-pr-state-purge.sh --pr "{pr_number}" || _sp_rc=$?
 if [ "$_sp_rc" -ne 0 ]; then
   echo "WARNING: state purge helper が rc=${_sp_rc} で失敗しました。PR-specific state ファイルは未処理のまま残っています" >&2
   echo "  原因候補: {plugin_root} の未解決置換・helper 欠落 (rc=127) / helper 非可読 (rc=126) / 引数不正 (rc=2)" >&2
@@ -1070,7 +1070,7 @@ rationale: references/rationale.md#marker-data-delimiter
 
   **FOLLOW_UP_ISSUE marker 不在を成功と読んではならない。**
 
-  `skipped; reason=all_resolved` を x 相当に置くのは、ステップ 6.0.V の再検証で残存 0 件が確定し、先送り欠陥も 0 件の**正常完了**だから（起票すべきものが無い。先送り欠陥があれば helper は skip せず起票する）。`no_findings` と同じ扱いであり「起票に失敗した」ではない。`skipped; reason=all_issued` も、残りが全件 sweep で起票済みの正常完了として同じ扱いにする。`skipped; reason=already_processed` は前回の cleanup が JSON を片付けた後の再実行で、判定は前回に済んでいる。
+  `skipped; reason=all_resolved` を x 相当に置くのは、ステップ 6.0.V の再検証で残存 0 件が確定し、先送り欠陥も 0 件の**正常完了**だから（起票すべきものが無い。先送り欠陥があれば helper は skip せず起票する）。`no_findings` と同じ扱いであり「起票に失敗した」ではない。`skipped; reason=all_issued` も、残りが全件 sweep で起票済みの正常完了として同じ扱いにする。`skipped; reason=already_processed` は前回の cleanup で follow-up の判定を終え、その後に JSON が片付けられた PR の再実行で、判定は前回に済んでいる。
   rationale: references/rationale.md#review-cleanup-reasons
 
   `declined` の付記の `{count}` は declined marker の `count=` の値。x 相当でもこの付記は `{review_cleanup_check}` の行に続けて出す。

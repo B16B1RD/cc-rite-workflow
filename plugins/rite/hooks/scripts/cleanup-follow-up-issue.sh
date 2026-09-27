@@ -67,9 +67,15 @@
 #     no_findings  : parse できた JSON の和集合が、除外を適用する前から 0 件 (先送り欠陥も 0 件)
 #     all_resolved : 除外**後**に 0 件になった (再検証で全件が解消済みと判定された。先送り欠陥も 0 件)
 #     all_issued   : sweep 起票済みの除外**後**に 0 件になった (残りが全件 sweep で Issue 化済み。先送り欠陥も 0 件)
-#     no_json      : レビュー結果 JSON が無い (先送り欠陥も 0 件。処理済み記録も無いか、読めない・内容が一致しない)
-#     already_processed : JSON が無く先送り欠陥も 0 件で、前回の cleanup の purge が JSON を片付けた
-#                    記録 (.rite/state/review-results-purged-<pr>.txt の内容が `pr=<pr>`) がある
+#     no_json      : レビュー結果 JSON が無い (先送り欠陥も 0 件。判定済み記録も無いか、読めない・内容が一致しない)
+#     already_processed : JSON が無く先送り欠陥も 0 件で、前回の本 helper が判定を終えた記録
+#                    (.rite/state/follow-up-judged-<pr>.txt の内容が `pr=<pr>`) がある
+#
+# 判定済み記録: created / no_findings / all_resolved / all_issued / already_exists で終えるとき、
+#   `.rite/state/follow-up-judged-<pr>.txt` に `pr=<pr>` の 1 行を書く。cleanup の後段が JSON を
+#   片付けた後の再実行で、JSON 不在を no_json と区別するため。
+#   preview / failed / skipped の他の reason では書かない。
+#   書けなくても結果は変えず WARNING を出す。影響は再実行の報告が no_json に戻ることだけ。
 #   [CONTEXT] FOLLOW_UP_DEFERRED=unavailable; reason=issue_body_api; pr=<n>
 #     元 Issue の本文を取得できず先送り欠陥を読めなかった (指摘側の起票は続ける)
 #   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=lookup_api|create_api|create_script_missing|json_undecidable|preview_write; pr=<n>
@@ -195,6 +201,17 @@ emit_failed() {
   echo "[cleanup-follow-up-issue] result=failed; reason=${reason}; pr=${PR_NUMBER}"
 }
 
+JUDGED_RECORD="$STATE_ROOT/.rite/state/follow-up-judged-${PR_NUMBER}.txt"
+
+record_judged() {
+  local err
+  if ! err=$({ mkdir -p "$STATE_ROOT/.rite/state" && printf 'pr=%s\n' "$PR_NUMBER" > "$JUDGED_RECORD"; } 2>&1); then
+    echo "WARNING: follow-up の判定済み記録を書けません (PR #${PR_NUMBER}): $JUDGED_RECORD" >&2
+    [ -n "$err" ] && printf '%s\n' "$err" | head -3 | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    echo "  影響: レビュー結果 JSON を片付けた後に cleanup を再実行すると no_json (未完了) と報告します" >&2
+  fi
+}
+
 MARKER="${MARKER_PREFIX}${PR_NUMBER}]"
 results_dir="$STATE_ROOT/.rite/review-results"
 
@@ -242,6 +259,7 @@ fi
 # 指摘側が 0 件でも先送り欠陥があれば起票へ進む
 skip_unless_deferred() {
   [ "$deferred_n" -gt 0 ] && return 0
+  record_judged
   emit_skip "$1"
   exit 0
 }
@@ -298,16 +316,15 @@ done <<< "$sources"
 
 if [ "$matched" -eq 0 ]; then
   if [ "$deferred_n" -eq 0 ]; then
-    # 前回の cleanup が JSON を片付けた PR は、purge の処理済み記録で「最初から無い」と区別する。
-    # 読めない・内容が一致しない記録は処理済みの証拠にしない。
-    purged_record="$STATE_ROOT/.rite/state/review-results-purged-${PR_NUMBER}.txt"
-    if [ -e "$purged_record" ] || [ -L "$purged_record" ]; then
-      if purged_content=$(cat -- "$purged_record" 2>/dev/null) && [ "$purged_content" = "pr=${PR_NUMBER}" ]; then
-        echo "INFO: PR #${PR_NUMBER} のレビュー結果 JSON は前回の cleanup で片付け済みです。follow-up の判定は済んでいます" >&2
+    # 前回の判定後に JSON が片付けられた PR は、判定済み記録で「最初から無い」と区別する。
+    # 読めない・内容が一致しない記録は判定済みの証拠にしない。
+    if [ -e "$JUDGED_RECORD" ] || [ -L "$JUDGED_RECORD" ]; then
+      if judged_content=$(cat -- "$JUDGED_RECORD" 2>/dev/null) && [ "$judged_content" = "pr=${PR_NUMBER}" ]; then
+        echo "INFO: PR #${PR_NUMBER} の follow-up は前回の cleanup で判定済みです (レビュー結果 JSON はその後に片付け済み)" >&2
         emit_skip already_processed
         exit 0
       fi
-      echo "WARNING: 処理済み記録を読めないか内容が一致しないため、前回片付け済みとは扱いません: $purged_record" >&2
+      echo "WARNING: 判定済み記録を読めないか内容が一致しないため、前回判定済みとは扱いません: $JUDGED_RECORD" >&2
     fi
     echo "WARNING: PR #${PR_NUMBER} のレビュー結果 JSON が見つかりません。follow-up 起票を skip します (別環境での cleanup の可能性。cycle 中記録は関連 Issue コメントを参照)" >&2
     emit_skip no_json
@@ -558,6 +575,7 @@ existing_n=$(printf '%s' "$list_json" | jq -rs --arg m "$MARKER" '
   exit 0
 }
 if [ -n "$existing_n" ]; then
+  record_judged
   echo "[CONTEXT] FOLLOW_UP_ISSUE=skipped; reason=already_exists; issue=${existing_n}; pr=${PR_NUMBER}" >&2
   echo "[cleanup-follow-up-issue] result=skipped; reason=already_exists; issue=${existing_n}; pr=${PR_NUMBER}"
   exit 0
@@ -737,6 +755,7 @@ if [ -n "$SOURCE_ISSUE" ]; then
   fi
 fi
 
+record_judged
 echo "[CONTEXT] FOLLOW_UP_ISSUE=created; issue=${new_n}; pr=${PR_NUMBER}" >&2
 echo "[cleanup-follow-up-issue] result=created; issue=${new_n}; pr=${PR_NUMBER}"
 exit 0

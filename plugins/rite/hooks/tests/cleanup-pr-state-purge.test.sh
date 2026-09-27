@@ -4,7 +4,6 @@
 # 対応 AC:
 #   AC-5 `<pr>-` prefix 固定で削除し、別 PR の state を巻き込まない
 #   AC-6 --dry-run が削除しない
-#   処理済み記録: --record-processed は対象 PR の JSON を片付けたときだけ記録を書き、以後も消さない
 #
 # review-results の退避/削除そのものは review-results-archive-or-rm.test.sh が behavioral に
 # 固定する。本ファイルは purge helper が「どのファイルを対象にするか」と「失敗をどう surface
@@ -135,10 +134,8 @@ git -C "$r" add README.md
 git -C "$r" commit -qm init
 git -C "$r" worktree add -q "$r/.rite/worktrees/issue-99" -b feat/x
 seed "$r"   # state は main checkout 側にだけ置く
-out=$(cd "$r/.rite/worktrees/issue-99" && bash "$HELPER" --pr 42 --record-processed 2>&1); rc=$?
+out=$(cd "$r/.rite/worktrees/issue-99" && bash "$HELPER" --pr 42 2>&1); rc=$?
 assert_eq "linked worktree: exit 0" "$rc" "0"
-assert_present "linked worktree から呼んでも処理済み記録は main checkout 側に書く" \
-  "$r/.rite/state/review-results-purged-42.txt"
 assert_absent "linked worktree から呼んでも main checkout 側の state を削除する" \
   "$r/.rite/state/nb-sweep-done-42.txt"
 assert_present "linked worktree: 別 PR の state は残る" "$r/.rite/state/nb-sweep-done-4.txt"
@@ -183,48 +180,6 @@ assert_contains "archive helper 不在: 失敗を marker へ変換する" "$out"
   "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=review_results_helper_failed; pr=42; rc=127"
 assert_present "archive helper 不在: review-results は未処理のまま残る" "$r/.rite/review-results/42-cycle1.json"
 assert_absent "archive helper 不在でも rite_rm は続行する" "$r/.rite/state/nb-sweep-done-42.txt"
-
-echo "=== cleanup-pr-state-purge: 処理済み記録（--record-processed）==="
-
-# 再実行の follow-up 判定が読む記録。JSON を片付けたときだけ書き、以後の purge でも消さない。
-r=$(mktemp -d "$TMP_ROOT/root.XXXXXX"); seed "$r"
-out=$(bash "$HELPER" --pr 42 --state-root "$r" --record-processed 2>&1); rc=$?
-assert_eq "記録: exit 0" "$rc" "0"
-assert_eq "記録: 対象 PR の記録を pr=<N> で書く" "$(cat "$r/.rite/state/review-results-purged-42.txt" 2>/dev/null)" "pr=42"
-assert_absent "記録: 別 PR (4) の記録は書かない" "$r/.rite/state/review-results-purged-4.txt"
-assert_absent "記録: prefix が伸びた PR (420) の記録は書かない" "$r/.rite/state/review-results-purged-420.txt"
-assert_absent "記録: suffix 一致 PR (142) の記録は書かない" "$r/.rite/state/review-results-purged-142.txt"
-out=$(bash "$HELPER" --pr 42 --state-root "$r" --record-processed 2>&1); rc=$?
-assert_present "記録: JSON の無い 2 回目の purge でも記録は残る" "$r/.rite/state/review-results-purged-42.txt"
-
-r=$(mktemp -d "$TMP_ROOT/root.XXXXXX"); mkdir -p "$r/.rite/state" "$r/.rite/review-results"
-printf '{"non_blocking_findings":[]}\n' > "$r/.rite/review-results/420-cycle1.json"
-bash "$HELPER" --pr 42 --state-root "$r" --record-processed >/dev/null 2>&1
-assert_absent "記録: 別 PR の JSON しか無ければ書かない" "$r/.rite/state/review-results-purged-42.txt"
-
-r=$(mktemp -d "$TMP_ROOT/root.XXXXXX"); seed "$r"
-bash "$HELPER" --pr 42 --state-root "$r" >/dev/null 2>&1
-assert_absent "記録: --record-processed なしでは書かない" "$r/.rite/state/review-results-purged-42.txt"
-
-r=$(mktemp -d "$TMP_ROOT/root.XXXXXX"); seed "$r"
-bash "$HELPER" --pr 42 --state-root "$r" --record-processed --dry-run >/dev/null 2>&1
-assert_absent "記録: dry-run では書かない" "$r/.rite/state/review-results-purged-42.txt"
-
-r=$(mktemp -d "$TMP_ROOT/root.XXXXXX"); mkdir -p "$r/.rite/review-results"
-printf '{"non_blocking_findings":[]}\n' > "$r/.rite/review-results/42-cycle1.json"
-bash "$HELPER" --pr 42 --state-root "$r" --record-processed >/dev/null 2>&1
-assert_eq "記録: .rite/state が無くても作って書く" "$(cat "$r/.rite/state/review-results-purged-42.txt" 2>/dev/null)" "pr=42"
-
-r=$(mktemp -d "$TMP_ROOT/root.XXXXXX"); seed "$r"
-out=$(bash "$stub_dir/hooks/scripts/cleanup-pr-state-purge.sh" --pr 42 --state-root "$r" --record-processed 2>&1)
-assert_absent "記録: archive helper が起動できなければ書かない" "$r/.rite/state/review-results-purged-42.txt"
-
-r=$(mktemp -d "$TMP_ROOT/root.XXXXXX"); seed "$r"
-rm -rf "$r/.rite/state"; printf 'x\n' > "$r/.rite/state"
-out=$(bash "$HELPER" --pr 42 --state-root "$r" --record-processed 2>&1); rc=$?
-assert_eq "記録の書込失敗: exit 0（非ブロッキング）" "$rc" "0"
-assert_contains "記録の書込失敗: WARNING を出す" "$out" "処理済み記録を書けません"
-assert_absent "記録の書込失敗でも rite_rm は続行する" "$r/.rite/fix-cycle-state/42.json"
 
 echo "=== cleanup-pr-state-purge: usage ==="
 
