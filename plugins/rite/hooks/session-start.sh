@@ -611,7 +611,7 @@ fi
 
 # --- Stop-reason phrasing ---
 # flow-state の `stop_reason` は「ワークフローが失敗として止まった」ことの durable な記録
-# (`skills/iterate/SKILL.md` ステップ 6 共有前段が書く)。キーが無い state は「単なる中断」
+# (`skills/iterate/SKILL.md` ステップ 6 共有前段と、停滞診断の `hooks/scripts/lib/review-stagnation.py` が書く)。キーが無い state は「単なる中断」
 # (Ctrl+C / セッション終了) を意味する。両者はキー不在のとき phase=review / active=true という
 # バイト的に同一の形で残るため、この関数の出力の有無だけが再開案内で両者を分ける手がかりになる。
 #
@@ -631,6 +631,12 @@ _rite_stop_reason_phrase() {
       echo "サーキットブレーカー発火 (収束トレンドの発散を検出)" ;;
     circuit-breaker:receipt-missing)
       echo "サーキットブレーカー発火 (未完了レビューの結果ファイルが消失)" ;;
+    circuit-breaker:stagnation)
+      echo "停滞診断で停止 (review⇄fix が収束しない)" ;;
+    stagnation:non-convergent)
+      echo "停滞診断で停止 (見直し後も同じ根本原因が再発し、受入条件が進まない)" ;;
+    stagnation:scope-insoluble)
+      echo "停滞診断で停止 (根本原因が Issue の範囲内では解消できない)" ;;
     *)
       echo "未知の停止理由トークン '$(printf '%s' "$_sr" | neutralize_ctrl)' (rite の更新で追加された可能性)" ;;
   esac

@@ -1003,6 +1003,8 @@ assert_hint "completed-inactive" completed ".active=false" "batch-run ステッ�
 assert_hint "unknown-phase" unknown_phase "" "batch-run ステップ 1 から再判定" "/rite:iterate"
 assert_hint "cb-fire" review '.stop_reason="circuit-breaker:max-cycles"' "batch-run ステップ 8（breaker_failed=true で failed 記録 + 停止、cursor は保持）" "/rite:iterate"
 assert_hint "cb-divergence" review '.stop_reason="circuit-breaker:divergence"' "batch-run ステップ 8（breaker_failed=true で failed 記録 + 停止、cursor は保持）" "cursor 前進"
+assert_hint "stagnation-non-convergent" review '.stop_reason="stagnation:non-convergent"' "batch-run ステップ 8（breaker_failed=true で failed 記録 + 停止、cursor は保持）" "/rite:iterate"
+assert_hint "stagnation-scope-insoluble" fix '.stop_reason="stagnation:scope-insoluble"' "batch-run ステップ 8（breaker_failed=true で failed 記録 + 停止、cursor は保持）" "/rite:iterate"
 
 # flow-state absent → ステップ 1
 d=$(new_sandbox)

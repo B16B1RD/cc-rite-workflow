@@ -242,6 +242,47 @@ else
 fi
 echo ""
 
+echo "TC-006e: startup reset names each stagnation stop as a known reason"
+for _sr_case in \
+  "circuit-breaker:stagnation|停滞診断で停止 (review⇄fix が収束しない)" \
+  "stagnation:non-convergent|停滞診断で停止 (見直し後も同じ根本原因が再発し、受入条件が進まない)" \
+  "stagnation:scope-insoluble|停滞診断で停止 (根本原因が Issue の範囲内では解消できない)"; do
+  _sr_token=${_sr_case%%|*}
+  _sr_phrase=${_sr_case#*|}
+  dir006e="$TEST_DIR/tc006e-${_sr_token//:/-}"
+  mkdir -p "$dir006e"
+  create_state_file "$dir006e" '{
+  "active": true,
+  "issue_number": 2045,
+  "branch": "fix/issue-2045",
+  "phase": "review",
+  "stop_reason": "'"$_sr_token"'"
+}'
+  output=$(run_hook_with_source "$dir006e" "startup")
+  if grep -qF "理由: ${_sr_phrase})。再開するには /rite:recover" <<< "$output" && \
+     ! grep -q "未知の停止理由トークン" <<< "$output"; then
+    pass "startup defensive reset surfaces the $_sr_token stop reason"
+  else
+    fail "Expected $_sr_token stop reason in startup reset notice, got: $output"
+  fi
+done
+dir006e="$TEST_DIR/tc006e-unlisted"
+mkdir -p "$dir006e"
+create_state_file "$dir006e" '{
+  "active": true,
+  "issue_number": 2045,
+  "branch": "fix/issue-2045",
+  "phase": "review",
+  "stop_reason": "stagnation:future-token"
+}'
+output=$(run_hook_with_source "$dir006e" "startup")
+if grep -qF "未知の停止理由トークン 'stagnation:future-token'" <<< "$output"; then
+  pass "startup defensive reset keeps an unlisted stagnation token unknown"
+else
+  fail "Expected an unlisted stagnation token to stay unknown, got: $output"
+fi
+echo ""
+
 # --------------------------------------------------------------------------
 # TC-002: CWD is not a directory → exit 0
 # --------------------------------------------------------------------------
