@@ -12,8 +12,8 @@ Defines how fix targets are determined in the `/rite:iterate` review-fix loop.
 
 | Finding | Classification | Action |
 |---------|----------------|--------|
-| measured=true、current-pr/follow-up、CRITICAL/HIGH または PR 起因の class A / 除外判別子付き class B | Fatal | 修正対象・auto-select・fix commit 対象 |
-| gated で measured=false、または MEDIUM/LOW-MEDIUM/LOW の除外判別子なし class B / `pre_existing: true` | Non-fatal | `non_blocking_findings[]` へ `demotion_reason: non_fatal` で移送し記録のみ |
+| measured=true、current-pr/follow-up で、CRITICAL/HIGH、または class A / 除外判別子付き class B のうち PR 起因（`pre_existing: true` でない）のもの | Fatal | 修正対象・auto-select・fix commit 対象 |
+| gated で measured=false、または measured=true の MEDIUM/LOW-MEDIUM/LOW のうち除外判別子なし class B か `pre_existing: true` のもの | Non-fatal | `non_blocking_findings[]` へ `demotion_reason: non_fatal` で移送し記録のみ |
 | scope=nit-noted | Nit (認知のみ) | PR reply・fix commit 対象外、`acknowledged_nit_count` に算入 |
 | Resolved | 解決済み | 既存の解決済み判定を維持 |
 | 出自を確認できない人間・外部レビュー thread | External review | 既存の個別対応経路を維持 |

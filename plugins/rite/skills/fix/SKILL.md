@@ -27,7 +27,7 @@ PR レビューコメントを取得・整理し、指摘への対応を効率�
 
 途中で止まったら flow-state に `phase=fix` が残るので `/rite:recover` で再開する。
 
-`/rite:iterate` の review-fix loop から「not mergeable」評価時に自動 invoke される。**fatal finding と未解決の外部レビューを修正対象とする**。fatal は実測済みの current-pr/follow-up のうち、CRITICAL/HIGH か、PR 起因の class A か、降格の除外判別子が付いた class B のみ。完了後 machine-readable output pattern を emit し caller に制御返却。
+`/rite:iterate` の review-fix loop から「not mergeable」評価時に自動 invoke される。**fatal finding と未解決の外部レビューを修正対象とする**。fatal は実測済みの current-pr/follow-up のうち、CRITICAL/HIGH か、class A・降格の除外判別子が付いた class B のうち PR 起因（`pre_existing: true` でない）のもののみ。完了後 machine-readable output pattern を emit し caller に制御返却。
 
 `{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) で解決する。
 
