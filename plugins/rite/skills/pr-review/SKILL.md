@@ -1990,7 +1990,7 @@ If reviewers have written items in the "仕様への疑問" section, prompt the 
 2. **5.3.0.M 実測必須ゲート** — **`scripts/review-measured-gate.sh` を実行する**。分類は helper。Claude は判定しない。SoT: [severity-levels.md §実測必須ゲート](../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) / [assessment-rules.md §5.3.0.M](../fix/references/assessment-rules.md)。
 3. **5.3.0.C 帰結クラス降格政策** — 分類 map の Write と `scripts/review-class-demotion-gate.sh`。`blocking=0` なら本ゲート全体を skip。A=0 で exclusion なし B を降格し、exclusion 付き B は blocking 維持。SoT: [severity-levels.md §帰結クラス軸](../../references/severity-levels.md#帰結クラス軸-consequence-class) / [assessment-rules.md §5.3.0.C](../fix/references/assessment-rules.md)。
 4. **5.3.0.A 受入条件の最終整合検査** — `scripts/acceptance-criteria-check.sh final` を実行する。判定行の AC-ID 集合・対象判定と reviewers[] の整合、未充足行の finding が降格後も blocking に残ることを検査し、未検証 AC を 8.0 / 8.1 へ渡す。
-5. **5.3.0.R PR 内推奨の登録** — `scripts/review-pr-recommendations.sh register` を実行する。mergeable のときだけ、actionable かつ PR の追加行を指す推奨事項を `pr_recommendations[]` へ登録する。
+5. **5.3.0.R PR 内推奨の登録** — `scripts/review-pr-recommendations.sh register` を実行する。mergeable かつ cycle が `safety.max_review_cycles` 未満のときだけ、actionable かつ PR の追加行を指す推奨事項を `pr_recommendations[]` へ登録する。
 6. **5.3.1-5.3.7** を降格後の `全指摘事項` に適用。件数は marker とゲート後 JSON から読む（再分類しない）。
 5.3.0 / 5.3.0.M / 5.3.0.C / 5.3.0.A / 5.3.0.R を 5.3.1 の前に飛ばすことは **禁止**。
 rationale: references/design-rationale.md#5.3-execution-order-why
@@ -2272,7 +2272,7 @@ bash {plugin_root}/scripts/review-pr-recommendations.sh register \
 
 marker 末尾の `unlocated=`（file:line を読めない actionable の位置）は Source B から除外しない。行き先はステップ 7 の処分で決まる（Decision Log に記録する場合は 7.4.3 の先送り欠陥トークン付きになり、cleanup が follow-up へ転記する）。
 
-登録は保存前の作業コピーだけに行う（保存済み JSON は停滞判定の受領記録と照合されるため書き換えない）。上限は 1 つの review run につき 1 回。
+登録は保存前の作業コピーだけに行う（保存済み JSON は停滞判定の受領記録と照合されるため書き換えない）。上限は 1 つの review run につき 1 回。cycle が `safety.max_review_cycles` に達したときは登録しない（修正を再レビューできないため）。
 rationale: ../iterate/references/rationale.md#pr-recommendation-fix
 
 
