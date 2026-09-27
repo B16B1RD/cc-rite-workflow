@@ -308,7 +308,7 @@ assert "one 'type:' block per reported axis" 2 "$(grep -c '^  type: ' "$stderr_m
 assert "advisory-only drift exits 0" 0 "$rc"
 
 # Branch drift is recovered, and the worktree axis is still judged on the state
-# before the recovery checkout.
+# before the recovery switch.
 sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
 git -C "$sbx" branch side
 snap=$(snapshot_line "$sbx")
@@ -318,6 +318,54 @@ out=$(verify_all "$sbx" "$snap" --auto-recover true); rc=$?
 assert "branch drift + tracked edit reports both axes" '["branch","worktree"]' "$(printf '%s' "$out" | jq -c .types)"
 assert "branch drift is recovered" true "$(printf '%s' "$out" | jq -r .recovered)"
 assert "recovered branch drift exits 0" 0 "$rc"
+assert "recovery leaves HEAD on the original branch, not detached" \
+  "$(field "$snap" branch)" "$(git -C "$sbx" branch --show-current)"
+
+# A switch that exits 0 without landing on the original branch is not a recovery.
+sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
+git -C "$sbx" branch side
+snap=$(snapshot_line "$sbx")
+git -C "$sbx" switch -q side
+noop_shim=$(mktemp -d) && cleanup_dirs+=("$noop_shim")
+printf '#!/bin/bash\n[ "$1" = switch ] && exit 0\nexec "%s" "$@"\n' "$(command -v git)" > "$noop_shim/git"
+chmod +x "$noop_shim/git"
+stderr_noop=$(mktemp) && cleanup_dirs+=("$stderr_noop")
+out=$(PATH="$noop_shim:$PATH" verify_all "$sbx" "$snap" --auto-recover true 2>"$stderr_noop"); rc=$?
+assert "switch landing elsewhere is not recovered" false "$(printf '%s' "$out" | jq -r .recovered)"
+assert "switch landing elsewhere exits 1" 1 "$rc"
+assert "switch landing elsewhere reports FAILED" 1 "$(grep -c 'recovery: FAILED' "$stderr_noop")"
+assert "switch landing elsewhere does not report success" 0 "$(grep -c 'recovery: succeeded' "$stderr_noop")"
+
+# A deleted local branch is not recreated from its remote-tracking branch.
+origin_sbx=$(new_sandbox) && cleanup_dirs+=("$origin_sbx") || exit 1
+git -C "$origin_sbx" branch feat
+sbx=$(mktemp -d) && cleanup_dirs+=("$sbx")
+git clone -q "$origin_sbx" "$sbx/clone" && sbx="$sbx/clone"
+git -C "$sbx" config user.email t@test.local
+git -C "$sbx" config user.name test
+git -C "$sbx" switch -q feat
+snap=$(snapshot_line "$sbx")
+git -C "$sbx" switch -q --detach
+git -C "$sbx" branch -q -D feat
+out=$(verify_all "$sbx" "$snap" --auto-recover true 2>/dev/null); rc=$?
+assert "branch left only on the remote is not recovered" false "$(printf '%s' "$out" | jq -r .recovered)"
+assert "branch left only on the remote exits 1" 1 "$rc"
+assert "branch left only on the remote is not recreated locally" 1 \
+  "$(git -C "$sbx" rev-parse -q --verify refs/heads/feat >/dev/null; echo $?)"
+
+# Option-like branch names stop at validation, before any git ref is touched.
+for opt_branch in '--orphan=evil' '-c'; do
+  sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
+  git -C "$sbx" branch side
+  git -C "$sbx" switch -q side
+  refs_before=$(git -C "$sbx" for-each-ref refs/heads)
+  stderr_opt=$(mktemp) && cleanup_dirs+=("$stderr_opt")
+  (cd "$sbx" && bash "$VERIFY" --original-branch "$opt_branch" --auto-recover true >/dev/null 2>"$stderr_opt"); rc=$?
+  assert "option-like '$opt_branch' exits 2" 2 "$rc"
+  assert "option-like '$opt_branch' is rejected by validation" 1 "$(grep -c 'disallowed characters' "$stderr_opt")"
+  assert "option-like '$opt_branch' leaves branches unchanged" "$refs_before" "$(git -C "$sbx" for-each-ref refs/heads)"
+  assert "option-like '$opt_branch' leaves HEAD on the current branch" side "$(git -C "$sbx" branch --show-current)"
+done
 
 sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
 git -C "$sbx" branch side
