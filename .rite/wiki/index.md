@@ -582,9 +582,11 @@ okf_version: "0.2"
 | [復旧ヒントに表示するパスは、処理が cd した先ではなく利用者が貼り付ける場所から正しく解決できる絶対パスで示す](pages/heuristics/recovery-hint-path-absolute-for-paste-cwd.md) | heuristics | 処理ロジックは cd 済みのディレクトリで正しく動いていても、同じ相対パスを復旧ヒントとして表示すると、利用者が貼り付けるシェルの cwd では別の場所を指す。表示用のパスは絶対パスに揃え、同じ strategy の全経路で同じ直し方を適用する。 | 2026-09-27T16:03:50Z | medium |
 | [終了コードの分岐を散文で書くと「other」が名指しした値まで取り込む — 兄弟の手順書と同じ表で 0 / 1 / 2 / other を列挙する](pages/anti-patterns/exit-code-branch-prose-other-absorbs-named-codes.md) | anti-patterns | 終了コードの分岐を散文の「rc=2 なら停止、それ以外の非ゼロも停止」と書くと、「それ以外」が別の行で個別に案内している値まで含んでしまい、案内同士が衝突する。兄弟の手順書が表で列挙しているなら同じ表形式に揃え、各行の範囲が互いに重ならないことを構造で保証する。 | 2026-09-27T17:27:12Z | medium |
 | [散文とコマンドが同じ行にある手順の pin は、コマンド span に絞ったうえで span 内の引数の出どころまで固定する](pages/patterns/procedure-pin-scopes-command-span-and-argument-provenance.md) | patterns | 手順書の 1 行に理由文とコマンドが同居していると、行全体への部分一致の検査は理由文に書かれた語だけで通り、コマンドから語が落ちても気付かない。検査をバッククォートで囲まれたコマンド span に絞り、さらに span 内の引数がプレースホルダか固定パスかといった出どころまで条件に含めると、細かい書き換えも落ちる。 | 2026-09-27T17:15:00Z | medium |
+| [テストの配線確認 assert は理由コメントを観測点で書き、variant 間で対称に残す](pages/heuristics/wiring-assert-comment-names-observation-point.md) | heuristics | テスト内で組み立てた引数配列を読み返す配線確認 assert は、退行の結果ではなく assert が実際に観測する点（引数の組み立て）で理由を書き、片側だけ削らず variant 間で対称に保つ。結果で書くと観測点の外の退行まで捕まえるように読め、片側だけ削ると残した側の理由が削った側にも当てはまって判断が非対称になる。 | 2026-09-27T20:15:00Z | medium |
+| [件数を入れる変数を「存在し照合も通った」フラグとして兼用すると helper の非空契約に暗黙依存する](pages/anti-patterns/count-variable-doubling-as-existence-flag.md) | anti-patterns | helper が返す件数を入れた変数の非空を「対象が存在し照合も通った」判定に流用すると、helper が成功時に必ず非空を返すという明文化されていない契約へ依存する。case の各アームに複製した同じ判定を前へまとめるときも、前段の失敗経路を判定から外す条件を残さないと停止理由の名前が変わる。 | 2026-09-27T20:15:00Z | medium |
 ## 統計
 
-- 総ページ数: 572
-- ドメイン別: patterns=127, heuristics=268, anti-patterns=177
-- 最終更新: 2026-09-27T19:57:39Z
+- 総ページ数: 574
+- ドメイン別: patterns=127, heuristics=269, anti-patterns=178
+- 最終更新: 2026-09-27T20:15:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |

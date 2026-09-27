@@ -30,6 +30,9 @@
 * **Update**: [手順の再実行列は通常経路の強制層を飛ばさず、再実行の範囲と初回判断の保持を同じ文で書く](pages/patterns/rerun-sequence-states-scope-and-preserved-decisions.md) — raw/fixes/20260927T195118Z-pr-3322.md を統合
 * **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=63, orphans=0, missing_concept=0, unregistered_raw=567, broken_refs=0
 
+* **Create**: [テストの配線確認 assert は理由コメントを観測点で書き、variant 間で対称に残す](pages/heuristics/wiring-assert-comment-names-observation-point.md) — raw/reviews/20260927T200258Z-pr-3333.md と raw/fixes/20260927T200818Z-pr-3333.md を新規ページ化
+* **Create**: [件数を入れる変数を「存在し照合も通った」フラグとして兼用すると helper の非空契約に暗黙依存する](pages/anti-patterns/count-variable-doubling-as-existence-flag.md) — raw/reviews/20260927T200657Z-pr-3322.md を新規ページ化
+
 ## 2026-09-28
 * **Update**: [agent が人間に渡す復旧コマンドは、人間の実行コンテキストで正しいかを検証する](pages/heuristics/recovery-command-verified-in-human-execution-context.md) — raw/reviews/20260927T160621Z-pr-3298.md を統合
 * **Update**: [否定形の assert は前提条件が崩れると fail-silent になる](pages/anti-patterns/negative-assertion-vacuous-without-precondition-floor.md) — raw/reviews/20260927T160629Z-pr-3306.md を統合
