@@ -276,6 +276,13 @@ git -C "$sbx" worktree add -q -b pr-1-test "$wt_base/leak-outside" >/dev/null 2>
 out=$(verify_all "$sbx" "$snap")
 assert "reviewer-leak branch outside the namespace is reported as branch_list" '["branch_list"]' "$(printf '%s' "$out" | jq -c .types)"
 
+# The leak names are pr-cycle-cleanup.sh's reap names minus the orchestrator-created cycle{N}.
+leak_alts() { grep -m1 "$2=" "$1" | sed -E 's/.*-\((.*)\)\$.*/\1/' | tr '|' '\n' | grep -v '^cycle' | sort | tr '\n' ' '; }
+cleanup_alts=$(leak_alts "$SCRIPT_DIR/../scripts/pr-cycle-cleanup.sh" "readonly PATTERN")
+verify_alts=$(leak_alts "$VERIFY" _reviewer_leak_re)
+[ -n "$cleanup_alts" ] || fail "leak names: pr-cycle-cleanup.sh PATTERN not found"
+assert "reviewer-leak names match pr-cycle-cleanup.sh reap names" "$cleanup_alts" "$verify_alts"
+
 # A stash made on another branch in the reviewed worktree counts after switching back.
 sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
 git -C "$sbx" branch side
