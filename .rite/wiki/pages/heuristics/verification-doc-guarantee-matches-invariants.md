@@ -15,9 +15,17 @@ sources:
     resource: "raw/reviews/20260703T180609Z-pr-1743.md"
   - type: "reviews"
     resource: "raw/reviews/20260912T150939Z-pr-2741.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T103237Z-pr-3261.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T104024Z-pr-3261.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T104337Z-pr-3263.md"
 tags: ["documentation", "drift-check", "overclaim", "guarantee", "contributing"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T15:25:00+00:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:47:38Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:47:38Z" }
 ---
 
 # 検証ツールの保証文言は検証される不変量と非検出 gap に正確に対応させる
@@ -51,6 +59,15 @@ reviewer registry の 3-way 同期検証で実測。
 - 保証文に「必ず」「すべて」「漏れなく」等の全称語が入ったら、実装の不変量リストと 1:1 で突合する
 - gap が設計上意図的なら「なぜ検査できないか」の理由ごと文書化する（読者が gap を仕様として理解できる）
 
+### 範囲の主張は判定・回収の全分岐と照らしてから書く
+
+状態検査の説明に「名前空間の外の worktree は検査の対象外になる」と書いた事例では、判定関数を読むと外れるのは回収だけで、既存 branch を checkout する形では別の軸で drift として報告されていた。回収側にも、名前で絞るステップのほかに名前を問わず一時ディレクトリ配下の detached worktree を回収するステップがあり、「回収の対象外」は一部の形にしか当てはまらなかった。
+
+警告の対象を「〜を問わない」と広く書いた文言が、helper が別の理由で判定不能に倒したエントリを暗黙に除外していたため、文書と実装が食い違った事例もある。
+
+- 範囲を主張する文は、判定・回収を担う関数の分岐を 1 つずつ列挙し、主張との対応を取ってから書く
+- 広い主張が当てはまらない分岐があれば、主張をその分岐単位に絞る
+
 ## 関連ページ
 
 - [散文で宣言した設計は対応する実装契約がなければ機能しない](../anti-patterns/prose-design-without-backing-implementation.md)
@@ -62,3 +79,6 @@ reviewer registry の 3-way 同期検証で実測。
 - [保証範囲の I1/I3 限定 + gap 明記 + 3 面伝播](../../raw/fixes/20260703T175226Z-pr-1743.md)
 - [修正が指摘の意図を満たすことを確認、0 findings 収束](../../raw/reviews/20260703T180609Z-pr-1743.md)
 - [重複警告の検出範囲を文書が書きすぎた指摘](../../raw/reviews/20260912T150939Z-pr-2741.md)
+- [名前空間外 worktree の理由文を判定関数の実挙動に合わせた修正](../../raw/fixes/20260927T103237Z-pr-3261.md)
+- [回収範囲の主張が名前を問わない回収ステップを見落とした指摘](../../raw/reviews/20260927T104024Z-pr-3261.md)
+- [警告対象を広く書いた文言と helper の暗黙の除外が食い違った指摘](../../raw/reviews/20260927T104337Z-pr-3263.md)

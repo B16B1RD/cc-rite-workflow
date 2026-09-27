@@ -37,13 +37,18 @@ sources:
     resource: "raw/fixes/20260903T050155Z-pr-2533.md"
   - type: "reviews"
     resource: "raw/reviews/20260915T073009Z-pr-2842.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T104024Z-pr-3261.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T103237Z-pr-3261.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-15T07:45:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:47:38Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-03T03:31:36Z" }
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-03T05:14:01Z" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-15T07:45:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:47:38Z" }
 ---
 
 # 散文契約の静的 pin には weakened probe による positive control を課す
@@ -129,6 +134,13 @@ assert_grep "$SKILL" 'CLEANUP_DELEGATED=1` を emit している場合、本ス�
 
 - **SoT の日本語 1 文だけを grep し、その文が名指しする実ファイルを走査しない pin は vacuous である。** `effort: high` を preamble に書いて contract テストがそこだけを見る設計は、agent frontmatter を `effort: low` / `model: opus` に変異させても緑のまま通る。**契約が「N 本の YAML が同一値」なら、その N 本をループで読む。**
 
+### 語順に依存しない部分一致は、同じ行に足した説明文で充足されうる
+
+手順書の 1 行を検査するテストで、`*"A"*"B"*` の語順依存を避けるために A と B の存在を別々に確かめる形へ緩めた。同じ修正でその行に理由文を足しており、理由文が A と B の両方の語を含んでいたため、コマンド本体から A を消しても、名前空間を消しても、両方を消しても検査が通るようになった。緩める前の形はコマンドからの A の除去を検出できていたので、検出力の後退である。
+
+- 照合対象を行全体ではなくコマンドの span（バッククォート内）に絞る
+- 検査を緩める変更は、その行に同時に足した文言だけで条件が満たされないかを変異で確かめてから確定する
+
 ## 関連ページ
 
 - [否定アサーションには positive control を添える — `|| true` は唯一の crash signal を消す](./negative-assertion-positive-control.md)
@@ -147,3 +159,5 @@ assert_grep "$SKILL" 'CLEANUP_DELEGATED=1` を emit している場合、本ス�
 - [レビュー結果](../../raw/reviews/20260903T045300Z-pr-2533.md)
 - [fix 結果](../../raw/fixes/20260903T050155Z-pr-2533.md)
 - [見出しだけの pin と付け足し型の変異が生存したレビュー結果](../../raw/reviews/20260915T073009Z-pr-2842.md)
+- [語順非依存に緩めた検査が理由文で充足された指摘](../../raw/reviews/20260927T104024Z-pr-3261.md)
+- [語順依存の検査を存在の個別確認に変えた修正](../../raw/fixes/20260927T103237Z-pr-3261.md)

@@ -14,9 +14,17 @@ sources:
     resource: "raw/fixes/20260724T193804Z-pr-2013.md"
   - type: "fixes"
     resource: "raw/fixes/20260725T004542Z-pr-2013.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T102458Z-pr-3261.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T103237Z-pr-3261.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T104024Z-pr-3261.md"
 tags: ["portability", "macos", "mktemp", "canonicalization", "fail-open", "destructive"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-25T07:05:21Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:47:38Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:47:38Z" }
 ---
 
 # mktemp -d の canonical 化は 2 段階に分ける — `cd "$(mktemp -d)"` は失敗時にリポジトリ本体を掴む
@@ -73,6 +81,13 @@ canonicalization を pin する TC を「`$TMPDIR` を symlink に向ける」�
 
 なお GNU `mktemp` は bare 呼び出しでも `$TMPDIR` を尊重するため、**テンプレート化の revert は leak count では検出できない**（mutation で検出ゼロを確認済み）。basename アサートのようなプラットフォーム非依存の観測点を足す。
 
+### worktree 作成の手順でも mktemp は別の呼び出しに分ける
+
+reviewer 向けの手順書で `git worktree add --detach "$(mktemp -d -t <prefix>-XXXXXX)" <ref>` と 1 行に埋め込むと、作ったパスが出力に残らず、後続の手順でそのパスを探し直すことになる。worktree で隔離したセッションでは、コマンド置換を含む git 呼び出しは worktree の中に留まるか検証できないとして実行自体が拒否される。
+
+- `mktemp -d` を単独で実行してパスを得てから、そのリテラルなパスで別の呼び出しとして worktree を作る
+- 1 箇所を直したら、同じ手順を示す他の箇所（正規の手順ブロック・guard の deny メッセージ・rationale）も同じ形か確かめる。片方だけ直すと手順書同士が食い違う
+
 ## 関連ページ
 
 - [mktemp テンプレートは `${TMPDIR:-/tmp}` を使う — `/tmp` 直下ハードコードは sandbox で書き込み拒否される](./mktemp-tmpdir-prefix-for-sandbox-compat.md)
@@ -85,3 +100,6 @@ canonicalization を pin する TC を「`$TMPDIR` を symlink に向ける」�
 - [環境差異の吸収は fail-open の温床](../../raw/fixes/20260724T180733Z-pr-2013.md)
 - [fixture が検証したい差異自身を踏む問題](../../raw/fixes/20260724T193804Z-pr-2013.md)
 - [ひな形（CONTRIBUTING）の同時更新漏れ](../../raw/fixes/20260725T004542Z-pr-2013.md)
+- [一行形の worktree 作成手順がパスを捨てる指摘](../../raw/reviews/20260927T102458Z-pr-3261.md)
+- [mktemp と worktree 作成を 2 段に分けた修正](../../raw/fixes/20260927T103237Z-pr-3261.md)
+- [同じ手順を示す他の箇所が一行形のまま残った指摘](../../raw/reviews/20260927T104024Z-pr-3261.md)

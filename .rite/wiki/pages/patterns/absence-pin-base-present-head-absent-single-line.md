@@ -21,9 +21,13 @@ sources:
     resource: "raw/reviews/20260912T001903Z-pr-2709.md"
   - type: "reviews"
     resource: "raw/reviews/20260914T110010Z-pr-2816.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T103406Z-pr-3262.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T104314Z-pr-3262.md"
 tags: ["assert-not-grep", "vacuous-pin", "ere-portability", "test-pin", "fixture-scope", "count-zero-assertion"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-14T11:20:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:47:38Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-28T13:10:00+09:00"
@@ -31,6 +35,8 @@ verified:
     at: "2026-09-12T00:25:00Z"
   - by: "rite-wiki-ingest/claude-opus-5"
     at: "2026-09-14T11:20:00Z"
+  - by: "rite-wiki-ingest/claude-opus-5-5"
+    at: "2026-09-27T10:47:38Z"
 ---
 
 # absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する
@@ -96,6 +102,14 @@ mutation の実施者は**主張する側と独立**であることが望まし�
 
 対処は「在ることの正の表明」と「許可語彙が無いことの負の表明」を対で置くことだが、負側は語彙 denylist にしかならず、言い換えで素通りする。防御価値は限定的だと承知した上で、契約の「存在しない」条項と assert の対応関係をテストのコメントに 1 行残しておく。次回以降の reviewer が同じ mutation を再走させて同じ結論に至る往復を省ける。
 
+### 負の pin は対象行の件数を先に確かめ、失敗理由を切り分けて出す
+
+散文の経路記述を削ったとき、旧経路を pin していた正の assert を移すだけでは、実行者に最も近いルーティング表への再追加を検出できない。消した箇所ごとに負の pin を置き、対象行がちょうど 1 行あることを先に確かめる。
+
+- 禁止対象を文言（「ステップ 4 の」のような句）で書くと、同じ sentinel を別の書き方で戻したときにすり抜ける。禁止対象は sentinel literal 自体にし、検査範囲を該当句以降に絞る
+- fail メッセージには、対象行の抽出件数が 0 / 2 以上 / 1 のどれで落ちたかを出す。行が消えた・重複した・禁止文字列が残ったを CI ログだけで切り分けられる
+- anchor を別の行へ移したら、テスト名も新しい pin 先の振る舞いに合わせる。名前が旧 pin のまま残ると読者が pin の中身を読み違える
+
 ## 関連ページ
 
 - [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](../anti-patterns/test-pin-protection-theater.md)
@@ -114,3 +128,5 @@ mutation の実施者は**主張する側と独立**であることが望まし�
 - [解消検証の独立再現と実バイト列の確認](../../raw/reviews/20260828T040534Z-pr-2426.md)
 - [禁止文の存在 pin が許可文の追記を捕まえない mutation 実測](../../raw/reviews/20260912T001903Z-pr-2709.md)
 - [CR 付き見出しを数えない重複検査を指摘したレビュー結果](../../raw/reviews/20260914T110010Z-pr-2816.md)
+- [経路記述を削った箇所に負の pin が無い指摘](../../raw/reviews/20260927T103406Z-pr-3262.md)
+- [負の pin の失敗理由を件数で切り分けた修正](../../raw/fixes/20260927T104314Z-pr-3262.md)

@@ -14,9 +14,13 @@ sources:
     resource: "raw/fixes/20260726T161811Z-pr-2030.md"
   - type: "fixes"
     resource: "raw/fixes/20260726T131902Z-pr-2030.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T104337Z-pr-3263.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-27T10:57:51+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:47:38Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:47:38Z" }
 ---
 
 # SoT 同期は detection 側と authoring 側の双方向に書く — 片側だけでは機構が silent に空振りする
@@ -63,6 +67,12 @@ authoring 側に制約を伝播しても、**守られなかった場合の観�
 
 SoT（assessment-rules.md）の条件を広げても、実際に LLM が読む実行文書（pr-review/SKILL.md）が旧条件のままなら実効ルールは変わらない。**SoT 修正時は「その SoT を実装／反復している側」を必ず grep する**。SoT chain が多段（SPEC → CONFIGURATION → template）なら末端まで辿る。
 
+### ゲートの新しい入力キーは producer 側の手順も pin する
+
+判定ゲートに新しい入力キーを足し、helper 側の分岐だけをテストで固めた事例がある。入力を書かせる producer 側の手順（SKILL の箇条と例 JSON）が消えれば、ゲートの分岐は実運用で到達不能になるのに、helper のテストは green のまま残る。入力 map の形を列挙する SoT 節も、新しい任意キーを足したときに取り残されやすい。
+
+- 新しい入力キーは、helper の分岐・producer の手順・形を列挙する SoT 節の 3 箇所で存在をテストする
+
 ## 関連ページ
 
 - [同一手順が複数 site に分散する場合は片方を canonical source と宣言する](../patterns/canonical-source-declaration-for-multi-site-procedure.md)
@@ -73,3 +83,4 @@ SoT（assessment-rules.md）の条件を広げても、実際に LLM が読む�
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20260726T160331Z-pr-2030.md)
+- [ゲートの入力キーを producer 側で固定していない指摘](../../raw/reviews/20260927T104337Z-pr-3263.md)

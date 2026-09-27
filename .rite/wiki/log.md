@@ -2,6 +2,13 @@
 
 ## 2026-09-27
 
+* **Create**: [セッション単位の state を読む案内は、同じ session_id で入る入口を基準に選ぶ — テストはホストの入力形で呼ぶ](pages/heuristics/session-scoped-guidance-targets-same-session-entry.md) — raw/reviews/20260927T102947Z-pr-3259.md, raw/fixes/20260927T103549Z-pr-3259.md を新規ページ化
+* **Update**: [検証ツールの保証文言は検証される不変量と非検出 gap に正確に対応させる](pages/heuristics/verification-doc-guarantee-matches-invariants.md) — raw/fixes/20260927T103237Z-pr-3261.md, raw/reviews/20260927T104024Z-pr-3261.md, raw/reviews/20260927T104337Z-pr-3263.md を統合
+* **Update**: [散文契約の静的 pin には weakened probe による positive control を課す（見出しラベルで充足する pin を構造的に排除する）](pages/patterns/prose-pin-requires-positive-control.md) — raw/reviews/20260927T104024Z-pr-3261.md, raw/fixes/20260927T103237Z-pr-3261.md を統合
+* **Update**: [mktemp -d の canonical 化は 2 段階に分ける — `cd \"$(mktemp -d)\"` は失敗時にリポジトリ本体を掴む](pages/patterns/two-stage-canonicalization-mktemp-pwd-p.md) — raw/reviews/20260927T102458Z-pr-3261.md, raw/fixes/20260927T103237Z-pr-3261.md, raw/reviews/20260927T104024Z-pr-3261.md を統合
+* **Update**: [glob で集合を指すと、集合の増減に silent に追随しない — 診断・分岐の述語には明示列挙を使う](pages/anti-patterns/glob-set-membership-silent-drift.md) — raw/reviews/20260927T102458Z-pr-3261.md を統合
+* **Update**: [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](pages/patterns/absence-pin-base-present-head-absent-single-line.md) — raw/reviews/20260927T103406Z-pr-3262.md, raw/fixes/20260927T104314Z-pr-3262.md を統合
+* **Update**: [SoT 同期は detection 側と authoring 側の双方向に書く — 片側だけでは機構が silent に空振りする](pages/heuristics/sot-bidirectional-detection-and-authoring-sync.md) — raw/reviews/20260927T104337Z-pr-3263.md を統合
 * **Update**: [pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する](pages/patterns/pin-literal-uniqueness-verified-by-mutation.md) — raw/reviews/20260927T095830Z-pr-3256.md を統合
 * **Update**: [assert のラベルが述語より広い範囲を名乗ると「虚偽主張」クラスの欠陥になる](pages/anti-patterns/assert-label-overclaims-predicate-scope.md) — raw/fixes/20260927T100333Z-pr-3256.md を統合
 * **Update**: [機械的な述語を文書化するときは意図の語彙ではなく字句の語彙で書く](pages/heuristics/mechanical-predicate-prose-lexical-vocabulary.md) — raw/reviews/20260927T101309Z-pr-3253.md, raw/fixes/20260927T100232Z-pr-3253.md を統合
