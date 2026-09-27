@@ -136,7 +136,8 @@ with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
     manifest.write_text(json.dumps(data))
     result = dict(schema_version='1.1.0', pr_number=4242, timestamp='__RITE_TS_PLACEHOLDER_7f3a9b2c__',
                   commit_sha=context['commit_sha'], review_context=context, overall_assessment='mergeable',
-                  reviewers=frozen['selected_reviewers'], findings=[], non_blocking_findings=[], guardrail_audit_log=[])
+                  reviewers=frozen['selected_reviewers'], findings=[], non_blocking_findings=[], guardrail_audit_log=[],
+                  acceptance_criteria={'skipped': 'no_ac_section'})
     content.write_text(json.dumps(result))
     run(['bash', str(plugin / 'scripts/review-measured-gate.sh'), '--input', str(content), '--reject-preset-verification'])
     assert execute(finish_block, False).returncode != 0, 'partial wave accepted'

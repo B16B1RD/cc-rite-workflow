@@ -94,7 +94,8 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
                      suggestion='fix', status='open', scope='current-pr') for index in range(2)]
     dump(content, dict(schema_version='1.1.0', pr_number=71, review_context=context,
                        timestamp='__RITE_TS_PLACEHOLDER_7f3a9b2c__', commit_sha=context['commit_sha'],
-                       reviewers=selected, findings=findings, non_blocking_findings=[], guardrail_audit_log=[]))
+                       reviewers=selected, findings=findings, non_blocking_findings=[], guardrail_audit_log=[],
+                       acceptance_criteria=dict(skipped='no_ac_section')))
     run(['bash', str(plugin / 'scripts/review-measured-gate.sh'), '--input', str(content),
          '--reject-preset-verification'])
     flow('review-finish', '--manifest', manifest, '--content-file', content)

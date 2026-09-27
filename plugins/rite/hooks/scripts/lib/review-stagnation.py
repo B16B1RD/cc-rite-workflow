@@ -558,6 +558,22 @@ def work_seconds(run):
                for item in run["clock"] if item["kind"] == "work")
 
 
+def check_skipped_scope(skipped, body):
+    """A skipped acceptance table must agree with the Issue body it claims to describe."""
+    # An observation always belongs to an Issue, so "no Issue" cannot describe it.
+    require(skipped != "no_issue", "acceptance_criteria declares no_issue but the review belongs to an Issue")
+    script = Path(__file__).resolve().parents[3] / "scripts/acceptance-criteria-check.sh"
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".md") as stream:
+        stream.write(body)
+        stream.flush()
+        result = subprocess.run(["bash", str(script), "extract", "--body-file", stream.name],
+                                capture_output=True, text=True)
+    require(result.returncode == 0, "Issue acceptance criteria cannot be extracted; skipped declaration unverifiable: "
+            + result.stderr.strip())
+    require(not result.stdout.strip(), "acceptance_criteria declares no_ac_section but the Issue has acceptance criteria: "
+            + result.stdout.strip())
+
+
 def validate_input(state, args, data, receipt):
     require(data.get("review_context") == state["review_cycle"]["review_context"], "observation context mismatch")
     issue = read(args.issue)
@@ -605,6 +621,7 @@ def validate_input(state, args, data, receipt):
     else:
         require(isinstance(table, dict) and table.get("skipped") in ("no_issue", "no_ac_section"),
                 "saved acceptance evidence is missing")
+        check_skipped_scope(table["skipped"], issue["body"])
         satisfied = set()
     require(set(acceptance["satisfied"]) == satisfied, "acceptance progress differs from saved receipt")
     return normalized

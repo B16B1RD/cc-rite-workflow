@@ -143,6 +143,38 @@ def without_timestamp(result):
     return {key: value for key, value in result.items() if key != "timestamp"}
 
 
+AC_SKIPPED = ("no_issue", "no_ac_section")
+# The final consistency check accepts some tables this refuses, so the repair names the form itself.
+AC_REPAIR = ("; rewrite the table in pr-review's result JSON in the form the Ready gate accepts"
+             " (either an object whose only key is skipped, valued no_issue or no_ac_section, or a non-empty"
+             " array of rows with a unique AC-N id, non-empty evidence, status satisfied/unmet/unverified,"
+             " a finding_id on every row (F-NN when unmet, null otherwise) and no head/at),"
+             " then rerun pr-review's final acceptance-criteria consistency check")
+
+
+def check_acceptance(content):
+    # Save only a table whose form the Ready gate accepts; review-close and Ready
+    # judge its content later. Attestation (human-verified) is written by ready
+    # after save, never by a fresh result.
+    require("acceptance_criteria" in content, "result has no acceptance_criteria" + AC_REPAIR)
+    table = content["acceptance_criteria"]
+    if isinstance(table, dict):
+        require(list(table) == ["skipped"] and table["skipped"] in AC_SKIPPED,
+                "acceptance_criteria skipped must be exactly one of " + "/".join(AC_SKIPPED) + AC_REPAIR)
+        return
+    require(isinstance(table, list) and table, "acceptance_criteria must be skipped or a non-empty row array" + AC_REPAIR)
+    for row in table:
+        require(isinstance(row, dict) and isinstance(row.get("id"), str) and re.fullmatch(r"AC-[0-9]+", row["id"])
+                and row.get("status") in ("satisfied", "unmet", "unverified")
+                and isinstance(row.get("evidence"), str) and row["evidence"] != ""
+                and "finding_id" in row and "head" not in row and "at" not in row
+                and (isinstance(row["finding_id"], str) and re.fullmatch(r"F-[0-9]{2,}", row["finding_id"])
+                     if row["status"] == "unmet" else row["finding_id"] is None),
+                "acceptance_criteria row is invalid: " + json.dumps(row, ensure_ascii=False) + AC_REPAIR)
+    ids = [row["id"] for row in table]
+    require(len(ids) == len(set(ids)), "acceptance_criteria has duplicate ids" + AC_REPAIR)
+
+
 def matching_receipt(directory, cycle, content=None):
     context = cycle["review_context"]
     for path in sorted(directory.glob(str(context["pr_number"]) + "-*.json")):
@@ -312,6 +344,12 @@ def finish(state, args, path, directory):
     hooks = Path(__file__).resolve().parents[2]
     subprocess.run(["bash", str(hooks / "scripts/reviewer-completion-check.sh"), "--input", args.manifest],
                    check=True, stdout=sys.stderr)
+    check_acceptance(content)
+    # Without the recorded receipt, the replay guard has nothing to compare, so a
+    # new save could replace a completed cycle's result.
+    recorded = cycle.get("result_path")
+    require(cycle.get("status") != "completed" or not recorded or Path(recorded).exists(),
+            "recorded review receipt is missing: " + str(recorded) + "; restore it instead of saving another")
     pending_id = args.pending_id or cycle.get("pending_id")
     require(not pending_id or re.fullmatch(r"[A-Za-z0-9._-]+", pending_id), "invalid pending-id")
     receipt = matching_receipt(directory, cycle, content)

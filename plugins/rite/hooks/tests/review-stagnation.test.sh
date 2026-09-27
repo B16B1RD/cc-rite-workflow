@@ -167,7 +167,7 @@ class Fixture:
         return self.flow('review-start', '--selection', self.selection, '--stagnation', ok=ok)
 
     def finish(self, roots=None, satisfied=(), non_blocking=False, severities=None, unverified=(), unmet=(),
-               recommendations=None):
+               recommendations=None, skipped='no_ac_section'):
         if roots is None:
             roots = ['input defect']
         context = self.context()
@@ -193,16 +193,16 @@ class Fixture:
                     finding['consequence_class'] = 'B'
         notes = [dict(id='F-99', reviewer='code-quality-reviewer', severity='LOW', scope='nit-noted',
                       status='open', file='source.txt', line=1, description='Informational note', suggestion='consider')] if non_blocking else []
+        table = [dict(id=criterion, status='satisfied', evidence='measured fixture => pass', finding_id=None)
+                 for criterion in satisfied] + [
+                 dict(id=criterion, status='unverified', evidence='needs a human check', finding_id=None)
+                 for criterion in unverified] + [
+                 dict(id=criterion, status='unmet', evidence='measured fixture => fail', finding_id='F-01')
+                 for criterion in unmet]
         dump(content, dict(schema_version='1.1.0', pr_number=context['pr_number'], review_context=context,
                            timestamp='__RITE_TS_PLACEHOLDER_7f3a9b2c__', commit_sha=context['commit_sha'],
                            reviewers=['code-quality-reviewer'], findings=findings, non_blocking_findings=notes,
-                           guardrail_audit_log=[], acceptance_criteria=[
-                               dict(id=criterion, status='satisfied', evidence='measured fixture => pass', finding_id=None)
-                               for criterion in satisfied] + [
-                               dict(id=criterion, status='unverified', evidence='needs a human check', finding_id=None)
-                               for criterion in unverified] + [
-                               dict(id=criterion, status='unmet', evidence='measured fixture => fail', finding_id='F-01')
-                               for criterion in unmet]))
+                           guardrail_audit_log=[], acceptance_criteria=table or dict(skipped=skipped)))
         if recommendations is not None:
             document = json.loads(content.read_text())
             document['pr_recommendations'] = recommendations
@@ -290,6 +290,41 @@ class Fixture:
         check(result.returncode != 0 and 'ERROR:' in result.stderr
               and (reason is None or reason in result.stderr), label)
         check(self.state_path.read_bytes() == before, label + ': last state retained')
+
+
+# A skipped acceptance table must agree with the Issue body it describes.
+def skipped_review(body, skipped):
+    fixture = Fixture()
+    fixture.with_issue(body)
+    fixture.start()
+    fixture.finish(roots=(), skipped=skipped)
+    fixture.clock(0)
+    return fixture
+
+
+for body, skipped, label, reason in (
+        ('## Acceptance Criteria\n\n### AC-1: repair source.txt\n', 'no_ac_section', 'no_ac_section with acceptance criteria',
+         'declares no_ac_section but the Issue has acceptance criteria: AC-1'),
+        ('Contract: repair source.txt.\n', 'no_issue', 'no_issue on an Issue-bound review', 'declares no_issue'),
+        ('## Acceptance Criteria\n\nrepair source.txt\n', 'no_ac_section', 'unextractable acceptance criteria',
+         'cannot be extracted')):
+    f = skipped_review(body, skipped)
+    try:
+        f.reject(lambda: f.observe(ok=False), label + ' is rejected', reason)
+        check(not f.state()['review_run']['observations'], label + ': no observation saved')
+        f.reject(lambda: f.flow('review-close', ok=False), label + ': close stays blocked')
+    finally:
+        f.close()
+for body, label in (('Contract: repair source.txt.\n', 'no acceptance section'),
+                    ('Contract: repair source.txt.\n\n```\n## Acceptance Criteria\n### AC-1: example\n```\n',
+                     'acceptance heading only inside a fence')):
+    f = skipped_review(body, 'no_ac_section')
+    try:
+        f.observe()
+        check(len(f.state()['review_run']['observations']) == 1, label + ': no_ac_section is accepted')
+        f.flow('review-close')
+    finally:
+        f.close()
 
 
 # Explicit command corrections preserve diagnosis and failed execution evidence.
@@ -563,8 +598,10 @@ try:
     check(len(observations) == 2 and observations[1]['input']['issue_body'] == triaged
           and observations[0]['input']['issue_body'] == spec,
           'created Decision Log row and record marker pass the specification check and keep the raw body')
-    mutant = f.private / 'mutant-hooks'
+    # The helpers resolve plugin-level scripts next to hooks, so the mutant keeps that layout.
+    mutant = f.private / 'mutant-plugin/hooks'
     shutil.copytree(plugin / 'hooks', mutant)
+    (mutant.parent / 'scripts').symlink_to(plugin / 'scripts')
     helper = mutant / 'scripts/lib/review-cycle.py'
     helper.write_text(helper.read_text().replace('def normalize_issue_body(body):\n', 'def normalize_issue_body(body):\n    return body\n', 1))
     replay = copy.deepcopy(f.observed)
@@ -716,13 +753,13 @@ f = Fixture()
 try:
     f.cycle(seconds=1801)
     f.fix()
-    f.cycle(roots=['new defect'], seconds=1801, satisfied=['criterion-one'])
+    f.cycle(roots=['new defect'], seconds=1801, satisfied=['AC-1'])
     f.fix()
-    f.cycle(roots=['another defect'], seconds=1801, satisfied=['criterion-one', 'criterion-two'])
+    f.cycle(roots=['another defect'], seconds=1801, satisfied=['AC-1', 'AC-2'])
     check(f.decision() == 'continue' and len(f.state()['review_run']['replans']) == 2,
           'finite replan allowance and elapsed time alone never stop')
     f.fix()
-    f.cycle(roots=(), seconds=1801, satisfied=('criterion-one', 'criterion-two', 'criterion-three'))
+    f.cycle(roots=(), seconds=1801, satisfied=('AC-1', 'AC-2', 'AC-3'))
     check(f.decision() == 'continue', 'root resolution and progress retain normal merge gate')
     f.flow('set', '--phase', 'ready', '--next', 'ready')
     check(f.state()['cycle_count'] == 4, 'ready transition preserves run counter and history')
@@ -876,9 +913,9 @@ f = Fixture()
 try:
     f.cycle(seconds=1801)
     f.fix()
-    f.cycle(satisfied=['criterion-one'])
+    f.cycle(satisfied=['AC-1'])
     f.fix()
-    f.cycle(satisfied=['criterion-one'])
+    f.cycle(satisfied=['AC-1'])
     check(f.decision() == 'replan' and f.state()['review_run']['status'] == 'active',
           'measured acceptance progress prevents non-convergence stop after two repairs')
 finally:
@@ -1261,9 +1298,9 @@ finally:
 # settled runs stay archived; older markers must not settle a later cycle.
 f = Fixture()
 try:
-    f.cycle(seconds=1801, satisfied=['criterion-one'])
+    f.cycle(seconds=1801, satisfied=['AC-1'])
     f.fix()
-    f.cycle(roots=(), seconds=1801, satisfied=('criterion-one', 'criterion-two'))
+    f.cycle(roots=(), seconds=1801, satisfied=('AC-1', 'AC-2'))
     f.flow('review-close')
     closed_run = f.state()['review_run']
     check('completed_context' in closed_run and f.state()['cycle_count'] == 2,
