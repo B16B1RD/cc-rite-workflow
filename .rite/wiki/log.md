@@ -161,6 +161,7 @@
 * **Create**: [記録の同定 marker は、正規の経路で重複しうる軸をすべてキーに含める](pages/heuristics/record-identity-marker-includes-all-context-keys.md) — raw/fixes/20260927T112450Z-pr-3267.md を新規ページ化
 * **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=66, orphans=0, missing_concept=0, unregistered_raw=562, broken_refs=0
 * **Skip**: [20260927T113441Z-pr-3267.md](raw/reviews/20260927T113441Z-pr-3267.md) — 個別 PR の修正経過と判定結果のみで、既存ページに無い再利用可能な経験則として一般化できる新規知見がない
+* **lint:clean** — contradictions=0 (新規・更新ページなし), stale=66, orphans=0, missing_concept=0, unregistered_raw=563, broken_refs=0
 
 ## 2026-09-26
 
