@@ -16,13 +16,19 @@ rite ワークフロー全体のガイドを表示。次の Phase を順に実�
 
 ### 1.1 Check Initialization Status
 
-Check whether `rite-config.yml` exists in the project root:
+Resolve `rite-config.yml` with the shared resolver (a session worktree falls back to the main checkout's file). Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version):
 
 ```bash
-ls rite-config.yml 2>/dev/null
+bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh
 ```
 
-**If it does not exist:**
+| rc | Action |
+|----|--------|
+| 0 | Initialized. Retain the path on stdout as `{rite_config_path}` and continue |
+| 1 | Not initialized — show the message below |
+| 2 | The file is unreadable or the main checkout root cannot be resolved. Show the resolver's stderr and stop |
+
+**If rc=1:**
 
 ```
 rite workflow が初期化されていません
@@ -223,7 +229,7 @@ Display the results:
 ```
 ## Language Support
 
-Phase 1.1 で `rite-config.yml` の `language` を Read し、Phase 2 以降の出力言語を決める。
+Phase 1.1 で解決した `{rite_config_path}` の `language` を Read し、Phase 2 以降の出力言語を決める。
 
 | Setting | Behavior |
 |---------|----------|

@@ -156,5 +156,51 @@ else
   rm -f "$MAIN/rite-config.yml"
 fi
 
+echo "=== T-12: initialization checks resolve the config instead of listing the cwd ==="
+# $1 skill, $2 section start heading, $3 next heading, $4 text of the rc=1 message
+check_init_section() {
+  local skill_md="$PLUGIN_ROOT/skills/$1/SKILL.md" sec blk rc out
+  sec=$(awk -v s="$2" -v e="$3" 'index($0, s) == 1 {f = 1; next} f && index($0, e) == 1 {exit} f' "$skill_md")
+  blk=$(printf '%s\n' "$sec" | awk '/^```bash$/ {b = 1; next} b && /^```$/ {exit} b' | sed "s|{plugin_root}|$PLUGIN_ROOT|g")
+  case "$blk" in
+    *rite-config-path.sh*) pass "T-12 $1 check block calls the resolver" ;;
+    *) fail "T-12 $1 check block calls the resolver" ;;
+  esac
+  printf 'x: 1\n' > "$MAIN/rite-config.yml"
+  rc=0; out=$(cd "$WT" && bash -c "$blk" 2>/dev/null) || rc=$?
+  assert "T-12 $1 finds the main checkout config from a worktree" "0:$MAIN/rite-config.yml" "$rc:$out"
+  rm -f "$MAIN/rite-config.yml"
+  rc=0; (cd "$WT" && bash -c "$blk" >/dev/null 2>&1) || rc=$?
+  assert "T-12 $1 reports a missing config as rc=1" "1" "$rc"
+  case "$sec" in
+    *"$4"*) pass "T-12 $1 keeps the not-initialized message" ;;
+    *) fail "T-12 $1 keeps the not-initialized message" ;;
+  esac
+  case "$sec" in
+    *"rc=2"*stop*|*"| 2 |"*stop*) pass "T-12 $1 stops on rc=2" ;;
+    *) fail "T-12 $1 stops on rc=2" ;;
+  esac
+  if grep -nE '(ls( -la)?|cp) rite-config\.yml' "$skill_md"; then
+    fail "T-12 $1 has no cwd-relative rite-config.yml access"
+  else
+    pass "T-12 $1 has no cwd-relative rite-config.yml access"
+  fi
+}
+check_init_section workflow '### 1.1 Check Initialization Status' '### 1.2' '初期化されていません'
+check_init_section getting-started '### 3.2 Step 1: Initial Setup' '### 3.3' 'Action Required'
+check_init_section template-reset '### 1.1 Read rite-config.yml' '## Phase 2' '見つかりません'
+if awk '/^## Language Support/ {f = 1} f' "$PLUGIN_ROOT/skills/workflow/SKILL.md" | grep -qF '{rite_config_path}'; then
+  pass "T-12 workflow reads language from the resolved path"
+else
+  fail "T-12 workflow reads language from the resolved path"
+fi
+reset_md="$PLUGIN_ROOT/skills/template-reset/SKILL.md"
+if grep -qF 'ls -la "{rite_config_path}"' "$reset_md" \
+   && grep -qF 'cp "{rite_config_path}" "{rite_config_path}.backup.' "$reset_md"; then
+  pass "T-12 template-reset detects and backs up the resolved path"
+else
+  fail "T-12 template-reset detects and backs up the resolved path"
+fi
+
 print_summary "$(basename "$0")" \
   "Drift hint: rite-config-path.sh — worktree toplevel first, then main checkout root; rc=1 lists tried paths, rc=2 never falls through."
