@@ -55,7 +55,8 @@ parse_wiki_scalar() {
   local key="$1"
   local section line val cfg
   cfg=$(bash "$(dirname "${BASH_SOURCE[0]}")/rite-config-path.sh" --or-devnull) || return 1
-  section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$cfg" 2>/dev/null || true)
+  # 節は空白と # 以外で始まる次の行で終える（数字や _ で始まるキーでも終え、列 0 のコメント行では終えない）
+  section=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' "$cfg" 2>/dev/null || true)
   [[ -z "$section" ]] && return 0
   line=$(printf '%s\n' "$section" | awk -v k="$key" '
     BEGIN { pat = "^[[:space:]]+" k ":" }

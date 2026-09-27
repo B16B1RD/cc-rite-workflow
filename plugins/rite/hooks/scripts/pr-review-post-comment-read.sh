@@ -44,7 +44,8 @@ fi
 # comment when preceded by whitespace.
 exec awk '
   /^pr_review:/ { in_section=1; next }
-  in_section && /^[a-zA-Z]/ { exit }
+  # 節は空白と # 以外で始まる次の行で終える（数字や _ で始まるキーでも終え、列 0 のコメント行では終えない）
+  in_section && /^[^[:space:]#]/ { exit }
   in_section && /^[[:space:]]+post_comment[[:space:]]*:/ {
     line = $0
     sub(/[[:space:]]#.*/, "", line)

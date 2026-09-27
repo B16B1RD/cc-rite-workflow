@@ -126,6 +126,24 @@ assert "same-named key in a later section is not read" "true" \
 assert "same-named key in an earlier section is not read" "right" \
   "$(parse_wiki_scalar branch_name)"
 
+# A top-level key starting with a digit or an underscore ends the section too.
+# The looked-up key sits only under that key; first-match would hide a leak if
+# it also sat inside `wiki:`.
+printf 'wiki:\n  enabled: true\n2fa:\n  branch_name: "leak"\n' > rite-config.yml
+assert "key under a digit-led top-level key is not read" "" \
+  "$(parse_wiki_scalar branch_name)"
+printf 'wiki:\n  enabled: true\n_x:\n  branch_name: "leak"\n' > rite-config.yml
+assert "key under an underscore-led top-level key is not read" "" \
+  "$(parse_wiki_scalar branch_name)"
+
+# A column-0 comment is not YAML structure: the section keeps going past it, and
+# the digit-led key after it still ends the section.
+printf 'wiki:\n# note\n  branch_name: "kept"\n2fa:\n  auto_query: "leak"\n' > rite-config.yml
+assert "key after a column-0 comment is still read" "kept" \
+  "$(parse_wiki_scalar branch_name)"
+assert "comment then digit-led key: the later key is not read" "" \
+  "$(parse_wiki_scalar auto_query)"
+
 # --- Key matching is anchored -------------------------------------------------
 # `auto_ingest` must not satisfy a lookup for `ingest`, or a caller asking for a
 # key that does not exist would silently receive another key's value.

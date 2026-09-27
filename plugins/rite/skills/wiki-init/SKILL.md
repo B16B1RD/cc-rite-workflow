@@ -21,7 +21,7 @@ Wiki の初期化。3 層ディレクトリ作成、テンプレート展開、G
 
 ```bash
 # Wiki は opt-out — `wiki:` セクションや `enabled` キー未指定時のデフォルトは true
-wiki_enabled=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+wiki_enabled=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' rite-config.yml 2>/dev/null \
   | grep -E '^[[:space:]]+enabled:' | head -1 | sed 's/#.*//' \
   | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]')
 wiki_enabled=$(echo "$wiki_enabled" | tr '[:upper:]' '[:lower:]')
@@ -32,7 +32,7 @@ case "$wiki_enabled" in
     # opt-out default: 未指定 / 不明値は有効として扱う
     _wiki_raw="$wiki_enabled"  # 上書き前に保存 (typo 検出用)
     wiki_enabled="true"
-    if [ -z "$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null | grep -E '^[[:space:]]+enabled:')" ]; then
+    if [ -z "$(sed -n '/^wiki:/,/^[^[:space:]#]/p' rite-config.yml 2>/dev/null | grep -E '^[[:space:]]+enabled:')" ]; then
       echo "INFO: wiki.enabled キーが rite-config.yml に見つかりません。デフォルト値 'true' (opt-out) を使用します" >&2
     elif [ -n "$_wiki_raw" ]; then
       # enabled キーは存在するが値が認識不能 (typo: ture / yse 等)
@@ -60,12 +60,12 @@ Wiki 機能が無効です（wiki.enabled: false）。
 Wiki が既に初期化済みかを判定し、ブランチ戦略の値も同時に出力します。以下の bash コードをインラインで実行してください:
 
 ```bash
-wiki_branch=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+wiki_branch=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' rite-config.yml 2>/dev/null \
   | grep -E '^[[:space:]]+branch_name:' | head -1 | sed 's/#.*//' \
   | sed 's/.*branch_name:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 wiki_branch="${wiki_branch:-wiki}"
 
-branch_strategy=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+branch_strategy=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' rite-config.yml 2>/dev/null \
   | grep -E '^[[:space:]]+branch_strategy:' | head -1 | sed 's/#.*//' \
   | sed 's/.*branch_strategy:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 branch_strategy="${branch_strategy:-separate_branch}"

@@ -71,7 +71,7 @@ bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number}
 ```bash
 # config は worktree 自身のもの、無ければ main checkout のものを読む
 rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
-wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$rite_config" 2>/dev/null) || wiki_section=""
+wiki_section=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' "$rite_config" 2>/dev/null) || wiki_section=""
 wiki_enabled=""
 if [[ -n "$wiki_section" ]]; then
   wiki_enabled=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' \
@@ -114,7 +114,7 @@ printf '%s\n' "$wiki_context"
 # tdd.enabled を読む (opt-out default: tdd: キー欠落 / enabled: 欠落 はいずれも true 扱い)
 # config は worktree 自身のもの、無ければ main checkout のものを読む
 rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
-tdd_section=$(sed -n '/^tdd:/,/^[a-zA-Z]/p' "$rite_config" 2>/dev/null) || tdd_section=""
+tdd_section=$(sed -n '/^tdd:/,/^[^[:space:]#]/p' "$rite_config" 2>/dev/null) || tdd_section=""
 tdd_enabled=""
 if [[ -n "$tdd_section" ]]; then
   tdd_enabled=$(printf '%s\n' "$tdd_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' \
@@ -122,7 +122,7 @@ if [[ -n "$tdd_section" ]]; then
 fi
 case "$tdd_enabled" in false|no|0) tdd_enabled="false" ;; *) tdd_enabled="true" ;; esac  # opt-out default
 # commands.test の有無を判定 (degrade detection)
-test_cmd=$(awk '/^commands:/{c=1;next} c&&/^[a-zA-Z]/{exit} c&&/^[[:space:]]+test:/{print;exit}' "$rite_config" 2>/dev/null \
+test_cmd=$(awk '/^commands:/{c=1;next} c&&/^[^[:space:]#]/{exit} c&&/^[[:space:]]+test:/{print;exit}' "$rite_config" 2>/dev/null \
   | sed 's/[[:space:]]#.*//' | sed 's/.*test:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 case "$test_cmd" in ''|null|'~') test_cmd="" ;; esac
 echo "[CONTEXT] TDD_ENABLED=$tdd_enabled; TEST_CMD_SET=$([ -n "$test_cmd" ] && echo yes || echo no)"

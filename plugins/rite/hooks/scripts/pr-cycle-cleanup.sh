@@ -815,7 +815,8 @@ fi
 # -----------------------------------------------------------------------
 session_wt_base=""
 if [ -f "$repo_root/rite-config.yml" ]; then
-  _ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' "$repo_root/rite-config.yml" 2>/dev/null) || _ms_section=""
+  # 節は空白と # 以外で始まる次の行で終える（数字や _ で始まるキーでも終え、列 0 のコメント行では終えない）
+  _ms_section=$(sed -n '/^multi_session:/,/^[^[:space:]#]/p' "$repo_root/rite-config.yml" 2>/dev/null) || _ms_section=""
   session_wt_base=$(printf '%s\n' "$_ms_section" | awk '/^[[:space:]]+worktree_base:/ {print; exit}' \
     | sed 's/[[:space:]]#.*//' | sed 's/.*worktree_base:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 fi

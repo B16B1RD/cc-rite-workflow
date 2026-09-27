@@ -80,7 +80,7 @@ rite_config=/dev/null
 if [ -n "$plugin_root" ] && [ -f "$plugin_root/hooks/scripts/lib/rite-config-path.sh" ]; then
   rite_config=$(bash "$plugin_root/hooks/scripts/lib/rite-config-path.sh" --or-devnull) || exit 1
 fi
-wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$rite_config" 2>/dev/null) || wiki_section=""
+wiki_section=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' "$rite_config" 2>/dev/null) || wiki_section=""
 wiki_enabled=""
 if [[ -n "$wiki_section" ]]; then
   wiki_enabled=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' \

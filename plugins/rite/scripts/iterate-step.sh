@@ -112,12 +112,13 @@ fi
 # shellcheck source=../hooks/scripts/lib/context-marker.sh
 source "$plugin_root"/hooks/scripts/lib/context-marker.sh || { echo "ERROR: context-marker.sh を読み込めませんでした（プラグインの破損 / 版 skew）。marker を emit できないため中止します" >&2; exit 1; }
 
+# (1) の safety 節は空白と # 以外で始まる次の行で終える（数字や _ で始まるキーでも終え、列 0 のコメント行では終えない）
 # ⚠ 下行はテスト hooks/tests/max-review-cycles-default.test.sh が awk 抽出アンカーとして参照する。変更時はテスト側の awk パターンも同時更新すること
 # (1) max_review_cycles を rite-config.yml から読取・検証。無効値（0 以下 / 非数値）は WARNING + 既定値 15
 # config の場所は helper が決める（worktree 自身のもの、無ければ main checkout のもの）。
 # 見つからなければ試したパスを WARNING に出して既定値、読めなければ既定値へ倒さず止める
 cfg=$(bash "$plugin_root"/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
-raw_max=$(awk '/^safety:/{s=1;next} s&&/^[a-zA-Z]/{exit} s&&/^[[:space:]]+max_review_cycles:/{print;exit}' "$cfg" 2>/dev/null \
+raw_max=$(awk '/^safety:/{s=1;next} s&&/^[^[:space:]#]/{exit} s&&/^[[:space:]]+max_review_cycles:/{print;exit}' "$cfg" 2>/dev/null \
   | sed 's/[[:space:]]#.*//' | sed 's/.*max_review_cycles:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 case "$raw_max" in
   '')            max_cycles=15 ;;                                  # キー欠落 = 既定（正常系、WARNING なし）
@@ -283,9 +284,10 @@ source "$plugin_root"/hooks/scripts/lib/context-marker.sh || { echo "ERROR: cont
 
 cc=$(bash "$plugin_root"/hooks/flow-state.sh get --field cycle_count --default 0) || cc=0
 case "$cc" in ''|*[!0-9]*) cc=0 ;; esac
+# (2) の safety 節も (1) と同じく、空白と # 以外で始まる次の行で終える
 # (2) max_review_cycles の再読込。config の解決は (1) と同じ（不在は WARNING + 既定値、読めなければ止める）
 cfg=$(bash "$plugin_root"/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
-raw_max=$(awk '/^safety:/{s=1;next} s&&/^[a-zA-Z]/{exit} s&&/^[[:space:]]+max_review_cycles:/{print;exit}' "$cfg" 2>/dev/null \
+raw_max=$(awk '/^safety:/{s=1;next} s&&/^[^[:space:]#]/{exit} s&&/^[[:space:]]+max_review_cycles:/{print;exit}' "$cfg" 2>/dev/null \
   | sed 's/[[:space:]]#.*//' | sed 's/.*max_review_cycles:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 case "$raw_max" in ''|0|*[!0-9]*) max_cycles=15 ;; *) max_cycles=$raw_max ;; esac  # 無効値は (1) で検証済。ここは silent fallback
 

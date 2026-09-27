@@ -134,6 +134,38 @@ assert_grep "T-01 SCHEMA type" "$sbx/wiki/SCHEMA.md" 'type: Reference'
 assert_grep "T-01 log 記録" "$sbx/wiki/log.md" 'OKF v0.2'
 assert "T-01 raw 不変" "$raw_before" "$(cksum "$sbx/wiki/raw/reviews/20260720T000000Z.md")"
 
+echo "=== T-11: sources: 節の終端 ==="
+# 節は空白・#・- 以外で始まる行で閉じる。列 0 の `- ` 項目と列 0 のコメントは節の続きで、
+# 数字や _ で始まる後続キーは節を閉じる。後続キー配下の ref: は sources ではないので書き換えない。
+sbx11=$(mktemp -d); cleanup_dirs+=("$sbx11")
+make_v01_bundle "$sbx11/wiki"
+cat > "$sbx11/wiki/pages/heuristics/edge.md" <<'EOF'
+---
+type: "heuristics"
+title: "Edge"
+updated: "2026-07-01T00:00:00Z"
+sources:
+- type: "review"
+  ref: "raw/reviews/kept.md"
+# note
+- ref: "raw/reviews/kept-after-comment.md"
+_x:
+  ref: "raw/reviews/stay-underscore.md"
+2fa:
+  ref: "raw/reviews/stay-digit.md"
+---
+body
+EOF
+outf=$(mktemp); tmp_files+=("$outf")
+rc=0
+bash "$SCRIPT" --wiki-root "$sbx11/wiki" >"$outf" 2>&1 || rc=$?
+assert "T-11 exit 0" "0" "$rc"
+edge="$sbx11/wiki/pages/heuristics/edge.md"
+assert_grep "T-11 列 0 の - 項目の ref を resource へ" "$edge" 'resource: "raw/reviews/kept\.md"'
+assert_grep "T-11 列 0 コメントの後も節が続く" "$edge" 'resource: "raw/reviews/kept-after-comment\.md"'
+assert_grep "T-11 _ 始まりキー配下の ref は残る" "$edge" '^  ref: "raw/reviews/stay-underscore\.md"'
+assert_grep "T-11 数字始まりキー配下の ref は残る" "$edge" '^  ref: "raw/reviews/stay-digit\.md"'
+
 echo "=== T-06: raw source_ref 非汚染 ==="
 # covered by T-01 cksum; also assert the field text
 assert_grep "T-06 source_ref 残存" "$sbx/wiki/raw/reviews/20260720T000000Z.md" 'source_ref: "pr-1143"'

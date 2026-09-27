@@ -958,7 +958,7 @@ rationale: references/rationale.md#auto-lint-inline-parser
 ```bash
 # config は worktree 自身のもの、無ければ main checkout のものを読む
 rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
-wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$rite_config" 2>/dev/null) || wiki_section=""
+wiki_section=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' "$rite_config" 2>/dev/null) || wiki_section=""
 auto_lint=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+auto_lint:/ { print; exit }' \
   | sed 's/[[:space:]]#.*//' | sed 's/.*auto_lint:[[:space:]]*//' | tr -d '[:space:]"'\''' | tr '[:upper:]' '[:lower:]')
 case "$auto_lint" in

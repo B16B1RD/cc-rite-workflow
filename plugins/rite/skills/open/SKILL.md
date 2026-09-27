@@ -137,7 +137,7 @@ What / Why / Where / Scope の充足度で A-D 評価。C/D の場合は AskUser
 あわせて `multi_session` を読み、ステップ 2.2-W / 2.3-W の分岐判定に使う marker を emit する:
 
 ```bash
-ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || ms_section=""
+ms_section=$(sed -n '/^multi_session:/,/^[^[:space:]#]/p' rite-config.yml 2>/dev/null) || ms_section=""
 ms_enabled=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+enabled:/ {print; exit}' \
   | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
 case "$ms_enabled" in true|yes|1) ms_enabled=true ;; *) ms_enabled=false ;; esac
@@ -198,7 +198,7 @@ echo "[CONTEXT] ISSUE_CLAIM=$claim_out; rc=$claim_rc"
 ブランチ作成へ分岐する**前に**、`multi_session` 状態を rite-config.yml から Bash で再取得する（記憶・context 残存に頼らない）。パースはステップ 1.4 と同一。rationale: references/rationale.md#branch-gate
 
 ```bash
-ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || ms_section=""
+ms_section=$(sed -n '/^multi_session:/,/^[^[:space:]#]/p' rite-config.yml 2>/dev/null) || ms_section=""
 ms_enabled=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+enabled:/ {print; exit}' \
   | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
 case "$ms_enabled" in true|yes|1) ms_enabled=true ;; *) ms_enabled=false ;; esac

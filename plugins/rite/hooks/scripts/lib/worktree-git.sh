@@ -663,7 +663,8 @@ ensure_session_worktree() {
     echo "[CONTEXT] WT_ENSURE=failed; path=; branch=$branch; reason=config_unreadable"
     return 1
   }
-  ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' "$rite_config" 2>/dev/null) || ms_section=""
+  # 節は空白と # 以外で始まる次の行で終える（数字や _ で始まるキーでも終え、列 0 のコメント行では終えない）
+  ms_section=$(sed -n '/^multi_session:/,/^[^[:space:]#]/p' "$rite_config" 2>/dev/null) || ms_section=""
   ms_enabled=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+enabled:/ {print; exit}' \
     | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
   case "$ms_enabled" in true|yes|1) ms_enabled=true ;; *) ms_enabled=false ;; esac

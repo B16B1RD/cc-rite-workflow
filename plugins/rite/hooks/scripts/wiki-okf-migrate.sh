@@ -144,7 +144,8 @@ migrate_page() {
     }
     infm && /^generated:[[:space:]]*/ { generated_seen=1; print; next }
     infm && /^sources:[[:space:]]*$/ { in_sources=1; print; next }
-    infm && in_sources && /^[a-zA-Z]/ { in_sources=0 }
+    # sources: は空白・#・- 以外で始まる行で閉じる（列 0 の - 項目は節の続き）
+    infm && in_sources && /^[^[:space:]#-]/ { in_sources=0 }
     infm && in_sources && /^---[[:space:]]*$/ { in_sources=0 }
     infm && in_sources && /^[[:space:]]*-[[:space:]]*ref:[[:space:]]*/ {
       sub(/-[[:space:]]*ref:/, "- resource:")

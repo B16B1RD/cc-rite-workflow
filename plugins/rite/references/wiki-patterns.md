@@ -55,7 +55,7 @@ Wiki データは開発ブランチとは別に管理し、PR diff との分離�
 ```bash
 # config は worktree 自身のもの、無ければ main checkout のものを読む
 rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
-wiki_branch=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$rite_config" 2>/dev/null \
+wiki_branch=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' "$rite_config" 2>/dev/null \
   | grep -E '^[[:space:]]+branch_name:' | head -1 | sed 's/[[:space:]]#.*//' \
   | sed 's/.*branch_name:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 wiki_branch="${wiki_branch:-wiki}"
@@ -111,7 +111,7 @@ trap - EXIT INT TERM HUP
 ```bash
 # config は worktree 自身のもの、無ければ main checkout のものを読む
 rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
-wiki_branch=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$rite_config" 2>/dev/null \
+wiki_branch=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' "$rite_config" 2>/dev/null \
   | grep -E '^[[:space:]]+branch_name:' | head -1 | sed 's/[[:space:]]#.*//' \
   | sed 's/.*branch_name:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 wiki_branch="${wiki_branch:-wiki}"
@@ -168,7 +168,7 @@ trap - EXIT INT TERM HUP
 ```bash
 # config は worktree 自身のもの、無ければ main checkout のものを読む
 rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
-wiki_branch=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$rite_config" 2>/dev/null \
+wiki_branch=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' "$rite_config" 2>/dev/null \
   | grep -E '^[[:space:]]+branch_name:' | head -1 | sed 's/[[:space:]]#.*//' \
   | sed 's/.*branch_name:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 wiki_branch="${wiki_branch:-wiki}"
@@ -312,13 +312,15 @@ git clone https://github.com/GoogleCloudPlatform/knowledge-catalog /tmp/okf-visu
 
 ## Wiki 有効判定パターン
 
-Wiki 操作の前に必ず有効判定を行います。**Wiki は opt-out**: `wiki:` セクション自体や `enabled` キーが未指定の場合は default-on (有効) として扱います。明示的に `false|no|0` が指定された場合のみ無効化されます:
+Wiki 操作の前に必ず有効判定を行います。**Wiki は opt-out**: `wiki:` セクション自体や `enabled` キーが未指定の場合は default-on (有効) として扱います。明示的に `false|no|0` が指定された場合のみ無効化されます。
+
+`rite-config.yml` の節は `sed -n '/^{section}:/,/^[^[:space:]#]/p'` で切り出します。節は空白と `#` 以外で始まる次の行で終わります。数字や `_` で始まるトップレベルキーでも終わり、列 0 のコメント行と空行では終わりません。終端を英字始まりの行に限ると、数字や `_` で始まる後続キーの配下の値を節の値として読みます。skill 本文にある同型の切り出しも同じ終端を使います:
 
 ```bash
 # Wiki は opt-out — section/key 未指定時のデフォルトは true
 # config は worktree 自身のもの、無ければ main checkout のものを読む
 rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
-wiki_enabled=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$rite_config" 2>/dev/null \
+wiki_enabled=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' "$rite_config" 2>/dev/null \
   | grep -E '^[[:space:]]+enabled:' | head -1 | sed 's/[[:space:]]#.*//' \
   | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]')
 wiki_enabled=$(echo "$wiki_enabled" | tr '[:upper:]' '[:lower:]')
@@ -366,11 +368,11 @@ Wiki が既に初期化済みかを判定します:
 ```bash
 # config は worktree 自身のもの、無ければ main checkout のものを読む
 rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
-wiki_branch=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$rite_config" 2>/dev/null \
+wiki_branch=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' "$rite_config" 2>/dev/null \
   | grep -E '^[[:space:]]+branch_name:' | head -1 | sed 's/[[:space:]]#.*//' \
   | sed 's/.*branch_name:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 wiki_branch="${wiki_branch:-wiki}"
-branch_strategy=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$rite_config" 2>/dev/null \
+branch_strategy=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' "$rite_config" 2>/dev/null \
   | grep -E '^[[:space:]]+branch_strategy:' | head -1 | sed 's/[[:space:]]#.*//' \
   | sed 's/.*branch_strategy:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 branch_strategy="${branch_strategy:-separate_branch}"
