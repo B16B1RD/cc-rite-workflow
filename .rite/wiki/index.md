@@ -298,7 +298,7 @@ okf_version: "0.2"
 | [「SoT が N 個と書いている」だけでは load-bearing 性は決まらない — 依存側が名指ししている要素を読む](pages/heuristics/load-bearing-by-named-dependency-not-count.md) | heuristics | consumer 側の文書が SoT の N 要素のうち M 個（M < N）しか列挙していないとき、「SoT は N と書いているから欠落は欠陥だ」という推論は一段飛ばしになっている。 | 2026-07-29T02:10:00+09:00 | medium |
 | [終端状態は「到達した事実」で記録し、可変値との境界比較で代用しない](pages/heuristics/terminal-state-recorded-not-boundary-compared.md) | heuristics | サーキットブレーカーの「発火後か」を `cycle_count >= max_review_cycles` で判定していたが、この等式は**最終 cycle を実行している間ずっと成立する通常状態**でもあった。 | 2026-07-29T21:32:36+09:00 | high |
 | [失敗状態のクリアは失敗の記録より後に置く](pages/patterns/clear-failure-state-after-recording-it.md) | patterns | サーキットブレーカー発火時に cycle counter を 0 へリセットする設計（「再実行でループを再開できる」ため）を入れたが、そのリセットは発火を記録する唯一の手段である sentinel emit より**手前**にあった。 | 2026-09-16T10:24:00Z | high |
-| [agent が人間に渡す復旧コマンドは、人間の実行コンテキストで正しいかを検証する](pages/heuristics/recovery-command-verified-in-human-execution-context.md) | heuristics | 停止通知やエラーメッセージに埋め込む「手動復旧コマンド」は、agent が自分の Bash tool で叩いて rc=0 を確認しても検証にならない。 | 2026-09-27T03:35:02Z | high |
+| [agent が人間に渡す復旧コマンドは、人間の実行コンテキストで正しいかを検証する](pages/heuristics/recovery-command-verified-in-human-execution-context.md) | heuristics | 停止通知やエラーメッセージに埋め込む「手動復旧コマンド」は、agent が自分の Bash tool で叩いて rc=0 を確認しても検証にならない。 | 2026-09-27T07:38:07Z | high |
 | [変更・削除の掃き出しは旧語彙・置換した条件式・別記法トークンまで広げる](pages/heuristics/change-sweep-spans-old-vocabulary-and-notations.md) | heuristics | 散文が実行契約であるリポジトリでは、機構を 1 つ変更・削除するたびに、その機構を名指しする散文が各所に取り残される。 | 2026-09-27T05:10:00Z | high |
 | [検出器が「走査できなかった」を「問題なし」に畳むと、ガードが黙って無検査になる](pages/anti-patterns/checker-conflates-unscannable-with-clean.md) | anti-patterns | 静的チェックスクリプトの exit code 設計に「検出できなかった」状態が無いと、走査失敗（対象ファイルを開けない / パーサが fatal で落ちた / 対象が 1 件も見つからない）がすべて「findings 0 件 = 問題なし」として rc=0 で返る。 | 2026-09-27T04:58:44Z | high |
 | [自前 sentinel exit code は呼び出す外部コマンドの予約値を避けて選ぶ](pages/anti-patterns/custom-sentinel-collides-with-tool-exit-code.md) | anti-patterns | awk プログラムなどに「この状態を呼び出し側へ伝えたい」という独自の意味を持たせた exit code を割り当てるとき、値を 2 にすると gawk / mawk が fatal error で返す 2 と区別できなくなる。 | 2026-07-30T01:30:00+09:00 | high |
@@ -572,5 +572,5 @@ okf_version: "0.2"
 
 - 総ページ数: 558
 - ドメイン別: patterns=125, heuristics=258, anti-patterns=175
-- 最終更新: 2026-09-27T07:40:00Z
+- 最終更新: 2026-09-27T07:38:07Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |

@@ -26,12 +26,15 @@ sources:
     resource: "raw/reviews/20260927T031922Z-pr-3196.md"
   - type: "fixes"
     resource: "raw/fixes/20260927T033323Z-pr-3204.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T073655Z-pr-3241.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:35:02Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T07:38:07Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:27:52Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:35:02Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T07:38:07Z" }
 ---
 
 # agent が人間に渡す復旧コマンドは、人間の実行コンテキストで正しいかを検証する
@@ -99,6 +102,12 @@ verified:
 
 レビューが勧めた復旧手順は「レビューを再実行する」だった。実装を照合すると、再実行は同じ会話 context の保存をもう一度行うだけで、後段が読むファイルは変わらなかった。後段は commit が一致するファイルのうち最新のものを選んで読むので、再実行しても選ばれるファイルは同じになる。文書に復旧手順を書くときは、その手順で書き換わるものが、後段の選択規則で実際に選ばれるところまで追ってから書く。
 
+### 案内が名指す原因は、その ERROR に到達する条件をコードで確かめてから書く
+
+エラー文言の原因説明を、作業の前提（起票時の見立て）どおりに書き写した事例がある。実装を追うと、その ERROR は前提の原因では出なかった。前提の原因が起きると、上流の分岐が WARNING と既定値に倒して処理を続ける。ERROR に届くのは、下請けのスクリプトを実行できない場合だけだった。案内に従っても原因に届かず、案内した復旧コマンドを実行しても同じ ERROR が再発する。
+
+前提を忠実に写したことは、主張が正しい根拠にならない。原因を案内に書くときは、その ERROR を出す分岐に到達する条件をコードで確かめ、到達しない原因は書かない。同じ原因を記述している終了コード契約（スクリプトのヘッダ）や兄弟文書も同時に照合する。片方だけ直すと、文書どうしの食い違いが残る。受入条件の判定が形式（ERROR を分けたか）だけを見て充足とする場合もあり、中身の正しさは実測するレビューでしか捕まらない。
+
 ## 関連ページ
 
 - [Canonical helper bypass: 既存集約 helper を bypass して inline 再実装する](../anti-patterns/canonical-helper-bypass.md)
@@ -117,3 +126,4 @@ verified:
 - [既存 sibling の限定句を先に読む](../../raw/fixes/20260808T072610Z-pr-2150-cycle3-fix.md)
 - [復旧コマンドの実行先を worktree fixture で pin する](../../raw/reviews/20260927T031922Z-pr-3196.md)
 - [復旧手順が選択規則で効かないと判明した fix 結果](../../raw/fixes/20260927T033323Z-pr-3204.md)
+- [ERROR の原因説明が到達条件と食い違っていたレビュー結果](../../raw/reviews/20260927T073655Z-pr-3241.md)
