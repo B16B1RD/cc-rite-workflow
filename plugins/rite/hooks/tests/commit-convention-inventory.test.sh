@@ -148,13 +148,14 @@ else
 fi
 # The whole real wiki-lint SKILL.md, not only 8.3, carries no heavy operational bash block.
 # A missing target only warns and exits 0, so the file and the warning are checked too.
+REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
 heavy_out=$(bash "$PLUGIN_ROOT/hooks/scripts/bash-heaviness-check.sh" \
-  --repo-root "${PLUGIN_ROOT%/plugins/rite}" --target plugins/rite/skills/wiki-lint/SKILL.md 2>&1)
+  --repo-root "$REPO_ROOT" --target plugins/rite/skills/wiki-lint/SKILL.md 2>&1)
 heavy_rc=$?
 if [ -f "$WIKI_LINT_SKILL" ] && [ "$heavy_rc" -eq 0 ] && ! grep -q 'target not found' <<<"$heavy_out"; then
   pass "T-03 wiki-lint SKILL.md has no heavy bash block"
 else
-  fail "T-03 wiki-lint SKILL.md has a heavy bash block (rc=$heavy_rc): $heavy_out"
+  fail "T-03 wiki-lint SKILL.md has a heavy bash block or is missing (rc=$heavy_rc): $heavy_out"
 fi
 
 # --- T-05: squash keeps delete-branch=false + match-head-commit; CI red does not reach merge ---
