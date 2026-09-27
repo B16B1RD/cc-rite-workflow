@@ -2,6 +2,11 @@
 
 ## 2026-09-27
 
+* **Create**: [検出器が正規表現を probe するときは実際の評価文脈を再現し、停止を固定する自己テストは理由まで assert する](pages/heuristics/detector-regex-probe-reproduces-evaluation-context.md) — raw/fixes/20260927T115323Z-pr-3277.md, raw/reviews/20260927T141348Z-pr-3277.md を新規ページ化
+* **Update**: [Exit code semantic preservation: caller は case で語彙を保持する](pages/patterns/exit-code-semantic-preservation.md) — raw/fixes/20260927T115351Z-pr-3278.md, raw/reviews/20260927T115922Z-pr-3278.md を統合
+* **Update**: [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) — raw/fixes/20260927T115318Z-pr-3279.md, raw/reviews/20260927T115824Z-pr-3279.md を統合
+* **Skip**: [20260927T115612Z-pr-3267.md](raw/reviews/20260927T115612Z-pr-3267.md) — 前 cycle の推奨の解消確認と受入条件の充足報告のみで、再利用できる経験則を含まない
+
 * **Update**: [loop 内の独立 assert は missing file で fail message が assertion 数倍に膨張する](pages/anti-patterns/loop-independent-assert-missing-file-inflation.md) — raw/fixes/20260927T114434Z-pr-3267.md を統合
 * **Update**: [Lint の見出し抽出はコードフェンス内行を除外してから行う (検証ツール自身の false-negative 防止)](pages/patterns/lint-strip-code-fence-before-extraction.md) — raw/reviews/20260927T114445Z-pr-3277.md を統合
 * **Update**: [Exit code semantic preservation: caller は case で語彙を保持する](pages/patterns/exit-code-semantic-preservation.md) — raw/reviews/20260927T114751Z-pr-3278.md を統合

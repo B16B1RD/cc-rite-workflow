@@ -28,9 +28,13 @@ sources:
     resource: "raw/reviews/20260926T052407Z-pr-3110.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T114751Z-pr-3278.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T115351Z-pr-3278.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T115922Z-pr-3278.md"
 tags: ["bash", "exit-code", "api-contract", "sentinel"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:54:08Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:20:00Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T11:30:00Z" }
   - { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T05:45:00Z" }
@@ -137,12 +141,14 @@ caller 側の case routing だけでなく、**script 自身のすべての内�
 
 判定 bash を `if/elif` の 2 値分岐から単一コマンド呼び出し + `$?` キャプチャ + `case` の 3 値以上分岐へ書き換えた事例で、複数レビュアーが隔離環境で実際に対象コマンドを実行し、各 exit code（正常/不一致/エラー）が期待した `case` の分岐へ正しく落ちることを実測で確認した。本パターンが定める「caller は case で語彙を保持する」contract の遵守を、実装レビューだけでなく mutation 実験（分岐の削除・退行）で検証する手法が有効であることの追加事例。
 
-## 黙った fallback を skip に置き換えると、終了コードと集計行が呼び出し側の契約になる
+### 黙った fallback を skip に置き換えると、終了コードと集計行が呼び出し側の契約になる
 
 既定値への黙った fallback を「停止 / WARNING / skip」に置き換えると、新しい skip 分岐の終了コードと集計行は、それを読む呼び出し側（lint の件数読み取りや exit 契約）の契約になる。受入条件が WARNING だけを求めていても、終了コードと集計行を assert しないと、exit 1 化や集計行の削除が green のまま通る。
 
-- skip 分岐を足したら、WARNING に加えて終了コードと集計行の形もテストで固定する
+- skip 分岐を足したら、WARNING に加えて終了コードと集計行の形もテストで固定する。多くの場合、skip 経路を通る既存のテストケースに assert を 2 本足すだけで済み、新しいテストケースも本体の変更も要らない
+- 件数行（`findings: 0`）と終了コード 0 だけでは、skip 分岐に入ったのか、通常経路を通って結果が 0 件だったのかを区別できない。分岐への到達を示す別の観測（例: 外部コマンドに base 引数を渡していないこと、skip 専用の WARNING）と組み合わせて初めて、狙った分岐の契約を固定したことになる
 - skip 経路の WARNING は、呼び出し側が exit 0 の出力を表示しない場合は利用者に届かない。fail-loud を名乗る変更では、どの呼び出し側が stderr / stdout を表示するかまで追う
+
 ## 関連ページ
 
 - [`if ! cmd; then rc=$?` は常に 0 を捕捉する](../anti-patterns/bash-if-bang-rc-capture.md)
@@ -161,3 +167,5 @@ caller 側の case routing だけでなく、**script 自身のすべての内�
 - [新しい exit code を一部の caller にしか反映しなかったレビュー結果](../../raw/reviews/20260912T105243Z-pr-2732.md)
 - [判定 bash の 2 値分岐から case 3 値分岐への書き換えを mutation 実験で検証したレビュー結果](../../raw/reviews/20260926T052407Z-pr-3110.md)
 - [レビュー結果](../../raw/reviews/20260927T114751Z-pr-3278.md)
+- [skip 分岐の終了コードと件数行を既存ケースに assert した fix 結果](../../raw/fixes/20260927T115351Z-pr-3278.md)
+- [件数行だけでは skip 分岐と通常経路を区別できないと確認したレビュー結果](../../raw/reviews/20260927T115922Z-pr-3278.md)
