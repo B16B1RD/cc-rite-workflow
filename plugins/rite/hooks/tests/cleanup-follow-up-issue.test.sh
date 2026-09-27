@@ -57,8 +57,8 @@
 #   T-30 issued だけを除き recorded は転記する / 記録コメント以外・issued 以外の行では除外しない
 #   T-31 台帳を読めない (記録コメントの取得失敗 / 解析不能 / 関連 Issue 無し) ときは WARNING + marker で全件転記
 #   T-32 台帳が無い PR は従来どおり全件転記
-#   T-33 出典の無い 4 列の issued 行では、除外は最新 JSON 由来で組が一致する finding に限る。先行 cycle の finding は
-#        id・位置が同じでも転記し、同じ file:line のものだけ重複候補として WARNING に出す。
+#   T-33 出典の無い 4 列の issued 行では、除外は最新 JSON 由来で組が一致する finding に限る。再掲マーカーの無い
+#        先行 cycle の finding は id・位置が同じでも転記し、同じ file:line のものだけ重複候補として WARNING に出す。
 #        行がずれた再報告は WARNING なしで重複しうる / 最新 JSON を照合できなければ apply_failed
 #   T-34 cleanup SKILL.md が all_issued と除外不能 note を完了報告へ配線する
 #   T-35 記録コメントは nb-sweep-collect.sh と同じく review-nonblocking-record.sh --print-record-body で読み
@@ -105,11 +105,19 @@
 #   T-58 先行 cycle の JSON を出典とする issued 行は、最新 JSON が変わっても (archive/ にあっても) 除外する
 #   T-59 出典が最新 JSON の 5 列行は 4 列行と除外件数・重複候補・WARNING が一致する
 #   T-60 出典の無い 4 列行は最新 JSON とだけ照合し、判定文のエスケープ済みパイプを出典と読まない
-#   T-61 出典が一致しない finding は id・位置が同じでも転記し、出典で除外した先行 cycle 指摘の位置は
+#   T-61 出典が一致しない再掲マーカーの無い finding は id・位置が同じでも転記し、出典で除外した先行 cycle 指摘の位置は
 #        重複候補に数えない。その位置に別の先行 cycle の指摘があっても重複候補に数えない（3 cycle）
 #   T-62 存在しない JSON を指す出典は除外しない / 形の合わない出典は出典無しとして扱う
 #   T-63 末尾空白・エスケープ済みパイプ・CRLF の行からも出典を読む
 #   T-64 記録コメントの取得失敗・最新 JSON の照合失敗では出典付きの行でも除外しない
+#
+# Coverage (起票済み指摘の再掲):
+#   T-73 前後の cycle が再掲マーカー付きで id を変えて再報告した指摘も除外し、再掲として結んだ件数を出す
+#        (マーカーの 2 つの書き方、最新 cycle で起票した場合を含む)
+#   T-74 同じ位置・同じ reviewer でもマーカーで結ばれない別の指摘は転記する (括弧外で id に触れる本文を含む)
+#   T-75 マーカーが直前の cycle の同じ id・位置・reviewer を指さない / NOT_FIXED・再掲が無い / PARTIAL /
+#        reviewer 欠落 / 直前の cycle が 0 件・parse 不能・別の指摘のときは結ばない
+#   T-76 起票済みの指摘と出典だけが違う完全一致の指摘も除外する
 #
 # Coverage (Decision Log で先送りした欠陥):
 #   T-65 指摘 0 件でも先送り欠陥があれば起票し、Section 9 内の本 PR のトークン行だけをトークンを除いて順に転記する
@@ -1267,7 +1275,7 @@ assert_grep "T-33b 行ずれは重複候補に数えない" "$ERR" 'sweep_issued
 assert_not_grep "T-33b 行ずれは重複 WARNING を出さない" "$ERR" 'WARNING: sweep 起票済みの指摘と同じ位置'
 
 # 先行 cycle にしか無い指摘は、最新 JSON の同じ位置が全件 sweep 起票済みでも転記する
-# (id が振り直された同じ指摘か別の指摘かを台帳から判定できない)
+# (再掲マーカーが無ければ、id が振り直された同じ指摘か別の指摘かを台帳から判定できない)
 reset_stubs
 r=$(new_root t33c)
 put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-07","file":"a.md","line":3,"description":"先行 cycle にのみ載る指摘"}]}'
@@ -2119,6 +2127,136 @@ assert_grep "T-72 deferred note の定義" "$CLEANUP_MD" '^- `\{follow_up_deferr
 assert_grep "T-72 deferred note は unavailable marker を読む" "$CLEANUP_MD" 'FOLLOW_UP_DEFERRED=unavailable; reason=\{r\}; pr=\{pr_number\}'
 assert_grep "T-72 先送り欠陥側は未完了" "$CLEANUP_MD" '^  \| `FOLLOW_UP_DEFERRED=unavailable` \| 未完了 \|'
 assert_grep "T-72 review_cleanup_check は 3 側で判定" "$CLEANUP_MD" '先送り欠陥の読み取り（`FOLLOW_UP_DEFERRED`）・state 削除'
+
+# $1=id $2=file $3=line $4=reviewer (空なら reviewer キーを持たない) $5=description。non_blocking_findings 1 件分
+nb_finding() {
+  jq -nc --arg id "$1" --arg f "$2" --argjson l "$3" --arg rv "$4" --arg d "$5" \
+    '{id: $id, file: $f, line: $l, description: $d} + (if $rv == "" then {} else {reviewer: $rv} end)'
+}
+# $@=finding object。1 cycle 分のレビュー結果 JSON
+nb_json() { jq -nc '{non_blocking_findings: $ARGS.positional}' --jsonargs "$@"; }
+# $1=起票元の出典 basename。sweep が t.sh:310 の F-01 を起票した台帳を置く
+put_issued_ledger() { jq -n --argjson c "$(comment_obj "$(record_body "$(issued_row5 F-01 t.sh:310 "$1")")")" '[[$c]]' > "$GH_API_JSON"; }
+relinked_lines() { grep -c '^\[cleanup-follow-up-issue\] sweep_issued_relinked:' "$ERR"; }
+RELINK_A=$(nb_finding F-02 t.sh 310 test-reviewer 'cycle A の初出の指摘')
+RELINK_B=$(nb_finding F-01 t.sh 310 test-reviewer '【前回 F-02、NOT_FIXED】cycle B で sweep が起票した指摘')
+RELINK_C=$(nb_finding F-01 t.sh 310 test-reviewer '【F-01 再掲・NOT_FIXED】cycle C の言い直し')
+
+echo "--- T-73: sweep 起票済みの指摘を前後の cycle が ID を変えて再掲していても転記しない ---"
+reset_stubs
+r=$(new_root t73)
+put_json "$r" "$CYCLE_A" "$(nb_json "$RELINK_A")"
+put_json "$r" "$CYCLE_B" "$(nb_json "$RELINK_B")"
+put_json "$r" "$CYCLE_C" "$(nb_json "$RELINK_C")"
+put_issued_ledger "$CYCLE_B"
+run_target "$r"
+assert "T-73 exit 0" "0" "$RC"
+assert_grep "T-73 全件が起票済みの指摘の再掲なら all_issued" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=all_issued; pr=9'
+assert "T-73 起票しない" "0" "$(create_count)"
+assert_grep "T-73 除外件数 3、重複候補 0" "$ERR" '^\[cleanup-follow-up-issue\] sweep_issued: pr=9; excluded=3; possible_duplicates=0$'
+assert_grep "T-73 再掲として結んだ件数" "$ERR" '^\[cleanup-follow-up-issue\] sweep_issued_relinked: pr=9; relinked=2$'
+assert "T-73 再掲件数の行は 1 行" "1" "$(relinked_lines)"
+assert_not_grep "T-73 除外不能に倒さない" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable'
+
+# マーカーの 2 つの書き方がそれぞれ単独で、直前の cycle の指摘と結ぶ
+for t73_form in prior_id same_id; do
+  reset_stubs
+  r=$(new_root "t73-$t73_form")
+  case "$t73_form" in
+    prior_id) t73_later=$(nb_finding F-01 t.sh 310 test-reviewer '【前回 F-02、NOT_FIXED】後の cycle の言い直し')
+              t73_first=$(nb_finding F-02 t.sh 310 test-reviewer 'sweep が起票した指摘') ;;
+    same_id)  t73_later=$RELINK_C
+              t73_first=$(nb_finding F-01 t.sh 310 test-reviewer 'sweep が起票した指摘') ;;
+  esac
+  put_json "$r" "$CYCLE_A" "$(nb_json "$t73_first")"
+  put_json "$r" "$CYCLE_B" "$(nb_json "$t73_later")"
+  jq -n --argjson c "$(comment_obj "$(record_body "$(issued_row5 "$(printf '%s' "$t73_first" | jq -r .id)" t.sh:310 "$CYCLE_A")")")" '[[$c]]' > "$GH_API_JSON"
+  run_target "$r"
+  assert_grep "T-73 $t73_form の形でも all_issued" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=all_issued; pr=9'
+  assert_grep "T-73 $t73_form の形の再掲件数 1" "$ERR" '^\[cleanup-follow-up-issue\] sweep_issued_relinked: pr=9; relinked=1$'
+done
+
+# 最新 cycle で起票した場合: 先行 cycle の再掲元も除外し、重複候補の WARNING を出さない
+reset_stubs
+r=$(new_root t73-latest)
+put_json "$r" "$CYCLE_A" "$(nb_json "$RELINK_A")"
+put_json "$r" "$CYCLE_B" "$(nb_json "$RELINK_B")"
+put_issued_ledger "$CYCLE_B"
+run_target "$r"
+assert_grep "T-73 最新 cycle 起票でも all_issued" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=all_issued; pr=9'
+assert_grep "T-73 最新 cycle 起票の除外件数 2、重複候補 0" "$ERR" '^\[cleanup-follow-up-issue\] sweep_issued: pr=9; excluded=2; possible_duplicates=0$'
+assert_not_grep "T-73 再掲元を重複候補として WARNING しない" "$ERR" 'WARNING: sweep 起票済みの指摘と同じ位置'
+
+echo "--- T-74: 同じ位置・同じ reviewer でも再掲マーカーで結ばれない別の指摘は転記する ---"
+for t74_variant in no_marker mention; do
+  reset_stubs
+  r=$(new_root "t74-$t74_variant")
+  case "$t74_variant" in
+    no_marker) t74_desc='同じ位置の別の指摘: 失敗経路のテストも無い' ;;
+    # 括弧の外で id に触れるだけの本文は再掲マーカーではない
+    mention)   t74_desc='同じ位置の別の指摘: F-01 とは別に NOT_FIXED 判定の経路も未検証' ;;
+  esac
+  put_json "$r" "$CYCLE_A" "$(nb_json "$RELINK_A")"
+  put_json "$r" "$CYCLE_B" "$(nb_json "$RELINK_B")"
+  put_json "$r" "$CYCLE_C" "$(nb_json "$RELINK_C" "$(nb_finding F-02 t.sh 310 test-reviewer "$t74_desc")")"
+  put_issued_ledger "$CYCLE_B"
+  run_target "$r"
+  assert "T-74 $t74_variant: 残る 1 件で起票する" "1" "$(create_count)"
+  assert_grep "T-74 $t74_variant: 同じ位置の別の指摘は転記" "$STUB_DIR/body.md" '同じ位置の別の指摘'
+  assert_not_grep "T-74 $t74_variant: 起票済みの指摘は転記しない" "$STUB_DIR/body.md" 'cycle B で sweep が起票した指摘'
+  assert_not_grep "T-74 $t74_variant: 先行 cycle の初出は転記しない" "$STUB_DIR/body.md" 'cycle A の初出の指摘'
+  assert_not_grep "T-74 $t74_variant: 後の cycle の再掲は転記しない" "$STUB_DIR/body.md" 'cycle C の言い直し'
+  assert_grep "T-74 $t74_variant: 除外件数 3、重複候補 0" "$ERR" '^\[cleanup-follow-up-issue\] sweep_issued: pr=9; excluded=3; possible_duplicates=0$'
+done
+
+echo "--- T-75: 再掲マーカーは直前の cycle の同じ id・同じ位置・同じ reviewer の指摘とだけ結ぶ ---"
+# どれか 1 つでも外れれば結ばず、後の cycle の指摘を転記する (欠落より重複)。
+# 各 variant は cycle A または B の起票済み指摘に対する cycle C の指摘 (と cycle B) だけを変える
+for t75_variant in other_line other_reviewer other_id no_verdict partial no_bracket no_reviewer skip_cycle empty_cycle broken_cycle; do
+  reset_stubs
+  r=$(new_root "t75-$t75_variant")
+  t75_desc='【F-01 再掲・NOT_FIXED】cycle C の指摘'
+  t75_line=310; t75_rv=test-reviewer; t75_first_rv=test-reviewer; t75_prev="$CYCLE_B"
+  case "$t75_variant" in
+    other_line)     t75_line=311 ;;
+    other_reviewer) t75_rv=code-quality-reviewer ;;
+    other_id)       t75_desc='【F-09 再掲・NOT_FIXED】cycle C の指摘' ;;
+    no_verdict)     t75_desc='【前回 F-01】cycle C の指摘' ;;
+    # 一部だけ直った指摘の本文は残りの問題を書き直しているので、起票済みの本文と同じ指摘ではない
+    partial)        t75_desc='【前回 F-01、PARTIAL】cycle C の指摘' ;;
+    no_bracket)     t75_desc='F-01 再掲・NOT_FIXED cycle C の指摘' ;;
+    no_reviewer)    t75_rv=''; t75_first_rv='' ;;
+    # 直前の cycle が起票元でなければ、2 つ前の cycle へは遡らない
+    skip_cycle|empty_cycle|broken_cycle) t75_prev="$CYCLE_A" ;;
+  esac
+  put_json "$r" "$t75_prev" "$(nb_json "$(nb_finding F-01 t.sh 310 "$t75_first_rv" 'sweep が起票した指摘')")"
+  case "$t75_variant" in
+    skip_cycle)   put_json "$r" "$CYCLE_B" "$(nb_json "$(nb_finding F-05 z.md 1 test-reviewer 'cycle B の無関係な指摘')")" ;;
+    empty_cycle)  put_json "$r" "$CYCLE_B" '{"non_blocking_findings":[]}' ;;
+    broken_cycle) put_json "$r" "$CYCLE_B" '{broken' ;;
+  esac
+  put_json "$r" "$CYCLE_C" "$(nb_json "$(nb_finding F-01 t.sh "$t75_line" "$t75_rv" "$t75_desc")")"
+  put_issued_ledger "$t75_prev"
+  run_target "$r"
+  assert_grep "T-75 $t75_variant: 後の cycle の指摘は転記" "$STUB_DIR/body.md" 'cycle C の指摘'
+  assert_not_grep "T-75 $t75_variant: 起票済みの指摘は転記しない" "$STUB_DIR/body.md" 'sweep が起票した指摘'
+  assert_grep "T-75 $t75_variant: 除外件数 1" "$ERR" '^\[cleanup-follow-up-issue\] sweep_issued: pr=9; excluded=1; possible_duplicates=0$'
+  assert_not_grep "T-75 $t75_variant: 再掲として結ばない" "$ERR" 'sweep_issued_relinked:'
+done
+
+echo "--- T-76: 起票済みの指摘と出典だけが違う完全一致の指摘は転記しない ---"
+reset_stubs
+r=$(new_root t76)
+t76_same=$(nb_finding F-01 a.md 3 test-reviewer '出典だけが違う同じ指摘')
+put_json "$r" "$CYCLE_A" "$(nb_json "$t76_same")"
+put_json "$r" "$CYCLE_B" "$(nb_json "$t76_same" "$(nb_finding F-02 c.md 1 test-reviewer 'cycle B の別の指摘')")"
+jq -n --argjson c "$(comment_obj "$(record_body "$(issued_row5 F-01 a.md:3 "$CYCLE_A")")")" '[[$c]]' > "$GH_API_JSON"
+run_target "$r"
+assert_not_grep "T-76 完全一致のコピーも転記しない" "$STUB_DIR/body.md" '出典だけが違う同じ指摘'
+assert_grep "T-76 別の指摘は転記" "$STUB_DIR/body.md" 'cycle B の別の指摘'
+assert_grep "T-76 除外件数 2" "$ERR" '^\[cleanup-follow-up-issue\] sweep_issued: pr=9; excluded=2; possible_duplicates=0$'
+assert_grep "T-76 起票元以外から結んだ件数に数える" "$ERR" '^\[cleanup-follow-up-issue\] sweep_issued_relinked: pr=9; relinked=1$'
+assert_not_grep "T-76 後段の完全一致の集約には残さない" "$ERR" 'deduplicated:'
 
 echo "--- T-arg: 引数 gate ---"
 bash "$TARGET" --pr abc --state-root "$TMP_ROOT" --owner a --repo b >"$OUT" 2>"$ERR"; RC=$?
