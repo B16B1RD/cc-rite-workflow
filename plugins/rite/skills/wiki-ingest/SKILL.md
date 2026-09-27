@@ -1136,10 +1136,15 @@ fi
 
 ### 9.0 Ingest セッション lock の解放
 
-ステップ 1.4 で取得した ingest セッション lock を解放する:
+ステップ 1.4 で取得した ingest セッション lock がまだ自分のものかを確かめてから解放する。`own` 以外（奪われた・消えた・確認に失敗した）なら WARNING を出し、解放は必ず実行する:
 rationale: references/rationale.md#lock-release-failsafe
 
 ```bash
+lock_state=$(bash "{plugin_root}/hooks/scripts/wiki-ingest-lock.sh" check) || lock_state=""
+if [ "$lock_state" != "own" ]; then
+  echo "WARNING: ingest 中に wiki ingest のロックを失っていました (check=${lock_state:-取得失敗})。別のセッションが同じ wiki worktree へ並行して書き込んだ可能性があります" >&2
+  echo "  対処: wiki branch の直近の commit を確認し、重複や上書きがあれば手で直してください" >&2
+fi
 bash "{plugin_root}/hooks/scripts/wiki-ingest-lock.sh" release
 ```
 
