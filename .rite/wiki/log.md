@@ -39,6 +39,7 @@
 * **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=553, broken_refs=0
 * **Update**: [jq は入力が 0 ドキュメントだとフィルタを評価せず rc=0 で終わる — 形の検証は jq -s と length == 1 で入力を 1 ドキュメントに閉じる](pages/anti-patterns/jq-empty-input-skips-filter-rc-zero.md) — raw/reviews/20260927T033801Z-pr-3200.md を統合
 * **Update**: [「網羅」を主張する列挙は grep 全数棚卸し + scope note で構造的に収束させる](pages/heuristics/exhaustiveness-claims-require-mechanical-inventory.md) — raw/reviews/20260927T033918Z-pr-3205.md を統合
+* **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=553, broken_refs=0
 
 ## 2026-09-26
 
