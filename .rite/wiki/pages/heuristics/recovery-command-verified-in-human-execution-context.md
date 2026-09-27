@@ -24,11 +24,14 @@ sources:
     resource: "raw/fixes/20260808T072610Z-pr-2150-cycle3-fix.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T031922Z-pr-3196.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T033323Z-pr-3204.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:27:52Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:35:02Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:27:52Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:35:02Z" }
 ---
 
 # agent が人間に渡す復旧コマンドは、人間の実行コンテキストで正しいかを検証する
@@ -92,6 +95,10 @@ verified:
 
 「条件を満たさない場合は次回セッション開始時の警告が案内します」と書いたが、その WARNING は session-start hook が stderr ごとログファイルへリダイレクトするため利用者には届かない。**存在しない可視シグナルを待たせると、無警告を「正常」と読ませる**。案内先を書くときは、そのメッセージがどこに出るか（surface）まで辿ってから書く。
 
+### 文書に書く復旧手順は、選択規則まで追って効くことを確かめる
+
+レビューが勧めた復旧手順は「レビューを再実行する」だった。実装を照合すると、再実行は同じ会話 context の保存をもう一度行うだけで、後段が読むファイルは変わらなかった。後段は commit が一致するファイルのうち最新のものを選んで読むので、再実行しても選ばれるファイルは同じになる。文書に復旧手順を書くときは、その手順で書き換わるものが、後段の選択規則で実際に選ばれるところまで追ってから書く。
+
 ## 関連ページ
 
 - [Canonical helper bypass: 既存集約 helper を bypass して inline 再実装する](../anti-patterns/canonical-helper-bypass.md)
@@ -109,3 +116,4 @@ verified:
 - [自己破壊する回復コマンド連鎖](../../raw/reviews/20260808T072312Z-pr-2150-cycle3.md)
 - [既存 sibling の限定句を先に読む](../../raw/fixes/20260808T072610Z-pr-2150-cycle3-fix.md)
 - [復旧コマンドの実行先を worktree fixture で pin する](../../raw/reviews/20260927T031922Z-pr-3196.md)
+- [復旧手順が選択規則で効かないと判明した fix 結果](../../raw/fixes/20260927T033323Z-pr-3204.md)

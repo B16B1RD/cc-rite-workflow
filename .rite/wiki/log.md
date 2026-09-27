@@ -2,6 +2,9 @@
 
 ## 2026-09-27
 
+* **Update**: [到達不能に見える分岐の削除は、その分岐が受けていた入力の行き先を確認してから決める](pages/heuristics/branch-deletion-traces-where-the-input-flows.md) — raw/fixes/20260927T033323Z-pr-3204.md を統合
+* **Update**: [agent が人間に渡す復旧コマンドは、人間の実行コンテキストで正しいかを検証する](pages/heuristics/recovery-command-verified-in-human-execution-context.md) — raw/fixes/20260927T033323Z-pr-3204.md を統合
+* **Update**: [jq は入力が 0 ドキュメントだとフィルタを評価せず rc=0 で終わる — 形の検証は jq -s と length == 1 で入力を 1 ドキュメントに閉じる](pages/anti-patterns/jq-empty-input-skips-filter-rc-zero.md) — raw/fixes/20260927T033157Z-pr-3200.md を統合
 * **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=553, broken_refs=0
 * **Skip**: [20260926T153759Z-pr-3188.md](raw/reviews/20260926T153759Z-pr-3188.md) — 既存経験則の範囲内: 受入条件を検査ツールの 0 件で書くなら構造 pin ではなく性質を直接 pin する（static-pin-semantic-allowlist-not-notation-denylist）、書き方が変わると識別力を失う静的 pin は不変部分を観測する形へ寄せる（pin-observes-invariant-not-incidental-representation）
 * **Update**: [エラーメッセージが案内するコマンドは、テストで出力から抽出して逐語実行する](pages/patterns/guidance-command-test-by-verbatim-execution.md) — raw/reviews/20260926T150855Z-pr-3171.md を統合

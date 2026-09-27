@@ -4,14 +4,18 @@ title: "到達不能に見える分岐の削除は、その分岐が受けてい
 domain: "heuristics"
 description: "到達不能に見える case arm を消すと、その入力は消えるのではなく catch-all へ流れ込み、失敗ではない値に対して失敗の診断と手動復旧コマンドを出す。デッドコード除去のつもりが診断の劣化になるため、削除前に「その分岐が受けていた入力はどこへ行くか」を確認する。"
 created: "2026-08-30T11:20:00+09:00"
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-30T11:20:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:35:02Z" }
 sources:
   - type: "fixes"
     resource: "raw/fixes/20260830T014342Z-pr-2470.md"
   - type: "reviews"
     resource: "raw/reviews/20260830T015647Z-pr-2470.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T033323Z-pr-3204.md"
 tags: [dead-code, diagnostics, guard-exclusion]
 confidence: high
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:35:02Z" }
 ---
 
 # 到達不能に見える分岐の削除は、その分岐が受けていた入力の行き先を確認してから決める
@@ -44,6 +48,12 @@ rail の subsequence 保存ガードには既存の除外前例があったが�
 
 同 PR の cycle 1 で入れた修正（marker 正規化行、新設 WARNING 2 本、引数エラー腕の既定値報告）はいずれも削除しても全テストが緑のまま通る状態で残り、cycle 2 で 3 件の指摘として戻ってきた。テストは正常系 fixture しか通しておらず、fix が足した経路には一度も入っていなかった。**「テストは通った」と「fix が守られている」は別**で、後者は mutation を 1 回かければ即座に分かる。
 
+### テストが届かない fail-loud 分岐は、後段の fail-loud に委ねて削る
+
+逆向きの事例もある。mergeable の後に出た PR 内の推奨 5 件のうち 3 件は、「新設した fail-loud 分岐にテストが届かない」という同じ原因だった。入力の行き先を追うと、その入力は後続の helper に渡り、helper が既に同じ条件を fail-loud で止めていた。この場合は分岐を削り、helper の既存の停止に委ねた。テストを足すよりも構造が小さくなり、3 件がまとめて解消した。
+
+削るか残すかの判断は、上の手順と同じく入力の行き先で決まる。行き先に正しい停止が既にあれば、手前の分岐は重複なので削ってよい。行き先が catch-all の誤った診断なら、分岐を残す。
+
 ## 関連ページ
 
 - [機構を削除して解くと、pin 面積だけでなく失敗モードの重さ（blast radius）も縮む](./simplification-shrinks-pin-surface-and-blast-radius.md)
@@ -55,3 +65,4 @@ rail の subsequence 保存ガードには既存の除外前例があったが�
 
 - [fix 結果](../../raw/fixes/20260830T014342Z-pr-2470.md)
 - [レビュー結果](../../raw/reviews/20260830T015647Z-pr-2470.md)
+- [後段の fail-loud に委ねて分岐を削った fix 結果](../../raw/fixes/20260927T033323Z-pr-3204.md)

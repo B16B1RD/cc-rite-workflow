@@ -4,7 +4,7 @@ title: "jq は入力が 0 ドキュメントだとフィルタを評価せず rc
 domain: "anti-patterns"
 description: "jq はストリーム入力が空のときフィルタを一度も評価せずに成功終了するため、入力の形を検証する述語は空応答を捕捉できない。空入力と複数ドキュメントの両方を失敗に倒したい検証は jq -s で入力を配列に集め、length == 1 を述語に含めて書く。"
 created: "2026-09-27T03:16:22Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:27:52Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:35:02Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260927T031103Z-pr-3200.md"
@@ -12,8 +12,12 @@ sources:
     resource: "raw/fixes/20260927T031724Z-pr-3200.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T032425Z-pr-3200.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T033157Z-pr-3200.md"
 tags: ["jq", "fail-loud", "gh-api", "empty-input"]
 confidence: medium
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:35:02Z" }
 ---
 
 # jq は入力が 0 ドキュメントだとフィルタを評価せず rc=0 で終わる — 形の検証は jq -s と length == 1 で入力を 1 ドキュメントに閉じる
@@ -39,6 +43,10 @@ jq はストリーム入力が空のときフィルタを一度も評価せず�
 - `jq -s` で入力全体を 1 つの配列に集め、`length == 1 and (.[0] | 形の述語)` のように書く。空入力は `[]`（length 0）、複数ドキュメントは length 2 以上になり、どちらも同じ述語で失敗に倒れる
 - `gh api --paginate --slurp` は 0 件でも `[[]]`（ページの配列）を返す。検証は「空でない配列で、要素がすべて配列」という形で行い、REST の issues endpoint では `.pull_request == null` で PR を除外して、`gh issue list` と同じ対象集合を保つ
 
+### 前の修正が入れた機構へのパッチは重ねない
+
+`jq -n` と `input` の取りこぼしを指摘されたとき、同じ機構に「2 つ目のドキュメントが無いことを確かめる」処理を足す方向もあった。実際には機構ごと `jq -s` に置き換え、既存の形の述語へ `length == 1` として統合した。前の cycle の修正が入れた機構に指摘が来たら、まずその機構を別の書き方へ置き換えて、既存の述語に畳めないかを確かめる。パッチを重ねると検証の経路が増え、次の cycle で同じ機構への指摘が再び出る。
+
 ### 削除と置換の確認
 
 - ガード付き分岐を削除するときは、削除対象の分岐に別の失敗ケースの fail-loud が同居していないかを先に確かめる
@@ -59,3 +67,4 @@ jq はストリーム入力が空のときフィルタを一度も評価せず�
 - [レビュー結果](../../raw/reviews/20260927T031103Z-pr-3200.md)
 - [空入力を jq -n と input で捕捉した fix 結果](../../raw/fixes/20260927T031724Z-pr-3200.md)
 - [jq -s と length == 1 を勧めたレビュー](../../raw/reviews/20260927T032425Z-pr-3200.md)
+- [機構を置き換えて既存の述語へ統合した fix 結果](../../raw/fixes/20260927T033157Z-pr-3200.md)
