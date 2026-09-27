@@ -192,7 +192,7 @@ safety:
 # ただし投稿自体は best-effort — gh 失敗（create_failed / patch_failed）や本文不備では投稿されず
 # outcome=failed になる。**無条件の記録先はローカル JSON**（.rite/review-results/*.json の
 # non_blocking_findings[]）であってコメントではない。記録コメントが見当たらないときはそちらを見る。
-# 記録コメントに載るのは **ポインタ + 降格理由**（reviewer / severity / file:line / 降格の判定文と全文の所在 1 行）で、
+# 記録コメントに載るのは **ポインタ + 降格理由**（reviewer / severity / file:line / 降格理由（class B 降格の判定文、/rite:fix が非 fatal として移送した実測済み分は「実測済み（非 fatal）」、それ以外は「実測なし」）と全文の所在 1 行）で、
 # 各指摘の description / suggestion は載らない。関連 Issue へ投稿される経路のため、
 # 非実測 CRITICAL の詳細（脆弱性の再現手順等）が修正前に public PR へ先行開示されるのを避ける。既定の
 # post_comment: false では cycle 中の全文の保存先は上記ローカル JSON だけで、そこはレビューを実行した環境に
