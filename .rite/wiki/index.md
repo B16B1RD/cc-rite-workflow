@@ -258,7 +258,7 @@ okf_version: "0.2"
 | [移植性のための外部コマンド差し替えは分岐を消さず「別の層」へ移動させる](pages/anti-patterns/external-command-swap-relocates-platform-divergence.md) | anti-patterns | GNU/BSD で挙動が割れるコマンドを別コマンドへ置き換えるとき、比較するのは「解決セマンティクス（何を返すか）」に偏りがちである。 | 2026-07-25T14:18:43Z | high |
 | [sentinel でコマンド置換のバイト厳密性を守る](pages/patterns/sentinel-byte-exact-command-substitution-capture.md) | patterns | `var=$(cmd)` はコマンド出力の **末尾の改行を全て** 除去する。 | 2026-07-25T14:18:43Z | high |
 | [対象プラットフォーム挙動を shim して blocking gate 側で pin する](pages/heuristics/portability-fix-needs-target-platform-shim-on-blocking-gate.md) | heuristics | 移植性の修正は、対象プラットフォームで検証されて初めて意味を持つ。 | 2026-08-12T18:34:40Z | high |
-| [否定形の assert は前提条件が崩れると fail-silent になる](pages/anti-patterns/negative-assertion-vacuous-without-precondition-floor.md) | anti-patterns | 「X が起きていないこと」を検証する assert は、そもそも X が起こりうる条件が成立していなければ自動的に通る。 | 2026-09-27T14:25:00Z | high |
+| [否定形の assert は前提条件が崩れると fail-silent になる](pages/anti-patterns/negative-assertion-vacuous-without-precondition-floor.md) | anti-patterns | 「X が起きていないこと」を検証する assert は、そもそも X が起こりうる条件が成立していなければ自動的に通る。 | 2026-09-27T16:10:16Z | high |
 | [レビューが足場を対象に発散したら finding の基準を prompt で明示して止める](pages/heuristics/review-finding-bar-stops-scaffolding-divergence.md) | heuristics | 修正 1 件は新しいレビュー対象面を 1 つ作る。 | 2026-07-25T14:18:43Z | medium |
 | [`set -euo pipefail` 下の `var=$(cmd \| jq ... 2>/dev/null)` は不正入力でテストを無言 abort させる](pages/anti-patterns/pipefail-jq-assignment-silent-abort.md) | anti-patterns | 被テスト対象の stdout を jq でパースして変数に代入する形は、`set -euo pipefail` 下では **jq の非ゼロ終了がそのまま代入コマンドの終了ステータス**になる。 | 2026-07-26T01:35:00+09:00 | high |
 | [コメントの主語は「変更イベント」ではなく「コードの現在の性質」に置く — lint が緑でも規約違反は成立する](pages/heuristics/comment-subject-present-tense-not-change-event.md) | heuristics | 判定形式を変えたとき、その理由を「旧形式は X を受け入れていた」と書くと、コメントの**主語が変更イベント（過去の行為）**になる。 | 2026-07-26T01:35:00+09:00 | high |
@@ -298,7 +298,7 @@ okf_version: "0.2"
 | [「SoT が N 個と書いている」だけでは load-bearing 性は決まらない — 依存側が名指ししている要素を読む](pages/heuristics/load-bearing-by-named-dependency-not-count.md) | heuristics | consumer 側の文書が SoT の N 要素のうち M 個（M < N）しか列挙していないとき、「SoT は N と書いているから欠落は欠陥だ」という推論は一段飛ばしになっている。 | 2026-07-29T02:10:00+09:00 | medium |
 | [終端状態は「到達した事実」で記録し、可変値との境界比較で代用しない](pages/heuristics/terminal-state-recorded-not-boundary-compared.md) | heuristics | サーキットブレーカーの「発火後か」を `cycle_count >= max_review_cycles` で判定していたが、この等式は**最終 cycle を実行している間ずっと成立する通常状態**でもあった。 | 2026-07-29T21:32:36+09:00 | high |
 | [失敗状態のクリアは失敗の記録より後に置く](pages/patterns/clear-failure-state-after-recording-it.md) | patterns | サーキットブレーカー発火時に cycle counter を 0 へリセットする設計（「再実行でループを再開できる」ため）を入れたが、そのリセットは発火を記録する唯一の手段である sentinel emit より**手前**にあった。 | 2026-09-16T10:24:00Z | high |
-| [agent が人間に渡す復旧コマンドは、人間の実行コンテキストで正しいかを検証する](pages/heuristics/recovery-command-verified-in-human-execution-context.md) | heuristics | 停止通知やエラーメッセージに埋め込む「手動復旧コマンド」は、agent が自分の Bash tool で叩いて rc=0 を確認しても検証にならない。 | 2026-09-27T07:38:07Z | high |
+| [agent が人間に渡す復旧コマンドは、人間の実行コンテキストで正しいかを検証する](pages/heuristics/recovery-command-verified-in-human-execution-context.md) | heuristics | 停止通知やエラーメッセージに埋め込む「手動復旧コマンド」は、agent が自分の Bash tool で叩いて rc=0 を確認しても検証にならない。 | 2026-09-27T16:10:16Z | high |
 | [変更・削除の掃き出しは旧語彙・置換した条件式・別記法トークンまで広げる](pages/heuristics/change-sweep-spans-old-vocabulary-and-notations.md) | heuristics | 散文が実行契約であるリポジトリでは、機構を 1 つ変更・削除するたびに、その機構を名指しする散文が各所に取り残される。 | 2026-09-27T09:40:29Z | high |
 | [検出器が「走査できなかった」を「問題なし」に畳むと、ガードが黙って無検査になる](pages/anti-patterns/checker-conflates-unscannable-with-clean.md) | anti-patterns | 静的チェックスクリプトの exit code 設計に「検出できなかった」状態が無いと、走査失敗（対象ファイルを開けない / パーサが fatal で落ちた / 対象が 1 件も見つからない）がすべて「findings 0 件 = 問題なし」として rc=0 で返る。 | 2026-09-27T04:58:44Z | high |
 | [自前 sentinel exit code は呼び出す外部コマンドの予約値を避けて選ぶ](pages/anti-patterns/custom-sentinel-collides-with-tool-exit-code.md) | anti-patterns | awk プログラムなどに「この状態を呼び出し側へ伝えたい」という独自の意味を持たせた exit code を割り当てるとき、値を 2 にすると gawk / mawk が fatal error で返す 2 と区別できなくなる。 | 2026-07-30T01:30:00+09:00 | high |
@@ -584,5 +584,5 @@ okf_version: "0.2"
 
 - 総ページ数: 570
 - ドメイン別: patterns=126, heuristics=268, anti-patterns=176
-- 最終更新: 2026-09-27T16:03:50Z
+- 最終更新: 2026-09-27T16:10:16Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |

@@ -27,9 +27,11 @@ sources:
     resource: "raw/reviews/20260927T105021Z-pr-3265.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T141600Z-pr-3281.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T160629Z-pr-3306.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:25:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:10:16Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-16T12:58:00Z" }
   - { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T07:10:00Z" }
@@ -40,6 +42,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:05:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:07:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:25:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:10:16Z" }
 ---
 
 # 否定形の assert は前提条件が崩れると fail-silent になる
@@ -179,6 +182,14 @@ rm -f "$result_dir"/*.json
 
 陽性対照が守れるのは「観測点より前で必要になる依存の欠落」だけで、どの依存がそこに入るかはサブコマンドごとの実行順で決まる。変異点は経路ごとに、観測点より手前にある依存から選ぶ。記録用 stub 自体を置かない変異は全経路で陽性対照を落とすが、これは stub の存在しか確かめていない。経路の先頭に依存が増えたときは、その経路について変異検証をやり直す。
 
+### 実例 9: 節を範囲抽出して「0 件」を固定する pin は、抽出の崩れで空振りする（レビュー結果）
+
+文書のある節を見出しから次の見出しまで切り出し、その中に特定の行が 0 件であることを固定する pin は、抽出そのものが崩れると空振りする。見出しが改名されると抽出が空になり、0 件の assert は常に通る。終端の見出しが改名されると範囲が文書の末尾まで伸び、別の節の行を数えて誤って落ちるか、偶然通る。同じ節に必ずある既存の行を 1 行数える陽性対照を組にすると、抽出が空になる経路も範囲が伸びる経路も fail 側に倒れる。
+
+- 行の一部分だけをパラメータ展開で切り出して検査する pin は、展開の結果が元の行と異なること（区切りが存在すること）も条件に含める。区切りが消えると展開は行全体を返し、検査が空振りする
+- 失敗メッセージに件数しか出さない pin は、見出しの改名と本当の違反が同じ表示になる。原因を区別したいときは、区切りの有無や終端見出しの有無を別の条件として assert する
+
+
 ## 関連ページ
 
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
@@ -198,3 +209,4 @@ rm -f "$result_dir"/*.json
 - [記録先を捨て先へ向ける変異で陽性 assert の識別力を実測したレビュー結果](../../raw/reviews/20260927T095151Z-pr-3248.md)
 - [除外フィルタを floor と共有させる指摘のレビュー結果](../../raw/reviews/20260927T105021Z-pr-3265.md)
 - [陽性対照の変異点が経路ごとに異なることを実測したレビュー結果](../../raw/reviews/20260927T141600Z-pr-3281.md)
+- [範囲抽出の 0 件 pin に陽性対照を組み合わせたレビュー結果](../../raw/reviews/20260927T160629Z-pr-3306.md)

@@ -28,13 +28,16 @@ sources:
     resource: "raw/fixes/20260927T033323Z-pr-3204.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T073655Z-pr-3241.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T160621Z-pr-3298.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T07:38:07Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:10:16Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:27:52Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:35:02Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T07:38:07Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:10:16Z" }
 ---
 
 # agent が人間に渡す復旧コマンドは、人間の実行コンテキストで正しいかを検証する
@@ -108,6 +111,14 @@ verified:
 
 前提を忠実に写したことは、主張が正しい根拠にならない。原因を案内に書くときは、その ERROR を出す分岐に到達する条件をコードで確かめ、到達しない原因は書かない。同じ原因を記述している終了コード契約（スクリプトのヘッダ）や兄弟文書も同時に照合する。片方だけ直すと、文書どうしの食い違いが残る。受入条件の判定が形式（ERROR を分けたか）だけを見て充足とする場合もあり、中身の正しさは実測するレビューでしか捕まらない。
 
+### 共有 helper が出すヒントは、呼び出し側が渡すパスで決まる
+
+復旧ヒントを自分で組み立てず、共有 helper に作業先のパスを渡して helper に印字させる経路がある。helper は受け取ったパスをクオートしてそのまま `git -C <path>` に埋めるので、呼び出し側が相対パスを渡すと、印字されるヒントもすべて相対パスになる。スクリプト本体は冒頭で main checkout へ `cd` しているため、実際の git 操作は相対パスでも正しい場所を指す。ずれるのは、人間が別の cwd から貼り付ける表示だけである。直し方は helper を変えず、呼び出し側で渡すパスを main checkout 起点の絶対パスにすることで、helper が出す push / fetch / rebase / checkout の全ヒントに一度に効く。
+
+- 同じ helper を呼ぶ兄弟スクリプトは、それぞれ自分のパスを渡している。1 本を直しても他は相対パスのまま残るので、helper の呼び出し元を grep して並べる
+- 「この経路の貼り付け用コマンドはすべて `-C` 付き」と言い切るコメントを足すときは、同じ経路の echo 行を grep で洗い、例外が 1 行も無いことを確かめてから書く。漏れた 1 行（detached HEAD 時の checkout ヒント）が受入条件の未達として差し戻された
+
+
 ## 関連ページ
 
 - [Canonical helper bypass: 既存集約 helper を bypass して inline 再実装する](../anti-patterns/canonical-helper-bypass.md)
@@ -127,3 +138,4 @@ verified:
 - [復旧コマンドの実行先を worktree fixture で pin する](../../raw/reviews/20260927T031922Z-pr-3196.md)
 - [復旧手順が選択規則で効かないと判明した fix 結果](../../raw/fixes/20260927T033323Z-pr-3204.md)
 - [ERROR の原因説明が到達条件と食い違っていたレビュー結果](../../raw/reviews/20260927T073655Z-pr-3241.md)
+- [呼び出し側のパスの絶対化で共有 helper のヒントを直し、兄弟スクリプトの残存を検出したレビュー結果](../../raw/reviews/20260927T160621Z-pr-3298.md)

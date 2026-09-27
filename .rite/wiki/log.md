@@ -1,5 +1,10 @@
 # Directory Update Log
 
+## 2026-09-28
+* **Update**: [agent が人間に渡す復旧コマンドは、人間の実行コンテキストで正しいかを検証する](pages/heuristics/recovery-command-verified-in-human-execution-context.md) — raw/reviews/20260927T160621Z-pr-3298.md を統合
+* **Update**: [否定形の assert は前提条件が崩れると fail-silent になる](pages/anti-patterns/negative-assertion-vacuous-without-precondition-floor.md) — raw/reviews/20260927T160629Z-pr-3306.md を統合
+
+
 ## 2026-09-27
 
 * **Create**: [検出器が正規表現を probe するときは実際の評価文脈を再現し、停止を固定する自己テストは理由まで assert する](pages/heuristics/detector-regex-probe-reproduces-evaluation-context.md) — raw/fixes/20260927T115323Z-pr-3277.md, raw/reviews/20260927T141348Z-pr-3277.md を新規ページ化
