@@ -73,6 +73,7 @@
 * **Create**: [複数の書き手が更新する記録の説明は値の和集合に揃え、値の列挙は括弧に入れず別の文にする](pages/heuristics/multi-writer-record-docs-describe-union-and-unnest-enumerations.md) — raw/reviews/20260927T044435Z-pr-3215.md, raw/fixes/20260927T045328Z-pr-3215.md を新規ページ化
 * **Skip**: [20260927T045014Z-pr-3207.md](raw/reviews/20260927T045014Z-pr-3207.md) — 経験則なし: cycle の判定と反映状況の要約のみで、抽出できる規則は同じ PR の fix 結果に含まれる
 * **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=557, broken_refs=0
+* **Update**: [静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く](pages/heuristics/static-pin-semantic-allowlist-not-notation-denylist.md) — raw/fixes/20260927T050634Z-pr-3211.md を統合
 
 ## 2026-09-26
 

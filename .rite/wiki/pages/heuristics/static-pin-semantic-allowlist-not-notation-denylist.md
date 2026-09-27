@@ -27,9 +27,11 @@ sources:
     resource: "raw/fixes/20260927T044935Z-pr-3211.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T050031Z-pr-3211.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T050634Z-pr-3211.md"
 tags: ["test", "static-pin", "allowlist", "mutation", "bash"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T05:10:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T05:30:00Z" }
 verified:
   - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
   - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-12T04:13:09Z" }
@@ -37,6 +39,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-16T03:09:20Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T04:45:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T05:10:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T05:30:00Z" }
 ---
 
 # 静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く
@@ -123,6 +126,12 @@ ERE の交替を denylist に使うときは、各枝が非空で単独でも HE
 
 検出器の網羅性を指摘ごとに広げると、cycle ごとに「次の書式」が見つかり続ける。受入条件の判定者が充足と判断し、残りが実行時帰結を持たない検出網の弱さであれば、帰結クラスの降格で non-blocking に記録して収束させる。検出器の probe が「キー: 値」形だけだと、実設定の主要な形である値なし見出し行だけに一致する式を検査から外す。probe 集合は対象ファイルの実際の行形から選ぶ。抽出文字列から区切り文字を構造的に排除すると、sed / awk へ連結しても注入が起きず、末尾 `\` のような端のケースもエンジン側のエラーで fail-loud に止まる。
 
+### 判定経路を足したら否定側も自己テストに置き、報告範囲は終端として使われる形に限る
+
+検出器に新しい判定経路を足したら、報告してはならない入力もその経路の否定側として自己テストに 1 行置く。報告すべき入力しか置かないと、判定を「常に報告する」方向へ強めても自己テストは通ってしまう。
+
+性質で抽出する検出器では、件数表や全検査に載せる範囲を、範囲の終端として実際に使われている形だけに限る。非対象が大量にある形まで載せると、除外表のほうが守る対象より大きくなる。
+
 ## 関連ページ
 
 - [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](./fixture-mutation-isolates-invariants.md)
@@ -143,3 +152,4 @@ ERE の交替を denylist に使うときは、各枝が非空で単独でも HE
 - [形の定義が狭い抽出が角括弧の後ろに続く書き方を抜かしたレビュー結果](../../raw/reviews/20260927T044215Z-pr-3211.md)
 - [角括弧で始まるリテラル全体を拾い徴候で判定した fix 結果](../../raw/fixes/20260927T044935Z-pr-3211.md)
 - [検出器の probe を実設定の行形から選ぶべきと確認したレビュー結果](../../raw/reviews/20260927T050031Z-pr-3211.md)
+- [判定経路の否定側を自己テストに置き、報告範囲を終端の形に限った fix 結果](../../raw/fixes/20260927T050634Z-pr-3211.md)
