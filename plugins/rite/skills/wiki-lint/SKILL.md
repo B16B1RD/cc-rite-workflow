@@ -798,7 +798,7 @@ echo "wiki_lint_msg_file=${TMPDIR:-/tmp}/rite-wiki-lint-msg-$(date +%s)-${RANDOM
 bash {plugin_root}/hooks/scripts/wiki-lint-log-commit.sh --branch-strategy "{branch_strategy}" --mode "{mode}" --message-file "{wiki_lint_msg_file}"
 ```
 
-helper の契約（SoT は helper docstring）: placeholder 残留（`{branch_strategy}` / `{mode}` / `{wiki_lint_msg_file}`）、メッセージファイルの不在・空、未置換メッセージ（全体が `{...}` または `{log_entry}` を含む）、未知の `branch_strategy` は exit 1 で止まる。commit 失敗は WARNING だけ出して exit 0 で続ける（非ブロッキング）。`rc=1` の WARNING は stdout の `reason=numref-hit` / `numref-error` なら番号参照の拒否（hit 行の番号参照を書き直して再実行）、それ以外は環境または引数エラー（直前の stderr で原因を確認）を示す。helper が見つからないときは bash が非 0 で止まる（WARNING で skip しない）。`rc=6`（sandbox-mask）の WARNING が出たら、Edit と Write はやり直さず、上の 1 文だけを別の Bash tool call で `dangerouslyDisableSandbox: true` を付けて 1 回だけ再実行する（helper はこのときだけメッセージファイルを残す）。
+helper の契約（SoT は helper docstring）: placeholder 残留（`{branch_strategy}` / `{mode}` / `{wiki_lint_msg_file}`）、メッセージファイルの不在・空、未置換メッセージ（全体が `{...}` または `{log_entry}` を含む）、未知の `branch_strategy` は exit 1 で止まる。commit 失敗は WARNING だけ出して exit 0 で続ける（非ブロッキング）。`rc=1` の WARNING は stdout の `reason=numref-hit` なら番号参照の拒否（hit 行の番号参照を書き直して再実行）、`reason=numref-error` なら検査自体の失敗（stderr の `WIKI_INGEST_NUMREF=error; reason=` または ERROR 行の原因を解消して再実行）、それ以外は環境または引数エラー（直前の stderr で原因を確認）を示す。helper が見つからないときは bash が非 0 で止まる（WARNING で skip しない）。`rc=6`（sandbox-mask）の WARNING が出たら、Edit と Write はやり直さず、上の 1 文だけを別の Bash tool call で `dangerouslyDisableSandbox: true` を付けて 1 回だけ再実行する（helper はこのときだけメッセージファイルを残す）。
 rationale: references/rationale.md#log-commit-helper
 
 **書き込み失敗時**: 検出結果は既に stdout に表示済みのため、log.md 追記失敗は WARNING を出して exit 0 で継続する (非ブロッキング契約維持)。

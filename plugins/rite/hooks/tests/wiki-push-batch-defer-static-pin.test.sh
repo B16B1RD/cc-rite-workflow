@@ -198,8 +198,9 @@ for lint_rc in 0 1 2 3 4 5; do
     'reason=sandbox-mask'
 done
 
-# rc=1 is shared by the number-reference refusal and environment / argument errors. The
-# stdout reason= picks the message; a missing or look-alike reason must not claim numref.
+# rc=1 is shared by the number-reference refusal, a failed number-reference check and
+# environment / argument errors. The stdout reason= picks the cause and the remedy; only
+# numref-hit points to hit lines, and a missing or look-alike reason must not claim numref.
 lint_numref_case() {
   local name="$1" stub_out="$2" expected="$3" forbidden="$4" dir="$route_tmp/lint-$1"
   lint_commit_run "$name" 1 "$stub_out"
@@ -210,15 +211,29 @@ lint_numref_case() {
   assert_not_grep "wiki-lint-log-commit.sh: rc=1 $name does not reach the unexpected-rc arm" "$dir/err" '予期しない rc=1 '
   assert_not_grep "wiki-lint-log-commit.sh: rc=1 $name does not show the sandbox retry" "$dir/err" 'reason=sandbox-mask'
 }
+lint_numref_case "numref-hit" "[wiki-worktree-commit] committed=0; branch=wiki; reason=numref-hit" \
+  '番号参照の commit 前検査で拒否.*(rc=1, reason=numref-hit)' '環境または引数エラー'
+assert_grep "wiki-lint-log-commit.sh: rc=1 numref-hit points to the hit lines" \
+  "$route_tmp/lint-numref-hit/err" '対処: 直前の hit 行が指す Wiki の番号参照を書き直して'
+assert_not_grep "wiki-lint-log-commit.sh: rc=1 numref-hit does not claim a failed check" \
+  "$route_tmp/lint-numref-hit/err" '完了できなかった'
+lint_numref_case "numref-error" "[wiki-worktree-commit] committed=0; branch=wiki; reason=numref-error" \
+  '番号参照の commit 前検査が完了できなかった.*(rc=1, reason=numref-error)' '番号参照の commit 前検査で拒否'
+assert_grep "wiki-lint-log-commit.sh: rc=1 numref-error points to the check error reason" \
+  "$route_tmp/lint-numref-error/err" '対処: 直前の stderr（\[CONTEXT\] WIKI_INGEST_NUMREF=error; reason= または ERROR 行）'
+assert_not_grep "wiki-lint-log-commit.sh: rc=1 numref-error does not point to hit lines" \
+  "$route_tmp/lint-numref-error/err" 'hit 行'
 for numref_reason in numref-hit numref-error; do
-  lint_numref_case "$numref_reason" "[wiki-worktree-commit] committed=0; branch=wiki; reason=$numref_reason" \
-    "番号参照の commit 前検査で拒否.*(rc=1, reason=$numref_reason)" '環境または引数エラー'
   assert_grep "wiki-lint-log-commit.sh: rc=1 $numref_reason passes the stub stdout through" \
     "$route_tmp/lint-$numref_reason/out" "reason=$numref_reason\$"
 done
-lint_numref_case "reason-missing" "" '環境または引数エラー' '番号参照の commit 前検査で拒否'
-lint_numref_case "reason-lookalike" "[wiki-worktree-commit] committed=0; branch=wiki; reason=numref-hit-extra" \
-  '環境または引数エラー' '番号参照の commit 前検査で拒否'
+for other_reason in reason-missing reason-lookalike; do
+  case "$other_reason" in
+    reason-missing) other_out="" ;;
+    *) other_out="[wiki-worktree-commit] committed=0; branch=wiki; reason=numref-hit-extra" ;;
+  esac
+  lint_numref_case "$other_reason" "$other_out" '環境または引数エラー' '番号参照の commit 前検査'
+done
 
 # same_branch commits with git add + git-commit-file.sh. Both failures stay non-blocking,
 # name their own step, and remove the message file and the stderr tempfiles.

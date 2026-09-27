@@ -127,9 +127,14 @@ case "$branch_strategy" in
       1)
         commit_reason=$(printf '%s\n' "$commit_out" | sed -n 's/.*reason=\([^;[:space:]]*\).*/\1/p' | tail -1)
         case "$commit_reason" in
-          numref-hit|numref-error)
-            echo "WARNING: wiki-worktree-commit.sh が番号参照の commit 前検査で拒否したため log.md を commit しませんでした (rc=1, reason=$commit_reason)。log.md 追記は非ブロッキングのため継続します" >&2
+          numref-hit)
+            echo "WARNING: wiki-worktree-commit.sh が番号参照の commit 前検査で拒否したため log.md を commit しませんでした (rc=1, reason=numref-hit)。log.md 追記は非ブロッキングのため継続します" >&2
             echo "  対処: 直前の hit 行が指す Wiki の番号参照を書き直してから再実行" >&2
+            ;;
+          numref-error)
+            # The check itself failed (helper missing, staging or gitignore trouble): no hit lines exist.
+            echo "WARNING: wiki-worktree-commit.sh の番号参照の commit 前検査が完了できなかったため log.md を commit しませんでした (rc=1, reason=numref-error)。log.md 追記は非ブロッキングのため継続します" >&2
+            echo "  対処: 直前の stderr（[CONTEXT] WIKI_INGEST_NUMREF=error; reason= または ERROR 行）が示す原因を解消してから再実行" >&2
             ;;
           *)
             echo "WARNING: wiki-worktree-commit.sh が環境または引数エラーで停止したため log.md を commit しませんでした (rc=1)。log.md 追記は非ブロッキングのため継続します" >&2
