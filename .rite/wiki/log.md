@@ -3,6 +3,7 @@
 ## 2026-09-28
 * **Update**: [agent が人間に渡す復旧コマンドは、人間の実行コンテキストで正しいかを検証する](pages/heuristics/recovery-command-verified-in-human-execution-context.md) — raw/reviews/20260927T160621Z-pr-3298.md を統合
 * **Update**: [否定形の assert は前提条件が崩れると fail-silent になる](pages/anti-patterns/negative-assertion-vacuous-without-precondition-floor.md) — raw/reviews/20260927T160629Z-pr-3306.md を統合
+* **lint:clean** — contradictions=0, stale=64, orphans=0, missing_concept=0, unregistered_raw=567, broken_refs=0
 
 
 ## 2026-09-27
