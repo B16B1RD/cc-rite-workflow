@@ -2,6 +2,16 @@
 
 ## 2026-09-27
 
+* **Create**: [手順の直し方は追加と置換を 1 つの動詞でまとめず、操作ごとに動詞を分ける](pages/heuristics/add-and-replace-use-separate-verbs.md) — raw/fixes/20260927T082530Z-pr-3221.md, raw/reviews/20260927T082009Z-pr-3221.md を新規ページ化
+* **Update**: [失敗時の復旧ヒントは呼び出し元の切り詰めと cwd の違いを越えて届く形で書く](pages/heuristics/recovery-hint-survives-caller-truncation-and-cwd.md) — raw/reviews/20260927T082009Z-pr-3221.md を統合
+* **Update**: [エラーメッセージが案内するコマンドは、テストで出力から抽出して逐語実行する](pages/patterns/guidance-command-test-by-verbatim-execution.md) — raw/reviews/20260927T083236Z-pr-3221.md を統合
+* **Update**: [awk -v 代入はバックスラッシュを剥がす — escape 付きパターンを渡した範囲指定 assert は常に PASS する](pages/anti-patterns/awk-v-assignment-strips-backslash-in-range-pattern.md) — raw/reviews/20260927T082826Z-pr-3246.md, raw/fixes/20260927T083553Z-pr-3246.md を統合
+* **Update**: [静的 parity テストには到達性 pin と emit pin を対で足す — 出現数 + 行順だけでは semantics を守れない](pages/patterns/static-parity-pin-needs-reachability-and-emit-pins.md) — raw/reviews/20260927T082826Z-pr-3246.md を統合
+* **Update**: [ゲートの判定文を新しい欠落種別へ広げたら、同じ marker を消費する option 表・テンプレート・例示 literal を同じ commit で一般化する](pages/heuristics/gate-predicate-widening-generalizes-consumer-literals.md) — raw/reviews/20260927T082826Z-pr-3246.md を統合
+* **Update**: [全域で成功する resolver への委譲が既存 fail-fast ガードを silent success 化する](pages/anti-patterns/total-resolver-delegation-defeats-fail-fast-gate.md) — raw/reviews/20260927T082826Z-pr-3246.md を統合
+* **Update**: [1 つの skip ガードの背後に AC の全カバレッジを置かない — permission 非依存の失敗誘発で床を残す](pages/heuristics/skip-guarded-coverage-needs-permission-free-floor.md) — raw/fixes/20260927T083553Z-pr-3246.md を統合
+* **Update**: [否定形の assert は前提条件が崩れると fail-silent になる](pages/anti-patterns/negative-assertion-vacuous-without-precondition-floor.md) — raw/reviews/20260927T084223Z-pr-3248.md を統合
+* **Update**: [変更・削除の掃き出しは旧語彙・置換した条件式・別記法トークンまで広げる](pages/heuristics/change-sweep-spans-old-vocabulary-and-notations.md) — raw/reviews/20260927T084223Z-pr-3248.md を統合
 * **Create**: [長い表セルの競合は両側の word-diff を列挙してから片側へ差分だけを載せる](pages/heuristics/long-table-cell-conflict-word-diff-both-sides.md) — raw/reviews/20260927T051531Z-pr-3215.md を新規ページ化
 * **Skip**: [20260927T051714Z-pr-3211.md](raw/reviews/20260927T051714Z-pr-3211.md) — rite workflow 自体の挙動の記述で既存機構が強制済み
 * **lint:clean** — contradictions=0 (新規ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=559, broken_refs=0

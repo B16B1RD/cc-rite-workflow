@@ -12,12 +12,15 @@ sources:
     resource: "raw/reviews/20260907T131420Z-pr-2608.md"
   - type: "reviews"
     resource: "raw/reviews/20260914T151507Z-pr-2822.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T082826Z-pr-3246.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-15T00:45:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
 verified:
   - { by: "rite-wiki-ingest/gpt-6", at: "2026-09-07T13:24:28Z" }
   - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-15T00:45:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
 ---
 
 # 全域で成功する resolver への委譲が既存 fail-fast ガードを silent success 化する
@@ -61,6 +64,10 @@ verified:
 
 修正は getter に頼らず `flow-state.sh path` のファイルを `[ -f ] && ! jq -e .` で直接検査し、壊れていれば停止すること。テストも helper 差し替えではなく、実 helper の下で state ファイルを不正 JSON に書き換えた fixture にした。「失敗」を helper の exit code で受けるなら、その helper が失敗を default で吸収しないことを先に読む。
 
+### テストで停止経路を通す: 失敗する resolver を持つ tree へ script を複製する
+
+実物の resolver が失敗しない（cwd へ倒れる）と、その値の空チェックに続く停止分岐はテストから到達できない。script を、失敗する resolver を置いた一時 tree へ複製し、git 管理外の cwd から呼ぶと、本物の停止分岐を通せる。停止分岐を stub で模すのではなく、本体の停止分岐をそのまま実行できる。
+
 ## 检出のポイント
 
 - 委譲先 helper の「失敗時挙動」を読む: exit code だけでなく「失敗を成功として degrade する」経路 (fallback 内蔵) の有無
@@ -79,3 +86,4 @@ verified:
 - [fix 結果](../../raw/fixes/20260801T112516Z-pr-2081.md)
 - [レビュー結果](../../raw/reviews/20260907T131420Z-pr-2608.md)
 - [レビュー結果](../../raw/reviews/20260914T151507Z-pr-2822.md)
+- [レビュー結果](../../raw/reviews/20260927T082826Z-pr-3246.md)

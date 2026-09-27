@@ -42,11 +42,14 @@ sources:
     resource: "raw/reviews/20260927T043509Z-pr-3213.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T045935Z-pr-3215.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T084223Z-pr-3248.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T05:10:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5"
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
     at: "2026-09-15T03:40:00Z"
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T04:45:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T05:10:00Z" }
@@ -145,6 +148,10 @@ canonical snippet / 共有 reference が「新規箇所を追加したら usage 
 
 同じ主張の総称的な言い回しは、PR が直した箇所の外（ヘルパーのヘッダコメントや設計理由の節）に残りやすい。揃えるときは grep 語を総称まで広めに取る。前 cycle の推奨（行幅・語の重複）の解消は、行幅の実測値と語の出現回数で確かめると判定が主観に寄らない。
 
+### helper の条件を変えたら、同じ条件を述べる docs を述語で grep する
+
+helper の挙動（例: Issue を起票する条件）を変えると、同じ条件を説明している仕様書や設定リファレンスの記述が旧条件のまま残る。変更した述語を docs 全体で grep し、該当する記述に新しい限定句を足す。同じ失敗経路を案内する文言が helper の stderr と手順書の完了報告表の 2 箇所にある場合も、片方だけが変わって文言がずれやすい。これは複数のレビュアーから挙がった。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -172,3 +179,4 @@ canonical snippet / 共有 reference が「新規箇所を追加したら usage 
 - [人数を数える全消費者に除外を入れた fix 結果](../../raw/fixes/20260915T013143Z-pr-2829.md)
 - [兄弟文書の言い換えた同じ主張が残ったレビュー結果](../../raw/reviews/20260927T043509Z-pr-3213.md)
 - [総称的な言い回しが直した箇所の外に残ったことを確認したレビュー結果](../../raw/reviews/20260927T045935Z-pr-3215.md)
+- [レビュー結果](../../raw/reviews/20260927T084223Z-pr-3248.md)

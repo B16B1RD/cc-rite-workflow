@@ -9,9 +9,13 @@ sources:
     resource: "raw/fixes/20260806T010533Z-pr-2120.md"
   - type: "fixes"
     resource: "raw/fixes/20260806T002741Z-pr-2120.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T083553Z-pr-3246.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T02:49:27Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
 ---
 
 # 1 つの skip ガードの背後に AC の全カバレッジを置かない — permission 非依存の失敗誘発で床を残す
@@ -64,6 +68,12 @@ skip ガード自体は正しい（効かない環境で FAIL させても意味
 
 発見は mutation でしか行えない（各分岐の WARNING を 1 つずつ削除してスイートが green のまま通るかを見る）。本ケースでは 2 reviewer が独立に同じ mutation を実行して同じ穴を報告した。
 
+### 権限に依存しない作り方へ移すと SKIP 分岐ごと消せる
+
+書き込み権限をすべて外す fixture は root で実行すると意味を失い、そのための SKIP 分岐が生まれる。書き込み先に同名のディレクトリを置いて塞ぐ作り方へ変えると、どの実行ユーザーでも失敗が起き、SKIP 分岐そのものを削除できる。穴は分岐を足すのではなく削ることで塞がる。
+
+変更した fixture が本当に停止経路を通しているかは、判定側（通常ファイルかどうかの判定）を緩める変異でテストが FAIL することを確かめてから commit する。
+
 ## 関連ページ
 
 - [プラットフォーム skip を増やすなら「緑の意味」を痩せさせない skip 会計をセットで入れる](./skip-accounting-honest-green.md)
@@ -74,3 +84,4 @@ skip ガード自体は正しい（効かない環境で FAIL させても意味
 
 - [2 本目を EISDIR 方式へ移し床を 2 本確保](../../raw/fixes/20260806T010533Z-pr-2120.md)
 - [ENOTDIR 方式の導入と未 pin 分岐の発見](../../raw/fixes/20260806T002741Z-pr-2120.md)
+- [SKIP 分岐を削除した fix 結果](../../raw/fixes/20260927T083553Z-pr-3246.md)

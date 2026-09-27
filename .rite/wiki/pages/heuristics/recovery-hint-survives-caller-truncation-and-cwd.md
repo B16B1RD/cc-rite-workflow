@@ -5,7 +5,7 @@ domain: "heuristics"
 description: "helper が失敗時に出す復旧ヒントは、呼び出し元が stderr を先頭数行へ切り詰めると人に届かず、helper が cd した先と利用者の cwd が違うと相対パスのヒントが空振りする。ヒントは先頭数行に収め、パスは絶対パスで示す。"
 promote: rite-plugin
 created: "2026-09-27T03:08:04Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:00:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260927T030348Z-pr-3196.md"
@@ -19,12 +19,15 @@ sources:
     resource: "raw/fixes/20260927T074557Z-pr-3241.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T075442Z-pr-3241.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T082009Z-pr-3221.md"
 tags: ["stderr", "hint", "cwd", "worktree"]
 confidence: medium
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:16:22Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T07:40:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:00:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
 ---
 
 # 失敗時の復旧ヒントは呼び出し元の切り詰めと cwd の違いを越えて届く形で書く
@@ -60,6 +63,8 @@ helper が失敗時に出す復旧ヒントは、呼び出し元が stderr を�
 - 途中で読むのをやめる `head` を入力を読み切る別コマンドへ替えると、`head` / `tail` の形だけを拾う既存の静的検査の対象から外れる。読み方を変えるときは、その形を前提にした検査の母集団も確かめる
 - 再実行を禁じる案内には解除条件（どの工程まで終えたら再実行してよいか）を付ける。条件が無いと、利用者はどこから戻ればよいか判断できない
 
+- 戻り先を「中断した表の次の行から続ける」と書くとき、その行が会話の中にしか残らない値（直前の手順が出力した判定値など）を要求するなら、同じ会話で続ける前提を明記する。明記しないと、別セッションで手順書だけを読む人には値の出どころがなく、再開の出口がない
+
 ### 案内の中身を実装から導く
 
 - エラーメッセージの復旧案内は、そのメッセージを出す分岐に到達する条件をコードで追ってから書く。上流で別の分岐（WARNING と既定値で続行）に吸収される原因を案内に書くと、案内どおりに調べても原因に届かない
@@ -79,3 +84,4 @@ helper が失敗時に出す復旧ヒントは、呼び出し元が stderr を�
 - [fix 結果](../../raw/fixes/20260927T074833Z-pr-3221.md)
 - [fix 結果](../../raw/fixes/20260927T074557Z-pr-3241.md)
 - [レビュー結果](../../raw/reviews/20260927T075442Z-pr-3241.md)
+- [レビュー結果](../../raw/reviews/20260927T082009Z-pr-3221.md)

@@ -20,11 +20,14 @@ sources:
     resource: "raw/fixes/20260801T171512Z-pr-2070.md"
   - type: "reviews"
     resource: "raw/reviews/20260913T105832Z-pr-2779.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T082826Z-pr-3246.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T11:10:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T11:10:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
 ---
 
 # 静的 parity テストには到達性 pin と emit pin を対で足す — 出現数 + 行順だけでは semantics を守れない
@@ -98,6 +101,10 @@ helper 抽出（bash を実ファイルに切り出して hermetic にテスト�
 
 分割そのものを安全に保つには、既存テストが「needle を含む最初のブロック」を抽出して実行している前提を壊さないことも要る。後段ブロックの reason 文字列を前段に書くと抽出先が入れ替わるので、各 reason の出現回数と前後順を assert で固定しておく。
 
+### 呼び出しの順序 pin は呼び出し先の名前と引数の組で固定する
+
+手順書が sub-skill を呼ぶ順序を「呼び出しの引数行」の並びで pin すると、呼び出す先（skill 名）が別のものへ書き換わっても引数行は残るため、テストは通り続ける。順序を固定するときは、呼び出し先の名前と引数を 1 組として照合する。
+
 ## 関連ページ
 
 - [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](../anti-patterns/test-pin-protection-theater.md)
@@ -112,3 +119,4 @@ helper 抽出（bash を実ファイルに切り出して hermetic にテスト�
 - [レビュー結果](../../raw/reviews/20260801T170512Z-pr-2070.md)
 - [fix 結果](../../raw/fixes/20260801T171512Z-pr-2070.md)
 - [分割した手順書 bash の配線漏れを連結実行テストが捕まえたレビュー結果](../../raw/reviews/20260913T105832Z-pr-2779.md)
+- [レビュー結果](../../raw/reviews/20260927T082826Z-pr-3246.md)

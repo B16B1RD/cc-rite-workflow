@@ -4,7 +4,7 @@ title: "エラーメッセージが案内するコマンドは、テストで出
 domain: "patterns"
 description: "エラーメッセージが利用者に打たせるコマンドを文字列の部分一致だけで固定すると、案内先 CLI の必須引数が欠けていても検出できない。テストは出力から案内コマンドを抽出してそのまま実行し、文言と実行可能性を 1 つの assert で結ぶ。"
 created: "2026-09-26T14:50:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T15:13:54Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260926T150855Z-pr-3171.md"
@@ -12,11 +12,14 @@ sources:
     resource: "raw/reviews/20260926T142952Z-pr-3171.md"
   - type: "fixes"
     resource: "raw/fixes/20260926T144658Z-pr-3171.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T083236Z-pr-3221.md"
 tags: []
 confidence: high
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T15:13:54Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T14:57:57Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
 ---
 
 # エラーメッセージが案内するコマンドは、テストで出力から抽出して逐語実行する
@@ -51,6 +54,10 @@ verified:
 
 再レビューでは、案内コマンドを逐語実行する形に直したテストが本当に欠陥を捉えるかを、修正を戻した隔離コピーで確かめた。必須引数を外すとテストが案内先 CLI のエラーで落ち、列挙値の分岐を外すと再開案内のテストが「未知の値」表示を観測して落ちた。修正を戻すとテストが落ちることを示せば、テストが空振りしていないと言える。一方、仕様書の列挙表（SoT）への値の追記漏れは文書同士の突合でしか示せず、実測アンカーを持てないため non-blocking として残る。consumer 側の列挙を直しても、SoT 文書は別の経路で拾う必要がある。
 
+### 直し方の文言は、読み違えた操作で検査が拒否するかを実測する
+
+案内が「この値に直してから再実行する」のような直し方を述べるとき、文言を読むだけでは読み違いの余地を測れない。わざと読み違えた直し方で再実行し、後段の検査が拒否する（fail-loud）ことを確かめる。この実測は文言の穴だけでなく、区切り文字のエスケープのような検査側の網の穴も見せる。
+
 ## 関連ページ
 
 - [エラーメッセージ文字列の grep assert は locale 依存で dead assertion 化する](../anti-patterns/locale-dependent-error-message-grep-assertion.md)
@@ -61,3 +68,4 @@ verified:
 - [レビュー結果](../../raw/reviews/20260926T142952Z-pr-3171.md)
 - [fix 結果](../../raw/fixes/20260926T144658Z-pr-3171.md)
 - [レビュー結果（再レビュー）](../../raw/reviews/20260926T150855Z-pr-3171.md)
+- [レビュー結果](../../raw/reviews/20260927T083236Z-pr-3221.md)

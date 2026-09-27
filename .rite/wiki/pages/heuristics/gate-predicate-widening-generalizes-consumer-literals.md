@@ -4,7 +4,7 @@ title: "ゲートの判定文を新しい欠落種別へ広げたら、同じ ma
 domain: "heuristics"
 description: "ワークフロー定義のゲート（例: commit body の段落有無を検査する Root Cause Gate）の判定文を新しい欠落種別へ広げるとき、同じ missing marker で分岐する option 表の bypass literal・commit メッセージ案テンプレート・chat 例示の 3 消費者を同じ commit で一般化しないと、新種別の欠落が bypass 経路で記録されずに通過し、次 cycle の reviewer が消費者ごとの取りこぼしを 1 件ずつ blocking として出す。"
 created: "2026-09-02T18:40:00Z"
-generated: { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-02T18:40:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260902T175856Z-pr-2529.md"
@@ -12,9 +12,13 @@ sources:
     resource: "raw/fixes/20260902T180431Z-pr-2529.md"
   - type: "reviews"
     resource: "raw/reviews/20260902T181813Z-pr-2529.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T082826Z-pr-3246.md"
 tags: [skill-authoring, gate, simplification-first, literal-contract]
 confidence: high
 promote: rite-plugin
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
 ---
 
 # ゲートの判定文を新しい欠落種別へ広げたら、同じ marker を消費する option 表・テンプレート・例示 literal を同じ commit で一般化する
@@ -49,6 +53,10 @@ cycle 1 のレビューで 5 名中 2 名（prompt-engineer / application）が 
 - 静的 pin テストが stderr へ出す診断は、helper の fail 原因（pattern 欠落 / heading drift）を section 抽出の非空で切り分ける。切り分けないと見出し採番変更を「規則文が消えた」と誤断定し、読者を規則文の復元という誤った修正へ誘導する。非空判定は `[ -n "$(awk …)" ]` のコマンド置換で書き、`awk … | grep -q .` を `set -o pipefail` 下で条件式に使わない（64 KiB 超の出力で SIGPIPE により判定が反転する）
 - `mktemp` はリポジトリ既存の template 形式 `mktemp "${TMPDIR:-/tmp}/rite-<name>-XXXXXX"` に揃える。`mktemp -p` は BSD mktemp を走らせる CI leg で失敗しうる
 
+### 逆向き: 契約の SoT に経路の限定を書き足すときも消費側を洗う
+
+判定を広げるときだけでなく、契約の SoT（sentinel 一覧など）に「この sentinel は特定の経路でだけ emit される」という限定を書き足すときも同じ問題が起きる。同じ sentinel を通常ループの分岐として並べている消費側の要約や変数定義が残っていると、SoT と字面が食い違う。限定を足す前に、その sentinel を名指しする消費側の記述をすべて grep で洗い出し、そのうえで限定の範囲を決める。
+
 ## 関連ページ
 
 - [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](../anti-patterns/test-pin-protection-theater.md)
@@ -60,3 +68,4 @@ cycle 1 のレビューで 5 名中 2 名（prompt-engineer / application）が 
 - [レビュー結果](../../raw/reviews/20260902T175856Z-pr-2529.md)
 - [fix 結果](../../raw/fixes/20260902T180431Z-pr-2529.md)
 - [レビュー結果](../../raw/reviews/20260902T181813Z-pr-2529.md)
+- [レビュー結果](../../raw/reviews/20260927T082826Z-pr-3246.md)

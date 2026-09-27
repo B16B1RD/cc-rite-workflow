@@ -15,14 +15,17 @@ sources:
     resource: "raw/reviews/20260926T102245Z-pr-3139.md"
   - type: "reviews"
     resource: "raw/reviews/20260926T131154Z-pr-3156.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T084223Z-pr-3248.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:19:35Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-16T12:58:00Z" }
   - { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T07:10:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T10:30:52Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:19:35Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
 ---
 
 # 否定形の assert は前提条件が崩れると fail-silent になる
@@ -140,6 +143,10 @@ rm -f "$result_dir"/*.json
 
 対処は観測対象を「step 本体に入らなかったこと」へ移すことである。依存の位置に呼び出しを記録する stub を置き、記録ファイルが無いことを assert する。あわせて本体が使う実物の依存も sandbox へ複製し、検査を外した変異で本体が観測点まで進むことを確かめる。これは対処 4 の対照走行と同じ構造で、「本体が観測点まで進める環境」という前提が成り立っていることを先に確かめている。
 
+### 実例 5: 成功系の fixture で「呼ばない」を marker の不在だけで確かめる（レビュー結果）
+
+条件を満たさないときに helper が外部 CLI を「呼ばない」ことを確かめる assert が、成功系の fixture では marker の不在だけを見ていた。成功系の走行では marker はもともと出ないため、呼び出しを止める条件を外しても assert は空振りで通る。観測対象を呼び出しログ（stub が記録する CLI 呼び出しの一覧）に移し、該当する呼び出しが無いことを assert する。対処 4 と同じく、ログに呼び出しが記録される走行を対照として置くと、不在 assert の識別力を確かめられる。
+
 ## 関連ページ
 
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
@@ -153,3 +160,4 @@ rm -f "$result_dir"/*.json
 - [レビュー結果](../../raw/reviews/20260926T070442Z-pr-3120.md)
 - [レビュー結果](../../raw/reviews/20260926T102245Z-pr-3139.md)
 - [レビュー結果](../../raw/reviews/20260926T131154Z-pr-3156.md)
+- [レビュー結果](../../raw/reviews/20260927T084223Z-pr-3248.md)

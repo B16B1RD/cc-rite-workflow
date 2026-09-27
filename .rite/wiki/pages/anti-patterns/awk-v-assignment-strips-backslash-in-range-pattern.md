@@ -9,9 +9,15 @@ sources:
     resource: "raw/fixes/20260808T010121Z-pr-2142.md"
   - type: "reviews"
     resource: "raw/reviews/20260808T013358Z-pr-2142.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T082826Z-pr-3246.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T083553Z-pr-3246.md"
 tags: ["awk", "test", "assertion-strength", "escape", "mutation-testing"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T17:40:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
 ---
 
 # awk -v 代入はバックスラッシュを剥がす — escape 付きパターンを渡した範囲指定 assert は常に PASS する
@@ -55,6 +61,12 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T17:40:00+09:00" }
 
 このファイルには既に二重エスケープの規約コメントが存在していた。**規約コメントは既存 assert の隣にあるだけで、新規に書き足す assert には届かない**。`assert_grep_in_section` に新しい範囲を渡すときは、規約コメントの有無に関わらず start / end の正規表現メタ文字（`\\)` `\\*` `\\[`）を二重エスケープで書き、**pin 対象の行を実際に削除して fail することを確認する**。
 
+### `\.` は任意の 1 文字へ緩む — ENVIRON か `[.]` で渡す
+
+正規表現を `-v` で awk に渡すと、`\.` のバックスラッシュもエスケープ処理で剥がれ、リテラルのドットだったはずの部分が任意の 1 文字に一致する `.` になる。awk は警告を出すが、一致が緩むだけなので assert は落ちず、警告を読まない限り気付かない。
+
+修正では、複数のレビュアーが同じ根因を別々の指摘として挙げていたため、根因単位でまとめ、1 つの修正で全件を解消した。ドットは `[.]` と書く。ブラケット式は grep -E でも awk でも同じ意味になり、エスケープ処理の影響も受けないので、同じパターン変数を共有する他の検査を変えずに済む。
+
 ## 関連ページ
 
 - [節スコープ assert は散文由来の false negative を防ぐ](../patterns/section-scoped-assertion-prevents-narrative-false-negative.md)
@@ -67,3 +79,5 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T17:40:00+09:00" }
 - [fix 結果](../../raw/fixes/20260808T010121Z-pr-2142.md)
 - [レビュー結果](../../raw/reviews/20260808T013358Z-pr-2142.md)
 - [単一エスケープでレンジが EOF まで伸びた再現](../../raw/fixes/20260808T070139Z-pr-2150-cycle2.md)
+- [レビュー結果](../../raw/reviews/20260927T082826Z-pr-3246.md)
+- [`[.]` で根因をまとめて直した fix 結果](../../raw/fixes/20260927T083553Z-pr-3246.md)
