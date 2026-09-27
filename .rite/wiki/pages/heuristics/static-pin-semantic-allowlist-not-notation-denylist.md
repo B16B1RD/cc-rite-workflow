@@ -35,9 +35,11 @@ sources:
     resource: "raw/reviews/20260927T210318Z-pr-3345.md"
   - type: "fixes"
     resource: "raw/fixes/20260927T211246Z-pr-3345.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T212257Z-pr-3345.md"
 tags: ["test", "static-pin", "allowlist", "mutation", "bash"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:14:23Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:32:57Z" }
 verified:
   - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
   - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-12T04:13:09Z" }
@@ -150,6 +152,12 @@ ERE の交替を denylist に使うときは、各枝が非空で単独でも HE
 
 「この節は存在しない」という宣言を引数で渡す検査では、その宣言自体（節が空であること）も検査する。宣言だけを信じると、節が後から追加されたときに宣言が黙って古くなる。
 
+### 否定語の窓を広げるときは、窓を与える否定を命令・助動詞に限る
+
+否定語と対象語の間に数語を許す形へ判定を広げると、見逃しは減るが誤検出が生まれる。状態を表す否定（not found / not initialized）の後に接続詞を挟んで対象語が続く正しい文まで、否定形と数えてしまう。窓は命令や助動詞の否定（do not / must not）だけに与え、素の否定語は直後の語だけを見ると、見逃しと誤検出の両方を抑えられる。
+
+語の窓を `[[:alpha:]]+` で数える判定は、Markdown の強調記号で囲んだ否定語（`**NOT**`）や句読点を挟んだ形を 1 語と数えられず、そこで見逃す。数える前に強調記号を落とすと、この種の書き換えをまとめて閉じられる。
+
 ## 関連ページ
 
 - [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](./fixture-mutation-isolates-invariants.md)
@@ -174,3 +182,4 @@ ERE の交替を denylist に使うときは、各枝が非空で単独でも HE
 - [意味の単位で拾う不在検査の網羅範囲が次の推奨になったレビュー結果](../../raw/reviews/20260927T170027Z-pr-3314.md)
 - [語のリストで判定する否定形検査が同種の書き換えを通すと指摘したレビュー結果](../../raw/reviews/20260927T210318Z-pr-3345.md)
 - [否定語から数語以内まで許して変異で確かめた fix 結果](../../raw/fixes/20260927T211246Z-pr-3345.md)
+- [否定語の窓を広げると状態の否定を誤検出すると指摘したレビュー結果](../../raw/reviews/20260927T212257Z-pr-3345.md)

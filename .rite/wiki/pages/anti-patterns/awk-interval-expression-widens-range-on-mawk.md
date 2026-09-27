@@ -4,14 +4,18 @@ title: "awk の正規表現に区間表現 {m,n} を使うと mawk で範囲が�
 domain: "anti-patterns"
 description: "awk の正規表現で見出しの深さを `/^#{2,4} /` のような区間表現で限定すると、区間表現を解釈しない mawk では式が別の意味になり、節の終端が見つからず切り出し範囲が後続の節まで広がる。節の中身を固定する check は黙って緩む（fail-open）。区間表現ではなく選択表現 `/^(##|###|####) /` で書き、mawk と gawk の両方で同じ範囲を切り出すかを行数で比べる。"
 created: "2026-09-27T21:14:23Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:14:23Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:32:57Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260927T210801Z-pr-3347.md"
   - type: "fixes"
     resource: "raw/fixes/20260927T211229Z-pr-3347.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T211808Z-pr-3347.md"
 tags: ["awk", "mawk", "portability", "regex", "test"]
 confidence: high
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:32:57Z" }
 ---
 
 # awk の正規表現に区間表現 {m,n} を使うと mawk で範囲が黙って広がる
@@ -28,6 +32,8 @@ awk の正規表現で見出しの深さを `/^#{2,4} /` のような区間表�
 
 対処は、区間表現を使わず選択表現 `/^(##|###|####) /` で書くこと。書いたら mawk と gawk の両方で切り出す行数が一致すること、対象の文を節の外へ移すと両方で件数 0 になり check が失敗することを確かめる。
 
+選択表現への置き換えは、既存のテストが BWK awk / mawk の互換性を理由に区間表現を避けると書いている方針とも一致する。差分スコープの再レビューでは 3 名のレビュアーが独立に両 awk で行数を数え、1 段目から 6 段目の見出しと空白なしの `##` を与えて、選択表現の一致範囲が POSIX どおりに解釈した区間表現と同じであることも確かめた。置き換えは意味を変えず、実装差だけを消す。
+
 ## 関連ページ
 
 - [テストヘルパーの awk flip-flop レンジは start pattern をコード行に一意なプレフィックスでアンカーする](../patterns/awk-flip-flop-range-start-pattern-anchoring.md)
@@ -36,3 +42,4 @@ awk の正規表現で見出しの深さを `/^#{2,4} /` のような区間表�
 
 - [mawk で区間表現が効かず範囲が広がることを実測したレビュー結果](../../raw/reviews/20260927T210801Z-pr-3347.md)
 - [選択表現へ置き換えて両 awk で行数を比べた fix 結果](../../raw/fixes/20260927T211229Z-pr-3347.md)
+- [選択表現が区間表現と同じ範囲に一致することを両 awk で確かめた再レビュー結果](../../raw/reviews/20260927T211808Z-pr-3347.md)

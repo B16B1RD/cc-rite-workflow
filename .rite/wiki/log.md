@@ -23,6 +23,8 @@
 * **Update**: [静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く](pages/heuristics/static-pin-semantic-allowlist-not-notation-denylist.md) — raw/reviews/20260927T210318Z-pr-3345.md と raw/fixes/20260927T211246Z-pr-3345.md で補強
 
 * **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=63, orphans=0, missing_concept=0, unregistered_raw=568, broken_refs=0
+* **Update**: [awk の正規表現に区間表現 {m,n} を使うと mawk で範囲が黙って広がる](pages/anti-patterns/awk-interval-expression-widens-range-on-mawk.md) — raw/reviews/20260927T211808Z-pr-3347.md を統合
+* **Update**: [静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く](pages/heuristics/static-pin-semantic-allowlist-not-notation-denylist.md) — raw/reviews/20260927T212257Z-pr-3345.md を統合
 
 ## 2026-09-27
 
