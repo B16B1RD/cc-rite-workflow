@@ -29,13 +29,24 @@ sources:
     resource: "raw/reviews/20260926T112003Z-pr-3153.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T191518Z-pr-3322.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T194735Z-pr-3332.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T195351Z-pr-3332.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T195022Z-pr-3332.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T195115Z-pr-3329.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T193820Z-pr-3329.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:18:40Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:57:39Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-13T05:16:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T11:40:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:18:40Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:57:39Z" }
 ---
 
 # mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる
@@ -105,6 +116,17 @@ survivor が「機械経路は pin されているが**人間向け経路が未 
 
 状態ファイルを会話をまたいで永続化するときは、その作成・消去の全経路を突き合わせる。途中で止まった状態から再開すると上流の収集が空を返して no-op になり、下流に足した後始末の分岐へ到達しないことがある。分岐を足したら、その分岐へ到達する上流の経路をテストで通す（fixture で最終前提を直接置くだけでは到達性を検証できない）。
 
+### 文書の規則を固定する grep pin は、条件と適用範囲まで 1 本の文字列に含める
+
+skill 文書の規則 1 文を `grep -c '<部分文字列>'` で固定するとき、照合文字列が規則の一部の句だけだと、残りの句を書き換える変異は suite を通る。実測では次の 2 つの形で同じことが起きた。
+
+- **主語句だけを照合する**: 指示の向き（述語）を反転しても主語句は残るので、pin は通る。照合文字列を述語まで延ばすと、helper の実挙動と逆向きの指示への書き換えを検出できた（旧 pin は述語の変異で生存し、新 pin は検出した）。
+- **結果の句だけを照合する**: 「WARNING 行があっても status は success のまま、件数と結果パターンも変えない」という規則で、結果側の句だけを固定した assert は、箇条の削除・`success` の反転・件数の変更を検出した。一方で、条件の反転（「WARNING 行がないときに限り」）と適用範囲の限定（「表の全行に適用」を 1 行に限る）の変異は生き残った。
+
+規則は「条件・主語 → 述語・結果 → 適用範囲」の組で意味が決まる。1 句だけを照合する pin は、その句以外を変える書き換えを区別できない。照合文字列は条件の句から結果の句まで連続する範囲に広げ、BRE で特殊文字になる装飾（行頭の `**` 等）を避けて始点を選ぶ。広げた文字列が文書内でちょうど 1 件一致することを確かめてから置く。
+
+複数箇所に分けて書いた規則は、表示する側の規則だけでなく「変えない」側の不変条件も同じ形で固定する。表示側の 2 箇所だけを pin し、状態を変えない側の箇条を pin し忘れる取りこぼしが実際に起きた。
+
 ## 関連ページ
 
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
@@ -122,3 +144,8 @@ survivor が「機械経路は pin されているが**人間向け経路が未 
 - [戻した検査を失敗メッセージの完全一致で固定したレビュー結果](../../raw/reviews/20260913T051120Z-pr-2767.md)
 - [共有化した判定の一呼び出し元が先行ゲートの陰で観測されないことを変異で確かめたレビュー結果](../../raw/reviews/20260926T112003Z-pr-3153.md)
 - [永続状態からの再開で追加した分岐へ到達しない経路を指摘したレビュー結果](../../raw/reviews/20260927T191518Z-pr-3322.md)
+- [主語句だけを照合する pin が述語の反転を通すと指摘したレビュー結果](../../raw/reviews/20260927T194735Z-pr-3332.md)
+- [pin を述語まで延ばした修正を変異で確かめたレビュー結果](../../raw/reviews/20260927T195351Z-pr-3332.md)
+- [pin の照合文字列を述語まで延ばした fix 結果](../../raw/fixes/20260927T195022Z-pr-3332.md)
+- [結果の句だけの pin で条件と適用範囲の変異が生き残ったレビュー結果](../../raw/reviews/20260927T195115Z-pr-3329.md)
+- [「変えない」側の不変条件を pin し忘れた取りこぼしを閉じた fix 結果](../../raw/fixes/20260927T193820Z-pr-3329.md)

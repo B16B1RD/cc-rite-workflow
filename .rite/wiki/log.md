@@ -18,6 +18,16 @@
 * **Update**: [エラーメッセージ文字列の grep assert は locale 依存で dead assertion 化する](pages/anti-patterns/locale-dependent-error-message-grep-assertion.md) — raw/reviews/20260927T193310Z-pr-3330.md を統合
 * **Update**: [新設 logged ガードの上流に同一判定の silent 経路が残ると支配的入力で可視化が無効化される](pages/anti-patterns/upstream-silent-path-defeats-new-logged-guard.md) — raw/fixes/20260927T192507Z-pr-3322.md を統合
 * **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=63, orphans=0, missing_concept=0, unregistered_raw=567, broken_refs=0
+* **Update**: [mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる](pages/heuristics/mutation-axes-beyond-predicate.md) — raw/reviews/20260927T194735Z-pr-3332.md を統合
+* **Update**: [mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる](pages/heuristics/mutation-axes-beyond-predicate.md) — raw/reviews/20260927T195351Z-pr-3332.md を統合
+* **Update**: [mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる](pages/heuristics/mutation-axes-beyond-predicate.md) — raw/fixes/20260927T195022Z-pr-3332.md を統合
+* **Update**: [mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる](pages/heuristics/mutation-axes-beyond-predicate.md) — raw/reviews/20260927T195115Z-pr-3329.md を統合
+* **Update**: [mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる](pages/heuristics/mutation-axes-beyond-predicate.md) — raw/fixes/20260927T193820Z-pr-3329.md を統合
+* **Update**: [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](pages/patterns/absence-pin-base-present-head-absent-single-line.md) — raw/reviews/20260927T193832Z-pr-3331.md を統合
+* **Update**: [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](pages/patterns/absence-pin-base-present-head-absent-single-line.md) — raw/fixes/20260927T194334Z-pr-3331.md を統合
+* **Update**: [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](pages/patterns/absence-pin-base-present-head-absent-single-line.md) — raw/reviews/20260927T195056Z-pr-3331.md を統合
+* **Update**: [手順の再実行列は通常経路の強制層を飛ばさず、再実行の範囲と初回判断の保持を同じ文で書く](pages/patterns/rerun-sequence-states-scope-and-preserved-decisions.md) — raw/reviews/20260927T194017Z-pr-3322.md を統合
+* **Update**: [手順の再実行列は通常経路の強制層を飛ばさず、再実行の範囲と初回判断の保持を同じ文で書く](pages/patterns/rerun-sequence-states-scope-and-preserved-decisions.md) — raw/fixes/20260927T195118Z-pr-3322.md を統合
 
 ## 2026-09-28
 * **Update**: [agent が人間に渡す復旧コマンドは、人間の実行コンテキストで正しいかを検証する](pages/heuristics/recovery-command-verified-in-human-execution-context.md) — raw/reviews/20260927T160621Z-pr-3298.md を統合

@@ -25,9 +25,17 @@ sources:
     resource: "raw/reviews/20260927T103406Z-pr-3262.md"
   - type: "fixes"
     resource: "raw/fixes/20260927T104314Z-pr-3262.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T193832Z-pr-3331.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T194334Z-pr-3331.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T195056Z-pr-3331.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T194735Z-pr-3332.md"
 tags: ["assert-not-grep", "vacuous-pin", "ere-portability", "test-pin", "fixture-scope", "count-zero-assertion"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:47:38Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:57:39Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-28T13:10:00+09:00"
@@ -37,6 +45,8 @@ verified:
     at: "2026-09-14T11:20:00Z"
   - by: "rite-wiki-ingest/claude-opus-5-5"
     at: "2026-09-27T10:47:38Z"
+  - by: "rite-wiki-ingest/claude-opus-5-5"
+    at: "2026-09-27T19:57:39Z"
 ---
 
 # absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する
@@ -110,6 +120,20 @@ mutation の実施者は**主張する側と独立**であることが望まし�
 - fail メッセージには、対象行の抽出件数が 0 / 2 以上 / 1 のどれで落ちたかを出す。行が消えた・重複した・禁止文字列が残ったを CI ログだけで切り分けられる
 - anchor を別の行へ移したら、テスト名も新しい pin 先の振る舞いに合わせる。名前が旧 pin のまま残ると読者が pin の中身を読み違える
 
+### 「A 側にある」の検査には「B 側に無い」を対にする
+
+「案内は A 側に、停止は B 側に」のような対応を固定する検査で、前半（A 側にある）だけを assert すると、B 側にも同じ文を書き足す変異が通る。入れ替え（A から B へ移す）は前半の assert で捕まるが、片側への重複は捕まらない。両者は別の assert になる。
+
+- **停止語の有無を部分一致で数える検査は否定文に一致する**: 「do not stop」は停止語を含むが意味は続行である。停止を固定するときは、同じ範囲に続行語が現れないことも合わせて assert する。ただし続行語を 1 語だけ見る検査は、別の続行語（proceed など）への書き換えを通す。語を 1 つずつ足して追いかけるのではなく、検査のコメントに実際に守れている範囲を書く。
+- **B 側の表し方がスキルごとに違うときは、各表現に同じ不在検査を当てる**: B 側を段落見出しで切り出して検査すると、B 側を段落ではなく表の行で表すスキルでは切り出し結果が空になり、検査が空文字列を相手に pass する。段落と表の行の両方に不在検査を当てる。
+
+### 区間の切り出しは行頭の見出しで始め、終わりを一般形にして飲み込みを数で確かめる
+
+検査対象の区間を awk で切り出すとき、境界の決め方が検査の正しさを左右する。
+
+- **境界は行頭の見出しだけで決める**: 「見出しの文字列を含む行」で区切ると、同じ文字列を含む表の行が境界になり、区間が途中で切れる。
+- **終わりは次の見出しの一般形にする**: 終わりを特定の見出し文字列に固定すると、その見出しの表記が揺れたときに区間が黙って広がり、次の節まで検査対象に入る。終わりは「次の同レベル見出し」の一般形にし、切り出した区間が次節の本体（コードフェンス等）を飲み込んでいないことを件数で確かめる。飲み込んでいれば失敗させると、表記揺れが fail-loud になる。
+
 ## 関連ページ
 
 - [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](../anti-patterns/test-pin-protection-theater.md)
@@ -130,3 +154,7 @@ mutation の実施者は**主張する側と独立**であることが望まし�
 - [CR 付き見出しを数えない重複検査を指摘したレビュー結果](../../raw/reviews/20260914T110010Z-pr-2816.md)
 - [経路記述を削った箇所に負の pin が無い指摘](../../raw/reviews/20260927T103406Z-pr-3262.md)
 - [負の pin の失敗理由を件数で切り分けた修正](../../raw/fixes/20260927T104314Z-pr-3262.md)
+- [対応の検査の片側だけの assert と否定文の停止語を指摘したレビュー結果](../../raw/reviews/20260927T193832Z-pr-3331.md)
+- [反対側の不在と続行語の不在を assert に足した fix 結果](../../raw/fixes/20260927T194334Z-pr-3331.md)
+- [表の行で表す B 側に段落の不在検査が空振りすると指摘したレビュー結果](../../raw/reviews/20260927T195056Z-pr-3331.md)
+- [区間の終わりを固定見出しで決めると表記揺れで黙って広がると指摘したレビュー結果](../../raw/reviews/20260927T194735Z-pr-3332.md)
