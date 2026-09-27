@@ -2,6 +2,8 @@
 
 ## 2026-09-27
 
+* **Create**: [長い表セルの競合は両側の word-diff を列挙してから片側へ差分だけを載せる](pages/heuristics/long-table-cell-conflict-word-diff-both-sides.md) — raw/reviews/20260927T051531Z-pr-3215.md を新規ページ化
+* **Skip**: [20260927T051714Z-pr-3211.md](raw/reviews/20260927T051714Z-pr-3211.md) — rite workflow 自体の挙動の記述で既存機構が強制済み
 * **Update**: [Test が early exit 経路で silent pass する false-positive](pages/anti-patterns/test-false-positive-early-exit.md) — raw/reviews/20260927T045944Z-pr-3218.md を統合
 * **Update**: [変更・削除の掃き出しは旧語彙・置換した条件式・別記法トークンまで広げる](pages/heuristics/change-sweep-spans-old-vocabulary-and-notations.md) — raw/reviews/20260927T045935Z-pr-3215.md を統合
 * **Update**: [静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く](pages/heuristics/static-pin-semantic-allowlist-not-notation-denylist.md) — raw/reviews/20260927T050031Z-pr-3211.md を統合

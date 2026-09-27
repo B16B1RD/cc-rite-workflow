@@ -567,9 +567,10 @@ okf_version: "0.2"
 | [論理式を日本語へ書き起こすときは、正本の括弧構造を文章でも括弧で保つ](pages/heuristics/logical-formula-prose-keeps-grouping-parentheses.md) | heuristics | 「A、または B で、C なら」のような書き起こしは、C が B だけに掛かるのか A と B の両方に掛かるのかが一意に決まらない。正本が (A OR B) AND C なら、文章でも「(A、または B) かつ C」と括弧を残して係り先を固定する。 | 2026-09-27T04:58:44Z | medium |
 | [base 取り込みの競合は base 側の正本を基準にし、PR の変更意図だけを載せ直す](pages/heuristics/base-intake-conflict-reapply-pr-intent-on-base-canonical.md) | heuristics | base を取り込んだとき同じ表の行を base と PR の両側が書き換えていたら、base 側の正本の式をそのまま採り、PR が変えたかった点だけを差し替えて解消する。PR の base に対する差分が最小になり、再レビューが確かめる面も最小になる。 | 2026-09-27T04:21:02Z | medium |
 | [複数の書き手が更新する記録の説明は値の和集合に揃え、値の列挙は括弧に入れず別の文にする](pages/heuristics/multi-writer-record-docs-describe-union-and-unnest-enumerations.md) | heuristics | 同じ記録を複数の書き手が更新するとき、記録全体を語る総称的な説明が扱う値は書き手ごとの値の和集合になる。書き手単位の説明と総称的な説明を区別して後者だけを和集合へ揃え、値の列挙は括弧の入れ子にせず別の文に出す。 | 2026-09-27T04:58:44Z | medium |
+| [長い表セルの競合は両側の word-diff を列挙してから片側へ差分だけを載せる](pages/heuristics/long-table-cell-conflict-word-diff-both-sides.md) | heuristics | 1 行が長い表セル同士の競合は、行単位の目視では片側の変更を取りこぼしやすい。両側の変更を word-diff で列挙し、片側の行へもう片側の差分だけを適用し、解消後に両親それぞれとの word-diff が相手側の変更だけになることで確かめる。 | 2026-09-27T05:21:39Z | medium |
 ## 統計
 
-- 総ページ数: 557
-- ドメイン別: patterns=125, heuristics=257, anti-patterns=175
-- 最終更新: 2026-09-27T05:30:00Z
+- 総ページ数: 558
+- ドメイン別: patterns=125, heuristics=258, anti-patterns=175
+- 最終更新: 2026-09-27T05:21:39Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
