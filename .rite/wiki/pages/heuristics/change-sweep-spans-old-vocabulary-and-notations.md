@@ -40,13 +40,16 @@ sources:
     resource: "raw/fixes/20260915T013143Z-pr-2829.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T043509Z-pr-3213.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T045935Z-pr-3215.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T04:45:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T05:10:00Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5"
     at: "2026-09-15T03:40:00Z"
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T04:45:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T05:10:00Z" }
 ---
 
 # 変更・削除の掃き出しは旧語彙・置換した条件式・別記法トークンまで広げる
@@ -138,6 +141,10 @@ canonical snippet / 共有 reference が「新規箇所を追加したら usage 
 
 実装が読まない置き場所を文書から消すとき、同じ主張を別の言い回しで書いた兄弟文書（仕様書の要約節など）が残る。完了確認の grep をファイルパス表記（例: ディレクトリ名 + ファイル名）だけで書くと、「ディレクトリ名 + directory」のような言い換えを取りこぼし、修正後の 2 文書が互いに矛盾する。完了確認はディレクトリ名単独や言い換えの語（directory / ディレクトリ）も含めて探し、ヒットを 1 件ずつ主張として読む。
 
+### 総称的な言い回しは直した箇所の外にも残る
+
+同じ主張の総称的な言い回しは、PR が直した箇所の外（ヘルパーのヘッダコメントや設計理由の節）に残りやすい。揃えるときは grep 語を総称まで広めに取る。前 cycle の推奨（行幅・語の重複）の解消は、行幅の実測値と語の出現回数で確かめると判定が主観に寄らない。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -164,3 +171,4 @@ canonical snippet / 共有 reference が「新規箇所を追加したら usage 
 - [契約テストの pin を追従させた fix 結果](../../raw/fixes/20260915T021146Z-pr-2829.md)
 - [人数を数える全消費者に除外を入れた fix 結果](../../raw/fixes/20260915T013143Z-pr-2829.md)
 - [兄弟文書の言い換えた同じ主張が残ったレビュー結果](../../raw/reviews/20260927T043509Z-pr-3213.md)
+- [総称的な言い回しが直した箇所の外に残ったことを確認したレビュー結果](../../raw/reviews/20260927T045935Z-pr-3215.md)

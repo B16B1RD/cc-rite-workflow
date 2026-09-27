@@ -25,15 +25,18 @@ sources:
     resource: "raw/reviews/20260927T044215Z-pr-3211.md"
   - type: "fixes"
     resource: "raw/fixes/20260927T044935Z-pr-3211.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T050031Z-pr-3211.md"
 tags: ["test", "static-pin", "allowlist", "mutation", "bash"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T04:58:44Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T05:10:00Z" }
 verified:
   - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
   - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-12T04:13:09Z" }
   - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-14T14:50:00Z" }
   - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-16T03:09:20Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T04:45:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T05:10:00Z" }
 ---
 
 # 静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く
@@ -116,6 +119,10 @@ ERE の交替を denylist に使うときは、各枝が非空で単独でも HE
 
 抽出した文字列をそのまま sed のアドレスに渡す検出器は、抽出側で区切り文字（`/`）を許さない。許すと断片が区切りを越え、GNU sed の `e` のような別コマンドとして解釈されうる。自己テストの fixture で使う後続キーは、範囲開始キーと同名になり得ない名前にする。同名だと範囲が再開して誤検出になる。
 
+### probe 集合は対象ファイルの実際の行形から選ぶ
+
+検出器の網羅性を指摘ごとに広げると、cycle ごとに「次の書式」が見つかり続ける。受入条件の判定者が充足と判断し、残りが実行時帰結を持たない検出網の弱さであれば、帰結クラスの降格で non-blocking に記録して収束させる。検出器の probe が「キー: 値」形だけだと、実設定の主要な形である値なし見出し行だけに一致する式を検査から外す。probe 集合は対象ファイルの実際の行形から選ぶ。抽出文字列から区切り文字を構造的に排除すると、sed / awk へ連結しても注入が起きず、末尾 `\` のような端のケースもエンジン側のエラーで fail-loud に止まる。
+
 ## 関連ページ
 
 - [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](./fixture-mutation-isolates-invariants.md)
@@ -135,3 +142,4 @@ ERE の交替を denylist に使うときは、各枝が非空で単独でも HE
 - [性質そのもので拾う 1 形へ置き換えた fix 結果](../../raw/fixes/20260927T042427Z-pr-3211.md)
 - [形の定義が狭い抽出が角括弧の後ろに続く書き方を抜かしたレビュー結果](../../raw/reviews/20260927T044215Z-pr-3211.md)
 - [角括弧で始まるリテラル全体を拾い徴候で判定した fix 結果](../../raw/fixes/20260927T044935Z-pr-3211.md)
+- [検出器の probe を実設定の行形から選ぶべきと確認したレビュー結果](../../raw/reviews/20260927T050031Z-pr-3211.md)

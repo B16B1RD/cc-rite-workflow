@@ -17,9 +17,13 @@ sources:
     resource: "raw/reviews/20260421T045816Z-pr-636.md"
   - type: "fixes"
     resource: "raw/fixes/20260421T050914Z-pr-636.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T045944Z-pr-3218.md"
 tags: ["silent-false-pass", "fault-injection", "test-coverage"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T05:10:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T05:10:00Z" }
 ---
 
 # Test が early exit 経路で silent pass する false-positive
@@ -106,6 +110,15 @@ test fixture コメントで `file.sh L247-250` 形式の行番号参照を埋�
 - **semantic anchor**: "error_count atomic write 後 mv 失敗 path" のような意味論的参照
 - **trailer convention**: `(line-number 参照を避ける理由は cycle 8 F-05 参照)` 形式の trailer を付記してリポジトリ内 convention を明示（cycle 5 で確立）
 
+### sandbox の欠落による早期停止と、陰性 assert の陽性対照
+
+複製した入口スクリプトを sandbox で走らせるテストでは、入口が呼ぶ依存（状態 helper や source する lib）が sandbox に無いと、検査を外しても本体は依存の欠落で手前に止まる。「ファイルを作らない」「出力しない」のような陰性 assert は、止まった理由を区別できないので常に緑になる。
+
+- 観測点を「本体に入ったこと」そのものへ移す。本体が最初に呼ぶ外部コマンドを、呼ばれたら記録ファイルに追記するスタブにし、記録が無いことを assert する。その手前で読み込まれ、無ければ停止する依存は実物を置く。
+- 陰性 assert は「正しい入力なら本体が記録点まで届く」前提に依存する。同じ sandbox に有効な入力を渡して記録ができることを確かめる陽性対照を置くと、依存が増えて空振りに戻ったときに検出できる。
+- sandbox に部品を置く理由をコメントに書くときは、入口ごとの実際の呼び出し順に照らして確かめる。入口によって依存の読み込みと最初の外部呼び出しの順序が違うことがあり、欠けても縮退するだけで止まらない依存もある。
+- 空振りの assert を消すときは、その assert のためだけに置いた準備行（fixture）も一緒に掃き出す。
+
 ## 関連ページ
 
 - [累積対策 PR の review-fix loop で fix 自体が drift を導入する](./fix-induced-drift-in-cumulative-defense.md)
@@ -120,3 +133,4 @@ test fixture コメントで `file.sh L247-250` 形式の行番号参照を埋�
 - [same-cycle 横展開契約](../../raw/fixes/20260419T232739Z-pr-608-cycle8.md)
 - [silent-false-pass 3 条件 + line-number reference convention](../../raw/reviews/20260421T045816Z-pr-636.md)
 - [silent-false-pass + PATH override fault injection + set -e subshell rc capture](../../raw/fixes/20260421T050914Z-pr-636.md)
+- [sandbox の欠落で本体手前に止まる陰性 assert を呼び出し記録に置き換えたレビュー結果](../../raw/reviews/20260927T045944Z-pr-3218.md)
