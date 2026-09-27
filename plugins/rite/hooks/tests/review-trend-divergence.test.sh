@@ -962,8 +962,14 @@ assert_not_grep "非退行: helper の lost= 算出を iterate 側で上書き�
 echo "--- iterate run 開始点 pin の pr_number guard (消費側契約) ---"
 
 PG="$SANDBOX/pin-guard"
-mkdir -p "$PG/plugin/hooks" "$PG/plugin/scripts"
+mkdir -p "$PG/plugin/hooks/scripts/lib" "$PG/plugin/scripts"
 printf '#!/bin/bash\nprintf "%%s\\n" "$PIN_STATE_ROOT"\n' > "$PG/plugin/hooks/state-path-resolve.sh"
+# step 本体が最初に呼ぶ外部コマンドは flow-state.sh。呼ばれたら calls に記録するスタブと、その手前で
+# source される実物の helper を置く。欠けていると引数検査を外しても step 本体が sandbox の欠落で止まり、
+# 「step 本体に入らない」ことを観測できない
+printf '#!/bin/bash\nprintf "%%s\\n" "$*" >> "$(dirname "$0")/calls"\nexit 0\n' > "$PG/plugin/hooks/flow-state.sh"
+cp "$SCRIPT_DIR/../control-char-neutralize.sh" "$PG/plugin/hooks/"
+cp "$SCRIPT_DIR/../scripts/lib/context-marker.sh" "$PG/plugin/hooks/scripts/lib/"
 cp "$ITERATE_STEP" "$PG/plugin/scripts/iterate-step.sh"
 
 # fence_of <function>: iterate-step.sh の step 関数本体（`<function>() {` 行と閉じ `}` を除く）
@@ -1040,15 +1046,14 @@ for bad in '{pr_number}' '' '12a' '#12' ' 12' '-1'; do
   esac
   for sub in init-cycle cycle-gate; do
     r=$(pin_state_root "bad-$sub")
-    printf 'stale.json\n' > "$r/.rite/state/review-run-since-{pr_number}.txt"
-    ls "$r/.rite/state" | LC_ALL=C sort > "$PG/state-before"
+    rm -f "$PG/plugin/hooks/calls"
     PIN_STATE_ROOT="$r" bash "$PG/plugin/scripts/iterate-step.sh" "$sub" --pr "$bad" --issue 1 --branch b \
       >"$PG/out" 2>"$PG/err"; rc=$?
     assert "$sub [$bad]: exit 2 で止まる" "2" "$rc"
     assert_grep "$sub [$bad]: 止めた検査の ERROR を出す" "$PG/err" "^ERROR: iterate-step.sh: .*$gate"
-    assert "$sub [$bad]: marker を出さない" "0" "$(grep -c . "$PG/out")"
-    assert "$sub [$bad]: marker を消さず pin を作らない" "same" \
-      "$(ls "$r/.rite/state" | LC_ALL=C sort | cmp -s - "$PG/state-before" && echo same || echo changed)"
+    # pin と marker に触れるのは step 本体だけなので、本体に入らなければファイルにも触れない
+    assert "$sub [$bad]: step 本体に入らない (flow-state.sh を呼ばない)" "absent" \
+      "$([ -e "$PG/plugin/hooks/calls" ] && echo present || echo absent)"
   done
 done
 
