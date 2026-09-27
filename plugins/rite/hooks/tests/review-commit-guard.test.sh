@@ -892,7 +892,15 @@ for closed_targets in (False, True):
                             'function f { cd ' + other + '; }; f; git commit -m x',
                             'time { cd ' + other + '; }; git commit -m x',
                             'time if false; then :; cd ' + other + '; fi; git commit -m x',
-                            'coproc { true; cd ' + other + '; }; git commit -m x'):
+                            'coproc { true; cd ' + other + '; }; git commit -m x',
+                            'true | cd ' + other + ' && git commit -m x',
+                            'true |& cd ' + other + ' && git commit -m x',
+                            'while false; do true; cd ' + other + '; done; git commit -m x',
+                            'until true; do true; cd ' + other + '; done; git commit -m x',
+                            'for i in; do true; cd ' + other + '; done; git commit -m x',
+                            'select i in; do true; cd ' + other + '; done; git commit -m x',
+                            'case a in b) cd ' + other + ';; esac; git commit -m x',
+                            'coproc cd ' + other + '; git commit -m x'):
                 hook(command, reason='target is dynamic')
             # An absolute cd that always runs makes the target known again.
             hook('false && cd ' + other + '; cd ' + str(root) + '; git commit -m x', reason='fix plan record missing')
