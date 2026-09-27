@@ -14,7 +14,8 @@
 #   - a Python lookahead `(?=^[...]|...)` or `(?=^[...]<rest>|...)`, where
 #     <rest> holds neither `|` nor `)`. A <rest> with a group that holds `|`
 #     (`(?: |$)`) is cut at that `|`, and the detector stops on the broken
-#     regex instead of checking it
+#     regex instead of checking it, with one line that names the file, line
+#     and pattern
 # NOT_TERMINATORS lists the literals of that shape that do not end a section.
 #
 # Each terminator is evaluated by the engine that runs it (sed for lines that
@@ -148,7 +149,8 @@ def run(cmd, text):
 def matches(engine, end, line):
     if engine == "python":
         # Python readers search the whole text with re.M, so every line they
-        # see is followed by a newline; `\s` and `$` depend on it.
+        # see is followed by a newline, which `\s` after the key can match.
+        # `$` matches at the end of the line with or without it.
         return re.match(end, line + "\n", re.M) is not None
     if engine == "sed":
         return run(["sed", "-n", "/" + end + "/p"], line + "\n") != ""
@@ -181,6 +183,11 @@ for d, dirs, files in os.walk(root):
                     seen.add(key)
                     continue
                 where = f"{rel}:{n} [{engine}] {end}"
+                if engine == "python":
+                    try:
+                        re.compile(end, re.M)
+                    except re.error as e:
+                        raise SystemExit(f"{where}: broken regex: {e}")
                 if not re.fullmatch(BRACKET, end):
                     hits = [matches(engine, end, probe) for probe in ENDS + HEADINGS]
                     if any(hits):
@@ -289,8 +296,9 @@ assert "python lookahead that matches only letter-led heading lines is reported 
 assert "sed range leak is observed on the fixture" "1" "$(count_of "old.sh:1 \[sed\].*range reads")"
 
 # A grouped `|` cuts the extracted lookahead into a broken regex. The detector
-# must stop on it rather than pass it; a separate tree keeps the stop from
-# hiding the reports asserted above.
+# must stop on it rather than pass it, with one line that names the file, line,
+# pattern and why the regex is broken instead of a traceback; a separate tree
+# keeps the stop from hiding the reports asserted above.
 BROKEN="$(make_plain_sandbox)" || { echo "ERROR: make_plain_sandbox failed" >&2; exit 1; }
 [ -n "$BROKEN" ] || { echo "ERROR: make_plain_sandbox returned an empty path" >&2; exit 1; }
 trap 'rm -rf "$SANDBOX" "$BROKEN"' EXIT
@@ -298,9 +306,12 @@ mkdir -p "$BROKEN/scripts"
 cat > "$BROKEN/scripts/grouped.py" <<'EOF'
 section = re.search(r"^safety:\s*\n(.*?)(?=^[a-zA-Z_]+:(?: |$)|\Z)", text, re.M | re.S)
 EOF
-check_tree "$BROKEN" self >/dev/null 2>&1
+broken_out=$(check_tree "$BROKEN" self 2>&1)
 broken_rc=$?
 assert "detector stops on a lookahead cut at a grouped |" "1" "$([ "$broken_rc" -ne 0 ] && echo 1 || echo 0)"
+assert "stop names the file, line, pattern and the broken regex" "1" \
+  "$(printf '%s\n' "$broken_out" | grep -cF -- 'scripts/grouped.py:1 [python] ^[a-zA-Z_]+:(?: : broken regex: ')"
+assert "stop is one line, not a traceback" "1" "$(printf '%s\n' "$broken_out" | wc -l | tr -d ' ')"
 
 # The table checks run only against the plugin tree, so a sandbox checked as
 # "real" must report the missing files and the stale table entries.
