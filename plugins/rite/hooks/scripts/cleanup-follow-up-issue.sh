@@ -75,7 +75,8 @@
 # 判定済み記録: created / no_findings / all_resolved / all_issued / already_exists で終えるとき、
 #   `.rite/state/follow-up-judged-<pr>.txt` に `pr=<pr>` の 1 行を書く。cleanup の後段が JSON を
 #   片付けた後の再実行で、JSON 不在を no_json と区別するため。
-#   preview / failed / skipped の他の reason では書かない。
+#   --preview-body 指定時も上記の skip 系 (no_findings / all_resolved / all_issued / already_exists) では書く。
+#   result=preview・failed・skipped の他の reason では書かない。
 #   書けなくても結果は変えず WARNING を出す。影響は再実行の報告が no_json に戻ることだけ。
 #   [CONTEXT] FOLLOW_UP_DEFERRED=unavailable; reason=issue_body_api; pr=<n>
 #     元 Issue の本文を取得できず先送り欠陥を読めなかった (指摘側の起票は続ける)

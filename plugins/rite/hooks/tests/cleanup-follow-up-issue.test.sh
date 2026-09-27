@@ -81,7 +81,7 @@
 #
 # Coverage (起票前の確認):
 #   T-46 --preview-body は起票せず、起票時と同じ本文を書き出す
-#   T-47 --preview-body でも 0 件・全件解消・既存ありは従来の skip で終わる
+#   T-47 --preview-body でも 0 件・全件解消・既存ありは従来の skip で終わり、判定済み記録を書く
 #   T-48 preview 本文を書き出せなければ起票も preview もしない
 #   T-49 SKILL 6.0.C の確認判定（batch --merge が今の Issue を処理中のときだけ確認しない）と
 #        helper 呼び出しの配線、完了報告の declined / preview 行。壊れた・空・未置換の
@@ -129,6 +129,7 @@
 #   T-71 トークンと Section 9 の境界が pr-review 7.4.3 と helper で一致する
 #   T-72 cleanup SKILL.md の完了報告の配線
 #   T-77 判定後に purge が JSON を片付けた PR の再実行は already_processed で skip し no_json を出さない
+#        (--preview-body 付きの呼び出しでも同じ)
 #   T-78 判定済み記録の内容が不一致・読めないときは no_json に倒す
 #   T-79 判定済み記録があっても先送り欠陥・archive/ の JSON がある経路は従来どおり
 #   T-80 判定できなかった PR は記録を書かず再実行も no_json、SKILL.md は already_processed を x 相当に置く
@@ -1547,7 +1548,7 @@ assert_grep "T-46 stdout summary" "$OUT" 'result=preview; count=2; pr=9'
 assert "T-46 起票しない" "0" "$(create_count)"
 assert_not_grep "T-46 label を作らない" "$GH_LOG" 'label create'
 assert "T-46 元 Issue へコメントしない" "0" "$(wc -l < "$GH_COMMENT_LOG" | tr -d ' ')"
-assert "T-46 preview では判定済み記録を書かない" "no" "$([ -e "$r/.rite/state/follow-up-judged-9.txt" ] && echo yes || echo no)"
+assert "T-46 result=preview では判定済み記録を書かない" "no" "$([ -e "$r/.rite/state/follow-up-judged-9.txt" ] && echo yes || echo no)"
 # 同じ入力で起票すると、プレビューと同じ本文で作られる
 run_target "$r"
 assert_grep "T-46 通常実行は起票する" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
@@ -1565,6 +1566,7 @@ put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[]}'
 run_target "$r" --preview-body "$TMP_ROOT/preview-t47.md"
 assert_grep "T-47 0 件は no_findings" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=no_findings; pr=9'
 assert_not_grep "T-47 preview marker を出さない" "$ERR" 'FOLLOW_UP_ISSUE=preview'
+assert "T-47 no_findings でも preview 付きで判定済み記録を書く" "pr=9" "$(cat "$r/.rite/state/follow-up-judged-9.txt" 2>/dev/null)"
 reset_stubs
 r=$(new_root t47b)
 put_json "$r" "9-20260101120000.json" "$FINDING_JSON"
@@ -1572,6 +1574,7 @@ printf '%s\n' '[[{"number":77,"body":"<!-- [rite-follow-up-from-pr:9] -->\nbody"
 run_target "$r" --preview-body "$TMP_ROOT/preview-t47b.md"
 assert_grep "T-47 既存は already_exists" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=already_exists; issue=77; pr=9'
 assert_not_grep "T-47 既存でも preview を出さない" "$ERR" 'FOLLOW_UP_ISSUE=preview'
+assert "T-47 already_exists でも preview 付きで判定済み記録を書く" "pr=9" "$(cat "$r/.rite/state/follow-up-judged-9.txt" 2>/dev/null)"
 reset_stubs
 r=$(new_root t47c)
 put_json "$r" "9-20260101120000.json" "$FINDING_JSON"
@@ -1579,6 +1582,7 @@ run_target "$r" --exclude-ids "9-20260101120000.json#F-01" --preview-body "$TMP_
 assert_grep "T-47 全件解消は all_resolved" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=all_resolved; pr=9'
 assert_not_grep "T-47 全件解消でも preview を出さない" "$ERR" 'FOLLOW_UP_ISSUE=preview'
 assert "T-47 全件解消は起票しない" "0" "$(create_count)"
+assert "T-47 all_resolved でも preview 付きで判定済み記録を書く" "pr=9" "$(cat "$r/.rite/state/follow-up-judged-9.txt" 2>/dev/null)"
 
 echo "--- T-48: preview 本文を書き出せなければ起票も preview もしない ---"
 reset_stubs
@@ -2283,20 +2287,31 @@ PURGE="$SCRIPT_DIR/../scripts/cleanup-pr-state-purge.sh"
 JUDGED_RECORD_REL=".rite/state/follow-up-judged-9.txt"
 
 echo "--- T-77: 判定後に purge が JSON を片付けた PR の再実行は already_processed ---"
-reset_stubs
-r=$(new_root t77)
-put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[]}'
-run_target "$r"
-assert_grep "T-77 1 回目は no_findings" "$ERR" 'reason=no_findings; pr=9'
-assert "T-77 1 回目で判定済み記録を書く" "pr=9" "$(cat "$r/$JUDGED_RECORD_REL" 2>/dev/null)"
-bash "$PURGE" --pr 9 --state-root "$r" >/dev/null 2>&1
-assert "T-77 purge で JSON が片付く" "no" "$([ -e "$r/.rite/review-results/9-20260101120000.json" ] && echo yes || echo no)"
-assert "T-77 purge は判定済み記録を消さない" "yes" "$([ -f "$r/$JUDGED_RECORD_REL" ] && echo yes || echo no)"
-run_target "$r"
-assert "T-77 exit 0" "0" "$RC"
-assert_grep "T-77 already_processed で skip" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=already_processed; pr=9$'
-assert_not_grep "T-77 no_json を出さない" "$ERR" 'reason=no_json'
-assert "T-77 起票しない" "0" "$(create_count)"
+# preview は手動 cleanup の既定経路 (ask で --preview-body を付けて呼ぶ)
+for t77_variant in plain preview; do
+  reset_stubs
+  r=$(new_root "t77-$t77_variant")
+  t77_args=()
+  [ "$t77_variant" = preview ] && t77_args=(--preview-body "$TMP_ROOT/preview-t77.md")
+  if [ "$t77_variant" = preview ]; then
+    assert "T-77 $t77_variant: --preview-body を渡す" "--preview-body $TMP_ROOT/preview-t77.md" "${t77_args[*]}"
+  else
+    assert "T-77 $t77_variant: 追加引数なし" "0" "${#t77_args[@]}"
+  fi
+  put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[]}'
+  assert "T-77 $t77_variant: 前提: 判定済み記録が無い" "no" "$([ -e "$r/$JUDGED_RECORD_REL" ] && echo yes || echo no)"
+  run_target "$r" ${t77_args[@]+"${t77_args[@]}"}
+  assert_grep "T-77 $t77_variant: 1 回目は no_findings" "$ERR" 'reason=no_findings; pr=9'
+  assert "T-77 $t77_variant: 1 回目で判定済み記録を書く" "pr=9" "$(cat "$r/$JUDGED_RECORD_REL" 2>/dev/null)"
+  bash "$PURGE" --pr 9 --state-root "$r" >/dev/null 2>&1
+  assert "T-77 $t77_variant: purge で JSON が片付く" "no" "$([ -e "$r/.rite/review-results/9-20260101120000.json" ] && echo yes || echo no)"
+  assert "T-77 $t77_variant: purge は判定済み記録を消さない" "yes" "$([ -f "$r/$JUDGED_RECORD_REL" ] && echo yes || echo no)"
+  run_target "$r" ${t77_args[@]+"${t77_args[@]}"}
+  assert "T-77 $t77_variant: exit 0" "0" "$RC"
+  assert_grep "T-77 $t77_variant: already_processed で skip" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=already_processed; pr=9$'
+  assert_not_grep "T-77 $t77_variant: no_json を出さない" "$ERR" 'reason=no_json'
+  assert "T-77 $t77_variant: 起票しない" "0" "$(create_count)"
+done
 
 echo "--- T-78: 判定済み記録の内容が不一致・読めないときは no_json ---"
 for t78_case in 'pr=90' 'pr=0' 'pr=9x' '' $'pr=9\nextra'; do
