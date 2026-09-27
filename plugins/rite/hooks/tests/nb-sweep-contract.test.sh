@@ -1560,6 +1560,8 @@ assert "T-23 手順 3 は別の record の出典を今回の record へ書き換
   "$(printf '%s\n' "$t23_step3" | grep -cF '値の違う行はその値に直す')"
 assert "T-23 手順 1 の stale は別の record を名指す行を書き換えずに元の出典で台帳へ載せさせる" 1 \
   "$(grep -F '別の record を名指す行は前回の sweep が起票したまま台帳に載せられなかった記録であり、出典を今回の record に書き換えてはならない' "$FIX" | grep -cF '書き換えずに手順 3 の bash だけを実行して元の出典のまま台帳へ載せ、成功したら entries を消して `/rite:iterate {pr_number}` を再実行する')"
+assert "T-23 手順 1 の stale は台帳に既に載っている行で手順 3 を再実行させない" 1 \
+  "$(grep -F '別の record を名指す行は' "$FIX" | grep -F '同じ id・位置・出典の行が既にあれば、手順 3 は成功済みなので再実行しない' | grep -cF 'entries を消して `/rite:iterate {pr_number}` を再実行する。無ければ書き換えずに')"
 assert "T-23 手順 2 は前回の sweep の entries を今回の起票済みとして使わない" 1 \
   "$(grep -cF '前回の sweep の entries を今回の起票済みとして使わない' "$FIX")"
 assert "T-23 手順 1 は entries が残っていれば起票せず手順 3 から続けさせる" 1 \
