@@ -16,6 +16,7 @@
 * **Skip**: [20260927T203955Z-pr-3341.md](raw/reviews/20260927T203955Z-pr-3341.md) — 指摘 0 件で PR 内推奨の解消確認のみ。一般化できる経験則なし
 * **Update**: [散文の主張を実装に合わせて絞るときは、限定の外側・指示語・同じ主張の別箇所まで突き合わせる](pages/heuristics/narrowed-prose-claim-check-outside-scope-and-same-claims.md) — raw/reviews/20260927T204401Z-pr-3334.md を統合
 * **Update**: [mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる](pages/heuristics/mutation-axes-beyond-predicate.md) — raw/reviews/20260927T205140Z-pr-3344.md と raw/reviews/20260927T204401Z-pr-3334.md を統合
+* **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=63, orphans=0, missing_concept=0, unregistered_raw=568, broken_refs=0
 
 ## 2026-09-27
 
