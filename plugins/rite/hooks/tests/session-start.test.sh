@@ -287,9 +287,10 @@ if grep -qF "未知の停止理由トークン 'stagnation:future-token'" <<< "$
 else
   fail "Expected an unlisted stagnation token to stay unknown, got: $output"
 fi
-dir006e="$TEST_DIR/tc006e-clear"
-mkdir -p "$dir006e"
-create_state_file "$dir006e" '{
+for _src006e in startup clear; do
+  dir006e="$TEST_DIR/tc006e-$_src006e"
+  mkdir -p "$dir006e"
+  create_state_file "$dir006e" '{
   "active": false,
   "issue_number": 2045,
   "branch": "fix/issue-2045",
@@ -297,12 +298,13 @@ create_state_file "$dir006e" '{
   "stop_reason": "stagnation:non-convergent",
   "review_run": {"status": "stopped", "stop_reason": "stagnation:non-convergent"}
 }' "$sid006e"
-output=$(RITE_HOST=claude run_hook_with_session "$dir006e" "clear" "$sid006e")
-if grep -qF "確認するには /rite:recover" <<< "$output"; then
-  pass "clear in the same session surfaces the stagnation stop reason"
-else
-  fail "Expected the stagnation stop reason on clear in the same session, got: $output"
-fi
+  output=$(RITE_HOST=claude run_hook_with_session "$dir006e" "$_src006e" "$sid006e")
+  if grep -qF "確認するには /rite:recover" <<< "$output"; then
+    pass "$_src006e in the same session surfaces the stagnation stop reason"
+  else
+    fail "Expected the stagnation stop reason on $_src006e in the same session, got: $output"
+  fi
+done
 dir006e="$TEST_DIR/tc006e-new-session"
 mkdir -p "$dir006e"
 create_state_file "$dir006e" '{
@@ -315,7 +317,7 @@ create_state_file "$dir006e" '{
 }' "$sid006e"
 output=$(RITE_HOST=claude run_hook_with_session "$dir006e" "startup" "0e06e006-0000-4000-8000-000000000002")
 if ! grep -q "失敗停止" <<< "$output"; then
-  pass "a new session does not read the stopped run of another session"
+  pass "state resolution is per session: a new session does not read the stopped run of another session"
 else
   fail "Expected no failure-stop notice in a new session, got: $output"
 fi
