@@ -66,7 +66,8 @@
 #        有効な ac_claim を持つ finding が effective class B で、map の exclusion も判定表の
 #        未充足行も持たないとき、consequence_exclusion に "ac_claim:AC-N" (複数なら ac_claim の
 #        配列順に "ac_claim:AC-N,AC-M") を記録する。優先順位は map の exclusion > 判定表の
-#        未充足行 > ac_claim。有効な ac_claim を持つ finding (class や除外の出所を問わない) が
+#        未充足行 > ac_claim。判定不能に倒れていないエントリの有効な ac_claim を持つ finding
+#        (class A・B や除外の出所によらない。別理由で判定不能になったエントリの ac_claim は捨てる) が
 #        主張した AC の行が status="unmet" でないとき (acceptance の判定と食い違うとき) は、
 #        判定を変えずに WARNING を出して成功 marker 末尾に
 #        "; warning=ac_claim_disagreement; rows=AC-N:F-NN,..." (findings[] 順、同一 finding 内は

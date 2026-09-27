@@ -216,7 +216,7 @@ acceptance_criteria[] の status == "unmet" 行で finding_id が findings[] に
   除外判定に使わない。WARNING + 成功 marker 末尾に "; warning=ac_unmet_finding_missing; rows=AC-N:F-NN,..."
   (他 finding の判定は変わらない。finding_id が null の行は除外判定にも警告にも使わない)
 
-有効な ac_claim (class や除外の出所を問わない) が主張する AC で、acceptance_criteria[] の行の status が "unmet" でないもの:
+判定不能に倒れていないエントリの有効な ac_claim (class A・B や除外の出所によらない) が主張する AC で、acceptance_criteria[] の行の status が "unmet" でないもの:
   判定は変えない。WARNING + 成功 marker 末尾 (上の suffix の後ろ) に
   "; warning=ac_claim_disagreement; rows=AC-N:F-NN,..." (findings[] 順、同一 finding 内は ac_claim 順)
   (unmet 行が別の finding を指すだけの AC は食い違いに数えない)
@@ -238,7 +238,7 @@ else:
 
 **第 2 除外入力源 (合意済み AC の実測済み未充足)**: review-result JSON の `acceptance_criteria[]` ([review-result-schema.md §acceptance_criteria](../../../references/review-result-schema.md#acceptance_criteria)) で `status == "unmet"` の行が `finding_id` で指す finding は、map が class B・exclusion なしでも降格しない。class は map の値のまま、`consequence_exclusion` に `ac_unmet:AC-N` を記録する。map に exclusion がある finding は map の判定文を保持し、class A (判定不能・category 固定を含む) には記録しない。判定表は acceptance reviewer の実測結果であり、分類主体の裁量を介さない。`finding_id` が `null` の未充足行は除外に使わない — その finding が blocking に残っているかの最終検査は `scripts/acceptance-criteria-check.sh final` が持つ。
 
-**第 3 除外入力源 (指摘が主張する AC 未充足)**: classification map の任意キー `ac_claim` (AC ID の非空配列) は、finding が受入条件の未充足を実測付きで主張していることを表す。判定表の `unmet` 行は AC ごとに `finding_id` を 1 つしか持てず、同じ AC を指す 2 件目以降の指摘や、acceptance reviewer が未充足と判定しなかった AC への指摘を拾えない。有効な `ac_claim` を持つ class B で、map の exclusion も判定表の未充足行も無い finding は `consequence_exclusion` に `ac_claim:AC-N` を記録して降格しない。有効とは、`acceptance_criteria` が行配列で、値が `AC-N` 書式・重複なし・行配列に実在する AC ID の非空配列であること。それ以外は判定不能として class A に倒す。主張した AC の行が `unmet` でなければ、class や除外の出所を問わず判定を変えずに WARNING と成功 marker の `ac_claim_disagreement` suffix で食い違いを可視化する — 実測を伴う未充足の主張を、別の実測との食い違いだけを理由に降格しない。
+**第 3 除外入力源 (指摘が主張する AC 未充足)**: classification map の任意キー `ac_claim` (AC ID の非空配列) は、finding が受入条件の未充足を実測付きで主張していることを表す。判定表の `unmet` 行は AC ごとに `finding_id` を 1 つしか持てず、同じ AC を指す 2 件目以降の指摘や、acceptance reviewer が未充足と判定しなかった AC への指摘を拾えない。有効な `ac_claim` を持つ class B で、map の exclusion も判定表の未充足行も無い finding は `consequence_exclusion` に `ac_claim:AC-N` を記録して降格しない。有効とは、`acceptance_criteria` が行配列で、値が `AC-N` 書式・重複なし・行配列に実在する AC ID の非空配列であること。それ以外は判定不能として class A に倒す。判定不能に倒れていないエントリで主張した AC の行が `unmet` でなければ、class A・B や除外の出所によらず判定を変えずに WARNING と成功 marker の `ac_claim_disagreement` suffix で食い違いを可視化する — 実測を伴う未充足の主張を、別の実測との食い違いだけを理由に降格しない。
 
 **category 固定**: `category == "number_reference"` の blocking finding は classification map の内容にかかわらず class A に固定する。well-formed な class B が指定された場合は WARNING + `[CONTEXT] CLASS_DEMOTION_CATEGORY_PINNED=1; count={n}` を emit し、map と固定の矛盾を silent に上書きしない。map 欠落・不正は従来の `CLASS_DEMOTION_UNCLASSIFIED` 経路だけを通る。
 
