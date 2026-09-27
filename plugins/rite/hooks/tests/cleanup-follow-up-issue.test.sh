@@ -2305,7 +2305,7 @@ for t77_variant in plain preview; do
   r=$(new_root "t77-$t77_variant")
   t77_args=()
   [ "$t77_variant" = preview ] && t77_args=(--preview-body "$TMP_ROOT/preview-t77.md")
-  # --preview-body の有無は出力に差を生まないため、preview variant が plain と同じ引数で走る退行はここでしか捕まらない
+  # --preview-body の有無は出力に差を生まないため、t77_args の組み立てから --preview-body が落ちる退行はここでしか捕まらない（run_target への受け渡しは確かめない）
   if [ "$t77_variant" = preview ]; then
     assert "T-77 $t77_variant: --preview-body を渡す" "--preview-body $TMP_ROOT/preview-t77.md" "${t77_args[*]}"
   fi
