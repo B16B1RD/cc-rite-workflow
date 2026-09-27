@@ -49,8 +49,9 @@ identity で、`id` は JSON ごとに振り直されるため、どの JSON の
 台帳から判別できないため、最新 JSON 以外を出典として除外した指摘と同じ `file:line` にある指摘（出典の
 cycle より前でも後でも）は重複候補を最新 JSON 由来の除外からだけ作るため、どちらも WARNING なしで重複しうる。
 
-出典を欠く新規行は、`nb-sweep-ledger.sh append` が書き込み前に拒否する。黙って書くと cleanup がその行を
-旧形式として最新 JSON とだけ照合し、先行 cycle の起票済み指摘を再び転記する挙動へ戻るため。
+出典を欠く新規行が 1 行でもあれば、`nb-sweep-ledger.sh append` は entries 全体を書き込み前に拒否し、台帳を
+変更しない。黙って書くと cleanup がその行を旧形式として最新 JSON とだけ照合し、先行 cycle の起票済み指摘を
+再び転記する挙動へ戻るため。
 
 ## follow-up-exclude-key
 

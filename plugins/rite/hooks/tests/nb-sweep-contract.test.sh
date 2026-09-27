@@ -22,6 +22,8 @@
 # T-19 the {rejected_ledger} block run with the real helper: ok prints the rows; lookup / PR read / headRefName read / extract failures → REJECTED_LEDGER=failed + WARNING; an unresolvable related Issue → empty, but a pr= value carrying a forged reason=related_issue_unresolved → failed
 # T-20 nb-sweep.md step 3 run with the real helper for both the read and the write: the PATCHed body carries the PATCH target's ledger plus this sweep's rows, and never an older record's or another author's ledger; the carried 4-column header becomes one 5-column header and this sweep's rows end with the source basename
 # T-21 ledger source column: append writes a 5-column header, accepts only rows ending with a review JSON basename (suffix / trailing blanks / escaped pipes ok; otherwise entries_source_invalid with the ledger untouched), upgrades a 4-column header and separator once while keeping old rows byte-identical and in order; mixed ledgers survive extract → merge-into unchanged; the record helper count, header-only skip and collect exclusion read 5-column ledgers like 4-column ones; nb-sweep.md step 3 names the source column and its value source
+# T-22 entries whose invalid rows exceed the pipe buffer still stop with rc=1, print the first three invalid rows in order and end stderr with exactly one reason=entries_source_invalid; the ledger is untouched
+# T-23 after a failed ledger append, nb-sweep.md step 3 says to check every entries row, re-run only step 3 (not the step 2 issuance) and continue from the iterate 5.S sweep-done row after step 4 instead of re-running iterate; step 2 separates that re-run from a fresh sweep; iterate 5.S points any post-issuance persist stop there without narrowing by reason name; and the schema rejects the whole entries when any row is invalid
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -1461,6 +1463,51 @@ assert "T-21 collect は 5 列の issued 行を除外する" 0 "$(printf '%s' "$
 # 手順 3 の行形式は 5 セルで、最終セルが collect の record の basename
 assert "T-21 手順 3 の行形式は出典列で終わる" 1 "$(grep -cF '行形式 `| {id} | {file}:{line} | issued|recorded | {起票先 or 機械理由} | {record_basename} |`' "$FIX")"
 assert "T-21 手順 3 は出典の値源を collect の record= に置く" 1 "$(grep -cF '`[CONTEXT] NB_SWEEP_COLLECT=ok; ...; record=` の値の basename' "$FIX")"
+
+# --- T-22: パイプバッファを超える量の不正行でも、拒否理由を必ず出して台帳を変えない ---
+{
+  printf '%s\n' "$t21_row"
+  for t22_i in $(seq 1 5000); do
+    printf '| NB-%d | src/g.ts:%d | recorded | severity=LOW; measured=false |\n' "$t22_i" "$t22_i"
+  done
+} > "$sandbox/t22-entries.md"
+t22_bad_bytes=$(tail -n +2 "$sandbox/t22-entries.md" | wc -c | tr -d ' ')
+if [ "$t22_bad_bytes" -gt 65536 ]; then
+  pass "T-22 不正行はパイプバッファ (64 KiB) を超える"
+else
+  fail "T-22 不正行はパイプバッファ (64 KiB) を超える (${t22_bad_bytes} bytes)"
+fi
+cp "$sandbox/t21-new.md" "$sandbox/t22-before.md"
+t22_rc=0
+"$LEDGER" append --ledger-file "$sandbox/t21-new.md" --entries-file "$sandbox/t22-entries.md" 2>"$sandbox/t22.err" || t22_rc=$?
+assert "T-22 rc=1 で止まる (SIGPIPE の 141 ではない)" 1 "$t22_rc"
+assert "T-22 拒否理由はちょうど 1 回" 1 "$(grep -c 'NB_SWEEP_LEDGER=failed; op=append; reason=entries_source_invalid' "$sandbox/t22.err")"
+assert "T-22 拒否理由は stderr の最終行" '[CONTEXT] NB_SWEEP_LEDGER=failed; op=append; reason=entries_source_invalid' "$(tail -n 1 "$sandbox/t22.err")"
+assert "T-22 診断は不正行の先頭 3 行を順に示す" "$(sed -n '2,4p' "$sandbox/t22-entries.md" | sed 's/^/  /')" "$(grep '^  ' "$sandbox/t22.err")"
+if cmp -s "$sandbox/t22-before.md" "$sandbox/t21-new.md"; then
+  pass "T-22 大量の不正行を含む entries は台帳を変えない"
+else
+  fail "T-22 大量の不正行を含む entries は台帳を変えない"
+fi
+
+# --- T-23: 追記失敗後の戻り方と拒否の単位 (nb-sweep.md 手順 2・3 / iterate 5.S / schema) ---
+t23_step3=$(awk '/^3\. \*\*台帳 persist\*\*/{s=1} /^4\. \*\*完了\*\*/{s=0} s && /^```/{f=!f; next} s && !f' "$FIX")
+for t23_phrase in '`${TMPDIR:-/tmp}/rite-nb-entries-{pr_number}.md`' '手順 2 の起票をやり直さない' \
+                  '手順 3 だけを再実行する' '起票済みの Issue は entries の issued 行が持つ' \
+                  'entries の全行について最終列が手順 1 の `record=` の basename（全行同じ値）になっているかを確かめ、欠けた行には最終列として足し、値の違う行はその値に直す' \
+                  'その後は `/rite:iterate` を再実行せず iterate 5.S の `[fix:sweep-done]` 行から続ける' \
+                  '1 行でもあれば、append は entries 全体を `reason=entries_source_invalid` で拒否し、台帳を変更しない'; do
+  assert "T-23 手順 3 の fence 外に復旧手順・拒否単位がある ($t23_phrase)" 1 "$(printf '%s\n' "$t23_step3" | grep -cF -- "$t23_phrase")"
+done
+assert "T-23 手順 2 は一時ファイルを再利用しない場合と手順 3 の再実行を書き分ける" 1 \
+  "$(grep -F '新しい sweep で起票からやり直すときは前回の一時ファイルを再利用しない' "$FIX" | grep -cF '手順 3 を再実行するときは、同じ sweep の entries を直して使う')"
+t23_iterate_row=$(grep -E '^\| `\[fix:error\]` / その他 / sentinel 不在 \|' "$PLUGIN_ROOT/skills/iterate/SKILL.md")
+assert "T-23 iterate 5.S の停止行は起票後の台帳 persist の停止を復旧手順へ導き、再実行せず sweep-done 行から続けさせる" 1 \
+  "$(printf '%s\n' "$t23_iterate_row" | grep -F '手順 2 の起票後に台帳 persist' | grep -F '`/rite:iterate` を再実行せず上の `[fix:sweep-done]` 行から続ける' | grep -cF 'nb-sweep.md')"
+assert "T-23 iterate 5.S の停止行は理由名の接頭辞で対象を絞らない" 0 "$(printf '%s\n' "$t23_iterate_row" | grep -cF 'nb_sweep_ledger_')"
+t23_schema=$(grep -F 'entries_source_invalid' "$PLUGIN_ROOT/references/review-result-schema.md")
+assert "T-23 schema は 1 行でも不正なら全体を拒否すると書く" 1 "$(printf '%s\n' "$t23_schema" | grep -F '1 行でも' | grep -cF '台帳を変更しない')"
+assert "T-23 schema に行単位の拒否と読める旧文言が無い" 0 "$(printf '%s\n' "$t23_schema" | grep -cF '出典を欠く行を `entries_source_invalid` で拒否し')"
 
 if ! print_summary "$(basename "$0")" "nb-sweep helper contract drift — check iterate SKILL.md / iterate-step.sh 5.S / 6.1.d preserve"; then
   exit 1
