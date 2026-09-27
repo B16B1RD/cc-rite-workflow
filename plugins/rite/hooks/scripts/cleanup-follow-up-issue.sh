@@ -5,6 +5,11 @@
 # follow-up Issue を 1 件起票する。0 件なら起票しない。同一 PR 由来の既存 follow-up があれば
 # 重複起票しない。cleanup 全体は止めない (引数不正のみ exit 1)。
 #
+# 元 Issue の Decision Log (Section 9) で本 PR のレビューが先送りした欠陥 (行末が
+# `<!-- rite:deferred-defect pr=<PR> -->` の行。pr-review 7.4.3 が付ける) も同じ Issue へ転記する。
+# 指摘が 0 件 (no_json / no_findings / all_resolved / all_issued) でも先送り欠陥があれば起票する。
+# json_undecidable は先送り欠陥があっても failed のまま止める。
+#
 # 転記対象は**同一 PR の全 JSON の `non_blocking_findings[]` の和集合**。各 JSON はその cycle の
 # 観測にすぎず、最新 1 本は残存集合ではない (先行 cycle にのみ載る指摘を取りこぼす)。解消済みの
 # 除外は cleanup ステップ 6.0.V の再検証が `--exclude-ids` で担う。iterate の NB sweep で起票済みの
@@ -23,7 +28,8 @@
 #   --pr                 PR 番号 (数値)。必須
 #   --owner              repo owner (-R 用)。必須
 #   --repo               repo name。必須
-#   --source-issue       元 Issue 番号。空 / 省略可。空なら却下台帳 (sweep 起票済み判定) を読まず、
+#   --source-issue       元 Issue 番号。空 / 省略可。本文の Decision Log から先送り欠陥を読む (空なら読まない)。
+#                        空なら却下台帳 (sweep 起票済み判定) を読まず、
 #                        除外不能として FOLLOW_UP_SWEEP_ISSUED=unavailable (no_source_issue) を出す。
 #                        台帳を読む記録コメントは review-nonblocking-record.sh --print-record-body が
 #                        PR から解決する関連 Issue 上の 1 件 (書き込み経路が PATCH するもの)
@@ -55,11 +61,15 @@
 #
 # Emitted markers (stderr):
 #   [CONTEXT] FOLLOW_UP_ISSUE=created; issue=<n>; pr=<n>
-#   [CONTEXT] FOLLOW_UP_ISSUE=preview; count=<n>; body=<path>; pr=<n>   (--preview-body のとき)
+#   [CONTEXT] FOLLOW_UP_ISSUE=preview; count=<n>; deferred=<k>; body=<path>; pr=<n>   (--preview-body のとき。
+#     count は指摘と先送り欠陥の合計、deferred はそのうち先送り欠陥の件数)
 #   [CONTEXT] FOLLOW_UP_ISSUE=skipped; reason=no_findings|all_resolved|all_issued|no_json|already_exists|jq_missing; pr=<n>
-#     no_findings  : parse できた JSON の和集合が、除外を適用する前から 0 件
-#     all_resolved : 除外**後**に 0 件になった (再検証で全件が解消済みと判定された)
-#     all_issued   : sweep 起票済みの除外**後**に 0 件になった (残りが全件 sweep で Issue 化済み)
+#     no_findings  : parse できた JSON の和集合が、除外を適用する前から 0 件 (先送り欠陥も 0 件)
+#     all_resolved : 除外**後**に 0 件になった (再検証で全件が解消済みと判定された。先送り欠陥も 0 件)
+#     all_issued   : sweep 起票済みの除外**後**に 0 件になった (残りが全件 sweep で Issue 化済み。先送り欠陥も 0 件)
+#     no_json      : レビュー結果 JSON が無い (先送り欠陥も 0 件)
+#   [CONTEXT] FOLLOW_UP_DEFERRED=unavailable; reason=issue_body_api; pr=<n>
+#     元 Issue の本文を取得できず先送り欠陥を読めなかった (指摘側の起票は続ける)
 #   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=lookup_api|create_api|create_script_missing|json_undecidable|preview_write; pr=<n>
 #   [CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=<r>; count=<n|unknown>; pr=<n>
 #     除外要求どおりに除外できなかったことを cleanup ステップ 12 へ通知する。
@@ -197,6 +207,43 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
+# 元 Issue の Decision Log (Section 9) から、本 PR のレビューが先送りした欠陥を読む。pr-review 7.4.3 は
+# 先送りする欠陥の行末に DEFERRED_TOKEN を付ける。Section 9 の境界は 7.4.3 の awk と同じ 3 種。
+# 行末が本 PR のトークンと一致する行だけを採り (別 PR の cleanup が拾わない)、トークンを除いて転記する。
+# 取得の rc≠0 だけを失敗とし、空本文・Section 9 なしは 0 件。失敗しても指摘側の起票は続ける。
+DEFERRED_TOKEN="<!-- rite:deferred-defect pr=${PR_NUMBER} -->"
+deferred_md=""
+deferred_n=0
+if [ -n "$SOURCE_ISSUE" ]; then
+  rite_tempfile_new deferred_err "fu-deferred" || exit 1
+  if source_body=$(gh issue view "$SOURCE_ISSUE" -R "${OWNER}/${REPO}" --json body --jq .body 2>"$deferred_err"); then
+    deferred_md=$(printf '%s\n' "$source_body" | tr -d '\r' | TOKEN="$DEFERRED_TOKEN" awk '
+      /^## 9\. Decision Log/ { in_section = 1; next }
+      in_section && (/^## / || /^---[[:space:]]*$/ || /^<\/details>/) { in_section = 0 }
+      in_section {
+        t = ENVIRON["TOKEN"]; line = $0
+        sub(/[[:space:]]+$/, "", line)
+        if (length(line) > length(t) && substr(line, length(line) - length(t) + 1) == t) {
+          line = substr(line, 1, length(line) - length(t))
+          sub(/[[:space:]]+$/, "", line)
+          print line
+        }
+      }')
+    deferred_n=$(printf '%s' "$deferred_md" | awk 'END { print NR }')
+  else
+    echo "WARNING: 元 Issue #${SOURCE_ISSUE} の本文を取得できないため、Decision Log で先送りした欠陥を転記しません (PR #${PR_NUMBER})" >&2
+    [ -s "$deferred_err" ] && head -3 "$deferred_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    echo "[CONTEXT] FOLLOW_UP_DEFERRED=unavailable; reason=issue_body_api; pr=${PR_NUMBER}" >&2
+  fi
+fi
+
+# 指摘側が 0 件でも先送り欠陥があれば起票へ進む
+skip_unless_deferred() {
+  [ "$deferred_n" -gt 0 ] && return 0
+  emit_skip "$1"
+  exit 0
+}
+
 # 同一 PR の全 JSON の `non_blocking_findings[]` を和集合して転記対象にする。
 # `non_blocking_findings[]` は**その cycle の観測**であり、最終 cycle の JSON は「その PR の
 # 残存集合」ではない。最新 1 本だけを読むと、先行 cycle にのみ載る指摘が HEAD に残存していても
@@ -248,12 +295,13 @@ while IFS= read -r f; do
 done <<< "$sources"
 
 if [ "$matched" -eq 0 ]; then
-  echo "WARNING: PR #${PR_NUMBER} のレビュー結果 JSON が見つかりません。follow-up 起票を skip します (別環境での cleanup の可能性。cycle 中記録は関連 Issue コメントを参照)" >&2
-  emit_skip no_json
-  exit 0
-fi
-
-if [ "$parsed" -eq 0 ]; then
+  if [ "$deferred_n" -eq 0 ]; then
+    echo "WARNING: PR #${PR_NUMBER} のレビュー結果 JSON が見つかりません。follow-up 起票を skip します (別環境での cleanup の可能性。cycle 中記録は関連 Issue コメントを参照)" >&2
+    emit_skip no_json
+    exit 0
+  fi
+  echo "WARNING: PR #${PR_NUMBER} のレビュー結果 JSON が見つかりません。Decision Log で先送りした欠陥だけを転記します (別環境での cleanup の可能性。cycle 中記録は関連 Issue コメントを参照)" >&2
+elif [ "$parsed" -eq 0 ]; then
   echo "WARNING: PR #${PR_NUMBER} のレビュー結果 JSON ${matched} 本すべてを判定できません。follow-up 起票を skip します" >&2
   emit_failed json_undecidable
   exit 0
@@ -267,8 +315,7 @@ fi
 
 findings_json=$(cat "$union_tmp")
 if ! printf '%s' "$findings_json" | jq -e 'length > 0' >/dev/null; then
-  emit_skip no_findings
-  exit 0
+  skip_unless_deferred no_findings
 fi
 
 # 再検証による除外は上の JSON 判定層とは独立の層なので `case` の arm 内に入れない
@@ -363,8 +410,7 @@ if [ -n "$EXCLUDE_IDS" ]; then
     fi
   fi
   if ! printf '%s' "$findings_json" | jq -e 'length > 0' >/dev/null; then
-    emit_skip all_resolved
-    exit 0
+    skip_unless_deferred all_resolved
   fi
 fi
 
@@ -389,7 +435,9 @@ sweep_issued_unavailable() {
   echo "WARNING: $2。sweep 起票済みの指摘を除外せず転記します (PR #${PR_NUMBER})" >&2
   echo "[CONTEXT] FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=$1; pr=${PR_NUMBER}" >&2
 }
-if [ -z "$SOURCE_ISSUE" ]; then
+if ! printf '%s' "$findings_json" | jq -e 'length > 0' >/dev/null; then
+  :  # 先送り欠陥だけで起票する経路。台帳と照合する指摘が無い
+elif [ -z "$SOURCE_ISSUE" ]; then
   sweep_issued_unavailable no_source_issue "関連 Issue が無いため却下台帳を読めません"
 else
   rite_tempfile_new comments_err "fu-comments" || exit 1
@@ -443,8 +491,7 @@ else
       echo "WARNING: sweep 起票済みの指摘と同じ位置に先行 cycle の指摘が ${_issued_dups} 件あります (${_issued_dup_locs})。同じ指摘の再報告か別の指摘かを台帳から判定できないため、欠落させずに転記します。sweep の Issue と重複していないか確認してください (PR #${PR_NUMBER})" >&2
     fi
     if [ "$_issued_after" -eq 0 ]; then
-      emit_skip all_issued
-      exit 0
+      skip_unless_deferred all_issued
     fi
   fi
 fi
@@ -520,16 +567,36 @@ _fu_type="fix"
 _fu_complexity="S"
 _fu_priority="Medium"
 
-if ! findings_md=$(printf '%s' "$findings_json" | jq -r --arg dash "—" --arg empty "" '
-  .[] |
-  "### \(.id // $dash) (\(.severity // $dash)) — \(.reviewer // $dash)\n\n" +
-  "- 場所: `\(.file // $dash):\((.line | if . == null then $dash else tostring end))`\n" +
-  "- 説明: \(.description // $empty)\n" +
-  "- 提案: \(.suggestion // $empty)\n"
-') || [ -z "$findings_md" ]; then
-  echo "WARNING: follow-up finding 本文の生成に失敗しました。起票しません" >&2
+findings_n=$(printf '%s' "$findings_json" | jq 'length') || {
+  echo "WARNING: follow-up の転記件数を確定できません。起票しません" >&2
   emit_failed create_api
   exit 0
+}
+findings_md=""
+if [ "$findings_n" -gt 0 ]; then
+  if ! findings_md=$(printf '%s' "$findings_json" | jq -r --arg dash "—" --arg empty "" '
+    .[] |
+    "### \(.id // $dash) (\(.severity // $dash)) — \(.reviewer // $dash)\n\n" +
+    "- 場所: `\(.file // $dash):\((.line | if . == null then $dash else tostring end))`\n" +
+    "- 説明: \(.description // $empty)\n" +
+    "- 提案: \(.suggestion // $empty)\n"
+  ') || [ -z "$findings_md" ]; then
+    echo "WARNING: follow-up finding 本文の生成に失敗しました。起票しません" >&2
+    emit_failed create_api
+    exit 0
+  fi
+fi
+
+# 転記する中身に合わせて概要・タイトル・元 Issue への参照コメントを出し分ける
+if [ "$deferred_n" -eq 0 ]; then
+  fu_content="残存 non-blocking 指摘"
+  fu_summary="PR #${PR_NUMBER} のマージ時点で残った non-blocking 指摘を follow-up として切り出す。"
+elif [ "$findings_n" -eq 0 ]; then
+  fu_content="先送りした欠陥"
+  fu_summary="PR #${PR_NUMBER} のレビューが Decision Log に記録して先送りした欠陥を follow-up として切り出す。"
+else
+  fu_content="残存 non-blocking 指摘と先送りした欠陥"
+  fu_summary="PR #${PR_NUMBER} のマージ時点で残った non-blocking 指摘と、レビューが Decision Log に記録して先送りした欠陥を follow-up として切り出す。"
 fi
 
 {
@@ -539,17 +606,27 @@ fi
   printf '%s\n' ""
   printf '%s\n' "## 概要"
   printf '%s\n' ""
-  printf '%s\n' "PR #${PR_NUMBER} のマージ時点で残った non-blocking 指摘を follow-up として切り出す。"
+  printf '%s\n' "$fu_summary"
   printf '%s\n' ""
   printf '%s\n' "## 出典"
   printf '%s\n' ""
   printf '%s\n' "- 元 PR: #${PR_NUMBER}"
   [ -n "$source_issue_line" ] && printf '%s\n' "$source_issue_line"
   printf '%s\n' "- 機械同定: \`${MARKER}\`"
-  printf '%s\n' ""
-  printf '%s\n' "## 残存 non-blocking 指摘"
-  printf '%s\n' ""
-  printf '%s\n' "$findings_md"
+  if [ "$findings_n" -gt 0 ]; then
+    printf '%s\n' ""
+    printf '%s\n' "## 残存 non-blocking 指摘"
+    printf '%s\n' ""
+    printf '%s\n' "$findings_md"
+  fi
+  if [ "$deferred_n" -gt 0 ]; then
+    printf '%s\n' ""
+    printf '%s\n' "## Decision Log で先送りした欠陥"
+    printf '%s\n' ""
+    printf '%s\n' "元 Issue の Decision Log（Section 9）に、本 PR のレビューが先送りした欠陥として記録された行:"
+    printf '%s\n' ""
+    printf '%s\n' "$deferred_md"
+  fi
 } > "$body_file"
 
 if [ ! -s "$body_file" ]; then
@@ -564,23 +641,17 @@ if [ -n "$PREVIEW_BODY" ]; then
     emit_failed preview_write
     exit 0
   fi
-  preview_n=$(printf '%s' "$findings_json" | jq 'length') || preview_n=""
-  case "$preview_n" in
-    ''|*[!0-9]*)
-      echo "WARNING: follow-up の転記件数を確定できません。起票前の確認ができないため起票しません" >&2
-      emit_failed preview_write
-      exit 0
-      ;;
-  esac
-  echo "[CONTEXT] FOLLOW_UP_ISSUE=preview; count=${preview_n}; body=${PREVIEW_BODY}; pr=${PR_NUMBER}" >&2
+  # count は指摘と先送り欠陥の合計。deferred はそのうちの先送り欠陥の件数
+  preview_n=$((findings_n + deferred_n))
+  echo "[CONTEXT] FOLLOW_UP_ISSUE=preview; count=${preview_n}; deferred=${deferred_n}; body=${PREVIEW_BODY}; pr=${PR_NUMBER}" >&2
   echo "[cleanup-follow-up-issue] result=preview; count=${preview_n}; pr=${PR_NUMBER}"
   exit 0
 fi
 
 gh label create follow-up -R "${OWNER}/${REPO}" \
-  --description "マージ時の残存 non-blocking 指摘" --color "c5def5" >/dev/null 2>&1 || true
+  --description "マージ時の残存指摘と先送りした欠陥" --color "c5def5" >/dev/null 2>&1 || true
 
-title="follow-up: PR #${PR_NUMBER} の残存 non-blocking 指摘"
+title="follow-up: PR #${PR_NUMBER} の${fu_content}"
 args_json=$(jq -n \
   --arg title "$title" \
   --arg body_file "$body_file" \
@@ -612,7 +683,7 @@ result=$(bash "$CREATE_SCRIPT" "$args_json" 2>"$create_err_file")
 create_rc=$?
 if [ "$create_rc" -ne 0 ]; then
   echo "WARNING: follow-up Issue の起票に失敗しました (PR #${PR_NUMBER}, rc=${create_rc})。cleanup は続行します" >&2
-  echo "  手動起票: review-results JSON の non_blocking_findings[] を元に follow-up ラベル付き Issue を作成してください" >&2
+  echo "  手動起票: review-results JSON の non_blocking_findings[] と、元 Issue の Decision Log の先送り欠陥トークン付きの行を元に follow-up ラベル付き Issue を作成してください" >&2
   [ -s "$create_err_file" ] && tr -d '\r' < "$create_err_file" | sed 's/^/  /' >&2
   emit_failed create_api
   exit 0
@@ -644,7 +715,7 @@ esac
 
 if [ -n "$SOURCE_ISSUE" ]; then
   {
-    printf '%s\n' "マージ時の残存 non-blocking 指摘の follow-up: #${new_n}"
+    printf '%s\n' "PR #${PR_NUMBER} の${fu_content}の follow-up: #${new_n}"
     printf '%s\n' ""
     printf '%s\n' "${new_url}"
   } > "$comment_file"

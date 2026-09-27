@@ -345,6 +345,16 @@ Decision Log append を候補ごとに単一 Bash invocation にする理由。
 
 採番を Section 9 の内側に限る理由: Section 9 は判断の記録がない本文にも新設されるため、本文の散文に D-NN を含む Issue（レビュー指摘の文面をそのまま転記する follow-up Issue 等）にも Section 9 ができる。本文全体を数えると散文の番号に 1 を足した値へ飛び、新設時の D-01 と連番にならない。境界は追記位置を決める awk と同じにし、数える範囲と書き込む範囲を一致させる。
 
+## deferred-defect-token
+
+先送りする欠陥の Decision Log 行に機械トークンを付ける理由。
+
+Decision Log は「対応しない理由」の記録であって追跡ではない。欠陥を先送りした行だけが残ると、誰も Issue を起こさないまま放置される。cleanup の follow-up 起票はレビュー結果 JSON の `non_blocking_findings[]` しか読まないため、推奨事項由来の先送りはそこに届かない。
+
+記録先を JSON ではなく Decision Log 行そのものにするのは、7.4 が JSON 保存（6.1.a）の後に走り、保存済み JSON は停滞判定の受領記録と照合されるため書き換えられないから。保存前の 5.3.0.R で推奨を JSON へ写すと、後で「別 Issue 作成」「本 PR で対応」を選んだ候補まで cleanup が起票する。Issue 本文は別環境の cleanup からも読めるが、JSON はそうとは限らない。
+
+トークンは HTML コメントにして表示を汚さず、PR 番号を含めて別 PR の cleanup が拾わないようにする。対象は欠陥と判断された候補（Source A と Source B の `actionable`）に限り、要否を判断できていない `boundary` は付けない。引き受け先 Issue がある候補は既に追跡されているため付けない（付けると二重起票になる）。起票の自動可否は cleanup 6.0.C の確認ゲート（batch `--merge` は確認しない、単独実行は確認する）にそのまま従う。
+
 ## 5.3-execution-order-why
 
 5.3.0 → 5.3.0.M → 5.3.0.C → 5.3.1 の順を守る理由。

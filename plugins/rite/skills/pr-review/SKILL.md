@@ -2267,6 +2267,8 @@ bash {plugin_root}/scripts/review-pr-recommendations.sh register \
 | rc=0 + `PR_RECOMMENDATIONS=none; reason=...` | `{registered_recommendation_positions}` を空として進む |
 | rc≠0 | `[review:error]` を stdout に出力して停止する |
 
+marker 末尾の `unlocated=`（file:line を読めない actionable の位置）は Source B から除外しない。行き先はステップ 7 の処分で決まる（Decision Log に記録する場合は 7.4.3 の先送り欠陥トークン付きになり、cleanup が follow-up へ転記する）。
+
 登録は保存前の作業コピーだけに行う（保存済み JSON は停滞判定の受領記録と照合されるため書き換えない）。上限は 1 つの review run につき 1 回。
 rationale: ../iterate/references/rationale.md#pr-recommendation-fix
 

@@ -63,7 +63,10 @@ cat > "$WORK/items.json" <<'EOF'
   {"reviewer_type": "test", "content": "partial overlap", "classification": "actionable", "file_line": "a.sh:4-8"},
   {"reviewer_type": "code-quality", "content": "renamed file", "classification": "actionable", "file_line": "new.sh:6"},
   {"reviewer_type": "code-quality", "content": "untouched file", "classification": "actionable", "file_line": "other.sh:1"},
-  {"reviewer_type": "security", "content": "boundary", "classification": "boundary", "file_line": "a.sh:3"}
+  {"reviewer_type": "security", "content": "boundary", "classification": "boundary", "file_line": "a.sh:3"},
+  {"reviewer_type": "code-quality", "content": "path without line", "classification": "actionable", "file_line": "a.sh"},
+  {"reviewer_type": "security", "content": "boundary without line", "classification": "boundary", "file_line": "a.sh"},
+  {"reviewer_type": "tech-writer", "content": "design without location", "classification": "design_confirmation", "file_line": null}
 ]}
 EOF
 register() { run register --input "$1" --items "${2:-$WORK/items.json}" --base-ref base --state-root "$STATE"; }
@@ -72,8 +75,8 @@ echo "=== register: selection ==="
 review "$WORK/r.json" mergeable run1 1
 cp "$WORK/r.json" "$WORK/r.orig.json"
 register "$WORK/r.json"
-check "registers actionable items on + lines only, in item order" \
-  '[ $RC -eq 0 ] && [ "$OUT" = "[CONTEXT] PR_RECOMMENDATIONS=registered; count=3; ids=R-01,R-02,R-03; positions=0,5,6" ]'
+check "registers actionable items on + lines only, in item order; unlocated lists actionable items without path:line" \
+  '[ $RC -eq 0 ] && [ "$OUT" = "[CONTEXT] PR_RECOMMENDATIONS=registered; count=3; ids=R-01,R-02,R-03; positions=0,5,6; unlocated=4,9" ]'
 expected='[{"reviewer":"code-quality","file":"a.sh","line":3,"description":"added line","id":"R-01"},{"reviewer":"test","file":"a.sh","line":4,"description":"partial overlap","id":"R-02"},{"reviewer":"code-quality","file":"new.sh","line":6,"description":"renamed file","id":"R-03"}]'
 check "pr_recommendations shape is exactly the selected entries" \
   '[ "$(jq -cS .pr_recommendations "$WORK/r.json")" = "$(printf "%s" "$expected" | jq -cS .)" ]'
@@ -84,7 +87,7 @@ check "nothing else in the review JSON changes" \
 actionable=$(jq -c '[.recommendation_items | to_entries[] | select(.value.classification == "actionable") | .key]' "$WORK/items.json")
 registered=$(printf '%s' "$OUT" | sed -n 's/.*positions=\([0-9,]*\).*/[\1]/p')
 check "registered positions are actionable and the rest stay unregistered" \
-  '[ "$(jq -nc --argjson a "$actionable" --argjson r "$registered" "[(\$r - \$a | length), (\$a - \$r)]")" = "[0,[2,3,4,7]]" ]'
+  '[ "$(jq -nc --argjson a "$actionable" --argjson r "$registered" "[(\$r - \$a | length), (\$a - \$r)]")" = "[0,[2,3,4,7,9]]" ]'
 
 echo "=== register: idempotent re-run of the same cycle ==="
 cp "$WORK/r.json" "$STATE/.rite/review-results/7-20260101000000.json"
@@ -138,8 +141,14 @@ jq '{recommendation_items: [.recommendation_items[] | select(.classification != 
 review "$WORK/n.json" mergeable run1 1
 cp "$WORK/n.json" "$WORK/n.orig.json"
 register "$WORK/n.json" "$WORK/none.json"
-check "no candidates leaves the JSON unchanged" \
+check "no candidates leaves the JSON unchanged (boundary / design_confirmation without path:line are not unlocated)" \
   '[ $RC -eq 0 ] && [ "$OUT" = "[CONTEXT] PR_RECOMMENDATIONS=none; reason=no_candidates" ] && cmp -s "$WORK/n.json" "$WORK/n.orig.json"'
+jq '{recommendation_items: [.recommendation_items[] | select(.classification == "actionable" and .content == "no location")]}' "$WORK/items.json" > "$WORK/unlocated.json"
+review "$WORK/u.json" mergeable run1 1
+cp "$WORK/u.json" "$WORK/u.orig.json"
+register "$WORK/u.json" "$WORK/unlocated.json"
+check "no candidates still reports actionable items without path:line" \
+  '[ $RC -eq 0 ] && [ "$OUT" = "[CONTEXT] PR_RECOMMENDATIONS=none; reason=no_candidates; unlocated=0" ] && cmp -s "$WORK/u.json" "$WORK/u.orig.json"'
 
 echo "=== register: fail-loud ==="
 review "$STATE/.rite/review-results/7-20260101000001.json" mergeable run1 1

@@ -201,6 +201,10 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
     dump(issue_file, dict(issue, body=triaged))
     check(invoke().returncode == 0,
           'created Decision Log row and record marker pass the specification check')
+    deferred = issue['body'] + '\n## 9. Decision Log\n\n' + row + ' <!-- rite:deferred-defect pr=7 -->\n'
+    dump(issue_file, dict(issue, body=deferred))
+    check(invoke().returncode == 0,
+          'Decision Log row ending with the deferred-defect token passes the specification check')
     crlf = issue['body'].replace('\n', '\r\n') + '\r\n' + marker + '\r\n'
     dump(issue_file, dict(issue, body=crlf))
     check(invoke(ok=False).returncode != 0, 'CRLF rewrite of the specification text is still a change')
