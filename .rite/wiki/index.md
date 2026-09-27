@@ -562,7 +562,7 @@ okf_version: "0.2"
 | [共有 helper への置き換えは既定値そのものではなく既定値の成り立ち方を変える](pages/heuristics/shared-helper-migration-changes-default-value-mechanism.md) | heuristics | 個別の既定値ロジックを共有 helper へ委譲すると、値が不在のときに続行する既定値そのものは同じでも、その既定値を生成する経路（リテラル初期化 → 空値を読んで case 分岐）が変わる。既定値の中身を assert しないテストは、この変化を検出できない。 | 2026-09-26T14:08:00Z | high |
 | [エラーメッセージが案内するコマンドは、テストで出力から抽出して逐語実行する](pages/patterns/guidance-command-test-by-verbatim-execution.md) | patterns | エラーメッセージが利用者に打たせるコマンドを文字列の部分一致だけで固定すると、案内先 CLI の必須引数が欠けていても検出できない。テストは出力から案内コマンドを抽出してそのまま実行し、文言と実行可能性を 1 つの assert で結ぶ。 | 2026-09-26T15:13:54Z | high |
 | [他セッションの成果物を回収する処理は、進捗時刻ではなく所有者の生存信号で判定し、判定不能は残す側へ倒す](pages/heuristics/liveness-reaper-keeps-undecidable-and-guards-json-shape.md) | heuristics | 進捗のたびにしか更新されない時刻を回収条件にすると、1 工程が長い生存中の所有者の成果物まで消える。生存は所有者側で頻繁に動く別の時刻で判定し、その記録が読めないときは黙って消さず警告して残す。記録を読む前に JSON object であることを確かめ、後段の読み取り失敗で回収ループ全体が止まらないようにする。 | 2026-09-26T14:57:57Z | medium |
-| [失敗時の復旧ヒントは呼び出し元の切り詰めと cwd の違いを越えて届く形で書く](pages/heuristics/recovery-hint-survives-caller-truncation-and-cwd.md) | heuristics | helper が失敗時に出す復旧ヒントは、呼び出し元が stderr を先頭数行へ切り詰めると人に届かず、helper が cd した先と利用者の cwd が違うと相対パスのヒントが空振りする。ヒントは先頭数行に収め、パスは絶対パスで示す。 | 2026-09-27T03:16:22Z | medium |
+| [失敗時の復旧ヒントは呼び出し元の切り詰めと cwd の違いを越えて届く形で書く](pages/heuristics/recovery-hint-survives-caller-truncation-and-cwd.md) | heuristics | helper が失敗時に出す復旧ヒントは、呼び出し元が stderr を先頭数行へ切り詰めると人に届かず、helper が cd した先と利用者の cwd が違うと相対パスのヒントが空振りする。ヒントは先頭数行に収め、パスは絶対パスで示す。 | 2026-09-27T07:40:00Z | medium |
 | [jq は入力が 0 ドキュメントだとフィルタを評価せず rc=0 で終わる — 形の検証は jq -s と length == 1 で入力を 1 ドキュメントに閉じる](pages/anti-patterns/jq-empty-input-skips-filter-rc-zero.md) | anti-patterns | jq はストリーム入力が空のときフィルタを一度も評価せずに成功終了するため、入力の形を検証する述語は空応答を捕捉できない。空入力と複数ドキュメントの両方を失敗に倒したい検証は jq -s で入力を配列に集め、length == 1 を述語に含めて書く。 | 2026-09-27T03:42:47Z | medium |
 | [論理式を日本語へ書き起こすときは、正本の括弧構造を文章でも括弧で保つ](pages/heuristics/logical-formula-prose-keeps-grouping-parentheses.md) | heuristics | 「A、または B で、C なら」のような書き起こしは、C が B だけに掛かるのか A と B の両方に掛かるのかが一意に決まらない。正本が (A OR B) AND C なら、文章でも「(A、または B) かつ C」と括弧を残して係り先を固定する。 | 2026-09-27T04:58:44Z | medium |
 | [base 取り込みの競合は base 側の正本を基準にし、PR の変更意図だけを載せ直す](pages/heuristics/base-intake-conflict-reapply-pr-intent-on-base-canonical.md) | heuristics | base を取り込んだとき同じ表の行を base と PR の両側が書き換えていたら、base 側の正本の式をそのまま採り、PR が変えたかった点だけを差し替えて解消する。PR の base に対する差分が最小になり、再レビューが確かめる面も最小になる。 | 2026-09-27T04:21:02Z | medium |
@@ -572,5 +572,5 @@ okf_version: "0.2"
 
 - 総ページ数: 558
 - ドメイン別: patterns=125, heuristics=258, anti-patterns=175
-- 最終更新: 2026-09-27T07:35:00Z
+- 最終更新: 2026-09-27T07:40:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |

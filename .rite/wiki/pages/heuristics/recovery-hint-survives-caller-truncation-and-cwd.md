@@ -5,16 +5,19 @@ domain: "heuristics"
 description: "helper が失敗時に出す復旧ヒントは、呼び出し元が stderr を先頭数行へ切り詰めると人に届かず、helper が cd した先と利用者の cwd が違うと相対パスのヒントが空振りする。ヒントは先頭数行に収め、パスは絶対パスで示す。"
 promote: rite-plugin
 created: "2026-09-27T03:08:04Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:16:22Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T07:40:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260927T030348Z-pr-3196.md"
   - type: "fixes"
     resource: "raw/fixes/20260927T031119Z-pr-3196.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T073259Z-pr-3221.md"
 tags: ["stderr", "hint", "cwd", "worktree"]
 confidence: medium
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:16:22Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T07:40:00Z" }
 ---
 
 # 失敗時の復旧ヒントは呼び出し元の切り詰めと cwd の違いを越えて届く形で書く
@@ -43,6 +46,12 @@ helper が失敗時に出す復旧ヒントは、呼び出し元が stderr を�
 - 失敗経路のテストの stub に stderr を 1 行出させ、診断行とヒントの順序まで assert した。無言の stub では診断の出力経路そのものが検証されない
 - コメントが述べる保証範囲は、実装が実際に操作する集合に合わせて限定して書いた。広く書くと、操作していない要素まで守っているように読める
 
+### 戻り方の案内を書くとき
+
+- 診断が不正箇所を先頭数行しか出さないなら、戻り方を「診断に出た行を直す」と書かない。表示範囲を超える不正が残ると、直して再実行しても同じ失敗に戻り空回りする。直す対象は入力全体として書く
+- 案内を出す条件を理由名の接頭辞で絞ると、同じ段で別の理由を出す失敗が案内から漏れる。条件は理由名ではなく、失敗した手順の段で表す
+- 途中で読むのをやめる `head` を入力を読み切る別コマンドへ替えると、`head` / `tail` の形だけを拾う既存の静的検査の対象から外れる。読み方を変えるときは、その形を前提にした検査の母集団も確かめる
+
 ## 関連ページ
 
 - [stderr ノイズ削減: truncate ではなく selective surface で解く](./stderr-selective-surface-over-truncate.md)
@@ -52,3 +61,4 @@ helper が失敗時に出す復旧ヒントは、呼び出し元が stderr を�
 
 - [レビュー結果](../../raw/reviews/20260927T030348Z-pr-3196.md)
 - [fix 結果](../../raw/fixes/20260927T031119Z-pr-3196.md)
+- [レビュー結果](../../raw/reviews/20260927T073259Z-pr-3221.md)
