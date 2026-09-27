@@ -12,6 +12,7 @@
 * **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=558, broken_refs=0
 * **Update**: [失敗時の復旧ヒントは呼び出し元の切り詰めと cwd の違いを越えて届く形で書く](pages/heuristics/recovery-hint-survives-caller-truncation-and-cwd.md) — raw/reviews/20260927T073259Z-pr-3221.md を統合
 * **Skip**: [20260927T073125Z-pr-3223.md](raw/reviews/20260927T073125Z-pr-3223.md) — 指摘 0 件のレビューで新しい経験則がない（コメントを実装に合わせる点は既存経験則の範囲内）
+* **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=560, broken_refs=0
 * **Update**: [並行セッションの別 Issue ブランチ作成が post-review state verify の branch_list drift を誤検出させる](pages/anti-patterns/concurrent-session-branch-creation-false-positive-drift.md) — raw/reviews/20260927T041714Z-pr-3207.md, raw/fixes/20260927T042336Z-pr-3207.md, raw/reviews/20260927T043431Z-pr-3207.md を統合
 * **Update**: [静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く](pages/heuristics/static-pin-semantic-allowlist-not-notation-denylist.md) — raw/reviews/20260927T041652Z-pr-3211.md, raw/fixes/20260927T042427Z-pr-3211.md を統合
 * **Update**: [変更・削除の掃き出しは旧語彙・置換した条件式・別記法トークンまで広げる](pages/heuristics/change-sweep-spans-old-vocabulary-and-notations.md) — raw/reviews/20260927T043509Z-pr-3213.md を統合
