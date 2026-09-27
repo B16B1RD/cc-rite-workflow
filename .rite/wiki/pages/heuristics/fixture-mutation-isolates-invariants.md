@@ -55,9 +55,11 @@ sources:
     resource: "raw/reviews/20260927T080916Z-pr-3245.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T112645Z-pr-3275.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T113227Z-pr-3274.md"
 tags: ["test", "fixture", "mutation", "invariant", "coverage"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:35:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:33:48Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T18:43:00+00:00" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T23:20:00+00:00" }
@@ -72,6 +74,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:16:22Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:15:44Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:35:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:33:48Z" }
 ---
 
 # テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する
@@ -223,6 +226,13 @@ guard・不変量の TC を追加したら、worktree-only mutation（当該 gua
 
 変異確認で当てる変異は、テスト内の別の検査に偶然かからない形を選ぶ。比較式を単一キーの短い形へ縮める変異が placeholder 残留検査の正規表現にも一致すると、テストはその検査で落ち、比較の検出力を測ったことにならない。同じ意味の変異を正規表現に一致しない書き方で当てる。変異は対象ツリーをディレクトリ構成ごと一時コピーし、テストがコピー側を読むこと（ルートがテストの位置から決まる）と変異の適用件数を確かめてから実行する。
 
+## 受入条件で「変異でそのケースだけが落ちる」と求めるときは変異点を特定する
+
+同じ既定値に依存する既存の負の対照があると、既定値そのものを反転する変異では新しいケースと既存ケースが一緒に落ちる。受入条件が「変異で当該ケースだけが落ちる」と書いていると、reviewer ごとに選んだ変異点（既定値の反転 / 分岐の入れ替え / 許可分岐の書き換え）で成否が分かれ、充足判定がぶれる。
+
+- 受入条件に変異を書くときは、どの行・どの分岐を変えるかまで特定する
+- 既存ケースが先に検出する変異と、新しいケースだけが検出する変異を分けて書き、新しいテストが固定したのは後者だと明示する
+
 ## 関連ページ
 
 - [位置依存の表パースには検査行数ガードを対にする（silent false-pass 遮断）](../patterns/positional-parse-row-count-guard.md)
@@ -257,3 +267,4 @@ guard・不変量の TC を追加したら、worktree-only mutation（当該 gua
 - [行末に達する tail を完全一致で固定して後ろへの反転追記を検出したレビュー結果](../../raw/reviews/20260926T141827Z-pr-3170.md)
 - [比較する複数キーのうち 1 キーだけを変えた不一致 fixture では比較式を弱めても検出できないと指摘したレビュー結果](../../raw/reviews/20260927T080916Z-pr-3245.md)
 - [比較キーごとの fixture と変異の形を検討したレビュー結果](../../raw/reviews/20260927T112645Z-pr-3275.md)
+- [レビュー結果](../../raw/reviews/20260927T113227Z-pr-3274.md)

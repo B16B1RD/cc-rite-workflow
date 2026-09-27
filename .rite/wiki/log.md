@@ -2,6 +2,7 @@
 
 ## 2026-09-27
 
+* **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — raw/reviews/20260927T113227Z-pr-3274.md を統合
 * **Create**: [セッション単位の state を読む案内は、同じ session_id で入る入口を基準に選ぶ — テストはホストの入力形で呼ぶ](pages/heuristics/session-scoped-guidance-targets-same-session-entry.md) — raw/reviews/20260927T102947Z-pr-3259.md, raw/fixes/20260927T103549Z-pr-3259.md を新規ページ化
 * **Update**: [検証ツールの保証文言は検証される不変量と非検出 gap に正確に対応させる](pages/heuristics/verification-doc-guarantee-matches-invariants.md) — raw/fixes/20260927T103237Z-pr-3261.md, raw/reviews/20260927T104024Z-pr-3261.md, raw/reviews/20260927T104337Z-pr-3263.md を統合
 * **Update**: [散文契約の静的 pin には weakened probe による positive control を課す（見出しラベルで充足する pin を構造的に排除する）](pages/patterns/prose-pin-requires-positive-control.md) — raw/reviews/20260927T104024Z-pr-3261.md, raw/fixes/20260927T103237Z-pr-3261.md を統合
