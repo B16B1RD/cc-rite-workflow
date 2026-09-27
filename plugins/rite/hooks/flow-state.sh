@@ -894,7 +894,12 @@ _review_record_ensure() {
       return 1
     fi
     status=$(_wm_sync_status fetch --issue "$issue" --out "$body")
-    if [ "$status" != "status=success" ] || ! grep -qF -- "$marker" "$body"; then
+    if [ "$status" != "status=success" ]; then
+      echo "ERROR: appended the review record to Issue #$issue but cannot re-read the work memory to confirm it (${status:-no status line}); run this again" >&2
+      rm -f "$body"
+      return 1
+    fi
+    if ! grep -qF -- "$marker" "$body"; then
       echo "ERROR: the work memory of Issue #$issue still has no record of this review: $marker" >&2
       echo "  Restore the '### レビュー対応履歴' section of the work memory and run this again" >&2
       rm -f "$body"
