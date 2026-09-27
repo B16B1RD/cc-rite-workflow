@@ -7,6 +7,7 @@
 * **Update**: [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](pages/anti-patterns/test-pin-protection-theater.md) — raw/reviews/20260927T201521Z-pr-3333.md を統合
 * **Update**: [Test assertion は section-scoped で行頭 prefix を必須にし narrative mention の false negative を防ぐ](pages/patterns/section-scoped-assertion-prevents-narrative-false-negative.md) — raw/reviews/20260927T202454Z-pr-3339.md を統合
 * **Update**: [Scope drift fix での overclaim substitution (置換後に新たな過剰主張を持ち込む)](pages/anti-patterns/scope-drift-fix-overclaim-substitution.md) — raw/fixes/20260927T202621Z-pr-3334.md を統合
+* **lint:clean** — contradictions=0, stale=63, orphans=0, missing_concept=0, unregistered_raw=567, broken_refs=0
 
 ## 2026-09-27
 
