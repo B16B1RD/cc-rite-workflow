@@ -377,6 +377,14 @@ if [[ "$branch_strategy" == "same_branch" ]]; then
  if ! bash "$_SCRIPT_DIR/git-commit-file.sh" --file "$_wic_resolved_file" -- --quiet 2>"${_sb_git_err:-/dev/null}"; then
   echo "ERROR: git commit failed" >&2
   _sb_dump "commit"
+  # A refused commit (e.g. the Wiki apply gate) must not leave the raw sources
+  # staged: the next commit or review gate would see them as foreign paths.
+  # Only the files added above are unstaged, so the user's own staging stays.
+  if ! git reset -q -- "${pending_files[@]}" 2>"${_sb_git_err:-/dev/null}"; then
+   echo "WARNING: failed to unstage the raw sources after the failed commit" >&2
+   printf ' manual recovery: git reset -q --%s\n' "$(printf ' %q' "${pending_files[@]}")" >&2
+   _sb_dump "reset"
+  fi
   [ -n "$_sb_git_err" ] && rm -f "$_sb_git_err"
   exit 3
  fi
