@@ -92,13 +92,19 @@ assert "TC-5 holder now B" "$SID_B" "$(cat "$LOCKDIR/session_id")"
 assert_fresh_acquired_at "TC-5" "$PAST"
 
 echo "=== TC-6: release only own; other's lock untouched ==="
-assert "TC-6 A release skipped (B holds)" "skipped" "$(bash "$WIL" release --session "$SID_A" 2>/dev/null)"
+rc=0; out=$(bash "$WIL" release --session "$SID_A" 2>/dev/null) || rc=$?
+assert "TC-6 A release skipped (B holds)" "skipped" "$out"
+assert "TC-6 A release rc 0" "0" "$rc"
 assert "TC-6 still held by B" "$SID_B" "$(cat "$LOCKDIR/session_id")"
-assert "TC-6 B release" "released" "$(bash "$WIL" release --session "$SID_B")"
+rc=0; out=$(bash "$WIL" release --session "$SID_B") || rc=$?
+assert "TC-6 B release" "released" "$out"
+assert "TC-6 B release rc 0" "0" "$rc"
 assert "TC-6 free after release" "free" "$(bash "$WIL" check --session "$SID_A")"
 
 echo "=== TC-7: release on absent lock is idempotent ==="
-assert "TC-7 idempotent release" "released" "$(bash "$WIL" release --session "$SID_A")"
+rc=0; out=$(bash "$WIL" release --session "$SID_A") || rc=$?
+assert "TC-7 idempotent release" "released" "$out"
+assert "TC-7 idempotent release rc 0" "0" "$rc"
 
 echo "=== TC-8: lock without acquired_at (older format) → reclaimable ==="
 # The holders are active here, so only the missing / unparsable acquired_at can make them stale.
@@ -134,14 +140,24 @@ reset_lock
 err=$(mktemp); cleanup_dirs+=("$err")
 rc=0; PATH="$nodate_stub" bash "$WIL" acquire --session "$SID_A" >/dev/null 2>"$err" || rc=$?
 assert "TC-10 fresh acquire rc 1" "1" "$rc"
-assert "TC-10 fresh acquire ERROR on stderr" "1" "$(grep -c '^ERROR' "$err" || true)"
+assert "TC-10 fresh acquire ERROR names the current time" "1" \
+  "$(grep -c '^ERROR: .*cannot read the current time for acquired_at' "$err" || true)"
 assert "TC-10 fresh acquire leaves no lockdir" "0" "$([ -e "$LOCKDIR" ] && echo 1 || echo 0)"
 mkdir -p "$LOCKDIR"
 printf '%s' "$SID_B" > "$LOCKDIR/session_id"
 rc=0; PATH="$nodate_stub" bash "$WIL" acquire --session "$SID_A" >/dev/null 2>"$err" || rc=$?
 assert "TC-10 stale reclaim rc 1" "1" "$rc"
-assert "TC-10 stale reclaim ERROR on stderr" "1" "$(grep -c '^ERROR' "$err" || true)"
+assert "TC-10 stale reclaim ERROR names the current time" "1" \
+  "$(grep -c '^ERROR: .*cannot read the current time for acquired_at' "$err" || true)"
 assert "TC-10 stale reclaim leaves no lockdir" "0" "$([ -e "$LOCKDIR" ] && echo 1 || echo 0)"
+# A live lock held by another session must survive an unreadable clock.
+reset_lock
+bash "$WIL" acquire --session "$SID_B" >/dev/null
+rc=0; PATH="$nodate_stub" bash "$WIL" acquire --session "$SID_A" >/dev/null 2>"$err" || rc=$?
+assert "TC-10 live lock + no clock: acquire rc 1" "1" "$rc"
+assert "TC-10 live lock + no clock: ERROR on stderr" "1" \
+  "$(grep -c '^ERROR: .*cannot read the current time to judge the lock' "$err" || true)"
+assert "TC-10 live lock + no clock: B still holds" "$SID_B" "$(cat "$LOCKDIR/session_id" 2>/dev/null)"
 
 echo "=== TC-11: env-first resolution — env outranks a differing .rite-session-id ==="
 # Regression guard for the env-first precedence in _resolve_sid (no --session override path).
@@ -230,6 +246,13 @@ assert "TC-13c own: rc 0" "0" "$rc"
 assert "TC-13c own: no WARNING" "0" "$(grep -c '^WARNING' "$s_err" || true)"
 assert "TC-13c own: release output released" "released" "$(cat "$s_out")"
 assert "TC-13c own: lock released" "0" "$([ -e "$LOCKDIR" ] && echo 1 || echo 0)"
+# (d) the check itself fails (session unresolvable) → a distinct WARNING, release still runs
+rc=0
+env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="not-a-uuid" RITE_STATE_ROOT="$ROOT" \
+  bash "$step90_file" >"$s_out" 2>"$s_err" || rc=$?
+assert "TC-13d check failed: WARNING says the state could not be confirmed" "1" \
+  "$(grep -c '^WARNING: .*ロックの状態を確認できませんでした' "$s_err" || true)"
+assert "TC-13d check failed: no lost-lock WARNING" "0" "$(grep -c 'ロックを失っていました' "$s_err" || true)"
 
 print_summary "$(basename "$0")" \
   "Drift hint: wiki-ingest-lock.sh §9 — mkdir lock whose liveness is its own acquired_at (2h), reclaim stale/missing/unparsable, concurrent_ingest rc 11, acquired_at write failure stops acquire; _resolve_sid env-first; no-flock PATH; wiki-ingest step 9.0 check → WARNING when not own."

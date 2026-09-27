@@ -1141,9 +1141,13 @@ rationale: references/rationale.md#lock-release-failsafe
 
 ```bash
 lock_state=$(bash "{plugin_root}/hooks/scripts/wiki-ingest-lock.sh" check) || lock_state=""
+case "$lock_state" in
+  own) ;;
+  "") echo "WARNING: ingest 終了時に wiki ingest のロックの状態を確認できませんでした（直前の ERROR を参照）" >&2 ;;
+  *) echo "WARNING: ingest 中に wiki ingest のロックを失っていました (check=$lock_state)。別のセッションが同じ wiki worktree へ並行して書き込んだ可能性があります" >&2 ;;
+esac
 if [ "$lock_state" != "own" ]; then
-  echo "WARNING: ingest 中に wiki ingest のロックを失っていました (check=${lock_state:-取得失敗})。別のセッションが同じ wiki worktree へ並行して書き込んだ可能性があります" >&2
-  echo "  対処: wiki branch の直近の commit を確認し、重複や上書きがあれば手で直してください" >&2
+  echo "  対処: 直近の wiki の commit を確認し（separate_branch: git -C {wiki_worktree_abs} log --oneline -n 20 / same_branch: git log --oneline -n 20 -- .rite/wiki/）、重複や上書きがあれば手で直してください" >&2
 fi
 bash "{plugin_root}/hooks/scripts/wiki-ingest-lock.sh" release
 ```

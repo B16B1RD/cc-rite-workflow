@@ -15,9 +15,10 @@
 # is NOT consulted: a session may run ingest without an active flow (standalone
 # `/rite:wiki-ingest`, or cleanup deactivating its own flow mid-ingest), and the
 # lock must still keep other sessions out. A missing / unparsable `acquired_at`
-# (including locks written before this field existed) is stale, so a crashed
-# holder never pins the lock for good. `parse_iso8601_to_epoch` comes from
-# `session-ownership.sh` (single source).
+# (e.g. a lockdir holding only `session_id`) is stale, so a crashed holder never
+# pins the lock for good. An unreadable current time is an error, not staleness:
+# reclaiming on it would remove another session's live lock.
+# `parse_iso8601_to_epoch` comes from `session-ownership.sh` (single source).
 #
 # Subcommands:
 #   acquire [--session UUID]   acquire (or reclaim a stale lock)
@@ -27,7 +28,8 @@
 # Exit codes:
 #   0   acquired / reclaimed / released / check printed
 #   11  NOT acquired — another LIVE session is ingesting (caller: skip + retry later)
-#   1   environment error (including a failed `acquired_at` write, which removes the lockdir)
+#   1   environment error (including an unreadable current time, and a failed
+#       `acquired_at` write, which removes the lockdir)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -51,15 +53,20 @@ LOCKDIR="$STATE_ROOT/.rite/state/wiki-ingest-session.lockdir"
 source "$HOOKS_DIR/session-identity.sh"
 _resolve_sid() { resolve_strict_session_id "$STATE_ROOT" "${1:-}"; }
 
-# Is the lock live (holder recorded ∧ acquired_at within 2h)?
+# Is the lock live (holder recorded ∧ acquired_at within 2h)? The current time is
+# read before parsing acquired_at (which also calls date), so a broken clock stops
+# the command instead of turning a live lock into a stale one.
 _holder_is_live() {
   local holder at epoch now
   holder=$(cat "$LOCKDIR/session_id" 2>/dev/null) || return 1
   [ -n "$holder" ] || return 1
   at=$(cat "$LOCKDIR/acquired_at" 2>/dev/null) || return 1
+  if ! now=$(date +%s) || [ -z "$now" ]; then
+    echo "ERROR: wiki-ingest-lock: cannot read the current time to judge the lock in $LOCKDIR" >&2
+    exit 1
+  fi
   epoch=$(parse_iso8601_to_epoch "$at")
   [ "$epoch" -gt 0 ] || return 1
-  now=$(date +%s 2>/dev/null) || return 1
   [ $(( now - epoch )) -le "$LOCK_STALE_SECONDS" ]
 }
 
@@ -67,12 +74,14 @@ _holder_is_live() {
 # moment it exists, so a failed write removes the lockdir and stops acquire.
 _record_holder() {
   local at
-  if at=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null) && [ -n "$at" ] \
-    && printf '%s' "$1" > "$LOCKDIR/session_id" \
+  if ! at=$(date -u +"%Y-%m-%dT%H:%M:%SZ") || [ -z "$at" ]; then
+    echo "ERROR: wiki-ingest-lock acquire: cannot read the current time for acquired_at" >&2
+  elif printf '%s' "$1" > "$LOCKDIR/session_id" \
     && printf '%s' "$at" > "$LOCKDIR/acquired_at"; then
     return 0
+  else
+    echo "ERROR: wiki-ingest-lock acquire: cannot record session_id / acquired_at in $LOCKDIR" >&2
   fi
-  echo "ERROR: wiki-ingest-lock acquire: cannot record session_id / acquired_at in $LOCKDIR" >&2
   rm -rf "$LOCKDIR" 2>/dev/null || true
   return 1
 }
