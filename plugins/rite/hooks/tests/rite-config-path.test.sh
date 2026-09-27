@@ -237,11 +237,21 @@ else
   fail "T-12 workflow reads language from the resolved path"
 fi
 reset_md="$PLUGIN_ROOT/skills/template-reset/SKILL.md"
-if grep -qF 'ls -la "{rite_config_path}"' "$reset_md" \
-   && grep -qF 'cp "{rite_config_path}" "{rite_config_path}.backup.' "$reset_md"; then
-  pass "T-12 template-reset detects and backs up the resolved path"
+# 再生成はバックアップの後に同じパスへ書く。上書きしてから退避する順序も落とす
+reset_regen=$(awk 'index($0, "### 3.3 Regenerate Configuration File") == 1 {f = 1; next} f && index($0, "## Phase 4") == 1 {exit} f' "$reset_md")
+backup_at=$(printf '%s\n' "$reset_regen" | grep -nF 'cp "{rite_config_path}" "{rite_config_path}.backup.' | head -n 1 | cut -d: -f1) || backup_at=""
+write_at=$(printf '%s\n' "$reset_regen" | grep -nF 'write it to `{rite_config_path}`' | head -n 1 | cut -d: -f1) || write_at=""
+reset_missing=""
+grep -qF 'ls -la "{rite_config_path}"' "$reset_md" || reset_missing="$reset_missing ls"
+[[ -n "$backup_at" ]] || reset_missing="$reset_missing backup"
+[[ -n "$write_at" ]] || reset_missing="$reset_missing write"
+if [[ -z "$reset_missing" && "$backup_at" -ge "$write_at" ]]; then
+  reset_missing=" backup-before-write"
+fi
+if [[ -z "$reset_missing" ]]; then
+  pass "T-12 template-reset detects, backs up and regenerates the resolved path"
 else
-  fail "T-12 template-reset detects and backs up the resolved path"
+  fail "T-12 template-reset detects, backs up and regenerates the resolved path (missing:$reset_missing)"
 fi
 
 print_summary "$(basename "$0")" \
