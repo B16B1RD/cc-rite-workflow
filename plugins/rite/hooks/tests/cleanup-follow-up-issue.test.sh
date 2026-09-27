@@ -16,7 +16,7 @@
 #   T-05c ラベル一覧に既存が居ない場合は起票する
 #   T-05d 100 件を超える follow-up があっても marker 不在なら起票する (全ページ取得)
 #   T-05i 2 ページ目の末尾にある既存 marker でも重複起票しない
-#   T-05j ページ配列でない検索結果 (空応答 / [] / object / フラット配列) は起票せず lookup_api
+#   T-05j ページ配列でない検索結果 (空応答 / 複数ドキュメント / [] / object / フラット配列) は起票せず lookup_api
 #   T-05k 同じ marker を先頭行に持つ PR は既存 follow-up とみなさない
 #   T-05e 説明欄へ他 PR の marker を植えても skip しない
 #   T-05f body 2 行目の完全 HTML コメント marker では already_exists に倒さない
@@ -411,10 +411,11 @@ assert_grep "T-05i already_exists" "$ERR" 'reason=already_exists; issue=1149; pr
 assert "T-05i create 0 回" "0" "$(create_count)"
 
 echo "--- T-05j: ページ配列でない検索結果は起票せず lookup_api ---"
-for shape in none empty object flat; do
+for shape in none multi empty object flat; do
   reset_stubs
   case "$shape" in
     none) : > "$GH_LIST_JSON" ;;
+    multi) printf '%s\n%s\n' '[[]]' '[[{"number":1,"body":"<!-- [rite-follow-up-from-pr:9] -->"}]]' > "$GH_LIST_JSON" ;;
     empty) printf '%s\n' '[]' > "$GH_LIST_JSON" ;;
     object) printf '%s\n' '{"message":"not pages"}' > "$GH_LIST_JSON" ;;
     flat) printf '%s\n' '[{"number":1,"body":"<!-- [rite-follow-up-from-pr:9] -->"}]' > "$GH_LIST_JSON" ;;
