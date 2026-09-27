@@ -177,7 +177,10 @@ dl_code=${dl_code//\{reason\}/why}
 dl_code=${dl_code//\{impact\}/what}
 dl_code=${dl_code//\{source_issue_number\}/7}
 dl_code=${dl_code//\{owner_repo\}/example\/repo}
-printf '%s\n' "$dl_code" > "$work/dl.sh"
+# 先送り欠陥トークンは候補ごとに空 / 付与の 2 通り。既定の dl.sh は空で、dl-deferred.sh は付与
+printf '%s\n' "${dl_code//\{deferred_token\}/}" > "$work/dl.sh"
+printf '%s\n' "${dl_code//\{deferred_token\}/ <!-- rite:deferred-defect pr=7 -->}" > "$work/dl-deferred.sh"
+assert_not_grep 'Decision Log deferred block has no placeholder residue' "$work/dl-deferred.sh" '(^|[^$])\{[a-z_]+\}'
 assert_not_grep 'Decision Log block has no placeholder residue' "$work/dl.sh" '(^|[^$])\{[a-z_]+\}'
 mkdir "$work/dl-bin" "$work/awk-fail"
 cat > "$work/dl-bin/gh" <<'MOCK'
@@ -206,7 +209,7 @@ run_decision_log() {
   local name="$1" body="$2" extra_path="${3:-}" rc=0
   : > "$work/$name.argv"; : > "$work/$name.awklog"
   AWK_LOG="$work/$name.awklog" MOCK_LOG="$work/$name.argv" MOCK_BODY="$body" MOCK_EDITED="$work/$name.edited" \
-    PATH="${extra_path:+$extra_path:}$work/dl-bin:$PATH" bash "$work/dl.sh" > "$work/$name.out" 2> "$work/$name.err" || rc=$?
+    PATH="${extra_path:+$extra_path:}$work/dl-bin:$PATH" bash "${DL_SCRIPT:-$work/dl.sh}" > "$work/$name.out" 2> "$work/$name.err" || rc=$?
   assert "Decision Log $name exit status" 0 "$rc"
 }
 edit_count() { jq -s '[.[] | select(.[0:2] == ["issue", "edit"] and index("--body-file") != null)] | length' "$work/$1.argv"; }
@@ -334,6 +337,21 @@ for fail in partial:1 partial:2 empty:2; do
   assert_grep "$name reports gh_edit_failure" "$work/$name.err" 'DECISION_LOG_APPEND_FAILED=1; reason=gh_edit_failure'
   assert_grep "$name prints the pending line" "$work/$name.err" 'D-01: decided'
 done
+
+# A deferred defect ends its one Decision Log line with the token; numbering and placement do not change.
+dl_deferred_line="$dl_line <!-- rite:deferred-defect pr=7 -->"
+DL_SCRIPT="$work/dl-deferred.sh" run_decision_log deferred "$work/footer-body.md"
+assert_grep 'deferred line is created as D-01' "$work/deferred.out" 'entry=D-01; section=created'
+assert 'deferred line is appended exactly as one line' 1 "$(grep -cxF -- "$dl_deferred_line" "$work/deferred.edited")"
+DL_SCRIPT="$work/dl-deferred.sh" run_decision_log deferred-next "$work/deferred.edited"
+assert_grep 'the token does not change the next number' "$work/deferred-next.out" 'entry=D-02$'
+: > "$work/empty-body.md"
+DL_SCRIPT="$work/dl-deferred.sh" run_decision_log deferred-fetch-fail "$work/empty-body.md"
+assert_grep 'body fetch failure keeps the token in the pending line' "$work/deferred-fetch-fail.err" \
+  '手動追記してください: - 2026-01-02 D-NN: decided / Reason: why / Impact: what <!-- rite:deferred-defect pr=7 -->$'
+DL_SCRIPT="$work/dl-deferred.sh" AWK_FAIL_MODE=partial AWK_FAIL_AT=2 run_decision_log deferred-edit-fail "$work/footer-body.md" "$work/awk-fail"
+assert_grep 'edit failure keeps the token in the pending line' "$work/deferred-edit-fail.err" \
+  '手動追記してください: - 2026-01-02 D-01: decided / Reason: why / Impact: what <!-- rite:deferred-defect pr=7 -->$'
 
 # The work-memory fallback is gone from the Decision Log contract.
 for gone in 'issue-comment-wm-sync' 'wm_sync_failure' 'fallback=work_memory' '決定事項・メモ'; do

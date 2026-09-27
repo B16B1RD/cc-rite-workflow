@@ -357,6 +357,7 @@ Select ONE matching the Issue type. The type confirmed in `create.md` ステッ�
   - a planned test → a new `T-xx` row in Section 6 (its Canon TDD test list is appended to as behaviors surface)
   - a fix rationale, a review response included → the commit body (`skills/fix/SKILL.md` ステップ 3.2 requires the chosen 対応方針 there, ステップ 3.2.1 the root cause)
 - This extends `knowledge_routing` (`skills/rite-workflow/references/coding-principles.md`) from code artifacts to this Issue section: each kind of knowledge is recorded once, in the medium where it survives
+- A line that defers a defect found in review ends with ` <!-- rite:deferred-defect pr=N -->` (added by `/rite:pr-review` step 7.4.3). `/rite:cleanup` step 6.0 copies these lines into the PR's follow-up Issue; removing the token drops the defect from that follow-up
 
 ---
 

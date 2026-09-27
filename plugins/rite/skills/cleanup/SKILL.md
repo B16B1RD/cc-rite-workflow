@@ -560,6 +560,8 @@ rationale: references/rationale.md#remote-delete-markers
 archive より前に実行する（JSON が元の場所にあるうちに読む）。先に orphan 回収が `archive/` へ移した JSON も読む。0 件は起票しない。同定不能は起票せず WARNING。cleanup は止めない。
 rationale: references/rationale.md#follow-up-before-archive
 
+元 Issue の Decision Log（Section 9）で本 PR のレビューが先送りした欠陥（行末が `<!-- rite:deferred-defect pr={pr_number} -->` の行）も helper が読み、同じ follow-up Issue へ転記する。指摘が 0 件でも先送り欠陥があれば起票する。本文を取得できなければ `FOLLOW_UP_DEFERRED=unavailable` を出し、指摘側だけ起票する。
+
 iterate の NB sweep で起票済みの指摘（関連 Issue 記録コメントの却下台帳で判定=`issued`）は helper が台帳を読んで転記から除く。照合は `[finding_id, file:line]` と、行の出典（sweep が読んだ JSON の basename）と指摘の出典 JSON の一致で行う。出典の無い旧形式の行は最新のレビュー結果 JSON 由来の指摘とだけ照合する。台帳か最新のレビュー結果 JSON を読めなければ、sweep で Issue 化済みの指摘も転記対象とし（再検証による除外は適用済みのまま）、WARNING と `FOLLOW_UP_SWEEP_ISSUED=unavailable` を出す。
 rationale: references/rationale.md#follow-up-sweep-issued-dedup
 
@@ -717,8 +719,8 @@ fi
 ```
 
 - `skip` → 下の helper 呼び出しを `{preview_option}` を空にして実行する（従来どおり起票する）。
-- `ask` → `{preview_option}` を `--preview-body "${TMPDIR:-/tmp}/rite-follow-up-preview-{pr_number}.md"` にして実行する。helper は起票せず、`[CONTEXT] FOLLOW_UP_ISSUE=preview; count=<n>; body=<path>; pr={pr_number}` を出す。0 件・既存あり・失敗は通常どおりの marker で終わるので、そのときは質問しない。
-- `preview` のとき AskUserQuestion で「起票する / 起票しない / 本文を確認してから決める」を確認する。説明には転記件数 `{fu_count}`（preview marker の `count=` の値）と、6.0.V の内訳（`done` なら「残存 {n_remains} / 判定不能 {n_undecidable}」、`unavailable` なら「再検証未実施（全件を判定不能扱い）」）を入れる。6.0.V の marker が 1 つも出ていない場合も `unavailable` と同じ書き方にする。件数は重複の集約と sweep 起票済みの除外の後の値なので、内訳の合計と一致しないことがある。
+- `ask` → `{preview_option}` を `--preview-body "${TMPDIR:-/tmp}/rite-follow-up-preview-{pr_number}.md"` にして実行する。helper は起票せず、`[CONTEXT] FOLLOW_UP_ISSUE=preview; count=<n>; deferred=<k>; body=<path>; pr={pr_number}` を出す。0 件・既存あり・失敗は通常どおりの marker で終わるので、そのときは質問しない。
+- `preview` のとき AskUserQuestion で「起票する / 起票しない / 本文を確認してから決める」を確認する。説明には転記件数 `{fu_count}`（preview marker の `count=` の値。指摘と先送り欠陥の合計）、うち先送り欠陥 `{fu_deferred}`（同 `deferred=` の値）と、6.0.V の内訳（`done` なら「残存 {n_remains} / 判定不能 {n_undecidable}」、`unavailable` なら「再検証未実施（全件を判定不能扱い）」）を入れる。6.0.V の marker が 1 つも出ていない場合も `unavailable` と同じ書き方にする。6.0.V の内訳は指摘だけを数え、件数は重複の集約と sweep 起票済みの除外の後の値なので、内訳の合計と一致しないことがある。
   - 「起票する」→ `{preview_option}` を空にして helper 呼び出しをもう一度実行する（入力が同じなのでプレビューと同じ本文で起票される）。
   - 「起票しない」→ `echo "[CONTEXT] FOLLOW_UP_ISSUE=declined; count={fu_count}; pr={pr_number}" >&2`（`{fu_count}` は preview marker の `count=` の値をリテラル置換する） を実行し、Issue は作らずに下の state 削除（archive）へ進む。
   - 「本文を確認してから決める」→ marker の `body=` のファイルを Read し、その本文を加工せず応答本文にそのまま出力する（Read の結果は利用者の画面に出ないことがある）。そのあと AskUserQuestion で「起票する / 起票しない」を確認して上と同じに進む。
@@ -960,7 +962,7 @@ Status: {projects_status_result}
 - [{base_update_check}] base ブランチを更新 (fetch + merge --ff-only)
 - [{session_worktree_check}] セッション worktree 退出・削除 (multi_session)
 - [{local_branch_check}] ローカル/リモートブランチ削除
-- [{review_cleanup_check}] PR-specific state ファイル削除{follow_up_reverify_note}{follow_up_ambiguous_note}{follow_up_sweep_note}
+- [{review_cleanup_check}] PR-specific state ファイル削除{follow_up_reverify_note}{follow_up_ambiguous_note}{follow_up_sweep_note}{follow_up_deferred_note}
 - [{projects_check}] Projects Status を Done に更新
 - [{wiki_ingest_check}] Wiki ingest (pending raw source のページ統合)
 - [x] flow state リセット
@@ -1050,26 +1052,33 @@ rationale: references/rationale.md#marker-data-delimiter
   - 上記 2 条件のいずれにも該当せず `[CONTEXT] PROJECTS_STATUS_UPDATED=true` が見つかったとき: `{projects_status_result}` = `Done`、`{projects_check}` = `x`
   - 上記 2 条件のいずれにも該当せず `[CONTEXT] PROJECTS_STATUS_UPDATED=skipped_terminal` が見つかったとき: `{projects_status_result}` = `Cancelled のため Done 上書きをスキップ`、`{projects_check}` = `x`（legitimate skip。`false` の outstanding「Done へ手動変更」に倒さない）
   - 上記条件のいずれにも該当せず `[CONTEXT] PROJECTS_STATUS_UPDATED=false` または sentinel 自体が見つからない（= ステップ8 が実行されるべきだったのに失敗/skip された）とき: `{projects_status_result}` = `⚠️ 更新失敗（手動確認が必要）`、`{projects_check}` = ` ` + 「GitHub Projects 画面で Issue #{issue_number} の Status を Done に変更」を付記
-- `{review_cleanup_check}`: **follow-up 起票（ステップ 6.0 の `FOLLOW_UP_ISSUE`）と state 削除（`REVIEW_CLEANUP_PARTIAL_FAILURE`）を独立に評価し、両方が `x` 相当のときだけ `x`**（`{local_branch_check}` と同型。どちらか一方でも未完了なら ` ` にし、未完了だった側の付記を列挙する）。照合はいずれも `pr={pr_number}` まで含める（`invalid_pr_number` だけは `pr=` を持たないので marker 名のみ）。**`pr=` の値は直後が `;` または行末であることまで含めて一致させる**（`{local_branch_check}` の `branch=` と同文。`pr=9` が `pr=90` に prefix 一致してはならない）。follow-up 側で同一 marker family の複数行が一致したときは最後の出現（recency）を採る。この選択は**follow-up 側**の判定ルールを評価する前に行う。state 削除側は presence 検査で recency を使わない。helper は API 失敗でも exit 0 のため、起票失敗の一次信号は `FOLLOW_UP_ISSUE` だけである。
+- `{review_cleanup_check}`: **follow-up 起票（ステップ 6.0 の `FOLLOW_UP_ISSUE`）・先送り欠陥の読み取り（`FOLLOW_UP_DEFERRED`）・state 削除（`REVIEW_CLEANUP_PARTIAL_FAILURE`）の 3 側を独立に評価し、すべてが `x` 相当のときだけ `x`**（`{local_branch_check}` と同型。いずれか 1 側でも未完了なら ` ` にし、未完了だった側の付記を列挙する）。照合はいずれも `pr={pr_number}` まで含める（`invalid_pr_number` だけは `pr=` を持たないので marker 名のみ）。**`pr=` の値は直後が `;` または行末であることまで含めて一致させる**（`{local_branch_check}` の `branch=` と同文。`pr=9` が `pr=90` に prefix 一致してはならない）。follow-up 側で同一 marker family の複数行が一致したときは最後の出現（recency）を採る。この選択は**follow-up 側**の判定ルールを評価する前に行う。state 削除側は presence 検査で recency を使わない。helper は API 失敗でも exit 0 のため、起票失敗の一次信号は `FOLLOW_UP_ISSUE` だけである。
 
   **follow-up 側**（**2 段で判定する**: まず `[CONTEXT] ` 行頭一致 + marker family `FOLLOW_UP_ISSUE` + `pr={pr_number}`（直後が `;` または行末）に該当する行を集め、**その中の最後の出現 1 行だけを対象に選ぶ**。次にその 1 行に対して以下のルールを上から評価し最初に一致したものを採用する。段の順序を入れ替えてはならない）:
 
   | 検出 | 側の判定 | 付記 |
   |---|---|---|
-  | `FOLLOW_UP_ISSUE=failed; reason=preview_write` | 未完了 | `⚠️ follow-up 起票の確認用の本文を書き出せず、起票を試みていません。残存 non-blocking 指摘があれば follow-up ラベル付き Issue を手動作成してください` |
-  | `FOLLOW_UP_ISSUE=failed`（reason 問わず。preview_write 以外。`helper_rc` / `lookup_api` / `create_api` / `create_script_missing` / `json_undecidable` を含む） | 未完了 | `⚠️ follow-up Issue の起票に失敗しました。review-results JSON の non_blocking_findings[] を元に follow-up ラベル付き Issue を手動作成してください` |
+  | `FOLLOW_UP_ISSUE=failed; reason=preview_write` | 未完了 | `⚠️ follow-up 起票の確認用の本文を書き出せず、起票を試みていません。残存 non-blocking 指摘があれば、元 Issue の Decision Log（Section 9）で行末に `<!-- rite:deferred-defect pr={pr_number} -->` を持つ行も含めて follow-up ラベル付き Issue を手動作成してください` |
+  | `FOLLOW_UP_ISSUE=failed`（reason 問わず。preview_write 以外。`helper_rc` / `lookup_api` / `create_api` / `create_script_missing` / `json_undecidable` を含む） | 未完了 | `⚠️ follow-up Issue の起票に失敗しました。review-results JSON の non_blocking_findings[] と、元 Issue の Decision Log（Section 9）で行末に `<!-- rite:deferred-defect pr={pr_number} -->` を持つ行を元に follow-up ラベル付き Issue を手動作成してください` |
   | `skipped; reason=no_json` | 未完了 | 同上（レビュー結果 JSON 不在） |
-  | `skipped; reason=jq_missing` | 未完了 | `⚠️ jq が見つからず follow-up 起票を skip しました。jq を導入したうえで、残存 non-blocking 指摘があれば follow-up Issue を手動作成してください` |
+  | `skipped; reason=jq_missing` | 未完了 | `⚠️ jq が見つからず follow-up 起票を skip しました。jq を導入したうえで、残存 non-blocking 指摘があれば、元 Issue の Decision Log（Section 9）で行末に `<!-- rite:deferred-defect pr={pr_number} -->` を持つ行も含めて follow-up Issue を手動作成してください` |
   | `created` / `skipped; reason=no_findings` / `skipped; reason=already_exists` / `skipped; reason=all_issued` / `skipped; reason=all_resolved` | x 相当 | — |
-  | `declined`（ステップ 6.0.C で「起票しない」を選んだ） | x 相当 | `ℹ️ 確認のうえ follow-up Issue の起票を見送りました（{count} 件）。指摘の全文は review-results/archive/ の JSON にあります` |
-  | `preview`（確認の回答前に止まった） | 未完了 | `⚠️ follow-up 起票の確認が完了していません。残存 non-blocking 指摘を起票する場合は follow-up ラベル付き Issue を手動作成してください` |
-  | `[CONTEXT] FOLLOW_UP_ISSUE=` かつ `pr={pr_number}` の行が無い | 未完了 | `⚠️ follow-up 起票の実行結果が確認できませんでした。残存 non-blocking 指摘があれば follow-up ラベル付き Issue を手動作成してください` |
+  | `declined`（ステップ 6.0.C で「起票しない」を選んだ） | x 相当 | `ℹ️ 確認のうえ follow-up Issue の起票を見送りました（{count} 件）。指摘の全文は review-results/archive/ の JSON に、先送り欠陥は元 Issue の Decision Log（Section 9）にあります` |
+  | `preview`（確認の回答前に止まった） | 未完了 | `⚠️ follow-up 起票の確認が完了していません。残存 non-blocking 指摘を起票する場合は、元 Issue の Decision Log（Section 9）で行末に `<!-- rite:deferred-defect pr={pr_number} -->` を持つ行も含めて follow-up ラベル付き Issue を手動作成してください` |
+  | `[CONTEXT] FOLLOW_UP_ISSUE=` かつ `pr={pr_number}` の行が無い | 未完了 | `⚠️ follow-up 起票の実行結果が確認できませんでした。残存 non-blocking 指摘があれば、元 Issue の Decision Log（Section 9）で行末に `<!-- rite:deferred-defect pr={pr_number} -->` を持つ行も含めて follow-up ラベル付き Issue を手動作成してください` |
 
   **FOLLOW_UP_ISSUE marker 不在を成功と読んではならない。**
 
-  `skipped; reason=all_resolved` を x 相当に置くのは、ステップ 6.0.V の再検証で残存 0 件が確定した**正常完了**だから（起票すべきものが無い）。`no_findings` と同じ扱いであり「起票に失敗した」ではない。`skipped; reason=all_issued` も、残りが全件 sweep で起票済みの正常完了として同じ扱いにする。
+  `skipped; reason=all_resolved` を x 相当に置くのは、ステップ 6.0.V の再検証で残存 0 件が確定し、先送り欠陥も 0 件の**正常完了**だから（起票すべきものが無い。先送り欠陥があれば helper は skip せず起票する）。`no_findings` と同じ扱いであり「起票に失敗した」ではない。`skipped; reason=all_issued` も、残りが全件 sweep で起票済みの正常完了として同じ扱いにする。
 
   `declined` の付記の `{count}` は declined marker の `count=` の値。x 相当でもこの付記は `{review_cleanup_check}` の行に続けて出す。
+
+  **先送り欠陥側**（`[CONTEXT] FOLLOW_UP_DEFERRED=` + `pr={pr_number}`（直後が `;` または行末）に該当する行の最後の出現を採る）:
+
+  | 検出 | 側の判定 | 付記 |
+  |---|---|---|
+  | `FOLLOW_UP_DEFERRED=unavailable` | 未完了 | `{follow_up_deferred_note}` と同文 |
+  | 該当行なし | x 相当 | — |
 
   **state 削除側**（`REVIEW_CLEANUP_PARTIAL_FAILURE=1` を上から評価し最初の一致。各行は presence 検査。こちら側に marker が 1 本も無ければ x 相当）:
 
@@ -1091,6 +1100,7 @@ rationale: references/rationale.md#review-cleanup-reasons
   - 最終 `FOLLOW_UP_ISSUE=created` の場合だけ、上の note の「転記対象としました」を「転記しました」に置換する。失敗・未確認・`already_exists` を含むその他の結果では置換しない。
   - 本 note は除外結果の付記であり、起票結果と state 削除結果から決めた `{review_cleanup_check}` を変更しない。
 - `{follow_up_sweep_note}`: `[CONTEXT] FOLLOW_UP_SWEEP_ISSUED=unavailable; reason={r}; pr={pr_number}` のうち、`pr=` の直後が `;` または行末まで一致する最後の出現を採る。marker があれば ` — ⚠️ sweep 起票済みの除外を適用できなかったため（{reason}）、sweep で Issue 化済みの指摘も転記対象としました`（`{reason}` は marker の値）。marker が無ければ空文字列（除外の適用・起票の成功は推定しない）。`{review_cleanup_check}` を変更しない。
+- `{follow_up_deferred_note}`: `[CONTEXT] FOLLOW_UP_DEFERRED=unavailable; reason={r}; pr={pr_number}` のうち、`pr=` の直後が `;` または行末まで一致する最後の出現を採る。marker があれば ` — ⚠️ 元 Issue の本文を取得できず（{reason}）、Decision Log で先送りした欠陥を follow-up へ転記していません。元 Issue の Section 9 で行末に `<!-- rite:deferred-defect pr={pr_number} -->` を持つ行を follow-up Issue へ手動で転記してください`（`{reason}` は marker の値）。このとき先送り欠陥側は未完了で、`{review_cleanup_check}` は ` ` になる（未完了事項として `{outstanding_items_block}` にも載る）。marker が無ければ空文字列。
 - `{wiki_ingest_check}`: 以下の sentinel を上から評価し最初の一致を採用 (`WIKI_INGEST_DONE` + `WIKI_INGEST_PUSH_FAILED` が併存しうるため順序重要):
 
   | Sentinel | check | 表示 |

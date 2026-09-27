@@ -30,10 +30,14 @@
 #   .rite/review-results/ is refused.
 #   --items is {"recommendation_items": [{reviewer_type, content, classification, file_line}]}.
 #   Markers (stdout):
-#     [CONTEXT] PR_RECOMMENDATIONS=registered; count=N; ids=R-01,...; positions=I,...
-#     [CONTEXT] PR_RECOMMENDATIONS=none; reason=not_mergeable|cycle_cap|cap_reached|no_candidates
+#     [CONTEXT] PR_RECOMMENDATIONS=registered; count=N; ids=R-01,...; positions=I,...[; unlocated=J,...]
+#     [CONTEXT] PR_RECOMMENDATIONS=none; reason=not_mergeable|cycle_cap|cap_reached
+#     [CONTEXT] PR_RECOMMENDATIONS=none; reason=no_candidates[; unlocated=J,...]
 #   positions are 0-based indexes into recommendation_items, in id order; step 7
 #   of pr-review leaves exactly those out of its triage candidates.
+#   unlocated lists the actionable items whose file_line is not "path:line" or
+#   "path:start-end" (0-based, item order; present only when non-empty). They
+#   cannot be matched to a + hunk, so they stay triage candidates.
 #
 # check (iterate, after the 5.S sweep): reads the latest saved result for the PR
 # (LC_ALL=C sort, last). A result for a commit already handed to fix (see
@@ -160,6 +164,7 @@ case "$mode" in
     diff_hunks_parse <<< "$diff_out"
 
     selected='[]'
+    unlocated=""
     n=$(jq '.recommendation_items | length' "$items")
     i=0
     while [ "$i" -lt "$n" ]; do
@@ -173,6 +178,7 @@ case "$mode" in
       elif [[ "$spec" =~ ^(.+):([0-9]+)$ ]]; then
         f=${BASH_REMATCH[1]} s=${BASH_REMATCH[2]} e=${BASH_REMATCH[2]}
       else
+        unlocated=${unlocated:+$unlocated,}$pos
         continue
       fi
       # plus_hunks only: minus_hunks holds old-file numbers of deleted lines,
@@ -182,9 +188,10 @@ case "$mode" in
         --arg f "$f" --argjson line "$s" '. + [{pos: $pos, reviewer: $item.reviewer_type, file: $f, line: $line, description: $item.content}]')
     done
 
+    unlocated_suffix=${unlocated:+; unlocated=$unlocated}
     count=$(printf '%s' "$selected" | jq 'length')
     if [ "$count" -eq 0 ]; then
-      echo "[CONTEXT] PR_RECOMMENDATIONS=none; reason=no_candidates"
+      echo "[CONTEXT] PR_RECOMMENDATIONS=none; reason=no_candidates$unlocated_suffix"
       exit 0
     fi
 
@@ -197,7 +204,7 @@ case "$mode" in
     fi
     ids=$(jq -r '[.pr_recommendations[].id] | join(",")' "$input")
     positions=$(printf '%s' "$selected" | jq -r 'map(.pos | tostring) | join(",")')
-    echo "[CONTEXT] PR_RECOMMENDATIONS=registered; count=$count; ids=$ids; positions=$positions"
+    echo "[CONTEXT] PR_RECOMMENDATIONS=registered; count=$count; ids=$ids; positions=$positions$unlocated_suffix"
     ;;
   check|mark)
     case "$pr" in ''|*[!0-9]*|0) usage ;; esac

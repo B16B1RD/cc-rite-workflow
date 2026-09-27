@@ -203,8 +203,16 @@ printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do ec
 #### 7.4.3 Decision Log Append
 
 「Decision Log に記録」は元 Issue の Section 9 へ 1 行 append。番号は Section 9 の内側（見出しの次行から `## ` / `---` / `</details>` まで）の最大 D-NN に 1 を足す。無ければ本文に Section 9 を新設して `D-01` を記録する。
-`{decision}` / `{reason}` / `{impact}` を生成前に埋める。**候補ごとに単一 Bash invocation**。
+`{decision}` / `{reason}` / `{impact}` / `{deferred_token}` を生成前に埋める。**候補ごとに単一 Bash invocation**。
 rationale: design-rationale.md#decision-log-per-candidate
+
+| 候補 | `{deferred_token}` |
+|---|---|
+| Source A、または Source B の `actionable`（先送りする欠陥）で、7.4.4 の引き受け先 Issue を持たない | ` <!-- rite:deferred-defect pr={pr_number} -->`（先頭に半角空白 1 つ。`{pr_number}` は本レビューの PR 番号） |
+| それ以外（Source B の `boundary`、引き受け先 Issue あり） | 空文字列 |
+
+トークン付きの行は cleanup ステップ 6.0 が follow-up Issue へ転記する。
+rationale: design-rationale.md#deferred-defect-token
 
 ```bash
 today=$(date +%Y-%m-%d)
@@ -214,7 +222,7 @@ today=$(date +%Y-%m-%d)
 # のような直接代入は backtick / `$(` / `"` 混入時にコマンド置換・文字列破壊を招くため禁止）。
 decision_tmp=$(mktemp)
 if ! cat <<'DECISION_EOF' > "$decision_tmp"
-{decision} / Reason: {reason} / Impact: {impact}
+{decision} / Reason: {reason} / Impact: {impact}{deferred_token}
 DECISION_EOF
 then
   echo "ERROR: Decision Log 行テンプレートの一時ファイル書き込みに失敗" >&2

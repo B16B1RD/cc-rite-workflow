@@ -110,6 +110,16 @@
 #   T-62 存在しない JSON を指す出典は除外しない / 形の合わない出典は出典無しとして扱う
 #   T-63 末尾空白・エスケープ済みパイプ・CRLF の行からも出典を読む
 #   T-64 記録コメントの取得失敗・最新 JSON の照合失敗では出典付きの行でも除外しない
+#
+# Coverage (Decision Log で先送りした欠陥):
+#   T-65 指摘 0 件でも先送り欠陥があれば起票し、Section 9 内の本 PR のトークン行だけをトークンを除いて順に転記する
+#   T-66 Section 9 の終端 3 種 (見出し / --- / </details>) の後ろと CRLF 本文
+#   T-67 指摘と先送り欠陥を 1 件に載せる
+#   T-68 元 Issue 本文の取得失敗は FOLLOW_UP_DEFERRED=unavailable を出し指摘側だけ起票する
+#   T-69 no_json / all_resolved / all_issued でも先送り欠陥があれば起票し、already_exists / json_undecidable は従来どおり
+#   T-70 preview の件数は指摘と先送り欠陥の合計
+#   T-71 トークンと Section 9 の境界が pr-review 7.4.3 と helper で一致する
+#   T-72 cleanup SKILL.md の完了報告の配線
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -178,7 +188,14 @@ case "$cmd" in
   # 記録 helper の読み取り専用モード: 自 login / 関連 Issue の解決 (closing keyword) / Issue body (durable id なし)
   "api user --jq .login") echo rite-bot; exit 0 ;;
   "pr view 9 -R acme/demo --json body --jq .body") echo "Closes #42"; exit 0 ;;
-  "issue view 42 -R acme/demo --json body --jq .body") exit 0 ;;
+  "issue view 42 -R acme/demo --json body --jq .body")
+    if [ -n "${GH_ISSUE_BODY_RC:-}" ] && [ "${GH_ISSUE_BODY_RC}" != "0" ]; then
+      echo "gh: simulated issue view failure" >&2
+      exit "$GH_ISSUE_BODY_RC"
+    fi
+    cat "${GH_ISSUE_BODY:-/dev/null}"
+    exit 0
+    ;;
   # pr-cycle-cleanup.sh の orphan review 回収が見る PR の状態
   "pr view 9 -R acme/demo --json state --jq .state") echo MERGED; exit 0 ;;
   # 記録 helper が PATCH 先と決めた 1 件の GET
@@ -250,6 +267,7 @@ reset_stubs() {
   printf '%s\n' '[[]]' > "$GH_API_JSON"
   unset CREATE_RC
   unset CREATE_REG
+  unset GH_ISSUE_BODY GH_ISSUE_BODY_RC
   unset RITE_TEST_JQ_FAIL
   : > "$STUB_DIR/jq-fail.log"
   printf '%s\n' '[[]]' > "$GH_LIST_JSON"
@@ -298,12 +316,14 @@ assert_grep "T-01 status todo role" "$STUB_DIR/args.json" '"status": "todo"'
 assert_grep "T-01 projects enabled true" "$STUB_DIR/args.json" '"enabled": true'
 assert_grep "T-01 follow-up ラベルを全ページで検索する" "$GH_LOG" '^gh api --paginate --slurp repos/acme/demo/issues\?labels=follow-up&state=all&per_page=100$'
 assert_not_grep "T-01 gh は Search API を使わない" "$GH_LOG" 'rite-follow-up-from-pr'
+assert_not_grep "T-01 先送り欠陥の取得失敗 marker を出さない" "$ERR" 'FOLLOW_UP_DEFERRED'
+assert_not_grep "T-01 先送り節を出さない" "$STUB_DIR/body.md" '^## Decision Log で先送りした欠陥$'
 assert_grep "T-02 元 Issue へコメント" "$GH_COMMENT_LOG" 'issue comment 42'
 # 残存指摘には実測済みの非 fatal 指摘も含まれるため、タイトル・節名・概要・元 Issue コメントは非実測と断定しない。
 assert "T-02 title は非実測と断定しない" "follow-up: PR #9 の残存 non-blocking 指摘" "$(jq -r '.issue.title' "$STUB_DIR/args.json")"
 assert "T-02 概要文" "1" "$(grep -cxF 'PR #9 のマージ時点で残った non-blocking 指摘を follow-up として切り出す。' "$STUB_DIR/body.md")"
 assert "T-02 節名" "1" "$(grep -cxF '## 残存 non-blocking 指摘' "$STUB_DIR/body.md")"
-assert "T-02 元 Issue コメント文" "1" "$(grep -cF '"マージ時の残存 non-blocking 指摘の follow-up: #${new_n}"' "$TARGET")"
+assert "T-02 元 Issue コメント文" "1" "$(grep -cF '"PR #${PR_NUMBER} の${fu_content}の follow-up: #${new_n}"' "$TARGET")"
 assert "T-02 本文・タイトルに非実測の断定なし" "0" "$(cat "$STUB_DIR/body.md" "$STUB_DIR/args.json" | grep -c '非実測' || true)"
 assert_not_grep "T-01 台帳取得は成功経路" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable'
 
@@ -1504,7 +1524,7 @@ put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-01","r
 preview="$TMP_ROOT/preview-t46.md"
 run_target "$r" --preview-body "$preview"
 assert "T-46 exit 0" "0" "$RC"
-assert_grep "T-46 preview marker（件数と本文パス）" "$ERR" "FOLLOW_UP_ISSUE=preview; count=2; body=${preview}; pr=9"
+assert_grep "T-46 preview marker（件数と本文パス）" "$ERR" "FOLLOW_UP_ISSUE=preview; count=2; deferred=0; body=${preview}; pr=9"
 assert_grep "T-46 stdout summary" "$OUT" 'result=preview; count=2; pr=9'
 assert "T-46 起票しない" "0" "$(create_count)"
 assert_not_grep "T-46 label を作らない" "$GH_LOG" 'label create'
@@ -1616,18 +1636,18 @@ assert "T-49 起票しない後は起票せず state 削除へ進む（全行一
   "$(grep -cxF '  - 「起票しない」→ `echo "[CONTEXT] FOLLOW_UP_ISSUE=declined; count={fu_count}; pr={pr_number}" >&2`（`{fu_count}` は preview marker の `count=` の値をリテラル置換する） を実行し、Issue は作らずに下の state 削除（archive）へ進む。' "$CLEANUP_MD")"
 # item 2: 6.0.V 内訳（marker 不在は unavailable と同じ書き方）を全行 pin
 assert "T-49 preview 説明に 6.0.V 内訳と marker 不在時の扱いを pin する（全行一致）" "1" \
-  "$(grep -cxF -- '- `preview` のとき AskUserQuestion で「起票する / 起票しない / 本文を確認してから決める」を確認する。説明には転記件数 `{fu_count}`（preview marker の `count=` の値）と、6.0.V の内訳（`done` なら「残存 {n_remains} / 判定不能 {n_undecidable}」、`unavailable` なら「再検証未実施（全件を判定不能扱い）」）を入れる。6.0.V の marker が 1 つも出ていない場合も `unavailable` と同じ書き方にする。件数は重複の集約と sweep 起票済みの除外の後の値なので、内訳の合計と一致しないことがある。' "$CLEANUP_MD")"
+  "$(grep -cxF -- '- `preview` のとき AskUserQuestion で「起票する / 起票しない / 本文を確認してから決める」を確認する。説明には転記件数 `{fu_count}`（preview marker の `count=` の値。指摘と先送り欠陥の合計）、うち先送り欠陥 `{fu_deferred}`（同 `deferred=` の値）と、6.0.V の内訳（`done` なら「残存 {n_remains} / 判定不能 {n_undecidable}」、`unavailable` なら「再検証未実施（全件を判定不能扱い）」）を入れる。6.0.V の marker が 1 つも出ていない場合も `unavailable` と同じ書き方にする。6.0.V の内訳は指摘だけを数え、件数は重複の集約と sweep 起票済みの除外の後の値なので、内訳の合計と一致しないことがある。' "$CLEANUP_MD")"
 # 完了報告の判定表が見送りと確認未完了を持つ
 # item 3: declined 行の完全一致（セル追記でも通る前方一致を排除）
 assert "T-49 完了報告の declined 行を完全一致で固定する" "1" \
-  "$(grep -cxF '  | `declined`（ステップ 6.0.C で「起票しない」を選んだ） | x 相当 | `ℹ️ 確認のうえ follow-up Issue の起票を見送りました（{count} 件）。指摘の全文は review-results/archive/ の JSON にあります` |' "$CLEANUP_MD")"
+  "$(grep -cxF '  | `declined`（ステップ 6.0.C で「起票しない」を選んだ） | x 相当 | `ℹ️ 確認のうえ follow-up Issue の起票を見送りました（{count} 件）。指摘の全文は review-results/archive/ の JSON に、先送り欠陥は元 Issue の Decision Log（Section 9）にあります` |' "$CLEANUP_MD")"
 assert_grep "T-49 完了報告に preview 行（未完了）" "$CLEANUP_MD" '^  \| `preview`（確認の回答前に止まった） \| 未完了'
 # item 4: declined 付記の count 由来を全行 pin
 assert "T-49 declined 付記の count 由来を全行 pin する" "1" \
   "$(grep -cxF '  `declined` の付記の `{count}` は declined marker の `count=` の値。x 相当でもこの付記は `{review_cleanup_check}` の行に続けて出す。' "$CLEANUP_MD")"
 # AC-2: failed; reason=preview_write 専用行・汎用行からの除外・評価順（上から最初に一致が preview_write 側に落ちること）
 assert "T-49 preview_write 専用行を完全一致で固定する" "1" \
-  "$(grep -cxF '  | `FOLLOW_UP_ISSUE=failed; reason=preview_write` | 未完了 | `⚠️ follow-up 起票の確認用の本文を書き出せず、起票を試みていません。残存 non-blocking 指摘があれば follow-up ラベル付き Issue を手動作成してください` |' "$CLEANUP_MD")"
+  "$(grep -cxF '  | `FOLLOW_UP_ISSUE=failed; reason=preview_write` | 未完了 | `⚠️ follow-up 起票の確認用の本文を書き出せず、起票を試みていません。残存 non-blocking 指摘があれば、元 Issue の Decision Log（Section 9）で行末に `<!-- rite:deferred-defect pr={pr_number} -->` を持つ行も含めて follow-up ラベル付き Issue を手動作成してください` |' "$CLEANUP_MD")"
 assert_not_grep "T-49 汎用 failed 行に preview_write を残さない" "$CLEANUP_MD" 'reason 問わず。`helper_rc` / `lookup_api` / `create_api` / `create_script_missing` / `json_undecidable` / `preview_write`'
 assert_grep "T-49 汎用 failed 行は preview_write 以外と明記する" "$CLEANUP_MD" 'reason 問わず。preview_write 以外。'
 t49_pw_line=$(grep -nF '`FOLLOW_UP_ISSUE=failed; reason=preview_write`' "$CLEANUP_MD" | head -1 | cut -d: -f1)
@@ -1917,6 +1937,171 @@ run_target "$r"
 assert_grep "T-64 最新 JSON を読めなければ apply_failed" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=apply_failed; pr=9'
 assert_grep "T-64 最新 JSON を読めなければ除外せず転記" "$STUB_DIR/body.md" 'cycle A の指摘'
 assert_not_grep "T-64 最新 JSON を読めなければ除外件数を出さない" "$ERR" 'sweep_issued:'
+
+echo "--- T-65: 指摘 0 件でも Decision Log で先送りした欠陥があれば起票し、本 PR のトークン行だけを転記する ---"
+# $1=Section 9 の後に続ける行 (終端の検証用)。Section 9 の外・別 PR・トークンなしの行は転記しない
+deferred_body() {
+  printf '%s\n' '## 概要' '' '- 散文 D-99: section 外 <!-- rite:deferred-defect pr=9 -->' '' '## 9. Decision Log' '' \
+    '- 2026-01-01 D-01: first defect / Reason: r1 / Impact: i1 <!-- rite:deferred-defect pr=9 -->' \
+    '- 2026-01-01 D-02: not deferred / Reason: r2 / Impact: i2' \
+    '- 2026-01-01 D-03: other pr / Reason: r3 / Impact: i3 <!-- rite:deferred-defect pr=90 -->' \
+    '- 2026-01-01 D-04: second defect / Reason: r4 / Impact: i4 <!-- rite:deferred-defect pr=9 -->  ' \
+    "$1"
+}
+DEFERRED_EXPECTED='- 2026-01-01 D-01: first defect / Reason: r1 / Impact: i1
+- 2026-01-01 D-04: second defect / Reason: r4 / Impact: i4'
+# body.md の「## Decision Log で先送りした欠陥」節から転記行 (- で始まる行) だけを取り出す
+deferred_lines() { awk '/^## Decision Log で先送りした欠陥$/ { s = 1; next } s && /^## / { s = 0 } s && /^- / { print }' "$1"; }
+reset_stubs
+r=$(new_root t65)
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[]}'
+deferred_body '' > "$STUB_DIR/issue-body.md"
+export GH_ISSUE_BODY="$STUB_DIR/issue-body.md"
+run_target "$r"
+assert "T-65 exit 0" "0" "$RC"
+assert_grep "T-65 created" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
+assert "T-65 create 1 回" "1" "$(create_count)"
+assert "T-65 転記行はトークンを除いた元の行と完全一致し、出現順に並ぶ" "$DEFERRED_EXPECTED" "$(deferred_lines "$STUB_DIR/body.md")"
+assert_not_grep "T-65 トークンを本文に残さない" "$STUB_DIR/body.md" 'rite:deferred-defect'
+assert_not_grep "T-65 指摘節を出さない" "$STUB_DIR/body.md" '^## 残存 non-blocking 指摘$'
+assert "T-65 body 先頭行は marker" "<!-- [rite-follow-up-from-pr:9] -->" "$(head -1 "$STUB_DIR/body.md")"
+assert "T-65 body 5 行目 概要" "## 概要" "$(sed -n '5p' "$STUB_DIR/body.md")"
+assert "T-65 title" "follow-up: PR #9 の先送りした欠陥" "$(jq -r '.issue.title' "$STUB_DIR/args.json")"
+assert_not_grep "T-65 no_findings に倒さない" "$ERR" 'reason=no_findings'
+assert_not_grep "T-65 台帳との照合をしない" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED'
+assert_not_grep "T-65 取得失敗 marker を出さない" "$ERR" 'FOLLOW_UP_DEFERRED'
+
+echo "--- T-66: Section 9 の終端 3 種の後ろにあるトークン行は転記しない (CRLF 本文を含む) ---"
+for variant in heading rule details crlf; do
+  reset_stubs
+  r=$(new_root "t66-$variant")
+  put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[]}'
+  after='- 2026-01-01 D-09: after section / Reason: r / Impact: i <!-- rite:deferred-defect pr=9 -->'
+  case "$variant" in
+    heading) deferred_body "$(printf '%s\n' '## 10. 次の節' "$after")" > "$STUB_DIR/issue-body.md" ;;
+    rule)    deferred_body "$(printf '%s\n' '---' "$after")" > "$STUB_DIR/issue-body.md" ;;
+    details) deferred_body "$(printf '%s\n' '</details>' "$after")" > "$STUB_DIR/issue-body.md" ;;
+    crlf)    deferred_body '' | sed 's/$/\r/' > "$STUB_DIR/issue-body.md" ;;
+  esac
+  export GH_ISSUE_BODY="$STUB_DIR/issue-body.md"
+  run_target "$r"
+  assert "T-66 $variant create 1 回" "1" "$(create_count)"
+  assert "T-66 $variant 転記行は Section 9 内の本 PR 行だけ" "$DEFERRED_EXPECTED" "$(deferred_lines "$STUB_DIR/body.md")"
+done
+
+echo "--- T-67: 指摘と先送り欠陥の両方を 1 件の follow-up に載せる ---"
+reset_stubs
+r=$(new_root t67)
+put_json "$r" "9-20260101120000.json" "$FINDING_JSON"
+deferred_body '' > "$STUB_DIR/issue-body.md"
+export GH_ISSUE_BODY="$STUB_DIR/issue-body.md"
+run_target "$r"
+assert "T-67 create 1 回" "1" "$(create_count)"
+assert "T-67 指摘節" "1" "$(grep -cxF '## 残存 non-blocking 指摘' "$STUB_DIR/body.md")"
+assert_grep "T-67 指摘本文" "$STUB_DIR/body.md" '実測なしの指摘本文'
+assert "T-67 転記行" "$DEFERRED_EXPECTED" "$(deferred_lines "$STUB_DIR/body.md")"
+assert "T-67 title" "follow-up: PR #9 の残存 non-blocking 指摘と先送りした欠陥" "$(jq -r '.issue.title' "$STUB_DIR/args.json")"
+assert "T-67 指摘節は先送り節より前" "1" "$(awk '/^## 残存 non-blocking 指摘$/ { a = NR } /^## Decision Log で先送りした欠陥$/ { b = NR } END { print (a && b && a < b) ? 1 : 0 }' "$STUB_DIR/body.md")"
+
+echo "--- T-68: 元 Issue 本文を取得できなければ marker を出し、指摘側だけ起票する ---"
+reset_stubs
+r=$(new_root t68)
+put_json "$r" "9-20260101120000.json" "$FINDING_JSON"
+export GH_ISSUE_BODY_RC=1
+run_target "$r"
+assert "T-68 exit 0" "0" "$RC"
+assert_grep "T-68 unavailable marker" "$ERR" 'FOLLOW_UP_DEFERRED=unavailable; reason=issue_body_api; pr=9'
+assert_grep "T-68 WARNING" "$ERR" 'WARNING: 元 Issue #42 の本文を取得できないため'
+assert "T-68 指摘側は起票する" "1" "$(create_count)"
+assert_grep "T-68 指摘本文" "$STUB_DIR/body.md" '実測なしの指摘本文'
+assert_not_grep "T-68 先送り節を出さない" "$STUB_DIR/body.md" '^## Decision Log で先送りした欠陥$'
+# 記録コメントの特定も同じ本文取得を使う。記録 helper は本文照合へ fallback するので、台帳側は除外不能にならない
+assert_grep "T-68 記録 helper は id 解決失敗を fallback で扱う" "$ERR" 'NONBLOCKING_ID_UNRESOLVED=1; pr=9; reason=id_read_failed; action=fallback'
+assert_not_grep "T-68 台帳側は除外不能にならない" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED'
+reset_stubs
+r=$(new_root t68b)
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[]}'
+export GH_ISSUE_BODY_RC=1
+run_target "$r"
+assert_grep "T-68b 指摘 0 件なら no_findings" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=no_findings; pr=9'
+assert_grep "T-68b unavailable marker" "$ERR" 'FOLLOW_UP_DEFERRED=unavailable; reason=issue_body_api; pr=9'
+assert "T-68b create 0 回" "0" "$(create_count)"
+
+echo "--- T-69: 指摘側の skip 理由でも先送り欠陥があれば起票する / 既存あり・JSON 判定不能は従来どおり ---"
+reset_stubs
+r=$(new_root t69-nojson)
+deferred_body '' > "$STUB_DIR/issue-body.md"
+export GH_ISSUE_BODY="$STUB_DIR/issue-body.md"
+run_target "$r"
+assert "T-69 no_json + 先送り欠陥は起票" "1" "$(create_count)"
+assert_grep "T-69 no_json の WARNING" "$ERR" 'Decision Log で先送りした欠陥だけを転記します'
+assert_not_grep "T-69 no_json に倒さない" "$ERR" 'reason=no_json'
+reset_stubs
+r=$(new_root t69-resolved)
+put_json "$r" "9-20260101120000.json" "$TWO_FINDING_JSON"
+deferred_body '' > "$STUB_DIR/issue-body.md"
+export GH_ISSUE_BODY="$STUB_DIR/issue-body.md"
+run_target "$r" --exclude-ids "9-20260101120000.json#F-01,9-20260101120000.json#F-05"
+assert "T-69 all_resolved + 先送り欠陥は起票" "1" "$(create_count)"
+assert_not_grep "T-69 all_resolved に倒さない" "$ERR" 'reason=all_resolved'
+assert "T-69 all_resolved 後は先送り節だけ" "0" "$(grep -cxF '## 残存 non-blocking 指摘' "$STUB_DIR/body.md")"
+reset_stubs
+r=$(new_root t69-issued)
+put_json "$r" "9-20260101120000.json" "$FINDING_JSON"
+jq -n --argjson c "$(comment_obj "$(record_body '| F-01 | plugins/rite/skills/cleanup/SKILL.md:12 | issued | #77 https://example.test/issues/77 |')")" '[[$c]]' > "$GH_API_JSON"
+deferred_body '' > "$STUB_DIR/issue-body.md"
+export GH_ISSUE_BODY="$STUB_DIR/issue-body.md"
+run_target "$r"
+assert "T-69 all_issued + 先送り欠陥は起票" "1" "$(create_count)"
+assert_not_grep "T-69 all_issued に倒さない" "$ERR" 'reason=all_issued'
+assert "T-69 all_issued 後の転記行" "$DEFERRED_EXPECTED" "$(deferred_lines "$STUB_DIR/body.md")"
+reset_stubs
+printf '%s\n' '[[{"number":50,"body":"<!-- [rite-follow-up-from-pr:9] -->\n既存"}]]' > "$GH_LIST_JSON"
+r=$(new_root t69-exists)
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[]}'
+deferred_body '' > "$STUB_DIR/issue-body.md"
+export GH_ISSUE_BODY="$STUB_DIR/issue-body.md"
+run_target "$r"
+assert_grep "T-69 既存 follow-up があれば already_exists" "$ERR" 'reason=already_exists; issue=50; pr=9'
+assert "T-69 既存ありは起票しない" "0" "$(create_count)"
+reset_stubs
+r=$(new_root t69-undecidable)
+put_json "$r" "9-20260101120000.json" 'not-json{'
+deferred_body '' > "$STUB_DIR/issue-body.md"
+export GH_ISSUE_BODY="$STUB_DIR/issue-body.md"
+run_target "$r"
+assert_grep "T-69 JSON 判定不能は先送り欠陥があっても failed" "$ERR" 'FOLLOW_UP_ISSUE=failed; reason=json_undecidable; pr=9'
+assert "T-69 JSON 判定不能は起票しない" "0" "$(create_count)"
+
+echo "--- T-70: preview の件数は指摘と先送り欠陥の合計 ---"
+reset_stubs
+r=$(new_root t70)
+put_json "$r" "9-20260101120000.json" "$FINDING_JSON"
+deferred_body '' > "$STUB_DIR/issue-body.md"
+export GH_ISSUE_BODY="$STUB_DIR/issue-body.md"
+preview="$TMP_ROOT/preview-t70.md"
+run_target "$r" --preview-body "$preview"
+assert_grep "T-70 preview marker" "$ERR" "FOLLOW_UP_ISSUE=preview; count=3; deferred=2; body=${preview}; pr=9"
+assert "T-70 preview 本文にも転記行" "$DEFERRED_EXPECTED" "$(deferred_lines "$preview")"
+assert "T-70 起票しない" "0" "$(create_count)"
+
+echo "--- T-71: トークンと Section 9 の境界は pr-review 7.4.3 と helper で一致する ---"
+SCOPE_TRIAGE_MD="$PLUGIN_ROOT/skills/pr-review/references/scope-triage.md"
+TEMPLATE_STRUCTURE_MD="$PLUGIN_ROOT/templates/issue/template-structure.md"
+assert_grep "T-71 7.4.3 は行末に {deferred_token} を置く" "$SCOPE_TRIAGE_MD" '^\{decision\} / Reason: \{reason\} / Impact: \{impact\}\{deferred_token\}$'
+assert_grep "T-71 7.4.3 のトークン値" "$SCOPE_TRIAGE_MD" '` <!-- rite:deferred-defect pr=\{pr_number\} -->`'
+assert_grep "T-71 helper のトークン" "$TARGET" '^DEFERRED_TOKEN="<!-- rite:deferred-defect pr=\$\{PR_NUMBER\} -->"$'
+_boundary='in_section && (/^## / || /^---[[:space:]]*$/ || /^<\/details>/)'
+assert "T-71 helper の Section 9 終端は 7.4.3 と同じ" "1" "$(grep -cF "$_boundary" "$TARGET")"
+assert "T-71 7.4.3 の Section 9 終端 (採番と追記の 2 か所)" "2" "$(grep -cF "$_boundary" "$SCOPE_TRIAGE_MD")"
+assert_grep "T-71 template-structure の行書式にトークンを記載" "$TEMPLATE_STRUCTURE_MD" '<!-- rite:deferred-defect pr=N -->'
+
+echo "--- T-72: cleanup SKILL.md が先送り欠陥の取得失敗を完了報告へ配線する ---"
+assert_grep "T-72 完了報告に deferred note を差し込む" "$CLEANUP_MD" '\{follow_up_sweep_note\}\{follow_up_deferred_note\}$'
+assert_grep "T-72 deferred note の定義" "$CLEANUP_MD" '^- `\{follow_up_deferred_note\}`:'
+assert_grep "T-72 deferred note は unavailable marker を読む" "$CLEANUP_MD" 'FOLLOW_UP_DEFERRED=unavailable; reason=\{r\}; pr=\{pr_number\}'
+assert_grep "T-72 先送り欠陥側は未完了" "$CLEANUP_MD" '^  \| `FOLLOW_UP_DEFERRED=unavailable` \| 未完了 \|'
+assert_grep "T-72 review_cleanup_check は 3 側で判定" "$CLEANUP_MD" '先送り欠陥の読み取り（`FOLLOW_UP_DEFERRED`）・state 削除'
 
 echo "--- T-arg: 引数 gate ---"
 bash "$TARGET" --pr abc --state-root "$TMP_ROOT" --owner a --repo b >"$OUT" 2>"$ERR"; RC=$?
