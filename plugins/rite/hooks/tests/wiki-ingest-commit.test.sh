@@ -5,7 +5,8 @@
 # Coverage scope:
 # - same_branch path: static pins on the `_sb_dump` stderr helper, and a failed
 #   commit that unstages only the raw sources it added (or, when that unstage
-#   fails, prints the pasteable command).
+#   fails, prints the pasteable command, which names the main checkout even
+#   when run from a linked worktree).
 # - separate_branch legacy path: a real git fixture drives the cleanup branch
 #   where checkout-back fails, and pins the pasteable manual-recovery commands
 #   (word splitting, line order, the stash step appearing only when a stash
@@ -510,13 +511,14 @@ run_same_branch_message_cases
 echo ""
 
 echo "TC-SB-RESTORE: a failed same_branch commit leaves the raw sources unstaged"
-# run_same_branch_failure_case <label> <reset>: the commit fails (pre-commit hook).
+# run_same_branch_failure_case <label> <reset> [<from>]: the commit fails (pre-commit hook).
 # <reset>=ok: only the added raw source is unstaged; a raw source the user staged stays.
 # <reset>=fail: the unstage fails too, and the WARNING carries the pasteable command.
+# <from>=worktree: the hook runs from a linked worktree, whose index is not the one staged.
 run_same_branch_failure_case() {
-  local label="$1" reset="$2"
+  local label="$1" reset="$2" from="${3:-main}"
   local -x GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
-  local base repo err rc=0 n line cmd words ok=1 path_prefix=""
+  local base repo err rc=0 n line cmd words ok=1 path_prefix="" run_dir
   repo=$(make_same_branch_msg_fixture)
   base=$(dirname "$repo"); err="$base/err"
   printf '%s\n' '#!/bin/sh' 'exit 1' > "$repo/.git/hooks/pre-commit"
@@ -527,7 +529,12 @@ run_same_branch_failure_case() {
     write_stub "$base/stub" "[ \"\$1\" = reset ] && echo 'fatal: stub reset' >&2"
     path_prefix="$base/stub:"
   fi
-  ( cd "$repo" && PATH="$path_prefix$PATH" bash "$HOOK_SRC" ) >/dev/null 2>"$err" || rc=$?
+  run_dir="$repo"
+  if [ "$from" = worktree ]; then
+    git -C "$repo" worktree add -q --detach "$base/wt"
+    run_dir="$base/wt"
+  fi
+  ( cd "$run_dir" && PATH="$path_prefix$PATH" bash "$HOOK_SRC" ) >/dev/null 2>"$err" || rc=$?
   eq "$label: exits 3" "3" "$rc"
   eq "$label: HEAD is unchanged" "config" "$(git -C "$repo" log -1 --format=%s)"
   if [ "$reset" = ok ]; then
@@ -545,6 +552,10 @@ run_same_branch_failure_case() {
   cmd=${line#" manual recovery: "}
   eq "$label: unstage hint follows the WARNING" " manual recovery: $cmd" "$line"
   check_words "unstage hint" "$cmd" git -C "$(cd "$repo" && pwd -P)" reset -q -- .rite/wiki/raw/reviews/pr-test.md
+  if [ "$from" = worktree ]; then
+    eq "$label: unstage hint does not name the calling worktree" "different" \
+      "$([ "${words[3]:-}" != "$(cd "$run_dir" && pwd -P)" ] && echo different || echo same)"
+  fi
   eq "$label: the reset stderr follows the hint" "  git (reset): fatal: stub reset" \
     "$(sed -n "$((${n:-0} + 2))p" "$err")"
   eq "$label: raw sources are still staged as reported" \
@@ -553,6 +564,7 @@ run_same_branch_failure_case() {
 }
 run_same_branch_failure_case "same_branch restore" ok
 run_same_branch_failure_case "same_branch unstage failure" fail
+run_same_branch_failure_case "same_branch unstage failure from a linked worktree" fail worktree
 
 echo ""
 
