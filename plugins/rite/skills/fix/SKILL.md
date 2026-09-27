@@ -1028,12 +1028,12 @@ fi
 echo "[CONTEXT] FIX_MATERIALIZED_JSON=$materialized" >&2
 ```
 
-外部ファイルで保存済み JSON を特定できたときだけ、次を実行する（`{materialized_json}` は `FIX_MATERIALIZED_JSON=` の値）。指定したファイルと違う内容を黙って triage しないため、指摘と gate 記録が一致しなければ止める。
+外部ファイルで保存済み JSON を特定できたときだけ、次を実行する（`{review_source_path}` は 1.2.0 の `[CONTEXT] REVIEW_SOURCE=explicit_file; review_source_path=` の値、`{materialized_json}` は `FIX_MATERIALIZED_JSON=` の値）。指定したファイルと違う内容を黙って triage しないため、指摘と gate 記録が一致しなければ止める。
 
 ```bash
 # fix-explicit-review-json
 compare_rc=0
-jq -n -e --slurpfile given "{review_file_path}" --slurpfile saved "{materialized_json}" \
+jq -n -e --slurpfile given "{review_source_path}" --slurpfile saved "{materialized_json}" \
   '[$given[0], $saved[0]] | map({findings, non_blocking_findings, measured_gate}) | .[0] == .[1]' \
   >/dev/null || compare_rc=$?
 case "$compare_rc" in

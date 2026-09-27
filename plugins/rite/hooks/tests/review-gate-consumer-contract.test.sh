@@ -251,7 +251,7 @@ exit 97
     assert Path(copy_run(json.loads(external.read_text())['commit_sha'])) == original
     compare = next(b for b in blocks if '# fix-explicit-review-json' in b)
     def compare_run(given):
-        block = compare.replace('{review_file_path}', str(given)).replace('{materialized_json}', str(original))
+        block = compare.replace('{review_source_path}', str(given)).replace('{materialized_json}', str(original))
         assert not re.search(r'\{[a-z_]+\}', block), block
         return subprocess.run(['bash', '-c', block], text=True, capture_output=True, timeout=10)
     same = compare_run(external)
