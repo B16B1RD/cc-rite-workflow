@@ -208,13 +208,18 @@ check_init_section() {
     *"$4"*) pass "T-12 $1 shows the not-initialized message under If rc=1" ;;
     *) fail "T-12 $1 shows the not-initialized message under If rc=1" ;;
   esac
+  case "$(printf '%s\n' "$sec" | awk '/^\**If rc=/ {f = /^\**If rc=0/; next} f')" in
+    *"$4"*) fail "T-12 $1 does not show the not-initialized message under If rc=0" ;;
+    *) pass "T-12 $1 does not show the not-initialized message under If rc=0" ;;
+  esac
   case "$rc1_line" in
     *stderr*) fail "T-12 $1 does not treat rc=1 as a resolver error (line: '$rc1_line')" ;;
     *) pass "T-12 $1 does not treat rc=1 as a resolver error" ;;
   esac
-  case "$5:$(printf '%s\n%s\n' "$rc1_line" "$rc1_para" | grep -ci 'stop' || true)" in
-    stop:0|guide:[1-9]*) fail "T-12 $1 rc=1 stop behavior is '$5'" ;;
-    stop:*|guide:0) pass "T-12 $1 rc=1 stop behavior is '$5'" ;;
+  # 否定形（"do not stop ... continue"）で停止語だけが残る書き換えを通さないため、stop 側は続行語の不在も見る
+  case "$5:$(printf '%s\n%s\n' "$rc1_line" "$rc1_para" | grep -ci 'stop' || true):$(printf '%s\n%s\n' "$rc1_line" "$rc1_para" | grep -ci 'continue' || true)" in
+    stop:0:*|stop:*:[1-9]*|guide:[1-9]*) fail "T-12 $1 rc=1 stop behavior is '$5'" ;;
+    stop:*:0|guide:0:*) pass "T-12 $1 rc=1 stop behavior is '$5'" ;;
     *) fail "T-12 $1 rc=1 stop behavior is '$5' (unknown kind)" ;;
   esac
   if grep -nE '(ls( -la)?|cp) rite-config\.yml' "$skill_md"; then
