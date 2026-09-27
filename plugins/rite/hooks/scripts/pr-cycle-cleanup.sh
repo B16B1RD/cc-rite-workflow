@@ -51,7 +51,8 @@
 #     `.gitignore` is never deleted).
 #
 # Variation history:
-#   - `cycle{N}`: orchestrator-created (`/rite:pr-review` cycle worktrees)
+#   - `cycle{N}`: reviewer-subagent per-cycle worktrees (no rite code creates
+#     them; they are reviewer-leaked residue like the names below)
 #   - `test` / `experiment` / `mutation` / `verify` / `check` / `sandbox`:
 #     reviewer-subagent verification experiments (observed in practice).
 #     The reviewer's READ-ONLY contract is the prompt-level Layer 1

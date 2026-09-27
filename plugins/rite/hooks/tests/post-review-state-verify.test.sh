@@ -276,12 +276,41 @@ git -C "$sbx" worktree add -q -b pr-1-test "$wt_base/leak-outside" >/dev/null 2>
 out=$(verify_all "$sbx" "$snap")
 assert "reviewer-leak branch outside the namespace is reported as branch_list" '["branch_list"]' "$(printf '%s' "$out" | jq -c .types)"
 
-# The leak names are pr-cycle-cleanup.sh's reap names minus the orchestrator-created cycle{N}.
-leak_alts() { grep -m1 "$2=" "$1" | sed -E 's/.*-\((.*)\)\$.*/\1/' | tr '|' '\n' | grep -v '^cycle' | sort | tr '\n' ' '; }
-cleanup_alts=$(leak_alts "$SCRIPT_DIR/../scripts/pr-cycle-cleanup.sh" "readonly PATTERN")
-verify_alts=$(leak_alts "$VERIFY" _reviewer_leak_re)
-[ -n "$cleanup_alts" ] || fail "leak names: pr-cycle-cleanup.sh PATTERN not found"
-assert "reviewer-leak names match pr-cycle-cleanup.sh reap names" "$cleanup_alts" "$verify_alts"
+sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
+snap=$(snapshot_line "$sbx")
+git -C "$sbx" worktree add -q -b pr-1-cycle2 "$wt_base/leak-cycle" >/dev/null 2>&1 \
+  || fail "fixture: cycle-named worktree add outside the reviewer namespace"
+out=$(verify_all "$sbx" "$snap")
+assert "cycle-named leak branch outside the namespace is reported as branch_list" '["branch_list"]' "$(printf '%s' "$out" | jq -c .types)"
+
+# The leak-name regex is pr-cycle-cleanup.sh's reap PATTERN, literal for literal.
+leak_re_literal() { grep -m1 "$2='" "$1" | sed -E "s/^[^']*'([^']*)'.*/\1/"; }
+cleanup_re=$(leak_re_literal "$SCRIPT_DIR/../scripts/pr-cycle-cleanup.sh" "readonly PATTERN")
+verify_re=$(leak_re_literal "$VERIFY" _reviewer_leak_re)
+[ -n "$cleanup_re" ] || fail "leak names: pr-cycle-cleanup.sh PATTERN not found"
+assert "reviewer-leak regex matches pr-cycle-cleanup.sh reap PATTERN" "$cleanup_re" "$verify_re"
+
+# Every place that lists the excluded leak names names each reap alternative.
+leak_names=$(printf '%s' "$cleanup_re" | sed -E 's/.*-\((.*)\)\$.*/\1/' | tr '|' '\n' | sed 's/^cycle\[0-9\]+$/cycle<X>/')
+for doc in "$VERIFY" \
+  "$SCRIPT_DIR/../../agents/_reviewer-base.md" \
+  "$SCRIPT_DIR/../../skills/pr-review/references/design-rationale.md" \
+  "$SCRIPT_DIR/../../skills/reviewers/references/reviewer-base-rationale.md"; do
+  missing=""
+  while IFS= read -r n; do
+    grep -qF -- "pr-<N>-$n" "$doc" || missing+="$n "
+  done <<< "$leak_names"
+  assert "leak names listed in ${doc##*/}" "" "$missing"
+done
+
+# Reproducing on the base branch stays inside the reviewer namespace, detached.
+base_repro=$(grep -m1 'Runtime reproduction on the base branch' "$SCRIPT_DIR/../../agents/_reviewer-base.md")
+base_repro_ok=no
+case "$base_repro" in
+  *"worktree add ../"*) ;;
+  *"--detach"*) case "$base_repro" in *"rite-review-mutation-"*) base_repro_ok=yes ;; esac ;;
+esac
+assert "base-branch reproduction uses a detached worktree in the reviewer namespace" yes "$base_repro_ok"
 
 # A stash made on another branch in the reviewed worktree counts after switching back.
 sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
