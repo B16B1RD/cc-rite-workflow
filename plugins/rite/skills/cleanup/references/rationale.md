@@ -48,8 +48,9 @@ identity で、`id` は JSON ごとに振り直されるため、どの JSON の
 `file:line` にある先行 cycle の指摘に限り、重複しうる件数と位置を WARNING で出す。行がずれた再報告は
 台帳から判別できないため、WARNING なしで重複しうる。
 
-出典を欠く新規行は、`nb-sweep-ledger.sh append` が書き込み前に拒否する。黙って書くと cleanup がその行を
-旧形式として最新 JSON とだけ照合し、先行 cycle の起票済み指摘を再び転記する挙動へ戻るため。
+出典を欠く新規行が 1 行でもあれば、`nb-sweep-ledger.sh append` は entries 全体を書き込み前に拒否し、台帳を
+変更しない。黙って書くと cleanup がその行を旧形式として最新 JSON とだけ照合し、先行 cycle の起票済み指摘を
+再び転記する挙動へ戻るため。
 
 ## follow-up-exclude-key
 

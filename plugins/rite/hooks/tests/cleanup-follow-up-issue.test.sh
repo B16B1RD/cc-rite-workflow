@@ -106,7 +106,7 @@
 #   T-59 出典が最新 JSON の 5 列行は 4 列行と除外件数・重複候補・WARNING が一致する
 #   T-60 出典の無い 4 列行は最新 JSON とだけ照合し、判定文のエスケープ済みパイプを出典と読まない
 #   T-61 出典が一致しない finding は id・位置が同じでも転記し、出典で除外した先行 cycle 指摘の位置は
-#        重複候補に数えない
+#        重複候補に数えない。その位置に別の先行 cycle の指摘があっても重複候補に数えない（3 cycle）
 #   T-62 存在しない JSON を指す出典は除外しない / 形の合わない出典は出典無しとして扱う
 #   T-63 末尾空白・エスケープ済みパイプ・CRLF の行からも出典を読む
 #   T-64 記録コメントの取得失敗・最新 JSON の照合失敗では出典付きの行でも除外しない
@@ -1784,6 +1784,7 @@ fi
 issued_row5() { printf '| %s | %s | issued | #77 https://example.test/issues/77 | %s |' "$1" "$2" "$3"; }
 CYCLE_A=9-20260101120000.json
 CYCLE_B=9-20260102120000.json
+CYCLE_C=9-20260103120000.json
 
 echo "--- T-58: 先行 cycle の JSON を出典とする issued 行は、最新 JSON が変わっても除外する ---"
 reset_stubs
@@ -1856,6 +1857,21 @@ assert_not_grep "T-61 出典一致の先行 cycle 指摘は除外" "$STUB_DIR/bo
 assert_grep "T-61 最新 cycle の同じ位置の指摘は転記" "$STUB_DIR/body.md" 'cycle B の同じ位置の指摘'
 assert_grep "T-61 除外件数 1、重複候補 0" "$ERR" 'sweep_issued: pr=9; excluded=1; possible_duplicates=0$'
 assert_not_grep "T-61 重複 WARNING を出さない" "$ERR" 'WARNING: sweep 起票済みの指摘と同じ位置'
+
+# 出典で除外した先行 cycle 指摘の位置は重複候補の絞り込みに使わない。同じ位置に別の先行 cycle の
+# 指摘があっても、最新 JSON 由来の除外が無ければ重複候補 0 のまま転記する
+reset_stubs
+r=$(new_root t61-prior-loc)
+put_json "$r" "$CYCLE_A" '{"non_blocking_findings":[{"id":"F-01","file":"a.md","line":3,"description":"cycle A で起票済みの指摘"}]}'
+put_json "$r" "$CYCLE_B" '{"non_blocking_findings":[{"id":"F-02","file":"a.md","line":3,"description":"cycle B の同じ位置の先行指摘"}]}'
+put_json "$r" "$CYCLE_C" '{"non_blocking_findings":[{"id":"F-01","file":"c.md","line":1,"description":"cycle C の指摘"}]}'
+jq -n --argjson c "$(comment_obj "$(record_body "$(issued_row5 F-01 a.md:3 "$CYCLE_A")")")" '[[$c]]' > "$GH_API_JSON"
+run_target "$r"
+assert_not_grep "T-61 出典一致の先行 cycle 指摘は除外 (3 cycle)" "$STUB_DIR/body.md" 'cycle A で起票済みの指摘'
+assert_grep "T-61 同じ位置の別の先行 cycle 指摘は転記" "$STUB_DIR/body.md" 'cycle B の同じ位置の先行指摘'
+assert_grep "T-61 最新 cycle の指摘は転記 (3 cycle)" "$STUB_DIR/body.md" 'cycle C の指摘'
+assert_grep "T-61 除外件数 1、重複候補 0 (3 cycle)" "$ERR" 'sweep_issued: pr=9; excluded=1; possible_duplicates=0$'
+assert_not_grep "T-61 先行 cycle 除外の位置で重複 WARNING を出さない" "$ERR" 'WARNING: sweep 起票済みの指摘と同じ位置'
 
 echo "--- T-62: 出典の値が JSON を指さない / 形が合わないとき ---"
 # 存在しない JSON を指す出典: どの finding とも一致せず、除外しない (重複側に倒す)

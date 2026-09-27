@@ -127,7 +127,9 @@ case "$cmd" in
       echo "ERROR: entries row lacks a 出典 cell (review JSON basename) as its last column:" >&2
       # shellcheck source=../control-char-neutralize.sh
       source "$(dirname "${BASH_SOURCE[0]}")/../control-char-neutralize.sh"
-      printf '%s\n' "$bad" | head -3 | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+      # 途中で読むのをやめる head は、不正行がパイプバッファを超えると printf を SIGPIPE で落とし、
+      # pipefail で直後の reason 行を出さずに終わる。入力を最後まで読む sed で先頭 3 行だけを出す
+      printf '%s\n' "$bad" | sed -n '1,3p' | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
       echo "[CONTEXT] NB_SWEEP_LEDGER=failed; op=append; reason=entries_source_invalid" >&2
       exit 1
     fi

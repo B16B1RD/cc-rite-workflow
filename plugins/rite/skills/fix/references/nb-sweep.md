@@ -133,11 +133,11 @@ if ! issue_result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$i
 fi
 ```
 
-起票失敗時は台帳 persist・done ファイル書込・完了通知へ進まない。全件成功後に entries を生成する（前回の一時ファイルを再利用しない）。`recorded` を silent に落とさない。
+起票失敗時は台帳 persist・done ファイル書込・完了通知へ進まない。全件成功後に entries を生成する。新しい sweep で起票からやり直すときは前回の一時ファイルを再利用しない（手順 3 を再実行するときは、同じ sweep の entries を直して使う）。`recorded` を silent に落とさない。
 
 3. **台帳 persist**（issued / recorded / already_rejected 全件）:
 
-Write tool で entries を `{tmp}/rite-nb-entries-{pr_number}.md` に保存（列 0。行形式 `| {id} | {file}:{line} | issued|recorded | {起票先 or 機械理由} | {record_basename} |`）。`issued` は起票先 `#N` と URL、`recorded` は `severity={sev}; measured={bool}`。`{record_basename}` は手順 1 の stderr に出る `[CONTEXT] NB_SWEEP_COLLECT=ok; ...; record=` の値の basename（全行同じ値）。cleanup の follow-up 起票はこの出典で sweep 起票済みの指摘を同定するため、最終列を欠いた entries は append が `reason=entries_source_invalid` で拒否する。`already_rejected` は id=`reviewer`、位置=`file_line`、severity=`original_severity`、measured=false とする。セル内のパイプ・改行はエスケープする。
+Write tool で entries を `{tmp}/rite-nb-entries-{pr_number}.md` に保存（列 0。行形式 `| {id} | {file}:{line} | issued|recorded | {起票先 or 機械理由} | {record_basename} |`）。`issued` は起票先 `#N` と URL、`recorded` は `severity={sev}; measured={bool}`。`{record_basename}` は手順 1 の stderr に出る `[CONTEXT] NB_SWEEP_COLLECT=ok; ...; record=` の値の basename（全行同じ値）。cleanup の follow-up 起票はこの出典で sweep 起票済みの指摘を同定するため、最終列を欠いた行が 1 行でもあれば、append は entries 全体を `reason=entries_source_invalid` で拒否し、台帳を変更しない。`already_rejected` は id=`reviewer`、位置=`file_line`、severity=`original_severity`、measured=false とする。セル内のパイプ・改行はエスケープする。
 
 ```bash
 entries_file="${TMPDIR:-/tmp}/rite-nb-entries-{pr_number}.md"
@@ -206,6 +206,8 @@ else
   rm -f -- "$record_err"
 fi
 ```
+
+手順 3 が `[fix:error]` で止まったときは、手順 2 の起票をやり直さない。起票は済んでいるが台帳に行が無いため、sweep を最初から実行し直すと同じ指摘を再び起票する。起票済みの Issue は entries の issued 行が持つ。entries（`${TMPDIR:-/tmp}/rite-nb-entries-{pr_number}.md`）を stderr の理由に合わせて直し（`reason=entries_source_invalid` なら、診断に出た行の最終列に出典を足す）、手順 3 だけを再実行する。成功したら手順 4 へ進む。
 
 4. **完了**:
 
