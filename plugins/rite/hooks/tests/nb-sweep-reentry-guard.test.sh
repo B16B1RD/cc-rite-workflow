@@ -121,7 +121,7 @@ assert_grep "T-03 overview defers nb-sweep from step-4" "$ITERATE" '経由は 5.
 assert_grep_in_section "T-03 unexpected sweep return stops" "$ITERATE" \
   '## ステップ 5.S: NB digest sweep' '## ステップ 5: 完了通知' \
   '\[iterate:nb-sweep-error\].*停止'
-assert_grep_in_section "T-03 existing sweep-done→step 5 rail" "$ITERATE" \
+assert_grep_in_section "T-03 sweep-done from --nb-sweep goes to in-PR recommendation fix, never step 1" "$ITERATE" \
   '## ステップ 5.S: NB digest sweep' '## ステップ 5: 完了通知' \
   '^\| `\[fix:sweep-done\]` \| PR 内推奨の修正。ステップ 1 に戻らない'
 assert_grep "T-03 existing MUST NOT second 5.S" "$ITERATE" '同一 review JSON で 5\.S を 2 回'

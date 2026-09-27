@@ -123,18 +123,20 @@ assert_grep "purpose unmet clears FINALIZE without --handoff" "$ITERATE" \
   '`--handoff` なしで実行し FINALIZE を消す'
 # [fix:sweep-done] は --nb-sweep（5.S）からだけ返るため、通常ループの経路として書かない。
 overview_line=$(grep -E '^4\. fix sentinel を判定（通常ループ:' "$ITERATE")
-if [ "$(printf '%s' "$overview_line" | grep -c .)" = 1 ] \
+overview_count=$(printf '%s' "$overview_line" | grep -c .)
+if [ "$overview_count" = 1 ] \
    && ! printf '%s\n' "${overview_line%%--nb-sweep*}" | grep -qF '[fix:sweep-done]'; then
   pass "overview keeps sweep-done out of the normal loop"
 else
-  fail "overview keeps sweep-done out of the normal loop"
+  fail "overview keeps sweep-done out of the normal loop (matched $overview_count lines)"
 fi
 sweep_origin_line=$(grep -E '^\| `\{sweep_origin\}` \| ステップ 5\.S へ入った' "$ITERATE")
-if [ "$(printf '%s' "$sweep_origin_line" | grep -c .)" = 1 ] \
+sweep_origin_count=$(printf '%s' "$sweep_origin_line" | grep -c .)
+if [ "$sweep_origin_count" = 1 ] \
    && ! printf '%s\n' "$sweep_origin_line" | grep -qF 'ステップ 4 の'; then
   pass "sweep_origin has no step-4 sweep-done terminal"
 else
-  fail "sweep_origin has no step-4 sweep-done terminal"
+  fail "sweep_origin has no step-4 sweep-done terminal (matched $sweep_origin_count lines)"
 fi
 # purpose-unaligned の set 本体は iterate-step.sh の step_purpose_unaligned 関数に置かれている。
 ITERATE_STEP="$SCRIPT_DIR/../../scripts/iterate-step.sh"
