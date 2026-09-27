@@ -202,7 +202,7 @@ okf_version: "0.2"
 | [path を返す test fixture ヘルパーの cleanup 登録は $() サブシェルではなく親シェルで行う](pages/patterns/test-fixture-helper-parent-shell-cleanup-registration.md) | patterns | path を `echo`/`printf` で返す fixture ヘルパーを `X="$(new_repo ...)"` の **コマンド置換 (`$()`)** 経由で呼ぶと、そのヘルパーは **subshell** で実行される。 | 2026-09-15T12:50:00Z | high |
 | [位置依存の表パースには検査行数ガードを対にする（silent false-pass 遮断）](pages/patterns/positional-parse-row-count-guard.md) | patterns | `awk -F'\|' '{ slug = $2; agent = $4 }'` のような位置依存の列パースは、表形式変更（Agent 列より前へのカラム挿入等）でトークンが期待列からずれる。 | 2026-09-15T03:40:00Z | high |
 | [検証ツールの保証文言は検証される不変量と非検出 gap に正確に対応させる](pages/heuristics/verification-doc-guarantee-matches-invariants.md) | heuristics | 機械検証ツール（drift-check / lint）を追加する PR では、手順書側の保証文言が実装の検証範囲を超えて「漏れは必ず検出される」と全称的に書かれやすい。 | 2026-09-27T10:47:38Z | high |
-| [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) | heuristics | 複数の不変量（集合差分 I1/I2 + 行内整合 I3 等）を持つ検証スクリプトのテストでは、fixture 変異の設計を誤ると「テストは green だが特定の不変量・guard を削除しても green のまま」という vacuous coverage が生まれる。 | 2026-09-27T08:15:44Z | high |
+| [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) | heuristics | 複数の不変量（集合差分 I1/I2 + 行内整合 I3 等）を持つ検証スクリプトのテストでは、fixture 変異の設計を誤ると「テストは green だが特定の不変量・guard を削除しても green のまま」という vacuous coverage が生まれる。 | 2026-09-27T11:35:00Z | high |
 | [提示順ルールを計画テンプレートに追加する際は depends_on 列の有無を確認する](pages/heuristics/presentation-order-rule-requires-depends-on-column-check.md) | heuristics | 実装計画テンプレートに「ユーザーの判断で変わりやすい項目を先頭に提示する」ような提示順ルールを追加する際、対象テンプレートが `depends_on` 列を持つ依存グラフ形式か、`depends_on` 列を持たないプレーン番号リスト形式かで、そのルールが「実行順」にまで波及するかどうかが変わる。 | 2026-07-06T02:34:59Z | high |
 | [Orchestrator は reviewer 間の反証と reviewer 自身の自己矛盾（指摘記載 vs 結論）を解決してから blocking 判定する](pages/heuristics/orchestrator-resolves-reviewer-self-contradiction-and-counter-evidence.md) | heuristics | 過去のレビュー事例の 2 cycle レビューで、orchestrator（consolidation 担当）が単純な「指摘事項テーブルの件数 = blocking 件数」という機械的合算をせず、(1) 複数 reviewer 間の反証関係、(2) reviewer 自身の総合評価と個別指摘の矛盾、の 2 つを見て blocking findings を確定させた 2 つの実例。 | 2026-08-08T14:00:41+09:00 | medium |
 | [@tsv+IFS read の field-shift hazard 横断監査は cut-f免除と空フィールド可否の2条件で判定する](pages/heuristics/tsv-ifs-field-shift-hazard-audit-criteria.md) | heuristics | `jq '[...] \| @tsv'` の出力を `IFS=$'\\\\t' read -r a b c` で読む実装は、POSIX の IFS whitespace 規則により、tab を含む IFS では連続する区切り文字が1個に圧縮される。 | 2026-09-24T12:45:00+09:00 | high |
@@ -575,9 +575,11 @@ okf_version: "0.2"
 | [セッション単位の state を読む案内は、同じ session_id で入る入口を基準に選ぶ — テストはホストの入力形で呼ぶ](pages/heuristics/session-scoped-guidance-targets-same-session-entry.md) | heuristics | 起動時の案内がセッション単位の state ファイルを読むとき、案内を出せるのは同じ session_id で起動した入口だけである。別経路の対象 source を流用すると実際の入口が抜け、harness が session id を事前設定するテストではその欠落が見えない。 | 2026-09-27T11:07:00Z | high |
 | [手順書の限定条件には、実行者が自分で確かめられる観測対象を併記する](pages/heuristics/limitation-clause-needs-executor-observable-cue.md) | heuristics | 「同じ会話に限る」のような限定を手順書に書くとき、条件を満たしているかを実行者が判定する手がかりが無いと、文脈が要約された後も満たしていると誤認したまま続行しうる。保持しているべき値の名前を併記し、読めなければ続けないと書く。 | 2026-09-27T11:07:00Z | medium |
 | [記録の同定キーが文脈の一部しか含まないと、同じ HEAD の再実行で前回の記録を今回のものと誤認する](pages/anti-patterns/record-identity-must-cover-every-context-key.md) | anti-patterns | 追記した記録を後で「今回の分がある」と確認する仕組みで、同定キーが run と commit だけなど文脈キーの一部しか持たないと、同じ HEAD を再レビューしたとき前 cycle の記録が一致して完了扱いになる。同定キーは記録を生んだ文脈の全キー（cycle を含む）で一意にし、確認は再取得の失敗と記録不在を別分岐にする。 | 2026-09-27T11:30:00Z | high |
+| [設定の存在確認は読み手の解決処理に委ね、自前の候補リストを持たない](pages/heuristics/existence-check-delegates-to-reader-resolver.md) | heuristics | 設定ファイルの有無を確かめる手順が、実際に設定を読む処理と別の候補リストを持つと、両者の差の分だけ「あると案内したのに読まれない」「無いと案内したのに読まれる」が起きる。存在確認は読み手が使う解決処理の結果で判定する。 | 2026-09-27T11:35:00Z | medium |
+| [記録の同定 marker は、正規の経路で重複しうる軸をすべてキーに含める](pages/heuristics/record-identity-marker-includes-all-context-keys.md) | heuristics | 記録が既に書かれたかを marker で判定するとき、キーに含めない軸で同じ値が正規に繰り返されると、2 件目の記録が 1 件目と同一とみなされて書かれない。同定キーは、正規経路で同じ値のまま進みうる軸まで含めて作る。 | 2026-09-27T11:35:00Z | medium |
 ## 統計
 
-- 総ページ数: 565
-- ドメイン別: patterns=126, heuristics=263, anti-patterns=176
-- 最終更新: 2026-09-27T11:30:00Z
+- 総ページ数: 567
+- ドメイン別: patterns=126, heuristics=265, anti-patterns=176
+- 最終更新: 2026-09-27T11:35:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
