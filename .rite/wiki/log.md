@@ -8,6 +8,8 @@
 * **Update**: [Test assertion は section-scoped で行頭 prefix を必須にし narrative mention の false negative を防ぐ](pages/patterns/section-scoped-assertion-prevents-narrative-false-negative.md) — raw/reviews/20260927T202454Z-pr-3339.md を統合
 * **Update**: [Scope drift fix での overclaim substitution (置換後に新たな過剰主張を持ち込む)](pages/anti-patterns/scope-drift-fix-overclaim-substitution.md) — raw/fixes/20260927T202621Z-pr-3334.md を統合
 * **lint:clean** — contradictions=0, stale=63, orphans=0, missing_concept=0, unregistered_raw=567, broken_refs=0
+* **Update**: [セッション単位の state を読む案内は、同じ session_id で入る入口を基準に選ぶ — テストはホストの入力形で呼ぶ](pages/heuristics/session-scoped-guidance-targets-same-session-entry.md) — raw/reviews/20260927T202752Z-pr-3340.md を統合
+* **Update**: [実装の分岐を散文へ落とす前に、フラグの状態数と観測ラベルの値域を機械的に数える](pages/heuristics/count-implementation-states-before-writing-prose.md) — raw/reviews/20260927T203201Z-pr-3341.md を統合
 
 ## 2026-09-27
 

@@ -4,10 +4,11 @@ title: "実装の分岐を散文へ落とす前に、フラグの状態数と観
 domain: "heuristics"
 description: "hook や helper の挙動を仕様書の散文に書き下ろすとき、boolean に見えるフラグが実は 3 状態を取り、観測ラベルが 3 値を出しているのに「主経路 + 例外 1 つ」の二分岐として書いてしまう。この誤りは経路追加による腐りではなく執筆時点で既に偽であり、書く前にフラグの状態数と観測ラベルの値域を grep で数えれば機械的に防げる。"
 created: "2026-08-30T04:57:39Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-14T08:45:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T20:35:06Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-09-14T08:45:00Z"
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T20:35:06Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260830T043014Z-pr-2475.md"
@@ -17,6 +18,8 @@ sources:
     resource: "raw/reviews/20260830T044223Z-pr-2475.md"
   - type: "reviews"
     resource: "raw/reviews/20260914T083015Z-pr-2808.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T203201Z-pr-3341.md"
 tags: ["doc-implementation-sync", "branch-enumeration", "observability-label", "birth-defect", "spec-prose", "three-state-flag"]
 confidence: high
 ---
@@ -66,6 +69,14 @@ cycle 1 で両 reviewer が推奨事項として挙げた全称量化の限定�
 - 列挙した結果、分類に合わない経路が残るなら、コメントを実装どおりに限定する（「単独の jq も現状は既定ラベルで出る」）か、ラベルをその経路にも広げる。どちらを選ぶかは契約範囲の判断で、コメントだけ一般化して済ませない
 - この種の指摘は実行時の挙動を変えないため帰結クラスでは文書整合（class B）に落ちるが、コメントは次に誰がどの呼び出し元へラベルを渡すかを決める根拠になるので、放置すると誤った分類が次の変更に引き継がれる
 
+### 規則文を書き換えるときは、隣接する記述の理由付けと例外を 1 文ずつ照合する
+
+docstring の規則文を書き換えた変更で、結論（何を数え、何を外すか）は実装と一致していたが、理由付けと例外の 2 か所が実装と食い違った。理由として挙げた前提が実装の判定根拠と違い、後ろに語の無い演算子は数えるという例外が落ちていた。同じ規則は隣接する docstring・仕様書・参照文書・テスト見出しにも書かれており、書き換えた 1 か所だけが他と違う状態になった。
+
+- 規則文を直すときは、結論だけでなく理由付けと例外を別々に実装と突き合わせる。結論が合っていても、理由が違えば次の変更者はその理由から誤った拡張を導く
+- 同じ規則を書いた全箇所を grep で列挙し、例外の文を 1 文ずつ照合する。どこか 1 か所で例外が落ちると、その箇所を読んだ変更者は例外を消してよいと判断する
+- この種の食い違いは実行時の挙動を変えないため文書整合（class B）に分類され合否を止めないが、規則の読み手は次の変更者なので、落ちた例外は放置せず揃える
+
 ## 関連ページ
 
 - [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](./universal-claim-prose-invalidated-by-path-addition.md)
@@ -78,3 +89,4 @@ cycle 1 で両 reviewer が推奨事項として挙げた全称量化の限定�
 - [状態数を数える / ラベル値域を grep で列挙する / 参照の宙吊りを検出する](../../raw/fixes/20260830T043310Z-pr-2475.md)
 - [ついでの限定は over-fix ではない / 番号繰り下げは列挙変更](../../raw/reviews/20260830T044223Z-pr-2475.md)
 - [経路ラベルの説明コメントが単独の jq 経路を誤分類した](../../raw/reviews/20260914T083015Z-pr-2808.md)
+- [規則文の理由付けと例外が実装と食い違ったレビュー結果](../../raw/reviews/20260927T203201Z-pr-3341.md)
