@@ -137,8 +137,8 @@ exit 97
     assert json.loads(result.stdout)['fatal_map'] == {'F-01':False}
     assert 'FIX_TRIAGE_REVIEW_PATH=' in result.stderr
 
-    # The conversation route copies the saved review JSON of HEAD, so the gate-written
-    # class reaches triage instead of being lost by the report table.
+    # The conversation route triages the saved review JSON of HEAD itself, so the gate-written
+    # class reaches triage and the receipt that completion reads is the triaged file.
     state = temp / 'state'
     results = state / '.rite/review-results'
     results.mkdir(parents=True)
@@ -155,10 +155,12 @@ exit 97
     sha = subprocess.run(git + ['rev-parse', 'HEAD'], text=True, capture_output=True, check=True).stdout.strip()
     saved_review = {'commit_sha': sha, 'findings': [
         {'id': 'F-01', 'severity': 'MEDIUM', 'scope': 'current-pr', 'file': 'a.sh', 'line': 1,
-         'verification': {'measured': True}, 'consequence_class': 'A'}],
+         'verification': {'measured': True}, 'consequence_class': 'A'},
+        {'id': 'F-02', 'severity': 'MEDIUM', 'scope': 'current-pr', 'file': 'b.sh', 'line': 2,
+         'verification': {'measured': True}, 'consequence_class': 'B'}],
         'non_blocking_findings': [], 'acceptance_criteria': {'skipped': 'no_ac_section'},
         'measured_gate': {'commit_sha': sha, 'applied_at': '2026-01-01T00:00:00Z',
-                          'blocking': 1, 'demoted': 0, 'anchor_undetermined': 0}}
+                          'blocking': 2, 'demoted': 0, 'anchor_undetermined': 0}}
     def copy_block(plugin_dir, reviewed=sha):
         block = materialize
         for key, value in {'plugin_root': str(plugin_dir), 'pr_number': '42', 'review_source': 'conversation',
@@ -167,16 +169,15 @@ exit 97
         assert not re.search(r'\{[a-z_]+\}', block), block
         return subprocess.run(['bash', '-c', block], text=True, capture_output=True, timeout=30, cwd=repo)
     def copy_run(reviewed=sha):
-        before = sorted(results.iterdir())
+        before = {f.name: f.read_bytes() for f in results.iterdir()}
         result = copy_block(copier, reviewed)
         assert result.returncode == 0, result
         # Only the fix marker is emitted: helper markers of pr-review 8.0.4 are not re-emitted.
         lines = result.stderr.splitlines()
         assert len(lines) == 1 and lines[0].startswith('[CONTEXT] FIX_MATERIALIZED_JSON='), result
-        copied = lines[0].split('=', 1)[1]
-        if not copied:
-            assert sorted(results.iterdir()) == before, result
-        return copied
+        # Selecting the triage target writes nothing: no new file, no rewritten file.
+        assert {f.name: f.read_bytes() for f in results.iterdir()} == before, result
+        return lines[0].split('=', 1)[1]
     def copy_fail(plugin_dir, reason):
         before = sorted(results.iterdir())
         result = copy_block(plugin_dir)
@@ -207,22 +208,46 @@ exit 97
         dict(saved_review, measured_gate={k: v for k, v in saved_review['measured_gate'].items() if k != 'applied_at'})))
     failed = copy_fail(copier, 'conversation_json_verify_failed')
     assert 'reason=gate_record_mismatch' in failed.stderr, failed
-    (results / '42-20260101000002.json').write_text(json.dumps(saved_review))
+    original = results / '42-20260101000002.json'
+    original.write_text(json.dumps(saved_review))
     # A table reviewed at another commit never takes the HEAD review's findings.
     assert copy_run('c' * 40) == ''
-    # A copy that cannot be written stops instead of falling back to the table.
+    # A found JSON whose path cannot be resolved stops instead of falling back to the table.
+    # The verify helper resolves the state root first, so only the block's own call fails.
+    flaky = temp / 'flaky'
+    (flaky / 'hooks/scripts').mkdir(parents=True)
+    for name in ('review-save-json-verify.sh', 'lib'):
+        (flaky / 'hooks/scripts' / name).symlink_to(root / 'plugins/rite/hooks/scripts' / name)
+    calls = temp / 'resolve-calls'
+    (flaky / 'hooks/state-path-resolve.sh').write_text(
+        f"#!/bin/bash\necho x >> '{calls}'\n[ \"$(wc -l < '{calls}')\" -eq 1 ] || exit 1\nprintf '%s\\n' '{state}'\n")
+    copy_fail(flaky, 'conversation_json_resolve_failed')
+    resolve_calls = len(calls.read_text().splitlines())
+    assert resolve_calls == 2, f'flaky resolver assumes one call by the verify helper, then the block; got {resolve_calls} calls'
+    # The triage target is the saved file itself, the receipt that completion and the plan check read.
+    assert Path(copy_run()) == original
+    assert json.loads(original.read_text()) == saved_review
+    def triage_original():
+        return subprocess.run(['bash', str(root / 'plugins/rite/scripts/review-findings-maps.sh'),
+                               '--review-source', 'local_file', '--review-source-path', str(original)],
+                              text=True, capture_output=True, timeout=30)
+    # An unwritable result directory stops the triage and leaves the receipt untouched.
     results.chmod(0o555)
     try:
-        copy_fail(copier, 'conversation_json_copy_failed')
+        unwritable = triage_original()
+        assert unwritable.returncode != 0 and 'reason=io_error' in unwritable.stdout, unwritable
+        assert json.loads(original.read_text()) == saved_review
     finally:
         results.chmod(0o755)
-    copied = Path(copy_run())
-    assert copied.parent == results and copied.name.startswith('42-') and copied.name not in ('42-20260101000001.json', '42-20260101000002.json')
-    assert json.loads(copied.read_text()) == dict(saved_review, producer='fix', review_source='conversation')
-    triaged = subprocess.run(['bash', str(root / 'plugins/rite/scripts/review-findings-maps.sh'),
-                              '--review-source', 'local_file', '--review-source-path', str(copied)],
-                             text=True, capture_output=True, timeout=30)
-    assert triaged.returncode == 0 and json.loads(triaged.stdout)['fatal_map'] == {'F-01': True}, triaged
+    triaged = triage_original()
+    assert triaged.returncode == 0 and json.loads(triaged.stdout)['fatal_map'] == {'F-01': True, 'F-02': False}, triaged
+    receipt = json.loads(original.read_text())
+    assert [f['id'] for f in receipt['findings']] == ['F-01'], receipt
+    assert [(f['id'], f['demotion_reason']) for f in receipt['non_blocking_findings']] == [('F-02', 'non_fatal')], receipt
+    assert 'producer' not in receipt and 'review_source' not in receipt, receipt
+    # A newer fix-made file of the same commit is not the receipt: triaging it would leave the receipt untriaged.
+    (results / '42-20260101000003.json').write_text(json.dumps(dict(saved_review, producer='fix')))
+    copy_fail(copier, 'conversation_json_not_original')
     saved = source.read_bytes()
     stub = plugin / 'hooks/review-nonblocking-record.sh'
     record_body = temp / 'record-body'

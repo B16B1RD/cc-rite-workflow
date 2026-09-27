@@ -766,7 +766,8 @@ exit 1
 | `pr_number_placeholder_residue` | ステップ 1.2.0 冒頭の `pr_number="{pr_number}"` literal substitute が忘れられ、数値以外 (空文字 / placeholder 残留) のまま bash block に入った (cleanup.md ステップ 6 / pr-review.md ステップ 6.1.a と対称化、`[fix:error]` 昇格) |
 | `review_source_resolve_failed` | ステップ 1.2.0 caller が `scripts/review-source-resolve.sh` の非ゼロ exit を検知した際の caller-side retained-flag (helper が具体 reason を `FIX_FALLBACK_FAILED` で stderr emit 済み、本 reason は drift Pattern 1 充足用の generic guard、`[fix:error]` 昇格) |
 | `conversation_json_verify_failed` | ステップ 1.2.2 step 1 の `review-save-json-verify.sh` が「該当なし」（`save_result_json_absent`）以外で終わった（helper 不在・異常終了・判定不能・receipt 不整合）。表からの組み立てへ倒さず `[fix:error]` |
-| `conversation_json_copy_failed` | ステップ 1.2.2 step 1 で、HEAD の保存済み JSON は特定できたが複写（state root 解決 / mktemp / jq / mv）に失敗した。表からの組み立てへ倒さず `[fix:error]` |
+| `conversation_json_resolve_failed` | ステップ 1.2.2 step 1 で、HEAD の保存済み JSON は特定できたが、そのパス（state root）を解決できなかった。表からの組み立てへ倒さず `[fix:error]` |
+| `conversation_json_not_original` | ステップ 1.2.2 step 1 で特定した HEAD の保存済み JSON が `producer: "fix"`（fix が作った別名ファイル）だった。receipt ではないファイルを triage しないため `[fix:error]`。`state-path-resolve.sh` が返すルートの `.rite/review-results/` にある同じ commit の `producer: "fix"` のファイルを削除してから fix をやり直す（残った元の保存済み JSON が triage される） |
 | `fatal_triage_failed` | ステップ 1.2.2 helper の非ゼロ終了。原因と finding ID を保持して `[fix:error]`、legacy fallback 禁止 |
 | `pr_comment_schema_version_jq_failed` | Priority 3 で PR コメント Raw JSON の `schema_version` 抽出 jq が失敗 (jq バイナリ異常 / OOM / pipe write error、`schema_version="unknown"` で継続し legacy Markdown parser へ fallthrough、`REVIEW_SOURCE_PARSE_FAILED` flag) |
 | `broad_retrieval_jq_extraction_failed` | ステップ 1.2.0 Priority 3 Broad Comment Retrieval で `pr_comments` からの rite review コメント抽出 jq が失敗 (jq バイナリ異常 / OOM / GitHub API レスポンスの JSON 破損、tempfile 不在として `BROAD_RETRIEVAL_SKIPPED_OR_NO_COMMENT` へ routing、`REVIEW_SOURCE_PARSE_FAILED` flag) |
@@ -777,7 +778,7 @@ exit 1
 **review-findings-maps.sh reasons**: 共通 triage (1.2.2) の helper が返す reason をそのまま報告する。measured 未判定、class 未判定（`class_undetermined`）、scope / severity 不正、map / persist / reload の失敗はいずれも `[fix:error]`。空 map・元 JSON・legacy parser で続行しない。
 
 
-**Eval-order enumeration** (Pattern-2 documented-union): emit reasons sequence = (`bash_version_incompatible` / `pr_number_placeholder_residue` / `overall_assessment_unknown_value` / `pr_comment_raw_json_awk_failed` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_cross_field_invariant_violated` / `pr_comment_critical_high_scope_nit_noted` / `pr_comment_schema_version_unknown` / `user_cancelled` / `user_file_path_invalid` / `review_file_path_empty_value` / `comment_body_tempfile_empty` / `pr_comment_commit_sha_mismatch` / `jq_error_on_commit_sha` / `pr_comment_tempfile_read_io_error` / `review_source_resolve_failed` / `conversation_json_verify_failed` / `conversation_json_copy_failed` / `fatal_triage_failed`)
+**Eval-order enumeration** (Pattern-2 documented-union): emit reasons sequence = (`bash_version_incompatible` / `pr_number_placeholder_residue` / `overall_assessment_unknown_value` / `pr_comment_raw_json_awk_failed` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_cross_field_invariant_violated` / `pr_comment_critical_high_scope_nit_noted` / `pr_comment_schema_version_unknown` / `user_cancelled` / `user_file_path_invalid` / `review_file_path_empty_value` / `comment_body_tempfile_empty` / `pr_comment_commit_sha_mismatch` / `jq_error_on_commit_sha` / `pr_comment_tempfile_read_io_error` / `review_source_resolve_failed` / `conversation_json_verify_failed` / `conversation_json_resolve_failed` / `conversation_json_not_original` / `fatal_triage_failed`)
 
 #### Legacy Branching (PR Comment Path Only)
 
@@ -985,7 +986,7 @@ rite 結果がない場合も空の `findings` / `non_blocking_findings` を持�
 
 **全通常入力経路の合流点**。P0 明示ファイル、P1 会話、P2 ローカル JSON、P3 Raw JSON / legacy Markdown、Target Comment Fast Path は分類・選択・0 件終了の前に必ず本節を実行する。`--nb-sweep` の専用経路は変更しない。
 
-1. P0/P2 は選択した元のファイルを `{triage_review_path}` とし、producer を変更しない。P1、Raw JSON の無い P3、rite レビュー結果コメントを表パースした Target Comment Fast Path は表から組み立て直さず、下の bash で作業ツリー HEAD の保存済み JSON を複写し、`FIX_MATERIALIZED_JSON=` の値を `{triage_review_path}` とする（表には `consequence_class` が無い）。`{reviewed_commit_sha}` は表の出所（統合レポートまたはコメント）末尾の `📎 reviewed_commit` の値で、HEAD と一致するときだけ複写する。helper が見つかった・該当なしのどちらでもない結果で終わったら停止する。値が空（commit が一致しない、または HEAD の保存済み JSON が無い）のときだけ、および P3 の Raw JSON は、解析結果を JSON オブジェクト（`findings[]` / `non_blocking_findings[]` / `pr_recommendations[]`、PR 番号、commit SHA、元の gate receipt と verification、`acceptance_criteria` を保持）にし、`state-path-resolve.sh` が返すルートの `.rite/review-results/` に `{pr_number}-{timestamp}.json`（timestamp は `YYYYMMDDHHMMSS`、同名があれば一意になるまで新しい時刻を取得） として atomic write する。Write 失敗は `[fix:error]` で終了する。新規 JSON のトップレベルに `producer: "fix"` を設定する（元 JSON に producer があっても上書き）。元ソースの `{review_source}` は provenance として保持する。
+1. P0/P2 は選択した元のファイルを `{triage_review_path}` とし、producer を変更しない。P1、Raw JSON の無い P3、rite レビュー結果コメントを表パースした Target Comment Fast Path は表から組み立て直さず、下の bash で作業ツリー HEAD の保存済み JSON を特定し、`FIX_MATERIALIZED_JSON=` の値（その元のファイル）を `{triage_review_path}` とする（表には `consequence_class` が無い）。P0/P2 と同じく元のファイルを triage し、複写も producer / `review_source` の書き込みもしない。特定したファイルが `producer: "fix"` なら元のファイルではないので停止する。`{reviewed_commit_sha}` は表の出所（統合レポートまたはコメント）末尾の `📎 reviewed_commit` の値で、HEAD と一致するときだけ保存済み JSON を使う。helper が見つかった・該当なしのどちらでもない結果で終わったら停止する。値が空（commit が一致しない、または HEAD の保存済み JSON が無い）のときだけ、および P3 の Raw JSON は、解析結果を JSON オブジェクト（`findings[]` / `non_blocking_findings[]` / `pr_recommendations[]`、PR 番号、commit SHA、元の gate receipt と verification、`acceptance_criteria` を保持）にし、`state-path-resolve.sh` が返すルートの `.rite/review-results/` に `{pr_number}-{timestamp}.json`（timestamp は `YYYYMMDDHHMMSS`、同名があれば一意になるまで新しい時刻を取得） として atomic write する。Write 失敗は `[fix:error]` で終了する。新規 JSON のトップレベルに `producer: "fix"` を設定する（元 JSON に producer があっても上書き）。元ソースの `{review_source}` は provenance として保持する。
 
 ```bash
 # fix-conversation-review-json
@@ -1008,26 +1009,19 @@ if [ "{reviewed_commit_sha}" = "$(git rev-parse HEAD)" ]; then
 fi
 if [ -n "$source_name" ]; then
   if ! state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || [ -z "$state_root" ]; then
-    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=conversation_json_copy_failed" >&2
-    echo "[fix:error] reason=conversation_json_copy_failed"
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=conversation_json_resolve_failed" >&2
+    echo "[fix:error] reason=conversation_json_resolve_failed"
     exit 1
   fi
-  results_dir="$state_root/.rite/review-results"
-  target="$results_dir/{pr_number}-$(date +%Y%m%d%H%M%S).json"
-  while [ -e "$target" ]; do
-    sleep 1
-    target="$results_dir/{pr_number}-$(date +%Y%m%d%H%M%S).json"
-  done
-  copy_tmp=$(mktemp "$target.XXXXXX") || copy_tmp=""
-  if [ -z "$copy_tmp" ] \
-    || ! jq --arg src "{review_source}" '.producer = "fix" | .review_source = $src' "$results_dir/$source_name" > "$copy_tmp" \
-    || [ ! -s "$copy_tmp" ] || ! mv "$copy_tmp" "$target"; then
-    [ -n "$copy_tmp" ] && rm -f "$copy_tmp"
-    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=conversation_json_copy_failed" >&2
-    echo "[fix:error] reason=conversation_json_copy_failed"
+  materialized="$state_root/.rite/review-results/$source_name"
+  # 完了記録と修正計画の検査は同じ review_context の最古のファイルを receipt として読む。
+  # fix が作った別名ファイルが最新にあると、それを triage しても receipt は未 triage のまま残る。
+  # 読めないファイルは次の triage helper が止める。
+  if [ "$(jq -r '.producer // ""' "$materialized")" = "fix" ]; then
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=conversation_json_not_original" >&2
+    echo "[fix:error] reason=conversation_json_not_original"
     exit 1
   fi
-  materialized="$target"
 fi
 echo "[CONTEXT] FIX_MATERIALIZED_JSON=$materialized" >&2
 ```
