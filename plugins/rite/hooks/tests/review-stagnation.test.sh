@@ -109,6 +109,11 @@ subprocess.run(['git', '-c', 'maintenance.auto=false',
                cwd=_seed_root, env=_seed_env, check=True)
 
 
+WORK_MEMORY = ('## 📜 rite 作業メモリ\n\n- **Issue**: #42\n\n'
+               '### レビュー対応履歴\n<!-- レビュー対応時に自動記録 -->\n- **現在のループ回数**: 1\n\n'
+               '### 次のステップ\n1. review\n')
+
+
 class Fixture:
     def __init__(self):
         self.temp = tempfile.TemporaryDirectory(prefix='rite-stagnation-')
@@ -128,6 +133,7 @@ class Fixture:
         check((self.root / '.git/HEAD').is_file(), 'fixture seed HEAD copied')
         (self.root / '.git/info/exclude').write_text('.rite/\n')
         (self.root / 'source.txt').write_text('initial\n')
+        self.work_memory_stub()
         self.flow('set', '--phase', 'pr', '--next', 'review', '--issue', 42, '--pr', 71)
         self.state_path = Path(self.flow('path').stdout.strip())
         self.selection = self.private / 'selection.json'
@@ -139,6 +145,22 @@ class Fixture:
         self.plan_path = self.private / 'plan.json'
         self.time = datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)
         self.serial = 0
+
+    def work_memory_stub(self):
+        """One Issue work memory comment behind a gh stub; review-close reads and appends to it."""
+        self.wm_body = self.private / 'wm-comment.md'
+        self.wm_log = self.private / 'wm-calls.log'
+        self.wm_fail = self.private / 'wm-fail'
+        self.wm_body.write_text(WORK_MEMORY, encoding='utf-8')
+        stub = self.private / 'wm-bin'
+        stub.mkdir()
+        (stub / 'gh').symlink_to(plugin / 'hooks/tests/_work-memory-gh-stub.sh')
+        self.env.update(PATH=str(stub) + os.pathsep + self.env['PATH'], RITE_TEST_WM_BODY=str(self.wm_body),
+                        RITE_TEST_WM_LOG=str(self.wm_log), RITE_TEST_WM_FAIL=str(self.wm_fail))
+
+    def wm_calls(self, kind):
+        calls = self.wm_log.read_text().splitlines() if self.wm_log.exists() else []
+        return [call for call in calls if kind in call]
 
     def close(self):
         self.temp.cleanup()
@@ -325,6 +347,156 @@ for body, label in (('Contract: repair source.txt.\n', 'no acceptance section'),
         f.flow('review-close')
     finally:
         f.close()
+
+
+# A closed review leaves its record in the Issue work memory; cleanup later deletes the clean receipt.
+def record_marker(context):
+    return ('<!-- rite:review-record run_id=' + context['run_id'] + ' cycle=' + str(context['cycle_count'])
+            + ' commit_sha=' + context['commit_sha'] + ' -->')
+
+
+def closable_review():
+    fixture = Fixture()
+    fixture.start()
+    fixture.finish(roots=())
+    fixture.clock(0)
+    fixture.observe()
+    return fixture
+
+
+def review_state(fixture):
+    state = fixture.state()
+    return state['review_run'], state['review_cycle']
+
+
+def history_with(*lines):
+    return WORK_MEMORY.replace('- **現在のループ回数**: 1\n', '- **現在のループ回数**: 1\n' + ''.join(line + '\n' for line in lines))
+
+
+f = closable_review()
+try:
+    context = f.context()
+    f.wm_body.write_text(history_with(record_marker(context), '- **cycle 1**: mergeable'), encoding='utf-8')
+    f.flow('review-close')
+    check(f.state()['review_run']['completed_context'] == context, 'T-01: a recorded review closes')
+    check(f.wm_calls('comments') and not f.wm_calls('PATCH'), 'T-01: the recorded work memory is read, not rewritten')
+    f.reject(lambda: f.flow('review-close', '--wm-body', f.wm_body, ok=False),
+             'T-01: callers cannot hand review-close a work memory body', 'takes no options')
+finally:
+    f.close()
+for label, stale in (('another commit', dict(commit_sha='0' * 40)), ('another run', dict(run_id='other-run')),
+                     ('another cycle', dict(cycle_count=99))):
+    f = closable_review()
+    try:
+        context = f.context()
+        f.wm_body.write_text(history_with(record_marker(dict(context, **stale))), encoding='utf-8')
+        f.flow('review-close')
+        body = f.wm_body.read_text(encoding='utf-8')
+        check(len(f.wm_calls('PATCH')) == 1 and body.count(record_marker(context)) == 1,
+              'T-01: a record of ' + label + ' does not count for this review')
+    finally:
+        f.close()
+
+f = closable_review()
+try:
+    context = f.context()
+    check('wm_comment_id' not in f.state(), 'T-02: no work memory comment is cached before closing')
+    f.flow('review-close')
+    body = f.wm_body.read_text(encoding='utf-8')
+    marker = record_marker(context)
+    history = body[body.index('### レビュー対応履歴'):body.index('### 次のステップ')]
+    check(len(f.wm_calls('PATCH')) == 1 and body.count(marker) == 1 and marker in history,
+          'T-02: review-close appends one record inside the review history section')
+    record = history[history.index(marker):]
+    check('mergeable' in record and 'blocking 0' in record and context['commit_sha'][:12] in record,
+          'T-02: the record carries verdict, blocking count and reviewed commit')
+    check('- **現在のループ回数**: 1' in history and '- **Issue**: #42' in body and body.endswith('### 次のステップ\n1. review\n'),
+          'T-02: the rest of the work memory is preserved')
+    state = f.state()
+    check(state['review_run']['completed_context'] == context and str(state.get('wm_comment_id')) == '1',
+          'T-02: the close persists after the work memory helper cached its comment')
+    f.flow('review-close')
+    check(len(f.wm_calls('PATCH')) == 1, 'T-02: replaying the close writes no second record')
+finally:
+    f.close()
+
+f = closable_review()
+try:
+    f.wm_body.write_text(WORK_MEMORY.replace('### レビュー対応履歴\n', '### 別の節\n'), encoding='utf-8')
+    before = review_state(f)
+    result = f.flow('review-close', ok=False)
+    check(result.returncode != 0 and 'still has no record of this review' in result.stderr
+          and review_state(f) == before and 'completed_context' not in f.state()['review_run'],
+          'T-02: a work memory that cannot hold the record keeps the review open')
+finally:
+    f.close()
+
+for label, prepare, reason in (
+        ('comment listing fails', lambda f: f.wm_fail.write_text('list'), 'cannot read the work memory'),
+        ('the Issue has no work memory', lambda f: f.wm_body.unlink(), 'cannot read the work memory'),
+        ('appending fails', lambda f: f.wm_fail.write_text('patch'), 'cannot append the review record')):
+    f = closable_review()
+    try:
+        prepare(f)
+        before = review_state(f)
+        result = f.flow('review-close', ok=False)
+        check(result.returncode != 0 and reason in result.stderr and review_state(f) == before
+              and 'completed_context' not in f.state()['review_run'], 'T-03: ' + label + ' stops review-close')
+    finally:
+        f.close()
+
+f = Fixture()
+try:
+    f.flow('set', '--phase', 'pr', '--next', 'review', '--issue', 0, '--pr', 71)
+    f.issue['number'] = 0
+    dump(f.issue_path, f.issue)
+    f.start()
+    f.finish(roots=())
+    f.clock(0)
+    f.observed['issue_number'] = 0
+    dump(f.input, f.observed)
+    f.observe()
+    f.flow('review-close')
+    check(f.state()['review_run']['completed_context'] == f.context() and not f.wm_calls(''),
+          'T-04: a review without an Issue closes without touching any work memory')
+finally:
+    f.close()
+
+# A rereview of the same commit is its own review: closing it needs its own record.
+f = Fixture()
+try:
+    f.start()
+    f.finish()
+    first = f.context()
+    f.clock(0)
+    f.observe()
+    f.flow('review-record')
+    f.cycle(roots=())
+    second = f.context()
+    check(second['commit_sha'] == first['commit_sha'] and second['cycle_count'] == first['cycle_count'] + 1,
+          'the second cycle rereviews the same commit')
+    f.flow('review-close')
+    body = f.wm_body.read_text(encoding='utf-8')
+    check(record_marker(second) in body, 'closing a same-commit rereview appends its own record')
+    record = body[body.index(record_marker(second)):]
+    check(body.count(record_marker(first)) == 1 and body.count(record_marker(second)) == 1
+          and 'mergeable' in record.splitlines()[1] and len(f.wm_calls('PATCH')) == 2,
+          'closing a same-commit rereview records that cycle next to the earlier one')
+finally:
+    f.close()
+
+# pr-review records every completed cycle, including one that still needs fixes.
+f = Fixture()
+try:
+    f.start()
+    f.finish()
+    before = review_state(f)
+    f.flow('review-record')
+    body = f.wm_body.read_text(encoding='utf-8')
+    check(record_marker(f.context()) in body and 'fix-needed' in body and 'blocking 1' in body
+          and review_state(f) == before, 'review-record writes a fix-needed cycle without changing review state')
+finally:
+    f.close()
 
 
 # Explicit command corrections preserve diagnosis and failed execution evidence.

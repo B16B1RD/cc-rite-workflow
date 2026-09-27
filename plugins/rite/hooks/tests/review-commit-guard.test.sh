@@ -612,6 +612,13 @@ for closed_targets in (False, True):
         env.update(RITE_HOST='claude', CLAUDE_CODE_SESSION_ID=session, RITE_STATE_ROOT=tmp, TMPDIR=tmp,
                    GIT_AUTHOR_NAME='Test', GIT_AUTHOR_EMAIL='test@example.invalid',
                    GIT_COMMITTER_NAME='Test', GIT_COMMITTER_EMAIL='test@example.invalid')
+        # review-close records the review in the Issue work memory behind this gh stand-in.
+        wm_bin = private / 'wm-bin'
+        wm_bin.mkdir()
+        (wm_bin / 'gh').symlink_to(plugin / 'hooks/tests/_work-memory-gh-stub.sh')
+        (private / 'wm-comment.md').write_text(
+            '## 📜 rite 作業メモリ\n\n- **Issue**: #42\n\n### レビュー対応履歴\n\n### 次のステップ\n', encoding='utf-8')
+        env.update(PATH=str(wm_bin) + os.pathsep + env['PATH'], RITE_TEST_WM_BODY=str(private / 'wm-comment.md'))
 
         def run(args, ok=True, cwd=None):
             result = subprocess.run(args, cwd=cwd or root, env=env, text=True, capture_output=True)

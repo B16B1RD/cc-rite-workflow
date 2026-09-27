@@ -849,6 +849,75 @@ cmd_review_cycle() {
   esac
 }
 
+# The last status line of issue-comment-wm-sync.sh; empty when it printed none.
+_wm_sync_status() {
+  local out
+  # The helper reports non-blocking failures with exit 0; its status line is the verdict.
+  out=$(bash "$SCRIPT_DIR/issue-comment-wm-sync.sh" "$@") || true
+  printf '%s\n' "$out" | sed -n '/^status=/p' | tail -1
+}
+
+# Make the Issue work memory record the completed review cycle (skipped when the
+# run has no Issue). The work memory helper caches its comment id in this
+# flow-state, so it runs before any review-cycle state computation, never inside
+# one. `--closing` first applies every other close condition, so a refused close
+# records nothing.
+_review_record_ensure() {
+  local sid path record issue marker body content status
+  sid=$(_resolve_session_id) || return 1
+  path=$(_state_path "$sid")
+  record=$(RITE_STATE_ROOT="$STATE_ROOT" python3 "$SCRIPT_DIR/scripts/lib/review-cycle.py" record \
+    --state "$path" --session "$sid" --results-dir "$STATE_ROOT/.rite/review-results" "$@") || return 1
+  issue=$(printf '%s' "$record" | jq -r '.issue // empty') || return 1
+  if [ -z "$issue" ]; then
+    echo "[CONTEXT] REVIEW_RECORD=skipped; reason=no_issue" >&2
+    return 0
+  fi
+  marker=$(printf '%s' "$record" | jq -r '.marker') || return 1
+  body=$(mktemp "${TMPDIR:-/tmp}/rite-review-record-XXXXXX") || return 1
+  status=$(_wm_sync_status fetch --issue "$issue" --out "$body")
+  if [ "$status" != "status=success" ]; then
+    echo "ERROR: cannot read the work memory of Issue #$issue to confirm the review record (${status:-no status line})" >&2
+    echo "  If the work memory comment is missing, create it with issue-comment-wm-sync.sh init and run this again" >&2
+    rm -f "$body"
+    return 1
+  fi
+  if ! grep -qF -- "$marker" "$body"; then
+    content=$(mktemp "${TMPDIR:-/tmp}/rite-review-record-content-XXXXXX") || { rm -f "$body"; return 1; }
+    printf '%s' "$record" | jq -r '.content' > "$content" || { rm -f "$body" "$content"; return 1; }
+    status=$(_wm_sync_status update --issue "$issue" --transform append-section \
+      --section "レビュー対応履歴" --content-file "$content")
+    rm -f "$content"
+    if [ "$status" != "status=success" ]; then
+      echo "ERROR: cannot append the review record to the work memory of Issue #$issue (${status:-no status line})" >&2
+      rm -f "$body"
+      return 1
+    fi
+    status=$(_wm_sync_status fetch --issue "$issue" --out "$body")
+    if [ "$status" != "status=success" ] || ! grep -qF -- "$marker" "$body"; then
+      echo "ERROR: the work memory of Issue #$issue still has no record of this review: $marker" >&2
+      echo "  Restore the '### レビュー対応履歴' section of the work memory and run this again" >&2
+      rm -f "$body"
+      return 1
+    fi
+  fi
+  rm -f "$body"
+  echo "[CONTEXT] REVIEW_RECORD=recorded; issue=$issue" >&2
+}
+
+cmd_review_record() {
+  [ $# -eq 0 ] || { echo "ERROR: review-record takes no options" >&2; return 1; }
+  _review_record_ensure
+}
+
+# Cleanup deletes a clean receipt, so the Issue work memory is the lasting record
+# of the review; closing requires it.
+cmd_review_close() {
+  [ $# -eq 0 ] || { echo "ERROR: review-close takes no options" >&2; return 1; }
+  _review_record_ensure --closing || return 1
+  cmd_review_cycle close
+}
+
 cmd_path() {
   local session=""
   while [ $# -gt 0 ]; do case "$1" in
@@ -868,7 +937,8 @@ case "${1:-}" in
   review-replan) shift; cmd_review_cycle replan "$@" ;;
   review-retry) shift; cmd_review_cycle retry "$@" ;;
   review-restart) shift; cmd_review_cycle restart "$@" ;;
-  review-close) shift; cmd_review_cycle close "$@" ;;
+  review-record) shift; cmd_review_record "$@" ;;
+  review-close) shift; cmd_review_close "$@" ;;
   review-defer) shift; cmd_review_cycle defer "$@" ;;
   review-abandon) shift; cmd_review_cycle abandon "$@" ;;
   get) shift; cmd_get "$@" ;;
@@ -893,7 +963,8 @@ Usage: $0 {set|get|review-start|review-finish|review-retry|review-restart|review
   review-replan --plan /absolute/fix-plan.json --issue /absolute/issue.json [--amend --reason TEXT]
   review-retry --plan /absolute/fix-plan.json --issue /absolute/issue.json
   review-restart --selection /absolute/selection.json --expected-run-id UUID --approval /absolute/approval.json
-  review-close
+  review-record                      # append this review's record to the Issue work memory if absent
+  review-close                       # requires that record (written first when absent)
   review-defer
   review-abandon --reason TEXT       # drop an evidence-free collecting cycle; keeps counter and identity
   review-finish --manifest /absolute/completions.json --content-file /absolute/result.json [--pending-id TOKEN]

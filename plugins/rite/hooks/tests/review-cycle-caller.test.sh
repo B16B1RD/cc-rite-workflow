@@ -41,6 +41,10 @@ def iterate_block_for(marker):
     subcommand = heads[-1].group(1).replace('_', '-')
     return block(iterate, 'bash {plugin_root}/scripts/iterate-step.sh ' + subcommand)
 
+# Step 6.4 records the review through the helper review-close also requires, never through hand-written prose.
+assert 'bash {plugin_root}/hooks/flow-state.sh review-record' in review
+assert '{review_history_content}' not in review
+
 start_block = block(review, '# review-cycle-start')
 finish_block = block(review, '# review-cycle-finish')
 recover_block = block(recover, '# review-cycle-recover')
@@ -53,6 +57,13 @@ with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
     env = {k: v for k, v in os.environ.items() if k not in (
         'CODEX_THREAD_ID', 'CLAUDE_CODE_SESSION_ID', 'RITE_SESSION_ID', 'RITE_STATE_ROOT')}
     env.update(RITE_STATE_ROOT=str(work), RITE_HOST='claude', CLAUDE_CODE_SESSION_ID='caller-test')
+    # review-close records the review in the Issue work memory behind this gh stand-in.
+    wm_bin = work / 'wm-bin'
+    wm_bin.mkdir()
+    (wm_bin / 'gh').symlink_to(plugin / 'hooks/tests/_work-memory-gh-stub.sh')
+    (work / 'wm-comment.md').write_text(
+        '## 📜 rite 作業メモリ\n\n### レビュー対応履歴\n\n### 次のステップ\n', encoding='utf-8')
+    env.update(PATH=str(wm_bin) + os.pathsep + env['PATH'], RITE_TEST_WM_BODY=str(work / 'wm-comment.md'))
 
     def run(args, success=True):
         output = subprocess.run(args, cwd=work, env=env, text=True, capture_output=True)

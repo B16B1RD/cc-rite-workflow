@@ -418,9 +418,39 @@ def abandon(state, args, directory):
     return state
 
 
+def record_marker(context):
+    """The identity of one completed review in the Issue work memory.
+
+    A run may review the same commit again, so the cycle is part of the identity.
+    """
+    return ("<!-- rite:review-record run_id=" + context["run_id"] + " cycle=" + str(context["cycle_count"])
+            + " commit_sha=" + context["commit_sha"] + " -->")
+
+
+def record(state, args, directory):
+    """Describe the work memory record of the completed cycle; the state is not changed."""
+    if args.closing:
+        # A close that would be refused anyway writes nothing to the Issue.
+        importlib.import_module("review-stagnation").closable(state, args, directory)
+    if not state.get("issue_number"):
+        return dict(issue=None)
+    cycle = state.get("review_cycle")
+    require(isinstance(cycle, dict) and cycle.get("status") == "completed",
+            "only a completed review cycle can be recorded; finish the review first")
+    receipt = matching_receipt(directory, cycle)
+    require(receipt is not None, "saved review receipt missing")
+    context, saved = cycle["review_context"], receipt[1]
+    blocking = sum(1 for finding in saved["findings"] if finding.get("scope") in ("current-pr", "follow-up"))
+    remaining = len(saved.get("non_blocking_findings") or [])
+    line = ("- **cycle " + str(context["cycle_count"]) + "** (`" + context["commit_sha"][:12] + "`): "
+            + saved["verdict"] + " — blocking " + str(blocking) + " 件 / non-blocking " + str(remaining) + " 件")
+    return dict(issue=state["issue_number"], marker=record_marker(context),
+                content=record_marker(context) + "\n" + line + "\n")
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("operation", choices=("start", "finish", "guard-set", "clock", "observe", "replan", "retry", "restart", "close", "defer", "abandon"))
+    parser.add_argument("operation", choices=("start", "finish", "guard-set", "clock", "observe", "replan", "retry", "restart", "close", "defer", "abandon", "record"))
     parser.add_argument("--state", required=True)
     parser.add_argument("--session", required=True)
     parser.add_argument("--results-dir", required=True)
@@ -436,6 +466,7 @@ def main():
     parser.add_argument("--expected-run-id")
     parser.add_argument("--approval")
     parser.add_argument("--amend", action="store_true")
+    parser.add_argument("--closing", action="store_true")
     args = parser.parse_args()
     path, directory = Path(args.state), Path(args.results_dir)
     if args.operation == "guard-set":
@@ -444,7 +475,7 @@ def main():
     required = dict(start=["selection"], finish=["manifest", "content_file"],
                     clock=["input"], observe=["input", "issue"], replan=["plan", "issue"],
                     retry=["plan", "issue"], restart=["selection", "approval"],
-                    close=[], defer=[], abandon=[])
+                    close=[], defer=[], abandon=[], record=[])
     for name in required[args.operation]:
         value = getattr(args, name)
         require(value and Path(value).is_absolute(), name + " must be an absolute file path")
@@ -460,6 +491,10 @@ def main():
         updated = finish(state, args, path, directory)
     elif args.operation == "abandon":
         updated = abandon(state, args, directory)
+    elif args.operation == "record":
+        # The record describes a saved cycle; it is not a state transition.
+        print(json.dumps(record(state, args, directory), ensure_ascii=False))
+        return
     else:
         stagnation = importlib.import_module("review-stagnation")
         updated = stagnation.clock(state, args) if args.operation == "clock" else getattr(stagnation, args.operation)(state, args, directory)

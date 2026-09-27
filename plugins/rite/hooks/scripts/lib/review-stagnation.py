@@ -492,8 +492,8 @@ def conclude_retry(run, receipt):
     return dict(action="stop", reasons=["retry-unresolved"]) if blocking else None
 
 
-def close(state, args, directory):
-    """Record the successful iterate boundary without resetting the owning run."""
+def closable(state, args, directory):
+    """Every condition of a successful close except its work memory record."""
     gate(state, args.session)
     run, context = current(state, args.session, completed=True)
     receipt = cycle.matching_receipt(directory, state["review_cycle"])
@@ -506,6 +506,12 @@ def close(state, args, directory):
             or (isinstance(table, list) and all(row.get("status") == "satisfied"
                 or attested(row, context["commit_sha"]) for row in table)),
             "cannot close review with unmet or unverified acceptance criteria")
+    return run, context
+
+
+def close(state, args, directory):
+    """Record the successful iterate boundary without resetting the owning run."""
+    run, context = closable(state, args, directory)
     if run.get("completed_context") != context:
         run["completed_context"] = context.copy()
         state["updated_at"] = cycle.now()
