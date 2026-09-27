@@ -24,14 +24,21 @@ sources:
     resource: "raw/reviews/20260926T144808Z-pr-3174.md"
   - type: "reviews"
     resource: "raw/reviews/20260926T152022Z-pr-3186.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T035457Z-pr-3208.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T035954Z-pr-3208.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T040443Z-pr-3208.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T15:24:48Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T04:21:02Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-25T21:06:14+09:00" }
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-26T22:40:00+09:00" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T14:57:57Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T15:24:48Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T04:21:02Z" }
 ---
 
 # 新規テストは、それが実際に生成している出力のうち契約が不変と規定するものを行まるごと固定する
@@ -92,6 +99,14 @@ helper の投稿先を PR コメントから関連 Issue コメントへ移す�
 
 helper の返り値（stdout の map）だけを assert するテストでは、consumer が実際に読み直す副作用出力、つまり永続化した document と stderr の件数行を壊す変異が生き残った。移送対象・件数・document の絞り込みの 3 箇所を 1 つずつ旧式へ戻しても、スイートは green のままだった。consumer が読む出力をすべて assert に含め、変異を 1 箇所ずつ単独で当てて落ちることを確かめると、テストが名乗る挙動を本当に固定できているかが確かめられる。永続化 JSON は部分比較ではなく document 全体を等値比較すると、配列の順序、追加されるキー、キーが増えないことまで一度に固定できる。
 
+### 「行まるごと」と名乗るなら照合も行全体一致にする
+
+WARNING 行がキューのパスを出していることを固定するテストで、コミットと PR 本文は「1 行全体を固定する」と主張していた。実際の照合は、動作語からパスまでの区間を `grep -qF` で部分一致させる形だった。mutation を当てると、理由文言の差し替え・行末への付け足し・行頭の並べ替えがすべて生存した。主張している強さと、照合が実際に持つ強さがずれていた。
+
+照合を `grep -qxF` による行全体の完全一致へ置き換えると、パスの除去を含む 5 種の変異すべてで当該テストだけが落ちるようになった。行頭の `WARNING:` も完全一致の対象に入るので、前段で `grep 'WARNING'` に通していたパイプは不要になり、照合は 1 段に減った。
+
+部分一致でも拾える変異はある。パスを前後の固定トークンで挟んでいれば、パスが空になる変異は区間照合でも検出できる。ただしそれは区間の内側を守っているだけで、区間の外側（行頭・理由文言・行末）は守らない。「行まるごと」を名乗るなら、照合の述語も行全体にする。
+
 ## 関連ページ
 
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
@@ -109,3 +124,6 @@ helper の返り値（stdout の map）だけを assert するテストでは、
 - [fix 結果](../../raw/fixes/20260826T131353Z-pr-2383.md)
 - [レビュー結果](../../raw/reviews/20260926T144808Z-pr-3174.md)
 - [レビュー結果](../../raw/reviews/20260926T152022Z-pr-3186.md)
+- [部分一致の照合で変異が生存したレビュー結果](../../raw/reviews/20260927T035457Z-pr-3208.md)
+- [行全体の完全一致へ置き換えた fix 結果](../../raw/fixes/20260927T035954Z-pr-3208.md)
+- [完全一致の照合を実装出力と突き合わせたレビュー結果](../../raw/reviews/20260927T040443Z-pr-3208.md)

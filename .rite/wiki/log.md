@@ -44,6 +44,16 @@
 * **Update**: [jq は入力が 0 ドキュメントだとフィルタを評価せず rc=0 で終わる — 形の検証は jq -s と length == 1 で入力を 1 ドキュメントに閉じる](pages/anti-patterns/jq-empty-input-skips-filter-rc-zero.md) — raw/reviews/20260927T033801Z-pr-3200.md を統合
 * **Update**: [「網羅」を主張する列挙は grep 全数棚卸し + scope note で構造的に収束させる](pages/heuristics/exhaustiveness-claims-require-mechanical-inventory.md) — raw/reviews/20260927T033918Z-pr-3205.md を統合
 * **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=553, broken_refs=0
+* **Update**: [並行セッションの別 Issue ブランチ作成が post-review state verify の branch_list drift を誤検出させる](pages/anti-patterns/concurrent-session-branch-creation-false-positive-drift.md) — raw/reviews/20260927T035253Z-pr-3207.md を統合
+* **Update**: [並行セッションの別 Issue ブランチ作成が post-review state verify の branch_list drift を誤検出させる](pages/anti-patterns/concurrent-session-branch-creation-false-positive-drift.md) — raw/fixes/20260927T040118Z-pr-3207.md を統合
+* **Update**: [新規テストは、それが実際に生成している出力のうち契約が不変と規定するものを行まるごと固定する](pages/heuristics/new-test-pins-the-contract-output-it-already-produces.md) — raw/reviews/20260927T035457Z-pr-3208.md を統合
+* **Update**: [新規テストは、それが実際に生成している出力のうち契約が不変と規定するものを行まるごと固定する](pages/heuristics/new-test-pins-the-contract-output-it-already-produces.md) — raw/fixes/20260927T035954Z-pr-3208.md を統合
+* **Update**: [新規テストは、それが実際に生成している出力のうち契約が不変と規定するものを行まるごと固定する](pages/heuristics/new-test-pins-the-contract-output-it-already-produces.md) — raw/reviews/20260927T040443Z-pr-3208.md を統合
+* **Skip**: [20260927T035617Z-pr-3204.md](raw/reviews/20260927T035617Z-pr-3204.md) — 既存経験則の範囲内: 差分スコープの cycle で前サイクルの finder を mandatory に合流させる規則は pr-review の手順に機構化済み（新たな経験則なし）
+* **Create**: [base 取り込みの競合は base 側の正本を基準にし、PR の変更意図だけを載せ直す](pages/heuristics/base-intake-conflict-reapply-pr-intent-on-base-canonical.md) — raw/reviews/20260927T041232Z-pr-3204.md を新規ページ化
+* **Update**: [hook の失敗枝はソース grep ではなく実行で検証する](pages/heuristics/hook-failure-branch-needs-execution-test.md) — raw/reviews/20260927T040057Z-pr-3210.md を統合
+* **Update**: [grep (BRE) と grep -E (ERE) のメタ文字反転で assert ヘルパーが常時緑の dead assertion になる](pages/anti-patterns/bre-ere-metachar-inversion-dead-assertion.md) — raw/fixes/20260927T040853Z-pr-3210.md を統合
+* **Update**: [grep (BRE) と grep -E (ERE) のメタ文字反転で assert ヘルパーが常時緑の dead assertion になる](pages/anti-patterns/bre-ere-metachar-inversion-dead-assertion.md) — raw/reviews/20260927T041502Z-pr-3210.md を統合
 
 ## 2026-09-26
 

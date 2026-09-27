@@ -13,11 +13,16 @@ sources:
     resource: "raw/reviews/20260802T000641Z-pr-2070.md"
   - type: "reviews"
     resource: "raw/reviews/20260914T135958Z-pr-2819.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T040853Z-pr-3210.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T041502Z-pr-3210.md"
 tags: ["dead-assertion", "bre-vs-ere", "mutation-testing", "assert-helper"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-14T14:12:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T04:21:02Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-14T14:12:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T04:21:02Z" }
 ---
 
 # grep (BRE) と grep -E (ERE) のメタ文字反転で assert ヘルパーが常時緑の dead assertion になる
@@ -70,6 +75,12 @@ assert_not_grep "$FILE" 'ステップ 3-7\.4\|ステップ 7\.4'
 
 どちらの向きでも「常に緑」になる点は同じで、検出手段も同じ: fix を外した mutant でスイートを回し、当該 assertion が FAIL することを目視する。pin に literal のパイプを含めるなら ERE では `\|` と書き、直後の「順序 assert」など別の assertion が同じ回帰を拾えているかに頼らず、pin ごとに検出力を確認する。
 
+**実装差: ERE の対にならない `)` は grep 実装によって合否が割れる**
+
+`grep -E` に渡すパターンで、開き括弧を伴わない `)` をエスケープせずに書くと、GNU grep はそれを文字として扱うので通る。一方、実装によっては括弧の不一致としてエラーを返す。そうなるとテストの合否が、テストの意図ではなく grep の実装で決まる。case の arm ラベル（数字の直後の `)`）を照合するパターンで起きやすい。修正は `\)` と 1 文字エスケープするだけでよく、同じファイルの既存 pin がすでに `\)` と書いているなら、その慣例に揃えるのが最も安い予防になる。`grep -F` のパターンや、括弧が対になっているパターンは該当しない。
+
+エスケープを直したら、修正後のパターンが照合すべき文言に一致することだけでなく、一致してはいけない入力（stub の出力や、`6` に対する `30` のような隣接する値）に一致しないことも `printf` の入力で確かめる。一致側だけを見ると、エスケープで意味が変わって広く一致するようになった場合を見逃す。両側を実測しておくと、テストの判別力が保たれていることを示せる。
+
 ## 関連ページ
 
 - [アサーションの検証強度は「該当行を壊して赤くなるか」でしか測れない](../heuristics/mutation-testing-measures-assertion-strength.md)
@@ -82,3 +93,5 @@ assert_not_grep "$FILE" 'ステップ 3-7\.4\|ステップ 7\.4'
 - [fix 結果](../../raw/fixes/20260801T185220Z-pr-2070.md)
 - [レビュー結果](../../raw/reviews/20260802T000641Z-pr-2070.md)
 - [ERE に素のパイプを渡した隣接 pin の tautology を指摘したレビュー結果](../../raw/reviews/20260914T135958Z-pr-2819.md)
+- [対にならない閉じ括弧をエスケープした fix 結果](../../raw/fixes/20260927T040853Z-pr-3210.md)
+- [エスケープ修正を一致・不一致の両側で確かめたレビュー結果](../../raw/reviews/20260927T041502Z-pr-3210.md)
