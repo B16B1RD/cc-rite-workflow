@@ -207,7 +207,7 @@ else
 fi
 ```
 
-手順 3 が `[fix:error]` で止まったときは、手順 2 の起票をやり直さない。起票は済んでいるが台帳に行が無いため、sweep を最初から実行し直すと同じ指摘を再び起票する。起票済みの Issue は entries の issued 行が持つ。entries（`${TMPDIR:-/tmp}/rite-nb-entries-{pr_number}.md`）を stderr の理由に合わせて直し（`reason=entries_source_invalid` なら、診断に出た行の最終列に出典を足す）、手順 3 だけを再実行する。成功したら手順 4 へ進む。
+手順 3 が `[fix:error]` で止まったときは、手順 2 の起票をやり直さない。起票は済んでいるが台帳に行が無いため、sweep を最初から実行し直すと同じ指摘を再び起票する。起票済みの Issue は entries の issued 行が持つ。entries（`${TMPDIR:-/tmp}/rite-nb-entries-{pr_number}.md`）を stderr の理由に合わせて直し、手順 3 だけを再実行する。`reason=entries_source_invalid` の診断は不正行の先頭 3 行しか示さないので、entries の全行について最終列が手順 1 の `record=` の basename（全行同じ値）になっているかを確かめ、欠けた行すべてに足す。成功したら手順 4 へ進む。手順 4 まで終えたら `/rite:iterate {pr_number}` で再開してよい（台帳に載った指摘は collect が対象から外すため、再び起票されない）。
 
 4. **完了**:
 
