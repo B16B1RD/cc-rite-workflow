@@ -966,7 +966,8 @@ Status: {projects_status_result}
 - [{projects_check}] Projects Status を Done に更新
 - [{wiki_ingest_check}] Wiki ingest (pending raw source のページ統合)
 - [x] flow state リセット
-- [x] 作業メモリを最終更新 + ローカルファイル削除
+- [{wm_final_update_check}] 作業メモリ（Issue コメント）を最終更新
+- [x] ローカル作業メモリファイル削除
 - [x] Issue claim 解放
 - [x] 関連 Issue をクローズ
 - [x] 親 Issue の Tasklist 更新・自動クローズ (該当する場合)
@@ -975,7 +976,7 @@ Status: {projects_status_result}
 {outstanding_items_block}
 ```
 
-**委譲モード（4-W が `[CONTEXT] CLEANUP_DELEGATED=1` を emit した場合）**: **委譲した 4 項目に限り**下記の個別判定を行わず、`{base_update_check}` / `{session_worktree_check}` / `{local_branch_check}` / `{wiki_ingest_check}` を ` `（未完了）に固定し、それぞれの check 直下の付記も出力しない（委譲は 1 回の明確な案内に収め、診断の羅列に戻さない）。**`CLEANUP_WT=unknown` は本定型ブロックの対象外**（再実行で冪等に完了しないため定型の案内が当たらない）。同じ 4 項目が未実行である点は共通だが、判定は下記の個別判定に任せ、案内は `{session_worktree_check}` の未確認付記が担う。**委譲モードでも実行される項目**（`{review_cleanup_check}` = ステップ 6 / `{projects_check}` = ステップ 8 / 冒頭の `Status: {projects_status_result}`）は**従来どおり個別判定する** — 実行した項目の実失敗を握り潰さないため。`{outstanding_items_block}` は下記の定型ブロックを先頭に置き、個別判定で空欄になった check があればその付記を定型ブロックの後ろに続ける。`{n}` は **`4` + 個別判定で空欄になった check の件数**:
+**委譲モード（4-W が `[CONTEXT] CLEANUP_DELEGATED=1` を emit した場合）**: **委譲した 4 項目に限り**下記の個別判定を行わず、`{base_update_check}` / `{session_worktree_check}` / `{local_branch_check}` / `{wiki_ingest_check}` を ` `（未完了）に固定し、それぞれの check 直下の付記も出力しない（委譲は 1 回の明確な案内に収め、診断の羅列に戻さない）。**`CLEANUP_WT=unknown` は本定型ブロックの対象外**（再実行で冪等に完了しないため定型の案内が当たらない）。同じ 4 項目が未実行である点は共通だが、判定は下記の個別判定に任せ、案内は `{session_worktree_check}` の未確認付記が担う。**委譲モードでも実行される項目**（`{review_cleanup_check}` = ステップ 6 / `{projects_check}` = ステップ 8 / `{wm_final_update_check}` = ステップ 11 / 冒頭の `Status: {projects_status_result}`）は**従来どおり個別判定する** — 実行した項目の実失敗を握り潰さないため。`{outstanding_items_block}` は下記の定型ブロックを先頭に置き、個別判定で空欄になった check があればその付記を定型ブロックの後ろに続ける。`{n}` は **`4` + 個別判定で空欄になった check の件数**:
 
 ```
 - base ブランチの更新（fetch + merge --ff-only）
@@ -1123,10 +1124,14 @@ rationale: references/rationale.md#review-cleanup-reasons
   ⚠️ Wiki ingest: commit は local wiki branch に landed しましたが origin への push に失敗しました。
     手動回復: git -C .rite/wiki-worktree push origin {wiki_branch}
   ```
+- `{wm_final_update_check}`: ステップ 11 の `[CONTEXT] WM_FINAL_UPDATE=` 行で判定する（archive-procedures §3.5.1 = `completion`、§3.5.2 = `progress`）。`{issue_number}` が空（関連 Issue 未識別）なら `x`。それ以外は **completion 側と progress 側を独立に評価し、両方が `x` 相当のときだけ `x`**（どちらか一方でも未完了なら ` ` にし、未完了だった側の付記をすべて列挙する。`{local_branch_check}` と同型）。各側は **2 段で判定する**: まず `[CONTEXT] ` 行頭一致 + `WM_FINAL_UPDATE={側}` + `issue={issue_number}`（値の直後が `;` または行末）に該当する行を集め、**その中の最後の出現 1 行だけを選ぶ**（recency。`{local_branch_check}` と同じ理由）。次にその 1 行を以下で評価する（`{対象}` は completion = 完了情報の追記、progress = 進捗チェックリストの更新）:
+  - `status=success` / `reason=no_comment` / `reason=section_absent` のいずれか: `x`（後 2 つは legitimate skip。x とする値はこの 3 つに限る）
+  - 上記以外（`reason=invalid_args` / `reason=transform_failed` / `status=missing` 等）: ` ` + 「⚠️ 作業メモリの{対象}が完了しませんでした（{marker の status 以降}）。{helper stderr の先頭行} — Issue #{issue_number} の作業メモリコメントを確認し、必要なら手動で追記してください」を付記（helper stderr の先頭行は同じ bash が出した `helper stderr (root-cause、先頭 5 行):` の直後の 1 行。出ていなければ省く）
+  - 該当行が無いとき: ` ` + 「⚠️ 作業メモリの{対象}の実行結果を確認できませんでした — Issue #{issue_number} の作業メモリコメントを確認してください」を付記。**marker 不在を成功と読んではならない**
 
-`{outstanding_items_block}`（非ブロッキング失敗の集約欄）: 上記チェックリストの `{base_update_check}` / `{session_worktree_check}` / `{local_branch_check}` / `{projects_check}` / `{wiki_ingest_check}` / `{review_cleanup_check}` のうち、**チェックボックスが `x` ではなく空欄（未チェック）として描画されたもの**があれば、そのチェックボックス直下の付記文をそのまま箇条書きで列挙する（各チェックボックス直下の付記と同じ文言をここにも重複表示する — チェックリストは一覧性、本節は見落とし防止のための集約であり、両立させる）。
+`{outstanding_items_block}`（非ブロッキング失敗の集約欄）: 上記チェックリストの `{base_update_check}` / `{session_worktree_check}` / `{local_branch_check}` / `{projects_check}` / `{wiki_ingest_check}` / `{review_cleanup_check}` / `{wm_final_update_check}` のうち、**チェックボックスが `x` ではなく空欄（未チェック）として描画されたもの**があれば、そのチェックボックス直下の付記文をそのまま箇条書きで列挙する（各チェックボックス直下の付記と同じ文言をここにも重複表示する — チェックリストは一覧性、本節は見落とし防止のための集約であり、両立させる）。
 
-判定基準を「⚠️/ℹ️ 等の絵文字 prefix 一致」ではなく「チェックボックスの空欄/`x`」に統一する: 6 check の判定ルールはいずれも「実失敗・残作業のときのみ空欄 ` ` を割り当て、成功時および legitimate な informational skip は `x` を割り当てる」。付記文の絵文字 prefix は飾りに過ぎず、チェックボックス自体の空欄/`x`こそが「未完了か否か」の一次情報である。
+判定基準を「⚠️/ℹ️ 等の絵文字 prefix 一致」ではなく「チェックボックスの空欄/`x`」に統一する: 7 check の判定ルールはいずれも「実失敗・残作業のときのみ空欄 ` ` を割り当て、成功時および legitimate な informational skip は `x` を割り当てる」。付記文の絵文字 prefix は飾りに過ぎず、チェックボックス自体の空欄/`x`こそが「未完了か否か」の一次情報である。
 rationale: references/rationale.md#outstanding-checkbox
 
 いずれの check も `x`（すべて成功、または legitimate skip）の場合は次の 1 行のみを出力する:
@@ -1135,7 +1140,7 @@ rationale: references/rationale.md#outstanding-checkbox
 - なし（非ブロッキングで継続した失敗はありませんでした）
 ```
 
-上記の判定は 6 個の check が steps 4/5/8/9 の別々の Bash 呼び出しで確定するため bash 側で合算できず、本コマンド (LLM) が完了報告を組み立てる時点で件数を数える。数えた件数を、他の numbered sentinel (`[pr:created:N]` 等) と同じ表記規約で、ステップ 12 末尾の return signal 行に隣接する HTML コメントとして出力する (grep 可能・rendered view では不可視):
+上記の判定は 7 個の check が steps 4/5/6/8/9/11 の別々の Bash 呼び出しで確定するため bash 側で合算できず、本コマンド (LLM) が完了報告を組み立てる時点で件数を数える。数えた件数を、他の numbered sentinel (`[pr:created:N]` 等) と同じ表記規約で、ステップ 12 末尾の return signal 行に隣接する HTML コメントとして出力する (grep 可能・rendered view では不可視):
 
 ```
 <!-- [cleanup:outstanding:{n}] -->
