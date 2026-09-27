@@ -481,7 +481,7 @@ canonical jq expression (1.0/1.0.0 受信時に適用):
 
 <a id="3値モデルへの上書き"></a>
 
-> **判定 consumer の 2 値 + error**: default mapping は記録・表示専用であり、blocking 判定には適用しない。現行 producer の gated finding は成功時に `measured=true` / `false` のいずれかとなり、算出時に判定不能なら `anchor_undetermined` で入力 JSON を変更せず失敗する。caller は対象 finding IDs の reviewer 出力だけを同 cycle 内で再生成する（再試行は既存の共通上限 1 回）。旧 JSON の `verification` / `verification.measured` 欠落も正常な blocking 値ではなく、fix consumer は gated finding の未判定を `[fix:error]` とする。fix consumer の fatal 式は [severity-levels.md §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate) の「fix consumer の修正対象」を正とし、本節では再掲しない。非 fatal は severity を維持して移送する。判定経路で `(.verification.measured // false)` を使わず、object 内の boolean のみ登録して値をそのまま採用する。SoT は [`fix/SKILL.md`](../skills/fix/SKILL.md) ステップ 1.2.1 step 6 / ステップ 1.2.2 の triage（helper `scripts/review-findings-maps.sh`）。
+> **判定 consumer の 2 値 + error**: default mapping は記録・表示専用であり、blocking 判定には適用しない。現行 producer の gated finding は成功時に `measured=true` / `false` のいずれかとなり、算出時に判定不能なら `anchor_undetermined` で入力 JSON を変更せず失敗する。caller は対象 finding IDs の reviewer 出力だけを同 cycle 内で再生成する（再試行は既存の共通上限 1 回）。旧 JSON の `verification` / `verification.measured` 欠落も正常な blocking 値ではなく、fix consumer は gated finding の未判定を `[fix:error]` とする。fix consumer の fatal 式は [severity-levels.md §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate) の「fix consumer の修正対象」を正とし、本節では再掲しない。非 fatal は severity を維持して移送する。判定経路で `(.verification.measured // false)` を使わず、object 内の boolean のみを採用し、それ以外は停止する。SoT は [`fix/SKILL.md`](../skills/fix/SKILL.md) ステップ 1.2.1 step 6 / ステップ 1.2.2 の triage（helper `scripts/review-findings-maps.sh`）。
 >
 > 本節の default mapping は依然として**判定以外の読取 (記録・表示・後方互換の非エラー化)** に有効であり、型ガードが `verification: {}` を受理することにも変更はない。
 
