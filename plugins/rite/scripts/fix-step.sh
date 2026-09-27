@@ -293,10 +293,10 @@ fi
 if [ "$review_file_flag_style" != "none" ] && [ "$review_file_path" = "" ]; then
   case "$review_file_flag_style" in
     equals)
-      echo "エラー: --review-file= に値がありません (style: equals — `--review-file=<path>` の `=` の右側にパスを指定してください)" >&2
+      echo "エラー: --review-file= に値がありません (style: equals — \`--review-file=<path>\` の \`=\` の右側にパスを指定してください)" >&2
       ;;
     space)
-      echo "エラー: --review-file の後にパスがありません (style: space — `--review-file <path>` のように空白で区切ってパスを指定してください)" >&2
+      echo "エラー: --review-file の後にパスがありません (style: space — \`--review-file <path>\` のように空白で区切ってパスを指定してください)" >&2
       ;;
   esac
   echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=review_file_path_empty_value; flag_style=$review_file_flag_style" >&2

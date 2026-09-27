@@ -310,7 +310,7 @@ rationale: references/design-rationale.md#hybrid-source-priority
 
 Selection logic は `scripts/review-source-resolve.sh` に委譲。下記引数を **literal substitute**:
 
-- `{pr_number}` — ステップ 1.0 で正規化された PR 番号 (数値)。非数値は「未 substitute」として `reason=pr_number_placeholder_residue` で fail-fast。
+- `{pr_number}` — ステップ 1.0 で正規化された PR 番号 (数値)。非数値は `fix-step.sh` が exit 2 で止める（Error Handling）。
 - `{review_file_path_from_phase_1_0_1}` — ステップ 1.0.1 の `[CONTEXT] REVIEW_FILE_PATH=...` 値を会話コンテキストから読み取る (未指定時は `__RITE_UNSET__`)。
 - `{conversation_review_decision}` — **Priority 1 判定**: 値の検証は取得元の評価より前に行われるため、コメント URL / `--review-file` 指定時も含めて常に `use` / `none` のいずれかを渡す。同一 session の直前 assistant turn に `## 📜 rite レビュー結果` を含む `/rite:pr-review` 出力が残っていれば、その findings を会話コンテキストから読み取り `use` を渡す。なければ `none` を渡す。
 - `{p1_scan_turns}` / `{p1_scan_found}` — Priority 1 receipt: scan した assistant turn 数 (use 時 1 以上) と発見有無 (`use`→`true` / `none`→`false`)。
@@ -412,7 +412,7 @@ bash {plugin_root}/scripts/fix-step.sh fallback-abort --reason user_file_path_in
 | `pr_comment_commit_sha_mismatch` | Priority 3 の PR コメント Raw JSON の `commit_sha` が現 HEAD と不一致 (stale detection、WARNING のみで continue) |
 | `jq_error_on_commit_sha` | Priority 0/2/3 の `.commit_sha` 抽出 jq が IO/binary エラーで失敗 (I-4 対応。stale detection 無効化を silent にしない。`priority=0|2|3` として retained flag に付記される) |
 | `pr_comment_tempfile_read_io_error` | Priority 3 で `pr_comment_body_file` の cat が IO エラーで失敗 (permission 変更 / NFS timeout / TOCTOU truncate) |
-| `pr_number_placeholder_residue` | ステップ 1.2.0 冒頭の `pr_number="{pr_number}"` literal substitute が忘れられ、数値以外 (空文字 / placeholder 残留) のまま bash block に入った (cleanup.md ステップ 6 / pr-review.md ステップ 6.1.a と対称化、`[fix:error]` 昇格) |
+| `pr_number_placeholder_residue` | `scripts/review-source-resolve.sh` を `fix-step.sh` を介さず直接呼び、`--pr-number` が数値以外 (空文字 / placeholder 残留) だった (`[fix:error]` 昇格)。`fix-step.sh` 経由では dispatcher が先に exit 2 で止める |
 | `review_source_resolve_failed` | ステップ 1.2.0 caller が `scripts/review-source-resolve.sh` の非ゼロ exit を検知した際の caller-side retained-flag (helper が具体 reason を `FIX_FALLBACK_FAILED` で stderr emit 済み、本 reason は drift Pattern 1 充足用の generic guard、`[fix:error]` 昇格) |
 | `conversation_json_verify_failed` | ステップ 1.2.2 step 1（会話・外部ファイル経路）の `review-save-json-verify.sh` が「該当なし」（`save_result_json_absent`）以外で終わった（helper 不在・異常終了・判定不能・receipt 不整合）。表からの組み立てや外部ファイルの複写へ倒さず `[fix:error]` |
 | `conversation_json_resolve_failed` | ステップ 1.2.2 step 1（会話・外部ファイル経路）で、HEAD の保存済み JSON は特定できたが、そのパス（state root）を解決できなかった。表からの組み立てや外部ファイルの複写へ倒さず `[fix:error]` |
@@ -1550,6 +1550,7 @@ See [Common Error Handling](../../references/common-error-handling.md) for share
 | When Comment Retrieval Fails | ネットワーク接続を確認; `gh auth status` で認証状態を確認 |
 | Error During File Modification | この指摘をスキップして続行 / 手動で修正 (WARNING を stderr に出力) |
 | Commit Failure | `git status` で状態を確認; 問題を解決してから再度コミット (WARNING を stderr に出力) |
+| `fix-step.sh` が exit 2（`ERROR: fix-step.sh:`）で止まった | marker を待たずに停止し、未置換の placeholder・空値・数値でない引数を直して当該ステップから再実行する |
 
 ## ステップ 5: E2E フロー継続 (出力パターン)
 

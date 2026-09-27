@@ -401,24 +401,30 @@ fenced_ok() {
     || { echo "FAIL: T-12 $1 fence missing, ambiguous or overran"; exit 1; }
 }
 
-# step_nb_sweep_done_file は関数なので関数範囲を抽出し、state-path-resolve だけを fixture root へ差し替える
-fix51_fence=$(awk '/^step_nb_sweep_done_file\(\) \{$/{f=1} f{print} f && /^}$/{exit}' "$FIX_STEP")
-[ -n "$fix51_fence" ] && printf '%s\n' "$fix51_fence" | tail -1 | grep -qx '}' \
-  && printf '%s\n' "$fix51_fence" | grep -qF 'bash "$plugin_root"/hooks/state-path-resolve.sh' \
-  || { echo "FAIL: T-12 fix 5.1 function extraction lost its end anchor or its state-path-resolve call"; exit 1; }
+# fix 5.1 は SKILL.md の 1 行呼び出しを fixture plugin の fix-step.sh で dispatch 経由に実行する。
+# fixture は state-path-resolve だけを fixture root を返す stub に差し替える。
+fix51_call=$(grep -xF 'bash {plugin_root}/scripts/fix-step.sh nb-sweep-done-file --pr {pr_number}' "$FIX")
+[ "$(printf '%s\n' "$fix51_call" | grep -c .)" = "1" ] \
+  || { echo "FAIL: T-12 fix 5.1 one-line call is missing or duplicated in SKILL.md"; exit 1; }
+fix51_plugin=$(mktemp -d)
+mkdir -p "$fix51_plugin/scripts" "$fix51_plugin/hooks"
+cp "$FIX_STEP" "$fix51_plugin/scripts/fix-step.sh"
+ln -s "$PLUGIN_ROOT/hooks/control-char-neutralize.sh" "$fix51_plugin/hooks/control-char-neutralize.sh"
+cat > "$fix51_plugin/hooks/state-path-resolve.sh" <<'STUB'
+#!/bin/bash
+printf '%s\n' "${NB_FIX_ROOT:?}"
+STUB
 fix51_run() {
   local root out
   root=$(nb_fixture "$1")
-  out=$(NB_FIX_ROOT="$root" bash -c "$(
-    printf 'pr_number=42\nplugin_root=%q\n' "$PLUGIN_ROOT"
-    printf '%s\n' "$fix51_fence" | sed -e 's#bash "$plugin_root"/hooks/state-path-resolve.sh#printf %s "$NB_FIX_ROOT"#g'
-    printf 'step_nb_sweep_done_file\n'
-  )" 2>&1) || true
+  out=$(NB_FIX_ROOT="$root" bash -c "$(printf '%s\n' "$fix51_call" \
+    | sed -e "s#{plugin_root}#$fix51_plugin#g" -e 's#{pr_number}#42#g')" 2>&1) || true
   rm -rf -- "$root"
   printf '%s\n' "$out" | sed -n 's/^\[CONTEXT\] NB_SWEEP_DONE_FILE=\([01]\)$/\1/p'
 }
 assert "T-12 fix 5.1 done on lexical tail" "1" "$(fix51_run "done $lexical_tail")"
 assert "T-12 fix 5.1 not done on mtime max" "0" "$(fix51_run "done $mtime_max")"
+rm -rf -- "$fix51_plugin"
 
 digest_block=$(fenced_block_with "$FIX_SWEEP" 'sweep_done_file="$sweep_root/.rite/state/nb-sweep-done-{pr_number}.txt"')
 fenced_ok "digest writer" "$digest_block"
