@@ -270,7 +270,7 @@ okf_version: "0.2"
 | [暫定注記は対象成果物内の同種表記を全数列挙してから書く](pages/heuristics/interim-notice-enumerate-all-stale-references-first.md) | heuristics | 陳腐化した成果物（再生成できない動画等）への暫定注記を書くとき、注記が言及する「旧表記」の範囲は対象成果物内の同種表記を最初に全数把握してから決める。 | 2026-07-26T20:51:40+09:00 | medium |
 | [段階分割 PR では「契約として宣言したこと」と「いま実装されていること」を時制で書き分ける](pages/heuristics/staged-pr-declared-contract-vs-implemented-fact-tense.md) | heuristics | Sub-Issue でデータ契約だけを先に切る PR では、SoT ドキュメントと LLM 向け指示が「write 側は常に N キーを出力する」「フィールドとして保存される」と現在形で書かれやすい。 | 2026-07-27T10:57:51+09:00 | high |
 | [accept fixture と reject fixture は設計目的が逆 — 安全側の形状を両方に適用すると順序契約が pin できなくなる](pages/heuristics/accept-vs-reject-fixture-design-inversion.md) | heuristics | 分岐チェーンに新しいガードを挿入したとき、「そのガードが先行分岐より前にある」という順序契約は fixture の形状に依存して観測可能／不可能が決まる。 | 2026-07-27T10:57:51+09:00 | high |
-| [mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる](pages/heuristics/mutation-axes-beyond-predicate.md) | heuristics | 「静的 pin を追加したらその場で mutation を当てて落ちることを確認する」は既に確立した規約だが、**当てる mutation の軸**が規約に含まれていないと、述語（条件式そのもの）にだけ変異を入れて満足してしまう。 | 2026-09-27T21:05:00Z | high |
+| [mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる](pages/heuristics/mutation-axes-beyond-predicate.md) | heuristics | 「静的 pin を追加したらその場で mutation を当てて落ちることを確認する」は既に確立した規約だが、**当てる mutation の軸**が規約に含まれていないと、述語（条件式そのもの）にだけ変異を入れて満足してしまう。 | 2026-09-27T22:02:06Z | high |
 | [few-shot 例に「実行していない実測」を書く — LLM はもっともらしいコマンドを書く挙動を学習する](pages/anti-patterns/few-shot-unexecuted-measurement-anchor.md) | anti-patterns | reviewer / agent 向けの calibration 文書（finding-examples.md 等）に「実測アンカー付きの良い例」を追加するとき、例に載せる再現コマンドと観測結果を実際には走らせずに書いてしまう anti-pattern。 | 2026-07-27T10:57:51+09:00 | high |
 | [gate を守る対象の内側に置くと、守るべき唯一の failure mode で gate も一緒に skip される](pages/anti-patterns/gate-placed-inside-guarded-scope.md) | anti-patterns | LLM が読む手順書で「手順 X が実行されたこと」を保証する post-condition gate を新設するとき、gate を X のサブステップとして書くと自己参照で無力化する。 | 2026-07-27T10:57:51+09:00 | high |
 | [属性は母集団からの除外ではなく別 map で持つ — 除外は下流の全分岐を経路依存で壊す](pages/heuristics/attribute-as-separate-map-not-population-exclusion.md) | heuristics | 既存の分類 map（severity_map など）に新しい軸（実測済みか否か）を導入するとき、「条件を満たさない要素を母集団から除外する」設計にすると、その map を参照する下流の全分岐が経路依存で壊れる。 | 2026-07-27T10:57:51+09:00 | high |
@@ -434,7 +434,7 @@ okf_version: "0.2"
 | [散文の主語を広げたら、その主語に係る述語を数え上げて検算する — 数え上げられない粒度は書かずに削る](pages/heuristics/widened-subject-requires-predicate-enumeration.md) | heuristics | 「X は A に依存する」の主語へ B を足すとき、続く述語がそのまま残ると、B について偽の主張になる。主語を広げる編集は述語を検算する編集とセットであり、検算に外延の数え上げが要るなら、その粒度は文書に写さないほうが腐朽が遅い。 | 2026-08-13T19:20:00+09:00 | high |
 | [既存術語の動詞を別意味に流用せず、新しい意味には別語を立てる](pages/heuristics/existing-term-verb-not-repurposed-for-new-meaning.md) | heuristics | 同一ファイル内で既に定義済みの術語が使う動詞を、別の意味の説明に流用すると、読み手はどちらの定義が効いているか判別できず、レビューでは術語衝突として指摘される。 | 2026-08-25T18:26:48Z | medium |
 | [hook の失敗枝はソース grep ではなく実行で検証する](pages/heuristics/hook-failure-branch-needs-execution-test.md) | heuristics | WARNING 文字列がソースに存在するだけでは、mkdir 失敗などの else 枝が実行時に辿られることは保証できない。対象パスをファイルにして hook を走らせ、stderr と終了コードを assert する。 | 2026-09-27T04:21:02Z | high |
-| [環境依存の断定を是正する編集が、限定された正しい前提をより広い偽の前提へ置き換える](pages/anti-patterns/corrective-assertion-widens-scope-into-new-falsehood.md) | anti-patterns | 「この repo の設定に依存した断定を実装機構に基づく記述へ差し替える」是正では、置き換え先の根拠そのもの（適用範囲と生成主体）を実コードで検証しないと、是正対象と同型の誤りを別の形で再生産する。典型は、base が正しく限定していた対象（サブディレクトリ）を親ディレクトリ全体へ広げ、除外規則の否定エントリによって偽になる前提を作ってしまう形。 | 2026-08-30T09:45:00Z | high |
+| [環境依存の断定を是正する編集が、限定された正しい前提をより広い偽の前提へ置き換える](pages/anti-patterns/corrective-assertion-widens-scope-into-new-falsehood.md) | anti-patterns | 「この repo の設定に依存した断定を実装機構に基づく記述へ差し替える」是正では、置き換え先の根拠そのもの（適用範囲と生成主体）を実コードで検証しないと、是正対象と同型の誤りを別の形で再生産する。典型は、base が正しく限定していた対象（サブディレクトリ）を親ディレクトリ全体へ広げ、除外規則の否定エントリによって偽になる前提を作ってしまう形。 | 2026-09-27T22:02:06Z | high |
 | [全順序で優先順位を決める設計は逆向きの残存ハザードが必ず残る — 選ばなかった側を文書に残す](pages/heuristics/total-order-precedence-leaves-inverse-hazard.md) | heuristics | 複数の記法・入力形式・候補を全順序で優先する設計では、順序をどちらに倒しても「先に読む側が後ろの側の宣言を隠す」ハザードが必ず残り、順序変更はハザードを消さず露出面を移すだけである。 | 2026-08-29T14:35:49Z | high |
 | [契約を N 箇所に追記したら pin も N 箇所あるかを数え合わせる](pages/patterns/contract-additions-and-pins-one-to-one.md) | patterns | 散文駆動スキルの契約変更で複数箇所を追記したとき、追加したアサーションが追記箇所より少ないと、pin されなかった 1 箇所だけを元に戻してもスイートが green のまま受入基準が壊れる。 | 2026-09-27T17:15:00Z | high |
 | [散文が helper の挙動に新たに依存し始めたら、helper 側にも pin を置く](pages/heuristics/prose-dependency-on-helper-behavior-needs-helper-side-pin.md) | heuristics | 手順書が「helper が値を保持するので書き込みは 1 箇所でよい」のような設計上の依存を新設したとき、散文側の pin だけでは受入基準の半分しか守られない。helper の当該挙動を変異させても既存スイートが全件 green なら、単一書き込み設計を成り立たせている側が無防備になっている。 | 2026-08-29T15:42:53Z | high |
@@ -590,5 +590,5 @@ okf_version: "0.2"
 
 - 総ページ数: 576
 - ドメイン別: patterns=127, heuristics=270, anti-patterns=179
-- 最終更新: 2026-09-27T21:52:19Z
+- 最終更新: 2026-09-27T22:02:06Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |

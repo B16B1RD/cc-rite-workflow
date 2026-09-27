@@ -43,15 +43,18 @@ sources:
     resource: "raw/reviews/20260927T204401Z-pr-3334.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T205140Z-pr-3344.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T215520Z-pr-3353.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:05:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T22:02:06Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-13T05:16:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T11:40:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:18:40Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:57:39Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:05:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T22:02:06Z" }
 ---
 
 # mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる
@@ -140,6 +143,8 @@ skill 文書の規則 1 文を `grep -c '<部分文字列>'` で固定すると�
 - **比較演算の境界（`<=` と `<`）は壁時計では安定して固定できない**: 境界値そのものを置くと、テスト実行中に時刻が進んで判定が入れ替わる。境界を固定したいなら、判定関数に現在時刻を渡せる形にする。
 - **列挙した文字クラス・値集合は全要素を fixture にする**: 免除条件の文字クラスを拡張したとき、代表の数文字だけを fixture にすると、列挙から一部の文字を外す変異が生き残る（実測で `?` と `[` が生存した）。列挙を広げたら、その全要素を 1 件ずつ固定する。
 
+失敗 rc をそのまま伝える `exit "$rc"` は、呼び出し先の失敗 rc が 1 種類しかない間は、`exit 1` へ書き換える変異とテスト上区別できない（観測上等価）。伝播そのものを固定したいなら、呼び出し先の stub に 1 以外の失敗 rc を返させ、その値が呼び出し元の終了コードに現れることを確かめる。
+
 ## 関連ページ
 
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
@@ -164,3 +169,4 @@ skill 文書の規則 1 文を `grep -c '<部分文字列>'` で固定すると�
 - [「変えない」側の不変条件を pin し忘れた取りこぼしを閉じた fix 結果](../../raw/fixes/20260927T193820Z-pr-3329.md)
 - [列挙した文字クラスの一部を外す変異が生き残ったレビュー結果](../../raw/reviews/20260927T204401Z-pr-3334.md)
 - [時間窓の上端近くの値で閾値の縮小を検出したレビュー結果](../../raw/reviews/20260927T205140Z-pr-3344.md)
+- [失敗 rc の伝播が exit 1 と観測上等価になると指摘したレビュー結果](../../raw/reviews/20260927T215520Z-pr-3353.md)

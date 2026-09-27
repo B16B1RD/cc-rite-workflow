@@ -11,12 +11,15 @@ sources:
     resource: "raw/fixes/20260829T112718Z-pr-2461.md"
   - type: "reviews"
     resource: "raw/reviews/20260830T093728Z-pr-2483.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T215932Z-pr-3355.md"
 tags: ["scope-widening", "corrective-edit", "assertion-grounding", "generator-attribution", "propagation-scan"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-30T09:45:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T22:02:06Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-30T09:45:00Z"
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T22:02:06Z" }
 ---
 
 # 環境依存の断定を是正する編集が、限定された正しい前提をより広い偽の前提へ置き換える
@@ -56,6 +59,8 @@ verified:
 
 差分がコメント文言だけの cycle でも、この確認は省略しない。**変更量の小ささは検証範囲の狭さを意味しない。**
 
+文書の要約（仕様書や契約表の 1 行）を直すときも同じ向きに注意する。実装が名指しする限定条件（例外的な停止経路だけ、再判定の後だけ）を要約へ足して主張を狭める方向で直し、要約の主張を広げて実装との差を埋めない。広げた要約は、限定条件の外の経路で新しい偽になる。
+
 ## 関連ページ
 
 - [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](../heuristics/universal-claim-prose-invalidated-by-path-addition.md)
@@ -67,3 +72,4 @@ verified:
 - [是正先の 2 種の誤断定を検出](../../raw/reviews/20260829T112405Z-pr-2461.md)
 - [記述を狭める方向での是正 + 伝播スキャン](../../raw/fixes/20260829T112718Z-pr-2461.md)
 - [訂正文の新規主張を producer 側まで追跡して検証](../../raw/reviews/20260830T093728Z-pr-2483.md)
+- [文書の要約を限定条件で狭める方向に直した fix 結果](../../raw/fixes/20260927T215932Z-pr-3355.md)
