@@ -34,11 +34,13 @@
 
 ステップ 4.0.A Pre-Review State Snapshot の設計理由。
 
-- **detached HEAD edge case**: orchestrator が `git worktree add --detach` で起動された場合や reviewer ループ中の特殊な checkout で HEAD が detached になると `git branch --show-current` は空文字列を返す。空文字列のままステップ 5.0.A に渡すと verifier が `[ -z "$ORIGINAL_BRANCH" ]` で exit 2 (invalid args) になるため、`DETACHED:<short-hash>` sentinel に置換する。verifier 側で `DETACHED:*` は branch drift check を skip する経路に乗る。
-- **md5sum portability**: Linux は `md5sum`、macOS は `shasum` を fallback として使う。両方とも stdout の先頭 token が hash であるため `awk '{print $1}'` で portable に取り出せる。
+- **snapshot を helper に委譲する理由**: 4 値は `post-review-state-verify.sh --snapshot` が 5.0.A の verify と同じ関数で算出する。SKILL.md に算出式を持つと、判別子を変えるたびに snapshot 側と verify 側の両方を揃える必要があり、片側だけ変わると毎回 drift を誤報告する。
+- **detached HEAD edge case**: orchestrator が `git worktree add --detach` で起動された場合や reviewer ループ中の特殊な checkout で HEAD が detached になると `git branch --show-current` は空文字列を返す。空文字列のままステップ 5.0.A に渡すと verifier が `[ -z "$ORIGINAL_BRANCH" ]` で exit 2 (invalid args) になるため、helper の `--snapshot` が `DETACHED:<short-hash>` sentinel に置換する。verifier 側で `DETACHED:*` は branch drift check を skip する経路に乗り、stash は件名 `(no branch)` で数える。
+- **md5sum portability**: helper は Linux で `md5sum`、macOS で `shasum` を fallback として使う。両方とも stdout の先頭 token が hash であるため `awk '{print $1}'` で portable に取り出せる。
+- **stash / branch list を自 worktree に絞る理由**: refs/heads と refs/stash は全 worktree で共有されるため、全体の件数や一覧を比べると並列セッションの操作が reviewer の drift に見える。stash は件名 `WIP on <branch>:` / `On <branch>:` がレビュー対象 branch のものだけを数える（git は同じ branch を 2 つの worktree で checkout させないので、件名の branch が作業した worktree を指す）。branch list は `git for-each-ref` の `worktreepath` で他の worktree が checkout 中の branch を除き、パスは物理パスで比べる。判別子の外に残るもの — 他セッションが checkout していない branch の作成・削除と他 worktree での branch 切り替えは報告側、`git worktree add -b` で残した branch と他 branch の件名の stash は数えない側 — は helper の docstring が列挙する。
 - **ステップ 5.0.A の placeholder 残留 gate**: `{orig_br}` が `{...}` 形状のまま渡されると verifier が non-empty 文字列として branch 比較し silent false-positive cascade を起こすため、形状検査で早期 reject する (ステップ 6.1.b と同 pattern)。
 - **tracked 差分で snapshot / verify を揃える理由**: 両側で `git-status-filtered.sh --tracked-only` を使い、sandbox 実行コンテキストごとに変わりうる untracked を hash から除く。環境固有のファイル名やサイズには依存しない。reviewer の新規ファイル作成を黙って見逃さないよう、untracked の件数と名前は WARNING に残す。tracked の staged / unstaged 差分は従来どおり drift 検出対象とする。
-- **フィルタの exit code を明示チェックする理由 (capture-first)**: 生の `git status --porcelain` と異なりフィルタは `mktemp` に依存するため、sandbox の TMPDIR 制限下では plain `git status` が成功してもフィルタは失敗しうる。かつ SKILL.md の bash block は Bash tool の 1 回の呼び出しとして新規シェルで実行され pipefail は既定 off (呼び出し間でシェル状態は引き継がれない) なので、`filter | hash | awk` の `$?` は pipefail に依存させられない。フィルタ自身の出力を先に非パイプで capture してから exit code を判定する。`post-review-state-verify.sh` 側は単一スクリプト全体に `set -uo pipefail` がかかるため pipefail 経由の `$?` チェックで足りるが、SKILL.md block はそれとは独立した実行コンテキストのため同じ前提を流用できない。
+- **フィルタの exit code を明示チェックする理由 (capture-first)**: 生の `git status --porcelain` と異なりフィルタは `mktemp` に依存するため、sandbox の TMPDIR 制限下では plain `git status` が成功してもフィルタは失敗しうる。helper はフィルタと `git for-each-ref` の出力を先に非パイプで capture し、失敗したら空入力の hash を出さずに WARNING を出して当該軸を skip する（空入力の hash を正常値として比べると、失敗が「変化なし」に化ける）。
 
 ## verification-post-condition-notes
 

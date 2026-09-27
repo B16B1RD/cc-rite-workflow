@@ -28,7 +28,7 @@ The `[READ-ONLY RULE]` is not just a tool-level (`Edit`/`Write`) restriction —
 | `cp file file.bak` → file 変更 → test → `mv file.bak file` (parent working tree 内) | 同上 (parent working tree の file 変更自体が禁止 — `Edit`/`Write` tool レベル違反でもある) |
 | `git checkout HEAD~1 -- file` → test → `git checkout HEAD -- file` | `git show HEAD~1:file` で blob を取得し、worktree 内で適用 |
 
-**Invariant の enforcement 経路**: exit-time invariant (branch / stash count / branch list / worktree hash の 4 軸) は orchestrator 側 (`skills/pr-review/SKILL.md` ステップ 5.0.A post-review state verification) で `post-review-state-verify.sh` により post-condition check される。worktree 軸 (`git status --porcelain` hash) も enforce 対象 — Edit/Write in-place mutation や state-changing git が残す差分を検出する。drift 検出時は WARNING を stderr に出力 + (branch drift のみ) automatic recovery (`git checkout <original_branch>`) を行う。stash/branch_list/worktree drift は内容を失うリスク回避のため auto-recover せず manual action を案内する。
+**Invariant の enforcement 経路**: exit-time invariant (branch / stash count / branch list / worktree hash の 4 軸) は orchestrator 側 (`skills/pr-review/SKILL.md` ステップ 4.0.A snapshot と 5.0.A post-review state verification) で `post-review-state-verify.sh` により post-condition check される。refs/heads と refs/stash は全 worktree で共有されるため、stash は件名がレビュー対象 branch のものだけ、branch list は他の worktree で checkout 中の branch を除いたものだけを数え、並列セッションの操作を drift と誤認しない。worktree 軸 (`git status --porcelain` hash) も enforce 対象 — Edit/Write in-place mutation や state-changing git が残す差分を検出する。4 軸は独立に評価し、変化した全軸を WARNING で報告して JSON の `types` に列挙する。(branch drift のみ) automatic recovery (`git checkout <original_branch>`) を行う。stash/branch_list/worktree drift は内容を失うリスク回避のため auto-recover せず manual action を案内する。
 
 ## why-fail-fast-is-the-default
 
