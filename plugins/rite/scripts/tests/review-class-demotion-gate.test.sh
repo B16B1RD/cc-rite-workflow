@@ -947,7 +947,7 @@ step1_map_example=$(awk '/^```json$/{s=1; next} s && /^```$/{exit} s' <<<"$step1
 claim_producer_row=$(grep -F '`ac_claim` を書く**' <<<"$step1_section" | head -1)
 if grep -qF 'AC の未充足を実測付きで主張する finding には `ac_claim` を書く' <<<"$claim_producer_row" \
    && grep -qF '`acceptance_criteria[]` に無い AC・重複・書式外・空配列' <<<"$claim_producer_row" \
-   && grep -qF '`acceptance_criteria` が行配列でない cycle（キー欠落 / skipped）' <<<"$claim_producer_row"; then
+   && grep -qF '`acceptance_criteria` が行配列でない cycle（キー欠落 / skipped）で書いた `ac_claim` も同じく判定不能 = class A に倒す' <<<"$claim_producer_row"; then
   pass "5.3.0.C step 1 tells the producer to write ac_claim"
 else
   fail "5.3.0.C step 1 ac_claim producer instruction missing"
