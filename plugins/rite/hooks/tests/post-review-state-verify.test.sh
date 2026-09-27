@@ -342,11 +342,23 @@ fi
 assert "base-branch reproduction uses a detached worktree in the reviewer namespace" yes "$base_repro_ok"
 
 # No sanctioned procedure embeds mktemp in the worktree command: a worktree-isolated
-# session refuses that form because it cannot see the created path.
+# session refuses that form because it cannot see the created path. The pin rejects
+# every `$(mktemp …rite-…)` in these documents, with or without spaces after `$(` and
+# whatever follows the `rite-` prefix, so they carry no embedded mktemp example at all.
+embedded_mktemp_re='\$\([[:space:]]*mktemp[^)]*rite-'
+for sample in '$(mktemp -d -t rite-review-mutation-XXXXXX)' \
+  '$( mktemp -d -t rite-review-mutation-XXXXXX)' \
+  '$(mktemp -d -t rite-other-XXXXXX)' \
+  '$(mktemp -d -t rite-revert-test-XXXXXX)'; do
+  assert "embedded mktemp pin catches $sample" 1 \
+    "$(printf '%s\n' "$sample" | grep -cE "$embedded_mktemp_re")"
+done
+assert "embedded mktemp pin passes the standalone call" 0 \
+  "$(printf '%s\n' '`mktemp -d -t rite-review-mutation-XXXXXX`' | grep -cE "$embedded_mktemp_re")"
 for doc in "$SCRIPT_DIR/../../agents/_reviewer-base.md" \
   "$SCRIPT_DIR/../../skills/reviewers/references/reviewer-base-rationale.md"; do
   assert "no embedded mktemp in ${doc##*/}" 0 \
-    "$(grep -cE '\$\(mktemp[^)]*rite-(review-mutation|revert-test)-' "$doc")"
+    "$(grep -cE "$embedded_mktemp_re" "$doc")"
 done
 
 # A stash made on another branch in the reviewed worktree counts after switching back.
