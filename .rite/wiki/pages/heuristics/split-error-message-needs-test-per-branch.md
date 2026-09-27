@@ -4,14 +4,19 @@ title: "失敗経路の ERROR 文を段ごとに分けたら、分割後の各�
 domain: "heuristics"
 description: "共通の ERROR 文を失敗段ごとに分けると、以前は共通の文面を介して間接に検出されていた分岐がテストから外れる。分割後の分岐ごとに入るテストを置き、件数ではなく文面で照合する。後続の実行を主張するテストは、後続が実際に観測できる fixture で書く。"
 created: "2026-09-27T15:25:53Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:03:50Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:52:19Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:03:50Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:52:19Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260927T151821Z-pr-3293.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T155610Z-pr-3304.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T213628Z-pr-3354.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T213846Z-pr-3354.md"
 tags: ["test", "error-message", "mutation", "fixture"]
 confidence: medium
 ---
@@ -32,6 +37,8 @@ confidence: medium
 
 失敗経路を「場所・パターン・理由を載せた 1 行で止める」形に直したら、テストは 2 つを組にする。1 つはその 1 行を固定文字列で照合する assert、もう 1 つは出力が 1 行であることの assert である。前者は止まり方の説明が出ているかを、後者は traceback などが混ざっていないかを確かめる。rc が非ゼロであることだけを見るテストは、別の理由で止まる変異と区別できない。行数の assert は単独では出力が空でも通る（空文字列を改行付きで数えると 1 行になる）ため、存在を要求する照合と組にして初めて意味を持つ。この組は「前検査を外す」変異と「案内行を出してから例外を投げ直す」変異の両方を検出する。
 
+同じ終了コードを複数の reason が共有するとき、見出し（原因）を reason 別に出していても、対処文が一方の reason にしか当てはまらないことがある。番号参照の検査が拒否した場合（書き直すべき hit 行がある）と、検査そのものが失敗した場合（hit 行は無く、原因は stderr の error 行にある）は、同じ rc=1 でも実行者がすべきことが違う。reason ごとに分岐を分け、テストでは見出しだけでなく対処文も reason 別に固定する。他の reason の対処文が混ざらないことも否定側の assert で押さえる。
+
 ## 関連ページ
 
 - [他セッションの成果物を回収する処理は、進捗時刻ではなく所有者の生存信号で判定し、判定不能は残す側へ倒す](./liveness-reaper-keeps-undecidable-and-guards-json-shape.md)
@@ -41,3 +48,5 @@ confidence: medium
 
 - [ERROR 文の分割で外れた分岐と後続主張の fixture を検出したレビュー結果](../../raw/reviews/20260927T151821Z-pr-3293.md)
 - [止まった 1 行の照合と行数の assert を組にした変更のレビュー結果](../../raw/reviews/20260927T155610Z-pr-3304.md)
+- [同じ rc の reason に共通の対処文が付いていたレビュー結果](../../raw/reviews/20260927T213628Z-pr-3354.md)
+- [reason ごとに対処文を分けてテストで固定した fix 結果](../../raw/fixes/20260927T213846Z-pr-3354.md)

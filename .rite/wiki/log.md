@@ -26,6 +26,18 @@
 * **Update**: [awk の正規表現に区間表現 {m,n} を使うと mawk で範囲が黙って広がる](pages/anti-patterns/awk-interval-expression-widens-range-on-mawk.md) — raw/reviews/20260927T211808Z-pr-3347.md を統合
 * **Update**: [静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く](pages/heuristics/static-pin-semantic-allowlist-not-notation-denylist.md) — raw/reviews/20260927T212257Z-pr-3345.md を統合
 * **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=63, orphans=0, missing_concept=0, unregistered_raw=568, broken_refs=0
+* **Update**: [手順を helper へ移して入口検証を足すと、未定義 placeholder で流れていた終端経路が停止に変わる](pages/anti-patterns/entry-validation-on-extraction-stops-undefined-placeholder-paths.md) — raw/reviews/20260927T213306Z-pr-3349.md を統合
+* **Update**: [手順を helper へ移して入口検証を足すと、未定義 placeholder で流れていた終端経路が停止に変わる](pages/anti-patterns/entry-validation-on-extraction-stops-undefined-placeholder-paths.md) — raw/fixes/20260927T214525Z-pr-3349.md を統合
+* **Create**: [完了レポートの「なし」行は、失敗経路ごとに WARNING を出して判定する](pages/heuristics/completion-report-none-line-needs-warning-per-failure-path.md) — raw/reviews/20260927T214046Z-pr-3353.md を新規ページ化
+* **Update**: [完了レポートの「なし」行は、失敗経路ごとに WARNING を出して判定する](pages/heuristics/completion-report-none-line-needs-warning-per-failure-path.md) — raw/fixes/20260927T215011Z-pr-3353.md を統合
+* **Update**: [失敗経路の ERROR 文を段ごとに分けたら、分割後の各分岐に入るテストを 1 つずつ用意し、文面で照合する](pages/heuristics/split-error-message-needs-test-per-branch.md) — raw/reviews/20260927T213628Z-pr-3354.md を統合
+* **Update**: [失敗経路の ERROR 文を段ごとに分けたら、分割後の各分岐に入るテストを 1 つずつ用意し、文面で照合する](pages/heuristics/split-error-message-needs-test-per-branch.md) — raw/fixes/20260927T213846Z-pr-3354.md を統合
+* **Skip**: [20260927T214334Z-pr-3354.md](raw/reviews/20260927T214334Z-pr-3354.md) — 指摘 0 件の再レビュー記録で、前の cycle の経験則を超える新しい経験則がない
+* **Skip**: [20260927T214508Z-pr-3354.md](raw/fixes/20260927T214508Z-pr-3354.md) — 要約コメントの同期と直接呼び出しへの整理だけで、既存の旧値前提コメント残置のページの範囲に収まる
+* **Skip**: [20260927T214742Z-pr-3354.md](raw/reviews/20260927T214742Z-pr-3354.md) — 指摘 0 件の再レビュー記録で、新しい経験則がない
+* **Update**: [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) — raw/reviews/20260927T214812Z-pr-3355.md を統合
+* **Update**: [base 取り込み後の再レビューは、同じ差分の再確認ではなく取り込み側との契約整合の確認として指示する](pages/heuristics/rereview-after-base-intake-checks-contract-consistency.md) — raw/reviews/20260927T214221Z-pr-3345.md を統合
+* **Update**: [`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) — raw/reviews/20260927T214221Z-pr-3345.md を統合
 
 ## 2026-09-27
 

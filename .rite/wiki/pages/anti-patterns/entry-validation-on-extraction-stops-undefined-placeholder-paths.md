@@ -4,7 +4,7 @@ title: "手順を helper へ移して入口検証を足すと、未定義 placeh
 domain: "anti-patterns"
 description: "手順書のシェルブロックを helper のサブコマンドへ移し、入口に必須・数値・未置換検査を足すと、旧ブロックでは空値のまま既定分岐へ落ちていた経路が exit 2 で止まる。移設時は placeholder を読む全経路で値が決まるかを列挙し、関数内に残る旧 guard とそれを前提にした文書・テストも入口の出力へ寄せる。"
 created: "2026-09-25T00:50:10+09:00"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-25T00:50:10+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:52:19Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260924T152559Z-pr-3055.md"
@@ -12,9 +12,15 @@ sources:
     resource: "raw/fixes/20260924T153248Z-pr-3055.md"
   - type: "reviews"
     resource: "raw/reviews/20260924T154135Z-pr-3055.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T213306Z-pr-3349.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T214525Z-pr-3349.md"
 tags: []
 confidence: high
 promote: rite-plugin
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:52:19Z" }
 ---
 
 # 手順を helper へ移して入口検証を足すと、未定義 placeholder で流れていた終端経路が停止に変わる
@@ -43,6 +49,14 @@ promote: rite-plugin
 
 同じ入力が複数の検証に掛かると、assert は目的の分岐を消しても通る。例えば未置換 placeholder の拒否を数値オプションで試すと、数値検査でも exit 2 になるため placeholder 検査を削除しても緑のままになる。placeholder 検査だけが守る自由文字列オプションに `'{...}'` を渡して exit 2 を確かめる。
 
+### 移設先で新たに掛かる静的検査と、テストが通る経路
+
+手順書の中の fenced block は、CI の shellcheck（scripts/ 配下の `*.sh` を blocking で走査する）の対象外になっていることがある。本文を helper へ移した瞬間に、それまで検査されなかった既存行（二重引用符内の案内用バッククォートなど）が CI の blocking gate を落とす。移設したら、移設先に掛かる静的検査を移設直後にその場で実行する。
+
+「1 ブロック = 1 シェル」だった呼び出しを「dispatch + 関数」に移し、引数検査を dispatch に集めると、元はブロック内で `[fix:error]` などの sentinel を出していた検査より先に usage error（exit 2）で止まるようになる。手順書側に exit 2 の分岐が無いと、手順に従う実行者はどの分岐にも一致しない状態で止まる。先例の「exit 2 は引数を直して同じステップを再実行」という共通規則を、移設と同時に持ち込む。既存の reason 説明が到達不能になっていないかも同時に確かめる。
+
+テストの参照先を「helper の関数本体を抜き出して直接実行」に置き換えると、手順書の 1 行呼び出しから dispatch arm を経る経路が検査されなくなる。dispatch arm を壊す変異が全スイートを通過した。fixture の plugin に helper の複製と resolver の stub を置き、手順書の呼び出し行そのものを実行する形にすれば、同じ観測を保ったまま arm の変異で失敗させられる。
+
 ## 関連ページ
 
 - [LLM substitute placeholder は bash residue gate で fail-fast 化する](../patterns/placeholder-residue-gate-bash-fail-fast.md)
@@ -54,3 +68,5 @@ promote: rite-plugin
 - [レビュー結果](../../raw/reviews/20260924T152559Z-pr-3055.md)
 - [fix 結果](../../raw/fixes/20260924T153248Z-pr-3055.md)
 - [レビュー結果](../../raw/reviews/20260924T154135Z-pr-3055.md)
+- [移設で CI の静的検査・停止経路・テスト経路が変わったレビュー結果](../../raw/reviews/20260927T213306Z-pr-3349.md)
+- [移設先の静的検査と SKILL 呼び出し行の実行テストを足した fix 結果](../../raw/fixes/20260927T214525Z-pr-3349.md)

@@ -55,9 +55,11 @@ sources:
     resource: "raw/reviews/20260927T115824Z-pr-3279.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T192744Z-pr-3329.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T214812Z-pr-3355.md"
 tags: ["comment-rot", "cause-neutral", "exclusivity-claim", "doc-sync", "not-grep-pin", "quantifier-strengthening", "birth-defect"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:38:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:52:19Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:47:53Z" }
   - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
@@ -72,6 +74,7 @@ verified:
     at: "2026-09-24T17:20:00Z"
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:54:08Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:38:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:52:19Z" }
 ---
 
 # 全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin
@@ -179,6 +182,10 @@ consumer ごとに読取り・書込み・同期という責務を確認して�
 - 表示先を変えるときは、主経路（E2E など）でその表示が届くかも確かめる。表示先を standalone 専用の出力だけに足すと、主経路では理由が見えないまま残る。範囲を広げるかは Issue の範囲に従い、見送るなら見送った判断を記録する
 - 散文の規則を複数箇所に足したときは、固定する grep pin も同じ数だけそろえる。1 箇所だけ pin が無いと、その箇所の規則を消してもテストをすり抜ける
 
+### 新しい分岐手順を足したときの要約文
+
+仕様書の要約や sentinel 契約表のような文書の要約文は、新しい分岐手順を足したときに実装の限定条件を落としやすい。「停止しない」「CONFLICTING のとき」のように書くと、例外的に停止する経路や「再判定の後」という条件が消え、過大な主張になる。新しい手順では、失敗時の行き先（helper や git の非ゼロ終了で何が起きるか）と作業先（どの作業ツリーで実行するか）の明記も抜けやすい。要約を書いたら、実装の分岐表と一行ずつ突き合わせて、例外経路と前提条件が要約に残っているかを確かめる。
+
 ## 関連ページ
 
 - [実装の分岐を散文へ落とす前に、フラグの状態数と観測ラベルの値域を機械的に数える](./count-implementation-states-before-writing-prose.md)
@@ -208,3 +215,4 @@ consumer ごとに読取り・書込み・同期という責務を確認して�
 - [先頭の限定を全選言に掛ける書き方へ直した fix 結果](../../raw/fixes/20260927T115318Z-pr-3279.md)
 - [述語を helper の定義に書き写して排他性を数えたレビュー結果](../../raw/reviews/20260927T115824Z-pr-3279.md)
 - [方針変更が既存の設計理由の前提を崩したレビュー結果](../../raw/reviews/20260927T192744Z-pr-3329.md)
+- [新しい分岐手順の要約文が限定条件を落としたレビュー結果](../../raw/reviews/20260927T214812Z-pr-3355.md)

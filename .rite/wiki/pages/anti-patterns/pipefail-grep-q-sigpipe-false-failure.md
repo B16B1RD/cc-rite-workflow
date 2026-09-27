@@ -47,9 +47,11 @@ sources:
     resource: "raw/reviews/20260924T070926Z-pr-3032.md"
   - type: "reviews"
     resource: "raw/reviews/20260926T105711Z-pr-3149.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T214221Z-pr-3345.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T20:30:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:52:19Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T20:30:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:47:53Z" }
@@ -57,6 +59,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-11T16:00:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T07:45:50Z" }
   - { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T11:20:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:52:19Z" }
 ---
 
 # `set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる
@@ -229,6 +232,8 @@ bash helper.sh --stdin --label "$excluded_path" --quiet <<< "$body"
 
 コマンド producer を `out=$(cmd) && grep -q x <<< "$out"` に書き換えると SIGPIPE の経路は消えるが、producer 失敗の扱いはファイルの設定で変わる。`pipefail` のあるファイルでは元の pipeline と同じく失敗が表に出る。`pipefail` の無いファイルでは、元の pipeline が握りつぶしていた producer 失敗が偽として表に出る側に変わる。書き換えの前に、そのファイルで producer 失敗を真偽に混ぜてよいかを確かめる。
 
+`printf '%s\n' "$v" | grep -q ...` を `grep -q ... <<< "$v"` に書き換えても、grep が受け取る入力は同じになる。here-string も末尾に改行を 1 つ付けて渡すので、空文字列でも両形とも改行 1 つの 1 行になる。判定は変わらず、変わるのは producer が SIGPIPE を受けて if が偽になる偽陰性の経路が消えることだけである。書き換えのレビューでは、空文字列・一致する行・一致しない行を新旧両形に流して判定が一致することを確かめれば足りる。
+
 ## 関連ページ
 
 - [function 内 `local v=$(...)` と top-level `v=$(...)` の `set -e` 伝播差で writer/reader 非対称が偶然 mask される](./bash-local-vs-toplevel-pipefail-asymmetry.md)
@@ -262,3 +267,4 @@ bash helper.sh --stdin --label "$excluded_path" --quiet <<< "$body"
 - [引数駆動の早期 return によるヒアストリング化のレビュー結果](../../raw/reviews/20260926T105711Z-pr-3149.md)
 - [診断用の printf と head の組み合わせで reason marker が消える経路を指摘したレビュー結果](../../raw/reviews/20260926T134206Z-pr-3160.md)
 - [lint の免除規則と文書の範囲の食い違いを指摘したレビュー結果](../../raw/reviews/20260927T201202Z-pr-3334.md)
+- [here-string への書き換えで判定が変わらないことを確かめたレビュー結果](../../raw/reviews/20260927T214221Z-pr-3345.md)
