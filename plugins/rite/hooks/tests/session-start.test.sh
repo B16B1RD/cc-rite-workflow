@@ -2012,16 +2012,16 @@ q_badts="$dir_rq12/.rite/state/run-queue-badts-sid.json"
 if [ "$rc_rq12" -eq 0 ] \
   && [ -f "$q_broken" ] \
   && [ -f "$dir_rq12/.rite/state/run-queue-broken-sid.watchdog" ] \
-  && grep 'WARNING' "$TEST_DIR/rq12-err" | grep -qF "keep queue: $q_broken (flow-state: $fs_broken)" \
+  && grep -qxF "WARNING: run-queue-reap: owner flow-state unreadable, keep queue: $q_broken (flow-state: $fs_broken)" "$TEST_DIR/rq12-err" \
   && [ -f "$q_array" ] \
-  && grep 'WARNING' "$TEST_DIR/rq12-err" | grep -qF "keep queue: $q_array (flow-state: $fs_array)" \
+  && grep -qxF "WARNING: run-queue-reap: owner flow-state unreadable, keep queue: $q_array (flow-state: $fs_array)" "$TEST_DIR/rq12-err" \
   && [ ! -f "$q_missing" ] \
   && [ ! -f "$dir_rq12/.rite/state/run-queue-missing-sid.watchdog" ] \
   && [ "$(grep -c 'missing-sid.flow-state' "$TEST_DIR/rq12-err")" -eq 1 ] \
-  && grep 'WARNING' "$TEST_DIR/rq12-err" | grep -qF "reap stale queue: $q_missing (flow-state: $fs_missing)" \
+  && grep -qxF "WARNING: run-queue-reap: owner flow-state updated_at missing or unparsable, reap stale queue: $q_missing (flow-state: $fs_missing)" "$TEST_DIR/rq12-err" \
   && [ ! -f "$q_badts" ] \
   && [ "$(grep -c 'badts-sid.flow-state' "$TEST_DIR/rq12-err")" -eq 1 ] \
-  && grep 'WARNING' "$TEST_DIR/rq12-err" | grep -qF "reap stale queue: $q_badts (flow-state: $fs_badts)" \
+  && grep -qxF "WARNING: run-queue-reap: owner flow-state updated_at missing or unparsable, reap stale queue: $q_badts (flow-state: $fs_badts)" "$TEST_DIR/rq12-err" \
   && [ ! -s "$TEST_DIR/rq12-out" ]; then
   pass "RQ-12: broken / non-object flow-state keeps queue with queue + flow-state path WARNING; missing / unparsable updated_at reaps with one queue + flow-state path reason line each"
 else
