@@ -1494,7 +1494,7 @@ fi
 t23_step3=$(awk '/^3\. \*\*台帳 persist\*\*/{s=1} /^4\. \*\*完了\*\*/{s=0} s && /^```/{f=!f; next} s && !f' "$FIX")
 for t23_phrase in '`${TMPDIR:-/tmp}/rite-nb-entries-{pr_number}.md`' '手順 2 の起票をやり直さない' \
                   '手順 3 だけを再実行する' '起票済みの Issue は entries の issued 行が持つ' \
-                  'entries の全行について最終列が手順 1 の `record=` の basename（全行同じ値）になっているかを確かめ、欠けた行・値の違う行はすべてその値にする' \
+                  'entries の全行について最終列が手順 1 の `record=` の basename（全行同じ値）になっているかを確かめ、欠けた行には最終列として足し、値の違う行はその値に直す' \
                   'その後は `/rite:iterate` を再実行せず iterate 5.S の `[fix:sweep-done]` 行から続ける' \
                   '1 行でもあれば、append は entries 全体を `reason=entries_source_invalid` で拒否し、台帳を変更しない'; do
   assert "T-23 手順 3 の fence 外に復旧手順・拒否単位がある ($t23_phrase)" 1 "$(printf '%s\n' "$t23_step3" | grep -cF -- "$t23_phrase")"
