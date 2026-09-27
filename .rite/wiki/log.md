@@ -14,6 +14,7 @@
 * **Update**: [散文の主張を実装に合わせて絞るときは、限定の外側・指示語・同じ主張の別箇所まで突き合わせる](pages/heuristics/narrowed-prose-claim-check-outside-scope-and-same-claims.md) — raw/fixes/20260927T162209Z-pr-3305.md を統合
 * **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — raw/reviews/20260927T162928Z-pr-3309.md を統合
 * **Update**: [path を返す test fixture ヘルパーの cleanup 登録は $() サブシェルではなく親シェルで行う](pages/patterns/test-fixture-helper-parent-shell-cleanup-registration.md) — raw/reviews/20260927T163342Z-pr-3311.md を統合
+* **lint:clean** — contradictions=0, stale=64, orphans=0, missing_concept=0, unregistered_raw=567, broken_refs=0
 
 
 ## 2026-09-27
