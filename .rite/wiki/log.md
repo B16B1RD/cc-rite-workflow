@@ -178,6 +178,11 @@
 * **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=64, orphans=0, missing_concept=0, unregistered_raw=564, broken_refs=0
 * **Update**: [契約を一意化する変更は、参照文書だけでなく実行手順書の placeholder と同節の旧語彙まで同時に揃える](pages/heuristics/contract-unification-sweeps-execution-docs-and-same-section-vocabulary.md) — raw/reviews/20260927T142124Z-pr-3286.md を統合
 * **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=64, orphans=0, missing_concept=0, unregistered_raw=564, broken_refs=0
+* **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — raw/reviews/20260927T144951Z-pr-3289.md を統合
+* **Update**: [path を返す test fixture ヘルパーの cleanup 登録は $() サブシェルではなく親シェルで行う](pages/patterns/test-fixture-helper-parent-shell-cleanup-registration.md) — raw/reviews/20260927T144951Z-pr-3289.md を統合
+* **Update**: [identity を持たない判定台帳で複数 cycle の和集合を重複除外すると、重複防止と欠落防止を同時には満たせない](pages/anti-patterns/identity-less-ledger-union-dedup-cannot-prevent-both-duplicate-and-loss.md) — raw/reviews/20260927T145034Z-pr-3290.md を統合
+* **Update**: [他セッションの成果物を回収する処理は、進捗時刻ではなく所有者の生存信号で判定し、判定不能は残す側へ倒す](pages/heuristics/liveness-reaper-keeps-undecidable-and-guards-json-shape.md) — raw/reviews/20260927T145232Z-pr-3293.md を統合
+* **Update**: [散文の主張を実装に合わせて絞るときは、限定の外側・指示語・同じ主張の別箇所まで突き合わせる](pages/heuristics/narrowed-prose-claim-check-outside-scope-and-same-claims.md) — raw/reviews/20260927T143833Z-pr-3291.md と raw/fixes/20260927T144331Z-pr-3291.md を統合
 
 ## 2026-09-26
 

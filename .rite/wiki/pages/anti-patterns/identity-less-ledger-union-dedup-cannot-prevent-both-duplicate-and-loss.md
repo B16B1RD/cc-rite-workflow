@@ -4,9 +4,10 @@ title: "identity を持たない判定台帳で複数 cycle の和集合を重�
 domain: "anti-patterns"
 description: "判定台帳が最終回の id と位置しか持たないまま、複数 cycle の指摘を連結した集合から「既に処理済み」の指摘を除こうとすると、id や位置で推定した除外は別の指摘まで黙って落とす。除外は台帳が実際に判定した入力に由来する要素に限り、それ以外は転記して重複しうる件数を出す。"
 created: "2026-09-12T15:25:00+00:00"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:10:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:56:46Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:10:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:56:46Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260912T135538Z-pr-2741.md"
@@ -20,6 +21,8 @@ sources:
     resource: "raw/fixes/20260912T145412Z-pr-2741.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T080150Z-pr-3221.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T145034Z-pr-3290.md"
 tags: ["dedup", "identity", "union", "ledger", "fail-loud"]
 confidence: high
 ---
@@ -61,6 +64,11 @@ id も位置も cycle を跨ぐ identity ではないので、「同じ指摘の
 
 **戻り方の保証も同じキーに縛られる**: 拒否時の案内に「再開してよい（再び起票されない）」と書くときは、再開の実際の入口（phase・再開ゲート・新しい cycle が作る結果 JSON）を辿り、重複排除のキーがその経路でも同じ要素を指すかを確かめる。除外キーが cycle ごとに振り直される id を含むと、同じ HEAD をフルで再レビューした cycle では同じ指摘が別の id で現れ、保証が崩れる。
 
+**一致条件に identity でないフィールドを入れると再報告を取りこぼす**: cycle をまたぐ同一指摘の判定で、cycle ごとに振り直される id や、cycle ごとに変わりうる reviewer の帰属を一致条件に含めると、後の cycle が同じ指摘を別の id・別の reviewer で再報告したときに照合から漏れ、起票済みの指摘が follow-up に重ねて載る。一致条件は指摘の identity に当たるフィールドだけに絞り、その条件を実データ（archive に残る過去 cycle の結果）に当てて確かめる。
+
+- 受入条件の Given を文字どおり組んだケース（別の id・同じ内容・マーカー無し）をテストに入れる。実データ由来の fixture だけでは、AC の字義を満たさない実装が通る
+- 同じ規則を手順書・rationale・スキーマ・helper のコメントの複数箇所に書くと、除外条件や WARNING の対象の一部だけが一箇所から落ちる。規則の本文は 1 箇所に置き、他は参照にする
+
 ## 関連ページ
 
 - [実装が Issue の MUST と原則の両方に挟まれたら、実装を戻さず契約側（Decision Log と AC の例外）を更新する](../heuristics/contract-update-over-revert-on-must-conflict.md)
@@ -74,3 +82,4 @@ id も位置も cycle を跨ぐ identity ではないので、「同じ指摘の
 - [レビュー結果](../../raw/reviews/20260912T144710Z-pr-2741.md)
 - [fix 結果](../../raw/fixes/20260912T145412Z-pr-2741.md)
 - [戻り方の保証を再開経路で確かめたレビュー結果](../../raw/reviews/20260927T080150Z-pr-3221.md)
+- [再報告の一致条件を実データで確かめたレビュー結果](../../raw/reviews/20260927T145034Z-pr-3290.md)

@@ -4,10 +4,14 @@ title: "他セッションの成果物を回収する処理は、進捗時刻で
 domain: "heuristics"
 description: "進捗のたびにしか更新されない時刻を回収条件にすると、1 工程が長い生存中の所有者の成果物まで消える。生存は所有者側で頻繁に動く別の時刻で判定し、その記録が読めないときは黙って消さず警告して残す。記録を読む前に JSON object であることを確かめ、後段の読み取り失敗で回収ループ全体が止まらないようにする。"
 created: "2026-09-26T14:57:57Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T14:57:57Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:56:46Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:56:46Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260926T144808Z-pr-3174.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T145232Z-pr-3293.md"
 tags: ["bash", "multi-session", "fail-loud", "jq"]
 confidence: medium
 ---
@@ -39,6 +43,10 @@ confidence: medium
 
 所有者の記録が phase 遷移ごとにしか動かない場合、遷移のない長い工程では生存信号としても不十分になりうる。この制約は同じ信号を使う他の生存判定と共通であり、定期的な更新（ハートビート）を持たない限り残る。
 
+**時間窓の内側も固定する**: 取得時刻と窓の長さで生存を判定するロックのテストは、窓の外側（古い時刻なら回収できる）だけでなく内側（窓の上端に近い時刻でも保持中と判定される）も assert する。取得直後のロックだけを使うテストでは、閾値を縮める変異が green のまま通る。
+
+**現在時刻を取れないときは何も消さない**: 現在時刻の取得失敗を「生きていない」に倒すと、回収経路が他セッションの生きたロックを消してから停止する。時刻を取れないときは削除せずに止める。判定不能を残す側へ倒す原則を、比較の相手側（現在時刻）にも適用する。
+
 ## 関連ページ
 
 - [共有リソースの type/名前空間を再利用する新機能は、既存消費者のコード内契約（コメント明示の不変条件）を見落として生存中のリソースを破壊しうる](../anti-patterns/shared-resource-type-reuse-without-consumer-contract-check.md)
@@ -46,3 +54,4 @@ confidence: medium
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20260926T144808Z-pr-3174.md)
+- [時間窓の内側と現在時刻の取得失敗の扱いを検出したレビュー結果](../../raw/reviews/20260927T145232Z-pr-3293.md)

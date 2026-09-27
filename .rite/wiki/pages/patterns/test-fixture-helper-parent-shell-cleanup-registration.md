@@ -11,11 +11,14 @@ sources:
     resource: "raw/reviews/20260703T055450Z-pr-1735.md"
   - type: "reviews"
     resource: "raw/reviews/20260915T123233Z-pr-2867.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T144951Z-pr-3289.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-15T12:50:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:56:46Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-15T12:50:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:56:46Z" }
 ---
 
 # path を返す test fixture ヘルパーの cleanup 登録は $() サブシェルではなく親シェルで行う
@@ -62,6 +65,10 @@ disabled_repo="$(new_repo false)"; SANDBOXES+=("$disabled_repo")
 
 実際に起きた例では、先頭のテストケースが trap を復元する関数を `$(...)` で呼んだ直後に、共有の fixture ディレクトリが消えていた。対処は、そうした呼び出しを済ませてから fixture ディレクトリを作ることである。trap を復元する関数を `$(...)` で呼ぶ限り、そこより前に作ったディレクトリは消える前提で並べる。
 
+### 別のテストファイルでの再発: worktree の登録まで残る
+
+コマンド置換から呼ぶ fixture 関数の中で後片付け用の配列へ追記する形が、別のテストファイルでも見つかった。そのファイルは fixture の一時ディレクトリの中に linked worktree も作るため、残るのはディレクトリだけでなく、fixture の repo 側に記録された worktree の登録も含む（実リポジトリには影響しない）。原因の行が新しい差分の外にあったため、レビューでは指摘にならず先送りの欠陥として記録された。直し方は、関数が base / repo をグローバル変数に設定し、呼び出し側が関数を直接呼ぶ形（同じファイルの他の fixture と同じ方式）に揃えること。
+
 ## 関連ページ
 
 - [trap 登録 → mktemp の順序で tempfile lifecycle を守る](./trap-register-before-mktemp.md)
@@ -71,3 +78,4 @@ disabled_repo="$(new_repo false)"; SANDBOXES+=("$disabled_repo")
 - [fix 結果](../../raw/fixes/20260703T054500Z-pr-1735.md)
 - [レビュー結果](../../raw/reviews/20260703T055450Z-pr-1735.md)
 - [サブシェルで trap が発火し fixture が消えた経緯を記録したレビュー結果](../../raw/reviews/20260915T123233Z-pr-2867.md)
+- [同じ漏れを別のテストファイルで検出したレビュー結果](../../raw/reviews/20260927T144951Z-pr-3289.md)

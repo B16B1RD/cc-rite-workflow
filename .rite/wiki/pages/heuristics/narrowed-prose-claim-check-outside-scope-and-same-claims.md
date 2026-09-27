@@ -4,7 +4,9 @@ title: "散文の主張を実装に合わせて絞るときは、限定の外側
 domain: "heuristics"
 description: "散文の主張を実装の範囲へ絞ると、絞った外側の扱いや、指示語の参照先、別言語の要約・テストのコメント・配布物に残る同じ主張の言い過ぎが見落とされやすい。実装の分岐ごとに突き合わせ、同じ主張を横断で探してから直す。"
 created: "2026-09-27T08:00:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:00:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:56:46Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:56:46Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260927T074341Z-pr-3242.md"
@@ -14,6 +16,10 @@ sources:
     resource: "raw/reviews/20260927T075518Z-pr-3242.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T075115Z-pr-3244.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T143833Z-pr-3291.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T144331Z-pr-3291.md"
 tags: ["prose", "docs", "scope", "sweep"]
 confidence: medium
 ---
@@ -36,6 +42,8 @@ confidence: medium
 
 - 散文で制約を「下の」「上の」のような指示語で参照すると、隣接段落が別種の条件を並べているときに参照先を取り違える。制約は検査名で名指しする
 - 英語側の要約は日本語側より広い言い切り（wherever / always）になりやすい。実装の境界検査と突き合わせて限定する
+- 他スキルの手順を参照する文で、参照先のステップ番号と自スキルのステップ番号を同じ段落に並べると、同じ番号が 2 つの名前空間で別の意味を持つ。参照先の番号には所有者（「lint の」「本スキルの」）を付ける
+- 条件付きの挙動（2 つの条件がそろったときだけ委譲する等）を要約するときは、限定をすべて書き写す。要約元の SoT に同じ限定の欠けがあると、写しにもそのまま引き継がれる
 
 ### 同じ主張の別箇所
 
@@ -53,3 +61,5 @@ confidence: medium
 - [fix 結果](../../raw/fixes/20260927T074959Z-pr-3242.md)
 - [レビュー結果](../../raw/reviews/20260927T075518Z-pr-3242.md)
 - [レビュー結果](../../raw/reviews/20260927T075115Z-pr-3244.md)
+- [参照先の番号の所有者と条件付き要約の限定を検出したレビュー結果](../../raw/reviews/20260927T143833Z-pr-3291.md)
+- [参照先の番号に所有者を付け、限定を書き写した fix 結果](../../raw/fixes/20260927T144331Z-pr-3291.md)

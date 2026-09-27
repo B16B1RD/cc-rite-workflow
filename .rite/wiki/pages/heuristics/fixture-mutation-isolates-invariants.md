@@ -57,9 +57,11 @@ sources:
     resource: "raw/reviews/20260927T112645Z-pr-3275.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T113227Z-pr-3274.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T144951Z-pr-3289.md"
 tags: ["test", "fixture", "mutation", "invariant", "coverage"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:33:48Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:56:46Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T18:43:00+00:00" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T23:20:00+00:00" }
@@ -75,6 +77,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:15:44Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:35:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:33:48Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:56:46Z" }
 ---
 
 # テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する
@@ -233,6 +236,13 @@ guard・不変量の TC を追加したら、worktree-only mutation（当該 gua
 - 受入条件に変異を書くときは、どの行・どの分岐を変えるかまで特定する
 - 既存ケースが先に検出する変異と、新しいケースだけが検出する変異を分けて書き、新しいテストが固定したのは後者だと明示する
 
+## 2 つの候補値が一致する fixture では、どちらを参照しているかを区別できない
+
+出力がある値 A を指すべきで、誤った実装なら値 B を指す、という性質を固定したいとき、fixture 上で A と B が常に一致していると、参照先を B へ差し替える変異でも全 assert が通る。手動回復ヒントのパスが main checkout を指すべき場面では、通常の checkout だけの fixture だと main checkout と呼び出し元の toplevel が常に一致する。linked worktree から実行する fixture を足して初めて両者が分かれ、呼び出し元の toplevel へ差し替える変異が落ちた。変更前のテストは同じ変異で全件 green だった。
+
+- 性質が「どちらを指すか」なら、まず候補値が分かれる fixture を置く
+- 「A と一致する」assert と「B と一致しない」assert は、A と B の実体パスが異なる限り論理的に同値で、検出力は重複する。受入条件の文言をそのまま読めるように両方置くのは許容される
+
 ## 関連ページ
 
 - [位置依存の表パースには検査行数ガードを対にする（silent false-pass 遮断）](../patterns/positional-parse-row-count-guard.md)
@@ -268,3 +278,4 @@ guard・不変量の TC を追加したら、worktree-only mutation（当該 gua
 - [比較する複数キーのうち 1 キーだけを変えた不一致 fixture では比較式を弱めても検出できないと指摘したレビュー結果](../../raw/reviews/20260927T080916Z-pr-3245.md)
 - [比較キーごとの fixture と変異の形を検討したレビュー結果](../../raw/reviews/20260927T112645Z-pr-3275.md)
 - [レビュー結果](../../raw/reviews/20260927T113227Z-pr-3274.md)
+- [候補値が一致する fixture では参照先の差し替えを検出できないと確かめたレビュー結果](../../raw/reviews/20260927T144951Z-pr-3289.md)
