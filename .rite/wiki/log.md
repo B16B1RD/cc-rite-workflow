@@ -17,6 +17,7 @@
 * **Update**: [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) — raw/reviews/20260927T192744Z-pr-3329.md を統合
 * **Update**: [エラーメッセージ文字列の grep assert は locale 依存で dead assertion 化する](pages/anti-patterns/locale-dependent-error-message-grep-assertion.md) — raw/reviews/20260927T193310Z-pr-3330.md を統合
 * **Update**: [新設 logged ガードの上流に同一判定の silent 経路が残ると支配的入力で可視化が無効化される](pages/anti-patterns/upstream-silent-path-defeats-new-logged-guard.md) — raw/fixes/20260927T192507Z-pr-3322.md を統合
+* **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=63, orphans=0, missing_concept=0, unregistered_raw=567, broken_refs=0
 
 ## 2026-09-28
 * **Update**: [agent が人間に渡す復旧コマンドは、人間の実行コンテキストで正しいかを検証する](pages/heuristics/recovery-command-verified-in-human-execution-context.md) — raw/reviews/20260927T160621Z-pr-3298.md を統合
