@@ -1011,6 +1011,16 @@ for closed_targets in (False, True):
         check(result.returncode != 0 and 'unplanned changed path; revise plan before continuing' in result.stderr,
               'a file created through a base symlink is unplanned: ' + result.stderr)
         (root / 'protected/new.py').unlink()
+        # Listing the file behind the symlink plans the change, and that file keeps the Issue's constraints.
+        listed = plan_for([group(['protected/secret.py', 'src/a.py', 'src/base-only.py',
+                                  'link', 'srclink', 'doclink', 'docs/guide.md'])])
+        (root / 'docs/guide.md').write_text('issue work\n')
+        if closed_targets:
+            rejected(listed, 'closed target violation: docs/guide.md')
+        else:
+            run(['bash', str(helper), 'check', '--plan', str(listed), '--issue', str(issue_file)])
+            run(['bash', str(helper), 'verify', '--plan', str(listed), '--issue', str(issue_file), '--kind', 'all'])
+        run(['git', 'checkout', '--', 'docs/guide.md'])
         if not closed_targets:
             # A symlink another group also plans keeps covering what it points at.
             both = plan_for([group(['protected/secret.py', 'src/a.py', 'src/base-only.py',
