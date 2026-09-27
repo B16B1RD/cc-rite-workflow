@@ -283,6 +283,24 @@ git -C "$sbx" worktree add -q -b pr-1-cycle2 "$wt_base/leak-cycle" >/dev/null 2>
 out=$(verify_all "$sbx" "$snap")
 assert "cycle-named leak branch outside the namespace is reported as branch_list" '["branch_list"]' "$(printf '%s' "$out" | jq -c .types)"
 
+# Checking out an existing branch in a worktree outside the namespace makes that branch look
+# like another session's, so it drops out of the branch list; inside the namespace it stays.
+sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
+git -C "$sbx" branch existing-out
+snap=$(snapshot_line "$sbx")
+git -C "$sbx" worktree add -q "$wt_base/outside-existing" existing-out >/dev/null 2>&1 \
+  || fail "fixture: existing-branch worktree add outside the reviewer namespace"
+out=$(verify_all "$sbx" "$snap")
+assert "existing branch checked out outside the namespace is reported as branch_list" '["branch_list"]' "$(printf '%s' "$out" | jq -c .types)"
+
+sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
+git -C "$sbx" branch existing-in
+snap=$(snapshot_line "$sbx")
+git -C "$sbx" worktree add -q "$wt_base/rite-review-mutation-existing" existing-in >/dev/null 2>&1 \
+  || fail "fixture: existing-branch worktree add in the reviewer namespace"
+out=$(verify_all "$sbx" "$snap")
+assert "existing branch checked out in the namespace reports drift=false" false "$(printf '%s' "$out" | jq -r .drift)"
+
 # The leak-name regex is pr-cycle-cleanup.sh's reap PATTERN, literal for literal.
 leak_re_literal() { grep -m1 "$2='" "$1" | sed -E "s/^[^']*'([^']*)'.*/\1/"; }
 cleanup_re=$(leak_re_literal "$SCRIPT_DIR/../scripts/pr-cycle-cleanup.sh" "readonly PATTERN")
@@ -303,14 +321,31 @@ for doc in "$VERIFY" \
   assert "leak names listed in ${doc##*/}" "" "$missing"
 done
 
-# Reproducing on the base branch stays inside the reviewer namespace, detached.
+# Reproducing on the base branch stays inside the reviewer namespace, detached. Only the
+# command spans are judged: the line's prose also names `--detach` and the namespace, so
+# matching the whole line would pass even after the commands themselves lose them.
 base_repro=$(grep -m1 'Runtime reproduction on the base branch' "$SCRIPT_DIR/../../agents/_reviewer-base.md")
+wt_span=$(printf '%s' "$base_repro" | grep -o '`git worktree add[^`]*`')
+mk_span=$(printf '%s' "$base_repro" | grep -o '`mktemp -d -t[^`]*`')
+before_mk=${base_repro%%"$mk_span"*}
+before_wt=${base_repro%%"$wt_span"*}
 base_repro_ok=no
-case "$base_repro" in
-  *"worktree add ../"*) ;;
-  *"--detach"*) case "$base_repro" in *"rite-review-mutation-"*) base_repro_ok=yes ;; esac ;;
-esac
+# The path comes from a separate mktemp call, so that call is named first.
+if [ "$(printf '%s\n' "$wt_span" | grep -c .)" = 1 ] && [ -n "$mk_span" ] \
+  && [ "${#before_mk}" -lt "${#before_wt}" ]; then
+  case "$wt_span" in
+    *'$('*|*'../'*) ;;
+    *" --detach "*) case "$mk_span" in *"rite-review-mutation-"*) base_repro_ok=yes ;; esac ;;
+  esac
+fi
 assert "base-branch reproduction uses a detached worktree in the reviewer namespace" yes "$base_repro_ok"
+
+# No sanctioned procedure embeds mktemp in the worktree command: a worktree-isolated
+# session refuses that form because it cannot see the created path.
+for doc in "$SCRIPT_DIR/../../agents/_reviewer-base.md" \
+  "$SCRIPT_DIR/../../skills/reviewers/references/reviewer-base-rationale.md"; do
+  assert "no embedded mktemp in ${doc##*/}" 0 "$(grep -cF '$(mktemp -d -t rite-' "$doc")"
+done
 
 # A stash made on another branch in the reviewed worktree counts after switching back.
 sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
