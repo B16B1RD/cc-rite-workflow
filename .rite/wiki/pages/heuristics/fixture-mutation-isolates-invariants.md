@@ -59,9 +59,11 @@ sources:
     resource: "raw/reviews/20260927T113227Z-pr-3274.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T144951Z-pr-3289.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T162928Z-pr-3309.md"
 tags: ["test", "fixture", "mutation", "invariant", "coverage"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:56:46Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:35:29Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T18:43:00+00:00" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T23:20:00+00:00" }
@@ -78,6 +80,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:35:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:33:48Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:56:46Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:35:29Z" }
 ---
 
 # テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する
@@ -243,6 +246,15 @@ guard・不変量の TC を追加したら、worktree-only mutation（当該 gua
 - 性質が「どちらを指すか」なら、まず候補値が分かれる fixture を置く
 - 「A と一致する」assert と「B と一致しない」assert は、A と B の実体パスが異なる限り論理的に同値で、検出力は重複する。受入条件の文言をそのまま読めるように両方置くのは許容される
 
+## 分岐ごとに後始末が違う helper は、全分岐を rc のループで 1 つずつ走らせる
+
+特定の rc だけ一時ファイルを残し、他の rc では消す helper を、代表 1 値だけでテストしていると、別の分岐に保持処理を足す変異が生き残る。全分岐の rc をループで回し、各 rc を別の作業コピーで実行すると、ある分岐にだけ入れた変異がその rc のケースで単独に落ちる。
+
+- ループ内では結果（ファイルが消えた）だけでなく、その rc の分岐に固有の出力も assert する。分岐を削除して既定分岐へ吸収させる変異や、文言を別の rc にすり替える変異も検出できる
+- 既定分岐は表にない rc を 2 値以上で通す
+- 否定 assert（ファイルが無い）の空振りは、同じ走行で helper が正常終了し stub に到達したことを先に assert して防ぐ
+
+
 ## 関連ページ
 
 - [位置依存の表パースには検査行数ガードを対にする（silent false-pass 遮断）](../patterns/positional-parse-row-count-guard.md)
@@ -279,3 +291,4 @@ guard・不変量の TC を追加したら、worktree-only mutation（当該 gua
 - [比較キーごとの fixture と変異の形を検討したレビュー結果](../../raw/reviews/20260927T112645Z-pr-3275.md)
 - [レビュー結果](../../raw/reviews/20260927T113227Z-pr-3274.md)
 - [候補値が一致する fixture では参照先の差し替えを検出できないと確かめたレビュー結果](../../raw/reviews/20260927T144951Z-pr-3289.md)
+- [rc ごとの後始末をループで固定し、分岐単位の変異で検出力を確かめたレビュー結果](../../raw/reviews/20260927T162928Z-pr-3309.md)
