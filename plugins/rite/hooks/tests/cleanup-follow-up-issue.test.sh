@@ -1968,7 +1968,7 @@ assert "T-65 body 先頭行は marker" "<!-- [rite-follow-up-from-pr:9] -->" "$(
 assert "T-65 body 5 行目 概要" "## 概要" "$(sed -n '5p' "$STUB_DIR/body.md")"
 assert "T-65 title" "follow-up: PR #9 の先送りした欠陥" "$(jq -r '.issue.title' "$STUB_DIR/args.json")"
 assert_not_grep "T-65 no_findings に倒さない" "$ERR" 'reason=no_findings'
-assert_not_grep "T-65 台帳との照合をしない" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED'
+assert_not_grep "T-65 台帳との照合をしない" "$GH_LOG" '^gh api (--paginate --slurp )?repos/acme/demo/issues/[0-9]+/comments'
 assert_not_grep "T-65 取得失敗 marker を出さない" "$ERR" 'FOLLOW_UP_DEFERRED'
 
 echo "--- T-66: Section 9 の終端 3 種の後ろにあるトークン行は転記しない (CRLF 本文を含む) ---"
