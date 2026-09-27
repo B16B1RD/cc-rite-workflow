@@ -229,7 +229,7 @@ multi_session:
   rebase 失敗 → `rebase --abort` → 既存 rc=4 へ。**exit code 契約 0/3/4/5 は不変**（呼び出し側・sentinel 連鎖は無修正）。
   auth/network 等の非 NFF 失敗は現行どおり即 rc=4。根拠: wiki コミットは append-mostly（新規 raw / 新規ページ / log 追記）で rebase はほぼ無衝突。
 - **LLM Write/Edit フェーズの直列化**: flock では複数 Bash 呼び出しに跨る ingest を守れない →
-  `.rite/state/wiki-ingest-session.lockdir`（mkdir lock、既存 `acquire_wm_lock` パターン再利用、stale 判定は §7 の liveness 述語を流用）を
+  `.rite/state/wiki-ingest-session.lockdir`（mkdir lock、既存 `acquire_wm_lock` パターン再利用、stale 判定は lock 自身に記録した取得時刻 `acquired_at` が 2h 以内かどうかで行い、保持セッションの flow-state は見ない）を
   ingest 開始時に取得し、ingest 完了後に解放。他 live セッション保持中は `WIKI_INGEST_SKIPPED reason=concurrent_ingest` で skip —
   **pending raw は wiki branch に残り、次回 ingest が冪等に回収する**（既存の縮退特性をそのまま利用）。
 - ingest.md の `.rite/wiki-worktree/...` cwd 相対パス契約 → setup スクリプトの `path=` 出力を capture した**絶対パス契約**へ改訂。
