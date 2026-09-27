@@ -13,11 +13,14 @@ sources:
     resource: "raw/reviews/20260927T082826Z-pr-3246.md"
   - type: "fixes"
     resource: "raw/fixes/20260927T083553Z-pr-3246.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T091505Z-pr-3246.md"
 tags: ["awk", "test", "assertion-strength", "escape", "mutation-testing"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T09:18:19Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T09:18:19Z" }
 ---
 
 # awk -v 代入はバックスラッシュを剥がす — escape 付きパターンを渡した範囲指定 assert は常に PASS する
@@ -67,6 +70,8 @@ verified:
 
 修正では、複数のレビュアーが同じ根因を別々の指摘として挙げていたため、根因単位でまとめ、1 つの修正で全件を解消した。ドットは `[.]` と書く。ブラケット式は grep -E でも awk でも同じ意味になり、エスケープ処理の影響も受けないので、同じパターン変数を共有する他の検査を変えずに済む。
 
+同じブロックに `\.` を含む範囲パターンが他にも残っていると、一部だけを `[.]` に直した時点で記法が 2 通りになる。helper が awk の stderr を捨てていれば、残った側の警告は表に出ない。揃えるか残すかを決め、残すなら理由（実際の誤一致が観測されていない等）を記録しておく。
+
 ## 関連ページ
 
 - [節スコープ assert は散文由来の false negative を防ぐ](../patterns/section-scoped-assertion-prevents-narrative-false-negative.md)
@@ -81,3 +86,4 @@ verified:
 - [単一エスケープでレンジが EOF まで伸びた再現](../../raw/fixes/20260808T070139Z-pr-2150-cycle2.md)
 - [レビュー結果](../../raw/reviews/20260927T082826Z-pr-3246.md)
 - [`[.]` で根因をまとめて直した fix 結果](../../raw/fixes/20260927T083553Z-pr-3246.md)
+- [一部だけ直すと記法が 2 通り残ると確認したレビュー結果](../../raw/reviews/20260927T091505Z-pr-3246.md)

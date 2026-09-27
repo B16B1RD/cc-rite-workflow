@@ -44,15 +44,18 @@ sources:
     resource: "raw/reviews/20260927T045935Z-pr-3215.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T084223Z-pr-3248.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T085009Z-pr-3248.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T09:18:19Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5"
-  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
     at: "2026-09-15T03:40:00Z"
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T04:45:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T05:10:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T09:18:19Z" }
 ---
 
 # 変更・削除の掃き出しは旧語彙・置換した条件式・別記法トークンまで広げる
@@ -150,7 +153,7 @@ canonical snippet / 共有 reference が「新規箇所を追加したら usage 
 
 ### helper の条件を変えたら、同じ条件を述べる docs を述語で grep する
 
-helper の挙動（例: Issue を起票する条件）を変えると、同じ条件を説明している仕様書や設定リファレンスの記述が旧条件のまま残る。変更した述語を docs 全体で grep し、該当する記述に新しい限定句を足す。同じ失敗経路を案内する文言が helper の stderr と手順書の完了報告表の 2 箇所にある場合も、片方だけが変わって文言がずれやすい。これは複数のレビュアーから挙がった。
+helper の挙動（例: Issue を起票する条件）を変えると、同じ条件を説明している仕様書や設定リファレンスの記述が旧条件のまま残る。変更した述語を docs 全体で grep し、該当する記述に新しい限定句を足す。同じ失敗経路を案内する文言が helper の stderr と手順書の完了報告表の 2 箇所にある場合も、片方だけが変わって文言がずれやすい。これは複数のレビュアーから挙がった。修正時も、指摘された 1 箇所だけでなく、同じ述語を散文・表・設定例のコメントまで grep して限定句を伝播させる。
 
 ## 関連ページ
 
@@ -180,3 +183,4 @@ helper の挙動（例: Issue を起票する条件）を変えると、同じ�
 - [兄弟文書の言い換えた同じ主張が残ったレビュー結果](../../raw/reviews/20260927T043509Z-pr-3213.md)
 - [総称的な言い回しが直した箇所の外に残ったことを確認したレビュー結果](../../raw/reviews/20260927T045935Z-pr-3215.md)
 - [レビュー結果](../../raw/reviews/20260927T084223Z-pr-3248.md)
+- [同じ述語を docs 全体へ伝播させた fix 結果](../../raw/fixes/20260927T085009Z-pr-3248.md)
