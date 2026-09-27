@@ -253,7 +253,7 @@ ISSUE_NUMBER=$(grep -oE '[0-9]+$' <<< "$ISSUE_URL" || true)
 | `echo "$var" \| sort -u \| grep -v` | `sort` が全入力をバッファリング |
 | `echo "$var" \| grep`（`-q` / `-m` なし） | `grep` は全入力を消費（早期終了しない） |
 
-`grep -q` / `grep -m` と組み合わせる場合は、出力の大きさやテストコードかどうかによらず here-string に変換する。
+`grep -q` / `grep -m` と組み合わせる場合は、出力の大きさやテストコードかどうかによらず here-string に変換する。`printf '%s' "$var"` も `echo "$var"` と同じ builtin の書き込みで、変数の大きさに上限がないため対象に含む。変換しなくてよいのは、`$` もバッククォートも含まない literal を出す `echo` / `printf` だけである。`grep -q` の前段が `jq` / `git` / `sed` などのコマンドで、pipeline の終了コードで producer の失敗も判定していた場合は、`out=$(cmd) && grep -q x <<< "$out"` のように結果を変数に受けてから渡し、producer の失敗を偽として残す。
 
 ### Buffered Writer + Early-Exit `awk`
 

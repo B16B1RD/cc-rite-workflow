@@ -100,7 +100,7 @@ precond_ok=true
 if git -C "$REPO/.rite/wiki-worktree" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   precond_ok=false  # should FAIL to resolve
 fi
-if git -C "$REPO" worktree list --porcelain 2>/dev/null | grep -q "wiki-worktree"; then
+if _gq_out=$(git -C "$REPO" worktree list --porcelain 2>/dev/null) && grep -q "wiki-worktree" <<< "$_gq_out"; then
   precond_ok=false  # should NOT be registered
 fi
 if [ "$precond_ok" = "true" ]; then
@@ -145,7 +145,7 @@ fi
 echo ""
 
 echo "TC-COMMIT-RAW-ON-WIKI: committed raw is present on the wiki branch tree"
-if git -C "$REPO" ls-tree -r --name-only wiki | grep -q "raw/retrospectives/20260626T000000Z-issue-1662.md"; then
+if _gq_out2=$(git -C "$REPO" ls-tree -r --name-only wiki) && grep -q "raw/retrospectives/20260626T000000Z-issue-1662.md" <<< "$_gq_out2"; then
   pass "raw source present on wiki branch"
 else
   fail "raw source missing from wiki branch after recovery"

@@ -971,7 +971,7 @@ if [ ! -f "$recon_dir/status-update-call.json" ] && grep -q 'post_compact_status
 else
   fail "expected skip + post_compact_status_config_invalid (helper=$([ -f "$recon_dir/status-update-call.json" ] && echo called || echo not-called)); stderr: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
 fi
-if grep 'post_compact_status_config_invalid' "$recon_stderr" | grep -q 'stderr=ERROR: github.projects.fields.status:'; then
+if _gq_out=$(grep 'post_compact_status_config_invalid' "$recon_stderr") && grep -q 'stderr=ERROR: github.projects.fields.status:' <<< "$_gq_out"; then
   pass "the WARNING carries the resolver's config diagnostic"
 else
   fail "expected the resolver diagnostic inside the WARNING line; stderr: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"

@@ -117,8 +117,8 @@ review が return した後、最新の `📜 rite レビュー結果` PR コメ
 latest_review=$(gh api repos/{owner}/{repo}/issues/{pr_number}/comments \
   --jq '[.[] | select(.body | contains("📜 rite レビュー結果"))] | last | .body' 2>/dev/null) || latest_review=""
 signal4_hit=0
-if printf '%s' "$latest_review" | grep -qE '^### Reviewer self-assessment'; then
-  if printf '%s' "$latest_review" | grep -qE '^Status: degraded'; then
+if grep -qE '^### Reviewer self-assessment' <<< "$latest_review"; then
+  if grep -qE '^Status: degraded' <<< "$latest_review"; then
     signal4_hit=1
   fi
 fi

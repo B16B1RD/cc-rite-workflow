@@ -151,7 +151,7 @@ assert_out_contains "[CONTEXT] SUB_ISSUE_NUMBERS=101 102" "SUB_ISSUE_NUMBERS mar
 assert_out_contains "original_length=128" "fetch_output original_length passthrough"
 assert_out_contains "tmpfile_read=/tmp/rite-issue-body-read-STUB" "fetch_output tmpfile_read passthrough"
 assert_out_contains "tmpfile_write=/tmp/rite-issue-body-write-STUB" "fetch_output tmpfile_write passthrough"
-if grep -q '"epic"' "$STUB_CREATE_LOG" && head -1 "$STUB_CREATE_LOG" | grep -q 'title=Epic Parent'; then
+if grep -q '"epic"' "$STUB_CREATE_LOG" && _gq_out=$(head -1 "$STUB_CREATE_LOG") && grep -q 'title=Epic Parent' <<< "$_gq_out"; then
   pass "parent labels include epic"
 else
   fail "parent labels include epic"; cat "$STUB_CREATE_LOG"
@@ -258,7 +258,7 @@ if grep -q 'title=Sub One labels=\[\]' "$STUB_CREATE_LOG"; then
 else
   fail "empty labels_csv: sub labels are []"; cat "$STUB_CREATE_LOG"
 fi
-if head -1 "$STUB_CREATE_LOG" | grep -q 'title=Epic8 labels=\["epic"\]'; then
+if _gq_out2=$(head -1 "$STUB_CREATE_LOG") && grep -q 'title=Epic8 labels=\["epic"\]' <<< "$_gq_out2"; then
   pass "empty labels_csv: parent labels are [epic]"
 else
   fail "empty labels_csv: parent labels are [epic]"; cat "$STUB_CREATE_LOG"

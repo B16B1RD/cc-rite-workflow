@@ -2261,7 +2261,7 @@ if grep -q 'run-queue-reap.sh" --session' "$HOOK" \
     /^fi$/ && gated { ungated=1; gated=0 }
     END { exit (found_outside && !found_inside) ? 0 : 1 }
   ' "$HOOK" \
-  && grep -n 'run-queue-reap.sh' "$HOOK" | grep -q '|| true'; then
+  && _gq_out=$(grep -n 'run-queue-reap.sh' "$HOOK") && grep -q '|| true' <<< "$_gq_out"; then
   pass "RQ-09: reap call is non-blocking and outside the worktree CWD gate"
 else
   fail "RQ-09: call site missing or still inside CWD==STATE_ROOT gate"
@@ -2321,7 +2321,7 @@ if _stub_lock_fixture "$git_dir_sl1/config.lock" 0444 \
   rc_sl1=$(_stub_lock_run "$d_sl1" PATH="$PATH")
   _stub_lock_expect "STUB-LOCK-1: hook rc=0" "0" "$rc_sl1"
   _stub_lock_expect "STUB-LOCK-1: exactly one stub lock WARNING" "1" "$(grep -c 'is an empty read-only lock file' "$d_sl1.err")"
-  if grep -F "$git_dir_sl1/config.lock" "$d_sl1.err" | grep -q "rm -f"; then
+  if _gq_out=$(grep -F "$git_dir_sl1/config.lock" "$d_sl1.err") && grep -q "rm -f" <<< "$_gq_out"; then
     pass "STUB-LOCK-1: config.lock named with removal hint"
   else
     fail "STUB-LOCK-1: config.lock named with removal hint (stderr=$(cat "$d_sl1.err"))"

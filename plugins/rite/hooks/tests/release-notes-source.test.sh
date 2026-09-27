@@ -201,8 +201,8 @@ for stop_case in other:T-06 decoy:T-07; do
   fx="$TMP_ROOT/tag-$kind"; tag_fixture "$fx" "$kind"
   if [ "$kind" = decoy ]; then
     # The decoy only exercises the peeled branch if its "^{}" line comes back too.
-    git -C "$fx/work" ls-remote --tags origin "refs/tags/v9.9.9" "refs/tags/v9.9.9^{}" \
-      | grep -q 'refs/tags/a/refs/tags/v9.9.9\^{}' \
+    _gq_out=$(git -C "$fx/work" ls-remote --tags origin "refs/tags/v9.9.9" "refs/tags/v9.9.9^{}") \
+      && grep -q 'refs/tags/a/refs/tags/v9.9.9\^{}' <<< "$_gq_out" \
       || fail "$id fixture: the sibling peeled ref is not returned by the pattern"
   fi
   run_chain "$fx" "tag-$kind"
@@ -216,8 +216,8 @@ for tag_case in none:absent:T-08 match:matched:T-09 annotated:matched:T-10 sibli
   fx="$TMP_ROOT/tag-$kind"; tag_fixture "$fx" "$kind"
   if [ "$kind" = sibling-only ]; then
     # Without a sibling in the pattern's output this case would just repeat T-08.
-    git -C "$fx/work" ls-remote --tags origin "refs/tags/v9.9.9" "refs/tags/v9.9.9^{}" \
-      | grep -q 'refs/tags/z/refs/tags/v9.9.9' \
+    _gq_out2=$(git -C "$fx/work" ls-remote --tags origin "refs/tags/v9.9.9" "refs/tags/v9.9.9^{}") \
+      && grep -q 'refs/tags/z/refs/tags/v9.9.9' <<< "$_gq_out2" \
       || fail "$id fixture: the sibling ref is not returned by the pattern"
   fi
   run_chain "$fx" "tag-$kind"

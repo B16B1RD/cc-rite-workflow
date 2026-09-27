@@ -82,7 +82,7 @@ new_sandbox() {
 sbx_shape=$(new_sandbox) && cleanup_dirs+=("$sbx_shape") || { echo "ERROR: sandbox setup failed, aborting" >&2; exit 1; }
 shape_out=$(snapshot_line "$sbx_shape")
 assert "snapshot prints exactly one line" 1 "$(printf '%s\n' "$shape_out" | wc -l | tr -d ' ')"
-if printf '%s\n' "$shape_out" | grep -qE '^review_pre_state: branch=[^ ]+ stash_count=[0-9]+ branch_list_hash=[^ ]* worktree_hash=[^ ]*$'; then
+if grep -qE '^review_pre_state: branch=[^ ]+ stash_count=[0-9]+ branch_list_hash=[^ ]* worktree_hash=[^ ]*$' <<< "$shape_out"; then
   pass "snapshot line has the review_pre_state shape"
 else
   fail "snapshot line has the review_pre_state shape (got: $shape_out)"

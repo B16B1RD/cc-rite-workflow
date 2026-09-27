@@ -115,7 +115,7 @@ if [ -f "$CLEANUP_BODY" ]; then
   fi
   # The row must be the unchecked kind: this is a real failure, not a legitimate
   # skip like disabled / auto_ingest_off / no_pending.
-  if grep -F "WIKI_INGEST_SKIPPED=1; reason=$REASON" "$CLEANUP_BODY" | grep -qF '| ` ` |'; then
+  if _gq_out=$(grep -F "WIKI_INGEST_SKIPPED=1; reason=$REASON" "$CLEANUP_BODY") && grep -qF '| ` ` |' <<< "$_gq_out"; then
     pass "the row marks it as an outstanding item, not a clean skip"
   else
     fail "the reason=$REASON row is not marked as an outstanding item"

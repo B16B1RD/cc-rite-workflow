@@ -125,7 +125,7 @@ assert_grep "purpose unmet clears FINALIZE without --handoff" "$ITERATE" \
 overview_line=$(grep -E '^4\. fix sentinel を判定（通常ループ:' "$ITERATE")
 overview_count=$(printf '%s' "$overview_line" | grep -c .)
 if [ "$overview_count" = 1 ] \
-   && ! printf '%s\n' "${overview_line%%--nb-sweep*}" | grep -qF '[fix:sweep-done]'; then
+   && ! grep -qF '[fix:sweep-done]' <<< "${overview_line%%--nb-sweep*}"; then
   pass "overview keeps sweep-done out of the normal loop"
 else
   fail "overview keeps sweep-done out of the normal loop (matched $overview_count lines)"
@@ -136,8 +136,8 @@ sweep_origin_count=$(printf '%s' "$sweep_origin_line" | grep -c .)
 sweep_origin_terminals=${sweep_origin_line#*5.S を経由せずに}
 if [ "$sweep_origin_count" = 1 ] \
    && [ "$sweep_origin_terminals" != "$sweep_origin_line" ] \
-   && ! printf '%s\n' "$sweep_origin_terminals" | grep -qF '[fix:sweep-done]' \
-   && ! printf '%s\n' "$sweep_origin_line" | grep -qF 'ステップ 4 の'; then
+   && ! grep -qF '[fix:sweep-done]' <<< "$sweep_origin_terminals" \
+   && ! grep -qF 'ステップ 4 の' <<< "$sweep_origin_line"; then
   pass "sweep_origin has no step-4 sweep-done terminal"
 else
   fail "sweep_origin has no step-4 sweep-done terminal (matched $sweep_origin_count lines)"
