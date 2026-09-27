@@ -19,6 +19,8 @@
 # matches the batch/defer contract. Re-read 's Before/After Contract
 #   and restore --commit-only (5.1, wiki-lint-log-commit.sh --auto branch) / --push-only
 #   (8.6), or update this test if the contract has legitimately changed.
+#   A failing wiki-lint-log-commit.sh rc case means the helper's keep_message /
+#   cleanup contract (its header) no longer holds: only rc=6 keeps the message file.
 
 set -euo pipefail
 
@@ -148,8 +150,40 @@ assert_grep "wiki-lint-log-commit.sh: rc=6 arm exists" \
   "$LINT_COMMIT_SH" '^[[:space:]]*6\)$'
 assert_grep "wiki-lint-log-commit.sh: rc=6 warns and points to the one-shot sandbox retry" \
   "$LINT_COMMIT_SH" 'reason=sandbox-mask.*dangerouslyDisableSandbox: true を付けて 1 回だけ再実行'
-assert_not_grep "wiki-lint-log-commit.sh: rc=6 stays non-blocking (no exit 1 on the branch)" \
-  "$LINT_COMMIT_SH" '^[[:space:]]*6\).*exit 1'
+# Run the helper against a stubbed wiki-worktree-commit.sh: rc=6 stays non-blocking and keeps
+# the message file for the one-shot retry; any other failure is non-blocking and removes it.
+lint_commit_run() {
+  local name="$1" stub_rc="$2" dir="$route_tmp/lint-$1" rc=0
+  mkdir -p "$dir/scripts"
+  cp "$LINT_COMMIT_SH" "$dir/scripts/wiki-lint-log-commit.sh"
+  cp "$PLUGIN_ROOT/hooks/control-char-neutralize.sh" "$dir/control-char-neutralize.sh"
+  printf '#!/bin/bash\necho "stub rc=%s" >&2\nexit %s\n' "$stub_rc" "$stub_rc" > "$dir/scripts/wiki-worktree-commit.sh"
+  printf 'docs(wiki): lint report\n' > "$dir/msg.txt"
+  bash "$dir/scripts/wiki-lint-log-commit.sh" --branch-strategy separate_branch --mode "" \
+    --message-file "$dir/msg.txt" >"$dir/out" 2>"$dir/err" || rc=$?
+  assert "wiki-lint-log-commit.sh: stub rc=$stub_rc stays non-blocking" "0" "$rc"
+  assert_grep "wiki-lint-log-commit.sh: stub rc=$stub_rc reaches the stub" "$dir/err" "stub rc=$stub_rc"
+}
+lint_commit_run mask 6
+assert "wiki-lint-log-commit.sh: rc=6 keeps the message file for the retry" "1" \
+  "$([ -s "$route_tmp/lint-mask/msg.txt" ] && echo 1 || echo 0)"
+assert_grep "wiki-lint-log-commit.sh: rc=6 points to the one-shot sandbox retry" "$route_tmp/lint-mask/err" \
+  'reason=sandbox-mask.*dangerouslyDisableSandbox: true'
+# The retry re-runs only the helper with the kept file; a successful retry cleans it up.
+printf '#!/bin/bash\necho "stub rc=0" >&2\nexit 0\n' > "$route_tmp/lint-mask/scripts/wiki-worktree-commit.sh"
+lint_retry_rc=0
+bash "$route_tmp/lint-mask/scripts/wiki-lint-log-commit.sh" --branch-strategy separate_branch --mode "" \
+  --message-file "$route_tmp/lint-mask/msg.txt" >/dev/null 2>"$route_tmp/lint-mask/retry.err" || lint_retry_rc=$?
+assert "wiki-lint-log-commit.sh: the retry after rc=6 succeeds" "0" "$lint_retry_rc"
+assert_grep "wiki-lint-log-commit.sh: the retry reaches the stub" "$route_tmp/lint-mask/retry.err" 'stub rc=0'
+assert "wiki-lint-log-commit.sh: the successful retry removes the message file" "0" \
+  "$([ -e "$route_tmp/lint-mask/msg.txt" ] && echo 1 || echo 0)"
+lint_commit_run gitfail 3
+assert "wiki-lint-log-commit.sh: rc=3 removes the message file" "0" \
+  "$([ -e "$route_tmp/lint-gitfail/msg.txt" ] && echo 1 || echo 0)"
+assert_grep "wiki-lint-log-commit.sh: rc=3 reports its own rc" "$route_tmp/lint-gitfail/err" 'rc=3)'
+assert_not_grep "wiki-lint-log-commit.sh: rc=3 does not show the sandbox retry" "$route_tmp/lint-gitfail/err" \
+  'reason=sandbox-mask'
 
 # --- init.md ステップ 3.5.1: migration commit keeps sandbox-mask recovery actionable ---
 assert_grep_in_section "init.md 3.5.1: rc=6 warns and points to the one-shot sandbox retry" \
