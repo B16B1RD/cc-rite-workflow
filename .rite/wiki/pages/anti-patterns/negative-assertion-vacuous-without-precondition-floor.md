@@ -23,9 +23,11 @@ sources:
     resource: "raw/fixes/20260927T093844Z-pr-3248.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T095151Z-pr-3248.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T105021Z-pr-3265.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:05:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:07:00Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-16T12:58:00Z" }
   - { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T07:10:00Z" }
@@ -34,6 +36,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T09:40:29Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:05:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:07:00Z" }
 ---
 
 # 否定形の assert は前提条件が崩れると fail-silent になる
@@ -161,6 +164,12 @@ rm -f "$result_dir"/*.json
 
 この陽性 assert の識別力は、stub の記録先を捨て先（`/dev/null`）へ向ける変異で実測できる。変異後は陽性 assert だけが落ち、直後の否定 assert は緑のまま残る。否定 assert が単独では前提の崩れを検出できないことと、足した陽性 assert がそれを補っていることが、1 回の変異で同時に確かめられる。修正はテストへの assert 1 行で済み、helper や文書の挙動は変えない。
 
+### 実例 7: 除外フィルタを violations の列にだけ入れると、除外の拡大を floor が検出しない（レビュー結果）
+
+検査パイプラインに除外フィルタを足すとき、除外を violations を数える列にだけ入れ、floor guard（走査対象が 0 件でないことの assert）は別の母集団を数えていた。除外文字列を短くする・別のパターンに置き換えるといった除外を広げる変異では、violations が減っても floor は元の母集団を数えるので 0 件にならず、どの assert も赤くならない。絞り込みを関数 1 つにまとめて violations と floor の両方に通すと、除外の拡大は floor の 0 件として現れる。floor は前提の成立を確かめる assert なので、前提を測る母集団は検査本体と同じ絞り込みを経たものでなければならない。
+
+同じ検査に足した新しい走査枝（行範囲を切り出す `sed -n`）は、`sed -ne` や `sed -n -e` の綴り違いを拾っていなかった。既存の枝が書き方の揺れまで拾う規則を持つなら、新しい枝にも同じ揺れの一覧を適用する。そうしないと書き換え一つで中和漏れが無検出になる。
+
 ## 関連ページ
 
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
@@ -178,3 +187,4 @@ rm -f "$result_dir"/*.json
 - [呼び出しログの前提を陽性 assert で固定する指摘のレビュー結果](../../raw/reviews/20260927T092741Z-pr-3248.md)
 - [否定 assert の前提を陽性 assert 1 行で固定した fix 結果](../../raw/fixes/20260927T093844Z-pr-3248.md)
 - [記録先を捨て先へ向ける変異で陽性 assert の識別力を実測したレビュー結果](../../raw/reviews/20260927T095151Z-pr-3248.md)
+- [除外フィルタを floor と共有させる指摘のレビュー結果](../../raw/reviews/20260927T105021Z-pr-3265.md)

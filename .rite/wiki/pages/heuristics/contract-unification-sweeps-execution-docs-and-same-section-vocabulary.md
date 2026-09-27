@@ -4,11 +4,12 @@ title: "契約を一意化する変更は、参照文書だけでなく実行手
 domain: "heuristics"
 description: "二義的だった契約文を一意に定める変更は、契約を書いた参照文書を直すだけでは足りない。実行者が実際に読む手順書側の placeholder 表やテンプレートが旧方式を無条件に命じたまま残ると曖昧さの発生源が解消せず、同一節に残った旧語彙は除去したはずの二義性を再生産する。主張は証跡が裏付ける範囲に限定する。"
 created: "2026-09-10T17:09:46Z"
-generated: { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-11T11:25:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:07:00Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-11T02:42:44Z" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-11T10:18:45Z" }
   - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-11T11:25:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:07:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260910T170301Z-pr-2662.md"
@@ -18,6 +19,10 @@ sources:
     resource: "raw/reviews/20260911T101122Z-pr-2678.md"
   - type: "reviews"
     resource: "raw/reviews/20260911T111719Z-pr-2682.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T105052Z-pr-3263.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T110032Z-pr-3263.md"
 tags: []
 confidence: high
 promote: rite-plugin
@@ -48,6 +53,8 @@ promote: rite-plugin
 
 証跡限定の書き直しを適用した follow-up では、修正そのものは 3 reviewer が独立に裏付けを確認して blocking 0 で通ったが、書き直しの形が新しい取りこぼしを生んだ。提案文（1 文）を「観測した事実」「未検証の主張」「設計記録は裏付けていない」の 3 文へ分割すると、末尾文の目的語が暗黙化して直前文に係ることが文脈依存になり、単独で読むと第 1 文の観測まで打ち消すように読める。証跡限定の書き直しは主語と目的語を各文に明示するか、提案文の 1 文形を保つ。また配布物の散文に「設計記録」の語を置くと参照先（`docs/designs/`）が配布物外にあり、配布先の読者はその語を解決できない。証跡の所在を名指しするより「未検証である」で止める方が配布物として自己完結する。新規散文を追加したときは既存 pin の部分文字列に埋もれる細粒度の変異（限定句の削除・末尾文の削除）が残るため、追加した句ごとに pin を足す。
 
+主張の範囲を実装に合わせて狭める方向でも同じクラスが出る。警告や除外の対象を文書で「〜を問わない」と広く書くと、helper が別の分岐で入力を捨てる経路と食い違う。範囲を書くときは helper の分岐を列挙して一致を確かめ、合わなければ実装を広げるより記述を限定する。限定の書き直しは、同じ文言を持つ疑似コード・散文・docstring を grep してまとめて直す。それでも同じ節にある別の二重定義（入力キーの列挙など）は取り残されやすく、複数の reviewer が同じ未同期を独立に再掲した。境界を文書で明記したら、その境界を固定するテストを同じ変更で足す。文書と実装の一致を将来にわたって守るのはテストである。
+
 ## 関連ページ
 
 - [Identity / reference document の用語統一は『単語 X』ではなく『文脈類義語群全体』を対象にする](./identity-reference-documentation-unification.md)
@@ -58,3 +65,5 @@ promote: rite-plugin
 - [レビュー結果](../../raw/reviews/20260910T170301Z-pr-2662.md)
 - [レビュー結果](../../raw/reviews/20260911T101122Z-pr-2678.md)
 - [レビュー結果](../../raw/reviews/20260911T111719Z-pr-2682.md)
+- [記述を helper の分岐に合わせて限定した fix 結果](../../raw/fixes/20260927T105052Z-pr-3263.md)
+- [同節の二重定義の取り残しを指摘したレビュー結果](../../raw/reviews/20260927T110032Z-pr-3263.md)

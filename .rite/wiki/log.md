@@ -143,6 +143,11 @@
 * **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/fixes/20260927T095121Z-pr-3256.md, raw/reviews/20260927T094529Z-pr-3256.md を統合
 * **Update**: [SoT 文書の path 参照は本 PR マージ時点の origin/develop で existence check する](pages/heuristics/sot-path-reference-existence-check.md) — raw/reviews/20260927T094011Z-pr-3255.md, raw/fixes/20260927T094235Z-pr-3255.md, raw/reviews/20260927T095553Z-pr-3255.md を統合
 * **lint:clean** — contradictions=0 (更新ページのみ評価), stale=66, orphans=0, missing_concept=0, unregistered_raw=560, broken_refs=0
+* **Update**: [契約を一意化する変更は、参照文書だけでなく実行手順書の placeholder と同節の旧語彙まで同時に揃える](pages/heuristics/contract-unification-sweeps-execution-docs-and-same-section-vocabulary.md) — raw/fixes/20260927T105052Z-pr-3263.md, raw/reviews/20260927T110032Z-pr-3263.md を統合
+* **Update**: [セッション単位の state を読む案内は、同じ session_id で入る入口を基準に選ぶ — テストはホストの入力形で呼ぶ](pages/heuristics/session-scoped-guidance-targets-same-session-entry.md) — raw/reviews/20260927T104751Z-pr-3259.md, raw/fixes/20260927T105748Z-pr-3259.md を統合
+* **Update**: [否定形の assert は前提条件が崩れると fail-silent になる](pages/anti-patterns/negative-assertion-vacuous-without-precondition-floor.md) — raw/reviews/20260927T105021Z-pr-3265.md を統合
+* **Create**: [手順書の限定条件には、実行者が自分で確かめられる観測対象を併記する](pages/heuristics/limitation-clause-needs-executor-observable-cue.md) — raw/fixes/20260927T105924Z-pr-3265.md を新規ページ化
+* **Skip**: [20260927T104834Z-pr-3262.md](raw/reviews/20260927T104834Z-pr-3262.md) — 当該 cycle の運用観察（mandate と却下台帳の重なりは同 cycle 内で収束済み）と既存 bash ページで扱い済みの errexit 挙動のみで、新しい経験則を含まない
 
 ## 2026-09-26
 
