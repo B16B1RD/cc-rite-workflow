@@ -135,8 +135,12 @@ git -C "$nonalpha_repo" add rite-config.yml \
   || { echo "FAIL: nonalpha_repo config commit failed" >&2; exit 1; }
 args_log="$(mktemp)"; SANDBOXES+=("$args_log")
 nonalpha_err="$(mktemp)"; SANDBOXES+=("$nonalpha_err")
-PATH="$STUB_DIR:$PATH" GH_STUB_PRS='[]' GH_STUB_ARGS_LOG="$args_log" \
-  bash "$SCRIPT" --repo-root "$nonalpha_repo" --quiet >/dev/null 2>"$nonalpha_err"
+nonalpha_rc=0
+nonalpha_out="$(PATH="$STUB_DIR:$PATH" GH_STUB_PRS='[]' GH_STUB_ARGS_LOG="$args_log" \
+  bash "$SCRIPT" --repo-root "$nonalpha_repo" --quiet 2>"$nonalpha_err")" || nonalpha_rc=$?
+assert "branch section without base skips with exit 0" "0" "$nonalpha_rc"
+assert "branch section without base still prints the findings summary line" "1" \
+  "$(grep -c '^==> Total wiki-growth-check findings: 0$' <<<"$nonalpha_out")"
 assert "branch section without base does not query gh with any base" "0" \
   "$(grep -c -- '--base' "$args_log")"
 assert "branch section without base warns instead of assuming develop" "1" \
