@@ -152,7 +152,7 @@ rm "$clock_file"
 
 **再試行権で再開する（`circuit-breaker:divergence` のみ）**: `flow-state.sh review-retry --plan <一括修正計画の絶対パス> --issue <最新 Issue JSON の絶対パス>` が、次の条件をすべて満たすときに限り再試行権を 1 つ発行する。
 
-1. `stop_reason` が `circuit-breaker:divergence` である。`circuit-breaker:max-cycles` と `stagnation:*` は再開できない
+1. `stop_reason` が `circuit-breaker:divergence` である。`circuit-breaker:max-cycles`・`circuit-breaker:receipt-missing`・`stagnation:*` は再開できない
 2. 停止時の context・HEAD・receipt・観測が一致し、変更されていない
 3. 全 blocking 指摘に、通常の fix 経路と同じ計画内容の検証（状態遷移の許可判定を除く）を通る修正計画と検証項目が対応している。発行の条件として `review-fix-scope-check.sh check` そのものを前段として実行する必要はない — 同コマンドは停止した run では状態遷移の許可判定で拒否される
 4. その run で再試行権が未使用である。権利は run に付いて回り、退避と復元を往復しても使用済みのまま戻る（停止しておらず、退避した completed cycle と完了・保留の記録が一致する run は復元対象外。過去に保留していても、その後停止した run の再試行権は復元される）

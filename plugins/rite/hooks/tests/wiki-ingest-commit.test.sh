@@ -3,7 +3,9 @@
 # Usage: bash plugins/rite/hooks/tests/wiki-ingest-commit.test.sh
 #
 # Coverage scope:
-# - same_branch path: static pins on the `_sb_dump` stderr helper.
+# - same_branch path: static pins on the `_sb_dump` stderr helper, and a failed
+#   commit that unstages only the raw sources it added (or, when that unstage
+#   fails, prints the pasteable command).
 # - separate_branch legacy path: a real git fixture drives the cleanup branch
 #   where checkout-back fails, and pins the pasteable manual-recovery commands
 #   (word splitting, line order, the stash step appearing only when a stash
@@ -504,6 +506,53 @@ run_same_branch_message_cases() {
   reject_message_file "CLAUDE.md missing --message-file value" "$repo" --message-file
 }
 run_same_branch_message_cases
+
+echo ""
+
+echo "TC-SB-RESTORE: a failed same_branch commit leaves the raw sources unstaged"
+# run_same_branch_failure_case <label> <reset>: the commit fails (pre-commit hook).
+# <reset>=ok: only the added raw source is unstaged; a raw source the user staged stays.
+# <reset>=fail: the unstage fails too, and the WARNING carries the pasteable command.
+run_same_branch_failure_case() {
+  local label="$1" reset="$2"
+  local -x GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+  local base repo err rc=0 n line cmd words ok=1 path_prefix=""
+  repo=$(make_same_branch_msg_fixture)
+  base=$(dirname "$repo"); err="$base/err"
+  printf '%s\n' '#!/bin/sh' 'exit 1' > "$repo/.git/hooks/pre-commit"
+  chmod +x "$repo/.git/hooks/pre-commit"
+  printf '%s\n' '---' 'ingested: true' '---' 'done' > "$repo/.rite/wiki/raw/reviews/done.md"
+  git -C "$repo" add .rite/wiki/raw/reviews/done.md
+  if [ "$reset" = fail ]; then
+    write_stub "$base/stub" "[ \"\$1\" = reset ] && echo 'fatal: stub reset' >&2"
+    path_prefix="$base/stub:"
+  fi
+  ( cd "$repo" && PATH="$path_prefix$PATH" bash "$HOOK_SRC" ) >/dev/null 2>"$err" || rc=$?
+  eq "$label: exits 3" "3" "$rc"
+  eq "$label: HEAD is unchanged" "config" "$(git -C "$repo" log -1 --format=%s)"
+  if [ "$reset" = ok ]; then
+    eq "$label: only the user's raw source stays staged" ".rite/wiki/raw/reviews/done.md" \
+      "$(git -C "$repo" diff --cached --name-only)"
+    eq "$label: pending raw source is back in the working tree untracked" ".rite/wiki/raw/reviews/pr-test.md" \
+      "$(git -C "$repo" ls-files --others --exclude-standard -- .rite/wiki/raw)"
+    eq "$label: no unstage WARNING" "0" "$(grep -c '^WARNING: ' "$err" || true)"
+    return
+  fi
+  eq "$label: unstage WARNING appears once" "1" \
+    "$(grep -cxF 'WARNING: failed to unstage the raw sources after the failed commit' "$err" || true)"
+  n=$(grep -nxF 'WARNING: failed to unstage the raw sources after the failed commit' "$err" | head -1 | cut -d: -f1 || true)
+  line=$(sed -n "$((${n:-0} + 1))p" "$err")
+  cmd=${line#" manual recovery: "}
+  eq "$label: unstage hint follows the WARNING" " manual recovery: $cmd" "$line"
+  check_words "unstage hint" "$cmd" git -C "$(cd "$repo" && pwd -P)" reset -q -- .rite/wiki/raw/reviews/pr-test.md
+  eq "$label: the reset stderr follows the hint" "  git (reset): fatal: stub reset" \
+    "$(sed -n "$((${n:-0} + 2))p" "$err")"
+  eq "$label: raw sources are still staged as reported" \
+    "$(printf '%s\n' .rite/wiki/raw/reviews/done.md .rite/wiki/raw/reviews/pr-test.md)" \
+    "$(git -C "$repo" diff --cached --name-only)"
+}
+run_same_branch_failure_case "same_branch restore" ok
+run_same_branch_failure_case "same_branch unstage failure" fail
 
 echo ""
 

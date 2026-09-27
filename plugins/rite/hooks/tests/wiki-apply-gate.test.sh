@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GATE="$SCRIPT_DIR/../scripts/wiki-apply-gate.sh"
 CAPTURE="$SCRIPT_DIR/../scripts/wiki-apply-capture.sh"
 COMMIT="$SCRIPT_DIR/../scripts/git-commit-file.sh"
+INGEST_COMMIT="$SCRIPT_DIR/../scripts/wiki-ingest-commit.sh"
 GUARD="$SCRIPT_DIR/../pre-tool-bash-guard.sh"
 ROOT="$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-apply-XXXXXX")"
 trap 'rm -rf "$ROOT"' EXIT
@@ -1214,6 +1215,39 @@ if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT" && grep -q 're
   pass "review after the commit allows"
 else
   fail "single review rc=$GRC out=$GOUT"
+fi
+
+echo "=== a refused same_branch raw-source commit leaves nothing staged ==="
+# Under phase=fix the raw source is outside the record's paths, so the gate
+# refuses the raw-source commit. A raw source left staged would make the review
+# gate that follows deny with reason=paths.
+printf '%s\n' '  branch_strategy: same_branch' '  branch_name: wiki' >> "$sgl/rite-config.yml"
+sgl_env bash "$FS" set --phase fix --issue 7 --branch fix/issue-7-x --pr 0 --next test >/dev/null
+printf 'fix\n' >> "$sgl/README"
+git -C "$sgl" add README
+(cd "$sgl" && sgl_env WIKI_APPLY_MEMORY="$sgl_mem" bash "$CAPTURE" --keywords widget --paths README >/dev/null 2>"$ROOT/sb-capture.err")
+crc=0
+(cd "$sgl" && sgl_env WIKI_APPLY_MEMORY="$sgl_mem" bash "$COMMIT" --file "$sgl_msg" >/dev/null 2>"$ROOT/sb-fix.err") || crc=$?
+sb_head=$(git -C "$sgl" rev-parse HEAD)
+sb_raw="$sgl/.rite/wiki/raw/reviews/src.md"
+mkdir -p "$(dirname "$sb_raw")"
+printf '%s\n' '---' 'ingested: false' '---' 'raw' > "$sb_raw"
+wrc=0
+(cd "$sgl" && sgl_env WIKI_APPLY_MEMORY="$sgl_mem" bash "$INGEST_COMMIT" >"$ROOT/sb-wic.out" 2>"$ROOT/sb-wic.err") || wrc=$?
+sb_staged=$(git -C "$sgl" diff --cached --name-only)
+if [ "$crc" -eq 0 ] && [ "$wrc" -eq 3 ] && [ "$(grep -cx 'ERROR: git commit failed' "$ROOT/sb-wic.err")" -eq 1 ] \
+  && grep -qx '  git (commit): reason=paths' "$ROOT/sb-wic.err" \
+  && grep -q '^  git (commit): ERROR: wiki apply gate が commit を拒否しました' "$ROOT/sb-wic.err" \
+  && [ -z "$sb_staged" ] && [ -f "$sb_raw" ] && [ "$(git -C "$sgl" rev-parse HEAD)" = "$sb_head" ]; then
+  pass "the refused raw-source commit exits 3 and unstages the raw source"
+else
+  fail "same_branch raw commit fix=$crc wic=$wrc staged=$sb_staged err=$(cat "$ROOT/sb-fix.err" "$ROOT/sb-wic.err")"
+fi
+run_gate --mode review --worktree "$sgl" --flow-state "$sgl_resolved" --memory "$sgl_mem"
+if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT" && grep -q 'reason=ok' <<<"$GOUT"; then
+  pass "review after the refused raw-source commit allows"
+else
+  fail "review after raw commit rc=$GRC out=$GOUT"
 fi
 
 echo ""

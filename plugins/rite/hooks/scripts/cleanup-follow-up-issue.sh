@@ -184,7 +184,6 @@ emit_failed() {
 }
 
 MARKER="${MARKER_PREFIX}${PR_NUMBER}]"
-LOOKUP_LIMIT=100
 results_dir="$STATE_ROOT/.rite/review-results"
 
 rite_tempfile_init || exit 1
@@ -276,7 +275,7 @@ fi
 # (arm 内へ入れると JSON 判定が degraded に降りた経路で一度も走らない)。
 # 0 件判定は 2 段に分ける: 除外**前** 0 件は従来どおり no_findings (記録時点で指摘が無い)、
 # 除外**後** 0 件だけが all_resolved (再検証で全件が解消済みと判定された)。両者を潰すと
-# 既存の no_findings 契約が回帰する。どちらも gh issue list より前に exit する。
+# 既存の no_findings 契約が回帰する。どちらも既存 follow-up の検索より前に exit する。
 if [ -n "$EXCLUDE_IDS" ]; then
   # 除外 key は「出典 JSON の basename + `#` + id」。`id` は各 JSON 内の連番で cycle 跨ぎの identity を
   # 持たないため、出典と組にして初めて 1 件を指せる。`_src` はフルパスのまま保ち (sweep 起票済みの
@@ -474,21 +473,25 @@ else
 fi
 
 # 同定不能は重複起票より起票失敗に倒す (D-03)。Search API は hyphen をトークン分割するため使わない。
-# follow-up ラベルの List API + 先頭行の HTML コメント (<!-- ${MARKER} -->) で確定する。
-# finding 本文の同一文字列は identity ではない。件数が --limit に達して marker 不在なら lookup_api。
-list_json=$(gh issue list -R "${OWNER}/${REPO}" --state all \
-  --label follow-up --limit "$LOOKUP_LIMIT" \
-  --json number,body 2>"$list_err")
+# follow-up ラベルの Issue を REST の全ページで取得し、先頭行の HTML コメント (<!-- ${MARKER} -->) で
+# 確定する。件数の上限を置くと、上限を超えた後の既存を確定できず起票が止まり続けるため全件を読む。
+# この endpoint は PR も返すため除外し、Issue だけを照合する。ページ配列 ([[...], ...]) でない応答は
+# 空応答や複数ドキュメントも含めて 0 件と区別できないので解析失敗に倒す (-s で集めた応答が 1 つであることを要求する)。finding 本文の同一文字列は identity ではない。
+list_json=$(gh api --paginate --slurp \
+  "repos/${OWNER}/${REPO}/issues?labels=follow-up&state=all&per_page=100" 2>"$list_err")
 list_rc=$?
 if [ "$list_rc" -ne 0 ]; then
-  echo "WARNING: 既存 follow-up の検索に失敗したため起票しません (重複起票を避ける)。手動確認: gh issue list -R ${OWNER}/${REPO} --label follow-up --state all" >&2
+  echo "WARNING: 既存 follow-up の検索に失敗したため起票しません (重複起票を避ける)。手動確認: gh api --paginate \"repos/${OWNER}/${REPO}/issues?labels=follow-up&state=all&per_page=100\" --jq '.[].body' | grep -F '<!-- ${MARKER} -->'" >&2
   [ -s "$list_err" ] && tr -d '\r' < "$list_err" | sed 's/^/  /' >&2
   emit_failed lookup_api
   exit 0
 fi
 
-existing_n=$(printf '%s' "$list_json" | jq -r --arg m "$MARKER" \
-  '[.[] | select(((.body // "") | split("\n")[0]) == ("<!-- " + $m + " -->")) | .number] | first // empty') || {
+existing_n=$(printf '%s' "$list_json" | jq -rs --arg m "$MARKER" '
+  if length == 1 and (.[0] | type == "array" and length > 0 and all(.[]; type == "array")) then .[0]
+  else error("non-page response") end
+  | [.[][] | select(.pull_request == null)
+      | select(((.body // "") | split("\n")[0]) == ("<!-- " + $m + " -->")) | .number] | first // empty') || {
   echo "WARNING: 既存 follow-up の検索結果を解析できません。起票しません (PR #${PR_NUMBER})" >&2
   emit_failed lookup_api
   exit 0
@@ -496,21 +499,6 @@ existing_n=$(printf '%s' "$list_json" | jq -r --arg m "$MARKER" \
 if [ -n "$existing_n" ]; then
   echo "[CONTEXT] FOLLOW_UP_ISSUE=skipped; reason=already_exists; issue=${existing_n}; pr=${PR_NUMBER}" >&2
   echo "[cleanup-follow-up-issue] result=skipped; reason=already_exists; issue=${existing_n}; pr=${PR_NUMBER}"
-  exit 0
-fi
-
-list_n=$(printf '%s' "$list_json" | jq 'length') || list_n=""
-case "$list_n" in
-  ''|*[!0-9]*)
-    echo "WARNING: 既存 follow-up の件数を確定できません。起票しません (PR #${PR_NUMBER})" >&2
-    emit_failed lookup_api
-    exit 0
-    ;;
-esac
-if [ "$list_n" -ge "$LOOKUP_LIMIT" ]; then
-  echo "WARNING: follow-up ラベルの Issue が --limit ${LOOKUP_LIMIT} に達したため既存の有無を確定できません。重複起票を避けるため起票しません (PR #${PR_NUMBER})" >&2
-  echo "  手動確認: gh issue list -R ${OWNER}/${REPO} --label follow-up --state all" >&2
-  emit_failed lookup_api
   exit 0
 fi
 
