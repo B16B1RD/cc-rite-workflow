@@ -47,10 +47,10 @@
 # ただし reviewer 漏出名 (pr-<N>-cycle<X> / pr-<N>-test / pr-<N>-experiment / pr-<N>-mutation /
 # pr-<N>-verify / pr-<N>-check / pr-<N>-sandbox。pr-cycle-cleanup.sh の PATTERN と同じ集合) の
 # branch は含めない:
-#   - stash: 件名 `WIP on <b>:` / `On <b>:` の <b> がその集合にないエントリ。git は同じ branch を
+#   - stash: 件名 `WIP on <b>:` / `On <b>:` の <b> が他セッションの branch の集合にないエントリ。git は同じ branch を
 #     2 つの worktree で checkout させないため、named branch の件名はそれを checkout した worktree を
 #     指す。自 worktree で別 branch へ切り替えて作った stash も数える
-#   - branch_list: その集合を除いた一覧
+#   - branch_list: 他セッションの branch の集合を除いた一覧
 # 残余 (判別子の外にあるもの):
 #   - 報告側に倒れる: 他セッションが checkout していない branch の作成・削除、他 worktree
 #     での branch の切り替え (元の branch が除外から外れて一覧に現れる)、detached の worktree

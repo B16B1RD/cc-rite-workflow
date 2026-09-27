@@ -305,10 +305,10 @@ done
 
 # Reproducing on the base branch stays inside the reviewer namespace, detached.
 base_repro=$(grep -m1 'Runtime reproduction on the base branch' "$SCRIPT_DIR/../../agents/_reviewer-base.md")
+base_repro_ok=no
 case "$base_repro" in
-  *"worktree add ../"*) base_repro_ok=no ;;
-  *"--detach"*"rite-review-mutation-"*) base_repro_ok=yes ;;
-  *) base_repro_ok=no ;;
+  *"worktree add ../"*) ;;
+  *"--detach"*) case "$base_repro" in *"rite-review-mutation-"*) base_repro_ok=yes ;; esac ;;
 esac
 assert "base-branch reproduction uses a detached worktree in the reviewer namespace" yes "$base_repro_ok"
 
