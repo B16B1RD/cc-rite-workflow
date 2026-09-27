@@ -24,14 +24,44 @@ echo "=== cleanup.md ステップ 12: 未完了事項の集約セクション (T
 assert_grep "Step 12 report has a 未完了事項 section" "$CLEANUP" '^未完了事項:$'
 assert_grep "Step 12 has the {outstanding_items_block} placeholder" "$CLEANUP" '\{outstanding_items_block\}'
 assert_grep "outstanding_items_block rule aggregates the same per-check annotations" "$CLEANUP" '付記文をそのまま箇条書きで列挙する'
-# T-01/T-02 感度強化: 6 個の check 名が enumeration 行に「この順序で」列挙されていることを
+# T-01/T-02 感度強化: 7 個の check 名が enumeration 行に「この順序で」列挙されていることを
 # line-anchored pattern で pin する (各 check 名は checklist 本体・判定 prose にも独立に出現するため、
 # assert_grep_in_section によるセクションスコープは同一セクション内の別行にも同語が出現すると
 # 判別できない — mutation テストで {local_branch_check} を enumeration から削除しても
 # 別行の言及に一致し続けて green のままになることを確認済み。1 行内の順序付き列挙を
 # 直接 anchor する本方式はこの穴を持たない)。
-assert_grep "outstanding_items_block enumeration lists all 6 checks in order (T-01/T-02, AC-1/AC-2)" \
-  "$CLEANUP" '\{base_update_check\}.*\{session_worktree_check\}.*\{local_branch_check\}.*\{projects_check\}.*\{wiki_ingest_check\}.*\{review_cleanup_check\}'
+assert_grep "outstanding_items_block enumeration lists all 7 checks in order (T-01/T-02, AC-1/AC-2)" \
+  "$CLEANUP" '\{base_update_check\}.*\{session_worktree_check\}.*\{local_branch_check\}.*\{projects_check\}.*\{wiki_ingest_check\}.*\{review_cleanup_check\}` / `\{wm_final_update_check\}` のうち'
+
+echo "=== cleanup.md ステップ 11/12: 作業メモリ最終更新の失敗を未完了事項に数える ==="
+ARCHIVE="$SCRIPT_DIR/../../skills/cleanup/references/archive-procedures.md"
+# チェックリストは作業メモリ更新を判定対象の行に分け、ローカル削除だけを無条件 x に残す
+assert_grep "checklist carries the work-memory final update check" "$CLEANUP" \
+  '^- \[\{wm_final_update_check\}\] 作業メモリ（Issue コメント）を最終更新$'
+assert_grep "checklist keeps local work-memory deletion as its own line" "$CLEANUP" \
+  '^- \[x\] ローカル作業メモリファイル削除$'
+assert_not_grep "checklist no longer hard-codes the work-memory update as done" "$CLEANUP" \
+  '^- \[x\] 作業メモリを最終更新 \+ ローカルファイル削除$'
+# x にする値は許可リスト 3 値に限る (legitimate skip を含む)。失敗 status と marker 不在は未チェック
+assert_grep "wm check allows exactly success / no_comment / section_absent as x (T-05/T-06)" "$CLEANUP" \
+  '^  - `status=success` / `reason=no_comment` / `reason=section_absent` のいずれか: `x`（後 2 つは legitimate skip。x とする値はこの 3 つに限る）$'
+assert_grep "wm check leaves any other status unchecked with an annotation (T-05)" "$CLEANUP" \
+  '^  - 上記以外（`reason=invalid_args` / `reason=transform_failed` / `status=missing` 等）: ` ` \+ 「⚠️ 作業メモリの'
+assert_grep "wm check leaves marker absence unchecked (T-07)" "$CLEANUP" \
+  '^  - 該当行が無いとき: ` ` \+ 「⚠️ 作業メモリの\{対象\}の実行結果を確認できませんでした.*marker 不在を成功と読んではならない'
+assert_grep "wm check scopes markers by issue and picks the last occurrence" "$CLEANUP" \
+  '`issue=\{issue_number\}`（値の直後が `;` または行末）に該当する行を集め、\*\*その中の最後の出現 1 行だけを選ぶ\*\*'
+assert_grep "wm check combines completion and progress like local_branch_check" "$CLEANUP" \
+  '\*\*completion 側と progress 側を独立に評価し、両方が `x` 相当のときだけ `x`\*\*'
+assert_grep "delegation mode still judges the wm check individually" "$CLEANUP" \
+  '`\{wm_final_update_check\}` = ステップ 11 / 冒頭の'
+# archive-procedures の §3.5.1 / §3.5.2 の bash がそれぞれ marker を 1 本だけ (実行行で) emit する
+for part in "3.5.1:completion" "3.5.2:progress"; do
+  sec="${part%%:*}"; side="${part##*:}"
+  count=$(awk -v start="^#### ${sec} " '$0 ~ start {f=1; next} f && /^#### /{exit} f' "$ARCHIVE" \
+    | grep -c "^echo \"\[CONTEXT\] WM_FINAL_UPDATE=${side}; issue={issue_number}; " || true)
+  assert "archive-procedures §${sec} emits exactly one WM_FINAL_UPDATE=${side} marker" "1" "$count"
+done
 # 判定基準は絵文字 prefix ではなくチェックボックスの空欄/x であることを pin する。
 # 絵文字 prefix 一致方式は {local_branch_check} の BRANCH_DELETE_FAILED/UNMERGED（prefix 無しの
 # bare-text 付記）を取りこぼし、まさに T-02 が守るべきシナリオ（ブランチ削除失敗）で

@@ -962,6 +962,215 @@ else
 fi
 echo ""
 
+# ─── T-args: update の transform 必須引数検証 ───────────────────────────
+# 必須引数の欠落はコメント取得・backup の前に invalid_args で止まり、必須引数が揃った本物の
+# 変換失敗だけが transform_failed になる。gh shim は全呼び出しを記録し、wm_comment_id=4242 の
+# body GET と PATCH (本文を patched.json へ保存) に応答する。
+PY_TRANSFORM="$SCRIPT_DIR/../issue-comment-wm-update.py"
+
+make_args_case() {
+  local dir="$1"
+  mkdir -p "$dir/bin" "$dir/tmp"
+  echo '{"active":true,"issue_number":42,"wm_comment_id":4242}' > "$dir/.rite-flow-state"
+  wm_body_fixture > "$dir/wm-body.md"
+  printf '%s\n' "- [x] レビュー完了" "- [x] マージ完了" > "$dir/items.md"
+  cat > "$dir/bin/gh" <<GH_SHIM
+#!/bin/bash
+printf 'gh %s\n' "\$*" >> "$dir/gh.log"
+prev=""
+for a in "\$@"; do
+  if [ "\$a" = "PATCH" ] && [ "\$prev" = "-X" ]; then cat > "$dir/patched.json"; exit 0; fi
+  prev="\$a"
+done
+case "\$1 \$2" in
+  "repo view") echo "testowner/testrepo"; exit 0 ;;
+esac
+case "\$*" in
+  *"/issues/comments/4242"*) cat "$dir/wm-body.md"; exit 0 ;;
+esac
+exit 0
+GH_SHIM
+  chmod +x "$dir/bin/gh"
+}
+
+# run_args_case <dir> <helper args...>: stdout / stderr / rc を <dir>/{out,err,rc} に残す
+run_args_case() {
+  local dir="$1"; shift
+  set +e
+  (cd "$dir" && PATH="$dir/bin:$PATH" TMPDIR="$dir/tmp" \
+    bash "$HOOK" update --issue 42 "$@" >"$dir/out" 2>"$dir/err")
+  echo "$?" > "$dir/rc"
+  set -e
+}
+
+# assert_invalid_args <label> <dir> <transform> <missing flag>...
+assert_invalid_args() {
+  local label="$1" dir="$2" transform="$3"; shift 3
+  local rc lines inv others flag err_n
+  rc=$(cat "$dir/rc")
+  lines=$(grep -c '' "$dir/out" || true)
+  inv=$(grep -cx 'status=error; reason=invalid_args' "$dir/out" || true)
+  others=$(grep -cE 'status=success|status=skipped|reason=transform_failed' "$dir/out" || true)
+  if [ "$rc" = "1" ] && [ "$lines" = "1" ] && [ "$inv" = "1" ] && [ "$others" = "0" ]; then
+    pass "$label: rc=1 and stdout is exactly 'status=error; reason=invalid_args'"
+  else
+    fail "$label: expected rc=1 + single invalid_args line. rc=$rc out=$(cat "$dir/out")"
+  fi
+  for flag in "$@"; do
+    if grep -qxF "ERROR: $transform: $flag is required" "$dir/err"; then
+      pass "$label: stderr names $transform and missing $flag"
+    else
+      fail "$label: stderr lacks 'ERROR: $transform: $flag is required'. err=$(cat "$dir/err")"
+    fi
+  done
+  err_n=$(grep -c "^ERROR: $transform: .* is required$" "$dir/err" || true)
+  if [ "$err_n" = "$#" ]; then
+    pass "$label: one ERROR line per missing flag ($#)"
+  else
+    fail "$label: expected $# ERROR lines, got $err_n. err=$(cat "$dir/err")"
+  fi
+  if [ ! -s "$dir/gh.log" ]; then
+    pass "$label: gh is never invoked (no repo view / GET / PATCH)"
+  else
+    fail "$label: gh was invoked: $(cat "$dir/gh.log")"
+  fi
+  if ! ls "$dir/tmp"/rite-wm-backup-* >/dev/null 2>&1; then
+    pass "$label: no rite-wm-backup-* created"
+  else
+    fail "$label: backup file created: $(ls "$dir/tmp")"
+  fi
+}
+
+# assert_passes_validation <label> <dir>: invalid_args を出さず、コメント取得 (GET) まで進んだ
+assert_passes_validation() {
+  local label="$1" dir="$2"
+  if ! grep -qF 'reason=invalid_args' "$dir/out" && grep -qF '/issues/comments/4242' "$dir/gh.log" 2>/dev/null; then
+    pass "$label: passes validation and reaches the comment GET"
+  else
+    fail "$label: expected no invalid_args and a GET. rc=$(cat "$dir/rc") out=$(cat "$dir/out") err=$(cat "$dir/err")"
+  fi
+}
+
+echo "T-args-01: merge-checklist with all required args → status=success, items land at the end of 進捗サマリー"
+d="$TEST_DIR/targs01"; make_args_case "$d"
+run_args_case "$d" --transform merge-checklist --section 進捗サマリー --content-file "$d/items.md"
+if grep -qx 'status=success' "$d/out" && [ "$(cat "$d/rc")" = "0" ]; then
+  pass "T-args-01a: merge-checklist status=success rc=0"
+else
+  fail "T-args-01a: expected status=success rc=0. rc=$(cat "$d/rc") out=$(cat "$d/out") err=$(cat "$d/err")"
+fi
+patched_section=$(jq -r '.body' "$d/patched.json" 2>/dev/null | awk '/^### 進捗サマリー$/{f=1;next} f&&/^### /{exit} f') || patched_section=""
+if printf '%s\n' "$patched_section" | grep -v '^$' | tail -2 | tr '\n' '|' | grep -qxF -- '- [x] レビュー完了|- [x] マージ完了|'; then
+  pass "T-args-01b: items appended at the end of ### 進捗サマリー"
+else
+  fail "T-args-01b: items not at the end of ### 進捗サマリー. section=$patched_section"
+fi
+echo ""
+
+echo "T-args-02: merge-checklist without --section → invalid_args before any gh call"
+d="$TEST_DIR/targs02"; make_args_case "$d"
+run_args_case "$d" --transform merge-checklist --content-file "$d/items.md"
+assert_invalid_args "T-args-02" "$d" merge-checklist --section
+echo ""
+
+echo "T-args-03: other transforms report their own missing flags the same way"
+d="$TEST_DIR/targs03a"; make_args_case "$d"
+run_args_case "$d" --transform append-section --content-file "$d/items.md"
+assert_invalid_args "T-args-03a (append-section)" "$d" append-section --section
+d="$TEST_DIR/targs03b"; make_args_case "$d"
+run_args_case "$d" --transform append-eof
+assert_invalid_args "T-args-03b (append-eof)" "$d" append-eof --content-file
+d="$TEST_DIR/targs03c"; make_args_case "$d"
+run_args_case "$d" --transform merge-checklist
+assert_invalid_args "T-args-03c (merge-checklist, both missing)" "$d" merge-checklist --section --content-file
+echo ""
+
+echo "T-args-04: required args present but Python fails (exit 2) → transform_failed with backup"
+d="$TEST_DIR/targs04"; make_args_case "$d"
+run_args_case "$d" --transform merge-checklist --section 進捗サマリー --content-file "$d/no-such-file.md"
+if grep -qx 'status=error; reason=transform_failed' "$d/out" && [ "$(cat "$d/rc")" = "0" ]; then
+  pass "T-args-04a: genuine transform failure stays status=error; reason=transform_failed (rc=0)"
+else
+  fail "T-args-04a: expected transform_failed rc=0. rc=$(cat "$d/rc") out=$(cat "$d/out")"
+fi
+if ls "$d/tmp"/rite-wm-backup-42-* >/dev/null 2>&1; then
+  pass "T-args-04b: backup retained for post-mortem"
+else
+  fail "T-args-04b: backup not retained. tmp=$(ls "$d/tmp")"
+fi
+echo ""
+
+# 境界: helper の判定は Python の usage 判定 (parse_args の「フラグ 値」組読み) と一致する
+echo "T-args-05: boundary values agree with Python's usage decision"
+# (a) 末尾のフラグに値が無い / (b) フラグの直後が別フラグ → どちらも usage error
+d="$TEST_DIR/targs05a"; make_args_case "$d"
+run_args_case "$d" --transform append-eof --content-file
+assert_invalid_args "T-args-05a (flag at end without value)" "$d" append-eof --content-file
+d="$TEST_DIR/targs05b"; make_args_case "$d"
+run_args_case "$d" --transform merge-checklist --section --content-file "$d/items.md"
+assert_invalid_args "T-args-05b (flag followed by flag)" "$d" merge-checklist --content-file
+py_rc_a=0; wm_body_fixture | python3 "$PY_TRANSFORM" append-eof --content-file >/dev/null 2>&1 || py_rc_a=$?
+py_rc_b=0; wm_body_fixture | python3 "$PY_TRANSFORM" merge-checklist --section --content-file "$d/items.md" >/dev/null 2>&1 || py_rc_b=$?
+if [ "$py_rc_a" = "1" ] && [ "$py_rc_b" = "1" ]; then
+  pass "T-args-05c: Python also rejects both boundary shapes as usage errors (exit 1)"
+else
+  fail "T-args-05c: Python verdict diverged (a=$py_rc_a b=$py_rc_b)"
+fi
+# (c) 空文字の値は指定ありとして通す (Python も受理する)
+d="$TEST_DIR/targs05d"; make_args_case "$d"
+run_args_case "$d" --transform update-phase --phase "" --phase-detail "x"
+assert_passes_validation "T-args-05d (empty value)" "$d"
+py_rc_d=0; wm_body_fixture | python3 "$PY_TRANSFORM" update-phase --phase "" --phase-detail "x" >/dev/null 2>&1 || py_rc_d=$?
+if [ "$py_rc_d" = "0" ]; then
+  pass "T-args-05e: Python accepts the empty value too"
+else
+  fail "T-args-05e: Python rejected the empty value (rc=$py_rc_d)"
+fi
+echo ""
+
+# drift 検査: helper の対応表と Python の usage 判定を双方向に突き合わせ、正当な呼び出しを
+# 過剰拒否しないことも確かめる (陰性対照)。python3 が無ければ検査が消えるため FAIL にする。
+echo "T-args-06: required-arg table matches Python for every subcommand; valid calls pass"
+if ! command -v python3 >/dev/null 2>&1; then
+  fail "T-args-06: python3 not found — drift check cannot run"
+else
+  eval "$(awk '/^_required_args_for_transform\(\) \{/,/^\}$/' "$HOOK")"
+  subcommands=$(grep -oE 'subcommand == "[a-z-]+"' "$PY_TRANSFORM" | sed 's/.*"\(.*\)"/\1/')
+  sub_n=$(printf '%s\n' "$subcommands" | grep -c . || true)
+  if [ "$sub_n" -gt 0 ]; then
+    pass "T-args-06: extracted $sub_n subcommands from Python"
+  else
+    fail "T-args-06: no subcommands extracted from Python (extraction broken)"
+  fi
+  for sub in $subcommands; do
+    py_rc=0
+    py_err=$(wm_body_fixture | python3 "$PY_TRANSFORM" "$sub" 2>&1 >/dev/null) || py_rc=$?
+    py_set=$(printf '%s\n' "$py_err" | sed -n '/required for/p' | grep -oE -- '--[a-z-]+' | sort -u | tr '\n' ' ') || py_set=""
+    sh_set=$(_required_args_for_transform "$sub" | tr ' ' '\n' | grep . | sort -u | tr '\n' ' ') || sh_set=""
+    if [ "$py_set" = "$sh_set" ]; then
+      pass "T-args-06 ($sub): required set matches Python [${sh_set% }]"
+    else
+      fail "T-args-06 ($sub): helper=[$sh_set] python=[$py_set]"
+    fi
+    if [ -z "$sh_set" ] && [ "$py_rc" != "0" ]; then
+      fail "T-args-06 ($sub): helper requires nothing but Python exits $py_rc without args"
+    fi
+    # 陰性対照: 必須引数をすべて揃えた呼び出しは validation を通過する
+    d="$TEST_DIR/targs06-$sub"; make_args_case "$d"
+    full_args=()
+    for flag in $sh_set; do
+      case "$flag" in
+        --content-file) full_args+=("$flag" "$d/items.md") ;;
+        --section) full_args+=("$flag" "進捗サマリー") ;;
+        *) full_args+=("$flag" "value") ;;
+      esac
+    done
+    run_args_case "$d" --transform "$sub" ${full_args[@]+"${full_args[@]}"}
+    assert_passes_validation "T-args-06 ($sub, all required args)" "$d"
+  done
+fi
+echo ""
+
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then
   exit 1

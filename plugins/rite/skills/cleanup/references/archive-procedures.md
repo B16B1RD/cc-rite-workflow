@@ -139,6 +139,8 @@ case "$wm_status" in
   *)                   echo "警告: 作業メモリ更新が完了しませんでした (${wm_status:-no-status})。cleanup は続行します。" >&2
                        [ -n "$wm_sync_err" ] && [ -s "$wm_sync_err" ] && { echo "  helper stderr (root-cause、先頭 5 行):" >&2; head -5 "$wm_sync_err" | sed 's/^/    /' >&2; } ;;
 esac
+# ステップ 12 の {wm_final_update_check} 判定用。helper が status 行を出さなかったときは status=missing
+echo "[CONTEXT] WM_FINAL_UPDATE=completion; issue={issue_number}; ${wm_status:-status=missing}"
 rm -f "${wm_sync_err:-}"
 ```
 
@@ -176,7 +178,7 @@ The progress section update in Phase 3.5.2 follows this logic（`merge-checklist
 
 **Bash implementation (helper 委譲):**
 
-進捗チェックリストの完了項目を `merge-checklist` transform で委譲追記する。全文・完全行 dedup（既出項目スキップ＝冪等）・`### 進捗サマリー` セクション末尾への挿入・backup・空body/ヘッダー/safety check・PATCH はすべて helper 内部で完結する（§3.5.1 と同じ canonical caller パターン）。`--section` は必須（欠けると Python が usage error → `status=error; reason=transform_failed`）。
+進捗チェックリストの完了項目を `merge-checklist` transform で委譲追記する。全文・完全行 dedup（既出項目スキップ＝冪等）・`### 進捗サマリー` セクション末尾への挿入・backup・空body/ヘッダー/safety check・PATCH はすべて helper 内部で完結する（§3.5.1 と同じ canonical caller パターン）。`--section` は必須（欠けると helper がコメント取得前に `status=error; reason=invalid_args` で止まる）。
 
 ```bash
 # 進捗セクションの完了項目を content-file に生成し merge-checklist transform で委譲追記する。
@@ -206,6 +208,8 @@ case "$wm_progress_status" in
   *)                           echo "警告: 作業メモリ進捗更新が完了しませんでした (${wm_progress_status:-no-status})。cleanup は続行します。" >&2
                                [ -n "$wm_sync_err" ] && [ -s "$wm_sync_err" ] && { echo "  helper stderr (root-cause、先頭 5 行):" >&2; head -5 "$wm_sync_err" | sed 's/^/    /' >&2; } ;;
 esac
+# ステップ 12 の {wm_final_update_check} 判定用。helper が status 行を出さなかったときは status=missing
+echo "[CONTEXT] WM_FINAL_UPDATE=progress; issue={issue_number}; ${wm_progress_status:-status=missing}"
 rm -f "${wm_sync_err:-}"
 ```
 
