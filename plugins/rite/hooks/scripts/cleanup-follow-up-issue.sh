@@ -14,8 +14,8 @@
 # 観測にすぎず、最新 1 本は残存集合ではない (先行 cycle にのみ載る指摘を取りこぼす)。解消済みの
 # 除外は cleanup ステップ 6.0.V の再検証が `--exclude-ids` で担う。iterate の NB sweep で起票済みの
 # 指摘 (関連 Issue 記録コメントの却下台帳で判定=issued) は本 helper が台帳を読み、行の出典 JSON と
-# 照合して除外する。前後の cycle がその指摘を再掲マーカー付きで再報告したもの・出典だけが違う
-# 完全一致のものも同じ指摘として除外する。
+# 照合して除外する。起票した指摘と再掲マーカーで結ばれる前後の cycle の指摘、出典と id だけが違う
+# 完全一致の指摘も同じ指摘として除外する。
 #
 # 転記元は直下と archive/ の JSON。cleanup の archive helper は本スクリプトの後に走る (D-04) が、
 # pr-cycle-cleanup.sh の orphan 回収が cleanup より先に archive/ へ移した JSON もここで読む。
@@ -428,18 +428,19 @@ fi
 # 起票した指摘と同じ指摘だと言える finding も除外する。後の cycle は未解消の指摘を id を振り直し、
 # description を書き直して再報告するため、組も本文も一致しない。そこで次の 2 種の結びつきを辿り、
 # 起票した finding と繋がる finding をまとめて除外する:
-#   - `_src` 以外が完全一致する (同じ指摘の写し)
+#   - `_src` と id 以外が完全一致する (同じ指摘の写し。id は cycle ごとに振り直されるので比べない)
 #   - description の括弧内に NOT_FIXED か 再掲 を含む再掲マーカーがあり、その F-NN が、直前の cycle の
-#     JSON にある同じ id・同じ file:line・同じ reviewer の finding を指す。直前の cycle は `.json` の
-#     列挙順で決め (指摘 0 件・parse 不能の JSON も 1 cycle と数える)、2 つ前へは遡らない。
-#     PARTIAL / REGRESSION を含むマーカーは残りの問題を書き直した新しい本文なので結ばない。
-#     reviewer の無い finding は結ばない
+#     JSON にある同じ id・同じ file:line の finding を指す。結びつきはマーカーを持つ側から直前の cycle へ
+#     張るので、マーカーの無い初出も、後の cycle のマーカーが指せば除外される。reviewer は cycle ごとに
+#     帰属が変わるため比べない。直前の cycle は `.json` の列挙順で決め (指摘 0 件・parse 不能の JSON も
+#     1 cycle と数える)、2 つ前へは遡らない。PARTIAL / REGRESSION を含むマーカーは残りの問題を
+#     書き直した新しい本文なので結ばない
 # それ以外の出典が一致しない finding は id や位置が同じでも転記する。台帳は指摘の内容を持たず、
 # マーカーの無い別 cycle の同じ位置の指摘が再報告か別の指摘かを判定できないため、除外すると
-# sweep 未実施の指摘がどの Issue にも残らなくなる (欠落より重複を選ぶ)。最新 JSON 由来で除外した
-# 指摘と同じ file:line に残る先行 cycle の指摘だけを重複候補として WARNING に出す。マーカーの無い
-# 行ずれした再報告と、最新 JSON 以外を出典として除外した指摘と同じ位置に残る指摘は、WARNING なしで
-# sweep の Issue と重複しうる。
+# sweep 未実施の指摘がどの Issue にも残らなくなる (欠落より重複を選ぶ)。台帳の行と直接一致して除外した
+# 最新 JSON 由来の指摘と同じ file:line に残る先行 cycle の指摘だけを重複候補として WARNING に出す。
+# マーカーの無い行ずれした再報告と、それ以外の除外 (最新 JSON 以外を出典とする除外、結びつきによる
+# 除外) と同じ位置に残る指摘は、WARNING なしで sweep の Issue と重複しうる。
 # 台帳や最新 JSON を読めないときは sweep 起票済みの除外だけを適用せずに転記し (上の再検証による除外は
 # 適用済みのまま)、WARNING と marker で surface する (sweep 起票済みを黙って全件除外にも全件転記にも倒さない)。
 sweep_issued_unavailable() {
@@ -485,7 +486,6 @@ else
     def base: (._src // "") | split("/") | last;
     def issued: ._src as $s | base as $b | [(.id // ""), loc] as $k
       | any($keys[]; .[0:2] == $k and (if .[2] == "" then $s == $latest else .[2] == $b end));
-    def has_reviewer: (.reviewer | type) == "string" and (.reviewer | length) > 0;
     # 再掲マーカー: 括弧で囲んだ区間に NOT_FIXED か 再掲 があり、PARTIAL / REGRESSION が無いもの。
     # その区間の F-NN が直前の cycle で振られていた id
     def reported_ids: [(.description // "") | strings
@@ -494,14 +494,14 @@ else
       | scan("F-[0-9]{2,}")] | unique;
     [to_entries[] | .value + {_i: .key}] as $all
     | [ $all[] as $x
-        | ( $all[] | select(._i > $x._i and del(._src, ._i) == ($x | del(._src, ._i))) | [$x._i, ._i] ),
+        | ( $all[] | select(._i > $x._i and del(._src, ._i, .id) == ($x | del(._src, ._i, .id))) | [$x._i, ._i] ),
           ( ($x | base) as $xb
-            | select(($x | has_reviewer) and ($cycles | index($xb)))
+            | select($cycles | index($xb))
             | ([$cycles[] | select(. < $xb)] | last) as $prev
             | select($prev != null)
             | ($x | reported_ids)[] as $rid
             | $all[]
-            | select(base == $prev and .id == $rid and loc == ($x | loc) and has_reviewer and .reviewer == $x.reviewer)
+            | select(base == $prev and .id == $rid and loc == ($x | loc))
             | [$x._i, ._i] ) ] as $edges
     | ([range(0; $all | length)]
        | until(. as $l | all($edges[]; $l[.[0]] == $l[.[1]]);
