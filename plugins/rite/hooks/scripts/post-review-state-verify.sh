@@ -43,7 +43,8 @@
 # refs/heads と refs/stash は全 worktree で共有されるため、並列セッションの操作をレビュー中の
 # drift と誤認しないよう、2 軸は他セッションの worktree で checkout 中の branch を除いて数える。
 # 他セッションの worktree = 自 worktree 以外で、reviewer 実験用の名前空間
-# (rite-review-mutation-* / rite-revert-test-*) にないもの (パスは物理パスで比較):
+# (rite-review-mutation-* / rite-revert-test-*) にないもの (パスは物理パスで比較)。
+# ただし reviewer 漏出名 (pr-<N>-test 等、pr-cycle-cleanup.sh の回収対象) の branch は含めない:
 #   - stash: 件名 `WIP on <b>:` / `On <b>:` の <b> がその集合にないエントリ。git は同じ branch を
 #     2 つの worktree で checkout させないため、named branch の件名はそれを checkout した worktree を
 #     指す。自 worktree で別 branch へ切り替えて作った stash も数える
@@ -53,7 +54,8 @@
 #     での branch の切り替え (元の branch が除外から外れて一覧に現れる)、detached の worktree
 #     が作った stash (件名 `(no branch)` は branch ではないので常に数える)、他セッションが
 #     stash した後に worktree を片付けたもの
-#   - 数えない: reviewer が名前空間の外に `git worktree add -b` で作った worktree の branch
+#   - 数えない: reviewer が名前空間の外に `git worktree add -b` で作った worktree の branch のうち、
+#     漏出名に当たらないもの (他セッションの branch と区別できない)
 #
 # Exit codes:
 #   0 — no drift, or drift detected and (branch) successfully recovered,
@@ -141,8 +143,10 @@ axis_branch() {
 }
 
 # 他セッションの worktree で checkout 中の branch を _foreign に集め、全 branch を _all_branches に
-# 入れる。reviewer 実験用の名前空間 (rite-review-mutation-* / rite-revert-test-*) の worktree は
-# 他セッションではないので _foreign に入れない。取得に失敗したら非ゼロ。
+# 入れる。reviewer 実験用の名前空間 (rite-review-mutation-* / rite-revert-test-*) の worktree と、
+# pr-cycle-cleanup.sh が reviewer 漏出と定義する名前の branch は他セッションのものではないので
+# _foreign に入れない。取得に失敗したら非ゼロ。
+_reviewer_leak_re='^pr-[0-9]+-(test|experiment|mutation|verify|check|sandbox)$'
 declare -A _foreign=()
 _all_branches=""
 _load_branches() {
@@ -157,6 +161,7 @@ _load_branches() {
     _all_branches+="$name"$'\n'
     [ -n "$wt" ] || continue
     case "${wt##*/}" in *rite-review-mutation-*|*rite-revert-test-*) continue ;; esac
+    [[ $name =~ $_reviewer_leak_re ]] && continue
     [ "$(_physical_path "$wt")" = "$top" ] || _foreign[$name]=1
   done <<< "$refs"
 }

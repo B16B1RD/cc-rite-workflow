@@ -268,6 +268,14 @@ git -C "$sbx" worktree add -q -b review-exp "$wt_base/rite-review-mutation-x" >/
 out=$(verify_all "$sbx" "$snap")
 assert "branch from a reviewer experiment worktree is reported as branch_list" '["branch_list"]' "$(printf '%s' "$out" | jq -c .types)"
 
+# A reviewer-leak branch name is not another session's, wherever its worktree lives.
+sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
+snap=$(snapshot_line "$sbx")
+git -C "$sbx" worktree add -q -b pr-1-test "$wt_base/leak-outside" >/dev/null 2>&1 \
+  || fail "fixture: worktree add outside the reviewer namespace"
+out=$(verify_all "$sbx" "$snap")
+assert "reviewer-leak branch outside the namespace is reported as branch_list" '["branch_list"]' "$(printf '%s' "$out" | jq -c .types)"
+
 # A stash made on another branch in the reviewed worktree counts after switching back.
 sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
 git -C "$sbx" branch side
@@ -336,6 +344,8 @@ stderr_fer=$(mktemp) && cleanup_dirs+=("$stderr_fer")
 snap=$(cd "$sbx" && PATH="$git_shim:$PATH" bash "$VERIFY" --snapshot 2>"$stderr_fer")
 assert "for-each-ref failure leaves branch_list_hash empty" "" "$(field "$snap" branch_list_hash)"
 assert "for-each-ref failure surfaces a WARNING" 1 "$(grep -c 'branch_list drift axis skipped' "$stderr_fer")"
+assert "for-each-ref failure leaves stash_count empty" "" "$(field "$snap" stash_count)"
+assert "for-each-ref failure surfaces a stash WARNING" 1 "$(grep -c 'stash drift axis skipped' "$stderr_fer")"
 git -C "$sbx" branch leaked
 out=$(cd "$sbx" && PATH="$git_shim:$PATH" bash "$VERIFY" --original-branch "$(field "$snap" branch)" \
   --original-branch-list-hash "nonempty-snapshot-hash" 2>/dev/null)
