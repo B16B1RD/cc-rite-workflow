@@ -7,7 +7,7 @@
 # T-04 empty collect is no-op status (AC-4)
 # T-05 nit-noted in findings[] is a target; new class-B is not a second sweep (AC-5)
 # T-06 ledger write / merge fail-loud (AC-6)
-# T-07 class A findings[] stay out of sweep targets (AC-7)
+# T-07 class A findings[] stay out of sweep targets (AC-7); the rails also pin the in-PR recommendation wiring (iterate check / mark and their order before the fix invoke, pr-review 5.3.0.R register and its stop, 7.1 exclusion, fix 2.1 R-NN routing)
 # T-08 body_count extraction expression matches between fix/references/nb-sweep.md and the record helper (AC-1..AC-3)
 # T-09 a ledger-only body (0 findings, no existing comment) creates the record comment, including CRLF and degraded lookup
 # T-10 nb-sweep.md record step succeeds only on created / updated and never reaches the done write otherwise
@@ -374,6 +374,50 @@ assert_grep "T-07 pr-review REJECTED_LEDGER=failed" "$REVIEW" 'REJECTED_LEDGER=f
 assert_grep "T-07 pr-review WARNING 却下台帳取得失敗" "$REVIEW" 'WARNING: 却下台帳取得失敗'
 assert_grep "T-07 pr-review failed-path 注記" "$REVIEW" '台帳取得失敗 — 却下済み指摘の再訴訟の可能性'
 assert_grep "T-07 prompt rejected_ledger" "$PROMPT" '{rejected_ledger}'
+
+# PR 内推奨の配線。呼び出し行と停止行を節の範囲内で pin し、呼び出しの順序は行番号で固定する。
+FIX_SKILL="$PLUGIN_ROOT/skills/fix/SKILL.md"
+REC_START='^### 5\.S 後の PR 内推奨の修正$'
+REC_END='^### 5\.S 後の完了前確認'
+assert_grep_in_section "T-07 iterate recommendation check" "$ITERATE" "$REC_START" "$REC_END" \
+  '^bash \{plugin_root\}/scripts/review-pr-recommendations\.sh check --pr \{pr_number\}$'
+assert_grep_in_section "T-07 iterate recommendation check failure stops" "$ITERATE" "$REC_START" "$REC_END" \
+  '非ゼロ終了 / marker 不在 \| 停止する'
+assert_grep_in_section "T-07 iterate recommendation pending invokes fix after the record" "$ITERATE" "$REC_START" "$REC_END" \
+  '`pending` \| 下の記録のあと `/rite:fix` を invoke'
+assert_grep_in_section "T-07 iterate recommendation mark" "$ITERATE" "$REC_START" "$REC_END" \
+  '^bash \{plugin_root\}/scripts/review-pr-recommendations\.sh mark --pr \{pr_number\}$'
+assert_grep_in_section "T-07 iterate recommendation mark failure stops before fix" "$ITERATE" "$REC_START" "$REC_END" \
+  '非ゼロ終了なら停止する（fix を invoke しない）'
+assert_grep_in_section "T-07 iterate recommendation fix pushed returns to step 1" "$ITERATE" "$REC_START" "$REC_END" \
+  '^\| `\[fix:pushed\]` / `\[fix:pushed-wm-stale\]` \| ステップ 1 に戻る'
+assert_grep_in_section "T-07 iterate recommendation reply-only goes to purpose check" "$ITERATE" "$REC_START" "$REC_END" \
+  '^\| `\[fix:replied-only\]` / `\[fix:non-fatal-only\]` \| 完了前確認.*再レビューしない'
+assert_grep_in_section "T-07 iterate recommendation forbids a manual commit" "$ITERATE" "$REC_START" "$REC_END" \
+  'MUST NOT: mergeable の後に手で commit する'
+rec_order=$(awk -v s="$REC_START" -v e="$REC_END" '
+  $0 ~ s { in_sec = 1; next }
+  in_sec && $0 ~ e { exit }
+  in_sec && /review-pr-recommendations\.sh check --pr/ { print "check" }
+  in_sec && /review-pr-recommendations\.sh mark --pr/ { print "mark" }
+  in_sec && /flow-state\.sh set/ { print "set" }
+  in_sec && /^args: "\{pr_number\}"$/ { print "fix" }' "$ITERATE" | tr '\n' '|')
+assert "T-07 iterate recommendation order check → mark → set → fix" "check|mark|set|fix|" "$rec_order"
+
+assert_grep_in_section "T-07 pr-review 5.3.0.R register" "$REVIEW" \
+  '^#### 5\.3\.0\.R PR 内推奨の登録$' '^### 5\.3\.8 ' \
+  '^bash \{plugin_root\}/scripts/review-pr-recommendations\.sh register'
+assert_grep_in_section "T-07 pr-review 5.3.0.R failure stops" "$REVIEW" \
+  '^#### 5\.3\.0\.R PR 内推奨の登録$' '^### 5\.3\.8 ' \
+  '^\| rc≠0 \| `\[review:error\]` を stdout に出力して停止する'
+rec_heads=$(grep -nE '^#### 5\.3\.0\.A |^#### 5\.3\.0\.R |^#### 6\.1\.a ' "$REVIEW" | cut -d' ' -f2 | tr '\n' '|')
+assert "T-07 pr-review 5.3.0.A → 5.3.0.R → 6.1.a order" "5.3.0.A|5.3.0.R|6.1.a|" "$rec_heads"
+assert_grep_in_section "T-07 pr-review 7.1 excludes registered recommendations" "$REVIEW" \
+  '^### 7\.1 Extract Separate Issue Candidates$' '^### 7\.2-7\.3 ' \
+  '`\{registered_recommendation_positions\}`.*も除外する'
+assert_grep_in_section "T-07 fix 2.1 routes R-NN to the normal fix" "$FIX_SKILL" \
+  '^### 2\.1 Confirm Fix Approach$' '^### 2\.1\.A ' \
+  '`pr_recommendations\[\]` の `R-NN` だけが通常の修正'
 
 # Execute the actual skill error guards, with local stubs for mutations.
 extract_fix_block() {
