@@ -23,7 +23,7 @@
 # T-20 nb-sweep.md step 3 run with the real helper for both the read and the write: the PATCHed body carries the PATCH target's ledger plus this sweep's rows, and never an older record's or another author's ledger; the carried 4-column header becomes one 5-column header and this sweep's rows end with the source basename
 # T-21 ledger source column: append writes a 5-column header, accepts only rows ending with a review JSON basename (suffix / trailing blanks / escaped pipes ok; otherwise entries_source_invalid with the ledger untouched), upgrades a 4-column header and separator once while keeping old rows byte-identical and in order; mixed ledgers survive extract → merge-into unchanged; the record helper count, header-only skip and collect exclusion read 5-column ledgers like 4-column ones; nb-sweep.md step 3 names the source column and its value source
 # T-22 entries whose invalid rows exceed the pipe buffer still stop with rc=1, print the first three invalid rows in order and end stderr with exactly one reason=entries_source_invalid; the ledger is untouched
-# T-23 after a failed ledger append, nb-sweep.md step 3 says to check every entries row, re-run only step 3 (not the step 2 issuance) and continue from the iterate 5.S sweep-done row after step 4 instead of re-running iterate, and both places limit that continuation to the conversation that stopped; step 2 separates that re-run from a fresh sweep; iterate 5.S points any post-issuance persist stop there without narrowing by reason name; and the schema rejects the whole entries when any row is invalid
+# T-23 after a failed ledger append, nb-sweep.md step 3 says to check every entries row, re-run only step 3 (not the step 2 issuance) and continue from the iterate 5.S sweep-done row after step 4 instead of re-running iterate, and both places limit that continuation to the conversation that stopped and forbid it even there when either `{sweep_origin}` or the `NB_SWEEP_RESULT` count cannot be read from the conversation; step 2 separates that re-run from a fresh sweep; iterate 5.S points any post-issuance persist stop there without narrowing by reason name; and the schema rejects the whole entries when any row is invalid
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -1555,6 +1555,10 @@ assert "T-23 iterate 5.S の停止行は sweep-done 行から続けるのを停�
   "$(printf '%s\n' "$t23_iterate_row" | grep -F '`[fix:sweep-done]` 行から続ける。この続け方は停止したのと同じ会話に限る' | grep -cF '別の会話からは続けず、停止のままにする')"
 assert "T-23 手順 3 は sweep-done 行から続けるのを停止したのと同じ会話に限る" 1 \
   "$(printf '%s\n' "$t23_step3" | grep -F '`[fix:sweep-done]` 行から続ける' | grep -F 'この続け方は停止したのと同じ会話に限る' | grep -cF '別の会話からは続けず、停止のままにする')"
+assert "T-23 iterate 5.S の停止行は続きに使う 2 値のどちらかを会話から読めなければ同じ会話でも続けない" 1 \
+  "$(printf '%s\n' "$t23_iterate_row" | grep -F '`{sweep_origin}`' | grep -F '`NB_SWEEP_RESULT`' | grep -cF '（続きの手順は会話にしか残らない `{sweep_origin}` と fix が出した `NB_SWEEP_RESULT` の件数を使う。どちらかを会話から読めなければ同じ会話でも続けない）')"
+assert "T-23 手順 3 は続きに使う 2 値のどちらかを会話から読めなければ同じ会話でも続けない" 1 \
+  "$(printf '%s\n' "$t23_step3" | grep -F '`{sweep_origin}`' | grep -F '`NB_SWEEP_RESULT`' | grep -cF '（続きの手順は会話にしか残らない iterate の `{sweep_origin}` と手順 4 の `NB_SWEEP_RESULT` の件数を使う。どちらかを会話から読めなければ同じ会話でも続けない）')"
 assert "T-23 iterate 5.S の停止行は理由名の接頭辞で対象を絞らない" 0 "$(printf '%s\n' "$t23_iterate_row" | grep -cF 'nb_sweep_ledger_')"
 t23_schema=$(grep -F 'entries_source_invalid' "$PLUGIN_ROOT/references/review-result-schema.md")
 assert "T-23 schema は 1 行でも不正なら全体を拒否すると書く" 1 "$(printf '%s\n' "$t23_schema" | grep -F '1 行でも' | grep -cF '台帳を変更しない')"
