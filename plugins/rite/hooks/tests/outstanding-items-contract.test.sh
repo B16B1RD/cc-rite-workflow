@@ -109,6 +109,7 @@ assert_grep "ingest_outstanding_line reuses WIKI_INGEST_PUSH marker (no new reco
 assert_grep "ingest_outstanding_line emits explicit none line when push ok" "$WIKI_INGEST" 'なし（非ブロッキングで継続した失敗はありませんでした）'
 assert_grep "ingest_outstanding_line has a lock row for the lost-lock WARNING" "$WIKI_INGEST" '^\| ロック \| .*ロックを失っていました'
 assert_grep "ingest_outstanding_line has a lock row for the unconfirmed-state WARNING" "$WIKI_INGEST" '^\| ロック \| .*ロックの状態を確認できませんでした'
+assert_grep "ingest_outstanding_line has a lock row for the release-failure WARNING" "$WIKI_INGEST" '^\| ロック \| .*ロックを解放できませんでした'
 assert_grep "ingest_outstanding_line none row also requires no lock WARNING" "$WIKI_INGEST" '^\| （全系統） \| .*ロックの WARNING を出していない'
 # marker なし (未確認) は「なし」と混同せず {wiki_push_line} と同じ ⚠️ 未確認扱いにする
 assert_grep "ingest_outstanding_line treats marker-absent as unconfirmed, not none" "$WIKI_INGEST" '\{wiki_push_line\}` の同ケースと同じ扱い'

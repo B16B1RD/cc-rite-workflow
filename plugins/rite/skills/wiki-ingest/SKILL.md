@@ -1157,7 +1157,11 @@ if [ "$lock_state" != "own" ]; then
     *) echo "  対処: 直近の wiki の commit を確認し（separate_branch: git -C \"$wiki_wt_abs\" log --oneline -n 20 / same_branch: git log --oneline -n 20 -- .rite/wiki/）、重複や上書きがあれば手で直してください" >&2 ;;
   esac
 fi
-bash "{plugin_root}/hooks/scripts/wiki-ingest-lock.sh" release
+bash "{plugin_root}/hooks/scripts/wiki-ingest-lock.sh" release || {
+  rc=$?
+  echo "WARNING: ingest 終了時に wiki ingest のロックを解放できませんでした（直前の ERROR を参照）。取得から最長 2 時間後に回収され、それまで他セッションの ingest は skip されます" >&2
+  exit "$rc"
+}
 ```
 
 ```
@@ -1226,6 +1230,7 @@ rationale: references/rationale.md#outstanding-no-new-store
 | Wiki push | marker なし（ステップ 8.6 未到達などの想定外経路） | `- ⚠️ Wiki push: 実行結果が確認できませんでした。git -C {wiki_worktree_abs} status で確認してください`（`{wiki_push_line}` の同ケースと同じ扱い — 未確認を「失敗なし」と断定しない） |
 | ロック | ステップ 9.0 の stderr に `ロックを失っていました` を含む WARNING がある | `- ⚠️ ingest 中に wiki ingest のロックを失っていました（{WARNING 行の check= の値}）。直近の wiki の commit に重複や上書きが無いか確認してください` |
 | ロック | ステップ 9.0 の stderr に `ロックの状態を確認できませんでした` を含む WARNING がある | `- ⚠️ ingest 終了時に wiki ingest のロックの状態を確認できませんでした。ロックが解放されていない可能性があり、その場合は取得から最長 2 時間後に回収されます（直後の解放の出力を参照）` |
+| ロック | ステップ 9.0 の stderr に `ロックを解放できませんでした` を含む WARNING がある | `- ⚠️ ingest 終了時に wiki ingest のロックを解放できませんでした。取得から最長 2 時間後に回収され、それまで他セッションの ingest は skip されます` |
 | （全系統） | 上記のいずれにも該当しない（index 更新が全件成功し、回収した重複行が 0 件で、push も `ok` / `skipped; reason=same_branch` で、ステップ 9.0 がロックの WARNING を出していない） | `- なし（非ブロッキングで継続した失敗はありませんでした）` |
 
 ### 9.1 Return-to-Caller Signal

@@ -12,9 +12,9 @@
 #   own re-acquire included) stops and leaves no lockdir behind; another session's
 #   live lock survives an unreadable clock
 #   release removes only the OWN lock; idempotent on absent lock
-#   wiki-ingest step 9.0 warns on stderr when the lock is no longer own or its state
-#   cannot be confirmed, names the remedy for the configured strategy, and the
-#   completion report has a row for each warning
+#   wiki-ingest step 9.0 warns on stderr when the lock is no longer own, its state
+#   cannot be confirmed, or its release fails, names the remedy for the configured
+#   strategy, and the completion report has a row for each warning
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -220,7 +220,7 @@ if [ "$FAIL" -gt "$fail_before" ] && [ -s "$nf_err" ]; then
   head -5 "$nf_err" | sed 's/^/    stderr: /'
 fi
 
-echo "=== TC-13: wiki-ingest step 9.0 warns when the lock is no longer own ==="
+echo "=== TC-13: wiki-ingest step 9.0 warns when the lock is lost, unconfirmed or not released, and returns the release rc ==="
 step90=$(awk '
   /^### 9\.0 / { in_sec = 1; next }
   in_sec && /^##/ { exit }
@@ -254,6 +254,7 @@ s_out=$(mktemp); s_err=$(mktemp); cleanup_dirs+=("$s_out" "$s_err")
 LOST='ロックを失っていました'
 UNCONFIRMED='ロックの状態を確認できませんでした'
 NOT_RELEASED='^  同じ原因でロックが解放されていない可能性があります。.*最長 2 時間'
+RELEASE_FAILED='ロックを解放できませんでした'
 # (a) another session holds the lock
 reset_lock
 bash "$WIL" acquire --session "$SID_B" >/dev/null
@@ -310,6 +311,7 @@ assert "TC-13e session unresolved: check and release both reject the session" "2
   "$(grep -c '^ERROR: invalid session_id' "$s_err" || true)"
 assert "TC-13e session unresolved: unconfirmed-state WARNING" "1" "$(grep -c "^WARNING: .*$UNCONFIRMED" "$s_err" || true)"
 assert "TC-13e session unresolved: one not-released line" "1" "$(grep -c "$NOT_RELEASED" "$s_err" || true)"
+assert "TC-13e session unresolved: release-failure WARNING" "1" "$(grep -c "^WARNING: .*$RELEASE_FAILED" "$s_err" || true)"
 assert "TC-13e session unresolved: no release output" "" "$(cat "$s_out")"
 assert "TC-13e session unresolved: block rc is the failed release (1)" "1" "$rc"
 assert "TC-13e session unresolved: the lock stays" "$SID_A" "$(cat "$LOCKDIR/session_id" 2>/dev/null)"
@@ -341,6 +343,28 @@ assert "TC-13g step 9.0 carries the lost-lock text" "1" "$(printf '%s\n' "$step9
 assert "TC-13g step 9.0 carries the unconfirmed-state text" "1" "$(printf '%s\n' "$step90" | grep -c "$UNCONFIRMED" || true)"
 assert "TC-13g report has a lock row for the lost-lock WARNING" "1" "$(grep -c "^| ロック | .*$LOST" "$INGEST_SKILL" || true)"
 assert "TC-13g report has a lock row for the unconfirmed-state WARNING" "1" "$(grep -c "^| ロック | .*$UNCONFIRMED" "$INGEST_SKILL" || true)"
+assert "TC-13g step 9.0 carries the release-failure text" "1" "$(printf '%s\n' "$step90" | grep -c "$RELEASE_FAILED" || true)"
+assert "TC-13g report has a lock row for the release-failure WARNING" "1" "$(grep -c "^| ロック | .*$RELEASE_FAILED" "$INGEST_SKILL" || true)"
+# (h) this session owns the lock but cannot remove it: the release failure is a WARNING, not only the rc
+rmfail_stub=$(mktemp -d)
+cleanup_dirs+=("$rmfail_stub")
+for _c in bash sh awk basename cat chmod date dirname find git grep head jq \
+          mkdir mktemp mv python3 sed sleep tail touch tr wc; do
+  _p=$(command -v "$_c" 2>/dev/null) && ln -sf "$_p" "$rmfail_stub/$_c"
+done
+printf '#!/bin/sh\nexit 1\n' > "$rmfail_stub/rm"
+chmod +x "$rmfail_stub/rm"
+reset_lock
+bash "$WIL" acquire --session "$SID_A" >/dev/null
+rc=0
+env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$SID_A" RITE_STATE_ROOT="$ROOT" PATH="$rmfail_stub" \
+  bash "$step90_file" >"$s_out" 2>"$s_err" || rc=$?
+assert "TC-13h own but release fails: the removal is the cause" "1" "$(grep -c '^ERROR: failed to remove' "$s_err" || true)"
+assert "TC-13h own but release fails: release-failure WARNING" "1" "$(grep -c "^WARNING: .*$RELEASE_FAILED" "$s_err" || true)"
+assert "TC-13h own but release fails: no lost-lock or unconfirmed-state WARNING" "0" \
+  "$(grep -cE "$LOST|$UNCONFIRMED" "$s_err" || true)"
+assert "TC-13h own but release fails: block rc is the failed release (1)" "1" "$rc"
+assert "TC-13h own but release fails: the lock stays" "$SID_A" "$(cat "$LOCKDIR/session_id" 2>/dev/null)"
 
 echo "=== TC-14: another session's lock near the top of the 2h window (~7100s old) is still held ==="
 # TC-2 / TC-4 only use locks acquired seconds ago, so a shrunken window (60 / 3700 / 7000s)
@@ -363,4 +387,4 @@ assert "TC-14 holder stays A" "$SID_A" "$(cat "$LOCKDIR/session_id")"
 assert "TC-14 acquired_at not rewritten" "$PLANTED" "$(cat "$LOCKDIR/acquired_at")"
 
 print_summary "$(basename "$0")" \
-  "Drift hint: wiki-ingest-lock.sh §9 — mkdir lock whose liveness is its own acquired_at (2h), held near the window's upper edge (~7100s), reclaim stale/missing/unparsable, concurrent_ingest rc 11, a failed stamp (clock / write, own re-acquire included) stops acquire; _resolve_sid env-first; no-flock PATH; wiki-ingest step 9.0 check → lost-lock / unconfirmed-state WARNING, not-released line, strategy-specific remedy, block rc = release rc, report rows for both warnings."
+  "Drift hint: wiki-ingest-lock.sh §9 — mkdir lock whose liveness is its own acquired_at (2h), held near the window's upper edge (~7100s), reclaim stale/missing/unparsable, concurrent_ingest rc 11, a failed stamp (clock / write, own re-acquire included) stops acquire; _resolve_sid env-first; no-flock PATH; wiki-ingest step 9.0 check → lost-lock / unconfirmed-state WARNING, not-released line, strategy-specific remedy, release-failure WARNING, block rc = release rc, report rows for all three warnings."
