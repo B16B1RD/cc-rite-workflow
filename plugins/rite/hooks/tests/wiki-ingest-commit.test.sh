@@ -10,7 +10,11 @@
 # - separate_branch legacy path: a real git fixture drives the cleanup branch
 #   where checkout-back fails, and pins the pasteable manual-recovery commands
 #   (word splitting, line order, the stash step appearing only when a stash
-#   exists, and that running them lets a re-run ingest the raw source).
+#   exists, and that running them lets a re-run ingest the raw source). Every
+#   pasted git command names the main checkout with -C, and the steps are run
+#   from outside the repository to show they do not depend on the caller's cwd.
+#   The unstage, stash pop, untrack, push and fetch hints are pinned the same way,
+#   the unstage hint also when the hook runs from a linked worktree.
 # - separate_branch automatic restore after a failed wiki commit: the raw
 #   sources come back unstaged without disturbing unrelated staged files, so a
 #   re-run ingests them.
@@ -142,8 +146,9 @@ rerun_ingest() {
 run_recovery_case() {
   local label="$1" branch="$2" tmp_name="$3" stash="$4"
   local -x GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
-  local base repo stub marker tmpdir err rc n p q line path cmd1 cmd2 cmd4 cmd5 words ok=1
+  local base repo root stub marker tmpdir err rc n p q line path cmd1 cmd2 cmd3 cmd4 cmd5 words ok=1
   make_fixture "$branch" "$stash"
+  root=$(cd "$repo" && pwd -P)
   stub="$base/stub"; marker="$base/checkout-failures"; err="$base/err"
   tmpdir="$base/$tmp_name"; mkdir "$tmpdir" "$stub"
   {
@@ -182,7 +187,7 @@ run_recovery_case() {
       "$(grep -c '^ (stash is intentionally left intact' "$err" || true)"
   fi
   eq "$label: stash pop is printed only in the numbered steps" "$([ "$stash" = yes ] && echo 1 || echo 0)" \
-    "$(grep -c 'git stash pop' "$err" || true)"
+    "$(grep -c ' stash pop' "$err" || true)"
 
   eq "$label: staging-preserved WARNING appears once" "1" \
     "$(grep -c '^WARNING: staging directory preserved at ' "$err" || true)"
@@ -203,8 +208,9 @@ run_recovery_case() {
   q=$((q + 1)); line=$(err_line "$q"); cmd2=${line#" 2) unstage raw sources carried over from the wiki branch: "}
   eq "$label: step 2 line shape" " 2) unstage raw sources carried over from the wiki branch: $cmd2" "$line"
   if [ "$stash" = yes ]; then
-    q=$((q + 1)); line=$(err_line "$q")
-    eq "$label: stash step follows the unstage step" " 3) restore stashed changes: git stash pop" "$line"
+    q=$((q + 1)); line=$(err_line "$q"); cmd3=${line#" 3) restore stashed changes: "}
+    eq "$label: stash step follows the unstage step" " 3) restore stashed changes: $cmd3" "$line"
+    check_words "stash step" "$cmd3" git -C "$root" stash pop
   else
     eq "$label: no stash step without a stash" "0" "$(grep -c 'restore stashed changes' "$err" || true)"
   fi
@@ -214,16 +220,17 @@ run_recovery_case() {
   eq "$label: clean-up step line shape" " $((q - p - 2))) clean up: $cmd5" "$line"
   eq "$label: clean-up step is the last recovery line" "" "$(err_line $((q + 1)))"
 
-  check_words "step 1" "$cmd1" git checkout "$branch"
-  check_words "step 2" "$cmd2" git reset -q -- .rite/wiki/raw
-  check_words "copy step" "$cmd4" cp -r "$path/." .rite/wiki/raw/
+  check_words "step 1" "$cmd1" git -C "$root" checkout "$branch"
+  check_words "step 2" "$cmd2" git -C "$root" reset -q -- .rite/wiki/raw
+  check_words "copy step" "$cmd4" cp -r "$path/." "$root/.rite/wiki/raw/"
   check_words "clean-up step" "$cmd5" rm -rf "$path"
 
   # Run the pasted steps only once every word matched, so a regression cannot
-  # hand a split path to rm -rf.
+  # hand a split path to rm -rf. They run from outside the repository, where a
+  # step that relies on the caller's cwd fails.
   if [ "$ok" -eq 1 ]; then
     rc=0
-    ( cd "$repo" && eval "$cmd1" ) >/dev/null 2>&1 || rc=$?
+    ( cd "$base" && eval "$cmd1" ) >/dev/null 2>&1 || rc=$?
     (
       git -C "$repo" rm -q --cached -- .rite/wiki/raw/reviews/pr-test.md &&
         rm -f "$repo/.rite/wiki/raw/reviews/pr-test.md"
@@ -234,17 +241,17 @@ run_recovery_case() {
       "$(git -C "$repo" diff --cached --name-only -- .rite/wiki/raw/reviews/pr-test.md)"
 
     (
-      cd "$repo" && eval "$cmd2" && { [ "$stash" = no ] || git stash pop; }
+      cd "$base" && eval "$cmd2" && { [ "$stash" = no ] || eval "$cmd3"; }
     ) >/dev/null 2>&1 || rc=$?
     eq "$label: raw source is absent immediately before the copy step" "0" \
       "$([ -e "$repo/.rite/wiki/raw/reviews/pr-test.md" ] && echo 1 || echo 0)"
     eq "$label: raw source remains absent from the index before the copy step" "" \
       "$(git -C "$repo" diff --cached --name-only -- .rite/wiki/raw/reviews/pr-test.md)"
 
-    ( cd "$repo" && eval "$cmd4" ) >/dev/null 2>&1 || rc=$?
+    ( cd "$base" && eval "$cmd4" ) >/dev/null 2>&1 || rc=$?
     eq "$label: copy step restores the raw source" "raw source" \
       "$(cat "$repo/.rite/wiki/raw/reviews/pr-test.md" 2>/dev/null || true)"
-    ( cd "$repo" && eval "$cmd5" ) >/dev/null 2>&1 || rc=$?
+    ( cd "$base" && eval "$cmd5" ) >/dev/null 2>&1 || rc=$?
     eq "$label: pasted steps succeed" "0" "$rc"
     eq "$label: back on the working branch" "$branch" "$(git -C "$repo" branch --show-current)"
     eq "$label: no raw source left staged" "" "$(git -C "$repo" diff --cached --name-only)"
@@ -273,9 +280,10 @@ write_stub() {
 run_checkout_hint_case() {
   local label="$1" branch="$2" stash="$3"
   local -x GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
-  local base repo tmpdir err rc=0 n line back words ok=1
-  local stash_tail=" && git stash pop"
+  local base repo root tmpdir err rc=0 n line back words ok=1 stash_tail
   make_fixture "$branch" "$stash"
+  root=$(cd "$repo" && pwd -P)
+  stash_tail=" && git -C $root stash pop"
   tmpdir="$base/tmp"; err="$base/err"; mkdir "$tmpdir"
   rm -f "$repo/.git/hooks/pre-commit"
   write_stub "$base/stub" "[ \"\$#\" -eq 2 ] && [ \"\$1\" = checkout ] && [ \"\$2\" = $(printf '%q' "$branch") ]"
@@ -295,9 +303,9 @@ run_checkout_hint_case() {
       " (stash is intentionally left intact to avoid cross-branch pop)" "$(sed -n "$((${n:-0} + 2))p" "$err")"
     back=${back%"$stash_tail"}
   else
-    eq "$label: no stash pop without a stash" "0" "$(grep -c 'git stash pop' "$err" || true)"
+    eq "$label: no stash pop without a stash" "0" "$(grep -c ' stash pop' "$err" || true)"
   fi
-  check_words "checkout hint" "$back" git checkout "$branch"
+  check_words "checkout hint" "$back" git -C "$root" checkout "$branch"
 }
 
 # run_auto_restore_case: checkout-back succeeds after the failed wiki commit, so
@@ -360,17 +368,22 @@ run_auto_restore_preserves_staged_raw_case() {
   eq "$label: no cleanup WARNING" "0" "$(grep -c '^WARNING: ' "$err" || true)"
 }
 
-# run_unstage_failure_case: when the unstage itself fails, cleanup says so and prints
-# the command to run by hand.
+# run_unstage_failure_case <label> [<from>]: when the unstage itself fails, cleanup says so
+# and prints the command to run by hand. <from>=worktree runs the hook from a linked worktree.
 run_unstage_failure_case() {
-  local label="$1"
+  local label="$1" from="${2:-main}"
   local -x GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
-  local base repo tmpdir err rc=0 n line cmd words ok=1
+  local base repo tmpdir err rc=0 n line cmd words ok=1 run_dir
   make_fixture dev no
   tmpdir="$base/tmp"; err="$base/err"; mkdir "$tmpdir"
   write_stub "$base/stub" '[ "$1" = reset ]'
+  run_dir="$repo"
+  if [ "$from" = worktree ]; then
+    git -C "$repo" worktree add -q --detach "$base/wt"
+    run_dir="$base/wt"
+  fi
 
-  ( cd "$repo" && PATH="$base/stub:$PATH" TMPDIR="$tmpdir" bash "$HOOK_SRC" ) >/dev/null 2>"$err" || rc=$?
+  ( cd "$run_dir" && PATH="$base/stub:$PATH" TMPDIR="$tmpdir" bash "$HOOK_SRC" ) >/dev/null 2>"$err" || rc=$?
   eq "$label: exits 3" "3" "$rc"
   eq "$label: unstage WARNING appears once" "1" \
     "$(grep -cxF "WARNING: cleanup failed to unstage raw sources carried back from 'wiki'" "$err" || true)"
@@ -378,7 +391,11 @@ run_unstage_failure_case() {
   line=$(sed -n "$((${n:-0} + 1))p" "$err")
   cmd=${line#" manual recovery: "}
   eq "$label: unstage hint follows the WARNING" " manual recovery: $cmd" "$line"
-  check_words "unstage hint" "$cmd" git reset -q -- .rite/wiki/raw
+  check_words "unstage hint" "$cmd" git -C "$(cd "$repo" && pwd -P)" reset -q -- .rite/wiki/raw
+  if [ "$from" = worktree ]; then
+    eq "$label: unstage hint does not name the calling worktree" "different" \
+      "$([ "${words[3]:-}" != "$(cd "$run_dir" && pwd -P)" ] && echo different || echo same)"
+  fi
   eq "$label: raw source is still staged as reported" ".rite/wiki/raw/reviews/pr-test.md" \
     "$(git -C "$repo" diff --cached --name-only)"
   eq "$label: raw source restoration continues after unstage failure" "1" \
@@ -404,10 +421,68 @@ run_pre_checkout_failure_case() {
   eq "$label: exits 3" "3" "$rc"
   eq "$label: invariant violation reported once" "1" "$(grep -c "is tracked on 'dev' — invariant violation" "$err" || true)"
   eq "$label: raw source stays staged" ".rite/wiki/raw/reviews/$raw" "$(git -C "$repo" diff --cached --name-only)"
-  eq "$label: git rm --cached hint printed once" "1" "$(grep -c '^ 1) git rm --cached ' "$err" || true)"
-  line=$(grep '^ 1) git rm --cached ' "$err" || true)
+  eq "$label: git rm --cached hint printed once" "1" "$(grep -c '^ 1) git -C .* rm --cached ' "$err" || true)"
+  line=$(grep '^ 1) git -C .* rm --cached ' "$err" || true)
   cmd=${line#" 1) "}
-  check_words "untrack hint" "$cmd" git rm --cached ".rite/wiki/raw/reviews/$raw"
+  check_words "untrack hint" "$cmd" git -C "$(cd "$repo" && pwd -P)" rm --cached ".rite/wiki/raw/reviews/$raw"
+}
+
+# run_stash_pop_failure_case: the wiki commit fails and the stash pop in cleanup fails too,
+# so the WARNING carries the stash commands to run by hand.
+run_stash_pop_failure_case() {
+  local label="$1"
+  local -x GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+  local base repo root tmpdir err rc=0 n
+  make_fixture dev yes
+  root=$(cd "$repo" && pwd -P)
+  tmpdir="$base/tmp"; err="$base/err"; mkdir "$tmpdir"
+  write_stub "$base/stub" '[ "$1" = stash ] && [ "$2" = pop ]'
+
+  ( cd "$repo" && PATH="$base/stub:$PATH" TMPDIR="$tmpdir" bash "$HOOK_SRC" ) >/dev/null 2>"$err" || rc=$?
+  eq "$label: exits 3" "3" "$rc"
+  eq "$label: stash pop WARNING appears once" "1" "$(grep -cxF 'WARNING: cleanup failed to pop stash' "$err" || true)"
+  n=$(grep -nxF 'WARNING: cleanup failed to pop stash' "$err" | head -1 | cut -d: -f1 || true)
+  eq "$label: manual recovery heading follows" " manual recovery:" "$(sed -n "$((${n:-0} + 1))p" "$err")"
+  eq "$label: stash list hint names the main checkout" " git -C $root stash list | grep rite-wiki-ingest-commit-stash" \
+    "$(sed -n "$((${n:-0} + 2))p" "$err")"
+  eq "$label: stash pop hint names the main checkout" " git -C $root stash pop # resolve conflicts if any" \
+    "$(sed -n "$((${n:-0} + 3))p" "$err")"
+}
+
+# run_push_failure_case: the wiki commit lands but the push fails, so the WARNING carries the push command.
+run_push_failure_case() {
+  local label="$1"
+  local -x GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+  local base repo tmpdir err rc=0 line cmd words ok=1
+  make_fixture dev no
+  tmpdir="$base/tmp"; err="$base/err"; mkdir "$tmpdir"
+  rm -f "$repo/.git/hooks/pre-commit"
+  git -C "$repo" remote set-url origin "$base/missing.git"
+
+  ( cd "$repo" && TMPDIR="$tmpdir" bash "$HOOK_SRC" ) >/dev/null 2>"$err" || rc=$?
+  eq "$label: exits 4" "4" "$rc"
+  eq "$label: push hint printed once" "1" "$(grep -c '^ manual recovery: git -C ' "$err" || true)"
+  line=$(grep '^ manual recovery: git -C ' "$err" || true)
+  cmd=${line#" manual recovery: "}
+  check_words "push hint" "$cmd" git -C "$(cd "$repo" && pwd -P)" push origin wiki
+}
+
+# run_missing_wiki_branch_case: without a local wiki branch the hook stops and prints the fetch command.
+run_missing_wiki_branch_case() {
+  local label="$1"
+  local -x GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+  local base repo tmpdir err rc=0 line cmd words ok=1
+  make_fixture dev no
+  tmpdir="$base/tmp"; err="$base/err"; mkdir "$tmpdir"
+  git -C "$repo" branch -q -D wiki
+
+  ( cd "$repo" && TMPDIR="$tmpdir" bash "$HOOK_SRC" ) >/dev/null 2>"$err" || rc=$?
+  eq "$label: exits 2" "2" "$rc"
+  eq "$label: fetch hint printed once" "1" "$(grep -c '^ 1) git -C .* # fresh clone' "$err" || true)"
+  line=$(grep '^ 1) git -C .* # fresh clone' "$err" || true)
+  cmd=${line#" 1) "}
+  cmd=${cmd%% # fresh clone*}
+  check_words "fetch hint" "$cmd" git -C "$(cd "$repo" && pwd -P)" fetch origin wiki:wiki
 }
 
 echo "TC-RECOVERY-PASTE: checkout-back failure prints pasteable recovery commands"
@@ -423,6 +498,10 @@ run_auto_restore_case "auto restore" "dev" yes
 run_auto_restore_case "auto restore no stash" "dev" no
 run_auto_restore_preserves_staged_raw_case "auto restore preserves user staging"
 run_unstage_failure_case "unstage failure"
+run_unstage_failure_case "unstage failure from a linked worktree" worktree
+run_stash_pop_failure_case "stash pop failure"
+run_push_failure_case "push failure"
+run_missing_wiki_branch_case "missing wiki branch"
 run_pre_checkout_failure_case "pre-checkout failure"
 run_pre_checkout_failure_case "pre-checkout failure (apostrophe raw name)" "it's pr-test.md"
 echo ""
