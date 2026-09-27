@@ -6,6 +6,8 @@ description: "`grep -q` は最初の一致で即座に終了する。"
 created: "2026-08-03T07:46:56Z"
 sources:
   - type: "reviews"
+    resource: "raw/reviews/20260927T201202Z-pr-3334.md"
+  - type: "reviews"
     resource: "raw/reviews/20260926T134206Z-pr-3160.md"
   - type: "fixes"
     resource: "raw/fixes/20260916T235140Z-pr-2920.md"
@@ -47,8 +49,9 @@ sources:
     resource: "raw/reviews/20260926T105711Z-pr-3149.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:47:53Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T20:30:00Z" }
 verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T20:30:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:47:53Z" }
   - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-07T23:54:45Z" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-11T16:00:00Z" }
@@ -218,6 +221,14 @@ bash helper.sh --stdin --label "$excluded_path" --quiet <<< "$body"
 
 入力はヒアストリング（`head -5 <<< "$x"`）で渡すか、入力を最後まで読むコマンド（`sed -n '1,5p'` 等）で切り出す。
 
+### 免除条件を producer の文面だけで決めると、`$` を含まない大量出力がすり抜ける
+
+検出器の免除規則を「producer 段に `$` を含まない短いリテラルなら安全」とまとめると、ブレース展開や glob のように `$` を持たずに大量の出力を生む producer が免除側へ入る。文面は短くても、展開後の出力はパイプバッファを超えうる。免除の根拠は「producer が書き終わる量か」であり、文面に変数参照が無いことはその代理にすぎない。
+
+免除規則を 1 本にまとめたときは、規則を説明するヘッダーコメントや rationale 文書が実装と同じ範囲を言い切っているかも突き合わせる。実装より広く書く（brace group を無条件に免除すると書く）、実装より狭く書く（ガイド側の免除文が lint の例外より狭い）、頻度を誇張する（SIGPIPE が「毎回起きる」と書く）という 3 方向の食い違いが、同じ変更に対して複数のレビュアーから出た。
+
+コマンド producer を `out=$(cmd) && grep -q x <<< "$out"` に書き換えると SIGPIPE の経路は消えるが、producer 失敗の扱いはファイルの設定で変わる。`pipefail` のあるファイルでは元の pipeline と同じく失敗が表に出る。`pipefail` の無いファイルでは、元の pipeline が握りつぶしていた producer 失敗が偽として表に出る側に変わる。書き換えの前に、そのファイルで producer 失敗を真偽に混ぜてよいかを確かめる。
+
 ## 関連ページ
 
 - [function 内 `local v=$(...)` と top-level `v=$(...)` の `set -e` 伝播差で writer/reader 非対称が偶然 mask される](./bash-local-vs-toplevel-pipefail-asymmetry.md)
@@ -250,3 +261,4 @@ bash helper.sh --stdin --label "$excluded_path" --quiet <<< "$body"
 - [受入条件どおりの残件検索（cycle 3）](../../raw/reviews/20260924T070926Z-pr-3032.md)
 - [引数駆動の早期 return によるヒアストリング化のレビュー結果](../../raw/reviews/20260926T105711Z-pr-3149.md)
 - [診断用の printf と head の組み合わせで reason marker が消える経路を指摘したレビュー結果](../../raw/reviews/20260926T134206Z-pr-3160.md)
+- [lint の免除規則と文書の範囲の食い違いを指摘したレビュー結果](../../raw/reviews/20260927T201202Z-pr-3334.md)
