@@ -119,7 +119,7 @@ if [ -n "$WORKTREE" ]; then
   cfg_rc=0
   CFG=$(bash "$SCRIPT_DIR/lib/rite-config-path.sh" "$WORKTREE" 2>&1) || cfg_rc=$?
   if [ "$cfg_rc" -eq 1 ]; then
-    echo "WARNING: ${CFG}。branch.base / wiki 設定は既定値で続行します" >&2
+    echo "WARNING: ${CFG}。wiki 設定は既定値で続行します（branch.base は既定値で補いません）" >&2
     CFG=""
   elif [ "$cfg_rc" -ne 0 ]; then
     echo "ERROR: $CFG" >&2
@@ -127,10 +127,13 @@ if [ -n "$WORKTREE" ]; then
   fi
 fi
 if [ -z "$BASE" ] && [ -n "$CFG" ]; then
-  BASE=$(awk '/^branch:/{f=1;next} f&&/^[^ ]/{exit} f&&/base:/{print;exit}' "$CFG" \
+  BASE=$(awk '/^branch:/{f=1;next} f&&/^[^[:space:]#]/{exit} f&&/^[[:space:]]+base:/{print;exit}' "$CFG" \
     | sed 's/[[:space:]]#.*//' | sed 's/.*base:[[:space:]]*//' | tr -d '[:space:]"'"'"'') || BASE=""
 fi
-[ -n "$BASE" ] || BASE="develop"
+# 既定の base で補わない。実際の base と違う枝との差分で evidence を照合してしまうため
+if [ -z "$BASE" ]; then
+  echo "WARNING: rite-config.yml の branch.base を読めません。base との差分は照合できません" >&2
+fi
 
 # Same wiki-key read as wiki-apply-capture.sh. A missing file is enabled,
 # and auto_query is on only when the value is exactly true.
@@ -138,7 +141,7 @@ _yaml_at() {
   local file="$1" key="$2"
   awk -v k="$key" '
     /^wiki:/ {s=1; next}
-    s && /^[^ ]/ {exit}
+    s && /^[^[:space:]#]/ {exit}
     s && $0 ~ "^[[:space:]]+" k ":" {print; exit}
   ' "$file" 2>/dev/null \
     | sed 's/[[:space:]]#.*//' \
@@ -176,8 +179,14 @@ fi
 # 失敗時の git の出力は元の実行から保持する（再実行では失敗した側を再現できない）。
 # 外部 diff と textconv は固定し、ユーザーの diff 設定で照合対象の本文を変えない
 DIFF_OK=1
-git -C "$WORKTREE" diff --no-ext-diff --no-textconv --name-only "${BASE}...HEAD" >"$DIFF_DIR/names" 2>>"$DIFF_ERRF" || DIFF_OK=0
-git -C "$WORKTREE" diff --no-ext-diff --no-textconv "${BASE}...HEAD" >"$DIFF_DIR/text" 2>>"$DIFF_ERRF" || DIFF_OK=0
+if [ -z "$BASE" ]; then
+  : >"$DIFF_DIR/names"
+  : >"$DIFF_DIR/text"
+  DIFF_OK=0
+else
+  git -C "$WORKTREE" diff --no-ext-diff --no-textconv --name-only "${BASE}...HEAD" >"$DIFF_DIR/names" 2>>"$DIFF_ERRF" || DIFF_OK=0
+  git -C "$WORKTREE" diff --no-ext-diff --no-textconv "${BASE}...HEAD" >"$DIFF_DIR/text" 2>>"$DIFF_ERRF" || DIFF_OK=0
+fi
 
 reason=$(
   WIKI_APPLY_FLOW="$FLOW" \
@@ -368,7 +377,11 @@ case "$reason" in
   "") _deny "record_corrupt" ;;
   base_diff_unreadable)
     # どの base で差分を取れなかったかを利用者に見せる（base の読み違いを原因まで辿れるように）
-    echo "ERROR: git diff ${BASE}...HEAD に失敗しました: $(cat "$DIFF_ERRF")" >&2
+    if [ -z "$BASE" ]; then
+      echo "ERROR: rite-config.yml の branch.base を読めないため、base との差分を取れません" >&2
+    else
+      echo "ERROR: git diff ${BASE}...HEAD に失敗しました: $(cat "$DIFF_ERRF")" >&2
+    fi
     _deny "$reason"
     ;;
   *) _deny "$reason" ;;

@@ -81,10 +81,6 @@ NOT_TERMINATORS = {
 # Terminators allowed to end a section on a column-0 comment. They are not
 # letter-only, so they still end on digit- and underscore-led keys.
 COMMENT_ENDS = {
-    ("hooks/scripts/wiki-apply-capture.sh", "^[^ ]"),
-    ("hooks/scripts/wiki-apply-gate.sh", "^[^ ]"),
-    ("hooks/scripts/wiki-growth-check.sh", "^[^ ]"),
-    ("scripts/fix-work-memory-update.sh", "^[^ ]"),
     ("hooks/scripts/wiki-lint-descriptive-refs.sh", "^[^[:space:]]"),
 }
 
@@ -271,7 +267,7 @@ table_out=$(check_tree "$SANDBOX" real)
 assert "count table mismatch is reported" "1" \
   "$(printf '%s\n' "$table_out" | grep -c -- "^references/wiki-patterns.md: 0 terminators, expected 7$")"
 assert "stale COMMENT_ENDS entry is reported" "1" \
-  "$(printf '%s\n' "$table_out" | grep -c -- "^scripts/fix-work-memory-update.sh: COMMENT_ENDS lists")"
+  "$(printf '%s\n' "$table_out" | grep -c -- "^hooks/scripts/wiki-lint-descriptive-refs.sh: COMMENT_ENDS lists")"
 
 print_summary "$(basename "$0")" \
   "Section terminators must end on any top-level key and on neither an empty nor an indented line. The rule for rite-config.yml sections is written in plugins/rite/references/wiki-patterns.md."

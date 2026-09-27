@@ -160,9 +160,16 @@ done
 check 'helper leaves final fix sentinel to caller' lacks "$CASE_DIR/out" '[fix:'
 cleaned normal
 
-reset_case; printf 'No issue reference\n' > "$CASE_DIR/pr body.txt"; rm "$CASE_DIR/rite-config.yml"; run
+reset_case; printf 'No issue reference\n' > "$CASE_DIR/pr body.txt"; run
 marker fallback success 77
-check 'default base branch preserved' contains "$CASE_DIR/git.log" 'origin/develop...HEAD'
+
+# config が無いと branch.base を決められない。既定の develop で diff せず停止する
+reset_case; rm "$CASE_DIR/rite-config.yml"; run
+check 'missing config stops' test "$RC" = 1
+marker 'missing config' failed 42
+reason 'missing config' base_branch_unresolved
+no_calls 'missing config'
+check 'missing config does not diff' lacks "$CASE_DIR/git.log" 'diff --name-status'
 check 'missing config warns with tried path' contains "$CASE_DIR/err" "WARNING: rite-config.yml が見つかりません (試したパス: $CASE_DIR/rite-config.yml)"
 
 # 引用符なしの値 + 行末コメントがコメントごと base_branch に紛れ込まないことを確認する
@@ -177,8 +184,14 @@ check 'base outside branch section does not leak into diff range' lacks "$CASE_D
 # branch: 節の直後に数字始まりのトップレベルキー（例: 2fa:）が来ても節終了を検出し、
 # その配下の base: を branch.base として誤取り込みしないことを確認する
 reset_case; printf 'branch:\n  pattern: "{type}/issue-{number}-{slug}"\n2fa:\n  base: wrong\n' > "$CASE_DIR/rite-config.yml"; run
-check 'non-alpha top-level key ends branch section' contains "$CASE_DIR/git.log" 'origin/develop...HEAD'
+check 'non-alpha top-level key ends branch section' test "$RC" = 1
+reason 'branch section without base' base_branch_unresolved
 check 'base outside branch via non-alpha key does not leak into diff range' lacks "$CASE_DIR/git.log" 'origin/wrong...HEAD'
+
+# 節の中の列 0 コメントで節を閉じない。コメントアウトした base も値として読まない
+reset_case; printf 'branch:\n# base: old\n  base: "main"\n' > "$CASE_DIR/rite-config.yml"; run
+check 'column-0 comment keeps branch section open' contains "$CASE_DIR/git.log" 'origin/main...HEAD'
+check 'commented-out base is not read' lacks "$CASE_DIR/git.log" 'origin/old...HEAD'
 
 # 追跡外 config は main checkout にだけある。linked worktree から main の base を読む
 WT_MAIN="$TEST_DIR/wtmain"; WT_DIR="$TEST_DIR/wtwt"
