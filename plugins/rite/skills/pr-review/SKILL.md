@@ -1057,39 +1057,11 @@ Issue に関連付いたレビュー開始直後に [停滞診断の時計](../.
 rationale: references/design-rationale.md#state-snapshot-notes
 
 ```bash
-# 4 変数は 5.0.A 引数用に context 保持。detached HEAD は DETACHED:<hash> に置換。
-# rationale: references/design-rationale.md#state-snapshot-notes
-ORIG_BR=$(git branch --show-current 2>/dev/null || echo "")
-if [ -z "$ORIG_BR" ]; then
- ORIG_BR="DETACHED:$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
-fi
-ORIG_SC=$(git stash list 2>/dev/null | wc -l | tr -d ' ')
-_wth_raw=$(bash {plugin_root}/hooks/scripts/lib/git-status-filtered.sh --tracked-only)
-_wth_rc=$?
-if command -v md5sum >/dev/null 2>&1; then
- ORIG_BLH=$(git branch --list 2>/dev/null | sort | md5sum | awk '{print $1}')
- if [ "$_wth_rc" -ne 0 ]; then
-   echo "WARNING: git-status-filtered.sh failed — worktree drift snapshot skipped" >&2
-   ORIG_WTH=""
- else
-   ORIG_WTH=$(printf '%s' "$_wth_raw" | md5sum | awk '{print $1}')
- fi
-elif command -v shasum >/dev/null 2>&1; then
- ORIG_BLH=$(git branch --list 2>/dev/null | sort | shasum | awk '{print $1}')
- if [ "$_wth_rc" -ne 0 ]; then
-   echo "WARNING: git-status-filtered.sh failed — worktree drift snapshot skipped" >&2
-   ORIG_WTH=""
- else
-   ORIG_WTH=$(printf '%s' "$_wth_raw" | shasum | awk '{print $1}')
- fi
-else
- ORIG_BLH="" # hash 計算不可 — branch_list drift check は skip 扱い (verifier 側で空文字列を skip)
- ORIG_WTH="" # hash 計算不可 — worktree drift check は skip 扱い (verifier 側で空文字列を skip)
-fi
-echo "review_pre_state: branch=$ORIG_BR stash_count=$ORIG_SC branch_list_hash=$ORIG_BLH worktree_hash=$ORIG_WTH"
+# 4 値は 5.0.A の verify と同じ関数で算出する。
+bash {plugin_root}/hooks/scripts/post-review-state-verify.sh --snapshot
 ```
 
-出力 4 値を ステップ 5.0.A へ literal substitute する。`$ORIG_BR → {orig_br}` ほか（大文字 → 小文字 placeholder）。
+出力行 `review_pre_state:` の 4 値を ステップ 5.0.A へ literal substitute する（`branch=` → `{orig_br}`、`stash_count=` → `{orig_sc}`、`branch_list_hash=` → `{orig_blh}`、`worktree_hash=` → `{orig_wth}`）。
 
 ### 4.0.W Wiki Query Injection (Conditional)
 
@@ -1442,7 +1414,7 @@ bash {plugin_root}/hooks/scripts/review-spawn-spread-check.sh \
 ### 5.0.A Post-Review State Verification
 
 ステップ 4 の reviewer が READ-ONLY を守り working tree / branch / stash を mutate しなかったことを verify する。drift は WARNING。branch drift のみ `git checkout` で回復する（worktree drift は手動）。
-4.0.A の 4 値をリテラル substitute する（`$ORIG_BR → {orig_br}` ほか）。
+4.0.A の出力行の 4 値をリテラル substitute する（`branch=` → `{orig_br}` ほか）。
 
 ```bash
 # {plugin_root} と {orig_br} / {orig_sc} / {orig_blh} / {orig_wth} (ステップ 4.0.A の出力値) をリテラル substitute する。
@@ -1497,7 +1469,7 @@ printf '%s\n' "$result_json"
 | `orig_blh_placeholder_residue` | ステップ 5.0.A の `{orig_blh}` placeholder が未 substitute (同上) |
 | `orig_wth_placeholder_residue` | ステップ 5.0.A の `{orig_wth}` placeholder が未 substitute (同上) |
 
-WARNING は stderr、JSON line は stdout。drift は **non-blocking** で ステップ 5.4 に載せる。
+WARNING は stderr、JSON line は stdout。drift は **non-blocking** で ステップ 5.4 に載せる。JSON の `types` に並ぶ全軸を載せる（`type` は最初の 1 軸だけを表す）。
 **Branch drift で `recovered=false`**: 後続 `/rite:fix` が誤 branch に乗らないよう AskUserQuestion で確認する。
 
 ### 5.1 Result Collection

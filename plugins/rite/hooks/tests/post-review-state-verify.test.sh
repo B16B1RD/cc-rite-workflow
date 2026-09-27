@@ -22,27 +22,13 @@ if [ ! -f "$VERIFY" ]; then
   exit 1
 fi
 
-# --- Pin: snapshot side (pr-review SKILL.md ステップ 4.0.A) must route ORIG_WTH
-#     through git-status-filtered.sh -------------------------------------------
-# snapshot_hash() below reimplements the SKILL.md command rather than reading it,
-# so nothing else in this suite would catch a regression where the SKILL.md side
-# reverts to raw `git status --porcelain`. Pin the source text directly.
-# The capture-first pattern (filter output captured into _wth_raw before hashing,
-# so the exit-code check does not depend on pipefail — each Bash tool invocation
-# starts a fresh shell with pipefail off) puts the git-status-filtered.sh call on
-# its own line rather than inline in the ORIG_WTH assignment.
-assert_grep_in_section "SKILL.md 4.0.A: ORIG_WTH routed through git-status-filtered.sh" \
+# --- Pin: snapshot side (pr-review SKILL.md ステップ 4.0.A) delegates to the
+#     verifier's --snapshot mode, so both sides compute the 4 axes with the same
+#     functions. An inline computation reappearing in 4.0.A would let the two
+#     sides drift apart again. -------------------------------------------------
+assert_grep_in_section "SKILL.md 4.0.A: snapshot delegates to post-review-state-verify.sh --snapshot" \
   "$PR_REVIEW_SKILL" \
-  '^### 4\.0\.A ' '^### 4\.0\.W' '_wth_raw=.*git-status-filtered'
-
-# --- Pin: snapshot side must also guard the filter's exit code -----------------
-# SKILL.md is markdown (not directly executable), so a partial revert that keeps
-# the `_wth_raw=...git-status-filtered.sh` routing line but drops the exit-code
-# check (`_wth_rc` + the "snapshot skipped" WARNING) would go undetected by the
-# routing pin alone. Pin the guard's presence too.
-assert_grep_in_section "SKILL.md 4.0.A: filter failure guard present (WARNING + skip on non-zero exit)" \
-  "$PR_REVIEW_SKILL" \
-  '^### 4\.0\.A ' '^### 4\.0\.W' '_wth_rc.*-ne 0'
+  '^### 4\.0\.A ' '^### 4\.0\.W' 'post-review-state-verify\.sh --snapshot'
 
 cleanup_dirs=()
 cleanup() {
@@ -58,9 +44,49 @@ PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 snapshot_block=$(awk '/^### 4\.0\.A /{section=1;next} section && /^```bash$/{code=1;next} code && /^```$/{exit} code{print}' "$PR_REVIEW_SKILL")
 snapshot_block=${snapshot_block//\{plugin_root\}/$PLUGIN_ROOT}
 [ -n "$snapshot_block" ] || { echo "ERROR: snapshot block missing" >&2; exit 1; }
-snapshot_hash() {
-  ( cd "$1" && eval "$snapshot_block" >/dev/null && printf '%s' "$ORIG_WTH" )
+for inline in 'git stash list' 'git branch --list' 'git-status-filtered'; do
+  case "$snapshot_block" in
+    *"$inline"*) fail "SKILL.md 4.0.A: no inline '$inline' (axes are computed by the helper only)" ;;
+    *) pass "SKILL.md 4.0.A: no inline '$inline' (axes are computed by the helper only)" ;;
+  esac
+done
+# Run the production 4.0.A block and return its review_pre_state line.
+snapshot_line() {
+  ( cd "$1" && eval "$snapshot_block" )
 }
+# $1 = review_pre_state line, $2 = field name (branch / stash_count / ...)
+field() {
+  printf '%s\n' "$1" | sed -n "s/.* $2=\([^ ]*\).*/\1/p"
+}
+snapshot_hash() {
+  field "$(snapshot_line "$1")" worktree_hash
+}
+# Verify $1 against the snapshot line $2 with all four axes; extra args pass through.
+verify_all() {
+  local dir="$1" line="$2"
+  shift 2
+  ( cd "$dir" && bash "$VERIFY" --original-branch "$(field "$line" branch)" \
+      --original-stash-count "$(field "$line" stash_count)" \
+      --original-branch-list-hash "$(field "$line" branch_list_hash)" \
+      --original-worktree-hash "$(field "$line" worktree_hash)" "$@" )
+}
+new_sandbox() {
+  local d
+  d=$(make_sandbox) || return 1
+  git -C "$d" config user.email t@test.local
+  git -C "$d" config user.name test
+  printf '%s\n' "$d"
+}
+
+# --- Output shape: one review_pre_state line with all four fields -------------
+sbx_shape=$(new_sandbox) && cleanup_dirs+=("$sbx_shape") || { echo "ERROR: sandbox setup failed, aborting" >&2; exit 1; }
+shape_out=$(snapshot_line "$sbx_shape")
+assert "snapshot prints exactly one line" 1 "$(printf '%s\n' "$shape_out" | wc -l | tr -d ' ')"
+if printf '%s\n' "$shape_out" | grep -qE '^review_pre_state: branch=[^ ]+ stash_count=[0-9]+ branch_list_hash=[^ ]* worktree_hash=[^ ]*$'; then
+  pass "snapshot line has the review_pre_state shape"
+else
+  fail "snapshot line has the review_pre_state shape (got: $shape_out)"
+fi
 
 # --- Baseline: clean tree, no drift at all -----------------------------------
 sbx0=$(make_sandbox) && cleanup_dirs+=("$sbx0") || { echo "ERROR: make_sandbox failed, aborting" >&2; exit 1; }
@@ -177,5 +203,166 @@ done
 printf 'tracked edit' >> "$sbx_untracked/a"
 out=$(cd "$sbx_untracked" && bash "$VERIFY" --original-branch "$branch_untracked" --original-worktree-hash "$wth_untracked" 2>"$stderr_untracked")
 assert "tracked edit with ten untracked files remains drift" worktree "$(printf '%s' "$out" | jq -r '.type')"
+
+# refs/heads and refs/stash are shared by every worktree. A parallel session's
+# branch / stash operations in another worktree must not read as reviewer drift,
+# while the same operations in the reviewed worktree still must.
+wt_base=$(mktemp -d) && cleanup_dirs+=("$wt_base") || exit 1
+wt_base=$(cd "$wt_base" && pwd -P)
+
+# --- Another worktree creates a branch during the review -----------------------
+sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
+snap=$(snapshot_line "$sbx")
+git -C "$sbx" worktree add -q -b other-created "$wt_base/created" >/dev/null 2>&1
+out=$(verify_all "$sbx" "$snap"); rc=$?
+assert "other worktree creating a branch reports drift=false" false "$(printf '%s' "$out" | jq -r .drift)"
+assert "other worktree creating a branch exits 0" 0 "$rc"
+
+# --- Another worktree is removed and its branch deleted during the review ------
+sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
+git -C "$sbx" worktree add -q -b other-deleted "$wt_base/deleted" >/dev/null 2>&1
+snap=$(snapshot_line "$sbx")
+git -C "$sbx" worktree remove "$wt_base/deleted" >/dev/null 2>&1
+git -C "$sbx" branch -q -D other-deleted
+out=$(verify_all "$sbx" "$snap"); rc=$?
+assert "other worktree deleting its branch reports drift=false" false "$(printf '%s' "$out" | jq -r .drift)"
+assert "other worktree deleting its branch exits 0" 0 "$rc"
+
+# --- The other worktree is registered through a symlinked path -----------------
+sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
+ln -s "$wt_base" "$wt_base-link" && cleanup_dirs+=("$wt_base-link")
+snap=$(snapshot_line "$sbx")
+git -C "$sbx" worktree add -q -b other-linked "$wt_base-link/linked" >/dev/null 2>&1
+out=$(verify_all "$sbx" "$snap")
+assert "branch checked out via a symlinked worktree path reports drift=false" false "$(printf '%s' "$out" | jq -r .drift)"
+
+# --- Another worktree stashes during the review ---------------------------------
+sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
+git -C "$sbx" worktree add -q -b other-stash "$wt_base/stash" >/dev/null 2>&1
+snap=$(snapshot_line "$sbx")
+echo other >> "$wt_base/stash/a"
+git -C "$wt_base/stash" stash push -q -m other-session
+out=$(verify_all "$sbx" "$snap"); rc=$?
+assert "other worktree stashing reports drift=false" false "$(printf '%s' "$out" | jq -r .drift)"
+assert "other worktree stashing exits 0" 0 "$rc"
+
+# --- Negative controls: the same operations in the reviewed worktree -----------
+sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
+snap=$(snapshot_line "$sbx")
+git -C "$sbx" branch leaked
+out=$(verify_all "$sbx" "$snap")
+assert "own plain branch is reported as branch_list" '["branch_list"]' "$(printf '%s' "$out" | jq -c .types)"
+
+sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
+snap=$(snapshot_line "$sbx")
+echo own >> "$sbx/a"
+git -C "$sbx" stash push -q -m own
+out=$(verify_all "$sbx" "$snap")
+assert "own stash is reported as stash" '["stash"]' "$(printf '%s' "$out" | jq -c .types)"
+
+# A reviewer experiment worktree is not another session: a branch it creates counts.
+sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
+snap=$(snapshot_line "$sbx")
+git -C "$sbx" worktree add -q -b review-exp "$wt_base/rite-review-mutation-x" >/dev/null 2>&1 \
+  || fail "fixture: worktree add in the reviewer namespace"
+out=$(verify_all "$sbx" "$snap")
+assert "branch from a reviewer experiment worktree is reported as branch_list" '["branch_list"]' "$(printf '%s' "$out" | jq -c .types)"
+
+# A reviewer-leak branch name is not another session's, wherever its worktree lives.
+sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
+snap=$(snapshot_line "$sbx")
+git -C "$sbx" worktree add -q -b pr-1-test "$wt_base/leak-outside" >/dev/null 2>&1 \
+  || fail "fixture: worktree add outside the reviewer namespace"
+out=$(verify_all "$sbx" "$snap")
+assert "reviewer-leak branch outside the namespace is reported as branch_list" '["branch_list"]' "$(printf '%s' "$out" | jq -c .types)"
+
+# The leak names are pr-cycle-cleanup.sh's reap names minus the orchestrator-created cycle{N}.
+leak_alts() { grep -m1 "$2=" "$1" | sed -E 's/.*-\((.*)\)\$.*/\1/' | tr '|' '\n' | grep -v '^cycle' | sort | tr '\n' ' '; }
+cleanup_alts=$(leak_alts "$SCRIPT_DIR/../scripts/pr-cycle-cleanup.sh" "readonly PATTERN")
+verify_alts=$(leak_alts "$VERIFY" _reviewer_leak_re)
+[ -n "$cleanup_alts" ] || fail "leak names: pr-cycle-cleanup.sh PATTERN not found"
+assert "reviewer-leak names match pr-cycle-cleanup.sh reap names" "$cleanup_alts" "$verify_alts"
+
+# A stash made on another branch in the reviewed worktree counts after switching back.
+sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
+git -C "$sbx" branch side
+snap=$(snapshot_line "$sbx")
+git -C "$sbx" switch -q side
+echo side >> "$sbx/a"
+git -C "$sbx" stash push -q -m side
+git -C "$sbx" switch -q "$(field "$snap" branch)"
+out=$(verify_all "$sbx" "$snap")
+assert "stash made on another branch of the reviewed worktree is reported as stash" '["stash"]' "$(printf '%s' "$out" | jq -c .types)"
+
+# --- Every changed axis is reported, not just the first one --------------------
+sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
+snap=$(snapshot_line "$sbx")
+echo stashed >> "$sbx/a"
+git -C "$sbx" stash push -q -m own
+echo edited >> "$sbx/a"
+stderr_multi=$(mktemp) && cleanup_dirs+=("$stderr_multi")
+out=$(verify_all "$sbx" "$snap" 2>"$stderr_multi"); rc=$?
+assert "stash + tracked edit reports both axes in priority order" '["stash","worktree"]' "$(printf '%s' "$out" | jq -c .types)"
+assert "type is the first of types" "$(printf '%s' "$out" | jq -r '.types[0]')" "$(printf '%s' "$out" | jq -r .type)"
+assert "one 'type:' block per reported axis" 2 "$(grep -c '^  type: ' "$stderr_multi")"
+assert "advisory-only drift exits 0" 0 "$rc"
+
+# Branch drift is recovered, and the worktree axis is still judged on the state
+# before the recovery checkout.
+sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
+git -C "$sbx" branch side
+snap=$(snapshot_line "$sbx")
+git -C "$sbx" switch -q side
+echo edited >> "$sbx/a"
+out=$(verify_all "$sbx" "$snap" --auto-recover true); rc=$?
+assert "branch drift + tracked edit reports both axes" '["branch","worktree"]' "$(printf '%s' "$out" | jq -c .types)"
+assert "branch drift is recovered" true "$(printf '%s' "$out" | jq -r .recovered)"
+assert "recovered branch drift exits 0" 0 "$rc"
+
+sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
+git -C "$sbx" branch side
+snap=$(snapshot_line "$sbx")
+git -C "$sbx" switch -q side
+echo edited >> "$sbx/a"
+out=$(verify_all "$sbx" "$snap" --auto-recover false 2>/dev/null); rc=$?
+assert "unrecovered branch drift + tracked edit reports both axes" '["branch","worktree"]' "$(printf '%s' "$out" | jq -c .types)"
+assert "unrecovered branch drift exits 1" 1 "$rc"
+
+# --- Detached HEAD: sentinel branch and '(no branch)' stash subjects -----------
+sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
+git -C "$sbx" checkout -q --detach
+snap=$(snapshot_line "$sbx")
+case "$(field "$snap" branch)" in
+  DETACHED:*) pass "detached snapshot uses the DETACHED: sentinel" ;;
+  *) fail "detached snapshot uses the DETACHED: sentinel (got: $snap)" ;;
+esac
+echo detached >> "$sbx/a"
+git -C "$sbx" stash push -q -m detached
+out=$(verify_all "$sbx" "$snap")
+assert "stash made on a detached HEAD is reported as stash" '["stash"]' "$(printf '%s' "$out" | jq -c .types)"
+
+# --- branch_list axis failure skips the axis instead of hashing empty input ----
+sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
+git_shim=$(mktemp -d) && cleanup_dirs+=("$git_shim")
+real_git=$(command -v git)
+printf '#!/bin/bash\n[ "$1" = for-each-ref ] && exit 128\nexec "%s" "$@"\n' "$real_git" > "$git_shim/git"
+chmod +x "$git_shim/git"
+stderr_fer=$(mktemp) && cleanup_dirs+=("$stderr_fer")
+snap=$(cd "$sbx" && PATH="$git_shim:$PATH" bash "$VERIFY" --snapshot 2>"$stderr_fer")
+assert "for-each-ref failure leaves branch_list_hash empty" "" "$(field "$snap" branch_list_hash)"
+assert "for-each-ref failure surfaces a WARNING" 1 "$(grep -c 'branch_list drift axis skipped' "$stderr_fer")"
+assert "for-each-ref failure leaves stash_count empty" "" "$(field "$snap" stash_count)"
+assert "for-each-ref failure surfaces a stash WARNING" 1 "$(grep -c 'stash drift axis skipped' "$stderr_fer")"
+git -C "$sbx" branch leaked
+out=$(cd "$sbx" && PATH="$git_shim:$PATH" bash "$VERIFY" --original-branch "$(field "$snap" branch)" \
+  --original-branch-list-hash "nonempty-snapshot-hash" 2>/dev/null)
+assert "for-each-ref failure does not report branch_list drift" false "$(printf '%s' "$out" | jq -r .drift)"
+
+# --- Snapshot side: filter failure leaves worktree_hash empty ------------------
+stderr_snapfail=$(mktemp) && cleanup_dirs+=("$stderr_snapfail")
+snap=$(cd "$sbx4" && bash "$fail_dir/post-review-state-verify.sh" --snapshot 2>"$stderr_snapfail"); rc=$?
+assert "snapshot filter failure leaves worktree_hash empty" "" "$(field "$snap" worktree_hash)"
+assert "snapshot filter failure surfaces a WARNING" 1 "$(grep -c 'git-status-filtered.sh failed' "$stderr_snapfail")"
+assert "snapshot filter failure exits 0" 0 "$rc"
 
 print_summary "$(basename "$0")"
