@@ -979,7 +979,7 @@ LLM は `skill: "rite:wiki-lint", args: "--auto"` 形式で `/rite:wiki-lint` �
 - 常に exit 0 (非ブロッキング)
 rationale: references/rationale.md#lint-parser-first-line
 
-呼び出し時の CWD は常に dev ブランチ。lint ステップ 8.2 は `separate_branch` 時に worktree 内で log.md 追記 → `wiki-worktree-commit.sh` を呼ぶ。Skill return 後、8.3 → 8.4 → 8.5 → ステップ 9 の順。
+呼び出し時の CWD は常に dev ブランチ。wiki-lint のステップ 8.2 が log.md の書き込み先を決め（`separate_branch` では worktree 内）、wiki-lint のステップ 8.3 が追記して `wiki-lint-log-commit.sh` で commit する（`--auto` かつ `separate_branch` では commit のみで、push は本スキルのステップ 8.6 が行う）。Skill return 後、8.3 → 8.4 → 8.5 → ステップ 9 の順。
 
 ### 8.3 Lint 実行結果の取得とパース
 
