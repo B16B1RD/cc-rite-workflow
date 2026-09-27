@@ -766,8 +766,8 @@ exit 1
 | `pr_number_placeholder_residue` | ステップ 1.2.0 冒頭の `pr_number="{pr_number}"` literal substitute が忘れられ、数値以外 (空文字 / placeholder 残留) のまま bash block に入った (cleanup.md ステップ 6 / pr-review.md ステップ 6.1.a と対称化、`[fix:error]` 昇格) |
 | `review_source_resolve_failed` | ステップ 1.2.0 caller が `scripts/review-source-resolve.sh` の非ゼロ exit を検知した際の caller-side retained-flag (helper が具体 reason を `FIX_FALLBACK_FAILED` で stderr emit 済み、本 reason は drift Pattern 1 充足用の generic guard、`[fix:error]` 昇格) |
 | `conversation_json_verify_failed` | ステップ 1.2.2 step 1 の `review-save-json-verify.sh` が「該当なし」（`save_result_json_absent`）以外で終わった（helper 不在・異常終了・判定不能・receipt 不整合）。表からの組み立てへ倒さず `[fix:error]` |
-| `conversation_json_resolve_failed` | ステップ 1.2.2 step 1 で、HEAD の保存済み JSON は特定できたが、そのパス（state root 解決）または producer を読めなかった。表からの組み立てへ倒さず `[fix:error]` |
-| `conversation_json_not_original` | ステップ 1.2.2 step 1 で特定した HEAD の保存済み JSON が `producer: "fix"`（fix が作った別名ファイル）だった。receipt ではないファイルを triage しないため `[fix:error]` |
+| `conversation_json_resolve_failed` | ステップ 1.2.2 step 1 で、HEAD の保存済み JSON は特定できたが、そのパス（state root）を解決できなかった。表からの組み立てへ倒さず `[fix:error]` |
+| `conversation_json_not_original` | ステップ 1.2.2 step 1 で特定した HEAD の保存済み JSON が `producer: "fix"`（fix が作った別名ファイル）だった。receipt ではないファイルを triage しないため `[fix:error]`。`.rite/review-results/` にある同じ commit の `producer: "fix"` のファイルを削除してから fix をやり直す（残った元の保存済み JSON が triage される） |
 | `fatal_triage_failed` | ステップ 1.2.2 helper の非ゼロ終了。原因と finding ID を保持して `[fix:error]`、legacy fallback 禁止 |
 | `pr_comment_schema_version_jq_failed` | Priority 3 で PR コメント Raw JSON の `schema_version` 抽出 jq が失敗 (jq バイナリ異常 / OOM / pipe write error、`schema_version="unknown"` で継続し legacy Markdown parser へ fallthrough、`REVIEW_SOURCE_PARSE_FAILED` flag) |
 | `broad_retrieval_jq_extraction_failed` | ステップ 1.2.0 Priority 3 Broad Comment Retrieval で `pr_comments` からの rite review コメント抽出 jq が失敗 (jq バイナリ異常 / OOM / GitHub API レスポンスの JSON 破損、tempfile 不在として `BROAD_RETRIEVAL_SKIPPED_OR_NO_COMMENT` へ routing、`REVIEW_SOURCE_PARSE_FAILED` flag) |
@@ -1014,14 +1014,10 @@ if [ -n "$source_name" ]; then
     exit 1
   fi
   materialized="$state_root/.rite/review-results/$source_name"
-  if ! producer=$(jq -r '.producer // ""' "$materialized"); then
-    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=conversation_json_resolve_failed" >&2
-    echo "[fix:error] reason=conversation_json_resolve_failed"
-    exit 1
-  fi
   # 完了記録と修正計画の検査は同じ review_context の最古のファイルを receipt として読む。
   # fix が作った別名ファイルが最新にあると、それを triage しても receipt は未 triage のまま残る。
-  if [ "$producer" = "fix" ]; then
+  # 読めないファイルは次の triage helper が止める。
+  if [ "$(jq -r '.producer // ""' "$materialized")" = "fix" ]; then
     echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=conversation_json_not_original" >&2
     echo "[fix:error] reason=conversation_json_not_original"
     exit 1

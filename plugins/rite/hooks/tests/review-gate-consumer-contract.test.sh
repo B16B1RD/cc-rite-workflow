@@ -222,6 +222,8 @@ exit 97
     (flaky / 'hooks/state-path-resolve.sh').write_text(
         f"#!/bin/bash\necho x >> '{calls}'\n[ \"$(wc -l < '{calls}')\" -eq 1 ] || exit 1\nprintf '%s\\n' '{state}'\n")
     copy_fail(flaky, 'conversation_json_resolve_failed')
+    resolve_calls = len(calls.read_text().splitlines())
+    assert resolve_calls == 2, f'flaky resolver assumes one call by the verify helper, then the block; got {resolve_calls} calls'
     # The triage target is the saved file itself, the receipt that completion and the plan check read.
     assert Path(copy_run()) == original
     assert json.loads(original.read_text()) == saved_review
