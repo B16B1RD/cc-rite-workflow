@@ -841,7 +841,9 @@ rationale: references/rationale.md#resume-routes-no-state-read
 
 - ユーザーが Ctrl+C で中断した場合: flow-state に現 phase (review or fix) が残るので `/rite:recover` で本コマンドが再起動する (詳細な phase → command routing は [skills/recover/SKILL.md](../recover/SKILL.md) Phase 5.3 を参照)
 - `iterate-step.sh` が exit 2（`ERROR: iterate-step.sh:`）で止まった場合: marker を待たずに停止し、未置換の placeholder や数値でない引数を直して当該ステップから再実行する
-- ステップ 0.6 / 1 の `iterate-step.sh` が exit 1 と `ERROR: rite-config.yml を読めません: <path>` または `ERROR: main checkout root を解決できません` で止まった場合: 既定値で続行せずに停止し、表示されたパスの権限を直してから当該ステップを再実行する
+- ステップ 0.6 / 1 の `iterate-step.sh` が exit 1 で止まった場合は、既定値で続行せずに停止し、原因を直してから当該ステップを再実行する。原因は ERROR で分かれる:
+  - `ERROR: rite-config.yml を読めません: <path>`: 表示されたパスの権限を直す
+  - `ERROR: main checkout root を解決できません`: 直すべきパスはない。表示された `dir=` で `git rev-parse --git-common-dir` と `git worktree list` を実行し、git worktree の状態を直す（壊れた worktree 登録は `git worktree prune`）
 - `[fix:error]` 時: [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) に従い 1 回だけ自動再試行し、再失敗時は停止する
 - reviewer が non-deterministic に振動する場合: 収束トレンドの発散または `safety.max_review_cycles`（既定 15）到達でステップ 6 に進み、人間に問わず停止する。batch は `[iterate:max-cycles-reached]` で当該 Issue を failed 扱いにしてバッチを停止し、対話は `[iterate:max-cycles-stopped]` で終了する。再開は `review_run` がない legacy state では `/rite:iterate {pr_number}` の明示的な再実行、`review_run` がある run ではステップ 6.2 の `{resume_routes}` が名指しする経路で行う。
 

@@ -184,11 +184,16 @@ check 'base outside branch via non-alpha key does not leak into diff range' lack
 WT_MAIN="$TEST_DIR/wtmain"; WT_DIR="$TEST_DIR/wtwt"
 "$REAL_GIT" init -q "$WT_MAIN"
 "$REAL_GIT" -C "$WT_MAIN" -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -q --allow-empty -m init
-"$REAL_GIT" -C "$WT_MAIN" worktree add -q -b feat/wm "$WT_DIR" >/dev/null 2>&1
+WT_RC=0
+"$REAL_GIT" -C "$WT_MAIN" worktree add -q -b feat/wm "$WT_DIR" > "$TEST_DIR/wt-add.err" 2>&1 || WT_RC=$?
+check 'linked worktree fixture is created' test "$WT_RC" = 0
+[ "$WT_RC" = 0 ] || sed 's/^/    /' "$TEST_DIR/wt-add.err"
 printf 'branch:\n  base: "trunk"\n' > "$WT_MAIN/rite-config.yml"
 reset_case; rm "$CASE_DIR/rite-config.yml"; RC=0
 (cd "$WT_DIR" && bash "$TARGET" --pr-body-file "$CASE_DIR/pr body.txt" --history-file "$HISTORY_FILE" \
   --impl-status "$IMPL" --test-status "$TEST_STATUS" --doc-status "$DOC") > "$CASE_DIR/out" 2> "$CASE_DIR/err" || RC=$?
+check 'worktree with main config rc' test "$RC" = 0
+marker 'worktree with main config' success 42
 check 'worktree reads base from the main checkout config' contains "$CASE_DIR/git.log" 'origin/trunk...HEAD'
 check 'worktree with main config does not warn' lacks "$CASE_DIR/err" 'WARNING: rite-config.yml'
 
