@@ -4,12 +4,16 @@ title: "終了コードの分岐を散文で書くと「other」が名指しし�
 domain: "anti-patterns"
 description: "終了コードの分岐を散文の「rc=2 なら停止、それ以外の非ゼロも停止」と書くと、「それ以外」が別の行で個別に案内している値まで含んでしまい、案内同士が衝突する。兄弟の手順書が表で列挙しているなら同じ表形式に揃え、各行の範囲が互いに重ならないことを構造で保証する。"
 created: "2026-09-27T17:15:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T17:15:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T17:27:12Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T17:27:12Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260927T170144Z-pr-3312.md"
   - type: "fixes"
     resource: "raw/fixes/20260927T171100Z-pr-3312.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T171847Z-pr-3312.md"
 tags: ["exit-code", "prose-procedure", "branch-table", "static-pin"]
 confidence: medium
 ---
@@ -44,6 +48,10 @@ confidence: medium
 
 同じ役割の手順書が複数あり、その一部だけが違う形式で分岐を書いているときは、形式の違いが範囲の違いを生んでいないかを疑う。散文の「それ以外」「other」「any other」が出てきたら、同じ文書の中で個別に扱われている値を列挙し、範囲が重なっていないかを確かめる。
 
+### 表に揃えても行の意味は固定されない
+
+散文を表に揃える修正を「表の行パターンが存在すること」で固定しても、各行の中身（rc=1 の行が停止を含まないこと、catch-all の停止行が rc=1 の行より前に無いこと）は固定されない。rc=1 の行を停止に書き換える変異や、rc=1 の行の前に停止の行を差し込む変異は、形の検査を素通りする。意味を守りたい行は、その行を取り出して禁止語・必須語と行順を検査する。
+
 ## 関連ページ
 
 - [分岐表は判定キーを 1 つの観測量へ統一し、直交軸は表から出して独立段落に書く](../patterns/branch-table-single-observation-key-orthogonal-axis-separation.md)
@@ -53,3 +61,4 @@ confidence: medium
 
 - [散文の「other」が表の「other」と範囲が食い違うことを指摘したレビュー結果](../../raw/reviews/20260927T170144Z-pr-3312.md)
 - [分岐を兄弟の手順書と同じ表形式へ揃えた fix 結果](../../raw/fixes/20260927T171100Z-pr-3312.md)
+- [表に揃えた後も行の意味が未固定であることを mutation で示したレビュー結果](../../raw/reviews/20260927T171847Z-pr-3312.md)

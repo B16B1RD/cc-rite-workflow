@@ -159,15 +159,18 @@ sources:
     resource: "raw/reviews/20260927T160944Z-pr-3307.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T161319Z-pr-3292.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T172042Z-pr-3318.md"
 tags: ["test", "mutation-testing", "false-positive", "dead-code", "verification", "bytes-exact-pin", "trailing-newline-strip", "self-grep-tautology", "count-threshold-mutation-evasion", "path-filter-coverage-gap", "load-bearing-whitespace-pin", "regex-alternation-per-branch-coverage", "regex-quantifier-semantic-coverage", "symmetry-claim-bidirectional-pin", "negative-assert", "non-blocking-contract-mutation"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:16:02Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T17:27:12Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:05:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:06:36Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:39:40Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:16:02Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:16:02Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T17:27:12Z" }
 ---
 
 # Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する
@@ -950,6 +953,8 @@ reviewer は式やファイルを書き換えずに、変異後の入力（旧�
 
 base の取り込みで両側が同じテスト番号を追加したときは、片側の番号を振り直すだけでなく、作業ディレクトリ名など番号から作る名前も衝突しないよう改める（`mkdir -p` は既存ディレクトリを使い回すため、名前が重なるとテスト間で状態が漏れる）。振り直しの正しさは「旧ブロックに機械置換をかけた結果が新ブロックと一致するか」「取り込み側だけにある行が 0 か」の 2 点で機械的に確かめられる。
 
+新しいテストケースを兄弟ケースに倣って足すときは、兄弟ケースが持つ否定側の assert（「起票が 0 回であること」など）も揃える。肯定側の assert だけを写すと、余計な副作用が起きる変異がそのケースでは検出されない。
+
 ## 関連ページ
 
 - [否定形の assert は前提条件が崩れると fail-silent になる](../anti-patterns/negative-assertion-vacuous-without-precondition-floor.md)
@@ -1036,3 +1041,4 @@ base の取り込みで両側が同じテスト番号を追加したときは、
 - [書き手の移動と preview 経路の固定漏れを指摘したレビュー結果](../../raw/reviews/20260927T153355Z-pr-3292.md)
 - [実運用の命名形式を入力に足して過剰一致の変異を検出したレビュー結果](../../raw/reviews/20260927T160944Z-pr-3307.md)
 - [取り込み後のテスト番号の振り直しを機械的に確かめたレビュー結果](../../raw/reviews/20260927T161319Z-pr-3292.md)
+- [兄弟テストケースとの否定側 assert の揃えを推奨したレビュー結果](../../raw/reviews/20260927T172042Z-pr-3318.md)
