@@ -13,9 +13,13 @@ sources:
     resource: "raw/fixes/20260728T122258Z-pr-2038.md"
   - type: "reviews"
     resource: "raw/reviews/20260806T110520Z-pr-2124.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T191417Z-pr-3326.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T22:40:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:18:40Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:18:40Z" }
 ---
 
 # commit 前にリポジトリ自身の checker を全変更ファイルへ回す — 機械検出できる違反を reviewer に探させない
@@ -88,6 +92,8 @@ lint check #18 を新設する PR が、その fix で追加したテストコ�
 
 **fix で追加した行も、次 cycle のレビュー対象面である。** fix を書くときは修正箇所の正しさだけを見て、その修正が新たに追加した行が既存規約を満たすかを見ない。この盲点は「**fix 後に、変更したファイルへ既存の lint 検出器を全部かけ直す**」で機械的に塞げる — 本ページの主題を、初回 commit だけでなく各 fix cycle にも適用する。
 
+テストのシェルコメントに fixture の値として `file.ext:N` 形式を書くと、行番号参照を探すチェッカーに誤検出される。チェッカーが文書化している除外（バッククォートで囲んだ値は対象外など）を使えば、チェッカー側を変えずに解消できる。除外規則を頼りにするなら、その除外がチェッカー自身のテストで固定されているかも確かめる。
+
 ## 関連ページ
 
 - [cycle が進んでも findings が減らないときは点修正をやめて構造を疑う](./non-converging-review-loop-suspect-structure.md)
@@ -99,3 +105,4 @@ lint check #18 を新設する PR が、その fix で追加したテストコ�
 - [fix 結果](../../raw/fixes/20260728T100957Z-pr-2038.md)
 - [fix 結果](../../raw/fixes/20260728T122258Z-pr-2038.md)
 - [レビュー結果](../../raw/reviews/20260806T110520Z-pr-2124.md)
+- [fixture 値のコメントがチェッカーに誤検出される件をチェッカーの除外規則で解消したレビュー結果](../../raw/reviews/20260927T191417Z-pr-3326.md)

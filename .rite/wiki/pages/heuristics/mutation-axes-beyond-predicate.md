@@ -27,12 +27,15 @@ sources:
     resource: "raw/reviews/20260913T051120Z-pr-2767.md"
   - type: "reviews"
     resource: "raw/reviews/20260926T112003Z-pr-3153.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T191518Z-pr-3322.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T11:40:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:18:40Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-13T05:16:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T11:40:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:18:40Z" }
 ---
 
 # mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる
@@ -100,6 +103,8 @@ survivor が「機械経路は pin されているが**人間向け経路が未 
 
 判定を共有化したら、**呼び出し元ごとに**旧条件へ戻す変異を当て、どの呼び出し元の判定が実際に観測されているかを確かめる。生存した呼び出し元は、その判定が契約上の挙動に現れるかで扱いを分ける。現れないなら、重複した防御として記録して残してよい。現れるなら、先行ゲートを通過する入力で fixture を組み、その呼び出し元に直接到達させる。
 
+状態ファイルを会話をまたいで永続化するときは、その作成・消去の全経路を突き合わせる。途中で止まった状態から再開すると上流の収集が空を返して no-op になり、下流に足した後始末の分岐へ到達しないことがある。分岐を足したら、その分岐へ到達する上流の経路をテストで通す（fixture で最終前提を直接置くだけでは到達性を検証できない）。
+
 ## 関連ページ
 
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
@@ -116,3 +121,4 @@ survivor が「機械経路は pin されているが**人間向け経路が未 
 - [共通の検査を残して経路限定の検査を戻す対応を示した fix 結果](../../raw/fixes/20260913T043312Z-pr-2767.md)
 - [戻した検査を失敗メッセージの完全一致で固定したレビュー結果](../../raw/reviews/20260913T051120Z-pr-2767.md)
 - [共有化した判定の一呼び出し元が先行ゲートの陰で観測されないことを変異で確かめたレビュー結果](../../raw/reviews/20260926T112003Z-pr-3153.md)
+- [永続状態からの再開で追加した分岐へ到達しない経路を指摘したレビュー結果](../../raw/reviews/20260927T191518Z-pr-3322.md)

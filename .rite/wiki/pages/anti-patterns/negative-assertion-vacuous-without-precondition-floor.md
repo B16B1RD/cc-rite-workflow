@@ -31,9 +31,11 @@ sources:
     resource: "raw/reviews/20260927T160629Z-pr-3306.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T165534Z-pr-3317.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T191353Z-pr-3325.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T17:15:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:18:40Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-16T12:58:00Z" }
   - { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T07:10:00Z" }
@@ -46,6 +48,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:25:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:10:16Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T17:15:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:18:40Z" }
 ---
 
 # 否定形の assert は前提条件が崩れると fail-silent になる
@@ -198,6 +201,8 @@ rm -f "$result_dir"/*.json
 
 判定不能になる分岐が複数あるときは、分岐の数だけ variant を置く。分岐ごとに「その分岐でだけ情報を残す」変異を当て、対応する variant だけが落ちることを確かめる。variant が 1 つだと、どの分岐の境界が守られているのかを言えない。
 
+文書に対する不在の assert（「この形が本文に無い」）は、検出式を変数に切り出し、陽性サンプル（検出されるべき形）と陰性サンプルを同じ変数に通すテストを並べると、検出式自体の退行（何にも一致しなくなる）も捕まえられる。検出式を広げるときは、新しい式が旧式の上位集合であることを同じサンプルで確かめる。
+
 ## 関連ページ
 
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
@@ -219,3 +224,4 @@ rm -f "$result_dir"/*.json
 - [陽性対照の変異点が経路ごとに異なることを実測したレビュー結果](../../raw/reviews/20260927T141600Z-pr-3281.md)
 - [範囲抽出の 0 件 pin に陽性対照を組み合わせたレビュー結果](../../raw/reviews/20260927T160629Z-pr-3306.md)
 - [否定の assert を成功 marker の完全一致と WARNING 行の件数で表す形を確認したレビュー結果](../../raw/reviews/20260927T165534Z-pr-3317.md)
+- [不在の assert の検出式を陽性・陰性サンプルで固定したレビュー結果](../../raw/reviews/20260927T191353Z-pr-3325.md)

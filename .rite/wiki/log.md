@@ -9,6 +9,10 @@
 * **Update**: [終了コードの分岐を散文で書くと「other」が名指しした値まで取り込む — 兄弟の手順書と同じ表で 0 / 1 / 2 / other を列挙する](pages/anti-patterns/exit-code-branch-prose-other-absorbs-named-codes.md) — raw/reviews/20260927T171847Z-pr-3312.md を統合
 * **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/reviews/20260927T172042Z-pr-3318.md を統合
 * **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=63, orphans=0, missing_concept=0, unregistered_raw=567, broken_refs=0
+* **Update**: [否定形の assert は前提条件が崩れると fail-silent になる](pages/anti-patterns/negative-assertion-vacuous-without-precondition-floor.md) — raw/reviews/20260927T191353Z-pr-3325.md を統合
+* **Update**: [commit 前にリポジトリ自身の checker を全変更ファイルへ回す — 機械検出できる違反を reviewer に探させない](pages/heuristics/run-repo-own-checkers-before-commit.md) — raw/reviews/20260927T191417Z-pr-3326.md を統合
+* **Update**: [mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる](pages/heuristics/mutation-axes-beyond-predicate.md) — raw/reviews/20260927T191518Z-pr-3322.md を統合
+* **Update**: [論理式を日本語へ書き起こすときは、正本の括弧構造を文章でも括弧で保つ](pages/heuristics/logical-formula-prose-keeps-grouping-parentheses.md) — raw/reviews/20260927T191609Z-pr-3328.md を統合
 
 ## 2026-09-28
 * **Update**: [agent が人間に渡す復旧コマンドは、人間の実行コンテキストで正しいかを検証する](pages/heuristics/recovery-command-verified-in-human-execution-context.md) — raw/reviews/20260927T160621Z-pr-3298.md を統合
