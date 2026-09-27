@@ -18,10 +18,13 @@ sources:
     resource: "raw/fixes/20260927T170119Z-pr-3317.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T170635Z-pr-3317.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T202454Z-pr-3339.md"
 tags: ["test-design", "grep", "false-negative", "section-scoped", "assertion-strictness"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T17:15:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T20:27:53Z" }
 verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T20:27:53Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T17:15:00Z" }
 ---
 
@@ -72,6 +75,12 @@ exit code semantic 事例では `projects-board-drift-check.sh` の検出ロジ�
 
 区間を見出しで切り出す pin は、終わりの見出しを固定文字列にすると、その見出しの表記が変わったときに区間が黙って文書末尾まで広がる。終わりは「次の同種の見出し」の一般形で取り、切り出した区間が空なら落ちる形にすると fail-loud になる。範囲を絞る修正を入れるときは、区間の始まりと終わりの両方の頑健さを最初の修正でまとめて検討する。片方だけ直すと、修正後の再レビューで同系統の推奨がもう片方について出て、持ち越しになる。
 
+### 変種: 順序を検査するときは行番号を取り、欠落は空値として数える
+
+手順の順序（「バックアップしてから再生成する」等）を固定する検査は、節を切り出したうえで各手順の行番号を取り、番号の大小で比べる。存在だけを見る grep は、手順の入れ替えや節外への移動を素通しする。
+
+`set -euo pipefail` 下では、`var=$(grep -n … | head -1 | cut -d: -f1) || var=""` のように不一致を空値として受け、`[[ -n "$var" ]]` で欠落を先に数えてから比較する。空値のまま数値比較に進むと、両方が欠落したときに空どうしの比較が誤って成り立つ。検査ブロックを複製して文書の変異コピー（削除・節外移動・手順入れ替え・見出し改名）に当て、それぞれが理由付きで落ちることを確かめる。
+
 ## 関連ページ
 
 - [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](../anti-patterns/test-pin-protection-theater.md)
@@ -89,3 +98,4 @@ exit code semantic 事例では `projects-board-drift-check.sh` の検出ロジ�
 - [指示と例を所属範囲で探すべきと指摘したレビュー結果](../../raw/reviews/20260927T165534Z-pr-3317.md)
 - [pin の検索範囲を step と例のブロックに絞った fix 結果](../../raw/fixes/20260927T170119Z-pr-3317.md)
 - [区間の終わりを一般形で取り空なら落とす形を確認したレビュー結果](../../raw/reviews/20260927T170635Z-pr-3317.md)
+- [節の切り出しと行番号比較で手順の順序を固定したテストのレビュー結果](../../raw/reviews/20260927T202454Z-pr-3339.md)

@@ -80,10 +80,13 @@ sources:
     resource: "raw/reviews/20260911T183502Z-pr-2702.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T072805Z-pr-3224.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T201521Z-pr-3333.md"
 tags: [test-pin, mutation-test, drift-check, protection-theater, canonical-phrase, same-file-3-site-sync, subsidiary-claim-empirical-verification, cross-file-cross-site-coverage, multi-axis-mutation-verification, channel-collision, negative-control, twin-site-satisfaction, anchor-uniqueness, occurrence-count-pin]
 confidence: high
-generated: { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T20:27:53Z" }
 verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T20:27:53Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T07:35:00Z" }
   - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-11T18:35:02Z" }
@@ -617,6 +620,14 @@ producer と validator で被演算子の変数名だけが違う（`$body` / `$
 - 「実行済み」「pin 済み」と書く範囲は、そのケースが満たす項の組み合わせに合わせる。両項を同時に満たすケースは、どちらの項の単独効果も確かめていない
 - 経路が実行されていても、結果を assert していなければ「未 pin」と書く。fixture が対象を置いていることは pin の証拠にならない
 
+## 変種: 配線確認 assert の理由コメントを、退行の「結果」で書く
+
+variant ごとに引数配列を組み立てて同じ本体を呼ぶテストで、組み立て直後に配列の中身を読み返す assert（配線確認）を片側だけ残し、「preview variant が plain と同じ引数で走る退行はここでしか捕まらない」と理由コメントを付けた。assert が観測するのは配列の組み立てだけで、呼び出し側で配列の展開が落ちる退行は、出力に差が出ない経路では全体が緑のまま通る。コメントは退行の結果（同じ引数で走る）で書いたために、観測点の外の退行まで捕まえるように読めた。
+
+是正はコメントを観測点で書き直すこと（「組み立てから引数が落ちる退行はここで捕まえる。呼び出しへの受け渡しは確かめない」）。確かめない範囲を括弧で明記すると、読み手が検出力を広く読むことを防げる。
+
+削った側の読み返し assert を「恒真」と呼んだ判断にも注意が要る。直前の行で組み立てた配列の読み返しは、組み立て行そのものを壊す変異には反応するので、厳密には恒真ではない。残す側と削る側に同じ性質の assert が並ぶときは、両方残す・両方削る・非対称にするなら理由を書く、のいずれかを選び、片側だけを恒真と呼んで削らない。
+
 ## ソース（追記分）
 
 - [静的 pin が行継続文字を照合せず 1 文字 drift を素通り](../../raw/reviews/20260803T004941Z-pr-2094.md)
@@ -633,3 +644,4 @@ producer と validator で被演算子の変数名だけが違う（`$body` / `$
 - [(NB sweep) — 停止しない fail() 前提のもとで head -1 が診断値固定の保険として要る](../../raw/fixes/20260830T083939Z-pr-2482.md)
 - [文書側の字面 pin が片方向しか守らず、ヘッダが両側関係を名乗っていた](../../raw/reviews/20260911T183502Z-pr-2702.md)
 - [選言の両項を同時に満たすケースだけで「実行済み」と書く、fixture を置いても assert しない保持](../../raw/reviews/20260927T072805Z-pr-3224.md)
+- [配線確認コメントを assert の観測範囲に限定した後の再レビュー結果](../../raw/reviews/20260927T201521Z-pr-3333.md)
