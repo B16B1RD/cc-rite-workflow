@@ -8,9 +8,9 @@
 #
 # The test finds every terminator in the plugin (tests excluded) by its shape,
 # not by the code around it:
-#   - a regex literal whose whole body is a line-anchored bracket class,
-#     `/^[...]/`, whatever the quoting, range or action around it
-#     (sed ranges, awk `{ exit }`, `{ exit 0 }`, `{ var=0; next }`, ...)
+#   - a regex literal that starts with a line-anchored bracket class,
+#     `/^[...]/` or `/^[...]<rest>/`, whatever the quoting, range or action
+#     around it (sed ranges, awk `{ exit }`, `{ exit 0 }`, `{ var=0; next }`, ...)
 #   - a Python lookahead `(?=^[...]|...)`
 # NOT_TERMINATORS lists the literals of that shape that do not end a section.
 #
@@ -35,7 +35,8 @@
 # EXPECTED_COUNTS pins how many bracket-only terminators each file has, so a
 # terminator that is added, removed or moved to another file changes the table.
 # A terminator written without a `/^[...` literal (a grep pattern, an awk string
-# regex, a Python `re.match`) is not extracted and is not checked.
+# regex, a Python `re.match`), or with a `/` inside the literal, is not extracted
+# and is not checked.
 
 set -uo pipefail
 
@@ -238,6 +239,7 @@ section=$(sed -n '/^wiki:/,/^[^\s#]/p' "$cfg")
 section=$(sed -n '/^wiki:/,/^[^ ]/p' "$cfg")
 max=$(awk '/^safety:/{s=1;next} s && /^[a-zA-Z]+:/ {exit} s && /k:/{print;exit}' "$cfg")
 section=$(sed -n '/^wiki:/,/^[a-zA-Z_]*:/p' "$cfg")
+max=$(awk '/^safety:/{s=1;next} s && /^[^[:space:]#][^:]*:/ {exit} s && /k:/{print;exit}' "$cfg")
 EOF
 cat > "$SANDBOX/scripts/old.py" <<'EOF'
 section = re.search(r"^safety:\s*\n(.*?)(?=^[a-zA-Z]|\Z)", text, re.M | re.S)
@@ -259,6 +261,7 @@ assert "POSIX end written with Python \\s is reported for an indented line" "1" 
 assert "space-only end is reported for a column-0 comment" "1" "$(count_of "old.sh:10 \[sed\].*column-0 comment")"
 assert "letter-only end with more after the bracket is reported" "1" "$(count_of "old.sh:11 \[awk\].*at '2fa: x'")"
 assert "sed range end with more after the bracket is reported" "1" "$(count_of "old.sh:12 \[sed\].*at '2fa: x'")"
+assert "end with more after the bracket that matches every key is not reported" "0" "$(count_of "old.sh:13 ")"
 assert "python lookahead with a letter-only end is reported" "1" "$(count_of "old.py:1 \[python\].*at '2fa: x'")"
 assert "sed range leak is observed on the fixture" "1" "$(count_of "old.sh:1 \[sed\].*range reads")"
 
