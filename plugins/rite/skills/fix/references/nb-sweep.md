@@ -64,7 +64,8 @@ case "$collect_rc:$sweep_status" in
     nb_entries_file="$sweep_root/.rite/state/nb-sweep-entries-{pr_number}.md"
     if [ -f "$nb_entries_file" ]; then
       # 残っている entries が今回読んだ review JSON の sweep のものでなければ、起票済みの代わりにしない
-      nb_record_base=$(basename "$(printf '%s' "$collect_out" | jq -r '.record // empty')")
+      nb_record=$(printf '%s' "$collect_out" | jq -r '.record // empty')
+      nb_record_base=$(basename "$nb_record")
       bash {plugin_root}/hooks/scripts/nb-sweep-ledger.sh tally --entries-file "$nb_entries_file" \
         --record "$nb_record_base" >/dev/null || {
         echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_entries_stale" >&2
