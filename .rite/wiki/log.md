@@ -8,6 +8,7 @@
 * **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=64, orphans=0, missing_concept=0, unregistered_raw=567, broken_refs=0
 * **Update**: [終了コードの分岐を散文で書くと「other」が名指しした値まで取り込む — 兄弟の手順書と同じ表で 0 / 1 / 2 / other を列挙する](pages/anti-patterns/exit-code-branch-prose-other-absorbs-named-codes.md) — raw/reviews/20260927T171847Z-pr-3312.md を統合
 * **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/reviews/20260927T172042Z-pr-3318.md を統合
+* **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=63, orphans=0, missing_concept=0, unregistered_raw=567, broken_refs=0
 
 ## 2026-09-28
 * **Update**: [agent が人間に渡す復旧コマンドは、人間の実行コンテキストで正しいかを検証する](pages/heuristics/recovery-command-verified-in-human-execution-context.md) — raw/reviews/20260927T160621Z-pr-3298.md を統合
