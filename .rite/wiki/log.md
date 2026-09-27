@@ -115,6 +115,7 @@
 * **Update**: [検査用のシェル字句解析は判定対象を標準形に絞り、それ以外を fail-closed にする](pages/heuristics/inspection-parser-narrow-to-standard-form-fail-closed.md) — raw/reviews/20260927T084856Z-pr-3250.md を統合
 * **Update**: [awk -v 代入はバックスラッシュを剥がす — escape 付きパターンを渡した範囲指定 assert は常に PASS する](pages/anti-patterns/awk-v-assignment-strips-backslash-in-range-pattern.md) — raw/reviews/20260927T091505Z-pr-3246.md を統合
 * **Update**: [変更・削除の掃き出しは旧語彙・置換した条件式・別記法トークンまで広げる](pages/heuristics/change-sweep-spans-old-vocabulary-and-notations.md) — raw/fixes/20260927T085009Z-pr-3248.md を統合
+* **lint:clean** — contradictions=0 (更新ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=560, broken_refs=0
 
 ## 2026-09-26
 
