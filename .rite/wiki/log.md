@@ -96,6 +96,7 @@
 * **Update**: [修飾は主張単位ではなく同格の主張の集合単位でかける](pages/heuristics/qualifier-applies-to-peer-claim-set.md) — raw/fixes/20260927T075858Z-pr-3241.md を統合
 * **Update**: [修飾は主張単位ではなく同格の主張の集合単位でかける](pages/heuristics/qualifier-applies-to-peer-claim-set.md) — raw/reviews/20260927T080310Z-pr-3241.md を統合
 * **Update**: [identity を持たない判定台帳で複数 cycle の和集合を重複除外すると、重複防止と欠落防止を同時には満たせない](pages/anti-patterns/identity-less-ledger-union-dedup-cannot-prevent-both-duplicate-and-loss.md) — raw/reviews/20260927T080150Z-pr-3221.md を統合
+* **lint:clean** — contradictions=0 (更新ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=560, broken_refs=0
 
 ## 2026-09-26
 
