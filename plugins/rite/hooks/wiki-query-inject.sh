@@ -193,7 +193,8 @@ if [[ -f "$STATE_ROOT/rite-config.yml" ]]; then
     echo "  対処: /tmp の permission / read-only / inode 枯渇を確認してください" >&2
     _yaml_err=""
   fi
-  if wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$STATE_ROOT/rite-config.yml" 2>"${_yaml_err:-/dev/null}"); then
+  # 節は空白と # 以外で始まる次の行で終える（数字や _ で始まるキーでも終え、列 0 のコメント行では終えない）
+  if wiki_section=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' "$STATE_ROOT/rite-config.yml" 2>"${_yaml_err:-/dev/null}"); then
     :  # success (sed no-match still returns 0)
   else
     _sed_rc=$?

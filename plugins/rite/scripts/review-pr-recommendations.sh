@@ -122,7 +122,8 @@ case "$mode" in
     # A fix after the last allowed cycle could never be re-reviewed: the next
     # review would trip max-cycles and leave the fix commit unreviewed.
     cfg=$(bash "$HOOKS_DIR/scripts/lib/rite-config-path.sh" --or-devnull) || fail config_unreadable "rite-config.yml unreadable"
-    max_cycles=$(awk '/^safety:/{s=1;next} s&&/^[a-zA-Z]/{exit} s&&/^[[:space:]]+max_review_cycles:/{print;exit}' "$cfg" \
+    # 節は空白と # 以外で始まる次の行で終える（数字や _ で始まるキーでも終え、列 0 のコメント行では終えない）
+    max_cycles=$(awk '/^safety:/{s=1;next} s&&/^[^[:space:]#]/{exit} s&&/^[[:space:]]+max_review_cycles:/{print;exit}' "$cfg" \
       | sed 's/[[:space:]]#.*//; s/.*max_review_cycles:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
     case "$max_cycles" in ''|0|*[!0-9]*) max_cycles=15 ;; esac
     cycle=$(jq -r '.review_context.cycle_count // empty' "$input")

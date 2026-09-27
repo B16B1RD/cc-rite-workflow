@@ -1102,7 +1102,7 @@ reviewer ロード前に Wiki の経験知を注入する。会話へ注入す�
 ```bash
 # config は worktree 自身のもの、無ければ main checkout のものを読む
 rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
-wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$rite_config" 2>/dev/null) || wiki_section=""
+wiki_section=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' "$rite_config" 2>/dev/null) || wiki_section=""
 wiki_enabled=""
 if [[ -n "$wiki_section" ]]; then
  wiki_enabled=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' \
@@ -2992,7 +2992,7 @@ rationale: references/design-rationale.md#wiki-skip-emit-and-write-failed
 ```bash
 # config は worktree 自身のもの、無ければ main checkout のものを読む
 rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
-wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$rite_config" 2>/dev/null) || wiki_section=""
+wiki_section=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' "$rite_config" 2>/dev/null) || wiki_section=""
 wiki_enabled=""
 if [[ -n "$wiki_section" ]]; then
  wiki_enabled=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' \

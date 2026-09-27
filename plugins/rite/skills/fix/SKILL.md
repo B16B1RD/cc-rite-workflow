@@ -139,7 +139,7 @@ standalone: 引数なしなら現在ブランチの PR。work memory の関連 P
 ```bash
 # config は worktree 自身のもの、無ければ main checkout のものを読む
 rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
-wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$rite_config" 2>/dev/null) || wiki_section=""
+wiki_section=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' "$rite_config" 2>/dev/null) || wiki_section=""
 wiki_enabled=""
 if [[ -n "$wiki_section" ]]; then
   wiki_enabled=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' \
@@ -2478,7 +2478,7 @@ After outputting the completion report, trigger Wiki Ingest to capture fix patte
 ```bash
 # config は worktree 自身のもの、無ければ main checkout のものを読む
 rite_config=$(bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh --or-devnull) || exit 1
-wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$rite_config" 2>/dev/null) || wiki_section=""
+wiki_section=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' "$rite_config" 2>/dev/null) || wiki_section=""
 wiki_enabled=""
 if [[ -n "$wiki_section" ]]; then
   wiki_enabled=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' \

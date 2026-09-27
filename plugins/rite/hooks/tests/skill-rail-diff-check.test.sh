@@ -346,6 +346,11 @@ if [ -n "$REPO_ROOT_REAL" ] && git -C "$PLUGIN_ROOT" rev-parse --verify -q origi
       base_rail=$(printf '%s\n' "$base_rail" | grep -Fxv 'bash {plugin_root}/hooks/scripts/projects-status-gate.sh --issue {issue_number} --expect "In Progress"' || true)
       base_rail=$(printf '%s\n' "$base_rail" | grep -Fxv '| `ok` | 盤面が `In Progress` 以降に到達済み。ステップ 3 へ進む |' || true)
       base_rail=$(printf '%s\n' "$base_rail" | grep -Fxv '| `missing` | 2.4(A) が盤面に届いていない（Status が期待に達していない / Status 値が空 / Issue が Project 未登録）。**2.4(A) の bash を 1 回だけ再実行**してステップ 3 へ進む |' || true)
+      # The multi_session section read now ends at any line that starts with
+      # neither whitespace nor `#`, not only at a letter. Drop only the superseded
+      # line, matched as a whole line. After the base advances this exclusion
+      # matches nothing.
+      base_rail=$(printf '%s\n' "$base_rail" | grep -Fxv 'ms_section=$(sed -n '\''/^multi_session:/,/^[a-zA-Z]/p'\'' rite-config.yml 2>/dev/null) || ms_section=""' || true)
       printf '%s\n' "$base_rail" > "$TEST_DIR/base-rail"
       printf '%s\n' "$head_rail" > "$TEST_DIR/head-rail"
       if [ -z "$base_rail" ] || [ -z "$head_rail" ]; then

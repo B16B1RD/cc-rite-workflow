@@ -312,7 +312,8 @@ fi
 # `git check-ignore -v` (no file created) asks git whether session worktree paths
 # are ignored. If not, session worktrees (.rite/worktrees/issue-{N}) would leak
 # into dev-branch diffs.
-ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' "$config_file" 2>/dev/null) || ms_section=""
+# 節は空白と # 以外で始まる次の行で終える（数字や _ で始まるキーでも終え、列 0 のコメント行では終えない）
+ms_section=$(sed -n '/^multi_session:/,/^[^[:space:]#]/p' "$config_file" 2>/dev/null) || ms_section=""
 ms_enabled="false"
 if [ -n "$ms_section" ]; then
   ms_enabled=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' \
@@ -353,7 +354,8 @@ if [ "$ms_enabled" = "true" ]; then
   fi
 fi
 
-wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$config_file" 2>/dev/null) || wiki_section=""
+# 節は空白と # 以外で始まる次の行で終える（数字や _ で始まるキーでも終え、列 0 のコメント行では終えない）
+wiki_section=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' "$config_file" 2>/dev/null) || wiki_section=""
 if [ -z "$wiki_section" ]; then
   log_info "gitignore-health-check: wiki section absent in rite-config.yml — skipping (exit 0)"
   echo "==> Total gitignore-health-check findings: 0"

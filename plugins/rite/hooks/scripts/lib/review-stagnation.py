@@ -732,7 +732,8 @@ def existing_breaker(state, run):
     maximum = 15
     config = Path("rite-config.yml")
     if config.exists():
-        section = re.search(r"^safety:\s*\n(.*?)(?=^[a-zA-Z]|\Z)", config.read_text(), re.M | re.S)
+        # 節は空白と # 以外で始まる次の行で終える（数字や _ で始まるキーでも終え、列 0 のコメント行では終えない）
+        section = re.search(r"^safety:\s*\n(.*?)(?=^[^\s#]|\Z)", config.read_text(), re.M | re.S)
         if section:
             setting = re.search(r"^\s+max_review_cycles:\s*(.*)$", section[1], re.M)
             if setting:

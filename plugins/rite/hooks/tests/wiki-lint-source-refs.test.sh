@@ -260,6 +260,36 @@ assert_grep "TC-13 read_ok=io_error" "$outf" '^all_source_refs_read_ok=io_error$
 assert_grep "TC-13 errors=1" "$outf" '^all_source_refs_read_errors=1$'
 assert_grep "TC-13 抽出失敗 WARNING" "$errf" '抽出に失敗'
 
+# === TC-15: sources: 節の終端 ===
+# 節は空白・#・- 以外で始まる行で閉じる。列 0 の `- ` 項目と列 0 のコメントは節の続きで、
+# 数字や _ で始まる後続キーは節を閉じる。leak の resource はその後続キーの配下にだけ置く。
+echo "=== TC-15: sources: 節の終端 ==="
+sbx=$(make_sandbox); cleanup_dirs+=("$sbx")
+mkdir -p "$sbx/.rite/wiki/pages"
+cat > "$sbx/.rite/wiki/pages/p3.md" <<'EOF'
+---
+title: "Page 3"
+sources:
+- type: "review"
+  resource: "raw/reviews/kept.md"
+# note
+- resource: "raw/fixes/kept-after-comment.md"
+_x:
+  resource: "raw/reviews/leak-underscore.md"
+2fa:
+  resource: "raw/reviews/leak-digit.md"
+---
+EOF
+errf=$(mk_tmp); outf=$(mk_tmp)
+printf '%s\n' ".rite/wiki/pages/p3.md" \
+  | bash "$SCRIPT" --branch-strategy same_branch --repo-root "$sbx" >"$outf" 2>"$errf"
+rc=$?
+assert "TC-15 exit 0" "0" "$rc"
+assert_grep     "TC-15 列 0 の - 項目の resource を読む"      "$outf" '^raw/reviews/kept\.md$'
+assert_grep     "TC-15 列 0 コメントの後も節が続く"          "$outf" '^raw/fixes/kept-after-comment\.md$'
+assert_not_grep "TC-15 _ 始まりキー配下を読まない"            "$outf" 'leak-underscore'
+assert_not_grep "TC-15 数字始まりキー配下を読まない"          "$outf" 'leak-digit'
+
 # === TC-14: lint.md 6.2 helper-不在 fallback の io_error 出力契約 (静的回帰) ===
 # helper (wiki-lint-source-refs.sh) が削除/rename されると lint.md ステップ 6.2 の
 # `if [ -z "$plugin_root" ] || [ ! -f ".../wiki-lint-source-refs.sh" ]` fallback が発火し、

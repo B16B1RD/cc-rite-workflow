@@ -118,7 +118,8 @@ if [ ! -f "$config_file" ]; then
 fi
 
 # wiki.enabled (opt-out default true)
-wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$config_file" 2>/dev/null) || wiki_section=""
+# 節は空白と # 以外で始まる次の行で終える（数字や _ で始まるキーでも終え、列 0 のコメント行では終えない）
+wiki_section=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' "$config_file" 2>/dev/null) || wiki_section=""
 
 # wiki section が空 (rite-config.yml に wiki: セクション自体がない) なら早期 exit
 # (L-4 修正: 後続の branch_name 抽出等を無駄に試みない)

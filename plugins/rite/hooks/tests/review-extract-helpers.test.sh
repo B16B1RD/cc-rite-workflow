@@ -86,6 +86,25 @@ printf 'pr_review:\n  x: 1\nother:\n  post_comment: true\n' > "$SANDBOX/config.y
 assert "post_comment in a later section is not read (section-exit guard)" "" \
   "$(bash "$POST_COMMENT_READ" "$SANDBOX/config.yml")"
 
+# The section ends at any line that starts with neither whitespace nor `#`, so a
+# top-level key starting with a digit or an underscore closes it too. The target
+# key sits only under that key: first-match would hide a leak if it also sat
+# inside `pr_review:`.
+printf 'pr_review:\n  x: 1\n2fa:\n  post_comment: true\n' > "$SANDBOX/config.yml"
+assert "post_comment under a digit-led key is not read" "" \
+  "$(bash "$POST_COMMENT_READ" "$SANDBOX/config.yml")"
+printf 'pr_review:\n  x: 1\n_x:\n  post_comment: true\n' > "$SANDBOX/config.yml"
+assert "post_comment under an underscore-led key is not read" "" \
+  "$(bash "$POST_COMMENT_READ" "$SANDBOX/config.yml")"
+# A column-0 comment is not structure in YAML, so it neither ends the section
+# nor lets the digit-led key after it slip through.
+printf 'pr_review:\n# note\n  post_comment: true\n' > "$SANDBOX/config.yml"
+assert "post_comment after a column-0 comment is still read" "true" \
+  "$(bash "$POST_COMMENT_READ" "$SANDBOX/config.yml")"
+printf 'pr_review:\n# note\n2fa:\n  post_comment: true\n' > "$SANDBOX/config.yml"
+assert "comment then digit-led key: post_comment is not read" "" \
+  "$(bash "$POST_COMMENT_READ" "$SANDBOX/config.yml")"
+
 assert "missing config file exits 2" "2" \
   "$(bash "$POST_COMMENT_READ" "$SANDBOX/nope.yml" >/dev/null 2>&1; echo $?)"
 assert "wrong argument count exits 2" "2" \

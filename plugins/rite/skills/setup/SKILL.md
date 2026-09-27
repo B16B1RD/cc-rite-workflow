@@ -1553,7 +1553,7 @@ Read `wiki.enabled` from `rite-config.yml`。Wiki は **opt-out**: セクショ�
 rationale: references/rationale.md#wiki-enabled-sed
 
 ```bash
-wiki_enabled=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+wiki_enabled=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' rite-config.yml 2>/dev/null \
   | grep -E '^[[:space:]]+enabled:' | head -1 | sed 's/#.*//' \
   | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]')
 wiki_enabled=$(echo "$wiki_enabled" | tr '[:upper:]' '[:lower:]')
@@ -1564,7 +1564,7 @@ case "$wiki_enabled" in
     # opt-out default: 未指定 / 不明値は有効として扱う
     _wiki_raw="$wiki_enabled"  # 上書き前に保存 (typo 検出用)
     wiki_enabled="true"
-    if [ -z "$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null | grep -E '^[[:space:]]+enabled:')" ]; then
+    if [ -z "$(sed -n '/^wiki:/,/^[^[:space:]#]/p' rite-config.yml 2>/dev/null | grep -E '^[[:space:]]+enabled:')" ]; then
       echo "INFO: wiki.enabled キーが rite-config.yml に見つかりません。デフォルト値 'true' (opt-out) を使用します" >&2
     elif [ -n "$_wiki_raw" ]; then
       echo "WARNING: wiki.enabled の値 '$_wiki_raw' を解釈できません。デフォルト 'true' (opt-out) を使用します。値は true/false/yes/no/1/0 のいずれかを指定してください" >&2
@@ -1590,12 +1590,12 @@ Determine if Wiki is already initialized. The detection logic depends on `branch
 - `same_branch`: check for `.rite/wiki/SCHEMA.md`
 
 ```bash
-wiki_branch=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+wiki_branch=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' rite-config.yml 2>/dev/null \
   | grep -E '^[[:space:]]+branch_name:' | head -1 | sed 's/#.*//' \
   | sed 's/.*branch_name:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 wiki_branch="${wiki_branch:-wiki}"
 
-branch_strategy=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+branch_strategy=$(sed -n '/^wiki:/,/^[^[:space:]#]/p' rite-config.yml 2>/dev/null \
   | grep -E '^[[:space:]]+branch_strategy:' | head -1 | sed 's/#.*//' \
   | sed 's/.*branch_strategy:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 branch_strategy="${branch_strategy:-separate_branch}"
