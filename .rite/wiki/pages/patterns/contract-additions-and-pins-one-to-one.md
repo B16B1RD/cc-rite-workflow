@@ -4,12 +4,14 @@ title: "契約を N 箇所に追記したら pin も N 箇所あるかを数え�
 domain: "patterns"
 description: "散文駆動スキルの契約変更で複数箇所を追記したとき、追加したアサーションが追記箇所より少ないと、pin されなかった 1 箇所だけを元に戻してもスイートが green のまま受入基準が壊れる。"
 created: "2026-08-29T15:42:53Z"
-generated: { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T01:27:23Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T17:15:00Z" }
 verified:
   - by: "rite-wiki-ingest/gpt-6-astra"
     at: "2026-09-16T01:27:23Z"
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-30T06:15:00Z"
+  - by: "rite-wiki-ingest/claude-opus-5-5"
+    at: "2026-09-27T17:15:00Z"
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260916T005332Z-pr-2897.md"
@@ -23,6 +25,8 @@ sources:
     resource: "raw/fixes/20260829T152626Z-pr-2466.md"
   - type: "reviews"
     resource: "raw/reviews/20260830T060338Z-pr-2479.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T170350Z-pr-3318.md"
 tags: ["static-contract-test", "pin-coverage", "mutation-testing", "prose-driven-skill"]
 confidence: high
 ---
@@ -89,6 +93,12 @@ helper が旧入力を拒否する単体テストだけでは、呼び出し元�
 
 検出能力は、隔離コピーで Ready の payload だけを旧形式へ戻し、その検査が失敗することまで確認する。helper 自体の拒否と、呼び出し元の移行維持は別の境界なので、それぞれの負例が必要になる。
 
+### docstring が列挙する分岐も数え合わせの母数に入れる
+
+helper の docstring が reason を列挙している場合、その列挙も契約の宣言として数える。ある preview 経路のテストで、docstring が挙げる reason のうち 1 つだけ preview 付きのテストが無かった。reason ごとに 1 対 1 のテストを置かないと、その分岐に固有の変異が生き残る。
+
+テスト内で組み立てた引数配列を読み返すだけの assert は、被テスト側に引数が届いたことを保証しない。到達は、被テスト側の該当処理を壊す変異を当てて落ちることで担保する。
+
 ## 関連ページ
 
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](./mutation-testing-test-fidelity.md)
@@ -103,3 +113,4 @@ helper が旧入力を拒否する単体テストだけでは、呼び出し元�
 - [レビュー結果](../../raw/reviews/20260829T152045Z-pr-2466.md)
 - [fix 結果](../../raw/fixes/20260829T152626Z-pr-2466.md)
 - [レビュー結果](../../raw/reviews/20260830T060338Z-pr-2479.md)
+- [docstring が列挙する reason ごとに 1 対 1 のテストを求めたレビュー結果](../../raw/reviews/20260927T170350Z-pr-3318.md)

@@ -29,9 +29,11 @@ sources:
     resource: "raw/reviews/20260927T141600Z-pr-3281.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T160629Z-pr-3306.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T165534Z-pr-3317.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:10:16Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T17:15:00Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-16T12:58:00Z" }
   - { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T07:10:00Z" }
@@ -43,6 +45,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:07:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:25:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:10:16Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T17:15:00Z" }
 ---
 
 # 否定形の assert は前提条件が崩れると fail-silent になる
@@ -189,6 +192,11 @@ rm -f "$result_dir"/*.json
 - 行の一部分だけをパラメータ展開で切り出して検査する pin は、展開の結果が元の行と異なること（区切りが存在すること）も条件に含める。区切りが消えると展開は行全体を返し、検査が空振りする
 - 失敗メッセージに件数しか出さない pin は、見出しの改名と本当の違反が同じ表示になる。原因を区別したいときは、区切りの有無や終端見出しの有無を別の条件として assert する
 
+### 実例 10: 「警告が出ない」を空出力だけで確かめると、helper が途中で落ちても通る（レビュー結果）
+
+判定不能に倒れたエントリで付随情報（主張・警告の材料）を捨てることを固定するテストで、否定の assert（警告が出ない）を出力の空で表すと、helper が途中で落ちて何も出さなかった場合も通る。成功 marker の完全一致を先に assert し、そのうえで WARNING 行の件数が 0 であることを数える形にすると、落ちた経路は marker 不一致で fail 側に倒れる。
+
+判定不能になる分岐が複数あるときは、分岐の数だけ variant を置く。分岐ごとに「その分岐でだけ情報を残す」変異を当て、対応する variant だけが落ちることを確かめる。variant が 1 つだと、どの分岐の境界が守られているのかを言えない。
 
 ## 関連ページ
 
@@ -210,3 +218,4 @@ rm -f "$result_dir"/*.json
 - [除外フィルタを floor と共有させる指摘のレビュー結果](../../raw/reviews/20260927T105021Z-pr-3265.md)
 - [陽性対照の変異点が経路ごとに異なることを実測したレビュー結果](../../raw/reviews/20260927T141600Z-pr-3281.md)
 - [範囲抽出の 0 件 pin に陽性対照を組み合わせたレビュー結果](../../raw/reviews/20260927T160629Z-pr-3306.md)
+- [否定の assert を成功 marker の完全一致と WARNING 行の件数で表す形を確認したレビュー結果](../../raw/reviews/20260927T165534Z-pr-3317.md)

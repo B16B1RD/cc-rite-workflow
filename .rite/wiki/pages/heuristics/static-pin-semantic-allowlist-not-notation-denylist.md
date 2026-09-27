@@ -29,9 +29,11 @@ sources:
     resource: "raw/reviews/20260927T050031Z-pr-3211.md"
   - type: "fixes"
     resource: "raw/fixes/20260927T050634Z-pr-3211.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T170027Z-pr-3314.md"
 tags: ["test", "static-pin", "allowlist", "mutation", "bash"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T05:30:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T17:15:00Z" }
 verified:
   - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
   - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-12T04:13:09Z" }
@@ -40,6 +42,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T04:45:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T05:10:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T05:30:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T17:15:00Z" }
 ---
 
 # 静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く
@@ -132,6 +135,10 @@ ERE の交替を denylist に使うときは、各枝が非空で単独でも HE
 
 性質で抽出する検出器では、件数表や全検査に載せる範囲を、範囲の終端として実際に使われている形だけに限る。非対象が大量にある形まで載せると、除外表のほうが守る対象より大きくなる。
 
+### 意味の単位で拾う不在検査にも、表記の揺れをどこまで許すかの境界が残る
+
+表記を持たない概念（あるコマンドを別のコマンドの引数に埋め込む形）の不在を固定するとき、literal の完全一致ではなく意味の単位で拾うパターンに強めても、境界は消えない。検査を強めた修正の差分スコープ再レビューでは、強化した正規表現の網羅範囲（コマンド置換の直後の空白、名前空間外の接頭辞）が次の推奨として出やすい。対象の文書に今その表記が無く、実行時の帰結を持たない検出網の弱さであれば、帰結クラスの降格で記録して収束させ、網羅を追い続けない。
+
 ## 関連ページ
 
 - [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](./fixture-mutation-isolates-invariants.md)
@@ -153,3 +160,4 @@ ERE の交替を denylist に使うときは、各枝が非空で単独でも HE
 - [角括弧で始まるリテラル全体を拾い徴候で判定した fix 結果](../../raw/fixes/20260927T044935Z-pr-3211.md)
 - [検出器の probe を実設定の行形から選ぶべきと確認したレビュー結果](../../raw/reviews/20260927T050031Z-pr-3211.md)
 - [判定経路の否定側を自己テストに置き、報告範囲を終端の形に限った fix 結果](../../raw/fixes/20260927T050634Z-pr-3211.md)
+- [意味の単位で拾う不在検査の網羅範囲が次の推奨になったレビュー結果](../../raw/reviews/20260927T170027Z-pr-3314.md)

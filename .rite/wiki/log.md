@@ -18,7 +18,16 @@
 * **Update**: [過剰マッチ防止の精緻化修正は、実装が許容する全形状を再確認しないと過小マッチという別の欠陥を生む (振り子現象)](pages/anti-patterns/precision-tightening-pendulum-regression.md) — raw/reviews/20260927T163943Z-pr-3305.md を統合
 * **Update**: [終了コードの契約は、その形を作る経路をすべて数え上げてから書く](pages/heuristics/exit-contract-enumerate-producing-paths.md) — raw/reviews/20260927T163905Z-pr-3312.md を統合
 * **lint:clean** — contradictions=0, stale=64, orphans=0, missing_concept=0, unregistered_raw=567, broken_refs=0
-
+* **Create**: [終了コードの分岐を散文で書くと「other」が名指しした値まで取り込む — 兄弟の手順書と同じ表で 0 / 1 / 2 / other を列挙する](pages/anti-patterns/exit-code-branch-prose-other-absorbs-named-codes.md) — raw/reviews/20260927T170144Z-pr-3312.md を新規ページ化
+* **Update**: [終了コードの分岐を散文で書くと「other」が名指しした値まで取り込む — 兄弟の手順書と同じ表で 0 / 1 / 2 / other を列挙する](pages/anti-patterns/exit-code-branch-prose-other-absorbs-named-codes.md) — raw/fixes/20260927T171100Z-pr-3312.md を統合
+* **Create**: [散文とコマンドが同じ行にある手順の pin は、コマンド span に絞ったうえで span 内の引数の出どころまで固定する](pages/patterns/procedure-pin-scopes-command-span-and-argument-provenance.md) — raw/reviews/20260927T164624Z-pr-3314.md を新規ページ化
+* **Update**: [散文とコマンドが同じ行にある手順の pin は、コマンド span に絞ったうえで span 内の引数の出どころまで固定する](pages/patterns/procedure-pin-scopes-command-span-and-argument-provenance.md) — raw/fixes/20260927T165442Z-pr-3314.md を統合
+* **Update**: [Test assertion は section-scoped で行頭 prefix を必須にし narrative mention の false negative を防ぐ](pages/patterns/section-scoped-assertion-prevents-narrative-false-negative.md) — raw/reviews/20260927T165534Z-pr-3317.md を統合
+* **Update**: [否定形の assert は前提条件が崩れると fail-silent になる](pages/anti-patterns/negative-assertion-vacuous-without-precondition-floor.md) — raw/reviews/20260927T165534Z-pr-3317.md を統合
+* **Update**: [Test assertion は section-scoped で行頭 prefix を必須にし narrative mention の false negative を防ぐ](pages/patterns/section-scoped-assertion-prevents-narrative-false-negative.md) — raw/fixes/20260927T170119Z-pr-3317.md を統合
+* **Update**: [Test assertion は section-scoped で行頭 prefix を必須にし narrative mention の false negative を防ぐ](pages/patterns/section-scoped-assertion-prevents-narrative-false-negative.md) — raw/reviews/20260927T170635Z-pr-3317.md を統合
+* **Update**: [静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く](pages/heuristics/static-pin-semantic-allowlist-not-notation-denylist.md) — raw/reviews/20260927T170027Z-pr-3314.md を統合
+* **Update**: [契約を N 箇所に追記したら pin も N 箇所あるかを数え合わせる](pages/patterns/contract-additions-and-pins-one-to-one.md) — raw/reviews/20260927T170350Z-pr-3318.md を統合
 
 ## 2026-09-27
 
