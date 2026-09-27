@@ -841,7 +841,7 @@ rationale: references/rationale.md#resume-routes-no-state-read
 
 - ユーザーが Ctrl+C で中断した場合: flow-state に現 phase (review or fix) が残るので `/rite:recover` で本コマンドが再起動する (詳細な phase → command routing は [skills/recover/SKILL.md](../recover/SKILL.md) Phase 5.3 を参照)
 - `iterate-step.sh` が exit 2（`ERROR: iterate-step.sh:`）で止まった場合: marker を待たずに停止し、未置換の placeholder や数値でない引数を直して当該ステップから再実行する
-- ステップ 0.6 / 1 の `iterate-step.sh` が exit 1 で止まり、次のどちらかのメッセージが出ている場合は、既定値で続行せずに停止し、原因を直してから当該ステップを再実行する（それ以外の exit 1 はメッセージが示す経路に従う）:
+- ステップ 0.6 / 1 の `iterate-step.sh` が exit 1 で止まった場合は、既定値で続行せずに停止する。次のどちらかのメッセージが出ている場合は原因を直してから当該ステップを再実行し、それ以外はメッセージが示す経路に従う:
   - `ERROR: rite-config.yml を読めません: <path>`: 表示されたパスの権限を直す
   - `main checkout root を解決できません (state-path-resolve.sh rc=…)`: `state-path-resolve.sh` を実行できなかった（`rc=127` は欠落、`rc=126` は読めない）。直前の `ERROR: bash: …` 行に出るファイルを確かめ、プラグインを取得し直す（プラグインの破損 / 版 skew）
 - `[fix:error]` 時: [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) に従い 1 回だけ自動再試行し、再失敗時は停止する
