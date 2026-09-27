@@ -54,6 +54,7 @@
 * **Update**: [hook の失敗枝はソース grep ではなく実行で検証する](pages/heuristics/hook-failure-branch-needs-execution-test.md) — raw/reviews/20260927T040057Z-pr-3210.md を統合
 * **Update**: [grep (BRE) と grep -E (ERE) のメタ文字反転で assert ヘルパーが常時緑の dead assertion になる](pages/anti-patterns/bre-ere-metachar-inversion-dead-assertion.md) — raw/fixes/20260927T040853Z-pr-3210.md を統合
 * **Update**: [grep (BRE) と grep -E (ERE) のメタ文字反転で assert ヘルパーが常時緑の dead assertion になる](pages/anti-patterns/bre-ere-metachar-inversion-dead-assertion.md) — raw/reviews/20260927T041502Z-pr-3210.md を統合
+* **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=555, broken_refs=0
 
 ## 2026-09-26
 
