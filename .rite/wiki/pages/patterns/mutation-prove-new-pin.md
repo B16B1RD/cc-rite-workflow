@@ -37,9 +37,13 @@ sources:
     resource: "raw/fixes/20260904T092650Z-pr-2549.md"
   - type: "reviews"
     resource: "raw/reviews/20260913T090150Z-pr-2776.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T110720Z-pr-3259.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T110746Z-pr-3265.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T09:12:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:13:23Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T04:58:47Z" }
@@ -47,6 +51,7 @@ verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-04T01:26:01Z" }
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-04T13:54:13Z" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T09:12:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:13:23Z" }
 ---
 
 # 追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない
@@ -94,6 +99,12 @@ assert "Step 12 wiki_ingest_check has an unchecked marker-absence row" "1" \
 
 **途中終了を防ぐ fail-safe 分岐は、正常な入力では一度も通らない**: 「抜き出す行が消えたら名前付き FAIL を出して集計まで進む」ような分岐は、入力が健全なツリーでは実行されない。修正ごと消してもスイートは全件 green のままで、修正の除去を検出できない。行が消えた状態は変異版の入力（原本をコピーして当該行を削除したもの）で作り、その入力で分岐に入って名前付き FAIL が出ることを assert する。正常ツリーでの green だけを完成の根拠にしない。
 
+**同じ変異を修正前のテストにも流すと、追加したケースが唯一の固定点かどうかが分かる**: 1 つの対照を起動元などのリストで回す形に変えたとき、条件を 1 つ外す変異を修正前と修正後の両方のテストへ流す。修正前のテストで生き残り、修正後のテストで落ちれば、追加したケースがその条件を固定する唯一の場所だと示せる。修正後だけで赤くなることを見ても、既存の別ケースが同じ条件を既に守っていたのかは区別できない。
+
+**検出の分岐を新しい綴りへ広げたら、式そのものの self-test を添える**: 検出側の分岐に新しい綴りを足しても、その綴りの実例も合成 fixture も無ければ、分岐を元に戻す変異をどの assert も検出しない。広げた分岐には、綴りごとの一致件数を確かめる self-test を式に対して添える。
+
+**括弧の中に足した条件は、括弧の外だけを照合する pin では守られない**: 限定句の括弧内に新しい停止条件を足しても、既存の pin が括弧の外の文字列だけを見ていれば、その条件はどのテストにも固定されない。条件を足したら、その条件の文字列まで含む pin があるかを確かめる。
+
 ## 関連ページ
 
 - [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](./absence-pin-base-present-head-absent-single-line.md)
@@ -117,3 +128,5 @@ assert "Step 12 wiki_ingest_check has an unchecked marker-absence row" "1" \
 - [レビュー結果](../../raw/reviews/20260904T091303Z-pr-2549.md)
 - [fix 結果](../../raw/fixes/20260904T092650Z-pr-2549.md)
 - [途中終了防止の空値分岐が変異で固定されていないと指摘されたレビュー結果](../../raw/reviews/20260913T090150Z-pr-2776.md)
+- [起動元の条件を外す変異を修正前後のテストへ流したレビュー結果](../../raw/reviews/20260927T110720Z-pr-3259.md)
+- [広げた検出分岐と括弧内の条件が固定されていないことを示したレビュー結果](../../raw/reviews/20260927T110746Z-pr-3265.md)

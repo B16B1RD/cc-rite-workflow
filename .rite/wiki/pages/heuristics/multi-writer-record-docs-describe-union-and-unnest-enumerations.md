@@ -4,14 +4,18 @@ title: "複数の書き手が更新する記録の説明は値の和集合に揃
 domain: "heuristics"
 description: "同じ記録を複数の書き手が更新するとき、記録全体を語る総称的な説明が扱う値は書き手ごとの値の和集合になる。書き手単位の説明と総称的な説明を区別して後者だけを和集合へ揃え、値の列挙は括弧の入れ子にせず別の文に出す。"
 created: "2026-09-27T04:58:44Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T04:58:44Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:13:23Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260927T044435Z-pr-3215.md"
   - type: "fixes"
     resource: "raw/fixes/20260927T045328Z-pr-3215.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T110537Z-pr-3268.md"
 tags: ["prose-contract", "enumeration", "template-comment", "multi-writer"]
 confidence: medium
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:13:23Z" }
 ---
 
 # 複数の書き手が更新する記録の説明は値の和集合に揃え、値の列挙は括弧に入れず別の文にする
@@ -38,6 +42,12 @@ confidence: medium
 
 配布テンプレートのコメントだけを変える修正は、YAML パーサが使えない環境でも、diff に非コメント行が無いことで「差分がコメント行に限られる」と確かめられる。
 
+### 値を書き写した箇所は、正本の値が増えると取り残される
+
+同じ値の組を複数の文書へ書き写すと、正本の値が増えたときに写しだけが古いまま残る。値の一覧が要らない箇所、たとえば削除しない理由を述べるだけのコメントでは、値を列挙せず「降格理由」のような総称で書くと食い違いが起きない。説明文で値を挙げる場合は、どの書き手がどの値を書くかを併記すると誤読を防げる。
+
+正本の表現と実際に出るラベル（接頭辞付きなど）の差は、写しを揃える変更の範囲では直さない。正本と写しをまとめて直す別の作業として扱う。
+
 ## 関連ページ
 
 - [散文修正の完了検査は「削除した旧表現」ではなく「主張した概念」で走査する（逆引き検査）](./reverse-lookup-concept-sweep-for-prose-fixes.md)
@@ -47,3 +57,4 @@ confidence: medium
 
 - [記録コメントのラベル説明を和集合へ揃えたレビュー結果](../../raw/reviews/20260927T044435Z-pr-3215.md)
 - [列挙を括弧から出して別の文にした fix 結果](../../raw/fixes/20260927T045328Z-pr-3215.md)
+- [値の写しを正本の 3 値へ揃えたレビュー結果](../../raw/reviews/20260927T110537Z-pr-3268.md)

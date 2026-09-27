@@ -149,6 +149,8 @@
 * **Create**: [手順書の限定条件には、実行者が自分で確かめられる観測対象を併記する](pages/heuristics/limitation-clause-needs-executor-observable-cue.md) — raw/fixes/20260927T105924Z-pr-3265.md を新規ページ化
 * **Skip**: [20260927T104834Z-pr-3262.md](raw/reviews/20260927T104834Z-pr-3262.md) — 当該 cycle の運用観察（mandate と却下台帳の重なりは同 cycle 内で収束済み）と既存 bash ページで扱い済みの errexit 挙動のみで、新しい経験則を含まない
 * **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=66, orphans=0, missing_concept=0, unregistered_raw=562, broken_refs=0
+* **Update**: [追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない](pages/patterns/mutation-prove-new-pin.md) — raw/reviews/20260927T110720Z-pr-3259.md, raw/reviews/20260927T110746Z-pr-3265.md を統合
+* **Update**: [複数の書き手が更新する記録の説明は値の和集合に揃え、値の列挙は括弧に入れず別の文にする](pages/heuristics/multi-writer-record-docs-describe-union-and-unnest-enumerations.md) — raw/reviews/20260927T110537Z-pr-3268.md を統合
 
 ## 2026-09-26
 
