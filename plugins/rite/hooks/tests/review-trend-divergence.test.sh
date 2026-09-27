@@ -1035,6 +1035,18 @@ assert "書込: pin は同じ PR の最新結果 basename" "42-20260101000002.js
 assert "書込: 新しい run では同じ PR の sweep 済み marker を消す" "absent" \
   "$([ -e "$r/.rite/state/nb-sweep-done-42.txt" ] && echo present || echo absent)"
 
+# 陽性対照: 同じ sandbox に有効な PR 番号を渡すと step 本体まで届き、flow-state.sh を呼ぶ。
+# 下の「呼ばない」assert は、sandbox に必須の helper が欠けて本体が途中で落ちても通るため、
+# 届くことをここで固定する。rc は見ない（本体は後段の config 解決で止まるが、判定には無関係）
+for sub in init-cycle cycle-gate; do
+  r=$(pin_state_root "good-$sub")
+  rm -f "$PG/plugin/hooks/calls"
+  PIN_STATE_ROOT="$r" bash "$PG/plugin/scripts/iterate-step.sh" "$sub" --pr 42 --issue 1 --branch b \
+    >"$PG/out" 2>"$PG/err"
+  assert "$sub [42]: 有効な PR 番号では step 本体に入る (flow-state.sh を呼ぶ)" "present" \
+    "$([ -e "$PG/plugin/hooks/calls" ] && echo present || echo absent)"
+done
+
 # 実入口は step 関数に入る前に止める。止めた検査を stderr の文言で見分ける（どれかが外れても
 # 別の検査が同じ rc=2 を返すため、rc だけでは検査の欠落を見逃す）。
 for bad in '{pr_number}' '' '12a' '#12' ' 12' '-1'; do
