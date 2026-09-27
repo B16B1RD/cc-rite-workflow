@@ -940,8 +940,10 @@ else
   fail "no-config capture rc=$crc out=$(cat "$ROOT/lw2.out") mem=$(cat "$lw_mem" 2>/dev/null) err=$(cat "$ROOT/lw2.err")"
 fi
 run_gate --mode commit --worktree "$lw" --flow-state "$lw_flow" --memory "$lw_mem"
-if grep -q "WARNING: .*$lw_main/rite-config.yml" "$ROOT/gate.err" && ! grep -q 'WARNING' <<<"$GOUT"; then
-  pass "gate without any config warns on stderr with the tried path"
+# 既定値を拒否側へ倒すと WARNING は変わらず判定だけが変わるため、rc と許可の出力まで固定する
+if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT" \
+  && grep -q "WARNING: .*$lw_main/rite-config.yml" "$ROOT/gate.err" && ! grep -q 'WARNING' <<<"$GOUT"; then
+  pass "gate without any config warns on stderr with the tried path and allows the auto_query_off default"
 else
   fail "no-config gate rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
 fi
