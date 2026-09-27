@@ -198,6 +198,8 @@
 * **Skip**: [20260927T150527Z-pr-3294.md](raw/fixes/20260927T150527Z-pr-3294.md) — 既存ページに無い一般則を含まない 2 行の冗長な絞り込みの削除記録
 * **Skip**: [20260927T151101Z-pr-3294.md](raw/reviews/20260927T151101Z-pr-3294.md) — 差分スコープの再レビューで指摘 0 件。新しい経験則を含まない
 
+* **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=64, orphans=0, missing_concept=0, unregistered_raw=566, broken_refs=0
+
 ## 2026-09-26
 
 * **Create**: [他セッションの成果物を回収する処理は、進捗時刻ではなく所有者の生存信号で判定し、判定不能は残す側へ倒す](pages/heuristics/liveness-reaper-keeps-undecidable-and-guards-json-shape.md) — raw/reviews/20260926T144808Z-pr-3174.md を新規ページ化
