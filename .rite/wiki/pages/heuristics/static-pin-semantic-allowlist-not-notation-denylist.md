@@ -17,14 +17,19 @@ sources:
     resource: "raw/reviews/20260914T143622Z-pr-2821.md"
   - type: "reviews"
     resource: "raw/reviews/20260916T025549Z-pr-2896.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T041652Z-pr-3211.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T042427Z-pr-3211.md"
 tags: ["test", "static-pin", "allowlist", "mutation", "bash"]
 confidence: high
-generated: { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T04:45:00Z" }
 verified:
   - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
   - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-12T04:13:09Z" }
   - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-14T14:50:00Z" }
   - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-16T03:09:20Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T04:45:00Z" }
 ---
 
 # 静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く
@@ -95,6 +100,12 @@ ERE の交替を denylist に使うときは、各枝が非空で単独でも HE
 単一行の通常入力だけでなく、複数行 GraphQL 引数を含む変更操作を注入して検出を確かめる。記録を整形しただけで安全になったとは判定せず、allowlist の拒否を実際に確認する。
 
 
+### 検出器の抽出も「既存の書き方の列挙」ではなく性質で書く
+
+新しい実装が禁止した形を持ち込まないよう検出する契約テストでも同じことが起きる。対象を「既存コードがたまたま使っている書き方」の完全一致で列挙すると、同じリポジトリに既にある別の書き方で書かれた新しい実装を素通りさせる。件数の pin も、新規ファイルは実数・期待値とも 0 で一致するため安全網にならない。抽出は性質そのもの（例: 本体が行頭アンカー付きの文字クラス 1 つだけの正規表現リテラル）で行い、同じ形の非対象は完全一致の除外表で扱う。
+
+検出器の照合は「一致すべき例」と「一致してはならない例」を両側そろえて fixture で固定する。片側だけだと別方向の変異（キーで閉じない終端、インデント行で閉じる終端など）が生き残る。自己テストには検出器の各報告分岐を踏む入力を 1 つずつ置く。今のツリーが clean だと、壊れても気付けない分岐が残る。
+
 ## 関連ページ
 
 - [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](./fixture-mutation-isolates-invariants.md)
@@ -110,3 +121,5 @@ ERE の交替を denylist に使うときは、各枝が非空で単独でも HE
 - [退路本文への negative pin で禁止文を除外してから照合したレビュー結果](../../raw/reviews/20260912T040912Z-pr-2715.md)
 - [denylist の表記依存と使う側の allowlist 不在を mutation で実測したレビュー結果](../../raw/reviews/20260914T143622Z-pr-2821.md)
 - [免除条件の推測が 3 サイクル素通りし明示マーカーへ切り替えたレビュー結果](../../raw/reviews/20260916T025549Z-pr-2896.md)
+- [表記の列挙で抽出する契約テストが新しい reader を素通りさせたレビュー結果](../../raw/reviews/20260927T041652Z-pr-3211.md)
+- [性質そのもので拾う 1 形へ置き換えた fix 結果](../../raw/fixes/20260927T042427Z-pr-3211.md)

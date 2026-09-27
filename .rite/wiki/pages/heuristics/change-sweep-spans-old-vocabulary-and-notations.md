@@ -38,12 +38,15 @@ sources:
     resource: "raw/fixes/20260915T021146Z-pr-2829.md"
   - type: "fixes"
     resource: "raw/fixes/20260915T013143Z-pr-2829.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T043509Z-pr-3213.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-15T03:40:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T04:45:00Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5"
     at: "2026-09-15T03:40:00Z"
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T04:45:00Z" }
 ---
 
 # 変更・削除の掃き出しは旧語彙・置換した条件式・別記法トークンまで広げる
@@ -131,6 +134,10 @@ canonical snippet / 共有 reference が「新規箇所を追加したら usage 
 
 出力の判定表を 2 つの節に持つ手順書では、新しい停止条件を片方の表にだけ足し、もう片方の表に従うと停止が迂回される。reviewer 数の変更で仕様書の表やフロー図が取り残されるのも同じ形である。この種の字面の食い違いは実測アンカーを付けられず、non-blocking のまま cycle を跨いで残る。変更時の掃き出しで潰すか、表を 1 つにして他方から参照する。
 
+### 完了確認の grep は表記に依存しない形で書く
+
+実装が読まない置き場所を文書から消すとき、同じ主張を別の言い回しで書いた兄弟文書（仕様書の要約節など）が残る。完了確認の grep をファイルパス表記（例: ディレクトリ名 + ファイル名）だけで書くと、「ディレクトリ名 + directory」のような言い換えを取りこぼし、修正後の 2 文書が互いに矛盾する。完了確認はディレクトリ名単独や言い換えの語（directory / ディレクトリ）も含めて探し、ヒットを 1 件ずつ主張として読む。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -156,3 +163,4 @@ canonical snippet / 共有 reference が「新規箇所を追加したら usage 
 - [判定表と仕様書の表の drift を指摘したレビュー結果](../../raw/reviews/20260915T002514Z-pr-2829.md)
 - [契約テストの pin を追従させた fix 結果](../../raw/fixes/20260915T021146Z-pr-2829.md)
 - [人数を数える全消費者に除外を入れた fix 結果](../../raw/fixes/20260915T013143Z-pr-2829.md)
+- [兄弟文書の言い換えた同じ主張が残ったレビュー結果](../../raw/reviews/20260927T043509Z-pr-3213.md)
