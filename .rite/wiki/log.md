@@ -2,6 +2,7 @@
 
 ## 2026-09-27
 
+* **Update**: [保存パス基準の変更は観測面と全 caller 引数の同時スイープが必要](pages/heuristics/path-basis-change-observation-surface-sweep.md) — raw/reviews/20260927T034327Z-pr-3204.md を統合
 * **Update**: [到達不能に見える分岐の削除は、その分岐が受けていた入力の行き先を確認してから決める](pages/heuristics/branch-deletion-traces-where-the-input-flows.md) — raw/fixes/20260927T033323Z-pr-3204.md を統合
 * **Update**: [agent が人間に渡す復旧コマンドは、人間の実行コンテキストで正しいかを検証する](pages/heuristics/recovery-command-verified-in-human-execution-context.md) — raw/fixes/20260927T033323Z-pr-3204.md を統合
 * **Update**: [jq は入力が 0 ドキュメントだとフィルタを評価せず rc=0 で終わる — 形の検証は jq -s と length == 1 で入力を 1 ドキュメントに閉じる](pages/anti-patterns/jq-empty-input-skips-filter-rc-zero.md) — raw/fixes/20260927T033157Z-pr-3200.md を統合

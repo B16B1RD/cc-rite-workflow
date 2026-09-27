@@ -26,7 +26,7 @@ okf_version: "0.2"
 | [`cmd=$(...) \|\| cmd=\\"\\"` は非ゼロ終了時に stdout 済みの診断 JSON を空文字列で上書きする](pages/anti-patterns/command-substitution-fallback-discards-diagnostic-json.md) | anti-patterns | `status_json=$(bash script.sh args) \|\| status_json=\\"\\"` という一見安全な defensive fallback は、`script.sh` が非ゼロ終了したときに **既に stdout へ出力済みの診断 JSON（失敗理由を含む）を空文字列で上書き・破棄する**。 | 2026-09-25T15:24:22Z | high |
 | [pathspec 不一致の git diff --quiet は exit 0 を返し「差分なし」ガードを無効化する](pages/anti-patterns/pathspec-miss-exit-zero-defeats-diff-guard.md) | anti-patterns | `git diff --quiet <rev> -- <pathspec>` は pathspec がどのファイルにも一致しないとき「比較対象なし = 差分なし = exit 0」を返す。 | 2026-07-13T09:15:00+00:00 | high |
 | [破壊的操作を承認する分類器は判定・実行・承認文言が同じ対象を見ることを保証する](pages/heuristics/classifier-destructive-action-same-tree-alignment.md) | heuristics | 「検証してから破棄」型のフローでは、(1) 判定が読む対象、(2) 破棄コマンドが作用する対象、(3) ユーザー承認文言が主張する対象、の 3 者が一致していないと、承認プロンプトが未検証の内容について「確認済み」と過大主張し、承認の informed consent が壊れる。 | 2026-07-13T09:15:00+00:00 | high |
-| [保存パス基準の変更は観測面と全 caller 引数の同時スイープが必要](pages/heuristics/path-basis-change-observation-surface-sweep.md) | heuristics | 状態ファイルの保存パス基準を変更する PR (例: cwd 相対 → 共有 state root) では、実装本体の 3 経路 (save / read / delete) を揃えるだけでは不十分。 | 2026-09-10T11:05:00Z | high |
+| [保存パス基準の変更は観測面と全 caller 引数の同時スイープが必要](pages/heuristics/path-basis-change-observation-surface-sweep.md) | heuristics | 状態ファイルの保存パス基準を変更する PR (例: cwd 相対 → 共有 state root) では、実装本体の 3 経路 (save / read / delete) を揃えるだけでは不十分。 | 2026-09-27T03:50:00Z | high |
 | [全域で成功する resolver への委譲が既存 fail-fast ガードを silent success 化する](pages/anti-patterns/total-resolver-delegation-defeats-fail-fast-gate.md) | anti-patterns | 「入力がどうであれ必ず非空値を返す (total な)」helper に値の解決を委譲すると、その値の空チェックに依存していた既存の fail-fast ERROR ガードが到達不能な dead code になり、従来エラーだった状況が silent success に変わる。 | 2026-09-15T00:45:00Z | high |
 | [Fix の完成判定は shell script 単体動作ではなく実ワークフロー発火実績で行う](pages/heuristics/fix-verification-requires-natural-workflow-firing.md) | heuristics | 修正が動いていると主張する前に、shell script 単体のテストデータではなく、自然な workflow 経路を通った commit 履歴上の発火実績を確認する。 | 2028-04-17T00:15:00+00:00 | high |
 | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | anti-patterns | fix を 1 箇所に適用したとき、同じパターンを持つ「対称位置」（ペア/トリオの兄弟スクリプト、同型 idiom の別 phase、相互参照の Phase 番号等）に同じ fix を伝播させ忘れる failure mode。 | 2026-09-26T16:15:00Z | high |
@@ -569,5 +569,5 @@ okf_version: "0.2"
 
 - 総ページ数: 555
 - ドメイン別: patterns=125, heuristics=255, anti-patterns=175
-- 最終更新: 2026-09-27T03:42:47Z
+- 最終更新: 2026-09-27T03:50:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
