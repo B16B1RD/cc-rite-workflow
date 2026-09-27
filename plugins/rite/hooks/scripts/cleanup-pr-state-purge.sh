@@ -6,7 +6,14 @@
 # 他 PR 誤削除防止のため glob は `<pr>-` prefix 固定。
 #
 # Usage:
-#   cleanup-pr-state-purge.sh --pr <N> [--state-root <path>] [--dry-run]
+#   cleanup-pr-state-purge.sh --pr <N> [--state-root <path>] [--dry-run] [--record-processed]
+#
+# --record-processed: 片付けの前に `<pr>-*.json*` が 1 本以上あり、退避/削除 helper が rc=0 で
+#   返ったとき、`.rite/state/review-results-purged-<pr>.txt` に `pr=<N>` の 1 行を書く。
+#   cleanup の再実行で follow-up helper がこれを読み、JSON 不在を「前回片付け済み」と区別する。
+#   記録は rite_rm の列に入れず、以後の purge でも消さない（消すと再実行時の判定材料が無くなる）。
+#   dry-run では書かない。書込失敗は WARNING を出して続行する（再実行の報告が no_json に戻るだけで、
+#   片付け自体は済んでいる）。PR の state を残さない契約を持つ呼び出し元（Issue 中止）は付けない。
 #
 # 出力 (stderr):
 #   ✅ <label> を削除: <path>                                    (削除成功ごと)
@@ -32,10 +39,11 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 pr_number=""
 state_root=""
 dry_run=false
+record_processed=false
 
 usage() {
   echo "ERROR: $1" >&2
-  echo "Usage: cleanup-pr-state-purge.sh --pr <N> [--state-root <path>] [--dry-run]" >&2
+  echo "Usage: cleanup-pr-state-purge.sh --pr <N> [--state-root <path>] [--dry-run] [--record-processed]" >&2
   exit 2
 }
 
@@ -44,6 +52,7 @@ while [ "$#" -gt 0 ]; do
     --pr)         shift; [ "$#" -gt 0 ] || usage "--pr requires a value"; pr_number=$1; shift ;;
     --state-root) shift; [ "$#" -gt 0 ] || usage "--state-root requires a value"; state_root=$1; shift ;;
     --dry-run)    dry_run=true; shift ;;
+    --record-processed) record_processed=true; shift ;;
     *) usage "unknown option: $1" ;;
   esac
 done
@@ -105,9 +114,20 @@ if [ "$dry_run" = "true" ]; then
     echo "[DRY-RUN] review_results を退避/削除対象として検出: $_rr"
   done
 else
+  _had_results=false
+  for _rr in "$state_root/.rite/review-results/${pr_number}"-*.json*; do
+    { [ -e "$_rr" ] || [ -L "$_rr" ]; } && { _had_results=true; break; }
+  done
   _rrar_rc=0
   bash "$SCRIPT_DIR/review-results-archive-or-rm.sh" \
     --state-root "$state_root" --pr "$pr_number" || _rrar_rc=$?
+  if [ "$record_processed" = "true" ] && [ "$_had_results" = "true" ] && [ "$_rrar_rc" -eq 0 ]; then
+    _record="$state_root/.rite/state/review-results-purged-${pr_number}.txt"
+    if ! { mkdir -p "$state_root/.rite/state" && printf 'pr=%s\n' "$pr_number" > "$_record"; } 2>/dev/null; then
+      echo "WARNING: 処理済み記録を書けません (PR #${pr_number}): $_record" >&2
+      echo "  影響: この PR の cleanup を再実行すると follow-up 側が no_json (未完了) と報告します" >&2
+    fi
+  fi
   if [ "$_rrar_rc" -ne 0 ]; then
     echo "WARNING: review-results の退避/削除 helper が rc=${_rrar_rc} で失敗しました。レビュー結果 JSON は未処理のまま残っています" >&2
     # 候補はこの call site から到達可能なものだけを挙げる。呼び先の exit 1 は 4 箇所とも引数検証

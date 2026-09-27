@@ -639,6 +639,8 @@ retained flag: `[CONTEXT] REVIEW_SOURCE_STALE=1; reason={explicit_file|local_fil
 
 上記のほか、`fix-cycle-state/{pr_number}.json` / legacy `fix-cycle-state.json` / `accepted-fingerprints-{pr_number}.txt` / `review-run-since-{pr_number}.txt` / `nb-sweep-done-{pr_number}.txt` も同ステップで無条件削除される (完全な列挙は `hooks/scripts/cleanup-pr-state-purge.sh` の `rite_rm` 呼び出し列が単一源)。
 
+逆に `.rite/state/review-results-purged-{pr_number}.txt` は同ステップが**書いて残す**処理済み記録で、レビュー結果ファイルを片付けたときだけ作られる。cleanup を再実行したとき、follow-up 起票 (ステップ 6.0) はこれを読み、JSON 不在を `no_json` ではなく `already_processed` として報告する。以後の cleanup でも削除しない (契約は同 helper の docstring が単一源)。
+
 **`archive/` 配下は自動削除されない** — 退避したファイルは PR ごとに蓄積する。掃除機構は実需が出るまで設けない (`no_speculative_structure`)。不要になったら手動削除する。走査系 helper (`review-schema-version-check.sh` / `review-trend-divergence.sh`) はいずれも `-maxdepth 1` のため退避先を拾わない。
 
 wildcard は PR 番号 prefix 固定とし、他 PR のファイルを誤って削除しないよう保証する。state file は specific path (`{pr_number}.count` 完全一致) で削除する。

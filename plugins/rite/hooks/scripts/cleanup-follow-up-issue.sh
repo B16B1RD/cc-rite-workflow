@@ -63,11 +63,13 @@
 #   [CONTEXT] FOLLOW_UP_ISSUE=created; issue=<n>; pr=<n>
 #   [CONTEXT] FOLLOW_UP_ISSUE=preview; count=<n>; deferred=<k>; body=<path>; pr=<n>   (--preview-body のとき。
 #     count は指摘と先送り欠陥の合計、deferred はそのうち先送り欠陥の件数)
-#   [CONTEXT] FOLLOW_UP_ISSUE=skipped; reason=no_findings|all_resolved|all_issued|no_json|already_exists|jq_missing; pr=<n>
+#   [CONTEXT] FOLLOW_UP_ISSUE=skipped; reason=no_findings|all_resolved|all_issued|no_json|already_processed|already_exists|jq_missing; pr=<n>
 #     no_findings  : parse できた JSON の和集合が、除外を適用する前から 0 件 (先送り欠陥も 0 件)
 #     all_resolved : 除外**後**に 0 件になった (再検証で全件が解消済みと判定された。先送り欠陥も 0 件)
 #     all_issued   : sweep 起票済みの除外**後**に 0 件になった (残りが全件 sweep で Issue 化済み。先送り欠陥も 0 件)
-#     no_json      : レビュー結果 JSON が無い (先送り欠陥も 0 件)
+#     no_json      : レビュー結果 JSON が無い (先送り欠陥も 0 件。処理済み記録も無いか、読めない・内容が一致しない)
+#     already_processed : JSON が無く先送り欠陥も 0 件で、前回の cleanup の purge が JSON を片付けた
+#                    記録 (.rite/state/review-results-purged-<pr>.txt の内容が `pr=<pr>`) がある
 #   [CONTEXT] FOLLOW_UP_DEFERRED=unavailable; reason=issue_body_api; pr=<n>
 #     元 Issue の本文を取得できず先送り欠陥を読めなかった (指摘側の起票は続ける)
 #   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=lookup_api|create_api|create_script_missing|json_undecidable|preview_write; pr=<n>
@@ -296,6 +298,17 @@ done <<< "$sources"
 
 if [ "$matched" -eq 0 ]; then
   if [ "$deferred_n" -eq 0 ]; then
+    # 前回の cleanup が JSON を片付けた PR は、purge の処理済み記録で「最初から無い」と区別する。
+    # 読めない・内容が一致しない記録は処理済みの証拠にしない。
+    purged_record="$STATE_ROOT/.rite/state/review-results-purged-${PR_NUMBER}.txt"
+    if [ -e "$purged_record" ] || [ -L "$purged_record" ]; then
+      if purged_content=$(cat -- "$purged_record" 2>/dev/null) && [ "$purged_content" = "pr=${PR_NUMBER}" ]; then
+        echo "INFO: PR #${PR_NUMBER} のレビュー結果 JSON は前回の cleanup で片付け済みです。follow-up の判定は済んでいます" >&2
+        emit_skip already_processed
+        exit 0
+      fi
+      echo "WARNING: 処理済み記録を読めないか内容が一致しないため、前回片付け済みとは扱いません: $purged_record" >&2
+    fi
     echo "WARNING: PR #${PR_NUMBER} のレビュー結果 JSON が見つかりません。follow-up 起票を skip します (別環境での cleanup の可能性。cycle 中記録は関連 Issue コメントを参照)" >&2
     emit_skip no_json
     exit 0

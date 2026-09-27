@@ -120,6 +120,10 @@
 #   T-70 preview の件数は指摘と先送り欠陥の合計
 #   T-71 トークンと Section 9 の境界が pr-review 7.4.3 と helper で一致する
 #   T-72 cleanup SKILL.md の完了報告の配線
+#   T-73 purge が JSON を片付けた PR の再実行は already_processed で skip し no_json を出さない
+#   T-74 処理済み記録の内容が不一致・読めないときは no_json に倒す
+#   T-75 処理済み記録があっても先送り欠陥・archive/ の JSON がある経路は従来どおり
+#   T-76 cleanup SKILL.md が already_processed を x 相当に置き、purge に記録を書かせる
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -539,6 +543,7 @@ assert_not_grep "T-05h already_exists に倒さない" "$ERR" 'already_exists'
 echo "--- T-06: JSON 不在で skip + WARNING ---"
 reset_stubs
 r=$(new_root t06)
+assert "T-06 前提: 処理済み記録が無い" "no" "$([ -e "$r/.rite/state/review-results-purged-9.txt" ] && echo yes || echo no)"
 run_target "$r"
 assert "T-06 exit 0" "0" "$RC"
 assert_grep "T-06 skipped no_json" "$ERR" 'reason=no_json; pr=9'
@@ -2119,6 +2124,82 @@ assert_grep "T-72 deferred note の定義" "$CLEANUP_MD" '^- `\{follow_up_deferr
 assert_grep "T-72 deferred note は unavailable marker を読む" "$CLEANUP_MD" 'FOLLOW_UP_DEFERRED=unavailable; reason=\{r\}; pr=\{pr_number\}'
 assert_grep "T-72 先送り欠陥側は未完了" "$CLEANUP_MD" '^  \| `FOLLOW_UP_DEFERRED=unavailable` \| 未完了 \|'
 assert_grep "T-72 review_cleanup_check は 3 側で判定" "$CLEANUP_MD" '先送り欠陥の読み取り（`FOLLOW_UP_DEFERRED`）・state 削除'
+
+PURGE="$SCRIPT_DIR/../scripts/cleanup-pr-state-purge.sh"
+PURGED_RECORD_REL=".rite/state/review-results-purged-9.txt"
+
+echo "--- T-73: purge が JSON を片付けた PR の再実行は already_processed ---"
+reset_stubs
+r=$(new_root t73)
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[]}'
+bash "$PURGE" --pr 9 --state-root "$r" --record-processed >/dev/null 2>&1
+assert "T-73 1 回目の purge で JSON が片付く" "no" "$([ -e "$r/.rite/review-results/9-20260101120000.json" ] && echo yes || echo no)"
+bash "$PURGE" --pr 9 --state-root "$r" --record-processed >/dev/null 2>&1
+assert "T-73 2 回目の purge 後も記録が残る" "yes" "$([ -f "$r/$PURGED_RECORD_REL" ] && echo yes || echo no)"
+run_target "$r"
+assert "T-73 exit 0" "0" "$RC"
+assert_grep "T-73 already_processed で skip" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=already_processed; pr=9$'
+assert_not_grep "T-73 no_json を出さない" "$ERR" 'reason=no_json'
+assert "T-73 起票しない" "0" "$(create_count)"
+
+echo "--- T-74: 処理済み記録の内容が不一致・読めないときは no_json ---"
+for t74_case in 'pr=90' 'pr=0' 'pr=9x' '' $'pr=9\nextra'; do
+  reset_stubs
+  r=$(new_root "t74-$(printf '%s' "$t74_case" | tr -c 'a-z0-9' '_')")
+  mkdir -p "$r/.rite/state"
+  printf '%s' "$t74_case" > "$r/$PURGED_RECORD_REL"
+  run_target "$r"
+  assert_grep "T-74 [$t74_case] no_json" "$ERR" 'reason=no_json; pr=9'
+  assert_grep "T-74 [$t74_case] WARNING" "$ERR" '処理済み記録'
+  assert_not_grep "T-74 [$t74_case] already_processed にしない" "$ERR" 'already_processed'
+done
+reset_stubs
+r=$(new_root t74-dir)
+mkdir -p "$r/$PURGED_RECORD_REL"
+run_target "$r"
+assert_grep "T-74 記録パスがディレクトリなら no_json" "$ERR" 'reason=no_json; pr=9'
+assert_not_grep "T-74 記録パスがディレクトリなら already_processed にしない" "$ERR" 'already_processed'
+if [ "$(id -u)" != 0 ]; then
+  reset_stubs
+  r=$(new_root t74-unreadable)
+  mkdir -p "$r/.rite/state"
+  printf 'pr=9' > "$r/$PURGED_RECORD_REL"
+  chmod 000 "$r/$PURGED_RECORD_REL"
+  run_target "$r"
+  chmod 600 "$r/$PURGED_RECORD_REL"
+  assert_grep "T-74 読めない記録は no_json" "$ERR" 'reason=no_json; pr=9'
+  assert_grep "T-74 読めない記録は WARNING" "$ERR" '処理済み記録'
+  assert_not_grep "T-74 読めない記録は already_processed にしない" "$ERR" 'already_processed'
+else
+  echo "  SKIP: T-74 chmod 000 のケースは root では読めてしまうため実行しない"
+fi
+
+echo "--- T-75: 処理済み記録があっても先送り欠陥・archive/ の JSON は従来経路 ---"
+reset_stubs
+r=$(new_root t75-deferred)
+mkdir -p "$r/.rite/state"; printf 'pr=9\n' > "$r/$PURGED_RECORD_REL"
+deferred_body '' > "$STUB_DIR/issue-body.md"
+export GH_ISSUE_BODY="$STUB_DIR/issue-body.md"
+run_target "$r"
+assert "T-75 先送り欠陥があれば起票する" "1" "$(create_count)"
+assert_not_grep "T-75 先送り欠陥ありは already_processed にしない" "$ERR" 'already_processed'
+reset_stubs
+r=$(new_root t75-archive)
+mkdir -p "$r/.rite/state"; printf 'pr=9\n' > "$r/$PURGED_RECORD_REL"
+put_archived "$r" "9-20260101120000.json" "$FINDING_JSON"
+run_target "$r"
+assert_grep "T-75 archive/ の JSON は和集合から起票" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
+assert_not_grep "T-75 archive/ ありは already_processed にしない" "$ERR" 'already_processed'
+
+echo "--- T-76: cleanup SKILL.md が already_processed を x 相当に置き、purge に記録を書かせる ---"
+ISSUE_CANCEL_MD="$SCRIPT_DIR/../../skills/issue-cancel/SKILL.md"
+assert "T-76 already_processed は created と同じ x 相当行" "1" \
+  "$(grep -c '^  | `created` / .*`skipped; reason=already_processed`.* | x 相当 | — |$' "$CLEANUP_MD")"
+assert "T-76 already_processed を未完了行に置かない" "0" "$(grep 'already_processed' "$CLEANUP_MD" | grep -c '| 未完了 |')"
+assert "T-76 no_json 行は failed 行の直後のまま (同上の参照先)" "1" \
+  "$(awk '/^  \| `FOLLOW_UP_ISSUE=failed`（reason 問わず/ { getline nxt; if (nxt ~ /^  \| `skipped; reason=no_json` \| 未完了 \| 同上/) print "ok" }' "$CLEANUP_MD" | grep -c ok)"
+assert_grep "T-76 ステップ 6 の purge は処理済み記録を書く" "$CLEANUP_MD" 'cleanup-pr-state-purge\.sh --pr "\{pr_number\}" --record-processed'
+assert_not_grep "T-76 issue-cancel の purge は処理済み記録を書かない" "$ISSUE_CANCEL_MD" 'record-processed'
 
 echo "--- T-arg: 引数 gate ---"
 bash "$TARGET" --pr abc --state-root "$TMP_ROOT" --owner a --repo b >"$OUT" 2>"$ERR"; RC=$?
