@@ -2147,7 +2147,7 @@ nb_finding() {
 }
 # $@=finding object。1 cycle 分のレビュー結果 JSON
 nb_json() { jq -nc '{non_blocking_findings: $ARGS.positional}' --jsonargs "$@"; }
-# $1=起票元の出典 basename。sweep が t.sh:310 の F-01 を起票した台帳を置く
+# $1=起票元の出典 basename。sweep が `t.sh:310` の F-01 を起票した台帳を置く
 put_issued_ledger() { jq -n --argjson c "$(comment_obj "$(record_body "$(issued_row5 F-01 t.sh:310 "$1")")")" '[[$c]]' > "$GH_API_JSON"; }
 relinked_lines() { grep -c '^\[cleanup-follow-up-issue\] sweep_issued_relinked:' "$ERR"; }
 RELINK_A=$(nb_finding F-02 t.sh 310 test-reviewer 'cycle A の初出の指摘')
