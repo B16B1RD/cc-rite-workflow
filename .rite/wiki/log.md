@@ -188,6 +188,7 @@
 * **Update**: [再入ガードは「実行したか」ではなく「何を対象に実行したか」を記録する](pages/heuristics/reentry-guard-records-processed-range.md) — raw/reviews/20260927T145506Z-pr-3292.md を統合
 * **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/reviews/20260927T145653Z-pr-3294.md を統合
 * **Update**: [Step 番号参照は relative (Step N + 1) ではなく absolute (heading title 名 + Step 番号) で書く](pages/patterns/step-reference-absolute-heading-over-relative.md) — raw/reviews/20260927T145617Z-pr-3291.md を統合
+* **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=64, orphans=0, missing_concept=0, unregistered_raw=564, broken_refs=0
 
 ## 2026-09-26
 
