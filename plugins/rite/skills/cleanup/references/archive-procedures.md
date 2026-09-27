@@ -258,31 +258,49 @@ Close the related Issue identified in `cleanup.md` ステップ 2.
 
 > 以下の実行スニペットの `-R {owner_repo}` は、[Owner/Repo Resolution](../../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe)（cleanup.md ステップ 1.4 と同一の canonical 手順）で解決した owner/repo（slash 形式）をリテラル置換する（SSH host alias 環境対応）。
 
-#### 3.6.1 Check Issue State
+#### 3.6.1 Close and Verify
 
-If a related Issue has been identified, check its current state:
-
-```bash
-gh issue view {issue_number} -R {owner_repo} --json state --jq '.state'
-```
-
-#### 3.6.2 Close the Issue
-
-If the Issue is OPEN, execute the close:
+Close the Issue only while it is OPEN, then read the same Issue's state again. A successful `gh issue close` alone does not count as closed: the re-read also catches a close that landed on a different Issue or never took effect. `{issue_number}` is the Issue identified in `cleanup.md` ステップ 2; when none was identified, substitute an empty string.
 
 ```bash
-gh issue close {issue_number} -R {owner_repo} --comment "PR #{pr_number} のマージに伴いクローズしました。"
+# cleanup-issue-close
+issue="{issue_number}"
+result="" reason=""
+if [ -z "$issue" ]; then
+  echo "警告: 関連 Issue が見つかりません" >&2
+  result=not_identified
+elif [ "$(gh issue view "$issue" -R {owner_repo} --json state --jq '.state')" = "CLOSED" ]; then
+  result=already_closed
+elif ! gh issue close "$issue" -R {owner_repo} --comment "PR #{pr_number} のマージに伴いクローズしました。"; then
+  result=failed reason=close_failed
+else
+  after=$(gh issue view "$issue" -R {owner_repo} --json state --jq '.state') || after=""
+  case "$after" in
+    CLOSED) result=closed ;;
+    "")     result=failed reason=verify_failed ;;
+    *)      result=failed reason="state_$after" ;;
+  esac
+fi
+case "$result" in
+  closed) echo "Issue #$issue をクローズしました" ;;
+  failed) echo "警告: Issue #$issue をクローズできませんでした（$reason）。cleanup は続行し、未完了事項に数えます" >&2 ;;
+esac
+# ステップ 12 の {issue_close_check} 判定用
+echo "[CONTEXT] ISSUE_CLOSE=$result; issue=$issue${reason:+; reason=$reason}"
 ```
 
-**Note**: `gh issue close` does not error when executed on an already-closed Issue (idempotent).
+#### 3.6.2 Result Values
 
-#### 3.6.3 Processing Branch by Condition
+| `ISSUE_CLOSE` | Meaning |
+|---------------|---------|
+| `closed` | Closed in this run, and the re-read returned `CLOSED` |
+| `already_closed` | The Issue was already CLOSED; no close was run |
+| `not_identified` | No related Issue was identified; nothing to close |
+| `failed; reason=close_failed` | `gh issue close` failed (API error, missing permission, etc.) |
+| `failed; reason=verify_failed` | The re-read after close failed, so the state is unknown |
+| `failed; reason=state_<STATE>` | The re-read after close did not return `CLOSED` |
 
-| Condition | Processing | Message |
-|-----------|-----------|---------|
-| Issue is OPEN | Execute close | `Issue #{issue_number} をクローズしました` |
-| Issue is already CLOSED | Skip | (No message, no warning needed) |
-| Related Issue was not identified | Skip | `警告: 関連 Issue が見つかりません` |
+Every value is non-blocking: cleanup continues to ステップ 11. ステップ 12 counts `failed` and a missing marker as outstanding.
 
 ### 3.6.4 Update Parent Issue Tasklist Checkbox
 
