@@ -2,6 +2,7 @@
 
 ## 2026-09-27
 
+* **Skip**: [20260927T034756Z-pr-3204.md](raw/fixes/20260927T034756Z-pr-3204.md) — 既存経験則の範囲内: 共有 root 配下の状態を指す復旧手順の散文を cwd 相対で書かない（path-basis-change-observation-surface-sweep の観測面に統合済み）
 * **Update**: [保存パス基準の変更は観測面と全 caller 引数の同時スイープが必要](pages/heuristics/path-basis-change-observation-surface-sweep.md) — raw/reviews/20260927T034327Z-pr-3204.md を統合
 * **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=553, broken_refs=0
 * **Update**: [到達不能に見える分岐の削除は、その分岐が受けていた入力の行き先を確認してから決める](pages/heuristics/branch-deletion-traces-where-the-input-flows.md) — raw/fixes/20260927T033323Z-pr-3204.md を統合
