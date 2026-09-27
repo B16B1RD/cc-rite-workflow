@@ -66,7 +66,7 @@ for part in "3.5.1:completion:wm_status" "3.5.2:progress:wm_progress_status"; do
   assert "archive-procedures §${sec} emits exactly one WM_FINAL_UPDATE=${side} marker carrying \$${var}" "1" "$count"
   count=$(printf '%s\n' "$section" \
     | grep -cF "${var}=\$(bash {plugin_root}/hooks/issue-comment-wm-sync.sh update" || true)
-  assert "archive-procedures §${sec} assigns \$${var} from the helper output" "1" "$count"
+  assert "archive-procedures §${sec} marker status comes from the helper output in the same section" "1" "$count"
 done
 # 判定基準は絵文字 prefix ではなくチェックボックスの空欄/x であることを pin する。
 # 絵文字 prefix 一致方式は {local_branch_check} の BRANCH_DELETE_FAILED/UNMERGED（prefix 無しの
