@@ -476,7 +476,7 @@ fi
 # follow-up ラベルの Issue を REST の全ページで取得し、先頭行の HTML コメント (<!-- ${MARKER} -->) で
 # 確定する。件数の上限を置くと、上限を超えた後の既存を確定できず起票が止まり続けるため全件を読む。
 # この endpoint は PR も返すため除外し、Issue だけを照合する。ページ配列 ([[...], ...]) でない応答は
-# 0 件と区別できないので解析失敗に倒す。finding 本文の同一文字列は identity ではない。
+# 空応答も含めて 0 件と区別できないので解析失敗に倒す (input は空入力でエラーになる)。finding 本文の同一文字列は identity ではない。
 list_json=$(gh api --paginate --slurp \
   "repos/${OWNER}/${REPO}/issues?labels=follow-up&state=all&per_page=100" 2>"$list_err")
 list_rc=$?
@@ -487,8 +487,9 @@ if [ "$list_rc" -ne 0 ]; then
   exit 0
 fi
 
-existing_n=$(printf '%s' "$list_json" | jq -r --arg m "$MARKER" '
-  if type == "array" and length > 0 and all(.[]; type == "array") then . else error("non-page response") end
+existing_n=$(printf '%s' "$list_json" | jq -rn --arg m "$MARKER" '
+  input
+  | if type == "array" and length > 0 and all(.[]; type == "array") then . else error("non-page response") end
   | [.[][] | select(.pull_request == null)
       | select(((.body // "") | split("\n")[0]) == ("<!-- " + $m + " -->")) | .number] | first // empty') || {
   echo "WARNING: 既存 follow-up の検索結果を解析できません。起票しません (PR #${PR_NUMBER})" >&2
