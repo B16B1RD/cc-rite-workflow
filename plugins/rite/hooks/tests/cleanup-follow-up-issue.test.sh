@@ -14,7 +14,10 @@
 #   T-04 0 件で起票なし
 #   T-05 既存 marker があれば重複起票しない
 #   T-05c ラベル一覧に既存が居ない場合は起票する
-#   T-05d 件数=limit かつ marker 不在は lookup_api
+#   T-05d 100 件を超える follow-up があっても marker 不在なら起票する (全ページ取得)
+#   T-05i 2 ページ目の末尾にある既存 marker でも重複起票しない
+#   T-05j ページ配列でない検索結果 ([] / object / フラット配列) は起票せず lookup_api
+#   T-05k 同じ marker を先頭行に持つ PR は既存 follow-up とみなさない
 #   T-05e 説明欄へ他 PR の marker を植えても skip しない
 #   T-05f body 2 行目の完全 HTML コメント marker では already_exists に倒さない
 #   T-05g body 先頭行の裸 marker では already_exists に倒さない
@@ -27,7 +30,7 @@
 #
 # Coverage (T-01..T-05 = 本ファイルの T-11..T-15):
 #   T-11 --exclude-ids で指定した finding だけが body から落ち、残りは全文が載る (AC-1)
-#   T-12 全件除外は all_resolved で起票せず、gh issue list も叩かない (AC-2)
+#   T-12 全件除外は all_resolved で起票せず、既存 follow-up の検索もしない (AC-2)
 #   T-13 未知 key は WARNING のうえ既知 key の除外だけ適用して起票を続行する (AC-3)
 #   T-14 --exclude-ids 未指定 / 空文字列は既存挙動と完全一致 (AC-4)
 #   T-15 cleanup SKILL.md が再検証手順・3 値語彙・除外引数・和集合抽出を持つ (AC-5 / AC-6)
@@ -159,7 +162,8 @@ echo "gh $*" >> "${GH_LOG:-/dev/null}"
 cmd="$*"
 case "$cmd" in
   *"label create"*) exit 0 ;;
-  *"issue list"*)
+  # 既存 follow-up の検索は follow-up ラベルの全ページ。取得先と pagination 指定まで一致したときだけ応答する
+  "api --paginate --slurp repos/acme/demo/issues?labels=follow-up&state=all&per_page=100")
     if [ -n "${GH_LIST_RC:-}" ] && [ "${GH_LIST_RC}" != "0" ]; then
       echo "gh: simulated list failure" >&2
       exit "$GH_LIST_RC"
@@ -248,7 +252,7 @@ reset_stubs() {
   unset CREATE_REG
   unset RITE_TEST_JQ_FAIL
   : > "$STUB_DIR/jq-fail.log"
-  printf '%s\n' '[]' > "$GH_LIST_JSON"
+  printf '%s\n' '[[]]' > "$GH_LIST_JSON"
   : > "$GH_LOG"
   : > "$GH_COMMENT_LOG"
 }
@@ -292,7 +296,7 @@ assert_grep "T-02 labels follow-up" "$STUB_DIR/args.json" '"follow-up"'
 assert_grep "T-02 source cleanup" "$STUB_DIR/args.json" '"source": "cleanup"'
 assert_grep "T-01 status todo role" "$STUB_DIR/args.json" '"status": "todo"'
 assert_grep "T-01 projects enabled true" "$STUB_DIR/args.json" '"enabled": true'
-assert_grep "T-01 gh --label follow-up" "$GH_LOG" 'label follow-up'
+assert_grep "T-01 follow-up ラベルを全ページで検索する" "$GH_LOG" '^gh api --paginate --slurp repos/acme/demo/issues\?labels=follow-up&state=all&per_page=100$'
 assert_not_grep "T-01 gh は Search API を使わない" "$GH_LOG" 'rite-follow-up-from-pr'
 assert_grep "T-02 元 Issue へコメント" "$GH_COMMENT_LOG" 'issue comment 42'
 # 残存指摘には実測済みの非 fatal 指摘も含まれるため、タイトル・節名・概要・元 Issue コメントは非実測と断定しない。
@@ -359,7 +363,7 @@ assert_not_grep "T-04 台帳取得 (gh api) を叩かない" "$GH_LOG" '^gh api 
 
 echo "--- T-05: 既存 marker なら重複起票しない ---"
 reset_stubs
-printf '%s\n' '[{"number":50,"body":"<!-- [rite-follow-up-from-pr:9] -->\n既存"}]' > "$GH_LIST_JSON"
+printf '%s\n' '[[{"number":50,"body":"<!-- [rite-follow-up-from-pr:9] -->\n既存"}]]' > "$GH_LIST_JSON"
 r=$(new_root t05)
 put_json "$r" "9-a.json" "$FINDING_JSON"
 run_target "$r"
@@ -369,7 +373,7 @@ assert "T-05 create 0 回" "0" "$(create_count)"
 
 echo "--- T-05b: PR 9 の marker は PR 90 と一致しない ---"
 reset_stubs
-printf '%s\n' '[{"number":51,"body":"<!-- [rite-follow-up-from-pr:90] -->"}]' > "$GH_LIST_JSON"
+printf '%s\n' '[[{"number":51,"body":"<!-- [rite-follow-up-from-pr:90] -->"}]]' > "$GH_LIST_JSON"
 r=$(new_root t05b)
 put_json "$r" "9-a.json" "$FINDING_JSON"
 run_target "$r"
@@ -377,27 +381,66 @@ assert "T-05b prefix 非一致なら起票する" "1" "$(create_count)"
 
 echo "--- T-05c: ラベル一覧に既存 marker が居なければ起票する ---"
 reset_stubs
-printf '%s\n' '[{"number":60,"body":"unrelated follow-up"}]' > "$GH_LIST_JSON"
+printf '%s\n' '[[{"number":60,"body":"unrelated follow-up"}]]' > "$GH_LIST_JSON"
 r=$(new_root t05c)
 put_json "$r" "9-a.json" "$FINDING_JSON"
 run_target "$r"
 assert "T-05c create 1 回" "1" "$(create_count)"
 assert_grep "T-05c created" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
 
-echo "--- T-05d: 件数=limit かつ marker 不在は lookup_api ---"
+echo "--- T-05d: 100 件を超えても marker 不在なら 1 件起票する ---"
 reset_stubs
-jq -n '[range(100) | {number: (1000+.), body: "no marker"}]' > "$GH_LIST_JSON"
+jq -n '[[range(100) | {number: (1000+.), body: "no marker"}], [range(50) | {number: (1100+.), body: "no marker"}]]' > "$GH_LIST_JSON"
 r=$(new_root t05d)
 put_json "$r" "9-a.json" "$FINDING_JSON"
 run_target "$r"
 assert "T-05d exit 0" "0" "$RC"
-assert_grep "T-05d lookup_api" "$ERR" 'reason=lookup_api; pr=9'
-assert_grep "T-05d limit WARNING" "$ERR" 'limit 100'
-assert "T-05d create 0 回" "0" "$(create_count)"
+assert_grep "T-05d created" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
+assert "T-05d create 1 回" "1" "$(create_count)"
+assert_not_grep "T-05d 件数で止めない" "$ERR" 'reason=lookup_api|limit'
+assert "T-05d 全ページ取得は 1 回の呼び出し" "1" "$(grep -c '^gh api --paginate --slurp repos/acme/demo/issues?labels=' "$GH_LOG")"
+
+echo "--- T-05i: 2 ページ目の末尾にある既存 marker でも重複起票しない ---"
+reset_stubs
+jq -n '[([range(99) | {number: (1000+.), body: "no marker"}] + [{number: 1099, body: "<!-- [rite-follow-up-from-pr:90] -->"}]), ([range(49) | {number: (1100+.), body: "no marker"}] + [{number: 1149, body: "<!-- [rite-follow-up-from-pr:9] -->\n既存"}])]' > "$GH_LIST_JSON"
+r=$(new_root t05i)
+put_json "$r" "9-a.json" "$FINDING_JSON"
+run_target "$r"
+assert "T-05i exit 0" "0" "$RC"
+assert_grep "T-05i already_exists" "$ERR" 'reason=already_exists; issue=1149; pr=9'
+assert "T-05i create 0 回" "0" "$(create_count)"
+
+echo "--- T-05j: ページ配列でない検索結果は起票せず lookup_api ---"
+for shape in empty object flat; do
+  reset_stubs
+  case "$shape" in
+    empty) printf '%s\n' '[]' > "$GH_LIST_JSON" ;;
+    object) printf '%s\n' '{"message":"not pages"}' > "$GH_LIST_JSON" ;;
+    flat) printf '%s\n' '[{"number":1,"body":"<!-- [rite-follow-up-from-pr:9] -->"}]' > "$GH_LIST_JSON" ;;
+  esac
+  r=$(new_root "t05j-$shape")
+  put_json "$r" "9-a.json" "$FINDING_JSON"
+  run_target "$r"
+  assert "T-05j $shape exit 0" "0" "$RC"
+  assert_grep "T-05j $shape lookup_api" "$ERR" 'reason=lookup_api; pr=9'
+  assert_grep "T-05j $shape 解析失敗の経路を通る" "$ERR" '検索結果を解析できません'
+  assert_not_grep "T-05j $shape 想定外の gh 呼び出しなし" "$ERR" 'unexpected gh'
+  assert "T-05j $shape create 0 回" "0" "$(create_count)"
+done
+
+echo "--- T-05k: 同じ marker を先頭行に持つ PR は既存 follow-up とみなさない ---"
+reset_stubs
+printf '%s\n' '[[{"number":70,"body":"<!-- [rite-follow-up-from-pr:9] -->","pull_request":{"url":"https://example.test/pulls/70"}}]]' > "$GH_LIST_JSON"
+r=$(new_root t05k)
+put_json "$r" "9-a.json" "$FINDING_JSON"
+run_target "$r"
+assert "T-05k exit 0" "0" "$RC"
+assert_not_grep "T-05k already_exists に倒さない" "$ERR" 'already_exists'
+assert "T-05k create 1 回" "1" "$(create_count)"
 
 echo "--- T-05e: 説明欄の他 PR marker では already_exists に倒さない ---"
 reset_stubs
-printf '%s\n' '[{"number":99,"body":"<!-- [rite-follow-up-from-pr:9] -->\n説明: [rite-follow-up-from-pr:123]"}]' > "$GH_LIST_JSON"
+printf '%s\n' '[[{"number":99,"body":"<!-- [rite-follow-up-from-pr:9] -->\n説明: [rite-follow-up-from-pr:123]"}]]' > "$GH_LIST_JSON"
 r=$(new_root t05e)
 put_json "$r" "123-a.json" "$FINDING_JSON"
 PATH="$TMP_ROOT/bin:$PATH" \
@@ -416,7 +459,7 @@ assert_not_grep "T-05e already_exists に倒さない" "$ERR" 'already_exists'
 
 echo "--- T-05f: body 2 行目の完全 HTML コメント marker では already_exists に倒さない ---"
 reset_stubs
-printf '%s\n' '[{"number":99,"body":"概要\n<!-- [rite-follow-up-from-pr:123] -->"}]' > "$GH_LIST_JSON"
+printf '%s\n' '[[{"number":99,"body":"概要\n<!-- [rite-follow-up-from-pr:123] -->"}]]' > "$GH_LIST_JSON"
 r=$(new_root t05f)
 put_json "$r" "123-a.json" "$FINDING_JSON"
 PATH="$TMP_ROOT/bin:$PATH" \
@@ -435,7 +478,7 @@ assert_not_grep "T-05f already_exists に倒さない" "$ERR" 'already_exists'
 
 echo "--- T-05g: 先頭行の裸 marker では already_exists に倒さない ---"
 reset_stubs
-printf '%s\n' '[{"number":99,"body":"参照: [rite-follow-up-from-pr:123] を見よ"}]' > "$GH_LIST_JSON"
+printf '%s\n' '[[{"number":99,"body":"参照: [rite-follow-up-from-pr:123] を見よ"}]]' > "$GH_LIST_JSON"
 r=$(new_root t05g)
 put_json "$r" "123-a.json" "$FINDING_JSON"
 PATH="$TMP_ROOT/bin:$PATH" \
@@ -454,7 +497,7 @@ assert_not_grep "T-05g already_exists に倒さない" "$ERR" 'already_exists'
 
 echo "--- T-05h: 先頭行の完全 HTML コメント marker + 後続テキストでは already_exists に倒さない ---"
 reset_stubs
-printf '%s\n' '[{"number":99,"body":"<!-- [rite-follow-up-from-pr:123] --> extra"}]' > "$GH_LIST_JSON"
+printf '%s\n' '[[{"number":99,"body":"<!-- [rite-follow-up-from-pr:123] --> extra"}]]' > "$GH_LIST_JSON"
 r=$(new_root t05h)
 put_json "$r" "123-a.json" "$FINDING_JSON"
 PATH="$TMP_ROOT/bin:$PATH" \
@@ -489,6 +532,8 @@ put_json "$r" "9-a.json" "$FINDING_JSON"
 run_target "$r"
 assert "T-07 exit 0" "0" "$RC"
 assert_grep "T-07 lookup_api" "$ERR" 'reason=lookup_api; pr=9'
+assert_grep "T-07 検索 API の失敗経路を通る" "$ERR" 'simulated list failure'
+assert_not_grep "T-07 想定外の gh 呼び出しなし" "$ERR" 'unexpected gh'
 assert "T-07 create 0 回" "0" "$(create_count)"
 unset GH_LIST_RC
 
@@ -582,7 +627,7 @@ assert_grep "T-12 all_resolved marker" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=a
 assert_grep "T-12 stdout summary も all_resolved" "$OUT" 'result=skipped; reason=all_resolved; pr=9'
 assert "T-12 create 0 回" "0" "$(create_count)"
 # 除外判定が already_exists lookup より前に立つことの観測条件 (全件除外ケース限定)
-assert_not_grep "T-12 gh issue list を叩かない" "$GH_LOG" 'issue list'
+assert_not_grep "T-12 既存 follow-up を検索しない" "$GH_LOG" 'labels=follow-up'
 assert_not_grep "T-12 台帳取得 (gh api) を叩かない" "$GH_LOG" '^gh api '
 assert_not_grep "T-12 no_findings には倒さない" "$ERR" 'reason=no_findings'
 
@@ -1009,6 +1054,10 @@ for stage in lookup create; do
     "$(printf '%s\n%s' '[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=ambiguous; count=1; pr=9' "[CONTEXT] FOLLOW_UP_ISSUE=failed; reason=${stage}_api; pr=9")" \
     "$(grep '^\[CONTEXT\] FOLLOW_UP_' "$ERR")"
   assert_not_grep "T-27 $stage 成功通知なし" "$ERR" 'FOLLOW_UP_ISSUE=created'
+  assert_not_grep "T-27 $stage 想定外の gh 呼び出しなし" "$ERR" 'unexpected gh'
+  if [ "$stage" = lookup ]; then
+    assert_grep "T-27 lookup 検索 API の失敗経路を通る" "$ERR" 'simulated list failure'
+  fi
 done
 
 echo "--- T-28: 再検証用一時ファイルの確保失敗を明示する ---"
@@ -1058,7 +1107,7 @@ assert_grep "T-29 all_issued marker" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=all
 assert_grep "T-29 stdout summary も all_issued" "$OUT" 'result=skipped; reason=all_issued; pr=9'
 assert "T-29 create 0 回" "0" "$(create_count)"
 assert_grep "T-29 除外件数を出す" "$ERR" '^\[cleanup-follow-up-issue\] sweep_issued: pr=9; excluded=1; possible_duplicates=0$'
-assert_not_grep "T-29 gh issue list を叩かない" "$GH_LOG" 'issue list'
+assert_not_grep "T-29 既存 follow-up を検索しない" "$GH_LOG" 'labels=follow-up'
 assert_not_grep "T-29 除外不能に倒さない" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable'
 assert_not_grep "T-29 重複しうる指摘が無ければ WARNING を出さない" "$ERR" 'WARNING: sweep 起票済みの指摘と同じ位置'
 
@@ -1147,7 +1196,7 @@ assert "T-31c exit 0" "0" "$RC"
 assert_grep "T-31c 関連 Issue 無しは no_source_issue" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=no_source_issue; pr=9'
 assert_grep "T-31c WARNING" "$ERR" 'WARNING: 関連 Issue が無いため却下台帳を読めません'
 assert "T-31c 起票は継続する" "1" "$(create_count)"
-assert_not_grep "T-31c 台帳取得 (gh api) を叩かない" "$GH_LOG" '^gh api '
+assert_not_grep "T-31c 台帳取得 (gh api) を叩かない" "$GH_LOG" '^gh api (--paginate --slurp )?repos/acme/demo/issues/[0-9]+/comments'
 
 echo "--- T-32: 台帳が無い PR は従来どおり全件転記 ---"
 reset_stubs
@@ -1335,7 +1384,7 @@ run_target "$r" --exclude-ids "9-20260101120000.json#F-01,9-20260102120000.json#
 assert "T-38 exit 0" "0" "$RC"
 assert_grep "T-38 all_resolved" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=all_resolved; pr=9'
 assert "T-38 create 0 回" "0" "$(create_count)"
-assert_not_grep "T-38 gh issue list を叩かない" "$GH_LOG" 'issue list'
+assert_not_grep "T-38 既存 follow-up を検索しない" "$GH_LOG" 'labels=follow-up'
 assert_not_grep "T-38 台帳取得 (gh api) を叩かない" "$GH_LOG" '^gh api '
 assert_not_grep "T-38 曖昧 marker を出さない" "$ERR" 'FOLLOW_UP_EXCLUDE_AMBIGUOUS'
 
@@ -1477,7 +1526,7 @@ assert_not_grep "T-47 preview marker を出さない" "$ERR" 'FOLLOW_UP_ISSUE=pr
 reset_stubs
 r=$(new_root t47b)
 put_json "$r" "9-20260101120000.json" "$FINDING_JSON"
-printf '%s\n' '[{"number":77,"body":"<!-- [rite-follow-up-from-pr:9] -->\nbody"}]' > "$GH_LIST_JSON"
+printf '%s\n' '[[{"number":77,"body":"<!-- [rite-follow-up-from-pr:9] -->\nbody"}]]' > "$GH_LIST_JSON"
 run_target "$r" --preview-body "$TMP_ROOT/preview-t47b.md"
 assert_grep "T-47 既存は already_exists" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=already_exists; issue=77; pr=9'
 assert_not_grep "T-47 既存でも preview を出さない" "$ERR" 'FOLLOW_UP_ISSUE=preview'
