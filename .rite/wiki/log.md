@@ -128,6 +128,7 @@
 * **Update**: [エラーメッセージが案内するコマンドは、テストで出力から抽出して逐語実行する](pages/patterns/guidance-command-test-by-verbatim-execution.md) — raw/fixes/20260927T094235Z-pr-3251.md, raw/reviews/20260927T095125Z-pr-3251.md, raw/fixes/20260927T094604Z-pr-3253.md, raw/reviews/20260927T095651Z-pr-3253.md を統合
 * **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/fixes/20260927T095121Z-pr-3256.md, raw/reviews/20260927T094529Z-pr-3256.md を統合
 * **Update**: [SoT 文書の path 参照は本 PR マージ時点の origin/develop で existence check する](pages/heuristics/sot-path-reference-existence-check.md) — raw/reviews/20260927T094011Z-pr-3255.md, raw/fixes/20260927T094235Z-pr-3255.md, raw/reviews/20260927T095553Z-pr-3255.md を統合
+* **lint:clean** — contradictions=0 (更新ページのみ評価), stale=66, orphans=0, missing_concept=0, unregistered_raw=560, broken_refs=0
 
 ## 2026-09-26
 
