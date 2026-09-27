@@ -412,7 +412,9 @@ fi
 # pre-init state), this block is skipped silently and the legacy
 # stash/checkout path below handles the case (backward compat).
 # -----------------------------------------------------------------------
-worktree_path=".rite/wiki-worktree"
+# Absolute so the recovery commands the helpers print (git -C <worktree> ...)
+# work when pasted from a session worktree, not only from the main checkout.
+worktree_path="$repo_root/.rite/wiki-worktree"
 # Probe the worktree fast path. rc semantics from verify_worktree_branch:
 # 0=on the wiki branch (usable), 2=rev-parse failed (corrupt/orphaned — e.g. a
 # stale `.git` gitdir after the repo was relocated), 3=checked out to a different
@@ -616,7 +618,7 @@ fi
 current_branch=$(git branch --show-current || true)
 if [[ -z "$current_branch" ]]; then
  echo "ERROR: detached HEAD state — cannot run wiki-ingest-commit.sh safely" >&2
- echo " hint: checkout a named branch first (e.g. git checkout develop)" >&2
+ echo " hint: checkout a named branch first (e.g. git -C $_q_repo_root checkout develop)" >&2
  exit 1
 fi
 

@@ -13,8 +13,11 @@
 #   exists, and that running them lets a re-run ingest the raw source). Every
 #   pasted git command names the main checkout with -C, and the steps are run
 #   from outside the repository to show they do not depend on the caller's cwd.
-#   The unstage, stash pop, untrack, push and fetch hints are pinned the same way,
-#   the unstage hint also when the hook runs from a linked worktree.
+#   The unstage, stash pop, untrack, push, fetch and detached HEAD hints are pinned
+#   the same way, the unstage and detached HEAD hints also when the hook runs from a
+#   linked worktree.
+# - separate_branch wiki worktree path: a failed push from a linked worktree prints
+#   a hint naming the wiki worktree by its absolute path.
 # - separate_branch automatic restore after a failed wiki commit: the raw
 #   sources come back unstaged without disturbing unrelated staged files, so a
 #   re-run ingests them.
@@ -485,6 +488,52 @@ run_missing_wiki_branch_case() {
   check_words "fetch hint" "$cmd" git -C "$(cd "$repo" && pwd -P)" fetch origin wiki:wiki
 }
 
+# run_detached_head_case: the main checkout is on a detached HEAD and the hook runs from a
+# linked worktree, so the hint must switch the main checkout rather than the calling worktree.
+run_detached_head_case() {
+  local label="$1"
+  local -x GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+  local base repo tmpdir err rc=0 line cmd words ok=1
+  make_fixture dev no
+  tmpdir="$base/tmp"; err="$base/err"; mkdir "$tmpdir"
+  git -C "$repo" worktree add -q --detach "$base/wt"
+  git -C "$repo" switch -q --detach
+
+  ( cd "$base/wt" && TMPDIR="$tmpdir" bash "$HOOK_SRC" ) >/dev/null 2>"$err" || rc=$?
+  eq "$label: exits 1" "1" "$rc"
+  eq "$label: detached HEAD hint printed once" "1" "$(grep -c '^ hint: checkout a named branch first (e.g. ' "$err" || true)"
+  line=$(grep '^ hint: checkout a named branch first (e.g. ' "$err" || true)
+  cmd=${line#" hint: checkout a named branch first (e.g. "}
+  cmd=${cmd%)}
+  check_words "detached HEAD hint" "$cmd" git -C "$(cd "$repo" && pwd -P)" checkout develop
+  eq "$label: detached HEAD hint does not name the calling worktree" "different" \
+    "$([ "${words[3]:-}" != "$(cd "$base/wt" && pwd -P)" ] && echo different || echo same)"
+}
+
+# run_fast_path_push_failure_case: with the wiki worktree in place the hook commits there, and a
+# failed push prints a hint whose -C is the absolute wiki worktree path even from a linked worktree.
+run_fast_path_push_failure_case() {
+  local label="$1"
+  local -x GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+  local base repo tmpdir err rc=0 line cmd words ok=1
+  make_fixture dev no
+  tmpdir="$base/tmp"; err="$base/err"; mkdir "$tmpdir"
+  rm -f "$repo/.git/hooks/pre-commit"
+  printf '.rite/wiki-worktree/\n' >> "$repo/.git/info/exclude"
+  git -C "$repo" worktree add -q "$repo/.rite/wiki-worktree" wiki
+  git -C "$repo" remote set-url origin "$base/missing.git"
+  git -C "$repo" worktree add -q --detach "$base/wt"
+
+  ( cd "$base/wt" && TMPDIR="$tmpdir" bash "$HOOK_SRC" ) >/dev/null 2>"$err" || rc=$?
+  eq "$label: exits 4" "4" "$rc"
+  eq "$label: raw source is committed in the wiki worktree" "raw source" \
+    "$(git -C "$repo" show wiki:.rite/wiki/raw/reviews/pr-test.md 2>/dev/null || true)"
+  eq "$label: push hint printed once" "1" "$(grep -c '^ manual recovery: git -C .* push origin wiki$' "$err" || true)"
+  line=$(grep '^ manual recovery: git -C .* push origin wiki$' "$err" || true)
+  cmd=${line#" manual recovery: "}
+  check_words "push hint" "$cmd" git -C "$(cd "$repo" && pwd -P)/.rite/wiki-worktree" push origin wiki
+}
+
 echo "TC-RECOVERY-PASTE: checkout-back failure prints pasteable recovery commands"
 run_recovery_case "apostrophe" "it's-dev" "it's tmp" yes
 run_recovery_case "plain" "dev" "tmp" yes
@@ -502,6 +551,8 @@ run_unstage_failure_case "unstage failure from a linked worktree" worktree
 run_stash_pop_failure_case "stash pop failure"
 run_push_failure_case "push failure"
 run_missing_wiki_branch_case "missing wiki branch"
+run_detached_head_case "detached main checkout from a linked worktree"
+run_fast_path_push_failure_case "wiki worktree push failure from a linked worktree"
 run_pre_checkout_failure_case "pre-checkout failure"
 run_pre_checkout_failure_case "pre-checkout failure (apostrophe raw name)" "it's pr-test.md"
 echo ""
