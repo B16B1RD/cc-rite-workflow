@@ -377,8 +377,8 @@ assert_grep "T-07 prompt rejected_ledger" "$PROMPT" '{rejected_ledger}'
 
 # PR 内推奨の配線。呼び出し行と停止行を節の範囲内で pin し、呼び出しの順序は行番号で固定する。
 FIX_SKILL="$PLUGIN_ROOT/skills/fix/SKILL.md"
-REC_START='^### 5\.S 後の PR 内推奨の修正$'
-REC_END='^### 5\.S 後の完了前確認'
+REC_START='^### 5[.]S 後の PR 内推奨の修正$'
+REC_END='^### 5[.]S 後の完了前確認'
 assert_grep_in_section "T-07 iterate recommendation check" "$ITERATE" "$REC_START" "$REC_END" \
   '^bash \{plugin_root\}/scripts/review-pr-recommendations\.sh check --pr \{pr_number\}$'
 assert_grep_in_section "T-07 iterate recommendation check failure stops" "$ITERATE" "$REC_START" "$REC_END" \

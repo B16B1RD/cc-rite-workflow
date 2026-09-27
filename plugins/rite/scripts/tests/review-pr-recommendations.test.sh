@@ -158,27 +158,21 @@ check "items without recommendation_items fail" '[ $RC -eq 1 ] && [[ "$ERR" == *
 run register --input "$WORK/i.json" --items "$WORK/items.json" --base-ref no-such-ref --state-root "$STATE"
 check "an unresolvable base ref fails" '[ $RC -eq 1 ] && [[ "$ERR" == *"reason=diff_failed"* ]] && [ "$(jq "has(\"pr_recommendations\")" "$WORK/i.json")" = false ]'
 # 停止は既定値で続行しない。各ケースは reason に加えて入力が不変で、登録結果を出さないことまで見る。
-# root は権限を無視して読めるため、読めない config のケースは root では検証できない
-if [ "$(id -u)" != 0 ]; then
-  review "$WORK/u.json" mergeable run1 1
-  cp "$WORK/u.json" "$WORK/u.orig.json"
-  printf 'safety:\n  max_review_cycles: 15\n' > "$REPO/rite-config.yml"
-  chmod 000 "$REPO/rite-config.yml"
-  register "$WORK/u.json"
-  chmod 644 "$REPO/rite-config.yml"
-  rm -f "$REPO/rite-config.yml"
-  check "an unreadable rite-config.yml fails instead of using the default cycle cap" \
-    '[ $RC -eq 1 ] && [[ "$ERR" == *"reason=config_unreadable"* ]] && [[ "$OUT" != *"PR_RECOMMENDATIONS="* ]] && cmp -s "$WORK/u.json" "$WORK/u.orig.json"'
-else
-  echo "  SKIP: root では読めない rite-config.yml を作れないため config_unreadable を検証できない"
-fi
+# 同名のディレクトリは実行ユーザーの権限に依らず config ファイルとして読めない
+review "$WORK/u.json" mergeable run1 1
+cp "$WORK/u.json" "$WORK/u.orig.json"
+mkdir "$REPO/rite-config.yml"
+register "$WORK/u.json"
+rmdir "$REPO/rite-config.yml"
+check "an unreadable rite-config.yml fails instead of using the default cycle cap" \
+  '[ $RC -eq 1 ] && [[ "$ERR" == *"reason=config_unreadable"* ]] && [[ "$OUT" != *"PR_RECOMMENDATIONS="* ]] && cmp -s "$WORK/u.json" "$WORK/u.orig.json"'
 review "$WORK/nc.json" mergeable run1 1
 jq 'del(.review_context.cycle_count)' "$WORK/nc.json" > "$WORK/nc.tmp" && mv "$WORK/nc.tmp" "$WORK/nc.json"
 cp "$WORK/nc.json" "$WORK/nc.orig.json"
 register "$WORK/nc.json"
 check "a review_context without cycle_count fails" \
   '[ $RC -eq 1 ] && [[ "$ERR" == *"reason=json_invalid"* ]] && [[ "$ERR" == *"review_context.cycle_count missing"* ]] && [[ "$OUT" != *"PR_RECOMMENDATIONS="* ]] && cmp -s "$WORK/nc.json" "$WORK/nc.orig.json"'
-# 実物の resolver は失敗しても cwd を返すため、失敗する resolver を持つ plugin tree に複製して
+# 実物の resolver は git root を解決できなくても cwd を返して成功するため、失敗する resolver を持つ plugin tree に複製して
 # 呼ぶ。cwd を git 外に置くと config は /dev/null に解決され、state root の解決まで進む。
 STUB="$TEST_DIR/stub-plugin"
 mkdir -p "$STUB/scripts" "$STUB/hooks/scripts/lib"
