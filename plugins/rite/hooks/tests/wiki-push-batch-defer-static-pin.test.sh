@@ -227,13 +227,9 @@ for numref_reason in numref-hit numref-error; do
   assert_grep "wiki-lint-log-commit.sh: rc=1 $numref_reason passes the stub stdout through" \
     "$route_tmp/lint-$numref_reason/out" "reason=$numref_reason\$"
 done
-for other_reason in reason-missing reason-lookalike; do
-  case "$other_reason" in
-    reason-missing) other_out="" ;;
-    *) other_out="[wiki-worktree-commit] committed=0; branch=wiki; reason=numref-hit-extra" ;;
-  esac
-  lint_numref_case "$other_reason" "$other_out" '環境または引数エラー' '番号参照の commit 前検査'
-done
+lint_numref_case "reason-missing" "" '環境または引数エラー' '番号参照の commit 前検査'
+lint_numref_case "reason-lookalike" "[wiki-worktree-commit] committed=0; branch=wiki; reason=numref-hit-extra" \
+  '環境または引数エラー' '番号参照の commit 前検査'
 
 # same_branch commits with git add + git-commit-file.sh. Both failures stay non-blocking,
 # name their own step, and remove the message file and the stderr tempfiles.

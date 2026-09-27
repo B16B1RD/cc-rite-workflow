@@ -120,8 +120,9 @@ case "$branch_strategy" in
     fi
     commit_rc=$?
     echo "$commit_out"
-    # Non-blocking: every rc is a WARNING. rc=1 is shared by the number-reference
-    # pre-commit refusal and environment / argument errors, so its stdout reason= picks the message.
+    # Non-blocking: every rc is a WARNING. rc=1 is shared by the number-reference refusal,
+    # a failed number-reference check and environment / argument errors, so its stdout
+    # reason= picks the message.
     case "$commit_rc" in
       0) : ;;
       1)
