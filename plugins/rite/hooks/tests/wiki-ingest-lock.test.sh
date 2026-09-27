@@ -6,6 +6,7 @@
 # holder's flow-state:
 #   a lock acquired within 2h blocks other sessions (concurrent_ingest rc 11),
 #   even when the holder has no active flow-state
+#   a lock acquired just inside 2h (~7100s ago) is still held (pins the window's upper edge)
 #   acquired_at older than 2h / missing / unparsable → reclaimable
 #   a failed acquired_at write stops acquire and leaves no lockdir behind
 #   release removes only the OWN lock; idempotent on absent lock
@@ -254,5 +255,25 @@ assert "TC-13d check failed: WARNING says the state could not be confirmed" "1" 
   "$(grep -c '^WARNING: .*ロックの状態を確認できませんでした' "$s_err" || true)"
 assert "TC-13d check failed: no lost-lock WARNING" "0" "$(grep -c 'ロックを失っていました' "$s_err" || true)"
 
+echo "=== TC-14: another session's lock near the top of the 2h window (~7100s old) is still held ==="
+# TC-2 / TC-4 only use locks acquired seconds ago, so a shrunken window (60 / 3700 / 7000s)
+# would still pass them. An acquired_at just inside 7200s pins the upper edge of the window.
+reset_lock
+assert "TC-14 A acquires" "acquired" "$(bash "$WIL" acquire --session "$SID_A")"
+mk_active "$SID_A"
+bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+assert "TC-14 precondition: A has no active flow-state" "false" \
+  "$(bash "$FS" get --session "$SID_A" --field active --default false 2>/dev/null)"
+PLANTED=$(ago "7100 seconds" 7100S)
+assert "TC-14 planted acquired_at format" "1" \
+  "$(printf '%s\n' "$PLANTED" | grep -cE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$' || true)"
+printf '%s' "$PLANTED" > "$LOCKDIR/acquired_at"
+assert "TC-14 B check → held" "held" "$(bash "$WIL" check --session "$SID_B")"
+rc=0; out=$(bash "$WIL" acquire --session "$SID_B" 2>/dev/null) || rc=$?
+assert "TC-14 B acquire → concurrent_ingest" "concurrent_ingest" "$out"
+assert "TC-14 B acquire rc 11" "11" "$rc"
+assert "TC-14 holder stays A" "$SID_A" "$(cat "$LOCKDIR/session_id")"
+assert "TC-14 acquired_at not rewritten" "$PLANTED" "$(cat "$LOCKDIR/acquired_at")"
+
 print_summary "$(basename "$0")" \
-  "Drift hint: wiki-ingest-lock.sh §9 — mkdir lock whose liveness is its own acquired_at (2h), reclaim stale/missing/unparsable, concurrent_ingest rc 11, acquired_at write failure stops acquire; _resolve_sid env-first; no-flock PATH; wiki-ingest step 9.0 check → WARNING when not own."
+  "Drift hint: wiki-ingest-lock.sh §9 — mkdir lock whose liveness is its own acquired_at (2h), held near the window's upper edge (~7100s), reclaim stale/missing/unparsable, concurrent_ingest rc 11, acquired_at write failure stops acquire; _resolve_sid env-first; no-flock PATH; wiki-ingest step 9.0 check → WARNING when not own."

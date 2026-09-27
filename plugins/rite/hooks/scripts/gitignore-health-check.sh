@@ -200,7 +200,7 @@ if [ "$VERIFY_NEGATION" -eq 1 ]; then
   # >>> DRIFT-CHECK ANCHOR END: same_branch add_dry_run rc capture (verify-negation copy) <<<
 
   # >>> DRIFT-CHECK ANCHOR: same_branch negation grep-qF healthy check (verify-negation copy) <<<
-  if [ "$add_dry_rc" -eq 0 ] && printf '%s' "$add_dry_out" | grep -qF "add '${negation_probe}'"; then
+  if [ "$add_dry_rc" -eq 0 ] && grep -qF "add '${negation_probe}'" <<< "$add_dry_out"; then
     echo "✅ .gitignore negation verification OK: $add_dry_out"
   else
     echo "WARNING: .gitignore negation verification failed (rc=$add_dry_rc)" >&2
@@ -284,7 +284,7 @@ if sessions_ci_out=$(git check-ignore -v "$sessions_probe" 2>/dev/null); then se
 # 「実際には ignore されず leak する」構成を healthy と誤判定する。-v の出力形式
 # `<source>:<linenum>:<pattern>\t<pathname>` の pattern 先頭が `!` でないことも healthy 条件とする。
 sessions_ci_negated=0
-if [ "$sessions_ci_rc" -eq 0 ] && printf '%s' "$sessions_ci_out" | grep -qE ':[0-9]+:!'; then
+if [ "$sessions_ci_rc" -eq 0 ] && grep -qE ':[0-9]+:!' <<< "$sessions_ci_out"; then
   sessions_ci_negated=1
 fi
 if [ "$sessions_ci_rc" -eq 0 ] && [ "$sessions_ci_negated" -eq 0 ]; then
@@ -333,7 +333,7 @@ if [ "$ms_enabled" = "true" ]; then
   # する (親 `.rite/` 広域ルール一致でも実効的に ignore されていれば偽陽性にしない。negation
   # マッチは rc=0 でも実際には ignore されないため DRIFT — 詳細は sessions ブロックのコメント参照)。
   ms_ci_negated=0
-  if [ "$ms_ci_rc" -eq 0 ] && printf '%s' "$ms_ci_out" | grep -qE ':[0-9]+:!'; then
+  if [ "$ms_ci_rc" -eq 0 ] && grep -qE ':[0-9]+:!' <<< "$ms_ci_out"; then
     ms_ci_negated=1
   fi
   if [ "$ms_ci_rc" -eq 0 ] && [ "$ms_ci_negated" -eq 0 ]; then
@@ -435,7 +435,7 @@ if [ "$check_ignore_rc" -eq 0 ]; then
   # by a colon (`:` separator after line number) in this output format, so a
   # minimal `:<pattern>` match is sufficient and avoids the `.rite/wiki/` path
   # field (suffix) from producing a false positive.
-  if printf '%s' "$check_ignore_out" | grep -qE ':\.rite/wiki/'; then
+  if grep -qE ':\.rite/wiki/' <<< "$check_ignore_out"; then
     parent_rule_matched=1
     parent_rule_line="$check_ignore_out"
   fi
@@ -495,7 +495,7 @@ case "$branch_strategy" in
     # 単純 prefix は false positive を招く. (wiki/init.md ステップ 1.3.4 delegates here.)
     # Healthy negation: rc=0 + stdout like `add '.rite/wiki/raw/.rite-lint-negation-probe'`
     # Broken negation: rc=1 + stderr contains "paths are ignored"
-    if [ "$add_dry_rc" -eq 0 ] && printf '%s' "$add_dry_out" | grep -qF "add '${negation_probe}'"; then
+    if [ "$add_dry_rc" -eq 0 ] && grep -qF "add '${negation_probe}'" <<< "$add_dry_out"; then
       log_info "gitignore-health-check: same_branch layer 2 healthy — negation override works (git add --dry-run rc=0)"
     else
       echo "==> gitignore-health-check: DRIFT DETECTED (same_branch): negation override for '.rite/wiki/' missing or broken" >&2

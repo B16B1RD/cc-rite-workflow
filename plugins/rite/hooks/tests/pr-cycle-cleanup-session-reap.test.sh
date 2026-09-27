@@ -864,7 +864,7 @@ case "$out" in *"session_worktrees=1"*) pass "C-06 status reports session_worktr
 break_gitfile() { printf 'not a gitfile\n' > "$1/.rite/worktrees/issue-$2/.git"; }
 remove_gitfile() { rm -f "$1/.rite/worktrees/issue-$2/.git"; }
 gitfile_to_dir() { rm -f "$1/.rite/worktrees/issue-$2/.git"; mkdir "$1/.rite/worktrees/issue-$2/.git"; }
-list_has_wt() { git -C "$1" worktree list --porcelain 2>/dev/null | grep -qxF "worktree $1/.rite/worktrees/issue-$2"; }
+list_has_wt() { local _gq_out; _gq_out=$(git -C "$1" worktree list --porcelain 2>/dev/null) && grep -qxF "worktree $1/.rite/worktrees/issue-$2" <<< "$_gq_out"; }
 
 echo "=== C-07: aged gitfile-garbage corpse + stale claim → reaped and gone from list ==="
 R=$(make_repo 160); cleanup_dirs+=("$R")

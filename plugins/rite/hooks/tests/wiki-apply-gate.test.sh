@@ -866,7 +866,8 @@ if grep -q 'wiki-apply-gate' <<<"$gout" && ! grep -q 'wiki-apply-index' <<<"$gou
 else
   fail "guard -qm rc=$grc out=$gout"
 fi
-# 引用符なしのリダイレクトとその先は commit の引数ではない。引用符付きの語と、先のない演算子は数える。
+# 引用符なしのリダイレクト語（最初の < / > の前が fd 番号か &> の & だけ）と、（省略可の）fd 番号か & に続く < > & だけの語の次の語は
+# commit の引数ではない。引用符付きの語、先のない演算子、>| / {fd}>out は数える。
 SCOPE_CHECK="$SCRIPT_DIR/../scripts/review-fix-scope-check.sh"
 expect_target() {
   local want="$1" cmd="$2" out rc=0
@@ -886,6 +887,7 @@ git commit -m x > out.log
 git commit -m x 2>/dev/null
 git commit -m x &>log
 git commit -m x 2> err.log
+git commit -m x 10> err.log
 git commit -m x >> out.log
 git commit -F - < msg.txt
 git commit -m x >&2
@@ -909,6 +911,8 @@ git commit -m x ">out"
 git commit -m x >
 git commit -m x file.txt>out
 git commit -m x "2">out
+git commit -m x >| out.log
+git commit -m x {fd}>out
 EOF
 drc=0
 dout=$(bash "$SCOPE_CHECK" commit-target --command "git commit --dry-run >/dev/null" --cwd "$repo" 2>"$ROOT/target.err") || drc=$?

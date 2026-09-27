@@ -2012,7 +2012,7 @@ try:
     (gh / 'gh').write_text(
         '#!/bin/bash\n'
         'ROOT=' + json.dumps(str(f.root)) + '\n'
-        'if printf "%s" "$*" | grep -q headRefOid; then\n'
+        'if grep -q headRefOid <<< "$*"; then\n'
         '  git -C "$ROOT" rev-parse HEAD\n'
         '  exit 0\n'
         'fi\n'
@@ -2054,7 +2054,7 @@ def attest(f, ids):
         (stub / 'gh').write_text(
             '#!/bin/bash\n'
             'ROOT=' + json.dumps(str(f.root)) + '\n'
-            'if printf "%s" "$*" | grep -q headRefOid; then\n'
+            'if grep -q headRefOid <<< "$*"; then\n'
             '  git -C "$ROOT" rev-parse HEAD\n'
             '  exit 0\n'
             'fi\n'

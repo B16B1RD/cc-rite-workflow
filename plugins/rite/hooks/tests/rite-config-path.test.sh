@@ -217,7 +217,7 @@ check_init_section() {
   esac
   if [ "$6" = "-" ]; then
     # If rc=0 段落が無いので、0 行が下にある内容を指すだけで rc=0 に案内が混ざる
-    if printf '%s\n' "$rc0_line" | grep -Eiq 'show|display|below|message'; then
+    if grep -Eiq 'show|display|below|message' <<< "$rc0_line"; then
       fail "T-12 $1 rc=0 row does not point to content below (line: '$rc0_line')"
     else
       pass "T-12 $1 rc=0 row does not point to content below"
@@ -256,7 +256,7 @@ check_init_section() {
 check_init_section workflow '### 1.1 Check Initialization Status' '### 1.2' '初期化されていません' stop -
 check_init_section getting-started '### 3.2 Step 1: Initial Setup' '### 3.3' 'Action Required' guide 'Already initialized'
 check_init_section template-reset '### 1.1 Read rite-config.yml' '## Phase 2' '見つかりません' stop -
-if awk '/^## Language Support/ {f = 1} f' "$PLUGIN_ROOT/skills/workflow/SKILL.md" | grep -qF '{rite_config_path}'; then
+if _gq_out=$(awk '/^## Language Support/ {f = 1} f' "$PLUGIN_ROOT/skills/workflow/SKILL.md") && grep -qF '{rite_config_path}' <<< "$_gq_out"; then
   pass "T-12 workflow reads language from the resolved path"
 else
   fail "T-12 workflow reads language from the resolved path"

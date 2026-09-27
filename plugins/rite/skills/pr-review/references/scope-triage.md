@@ -239,7 +239,7 @@ if [ -z "$body" ]; then
   echo "WARNING: 元 Issue #{source_issue_number} の body 取得に失敗。Decision Log 記録をスキップします" >&2
   echo "手動追記してください: - ${today} D-NN: ${line_content}" >&2
   echo "[CONTEXT] DECISION_LOG_APPEND_FAILED=1; reason=body_fetch_failure; issue={source_issue_number}" >&2
-elif printf '%s' "$body" | grep -q '^## 9\. Decision Log'; then
+elif grep -q '^## 9\. Decision Log' <<< "$body"; then
   # 採番は Section 9 の内側だけを数える。本文の散文（転記されたレビュー指摘等）にある D-NN を
   # 数えると番号が飛ぶ。境界は下の追記 awk と同じ。awk の後ろにパイプを繋ぐと終了コードが
   # 失われるため、awk 単体の出力と終了コードを取ってから D-NN を抽出する。

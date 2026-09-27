@@ -121,7 +121,7 @@ case "$mode" in
     exit 1
     ;;
 esac
-if printf '%s' "$mode" | grep -qE '(^|[[:space:]])--auto([[:space:]]|$)'; then
+if grep -qE '(^|[[:space:]])--auto([[:space:]]|$)' <<< "$mode"; then
   # ステップ 9.2 contract: Lint 1 行 + return signal comment + HTML sentinel の 3 行を出力
   # (stdout 空は ingest 側で「Lint 実行失敗」扱い)
   echo "Lint: contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0"
@@ -171,7 +171,7 @@ case "$mode" in
     exit 1
     ;;
 esac
-if printf '%s' "$mode" | grep -qE '(^|[[:space:]])--auto([[:space:]]|$)'; then
+if grep -qE '(^|[[:space:]])--auto([[:space:]]|$)' <<< "$mode"; then
   echo "Lint: contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0"
   echo "<!-- skill return signal: caller must continue next step -->"
   echo "<!-- [lint:returned-to-caller:auto] -->"

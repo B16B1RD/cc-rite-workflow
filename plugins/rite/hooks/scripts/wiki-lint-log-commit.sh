@@ -101,7 +101,7 @@ case "$message" in
     ;;
 esac
 
-if printf '%s' "$mode" | grep -qE '(^|[[:space:]])--auto([[:space:]]|$)'; then
+if grep -qE '(^|[[:space:]])--auto([[:space:]]|$)' <<< "$mode"; then
   auto_mode=true
 else
   auto_mode=false

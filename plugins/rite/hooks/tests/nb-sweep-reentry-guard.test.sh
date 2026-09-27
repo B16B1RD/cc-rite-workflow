@@ -261,7 +261,7 @@ entry_fence=$(awk '/^step_nb_sweep_collect\(\) \{$/{f=1} f{print} f && /^}$/{exi
 [ -n "$entry_fence" ] || { echo "FAIL: T-11 entry fence missing"; exit 1; }
 # 行数上限は終端アンカー (`^}$`) を取り逃して後続関数を巻き込む over-extraction を loud にする。
 entry_lines=$(printf '%s\n' "$entry_fence" | wc -l | tr -d '[:space:]')
-if [ "$entry_lines" -gt 130 ] || ! printf '%s\n' "$entry_fence" | tail -1 | grep -qx '}'; then
+if [ "$entry_lines" -gt 130 ] || ! { _gq_out=$(tail -1 <<< "$entry_fence") && grep -qx '}' <<< "$_gq_out"; }; then
   echo "FAIL: T-11 entry fence extraction overran or lost its end anchor ($entry_lines lines)"; exit 1
 fi
 nb_collect_stub=$(mktemp "${TMPDIR:-/tmp}/rite-nb-collect-stub-XXXXXX")
@@ -388,7 +388,7 @@ render_fenced() {
     -e 's#bash {plugin_root}/hooks/state-path-resolve.sh#printf %s "$NB_FIX_ROOT"#g' \
     -e "s#{plugin_root}#$PLUGIN_ROOT#g" \
     -e 's#{pr_number}#42#g')
-  if printf '%s' "$rendered" | grep -qE '\{(plugin_root|pr_number)\}|state-path-resolve\.sh'; then
+  if grep -qE '\{(plugin_root|pr_number)\}|state-path-resolve\.sh' <<< "$rendered"; then
     echo "FAIL: T-12 rendered block still has a placeholder or a real state-path-resolve call" >&2
     return 1
   fi
@@ -431,7 +431,7 @@ rm -rf -- "$digest_root"
 
 # step_nb_sweep_record は関数なので T-11 と同じく関数範囲を抽出し、state-path-resolve だけを差し替える
 record_fence=$(awk '/^step_nb_sweep_record\(\) \{$/{f=1} f{print} f && /^}$/{exit}' "$ITERATE_STEP")
-[ -n "$record_fence" ] && printf '%s\n' "$record_fence" | tail -1 | grep -qx '}' \
+[ -n "$record_fence" ] && _gq_out=$(tail -1 <<< "$record_fence") && grep -qx '}' <<< "$_gq_out" \
   || { echo "FAIL: T-12 record fence extraction lost its end anchor"; exit 1; }
 record_run() {
   local root

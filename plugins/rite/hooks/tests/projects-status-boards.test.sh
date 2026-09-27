@@ -290,12 +290,12 @@ printf '%s\n' \
   'gh project field-create 1 --owner o --name Status2' \
   > "$ctl_log"
 assert "T-05 control: two synthetic writes are the only unexpected lines" "2" "$(unexpected_gh_lines "$ctl_log" | wc -l | tr -d ' ')"
-if unexpected_gh_lines "$ctl_log" | grep -q 'updateProjectV2Field'; then
+if _gq_out=$(unexpected_gh_lines "$ctl_log") && grep -q 'updateProjectV2Field' <<< "$_gq_out"; then
   pass "T-05 control: a GraphQL mutation collapsed onto one line is rejected"
 else
   fail "T-05 control: the GraphQL mutation slipped through the allowlist"
 fi
-if unexpected_gh_lines "$ctl_log" | grep -q '^gh project field-create'; then
+if grep -q '^gh project field-create' <<< "$_gq_out"; then
   pass "T-05 control: a write subcommand outside the allowlist is rejected"
 else
   fail "T-05 control: field-create slipped through the allowlist"

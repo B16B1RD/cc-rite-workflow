@@ -182,9 +182,9 @@ mkdir -p "$mv_dir"
 printf 'second ref (#2102)\nnew ref (#2104)\n' > "$mv_dir/merged.md"
 commit_all "$sb" move-plus-new
 rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
-if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q '#2104' \
-   && ! printf '%s' "$out" | grep -q '#2102' \
-   && printf '%s' "$out" | grep -q 'Total number-ref findings: 1'; then
+if [ "$rc" -eq 1 ] && grep -q '#2104' <<< "$out" \
+   && ! grep -q '#2102' <<< "$out" \
+   && grep -q 'Total number-ref findings: 1' <<< "$out"; then
   pass "T-01(e3) move plus new reference detects only the new one"
 else
   fail "T-01(e3) expected only #2104, got rc=$rc: $out"
@@ -197,7 +197,7 @@ printf 'third ref (#2103)\n' > "$mv_dir/copy-1.md"
 printf 'third ref (#2103)\n' > "$mv_dir/copy-2.md"
 commit_all "$sb" move-duplicated
 rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
-if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'Total number-ref findings: 1'; then
+if [ "$rc" -eq 1 ] && grep -q 'Total number-ref findings: 1' <<< "$out"; then
   pass "T-01(e4) a removed line offsets only one identical addition"
 else
   fail "T-01(e4) expected exactly one hit, got rc=$rc: $out"
@@ -215,7 +215,7 @@ commit_all "$sb" excluded-move
 git -C "$sb" config diff.renames true
 rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
 git -C "$sb" config --unset diff.renames
-if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q '^plugins/rite/references/from-raw.md:1: raw ref (#2105)$'; then
+if [ "$rc" -eq 1 ] && grep -q '^plugins/rite/references/from-raw.md:1: raw ref (#2105)$' <<< "$out"; then
   pass "T-01(e5) a reference renamed out of an excluded path is a hit under diff.renames=true"
 else
   fail "T-01(e5) expected from-raw.md hit, got rc=$rc: $out"
@@ -226,7 +226,7 @@ for prefix_cfg in diff.mnemonicPrefix diff.noprefix; do
   git -C "$sb" config "$prefix_cfg" true
   rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
   git -C "$sb" config --unset "$prefix_cfg"
-  if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q '^plugins/rite/references/from-raw.md:1: raw ref (#2105)$'; then
+  if [ "$rc" -eq 1 ] && grep -q '^plugins/rite/references/from-raw.md:1: raw ref (#2105)$' <<< "$out"; then
     pass "T-01(e6) move out of an excluded path is a hit under $prefix_cfg=true"
   else
     fail "T-01(e6) expected from-raw.md hit under $prefix_cfg=true, got rc=$rc: $out"
@@ -241,12 +241,12 @@ printf '#!/bin/sh\nexit 0\n' > "$noop_ext"
 chmod +x "$noop_ext"
 git -C "$sb" config diff.external "$noop_ext"
 plain_out=$(git -C "$sb" diff HEAD~1 -- plugins/rite/references/from-raw.md 2>&1)
-if printf '%s' "$plain_out" | grep -q 'raw ref (#2105)'; then
+if grep -q 'raw ref (#2105)' <<< "$plain_out"; then
   fail "T-01(e6b) setup: expected diff.external to suppress the plain diff output, got: $plain_out"
 else
   for path_args in "" "--path plugins/rite/references"; do
     rc=0; out=$(run_diff "$sb" HEAD~1 --quiet $path_args 2>&1) || rc=$?
-    if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q '^plugins/rite/references/from-raw.md:1: raw ref (#2105)$'; then
+    if [ "$rc" -eq 1 ] && grep -q '^plugins/rite/references/from-raw.md:1: raw ref (#2105)$' <<< "$out"; then
       pass "T-01(e6b) move out of an excluded path is a hit under diff.external (path_args='${path_args:-<none>}')"
     else
       fail "T-01(e6b) expected from-raw.md hit under diff.external (path_args='${path_args:-<none>}'), got rc=$rc: $out"
@@ -261,12 +261,12 @@ attrs_file="$sb/.gitattributes"
 printf '*.md diff=strip\n' > "$attrs_file"
 git -C "$sb" config diff.strip.textconv 'sed s/#/N/g'
 plain_out=$(git -C "$sb" diff HEAD~1 -- plugins/rite/references/from-raw.md 2>&1)
-if ! printf '%s' "$plain_out" | grep -q 'N2105'; then
+if ! grep -q 'N2105' <<< "$plain_out"; then
   fail "T-01(e6c) setup: expected textconv to rewrite # to N in the plain diff, got: $plain_out"
 else
   for path_args in "" "--path plugins/rite/references"; do
     rc=0; out=$(run_diff "$sb" HEAD~1 --quiet $path_args 2>&1) || rc=$?
-    if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q '^plugins/rite/references/from-raw.md:1: raw ref (#2105)$'; then
+    if [ "$rc" -eq 1 ] && grep -q '^plugins/rite/references/from-raw.md:1: raw ref (#2105)$' <<< "$out"; then
       pass "T-01(e6c) move out of an excluded path is a hit under textconv (path_args='${path_args:-<none>}')"
     else
       fail "T-01(e6c) expected from-raw.md hit under textconv (path_args='${path_args:-<none>}'), got rc=$rc: $out"
@@ -293,8 +293,8 @@ printf 'intro\n++ plus ref (#2107)\ntrailing ref (#2108)\n' > "$mv_dir/plus.md"
 commit_all "$sb" plus-add
 rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
 if [ "$rc" -eq 1 ] \
-   && printf '%s\n' "$out" | grep -qxF 'plugins/rite/references/plus.md:2: ++ plus ref (#2107)' \
-   && printf '%s\n' "$out" | grep -qxF 'plugins/rite/references/plus.md:3: trailing ref (#2108)'; then
+   && grep -qxF 'plugins/rite/references/plus.md:2: ++ plus ref (#2107)' <<< "$out" \
+   && grep -qxF 'plugins/rite/references/plus.md:3: trailing ref (#2108)' <<< "$out"; then
   pass "T-01(e8) a line starting with ++ is scanned and later lines keep their path"
 else
   fail "T-01(e8) expected plus.md:2 and plus.md:3 hits, got rc=$rc: $out"
@@ -1000,10 +1000,9 @@ fi
 # word": bash subshells share that shape, so a broad arm flags working code as
 # residue. Pin the narrowing so a later widening fails here rather than turning
 # the whole-tree scan below into a wall of false residue.
-if ! printf '%s\n' 'if ( set -C; printf "%s" "$json" > "$file" ) 2>/dev/null; then' \
-  'if ( exec 8>.rite/state/wiki-worktree-setup.lock ) 2>/dev/null; then' \
-  'else ( if ($f.severity == "CRITICAL" or $f.severity == "MEDIUM")' \
-  | grep -Eq "$deletion_residue_pattern"; then
+if ! grep -Eq "$deletion_residue_pattern" <<< 'if ( set -C; printf "%s" "$json" > "$file" ) 2>/dev/null; then
+if ( exec 8>.rite/state/wiki-worktree-setup.lock ) 2>/dev/null; then
+else ( if ($f.severity == "CRITICAL" or $f.severity == "MEDIUM")'; then
   pass "deletion-damage matcher accepts bash subshells"
 else
   fail "deletion-damage matcher rejected a bash subshell"
@@ -1012,11 +1011,9 @@ fi
 # literals write `\(/` (backslash before the open paren); the arm must leave
 # those alone or the tree scan fails closed on working code.
 slash_only_arm="${deletion_residue_patterns[$((${#deletion_residue_patterns[@]} - 1))]}"
-if ! printf '%s\n' \
-  '  if (s ~ /\]\(/) linkrows++' \
-  '    if (match(link, /^\[.*\]\(/)) t = substr(link, 2, RLENGTH - 3)' \
-  '  if (line ~ /\$\([^)]*\$\(/) nested = 1' \
-  | grep -Eq "$slash_only_arm"; then
+if ! grep -Eq "$slash_only_arm" <<< '  if (s ~ /\]\(/) linkrows++
+    if (match(link, /^\[.*\]\(/)) t = substr(link, 2, RLENGTH - 3)
+  if (line ~ /\$\([^)]*\$\(/) nested = 1'; then
   pass "deletion-damage matcher accepts awk regex literals"
 else
   fail "deletion-damage matcher rejected an awk regex literal"

@@ -1038,7 +1038,7 @@ rm -f "$dir_n22/list-empty.flag" "$dir_n22/gh.urls"
 touch "$dir_n22/list-empty.flag"
 run_hook_cap "$dir_n22" || true
 stdout22b=$(cat "$dir_n22/hook.stdout" 2>/dev/null)
-if printf '%s' "$stdout22b" | jq -r '.systemMessage // empty' 2>/dev/null | grep -qF 'replica が見つかりません'; then
+if _gq_out=$(printf '%s' "$stdout22b" | jq -r '.systemMessage // empty' 2>/dev/null) && grep -qF 'replica が見つかりません' <<< "$_gq_out"; then
   pass "T-22d: 窓を抜けた次の phase 変化では通知が鳴り直す (抑止は init 窓限定)"
 else
   fail "T-22d: 窓外で通知が復帰しない: $stdout22b"
