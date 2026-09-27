@@ -21,6 +21,7 @@
 #   (8.6), or update this test if the contract has legitimately changed.
 #   A failing wiki-lint-log-commit.sh rc case means the helper's keep_message /
 #   cleanup contract (its header) no longer holds: only rc=6 keeps the message file.
+#   A failing rc=1 reason case means the helper names the wrong cause for rc=1.
 
 set -euo pipefail
 
@@ -153,11 +154,13 @@ assert_grep "wiki-lint-log-commit.sh: rc=6 warns and points to the one-shot sand
 # Run the helper against a stubbed wiki-worktree-commit.sh: rc=6 stays non-blocking and keeps
 # the message file for the one-shot retry; any other failure is non-blocking and removes it.
 lint_commit_run() {
-  local name="$1" stub_rc="$2" dir="$route_tmp/lint-$1" rc=0
+  local name="$1" stub_rc="$2" stub_out="${3-}" dir="$route_tmp/lint-$1" rc=0
   mkdir -p "$dir/scripts"
   cp "$LINT_COMMIT_SH" "$dir/scripts/wiki-lint-log-commit.sh"
   cp "$PLUGIN_ROOT/hooks/control-char-neutralize.sh" "$dir/control-char-neutralize.sh"
-  printf '#!/bin/bash\necho "stub rc=%s" >&2\nexit %s\n' "$stub_rc" "$stub_rc" > "$dir/scripts/wiki-worktree-commit.sh"
+  # The optional stub stdout line carries the reason= the helper reads for rc=1.
+  printf '#!/bin/bash\n[ -n "%s" ] && echo "%s"\necho "stub rc=%s" >&2\nexit %s\n' \
+    "$stub_out" "$stub_out" "$stub_rc" "$stub_rc" > "$dir/scripts/wiki-worktree-commit.sh"
   printf 'docs(wiki): lint report\n' > "$dir/msg.txt"
   bash "$dir/scripts/wiki-lint-log-commit.sh" --branch-strategy separate_branch --mode "" \
     --message-file "$dir/msg.txt" >"$dir/out" 2>"$dir/err" || rc=$?
@@ -188,12 +191,95 @@ for lint_rc in 0 1 2 3 4 5; do
   case "$lint_rc" in
     0) assert_not_grep "wiki-lint-log-commit.sh: rc=0 warns nothing" "$lint_err" 'WARNING' ;;
     2) assert_grep "wiki-lint-log-commit.sh: rc=2 reports the skip" "$lint_err" '\[CONTEXT\] WIKI_LINT_COMMIT=skipped' ;;
-    3|4) assert_grep "wiki-lint-log-commit.sh: rc=$lint_rc reports its own rc" "$lint_err" "rc=$lint_rc\\)" ;;
+    1|3|4) assert_grep "wiki-lint-log-commit.sh: rc=$lint_rc reports its own rc" "$lint_err" "rc=$lint_rc\\)" ;;
     *) assert_grep "wiki-lint-log-commit.sh: rc=$lint_rc reaches the unexpected-rc arm" "$lint_err" "予期しない rc=$lint_rc " ;;
   esac
   assert_not_grep "wiki-lint-log-commit.sh: rc=$lint_rc does not show the sandbox retry" "$lint_err" \
     'reason=sandbox-mask'
 done
+
+# rc=1 is shared by the number-reference refusal, a failed number-reference check and
+# environment / argument errors. The stdout reason= picks the cause and the remedy; only
+# numref-hit points to hit lines, and a missing or look-alike reason must not claim numref.
+lint_numref_case() {
+  local name="$1" stub_out="$2" expected="$3" forbidden="$4" dir="$route_tmp/lint-$1"
+  lint_commit_run "$name" 1 "$stub_out"
+  assert "wiki-lint-log-commit.sh: rc=1 $name removes the message file" "0" \
+    "$([ -e "$dir/msg.txt" ] && echo 1 || echo 0)"
+  assert_grep "wiki-lint-log-commit.sh: rc=1 $name selects the expected cause" "$dir/err" "$expected"
+  assert_not_grep "wiki-lint-log-commit.sh: rc=1 $name does not claim the other cause" "$dir/err" "$forbidden"
+  assert_not_grep "wiki-lint-log-commit.sh: rc=1 $name does not reach the unexpected-rc arm" "$dir/err" '予期しない rc=1 '
+  assert_not_grep "wiki-lint-log-commit.sh: rc=1 $name does not show the sandbox retry" "$dir/err" 'reason=sandbox-mask'
+}
+lint_numref_case "numref-hit" "[wiki-worktree-commit] committed=0; branch=wiki; reason=numref-hit" \
+  '番号参照の commit 前検査で拒否.*(rc=1, reason=numref-hit)' '環境または引数エラー'
+assert_grep "wiki-lint-log-commit.sh: rc=1 numref-hit points to the hit lines" \
+  "$route_tmp/lint-numref-hit/err" '対処: 直前の hit 行が指す Wiki の番号参照を書き直して'
+assert_not_grep "wiki-lint-log-commit.sh: rc=1 numref-hit does not claim a failed check" \
+  "$route_tmp/lint-numref-hit/err" '完了できなかった'
+lint_numref_case "numref-error" "[wiki-worktree-commit] committed=0; branch=wiki; reason=numref-error" \
+  '番号参照の commit 前検査が完了できなかった.*(rc=1, reason=numref-error)' '番号参照の commit 前検査で拒否'
+assert_grep "wiki-lint-log-commit.sh: rc=1 numref-error points to the check error reason" \
+  "$route_tmp/lint-numref-error/err" '対処: 直前の stderr（\[CONTEXT\] WIKI_INGEST_NUMREF=error; reason= または ERROR 行）'
+assert_not_grep "wiki-lint-log-commit.sh: rc=1 numref-error does not point to hit lines" \
+  "$route_tmp/lint-numref-error/err" 'hit 行'
+for numref_reason in numref-hit numref-error; do
+  assert_grep "wiki-lint-log-commit.sh: rc=1 $numref_reason passes the stub stdout through" \
+    "$route_tmp/lint-$numref_reason/out" "reason=$numref_reason\$"
+done
+lint_numref_case "reason-missing" "" '環境または引数エラー' '番号参照の commit 前検査'
+lint_numref_case "reason-lookalike" "[wiki-worktree-commit] committed=0; branch=wiki; reason=numref-hit-extra" \
+  '環境または引数エラー' '番号参照の commit 前検査'
+
+# same_branch commits with git add + git-commit-file.sh. Both failures stay non-blocking,
+# name their own step, and remove the message file and the stderr tempfiles.
+lint_same_branch_run() {
+  local name="$1" with_log="$2" dir="$route_tmp/lint-same-$1" rc=0
+  mkdir -p "$dir/scripts" "$dir/repo" "$dir/tmp"
+  cp "$LINT_COMMIT_SH" "$dir/scripts/wiki-lint-log-commit.sh"
+  cp "$PLUGIN_ROOT/hooks/control-char-neutralize.sh" "$dir/control-char-neutralize.sh"
+  printf '#!/bin/bash\necho "stub commit reached" >&2\necho "stub commit detail" >&2\nexit 1\n' > "$dir/scripts/git-commit-file.sh"
+  git -C "$dir/repo" init -q
+  if [ "$with_log" = yes ]; then
+    mkdir -p "$dir/repo/.rite/wiki"
+    printf '# log\n' > "$dir/repo/.rite/wiki/log.md"
+  fi
+  printf 'docs(wiki): lint report\n' > "$dir/msg.txt"
+  (cd "$dir/repo" && TMPDIR="$dir/tmp" bash "$dir/scripts/wiki-lint-log-commit.sh" --branch-strategy same_branch \
+    --mode "" --message-file "$dir/msg.txt") >"$dir/out" 2>"$dir/err" || rc=$?
+  assert "wiki-lint-log-commit.sh: same_branch $name stays non-blocking" "0" "$rc"
+  assert "wiki-lint-log-commit.sh: same_branch $name removes the message file" "0" \
+    "$([ -e "$dir/msg.txt" ] && echo 1 || echo 0)"
+  assert "wiki-lint-log-commit.sh: same_branch $name removes the stderr tempfiles" "0" \
+    "$(find "$dir/tmp" -name 'rite-lint-*-err-*' | wc -l | tr -d '[:space:]')"
+}
+lint_same_branch_run add-failure no
+assert_grep "wiki-lint-log-commit.sh: same_branch add-failure reports git add" \
+  "$route_tmp/lint-same-add-failure/err" 'git add \.rite/wiki/log\.md に失敗'
+assert_not_grep "wiki-lint-log-commit.sh: same_branch add-failure does not reach the commit" \
+  "$route_tmp/lint-same-add-failure/err" 'stub commit reached'
+lint_same_branch_run commit-failure yes
+assert_grep "wiki-lint-log-commit.sh: same_branch commit-failure reports the commit" \
+  "$route_tmp/lint-same-commit-failure/err" 'log\.md のコミットに失敗'
+assert_grep "wiki-lint-log-commit.sh: same_branch commit-failure shows the commit stderr indented" \
+  "$route_tmp/lint-same-commit-failure/err" '^  stub commit detail$'
+assert_not_grep "wiki-lint-log-commit.sh: same_branch commit-failure does not report git add" \
+  "$route_tmp/lint-same-commit-failure/err" 'git add \.rite/wiki/log\.md に失敗'
+
+# Invocation errors (exit 2) also remove a message file that was already given. The exit 1
+# fail-fast cases are pinned by commit-convention-inventory.test.sh (lint_fail_case).
+lint_usage_case() {
+  local name="$1" dir="$route_tmp/lint-usage-$1" rc=0
+  shift
+  mkdir -p "$dir"
+  printf 'docs(wiki): lint report\n' > "$dir/msg.txt"
+  bash "$LINT_COMMIT_SH" --message-file "$dir/msg.txt" "$@" >/dev/null 2>"$dir/err" || rc=$?
+  assert "wiki-lint-log-commit.sh: $name exits 2" "2" "$rc"
+  assert "wiki-lint-log-commit.sh: $name removes the message file" "0" \
+    "$([ -e "$dir/msg.txt" ] && echo 1 || echo 0)"
+}
+lint_usage_case "missing --mode" --branch-strategy same_branch
+lint_usage_case "unknown option" --branch-strategy same_branch --mode "" --no-such-option
 
 # --- init.md ステップ 3.5.1: migration commit keeps sandbox-mask recovery actionable ---
 assert_grep_in_section "init.md 3.5.1: rc=6 warns and points to the one-shot sandbox retry" \

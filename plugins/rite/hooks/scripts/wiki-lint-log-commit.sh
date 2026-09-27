@@ -49,16 +49,8 @@ Options:
 EOF
 }
 
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --branch-strategy) branch_strategy="${2-}"; shift 2 || { usage >&2; exit 2; } ;;
-    --mode) mode="${2-}"; mode_set=true; shift 2 || { usage >&2; exit 2; } ;;
-    --message-file) message_file="${2-}"; shift 2 || { usage >&2; exit 2; } ;;
-    -h|--help) usage; exit 0 ;;
-    *) echo "ERROR: unknown option: $1" >&2; usage >&2; exit 2 ;;
-  esac
-done
-
+# Set before argument parsing so an invocation error (exit 2) also removes a
+# message file that was already given.
 keep_message=false
 cleanup() {
   [ "$keep_message" = true ] && return 0
@@ -72,6 +64,16 @@ trap 'rc=$?; cleanup; exit $rc' EXIT
 trap 'cleanup; exit 130' INT
 trap 'cleanup; exit 143' TERM
 trap 'cleanup; exit 129' HUP
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --branch-strategy) branch_strategy="${2-}"; shift 2 || { usage >&2; exit 2; } ;;
+    --mode) mode="${2-}"; mode_set=true; shift 2 || { usage >&2; exit 2; } ;;
+    --message-file) message_file="${2-}"; shift 2 || { usage >&2; exit 2; } ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "ERROR: unknown option: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
 
 if [ -z "$branch_strategy" ] || [ "$mode_set" != true ] || [ -z "$message_file" ]; then
   echo "ERROR: --branch-strategy / --mode / --message-file are required" >&2
@@ -118,10 +120,29 @@ case "$branch_strategy" in
     fi
     commit_rc=$?
     echo "$commit_out"
-    # Non-blocking: every rc is a WARNING. A number-reference hit also returns
-    # rc=1 without committing, which is the safe outcome.
+    # Non-blocking: every rc is a WARNING. rc=1 is shared by the number-reference refusal,
+    # a failed number-reference check and environment / argument errors, so its stdout
+    # reason= picks the message.
     case "$commit_rc" in
       0) : ;;
+      1)
+        commit_reason=$(printf '%s\n' "$commit_out" | sed -n 's/.*reason=\([^;[:space:]]*\).*/\1/p' | tail -1)
+        case "$commit_reason" in
+          numref-hit)
+            echo "WARNING: wiki-worktree-commit.sh が番号参照の commit 前検査で拒否したため log.md を commit しませんでした (rc=1, reason=numref-hit)。log.md 追記は非ブロッキングのため継続します" >&2
+            echo "  対処: 直前の hit 行が指す Wiki の番号参照を書き直してから再実行" >&2
+            ;;
+          numref-error)
+            # The check itself failed (helper missing, staging or gitignore trouble): no hit lines exist.
+            echo "WARNING: wiki-worktree-commit.sh の番号参照の commit 前検査が完了できなかったため log.md を commit しませんでした (rc=1, reason=numref-error)。log.md 追記は非ブロッキングのため継続します" >&2
+            echo "  対処: 直前の stderr（[CONTEXT] WIKI_INGEST_NUMREF=error; reason= または ERROR 行）が示す原因を解消してから再実行" >&2
+            ;;
+          *)
+            echo "WARNING: wiki-worktree-commit.sh が環境または引数エラーで停止したため log.md を commit しませんでした (rc=1)。log.md 追記は非ブロッキングのため継続します" >&2
+            echo "  対処: 直前の stderr を確認し、worktree・設定・引数の原因を解消してから再実行" >&2
+            ;;
+        esac
+        ;;
       2) echo "[CONTEXT] WIKI_LINT_COMMIT=skipped; reason=wiki-disabled-or-no-pending" >&2 ;;
       3) echo "WARNING: wiki-worktree-commit.sh で git 操作失敗 (rc=3)。log.md 追記は非ブロッキングのため継続します" >&2 ;;
       4) echo "WARNING: wiki-worktree-commit.sh で commit landed but push 失敗 (rc=4)。次回再 push が必要 (standalone 実行時のみ到達 — --commit-only は push を行わない)" >&2 ;;
