@@ -179,7 +179,7 @@ for use_run, plan_paths, full_inputs, rename_boundary in ((False, ['src/a.py'], 
                          suggestion='fix', status='open', scope='current-pr') for index in range(2)]
         dump(content, dict(schema_version='1.1.0', pr_number=71, review_context=context,
                            timestamp='__RITE_TS_PLACEHOLDER_7f3a9b2c__', commit_sha=context['commit_sha'],
-                           reviewers=selected, findings=findings, non_blocking_findings=[], guardrail_audit_log=[], acceptance_criteria=[]))
+                           reviewers=selected, findings=findings, non_blocking_findings=[], guardrail_audit_log=[], acceptance_criteria=[dict(id='AC-1', status='unverified', evidence='needs a human check', finding_id=None)]))
         run(['bash', str(plugin / 'scripts/review-measured-gate.sh'), '--input', str(content),
              '--reject-preset-verification'])
         flow('review-finish', '--manifest', manifest, '--content-file', content)
@@ -188,7 +188,7 @@ for use_run, plan_paths, full_inputs, rename_boundary in ((False, ['src/a.py'], 
         review_path = Path(cycle['result_path'])
         issue_file, plan_file = private / 'issue.json', private / 'plan.json'
         issue = {'number': 42, 'body': '## 4. 対象範囲\n### 4.1 対象\n- `src/a.py`\n'
-                 '### 4.2 対象外\n- `protected`\n## 5. 受入条件\n- 全指摘を一括修正する\n'}
+                 '### 4.2 対象外\n- `protected`\n## 5. 受入条件\n- [ ] AC-1: 全指摘を一括修正する\n'}
         dump(issue_file, issue)
         related_command = "printf 'related\\n' >> .rite/related.log; if test -f .rite/fail; then exit 7; fi"
         plan = dict(review_context=context, issue_number=42, issue_body=issue['body'],
@@ -371,7 +371,7 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-mergeable-') as tmp:
     dump(content, dict(schema_version='1.1.0', pr_number=71, review_context=context,
                        timestamp='__RITE_TS_PLACEHOLDER_7f3a9b2c__', commit_sha=context['commit_sha'],
                        reviewers=selected, findings=[], non_blocking_findings=[], guardrail_audit_log=[],
-                       acceptance_criteria=[]))
+                       acceptance_criteria=[dict(id='AC-1', status='unverified', evidence='needs a human check', finding_id=None)]))
     run(['bash', str(plugin / 'scripts/review-measured-gate.sh'), '--input', str(content),
          '--reject-preset-verification'])
     flow('review-finish', '--manifest', manifest, '--content-file', content)
@@ -480,12 +480,12 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-next-review-') as tmp:
     dump(content, dict(schema_version='1.1.0', pr_number=71, review_context=context,
                        timestamp='__RITE_TS_PLACEHOLDER_7f3a9b2c__', commit_sha=context['commit_sha'],
                        reviewers=selected, findings=findings, non_blocking_findings=[],
-                       guardrail_audit_log=[], acceptance_criteria=[]))
+                       guardrail_audit_log=[], acceptance_criteria=[dict(id='AC-1', status='unverified', evidence='needs a human check', finding_id=None)]))
     run(['bash', str(plugin / 'scripts/review-measured-gate.sh'), '--input', str(content),
          '--reject-preset-verification'])
     flow('review-finish', '--manifest', manifest, '--content-file', content)
     issue = {'number': 42, 'body': '## 4. 対象範囲\n### 4.1 対象\n- `src/a.py`\n'
-             '### 4.2 対象外\n- `protected`\n## 5. 受入条件\n- 全指摘を一括修正する\n'}
+             '### 4.2 対象外\n- `protected`\n## 5. 受入条件\n- [ ] AC-1: 全指摘を一括修正する\n'}
     issue_file, plan_file = private / 'issue.json', private / 'plan.json'
     dump(issue_file, issue)
     clock_file = private / 'clock.json'
@@ -705,7 +705,7 @@ for closed_targets in (False, True):
         dump(content, dict(schema_version='1.1.0', pr_number=71, review_context=context,
                            timestamp='__RITE_TS_PLACEHOLDER_7f3a9b2c__', commit_sha=context['commit_sha'],
                            reviewers=selected, findings=[], non_blocking_findings=[], guardrail_audit_log=[],
-                           acceptance_criteria=[]))
+                           acceptance_criteria=[dict(id='AC-1', status='satisfied', evidence='AC-1 pass => pass', finding_id=None)]))
         run(['bash', str(plugin / 'scripts/review-measured-gate.sh'), '--input', str(content),
              '--reject-preset-verification'])
         flow('review-finish', '--manifest', manifest, '--content-file', content)
@@ -715,7 +715,7 @@ for closed_targets in (False, True):
         flow('review-clock', '--input', clock_file)
         observation = private / 'observation.json'
         dump(observation, dict(review_context=context, issue_number=42, issue_body=body, roots=[],
-                               acceptance=dict(satisfied=[], evidence='saved measurements')))
+                               acceptance=dict(satisfied=['AC-1'], evidence='saved measurements')))
         flow('review-observe', '--input', observation, '--issue', issue_file)
         flow('review-close')
         reviewed_head = run(['git', 'rev-parse', 'HEAD']).stdout.strip()

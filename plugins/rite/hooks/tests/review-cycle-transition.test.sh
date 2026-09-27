@@ -118,7 +118,8 @@ with tempfile.TemporaryDirectory(prefix="rite-review-cycle-") as tmp:
                          scope="current-pr")] if blocking else []
         content = dict(schema_version="1.1.0", pr_number=71, timestamp="__RITE_TS_PLACEHOLDER_7f3a9b2c__",
                        commit_sha=context["commit_sha"], reviewers=selected, review_context=dict(context),
-                       findings=findings, non_blocking_findings=[], guardrail_audit_log=[])
+                       findings=findings, non_blocking_findings=[], guardrail_audit_log=[],
+                       acceptance_criteria=[dict(id="AC-1", status="satisfied", evidence="sample => pass", finding_id=None)])
         dump(content_file, content)
         run(["bash", str(hooks.parent / "scripts/review-measured-gate.sh"), "--input", str(content_file), "--reject-preset-verification"])
         content = json.loads(content_file.read_text())
@@ -149,6 +150,35 @@ with tempfile.TemporaryDirectory(prefix="rite-review-cycle-") as tmp:
     for field, invalid in (("verdict", "mergeable"), ("reviewers", selected[:2]), ("commit_sha", "a" * 40)):
         c = copy.deepcopy(content); c[field] = invalid; dump(content_file, c)
         rejected(finish_args, "bad result " + field)
+    # A table review-close or the Ready gate would refuse never reaches the saver.
+    row = lambda **changes: [dict(content["acceptance_criteria"][0], **changes)]
+    for label, table, needle in (
+            ("missing table", None, "has no acceptance_criteria"),
+            ("unknown skip reason", {"skipped": "other"}, "skipped must be exactly"),
+            ("extra skip key", {"skipped": "no_ac_section", "note": "x"}, "skipped must be exactly"),
+            ("empty rows", [], "non-empty row array"),
+            ("non-AC id", row(id="criterion-one"), "row is invalid"),
+            ("empty evidence", row(evidence=""), "row is invalid"),
+            ("unknown status", row(status="done"), "row is invalid"),
+            ("unmet without finding", row(status="unmet"), "row is invalid"),
+            ("finding on satisfied row", row(finding_id="F-01"), "row is invalid"),
+            ("attested before save", row(status="human-verified", head=content["commit_sha"], at="2026-01-01T00:00:00Z"), "row is invalid"),
+            ("attestation fields on satisfied row", row(head=content["commit_sha"]), "row is invalid"),
+            ("duplicate ids", row() * 2, "duplicate ids")):
+        c = copy.deepcopy(content)
+        if table is None:
+            del c["acceptance_criteria"]
+        else:
+            c["acceptance_criteria"] = table
+        dump(content_file, c)
+        error = rejected(finish_args, "acceptance table " + label)
+        check(needle in error.stderr and "acceptance-criteria-check.sh final" in error.stderr, label + " names the repair")
+        check(not saved_files() and cycle()["status"] == "collecting" and "manifest_path" not in cycle(),
+              label + " saves nothing and keeps collecting")
+    c = copy.deepcopy(content)
+    c["acceptance_criteria"] = [{k: v for k, v in content["acceptance_criteria"][0].items() if k != "finding_id"}]
+    dump(content_file, c)
+    check("row is invalid" in rejected(finish_args, "row without finding_id key").stderr, "finding_id key required")
     dump(content_file, content)
     rejected(["set", "--phase", "review", "--next", "review", "--cycle-count", 0], "incomplete counter reset")
     rejected(["set", "--phase", "lint", "--next", "lint"], "intermediate phase bypass")
@@ -182,6 +212,8 @@ with tempfile.TemporaryDirectory(prefix="rite-review-cycle-") as tmp:
     broken_foreign.unlink()
     check({str(path): path.read_bytes() for path in saved_files()} == saved_before, "saved-before-state replay never saves twice")
     check(cycle()["status"] == "completed" and cycle()["verdict"] == "fix-needed", "finish completed blocking review")
+    check(json.loads(Path(cycle()["result_path"]).read_text())["acceptance_criteria"] == content["acceptance_criteria"],
+          "row table is saved as the receipt")
     check(state()["next_action"] == "/rite:fix 71", "finish routes fix")
     flow(*finish_args)
     check(len(saved_files()) == 1 and state()["cycle_count"] == 3, "completed finish replay never adds cycle/result")
@@ -191,6 +223,13 @@ with tempfile.TemporaryDirectory(prefix="rite-review-cycle-") as tmp:
     current_receipt = Path(cycle()["result_path"])
     missing_receipt = current_receipt.with_suffix(".missing")
     current_receipt.rename(missing_receipt)
+    # With the recorded receipt gone there is nothing to compare, so no content may be saved in its place.
+    for label, body in (("same", content), ("changed", changed_content)):
+        dump(content_file, body)
+        error = rejected(finish_args, label + " content after receipt moved away")
+        check(str(current_receipt) in error.stderr and not saved_files() and cycle()["result_path"] == str(current_receipt),
+              label + " content names the lost receipt and saves nothing")
+    dump(content_file, content)
     rejected(["set", "--phase", "fix", "--next", "fix"], "receipt lost before transition")
     rejected(["review-start", "--selection", selection], "receipt lost before next cycle")
     missing_receipt.rename(current_receipt)

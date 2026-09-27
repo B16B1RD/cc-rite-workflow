@@ -6,7 +6,7 @@
 
 通常 caller の新規結果には `review_context: {session_id, run_id, pr_number, cycle_count, commit_sha}` を必須とする。`flow-state.sh review-start` の返却値をそのまま使い、manifest top-level・全 reviewer entry・結果 JSON で完全一致させる。トップレベル `pr_number` / `commit_sha` も context と一致させ、`reviewers` は固定した `review_cycle.selected_reviewers` 全件と一致させる。
 
-`review-finish --manifest <絶対パス> --content-file <絶対パス>` が回収・保存を検証して `review_cycle.status=completed` にする。`manifest_path` / `content_file` は保存再試行用、`result_path` / `verdict` は検証済み保存結果を指す。counter の加算は開始時に一度だけで、同じ cycle の再開・終了再実行では増やさない。最終成功 sentinel は後続の既存品質ゲートを完了してから発行する。
+`review-finish --manifest <絶対パス> --content-file <絶対パス>` が回収・保存を検証して `review_cycle.status=completed` にする。`acceptance_criteria` が欠落しているか、Ready ゲートが malformed とする形なら保存前に拒否する（保存直後の結果に `human-verified` 行は無い）。完了済み cycle の記録済み `result_path` が消えていれば、別の結果を保存せずに停止する。`manifest_path` / `content_file` は保存再試行用、`result_path` / `verdict` は検証済み保存結果を指す。counter の加算は開始時に一度だけで、同じ cycle の再開・終了再実行では増やさない。最終成功 sentinel は後続の既存品質ゲートを完了してから発行する。
 
 この追加フィールドは schema version を変えない。過去 JSON の読取互換は維持するが、context が無い過去結果を新しい cycle の成功証跡には使用しない。
 
@@ -429,7 +429,7 @@ collect は `targets[]` に `verification` と `route` を返す。実測あり 
 
 **`verification` の default mapping のみ schema_version に依らず適用される** — `verification` は 1.1.0 内で additive 追加されたため 1.1.0 JSON でも欠落しうる ([Schema Version](#schema-version-sot) 参照)。schema_version で gate してはならない。
 
-**`acceptance_criteria` 導入前の JSON は ready / merge で fail-closed にする** — 判定表は reviewer の実行結果からしか導出できないため、欠落を既定値へ写像したり、その場で補完したりしない。`measured_gate` receipt の欠落と同じく `/rite:pr-review` の再実行を要求する。既存 JSON を書き換える migration script は設けず、`archive/` 配下は ready / merge の最新結果探索対象外なので移行対象にも含めない。
+**`acceptance_criteria` 導入前の JSON は review-finish / ready / merge で fail-closed にする** — 判定表は reviewer の実行結果からしか導出できないため、欠落を既定値へ写像したり、その場で補完したりしない。`measured_gate` receipt の欠落と同じく `/rite:pr-review` の再実行を要求する。既存 JSON を書き換える migration script は設けず、`archive/` 配下は ready / merge の最新結果探索対象外なので移行対象にも含めない。
 
 ### scope の default mapping
 
