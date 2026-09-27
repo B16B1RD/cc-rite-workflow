@@ -1968,6 +1968,7 @@ assert "T-65 body 先頭行は marker" "<!-- [rite-follow-up-from-pr:9] -->" "$(
 assert "T-65 body 5 行目 概要" "## 概要" "$(sed -n '5p' "$STUB_DIR/body.md")"
 assert "T-65 title" "follow-up: PR #9 の先送りした欠陥" "$(jq -r '.issue.title' "$STUB_DIR/args.json")"
 assert_not_grep "T-65 no_findings に倒さない" "$ERR" 'reason=no_findings'
+assert_grep "T-65 既存 follow-up の検索は gh を呼ぶ (GH_LOG が記録される)" "$GH_LOG" '^gh api --paginate --slurp repos/acme/demo/issues\?labels=follow-up&state=all&per_page=100$'
 assert_not_grep "T-65 台帳との照合をしない" "$GH_LOG" '^gh api (--paginate --slurp )?repos/acme/demo/issues/[0-9]+/comments'
 assert_not_grep "T-65 取得失敗 marker を出さない" "$ERR" 'FOLLOW_UP_DEFERRED'
 
