@@ -204,6 +204,10 @@
 * **Update**: [identity を持たない判定台帳で複数 cycle の和集合を重複除外すると、重複防止と欠落防止を同時には満たせない](pages/anti-patterns/identity-less-ledger-union-dedup-cannot-prevent-both-duplicate-and-loss.md) — raw/reviews/20260927T153425Z-pr-3290.md を統合
 * **Update**: [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) — raw/reviews/20260927T153751Z-pr-3298.md を統合
 * **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=64, orphans=0, missing_concept=0, unregistered_raw=566, broken_refs=0
+* **Update**: [失敗経路の ERROR 文を段ごとに分けたら、分割後の各分岐に入るテストを 1 つずつ用意し、文面で照合する](pages/heuristics/split-error-message-needs-test-per-branch.md) — raw/reviews/20260927T155610Z-pr-3304.md を統合（止まった 1 行の固定文字列照合と行数 assert を組にする）
+* **Update**: [再入ガードは「実行したか」ではなく「何を対象に実行したか」を記録する](pages/heuristics/reentry-guard-records-processed-range.md) — raw/fixes/20260927T154455Z-pr-3292.md を統合（記録の有無を既存ケースへ assert し、意味が変わった識別子を改名する）
+* **Create**: [復旧ヒントに表示するパスは、処理が cd した先ではなく利用者が貼り付ける場所から正しく解決できる絶対パスで示す](pages/heuristics/recovery-hint-path-absolute-for-paste-cwd.md) — raw/fixes/20260927T155256Z-pr-3298.md を新規ページ化
+* **Skip**: [20260927T155342Z-pr-3292.md](raw/reviews/20260927T155342Z-pr-3292.md) — 差分スコープのレビューで指摘 0 件。既存ページにない新しい経験則を含まない
 
 ## 2026-09-26
 

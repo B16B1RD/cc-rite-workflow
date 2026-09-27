@@ -4,10 +4,14 @@ title: "失敗経路の ERROR 文を段ごとに分けたら、分割後の各�
 domain: "heuristics"
 description: "共通の ERROR 文を失敗段ごとに分けると、以前は共通の文面を介して間接に検出されていた分岐がテストから外れる。分割後の分岐ごとに入るテストを置き、件数ではなく文面で照合する。後続の実行を主張するテストは、後続が実際に観測できる fixture で書く。"
 created: "2026-09-27T15:25:53Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:25:53Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:03:50Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:03:50Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260927T151821Z-pr-3293.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T155610Z-pr-3304.md"
 tags: ["test", "error-message", "mutation", "fixture"]
 confidence: medium
 ---
@@ -26,10 +30,14 @@ confidence: medium
 
 テストのコメントが「後続の処理も実行される」のように後続の実行を主張するなら、その fixture で後続が実際に観測できるかを確かめる。前段と同じ理由で後続も失敗する fixture（識別子を解決できない等）では、後続を飛ばす変異を検出できない。現実に起きる失敗（時計が読めない等）を fixture にすると、後続の出力を assert できる。
 
+失敗経路を「場所・パターン・理由を載せた 1 行で止める」形に直したら、テストは 2 つを組にする。1 つはその 1 行を固定文字列で照合する assert、もう 1 つは出力が 1 行であることの assert である。前者は止まり方の説明が出ているかを、後者は traceback などが混ざっていないかを確かめる。rc が非ゼロであることだけを見るテストは、別の理由で止まる変異と区別できない。行数の assert は単独では出力が空でも通る（空文字列を改行付きで数えると 1 行になる）ため、存在を要求する照合と組にして初めて意味を持つ。この組は「前検査を外す」変異と「案内行を出してから例外を投げ直す」変異の両方を検出する。
+
 ## 関連ページ
 
 - [他セッションの成果物を回収する処理は、進捗時刻ではなく所有者の生存信号で判定し、判定不能は残す側へ倒す](./liveness-reaper-keeps-undecidable-and-guards-json-shape.md)
+- [検出器が正規表現を probe するときは実際の評価文脈を再現し、停止を固定する自己テストは理由まで assert する](./detector-regex-probe-reproduces-evaluation-context.md)
 
 ## ソース
 
 - [ERROR 文の分割で外れた分岐と後続主張の fixture を検出したレビュー結果](../../raw/reviews/20260927T151821Z-pr-3293.md)
+- [止まった 1 行の照合と行数の assert を組にした変更のレビュー結果](../../raw/reviews/20260927T155610Z-pr-3304.md)

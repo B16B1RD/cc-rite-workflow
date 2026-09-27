@@ -521,7 +521,7 @@ okf_version: "0.2"
 | [同じ判定規則を別言語で二重実装するときは、同一 fixture で SoT 実装の実行結果と突合する parity assert を置く](pages/patterns/dual-implementation-rule-parity-assert-against-sot-executable.md) | patterns | bash の SoT helper と同じ除外規則を Python 側にも持たせる変更では、Python 側の期待値を手書きせず、同じ fixture tree に対して SoT helper を実際に実行し、その出力集合と Python 側が「残す」と判定した集合の一致を assert する。規則本文の複製は文書で「同時更新」と宣言するだけでは守れず、実行結果の突合だけが drift を検出する。 | 2026-09-17T10:34:18Z | high |
 | [一致検証の照合先は判定対象の識別子から取り、確認した値を後続の実行コマンドに固定する](pages/patterns/verify-against-target-identifier-and-pin-to-action.md) | patterns | 「レビュー済み commit と head の一致」のような検証を手元のチェックアウトの状態で代用すると、別 commit から実行しただけで誤拒否し、対象側の未検証の更新は見逃す。照合先は判定対象の識別子から取得し、確認した値を後続の実行コマンドへ渡して、検証と実行の間に対象が動く窓を塞ぐ。 | 2026-09-18T13:52:45+00:00 | high |
 | [照合を外すときは、代わりに守る照合を 1 つずつテストで固定する](pages/heuristics/relaxed-check-names-and-pins-remaining-defenses.md) | heuristics | 書き込みを許可しない検査では、記録の出自（どのセッションが書いたか）の照合を外してよい。内容の新しさの照合が残っていれば古い成功の流用は防げる。ただし、文書に挙げた代わりの防御は 1 つずつ変異で落ちることを確かめないと、そのうち 1 つの退行はテストをすり抜ける。 | 2026-09-24T05:10:00Z | high |
-| [再入ガードは「実行したか」ではなく「何を対象に実行したか」を記録する](pages/heuristics/reentry-guard-records-processed-range.md) | heuristics | 完了済みを示すだけの再入ガードは、同じ run の途中で処理対象が増えたときに古い完了記録で新しい対象を覆い隠し、未処理のまま素通りさせる。ガードには処理本体が読む対象と同じ単位で範囲を記録し、最新の対象と一致するときだけ skip する。 | 2026-09-27T15:25:53Z | high |
+| [再入ガードは「実行したか」ではなく「何を対象に実行したか」を記録する](pages/heuristics/reentry-guard-records-processed-range.md) | heuristics | 完了済みを示すだけの再入ガードは、同じ run の途中で処理対象が増えたときに古い完了記録で新しい対象を覆い隠し、未処理のまま素通りさせる。ガードには処理本体が読む対象と同じ単位で範囲を記録し、最新の対象と一致するときだけ skip する。 | 2026-09-27T16:03:50Z | high |
 | [同じ記録を読み書きする経路は、対象の同定規則を 1 か所で共有する](pages/heuristics/record-readers-and-writers-share-identification-rule.md) | heuristics | 同じ記録を書き換える経路が複数あると、「どの記録を読み、どの記録を書くか」の選択規則が経路ごとにずれやすい。読み手が前方一致で全件を連結し、書き手が最新 1 件に絞ると、記録が重複した状態で古い内容を引き継ぐ。同定規則は 1 か所にまとめ、読み手も書き手と同じ述語を使う。 | 2026-09-24T05:40:00Z | medium |
 | [外部コマンドの stub が無視した引数は、その引数が担う処理ごとテストから外れる](pages/heuristics/stub-ignored-argument-escapes-test.md) | heuristics | 引数の一部だけで分岐して固定出力を返す stub は、無視した引数（フィルタ式・クエリ・選択条件）が担う処理を丸ごとテスト対象から外す。stub は受け取った式を実物の処理系で fixture に適用し、fixture には選ばれてはいけないが選ばれると結果が変わる要素を混ぜる。 | 2026-09-24T05:40:00Z | high |
 | [「戻らない」契約は、戻り先に戻ると結果が変わる内容を置いたテストでしか固定できない](pages/heuristics/no-fallback-contract-needs-bait-at-fallback-target.md) | heuristics | 入力源を切り替えて「旧入力源へは戻らない」と定めた契約は、旧入力源を渡さないテストでは固定されない。フォールバックが復活しても読む対象が無く、結果が変わらないからである。契約の入口ごとに、戻り先へ成功側の内容（餌）を置き、それでも差し戻されることを確かめる。 | 2026-09-24T06:20:00Z | high |
@@ -578,10 +578,11 @@ okf_version: "0.2"
 | [設定の存在確認は読み手の解決処理に委ね、自前の候補リストを持たない](pages/heuristics/existence-check-delegates-to-reader-resolver.md) | heuristics | 設定ファイルの有無を確かめる手順が、実際に設定を読む処理と別の候補リストを持つと、両者の差の分だけ「あると案内したのに読まれない」「無いと案内したのに読まれる」が起きる。存在確認は読み手が使う解決処理の結果で判定する。 | 2026-09-27T11:35:00Z | medium |
 | [記録の同定 marker は、正規の経路で重複しうる軸をすべてキーに含める](pages/heuristics/record-identity-marker-includes-all-context-keys.md) | heuristics | 記録が既に書かれたかを marker で判定するとき、キーに含めない軸で同じ値が正規に繰り返されると、2 件目の記録が 1 件目と同一とみなされて書かれない。同定キーは、正規経路で同じ値のまま進みうる軸まで含めて作る。 | 2026-09-27T11:35:00Z | medium |
 | [検出器が正規表現を probe するときは実際の評価文脈を再現し、停止を固定する自己テストは理由まで assert する](pages/heuristics/detector-regex-probe-reproduces-evaluation-context.md) | heuristics | 正規表現の終端を検査する検出器が、実際の reader と違う文脈（改行なし・フラグなし）で probe すると、`\\s` や `$` を含む終端の判定が実挙動とずれる。検出経路をエンジン別に持つなら自己テストもエンジンごとに置き、停止を固定するテストは rc だけでなく止まった理由まで固定する。 | 2026-09-27T14:20:00Z | medium |
-| [失敗経路の ERROR 文を段ごとに分けたら、分割後の各分岐に入るテストを 1 つずつ用意し、文面で照合する](pages/heuristics/split-error-message-needs-test-per-branch.md) | heuristics | 共通の ERROR 文を失敗段ごとに分けると、以前は共通の文面を介して間接に検出されていた分岐がテストから外れる。分割後の分岐ごとに入るテストを置き、件数ではなく文面で照合する。後続の実行を主張するテストは、後続が実際に観測できる fixture で書く。 | 2026-09-27T15:25:53Z | medium |
+| [失敗経路の ERROR 文を段ごとに分けたら、分割後の各分岐に入るテストを 1 つずつ用意し、文面で照合する](pages/heuristics/split-error-message-needs-test-per-branch.md) | heuristics | 共通の ERROR 文を失敗段ごとに分けると、以前は共通の文面を介して間接に検出されていた分岐がテストから外れる。分割後の分岐ごとに入るテストを置き、件数ではなく文面で照合する。後続の実行を主張するテストは、後続が実際に観測できる fixture で書く。 | 2026-09-27T16:03:50Z | medium |
+| [復旧ヒントに表示するパスは、処理が cd した先ではなく利用者が貼り付ける場所から正しく解決できる絶対パスで示す](pages/heuristics/recovery-hint-path-absolute-for-paste-cwd.md) | heuristics | 処理ロジックは cd 済みのディレクトリで正しく動いていても、同じ相対パスを復旧ヒントとして表示すると、利用者が貼り付けるシェルの cwd では別の場所を指す。表示用のパスは絶対パスに揃え、同じ strategy の全経路で同じ直し方を適用する。 | 2026-09-27T16:03:50Z | medium |
 ## 統計
 
-- 総ページ数: 569
-- ドメイン別: patterns=126, heuristics=267, anti-patterns=176
-- 最終更新: 2026-09-27T15:39:40Z
+- 総ページ数: 570
+- ドメイン別: patterns=126, heuristics=268, anti-patterns=176
+- 最終更新: 2026-09-27T16:03:50Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |

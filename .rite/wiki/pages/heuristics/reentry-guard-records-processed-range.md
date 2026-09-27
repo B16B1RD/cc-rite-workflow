@@ -4,10 +4,11 @@ title: "再入ガードは「実行したか」ではなく「何を対象に実
 description: "完了済みを示すだけの再入ガードは、同じ run の途中で処理対象が増えたときに古い完了記録で新しい対象を覆い隠し、未処理のまま素通りさせる。ガードには処理本体が読む対象と同じ単位で範囲を記録し、最新の対象と一致するときだけ skip する。"
 domain: "heuristics"
 created: "2026-09-24T05:30:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:25:53Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:03:50Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:06:36Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:25:53Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:03:50Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260924T044346Z-pr-3017.md"
@@ -15,6 +16,8 @@ sources:
     resource: "raw/reviews/20260927T145506Z-pr-3292.md"
   - type: "fixes"
     resource: "raw/fixes/20260927T151743Z-pr-3292.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T154455Z-pr-3292.md"
 tags: ["reentry-guard", "idempotency", "state-file", "test-fixture"]
 confidence: high
 promote: rite-plugin
@@ -40,6 +43,8 @@ promote: rite-plugin
 
 記録の書き手は、判定そのものを行う処理に置く。片付け側が判定の成否をフラグで受け取って書く形は、フラグの配線が 1 本外れるだけで反転が戻る。書き手を判定側へ移せば、片付け側のフラグ・配線・テストは不要になり削除できる（追加ではなく移動と削除で解消する）。回帰テストは「判定不能 → 記録なし → 片付け → 再実行しても未完了のまま」を実 helper の連結で固定する。
 
+書き手を移したら、記録を書く結果と書かない結果の両側を、既存のテストケースへ 1 行ずつ assert して固定する。新しいケースを増やすより既存の fixture を再利用するほうが、どの分岐をどの assert が押さえているかをレビューで追いやすい。設計を変えて意味が変わった識別子（「片付け側が書く」前提のテスト変数名など）は、同じ変更の中で新しい語彙へ改名し、旧設計のまま読まれるのを防ぐ。
+
 ## 関連ページ
 
 - [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](./fixture-mutation-isolates-invariants.md)
@@ -50,3 +55,4 @@ promote: rite-plugin
 - [レビュー結果](../../raw/reviews/20260924T044346Z-pr-3017.md)
 - [完了記録を判定の結果に結び付けるべきことを指摘したレビュー結果](../../raw/reviews/20260927T145506Z-pr-3292.md)
 - [記録の書き手を判定側の helper へ移した fix 結果](../../raw/fixes/20260927T151743Z-pr-3292.md)
+- [記録の有無を既存ケースへ assert し、テスト変数を改名した fix 結果](../../raw/fixes/20260927T154455Z-pr-3292.md)
