@@ -2845,7 +2845,7 @@ rationale: references/design-rationale.md#metrics-no-json-embed
 
 API はすべて `issue-comment-wm-sync.sh`（直接 `gh api` しない）。
 1. **Update session info** (defense-in-depth)
-2. **Append review history**
+2. **Record the review**: `flow-state.sh review-record` appends this cycle's record (reviewed commit, verdict, finding counts) to `### レビュー対応履歴`. The record is generated from the saved receipt, not written by hand
 3. **Update next steps**
 rationale: references/design-rationale.md#p64-defense-in-depth
 
@@ -2891,32 +2891,21 @@ _rite_review_p64_run_sync "p64 update-phase" \
  --transform update-phase \
  --phase "review" --phase-detail "レビュー中"
 
-# Step 2: レビュー対応履歴追記
-review_tmp=$(mktemp) || {
- echo "WARNING: review_tmp mktemp 失敗。レビュー履歴の Issue コメント追記を skip します" >&2
- review_tmp=""
-}
+# Step 2: レビューの記録（review-close が同じ記録を要求して再保証するため、ここでは停止しない）
+_rite_review_p64_run_sync "p64 review-record" \
+ bash {plugin_root}/hooks/flow-state.sh review-record
+
 next_tmp=$(mktemp) || {
  echo "WARNING: next_tmp mktemp 失敗。次のステップの Issue コメント更新を skip します" >&2
  next_tmp=""
 }
 _rite_review_p64_cleanup() {
- rm -f "${review_tmp:-}" "${next_tmp:-}"
+ rm -f "${next_tmp:-}"
 }
 trap 'rc=$?; _rite_review_p64_cleanup; exit $rc' EXIT
 trap '_rite_review_p64_cleanup; exit 130' INT
 trap '_rite_review_p64_cleanup; exit 143' TERM
 trap '_rite_review_p64_cleanup; exit 129' HUP
-if [ -n "$review_tmp" ]; then
- cat > "$review_tmp" << 'REVIEW_EOF'
-{review_history_content}
-REVIEW_EOF
- _rite_review_p64_run_sync "p64 append-section" \
- bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
- --issue {issue_number} \
- --transform append-section \
- --section "レビュー対応履歴" --content-file "$review_tmp"
-fi
 
 # Step 3: 次のステップ更新
 if [ -n "$next_tmp" ]; then
@@ -2927,12 +2916,11 @@ if [ -n "$next_tmp" ]; then
  --transform replace-section \
  --section "次のステップ" --content-file "$next_tmp"
 fi
-rm -f "${review_tmp:-}" "${next_tmp:-}"
+rm -f "${next_tmp:-}"
 trap - EXIT
 ```
 
 **Placeholder descriptions:**
-- `{review_history_content}`: Review result summary (assessment, finding counts, commit SHA). Claude generates from ステップ 5 results.
 - `{next_step_content}`: Next command based on assessment. 受入条件未検証（ステップ 8.1 の受入条件未検証行に一致）→ 未検証 AC の人間確認 | Merge OK → `/rite:ready` | Requires fixes → `/rite:fix`
 
 Steps 1-3 は 6.2 の local WM（SoT）と Issue comment（backup）を揃える。

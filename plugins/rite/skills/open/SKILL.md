@@ -447,6 +447,8 @@ echo "[CONTEXT] WM_REPLICA_INIT=$(printf '%s\n' "$init_out" | sed -n 's/^status=
 | `unverified` | 投稿は実行されたが検証 (3 回 retry) で発見できず | WARNING として続行 (以降の update が `no_comment` skip になる可能性を認識) |
 | (status 行なし = gh 失敗等) | 投稿失敗 | WARNING として続行 (non-blocking) |
 
+replica が作られないまま進むと、`review-close` はレビューの記録を作業メモリへ書けずに停止する。その場合は同じ init を再実行してから iterate を再開する。
+
 ### 2.6 flow-state 更新 + Projects Status 検証ゲート
 
 ゲートは flow-state の `set` と**同じ bash ブロック**に置く。別ブロックに分けると、2.4(A) を飛ばした実行はゲートのブロックも同じように飛ばせてしまう — 検証したい唯一の failure mode でゲートごと消える。`set` は phase を進める必須手順なので、そこに同乗させれば実行が保証される。
