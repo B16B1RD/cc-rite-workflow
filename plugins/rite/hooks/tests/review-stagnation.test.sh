@@ -428,6 +428,37 @@ try:
     check(result.returncode != 0 and 'still has no record of this review' in result.stderr
           and review_state(f) == before and 'completed_context' not in f.state()['review_run'],
           'T-02: a work memory that cannot hold the record keeps the review open')
+    check("Restore the '### レビュー対応履歴' section" in result.stderr and 'cannot re-read' not in result.stderr,
+          'T-02: a missing record asks to restore the section, not to re-read')
+finally:
+    f.close()
+
+f = closable_review()
+try:
+    f.wm_fail.write_text('refetch')
+    context = f.context()
+    before = review_state(f)
+    result = f.flow('review-close', ok=False)
+    check(result.returncode != 0 and 'but cannot re-read the work memory to confirm it' in result.stderr
+          and 'reason=body_fetch_failed' in result.stderr,
+          'T-03: a failed re-read after the append reports the re-read and its status')
+    check('still has no record' not in result.stderr and 'Restore the' not in result.stderr,
+          'T-03: a failed re-read does not ask to restore the section')
+    calls = f.wm_log.read_text().splitlines()
+    patch_at = next(i for i, call in enumerate(calls) if 'PATCH' in call)
+    check(any('issues/comments/1' in call and 'PATCH' not in call for call in calls[patch_at + 1:])
+          and 'cannot append the review record' not in result.stderr,
+          'T-03: the failing read is the re-read after the append')
+    body = f.wm_body.read_text(encoding='utf-8')
+    check(len(f.wm_calls('PATCH')) == 1 and body.count(record_marker(context)) == 1,
+          'T-03: the record reached the work memory once')
+    check(review_state(f) == before and 'completed_context' not in f.state()['review_run']
+          and not list(f.root.glob('rite-review-record-*')),
+          'T-03: a failed re-read keeps the review open and leaves no temporary file')
+    f.wm_fail.unlink()
+    f.flow('review-close')
+    check(f.state()['review_run']['completed_context'] == context and len(f.wm_calls('PATCH')) == 1,
+          'T-03: running again after a failed re-read closes without a second record')
 finally:
     f.close()
 
