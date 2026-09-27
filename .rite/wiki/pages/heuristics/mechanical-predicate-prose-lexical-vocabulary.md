@@ -13,9 +13,16 @@ sources:
     resource: "raw/fixes/20260801T115711Z-pr-2081.md"
   - type: "fixes"
     resource: "raw/fixes/20260803T131002Z-pr-2095.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T101309Z-pr-3253.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T100232Z-pr-3253.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-03T23:41:26+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:21:25Z" }
+verified:
+  - by: "rite-wiki-ingest/claude-opus-5-5"
+    at: "2026-09-27T10:21:25Z"
 ---
 
 # 機械的な述語を文書化するときは意図の語彙ではなく字句の語彙で書く
@@ -40,6 +47,8 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-03T23:41:26+09:00" }
 
 **規則の外延は検出層の literal を実際に読んで合わせる**: 字句の語彙で書いても、**その外延が検出 regex より狭ければ規則は必ず破れる**。ある PR は「marker 文字列そのものを書かない」という authoring 規則を置いたが、検出側の regex は大文字小文字を無視し、装飾文字とコロンまで吸収する実装だった。規則に従って書いた記述が検出され、規則が守れない状態になる。散文で規則を書くときは、対応する機械側の literal を開いて読み、regex のフラグ・吸収する文字クラスまで含めて外延を一致させること。「意図としてはこの範囲」で書いた規則は、実装の吸収範囲を必ず取りこぼす。
 
+**拒否文で受理される形を列挙するときは構造条件まで述語と突き合わせる**: 入力を拒否するメッセージに「受理される形」を並べると、値の条件だけを書いて、キーの有無や配列の非空といった構造条件を落としやすい。列挙は検査述語どおりに言い直し、キーが必須か、空の配列で通るかまで一致させる。形を直書きすると、定数の語彙や正規表現の桁数との表記差が境界として残る。ただし受理範囲を狭く言う向きの差であれば、利用者を通らない入力へ誘導することはない。
+
 ## 関連ページ
 
 - [一般化した断定は、実装が特殊化されている限り必ず偽になる — 同じ契約を書く複数サイトは最も限定的な表現に揃える](./generalized-claim-false-while-implementation-specialized.md)
@@ -52,3 +61,5 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-03T23:41:26+09:00" }
 - [fix 結果](../../raw/fixes/20260801T124925Z-pr-2081.md)
 - [fix 結果](../../raw/fixes/20260801T115711Z-pr-2081.md)
 - [規則の外延が検出 regex より狭かった](../../raw/fixes/20260803T131002Z-pr-2095.md)
+- [レビュー結果（拒否文の受理形の列挙）](../../raw/reviews/20260927T101309Z-pr-3253.md)
+- [fix 結果（受理形の列挙を検査述語どおりに言い直す）](../../raw/fixes/20260927T100232Z-pr-3253.md)

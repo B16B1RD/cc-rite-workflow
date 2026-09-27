@@ -13,12 +13,16 @@ sources:
     resource: "raw/reviews/20260830T033236Z-pr-2471.md"
   - type: "fixes"
     resource: "raw/fixes/20260830T034210Z-pr-2471.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T100333Z-pr-3256.md"
 tags: ["test", "mutation-testing", "assertion-strength", "contract", "review-fix-loop"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-30T12:50:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:21:25Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-30T12:50:00+09:00"
+  - by: "rite-wiki-ingest/claude-opus-5-5"
+    at: "2026-09-27T10:21:25Z"
 ---
 
 # assert のラベルが述語より広い範囲を名乗ると「虚偽主張」クラスの欠陥になる
@@ -59,6 +63,10 @@ assert のラベル（テスト名・メッセージ）は、その assert が�
 
 いずれも修正は名前を弱めることではなく述語を強めること（`-eq 3` にする / 逆方向のケースを足す）。名前が正しい契約を述べているなら、直すのは述語のほうである。
 
+### ラベルは検査する振る舞いで書き、実装の識別子を書かない
+
+assert 名に変数名のような実装詳細を入れると、内部名を変えたときにラベルだけが古くなり、どの振る舞いが守られているかをラベルから読めなくなる。述語は変えずに、ラベルを「その assert が守る振る舞い」（例: marker の状態が同じ節の helper 出力から来る）で言い直す。
+
 ## 関連ページ
 
 - [アサーションの検証強度は「該当行を壊して赤くなるか」でしか測れない](../heuristics/mutation-testing-measures-assertion-strength.md)
@@ -70,3 +78,4 @@ assert のラベル（テスト名・メッセージ）は、その assert が�
 
 - [レビュー結果](../../raw/reviews/20260808T013358Z-pr-2142.md)
 - [fix 結果](../../raw/fixes/20260808T014357Z-pr-2142.md)
+- [fix 結果（assert 名を振る舞いで言い直す）](../../raw/fixes/20260927T100333Z-pr-3256.md)

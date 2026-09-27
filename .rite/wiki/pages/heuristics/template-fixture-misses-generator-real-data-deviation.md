@@ -18,12 +18,18 @@ sources:
     resource: "raw/reviews/20260830T033236Z-pr-2471.md"
   - type: "fixes"
     resource: "raw/fixes/20260830T034210Z-pr-2471.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T100751Z-pr-3259.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T101452Z-pr-3259.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-30T12:50:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:21:25Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-30T12:50:00+09:00"
+  - by: "rite-wiki-ingest/claude-opus-5-5"
+    at: "2026-09-27T10:21:25Z"
 ---
 
 # テンプレート準拠の fixture では、生成器が実データで作る構造的逸脱を検出できない
@@ -61,6 +67,15 @@ fixture が実データから逸脱する向きは 2 つある。上記は「fix
 
 **「実装がテンプレートの特定の行に依存し始めた」ことが、この対策を入れる合図である**。依存が生まれた PR でテストを足さないと、依存を知らない後続の変更者がテンプレートを触った時点で無警告で劣化する。
 
+### 状態ファイルの fixture は、書き込み元が同じ更新で書く全フィールドから組む
+
+読み手の分岐に新しい値を足しても、その手前にある早期 exit のゲートが書き込み元の実際の state を通さなければ、足した分岐は本番で一度も実行されない。実例では、停止理由を書く経路が同じ更新で `active=false` も書くのに、案内は `active=true` のときだけ動く位置に置かれていた。テストは停止理由だけを置き `active=true` のままにした fixture を使ったため、到達不能な分岐でも green になった。
+
+- fixture は書き込み元を grep し、同じ更新で入る他のフィールドまで含めた実形で組む
+- 実形に直した fixture で先に red を確かめてから修正する
+- 修正後は、新しい値を持たない同形の state では何も出ないことを対照として置く
+- 受入条件の充足をテスト結果だけで判定しない。fixture 自体が架空の state を置いていれば green は充足を意味しない。書き込み元から実 state を再現したレビュアーだけが未充足を捉えた
+
 ## 関連ページ
 
 - [「規約を守っている印」を除外条件にすると、印を持つ違反が検査から消える](../anti-patterns/convention-compliance-marker-as-exclusion-blinds-checker.md)
@@ -73,3 +88,5 @@ fixture が実データから逸脱する向きは 2 つある。上記は「fix
 - [レビュー結果](../../raw/reviews/20260730T192125Z-pr-2066.md)
 - [fix 結果](../../raw/fixes/20260730T190134Z-pr-2066.md)
 - [fix 結果](../../raw/fixes/20260730T192847Z-pr-2066.md)
+- [レビュー結果（架空の state を置いた fixture が到達不能な分岐を green にした）](../../raw/reviews/20260927T100751Z-pr-3259.md)
+- [fix 結果（早期 exit の前へ案内を移し fixture を実形へ直す）](../../raw/fixes/20260927T101452Z-pr-3259.md)

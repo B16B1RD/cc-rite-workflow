@@ -2,6 +2,11 @@
 
 ## 2026-09-27
 
+* **Update**: [pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する](pages/patterns/pin-literal-uniqueness-verified-by-mutation.md) — raw/reviews/20260927T095830Z-pr-3256.md を統合
+* **Update**: [assert のラベルが述語より広い範囲を名乗ると「虚偽主張」クラスの欠陥になる](pages/anti-patterns/assert-label-overclaims-predicate-scope.md) — raw/fixes/20260927T100333Z-pr-3256.md を統合
+* **Update**: [機械的な述語を文書化するときは意図の語彙ではなく字句の語彙で書く](pages/heuristics/mechanical-predicate-prose-lexical-vocabulary.md) — raw/reviews/20260927T101309Z-pr-3253.md, raw/fixes/20260927T100232Z-pr-3253.md を統合
+* **Update**: [テンプレート準拠の fixture では、生成器が実データで作る構造的逸脱を検出できない](pages/heuristics/template-fixture-misses-generator-real-data-deviation.md) — raw/reviews/20260927T100751Z-pr-3259.md, raw/fixes/20260927T101452Z-pr-3259.md を統合
+* **Skip**: [20260927T101046Z-pr-3256.md](raw/reviews/20260927T101046Z-pr-3256.md) — 差分スコープの収束確認のみで新しい経験則を含まない
 * **Create**: [シェルの前置きラッパーを剥がす判定は、ラッパーごとのオプション終端の扱いを bash の実挙動と突き合わせる](pages/heuristics/shell-wrapper-strip-end-of-options-per-wrapper.md) — raw/fixes/20260927T092105Z-pr-3250.md を新規ページ化
 * **Update**: [シェルの前置きラッパーを剥がす判定は、ラッパーごとのオプション終端の扱いを bash の実挙動と突き合わせる](pages/heuristics/shell-wrapper-strip-end-of-options-per-wrapper.md) — raw/reviews/20260927T093331Z-pr-3250.md を統合
 * **Update**: [否定形の assert は前提条件が崩れると fail-silent になる](pages/anti-patterns/negative-assertion-vacuous-without-precondition-floor.md) — raw/reviews/20260927T092741Z-pr-3248.md を統合

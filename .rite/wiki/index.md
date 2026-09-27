@@ -336,13 +336,13 @@ okf_version: "0.2"
 | [一般化した断定は、実装が特殊化されている限り必ず偽になる — 同じ契約を書く複数サイトは最も限定的な表現に揃える](pages/heuristics/generalized-claim-false-while-implementation-specialized.md) | heuristics | 同じ契約が複数箇所に書かれているとき、書き手は場所ごとに違う抽象度で表現しがちである。 | 2026-09-27T04:45:00Z | high |
 | [意図的除外と失敗を同じカウンタに載せると、そのカウンタの存在理由が消える](pages/heuristics/intentional-exclusion-not-counted-as-failure.md) | heuristics | 無音の欠損を可視化するために失敗カウンタを新設したら、そこに何を載せるかが設計判断になる。 | 2026-08-01T00:21:06+09:00 | high |
 | [実測アンカーの repro に書くパイプは U+00A6 へ置換する](pages/patterns/verification-anchor-pipe-substitution.md) | patterns | 実測必須ゲートは `Verification:` アンカーの full match に blocking を委ねる。パイプや空の左辺、値域外の種別ラベルは match を壊すか空振りさせ、機械カテゴリまで exclusion なし class B へ倒すと blocking が落ちる。 | 2026-09-13T09:12:00Z | high |
-| [テンプレート準拠の fixture では、生成器が実データで作る構造的逸脱を検出できない](pages/heuristics/template-fixture-misses-generator-real-data-deviation.md) | heuristics | 除外規則やパーサの fixture を「そのファイル種別のテンプレート」に合わせて作ると、テンプレートが持つ偶然の性質（当該見出しが最終節にある、など）によって**誤った実装と正しい実装が同じ結果を返す**。 | 2026-08-30T12:50:00+09:00 | high |
+| [テンプレート準拠の fixture では、生成器が実データで作る構造的逸脱を検出できない](pages/heuristics/template-fixture-misses-generator-real-data-deviation.md) | heuristics | 除外規則やパーサの fixture を「そのファイル種別のテンプレート」に合わせて作ると、テンプレートが持つ偶然の性質（当該見出しが最終節にある、など）によって**誤った実装と正しい実装が同じ結果を返す**。 | 2026-09-27T10:21:25Z | high |
 | [中断されうる処理の完了判定は、完了した処理だけが持つ不可逆な副作用を述語にする](pages/patterns/completion-predicate-uses-irreversible-side-effect.md) | patterns | signal で中断されうる処理について「完了したか」を判定するとき、成果物の**存在**（`[ -e "$dst" ]`）を証拠に使ってはならない。 | 2026-08-01T05:40:00Z | high |
 | [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](pages/anti-patterns/consumer-allowlist-wedges-producer-value-range.md) | anti-patterns | 「危険な入力を弾く」allowlist を**消費側だけ**に追加すると、生成側が正当に作れる値まで拒否する。 | 2026-09-26T10:45:00Z | high |
 | [静的ガードを新設したら、走査面の限界と現存する未カバーサイトをテスト本体のコメントに書く](pages/heuristics/static-guard-declare-scan-scope-limits.md) | heuristics | 退行を機械的に止める静的ガード（find + 検出器で全ファイルを走査するテスト等）を追加するとき、**走査面が何を含まないか**と、**その盲点に現時点で違反が残っているか**をテスト本体のコメントと PASS 文言に書く。 | 2026-08-01T17:45:00+09:00 | medium |
 | [限界を説明する例は検出器に食わせ、「〜としてのみ使う」型の断定は grep で数えてから書く](pages/heuristics/verify-explanatory-examples-against-the-detector.md) | heuristics | コメントやドキュメントで機構の限界・用途を説明するとき、**主張は頭の中で検証できるが、それを支える具体例と数え方は実行しないと逆を書く**。 | 2026-08-03T23:41:26+09:00 | medium |
 | [判別述語を対象テキスト全体に広げると、その規則自体を論じる文書で自己言及的に誤発火する](pages/anti-patterns/predicate-scans-whole-text-in-self-describing-domain.md) | anti-patterns | 判別述語を「ある記号がテキスト中に存在するか」の形で書くと、その記号を論じる文書そのものが判定対象になった瞬間に崩れる。 | 2026-08-01T23:12:28+09:00 | high |
-| [機械的な述語を文書化するときは意図の語彙ではなく字句の語彙で書く](pages/heuristics/mechanical-predicate-prose-lexical-vocabulary.md) | heuristics | 判別子は字句的にしか判定できない。 | 2026-08-03T23:41:26+09:00 | high |
+| [機械的な述語を文書化するときは意図の語彙ではなく字句の語彙で書く](pages/heuristics/mechanical-predicate-prose-lexical-vocabulary.md) | heuristics | 判別子は字句的にしか判定できない。 | 2026-09-27T10:21:25Z | high |
 | [行動指示と帰結記述を 1 文に混載しない — 帰結は SoT の表へのポインタに置き換える](pages/patterns/separate-directive-from-consequence-with-sot-pointer.md) | patterns | authoring 面（reviewer への指示、テンプレート、規約文書）の 1 文が「こう書け」という**行動指示**と「そう書かなかったらどうなるか」という**帰結記述**を同時に担っていると、判定ロジックの帰結が変わるたびに authoring 面の書き換えが必要になる。 | 2026-08-01T23:12:28+09:00 | medium |
 | [grep (BRE) と grep -E (ERE) のメタ文字反転で assert ヘルパーが常時緑の dead assertion になる](pages/anti-patterns/bre-ere-metachar-inversion-dead-assertion.md) | anti-patterns | `grep` と `grep -E` はメタ文字の意味が反転する。 | 2026-09-27T04:21:02Z | high |
 | [外部依存の挙動は hedge か断定かの二択ではない — 既定形は「断定 + 出典 + 確認日 + 再検証手順」](pages/heuristics/external-dependency-claim-hedge-vs-citation.md) | heuristics | 管理外の上流ツール・ライブラリの挙動をドキュメントに書くとき、「断定するか / 『要検証』と逃げるか」の二択で考えると、どちらを選んでも欠陥になる。 | 2026-08-02T09:53:11+09:00 | high |
@@ -355,7 +355,7 @@ okf_version: "0.2"
 | [レビュアーの結論が正面から割れたら、勝敗を決める前に語の多義性を疑う](pages/heuristics/reviewer-verdict-split-signals-term-ambiguity.md) | heuristics | `/rite:pr-review` の cross-validation で 2 レビュアーが同一箇所に対して逆の総合評価（修正必要 / マージ可）を出したとき、討論フェーズの既定の動きは「どちらの主張が正しいか」を決めることになりがちだが、**割れたこと自体が本文の曖昧性の兆候**であることが多い。 | 2026-08-02T11:59:42+09:00 | medium |
 | [穴を塞ぐ構文置換は、新しい構文が実行環境固有の制約に触れないかを検出器のローカル実行で確かめる](pages/heuristics/syntax-swap-must-clear-host-environment-constraints.md) | heuristics | 複数の指摘を 1 つの構文置換で同時に閉じられるとき、その置換は正しい判断であることが多い。 | 2026-08-02T22:05:00+09:00 | high |
 | [散文で機械的述語を定義したら、字義どおりの実装を実データ全件へ当ててから書く](pages/heuristics/prose-predicate-must-be-run-against-full-real-data.md) | heuristics | 散文が実行契約であるリポジトリでは、手順書に書く「対象行の同定述語」「値の抽出規則」はコードと同じ厳密さを要求される。 | 2026-08-02T22:05:00+09:00 | high |
-| [pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する](pages/patterns/pin-literal-uniqueness-verified-by-mutation.md) | patterns | 散文の実行契約を守る静的 assert（pin）は、**張っただけでは守れていない**。 | 2026-09-25T11:57:22Z | high |
+| [pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する](pages/patterns/pin-literal-uniqueness-verified-by-mutation.md) | patterns | 散文の実行契約を守る静的 assert（pin）は、**張っただけでは守れていない**。 | 2026-09-27T10:21:25Z | high |
 | [配布テンプレートへの内部参照流入は 1 箇所直しても閉じない — 同一配布単位の sibling を base 件数と比較する](pages/anti-patterns/internal-reference-leaks-into-distributed-template.md) | anti-patterns | `templates/` 配下のように **ユーザープロジェクトへ展開される成果物** は、開発リポジトリの内部とは別の名前空間に着地する。 | 2026-09-10T03:26:20Z | high |
 | [同一欠陥に対し reviewer の scope が割れたらユーザー判断へエスカレートする — follow-up は current-pr と同義ではない](pages/heuristics/reviewer-scope-split-escalates-to-user.md) | heuristics | 複数の reviewer が **独立に同じ欠陥へ到達しながら、処置の scope が割れる**ことがある。 | 2026-08-03T23:41:26+09:00 | high |
 | [記録義務を規約に書く前に、その記録先を読む consumer が実在するかを grep で確かめる](pages/patterns/obligation-requires-existing-consumer-before-writing.md) | patterns | 「条件 X に当たる指摘は filter する。 | 2026-08-03T00:55:00+09:00 | high |
@@ -409,7 +409,7 @@ okf_version: "0.2"
 | [pin の説明文に pin 対象の literal を書くと、注記自身が出現数に数えられて count pin が落ちる](pages/anti-patterns/pin-note-containing-pinned-literal.md) | anti-patterns | 「特定の文字列がファイル内にちょうど N 個ある」という count pin を導入したあと、その pin の意図を説明する注記に**対象の literal をそのまま書く**と、注記自身が N+1 個目の出現になり pin が落ちる。 | 2026-08-07T18:40:00+09:00 | high |
 | [安全側へ倒れる fail-safe は、倒れた事実が観測されない限り機能の恒久的不作動を隠す](pages/anti-patterns/safe-side-degradation-hides-permanent-inoperability.md) | anti-patterns | 「情報が欠ければ従来のフル装備へ倒す」型の fail-safe は、倒れた向きが安全側であるがゆえに**壊れていることを誰にも伝えない**。 | 2026-08-08T14:00:41+09:00 | high |
 | [診断を 1 行足す修正は、外部入力・エラー経路・テスト網羅の 3 領域を同時に開く](pages/heuristics/added-diagnostic-opens-three-review-surfaces.md) | heuristics | 診断メッセージの追加は「1 行足すだけ」に見える。 | 2026-08-08T14:00:41+09:00 | high |
-| [assert のラベルが述語より広い範囲を名乗ると「虚偽主張」クラスの欠陥になる](pages/anti-patterns/assert-label-overclaims-predicate-scope.md) | anti-patterns | assert のラベル（テスト名・メッセージ）は、その assert が守る契約の宣言である。 | 2026-08-30T12:50:00+09:00 | high |
+| [assert のラベルが述語より広い範囲を名乗ると「虚偽主張」クラスの欠陥になる](pages/anti-patterns/assert-label-overclaims-predicate-scope.md) | anti-patterns | assert のラベル（テスト名・メッセージ）は、その assert が守る契約の宣言である。 | 2026-09-27T10:21:25Z | high |
 | [awk の exit は END 規則を実行する — 早期終了と END フォールバックの併用は二重出力になる](pages/anti-patterns/awk-exit-runs-end-rule-double-output.md) | anti-patterns | POSIX awk の `exit` は**プログラムを即座に終えるのではなく END 規則へ飛ぶ**。 | 2026-08-08T14:00:41+09:00 | high |
 | [awk のデフォルト FS は `\\r` を含まない — CRLF 入力で「空行」判定が壊れる](pages/anti-patterns/awk-default-fs-excludes-cr-breaks-empty-line-test.md) | anti-patterns | awk のデフォルト FS は space / tab / newline であり **`\\r` を含まない**。 | 2026-08-08T14:00:41+09:00 | high |
 | [機構を削除して解くと、pin 面積だけでなく失敗モードの重さ（blast radius）も縮む](pages/heuristics/simplification-shrinks-pin-surface-and-blast-radius.md) | heuristics | 「規律を作って pin で守る」より「規律が要らない構造にする」ほうが安い、という判断は pin の本数だけでは測れない。 | 2026-08-10T11:55:05Z | high |
@@ -576,5 +576,5 @@ okf_version: "0.2"
 
 - 総ページ数: 562
 - ドメイン別: patterns=126, heuristics=261, anti-patterns=175
-- 最終更新: 2026-09-27T10:05:00Z
+- 最終更新: 2026-09-27T10:21:25Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |

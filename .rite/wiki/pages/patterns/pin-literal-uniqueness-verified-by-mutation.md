@@ -39,9 +39,11 @@ sources:
     resource: "raw/reviews/20260925T110204Z-pr-3084.md"
   - type: "reviews"
     resource: "raw/reviews/20260925T115338Z-pr-3086.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T095830Z-pr-3256.md"
 tags: ["pin", "mutation-testing", "static-assert", "producer-consumer-symmetry", "drift-detection"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5[1m]", at: "2026-09-25T11:57:22Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:21:25Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5"
     at: "2026-08-30T05:20:00Z"
@@ -49,6 +51,8 @@ verified:
     at: "2026-09-11T12:08:00Z"
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-09-14T08:45:00Z"
+  - by: "rite-wiki-ingest/claude-opus-5-5"
+    at: "2026-09-27T10:21:25Z"
 ---
 
 # pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する
@@ -246,6 +250,10 @@ negative assert は静かに通る。`[[:space:]]` を使う。
 - 折り返しだけを変える変異が green のままであることを陽性対照として実測し、pin が折り返しに依存していないことを確かめる
 - 節への帰属を範囲で固定するときは、終端を特定の見出し名ではなく「次の同レベル見出し」で決める。見出しの改名や間への節の挿入で範囲がずれないようにする
 
+### marker 行は payload の変数まで含めて行全体で pin し、変数の代入元も固定する
+
+状態を報告する marker 行を marker 名の断片だけで pin すると、payload の変数を別の変数や固定値へすり替える変異が生存する。行全体を `grep -cxF` で固定し、さらに行に載る変数がその節で helper の出力から代入されていることを別の assert で固定する。この 2 本を置いても、出力直前に同じ変数を上書きする形の変異は生き残りうる。契約全体を壊さない網羅的強化の類は、その場で pin を積み増さず非ブロッキングの推奨として扱える。
+
 ## 関連ページ
 
 - [assert_not_grep は「対象が fixture に存在する」ことを前提にしないと恒真になる — positive control を対で置く](../anti-patterns/assert-not-grep-vacuous-without-fixture-scope.md)
@@ -270,3 +278,4 @@ negative assert は静かに通る。`[[:space:]]` を使う。
 - [レビュー結果（複数箇所の規則一致の pin が判定句の反転を検出しない）](../../raw/reviews/20260925T102510Z-pr-3081.md)
 - [レビュー結果（但し書きの判定語を主語と取り違える位置 pin）](../../raw/reviews/20260925T110204Z-pr-3084.md)
 - [レビュー結果（折り返し行の断片 pin が要点を取りこぼす）](../../raw/reviews/20260925T115338Z-pr-3086.md)
+- [レビュー結果（marker 行の payload 変数を行全体一致と代入元で固定）](../../raw/reviews/20260927T095830Z-pr-3256.md)
