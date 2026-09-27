@@ -1923,6 +1923,13 @@ f = Fixture()
 try:
     path, receipt = attested_receipt(f, roots=['advisory defect'], severities=['MEDIUM'], triage=True)
     check(not receipt['findings'], 'triage moved the advisory finding before attest')
+    # Without blocking findings, only the receipt identity can stop completion here.
+    changed = copy.deepcopy(receipt)
+    changed['non_blocking_findings'][0]['description'] = 'changed evidence'
+    dump(path, changed)
+    f.reject(lambda: f.flow('review-close', ok=False), 'tampered triaged receipt cannot complete',
+             reason='observed review receipt is missing or changed')
+    dump(path, receipt)
     f.flow('set', '--phase', 'ready', '--next', 'merge')
     f.flow('review-close')
     check(f.state()['review_run'].get('completed_context') == f.context(),
