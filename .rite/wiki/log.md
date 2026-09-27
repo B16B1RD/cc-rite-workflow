@@ -85,6 +85,13 @@
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=559, broken_refs=0
 * **Update**: [agent が人間に渡す復旧コマンドは、人間の実行コンテキストで正しいかを検証する](pages/heuristics/recovery-command-verified-in-human-execution-context.md) — raw/reviews/20260927T073655Z-pr-3241.md を統合
 * **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=560, broken_refs=0
+* **Update**: [失敗時の復旧ヒントは呼び出し元の切り詰めと cwd の違いを越えて届く形で書く](pages/heuristics/recovery-hint-survives-caller-truncation-and-cwd.md) — raw/fixes/20260927T074833Z-pr-3221.md を統合
+* **Update**: [失敗時の復旧ヒントは呼び出し元の切り詰めと cwd の違いを越えて届く形で書く](pages/heuristics/recovery-hint-survives-caller-truncation-and-cwd.md) — raw/fixes/20260927T074557Z-pr-3241.md を統合
+* **Update**: [失敗時の復旧ヒントは呼び出し元の切り詰めと cwd の違いを越えて届く形で書く](pages/heuristics/recovery-hint-survives-caller-truncation-and-cwd.md) — raw/reviews/20260927T075442Z-pr-3241.md を統合
+* **Create**: [散文の主張を実装に合わせて絞るときは、限定の外側・指示語・同じ主張の別箇所まで突き合わせる](pages/heuristics/narrowed-prose-claim-check-outside-scope-and-same-claims.md) — raw/reviews/20260927T074341Z-pr-3242.md を新規ページ化
+* **Update**: [散文の主張を実装に合わせて絞るときは、限定の外側・指示語・同じ主張の別箇所まで突き合わせる](pages/heuristics/narrowed-prose-claim-check-outside-scope-and-same-claims.md) — raw/fixes/20260927T074959Z-pr-3242.md を統合
+* **Update**: [散文の主張を実装に合わせて絞るときは、限定の外側・指示語・同じ主張の別箇所まで突き合わせる](pages/heuristics/narrowed-prose-claim-check-outside-scope-and-same-claims.md) — raw/reviews/20260927T075518Z-pr-3242.md を統合
+* **Update**: [散文の主張を実装に合わせて絞るときは、限定の外側・指示語・同じ主張の別箇所まで突き合わせる](pages/heuristics/narrowed-prose-claim-check-outside-scope-and-same-claims.md) — raw/reviews/20260927T075115Z-pr-3244.md を統合
 
 ## 2026-09-26
 

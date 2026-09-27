@@ -5,7 +5,7 @@ domain: "heuristics"
 description: "helper が失敗時に出す復旧ヒントは、呼び出し元が stderr を先頭数行へ切り詰めると人に届かず、helper が cd した先と利用者の cwd が違うと相対パスのヒントが空振りする。ヒントは先頭数行に収め、パスは絶対パスで示す。"
 promote: rite-plugin
 created: "2026-09-27T03:08:04Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T07:40:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:00:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260927T030348Z-pr-3196.md"
@@ -13,11 +13,18 @@ sources:
     resource: "raw/fixes/20260927T031119Z-pr-3196.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T073259Z-pr-3221.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T074833Z-pr-3221.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T074557Z-pr-3241.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T075442Z-pr-3241.md"
 tags: ["stderr", "hint", "cwd", "worktree"]
 confidence: medium
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:16:22Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T07:40:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:00:00Z" }
 ---
 
 # 失敗時の復旧ヒントは呼び出し元の切り詰めと cwd の違いを越えて届く形で書く
@@ -51,6 +58,13 @@ helper が失敗時に出す復旧ヒントは、呼び出し元が stderr を�
 - 診断が不正箇所を先頭数行しか出さないなら、戻り方を「診断に出た行を直す」と書かない。表示範囲を超える不正が残ると、直して再実行しても同じ失敗に戻り空回りする。直す対象は入力全体として書く
 - 案内を出す条件を理由名の接頭辞で絞ると、同じ段で別の理由を出す失敗が案内から漏れる。条件は理由名ではなく、失敗した手順の段で表す
 - 途中で読むのをやめる `head` を入力を読み切る別コマンドへ替えると、`head` / `tail` の形だけを拾う既存の静的検査の対象から外れる。読み方を変えるときは、その形を前提にした検査の母集団も確かめる
+- 再実行を禁じる案内には解除条件（どの工程まで終えたら再実行してよいか）を付ける。条件が無いと、利用者はどこから戻ればよいか判断できない
+
+### 案内の中身を実装から導く
+
+- エラーメッセージの復旧案内は、そのメッセージを出す分岐に到達する条件をコードで追ってから書く。上流で別の分岐（WARNING と既定値で続行）に吸収される原因を案内に書くと、案内どおりに調べても原因に届かない
+- 下請けスクリプトを `bash <path>` で呼ぶ helper の失敗は、実行不能（欠落 rc=127 / 読めない rc=126）であることが多い。案内は直前の bash のエラー行が示すファイルと、プラグインの再取得へ向ける
+- 案内の適用条件を「exit 1 すべて」のように広く書くと、固有の案内を持つ他の経路まで同じ一般則で読める。条件は列挙したメッセージに限定し、それ以外の経路にも「既定値で続行せず停止する」ことを明示する
 
 ## 関連ページ
 
@@ -62,3 +76,6 @@ helper が失敗時に出す復旧ヒントは、呼び出し元が stderr を�
 - [レビュー結果](../../raw/reviews/20260927T030348Z-pr-3196.md)
 - [fix 結果](../../raw/fixes/20260927T031119Z-pr-3196.md)
 - [レビュー結果](../../raw/reviews/20260927T073259Z-pr-3221.md)
+- [fix 結果](../../raw/fixes/20260927T074833Z-pr-3221.md)
+- [fix 結果](../../raw/fixes/20260927T074557Z-pr-3241.md)
+- [レビュー結果](../../raw/reviews/20260927T075442Z-pr-3241.md)

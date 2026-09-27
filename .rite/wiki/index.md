@@ -562,15 +562,16 @@ okf_version: "0.2"
 | [共有 helper への置き換えは既定値そのものではなく既定値の成り立ち方を変える](pages/heuristics/shared-helper-migration-changes-default-value-mechanism.md) | heuristics | 個別の既定値ロジックを共有 helper へ委譲すると、値が不在のときに続行する既定値そのものは同じでも、その既定値を生成する経路（リテラル初期化 → 空値を読んで case 分岐）が変わる。既定値の中身を assert しないテストは、この変化を検出できない。 | 2026-09-26T14:08:00Z | high |
 | [エラーメッセージが案内するコマンドは、テストで出力から抽出して逐語実行する](pages/patterns/guidance-command-test-by-verbatim-execution.md) | patterns | エラーメッセージが利用者に打たせるコマンドを文字列の部分一致だけで固定すると、案内先 CLI の必須引数が欠けていても検出できない。テストは出力から案内コマンドを抽出してそのまま実行し、文言と実行可能性を 1 つの assert で結ぶ。 | 2026-09-26T15:13:54Z | high |
 | [他セッションの成果物を回収する処理は、進捗時刻ではなく所有者の生存信号で判定し、判定不能は残す側へ倒す](pages/heuristics/liveness-reaper-keeps-undecidable-and-guards-json-shape.md) | heuristics | 進捗のたびにしか更新されない時刻を回収条件にすると、1 工程が長い生存中の所有者の成果物まで消える。生存は所有者側で頻繁に動く別の時刻で判定し、その記録が読めないときは黙って消さず警告して残す。記録を読む前に JSON object であることを確かめ、後段の読み取り失敗で回収ループ全体が止まらないようにする。 | 2026-09-26T14:57:57Z | medium |
-| [失敗時の復旧ヒントは呼び出し元の切り詰めと cwd の違いを越えて届く形で書く](pages/heuristics/recovery-hint-survives-caller-truncation-and-cwd.md) | heuristics | helper が失敗時に出す復旧ヒントは、呼び出し元が stderr を先頭数行へ切り詰めると人に届かず、helper が cd した先と利用者の cwd が違うと相対パスのヒントが空振りする。ヒントは先頭数行に収め、パスは絶対パスで示す。 | 2026-09-27T07:40:00Z | medium |
+| [失敗時の復旧ヒントは呼び出し元の切り詰めと cwd の違いを越えて届く形で書く](pages/heuristics/recovery-hint-survives-caller-truncation-and-cwd.md) | heuristics | helper が失敗時に出す復旧ヒントは、呼び出し元が stderr を先頭数行へ切り詰めると人に届かず、helper が cd した先と利用者の cwd が違うと相対パスのヒントが空振りする。ヒントは先頭数行に収め、パスは絶対パスで示す。 | 2026-09-27T08:00:00Z | medium |
 | [jq は入力が 0 ドキュメントだとフィルタを評価せず rc=0 で終わる — 形の検証は jq -s と length == 1 で入力を 1 ドキュメントに閉じる](pages/anti-patterns/jq-empty-input-skips-filter-rc-zero.md) | anti-patterns | jq はストリーム入力が空のときフィルタを一度も評価せずに成功終了するため、入力の形を検証する述語は空応答を捕捉できない。空入力と複数ドキュメントの両方を失敗に倒したい検証は jq -s で入力を配列に集め、length == 1 を述語に含めて書く。 | 2026-09-27T03:42:47Z | medium |
 | [論理式を日本語へ書き起こすときは、正本の括弧構造を文章でも括弧で保つ](pages/heuristics/logical-formula-prose-keeps-grouping-parentheses.md) | heuristics | 「A、または B で、C なら」のような書き起こしは、C が B だけに掛かるのか A と B の両方に掛かるのかが一意に決まらない。正本が (A OR B) AND C なら、文章でも「(A、または B) かつ C」と括弧を残して係り先を固定する。 | 2026-09-27T04:58:44Z | medium |
 | [base 取り込みの競合は base 側の正本を基準にし、PR の変更意図だけを載せ直す](pages/heuristics/base-intake-conflict-reapply-pr-intent-on-base-canonical.md) | heuristics | base を取り込んだとき同じ表の行を base と PR の両側が書き換えていたら、base 側の正本の式をそのまま採り、PR が変えたかった点だけを差し替えて解消する。PR の base に対する差分が最小になり、再レビューが確かめる面も最小になる。 | 2026-09-27T04:21:02Z | medium |
 | [複数の書き手が更新する記録の説明は値の和集合に揃え、値の列挙は括弧に入れず別の文にする](pages/heuristics/multi-writer-record-docs-describe-union-and-unnest-enumerations.md) | heuristics | 同じ記録を複数の書き手が更新するとき、記録全体を語る総称的な説明が扱う値は書き手ごとの値の和集合になる。書き手単位の説明と総称的な説明を区別して後者だけを和集合へ揃え、値の列挙は括弧の入れ子にせず別の文に出す。 | 2026-09-27T04:58:44Z | medium |
 | [長い表セルの競合は両側の word-diff を列挙してから片側へ差分だけを載せる](pages/heuristics/long-table-cell-conflict-word-diff-both-sides.md) | heuristics | 1 行が長い表セル同士の競合は、行単位の目視では片側の変更を取りこぼしやすい。両側の変更を word-diff で列挙し、片側の行へもう片側の差分だけを適用し、解消後に両親それぞれとの word-diff が相手側の変更だけになることで確かめる。 | 2026-09-27T05:21:39Z | medium |
+| [散文の主張を実装に合わせて絞るときは、限定の外側・指示語・同じ主張の別箇所まで突き合わせる](pages/heuristics/narrowed-prose-claim-check-outside-scope-and-same-claims.md) | heuristics | 散文の主張を実装の範囲へ絞ると、絞った外側の扱いや、指示語の参照先、別言語の要約・テストのコメント・配布物に残る同じ主張の言い過ぎが見落とされやすい。実装の分岐ごとに突き合わせ、同じ主張を横断で探してから直す。 | 2026-09-27T08:00:00Z | medium |
 ## 統計
 
-- 総ページ数: 558
-- ドメイン別: patterns=125, heuristics=258, anti-patterns=175
-- 最終更新: 2026-09-27T07:38:07Z
+- 総ページ数: 559
+- ドメイン別: patterns=125, heuristics=259, anti-patterns=175
+- 最終更新: 2026-09-27T08:00:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
