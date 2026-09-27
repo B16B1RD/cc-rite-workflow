@@ -866,6 +866,86 @@ if grep -q 'wiki-apply-gate' <<<"$gout" && ! grep -q 'wiki-apply-index' <<<"$gou
 else
   fail "guard -qm rc=$grc out=$gout"
 fi
+# 引用符なしのリダイレクトとその先は commit の引数ではない。引用符付きの語と、先のない演算子は数える。
+SCOPE_CHECK="$SCRIPT_DIR/../scripts/review-fix-scope-check.sh"
+expect_target() {
+  local want="$1" cmd="$2" out rc=0
+  out=$(bash "$SCOPE_CHECK" commit-target --command "$cmd" --cwd "$repo" 2>"$ROOT/target.err") || rc=$?
+  if [ "$rc" -eq 0 ] && [ "$out" = "$(printf '%s\t%s' "$want" "$repo")" ]; then
+    pass "commit-target $want for: $cmd"
+  else
+    fail "commit-target $cmd rc=$rc out=$out err=$(cat "$ROOT/target.err")"
+  fi
+}
+while IFS= read -r _cmd; do
+  expect_target index "$_cmd"
+done <<'EOF'
+git commit -F f 2>&1 | tail -3
+git commit -m x >/dev/null
+git commit -m x > out.log
+git commit -m x 2>/dev/null
+git commit -m x &>log
+git commit -m x 2> err.log
+git commit -m x >> out.log
+git commit -F - < msg.txt
+git commit -m x >&2
+git commit -m x >& out.log
+git commit -m x &> out.log
+git commit -m >/dev/null msg
+git commit -m x > --dry-run
+EOF
+while IFS= read -r _cmd; do
+  expect_target other "$_cmd"
+done <<'EOF'
+git commit -m x file.txt 2>&1
+git commit -a -m x >/dev/null
+git commit -p -m x
+git commit -m x > out.log file.txt
+git commit -F f 2>&1 file.txt
+git commit -m x >/dev/null -a
+git commit -m x 2> err.log -p
+git commit -m x '2>&1'
+git commit -m x ">out"
+git commit -m x >
+git commit -m x file.txt>out
+git commit -m x "2">out
+EOF
+drc=0
+dout=$(bash "$SCOPE_CHECK" commit-target --command "git commit --dry-run >/dev/null" --cwd "$repo" 2>"$ROOT/target.err") || drc=$?
+if [ "$drc" -eq 0 ] && [ -z "$dout" ]; then
+  pass "commit-target keeps --dry-run >/dev/null a dry run"
+else
+  fail "commit-target dry-run rc=$drc out=$dout"
+fi
+for _extras in "2>&1" "> out.log" ">/dev/null"; do
+  got=$(python3 "$SCRIPT_DIR/../scripts/lib/review-fix-scope.py" classify-extras -- $_extras)
+  if [ "$got" = other ]; then
+    pass "classify-extras keeps $_extras as a pathspec"
+  else
+    fail "classify-extras $_extras got $got"
+  fi
+done
+for _cmd in "git commit -F f 2>&1 | tail -3" "git commit -m x >/dev/null" "git commit -m x > out.log" \
+            "git commit -m x 2>/dev/null" "git commit -m x &>log"; do
+  redir=$(jq -n --arg cwd "$repo" --arg cmd "$_cmd" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
+  grc=0
+  gout=$(printf '%s' "$redir" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+  if grep -q 'wiki-apply-gate' <<<"$gout" && ! grep -q 'wiki-apply-index' <<<"$gout"; then
+    pass "guard reads a redirection as no pathspec: $_cmd"
+  else
+    fail "guard redirection $_cmd rc=$grc out=$gout"
+  fi
+done
+for _cmd in "git commit -F f file.txt 2>&1" "git commit -F f 2>&1 file.txt"; do
+  redir=$(jq -n --arg cwd "$repo" --arg cmd "$_cmd" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
+  grc=0
+  gout=$(printf '%s' "$redir" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+  if grep -q 'wiki-apply-index' <<<"$gout"; then
+    pass "guard still denies a pathspec beside a redirection: $_cmd"
+  else
+    fail "guard redirection pathspec $_cmd rc=$grc out=$gout"
+  fi
+done
 crc=0
 WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" \
   bash "$COMMIT" --file "$msg" --worktree "$repo" -- -av >"$ROOT/extra-av.out" 2>"$ROOT/extra-av.err" || crc=$?

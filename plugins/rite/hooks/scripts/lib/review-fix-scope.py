@@ -58,10 +58,34 @@ def _scan_short_cluster(body):
     return index_only, False
 
 
+class _Redirection(str):
+    """A word shell_segments read as an unquoted redirection (>out, 2>&1, &>log, >)."""
+
+
+def _without_redirections(args):
+    """Drop the redirections; a bare operator (>, 2>, &>) also drops the target after it.
+    A bare operator with nothing after it stays, so it is still read as a pathspec."""
+    kept, index = [], 0
+    while index < len(args):
+        word = args[index]
+        if isinstance(word, _Redirection):
+            if not re.fullmatch(r"(?:[0-9]*|&)[<>&]+", word):
+                index += 1
+                continue
+            if index + 1 < len(args):
+                index += 2
+                continue
+        kept.append(word)
+        index += 1
+    return kept
+
+
 def classify_commit_args(args):
     """Return whether these tokens after `commit` are a dry run, and whether
     they record the index. A value glued on with '=' is not a following pathspec.
-    `--amend` stays an index commit."""
+    `--amend` stays an index commit. A shell redirection and its target are not
+    arguments, so they are dropped before any option takes its value."""
+    args = _without_redirections(args)
     dry_run, skip, index_only, dashed = False, False, True, False
     for option in args:
         if dashed:
@@ -484,16 +508,17 @@ def shell_segments(command):
     before / after are the control operators around a command: ";" (also a newline),
     "&&", "||", "|" (also |&), "&", or "" at the start, the end and around a substitution.
     A newline right after &&, || or | continues the list. The & of a redirection
-    (&>, >&, <&) stays in its word.
+    (&>, >&, <&) stays in its word. A word whose first unquoted < or > has only an
+    unquoted fd number or the & of &> before it comes back as a _Redirection.
     """
     segments, words, word, quoted, quote, depth = [], [], [], False, None, 0
-    index, length, pending, redirect = 0, len(command), "", -2
+    index, length, pending, redirect, redirection = 0, len(command), "", -2, False
 
     def end_word():
-        nonlocal word, quoted
+        nonlocal word, quoted, redirection
         if word or quoted:
-            words.append("".join(word))
-        word, quoted = [], False
+            words.append((_Redirection if redirection else str)("".join(word)))
+        word, quoted, redirection = [], False, False
 
     def end_segment(operator=""):
         nonlocal words, pending
@@ -568,9 +593,11 @@ def shell_segments(command):
                 index += 1
             end_segment(operator)
         else:
-            word.append(ch)
             if ch in "<>":
                 redirect = index  # an unquoted, unescaped redirection sign
+                # Any other prefix (file>out, "2">out) stays unmarked and still counts as a pathspec.
+                redirection = redirection or (not quoted and re.fullmatch(r"[0-9]*|&", "".join(word)) is not None)
+            word.append(ch)
         index += 1
     require(quote is None, "unfinished quoted command" + _PARSE_HINT)
     end_segment()
