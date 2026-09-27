@@ -256,11 +256,23 @@ exit 97
         return subprocess.run(['bash', '-c', block], text=True, capture_output=True, timeout=10)
     same = compare_run(external)
     assert same.returncode == 0 and '[fix:error]' not in same.stdout, same
-    # The saved JSON is not triaged in place of a file whose findings differ from it.
+    # The saved JSON is not triaged in place of a file that differs from it in findings,
+    # non_blocking_findings or measured_gate.
     differs = temp / 'differs.json'
     differs.write_text(json.dumps(dict(saved_review, findings=saved_review['findings'][:1])))
     differ = compare_run(differs)
     assert differ.returncode == 1 and '[fix:error] reason=explicit_json_differs_from_saved' in differ.stdout, differ
+    # Each compared key stops the triage on its own; findings stay identical to the saved JSON.
+    for key, value in {
+            'non_blocking_findings': [dict(saved_review['findings'][1], id='F-03')],
+            'measured_gate': dict(saved_review['measured_gate'], blocking=1)}.items():
+        variant = dict(saved_review, **{key: value})
+        others = [k for k in saved_review if k != key]
+        assert [variant[k] for k in others] == [saved_review[k] for k in others] and variant[key] != saved_review[key], key
+        one_key = temp / f'differs-{key}.json'
+        one_key.write_text(json.dumps(variant))
+        result = compare_run(one_key)
+        assert result.returncode == 1 and '[fix:error] reason=explicit_json_differs_from_saved' in result.stdout, (key, result)
     unreadable = compare_run(temp / 'missing.json')
     assert unreadable.returncode == 1 and '[fix:error] reason=explicit_json_compare_failed' in unreadable.stdout, unreadable
     assert json.loads(original.read_text()) == saved_review
