@@ -151,7 +151,9 @@ def run(cmd, text):
 
 def matches(engine, end, line):
     if engine == "python":
-        return re.match(end, line) is not None
+        # Python readers search the whole text with re.M, so every line they
+        # see is followed by a newline; `\s` and `$` depend on it.
+        return re.match(end, line + "\n", re.M) is not None
     if engine == "sed":
         return run(["sed", "-n", "/" + end + "/p"], line + "\n") != ""
     return run(["awk", "/" + end + "/ { print }"], line + "\n") != ""
@@ -250,11 +252,14 @@ max=$(awk '/^safety:/{s=1;next} s && /^[a-zA-Z]+:/ {exit} s && /k:/{print;exit}'
 section=$(sed -n '/^wiki:/,/^[a-zA-Z_]*:/p' "$cfg")
 max=$(awk '/^safety:/{s=1;next} s && /^[^[:space:]#][^:]*:/ {exit} s && /k:/{print;exit}' "$cfg")
 max=$(awk '/^safety:/{s=1;next} s && /^[a-zA-Z_]+:$/ {exit} s && /k:/{print;exit}' "$cfg")
+section=$(sed -n '/^wiki:/,/^[a-zA-Z_]*:$/p' "$cfg")
 EOF
 cat > "$SANDBOX/scripts/old.py" <<'EOF'
 section = re.search(r"^safety:\s*\n(.*?)(?=^[a-zA-Z]|\Z)", text, re.M | re.S)
 section = re.search(r"^safety:\s*\n(.*?)(?=^[a-zA-Z]+:|\Z)", text, re.M | re.S)
 section = re.search(r"^safety:\s*\n(.*?)(?=^[^\s#][^:]*:|\Z)", text, re.M | re.S)
+section = re.search(r"^safety:\s*\n(.*?)(?=^[a-z_0-9]+:\s|\Z)", text, re.M | re.S)
+section = re.search(r"^safety:\s*\n(.*?)(?=^[a-zA-Z_]+:$|\Z)", text, re.M | re.S)
 EOF
 self_out=$(check_tree "$SANDBOX" self)
 self_rc=$?
@@ -276,11 +281,30 @@ assert "sed range end with more after the bracket is reported" "1" "$(count_of "
 assert "end with more after the bracket that matches every key is not reported" "0" "$(count_of "old.sh:13 ")"
 assert "end that matches only letter-led heading lines is reported" "1" "$(count_of "old.sh:14 \[awk\] \^\[a-zA-Z_\]+:\$: .*at '2fa:'$")"
 assert "end that matches only letter-led heading lines is reported for every other key line" "5" "$(count_of "old.sh:14 ")"
+assert "sed range end that matches only letter-led heading lines is reported" "1" "$(count_of "old.sh:15 \[sed\] \^\[a-zA-Z_\]\*:\$: .*at '2fa:'$")"
+assert "sed range end that matches only letter-led heading lines is reported for every other key line" "5" "$(count_of "old.sh:15 ")"
 assert "python lookahead with a letter-only end is reported" "1" "$(count_of "old.py:1 \[python\].*at '2fa: x'")"
 assert "python lookahead with more after the bracket is reported with its rest" "1" "$(count_of "old.py:2 \[python\] \^\[a-zA-Z\]+:: .*at '2fa: x'")"
 assert "python lookahead with more after the bracket is reported for every missed key line" "4" "$(count_of "old.py:2 ")"
 assert "python lookahead with more after the bracket that matches every key line is not reported" "0" "$(count_of "old.py:3 ")"
+assert "python lookahead ending on whitespace after the key is not reported" "0" "$(count_of "old.py:4 ")"
+assert "python lookahead that matches only letter-led heading lines is reported" "1" "$(count_of "old.py:5 \[python\] \^\[a-zA-Z_\]+:\$: .*at '2fa:'$")"
+assert "python lookahead that matches only letter-led heading lines is reported for every other key line" "5" "$(count_of "old.py:5 ")"
 assert "sed range leak is observed on the fixture" "1" "$(count_of "old.sh:1 \[sed\].*range reads")"
+
+# A grouped `|` cuts the extracted lookahead into a broken regex. The detector
+# must stop on it rather than pass it; a separate tree keeps the stop from
+# hiding the reports asserted above.
+BROKEN="$(make_plain_sandbox)" || { echo "ERROR: make_plain_sandbox failed" >&2; exit 1; }
+[ -n "$BROKEN" ] || { echo "ERROR: make_plain_sandbox returned an empty path" >&2; exit 1; }
+trap 'rm -rf "$SANDBOX" "$BROKEN"' EXIT
+mkdir -p "$BROKEN/scripts"
+cat > "$BROKEN/scripts/grouped.py" <<'EOF'
+section = re.search(r"^safety:\s*\n(.*?)(?=^[a-zA-Z_]+:(?: |$)|\Z)", text, re.M | re.S)
+EOF
+check_tree "$BROKEN" self >/dev/null 2>&1
+broken_rc=$?
+assert "detector stops on a lookahead cut at a grouped |" "1" "$([ "$broken_rc" -ne 0 ] && echo 1 || echo 0)"
 
 # The table checks run only against the plugin tree, so a sandbox checked as
 # "real" must report the missing files and the stale table entries.
