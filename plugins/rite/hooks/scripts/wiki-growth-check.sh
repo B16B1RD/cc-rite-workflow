@@ -28,10 +28,12 @@
 #   -h, --help             Show this help
 #
 # Exit codes (drift-check と同一の非ブロッキング契約):
-#   0  Wiki growth healthy (or wiki branch absent / wiki disabled — skip silently;
-#      branch.base unreadable — skip with a WARNING)
+#   0  Wiki growth healthy, or skipped. Silent skips: rite-config.yml absent,
+#      wiki section absent, wiki disabled, wiki branch absent. Skips with a
+#      WARNING on stderr: branch.base unreadable, gh CLI absent, jq absent,
+#      git log failure, gh pr list failure, gh pr list JSON unparseable.
 #   1  Wiki growth threshold exceeded (warning — caller MUST keep [lint:success])
-#   2  Invocation error (bad args, missing repo, missing gh CLI)
+#   2  Invocation error (bad args, missing repo)
 #
 # Output:
 #   Always prints a `==> Total wiki-growth-check findings: N` line on stdout
@@ -75,7 +77,9 @@ Options:
   -h, --help               Show this help
 
 Exit codes:
-  0  No growth stall (or wiki disabled / wiki branch absent — skip silently)
+  0  No growth stall, or skipped (silently when rite-config.yml / the wiki
+     section / wiki.enabled / the wiki branch is absent; with a WARNING on
+     stderr when branch.base, gh, jq, git log or gh pr list is unavailable)
   1  Growth threshold exceeded (warning, non-blocking)
   2  Invocation error
 EOF

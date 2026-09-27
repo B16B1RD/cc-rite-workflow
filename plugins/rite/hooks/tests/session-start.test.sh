@@ -242,11 +242,27 @@ else
 fi
 echo ""
 
-echo "TC-006e: a resumed or cleared session names each stagnation stop it left behind"
+echo "TC-006e: a resumed session names each stagnation stop it left behind"
 # 停滞停止は stop_reason と active=false を同じ更新で書き、review_run も stopped のまま残る。
 # flow state はセッション単位なので、停止した run の state を読めるのは同じ session_id の起動だけ。
-# ホストと同じく RITE_HOST=claude で payload に session_id を渡す。
+# ホストが runtime env に渡す session_id を、RITE_HOST=claude と payload で再現する。
 sid006e="0e06e006-0000-4000-8000-000000000001"
+# 親シェルで stderr と rc を受け取る (run_hook_* は LAST_STDERR_FILE をサブシェルで代入するため)。
+run006e() {
+  err006e="$(mktemp "$TEST_DIR/stderr.006e.XXXXXX")"
+  out006e=$(jq -n --arg cwd "$1" --arg src "$2" --arg sid "$3" \
+    '{cwd: $cwd, source: $src, session_id: $sid}' \
+    | RITE_HOST=claude bash "$HOOK" 2>"$err006e") && rc006e=0 || rc006e=$?
+}
+# 各対照の基本 fixture。対照ごとに 1 条件だけを変える。
+state006e='{
+  "active": false,
+  "issue_number": 2045,
+  "branch": "fix/issue-2045",
+  "phase": "review",
+  "stop_reason": "stagnation:non-convergent",
+  "review_run": {"status": "stopped", "stop_reason": "stagnation:non-convergent"}
+}'
 for _sr_case in \
   "circuit-breaker:stagnation|停滞診断で停止 (review⇄fix が収束しない)" \
   "stagnation:non-convergent|停滞診断で停止 (見直し後も同じ根本原因が再発し、受入条件が進まない)" \
@@ -287,40 +303,61 @@ if grep -qF "未知の停止理由トークン 'stagnation:future-token'" <<< "$
 else
   fail "Expected an unlisted stagnation token to stay unknown, got: $output"
 fi
+# post-/clear は新しい session_id で起動するため、同じ session_id の clear はホストが作らない入力形。
+# clear は下の新しい session_id の対照だけで扱う。
+dir006e="$TEST_DIR/tc006e-session"
+mkdir -p "$dir006e"
+create_state_file "$dir006e" "$state006e" "$sid006e"
+output=$(RITE_HOST=claude run_hook_with_session "$dir006e" "startup" "$sid006e")
+if grep -qF "確認するには /rite:recover" <<< "$output"; then
+  pass "startup in the same session surfaces the stagnation stop reason"
+else
+  fail "Expected the stagnation stop reason on startup in the same session, got: $output"
+fi
+# 同じ dir・同じ state のまま session_id だけを変える。
 for _src006e in startup clear; do
-  dir006e="$TEST_DIR/tc006e-$_src006e"
-  mkdir -p "$dir006e"
-  create_state_file "$dir006e" '{
-  "active": false,
-  "issue_number": 2045,
-  "branch": "fix/issue-2045",
-  "phase": "review",
-  "stop_reason": "stagnation:non-convergent",
-  "review_run": {"status": "stopped", "stop_reason": "stagnation:non-convergent"}
-}' "$sid006e"
-  output=$(RITE_HOST=claude run_hook_with_session "$dir006e" "$_src006e" "$sid006e")
-  if grep -qF "確認するには /rite:recover" <<< "$output"; then
-    pass "$_src006e in the same session surfaces the stagnation stop reason"
+  output=$(RITE_HOST=claude run_hook_with_session "$dir006e" "$_src006e" "0e06e006-0000-4000-8000-000000000002")
+  if ! grep -q "失敗停止" <<< "$output"; then
+    pass "state resolution is per session: $_src006e with a new session id does not read the stopped run"
   else
-    fail "Expected the stagnation stop reason on $_src006e in the same session, got: $output"
+    fail "Expected no failure-stop notice on $_src006e with a new session id, got: $output"
   fi
 done
-dir006e="$TEST_DIR/tc006e-new-session"
-mkdir -p "$dir006e"
-create_state_file "$dir006e" '{
-  "active": false,
-  "issue_number": 2045,
-  "branch": "fix/issue-2045",
-  "phase": "review",
-  "stop_reason": "stagnation:non-convergent",
-  "review_run": {"status": "stopped", "stop_reason": "stagnation:non-convergent"}
-}' "$sid006e"
-output=$(RITE_HOST=claude run_hook_with_session "$dir006e" "startup" "0e06e006-0000-4000-8000-000000000002")
-if ! grep -q "失敗停止" <<< "$output"; then
-  pass "state resolution is per session: a new session does not read the stopped run of another session"
-else
-  fail "Expected no failure-stop notice in a new session, got: $output"
-fi
+# 壊れた state では停止理由の読み取り失敗を WARNING で出し、案内は出さない。
+for _src006e in startup resume; do
+  dir006e="$TEST_DIR/tc006e-corrupt-$_src006e"
+  mkdir -p "$dir006e"
+  create_state_file "$dir006e" '{"active": false, "stop_reason": "stagnation:non-convergent", "phase":' "$sid006e"
+  run006e "$dir006e" "$_src006e" "$sid006e"
+  if [ "$rc006e" -eq 0 ] && \
+     grep -qF "jq read of .stop_reason failed" "$err006e" && \
+     ! grep -q "失敗停止" <<< "$out006e"; then
+    pass "$_src006e on a corrupt state warns that the stop reason could not be read"
+  else
+    fail "Expected rc=0, the stop_reason read WARNING and no failure-stop notice on $_src006e (rc=$rc006e), got: $out006e / $(cat "$err006e")"
+  fi
+done
+# 基本 fixture から 1 条件だけを変えると案内は出ない。
+for _case006e in \
+  "completed|resume|.phase = \"completed\"" \
+  "no-issue|resume|del(.issue_number)" \
+  "compact|compact|."; do
+  _name006e=${_case006e%%|*}
+  _rest006e=${_case006e#*|}
+  _src006e=${_rest006e%%|*}
+  _filter006e=${_rest006e#*|}
+  dir006e="$TEST_DIR/tc006e-$_name006e"
+  mkdir -p "$dir006e"
+  create_state_file "$dir006e" "$(jq -c "$_filter006e" <<< "$state006e")" "$sid006e"
+  run006e "$dir006e" "$_src006e" "$sid006e"
+  if [ "$rc006e" -eq 0 ] && \
+     ! grep -q "失敗停止" <<< "$out006e" && \
+     ! grep -qF "path resolution failed" "$err006e"; then
+    pass "$_name006e: $_src006e stays silent for a stopped run outside the notice conditions"
+  else
+    fail "Expected rc=0 and no failure-stop notice for $_name006e on $_src006e (rc=$rc006e), got: $out006e / $(cat "$err006e")"
+  fi
+done
 dir006e="$TEST_DIR/tc006e-inactive-no-stop"
 mkdir -p "$dir006e"
 create_state_file "$dir006e" '{

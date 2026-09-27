@@ -128,11 +128,14 @@
 #   T-70 preview の件数は指摘と先送り欠陥の合計
 #   T-71 トークンと Section 9 の境界が pr-review 7.4.3 と helper で一致する
 #   T-72 cleanup SKILL.md の完了報告の配線
+#
+# Coverage (判定済み記録):
 #   T-77 判定後に purge が JSON を片付けた PR の再実行は already_processed で skip し no_json を出さない
 #        (--preview-body 付きの呼び出しでも同じ)
 #   T-78 判定済み記録の内容が不一致・読めないときは no_json に倒す
 #   T-79 判定済み記録があっても先送り欠陥・archive/ の JSON がある経路は従来どおり
 #   T-80 判定できなかった PR は記録を書かず再実行も no_json、SKILL.md は already_processed を x 相当に置く
+#   T-81 判定済み記録を書けなくても結果は変えず WARNING を出し、影響（再実行の報告が no_json に戻る）を示す
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -1590,6 +1593,7 @@ jq -n --argjson c "$(comment_obj "$(record_body '| F-01 | plugins/rite/skills/cl
 run_target "$r" --preview-body "$TMP_ROOT/preview-t47d.md"
 assert_grep "T-47 全件起票済みは all_issued" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=all_issued; pr=9'
 assert_not_grep "T-47 全件起票済みでも preview を出さない" "$ERR" 'FOLLOW_UP_ISSUE=preview'
+assert "T-47 all_issued の preview 実行は起票しない" "0" "$(create_count)"
 assert "T-47 all_issued でも preview 付きで判定済み記録を書く" "pr=9" "$(cat "$r/.rite/state/follow-up-judged-9.txt" 2>/dev/null)"
 
 echo "--- T-48: preview 本文を書き出せなければ起票も preview もしない ---"
@@ -2301,10 +2305,9 @@ for t77_variant in plain preview; do
   r=$(new_root "t77-$t77_variant")
   t77_args=()
   [ "$t77_variant" = preview ] && t77_args=(--preview-body "$TMP_ROOT/preview-t77.md")
+  # --preview-body の有無は出力に差を生まないため、t77_args の組み立てから --preview-body が落ちる退行はここでしか捕まらない（run_target への受け渡しは確かめない）
   if [ "$t77_variant" = preview ]; then
     assert "T-77 $t77_variant: --preview-body を渡す" "--preview-body $TMP_ROOT/preview-t77.md" "${t77_args[*]}"
-  else
-    assert "T-77 $t77_variant: 追加引数なし" "0" "${#t77_args[@]}"
   fi
   put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[]}'
   assert "T-77 $t77_variant: 前提: 判定済み記録が無い" "no" "$([ -e "$r/$JUDGED_RECORD_REL" ] && echo yes || echo no)"
@@ -2389,6 +2392,38 @@ assert "T-80 already_processed は created と同じ x 相当行" "1" \
 assert "T-80 already_processed を未完了行に置かない" "0" "$(grep 'already_processed' "$CLEANUP_MD" | grep -c '| 未完了 |')"
 assert "T-80 no_json 行は failed 行の直後のまま (同上の参照先)" "1" \
   "$(awk '/^  \| `FOLLOW_UP_ISSUE=failed`（reason 問わず/ { getline nxt; if (nxt ~ /^  \| `skipped; reason=no_json` \| 未完了 \| 同上/) print "ok" }' "$CLEANUP_MD" | grep -c ok)"
+
+echo "--- T-81: 判定済み記録を書けなくても結果は変えず、WARNING と影響を出す ---"
+for t81_variant in no_findings created; do
+  reset_stubs
+  r=$(new_root "t81-$t81_variant")
+  if [ "$t81_variant" = no_findings ]; then
+    put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[]}'
+    t81_result='skipped; reason=no_findings; pr=9'
+    t81_creates=0
+  else
+    put_json "$r" "9-20260101120000.json" "$FINDING_JSON"
+    t81_result='created; issue=99; pr=9'
+    t81_creates=1
+  fi
+  # ディレクトリの位置に通常ファイルを置き、mkdir を権限に依らず失敗させる
+  printf 'x\n' > "$r/.rite/state"
+  run_target "$r"
+  assert "T-81 $t81_variant: exit 0" "0" "$RC"
+  assert_grep "T-81 $t81_variant: 結果 marker は変わらない" "$ERR" "FOLLOW_UP_ISSUE=${t81_result}\$"
+  assert_not_grep "T-81 $t81_variant: failed を出さない" "$ERR" 'FOLLOW_UP_ISSUE=failed'
+  assert "T-81 $t81_variant: stdout は結果行 1 行のみ" "[cleanup-follow-up-issue] result=${t81_result}" "$(cat "$OUT")"
+  assert "T-81 $t81_variant: 起票回数は変わらない" "$t81_creates" "$(create_count)"
+  assert_grep "T-81 $t81_variant: WARNING" "$ERR" '^WARNING: follow-up の判定済み記録を書けません \(PR #9\): '
+  assert_grep "T-81 $t81_variant: 原因行を indent 付きで出す" "$ERR" '^  mkdir: '
+  assert_grep "T-81 $t81_variant: 影響行" "$ERR" '^  影響: レビュー結果 JSON を片付けた後に cleanup を再実行すると no_json'
+  assert "T-81 $t81_variant: WARNING→原因→影響→結果 marker の順" "1" \
+    "$(awk -v want="FOLLOW_UP_ISSUE=${t81_result}" '
+      /^WARNING: follow-up の判定済み記録を書けません/ { w = NR; next }
+      w && NR == w + 1 && /^  mkdir: / { c = NR; next }
+      c && NR == c + 1 && /^  影響: / { i = NR; next }
+      i && index($0, want) { print "ok"; exit }' "$ERR" | grep -c ok)"
+done
 
 echo "--- T-arg: 引数 gate ---"
 bash "$TARGET" --pr abc --state-root "$TMP_ROOT" --owner a --repo b >"$OUT" 2>"$ERR"; RC=$?

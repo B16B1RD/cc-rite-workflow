@@ -20,7 +20,8 @@
 #   bash iterate-step.sh cycle-gate --pr N --issue N --branch B
 #   bash iterate-step.sh lost-repair --repair saved|rereview|failed --cycle N --lost N
 #   bash iterate-step.sh stagnation-route
-#   bash iterate-step.sh nb-sweep-collect --pr N
+#   bash iterate-step.sh nb-sweep-resume --pr N
+#   bash iterate-step.sh nb-sweep-collect --pr N --sweep-origin S
 #   bash iterate-step.sh nb-sweep-record --pr N
 #   bash iterate-step.sh purpose-unaligned --pr N --issue N --branch B
 #   bash iterate-step.sh run-close --pr N --issue N --branch B --sweep-origin S
@@ -578,6 +579,8 @@ if [ -n "$nb_range" ] && [ "$nb_range" = "$nb_latest_base" ]; then
     done|noop) ;;
     *) skipped_kind=done ;;
   esac
+  # この JSON の sweep は済んでいる。入口記録は戻り先として不要。
+  rm -f "$nb_root/.rite/state/nb-sweep-origin-$pr_number.txt"
   marker_emit ITERATE_NB_SWEEP skipped "reason=already_done" "kind=$skipped_kind" "record=$nb_range"
 else
 collect_err=$(mktemp "${TMPDIR:-/tmp}/rite-nb-sweep-collect-XXXXXX") || { echo "ERROR: mktemp failed" >&2; echo "[iterate:nb-sweep-error]"; exit 1; }
@@ -587,6 +590,11 @@ neutralize_ctrl --keep-newline < "$collect_err" >&2
 rm -f -- "$collect_err"
 status=$(printf '%s' "$collect_out" | jq -r '.status // empty' 2>/dev/null) || status=""
 count=$(printf '%s' "$collect_out" | jq -r '.count // empty' 2>/dev/null) || count=""
+# 台帳 persist の後・完了の前に止まった sweep は、台帳に全件載っているので collect が empty を返す。
+# 起票済みの件数と entries の片付けは fix の手順 1 が持つので、entries が残る限り fix へ渡す。
+if [ "$collect_rc:$status" = "0:empty" ] && [ -f "$nb_root/.rite/state/nb-sweep-entries-$pr_number.md" ]; then
+  status=ok
+fi
 case "$collect_rc:$status" in
   0:empty)
     mkdir -p "$nb_root/.rite/state" || true
@@ -617,9 +625,27 @@ case "$collect_rc:$status" in
       echo "WARNING: nb-sweep-done marker を書けませんでした ($nb_done_file)。次回 5.S は再実行されます" >&2
       rm -f "$nb_done_file"
     fi
+    rm -f "$nb_root/.rite/state/nb-sweep-origin-$pr_number.txt"
     marker_emit ITERATE_NB_SWEEP noop "count=0"
     ;;
   0:ok)
+    # 入口の sentinel を review JSON の basename と組で残す。台帳 persist で止まった sweep を
+    # 別の会話から戻すとき、ステップ 0.7 (nb-sweep-resume) はこの値で再レビューを回さずに 5.S へ入る。
+    nb_origin_file="$nb_root/.rite/state/nb-sweep-origin-$pr_number.txt"
+    mkdir -p "$nb_root/.rite/state" || true
+    # shellcheck source=../hooks/gitignore-ensure.sh
+    source "$plugin_root"/hooks/gitignore-ensure.sh
+    if ! _ensure_dir_gitignore "$nb_root/.rite/state"; then
+      echo "WARNING: $nb_root/.rite/state/.gitignore を作成できませんでした。nb-sweep-origin が git の追跡対象になる恐れがあります" >&2
+      [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
+    fi
+    if [ -z "$nb_latest_base" ] || ! printf '%s %s\n' "$nb_latest_base" "$sweep_origin" > "$nb_origin_file"; then
+      echo "ERROR: sweep の入口を記録できませんでした ($nb_origin_file)。記録なしで起票すると、止まったときに別の会話から重複起票なしで戻れません" >&2
+      rm -f "$nb_origin_file"
+      marker_emit ITERATE_NB_SWEEP failed "reason=origin_write_failed"
+      echo "[iterate:nb-sweep-error]"
+      exit 1
+    fi
     marker_emit ITERATE_NB_SWEEP pending "count=${count:-}"
     ;;
   *)
@@ -670,6 +696,68 @@ if [ -n "$nb_root" ] && [ -n "$nb_latest_base" ] && [ "$nb_have" != "$nb_latest_
 elif [ -n "$nb_root" ] && [ -z "$nb_latest_base" ] && [ -f "$nb_done_file" ] && [ -z "$nb_have" ]; then
   rm -f "$nb_done_file"
 fi
+# sweep が済んだ JSON の入口記録は戻り先として不要になる。done を書けなかったときは残し、再開の手掛かりにする。
+if [ -n "$nb_root" ] && [ -n "$nb_latest_base" ] && [ -f "$nb_done_file" ] \
+   && [ "$(awk 'NR==1 { print $2 }' "$nb_done_file")" = "$nb_latest_base" ]; then
+  rm -f "$nb_root/.rite/state/nb-sweep-origin-$pr_number.txt"
+fi
+}
+
+# --- nb-sweep-resume -----------------------------------------------------------
+step_nb_sweep_resume() {
+# shellcheck source=../hooks/scripts/lib/context-marker.sh
+source "$plugin_root"/hooks/scripts/lib/context-marker.sh || { echo "ERROR: context-marker.sh を読み込めませんでした（プラグインの破損 / 版 skew）。marker を emit できないため中止します" >&2; echo "[iterate:nb-sweep-error]"; exit 1; }
+nb_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh) || nb_root=""
+if [ -z "$nb_root" ]; then
+  echo "ERROR: state-path-resolve が空を返した。止まった sweep の有無を判定できない" >&2
+  marker_emit ITERATE_NB_SWEEP_RESUME failed "reason=state_root_unresolved"
+  echo "[iterate:nb-sweep-error]"
+  exit 1
+fi
+nb_origin_file="$nb_root/.rite/state/nb-sweep-origin-$pr_number.txt"
+if [ ! -f "$nb_origin_file" ]; then
+  marker_emit ITERATE_NB_SWEEP_RESUME none "reason=no_origin"
+  exit 0
+fi
+nb_latest=$(find "$nb_root/.rite/review-results" -maxdepth 1 -type f -name "$pr_number-*.json" 2>/dev/null | LC_ALL=C sort | tail -1)
+nb_latest_base=""
+[ -n "$nb_latest" ] && nb_latest_base=$(basename "$nb_latest")
+origin_record=$(awk 'NR==1 { print $1 }' "$nb_origin_file")
+origin_value=$(awk 'NR==1 { print $2 }' "$nb_origin_file")
+if [ -z "$nb_latest_base" ] || [ "$origin_record" != "$nb_latest_base" ]; then
+  # 後から保存されたレビューがある。記録は別の JSON の sweep を指すので戻り先にしない。
+  rm -f "$nb_origin_file"
+  marker_emit ITERATE_NB_SWEEP_RESUME none "reason=stale_origin" "record=$origin_record"
+  exit 0
+fi
+# レビュー後に HEAD が動いていれば、その変更はまだ誰もレビューしていない。sweep へ直行せずレビューから回す。
+reviewed_sha=$(jq -r '.commit_sha // empty' "$nb_latest" 2>/dev/null | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+head_sha=$(git rev-parse HEAD 2>/dev/null) || head_sha=""
+case "$reviewed_sha" in ''|*[!0-9a-f]*) reviewed_sha="" ;; esac
+if [ -z "$reviewed_sha" ] || [ -z "$head_sha" ]; then
+  echo "ERROR: 止まった sweep のレビュー対象 commit と現在の HEAD を照合できません (record=$origin_record)" >&2
+  marker_emit ITERATE_NB_SWEEP_RESUME failed "reason=head_unverified"
+  echo "[iterate:nb-sweep-error]"
+  exit 1
+fi
+case "$head_sha" in
+  "$reviewed_sha"*) ;;
+  *)
+    rm -f "$nb_origin_file"
+    marker_emit ITERATE_NB_SWEEP_RESUME none "reason=head_changed" "record=$origin_record"
+    exit 0
+    ;;
+esac
+case "$origin_value" in
+  '[review:mergeable]'|'[fix:non-fatal-only]'|'[fix:replied-only]') ;;
+  *)
+    echo "ERROR: sweep の入口記録が読めません ($nb_origin_file)。終了理由を推測しないため中止します" >&2
+    marker_emit ITERATE_NB_SWEEP_RESUME failed "reason=origin_invalid"
+    echo "[iterate:nb-sweep-error]"
+    exit 1
+    ;;
+esac
+marker_emit ITERATE_NB_SWEEP_RESUME resume "origin=$origin_value" "record=$origin_record"
 }
 
 # --- purpose-unaligned ---------------------------------------------------------
@@ -907,7 +995,14 @@ case "$subcommand" in
   cycle-gate) require pr_number issue_number branch_name; step_cycle_gate ;;
   lost-repair) require repair cycle lost; step_lost_repair ;;
   stagnation-route) step_stagnation_route ;;
-  nb-sweep-collect) require pr_number; step_nb_sweep_collect ;;
+  nb-sweep-resume) require pr_number; step_nb_sweep_resume ;;
+  nb-sweep-collect)
+    require pr_number sweep_origin
+    case "$sweep_origin" in
+      '[review:mergeable]'|'[fix:non-fatal-only]'|'[fix:replied-only]') ;;
+      *) usage_error "--sweep-origin must be [review:mergeable], [fix:non-fatal-only] or [fix:replied-only]: $sweep_origin" ;;
+    esac
+    step_nb_sweep_collect ;;
   nb-sweep-record) require pr_number; step_nb_sweep_record ;;
   purpose-unaligned) require pr_number issue_number branch_name; step_purpose_unaligned ;;
   run-close) require pr_number issue_number branch_name sweep_origin; step_run_close ;;
