@@ -78,10 +78,13 @@ sources:
     resource: "raw/fixes/20260830T083939Z-pr-2482.md"
   - type: "reviews"
     resource: "raw/reviews/20260911T183502Z-pr-2702.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T072805Z-pr-3224.md"
 tags: [test-pin, mutation-test, drift-check, protection-theater, canonical-phrase, same-file-3-site-sync, subsidiary-claim-empirical-verification, cross-file-cross-site-coverage, multi-axis-mutation-verification, channel-collision, negative-control, twin-site-satisfaction, anchor-uniqueness, occurrence-count-pin]
 confidence: high
 generated: { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
 verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T07:35:00Z" }
   - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-11T18:35:02Z" }
   - { by: "rite-wiki-ingest/gpt-6", at: "2026-09-05T12:10:29.806932+00:00" }
@@ -603,6 +606,17 @@ producer と validator で被演算子の変数名だけが違う（`$body` / `$
 
 最小コストの是正はヘッダを**実際に pin している側だけを名乗る文**へ狭めること（「設計文書側の記述が〜と書いている」）。両方向を本当に守るなら、実装の分岐そのものを読む assert が別に要る。テストの自己記述が実態より広い関係を名乗ると、読み手は片側 drift に対する保護を両側への保護と誤読する。
 
+## 変種: テスト状況の記述で「実行されている」と「pin されている」、選言の項を区別しない
+
+削除条件が選言（`fresh || counter == 0`）のとき、両項を同時に満たす 1 ケース（fresh かつ counter 0）が実行されているだけで「fresh run での削除は実行済み」と書くと、fresh 項が単独で削除を起こすことまで確かめたように読める。実際には、条件を `counter == 0` 単独に弱めてもそのケースは緑のまま通る（静的読解による。mutation は当てていない）。同じ理由で、fixture が対象ファイルを置いたうえで resume 経路を実行していても、実行後にファイルの有無を assert していなければ「保持」は pin されていない。
+
+起点事例では、テストファイルのヘッダの括弧書きが削除条件の項を 1 つ落としていた（counter 0 の resume でもファイルが消える経路が抜けていた）。これを直し、fresh run の削除は実行済み、counter 0 の resume での削除・counter 非 0 の resume での保持・review 再開時の削除は未 pin と書き分けた。レビューでは、実行済みと書いた fresh run のケースが選言の両項を同時に満たしていることが、境界の指摘として残った。
+
+書き分けの規則:
+
+- 「実行済み」「pin 済み」と書く範囲は、そのケースが満たす項の組み合わせに合わせる。両項を同時に満たすケースは、どちらの項の単独効果も確かめていない
+- 経路が実行されていても、結果を assert していなければ「未 pin」と書く。fixture が対象を置いていることは pin の証拠にならない
+
 ## ソース（追記分）
 
 - [静的 pin が行継続文字を照合せず 1 文字 drift を素通り](../../raw/reviews/20260803T004941Z-pr-2094.md)
@@ -618,3 +632,4 @@ producer と validator で被演算子の変数名だけが違う（`$body` / `$
 - [期待値を片側抽出する symmetry pin の同時 drift 限界、正規化が隠した被演算子同一性の前提](../../raw/fixes/20260830T082306Z-pr-2482.md)
 - [(NB sweep) — 停止しない fail() 前提のもとで head -1 が診断値固定の保険として要る](../../raw/fixes/20260830T083939Z-pr-2482.md)
 - [文書側の字面 pin が片方向しか守らず、ヘッダが両側関係を名乗っていた](../../raw/reviews/20260911T183502Z-pr-2702.md)
+- [選言の両項を同時に満たすケースだけで「実行済み」と書く、fixture を置いても assert しない保持](../../raw/reviews/20260927T072805Z-pr-3224.md)
