@@ -4,7 +4,9 @@ title: "identity を持たない判定台帳で複数 cycle の和集合を重�
 domain: "anti-patterns"
 description: "判定台帳が最終回の id と位置しか持たないまま、複数 cycle の指摘を連結した集合から「既に処理済み」の指摘を除こうとすると、id や位置で推定した除外は別の指摘まで黙って落とす。除外は台帳が実際に判定した入力に由来する要素に限り、それ以外は転記して重複しうる件数を出す。"
 created: "2026-09-12T15:25:00+00:00"
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T15:25:00+00:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:10:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:10:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260912T135538Z-pr-2741.md"
@@ -16,6 +18,8 @@ sources:
     resource: "raw/reviews/20260912T144710Z-pr-2741.md"
   - type: "fixes"
     resource: "raw/fixes/20260912T145412Z-pr-2741.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T080150Z-pr-3221.md"
 tags: ["dedup", "identity", "union", "ledger", "fail-loud"]
 confidence: high
 ---
@@ -55,6 +59,8 @@ id も位置も cycle を跨ぐ identity ではないので、「同じ指摘の
 - id が振り直された fixture を用意し、旧照合へ戻す変異でテストが落ちることを確認する
 - 除外ルールを変えたら、同じルールを説明する周辺文書（仕様・設定リファレンス・スキーマ説明）を同じ変更でまとめて同期する
 
+**戻り方の保証も同じキーに縛られる**: 拒否時の案内に「再開してよい（再び起票されない）」と書くときは、再開の実際の入口（phase・再開ゲート・新しい cycle が作る結果 JSON）を辿り、重複排除のキーがその経路でも同じ要素を指すかを確かめる。除外キーが cycle ごとに振り直される id を含むと、同じ HEAD をフルで再レビューした cycle では同じ指摘が別の id で現れ、保証が崩れる。
+
 ## 関連ページ
 
 - [実装が Issue の MUST と原則の両方に挟まれたら、実装を戻さず契約側（Decision Log と AC の例外）を更新する](../heuristics/contract-update-over-revert-on-must-conflict.md)
@@ -67,3 +73,4 @@ id も位置も cycle を跨ぐ identity ではないので、「同じ指摘の
 - [レビュー結果](../../raw/reviews/20260912T142140Z-pr-2741.md)
 - [レビュー結果](../../raw/reviews/20260912T144710Z-pr-2741.md)
 - [fix 結果](../../raw/fixes/20260912T145412Z-pr-2741.md)
+- [戻り方の保証を再開経路で確かめたレビュー結果](../../raw/reviews/20260927T080150Z-pr-3221.md)
