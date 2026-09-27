@@ -242,7 +242,8 @@ else
 fi
 echo ""
 
-echo "TC-006e: startup reset names each stagnation stop as a known reason"
+echo "TC-006e: startup names each stagnation stop in the state the stagnation diagnosis writes"
+# 停滞停止は stop_reason と active=false を同じ更新で書き、review_run も stopped のまま残る。
 for _sr_case in \
   "circuit-breaker:stagnation|停滞診断で停止 (review⇄fix が収束しない)" \
   "stagnation:non-convergent|停滞診断で停止 (見直し後も同じ根本原因が再発し、受入条件が進まない)" \
@@ -252,34 +253,50 @@ for _sr_case in \
   dir006e="$TEST_DIR/tc006e-${_sr_token//:/-}"
   mkdir -p "$dir006e"
   create_state_file "$dir006e" '{
-  "active": true,
+  "active": false,
   "issue_number": 2045,
   "branch": "fix/issue-2045",
   "phase": "review",
-  "stop_reason": "'"$_sr_token"'"
+  "stop_reason": "'"$_sr_token"'",
+  "review_run": {"status": "stopped", "stop_reason": "'"$_sr_token"'"}
 }'
   output=$(run_hook_with_source "$dir006e" "startup")
-  if grep -qF "理由: ${_sr_phrase})。再開するには /rite:recover" <<< "$output" && \
+  if grep -qF "理由: ${_sr_phrase})。確認するには /rite:recover" <<< "$output" && \
      ! grep -q "未知の停止理由トークン" <<< "$output"; then
-    pass "startup defensive reset surfaces the $_sr_token stop reason"
+    pass "startup surfaces the $_sr_token stop reason for an inactive stopped run"
   else
-    fail "Expected $_sr_token stop reason in startup reset notice, got: $output"
+    fail "Expected $_sr_token stop reason at startup for an inactive stopped run, got: $output"
   fi
 done
 dir006e="$TEST_DIR/tc006e-unlisted"
 mkdir -p "$dir006e"
 create_state_file "$dir006e" '{
-  "active": true,
+  "active": false,
   "issue_number": 2045,
   "branch": "fix/issue-2045",
   "phase": "review",
-  "stop_reason": "stagnation:future-token"
+  "stop_reason": "stagnation:future-token",
+  "review_run": {"status": "stopped", "stop_reason": "stagnation:future-token"}
 }'
 output=$(run_hook_with_source "$dir006e" "startup")
 if grep -qF "未知の停止理由トークン 'stagnation:future-token'" <<< "$output"; then
-  pass "startup defensive reset keeps an unlisted stagnation token unknown"
+  pass "startup keeps an unlisted stagnation token unknown"
 else
   fail "Expected an unlisted stagnation token to stay unknown, got: $output"
+fi
+dir006e="$TEST_DIR/tc006e-inactive-no-stop"
+mkdir -p "$dir006e"
+create_state_file "$dir006e" '{
+  "active": false,
+  "issue_number": 2045,
+  "branch": "fix/issue-2045",
+  "phase": "review"
+}'
+output=$(run_hook_with_source "$dir006e" "startup")
+if ! grep -q "失敗停止" <<< "$output"; then
+  pass "startup stays silent for an inactive state without a stop reason"
+else
+  fail "Expected no failure-stop notice for an inactive state without a stop reason, got: $output"
 fi
 echo ""
 

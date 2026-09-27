@@ -604,10 +604,6 @@ if [ -n "$_active_err" ] && [ -s "$_active_err" ]; then
   head -3 "$_active_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
 fi
 [ -n "$_active_err" ] && rm -f "$_active_err"
-if [ "$ACTIVE" != "true" ]; then
-  _cleanup_stale_compact
-  exit 0
-fi
 
 # --- Stop-reason phrasing ---
 # flow-state の `stop_reason` は「ワークフローが失敗として止まった」ことの durable な記録
@@ -641,6 +637,25 @@ _rite_stop_reason_phrase() {
       echo "未知の停止理由トークン '$(printf '%s' "$_sr" | neutralize_ctrl)' (rite の更新で追加された可能性)" ;;
   esac
 }
+
+# 停止した review_run は active=false と stop_reason を同じ更新で書き、run が停止している間は
+# 以後の set でも理由が残る。inactive だからと無言で exit すると、その失敗停止は起動時に一度も
+# 案内されない。startup / clear では停止理由だけを案内し、state は書き換えない (停止は停止のまま残す)。
+if [ "$ACTIVE" != "true" ]; then
+  if [ "$SOURCE" = "startup" ] || [ "$SOURCE" = "clear" ]; then
+    _inactive_stop=""
+    if ! _inactive_stop=$(jq -r '[(.phase // ""), (.issue_number // "" | tostring), (.branch // ""), (.stop_reason // "")] | join("\u001f")' "$STATE_FILE" 2>/dev/null); then
+      echo "rite: session-start: WARNING: jq read of .stop_reason failed (STATE_FILE may be corrupt)" >&2
+      _inactive_stop=""
+    fi
+    IFS=$'\x1f' read -r _i_phase _i_issue _i_branch _i_stop <<< "$_inactive_stop"
+    if [ -n "$_i_stop" ] && [ -n "$_i_issue" ] && [ "$_i_phase" != "completed" ]; then
+      echo "rite: 失敗停止した rite workflow が残っています (Issue #${_i_issue}, branch: $(printf '%s' "$_i_branch" | neutralize_ctrl), 理由: $(_rite_stop_reason_phrase "$_i_stop"))。確認するには /rite:recover を使用してください。"
+    fi
+  fi
+  _cleanup_stale_compact
+  exit 0
+fi
 
 # --- Defensive reset helper ---
 # Shared by startup and clear blocks. Resets active=false on phase != completed.
