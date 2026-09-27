@@ -379,10 +379,12 @@ if [[ "$branch_strategy" == "same_branch" ]]; then
   _sb_dump "commit"
   # A refused commit (e.g. the Wiki apply gate) must not leave the raw sources
   # staged: the next commit or review gate would see them as foreign paths.
-  # Only the files added above are unstaged, so the user's own staging stays.
+  # Only the files added above are unstaged; staging of other paths stays.
+  # The hint names $repo_root because the caller's cwd may be a session
+  # worktree whose index is not the one staged here.
   if ! git reset -q -- "${pending_files[@]}" 2>"${_sb_git_err:-/dev/null}"; then
    echo "WARNING: failed to unstage the raw sources after the failed commit" >&2
-   printf ' manual recovery: git reset -q --%s\n' "$(printf ' %q' "${pending_files[@]}")" >&2
+   printf ' manual recovery: git -C %q reset -q --%s\n' "$repo_root" "$(printf ' %q' "${pending_files[@]}")" >&2
    _sb_dump "reset"
   fi
   [ -n "$_sb_git_err" ] && rm -f "$_sb_git_err"

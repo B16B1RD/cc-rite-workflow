@@ -524,7 +524,7 @@ run_same_branch_failure_case() {
   printf '%s\n' '---' 'ingested: true' '---' 'done' > "$repo/.rite/wiki/raw/reviews/done.md"
   git -C "$repo" add .rite/wiki/raw/reviews/done.md
   if [ "$reset" = fail ]; then
-    write_stub "$base/stub" '[ "$1" = reset ]'
+    write_stub "$base/stub" "[ \"\$1\" = reset ] && echo 'fatal: stub reset' >&2"
     path_prefix="$base/stub:"
   fi
   ( cd "$repo" && PATH="$path_prefix$PATH" bash "$HOOK_SRC" ) >/dev/null 2>"$err" || rc=$?
@@ -544,7 +544,9 @@ run_same_branch_failure_case() {
   line=$(sed -n "$((${n:-0} + 1))p" "$err")
   cmd=${line#" manual recovery: "}
   eq "$label: unstage hint follows the WARNING" " manual recovery: $cmd" "$line"
-  check_words "unstage hint" "$cmd" git reset -q -- .rite/wiki/raw/reviews/pr-test.md
+  check_words "unstage hint" "$cmd" git -C "$(cd "$repo" && pwd -P)" reset -q -- .rite/wiki/raw/reviews/pr-test.md
+  eq "$label: the reset stderr follows the hint" "  git (reset): fatal: stub reset" \
+    "$(sed -n "$((${n:-0} + 2))p" "$err")"
   eq "$label: raw sources are still staged as reported" \
     "$(printf '%s\n' .rite/wiki/raw/reviews/done.md .rite/wiki/raw/reviews/pr-test.md)" \
     "$(git -C "$repo" diff --cached --name-only)"
