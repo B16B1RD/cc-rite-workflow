@@ -202,7 +202,7 @@ okf_version: "0.2"
 | [path を返す test fixture ヘルパーの cleanup 登録は $() サブシェルではなく親シェルで行う](pages/patterns/test-fixture-helper-parent-shell-cleanup-registration.md) | patterns | path を `echo`/`printf` で返す fixture ヘルパーを `X="$(new_repo ...)"` の **コマンド置換 (`$()`)** 経由で呼ぶと、そのヘルパーは **subshell** で実行される。 | 2026-09-27T16:35:29Z | high |
 | [位置依存の表パースには検査行数ガードを対にする（silent false-pass 遮断）](pages/patterns/positional-parse-row-count-guard.md) | patterns | `awk -F'\|' '{ slug = $2; agent = $4 }'` のような位置依存の列パースは、表形式変更（Agent 列より前へのカラム挿入等）でトークンが期待列からずれる。 | 2026-09-15T03:40:00Z | high |
 | [検証ツールの保証文言は検証される不変量と非検出 gap に正確に対応させる](pages/heuristics/verification-doc-guarantee-matches-invariants.md) | heuristics | 機械検証ツール（drift-check / lint）を追加する PR では、手順書側の保証文言が実装の検証範囲を超えて「漏れは必ず検出される」と全称的に書かれやすい。 | 2026-09-27T10:47:38Z | high |
-| [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) | heuristics | 複数の不変量（集合差分 I1/I2 + 行内整合 I3 等）を持つ検証スクリプトのテストでは、fixture 変異の設計を誤ると「テストは green だが特定の不変量・guard を削除しても green のまま」という vacuous coverage が生まれる。 | 2026-09-27T16:35:29Z | high |
+| [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) | heuristics | 複数の不変量（集合差分 I1/I2 + 行内整合 I3 等）を持つ検証スクリプトのテストでは、fixture 変異の設計を誤ると「テストは green だが特定の不変量・guard を削除しても green のまま」という vacuous coverage が生まれる。 | 2026-09-27T17:19:25Z | high |
 | [提示順ルールを計画テンプレートに追加する際は depends_on 列の有無を確認する](pages/heuristics/presentation-order-rule-requires-depends-on-column-check.md) | heuristics | 実装計画テンプレートに「ユーザーの判断で変わりやすい項目を先頭に提示する」ような提示順ルールを追加する際、対象テンプレートが `depends_on` 列を持つ依存グラフ形式か、`depends_on` 列を持たないプレーン番号リスト形式かで、そのルールが「実行順」にまで波及するかどうかが変わる。 | 2026-07-06T02:34:59Z | high |
 | [Orchestrator は reviewer 間の反証と reviewer 自身の自己矛盾（指摘記載 vs 結論）を解決してから blocking 判定する](pages/heuristics/orchestrator-resolves-reviewer-self-contradiction-and-counter-evidence.md) | heuristics | 過去のレビュー事例の 2 cycle レビューで、orchestrator（consolidation 担当）が単純な「指摘事項テーブルの件数 = blocking 件数」という機械的合算をせず、(1) 複数 reviewer 間の反証関係、(2) reviewer 自身の総合評価と個別指摘の矛盾、の 2 つを見て blocking findings を確定させた 2 つの実例。 | 2026-08-08T14:00:41+09:00 | medium |
 | [@tsv+IFS read の field-shift hazard 横断監査は cut-f免除と空フィールド可否の2条件で判定する](pages/heuristics/tsv-ifs-field-shift-hazard-audit-criteria.md) | heuristics | `jq '[...] \| @tsv'` の出力を `IFS=$'\\\\t' read -r a b c` で読む実装は、POSIX の IFS whitespace 規則により、tab を含む IFS では連続する区切り文字が1個に圧縮される。 | 2026-09-24T12:45:00+09:00 | high |
@@ -287,7 +287,7 @@ okf_version: "0.2"
 | [sandbox 環境では raw な git status --porcelain が恒に非空になり clean 判定ガードが一度も発火しない](pages/anti-patterns/sandbox-bind-mount-makes-raw-git-status-always-dirty.md) | anti-patterns | 過去のレビュー事例の cycle 2 で HIGH（repro 付き）として検出。 | 2026-09-17T10:34:18Z | high |
 | [file:line を key にする map は、同じ位置にある別出自のデータを無音で巻き添えにする](pages/anti-patterns/colocated-key-map-swallows-different-provenance-data.md) | anti-patterns | 過去のレビュー事例の cycle 2 で HIGH として検出。 | 2026-07-27T17:54:54+09:00 | high |
 | [同じ述語を 2 言語で並行実装すると受理集合が環境で割れる — 定義を 1 本に寄せるまで症状は再発し続ける](pages/anti-patterns/dual-language-predicate-divergence.md) | anti-patterns | 「本文の最終非空行が sentinel と一致するか」のような判定条件を、read 側（lookup の jq）と write 側（投稿前検査の shell）で**別々に実装**すると、同じ意図の述語でも受理する入力の集合が一致しない。 | 2026-09-25T03:58:00Z | high |
-| [エラーを 1 つの reason へ畳むときは「原因の類型」が同じかを確かめる — 復旧手順が違うなら分ける](pages/heuristics/error-classification-by-cause-not-detection-site.md) | heuristics | `result=$(cmd 2>/dev/null) \|\| result=""` は「失敗したら空にする」定番の書き方だが、**2 つの意味的に違う失敗を同じ値へ畳む**。 | 2026-09-07T23:46:17+09:00 | high |
+| [エラーを 1 つの reason へ畳むときは「原因の類型」が同じかを確かめる — 復旧手順が違うなら分ける](pages/heuristics/error-classification-by-cause-not-detection-site.md) | heuristics | `result=$(cmd 2>/dev/null) \|\| result=""` は「失敗したら空にする」定番の書き方だが、**2 つの意味的に違う失敗を同じ値へ畳む**。 | 2026-09-27T17:19:25Z | high |
 | [pin を足す「前」に mutation を当てると、pin の要否と有効性を分離して判定できる](pages/patterns/mutation-before-pin-separates-necessity-from-efficacy.md) | patterns | 修正を入れたあと回帰 pin を書くとき、**mutation を当てる順序**で得られる情報が変わる。 | 2026-07-28T21:30:00+09:00 | high |
 | [cycle が進んでも findings が減らないときは点修正をやめて構造を疑う](pages/heuristics/non-converging-review-loop-suspect-structure.md) | heuristics | review⇄fix ループの健全な収束は「cycle ごとに指摘が減る」形で現れる。 | 2026-08-03T07:46:56Z | high |
 | [glob で集合を指すと、集合の増減に silent に追随しない — 診断・分岐の述語には明示列挙を使う](pages/anti-patterns/glob-set-membership-silent-drift.md) | anti-patterns | エラー分類の集合（例: 「caller 契約違反である本文検査 4 段」）を、判定述語として `reason=body_*` のような **glob（接頭辞パターン）で指す**と、集合と glob の一致は保証されない。 | 2026-09-27T10:47:38Z | high |
@@ -586,5 +586,5 @@ okf_version: "0.2"
 
 - 総ページ数: 572
 - ドメイン別: patterns=127, heuristics=268, anti-patterns=177
-- 最終更新: 2026-09-27T17:15:00Z
+- 最終更新: 2026-09-27T17:19:25Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |

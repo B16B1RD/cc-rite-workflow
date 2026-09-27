@@ -25,12 +25,15 @@ sources:
     resource: "raw/fixes/20260901T230359Z-pr-2503.md"
   - type: "reviews"
     resource: "raw/reviews/20260907T143412Z-pr-2609.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T171520Z-pr-3319.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/gpt-5", at: "2026-09-07T23:46:17+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T17:19:25Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
   - { by: "rite-wiki-ingest/gpt-5", at: "2026-09-07T23:46:17+09:00" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T17:19:25Z" }
 ---
 
 # エラーを 1 つの reason へ畳むときは「原因の類型」が同じかを確かめる — 復旧手順が違うなら分ける
@@ -131,6 +134,13 @@ state ファイルの読み取りで jq 失敗とファイル不在を同じ空�
 
 この分岐は、既知 reason、未知 reason、reason 欠落、複数 marker の各境界を runtime test で通し、repository-wide の consumer が同じ語彙を使うことまで確認する。これにより診断を細分化しても、未知の失敗を既知の復旧手順へ誤誘導する fail-open を防げる。
 
+### 書き込み後の確認は「読み直しの失敗」と「内容の欠落」を分ける
+
+書き込んだ後に読み直して確認する処理で、読み直しそのものの失敗と、読めたが期待した内容が無い場合を 1 つの分岐にまとめると、書き込みは成功しているのに利用者を誤った復旧（手で内容を戻す）へ誘導する。読み直しの失敗は下位 helper の status を添えて再実行を案内し、内容の欠落だけに復旧手順を出す。案内する再実行が二重に書き込まないこと（最初の読み取りで記録を見つけて追記を飛ばす）までテストで固定すると、案内そのものが正しいことを保証できる。
+
+テスト用 stub に「書き込み成功後の読み取りだけ失敗させる」モードを足すときは、切り替えの印を fixture の配下に置いて並列テストと共有しない。書き込み分岐の終了コードを後続の `if` で上書きしないよう、失敗時の `|| exit 1` を先に置く。
+
+
 ## 関連ページ
 
 - [`cmd > file || true` は no-match (rc=1) と書き込み失敗 (rc>=2) を混同する](../anti-patterns/cmd-redirect-or-true-conflates-nomatch-and-write-failure.md)
@@ -149,3 +159,4 @@ state ファイルの読み取りで jq 失敗とファイル不在を同じ空�
 - [レビュー結果](../../raw/reviews/20260901T225105Z-pr-2503.md)
 - [fix 結果](../../raw/fixes/20260901T230359Z-pr-2503.md)
 - [レビュー結果](../../raw/reviews/20260907T143412Z-pr-2609.md)
+- [書き込み後の確認で読み直し失敗と内容欠落を分けたレビュー結果](../../raw/reviews/20260927T171520Z-pr-3319.md)

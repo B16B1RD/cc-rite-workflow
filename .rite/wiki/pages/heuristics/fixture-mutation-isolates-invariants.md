@@ -61,9 +61,11 @@ sources:
     resource: "raw/reviews/20260927T144951Z-pr-3289.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T162928Z-pr-3309.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T171357Z-pr-3318.md"
 tags: ["test", "fixture", "mutation", "invariant", "coverage"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:35:29Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T17:19:25Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T18:43:00+00:00" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T23:20:00+00:00" }
@@ -81,6 +83,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:33:48Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:56:46Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:35:29Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T17:19:25Z" }
 ---
 
 # テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する
@@ -255,6 +258,11 @@ guard・不変量の TC を追加したら、worktree-only mutation（当該 gua
 - 否定 assert（ファイルが無い）の空振りは、同じ走行で helper が正常終了し stub に到達したことを先に assert して防ぐ
 
 
+## docstring が列挙した分岐とテストを 1 対 1 に揃える
+
+helper の docstring が「この場合に記録を書く」と分岐を列挙しているのに、その一部に対応するテストが無いと、その分岐だけで記録を省く変異が生き残る。列挙された分岐ごとにケースを置き、既存の fixture を流用して足りない分岐（別の経路から入る場合など）を 1 件ずつ加える。変異を一時的に入れて、新しい assert だけが落ちることを確かめてから戻す。
+
+
 ## 関連ページ
 
 - [位置依存の表パースには検査行数ガードを対にする（silent false-pass 遮断）](../patterns/positional-parse-row-count-guard.md)
@@ -292,3 +300,4 @@ guard・不変量の TC を追加したら、worktree-only mutation（当該 gua
 - [レビュー結果](../../raw/reviews/20260927T113227Z-pr-3274.md)
 - [候補値が一致する fixture では参照先の差し替えを検出できないと確かめたレビュー結果](../../raw/reviews/20260927T144951Z-pr-3289.md)
 - [rc ごとの後始末をループで固定し、分岐単位の変異で検出力を確かめたレビュー結果](../../raw/reviews/20260927T162928Z-pr-3309.md)
+- [docstring の分岐列挙に合わせてテストを 1 件追加した fix 結果](../../raw/fixes/20260927T171357Z-pr-3318.md)

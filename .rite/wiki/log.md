@@ -29,6 +29,8 @@
 * **Update**: [静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く](pages/heuristics/static-pin-semantic-allowlist-not-notation-denylist.md) — raw/reviews/20260927T170027Z-pr-3314.md を統合
 * **Update**: [契約を N 箇所に追記したら pin も N 箇所あるかを数え合わせる](pages/patterns/contract-additions-and-pins-one-to-one.md) — raw/reviews/20260927T170350Z-pr-3318.md を統合
 * **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=63, orphans=0, missing_concept=0, unregistered_raw=567, broken_refs=0
+* **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — raw/fixes/20260927T171357Z-pr-3318.md を統合
+* **Update**: [エラーを 1 つの reason へ畳むときは「原因の類型」が同じかを確かめる — 復旧手順が違うなら分ける](pages/heuristics/error-classification-by-cause-not-detection-site.md) — raw/reviews/20260927T171520Z-pr-3319.md を統合
 
 ## 2026-09-27
 
