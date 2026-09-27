@@ -328,5 +328,5 @@ blocking に数えないので発散判定は空転を止めない。止める�
 しておけば、落ちるものは無い。同じレビュー済み commit を fix へ二度渡さない記録
 （`.rite/state/pr-recommendations-done-{pr}.txt`、1 行目は basename と commit_sha）を fix の invoke 前に
 書くのは、再入（Stop hook / recover）で同じ修正を繰り返さないため。ファイル名ではなく commit で比べるのは、
-fix が同じレビューの複写を別名で保存することがあるから。寿命は nb-sweep-done と同じで、0.6 の fresh run・
-`review-restart`・cleanup で消す。
+fix が同じレビューの複写を別名で保存することがあるから。寿命は nb-sweep-done と同じで、0.6 の
+`fresh || cur_cc == 0`（pin 書換と同条件）で消し、`review-restart` と cleanup でも消す。
