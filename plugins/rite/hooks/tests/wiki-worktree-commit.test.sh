@@ -328,7 +328,7 @@ else
 fi
 wiki_after_nr="$(git -C "$numref_repo" rev-parse wiki)"
 assert "numref pending does not advance wiki HEAD" "$wiki_before_nr" "$wiki_after_nr"
-if _gq_out2=$(git -C "$numref_repo" ls-tree -r --name-only wiki) && grep -q 'numref.md' <<< "$_gq_out2"; then
+if _gq_out=$(git -C "$numref_repo" ls-tree -r --name-only wiki) && grep -q 'numref.md' <<< "$_gq_out"; then
   fail "numref page must not be tracked on wiki after a refused commit"
 else
   pass "numref page is not tracked on wiki after a refused commit"
@@ -348,7 +348,7 @@ else
 fi
 assert "numref --commit-only does not advance wiki HEAD" \
   "$wiki_before_co_nr" "$(git -C "$numref_co_repo" rev-parse wiki)"
-if _gq_out3=$(git -C "$numref_co_repo" ls-tree -r --name-only wiki) && grep -q 'page-co.md' <<< "$_gq_out3"; then
+if _gq_out=$(git -C "$numref_co_repo" ls-tree -r --name-only wiki) && grep -q 'page-co.md' <<< "$_gq_out"; then
   fail "numref --commit-only must not land the page on wiki"
 else
   pass "numref --commit-only does not land the page on wiki"

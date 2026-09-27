@@ -926,7 +926,7 @@ fi
 claim_suffix_literal='; warning=ac_claim_disagreement; rows='
 if grep -qF "claim_warning=\"$claim_suffix_literal" "$TARGET" \
    && grep -qF "$claim_suffix_literal" <<<"$class_section" \
-   && _gq_out2=$(grep -F -- '- **ステップ 5.3.0.C** は' "$pr_review_skill") && grep -qF "$claim_suffix_literal" <<< "$_gq_out2"; then
+   && _gq_out=$(grep -F -- '- **ステップ 5.3.0.C** は' "$pr_review_skill") && grep -qF "$claim_suffix_literal" <<< "$_gq_out"; then
   pass "documented disagreement suffix matches helper output"
 else
   fail "documented disagreement suffix diverges from helper output"
@@ -947,8 +947,8 @@ if grep -qF '"ac_claim": ["AC-1"]' <<<"$step1_map_example"; then
 else
   fail "5.3.0.C step 1 ac_claim map example missing"
 fi
-if _gq_out3=$(grep -F '**分類入力 (classification map)**' "$PLUGIN_ROOT/skills/fix/references/assessment-rules.md") \
-   && grep -qF '"exclusion"?, "ac_claim"?}]}' <<< "$_gq_out3"; then
+if _gq_out=$(grep -F '**分類入力 (classification map)**' "$PLUGIN_ROOT/skills/fix/references/assessment-rules.md") \
+   && grep -qF '"exclusion"?, "ac_claim"?}]}' <<< "$_gq_out"; then
   pass "assessment-rules classification map shape lists ac_claim"
 else
   fail "assessment-rules classification map shape omits ac_claim"

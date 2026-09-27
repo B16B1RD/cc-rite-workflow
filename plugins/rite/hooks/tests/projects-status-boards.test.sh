@@ -295,7 +295,7 @@ if _gq_out=$(unexpected_gh_lines "$ctl_log") && grep -q 'updateProjectV2Field' <
 else
   fail "T-05 control: the GraphQL mutation slipped through the allowlist"
 fi
-if _gq_out2=$(unexpected_gh_lines "$ctl_log") && grep -q '^gh project field-create' <<< "$_gq_out2"; then
+if grep -q '^gh project field-create' <<< "$_gq_out"; then
   pass "T-05 control: a write subcommand outside the allowlist is rejected"
 else
   fail "T-05 control: field-create slipped through the allowlist"

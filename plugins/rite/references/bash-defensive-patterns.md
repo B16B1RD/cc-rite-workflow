@@ -242,6 +242,7 @@ ISSUE_NUMBER=$(grep -oE '[0-9]+$' <<< "$ISSUE_URL" || true)
 1. `echo "$var" | cmd` → `cmd <<< "$var"` — echo subprocess を排除し SIGPIPE 経路を断つ
 2. 複合 pipeline (`sed | grep | head`) は段階分割: まず `sed <<< "$var"` で範囲抽出、次に `grep <<< "$section"` でフィルタ
 3. `grep -q` / `grep -m 1` のような早期終了 flag と組み合わせる場合は特に重要
+4. 前段が `jq` / `git` / `sed` などのコマンドで、pipeline の終了コードで producer の失敗も判定していた場合は、`out=$(cmd) && grep -q x <<< "$out"` のように結果を変数に受けてから渡し、producer の失敗を偽として残す。否定形は `if ! { out=$(cmd) && grep -q x <<< "$out"; }; then` のように全体をブレースでまとめてから否定する（否定演算子を代入の直前に置くと、否定は代入だけにかかる）。出力を変数に受けず stream のまま読むときは次節の awk パターンを使う
 
 ### When NOT to Convert
 
@@ -253,7 +254,7 @@ ISSUE_NUMBER=$(grep -oE '[0-9]+$' <<< "$ISSUE_URL" || true)
 | `echo "$var" \| sort -u \| grep -v` | `sort` が全入力をバッファリング |
 | `echo "$var" \| grep`（`-q` / `-m` なし） | `grep` は全入力を消費（早期終了しない） |
 
-`grep -q` / `grep -m` と組み合わせる場合は、出力の大きさやテストコードかどうかによらず here-string に変換する。`printf '%s' "$var"` も `echo "$var"` と同じ builtin の書き込みで、変数の大きさに上限がないため対象に含む。変換しなくてよいのは、`$` もバッククォートも含まない literal を出す `echo` / `printf` だけである。`grep -q` の前段が `jq` / `git` / `sed` などのコマンドで、pipeline の終了コードで producer の失敗も判定していた場合は、`out=$(cmd) && grep -q x <<< "$out"` のように結果を変数に受けてから渡し、producer の失敗を偽として残す。
+`grep -q` / `grep -m` と組み合わせる場合は、変数の中身が小さく見えても、テストコードでも here-string に変換する。`printf '%s' "$var"` も `echo "$var"` と同じ builtin の書き込みで、変数の大きさに上限がないため対象に含む。lint（`pipefail-grep-q-check.sh`）は、producer 段（前置きの代入やリダイレクトを含む）に `$`・バッククォート・glob（`*` `?` `[`）・ブレース展開（`{`）の文字を含まない `echo` / `printf` を、出力の上限が呼び出し箇所で決まる bounded proxy として免除する。これは SIGPIPE が起きないことの証明ではない。lint はほかに brace group・`docker ps`・`enable -p` も免除する。
 
 ### Buffered Writer + Early-Exit `awk`
 

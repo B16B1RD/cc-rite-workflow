@@ -145,7 +145,7 @@ fi
 echo ""
 
 echo "TC-COMMIT-RAW-ON-WIKI: committed raw is present on the wiki branch tree"
-if _gq_out2=$(git -C "$REPO" ls-tree -r --name-only wiki) && grep -q "raw/retrospectives/20260626T000000Z-issue-1662.md" <<< "$_gq_out2"; then
+if _gq_out=$(git -C "$REPO" ls-tree -r --name-only wiki) && grep -q "raw/retrospectives/20260626T000000Z-issue-1662.md" <<< "$_gq_out"; then
   pass "raw source present on wiki branch"
 else
   fail "raw source missing from wiki branch after recovery"

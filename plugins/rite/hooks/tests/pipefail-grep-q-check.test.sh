@@ -57,6 +57,16 @@ assert "until prefix before a literal echo is stripped" "0" "$(printf '%s\n' "$o
 assert "elif prefix before a literal echo is stripped" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*literal_elif' || true)"
 assert "do prefix before a literal echo is stripped" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*literal_do' || true)"
 
+printf '%s\n' 'set -o pipefail' 'printf '"'"'%s|%s\n'"'"' "$pipe_a" "$pipe_b" | grep -q x' \
+  'X=$HOME echo prefix_assign | grep -q x' 'echo redir_word 2>"$log" | grep -q x' \
+  'printf '"'"'%s\n'"'"' brace_expand {1..3} | grep -q x' 'echo glob_word * | grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "printf with a literal pipe in its format and an expansion is reported" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*pipe_a' || true)"
+assert "expansion in a prefix assignment is reported" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*prefix_assign' || true)"
+assert "expansion in a redirection is reported" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*redir_word' || true)"
+assert "printf of a brace expansion is reported" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*brace_expand' || true)"
+assert "echo of a glob is reported" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*glob_word' || true)"
+
 printf '%s\n' 'stream_many | grep -q x' > "$fixture"
 out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
 assert "same pipeline without pipefail is clean" "0" "$rc"

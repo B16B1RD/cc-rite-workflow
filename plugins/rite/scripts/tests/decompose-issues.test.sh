@@ -258,7 +258,7 @@ if grep -q 'title=Sub One labels=\[\]' "$STUB_CREATE_LOG"; then
 else
   fail "empty labels_csv: sub labels are []"; cat "$STUB_CREATE_LOG"
 fi
-if _gq_out2=$(head -1 "$STUB_CREATE_LOG") && grep -q 'title=Epic8 labels=\["epic"\]' <<< "$_gq_out2"; then
+if _gq_out=$(head -1 "$STUB_CREATE_LOG") && grep -q 'title=Epic8 labels=\["epic"\]' <<< "$_gq_out"; then
   pass "empty labels_csv: parent labels are [epic]"
 else
   fail "empty labels_csv: parent labels are [epic]"; cat "$STUB_CREATE_LOG"

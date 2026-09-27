@@ -5,13 +5,14 @@
 # Precision rules:
 # - shell quotes/comments are lexed before splitting raw `|` operators;
 # - the immediate stage before grep is reported (not the pipeline head);
-# - an echo or printf producer stage that contains no `$` and no backquote,
-#   and `{ ...; } -> grep`, are exempt proxies for bounded literal output.
-#   The test covers the whole producer stage, so a prefix assignment
-#   (`X=$HOME echo literal`), a redirection (`2>"$log"`) and a literal `'$'`
-#   are also reported. A producer stage with an expansion has no size bound
-#   at the call site: rewrite it as a here-string. `drift-check-ignore` is the
-#   explicit audited escape hatch;
+# - an echo or printf producer stage that contains no `$`, backquote, glob
+#   (`*` `?` `[`) or brace-expansion (`{`) character is an exempt proxy for
+#   bounded literal output. The test covers the whole producer stage, so a
+#   prefix assignment (`X=$HOME echo literal`), a redirection (`2>"$log"`) and
+#   a literal `'$'` are also reported. A producer stage with an expansion has
+#   no size bound at the call site: rewrite it as a here-string.
+#   `drift-check-ignore` is the explicit audited escape hatch;
+# - `{ ...; } -> grep` is exempt whatever the group contains;
 # - `enable -p` is bounded by the current builtin table and is exempt.
 # - tests/ is scanned like production code: a fixture whose unsafe pipeline is
 #   data lives in a heredoc or a quoted string, which the lexer skips.
@@ -299,10 +300,11 @@ def exempt(prod, pipeline_len):
         ws=ws[1:]
     if not ws: return True
     cmd=os.path.basename(ws[0])
-    # Only an echo or printf whose producer stage holds no `$` or backquote is
-    # bounded by its own text. `echo "$output" | grep -q` has been observed to
-    # die of SIGPIPE on CI with a few lines, and printf writes the same way.
-    return cmd in ("echo","printf") and "$" not in p and "`" not in p
+    # Only an echo or printf whose producer stage holds no `$`, backquote, glob
+    # or brace-expansion character is bounded by its own text. `echo "$output"
+    # | grep -q` has been observed to die of SIGPIPE on CI with a few lines, and
+    # `printf '%s\n' {1..300000}` expands without any `$`.
+    return cmd in ("echo","printf") and not re.search(r"[$`*?\[{]", p)
 
 findings=[]; errors=0
 def walk_error(err):
