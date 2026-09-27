@@ -67,6 +67,7 @@
 * **Update**: [検出器が「走査できなかった」を「問題なし」に畳むと、ガードが黙って無検査になる](pages/anti-patterns/checker-conflates-unscannable-with-clean.md) — raw/reviews/20260927T044817Z-pr-3217.md, raw/fixes/20260927T045521Z-pr-3217.md を統合
 * **Create**: [複数の書き手が更新する記録の説明は値の和集合に揃え、値の列挙は括弧に入れず別の文にする](pages/heuristics/multi-writer-record-docs-describe-union-and-unnest-enumerations.md) — raw/reviews/20260927T044435Z-pr-3215.md, raw/fixes/20260927T045328Z-pr-3215.md を新規ページ化
 * **Skip**: [20260927T045014Z-pr-3207.md](raw/reviews/20260927T045014Z-pr-3207.md) — 経験則なし: cycle の判定と反映状況の要約のみで、抽出できる規則は同じ PR の fix 結果に含まれる
+* **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=557, broken_refs=0
 
 ## 2026-09-26
 
