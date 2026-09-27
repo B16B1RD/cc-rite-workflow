@@ -260,6 +260,25 @@ git -C "$sbx" stash push -q -m own
 out=$(verify_all "$sbx" "$snap")
 assert "own stash is reported as stash" '["stash"]' "$(printf '%s' "$out" | jq -c .types)"
 
+# A reviewer experiment worktree is not another session: a branch it creates counts.
+sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
+snap=$(snapshot_line "$sbx")
+git -C "$sbx" worktree add -q -b review-exp "$wt_base/rite-review-mutation-x" >/dev/null 2>&1 \
+  || fail "fixture: worktree add in the reviewer namespace"
+out=$(verify_all "$sbx" "$snap")
+assert "branch from a reviewer experiment worktree is reported as branch_list" '["branch_list"]' "$(printf '%s' "$out" | jq -c .types)"
+
+# A stash made on another branch in the reviewed worktree counts after switching back.
+sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
+git -C "$sbx" branch side
+snap=$(snapshot_line "$sbx")
+git -C "$sbx" switch -q side
+echo side >> "$sbx/a"
+git -C "$sbx" stash push -q -m side
+git -C "$sbx" switch -q "$(field "$snap" branch)"
+out=$(verify_all "$sbx" "$snap")
+assert "stash made on another branch of the reviewed worktree is reported as stash" '["stash"]' "$(printf '%s' "$out" | jq -c .types)"
+
 # --- Every changed axis is reported, not just the first one --------------------
 sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
 snap=$(snapshot_line "$sbx")
@@ -316,7 +335,7 @@ chmod +x "$git_shim/git"
 stderr_fer=$(mktemp) && cleanup_dirs+=("$stderr_fer")
 snap=$(cd "$sbx" && PATH="$git_shim:$PATH" bash "$VERIFY" --snapshot 2>"$stderr_fer")
 assert "for-each-ref failure leaves branch_list_hash empty" "" "$(field "$snap" branch_list_hash)"
-assert "for-each-ref failure surfaces a WARNING" 1 "$(grep -c 'git for-each-ref failed' "$stderr_fer")"
+assert "for-each-ref failure surfaces a WARNING" 1 "$(grep -c 'branch_list drift axis skipped' "$stderr_fer")"
 git -C "$sbx" branch leaked
 out=$(cd "$sbx" && PATH="$git_shim:$PATH" bash "$VERIFY" --original-branch "$(field "$snap" branch)" \
   --original-branch-list-hash "nonempty-snapshot-hash" 2>/dev/null)

@@ -29,8 +29,8 @@
 #                                      `review_pre_state: branch=<b> stash_count=<n> branch_list_hash=<h> worktree_hash=<h>`
 #                                      verify と同じ関数で算出するため、両側の算出方法は構造上一致する。
 #   --original-branch <name>           Review 開始時の current branch 名 (required。detached は DETACHED:<short-hash>)
-#   --original-stash-count <N>         Review 開始時の、件名が自 branch の stash 件数 (optional)
-#   --original-branch-list-hash <hash> Review 開始時の、他 worktree で checkout 中でない branch 一覧の hash (optional)
+#   --original-stash-count <N>         Review 開始時の、件名の branch が他セッションの worktree で checkout 中でない stash の件数 (optional)
+#   --original-branch-list-hash <hash> Review 開始時の、他セッションの worktree で checkout 中でない branch 一覧の hash (optional)
 #   --original-worktree-hash <hash>    Review 開始時の `lib/git-status-filtered.sh --tracked-only` の hash (optional)
 #   --auto-recover                     drift 検出時に automatic recovery を行う (default: true)
 #
@@ -41,17 +41,19 @@
 # worktree drift は内容を失うリスク回避のため advisory (WARNING + 手動 triage、exit 0)。
 #
 # refs/heads と refs/stash は全 worktree で共有されるため、並列セッションの操作をレビュー中の
-# drift と誤認しないよう、2 軸は自 worktree に帰属するものだけを数える:
-#   - stash: `git stash list` の件名が `WIP on <自 branch>:` / `On <自 branch>:` で始まる
-#     エントリだけ (detached は `(no branch)`)。git は同じ branch を 2 つの worktree で
-#     checkout させないため、件名の branch が作業した worktree を指す
-#   - branch_list: 他の worktree で checkout 中の branch を除いた一覧 (パスは物理パスで比較)
+# drift と誤認しないよう、2 軸は他セッションの worktree で checkout 中の branch を除いて数える。
+# 他セッションの worktree = 自 worktree 以外で、reviewer 実験用の名前空間
+# (rite-review-mutation-* / rite-revert-test-*) にないもの (パスは物理パスで比較):
+#   - stash: 件名 `WIP on <b>:` / `On <b>:` の <b> がその集合にないエントリ。git は同じ branch を
+#     2 つの worktree で checkout させないため、named branch の件名はそれを checkout した worktree を
+#     指す。自 worktree で別 branch へ切り替えて作った stash も数える
+#   - branch_list: その集合を除いた一覧
 # 残余 (判別子の外にあるもの):
 #   - 報告側に倒れる: 他セッションが checkout していない branch の作成・削除、他 worktree
-#     での branch の切り替え (元の branch が除外から外れて一覧に現れる)
-#   - 数えない: reviewer が `git worktree add -b` で残した branch (他 worktree で checkout 中に
-#     なる)、自 branch 以外の件名を持つ stash。前者は reviewer 実験の名前規約に基づく
-#     pr-cycle-cleanup.sh の掃除が回収する
+#     での branch の切り替え (元の branch が除外から外れて一覧に現れる)、detached の worktree
+#     が作った stash (件名 `(no branch)` は branch ではないので常に数える)、他セッションが
+#     stash した後に worktree を片付けたもの
+#   - 数えない: reviewer が名前空間の外に `git worktree add -b` で作った worktree の branch
 #
 # Exit codes:
 #   0 — no drift, or drift detected and (branch) successfully recovered,
@@ -138,41 +140,61 @@ axis_branch() {
   printf '%s\n' "$b"
 }
 
-# $1 = axis_branch の値。取得に失敗したら空文字列 (その軸は比較不可として skip)。
+# 他セッションの worktree で checkout 中の branch を _foreign に集め、全 branch を _all_branches に
+# 入れる。reviewer 実験用の名前空間 (rite-review-mutation-* / rite-revert-test-*) の worktree は
+# 他セッションではないので _foreign に入れない。取得に失敗したら非ゼロ。
+declare -A _foreign=()
+_all_branches=""
+_load_branches() {
+  local top refs name wt
+  _foreign=()
+  _all_branches=""
+  top=$(git rev-parse --show-toplevel 2>/dev/null) || return 1
+  refs=$(git for-each-ref --format='%(refname:short)%09%(worktreepath)' refs/heads 2>/dev/null) || return 1
+  top=$(_physical_path "$top")
+  while IFS=$'\t' read -r name wt; do
+    [ -n "$name" ] || continue
+    _all_branches+="$name"$'\n'
+    [ -n "$wt" ] || continue
+    case "${wt##*/}" in *rite-review-mutation-*|*rite-revert-test-*) continue ;; esac
+    [ "$(_physical_path "$wt")" = "$top" ] || _foreign[$name]=1
+  done <<< "$refs"
+}
+
+# 件名の branch が他セッションの worktree で checkout 中でない stash の件数。
+# 取得に失敗したら空文字列 (その軸は比較不可として skip)。
 axis_stash_count() {
-  local key subjects s n=0
-  case "$1" in
-    DETACHED:*) key="(no branch)" ;;
-    *) key="$1" ;;
-  esac
-  if ! subjects=$(git stash list --format=%gs 2>/dev/null); then
-    echo "WARNING: git stash list failed — stash drift axis skipped for this check" >&2
+  local subjects s b n=0
+  if ! _load_branches || ! subjects=$(git stash list --format=%gs 2>/dev/null); then
+    echo "WARNING: git stash list / for-each-ref failed — stash drift axis skipped for this check" >&2
     return 0
   fi
   while IFS= read -r s; do
+    [ -n "$s" ] || continue
     case "$s" in
-      "WIP on $key:"*|"On $key:"*) n=$((n + 1)) ;;
+      "WIP on "*) b=${s#WIP on } ;;
+      "On "*) b=${s#On } ;;
+      *) b="" ;;
     esac
+    b=${b%%:*}
+    [ -n "$b" ] && [ -n "${_foreign[$b]:-}" ] && continue
+    n=$((n + 1))
   done <<< "$subjects"
   printf '%s\n' "$n"
 }
 
 axis_branch_list_hash() {
   [ -n "$_hash_cmd" ] || return 0
-  local top refs name wt kept=""
-  if ! top=$(git rev-parse --show-toplevel 2>/dev/null) \
-     || ! refs=$(git for-each-ref --format='%(refname:short)%09%(worktreepath)' refs/heads 2>/dev/null); then
-    echo "WARNING: git for-each-ref failed — branch_list drift axis skipped for this check" >&2
+  local name kept=""
+  if ! _load_branches; then
+    echo "WARNING: git rev-parse / for-each-ref failed — branch_list drift axis skipped for this check" >&2
     return 0
   fi
-  top=$(_physical_path "$top")
-  while IFS=$'\t' read -r name wt; do
+  while IFS= read -r name; do
     [ -n "$name" ] || continue
-    if [ -n "$wt" ] && [ "$(_physical_path "$wt")" != "$top" ]; then
-      continue
-    fi
+    [ -n "${_foreign[$name]:-}" ] && continue
     kept+="$name"$'\n'
-  done <<< "$refs"
+  done <<< "$_all_branches"
   printf '%s' "$kept" | LC_ALL=C sort | "$_hash_cmd" 2>/dev/null | awk '{print $1}'
 }
 
@@ -190,9 +212,8 @@ axis_worktree_hash() {
 }
 
 if [ "$MODE" = "snapshot" ]; then
-  snap_branch=$(axis_branch)
   printf 'review_pre_state: branch=%s stash_count=%s branch_list_hash=%s worktree_hash=%s\n' \
-    "$snap_branch" "$(axis_stash_count "$snap_branch")" "$(axis_branch_list_hash)" "$(axis_worktree_hash)"
+    "$(axis_branch)" "$(axis_stash_count)" "$(axis_branch_list_hash)" "$(axis_worktree_hash)"
   exit 0
 fi
 
@@ -225,8 +246,7 @@ esac
 
 # --- 現在の state を取得 (recovery より前に全軸を確定させる) ---
 current_branch=$(git branch --show-current 2>/dev/null || echo "")
-# stash は snapshot 時の branch 基準で数える (branch drift 中でも同じ件名集合を比べる)
-current_stash_count=$(axis_stash_count "$ORIGINAL_BRANCH")
+current_stash_count=$(axis_stash_count)
 current_branch_list_hash=$(axis_branch_list_hash)
 current_worktree_hash=$(axis_worktree_hash)
 
