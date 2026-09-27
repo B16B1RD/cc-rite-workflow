@@ -310,7 +310,7 @@ args: "{current_issue}"
 
 ## ステップ 3: /rite:iterate を invoke
 
-> 本コマンドは iterate invoke の **前後で `flow-state.sh set` を呼ばない**（iterate 内部の handoff / FINALIZE 機構を壊さないため）。iterate は内部で review⇄fix を mergeable まで回し、完了通知を出して制御を戻す。`--merge` モードの正常終了では、続くステップ 4 ready の `flow-state.sh set` が残存 FINALIZE handoff を default-clear する。デフォルトモードは ready を経由しないが、残存 FINALIZE handoff は次 Issue の open（ステップ 1.6 の `flow-state.sh set`）が default-clear し、最後の Issue 分はステップ 7 完了通知前の `consume-handoff` が消費する（失敗終了時に残る handoff はステップ 8 で消費する）。
+> 本コマンドは iterate invoke の **前後で `flow-state.sh set` を呼ばない**（iterate 内部の handoff / FINALIZE 機構を壊さないため）。唯一の例外はステップ 5「競合の解消」の `--phase fix` で、ready が handoff を消費した後の merge 段から戻るときにだけ行う。iterate は内部で review⇄fix を mergeable まで回し、完了通知を出して制御を戻す。`--merge` モードの正常終了では、続くステップ 4 ready の `flow-state.sh set` が残存 FINALIZE handoff を default-clear する。デフォルトモードは ready を経由しないが、残存 FINALIZE handoff は次 Issue の open（ステップ 1.6 の `flow-state.sh set`）が default-clear し、最後の Issue 分はステップ 7 完了通知前の `consume-handoff` が消費する（失敗終了時に残る handoff はステップ 8 で消費する）。
 
 ```text
 skill: rite:iterate
@@ -368,9 +368,18 @@ args: "{pr_number}"
 | Sentinel | アクション |
 |---------|-----------|
 | `[merge:returned-to-caller]` | ステップ 6 へ |
-| `[merge:not-ready]` / `[merge:error]` / sentinel 不在 | **失敗** → ステップ 8（段階=merge） |
+| `[merge:not-ready]` + `[CONTEXT] MERGE_NOT_READY=conflicting` | base と競合。停止せず下記「競合の解消」を行い、ステップ 3 へ戻る |
+| `MERGE_NOT_READY=conflicting` を伴わない `[merge:not-ready]` / `[merge:error]` / sentinel 不在 | **失敗** → ステップ 8（段階=merge） |
 
-<!-- run orchestration: after merge returns, do NOT stop — proceed to ステップ 6 -->
+**競合の解消**（上表の競合行のときだけ）:
+
+1. `gh pr ready {pr_number} -R {owner_repo} --undo` で PR を draft に戻し、`bash {plugin_root}/hooks/flow-state.sh set --phase fix --issue {current_issue} --branch {branch_name} --pr {pr_number} --next "base 取り込み後に /rite:iterate {pr_number}"` を実行する（途中で止まっても再開がステップ 1.5 の `fix` → iterate に振られる）。どちらかが失敗したら **失敗** → ステップ 8（段階=merge）
+2. [fix-plan の base 取り込み](../fix/references/fix-plan.md#base-取り込み) の手順 1〜4（取り込み・検証・commit・push）を行う。`{fix_plan_file}` / `{fix_issue_file}` は同 reference の JSON 契約に従い、mergeable を判定した保存済みレビュー結果の `review_context` と最新 Issue 本文から作る（`base-intake` の 1 グループと全体検証だけを持つ）。同節の停止条件（push 済み commit の巻き戻しが要る等）に当たったら、その状況を失敗理由として **失敗** → ステップ 8（段階=merge）
+3. ステップ 3（iterate）へ戻る。以降は既存の表どおり iterate → ready → merge と進み、reviewed HEAD と受入条件の照合は ready / merge が行う。再レビューがサーキットブレーカーで止まればステップ 3 の表でステップ 8 に合流する。競合の差し戻し回数に上限は設けない（再突入のたびにレビュー cycle が進み、ブレーカーの判定に入る）
+
+rationale: references/rationale.md#merge-conflict-route
+
+<!-- run orchestration: after merge returns, do NOT stop. [merge:not-ready] + MERGE_NOT_READY=conflicting -> revert to draft, base intake, then ステップ 3. Any other not-ready / error / missing sentinel -> ステップ 8. [merge:returned-to-caller] -> ステップ 6 -->
 
 ---
 
@@ -555,7 +564,7 @@ echo "[CONTEXT] RUN_STOP; cursor=$cursor; done=$done_issues; remaining=$remainin
 
 ## エラー時の方針
 
-- **失敗は即停止**。失敗 Issue は `/rite:recover {issue}` で個別復帰
+- **失敗は即停止**。失敗 Issue は `/rite:recover {issue}` で個別復帰。merge 時の base との競合（`MERGE_NOT_READY=conflicting`）は失敗ではなく、ステップ 5 の「競合の解消」でステップ 3 へ戻る
 - **サーキットブレーカーも即停止**。`[iterate:max-cycles-reached]` はステップ 8 で `failed[]` に記録し、cursor を保持する。再開後に当該 Issue がステップ 6 まで到達したら、その failed 記録を除去して前進する
 - **session_id 解決不可は fail-loud**: `run-queue-{session_id}.json` を組む前に解決。不可なら global 名へフォールバックせず `exit 1`
 - run-queue は停止時に残す。引数省略 `/rite:batch-run` で cursor から再開（同一セッション）

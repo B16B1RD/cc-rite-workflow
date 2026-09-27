@@ -70,7 +70,7 @@ The command prefix `rite` was chosen for:
 | `/rite:pr-review` | Multi-reviewer review | `[PR number]` |
 | `/rite:fix` | Address review feedback | `[PR number]` |
 | `/rite:cleanup` | Post-merge cleanup | `[branch name]` |
-| `/rite:batch-run` | Run open→iterate (draft only) for each Issue; `--merge` opts into ready→merge→cleanup (stop on first failure) | `[--merge] <Issue number>...` |
+| `/rite:batch-run` | Run open→iterate (draft only) for each Issue; `--merge` opts into ready→merge→cleanup (stop on first failure; a base conflict at merge is resolved by base intake and re-review instead of stopping) | `[--merge] <Issue number>...` |
 | `/rite:lint` | Run quality checks | `[file path]` |
 | `/rite:template-reset` | Regenerate templates | `[--force]` |
 | `/rite:wiki-init` | Initialize Experience Wiki (branch, directories, templates) | None |
