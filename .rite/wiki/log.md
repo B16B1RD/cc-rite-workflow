@@ -26,6 +26,12 @@
 * **Create**: [jq は入力が 0 ドキュメントだとフィルタを評価せず rc=0 で終わる — 形の検証は jq -n と input で 1 ドキュメントを要求する](pages/anti-patterns/jq-empty-input-skips-filter-rc-zero.md) — raw/reviews/20260927T031103Z-pr-3200.md を新規ページ化
 * **Update**: [失敗時の復旧ヒントは呼び出し元の切り詰めと cwd の違いを越えて届く形で書く](pages/heuristics/recovery-hint-survives-caller-truncation-and-cwd.md) — raw/fixes/20260927T031119Z-pr-3196.md を統合
 * **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=553, broken_refs=0
+* **Update**: [散文が引用する実装 (regex literal / 帰属ファイル / 挙動) は文字一致・帰属・behavioral test の 3 点で裏取りする](pages/heuristics/prose-cited-implementation-behavioral-verification.md) — raw/reviews/20260927T032116Z-pr-3202.md を統合
+* **Create**: [論理式を日本語へ書き起こすときは、正本の括弧構造を文章でも括弧で保つ](pages/heuristics/logical-formula-prose-keeps-grouping-parentheses.md) — raw/fixes/20260927T031606Z-pr-3202.md を新規ページ化
+* **Update**: [agent が人間に渡す復旧コマンドは、人間の実行コンテキストで正しいかを検証する](pages/heuristics/recovery-command-verified-in-human-execution-context.md) — raw/reviews/20260927T031922Z-pr-3196.md を統合
+* **Update**: [ガードの識別力は「そのガード単独で発火する形状」の fixture とガード固有文言 assert で担保する](pages/heuristics/guard-discriminating-power-requires-solo-firing-fixture.md) — raw/reviews/20260927T032308Z-pr-3204.md を統合
+* **Update**: [jq は入力が 0 ドキュメントだとフィルタを評価せず rc=0 で終わる — 形の検証は jq -s と length == 1 で入力を 1 ドキュメントに閉じる](pages/anti-patterns/jq-empty-input-skips-filter-rc-zero.md) — raw/fixes/20260927T031724Z-pr-3200.md を統合
+* **Update**: [jq は入力が 0 ドキュメントだとフィルタを評価せず rc=0 で終わる — 形の検証は jq -s と length == 1 で入力を 1 ドキュメントに閉じる](pages/anti-patterns/jq-empty-input-skips-filter-rc-zero.md) — raw/reviews/20260927T032425Z-pr-3200.md を統合
 
 ## 2026-09-26
 

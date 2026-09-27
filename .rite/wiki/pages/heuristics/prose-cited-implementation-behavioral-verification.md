@@ -12,9 +12,13 @@ sources:
     resource: "raw/reviews/20260601T191319Z-pr-1238.md"
   - type: "fixes"
     resource: "raw/fixes/20260601T190814Z-pr-1238.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T032116Z-pr-3202.md"
 tags: ["verification-protocol", "prose-implementation-sync", "regex", "behavioral-test", "attribution"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-11T15:07:49Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:27:52Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:27:52Z" }
 ---
 
 # 散文が引用する実装 (regex literal / 帰属ファイル / 挙動) は文字一致・帰属・behavioral test の 3 点で裏取りする
@@ -59,6 +63,8 @@ canonical: helper を散文参照するときは「regex 実体ファイル (`.p
 
 「散文の主張を読むだけ」でなく実際に regex を実行して claim を裏取りすると、散文の不正確さも検出できる (例: `(?:[^/]+/)?` は version に限らず任意単一セグメント許容のため、「version segment」という表現はやや不正確 — 実害なしの推奨事項として surface)。これは [「invariant は logic 上成立」を信頼せず empirical reproduction で verify する](./empirical-reproduction-over-invariant-reasoning.md) の regex/散文版。
 
+同じ手法は regex 以外の**条件式**にも効く。散文が「どの指摘を修正対象にするか」のような複合条件（AND / OR の組み合わせ）を述べる場合、条件の各項を切り替えた fixture 群（全組み合わせ、例では 6 通り）を helper に与えて出力の分類を得て、散文の括弧構造と一致するかを照合する。散文の条件式は係り先が曖昧になりやすく、読むだけでは読み違いを潰しきれないが、実装を動かした結果と突き合わせれば確実に確定できる。
+
 ### 適用範囲
 
 - SoT 散文 / 設計ドキュメントが regex・閾値・path 形状など実装の挙動を要約参照する PR
@@ -78,3 +84,4 @@ canonical: helper を散文参照するときは「regex 実体ファイル (`.p
 - [レビュー結果](../../raw/reviews/20260601T185616Z-pr-1238.md)
 - [レビュー結果](../../raw/reviews/20260601T191319Z-pr-1238.md)
 - [fix 結果](../../raw/fixes/20260601T190814Z-pr-1238.md)
+- [条件式の説明を helper の実行結果で照合したレビュー](../../raw/reviews/20260927T032116Z-pr-3202.md)

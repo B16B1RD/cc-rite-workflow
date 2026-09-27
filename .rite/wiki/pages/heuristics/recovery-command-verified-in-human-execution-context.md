@@ -22,9 +22,13 @@ sources:
     resource: "raw/reviews/20260808T072312Z-pr-2150-cycle3.md"
   - type: "fixes"
     resource: "raw/fixes/20260808T072610Z-pr-2150-cycle3-fix.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T031922Z-pr-3196.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T17:40:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:27:52Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:27:52Z" }
 ---
 
 # agent が人間に渡す復旧コマンドは、人間の実行コンテキストで正しいかを検証する
@@ -76,6 +80,10 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T17:40:00+09:00" }
 
 自己破壊する連鎖は rc だけを見ても検出できない（最初のコマンドは成功する）。回復コマンドは「どこで・いつ実行するか」の限定句とセットで書く。
 
+### 実行先の修正は、実行先が分かれる fixture でしか pin できない
+
+復旧コマンドの実行先を「呼び出し元の cwd」から「main checkout の絶対パス」（`git -C <repo_root>`）へ変える修正では、テスト fixture が通常の checkout 1 つだけだと、cwd と main checkout が同じディレクトリになる。修正前と修正後の文字列がどちらも同じ場所を指すため、実行先を旧来の値へ戻す変異もテストは通してしまう。cwd の違いに依存する修正は、linked worktree を作ってそこから呼び出す fixture で pin する。同じファイルに兄弟の復旧ヒントがあれば、同じ cwd の問題が残っていないかも併せて確かめる。
+
 ### 既存 sibling の限定句を先に読む
 
 同じファイルの既存の回復コマンドはすべて「別のセッションを閉じたあと」「sandbox 外のシェルで」といった場所・時機の限定句を持っていた。**新設分だけがその規約を落としていた**。回復手順を書く前に、同じファイルの既存 sibling がどんな限定句を持つかを読む。規約は明文化されていなくても、sibling の形として存在している。
@@ -100,3 +108,4 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T17:40:00+09:00" }
 - [fix 結果](../../raw/fixes/20260729T075214Z-pr-2044.md)
 - [自己破壊する回復コマンド連鎖](../../raw/reviews/20260808T072312Z-pr-2150-cycle3.md)
 - [既存 sibling の限定句を先に読む](../../raw/fixes/20260808T072610Z-pr-2150-cycle3-fix.md)
+- [復旧コマンドの実行先を worktree fixture で pin する](../../raw/reviews/20260927T031922Z-pr-3196.md)

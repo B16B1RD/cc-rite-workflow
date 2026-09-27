@@ -11,11 +11,14 @@ sources:
     resource: "raw/fixes/20260804T175004Z-pr-2111.md"
   - type: "reviews"
     resource: "raw/reviews/20260926T045233Z-pr-3112.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T032308Z-pr-3204.md"
 tags: ["guard", "discriminating-power", "diagnostic-literal", "fixture-design", "sibling-tc-transcription"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T05:05:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:27:52Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T05:05:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:27:52Z" }
 ---
 
 # ガードの識別力は「そのガード単独で発火する形状」の fixture とガード固有文言 assert で担保する
@@ -53,6 +56,10 @@ cycle 1 で TC-13b（読み取り不能）にガード固有文言 assert の ra
 
 **失敗を注入する shim は「何も出さずに失敗」にしない**: 外部コマンドの失敗分岐を shim で踏むとき、shim が何も出力せずに失敗すると、分岐の処理（fallback の呼び出し）を消した変異でも結果が空のまま進む。そのまま別の経路で同じ fallback に落ちるため、観測は元と変わらず、変異を見分けられるのは reason の 1 本だけになる。shim に実在の値を 1 行出させてから失敗させると、rc を見落とす変異は狭い側（incremental・一覧の書き出し）へ進む。その結果、状態を見る複数の assert がこの変異を捕らえる。同じ reason を複数の分岐が共有するときは、分岐固有の WARNING 文言も assert して、別の分岐で PASS する空振りを防ぐ。
 
+### 新設した fail-loud 分岐は、実装と同じ PR で踏むテストを用意する
+
+受入条件をすべて満たして blocking 0 件で通った PR でも、推奨事項には同じ型が繰り返し現れる。新設した fail-loud 分岐（例: producer 側の jq 読み取り失敗で止める分岐）を踏むテストが無い。実装方式を変えた後も、テストのヘルパー名が旧方式（copy など）を名乗り続ける。新しい停止 reason に復旧手順が添えられていない。どれも「正常経路のテストが通る」ことでは検出できない。分岐を足したら、その分岐単独で発火する fixture と reason 固有の文言 assert を同じ PR で揃える。方式を変えたらテスト側の名前も追従させ、停止 reason には利用者が次に取る行動を添える。
+
 ## 関連ページ
 
 - [HINT-specific 文言 pin で case arm 削除 regression を検知する](../patterns/hint-specific-assertion-pin.md)
@@ -63,3 +70,4 @@ cycle 1 で TC-13b（読み取り不能）にガード固有文言 assert の ra
 - [レビュー結果](../../raw/reviews/20260804T173728Z-pr-2111.md)
 - [fix 結果](../../raw/fixes/20260804T175004Z-pr-2111.md)
 - [レビュー結果](../../raw/reviews/20260926T045233Z-pr-3112.md)
+- [新設 fail-loud 分岐のテスト不足を指摘したレビュー](../../raw/reviews/20260927T032308Z-pr-3204.md)
