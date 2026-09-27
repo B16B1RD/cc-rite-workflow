@@ -19,7 +19,7 @@ rite ワークフロー全体のガイドを表示。次の Phase を順に実�
 Check whether `rite-config.yml` exists in the project root:
 
 ```bash
-ls rite-config.yml 2>/dev/null || ls .claude/rite-config.yml 2>/dev/null
+ls rite-config.yml 2>/dev/null
 ```
 
 **If it does not exist:**

@@ -29,11 +29,11 @@ rationale: references/rationale.md#github-target-scope
 
 ### 1.1 Read rite-config.yml
 
-Read configuration from the project root or `.claude/` directory:
+Read configuration from the project root:
 
 ```bash
 # 設定ファイルの存在確認
-ls rite-config.yml .claude/rite-config.yml 2>/dev/null
+ls rite-config.yml 2>/dev/null
 ```
 
 If the configuration file does not exist:
