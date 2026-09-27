@@ -1063,14 +1063,15 @@ rationale: references/rationale.md#marker-data-delimiter
   | `FOLLOW_UP_ISSUE=failed`（reason 問わず。preview_write 以外。`helper_rc` / `lookup_api` / `create_api` / `create_script_missing` / `json_undecidable` を含む） | 未完了 | `⚠️ follow-up Issue の起票に失敗しました。review-results JSON の non_blocking_findings[] と、元 Issue の Decision Log（Section 9）で行末に `<!-- rite:deferred-defect pr={pr_number} -->` を持つ行を元に follow-up ラベル付き Issue を手動作成してください` |
   | `skipped; reason=no_json` | 未完了 | 同上（レビュー結果 JSON 不在） |
   | `skipped; reason=jq_missing` | 未完了 | `⚠️ jq が見つからず follow-up 起票を skip しました。jq を導入したうえで、残存 non-blocking 指摘があれば、元 Issue の Decision Log（Section 9）で行末に `<!-- rite:deferred-defect pr={pr_number} -->` を持つ行も含めて follow-up Issue を手動作成してください` |
-  | `created` / `skipped; reason=no_findings` / `skipped; reason=already_exists` / `skipped; reason=all_issued` / `skipped; reason=all_resolved` | x 相当 | — |
+  | `created` / `skipped; reason=no_findings` / `skipped; reason=already_exists` / `skipped; reason=all_issued` / `skipped; reason=already_processed` / `skipped; reason=all_resolved` | x 相当 | — |
   | `declined`（ステップ 6.0.C で「起票しない」を選んだ） | x 相当 | `ℹ️ 確認のうえ follow-up Issue の起票を見送りました（{count} 件）。指摘の全文は review-results/archive/ の JSON に、先送り欠陥は元 Issue の Decision Log（Section 9）にあります` |
   | `preview`（確認の回答前に止まった） | 未完了 | `⚠️ follow-up 起票の確認が完了していません。残存 non-blocking 指摘を起票する場合は、元 Issue の Decision Log（Section 9）で行末に `<!-- rite:deferred-defect pr={pr_number} -->` を持つ行も含めて follow-up ラベル付き Issue を手動作成してください` |
   | `[CONTEXT] FOLLOW_UP_ISSUE=` かつ `pr={pr_number}` の行が無い | 未完了 | `⚠️ follow-up 起票の実行結果が確認できませんでした。残存 non-blocking 指摘があれば、元 Issue の Decision Log（Section 9）で行末に `<!-- rite:deferred-defect pr={pr_number} -->` を持つ行も含めて follow-up ラベル付き Issue を手動作成してください` |
 
   **FOLLOW_UP_ISSUE marker 不在を成功と読んではならない。**
 
-  `skipped; reason=all_resolved` を x 相当に置くのは、ステップ 6.0.V の再検証で残存 0 件が確定し、先送り欠陥も 0 件の**正常完了**だから（起票すべきものが無い。先送り欠陥があれば helper は skip せず起票する）。`no_findings` と同じ扱いであり「起票に失敗した」ではない。`skipped; reason=all_issued` も、残りが全件 sweep で起票済みの正常完了として同じ扱いにする。
+  `skipped; reason=all_resolved` を x 相当に置くのは、ステップ 6.0.V の再検証で残存 0 件が確定し、先送り欠陥も 0 件の**正常完了**だから（起票すべきものが無い。先送り欠陥があれば helper は skip せず起票する）。`no_findings` と同じ扱いであり「起票に失敗した」ではない。`skipped; reason=all_issued` も、残りが全件 sweep で起票済みの正常完了として同じ扱いにする。`skipped; reason=already_processed` は前回の cleanup で follow-up の判定を終え、その後に JSON が片付けられた PR の再実行で、判定は前回に済んでいる。
+  rationale: references/rationale.md#review-cleanup-reasons
 
   `declined` の付記の `{count}` は declined marker の `count=` の値。x 相当でもこの付記は `{review_cleanup_check}` の行に続けて出す。
 

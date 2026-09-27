@@ -264,6 +264,13 @@ summary の `failed` には数えられない（ファイル自体は処理済�
 対応を促し続ける。一方 `cause=jq_missing` は環境不備で、放置すると本来削除されるべき JSON まで
 無判定で退避され続ける。
 
+follow-up 側の `already_processed` を x 相当に置くのは、この reason が判定済み記録からしか出ないため。
+記録は follow-up helper 自身が x 相当の結果（created / no_findings / already_exists / all_issued /
+all_resolved）で終えたときだけ書く。purge が JSON を片付けたかどうかには結び付けない — 片付けの成否は
+判定の成否を表さず、`json_undecidable` で終わった PR の JSON も片付けられうる。先送り欠陥があれば
+helper は skip せず起票へ進む。記録が無い・読めない・内容が一致しないときは `no_json` に倒し、
+判定を終えていない PR を完了扱いにしない。
+
 ## outstanding-checkbox
 
 付記文の絵文字 prefix は表示上の飾りに過ぎず（`{local_branch_check}` の
