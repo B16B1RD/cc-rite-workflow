@@ -201,7 +201,7 @@ check 'worktree with main config does not warn' lacks "$CASE_DIR/err" 'WARNING: 
 # （root は権限を無視して読めるため検証できない）
 if [ "$(id -u)" != 0 ]; then
   reset_case; chmod 000 "$CASE_DIR/rite-config.yml"; run; chmod 644 "$CASE_DIR/rite-config.yml"
-  check 'unreadable config exits nonzero' test "$RC" -ne 0
+  check 'unreadable config exits 1' test "$RC" = 1
   reason 'unreadable config' config_unreadable
   check 'unreadable config does not diff with the default base' lacks "$CASE_DIR/git.log" 'origin/develop...HEAD'
   no_calls 'unreadable config'
