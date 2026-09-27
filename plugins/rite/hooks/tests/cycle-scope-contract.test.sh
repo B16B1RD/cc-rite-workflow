@@ -132,11 +132,23 @@ else
 fi
 sweep_origin_line=$(grep -E '^\| `\{sweep_origin\}` \| ステップ 5\.S へ入った' "$ITERATE")
 sweep_origin_count=$(printf '%s' "$sweep_origin_line" | grep -c .)
+# 5.S を経由しない終端の列挙だけを見る（前半は sweep 内の sentinel に触れうる）。
+sweep_origin_terminals=${sweep_origin_line#*5.S を経由せずに}
 if [ "$sweep_origin_count" = 1 ] \
+   && [ "$sweep_origin_terminals" != "$sweep_origin_line" ] \
+   && ! printf '%s\n' "$sweep_origin_terminals" | grep -qF '[fix:sweep-done]' \
    && ! printf '%s\n' "$sweep_origin_line" | grep -qF 'ステップ 4 の'; then
   pass "sweep_origin has no step-4 sweep-done terminal"
 else
   fail "sweep_origin has no step-4 sweep-done terminal (matched $sweep_origin_count lines)"
+fi
+step4_section=$(sed -n '/^## ステップ 4: fix sentinel を判定/,/^## ステップ 5.S:/p' "$ITERATE")
+step4_pushed_rows=$(printf '%s\n' "$step4_section" | grep -c '^| `\[fix:pushed\]` |')
+step4_sweep_rows=$(printf '%s\n' "$step4_section" | grep -c '^|.*\[fix:sweep-done\]')
+if [ "$step4_pushed_rows" = 1 ] && [ "$step4_sweep_rows" = 0 ]; then
+  pass "step 4 routing table has no sweep-done row"
+else
+  fail "step 4 routing table has no sweep-done row (pushed rows: $step4_pushed_rows, sweep-done rows: $step4_sweep_rows)"
 fi
 # purpose-unaligned の set 本体は iterate-step.sh の step_purpose_unaligned 関数に置かれている。
 ITERATE_STEP="$SCRIPT_DIR/../../scripts/iterate-step.sh"
