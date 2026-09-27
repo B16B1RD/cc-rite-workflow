@@ -29,14 +29,20 @@ rationale: references/rationale.md#github-target-scope
 
 ### 1.1 Read rite-config.yml
 
-Read configuration from the project root:
+Resolve `rite-config.yml` with the shared resolver (a session worktree falls back to the main checkout's file). Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version):
 
 ```bash
-# 設定ファイルの存在確認
-ls rite-config.yml 2>/dev/null
+bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh
 ```
 
-If the configuration file does not exist:
+| rc | Action |
+|----|--------|
+| 0 | Retain the path on stdout as `{rite_config_path}` and continue |
+| 1 | Not found — show the message below and stop (do not run the later phases) |
+| 2 | The file is unreadable or the main checkout root cannot be resolved. Show the resolver's stderr and stop |
+| other | The resolver could not run. Show its stderr and stop |
+
+If rc=1:
 
 ```
 rite-config.yml が見つかりません
@@ -61,8 +67,8 @@ ls -la .github/ISSUE_TEMPLATE/ 2>/dev/null
 # PR テンプレート
 ls -la .github/PULL_REQUEST_TEMPLATE.md 2>/dev/null
 
-# 設定ファイル
-ls -la rite-config.yml 2>/dev/null
+# 設定ファイル（Phase 1.1 で解決したパス）
+ls -la "{rite_config_path}"
 ```
 
 ### 2.2 Overwrite Confirmation (skipped when --force is specified)
@@ -245,16 +251,17 @@ rite-config.yml も再生成しますか？
 
 **Steps for regeneration:**
 
-1. Back up the existing `rite-config.yml`:
+1. Back up the existing `{rite_config_path}`:
    ```bash
-   # バックアップファイル名: rite-config.yml.backup.{timestamp}
+   # バックアップファイル名: rite-config.yml.backup.{timestamp}（元ファイルと同じディレクトリ）
    # 例: rite-config.yml.backup.2026-01-04T12-00-00
-   cp rite-config.yml "rite-config.yml.backup.$(date +%Y-%m-%dT%H-%M-%S)"
+   ts=$(date +%Y-%m-%dT%H-%M-%S)
+   cp "{rite_config_path}" "{rite_config_path}.backup.$ts" && echo "{rite_config_path}.backup.$ts"
    ```
 
-2. Reference `templates/config/rite-config.yml` to generate the default configuration
+2. Reference `templates/config/rite-config.yml` to generate the default configuration and write it to `{rite_config_path}`
 
-3. Include the backup file path in the completion report
+3. Include the backup file's full path in the completion report
 
 ---
 
@@ -279,7 +286,7 @@ For the `github` target, list the four GitHub template destinations above with t
 
 | 元ファイル | バックアップ |
 |-----------|-------------|
-| rite-config.yml | rite-config.yml.backup.{timestamp} |
+| {rite_config_path} | {rite_config_path}.backup.{timestamp} |
 
 ## 次のステップ
 
