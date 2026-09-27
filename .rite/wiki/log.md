@@ -3,6 +3,7 @@
 ## 2026-09-28
 
 * **Update**: [`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) — raw/reviews/20260927T201202Z-pr-3334.md を統合
+* **lint:clean** — contradictions=0, stale=63, orphans=0, missing_concept=0, unregistered_raw=567, broken_refs=0
 
 ## 2026-09-27
 
