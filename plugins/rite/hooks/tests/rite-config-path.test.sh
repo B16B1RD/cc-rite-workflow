@@ -157,9 +157,10 @@ else
 fi
 
 echo "=== T-12: initialization checks resolve the config instead of listing the cwd ==="
-# $1 skill, $2 section start heading, $3 next heading, $4 text of the rc=1 message
+# $1 skill, $2 section start heading, $3 next heading, $4 text of the rc=1 message,
+# $5 whether rc=1 stops the skill (stop | guide)
 check_init_section() {
-  local skill_md="$PLUGIN_ROOT/skills/$1/SKILL.md" sec blk rc out
+  local skill_md="$PLUGIN_ROOT/skills/$1/SKILL.md" sec blk rc out rc0_line rc1_line rc1_para rows
   sec=$(awk -v s="$2" -v e="$3" 'index($0, s) == 1 {f = 1; next} f && index($0, e) == 1 {exit} f' "$skill_md")
   blk=$(printf '%s\n' "$sec" | awk '/^```bash$/ {b = 1; next} b && /^```$/ {exit} b' | sed "s|{plugin_root}|$PLUGIN_ROOT|g")
   case "$blk" in
@@ -187,15 +188,44 @@ check_init_section() {
     *stop*) pass "T-12 $1 stops when the resolver cannot run" ;;
     *) fail "T-12 $1 stops when the resolver cannot run (line: '$other_line')" ;;
   esac
+  rows=$(printf '%s\n' "$sec" | awk -F'|' '/^\|/ && !/^\| rc \|/ && !/^\|-/ {gsub(/ /, "", $2); printf "%s%s", sep, $2; sep = ","}')
+  assert "T-12 $1 lists the rc rows in the order 0, 1, 2, other" "0,1,2,other" "$rows"
+  rc0_line=$(printf '%s\n' "$sec" | grep -E '^\| 0 \|' | head -n 1) || rc0_line=""
+  rc1_line=$(printf '%s\n' "$sec" | grep -E '^\| 1 \|' | head -n 1) || rc1_line=""
+  if [[ -n "$rc1_line" && "$rc0_line" == *continue* && "$rc1_line" != *continue* ]]; then
+    pass "T-12 $1 continues on rc=0 and not on rc=1"
+  else
+    fail "T-12 $1 continues on rc=0 and not on rc=1 (rc=0: '$rc0_line'; rc=1: '$rc1_line')"
+  fi
+  if [[ "$rc0_line" != *"If rc=1"* && "$rc1_line" != *"If rc=0"* ]]; then
+    pass "T-12 $1 table rows point to their own rc paragraph"
+  else
+    fail "T-12 $1 table rows point to their own rc paragraph (rc=0: '$rc0_line'; rc=1: '$rc1_line')"
+  fi
+  # 段落の境界は行頭の見出しだけで決める（表の行も "If rc=1" を含むため）
+  rc1_para=$(printf '%s\n' "$sec" | awk '/^\**If rc=/ {f = /^\**If rc=1/; next} f')
+  case "$rc1_para" in
+    *"$4"*) pass "T-12 $1 shows the not-initialized message under If rc=1" ;;
+    *) fail "T-12 $1 shows the not-initialized message under If rc=1" ;;
+  esac
+  case "$rc1_line" in
+    *stderr*) fail "T-12 $1 does not treat rc=1 as a resolver error (line: '$rc1_line')" ;;
+    *) pass "T-12 $1 does not treat rc=1 as a resolver error" ;;
+  esac
+  case "$5:$(printf '%s\n%s\n' "$rc1_line" "$rc1_para" | grep -ci 'stop' || true)" in
+    stop:0|guide:[1-9]*) fail "T-12 $1 rc=1 stop behavior is '$5'" ;;
+    stop:*|guide:0) pass "T-12 $1 rc=1 stop behavior is '$5'" ;;
+    *) fail "T-12 $1 rc=1 stop behavior is '$5' (unknown kind)" ;;
+  esac
   if grep -nE '(ls( -la)?|cp) rite-config\.yml' "$skill_md"; then
     fail "T-12 $1 does not list or copy rite-config.yml relative to the cwd"
   else
     pass "T-12 $1 does not list or copy rite-config.yml relative to the cwd"
   fi
 }
-check_init_section workflow '### 1.1 Check Initialization Status' '### 1.2' '初期化されていません'
-check_init_section getting-started '### 3.2 Step 1: Initial Setup' '### 3.3' 'Action Required'
-check_init_section template-reset '### 1.1 Read rite-config.yml' '## Phase 2' '見つかりません'
+check_init_section workflow '### 1.1 Check Initialization Status' '### 1.2' '初期化されていません' stop
+check_init_section getting-started '### 3.2 Step 1: Initial Setup' '### 3.3' 'Action Required' guide
+check_init_section template-reset '### 1.1 Read rite-config.yml' '## Phase 2' '見つかりません' stop
 if awk '/^## Language Support/ {f = 1} f' "$PLUGIN_ROOT/skills/workflow/SKILL.md" | grep -qF '{rite_config_path}'; then
   pass "T-12 workflow reads language from the resolved path"
 else
