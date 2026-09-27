@@ -557,7 +557,7 @@ rationale: references/rationale.md#remote-delete-markers
 
 ### 6.0 残存 non-blocking 指摘から follow-up Issue を起票
 
-archive より前に実行する（JSON が元の場所にあるうちに読む）。先に orphan 回収が `archive/` へ移した JSON も読む。0 件は起票しない。同定不能は起票せず WARNING。cleanup は止めない。
+archive より前に実行する（JSON が元の場所にあるうちに読む）。先に orphan 回収が `archive/` へ移した JSON も読む。指摘も先送り欠陥も 0 件なら起票しない。同定不能は起票せず WARNING。cleanup は止めない。
 rationale: references/rationale.md#follow-up-before-archive
 
 元 Issue の Decision Log（Section 9）で本 PR のレビューが先送りした欠陥（行末が `<!-- rite:deferred-defect pr={pr_number} -->` の行）も helper が読み、同じ follow-up Issue へ転記する。指摘が 0 件でも先送り欠陥があれば起票する。本文を取得できなければ `FOLLOW_UP_DEFERRED=unavailable` を出し、指摘側だけ起票する。

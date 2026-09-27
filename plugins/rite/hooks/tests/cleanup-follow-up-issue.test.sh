@@ -126,8 +126,10 @@
 #   T-68 元 Issue 本文の取得失敗は FOLLOW_UP_DEFERRED=unavailable を出し指摘側だけ起票する
 #   T-69 no_json / all_resolved / all_issued でも先送り欠陥があれば起票し、already_exists / json_undecidable は従来どおり
 #   T-70 preview の件数は指摘と先送り欠陥の合計
-#   T-71 トークンと Section 9 の境界が pr-review 7.4.3 と helper で一致する
+#   T-71 トークンと Section 9 の境界が pr-review 7.4.3 と helper で一致し、7.4.3 の {deferred_token} 付与条件表（2 行）が変わらない
 #   T-72 cleanup SKILL.md の完了報告の配線
+#   T-82 severity-levels / review-result-schema の follow-up 起票規則が先送り欠陥の限定付きで 1 回ずつあり、
+#        限定句の無い「起票しない」文を持たず、周辺の節と正本 §6.0 の規則も残る
 #
 # Coverage (判定済み記録):
 #   T-77 判定後に purge が JSON を片付けた PR の再実行は already_processed で skip し no_json を出さない
@@ -2148,6 +2150,13 @@ _boundary='in_section && (/^## / || /^---[[:space:]]*$/ || /^<\/details>/)'
 assert "T-71 helper の Section 9 終端は 7.4.3 と同じ" "1" "$(grep -cF "$_boundary" "$TARGET")"
 assert "T-71 7.4.3 の Section 9 終端 (採番と追記の 2 か所)" "2" "$(grep -cF "$_boundary" "$SCOPE_TRIAGE_MD")"
 assert_grep "T-71 template-structure の行書式にトークンを記載" "$TEMPLATE_STRUCTURE_MD" '<!-- rite:deferred-defect pr=N -->'
+# 表は見出しから空行までを 1 ブロックとして比べる。行ごとの一致だけでは、行の追加（例: boundary にもトークンを付ける行）を検出できない。
+_t71_table='| 候補 | `{deferred_token}` |
+|---|---|
+| Source A、または Source B の `actionable`（先送りする欠陥）で、7.4.4 の引き受け先 Issue を持たない | ` <!-- rite:deferred-defect pr={pr_number} -->`（先頭に半角空白 1 つ。`{pr_number}` は本レビューの PR 番号） |
+| それ以外（Source B の `boundary`、引き受け先 Issue あり） | 空文字列 |'
+assert "T-71 7.4.3 の {deferred_token} 付与条件表" "$_t71_table" \
+  "$(awk '$0 == "| 候補 | `{deferred_token}` |" { f = 1 } f && /^$/ { exit } f { print }' "$SCOPE_TRIAGE_MD")"
 
 echo "--- T-72: cleanup SKILL.md が先送り欠陥の取得失敗を完了報告へ配線する ---"
 assert_grep "T-72 完了報告に deferred note を差し込む" "$CLEANUP_MD" '\{follow_up_sweep_note\}\{follow_up_deferred_note\}$'
@@ -2424,6 +2433,27 @@ for t81_variant in no_findings created; do
       c && NR == c + 1 && /^  影響: / { i = NR; next }
       i && index($0, want) { print "ok"; exit }' "$ERR" | grep -c ok)"
 done
+
+echo "--- T-82: reference の起票しない条件は先送り欠陥の限定付きで書く ---"
+# 対象の段落はどちらも物理 1 行なので、件数は行数ではなく出現回数で数える。
+_t82_rule='転記する指摘が 0 件になっても、元 Issue の Decision Log に本 PR のレビューが先送りした欠陥があれば follow-up Issue を起票し、無ければ起票しない（条件の正本は `/rite:cleanup` ステップ 6.0）。'
+_t82_count() { grep -oF -- "$1" | wc -l | tr -d ' '; }
+for _t82_md in "$PLUGIN_ROOT/references/severity-levels.md" "$PLUGIN_ROOT/references/review-result-schema.md"; do
+  _t82_name=$(basename "$_t82_md")
+  assert "T-82 $_t82_name: 限定付きの規則文が 1 回" "1" "$(_t82_count "$_t82_rule" < "$_t82_md")"
+  assert "T-82 $_t82_name: 起票しない文はすべて先送りした欠陥に触れる" "" \
+    "$(grep -F -- '起票しない' "$_t82_md" | awk '{ gsub(/。/, "。\n"); print }' | grep -F -- '起票しない' | grep -vF -- '先送り')"
+  assert "T-82 $_t82_name: 却下台帳を読めないときの節が残る" "1" \
+    "$(_t82_count '却下台帳か最新のレビュー結果 JSON を読めなければ' < "$_t82_md")"
+done
+assert "T-82 severity-levels.md: 判定不能を転記側へ倒す節が残る" "1" \
+  "$(_t82_count '判定不能なものは転記側へ倒す。' < "$PLUGIN_ROOT/references/severity-levels.md")"
+assert "T-82 review-result-schema.md: 判定不能を転記側へ倒す節が太字の中に残る" "1" \
+  "$(_t82_count '解消済みと判定された指摘は除外する（判定不能は転記側へ倒す）**' < "$PLUGIN_ROOT/references/review-result-schema.md")"
+assert "T-82 review-result-schema.md: read 側の扱いから実測必須ゲートへのリンクが残る" "1" \
+  "$(grep -F -- '**read 側の扱い**' "$PLUGIN_ROOT/references/review-result-schema.md" | _t82_count '](./severity-levels.md#実測必須ゲート-measured-confirmed-gate)')"
+assert "T-82 正本 §6.0 の規則が残る" "1" \
+  "$(awk '/^### 6\.0 /{ f = 1; next } f && /^### /{ exit } f' "$CLEANUP_MD" | _t82_count '指摘が 0 件でも先送り欠陥があれば起票する。')"
 
 echo "--- T-arg: 引数 gate ---"
 bash "$TARGET" --pr abc --state-root "$TMP_ROOT" --owner a --repo b >"$OUT" 2>"$ERR"; RC=$?
