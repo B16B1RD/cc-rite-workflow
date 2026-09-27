@@ -38,8 +38,9 @@ bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh
 | rc | Action |
 |----|--------|
 | 0 | Retain the path on stdout as `{rite_config_path}` and continue |
-| 1 | Not found — show the message below |
+| 1 | Not found — show the message below and stop (do not run the later phases) |
 | 2 | The file is unreadable or the main checkout root cannot be resolved. Show the resolver's stderr and stop |
+| other | The resolver could not run. Show its stderr and stop |
 
 If rc=1:
 
@@ -254,7 +255,8 @@ rite-config.yml も再生成しますか？
    ```bash
    # バックアップファイル名: rite-config.yml.backup.{timestamp}（元ファイルと同じディレクトリ）
    # 例: rite-config.yml.backup.2026-01-04T12-00-00
-   cp "{rite_config_path}" "{rite_config_path}.backup.$(date +%Y-%m-%dT%H-%M-%S)"
+   ts=$(date +%Y-%m-%dT%H-%M-%S)
+   cp "{rite_config_path}" "{rite_config_path}.backup.$ts" && echo "{rite_config_path}.backup.$ts"
    ```
 
 2. Reference `templates/config/rite-config.yml` to generate the default configuration and write it to `{rite_config_path}`

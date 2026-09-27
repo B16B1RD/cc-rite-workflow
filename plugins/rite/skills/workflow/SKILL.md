@@ -27,6 +27,7 @@ bash {plugin_root}/hooks/scripts/lib/rite-config-path.sh
 | 0 | Initialized. Retain the path on stdout as `{rite_config_path}` and continue |
 | 1 | Not initialized — show the message below |
 | 2 | The file is unreadable or the main checkout root cannot be resolved. Show the resolver's stderr and stop |
+| other | The resolver could not run. Show its stderr and stop |
 
 **If rc=1:**
 
