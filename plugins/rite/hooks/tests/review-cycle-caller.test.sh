@@ -62,7 +62,7 @@ with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
     wm_bin.mkdir()
     (wm_bin / 'gh').symlink_to(plugin / 'hooks/tests/_work-memory-gh-stub.sh')
     (work / 'wm-comment.md').write_text(
-        '## 📜 rite 作業メモリ\n\n- **Issue**: #4241\n\n### レビュー対応履歴\n\n### 次のステップ\n', encoding='utf-8')
+        '## 📜 rite 作業メモリ\n\n### レビュー対応履歴\n\n### 次のステップ\n', encoding='utf-8')
     env.update(PATH=str(wm_bin) + os.pathsep + env['PATH'], RITE_TEST_WM_BODY=str(work / 'wm-comment.md'))
 
     def run(args, success=True):
