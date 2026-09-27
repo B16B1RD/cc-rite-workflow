@@ -4,14 +4,17 @@ title: "再開手順は後段ゲートが要求する証跡を作るコマンド
 domain: "heuristics"
 description: "停止後の再開手順が一般的な案内文だけで、後段のゲートが要求する証跡（特定コマンドの実行結果）を作るコマンドを名指ししないと、利用者はゲートを満たせず同じ停止を繰り返す。手順内のコマンド順序も静的検査で固定すると、順序 drift による停止の再発を防げる。"
 created: "2026-09-26T07:12:24+00:00"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T08:23:48Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:15:44Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T08:23:48Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:15:44Z" }
 sources:
   - type: "fixes"
     resource: "raw/fixes/20260926T071224Z-pr-3120.md"
   - type: "reviews"
     resource: "raw/reviews/20260926T075636Z-pr-3120.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T080741Z-pr-3221.md"
 tags: []
 confidence: medium
 ---
@@ -32,6 +35,8 @@ confidence: medium
 
 手順に「検証」のような一般語が残っていないかは、レビューで実際に手順どおり動かすと見つけやすい。使い捨ての worktree で文書どおりにコマンドを実行すると、一般語が後段ゲートの要求（検証済み修正の記録など）と食い違っていることを実測で示せる。
 
+途中で止まった工程を利用者が手で終えた後の戻り先は、「最初から再実行してよい」ではなく、止まった表の次の行（成功時に進む行と同じ行）にする。最初からの再実行は上流の工程（例: レビュー）をやり直し、指摘の識別子や結果ファイルが振り直されるため、識別子と結果ファイルで照合する重複排除が効かなくなる。「再び起票されない」のような保証を案内に書くときは、再実行の入口（phase・再開ゲート・新しい結果ファイルの生成）と重複排除のキーを実際に辿り、保証が成り立つ経路を確かめてから書く。
+
 ## 関連ページ
 
 - [agent が人間に渡す復旧コマンドは、人間の実行コンテキストで正しいかを検証する](./recovery-command-verified-in-human-execution-context.md)
@@ -40,3 +45,4 @@ confidence: medium
 
 - [fix 結果](../../raw/fixes/20260926T071224Z-pr-3120.md)
 - [レビュー結果](../../raw/reviews/20260926T075636Z-pr-3120.md)
+- [手で終えた後の戻り先を止まった表の次の行に直した fix 結果](../../raw/fixes/20260927T080741Z-pr-3221.md)

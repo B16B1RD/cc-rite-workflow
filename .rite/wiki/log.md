@@ -97,6 +97,9 @@
 * **Update**: [修飾は主張単位ではなく同格の主張の集合単位でかける](pages/heuristics/qualifier-applies-to-peer-claim-set.md) — raw/reviews/20260927T080310Z-pr-3241.md を統合
 * **Update**: [identity を持たない判定台帳で複数 cycle の和集合を重複除外すると、重複防止と欠落防止を同時には満たせない](pages/anti-patterns/identity-less-ledger-union-dedup-cannot-prevent-both-duplicate-and-loss.md) — raw/reviews/20260927T080150Z-pr-3221.md を統合
 * **lint:clean** — contradictions=0 (更新ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=560, broken_refs=0
+* **Update**: [再開手順は後段ゲートが要求する証跡を作るコマンドを名指しし、静的検査で順序も固定する](pages/heuristics/recovery-instructions-name-gate-evidence-commands-order-pinned.md) — raw/fixes/20260927T080741Z-pr-3221.md を統合
+* **Create**: [スキルの後段 bash には入力の生値ではなく、選択処理が確定させた値の placeholder を使う](pages/patterns/skill-bash-uses-resolved-value-placeholder-not-raw-flag.md) — raw/fixes/20260927T080546Z-pr-3245.md を新規ページ化
+* **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — raw/reviews/20260927T080916Z-pr-3245.md を統合
 
 ## 2026-09-26
 
