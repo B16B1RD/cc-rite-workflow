@@ -931,18 +931,21 @@ if grep -qF "claim_warning=\"$claim_suffix_literal" "$TARGET" \
 else
   fail "documented disagreement suffix diverges from helper output"
 fi
-# ac_claim を map に載せる経路は 5.3.0.C step 1 の指示と map 例だけ。消えると第 3 除外入力源は到達不能になる
-claim_producer_row=$(grep -F '`ac_claim` を書く**' <<<"$class_section" | head -1)
+# ac_claim を map に載せる経路は 5.3.0.C step 1 の指示と map 例だけ。消えると第 3 除外入力源は到達不能になる。
+# 指示は step 1 の範囲、例は step 1 の json ブロックの中で探す (節の別の場所へ移っても通さない)
+step1_section=$(awk '/^\*\*step 1: /{s=1} s && /^\*\*step 2: /{exit} s' <<<"$class_section")
+step1_map_example=$(awk '/^```json$/{s=1; next} s && /^```$/{exit} s' <<<"$step1_section")
+claim_producer_row=$(grep -F '`ac_claim` を書く**' <<<"$step1_section" | head -1)
 if grep -qF 'AC の未充足を実測付きで主張する finding には `ac_claim` を書く' <<<"$claim_producer_row" \
    && grep -qF '`acceptance_criteria[]` に無い AC・重複・書式外・空配列' <<<"$claim_producer_row"; then
   pass "5.3.0.C step 1 tells the producer to write ac_claim"
 else
-  fail "5.3.0.C ac_claim producer instruction missing"
+  fail "5.3.0.C step 1 ac_claim producer instruction missing"
 fi
-if grep -qF '"ac_claim": ["AC-1"]' <<<"$class_section"; then
-  pass "5.3.0.C map example carries ac_claim"
+if grep -qF '"ac_claim": ["AC-1"]' <<<"$step1_map_example"; then
+  pass "5.3.0.C step 1 map example carries ac_claim"
 else
-  fail "5.3.0.C ac_claim map example missing"
+  fail "5.3.0.C step 1 ac_claim map example missing"
 fi
 if grep -F '**分類入力 (classification map)**' "$PLUGIN_ROOT/skills/fix/references/assessment-rules.md" \
    | grep -qF '"exclusion"?, "ac_claim"?}]}'; then
