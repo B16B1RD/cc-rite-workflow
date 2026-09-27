@@ -760,7 +760,7 @@ echo "TC-32: 不正な ac_claim は class A 扱い + UNCLASSIFIED"
 tc32_rows='[{"id":"AC-1","status":"unmet","finding_id":null,"evidence":"e"}]'
 tc32_i=0
 for variant in 'B|[]' 'B|"AC-1"' 'B|[1]' 'B|["ac-1"]' 'B|["AC-1","AC-1"]' 'B|["AC-9"]' 'A|[]' \
-               'B|["AC-1"]|absent' 'B|["AC-1"]|{"skipped":"no_issue"}'; do
+               'B|["AC-1"]|absent' 'B|["AC-1"]|{"skipped":"no_issue"}' 'B|["AC-1"]|{"skipped":"no_ac_section"}'; do
   tc32_i=$((tc32_i + 1))
   IFS='|' read -r cls claim ac <<<"$variant"
   mk_json "$TEST_DIR/tc32-$tc32_i.json" "$(mk_finding "F-01" "MEDIUM" "current-pr" "文書同期")"
@@ -933,11 +933,21 @@ else
 fi
 # ac_claim を map に載せる経路は 5.3.0.C step 1 の指示と map 例だけ。消えると第 3 除外入力源は到達不能になる。
 # 指示は step 1 の範囲、例は step 1 の json ブロックの中で探す (節の別の場所へ移っても通さない)
-step1_section=$(awk '/^\*\*step 1: /{s=1} s && /^\*\*step 2: /{exit} s' <<<"$class_section")
+# 区間は step 1 見出しから次の step 見出し (番号・大小文字を問わない) まで。step 2 本体を飲み込んで
+# いないことは step 2 の bash fence が区間に無いことで確かめる (見出しの表記が崩れても黙って広がらない)
+step1_section=$(awk '/^\*\*step 1: /{s=1; print; next} s && /^\*\*[Ss]tep [0-9]+/{exit} s' <<<"$class_section")
+if [ -n "$step1_section" ] \
+   && [ "$(grep -c '^```json$' <<<"$step1_section")" = 1 ] \
+   && [ "$(grep -c '^```bash$' <<<"$step1_section")" = 0 ]; then
+  pass "5.3.0.C step 1 section closes before step 2"
+else
+  fail "5.3.0.C step 1 section did not close before step 2"
+fi
 step1_map_example=$(awk '/^```json$/{s=1; next} s && /^```$/{exit} s' <<<"$step1_section")
 claim_producer_row=$(grep -F '`ac_claim` を書く**' <<<"$step1_section" | head -1)
 if grep -qF 'AC の未充足を実測付きで主張する finding には `ac_claim` を書く' <<<"$claim_producer_row" \
-   && grep -qF '`acceptance_criteria[]` に無い AC・重複・書式外・空配列' <<<"$claim_producer_row"; then
+   && grep -qF '`acceptance_criteria[]` に無い AC・重複・書式外・空配列' <<<"$claim_producer_row" \
+   && grep -qF '`acceptance_criteria` が行配列でない cycle（キー欠落 / skipped）' <<<"$claim_producer_row"; then
   pass "5.3.0.C step 1 tells the producer to write ac_claim"
 else
   fail "5.3.0.C step 1 ac_claim producer instruction missing"

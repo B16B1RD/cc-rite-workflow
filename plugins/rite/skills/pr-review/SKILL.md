@@ -2173,7 +2173,7 @@ rationale: references/design-rationale.md#class-demotion-policy
 - **書けない** (帰結がテスト assert の錨付け精度・コメント文言・文書同期など検出網・可読性・文書整合に留まる) → `class: "B"`。`scenario` に「なぜ実行時シナリオを書けないか」の認定文 1 行を書く (降格時の record にそのまま載る判定文。**class B で scenario を欠くと helper が判定不能 = class A に倒す**ため必須)
 - **class B かつ「本 PR の diff が既存 (base 側) に存在した記述・ガード・禁止文を削除または弱体化した」** → `exclusion` にその判定文 1 行を書く (`scenario` に加えて必須。helper が降格対象外にする)。新規追加文への文言磨き・pin 精度には `exclusion` を**書かない**
 - **AC 未充足であることだけを理由に `exclusion` を書かない** — 合意済み AC の実測済み未充足 (`acceptance_criteria[]` の `unmet` 行が `finding_id` で指す finding) は helper が JSON から `consequence_exclusion: "ac_unmet:AC-N"` を付けて降格対象外にする。既存記述の削除/弱体化が観測できる finding は従来どおり `exclusion` を書く (helper は map の判定文を優先して保持する)
-- **AC の未充足を実測付きで主張する finding には `ac_claim` を書く** — 値はその AC ID の非空配列 (例 `["AC-1"]`)。`unmet` 行が別の finding を指す場合や acceptance が `unmet` と判定しなかった場合も、helper が `consequence_exclusion: "ac_claim:AC-N"` を付けて降格対象外にする。`acceptance_criteria[]` に無い AC・重複・書式外・空配列は helper が判定不能 = class A に倒す
+- **AC の未充足を実測付きで主張する finding には `ac_claim` を書く** — 値はその AC ID の非空配列 (例 `["AC-1"]`)。`unmet` 行が別の finding を指す場合や acceptance が `unmet` と判定しなかった場合も、helper が `consequence_exclusion: "ac_claim:AC-N"` を付けて降格対象外にする。`acceptance_criteria[]` に無い AC・重複・書式外・空配列は helper が判定不能 = class A に倒す。`acceptance_criteria` が行配列でない cycle（キー欠落 / skipped）で書いた `ac_claim` も同じく判定不能 = class A に倒す
 - **`exclusion` キーを書くなら非空文字列**。空文字や非文字列は helper が判定不能 = class A に倒す。キーごと欠落は除外しない (従来どおり降格対象)
 - **不確実な場合は class B へ倒す** (攻め側既定 — 保守既定は判定者の萎縮で現状維持に退化する。誤降格は record で可視、最終防衛線は人間のマージ判断)。ただし既存記述の削除/弱体化が観測できるなら `exclusion` を省略してはならない
 - **ファイルパスで機械分類しない** — テストへの指摘でも「clean fixture のため本番バグを検出できない」類は実行時帰結を持つ class A である
