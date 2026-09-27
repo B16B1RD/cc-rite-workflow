@@ -931,11 +931,13 @@ fi
 rm -f "$lw_main/rite-config.yml" "$lw_mem"
 crc=0
 bash "$CAPTURE" --keywords widget --cwd "$lw" --flow-state "$lw_flow" --memory "$lw_mem" >"$ROOT/lw2.out" 2>"$ROOT/lw2.err" || crc=$?
-if grep -q "WARNING: .*$lw/rite-config.yml.*$lw_main/rite-config.yml" "$ROOT/lw2.err" \
-  && ! grep -q 'WARNING' "$ROOT/lw2.out"; then
-  pass "capture without any config warns on stderr with both tried paths"
+# 既定値は空値を有効側へ倒す分岐に依存するため、WARNING だけでなく記録した status まで固定する
+if [ "$crc" -eq 0 ] && grep -q "WARNING: .*$lw/rite-config.yml.*$lw_main/rite-config.yml" "$ROOT/lw2.err" \
+  && ! grep -q 'WARNING' "$ROOT/lw2.out" \
+  && grep -q '^status: auto_query_off$' "$lw_mem" && grep -q '^attempts: 0$' "$lw_mem"; then
+  pass "capture without any config warns on stderr with both tried paths and records the auto_query_off default"
 else
-  fail "no-config capture rc=$crc out=$(cat "$ROOT/lw2.out") err=$(cat "$ROOT/lw2.err")"
+  fail "no-config capture rc=$crc out=$(cat "$ROOT/lw2.out") mem=$(cat "$lw_mem" 2>/dev/null) err=$(cat "$ROOT/lw2.err")"
 fi
 run_gate --mode commit --worktree "$lw" --flow-state "$lw_flow" --memory "$lw_mem"
 if grep -q "WARNING: .*$lw_main/rite-config.yml" "$ROOT/gate.err" && ! grep -q 'WARNING' <<<"$GOUT"; then
