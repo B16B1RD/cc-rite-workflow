@@ -335,6 +335,8 @@ assert "switch landing elsewhere is not recovered" false "$(printf '%s' "$out" |
 assert "switch landing elsewhere exits 1" 1 "$rc"
 assert "switch landing elsewhere reports FAILED" 1 "$(grep -c 'recovery: FAILED' "$stderr_noop")"
 assert "switch landing elsewhere does not report success" 0 "$(grep -c 'recovery: succeeded' "$stderr_noop")"
+assert "switch landing elsewhere keeps --no-guess in manual action" "git switch --no-guess -- $(field "$snap" branch)" \
+  "$(sed -n "s/^  manual action: run '\(.*\)' to restore the working tree$/\1/p" "$stderr_noop")"
 
 # A deleted local branch is not recreated from its remote-tracking branch.
 origin_sbx=$(new_sandbox) && cleanup_dirs+=("$origin_sbx") || exit 1
