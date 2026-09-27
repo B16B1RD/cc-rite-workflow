@@ -13,6 +13,7 @@
 #   T-02 marker なしの not-ready・[merge:error]・sentinel 不在がステップ 8 に対応付けられたまま
 #   T-03 merge の再判定 bash を gh stub で実行: CONFLICTING のときだけ [merge:not-ready] の次行に
 #        marker を出し、UNKNOWN / gh 失敗 / MERGEABLE では出さない。gh pr view は 1 回だけ。
+#        gh 失敗は not-ready・非ゼロ終了・ERROR 診断で止まる。
 #        marker は再判定ブロックの外に書かれていない
 #
 # Usage: bash plugins/rite/hooks/tests/batch-run-merge-conflict-route.test.sh
@@ -105,7 +106,7 @@ STUB
   chmod +x "$dir/bin/gh"
   : > "$dir/gh.log"
   sed -e 's|{pr_number}|77|g' -e 's|{owner_repo}|owner/repo|g' "$BLOCK" > "$dir/run.sh"
-  STUB_DIR="$dir" STUB_MODE="$mode" PATH="$dir/bin:$PATH" bash "$dir/run.sh" > "$dir/out" 2>/dev/null
+  STUB_DIR="$dir" STUB_MODE="$mode" PATH="$dir/bin:$PATH" bash "$dir/run.sh" > "$dir/out" 2> "$dir/err"
   echo "$?" > "$dir/rc"
   printf '%s' "$dir"
 }
@@ -121,6 +122,10 @@ for mode in unknown fail mergeable; do
   d=$(run_rematch "$mode")
   assert "T-03 $mode: marker を出さない" 0 "$(grep -c 'MERGE_NOT_READY' "$d/out")"
 done
+d=$(run_rematch fail)
+assert "T-03 gh 失敗: not-ready は出す" 1 "$(grep -c '^\[merge:not-ready\]$' "$d/out")"
+assert "T-03 gh 失敗: 非ゼロ終了" 1 "$(cat "$d/rc")"
+assert "T-03 gh 失敗: ERROR 診断を出す" 1 "$(grep -c '^ERROR: 再判定で PR 状態を取得できない' "$d/err")"
 d=$(run_rematch unknown)
 assert "T-03 UNKNOWN: not-ready は出す" 1 "$(grep -c '^\[merge:not-ready\]$' "$d/out")"
 d=$(run_rematch mergeable)
