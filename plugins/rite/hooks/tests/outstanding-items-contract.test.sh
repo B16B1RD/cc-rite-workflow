@@ -55,12 +55,18 @@ assert_grep "wm check combines completion and progress like local_branch_check" 
   '\*\*completion 側と progress 側を独立に評価し、両方が `x` 相当のときだけ `x`\*\*'
 assert_grep "delegation mode still judges the wm check individually" "$CLEANUP" \
   '`\{wm_final_update_check\}` = ステップ 11 / 冒頭の'
-# archive-procedures の §3.5.1 / §3.5.2 の bash がそれぞれ marker を 1 本だけ (実行行で) emit する
-for part in "3.5.1:completion" "3.5.2:progress"; do
-  sec="${part%%:*}"; side="${part##*:}"
-  count=$(awk -v start="^#### ${sec} " '$0 ~ start {f=1; next} f && /^#### /{exit} f' "$ARCHIVE" \
-    | grep -c "^echo \"\[CONTEXT\] WM_FINAL_UPDATE=${side}; issue={issue_number}; " || true)
-  assert "archive-procedures §${sec} emits exactly one WM_FINAL_UPDATE=${side} marker" "1" "$count"
+# archive-procedures の §3.5.1 / §3.5.2 の bash がそれぞれ marker を 1 本だけ (実行行で) emit し、
+# その payload が同じ節で helper の出力を受けた変数である。payload を定数や別節の変数に
+# 差し替えると、helper の失敗がステップ 12 に届かず完了扱いに戻るため、行全体を固定する。
+for part in "3.5.1:completion:wm_status" "3.5.2:progress:wm_progress_status"; do
+  sec="${part%%:*}"; rest="${part#*:}"; side="${rest%%:*}"; var="${rest##*:}"
+  section=$(awk -v start="^#### ${sec} " '$0 ~ start {f=1; next} f && /^#### /{exit} f' "$ARCHIVE")
+  count=$(printf '%s\n' "$section" \
+    | grep -cxF "echo \"[CONTEXT] WM_FINAL_UPDATE=${side}; issue={issue_number}; \${${var}:-status=missing}\"" || true)
+  assert "archive-procedures §${sec} emits exactly one WM_FINAL_UPDATE=${side} marker carrying \$${var}" "1" "$count"
+  count=$(printf '%s\n' "$section" \
+    | grep -cF "${var}=\$(bash {plugin_root}/hooks/issue-comment-wm-sync.sh update" || true)
+  assert "archive-procedures §${sec} assigns \$${var} from the helper output" "1" "$count"
 done
 # 判定基準は絵文字 prefix ではなくチェックボックスの空欄/x であることを pin する。
 # 絵文字 prefix 一致方式は {local_branch_check} の BRANCH_DELETE_FAILED/UNMERGED（prefix 無しの
