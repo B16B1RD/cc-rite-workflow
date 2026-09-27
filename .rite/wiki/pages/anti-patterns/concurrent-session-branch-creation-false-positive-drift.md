@@ -4,7 +4,7 @@ title: "並行セッションの別 Issue ブランチ作成が post-review stat
 domain: "anti-patterns"
 description: "レビュー前後の branch 一覧ハッシュを比較して reviewer の READ-ONLY 違反を検出する仕組みは、別の並行セッションが同時に別 Issue 用のブランチを作成/削除しただけでも drift を報告する。検出対象（このレビューの reviewer）と観測対象（リポジトリ全体の branch 一覧）が一致していないための false positive。観測を絞る判別子は「自セッションに帰属するもの」ではなく「他セッションの worktree で checkout 中の branch」という除外すべき集合で定義しないと、reviewer 自身の違反まで検出から消える。"
 created: "2026-09-26T07:00:00+00:00"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T04:45:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T04:58:44Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260926T062846Z-pr-3117.md"
@@ -20,6 +20,8 @@ sources:
     resource: "raw/fixes/20260927T042336Z-pr-3207.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T043431Z-pr-3207.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T044244Z-pr-3207.md"
 tags: ["multi-session", "false-positive", "branch-list-hash", "post-review-state-verify", "concurrent-session"]
 confidence: medium
 verified:
@@ -56,6 +58,10 @@ drift の原因は reviewer の READ-ONLY 違反ではなく、無関係な並�
 
 「他セッションの worktree で checkout 中の branch」を worktree の位置だけで判定すると、reviewer が既定の名前空間の外に作った branch まで他セッション扱いになり、検出から消える。branch 名は規約上 reviewer 由来と分かる場合がある。回収側（cleanup）が「reviewer の漏出」として回収する名前の定義を、検出側の除外判定にもそのまま使い、位置と名前の両方の手掛かりで判定する。回収側と検出側で「漏出名」の前提を別々に書くと、片方だけが更新されて同じ食い違いが再発する。
 
+### 手で写した定義は、両側から値の集合を取り出して一致をテストで固定する
+
+検出側の漏出名の正規表現は、回収側（`pr-cycle-cleanup.sh`）の定義を写したものである。定義を共有する代わりに両ファイルから選択肢の集合を取り出し、一致を assert するテストを置くと、片方だけの変更がテストで止まる。比べるのは意図して揃える部分（選択肢の集合）に限る。意図的に差を残す要素（検出側が含めない orchestrator 由来の名前）は両側から除いて比べる。判別子に条件を足したら、その条件を説明する rationale 文書すべてに同じ条件を書く。
+
 ## 関連ページ
 
 - [sandbox のバインドマウントで raw git status が常時 dirty になる](../anti-patterns/sandbox-bind-mount-makes-raw-git-status-always-dirty.md)
@@ -69,3 +75,4 @@ drift の原因は reviewer の READ-ONLY 違反ではなく、無関係な並�
 - [名前空間外の漏出名が除外されたままと指摘したレビュー結果](../../raw/reviews/20260927T041714Z-pr-3207.md)
 - [位置と名前の両方で判定するようにした fix 結果](../../raw/fixes/20260927T042336Z-pr-3207.md)
 - [漏出名の検出が戻ったことを確認したレビュー結果](../../raw/reviews/20260927T043431Z-pr-3207.md)
+- [漏出名の一致をテストで固定した fix 結果](../../raw/fixes/20260927T044244Z-pr-3207.md)

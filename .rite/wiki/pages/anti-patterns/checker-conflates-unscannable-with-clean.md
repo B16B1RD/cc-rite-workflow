@@ -14,9 +14,13 @@ sources:
     resource: "raw/reviews/20260806T103116Z-pr-2124.md"
   - type: "fixes"
     resource: "raw/fixes/20260812T133631Z-pr-2278.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T044817Z-pr-3217.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T045521Z-pr-3217.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-12T18:34:40Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T04:58:44Z" }
 ---
 
 # 検出器が「走査できなかった」を「問題なし」に畳むと、ガードが黙って無検査になる
@@ -97,11 +101,16 @@ exit 0                                    # 全ファイル走査済み・findin
 
 > **規則**: 検証スクリプトの exit 0 は「実際に走査して一致した」だけを意味させる。走査不能・対象 0 件・入力未解決は別 rc に分ける。呼び出し側が exit code だけを見る前提なら、多義な exit 0 は必ず片肺の assertion を生む。
 
+### 警告だけで rc=0 を返す helper を pin に使うときは 2 段で塞ぐ
+
+対象が無いと警告だけ出して rc=0 で抜ける検査 helper を、実ツリー全体に直接走らせる pin は、helper が無検査のまま成功しても通ってしまう。対象ファイルの実在確認と警告文字列の grep の 2 段で塞ぐ。複数の原因（検出あり / 対象ファイル不在）が同じ fail 経路に入る pin は、fail ラベルにその両方を書き、失敗表示が実際の原因と食い違わないようにする。テストで repo root が必要なときは、パス文字列の切り取りではなく既存の共通 helper（`_helpers_resolve_repo_root`）で求める。
+
 ## 関連ページ
 
 - [CI lint チェックを blocking gate に昇格するときはツール自身の exit code を gate にする](../heuristics/ci-blocking-gate-tool-exit-code.md)
 - [新設 logged ガードの上流に同一判定の silent 経路が残ると支配的入力で可視化が無効化される](./upstream-silent-path-defeats-new-logged-guard.md)
 - [自前 sentinel exit code は呼び出す外部コマンドの予約値を避けて選ぶ](./custom-sentinel-collides-with-tool-exit-code.md)
+- [Canonical helper bypass: 既存集約 helper を bypass して inline 再実装する](./canonical-helper-bypass.md)
 
 ## ソース
 
@@ -109,3 +118,5 @@ exit 0                                    # 全ファイル走査済み・findin
 - [fix 結果](../../raw/fixes/20260729T144345Z-pr-2051.md)
 - [レビュー結果](../../raw/reviews/20260806T103116Z-pr-2124.md)
 - [exit 0 の多義性を exit 2 と 2 段判定で潰した cycle](../../raw/fixes/20260812T133631Z-pr-2278.md)
+- [rc=0 の警告を実在確認と警告 grep で塞いだ pin を確認したレビュー結果](../../raw/reviews/20260927T044817Z-pr-3217.md)
+- [fail ラベルと repo root の求め方を揃えた fix 結果](../../raw/fixes/20260927T045521Z-pr-3217.md)

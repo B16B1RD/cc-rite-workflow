@@ -4,10 +4,14 @@ title: "論理式を日本語へ書き起こすときは、正本の括弧構造
 domain: "heuristics"
 description: "「A、または B で、C なら」のような書き起こしは、C が B だけに掛かるのか A と B の両方に掛かるのかが一意に決まらない。正本が (A OR B) AND C なら、文章でも「(A、または B) かつ C」と括弧を残して係り先を固定する。"
 created: "2026-09-27T03:27:52Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:27:52Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T04:58:44Z" }
 sources:
   - type: "fixes"
     resource: "raw/fixes/20260927T031606Z-pr-3202.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T045009Z-pr-3214.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T045530Z-pr-3214.md"
 tags: ["prose-contract", "logical-formula", "ambiguity"]
 confidence: medium
 ---
@@ -30,10 +34,17 @@ confidence: medium
 - AND / OR は「かつ」「または」に固定し、読点や「で」で結合を表現しない
 - 書き起こした後は、条件の各項を切り替えた入力で helper を実行し、出力が文章の括弧構造と一致するかを照合する（[散文が引用する実装は文字一致・帰属・behavioral test の 3 点で裏取りする](./prose-cited-implementation-behavioral-verification.md)）
 
+### 理由の係り先も、ケースごとに文を分けて固定する
+
+「A は X ため、B は Y ため、どちらも Z」のように因果節を 2 つ並べた 1 文は、1 つ目の「ため、」の直後に 2 つ目の主題が来るので、1 つ目の理由が 2 つ目のケースにもかかると読める。既存の説明文に新しいケースを並べて追記したときも、既存の因果句が新ケースにかかってしまう。理由がケースごとに違うなら文を分け、判定の主体（例: 重複候補を作る helper の照合）を主語に置く。新ケースの本当の理由は推測せず、実装の条件式から読み取る。
+
 ## 関連ページ
 
 - [散文が引用する実装 (regex literal / 帰属ファイル / 挙動) は文字一致・帰属・behavioral test の 3 点で裏取りする](./prose-cited-implementation-behavioral-verification.md)
+- [一般化した断定は、実装が特殊化されている限り必ず偽になる — 同じ契約を書く複数サイトは最も限定的な表現に揃える](./generalized-claim-false-while-implementation-specialized.md)
 
 ## ソース
 
 - [条件式の書き起こしを括弧付きに直した fix 結果](../../raw/fixes/20260927T031606Z-pr-3202.md)
+- [新ケースの理由を実装の条件式から読み取って書き分けた fix 結果](../../raw/fixes/20260927T045009Z-pr-3214.md)
+- [並べた因果節の係り先が曖昧と指摘したレビュー結果](../../raw/reviews/20260927T045530Z-pr-3214.md)

@@ -61,6 +61,12 @@
 * **Update**: [grep (BRE) と grep -E (ERE) のメタ文字反転で assert ヘルパーが常時緑の dead assertion になる](pages/anti-patterns/bre-ere-metachar-inversion-dead-assertion.md) — raw/fixes/20260927T040853Z-pr-3210.md を統合
 * **Update**: [grep (BRE) と grep -E (ERE) のメタ文字反転で assert ヘルパーが常時緑の dead assertion になる](pages/anti-patterns/bre-ere-metachar-inversion-dead-assertion.md) — raw/reviews/20260927T041502Z-pr-3210.md を統合
 * **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=555, broken_refs=0
+* **Update**: [静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く](pages/heuristics/static-pin-semantic-allowlist-not-notation-denylist.md) — raw/reviews/20260927T044215Z-pr-3211.md, raw/fixes/20260927T044935Z-pr-3211.md を統合
+* **Update**: [論理式を日本語へ書き起こすときは、正本の括弧構造を文章でも括弧で保つ](pages/heuristics/logical-formula-prose-keeps-grouping-parentheses.md) — raw/fixes/20260927T045009Z-pr-3214.md, raw/reviews/20260927T045530Z-pr-3214.md を統合
+* **Update**: [並行セッションの別 Issue ブランチ作成が post-review state verify の branch_list drift を誤検出させる](pages/anti-patterns/concurrent-session-branch-creation-false-positive-drift.md) — raw/fixes/20260927T044244Z-pr-3207.md を統合
+* **Update**: [検出器が「走査できなかった」を「問題なし」に畳むと、ガードが黙って無検査になる](pages/anti-patterns/checker-conflates-unscannable-with-clean.md) — raw/reviews/20260927T044817Z-pr-3217.md, raw/fixes/20260927T045521Z-pr-3217.md を統合
+* **Create**: [複数の書き手が更新する記録の説明は値の和集合に揃え、値の列挙は括弧に入れず別の文にする](pages/heuristics/multi-writer-record-docs-describe-union-and-unnest-enumerations.md) — raw/reviews/20260927T044435Z-pr-3215.md, raw/fixes/20260927T045328Z-pr-3215.md を新規ページ化
+* **Skip**: [20260927T045014Z-pr-3207.md](raw/reviews/20260927T045014Z-pr-3207.md) — 経験則なし: cycle の判定と反映状況の要約のみで、抽出できる規則は同じ PR の fix 結果に含まれる
 
 ## 2026-09-26
 
