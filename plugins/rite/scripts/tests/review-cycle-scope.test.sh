@@ -738,6 +738,47 @@ else
   echo "     実際:   '$actual_files'"
 fi
 
+echo "=== TC-27: merge commit の改名は元パスと新パスの両方を一覧に入れる ==="
+# merge 経路 (show --remerge-diff) も rename 検出が有効だと改名の移動先しか出さず、競合を解消した
+# merge commit で改名したファイルの元パスが一覧から落ちる。競合したファイル自体の改名は remerge-diff が
+# 改名として対にしないため、競合解消と同じ merge commit で競合していないファイルを改名する
+GREPO="$TEST_DIR/merge-rename-repo"
+mkdir -p "$GREPO"
+git -C "$GREPO" init -q -b main
+git -C "$GREPO" config user.email t@example.com
+git -C "$GREPO" config user.name t
+printf 'shared\n' > "$GREPO/shared.txt"
+printf 'one\ntwo\nthree\nfour\nfive\n' > "$GREPO/keep.txt"
+git -C "$GREPO" add -A
+git -C "$GREPO" commit -qm init
+git -C "$GREPO" switch -qc feat
+printf 'feat\n' >> "$GREPO/shared.txt"
+git -C "$GREPO" commit -qam reviewed
+GBASE=$(git -C "$GREPO" rev-parse HEAD)
+git -C "$GREPO" switch -q main
+printf 'main\n' >> "$GREPO/shared.txt"
+git -C "$GREPO" commit -qam main-conflict
+git -C "$GREPO" switch -q feat
+git -C "$GREPO" merge -q main -m "merge main" >/dev/null 2>&1
+printf 'shared\nfeat\nmain\n' > "$GREPO/shared.txt"
+git -C "$GREPO" add shared.txt
+git -C "$GREPO" mv keep.txt kept.txt
+git -C "$GREPO" commit -qm "merge main"
+GRESULTS="$TEST_DIR/results-merge-rename"
+mkdir -p "$GRESULTS"
+mk_result_json "$GRESULTS/42-20260806-000000.json" "$GBASE"
+cd "$GREPO" || exit 1
+run_scope --pr 42 --results-dir "$GRESULTS"
+merge_rename_list=$(marker_value_of "$SCOPE_STDERR" "files")
+actual_files=$(LC_ALL=C sort "$merge_rename_list" 2>/dev/null | paste -sd, -)
+if [ "$actual_files" = "keep.txt,kept.txt,shared.txt" ]; then
+  pass "TC-27.1: merge commit で改名した元パスと新パスが両方入る"
+else
+  fail "TC-27.1: merge commit の改名の一覧"
+  echo "     期待値: 'keep.txt,kept.txt,shared.txt'"
+  echo "     実際:   '$actual_files'"
+fi
+
 echo "=== 結果: PASS=$PASS FAIL=$FAIL ==="
 if [ "$SKIP" -gt 0 ]; then echo "SKIP: $SKIP"; fi
 [ "$FAIL" -eq 0 ] || exit 1
