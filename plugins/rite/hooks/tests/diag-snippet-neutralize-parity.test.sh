@@ -18,7 +18,9 @@
 # Test cases:
 #   TC-1: hooks/ と scripts/ 配下 (tests/ 除く) に neutralize_ctrl を経由しない
 #         `head -N` / `tail -N` / `sed -n 'N,Mp'` 行指向 emission site が存在しない
-#         (コメント行と、スクリプト自身のファイルを出す site は除外)
+#         (コメント行と、スクリプト自身のファイルを出す site は除外)。
+#         sed 枝の式と sweep 式が `-n` / `-ne` / `-n -e` の各綴りに 1 件一致することを
+#         self-test で固定する
 #   TC-2: neutralize_ctrl を call する全 hook ファイルが
 #         control-char-neutralize.sh を source している
 #         (定義元 control-char-neutralize.sh 自身は除外)
@@ -77,9 +79,23 @@ echo "=== TC-1: head/tail -N / sed -n 'N,Mp' emission site は全て neutralize_
 # 構造的に検出できないため、TC-5 が既知 site を個別に pin する
 # sweep 正規表現と emission site の絞り込みは floor guard と共有する。literal を二重に持つと、
 # 片方だけ腕を落とす変異・除外を広げる変異をもう片方が検出できない (初版の floor guard が
-# 実際にそうだった)。sed 枝は `-n` / `-ne` / `-n -e` の綴り違いも拾う。
+# 実際にそうだった)。共有しても、除外の拡大を floor guard が検出するのは腕の実 site がすべて
+# 外れるときに限る。sed 枝は `-n` / `-ne` / `-n -e` の綴り違いも拾う。
 SED_RANGE_RE='sed +-n?e? +(-e +)?.?[0-9]+,[0-9]+p'
 SWEEP_RE="(head|tail) (-[0-9]+|-n +[0-9]+) |$SED_RANGE_RE"
+# 実 site にこの綴り違いが無くても、式を旧形へ戻す変異を検出できるよう、sed 枝の式と合成後の
+# sweep 式の両方で綴りごとに 1 件一致を確かめる。
+for sed_spelling in "sed -n '1,3p'" "sed -ne '1,3p'" "sed -n -e '1,3p'"; do
+  for sed_re_name in SED_RANGE_RE SWEEP_RE; do
+    sed_spelling_hits=$(printf '%s\n' "$sed_spelling" | grep -cE "${!sed_re_name}") || sed_spelling_hits=0
+    case "$sed_spelling_hits" in ''|*[!0-9]*) sed_spelling_hits=0 ;; esac
+    if [ "$sed_spelling_hits" = 1 ]; then
+      pass "$sed_re_name self-test: $sed_spelling に 1 件一致する"
+    else
+      fail "$sed_re_name self-test: $sed_spelling に 1 件一致しない (hits=$sed_spelling_hits) — sed 枝がこの綴りを拾えない"
+    fi
+  done
+done
 sweep_emission_sites() {
   grep -rnE "$SWEEP_RE" "${SWEEP_DIRS[@]}" --include='*.sh' \
     | grep '>&2' \
@@ -97,9 +113,10 @@ fi
 
 # 各腕が実 site を拾えていることを pin (TC-2 の floor guard と同型)。TC-1 は violations が空で
 # あることだけを assert する fail-closed sweep なので、式から腕が落ちても、除外が広がって実 site
-# まで外れても Green のまま通る。violations と同じ絞り込みで数えることで、どちらも本 guard の
-# 失敗になる。scripts/ の母集団は、SWEEP_DIRS から "$SCRIPTS_DIR" を削る変異を violations の
-# 偶然の空集合に依存せず検出するために数える。
+# まで外れても Green のまま通る。violations と同じ絞り込みで数えることで、腕が落ちる変異と、除外が
+# 腕の実 site をすべて外すまで広がる変異は本 guard の失敗になる。下限は 1 件なので、腕の実 site の
+# 一部だけを外す拡大 (scripts/ の一部だけを外す拡大を含む) は検出しない。scripts/ の母集団は、
+# SWEEP_DIRS から "$SCRIPTS_DIR" を削る変異を violations の偶然の空集合に依存せず検出するために数える。
 tail_pop=$(printf '%s\n' "$emission_sites" | grep -c 'tail ') || tail_pop=0
 case "$tail_pop" in ''|*[!0-9]*) tail_pop=0 ;; esac
 if [ "$tail_pop" -ge 1 ]; then

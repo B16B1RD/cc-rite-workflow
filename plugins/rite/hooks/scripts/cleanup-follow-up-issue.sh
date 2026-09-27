@@ -14,7 +14,8 @@
 # 観測にすぎず、最新 1 本は残存集合ではない (先行 cycle にのみ載る指摘を取りこぼす)。解消済みの
 # 除外は cleanup ステップ 6.0.V の再検証が `--exclude-ids` で担う。iterate の NB sweep で起票済みの
 # 指摘 (関連 Issue 記録コメントの却下台帳で判定=issued) は本 helper が台帳を読み、行の出典 JSON と
-# 照合して除外する。
+# 照合して除外する。起票した指摘と再掲マーカーで結ばれる前後の cycle の指摘、出典と id だけが違う
+# 完全一致の指摘も同じ指摘として除外する。
 #
 # 転記元は直下と archive/ の JSON。cleanup の archive helper は本スクリプトの後に走る (D-04) が、
 # pr-cycle-cleanup.sh の orphan 回収が cleanup より先に archive/ へ移した JSON もここで読む。
@@ -271,7 +272,8 @@ skip_unless_deferred() {
 # 6.0.V の再検証が `--exclude-ids` で担い、本 helper は「全 cycle で記録された集合」を作る。
 #
 # **id では畳まない**。`id` は各 JSON 内で振り直される連番であり cycle を跨いだ identity を持たない
-# (cycle 間の同一性判断は pr-review の semantic 判断が担い、本配列に機械的 identity キーは無い)。同じ `F-07` が cycle ごとに
+# (cycle 間の同一性判断は pr-review の semantic 判断が担い、本配列に機械的 identity キーは無い。
+# sweep 起票済みの除外だけは、再掲マーカーと `_src`・id 以外の完全一致を手がかりに結ぶ。詳細は下の sweep 節)。同じ `F-07` が cycle ごとに
 # 別の指摘を指すため、id を key に畳むと別々の指摘が黙って 1 件に潰れる — 本 helper が防ごうとしている
 # 取りこぼしそのものになる。よってここでは全 cycle 分をそのまま連結し、出典別の除外を終えた後で
 # `_src` 以外が完全一致する再報告だけをまとめる。同一 id でも内容が異なる指摘は独立して残る。
@@ -453,12 +455,22 @@ fi
 # 走って最新 JSON が変わっても、起票した cycle の finding を除外できる。basename は PR 番号で始まるため
 # 同じ関連 Issue に並ぶ別 PR の台帳行とは一致しない。出典の無い (空・形の合わない) issued 行は、sweep が
 # 読んだ最新 JSON (nb-sweep-collect.sh と同じ basename 最大の 1 本) 由来の finding とだけ照合する。
-# 出典が一致しない finding は id や位置が同じでも転記する。台帳は指摘の内容を持たず、別 cycle の同じ
-# 位置の指摘か同じ指摘の再報告かを判定できないため、除外すると sweep 未実施の指摘がどの Issue にも
-# 残らなくなる (欠落より重複を選ぶ)。最新 JSON 由来で除外した指摘と同じ file:line にある先行 cycle の
-# 指摘だけを重複候補として WARNING に出す。行がずれた同一指摘の再報告は台帳から判別できないため、
-# 最新 JSON 以外を出典として除外した指摘と同じ file:line にある指摘 (出典の cycle より前でも後でも) は
-# 重複候補を最新 JSON 由来の除外からだけ作るため、どちらも WARNING なしで sweep の Issue と重複しうる。
+# 起票した指摘と同じ指摘だと言える finding も除外する。後の cycle は未解消の指摘を id を振り直し、
+# description を書き直して再報告するため、組も本文も一致しない。そこで次の 2 種の結びつきを辿り、
+# 起票した finding と繋がる finding をまとめて除外する:
+#   - `_src` と id 以外が完全一致する (同じ指摘の写し。id は cycle ごとに振り直されるので比べない)
+#   - description の括弧内に NOT_FIXED か 再掲 を含む再掲マーカーがあり、その F-NN が、直前の cycle の
+#     JSON にある同じ id・同じ file:line の finding を指す。結びつきはマーカーを持つ側から直前の cycle へ
+#     張るので、マーカーの無い初出も、後の cycle のマーカーが指せば除外される。reviewer は cycle ごとに
+#     帰属が変わるため比べない。直前の cycle は `.json` の列挙順で決め (指摘 0 件・parse 不能の JSON も
+#     1 cycle と数える)、2 つ前へは遡らない。PARTIAL / REGRESSION を含むマーカーは残りの問題を
+#     書き直した新しい本文なので結ばない
+# それ以外の出典が一致しない finding は id や位置が同じでも転記する。台帳は指摘の内容を持たず、
+# マーカーの無い別 cycle の同じ位置の指摘が再報告か別の指摘かを判定できないため、除外すると
+# sweep 未実施の指摘がどの Issue にも残らなくなる (欠落より重複を選ぶ)。台帳の行と直接一致して除外した
+# 最新 JSON 由来の指摘と同じ file:line に残る先行 cycle の指摘だけを重複候補として WARNING に出す。
+# マーカーの無い行ずれした再報告と、それ以外の除外 (最新 JSON 以外を出典とする除外、結びつきによる
+# 除外) と同じ位置に残る指摘は、WARNING なしで sweep の Issue と重複しうる。
 # 台帳や最新 JSON を読めないときは sweep 起票済みの除外だけを適用せずに転記し (上の再検証による除外は
 # 適用済みのまま)、WARNING と marker で surface する (sweep 起票済みを黙って全件除外にも全件転記にも倒さない)。
 sweep_issued_unavailable() {
@@ -490,24 +502,53 @@ else
     | unique' 2>"$comments_err"); then
     sweep_issued_unavailable ledger_invalid "関連 Issue の却下台帳を解析できません"
     [ -s "$comments_err" ] && head -3 "$comments_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-  elif ! latest_json=$(rite_review_results_sources "$results_dir" "$PR_NUMBER" '.json' | tail -1) \
+  elif ! cycle_sources=$(rite_review_results_sources "$results_dir" "$PR_NUMBER" '.json') \
+    || ! latest_json=$(printf '%s\n' "$cycle_sources" | tail -1) \
     || [ -z "$latest_json" ] || [ ! -f "$latest_json" ] \
+    || ! cycles_json=$(printf '%s\n' "$cycle_sources" | jq -Rsc 'split("\n") | map(select(length > 0) | split("/") | last)') \
     || ! jq -e 'if (.non_blocking_findings | type) != "array" then error("non_blocking_findings is not an array") else true end' \
       "$latest_json" >/dev/null 2>"$comments_err"; then
     sweep_issued_unavailable apply_failed "sweep 起票済みの指摘を最新のレビュー結果 JSON と照合できません"
     [ -s "$comments_err" ] && head -3 "$comments_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-  elif ! issued_split=$(printf '%s' "$findings_json" | jq -c --arg latest "$latest_json" --argjson keys "$issued_keys" '
+  elif ! issued_split=$(printf '%s' "$findings_json" | jq -c --arg latest "$latest_json" --argjson keys "$issued_keys" \
+      --argjson cycles "$cycles_json" '
     def loc: (.file // "") + ":" + (.line | tostring);
-    def issued: ._src as $s | (($s // "") | split("/") | last) as $b | [(.id // ""), loc] as $k
+    def base: (._src // "") | split("/") | last;
+    def issued: ._src as $s | base as $b | [(.id // ""), loc] as $k
       | any($keys[]; .[0:2] == $k and (if .[2] == "" then $s == $latest else .[2] == $b end));
-    ([.[] | select(issued and ._src == $latest) | loc] | unique) as $locs
-    | [.[] | select((issued | not) and ._src != $latest and (loc as $l | any($locs[]; . == $l))) | loc] as $dups
-    | {kept: [.[] | select(issued | not)],
-       excluded: ([.[] | select(issued)] | length),
+    # 再掲マーカー: 括弧で囲んだ区間に NOT_FIXED か 再掲 があり、PARTIAL / REGRESSION が無いもの。
+    # その区間の F-NN が直前の cycle で振られていた id
+    def reported_ids: [(.description // "") | strings
+      | scan("【[^】]*】|\\[[^\\]]*\\]|（[^）]*）|\\([^)]*\\)")
+      | select(test("NOT_FIXED|再掲") and (test("PARTIAL|REGRESSION") | not))
+      | scan("F-[0-9]{2,}")] | unique;
+    [to_entries[] | .value + {_i: .key}] as $all
+    | [ $all[] as $x
+        | ( $all[] | select(._i > $x._i and del(._src, ._i, .id) == ($x | del(._src, ._i, .id))) | [$x._i, ._i] ),
+          ( ($x | base) as $xb
+            | select($cycles | index($xb))
+            | ([$cycles[] | select(. < $xb)] | last) as $prev
+            | select($prev != null)
+            | ($x | reported_ids)[] as $rid
+            | $all[]
+            | select(base == $prev and .id == $rid and loc == ($x | loc))
+            | [$x._i, ._i] ) ] as $edges
+    | ([range(0; $all | length)]
+       | until(. as $l | all($edges[]; $l[.[0]] == $l[.[1]]);
+           reduce $edges[] as $e (.; ([.[$e[0]], .[$e[1]]] | min) as $m | .[$e[0]] = $m | .[$e[1]] = $m))) as $label
+    | ([$all[] | select(issued) | $label[._i]] | unique) as $hit
+    | ([$all[] | select(issued)] | length) as $direct
+    | [$all[] | select($label[._i] as $c | $hit | index($c) | not)] as $kept
+    | ([$all[] | select(issued and ._src == $latest) | loc] | unique) as $locs
+    | [$kept[] | select(._src != $latest and (loc as $l | any($locs[]; . == $l))) | loc] as $dups
+    | {kept: [$kept[] | del(._i)],
+       excluded: (($all | length) - ($kept | length)),
+       relinked: (($all | length) - ($kept | length) - $direct),
        duplicates: ($dups | length),
        duplicate_locations: ($dups | unique | join(", "))}') \
     || ! issued_filtered=$(printf '%s' "$issued_split" | jq -c '.kept') \
     || ! _issued_excluded=$(printf '%s' "$issued_split" | jq -r '.excluded') \
+    || ! _issued_relinked=$(printf '%s' "$issued_split" | jq -r '.relinked') \
     || ! _issued_dups=$(printf '%s' "$issued_split" | jq -r '.duplicates') \
     || ! _issued_dup_locs=$(printf '%s' "$issued_split" | jq -r '.duplicate_locations'); then
     sweep_issued_unavailable apply_failed "sweep 起票済みの除外適用に失敗しました"
@@ -515,6 +556,9 @@ else
     _issued_after=$(printf '%s' "$issued_filtered" | jq 'length')
     findings_json="$issued_filtered"
     echo "[cleanup-follow-up-issue] sweep_issued: pr=${PR_NUMBER}; excluded=${_issued_excluded}; possible_duplicates=${_issued_dups}" >&2
+    if [ "$_issued_relinked" -gt 0 ]; then
+      echo "[cleanup-follow-up-issue] sweep_issued_relinked: pr=${PR_NUMBER}; relinked=${_issued_relinked}" >&2
+    fi
     if [ "$_issued_dups" -gt 0 ]; then
       # file:line はレビュアーが書く値なので制御文字を潰す (パスは ASCII 前提。WARNING 本文には通さない)
       _issued_dup_locs=$(printf '%s' "$_issued_dup_locs" | neutralize_ctrl)

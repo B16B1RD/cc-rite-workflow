@@ -31,10 +31,14 @@ opt-out default で「Wiki 無効」と報告するのは、この Issue が潰�
 
 ## session-lock-mkdir
 
-`flock` は複数 Bash 呼び出しに跨る ingest を守れない。持続的 mkdir lock の stale 判定は保持
-セッションの flow-state liveness（`active=true` ∧ `updated_at` 2h 以内）を流用する
-（multi-session design §9）。`concurrent_ingest` 時に新しい回収機構を作らないのは、pending raw
-が wiki branch に残り次回 ingest が冪等に回収するため。
+`flock` は複数 Bash 呼び出しに跨る ingest を守れない。持続的 mkdir lock の stale 判定は、lock 自身に
+記録した取得時刻（`acquired_at`、2h 以内なら生存）で行い、保持セッションの flow-state は見ない。
+ingest は flow-state を active にしないまま実行されることがあり（単独の `/rite:wiki-ingest`、ingest
+の最中に cleanup が自セッションを非 active にする経路）、flow-state で判定すると取得直後の lock が
+stale になって別セッションに奪われる。取得時刻の無い・読めない lock は stale とし、保持者が落ちた
+lock を 2h 後に回収できる性質は保つ。multi-session design §9 は判定に flow-state の liveness を流用
+すると記しているが、それは取得時刻ベースへ置き換える前の設計である。`concurrent_ingest` 時に新しい
+回収機構を作らないのは、pending raw が wiki branch に残り次回 ingest が冪等に回収するため。
 
 ## informational-counters
 
@@ -192,6 +196,12 @@ skip 済み raw を警告に数えると、skip 運用が膨らむほど `n_warn
 
 lock を保持し続けると他セッションの ingest が `concurrent_ingest` で skip され続ける。万一
 解放を逃しても次回 ingest が stale 判定で回収する fail-safe はあるが、正常系では明示解放する。
+
+解放の前に `check` で lock がまだ自分のものかを確かめる。奪われた・消えたことを ingest の中で
+知る手段はここしかない（奪った側が解放すると lock 自体が消え、自分の `release` は `released`
+を返す）。`own` 以外でも WARNING を出すだけで ingest は完了扱いにする。ページと log は既に commit
+済みで巻き戻せず、止めても利用者が取れる行動は変わらないため。確認に失敗した場合も `own` 以外として
+WARNING を出し、解放は必ず実行する。
 
 ## outstanding-no-new-store
 

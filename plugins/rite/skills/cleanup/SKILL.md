@@ -562,7 +562,7 @@ rationale: references/rationale.md#follow-up-before-archive
 
 元 Issue の Decision Log（Section 9）で本 PR のレビューが先送りした欠陥（行末が `<!-- rite:deferred-defect pr={pr_number} -->` の行）も helper が読み、同じ follow-up Issue へ転記する。指摘が 0 件でも先送り欠陥があれば起票する。本文を取得できなければ `FOLLOW_UP_DEFERRED=unavailable` を出し、指摘側だけ起票する。
 
-iterate の NB sweep で起票済みの指摘（関連 Issue 記録コメントの却下台帳で判定=`issued`）は helper が台帳を読んで転記から除く。照合は `[finding_id, file:line]` と、行の出典（sweep が読んだ JSON の basename）と指摘の出典 JSON の一致で行う。出典の無い旧形式の行は最新のレビュー結果 JSON 由来の指摘とだけ照合する。台帳か最新のレビュー結果 JSON を読めなければ、sweep で Issue 化済みの指摘も転記対象とし（再検証による除外は適用済みのまま）、WARNING と `FOLLOW_UP_SWEEP_ISSUED=unavailable` を出す。
+iterate の NB sweep で起票済みの指摘（関連 Issue 記録コメントの却下台帳で判定=`issued`）は helper が台帳を読んで転記から除く。照合は `[finding_id, file:line]` と、行の出典（sweep が読んだ JSON の basename）と指摘の出典 JSON の一致で行う。出典の無い旧形式の行は最新のレビュー結果 JSON 由来の指摘とだけ照合する。除外した指摘と再掲マーカー（括弧内の NOT_FIXED / 再掲 と、直前の cycle の同じ id・`file:line` を指す F-NN。PARTIAL / REGRESSION を含むものは除く）で結ばれる前後の cycle の指摘、出典と id だけが違う完全一致の指摘も除外する。台帳か最新のレビュー結果 JSON を読めなければ、sweep で Issue 化済みの指摘も転記対象とし（再検証による除外は適用済みのまま）、WARNING と `FOLLOW_UP_SWEEP_ISSUED=unavailable` を出す。
 rationale: references/rationale.md#follow-up-sweep-issued-dedup
 
 #### 6.0.V helper 呼び出し前の再検証（マージ後 HEAD）

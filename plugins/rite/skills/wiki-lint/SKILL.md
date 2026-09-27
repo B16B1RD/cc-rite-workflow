@@ -792,7 +792,7 @@ echo "wiki_lint_msg_file=${TMPDIR:-/tmp}/rite-wiki-lint-msg-$(date +%s)-${RANDOM
 
 1. Edit ツールで `{log_path}` (ステップ 8.2 で出力された値を literal substitute) に ステップ 8.1 の OKF bullet（必要なら日付見出し）を **append-only** で追加する。**注意**: シェル変数 `$log_path` は Bash ツール呼び出し境界を超えると失われ、Edit ツールはシェル変数を解釈しない。`echo "log_path=..."` 出力を会話文脈から拾って literal value で置換する
 2. Write ツールで `{wiki_lint_msg_file}` に commit メッセージ `{wiki_lint_commit_message}`（[commit-convention.md](../../references/commit-convention.md) 適用後の全文。未指定時の既定は `docs(wiki): lint report — {log_entry}`）を書く。メッセージはシェルを通さずファイルで渡す
-3. 次の 1 文で commit する（`--auto` のときは commit のみで push は ingest ステップ 8.6 に委ねる。standalone は commit + push）
+3. 次の 1 文で commit する（`separate_branch` では、`--auto` のとき commit のみで push は ingest ステップ 8.6 に委ね、standalone のとき commit と push を行う。`same_branch` はモードに関係なく commit のみで push しない）
 
 ```bash
 bash {plugin_root}/hooks/scripts/wiki-lint-log-commit.sh --branch-strategy "{branch_strategy}" --mode "{mode}" --message-file "{wiki_lint_msg_file}"

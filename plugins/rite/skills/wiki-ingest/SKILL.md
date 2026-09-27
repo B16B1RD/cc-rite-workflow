@@ -979,7 +979,7 @@ LLM は `skill: "rite:wiki-lint", args: "--auto"` 形式で `/rite:wiki-lint` �
 - 常に exit 0 (非ブロッキング)
 rationale: references/rationale.md#lint-parser-first-line
 
-呼び出し時の CWD は常に dev ブランチ。lint ステップ 8.2 は `separate_branch` 時に worktree 内で log.md 追記 → `wiki-worktree-commit.sh` を呼ぶ。Skill return 後、8.3 → 8.4 → 8.5 → ステップ 9 の順。
+呼び出し時の CWD は常に dev ブランチ。wiki-lint のステップ 8.2 が log.md の書き込み先を決め（`separate_branch` では worktree 内）、wiki-lint のステップ 8.3 が追記して `wiki-lint-log-commit.sh` で commit する（`--auto` かつ `separate_branch` では commit のみで、push は本スキルのステップ 8.6 が行う）。Skill return 後、本スキルの 8.3 → 8.4 → 8.5 → 8.6 → ステップ 9 の順。
 
 ### 8.3 Lint 実行結果の取得とパース
 
@@ -1136,10 +1136,19 @@ fi
 
 ### 9.0 Ingest セッション lock の解放
 
-ステップ 1.4 で取得した ingest セッション lock を解放する:
+ステップ 1.4 で取得した ingest セッション lock がまだ自分のものかを確かめてから解放する。`own` 以外（奪われた・消えた・確認に失敗した）なら WARNING を出し、解放は必ず実行する:
 rationale: references/rationale.md#lock-release-failsafe
 
 ```bash
+lock_state=$(bash "{plugin_root}/hooks/scripts/wiki-ingest-lock.sh" check) || lock_state=""
+case "$lock_state" in
+  own) ;;
+  "") echo "WARNING: ingest 終了時に wiki ingest のロックの状態を確認できませんでした（直前の ERROR を参照）" >&2 ;;
+  *) echo "WARNING: ingest 中に wiki ingest のロックを失っていました (check=$lock_state)。別のセッションが同じ wiki worktree へ並行して書き込んだ可能性があります" >&2 ;;
+esac
+if [ "$lock_state" != "own" ]; then
+  echo "  対処: 直近の wiki の commit を確認し（separate_branch: git -C {wiki_worktree_abs} log --oneline -n 20 / same_branch: git log --oneline -n 20 -- .rite/wiki/）、重複や上書きがあれば手で直してください" >&2
+fi
 bash "{plugin_root}/hooks/scripts/wiki-ingest-lock.sh" release
 ```
 
