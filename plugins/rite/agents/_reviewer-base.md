@@ -65,7 +65,7 @@ git worktree add --detach "$mutation_dir" HEAD  # または特定の ref
 - checkout / stash / `cp file file.bak` バックアップ等、parent working tree を経由する mutation は全経路禁止。過去 ref の blob が必要なときは `git show <ref>:<file>` で取得し worktree 内で適用する
 - **`Edit` / `Write` / `MultiEdit` / `NotebookEdit` ツールも隔離 worktree (`/tmp/rite-review-mutation-*` / `rite-revert-test-*`) 配下のパスに対してのみ**発行してよい。parent working tree 配下への発行は `hooks/pre-tool-edit-guard.sh` (PreToolUse) が機械的に deny する
 
-**Invariant**: Reviewer subagent が exit する時点で (1) `git branch --show-current` (2) `git stash list` の長さ (3) `git branch --list` の出力 (4) `git status --porcelain` の hash のすべてが起動時と同一であること。orchestrator が `post-review-state-verify.sh` で automatic check する。
+**Invariant**: Reviewer subagent が exit する時点で (1) `git branch --show-current` (2) 件名の branch が他セッションの worktree で checkout 中でない stash の件数 (3) 他セッションの worktree で checkout 中でない branch の一覧 (4) `git status --porcelain` の hash のすべてが起動時と同一であること。orchestrator が `post-review-state-verify.sh` で automatic check する。(2)(3) は並列セッションの操作を除外するための範囲で、mutation worktree の名前空間 (`rite-review-mutation-*` / `rite-revert-test-*`) の worktree と、reviewer 漏出名（`pr-<N>-test` 等、`pr-cycle-cleanup.sh` の回収対象）の branch は他セッションに数えない。名前空間の外に `git worktree add -b` で作った漏出名以外の named branch はこの範囲の外になる — mutation worktree は必ずこの名前空間に `--detach` で作る。
 rationale: ../skills/reviewers/references/reviewer-base-rationale.md#mutation-worktree-rationale-and-incident-history
 
 ## Reviewer Mindset
