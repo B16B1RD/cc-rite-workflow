@@ -4,10 +4,11 @@ title: "再開手順は後段ゲートが要求する証跡を作るコマンド
 domain: "heuristics"
 description: "停止後の再開手順が一般的な案内文だけで、後段のゲートが要求する証跡（特定コマンドの実行結果）を作るコマンドを名指ししないと、利用者はゲートを満たせず同じ停止を繰り返す。手順内のコマンド順序も静的検査で固定すると、順序 drift による停止の再発を防げる。"
 created: "2026-09-26T07:12:24+00:00"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:15:44Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T09:40:29Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T08:23:48Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:15:44Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T09:40:29Z" }
 sources:
   - type: "fixes"
     resource: "raw/fixes/20260926T071224Z-pr-3120.md"
@@ -15,6 +16,8 @@ sources:
     resource: "raw/reviews/20260926T075636Z-pr-3120.md"
   - type: "fixes"
     resource: "raw/fixes/20260927T080741Z-pr-3221.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T093553Z-pr-3253.md"
 tags: []
 confidence: medium
 ---
@@ -37,6 +40,10 @@ confidence: medium
 
 途中で止まった工程を利用者が手で終えた後の戻り先は、「最初から再実行してよい」ではなく、止まった表の次の行（成功時に進む行と同じ行）にする。最初からの再実行は上流の工程（例: レビュー）をやり直し、指摘の識別子や結果ファイルが振り直されるため、識別子と結果ファイルで照合する重複排除が効かなくなる。「再び起票されない」のような保証を案内に書くときは、再実行の入口（phase・再開ゲート・新しい結果ファイルの生成）と重複排除のキーを実際に辿り、保証が成り立つ経路を確かめてから書く。
 
+### 拒否文が案内する修復手段は、拒否と同じ述語を持たせる
+
+保存時に新しい拒否を加えたとき、拒否文が案内する修復手段（別の検査 helper の実行など）が同じ拒否集合を共有していないと、案内どおりに実行しても修復手段は ok を返し、利用者は拒否の原因に辿り着けない。拒否文は、拒否と同じ述語で判定する手順を名指しするか、要求される形そのものを示す。既存の helper を修復手段として名指しするなら、その helper が新しい拒否条件も検出することを確かめてから書く。
+
 ## 関連ページ
 
 - [agent が人間に渡す復旧コマンドは、人間の実行コンテキストで正しいかを検証する](./recovery-command-verified-in-human-execution-context.md)
@@ -46,3 +53,4 @@ confidence: medium
 - [fix 結果](../../raw/fixes/20260926T071224Z-pr-3120.md)
 - [レビュー結果](../../raw/reviews/20260926T075636Z-pr-3120.md)
 - [手で終えた後の戻り先を止まった表の次の行に直した fix 結果](../../raw/fixes/20260927T080741Z-pr-3221.md)
+- [修復手段が拒否集合を共有していないことを指摘したレビュー結果](../../raw/reviews/20260927T093553Z-pr-3253.md)

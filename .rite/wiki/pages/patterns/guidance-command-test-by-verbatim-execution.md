@@ -4,7 +4,7 @@ title: "エラーメッセージが案内するコマンドは、テストで出
 domain: "patterns"
 description: "エラーメッセージが利用者に打たせるコマンドを文字列の部分一致だけで固定すると、案内先 CLI の必須引数が欠けていても検出できない。テストは出力から案内コマンドを抽出してそのまま実行し、文言と実行可能性を 1 つの assert で結ぶ。"
 created: "2026-09-26T14:50:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T09:40:29Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260926T150855Z-pr-3171.md"
@@ -14,12 +14,17 @@ sources:
     resource: "raw/fixes/20260926T144658Z-pr-3171.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T083236Z-pr-3221.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T091721Z-pr-3251.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T092425Z-pr-3251.md"
 tags: []
 confidence: high
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T15:13:54Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T14:57:57Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T09:40:29Z" }
 ---
 
 # エラーメッセージが案内するコマンドは、テストで出力から抽出して逐語実行する
@@ -58,6 +63,12 @@ verified:
 
 案内が「この値に直してから再実行する」のような直し方を述べるとき、文言を読むだけでは読み違いの余地を測れない。わざと読み違えた直し方で再実行し、後段の検査が拒否する（fail-loud）ことを確かめる。この実測は文言の穴だけでなく、区切り文字のエスケープのような検査側の網の穴も見せる。
 
+### 自動経路に足した安全オプションは、案内する手動コマンドにも付ける
+
+復旧処理のコマンドに安全オプション（例: `--no-guess`。同名のリモート追跡ブランチから branch を推測して作り直す動作を止める）を足しても、失敗時に人間へ案内する手動コマンドが旧形式のままだと、自動経路で塞いだ危険を手動経路が再導入する。自動処理のオプションを変えたら、同じ操作を案内する文言も同じ形に揃える。
+
+修正は案内文言の差し替えに留め、テストでは「案内の文字列」と「案内を実際に実行した結果（branch が作り直されないこと）」の両方を固定した。文字列だけの assert では、案内を実行したときの挙動が変わっても検出できない。これは本ページの逐語実行の考え方を、実行可能性だけでなく実行結果の安全性にまで広げたものである。
+
 ## 関連ページ
 
 - [エラーメッセージ文字列の grep assert は locale 依存で dead assertion 化する](../anti-patterns/locale-dependent-error-message-grep-assertion.md)
@@ -69,3 +80,5 @@ verified:
 - [fix 結果](../../raw/fixes/20260926T144658Z-pr-3171.md)
 - [レビュー結果（再レビュー）](../../raw/reviews/20260926T150855Z-pr-3171.md)
 - [レビュー結果](../../raw/reviews/20260927T083236Z-pr-3221.md)
+- [安全オプションが案内コマンドに無いことを指摘したレビュー結果](../../raw/reviews/20260927T091721Z-pr-3251.md)
+- [fix 結果](../../raw/fixes/20260927T092425Z-pr-3251.md)

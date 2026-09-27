@@ -23,9 +23,15 @@ sources:
     resource: "raw/fixes/20260917T123444Z-pr-2935.md"
   - type: "fixes"
     resource: "raw/fixes/20260917T125340Z-pr-2935.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T091721Z-pr-3251.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T093452Z-pr-3251.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-17T13:08:59Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T09:40:29Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T09:40:29Z" }
 ---
 
 # 除外契約のテストは境界の両側に対で書く
@@ -108,6 +114,12 @@ fixture を対で置いただけでは十分でない。**実装から除外条�
 
 いずれも「除外されなければ必ず hit する内容」を用意できるかがテスト設計の分岐点になる。用意できない場合、その除外契約はテスト可能な形で表現されていない可能性が高い。
 
+### 拒否述語を広げたら受理側も固定する
+
+拒否する値の集合を広げる変更（不正な名前を弾く述語の拡張など）で拒否される値だけをテストすると、述語が過剰に一致して正当な値まで弾く変異が生き残る。境界の反対側として、実運用の命名規則に沿う値が受理されることを固定する。除外契約と同じく、テストは境界の両側に対で置く。
+
+同じ文言の案内を 2 つの経路が出す場合も、片方だけを固定すると、もう片方が旧形式に戻る変異が生き残る。経路ごとに固定するか、文言の生成を 1 か所にまとめる。
+
 ## 関連ページ
 
 - [アサーションの検証強度は「該当行を壊して赤くなるか」でしか測れない](../heuristics/mutation-testing-measures-assertion-strength.md)
@@ -125,3 +137,5 @@ fixture を対で置いただけでは十分でない。**実装から除外条�
 - [fix 結果](../../raw/fixes/20260917T120757Z-pr-2935.md)
 - [fix 結果](../../raw/fixes/20260917T123444Z-pr-2935.md)
 - [fix 結果](../../raw/fixes/20260917T125340Z-pr-2935.md)
+- [受理側の固定を求めたレビュー結果](../../raw/reviews/20260927T091721Z-pr-3251.md)
+- [レビュー結果（再レビュー）](../../raw/reviews/20260927T093452Z-pr-3251.md)

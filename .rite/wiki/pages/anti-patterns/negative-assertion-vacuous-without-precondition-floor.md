@@ -17,15 +17,18 @@ sources:
     resource: "raw/reviews/20260926T131154Z-pr-3156.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T084223Z-pr-3248.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T092741Z-pr-3248.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T09:40:29Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-16T12:58:00Z" }
   - { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T07:10:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T10:30:52Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:19:35Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T09:40:29Z" }
 ---
 
 # 否定形の assert は前提条件が崩れると fail-silent になる
@@ -147,6 +150,10 @@ rm -f "$result_dir"/*.json
 
 条件を満たさないときに helper が外部 CLI を「呼ばない」ことを確かめる assert が、成功系の fixture では marker の不在だけを見ていた。成功系の走行では marker はもともと出ないため、呼び出しを止める条件を外しても assert は空振りで通る。観測対象を呼び出しログ（stub が記録する CLI 呼び出しの一覧）に移し、該当する呼び出しが無いことを assert する。対処 4 と同じく、ログに呼び出しが記録される走行を対照として置くと、不在 assert の識別力を確かめられる。
 
+### 実例 6: 呼び出しログが書かれる前提を陽性 assert で先に固定する（レビュー結果）
+
+「〜を呼ばない」を確かめる否定 assert は、呼び出しログが書かれる経路をその走行が通っていることを前提にしている。ログ自体が書かれない走行では、呼び出しの有無に関係なく不在 assert が成立する。同じ走行でログが書かれたこと（別の呼び出しが記録されていること）を陽性 assert で先に固定すると、ログの欠落による空振りを排除できる。対処 5 と同じく、fixture が作るはずの前提の成立を assert で確かめる形である。
+
 ## 関連ページ
 
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
@@ -161,3 +168,4 @@ rm -f "$result_dir"/*.json
 - [レビュー結果](../../raw/reviews/20260926T102245Z-pr-3139.md)
 - [レビュー結果](../../raw/reviews/20260926T131154Z-pr-3156.md)
 - [レビュー結果](../../raw/reviews/20260927T084223Z-pr-3248.md)
+- [呼び出しログの前提を陽性 assert で固定する指摘のレビュー結果](../../raw/reviews/20260927T092741Z-pr-3248.md)

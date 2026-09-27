@@ -46,9 +46,11 @@ sources:
     resource: "raw/reviews/20260927T084223Z-pr-3248.md"
   - type: "fixes"
     resource: "raw/fixes/20260927T085009Z-pr-3248.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T092741Z-pr-3248.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T09:18:19Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T09:40:29Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5"
     at: "2026-09-15T03:40:00Z"
@@ -56,6 +58,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T05:10:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T09:18:19Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T09:40:29Z" }
 ---
 
 # 変更・削除の掃き出しは旧語彙・置換した条件式・別記法トークンまで広げる
@@ -155,6 +158,10 @@ canonical snippet / 共有 reference が「新規箇所を追加したら usage 
 
 helper の挙動（例: Issue を起票する条件）を変えると、同じ条件を説明している仕様書や設定リファレンスの記述が旧条件のまま残る。変更した述語を docs 全体で grep し、該当する記述に新しい限定句を足す。同じ失敗経路を案内する文言が helper の stderr と手順書の完了報告表の 2 箇所にある場合も、片方だけが変わって文言がずれやすい。これは複数のレビュアーから挙がった。修正時も、指摘された 1 箇所だけでなく、同じ述語を散文・表・設定例のコメントまで grep して限定句を伝播させる。
 
+### 条件文は docs だけでなく共有 reference にも重複している
+
+挙動の述語を変えたとき、同じ条件文は仕様書だけでなく、複数のスキルが参照する共有 reference（重大度の定義やレビュー結果スキーマの説明など）にも重複して書かれている。前 cycle で指摘された箇所だけを直すと、差分に含まれない reference に旧条件が残る。述語の grep は docs のディレクトリに限らず、共有 reference の置き場所まで広げる。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -184,3 +191,4 @@ helper の挙動（例: Issue を起票する条件）を変えると、同じ�
 - [総称的な言い回しが直した箇所の外に残ったことを確認したレビュー結果](../../raw/reviews/20260927T045935Z-pr-3215.md)
 - [レビュー結果](../../raw/reviews/20260927T084223Z-pr-3248.md)
 - [同じ述語を docs 全体へ伝播させた fix 結果](../../raw/fixes/20260927T085009Z-pr-3248.md)
+- [共有 reference に旧条件が残ったレビュー結果](../../raw/reviews/20260927T092741Z-pr-3248.md)
