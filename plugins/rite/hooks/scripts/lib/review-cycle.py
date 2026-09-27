@@ -144,7 +144,11 @@ def without_timestamp(result):
 
 
 AC_SKIPPED = ("no_issue", "no_ac_section")
-AC_REPAIR = "; build it with pr-review's final acceptance-criteria consistency check (acceptance-criteria-check.sh final)"
+# The final consistency check accepts some tables this refuses, so the repair names the form itself.
+AC_REPAIR = ("; rewrite the table in pr-review's result JSON in the form the Ready gate accepts"
+             " (skipped with exactly no_issue or no_ac_section, or unique AC-N rows with non-empty evidence,"
+             " status satisfied/unmet/unverified, finding_id F-NN when unmet and null otherwise, no head/at),"
+             " then rerun pr-review's final acceptance-criteria consistency check")
 
 
 def check_acceptance(content):

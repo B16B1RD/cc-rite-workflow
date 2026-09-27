@@ -172,7 +172,7 @@ with tempfile.TemporaryDirectory(prefix="rite-review-cycle-") as tmp:
             c["acceptance_criteria"] = table
         dump(content_file, c)
         error = rejected(finish_args, "acceptance table " + label)
-        check(needle in error.stderr and "acceptance-criteria-check.sh final" in error.stderr, label + " names the repair")
+        check(needle in error.stderr and "in the form the Ready gate accepts" in error.stderr, label + " names the repair")
         check(not saved_files() and cycle()["status"] == "collecting" and "manifest_path" not in cycle(),
               label + " saves nothing and keeps collecting")
     c = copy.deepcopy(content)
