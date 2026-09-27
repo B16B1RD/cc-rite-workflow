@@ -4,12 +4,13 @@ title: "契約を一意化する変更は、参照文書だけでなく実行手
 domain: "heuristics"
 description: "二義的だった契約文を一意に定める変更は、契約を書いた参照文書を直すだけでは足りない。実行者が実際に読む手順書側の placeholder 表やテンプレートが旧方式を無条件に命じたまま残ると曖昧さの発生源が解消せず、同一節に残った旧語彙は除去したはずの二義性を再生産する。主張は証跡が裏付ける範囲に限定する。"
 created: "2026-09-10T17:09:46Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:07:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:32:00Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-11T02:42:44Z" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-11T10:18:45Z" }
   - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-11T11:25:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:07:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:32:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260910T170301Z-pr-2662.md"
@@ -23,6 +24,8 @@ sources:
     resource: "raw/fixes/20260927T105052Z-pr-3263.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T110032Z-pr-3263.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T142124Z-pr-3286.md"
 tags: []
 confidence: high
 promote: rite-plugin
@@ -55,6 +58,8 @@ promote: rite-plugin
 
 主張の範囲を実装に合わせて狭める方向でも同じクラスが出る。警告や除外の対象を文書で「〜を問わない」と広く書くと、helper が別の分岐で入力を捨てる経路と食い違う。範囲を書くときは helper の分岐を列挙して一致を確かめ、合わなければ実装を広げるより記述を限定する。限定の書き直しは、同じ文言を持つ疑似コード・散文・docstring を grep してまとめて直す。それでも同じ節にある別の二重定義（入力キーの列挙など）は取り残されやすく、複数の reviewer が同じ未同期を独立に再掲した。境界を文書で明記したら、その境界を固定するテストを同じ変更で足す。文書と実装の一致を将来にわたって守るのはテストである。
 
+実装にある停止条件を文書の登録条件へ書き足す場合も同じ照合が要る。条件の境界（実装が `-ge` なら文書は「at or past」「未満のときだけ」）と、比較する値がいつ確定するか（カウンタを加算してから凍結するか）まで実装と突き合わせると、文言の境界ずれを防げる。書き足す位置にも注意する。表のセルに別の用途を追記すると、同じセルの後続文（無効値の扱いや発火時の挙動）が新しい用途にも掛かるように読めるため、追記はセル内の話題の切れ目に置く。
+
 ## 関連ページ
 
 - [Identity / reference document の用語統一は『単語 X』ではなく『文脈類義語群全体』を対象にする](./identity-reference-documentation-unification.md)
@@ -67,3 +72,4 @@ promote: rite-plugin
 - [レビュー結果](../../raw/reviews/20260911T111719Z-pr-2682.md)
 - [記述を helper の分岐に合わせて限定した fix 結果](../../raw/fixes/20260927T105052Z-pr-3263.md)
 - [同節の二重定義の取り残しを指摘したレビュー結果](../../raw/reviews/20260927T110032Z-pr-3263.md)
+- [停止条件の境界と追記位置を検討したレビュー結果](../../raw/reviews/20260927T142124Z-pr-3286.md)
