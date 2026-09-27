@@ -7,6 +7,7 @@
 * **Update**: [Exit code semantic preservation: caller は case で語彙を保持する](pages/patterns/exit-code-semantic-preservation.md) — raw/reviews/20260927T114751Z-pr-3278.md を統合
 * **Update**: [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) — raw/reviews/20260927T114354Z-pr-3279.md を統合
 * **Update**: [state machine を 2 箇所で記述する場合は動作の文字列レベルで同期する](pages/patterns/state-machine-dual-location-sync.md) — raw/reviews/20260927T114244Z-pr-3280.md を統合
+* **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=64, orphans=0, missing_concept=0, unregistered_raw=563, broken_refs=0
 * **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — raw/reviews/20260927T113227Z-pr-3274.md を統合
 * **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=66, orphans=0, missing_concept=0, unregistered_raw=562, broken_refs=0
 * **Create**: [セッション単位の state を読む案内は、同じ session_id で入る入口を基準に選ぶ — テストはホストの入力形で呼ぶ](pages/heuristics/session-scoped-guidance-targets-same-session-entry.md) — raw/reviews/20260927T102947Z-pr-3259.md, raw/fixes/20260927T103549Z-pr-3259.md を新規ページ化
