@@ -31,9 +31,13 @@ sources:
     resource: "raw/fixes/20260927T050634Z-pr-3211.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T170027Z-pr-3314.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T210318Z-pr-3345.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T211246Z-pr-3345.md"
 tags: ["test", "static-pin", "allowlist", "mutation", "bash"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T17:15:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:14:23Z" }
 verified:
   - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
   - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-12T04:13:09Z" }
@@ -43,6 +47,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T05:10:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T05:30:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T17:15:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:14:23Z" }
 ---
 
 # 静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く
@@ -139,6 +144,12 @@ ERE の交替を denylist に使うときは、各枝が非空で単独でも HE
 
 表記を持たない概念（あるコマンドを別のコマンドの引数に埋め込む形）の不在を固定するとき、literal の完全一致ではなく意味の単位で拾うパターンに強めても、境界は消えない。検査を強めた修正の差分スコープ再レビューでは、強化した正規表現の網羅範囲（コマンド置換の直後の空白、名前空間外の接頭辞）が次の推奨として出やすい。対象の文書に今その表記が無く、実行時の帰結を持たない検出網の弱さであれば、帰結クラスの降格で記録して収束させ、網羅を追い続けない。
 
+### 語のリストで否定形を判定する検査は、語の間の挿入と改行を通す
+
+否定語の直後に特定の動詞が来ることで停止文の否定形を検出する検査は、否定語と動詞の間に副詞が 1 語入る書き換え（immediately / just / ever）で検出を抜ける。grep は行単位なので、空白を `[[:space:]]+` で許しても改行をまたぐ書き換えも抜ける。否定語から数語以内（`([[:space:]]+[[:alpha:]]+){0,2}`）まで許すか、判定対象を 1 行に連結するか、停止文そのものをリテラルで固定すると、同じ種類の書き換えをまとめて閉じられる。判定を広げたら、元の文面で pass し、狙った書き換え（挿入する語数を変えた複数の形）で fail することを変異で確かめてから確定する。変異は plugin ディレクトリを一時領域へ複製して行うと作業ツリーを汚さない。
+
+「この節は存在しない」という宣言を引数で渡す検査では、その宣言自体（節が空であること）も検査する。宣言だけを信じると、節が後から追加されたときに宣言が黙って古くなる。
+
 ## 関連ページ
 
 - [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](./fixture-mutation-isolates-invariants.md)
@@ -161,3 +172,5 @@ ERE の交替を denylist に使うときは、各枝が非空で単独でも HE
 - [検出器の probe を実設定の行形から選ぶべきと確認したレビュー結果](../../raw/reviews/20260927T050031Z-pr-3211.md)
 - [判定経路の否定側を自己テストに置き、報告範囲を終端の形に限った fix 結果](../../raw/fixes/20260927T050634Z-pr-3211.md)
 - [意味の単位で拾う不在検査の網羅範囲が次の推奨になったレビュー結果](../../raw/reviews/20260927T170027Z-pr-3314.md)
+- [語のリストで判定する否定形検査が同種の書き換えを通すと指摘したレビュー結果](../../raw/reviews/20260927T210318Z-pr-3345.md)
+- [否定語から数語以内まで許して変異で確かめた fix 結果](../../raw/fixes/20260927T211246Z-pr-3345.md)

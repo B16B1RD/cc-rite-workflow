@@ -5,12 +5,16 @@ domain: "heuristics"
 description: "前回レビュー以降の差分が base の取り込みだけのとき、差分スコープは空になりフルレビューへ倒れる。そのまま同じ指示を渡すと再レビューは同じ差分の再確認に終わる。取り込みで変わった base 側ファイルと PR が触れた契約の矛盾を探すよう指示すると、再レビューが取り込み後の整合確認になる。"
 promote: rite-plugin
 created: "2026-09-26T10:50:02Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T10:50:02Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:14:23Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260926T104438Z-pr-3137.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T210409Z-pr-3334.md"
 tags: ["review-scope", "base-intake", "re-review", "cross-file-impact", "wiki-apply-evidence"]
 confidence: medium
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:14:23Z" }
 ---
 
 # base 取り込み後の再レビューは、同じ差分の再確認ではなく取り込み側との契約整合の確認として指示する
@@ -27,6 +31,8 @@ base の CI 失敗を直すために develop を PR へ取り込むと、PR 固�
 
 同じ取り込みでは、作業メモリの Wiki 適用証跡も古くなる。証跡は capture 時点の HEAD を記録しており、HEAD が進むと review 側のゲートは `stale_head` で止まる。適用したページがない証跡（`status: none`）なら失う判断材料がないため、capture を取り直して HEAD を更新すれば足りる。適用ページがある証跡は、ページ本文と差分を突き合わせ直してから取り直す。
 
+取り込みで PR と base の両側が同じテストを変えて競合したときは、base 側の行（行数上限や関数引数）を正本として採り、PR の書き換えだけを載せ直す。再レビューでは、base の先端との差分がその書き換えだけであること、書き換えの前後で判定が全ケースで一致すること、base 側の値を採らなければ既存テストが落ちていたことを実測させると、取り込みの解決そのものが検証される。
+
 ## 関連ページ
 
 - [検査を独立した段落ではなくゲート段落自体へ統合すると、再回収経路にも自動で効く](./gate-paragraph-consolidation-covers-retry-paths.md)
@@ -34,3 +40,4 @@ base の CI 失敗を直すために develop を PR へ取り込むと、PR 固�
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20260926T104438Z-pr-3137.md)
+- [競合したテストを base 側を正本に解決し、取り込み後の整合を実測したレビュー結果](../../raw/reviews/20260927T210409Z-pr-3334.md)

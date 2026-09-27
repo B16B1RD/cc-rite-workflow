@@ -18,6 +18,10 @@
 * **Update**: [mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる](pages/heuristics/mutation-axes-beyond-predicate.md) — raw/reviews/20260927T205140Z-pr-3344.md と raw/reviews/20260927T204401Z-pr-3334.md を統合
 * **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=63, orphans=0, missing_concept=0, unregistered_raw=568, broken_refs=0
 
+* **Create**: [awk の正規表現に区間表現 {m,n} を使うと mawk で範囲が黙って広がる](pages/anti-patterns/awk-interval-expression-widens-range-on-mawk.md) — raw/reviews/20260927T210801Z-pr-3347.md と raw/fixes/20260927T211229Z-pr-3347.md を新規ページ化
+* **Update**: [base 取り込み後の再レビューは、同じ差分の再確認ではなく取り込み側との契約整合の確認として指示する](pages/heuristics/rereview-after-base-intake-checks-contract-consistency.md) — raw/reviews/20260927T210409Z-pr-3334.md で補強
+* **Update**: [静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く](pages/heuristics/static-pin-semantic-allowlist-not-notation-denylist.md) — raw/reviews/20260927T210318Z-pr-3345.md と raw/fixes/20260927T211246Z-pr-3345.md で補強
+
 ## 2026-09-27
 
 * **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/reviews/20260927T160944Z-pr-3307.md を統合
