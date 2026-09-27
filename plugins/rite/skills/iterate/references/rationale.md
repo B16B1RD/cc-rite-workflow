@@ -288,10 +288,30 @@ sweep の後にフルレビューへ戻って 2 回目の sweep が走る経路�
 呼ぶのは、setup の dir_entry が `.rite/state/` を含まない消費者が `git add -A` で skip 権威
 ファイルを stage する穴を、setup 再実行に依存せず塞ぐため。新 helper は増やさない。失敗は
 WARNING で続行し、偽 skip はしない。寿命は本 run — 0.6 の
-`fresh || cur_cc == 0`（pin 書換と同条件）で消し、`review-restart` と cleanup でも消す。同一 run の新しい JSON は
+`fresh || cur_cc == 0`（pin 書換と同条件）で消し、`review-restart` と cleanup でも消す（止まった sweep の戻り先の寿命は
+[nb-sweep-resume](#nb-sweep-resume) を参照。0.6 では消さない）。同一 run の新しい JSON は
 ファイルを消さなくても再 sweep する。basename が取れない書込は `rm -f` して範囲なしの行を残さない
 （偽 skip 禁止）。`--nb-sweep` 戻りはステップ 4 汎用表を使わず、
 `[fix:pushed]` / `[fix:pushed-wm-stale]` / `[fix:replied-only]` でもステップ 1 に戻らない。
+
+## nb-sweep-resume
+
+起票の後、台帳 persist で止まった sweep を `/rite:iterate` の再実行で戻すには、再レビューを回してはならない。
+同じ HEAD の再レビューは新しい review JSON を作り、振り直された id の指摘は台帳と照合できないため、collect が
+同じ指摘を再び起票する。recover も batch-run も phase=fix を `/rite:iterate` へ送るので、入口のステップ 0.7 で
+吸収すれば振り分け側を変えずに済む。
+
+戻るのに要る値は、以前は会話にしか無かった。入口の sentinel（`{sweep_origin}`）は完了通知と run-close を
+決めるが、review JSON からは復元できない（`[fix:non-fatal-only]` と `[review:mergeable]` は JSON 上で区別できない）。
+そこで 5.S の `pending` で `.rite/state/nb-sweep-origin-{pr}.txt` に `<review JSON basename> <sentinel>` を書く。
+書けなければ起票に進まない（記録なしで止まると戻り先が無い）。起票済みの Issue は fix 側の entries が持ち、
+entries も同じ `.rite/state/` に置く（一時ディレクトリは再起動や別環境で消える）。
+
+入口記録を戻り先に使うのは、basename が最新 review JSON と一致し、その JSON の `commit_sha` が現在の HEAD と
+一致するときだけ。後からレビューが保存された、または HEAD が動いたときは、その変更をまだ誰もレビューしていないので
+記録を消してステップ 1 へ進む。nb-sweep-done の 1 行目に新しい kind を足す形にしないのは、collect が未知の kind を
+`done` に倒して skip するため（台帳を書かないまま sweep 済みになる）。記録は sweep が済んだ時点（collect の
+`noop` / `skipped`、`nb-sweep-record`）で消し、cleanup と `review-restart` でも消す。
 
 ## resume-routes-no-state-read
 

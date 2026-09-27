@@ -195,7 +195,7 @@ dirty な基点ブランチを黙って上書きしないため。破棄・stash
 
 ## nb-sweep-done-sweep
 
-`nb-sweep-done-{pr}.txt` は 5.S 再入の権威（形式は review-result-schema.md の却下台帳節）。
+`nb-sweep-done-{pr}.txt` は 5.S 再入の権威（形式は review-result-schema.md の却下台帳節）。`nb-sweep-origin-{pr}.txt` / `nb-sweep-entries-{pr}.md` は止まった sweep の戻り先で、マージ後は戻る先が無いので一緒に消す。
 cleanup が回収するのは、PR 単位の state の後片付けのため。同じ呼び出しでその PR の review JSON も
 削除・退避するので、残したファイルが同じ JSON への再入を skip させる状況は起きない。残しても害は
 ないが、参照先の JSON が消えた孤児を PR ごとに積み上げない（`review-run-since-{pr}.txt` と同じ扱い）。

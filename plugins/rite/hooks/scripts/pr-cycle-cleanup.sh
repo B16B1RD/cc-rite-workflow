@@ -1679,6 +1679,8 @@ if [ "$review_gc_safe" -eq 1 ] && [ -d "$review_dir" ]; then
       fi
     fi
     for sweep_done_file in "$repo_root/.rite/state/nb-sweep-done-${review_pr}.txt" \
+                           "$repo_root/.rite/state/nb-sweep-origin-${review_pr}.txt" \
+                           "$repo_root/.rite/state/nb-sweep-entries-${review_pr}.md" \
                            "$repo_root/.rite/state/pr-recommendations-done-${review_pr}.txt"; do
       if [ -e "$sweep_done_file" ] || [ -L "$sweep_done_file" ]; then
         if ! rm -f "$sweep_done_file" 2>/dev/null; then

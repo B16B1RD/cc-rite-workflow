@@ -22,6 +22,15 @@
 #      the mtime max; a missing record removes an existing file instead of leaving a rangeless one
 # T-12 fix 5.1 reader, the digest writer and the iterate post-return writer executed: each
 #      picks the lexical tail even when another JSON has the newer mtime
+# T-13 nb-sweep-resume（iterate ステップ 0.7）を dispatch 経由で実行する。分岐ごとに marker 値・reason・rc・
+#      入口記録の存否を見る（無し / basename 不一致 / HEAD 不一致 / commit_sha 読めず / 値不正 / 一致）
+# T-14 nb-sweep-collect は --sweep-origin を dispatch で検証し、pending のときだけ入口記録を 1 行で書く。
+#      書けなければ pending を出さない。noop / skipped と nb-sweep-record は入口記録を消す
+# T-15 fix の手順 1: 残った entries が今回の record のものなら起票を飛ばす marker を出し、他の record の
+#      ものなら起票も persist も始めずに止まる。empty 経路は entries から件数を数えて entries を消す
+# T-16 fix の手順 4: entries の判定列から件数を数え（セル内のエスケープ済みパイプでずれない）、entries を消す
+# T-17 iterate SKILL の配線: 0.7 は 0.6 と 1 の間、resume は 5.S へ、collect に入口を単一引用で渡す。
+#      0.6（step_init_cycle）は入口記録と entries を消さない
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -131,9 +140,10 @@ assert_grep "T-03 existing step-1 ban" "$ITERATE" 'ステップ 1 に戻らな�
 assert_grep_in_section "T-04 iterate post-return writes done basename" "$ITERATE_STEP" \
   '^step_nb_sweep_record[(][)] [{]$' '^}$' \
   "printf 'done %s\\\\n"
-assert_grep_in_section "T-04 fix empty writes noop basename" "$FIX_SWEEP" \
+# 起票の無い sweep は noop、台帳 persist 後に止まった sweep は done（kind は変数で渡す。T-15 が両方を実行で確かめる）
+assert_grep_in_section "T-04 fix empty writes kind basename" "$FIX_SWEEP" \
   '### 1.3.S `--nb-sweep` consume' '### 1.4 Display Comment List' \
-  "printf 'noop %s\\\\n"
+  "printf '%s %s\\\\n' \"\\\$nb_kind\""
 assert_grep_in_section "T-04 fix empty uses collect record" "$FIX_SWEEP" \
   '### 1.3.S `--nb-sweep` consume' '### 1.4 Display Comment List' \
   'jq -r '"'"'.record // empty'"'"
@@ -185,14 +195,14 @@ assert_grep_in_section "T-07 step_init_cycle has done-file rm line" "$ITERATE_ST
 assert_grep_in_section "T-08 setup Phase 4.6 calls nested gitignore helper" "$SETUP" \
   '## Phase 4.6:' '## Phase 4.7:' \
   '_ensure_rite_nested_gitignore'
-# 5.S の書き込みブロックは collect（noop 書き込み）と record（done 書き込み）の 2 関数。
+# 5.S の書き込みブロックは collect（noop 書き込みと pending の入口記録）と record（done 書き込み）の 3 箇所。
 iter_5s_bodies() {
   awk '/^step_nb_sweep_(collect|record)\(\) \{$/,/^}$/' "$ITERATE_STEP"
 }
 iter_ensure=$(iter_5s_bodies | grep -c '_ensure_dir_gitignore' || true)
-assert "T-08 5.S has two _ensure_dir_gitignore calls" "2" "$iter_ensure"
+assert "T-08 5.S has three _ensure_dir_gitignore calls" "3" "$iter_ensure"
 iter_src=$(iter_5s_bodies | grep -c '^[[:space:]]*source .*gitignore-ensure.sh' || true)
-assert "T-08 5.S sources gitignore-ensure in each write block" "2" "$iter_src"
+assert "T-08 5.S sources gitignore-ensure in each write block" "3" "$iter_src"
 fix_ensure=$(awk '/### 1.3.S `--nb-sweep` consume/,/### 1.4 Display Comment List/' "$FIX_SWEEP" \
   | grep -c '_ensure_dir_gitignore' || true)
 assert "T-08 fix 1.3.S has two _ensure_dir_gitignore calls" "2" "$fix_ensure"
@@ -251,7 +261,7 @@ entry_fence=$(awk '/^step_nb_sweep_collect\(\) \{$/{f=1} f{print} f && /^}$/{exi
 [ -n "$entry_fence" ] || { echo "FAIL: T-11 entry fence missing"; exit 1; }
 # 行数上限は終端アンカー (`^}$`) を取り逃して後続関数を巻き込む over-extraction を loud にする。
 entry_lines=$(printf '%s\n' "$entry_fence" | wc -l | tr -d '[:space:]')
-if [ "$entry_lines" -gt 100 ] || ! printf '%s\n' "$entry_fence" | tail -1 | grep -qx '}'; then
+if [ "$entry_lines" -gt 130 ] || ! printf '%s\n' "$entry_fence" | tail -1 | grep -qx '}'; then
   echo "FAIL: T-11 entry fence extraction overran or lost its end anchor ($entry_lines lines)"; exit 1
 fi
 nb_collect_stub=$(mktemp "${TMPDIR:-/tmp}/rite-nb-collect-stub-XXXXXX")
@@ -443,6 +453,289 @@ rm -rf -- "$record_root"
 record_root=$(record_run "noop $lexical_tail")
 assert "T-12 iterate post-return leaves a matching file untouched" "noop $lexical_tail" "$(awk 'NR==1{print}' "$record_root/.rite/state/nb-sweep-done-42.txt" 2>/dev/null)"
 rm -rf -- "$record_root"
+
+# --- 台帳 persist の前に止まった sweep を別の会話から重複起票なしで戻す (T-13〜T-17) ---
+LEDGER="$PLUGIN_ROOT/hooks/scripts/nb-sweep-ledger.sh"
+cleanup_dirs=()
+trap 'rm -rf "${cleanup_dirs[@]}"' EXIT
+
+# iterate-step.sh は自分の位置から plugin_root を決める。collect helper だけ stub にした plugin の複製を作る
+fake_plugin=$(mktemp -d); cleanup_dirs+=("$fake_plugin")
+mkdir -p "$fake_plugin/scripts" "$fake_plugin/hooks/scripts"
+cp "$ITERATE_STEP" "$fake_plugin/scripts/iterate-step.sh"
+for dep in state-path-resolve.sh gitignore-ensure.sh control-char-neutralize.sh flow-state.sh; do
+  ln -s "$PLUGIN_ROOT/hooks/$dep" "$fake_plugin/hooks/$dep"
+done
+ln -s "$PLUGIN_ROOT/hooks/scripts/lib" "$fake_plugin/hooks/scripts/lib"
+cat > "$fake_plugin/hooks/scripts/nb-sweep-collect.sh" <<'STUB'
+#!/bin/bash
+case "${NB_STUB_STATUS:-ok}" in
+  ok) printf '%s\n' '{"status":"ok","count":1,"record":"x"}' ;;
+  empty) printf '%s\n' '{"status":"empty","count":0,"record":"'"${NB_STUB_RECORD:-}"'"}' ;;
+esac
+STUB
+chmod +x "$fake_plugin/hooks/scripts/nb-sweep-collect.sh"
+
+# sandbox git リポジトリ（state root = その root）と最新 review JSON を用意する
+new_repo() {  # $1=commit_sha の扱い (head / other / none)
+  local sbx head sha
+  sbx=$(make_sandbox)
+  mkdir -p "$sbx/.rite/review-results" "$sbx/.rite/state"
+  head=$(git -C "$sbx" rev-parse HEAD)
+  case "$1" in
+    head) sha="\"$head\"" ;;
+    short) sha="\"${head:0:7}\"" ;;
+    other) sha='"0123456789abcdef0123456789abcdef01234567"' ;;
+    none) sha='null' ;;
+  esac
+  printf '{"commit_sha":%s}\n' "$sha" > "$sbx/.rite/review-results/7-20260101000000.json"
+  printf '{"commit_sha":%s}\n' "$sha" > "$sbx/.rite/review-results/7-20260202000000.json"
+  echo "$sbx"
+}
+run_step() {  # $1=sandbox, rest=args. stdout+stderr -> $1/out, rc -> $1/rc
+  local sbx="$1"; shift
+  ( cd "$sbx" && bash "$fake_plugin/scripts/iterate-step.sh" "$@" ) > "$sbx/out" 2>&1
+  echo $? > "$sbx/rc"
+}
+origin_of() { printf '%s\n' "$1/.rite/state/nb-sweep-origin-7.txt"; }
+marker_line() { grep -E "^\[CONTEXT\] $2=" "$1/out" | tail -1; }
+
+# --- T-13: nb-sweep-resume ---
+r=$(new_repo head); cleanup_dirs+=("$r")
+run_step "$r" nb-sweep-resume --pr 7
+assert "T-13 無し: none/no_origin" "[CONTEXT] ITERATE_NB_SWEEP_RESUME=none; reason=no_origin" "$(marker_line "$r" ITERATE_NB_SWEEP_RESUME)"
+assert "T-13 無し: rc=0" 0 "$(cat "$r/rc")"
+
+r=$(new_repo head); cleanup_dirs+=("$r")
+printf '7-20260101000000.json [review:mergeable]\n' > "$(origin_of "$r")"
+run_step "$r" nb-sweep-resume --pr 7
+assert "T-13 basename 不一致: none/stale_origin" \
+  "[CONTEXT] ITERATE_NB_SWEEP_RESUME=none; reason=stale_origin; record=7-20260101000000.json" "$(marker_line "$r" ITERATE_NB_SWEEP_RESUME)"
+assert "T-13 basename 不一致: rc=0" 0 "$(cat "$r/rc")"
+assert "T-13 basename 不一致: 入口記録を消す" 0 "$([ -e "$(origin_of "$r")" ] && echo 1 || echo 0)"
+
+r=$(new_repo other); cleanup_dirs+=("$r")
+printf '7-20260202000000.json [review:mergeable]\n' > "$(origin_of "$r")"
+run_step "$r" nb-sweep-resume --pr 7
+assert "T-13 HEAD 不一致: none/head_changed" \
+  "[CONTEXT] ITERATE_NB_SWEEP_RESUME=none; reason=head_changed; record=7-20260202000000.json" "$(marker_line "$r" ITERATE_NB_SWEEP_RESUME)"
+assert "T-13 HEAD 不一致: rc=0" 0 "$(cat "$r/rc")"
+assert "T-13 HEAD 不一致: 入口記録を消す" 0 "$([ -e "$(origin_of "$r")" ] && echo 1 || echo 0)"
+
+r=$(new_repo none); cleanup_dirs+=("$r")
+printf '7-20260202000000.json [review:mergeable]\n' > "$(origin_of "$r")"
+run_step "$r" nb-sweep-resume --pr 7
+assert "T-13 commit_sha 読めず: failed/head_unverified" \
+  "[CONTEXT] ITERATE_NB_SWEEP_RESUME=failed; reason=head_unverified" "$(marker_line "$r" ITERATE_NB_SWEEP_RESUME)"
+assert "T-13 commit_sha 読めず: rc=1" 1 "$(cat "$r/rc")"
+assert "T-13 commit_sha 読めず: [iterate:nb-sweep-error]" 1 "$(grep -cx '\[iterate:nb-sweep-error\]' "$r/out")"
+assert "T-13 commit_sha 読めず: 入口記録は残す" 1 "$([ -e "$(origin_of "$r")" ] && echo 1 || echo 0)"
+
+r=$(new_repo head); cleanup_dirs+=("$r")
+printf '7-20260202000000.json [fix:error]\n' > "$(origin_of "$r")"
+run_step "$r" nb-sweep-resume --pr 7
+assert "T-13 値不正: failed/origin_invalid" \
+  "[CONTEXT] ITERATE_NB_SWEEP_RESUME=failed; reason=origin_invalid" "$(marker_line "$r" ITERATE_NB_SWEEP_RESUME)"
+assert "T-13 値不正: rc=1" 1 "$(cat "$r/rc")"
+
+for origin in '[review:mergeable]' '[fix:non-fatal-only]' '[fix:replied-only]'; do
+  r=$(new_repo short); cleanup_dirs+=("$r")
+  printf '7-20260202000000.json %s\n' "$origin" > "$(origin_of "$r")"
+  run_step "$r" nb-sweep-resume --pr 7
+  assert "T-13 一致 ($origin): resume と記録した入口" \
+    "[CONTEXT] ITERATE_NB_SWEEP_RESUME=resume; origin=$origin; record=7-20260202000000.json" "$(marker_line "$r" ITERATE_NB_SWEEP_RESUME)"
+  assert "T-13 一致 ($origin): rc=0" 0 "$(cat "$r/rc")"
+  assert "T-13 一致 ($origin): 入口記録は残す" 1 "$([ -e "$(origin_of "$r")" ] && echo 1 || echo 0)"
+done
+
+# --- T-14: nb-sweep-collect / nb-sweep-record ---
+r=$(new_repo head); cleanup_dirs+=("$r")
+run_step "$r" nb-sweep-collect --pr 7 --sweep-origin '[fix:non-fatal-only]'
+assert "T-14 pending を出す" "[CONTEXT] ITERATE_NB_SWEEP=pending; count=1" "$(marker_line "$r" ITERATE_NB_SWEEP)"
+assert "T-14 入口記録は 1 行" 1 "$(wc -l < "$(origin_of "$r")" | tr -d ' ')"
+assert "T-14 入口記録は最新 JSON の basename と入口" "7-20260202000000.json [fix:non-fatal-only]" "$(cat "$(origin_of "$r")")"
+
+for bad in '' '[fix:error]'; do
+  r=$(new_repo head); cleanup_dirs+=("$r")
+  if [ -z "$bad" ]; then
+    run_step "$r" nb-sweep-collect --pr 7
+  else
+    run_step "$r" nb-sweep-collect --pr 7 --sweep-origin "$bad"
+  fi
+  assert "T-14 入口 '${bad:-<欠落>}' は exit 2" 2 "$(cat "$r/rc")"
+  assert "T-14 入口 '${bad:-<欠落>}' は記録を作らない" 0 "$([ -e "$(origin_of "$r")" ] && echo 1 || echo 0)"
+done
+
+if [ "$(id -u)" != 0 ]; then
+  r=$(new_repo head); cleanup_dirs+=("$r")
+  printf '*\n' > "$r/.rite/state/.gitignore"
+  chmod 555 "$r/.rite/state"
+  run_step "$r" nb-sweep-collect --pr 7 --sweep-origin '[review:mergeable]'
+  chmod 755 "$r/.rite/state"
+  assert "T-14 書けなければ failed/origin_write_failed" \
+    "[CONTEXT] ITERATE_NB_SWEEP=failed; reason=origin_write_failed" "$(marker_line "$r" ITERATE_NB_SWEEP)"
+  assert "T-14 書けなければ pending を出さない" 0 "$(grep -c 'ITERATE_NB_SWEEP=pending' "$r/out")"
+  assert "T-14 書けなければ rc=1" 1 "$(cat "$r/rc")"
+  assert "T-14 書けなければ記録を残さない" 0 "$([ -e "$(origin_of "$r")" ] && echo 1 || echo 0)"
+fi
+
+r=$(new_repo head); cleanup_dirs+=("$r")
+printf '7-20260202000000.json [review:mergeable]\n' > "$(origin_of "$r")"
+( export NB_STUB_STATUS=empty NB_STUB_RECORD="$r/.rite/review-results/7-20260202000000.json"
+  run_step "$r" nb-sweep-collect --pr 7 --sweep-origin '[review:mergeable]' )
+assert "T-14 noop" "[CONTEXT] ITERATE_NB_SWEEP=noop; count=0" "$(marker_line "$r" ITERATE_NB_SWEEP)"
+assert "T-14 noop は入口記録を消す" 0 "$([ -e "$(origin_of "$r")" ] && echo 1 || echo 0)"
+
+# 台帳 persist の後・完了の前に止まった sweep: collect は empty でも entries が残るので fix へ渡す
+r=$(new_repo head); cleanup_dirs+=("$r")
+printf '7-20260202000000.json [review:mergeable]\n' > "$(origin_of "$r")"
+printf '| A-1 | a.ts:1 | issued | #5 | 7-20260202000000.json |\n' > "$r/.rite/state/nb-sweep-entries-7.md"
+( export NB_STUB_STATUS=empty NB_STUB_RECORD="$r/.rite/review-results/7-20260202000000.json"
+  run_step "$r" nb-sweep-resume --pr 7
+  cp "$r/out" "$r/resume.out"
+  run_step "$r" nb-sweep-collect --pr 7 --sweep-origin '[review:mergeable]' )
+assert "T-14 persist 後の再開: 0.7 は resume" 1 "$(grep -c '^\[CONTEXT\] ITERATE_NB_SWEEP_RESUME=resume;' "$r/resume.out")"
+assert "T-14 collect empty でも entries があれば pending（fix へ渡す）" 1 "$(grep -c '^\[CONTEXT\] ITERATE_NB_SWEEP=pending;' "$r/out")"
+assert "T-14 collect empty でも entries があれば noop を書かない" 0 "$([ -e "$r/.rite/state/nb-sweep-done-7.txt" ] && echo 1 || echo 0)"
+assert "T-14 collect empty でも entries があれば入口記録を残す" "7-20260202000000.json [review:mergeable]" "$(cat "$(origin_of "$r")")"
+
+r=$(new_repo head); cleanup_dirs+=("$r")
+printf '7-20260202000000.json [review:mergeable]\n' > "$(origin_of "$r")"
+printf 'done 7-20260202000000.json\n' > "$r/.rite/state/nb-sweep-done-7.txt"
+run_step "$r" nb-sweep-collect --pr 7 --sweep-origin '[review:mergeable]'
+assert "T-14 skipped" 1 "$(grep -c '^\[CONTEXT\] ITERATE_NB_SWEEP=skipped; reason=already_done' "$r/out")"
+assert "T-14 skipped は入口記録を消す" 0 "$([ -e "$(origin_of "$r")" ] && echo 1 || echo 0)"
+
+r=$(new_repo head); cleanup_dirs+=("$r")
+printf '7-20260202000000.json [review:mergeable]\n' > "$(origin_of "$r")"
+run_step "$r" nb-sweep-record --pr 7
+assert "T-14 record は done を書く" "done 7-20260202000000.json" "$(cat "$r/.rite/state/nb-sweep-done-7.txt")"
+assert "T-14 record は入口記録を消す" 0 "$([ -e "$(origin_of "$r")" ] && echo 1 || echo 0)"
+
+# --- fix 側の手順 1 / 手順 4 の bash を nb-sweep.md から抜き出して実行する ---
+# 手順 N の見出しから次の見出しまでの最初の ```bash ブロック
+sweep_block() {
+  awk -v head="$1" '
+    index($0, head) == 1 { s = 1; next }
+    s && /^```bash$/ { f = 1; next }
+    f && /^```$/ { exit }
+    f { print }
+  ' "$FIX_SWEEP"
+}
+fix_plugin=$(mktemp -d); cleanup_dirs+=("$fix_plugin")
+mkdir -p "$fix_plugin/hooks/scripts"
+ln -s "$LEDGER" "$fix_plugin/hooks/scripts/nb-sweep-ledger.sh"
+ln -s "$PLUGIN_ROOT/hooks/gitignore-ensure.sh" "$fix_plugin/hooks/gitignore-ensure.sh"
+ln -s "$PLUGIN_ROOT/hooks/scripts/lib" "$fix_plugin/hooks/scripts/lib"
+cat > "$fix_plugin/hooks/state-path-resolve.sh" <<'STUB'
+#!/bin/bash
+printf '%s\n' "${FIX_STATE_ROOT:?}"
+STUB
+cat > "$fix_plugin/hooks/scripts/nb-sweep-collect.sh" <<'STUB'
+#!/bin/bash
+printf '{"status":"%s","count":1,"record":"%s/.rite/review-results/7-20260202000000.json"}\n' "${NB_STUB_STATUS:?}" "${FIX_STATE_ROOT:?}"
+STUB
+render() { sweep_block "$1" | sed -e "s|{plugin_root}|$fix_plugin|g" -e 's|{pr_number}|7|g'; }
+step1=$(render '1. **collect**')
+step4=$(render '4. **完了**')
+assert "T-15 手順 1 の bash を抜き出せる" 1 "$(printf '%s\n' "$step1" | grep -c 'NB_SWEEP_ENTRIES=present')"
+assert "T-16 手順 4 の bash を抜き出せる" 1 "$(printf '%s\n' "$step4" | grep -c 'tally --entries-file')"
+fix_root() {
+  local d; d=$(mktemp -d)
+  mkdir -p "$d/.rite/state" "$d/.rite/review-results"
+  printf '{}\n' > "$d/.rite/review-results/7-20260202000000.json"
+  echo "$d"
+}
+run_fix() {  # $1=root $2=status $3=script
+  FIX_STATE_ROOT="$1" NB_STUB_STATUS="$2" bash -c "$3" > "$1/out" 2>&1
+  echo $? > "$1/rc"
+}
+entries_of() { printf '%s\n' "$1/.rite/state/nb-sweep-entries-7.md"; }
+write_entries() {  # $1=root $2=record basename
+  printf '%s\n' "| A-1 | a.ts:1 | issued | #5 https://example.test/5 | $2 |" \
+    "| A\\|2 | b.ts:2 | recorded | severity=LOW; measured=false | $2 |" \
+    "| A-3 | c.ts:3 | issued | #6 x\\|y | $2 |" > "$(entries_of "$1")"
+}
+
+# T-15
+d=$(fix_root); cleanup_dirs+=("$d")
+run_fix "$d" ok "$step1"
+assert "T-15 entries 無し: absent" 1 "$(grep -c '^\[CONTEXT\] NB_SWEEP_ENTRIES=absent;' "$d/out")"
+assert "T-15 entries 無し: rc=0" 0 "$(cat "$d/rc")"
+
+d=$(fix_root); cleanup_dirs+=("$d")
+write_entries "$d" 7-20260202000000.json
+run_fix "$d" ok "$step1"
+assert "T-15 今回の record の entries: present（起票を飛ばす）" 1 "$(grep -c '^\[CONTEXT\] NB_SWEEP_ENTRIES=present;' "$d/out")"
+assert "T-15 今回の record の entries: rc=0" 0 "$(cat "$d/rc")"
+assert "T-15 今回の record の entries: entries は残す" 1 "$([ -e "$(entries_of "$d")" ] && echo 1 || echo 0)"
+
+d=$(fix_root); cleanup_dirs+=("$d")
+write_entries "$d" 7-20260101000000.json
+run_fix "$d" ok "$step1"
+assert "T-15 他の record の entries: [fix:error] で止まる" 1 "$(grep -c '^\[fix:error\] reason=nb_sweep_entries_stale$' "$d/out")"
+assert "T-15 他の record の entries: rc=1" 1 "$(cat "$d/rc")"
+assert "T-15 他の record の entries: present を出さない" 0 "$(grep -c 'NB_SWEEP_ENTRIES=present' "$d/out")"
+
+d=$(fix_root); cleanup_dirs+=("$d")
+write_entries "$d" 7-20260202000000.json
+run_fix "$d" empty "$step1"
+assert "T-15 empty: entries から件数を数える" 1 "$(grep -c '^\[CONTEXT\] NB_SWEEP_RESULT=done; issued=2; recorded=1$' "$d/out")"
+assert "T-15 empty: entries を消す" 0 "$([ -e "$(entries_of "$d")" ] && echo 1 || echo 0)"
+assert "T-15 empty: 起票があった sweep は done で記録する" "done 7-20260202000000.json" "$(cat "$d/.rite/state/nb-sweep-done-7.txt")"
+
+d=$(fix_root); cleanup_dirs+=("$d")
+write_entries "$d" 7-20260101000000.json
+run_fix "$d" empty "$step1"
+assert "T-15 empty で他の record の entries: [fix:error] で止まる" 1 "$(grep -c '^\[fix:error\] reason=nb_sweep_entries_stale$' "$d/out")"
+assert "T-15 empty で他の record の entries: 件数を出さない" 0 "$(grep -c 'NB_SWEEP_RESULT=' "$d/out")"
+assert "T-15 empty で他の record の entries: entries を消さない" 1 "$([ -e "$(entries_of "$d")" ] && echo 1 || echo 0)"
+
+d=$(fix_root); cleanup_dirs+=("$d")
+run_fix "$d" empty "$step1"
+assert "T-15 empty で entries 無し: 0 件" 1 "$(grep -c '^\[CONTEXT\] NB_SWEEP_RESULT=done; issued=0; recorded=0$' "$d/out")"
+assert "T-15 empty で entries 無し: noop で記録する" "noop 7-20260202000000.json" "$(cat "$d/.rite/state/nb-sweep-done-7.txt")"
+
+# 起票を飛ばす判定は手順 2 の起票より前に書かれている
+skip_line=$(grep -n '`NB_SWEEP_ENTRIES=present` なら' "$FIX_SWEEP" | head -1 | cut -d: -f1)
+issue_line=$(grep -n 'create-issue-with-projects.sh' "$FIX_SWEEP" | head -1 | cut -d: -f1)
+if [ -n "$skip_line" ] && [ -n "$issue_line" ] && [ "$skip_line" -lt "$issue_line" ]; then
+  pass "T-15 起票を飛ばす判定は手順 2 の起票より前"
+else
+  fail "T-15 起票を飛ばす判定は手順 2 の起票より前 (skip=$skip_line issue=$issue_line)"
+fi
+
+# T-16
+d=$(fix_root); cleanup_dirs+=("$d")
+write_entries "$d" 7-20260202000000.json
+run_fix "$d" ok "$step4"
+assert "T-16 件数はエスケープ済みパイプでずれない" 1 "$(grep -c '^\[CONTEXT\] NB_SWEEP_RESULT=done; issued=2; recorded=1$' "$d/out")"
+assert "T-16 entries を消す" 0 "$([ -e "$(entries_of "$d")" ] && echo 1 || echo 0)"
+assert "T-16 done を書く" "done 7-20260202000000.json" "$(cat "$d/.rite/state/nb-sweep-done-7.txt")"
+
+d=$(fix_root); cleanup_dirs+=("$d")
+run_fix "$d" ok "$step4"
+assert "T-16 entries 無し: 件数を出さない" 0 "$(grep -c 'NB_SWEEP_RESULT=' "$d/out")"
+assert "T-16 entries 無し: fix を止める理由を出す" 1 "$(grep -c 'FIX_FALLBACK_FAILED=1; reason=nb_sweep_entries_tally_failed' "$d/out")"
+
+# --- T-17: iterate SKILL の配線と 0.6 の削除範囲 ---
+h06=$(grep -n '^## ステップ 0.6:' "$ITERATE" | cut -d: -f1)
+h07=$(grep -n '^## ステップ 0.7:' "$ITERATE" | cut -d: -f1)
+h1=$(grep -n '^## ステップ 1:' "$ITERATE" | cut -d: -f1)
+if [ -n "$h06" ] && [ -n "$h07" ] && [ -n "$h1" ] && [ "$h06" -lt "$h07" ] && [ "$h07" -lt "$h1" ]; then
+  pass "T-17 ステップ 0.7 は 0.6 と 1 の間"
+else
+  fail "T-17 ステップ 0.7 は 0.6 と 1 の間 (0.6=$h06 0.7=$h07 1=$h1)"
+fi
+assert "T-17 0.7 は nb-sweep-resume を呼ぶ" 1 \
+  "$(awk -v a="$h07" -v b="$h1" 'NR > a && NR < b' "$ITERATE" | grep -cx 'bash {plugin_root}/scripts/iterate-step.sh nb-sweep-resume --pr {pr_number}')"
+assert "T-17 resume 行は入口を保持して 5.S へ" 1 \
+  "$(grep -E '^\| `resume` \|' "$ITERATE" | grep -F '`{sweep_origin}` として保持' | grep -cF 'ステップ 5.S へ')"
+assert "T-17 collect は入口を単一引用で渡す" 1 \
+  "$(grep -cxF "bash {plugin_root}/scripts/iterate-step.sh nb-sweep-collect --pr {pr_number} --sweep-origin '{sweep_origin}'" "$ITERATE")"
+init_body=$(awk '/^step_init_cycle\(\) \{$/,/^}$/' "$ITERATE_STEP")
+assert "T-17 step_init_cycle を抜き出せる" 1 "$(printf '%s\n' "$init_body" | grep -c 'nb-sweep-done-')"
+assert "T-17 0.6 は入口記録と entries を消さない" 0 "$(printf '%s\n' "$init_body" | grep -cE 'nb-sweep-(origin|entries)-')"
 
 if ! print_summary "$(basename "$0")" "nb-sweep re-entry guard drift — iterate 5.S / fix 1.3.S / cleanup / 0.6"; then
   exit 1

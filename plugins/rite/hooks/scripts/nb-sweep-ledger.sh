@@ -9,6 +9,7 @@
 #   bash nb-sweep-ledger.sh extract --body-file <path>
 #   bash nb-sweep-ledger.sh append --ledger-file <path> --entries-file <path>
 #   bash nb-sweep-ledger.sh merge-into --body-file <path> --ledger-file <path>
+#   bash nb-sweep-ledger.sh tally --entries-file <path> [--record <basename>]
 #
 # extract  stdout: the ### 却下台帳 section (empty if absent). exit 0 when
 #          the body is readable even if no ledger exists.
@@ -21,6 +22,13 @@
 # merge-into  splices --ledger-file into --body-file immediately before
 #          `📎 non_blocking_count:`. Replaces an existing ### 却下台帳.
 #          Empty ledger-file is a no-op (does not insert a heading).
+# tally    stdout: `issued=K; recorded=M` counted from the 判定 cell of the
+#          entries rows (escaped pipes inside a cell do not shift columns).
+#          With --record, every row's 出典 cell must equal that basename;
+#          otherwise nothing is printed (reason=entries_record_mismatch).
+#          Entries are what an interrupted sweep already filed, so a leftover
+#          from another review JSON must stop the sweep instead of standing in
+#          for this sweep's filing.
 #
 # extract の出力は節末尾の空行を含まない。merge-into は台帳の前後を空行 1 行ずつに揃える。
 # このため同じ本文に extract → merge-into を繰り返しても本文は変わらず、空行も増えない。
@@ -41,19 +49,21 @@ cmd=""
 body_file=""
 ledger_file=""
 entries_file=""
+record_base=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    extract|append|merge-into)
+    extract|append|merge-into|tally)
       [ -z "$cmd" ] || { echo "ERROR: multiple subcommands" >&2; exit 2; }
       cmd=$1; shift ;;
     --body-file) body_file=${2:-}; shift 2 ;;
     --ledger-file) ledger_file=${2:-}; shift 2 ;;
     --entries-file) entries_file=${2:-}; shift 2 ;;
+    --record) record_base=${2:-}; shift 2 ;;
     *) echo "ERROR: unknown option: $1" >&2; exit 2 ;;
   esac
 done
 
-[ -n "$cmd" ] || { echo "ERROR: subcommand required (extract|append|merge-into)" >&2; exit 2; }
+[ -n "$cmd" ] || { echo "ERROR: subcommand required (extract|append|merge-into|tally)" >&2; exit 2; }
 
 MARKER='## 📜 rite 非実測指摘の記録'
 LEDGER_HEAD='### 却下台帳'
@@ -243,5 +253,30 @@ case "$cmd" in
     tmp=""
     trap - EXIT HUP INT TERM
     echo "[CONTEXT] NB_SWEEP_LEDGER=ok; op=merge-into; action=spliced" >&2
+    ;;
+  tally)
+    [ -n "$entries_file" ] || { echo "ERROR: --entries-file is required" >&2; exit 2; }
+    if [ ! -f "$entries_file" ] || [ ! -r "$entries_file" ]; then
+      echo "ERROR: entries file unreadable: $entries_file" >&2
+      echo "[CONTEXT] NB_SWEEP_LEDGER=failed; op=tally; reason=entries_missing" >&2
+      exit 1
+    fi
+    # append と同じ行だけを数える。セル内のエスケープ済みパイプは区切りにしない
+    if ! counts=$({ grep -E '^\| ' "$entries_file" || true; } | { grep -Ev '^\|[-: |]+\|$' || true; } \
+      | { grep -Ev '^\| finding_id ' || true; } \
+      | awk -v want="$record_base" '
+          { line = $0; sub(/\r$/, "", line); gsub(/\\\|/, "", line); n = split(line, c, "|")
+            route = c[4]; gsub(/^[ \t]+|[ \t]+$/, "", route)
+            src = c[n - 1]; gsub(/^[ \t]+|[ \t]+$/, "", src)
+            if (want != "" && src != want) bad = 1
+            if (route == "issued") issued++
+            else if (route == "recorded") recorded++ }
+          END { if (bad) exit 3; printf "issued=%d; recorded=%d\n", issued, recorded }'); then
+      echo "ERROR: entries rows do not all name the review JSON this sweep read (${record_base}): $entries_file" >&2
+      echo "[CONTEXT] NB_SWEEP_LEDGER=failed; op=tally; reason=entries_record_mismatch" >&2
+      exit 1
+    fi
+    printf '%s\n' "$counts"
+    echo "[CONTEXT] NB_SWEEP_LEDGER=ok; op=tally" >&2
     ;;
 esac
