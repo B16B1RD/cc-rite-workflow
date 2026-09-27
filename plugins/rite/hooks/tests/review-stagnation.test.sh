@@ -477,6 +477,7 @@ try:
           'the second cycle rereviews the same commit')
     f.flow('review-close')
     body = f.wm_body.read_text(encoding='utf-8')
+    check(record_marker(second) in body, 'closing a same-commit rereview appends its own record')
     record = body[body.index(record_marker(second)):]
     check(body.count(record_marker(first)) == 1 and body.count(record_marker(second)) == 1
           and 'mergeable' in record.splitlines()[1] and len(f.wm_calls('PATCH')) == 2,
