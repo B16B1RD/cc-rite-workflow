@@ -67,6 +67,7 @@
 * **Update**: [SoT から事実を 1 つ引くとき、その事実に付いた強度 qualifier ごと持ってこないと別種の不正確さを新設する](pages/anti-patterns/sot-quote-drops-strength-qualifier.md) — raw/reviews/20260926T145932Z-pr-3181.md を統合
 * **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=551, broken_refs=0
 * **Create**: [記録の同定キーが文脈の一部しか含まないと、同じ HEAD の再実行で前回の記録を今回のものと誤認する](pages/anti-patterns/record-identity-must-cover-every-context-key.md) — raw/reviews/20260927T111430Z-pr-3267.md を新規ページ化
+* **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=66, orphans=0, missing_concept=0, unregistered_raw=562, broken_refs=0
 
 * **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=552, broken_refs=0
 * **Update**: [明示的 Phase 遷移で駆動する SKILL.md に新規 Phase を挿入する際、既存の終端ルーティング更新漏れで到達不能になる](pages/anti-patterns/unrouted-phase-insertion-in-explicit-transition-skill.md) — raw/reviews/20260926T151345Z-pr-3183.md を統合
