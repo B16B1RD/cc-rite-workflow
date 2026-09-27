@@ -359,7 +359,7 @@ args: "--nb-sweep {pr_number}"
 | Sentinel | アクション |
 |---------|-----------|
 | `[fix:sweep-done]` | PR 内推奨の修正。ステップ 1 に戻らない |
-| `[fix:error]` / その他 / sentinel 不在 | `[iterate:nb-sweep-error]` で停止。完了通知へ進まない。手順 2 の起票後に台帳 persist（[nb-sweep.md 手順 3](../fix/references/nb-sweep.md)）で止まったときは、その戻り方で手順 4 まで終え、`/rite:iterate` を再実行せず上の `[fix:sweep-done]` 行から続ける。この続け方は停止したのと同じ会話に限る（続きの手順が会話にしか残らない値を使う）。別の会話からは続けず、停止のままにする |
+| `[fix:error]` / その他 / sentinel 不在 | `[iterate:nb-sweep-error]` で停止。完了通知へ進まない。手順 2 の起票後に台帳 persist（[nb-sweep.md 手順 3](../fix/references/nb-sweep.md)）で止まったときは、その戻り方で手順 4 まで終え、`/rite:iterate` を再実行せず上の `[fix:sweep-done]` 行から続ける。この続け方は停止したのと同じ会話に限る（続きの手順は会話にしか残らない `{sweep_origin}` と fix が出した `NB_SWEEP_RESULT` の件数を使う。どちらかを会話から読めなければ同じ会話でも続けない）。別の会話からは続けず、停止のままにする |
 
 fix が emit した `[CONTEXT] NB_SWEEP_RESULT=done; issued=K; recorded=M` を読み、`ITERATE_NB_SWEEP=done` を同カウントで emit する。記録した basename が最新 JSON と違う、またはファイルが無いときは、collect と同じ選び方（`LC_ALL=C` sort の末尾）で 1 行目を `done <basename>` にする。既存の 2 行目が SHA なら残し、新しい SHA は足さない。basename が取れないときは範囲なしの行を残さない:
 

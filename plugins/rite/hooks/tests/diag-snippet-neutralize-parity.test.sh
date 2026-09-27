@@ -75,58 +75,48 @@ echo "=== TC-1: head/tail -N / sed -n 'N,Mp' emission site は全て neutralize_
 # (非 emission site は明示 allowlist で除外、中和を横展開済み)。
 # `>&2` が log() 等の関数内部に隠れて同一行に現れない emission 経路は静的 sweep で
 # 構造的に検出できないため、TC-5 が既知 site を個別に pin する
-# sweep 正規表現は floor guard と共有する。literal を二重に持つと、片方だけ腕を落とす変異を
-# もう片方が検出できない (初版の floor guard が実際にそうだった)。
-SWEEP_RE='(head|tail) (-[0-9]+|-n +[0-9]+) |sed -n +.?[0-9]+,[0-9]+p'
-violations=$(grep -rnE "$SWEEP_RE" "${SWEEP_DIRS[@]}" --include='*.sh' \
-  | grep '>&2' \
-  | grep -v '/tests/' \
-  | grep -v 'neutralize_ctrl' \
-  | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
-  | grep -vF '"${BASH_SOURCE[0]}" >&2' \
-  || true)
+# sweep 正規表現と emission site の絞り込みは floor guard と共有する。literal を二重に持つと、
+# 片方だけ腕を落とす変異・除外を広げる変異をもう片方が検出できない (初版の floor guard が
+# 実際にそうだった)。sed 枝は `-n` / `-ne` / `-n -e` の綴り違いも拾う。
+SED_RANGE_RE='sed +-n?e? +(-e +)?.?[0-9]+,[0-9]+p'
+SWEEP_RE="(head|tail) (-[0-9]+|-n +[0-9]+) |$SED_RANGE_RE"
+sweep_emission_sites() {
+  grep -rnE "$SWEEP_RE" "${SWEEP_DIRS[@]}" --include='*.sh' \
+    | grep '>&2' \
+    | grep -v '/tests/' \
+    | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
+    | grep -vF '"${BASH_SOURCE[0]}" >&2'
+}
+emission_sites=$(sweep_emission_sites || true)
+violations=$(printf '%s\n' "$emission_sites" | grep -v 'neutralize_ctrl' | grep -v '^$' || true)
 assert "TC-1: un-neutralized head/tail -N / sed -n 'N,Mp' emission sites" "" "$violations"
 if [ -n "$violations" ]; then
   echo "  検出された未中和 site (head/tail -N / sed -n 'N,Mp' の直後に '| neutralize_ctrl --keep-newline' を挿入すること):"
   printf '%s\n' "$violations" | sed 's/^/    /'
 fi
 
-# sweep 正規表現が tail site を実際に拾えていることを pin (TC-2 の floor guard と同型)。
-# TC-1 は violations が空であることだけを assert する fail-closed sweep なので、式から tail が
-# 落ちても Green のまま通る。$SWEEP_RE を共有して数えることで腕の消失が本 guard の失敗になる。
-tail_pop=$(grep -rnE "$SWEEP_RE" "${SWEEP_DIRS[@]}" --include='*.sh' \
-  | grep '>&2' \
-  | grep -v '/tests/' \
-  | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
-  | grep -c 'tail ') || tail_pop=0
+# 各腕が実 site を拾えていることを pin (TC-2 の floor guard と同型)。TC-1 は violations が空で
+# あることだけを assert する fail-closed sweep なので、式から腕が落ちても、除外が広がって実 site
+# まで外れても Green のまま通る。violations と同じ絞り込みで数えることで、どちらも本 guard の
+# 失敗になる。scripts/ の母集団は、SWEEP_DIRS から "$SCRIPTS_DIR" を削る変異を violations の
+# 偶然の空集合に依存せず検出するために数える。
+tail_pop=$(printf '%s\n' "$emission_sites" | grep -c 'tail ') || tail_pop=0
 case "$tail_pop" in ''|*[!0-9]*) tail_pop=0 ;; esac
 if [ "$tail_pop" -ge 1 ]; then
   pass "TC-1 floor: tail 腕が実 site を $tail_pop 件カバーしている"
 else
-  fail "TC-1 floor: tail 腕のカバー site が 0 件 — 正規表現から tail が落ちても violations は空のままで回帰が不可視になる"
+  fail "TC-1 floor: tail 腕のカバー site が 0 件 — 正規表現から tail が落ちても、除外が広がっても violations は空のままで回帰が不可視になる"
 fi
 
-# sed 腕も tail 腕と同じく、式から落ちても violations は空のまま通るため実 site 数で固定する。
-sed_pop=$(grep -rnE "$SWEEP_RE" "${SWEEP_DIRS[@]}" --include='*.sh' \
-  | grep '>&2' \
-  | grep -v '/tests/' \
-  | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
-  | grep -c 'sed -n ') || sed_pop=0
+sed_pop=$(printf '%s\n' "$emission_sites" | grep -cE "$SED_RANGE_RE") || sed_pop=0
 case "$sed_pop" in ''|*[!0-9]*) sed_pop=0 ;; esac
 if [ "$sed_pop" -ge 1 ]; then
   pass "TC-1 floor: sed 腕が実 site を $sed_pop 件カバーしている"
 else
-  fail "TC-1 floor: sed 腕のカバー site が 0 件 — 正規表現から sed -n 'N,Mp' が落ちても violations は空のままで回帰が不可視になる"
+  fail "TC-1 floor: sed 腕のカバー site が 0 件 — 正規表現から sed -n 'N,Mp' が落ちても、除外が広がっても violations は空のままで回帰が不可視になる"
 fi
 
-# scripts/ を sweep 根から外す変異を、violations の偶然の空集合に依存せず検出する。
-# TC-1 と同じ正規表現・emission 条件で scripts/ の実 site 母集団を数えるため、
-# SWEEP_DIRS から "$SCRIPTS_DIR" を削ると 0 件になり loud に落ちる。
-scripts_pop=$(grep -rnE "$SWEEP_RE" "${SWEEP_DIRS[@]}" --include='*.sh' \
-  | grep '>&2' \
-  | grep -v '/tests/' \
-  | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
-  | grep -cF "$SCRIPTS_DIR/") || scripts_pop=0
+scripts_pop=$(printf '%s\n' "$emission_sites" | grep -cF "$SCRIPTS_DIR/") || scripts_pop=0
 case "$scripts_pop" in ''|*[!0-9]*) scripts_pop=0 ;; esac
 if [ "$scripts_pop" -ge 1 ]; then
   pass "TC-1 floor: scripts/ sweep が実 site を $scripts_pop 件カバーしている"
