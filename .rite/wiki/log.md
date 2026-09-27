@@ -12,6 +12,7 @@
 * **Update**: [実装の分岐を散文へ落とす前に、フラグの状態数と観測ラベルの値域を機械的に数える](pages/heuristics/count-implementation-states-before-writing-prose.md) — raw/reviews/20260927T203201Z-pr-3341.md を統合
 * **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=63, orphans=0, missing_concept=0, unregistered_raw=567, broken_refs=0
 * **Update**: [論理式を日本語へ書き起こすときは、正本の括弧構造を文章でも括弧で保つ](pages/heuristics/logical-formula-prose-keeps-grouping-parentheses.md) — raw/fixes/20260927T203603Z-pr-3341.md を統合
+* **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=63, orphans=0, missing_concept=0, unregistered_raw=567, broken_refs=0
 
 ## 2026-09-27
 
