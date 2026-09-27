@@ -195,11 +195,11 @@ Tracks the review-fix loop count. Updated by `/rite:pr-review` Phase 6.2 after e
 **Review records**: `flow-state.sh review-record` (called by `/rite:pr-review` step 6.4, and again by `review-close`) appends one record per completed review cycle to this section. The record is generated from the saved review receipt:
 
 ```markdown
-<!-- rite:review-record run_id={run_id} commit_sha={commit_sha} -->
+<!-- rite:review-record run_id={run_id} cycle={n} commit_sha={commit_sha} -->
 - **cycle {n}** (`{short_sha}`): {verdict} — blocking {b} 件 / non-blocking {nb} 件
 ```
 
-The HTML comment is the machine identity of the record. `review-close` requires the record of the review it closes, so do not edit or remove these lines. If the section is missing, `review-close` stops until it is restored.
+The HTML comment is the machine identity of the record; it names the run, the cycle and the reviewed commit, so a rereview of the same commit gets its own record. `review-close` requires the record of the review it closes, so do not edit or remove these lines. If the section is missing, `review-close` stops until it is restored.
 
 ---
 

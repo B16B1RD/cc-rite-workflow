@@ -351,7 +351,8 @@ for body, label in (('Contract: repair source.txt.\n', 'no acceptance section'),
 
 # A closed review leaves its record in the Issue work memory; cleanup later deletes the clean receipt.
 def record_marker(context):
-    return '<!-- rite:review-record run_id=' + context['run_id'] + ' commit_sha=' + context['commit_sha'] + ' -->'
+    return ('<!-- rite:review-record run_id=' + context['run_id'] + ' cycle=' + str(context['cycle_count'])
+            + ' commit_sha=' + context['commit_sha'] + ' -->')
 
 
 def closable_review():
@@ -383,7 +384,8 @@ try:
              'T-01: callers cannot hand review-close a work memory body', 'takes no options')
 finally:
     f.close()
-for label, stale in (('another commit', dict(commit_sha='0' * 40)), ('another run', dict(run_id='other-run'))):
+for label, stale in (('another commit', dict(commit_sha='0' * 40)), ('another run', dict(run_id='other-run')),
+                     ('another cycle', dict(cycle_count=99))):
     f = closable_review()
     try:
         context = f.context()
@@ -457,6 +459,28 @@ try:
     f.flow('review-close')
     check(f.state()['review_run']['completed_context'] == f.context() and not f.wm_calls(''),
           'T-04: a review without an Issue closes without touching any work memory')
+finally:
+    f.close()
+
+# A rereview of the same commit is its own review: closing it needs its own record.
+f = Fixture()
+try:
+    f.start()
+    f.finish()
+    first = f.context()
+    f.clock(0)
+    f.observe()
+    f.flow('review-record')
+    f.cycle(roots=())
+    second = f.context()
+    check(second['commit_sha'] == first['commit_sha'] and second['cycle_count'] == first['cycle_count'] + 1,
+          'the second cycle rereviews the same commit')
+    f.flow('review-close')
+    body = f.wm_body.read_text(encoding='utf-8')
+    record = body[body.index(record_marker(second)):]
+    check(body.count(record_marker(first)) == 1 and body.count(record_marker(second)) == 1
+          and 'mergeable' in record.splitlines()[1] and len(f.wm_calls('PATCH')) == 2,
+          'closing a same-commit rereview records that cycle next to the earlier one')
 finally:
     f.close()
 

@@ -419,8 +419,12 @@ def abandon(state, args, directory):
 
 
 def record_marker(context):
-    """The identity of one completed review in the Issue work memory."""
-    return "<!-- rite:review-record run_id=" + context["run_id"] + " commit_sha=" + context["commit_sha"] + " -->"
+    """The identity of one completed review in the Issue work memory.
+
+    A run may review the same commit again, so the cycle is part of the identity.
+    """
+    return ("<!-- rite:review-record run_id=" + context["run_id"] + " cycle=" + str(context["cycle_count"])
+            + " commit_sha=" + context["commit_sha"] + " -->")
 
 
 def record(state, args, directory):
