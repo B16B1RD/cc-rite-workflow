@@ -68,7 +68,7 @@ rationale: references/rationale.md#circuit-breaker-conditions
 | `{branch_name}` | flow-state `branch` field |
 | `{max_review_cycles}` | `safety.max_review_cycles` in `rite-config.yml`（既定 15、無効値は既定へフォールバック）。**発散判定をすり抜けた非収束を受け止める backstop**（既定 15 では 16 cycle 以上を要する収束中の run にも上限として働く） |
 | `{fire_reason_line}` | ステップ 6.1 / 6.2 の「理由」行。ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `CB_REASON=` から ステップ 6.2「発火理由の文面」表で決める |
-| `{cb_reason}` | 停止理由の**生値**（`max-cycles` / `divergence`）。供給元は ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `CB_REASON=` と、`review_run` がある run の発散停止を記録した ステップ 3 の規則の 2 つ（同節「`{resume_routes}`」参照）。ステップ 6 共有前段が flow-state へ書く `--stop-reason "circuit-breaker:{cb_reason}"` と `{resume_routes}` の分岐で使う（人間向けの文面は `{fire_reason_line}` が担う） |
+| `{cb_reason}` | 停止理由の**生値**（`max-cycles` / `divergence` / `stagnation`）。供給元は ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `CB_REASON=`（`max-cycles` / `divergence`）と、`review_run` がある run の停止を記録した ステップ 3 の規則（既存 breaker の停止はその値、それ以外の停滞判定 `stop` は `stagnation`）の 2 つ（同節「`{resume_routes}`」参照）。`review_run` が停止済みのとき flow-state の `stop_reason` は run 側の値（`stagnation:non-convergent` / `stagnation:scope-insoluble` 等）に置き換わる。ステップ 6 共有前段が flow-state へ書く `--stop-reason "circuit-breaker:{cb_reason}"` と `{resume_routes}` の分岐で使う（人間向けの文面は `{fire_reason_line}` が担う） |
 | `{trend}` | ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `TREND=`（カンマ区切りの per-cycle blocking 件数）。停止通知では `→` 区切りへ整形して表示する。空のときの扱いは ステップ 6.2「発火理由の文面」を参照 |
 | `{trend_reason}` | ステップ 1 の `[CONTEXT] ITERATE_CB=` marker の `TREND_REASON=`（helper が返した判定不能の理由。ステップ 6.2「発火理由の文面」の `max-cycles` 分岐と推移行の差し替えで使う） |
 | `{cycle_count}` | flow-state `cycle_count` field（review-start で増加。`review_run` がある同一 run では完了・停止・recoverでも保持。以下の 0 リセット手順は legacy state 専用） |
@@ -697,7 +697,7 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 marker 不在を `legacy` に倒さない。
 rationale: references/rationale.md#resume-routes-no-state-read
 
-`{cb_reason}` の供給元は 2 つある。ステップ 1 の `ITERATE_CB=fire` marker の `CB_REASON=` と、`review_run` がある run で発散停止を `observe()` が記録した場合のステップ 3 の規則（同ステップの「`stop` の理由が既存の `max-cycles` / `divergence` なら、その値を `{cb_reason}` とする」）。後者の iteration ではステップ 1 が `ITERATE_CB=ok` を出すため、前者だけを見ると発散停止で「戻る」行が落ちる。
+`{cb_reason}` の供給元は 2 つある。ステップ 1 の `ITERATE_CB=fire` marker の `CB_REASON=` と、`review_run` がある run で停止を `observe()` が記録した場合のステップ 3 の規則（同ステップの「`stop` の理由が既存の `max-cycles` / `divergence` なら、その値を `{cb_reason}` とする。それ以外は `stagnation`」）。後者の iteration ではステップ 1 が `ITERATE_CB=ok` を出すため、前者だけを見ると発散停止で「戻る」行が落ちる。
 
 `divergence` で「戻る」行を出すときに、権利が既に使用済みかどうかは判定しない（そのための marker を増やさない）。使用済みなら `review-retry` 自身が拒否する。
 rationale: references/rationale.md#resume-routes-no-state-read

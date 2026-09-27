@@ -242,6 +242,101 @@ else
 fi
 echo ""
 
+echo "TC-006e: a resumed or cleared session names each stagnation stop it left behind"
+# 停滞停止は stop_reason と active=false を同じ更新で書き、review_run も stopped のまま残る。
+# flow state はセッション単位なので、停止した run の state を読めるのは同じ session_id の起動だけ。
+# ホストと同じく RITE_HOST=claude で payload に session_id を渡す。
+sid006e="0e06e006-0000-4000-8000-000000000001"
+for _sr_case in \
+  "circuit-breaker:stagnation|停滞診断で停止 (review⇄fix が収束しない)" \
+  "stagnation:non-convergent|停滞診断で停止 (見直し後も同じ根本原因が再発し、受入条件が進まない)" \
+  "stagnation:scope-insoluble|停滞診断で停止 (根本原因が Issue の範囲内では解消できない)"; do
+  _sr_token=${_sr_case%%|*}
+  _sr_phrase=${_sr_case#*|}
+  dir006e="$TEST_DIR/tc006e-${_sr_token//:/-}"
+  mkdir -p "$dir006e"
+  create_state_file "$dir006e" '{
+  "active": false,
+  "issue_number": 2045,
+  "branch": "fix/issue-2045",
+  "phase": "review",
+  "stop_reason": "'"$_sr_token"'",
+  "review_run": {"status": "stopped", "stop_reason": "'"$_sr_token"'"}
+}' "$sid006e"
+  output=$(RITE_HOST=claude run_hook_with_session "$dir006e" "resume" "$sid006e")
+  if grep -qF "理由: ${_sr_phrase})。確認するには /rite:recover" <<< "$output" && \
+     ! grep -q "未知の停止理由トークン" <<< "$output"; then
+    pass "resume surfaces the $_sr_token stop reason for an inactive stopped run"
+  else
+    fail "Expected $_sr_token stop reason on resume for an inactive stopped run, got: $output"
+  fi
+done
+dir006e="$TEST_DIR/tc006e-unlisted"
+mkdir -p "$dir006e"
+create_state_file "$dir006e" '{
+  "active": false,
+  "issue_number": 2045,
+  "branch": "fix/issue-2045",
+  "phase": "review",
+  "stop_reason": "stagnation:future-token",
+  "review_run": {"status": "stopped", "stop_reason": "stagnation:future-token"}
+}' "$sid006e"
+output=$(RITE_HOST=claude run_hook_with_session "$dir006e" "resume" "$sid006e")
+if grep -qF "未知の停止理由トークン 'stagnation:future-token'" <<< "$output"; then
+  pass "resume keeps an unlisted stagnation token unknown"
+else
+  fail "Expected an unlisted stagnation token to stay unknown, got: $output"
+fi
+for _src006e in startup clear; do
+  dir006e="$TEST_DIR/tc006e-$_src006e"
+  mkdir -p "$dir006e"
+  create_state_file "$dir006e" '{
+  "active": false,
+  "issue_number": 2045,
+  "branch": "fix/issue-2045",
+  "phase": "review",
+  "stop_reason": "stagnation:non-convergent",
+  "review_run": {"status": "stopped", "stop_reason": "stagnation:non-convergent"}
+}' "$sid006e"
+  output=$(RITE_HOST=claude run_hook_with_session "$dir006e" "$_src006e" "$sid006e")
+  if grep -qF "確認するには /rite:recover" <<< "$output"; then
+    pass "$_src006e in the same session surfaces the stagnation stop reason"
+  else
+    fail "Expected the stagnation stop reason on $_src006e in the same session, got: $output"
+  fi
+done
+dir006e="$TEST_DIR/tc006e-new-session"
+mkdir -p "$dir006e"
+create_state_file "$dir006e" '{
+  "active": false,
+  "issue_number": 2045,
+  "branch": "fix/issue-2045",
+  "phase": "review",
+  "stop_reason": "stagnation:non-convergent",
+  "review_run": {"status": "stopped", "stop_reason": "stagnation:non-convergent"}
+}' "$sid006e"
+output=$(RITE_HOST=claude run_hook_with_session "$dir006e" "startup" "0e06e006-0000-4000-8000-000000000002")
+if ! grep -q "失敗停止" <<< "$output"; then
+  pass "state resolution is per session: a new session does not read the stopped run of another session"
+else
+  fail "Expected no failure-stop notice in a new session, got: $output"
+fi
+dir006e="$TEST_DIR/tc006e-inactive-no-stop"
+mkdir -p "$dir006e"
+create_state_file "$dir006e" '{
+  "active": false,
+  "issue_number": 2045,
+  "branch": "fix/issue-2045",
+  "phase": "review"
+}' "$sid006e"
+output=$(RITE_HOST=claude run_hook_with_session "$dir006e" "resume" "$sid006e")
+if ! grep -q "失敗停止" <<< "$output"; then
+  pass "resume stays silent for an inactive state without a stop reason"
+else
+  fail "Expected no failure-stop notice for an inactive state without a stop reason, got: $output"
+fi
+echo ""
+
 # --------------------------------------------------------------------------
 # TC-002: CWD is not a directory → exit 0
 # --------------------------------------------------------------------------

@@ -809,7 +809,7 @@ fi
 # set に載せる**のが要点で、ステップ 1 の fire 分岐に書いても本 set（`--stop-reason` なし）が
 # default-clear で消してしまう。ここに置くことで、上のコメントが言う「前段〜sentinel 間で turn が
 # 終わる窓」でも発火の記録だけは残る（従来はこの窓で counter が 0 に戻り発火が無記録だった）。
-# `$cb_reason` はステップ 1 の `ITERATE_CB=fire` marker の `CB_REASON=`（`max-cycles` / `divergence`）を
+# `$cb_reason` は SKILL.md の `{cb_reason}`（`max-cycles` / `divergence` / `stagnation`）を
 # リテラル置換する。**上限値そのものは埋めない** — `max_review_cycles` は invocation ごとに config から
 # 読み直されるため、state に焼くと設定変更で符号化が破綻する（counter reset を選んだのと同じ理由）。
 # review-cycle-breaker-reset

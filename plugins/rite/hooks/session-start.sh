@@ -604,14 +604,10 @@ if [ -n "$_active_err" ] && [ -s "$_active_err" ]; then
   head -3 "$_active_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
 fi
 [ -n "$_active_err" ] && rm -f "$_active_err"
-if [ "$ACTIVE" != "true" ]; then
-  _cleanup_stale_compact
-  exit 0
-fi
 
 # --- Stop-reason phrasing ---
 # flow-state の `stop_reason` は「ワークフローが失敗として止まった」ことの durable な記録
-# (`skills/iterate/SKILL.md` ステップ 6 共有前段が書く)。キーが無い state は「単なる中断」
+# (`skills/iterate/SKILL.md` ステップ 6 共有前段と、停滞診断の `hooks/scripts/lib/review-stagnation.py` が書く)。キーが無い state は「単なる中断」
 # (Ctrl+C / セッション終了) を意味する。両者はキー不在のとき phase=review / active=true という
 # バイト的に同一の形で残るため、この関数の出力の有無だけが再開案内で両者を分ける手がかりになる。
 #
@@ -631,10 +627,37 @@ _rite_stop_reason_phrase() {
       echo "サーキットブレーカー発火 (収束トレンドの発散を検出)" ;;
     circuit-breaker:receipt-missing)
       echo "サーキットブレーカー発火 (未完了レビューの結果ファイルが消失)" ;;
+    circuit-breaker:stagnation)
+      echo "停滞診断で停止 (review⇄fix が収束しない)" ;;
+    stagnation:non-convergent)
+      echo "停滞診断で停止 (見直し後も同じ根本原因が再発し、受入条件が進まない)" ;;
+    stagnation:scope-insoluble)
+      echo "停滞診断で停止 (根本原因が Issue の範囲内では解消できない)" ;;
     *)
       echo "未知の停止理由トークン '$(printf '%s' "$_sr" | neutralize_ctrl)' (rite の更新で追加された可能性)" ;;
   esac
 }
+
+# 停止した review_run は active=false と stop_reason を同じ更新で書き、run が停止している間は
+# 以後の set でも理由が残る。inactive だからと無言で exit すると、その失敗停止は起動時に一度も
+# 案内されない。flow state はセッション単位で、停止した run の state を読めるのは同じ session_id の
+# 起動 (ホストが id を引き継ぐ resume を含む) だけ。startup / clear / resume では停止理由だけを案内し、
+# state は書き換えない (停止は停止のまま残す)。
+if [ "$ACTIVE" != "true" ]; then
+  if [ "$SOURCE" = "startup" ] || [ "$SOURCE" = "clear" ] || [ "$SOURCE" = "resume" ]; then
+    _inactive_stop=""
+    if ! _inactive_stop=$(jq -r '[(.phase // ""), (.issue_number // "" | tostring), (.branch // ""), (.stop_reason // "")] | join("\u001f")' "$STATE_FILE" 2>/dev/null); then
+      echo "rite: session-start: WARNING: jq read of .stop_reason failed (STATE_FILE may be corrupt)" >&2
+      _inactive_stop=""
+    fi
+    IFS=$'\x1f' read -r _i_phase _i_issue _i_branch _i_stop <<< "$_inactive_stop"
+    if [ -n "$_i_stop" ] && [ -n "$_i_issue" ] && [ "$_i_phase" != "completed" ]; then
+      echo "rite: 失敗停止した rite workflow が残っています (Issue #${_i_issue}, branch: $(printf '%s' "$_i_branch" | neutralize_ctrl), 理由: $(_rite_stop_reason_phrase "$_i_stop"))。確認するには /rite:recover を使用してください。"
+    fi
+  fi
+  _cleanup_stale_compact
+  exit 0
+fi
 
 # --- Defensive reset helper ---
 # Shared by startup and clear blocks. Resets active=false on phase != completed.
