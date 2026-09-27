@@ -350,6 +350,24 @@ assert "recovered branch drift exits 0" 0 "$rc"
 assert "recovery leaves HEAD on the original branch, not detached" \
   "$(field "$snap" branch)" "$(git -C "$sbx" branch --show-current)"
 
+# A branch named like rite's {type}/issue-{n}-{slug} passes validation and is
+# recovered. The names above carry neither '-' nor '/', so an over-broad reject
+# pattern would still leave them green.
+sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
+git -C "$sbx" switch -q -c fix/issue-1-a-b
+git -C "$sbx" branch side
+snap=$(snapshot_line "$sbx")
+assert "rite-style branch is the snapshot branch" fix/issue-1-a-b "$(field "$snap" branch)"
+git -C "$sbx" switch -q side
+stderr_rite=$(mktemp) && cleanup_dirs+=("$stderr_rite")
+out=$(verify_all "$sbx" "$snap" --auto-recover true 2>"$stderr_rite"); rc=$?
+assert "rite-style branch passes --original-branch validation" 0 \
+  "$(grep -cE 'disallowed characters|outside the allowed charset' "$stderr_rite")"
+assert "rite-style branch drift reports only the branch axis" '["branch"]' "$(printf '%s' "$out" | jq -c .types)"
+assert "rite-style branch drift is recovered" true "$(printf '%s' "$out" | jq -r .recovered)"
+assert "recovered rite-style branch drift exits 0" 0 "$rc"
+assert "recovery returns HEAD to the rite-style branch" fix/issue-1-a-b "$(git -C "$sbx" branch --show-current)"
+
 # A switch that exits 0 without landing on the original branch is not a recovery.
 sbx=$(new_sandbox) && cleanup_dirs+=("$sbx") || exit 1
 git -C "$sbx" branch side
