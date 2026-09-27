@@ -151,11 +151,14 @@ sources:
     resource: "raw/fixes/20260927T095121Z-pr-3256.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T094529Z-pr-3256.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T145653Z-pr-3294.md"
 tags: ["test", "mutation-testing", "false-positive", "dead-code", "verification", "bytes-exact-pin", "trailing-newline-strip", "self-grep-tautology", "count-threshold-mutation-evasion", "path-filter-coverage-gap", "load-bearing-whitespace-pin", "regex-alternation-per-branch-coverage", "regex-quantifier-semantic-coverage", "symmetry-claim-bidirectional-pin", "negative-assert", "non-blocking-contract-mutation"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:05:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:06:36Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:05:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:06:36Z" }
 ---
 
 # Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する
@@ -930,6 +933,8 @@ base では `[ -c "$dir/config.worktree" ]` の literal がそのまま分岐条
 
 shell 側で別言語の usage 判定を先取りする表を持つ場合は、表の一致をテストで双方向に突き合わせる（別言語側のソースから subcommand を抽出し、shell 側の ERROR 文と照合する）と、片側だけの追加・削除による drift を検出できる。
 
+reviewer は式やファイルを書き換えずに、変異後の入力（旧形の正規表現、停止条件を消した文）を stdout で与えるだけで self-test や assert が落ちることを再現できる。括弧書き全体を固定文字列で数える assert の前段に、その括弧書きに含まれる token の固定文字列 grep を重ねても結果は変わらず、dead filter になる。複数の腕を持つ sweep で専用の floor を持たない腕は、他の腕の floor が検出対象の分布のおかげで偶然拾っているだけになりうるため、腕ごとに floor を置く。
+
 ## 関連ページ
 
 - [否定形の assert は前提条件が崩れると fail-silent になる](../anti-patterns/negative-assertion-vacuous-without-precondition-floor.md)
@@ -1012,3 +1017,4 @@ shell 側で別言語の usage 判定を先取りする表を持つ場合は、�
 - [section 限定 assert の false kill 判別（`empty section` と `pattern not found` の読み分け）と両方向実測](../../raw/reviews/20260829T153702Z-pr-2466.md)
 - [marker の payload を完全一致で固定した fix 結果](../../raw/fixes/20260927T095121Z-pr-3256.md)
 - [前置部分だけの pin が payload 差し替え変異を見逃すことを指摘したレビュー結果](../../raw/reviews/20260927T094529Z-pr-3256.md)
+- [変異を stdout で再現し dead filter と floor の抜けを指摘したレビュー結果](../../raw/reviews/20260927T145653Z-pr-3294.md)

@@ -14,12 +14,15 @@ sources:
     resource: "raw/reviews/20260901T140807Z-pr-2500.md"
   - type: "reviews"
     resource: "raw/reviews/20260913T123145Z-pr-2781.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T145617Z-pr-3291.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T12:40:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:06:36Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T12:40:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:06:36Z" }
 ---
 
 # Step 番号参照は relative (Step N + 1) ではなく absolute (heading title 名 + Step 番号) で書く
@@ -72,6 +75,8 @@ canonical fix と検証手順:
 - 別ファイルの節は「節番号 + 項目名」（例: 「1.3.S の route 適用」）で書き、リンク先に実在する識別子だけを使う
 - 参照表記を静的検査で固定するときは、照合文字列に経路名だけでなく参照先の節・項目名まで含める。経路名だけの照合は、リンク先表記が実在しない名前へ書き戻されても通ってしまう
 
+他スキルのステップ番号に所有者（「wiki-lint のステップ 8.3」）を付けると、同じ文に残った未修飾の番号列挙（自スキルのステップの並び）との食い違いやステップの抜けが目立つようになる。所有者を付ける修正では、同じ文にある他の番号列挙も合わせて見直す。条件付きの委譲（「--auto かつ separate_branch では push を呼び出し側に委ねる」）を要約する文は、参照先の文書の文言を写さず helper の分岐を読んで限定を決める。参照先の文言が一部の分岐で不正確なことがあり、写すと誤りも転写される。
+
 ## 関連ページ
 
 - [DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）](./drift-check-anchor-semantic-name.md)
@@ -81,3 +86,4 @@ canonical fix と検証手順:
 - [H-1 Self-defeating defense Step number off-by-one drift](../../raw/reviews/20260430T005759Z-pr-688.md)
 - [レビュー結果](../../raw/reviews/20260901T140807Z-pr-2500.md)
 - [レビュー結果](../../raw/reviews/20260913T123145Z-pr-2781.md)
+- [ステップ番号に所有者を付けた修正を差分スコープで確かめたレビュー結果](../../raw/reviews/20260927T145617Z-pr-3291.md)

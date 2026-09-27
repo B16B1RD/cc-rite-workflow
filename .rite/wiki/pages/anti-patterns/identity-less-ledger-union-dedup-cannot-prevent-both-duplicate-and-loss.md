@@ -4,10 +4,11 @@ title: "identity を持たない判定台帳で複数 cycle の和集合を重�
 domain: "anti-patterns"
 description: "判定台帳が最終回の id と位置しか持たないまま、複数 cycle の指摘を連結した集合から「既に処理済み」の指摘を除こうとすると、id や位置で推定した除外は別の指摘まで黙って落とす。除外は台帳が実際に判定した入力に由来する要素に限り、それ以外は転記して重複しうる件数を出す。"
 created: "2026-09-12T15:25:00+00:00"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:56:46Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:06:36Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:10:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:56:46Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:06:36Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260912T135538Z-pr-2741.md"
@@ -23,6 +24,8 @@ sources:
     resource: "raw/reviews/20260927T080150Z-pr-3221.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T145034Z-pr-3290.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T150018Z-pr-3290.md"
 tags: ["dedup", "identity", "union", "ledger", "fail-loud"]
 confidence: high
 ---
@@ -69,6 +72,8 @@ id も位置も cycle を跨ぐ identity ではないので、「同じ指摘の
 - 受入条件の Given を文字どおり組んだケース（別の id・同じ内容・マーカー無し）をテストに入れる。実データ由来の fixture だけでは、AC の字義を満たさない実装が通る
 - 同じ規則を手順書・rationale・スキーマ・helper のコメントの複数箇所に書くと、除外条件や WARNING の対象の一部だけが一箇所から落ちる。規則の本文は 1 箇所に置き、他は参照にする
 
+再報告の同一性判定が取りこぼす場合は、条件を足すのではなく、identity でないフィールド（cycle ごとに振り直される id、cycle ごとに変わる reviewer 帰属）を比較から外す削除で直せる。新しい分岐を足さないので、次 cycle のレビュー対象面も増えない。規則を変えたら、同じ規則を書いた文書（手順書・rationale・schema・helper のコメント）とテストの期待（結ばない側から結ぶ側へ）を同じ commit で揃え、受入条件の字義どおりのケースをテストの variant に足して固定する。
+
 ## 関連ページ
 
 - [実装が Issue の MUST と原則の両方に挟まれたら、実装を戻さず契約側（Decision Log と AC の例外）を更新する](../heuristics/contract-update-over-revert-on-must-conflict.md)
@@ -83,3 +88,4 @@ id も位置も cycle を跨ぐ identity ではないので、「同じ指摘の
 - [fix 結果](../../raw/fixes/20260912T145412Z-pr-2741.md)
 - [戻り方の保証を再開経路で確かめたレビュー結果](../../raw/reviews/20260927T080150Z-pr-3221.md)
 - [再報告の一致条件を実データで確かめたレビュー結果](../../raw/reviews/20260927T145034Z-pr-3290.md)
+- [identity でないフィールドを比較から外した fix 結果](../../raw/fixes/20260927T150018Z-pr-3290.md)

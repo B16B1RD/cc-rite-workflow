@@ -184,6 +184,10 @@
 * **Update**: [他セッションの成果物を回収する処理は、進捗時刻ではなく所有者の生存信号で判定し、判定不能は残す側へ倒す](pages/heuristics/liveness-reaper-keeps-undecidable-and-guards-json-shape.md) — raw/reviews/20260927T145232Z-pr-3293.md を統合
 * **Update**: [散文の主張を実装に合わせて絞るときは、限定の外側・指示語・同じ主張の別箇所まで突き合わせる](pages/heuristics/narrowed-prose-claim-check-outside-scope-and-same-claims.md) — raw/reviews/20260927T143833Z-pr-3291.md と raw/fixes/20260927T144331Z-pr-3291.md を統合
 * **lint:clean** — contradictions=0, stale=64, orphans=0, missing_concept=0, unregistered_raw=564, broken_refs=0
+* **Update**: [identity を持たない判定台帳で複数 cycle の和集合を重複除外すると、重複防止と欠落防止を同時には満たせない](pages/anti-patterns/identity-less-ledger-union-dedup-cannot-prevent-both-duplicate-and-loss.md) — raw/fixes/20260927T150018Z-pr-3290.md を統合
+* **Update**: [再入ガードは「実行したか」ではなく「何を対象に実行したか」を記録する](pages/heuristics/reentry-guard-records-processed-range.md) — raw/reviews/20260927T145506Z-pr-3292.md を統合
+* **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/reviews/20260927T145653Z-pr-3294.md を統合
+* **Update**: [Step 番号参照は relative (Step N + 1) ではなく absolute (heading title 名 + Step 番号) で書く](pages/patterns/step-reference-absolute-heading-over-relative.md) — raw/reviews/20260927T145617Z-pr-3291.md を統合
 
 ## 2026-09-26
 
