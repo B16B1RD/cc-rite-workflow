@@ -121,8 +121,21 @@ assert_grep "purpose unmet uses REVIEW_STOP like ac_unverified" "$ITERATE" \
   'REVIEW_STOP=purpose_unaligned'
 assert_grep "purpose unmet clears FINALIZE without --handoff" "$ITERATE" \
   '`--handoff` なしで実行し FINALIZE を消す'
-assert_grep "overview routes sweep-done to purpose check" "$ITERATE" \
-  '`\[fix:sweep-done\]` → 完了前確認'
+# [fix:sweep-done] は --nb-sweep（5.S）からだけ返るため、通常ループの経路として書かない。
+overview_line=$(grep -E '^4\. fix sentinel を判定（通常ループ:' "$ITERATE")
+if [ "$(printf '%s' "$overview_line" | grep -c .)" = 1 ] \
+   && ! printf '%s\n' "${overview_line%%--nb-sweep*}" | grep -qF '[fix:sweep-done]'; then
+  pass "overview keeps sweep-done out of the normal loop"
+else
+  fail "overview keeps sweep-done out of the normal loop"
+fi
+sweep_origin_line=$(grep -E '^\| `\{sweep_origin\}` \| ステップ 5\.S へ入った' "$ITERATE")
+if [ "$(printf '%s' "$sweep_origin_line" | grep -c .)" = 1 ] \
+   && ! printf '%s\n' "$sweep_origin_line" | grep -qF 'ステップ 4 の'; then
+  pass "sweep_origin has no step-4 sweep-done terminal"
+else
+  fail "sweep_origin has no step-4 sweep-done terminal"
+fi
 # purpose-unaligned の set 本体は iterate-step.sh の step_purpose_unaligned 関数に置かれている。
 ITERATE_STEP="$SCRIPT_DIR/../../scripts/iterate-step.sh"
 assert_grep "purpose unmet fenced set has no --handoff" "$ITERATE_STEP" \

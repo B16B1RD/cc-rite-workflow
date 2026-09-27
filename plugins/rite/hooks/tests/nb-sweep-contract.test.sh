@@ -354,7 +354,9 @@ if [ "$order" = "### 5.S 後の PR 内推奨の修正|### 5.S 後の完了前確
 else
   fail "T-07 iterate 5.S → in-PR recommendation fix → purpose check order (got: $order)"
 fi
-assert_grep "T-07 iterate sweep-done no re-review" "$ITERATE" '\[fix:sweep-done\].*ステップ 5'
+assert_grep_in_section "T-07 iterate sweep-done no re-review" "$ITERATE" \
+  '^## ステップ 5\.S: NB digest sweep$' '^## ステップ 5: 完了通知' \
+  '^\| `\[fix:sweep-done\]` \| PR 内推奨の修正。ステップ 1 に戻らない'
 assert_grep "T-07 iterate nb-sweep-error" "$ITERATE" '\[iterate:nb-sweep-error\]'
 assert_grep "T-07 iterate --nb-sweep invoke" "$ITERATE" 'args: "--nb-sweep \{pr_number\}"'
 assert_grep "T-07 iterate empty is noop" "$ITERATE_STEP" 'marker_emit ITERATE_NB_SWEEP noop'
@@ -403,7 +405,8 @@ rec_order=$(awk -v s="$REC_START" -v e="$REC_END" '
   in_sec && /review-pr-recommendations\.sh check --pr/ { print "check" }
   in_sec && /review-pr-recommendations\.sh mark --pr/ { print "mark" }
   in_sec && /flow-state\.sh set/ { print "set" }
-  in_sec && /^args: "\{pr_number\}"$/ { print "fix" }' "$ITERATE" | tr '\n' '|')
+  in_sec && prev ~ /^skill: rite:fix$/ && /^args: "\{pr_number\}"$/ { print "fix" }
+  { prev = $0 }' "$ITERATE" | tr '\n' '|')
 assert "T-07 iterate recommendation order check → mark → set → fix" "check|mark|set|fix|" "$rec_order"
 
 assert_grep_in_section "T-07 pr-review 5.3.0.R register" "$REVIEW" \

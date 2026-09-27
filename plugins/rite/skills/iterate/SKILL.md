@@ -25,7 +25,7 @@ argument-hint: "<pr_number>"
 1. lost 修復ゲート（前 cycle JSON 不在なら即時保存 or counter 不前進の再レビュー）→ 発火条件チェック（収束トレンドの発散 / `max_review_cycles` 到達）→ 不成立なら counter を +1 して `/rite:pr-review` を invoke / 成立なら サーキットブレーカー（ステップ 6）へ
 2. review sentinel を判定（`[review:mergeable]` → ステップ 5.S / `[review:fix-needed:N]` → ステップ 3 / error・不在 → 1 回自動再試行、再失敗時は停止）
 3. `/rite:fix` を invoke
-4. fix sentinel を判定（通常ループ: `[fix:pushed]` → ステップ 1 に戻る / `[fix:non-fatal-only]` / `[fix:replied-only]` → ステップ 5.S / `[fix:sweep-done]` → 完了前確認 / `[fix:cancelled-by-user]` → 終了 / error・不在 → 1 回自動再試行、再失敗時は停止。`--nb-sweep` 経由は 5.S 専用表 — ステップ 1 に戻らない）
+4. fix sentinel を判定（通常ループ: `[fix:pushed]` → ステップ 1 に戻る / `[fix:non-fatal-only]` / `[fix:replied-only]` → ステップ 5.S / `[fix:cancelled-by-user]` → 終了 / error・不在 → 1 回自動再試行、再失敗時は停止。`--nb-sweep` 経由は 5.S 専用表 — ステップ 1 に戻らない。`[fix:sweep-done]` はこの経由でだけ返る）
 5.S. `[review:mergeable]` / `[fix:non-fatal-only]` / `[fix:replied-only]` 後の NB digest sweep（対象 0 は no-op。同一 review JSON で 2 回禁止。新しい JSON は再 sweep する）。成功後は PR 内推奨の修正（未着手の `pr_recommendations[]` があれば `/rite:fix` → ステップ 1）、無ければ完了前確認へ
 5. 完了前確認のあと完了通知を出す（目的逸脱時は出さない）
 6. （発火時のみ）サーキットブレーカー: counter と停止理由を記録し、batch は `[iterate:max-cycles-reached]`、対話は `[iterate:max-cycles-stopped]` と停止通知を出して終了する
@@ -78,7 +78,7 @@ rationale: references/rationale.md#circuit-breaker-conditions
 | `{nb_count}` | ステップ 5.0.2 の `ITERATE_NB_REMAINING` marker 値（overlay 後は 0。取得失敗は 5.S で停止しここへ来ない） |
 | `{nb_record}` | 同 marker の `record=`（review JSON パス。失敗時は空） |
 | `{nb_by_severity}` | 同 marker の `by_severity=`（`SEVERITY:count` のカンマ区切り。0 件 / 失敗時は空） |
-| `{sweep_origin}` | ステップ 5.S へ入った通常ループの sentinel。sweep 内の sentinel で上書きしない。5.S を経由せずにステップ 5.0.1 へ来た終端（`[fix:cancelled-by-user]` / ステップ 4 の `[fix:sweep-done]`）ではその終端 sentinel |
+| `{sweep_origin}` | ステップ 5.S へ入った通常ループの sentinel。sweep 内の sentinel で上書きしない。5.S を経由せずにステップ 5.0.1 へ来た終端（`[fix:cancelled-by-user]`）ではその終端 sentinel |
 | `{sweep_issued}` / `{sweep_recorded}` | ステップ 5.S の `NB_SWEEP_RESULT` / `ITERATE_NB_SWEEP=done` の `issued=` / `recorded=` |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
 | `{action_items}` | 本ループの最終試行に残った、ユーザーの操作が必要な WARNING / ERROR。ステップ 5 / 6 の `要対応:` 欄へ転記する（0 件なら欄ごと省略） |
@@ -309,7 +309,6 @@ args: "{pr_number}"
 | Sentinel | アクション |
 |---------|-----------|
 | `[fix:pushed]` | ステップ 1 (cycle 上限チェック → review 再実行) に戻る — **ループ継続**（上限到達ならステップ 6 サーキットブレーカーへ） |
-| `[fix:sweep-done]` | 完了前確認（目的整合）のあとステップ 5。**ステップ 1 に戻らない**（再フルレビュー禁止） |
 | `[fix:pushed-wm-stale]` | ステップ 1 に戻る (WM stale 警告は表示するが loop は継続。上限チェックはステップ 1 が実施) |
 | `[fix:non-fatal-only]` | ステップ 5.S（成功後に PR 内推奨の修正・完了前確認）。**ステップ 1 に戻らない** |
 | `[fix:replied-only]` | ステップ 5.S（成功後に PR 内推奨の修正・完了前確認。返信のみで完了通知）。**ステップ 1 に戻らない** |
