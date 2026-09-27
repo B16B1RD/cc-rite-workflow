@@ -199,6 +199,10 @@
 * **Skip**: [20260927T151101Z-pr-3294.md](raw/reviews/20260927T151101Z-pr-3294.md) — 差分スコープの再レビューで指摘 0 件。新しい経験則を含まない
 
 * **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=64, orphans=0, missing_concept=0, unregistered_raw=566, broken_refs=0
+* **Update**: [散文が引用する実装 (regex literal / 帰属ファイル / 挙動) は文字一致・帰属・behavioral test の 3 点で裏取りする](pages/heuristics/prose-cited-implementation-behavioral-verification.md) — raw/reviews/20260927T152733Z-pr-3299.md を統合
+* **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/reviews/20260927T153355Z-pr-3292.md を統合
+* **Update**: [identity を持たない判定台帳で複数 cycle の和集合を重複除外すると、重複防止と欠落防止を同時には満たせない](pages/anti-patterns/identity-less-ledger-union-dedup-cannot-prevent-both-duplicate-and-loss.md) — raw/reviews/20260927T153425Z-pr-3290.md を統合
+* **Update**: [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) — raw/reviews/20260927T153751Z-pr-3298.md を統合
 
 ## 2026-09-26
 

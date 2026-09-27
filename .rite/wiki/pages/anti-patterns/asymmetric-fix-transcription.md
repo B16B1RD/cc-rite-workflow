@@ -595,9 +595,13 @@ sources:
     resource: "raw/fixes/20260729T144345Z-pr-2051.md"
   - type: "fixes"
     resource: "raw/fixes/20260729T151517Z-pr-2051-c2.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T153751Z-pr-3298.md"
 tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift", "sibling-issue-symmetric-application", "caller-context-difference", "inverse-failure-defect-transcription", "self-referential-prevention-violation", "anchor-scope-limit", "frontmatter-body-sync-drift", "caller-template-mirror-symmetry", "multi-stub-marker-prefix-symmetry", "helper-docstring-caller-extension-drift", "prose-first-paragraph-stale", "sentinel-sub-discriminator-suffix", "placeholder-pair-value-source-symmetry", "canonical-source-declaration", "archive-doc-tail-residue", "intra-document-contradiction", "reference-path-depth-drift", "grep-at-start-preventive-application", "extension-scope-limited-grep-sweep", "structural-doc-list-sync-on-new-file", "rationale-link-target-stale", "both-sides-claim-unverified", "over-propagation-boundary-unverified", "relocation-old-site-reference-drift"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T16:15:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:39:40Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:39:40Z" }
 verified: [{ by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T16:15:00Z" }]
 ---
 
@@ -1596,6 +1600,8 @@ reviewer registry 統合（13→9 種）の cycle 2 fix で references/ 配下�
 
 コードだけでなく散文の限定句も同じ。当該 PR は「この記述は形式契約であって現在の配線状況ではない」という限定句をサブフィールド表と型ガード節には入れたが、cross-field invariant と reviewer 向け自問には入れなかった。結果、同一ファイル内・同一注入プロンプト内で矛盾する 2 つの主張が併存した。**同じ主張をしている全箇所を grep して一括で処理する**。
 
+「この経路の貼り付け用コマンドはすべて同じ形にした」と言い切る修正では、修正対象を Issue に挙がったコマンド名から列挙せず、経路上の出力行（echo / 復旧ヒント）を全部拾って照合する。同じ戦略に実装経路が 2 つ（fast path と legacy）ある場合も片方だけ直しがちで、呼び出し側の渡す引数によっては直した側でも失敗する。変異実験は「直した箇所が固定されているか」を示すが、「直すべき箇所を網羅したか」は示さない。
+
 ## 関連ページ
 
 - [Asymmetric Fix の解決は hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
@@ -2069,3 +2075,4 @@ helper へ実体を移設したとき、**移設先の新シンボル名で grep
 ## ソース（追記分 6）
 
 - [レビュー結果](../../raw/reviews/20260926T155826Z-pr-3189.md)
+- [経路上の全出力行と 2 つの実装経路への伝播を確かめたレビュー結果](../../raw/reviews/20260927T153751Z-pr-3298.md)
