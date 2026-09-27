@@ -866,7 +866,7 @@ if grep -q 'wiki-apply-gate' <<<"$gout" && ! grep -q 'wiki-apply-index' <<<"$gou
 else
   fail "guard -qm rc=$grc out=$gout"
 fi
-# 引用符なしのリダイレクト語（最初の < / > の前が fd 番号か &> の & だけ）と、fd 番号か & に続く < > & だけの語の次の語は
+# 引用符なしのリダイレクト語（最初の < / > の前が fd 番号か &> の & だけ）と、（省略可の）fd 番号か & に続く < > & だけの語の次の語は
 # commit の引数ではない。引用符付きの語、先のない演算子、>| / {fd}>out は数える。
 SCOPE_CHECK="$SCRIPT_DIR/../scripts/review-fix-scope-check.sh"
 expect_target() {
