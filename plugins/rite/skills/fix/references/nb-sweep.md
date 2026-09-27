@@ -207,7 +207,7 @@ else
 fi
 ```
 
-手順 3 が `[fix:error]` で止まったときは、手順 2 の起票をやり直さない。起票は済んでいるが台帳に行が無いため、sweep を最初から実行し直すと同じ指摘を再び起票する。起票済みの Issue は entries の issued 行が持つ。entries（`${TMPDIR:-/tmp}/rite-nb-entries-{pr_number}.md`）を stderr の理由に合わせて直し、手順 3 だけを再実行する。`reason=entries_source_invalid` の診断は不正行の先頭 3 行しか示さないので、entries の全行について最終列が手順 1 の `record=` の basename（全行同じ値）になっているかを確かめ、欠けた行には最終列として足し、値の違う行はその値に直す。成功したら手順 4 へ進み、その後は `/rite:iterate` を再実行せず iterate 5.S の `[fix:sweep-done]` 行から続ける（再実行は同じ HEAD を再レビューし、振り直された id の指摘を collect が台帳と照合できず再び起票する）。
+手順 3 が `[fix:error]` で止まったときは、手順 2 の起票をやり直さない。起票は済んでいるが台帳に行が無いため、sweep を最初から実行し直すと同じ指摘を再び起票する。起票済みの Issue は entries の issued 行が持つ。entries（`${TMPDIR:-/tmp}/rite-nb-entries-{pr_number}.md`）を stderr の理由に合わせて直し、手順 3 だけを再実行する。`reason=entries_source_invalid` の診断は不正行の先頭 3 行しか示さないので、entries の全行について最終列が手順 1 の `record=` の basename（全行同じ値）になっているかを確かめ、欠けた行には最終列として足し、値の違う行はその値に直す。成功したら手順 4 へ進み、その後は `/rite:iterate` を再実行せず iterate 5.S の `[fix:sweep-done]` 行から続ける（再実行は同じ HEAD を再レビューし、振り直された id の指摘を collect が台帳と照合できず再び起票する）。この続け方は停止したのと同じ会話に限る（続きの手順は会話にしか残らない iterate の `{sweep_origin}` と手順 4 の `NB_SWEEP_RESULT` の件数を使う。どちらかを会話から読めなければ同じ会話でも続けない）。別の会話からは続けず、停止のままにする。
 
 4. **完了**:
 

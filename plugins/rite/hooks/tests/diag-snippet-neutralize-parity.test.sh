@@ -11,12 +11,14 @@
 #   を対象とする — literal パターン限定の sweep は数値違い (head -5) や
 #   綴り違い (head -n 10) の同型イディオムを構造的に見逃すことが
 #   実証されている (Asymmetric Fix Transcription の変種)。
-#   将来 hook に新しい行指向 head 診断 site が中和なしで追加された
+#   同じ理由で `tail -N` と `sed -n 'N,Mp'` (行範囲) も対象に含める。
+#   将来 hook に新しい行指向 head / tail / sed 診断 site が中和なしで追加された
 #   場合も TC-1 が検出する。
 #
 # Test cases:
 #   TC-1: hooks/ と scripts/ 配下 (tests/ 除く) に neutralize_ctrl を経由しない
-#         `head -N` 行指向 emission site が存在しない (コメント行は除外)
+#         `head -N` / `tail -N` / `sed -n 'N,Mp'` 行指向 emission site が存在しない
+#         (コメント行と、スクリプト自身のファイルを出す site は除外)
 #   TC-2: neutralize_ctrl を call する全 hook ファイルが
 #         control-char-neutralize.sh を source している
 #         (定義元 control-char-neutralize.sh 自身は除外)
@@ -58,54 +60,63 @@ for sweep_dir in "${SWEEP_DIRS[@]}"; do
   fi
 done
 
-echo "=== TC-1: head/tail -N emission site は全て neutralize_ctrl を経由 ==="
-# 除外: tests/ (fixture/assertion 内の出現)、コメント行、定義元 helper の usage コメント
+echo "=== TC-1: head/tail -N / sed -n 'N,Mp' emission site は全て neutralize_ctrl を経由 ==="
+# 除外: tests/ (fixture/assertion 内の出現)、コメント行、定義元 helper の usage コメント、
+# スクリプト自身のファイル ("${BASH_SOURCE[0]}") を出す site (開発者が書いた静的テキストで
+# 外部由来の制御文字を含まないため中和不要。usage() の自己ソース表示がこれに当たる)。
 # `head`/`tail` の `-[0-9]+` / `-n [0-9]+` (行指向 snippet、両綴り) を対象とする。
 # `tail` を含めるのは、python3 の未捕捉例外のように**根因が最終行に載る** stderr を出す site が
 # あるため — sweep 対象を head だけに絞ると、そこへ移行した瞬間に中和が無検出で外れる。
+# `sed -n 'N,Mp'` を含めるのは、不正行が多いとパイプバッファを超えて head が printf を SIGPIPE で
+# 落とすため、入力を最後まで読む sed の行範囲へ置き換えた site があるため — head/tail だけを
+# 数えると、その置き換えで中和が無検出で外れる。
 # `head -c` (byte 指向 inline 埋め込み) は 1 行 WARNING への embed で行構造が異なる
 # 別イディオムのため本 sweep の対象外 — TC-3 が head -c 全行を fail-closed sweep する
 # (非 emission site は明示 allowlist で除外、中和を横展開済み)。
 # `>&2` が log() 等の関数内部に隠れて同一行に現れない emission 経路は静的 sweep で
 # 構造的に検出できないため、TC-5 が既知 site を個別に pin する
-# sweep 正規表現は floor guard と共有する。literal を二重に持つと、片方だけ腕を落とす変異を
-# もう片方が検出できない (初版の floor guard が実際にそうだった)。
-SWEEP_RE='(head|tail) (-[0-9]+|-n +[0-9]+) '
-violations=$(grep -rnE "$SWEEP_RE" "${SWEEP_DIRS[@]}" --include='*.sh' \
-  | grep '>&2' \
-  | grep -v '/tests/' \
-  | grep -v 'neutralize_ctrl' \
-  | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
-  || true)
-assert "TC-1: un-neutralized head/tail -N emission sites" "" "$violations"
+# sweep 正規表現と emission site の絞り込みは floor guard と共有する。literal を二重に持つと、
+# 片方だけ腕を落とす変異・除外を広げる変異をもう片方が検出できない (初版の floor guard が
+# 実際にそうだった)。sed 枝は `-n` / `-ne` / `-n -e` の綴り違いも拾う。
+SED_RANGE_RE='sed +-n?e? +(-e +)?.?[0-9]+,[0-9]+p'
+SWEEP_RE="(head|tail) (-[0-9]+|-n +[0-9]+) |$SED_RANGE_RE"
+sweep_emission_sites() {
+  grep -rnE "$SWEEP_RE" "${SWEEP_DIRS[@]}" --include='*.sh' \
+    | grep '>&2' \
+    | grep -v '/tests/' \
+    | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
+    | grep -vF '"${BASH_SOURCE[0]}" >&2'
+}
+emission_sites=$(sweep_emission_sites || true)
+violations=$(printf '%s\n' "$emission_sites" | grep -v 'neutralize_ctrl' | grep -v '^$' || true)
+assert "TC-1: un-neutralized head/tail -N / sed -n 'N,Mp' emission sites" "" "$violations"
 if [ -n "$violations" ]; then
-  echo "  検出された未中和 site (head/tail -N の直後に '| neutralize_ctrl --keep-newline' を挿入すること):"
+  echo "  検出された未中和 site (head/tail -N / sed -n 'N,Mp' の直後に '| neutralize_ctrl --keep-newline' を挿入すること):"
   printf '%s\n' "$violations" | sed 's/^/    /'
 fi
 
-# sweep 正規表現が tail site を実際に拾えていることを pin (TC-2 の floor guard と同型)。
-# TC-1 は violations が空であることだけを assert する fail-closed sweep なので、式から tail が
-# 落ちても Green のまま通る。$SWEEP_RE を共有して数えることで腕の消失が本 guard の失敗になる。
-tail_pop=$(grep -rnE "$SWEEP_RE" "${SWEEP_DIRS[@]}" --include='*.sh' \
-  | grep '>&2' \
-  | grep -v '/tests/' \
-  | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
-  | grep -c 'tail ') || tail_pop=0
+# 各腕が実 site を拾えていることを pin (TC-2 の floor guard と同型)。TC-1 は violations が空で
+# あることだけを assert する fail-closed sweep なので、式から腕が落ちても、除外が広がって実 site
+# まで外れても Green のまま通る。violations と同じ絞り込みで数えることで、どちらも本 guard の
+# 失敗になる。scripts/ の母集団は、SWEEP_DIRS から "$SCRIPTS_DIR" を削る変異を violations の
+# 偶然の空集合に依存せず検出するために数える。
+tail_pop=$(printf '%s\n' "$emission_sites" | grep -c 'tail ') || tail_pop=0
 case "$tail_pop" in ''|*[!0-9]*) tail_pop=0 ;; esac
 if [ "$tail_pop" -ge 1 ]; then
   pass "TC-1 floor: tail 腕が実 site を $tail_pop 件カバーしている"
 else
-  fail "TC-1 floor: tail 腕のカバー site が 0 件 — 正規表現から tail が落ちても violations は空のままで回帰が不可視になる"
+  fail "TC-1 floor: tail 腕のカバー site が 0 件 — 正規表現から tail が落ちても、除外が広がっても violations は空のままで回帰が不可視になる"
 fi
 
-# scripts/ を sweep 根から外す変異を、violations の偶然の空集合に依存せず検出する。
-# TC-1 と同じ正規表現・emission 条件で scripts/ の実 site 母集団を数えるため、
-# SWEEP_DIRS から "$SCRIPTS_DIR" を削ると 0 件になり loud に落ちる。
-scripts_pop=$(grep -rnE "$SWEEP_RE" "${SWEEP_DIRS[@]}" --include='*.sh' \
-  | grep '>&2' \
-  | grep -v '/tests/' \
-  | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
-  | grep -cF "$SCRIPTS_DIR/") || scripts_pop=0
+sed_pop=$(printf '%s\n' "$emission_sites" | grep -cE "$SED_RANGE_RE") || sed_pop=0
+case "$sed_pop" in ''|*[!0-9]*) sed_pop=0 ;; esac
+if [ "$sed_pop" -ge 1 ]; then
+  pass "TC-1 floor: sed 腕が実 site を $sed_pop 件カバーしている"
+else
+  fail "TC-1 floor: sed 腕のカバー site が 0 件 — 正規表現から sed -n 'N,Mp' が落ちても、除外が広がっても violations は空のままで回帰が不可視になる"
+fi
+
+scripts_pop=$(printf '%s\n' "$emission_sites" | grep -cF "$SCRIPTS_DIR/") || scripts_pop=0
 case "$scripts_pop" in ''|*[!0-9]*) scripts_pop=0 ;; esac
 if [ "$scripts_pop" -ge 1 ]; then
   pass "TC-1 floor: scripts/ sweep が実 site を $scripts_pop 件カバーしている"
@@ -276,7 +287,7 @@ trap - EXIT
 
 if ! print_summary "$(basename "$0")" \
   "診断スニペット emission site を hooks/ または scripts/ に追加するときは control-char-neutralize.sh を source し、emission site の構造に応じて中和を挿入すること: \
-TC-1 (head/tail -N 行指向) は直後に '| neutralize_ctrl --keep-newline'; \
+TC-1 (head/tail -N / sed -n 'N,Mp' 行指向) は直後に '| neutralize_ctrl --keep-newline'; \
 TC-3 (head -c byte 指向 embed) は改行を整形後に default '| neutralize_ctrl' (新規 --c0-only は禁止); \
 TC-4 (cat full-file 直接 emission) は 'neutralize_ctrl --keep-newline < \"\$file\" >&2' へ置換; \
 TC-5 (log()/surface_git_warnings() 等の関数内 >&2) は静的 sweep で検出不能のため中和適用後に本テストへ個別 pin を追記すること"; then
