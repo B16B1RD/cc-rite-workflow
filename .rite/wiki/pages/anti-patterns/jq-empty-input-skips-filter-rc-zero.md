@@ -4,7 +4,7 @@ title: "jq は入力が 0 ドキュメントだとフィルタを評価せず rc
 domain: "anti-patterns"
 description: "jq はストリーム入力が空のときフィルタを一度も評価せずに成功終了するため、入力の形を検証する述語は空応答を捕捉できない。空入力と複数ドキュメントの両方を失敗に倒したい検証は jq -s で入力を配列に集め、length == 1 を述語に含めて書く。"
 created: "2026-09-27T03:16:22Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:35:02Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:42:47Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260927T031103Z-pr-3200.md"
@@ -14,10 +14,13 @@ sources:
     resource: "raw/reviews/20260927T032425Z-pr-3200.md"
   - type: "fixes"
     resource: "raw/fixes/20260927T033157Z-pr-3200.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T033801Z-pr-3200.md"
 tags: ["jq", "fail-loud", "gh-api", "empty-input"]
 confidence: medium
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:35:02Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:42:47Z" }
 ---
 
 # jq は入力が 0 ドキュメントだとフィルタを評価せず rc=0 で終わる — 形の検証は jq -s と length == 1 で入力を 1 ドキュメントに閉じる
@@ -57,6 +60,10 @@ jq はストリーム入力が空のときフィルタを一度も評価せず�
 
 実リポジトリの件数がページ境界ちょうど（1 ページの上限と同数）のとき、境界の外側（次のページ）は合成データでしか確かめられない。受入確認では API の `per_page` を小さくして、実データのままページを跨がせる手が使える。
 
+### 1 つの fixture で 2 種類の回帰を落とす
+
+入力の形を検証するテストの fixture は、先頭のドキュメントを marker のない正当なページにし、2 つ目に marker を置くと、「先頭だけを読む誤り」と「全ドキュメントを連結して読む誤り」の両方を 1 つの形で落とせる。一方、`jq -s` の全量パースは末尾のごみを parse error にするため、ごみだけを足した fixture を追加しても検出力は増えない。
+
 ## 関連ページ
 
 - [jq の `[]?` は型不正を空の結果に変えて rc=0 で終わり、呼び出し側の fail-loud 分岐を迂回する](./jq-optional-iterator-swallows-type-error-before-fail-loud-branch.md)
@@ -68,3 +75,4 @@ jq はストリーム入力が空のときフィルタを一度も評価せず�
 - [空入力を jq -n と input で捕捉した fix 結果](../../raw/fixes/20260927T031724Z-pr-3200.md)
 - [jq -s と length == 1 を勧めたレビュー](../../raw/reviews/20260927T032425Z-pr-3200.md)
 - [機構を置き換えて既存の述語へ統合した fix 結果](../../raw/fixes/20260927T033157Z-pr-3200.md)
+- [1 つの fixture で先頭読みと連結読みの両方を落とす形を確かめたレビュー結果](../../raw/reviews/20260927T033801Z-pr-3200.md)

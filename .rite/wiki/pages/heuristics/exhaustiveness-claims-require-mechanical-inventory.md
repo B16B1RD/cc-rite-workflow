@@ -27,11 +27,14 @@ sources:
     resource: "raw/fixes/20260609T232051Z-pr-1332-c4.md"
   - type: "reviews"
     resource: "raw/reviews/20260609T232442Z-pr-1332-c5.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T033918Z-pr-3205.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T12:25:07+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:42:47Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T12:25:07+09:00" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:42:47Z" }
 ---
 
 # 「網羅」を主張する列挙は grep 全数棚卸し + scope note で構造的に収束させる
@@ -102,6 +105,10 @@ Issue が具体的な 1 件だけを挙げていても、それは「この 1 �
 
 列挙の母集団は文書ではなく実装から取る。共通 helper（この事例では Issue 起票 helper）の呼び出し元を grep で全数取り出し、各呼び出し元を「今回の修正対象 / 既に対応済み / 残り」に分類してから文書を書く。残った経路は列挙に明記し、スコープ外なら別 Issue に切り出す。
 
+## 変種: 列挙の正本を「全件を並べる文」に書き換えると、以前からの漏れが目立つ
+
+列挙の正本と宣言された表に 1 つのトークンを足すため、「A と B」の文を「A、B、C」の全件列挙に書き換えたところ、実装が書き込む別系統のトークンが以前から載っていないことが際立った。正本の表に要素を足すときは、足す 1 件だけでなく、実装が実際に書き込むトークン集合を grep で洗い出して表と突き合わせる。今回の範囲外で残った分は別 Issue に切り出し、表示側（案内文の分岐など）も同じ集合で欠けていないかを併せて確かめる。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -121,3 +128,4 @@ Issue が具体的な 1 件だけを挙げていても、それは「この 1 �
 - [フィルタ済みストリームへの grep -n が行番号を壊す](../../raw/fixes/20260724T202517Z-pr-2013.md)
 - [「1 件の記載漏れ」の報告を全サイト走査要求として読む / 走査範囲と修正範囲の分離](../../raw/reviews/20260804T120832Z-pr-2108.md)
 - [文書の列挙を差分更新せず、共通 helper の呼び出し元 grep から母集団を確定する](../../raw/reviews/20260913T031734Z-pr-2763.md)
+- [正本の表を全件列挙に書き換えて以前からの漏れが目立ったレビュー結果](../../raw/reviews/20260927T033918Z-pr-3205.md)
