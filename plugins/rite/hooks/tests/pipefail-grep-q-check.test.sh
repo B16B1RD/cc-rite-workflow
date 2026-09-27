@@ -9,7 +9,7 @@ fixture="$SBX/plugins/rite/hooks/fixture.sh"
 
 cat > "$fixture" <<'EOF'
 set -euo pipefail
-printf '%s|%s\n' "$a" "$b" | grep -q x
+printf '%s|%s\n' a b | grep -q x
 { cmd; } | grep -q x
 docker ps | grep -q x
 enable -p | grep -q mapfile
@@ -38,6 +38,34 @@ assert "echo with an option before the expansion is reported" "1" "$(printf '%s\
 assert "expansion in a later argument is reported" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*second_arg' || true)"
 assert "backquote command substitution is reported" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*backquoted' || true)"
 assert "echo of a literal stays exempt" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*echo literal' || true)"
+
+printf '%s\n' 'set -o pipefail' "echo 'literal \$ sign' | grep -q x" 'if ! echo "$negated" | grep -q x; then :; fi' \
+  'printf '"'"'%s'"'"' "$printf_var" | grep -q x' 'printf '"'"'%s\n'"'"' fixed_word | grep -q x' \
+  '! echo literal_bang | grep -q x' 'if ! echo literal_if_bang | grep -q x; then :; fi' \
+  'while ! echo literal_while_bang | grep -q x; do :; done' 'until echo literal_until | grep -q x; do :; done' \
+  'if false; then :; elif echo literal_elif | grep -q x; then :; fi' \
+  'for i in 1; do echo literal_do | grep -q x; done' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "producer stage with a literal dollar is reported" "1" "$(printf '%s\n' "$out" | grep -c "producer before grep -q: echo 'literal" || true)"
+assert "negated echo of an expansion is reported" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*negated' || true)"
+assert "printf of an expansion is reported" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*printf_var' || true)"
+assert "printf of a literal stays exempt" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*fixed_word' || true)"
+assert "bang prefix before a literal echo is stripped" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*literal_bang' || true)"
+assert "if-bang prefix before a literal echo is stripped" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*literal_if_bang' || true)"
+assert "while-bang prefix before a literal echo is stripped" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*literal_while_bang' || true)"
+assert "until prefix before a literal echo is stripped" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*literal_until' || true)"
+assert "elif prefix before a literal echo is stripped" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*literal_elif' || true)"
+assert "do prefix before a literal echo is stripped" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*literal_do' || true)"
+
+printf '%s\n' 'set -o pipefail' 'printf '"'"'%s|%s\n'"'"' "$pipe_a" "$pipe_b" | grep -q x' \
+  'X=$HOME echo prefix_assign | grep -q x' 'echo redir_word 2>"$log" | grep -q x' \
+  'printf '"'"'%s\n'"'"' brace_expand {1..3} | grep -q x' 'echo glob_word * | grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "printf with a literal pipe in its format and an expansion is reported" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*pipe_a' || true)"
+assert "expansion in a prefix assignment is reported" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*prefix_assign' || true)"
+assert "expansion in a redirection is reported" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*redir_word' || true)"
+assert "printf of a brace expansion is reported" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*brace_expand' || true)"
+assert "echo of a glob is reported" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*glob_word' || true)"
 
 printf '%s\n' 'stream_many | grep -q x' > "$fixture"
 out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
@@ -427,16 +455,21 @@ out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
 assert "ignore marker suppresses finding" "0" "$rc"
 assert "ignored run reports zero" "1" "$(printf '%s' "$out" | grep -c 'Total pipefail-grep-q findings: 0')"
 
-# tests/ is an intentional scan boundary: identical unsafe syntax is ignored in
-# a fixture directory but remains detectable in production hook code.
-mkdir -p "$SBX/plugins/rite/hooks/tests"
-printf '%s\n' 'set -o pipefail' 'stream_many | grep -q x' > "$SBX/plugins/rite/hooks/tests/ignored-fixture.sh"
+# Every tests/ directory under the scan roots is scanned like production code.
+tests_dirs=(plugins/rite/hooks/tests plugins/rite/scripts/tests plugins/rite/hooks/scripts/tests)
+for d in "${tests_dirs[@]}"; do
+  mkdir -p "$SBX/$d"
+  printf '%s\n' 'set -o pipefail' 'stream_many | grep -q x' > "$SBX/$d/tests-site.sh"
+done
 printf '%s\n' 'set -o pipefail' 'stream_many | grep -q x' > "$SBX/plugins/rite/hooks/production-site.sh"
 out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
 assert "production twin outside tests is detected" "1" "$rc"
 assert "production twin yields one finding" "1" "$(printf '%s\n' "$out" | grep -c '^\[pipefail-grep-q\].*production-site\.sh:' || true)"
-assert "tests twin remains outside the finding set" "0" "$(printf '%s\n' "$out" | grep -c '^\[pipefail-grep-q\].*ignored-fixture\.sh:' || true)"
-rm -f "$SBX/plugins/rite/hooks/production-site.sh" "$SBX/plugins/rite/hooks/tests/ignored-fixture.sh"
+for d in "${tests_dirs[@]}"; do
+  assert "tests twin in $d is detected" "1" "$(printf '%s\n' "$out" | grep -cxF "[pipefail-grep-q] $d/tests-site.sh:2: immediate producer before grep -q: stream_many" || true)"
+  rm -f "$SBX/$d/tests-site.sh"
+done
+rm -f "$SBX/plugins/rite/hooks/production-site.sh"
 
 REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
 out=$(bash "$SCRIPT" --all --repo-root "$REPO_ROOT" --quiet 2>&1); rc=$?

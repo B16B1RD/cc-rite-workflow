@@ -1060,7 +1060,7 @@ else
   fail "T-args-01a: expected status=success rc=0. rc=$(cat "$d/rc") out=$(cat "$d/out") err=$(cat "$d/err")"
 fi
 patched_section=$(jq -r '.body' "$d/patched.json" 2>/dev/null | awk '/^### 進捗サマリー$/{f=1;next} f&&/^### /{exit} f') || patched_section=""
-if printf '%s\n' "$patched_section" | grep -v '^$' | tail -2 | tr '\n' '|' | grep -qxF -- '- [x] レビュー完了|- [x] マージ完了|'; then
+if _gq_out=$(printf '%s\n' "$patched_section" | grep -v '^$' | tail -2 | tr '\n' '|') && grep -qxF -- '- [x] レビュー完了|- [x] マージ完了|' <<< "$_gq_out"; then
   pass "T-args-01b: items appended at the end of ### 進捗サマリー"
 else
   fail "T-args-01b: items not at the end of ### 進捗サマリー. section=$patched_section"

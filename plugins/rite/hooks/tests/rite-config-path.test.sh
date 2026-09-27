@@ -231,7 +231,7 @@ check_init_section() {
 check_init_section workflow '### 1.1 Check Initialization Status' '### 1.2' '初期化されていません' stop
 check_init_section getting-started '### 3.2 Step 1: Initial Setup' '### 3.3' 'Action Required' guide
 check_init_section template-reset '### 1.1 Read rite-config.yml' '## Phase 2' '見つかりません' stop
-if awk '/^## Language Support/ {f = 1} f' "$PLUGIN_ROOT/skills/workflow/SKILL.md" | grep -qF '{rite_config_path}'; then
+if _gq_out=$(awk '/^## Language Support/ {f = 1} f' "$PLUGIN_ROOT/skills/workflow/SKILL.md") && grep -qF '{rite_config_path}' <<< "$_gq_out"; then
   pass "T-12 workflow reads language from the resolved path"
 else
   fail "T-12 workflow reads language from the resolved path"

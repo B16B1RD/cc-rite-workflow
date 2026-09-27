@@ -392,7 +392,7 @@ git ls-remote --exit-code --heads origin "refs/heads/$BRANCH" >/dev/null 2>&1 \
 # として落ちる (実測確認済み。タグ fixture を外すと同じ mutation が全 TC 緑を通る)。
 _setup_err=$(LC_ALL=C git push -q origin "HEAD:refs/tags/$BRANCH" 2>&1) \
   || { echo "FATAL: 同名タグの push に失敗: $_setup_err"; exit 1; }
-tag_present() { git ls-remote origin "refs/tags/$BRANCH" 2>/dev/null | grep -q .; }
+tag_present() { local _gq_out; _gq_out=$(git ls-remote origin "refs/tags/$BRANCH" 2>/dev/null) && grep -q . <<< "$_gq_out"; }
 tag_present || { echo "FATAL: 同名タグが origin に存在しない — namespace 修飾の pin が vacuous になる"; exit 1; }
 
 # 対象ブランチが **完全一致で** origin に存在するか。`git ls-remote --exit-code` の rc は入れ子衝突

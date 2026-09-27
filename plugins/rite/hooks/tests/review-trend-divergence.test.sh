@@ -570,7 +570,7 @@ make_result "$coll_dir" 901 02 4 "" ""
 make_result "$coll_dir" 901 03 1 "" ""
 make_result "$coll_dir" 901 03 3 "" "~ab12"
 make_result "$coll_dir" 901 04 7 "" ""
-if locale -a 2>/dev/null | grep -qiE '^en_US\.utf-?8$'; then
+if _gq_out=$(locale -a 2>/dev/null) && grep -qiE '^en_US\.utf-?8$' <<< "$_gq_out"; then
   LC_ALL=en_US.UTF-8 bash "$SCRIPT" --pr 901 --cycle-count 5 --results-dir "$coll_dir" > "$OUT" 2>/dev/null
   assert_grep "collision 名: 同 ts の ~ 版が直後に並ぶ (要素順の pin)" "$OUT" "trend=5,4,1,3,7;"
 

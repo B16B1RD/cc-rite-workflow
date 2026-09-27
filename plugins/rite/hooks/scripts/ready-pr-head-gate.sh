@@ -46,7 +46,7 @@ if [ "$current_oid" != "$pr_head_oid" ]; then
 fi
 bang_output=$(bash "$plugin_root/hooks/scripts/bang-backtick-check.sh" --all --skip-if-no-target --repo-root "$scan_root" 2>&1); bang_rc=$?
 case "$bang_rc" in
-  0) if printf '%s' "$bang_output" | grep -q '\[bang-backtick\] not applicable'; then echo "ℹ️ Bang-backtick gate: N/A（clean skip）。" >&2; fi ;;
+  0) if grep -q '\[bang-backtick\] not applicable' <<< "$bang_output"; then echo "ℹ️ Bang-backtick gate: N/A（clean skip）。" >&2; fi ;;
   1) echo "❌ Bang-backtick adjacency detected — Ready transition blocked:" >&2; printf '%s\n' "$bang_output" >&2; echo "ACTION: Apply Style A (full-width 「!」) or Style B (expand 'if ! cmd; then')." >&2; exit 1 ;;
   *) echo "[CONTEXT] BANG_BACKTICK_CHECK_INVOCATION_FAILED=1; reason=invocation_error; rc=$bang_rc" >&2; printf '%s\n' "$bang_output" >&2; exit 2 ;;
 esac
