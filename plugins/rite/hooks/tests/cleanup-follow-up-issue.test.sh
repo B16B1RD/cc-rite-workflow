@@ -1593,6 +1593,7 @@ jq -n --argjson c "$(comment_obj "$(record_body '| F-01 | plugins/rite/skills/cl
 run_target "$r" --preview-body "$TMP_ROOT/preview-t47d.md"
 assert_grep "T-47 全件起票済みは all_issued" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=all_issued; pr=9'
 assert_not_grep "T-47 全件起票済みでも preview を出さない" "$ERR" 'FOLLOW_UP_ISSUE=preview'
+assert "T-47 all_issued の preview 実行は起票しない" "0" "$(create_count)"
 assert "T-47 all_issued でも preview 付きで判定済み記録を書く" "pr=9" "$(cat "$r/.rite/state/follow-up-judged-9.txt" 2>/dev/null)"
 
 echo "--- T-48: preview 本文を書き出せなければ起票も preview もしない ---"
@@ -2304,10 +2305,9 @@ for t77_variant in plain preview; do
   r=$(new_root "t77-$t77_variant")
   t77_args=()
   [ "$t77_variant" = preview ] && t77_args=(--preview-body "$TMP_ROOT/preview-t77.md")
+  # --preview-body の有無は出力に差を生まないため、t77_args の組み立てから --preview-body が落ちる退行はここでしか捕まらない（run_target への受け渡しは確かめない）
   if [ "$t77_variant" = preview ]; then
     assert "T-77 $t77_variant: --preview-body を渡す" "--preview-body $TMP_ROOT/preview-t77.md" "${t77_args[*]}"
-  else
-    assert "T-77 $t77_variant: 追加引数なし" "0" "${#t77_args[@]}"
   fi
   put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[]}'
   assert "T-77 $t77_variant: 前提: 判定済み記録が無い" "no" "$([ -e "$r/$JUDGED_RECORD_REL" ] && echo yes || echo no)"
