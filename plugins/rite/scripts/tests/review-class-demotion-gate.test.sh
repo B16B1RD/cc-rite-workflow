@@ -855,6 +855,31 @@ grep -qxF "[CONTEXT] CLASS_DEMOTION_GATE=not-triggered; class_a=1; class_b=0; de
 [ "$(jq -r '.findings[0] | has("consequence_exclusion")' "$TEST_DIR/tc37.json")" = "false" ] \
   && pass "no consequence_exclusion on class A" || fail "unexpected consequence_exclusion"
 
+# ---- TC-38: 別理由で判定不能に倒れたエントリの ac_claim は捨て、食い違いを警告しない ----
+echo "TC-38: 判定不能エントリの有効な ac_claim は食い違い警告を出さない"
+tc38_claim='["AC-1"]'
+for variant in duplicate bad_exclusion bad_class no_scenario; do
+  mk_json "$TEST_DIR/tc38-$variant.json" "$(mk_finding "F-01" "MEDIUM" "current-pr" "文書同期")"
+  set_ac "$TEST_DIR/tc38-$variant.json" '[{"id":"AC-1","status":"satisfied","finding_id":null,"evidence":"e"}]'
+  case "$variant" in
+    duplicate) mk_cls "$TEST_DIR/tc38-$variant-cls.json" "$(mk_entry_claim F-01 B "文書整合に留まる" "$tc38_claim")" \
+                 "$(mk_entry_claim F-01 B "文書整合に留まる" "$tc38_claim")" ;;
+    bad_exclusion) mk_cls "$TEST_DIR/tc38-$variant-cls.json" \
+                     "$(jq -n --argjson claim "$tc38_claim" '{id:"F-01", class:"B", scenario:"文書整合に留まる", exclusion:"", ac_claim:$claim}')" ;;
+    bad_class) mk_cls "$TEST_DIR/tc38-$variant-cls.json" "$(mk_entry_claim F-01 C "文書整合に留まる" "$tc38_claim")" ;;
+    no_scenario) mk_cls "$TEST_DIR/tc38-$variant-cls.json" "$(mk_entry_claim F-01 B "" "$tc38_claim")" ;;
+  esac
+  run_gate "$TEST_DIR/tc38-$variant.json" "$TEST_DIR/tc38-$variant-cls.json"
+  if [ "$GATE_RC" -eq 0 ] \
+    && grep -qxF "[CONTEXT] CLASS_DEMOTION_GATE=not-triggered; class_a=1; class_b=0; demoted=0; assessment=fix-needed" <<<"$GATE_STDERR" \
+    && grep -qxF "[CONTEXT] CLASS_DEMOTION_UNCLASSIFIED=1; count=1" <<<"$GATE_STDERR" \
+    && [ "$(grep -c '^WARNING:' <<<"$GATE_STDERR")" = "1" ]; then
+    pass "$variant: unclassified without the disagreement warning"
+  else
+    fail "$variant (rc=$GATE_RC): $GATE_STDERR"
+  fi
+done
+
 echo "Static contract: measured error は再試行せず停止し、廃止語彙を残さない"
 pr_review_skill="$PLUGIN_ROOT/skills/pr-review/SKILL.md"
 retry_row=$(grep -F 'reason=classification_missing' "$pr_review_skill" | head -1)
@@ -905,6 +930,25 @@ if grep -qF "claim_warning=\"$claim_suffix_literal" "$TARGET" \
   pass "documented disagreement suffix matches helper output"
 else
   fail "documented disagreement suffix diverges from helper output"
+fi
+# ac_claim を map に載せる経路は 5.3.0.C step 1 の指示と map 例だけ。消えると第 3 除外入力源は到達不能になる
+claim_producer_row=$(grep -F '`ac_claim` を書く**' <<<"$class_section" | head -1)
+if grep -qF 'AC の未充足を実測付きで主張する finding には `ac_claim` を書く' <<<"$claim_producer_row" \
+   && grep -qF '`acceptance_criteria[]` に無い AC・重複・書式外・空配列' <<<"$claim_producer_row"; then
+  pass "5.3.0.C step 1 tells the producer to write ac_claim"
+else
+  fail "5.3.0.C ac_claim producer instruction missing"
+fi
+if grep -qF '"ac_claim": ["AC-1"]' <<<"$class_section"; then
+  pass "5.3.0.C map example carries ac_claim"
+else
+  fail "5.3.0.C ac_claim map example missing"
+fi
+if grep -F '**分類入力 (classification map)**' "$PLUGIN_ROOT/skills/fix/references/assessment-rules.md" \
+   | grep -qF '"exclusion"?, "ac_claim"?}]}'; then
+  pass "assessment-rules classification map shape lists ac_claim"
+else
+  fail "assessment-rules classification map shape omits ac_claim"
 fi
 
 # 文書に字義どおり従う実行者の誤動作を実行で観測した指摘は class A。分類を書く 3 か所が同じ規則を持つ
