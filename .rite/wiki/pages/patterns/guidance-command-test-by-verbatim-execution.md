@@ -4,7 +4,7 @@ title: "エラーメッセージが案内するコマンドは、テストで出
 domain: "patterns"
 description: "エラーメッセージが利用者に打たせるコマンドを文字列の部分一致だけで固定すると、案内先 CLI の必須引数が欠けていても検出できない。テストは出力から案内コマンドを抽出してそのまま実行し、文言と実行可能性を 1 つの assert で結ぶ。"
 created: "2026-09-26T14:50:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T09:40:29Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:05:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260926T150855Z-pr-3171.md"
@@ -18,6 +18,14 @@ sources:
     resource: "raw/reviews/20260927T091721Z-pr-3251.md"
   - type: "fixes"
     resource: "raw/fixes/20260927T092425Z-pr-3251.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T094235Z-pr-3251.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T095125Z-pr-3251.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T094604Z-pr-3253.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T095651Z-pr-3253.md"
 tags: []
 confidence: high
 verified:
@@ -25,6 +33,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T14:57:57Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T09:40:29Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:05:00Z" }
 ---
 
 # エラーメッセージが案内するコマンドは、テストで出力から抽出して逐語実行する
@@ -69,6 +78,16 @@ verified:
 
 修正は案内文言の差し替えに留め、テストでは「案内の文字列」と「案内を実際に実行した結果（branch が作り直されないこと）」の両方を固定した。文字列だけの assert では、案内を実行したときの挙動が変わっても検出できない。これは本ページの逐語実行の考え方を、実行可能性だけでなく実行結果の安全性にまで広げたものである。
 
+### 同じ案内を出す経路はすべてテストで固定する
+
+同じ案内文言を 2 つの経路が出すとき、片方の経路だけを完全一致で固定すると、もう片方だけを旧形式へ戻す変異がテストを生き残る。経路ごとの既存テストに同じ完全一致 assert を 1 行ずつ足し、どちらの経路を戻す変異でも FAIL することを実測で確かめる。再レビューでも変異で検出力を確かめて解消と判定した。
+
+### 拒否文が案内する修復手段は、拒否した検査と同じ述語で受理されるものにする
+
+入力を拒否するメッセージが「この検査を再実行して直す」と案内していても、案内先が拒否した検査より緩い別の検査だと、案内どおりに直しても再び拒否される。案内先の helper を揃えられないとき（対象外ファイルの変更になるなど）は、拒否文自体に受理される形（値域と必須条件）を書き、再実行する検査は補助として残す。形を列挙すると、列挙と実際の検査述語がずれても固定句だけのテストでは検出できないという pin 粒度の論点が残るので、列挙の各項目が述語と一致するかも別に確かめる。
+
+最終検証の入力にプラグイン全体を指定すると、テスト実行中に Python が書く `__pycache__` によって「入力が変わった」と判定されることがある。検証コマンドに `PYTHONDONTWRITEBYTECODE=1` を付けると入力が固定される。
+
 ## 関連ページ
 
 - [エラーメッセージ文字列の grep assert は locale 依存で dead assertion 化する](../anti-patterns/locale-dependent-error-message-grep-assertion.md)
@@ -82,3 +101,7 @@ verified:
 - [レビュー結果](../../raw/reviews/20260927T083236Z-pr-3221.md)
 - [安全オプションが案内コマンドに無いことを指摘したレビュー結果](../../raw/reviews/20260927T091721Z-pr-3251.md)
 - [fix 結果](../../raw/fixes/20260927T092425Z-pr-3251.md)
+- [2 経路目の案内にも完全一致 assert を足した fix 結果](../../raw/fixes/20260927T094235Z-pr-3251.md)
+- [2 経路目の固定を変異で確かめたレビュー結果](../../raw/reviews/20260927T095125Z-pr-3251.md)
+- [拒否文に受理される形を列挙した fix 結果](../../raw/fixes/20260927T094604Z-pr-3253.md)
+- [拒否文の案内の解消と pin 粒度の論点を記録したレビュー結果](../../raw/reviews/20260927T095651Z-pr-3253.md)

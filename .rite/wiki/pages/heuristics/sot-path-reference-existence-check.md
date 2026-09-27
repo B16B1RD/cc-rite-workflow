@@ -20,9 +20,17 @@ sources:
     resource: "raw/reviews/20260523T144332Z-pr-1102.md"
   - type: "reviews"
     resource: "raw/reviews/20260529T072948Z-pr-1190.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T094011Z-pr-3255.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T094235Z-pr-3255.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T095553Z-pr-3255.md"
 tags: ["sot-document", "path-reference", "broken-ref", "self-violation", "cross-pr-fragility", "identifier-consistency", "relative-path-depth"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-10T01:03:44Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:05:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:05:00Z" }
 ---
 
 # SoT 文書の path 参照は本 PR マージ時点の origin/develop で existence check する
@@ -133,6 +141,14 @@ helper 委譲後に stale 化した cross-ref を更新する 1 行 docs PR で�
 
 委譲 refactor の後追い docs 修正はこの 3 点で検証が完結する — existence check (本ページの主題) を「参照先見出しの文字列一致」まで強めるのが委譲後 drift 修正の決め手。
 
+### 参照を付け替えたら、同じ文の動詞・名詞も参照先の実装と照合する
+
+SoT 参照を実在する節へ付け替えるとき、確かめるのは節の実在だけでは足りない。参照元の文が述べる主張（たとえば「object 内の boolean の値だけを採用し、それ以外は止める」）を、参照先の実装が実際に担っているかを helper の該当行で確かめる。参照先を直しても、同じ文に旧実装時代の語彙（登録マップを前提にした「登録」など）が残りやすく、新しい参照先の振る舞いと合わなくなる。
+
+語の置換だけの修正でも、参照先 helper の該当箇所（値が boolean でなければ停止する分岐など）を grep して、書き換え後の文と一致することを検証コマンドに含める。helper を実際の fixture（boolean と非 boolean の各形）で実行し、書き換えた文が述べる振る舞いと一致することまで確かめると確度が上がる。
+
+同じ古い参照や旧語彙は、コメントや別ファイル、差分外の近接行にも残っていることが多い。直す範囲を受入条件に合わせて絞るときは、残した箇所を Decision Log に記録して見失わないようにする。意味は整合していて文言だけの問題なら、差分外として記録に回す。
+
 ## 関連ページ
 
 - [散文で宣言した設計は対応する実装契約がなければ機能しない](../anti-patterns/prose-design-without-backing-implementation.md)
@@ -150,3 +166,6 @@ helper 委譲後に stale 化した cross-ref を更新する 1 行 docs PR で�
 - [phase-mapping.md の broken cross-reference 修正 doc PR、0 blocking findings / 1 cycle 着地。修正後参照先 (resume.md Phase 3.5 / Phase 5.3) の実在を両 reviewer が Read で independently verify。同型 broken ref が sub-skill-return-protocol.md / docs/SPEC.md / docs/SPEC.ja.md に pre-existing 残存](../../raw/reviews/20260523T144332Z-pr-1102.md)
 - [commands/pr/open.md ステップ3.5 の dangling reference 差し替え doc PR、0 blocking / 1 cycle 着地。relative reference の depth-aware path 解決検証 (`../../references/` depth-2 / `../../../references/` depth-3) + anchor slug 実在 + codebase 一貫性の 4 点機械検証。pre-existing 同型不整合 2 件を follow-up Issue に切り出し](../../raw/reviews/20260529T072948Z-pr-1190.md)
 - [委譲後 cross-ref drift 修正を 3 点検証 (実在性 / stale 性 / 同型残存 grep) で 1 cycle mergeable 判定](../../raw/reviews/20260610T010210Z-pr-1342.md)
+- [付け替えた SoT 参照の主張を参照先 helper の行で確かめたレビュー結果](../../raw/reviews/20260927T094011Z-pr-3255.md)
+- [旧語彙を参照先の振る舞いに合わせて直した fix 結果](../../raw/fixes/20260927T094235Z-pr-3255.md)
+- [fixture で helper を実行して書き換え後の文を確かめたレビュー結果](../../raw/reviews/20260927T095553Z-pr-3255.md)

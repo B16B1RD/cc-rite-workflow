@@ -147,9 +147,15 @@ sources:
     resource: "raw/reviews/20260806T094541Z-pr-2124.md"
   - type: "reviews"
     resource: "raw/reviews/20260806T120815Z-pr-2124.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T095121Z-pr-3256.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T094529Z-pr-3256.md"
 tags: ["test", "mutation-testing", "false-positive", "dead-code", "verification", "bytes-exact-pin", "trailing-newline-strip", "self-grep-tautology", "count-threshold-mutation-evasion", "path-filter-coverage-gap", "load-bearing-whitespace-pin", "regex-alternation-per-branch-coverage", "regex-quantifier-semantic-coverage", "symmetry-claim-bidirectional-pin", "negative-assert", "non-blocking-contract-mutation"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-11T15:07:49Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:05:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:05:00Z" }
 ---
 
 # Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する
@@ -918,6 +924,12 @@ bash は untrapped な INT/TERM/HUP で死ぬときも EXIT trap を実行する
 
 base では `[ -c "$dir/config.worktree" ]` の literal がそのまま分岐条件で、literal を残したまま emit を消すことはできなかった。判定を関数へ抽出して「述語 → 戻り値 → 変数 → marker」の多段にすると、置換後の source-grep pin は述語段の文字列しか固定せず、`return 0`→`return 1` の 1 語変異が両スイート green で生存する。抽出のたびに emit 段の runtime テストを同時に足し、同じ変異を再適用して新 assert が落ちることを実測する。修正検証は複数 reviewer が同じ変異を独立に再適用して差分 assert 数を数えると確定でき、削除した静的 pin と同等のものが兄弟テストに残るかを Cross-File で確認して静的ガードの純減が無いことも記録する。
 
+### marker の契約テストは前置部分ではなく payload まで完全一致で固定する
+
+判定規則を支える marker の契約テストが marker の前置部分だけを grep していると、marker が運ぶ値（status の payload）を定数や別変数へ差し替える変異が生き残る。行全体を payload まで完全一致で固定し、同じ節でその変数が helper の出力から代入されていることも assert する。修正は既存ループ内の assert を強める最小差分で済み、新しい検査機構は要らない。
+
+shell 側で別言語の usage 判定を先取りする表を持つ場合は、表の一致をテストで双方向に突き合わせる（別言語側のソースから subcommand を抽出し、shell 側の ERROR 文と照合する）と、片側だけの追加・削除による drift を検出できる。
+
 ## 関連ページ
 
 - [否定形の assert は前提条件が崩れると fail-silent になる](../anti-patterns/negative-assertion-vacuous-without-precondition-floor.md)
@@ -998,3 +1010,5 @@ base では `[ -c "$dir/config.worktree" ]` の literal がそのまま分岐条
 - [隔離 worktree での 24 変異 (kill 15 / survive 9)、生存はすべて契約外の実装内部](../../raw/reviews/20260806T094541Z-pr-2124.md)
 - [77 変異中 6 本を equivalent と確定させてから 14 本を pin 欠落として報告](../../raw/reviews/20260806T120815Z-pr-2124.md)
 - [section 限定 assert の false kill 判別（`empty section` と `pattern not found` の読み分け）と両方向実測](../../raw/reviews/20260829T153702Z-pr-2466.md)
+- [marker の payload を完全一致で固定した fix 結果](../../raw/fixes/20260927T095121Z-pr-3256.md)
+- [前置部分だけの pin が payload 差し替え変異を見逃すことを指摘したレビュー結果](../../raw/reviews/20260927T094529Z-pr-3256.md)

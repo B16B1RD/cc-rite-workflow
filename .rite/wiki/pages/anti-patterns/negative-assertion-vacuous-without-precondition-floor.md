@@ -19,9 +19,13 @@ sources:
     resource: "raw/reviews/20260927T084223Z-pr-3248.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T092741Z-pr-3248.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T093844Z-pr-3248.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T095151Z-pr-3248.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T09:40:29Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:05:00Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-16T12:58:00Z" }
   - { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T07:10:00Z" }
@@ -29,6 +33,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:19:35Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:50:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T09:40:29Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:05:00Z" }
 ---
 
 # 否定形の assert は前提条件が崩れると fail-silent になる
@@ -154,6 +159,8 @@ rm -f "$result_dir"/*.json
 
 「〜を呼ばない」を確かめる否定 assert は、呼び出しログが書かれる経路をその走行が通っていることを前提にしている。ログ自体が書かれない走行では、呼び出しの有無に関係なく不在 assert が成立する。同じ走行でログが書かれたこと（別の呼び出しが記録されていること）を陽性 assert で先に固定すると、ログの欠落による空振りを排除できる。対処 5 と同じく、fixture が作るはずの前提の成立を assert で確かめる形である。
 
+この陽性 assert の識別力は、stub の記録先を捨て先（`/dev/null`）へ向ける変異で実測できる。変異後は陽性 assert だけが落ち、直後の否定 assert は緑のまま残る。否定 assert が単独では前提の崩れを検出できないことと、足した陽性 assert がそれを補っていることが、1 回の変異で同時に確かめられる。修正はテストへの assert 1 行で済み、helper や文書の挙動は変えない。
+
 ## 関連ページ
 
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
@@ -169,3 +176,5 @@ rm -f "$result_dir"/*.json
 - [レビュー結果](../../raw/reviews/20260926T131154Z-pr-3156.md)
 - [レビュー結果](../../raw/reviews/20260927T084223Z-pr-3248.md)
 - [呼び出しログの前提を陽性 assert で固定する指摘のレビュー結果](../../raw/reviews/20260927T092741Z-pr-3248.md)
+- [否定 assert の前提を陽性 assert 1 行で固定した fix 結果](../../raw/fixes/20260927T093844Z-pr-3248.md)
+- [記録先を捨て先へ向ける変異で陽性 assert の識別力を実測したレビュー結果](../../raw/reviews/20260927T095151Z-pr-3248.md)
