@@ -181,7 +181,7 @@ assert "wiki-lint-log-commit.sh: the successful retry removes the message file" 
 lint_commit_run gitfail 3
 assert "wiki-lint-log-commit.sh: rc=3 removes the message file" "0" \
   "$([ -e "$route_tmp/lint-gitfail/msg.txt" ] && echo 1 || echo 0)"
-assert_grep "wiki-lint-log-commit.sh: rc=3 reports its own rc" "$route_tmp/lint-gitfail/err" 'rc=3)'
+assert_grep "wiki-lint-log-commit.sh: rc=3 reports its own rc" "$route_tmp/lint-gitfail/err" 'rc=3\)'
 assert_not_grep "wiki-lint-log-commit.sh: rc=3 does not show the sandbox retry" "$route_tmp/lint-gitfail/err" \
   'reason=sandbox-mask'
 
