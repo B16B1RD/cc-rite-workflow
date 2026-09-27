@@ -36,8 +36,7 @@ opt-out default で「Wiki 無効」と報告するのは、この Issue が潰�
 ingest は flow-state を active にしないまま実行されることがあり（単独の `/rite:wiki-ingest`、ingest
 の最中に cleanup が自セッションを非 active にする経路）、flow-state で判定すると取得直後の lock が
 stale になって別セッションに奪われる。取得時刻の無い・読めない lock は stale とし、保持者が落ちた
-lock を 2h 後に回収できる性質は保つ。multi-session design §9 は判定に flow-state の liveness を流用
-すると記しているが、それは取得時刻ベースへ置き換える前の設計である。`concurrent_ingest` 時に新しい
+lock を 2h 後に回収できる性質は保つ。`concurrent_ingest` 時に新しい
 回収機構を作らないのは、pending raw が wiki branch に残り次回 ingest が冪等に回収するため。
 
 ## informational-counters
@@ -201,13 +200,20 @@ lock を保持し続けると他セッションの ingest が `concurrent_ingest
 知る手段はここしかない（奪った側が解放すると lock 自体が消え、自分の `release` は `released`
 を返す）。`own` 以外でも WARNING を出すだけで ingest は完了扱いにする。ページと log は既に commit
 済みで巻き戻せず、止めても利用者が取れる行動は変わらないため。確認に失敗した場合も `own` 以外として
-WARNING を出し、解放は必ず実行する。
+WARNING を出し、解放は必ず実行する。確認に失敗した原因（session を解決できない等）によっては解放も
+同じ理由で失敗し、lock は取得時刻による stale 判定（2h）まで残るので、確認失敗の WARNING にはその
+可能性を添える。block の終了コードに解放の失敗をそのまま返すのは、解放できなかった事実を消さないため。
+対処文を branch_strategy ごとに出し分けるのは、戦略ごとに wiki の commit を見る場所が違い、利用者に
+自分の戦略のコマンドを読み分けさせないため。
 
 ## outstanding-no-new-store
 
 Wiki push の未完了は `{wiki_push_line}` と同じ marker を再評価するだけで、新しい記録先は持た
 ない。local commit 自体が durable な記録であり、次回 ingest のステップ 8.6 が自動で flush を
-試みる。marker なしを「失敗なし」と断定しないのは、未確認と成功を混同しないため。
+試みる。marker なしを「失敗なし」と断定しないのは、未確認と成功を混同しないため。ロックの
+未完了もステップ 9.0 が stderr に出した WARNING の文面を再評価するだけで、新しい記録先は持た
+ない。WARNING は会話の途中に流れて見落とされやすく、完了レポートが最後に目に入る表示のため、
+そこへ行を載せる。
 
 ## returned-to-caller
 
