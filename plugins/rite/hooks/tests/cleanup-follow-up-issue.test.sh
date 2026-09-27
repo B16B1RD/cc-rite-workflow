@@ -81,7 +81,7 @@
 #
 # Coverage (起票前の確認):
 #   T-46 --preview-body は起票せず、起票時と同じ本文を書き出す
-#   T-47 --preview-body でも 0 件・全件解消・既存ありは従来の skip で終わり、判定済み記録を書く
+#   T-47 --preview-body でも 0 件・全件解消・全件起票済み・既存ありは従来の skip で終わり、判定済み記録を書く
 #   T-48 preview 本文を書き出せなければ起票も preview もしない
 #   T-49 SKILL 6.0.C の確認判定（batch --merge が今の Issue を処理中のときだけ確認しない）と
 #        helper 呼び出しの配線、完了報告の declined / preview 行。壊れた・空・未置換の
@@ -1559,7 +1559,7 @@ else
   fail "T-46 プレビュー本文と起票本文が一致しない"
 fi
 
-echo "--- T-47: --preview-body でも 0 件・既存は従来の skip で終わる ---"
+echo "--- T-47: --preview-body でも 0 件・全件解消・全件起票済み・既存は従来の skip で終わる ---"
 reset_stubs
 r=$(new_root t47)
 put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[]}'
@@ -1583,6 +1583,14 @@ assert_grep "T-47 全件解消は all_resolved" "$ERR" 'FOLLOW_UP_ISSUE=skipped;
 assert_not_grep "T-47 全件解消でも preview を出さない" "$ERR" 'FOLLOW_UP_ISSUE=preview'
 assert "T-47 全件解消は起票しない" "0" "$(create_count)"
 assert "T-47 all_resolved でも preview 付きで判定済み記録を書く" "pr=9" "$(cat "$r/.rite/state/follow-up-judged-9.txt" 2>/dev/null)"
+reset_stubs
+r=$(new_root t47d)
+put_json "$r" "9-20260101120000.json" "$FINDING_JSON"
+jq -n --argjson c "$(comment_obj "$(record_body '| F-01 | plugins/rite/skills/cleanup/SKILL.md:12 | issued | #77 https://example.test/issues/77 |')")" '[[$c]]' > "$GH_API_JSON"
+run_target "$r" --preview-body "$TMP_ROOT/preview-t47d.md"
+assert_grep "T-47 全件起票済みは all_issued" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=all_issued; pr=9'
+assert_not_grep "T-47 全件起票済みでも preview を出さない" "$ERR" 'FOLLOW_UP_ISSUE=preview'
+assert "T-47 all_issued でも preview 付きで判定済み記録を書く" "pr=9" "$(cat "$r/.rite/state/follow-up-judged-9.txt" 2>/dev/null)"
 
 echo "--- T-48: preview 本文を書き出せなければ起票も preview もしない ---"
 reset_stubs
