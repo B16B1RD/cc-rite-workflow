@@ -18,6 +18,8 @@
 * **Update**: [fail-loud ガードは同じ帰結を持つ全出口に張る（症状側から出口を網羅する）](pages/heuristics/fail-loud-guard-covers-all-sibling-exits.md) — raw/reviews/20260926T153549Z-pr-3183.md を統合
 * **Update**: [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) — raw/reviews/20260926T155826Z-pr-3189.md を統合
 * **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=553, broken_refs=0
+* **Update**: [fix diff などのファイル集合は取得コマンドごとに rename 検出を揃える](pages/patterns/file-set-commands-align-rename-detection.md) — raw/reviews/20260927T030248Z-pr-3194.md を統合
+* **Create**: [失敗時の復旧ヒントは呼び出し元の切り詰めと cwd の違いを越えて届く形で書く](pages/heuristics/recovery-hint-survives-caller-truncation-and-cwd.md) — raw/reviews/20260927T030348Z-pr-3196.md を新規ページ化
 
 ## 2026-09-26
 

@@ -532,7 +532,7 @@ okf_version: "0.2"
 | [検査用のシェル字句解析は判定対象を標準形に絞り、それ以外を fail-closed にする](pages/heuristics/inspection-parser-narrow-to-standard-form-fail-closed.md) | heuristics | コマンドを検査する guard で bash の字句規則を近似する自前パーサを直し続けると、指摘は前回の修正の隣の形として増え続ける。理解すると主張する範囲を実運用の標準形に絞り、それ以外は分類したうえで止める方が収束する。 | 2026-09-26T13:19:35Z | high |
 | [制約を外す分岐は外す根拠を機械的に検証し、判定の基準値に既定値を持たせない](pages/patterns/constraint-lift-branch-verifies-its-grounds.md) | patterns | 検査の制約を外す分岐は、外してよい根拠（取り込み相手が base ブランチであること等）を機械的に確かめない限り抜け道になる。判定の基準値も既定値へ倒すと、未設定のまま制約が外れる。 | 2026-09-25T03:58:00Z | high |
 | [merge で解消した競合のファイルは git show --remerge-diff で求める（diff-tree --cc は clean merge も返す）](pages/patterns/merge-conflict-resolution-via-remerge-diff.md) | patterns | merge commit が「自分で変えた」ファイルを求めるとき、git diff-tree --cc はどの親とも異なるファイルを返すため、競合なしに自動 merge されたファイルも含んでしまう。自動 merge の結果との差を取る git show --remerge-diff を使う。 | 2026-09-25T03:58:00Z | high |
-| [fix diff などのファイル集合は取得コマンドごとに rename 検出を揃える](pages/patterns/file-set-commands-align-rename-detection.md) | patterns | --name-only は検出した改名の移動先しか出さないため、rename 検出が有効なまま取ったファイル集合からは元パスが落ちる。集合を比べる・積を取る・検証側と照合するなら、すべての取得に --no-renames を揃えて付ける。 | 2026-09-25T03:58:00Z | medium |
+| [fix diff などのファイル集合は取得コマンドごとに rename 検出を揃える](pages/patterns/file-set-commands-align-rename-detection.md) | patterns | --name-only は検出した改名の移動先しか出さないため、rename 検出が有効なまま取ったファイル集合からは元パスが落ちる。集合を比べる・積を取る・検証側と照合するなら、すべての取得に --no-renames を揃えて付ける。 | 2026-09-27T03:08:04Z | medium |
 | [同じ記録を書く側と読む側が別々の同定規則を持つ](pages/anti-patterns/writer-reader-divergent-record-identity.md) | anti-patterns | 書き手が「自分の・最新の 1 件」に絞って更新する記録を、読み手が別の規則（見出しの前方一致で全件連結など）で読むと、重複が生じたときだけ書き手が更新しない古い内容を引き継ぐ。読み手は書き手と同じ同定処理を共有する。 | 2026-09-25T09:56:20Z | medium |
 | [「最新」を選ぶ列挙は照合順を LC_ALL=C に固定する](pages/patterns/latest-selection-pins-byte-collation.md) | patterns | glob 展開と [[ < ]] は呼び出し元のロケールの照合順に従い、en_US.UTF-8 では記号を第 1 段階で無視するため、同じ秒に保存した名前の並びが C と逆になる。最新を選ぶ列挙は関数内で照合順を固定し、同じ記録を選ぶ他の処理とそろえる。 | 2026-09-25T09:56:20Z | medium |
 | [差分の帰属を「どの diff に行が現れるか」で決めると、PR 自身の変更を base 由来と誤分類する](pages/anti-patterns/position-based-diff-attribution-misclassifies-own-changes.md) | anti-patterns | レビュー指摘の帰属（PR の変更か base 由来か）を行の位置、つまり 3 点 diff に現れるかどうかで決める規則は、context 行を含む読みと、PR 自身が前サイクルで足した行を後の修正で消すケースの両方で誤分類する。帰属は行の位置ではなく原因（どの commit が変えたか、revert で直るか）に置く。 | 2026-09-26T05:45:00Z | medium |
@@ -562,9 +562,10 @@ okf_version: "0.2"
 | [共有 helper への置き換えは既定値そのものではなく既定値の成り立ち方を変える](pages/heuristics/shared-helper-migration-changes-default-value-mechanism.md) | heuristics | 個別の既定値ロジックを共有 helper へ委譲すると、値が不在のときに続行する既定値そのものは同じでも、その既定値を生成する経路（リテラル初期化 → 空値を読んで case 分岐）が変わる。既定値の中身を assert しないテストは、この変化を検出できない。 | 2026-09-26T14:08:00Z | high |
 | [エラーメッセージが案内するコマンドは、テストで出力から抽出して逐語実行する](pages/patterns/guidance-command-test-by-verbatim-execution.md) | patterns | エラーメッセージが利用者に打たせるコマンドを文字列の部分一致だけで固定すると、案内先 CLI の必須引数が欠けていても検出できない。テストは出力から案内コマンドを抽出してそのまま実行し、文言と実行可能性を 1 つの assert で結ぶ。 | 2026-09-26T15:13:54Z | high |
 | [他セッションの成果物を回収する処理は、進捗時刻ではなく所有者の生存信号で判定し、判定不能は残す側へ倒す](pages/heuristics/liveness-reaper-keeps-undecidable-and-guards-json-shape.md) | heuristics | 進捗のたびにしか更新されない時刻を回収条件にすると、1 工程が長い生存中の所有者の成果物まで消える。生存は所有者側で頻繁に動く別の時刻で判定し、その記録が読めないときは黙って消さず警告して残す。記録を読む前に JSON object であることを確かめ、後段の読み取り失敗で回収ループ全体が止まらないようにする。 | 2026-09-26T14:57:57Z | medium |
+| [失敗時の復旧ヒントは呼び出し元の切り詰めと cwd の違いを越えて届く形で書く](pages/heuristics/recovery-hint-survives-caller-truncation-and-cwd.md) | heuristics | helper が失敗時に出す復旧ヒントは、呼び出し元が stderr を先頭数行へ切り詰めると人に届かず、helper が cd した先と利用者の cwd が違うと相対パスのヒントが空振りする。ヒントは先頭数行に収め、パスは絶対パスで示す。 | 2026-09-27T03:08:04Z | low |
 ## 統計
 
-- 総ページ数: 552
-- ドメイン別: patterns=125, heuristics=253, anti-patterns=174
-- 最終更新: 2026-09-26T16:15:00Z
+- 総ページ数: 553
+- ドメイン別: patterns=125, heuristics=254, anti-patterns=174
+- 最終更新: 2026-09-27T03:08:04Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
