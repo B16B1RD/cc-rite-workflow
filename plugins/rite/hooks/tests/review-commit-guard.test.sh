@@ -858,6 +858,16 @@ for closed_targets in (False, True):
             hook('cd "$WT" && git merge main', reason='target is dynamic', cwd=Path(linked))
             hook('git -C "$WT" merge main', reason='target is dynamic', cwd=Path(linked))
             hook('git -C"$WT" merge main', reason='target is dynamic', cwd=Path(linked))
+            # A directory change other than a plain cd cannot aim a commit back at the review
+            # unchecked, in the hook or in commit-target.
+            for mover in ('pushd ' + str(root), 'popd', 'builtin cd ' + str(root), 'command cd ' + str(root),
+                          'time cd ' + str(root), 'X=1 cd ' + str(root), 'coproc pushd ' + str(root),
+                          'builtin -- cd ' + str(root), 'builtin -- pushd ' + str(root)):
+                hook(mover + '; git commit -m x', reason='target is dynamic', cwd=Path(linked))
+                moved = run(['bash', str(helper), 'commit-target', '--command', mover + '; git commit -m x',
+                             '--cwd', linked], ok=False)
+                check(moved.returncode != 0 and moved.stdout == '' and 'target is dynamic' in moved.stderr,
+                      'commit-target refuses ' + mover + ': ' + moved.stdout + moved.stderr)
             run(['git', 'worktree', 'remove', '--force', linked])
         # A cd the shell may skip, or runs outside the current shell, leaves the target unknown.
         with tempfile.TemporaryDirectory(prefix='rite-cd-other-') as other:
