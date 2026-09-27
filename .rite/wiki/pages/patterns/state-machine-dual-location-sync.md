@@ -15,13 +15,16 @@ sources:
     resource: "raw/reviews/20260802T025011Z-pr-2084.md"
   - type: "reviews"
     resource: "raw/reviews/20260830T013439Z-pr-2470.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T114244Z-pr-3280.md"
 tags: [ring-pattern, helper-caller-sync, observability]
 confidence: high
-generated: { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:54:08Z" }
 verified:
   - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-30T11:20:00+09:00"
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:54:08Z" }
 ---
 
 # state machine を 2 箇所で記述する場合は動作の文字列レベルで同期する
@@ -128,7 +131,11 @@ Issue テンプレート (`templates/issue/template-structure.md`) では、` ``
 
 この観測では caller の誤動作は再現しておらず、文書の不整合として記録された。記述の矛盾と実行障害の有無は分けて報告する。
 
+## 同じ削除条件を 2 か所で書くときは、実装の削除経路をすべて列挙してから揃える
 
+state ファイルの寿命（どの条件で消えるか）を 2 つの記述が書き写していると、片方だけが古くなる。直すときは実装側の削除箇所（初期化・再起動・cleanup・回収）をすべて列挙し、両方の記述がどの経路を挙げているかを揃える。
+
+- 実装にあって両方の記述が挙げていない削除経路は、片方だけに足すと記述同士が食い違う。足すなら両方をまとめて直す
 ## 関連ページ
 
 - [DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）](./drift-check-anchor-semantic-name.md)
@@ -145,3 +152,4 @@ Issue テンプレート (`templates/issue/template-structure.md`) では、` ``
 - [helper case 拡張 × caller WARN_MSG 連動漏れ G3 HIGH](../../raw/fixes/20260420T150304Z-pr-624-cycle2.md)
 - [生成テンプレートの fence 内外 sub-pattern](../../raw/reviews/20260802T025011Z-pr-2084.md)
 - [値域 2 箇所記述の sub-pattern](../../raw/reviews/20260830T013439Z-pr-2470.md)
+- [レビュー結果](../../raw/reviews/20260927T114244Z-pr-3280.md)

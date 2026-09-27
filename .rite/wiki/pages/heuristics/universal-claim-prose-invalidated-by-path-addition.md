@@ -47,9 +47,11 @@ sources:
     resource: "raw/reviews/20260831T074623Z-pr-2494.md"
   - type: "reviews"
     resource: "raw/reviews/20260924T170741Z-pr-3058.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T114354Z-pr-3279.md"
 tags: ["comment-rot", "cause-neutral", "exclusivity-claim", "doc-sync", "not-grep-pin", "quantifier-strengthening", "birth-defect"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:47:53Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:54:08Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:47:53Z" }
   - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
@@ -62,6 +64,7 @@ verified:
     at: "2026-08-31T14:09:34Z"
   - by: "rite-wiki-ingest/claude-opus-5-5"
     at: "2026-09-24T17:20:00Z"
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:54:08Z" }
 ---
 
 # 全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin
@@ -153,6 +156,11 @@ consumer ごとに読取り・書込み・同期という責務を確認して�
 
 値を足す変更では「A、それ以外は B」のような値域の列挙がすべて網羅性の主張になる。直した表の近くだけでなく、旧呼び名と旧値の語で同じファイル全体と関連文書を grep してから完了とする。呼び名だけを直して値域の列挙を見落とすと、新しい値が「未文書」に見える。
 
+## 分類表の行を排他にするときは、選言ごとに限定を言い直す
+
+分類表の行を排他にする書き換えで「限定 A かつ（条件 1 または 条件 2）」の形を書くと、先頭の限定が第 1 選言だけに掛かると読める。1 つの選言で限定の一部を言い直したなら、同じ行の他の限定も言い直す。
+
+- 排他性を受入条件にしたときは、表の対象範囲の行どうしだけでなく、隣接する別枠の行との重なりも照合する。対象範囲に絞った全組合せ検査は、別枠の行との重なりを検出しない
 ## 関連ページ
 
 - [実装の分岐を散文へ落とす前に、フラグの状態数と観測ラベルの値域を機械的に数える](./count-implementation-states-before-writing-prose.md)
@@ -178,3 +186,4 @@ consumer ごとに読取り・書込み・同期という責務を確認して�
 - [無条件主張を直した修正文が別の無条件主張になる / 件数断定の列挙は構造的根拠で破れる](../../raw/reviews/20260831T074623Z-pr-2494.md)
 - [挙動を変えた fix の後に説明散文の断定が残った最終レビュー結果](../../raw/reviews/20260924T170741Z-pr-3058.md)
 - [値の追加で同じファイルの値域散文が旧 2 値のまま残ったレビュー結果](../../raw/reviews/20260926T134048Z-pr-3161.md)
+- [レビュー結果](../../raw/reviews/20260927T114354Z-pr-3279.md)

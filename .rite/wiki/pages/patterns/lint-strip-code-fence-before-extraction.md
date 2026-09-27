@@ -11,9 +11,13 @@ sources:
     resource: "raw/fixes/20260528T121938Z-pr-1167.md"
   - type: "reviews"
     resource: "raw/reviews/20260528T122742Z-pr-1167.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260927T114445Z-pr-3277.md"
 tags: ["lint", "verification", "false-negative", "code-fence", "markdown", "heading-extraction", "awk-state-machine", "self-loosening-verification"]
 confidence: medium
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-28T12:42:26Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:54:08Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:54:08Z" }
 ---
 
 # Lint の見出し抽出はコードフェンス内行を除外してから行う (検証ツール自身の false-negative 防止)
@@ -56,6 +60,12 @@ strip_code_fences "$target_md" | grep -E '^#{1,6}[[:space:]]'
 - フェンス内には対象構文と同形のノイズ (shell `#` コメント / bash の `- ` / コード例中の markdown link) が紛れるため、抽出前のフェンス除去を default step にする
 - フェンス除去で偽陽性を消す副作用として、フェンス内の「意図的な参照例」も検出対象外になる点は許容 (検証対象は prose / 見出しであり、コード例は対象外という責務分離)
 
+## 抽出式を広げると、それまで見送っていた形が途中で切れた入力として検査に入る
+
+検出器の抽出式を広げると、以前は抽出されずに見送られていた形（グループ内の `|` やエスケープされた `\|` を含む正規表現など）が、途中で切れたまま検査に入って検出器ごと止まることがある。止まるのは fail-loud として正しいが、その挙動を固定する自己テストと、止まった場所を示すメッセージが無いと、退行にも原因調査にも弱い。
+
+- 抽出式を広げたら、新たに入る形の代表を自己テストの入力に足し、止まる場合は止まる位置を出力させる
+- 行単位で評価する sed / awk と、複数行テキストに `re.M` で当てる Python では、同じ probe 行でも照合の文脈が違う。Python 側で probe を改行なしに `re.match` すると、`\s` や `$` を含む終端で実際の挙動と判定がずれる。probe は実際の入力と同じ形（改行を含む複数行）で当てる
 ## 関連ページ
 
 - [Markdown code fence の balance は commit 前に awk で機械検証する](./markdown-fence-balance-precommit-check.md)
@@ -68,3 +78,4 @@ strip_code_fences "$target_md" | grep -E '^#{1,6}[[:space:]]'
 - [cross-ref 検証スクリプトの `grep -E '^#{1,6}'` が code fence 内 shell コメントを見出し誤認し dangling 検証が false-negative (MEDIUM, code-quality)](../../raw/reviews/20260528T112627Z-pr-1167.md)
 - [(F-02) — strip_code_fences ヘルパー (awk in_fence toggle) でフェンス内行を除外してから heading 抽出することで解消](../../raw/fixes/20260528T121938Z-pr-1167.md)
 - [strip_code_fences の 4-backtick/3-backtick nesting 誤トグル弱点 (Hypothetical, revert test 中立で non-blocking 降格)](../../raw/reviews/20260528T122742Z-pr-1167.md)
+- [レビュー結果](../../raw/reviews/20260927T114445Z-pr-3277.md)

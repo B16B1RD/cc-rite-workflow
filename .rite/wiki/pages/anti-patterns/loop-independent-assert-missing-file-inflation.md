@@ -8,9 +8,13 @@ sources:
     resource: "raw/reviews/20260518T203629Z-pr-1050.md"
   - type: "reviews"
     resource: "raw/reviews/20260519T023807Z-pr-1052.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260927T114434Z-pr-3267.md"
 tags: ["bash", "test-helpers", "assert-grep", "loop-pattern", "fail-message", "premature-abstraction"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-19T11:50:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:54:08Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:54:08Z" }
 ---
 
 # loop 内の独立 assert は missing file で fail message が assertion 数倍に膨張する
@@ -72,6 +76,12 @@ guard を付けると assertion helper は file 存在を前提にできるた�
 
 [[asymmetric-fix-transcription]] と接続する側面がある: T-1 のみ修正して T-2/T-3/T-4 への横展開を判定せずに進めると、後続 PR で同 anti-pattern が再発する経路を残す。本ケースは「対象 file の cardinality が異なる」ことを判定基準として明示することで、premature な対称化を避けつつ将来再発時の guard 化判断を構造化できる。
 
+## 探索を assert より前に置くと、期待値の欠落が assert の外の例外になる
+
+回帰テストで `text.index(needle)` のような探索を assert の前に書くと、期待する文字列が消えたときに assert ではなく探索が例外を投げる。出力には例外の型しか出ず、どの仕様が破れたかが読めない。
+
+- 探索の前に存在を assert で確かめ、失敗メッセージに仕様の名前を載せる
+- Issue 本文の記録（Decision Log）を後から足すときは、仕様比較が対象外にする書式（決まった見出しの節と日付付きの行）で書く。書式を外すと、以降の手順が「仕様が変わった」と判定して止まる
 ## 関連ページ
 
 - [shell script の共通 helper は再発時点で抽出する (Lean shared lib extraction)](../heuristics/shell-script-shared-lib-extraction.md)
@@ -81,3 +91,4 @@ guard を付けると assertion helper は file 存在を前提にできるた�
 
 - [0 findings, 経験則記録のみ](../../raw/reviews/20260518T203629Z-pr-1050.md)
 - [0 findings、helper 抽出の実装 PR、Silent guard contract + Excluded-with-rationale 経験則](../../raw/reviews/20260519T023807Z-pr-1052.md)
+- [fix 結果](../../raw/fixes/20260927T114434Z-pr-3267.md)
