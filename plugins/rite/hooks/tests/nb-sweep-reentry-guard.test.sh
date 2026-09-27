@@ -140,9 +140,10 @@ assert_grep "T-03 existing step-1 ban" "$ITERATE" 'ステップ 1 に戻らな�
 assert_grep_in_section "T-04 iterate post-return writes done basename" "$ITERATE_STEP" \
   '^step_nb_sweep_record[(][)] [{]$' '^}$' \
   "printf 'done %s\\\\n"
-assert_grep_in_section "T-04 fix empty writes noop basename" "$FIX_SWEEP" \
+# 起票の無い sweep は noop、台帳 persist 後に止まった sweep は done（kind は変数で渡す。T-15 が両方を実行で確かめる）
+assert_grep_in_section "T-04 fix empty writes kind basename" "$FIX_SWEEP" \
   '### 1.3.S `--nb-sweep` consume' '### 1.4 Display Comment List' \
-  "printf 'noop %s\\\\n"
+  "printf '%s %s\\\\n' \"\\\$nb_kind\""
 assert_grep_in_section "T-04 fix empty uses collect record" "$FIX_SWEEP" \
   '### 1.3.S `--nb-sweep` consume' '### 1.4 Display Comment List' \
   'jq -r '"'"'.record // empty'"'"
@@ -585,6 +586,19 @@ printf '7-20260202000000.json [review:mergeable]\n' > "$(origin_of "$r")"
 assert "T-14 noop" "[CONTEXT] ITERATE_NB_SWEEP=noop; count=0" "$(marker_line "$r" ITERATE_NB_SWEEP)"
 assert "T-14 noop は入口記録を消す" 0 "$([ -e "$(origin_of "$r")" ] && echo 1 || echo 0)"
 
+# 台帳 persist の後・完了の前に止まった sweep: collect は empty でも entries が残るので fix へ渡す
+r=$(new_repo head); cleanup_dirs+=("$r")
+printf '7-20260202000000.json [review:mergeable]\n' > "$(origin_of "$r")"
+printf '| A-1 | a.ts:1 | issued | #5 | 7-20260202000000.json |\n' > "$r/.rite/state/nb-sweep-entries-7.md"
+( export NB_STUB_STATUS=empty NB_STUB_RECORD="$r/.rite/review-results/7-20260202000000.json"
+  run_step "$r" nb-sweep-resume --pr 7
+  cp "$r/out" "$r/resume.out"
+  run_step "$r" nb-sweep-collect --pr 7 --sweep-origin '[review:mergeable]' )
+assert "T-14 persist 後の再開: 0.7 は resume" 1 "$(grep -c '^\[CONTEXT\] ITERATE_NB_SWEEP_RESUME=resume;' "$r/resume.out")"
+assert "T-14 collect empty でも entries があれば pending（fix へ渡す）" 1 "$(grep -c '^\[CONTEXT\] ITERATE_NB_SWEEP=pending;' "$r/out")"
+assert "T-14 collect empty でも entries があれば noop を書かない" 0 "$([ -e "$r/.rite/state/nb-sweep-done-7.txt" ] && echo 1 || echo 0)"
+assert "T-14 collect empty でも entries があれば入口記録を残す" "7-20260202000000.json [review:mergeable]" "$(cat "$(origin_of "$r")")"
+
 r=$(new_repo head); cleanup_dirs+=("$r")
 printf '7-20260202000000.json [review:mergeable]\n' > "$(origin_of "$r")"
 printf 'done 7-20260202000000.json\n' > "$r/.rite/state/nb-sweep-done-7.txt"
@@ -668,10 +682,19 @@ write_entries "$d" 7-20260202000000.json
 run_fix "$d" empty "$step1"
 assert "T-15 empty: entries から件数を数える" 1 "$(grep -c '^\[CONTEXT\] NB_SWEEP_RESULT=done; issued=2; recorded=1$' "$d/out")"
 assert "T-15 empty: entries を消す" 0 "$([ -e "$(entries_of "$d")" ] && echo 1 || echo 0)"
+assert "T-15 empty: 起票があった sweep は done で記録する" "done 7-20260202000000.json" "$(cat "$d/.rite/state/nb-sweep-done-7.txt")"
+
+d=$(fix_root); cleanup_dirs+=("$d")
+write_entries "$d" 7-20260101000000.json
+run_fix "$d" empty "$step1"
+assert "T-15 empty で他の record の entries: [fix:error] で止まる" 1 "$(grep -c '^\[fix:error\] reason=nb_sweep_entries_stale$' "$d/out")"
+assert "T-15 empty で他の record の entries: 件数を出さない" 0 "$(grep -c 'NB_SWEEP_RESULT=' "$d/out")"
+assert "T-15 empty で他の record の entries: entries を消さない" 1 "$([ -e "$(entries_of "$d")" ] && echo 1 || echo 0)"
 
 d=$(fix_root); cleanup_dirs+=("$d")
 run_fix "$d" empty "$step1"
 assert "T-15 empty で entries 無し: 0 件" 1 "$(grep -c '^\[CONTEXT\] NB_SWEEP_RESULT=done; issued=0; recorded=0$' "$d/out")"
+assert "T-15 empty で entries 無し: noop で記録する" "noop 7-20260202000000.json" "$(cat "$d/.rite/state/nb-sweep-done-7.txt")"
 
 # 起票を飛ばす判定は手順 2 の起票より前に書かれている
 skip_line=$(grep -n '`NB_SWEEP_ENTRIES=present` なら' "$FIX_SWEEP" | head -1 | cut -d: -f1)

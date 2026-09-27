@@ -1548,14 +1548,20 @@ fi
 t23_step3=$(awk '/^3\. \*\*台帳 persist\*\*/{s=1} /^4\. \*\*完了\*\*/{s=0} s && /^```/{f=!f; next} s && !f' "$FIX")
 for t23_phrase in 'entries（`.rite/state/nb-sweep-entries-{pr_number}.md`）を stderr の理由に合わせて直し' '手順 2 の起票をやり直さない' \
                   '手順 3 だけを再実行する' '起票済みの Issue は entries の issued 行が持つ' \
-                  'entries の全行について最終列が手順 1 の `record=` の basename（全行同じ値）になっているかを確かめ、欠けた行には最終列として足し、値の違う行はその値に直す' \
+                  'entries の全行について最終列が手順 1 の `record=` の basename（全行同じ値）になっているかを確かめ、欠けた行には最終列として足す。別の record を名指す行は書き換えない' \
                   'この会話で続けられないときは entries を直したうえで `/rite:iterate {pr_number}` を再実行する（別の会話からでもよい）' \
                   'iterate のステップ 0.7 が再レビューを回さずに 5.S へ戻し、手順 1 が `NB_SWEEP_ENTRIES=present` を出すので手順 2 を飛ばして手順 3 から続く' \
                   '1 行でもあれば、append は entries 全体を `reason=entries_source_invalid` で拒否し、台帳を変更しない'; do
   assert "T-23 手順 3 の fence 外に復旧手順・拒否単位がある ($t23_phrase)" 1 "$(printf '%s\n' "$t23_step3" | grep -cF -- "$t23_phrase")"
 done
 assert "T-23 手順 2 は手順 3 の再実行で同じ sweep の entries を直して使う" 1 \
-  "$(grep -cF '全件成功後に entries を生成する（手順 3 を再実行するときは、同じ sweep の entries を直して使う）' "$FIX")"
+  "$(grep -cF '全件成功後に entries を生成する（手順 3 を再実行するときは、同じ sweep の entries を直して使う。' "$FIX")"
+assert "T-23 手順 3 は別の record の出典を今回の record へ書き換えさせない" 0 \
+  "$(printf '%s\n' "$t23_step3" | grep -cF '値の違う行はその値に直す')"
+assert "T-23 手順 1 の stale は別の record を名指す行を書き換えずに元の出典で台帳へ載せさせる" 1 \
+  "$(grep -F '別の record を名指す行は前回の sweep が起票したまま台帳に載せられなかった記録であり、出典を今回の record に書き換えてはならない' "$FIX" | grep -cF '書き換えずに手順 3 の bash だけを実行して元の出典のまま台帳へ載せ、成功したら entries を消して `/rite:iterate {pr_number}` を再実行する')"
+assert "T-23 手順 2 は前回の sweep の entries を今回の起票済みとして使わない" 1 \
+  "$(grep -cF '前回の sweep の entries を今回の起票済みとして使わない' "$FIX")"
 assert "T-23 手順 1 は entries が残っていれば起票せず手順 3 から続けさせる" 1 \
   "$(grep -F '`NB_SWEEP_ENTRIES=present` なら' "$FIX" | grep -F '手順 2 を実行せず' | grep -cF '手順 3 から続ける')"
 t23_iterate_row=$(grep -E '^\| `\[fix:error\]` / その他 / sentinel 不在 \|' "$PLUGIN_ROOT/skills/iterate/SKILL.md")

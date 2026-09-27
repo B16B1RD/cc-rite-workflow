@@ -590,6 +590,11 @@ neutralize_ctrl --keep-newline < "$collect_err" >&2
 rm -f -- "$collect_err"
 status=$(printf '%s' "$collect_out" | jq -r '.status // empty' 2>/dev/null) || status=""
 count=$(printf '%s' "$collect_out" | jq -r '.count // empty' 2>/dev/null) || count=""
+# 台帳 persist の後・完了の前に止まった sweep は、台帳に全件載っているので collect が empty を返す。
+# 起票済みの件数と entries の片付けは fix の手順 1 が持つので、entries が残る限り fix へ渡す。
+if [ "$collect_rc:$status" = "0:empty" ] && [ -f "$nb_root/.rite/state/nb-sweep-entries-$pr_number.md" ]; then
+  status=ok
+fi
 case "$collect_rc:$status" in
   0:empty)
     mkdir -p "$nb_root/.rite/state" || true

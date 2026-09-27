@@ -22,14 +22,21 @@ rm -f -- "$collect_err"
 sweep_status=$(printf '%s' "$collect_out" | jq -r '.status // empty') || sweep_status=""
 case "$collect_rc:$sweep_status" in
   0:empty)
-    # 台帳 persist の後・完了の前に止まった sweep は、起票済みの件数を entries だけが持つ
+    nb_record=$(printf '%s' "$collect_out" | jq -r '.record // empty')
+    nb_record_base=""
+    [ -n "$nb_record" ] && nb_record_base=$(basename "$nb_record")
+    # 台帳 persist の後・完了の前に止まった sweep は、起票済みの件数を entries だけが持つ。
+    # 今回読んだ review JSON の entries でなければ、今回の件数として数えずに止まる。
     nb_entries_file="$sweep_root/.rite/state/nb-sweep-entries-{pr_number}.md"
     nb_counts="issued=0; recorded=0"
+    nb_kind=noop
     if [ -f "$nb_entries_file" ]; then
-      nb_counts=$(bash {plugin_root}/hooks/scripts/nb-sweep-ledger.sh tally --entries-file "$nb_entries_file") || {
-        echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_entries_tally_failed" >&2
-        echo "[fix:error]"; exit 1
+      nb_counts=$(bash {plugin_root}/hooks/scripts/nb-sweep-ledger.sh tally --entries-file "$nb_entries_file" \
+        --record "$nb_record_base") || {
+        echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_entries_stale" >&2
+        echo "[fix:error] reason=nb_sweep_entries_stale"; exit 1
       }
+      nb_kind=done
     fi
     echo "[CONTEXT] NB_SWEEP_RESULT=done; $nb_counts" >&2
     mkdir -p "$sweep_root/.rite/state" || true
@@ -38,9 +45,6 @@ case "$collect_rc:$sweep_status" in
       echo "WARNING: $sweep_root/.rite/state/.gitignore を作成できませんでした。nb-sweep-done が git の追跡対象になる恐れがあります" >&2
       [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
     fi
-    nb_record=$(printf '%s' "$collect_out" | jq -r '.record // empty')
-    nb_record_base=""
-    [ -n "$nb_record" ] && nb_record_base=$(basename "$nb_record")
     nb_done_file="$sweep_root/.rite/state/nb-sweep-done-{pr_number}.txt"
     # 台帳に全件載っている。前回の sweep の entries は戻り先として不要
     rm -f "$nb_entries_file"
@@ -51,9 +55,9 @@ case "$collect_rc:$sweep_status" in
       [ "${#nb_keep}" -ge 7 ] || nb_keep=""
     fi
     if [ -n "$nb_keep" ]; then
-      nb_write_ok=$(printf 'noop %s\n%s\n' "$nb_record_base" "$nb_keep" > "$nb_done_file" && echo ok || true)
+      nb_write_ok=$(printf '%s %s\n%s\n' "$nb_kind" "$nb_record_base" "$nb_keep" > "$nb_done_file" && echo ok || true)
     else
-      nb_write_ok=$(printf 'noop %s\n' "$nb_record_base" > "$nb_done_file" && echo ok || true)
+      nb_write_ok=$(printf '%s %s\n' "$nb_kind" "$nb_record_base" > "$nb_done_file" && echo ok || true)
     fi
     if [ -z "$nb_record_base" ] || [ "$nb_write_ok" != ok ]; then
       echo "WARNING: nb-sweep-done marker を書けませんでした" >&2
@@ -87,7 +91,7 @@ esac
 
 `empty` なら route 適用・persist を skip して fix/SKILL.md の 5.1 へ。
 
-`NB_SWEEP_ENTRIES=present` なら、この sweep の起票は前回済んでいて手順 3 で止まっている（entries は手順 2 の全件成功後にだけ作られ、手順 4 か `empty` で消える）。手順 2 を実行せず、手順 3 の後の戻り方で entries を直して手順 3 から続ける。`absent` なら手順 2 へ。`reason=nb_sweep_entries_stale` は、entries の出典列が今回の `record=` と揃っていない（出典を欠く行を含む）。起票も台帳 persist も始めずに止まるので、手順 3 の後の戻り方で最終列を直してから再実行する。
+`NB_SWEEP_ENTRIES=present` なら、この sweep の起票は前回済んでいて手順 3 で止まっている（entries は手順 2 の全件成功後にだけ作られ、手順 4 か `empty` で消える）。手順 2 を実行せず、手順 3 の後の戻り方で entries を直して手順 3 から続ける。`absent` なら手順 2 へ。`reason=nb_sweep_entries_stale` は、entries に今回の `record=` を出典に持たない行がある。起票も台帳 persist も始めずに止まる。出典列を欠く行だけなら、手順 3 の後の戻り方で最終列を足してから再実行する。別の record を名指す行は前回の sweep が起票したまま台帳に載せられなかった記録であり、出典を今回の record に書き換えてはならない（書き換えると手順 2 を飛ばし、今回の対象が起票も記録もされない）。書き換えずに手順 3 の bash だけを実行して元の出典のまま台帳へ載せ、成功したら entries を消して `/rite:iterate {pr_number}` を再実行する。台帳に載った指摘は collect が除外するので重複起票せず、今回の sweep は手順 2 から始まる。
 
 2. **route 適用**（helper の判定を変更しない）:
 
@@ -161,7 +165,7 @@ if ! issue_result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$i
 fi
 ```
 
-起票失敗時は台帳 persist・done ファイル書込・完了通知へ進まない。全件成功後に entries を生成する（手順 3 を再実行するときは、同じ sweep の entries を直して使う）。`recorded` を silent に落とさない。
+起票失敗時は台帳 persist・done ファイル書込・完了通知へ進まない。全件成功後に entries を生成する（手順 3 を再実行するときは、同じ sweep の entries を直して使う。前回の sweep の entries を今回の起票済みとして使わない）。`recorded` を silent に落とさない。
 
 3. **台帳 persist**（issued / recorded / already_rejected 全件）:
 
@@ -236,7 +240,7 @@ else
 fi
 ```
 
-手順 3 が `[fix:error]` で止まったときは、手順 2 の起票をやり直さない。起票は済んでいるが台帳に行が無いため、sweep を最初から実行し直すと同じ指摘を再び起票する。起票済みの Issue は entries の issued 行が持つ。entries（`.rite/state/nb-sweep-entries-{pr_number}.md`）を stderr の理由に合わせて直し、手順 3 だけを再実行する。`reason=entries_source_invalid` の診断は不正行の先頭 3 行しか示さないので、entries の全行について最終列が手順 1 の `record=` の basename（全行同じ値）になっているかを確かめ、欠けた行には最終列として足し、値の違う行はその値に直す。成功したら手順 4 へ進む。この会話で続けられないときは entries を直したうえで `/rite:iterate {pr_number}` を再実行する（別の会話からでもよい）。iterate のステップ 0.7 が再レビューを回さずに 5.S へ戻し、手順 1 が `NB_SWEEP_ENTRIES=present` を出すので手順 2 を飛ばして手順 3 から続く。
+手順 3 が `[fix:error]` で止まったときは、手順 2 の起票をやり直さない。起票は済んでいるが台帳に行が無いため、sweep を最初から実行し直すと同じ指摘を再び起票する。起票済みの Issue は entries の issued 行が持つ。entries（`.rite/state/nb-sweep-entries-{pr_number}.md`）を stderr の理由に合わせて直し、手順 3 だけを再実行する。`reason=entries_source_invalid` の診断は不正行の先頭 3 行しか示さないので、entries の全行について最終列が手順 1 の `record=` の basename（全行同じ値）になっているかを確かめ、欠けた行には最終列として足す。別の record を名指す行は書き換えない（手順 1 の `reason=nb_sweep_entries_stale` の戻り方に従う）。成功したら手順 4 へ進む。この会話で続けられないときは entries を直したうえで `/rite:iterate {pr_number}` を再実行する（別の会話からでもよい）。iterate のステップ 0.7 が再レビューを回さずに 5.S へ戻し、手順 1 が `NB_SWEEP_ENTRIES=present` を出すので手順 2 を飛ばして手順 3 から続く。
 
 4. **完了**:
 
