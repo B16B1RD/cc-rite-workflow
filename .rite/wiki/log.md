@@ -38,6 +38,7 @@
 * **Update**: [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) — raw/reviews/20260927T214812Z-pr-3355.md を統合
 * **Update**: [base 取り込み後の再レビューは、同じ差分の再確認ではなく取り込み側との契約整合の確認として指示する](pages/heuristics/rereview-after-base-intake-checks-contract-consistency.md) — raw/reviews/20260927T214221Z-pr-3345.md を統合
 * **Update**: [`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) — raw/reviews/20260927T214221Z-pr-3345.md を統合
+* **lint:clean** — contradictions=0, stale=63, orphans=0, missing_concept=0, unregistered_raw=571, broken_refs=0
 
 ## 2026-09-27
 
