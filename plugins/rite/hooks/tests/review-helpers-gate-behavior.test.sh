@@ -66,7 +66,8 @@
 #        素通りする drift クラス)。
 #        各 pin は追加時に mutation を当てて落ちることを実測する (手順: measured-gate-record.md#static-pin)
 #   TC-7 scripts/review-class-demotion-gate.sh の除外判別子 SoT 静的 pin — severity-levels §ゲート層 /
-#        assessment-rules §5.3.0.C / helper docstring の各節に「合意済み AC の実測済み未充足」が載り、
+#        assessment-rules §5.3.0.C / helper docstring の各節に「合意済み AC の実測済み未充足」と
+#        「指摘が主張する AC 未充足」(ac_claim) が載り、
 #        既存判別子 (既存記述の削除/弱体化) の原文が残る。helper の挙動は
 #        scripts/tests/review-class-demotion-gate.test.sh が固定する
 #
@@ -4030,6 +4031,14 @@ assert "TC-7 assessment-rules §5.3.0.C に既存判別子の原文が残る" "1
   "$(_sec_ar_530c | grep -cF '既存 (base 側) に存在した記述・ガード・禁止文を本 PR の diff が削除/弱体化した' || true)"
 assert "TC-7 helper docstring の Gate semantics に第 2 判別子が 1 箇所" "1" \
   "$(_sec_gate_doc | grep -cF '#      - 合意済み AC の実測済み未充足:' || true)"
+assert "TC-7 severity-levels ゲート層節に ac_claim 由来の除外が 1 箇所" "1" \
+  "$(_sec_sev_gate | grep -cF 'classification map の `ac_claim` が主張する AC から helper が付与する (`ac_claim:AC-N`)' || true)"
+assert "TC-7 assessment-rules §5.3.0.C に第 3 除外入力源が 1 箇所" "1" \
+  "$(_sec_ar_530c | grep -cF '**第 3 除外入力源 (指摘が主張する AC 未充足)**' || true)"
+assert "TC-7 assessment-rules §5.3.0.C の集合演算に ac_claim の付与が 1 箇所" "1" \
+  "$(_sec_ar_530c | grep -cF 'consequence_exclusion = "ac_claim:AC-N"' || true)"
+assert "TC-7 helper docstring の Gate semantics に ac_claim 判別子が 1 箇所" "1" \
+  "$(_sec_gate_doc | grep -cF '#      - 指摘側が主張する AC 未充足:' || true)"
 assert "TC-7 helper docstring の Reason SoT に acceptance_criteria_invalid が 1 箇所" "1" \
   "$(_sec_gate_doc | grep -cE '^#   acceptance_criteria_invalid +— ' || true)"
 assert "TC-7 helper docstring に既存判別子の well-formed 条件が残る" "1" \

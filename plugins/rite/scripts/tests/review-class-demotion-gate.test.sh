@@ -717,6 +717,144 @@ run_gate "$TEST_DIR/tc29.json" "$TEST_DIR/tc29-cls.json"
 [ "$GATE_STDERR" = "[CONTEXT] CLASS_DEMOTION_GATE=not-triggered; class_a=1; class_b=0; demoted=0; assessment=fix-needed" ] \
   && pass "not-triggered marker exact" || fail "marker changed: $GATE_STDERR"
 
+# ---- 指摘側が主張する AC 未充足: classification map の ac_claim が第 3 の除外入力源 ----
+# $1 = id, $2 = class, $3 = scenario, $4 = ac_claim の JSON 値
+mk_entry_claim() {
+  jq -n --arg id "$1" --arg class "$2" --arg scenario "$3" --argjson claim "$4" \
+    '{id:$id, class:$class, scenario:$scenario, ac_claim:$claim}'
+}
+
+# ---- TC-30: acceptance が satisfied と判定した AC を指摘が未充足と主張しても降格しない ----
+echo "TC-30: ac_claim と acceptance の食い違いは blocking 維持 + WARNING + marker suffix"
+mk_json "$TEST_DIR/tc30.json" "$(mk_finding "F-01" "MEDIUM" "current-pr" "[AC-1] 手順が未実装")"
+set_ac "$TEST_DIR/tc30.json" '[{"id":"AC-1","status":"satisfied","finding_id":null,"evidence":"e"}]'
+mk_cls "$TEST_DIR/tc30-cls.json" "$(mk_entry_claim F-01 B "文書整合に留まる" '["AC-1"]')"
+run_gate "$TEST_DIR/tc30.json" "$TEST_DIR/tc30-cls.json"
+[ "$GATE_RC" -eq 0 ] && pass "rc=0" || fail "rc=$GATE_RC (expected 0)"
+grep -qxF "[CONTEXT] CLASS_DEMOTION_GATE=not-triggered; class_a=0; class_b=1; demoted=0; assessment=fix-needed; warning=ac_claim_disagreement; rows=AC-1:F-01" <<<"$GATE_STDERR" \
+  && pass "marker carries the disagreement row (exact)" || fail "marker mismatch: $GATE_STDERR"
+[ "$(jq -c '[.findings[] | {id, consequence_class, consequence_exclusion}]' "$TEST_DIR/tc30.json")" \
+  = '[{"id":"F-01","consequence_class":"B","consequence_exclusion":"ac_claim:AC-1"}]' ] \
+  && pass "finding stays blocking as class B with ac_claim:AC-1" || fail "finding wrong: $(jq -c '.findings' "$TEST_DIR/tc30.json")"
+grep -qF "CLASS_DEMOTION_UNCLASSIFIED" <<<"$GATE_STDERR" && fail "valid ac_claim counted as unclassified" || pass "no UNCLASSIFIED marker"
+[ "$(grep -c '^WARNING:' <<<"$GATE_STDERR")" = "1" ] && pass "one WARNING line" || fail "WARNING count wrong: $GATE_STDERR"
+
+# ---- TC-31: 同じ AC を指す複数の指摘は、判定表が指す 1 件以外も除外される ----
+echo "TC-31: unmet 行が指さない同 AC の指摘も ac_claim で blocking に残る"
+f1=$(mk_finding "F-01" "MEDIUM" "current-pr" "[AC-1] 手順 1 が未実装")
+f2=$(mk_finding "F-02" "MEDIUM" "current-pr" "[AC-1] 手順 2 が未実装")
+f3=$(mk_finding "F-03" "LOW" "current-pr" "pin 精度")
+mk_json "$TEST_DIR/tc31.json" "$f1" "$f2" "$f3"
+set_ac "$TEST_DIR/tc31.json" '[{"id":"AC-1","status":"unmet","finding_id":"F-01","evidence":"e"}]'
+mk_cls "$TEST_DIR/tc31-cls.json" "$(mk_entry F-01 B "文書整合に留まる")" \
+  "$(mk_entry_claim F-02 B "文書整合に留まる" '["AC-1"]')" "$(mk_entry F-03 B "検出網の粒度に留まる")"
+run_gate "$TEST_DIR/tc31.json" "$TEST_DIR/tc31-cls.json"
+grep -qxF "[CONTEXT] CLASS_DEMOTION_GATE=applied; class_a=0; class_b=3; demoted=1; assessment=fix-needed" <<<"$GATE_STDERR" \
+  && pass "marker applied without suffix (exact)" || fail "marker mismatch: $GATE_STDERR"
+[ "$(jq -c '[[.findings[] | "\(.id)=\(.consequence_exclusion)"], [.non_blocking_findings[].id]]' "$TEST_DIR/tc31.json")" \
+  = '[["F-01=ac_unmet:AC-1","F-02=ac_claim:AC-1"],["F-03"]]' ] \
+  && pass "F-01 / F-02 blocking, F-03 demoted" || fail "sets wrong: $(jq -c '[.findings, .non_blocking_findings]' "$TEST_DIR/tc31.json")"
+
+# ---- TC-32: 不正な ac_claim は判定不能 (class A) に倒す ----
+echo "TC-32: 不正な ac_claim は class A 扱い + UNCLASSIFIED"
+tc32_rows='[{"id":"AC-1","status":"unmet","finding_id":null,"evidence":"e"}]'
+tc32_i=0
+for variant in 'B|[]' 'B|"AC-1"' 'B|[1]' 'B|["ac-1"]' 'B|["AC-1","AC-1"]' 'B|["AC-9"]' 'A|[]' \
+               'B|["AC-1"]|absent' 'B|["AC-1"]|{"skipped":"no_issue"}'; do
+  tc32_i=$((tc32_i + 1))
+  IFS='|' read -r cls claim ac <<<"$variant"
+  mk_json "$TEST_DIR/tc32-$tc32_i.json" "$(mk_finding "F-01" "MEDIUM" "current-pr" "文書同期")"
+  case "$ac" in
+    absent) ;;
+    '') set_ac "$TEST_DIR/tc32-$tc32_i.json" "$tc32_rows" ;;
+    *) set_ac "$TEST_DIR/tc32-$tc32_i.json" "$ac" ;;
+  esac
+  mk_cls "$TEST_DIR/tc32-$tc32_i-cls.json" "$(mk_entry_claim F-01 "$cls" "文書整合に留まる" "$claim")"
+  run_gate "$TEST_DIR/tc32-$tc32_i.json" "$TEST_DIR/tc32-$tc32_i-cls.json"
+  if [ "$GATE_RC" -eq 0 ] \
+    && grep -qxF "[CONTEXT] CLASS_DEMOTION_GATE=not-triggered; class_a=1; class_b=0; demoted=0; assessment=fix-needed" <<<"$GATE_STDERR" \
+    && grep -qxF "[CONTEXT] CLASS_DEMOTION_UNCLASSIFIED=1; count=1" <<<"$GATE_STDERR" \
+    && [ "$(jq -c '[.findings[] | {consequence_class, consequence_exclusion}]' "$TEST_DIR/tc32-$tc32_i.json")" \
+         = '[{"consequence_class":"A","consequence_exclusion":null}]' ]; then
+    pass "class $cls ac_claim=$claim ac=${ac:-rows} → class A unclassified"
+  else
+    fail "class $cls ac_claim=$claim ac=${ac:-rows} (rc=$GATE_RC): $GATE_STDERR"
+  fi
+done
+
+# ---- TC-33: 優先順位 map exclusion > 判定表の未充足行 > ac_claim ----
+echo "TC-33: map exclusion と ac_unmet は ac_claim より優先する"
+f1=$(mk_finding "F-01" "HIGH" "current-pr" "base 側禁止文の削除")
+f2=$(mk_finding "F-02" "MEDIUM" "current-pr" "文書同期")
+mk_json "$TEST_DIR/tc33.json" "$f1" "$f2"
+set_ac "$TEST_DIR/tc33.json" '[{"id":"AC-1","status":"unmet","finding_id":"F-01","evidence":"e"},{"id":"AC-2","status":"unmet","finding_id":"F-02","evidence":"e"}]'
+mk_cls "$TEST_DIR/tc33-cls.json" \
+  "$(jq -n '{id:"F-01", class:"B", scenario:"文書整合に留まる", exclusion:"base 側の禁止文が削除された", ac_claim:["AC-1"]}')" \
+  "$(mk_entry_claim F-02 B "文書整合に留まる" '["AC-2"]')"
+run_gate "$TEST_DIR/tc33.json" "$TEST_DIR/tc33-cls.json"
+[ "$(jq -c '[.findings[] | "\(.id)=\(.consequence_exclusion)"]' "$TEST_DIR/tc33.json")" \
+  = '["F-01=base 側の禁止文が削除された","F-02=ac_unmet:AC-2"]' ] \
+  && pass "map exclusion, then ac_unmet, win over ac_claim" || fail "priority wrong: $(jq -c '.findings' "$TEST_DIR/tc33.json")"
+grep -qxF "[CONTEXT] CLASS_DEMOTION_GATE=not-triggered; class_a=0; class_b=2; demoted=0; assessment=fix-needed" <<<"$GATE_STDERR" \
+  && pass "marker without suffix (exact)" || fail "marker mismatch: $GATE_STDERR"
+
+# ---- TC-34: class A / category 固定には ac_claim を記録しない ----
+echo "TC-34: ac_claim が class A・number_reference にあっても記録なし"
+f1=$(mk_finding "F-01" "HIGH" "current-pr" "実行時に壊れる")
+f2=$(mk_finding "F-02" "MEDIUM" "current-pr" "番号入り追加行" "plugins/rite/skills/pr-review/SKILL.md" "true" "number_reference")
+mk_json "$TEST_DIR/tc34.json" "$f1" "$f2"
+set_ac "$TEST_DIR/tc34.json" '[{"id":"AC-1","status":"unmet","finding_id":null,"evidence":"e"}]'
+mk_cls "$TEST_DIR/tc34-cls.json" "$(mk_entry_claim F-01 A "実行時に壊れる" '["AC-1"]')" \
+  "$(mk_entry_claim F-02 B "文書整合に留まる" '["AC-1"]')"
+run_gate "$TEST_DIR/tc34.json" "$TEST_DIR/tc34-cls.json"
+grep -qxF "[CONTEXT] CLASS_DEMOTION_GATE=not-triggered; class_a=2; class_b=0; demoted=0; assessment=fix-needed" <<<"$GATE_STDERR" \
+  && pass "marker not-triggered class_a=2 (exact)" || fail "marker mismatch: $GATE_STDERR"
+grep -qxF "[CONTEXT] CLASS_DEMOTION_CATEGORY_PINNED=1; count=1" <<<"$GATE_STDERR" \
+  && pass "CATEGORY_PINNED count=1" || fail "CATEGORY_PINNED mismatch: $GATE_STDERR"
+[ "$(jq -r '[.findings[] | select(has("consequence_exclusion"))] | length' "$TEST_DIR/tc34.json")" = "0" ] \
+  && pass "no consequence_exclusion on class A" || fail "unexpected consequence_exclusion"
+
+# ---- TC-35: 2 つの warning suffix は ac_unmet_finding_missing → ac_claim_disagreement の順に続く ----
+echo "TC-35: suffix の合成と食い違い行の順序"
+mk_json "$TEST_DIR/tc35.json" "$(mk_finding "F-01" "MEDIUM" "current-pr" "文書同期")"
+set_ac "$TEST_DIR/tc35.json" '[{"id":"AC-1","status":"satisfied","finding_id":null,"evidence":"e"},{"id":"AC-2","status":"unmet","finding_id":"F-99","evidence":"e"}]'
+mk_cls "$TEST_DIR/tc35-cls.json" "$(mk_entry_claim F-01 B "文書整合に留まる" '["AC-1"]')"
+run_gate "$TEST_DIR/tc35.json" "$TEST_DIR/tc35-cls.json"
+grep -qxF "[CONTEXT] CLASS_DEMOTION_GATE=not-triggered; class_a=0; class_b=1; demoted=0; assessment=fix-needed; warning=ac_unmet_finding_missing; rows=AC-2:F-99; warning=ac_claim_disagreement; rows=AC-1:F-01" <<<"$GATE_STDERR" \
+  && pass "both suffixes in order (exact)" || fail "marker mismatch: $GATE_STDERR"
+f1=$(mk_finding "F-01" "MEDIUM" "current-pr" "文書同期 1")
+f2=$(mk_finding "F-02" "MEDIUM" "current-pr" "文書同期 2")
+mk_json "$TEST_DIR/tc35b.json" "$f1" "$f2"
+set_ac "$TEST_DIR/tc35b.json" '[{"id":"AC-1","status":"satisfied","finding_id":null,"evidence":"e"},{"id":"AC-2","status":"satisfied","finding_id":null,"evidence":"e"}]'
+mk_cls "$TEST_DIR/tc35b-cls.json" "$(mk_entry_claim F-01 B "文書整合に留まる" '["AC-2"]')" \
+  "$(mk_entry_claim F-02 B "文書整合に留まる" '["AC-1"]')"
+run_gate "$TEST_DIR/tc35b.json" "$TEST_DIR/tc35b-cls.json"
+grep -qxF "[CONTEXT] CLASS_DEMOTION_GATE=not-triggered; class_a=0; class_b=2; demoted=0; assessment=fix-needed; warning=ac_claim_disagreement; rows=AC-2:F-01,AC-1:F-02" <<<"$GATE_STDERR" \
+  && pass "disagreement rows follow findings[] order (exact)" || fail "marker mismatch: $GATE_STDERR"
+[ "$(grep -c '^WARNING:' <<<"$GATE_STDERR")" = "1" ] && pass "one WARNING line for two rows" || fail "WARNING count wrong: $GATE_STDERR"
+
+# ---- TC-36: 1 件の指摘が複数の AC を主張すると ac_claim の配列順に連結する ----
+echo "TC-36: ac_claim [AC-3,AC-1] は ac_claim:AC-3,AC-1"
+mk_json "$TEST_DIR/tc36.json" "$(mk_finding "F-01" "MEDIUM" "current-pr" "文書同期")"
+set_ac "$TEST_DIR/tc36.json" '[{"id":"AC-1","status":"unmet","finding_id":null,"evidence":"e"},{"id":"AC-3","status":"unmet","finding_id":null,"evidence":"e"}]'
+mk_cls "$TEST_DIR/tc36-cls.json" "$(mk_entry_claim F-01 B "文書整合に留まる" '["AC-3","AC-1"]')"
+run_gate "$TEST_DIR/tc36.json" "$TEST_DIR/tc36-cls.json"
+[ "$(jq -r '.findings[0].consequence_exclusion' "$TEST_DIR/tc36.json")" = "ac_claim:AC-3,AC-1" ] \
+  && pass "claim-order join" || fail "join wrong: $(jq -r '.findings[0].consequence_exclusion' "$TEST_DIR/tc36.json")"
+[ "$GATE_STDERR" = "[CONTEXT] CLASS_DEMOTION_GATE=not-triggered; class_a=0; class_b=1; demoted=0; assessment=fix-needed" ] \
+  && pass "agreeing claim leaves the marker bare" || fail "marker changed: $GATE_STDERR"
+
+# ---- TC-37: 食い違いの警告は ac_claim を除外に使わない class A でも出る ----
+echo "TC-37: class A の ac_claim も食い違いを警告する"
+mk_json "$TEST_DIR/tc37.json" "$(mk_finding "F-01" "HIGH" "current-pr" "実行時に壊れる")"
+set_ac "$TEST_DIR/tc37.json" '[{"id":"AC-1","status":"satisfied","finding_id":null,"evidence":"e"}]'
+mk_cls "$TEST_DIR/tc37-cls.json" "$(mk_entry_claim F-01 A "実行時に壊れる" '["AC-1"]')"
+run_gate "$TEST_DIR/tc37.json" "$TEST_DIR/tc37-cls.json"
+grep -qxF "[CONTEXT] CLASS_DEMOTION_GATE=not-triggered; class_a=1; class_b=0; demoted=0; assessment=fix-needed; warning=ac_claim_disagreement; rows=AC-1:F-01" <<<"$GATE_STDERR" \
+  && pass "class A disagreement is surfaced (exact)" || fail "marker mismatch: $GATE_STDERR"
+[ "$(jq -r '.findings[0] | has("consequence_exclusion")' "$TEST_DIR/tc37.json")" = "false" ] \
+  && pass "no consequence_exclusion on class A" || fail "unexpected consequence_exclusion"
+
 echo "Static contract: measured error は再試行せず停止し、廃止語彙を残さない"
 pr_review_skill="$PLUGIN_ROOT/skills/pr-review/SKILL.md"
 retry_row=$(grep -F 'reason=classification_missing' "$pr_review_skill" | head -1)
@@ -759,6 +897,14 @@ if grep -qF "gate_warning=\"$suffix_literal" "$TARGET" \
   pass "documented suffix matches helper output"
 else
   fail "documented suffix diverges from helper output"
+fi
+claim_suffix_literal='; warning=ac_claim_disagreement; rows='
+if grep -qF "claim_warning=\"$claim_suffix_literal" "$TARGET" \
+   && grep -qF "$claim_suffix_literal" <<<"$class_section" \
+   && grep -F -- '- **ステップ 5.3.0.C** は' "$pr_review_skill" | grep -qF "$claim_suffix_literal"; then
+  pass "documented disagreement suffix matches helper output"
+else
+  fail "documented disagreement suffix diverges from helper output"
 fi
 
 # 文書に字義どおり従う実行者の誤動作を実行で観測した指摘は class A。分類を書く 3 か所が同じ規則を持つ
