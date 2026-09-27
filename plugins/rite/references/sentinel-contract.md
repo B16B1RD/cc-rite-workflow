@@ -44,7 +44,7 @@ rite workflow のスキル間連携は、各 sub-skill が bash 出力に埋め�
 | `[pr:created:N]` | pr-create | open, recover, batch-run | PR #N を作成完了 |
 | `[pr-create-failed]` | pr-create | open, batch-run | PR 作成に失敗 |
 | `[iterate:max-cycles-reached]` | iterate | batch-run | review⇄fix ループのサーキットブレーカーが発火（収束トレンドの発散検出、または `safety.max_review_cycles` 到達 = backstop）。**sentinel は発火理由に依らず同一 literal**（batch は理由を問わず failed 記録するため） |
-| `[iterate:nb-sweep-error]` | iterate | batch-run | NB digest sweep が collect / persist に失敗、または入口の終了理由が不明。失敗即停止（`[fix:error]` と同帰結） |
+| `[iterate:nb-sweep-error]` | iterate | batch-run | NB digest sweep が collect / persist に失敗、入口の終了理由が不明、または止まった sweep の入口記録（ステップ 0.7）を検証できない。失敗即停止（`[fix:error]` と同帰結） |
 | `[iterate:max-cycles-stopped]` | iterate | (iterate 内部完結) | サーキットブレーカー発火（発散検出 または `safety.max_review_cycles` backstop）でループを停止した最終状態表示。理由は停止通知の「理由」行が担う |
 | `[run:all-completed]` | batch-run | (batch-run 内部完結、最終出力) | バッチ処理対象の全 Issue が完了 |
 | `[run:stopped]` | batch-run | (batch-run 内部完結、最終出力) | サーキットブレーカー等でバッチ処理を中断 |

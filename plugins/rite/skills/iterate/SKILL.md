@@ -22,6 +22,7 @@ argument-hint: "<pr_number>"
 
 0. flow-state から issue_number / branch_name を復元
 0.6. cycle counter を初期化（fresh は 0 にリセット / resume は継続）+ `safety.max_review_cycles` を読込・検証
+0.7. 止まった NB digest sweep があれば、レビューを回さずステップ 5.S から再開する
 1. lost 修復ゲート（前 cycle JSON 不在なら即時保存 or counter 不前進の再レビュー）→ 発火条件チェック（収束トレンドの発散 / `max_review_cycles` 到達）→ 不成立なら counter を +1 して `/rite:pr-review` を invoke / 成立なら サーキットブレーカー（ステップ 6）へ
 2. review sentinel を判定（`[review:mergeable]` → ステップ 5.S / `[review:fix-needed:N]` → ステップ 3 / error・不在 → 1 回自動再試行、再失敗時は停止）
 3. `/rite:fix` を invoke
@@ -78,7 +79,7 @@ rationale: references/rationale.md#circuit-breaker-conditions
 | `{nb_count}` | ステップ 5.0.2 の `ITERATE_NB_REMAINING` marker 値（overlay 後は 0。取得失敗は 5.S で停止しここへ来ない） |
 | `{nb_record}` | 同 marker の `record=`（review JSON パス。失敗時は空） |
 | `{nb_by_severity}` | 同 marker の `by_severity=`（`SEVERITY:count` のカンマ区切り。0 件 / 失敗時は空） |
-| `{sweep_origin}` | ステップ 5.S へ入った通常ループの sentinel。sweep 内の sentinel で上書きしない。5.S を経由せずにステップ 5.0.1 へ来た終端（`[fix:cancelled-by-user]`）ではその終端 sentinel |
+| `{sweep_origin}` | ステップ 5.S へ入った通常ループの sentinel。ステップ 0.7 から入ったときは `ITERATE_NB_SWEEP_RESUME=resume` の `origin=`。sweep 内の sentinel で上書きしない。5.S を経由せずにステップ 5.0.1 へ来た終端（`[fix:cancelled-by-user]`）ではその終端 sentinel |
 | `{sweep_issued}` / `{sweep_recorded}` | ステップ 5.S の `NB_SWEEP_RESULT` / `ITERATE_NB_SWEEP=done` の `issued=` / `recorded=` |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
 | `{action_items}` | 本ループの最終試行に残った、ユーザーの操作が必要な WARNING / ERROR。ステップ 5 / 6 の `要対応:` 欄へ転記する（0 件なら欄ごと省略） |
@@ -175,6 +176,21 @@ rationale: references/rationale.md#reset-refire-run-since
 |---|---|
 | `0` | 起動時点の counter が上限未満、または reset に成功して 0 に戻った。ステップ 1 は review を回してから進む |
 | `1` | counter が上限以上のまま残っている。**ステップ 1 はこの起動で review を 1 回も回さずに fire する**（未完了の `review_cycle` は再開を優先し、発火しない） |
+
+## ステップ 0.7: 止まった NB digest sweep の再開
+
+起動ごとに 1 回、ステップ 1 より前に実行する。5.S が `pending` で記録した入口（`.rite/state/nb-sweep-origin-{pr_number}.txt`）が最新 review JSON と現在の HEAD を指すときだけ、レビューを回さず 5.S へ入る。会話が変わっても同じ経路で戻る（recover / batch-run の再開も `/rite:iterate` を経由する）。
+rationale: references/rationale.md#nb-sweep-resume
+
+```bash
+bash {plugin_root}/scripts/iterate-step.sh nb-sweep-resume --pr {pr_number}
+```
+
+| `ITERATE_NB_SWEEP_RESUME` | アクション |
+|---|---|
+| `resume` | `origin=` の値を `{sweep_origin}` として保持し、ステップ 1〜4 を飛ばしてステップ 5.S へ |
+| `none` | 止まった sweep は無い（`reason=stale_origin` / `head_changed` は古い記録を消した）。ステップ 1 へ |
+| `failed` | `[iterate:nb-sweep-error]` で停止。レビューにも 5.S にも進まない |
 
 ---
 
@@ -325,12 +341,12 @@ args: "{pr_number}"
 `[review:mergeable]` / `[fix:non-fatal-only]` / `[fix:replied-only]` 到達後・完了通知前に、未 sweep の最新 review JSON につき **1 回**。対象 0 件は no-op（fix を invoke しない）。同一 review JSON では 2 回 invoke しない。新しい JSON では再 sweep する。silent skip 禁止。Stop hook が `review:mergeable` / `fix:non-fatal-only` / `fix:replied-only` の FINALIZE で完了通知を求めても、5.S 未実施なら先に本ステップを実行する。成功後は PR 内推奨の修正と完了前確認を経てからステップ 5 へ。Stop hook がステップ 5 を求めてもこの 2 つを飛ばさない。
 rationale: references/rationale.md#nb-sweep-step
 
-入口の通常ループ sentinel を `{sweep_origin}` として保持する。5.S 再入時も保持値を使い、内部の `[fix:sweep-done]` や handoff で上書きしない。
+入口の通常ループ sentinel（ステップ 0.7 から入ったときは `origin=`）を `{sweep_origin}` として保持する。collect は `pending` のときこの値を入口記録に書く。5.S 再入時も保持値を使い、内部の `[fix:sweep-done]` や handoff で上書きしない。
 
 会話の `[CONTEXT] ITERATE_NB_SWEEP=done|noop` は観測用。skip 判定は done ファイル 1 行目の第 2 フィールドが最新 review JSON の basename と一致するときだけ（欠落は skip しない。下の bash）。marker 既出でも bash を省略しない。
 
 ```bash
-bash {plugin_root}/scripts/iterate-step.sh nb-sweep-collect --pr {pr_number}
+bash {plugin_root}/scripts/iterate-step.sh nb-sweep-collect --pr {pr_number} --sweep-origin '{sweep_origin}'
 ```
 
 | `ITERATE_NB_SWEEP` | アクション |
@@ -358,7 +374,7 @@ args: "--nb-sweep {pr_number}"
 | Sentinel | アクション |
 |---------|-----------|
 | `[fix:sweep-done]` | PR 内推奨の修正。ステップ 1 に戻らない |
-| `[fix:error]` / その他 / sentinel 不在 | `[iterate:nb-sweep-error]` で停止。完了通知へ進まない。手順 2 の起票後に台帳 persist（[nb-sweep.md 手順 3](../fix/references/nb-sweep.md)）で止まったときは、その戻り方で手順 4 まで終え、`/rite:iterate` を再実行せず上の `[fix:sweep-done]` 行から続ける。この続け方は停止したのと同じ会話に限る（続きの手順は会話にしか残らない `{sweep_origin}` と fix が出した `NB_SWEEP_RESULT` の件数を使う。どちらかを会話から読めなければ同じ会話でも続けない）。別の会話からは続けず、停止のままにする |
+| `[fix:error]` / その他 / sentinel 不在 | `[iterate:nb-sweep-error]` で停止。完了通知へ進まない。手順 2 の起票後に台帳 persist（[nb-sweep.md 手順 3](../fix/references/nb-sweep.md)）で止まったときは、その戻り方で entries を直してから `/rite:iterate {pr_number}` を再実行する。同じ会話でも別の会話でも同じ経路で、ステップ 0.7 が再レビューを回さずに 5.S へ戻し、fix は起票をやり直さず手順 3 から続ける |
 
 fix が emit した `[CONTEXT] NB_SWEEP_RESULT=done; issued=K; recorded=M` を読み、`ITERATE_NB_SWEEP=done` を同カウントで emit する。記録した basename が最新 JSON と違う、またはファイルが無いときは、collect と同じ選び方（`LC_ALL=C` sort の末尾）で 1 行目を `done <basename>` にする。既存の 2 行目が SHA なら残し、新しい SHA は足さない。basename が取れないときは範囲なしの行を残さない:
 

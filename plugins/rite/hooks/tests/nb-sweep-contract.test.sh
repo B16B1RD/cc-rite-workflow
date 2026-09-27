@@ -948,7 +948,10 @@ SH
   sed -e "s|{plugin_root}|$sweep_plugin|g" -e 's|{pr_number}|7|g' -e 's|{issue_number}|42|g' \
     -e 's|{owner_repo}|test/repo|g' "$record_block" > "$record_block.resolved"
   printf '\nprintf "REACHED\\n"\n' >> "$record_block.resolved"
-  cp "$nbr_entries" "$sandbox/sweep-tmp/rite-nb-entries-7.md"
+  # 手順 3 は entries を state root の .rite/state/ から読む。resolver だけ sandbox を指す stub にする
+  mkdir -p "$sandbox/sweep-state/.rite/state"
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "%s"\n' "$sandbox/sweep-state" > "$sweep_plugin/hooks/state-path-resolve.sh"
+  cp "$nbr_entries" "$sandbox/sweep-state/.rite/state/nb-sweep-entries-7.md"
   run_record_block() {  # $1=outcome (none = DONE 行なし) $2=rc
     : > "$NBR_GH_LOG"
     SWEEP_STUB_OUTCOME="$1" SWEEP_STUB_RC="$2" TMPDIR="$sandbox/sweep-tmp" PATH="$nbr_bin:$PATH" \
@@ -959,6 +962,8 @@ SH
     assert_grep "T-10 $record_case は [fix:error]" "$sandbox/record-block.out" '\[fix:error\]'
     assert_grep "T-10 $record_case の reason" "$sandbox/record-block.err" 'reason=nb_sweep_ledger_record_failed'
     assert_not_grep "T-10 $record_case は後続へ進まない" "$sandbox/record-block.out" '^REACHED$'
+    assert "T-10 $record_case は entries を残す (起票済みの記録が戻り先になる)" 1 \
+      "$([ -s "$sandbox/sweep-state/.rite/state/nb-sweep-entries-7.md" ] && echo 1 || echo 0)"
   done
   for record_case in created:0 updated:0; do
     run_record_block "${record_case%%:*}" "${record_case##*:}"
@@ -1406,7 +1411,9 @@ sed -e "s|{plugin_root}|$t17_plugin|g" -e 's|{pr_number}|7|g' -e 's|{issue_numbe
   -e 's|{owner_repo}|test/repo|g' "$record_block" > "$sandbox/t20.sh"
 printf '\nprintf "REACHED\\n"\n' >> "$sandbox/t20.sh"
 assert "T-20 手順 3 の placeholder をすべて置換できる" 0 "$(grep -c '{[a-z_]*}' "$sandbox/t20.sh")"
-cp "$nbr_entries" "$t20_tmp/rite-nb-entries-7.md"
+mkdir -p "$sandbox/t20-state/.rite/state"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "%s"\n' "$sandbox/t20-state" > "$t17_plugin/hooks/state-path-resolve.sh"
+cp "$nbr_entries" "$sandbox/t20-state/.rite/state/nb-sweep-entries-7.md"
 jq -n --arg a "$(t16_body OLD-1 src/old.ts:1)" --arg b "$(t16_body NEW-1 src/new.ts:2)" --arg c "$(t16_body FOR-1 src/for.ts:3)" \
   '[[{id:41,user:{login:"rite-bot"},body:$a},{id:43,user:{login:"rite-bot"},body:$b}],[{id:49,user:{login:"someone-else"},body:$c}]]' \
   > "$NBR_COMMENTS"
@@ -1539,26 +1546,25 @@ fi
 
 # --- T-23: 追記失敗後の戻り方と拒否の単位 (nb-sweep.md 手順 2・3 / iterate 5.S / schema) ---
 t23_step3=$(awk '/^3\. \*\*台帳 persist\*\*/{s=1} /^4\. \*\*完了\*\*/{s=0} s && /^```/{f=!f; next} s && !f' "$FIX")
-for t23_phrase in '`${TMPDIR:-/tmp}/rite-nb-entries-{pr_number}.md`' '手順 2 の起票をやり直さない' \
+for t23_phrase in 'entries（`.rite/state/nb-sweep-entries-{pr_number}.md`）を stderr の理由に合わせて直し' '手順 2 の起票をやり直さない' \
                   '手順 3 だけを再実行する' '起票済みの Issue は entries の issued 行が持つ' \
                   'entries の全行について最終列が手順 1 の `record=` の basename（全行同じ値）になっているかを確かめ、欠けた行には最終列として足し、値の違う行はその値に直す' \
-                  'その後は `/rite:iterate` を再実行せず iterate 5.S の `[fix:sweep-done]` 行から続ける' \
+                  'この会話で続けられないときは entries を直したうえで `/rite:iterate {pr_number}` を再実行する（別の会話からでもよい）' \
+                  'iterate のステップ 0.7 が再レビューを回さずに 5.S へ戻し、手順 1 が `NB_SWEEP_ENTRIES=present` を出すので手順 2 を飛ばして手順 3 から続く' \
                   '1 行でもあれば、append は entries 全体を `reason=entries_source_invalid` で拒否し、台帳を変更しない'; do
   assert "T-23 手順 3 の fence 外に復旧手順・拒否単位がある ($t23_phrase)" 1 "$(printf '%s\n' "$t23_step3" | grep -cF -- "$t23_phrase")"
 done
-assert "T-23 手順 2 は一時ファイルを再利用しない場合と手順 3 の再実行を書き分ける" 1 \
-  "$(grep -F '新しい sweep で起票からやり直すときは前回の一時ファイルを再利用しない' "$FIX" | grep -cF '手順 3 を再実行するときは、同じ sweep の entries を直して使う')"
+assert "T-23 手順 2 は手順 3 の再実行で同じ sweep の entries を直して使う" 1 \
+  "$(grep -cF '全件成功後に entries を生成する（手順 3 を再実行するときは、同じ sweep の entries を直して使う）' "$FIX")"
+assert "T-23 手順 1 は entries が残っていれば起票せず手順 3 から続けさせる" 1 \
+  "$(grep -F '`NB_SWEEP_ENTRIES=present` なら' "$FIX" | grep -F '手順 2 を実行せず' | grep -cF '手順 3 から続ける')"
 t23_iterate_row=$(grep -E '^\| `\[fix:error\]` / その他 / sentinel 不在 \|' "$PLUGIN_ROOT/skills/iterate/SKILL.md")
-assert "T-23 iterate 5.S の停止行は起票後の台帳 persist の停止を復旧手順へ導き、再実行せず sweep-done 行から続けさせる" 1 \
-  "$(printf '%s\n' "$t23_iterate_row" | grep -F '手順 2 の起票後に台帳 persist' | grep -F '`/rite:iterate` を再実行せず上の `[fix:sweep-done]` 行から続ける' | grep -cF 'nb-sweep.md')"
-assert "T-23 iterate 5.S の停止行は sweep-done 行から続けるのを停止したのと同じ会話に限る" 1 \
-  "$(printf '%s\n' "$t23_iterate_row" | grep -F '`[fix:sweep-done]` 行から続ける。この続け方は停止したのと同じ会話に限る' | grep -cF '別の会話からは続けず、停止のままにする')"
-assert "T-23 手順 3 は sweep-done 行から続けるのを停止したのと同じ会話に限る" 1 \
-  "$(printf '%s\n' "$t23_step3" | grep -F '`[fix:sweep-done]` 行から続ける' | grep -F 'この続け方は停止したのと同じ会話に限る' | grep -cF '別の会話からは続けず、停止のままにする')"
-assert "T-23 iterate 5.S の停止行は続きに使う 2 値のどちらかを会話から読めなければ同じ会話でも続けない" 1 \
-  "$(printf '%s\n' "$t23_iterate_row" | grep -cF '（続きの手順は会話にしか残らない `{sweep_origin}` と fix が出した `NB_SWEEP_RESULT` の件数を使う。どちらかを会話から読めなければ同じ会話でも続けない）')"
-assert "T-23 手順 3 は続きに使う 2 値のどちらかを会話から読めなければ同じ会話でも続けない" 1 \
-  "$(printf '%s\n' "$t23_step3" | grep -cF '（続きの手順は会話にしか残らない iterate の `{sweep_origin}` と手順 4 の `NB_SWEEP_RESULT` の件数を使う。どちらかを会話から読めなければ同じ会話でも続けない）')"
+assert "T-23 iterate 5.S の停止行は起票後の台帳 persist の停止を復旧手順へ導き、iterate の再実行で戻らせる" 1 \
+  "$(printf '%s\n' "$t23_iterate_row" | grep -F '手順 2 の起票後に台帳 persist' | grep -F 'entries を直してから `/rite:iterate {pr_number}` を再実行する' | grep -cF 'nb-sweep.md')"
+assert "T-23 iterate 5.S の停止行は同じ会話でも別の会話でも同じ経路で戻す" 1 \
+  "$(printf '%s\n' "$t23_iterate_row" | grep -F '同じ会話でも別の会話でも同じ経路で' | grep -F 'ステップ 0.7 が再レビューを回さずに 5.S へ戻し' | grep -cF 'fix は起票をやり直さず手順 3 から続ける')"
+assert "T-23 旧文面 (別の会話からは停止のまま) が停止行と手順 3 に残らない" 0 \
+  "$(printf '%s\n%s\n' "$t23_iterate_row" "$t23_step3" | grep -cF '別の会話からは続けず')"
 assert "T-23 iterate 5.S の停止行は理由名の接頭辞で対象を絞らない" 0 "$(printf '%s\n' "$t23_iterate_row" | grep -cF 'nb_sweep_ledger_')"
 t23_schema=$(grep -F 'entries_source_invalid' "$PLUGIN_ROOT/references/review-result-schema.md")
 assert "T-23 schema は 1 行でも不正なら全体を拒否すると書く" 1 "$(printf '%s\n' "$t23_schema" | grep -F '1 行でも' | grep -cF '台帳を変更しない')"
