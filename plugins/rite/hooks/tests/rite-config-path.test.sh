@@ -236,11 +236,11 @@ check_init_section() {
     *stderr*) fail "T-12 $1 does not treat rc=1 as a resolver error (line: '$rc1_line')" ;;
     *) pass "T-12 $1 does not treat rc=1 as a resolver error" ;;
   esac
-  # stop 側は停止語があり、続行語 continue も、not / n't / never の直後の stop（停止の否定形）も無いときだけ停止とみなす
+  # stop 側は停止語があり、続行語 continue も、not / n't / never から 2 語以内に続く stop（停止の否定形）も無いときだけ停止とみなす
   rc1_text=$(printf '%s\n%s\n' "$rc1_line" "$rc1_para")
   stop_n=$(printf '%s\n' "$rc1_text" | grep -ci 'stop' || true)
   cont_n=$(printf '%s\n' "$rc1_text" | grep -ci 'continue' || true)
-  neg_n=$(printf '%s\n' "$rc1_text" | grep -Eci "(not|n't|never)[[:space:]]+stop" || true)
+  neg_n=$(printf '%s\n' "$rc1_text" | grep -Eci "(not|n't|never)([[:space:]]+[[:alpha:]]+){0,2}[[:space:]]+stop" || true)
   if { [ "$5" = stop ] && [ "$stop_n" -gt 0 ] && [ "$cont_n" -eq 0 ] && [ "$neg_n" -eq 0 ]; } \
      || { [ "$5" = guide ] && [ "$stop_n" -eq 0 ]; }; then
     pass "T-12 $1 rc=1 stop behavior is '$5'"
