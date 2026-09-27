@@ -7,6 +7,7 @@
 * **Update**: [変更・削除の掃き出しは旧語彙・置換した条件式・別記法トークンまで広げる](pages/heuristics/change-sweep-spans-old-vocabulary-and-notations.md) — raw/reviews/20260927T043509Z-pr-3213.md を統合
 * **Update**: [一般化した断定は、実装が特殊化されている限り必ず偽になる — 同じ契約を書く複数サイトは最も限定的な表現に揃える](pages/heuristics/generalized-claim-false-while-implementation-specialized.md) — raw/reviews/20260927T043944Z-pr-3214.md を統合
 * **Skip**: [20260927T041954Z-pr-3212.md](raw/reviews/20260927T041954Z-pr-3212.md) — 既存経験則の範囲内: 既定値の分岐を逆へ倒す変異は記録値まで固定しないと素通りする（pin-observes-invariant-not-incidental-representation / mutation-testing-test-fidelity）
+* **lint:clean** — contradictions=0 (更新ページと関連ページのみ評価), stale=67, orphans=0, missing_concept=0, unregistered_raw=556, broken_refs=0
 * **Skip**: [20260927T034756Z-pr-3204.md](raw/fixes/20260927T034756Z-pr-3204.md) — 既存経験則の範囲内: 共有 root 配下の状態を指す復旧手順の散文を cwd 相対で書かない（path-basis-change-observation-surface-sweep の観測面に統合済み）
 * **lint:clean** — contradictions=0 (ページ変更なし), stale=67, orphans=0, missing_concept=0, unregistered_raw=554, broken_refs=0
 * **Update**: [保存パス基準の変更は観測面と全 caller 引数の同時スイープが必要](pages/heuristics/path-basis-change-observation-surface-sweep.md) — raw/reviews/20260927T034327Z-pr-3204.md を統合
