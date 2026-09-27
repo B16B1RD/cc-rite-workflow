@@ -331,11 +331,11 @@ for drift_type in "${drift_types[@]}"; do
             echo "  recovery: succeeded" >&2
           else
             echo "  recovery: FAILED — HEAD is on '${after_branch:-<detached>}', not '$ORIGINAL_BRANCH', after git switch" >&2
-            echo "  manual action: run 'git switch -- $ORIGINAL_BRANCH' to restore the working tree" >&2
+            echo "  manual action: run 'git switch --no-guess -- $ORIGINAL_BRANCH' to restore the working tree" >&2
           fi
         else
           echo "  recovery: FAILED — git switch error: $switch_output" >&2
-          echo "  manual action: run 'git switch -- $ORIGINAL_BRANCH' to restore the working tree" >&2
+          echo "  manual action: run 'git switch --no-guess -- $ORIGINAL_BRANCH' to restore the working tree" >&2
         fi
       fi
       ;;

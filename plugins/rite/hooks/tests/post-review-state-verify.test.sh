@@ -347,10 +347,17 @@ git -C "$sbx" switch -q feat
 snap=$(snapshot_line "$sbx")
 git -C "$sbx" switch -q --detach
 git -C "$sbx" branch -q -D feat
-out=$(verify_all "$sbx" "$snap" --auto-recover true 2>/dev/null); rc=$?
+stderr_remote=$(mktemp) && cleanup_dirs+=("$stderr_remote")
+out=$(verify_all "$sbx" "$snap" --auto-recover true 2>"$stderr_remote"); rc=$?
 assert "branch left only on the remote is not recovered" false "$(printf '%s' "$out" | jq -r .recovered)"
 assert "branch left only on the remote exits 1" 1 "$rc"
 assert "branch left only on the remote is not recreated locally" 1 \
+  "$(git -C "$sbx" rev-parse -q --verify refs/heads/feat >/dev/null; echo $?)"
+# Following the printed manual action must not recreate the branch from the remote either.
+manual_cmd=$(sed -n "s/^  manual action: run '\(.*\)' to restore the working tree$/\1/p" "$stderr_remote")
+assert "manual action keeps --no-guess" "git switch --no-guess -- feat" "$manual_cmd"
+(cd "$sbx" && eval "$manual_cmd" >/dev/null 2>&1)
+assert "following the manual action does not recreate the branch" 1 \
   "$(git -C "$sbx" rev-parse -q --verify refs/heads/feat >/dev/null; echo $?)"
 
 # Option-like branch names stop at validation, before any git ref is touched.
