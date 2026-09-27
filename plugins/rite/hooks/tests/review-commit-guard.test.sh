@@ -861,7 +861,8 @@ for closed_targets in (False, True):
             # A directory change other than a plain cd cannot aim a commit back at the review
             # unchecked, in the hook or in commit-target.
             for mover in ('pushd ' + str(root), 'popd', 'builtin cd ' + str(root), 'command cd ' + str(root),
-                          'time cd ' + str(root), 'X=1 cd ' + str(root), 'coproc pushd ' + str(root)):
+                          'time cd ' + str(root), 'X=1 cd ' + str(root), 'coproc pushd ' + str(root),
+                          'builtin -- cd ' + str(root), 'builtin -- pushd ' + str(root)):
                 hook(mover + '; git commit -m x', reason='target is dynamic', cwd=Path(linked))
                 moved = run(['bash', str(helper), 'commit-target', '--command', mover + '; git commit -m x',
                              '--cwd', linked], ok=False)

@@ -401,6 +401,8 @@ def moves_directory(words):
         if words[:1] != ["builtin"]:
             return bool(words) and words[0] in _DIRECTORY_MOVERS
         words = words[1:]
+        if words[:1] == ["--"]:
+            words = words[1:]
 
 
 # The git subcommands that move HEAD and are checked before they run.
