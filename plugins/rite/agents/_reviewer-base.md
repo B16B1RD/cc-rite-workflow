@@ -12,7 +12,7 @@ Any Bash invocation that matches the following patterns is forbidden inside a re
 |---------|------|----------|
 | `git checkout <ref> -- <file>` | index + working tree 書き換え | `git show <ref>:<file>` (stdout 出力のみ) |
 | `git checkout <branch>` | HEAD 切り替え | `git worktree add <path> <ref>` で別ディレクトリに展開 (`<path>` は `rite-review-mutation-*` / `rite-revert-test-*` の名前空間) |
-| `gh pr checkout <N>` | PR の head を local branch へ取り込み HEAD を切り替える。その作業ツリーを使うセッションが止まる (pre-tool-bash-guard.sh sub-block (S) が deny) | 差分は `gh pr diff <N>`、PR の情報は `gh pr view <N>` で読む。PR の head で実行が要るときは上の `git worktree add` の手順で別ディレクトリに展開する |
+| `gh pr checkout <N>` | PR の head を local branch へ取り込み HEAD を切り替える。その作業ツリーを使うセッションが止まる (pre-tool-bash-guard.sh sub-block (S) が deny) | 差分は `gh pr diff <N>`、PR の情報は `gh pr view <N>` で読む。レビュー対象の PR の head は作業ツリーに checkout 済みなので、テストはその場で実行する。別の ref で実行が要るときは下の § Mutation experiments の detached worktree 手順に従う |
 | `git reset` (あらゆる形式) | index / HEAD 変更 | 代替なし — reviewer は実行禁止 |
 | `git add` / `git rm` | index 変更 | 代替なし — reviewer は実行禁止 |
 | `git stash` (push/pop/apply/drop/clear) | working tree 退避・復元 | 代替なし — reviewer は実行禁止 |
