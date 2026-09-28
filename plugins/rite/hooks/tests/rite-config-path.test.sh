@@ -119,22 +119,25 @@ rm -f "$MAIN/rite-config.yml" "$errf"
 echo "=== T-10: pr-review post_comment read uses the main checkout config from a worktree ==="
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 PR_SKILL="$PLUGIN_ROOT/skills/pr-review/SKILL.md"
-block=$(awk '/^# --- Step 3: rite-config.yml の pr_review.post_comment 読取/{f=1} /^# --- Step 4:/{f=0} f' "$PR_SKILL" \
-  | sed "s|{plugin_root}|$PLUGIN_ROOT|g")
+PR_STEP="$PLUGIN_ROOT/scripts/pr-review-step.sh"
+block=$(awk '/^# --- Step 3: rite-config.yml の pr_review.post_comment 読取/{f=1} /^# --- Step 4:/{f=0} f' "$PR_STEP")
 case "$block" in
   *rite-config-path.sh*) pass "T-10 block extracted and calls the resolver" ;;
   *) fail "T-10 block extracted and calls the resolver" ;;
 esac
+# SKILL.md の 1 行呼び出しをそのまま実行する（loader が置換する引数は空にする）
+call=$(grep -m1 -E '^bash \{plugin_root\}/scripts/pr-review-step\.sh parse-args ' "$PR_SKILL" \
+  | sed -e "s|{plugin_root}|$PLUGIN_ROOT|g" -e "s|'\$ARGUMENTS'|''|")
 printf 'pr_review:\n  post_comment: true\n' > "$MAIN/rite-config.yml"
-got=$(cd "$WT" && bash -c "$block"$'\necho "post=$config_post_comment"' 2>&1)
+got=$(cd "$WT" && bash -c "$call" 2>&1)
 case "$got" in
-  *"post=true"*) pass "T-10 worktree reads post_comment=true from main" ;;
+  *"POST_COMMENT_MODE=true"*) pass "T-10 worktree reads post_comment=true from main" ;;
   *) fail "T-10 worktree reads post_comment=true from main (got '$got')" ;;
 esac
 rm -f "$MAIN/rite-config.yml"
-got=$(cd "$WT" && bash -c "$block"$'\necho "post=$config_post_comment"' 2>&1)
+got=$(cd "$WT" && bash -c "$call" 2>&1)
 case "$got" in
-  *"WARNING:"*"$MAIN/rite-config.yml"*"post=false"*) pass "T-10 missing config warns with tried path and defaults to false" ;;
+  *"WARNING:"*"$MAIN/rite-config.yml"*"POST_COMMENT_MODE=false"*) pass "T-10 missing config warns with tried path and defaults to false" ;;
   *) fail "T-10 missing config warns with tried path and defaults to false (got '$got')" ;;
 esac
 if [ "$(id -u)" -eq 0 ]; then
@@ -142,7 +145,7 @@ if [ "$(id -u)" -eq 0 ]; then
 else
   printf 'pr_review:\n  post_comment: true\n' > "$MAIN/rite-config.yml"
   chmod 000 "$MAIN/rite-config.yml"
-  rc=0; got=$(cd "$WT" && bash -c "$block"$'\necho "post=$config_post_comment"' 2>&1) || rc=$?
+  rc=0; got=$(cd "$WT" && bash -c "$call" 2>&1) || rc=$?
   chmod 644 "$MAIN/rite-config.yml"
   assert "T-10 unreadable config exits 1" "1" "$rc"
   case "$got" in
@@ -150,7 +153,7 @@ else
     *) fail "T-10 unreadable config stops with review:error (got '$got')" ;;
   esac
   case "$got" in
-    *"post="*) fail "T-10 unreadable config does not continue with a default (got '$got')" ;;
+    *"POST_COMMENT_MODE="*) fail "T-10 unreadable config does not continue with a default (got '$got')" ;;
     *) pass "T-10 unreadable config does not continue with a default" ;;
   esac
   rm -f "$MAIN/rite-config.yml"
