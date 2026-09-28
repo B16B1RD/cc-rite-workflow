@@ -806,7 +806,8 @@ try:
     shutil.copytree(plugin / 'hooks', mutant)
     (mutant.parent / 'scripts').symlink_to(plugin / 'scripts')
     helper = mutant / 'scripts/lib/review-cycle.py'
-    helper.write_text(helper.read_text().replace('def normalize_issue_body(body):\n', 'def normalize_issue_body(body):\n    return body\n', 1))
+    helper.write_text(helper.read_text().replace('def normalize_issue_body(body, marker=NBR_MARKER_LINE):\n',
+                                    'def normalize_issue_body(body, marker=NBR_MARKER_LINE):\n    return body\n', 1))
     replay = copy.deepcopy(f.observed)
     replay['issue_body'] = triaged.replace('202', '303')
     dump(f.input, replay)
@@ -2604,12 +2605,16 @@ SEPARATED = [('AC-1', 'original\u2028one'), ('AC-2', 'original two')]
 NESTED = [('AC-1', 'original one\n  ```yaml\n  review:\n      max: 3\n  ```'), ('AC-2', 'original two')]
 FLATTENED = [('AC-1', 'original one\n  ```yaml\n  review:\n    max: 3\n  ```'), ('AC-2', 'original two')]
 # The specification check ignores this marker-shaped line, so the edit needs no recorded revision.
-DISGUISED = [('AC-1', 'original one\n  <!-- rite:nbr:comment-id: --> but it need not hold <!-- -->'),
+DISGUISED = [('AC-1', 'original one\n  <!-- rite:nbr:comment-id:1 --> but it need not hold <!-- -->'),
              ('AC-2', 'original two')]
+# A footer after the criteria is where triage opens the Decision Log section.
+FOOTER = '\n---\n\n🤖 Generated with rite\n'
+LOG = '## 9. Decision Log\n\n- 2026-09-28 D-01: keep the scope / Reason: agreed / Impact: none\n\n'
 
 
-def with_criteria(f, base, items):
-    f.with_issue(base + '\n\n## 受入条件\n\n' + ''.join('- [ ] ' + key + ': ' + text + '\n' for key, text in items))
+def with_criteria(f, base, items, tail=''):
+    f.with_issue(base + '\n\n## 受入条件\n\n' + ''.join('- [ ] ' + key + ': ' + text + '\n' for key, text in items)
+                 + tail)
 
 
 def criteria_cycle(f, items, met=(), seconds=0, roots=None, observe=True):
@@ -2630,7 +2635,7 @@ def revision_case(case):
     try:
         base = f.issue['body']
         initial = dict(separator=SEPARATED, indented=NESTED).get(case, ORIGINAL)
-        with_criteria(f, base, initial)
+        with_criteria(f, base, initial, FOOTER if case == 'logged' else '')
         criteria_cycle(f, initial, roots=('input defect', 'secondary defect', 'third defect'))
         f.fix()
         criteria_cycle(f, initial, roots=('input defect', 'secondary defect'))
@@ -2663,13 +2668,18 @@ def revision_case(case):
             final, before, after = dict(added=(ADDED, [], ['AC-9']), earlier=(ADDED, ['AC-1'], ['AC-1']),
                                         reworded=(REWORDED, [], ['AC-1']), fenced=(FENCED, [], ['AC-1']),
                                         indented=(FLATTENED, [], ['AC-1']), disguised=(DISGUISED, [], ['AC-1']),
-                                        marked=(ORIGINAL, [], ['AC-2']), refixed=(REWORDED, [], []))[case]
+                                        marked=(ORIGINAL, [], ['AC-2']), logged=(ORIGINAL, [], ['AC-2']),
+                                        refixed=(REWORDED, [], []))[case]
             criteria_cycle(f, initial, met=before)
             if case == 'disguised':
                 with_criteria(f, base, final)
             elif case == 'marked':
                 # The non-blocking record helper appends its marker after the last section.
                 f.with_issue(f.issue['body'].rstrip('\n') + '\n\n<!-- rite:nbr:comment-id:4242 -->\n')
+            elif case == 'logged':
+                # Triage opens the Decision Log section just before the footer.
+                head, rule, rest = f.issue['body'].rpartition('\n---\n')
+                f.with_issue(head + '\n' + LOG + rule.lstrip('\n') + rest)
             else:
                 revise(f, base, final)
             criteria_cycle(f, final, met=after)
@@ -2690,6 +2700,7 @@ for case, stops, label in (
         ('indented', True, 'a criterion whose code block only changed indentation is reworded'),
         ('disguised', True, 'a marker-shaped line added to a criterion without a recorded revision rewords it'),
         ('marked', False, 'the record marker rite appends leaves the last criterion unchanged'),
+        ('logged', False, 'a Decision Log section triage opens leaves the last criterion unchanged'),
         ('lapsed', True, 'a criterion met at the replan that lapses and returns is not progress'),
         ('separator', False, 'a Unicode line separator in a criterion does not break the progress check'),
         ('restored', False, 'a criterion removed and restored with its text keeps its earlier unmet observation'),

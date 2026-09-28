@@ -641,20 +641,22 @@ def work_seconds(run):
                for item in run["clock"] if item["kind"] == "work")
 
 
-# The line the non-blocking record helper appends to the Issue body, exactly as it writes it.
+# The marker line the non-blocking record helper writes: a numeric id, with only
+# surrounding whitespace allowed (the CR of a CRLF body, indentation).
 RECORD_MARKER = re.compile(r"\s*<!-- rite:nbr:comment-id:[0-9]+ -->\s*")
 
 
 def criteria(body, purpose):
     """Acceptance criteria of an Issue body as {ID: verbatim text}, in document order.
 
-    Only the record marker rite appends is left out, so a criterion whose section
-    ends the body keeps its text. Any other line the specification check ignores
-    stays in the text and counts as rewording it.
+    The body leaves out exactly what rite writes into it (Decision Log rows and
+    the record marker), as the specification check does, so rite's own writes
+    never reword a criterion. The check also ignores looser marker-shaped lines;
+    those stay in the text and count as rewording it.
     """
     script = Path(__file__).resolve().parents[3] / "scripts/acceptance-criteria-check.sh"
     with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".md") as stream:
-        stream.write("\n".join(line for line in body.split("\n") if not RECORD_MARKER.fullmatch(line)))
+        stream.write(cycle.normalize_issue_body(body, RECORD_MARKER))
         stream.flush()
         result = subprocess.run(["bash", str(script), "items", "--body-file", stream.name],
                                 capture_output=True, text=True)
