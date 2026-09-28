@@ -102,6 +102,22 @@
 * **Update**: [git diff の出力形状を前提にしたパーサは、git の設定と変更種別で黙って空振りする](pages/anti-patterns/git-diff-parser-output-shape-assumptions.md) — raw/fixes/20260928T044436Z-pr-3387.md を統合
 * **Skip**: [20260928T013257Z-pr-3375.md](raw/reviews/20260928T013257Z-pr-3375.md) — 指摘 0 件の再レビューで、前回推奨の解消確認だけを含み新しい経験則を含まない
 * **lint:clean** — contradictions=0, stale=62, orphans=0, missing_concept=0, unregistered_raw=578, broken_refs=0
+* **Create**: [手順書のエラー終着は止める原因を列挙し、それ以外を上限付きの「直して再実行」の受け皿にする](pages/heuristics/enumerate-stop-causes-catch-all-rerun-with-cap.md) — raw/reviews/20260928T051855Z-pr-3366.md を新規ページ化
+* **Update**: [手順書のエラー終着は止める原因を列挙し、それ以外を上限付きの「直して再実行」の受け皿にする](pages/heuristics/enumerate-stop-causes-catch-all-rerun-with-cap.md) — raw/fixes/20260928T050317Z-pr-3366.md を統合
+* **Update**: [手順書のエラー終着は止める原因を列挙し、それ以外を上限付きの「直して再実行」の受け皿にする](pages/heuristics/enumerate-stop-causes-catch-all-rerun-with-cap.md) — raw/reviews/20260928T053245Z-pr-3366.md を統合
+* **Update**: [git diff の出力形状を前提にしたパーサは、git の設定と変更種別で黙って空振りする](pages/anti-patterns/git-diff-parser-output-shape-assumptions.md) — raw/fixes/20260928T050633Z-pr-3387.md を統合
+* **Update**: [git diff の出力形状を前提にしたパーサは、git の設定と変更種別で黙って空振りする](pages/anti-patterns/git-diff-parser-output-shape-assumptions.md) — raw/reviews/20260928T052332Z-pr-3387.md を統合
+* **Update**: [git diff の出力形状を前提にしたパーサは、git の設定と変更種別で黙って空振りする](pages/anti-patterns/git-diff-parser-output-shape-assumptions.md) — raw/fixes/20260928T053004Z-pr-3387.md を統合
+* **Update**: [git diff の出力形状を前提にしたパーサは、git の設定と変更種別で黙って空振りする](pages/anti-patterns/git-diff-parser-output-shape-assumptions.md) — raw/reviews/20260928T054345Z-pr-3387.md を統合
+* **Update**: [委譲リファクタの動作保持は原実装との差分テストで機械的に立証する](pages/heuristics/delegation-refactor-differential-test-equivalence.md) — raw/fixes/20260928T050839Z-pr-3379.md を統合
+* **Update**: [セキュリティ境界 hook の timeout は fail-open — 評価コストは入力サイズで O(1) 上限を設けて bound する](pages/heuristics/security-hook-timeout-is-fail-open-bound-cost-by-input-size.md) — raw/reviews/20260928T053742Z-pr-3379.md を統合
+* **Update**: [セキュリティ境界 hook の timeout は fail-open — 評価コストは入力サイズで O(1) 上限を設けて bound する](pages/heuristics/security-hook-timeout-is-fail-open-bound-cost-by-input-size.md) — raw/fixes/20260928T055141Z-pr-3379.md を統合
+* **Update**: [セキュリティ境界 hook の timeout は fail-open — 評価コストは入力サイズで O(1) 上限を設けて bound する](pages/heuristics/security-hook-timeout-is-fail-open-bound-cost-by-input-size.md) — raw/reviews/20260928T051919Z-pr-3388.md を統合
+* **Update**: [検査用のシェル字句解析は判定対象を標準形に絞り、それ以外を fail-closed にする](pages/heuristics/inspection-parser-narrow-to-standard-form-fail-closed.md) — raw/fixes/20260928T053213Z-pr-3388.md を統合
+* **Update**: [検査用のシェル字句解析は判定対象を標準形に絞り、それ以外を fail-closed にする](pages/heuristics/inspection-parser-narrow-to-standard-form-fail-closed.md) — raw/reviews/20260928T054838Z-pr-3388.md を統合
+* **Create**: [外部ツールの入力仕様は公式ドキュメントの原文で確かめ、テスト fixture は実際に届く形で組む](pages/heuristics/external-input-spec-verify-official-source-real-fixture.md) — raw/reviews/20260928T053923Z-pr-3390.md を新規ページ化
+* **Update**: [外部ツールの入力仕様は公式ドキュメントの原文で確かめ、テスト fixture は実際に届く形で組む](pages/heuristics/external-input-spec-verify-official-source-real-fixture.md) — raw/fixes/20260928T054820Z-pr-3390.md を統合
+* **Update**: [仕様改訂の境界をまたいで観測を比べると停止判定が狂う — 各観測はその区間の基準と比べる](pages/anti-patterns/cross-boundary-comparison-after-spec-revision.md) — raw/fixes/20260928T053745Z-pr-3376.md を統合
 
 ## 2026-09-27
 

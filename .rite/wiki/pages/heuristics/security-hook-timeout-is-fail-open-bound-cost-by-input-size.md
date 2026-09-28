@@ -25,11 +25,18 @@ sources:
     resource: "raw/reviews/20260715T230852Z-pr-1867.md"
   - type: "reviews"
     resource: "raw/reviews/20260928T043542Z-pr-3379.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T053742Z-pr-3379.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260928T055141Z-pr-3379.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T051919Z-pr-3388.md"
 tags: ["security", "hook", "timeout", "fail-open", "fail-closed", "dos", "input-size-bound", "pretooluse", "super-linear", "bypass", "noglob", "glob", "unquoted-loop"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T05:02:36Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T06:02:43Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T05:02:36Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T06:02:43Z" }
 ---
 
 # セキュリティ境界 hook の timeout は fail-open — 評価コストは入力サイズで O(1) 上限を設けて bound する
@@ -82,11 +89,29 @@ PreToolUse 等の hook の timeout は **fail-open**（timeout に達すると C
 
 同じ変更では、テストが hook を呼ぶときに実行セッションの session 環境（`CLAUDE_CODE_SESSION_ID` や state root）を切り離していなかったため、レビュー中のセッションでだけ別のパターンが先に拒否して落ちた（CI では再現しない）。実装を parser へ切り替えたあと、仕様書に旧実装の読み飛ばし範囲が残っていたことも併せて指摘された。
 
+### プラットフォームの暗黙の上限を安全の根拠にしない
+
+線形化の修正を検証していた reviewer が、同じ呼び出し口から届く別の超線形を見つけた。入れ子のコマンド置換の深さと長さの積で伸びる処理と、語ごとに外部プロセスを起動する処理である。Linux では argv の 1 引数あたりの長さに上限があるため入力が頭打ちになり、問題が表に出なかった。その上限を持たない macOS では、hook のタイムアウトを超える。OS の暗黙の上限でたまたま抑えられている経路は、上限の無い環境では抑えられていない。
+
+修正では共有 parser を作り直さず、呼び出し側で入力長を O(1) で打ち切り、超過を fail-closed で拒否した。上限値は、上限ちょうどの長さの最悪形を実測して決めた。上限は OS に任せず、呼び出し側に明示して置く。
+
+線形化そのものの信頼は、旧実装と新実装を数万件のランダム入力で突き合わせる等価性の検証が支えた（関連ページの差分テスト）。一方、線形化した分岐を固定するテストが無いという網羅性の指摘は、実測の裏付けが無いため non-blocking に分類された。
+
+### 走査を足したら、既存の入力長上限が前提にする処理時間を測り直す
+
+reviewer の状態変更を止める guard の字句解析に、1 文字ずつ `${var:i:1}` で進む走査を足したところ、UTF-8 ロケールで二乗時間になり、既存の入力長上限より小さい入力で timeout → fail-open に達した。既存の上限は「この長さなら timeout 内に判定を終える」という処理時間の前提の上に立っている。新しい走査を入れたら、その前提を最悪形の入力で測り直し、走査側にも O(1) の fail-closed 上限を置く。走査自体の直し方（ロケールの固定と入れ子の追跡）は字句解析のページにある。
+
+### 「他の層が担う」と書く前に、その層が実際に検出する軸と照合する
+
+同じ guard の文書は、guard が止めない操作を他の層（事後のドリフト検出）が担うと書いていた。しかしその層が検出するのは branch 名・stash・tracked status などの変化で、push や作業ツリーを汚さない commit はどれにも現れず、検出の対象外だった。防御を別の層へ委ねると書くときは、委ねる操作がその層の検出軸に実際に現れるかを確かめる。
+
 ## 関連ページ
 
 - [consume 操作 (read+delete+return) は delete-then-return 順で fail-closed にする](../patterns/consume-operation-delete-then-return-fail-closed.md)
 - [security guard の deny メッセージ改善は判定ロジック不変の subkind タグ分岐で行う](../patterns/security-guard-message-only-subkind-branching.md)
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
+- [検査用のシェル字句解析は判定対象を標準形に絞り、それ以外を fail-closed にする](./inspection-parser-narrow-to-standard-form-fail-closed.md)
+- [委譲リファクタの動作保持は原実装との差分テストで機械的に立証する](./delegation-refactor-differential-test-equivalence.md)
 
 ## ソース
 
@@ -100,3 +125,6 @@ PreToolUse 等の hook の timeout は **fail-open**（timeout に達すると C
 - [(follow-up cycle3) — noglob 修正を全 reviewer が実機検証（fail-on-revert / glob-target が Layer-1 落ちする net-positive）し mergeable 収束](../../raw/reviews/20260715T203920Z-pr-1865.md)
 - [が残した兄弟 `for tok in $WT_ARGS`（:608 worktree-add 引数走査）を同型 noglob スコープで水平展開。全 4 reviewer（security/code-quality/error-handling/test）が sibling grep 照合 + fail-on-revert 実機検証で指摘ゼロ収束](../../raw/reviews/20260715T230852Z-pr-1867.md)
 - [レビュー結果（下流 helper と上流の展開による二乗コスト）](../../raw/reviews/20260928T043542Z-pr-3379.md)
+- [レビュー結果（同じ呼び出し口の別の超線形と、プラットフォームの暗黙の上限）](../../raw/reviews/20260928T053742Z-pr-3379.md)
+- [fix 結果（呼び出し側の明示の入力長上限で超線形を抑える）](../../raw/fixes/20260928T055141Z-pr-3379.md)
+- [レビュー結果（1 文字ずつの走査が UTF-8 ロケールで二乗時間になる、他の層への委譲の主張）](../../raw/reviews/20260928T051919Z-pr-3388.md)

@@ -2,9 +2,9 @@
 type: "anti-patterns"
 title: "git diff の出力形状を前提にしたパーサは、git の設定と変更種別で黙って空振りする"
 domain: "anti-patterns"
-description: "git diff の出力形式と rename 検出は、変更パスの列挙結果を変える。対象範囲を検査する場合は引用・prefix の正規化に加え、移動元と移動先の両方を含む列挙契約が必要になる。"
+description: "git diff の出力形状は、利用者の設定（引用・prefix・hunk の結合幅・textconv）と rename 検出で変わる。解析側で形の列挙を増やすより、呼び出し引数で形を固定し、固定した引数ごとに外すと落ちるテストを置く。範囲検査では移動元と移動先の両方を列挙する。"
 created: "2026-09-06T16:10:23Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T05:02:36Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T06:02:43Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T05:02:36Z" }
 sources:
@@ -24,6 +24,14 @@ sources:
     resource: "raw/reviews/20260928T050041Z-pr-3387.md"
   - type: "fixes"
     resource: "raw/fixes/20260928T044436Z-pr-3387.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260928T050633Z-pr-3387.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T052332Z-pr-3387.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260928T053004Z-pr-3387.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T054345Z-pr-3387.md"
 tags: ["git-diff", "parser", "silent-degradation", "portability"]
 confidence: high
 ---
@@ -78,9 +86,27 @@ rename 検出が有効な `--name-only` は、移動先だけを返すことが�
 
 ### 存在判定と取得は同じ対象を見る。git の失敗を「無い」に倒さない
 
-- `ls-tree` の先頭行だけで「ファイルとして存在するか」を判定すると、末尾スラッシュ付きのディレクトリ path が子要素の blob によって通ってしまう。判定と取得は同じ対象（`{head}:{path}`）を見る形にする
-- `git show` の失敗を黙って「行なし」に倒すと、公開した reason 表（git 失敗）と実際に返る reason（契約が見つからない）が食い違う。存在確認（`rev-parse`）と種類確認（`ls-tree` で blob か）を先に行い、それ以外の失敗は git 失敗として止める。stderr の文言照合には頼らない
+- `ls-tree` の先頭行だけで「ファイルとして存在するか」を判定すると、末尾スラッシュ付きのディレクトリ path が子要素の blob によって通ってしまう。`ls-tree -z` の出力から、名前が要求した path と一致する blob だけを採る形にし、判定と取得が同じ対象（`{head}:{path}`）を見るようにする
+- `git show` の失敗を黙って「行なし」に倒すと、公開した reason 表（git 失敗）と実際に返る reason（契約が見つからない）が食い違う。種類確認（`ls-tree` で blob か）を取得の前に行い、それ以外の失敗は git 失敗として止める。stderr の文言照合には頼らない
+- 種類確認の前に冗長な存在確認（`rev-parse`）を重ねない。前の cycle で足した `rev-parse` を削ると、直後の `ls-tree` が返す具体的な失敗理由がそのまま利用者に届くようになった（足した確認が後段の診断を隠していた）
 - 修正後は旧実装へ戻す変異を入れ、追加したテストがそれぞれ落ちることを確かめる。前の cycle の修正が足した分岐に、外すと落ちるテストが無いことは変異で初めて分かった
+
+### 設定を flag の列挙で塞ぐと隣接する設定が残る — hunk の結合幅
+
+prefix と textconv を固定した後、`-U0` の hunk 範囲をそのまま変更行とみなす解析に、別の設定の穴が見つかった。利用者の gitconfig に `diff.interHunkContext` があると、近接する hunk が間の未変更行ごと 1 つに結合され、解析は未変更行を変更行として受理する。`-U0` を指定しても結合幅は別の設定なので防げない。
+
+- hunk 範囲を変更行として扱う解析は `--inter-hunk-context=0` も呼び出し側で固定する
+- 設定を与えた fixture で、hunk の間の行が拒否されることをテストで固定する
+- 出力の形を変えうる設定は一式で考え、1 つ塞ぐたびに隣接する設定を確かめる。後のレビューでは `--no-ext-diff` と `--no-color` がまだ固定されていないことも挙げられた
+- 同じ `-U0` の出力を解析する既存の helper にも結合幅を固定していないものがあった。1 か所を固定したら、同じ出力を読む兄弟の呼び出しを grep で洗う
+
+### 利用者の設定を与えるテストは、その設定が出力を変える経路で与える
+
+`diff.mnemonicPrefix` が接頭辞を変えるのは index や作業ツリーとの比較だけで、commit 同士の `A...B` では `a/` `b/` のまま出る。commit 間差分を解析する処理にこの設定を与える回帰ケースは、固定の有無を何も区別しない。設定を与えるテストを足すときは、その設定が実際に出力を変える経路かを先に確かめる。
+
+textconv の固定を確かめるには、行数を変えるドライバ（各行を重複させる `sed p` など）を `.git/info/attributes` と `diff.<name>.textconv` で与えるとよい。固定が外れると行番号のずれとして検出できる。
+
+固定した引数ごとに、その引数を外すとテストが落ちることを変異で確かめる。追加した引数（`--no-textconv` など）を外しても通るテストは、その引数の意図を固定していない。この変更では、接頭辞・結合幅・textconv の各固定について、複数の reviewer が変異で落ちることを確かめ、blocking 0 件で収束した
 
 ## 関連ページ
 
@@ -97,3 +123,7 @@ rename 検出が有効な `--name-only` は、移動先だけを返すことが�
 - [レビュー結果（hunk 内の内容行を見出しと読む再実装）](../../raw/reviews/20260928T043614Z-pr-3387.md)
 - [レビュー結果（prefix 固定の未継承と ls-tree の存在判定）](../../raw/reviews/20260928T050041Z-pr-3387.md)
 - [fix 結果（既存パーサの規則へ差し戻す）](../../raw/fixes/20260928T044436Z-pr-3387.md)
+- [fix 結果（出力形式を呼び出し引数で固定し、ls-tree の判定を blob の名前一致へ差し替え）](../../raw/fixes/20260928T050633Z-pr-3387.md)
+- [レビュー結果（hunk の結合幅の設定と、出力を変えない設定の回帰ケース）](../../raw/reviews/20260928T052332Z-pr-3387.md)
+- [fix 結果（hunk の結合幅の固定と、設定が効く経路での変異確認）](../../raw/fixes/20260928T053004Z-pr-3387.md)
+- [レビュー結果（固定した引数ごとの変異確認と、未固定の引数・兄弟 helper）](../../raw/reviews/20260928T054345Z-pr-3387.md)

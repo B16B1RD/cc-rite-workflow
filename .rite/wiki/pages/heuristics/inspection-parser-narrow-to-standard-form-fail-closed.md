@@ -4,12 +4,13 @@ title: "検査用のシェル字句解析は判定対象を標準形に絞り、
 domain: "heuristics"
 description: "コマンドを検査する guard で bash の字句規則を近似する自前パーサを直し続けると、指摘は前回の修正の隣の形として増え続ける。理解すると主張する範囲を実運用の標準形に絞り、それ以外は分類したうえで止める方が収束する。"
 created: "2026-09-25T03:58:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T09:18:19Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T06:02:43Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T10:30:52Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T11:40:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:19:35Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T09:18:19Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T06:02:43Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260924T212015Z-pr-3060.md"
@@ -33,6 +34,10 @@ sources:
     resource: "raw/reviews/20260926T131728Z-pr-3147.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T084856Z-pr-3250.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260928T053213Z-pr-3388.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T054838Z-pr-3388.md"
 tags: ["guard", "parser", "fail-closed", "heredoc", "divergence"]
 confidence: high
 ---
@@ -88,11 +93,32 @@ blocking 件数は 2 → 2 → 5 → 7 → 14 と増え、サーキットブレ�
 
 コマンドの先頭語を剥がして判定する処理では、`builtin` / `command` のようなラッパーの直後に置けるオプション終端 `--` を剥がし忘れると、同じ意味の隣接形（`builtin -- cd` など）が判定から漏れる。欠陥の形を列挙して塞ぐ修正は、列挙した形のオプション付きの変種まで実測で確かめる。判定を広げると、移動しない形（`command -v cd` など）の誤拒否が fail-closed 側に増える。拒否側に倒れる変化は blocking にしないが、許可されるべきケースが変わっていないことは素の形の対照テストで固定しておく。
 
+### コマンド置換は入れ子のレベルとして扱い、状態をスタックで持つ
+
+reviewer が実行してよいコマンドを判定する guard の字句解析を書き直したとき、コマンド置換（`$(…)` やバッククォート）を単一の状態変数で追っていたため入れ子を表現できなかった。直し方は次のとおり。
+
+- 置換の中の語は、外側とは独立したコマンド列として解析する
+- 置換が閉じたら、外側の引用符状態と語の途中の状態へ戻す
+- 置換そのものは外側の語の一部として残す（`git -C "$(pwd)" push` の `-C` の引数のように、置換が外側のコマンドの引数になるため）
+
+置換の閉じ判定には括弧の深さだけでは足りない。置換の中に `case` があると、パターンの後ろの `)` を置換の閉じと誤認する。`$(` の閉じを判定するときは、括弧の深さに加えて閉じていない `case` の数も数える。書き直しでは旧実装と新実装に同じ入力を並べて通し、旧実装が拒否していた形が新実装で通るようになっていないか（退行）を探す。
+
+### 1 文字ずつの走査は UTF-8 ロケールで二乗時間になる
+
+bash で `${s:i:1}` を回して 1 文字ずつ進む走査は、UTF-8 ロケールで入力長の二乗時間になる。関数内で `local LC_ALL=C` を宣言するとバイト単位の走査になり、区切り文字がすべて ASCII なら判定結果は変わらない。それでも線形にはならないので、PreToolUse hook では走査の前に O(1) の長さ上限を置き、超過は fail-closed で拒否する。上限値は最悪形の入力を実測して決める（timeout が fail-open になる理由は関連ページ）。
+
+### 処理を関数へ切り出すと ERR trap が届かなくなる
+
+`set -e` と ERR trap で fail-closed の区間を作っているスクリプトでは、書き直しで処理を関数へ切り出すと、errtrace（`set -E`）が無い限り ERR trap は関数の中に継承されない。関数内の失敗は trap を通らずに rc=1 で終わる。stdout に deny を書くことで拒否を表す hook では、何も出力されずに終わるので、無言の allow になる。インラインの処理を関数化するときは trap の継承を確かめ、失敗注入のテストを関数の内側に置く。
+
+同じ変更では、時間切れを判定するテストが素の `timeout` を呼んでいたため、`timeout(1)` の無い macOS の CI レグで実装と無関係に失敗した。同じテストファイルが用意している移植用ラッパーを使う。
+
 ## 関連ページ
 
 - [同じ述語を 2 言語で並行実装すると受理集合が環境で割れる — 定義を 1 本に寄せるまで症状は再発し続ける](../anti-patterns/dual-language-predicate-divergence.md)
 - [ゲートに検査を足すより、実行者が選べる自由度を削る](./reduce-gate-degrees-of-freedom.md)
 - [best-effort な静的 matcher hardening は allowlist を COMMON-SET（非網羅）と宣言して review の whack-a-mole を止める](./best-effort-matcher-declare-common-set-to-stop-whackamole.md)
+- [セキュリティ境界 hook の timeout は fail-open — 評価コストは入力サイズで O(1) 上限を設けて bound する](./security-hook-timeout-is-fail-open-bound-cost-by-input-size.md)
 
 ## ソース
 
@@ -107,3 +133,5 @@ blocking 件数は 2 → 2 → 5 → 7 → 14 と増え、サーキットブレ�
 - [グループ復元の単純化で関数・case 本体の境界が抜けた fix 結果](../../raw/fixes/20260926T111331Z-pr-3147.md)
 - [レビュー結果](../../raw/reviews/20260926T131728Z-pr-3147.md)
 - [ラッパー直後の `--` が漏れたレビュー結果](../../raw/reviews/20260927T084856Z-pr-3250.md)
+- [fix 結果（コマンド置換を入れ子として扱う字句解析と、1 文字ずつの走査の計算量）](../../raw/fixes/20260928T053213Z-pr-3388.md)
+- [レビュー結果（関数化で ERR trap が届かない、置換内の case の閉じ括弧）](../../raw/reviews/20260928T054838Z-pr-3388.md)

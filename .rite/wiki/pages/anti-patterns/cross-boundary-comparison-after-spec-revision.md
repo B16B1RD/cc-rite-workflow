@@ -2,14 +2,16 @@
 type: "anti-patterns"
 title: "仕様改訂の境界をまたいで観測を比べると停止判定が狂う — 各観測はその区間の基準と比べる"
 domain: "anti-patterns"
-description: "途中で受入条件を改訂できるようにしたとき、改訂前の充足集合を改訂後の観測と比べると停止判定が弱まる。境界より後だけを比べるように直すと、今度は改訂前の進展を捨てて逆方向に厳しくなる。境界を導入したら既存の履歴比較をすべて洗い出し、各観測を同じ区間の基準と比べる形にする。"
+description: "途中で受入条件を改訂できるようにしたとき、改訂前の充足集合を改訂後の観測と比べると停止判定が弱まる。境界より後の最初の観測を基準にすると、その観測が修正後の HEAD 上にある経路で実際の進展を捨て、逆方向に厳しくなる。改訂で追加された受入条件の ID を記録し、進展の比較からその ID だけを除く規則にすると、観測の経路に依らず判定できる。"
 created: "2026-09-28T05:02:36Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T05:02:36Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T06:02:43Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260928T045921Z-pr-3376.md"
   - type: "reviews"
     resource: "raw/reviews/20260928T040457Z-pr-3376.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260928T053745Z-pr-3376.md"
 tags: ["state-machine", "spec-revision", "history-comparison", "fix-introduced"]
 confidence: medium
 ---
@@ -32,16 +34,23 @@ confidence: medium
 
 ### 直し方
 
-- 各観測を、その観測が属する区間の基準と比べる（区間ごとの比較）
+- 基準となる観測を選び直すのではなく、改訂の中身を記録する。改訂で追加された受入条件の ID を記録し、進展の比較からその ID だけを除く。区間の最初の観測を基準にする方式は、その観測がどの経路で得られたか（修正後の HEAD 上か）で結果が変わるが、ID を除く規則は経路に依らない
 - 境界を導入したら、既存の履歴比較をすべて列挙し、境界で切るかどうかを 1 つずつ決める
-- 「記録済み」と案内する前に、context が一致するだけでなく本文まで一致することを確かめる。同じ cycle で再改訂すると、context だけの照合では古い記録を記録済みと誤案内する
+- 「記録済み」と案内する前に、context が一致するだけでなく、照合した本文と記録した本文まで一致することを確かめる。同じ cycle で再改訂すると、context だけの照合では古い記録を記録済みと誤案内する
+
+### 同じ変更で起きた検証の取りこぼし
+
+- Python モジュールに単独の `","` 定数があると、バイトコードに `,)` の並びとして残る。`__pycache__` まで走査するテキスト検査では、これが残骸パターンに一致しうる。テストが `__pycache__` を走査する間は、単独の `","` 定数を避けるか、検査側で `__pycache__` を除外する
+- verify の入力にディレクトリを指定すると、テスト実行で生成される `__pycache__` が入力を変える。先に一度テストを走らせてキャッシュを生成してから verify する（検証コマンドが検証入力を書き換える問題は関連ページ）
 
 ## 関連ページ
 
 - [新しい state 操作は既存 state との組み合わせを実際の入口から試し、停止ヒントは案内先が受理する状態でだけ出す](../heuristics/stop-hint-predicate-matches-target-acceptance.md)
 - [累積対策 PR の review-fix loop で fix 自体が drift を導入する](./fix-induced-drift-in-cumulative-defense.md)
+- [検証コマンドの環境指定に PATH を入れると hook 実行環境との差で stale 判定になる](../heuristics/verification-command-path-env-causes-stale-drift.md)
 
 ## ソース
 
 - [レビュー結果（区間の最初の観測を基準にする修正が進展を捨てる）](../../raw/reviews/20260928T045921Z-pr-3376.md)
 - [レビュー結果（改訂前の充足集合との比較が停止判定を弱める）](../../raw/reviews/20260928T040457Z-pr-3376.md)
+- [fix 結果（改訂で追加した受入条件の ID を進展から除く規則）](../../raw/fixes/20260928T053745Z-pr-3376.md)

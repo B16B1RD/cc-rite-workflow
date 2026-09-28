@@ -32,9 +32,13 @@ sources:
     resource: "raw/reviews/20260907T115248Z-pr-2607.md"
   - type: "reviews"
     resource: "raw/reviews/20260907T115932Z-pr-2607.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260928T050839Z-pr-3379.md"
 tags: ["refactor", "verification", "testing", "delegation"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-09-07T12:10:28Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T06:02:43Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T06:02:43Z" }
 ---
 
 # 委譲リファクタの動作保持は原実装との差分テストで機械的に立証する
@@ -112,6 +116,14 @@ GNU環境で得た設定値を全環境の固定期待値にすると、BSD環�
 
 比較はhelper単体に加え、実際のcallerを通して行う。helperがsignalの終了コードを保持しても、callerの末尾コマンドが正常終了すると中断が成功に変わる。一時ファイルも、所有者が削除する前にパス変数を空にすると回収できなくなる。終了コード・更新順序・作成側によるファイル回収を、callerを含む観測結果として確認する。
 
+### 計算量だけを変える修正も、旧実装を参照にして境界入力で突き合わせる
+
+hook の判定処理にあった二乗時間を直すとき、「判定結果を変えずに計算量だけを変える」修正として扱い、旧実装を参照実装に残して新実装と突き合わせてから置き換えた。比較に使った入力は、字句の境界にあたる形（改行、`<<<`、末尾の `<`、先頭の `<<`、UTF-8 の文字、不正なバイト列）である。性能の修正も動作を保つリファクタの一種なので、同じ差分テストで立証できる。
+
+- 計時テストは最悪形の入力で組み、実装を元に戻すとテストが落ちることを変異で確かめる。計時テストは緑になるだけでは、遅い実装でも通るかどうかが分からない
+- hook を呼ぶテストは、実行中のセッションの session 環境と state root を切り離す（`env -u` で session 変数を外し、state root を明示して上書きする）。切り離さないと、レビュー中のセッションでだけ別の判定が先に働いて結果が変わる
+- 修正範囲の外にある既存の根因（複数の検査が共有する heredoc の表面抽出にも同じ二乗がある）は、この修正では直さず、判断の記録に範囲の境界として残した
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -136,3 +148,4 @@ GNU環境で得た設定値を全環境の固定期待値にすると、BSD環�
 - [レビュー結果](../../raw/reviews/20260907T115248Z-pr-2607.md)
 
 - [レビュー結果](../../raw/reviews/20260907T115932Z-pr-2607.md)
+- [fix 結果（計算量だけを変える修正を旧実装との境界入力比較で立証）](../../raw/fixes/20260928T050839Z-pr-3379.md)
