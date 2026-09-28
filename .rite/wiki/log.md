@@ -173,6 +173,7 @@
 * **Update**: [base 取り込み後の再レビューは、同じ差分の再確認ではなく取り込み側との契約整合の確認として指示する](pages/heuristics/rereview-after-base-intake-checks-contract-consistency.md) — raw/reviews/20260928T141210Z-pr-3379.md を統合
 * **Update**: [identity を持たない判定台帳で複数 cycle の和集合を重複除外すると、重複防止と欠落防止を同時には満たせない](pages/anti-patterns/identity-less-ledger-union-dedup-cannot-prevent-both-duplicate-and-loss.md) — raw/reviews/20260928T142335Z-pr-3393.md を統合
 * **Update**: [保留（hold）を新設したら、寿命を state を消す全経路で揃え、解除の手段を保留の理由ごとに用意する](pages/heuristics/new-hold-state-lifecycle-across-all-purge-paths.md) — raw/fixes/20260928T140208Z-pr-3393.md を統合
+* **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=580, broken_refs=0
 
 ## 2026-09-27
 
