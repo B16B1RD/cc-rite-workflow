@@ -661,6 +661,8 @@ if [ "$SOURCE" = "resume" ] && [ "$ACTIVE" != "true" ] \
   else
     rm -f "$_resume_tmp" 2>/dev/null
     echo "rite: session-start: WARNING: failed to reactivate the state SessionEnd suspended: $STATE_FILE (/rite:recover で再開できます)" >&2
+    # exit 0 の hook の stderr はデバッグログにしか残らない。モデルに届くのは stdout だけ。
+    echo "rite: 中断した rite workflow を作業中に戻せませんでした ($STATE_FILE)。再開するには /rite:recover を実行してください。"
   fi
 fi
 

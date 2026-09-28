@@ -1491,7 +1491,7 @@ fi
 [ "$ok_p20" = 1 ] && pass "T-20 set / deactivate drop the mark, and a state reaped by another session stays inactive on resume"
 echo ""
 
-echo "T-21: a reactivation that cannot be written warns with the state path and leaves the state as it was"
+echo "T-21: a reactivation that cannot be written warns with the state path, tells the model on stdout, and leaves the state as it was"
 if [ "$(id -u)" -eq 0 ]; then
   pass "T-21 skipped as root (a read-only directory does not stop root)"
 else
@@ -1511,8 +1511,9 @@ else
   if [ "$rc_p21" -eq 0 ] && [ "$before_p21" = "$after_p21" ] \
     && jq -e '.active == false and .suspended_by_session_end == true' "$sf_p21" >/dev/null \
     && grep -qF "rite: session-start: WARNING: failed to reactivate the state SessionEnd suspended: $sf_p21" "$LAST_STDERR_FILE" \
+    && [[ "$out_p21" == *"$sf_p21"*"/rite:recover"* ]] \
     && ! grep -qF "中断した rite workflow を検出" <<< "$out_p21"; then
-    pass "T-21 the failed write warns with the path, rc=0, and the marked state is unchanged"
+    pass "T-21 the failed write warns with the path on stderr, points to /rite:recover with the path on stdout, rc=0, and the marked state is unchanged"
   else
     fail "T-21 rc=$rc_p21 same=$([ "$before_p21" = "$after_p21" ] && echo y || echo n) out=$out_p21"
   fi
