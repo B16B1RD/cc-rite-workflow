@@ -15,6 +15,16 @@
 * **Update**: [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) — raw/reviews/20260928T160504Z-pr-3408.md と raw/fixes/20260928T155121Z-pr-3408.md を統合
 * **Update**: [保留（hold）を新設したら、寿命を state を消す全経路で揃え、解除の手段を保留の理由ごとに用意する](pages/heuristics/new-hold-state-lifecycle-across-all-purge-paths.md) — raw/fixes/20260928T154359Z-pr-3393.md と raw/reviews/20260928T160221Z-pr-3393.md と raw/fixes/20260928T161213Z-pr-3393.md を統合
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=580, broken_refs=0
+* **Create**: [停止の保証は、条件なしで必ず発火する上限と、早く止めうる判定を分けて書く](pages/heuristics/stop-guarantee-separate-hard-bound-from-early-stop.md) — raw/reviews/20260928T162701Z-pr-3376.md を新規ページ化
+* **Create**: [冪等のキーを次の run で書き直される記録に置くなら、書き直す側が内容の一致で前の値を持ち越す](pages/heuristics/idempotency-key-must-survive-record-rewrite.md) — raw/reviews/20260928T163430Z-pr-3393.md を新規ページ化
+* **Update**: [冪等のキーを次の run で書き直される記録に置くなら、書き直す側が内容の一致で前の値を持ち越す](pages/heuristics/idempotency-key-must-survive-record-rewrite.md) — raw/fixes/20260928T165232Z-pr-3393.md を統合
+* **Create**: [重い解析を予算で飛ばす分岐は、生のテキストの正規化と後段の計算量まで解析側とそろえる](pages/heuristics/budget-skip-branch-align-normalization-and-cost.md) — raw/fixes/20260928T161725Z-pr-3412.md を新規ページ化
+* **Update**: [重い解析を予算で飛ばす分岐は、生のテキストの正規化と後段の計算量まで解析側とそろえる](pages/heuristics/budget-skip-branch-align-normalization-and-cost.md) — raw/reviews/20260928T163452Z-pr-3412.md を統合
+* **Update**: [重い解析を予算で飛ばす分岐は、生のテキストの正規化と後段の計算量まで解析側とそろえる](pages/heuristics/budget-skip-branch-align-normalization-and-cost.md) — raw/fixes/20260928T164307Z-pr-3412.md を統合
+* **Update**: [失敗の印との一致でその回だけ抑止する設計は後続の書き込みで崩れる — 抑止した時点で印を消して回収を完了させる](pages/anti-patterns/one-shot-suppression-by-failure-record-match-breaks-on-later-writes.md) — raw/reviews/20260928T162323Z-pr-3397.md を統合
+* **Update**: [失敗の印との一致でその回だけ抑止する設計は後続の書き込みで崩れる — 抑止した時点で印を消して回収を完了させる](pages/anti-patterns/one-shot-suppression-by-failure-record-match-breaks-on-later-writes.md) — raw/fixes/20260928T163712Z-pr-3397.md を統合
+* **Update**: [終了コードの契約は、その形を作る経路をすべて数え上げてから書く](pages/heuristics/exit-contract-enumerate-producing-paths.md) — raw/reviews/20260928T165800Z-pr-3397.md を統合
+* **Update**: [base 取り込み後の再レビューは、同じ差分の再確認ではなく取り込み側との契約整合の確認として指示する](pages/heuristics/rereview-after-base-intake-checks-contract-consistency.md) — raw/reviews/20260928T165339Z-pr-3376.md を統合
 
 ## 2026-09-28
 

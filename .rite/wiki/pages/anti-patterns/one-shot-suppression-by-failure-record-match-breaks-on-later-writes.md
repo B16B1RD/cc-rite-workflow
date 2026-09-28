@@ -4,11 +4,12 @@ title: "失敗の印との一致でその回だけ抑止する設計は後続の
 domain: "anti-patterns"
 description: "失敗の記録と現在の state がバイト単位で一致するときだけ抑止する設計は、「以後の書き込みは正当な作業の再開である」という前提に依存する。実際には印を残したまま state を書き換える処理があり、1 回目は抑止できても一致が崩れた後に回収済みの state が作業中へ戻る。抑止した時点で印そのものを消して回収を完了させると、後続の書き込みの種類に依存しなくなる。"
 created: "2026-09-28T14:28:35Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T15:38:14Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T17:00:11Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T14:28:35Z" }
   - by: "rite-wiki-ingest/claude-opus-5-5"
     at: "2026-09-28T15:38:14Z"
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T17:00:11Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260928T135334Z-pr-3397.md"
@@ -18,6 +19,10 @@ sources:
     resource: "raw/fixes/20260928T144840Z-pr-3397.md"
   - type: "reviews"
     resource: "raw/reviews/20260928T150912Z-pr-3397.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T162323Z-pr-3397.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260928T163712Z-pr-3397.md"
 tags: ["state", "resume", "suppression", "marker", "test-fixture"]
 confidence: medium
 ---
@@ -52,6 +57,12 @@ confidence: medium
 
 変更後は、抑止の分岐・state の条件・各記録の削除・一時ファイルの後始末・案内文のそれぞれを外す mutant がテストで落ちることを確かめる。
 
+**印の削除に失敗したら、警告して続行せず書き込み全体を失敗として返す。** 状態を書いた後に付随する記録（印）を消す設計で、削除の失敗を警告して続行する fallback を置くと、残った印が後の処理で作業を回収済みとして終わらせる。問題は 3 方向から同時に出る。後から始めた作業が回収扱いで終わる挙動、警告が告げる帰結が実際と違う文言、そして fallback を正しい挙動として固定したテストが正しい修正を落とすことである。fallback をやめる修正では、テストの期待も同時に書き換える。
+
+**2 つの失敗は別の終了コードで返す。** 記録の削除を書き込みより前に移すと、書き込みが失敗したときに「印あり・記録なし」という別の誤動作を生むため、順序は変えない。代わりに「状態は書けたが記録が残った」と「状態を書けなかった」を別の終了コードで返し、終了コードで分岐する呼び出し元（回収処理と起動時の回収経路）をそれぞれ合わせる。同じ終了コードに畳むと、呼び出し元の分岐が誤った文言を出す。
+
+**記録を消す書き込みを列挙して漏れを無くす。** 作業を始める・終えるすべての書き込み（set / deactivate / レビュー cycle 系）は記録を消し、印を残す書き込み（終了時・参照クリア）は消さない。寿命を書き込みの種類に結びつけるなら、該当する書き込みを数え上げる。
+
 ## 関連ページ
 
 - [Test が early exit 経路で silent pass する false-positive](./test-false-positive-early-exit.md)
@@ -62,3 +73,5 @@ confidence: medium
 - [抑止した時点で印を消すよう改めた fix 結果](../../raw/fixes/20260928T140840Z-pr-3397.md)
 - [fix 結果（印の寿命を実際の書き込みに結びつける）](../../raw/fixes/20260928T144840Z-pr-3397.md)
 - [レビュー結果（印を消す失敗を警告で流すと新しい誤動作になる）](../../raw/reviews/20260928T150912Z-pr-3397.md)
+- [記録の削除失敗を警告で流す fallback が 3 方向で問題になったレビュー結果](../../raw/reviews/20260928T162323Z-pr-3397.md)
+- [削除失敗を別の終了コードで返すよう改めた fix 結果](../../raw/fixes/20260928T163712Z-pr-3397.md)
