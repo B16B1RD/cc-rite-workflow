@@ -2341,8 +2341,8 @@ echo ""
 
 # --------------------------------------------------------------------------
 # TC-203: reviewer state-changing commands (sub-block (S)).
-# Reviewer-typed subagents are denied push / commit / GitHub writes / flow-state
-# writes / step drivers at command position; read-only commands that merely MENTION those words
+# Reviewer-typed subagents are denied push / commit / GitHub writes / gh pr checkout /
+# flow-state writes / step drivers at command position; read-only commands that merely MENTION those words
 # stay allowed; non-reviewer subagents and the main session are untouched.
 # --------------------------------------------------------------------------
 echo "TC-203: reviewer state-changing commands → deny; read-only and non-reviewer → allow"
@@ -2399,6 +2399,9 @@ for sc_cmd in \
   "gh pr review 1 --approve" \
   "gh pr update-branch 1" \
   "gh pr revert 1" \
+  "gh pr checkout 1" \
+  "gh -R o/r pr checkout 1 --force" \
+  "timeout 30 gh pr checkout 1" \
   "gh -R o/r issue create --title t --body b" \
   "gh issue edit 1 --add-label x" \
   "gh pr merge 1 --squash" \
@@ -2506,6 +2509,7 @@ for ro_sc_cmd in \
   "timeout 30 git status" \
   "gh pr create --help" \
   "gh issue close -h" \
+  "gh pr checkout --help" \
   "git push --help" \
   "git commit -h" \
   "bash -n plugins/rite/hooks/flow-state.sh" \
@@ -2558,7 +2562,7 @@ else
   fail "Expected fail-closed deny for a crash inside the (S) scan, got rc=$rc output=$output"
 fi
 for other_type in "general-purpose" ""; do
-  for other_cmd in "git push" "git commit -m x" "bash plugins/rite/hooks/flow-state.sh set --phase fix"; do
+  for other_cmd in "git push" "git commit -m x" "gh pr checkout 1" "bash plugins/rite/hooks/flow-state.sh set --phase fix"; do
     rc=0
     output=$(run_guard_typed "$other_type" "$other_cmd") || rc=$?
     if [ "$rc" = "0" ] && [ -z "$output" ]; then

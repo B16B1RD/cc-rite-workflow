@@ -18,8 +18,8 @@
 #        (H) WRITE into a .git dir via redirect / file-mutating verb → deny
 #      plus, for reviewer-classified subagents only:
 #        (S) state-changing command at command position — git push / git commit,
-#            a GitHub write (gh pr / issue writes, gh api writes), a flow-state.sh
-#            write, or a skill step driver (*-step.sh) → deny
+#            a GitHub write (gh pr / issue writes, gh api writes), gh pr checkout,
+#            a flow-state.sh write, or a skill step driver (*-step.sh) → deny
 #   5. Merge-point review-result positive gate — main-session
 #      (and any session) Bash that issues `gh pr merge` / REST pulls/{n}/merge /
 #      GraphQL mergePullRequest is denied unless `.rite/review-results/{pr}-*.json`
@@ -47,7 +47,11 @@
 # closed set in (S): a push or a GitHub write leaves the machine, a commit or a
 # flow-state write moves the history and workflow state the parent session
 # continues from, and a step driver can do either; reviewers have been observed running them despite
-# the prompt contract, so the prompt alone is not enough.
+# the prompt contract, so the prompt alone is not enough. `gh pr checkout` is in
+# (S) although `git checkout` is not: it sits next to the read-only `gh pr view`
+# / `gh pr diff` a reviewer uses to inspect a PR, and besides switching the
+# branch it fetches the PR head into a local branch (reset with --force), which
+# stops whichever session is working in that tree.
 #
 # Exit behavior: exit 0 — allow (no output); stdout JSON with
 # permissionDecision: "deny" — block.
@@ -512,7 +516,7 @@ _rite_btg_state_change_match() {
         esac ;;
       ghsub)
         case "$_grp:$_n" in
-          pr:comment|pr:create|pr:edit|pr:merge|pr:close|pr:reopen|pr:ready|pr:review|pr:lock|pr:unlock|pr:update-branch|pr:revert|issue:create|issue:comment|issue:edit|issue:close|issue:reopen|issue:delete|issue:transfer|issue:lock|issue:unlock|issue:pin|issue:unpin|issue:develop)
+          pr:comment|pr:create|pr:edit|pr:merge|pr:close|pr:reopen|pr:ready|pr:review|pr:lock|pr:unlock|pr:update-branch|pr:revert|pr:checkout|issue:create|issue:comment|issue:edit|issue:close|issue:reopen|issue:delete|issue:transfer|issue:lock|issue:unlock|issue:pin|issue:unpin|issue:develop)
             _pend="gh $_grp $_n"; _mode=help ;;
           *:-R|*:--repo) _skip=1 ;;
           *:-*) : ;;
@@ -960,6 +964,8 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   #   - `gh pr` / `gh issue` writing subcommands (comment / create / edit / merge
   #     / close / …) and `gh api` with a writing method (see
   #     _rite_btg_state_change_match);
+  #   - `gh pr checkout`: it switches the branch of a working tree the parent
+  #     session (or a parallel session sharing that worktree) is using;
   #   - `flow-state.sh` with any subcommand but `get` / `path`, or none;
   #   - `*-step.sh`, the skills' step drivers (`iterate-step.sh`, …), whatever the
   #     subcommand — they are the orchestrator's, and a subcommand can push.
@@ -995,7 +1001,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
       BLOCKED_ALTERNATIVE="Split the command into shorter commands — reviewer operations are at most a few KB. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement) for the read-only command set."
     elif [ -n "$_sc_hit" ]; then
       BLOCKED_PATTERN="reviewer-state-change"
-      BLOCKED_REASON="This subagent is treated as a reviewer (${REVIEWER_TYPE_BASIS}), and reviewers are read-only. This command runs '${_sc_hit}', which pushes, commits, writes to GitHub (gh pr / issue writes, gh api writes), rewrites the workflow state (flow-state), or runs a skill's step driver (*-step.sh) — state the parent session relies on, or that leaves the machine."
+      BLOCKED_REASON="This subagent is treated as a reviewer (${REVIEWER_TYPE_BASIS}), and reviewers are read-only. This command runs '${_sc_hit}', which pushes, commits, writes to GitHub (gh pr / issue writes, gh api writes), switches the working tree's branch (gh pr checkout), rewrites the workflow state (flow-state), or runs a skill's step driver (*-step.sh) — state the parent session relies on, or that leaves the machine."
       BLOCKED_ALTERNATIVE="Report the problem as a finding and leave the change to /rite:fix. Read-only inspection stays allowed: 'git diff', 'git log', 'git show', 'gh pr view', 'gh pr diff', 'gh issue view', 'gh api <endpoint>' (GET; add '-X GET' when passing fields), a graphql query, 'flow-state.sh get --field <f>', 'flow-state.sh path', and running tests ('bash <test>'). For a mutation experiment, use the isolated detached worktree in plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement / Mutation experiments)."
     fi
   fi
