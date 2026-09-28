@@ -14,12 +14,12 @@
 # When anything is held, nothing may be written: every candidate of the run with its full
 # text (held_ids names the held ones), the source, the reviewed commit and how to resume
 # are saved to the hold file and the gate exits 3. A decided run removes a stale hold file
-# of the same path. The next run must still carry every candidate the previous hold saved
-# (compared by full text without id, since triage renumbers ids); otherwise the dropped
-# ones are kept in the hold. Triage compares on any commit, since its candidates live
-# nowhere else; sweep and followup compare only on the same commit, since they rebuild
-# their candidates from the review results. With no candidate and nothing dropped, the run
-# decides with no verdict (and so retires a sweep or followup hold of another commit).
+# of the same path. The next run must still carry every candidate the previous hold saved,
+# on any commit (compared by full text without id, since ids are renumbered); otherwise the
+# dropped ones are kept in the hold. The callers carry them: triage and sweep merge the
+# hold's candidates into the new candidates and judge them on the new commit, and the
+# followup keeps them out of its exclusions. With no candidate and nothing dropped, the run
+# decides with no verdict.
 #
 # Usage:
 #   review-adoption-gate.sh --pr N --kind sweep|triage|followup --state-root DIR \
@@ -96,11 +96,12 @@ resume_for() {
       echo "detail に出ている取得失敗の原因（gh 認証・ネットワーク・本文の読み取りなど）を解消してから $cmd を再実行する（判定記録は直さない）"
       return ;;
     held_candidates_dropped)
-      if [ "$kind" = triage ]; then
-        echo "前回の hold ファイルの candidates にある候補が今回の候補に含まれていない。欠けた候補を全文のまま候補へ戻してから $cmd を再実行する（スコープ外処分の手順 1 が hold ファイルの候補を合流させる）"
-      else
-        echo "前回の hold ファイルの candidates にある候補が今回の候補に含まれていない。同じ入力（レビュー結果 JSON）で候補を作り直してから $cmd を再実行する"
-      fi
+      case "$kind" in
+        triage) way="スコープ外処分の手順 1 が hold ファイルの候補を合流させる" ;;
+        sweep) way="nb-sweep-collect.sh が hold ファイルの候補を candidates に合流させる" ;;
+        followup) way="follow-up は hold ファイルの候補を再検証の除外から外す" ;;
+      esac
+      echo "前回の hold ファイルの candidates にある候補が今回の候補に含まれていない。欠けた候補を全文のまま候補へ戻してから $cmd を再実行する（${way}）"
       return ;;
     undecided) ;;
     *) echo "$records"; return ;;
@@ -161,14 +162,12 @@ jq -e '(.commit_sha | type) == "string"' "$review_result" >/dev/null 2>&1 \
   || { echo "ERROR: --review-result has no commit_sha: $review_result" >&2; exit 2; }
 head=$(jq -r '.commit_sha' "$review_result")
 
-# The next run keeps the previous hold's candidates: triage on any commit, sweep and
-# followup on the same commit. Triage renumbers ids, so each saved candidate is looked up
-# by its full text without id.
+# The next run keeps the previous hold's candidates on any commit. Ids are renumbered,
+# so each saved candidate is looked up by its full text without id.
 if [ -e "$hold_file" ]; then
-  dropped=$(jq -nc --arg head "$head" --arg kind "$kind" --slurpfile h "$hold_file" --slurpfile c "$candidates" '
+  dropped=$(jq -nc --slurpfile h "$hold_file" --slurpfile c "$candidates" '
       if ($h | length) != 1 or ($h[0].head | type) != "string" or ($h[0].candidates | type) != "array"
          or any($h[0].candidates[]; (.id | type) != "string") then error("malformed hold file")
-      elif $h[0].head != $head and $kind != "triage" then []
       else [$c[0].candidates[] | del(.id)] as $now
         | [$h[0].candidates[] | select(del(.id) as $x | any($now[]; . == $x) | not)] end
     ' 2>"$work/err") || {

@@ -565,6 +565,15 @@ if [ -z "$nb_root" ]; then
   echo "[iterate:nb-sweep-error]"
   exit 1
 fi
+# スコープ外処分（triage）の保留を解くのは mergeable の review のステップ 7 だけ。
+# 保留が残ったまま完了へ進まない。
+nb_triage_hold="$nb_root/.rite/state/adoption-hold-$pr_number-triage.json"
+if [ -e "$nb_triage_hold" ]; then
+  echo "ERROR: スコープ外処分の採否が保留のままです。完了へ進みません。$nb_triage_hold の resume に従って再開してください（保留は mergeable のレビューのステップ 7 で解けます。解けなければこの停止のまま人間に報告してください）" >&2
+  marker_emit ITERATE_NB_SWEEP failed "reason=triage_adoption_held" "hold_file=$nb_triage_hold"
+  echo "[iterate:nb-sweep-error]"
+  exit 1
+fi
 nb_done_file="$nb_root/.rite/state/nb-sweep-done-$pr_number.txt"
 nb_latest=$(find "$nb_root/.rite/review-results" -maxdepth 1 -type f -name "$pr_number-*.json" 2>/dev/null | LC_ALL=C sort | tail -1)
 nb_latest_base=""
@@ -573,7 +582,9 @@ nb_range=""
 if [ -f "$nb_done_file" ]; then
   nb_range=$(awk 'NR==1 { print $2 }' "$nb_done_file")
 fi
-if [ -n "$nb_range" ] && [ "$nb_range" = "$nb_latest_base" ]; then
+# sweep の保留候補は collect が今回の候補へ合流させるので、保留があれば done でも skip しない
+if [ -n "$nb_range" ] && [ "$nb_range" = "$nb_latest_base" ] \
+   && [ ! -e "$nb_root/.rite/state/adoption-hold-$pr_number-sweep.json" ]; then
   skipped_kind=$(awk 'NR==1 { print $1 }' "$nb_done_file")
   case "$skipped_kind" in
     done|noop) ;;
@@ -593,10 +604,6 @@ count=$(printf '%s' "$collect_out" | jq -r '.count // empty' 2>/dev/null) || cou
 # 台帳 persist の後・完了の前に止まった sweep は、台帳に全件載っているので collect が empty を返す。
 # 起票済みの件数と entries の片付けは fix の手順 1 が持つので、entries が残る限り fix へ渡す。
 if [ "$collect_rc:$status" = "0:empty" ] && [ -f "$nb_root/.rite/state/nb-sweep-entries-$pr_number.md" ]; then
-  status=ok
-fi
-# sweep の保留ファイルが残っていれば、候補 0 件でも fix へ渡し、ゲートに古い保留を判定させる。
-if [ "$collect_rc:$status" = "0:empty" ] && [ -f "$nb_root/.rite/state/adoption-hold-$pr_number-sweep.json" ]; then
   status=ok
 fi
 case "$collect_rc:$status" in

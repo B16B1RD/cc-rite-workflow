@@ -153,7 +153,7 @@ check(saved['held_ids'] == ['F-03'] and saved['candidates'] == THREE, saved)
 # A same-commit rerun without the candidate decided as file keeps it in the hold with its full text.
 saved, _ = held([rec(['F-01'], **REJECT), rec(['F-03'], **unknown)], 'held_candidates_dropped', cands=[THREE[0], THREE[2]])
 check(THREE[1] in saved['candidates'] and 'F-02' in saved['held_ids'], saved)
-check('作り直して' in saved['resume'] and '戻して' not in saved['resume'], saved['resume'])
+check('候補へ戻して' in saved['resume'] and 'nb-sweep-collect.sh' in saved['resume'], saved['resume'])
 hold_file.unlink()
 
 # RESOLVED and a pre-existing LINK record the disposition; a PR-origin LINK stays blocking and is held.
@@ -254,11 +254,22 @@ check('候補へ戻して' in saved['resume'] and '作り直して' not in saved
 decided([rec(['C-1'], **REJECT), rec(['C-2'], **REJECT)], kind='triage',
         cands=[dict(CANDS[1], id='C-1'), dict(CANDS[0], id='C-2')], at=next_head)
 check(not triage_hold.exists(), 'the decided run on the new commit must clear the triage hold')
-# Sweep rebuilds its candidates from the review results: a run on a new commit with no candidate
-# decides and retires the previous hold.
+# Sweep and followup keep their hold on any commit as well: a run on a new commit without the
+# held candidates is held again, never retired.
 held([], 'no_records', write=False)
-verdicts, _ = decided([], cands=[], write=False, at=next_head)
-check(verdicts == {} and not hold_file.exists(), 'a decided sweep run on a new commit must clear the sweep hold')
+saved, _ = held([], 'held_candidates_dropped', cands=[], write=False, at=next_head)
+check(saved['head'] == next_head and saved['held_ids'] == ['F-01', 'F-02'], saved)
+check('nb-sweep-collect.sh' in saved['resume'], saved['resume'])
+# Carrying the held candidates under new ids and judging them on the new commit decides.
+carried = [dict(c, id='held-' + c['id']) for c in CANDS]
+verdicts, _ = decided([rec(['held-F-01'], **resolved), rec(['held-F-02'], **REJECT)], cands=carried, at=next_head)
+check(verdicts['held-F-01']['exit'] == 'RESOLVED' and verdicts['held-F-02']['exit'] == 'REJECT', verdicts)
+check(not hold_file.exists(), 'judging the carried candidates on the new commit must clear the sweep hold')
+followup_hold = state / '.rite/state/adoption-hold-5-followup.json'
+held([], 'no_records', kind='followup', write=False)
+saved, _ = held([], 'held_candidates_dropped', kind='followup', cands=[], write=False, at=next_head)
+check(saved['held_ids'] == ['F-01', 'F-02'] and 'follow-up' in saved['resume'], saved)
+followup_hold.unlink()
 # No candidate at all: nothing to judge, unless the triage hold still has candidates.
 verdicts, _ = decided([], kind='triage', cands=[], write=False)
 check(verdicts == {}, verdicts)

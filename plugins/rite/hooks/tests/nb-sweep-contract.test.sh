@@ -307,6 +307,37 @@ assert "only the issued row excludes a target; legacy rejected / recorded rows d
 assert "legacy rows keep their target at the same location" "src/old.ts" "$(printf '%s' "$live_out" | jq -r '.targets[] | select(.id=="old") | .file')"
 assert "legacy rows give no prior" 0 "$(printf '%s' "$live_out" | jq '[.targets[] | select(has("prior"))] | length')"
 assert "guardrail ledger excluded" "0" "$(printf '%s' "$live_out" | jq '.already_rejected | length')"
+assert "candidates are the targets with id=key, finding_id and the record of the JSON read" \
+  "$(printf '%s' "$live_out" | jq -c '[.targets[] | . + {finding_id: .id, id: .key, record: "live.json"}]')" \
+  "$(printf '%s' "$live_out" | jq -c '.candidates')"
+
+# A sweep hold saved on another review JSON is carried into candidates on the JSON read now:
+# its candidates keep the record they came from (nit-noted ones included) and a taken id gets held-.
+carry_root="$sandbox/carry"
+mkdir -p "$carry_root/.rite/state"
+carry_hold="$carry_root/.rite/state/adoption-hold-1-sweep.json"
+printf '%s' "$live_out" | jq '{kind: "sweep", pr: 1, head: "aaaa", review_result: "/x/1-old.json", reason: "undecided",
+  detail: "", held_ids: ["old"],
+  candidates: ([.candidates[] | select(.id == "old")]
+    + [{id: "rec", key: "rec", finding_id: "rec", source: "findings_nit_noted", file: "src/nit.ts", line: 5,
+        severity: "LOW", scope: "nit-noted", description: "nit", suggestion: "", verification: null, record: "1-old.json"}]),
+  resume: "r"}' > "$carry_hold"
+carry_out=$("$COLLECT" --json "$live_json" --pr 1 --state-root "$carry_root")
+assert "carry: a held candidate the targets still have is not duplicated" 1 \
+  "$(printf '%s' "$carry_out" | jq '[.candidates[] | select(.file == "src/old.ts")] | length')"
+assert "carry: a held nit-noted candidate the targets lack is carried with its own record" "held-rec|1-old.json|findings_nit_noted" \
+  "$(printf '%s' "$carry_out" | jq -r '.candidates[] | select(.file == "src/nit.ts") | "\(.id)|\(.record)|\(.source)"')"
+assert "carry: count includes the carried candidate" "$(( $(printf '%s' "$live_out" | jq '.count') + 1 ))" "$(printf '%s' "$carry_out" | jq '.count')"
+assert "carry: targets are unchanged" "$(printf '%s' "$live_out" | jq -c '.targets')" "$(printf '%s' "$carry_out" | jq -c '.targets')"
+empty_json="$sandbox/empty-review.json"
+printf '{"non_blocking_findings": []}\n' > "$empty_json"
+carry_empty=$("$COLLECT" --json "$empty_json" --pr 1 --state-root "$carry_root")
+assert "carry: a hold makes a review JSON with no target ok, not empty" "ok|2" \
+  "$(printf '%s' "$carry_empty" | jq -r '"\(.status)|\(.candidates | length)"')"
+printf '{"candidates": [{"id": "x"}]}\n' > "$carry_hold"
+"$COLLECT" --json "$live_json" --pr 1 --state-root "$carry_root" > /dev/null 2> "$sandbox/carry-bad.err"
+assert "carry: a hold without the candidates' record stops the collect" 1 "$?"
+assert_grep "carry: the unreadable hold is named" "$sandbox/carry-bad.err" 'reason=hold_unreadable'
 
 # CRLF body: the ledger section must be read exactly as the LF body (same targets, same section boundary).
 crlf_ledger_body="$sandbox/live-ledger-crlf.md"
@@ -466,7 +497,9 @@ SH
 cat > "$stub_plugin/hooks/scripts/nb-sweep-collect.sh" <<'SH'
 #!/usr/bin/env bash
 jq -n --arg r "$NB_TEST_STATE/.rite/review-results/7-20260101120000.json" \
-  '{status:"ok",count:1,record:$r,targets:[{id:"F-01",key:"F-01",file:"src/a.ts",line:1,description:"d"}],already_rejected:[]}'
+  '{id:"F-01",key:"F-01",file:"src/a.ts",line:1,description:"d"} as $t
+   | {status:"ok",count:1,record:$r,targets:[$t],
+      candidates:[$t + {finding_id:"F-01",record:"7-20260101120000.json"}],already_rejected:[]}'
 SH
 # ゲートは stub (出口ごとの stdout と exit) と実物 (判定記録が無いと hold する) の両方で通す
 cat > "$stub_plugin/hooks/scripts/review-adoption-gate.sh" <<'SH'
@@ -1613,7 +1646,7 @@ fi
 t23_step3=$(awk '/^3\. \*\*台帳 persist\*\*/{s=1} /^4\. \*\*完了\*\*/{s=0} s && /^```/{f=!f; next} s && !f' "$FIX")
 for t23_phrase in 'entries（`.rite/state/nb-sweep-entries-{pr_number}.md`）を stderr の理由に合わせて直し' '手順 2 の起票をやり直さない' \
                   '手順 3 だけを再実行する' '起票済みの Issue は entries の issued 行が持つ' \
-                  'entries の全行について最終列が手順 1 の `record=` の basename（全行同じ値）になっているかを確かめ、欠けた行には最終列として足す。別の record を名指す行は書き換えない' \
+                  'entries の全行について最終列がその行の candidate の `record`（`already_rejected` は手順 1 の `record=` の basename）になっているかを確かめ、欠けた行には最終列として足す。別の record を名指す行は書き換えない' \
                   'この会話で続けられないときは entries を直したうえで `/rite:iterate {pr_number}` を再実行する（別の会話からでもよい）' \
                   'iterate のステップ 0.7 が再レビューを回さずに 5.S へ戻し、手順 1 が `NB_SWEEP_ENTRIES=present` を出すので手順 2 を飛ばして手順 3 から続く' \
                   '1 行でもあれば、append は entries 全体を `reason=entries_source_invalid` で拒否し、台帳を変更しない'; do
@@ -1624,7 +1657,7 @@ assert "T-23 手順 2 は手順 3 の再実行で同じ sweep の entries を直
 assert "T-23 手順 3 は別の record の出典を今回の record へ書き換えさせない" 0 \
   "$(printf '%s\n' "$t23_step3" | grep -cF '値の違う行はその値に直す')"
 assert "T-23 手順 1 の stale は別の record を名指す行を書き換えずに元の出典で台帳へ載せさせる" 1 \
-  "$(grep -F '別の record を名指す行は前回の sweep が起票したまま台帳に載せられなかった記録であり、出典を今回の record に書き換えてはならない' "$FIX" | grep -cF '書き換えずに手順 3 の bash だけを実行して元の出典のまま台帳へ載せ、成功したら entries を消して `/rite:iterate {pr_number}` を再実行する')"
+  "$(grep -F '別の record を名指す行は前回の sweep が起票したまま台帳に載せられなかった記録か、今回の sweep が合流させた保留候補の記録であり、出典を今回の record に書き換えてはならない' "$FIX" | grep -cF '書き換えずに手順 3 の bash だけを実行して元の出典のまま台帳へ載せ、成功したら entries を消して `/rite:iterate {pr_number}` を再実行する')"
 assert "T-23 手順 1 の stale は台帳に既に載っている行で手順 3 を再実行させない" 1 \
   "$(grep -F '別の record を名指す行は' "$FIX" | grep -F '同じ id・位置・出典の行が既にあれば、手順 3 は成功済みなので再実行しない' | grep -cF 'entries を消して `/rite:iterate {pr_number}` を再実行する。無ければ書き換えずに')"
 assert "T-23 手順 2 は前回の sweep の entries を今回の起票済みとして使わない" 1 \

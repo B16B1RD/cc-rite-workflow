@@ -265,8 +265,8 @@ else
 fi
 assert_grep 'step 7.2 skips only with no candidate and no hold file' "$review_main" \
   '`candidate_count == 0`（hold の候補を含む）かつ triage の hold ファイルが無いときだけ 7.2〜7.7 をスキップする。'
-for stale in '推奨決定 + User Confirmation' 'モードに応じた確認' 'complete confirmation' 'ユーザー固有・不可逆'; do
-  if grep -Fq "$stale" "$review_main"; then
+for stale in '推奨決定 + User Confirmation' 'モードに応じた確認' 'complete confirmation' 'ユーザー固有・不可逆' 'ユーザー確認のうえ'; do
+  if grep -Fq "$stale" "$review_main" "$ROOT/plugins/rite/skills/pr-review/references/reviewer-prompt-generator.md"; then
     fail "per-candidate confirmation remains in pr-review: $stale"
   else
     pass "no per-candidate confirmation in pr-review: $stale"

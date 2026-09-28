@@ -339,12 +339,12 @@ args: "{pr_number}"
 
 ## ステップ 5.S: NB digest sweep
 
-`[review:mergeable]` / `[fix:non-fatal-only]` / `[fix:replied-only]` 到達後・完了通知前に、未 sweep の最新 review JSON につき **1 回**。対象 0 件は no-op（fix を invoke しない。sweep の保留ファイルがあれば対象 0 件でも fix へ渡す）。同一 review JSON では 2 回 invoke しない。新しい JSON では再 sweep する。silent skip 禁止。Stop hook が `review:mergeable` / `fix:non-fatal-only` / `fix:replied-only` の FINALIZE で完了通知を求めても、5.S 未実施なら先に本ステップを実行する。成功後は PR 内推奨の修正と完了前確認を経てからステップ 5 へ。Stop hook がステップ 5 を求めてもこの 2 つを飛ばさない。
+`[review:mergeable]` / `[fix:non-fatal-only]` / `[fix:replied-only]` 到達後・完了通知前に、未 sweep の最新 review JSON につき **1 回**。対象 0 件は no-op（fix を invoke しない。sweep の保留ファイルの候補は collect が対象へ合流させるので、保留があれば対象は 0 件にならない）。スコープ外処分（triage）の保留ファイルがあれば、完了へ進まずに止まる。同一 review JSON では 2 回 invoke しない。新しい JSON では再 sweep する。silent skip 禁止。Stop hook が `review:mergeable` / `fix:non-fatal-only` / `fix:replied-only` の FINALIZE で完了通知を求めても、5.S 未実施なら先に本ステップを実行する。成功後は PR 内推奨の修正と完了前確認を経てからステップ 5 へ。Stop hook がステップ 5 を求めてもこの 2 つを飛ばさない。
 rationale: references/rationale.md#nb-sweep-step
 
 入口の通常ループ sentinel（ステップ 0.7 から入ったときは `origin=`）を `{sweep_origin}` として保持する。collect は `pending` のときこの値を入口記録に書く。5.S 再入時も保持値を使い、内部の `[fix:sweep-done]` や handoff で上書きしない。
 
-会話の `[CONTEXT] ITERATE_NB_SWEEP=done|noop` は観測用。skip 判定は done ファイル 1 行目の第 2 フィールドが最新 review JSON の basename と一致するときだけ（欠落は skip しない。下の bash）。marker 既出でも bash を省略しない。
+会話の `[CONTEXT] ITERATE_NB_SWEEP=done|noop` は観測用。skip 判定は done ファイル 1 行目の第 2 フィールドが最新 review JSON の basename と一致し、sweep の保留ファイルが無いときだけ（欠落は skip しない。下の bash）。marker 既出でも bash を省略しない。
 
 ```bash
 bash {plugin_root}/scripts/iterate-step.sh nb-sweep-collect --pr {pr_number} --sweep-origin '{sweep_origin}'
@@ -355,7 +355,7 @@ bash {plugin_root}/scripts/iterate-step.sh nb-sweep-collect --pr {pr_number} --s
 | `skipped` | PR 内推奨の修正。collect / fix を invoke しない |
 | `noop` | PR 内推奨の修正。fix を invoke しない |
 | `pending` | `/rite:fix --nb-sweep` を invoke |
-| `failed` | `[iterate:nb-sweep-error]` で停止。完了通知へ進まない |
+| `failed` | `[iterate:nb-sweep-error]` で停止。完了通知へ進まない。`reason=triage_adoption_held` は triage の保留が残っている（`hold_file=` の resume に従う。保留は mergeable の review のステップ 7 が解く。解けなければ停止のまま人間に報告する） |
 
 `pending` のとき:
 

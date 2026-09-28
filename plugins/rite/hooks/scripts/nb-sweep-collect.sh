@@ -17,12 +17,20 @@
 #     {finding_id, file_line, disposition, premise (= 判定文)} for the classifier to copy
 #     into its adoption record.
 #   - already_rejected is excluded by an issued / recorded / rejected row as before.
+# candidates[] is what the sweep's adoption gate judges: every target as {id: key,
+# finding_id: id, record: <basename of the review JSON>} plus its fields. With --pr, the
+# candidates of the sweep hold file (STATE_ROOT/.rite/state/adoption-hold-PR-sweep.json)
+# that no target matches by full text without id are carried into candidates[] as saved,
+# keeping the record of the review JSON they came from (the ledger 出典 cleanup matches);
+# a carried id already taken is renamed with a held- prefix. They are judged again on the
+# review JSON read now, whatever commit the hold was saved on.
 #
 # Usage:
 #   bash nb-sweep-collect.sh --json <path>
 #   bash nb-sweep-collect.sh --pr <n> --state-root <path>
 #
-# stdout: JSON {status, count, record, targets[], already_rejected[]}
+# stdout: JSON {status, count, record, targets[], candidates[], already_rejected[]}
+#         count is targets + carried hold candidates + already_rejected.
 # stderr: [CONTEXT] NB_SWEEP_COLLECT=ok|empty|failed; count=N; record=PATH
 #
 # Exit:
@@ -104,7 +112,16 @@ if [ -n "$pr" ]; then
   '); then collect_fail ledger_invalid; fi
 fi
 
-if ! out=$(jq -c --arg record "$json" --argjson ledger "$ledger_rows" '
+hold='null'
+hold_file="$state_root/.rite/state/adoption-hold-$pr-sweep.json"
+if [ -n "$pr" ] && [ -e "$hold_file" ]; then
+  hold=$(jq -ce 'if type == "object" and (.candidates | type) == "array"
+      and all(.candidates[]; type == "object" and (.id | type) == "string" and .id != ""
+        and (.record | type) == "string" and .record != "") then . else error("malformed") end' \
+    "$hold_file" 2>/dev/null) || collect_fail hold_unreadable
+fi
+
+if ! out=$(jq -c --arg record "$json" --argjson ledger "$ledger_rows" --argjson hold "$hold" '
   ($record | split("/") | last) as $record_base
   | def target:
     (.id // "") as $id
@@ -157,12 +174,18 @@ if ! out=$(jq -c --arg record "$json" --argjson ledger "$ledger_rows" '
         description: (.description // ""),
         filter_reason: (.filter_reason // "")
       }) | map(select(transcribed(.reviewer; .file_line) | not))) as $guardrails
-  | (($targets | length) + ($guardrails | length)) as $count
+  | [$targets[] | . + {finding_id: .id, id: .key, record: $record_base}] as $now
+  | [$now[] | del(.id)] as $now_text
+  | [$now[].id] as $taken
+  | [($hold.candidates // [])[] | select(del(.id) as $x | any($now_text[]; . == $x) | not)
+      | .id |= until(. as $i | $taken | index($i) | not; "held-" + .)] as $carried
+  | (($targets | length) + ($carried | length) + ($guardrails | length)) as $count
   | {
       status: (if $count == 0 then "empty" else "ok" end),
       count: $count,
       record: $record,
       targets: $targets,
+      candidates: ($now + $carried),
       already_rejected: $guardrails
     }
 ' "$json"); then
