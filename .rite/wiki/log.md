@@ -72,6 +72,8 @@
 * **Skip**: raw/reviews/20260928T010731Z-pr-3364.md — detector-candidate（Wiki 適用証跡の evidence 形式はゲートが既に拒否）
 * **Skip**: raw/reviews/20260928T010350Z-pr-3363.md — 既存ページを超える経験則なし
 
+* **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=62, orphans=0, missing_concept=0, unregistered_raw=576, broken_refs=0
+
 ## 2026-09-27
 
 * **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/reviews/20260927T160944Z-pr-3307.md を統合
