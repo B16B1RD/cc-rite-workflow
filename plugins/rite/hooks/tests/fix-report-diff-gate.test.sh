@@ -413,6 +413,7 @@ assert "T-12 passed" \
 # --- T-05 / T-06 / 4.6 static pins ---
 FIX_SKILL="$PLUGIN_ROOT/skills/fix/SKILL.md"
 PR_SKILL="$PLUGIN_ROOT/skills/pr-review/SKILL.md"
+PR_STEP="$PLUGIN_ROOT/scripts/pr-review-step.sh"
 VERIF="$PLUGIN_ROOT/skills/pr-review/references/reviewer-prompt-verification.md"
 
 assert_file_exists_or_fail "T-05 verification template" "$VERIF" || true
@@ -436,22 +437,22 @@ if [ -f "$FIX_SKILL" ]; then
   assert_grep "T-09 fix triage rejects empty jq output" "$FIX_SKILL" '\[ ! -s "\$triage_state_tmp" \]'
 fi
 
-if [ -f "$PR_SKILL" ]; then
-  pr_cleanup_line=$(grep -nF '_rite_pr_review_attribution_cleanup() {' "$PR_SKILL" | head -1 | cut -d: -f1)
-  pr_exit_trap_line=$(grep -nF "trap 'rc=\$?; _rite_pr_review_attribution_cleanup; exit \$rc' EXIT" "$PR_SKILL" | head -1 | cut -d: -f1)
-  pr_int_trap_line=$(grep -nF "trap '_rite_pr_review_attribution_cleanup; exit 130' INT" "$PR_SKILL" | head -1 | cut -d: -f1)
-  pr_term_trap_line=$(grep -nF "trap '_rite_pr_review_attribution_cleanup; exit 143' TERM" "$PR_SKILL" | head -1 | cut -d: -f1)
-  pr_hup_trap_line=$(grep -nF "trap '_rite_pr_review_attribution_cleanup; exit 129' HUP" "$PR_SKILL" | head -1 | cut -d: -f1)
-  pr_mktemp_line=$(grep -nF 'attribution_state_tmp=$(mktemp "${state_file}.tmp.XXXXXX")' "$PR_SKILL" | head -1 | cut -d: -f1)
-  pr_marker_line=$(grep -nF "printf '[CONTEXT] ATTRIBUTION_WRITTEN total=%d fix_introduced=%d\\n'" "$PR_SKILL" | head -1 | cut -d: -f1)
+if [ -f "$PR_STEP" ]; then
+  pr_cleanup_line=$(grep -nF '_rite_pr_review_attribution_cleanup() {' "$PR_STEP" | head -1 | cut -d: -f1)
+  pr_exit_trap_line=$(grep -nF "trap 'rc=\$?; _rite_pr_review_attribution_cleanup; exit \$rc' EXIT" "$PR_STEP" | head -1 | cut -d: -f1)
+  pr_int_trap_line=$(grep -nF "trap '_rite_pr_review_attribution_cleanup; exit 130' INT" "$PR_STEP" | head -1 | cut -d: -f1)
+  pr_term_trap_line=$(grep -nF "trap '_rite_pr_review_attribution_cleanup; exit 143' TERM" "$PR_STEP" | head -1 | cut -d: -f1)
+  pr_hup_trap_line=$(grep -nF "trap '_rite_pr_review_attribution_cleanup; exit 129' HUP" "$PR_STEP" | head -1 | cut -d: -f1)
+  pr_mktemp_line=$(grep -nF 'attribution_state_tmp=$(mktemp "${state_file}.tmp.XXXXXX")' "$PR_STEP" | head -1 | cut -d: -f1)
+  pr_marker_line=$(grep -nF "printf '[CONTEXT] ATTRIBUTION_WRITTEN total=%d fix_introduced=%d\\n'" "$PR_STEP" | head -1 | cut -d: -f1)
   if [ -n "$pr_cleanup_line" ] && [ -n "$pr_exit_trap_line" ] && [ -n "$pr_int_trap_line" ] && [ -n "$pr_term_trap_line" ] && [ -n "$pr_hup_trap_line" ] && [ -n "$pr_mktemp_line" ] && [ -n "$pr_marker_line" ] && \
     [ "$pr_cleanup_line" -lt "$pr_exit_trap_line" ] && [ "$pr_exit_trap_line" -lt "$pr_int_trap_line" ] && [ "$pr_int_trap_line" -lt "$pr_term_trap_line" ] && [ "$pr_term_trap_line" -lt "$pr_hup_trap_line" ] && [ "$pr_hup_trap_line" -lt "$pr_mktemp_line" ] && [ "$pr_mktemp_line" -lt "$pr_marker_line" ]; then
     pass "T-10 attribution cleanup and four traps precede mktemp and marker"
   else
     fail "T-10 attribution cleanup/trap/marker ordering"
   fi
-  assert_grep "T-10 attribution rejects empty jq output" "$PR_SKILL" '\[ -s "\$attribution_state_tmp" \]'
-  assert_grep "T-10 attribution emits warning on failed write" "$PR_SKILL" 'WARNING: attribution state の書き込みに失敗しました'
+  assert_grep "T-10 attribution rejects empty jq output" "$PR_STEP" '\[ -s "\$attribution_state_tmp" \]'
+  assert_grep "T-10 attribution emits warning on failed write" "$PR_STEP" 'WARNING: attribution state の書き込みに失敗しました'
 fi
 
 if [ -f "$VERIF" ]; then
