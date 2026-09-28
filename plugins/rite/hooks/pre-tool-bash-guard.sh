@@ -950,10 +950,9 @@ fi
 # variable between them), the commit is found by the same parser as Patterns 8
 # and 9 (review-fix-scope-check.sh commit-target). A commit it cannot resolve (a
 # variable that may expand to nothing, an unfinished quote) is denied too.
-# The parser's cost also grows with the nesting depth of command substitutions
-# and with each commit / merge it resolves (one git rev-parse each), so a longer
-# input than _RITE_BTG_P7_PARSE_MAX_CHARS is denied without parsing; at that
-# size its worst case stays well within the hook timeout.
+# The parser refuses deeply nested command substitutions and too many commit /
+# merge targets (one git process each), and a longer input than
+# _RITE_BTG_P7_PARSE_MAX_CHARS is denied without parsing.
 _RITE_BTG_P7_PARSE_MAX_CHARS=32768
 if [ -z "$BLOCKED_PATTERN" ] && [[ "$CMD_CHECK" =~ (^|[[:space:]])--allow-empty([^[:alnum:]_-]|$) ]]; then
   _p7_reason=""

@@ -452,6 +452,10 @@ _COMPOUND = {"if", "while", "until", "for", "case", "select", "{", "function", "
 
 
 # A parse the check cannot finish is refused; the message form below always parses.
+# Limits that keep one parse well within the hook timeout: each substitution level scans
+# its text again, and each commit / merge target is resolved by a git process.
+MAX_SUBSTITUTION_DEPTH = 64
+MAX_GIT_TARGETS = 64
 _PARSE_HINT = "; write the message to a file outside the work tree and commit with git commit -F <message-file>"
 # The standard message form: a substitution that is exactly cat of one heredoc.
 _MESSAGE = re.compile(r"\$\([ \t]*cat[ \t]+<<(-?)[ \t]*(?:'([^'\n]+)'|\"([^\"\n]+)\"|\\([A-Za-z_][A-Za-z0-9_]*)"
@@ -510,7 +514,7 @@ def _substitution_end(command, start):
     require(False, "unfinished command substitution" + _PARSE_HINT)
 
 
-def shell_segments(command):
+def shell_segments(command, level=0):
     """Split a command into (words, nested, before, after) simple commands of dequoted words.
     Not a shell interpreter.
 
@@ -526,6 +530,8 @@ def shell_segments(command):
     (&>, >&, <&) stays in its word. A word whose first unquoted < or > has only an
     unquoted fd number or the & of &> before it comes back as a _Redirection.
     """
+    require(level <= MAX_SUBSTITUTION_DEPTH, "command substitutions are nested more than "
+            + str(MAX_SUBSTITUTION_DEPTH) + " deep to inspect; split the command")
     segments, words, word, quoted, quote, depth = [], [], [], False, None, 0
     index, length, pending, redirect, redirection, signed = 0, len(command), "", -2, False, False
 
@@ -557,7 +563,7 @@ def shell_segments(command):
             end = _message_end(command, index)
             if end is None:
                 end = _substitution_end(command, index + 2)
-                segments.extend((inner, True, "", "") for inner, *_rest in shell_segments(command[index + 2:end - 1]))
+                segments.extend((inner, True, "", "") for inner, *_rest in shell_segments(command[index + 2:end - 1], level + 1))
             word.append(command[index:end])
             quoted = True
             index = end
@@ -565,7 +571,7 @@ def shell_segments(command):
         elif ch == "`" and quote in (None, '"'):
             end = command.find("`", index + 1)
             require(end >= 0, "unfinished command substitution" + _PARSE_HINT)
-            segments.extend((inner, True, "", "") for inner, *_rest in shell_segments(command[index + 1:end]))
+            segments.extend((inner, True, "", "") for inner, *_rest in shell_segments(command[index + 1:end], level + 1))
             word.append(command[index:end + 1])
             quoted = True
             index = end + 1
@@ -661,6 +667,7 @@ def each_git_target(command, cwd):
                      for words, nested, _before, after in segments)
     cwd, dynamic = Path(cwd).resolve(), False  # where the next list starts
     here, unsure, first, alternative, moved = cwd, dynamic, True, False, False
+    toplevels = {}  # target -> its toplevel, or None when it does not resolve
     for words, nested, before, after in segments:
         # A subshell keeps its cd, and its git is not direct.
         if not nested:
@@ -760,13 +767,17 @@ def each_git_target(command, cwd):
         # A target that does not resolve to a repository (missing, unenterable or not
         # a repository) cannot be matched to a worktree; a failed cd may even leave
         # bash in the reviewed one.
-        resolved = subprocess.run(["git", "-C", str(target), "rev-parse", "--show-toplevel"],
-                                  capture_output=True, text=True)
-        if resolved.returncode != 0:
+        if target not in toplevels:
+            require(len(toplevels) < MAX_GIT_TARGETS, "more than " + str(MAX_GIT_TARGETS)
+                    + " different git commit / merge targets to inspect; split the command")
+            resolved = subprocess.run(["git", "-C", str(target), "rev-parse", "--show-toplevel"],
+                                      capture_output=True, text=True)
+            toplevels[target] = Path(resolved.stdout.strip()).resolve() if resolved.returncode == 0 else None
+        if toplevels[target] is None:
             yield name, None, words[index + 1:], \
                 name + " target cannot be resolved to a repository: " + str(target) + "; run it from an existing worktree"
             continue
-        yield name, Path(resolved.stdout.strip()).resolve(), words[index + 1:], None
+        yield name, toplevels[target], words[index + 1:], None
 
 
 def head_move(name, args):

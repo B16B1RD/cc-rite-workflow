@@ -2426,25 +2426,42 @@ if [ "$decision" = "deny" ] && [[ "$reason" == *"too long to inspect"* ]] && [ "
 else
   fail "Pattern 7 on a ~120KB non-adjacent commit rc=$rc ms=$_ms decision=$decision reason=$reason"
 fi
-# Just under the limit, the parser's slowest shapes (deeply nested substitutions, and a
-# git rev-parse for each merge) still return within the hook timeout.
-{ printf 'echo '; printf '$(%.0s' $(seq 1 950); printf 'echo '; printf '%*s' 28000 '' | tr ' ' 'x'
-  printf ')%.0s' $(seq 1 950); printf '; git -ca commit --allow-empty -m x'; } > "$p7_big"
-p7_timed "$p7_big"
-decision=$(extract_hook_field "$output" permissionDecision)
-if [ "$decision" = "deny" ] && [ "$_ms" -lt 5000 ]; then
-  pass "Pattern 7 denies a nested-substitution commit just under the parser limit within 5s (${_ms}ms)"
-else
-  fail "Pattern 7 on a nested-substitution commit rc=$rc ms=$_ms decision=$decision"
-fi
-{ for _i in $(seq 1 2000); do printf 'git -ca merge x;'; done; printf 'git -ca commit --allow-empty -m x'; } > "$p7_big"
-p7_timed "$p7_big"
-decision=$(extract_hook_field "$output" permissionDecision)
-if [ "$decision" = "deny" ] && [ "$_ms" -lt 5000 ]; then
-  pass "Pattern 7 denies a commit after 2000 merges just under the parser limit within 5s (${_ms}ms)"
-else
-  fail "Pattern 7 on a commit after 2000 merges rc=$rc ms=$_ms decision=$decision"
-fi
+# At each limit the parser still finishes (the reason is its own) within 8s, under the
+# 10s hook timeout; one past a parser limit is refused.
+p7_max=$(sed -n 's/^_RITE_BTG_P7_PARSE_MAX_CHARS=//p' "$HOOK")
+p7_scope_py="$(dirname "$HOOK")/scripts/lib/review-fix-scope.py"
+p7_depth=$(sed -n 's/^MAX_SUBSTITUTION_DEPTH = //p' "$p7_scope_py")
+p7_targets=$(sed -n 's/^MAX_GIT_TARGETS = //p' "$p7_scope_py")
+p7_tail='; git -ca commit --allow-empty -m x'
+p7_limit_case() {  # $1 label, $2 expected reason
+  p7_timed "$p7_big"
+  decision=$(extract_hook_field "$output" permissionDecision)
+  reason=$(extract_hook_field "$output" permissionDecisionReason)
+  if [ "$decision" = "deny" ] && [[ "$reason" == *"$2"* ]] && [ "$_ms" -lt 8000 ]; then
+    pass "Pattern 7 denies $1 within 8s ($(wc -c < "$p7_big") bytes, ${_ms}ms)"
+  else
+    fail "Pattern 7 on $1 rc=$rc ms=$_ms decision=$decision reason=$reason"
+  fi
+}
+p7_nested() {  # $1 depth, $2 length of the innermost word
+  { printf 'echo '; printf '$(%.0s' $(seq 1 "$1"); printf 'echo '; printf '%*s' "$2" '' | tr ' ' 'x'
+    printf ')%.0s' $(seq 1 "$1"); printf '%s' "$p7_tail"; } > "$p7_big"
+}
+p7_nested "$p7_depth" $(( p7_max - 3 * p7_depth - 10 - ${#p7_tail} ))
+p7_limit_case "the deepest nesting of the longest command" "creates a commit with no file changes"
+p7_nested $(( p7_depth + 1 )) 10
+p7_limit_case "nesting one level too deep" "nested more than $p7_depth deep"
+{ for _i in $(seq 1 $(( (p7_max - ${#p7_tail}) / 10 ))); do printf 'git merge;'; done
+  printf '%s' "$p7_tail"; } > "$p7_big"
+p7_limit_case "the most merges that fit" "creates a commit with no file changes"
+p7_dirs() {  # $1 number of merge targets besides the commit's
+  { for _i in $(seq 1 "$1"); do mkdir -p "$p7_repo/d$_i"; printf 'git -C d%s merge x;' "$_i"; done
+    printf '%s' "$p7_tail"; } > "$p7_big"
+}
+p7_dirs $(( p7_targets - 1 ))
+p7_limit_case "the most commit / merge targets" "creates a commit with no file changes"
+p7_dirs "$p7_targets"
+p7_limit_case "one commit / merge target too many" "more than $p7_targets different"
 # The parser itself stays linear: a long word of > signs and a long run of wrapper options.
 p7_scope_check="$(dirname "$HOOK")/scripts/review-fix-scope-check.sh"
 for p7_shape in gt wrapper; do

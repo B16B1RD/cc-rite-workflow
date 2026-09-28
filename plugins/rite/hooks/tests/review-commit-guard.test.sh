@@ -931,6 +931,10 @@ for closed_targets in (False, True):
             hook(command, reason='target is dynamic')
         for command in ("git '' commit -m x", 'git log --grep commit', 'git $OPTS log --grep commit'):
             hook(command, allowed=True)
+        # More commit / merge targets or deeper substitutions than one parse can inspect in time are refused.
+        hook(''.join('git -C d%d merge --abort;' % i for i in range(64)) + 'git commit -m x',
+             reason='different git commit / merge targets')
+        hook('echo ' + '$(' * 65 + 'true' + ')' * 65 + '; git commit -m x', reason='nested more than')
         # The everyday forms still target the reviewed worktree.
         for command in ('cd ' + str(root) + ' && git add -A && git commit -m x',
                         'cd ' + str(root) + ' && git add -A; git commit -m x',
