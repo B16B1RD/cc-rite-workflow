@@ -2338,12 +2338,20 @@ else
   fail "Expected allow for --allow-empty-message, got rc=$rc decision=$decision output=$output"
 fi
 # Global options and redirections between git and commit still leave commit as the subcommand.
+# Run from a repository, so the parser resolves the commit instead of failing on the target.
+p7_repo=$(mktemp -d)
+git -C "$p7_repo" init -q
+run_guard_in_repo() {
+  jq -n --arg cmd "$1" --arg cwd "$p7_repo" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: $cwd}' \
+    | bash "$HOOK" 2>"$STDERR_FILE"
+}
 while IFS= read -r p7_cmd; do
   rc=0
-  output=$(run_guard "Bash" "$p7_cmd") || rc=$?
+  output=$(run_guard_in_repo "$p7_cmd") || rc=$?
   decision=$(extract_hook_field "$output" permissionDecision)
   reason=$(extract_hook_field "$output" permissionDecisionReason)
-  if [ "$decision" = "deny" ] && [[ "$reason" == *"git-commit-allow-empty"* ]]; then
+  if [ "$decision" = "deny" ] && [[ "$reason" == *"git-commit-allow-empty"* ]] \
+     && [[ "$reason" == *"creates a commit with no file changes"* ]]; then
     pass "--allow-empty denied through words before commit: $p7_cmd"
   else
     fail "Expected git-commit-allow-empty deny for '$p7_cmd', got decision=$decision reason=$reason"
@@ -2360,10 +2368,27 @@ git -C . 2>/dev/null commit --allow-empty -m x
 git -C 2>/dev/null . commit --allow-empty -m x
 git -c 2>&1 a.b=c commit --allow-empty -m x
 git --no-pager commit --allow-empty -m x
+git 'commit' --allow-empty -m x
 EOF
+# A variable or command substitution between git and commit may expand to nothing, leaving a bare commit.
 while IFS= read -r p7_cmd; do
   rc=0
-  output=$(run_guard "Bash" "$p7_cmd") || rc=$?
+  output=$(run_guard_in_repo "$p7_cmd") || rc=$?
+  decision=$(extract_hook_field "$output" permissionDecision)
+  reason=$(extract_hook_field "$output" permissionDecisionReason)
+  if [ "$decision" = "deny" ] && [[ "$reason" == *"git-commit-allow-empty"* ]] && [[ "$reason" == *"dynamic"* ]]; then
+    pass "--allow-empty denied behind a word that may expand to nothing: $p7_cmd"
+  else
+    fail "Expected git-commit-allow-empty deny for '$p7_cmd', got decision=$decision reason=$reason"
+  fi
+done <<'EOF'
+git $OPTS commit --allow-empty -m x
+git $(true) commit --allow-empty -m x
+EOF
+# git '' fails as an unknown command without committing; a commit word in another subcommand's arguments is not a commit.
+while IFS= read -r p7_cmd; do
+  rc=0
+  output=$(run_guard_in_repo "$p7_cmd") || rc=$?
   if [ "$rc" = "0" ] && [ -z "$output" ]; then
     pass "not denied as git commit --allow-empty: $p7_cmd"
   else
@@ -2371,9 +2396,26 @@ while IFS= read -r p7_cmd; do
   fi
 done <<'EOF'
 git log --allow-empty commit
+git $OPTS log --allow-empty --grep commit
+git '' commit --allow-empty -m x
 git -c a.b=c commit --allow-empty-message -m ""
 git -c a.b=c commit-tree --allow-empty
 EOF
+# The commit match stays linear: git -c git repeated is the shape that grew with the square of its length.
+p7_big="$p7_repo/big.txt"
+{ printf 'git '; for _i in $(seq 1 14000); do printf -- '-c git '; done; printf -- '--allow-empty'; } > "$p7_big"
+jq -n --rawfile cmd "$p7_big" --arg cwd "$p7_repo" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: $cwd}' > "$p7_repo/big.json"
+rc=0
+_t0=$(date +%s%N)
+output=$(_timeout 15 bash "$HOOK" < "$p7_repo/big.json" 2>"$STDERR_FILE") || rc=$?
+_t1=$(date +%s%N)
+_ms=$(( (_t1 - _t0) / 1000000 ))
+if [ "$rc" = "0" ] && [ -z "$output" ] && [ "$_ms" -lt 5000 ]; then
+  pass "Pattern 7 returns for a ~100KB git -c command within 5s (${_ms}ms)"
+else
+  fail "Pattern 7 on a ~100KB git -c command rc=$rc ms=$_ms output=$output"
+fi
+rm -rf "$p7_repo"
 echo ""
 
 # --------------------------------------------------------------------------

@@ -1004,6 +1004,42 @@ if grep -qF 'BLOCKED (wiki-apply-gate)' <<<"$gout" \
 else
   fail "guard redirection before commit rc=$grc out=$gout"
 fi
+# 未設定の変数や空のコマンド置換は空に展開されて素の commit になりうるので、作業先を特定できない commit として拒否する。
+# git '' は git が「コマンドではない」で失敗して commit しない。非更新サブコマンドの引数にある commit は commit ではない。
+for _cmd in 'git $OPTS commit -m x' 'git $(true) commit -m x'; do
+  drc=0
+  dout=$(bash "$SCOPE_CHECK" commit-target --command "$_cmd" --cwd "$repo" 2>"$ROOT/target.err") || drc=$?
+  if [ "$drc" -ne 0 ] && [ -z "$dout" ] && grep -q 'commit target is dynamic' "$ROOT/target.err"; then
+    pass "commit-target refuses a commit behind a word that may expand to nothing: $_cmd"
+  else
+    fail "commit-target $_cmd rc=$drc out=$dout err=$(cat "$ROOT/target.err")"
+  fi
+  dyn=$(jq -n --arg cwd "$repo" --arg cmd "$_cmd" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
+  grc=0
+  gout=$(printf '%s' "$dyn" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+  if grep -qF 'BLOCKED (wiki-apply-unresolved)' <<<"$gout" && grep -q 'dynamic' <<<"$gout"; then
+    pass "guard refuses a commit behind a word that may expand to nothing: $_cmd"
+  else
+    fail "guard $_cmd rc=$grc out=$gout"
+  fi
+done
+for _cmd in "git '' commit -m x" 'git log --grep commit' 'git $OPTS log --grep commit'; do
+  nrc=0
+  nout=$(bash "$SCOPE_CHECK" commit-target --command "$_cmd" --cwd "$repo" 2>"$ROOT/target.err") || nrc=$?
+  if [ "$nrc" -eq 0 ] && [ -z "$nout" ]; then
+    pass "commit-target finds no commit in: $_cmd"
+  else
+    fail "commit-target $_cmd rc=$nrc out=$nout err=$(cat "$ROOT/target.err")"
+  fi
+  none=$(jq -n --arg cwd "$repo" --arg cmd "$_cmd" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
+  grc=0
+  gout=$(printf '%s' "$none" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+  if [ "$grc" -eq 0 ] && [ -z "$gout" ]; then
+    pass "guard does not deny: $_cmd"
+  else
+    fail "guard $_cmd rc=$grc out=$gout"
+  fi
+done
 crc=0
 WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" \
   bash "$COMMIT" --file "$msg" --worktree "$repo" -- -av >"$ROOT/extra-av.out" 2>"$ROOT/extra-av.err" || crc=$?

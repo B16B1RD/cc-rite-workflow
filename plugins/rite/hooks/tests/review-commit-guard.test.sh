@@ -924,6 +924,13 @@ for closed_targets in (False, True):
         for command in ('cd /tmp && cd - && git commit -m x', 'false && cd /tmp; git commit -m x',
                         'cd /tmp | true; git commit -m x', 'cd -; git commit -m x'):
             hook(command, reason='target is dynamic')
+        # A variable or command substitution between git and its subcommand may expand to nothing
+        # or to global options. git '' fails without committing, and a commit word in another
+        # subcommand's arguments is not a commit.
+        for command in ('git $OPTS commit -m x', 'git $(true) commit -m x', 'git $OPTS merge --continue'):
+            hook(command, reason='target is dynamic')
+        for command in ("git '' commit -m x", 'git log --grep commit', 'git $OPTS log --grep commit'):
+            hook(command, allowed=True)
         # The everyday forms still target the reviewed worktree.
         for command in ('cd ' + str(root) + ' && git add -A && git commit -m x',
                         'cd ' + str(root) + ' && git add -A; git commit -m x',

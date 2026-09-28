@@ -641,7 +641,7 @@ def each_git_target(command, cwd):
     """Yield (subcommand, toplevel, arguments, problem) for each git commit / merge, in order.
 
     problem names why the target cannot be checked (a wrapper, a command substitution,
-    a dynamic cd / -C, a target that does not resolve to a repository, an alternate git dir); the caller
+    a dynamic cd / -C, a variable before the subcommand, a target that does not resolve to a repository, an alternate git dir); the caller
     refuses it only when the command would move HEAD. toplevel is None exactly when there is a problem.
 
     A cd moves the target only where the shell is known to run it: a plain cd <literal> that
@@ -704,10 +704,17 @@ def each_git_target(command, cwd):
         target, unknown, index, alternate = here, unsure or (alternative and moved), 1, False
         # The shell removes redirections before git sees its arguments, so one between git and
         # the subcommand, or between -C / -c and its value, is skipped.
-        while index < len(words) and (words[index].startswith("-") or isinstance(words[index], _Redirection)):
+        while index < len(words) and (words[index].startswith("-") or isinstance(words[index], _Redirection)
+                                      or any(c in words[index] for c in "$`")):
             option = words[index]
             if isinstance(option, _Redirection):
                 index = _redirection_end(words, index)
+                continue
+            if not option.startswith("-"):
+                # A variable or command substitution may expand to nothing or to global options,
+                # so the next word may be the subcommand, run from a target that cannot be known.
+                unknown = True
+                index += 1
                 continue
             if option in ("-C", "-c") or option.startswith("-C"):
                 joined = option.startswith("-C") and option != "-C"
