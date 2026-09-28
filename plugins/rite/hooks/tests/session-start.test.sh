@@ -2068,13 +2068,20 @@ write_queue_file() {
   printf '%s\n' "$json" > "$dir/.rite/state/run-queue-${sid}.json"
 }
 
+# session-end.sh marks an ended owner; only a marked queue is reaped on the 2h rule.
+write_ended_marker() {
+  local dir="$1" sid="$2"
+  mkdir -p "$dir/.rite/state"
+  : > "$dir/.rite/state/run-queue-${sid}.ended"
+}
+
 write_owner_flow_state() {
   local dir="$1" sid="$2" content="$3"
   mkdir -p "$dir/.rite/sessions"
   printf '%s\n' "$content" > "$dir/.rite/sessions/${sid}.flow-state"
 }
 
-echo "RQ-01: own stale queue remains; other stale queues with absent or old owner flow-state are removed (same fixture)"
+echo "RQ-01: own stale queue remains; ended other stale queues with absent or old owner flow-state are removed (same fixture)"
 dir_rq01="$TEST_DIR/rq-01"
 mkdir -p "$dir_rq01"
 stale_ts=$(iso8601_now -8000)
@@ -2086,6 +2093,9 @@ write_owner_flow_state "$dir_rq01" "old-fs-sid" "$(jq -n --arg ts "$stale_ts" '{
 : > "$dir_rq01/.rite/state/run-queue-own-sid.watchdog"
 : > "$dir_rq01/.rite/state/run-queue-other-sid.watchdog"
 : > "$dir_rq01/.rite/state/run-queue-old-fs-sid.watchdog"
+write_ended_marker "$dir_rq01" "own-sid"
+write_ended_marker "$dir_rq01" "other-sid"
+write_ended_marker "$dir_rq01" "old-fs-sid"
 RITE_STATE_ROOT="$dir_rq01" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq01-out" 2>"$TEST_DIR/rq01-err" || true
 if [ -f "$dir_rq01/.rite/state/run-queue-own-sid.json" ] \
   && [ -f "$dir_rq01/.rite/state/run-queue-own-sid.watchdog" ] \
@@ -2093,6 +2103,8 @@ if [ -f "$dir_rq01/.rite/state/run-queue-own-sid.json" ] \
   && [ ! -f "$dir_rq01/.rite/state/run-queue-other-sid.watchdog" ] \
   && [ ! -f "$dir_rq01/.rite/state/run-queue-old-fs-sid.json" ] \
   && [ ! -f "$dir_rq01/.rite/state/run-queue-old-fs-sid.watchdog" ] \
+  && [ ! -f "$dir_rq01/.rite/state/run-queue-old-fs-sid.ended" ] \
+  && [ -f "$dir_rq01/.rite/state/run-queue-own-sid.ended" ] \
   && [ ! -s "$TEST_DIR/rq01-out" ]; then
   pass "RQ-01: own stale remains; other stale (flow-state absent / old) json+watchdog removed; stdout silent"
 else
@@ -2106,11 +2118,13 @@ mkdir -p "$dir_rq11"
 write_queue_file "$dir_rq11" "other-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[4],cursor:0,mode:"merge",failed:[11],outstanding:[],active:true,updated_at:$ts}')"
 write_owner_flow_state "$dir_rq11" "other-sid" "$(jq -n --arg ts "$(iso8601_now -60)" '{active:true,updated_at:$ts}')"
 : > "$dir_rq11/.rite/state/run-queue-other-sid.watchdog"
+write_ended_marker "$dir_rq11" "other-sid"
 rc_rq11=0
 RITE_STATE_ROOT="$dir_rq11" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq11-out" 2>"$TEST_DIR/rq11-err" || rc_rq11=$?
 if [ "$rc_rq11" -eq 0 ] \
   && [ -f "$dir_rq11/.rite/state/run-queue-other-sid.json" ] \
   && [ -f "$dir_rq11/.rite/state/run-queue-other-sid.watchdog" ] \
+  && [ -f "$dir_rq11/.rite/state/run-queue-other-sid.ended" ] \
   && ! grep -q 'leftover failed/outstanding' "$TEST_DIR/rq11-err" \
   && ! grep -q 'run-queue-reap: failed=11' "$TEST_DIR/rq11-err" \
   && [ ! -s "$TEST_DIR/rq11-out" ]; then
@@ -2126,6 +2140,7 @@ mkdir -p "$dir_rq12"
 for sid in broken-sid array-sid missing-sid badts-sid; do
   write_queue_file "$dir_rq12" "$sid" "$(jq -n --arg ts "$stale_ts" '{issues:[5],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
   : > "$dir_rq12/.rite/state/run-queue-${sid}.watchdog"
+  write_ended_marker "$dir_rq12" "$sid"
 done
 write_owner_flow_state "$dir_rq12" "broken-sid" 'not-json{{'
 write_owner_flow_state "$dir_rq12" "array-sid" '[]'
@@ -2161,13 +2176,126 @@ else
 fi
 echo ""
 
+echo "RQ-13: without an ended marker, stale queues of a paused owner remain until the liveness TTL; the marked twin is reaped"
+dir_rq13="$TEST_DIR/rq-13"
+mkdir -p "$dir_rq13"
+# Paused mid-Issue / paused after cleanup deactivated flow-state / batch stopped (active=false, unfinished) / flow-state gone.
+for sid in paused-sid cleaned-sid stopped-sid nofs-sid marked-sid; do
+  q_active=true
+  [ "$sid" = "stopped-sid" ] && q_active=false
+  write_queue_file "$dir_rq13" "$sid" "$(jq -n --arg ts "$stale_ts" --argjson a "$q_active" '{issues:[13,14],cursor:0,mode:"merge",failed:[11],outstanding:[],active:$a,updated_at:$ts}')"
+  : > "$dir_rq13/.rite/state/run-queue-${sid}.watchdog"
+done
+write_owner_flow_state "$dir_rq13" "paused-sid" "$(jq -n --arg ts "$stale_ts" '{active:true,updated_at:$ts}')"
+write_owner_flow_state "$dir_rq13" "cleaned-sid" "$(jq -n --arg ts "$stale_ts" '{active:false,updated_at:$ts}')"
+write_owner_flow_state "$dir_rq13" "stopped-sid" "$(jq -n --arg ts "$stale_ts" '{active:true,updated_at:$ts}')"
+write_owner_flow_state "$dir_rq13" "marked-sid" "$(jq -n --arg ts "$stale_ts" '{active:true,updated_at:$ts}')"
+write_ended_marker "$dir_rq13" "marked-sid"
+rc_rq13=0
+RITE_STATE_ROOT="$dir_rq13" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq13-out" 2>"$TEST_DIR/rq13-err" || rc_rq13=$?
+if [ "$rc_rq13" -eq 0 ] \
+  && [ -f "$dir_rq13/.rite/state/run-queue-paused-sid.json" ] \
+  && [ -f "$dir_rq13/.rite/state/run-queue-cleaned-sid.json" ] \
+  && [ -f "$dir_rq13/.rite/state/run-queue-stopped-sid.json" ] \
+  && [ -f "$dir_rq13/.rite/state/run-queue-nofs-sid.json" ] \
+  && [ -f "$dir_rq13/.rite/state/run-queue-paused-sid.watchdog" ] \
+  && [ -f "$dir_rq13/.rite/state/run-queue-cleaned-sid.watchdog" ] \
+  && [ -f "$dir_rq13/.rite/state/run-queue-stopped-sid.watchdog" ] \
+  && [ -f "$dir_rq13/.rite/state/run-queue-nofs-sid.watchdog" ] \
+  && [ ! -f "$dir_rq13/.rite/state/run-queue-marked-sid.json" ] \
+  && [ ! -f "$dir_rq13/.rite/state/run-queue-marked-sid.watchdog" ] \
+  && [ ! -f "$dir_rq13/.rite/state/run-queue-marked-sid.ended" ] \
+  && [ "$(grep -c 'run-queue-reap: failed=11' "$TEST_DIR/rq13-err")" -eq 1 ] \
+  && [ "$(grep -c 'leftover failed/outstanding' "$TEST_DIR/rq13-err")" -eq 1 ] \
+  && grep -q 'run-queue-marked-sid.json' "$TEST_DIR/rq13-err" \
+  && [ ! -s "$TEST_DIR/rq13-out" ]; then
+  pass "RQ-13: unmarked paused / cleaned / stopped / flow-state-less owners keep stale queues and watchdogs without leftover output; only the marked owner's queue, watchdog and marker are reaped with its leftovers printed"
+else
+  fail "RQ-13: rc=$rc_rq13 files=$(ls "$dir_rq13/.rite/state" | tr '\n' ' ') err=$(cat "$TEST_DIR/rq13-err")"
+fi
+echo ""
+
+echo "RQ-14: without an ended marker, a queue is reaped once both timestamps pass the liveness TTL (env override honored; invalid override warns and uses 24h)"
+dir_rq14="$TEST_DIR/rq-14"
+mkdir -p "$dir_rq14"
+ttl_old_ts=$(iso8601_now -90000)
+write_queue_file "$dir_rq14" "crashed-sid" "$(jq -n --arg ts "$ttl_old_ts" '{issues:[15],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+write_owner_flow_state "$dir_rq14" "crashed-sid" "$(jq -n --arg ts "$ttl_old_ts" '{active:true,updated_at:$ts}')"
+write_queue_file "$dir_rq14" "recent-fs-sid" "$(jq -n --arg ts "$ttl_old_ts" '{issues:[16],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+write_owner_flow_state "$dir_rq14" "recent-fs-sid" "$(jq -n --arg ts "$stale_ts" '{active:true,updated_at:$ts}')"
+write_queue_file "$dir_rq14" "nots-sid" '{"issues":[17],"cursor":0,"mode":"merge","failed":[],"outstanding":[],"active":true}'
+rc_rq14=0
+RITE_STATE_ROOT="$dir_rq14" RITE_SESSION_LIVENESS_TTL_HOURS=24h bash "$REAP" --session "own-sid" >"$TEST_DIR/rq14-out" 2>"$TEST_DIR/rq14-err" || rc_rq14=$?
+first_ok=0
+if [ "$rc_rq14" -eq 0 ] \
+  && [ ! -f "$dir_rq14/.rite/state/run-queue-crashed-sid.json" ] \
+  && [ ! -f "$dir_rq14/.rite/state/run-queue-nots-sid.json" ] \
+  && [ -f "$dir_rq14/.rite/state/run-queue-recent-fs-sid.json" ] \
+  && grep -qxF "WARNING: run-queue-reap: RITE_SESSION_LIVENESS_TTL_HOURS='24h' is not a positive integer (no leading zero); using 24" "$TEST_DIR/rq14-err"; then
+  first_ok=1
+fi
+rc_rq14b=0
+RITE_STATE_ROOT="$dir_rq14" RITE_SESSION_LIVENESS_TTL_HOURS=1 bash "$REAP" --session "own-sid" >/dev/null 2>"$TEST_DIR/rq14b-err" || rc_rq14b=$?
+if [ "$first_ok" -eq 1 ] && [ "$rc_rq14b" -eq 0 ] \
+  && [ ! -f "$dir_rq14/.rite/state/run-queue-recent-fs-sid.json" ] \
+  && [ ! -s "$TEST_DIR/rq14b-err" ]; then
+  pass "RQ-14: TTL-expired or timestamp-less unmarked queue reaped; newer flow-state keeps it within TTL; 1h override reaps it; invalid override warns"
+else
+  fail "RQ-14: rc=$rc_rq14/$rc_rq14b first_ok=$first_ok files=$(ls "$dir_rq14/.rite/state" | tr '\n' ' ') err=$(cat "$TEST_DIR/rq14-err" "$TEST_DIR/rq14b-err")"
+fi
+echo ""
+
+echo "RQ-15: SessionStart drops only its own ended marker, so a resumed session's queue is protected again"
+dir_rq15="$TEST_DIR/rq-15"
+mkdir -p "$dir_rq15"
+create_state_file "$dir_rq15" '{"active":true,"issue_number":15,"phase":"review","next_action":"iterate","loop_count":1,"pr_number":15,"branch":"fix/issue-15-x","schema_version":3}' "own-sid"
+write_queue_file "$dir_rq15" "own-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[15],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+write_queue_file "$dir_rq15" "other-sid" "$(jq -n --arg ts "$(iso8601_now -60)" '{issues:[16],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+write_ended_marker "$dir_rq15" "own-sid"
+write_ended_marker "$dir_rq15" "other-sid"
+run_hook_with_session "$dir_rq15" "resume" "own-sid" >/dev/null || true
+if [ ! -e "$dir_rq15/.rite/state/run-queue-own-sid.ended" ] \
+  && [ -f "$dir_rq15/.rite/state/run-queue-own-sid.json" ] \
+  && [ -f "$dir_rq15/.rite/state/run-queue-other-sid.ended" ] \
+  && [ -f "$dir_rq15/.rite/state/run-queue-other-sid.json" ]; then
+  pass "RQ-15: own marker removed, own queue kept; other session's marker and queue untouched"
+else
+  fail "RQ-15: files=$(ls "$dir_rq15/.rite/state" | tr '\n' ' ')"
+fi
+echo ""
+
+echo "RQ-16: an own ended marker that cannot be removed warns with its path and SessionStart still exits 0"
+if [ "$(id -u)" -eq 0 ]; then
+  # root bypasses dir-permission bits, so a read-only state dir cannot force the removal failure.
+  pass "RQ-16: skipped under root (chmod cannot force a removal failure as uid 0)"
+else
+  dir_rq16="$TEST_DIR/rq-16"
+  mkdir -p "$dir_rq16"
+  create_state_file "$dir_rq16" '{"active":true,"issue_number":16,"phase":"review","next_action":"iterate","loop_count":1,"pr_number":16,"branch":"fix/issue-16-x","schema_version":3}' "own-sid"
+  write_queue_file "$dir_rq16" "own-sid" "$(jq -n --arg ts "$(iso8601_now -60)" '{issues:[16],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+  write_ended_marker "$dir_rq16" "own-sid"
+  chmod 555 "$dir_rq16/.rite/state"
+  rc_rq16=0
+  run_hook_with_session "$dir_rq16" "resume" "own-sid" >/dev/null || rc_rq16=$?
+  chmod 755 "$dir_rq16/.rite/state"   # restore so the EXIT trap can rm -rf
+  if [ "$rc_rq16" -eq 0 ] \
+    && grep -qF "WARNING: session-start.sh: cannot remove run-queue ended marker for this session; other sessions may reap its queue: $dir_rq16/.rite/state/run-queue-own-sid.ended" "$LAST_STDERR_FILE" \
+    && [ -f "$dir_rq16/.rite/state/run-queue-own-sid.ended" ]; then
+    pass "RQ-16: unremovable own marker warns with its path; rc=0"
+  else
+    fail "RQ-16: rc=$rc_rq16 stderr=$(cat "$LAST_STDERR_FILE")"
+  fi
+fi
+echo ""
+
 echo "RQ-02: other fresh queue remains even when active=true"
 dir_rq02="$TEST_DIR/rq-02"
 mkdir -p "$dir_rq02"
 fresh_ts=$(iso8601_now -60)
 write_queue_file "$dir_rq02" "other-sid" "$(jq -n --arg ts "$fresh_ts" '{issues:[3],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+write_ended_marker "$dir_rq02" "other-sid"
 RITE_STATE_ROOT="$dir_rq02" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq02-out" 2>"$TEST_DIR/rq02-err" || true
-if [ -f "$dir_rq02/.rite/state/run-queue-other-sid.json" ] && [ ! -s "$TEST_DIR/rq02-out" ]; then
+if [ -f "$dir_rq02/.rite/state/run-queue-other-sid.json" ] && [ -f "$dir_rq02/.rite/state/run-queue-other-sid.ended" ] && [ ! -s "$TEST_DIR/rq02-out" ]; then
   pass "RQ-02: other fresh active=true remains"
 else
   fail "RQ-02: file missing or stdout not silent"
@@ -2178,6 +2306,7 @@ echo "RQ-03: other stale with failed[] prints each item then deletes"
 dir_rq03="$TEST_DIR/rq-03"
 mkdir -p "$dir_rq03"
 write_queue_file "$dir_rq03" "other-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[4],cursor:0,mode:"merge",failed:[11,12],outstanding:[],active:false,updated_at:$ts}')"
+write_ended_marker "$dir_rq03" "other-sid"
 RITE_STATE_ROOT="$dir_rq03" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq03-out" 2>"$TEST_DIR/rq03-err" || true
 if [ ! -f "$dir_rq03/.rite/state/run-queue-other-sid.json" ] \
   && grep -q 'run-queue-reap: failed=11' "$TEST_DIR/rq03-err" \
@@ -2194,6 +2323,7 @@ echo "RQ-04: other stale with outstanding[] only prints each item then deletes"
 dir_rq04="$TEST_DIR/rq-04"
 mkdir -p "$dir_rq04"
 write_queue_file "$dir_rq04" "other-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[5],cursor:0,mode:"default",failed:[],outstanding:[21],active:true,updated_at:$ts}')"
+write_ended_marker "$dir_rq04" "other-sid"
 RITE_STATE_ROOT="$dir_rq04" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq04-out" 2>"$TEST_DIR/rq04-err" || true
 if [ ! -f "$dir_rq04/.rite/state/run-queue-other-sid.json" ] \
   && grep -q 'run-queue-reap: outstanding=21' "$TEST_DIR/rq04-err" \
@@ -2208,6 +2338,7 @@ echo "RQ-10: Japanese leftover detail remains readable after C0 neutralize"
 dir_rq10="$TEST_DIR/rq-10"
 mkdir -p "$dir_rq10"
 write_queue_file "$dir_rq10" "other-sid" "$(jq -n --arg ts "$stale_ts" --arg d 'サーキットブレーカーで非収束' '{issues:[10],cursor:0,mode:"merge",failed:[{issue:2089,detail:$d}],outstanding:[],active:false,updated_at:$ts}')"
+write_ended_marker "$dir_rq10" "other-sid"
 RITE_STATE_ROOT="$dir_rq10" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq10-out" 2>"$TEST_DIR/rq10-err" || true
 if [ ! -f "$dir_rq10/.rite/state/run-queue-other-sid.json" ] \
   && grep -q 'サーキットブレーカーで非収束' "$TEST_DIR/rq10-err" \
@@ -2240,6 +2371,8 @@ dir_rq06="$TEST_DIR/rq-06"
 mkdir -p "$dir_rq06"
 write_queue_file "$dir_rq06" "missing-ts" '{"issues":[6],"cursor":0,"mode":"default","failed":[],"outstanding":[],"active":true}'
 write_queue_file "$dir_rq06" "bad-ts" '{"issues":[7],"cursor":0,"mode":"default","failed":[],"outstanding":[],"active":true,"updated_at":"not-iso"}'
+write_ended_marker "$dir_rq06" "missing-ts"
+write_ended_marker "$dir_rq06" "bad-ts"
 RITE_STATE_ROOT="$dir_rq06" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq06-out" 2>"$TEST_DIR/rq06-err" || true
 if [ ! -f "$dir_rq06/.rite/state/run-queue-missing-ts.json" ] \
   && [ ! -f "$dir_rq06/.rite/state/run-queue-bad-ts.json" ]; then
@@ -2256,6 +2389,7 @@ git -C "$dir_rq07" init -q
 create_state_file "$dir_rq07" '{"active":true,"issue_number":1,"phase":"review","next_action":"iterate","loop_count":1,"pr_number":9,"branch":"feat/x","schema_version":3}' "own-sid"
 write_queue_file "$dir_rq07" "own-sid" "$(jq -n --arg ts "$fresh_ts" '{issues:[1],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
 write_queue_file "$dir_rq07" "other-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[8],cursor:0,mode:"merge",failed:[99],outstanding:[],active:true,updated_at:$ts}')"
+write_ended_marker "$dir_rq07" "other-sid"
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
 output=$(jq -n --arg cwd "$dir_rq07/sub" --arg src "startup" --arg sid "own-sid" \
   '{cwd:$cwd, source:$src, session_id:$sid}' \
@@ -2280,6 +2414,7 @@ mkdir -p "$dir_rq08"
 create_state_file "$dir_rq08" '{"active":true,"issue_number":2502,"phase":"review","next_action":"iterate","loop_count":1,"pr_number":99,"branch":"fix/issue-2502-x","schema_version":3}' "own-sid"
 write_batch_queue "$dir_rq08" "own-sid" true 0
 write_queue_file "$dir_rq08" "other-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[9],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+write_ended_marker "$dir_rq08" "other-sid"
 output=$(run_hook_with_session "$dir_rq08" "compact" "own-sid")
 if grep -q "Batch: run-queue active" <<<"$output" \
   && [ -f "$dir_rq08/.rite/state/run-queue-own-sid.json" ] \

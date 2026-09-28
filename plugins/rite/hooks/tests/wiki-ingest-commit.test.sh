@@ -13,6 +13,8 @@
 #   exists, and that running them lets a re-run ingest the raw source). Every
 #   pasted git command names the main checkout with -C, and the steps are run
 #   from outside the repository to show they do not depend on the caller's cwd.
+#   The stash hints pop only the entry this run pushed, found by its SHA, and another
+#   entry pushed on top meanwhile stays in the shared stack.
 #   The unstage, stash pop, untrack, push, fetch and detached HEAD hints are pinned
 #   the same way, the unstage and detached HEAD hints also when the hook runs from a
 #   linked worktree.
@@ -94,6 +96,12 @@ check_words() {
     eq "$label: $what word $i" "${!i}" "${words[$i]:-}"
     [ "${words[$i]:-}" = "${!i}" ] || ok=0
   done
+}
+
+# stash_pop_cmd <root> <sha>: the pasteable command that pops only the stash entry <sha>.
+stash_pop_cmd() {
+  printf 'git -C %q stash pop "$(git -C %q stash list --format='"'"'%%gd %%H'"'"' | awk -v s=%s '"'"'$2 == s {print $1}'"'"')"' \
+    "$1" "$1" "$2"
 }
 
 # make_fixture <branch> <stash>: sets base / repo / tmpdir for a separate_branch repo whose
@@ -191,6 +199,7 @@ run_recovery_case() {
   fi
   eq "$label: stash pop is printed only in the numbered steps" "$([ "$stash" = yes ] && echo 1 || echo 0)" \
     "$(grep -c ' stash pop' "$err" || true)"
+  eq "$label: no hint pops the top entry" "0" "$(grep -cE ' stash pop( #|$)|stash@\{0\}' "$err" || true)"
 
   eq "$label: staging-preserved WARNING appears once" "1" \
     "$(grep -c '^WARNING: staging directory preserved at ' "$err" || true)"
@@ -213,7 +222,8 @@ run_recovery_case() {
   if [ "$stash" = yes ]; then
     q=$((q + 1)); line=$(err_line "$q"); cmd3=${line#" 3) restore stashed changes: "}
     eq "$label: stash step follows the unstage step" " 3) restore stashed changes: $cmd3" "$line"
-    check_words "stash step" "$cmd3" git -C "$root" stash pop
+    own_sha=$(git -C "$repo" stash list --format=%H | head -1)
+    eq "$label: stash step pops our entry by its SHA" "$(stash_pop_cmd "$root" "$own_sha")" "$cmd3"
   else
     eq "$label: no stash step without a stash" "0" "$(grep -c 'restore stashed changes' "$err" || true)"
   fi
@@ -243,9 +253,15 @@ run_recovery_case() {
     eq "$label: negative control removes raw source from the index" "" \
       "$(git -C "$repo" diff --cached --name-only -- .rite/wiki/raw/reviews/pr-test.md)"
 
-    (
-      cd "$base" && eval "$cmd2" && { [ "$stash" = no ] || eval "$cmd3"; }
-    ) >/dev/null 2>&1 || rc=$?
+    ( cd "$base" && eval "$cmd2" ) >/dev/null 2>&1 || rc=$?
+    other_sha=""
+    if [ "$stash" = yes ]; then
+      # Another session pushes on top of the shared stack before the stash step is pasted.
+      printf 'other session\n' > "$repo/other.txt"
+      git -C "$repo" stash push -q -u -m other -- other.txt || rc=$?
+      other_sha=$(git -C "$repo" rev-parse -q --verify refs/stash || true)
+      ( cd "$base" && eval "$cmd3" ) >/dev/null 2>&1 || rc=$?
+    fi
     eq "$label: raw source is absent immediately before the copy step" "0" \
       "$([ -e "$repo/.rite/wiki/raw/reviews/pr-test.md" ] && echo 1 || echo 0)"
     eq "$label: raw source remains absent from the index before the copy step" "" \
@@ -258,7 +274,11 @@ run_recovery_case() {
     eq "$label: pasted steps succeed" "0" "$rc"
     eq "$label: back on the working branch" "$branch" "$(git -C "$repo" branch --show-current)"
     eq "$label: no raw source left staged" "" "$(git -C "$repo" diff --cached --name-only)"
-    eq "$label: stash restored" "0" "$(git -C "$repo" stash list | wc -l | tr -d ' ')"
+    eq "$label: only the other session's entry is left" "$other_sha" "$(git -C "$repo" stash list --format=%H)"
+    if [ "$stash" = yes ]; then
+      eq "$label: our stashed file is back" "1" "$([ -f "$repo/rite-config.yml" ] && echo 1 || echo 0)"
+      eq "$label: the other entry was not applied" "0" "$([ -e "$repo/other.txt" ] && echo 1 || echo 0)"
+    fi
     eq "$label: raw source restored" "raw source" "$(cat "$repo/.rite/wiki/raw/reviews/pr-test.md" 2>/dev/null || true)"
     eq "$label: staging dir removed" "0" "$([ -e "$path" ] && echo 1 || echo 0)"
     rerun_ingest "$label" "$branch"
@@ -286,7 +306,6 @@ run_checkout_hint_case() {
   local base repo root tmpdir err rc=0 n line back words ok=1 stash_tail
   make_fixture "$branch" "$stash"
   root=$(cd "$repo" && pwd -P)
-  stash_tail=" && git -C $root stash pop"
   tmpdir="$base/tmp"; err="$base/err"; mkdir "$tmpdir"
   rm -f "$repo/.git/hooks/pre-commit"
   write_stub "$base/stub" "[ \"\$#\" -eq 2 ] && [ \"\$1\" = checkout ] && [ \"\$2\" = $(printf '%q' "$branch") ]"
@@ -301,7 +320,8 @@ run_checkout_hint_case() {
   back=${line#" manual recovery: "}
   eq "$label: checkout recovery hint follows the WARNING" " manual recovery: $back" "$line"
   if [ "$stash" = yes ]; then
-    eq "$label: hint ends with stash pop" "$stash_tail" "${back: -${#stash_tail}}"
+    stash_tail=" && $(stash_pop_cmd "$root" "$(git -C "$repo" stash list --format=%H | head -1)")"
+    eq "$label: hint ends with the SHA-based stash pop" "$stash_tail" "${back: -${#stash_tail}}"
     eq "$label: stash-left-intact note follows the hint" \
       " (stash is intentionally left intact to avoid cross-branch pop)" "$(sed -n "$((${n:-0} + 2))p" "$err")"
     back=${back%"$stash_tail"}
@@ -430,12 +450,123 @@ run_pre_checkout_failure_case() {
   check_words "untrack hint" "$cmd" git -C "$(cd "$repo" && pwd -P)" rm --cached ".rite/wiki/raw/reviews/$raw"
 }
 
+# run_concurrent_stash_case: another session pushes a stash entry while the wiki commit runs.
+# cleanup must pop the entry this run pushed (by SHA), not the other one on top.
+run_concurrent_stash_case() {
+  local label="$1"
+  local -x GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+  local base repo tmpdir err rc=0 other_sha
+  make_fixture dev yes
+  tmpdir="$base/tmp"; err="$base/err"; mkdir "$tmpdir"
+  mkdir -p "$base/stub"
+  {
+    printf '%s\n' '#!/bin/bash'
+    printf 'if [ "$1" = commit ] && [ ! -e %q ]; then\n' "$base/pushed"
+    printf '  : > %q\n' "$base/pushed"
+    printf '  printf "other session\\n" > %q\n' "$repo/other.txt"
+    printf '  %q -C %q stash push -q -u -m other -- other.txt\n' "$real_git" "$repo"
+    printf '  %q -C %q rev-parse refs/stash > %q\n' "$real_git" "$repo" "$base/other_sha"
+    printf 'fi\n'
+    printf 'exec %q "$@"\n' "$real_git"
+  } > "$base/stub/git"
+  chmod +x "$base/stub/git"
+
+  ( cd "$repo" && PATH="$base/stub:$PATH" TMPDIR="$tmpdir" bash "$HOOK_SRC" ) >/dev/null 2>"$err" || rc=$?
+  other_sha=$(cat "$base/other_sha" 2>/dev/null || true)
+  eq "$label: exits 3" "3" "$rc"
+  eq "$label: another entry was pushed during the run" "1" "$([ -n "$other_sha" ] && echo 1 || echo 0)"
+  eq "$label: no cleanup WARNING" "0" "$(grep -c '^WARNING: ' "$err" || true)"
+  eq "$label: only the other session's entry is left" "$other_sha" "$(git -C "$repo" stash list --format=%H)"
+  eq "$label: our stashed file is back" "1" "$([ -f "$repo/rite-config.yml" ] && echo 1 || echo 0)"
+  eq "$label: the other entry was not applied" "0" "$([ -e "$repo/other.txt" ] && echo 1 || echo 0)"
+}
+
+# run_noop_stash_push_case: git stash push exits 0 without saving anything while another
+# entry is on the stack. The run must stop before it could pop that entry as its own.
+run_noop_stash_push_case() {
+  local label="$1"
+  local -x GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+  local base repo tmpdir err rc=0 other_sha
+  make_fixture dev yes
+  tmpdir="$base/tmp"; err="$base/err"; mkdir "$tmpdir"
+  printf 'other session\n' > "$repo/other.txt"
+  git -C "$repo" stash push -q -u -m other -- other.txt
+  other_sha=$(git -C "$repo" rev-parse refs/stash)
+  mkdir -p "$base/stub"
+  {
+    printf '%s\n' '#!/bin/bash'
+    printf 'if [ "$1" = stash ] && [ "$2" = push ]; then exit 0; fi\n'
+    printf 'exec %q "$@"\n' "$real_git"
+  } > "$base/stub/git"
+  chmod +x "$base/stub/git"
+
+  ( cd "$repo" && PATH="$base/stub:$PATH" TMPDIR="$tmpdir" bash "$HOOK_SRC" ) >/dev/null 2>"$err" || rc=$?
+  eq "$label: exits 3" "3" "$rc"
+  eq "$label: reports the missing entry" "1" \
+    "$(grep -cxF 'ERROR: git stash push did not create a new entry; refusing to continue without our own stash' "$err" || true)"
+  eq "$label: the other entry stays on the stack" "$other_sha" "$(git -C "$repo" stash list --format=%H)"
+  eq "$label: the other entry was not applied" "0" "$([ -e "$repo/other.txt" ] && echo 1 || echo 0)"
+}
+
+# run_submodule_change_case <label> <mode>: the only change is inside a submodule — dirty
+# content (dirty), a gitlink moved by a commit inside it (moved), or both (moved_dirty).
+# git stash push -u saves none of these, so the run must not treat them as work to stash; it
+# commits the raw source, leaves the stash stack alone and keeps the submodule state.
+# A moved gitlink that is staged (staged) cannot be carried across the wiki checkout: the run
+# stops there with git's own reason, restores the raw source and leaves the index as it was.
+run_submodule_change_case() {
+  local label="$1" mode="$2"
+  local -x GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+  local base repo tmpdir err rc=0
+  make_fixture dev no
+  tmpdir="$base/tmp"; err="$base/err"; mkdir "$tmpdir"
+  rm -f "$repo/.git/hooks/pre-commit"
+  git init -q "$base/sub"
+  git -C "$base/sub" -c user.email=t@e -c user.name=t commit -q --allow-empty -m s
+  printf 'x\n' > "$base/sub/f"
+  git -C "$base/sub" add f
+  git -C "$base/sub" -c user.email=t@e -c user.name=t commit -q -m f
+  git -C "$repo" -c protocol.file.allow=always submodule add -q "$base/sub" sub
+  git -C "$repo" commit -q -m addsub
+  local moved_head=""
+  case "$mode" in moved|moved_dirty|staged)
+    git -C "$repo/sub" -c user.email=t@e -c user.name=t commit -q --allow-empty -m moved
+    moved_head=$(git -C "$repo/sub" rev-parse HEAD) ;;
+  esac
+  case "$mode" in dirty|moved_dirty) printf 'dirty\n' >> "$repo/sub/f" ;; esac
+  [ "$mode" = staged ] && git -C "$repo" add sub
+
+  ( cd "$repo" && TMPDIR="$tmpdir" bash "$HOOK_SRC" ) >"$base/out" 2>"$err" || rc=$?
+  if [ "$mode" = staged ]; then
+    eq "$label: exits 3" "3" "$rc"
+    eq "$label: stops at the wiki checkout" "1" "$(grep -cxF "ERROR: git checkout 'wiki' failed" "$err" || true)"
+    eq "$label: git names the submodule" "1" "$(grep -c 'overwritten by checkout' "$err" || true)"
+    eq "$label: no new-entry ERROR" "0" "$(grep -c 'did not create a new entry' "$err" || true)"
+    eq "$label: raw source is back untracked" ".rite/wiki/raw/reviews/pr-test.md" \
+      "$(git -C "$repo" ls-files --others --exclude-standard -- .rite/wiki/raw)"
+    eq "$label: staged gitlink still points at the moved commit" "$moved_head" \
+      "$(git -C "$repo" ls-files -s sub | awk '{print $2}')"
+    eq "$label: stash stack untouched" "0" "$(git -C "$repo" stash list | wc -l | tr -d ' ')"
+    return
+  fi
+  eq "$label: exits 0" "0" "$rc"
+  eq "$label: commits the raw source" "1" "$(grep -c 'committed=1' "$base/out" || true)"
+  eq "$label: no new-entry ERROR" "0" "$(grep -c 'did not create a new entry' "$err" || true)"
+  eq "$label: stash stack untouched" "0" "$(git -C "$repo" stash list | wc -l | tr -d ' ')"
+  case "$mode" in dirty|moved_dirty)
+    eq "$label: submodule content still dirty" "1" "$(grep -c '^dirty$' "$repo/sub/f" || true)" ;;
+  esac
+  if [ -n "$moved_head" ]; then
+    eq "$label: submodule stays on its moved commit" "$moved_head" "$(git -C "$repo/sub" rev-parse HEAD)"
+  fi
+}
+
 # run_stash_pop_failure_case: the wiki commit fails and the stash pop in cleanup fails too,
 # so the WARNING carries the stash commands to run by hand.
 run_stash_pop_failure_case() {
   local label="$1"
   local -x GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
-  local base repo root tmpdir err rc=0 n
+  local base repo root tmpdir err rc=0 n own_sha
   make_fixture dev yes
   root=$(cd "$repo" && pwd -P)
   tmpdir="$base/tmp"; err="$base/err"; mkdir "$tmpdir"
@@ -446,9 +577,10 @@ run_stash_pop_failure_case() {
   eq "$label: stash pop WARNING appears once" "1" "$(grep -cxF 'WARNING: cleanup failed to pop stash' "$err" || true)"
   n=$(grep -nxF 'WARNING: cleanup failed to pop stash' "$err" | head -1 | cut -d: -f1 || true)
   eq "$label: manual recovery heading follows" " manual recovery:" "$(sed -n "$((${n:-0} + 1))p" "$err")"
-  eq "$label: stash list hint names the main checkout" " git -C $root stash list | grep rite-wiki-ingest-commit-stash" \
+  own_sha=$(git -C "$repo" stash list --format=%H | head -1)
+  eq "$label: stash list hint names our entry" " git -C $root stash list --format='%gd %H' | grep $own_sha" \
     "$(sed -n "$((${n:-0} + 2))p" "$err")"
-  eq "$label: stash pop hint names the main checkout" " git -C $root stash pop # resolve conflicts if any" \
+  eq "$label: stash pop hint pops our entry by its SHA" " $(stash_pop_cmd "$root" "$own_sha") # resolve conflicts if any" \
     "$(sed -n "$((${n:-0} + 3))p" "$err")"
 }
 
@@ -549,6 +681,12 @@ run_auto_restore_preserves_staged_raw_case "auto restore preserves user staging"
 run_unstage_failure_case "unstage failure"
 run_unstage_failure_case "unstage failure from a linked worktree" worktree
 run_stash_pop_failure_case "stash pop failure"
+run_concurrent_stash_case "concurrent stash"
+run_noop_stash_push_case "no-op stash push"
+run_submodule_change_case "dirty submodule" dirty
+run_submodule_change_case "moved submodule" moved
+run_submodule_change_case "moved and dirty submodule" moved_dirty
+run_submodule_change_case "staged submodule" staged
 run_push_failure_case "push failure"
 run_missing_wiki_branch_case "missing wiki branch"
 run_detached_head_case "detached main checkout from a linked worktree"

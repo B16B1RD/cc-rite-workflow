@@ -101,7 +101,7 @@ _rite_emit_block() {
 _rite_batch_watchdog() {
   local queue_file sidecar_file
   local q_active q_cursor q_total q_mode q_updated q_issue
-  local fs_file fs_phase fs_pr fs_branch fs_active fs_stop fs_issue
+  local fs_file fs_phase fs_pr fs_branch fs_active fs_next fs_stop fs_issue
   local hint count prev_cursor prev_updated prev_phase prev_pr
   local sidecar_ok _pr_state
 
@@ -132,6 +132,7 @@ _rite_batch_watchdog() {
   fs_pr="0"
   fs_branch=""
   fs_active=""
+  fs_next=""
   fs_stop=""
   fs_issue=""
   if [ -f "$fs_file" ]; then
@@ -139,6 +140,7 @@ _rite_batch_watchdog() {
     fs_pr=$(jq -r '.pr_number // 0 | tostring' "$fs_file" 2>/dev/null) || fs_pr="0"
     fs_branch=$(jq -r '.branch // ""' "$fs_file" 2>/dev/null) || fs_branch=""
     fs_active=$(jq -r '.active // false' "$fs_file" 2>/dev/null) || fs_active=""
+    fs_next=$(jq -r '.next_action // ""' "$fs_file" 2>/dev/null) || fs_next=""
     fs_stop=$(jq -r '.stop_reason // ""' "$fs_file" 2>/dev/null) || fs_stop=""
     fs_issue=$(jq -r '.issue_number // "" | tostring' "$fs_file" 2>/dev/null) || fs_issue=""
     [ -n "$q_issue" ] || q_issue="$fs_issue"
@@ -174,7 +176,9 @@ _rite_batch_watchdog() {
             ;;
           merge) hint="/rite:cleanup ${fs_branch}" ;;
           cleanup|ingest|completed)
-            if [ "$fs_active" = "false" ]; then
+            # A finished cleanup writes next_action=none with active=false. SessionEnd
+            # also leaves an interrupted cleanup inactive, but keeps its next_action.
+            if [ "$fs_active" = "false" ] && [ "$fs_next" = "none" ]; then
               hint="batch-run ステップ 6（cursor 前進）"
             else
               hint="batch-run の cleanup 未実行ステップを継続（/rite:cleanup をステップ 0 から呼び直さない。cursor は進めない）"

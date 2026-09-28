@@ -31,7 +31,9 @@ iterate の全品質ゲートと non-blocking sweep の成功後、`flow-state.s
 
 caller は以下の共有ブロックを工程境界で実行する。`review-clock-open` / `review-clock-close` は本節の共有 Bash ブロックの名前であり、`flow-state.sh` が受け付ける時計の CLI 動詞は `review-clock` だけである。参照元はブロック全体を本節から取り、`{plugin_root}` は解決済み配布 root、`{clock_kind}` は上記3値、`{clock_close_mode}` は通常の `normal` または復旧時の `recover` へリテラル置換する。作業開始時に open、終了時と context を進める前に close する。CI 等の外部待機は work close → external_wait open、待機終了後は close → work open とする。
 
-recover は保存済み open があれば先に `recover` で close する。`ended_at` が未保存の区間全体は `interruption` として閉じ、不明な中断時刻を推測しない。`ended_at` がある保存再試行では時刻・種類を変更しない。open が無い未確定 gap を補って実作業へ算入しない。
+ターンが API エラー（利用上限・過負荷など）で終わると、Claude Code の `StopFailure` hook（`hooks/stop-failure.sh`）が自セッションの未閉区間に、その時刻を `ended_at` として書き込む。`kind` は変えず、提出も削除もしない。同じ会話で再開して close へ進んでも、close は既存の `ended_at` を使うため、停止していた時間は実作業に入らない。再開から close までの作業は数えない。`StopFailure` を持たないホストでは区間は開いたまま残り、close の時刻まで数える。
+
+recover は保存済み open があれば先に `recover` で close する。`ended_at` が未保存の区間全体は `interruption` として閉じ、不明な中断時刻を推測しない。`ended_at` がある区間は、保存再試行でも `StopFailure` hook が書いた場合でも時刻・種類を変更しない。open が無い未確定 gap を補って実作業へ算入しない。
 
 ```bash
 # review-clock-open

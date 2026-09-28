@@ -1,10 +1,10 @@
 ステップ 6 failure reasons (reason 表の本文は `common-error-handling.md#jq-required-fields-snippet-canonical` の canonical jq snippet を参照):
 
-| reason (ステップ 5.1.2.A、pr-review.md 本文が emit) | Description |
+| reason (ステップ 5.1.2.A、`scripts/pr-review-step.sh` が emit) | Description |
 |--------|-------------|
 | `pr_number_placeholder_residue` | ステップ 5.1.2.A (fingerprint, `FINGERPRINT_COMPUTE_FAILED`) で `pr_number` が数値以外のとき emit。ステップ 6.1.a (`review-result-save.sh`, `LOCAL_SAVE_FAILED`) も同名 reason を emit する (下記 6.1.a bullet 参照) |
 
-> **Note**: ステップ 6.1.a / 6.1.b / 6.1.c の reason は委譲先 helper が emit する (`hooks/review-result-save.sh` / `hooks/review-comment-post.sh` / `hooks/review-skip-notification.sh`、SoT は各 helper の docstring)。委譲済 reason は「この SKILL.md 自身が emit する reason」と区別できるよう **markdown table 行にせず bullet 形式**で列挙し、本文 prose でも `reason=...` 構文を使わず bare backtick 名で参照する。helper の stderr `[CONTEXT]` emit は caller の bash 出力として LLM コンテキストに surface するため、下記 reason はレビュー flow 上で従来どおり観測される。
+> **Note**: ステップ 6.1.a / 6.1.b / 6.1.c の reason は委譲先 helper が emit する (`hooks/review-result-save.sh` / `hooks/review-comment-post.sh` / `hooks/review-skip-notification.sh`、SoT は各 helper の docstring)。委譲済 reason は「`scripts/pr-review-step.sh` が emit する reason」と区別できるよう **markdown table 行にせず bullet 形式**で列挙し、本文 prose でも `reason=...` 構文を使わず bare backtick 名で参照する。helper の stderr `[CONTEXT]` emit は caller の bash 出力として LLM コンテキストに surface するため、下記 reason はレビュー flow 上で従来どおり観測される。
 
 **ステップ 6.1.a reasons** (`review-result-save.sh` が `[CONTEXT] LOCAL_SAVE_FAILED=1; reason=...` を emit。通常 caller は `review-finish` で全保存失敗を非ゼロとして停止する。保存 helper 単体も次の provenance 契約違反は非ゼロで停止する。`signal_aborted` も signal trap 由来の非ゼロを返す):
 - `gate_not_applied`: `measured_gate` receipt が欠落または不正。実測ゲートを迂回した JSON のため保存しない

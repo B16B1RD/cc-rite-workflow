@@ -999,7 +999,8 @@ assert_hint "merge" merge "" "/rite:cleanup fix/issue-2502-x" "/rite:iterate"
 assert_hint "init" init "" "/rite:open 2502" "/rite:iterate"
 assert_hint "lint" lint "" "/rite:open 2502" "ステップ 6"
 assert_hint "ingest-active" ingest "" "$CLEANUP_IN_PROGRESS" "ステップ 6"
-assert_hint "completed-inactive" completed ".active=false" "batch-run ステップ 6（cursor 前進）" "/rite:iterate"
+assert_hint "completed-inactive" completed '.active=false | .next_action="none"' "batch-run ステップ 6（cursor 前進）" "/rite:iterate"
+assert_hint "cleanup-active-none" cleanup '.next_action="none"' "$CLEANUP_IN_PROGRESS" "ステップ 6（cursor 前進）"
 assert_hint "unknown-phase" unknown_phase "" "batch-run ステップ 1 から再判定" "/rite:iterate"
 assert_hint "cb-fire" review '.stop_reason="circuit-breaker:max-cycles"' "batch-run ステップ 8（breaker_failed=true で failed 記録 + 停止、cursor は保持）" "/rite:iterate"
 assert_hint "cb-divergence" review '.stop_reason="circuit-breaker:divergence"' "batch-run ステップ 8（breaker_failed=true で failed 記録 + 停止、cursor は保持）" "cursor 前進"
@@ -1019,10 +1020,10 @@ fi
 
 # --- T-11: cleanup + flow-state active=false → step 6 ---
 echo ""
-echo "=== T-11: phase=cleanup and flow-state active=false routes to step 6 ==="
+echo "=== T-11: finished cleanup (active=false, next_action=none) routes to step 6 ==="
 d=$(new_sandbox)
 setup_watchdog_fs "$d" cleanup 99
-jq '.active=false' "$(state_file_for "$d")" > "$(state_file_for "$d").tmp" \
+jq '.active=false | .next_action="none"' "$(state_file_for "$d")" > "$(state_file_for "$d").tmp" \
   && mv "$(state_file_for "$d").tmp" "$(state_file_for "$d")"
 out=$(run_stop "$d")
 _r=$(printf '%s' "$out" | jq -r '.reason // ""')
@@ -1035,6 +1036,32 @@ if grep -qF "$CLEANUP_IN_PROGRESS" <<< "$_r"; then
   fail "T-11: inactive cleanup used in-progress hint: $out"
 else
   pass "T-11: inactive cleanup does not use in-progress hint"
+fi
+
+# SessionEnd keeps a mid-cleanup state as active=false; the resumed session must finish cleanup
+echo ""
+echo "=== T-11b: cleanup kept by SessionEnd mid-flow continues cleanup after resume ==="
+d=$(new_sandbox)
+setup_watchdog_fs "$d" cleanup 99
+# session-end.sh and session-start.sh resolve the session from .rite-session-id, not the payload
+printf '%s' "$SID" > "$d/.rite-session-id"
+jq -nc --arg c "$d" --arg s "$SID" '{cwd:$c, session_id:$s, hook_event_name:"SessionEnd", reason:"prompt_input_exit"}' \
+  | bash "$PLUGIN_ROOT/hooks/session-end.sh" >/dev/null 2>&1
+jq -nc --arg c "$d" --arg s "$SID" '{cwd:$c, session_id:$s, source:"resume"}' \
+  | RITE_HOST=claude bash "$PLUGIN_ROOT/hooks/session-start.sh" >/dev/null 2>&1
+kept=$(jq -r '"\(.phase)|\(.active)"' "$(state_file_for "$d")" 2>/dev/null || echo "<removed>")
+assert "T-11b: SessionEnd kept the cleanup state inactive" "cleanup|false" "$kept"
+out=$(run_stop "$d")
+_r=$(printf '%s' "$out" | jq -r '.reason // ""')
+if grep -qF "$CLEANUP_IN_PROGRESS" <<< "$_r"; then
+  pass "T-11b: continues the unfinished cleanup"
+else
+  fail "T-11b: $out"
+fi
+if grep -q "ステップ 6（cursor 前進）" <<< "$_r"; then
+  fail "T-11b: advanced the cursor past an unfinished cleanup: $out"
+else
+  pass "T-11b: does not advance the cursor"
 fi
 
 # WIKICHAIN consumed + 2nd stop with active cleanup must not jump to cursor advance

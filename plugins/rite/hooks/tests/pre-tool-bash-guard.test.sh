@@ -526,12 +526,13 @@ assert_main_allow() {
 }
 
 # --------------------------------------------------------------------------
-# TC-201: verb-denylist removal — mutating git verbs are NOT machine-gated
-# (AC-1/AC-4). These commands were denied by the removed sub-blocks
-# (A)-(G); after the removal they must pass the hook untouched. The READ-ONLY
-# guarantee for them is the reviewer prompt (Layer 1) + post-review-state-verify
-# (Layer 3), NOT this hook — this loop pins the hook's non-involvement so a
-# future edit cannot silently re-grow the verb denylist.
+# TC-201: verb-denylist removal — working-tree git verbs are NOT machine-gated.
+# These commands were denied by the removed sub-blocks (A)-(G); they must pass
+# the hook untouched. The READ-ONLY guarantee for them is the reviewer prompt
+# (Layer 1) + post-review-state-verify (Layer 3), NOT this hook — this loop pins
+# the hook's non-involvement so neither a future edit nor sub-block (S), whose
+# closed set is git commit / git push / GitHub writes / flow-state writes / step drivers, can
+# silently re-grow the verb denylist.
 # --------------------------------------------------------------------------
 echo "TC-201: subagent mutating git verbs → allow (Layer 1/3 territory, not machine-gated)"
 for verb_cmd in \
@@ -540,8 +541,6 @@ for verb_cmd in \
   "git checkout -b pr-123-test" \
   "git reset --hard HEAD" \
   "git add ." \
-  "git commit -am 'wip'" \
-  "git push origin feat/foo" \
   "git stash push" \
   "git branch new-branch-name" \
   "git branch -D old-branch" \
@@ -556,7 +555,8 @@ done
 # NOTE: git update-ref / symbolic-ref / config-write / mutating-remote are NOT in
 # this allow set — they write .git directly and are denied by sub-block (N),
 # pinned in TC-127 below. They were never working-tree verbs (removed
-# working-tree verbs; .git-write is the retained gate).
+# working-tree verbs; .git-write is the retained gate). git commit / git push are
+# not in it either: sub-block (S) denies them for reviewers (TC-203).
 echo ""
 
 # --------------------------------------------------------------------------
@@ -1168,9 +1168,8 @@ echo ""
 
 echo "TC-124: oversized command → length-guard fail-closed deny WITHOUT the O(n²) paths"
 # The (L) length guard is the primary timeout-bypass bound: any reviewer command
-# over the byte ceiling is denied fail-closed BEFORE the O(n²) heredoc strip
-# (${COMMAND%%<<*}, ~45s on ~1.3MB) and the O(n²) Pattern 2 regex (>2min on a few
-# MB) — both of which would otherwise time out the fail-open hook and let a padded
+# over the byte ceiling is denied fail-closed BEFORE the O(n²) Pattern 2 regex
+# (>2min on a few MB), which would otherwise time out the fail-open hook and let a padded
 # .git write run. Build huge commands via temp file + --rawfile to avoid argv
 # limits, and pin that the deny is FAST (proves the O(n²) work is skipped).
 tc124_dir=$(mktemp -d)
@@ -1217,10 +1216,8 @@ fi
 # The length guard checks ${#COMMAND} over the WHOLE command (heredoc body included),
 # so it fires here. Non-vacuous (review F-06): the prefix `git status` is
 # read-only, so WITHOUT the length guard the heredoc strip yields `git status` and the
-# command is ALLOWED — WITH it the command is denied. (Note: the `<<` sits near the
-# front, so `${COMMAND%%<<*}` is itself fast here regardless — this case pins the
-# length guard's use of the full command length, not the O(n²) strip skip; the O(n²)
-# no-heredoc path is covered by (a).)
+# command is ALLOWED — WITH it the command is denied. This case pins the length
+# guard's use of the full command length.
 { printf 'git status <<EOF\n'; printf 'y%.0s' $(seq 1 200000); printf '\nEOF'; } > "$tc124_dir/hd.txt"
 jq -n --rawfile cmd "$tc124_dir/hd.txt" --arg tp "$SUBAGENT_TRANSCRIPT" \
   '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}' > "$tc124_dir/hdin.json"
@@ -2337,6 +2334,423 @@ if [ "$rc" = "0" ] && [ -z "$output" ] && [ -z "$decision" ]; then
 else
   fail "Expected allow for --allow-empty-message, got rc=$rc decision=$decision output=$output"
 fi
+# Global options and redirections between git and commit still leave commit as the subcommand.
+# Run from a repository, so the parser resolves the commit instead of failing on the target.
+p7_repo=$(mktemp -d)
+git -C "$p7_repo" init -q
+run_guard_in_repo() {
+  jq -n --arg cmd "$1" --arg cwd "$p7_repo" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: $cwd}' \
+    | bash "$HOOK" 2>"$STDERR_FILE"
+}
+while IFS= read -r p7_cmd; do
+  rc=0
+  output=$(run_guard_in_repo "$p7_cmd") || rc=$?
+  decision=$(extract_hook_field "$output" permissionDecision)
+  reason=$(extract_hook_field "$output" permissionDecisionReason)
+  if [ "$decision" = "deny" ] && [[ "$reason" == *"git-commit-allow-empty"* ]] \
+     && [[ "$reason" == *"creates a commit with no file changes"* ]]; then
+    pass "--allow-empty denied through words before commit: $p7_cmd"
+  else
+    fail "Expected git-commit-allow-empty deny for '$p7_cmd', got decision=$decision reason=$reason"
+  fi
+done <<'EOF'
+git -c a.b=c commit --allow-empty -m x
+git 2>/dev/null commit --allow-empty -m x
+git 2> /dev/null commit --allow-empty -m x
+git >/dev/null commit --allow-empty -m x
+git &>/dev/null commit --allow-empty -m x
+git <&- commit --allow-empty -m x
+git -c a.b=c 2>&1 commit --allow-empty -m x
+git -C . 2>/dev/null commit --allow-empty -m x
+git -C 2>/dev/null . commit --allow-empty -m x
+git -c 2>&1 a.b=c commit --allow-empty -m x
+git --no-pager commit --allow-empty -m x
+git 'commit' --allow-empty -m x
+EOF
+# A variable or command substitution between git and commit may expand to nothing, leaving a bare commit.
+while IFS= read -r p7_cmd; do
+  rc=0
+  output=$(run_guard_in_repo "$p7_cmd") || rc=$?
+  decision=$(extract_hook_field "$output" permissionDecision)
+  reason=$(extract_hook_field "$output" permissionDecisionReason)
+  if [ "$decision" = "deny" ] && [[ "$reason" == *"git-commit-allow-empty"* ]] && [[ "$reason" == *"dynamic"* ]]; then
+    pass "--allow-empty denied behind a word that may expand to nothing: $p7_cmd"
+  else
+    fail "Expected git-commit-allow-empty deny for '$p7_cmd', got decision=$decision reason=$reason"
+  fi
+done <<'EOF'
+git $OPTS commit --allow-empty -m x
+git $(true) commit --allow-empty -m x
+EOF
+# git '' fails as an unknown command without committing; a commit word in another subcommand's arguments is not a commit.
+while IFS= read -r p7_cmd; do
+  rc=0
+  output=$(run_guard_in_repo "$p7_cmd") || rc=$?
+  if [ "$rc" = "0" ] && [ -z "$output" ]; then
+    pass "not denied as git commit --allow-empty: $p7_cmd"
+  else
+    fail "Expected allow for '$p7_cmd', got rc=$rc output=$output"
+  fi
+done <<'EOF'
+git log --allow-empty commit
+git $OPTS log --allow-empty --grep commit
+git '' commit --allow-empty -m x
+git -c a.b=c commit --allow-empty-message -m ""
+git -c a.b=c commit-tree --allow-empty
+EOF
+# Pattern 7 and the heredoc strip before it stay linear in the command length, so a
+# command of a few hundred KB is judged well within the hook timeout.
+p7_timed() {
+  jq -n --rawfile cmd "$1" --arg cwd "$p7_repo" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: $cwd}' > "$p7_repo/big.json"
+  rc=0
+  _t0=$(date +%s%N)
+  output=$(_timeout 15 bash "$HOOK" < "$p7_repo/big.json" 2>"$STDERR_FILE") || rc=$?
+  _t1=$(date +%s%N)
+  _ms=$(( (_t1 - _t0) / 1000000 ))
+}
+p7_big="$p7_repo/big.txt"
+{ printf 'git '; for _i in $(seq 1 86000); do printf -- '-c git '; done; printf -- '--allow-empty'; } > "$p7_big"
+p7_timed "$p7_big"
+if [ "$rc" = "0" ] && [ -z "$output" ] && [ "$_ms" -lt 5000 ]; then
+  pass "Pattern 7 returns for a ~600KB git -c command within 5s (${_ms}ms)"
+else
+  fail "Pattern 7 on a ~600KB git -c command rc=$rc ms=$_ms output=$output"
+fi
+# A non-adjacent commit longer than the parser's input limit is denied without parsing.
+{ printf 'git -c a=b commit --allow-empty -m x a'; printf '%*s' 120000 '' | tr ' ' '>'; } > "$p7_big"
+p7_timed "$p7_big"
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"too long to inspect"* ]] && [ "$_ms" -lt 5000 ]; then
+  pass "Pattern 7 denies a ~120KB non-adjacent commit as too long to inspect (${_ms}ms)"
+else
+  fail "Pattern 7 on a ~120KB non-adjacent commit rc=$rc ms=$_ms decision=$decision reason=$reason"
+fi
+# At each limit the parser still finishes (the reason is its own) within 8s, under the
+# 10s hook timeout. Past a parser limit, a commit that could hide there is refused, and a
+# command that moves no HEAD outside an unparsed substitution is not.
+p7_max=$(sed -n 's/^_RITE_BTG_P7_PARSE_MAX_CHARS=//p' "$HOOK")
+p7_scope_py="$(dirname "$HOOK")/scripts/lib/review-fix-scope.py"
+p7_depth=$(sed -n 's/^MAX_SUBSTITUTION_DEPTH = //p' "$p7_scope_py")
+p7_changes=$(sed -n 's/^MAX_DIRECTORY_CHANGES = //p' "$p7_scope_py")
+for p7_limit in "$p7_max" "$p7_depth" "$p7_changes"; do
+  [[ "$p7_limit" =~ ^[0-9]+$ ]] || fail "Pattern 7 limit constants must be read as integers: '$p7_max' '$p7_depth' '$p7_changes'"
+done
+p7_tail='; git -ca commit --allow-empty -m x'
+p7_limit_case() {  # $1 label, $2 expected reason
+  p7_timed "$p7_big"
+  decision=$(extract_hook_field "$output" permissionDecision)
+  reason=$(extract_hook_field "$output" permissionDecisionReason)
+  if [ "$decision" = "deny" ] && [[ "$reason" == *"$2"* ]] && [ "$_ms" -lt 8000 ]; then
+    pass "Pattern 7 denies $1 within 8s ($(wc -c < "$p7_big") bytes, ${_ms}ms)"
+  else
+    fail "Pattern 7 on $1 rc=$rc ms=$_ms decision=$decision reason=$reason"
+  fi
+}
+p7_allow_case() {  # $1 label
+  p7_timed "$p7_big"
+  if [ "$rc" = "0" ] && [ -z "$output" ] && [ "$_ms" -lt 8000 ]; then
+    pass "Pattern 7 allows $1 within 8s (${_ms}ms)"
+  else
+    fail "Pattern 7 on $1 rc=$rc ms=$_ms output=$output"
+  fi
+}
+p7_log_tail='; git log --allow-empty --grep commit'
+p7_nested() {  # $1 depth, $2 length of the innermost word, $3 innermost command (default echo), $4 tail
+  { printf 'echo '; printf '$(%.0s' $(seq 1 "$1"); printf '%s ' "${3:-echo}"; printf '%*s' "$2" '' | tr ' ' 'x'
+    printf ')%.0s' $(seq 1 "$1"); printf '%s' "${4:-$p7_tail}"; } > "$p7_big"
+}
+p7_nested "$p7_depth" $(( p7_max - 3 * p7_depth - 10 - ${#p7_tail} ))
+p7_limit_case "the deepest nesting of the longest command" "creates a commit with no file changes"
+p7_nested $(( p7_depth + 1 )) 10 'git -ca commit -m' "$p7_log_tail"
+p7_limit_case "a commit nested one level too deep" "nested more than $p7_depth deep"
+p7_nested $(( p7_depth + 1 )) 10 "g''it commit -m" "$p7_log_tail"
+p7_limit_case "a quoted-apart commit nested one level too deep" "nested more than $p7_depth deep"
+p7_nested $(( p7_depth + 1 )) 10 true "$p7_log_tail"
+p7_allow_case "a git log after nesting one level too deep"
+{ for _i in $(seq 1 $(( (p7_max - ${#p7_tail}) / 10 ))); do printf 'git merge;'; done
+  printf '%s' "$p7_tail"; } > "$p7_big"
+p7_limit_case "the most merges that fit" "creates a commit with no file changes"
+# Each directory change here is a different merge target, resolved by its own git process.
+p7_dirs() {  # $1 number of merge targets besides the commit's
+  { for _i in $(seq 1 "$1"); do mkdir -p "$p7_repo/d$_i"; printf 'git -C d%s merge x;' "$_i"; done
+    printf '%s' "$p7_tail"; } > "$p7_big"
+}
+p7_dirs "$p7_changes"
+p7_limit_case "the most cd / -C directory changes" "creates a commit with no file changes"
+p7_moves() {  # $1 number of -C. options, $2 subcommand and arguments
+  { printf 'git'; for _i in $(seq 1 "$1"); do printf ' -C.'; done; printf ' %s' "$2"; } > "$p7_big"
+}
+p7_moves $(( p7_changes + 1 )) 'commit --allow-empty -m x'
+p7_limit_case "a commit after one cd / -C directory change too many" "target is dynamic"
+p7_moves $(( p7_changes + 1 )) 'log --allow-empty --grep commit'
+p7_allow_case "a git log after one cd / -C directory change too many"
+# The longest path those changes can build: every change adds as many components as fit.
+{ printf 'git'; for _i in $(seq 1 "$p7_changes"); do
+    printf ' -C'; printf 'x/%.0s' $(seq 1 $(( (p7_max - 40) / p7_changes / 2 - 2 ))); done
+  printf ' commit --allow-empty -m x'; } > "$p7_big"
+p7_limit_case "the longest path built by directory changes" "cannot be resolved to a repository"
+# The costliest use of those changes: the first builds the whole path and every other one
+# resolves it again.
+{ printf 'git -C'; printf 'x/%.0s' $(seq 1 $(( (p7_max - 40 - 4 * p7_changes) / 2 )))
+  for _i in $(seq 2 "$p7_changes"); do printf ' -C.'; done
+  printf ' commit --allow-empty -m x'; } > "$p7_big"
+p7_limit_case "the longest path resolved again by every directory change" "cannot be resolved to a repository"
+# The parser itself stays linear: a long word of > signs and a long run of wrapper options.
+p7_scope_check="$(dirname "$HOOK")/scripts/review-fix-scope-check.sh"
+for p7_shape in gt wrapper; do
+  if [ "$p7_shape" = gt ]; then
+    { printf 'git -c a=b commit --allow-empty -m x a'; printf '%*s' 120000 '' | tr ' ' '>'; } > "$p7_big"
+  else
+    { printf 'env '; printf -- '-i %.0s' $(seq 1 40000); printf 'git -c a=b commit --allow-empty -m x'; } > "$p7_big"
+  fi
+  rc=0
+  _t0=$(date +%s%N)
+  output=$(_timeout 15 bash "$p7_scope_check" commit-target --command "$(cat "$p7_big")" --cwd "$p7_repo" 2>&1) || rc=$?
+  _t1=$(date +%s%N)
+  _ms=$(( (_t1 - _t0) / 1000000 ))
+  if [ "$rc" = "0" ] && [[ "$output" == index* || "$output" == other* ]] && [ "$_ms" -lt 1000 ]; then
+    pass "commit-target parses a ~120KB $p7_shape command within 1s (${_ms}ms)"
+  else
+    fail "commit-target on a ~120KB $p7_shape command rc=$rc ms=$_ms output=$(printf '%s' "$output" | head -c 200)"
+  fi
+done
+rm -rf "$p7_repo"
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-203: reviewer state-changing commands (sub-block (S)).
+# Reviewer-typed subagents are denied push / commit / GitHub writes / gh pr checkout /
+# flow-state writes / step drivers at command position; read-only commands that merely MENTION those words
+# stay allowed; non-reviewer subagents and the main session are untouched.
+# --------------------------------------------------------------------------
+echo "TC-203: reviewer state-changing commands → deny; read-only and non-reviewer → allow"
+# $1 = reported agent type ("" = main session, "-" = subagent transcript with no type)
+run_guard_typed() {
+  local agent_type="$1" cmd="$2" rc=0 output
+  output=$(jq -n --arg cmd "$cmd" --arg t "$agent_type" \
+    '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp"}
+     + (if $t == "" then {} elif $t == "-" then {transcript_path: "/tmp/p/subagents/a.jsonl"} else {agent_type: $t} end)' \
+    | bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+  echo "$output"
+  return $rc
+}
+for sc_cmd in \
+  "git push" \
+  "git -C x commit -m y" \
+  "/usr/bin/git push origin HEAD" \
+  "cd x && git commit -m y" \
+  'x=$(git push)' \
+  "FOO=1 git push" \
+  "bash plugins/rite/hooks/flow-state.sh set --phase fix" \
+  "plugins/rite/hooks/flow-state.sh consume-handoff" \
+  "bash plugins/rite/hooks/flow-state.sh" \
+  "bash plugins/rite/scripts/fix-step.sh push" \
+  "bash plugins/rite/scripts/iterate-step.sh restore" \
+  $'cat <<\'EOF\' >/tmp/m\nx\nEOF\ngit push' \
+  "if true; then git push; fi" \
+  "{ git commit -m y; }" \
+  "! git push" \
+  "'git' push" \
+  '\git commit -m y' \
+  'echo "$(git push)"' \
+  "while read x; do git push; done" \
+  'git -C "$(pwd)" push' \
+  'cd "$(git rev-parse --show-toplevel)" && git push' \
+  'bash "$(git rev-parse --show-toplevel)/plugins/rite/hooks/flow-state.sh" set --phase fix' \
+  'echo "`date`" && git push' \
+  'echo $(case x in *) git push;; esac)' \
+  'printf %s "$(case x in a) bash plugins/rite/hooks/flow-state.sh set --phase fix;; esac)"' \
+  'x="$(case y in a) echo z;; esac)"; git push origin HEAD' \
+  'echo $(time -p case x in *) git push;; esac)' \
+  "echo \"\$('case' x)\"; git push" \
+  "echo \$(case x in a) 'esac';; *) git push;; esac)" \
+  '$(true) git push' \
+  "timeout 30 git push" \
+  "env -u X git push" \
+  "nice -n 5 git commit -m y" \
+  "time -p git push" \
+  "timeout -k 5 30 git push" \
+  "command git push" \
+  "exec git push" \
+  "nohup git push" \
+  "gh pr comment 1 --body x" \
+  "gh pr review 1 --approve" \
+  "gh pr update-branch 1" \
+  "gh pr revert 1" \
+  "gh pr checkout 1" \
+  "gh -R o/r pr checkout 1 --force" \
+  "timeout 30 gh pr checkout 1" \
+  "gh -R o/r issue create --title t --body b" \
+  "gh issue edit 1 --add-label x" \
+  "gh pr merge 1 --squash" \
+  "gh api -X POST repos/o/r/issues/1/comments -f body=x" \
+  "gh api repos/o/r/issues/1/comments -f body=x" \
+  "gh api repos/o/r/issues -F title=x" \
+  "gh api -X DELETE repos/o/r/issues/comments/1" \
+  "gh api --method=PATCH repos/o/r/pulls/1" \
+  "gh api graphql -f query='mutation { x }'" \
+  "git push && git log --help" \
+  "git push origin --help" \
+  "git push --help && git push origin HEAD" \
+  "bash -n plugins/rite/hooks/flow-state.sh && bash plugins/rite/hooks/flow-state.sh set --phase fix" \
+  "bash -x plugins/rite/hooks/flow-state.sh set --phase fix" \
+  ; do
+  rc=0
+  output=$(run_guard_typed "rite:test-reviewer" "$sc_cmd") || rc=$?
+  decision=$(extract_hook_field "$output" permissionDecision)
+  reason=$(extract_hook_field "$output" permissionDecisionReason)
+  if [ "$decision" = "deny" ] && [[ "$reason" == "BLOCKED (reviewer-state-change):"* ]] \
+    && [[ "$reason" == *"type=rite:test-reviewer"* ]] \
+    && grep -q 'bash-guard: BLOCKED pattern=reviewer-state-change' "$STDERR_FILE"; then
+    pass "reviewer '${sc_cmd//$'\n'/\\n}' denied as reviewer-state-change"
+  else
+    fail "Expected reviewer-state-change deny for '${sc_cmd//$'\n'/\\n}', got decision=$decision reason=$reason"
+  fi
+done
+# Reviewer classification matrix — the same predicate as pre-tool-edit-guard.sh.
+# $1 = JSON fields merged into the hook input, $2 = CLAUDE_SUBAGENT_TYPE ("" = unset)
+run_guard_fields() {
+  local fields="$1" env_type="$2" rc=0 output
+  output=$(jq -n --arg cmd "git push" --argjson f "$fields" \
+    '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp"} + $f' \
+    | env -u CLAUDE_SUBAGENT_TYPE -u CLAUDE_AGENT_TYPE ${env_type:+CLAUDE_SUBAGENT_TYPE=$env_type} bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+  echo "$output"
+  return $rc
+}
+for deny_fields in \
+  '{"subagent_type":"plugin:rite:code-quality-reviewer"}' \
+  '{"subagent_type":"rite:_reviewer-base"}' \
+  '{"subagent_type":"general-purpose","agent_type":"rite:security-reviewer"}' \
+  ; do
+  rc=0
+  output=$(run_guard_fields "$deny_fields" "") || rc=$?
+  if [[ "$(extract_hook_field "$output" permissionDecisionReason)" == "BLOCKED (reviewer-state-change):"* ]]; then
+    pass "reviewer-typed $deny_fields denied git push"
+  else
+    fail "Expected reviewer-state-change deny for $deny_fields, got output=$output"
+  fi
+done
+rc=0
+output=$(run_guard_fields '{}' "rite:test-reviewer") || rc=$?
+if [[ "$(extract_hook_field "$output" permissionDecisionReason)" == "BLOCKED (reviewer-state-change):"* ]]; then
+  pass "Tier 3 env CLAUDE_SUBAGENT_TYPE=rite:test-reviewer denied git push"
+else
+  fail "Expected Tier 3 reviewer deny, got output=$output"
+fi
+for allow_case in '{"subagent_type":"general-purpose"}|' '{}|general-purpose'; do
+  rc=0
+  output=$(run_guard_fields "${allow_case%%|*}" "${allow_case#*|}") || rc=$?
+  if [ "$rc" = "0" ] && [ -z "$output" ]; then
+    pass "non-reviewer type ($allow_case) git push allowed"
+  else
+    fail "Expected allow for non-reviewer type ($allow_case), got rc=$rc output=$output"
+  fi
+done
+# The .git-write gate still covers every subagent, not only reviewers.
+rc=0
+output=$(run_guard_typed "general-purpose" "echo x > .git/hooks/pre-commit") || rc=$?
+if [[ "$(extract_hook_field "$output" permissionDecisionReason)" == "BLOCKED (reviewer-gitdir-write):"* ]]; then
+  pass "non-reviewer subagent .git write still denied as reviewer-gitdir-write"
+else
+  fail "Expected reviewer-gitdir-write deny for general-purpose .git write, got output=$output"
+fi
+rc=0
+output=$(run_guard_typed "-" "git push") || rc=$?
+reason=$(extract_hook_field "$output" permissionDecisionReason)
+if [[ "$reason" == *"reviewer-state-change"* ]] && [[ "$reason" == *"type unknown"* ]]; then
+  pass "subagent with no reported type is treated as a reviewer (git push denied)"
+else
+  fail "Expected type-unknown subagent git push deny, got reason=$reason"
+fi
+for ro_sc_cmd in \
+  "git diff" \
+  "grep -rn 'git commit' plugins/" \
+  "git log -S'git push'" \
+  'echo "git push"' \
+  "bash plugins/rite/hooks/tests/x.test.sh" \
+  "bash plugins/rite/hooks/flow-state.sh get --field phase" \
+  "bash plugins/rite/hooks/flow-state.sh path" \
+  "git worktree add --detach /tmp/rite-review-mutation-x HEAD" \
+  "grep -rn 'x; git push' plugins/" \
+  "git log --grep='a\\|git commit'" \
+  'echo "(git push)"' \
+  $'cat <<\'EOF\'\ngit push\nEOF' \
+  "git status # then git push" \
+  'echo "$(date); git push is blocked"' \
+  'x=$(case y in a) echo z;; esac); echo "$x git push"' \
+  "gh pr view 1 --json body" \
+  "gh pr diff 1" \
+  "gh issue view 1" \
+  "gh api repos/o/r/pulls/1" \
+  "gh api -X GET repos/o/r/issues -f state=open" \
+  "gh api graphql -f query='query { viewer { login } }'" \
+  "timeout 30 git status" \
+  "gh pr create --help" \
+  "gh issue close -h" \
+  "gh pr checkout --help" \
+  "git push --help" \
+  "git commit -h" \
+  "bash -n plugins/rite/hooks/flow-state.sh" \
+  "bash -n plugins/rite/scripts/iterate-step.sh" \
+  ; do
+  rc=0
+  output=$(run_guard_typed "rite:test-reviewer" "$ro_sc_cmd") || rc=$?
+  if [ "$rc" = "0" ] && [ -z "$output" ]; then
+    pass "reviewer read-only '$ro_sc_cmd' allowed"
+  else
+    fail "Expected allow for reviewer '$ro_sc_cmd', got rc=$rc output=$output"
+  fi
+done
+# The scan must finish inside the hook timeout: a command just under the scan
+# ceiling is scanned and denied, a longer one is denied unscanned; neither may
+# time out.
+sc_pad=$(printf 'a b %.0s' $(seq 1 2040))
+for size_case in "scan|echo $sc_pad; git push|runs 'git push'" \
+  "unscanned|echo $(printf 'aaaa bbbb %.0s' $(seq 1 6000)); git push|(ceiling 8192)"; do
+  size_label="${size_case%%|*}"; size_rest="${size_case#*|}"
+  size_cmd="${size_rest%|*}"; size_want="${size_rest##*|}"
+  rc=0
+  output=$(jq -n --arg cmd "$size_cmd" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", agent_type: "rite:test-reviewer"}' \
+    | _timeout 10 bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+  reason=$(extract_hook_field "$output" permissionDecisionReason)
+  if [ "$rc" != "124" ] && [[ "$reason" == "BLOCKED (reviewer-state-change):"* ]] && [[ "$reason" == *"$size_want"* ]]; then
+    pass "reviewer ${#size_cmd}-byte git push denied within the hook timeout ($size_label)"
+  else
+    fail "Expected in-time reviewer-state-change deny for ${#size_cmd}-byte command ($size_label), got rc=$rc reason=$reason"
+  fi
+done
+# gh counts only as a word: a long read-only command with `through ` / `high `
+# is not denied by the size ceiling.
+sc_cmd="echo $(printf 'walk through high %.0s' $(seq 1 500))"
+rc=0
+output=$(run_guard_typed "rite:test-reviewer" "$sc_cmd") || rc=$?
+if [ "${#sc_cmd}" -gt 8192 ] && [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "reviewer ${#sc_cmd}-byte command with 'through ' / 'high ' allowed"
+else
+  fail "Expected allow for ${#sc_cmd}-byte command with 'through ' / 'high ', got rc=$rc output=$output"
+fi
+# A failure inside the scan function must still reach the fail-closed ERR trap.
+rc=0
+output=$(jq -n --arg cmd "git push" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", agent_type: "rite:test-reviewer"}' \
+  | RITE_BTG_TEST_CRASH=pattern4-scan bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+if [ "$rc" = "2" ] && [[ "$(extract_hook_field "$output" permissionDecisionReason)" == *"reviewer-gitdir-write"* ]] \
+  && grep -q 'WARNING Pattern 4' "$STDERR_FILE"; then
+  pass "crash inside the (S) scan function denies fail-closed (rc=2)"
+else
+  fail "Expected fail-closed deny for a crash inside the (S) scan, got rc=$rc output=$output"
+fi
+for other_type in "general-purpose" ""; do
+  for other_cmd in "git push" "git commit -m x" "gh pr checkout 1" "bash plugins/rite/hooks/flow-state.sh set --phase fix"; do
+    rc=0
+    output=$(run_guard_typed "$other_type" "$other_cmd") || rc=$?
+    if [ "$rc" = "0" ] && [ -z "$output" ]; then
+      pass "non-reviewer (${other_type:-main session}) '$other_cmd' allowed"
+    else
+      fail "Expected allow for non-reviewer (${other_type:-main session}) '$other_cmd', got rc=$rc output=$output"
+    fi
+  done
+done
 echo ""
 
 # --------------------------------------------------------------------------

@@ -278,15 +278,27 @@ class WorkflowContracts(unittest.TestCase):
         headless = self.fixture / "headless-base"
         (headless / "agents").mkdir(parents=True)
         (headless / "agents/_reviewer-base.md").write_text("# base without the output format section\n", encoding="utf-8")
+        # The call line runs the helper under the given plugin root, so each fixture carries a copy.
+        for fixture_root in (missing, headless):
+            (fixture_root / "scripts").mkdir(parents=True)
+            (fixture_root / "hooks").mkdir(parents=True)
+            shutil.copy(plugin / "scripts/pr-review-step.sh", fixture_root / "scripts/pr-review-step.sh")
+            shutil.copy(plugin / "hooks/control-char-neutralize.sh", fixture_root / "hooks/control-char-neutralize.sh")
         for label, plugin_root, cwd, guard in [
                 ("missing base", str(missing), str(self.fixture), "読めません"),
-                ("base without Output Format", str(headless), str(self.fixture), "読めません"),
-                ("relative plugin root", "plugins/rite", str(root), "絶対パスではありません")]:
+                ("base without Output Format", str(headless), str(self.fixture), "読めません")]:
             rc, out, err = run_load(plugin_root, cwd)
             self.assertNotEqual(rc, 0, label)
             self.assertIn("[review:error]", out, label)
             self.assertNotIn("[CONTEXT] SHARED_REVIEWER_PRINCIPLES=", out, label)
             self.assertIn(guard, err, label)
+        # A relative plugin root in the call line still hands the reviewers an absolute path:
+        # the helper resolves the root from its own location.
+        rc, out, err = run_load("plugins/rite", str(root))
+        self.assertEqual(rc, 0, err)
+        self.assertNotIn("[review:error]", out)
+        self.assertEqual(out.strip(), "[CONTEXT] SHARED_REVIEWER_PRINCIPLES=" + str((root / "plugins/rite/agents/_reviewer-base.md").resolve()))
+        self.assertNotIn("絶対パスではありません", err)
         row = next(line for line in pr_review.splitlines() if line.startswith("| `{shared_reviewer_principles}` |"))
         for clause in ["全文 inline しない", "SHARED_REVIEWER_PRINCIPLES=", "着手前に Read tool で先頭から末尾まで全文読む",
                        "offset / limit で分割して末尾まで", "読取完了: {絶対パス}", "named / 独立子の両経路で同じ"]:

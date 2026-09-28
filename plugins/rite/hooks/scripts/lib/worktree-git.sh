@@ -177,7 +177,10 @@ verify_worktree_branch() {
  head -3 "$rev_parse_err" | neutralize_ctrl --keep-newline | sed 's/^/ git: /' >&2
  fi
  echo " 原因候補: worktree corrupt (.git file 破損) / permission denied / git binary 異常" >&2
- echo " 対処: git worktree remove $_q_worktree && bash plugins/rite/hooks/scripts/wiki-worktree-setup.sh" >&2
+ local _q_setup_sh
+ # Named from this lib's own location so the hint works from any cwd and install root.
+ printf -v _q_setup_sh '%q' "$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/wiki-worktree-setup.sh"
+ echo " 対処: git worktree remove $_q_worktree && bash $_q_setup_sh" >&2
  [ -n "$rev_parse_err" ] && rm -f "$rev_parse_err"
  _vwb_restore_traps
  return 2
