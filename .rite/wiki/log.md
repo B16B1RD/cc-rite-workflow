@@ -82,6 +82,8 @@
 * **Update**: [新設した出力フィールドは producer と consumer の両側を pin する — consumer が表なら行単位で pin する](pages/patterns/new-output-field-pin-producer-and-consumer.md) — raw/fixes/20260928T012538Z-pr-3366.md ほかで補強
 * **Skip**: raw/reviews/20260928T013457Z-pr-3372.md — 同じ PR の別 raw から統合済み
 
+* **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=62, orphans=0, missing_concept=0, unregistered_raw=577, broken_refs=0
+
 ## 2026-09-27
 
 * **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/reviews/20260927T160944Z-pr-3307.md を統合
