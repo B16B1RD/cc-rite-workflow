@@ -895,7 +895,9 @@ echo ""
 echo "T-02: active live review_run is kept; only active flips"
 dir_p02="$TEST_DIR/preserve-active"
 mkdir -p "$dir_p02"
-create_state_file "$dir_p02" '{"schema_version":3,"active":true,"phase":"review","review_run":{"status":"active","run_id":"run-live","current_decision":{"action":"replan"},"observations":[{"id":1}]}}'
+# A terminal phase, so that only the review_run can keep it (an active state
+# in a non-terminal phase is kept on its own).
+create_state_file "$dir_p02" '{"schema_version":3,"active":true,"phase":"completed","review_run":{"status":"active","run_id":"run-live","current_decision":{"action":"replan"},"observations":[{"id":1}]}}'
 sf_p02=$(state_file_path "$dir_p02")
 run_p02=$(jq -c '.review_run' "$sf_p02")
 rc_p02=0
@@ -962,7 +964,8 @@ echo ""
 echo "T-05: jq deactivate failure keeps original bytes (history present)"
 dir_p05="$TEST_DIR/preserve-jqfail"
 mkdir -p "$dir_p05"
-create_state_file "$dir_p05" '{"schema_version":3,"active":true,"phase":"review","review_run":{"status":"stopped","run_id":"run-jqfail"}}'
+# A terminal phase, so that the mid-flow rule does not keep it on its own.
+create_state_file "$dir_p05" '{"schema_version":3,"active":true,"phase":"completed","review_run":{"status":"stopped","run_id":"run-jqfail"}}'
 sf_p05=$(state_file_path "$dir_p05")
 before_p05=$(digest_file "$sf_p05")
 fake_jq_p05="$(mktemp -d "$TEST_DIR/fakejq-p05-XXXXXX")"
