@@ -14,6 +14,7 @@
 * **Update**: [列挙・全称主張を持つ記述は書き直しでは収束しない — 撤去だけが指摘面を消す](pages/anti-patterns/enumeration-claim-rewrite-never-converges.md) — raw/reviews/20260928T160833Z-pr-3376.md を統合
 * **Update**: [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) — raw/reviews/20260928T160504Z-pr-3408.md と raw/fixes/20260928T155121Z-pr-3408.md を統合
 * **Update**: [保留（hold）を新設したら、寿命を state を消す全経路で揃え、解除の手段を保留の理由ごとに用意する](pages/heuristics/new-hold-state-lifecycle-across-all-purge-paths.md) — raw/fixes/20260928T154359Z-pr-3393.md と raw/reviews/20260928T160221Z-pr-3393.md と raw/fixes/20260928T161213Z-pr-3393.md を統合
+* **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=580, broken_refs=0
 
 ## 2026-09-28
 
