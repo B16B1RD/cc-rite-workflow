@@ -2376,6 +2376,10 @@ for sc_cmd in \
   '\git commit -m y' \
   'echo "$(git push)"' \
   "while read x; do git push; done" \
+  'git -C "$(pwd)" push' \
+  'cd "$(git rev-parse --show-toplevel)" && git push' \
+  'bash "$(git rev-parse --show-toplevel)/plugins/rite/hooks/flow-state.sh" set --phase fix' \
+  'echo "`date`" && git push' \
   ; do
   rc=0
   output=$(run_guard_typed "rite:test-reviewer" "$sc_cmd") || rc=$?
@@ -2458,6 +2462,7 @@ for ro_sc_cmd in \
   'echo "(git push)"' \
   $'cat <<\'EOF\'\ngit push\nEOF' \
   "git status # then git push" \
+  'echo "$(date); git push is blocked"' \
   ; do
   rc=0
   output=$(run_guard_typed "rite:test-reviewer" "$ro_sc_cmd") || rc=$?
@@ -2465,6 +2470,23 @@ for ro_sc_cmd in \
     pass "reviewer read-only '$ro_sc_cmd' allowed"
   else
     fail "Expected allow for reviewer '$ro_sc_cmd', got rc=$rc output=$output"
+  fi
+done
+# The scan must finish inside the hook timeout: a command at the scan ceiling is
+# scanned and denied, a longer one is denied unscanned; neither may time out.
+sc_pad=$(printf 'a b %.0s' $(seq 1 2040))
+for size_case in "scan|echo $sc_pad; git push|runs 'git push'" \
+  "unscanned|echo $(printf 'aaaa bbbb %.0s' $(seq 1 6000)); git push|(ceiling 8192)"; do
+  size_label="${size_case%%|*}"; size_rest="${size_case#*|}"
+  size_cmd="${size_rest%|*}"; size_want="${size_rest##*|}"
+  rc=0
+  output=$(jq -n --arg cmd "$size_cmd" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", agent_type: "rite:test-reviewer"}' \
+    | timeout 10 bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+  reason=$(extract_hook_field "$output" permissionDecisionReason)
+  if [ "$rc" != "124" ] && [[ "$reason" == "BLOCKED (reviewer-state-change):"* ]] && [[ "$reason" == *"$size_want"* ]]; then
+    pass "reviewer ${#size_cmd}-byte git push denied within the hook timeout ($size_label)"
+  else
+    fail "Expected in-time reviewer-state-change deny for ${#size_cmd}-byte command ($size_label), got rc=$rc reason=$reason"
   fi
 done
 for other_type in "general-purpose" ""; do
