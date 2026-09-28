@@ -564,7 +564,7 @@ step_fingerprint_check() {
 case "$pr_number" in
  ''|*[!0-9]*)
  echo "WARNING: ステップ 5.1.2.A Step 2 の pr_number が literal substitute されていません (値: '$pr_number') — fingerprint 比較を skip します" >&2
- echo "[CONTEXT] FINGERPRINT_COMPUTE_FAILED=1; reason=pr_number_placeholder_residue; file=$f_file" >&2
+ echo "[CONTEXT] FINGERPRINT_COMPUTE_FAILED=1; reason=pr_number_placeholder_residue; finding_id=$finding_id" >&2
  exit 0 # non-blocking: 当該 finding は suppression なしで通常 finding として処理される
  ;;
 esac
