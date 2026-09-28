@@ -197,10 +197,27 @@ else
 fi
 echo ""
 
+# --- TC-SETUP-FETCH-HINT: with no local wiki branch, setup.sh names the repository in its fetch hint ---
+# Run from outside the repository: the pasted fetch must not depend on the caller's cwd.
+echo "TC-SETUP-FETCH-HINT: fetch hint carries git -C <repo>"
+set +e
+(cd "$REPO" && bash "$SETUP_SH" >/dev/null 2>fh_err.txt)
+fh_rc=$?
+set -e
+fh_line=$(grep '^    1) ' "$REPO/fh_err.txt" || true)
+fh_cmd=${fh_line#"    1) "}
+fh_words=$( ( cd / && export GIT_DIR=/nonexistent && eval "set -- $fh_cmd" && printf '%s\n' "$#" "$@" ) 2>/dev/null || true)
+fh_expected=$(printf '%s\n' 6 git -C "$(cd "$REPO" && pwd -P)" fetch origin wiki:wiki)
+if [ "$fh_rc" -eq 2 ] && [ "$fh_words" = "$fh_expected" ]; then
+  pass "fetch hint splits into: git -C <abs repo> fetch origin wiki:wiki"
+else
+  fail "expected exit 2 + fetch hint git -C <abs repo> fetch origin wiki:wiki; got rc=$fh_rc words=$(printf '%s' "$fh_words" | tr '\n' '|')"
+fi
+echo ""
+
 # --- TC-SETUP-WRONG-BRANCH: a worktree checked out to the wrong branch gets a pasteable remove command ---
 # setup.sh stops (exit 3) and prints `git worktree remove <target> && re-run this script`.
-# The target is the fixed relative `.rite/wiki-worktree`, so this pins the words
-# (a changed argument fails) but cannot tell %q from a hand-written quote.
+# The target is the absolute `<repo>/.rite/wiki-worktree`, so the command works from any cwd.
 rm -rf "$WORK"; WORK="$(mktemp -d)"
 REPO="$WORK/repo"
 mkdir -p "$REPO"
@@ -231,10 +248,10 @@ if wb_words=$( ( cd / && export GIT_DIR=/nonexistent && eval "set -- $wb_cmd" &&
 else
   wb_parsed=no
 fi
-wb_expected=$(printf '%s\n' 4 git worktree remove .rite/wiki-worktree)
+wb_expected=$(printf '%s\n' 4 git worktree remove "$(cd "$REPO" && pwd -P)/.rite/wiki-worktree")
 if [ "$wb_rc" -eq 3 ] && [ "$wb_lines" = "1" ] && [ "$wb_tail" = "$rerun_tail" ] \
    && [ "$wb_parsed" = "yes" ] && [ "$wb_words" = "$wb_expected" ]; then
-  pass "exit 3 with one manual recovery line splitting into: git worktree remove .rite/wiki-worktree"
+  pass "exit 3 with one manual recovery line splitting into: git worktree remove <abs repo>/.rite/wiki-worktree"
 else
   fail "expected exit 3 + one 'git worktree remove .rite/wiki-worktree && re-run this script' line; got rc=$wb_rc lines=$wb_lines tail='$wb_tail' parsed=$wb_parsed words=$(printf '%s' "$wb_words" | tr '\n' '|')"
   printf '%s\n' "$wb_err" | sed 's/^/    err: /'
