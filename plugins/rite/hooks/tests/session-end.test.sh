@@ -1289,8 +1289,8 @@ jq -nc --arg cwd "$dir_p16" --arg sid "$sid_p16" '{cwd:$cwd, session_id:$sid, ho
   | bash "$HOOK" 2>"$LAST_STDERR_FILE" >/dev/null || rc_end_p16=$?
 marked_p16=$(jq -r '"\(.active)|\(.suspended_by_session_end)"' "$sf_p16" 2>/dev/null || echo "<removed>")
 rc_start_p16=0
-jq -nc --arg cwd "$dir_p16" --arg sid "$sid_p16" '{cwd:$cwd, session_id:$sid, source:"resume"}' \
-  | RITE_HOST=claude bash "$SESSION_START" >/dev/null 2>&1 || rc_start_p16=$?
+out_p16=$(jq -nc --arg cwd "$dir_p16" --arg sid "$sid_p16" '{cwd:$cwd, session_id:$sid, source:"resume"}' \
+  | RITE_HOST=claude bash "$SESSION_START" 2>/dev/null) || rc_start_p16=$?
 resumed_p16=$(jq -cS 'del(.updated_at)' "$sf_p16" 2>/dev/null || echo "<removed>")
 expected_p16=$(printf '%s' "$fixture_p16" | jq -cS 'del(.updated_at)')
 got_p16=$(cd "$dir_p16" && printf '%s|%s|%s|%s' \
@@ -1302,6 +1302,7 @@ restore_p16=$(cd "$dir_p16" && bash "$ITERATE_STEP" restore 2>/dev/null || true)
 if [ "$rc_end_p16" -eq 0 ] && [ "$rc_start_p16" -eq 0 ] \
   && [ "$marked_p16" = "false|true" ] \
   && [ "$resumed_p16" = "$expected_p16" ] \
+  && ! grep -qF "作業中に戻せませんでした" <<< "$out_p16" \
   && [ "$got_p16" = "pr|8|7|fix/issue-7-resume" ] \
   && grep -qE '^\[CONTEXT\] ITERATE_ISSUE=7; ITERATE_BRANCH=fix/issue-7-resume$' <<< "$restore_p16"; then
   pass "T-16 resume turns the marked state active, drops the mark, keeps every other field, and iterate restores issue and branch"
@@ -1511,7 +1512,7 @@ else
   if [ "$rc_p21" -eq 0 ] && [ "$before_p21" = "$after_p21" ] \
     && jq -e '.active == false and .suspended_by_session_end == true' "$sf_p21" >/dev/null \
     && grep -qF "rite: session-start: WARNING: failed to reactivate the state SessionEnd suspended: $sf_p21" "$LAST_STDERR_FILE" \
-    && [[ "$out_p21" == *"$sf_p21"*"/rite:recover"* ]] \
+    && awk -v p="$sf_p21" 'index($0, p) && index($0, "/rite:recover") {f=1} END {exit !f}' <<< "$out_p21" \
     && ! grep -qF "中断した rite workflow を検出" <<< "$out_p21"; then
     pass "T-21 the failed write warns with the path on stderr, points to /rite:recover with the path on stdout, rc=0, and the marked state is unchanged"
   else
