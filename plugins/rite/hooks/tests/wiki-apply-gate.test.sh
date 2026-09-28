@@ -1496,6 +1496,36 @@ head: 2222222222222222222222222222222222222222"
 adv_case "an unresolvable --from fails" no-such-rev "### Wiki 適用証跡
 head: $fx_old"
 
+echo "=== the default memory lookup and the write fail without touching the record ==="
+arc=0
+(cd "$fx" && env -u WIKI_APPLY_MEMORY WIKI_APPLY_FLOW_STATE="$ROOT/no-such.flow-state" bash "$adv_block") \
+  >"$ROOT/adv-noflow.out" 2>"$ROOT/adv-noflow.err" || arc=$?
+if [ "$arc" -eq 1 ] && grep -q 'flow-state を読めません' "$ROOT/adv-noflow.err" && [ ! -s "$ROOT/adv-noflow.out" ]; then
+  pass "a missing flow-state stops the block before any record is read"
+else
+  fail "missing flow-state rc=$arc err=$(cat "$ROOT/adv-noflow.err")"
+fi
+if [ "$(id -u)" != 0 ]; then
+  ro_dir="$ROOT/ro-memory"
+  mkdir -p "$ro_dir"
+  ro_mem="$ro_dir/issue-7.md"
+  write_mem "$ro_mem" "### Wiki 適用証跡
+head: $fx_old"
+  cp "$ro_mem" "$ROOT/ro-before.md"
+  chmod a-w "$ro_dir"
+  arc=0
+  bash "$ADVANCE" --worktree "$fx" --memory "$ro_mem" --from HEAD^ >"$ROOT/adv-ro.out" 2>"$ROOT/adv-ro.err" || arc=$?
+  chmod u+w "$ro_dir"
+  if [ "$arc" -eq 1 ] && grep -q 'capture からやり直' "$ROOT/adv-ro.err" && cmp -s "$ROOT/ro-before.md" "$ro_mem" \
+    && [ ! -e "$ro_mem.tmp" ] && [ ! -s "$ROOT/adv-ro.out" ]; then
+    pass "a memory that cannot be written fails and stays as it was"
+  else
+    fail "read-only memory rc=$arc err=$(cat "$ROOT/adv-ro.err")"
+  fi
+else
+  echo "  SKIP: read-only memory (root ignores mode bits)"
+fi
+
 echo "=== git-commit-file without the head helper does not commit ==="
 cp "$GATE" "$copy/hooks/scripts/wiki-apply-gate.sh"
 head_before=$(git -C "$repo" rev-parse HEAD)
@@ -1520,6 +1550,7 @@ git -C "$stuck" add README
 crc=0
 bash "$copy/hooks/scripts/git-commit-file.sh" --file "$msg" --worktree "$stuck" >"$ROOT/stuck.out" 2>"$ROOT/stuck.err" || crc=$?
 if [ "$crc" -eq 1 ] && grep -q 'commit 後に Wiki 適用証跡の head を更新できません' "$ROOT/stuck.err" \
+  && grep -q 'capture からやり直' "$ROOT/stuck.err" \
   && grep -qx 'head: 3333333333333333333333333333333333333333' "$stuck_mem"; then
   pass "a record that does not name the old HEAD stops git-commit-file with its error"
 else
