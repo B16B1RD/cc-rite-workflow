@@ -334,7 +334,8 @@ _rite_btg_pattern6_command_surface() {
 # shell parser. The command is therefore read twice and denied if either reading
 # finds a state change: once with every such `)` closing the substitution, and
 # once with it only separating commands in a substitution where the word `case`
-# has appeared. A reading that misplaces the end can only add denials.
+# has appeared. Both readings can still miss a push when a case pattern holds
+# quotes; the check targets the forms a reviewer writes.
 # A command longer than $2 bytes is not scanned: _sc_oversized is set to its
 # byte length instead, since the scan grows faster than linearly.
 # The caller runs this with errtrace (set -E): the Pattern 4 ERR trap is not
@@ -508,7 +509,7 @@ _rite_btg_state_change_match() {
         esac ;;
       ghsub)
         case "$_grp:$_n" in
-          pr:comment|pr:create|pr:edit|pr:merge|pr:close|pr:reopen|pr:ready|pr:review|pr:lock|pr:unlock|issue:create|issue:comment|issue:edit|issue:close|issue:reopen|issue:delete|issue:transfer|issue:lock|issue:unlock|issue:pin|issue:unpin|issue:develop)
+          pr:comment|pr:create|pr:edit|pr:merge|pr:close|pr:reopen|pr:ready|pr:review|pr:lock|pr:unlock|pr:update-branch|pr:revert|issue:create|issue:comment|issue:edit|issue:close|issue:reopen|issue:delete|issue:transfer|issue:lock|issue:unlock|issue:pin|issue:unpin|issue:develop)
             _sc_hit="gh $_grp $_n"; return 0 ;;
           *:-R|*:--repo) _skip=1 ;;
           *:-*) : ;;
@@ -971,8 +972,10 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   # trigger word and is longer than _RITE_BTG_MAX_STATE_SCAN_BYTES is denied
   # without scanning, the same fail-closed bound (L) applies to the whole guard.
   _RITE_BTG_MAX_STATE_SCAN_BYTES=8192
+  # gh as a word, so `through ` / `high ` do not trigger the scan or the size deny.
+  _RITE_BTG_GH_WORD_RE='(^|[^[:alnum:]_-])gh[[:space:]]'
   if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_REVIEWER" = "1" ] \
-     && [[ "$COMMAND" == *push* || "$COMMAND" == *commit* || "$COMMAND" == *flow-state* || "$COMMAND" == *-step.sh* || "$COMMAND" == *gh[[:space:]]* ]]; then
+     && [[ "$COMMAND" == *push* || "$COMMAND" == *commit* || "$COMMAND" == *flow-state* || "$COMMAND" == *-step.sh* || "$COMMAND" =~ $_RITE_BTG_GH_WORD_RE ]]; then
     set -E
     _rite_btg_state_change_scan "$COMMAND" "$_RITE_BTG_MAX_STATE_SCAN_BYTES"
     set +E
@@ -983,7 +986,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
     elif [ -n "$_sc_hit" ]; then
       BLOCKED_PATTERN="reviewer-state-change"
       BLOCKED_REASON="This subagent is treated as a reviewer (${REVIEWER_TYPE_BASIS}), and reviewers are read-only. This command runs '${_sc_hit}', which pushes, commits, writes to GitHub (gh pr / issue writes, gh api writes), rewrites the workflow state (flow-state), or runs a skill's step driver (*-step.sh) — state the parent session relies on, or that leaves the machine."
-      BLOCKED_ALTERNATIVE="Report the problem as a finding and leave the change to /rite:fix. Read-only inspection stays allowed: 'git diff', 'git log', 'git show', 'gh pr view', 'gh pr diff', 'gh issue view', 'gh api <endpoint>' (GET), 'flow-state.sh get --field <f>', 'flow-state.sh path', and running tests ('bash <test>'). For a mutation experiment, use the isolated detached worktree in plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement / Mutation experiments)."
+      BLOCKED_ALTERNATIVE="Report the problem as a finding and leave the change to /rite:fix. Read-only inspection stays allowed: 'git diff', 'git log', 'git show', 'gh pr view', 'gh pr diff', 'gh issue view', 'gh api <endpoint>' (GET; add '-X GET' when passing fields), a graphql query, 'flow-state.sh get --field <f>', 'flow-state.sh path', and running tests ('bash <test>'). For a mutation experiment, use the isolated detached worktree in plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement / Mutation experiments)."
     fi
   fi
 

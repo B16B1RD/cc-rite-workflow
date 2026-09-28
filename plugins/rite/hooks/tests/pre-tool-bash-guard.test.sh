@@ -531,7 +531,7 @@ assert_main_allow() {
 # the hook untouched. The READ-ONLY guarantee for them is the reviewer prompt
 # (Layer 1) + post-review-state-verify (Layer 3), NOT this hook — this loop pins
 # the hook's non-involvement so neither a future edit nor sub-block (S), whose
-# closed set is git commit / git push / flow-state writes / step drivers, can
+# closed set is git commit / git push / GitHub writes / flow-state writes / step drivers, can
 # silently re-grow the verb denylist.
 # --------------------------------------------------------------------------
 echo "TC-201: subagent mutating git verbs → allow (Layer 1/3 territory, not machine-gated)"
@@ -2341,8 +2341,8 @@ echo ""
 
 # --------------------------------------------------------------------------
 # TC-203: reviewer state-changing commands (sub-block (S)).
-# Reviewer-typed subagents are denied push / commit / flow-state writes / step
-# drivers at command position; read-only commands that merely MENTION those words
+# Reviewer-typed subagents are denied push / commit / GitHub writes / flow-state
+# writes / step drivers at command position; read-only commands that merely MENTION those words
 # stay allowed; non-reviewer subagents and the main session are untouched.
 # --------------------------------------------------------------------------
 echo "TC-203: reviewer state-changing commands → deny; read-only and non-reviewer → allow"
@@ -2391,12 +2391,21 @@ for sc_cmd in \
   "env -u X git push" \
   "nice -n 5 git commit -m y" \
   "time -p git push" \
+  "timeout -k 5 30 git push" \
+  "command git push" \
+  "exec git push" \
+  "nohup git push" \
   "gh pr comment 1 --body x" \
+  "gh pr review 1 --approve" \
+  "gh pr update-branch 1" \
+  "gh pr revert 1" \
   "gh -R o/r issue create --title t --body b" \
   "gh issue edit 1 --add-label x" \
   "gh pr merge 1 --squash" \
   "gh api -X POST repos/o/r/issues/1/comments -f body=x" \
   "gh api repos/o/r/issues/1/comments -f body=x" \
+  "gh api repos/o/r/issues -F title=x" \
+  "gh api -X DELETE repos/o/r/issues/comments/1" \
   "gh api --method=PATCH repos/o/r/pulls/1" \
   "gh api graphql -f query='mutation { x }'" \
   ; do
@@ -2517,6 +2526,16 @@ for size_case in "scan|echo $sc_pad; git push|runs 'git push'" \
     fail "Expected in-time reviewer-state-change deny for ${#size_cmd}-byte command ($size_label), got rc=$rc reason=$reason"
   fi
 done
+# gh counts only as a word: a long read-only command with `through ` / `high `
+# is not denied by the size ceiling.
+sc_cmd="echo $(printf 'walk through high %.0s' $(seq 1 500))"
+rc=0
+output=$(run_guard_typed "rite:test-reviewer" "$sc_cmd") || rc=$?
+if [ "${#sc_cmd}" -gt 8192 ] && [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "reviewer ${#sc_cmd}-byte command with 'through ' / 'high ' allowed"
+else
+  fail "Expected allow for ${#sc_cmd}-byte command with 'through ' / 'high ', got rc=$rc output=$output"
+fi
 # A failure inside the scan function must still reach the fail-closed ERR trap.
 rc=0
 output=$(jq -n --arg cmd "git push" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", agent_type: "rite:test-reviewer"}' \

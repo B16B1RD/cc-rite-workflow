@@ -7,7 +7,8 @@
 # 一次防御: reviewer prompt の READ-ONLY 契約 (`plugins/rite/agents/_reviewer-base.md`,
 # Layer 1)。working-tree 変更 verb は網羅的な事前遮断が安全でないため機械ゲートから撤去され、
 # `pre-tool-bash-guard.sh` Pattern 4 が機械遮断するのは .git 書き込み経路と、reviewer の
-# `git commit` / `git push` / flow-state の書き換え / skill のステップ駆動スクリプトだけになった。
+# `git commit` / `git push` / GitHub への書き込み (`gh pr` / `gh issue` / `gh api` の書き込み) /
+# flow-state の書き換え / skill のステップ駆動スクリプトだけになった。
 # 本スクリプト (Layer 3) は prompt 契約が破られた事故の検出と recovery を担う
 # post-condition gate であり、working-tree / branch / stash / branch-list drift の
 # 検出保証はここが正となる。
