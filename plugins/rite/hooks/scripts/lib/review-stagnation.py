@@ -522,25 +522,37 @@ def reconcile(state, args, directory):
     require(approval.get("issue_number") == issue.get("number") == state.get("issue_number"),
             "approval issue does not match the run")
     require(approval.get("pr_number") == state.get("pr_number"), "approval PR does not match the run")
+    # The same predicate review-start applies, so a revision found mid-fix stops here.
+    require(not subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=normal"]).strip(),
+            "reconciling requires a clean tree; restore edits made under the old plan to the reviewed HEAD"
+            " (do not commit them), then record the revision")
+    previous = records[-1]["issue_body"] if records else (
+        run["observations"][-1]["input"]["issue_body"] if run["observations"] else None)
+    require(previous is not None, "no observed specification in this run; rebuild the observation input"
+            " from the latest Issue instead of reconciling")
+    require(not cycle.same_specification(previous, issue["body"]),
+            "Issue specification is unchanged in this run; nothing to reconcile")
     saved = observation(run, context)
+    carried = []
     if saved is not None:
-        # The reviewed HEAD is re-reviewed under the revised text; a pending
-        # replan was decided on the old one and must finish first.
+        # The reviewed HEAD is re-reviewed under the revised text in a new cycle.
         require(unchanged_receipt(saved, read(saved["result_path"])), "observed review receipt is missing or changed")
-        require(run["current_decision"]["action"] != "replan",
-                "complete the required review-replan before reconciling a revised Issue")
+        if run["current_decision"]["action"] == "replan":
+            # A replan planned on the old text cannot pass either specification
+            # check; its reasons move to the first observation under the new text.
+            carried = run["current_decision"]["reasons"]
+            run["current_decision"] = dict(action="continue", reasons=["reconciled"])
         after, next_action = context["cycle_count"], "/rite:iterate " + str(state["pr_number"])
+        state["phase"] = "fix"
     else:
         # The observation of this cycle was refused for the revision itself; it
         # is saved under the revised text once the revision is recorded.
         require(cycle.matching_receipt(directory, state["review_cycle"]) is not None, "saved review receipt missing")
         after, next_action = context["cycle_count"] - 1, "/rite:recover " + str(state["issue_number"])
-    previous = records[-1]["issue_body"] if records else (
-        run["observations"][-1]["input"]["issue_body"] if run["observations"] else None)
-    require(previous is not None and not cycle.same_specification(previous, issue["body"]),
-            "Issue specification is unchanged in this run; nothing to reconcile")
+    # A fix verified under the old text is no basis for the revised one.
+    run.pop("pending_fix", None)
     run["reconciliations"] = records + [dict(
-        review_context=context.copy(), after_cycle=after, issue_body=issue["body"],
+        review_context=context.copy(), after_cycle=after, issue_body=issue["body"], replan_reasons=carried,
         reason=approval["reason"], requested_at=approval["requested_at"], at=cycle.now())]
     state.update(next_action=next_action, updated_at=cycle.now())
     return state
@@ -764,16 +776,32 @@ def observe(state, args, directory):
     reasons = (["work-time"] if elapsed - run["diagnosed_work_seconds"] > 1800 else [])
     if renewed:
         reasons.append("root-recurrence")
+    records = run.get("reconciliations", [])
+    for record in records:
+        # A replan dropped by reconcile() is owed by the first observation under the new text.
+        later = [obs for obs in run["observations"] if obs["input"]["review_context"]["cycle_count"] > record["after_cycle"]]
+        if later == [entry]:
+            reasons += [reason for reason in record.get("replan_reasons", []) if reason not in reasons]
     action = "continue"
     for replan in run["replans"]:
         start = replan["review_context"]["cycle_count"]
-        present = set(data["acceptance"]["satisfied"])
-        baseline = set(replan["acceptance_satisfied"])
+        unresolved = set(replan["roots"]) & set(repeated)
+
+        def baseline(obs):
+            # Criteria are compared within one specification: across a revision
+            # the new segment is measured from its own first observation.
+            cycle_count = obs["input"]["review_context"]["cycle_count"]
+            bounds = [r["after_cycle"] for r in records if start <= r["after_cycle"] < cycle_count]
+            if not bounds:
+                return set(replan["acceptance_satisfied"])
+            first = next(item for item in run["observations"]
+                         if item["input"]["review_context"]["cycle_count"] > max(bounds))
+            return set(first["input"]["acceptance"]["satisfied"])
+
         intervening = [obs for obs in run["observations"]
                        if obs["input"]["review_context"]["cycle_count"] >= start]
-        progressed = any(set(obs["input"]["acceptance"]["satisfied"]) - baseline for obs in intervening)
-        unresolved = set(replan["roots"]) & set(repeated)
-        if not progressed and not (present - baseline) and any(recurrence(run, key, start) for key in unresolved):
+        progressed = any(set(obs["input"]["acceptance"]["satisfied"]) - baseline(obs) for obs in intervening)
+        if not progressed and any(recurrence(run, key, start) for key in unresolved):
             action, reasons = "stop", ["non-convergent-root"]
             break
     if action != "stop" and reasons:

@@ -118,25 +118,26 @@ rm "$clock_file"
 
 ## 仕様改訂の記録
 
-レビュー中にユーザーと合意して Issue 本文（受入条件など）を改訂した場合は、同じ run のまま `flow-state.sh review-reconcile --issue <最新 Issue JSON の絶対パス> --approval <承認 JSON の絶対パス>` で改訂を記録する。Issue JSON は `gh issue view --json number,body` で再取得する。記録しないまま fix / 観測 / 見直しへ進むと、観測・`check` / `verify`・見直し・修正計画の gate は従来どおり仕様不一致で停止する。active な run では、その停止メッセージがこの節を案内する。
+レビュー中にユーザーと合意して Issue 本文（受入条件など）を改訂した場合は、同じ run のまま `flow-state.sh review-reconcile --issue <最新 Issue JSON の絶対パス> --approval <承認 JSON の絶対パス>` で改訂を記録する。Issue JSON は `gh issue view --json number,body` で再取得する。記録しないまま fix / 観測 / 見直しへ進むと、観測・`check` / `verify`・見直し・修正計画の gate は従来どおり仕様不一致で停止する。active な run で記録できる状態なら、その停止メッセージがこの節を案内する。この cycle について記録済みなら、記録し直さず下表の次の操作へ進むよう案内する。
 
-run_id・cycle counter・観測・修正・見直し・再試行権はそのまま残る。仕様を改訂しても cycle の予算は取り直さない（新しい run を作るのは停止 run 向けの `review-restart` だけ）。境界までの観測は旧仕様の記録として残り、仕様の照合対象になるのは境界より後の観測と記録した本文だけである。旧仕様で観測した指摘を、改訂後の修正計画の根拠にはしない。
+run_id・cycle counter・観測・修正・見直し・再試行権はそのまま残る。仕様を改訂しても cycle の予算は取り直さない（新しい run を作るのは停止 run 向けの `review-restart` だけ）。境界までの観測は旧仕様の記録として残り、仕様の照合対象になるのは境界より後の観測と記録した本文だけである。旧仕様で観測した指摘を、改訂後の修正計画の根拠にはしない。旧仕様で検証済みの修正（`pending_fix`）は記録時に破棄する。受入条件の進展は改訂の境界をまたいで比べず、見直し後の非収束判定は改訂後の区間をその区間の最初の観測から測る。
 
-| 現在の completed cycle | 境界 | 次の操作 |
+| 現在の completed cycle | 境界 | 次の操作（`next_action` に書かれる） |
 |---|---|---|
-| 旧仕様で観測済み | この cycle | `/rite:iterate {pr_number}` を再実行する。レビュー済みの HEAD を改訂後の仕様で再レビューしてから fix へ進む。この cycle の修正計画は旧仕様にも最新 Issue にも一致しないため拒否される |
-| 改訂が原因で観測が拒否され、未観測 | 直前の cycle | `/rite:recover {issue_number}` で、pr-review の停滞観測保存へ戻る。この cycle を改訂後の仕様で観測する |
+| 旧仕様で観測済み | この cycle | `/rite:iterate {pr_number}`。phase を fix へ移すので、レビュー済みの HEAD を新しい cycle で改訂後の仕様により再レビューしてから fix へ進む。この cycle の修正計画は旧仕様にも最新 Issue にも一致しないため拒否される。見直し（`action=replan`）が未完了だった場合、その理由は改訂後の最初の観測へ持ち越され、そこで通常の規則により見直しを求める |
+| 改訂が原因で観測が拒否され、未観測 | 直前の cycle | `/rite:recover {issue_number}` で、pr-review の停滞観測保存へ戻る。観測入力は最新 Issue 本文から作り直し、この cycle を改訂後の仕様で観測する |
 
 拒否される状態:
 
 - 停止した run
 - 未完了（collecting）の cycle
 - HEAD がレビュー対象から動いている
+- 作業ツリーに変更がある（修正の途中で改訂したときは、旧計画で加えた編集をレビュー済み HEAD の内容へ戻してから記録する。commit すると HEAD が動き、検証済み修正が無いため再レビューを開始できない）
 - 保存 receipt が欠けている、または変更されている
-- `action=replan` が未完了
+- run にまだ観測が無い（比べる旧仕様が無い。観測入力を最新 Issue 本文から作り直す）
 - 最新本文が run の現行仕様（直近の記録本文。記録が無ければ直近の観測本文）と同じ
 
-承認・理由・要求時刻・対象 context・境界は `review_run.reconciliations` に追記される。同じ承認と同じ本文での再実行は、context が進んだ後であっても何も変えない。さらに改訂したときは新しい承認で再び記録する。照合に使うのは最新の記録だけである。
+承認・理由・要求時刻・対象 context・境界・持ち越した見直し理由は `review_run.reconciliations` に追記される。同じ承認と同じ本文での再実行は、completed の cycle で行う限り、context が進んだ後であっても何も変えない。さらに改訂したときは新しい承認で再び記録する。照合に使うのは最新の記録だけである。
 
 改訂後の同一 HEAD 再レビューは差分スコープが空になり full scope で回る。iterate の完了前確認（目的整合）の復帰節にある同一 HEAD 再 invoke の禁止は、目的逸脱の停止から戻る場合だけに適用され、この再レビューには適用しない。
 

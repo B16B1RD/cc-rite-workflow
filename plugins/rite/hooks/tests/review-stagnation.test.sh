@@ -2433,15 +2433,19 @@ try:
           and recorded[0]['issue_body'] == revised and recorded[0]['reason'] == record['reason']
           and recorded[0]['requested_at'] == record['requested_at'],
           'T-SC04: reconcile records the approval, context, boundary and revised body on the run')
-    check(state['phase'] == phase and state['next_action'] == '/rite:iterate 71'
+    check(phase == 'review' and state['phase'] == 'fix' and state['next_action'] == '/rite:iterate 71'
           and state['review_run']['run_id'] == run_id and state['cycle_count'] == 1,
-          'T-SC04: reconcile keeps phase, run and counter and names the re-review')
+          'T-SC04: reconcile keeps run and counter, leaves phase review and names the re-review')
     replay = f.state_path.read_bytes()
     reconcile(f, record)
     check(f.state_path.read_bytes() == replay, 'T-SC05: the same approval is a byte-identical no-op')
+    output = gate(f)
+    check('REVIEW_RESUME=1' not in output and 'ITERATE_RESUME_HEAD' not in output,
+          "T-SC04: iterate's cycle gate starts a new cycle instead of resuming the reviewed one:\n" + output)
     for body in (revised, old_spec):
         plan_for(f, body)
-        f.reject(lambda: f.scope(ok=False), 'T-SC06: no fix plan passes before the revised re-review')
+        f.reject(lambda: f.scope(ok=False), 'T-SC06: no fix plan passes before the revised re-review',
+                 'already recorded')
     fixes = len(f.state()['review_run']['fixes'])
     f.start()
     f.finish(roots=['input defect'])
@@ -2517,9 +2521,82 @@ f = Fixture()
 try:
     f.cycle(seconds=1801)
     f.with_issue(f.issue['body'].replace('repair', 'rewrite'))
-    f.reject(lambda: reconcile(f, ok=False), 'T-SC10: a pending replan cannot be reconciled away', 'review-replan')
+    reconcile(f)
+    run = f.state()['review_run']
+    check(run['current_decision']['action'] == 'continue' and run['reconciliations'][0]['replan_reasons'] == ['work-time'],
+          'T-SC10: a pending replan is carried by the revision instead of blocking it')
+    f.start()
+    f.finish()
+    f.clock(1)
+    f.observe()
+    check(f.decision() == 'replan' and f.state()['review_run']['current_decision']['reasons'] == ['work-time'],
+          'T-SC10: the first observation under the revised Issue owes the carried replan')
+    f.plan(replan=True)
+    f.replan()
+    check(len(f.state()['review_run']['replans']) == 1, 'T-SC10: the replan passes on the revised Issue')
 finally:
     f.close()
+
+# A revision found mid-fix, and a run with nothing observed yet.
+f = Fixture()
+try:
+    f.cycle()
+    f.with_issue(f.issue['body'].replace('repair', 'rewrite'))
+    (f.root / 'source.txt').write_text('edited under the old plan\n')
+    f.reject(lambda: reconcile(f, ok=False), 'T-SC12: uncommitted edits stop the revision before review-start',
+             'restore edits made under the old plan')
+    (f.root / 'source.txt').write_text('initial\n')
+    reconcile(f)
+    f.start()
+    check(f.state()['cycle_count'] == 2, 'T-SC12: restored edits let the re-review start')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    f.start()
+    f.finish()
+    f.clock(1)
+    f.with_issue(f.issue['body'].replace('repair', 'rewrite'))
+    before = f.state_path.read_bytes()
+    result = f.observe(ok=False)
+    check(result.returncode != 0 and 'latest Issue specification differs from observation' in result.stderr
+          and HINT not in result.stderr, 'T-SC13: a run with no observation is not pointed at reconcile')
+    check(f.state_path.read_bytes() == before, 'T-SC13: last state retained')
+    f.reject(lambda: reconcile(f, ok=False), 'T-SC13: reconcile names the missing observation',
+             'rebuild the observation input')
+finally:
+    f.close()
+
+
+# Acceptance progress is not compared across a revision.
+def revised_non_convergence(added, earlier=[]):
+    f = Fixture()
+    try:
+        f.with_issue(f.issue['body'] + '\n- AC-1: original criterion\n')
+        f.cycle(roots=('input defect', 'secondary defect', 'third defect'))
+        f.fix()
+        f.cycle(roots=('input defect', 'secondary defect'))
+        f.fix()
+        f.cycle(seconds=1801)
+        check(f.decision() == 'replan', 'T-SC14: fixture requires a replan')
+        f.fix()
+        f.cycle(satisfied=earlier)
+        check(f.decision() == 'continue', 'T-SC14: one post-replan repair is not non-convergence')
+        f.with_issue(f.issue['body'] + '- AC-9: newly agreed criterion\n')
+        reconcile(f)
+        f.cycle(satisfied=earlier + added)
+        f.fix()
+        f.cycle(satisfied=earlier + added)
+        return f.decision()
+    finally:
+        f.close()
+
+
+check(revised_non_convergence(['AC-9']) == 'stop',
+      'T-SC14: a criterion added by the revision is not progress that suppresses the stop')
+check(revised_non_convergence([], earlier=['AC-1']) != 'stop',
+      'T-SC14: progress made before the revision still suppresses the stop')
 
 f = Fixture()
 try:
