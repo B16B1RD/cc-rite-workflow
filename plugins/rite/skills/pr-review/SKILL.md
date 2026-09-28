@@ -1336,7 +1336,7 @@ fingerprint = sha1(normalize(file_path) + ":" + category + ":" + normalize(messa
 - `category`: schema の `findings[].category` 値 (例: `code_quality`)
 - `normalize(message)`: trim + whitespace collapse (`tr -s '[:space:]' ' '` + 前後 space 除去)。identifier mask / 行番号除去は行わない
 
-**per-finding fingerprint 計算 bash block** (fix.md ステップ 2.1.A Step 3 と bit-exact 対称、Claude は finding ごとに本 block を呼び出す)。`{finding_file}` は当該 finding の `findings[].file` / `category` / `description` を `{"file": ..., "category": ..., "description": ...}` の JSON として Write tool で書いた絶対パス（自由文を引数に載せないため）。`{finding_id}` / `{original_severity}` / `{pr_number}` はリテラル置換する:
+**per-finding fingerprint 計算 bash block** (fix.md ステップ 2.1.A Step 3 と bit-exact 対称、Claude は finding ごとに本 block を呼び出す)。`{finding_file}` は当該 finding の `findings[].file` / `category` / `description` を `{"file": ..., "category": ..., "description": ...}` の JSON として Write tool で書いた絶対パス（自由文を引数に載せないため。fix 側の accept も同じ形の JSON を同じ jq で読むので、両側の fingerprint は同じ入力から計算される）。`{finding_id}` / `{original_severity}` / `{pr_number}` はリテラル置換する:
 
 ```bash
 bash {plugin_root}/scripts/pr-review-step.sh fingerprint-check --pr {pr_number} --finding-id {finding_id} --severity {original_severity} --finding-file {finding_file}
@@ -1382,6 +1382,8 @@ emit 形式 (Step 2 line で実装):
 |--------|-------------|
 | `no_state_file` | `.rite/state/accepted-fingerprints-{pr}.txt` が不在 (初回 review / accept 未実施)。`ACCEPTED_FINGERPRINTS_LOADED=0` で suppression を skip し通常 review を継続 (非ブロッキング) |
 | `sha1_helper_missing` | sha1sum / shasum のいずれも環境に存在せず fingerprint 計算不可 (`FINGERPRINT_COMPUTE_FAILED` flag、極稀、CI 環境異常)。当該 finding の suppression 判定を skip して通常 finding として扱う |
+| `finding_file_unreadable` | `{finding_file}` を読めない (`FINGERPRINT_COMPUTE_FAILED` flag)。当該 finding の suppression 判定を skip する。Write の漏れ・パスの誤りを直して当該 finding の呼び出しをやり直す |
+| `finding_file_invalid` | `{finding_file}` が file / category / description を文字列で持つ JSON ではない (category は非空。`FINGERPRINT_COMPUTE_FAILED` flag)。空値から fingerprint を計算せず suppression 判定を skip する。JSON を書き直して当該 finding の呼び出しをやり直す |
 
 > **Note**: `FINGERPRINT_COMPUTE_FAILED` flag のもう 1 つの reason `pr_number_placeholder_residue` (ステップ 5.1.2.A Step 2 で `pr_number` が数値以外のとき emit) は ステップ 6 の reason 表で文書化済みのため本表には再掲しない。
 

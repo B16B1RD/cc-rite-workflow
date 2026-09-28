@@ -28,19 +28,16 @@ fingerprint = sha1(normalize(file_path) + ":" + category + ":" + normalize(messa
 - `normalize(message)`: trim + whitespace collapse (lowercase + 行番号除去等は行わない)
 
 
-**Placeholder data flow** (`{file}` / `{line}` / `{category}` / `{description}` の取得元):
+**Placeholder data flow** (`{finding_file}` / `{pr_number}` の取得元):
 
-| Placeholder | 取得元 | ステップ 1.2.0 構築有無 |
-|-------------|--------|---------------------|
-| `{file}` | `findings[].file` (schema 1.1.0) | ステップ 1.2.2 の reload 済み JSON を finding ID で参照し、直接置換 |
-| `{line}` | `findings[].line` (`integer \| null`、null は anchor sentinel) | 同上 |
-| `{category}` | `findings[].category` (schema 1.1.0、例: `code_quality`) | ステップ 1.2.0 では `category_map` 未構築 — Claude は会話コンテキストの finding object から直接置換する責務を持つ |
-| `{description}` | `findings[].description` | 同上 |
-| `{pr_number}` | ステップ 1.0 正規化値 | bash block 冒頭で literal substitute |
+| Placeholder | 取得元 |
+|-------------|--------|
+| `{finding_file}` | 当該 finding の `findings[].file` / `line` / `category` / `description` を、ステップ 1.2.2 の reload 済み JSON から finding ID で引いて `{"file": ..., "line": ..., "category": ..., "description": ...}` の JSON として Write tool で書いた絶対パス。`line` は `integer \| null`（null は anchor sentinel）。pr-review 5.1.2.A の `fingerprint-check` に渡す JSON と同じ形 |
+| `{pr_number}` | ステップ 1.0 正規化値。bash block 冒頭で literal substitute |
 
 **`{line}` が null の場合**: `Acknowledged-finding:` commit trailer / `[CONTEXT] ACCEPT_FINGERPRINT_PERSISTED` retained flag emit / fingerprint normalize すべてで `null` literal を避け、`anchor` sentinel (ステップ 1.3 の thread lookup 規約と統一) に正規化する。
 
-**accept 永続化 bash block** (per accepted finding、単一 Bash tool invocation 内で実行 — `{file}` / `{line}` / `{category}` / `{description}` / `{pr_number}` は Claude が事前 substitute):
+**accept 永続化 bash block** (per accepted finding、単一 Bash tool invocation 内で実行 — `{finding_file}` / `{pr_number}` は Claude が事前 substitute):
 
 ```bash
 # ステップ 2.1.A accept fingerprint 永続化
@@ -56,10 +53,18 @@ case "$pr_number" in
     exit 1  # placeholder gate と対称化 (blocking 統一)
     ;;
 esac
-file_path="{file}"
-line_no="{line}"
-category="{category}"
-description="{description}"
+# 自由文を二重引用符へ置換するとシェル展開された値を hash してしまうため、JSON から生のまま読む
+# (pr-review-step.sh fingerprint-check と同じ述語・同じ jq)
+finding_file="{finding_file}"
+if [ ! -r "$finding_file" ] || ! jq -e 'type == "object" and (.file | type) == "string" and (.category | type) == "string" and (.category | length) > 0 and (.description | type) == "string"' "$finding_file" >/dev/null 2>&1; then
+  echo "WARNING: ステップ 2.1.A の finding ファイルが file / category / description を文字列で持つ JSON ではありません ($finding_file) — fingerprint 永続化を skip します" >&2
+  echo "[CONTEXT] ACCEPT_FINGERPRINT_PERSIST_FAILED=1; reason=finding_file_invalid" >&2
+  exit 0
+fi
+file_path=$(jq -r '.file' "$finding_file") || exit 1
+line_no=$(jq -r '.line // ""' "$finding_file") || exit 1
+category=$(jq -r '.category' "$finding_file") || exit 1
+description=$(jq -r '.description' "$finding_file") || exit 1
 # line=null → anchor sentinel に正規化 (ステップ 1.3 の thread lookup 規約と統一)
 case "$line_no" in
   ''|null|0) line_no="anchor" ;;
@@ -143,6 +148,7 @@ accept は **revocable** (state file の行削除)。`acknowledged` は ステ�
 |------|--------|-------------|
 | `ACCEPT_FINGERPRINT_PERSISTED` | (success marker) | fingerprint state file への append が成功。`fingerprint=<sha1>; pr=<num>; file=<path>; line=<num\|anchor>` を含む (`line` は null/0/空のとき `anchor` sentinel に正規化される。ステップ 2.1.A bash block の line_no 正規化と統一) |
 | `ACCEPT_FINGERPRINT_PERSIST_FAILED` | `pr_number_placeholder_residue` | `pr_number` placeholder が literal substitute されていない (空文字 / placeholder 残留 / 非数値) |
+| `ACCEPT_FINGERPRINT_PERSIST_FAILED` | `finding_file_invalid` | `{finding_file}` を読めない、または file / category / description を文字列で持つ JSON ではない (category は非空)。空値から fingerprint を計算しない |
 | `ACCEPT_FINGERPRINT_PERSIST_FAILED` | `sha1_helper_missing` | sha1sum / shasum のいずれも環境に存在しない (極稀、CI 環境異常) |
 | `ACCEPT_FINGERPRINT_PERSIST_FAILED` | `mkdir_failed` | `.rite/state/` directory 作成失敗 (permission denied / read-only filesystem) |
 | `ACCEPT_FINGERPRINT_PERSIST_FAILED` | `mktemp_failed` | tmpfile 作成失敗 (disk full / inode 枯渇) |

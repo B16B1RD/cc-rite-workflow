@@ -155,6 +155,20 @@ esac
 run_step pr-view --owner-repo o/r --pr 12a; assert "non-numeric --pr exits 2" "2" "$?"
 run_step pr-view --owner-repo o/r --pr 1 --bogus x; assert "unknown option exits 2" "2" "$?"
 run_step state-update --result done --pr 1 --next x; assert "an unknown --result exits 2" "2" "$?"
+# 数値検査の案内は実在するオプション名を出す（案内どおりに直せば再実行が通る）
+numeric_err=$(bash "$STEP" wm-comment --owner-repo o/r --issue abc 2>&1 >/dev/null)
+assert "a non-numeric --issue exits 2" "2" "$?"
+case "$numeric_err" in
+  *"--issue must be a number: abc"*) pass "the numeric check names --issue" ;;
+  *) fail "the numeric check names --issue (stderr: $numeric_err)" ;;
+esac
+# 次のステップ節を空で置き換えないよう、--next-file が無ければどの更新よりも前に止まる
+next_err=$(bash "$STEP" wm-record --issue 1 --next-file /nonexistent/rite-next-step.md 2>&1 >/dev/null)
+assert "wm-record with a missing --next-file exits 2" "2" "$?"
+case "$next_err" in
+  *"--next-file is missing or empty: /nonexistent/rite-next-step.md"*) pass "wm-record names the missing --next-file" ;;
+  *) fail "wm-record names the missing --next-file (stderr: $next_err)" ;;
+esac
 
 # 未置換・空値を自分の reason で報告する option は引数検査を通し、step が degraded を出す。
 exempt_err=$(bash "$STEP" nonblocking-gate --pending-marker '{pending_marker}' 2>&1 >/dev/null)

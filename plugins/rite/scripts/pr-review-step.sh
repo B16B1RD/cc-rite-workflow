@@ -554,14 +554,9 @@ esac
 # --- fingerprint-check -----------------------------------------------------------
 step_fingerprint_check() {
 # ステップ 5.1.2.A Step 2 per-finding fingerprint 計算 + 即時 emit (Step 2/3 統合)
-# fix.md ステップ 2.1.A Step 3 と bit-exact 一致を保証する canonical block
-# Claude は finding ごとに以下の placeholder を literal substitute する:
-# - {file}: findings[].file
-# - {category}: findings[].category
-# - {description}: findings[].description (前後の空白は trim 対象)
-# - ${finding_id}: findings[].id (例: F-01)
-# - ${severity}: findings[].severity (CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW)
-# - ${pr_number}: ステップ 1.0 正規化値
+# file / category / description は --finding-file の JSON から jq -r で読む。fix 側の accept
+# (skills/fix/references/accept-finding.md) も同じ JSON を同じ jq で読むため、両側の fingerprint は
+# 同じ入力から計算される。finding_id / severity / pr_number は --finding-id / --severity / --pr で受け取る。
 #
 # Step 2/3 統合の理由 (cross-call shell 変数破綻の回避): references/design-rationale.md#fingerprint-suppression-notes
 
@@ -577,15 +572,20 @@ esac
 # accepted_fingerprints は本 block 内で再読込する (Step 1 と別 invocation の可能性があるため)
 # state ルート解決は Step 1 と同一 (worktree / main checkout 間のパス一貫性)
 f_file=""; f_category=""; f_description=""
-if [ -n "$finding_file" ] && [ -r "$finding_file" ]; then
- f_file=$(jq -r '.file // ""' "$finding_file" 2>/dev/null) || f_file=""
- f_category=$(jq -r '.category // ""' "$finding_file" 2>/dev/null) || f_category=""
- f_description=$(jq -r '.description // ""' "$finding_file" 2>/dev/null) || f_description=""
-else
+if [ -z "$finding_file" ] || [ ! -r "$finding_file" ]; then
  echo "WARNING: ステップ 5.1.2.A Step 2 の finding ファイルを読めません ($finding_file) — fingerprint 比較を skip します" >&2
  echo "[CONTEXT] FINGERPRINT_COMPUTE_FAILED=1; reason=finding_file_unreadable; finding_id=$finding_id" >&2
  exit 0
 fi
+# 空値から fingerprint を計算しないよう、読む前に形を検査する (accept-finding.md と同じ述語)
+if ! jq -e 'type == "object" and (.file | type) == "string" and (.category | type) == "string" and (.category | length) > 0 and (.description | type) == "string"' "$finding_file" >/dev/null 2>&1; then
+ echo "WARNING: ステップ 5.1.2.A Step 2 の finding ファイルが file / category / description を文字列で持つ JSON ではありません ($finding_file) — fingerprint 比較を skip します" >&2
+ echo "[CONTEXT] FINGERPRINT_COMPUTE_FAILED=1; reason=finding_file_invalid; finding_id=$finding_id" >&2
+ exit 0
+fi
+f_file=$(jq -r '.file' "$finding_file") || exit 1
+f_category=$(jq -r '.category' "$finding_file") || exit 1
+f_description=$(jq -r '.description' "$finding_file") || exit 1
 
 _state_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
 [ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
@@ -976,6 +976,8 @@ fi
 
 # --- wm-record -------------------------------------------------------------------
 step_wm_record() {
+# 空の内容で次のステップ節を置き換えないよう、どの更新よりも前に確かめる
+[ -s "$next_file" ] || usage_error "--next-file is missing or empty: $next_file"
 # ステップ 6.4 全 hook 呼び出しに L-5 stderr 退避 + lock/non-lock
 # 分岐パターンを適用 (fix.md ステップ 4.5 と対称化)。
 # helper function として定義し、3 step に統一適用する (drift 防止)。
@@ -1021,29 +1023,12 @@ _rite_review_p64_run_sync "p64 update-phase" \
 _rite_review_p64_run_sync "p64 review-record" \
  bash "$plugin_root"/hooks/flow-state.sh review-record
 
-next_tmp=$(mktemp) || {
- echo "WARNING: next_tmp mktemp 失敗。次のステップの Issue コメント更新を skip します" >&2
- next_tmp=""
-}
-_rite_review_p64_cleanup() {
- rm -f "${next_tmp:-}"
-}
-trap 'rc=$?; _rite_review_p64_cleanup; exit $rc' EXIT
-trap '_rite_review_p64_cleanup; exit 130' INT
-trap '_rite_review_p64_cleanup; exit 143' TERM
-trap '_rite_review_p64_cleanup; exit 129' HUP
-
 # Step 3: 次のステップ更新
-if [ -n "$next_tmp" ]; then
- cat -- "$next_file" > "$next_tmp"
- _rite_review_p64_run_sync "p64 replace-section" \
+_rite_review_p64_run_sync "p64 replace-section" \
  bash "$plugin_root"/hooks/issue-comment-wm-sync.sh update \
  --issue "${issue_number}" \
  --transform replace-section \
- --section "次のステップ" --content-file "$next_tmp"
-fi
-rm -f "${next_tmp:-}"
-trap - EXIT
+ --section "次のステップ" --content-file "$next_file"
 }
 
 # --- wiki-ingest-config ----------------------------------------------------------
@@ -1272,7 +1257,8 @@ while [ "$#" -gt 0 ]; do
 done
 for numeric in issue_number gap total fix_introduced critical high medium low_medium low; do
   case "${!numeric}" in
-    ''|*[!0-9]*) [ -z "${!numeric}" ] || usage_error "--${numeric//_/-} must be a number: ${!numeric}" ;;
+    ''|*[!0-9]*)
+      [ -z "${!numeric}" ] || { option=${numeric%_number}; usage_error "--${option//_/-} must be a number: ${!numeric}"; } ;;
   esac
 done
 case "$subcommand" in
