@@ -101,6 +101,7 @@
 * **Update**: [git diff の出力形状を前提にしたパーサは、git の設定と変更種別で黙って空振りする](pages/anti-patterns/git-diff-parser-output-shape-assumptions.md) — raw/reviews/20260928T050041Z-pr-3387.md を統合
 * **Update**: [git diff の出力形状を前提にしたパーサは、git の設定と変更種別で黙って空振りする](pages/anti-patterns/git-diff-parser-output-shape-assumptions.md) — raw/fixes/20260928T044436Z-pr-3387.md を統合
 * **Skip**: [20260928T013257Z-pr-3375.md](raw/reviews/20260928T013257Z-pr-3375.md) — 指摘 0 件の再レビューで、前回推奨の解消確認だけを含み新しい経験則を含まない
+* **lint:clean** — contradictions=0, stale=62, orphans=0, missing_concept=0, unregistered_raw=578, broken_refs=0
 
 ## 2026-09-27
 
