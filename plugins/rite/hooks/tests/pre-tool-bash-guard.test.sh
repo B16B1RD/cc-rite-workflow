@@ -526,12 +526,13 @@ assert_main_allow() {
 }
 
 # --------------------------------------------------------------------------
-# TC-201: verb-denylist removal — mutating git verbs are NOT machine-gated
-# (AC-1/AC-4). These commands were denied by the removed sub-blocks
-# (A)-(G); after the removal they must pass the hook untouched. The READ-ONLY
-# guarantee for them is the reviewer prompt (Layer 1) + post-review-state-verify
-# (Layer 3), NOT this hook — this loop pins the hook's non-involvement so a
-# future edit cannot silently re-grow the verb denylist.
+# TC-201: verb-denylist removal — working-tree git verbs are NOT machine-gated.
+# These commands were denied by the removed sub-blocks (A)-(G); they must pass
+# the hook untouched. The READ-ONLY guarantee for them is the reviewer prompt
+# (Layer 1) + post-review-state-verify (Layer 3), NOT this hook — this loop pins
+# the hook's non-involvement so neither a future edit nor sub-block (S), whose
+# closed set is git commit / git push / GitHub writes / flow-state writes / step drivers, can
+# silently re-grow the verb denylist.
 # --------------------------------------------------------------------------
 echo "TC-201: subagent mutating git verbs → allow (Layer 1/3 territory, not machine-gated)"
 for verb_cmd in \
@@ -540,8 +541,6 @@ for verb_cmd in \
   "git checkout -b pr-123-test" \
   "git reset --hard HEAD" \
   "git add ." \
-  "git commit -am 'wip'" \
-  "git push origin feat/foo" \
   "git stash push" \
   "git branch new-branch-name" \
   "git branch -D old-branch" \
@@ -556,7 +555,8 @@ done
 # NOTE: git update-ref / symbolic-ref / config-write / mutating-remote are NOT in
 # this allow set — they write .git directly and are denied by sub-block (N),
 # pinned in TC-127 below. They were never working-tree verbs (removed
-# working-tree verbs; .git-write is the retained gate).
+# working-tree verbs; .git-write is the retained gate). git commit / git push are
+# not in it either: sub-block (S) denies them for reviewers (TC-203).
 echo ""
 
 # --------------------------------------------------------------------------
@@ -2516,6 +2516,237 @@ for p7_shape in gt wrapper; do
   fi
 done
 rm -rf "$p7_repo"
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-203: reviewer state-changing commands (sub-block (S)).
+# Reviewer-typed subagents are denied push / commit / GitHub writes / flow-state
+# writes / step drivers at command position; read-only commands that merely MENTION those words
+# stay allowed; non-reviewer subagents and the main session are untouched.
+# --------------------------------------------------------------------------
+echo "TC-203: reviewer state-changing commands → deny; read-only and non-reviewer → allow"
+# $1 = reported agent type ("" = main session, "-" = subagent transcript with no type)
+run_guard_typed() {
+  local agent_type="$1" cmd="$2" rc=0 output
+  output=$(jq -n --arg cmd "$cmd" --arg t "$agent_type" \
+    '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp"}
+     + (if $t == "" then {} elif $t == "-" then {transcript_path: "/tmp/p/subagents/a.jsonl"} else {agent_type: $t} end)' \
+    | bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+  echo "$output"
+  return $rc
+}
+for sc_cmd in \
+  "git push" \
+  "git -C x commit -m y" \
+  "/usr/bin/git push origin HEAD" \
+  "cd x && git commit -m y" \
+  'x=$(git push)' \
+  "FOO=1 git push" \
+  "bash plugins/rite/hooks/flow-state.sh set --phase fix" \
+  "plugins/rite/hooks/flow-state.sh consume-handoff" \
+  "bash plugins/rite/hooks/flow-state.sh" \
+  "bash plugins/rite/scripts/fix-step.sh push" \
+  "bash plugins/rite/scripts/iterate-step.sh restore" \
+  $'cat <<\'EOF\' >/tmp/m\nx\nEOF\ngit push' \
+  "if true; then git push; fi" \
+  "{ git commit -m y; }" \
+  "! git push" \
+  "'git' push" \
+  '\git commit -m y' \
+  'echo "$(git push)"' \
+  "while read x; do git push; done" \
+  'git -C "$(pwd)" push' \
+  'cd "$(git rev-parse --show-toplevel)" && git push' \
+  'bash "$(git rev-parse --show-toplevel)/plugins/rite/hooks/flow-state.sh" set --phase fix' \
+  'echo "`date`" && git push' \
+  'echo $(case x in *) git push;; esac)' \
+  'printf %s "$(case x in a) bash plugins/rite/hooks/flow-state.sh set --phase fix;; esac)"' \
+  'x="$(case y in a) echo z;; esac)"; git push origin HEAD' \
+  'echo $(time -p case x in *) git push;; esac)' \
+  "echo \"\$('case' x)\"; git push" \
+  "echo \$(case x in a) 'esac';; *) git push;; esac)" \
+  '$(true) git push' \
+  "timeout 30 git push" \
+  "env -u X git push" \
+  "nice -n 5 git commit -m y" \
+  "time -p git push" \
+  "timeout -k 5 30 git push" \
+  "command git push" \
+  "exec git push" \
+  "nohup git push" \
+  "gh pr comment 1 --body x" \
+  "gh pr review 1 --approve" \
+  "gh pr update-branch 1" \
+  "gh pr revert 1" \
+  "gh -R o/r issue create --title t --body b" \
+  "gh issue edit 1 --add-label x" \
+  "gh pr merge 1 --squash" \
+  "gh api -X POST repos/o/r/issues/1/comments -f body=x" \
+  "gh api repos/o/r/issues/1/comments -f body=x" \
+  "gh api repos/o/r/issues -F title=x" \
+  "gh api -X DELETE repos/o/r/issues/comments/1" \
+  "gh api --method=PATCH repos/o/r/pulls/1" \
+  "gh api graphql -f query='mutation { x }'" \
+  "git push && git log --help" \
+  "git push origin --help" \
+  "git push --help && git push origin HEAD" \
+  "bash -n plugins/rite/hooks/flow-state.sh && bash plugins/rite/hooks/flow-state.sh set --phase fix" \
+  "bash -x plugins/rite/hooks/flow-state.sh set --phase fix" \
+  ; do
+  rc=0
+  output=$(run_guard_typed "rite:test-reviewer" "$sc_cmd") || rc=$?
+  decision=$(extract_hook_field "$output" permissionDecision)
+  reason=$(extract_hook_field "$output" permissionDecisionReason)
+  if [ "$decision" = "deny" ] && [[ "$reason" == "BLOCKED (reviewer-state-change):"* ]] \
+    && [[ "$reason" == *"type=rite:test-reviewer"* ]] \
+    && grep -q 'bash-guard: BLOCKED pattern=reviewer-state-change' "$STDERR_FILE"; then
+    pass "reviewer '${sc_cmd//$'\n'/\\n}' denied as reviewer-state-change"
+  else
+    fail "Expected reviewer-state-change deny for '${sc_cmd//$'\n'/\\n}', got decision=$decision reason=$reason"
+  fi
+done
+# Reviewer classification matrix — the same predicate as pre-tool-edit-guard.sh.
+# $1 = JSON fields merged into the hook input, $2 = CLAUDE_SUBAGENT_TYPE ("" = unset)
+run_guard_fields() {
+  local fields="$1" env_type="$2" rc=0 output
+  output=$(jq -n --arg cmd "git push" --argjson f "$fields" \
+    '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp"} + $f' \
+    | env -u CLAUDE_SUBAGENT_TYPE -u CLAUDE_AGENT_TYPE ${env_type:+CLAUDE_SUBAGENT_TYPE=$env_type} bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+  echo "$output"
+  return $rc
+}
+for deny_fields in \
+  '{"subagent_type":"plugin:rite:code-quality-reviewer"}' \
+  '{"subagent_type":"rite:_reviewer-base"}' \
+  '{"subagent_type":"general-purpose","agent_type":"rite:security-reviewer"}' \
+  ; do
+  rc=0
+  output=$(run_guard_fields "$deny_fields" "") || rc=$?
+  if [[ "$(extract_hook_field "$output" permissionDecisionReason)" == "BLOCKED (reviewer-state-change):"* ]]; then
+    pass "reviewer-typed $deny_fields denied git push"
+  else
+    fail "Expected reviewer-state-change deny for $deny_fields, got output=$output"
+  fi
+done
+rc=0
+output=$(run_guard_fields '{}' "rite:test-reviewer") || rc=$?
+if [[ "$(extract_hook_field "$output" permissionDecisionReason)" == "BLOCKED (reviewer-state-change):"* ]]; then
+  pass "Tier 3 env CLAUDE_SUBAGENT_TYPE=rite:test-reviewer denied git push"
+else
+  fail "Expected Tier 3 reviewer deny, got output=$output"
+fi
+for allow_case in '{"subagent_type":"general-purpose"}|' '{}|general-purpose'; do
+  rc=0
+  output=$(run_guard_fields "${allow_case%%|*}" "${allow_case#*|}") || rc=$?
+  if [ "$rc" = "0" ] && [ -z "$output" ]; then
+    pass "non-reviewer type ($allow_case) git push allowed"
+  else
+    fail "Expected allow for non-reviewer type ($allow_case), got rc=$rc output=$output"
+  fi
+done
+# The .git-write gate still covers every subagent, not only reviewers.
+rc=0
+output=$(run_guard_typed "general-purpose" "echo x > .git/hooks/pre-commit") || rc=$?
+if [[ "$(extract_hook_field "$output" permissionDecisionReason)" == "BLOCKED (reviewer-gitdir-write):"* ]]; then
+  pass "non-reviewer subagent .git write still denied as reviewer-gitdir-write"
+else
+  fail "Expected reviewer-gitdir-write deny for general-purpose .git write, got output=$output"
+fi
+rc=0
+output=$(run_guard_typed "-" "git push") || rc=$?
+reason=$(extract_hook_field "$output" permissionDecisionReason)
+if [[ "$reason" == *"reviewer-state-change"* ]] && [[ "$reason" == *"type unknown"* ]]; then
+  pass "subagent with no reported type is treated as a reviewer (git push denied)"
+else
+  fail "Expected type-unknown subagent git push deny, got reason=$reason"
+fi
+for ro_sc_cmd in \
+  "git diff" \
+  "grep -rn 'git commit' plugins/" \
+  "git log -S'git push'" \
+  'echo "git push"' \
+  "bash plugins/rite/hooks/tests/x.test.sh" \
+  "bash plugins/rite/hooks/flow-state.sh get --field phase" \
+  "bash plugins/rite/hooks/flow-state.sh path" \
+  "git worktree add --detach /tmp/rite-review-mutation-x HEAD" \
+  "grep -rn 'x; git push' plugins/" \
+  "git log --grep='a\\|git commit'" \
+  'echo "(git push)"' \
+  $'cat <<\'EOF\'\ngit push\nEOF' \
+  "git status # then git push" \
+  'echo "$(date); git push is blocked"' \
+  'x=$(case y in a) echo z;; esac); echo "$x git push"' \
+  "gh pr view 1 --json body" \
+  "gh pr diff 1" \
+  "gh issue view 1" \
+  "gh api repos/o/r/pulls/1" \
+  "gh api -X GET repos/o/r/issues -f state=open" \
+  "gh api graphql -f query='query { viewer { login } }'" \
+  "timeout 30 git status" \
+  "gh pr create --help" \
+  "gh issue close -h" \
+  "git push --help" \
+  "git commit -h" \
+  "bash -n plugins/rite/hooks/flow-state.sh" \
+  "bash -n plugins/rite/scripts/iterate-step.sh" \
+  ; do
+  rc=0
+  output=$(run_guard_typed "rite:test-reviewer" "$ro_sc_cmd") || rc=$?
+  if [ "$rc" = "0" ] && [ -z "$output" ]; then
+    pass "reviewer read-only '$ro_sc_cmd' allowed"
+  else
+    fail "Expected allow for reviewer '$ro_sc_cmd', got rc=$rc output=$output"
+  fi
+done
+# The scan must finish inside the hook timeout: a command just under the scan
+# ceiling is scanned and denied, a longer one is denied unscanned; neither may
+# time out.
+sc_pad=$(printf 'a b %.0s' $(seq 1 2040))
+for size_case in "scan|echo $sc_pad; git push|runs 'git push'" \
+  "unscanned|echo $(printf 'aaaa bbbb %.0s' $(seq 1 6000)); git push|(ceiling 8192)"; do
+  size_label="${size_case%%|*}"; size_rest="${size_case#*|}"
+  size_cmd="${size_rest%|*}"; size_want="${size_rest##*|}"
+  rc=0
+  output=$(jq -n --arg cmd "$size_cmd" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", agent_type: "rite:test-reviewer"}' \
+    | _timeout 10 bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+  reason=$(extract_hook_field "$output" permissionDecisionReason)
+  if [ "$rc" != "124" ] && [[ "$reason" == "BLOCKED (reviewer-state-change):"* ]] && [[ "$reason" == *"$size_want"* ]]; then
+    pass "reviewer ${#size_cmd}-byte git push denied within the hook timeout ($size_label)"
+  else
+    fail "Expected in-time reviewer-state-change deny for ${#size_cmd}-byte command ($size_label), got rc=$rc reason=$reason"
+  fi
+done
+# gh counts only as a word: a long read-only command with `through ` / `high `
+# is not denied by the size ceiling.
+sc_cmd="echo $(printf 'walk through high %.0s' $(seq 1 500))"
+rc=0
+output=$(run_guard_typed "rite:test-reviewer" "$sc_cmd") || rc=$?
+if [ "${#sc_cmd}" -gt 8192 ] && [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "reviewer ${#sc_cmd}-byte command with 'through ' / 'high ' allowed"
+else
+  fail "Expected allow for ${#sc_cmd}-byte command with 'through ' / 'high ', got rc=$rc output=$output"
+fi
+# A failure inside the scan function must still reach the fail-closed ERR trap.
+rc=0
+output=$(jq -n --arg cmd "git push" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", agent_type: "rite:test-reviewer"}' \
+  | RITE_BTG_TEST_CRASH=pattern4-scan bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+if [ "$rc" = "2" ] && [[ "$(extract_hook_field "$output" permissionDecisionReason)" == *"reviewer-gitdir-write"* ]] \
+  && grep -q 'WARNING Pattern 4' "$STDERR_FILE"; then
+  pass "crash inside the (S) scan function denies fail-closed (rc=2)"
+else
+  fail "Expected fail-closed deny for a crash inside the (S) scan, got rc=$rc output=$output"
+fi
+for other_type in "general-purpose" ""; do
+  for other_cmd in "git push" "git commit -m x" "bash plugins/rite/hooks/flow-state.sh set --phase fix"; do
+    rc=0
+    output=$(run_guard_typed "$other_type" "$other_cmd") || rc=$?
+    if [ "$rc" = "0" ] && [ -z "$output" ]; then
+      pass "non-reviewer (${other_type:-main session}) '$other_cmd' allowed"
+    else
+      fail "Expected allow for non-reviewer (${other_type:-main session}) '$other_cmd', got rc=$rc output=$output"
+    fi
+  done
+done
 echo ""
 
 # --------------------------------------------------------------------------

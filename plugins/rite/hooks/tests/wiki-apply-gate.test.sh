@@ -1041,18 +1041,21 @@ if grep -qF 'BLOCKED (wiki-apply-unresolved)' <<<"$gout" && grep -q 'target is d
 else
   fail "guard many directory changes rc=$grc out=$gout"
 fi
-# 解析しない深さ（65 段以上）の置換は、中身を引用とバックスラッシュを外して読み、git と commit / merge を綴りうるときだけ拒否する。
+# 解析しない深さ（65 段以上）の置換は、中身を引用・バックスラッシュ・行継続を外して読み、git と commit / merge を含むときだけ拒否する。
 _deep() { printf 'echo %s%s%s' "$(printf '$(%.0s' $(seq 1 "$1"))" "$2" "$(printf ')%.0s' $(seq 1 "$1"))"; }
-for _cmd in "$(_deep 65 'git merge x')" "$(_deep 65 "g''it co\\mmit -m y")"; do
+_nl=$'\n'
+for _inner in 'git merge x' "g''it co\\mmit -m y" 'g"i"t commit -m y' "gi\\${_nl}t commit -m y"; do
+  _cmd=$(_deep 65 "$_inner")
   drc=0
   dout=$(bash "$SCOPE_CHECK" commit-target --command "$_cmd" --cwd "$repo" 2>"$ROOT/target.err") || drc=$?
   if [ "$drc" -ne 0 ] && [ -z "$dout" ] && grep -q 'nested more than 64 deep' "$ROOT/target.err"; then
-    pass "commit-target refuses a HEAD mover in an unparsed substitution: ${_cmd:(-24)}"
+    pass "commit-target refuses a HEAD mover in an unparsed substitution: ${_inner//$_nl/\\n}"
   else
-    fail "commit-target deep ${_cmd:(-24)} rc=$drc out=$dout err=$(cat "$ROOT/target.err")"
+    fail "commit-target deep ${_inner//$_nl/\\n} rc=$drc out=$dout err=$(cat "$ROOT/target.err")"
   fi
 done
-# 上限を超えた後でも、HEAD を動かさないコマンドの引数にある commit では拒否しない。
+# 上限を超えた後でも、解析しない置換の外にある HEAD を動かさないコマンドの引数の commit では拒否しない。
+# 深さ 64 の置換は解析し、65 段以上の置換は中身が git と commit / merge を含まなければ拒否しない。
 for _cmd in "git '' commit -m x" 'git log --grep commit' 'git $OPTS log --grep commit' \
             "${_cd17}git log --grep commit" "${_deep65}git log --grep commit" \
             "$(_deep 64 'git log --grep commit')" "$(_deep 65 'git status')" "$(_deep 65 'echo commit')"; do

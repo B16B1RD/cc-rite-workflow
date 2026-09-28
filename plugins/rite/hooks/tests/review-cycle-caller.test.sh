@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Execute the documented caller blocks against isolated real workflow helpers.
-# iterate's caller blocks are one-line calls into scripts/iterate-step.sh; each is
-# located by the anchor comment inside the step function it runs, then the
-# documented SKILL.md call for that subcommand is executed.
+# iterate's and pr-review's caller blocks are one-line calls into scripts/iterate-step.sh
+# and scripts/pr-review-step.sh; each is located by the anchor comment inside the step
+# function it runs, then the documented SKILL.md call for that subcommand is executed.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 python3 - "$SCRIPT_DIR/../.." <<'PY'
@@ -16,6 +16,7 @@ import tempfile
 
 plugin = Path(sys.argv[1]).resolve()
 review = (plugin / 'skills/pr-review/SKILL.md').read_text()
+review_step = (plugin / 'scripts/pr-review-step.sh').read_text()
 iterate = (plugin / 'skills/iterate/SKILL.md').read_text()
 iterate_step = (plugin / 'scripts/iterate-step.sh').read_text()
 recover = (plugin / 'skills/recover/SKILL.md').read_text()
@@ -30,26 +31,33 @@ def block(text, marker):
     assert start >= len('```bash\n') and start <= at < end
     return text[start:end]
 
-def iterate_block_for(marker):
-    """The SKILL.md call of the iterate-step.sh subcommand whose function holds marker."""
-    assert iterate_step.count(marker) == 1, 'iterate step anchor missing or ambiguous: ' + marker
-    at = iterate_step.index(marker)
-    heads = list(re.finditer(r'^step_([a-z_]+)\(\) \{$', iterate_step[:at], re.M))
-    assert heads, 'iterate step anchor outside any step function: ' + marker
-    close = iterate_step.find('\n}\n', heads[-1].end())
-    assert heads[-1].end() < at < close, 'iterate step anchor outside its step function: ' + marker
+def step_block_for(skill, script, name, marker):
+    """The SKILL.md call of the step script subcommand whose function holds marker."""
+    assert script.count(marker) == 1, name + ' anchor missing or ambiguous: ' + marker
+    at = script.index(marker)
+    heads = list(re.finditer(r'^step_([a-z0-9_]+)\(\) \{$', script[:at], re.M))
+    assert heads, name + ' anchor outside any step function: ' + marker
+    close = script.find('\n}\n', heads[-1].end())
+    assert heads[-1].end() < at < close, name + ' anchor outside its step function: ' + marker
     subcommand = heads[-1].group(1).replace('_', '-')
-    return block(iterate, 'bash {plugin_root}/scripts/iterate-step.sh ' + subcommand)
+    return block(skill, 'bash {plugin_root}/scripts/' + name + ' ' + subcommand)
+
+def iterate_block_for(marker):
+    return step_block_for(iterate, iterate_step, 'iterate-step.sh', marker)
+
+def review_block_for(marker):
+    return step_block_for(review, review_step, 'pr-review-step.sh', marker)
 
 # Step 6.4 records the review through the helper review-close also requires, never through hand-written prose.
-assert 'bash {plugin_root}/hooks/flow-state.sh review-record' in review
+assert 'bash "$plugin_root"/hooks/flow-state.sh review-record' in review_step
+assert 'bash {plugin_root}/scripts/pr-review-step.sh wm-record ' in review
 assert '{review_history_content}' not in review
 
-start_block = block(review, '# review-cycle-start')
-finish_block = block(review, '# review-cycle-finish')
+start_block = review_block_for('# review-cycle-start')
+finish_block = review_block_for('# review-cycle-finish')
 recover_block = block(recover, '# review-cycle-recover')
 iterate_block = iterate_block_for('# review-cycle-resume-gate')
-entry_block = block(review, '# review-cycle-e2e-entry')
+entry_block = review_block_for('# review-cycle-e2e-entry')
 breaker_block = iterate_block_for('# review-cycle-breaker-reset')
 
 with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
@@ -178,7 +186,13 @@ with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
     collecting = finished.copy()
     collecting['review_cycle'] = {**finished['review_cycle'], 'status': 'collecting'}
     path.write_text(json.dumps(collecting))
-    omitted = re.sub(r'bash \{plugin_root\}/hooks/flow-state\.sh review-finish \\\n.*? \|\| \{', ': || {', finish_block, flags=re.S)
+    # The finish caller is a helper call, so the command is removed from a copy of the helper.
+    omitted_step = re.sub(r'bash "\$plugin_root"/hooks/flow-state\.sh review-finish \\\n.*? \|\| \{', ': || {', review_step, flags=re.S)
+    assert omitted_step != review_step
+    root_line = 'plugin_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"'
+    assert omitted_step.count(root_line) == 1
+    (work / 'omitted-pr-review-step.sh').write_text(omitted_step.replace(root_line, "plugin_root='" + str(plugin) + "'"))
+    omitted = finish_block.replace('{plugin_root}/scripts/pr-review-step.sh', str(work / 'omitted-pr-review-step.sh'))
     assert omitted != finish_block
     execute(omitted)
     assert state()['review_cycle']['status'] == 'collecting'
@@ -245,7 +259,7 @@ with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
         issue_body='Review the change.', roots=[],
         acceptance=dict(satisfied=[], evidence='The specification has no acceptance table.'))))
     replacements.update(review_observation_file=str(observed), review_issue_file=str(issue))
-    observe_block = block(review, '# review-stagnation-observe')
+    observe_block = review_block_for('# review-stagnation-observe')
     execute(observe_block)
     execute(observe_block)
     assert len(state()['review_run']['observations']) == 1, 'observation replay duplicated'

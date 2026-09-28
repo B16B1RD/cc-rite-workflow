@@ -85,6 +85,7 @@ guard 自身・checkpoint の内部 helper を再帰的に guard しない。hel
 | PreToolUse Bash / Edit | 操作前の `before-bash` / `before-edit`。拒否を守る caller が必須 |
 | PostToolUse WM / bang | `checkpoint` / `after-edit`。既存同期済み phase と冪等 init を使う |
 | Stop | flat caller が sentinel を判定して継続。`next` は handoff を消費しない。自動差し戻しの実証とは別 |
+| StopFailure | API エラー終了時に未閉の停滞診断の時計区間へ終了時刻を書くだけ。明示経路はなく、未対応ホストでは区間が開いたまま残り、通常の close の時刻まで数える（recover で閉じた区間は interruption） |
 | PreCompact / PostCompact | 各工程 checkpoint と recover。予告なし compact への自動復帰能力は未検証のまま |
 | SessionEnd | 最外側 skill の正常/失敗終了処理。強制終了イベントの自動 cleanup を保証しない |
 

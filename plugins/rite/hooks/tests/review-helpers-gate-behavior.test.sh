@@ -2593,12 +2593,12 @@ assert "TC-4.12k outcome=skipped は marker を消す (AC-4 正常系)" "no" \
 echo "--- TC-4.13: 8.0.3 Pre-Check の実行テスト (AC-5) ---"
 _P8_MD="$PLUGIN_ROOT/skills/pr-review/SKILL.md"
 _P8_FENCE="$TMP_ROOT/p803-precheck.sh"
-awk '
+PLUGIN_ROOT="$PLUGIN_ROOT" awk '
   !inside && /^### 8\.0\.3 / { inside = 1; next }
   inside && /^### / { exit }
   inside && !infence && /^```bash$/ { infence = 1; next }
   inside && infence && /^```[[:space:]]*$/ { exit }
-  inside && infence { print }
+  inside && infence { gsub(/\{plugin_root\}/, ENVIRON["PLUGIN_ROOT"]); print }
 ' "$_P8_MD" > "$_P8_FENCE"
 if [ ! -s "$_P8_FENCE" ]; then
   fail "TC-4.13 precondition: 8.0.3 節から Pre-Check の bash fence を抽出できません"
@@ -2657,7 +2657,32 @@ echo "=== TC-5: skills/pr-review/SKILL.md 静的 pin (6.1.d / 8.0.3) ==="
 # mutation (述語置換 / 死に分岐化 / 変数リネーム / 散文追加 / 区間境界変更) を当て、落ちること
 # および無害な変更では落ちないことを実測してから commit する**。手順は下記 rationale を参照。
 # rationale: ../../skills/pr-review/references/measured-gate-record.md#static-pin
-REVIEW_MD="$PLUGIN_ROOT/skills/pr-review/SKILL.md"
+# pr-review の各ステップの bash は scripts/pr-review-step.sh の 1 行呼び出しで、実体は同名の step 関数。
+# 配置契約 (区間・fence 到達性・件数) は「LLM が各ステップで実行する bash」について固定するため、
+# SKILL.md の呼び出し行をその step 関数の本体 (呼び出し行と同じ字下げ) へ展開した写しに当てる。
+# 展開では `"$plugin_root"/` を SKILL.md の `{plugin_root}/` 表記へそろえる。
+REVIEW_MD="$TMP_ROOT/pr-review-expanded.md"
+PLUGIN_ROOT="$PLUGIN_ROOT" awk '
+  BEGIN {
+    step = ENVIRON["PLUGIN_ROOT"] "/scripts/pr-review-step.sh"
+    while ((getline line < step) > 0) {
+      if (line ~ /^step_[a-z0-9_]+\(\) \{$/) {
+        cur = line; sub(/^step_/, "", cur); sub(/\(\) \{$/, "", cur); gsub(/_/, "-", cur); body[cur] = ""; continue
+      }
+      if (cur != "" && line == "}") { cur = ""; continue }
+      if (cur != "") { gsub(/"\$plugin_root"\//, "{plugin_root}/", line); body[cur] = body[cur] line "\n" }
+    }
+  }
+  match($0, /^[[:space:]]*bash \{plugin_root\}\/scripts\/pr-review-step\.sh [a-z0-9-]+/) {
+    indent = $0; sub(/[^[:space:]].*$/, "", indent)
+    sub_name = substr($0, RSTART, RLENGTH); sub(/.* /, "", sub_name)
+    if (!(sub_name in body)) { print "UNKNOWN pr-review-step.sh subcommand: " sub_name > "/dev/stderr"; exit 1 }
+    n = split(body[sub_name], lines, "\n")
+    for (i = 1; i < n; i++) print indent lines[i]
+    next
+  }
+  { print }
+' "$PLUGIN_ROOT/skills/pr-review/SKILL.md" > "$REVIEW_MD" || rm -f "$REVIEW_MD"
 if [ ! -f "$REVIEW_MD" ]; then
   fail "TC-5 precondition: skills/pr-review/SKILL.md が存在しません"
 else
@@ -3291,8 +3316,10 @@ else
   #        exit 1 を返して ステップ 8.1 に永久到達できなくなる。sibling は path を内部導出するため
   #        配線 drift が構造的に起こり得ないが、本 helper は id を受け取るのでここが単一障害点。
   _sec_610a() { _section_of '^bash \{plugin_root\}/hooks/flow-state\.sh review-finish' '^```$'; }
+  assert "TC-5h 6.1.a の呼び出し行が --pending-id に本 cycle の id を渡す (配線 drift の検出)" "1" \
+    "$(grep -cE '^bash \{plugin_root\}/scripts/pr-review-step\.sh review-finish .*--pending-id "\{save_pending_id\}"$' "$PLUGIN_ROOT/skills/pr-review/SKILL.md" || true)"
   assert "TC-5h 6.1.a の helper 呼び出しが --pending-id を渡す (配線 drift の検出)" "1" \
-    "$(_sec_610a | grep -cE '^[[:space:]]*--pending-id "\{save_pending_id\}" \|\| \{$' || true)"
+    "$(_sec_610a | grep -cE '^[[:space:]]*--pending-id "\$\{pending_id\}" \|\| \{$' || true)"
   # 生成側の変数名と caller placeholder 名が一致すること (片側改名で silent に空文字が渡る)
   assert "TC-5h 6.1.a が渡す placeholder 名が 5.3.0.M step 2 の変数名と一致する" "1" \
     "$(_sec_530m_step2 | grep -cE '^[[:space:]]*save_pending_id="' || true)"
@@ -3307,9 +3334,11 @@ else
     "$(_sec_530m_step2 | grep -cE '^exit "\$_gate_rc"$' || true)"
   # 実測: 抽出した block を bash に食わせ、helper 失敗時に非ゼロで終わることを確認する
   # (静的 pin だけでは `exit "$_gate_rc"` が生成 if の**内側**へ移動した変異を検出できない)。
-  _gate_block_probe=$(_sec_530m_step2 | sed \
+  # helper は PR 番号を引数 (--pr) から受け取るため、probe は pr_number=123 を与えて実行する。
+  _gate_block_probe="pr_number=123
+$(_sec_530m_step2 | sed \
     -e 's#^bash {plugin_root}/scripts/review-measured-gate\.sh.*#( exit 3 )#' \
-    -e '/^  --input /d' -e '/^  --reject-preset-verification$/d')
+    -e '/^  --input /d' -e '/^  --reject-preset-verification$/d')"
   _probe_rc=0
   printf '%s\n' "$_gate_block_probe" | TMPDIR="$TMP_ROOT" bash >/dev/null 2>&1 || _probe_rc=$?
   assert "TC-5h [実測] helper 非ゼロ終了時に step 2 block が同じ rc で終わる" "3" "$_probe_rc"
@@ -3335,7 +3364,7 @@ else
   _squat_bin=$(mktemp -d "$TMP_ROOT/squatbin-XXXXXX")
   printf '#!/bin/bash\nprintf "%%s\\n" "1700000099"\n' > "$_squat_bin/date"
   chmod +x "$_squat_bin/date"
-  if mkfifo "$_squat_dir/rite-p61a-pending-{pr_number}-1700000099" 2>/dev/null; then
+  if mkfifo "$_squat_dir/rite-p61a-pending-123-1700000099" 2>/dev/null; then
     _squat_rc=0
     # `timeout` は macOS CI (BSD / coreutils なし) に存在しないため `_timeout` を使う。bare
     # `timeout` だと rc=127 (command not found) で block 自体が走らず、下の marker assertion が
@@ -3354,13 +3383,12 @@ else
   fi
 
   # 生成側が emit する id が **消費側 helper の allowlist を通り、実際に marker を consume できるか**
-  # を end-to-end で固定する。probe の id は `{pr_number}` が未置換のままなので、そのままでは
-  # helper に弾かれる形状 (= (h-5) arm A が「拒否される側」として使う値と同型)。ここで置換して
-  # 実 id にしてから helper に渡すことで、生成側テンプレートが allowlist 外の文字を含む形へ
-  # drift した場合に落ちる。これが無いと drift 時は「marker は作られたが helper が消せず
-  # 8.0.4 が毎 cycle exit 1」という本 Issue の失敗クラスがそのまま再現する。
+  # を end-to-end で固定する。probe は pr_number=123 で実行した生成側の id をそのまま helper に
+  # 渡すため、生成側の id の形が allowlist 外の文字を含む形へ drift した場合に落ちる。これが無いと
+  # drift 時は「marker は作られたが helper が消せず 8.0.4 が毎 cycle exit 1」という失敗クラスが
+  # そのまま再現する。
   _probe_id_raw=$(printf '%s\n' "$_probe_err" | sed -n 's/^\[CONTEXT\] REVIEW_SAVE_PENDING_ID=//p' | head -1)
-  _probe_id=${_probe_id_raw//\{pr_number\}/123}
+  _probe_id=$_probe_id_raw
   if [ -n "$_probe_id" ]; then
     _probe_e2e_marker="${TMPDIR:-/tmp}/rite-p61a-pending-$_probe_id"
     : > "$_probe_e2e_marker"
@@ -3426,7 +3454,10 @@ else
   # 抽出は `esac` で止めない — positive 検査 (review-save-json-verify.sh) は case の**外**に
   # 置かれており、`esac` で切ると本 PR が塞いだ「marker degraded 時に positive 検査が走らない」
   # 経路を arm テストが一切踏めなくなる。閉じ fence まで取る。
-  _sec_804_precheck() { _sec_804 | awk '/^save_pending_marker="/{f=1} f&&/^```$/{exit} f{print}'; }
+  _sec_804_precheck() {
+    awk '/^### 8\.0\.4 /{f=1; next} f&&/^### /{exit} f' "$PLUGIN_ROOT/skills/pr-review/SKILL.md" \
+      | grep -E '^bash \{plugin_root\}/scripts/pr-review-step\.sh save-gate '
+  }
   # marker 不在の arm は positive 検査 (review-save-json-verify.sh) まで到達する。同 helper は
   # state-path-resolve.sh で results dir を解決するため、arm は **cwd 配下に .rite/review-results を
   # 持つ一時ディレクトリ**で走らせる。`--results-dir` を後付けせず本番と同じ既定解決を通すことで、
@@ -3450,7 +3481,7 @@ EOF
   _run_804_arm() {  # $1=marker 値, $2=cwd (省略: 本 cycle の JSON を持つ dir) → "rc|stderr" を返す
     local _m="$1" _cwd="${2:-$_804_json_ok}" _rc=0 _err
     _err=$(printf '%s\n' "$(_sec_804_precheck)" \
-      | sed "1s#^save_pending_marker=.*#save_pending_marker='$_m'#" \
+      | sed "s#{save_pending_marker}#$_m#" \
       | sed "s#{plugin_root}#$PLUGIN_ROOT#g; s#{pr_number}#$_804_pr#g; s#{current_commit_sha}#$_804_sha#g" \
       | (cd "$_cwd" && PATH="$_804_bin:$PATH" bash) 2>&1 >/dev/null) || _rc=$?
     printf '%s|%s' "$_rc" "$_err"
@@ -3465,10 +3496,10 @@ EOF
   _804_json_missing=$(mktemp -d "$TMP_ROOT/gate804miss-XXXXXX")
   mkdir -p "$_804_json_missing/.rite/review-results"
   _804_precheck_lines=$(_sec_804_precheck | grep -c . || true)
-  if [ "$_804_precheck_lines" -ge 10 ] 2>/dev/null; then
-    pass "TC-5h 区間解決: 8.0.4 Pre-Check の bash を抽出できる ($_804_precheck_lines 行)"
+  if [ "$_804_precheck_lines" -eq 1 ] 2>/dev/null; then
+    pass "TC-5h 区間解決: 8.0.4 Pre-Check の save-gate 呼び出し行を抽出できる"
   else
-    fail "TC-5h 区間解決: 8.0.4 Pre-Check の bash 抽出に失敗 ($_804_precheck_lines 行) — case 構造の drift"
+    fail "TC-5h 区間解決: 8.0.4 Pre-Check の save-gate 呼び出し行の抽出に失敗 ($_804_precheck_lines 行)"
   fi
 
   # arm 1: marker 残存 → rc=1 + REVIEW_SAVE_GATE_FAILED。**かつ marker を削除しない**

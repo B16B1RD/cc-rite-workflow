@@ -4,8 +4,9 @@
 # Edit / Write / MultiEdit / NotebookEdit tools.
 #
 # Why this exists:
-#   The sibling `pre-tool-bash-guard.sh` guards only the Bash tool (since Issue
-# its machine gate is the.git-write path) — it does nothing about a
+#   The sibling `pre-tool-bash-guard.sh` guards only the Bash tool (its reviewer
+#   gates are the length guard (L) and Pattern 4, which includes sub-block (S))
+#   — it does nothing about a
 #   reviewer subagent that opens `Edit`/`Write` on a source file in the parent
 #   working tree (observed in production: a reviewer edited an implementation
 #   file in-place to run a mutation test, then hand-restored it). The prose ban
@@ -158,8 +159,8 @@ fi
 # suffix: any reported type ending in `reviewer` or naming the shared `_reviewer-base` is a
 # reviewer, and one reviewer-typed field outweighs non-reviewer ones. A subagent that reports
 # no type at all (Tier 1 transcript only) cannot be told apart from a reviewer, so it stays
-# guarded and the deny reason says the type was unknown. This classification is edit-guard
-# only; the detection above is what stays in sync with pre-tool-bash-guard.sh.
+# guarded and the deny reason says the type was unknown. pre-tool-bash-guard.sh uses the
+# same classification for its reviewer state-change gate; keep the two in sync.
 _has_type=0
 _reviewer_type=""
 for _t in "$INPUT_SUBAGENT_TYPE" "$INPUT_AGENT_TYPE" "${CLAUDE_SUBAGENT_TYPE:-}" "${CLAUDE_AGENT_TYPE:-}"; do
