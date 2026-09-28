@@ -464,15 +464,18 @@ echo "TC-EARLYEXIT-1 (AC-1): non-rite project early-exits with no git spawn"
 # turns the sandbox into a rite project). Rebuild it under /tmp in that case, and
 # fail naming the marker if /tmp is not clean either.
 rite_marker_above() {
-  local d="$1"
+  local d="$1" p
   while : ; do
     if [ -f "$d/rite-config.yml" ] || [ -d "$d/.rite" ]; then
       printf '%s\n' "$d"
       return 0
     fi
     [ "$d" = "/" ] && return 1
-    d="${d%/*}"
-    d="${d:-/}"
+    # Same no-progress stop as the hook's walk: a relative path has no `/` left to
+    # strip at its top segment, so `${d%/*}` stops changing there.
+    p="${d%/*}"
+    [ "$p" = "$d" ] && return 1
+    d="${p:-/}"
   done
 }
 dir_ee1="$TEST_DIR/tc_earlyexit1"
