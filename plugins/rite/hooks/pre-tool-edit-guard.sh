@@ -4,8 +4,9 @@
 # Edit / Write / MultiEdit / NotebookEdit tools.
 #
 # Why this exists:
-#   The sibling `pre-tool-bash-guard.sh` guards only the Bash tool (its Pattern 4
-#   and sub-block (S) define what it denies) — it does nothing about a
+#   The sibling `pre-tool-bash-guard.sh` guards only the Bash tool (its reviewer
+#   gates are the length guard (L) and Pattern 4, which includes sub-block (S))
+#   — it does nothing about a
 #   reviewer subagent that opens `Edit`/`Write` on a source file in the parent
 #   working tree (observed in production: a reviewer edited an implementation
 #   file in-place to run a mutation test, then hand-restored it). The prose ban

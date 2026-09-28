@@ -552,7 +552,6 @@ _rite_btg_state_change_match() {
         esac ;;
     esac
   done
-  if [ "$_mode" = help ]; then _sc_hit="$_pend"; fi
   return 0
 }
 trap '_rite_btg_pattern13_fail_open' ERR

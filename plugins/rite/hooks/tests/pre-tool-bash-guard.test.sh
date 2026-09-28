@@ -2410,7 +2410,9 @@ for sc_cmd in \
   "gh api graphql -f query='mutation { x }'" \
   "git push && git log --help" \
   "git push origin --help" \
+  "git push --help && git push origin HEAD" \
   "bash -n plugins/rite/hooks/flow-state.sh && bash plugins/rite/hooks/flow-state.sh set --phase fix" \
+  "bash -x plugins/rite/hooks/flow-state.sh set --phase fix" \
   ; do
   rc=0
   output=$(run_guard_typed "rite:test-reviewer" "$sc_cmd") || rc=$?
