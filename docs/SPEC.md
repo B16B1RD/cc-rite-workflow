@@ -1211,7 +1211,7 @@ iteration:
 | SessionStart | Session start | Load work memory, detect interrupted work; at the main checkout, write a stderr WARNING (never delete) for 0-byte read-only lock files a sandboxed command left directly in the git dir — the hook exits 0, so that stderr lands only in the Claude Code debug log; on `source=compact` re-inject recovery text into model context (Issue / Phase / Branch / Next action / Loop / PR, auto-continue, batch frame) |
 | PreCompact | Before compact | Save work memory, record compact state (`trigger` for auto vs manual) |
 | PostCompact | After compact | Normalize compact-state, PR/Projects Status reconciliation (recovery text is SessionStart; PostCompact stdout is not injected) |
-| SessionEnd | Session end | Save final state; mark the ending session's run-queue with `run-queue-{session_id}.ended` so other sessions can tell it ended |
+| SessionEnd | Session end | Save final state: set the session's flow-state to `active=false`, keep it when it was still mid-flow (`active=true` with a non-terminal phase) or holds review history so a resumed session can read it back, and otherwise remove it together with its `.lock`; mark the ending session's run-queue with `run-queue-{session_id}.ended` so other sessions can tell it ended |
 | PreToolUse | Before tool execution | Block known-bad Bash command patterns (`pre-tool-bash-guard.sh`); deny reviewer-subagent Edit/Write/MultiEdit/NotebookEdit writes into a parent working tree (`pre-tool-edit-guard.sh`) |
 | PostToolUse | After tool execution | Auto-recover local work memory and sync the Issue comment replica on phase change (`post-tool-wm-sync.sh`); block bang-backtick adjacency that bash would interpret as history expansion (`scripts/bang-backtick-edit-hook.sh`) |
 | StopFailure | Turn ends on an API error (usage limit, overload, …) | Write the failure time as `ended_at` on this session's open stagnation-diagnosis clock segment (`.rite/state/review-clock-{session_id}.json`), keeping `kind`, so the later close or recover does not count the pause as work time. Output and exit code are ignored by Claude Code |
@@ -1602,7 +1602,7 @@ A test framework for ensuring Hook script quality. Located in `plugins/rite/hook
 | `pre-compact.sh` | State capture before compact; stdout empty |
 | `pre-tool-bash-guard.sh` | Dangerous pattern detection, heredoc safety |
 | `post-tool-wm-sync.sh` | Work memory auto-recovery after Bash tool calls, phase-diff replica sync, `last_synced_phase` advancement gating |
-| `session-start.sh` / `session-end.sh` | Session lifecycle + ownership transitions; SessionStart(`source=compact`) recovery context emission; run-queue ended marker (SessionEnd creates it for the ending session's queue, SessionStart removes its own) |
+| `session-start.sh` / `session-end.sh` | Session lifecycle + ownership transitions; SessionStart(`source=compact`) recovery context emission; run-queue ended marker (SessionEnd creates it for the ending session's queue, SessionStart removes its own); SessionEnd keeps a mid-flow flow-state readable after a resume and removes a finished one with its lock |
 | `stop-failure.sh` | Open review-clock segment gets the failure time as `ended_at`; a later close submits that time (`review-clock-recipe-contract.test.sh`) |
 | `work-memory-lock.sh` | Lock acquire/release + stale detection |
 | `wiki-ingest-trigger.sh` | Raw-source write contract |
