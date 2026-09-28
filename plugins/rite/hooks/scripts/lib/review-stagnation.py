@@ -651,7 +651,8 @@ def criteria(body, purpose):
                                 capture_output=True, text=True)
     require(result.returncode == 0, "Issue acceptance criteria cannot be extracted; " + purpose + ": "
             + result.stderr.strip())
-    return dict(line.split("\t", 1) for line in result.stdout.splitlines())
+    # The helper ends records only at "\n"; splitlines() would also split at U+2028 inside a text.
+    return dict(line.split("\t", 1) for line in result.stdout.split("\n") if line)
 
 
 def check_skipped_scope(skipped, body):
@@ -742,6 +743,7 @@ def progressed_since(run, replan):
 
     A criterion is its ID and text, so one a revision adds or rewords counts only
     after it has been observed unmet, and one removed and restored keeps its past.
+    A pair already met at the replan never counts, even after it lapses and returns.
     IDs the Issue does not declare keep the replan's satisfied set as baseline.
     """
     start = replan["review_context"]["cycle_count"]
@@ -754,7 +756,8 @@ def progressed_since(run, replan):
         return stated[body]
 
     replanned = items(observation(run, replan["review_context"])["input"]["issue_body"])
-    unmet = {(key, text) for key, text in replanned.items() if key not in baseline}
+    settled = {(key, text) for key, text in replanned.items() if key in baseline}
+    unmet = set(replanned.items()) - settled
     for obs in run["observations"]:
         if obs["input"]["review_context"]["cycle_count"] < start:
             continue
@@ -762,7 +765,7 @@ def progressed_since(run, replan):
         met = set(obs["input"]["acceptance"]["satisfied"])
         if any((key, declared[key]) in unmet if key in declared else key not in baseline for key in met):
             return True
-        unmet |= {(key, text) for key, text in declared.items() if key not in met}
+        unmet |= {(key, text) for key, text in declared.items() if key not in met} - settled
     return False
 
 

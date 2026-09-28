@@ -3,7 +3,7 @@
 #
 # Responsibility: pr-review と issue-implement が受入条件の決定論的検査に使う。
 #   extract — 対応する AC 節から `### AC-N` / `- [ ] AC-N` の明示 ID 集合を抽出する
-#   items   — extract と同じ検査を通し、各 AC の ID と本文（checkbox を除き空白を詰めたもの）を返す
+#   items   — extract と同じ検査を通し、各 AC の ID と本文（checkbox を除き、続く行とフェンスを含めて空白を詰めたもの）を返す
 #   table   — acceptance reviewer の raw 出力の `### 受入条件確認` 表を、抽出集合と照合する
 #   final   — 降格ゲート適用後のレビュー結果 JSON で、判定行の AC-ID 集合・受入条件確認の対象判定と
 #             reviewers[] の整合・未充足行の finding が blocking に残るかを検査する
@@ -126,6 +126,8 @@ case "$mode" in
         n = 0
         while (n < 3 && substr($0, 1, 1) == " ") { $0 = substr($0, 2); n++ }
       }
+      # フェンスは ID を作らないが、項目に続くものはその本文の一部
+      in_ac && cur != "" && (fence || /^[[:space:]]*(```+|~~~+)/) { text[cur] = text[cur] " " $0 }
       /^[[:space:]]*(```+|~~~+)/ {
         token = $0; sub(/^[[:space:]]*/, "", token)
         match(token, /^(```+|~~~+)/); marks = substr(token, 1, RLENGTH)

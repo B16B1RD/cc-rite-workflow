@@ -2599,6 +2599,8 @@ finally:
 ORIGINAL = [('AC-1', 'original one'), ('AC-2', 'original two')]
 ADDED = ORIGINAL + [('AC-9', 'newly agreed')]
 REWORDED = [('AC-1', 'reworded one'), ('AC-2', 'original two')]
+FENCED = [('AC-1', 'original one\n  ```\n  only when idle\n  ```'), ('AC-2', 'original two')]
+SEPARATED = [('AC-1', 'original one'), ('AC-2', 'original two')]
 
 
 def with_criteria(f, base, items):
@@ -2622,15 +2624,20 @@ def revision_case(case):
     f = Fixture()
     try:
         base = f.issue['body']
-        with_criteria(f, base, ORIGINAL)
-        criteria_cycle(f, ORIGINAL, roots=('input defect', 'secondary defect', 'third defect'))
+        initial = SEPARATED if case == 'separator' else ORIGINAL
+        with_criteria(f, base, initial)
+        criteria_cycle(f, initial, roots=('input defect', 'secondary defect', 'third defect'))
         f.fix()
-        criteria_cycle(f, ORIGINAL, roots=('input defect', 'secondary defect'))
+        criteria_cycle(f, initial, roots=('input defect', 'secondary defect'))
         f.fix()
-        criteria_cycle(f, ORIGINAL, seconds=1801)
+        criteria_cycle(f, initial, met=['AC-2'] if case == 'lapsed' else [], seconds=1801)
         check(f.decision() == 'replan', 'T-SC14: fixture requires a replan')
         f.fix()
-        if case == 'unobserved':
+        if case in ('lapsed', 'separator'):
+            # No revision: a criterion met at the replan lapses, or one never met is met later.
+            criteria_cycle(f, initial)
+            final, met = initial, ['AC-2'] if case == 'lapsed' else ['AC-1']
+        elif case == 'unobserved':
             # The revision arrives with the post-replan repair, whose observation it refuses.
             with_criteria(f, base, ADDED)
             criteria_cycle(f, ADDED, met=['AC-1'], observe=False)
@@ -2649,7 +2656,8 @@ def revision_case(case):
             final, met = ORIGINAL, ['AC-2']
         else:
             final, before, after = dict(added=(ADDED, [], ['AC-9']), earlier=(ADDED, ['AC-1'], ['AC-1']),
-                                        reworded=(REWORDED, [], ['AC-1']), refixed=(REWORDED, [], []))[case]
+                                        reworded=(REWORDED, [], ['AC-1']), fenced=(FENCED, [], ['AC-1']),
+                                        refixed=(REWORDED, [], []))[case]
             criteria_cycle(f, ORIGINAL, met=before)
             revise(f, base, final)
             criteria_cycle(f, final, met=after)
@@ -2666,6 +2674,9 @@ for case, stops, label in (
         ('earlier', False, 'progress made before the revision still suppresses the stop'),
         ('unobserved', False, 'an unchanged criterion first met after an unobserved-route revision is progress'),
         ('reworded', True, 'a reworded criterion met on the same HEAD is not progress'),
+        ('fenced', True, 'a criterion whose code block alone was revised is reworded'),
+        ('lapsed', True, 'a criterion met at the replan that lapses and returns is not progress'),
+        ('separator', False, 'a criterion whose text holds a Unicode line separator is still compared'),
         ('restored', False, 'a criterion removed and restored with its text keeps its earlier unmet observation'),
         ('refixed', False, 'a reworded criterion seen unmet and met after a fix is progress')):
     decision = revision_case(case)
