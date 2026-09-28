@@ -467,7 +467,7 @@ bash {plugin_root}/hooks/scripts/pr-cycle-cleanup.sh 2>&1 || true
 
 これは正常終了・ユーザー中断の**両経路**で実行する (どちらの出口でも残骸の累積を防ぐ)。出力 status 行 (`[pr-cycle-cleanup] status=...`) はそのまま表示し、何を回収したかを可視化する。
 
-> **24h age guard**: 直前に作った若い `rite-review-mutation-*` / `rite-revert-test-*` detached worktree はこの発火では消えず、次回 cleanup (24h 経過後) で回収される。即時 0 残骸ではなく **確実な最終回収**。
+> **所有者つきの一時 worktree**: 本ループの reviewer が作った `rite-review-mutation-*` / `rite-revert-test-*` detached worktree は、この発火で作成直後でも回収される。名前に別の live セッションを所有者として記録したものは、その所有者が live な間は残る。
 
 ### ステップ 5.0.1: run を閉じる (cycle counter のリセット)
 
