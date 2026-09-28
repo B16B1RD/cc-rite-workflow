@@ -51,6 +51,16 @@ rc=0
 bash {plugin_root}/hooks/scripts/review-adoption-gate.sh --pr {pr_number} --kind triage \
   --state-root "$state_root" --candidates "$work/candidates.json" \
   --review-result "$review_json" --base "origin/{base_branch}" "${issue_args[@]}" || rc=$?
+# decided でも 7.4 の外部への書き込みが済むまで、この run の候補を hold に残す（7.4.5 だけが消す）
+if [ "$rc" = 0 ]; then
+  hold_file="$state_root/.rite/state/adoption-hold-{pr_number}-triage.json"
+  jq --arg head "$head_sha" --arg rr "$review_json" --argjson pr {pr_number} \
+    '{kind: "triage", pr: $pr, head: $head, review_result: $rr, reason: "writes_pending", detail: "",
+      held_ids: [], candidates: .candidates,
+      resume: "採否の出口は出たが、7.4 の外部への書き込みがまだ済んでいない。/rite:iterate で再レビューし、7.2 から処分をやり直す"}' \
+    "$work/candidates.json" > "$hold_file.tmp" && mv -- "$hold_file.tmp" "$hold_file" \
+    || { rm -f -- "$hold_file.tmp"; echo "ERROR: triage の候補を hold に残せません: $hold_file" >&2; rc=2; }
+fi
 echo "[CONTEXT] ADOPTION_GATE_RC=$rc"
 ```
 
@@ -131,7 +141,7 @@ Issue creation failure reasons: (`body_tmpfile_write_failure` / `empty_body_tmpf
 > **Reference**: [Issue Creation with Projects Integration](../../../references/issue-create-with-projects.md)
 
 heredoc の `{placeholder}` はスクリプト生成前に埋める（shell 変数ではない）。**判定記録ごとに単一 Bash invocation**（同じ記録の候補 `ids` は 1 件にまとめ、違う記録を混ぜない）。
-`{contract}` / `{evidence}` / `{acceptance}` はゲート出力の `record` の `contract`（ref と引用文）/ `evidence` / `acceptance` をそのまま入れる。調査（`action` が `investigate`）は `{evidence}` に `proposition` の claim / reach / reach_source / done も入れる。
+`{record_ids}` はその判定記録の `ids`（JSON 配列）。`{contract}` / `{evidence}` / `{acceptance}` はゲート出力の `record` の `contract`（ref と引用文）/ `evidence` / `acceptance` をそのまま入れる。調査（`action` が `investigate`）は `{evidence}` に `proposition` の claim / reach / reach_source / done も入れる。
 Priority: CRITICAL→High, HIGH→Medium, MEDIUM/LOW-MEDIUM/LOW→Low, Source B→Medium。
 Complexity: XS = 単箇所、S = 1–2 ファイル。
 
@@ -223,6 +233,24 @@ if [ -z "$result" ]; then
  echo "[CONTEXT] ISSUE_CREATE_FAILED=1; reason=empty_script_result" >&2
  exit 1
 fi
+# gh の作成失敗は空の issue_url と exit 1 で返る（nb-sweep 手順 2 と同じ検査）
+if ! printf '%s' "$result" | jq -e '.issue_number > 0 and (.issue_url | type == "string" and length > 0)' >/dev/null; then
+ printf '%s' "$result" | jq -r '.warnings[]?' 2>/dev/null | while read -r w; do echo "⚠️ $w" >&2; done
+ echo "ERROR: Issue を作成できませんでした" >&2
+ echo "[CONTEXT] ISSUE_CREATE_FAILED=1; reason=create_failed" >&2
+ exit 1
+fi
+# 作った番号を判定記録の tracker に書き戻す。再実行するとゲートはこの記録を LINK にし、同じ根因を二度起票しない
+triage_adoption="$(bash {plugin_root}/hooks/state-path-resolve.sh)/.rite/state/adoption-{pr_number}-triage.json"
+created_issue_number=$(printf '%s' "$result" | jq '.issue_number')
+if ! jq --argjson ids '{record_ids}' --argjson n "$created_issue_number" \
+     '(.adoption.records[] | select(.ids == $ids) | .tracker) = $n' "$triage_adoption" > "$triage_adoption.tmp" ||
+   ! mv -- "$triage_adoption.tmp" "$triage_adoption"; then
+ rm -f -- "$triage_adoption.tmp"
+ echo "ERROR: 作成した #$created_issue_number を $triage_adoption の記録の tracker に書き戻せません。書き戻してから再実行する（書かずに再実行すると同じ根因を二度起票する）" >&2
+ echo "[CONTEXT] ISSUE_CREATE_FAILED=1; reason=tracker_write_failed" >&2
+ exit 1
+fi
 created_issue_url=$(printf '%s' "$result" | jq -r '.issue_url')
 project_reg=$(printf '%s' "$result" | jq -r '.project_registration')
 printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do echo "⚠️ $w"; done
@@ -234,7 +262,8 @@ printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do ec
 
 | Error Case | Response |
 |------------|----------|
-| Script returns `issue_url: ""` | Display warning with error details. If remaining records exist, continue creating others |
+| Script returns `issue_url: ""` or a non-positive `issue_number` | `ISSUE_CREATE_FAILED=1; reason=create_failed`。残りの記録の作成は続け、失敗は 7.4.5 の `{write_failures}` に数える（7.4.5 が採否保留として止まる） |
+| The created number cannot be written back as the record's `tracker` | `ISSUE_CREATE_FAILED=1; reason=tracker_write_failed`。同じく 7.4.5 に数える。再実行の前に番号を記録の `tracker` に入れる |
 | `project_registration: "partial"` or `"failed"` | Display warnings from result. Issue creation itself succeeded |
 
 #### 7.4.3 Decision Log Append
@@ -368,7 +397,7 @@ Decision Log append failure reasons: (`line_content_write_failure` / `body_fetch
 | `body_fetch_failure` | 元 Issue の body 取得（`gh issue view`）に失敗 |
 | `gh_edit_failure` | Section 9 の採番走査・行挿入、または Section 9 新設時の本文組み立て（awk）の異常終了 / 空出力、または `gh issue edit` 適用に失敗 |
 
-失敗は non-blocking。WARNING + 記録予定行を出し、7.5-7.6 の completion report にも転記する。
+失敗しても残りの判定記録の 7.4 は続け、失敗は 7.4.5 の `{write_failures}` に数える（7.4.5 が採否保留として止まる）。WARNING と記録予定行を出す。
 
 #### 7.4.4 引き受け先 Issue への申し送りコメント
 
@@ -387,7 +416,7 @@ heredoc の `{placeholder}` はスクリプト生成前に埋める（shell 変�
 
 1. `gh issue view {assignee_issue} -R {owner_repo} --json state --jq '.state'`
 2. `OPEN` 以外 → 投稿しない。`[CONTEXT] HANDOFF_COMMENT_REJECTED=1; issue={assignee_issue}; reason=closed` を emit し、判定記録の `tracker` を直して 7.2 のゲートからやり直す（7.4.3 / 7.5 へ進まない）
-3. `OPEN` → `--body-file` で申し送りを投稿（指摘要約・元 PR・着手時確認点）。成功は `[CONTEXT] HANDOFF_COMMENT_POSTED=1; issue={assignee_issue}`。失敗は WARNING + `[CONTEXT] HANDOFF_COMMENT_FAILED=1; issue={assignee_issue}; reason=gh_comment_failure`（完了レポートに未投稿として列挙）
+3. `OPEN` → `--body-file` で申し送りを投稿（指摘要約・元 PR・着手時確認点）。成功は `[CONTEXT] HANDOFF_COMMENT_POSTED=1; issue={assignee_issue}`。失敗は WARNING + `[CONTEXT] HANDOFF_COMMENT_FAILED=1; issue={assignee_issue}; reason=gh_comment_failure`（7.4.5 の `{write_failures}` に数える）
 
 ```bash
 assignee_issue={assignee_issue}
@@ -436,11 +465,11 @@ Handoff comment failure reasons: (`closed` / `body_write_failure` / `gh_comment_
 | `body_write_failure` | 申し送り本文の一時ファイル書き込みに失敗 |
 | `gh_comment_failure` | `gh issue comment` が非ゼロ終了（権限・ネットワーク） |
 
-`HANDOFF_COMMENT_REJECTED=1` を観測したら当該判定記録の 7.4.3 を実行せず 7.5 へ進まない。投稿失敗は non-blocking だが記録のみで完了扱いにせず、7.5-7.6 の完了レポートに未投稿として列挙する。
+`HANDOFF_COMMENT_REJECTED=1` を観測したら当該判定記録の 7.4.3 を実行せず 7.5 へ進まない。投稿に失敗しても残りの 7.4 は続け、失敗は 7.4.5 の `{write_failures}` に数える（7.4.5 が採否保留として止まる）。
 
 #### 7.4.5 台帳への記録と保留の解除
 
-全判定記録の 7.4 を実行し終えたら 1 回だけ実行する（`HANDOFF_COMMENT_REJECTED=1` で 7.2 へ戻るときは実行しない）。verdict が `record`（`REJECT` / `RESOLVED` / `LINK`）の記録の候補のうち `file_line` のあるものを、却下台帳へ 1 候補 1 行で書く（`file_line` が空の候補は台帳のキーが一意にならないので書かない）。行形式は `| {reviewer} | {file_line} | {exit} | {判定文} | {review_json_basename} |`。判定文は記録の `reason`（`RESOLVED` で reason が無ければ `evidence`、`LINK` は `追跡先 #{tracker}`）、`{review_json_basename}` は 7.2 の bash が出した `[CONTEXT] TRIAGE_REVIEW_JSON=` の値。セル内のパイプ・改行はエスケープする。書く行が無ければ `{rows}` は空にする。`{write_failures}` は、この 7.4 の実行で出た `ISSUE_CREATE_FAILED=1` / `DECISION_LOG_APPEND_FAILED=1` / `HANDOFF_COMMENT_FAILED=1` の件数。最後に triage の hold ファイルを消す。外部への書き込み（Decision Log・先送りトークン・Issue・申し送り・台帳）がすべて成功するまで hold を残すのは、途中で止まった再実行でも hold の候補を手順 1 が合流させるため。
+全判定記録の 7.4 を実行し終えたら 1 回だけ実行する（`HANDOFF_COMMENT_REJECTED=1` で 7.2 へ戻るときは実行しない）。verdict が `record`（`REJECT` / `RESOLVED` / `LINK`）の記録の候補のうち `file_line` のあるものを、却下台帳へ 1 候補 1 行で書く（`file_line` が空の候補は台帳のキーが一意にならないので書かない）。行形式は `| {reviewer} | {file_line} | {exit} | {判定文} | {review_json_basename} |`。判定文は記録の `reason`（`RESOLVED` で reason が無ければ `evidence`、`LINK` は `追跡先 #{tracker}`）、`{review_json_basename}` は 7.2 の bash が出した `[CONTEXT] TRIAGE_REVIEW_JSON=` の値。セル内のパイプ・改行はエスケープする。書く行が無ければ `{rows}` は空にする。`{write_failures}` は、この 7.4 の実行で出た `ISSUE_CREATE_FAILED=1` / `DECISION_LOG_APPEND_FAILED=1` / `HANDOFF_COMMENT_FAILED=1` の件数。最後に triage の hold ファイルを消す。hold は 7.2 の bash がゲートの decided の後に必ず書いている（その run の候補の全文）。外部への書き込み（Decision Log・先送りトークン・Issue・申し送り・台帳）がすべて成功するまで hold を残すのは、途中で止まった再実行でも hold の候補を手順 1 が合流させるため。
 
 ```bash
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) && [ -n "$state_root" ] \
@@ -455,7 +484,7 @@ ROWS_EOF
 triage_stop() {
   echo "[CONTEXT] TRIAGE_LEDGER=failed; reason=$1" >&2
   if [ -e "$hold_file" ]; then
-    jq --arg r "7.4 の外部への書き込み（$1）が済んでいない。stderr の原因（gh 認証・ネットワーク・権限）を解消してから /rite:iterate {pr_number} で再レビューする。再実行は 7.2 から始まり、同じ判定記録で 7.4 を最初からやり直す（成功済みの Decision Log 行と申し送りコメントは重ねて書かれうる。7.4.1 で作った Issue は判定記録の tracker に入れれば LINK になる）" \
+    jq --arg r "7.4 の外部への書き込み（$1）が済んでいない。stderr の原因（gh 認証・ネットワーク・権限）を解消してから /rite:iterate {pr_number} で再レビューする。再実行は 7.2 から始まり、同じ判定記録で 7.4 を最初からやり直す（成功済みの Decision Log 行と申し送りコメントは重ねて書かれうる。7.4.1-7.4.2 で作った Issue は判定記録の tracker に書き戻してあるので LINK になる）" \
       '.resume = $r' "$hold_file" > "$hold_file.tmp" && mv "$hold_file.tmp" "$hold_file" \
       || echo "WARNING: hold ファイルの resume を書き換えられませんでした: $hold_file" >&2
   fi
@@ -498,11 +527,11 @@ fi
 rm -f -- "$hold_file"
 ```
 
-`TRIAGE_LEDGER=failed`（`writes_incomplete` / `fetch_failed` / `ledger_edit_failed` / `count_unreadable` / `record_failed`）は hold ファイルを残し、その resume を書き換えてから、7.2 と同じ採否保留の停止（`REVIEW_STOP=adoption_held; kind=triage`）で止まる。iterate はこの停止を再試行しない。再実行は 7.2 から始まり、同じ判定記録で 7.4 を最初からやり直す。成功済みの Decision Log 行と申し送りコメントは重ねて書かれうる。重ねて起票しないのは、7.4.1 で作った Issue を判定記録の `tracker` に入れた（LINK になる）ときだけである。
+`TRIAGE_LEDGER=failed`（`writes_incomplete` / `fetch_failed` / `ledger_edit_failed` / `count_unreadable` / `record_failed`）は hold ファイルを残し、その resume を書き換えてから、7.2 と同じ採否保留の停止（`REVIEW_STOP=adoption_held; kind=triage`）で止まる。iterate はこの停止を再試行しない。再実行は 7.2 から始まり、同じ判定記録で 7.4 を最初からやり直す。成功済みの Decision Log 行と申し送りコメントは重ねて書かれうる。7.4.1-7.4.2 で作った Issue は判定記録の `tracker` に書き戻してあるので、再実行でゲートが LINK にし、重ねて起票しない。
 
 ### 7.5-7.6 Append to PR & Report
 
-7.4.1-7.4.2 で作った Issue の一覧を PR コメントへ（`mktemp` + `--body-file`）。verdict 別の件数（`file` は cleanup の follow-up で起票される件数）、元 Issue が無く記録できなかった `record` の出口と reason、`DECISION_LOG_APPENDED=1` の件数と、失敗があれば「手動追記してください」行を completion report に転記する。`HANDOFF_COMMENT_POSTED=1` / `HANDOFF_COMMENT_FAILED=1` も転記し、失敗分は未投稿の申し送りとして列挙する。
+7.4.1-7.4.2 で作った Issue の一覧を PR コメントへ（`mktemp` + `--body-file`）。verdict 別の件数（`file` は cleanup の follow-up で起票される件数）、元 Issue が無く記録できなかった `record` の出口と reason、`DECISION_LOG_APPENDED=1` の件数と `HANDOFF_COMMENT_POSTED=1` を completion report に転記する（7.4 の書き込みに失敗があれば 7.4.5 が止まり、ここへは来ない）。
 
 ### 7.7 Post-condition Gate — Recommendation Disposition Enforcement
 

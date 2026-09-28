@@ -156,7 +156,7 @@ assert_grep 'assignee handoff posts check points' "$review" '### 着手時の確
 assert_grep 'assignee handoff success is loud' "$review" 'HANDOFF_COMMENT_POSTED=1; issue=$assignee_issue'
 assert_grep 'assignee handoff failure is fail-loud' "$review" 'HANDOFF_COMMENT_FAILED=1; issue=$assignee_issue; reason=gh_comment_failure'
 assert_grep 'assignee handoff failure warning is pinned' "$review" 'WARNING: 引き受け先 Issue #${assignee_issue} への申し送りコメント投稿に失敗しました'
-assert_grep 'assignee handoff failure listed in report' "$review" '失敗分は未投稿の申し送りとして列挙する'
+assert_grep 'assignee handoff failure stops at 7.4.5' "$review" '投稿に失敗しても残りの 7.4 は続け、失敗は 7.4.5 の `{write_failures}` に数える'
 assert_grep 'closed assignee is rejected' "$review" 'HANDOFF_COMMENT_REJECTED=1; issue=$assignee_issue; reason=closed'
 assert_grep 'closed assignee bounces to 7.2' "$review" 'triage 判定を 7.2 へ差し戻す'
 if grep -Fq '| 既存 Issue #{N} で対応（新規作成見送り） |' "$review"; then
@@ -319,8 +319,14 @@ case "$args" in
   *"--kind triage"*"--review-result $triage_dir/root/.rite/review-results/5-20260101T000000.json --base origin/develop --issue 7") pass 'gate receives the triage arguments' ;;
   *) fail "gate arguments: $args" ;;
 esac
+rm -f "$triage_dir/root/.rite/state/adoption-hold-5-triage.json"
 out=$(TRIAGE_GATE_RC=0 run_triage_block '')
 assert_eq 'gate block surfaces the decided exit code' '[CONTEXT] ADOPTION_GATE_RC=0' "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ADOPTION_GATE_RC=' || true)"
+assert_eq 'the gate block names the review JSON 7.4.5 records as the source' '[CONTEXT] TRIAGE_REVIEW_JSON=5-20260101T000000.json' \
+  "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] TRIAGE_REVIEW_JSON=' || true)"
+# A decided run keeps its candidates in the hold until 7.4.5 releases it, even with no earlier hold.
+assert_eq 'a decided run keeps its candidates in the triage hold' 'triage|c0ffee|[{"id":"C-1","content":"full text"}]' \
+  "$(jq -r '"\(.kind)|\(.head)|\(.candidates | tojson)"' "$triage_dir/root/.rite/state/adoption-hold-5-triage.json" 2>/dev/null || true)"
 case "$(paste -sd ' ' "$triage_dir/args" 2>/dev/null)" in
   *--issue*) fail 'an empty source Issue must not pass --issue' ;;
   *) pass 'an empty source Issue passes no --issue' ;;
@@ -361,20 +367,30 @@ fi
 while [ "$#" -gt 0 ]; do [ "$1" = --content-file ] && cp "$2" "$LEDGER_POSTED"; shift; done
 echo "[CONTEXT] NONBLOCKING_RECORD_DONE=1; pr=5; outcome=$LEDGER_OUTCOME; count=0; iteration_id=triage-5; comment_id=1; degraded=0" >&2
 STUB
+# The row the next cycle's step 2 reads back is built from the 7.4.5 row format, so a changed key column fails the round trip.
+row_format=$(grep -o '行形式は `| {reviewer} | {file_line} | {exit} | {判定文} | {review_json_basename} |`' "$review" | head -1 \
+  | sed -e 's/^行形式は `//' -e 's/`$//')
+assert_eq '7.4.5 keys ledger rows by reviewer and file_line' '| {reviewer} | {file_line} | {exit} | {判定文} | {review_json_basename} |' "$row_format"
+ledger_row=$row_format
+ledger_row=${ledger_row//\{reviewer\}/code-quality-reviewer}
+ledger_row=${ledger_row//\{file_line\}/tool.sh:3}
+ledger_row=${ledger_row//\{exit\}/REJECT}
+ledger_row=${ledger_row//\{判定文\}/the usage text is intentional}
+ledger_row=${ledger_row//\{review_json_basename\}/5-20260101000000.json}
 run_ledger_block() {
   local code
   code=$(cat "$ledger_dir/block.sh")
   code=${code//\{plugin_root\}/$ledger_dir/plugin}
   code=${code//\{pr_number\}/5}
   code=${code//\{owner_repo\}/o/r}
-  code=${code//\{rows\}/| code-quality-reviewer | tool.sh:3 | REJECT | the usage text is intentional | 5-20260101000000.json |}
+  code=${code//\{rows\}/$ledger_row}
   code=${code//\{write_failures\}/${2:-0}}
   printf '{"kind":"triage","pr":5,"candidates":[],"resume":"old"}\n' > "$ledger_dir/root/.rite/state/adoption-hold-5-triage.json"
   rm -f "$ledger_dir/posted.md"
   LEDGER_ROOT="$ledger_dir/root" LEDGER_POSTED="$ledger_dir/posted.md" LEDGER_OUTCOME="$1" bash -c "$code" 2>&1
 }
 out=$(run_ledger_block updated)
-assert_grep 'the REJECT row reaches the ledger under [reviewer, file_line]' "$ledger_dir/posted.md" \
+assert_grep 'the REJECT row built from the 7.4.5 row format reaches the ledger' "$ledger_dir/posted.md" \
   '| code-quality-reviewer | tool.sh:3 | REJECT | the usage text is intentional | 5-20260101000000.json |'
 if [ -e "$ledger_dir/root/.rite/state/adoption-hold-5-triage.json" ]; then
   fail 'a recorded ledger must release the triage hold'
@@ -398,6 +414,41 @@ assert_eq 'an incomplete 7.4 write stops the review' '[review:error]' "$(printf 
 if [ -e "$ledger_dir/posted.md" ]; then fail 'an incomplete 7.4 write must not record the ledger'; else pass 'an incomplete 7.4 write records no ledger'; fi
 assert_grep 'an incomplete 7.4 write keeps the hold with a resume for the writes' \
   "$ledger_dir/root/.rite/state/adoption-hold-5-triage.json" '7.4 の外部への書き込み（writes_incomplete）が済んでいない'
+
+# 7.4.2: a failed Issue creation is counted for 7.4.5, and a created Issue is written back as the record's tracker.
+awk '/^#### 7\.4\.2 / { s=1 } s && /^```bash$/ { a=1; next } a && /^```$/ { exit } a { print }' "$review" > "$ledger_dir/create.sh"
+assert_grep '7.4.2 block creates the Issue' "$ledger_dir/create.sh" 'create-issue-with-projects.sh'
+mkdir -p "$ledger_dir/plugin/scripts"
+cat > "$ledger_dir/plugin/scripts/create-issue-with-projects.sh" <<'STUB'
+#!/bin/bash
+cat > /dev/null
+if [ "$CREATE_FAIL" = 1 ]; then
+  echo '{"issue_url":"","issue_number":0,"project_registration":"failed","warnings":["gh issue create failed: HTTP 502"]}'
+  exit 1
+fi
+echo '{"issue_url":"https://example.test/issues/77","issue_number":77,"project_registration":"ok","warnings":[]}'
+STUB
+run_create_block() {
+  local code
+  code=$(cat "$ledger_dir/create.sh")
+  code=${code//\{plugin_root\}/$ledger_dir/plugin}
+  code=${code//\{pr_number\}/5}
+  code=${code//\{record_ids\}/[\"C-1\"]}
+  code=${code//\{projects_enabled\}/false}
+  code=${code//\{project_number\}/1}
+  for ph in acceptance complexity contract description evidence file iteration_mode line original_comment owner \
+            priority reviewer_type severity source_label summary type; do
+    code=${code//\{$ph\}/x}
+  done
+  printf '{"adoption":{"head":"c0ffee","records":[{"ids":["C-1"],"tracker":null}]}}\n' > "$ledger_dir/root/.rite/state/adoption-5-triage.json"
+  LEDGER_ROOT="$ledger_dir/root" CREATE_FAIL="$1" bash -c "$code" 2>&1
+}
+out=$(run_create_block 1 || true)
+assert_eq 'a failed Issue creation is counted for 7.4.5' '[CONTEXT] ISSUE_CREATE_FAILED=1; reason=create_failed' \
+  "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ISSUE_CREATE_FAILED=' || true)"
+out=$(run_create_block 0)
+assert_eq 'a created Issue is written back as the record tracker' '77' \
+  "$(jq -r '.adoption.records[0].tracker' "$ledger_dir/root/.rite/state/adoption-5-triage.json")"
 
 # Step 2 reads the ledger the classifier copies priors from. No record comment yet is not a failure.
 awk '/^### 7\.2-7\.3 / { s=1 } s && /^```bash$/ { a=1; blk=""; next }
