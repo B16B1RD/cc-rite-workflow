@@ -160,7 +160,8 @@ echo "=== T-12: initialization checks resolve the config instead of listing the 
 # 停止の否定形を数える。空行とフェンス行で段落を切ってから行をつなぎ、強調記号を落とすので、
 # 改行や ** / _ を挟んだ否定も数える。否定語と stop の間に 2 語まで挟めるのは命令・助動詞の否定
 # （do not / must not / cannot / n't / never など）だけで、素の not は直後の stop だけを数える。
-# 「not initialized so stop」のように状態の否定に停止文が続く形は否定形にしない
+# 「not initialized so stop」のように素の not で状態を否定したあとに停止文が続く形は否定形にしない
+# （助動詞つきの「does not exist so stop」は 2 語の窓に入るので否定形に数える）
 count_negated_stop() {
   printf '%s\n' "$1" | sed -E 's/^[[:space:]]*(```.*)?$/ . /' | tr '\n' ' ' | tr -d '*_' \
     | grep -Eci "((^|[^[:alpha:]])(do|does|did|must|should|shall|will|would|can|could|may|might|need)[[:space:]]+not|cannot|n't|(^|[^[:alpha:]])never)([[:space:]]+[[:alpha:]]+){0,2}[[:space:]]+stop|(^|[^[:alpha:]])not[[:space:]]+stop" || true
