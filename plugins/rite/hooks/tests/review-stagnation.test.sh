@@ -2603,6 +2603,9 @@ FENCED = [('AC-1', 'original one\n  ```\n  only when idle\n  ```'), ('AC-2', 'or
 SEPARATED = [('AC-1', 'original\u2028one'), ('AC-2', 'original two')]
 NESTED = [('AC-1', 'original one\n  ```yaml\n  review:\n      max: 3\n  ```'), ('AC-2', 'original two')]
 FLATTENED = [('AC-1', 'original one\n  ```yaml\n  review:\n    max: 3\n  ```'), ('AC-2', 'original two')]
+# The specification check ignores this marker-shaped line, so the edit needs no recorded revision.
+DISGUISED = [('AC-1', 'original one\n  <!-- rite:nbr:comment-id: --> but it need not hold <!-- -->'),
+             ('AC-2', 'original two')]
 
 
 def with_criteria(f, base, items):
@@ -2659,10 +2662,16 @@ def revision_case(case):
         else:
             final, before, after = dict(added=(ADDED, [], ['AC-9']), earlier=(ADDED, ['AC-1'], ['AC-1']),
                                         reworded=(REWORDED, [], ['AC-1']), fenced=(FENCED, [], ['AC-1']),
-                                        indented=(FLATTENED, [], ['AC-1']),
-                                        refixed=(REWORDED, [], []))[case]
+                                        indented=(FLATTENED, [], ['AC-1']), disguised=(DISGUISED, [], ['AC-1']),
+                                        marked=(ORIGINAL, [], ['AC-2']), refixed=(REWORDED, [], []))[case]
             criteria_cycle(f, initial, met=before)
-            revise(f, base, final)
+            if case == 'disguised':
+                with_criteria(f, base, final)
+            elif case == 'marked':
+                # The non-blocking record helper appends its marker after the last section.
+                f.with_issue(f.issue['body'].rstrip('\n') + '\n\n<!-- rite:nbr:comment-id:4242 -->\n')
+            else:
+                revise(f, base, final)
             criteria_cycle(f, final, met=after)
             met = ['AC-1'] if case == 'refixed' else after
         f.fix()
@@ -2679,6 +2688,8 @@ for case, stops, label in (
         ('reworded', True, 'a reworded criterion met on the same HEAD is not progress'),
         ('fenced', True, 'a criterion whose code block alone was revised is reworded'),
         ('indented', True, 'a criterion whose code block only changed indentation is reworded'),
+        ('disguised', True, 'a marker-shaped line added to a criterion without a recorded revision rewords it'),
+        ('marked', False, 'the record marker rite appends leaves the last criterion unchanged'),
         ('lapsed', True, 'a criterion met at the replan that lapses and returns is not progress'),
         ('separator', False, 'a Unicode line separator in a criterion does not break the progress check'),
         ('restored', False, 'a criterion removed and restored with its text keeps its earlier unmet observation'),
