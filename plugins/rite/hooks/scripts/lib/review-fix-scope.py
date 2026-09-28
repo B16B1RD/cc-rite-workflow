@@ -87,8 +87,9 @@ def classify_commit_args(args):
     `<` or `>` has only a file-descriptor number or the `&` of `&>` before it) is
     not an argument, and neither is the word after it when the redirection word is
     only an optional fd number or `&` followed by `<`, `>` and `&`; these are dropped
-    before any option takes its value. `>|` and `{fd}>out` are not redirection
-    words here and still count."""
+    before any option takes its value. `{fd}>out` is not a redirection word and
+    still counts; in `>|` the pipe ends the command, so its `>` is an operator
+    with no word after it and also still counts."""
     args = _without_redirections(args)
     dry_run, skip, index_only, dashed = False, False, True, False
     for option in args:
