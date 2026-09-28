@@ -25,7 +25,7 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 cleanup() {
-  rm -rf "$TEST_DIR"
+  rm -rf "$TEST_DIR" ${dir_ee1_fallback:+"$dir_ee1_fallback"}
 }
 trap cleanup EXIT
 
@@ -458,8 +458,30 @@ echo ""
 # sandbox (no rite-config.yml, no .rite/, none up to /) must exit 0 with the
 # shim never touched and no work memory created.
 echo "TC-EARLYEXIT-1 (AC-1): non-rite project early-exits with no git spawn"
+# The sandbox is non-rite only if no ancestor holds a marker either, because the
+# gate walks every ancestor. TEST_DIR sits under the caller's TMPDIR, whose
+# ancestors this suite does not control (a stray ~/.rite with TMPDIR under $HOME
+# turns the sandbox into a rite project). Rebuild it under /tmp in that case, and
+# fail naming the marker if /tmp is not clean either.
+rite_marker_above() {
+  local d="$1"
+  while : ; do
+    if [ -f "$d/rite-config.yml" ] || [ -d "$d/.rite" ]; then
+      printf '%s\n' "$d"
+      return 0
+    fi
+    [ "$d" = "/" ] && return 1
+    d="${d%/*}"
+    d="${d:-/}"
+  done
+}
 dir_ee1="$TEST_DIR/tc_earlyexit1"
 mkdir -p "$dir_ee1"
+if marker_ee1=$(rite_marker_above "$dir_ee1"); then
+  dir_ee1_fallback=$(mktemp -d /tmp/rite-earlyexit1.XXXXXX)
+  dir_ee1="$dir_ee1_fallback"
+  marker_ee1=$(rite_marker_above "$dir_ee1") || marker_ee1=""
+fi
 shim_ee1="$TEST_DIR/tc_earlyexit1-shim"
 mkdir -p "$shim_ee1"
 git_log_ee1="$TEST_DIR/tc_earlyexit1-git.log"
@@ -469,17 +491,21 @@ echo "GIT_CALLED \$*" >> "$git_log_ee1"
 exit 0
 SHIM
 chmod +x "$shim_ee1/git"
-rc_ee1=0
-echo "{\"tool_name\": \"Bash\", \"cwd\": \"$dir_ee1\"}" | PATH="$shim_ee1:$PATH" bash "$HOOK" 2>/dev/null || rc_ee1=$?
-if [ ! -f "$git_log_ee1" ]; then
-  pass "TC-EARLYEXIT-1 no git rev-parse spawned in non-rite project (exit code: $rc_ee1)"
+if [ -n "$marker_ee1" ]; then
+  fail "TC-EARLYEXIT-1 cannot build a non-rite sandbox: rite marker at $marker_ee1 is an ancestor of $dir_ee1"
 else
-  fail "TC-EARLYEXIT-1 git was spawned in non-rite project: $(cat "$git_log_ee1")"
-fi
-if [ "$rc_ee1" -eq 0 ] && [ ! -d "$dir_ee1/.rite/work-memory" ]; then
-  pass "TC-EARLYEXIT-1 exit 0 and no work memory created"
-else
-  fail "TC-EARLYEXIT-1 unexpected: rc=$rc_ee1, wm-dir=$([ -d "$dir_ee1/.rite/work-memory" ] && echo present || echo absent)"
+  rc_ee1=0
+  echo "{\"tool_name\": \"Bash\", \"cwd\": \"$dir_ee1\"}" | PATH="$shim_ee1:$PATH" bash "$HOOK" 2>/dev/null || rc_ee1=$?
+  if [ ! -f "$git_log_ee1" ]; then
+    pass "TC-EARLYEXIT-1 no git rev-parse spawned in non-rite project (exit code: $rc_ee1)"
+  else
+    fail "TC-EARLYEXIT-1 git was spawned in non-rite project: $(cat "$git_log_ee1")"
+  fi
+  if [ "$rc_ee1" -eq 0 ] && [ ! -d "$dir_ee1/.rite/work-memory" ]; then
+    pass "TC-EARLYEXIT-1 exit 0 and no work memory created"
+  else
+    fail "TC-EARLYEXIT-1 unexpected: rc=$rc_ee1, wm-dir=$([ -d "$dir_ee1/.rite/work-memory" ] && echo present || echo absent)"
+  fi
 fi
 echo ""
 
