@@ -378,7 +378,7 @@ reaped lazily by `pr-cycle-cleanup.sh` Step 5.
 - スクリプトファイルを書き出せない（スクラッチ領域が書込不可）場合は退路を採らず停止し、作業先と state を保持したまま `/rite:recover` を案内する
 - スクリプトファイル化した単一コマンドもガードに拒否される場合は退路が成立しない。さらなる代替形を試さず停止し、ホストの正式な承認手順へ案内する
 
-**入場後に実行されるシェルブロックの書き方**: 退路に頼らず通すため、worktree 入場後に実行されるスキルのシェルブロックは、1 呼び出しにつき top-level の `bash <helper の絶対パス> <literal 引数>` 1 文にする。`source`・変数への捕捉・分岐・ループは helper の中に置き、結果は helper が出力する `[CONTEXT]` marker で受け取る。引数の値は placeholder を置換した literal で渡す（シェル変数や置換を引数に使わない）。iterate と pr-review の各ステップは、それぞれ `scripts/iterate-step.sh` と `scripts/pr-review-step.sh` のサブコマンドとしてこの形を取る。
+**入場後に実行されるシェルブロックの書き方**: 退路に頼らず通すため、worktree 入場後に実行されるスキルのシェルブロックは、1 呼び出しにつき top-level の `bash <helper の絶対パス> <literal 引数>` 1 文にする。`source`・変数への捕捉・分岐・ループは helper の中に置き、結果は helper の出力（`[CONTEXT]` marker または値）で受け取る。引数の値は placeholder を置換した literal で渡す（シェル変数や置換を引数に使わない）。iterate と pr-review のステップのうち、それぞれ `scripts/iterate-step.sh` と `scripts/pr-review-step.sh` のサブコマンドとして実装したものがこの形を取る。
 
 観測例（2026-09 時点、native 入場した隔離下）。ホストの版で変わりうるため、上の書き方の根拠ではなく参考として扱う:
 
