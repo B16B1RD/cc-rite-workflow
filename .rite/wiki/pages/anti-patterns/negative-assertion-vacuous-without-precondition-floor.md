@@ -33,9 +33,11 @@ sources:
     resource: "raw/reviews/20260927T165534Z-pr-3317.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T191353Z-pr-3325.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T045038Z-pr-3386.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:18:40Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T05:02:36Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-16T12:58:00Z" }
   - { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T07:10:00Z" }
@@ -49,6 +51,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:10:16Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T17:15:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:18:40Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T05:02:36Z" }
 ---
 
 # 否定形の assert は前提条件が崩れると fail-silent になる
@@ -203,6 +206,10 @@ rm -f "$result_dir"/*.json
 
 文書に対する不在の assert（「この形が本文に無い」）は、検出式を変数に切り出し、陽性サンプル（検出されるべき形）と陰性サンプルを同じ変数に通すテストを並べると、検出式自体の退行（何にも一致しなくなる）も捕まえられる。検出式を広げるときは、新しい式が旧式の上位集合であることを同じサンプルで確かめる。
 
+### traversal を拒む検証のテストは、着地先が実在する id で書く
+
+path traversal を含む不正な id で「印が作られないこと」を assert したテストが、検証を外しても通っていた。id（`../x` の形）が存在しない中間ディレクトリを経由するため、検証の有無に関係なく書き込みが失敗していた。traversal が実在する位置へ着地する id（中間ディレクトリを先に作っておく）にすると、検証を外したときに印が作られて assert が落ちる。テストが分岐へ実際に入るかは、対応する実装行の変異で落ちることで確かめる。
+
 ## 関連ページ
 
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
@@ -225,3 +232,4 @@ rm -f "$result_dir"/*.json
 - [範囲抽出の 0 件 pin に陽性対照を組み合わせたレビュー結果](../../raw/reviews/20260927T160629Z-pr-3306.md)
 - [否定の assert を成功 marker の完全一致と WARNING 行の件数で表す形を確認したレビュー結果](../../raw/reviews/20260927T165534Z-pr-3317.md)
 - [不在の assert の検出式を陽性・陰性サンプルで固定したレビュー結果](../../raw/reviews/20260927T191353Z-pr-3325.md)
+- [レビュー結果（traversal fixture の空振りの解消確認）](../../raw/reviews/20260928T045038Z-pr-3386.md)

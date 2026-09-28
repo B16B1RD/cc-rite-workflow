@@ -83,6 +83,24 @@
 * **Skip**: raw/reviews/20260928T013457Z-pr-3372.md — 同じ PR の別 raw から統合済み
 
 * **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=62, orphans=0, missing_concept=0, unregistered_raw=577, broken_refs=0
+* **Create**: [「実測を記録する」型の受入条件は対象全件の実測で満たす — 形の検査や類推で代わりにしない](pages/heuristics/measured-record-ac-needs-every-target-measured.md) — raw/reviews/20260928T014704Z-pr-3366.md を新規ページ化
+* **Create**: [エラー処理の優先順位を 1 か所で宣言するときは、適用範囲を記述の形式に縛らない](pages/heuristics/precedence-declaration-scope-independent-of-format.md) — raw/reviews/20260928T042449Z-pr-3366.md を新規ページ化
+* **Update**: [エラー処理の優先順位を 1 か所で宣言するときは、適用範囲を記述の形式に縛らない](pages/heuristics/precedence-declaration-scope-independent-of-format.md) — raw/reviews/20260928T045848Z-pr-3366.md を統合
+* **Update**: [「実測を記録する」型の受入条件は対象全件の実測で満たす — 形の検査や類推で代わりにしない](pages/heuristics/measured-record-ac-needs-every-target-measured.md) — raw/fixes/20260928T043245Z-pr-3366.md を統合
+* **Create**: [新しい state 操作は既存 state との組み合わせを実際の入口から試し、停止ヒントは案内先が受理する状態でだけ出す](pages/heuristics/stop-hint-predicate-matches-target-acceptance.md) — raw/reviews/20260928T040457Z-pr-3376.md を新規ページ化
+* **Update**: [新しい state 操作は既存 state との組み合わせを実際の入口から試し、停止ヒントは案内先が受理する状態でだけ出す](pages/heuristics/stop-hint-predicate-matches-target-acceptance.md) — raw/fixes/20260928T043924Z-pr-3376.md を統合
+* **Create**: [仕様改訂の境界をまたいで観測を比べると停止判定が狂う — 各観測はその区間の基準と比べる](pages/anti-patterns/cross-boundary-comparison-after-spec-revision.md) — raw/reviews/20260928T045921Z-pr-3376.md を新規ページ化
+* **Create**: [語の並びを正規表現で見て「否定」を判定する検査は、見逃しと誤検出のどちらを受け入れるかを選んで書く](pages/anti-patterns/lexical-regex-negation-detection-error-direction.md) — raw/reviews/20260928T041730Z-pr-3377.md を新規ページ化
+* **Update**: [語の並びを正規表現で見て「否定」を判定する検査は、見逃しと誤検出のどちらを受け入れるかを選んで書く](pages/anti-patterns/lexical-regex-negation-detection-error-direction.md) — raw/fixes/20260928T042544Z-pr-3377.md を統合
+* **Update**: [語の並びを正規表現で見て「否定」を判定する検査は、見逃しと誤検出のどちらを受け入れるかを選んで書く](pages/anti-patterns/lexical-regex-negation-detection-error-direction.md) — raw/reviews/20260928T043059Z-pr-3377.md を統合
+* **Update**: [セキュリティ境界 hook の timeout は fail-open — 評価コストは入力サイズで O(1) 上限を設けて bound する](pages/heuristics/security-hook-timeout-is-fail-open-bound-cost-by-input-size.md) — raw/reviews/20260928T043542Z-pr-3379.md を統合
+* **Update**: [他セッションの成果物を回収する処理は、進捗時刻ではなく所有者の生存信号で判定し、判定不能は残す側へ倒す](pages/heuristics/liveness-reaper-keeps-undecidable-and-guards-json-shape.md) — raw/reviews/20260928T042849Z-pr-3386.md を統合
+* **Update**: [否定形の assert は前提条件が崩れると fail-silent になる](pages/anti-patterns/negative-assertion-vacuous-without-precondition-floor.md) — raw/reviews/20260928T045038Z-pr-3386.md を統合
+* **Update**: [無音失敗を可視化する防御コードには、その防御コード自体を守る失敗パステストを追加する](pages/heuristics/defensive-code-needs-its-own-failure-path-test.md) — raw/fixes/20260928T044214Z-pr-3386.md を統合
+* **Update**: [git diff の出力形状を前提にしたパーサは、git の設定と変更種別で黙って空振りする](pages/anti-patterns/git-diff-parser-output-shape-assumptions.md) — raw/reviews/20260928T043614Z-pr-3387.md を統合
+* **Update**: [git diff の出力形状を前提にしたパーサは、git の設定と変更種別で黙って空振りする](pages/anti-patterns/git-diff-parser-output-shape-assumptions.md) — raw/reviews/20260928T050041Z-pr-3387.md を統合
+* **Update**: [git diff の出力形状を前提にしたパーサは、git の設定と変更種別で黙って空振りする](pages/anti-patterns/git-diff-parser-output-shape-assumptions.md) — raw/fixes/20260928T044436Z-pr-3387.md を統合
+* **Skip**: [20260928T013257Z-pr-3375.md](raw/reviews/20260928T013257Z-pr-3375.md) — 指摘 0 件の再レビューで、前回推奨の解消確認だけを含み新しい経験則を含まない
 
 ## 2026-09-27
 

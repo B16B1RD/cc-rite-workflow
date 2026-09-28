@@ -4,7 +4,9 @@ title: "git diff の出力形状を前提にしたパーサは、git の設定�
 domain: "anti-patterns"
 description: "git diff の出力形式と rename 検出は、変更パスの列挙結果を変える。対象範囲を検査する場合は引用・prefix の正規化に加え、移動元と移動先の両方を含む列挙契約が必要になる。"
 created: "2026-09-06T16:10:23Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5[1m]", at: "2026-09-25T14:17:42Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T05:02:36Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T05:02:36Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260906T125803Z-pr-2582.md"
@@ -16,6 +18,12 @@ sources:
     resource: "raw/reviews/20260925T124519Z-pr-3087.md"
   - type: "reviews"
     resource: "raw/reviews/20260925T140903Z-pr-3095.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T043614Z-pr-3387.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T050041Z-pr-3387.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260928T044436Z-pr-3387.md"
 tags: ["git-diff", "parser", "silent-degradation", "portability"]
 confidence: high
 ---
@@ -64,6 +72,16 @@ rename 検出が有効な `--name-only` は、移動先だけを返すことが�
 
 ヘッダ区間を区別しない誤読は、同じ `-U0` diff を行頭の記号で読む別のスクリプトにも同じ形で残っていた。1 か所を直したら、`+++` / `---` / `diff --git` / `@@` を自前で解釈している箇所を grep で列挙し、同じガードを持つかを確かめる。ヘッダ区間の状態は、`diff --git` でのリセットと `@@` での遷移の両方をテストで押さえる（リセット漏れは複数ファイルの diff、遷移漏れは `++ ` / `-- ` で始まる内容行で検出できる）。
 
+### 既存パーサの規則を引き継がない再実装が同じ穴を再生産する
+
+新しい機能のために `git diff -U0` のパーサを書き直したところ、hunk 内の `--- ` / `+++ ` で始まる内容行をファイル見出しと読み、同じファイルの後続 hunk を失った。既存の共有パーサが持つ「`diff --git` から最初の `@@` までだけ見出しを読む」ガードを引き継いでいなかった。次の cycle では、既存パーサが固定している `--src-prefix` / `--dst-prefix` も引き継いでおらず、利用者の gitconfig（`diff.noprefix` / `diff.mnemonicPrefix`）で出力が変わる穴が見つかった。修正は新しい機構を足さず、既存パーサと同じ規則へ差し戻す形で行った。git の出力を読む処理を新しく書くときは、先に同じ出力を読む既存の処理を探し、その正規化と固定を一式で引き継ぐ。
+
+### 存在判定と取得は同じ対象を見る。git の失敗を「無い」に倒さない
+
+- `ls-tree` の先頭行だけで「ファイルとして存在するか」を判定すると、末尾スラッシュ付きのディレクトリ path が子要素の blob によって通ってしまう。判定と取得は同じ対象（`{head}:{path}`）を見る形にする
+- `git show` の失敗を黙って「行なし」に倒すと、公開した reason 表（git 失敗）と実際に返る reason（契約が見つからない）が食い違う。存在確認（`rev-parse`）と種類確認（`ls-tree` で blob か）を先に行い、それ以外の失敗は git 失敗として止める。stderr の文言照合には頼らない
+- 修正後は旧実装へ戻す変異を入れ、追加したテストがそれぞれ落ちることを確かめる。前の cycle の修正が足した分岐に、外すと落ちるテストが無いことは変異で初めて分かった
+
 ## 関連ページ
 
 - [変数名の字句解析に依存した prefix 導出は壊れる](../patterns/bash-variable-name-lexing-defeats-prefix-derivation-regex.md)
@@ -76,3 +94,6 @@ rename 検出が有効な `--name-only` は、移動先だけを返すことが�
 - [修正と回帰検証](../../raw/fixes/20260916T070742Z-pr-2906.md)
 - [レビュー結果（diff の prefix 設定で除外判定が外れる移動の相殺）](../../raw/reviews/20260925T124519Z-pr-3087.md)
 - [レビュー結果（++ で始まる追加行のヘッダ誤読）](../../raw/reviews/20260925T140903Z-pr-3095.md)
+- [レビュー結果（hunk 内の内容行を見出しと読む再実装）](../../raw/reviews/20260928T043614Z-pr-3387.md)
+- [レビュー結果（prefix 固定の未継承と ls-tree の存在判定）](../../raw/reviews/20260928T050041Z-pr-3387.md)
+- [fix 結果（既存パーサの規則へ差し戻す）](../../raw/fixes/20260928T044436Z-pr-3387.md)

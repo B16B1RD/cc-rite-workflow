@@ -4,12 +4,18 @@ title: "リポジトリ全体を走査する検査は変更ファイルだけの
 domain: "heuristics"
 description: "変更ファイルだけを見る reviewer やテスト実行は、リポジトリ全体を走査する静的検査（番号参照検査等）が拾う drift を観測できない。修正が正しく効いたかは、変更ファイルのテストだけでなく全体検査を実行して確認する。Python の 1 要素タプル `(x,)` は末尾が `,)` になるため、削除痕を検出する検査の pattern に偶発的に一致することがある。"
 created: "2026-09-26T06:12:43Z"
-generated: { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T06:12:43Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T05:02:36Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T05:02:36Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260926T054854Z-pr-3060.md"
   - type: "fixes"
     resource: "raw/fixes/20260926T055557Z-pr-3060.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T043614Z-pr-3387.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260928T043924Z-pr-3376.md"
 tags: ["review-loop", "static-check", "test-scope", "number-reference"]
 confidence: medium
 ---
@@ -38,6 +44,10 @@ confidence: medium
 2. テストコードで意図せず全体検査の pattern に一致する記法（1 要素タプル `(x,)` 等）を避けるか、リストで書く（`[x]`）などして誤検出を防ぐ
 3. reviewer は diff の範囲外の検査結果（CI の全体検査 job のログ）も確認対象に含める
 
+### 1 要素タプルの一致は別の変更で再発した
+
+別々の 2 つの変更で、テスト fixture に書いた Python の 1 要素タプル（`('F-01',)` の形）が、plugins 配下を走査する削除痕検査の `,)` パターンに一致した。一方の変更では、これで CI が両 OS で失敗した。どちらも検査側は緩めず、テスト側の表記をリストへ変えて解消した。新しいテストを足すときは、リポジトリ全体を走査する既存の文字列検査にも通してから push する。
+
 ## 関連ページ
 
 - [差分スコープのレビューは diff の外を基準以前に見られない — cycle 上限到達後にフルレビューを 1 回挟む](./differential-scope-review-blind-outside-diff.md)
@@ -47,3 +57,5 @@ confidence: medium
 
 - [reviewer が全員 FIXED と判定した cycle でも全体検査が別途必要と指摘したレビュー結果](../../raw/reviews/20260926T054854Z-pr-3060.md)
 - [1 要素タプルが番号削除痕検査に誤って一致したことを記録した fix 結果](../../raw/fixes/20260926T055557Z-pr-3060.md)
+- [レビュー結果（1 要素タプルが削除痕検査に一致して CI が失敗）](../../raw/reviews/20260928T043614Z-pr-3387.md)
+- [fix 結果（テストでは 1 要素タプルの代わりにリストを使う）](../../raw/fixes/20260928T043924Z-pr-3376.md)

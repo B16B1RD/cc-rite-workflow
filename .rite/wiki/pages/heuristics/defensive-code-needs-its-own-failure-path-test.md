@@ -26,13 +26,16 @@ sources:
     resource: "raw/reviews/20260911T061535Z-pr-2673.md"
   - type: "reviews"
     resource: "raw/reviews/20260924T163426Z-pr-3058.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260928T044214Z-pr-3386.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-24T17:20:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T05:02:36Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-25T14:36:47Z" }
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-11T06:35:19Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-24T17:20:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T05:02:36Z" }
 ---
 
 # 無音失敗を可視化する防御コードには、その防御コード自体を守る失敗パステストを追加する
@@ -93,6 +96,10 @@ verified:
 
 テスト失敗の原因調査中、手動デバッグで `plugin_root` をセッション worktree 内の修正済みコピーではなく main checkout の古いコピー（`/path/to/repo/plugins/rite/...`、md5sum が異なる）に向けてしまい、「fix したはずのコードが動いていない」ように見える偽の失敗を一時的に作り出した。worktree ベースの開発では、デバッグ用の一時スクリプトが参照する `plugin_root` 等のパスが、作業中のブランチが実際にチェックアウトされているディレクトリ（多くの場合セッション worktree）を指しているか、意識的に確認する必要がある。`md5sum` 等でファイル実体を比較するのが最も確実な切り分け方法。
 
+### hook に足した WARNING 経路は、書き込み不可の状態で分岐へ入れて確かめる
+
+終了印の作成・削除に失敗したときの WARNING を足した変更で、その分岐へ入るテストが無いと指摘された。state ディレクトリを書き込み不可にして分岐へ入り、WARNING に対象パスが出ることと終了コードを確かめるテストを足した（root は書き込み不可にならないので skip する）。hook では `2>/dev/null` で helper の WARNING や失敗の原因を消さず、stderr へそのまま出す。実装は変えず、同じ変更で増えた分岐をテストと診断出力ですべて観測可能にする。
+
 ## 関連ページ
 
 - [mkdir 成功のみの判定漏れと brace group 未使用によるリダイレクト診断メッセージ漏洩](../anti-patterns/mkdir-success-only-check-and-redirect-diagnostic-leak.md)
@@ -112,3 +119,4 @@ verified:
 - [T-01 パス pin / T-04 corrupt JSON pin](../../raw/fixes/20260825T141757Z-pr-2360.md)
 - [レビュー結果](../../raw/reviews/20260911T061535Z-pr-2673.md)
 - [レビュー結果](../../raw/reviews/20260924T163426Z-pr-3058.md)
+- [fix 結果（WARNING 経路の回帰テストと診断出力）](../../raw/fixes/20260928T044214Z-pr-3386.md)

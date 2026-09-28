@@ -23,9 +23,13 @@ sources:
     resource: "raw/reviews/20260715T203920Z-pr-1865.md"
   - type: "reviews"
     resource: "raw/reviews/20260715T230852Z-pr-1867.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T043542Z-pr-3379.md"
 tags: ["security", "hook", "timeout", "fail-open", "fail-closed", "dos", "input-size-bound", "pretooluse", "super-linear", "bypass", "noglob", "glob", "unquoted-loop"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-16T08:16:06+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T05:02:36Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T05:02:36Z" }
 ---
 
 # セキュリティ境界 hook の timeout は fail-open — 評価コストは入力サイズで O(1) 上限を設けて bound する
@@ -72,6 +76,12 @@ PreToolUse 等の hook の timeout は **fail-open**（timeout に達すると C
 - **テスト用 fault-injection は fail-closed 側限定**: セキュリティ hook をテストするための env var 等の fault-injection を本番コードに置く場合、set 時に **allow へ反転する経路（fail-open injection）を作らない**。deny のみを誘発する self-restrictive な fail-closed 側に限定する。fail-open 側の injection は settings.json の env 等で有効化できる allow-all バックドアになる。fail-open 不変性は injection ではなく trap 配線の static 検証で pin する。
 - **外部ツールの挙動主張は fact-check してから finding を確定**: 「hook の timeout は fail-open」のような外部ツール（Claude Code）の挙動主張は、推測でなく公式 docs で fact-check してから採否を決める。reviewer 間で「trigger 経路なし」の判断が割れるのは、解析スコープの差（無限ループの有無だけ見たか、super-linear コストまで見たか）に起因することが多い。
 
+### 「線形時間」の約束は呼び先と前段まで含めて計時する
+
+判定を正規表現から parser へ移し、新しい経路で線形時間を約束したところ、下流の helper（python のコマンド分割処理）と上流のパラメータ展開（`${COMMAND%%<<*}`）が入力長の二乗で遅くなり、約束が破られていた。hook が timeout すれば fail-open で素通りする。受入条件の性能判定は、実装した部分ではなく hook 全体の応答で行われる。判定を別経路へ移すときは、最悪形の入力で呼び先と前段を含めた全区間を計時する。
+
+同じ変更では、テストが hook を呼ぶときに実行セッションの session 環境（`CLAUDE_CODE_SESSION_ID` や state root）を切り離していなかったため、レビュー中のセッションでだけ別のパターンが先に拒否して落ちた（CI では再現しない）。実装を parser へ切り替えたあと、仕様書に旧実装の読み飛ばし範囲が残っていたことも併せて指摘された。
+
 ## 関連ページ
 
 - [consume 操作 (read+delete+return) は delete-then-return 順で fail-closed にする](../patterns/consume-operation-delete-then-return-fail-closed.md)
@@ -89,3 +99,4 @@ PreToolUse 等の hook の timeout は **fail-open**（timeout に達すると C
 - [(follow-up cycle1) — 検出ループを `set -f`/`set +f` で noglob 化し over-DENY と timeout 無制限反復を同時封鎖、noglob 状態を save/restore](../../raw/fixes/20260715T195606Z-pr-1865.md)
 - [(follow-up cycle3) — noglob 修正を全 reviewer が実機検証（fail-on-revert / glob-target が Layer-1 落ちする net-positive）し mergeable 収束](../../raw/reviews/20260715T203920Z-pr-1865.md)
 - [が残した兄弟 `for tok in $WT_ARGS`（:608 worktree-add 引数走査）を同型 noglob スコープで水平展開。全 4 reviewer（security/code-quality/error-handling/test）が sibling grep 照合 + fail-on-revert 実機検証で指摘ゼロ収束](../../raw/reviews/20260715T230852Z-pr-1867.md)
+- [レビュー結果（下流 helper と上流の展開による二乗コスト）](../../raw/reviews/20260928T043542Z-pr-3379.md)
