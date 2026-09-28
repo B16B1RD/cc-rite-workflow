@@ -170,8 +170,9 @@ jobs:
 
       # Report the job duration against its timeout so drift toward the limit
       # shows up as a warning before runs get cancelled, plus the slowest hook
-      # suite files as the first place to look. The ranking reads the TEST_END
-      # lines that run-tests.sh prints (format pinned by run-tests-accounting.test.sh).
+      # suite files as the first place to look. The ranking parses the TEST_END
+      # lines exactly as run-tests.sh prints them; if that format changes, the
+      # step reports "no TEST_END lines" instead of a ranking.
       # A missing input is reported as a warning and the step still exits 0, so a
       # measurement fault never turns the blocking ubuntu leg red.
       - name: Report job duration
