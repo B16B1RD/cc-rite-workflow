@@ -2401,19 +2401,33 @@ git '' commit --allow-empty -m x
 git -c a.b=c commit --allow-empty-message -m ""
 git -c a.b=c commit-tree --allow-empty
 EOF
-# The commit match stays linear: git -c git repeated is the shape that grew with the square of its length.
+# Pattern 7 and the heredoc strip before it stay linear in the command length, so a
+# command of a few hundred KB is judged well within the hook timeout.
+p7_timed() {
+  jq -n --rawfile cmd "$1" --arg cwd "$p7_repo" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: $cwd}' > "$p7_repo/big.json"
+  rc=0
+  _t0=$(date +%s%N)
+  output=$(_timeout 15 bash "$HOOK" < "$p7_repo/big.json" 2>"$STDERR_FILE") || rc=$?
+  _t1=$(date +%s%N)
+  _ms=$(( (_t1 - _t0) / 1000000 ))
+}
 p7_big="$p7_repo/big.txt"
-{ printf 'git '; for _i in $(seq 1 14000); do printf -- '-c git '; done; printf -- '--allow-empty'; } > "$p7_big"
-jq -n --rawfile cmd "$p7_big" --arg cwd "$p7_repo" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: $cwd}' > "$p7_repo/big.json"
-rc=0
-_t0=$(date +%s%N)
-output=$(_timeout 15 bash "$HOOK" < "$p7_repo/big.json" 2>"$STDERR_FILE") || rc=$?
-_t1=$(date +%s%N)
-_ms=$(( (_t1 - _t0) / 1000000 ))
+{ printf 'git '; for _i in $(seq 1 86000); do printf -- '-c git '; done; printf -- '--allow-empty'; } > "$p7_big"
+p7_timed "$p7_big"
 if [ "$rc" = "0" ] && [ -z "$output" ] && [ "$_ms" -lt 5000 ]; then
-  pass "Pattern 7 returns for a ~100KB git -c command within 5s (${_ms}ms)"
+  pass "Pattern 7 returns for a ~600KB git -c command within 5s (${_ms}ms)"
 else
-  fail "Pattern 7 on a ~100KB git -c command rc=$rc ms=$_ms output=$output"
+  fail "Pattern 7 on a ~600KB git -c command rc=$rc ms=$_ms output=$output"
+fi
+# A non-adjacent commit goes through the parser; a long word of > signs must not slow it down.
+{ printf 'git -c a=b commit --allow-empty -m x a'; printf '%*s' 120000 '' | tr ' ' '>'; } > "$p7_big"
+p7_timed "$p7_big"
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"creates a commit with no file changes"* ]] && [ "$_ms" -lt 5000 ]; then
+  pass "Pattern 7 parser path denies a ~120KB non-adjacent commit within 5s (${_ms}ms)"
+else
+  fail "Pattern 7 parser path on a ~120KB command rc=$rc ms=$_ms decision=$decision reason=$reason"
 fi
 rm -rf "$p7_repo"
 echo ""

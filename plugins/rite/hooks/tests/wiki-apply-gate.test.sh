@@ -1016,7 +1016,11 @@ for _cmd in 'git $OPTS commit -m x' 'git $(true) commit -m x'; do
   fi
   dyn=$(jq -n --arg cwd "$repo" --arg cmd "$_cmd" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
   grc=0
-  gout=$(printf '%s' "$dyn" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+  # 実行中のセッションにレビュー中の cycle があると Pattern 8 が先に拒否するので、session state から切り離す。
+  mkdir -p "$ROOT/dyn-state"
+  gout=$(printf '%s' "$dyn" | env -u CLAUDE_SESSION_ID -u CODEX_THREAD_ID -u GROK_SESSION_ID RITE_HOST=claude \
+    CLAUDE_CODE_SESSION_ID=550e8400-e29b-41d4-a716-446655440078 RITE_STATE_ROOT="$ROOT/dyn-state" \
+    WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
   if grep -qF 'BLOCKED (wiki-apply-unresolved)' <<<"$gout" && grep -q 'dynamic' <<<"$gout"; then
     pass "guard refuses a commit behind a word that may expand to nothing: $_cmd"
   else

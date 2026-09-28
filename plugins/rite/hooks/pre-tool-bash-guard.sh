@@ -323,10 +323,22 @@ fi
 # PR descriptions, etc. Only check the command prefix before the first heredoc
 # marker. Known limitation: piped heredocs (`cat <<EOF | gh pr diff`) bypass the
 # strip (the pre-`<<` command is `cat`); rare in practice. Skipped for an
-# already-denied (oversized) command — the strip is O(n²) on huge input and
-# CMD_CHECK is unused in that case.
+# already-denied (oversized) command — CMD_CHECK is unused in that case.
+# The strip must stay linear in the command length: the prefix before the first
+# `<<` is taken with a byte-wise (C locale) regex rather than `${COMMAND%%<<*}`,
+# whose cost grows with the square of the length.
+# Without a match the whole command stays in CMD_CHECK.
+_rite_btg_strip_heredoc() {
+  local LC_ALL=C
+  if [[ "$COMMAND" =~ ^(([^<]|<[^<])*)'<<' ]]; then
+    CMD_CHECK="${BASH_REMATCH[1]}"
+  fi
+}
 if [ -z "$BLOCKED_PATTERN" ]; then
-  CMD_CHECK="${COMMAND%%<<*}"
+  CMD_CHECK="$COMMAND"
+  if [[ "$COMMAND" == *'<<'* ]]; then
+    _rite_btg_strip_heredoc
+  fi
 else
   CMD_CHECK=""
 fi

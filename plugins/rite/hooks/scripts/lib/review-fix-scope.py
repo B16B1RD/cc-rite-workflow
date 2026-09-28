@@ -407,26 +407,26 @@ def verify(plan, paths, output, kind):
 _KEYWORDS = {"if", "then", "else", "elif", "fi", "do", "done", "for", "while", "until", "in", "!", "{", "}"}
 
 
-def peel_commit_prefixes(words):
-    """Strip a closed wrapper/keyword set. This is not a shell interpreter."""
+def _prefix_end(words, index=0):
+    """Index of the first word past assignments, keywords and a closed wrapper set."""
     prefixes = {"command", "env", "nohup", "time", "exec"}
-    words = list(words)
-    peeled = False
-    while words:
-        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", words[0]):
-            words, peeled = words[1:], True
+    while index < len(words):
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", words[index]) or words[index] in _KEYWORDS:
+            index += 1
             continue
-        if words[0] in prefixes:
-            words = words[1:]
-            while words and words[0].startswith("-"):
-                words = words[1:]
-            peeled = True
-            continue
-        if words[0] in _KEYWORDS:
-            words, peeled = words[1:], True
+        if words[index] in prefixes:
+            index += 1
+            while index < len(words) and words[index].startswith("-"):
+                index += 1
             continue
         break
-    return words, peeled
+    return index
+
+
+def peel_commit_prefixes(words):
+    """Strip a closed wrapper/keyword set. This is not a shell interpreter."""
+    index = _prefix_end(words)
+    return list(words[index:]), index > 0
 
 
 # The builtins that change the working directory.
@@ -435,13 +435,13 @@ _DIRECTORY_MOVERS = {"cd", "pushd", "popd"}
 
 def moves_directory(words):
     """True when words run a directory change, past assignments, keywords and wrappers."""
-    while True:
-        words = peel_commit_prefixes(words)[0]
-        if words[:1] != ["builtin"]:
-            return bool(words) and words[0] in _DIRECTORY_MOVERS
-        words = words[1:]
-        if words[:1] == ["--"]:
-            words = words[1:]
+    index = _prefix_end(words)
+    while index < len(words) and words[index] == "builtin":
+        index += 1
+        if index < len(words) and words[index] == "--":
+            index += 1
+        index = _prefix_end(words, index)
+    return index < len(words) and words[index] in _DIRECTORY_MOVERS
 
 
 # The git subcommands that move HEAD and are checked before they run.
@@ -527,13 +527,13 @@ def shell_segments(command):
     unquoted fd number or the & of &> before it comes back as a _Redirection.
     """
     segments, words, word, quoted, quote, depth = [], [], [], False, None, 0
-    index, length, pending, redirect, redirection = 0, len(command), "", -2, False
+    index, length, pending, redirect, redirection, signed = 0, len(command), "", -2, False, False
 
     def end_word():
-        nonlocal word, quoted, redirection
+        nonlocal word, quoted, redirection, signed
         if word or quoted:
             words.append((_Redirection if redirection else str)("".join(word)))
-        word, quoted, redirection = [], False, False
+        word, quoted, redirection, signed = [], False, False, False
 
     def end_segment(operator=""):
         nonlocal words, pending
@@ -611,7 +611,11 @@ def shell_segments(command):
             if ch in "<>":
                 redirect = index  # an unquoted, unescaped redirection sign
                 # Any other prefix (file>out, "2">out) stays unmarked and still counts as a pathspec.
-                redirection = redirection or (not quoted and re.fullmatch(r"[0-9]*|&", "".join(word)) is not None)
+                # Only the first sign decides: later prefixes hold a sign and cannot match, so the
+                # prefix is joined once per word.
+                if not signed:
+                    signed = True
+                    redirection = not quoted and re.fullmatch(r"[0-9]*|&", "".join(word)) is not None
             word.append(ch)
         index += 1
     require(quote is None, "unfinished quoted command" + _PARSE_HINT)
@@ -669,9 +673,10 @@ def each_git_target(command, cwd):
             first = False
         if structured and not nested and not _DIRECTORY_MOVERS.isdisjoint(words):
             unsure = dynamic = moved = True
-        bare = words
-        while not nested and bare and bare[0] in _KEYWORDS:
-            bare = bare[1:]
+        start = 0
+        while not nested and start < len(words) and words[start] in _KEYWORDS:
+            start += 1
+        bare = words[start:] if start else words
         if not nested and moves_directory(bare):
             plain = (bare is words and len(words) == 2 and words[0] == "cd" and words[1] != "-"
                      and not any(c in words[1] for c in "$`~"))
