@@ -27,7 +27,9 @@
 #      procedure-omission bypass of /rite:pr-review, not adversarial forgery.
 #   6. Direct `gh issue create` — denied unless Issue creation is delegated to
 #      create-issue-with-projects.sh or decompose-issues.sh.
-#   7. `git commit --allow-empty` — denied. `--allow-empty-message` and ordinary
+#   7. `git commit --allow-empty` — denied, also with global options or
+#      redirections between git and commit (`git -c k=v commit`,
+#      `git 2>/dev/null commit`). `--allow-empty-message` and ordinary
 #      commits are not this pattern. Alternative: leave file changes, or revisit
 #      the Issue. Do not create an empty commit.
 #
@@ -931,9 +933,21 @@ fi
 
 # Pattern 7: git commit --allow-empty. Token match so --allow-empty-message
 # is not denied. Detection is CMD_CHECK (heredoc-stripped).
+# Between git and commit the shell may see global options (-c / -C and their
+# value, other words starting with -) and redirections (2>/dev/null, 2>&1, and a
+# bare 2> with its target); git never receives the redirections, so commit is
+# still the subcommand. Any other word in between is not skipped.
+# The commit match grows with the square of the command length, so it runs only
+# after the linear --allow-empty match; a long command without --allow-empty
+# never reaches it within the hook timeout.
+_p7_word='[^[:space:];&|<>]+'
+_p7_redir_op='(&>|[0-9]*[<>])'
+_p7_redir="(${_p7_redir_op}[<>&]*[[:space:]]+${_p7_word}|${_p7_redir_op}[^[:space:];|]*)"
+_p7_skip="(-[cC]([[:space:]]+${_p7_redir})*[[:space:]]+${_p7_word}|-[^[:space:];&|]*|${_p7_redir})"
+_p7_commit="(^|[^[:alnum:]_])git([[:space:]]+${_p7_skip})*[[:space:]]+commit([^[:alnum:]_-]|\$)"
 if [ -z "$BLOCKED_PATTERN" ]; then
-  if [[ "$CMD_CHECK" =~ (^|[^[:alnum:]_])git[[:space:]]+commit([^[:alnum:]_-]|$) ]] \
-     && [[ "$CMD_CHECK" =~ (^|[[:space:]])--allow-empty([^[:alnum:]_-]|$) ]]; then
+  if [[ "$CMD_CHECK" =~ (^|[[:space:]])--allow-empty([^[:alnum:]_-]|$) ]] \
+     && [[ "$CMD_CHECK" =~ $_p7_commit ]]; then
     BLOCKED_PATTERN="git-commit-allow-empty"
     BLOCKED_REASON="git commit --allow-empty creates a commit with no file changes."
     BLOCKED_ALTERNATIVE="Leave the changes as files, or revisit the Issue. Do not create an empty commit."

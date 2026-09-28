@@ -2337,6 +2337,43 @@ if [ "$rc" = "0" ] && [ -z "$output" ] && [ -z "$decision" ]; then
 else
   fail "Expected allow for --allow-empty-message, got rc=$rc decision=$decision output=$output"
 fi
+# Global options and redirections between git and commit still leave commit as the subcommand.
+while IFS= read -r p7_cmd; do
+  rc=0
+  output=$(run_guard "Bash" "$p7_cmd") || rc=$?
+  decision=$(extract_hook_field "$output" permissionDecision)
+  reason=$(extract_hook_field "$output" permissionDecisionReason)
+  if [ "$decision" = "deny" ] && [[ "$reason" == *"git-commit-allow-empty"* ]]; then
+    pass "--allow-empty denied through words before commit: $p7_cmd"
+  else
+    fail "Expected git-commit-allow-empty deny for '$p7_cmd', got decision=$decision reason=$reason"
+  fi
+done <<'EOF'
+git -c a.b=c commit --allow-empty -m x
+git 2>/dev/null commit --allow-empty -m x
+git 2> /dev/null commit --allow-empty -m x
+git >/dev/null commit --allow-empty -m x
+git &>/dev/null commit --allow-empty -m x
+git <&- commit --allow-empty -m x
+git -c a.b=c 2>&1 commit --allow-empty -m x
+git -C . 2>/dev/null commit --allow-empty -m x
+git -C 2>/dev/null . commit --allow-empty -m x
+git -c 2>&1 a.b=c commit --allow-empty -m x
+git --no-pager commit --allow-empty -m x
+EOF
+while IFS= read -r p7_cmd; do
+  rc=0
+  output=$(run_guard "Bash" "$p7_cmd") || rc=$?
+  if [ "$rc" = "0" ] && [ -z "$output" ]; then
+    pass "not denied as git commit --allow-empty: $p7_cmd"
+  else
+    fail "Expected allow for '$p7_cmd', got rc=$rc output=$output"
+  fi
+done <<'EOF'
+git log --allow-empty commit
+git -c a.b=c commit --allow-empty-message -m ""
+git -c a.b=c commit-tree --allow-empty
+EOF
 echo ""
 
 # --------------------------------------------------------------------------

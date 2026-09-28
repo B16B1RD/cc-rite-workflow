@@ -62,6 +62,17 @@ class _Redirection(str):
     """A word shell_segments read as an unquoted redirection (>out, 2>&1, &>log, >)."""
 
 
+# A redirection word with no target in it (>, 2>, &>, <&); the shell takes the next word as its target.
+_BARE_REDIRECTION = re.compile(r"(?:[0-9]*|&)[<>&]+")
+
+
+def _redirection_end(words, index):
+    """Index past the redirection at index, together with the target a bare operator takes."""
+    if _BARE_REDIRECTION.fullmatch(words[index]) and index + 1 < len(words):
+        return index + 2
+    return index + 1
+
+
 def _without_redirections(args):
     """Drop the redirections; a bare operator (>, 2>, &>) also drops the target after it.
     A bare operator with nothing after it stays, so it is still read as a pathspec."""
@@ -69,7 +80,7 @@ def _without_redirections(args):
     while index < len(args):
         word = args[index]
         if isinstance(word, _Redirection):
-            if not re.fullmatch(r"(?:[0-9]*|&)[<>&]+", word):
+            if not _BARE_REDIRECTION.fullmatch(word):
                 index += 1
                 continue
             if index + 1 < len(args):
@@ -691,20 +702,28 @@ def each_git_target(command, cwd):
             continue
         # After ||, a git runs only when something before it failed, perhaps the cd.
         target, unknown, index, alternate = here, unsure or (alternative and moved), 1, False
-        while index < len(words) and words[index].startswith("-"):
+        # The shell removes redirections before git sees its arguments, so one between git and
+        # the subcommand, or between -C / -c and its value, is skipped.
+        while index < len(words) and (words[index].startswith("-") or isinstance(words[index], _Redirection)):
             option = words[index]
+            if isinstance(option, _Redirection):
+                index = _redirection_end(words, index)
+                continue
             if option in ("-C", "-c") or option.startswith("-C"):
                 joined = option.startswith("-C") and option != "-C"
+                value_index = index + 1
                 if not joined:
-                    require(index + 1 < len(words), "incomplete git global option")
-                value = option[2:] if joined else words[index + 1]
+                    while value_index < len(words) and isinstance(words[value_index], _Redirection):
+                        value_index = _redirection_end(words, value_index)
+                    require(value_index < len(words), "incomplete git global option")
+                value = option[2:] if joined else words[value_index]
                 if option.startswith("-C"):
                     if any(c in value for c in "$`~"):
                         unknown = True
                     else:
                         target = (target / value).resolve()
                         unknown = unknown and not Path(value).is_absolute()
-                index += 1 if joined else 2
+                index = index + 1 if joined else value_index + 1
             elif option.startswith("-c") or option in ("--no-pager", "--no-optional-locks"):
                 index += 1
             else:

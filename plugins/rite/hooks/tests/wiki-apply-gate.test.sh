@@ -950,6 +950,60 @@ for _cmd in "git commit -F f file.txt 2>&1" "git commit -F f 2>&1 file.txt"; do
     fail "guard redirection pathspec $_cmd rc=$grc out=$gout"
   fi
 done
+# git とサブコマンドの間にあるリダイレクト語（先のない演算子はその次の語も）とグローバルオプションは
+# 読み飛ばしてサブコマンドを特定する。-C / -c とその値の間のリダイレクト語も同じ。
+while IFS= read -r _cmd; do
+  expect_target index "$_cmd"
+done <<'EOF'
+git 2>/dev/null commit -m x
+git 2> /dev/null commit -m x
+git >/dev/null commit -m x
+git &>/dev/null commit -m x
+git <&- commit -m x
+git -c a.b=c 2>&1 commit -m x
+git -C . 2>/dev/null commit -m x
+git -C 2>/dev/null . commit -m x
+git -c 2>&1 a.b=c commit -m x
+git commit -m x
+git -c a.b=c commit -m x
+git --no-pager commit -m x
+git commit -m x 2>&1
+EOF
+brc=0
+bout=$(bash "$SCOPE_CHECK" commit-target --command "2>/dev/null git commit -m x" --cwd "$repo" 2>"$ROOT/target.err") || brc=$?
+if [ "$brc" -ne 0 ] && [ -z "$bout" ] && grep -q 'run commit as a direct command' "$ROOT/target.err"; then
+  pass "commit-target still refuses a redirection before git"
+else
+  fail "commit-target redirection before git rc=$brc out=$bout err=$(cat "$ROOT/target.err")"
+fi
+if python3 - "$SCRIPT_DIR/../scripts/lib/review-fix-scope.py" "$repo" <<'PY'
+import importlib.util, sys
+from pathlib import Path
+sys.path.insert(0, str(Path(sys.argv[1]).parent))
+spec = importlib.util.spec_from_file_location("review_fix_scope", sys.argv[1])
+scope = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(scope)
+targets = list(scope.each_git_target("git 2>/dev/null merge --continue", sys.argv[2]))
+assert len(targets) == 1, targets
+name, toplevel, args, problem = targets[0]
+assert name == "merge" and problem is None, targets
+assert toplevel == Path(sys.argv[2]).resolve(), toplevel
+assert scope.head_move(name, args) == "commit", args
+PY
+then
+  pass "each_git_target reads git 2>/dev/null merge --continue as a commit in the repository"
+else
+  fail "each_git_target merge --continue behind a redirection"
+fi
+redir=$(jq -n --arg cwd "$repo" '{tool_name:"Bash", tool_input:{command:"git 2>/dev/null commit -m x"}, cwd:$cwd}')
+grc=0
+gout=$(printf '%s' "$redir" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+if grep -qF 'BLOCKED (wiki-apply-gate)' <<<"$gout" \
+   && ! grep -qE 'wiki-apply-(unresolved|index|missing)' <<<"$gout"; then
+  pass "guard checks a commit behind a redirection at the wiki gate"
+else
+  fail "guard redirection before commit rc=$grc out=$gout"
+fi
 crc=0
 WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" \
   bash "$COMMIT" --file "$msg" --worktree "$repo" -- -av >"$ROOT/extra-av.out" 2>"$ROOT/extra-av.err" || crc=$?
