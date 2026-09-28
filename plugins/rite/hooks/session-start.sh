@@ -650,7 +650,14 @@ _rite_stop_reason_phrase() {
 # 読む。stop_reason 付きの state は停止のまま残す。flow-state.sh set は handoff / next_action を
 # 上書きするため使わず、active と印だけを書き換える。flow-state.sh set は印を引き継がないため、印は
 # SessionEnd から次の set までしか残らない。
-if [ "$SOURCE" = "resume" ] && [ "$ACTIVE" != "true" ] \
+# reap-issue が印を消せなかった state は、その複製が .rite/state/ に残る。複製と同一の state は回収済みの
+# ため戻さない（書き込みに失敗した state は中断として扱わない）。以後の書き込みで state が変われば一致しない。
+_reap_record="$STATE_ROOT/.rite/state/reap-failed-$(basename "$STATE_FILE" .flow-state).flow-state"
+if [ "$SOURCE" = "resume" ] && [ "$ACTIVE" != "true" ] && [ -f "$_reap_record" ] \
+   && cmp -s "$_reap_record" "$STATE_FILE"; then
+  echo "rite: session-start: WARNING: not reactivating a state reap-issue failed to clear: $STATE_FILE" >&2
+  echo "rite: 中断していた rite workflow は Issue の後片付けで回収済みのため、作業中に戻しません ($STATE_FILE)。"
+elif [ "$SOURCE" = "resume" ] && [ "$ACTIVE" != "true" ] \
    && jq -e '.suspended_by_session_end == true and ((.stop_reason // "") == "")' "$STATE_FILE" >/dev/null 2>&1; then
   _resume_tmp=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || _resume_tmp="${STATE_FILE}.tmp.$$"
   if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \

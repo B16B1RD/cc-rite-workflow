@@ -639,8 +639,17 @@ cmd_reap_issue() {
           || echo "WARNING: reap-issue: deactivate failed: $(printf '%s' "$f" | neutralize_ctrl)" >&2
       elif jq -e '.suspended_by_session_end == true' "$f" >/dev/null 2>&1; then
         # A session that ended mid-flow on this Issue would come back active on resume.
-        cmd_deactivate --session "$sid" --next "none" \
-          || echo "WARNING: reap-issue: deactivate failed: $(printf '%s' "$f" | neutralize_ctrl)" >&2
+        if ! cmd_deactivate --session "$sid" --next "none"; then
+          echo "WARNING: reap-issue: deactivate failed: $(printf '%s' "$f" | neutralize_ctrl)" >&2
+          # The mark survived, so resume would turn this reaped state active again. session-start
+          # does not when an exact copy of the state sits here; any later write to the state
+          # breaks the match, so a genuine suspend afterwards is resumed as usual.
+          local rec="$STATE_ROOT/.rite/state/reap-failed-$sid.flow-state"
+          if ! { mkdir -p "${rec%/*}" && cp "$f" "$rec.$$" && mv "$rec.$$" "$rec"; } 2>/dev/null; then
+            rm -f "$rec.$$" 2>/dev/null
+            echo "WARNING: reap-issue: could not record the failed reap, so resume may reactivate: $(printf '%s' "$f" | neutralize_ctrl)" >&2
+          fi
+        fi
       fi
       _reap_lock "${f}.lock"
     done

@@ -1521,6 +1521,51 @@ else
 fi
 echo ""
 
+echo "T-22: a reap that cannot clear the suspended mark keeps the reaped state inactive on resume, until the state is written again"
+if [ "$(id -u)" -eq 0 ]; then
+  pass "T-22 skipped as root (a read-only directory does not stop root)"
+else
+  dir_p22="$TEST_DIR/reap-write-fail"
+  mkdir -p "$dir_p22"
+  create_state_file "$dir_p22" "$marked_p20" "sid-p22"
+  sf_p22=$(state_file_path "$dir_p22" "sid-p22")
+  rec_p22="$dir_p22/.rite/state/reap-failed-sid-p22.flow-state"
+  before_p22=$(digest_file "$sf_p22")
+  printf '%s' "sid-p22-reaper" > "$dir_p22/.rite-session-id"
+  chmod 555 "$dir_p22/.rite/sessions"
+  rc_p22=0
+  (cd "$dir_p22" && bash "$FLOW_STATE" reap-issue --issue 101) >/dev/null 2>"$TEST_DIR/err-p22" || rc_p22=$?
+  chmod 755 "$dir_p22/.rite/sessions"
+  after_p22=$(digest_file "$sf_p22")
+  if [ "$rc_p22" -eq 0 ] && [ "$before_p22" = "$after_p22" ] \
+    && grep -qF "WARNING: reap-issue: deactivate failed: $sf_p22" "$TEST_DIR/err-p22" \
+    && cmp -s "$rec_p22" "$sf_p22"; then
+    pass "T-22 the failed reap warns with the path, leaves the state as it was, and records a copy of it"
+  else
+    fail "T-22 reap rc=$rc_p22 same=$([ "$before_p22" = "$after_p22" ] && echo y || echo n) record=$([ -f "$rec_p22" ] && echo y || echo n) err=$(cat "$TEST_DIR/err-p22")"
+  fi
+  printf '%s' "sid-p22" > "$dir_p22/.rite-session-id"
+  # Not in $(...): start_session sets LAST_STDERR_FILE, which a subshell would lose.
+  start_session "$dir_p22" "sid-p22" resume > "$TEST_DIR/out-p22" || true
+  out_p22=$(cat "$TEST_DIR/out-p22")
+  if jq -e '.active == false and .suspended_by_session_end == true' "$sf_p22" >/dev/null \
+    && grep -qF "rite: session-start: WARNING: not reactivating a state reap-issue failed to clear: $sf_p22" "$LAST_STDERR_FILE" \
+    && awk -v p="$sf_p22" 'index($0, p) && index($0, "回収済み") {f=1} END {exit !f}' <<< "$out_p22"; then
+    pass "T-22 resume leaves the reaped state inactive and says so on stdout"
+  else
+    fail "T-22 resume state=$(jq -c '{active,suspended_by_session_end}' "$sf_p22") out=$out_p22"
+  fi
+  (cd "$dir_p22" && bash "$FLOW_STATE" set --phase review --issue 101 --branch fix/issue-101-x --pr 55 --next "continue" >/dev/null 2>&1) || true
+  end_session "$dir_p22" "sid-p22" || true
+  start_session "$dir_p22" "sid-p22" resume >/dev/null || true
+  if jq -e '.active == true and (has("suspended_by_session_end")|not)' "$sf_p22" >/dev/null; then
+    pass "T-22 after the state is written again, a later suspend is resumed as usual"
+  else
+    fail "T-22 later resume state=$(jq -c '{active,suspended_by_session_end}' "$sf_p22")"
+  fi
+fi
+echo ""
+
 # --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
