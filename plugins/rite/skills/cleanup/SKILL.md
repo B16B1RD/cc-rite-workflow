@@ -915,7 +915,7 @@ ingest の成否（skip 含む）に関わらずステップ 10 へ進む。
 
 詳細は [archive-procedures.md](./references/archive-procedures.md) (Issue close / Parent Issue handling セクション)。
 
-- 関連 Issue (`{issue_number}`) を close し、同じ Issue の state を読み直して `[CONTEXT] ISSUE_CLOSE=` marker を出す（archive-procedures §3.6.1 の bash）。base が default branch でない PR では `Closes #N` による自動クローズが働かないため、クローズは本ステップだけが担う
+- 関連 Issue (`{issue_number}`) が PR の closing reference（本文の closing keyword / ブランチ名の `issue-N`）に含まれることを確かめてから close し、同じ Issue の state を読み直して `[CONTEXT] ISSUE_CLOSE=` marker を出す（archive-procedures §3.6.1 の bash）。base が default branch でない PR では `Closes #N` による自動クローズが働かないため、クローズは本ステップだけが担う
 - 親 Issue (`{parent_issue_number}`) の Tasklist を更新
 - 親 Issue の全子が CLOSED かついずれも `stateReason != NOT_PLANNED`（= COMPLETED）なら parent も auto-close。Cancelled（NOT_PLANNED）の子が 1 件でも居る、または CLOSED 子の `stateReason` が判定不能なら親は未完了扱い（Done / auto-close しない）
 - 3.7.2.1 `.result=skipped_terminal_conflict`（親が既に終端 Status (Cancelled)）のとき、close 成否に関わらず `{parent_close_result}` = `⚠️ Cancelled のため Done 上書きをスキップ`。`✅ 自動クローズ完了` で Done 同期を主張しない。Cancelled **子**の未完了扱いとは別値
@@ -1131,7 +1131,7 @@ rationale: references/rationale.md#review-cleanup-reasons
   - 該当行が無いとき: ` ` + 「⚠️ 作業メモリの{対象}の実行結果を確認できませんでした — Issue #{issue_number} の作業メモリコメントを確認してください」を付記。**marker 不在を成功と読んではならない**
 - `{issue_close_check}`: ステップ 10 の `[CONTEXT] ISSUE_CLOSE=` 行で判定する（archive-procedures §3.6.1）。`{issue_number}` が空（関連 Issue 未識別）なら `x`。それ以外は `[CONTEXT] ` 行頭一致 + `ISSUE_CLOSE=` + `issue={issue_number}`（値の直後が `;` または行末）に該当する行を集め、**その中の最後の出現 1 行だけを選ぶ**（recency。`/rite:batch-run --merge` では先行 Issue の marker が文脈に残るため）。選んだ 1 行を以下で評価する:
   - `ISSUE_CLOSE=closed` / `ISSUE_CLOSE=already_closed` / `ISSUE_CLOSE=not_identified` のいずれか: `x`（x とする値はこの 3 つに限る）
-  - 上記以外（`ISSUE_CLOSE=failed; reason=close_failed` / `reason=verify_failed` / `reason=state_<STATE>` 等）: ` ` + 「⚠️ Issue #{issue_number} のクローズを確認できませんでした（{marker の reason 値}）。`gh issue view {issue_number} -R {owner_repo}` で状態を確認し、OPEN なら `gh issue close {issue_number} -R {owner_repo}` を手動実行してください」を付記
+  - 上記以外（`ISSUE_CLOSE=failed; reason=close_failed` / `reason=verify_failed` / `reason=state_<STATE>` / `reason=target_mismatch` / `reason=pr_view_failed` 等）: ` ` + 「⚠️ Issue #{issue_number} のクローズを確認できませんでした（{marker の reason 値}）。`gh pr view {pr_number} -R {owner_repo} --json body,headRefName` で PR の関連 Issue を確かめ、その Issue が OPEN なら `gh issue close <番号> -R {owner_repo}` を手動実行してください」を付記
   - 該当行が無いとき: ` ` + 「⚠️ Issue #{issue_number} のクローズの実行結果を確認できませんでした。`gh issue view {issue_number} -R {owner_repo}` で状態を確認してください」を付記。**marker 不在を成功と読んではならない**
 
 `{outstanding_items_block}`（非ブロッキング失敗の集約欄）: 上記チェックリストの `{base_update_check}` / `{session_worktree_check}` / `{local_branch_check}` / `{projects_check}` / `{wiki_ingest_check}` / `{review_cleanup_check}` / `{wm_final_update_check}` / `{issue_close_check}` のうち、**チェックボックスが `x` ではなく空欄（未チェック）として描画されたもの**があれば、そのチェックボックス直下の付記文をそのまま箇条書きで列挙する（各チェックボックス直下の付記と同じ文言をここにも重複表示する — チェックリストは一覧性、本節は見落とし防止のための集約であり、両立させる）。

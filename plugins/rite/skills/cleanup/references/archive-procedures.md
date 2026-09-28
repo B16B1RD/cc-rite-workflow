@@ -260,7 +260,7 @@ Close the related Issue identified in `cleanup.md` ステップ 2.
 
 #### 3.6.1 Close and Verify
 
-Close the Issue only while it is OPEN, then read the same Issue's state again. A successful `gh issue close` alone does not count as closed: the re-read also catches a close that landed on a different Issue or never took effect. `{issue_number}` is the Issue identified in `cleanup.md` ステップ 2; when none was identified, substitute an empty string.
+Before closing, confirm that the Issue is one the PR itself references: a closing keyword (`Closes` / `Fixes` / `Resolves` and their forms) in the PR body, or `issue-N` in the head branch name. A number carried over from another Issue fails this check and is not closed. Close the Issue only while it is OPEN, then read the same Issue's state again. A successful `gh issue close` alone does not count as closed: the re-read catches a close that never took effect. `{issue_number}` is the Issue identified in `cleanup.md` ステップ 2; when none was identified, substitute an empty string.
 
 ```bash
 # cleanup-issue-close
@@ -269,6 +269,10 @@ result="" reason=""
 if [ -z "$issue" ]; then
   echo "警告: 関連 Issue が見つかりません" >&2
   result=not_identified
+elif ! pr_refs=$(gh pr view {pr_number} -R {owner_repo} --json body,headRefName --jq '.body + "\n" + .headRefName'); then
+  result=failed reason=pr_view_failed
+elif ! grep -qiE "((close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]]*:?[[:space:]]*#${issue}([^0-9]|$))|(issue-${issue}([^0-9]|$))" <<< "$pr_refs"; then
+  result=failed reason=target_mismatch
 elif [ "$(gh issue view "$issue" -R {owner_repo} --json state --jq '.state')" = "CLOSED" ]; then
   result=already_closed
 elif ! gh issue close "$issue" -R {owner_repo} --comment "PR #{pr_number} のマージに伴いクローズしました。"; then
@@ -296,6 +300,8 @@ echo "[CONTEXT] ISSUE_CLOSE=$result; issue=$issue${reason:+; reason=$reason}"
 | `closed` | Closed in this run, and the re-read returned `CLOSED` |
 | `already_closed` | The Issue was already CLOSED; no close was run |
 | `not_identified` | No related Issue was identified; nothing to close |
+| `failed; reason=pr_view_failed` | The PR body and branch name could not be read, so the target could not be confirmed; no close was run |
+| `failed; reason=target_mismatch` | The PR does not reference the Issue; no close was run |
 | `failed; reason=close_failed` | `gh issue close` failed (API error, missing permission, etc.) |
 | `failed; reason=verify_failed` | The re-read after close failed, so the state is unknown |
 | `failed; reason=state_<STATE>` | The re-read after close did not return `CLOSED` |

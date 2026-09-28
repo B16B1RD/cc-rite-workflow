@@ -113,10 +113,15 @@ if [ ! -s "$IC_TMP/block.sh" ]; then
   fail "archive-procedures §3.6 bash block (# cleanup-issue-close) could not be extracted"
 else
   mkdir -p "$IC_TMP/bin"
-  # 1 回目の view は close 前、2 回目以降は close 後の読み直し。GH_AFTER=ERR は読み直しの失敗
+  # 1 回目の issue view は close 前、2 回目以降は close 後の読み直し。GH_AFTER=ERR は読み直しの失敗、
+  # GH_PR_REFS=ERR は PR 本文・ブランチ名の取得失敗。呼び出しはすべて calls に記録する
   cat > "$IC_TMP/bin/gh" <<'STUB'
 #!/bin/bash
+echo "$1 $2" >> "$GH_STUB_DIR/calls"
 case "$1 $2" in
+  "pr view")
+    [ "$GH_PR_REFS" = ERR ] && exit 1
+    printf '%s\n' "$GH_PR_REFS" ;;
   "issue view")
     n=$(( $(cat "$GH_STUB_DIR/views" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$GH_STUB_DIR/views"
     if [ "$n" -eq 1 ]; then echo "$GH_BEFORE"; else [ "$GH_AFTER" = ERR ] && exit 1; echo "$GH_AFTER"; fi ;;
@@ -125,21 +130,28 @@ case "$1 $2" in
 esac
 STUB
   chmod +x "$IC_TMP/bin/gh"
-  # $1=issue $2=before $3=close rc $4=after → ISSUE_CLOSE marker 行と gh issue close の呼び出し回数
+  # $1=issue $2=before $3=close rc $4=after $5=PR 本文とブランチ名（省略時は Issue 41 を閉じる PR）
+  # → ISSUE_CLOSE marker 行と、gh issue close / gh 全体の呼び出し回数
   run_issue_close() {
     local d; d=$(mktemp -d "$IC_TMP/case-XXXXXX")
     sed -e "s|{issue_number}|$1|g" -e 's|{owner_repo}|owner/repo|g' -e 's|{pr_number}|900|g' "$IC_TMP/block.sh" > "$d/run.sh"
-    GH_STUB_DIR="$d" GH_BEFORE="$2" GH_CLOSE_RC="$3" GH_AFTER="$4" PATH="$IC_TMP/bin:$PATH" \
-      bash "$d/run.sh" 2>/dev/null | grep '^\[CONTEXT\] ISSUE_CLOSE=' | tail -1
-    printf 'closes=%s\n' "$(cat "$d/closes" 2>/dev/null | wc -l | tr -d ' ')"
+    GH_STUB_DIR="$d" GH_BEFORE="$2" GH_CLOSE_RC="$3" GH_AFTER="$4" GH_PR_REFS="${5-Closes #41${nl}fix/issue-41-x}" \
+      PATH="$IC_TMP/bin:$PATH" bash "$d/run.sh" 2>/dev/null | grep '^\[CONTEXT\] ISSUE_CLOSE=' | tail -1
+    printf 'closes=%s calls=%s\n' "$(cat "$d/closes" 2>/dev/null | wc -l | tr -d ' ')" "$(cat "$d/calls" 2>/dev/null | wc -l | tr -d ' ')"
   }
   nl=$'\n'
-  assert "OPEN → close → re-read CLOSED is closed" "[CONTEXT] ISSUE_CLOSE=closed; issue=41${nl}closes=1" "$(run_issue_close 41 OPEN 0 CLOSED)"
-  assert "close command failure is failed/close_failed" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=close_failed${nl}closes=1" "$(run_issue_close 41 OPEN 1 CLOSED)"
-  assert "close succeeds but re-read stays OPEN is failed" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=state_OPEN${nl}closes=1" "$(run_issue_close 41 OPEN 0 OPEN)"
-  assert "re-read failure after close is failed/verify_failed, not closed" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=verify_failed${nl}closes=1" "$(run_issue_close 41 OPEN 0 ERR)"
-  assert "already CLOSED is already_closed without running gh issue close" "[CONTEXT] ISSUE_CLOSE=already_closed; issue=41${nl}closes=0" "$(run_issue_close 41 CLOSED 0 CLOSED)"
-  assert "unidentified issue is not_identified without calling gh" "[CONTEXT] ISSUE_CLOSE=not_identified; issue=${nl}closes=0" "$(run_issue_close '' OPEN 0 CLOSED)"
+  assert "OPEN → close → re-read CLOSED is closed" "[CONTEXT] ISSUE_CLOSE=closed; issue=41${nl}closes=1 calls=4" "$(run_issue_close 41 OPEN 0 CLOSED)"
+  assert "close command failure is failed/close_failed" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=close_failed${nl}closes=1 calls=3" "$(run_issue_close 41 OPEN 1 CLOSED)"
+  assert "close succeeds but re-read stays OPEN is failed" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=state_OPEN${nl}closes=1 calls=4" "$(run_issue_close 41 OPEN 0 OPEN)"
+  assert "re-read failure after close is failed/verify_failed, not closed" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=verify_failed${nl}closes=1 calls=4" "$(run_issue_close 41 OPEN 0 ERR)"
+  assert "already CLOSED is already_closed without running gh issue close" "[CONTEXT] ISSUE_CLOSE=already_closed; issue=41${nl}closes=0 calls=2" "$(run_issue_close 41 CLOSED 0 CLOSED)"
+  assert "unidentified issue is not_identified without calling gh" "[CONTEXT] ISSUE_CLOSE=not_identified; issue=${nl}closes=0 calls=0" "$(run_issue_close '' OPEN 0 CLOSED)"
+  # 取り違え: PR が参照しない Issue は、OPEN でも既に CLOSED でも閉じずに failed にする
+  assert "issue the PR does not reference is target_mismatch without closing" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=target_mismatch${nl}closes=0 calls=1" "$(run_issue_close 41 OPEN 0 CLOSED "Closes #57${nl}fix/issue-57-x")"
+  assert "already CLOSED issue the PR does not reference is target_mismatch, not already_closed" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=target_mismatch${nl}closes=0 calls=1" "$(run_issue_close 41 CLOSED 0 CLOSED "Closes #57${nl}fix/issue-57-x")"
+  assert "a longer number sharing the prefix is not a reference" "[CONTEXT] ISSUE_CLOSE=failed; issue=4; reason=target_mismatch${nl}closes=0 calls=1" "$(run_issue_close 4 OPEN 0 CLOSED)"
+  assert "branch name issue-N alone is a reference" "[CONTEXT] ISSUE_CLOSE=closed; issue=41${nl}closes=1 calls=4" "$(run_issue_close 41 OPEN 0 CLOSED "body without keyword${nl}fix/issue-41-x")"
+  assert "PR read failure is pr_view_failed without closing" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=pr_view_failed${nl}closes=0 calls=1" "$(run_issue_close 41 OPEN 0 CLOSED ERR)"
 fi
 # 判定基準は絵文字 prefix ではなくチェックボックスの空欄/x であることを pin する。
 # 絵文字 prefix 一致方式は {local_branch_check} の BRANCH_DELETE_FAILED/UNMERGED（prefix 無しの
