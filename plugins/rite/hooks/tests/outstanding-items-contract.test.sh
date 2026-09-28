@@ -82,6 +82,10 @@ assert_grep "issue-close check allows exactly closed / already_closed / not_iden
   '^  - `ISSUE_CLOSE=closed` / `ISSUE_CLOSE=already_closed` / `ISSUE_CLOSE=not_identified` のいずれか: `x`（x とする値はこの 3 つに限る）$'
 assert_grep "issue-close check leaves failed values unchecked with an annotation" "$CLEANUP" \
   '^  - 上記以外（`ISSUE_CLOSE=failed; reason=close_failed` / .*: ` ` \+ 「⚠️ Issue #\{issue_number\} のクローズを確認できませんでした'
+assert_grep "issue-close check gives no_pr its own annotation without PR-number commands" "$CLEANUP" \
+  '^  - `ISSUE_CLOSE=failed; reason=no_pr`: ` ` \+ 「⚠️ 関連 PR が無いため Issue #\{issue_number\} をクローズしていません。`gh issue view \{issue_number\}'
+assert_grep "Error Handling points issue-close recovery to the step 12 annotation" "$CLEANUP" \
+  '^\| Issue Close Failure \| .*回復はステップ 12 の `\{issue_close_check\}` の付記に従う \|$'
 assert_grep "issue-close check leaves marker absence unchecked" "$CLEANUP" \
   '^  - 該当行が無いとき: ` ` \+ 「⚠️ Issue #\{issue_number\} のクローズの実行結果を確認できませんでした.*marker 不在を成功と読んではならない'
 assert_grep "issue-close check scopes markers by issue and picks the last occurrence" "$CLEANUP" \
@@ -131,10 +135,11 @@ esac
 STUB
   chmod +x "$IC_TMP/bin/gh"
   # $1=issue $2=before $3=close rc $4=after $5=PR 本文とブランチ名（省略時は Issue 41 を閉じる PR）
+  # $6=PR 番号（省略時は 900。空文字は PR 無しで続行した cleanup）
   # → ISSUE_CLOSE marker 行と、gh issue close / gh 全体の呼び出し回数
   run_issue_close() {
     local d; d=$(mktemp -d "$IC_TMP/case-XXXXXX")
-    sed -e "s|{issue_number}|$1|g" -e 's|{owner_repo}|owner/repo|g' -e 's|{pr_number}|900|g' "$IC_TMP/block.sh" > "$d/run.sh"
+    sed -e "s|{issue_number}|$1|g" -e 's|{owner_repo}|owner/repo|g' -e "s|{pr_number}|${6-900}|g" "$IC_TMP/block.sh" > "$d/run.sh"
     GH_STUB_DIR="$d" GH_BEFORE="$2" GH_CLOSE_RC="$3" GH_AFTER="$4" GH_PR_REFS="${5-Closes #41${nl}fix/issue-41-x}" \
       PATH="$IC_TMP/bin:$PATH" bash "$d/run.sh" 2>/dev/null | grep '^\[CONTEXT\] ISSUE_CLOSE=' | tail -1
     printf 'closes=%s calls=%s\n' "$(cat "$d/closes" 2>/dev/null | wc -l | tr -d ' ')" "$(cat "$d/calls" 2>/dev/null | wc -l | tr -d ' ')"
@@ -151,6 +156,7 @@ STUB
   assert "already CLOSED issue the PR does not reference is target_mismatch, not already_closed" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=target_mismatch${nl}closes=0 calls=1" "$(run_issue_close 41 CLOSED 0 CLOSED "Closes #57${nl}fix/issue-57-x")"
   assert "a longer number sharing the prefix is not a reference" "[CONTEXT] ISSUE_CLOSE=failed; issue=4; reason=target_mismatch${nl}closes=0 calls=1" "$(run_issue_close 4 OPEN 0 CLOSED)"
   assert "branch name issue-N alone is a reference" "[CONTEXT] ISSUE_CLOSE=closed; issue=41${nl}closes=1 calls=4" "$(run_issue_close 41 OPEN 0 CLOSED "body without keyword${nl}fix/issue-41-x")"
+  assert "cleanup without a PR is no_pr without calling gh" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=no_pr${nl}closes=0 calls=0" "$(run_issue_close 41 OPEN 0 CLOSED "Closes #41" "")"
   assert "PR read failure is pr_view_failed without closing" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=pr_view_failed${nl}closes=0 calls=1" "$(run_issue_close 41 OPEN 0 CLOSED ERR)"
 fi
 # 判定基準は絵文字 prefix ではなくチェックボックスの空欄/x であることを pin する。

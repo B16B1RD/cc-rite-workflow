@@ -1131,6 +1131,7 @@ rationale: references/rationale.md#review-cleanup-reasons
   - 該当行が無いとき: ` ` + 「⚠️ 作業メモリの{対象}の実行結果を確認できませんでした — Issue #{issue_number} の作業メモリコメントを確認してください」を付記。**marker 不在を成功と読んではならない**
 - `{issue_close_check}`: ステップ 10 の `[CONTEXT] ISSUE_CLOSE=` 行で判定する（archive-procedures §3.6.1）。`{issue_number}` が空（関連 Issue 未識別）なら `x`。それ以外は `[CONTEXT] ` 行頭一致 + `ISSUE_CLOSE=` + `issue={issue_number}`（値の直後が `;` または行末）に該当する行を集め、**その中の最後の出現 1 行だけを選ぶ**（recency。`/rite:batch-run --merge` では先行 Issue の marker が文脈に残るため）。選んだ 1 行を以下で評価する:
   - `ISSUE_CLOSE=closed` / `ISSUE_CLOSE=already_closed` / `ISSUE_CLOSE=not_identified` のいずれか: `x`（x とする値はこの 3 つに限る）
+  - `ISSUE_CLOSE=failed; reason=no_pr`: ` ` + 「⚠️ 関連 PR が無いため Issue #{issue_number} をクローズしていません。`gh issue view {issue_number} -R {owner_repo}` で状態を確認し、作業が完了していれば手動でクローズしてください」を付記
   - 上記以外（`ISSUE_CLOSE=failed; reason=close_failed` / `reason=verify_failed` / `reason=state_<STATE>` / `reason=target_mismatch` / `reason=pr_view_failed` 等）: ` ` + 「⚠️ Issue #{issue_number} のクローズを確認できませんでした（{marker の reason 値}）。`gh pr view {pr_number} -R {owner_repo} --json body,headRefName` で PR の関連 Issue を確かめ、その Issue が OPEN なら `gh issue close <番号> -R {owner_repo}` を手動実行してください」を付記
   - 該当行が無いとき: ` ` + 「⚠️ Issue #{issue_number} のクローズの実行結果を確認できませんでした。`gh issue view {issue_number} -R {owner_repo}` で状態を確認してください」を付記。**marker 不在を成功と読んではならない**
 
@@ -1211,5 +1212,5 @@ rationale: references/rationale.md#wikichain-terminal-clear
 | Branch Deletion Failure | `git branch` でブランチ一覧を確認; base ブランチに切替後再実行 |
 | Network Error | [共通パターン](../../references/common-error-handling.md) |
 | Issue Not Found | [共通パターン](../../references/common-error-handling.md) |
-| Issue Close Failure | 非ブロッキングで続行し、`{issue_close_check}` を空欄にして未完了事項に数える。回復: `gh issue view {issue_number} -R {owner_repo}` で状態確認; 手動で `gh issue close {issue_number} -R {owner_repo}` |
+| Issue Close Failure | 非ブロッキングで続行し、`{issue_close_check}` を空欄にして未完了事項に数える。回復はステップ 12 の `{issue_close_check}` の付記に従う |
 | Incomplete Task Issue Creation Failure | クリーンアップは続行; タスクを手動で Issue 化 |
