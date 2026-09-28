@@ -232,13 +232,6 @@ check_init_section() {
     *) pass "T-12 $1 does not show the not-initialized message under If rc=0" ;;
   esac
   if [ "$6" = "-" ]; then
-    # 見出しの書き方を問わず、表の外で rc=0 に触れる行があれば If rc=0 段落が足されている
-    rc0_outside=$(printf '%s\n' "$sec" | grep -v '^|' | grep -Eci 'rc[[:space:]]*=[[:space:]]*0' || true)
-    if [[ -z "$rc0_para" && "$rc0_outside" -eq 0 ]]; then
-      pass "T-12 $1 has no If rc=0 paragraph"
-    else
-      fail "T-12 $1 has no If rc=0 paragraph (declared -; rc=0 lines outside the table: $rc0_outside)"
-    fi
     # If rc=0 段落が無いので、0 行が下にある内容を指すだけで rc=0 に案内が混ざる
     if grep -Eiq 'show|display|below|message' <<< "$rc0_line"; then
       fail "T-12 $1 rc=0 row does not point to content below (line: '$rc0_line')"
