@@ -3,13 +3,16 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_hermetic-env.sh
+source "$SCRIPT_DIR/_hermetic-env.sh" || { echo "ERROR: cannot source _hermetic-env.sh" >&2; exit 1; }
+hermetic_leave_checkout || exit 1
 GATE="$SCRIPT_DIR/../scripts/wiki-apply-gate.sh"
 CAPTURE="$SCRIPT_DIR/../scripts/wiki-apply-capture.sh"
 COMMIT="$SCRIPT_DIR/../scripts/git-commit-file.sh"
 INGEST_COMMIT="$SCRIPT_DIR/../scripts/wiki-ingest-commit.sh"
 GUARD="$SCRIPT_DIR/../pre-tool-bash-guard.sh"
 ROOT="$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-apply-XXXXXX")"
-trap 'rm -rf "$ROOT"' EXIT
+trap 'rm -rf "$ROOT" "$HERMETIC_CWD"' EXIT
 
 PASS=0
 FAIL=0
