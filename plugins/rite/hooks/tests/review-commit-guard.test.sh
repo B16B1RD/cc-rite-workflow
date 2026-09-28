@@ -839,6 +839,12 @@ for closed_targets in (False, True):
         for block in blocks:
             parsed = run(['bash', str(helper), 'commit-target', '--command', block, '--cwd', str(root)], ok=False)
             check(parsed.returncode == 0, 'plugin block parses: ' + block[:80] + '\n' + parsed.stderr)
+        # A `^{commit}` peel names a revision, not a commit: it parses and reports no commit target.
+        for peel in ('git rev-parse --verify "${nref_base}^{commit}" >/dev/null 2>&1 || nref_base="{base_branch}"',
+                     'git cat-file -e "${commit_sha_before}^{commit}" 2>/dev/null'):
+            peeled = run(['bash', str(helper), 'commit-target', '--command', peel, '--cwd', str(root)], ok=False)
+            check(peeled.returncode == 0, 'commit peel parses: ' + peel + '\n' + peeled.stderr)
+            check(peeled.stdout.strip() == '', 'commit peel reports no commit target: ' + peel + '\n' + peeled.stdout)
         # Pattern 9 keeps reading only git commit: merges do not become wiki-gated commits.
         targets = run(['bash', str(helper), 'commit-target', '--command', 'git merge --continue',
                        '--cwd', str(root)])
