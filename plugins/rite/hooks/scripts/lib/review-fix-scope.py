@@ -454,8 +454,9 @@ _COMPOUND = {"if", "while", "until", "for", "case", "select", "{", "function", "
 # A parse the check cannot finish is refused; the message form below always parses.
 # Limits on the costs of one parse beyond reading its input once: each substitution level
 # scans its text again, and each cd / -C resolves the whole directory path built so far.
-# Past a limit the parse goes on without that work: a deeper substitution is not parsed,
-# and a later cd / -C leaves a dynamic target. Only a cd / -C makes a new commit / merge
+# Past a limit the parse goes on without that work: a deeper substitution is not parsed
+# (and is refused when its text could spell git and commit / merge), and a later cd / -C
+# leaves a dynamic target. Only a cd / -C makes a new commit / merge
 # target, so this also bounds the git processes that resolve targets.
 MAX_SUBSTITUTION_DEPTH = 64
 MAX_DIRECTORY_CHANGES = 16
@@ -534,8 +535,10 @@ def shell_segments(command, level=0):
     unquoted fd number or the & of &> before it comes back as a _Redirection.
     """
     if level > MAX_SUBSTITUTION_DEPTH:
-        # Unparsed text that could hold a git commit / merge is refused; other text holds none.
-        require("git" not in command or not any(name in command for name in _HEAD_MOVERS),
+        # The text is not parsed, so its words are read with quotes and backslashes (and line
+        # continuations) dropped; text whose words could spell git and commit / merge is refused.
+        flat = re.sub(r"\\\n|[\"'\\]", "", command)
+        require("git" not in flat or not any(name in flat for name in _HEAD_MOVERS),
                 "command substitutions are nested more than " + str(MAX_SUBSTITUTION_DEPTH)
                 + " deep to inspect; split the command")
         return []

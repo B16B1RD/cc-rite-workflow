@@ -1041,9 +1041,21 @@ if grep -qF 'BLOCKED (wiki-apply-unresolved)' <<<"$gout" && grep -q 'target is d
 else
   fail "guard many directory changes rc=$grc out=$gout"
 fi
+# 解析しない深さ（65 段以上）の置換は、中身を引用とバックスラッシュを外して読み、git と commit / merge を綴りうるときだけ拒否する。
+_deep() { printf 'echo %s%s%s' "$(printf '$(%.0s' $(seq 1 "$1"))" "$2" "$(printf ')%.0s' $(seq 1 "$1"))"; }
+for _cmd in "$(_deep 65 'git merge x')" "$(_deep 65 "g''it co\\mmit -m y")"; do
+  drc=0
+  dout=$(bash "$SCOPE_CHECK" commit-target --command "$_cmd" --cwd "$repo" 2>"$ROOT/target.err") || drc=$?
+  if [ "$drc" -ne 0 ] && [ -z "$dout" ] && grep -q 'nested more than 64 deep' "$ROOT/target.err"; then
+    pass "commit-target refuses a HEAD mover in an unparsed substitution: ${_cmd:(-24)}"
+  else
+    fail "commit-target deep ${_cmd:(-24)} rc=$drc out=$dout err=$(cat "$ROOT/target.err")"
+  fi
+done
 # 上限を超えた後でも、HEAD を動かさないコマンドの引数にある commit では拒否しない。
 for _cmd in "git '' commit -m x" 'git log --grep commit' 'git $OPTS log --grep commit' \
-            "${_cd17}git log --grep commit" "${_deep65}git log --grep commit"; do
+            "${_cd17}git log --grep commit" "${_deep65}git log --grep commit" \
+            "$(_deep 64 'git log --grep commit')" "$(_deep 65 'git status')" "$(_deep 65 'echo commit')"; do
   nrc=0
   nout=$(bash "$SCOPE_CHECK" commit-target --command "$_cmd" --cwd "$repo" 2>"$ROOT/target.err") || nrc=$?
   if [ "$nrc" -eq 0 ] && [ -z "$nout" ]; then

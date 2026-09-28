@@ -2427,8 +2427,8 @@ else
   fail "Pattern 7 on a ~120KB non-adjacent commit rc=$rc ms=$_ms decision=$decision reason=$reason"
 fi
 # At each limit the parser still finishes (the reason is its own) within 8s, under the
-# 10s hook timeout. Past a parser limit, a commit that could hide there is refused and a
-# command that moves no HEAD is not.
+# 10s hook timeout. Past a parser limit, a commit that could hide there is refused, and a
+# command that moves no HEAD outside an unparsed substitution is not.
 p7_max=$(sed -n 's/^_RITE_BTG_P7_PARSE_MAX_CHARS=//p' "$HOOK")
 p7_scope_py="$(dirname "$HOOK")/scripts/lib/review-fix-scope.py"
 p7_depth=$(sed -n 's/^MAX_SUBSTITUTION_DEPTH = //p' "$p7_scope_py")
@@ -2464,6 +2464,8 @@ p7_nested "$p7_depth" $(( p7_max - 3 * p7_depth - 10 - ${#p7_tail} ))
 p7_limit_case "the deepest nesting of the longest command" "creates a commit with no file changes"
 p7_nested $(( p7_depth + 1 )) 10 'git -ca commit -m' "$p7_log_tail"
 p7_limit_case "a commit nested one level too deep" "nested more than $p7_depth deep"
+p7_nested $(( p7_depth + 1 )) 10 "g''it commit -m" "$p7_log_tail"
+p7_limit_case "a quoted-apart commit nested one level too deep" "nested more than $p7_depth deep"
 p7_nested $(( p7_depth + 1 )) 10 true "$p7_log_tail"
 p7_allow_case "a git log after nesting one level too deep"
 { for _i in $(seq 1 $(( (p7_max - ${#p7_tail}) / 10 ))); do printf 'git merge;'; done

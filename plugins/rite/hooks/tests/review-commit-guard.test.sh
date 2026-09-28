@@ -933,7 +933,8 @@ for closed_targets in (False, True):
             hook(command, allowed=True)
         # Past the directory-change limit the target is dynamic, and past the nesting limit a
         # substitution is not parsed: a commit that could hide there is refused, and a command
-        # that moves no HEAD is not.
+        # that moves no HEAD outside the unparsed substitution is not.
+        # The 17th -C merge --abort moves no HEAD, and the next list's commit resolves again.
         hook(''.join('git -C d%d merge --abort;' % i for i in range(17)) + 'git commit -m x',
              reason='fix plan record missing')
         hook('cd . && ' * 16 + 'git commit -m x', reason='fix plan record missing')
@@ -941,6 +942,8 @@ for closed_targets in (False, True):
         hook('cd . && ' * 17 + 'git log --grep commit', allowed=True)
         hook('echo ' + '$(' * 65 + 'true' + ')' * 65 + '; git commit -m x', reason='fix plan record missing')
         hook('echo ' + '$(' * 65 + 'git commit -m y' + ')' * 65 + '; true', reason='nested more than')
+        hook('echo ' + '$(' * 65 + "g''it co\\mmit -m y" + ')' * 65 + '; git log --grep commit',
+             reason='nested more than')
         hook('echo ' + '$(' * 65 + 'true' + ')' * 65 + '; git log --grep commit', allowed=True)
         # The everyday forms still target the reviewed worktree.
         for command in ('cd ' + str(root) + ' && git add -A && git commit -m x',
