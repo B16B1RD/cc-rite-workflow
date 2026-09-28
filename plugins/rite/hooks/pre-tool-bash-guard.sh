@@ -62,7 +62,9 @@
 # Fail direction is pattern-specific: Patterns 1-3 (convenience) fail OPEN so an
 # edge-case parse crash never false-blocks a legitimate command; Patterns 4 and
 # 6 enforce workflow boundaries and fail CLOSED so a parse crash never silently
-# bypasses the guard. See the ERR traps below.
+# bypasses the guard. See the ERR traps below. A git commit / merge command whose
+# heredoc surface would cost more than the parse budget is denied without parsing
+# (commit-guard-uninspectable): a hook the harness kills lets the command run.
 #
 # hooks.json timeout: 10s — a generous ceiling for a bash-builtins gate, aligned
 # with the other lightweight synchronous gates (Stop=10s, bang-backtick hook=10s).
@@ -326,6 +328,32 @@ _rite_btg_pattern6_command_surface() {
     [ -n "$_decl" ] && _delimiter="$_decl"
   done <<< "$_source"
   printf '%s' "$_surface"
+}
+
+# The surface parser above reads each line one character at a time, and under a
+# UTF-8 locale every `${_line:$_i:1}` rescans the line from its start, so a parse
+# costs roughly the square of each line's length plus a fixed amount per line.
+# Patterns 6, 8 and 9 each run it, and a hook the harness kills for running past
+# its timeout lets the command run. _rite_btg_surface_within_budget estimates that
+# cost without parsing, in linear time: over the lines the parser sees (carriage
+# returns removed, continuations joined), the sum of each line's byte length
+# squared plus _RITE_BTG_SURFACE_LINE_COST. Bytes bound the cost of a multibyte
+# line from above. It succeeds only when the sum stays within
+# _RITE_BTG_SURFACE_MAX_COST (8192 squared), which keeps the three parses well
+# inside the hook timeout.
+_RITE_BTG_SURFACE_LINE_COST=16384
+_RITE_BTG_SURFACE_MAX_COST=67108864
+_rite_btg_surface_within_budget() {
+  local LC_ALL=C _s _l _cost=0
+  # Test-only, fail-CLOSED-only fault injection: a failed estimate must deny.
+  [ "${RITE_BTG_TEST_CRASH:-}" != "surface-budget" ] || return 2
+  _s="${1//$'\r'/}"
+  _s="${_s//$'\\\n'/}"
+  while IFS= read -r _l || [ -n "$_l" ]; do
+    _cost=$(( _cost + ${#_l} * ${#_l} + _RITE_BTG_SURFACE_LINE_COST ))
+    [ "$_cost" -le "$_RITE_BTG_SURFACE_MAX_COST" ] || return 1
+  done <<< "$_s"
+  [ "$_cost" -le "$_RITE_BTG_SURFACE_MAX_COST" ]
 }
 
 # Scan a command for sub-block (S) and set _sc_hit to the state-changing command
@@ -1254,8 +1282,17 @@ if [ -z "$BLOCKED_PATTERN" ]; then
   fi
   # The common no-heredoc path needs no line parser. Keeping it on built-in
   # substitutions preserves the existing large-command timeout invariant.
+  # Past the parse budget the raw command is checked, heredoc bodies included:
+  # a body that mentions gh issue create is then denied, but the hook does not
+  # run out of time.
+  _p6_raw=""
   if [[ "$COMMAND" == *"<<"* ]]; then
-    P6_CHECK=$(_rite_btg_pattern6_command_surface "$COMMAND")
+    if _rite_btg_surface_within_budget "$COMMAND"; then
+      P6_CHECK=$(_rite_btg_pattern6_command_surface "$COMMAND")
+    else
+      P6_CHECK="$COMMAND"
+      _p6_raw=1
+    fi
   else
     P6_CHECK="$COMMAND"
   fi
@@ -1267,6 +1304,10 @@ if [ -z "$BLOCKED_PATTERN" ]; then
     BLOCKED_PATTERN="direct-gh-issue-create"
     BLOCKED_REASON="Direct gh issue create bypasses the required Issue format and Projects registration."
     BLOCKED_ALTERNATIVE="Use create-issue-with-projects.sh or /rite:issue-create so the Issue is created through the approved helper."
+    if [ -n "$_p6_raw" ]; then
+      BLOCKED_REASON+=" This command is too long to separate its heredoc bodies from its commands within the hook time limit, so the bodies were checked too."
+      BLOCKED_ALTERNATIVE+=" Write long heredoc text to a file in one Bash call and pass the file in another."
+    fi
   fi
   trap '_rite_btg_pattern13_fail_open' ERR
 fi
@@ -1300,6 +1341,19 @@ if [ -z "$BLOCKED_PATTERN" ] && [[ "$CMD_CHECK" =~ (^|[[:space:]])--allow-empty(
     BLOCKED_PATTERN="git-commit-allow-empty"
     BLOCKED_REASON="$_p7_reason"
     BLOCKED_ALTERNATIVE="Leave the changes as files, or revisit the Issue. Do not create an empty commit."
+  fi
+fi
+
+# Patterns 8 and 9 parse the command's heredoc surface. A command past the parse
+# budget cannot be inspected within the hook timeout, and a killed hook lets it
+# run, so it is denied here whether or not it would move HEAD.
+if [ -z "$BLOCKED_PATTERN" ] && [[ "$COMMAND" == *git* && ( "$COMMAND" == *commit* || "$COMMAND" == *merge* ) ]]; then
+  if _rite_btg_surface_within_budget "$COMMAND"; then
+    :
+  else
+    BLOCKED_PATTERN="commit-guard-uninspectable"
+    BLOCKED_REASON="This command mentions git and commit or merge, and its lines are too long for the commit checks to inspect within the hook time limit (${#COMMAND} characters). A check that runs out of time lets the command run, so it is denied without inspection."
+    BLOCKED_ALTERNATIVE="Write a long commit message to a file outside the work tree and run git commit -F <message-file> in its own Bash call. Run a long script in a separate Bash call from the commit."
   fi
 fi
 

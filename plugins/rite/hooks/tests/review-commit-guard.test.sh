@@ -945,6 +945,10 @@ for closed_targets in (False, True):
         hook('echo ' + '$(' * 65 + "g''it co\\mmit -m y" + ')' * 65 + '; git log --grep commit',
              reason='nested more than')
         hook('echo ' + '$(' * 65 + 'true' + ')' * 65 + '; git log --grep commit', allowed=True)
+        # Within the parse budget a long command still reaches the commit check: a heredoc
+        # message of many short lines, and one long line followed by short lines.
+        hook("git commit -F - <<'EOF'\n" + ('x' * 71 + '\n') * 420 + 'EOF', reason='fix plan record missing')
+        hook('git commit -m ' + 'x' * 7960 + '\n' + 'echo abcdefghij\n' * 150, reason='fix plan record missing')
         # The everyday forms still target the reviewed worktree.
         for command in ('cd ' + str(root) + ' && git add -A && git commit -m x',
                         'cd ' + str(root) + ' && git add -A; git commit -m x',
