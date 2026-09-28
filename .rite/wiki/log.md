@@ -162,6 +162,7 @@
 * **Update**: [保留（hold）を新設したら、寿命を state を消す全経路で揃え、解除の手段を保留の理由ごとに用意する](pages/heuristics/new-hold-state-lifecycle-across-all-purge-paths.md) — raw/fixes/20260928T111657Z-pr-3393.md と raw/reviews/20260928T113417Z-pr-3393.md と raw/fixes/20260928T120704Z-pr-3393.md と raw/reviews/20260928T122519Z-pr-3393.md で補強
 * **Skip**: [20260928T111304Z-pr-3388.md](raw/fixes/20260928T111304Z-pr-3388.md) — 既存の mutation testing ページと同内容で新しい経験則がない
 * **Skip**: [20260928T112647Z-pr-3388.md](raw/reviews/20260928T112647Z-pr-3388.md) — デッドコード削除の自明な事例で一般化できる経験則がない
+* **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=61, orphans=0, missing_concept=0, unregistered_raw=580, broken_refs=0
 
 ## 2026-09-27
 
