@@ -47,6 +47,25 @@
 * **Create**: [読み直しによる検証は操作の不発しか捕まえない — 対象の取り違えには独立した照合元が要る](pages/heuristics/readback-verification-misses-wrong-target.md) — raw/reviews/20260927T220423Z-pr-3358.md を新規ページ化
 * **Skip**: [20260927T220912Z-pr-3355.md](raw/reviews/20260927T220912Z-pr-3355.md) — レビュー結果の要約のみで、再利用できる経験則を含まない
 * **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=63, orphans=0, missing_concept=0, unregistered_raw=572, broken_refs=0
+* **Update**: [読み直しによる検証は操作の不発しか捕まえない — 対象の取り違えには独立した照合元が要る](pages/heuristics/readback-verification-misses-wrong-target.md) — raw/fixes/20260928T001608Z-pr-3358.md を統合
+* **Create**: [本文を helper へ移すと、fenced block をコーパスにするテストの検査数が無言で減る](pages/anti-patterns/helper-relocation-silently-shrinks-corpus-tests.md) — raw/reviews/20260928T001746Z-pr-3349.md を新規ページ化
+* **Update**: [同一手順が複数 site に分散する場合は片方を canonical source と宣言する](pages/patterns/canonical-source-declaration-for-multi-site-procedure.md) — raw/reviews/20260928T002532Z-pr-3358.md を統合
+* **Create**: [外部参照を読む手順を足すときは、値が空になる上流経路を外部コマンドの前に専用の理由で分岐する](pages/heuristics/external-ref-empty-upstream-path-branches-before-call.md) — raw/fixes/20260928T003222Z-pr-3358.md を新規ページ化
+* **Create**: [fail-loud ガードの入口判定は、下流が実際に扱う範囲と同じ判定モードにそろえる](pages/heuristics/guard-entry-condition-matches-downstream-mode.md) — raw/reviews/20260928T003328Z-pr-3363.md を新規ページ化
+* **Create**: [fail-loud ガードの入口判定は、下流が実際に扱う範囲と同じ判定モードにそろえる](pages/heuristics/guard-entry-condition-matches-downstream-mode.md) — raw/fixes/20260928T003626Z-pr-3363.md を新規ページ化
+* **Create**: [本文を helper へ移すと、fenced block をコーパスにするテストの検査数が無言で減る](pages/anti-patterns/helper-relocation-silently-shrinks-corpus-tests.md) — raw/fixes/20260928T003849Z-pr-3349.md を新規ページ化
+* **Update**: [LLM が読む出力ストリームで marker を契約にするには prefix・行頭・デリミタ・識別子スコープの 4 条件すべてが要る](pages/patterns/llm-read-marker-contract-four-conditions.md) — raw/reviews/20260928T003951Z-pr-3358.md を統合
+* **Create**: [fail-loud ガードの入口判定は、下流が実際に扱う範囲と同じ判定モードにそろえる](pages/heuristics/guard-entry-condition-matches-downstream-mode.md) — raw/reviews/20260928T004428Z-pr-3363.md を新規ページ化
+* **Create**: [fail-loud ガードの入口判定は、下流が実際に扱う範囲と同じ判定モードにそろえる](pages/heuristics/guard-entry-condition-matches-downstream-mode.md) — raw/fixes/20260928T004629Z-pr-3363.md を新規ページ化
+* **Update**: [LLM が読む出力ストリームで marker を契約にするには prefix・行頭・デリミタ・識別子スコープの 4 条件すべてが要る](pages/patterns/llm-read-marker-contract-four-conditions.md) — raw/fixes/20260928T004648Z-pr-3358.md を統合
+* **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — raw/reviews/20260928T005008Z-pr-3365.md を統合
+* **Skip**: [20260928T005028Z-pr-3364.md](raw/reviews/20260928T005028Z-pr-3364.md) — rite の手順固有の知見（Wiki 適用証跡の evidence 形式と head の前進）で、ゲートが既に機械的に強制しているため経験則化しない
+* **Create**: [fail-loud ガードの入口判定は、下流が実際に扱う範囲と同じ判定モードにそろえる](pages/heuristics/guard-entry-condition-matches-downstream-mode.md) — raw/reviews/20260928T005244Z-pr-3363.md を新規ページ化
+* **Update**: [ゲートの判定文を新しい欠落種別へ広げたら、同じ marker を消費する option 表・テンプレート・例示 literal を同じ commit で一般化する](pages/heuristics/gate-predicate-widening-generalizes-consumer-literals.md) — raw/reviews/20260928T005306Z-pr-3358.md を統合
+* **Update**: [実装が Issue の MUST と原則の両方に挟まれたら、実装を戻さず契約側（Decision Log と AC の例外）を更新する](pages/heuristics/contract-update-over-revert-on-must-conflict.md) — raw/reviews/20260928T005344Z-pr-3349.md を統合
+* **Create**: [fail-loud ガードの入口判定は、下流が実際に扱う範囲と同じ判定モードにそろえる](pages/heuristics/guard-entry-condition-matches-downstream-mode.md) — raw/fixes/20260928T005445Z-pr-3363.md を新規ページ化
+* **Skip**: [20260928T005853Z-pr-3364.md](raw/fixes/20260928T005853Z-pr-3364.md) — PR 内推奨の消化と手順の動作確認の記録で、Wiki 適用証跡の形式はゲートが既に機械的に強制しているため経験則化しない
+* **Update**: [fail し得る解決と本文の抽出を別関数に分け、fail はコマンド置換の外で呼ぶ](pages/patterns/test-helper-fail-outside-command-substitution.md) — raw/fixes/20260928T005952Z-pr-3365.md を統合
 
 ## 2026-09-27
 

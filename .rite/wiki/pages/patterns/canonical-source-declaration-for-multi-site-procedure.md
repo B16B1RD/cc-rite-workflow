@@ -19,9 +19,13 @@ sources:
     resource: "raw/fixes/20260513T080706Z-pr-947-fix-cycle-1.md"
   - type: "fixes"
     resource: "raw/fixes/20260513T081626Z-pr-947-fix-cycle-2.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T002532Z-pr-3358.md"
 tags: ["canonical-source", "drift-prevention", "asymmetric-fix-transcription", "precedence-rule", "review-fix-convergence", "multi-canonical-per-file", "citation-structuring"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-13T08:55:00+00:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T01:02:34Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T01:02:34Z" }
 ---
 
 # 同一手順が複数 site に分散する場合は片方を canonical source と宣言する
@@ -115,6 +119,8 @@ canonical 参照を 1 文に詰め込まず NOTE を意味的に分離するこ�
 
 1 cycle 事例が 1 cycle で済んだのは `ingest.md` L530 **単独** で canonical 宣言を完結させたため。3 cycle 事例は references → ingest.md の **cross-file 参照** に複数の canonical (Phase 4.3 値決定手順 / Phase 5.3 動作契約) を扱う必要があり、概念階層を NOTE 内で解きほぐすコストが余分にかかった。Cross-file + multi-canonical の組み合わせは収束 cycle 数が増えると認識する。
 
+復旧手順にも同じことが当てはまる。同じ失敗の復旧手順を 1 つのファイルの複数箇所（ステップ本文の付記とエラー処理表など）に持つと、片方だけ更新されて食い違う。一方を他方へのポインタにすると、食い違いは構造的に起きなくなる。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -130,3 +136,4 @@ canonical 参照を 1 文に詰め込まず NOTE を意味的に分離するこ�
 - [0 findings 着地 + 3 cycle convergence pattern](../../raw/reviews/20260513T082018Z-pr-947-cycle-3.md)
 - [multi-canonical-per-file 認識](../../raw/fixes/20260513T080706Z-pr-947-fix-cycle-1.md)
 - [citation 3 段階分離による構造化解決](../../raw/fixes/20260513T081626Z-pr-947-fix-cycle-2.md)
+- [レビュー結果](../../raw/reviews/20260928T002532Z-pr-3358.md)

@@ -25,9 +25,15 @@ sources:
     resource: "raw/reviews/20260726T000331Z-pr-2022.md"
   - type: "reviews"
     resource: "raw/reviews/20260726T094803Z-pr-2022.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T003951Z-pr-3358.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260928T004648Z-pr-3358.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-26T10:05:51Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T01:02:34Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T01:02:34Z" }
 ---
 
 # LLM が読む出力ストリームで marker を契約にするには prefix・行頭・デリミタ・識別子スコープの 4 条件すべてが要る
@@ -66,6 +72,8 @@ SKILL.md の bash ブロックが `[CONTEXT] X=1` 形式の marker を stdout/st
 
 marker に外部由来の値（ブランチ名）を載せる設計では、値がデリミタ文字を含むと右端境界を騙って別エンティティの判定へ誤帰属する。エンコード規約を emitter/consumer の両側へ増やすより、契約を満たせない入力を fail-fast で弾く方が単純。
 
+marker を消費する散文の判定条件は、実際に出る行のフィールドの並びとそろえる。`A=x; reason=y` のように間のフィールドを省いた書き方は、間に別のフィールドを持つ実際の行と字義どおりに照合すると一致しない。条件は「A=x かつ reason=y」のようにフィールド単位で書くと、間に別フィールドが挟まっても照合できる。同じ節で placeholder を空にする経路を説明するときは、隣接する同種の指示と同じ命令形で書く。平叙文にすると置換の指示として読まれない。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -77,3 +85,5 @@ marker に外部由来の値（ブランチ名）を載せる設計では、値�
 - [fix 結果](../../raw/fixes/20260726T055002Z-pr-2022.md)
 - [fix 結果](../../raw/fixes/20260726T033136Z-pr-2022.md)
 - [レビュー結果](../../raw/reviews/20260726T031335Z-pr-2022.md)
+- [レビュー結果](../../raw/reviews/20260928T003951Z-pr-3358.md)
+- [fix 結果](../../raw/fixes/20260928T004648Z-pr-3358.md)

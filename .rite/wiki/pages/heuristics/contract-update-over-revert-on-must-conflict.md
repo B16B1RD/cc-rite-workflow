@@ -4,7 +4,7 @@ title: "実装が Issue の MUST と原則の両方に挟まれたら、実装�
 domain: "heuristics"
 description: "純粋抽出リファクタの「振る舞い不変」MUST と fail-loud 原則のように、実装を直すことが別の MUST 違反になる衝突では、実装を機械的に復元しても同じ reviewer が同じ指摘を再発行する往復になる。契約側へ例外を明記して閉じるほうが収束する。"
 created: "2026-09-01T20:26:00+09:00"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T04:29:37Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T01:02:34Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260901T092252Z-pr-2498.md"
@@ -22,8 +22,16 @@ sources:
     resource: "raw/fixes/20260926T041334Z-pr-3099.md"
   - type: "reviews"
     resource: "raw/reviews/20260926T042414Z-pr-3099.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T001746Z-pr-3349.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260928T003849Z-pr-3349.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T005344Z-pr-3349.md"
 tags: []
 confidence: high
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T01:02:34Z" }
 ---
 
 # 実装が Issue の MUST と原則の両方に挟まれたら、実装を戻さず契約側（Decision Log と AC の例外）を更新する
@@ -60,6 +68,8 @@ confidence: high
 
 **revert を選んだ場合の検証 baseline は「導入 commit の親」**: 逆に実装を戻す判断をしたときは、`develop` との照合で検証してはならない。当該 call site が `develop` に存在しない（この PR で初めて入った）場合、その照合は成立しない。最も強い証拠は `git diff <その hunk を導入した commit の親>..HEAD -- <file>` が空であること。
 
+例外の書き場所にも注意が要る。受入条件の例外を実装中の Decision Log にだけ書くと、受入条件確認は AC の本文を字義どおり読むため、前の cycle で充足と判定されていても未充足と判定しうる。例外が必要になった時点で、AC の本文そのものを Issue の所有者の合意のもとで改訂する。また、AC が「各サブコマンドの実測を PR 本文に記録する」のように集合を名指しするときは、代表サンプルではなく名指しされた集合を全件記録する。副作用のあるサブコマンドは、実使用か、使い捨ての state root・存在しない ID・使い捨て番号への probe かを行ごとに明記し、probe の後に副作用が無いことを確かめる。
+
 ## 関連ページ
 
 - [インライン処理の helper 抽出は「helper が起動しない」経路を新設し、marker 不在＝成功の消費規則を破る](../anti-patterns/helper-extraction-creates-unstarted-path.md)
@@ -75,3 +85,6 @@ confidence: high
 - [レビュー結果](../../raw/reviews/20260926T040720Z-pr-3099.md)
 - [fix 結果](../../raw/fixes/20260926T041334Z-pr-3099.md)
 - [レビュー結果](../../raw/reviews/20260926T042414Z-pr-3099.md)
+- [レビュー結果](../../raw/reviews/20260928T001746Z-pr-3349.md)
+- [fix 結果](../../raw/fixes/20260928T003849Z-pr-3349.md)
+- [レビュー結果](../../raw/reviews/20260928T005344Z-pr-3349.md)

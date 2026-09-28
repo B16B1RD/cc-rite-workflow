@@ -63,9 +63,11 @@ sources:
     resource: "raw/reviews/20260927T162928Z-pr-3309.md"
   - type: "fixes"
     resource: "raw/fixes/20260927T171357Z-pr-3318.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T005008Z-pr-3365.md"
 tags: ["test", "fixture", "mutation", "invariant", "coverage"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T17:19:25Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T01:02:34Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T18:43:00+00:00" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T23:20:00+00:00" }
@@ -84,6 +86,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:56:46Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:35:29Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T17:19:25Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T01:02:34Z" }
 ---
 
 # テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する
@@ -263,6 +266,10 @@ guard・不変量の TC を追加したら、worktree-only mutation（当該 gua
 helper の docstring が「この場合に記録を書く」と分岐を列挙しているのに、その一部に対応するテストが無いと、その分岐だけで記録を省く変異が生き残る。列挙された分岐ごとにケースを置き、既存の fixture を流用して足りない分岐（別の経路から入る場合など）を 1 件ずつ加える。変異を一時的に入れて、新しい assert だけが落ちることを確かめてから戻す。
 
 
+## 正規表現の文字クラスは要素ごとに fixture を持たせる
+
+正規表現の文字クラス（例: printf のフラグ）を固定するとき、fixture で使われていない要素は、クラスから外す変異を当てても生き残る。要素ごとに fixture を 1 つ持たせ、要素を外す変異で対応する assert だけが落ちることを確かめてから固定する。あわせて、検出器の走査範囲と文書の表現を一致させる。文書が「書式に…を持つ」と書く一方で実装が producer 段全体を走査していると、書式の外にある数字や `%%` の後の数字まで報告する（安全側だが、文書と実装の食い違いになる）。
+
 ## 関連ページ
 
 - [位置依存の表パースには検査行数ガードを対にする（silent false-pass 遮断）](../patterns/positional-parse-row-count-guard.md)
@@ -301,3 +308,4 @@ helper の docstring が「この場合に記録を書く」と分岐を列挙�
 - [候補値が一致する fixture では参照先の差し替えを検出できないと確かめたレビュー結果](../../raw/reviews/20260927T144951Z-pr-3289.md)
 - [rc ごとの後始末をループで固定し、分岐単位の変異で検出力を確かめたレビュー結果](../../raw/reviews/20260927T162928Z-pr-3309.md)
 - [docstring の分岐列挙に合わせてテストを 1 件追加した fix 結果](../../raw/fixes/20260927T171357Z-pr-3318.md)
+- [レビュー結果](../../raw/reviews/20260928T005008Z-pr-3365.md)

@@ -4,14 +4,18 @@ title: "fail し得る解決と本文の抽出を別関数に分け、fail は�
 domain: "patterns"
 description: "bash テストの helper が `$(...)` の中で `fail` を呼ぶと、失敗カウンタの加算はサブシェルで消え、呼び出し側には空文字だけが返る。位置の解決（fail し得る）と本文の抽出（fail しない）を別関数に分け、前者をトップレベルで実行してグローバル変数で受け渡すと、失敗はカウンタに残り、下流の assert が別の原因を名乗ることもなくなる。"
 created: "2026-09-16T12:09:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-16T12:09:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T01:02:34Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260916T114658Z-pr-2910.md"
   - type: "fixes"
     resource: "raw/fixes/20260916T112742Z-pr-2910-fix.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260928T005952Z-pr-3365.md"
 tags: ["bash", "test-helpers", "subshell", "fail-loud"]
 confidence: high
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T01:02:34Z" }
 ---
 
 # fail し得る解決と本文の抽出を別関数に分け、fail はコマンド置換の外で呼ぶ
@@ -51,6 +55,8 @@ fence=$(fence_after "$HEADING_LINE" "$file")
 
 見出しを消した複製と、見出し・fence・段落を末尾に複製して 2 回一致にした複製の 2 つの mutant を作り、`heading_line` が `fail` を出力して `HEADING_LINE=0` になること、親シェルの `FAIL` が 0 → 1 → 2 と増えて `FAILED_NAMES` に 2 件残ること、下流の抽出が 0 バイトを返すことを実測する。`grep` の rc（不一致 1 / ファイル不在 2）はどちらも出力が空になって同じ `fail` 経路に落ちるため、rc の分岐を足す必要はない。
 
+代入と `|| fail` を別の文に分けるだけでは十分でない。失敗した代入の後も後続の判定が走ると、空の出力を読んで原因と異なる fail 名を記録する。失敗時は後続の判定を if/else で飛ばし、記録される fail 名が 1 つの原因だけを指すようにする。関数に新しい失敗の戻り値を足したときは、その値を返す入力（存在しないファイルなど）を直接渡すメタ assert を置く。置かないと、戻り値を元に戻す変更がテストで検出されない。
+
 ## 関連ページ
 
 - [PIPESTATUS はコマンド置換 `$(...)` のサブシェル境界を越えない](../heuristics/pipestatus-subshell-scoping-command-substitution.md)
@@ -60,3 +66,4 @@ fence=$(fence_after "$HEADING_LINE" "$file")
 
 - [fail の呼び出し位置とカウンタ保持を mutant で実測したレビュー結果](../../raw/reviews/20260916T114658Z-pr-2910.md)
 - [見出し解決と本文抽出を分けた fix 結果](../../raw/fixes/20260916T112742Z-pr-2910-fix.md)
+- [fix 結果](../../raw/fixes/20260928T005952Z-pr-3365.md)
