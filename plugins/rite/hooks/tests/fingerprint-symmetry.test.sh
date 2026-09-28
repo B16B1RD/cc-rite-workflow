@@ -63,6 +63,30 @@ else
   pass "a backtick in the description is not executed"
 fi
 
+# 記録済みの 1 件と一致しない finding は抑止しない。state が空・読み取り失敗でも抑止は出ないため、
+# 照合まで届いたことを state の件数と FINGERPRINT_COMPUTE_FAILED の不在で確かめる
+jq -n '{file: "./src/a.sh", category: "code_quality", description: "別の指摘"}' > "$WORK/other.json"
+assert "the state holds the one accepted fingerprint before the mismatch check" "1" "$(grep -c . "$WORK/.rite/state/accepted-fingerprints-91.txt" 2>/dev/null)"
+check_out=$(run_check "$WORK/other.json"); check_rc=$?
+assert "fingerprint-check on a mismatched finding exits 0" "0" "$check_rc"
+case "$check_out" in
+  *"FINDING_SUPPRESSED_BY_ACCEPT"*|*"FINGERPRINT_COMPUTE_FAILED"*) fail "fingerprint-check does not suppress a finding whose fingerprint accept did not record (got: $check_out)" ;;
+  *) pass "fingerprint-check does not suppress a finding whose fingerprint accept did not record" ;;
+esac
+
+# pr_number が数値でないときの marker は、比較を飛ばした finding を finding_id で示す
+check_out=$(cd "$WORK" && bash "$STEP" fingerprint-check --pr '{pr_number}' --finding-id F-01 --severity HIGH --finding-file "$WORK/finding.json" 2>&1); check_rc=$?
+assert "fingerprint-check with a non-numeric pr exits 0" "0" "$check_rc"
+if grep -qFx '[CONTEXT] FINGERPRINT_COMPUTE_FAILED=1; reason=pr_number_placeholder_residue; finding_id=F-01' <<< "$check_out"; then
+  pass "the pr_number residue marker names the finding"
+else
+  fail "the pr_number residue marker names the finding (got: $check_out)"
+fi
+case "$check_out" in
+  *"file="*|*"FINDING_SUPPRESSED_BY_ACCEPT"*) fail "the pr_number residue path neither prints an empty file= nor suppresses (got: $check_out)" ;;
+  *) pass "the pr_number residue path neither prints an empty file= nor suppresses" ;;
+esac
+
 # 読み取り失敗: 空値から計算せず、両側とも理由付きの marker を出して rc=0 で終える
 printf '{"file": "a", "category": "c", "description": "x" "y"}\n' > "$WORK/broken.json"
 check_out=$(run_check "$WORK/broken.json"); check_rc=$?
