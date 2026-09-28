@@ -1168,9 +1168,8 @@ echo ""
 
 echo "TC-124: oversized command → length-guard fail-closed deny WITHOUT the O(n²) paths"
 # The (L) length guard is the primary timeout-bypass bound: any reviewer command
-# over the byte ceiling is denied fail-closed BEFORE the O(n²) heredoc strip
-# (${COMMAND%%<<*}, ~45s on ~1.3MB) and the O(n²) Pattern 2 regex (>2min on a few
-# MB) — both of which would otherwise time out the fail-open hook and let a padded
+# over the byte ceiling is denied fail-closed BEFORE the O(n²) Pattern 2 regex
+# (>2min on a few MB), which would otherwise time out the fail-open hook and let a padded
 # .git write run. Build huge commands via temp file + --rawfile to avoid argv
 # limits, and pin that the deny is FAST (proves the O(n²) work is skipped).
 tc124_dir=$(mktemp -d)
@@ -1217,10 +1216,8 @@ fi
 # The length guard checks ${#COMMAND} over the WHOLE command (heredoc body included),
 # so it fires here. Non-vacuous (review F-06): the prefix `git status` is
 # read-only, so WITHOUT the length guard the heredoc strip yields `git status` and the
-# command is ALLOWED — WITH it the command is denied. (Note: the `<<` sits near the
-# front, so `${COMMAND%%<<*}` is itself fast here regardless — this case pins the
-# length guard's use of the full command length, not the O(n²) strip skip; the O(n²)
-# no-heredoc path is covered by (a).)
+# command is ALLOWED — WITH it the command is denied. This case pins the length
+# guard's use of the full command length.
 { printf 'git status <<EOF\n'; printf 'y%.0s' $(seq 1 200000); printf '\nEOF'; } > "$tc124_dir/hd.txt"
 jq -n --rawfile cmd "$tc124_dir/hd.txt" --arg tp "$SUBAGENT_TRANSCRIPT" \
   '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}' > "$tc124_dir/hdin.json"
@@ -2419,16 +2416,54 @@ if [ "$rc" = "0" ] && [ -z "$output" ] && [ "$_ms" -lt 5000 ]; then
 else
   fail "Pattern 7 on a ~600KB git -c command rc=$rc ms=$_ms output=$output"
 fi
-# A non-adjacent commit goes through the parser; a long word of > signs must not slow it down.
+# A non-adjacent commit longer than the parser's input limit is denied without parsing.
 { printf 'git -c a=b commit --allow-empty -m x a'; printf '%*s' 120000 '' | tr ' ' '>'; } > "$p7_big"
 p7_timed "$p7_big"
 decision=$(extract_hook_field "$output" permissionDecision)
 reason=$(extract_hook_field "$output" permissionDecisionReason)
-if [ "$decision" = "deny" ] && [[ "$reason" == *"creates a commit with no file changes"* ]] && [ "$_ms" -lt 5000 ]; then
-  pass "Pattern 7 parser path denies a ~120KB non-adjacent commit within 5s (${_ms}ms)"
+if [ "$decision" = "deny" ] && [[ "$reason" == *"too long to inspect"* ]] && [ "$_ms" -lt 5000 ]; then
+  pass "Pattern 7 denies a ~120KB non-adjacent commit as too long to inspect (${_ms}ms)"
 else
-  fail "Pattern 7 parser path on a ~120KB command rc=$rc ms=$_ms decision=$decision reason=$reason"
+  fail "Pattern 7 on a ~120KB non-adjacent commit rc=$rc ms=$_ms decision=$decision reason=$reason"
 fi
+# Just under the limit, the parser's slowest shapes (deeply nested substitutions, and a
+# git rev-parse for each merge) still return within the hook timeout.
+{ printf 'echo '; printf '$(%.0s' $(seq 1 950); printf 'echo '; printf '%*s' 28000 '' | tr ' ' 'x'
+  printf ')%.0s' $(seq 1 950); printf '; git -ca commit --allow-empty -m x'; } > "$p7_big"
+p7_timed "$p7_big"
+decision=$(extract_hook_field "$output" permissionDecision)
+if [ "$decision" = "deny" ] && [ "$_ms" -lt 5000 ]; then
+  pass "Pattern 7 denies a nested-substitution commit just under the parser limit within 5s (${_ms}ms)"
+else
+  fail "Pattern 7 on a nested-substitution commit rc=$rc ms=$_ms decision=$decision"
+fi
+{ for _i in $(seq 1 2000); do printf 'git -ca merge x;'; done; printf 'git -ca commit --allow-empty -m x'; } > "$p7_big"
+p7_timed "$p7_big"
+decision=$(extract_hook_field "$output" permissionDecision)
+if [ "$decision" = "deny" ] && [ "$_ms" -lt 5000 ]; then
+  pass "Pattern 7 denies a commit after 2000 merges just under the parser limit within 5s (${_ms}ms)"
+else
+  fail "Pattern 7 on a commit after 2000 merges rc=$rc ms=$_ms decision=$decision"
+fi
+# The parser itself stays linear: a long word of > signs and a long run of wrapper options.
+p7_scope_check="$(dirname "$HOOK")/scripts/review-fix-scope-check.sh"
+for p7_shape in gt wrapper; do
+  if [ "$p7_shape" = gt ]; then
+    { printf 'git -c a=b commit --allow-empty -m x a'; printf '%*s' 120000 '' | tr ' ' '>'; } > "$p7_big"
+  else
+    { printf 'env '; printf -- '-i %.0s' $(seq 1 40000); printf 'git -c a=b commit --allow-empty -m x'; } > "$p7_big"
+  fi
+  rc=0
+  _t0=$(date +%s%N)
+  output=$(_timeout 15 bash "$p7_scope_check" commit-target --command "$(cat "$p7_big")" --cwd "$p7_repo" 2>&1) || rc=$?
+  _t1=$(date +%s%N)
+  _ms=$(( (_t1 - _t0) / 1000000 ))
+  if [ "$rc" = "0" ] && [[ "$output" == index* || "$output" == other* ]] && [ "$_ms" -lt 1000 ]; then
+    pass "commit-target parses a ~120KB $p7_shape command within 1s (${_ms}ms)"
+  else
+    fail "commit-target on a ~120KB $p7_shape command rc=$rc ms=$_ms output=$(printf '%s' "$output" | head -c 200)"
+  fi
+done
 rm -rf "$p7_repo"
 echo ""
 

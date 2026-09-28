@@ -302,8 +302,8 @@ BLOCKED_ALTERNATIVE=""
 
 # --- (L) Reviewer command length guard (O(1), primary fail-closed bound) ---
 # Runs BEFORE the heredoc strip and every pattern check: that downstream work is
-# whole-string, and the `${COMMAND%%<<*}` strip / Pattern 2 regex are O(n²) on
-# MB-scale input (empirically ~45s / >2min). A timed-out PreToolUse hook fails
+# whole-string, and the Pattern 2 regex is O(n²) on MB-scale input (empirically
+# >2min). A timed-out PreToolUse hook fails
 # OPEN (Claude Code cancels it and lets the tool run), so a reviewer could pad a
 # .git write until parsing times out, dropping the deny. The ERR trap cannot
 # catch a timeout (the process is killed externally), so the bound must be
@@ -948,13 +948,19 @@ fi
 # is not denied. Detection is CMD_CHECK (heredoc-stripped).
 # When git and commit are not adjacent (global options, redirections or a
 # variable between them), the commit is found by the same parser as Patterns 8
-# and 9 (review-fix-scope-check.sh commit-target), which runs in linear time. A
-# commit it cannot resolve (a variable that may expand to nothing, an
-# unfinished quote) is denied too.
+# and 9 (review-fix-scope-check.sh commit-target). A commit it cannot resolve (a
+# variable that may expand to nothing, an unfinished quote) is denied too.
+# The parser's cost also grows with the nesting depth of command substitutions
+# and with each commit / merge it resolves (one git rev-parse each), so a longer
+# input than _RITE_BTG_P7_PARSE_MAX_CHARS is denied without parsing; at that
+# size its worst case stays well within the hook timeout.
+_RITE_BTG_P7_PARSE_MAX_CHARS=32768
 if [ -z "$BLOCKED_PATTERN" ] && [[ "$CMD_CHECK" =~ (^|[[:space:]])--allow-empty([^[:alnum:]_-]|$) ]]; then
   _p7_reason=""
   if [[ "$CMD_CHECK" =~ (^|[^[:alnum:]_])git[[:space:]]+commit([^[:alnum:]_-]|$) ]]; then
     _p7_reason="git commit --allow-empty creates a commit with no file changes."
+  elif [[ "$CMD_CHECK" == *git* && "$CMD_CHECK" == *commit* ]] && [ "${#CMD_CHECK}" -gt "$_RITE_BTG_P7_PARSE_MAX_CHARS" ]; then
+    _p7_reason="git commit --allow-empty cannot be ruled out: the command is too long to inspect (${#CMD_CHECK} characters, limit ${_RITE_BTG_P7_PARSE_MAX_CHARS}); run the commit as a shorter command."
   elif [[ "$CMD_CHECK" == *git* && "$CMD_CHECK" == *commit* ]]; then
     _p7_cwd=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || _p7_cwd=""
     if _p7_targets=$(bash "$SCRIPT_DIR/scripts/review-fix-scope-check.sh" commit-target \
