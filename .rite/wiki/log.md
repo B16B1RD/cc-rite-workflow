@@ -118,6 +118,7 @@
 * **Create**: [外部ツールの入力仕様は公式ドキュメントの原文で確かめ、テスト fixture は実際に届く形で組む](pages/heuristics/external-input-spec-verify-official-source-real-fixture.md) — raw/reviews/20260928T053923Z-pr-3390.md を新規ページ化
 * **Update**: [外部ツールの入力仕様は公式ドキュメントの原文で確かめ、テスト fixture は実際に届く形で組む](pages/heuristics/external-input-spec-verify-official-source-real-fixture.md) — raw/fixes/20260928T054820Z-pr-3390.md を統合
 * **Update**: [仕様改訂の境界をまたいで観測を比べると停止判定が狂う — 各観測はその区間の基準と比べる](pages/anti-patterns/cross-boundary-comparison-after-spec-revision.md) — raw/fixes/20260928T053745Z-pr-3376.md を統合
+* **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=62, orphans=0, missing_concept=0, unregistered_raw=578, broken_refs=0
 
 ## 2026-09-27
 
