@@ -642,17 +642,26 @@ def work_seconds(run):
 
 
 def criteria(body, purpose):
-    """Acceptance criteria of an Issue body as {ID: normalized text}, in document order."""
+    """Acceptance criteria of an Issue body as {ID: verbatim text}, in document order.
+
+    The body is read as the specification check reads it, so bodies that check
+    as the same specification yield the same criteria.
+    """
     script = Path(__file__).resolve().parents[3] / "scripts/acceptance-criteria-check.sh"
     with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".md") as stream:
-        stream.write(body)
+        stream.write(cycle.normalize_issue_body(body))
         stream.flush()
         result = subprocess.run(["bash", str(script), "items", "--body-file", stream.name],
                                 capture_output=True, text=True)
     require(result.returncode == 0, "Issue acceptance criteria cannot be extracted; " + purpose + ": "
             + result.stderr.strip())
-    # The helper ends records only at "\n"; splitlines() would also split at U+2028 inside a text.
-    return dict(line.split("\t", 1) for line in result.stdout.split("\n") if line)
+    texts = {}
+    # The helper ends records only at "\n"; splitlines() would also split at U+2028 inside a line.
+    for record in result.stdout.split("\n"):
+        if record:
+            key, line = record.split("\t", 1)
+            texts.setdefault(key, []).append(line)
+    return {key: "\n".join(lines) for key, lines in texts.items()}
 
 
 def check_skipped_scope(skipped, body):

@@ -2600,7 +2600,9 @@ ORIGINAL = [('AC-1', 'original one'), ('AC-2', 'original two')]
 ADDED = ORIGINAL + [('AC-9', 'newly agreed')]
 REWORDED = [('AC-1', 'reworded one'), ('AC-2', 'original two')]
 FENCED = [('AC-1', 'original one\n  ```\n  only when idle\n  ```'), ('AC-2', 'original two')]
-SEPARATED = [('AC-1', 'original one'), ('AC-2', 'original two')]
+SEPARATED = [('AC-1', 'original\u2028one'), ('AC-2', 'original two')]
+NESTED = [('AC-1', 'original one\n  ```yaml\n  review:\n      max: 3\n  ```'), ('AC-2', 'original two')]
+FLATTENED = [('AC-1', 'original one\n  ```yaml\n  review:\n    max: 3\n  ```'), ('AC-2', 'original two')]
 
 
 def with_criteria(f, base, items):
@@ -2624,7 +2626,7 @@ def revision_case(case):
     f = Fixture()
     try:
         base = f.issue['body']
-        initial = SEPARATED if case == 'separator' else ORIGINAL
+        initial = dict(separator=SEPARATED, indented=NESTED).get(case, ORIGINAL)
         with_criteria(f, base, initial)
         criteria_cycle(f, initial, roots=('input defect', 'secondary defect', 'third defect'))
         f.fix()
@@ -2657,8 +2659,9 @@ def revision_case(case):
         else:
             final, before, after = dict(added=(ADDED, [], ['AC-9']), earlier=(ADDED, ['AC-1'], ['AC-1']),
                                         reworded=(REWORDED, [], ['AC-1']), fenced=(FENCED, [], ['AC-1']),
+                                        indented=(FLATTENED, [], ['AC-1']),
                                         refixed=(REWORDED, [], []))[case]
-            criteria_cycle(f, ORIGINAL, met=before)
+            criteria_cycle(f, initial, met=before)
             revise(f, base, final)
             criteria_cycle(f, final, met=after)
             met = ['AC-1'] if case == 'refixed' else after
@@ -2675,8 +2678,9 @@ for case, stops, label in (
         ('unobserved', False, 'an unchanged criterion first met after an unobserved-route revision is progress'),
         ('reworded', True, 'a reworded criterion met on the same HEAD is not progress'),
         ('fenced', True, 'a criterion whose code block alone was revised is reworded'),
+        ('indented', True, 'a criterion whose code block only changed indentation is reworded'),
         ('lapsed', True, 'a criterion met at the replan that lapses and returns is not progress'),
-        ('separator', False, 'a criterion whose text holds a Unicode line separator is still compared'),
+        ('separator', False, 'a Unicode line separator in a criterion does not break the progress check'),
         ('restored', False, 'a criterion removed and restored with its text keeps its earlier unmet observation'),
         ('refixed', False, 'a reworded criterion seen unmet and met after a fix is progress')):
     decision = revision_case(case)
