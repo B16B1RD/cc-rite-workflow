@@ -75,6 +75,7 @@
 * **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=62, orphans=0, missing_concept=0, unregistered_raw=576, broken_refs=0
 
 * **Create**: [スキルのシェル処理を helper へ移すときは値の入力経路を対の処理と揃え、ファイル入力には存在と形式の検査を同時に入れる](pages/heuristics/helper-extraction-input-route-pairing-and-failure-paths.md) — raw/reviews/20260928T011608Z-pr-3366.md を新規ページ化
+* **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=62, orphans=0, missing_concept=0, unregistered_raw=576, broken_refs=0
 
 ## 2026-09-27
 
