@@ -573,6 +573,23 @@ if [ -z "$STATE_FILE" ] || [ ! -f "$STATE_FILE" ]; then
   exit 0
 fi
 
+# reap-issue が中断の印を消せなかったときは、複製に成功していれば state の複製が .rite/state/ に残る。
+# 複製と同一の state は回収済みなので、resume で作業中に戻さず、ここで印を消して回収を終える
+# （書き込みに失敗した state は中断として扱わない）。印を残したまま state を書き換える処理
+# （下の worktree 参照クリアや SessionEnd）を挟むと一致しなくなるため、最初の書き込みより前に行う。
+_reaped=0
+_reap_record="$STATE_ROOT/.rite/state/reap-failed-$(basename "$STATE_FILE" .flow-state).flow-state"
+if [ "$SOURCE" = "resume" ] && [ -f "$_reap_record" ] && cmp -s "$_reap_record" "$STATE_FILE"; then
+  _reaped=1
+  _state_file_shown=$(printf '%s' "$STATE_FILE" | neutralize_ctrl)
+  if RITE_STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/flow-state.sh" deactivate --next none >/dev/null 2>&1; then
+    rm -f "$_reap_record"
+  else
+    echo "rite: session-start: WARNING: could not clear the suspended mark reap-issue left: $_state_file_shown" >&2
+  fi
+  echo "rite: 中断していた rite workflow は Issue の後片付けで回収済みのため、作業中に戻しません ($_state_file_shown)。"
+fi
+
 # --- Dangling session-worktree self-heal (multi-session §8) ---
 # If the recorded `worktree` path no longer exists (e.g. it was reaped by another
 # session's lazy GC while this session was paused), null the field so neither the
@@ -650,14 +667,8 @@ _rite_stop_reason_phrase() {
 # 読む。stop_reason 付きの state は停止のまま残す。flow-state.sh set は handoff / next_action を
 # 上書きするため使わず、active と印だけを書き換える。flow-state.sh set は印を引き継がないため、印は
 # SessionEnd から次の set までしか残らない。
-# reap-issue が印を消せなかった state は、その複製が .rite/state/ に残る。複製と同一の state は回収済みの
-# ため戻さない（書き込みに失敗した state は中断として扱わない）。以後の書き込みで state が変われば一致しない。
-_reap_record="$STATE_ROOT/.rite/state/reap-failed-$(basename "$STATE_FILE" .flow-state).flow-state"
-if [ "$SOURCE" = "resume" ] && [ "$ACTIVE" != "true" ] && [ -f "$_reap_record" ] \
-   && cmp -s "$_reap_record" "$STATE_FILE"; then
-  echo "rite: session-start: WARNING: not reactivating a state reap-issue failed to clear: $STATE_FILE" >&2
-  echo "rite: 中断していた rite workflow は Issue の後片付けで回収済みのため、作業中に戻しません ($STATE_FILE)。"
-elif [ "$SOURCE" = "resume" ] && [ "$ACTIVE" != "true" ] \
+# 回収済みの state（上の _reaped）は戻さない。
+if [ "$SOURCE" = "resume" ] && [ "$ACTIVE" != "true" ] && [ "$_reaped" -eq 0 ] \
    && jq -e '.suspended_by_session_end == true and ((.stop_reason // "") == "")' "$STATE_FILE" >/dev/null 2>&1; then
   _resume_tmp=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || _resume_tmp="${STATE_FILE}.tmp.$$"
   if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \

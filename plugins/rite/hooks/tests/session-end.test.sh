@@ -1521,47 +1521,98 @@ else
 fi
 echo ""
 
-echo "T-22: a reap that cannot clear the suspended mark keeps the reaped state inactive on resume, until the state is written again"
+echo "T-22: a reap that cannot clear the suspended mark keeps the reaped state from coming back active"
 if [ "$(id -u)" -eq 0 ]; then
   pass "T-22 skipped as root (a read-only directory does not stop root)"
 else
+  # Review history keeps the state through SessionEnd, and the worktree it points to is gone,
+  # so both writes that leave the mark in place (SessionEnd, the dangling-worktree self-heal) run.
+  reaped_p22=$(printf '%s' "$marked_p20" | jq -c --arg wt "$TEST_DIR/gone-worktree" '. + {review_run_history:[{run_id:"r1"}], worktree:$wt}')
+  # $1=dir $2=sid, then the directories to make read-only for the reap → rc in rc_p22, stderr in err_p22
+  reap_fail_p22() {
+    local d="$1" s="$2"; shift 2
+    mkdir -p "$d"
+    create_state_file "$d" "$reaped_p22" "$s"
+    printf '%s' "$s-reaper" > "$d/.rite-session-id"
+    chmod 555 "$@"
+    rc_p22=0
+    (cd "$d" && bash "$FLOW_STATE" reap-issue --issue 101) >/dev/null 2>"$TEST_DIR/err-p22" || rc_p22=$?
+    chmod 755 "$@"
+    err_p22=$(cat "$TEST_DIR/err-p22")
+    printf '%s' "$s" > "$d/.rite-session-id"
+  }
+
   dir_p22="$TEST_DIR/reap-write-fail"
-  mkdir -p "$dir_p22"
-  create_state_file "$dir_p22" "$marked_p20" "sid-p22"
+  mkdir -p "$dir_p22/.rite/sessions"
   sf_p22=$(state_file_path "$dir_p22" "sid-p22")
   rec_p22="$dir_p22/.rite/state/reap-failed-sid-p22.flow-state"
+  create_state_file "$dir_p22" "$reaped_p22" "sid-p22"
   before_p22=$(digest_file "$sf_p22")
-  printf '%s' "sid-p22-reaper" > "$dir_p22/.rite-session-id"
-  chmod 555 "$dir_p22/.rite/sessions"
-  rc_p22=0
-  (cd "$dir_p22" && bash "$FLOW_STATE" reap-issue --issue 101) >/dev/null 2>"$TEST_DIR/err-p22" || rc_p22=$?
-  chmod 755 "$dir_p22/.rite/sessions"
-  after_p22=$(digest_file "$sf_p22")
-  if [ "$rc_p22" -eq 0 ] && [ "$before_p22" = "$after_p22" ] \
-    && grep -qF "WARNING: reap-issue: deactivate failed: $sf_p22" "$TEST_DIR/err-p22" \
+  reap_fail_p22 "$dir_p22" "sid-p22" "$dir_p22/.rite/sessions"
+  if [ "$rc_p22" -eq 0 ] && [ "$before_p22" = "$(digest_file "$sf_p22")" ] \
+    && grep -qF "WARNING: reap-issue: deactivate failed: $sf_p22" <<< "$err_p22" \
     && cmp -s "$rec_p22" "$sf_p22"; then
     pass "T-22 the failed reap warns with the path, leaves the state as it was, and records a copy of it"
   else
-    fail "T-22 reap rc=$rc_p22 same=$([ "$before_p22" = "$after_p22" ] && echo y || echo n) record=$([ -f "$rec_p22" ] && echo y || echo n) err=$(cat "$TEST_DIR/err-p22")"
+    fail "T-22 reap rc=$rc_p22 record=$([ -f "$rec_p22" ] && echo y || echo n) err=$err_p22"
   fi
-  printf '%s' "sid-p22" > "$dir_p22/.rite-session-id"
   # Not in $(...): start_session sets LAST_STDERR_FILE, which a subshell would lose.
   start_session "$dir_p22" "sid-p22" resume > "$TEST_DIR/out-p22" || true
   out_p22=$(cat "$TEST_DIR/out-p22")
-  if jq -e '.active == false and .suspended_by_session_end == true' "$sf_p22" >/dev/null \
-    && grep -qF "rite: session-start: WARNING: not reactivating a state reap-issue failed to clear: $sf_p22" "$LAST_STDERR_FILE" \
+  if jq -e '.active == false and (has("suspended_by_session_end")|not)' "$sf_p22" >/dev/null \
+    && [ ! -e "$rec_p22" ] \
     && awk -v p="$sf_p22" 'index($0, p) && index($0, "回収済み") {f=1} END {exit !f}' <<< "$out_p22"; then
-    pass "T-22 resume leaves the reaped state inactive and says so on stdout"
+    pass "T-22 resume finishes the reap: the state stays inactive, the mark and the copy are gone, and stdout says it was reaped"
   else
-    fail "T-22 resume state=$(jq -c '{active,suspended_by_session_end}' "$sf_p22") out=$out_p22"
+    fail "T-22 resume state=$(jq -c '{active,suspended_by_session_end}' "$sf_p22") record=$([ -e "$rec_p22" ] && echo y || echo n) out=$out_p22"
+  fi
+  end_session "$dir_p22" "sid-p22" || true
+  start_session "$dir_p22" "sid-p22" resume >/dev/null || true
+  if jq -e '.active == false' "$sf_p22" >/dev/null; then
+    pass "T-22 after the reaped session ends, the next resume still leaves the state inactive"
+  else
+    fail "T-22 second resume state=$(jq -c '{active,suspended_by_session_end}' "$sf_p22" 2>/dev/null || echo '<removed>')"
   fi
   (cd "$dir_p22" && bash "$FLOW_STATE" set --phase review --issue 101 --branch fix/issue-101-x --pr 55 --next "continue" >/dev/null 2>&1) || true
   end_session "$dir_p22" "sid-p22" || true
-  start_session "$dir_p22" "sid-p22" resume >/dev/null || true
-  if jq -e '.active == true and (has("suspended_by_session_end")|not)' "$sf_p22" >/dev/null; then
-    pass "T-22 after the state is written again, a later suspend is resumed as usual"
+  marked_after_p22=$(jq -c '{active,suspended_by_session_end}' "$sf_p22")
+  start_session "$dir_p22" "sid-p22" resume > "$TEST_DIR/out-p22" || true
+  if [ "$marked_after_p22" = '{"active":false,"suspended_by_session_end":true}' ] \
+    && jq -e '.active == true and (has("suspended_by_session_end")|not)' "$sf_p22" >/dev/null \
+    && ! grep -qF "回収済み" "$TEST_DIR/out-p22"; then
+    pass "T-22 work started again later is suspended and resumed as usual"
   else
-    fail "T-22 later resume state=$(jq -c '{active,suspended_by_session_end}' "$sf_p22")"
+    fail "T-22 later suspend=$marked_after_p22 resume=$(jq -c '{active,suspended_by_session_end}' "$sf_p22") out=$(cat "$TEST_DIR/out-p22")"
+  fi
+
+  # The resume cannot finish the reap either: it warns and still does not turn the state active.
+  dir_p22b="$TEST_DIR/reap-write-fail-resume"
+  mkdir -p "$dir_p22b/.rite/sessions"
+  sf_p22b=$(state_file_path "$dir_p22b" "sid-p22b")
+  reap_fail_p22 "$dir_p22b" "sid-p22b" "$dir_p22b/.rite/sessions"
+  chmod 555 "$dir_p22b/.rite/sessions"
+  start_session "$dir_p22b" "sid-p22b" resume > "$TEST_DIR/out-p22" || true
+  chmod 755 "$dir_p22b/.rite/sessions"
+  if jq -e '.active == false and .suspended_by_session_end == true' "$sf_p22b" >/dev/null \
+    && grep -qF "rite: session-start: WARNING: could not clear the suspended mark reap-issue left: $sf_p22b" "$LAST_STDERR_FILE" \
+    && grep -qF "回収済み" "$TEST_DIR/out-p22" \
+    && ! grep -qF "作業中に戻せませんでした" "$TEST_DIR/out-p22"; then
+    pass "T-22 a resume that cannot clear the mark warns with the path, leaves the state inactive, and does not try to reactivate it"
+  else
+    fail "T-22 resume write failure state=$(jq -c '{active,suspended_by_session_end}' "$sf_p22b") err=$(cat "$LAST_STDERR_FILE")"
+  fi
+
+  # Neither the state nor the copy can be written: the reap says resume may bring the state back.
+  dir_p22c="$TEST_DIR/reap-record-fail"
+  mkdir -p "$dir_p22c/.rite/sessions" "$dir_p22c/.rite/state"
+  sf_p22c=$(state_file_path "$dir_p22c" "sid-p22c")
+  reap_fail_p22 "$dir_p22c" "sid-p22c" "$dir_p22c/.rite/sessions" "$dir_p22c/.rite/state"
+  if [ "$rc_p22" -eq 0 ] \
+    && grep -qF "WARNING: reap-issue: could not record the failed reap, so resume may reactivate: $sf_p22c" <<< "$err_p22" \
+    && [ -z "$(ls -A "$dir_p22c/.rite/state")" ]; then
+    pass "T-22 a reap that cannot record the copy warns that resume may reactivate, rc=0, and leaves nothing behind"
+  else
+    fail "T-22 record failure rc=$rc_p22 left=$(ls -A "$dir_p22c/.rite/state") err=$err_p22"
   fi
 fi
 echo ""

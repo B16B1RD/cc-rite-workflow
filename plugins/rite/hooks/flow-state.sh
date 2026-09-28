@@ -641,9 +641,8 @@ cmd_reap_issue() {
         # A session that ended mid-flow on this Issue would come back active on resume.
         if ! cmd_deactivate --session "$sid" --next "none"; then
           echo "WARNING: reap-issue: deactivate failed: $(printf '%s' "$f" | neutralize_ctrl)" >&2
-          # The mark survived, so resume would turn this reaped state active again. session-start
-          # does not when an exact copy of the state sits here; any later write to the state
-          # breaks the match, so a genuine suspend afterwards is resumed as usual.
+          # The mark survived, so resume would turn this reaped state active again. When the state
+          # still equals this copy, the next resume's session-start clears the mark instead.
           local rec="$STATE_ROOT/.rite/state/reap-failed-$sid.flow-state"
           if ! { mkdir -p "${rec%/*}" && cp "$f" "$rec.$$" && mv "$rec.$$" "$rec"; } 2>/dev/null; then
             rm -f "$rec.$$" 2>/dev/null
