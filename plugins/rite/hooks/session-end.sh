@@ -13,8 +13,10 @@
 #
 # When it does run, a state that was mid-flow (active=true, phase not
 # terminal) is deactivated but kept, so a session resumed after `/exit` reads
-# its phase and PR back; `/rite:recover` turns it active again. Only a state
-# with nothing to resume or keep is removed, together with its lock file.
+# its phase and PR back. The same write marks it `suspended_by_session_end`,
+# and SessionStart(`source=resume`) turns a marked state active again so the
+# resumed entries read it as in progress. Only a state with nothing to resume
+# or keep is removed, together with its lock file.
 #
 # Consequently, code elsewhere that treats `active=true` as "do not touch —
 # a live session still owns this" must not assume SessionEnd will eventually
@@ -222,6 +224,18 @@ WARN_MSG
             ;;
     esac
 
+    # A state that was mid-flow when the session ended (active=true, phase not
+    # terminal; a missing phase counts as not terminal) is kept and marked, so a
+    # resumed session can tell it from a finished or stopped state. Decided here,
+    # before the deactivate write, because the file always says active=false after it.
+    _state_midflow=0
+    if [ "$_state_active" = "true" ]; then
+      case "$_state_phase" in
+        completed|create_completed|cleanup_completed) ;;
+        *) _state_midflow=1 ;;
+      esac
+    fi
+
     # PID-based fallback so a broken mktemp (e.g. /tmp readonly) still produces
     # a unique sibling path instead of clobbering the state file via a fixed name.
     TMP_FILE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_FILE="${STATE_FILE}.tmp.$$"
@@ -231,8 +245,10 @@ WARN_MSG
     # stderr に出しても次セッションの orchestrator からは grep されない。代替として diag log に
     # 持続化することで、次回 session-start の defensive reset が cause を surface できる。
     _deact_jq_err=$(mktemp 2>/dev/null) || _deact_jq_err=""
-    if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-       '.active = false | .updated_at = $ts' "$STATE_FILE" > "$TMP_FILE" 2>"${_deact_jq_err:-/dev/null}"; then
+    if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" --argjson midflow "$_state_midflow" \
+       '.active = false | .updated_at = $ts
+        | if $midflow == 1 then .suspended_by_session_end = true else . end' \
+       "$STATE_FILE" > "$TMP_FILE" 2>"${_deact_jq_err:-/dev/null}"; then
         _deact_mv_err=$(mktemp 2>/dev/null) || _deact_mv_err=""
         if mv "$TMP_FILE" "$STATE_FILE" 2>"${_deact_mv_err:-/dev/null}"; then
           :
@@ -243,7 +259,7 @@ WARN_MSG
           if command -v _log_flow_diag >/dev/null 2>&1; then
             _log_flow_diag "session_end_mv_failed rc=$_mv_rc state=$STATE_FILE"
           fi
-          echo "rite: session-end: mv deactivation state failed (rc=$_mv_rc)" >&2
+          echo "rite: session-end: WARNING: mv deactivation state failed (rc=$_mv_rc): $STATE_FILE" >&2
           [ -n "$_deact_mv_err" ] && [ -s "$_deact_mv_err" ] && head -3 "$_deact_mv_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
         fi
         [ -n "$_deact_mv_err" ] && rm -f "$_deact_mv_err"
@@ -265,23 +281,13 @@ WARN_MSG
     # unreadable JSON), any state whose deactivate write failed, and a state
     # that was still mid-flow when the session ended. SessionEnd cannot tell a
     # `/exit` that will be resumed from a final exit, and a resumed session
-    # reads this file back, so an active state whose phase is not terminal is
-    # only deactivated. The check uses `_state_active` / `_state_phase` read
-    # before the deactivate write, because the file now always says
-    # active=false. A missing phase counts as not terminal (keeping is the
-    # recoverable side). The terminal phases are the ones the lifecycle
-    # warning above already treats as finished.
+    # reads this file back, so a mid-flow state (`_state_midflow`, decided
+    # before the deactivate write) is only deactivated.
     # Do not empty history keys before this check, and do not fill missing
     # keys with [] / 0. Only a state with none of the above is removed.
     _session_end_preserve=0
-    if [ "$_state_active" = "true" ]; then
-      case "$_state_phase" in
-        completed|create_completed|cleanup_completed) ;;
-        *) _session_end_preserve=1 ;;
-      esac
-    fi
-    if [ "$_session_end_preserve" = 1 ]; then
-      :
+    if [ "$_state_midflow" = 1 ]; then
+      _session_end_preserve=1
     elif ! jq -e . "$STATE_FILE" >/dev/null 2>&1; then
       _session_end_preserve=1
     elif jq -e '

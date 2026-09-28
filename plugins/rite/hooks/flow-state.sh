@@ -580,8 +580,11 @@ cmd_deactivate() {
   local sid path; sid=$(_resolve_session_id "$session") || return 1
   path=$(_state_path "$sid"); [ ! -f "$path" ] && return 0
   local now updated; now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  # deactivate ends the work, so SessionEnd's suspended mark must not survive it:
+  # a resumed session would otherwise turn the ended state active again.
   updated=$(jq --argjson a false --arg n "$next" --arg ts "$now" \
-    '.active = $a | (if $n != "" then .next_action = $n else . end) | .updated_at = $ts' "$path") || return 1
+    '.active = $a | (if $n != "" then .next_action = $n else . end) | .updated_at = $ts
+     | del(.suspended_by_session_end)' "$path") || return 1
   # `_atomic_write` rc 伝播 (cmd_set / `_migrate_file` と対称、header 契約遵守)。
   _atomic_write "$path" "$updated" || return 1
 }
@@ -632,6 +635,10 @@ cmd_reap_issue() {
       fi
       if [ "$active" = "true" ]; then
         echo "WARNING: reap-issue: stale flow-state (active=true) for issue #${issue}: $(printf '%s' "$f" | neutralize_ctrl)" >&2
+        cmd_deactivate --session "$sid" --next "none" \
+          || echo "WARNING: reap-issue: deactivate failed: $(printf '%s' "$f" | neutralize_ctrl)" >&2
+      elif jq -e '.suspended_by_session_end == true' "$f" >/dev/null 2>&1; then
+        # A session that ended mid-flow on this Issue would come back active on resume.
         cmd_deactivate --session "$sid" --next "none" \
           || echo "WARNING: reap-issue: deactivate failed: $(printf '%s' "$f" | neutralize_ctrl)" >&2
       fi

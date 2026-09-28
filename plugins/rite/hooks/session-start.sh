@@ -4,6 +4,7 @@
 # source=compact: recovery text (Issue/Phase/Branch/Next/Loop/PR + auto continue)
 # is emitted here because SessionStart stdout is injected into model context.
 # startup/resume/clear keep the interruption / recover notice.
+# source=resume also turns a state SessionEnd suspended mid-flow active again.
 set -euo pipefail
 
 # Double-execution guard (hooks.json + settings.local.json migration)
@@ -643,11 +644,32 @@ _rite_stop_reason_phrase() {
   esac
 }
 
+# SessionEnd は作業途中の state を active=false にし、同じ書き込みで suspended_by_session_end を付けて残す。
+# resume はその作業の続きなので、印のある state を active=true に戻して印を消す。戻さないと再開の入口
+# (batch-run の再開段階・iterate 経由の pr-review・Stop の watchdog) が作業途中の state を「作業していない」と
+# 読む。stop_reason 付きの state は停止のまま残す。flow-state.sh set は handoff / next_action を
+# 上書きするため使わず、active と印だけを書き換える。flow-state.sh set は印を引き継がないため、印は
+# SessionEnd から次の set までしか残らない。
+if [ "$SOURCE" = "resume" ] && [ "$ACTIVE" != "true" ] \
+   && jq -e '.suspended_by_session_end == true and ((.stop_reason // "") == "")' "$STATE_FILE" >/dev/null 2>&1; then
+  _resume_tmp=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || _resume_tmp="${STATE_FILE}.tmp.$$"
+  if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
+       '.active = true | .updated_at = $ts | del(.suspended_by_session_end)' \
+       "$STATE_FILE" > "$_resume_tmp" 2>/dev/null \
+     && mv "$_resume_tmp" "$STATE_FILE" 2>/dev/null; then
+    ACTIVE=true
+  else
+    rm -f "$_resume_tmp" 2>/dev/null
+    echo "rite: session-start: WARNING: failed to reactivate the state SessionEnd suspended: $STATE_FILE (/rite:recover で再開できます)" >&2
+  fi
+fi
+
 # 停止した review_run は active=false と stop_reason を同じ更新で書き、run が停止している間は
 # 以後の set でも理由が残る。inactive だからと無言で exit すると、その失敗停止は起動時に一度も
 # 案内されない。flow state はセッション単位で、停止した run の state を読めるのは同じ session_id の
 # 起動 (ホストが id を引き継ぐ resume を含む) だけ。startup / clear / resume では停止理由だけを案内し、
-# state は書き換えない (停止は停止のまま残す)。
+# stop_reason のある state は書き換えない (停止は停止のまま残す)。ここに来る inactive state は、上の
+# resume の再有効化に当たらなかったもの。
 if [ "$ACTIVE" != "true" ]; then
   if [ "$SOURCE" = "startup" ] || [ "$SOURCE" = "clear" ] || [ "$SOURCE" = "resume" ]; then
     _inactive_stop=""
