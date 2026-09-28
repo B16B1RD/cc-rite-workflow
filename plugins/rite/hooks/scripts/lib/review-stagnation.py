@@ -482,6 +482,83 @@ def restart(state, args, directory):
     return state
 
 
+def specifications(run):
+    """Issue bodies a new observation must match: the latest reconciled one and those observed after it."""
+    records = run.get("reconciliations", [])
+    after = records[-1]["after_cycle"] if records else None
+    bodies = [entry["input"]["issue_body"] for entry in run["observations"]
+              if after is None or entry["input"]["review_context"]["cycle_count"] > after]
+    return bodies + ([records[-1]["issue_body"]] if records else [])
+
+
+def reconcile(state, args, directory):
+    """Accept an agreed Issue revision inside the same run without rewriting what was observed.
+
+    Distinct from restart(): the run keeps its id, counter, observations, fixes and
+    replans, so revising the Issue buys no new cycle budget. Observations up to the
+    boundary stay under the old specification; only later ones are compared with
+    the revised one, so nothing judged against the old text carries over as a
+    finding the fix may act on.
+    """
+    # A replay stays a no-op after later work moved HEAD; a new record needs the reviewed HEAD.
+    run, context = current(state, args.session, completed=True, check_head=False)
+    approval, issue = read(args.approval), read(args.issue)
+    require(isinstance(approval, dict), "approval must be a JSON object")
+    require(isinstance(issue, dict) and text(issue.get("body")), "latest Issue JSON with a body required")
+    records = run.get("reconciliations", [])
+    for record in records:
+        if (record["review_context"] == approval.get("review_context")
+                and record["reason"] == approval.get("reason")
+                and record["requested_at"] == approval.get("requested_at")
+                and cycle.same_specification(record["issue_body"], issue["body"])):
+            return state
+    require(run["status"] == "active", "review run stopped: " + str(run.get("stop_reason")))
+    require(cycle.head() == context["commit_sha"], "HEAD differs from review context")
+    require(approval.get("kind") == "specification-change", "approval kind must be specification-change")
+    require(text(approval.get("reason")), "approval reason required")
+    require(text(approval.get("requested_at")), "approval requested_at required")
+    require(approval.get("run_id") == run["run_id"], "approval run id does not match the live run")
+    require(approval.get("review_context") == context, "approval review_context does not match the frozen context")
+    require(approval.get("issue_number") == issue.get("number") == state.get("issue_number"),
+            "approval issue does not match the run")
+    require(approval.get("pr_number") == state.get("pr_number"), "approval PR does not match the run")
+    previous = records[-1]["issue_body"] if records else (
+        run["observations"][-1]["input"]["issue_body"] if run["observations"] else None)
+    require(previous is not None, "no observed specification in this run; rebuild the observation input"
+            " from the latest Issue instead of reconciling")
+    require(not cycle.same_specification(previous, issue["body"]),
+            "Issue specification is unchanged in this run; nothing to reconcile")
+    # The same predicate review-start applies, so a revision found mid-fix stops here.
+    require(not subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=normal"]).strip(),
+            "reconciling requires a clean tree; restore edits made under the old plan to the reviewed HEAD"
+            " and remove files it created until `git status --porcelain` is empty (do not commit them),"
+            " then record the revision")
+    saved = observation(run, context)
+    carried = []
+    if saved is not None:
+        # The reviewed HEAD is re-reviewed under the revised text in a new cycle.
+        require(unchanged_receipt(saved, read(saved["result_path"])), "observed review receipt is missing or changed")
+        if run["current_decision"]["action"] == "replan":
+            # A replan planned on the old text cannot pass either specification
+            # check; its reasons move to the first observation under the new text.
+            carried = run["current_decision"]["reasons"]
+            run["current_decision"] = dict(action="continue", reasons=["reconciled"])
+        after, next_action = context["cycle_count"], "/rite:iterate " + str(state["pr_number"])
+        state["phase"] = "fix"
+    else:
+        # The observation of this cycle was refused for the revision itself; it
+        # is saved under the revised text once the revision is recorded.
+        require(cycle.matching_receipt(directory, state["review_cycle"]) is not None, "saved review receipt missing")
+        after, next_action = context["cycle_count"] - 1, "/rite:recover " + str(state["issue_number"])
+    # A fix verified under the old text is no basis for the revised one.
+    run.pop("pending_fix", None)
+    run["reconciliations"] = records + [dict(
+        review_context=context.copy(), after_cycle=after, issue_body=issue["body"], replan_reasons=carried,
+        reason=approval["reason"], requested_at=approval["requested_at"], at=cycle.now())]
+    state.update(next_action=next_action, updated_at=cycle.now())
+    return state
+
+
 def conclude_retry(run, receipt):
     """A grant buys one review. Blocking findings at its end restore the stop."""
     grant = run.get("retry")
@@ -586,7 +663,7 @@ def validate_input(state, args, data, receipt):
     require(issue.get("number") == data.get("issue_number") == state.get("issue_number")
             and text(issue.get("body")) and text(data.get("issue_body"))
             and cycle.same_specification(data["issue_body"], issue["body"]),
-            "latest Issue specification differs from observation")
+            "latest Issue specification differs from observation" + cycle.spec_change_hint(state, issue.get("body") or ""))
     roots = data.get("roots")
     require(isinstance(roots, list), "root observations must be an array")
     findings = {f["id"]: f for f in receipt["findings"] + receipt.get("non_blocking_findings", [])}
@@ -660,8 +737,9 @@ def observe(state, args, directory):
     require(receipt is not None, "saved review receipt missing")
     data = read(args.input)
     roots = validate_input(state, args, data, receipt[1])
-    require(all(cycle.same_specification(entry["input"]["issue_body"], data["issue_body"]) for entry in run["observations"]),
-            "Issue specification changed within run; retain history and reconcile before continuing")
+    require(all(cycle.same_specification(body, data["issue_body"]) for body in specifications(run)),
+            "Issue specification changed within run; retain history and reconcile before continuing"
+            + cycle.spec_change_hint(state, data["issue_body"]))
     previous = observation(run, context)
     if previous:
         require(same_observation(previous["input"], data) and unchanged_receipt(previous, receipt[1]),
@@ -699,6 +777,11 @@ def observe(state, args, directory):
     reasons = (["work-time"] if elapsed - run["diagnosed_work_seconds"] > 1800 else [])
     if renewed:
         reasons.append("root-recurrence")
+    for record in run.get("reconciliations", []):
+        # A replan dropped by reconcile() is owed by the first observation under the new text.
+        later = [obs for obs in run["observations"] if obs["input"]["review_context"]["cycle_count"] > record["after_cycle"]]
+        if later == [entry]:
+            reasons += [reason for reason in record["replan_reasons"] if reason not in reasons]
     action = "continue"
     for replan in run["replans"]:
         start = replan["review_context"]["cycle_count"]
@@ -826,7 +909,7 @@ def replan(state, args, directory):
         require(text(plan.get("issue_body")) and text(issue.get("body"))
                 and cycle.same_specification(plan["issue_body"], issue["body"])
                 and issue.get("number") == state.get("issue_number"),
-                "latest Issue specification differs from replan")
+                "latest Issue specification differs from replan" + cycle.spec_change_hint(state, issue.get("body") or ""))
         receipt = cycle.matching_receipt(directory, state["review_cycle"])
         require(receipt is not None, "saved receipt missing")
         require(unchanged_receipt(observation(run, context), receipt[1]), "observed review receipt is missing or changed")
@@ -897,7 +980,7 @@ def plan_specification(state, plan, allow_replan=False):
     observed = observation(run, plan["review_context"])
     require(observed is not None and text(plan.get("issue_body"))
             and cycle.same_specification(plan["issue_body"], observed["input"]["issue_body"]),
-            "fix specification differs from diagnosed observation")
+            "fix specification differs from diagnosed observation" + cycle.spec_change_hint(state, plan.get("issue_body") or ""))
     if allow_replan:
         return
     for record in run["replans"]:

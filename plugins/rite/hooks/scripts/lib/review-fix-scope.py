@@ -259,7 +259,8 @@ def validate_plan(plan, issue, state, receipt):
     """Everything a fix plan must say, independent of the transition it enables."""
     require(issue.get("number") == state.get("issue_number") == plan.get("issue_number")
             and text(issue.get("body")) and text(plan.get("issue_body"))
-            and cycle.same_specification(plan["issue_body"], issue["body"]), "Issue specification changed or mismatched")
+            and cycle.same_specification(plan["issue_body"], issue["body"]),
+            "Issue specification changed or mismatched" + cycle.spec_change_hint(state, issue.get("body") or ""))
     constraints = plan["constraints"]
     targets = [path(p) for p in constraints["targets"]]
     excluded = [path(p) for p in constraints["non_targets"]]
