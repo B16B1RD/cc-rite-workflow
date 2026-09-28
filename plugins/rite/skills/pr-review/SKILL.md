@@ -2275,7 +2275,7 @@ Source A は `Likelihood-Evidence:` の有無を保持する。
 | Skill file load failure | Fall back to the built-in pattern table (ステップ 2.2) for reviewer selection (WARNING を stderr に出力) |
 | Review execution error | Choose skip/retry/cancel (skip 時は WARNING を stderr に出力) |
 | Comment post failure | Display review results as text (WARNING を stderr に出力) |
-| `pr-review-step.sh` が exit 2（`ERROR: pr-review-step.sh:`） | marker を待たずに停止する。未置換の placeholder・不足した引数・数値でない値を直して当該ステップから再実行する |
+| `pr-review-step.sh` が exit 2（`ERROR: pr-review-step.sh:`） | marker を待たずに停止する。未置換の placeholder・不足した引数・数値でない値を直して当該ステップから再実行する。各ステップの rc 表より先に本行を適用する（ステップ表の rc=2 / 非ゼロの行は、この接頭辞の無い失敗だけを指す） |
 
 ---
 
