@@ -23,7 +23,7 @@
 # T-07..T-18 run hooks/stop-failure.sh (the StopFailure hook) against payloads and then the
 # close recipe copied from the reference, so a turn that ends on an API error (for example a
 # usage limit) does not count the pause as work time:
-#   T-07 open record gets ended_at at the failure, for any error_type; nothing else changes
+#   T-07 open record gets ended_at at the failure, for any error type; nothing else changes
 #   T-08 existing ended_at kept            T-09 no record / other session untouched
 #   T-10 upper-case UUID payload           T-11 traversal id onto an existing record
 #   T-12 non-object record warns           T-13 payload without session_id or cwd
@@ -262,7 +262,7 @@ for etype in rate_limit server_error ""; do
   t0=$(jq -nr 'now | floor')
   rc=0
   if [ -n "$etype" ]; then
-    run_hook --arg cwd "$d" --arg session_id "$SID" --arg error_type "$etype" || rc=$?
+    run_hook --arg cwd "$d" --arg session_id "$SID" --arg error "$etype" || rc=$?
   else
     run_hook --arg cwd "$d" --arg session_id "$SID" || rc=$?
   fi
@@ -272,9 +272,9 @@ for etype in rate_limit server_error ""; do
   if [ "$rc" -eq 0 ] && [[ "$end" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] \
     && [ -n "$end_epoch" ] && [ "$end_epoch" -ge "$t0" ] && [ "$end_epoch" -le "$t1" ] \
     && [ "$(jq -cS 'del(.ended_at)' "$f")" = "$before" ] && [ "$(leftover_tmp "$f")" = 0 ]; then
-    pass "T-07: error_type='${etype:-<missing>}' stamps ended_at at the failure; other fields unchanged"
+    pass "T-07: error='${etype:-<missing>}' stamps ended_at at the failure; other fields unchanged"
   else
-    fail "T-07: error_type='${etype:-<missing>}' rc=$rc ended_at='$end' window=$t0..$t1 record=$(cat "$f")"; show_stderr
+    fail "T-07: error='${etype:-<missing>}' rc=$rc ended_at='$end' window=$t0..$t1 record=$(cat "$f")"; show_stderr
   fi
 done
 
@@ -336,10 +336,10 @@ fi
 d="$SF_DIR/partial"; f="$d/.rite/state/review-clock-$SID.json"
 write_open_record "$f" "$(iso_ago 600)"
 cp "$f" "$SF_DIR/partial.before"
-rc_nosid=0; run_hook --arg cwd "$d" --arg error_type rate_limit || rc_nosid=$?
+rc_nosid=0; run_hook --arg cwd "$d" --arg error rate_limit || rc_nosid=$?
 nosid_warned=0
 grep -qF "[rite] WARNING: stop-failure: payload has no session_id" "$SF_STDERR" && nosid_warned=1
-rc_nocwd=0; run_hook --arg session_id "$SID" --arg error_type rate_limit || rc_nocwd=$?
+rc_nocwd=0; run_hook --arg session_id "$SID" --arg error rate_limit || rc_nocwd=$?
 if [ "$rc_nosid" -eq 0 ] && [ "$rc_nocwd" -eq 0 ] && [ "$nosid_warned" = 1 ] \
   && cmp -s "$f" "$SF_DIR/partial.before" && [ "$(find "$d" -type f | wc -l | tr -d ' ')" = 1 ]; then
   pass "T-13: a payload without session_id warns and one without cwd exits; nothing changes"
@@ -419,7 +419,7 @@ fi
 start=$(iso_ago 600)
 d="$SF_DIR/e2e-hook"; f="$d/.rite/state/review-clock-$SID.json"
 write_open_record "$f" "$start"
-rc_h=0; run_hook --arg cwd "$d" --arg session_id "$SID" --arg error_type rate_limit || rc_h=$?
+rc_h=0; run_hook --arg cwd "$d" --arg session_id "$SID" --arg error rate_limit || rc_h=$?
 stamped=$(jq -r '.ended_at // empty' "$f")
 rc_c=0; run_close normal "$d" "$SF_DIR/e2e-hook.json" || rc_c=$?
 dn="$SF_DIR/e2e-nohook"

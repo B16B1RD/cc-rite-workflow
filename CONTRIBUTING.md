@@ -204,7 +204,7 @@ Available hook events:
 | `PreToolUse` | Before a tool is executed | JSON via stdin (tool name via `matcher`) |
 | `PostToolUse` | After a tool is executed | JSON via stdin |
 | `Stop` | The agent finishes responding (turn end) | JSON via stdin (`stop_hook_active`) |
-| `StopFailure` | The turn ends on an API error (usage limit, overload, …) | JSON via stdin (`session_id`, `cwd`, `error_type`); output and exit code are ignored |
+| `StopFailure` | The turn ends on an API error (usage limit, overload, …) | JSON via stdin (`session_id`, `cwd`, `error`); output and exit code are ignored |
 
 ### Writing a New Hook
 
