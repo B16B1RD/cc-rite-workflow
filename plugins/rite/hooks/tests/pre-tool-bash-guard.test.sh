@@ -2408,6 +2408,9 @@ for sc_cmd in \
   "gh api -X DELETE repos/o/r/issues/comments/1" \
   "gh api --method=PATCH repos/o/r/pulls/1" \
   "gh api graphql -f query='mutation { x }'" \
+  "git push && git log --help" \
+  "git push origin --help" \
+  "bash -n plugins/rite/hooks/flow-state.sh && bash plugins/rite/hooks/flow-state.sh set --phase fix" \
   ; do
   rc=0
   output=$(run_guard_typed "rite:test-reviewer" "$sc_cmd") || rc=$?
@@ -2499,6 +2502,12 @@ for ro_sc_cmd in \
   "gh api -X GET repos/o/r/issues -f state=open" \
   "gh api graphql -f query='query { viewer { login } }'" \
   "timeout 30 git status" \
+  "gh pr create --help" \
+  "gh issue close -h" \
+  "git push --help" \
+  "git commit -h" \
+  "bash -n plugins/rite/hooks/flow-state.sh" \
+  "bash -n plugins/rite/scripts/iterate-step.sh" \
   ; do
   rc=0
   output=$(run_guard_typed "rite:test-reviewer" "$ro_sc_cmd") || rc=$?

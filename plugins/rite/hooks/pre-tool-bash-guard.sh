@@ -441,10 +441,13 @@ _rite_btg_state_change_scan() {
 # subcommand, or `gh api` with a writing method: an explicit POST / PATCH / PUT /
 # DELETE, or fields (-f / -F / --input) without a method, which gh sends as
 # POST — except a graphql call, which is a write only when it carries a mutation.
+# A write word followed directly by --help / -h only prints help, and `bash -n`
+# only checks syntax, so neither is a hit.
 _rite_btg_state_change_match() {
-  local _t _n _mode=cmd _skip=0 _wk="" _wneed=0 _grp="" _mnext=0 _method="" _field=0 _gql=0 _mut=0
+  local _t _n _mode=cmd _skip=0 _wk="" _wneed=0 _grp="" _mnext=0 _method="" _field=0 _gql=0 _mut=0 _pend=""
   for _t in ${_toks[@]+"${_toks[@]}"}; do
     if [ "$_t" = ";" ]; then
+      if [ "$_mode" = help ]; then _sc_hit="$_pend"; return 0; fi
       # `flow-state.sh` with no subcommand at all is not a read either.
       if [ "$_mode" = flowsub ]; then _sc_hit="flow-state.sh (no subcommand)"; return 0; fi
       if [ "$_mode" = ghapi ]; then
@@ -496,7 +499,7 @@ _rite_btg_state_change_match() {
           -C|--git-dir|--work-tree|--namespace|--exec-path|--attr-source|--super-prefix|--shallow-file|-c|--config-env)
             _skip=1 ;;
           -*) : ;;
-          push|commit) _sc_hit="git $_n"; return 0 ;;
+          push|commit) _pend="git $_n"; _mode=help ;;
           *) _mode=args ;;
         esac ;;
       ghglob)
@@ -510,7 +513,7 @@ _rite_btg_state_change_match() {
       ghsub)
         case "$_grp:$_n" in
           pr:comment|pr:create|pr:edit|pr:merge|pr:close|pr:reopen|pr:ready|pr:review|pr:lock|pr:unlock|pr:update-branch|pr:revert|issue:create|issue:comment|issue:edit|issue:close|issue:reopen|issue:delete|issue:transfer|issue:lock|issue:unlock|issue:pin|issue:unpin|issue:develop)
-            _sc_hit="gh $_grp $_n"; return 0 ;;
+            _pend="gh $_grp $_n"; _mode=help ;;
           *:-R|*:--repo) _skip=1 ;;
           *:-*) : ;;
           *) _mode=args ;;
@@ -525,8 +528,15 @@ _rite_btg_state_change_match() {
           graphql) _gql=1 ;;
         esac
         case "$_n" in *mutation*) _mut=1 ;; esac ;;
+      help)
+        case "$_n" in
+          --help|-h) _mode=args ;;
+          *) _sc_hit="$_pend"; return 0 ;;
+        esac ;;
       interp)
         case "$_n" in
+          --*) : ;;
+          -*n*) _mode=args ;;
           -*) : ;;
           *)
             case "${_n##*/}" in
@@ -542,6 +552,7 @@ _rite_btg_state_change_match() {
         esac ;;
     esac
   done
+  if [ "$_mode" = help ]; then _sc_hit="$_pend"; fi
   return 0
 }
 trap '_rite_btg_pattern13_fail_open' ERR
