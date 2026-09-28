@@ -508,6 +508,33 @@ run_noop_stash_push_case() {
   eq "$label: the other entry was not applied" "0" "$([ -e "$repo/other.txt" ] && echo 1 || echo 0)"
 }
 
+# run_dirty_submodule_case: the only change is dirty content inside a submodule. git stash
+# push -u does not save it, so the run must not treat it as work to stash; it commits the raw
+# source and leaves the stash stack alone.
+run_dirty_submodule_case() {
+  local label="$1"
+  local -x GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+  local base repo tmpdir err rc=0
+  make_fixture dev no
+  tmpdir="$base/tmp"; err="$base/err"; mkdir "$tmpdir"
+  rm -f "$repo/.git/hooks/pre-commit"
+  git init -q "$base/sub"
+  git -C "$base/sub" -c user.email=t@e -c user.name=t commit -q --allow-empty -m s
+  printf 'x\n' > "$base/sub/f"
+  git -C "$base/sub" add f
+  git -C "$base/sub" -c user.email=t@e -c user.name=t commit -q -m f
+  git -C "$repo" -c protocol.file.allow=always submodule add -q "$base/sub" sub
+  git -C "$repo" commit -q -m addsub
+  printf 'dirty\n' >> "$repo/sub/f"
+
+  ( cd "$repo" && TMPDIR="$tmpdir" bash "$HOOK_SRC" ) >"$base/out" 2>"$err" || rc=$?
+  eq "$label: exits 0" "0" "$rc"
+  eq "$label: commits the raw source" "1" "$(grep -c 'committed=1' "$base/out" || true)"
+  eq "$label: no new-entry ERROR" "0" "$(grep -c 'did not create a new entry' "$err" || true)"
+  eq "$label: stash stack untouched" "0" "$(git -C "$repo" stash list | wc -l | tr -d ' ')"
+  eq "$label: submodule content still dirty" "1" "$(grep -c '^dirty$' "$repo/sub/f" || true)"
+}
+
 # run_stash_pop_failure_case: the wiki commit fails and the stash pop in cleanup fails too,
 # so the WARNING carries the stash commands to run by hand.
 run_stash_pop_failure_case() {
@@ -630,6 +657,7 @@ run_unstage_failure_case "unstage failure from a linked worktree" worktree
 run_stash_pop_failure_case "stash pop failure"
 run_concurrent_stash_case "concurrent stash"
 run_noop_stash_push_case "no-op stash push"
+run_dirty_submodule_case "dirty submodule"
 run_push_failure_case "push failure"
 run_missing_wiki_branch_case "missing wiki branch"
 run_detached_head_case "detached main checkout from a linked worktree"

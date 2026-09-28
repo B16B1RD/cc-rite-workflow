@@ -930,9 +930,11 @@ fi
 # path. Use a case statement to distinguish 0 (clean) / 1 (has-diff) /
 # anything else (real error → fail-fast with dump_git_err).
 has_changes=false
+# Dirty content inside a submodule is ignored: git stash push -u does not save it, so
+# counting it would reach the stash with nothing to save and stop at the new-entry check.
 
 set +e
-git diff --quiet HEAD 2>"${git_err:-/dev/null}"
+git diff --quiet --ignore-submodules=dirty HEAD 2>"${git_err:-/dev/null}"
 diff_rc=$?
 set -e
 case "$diff_rc" in
@@ -947,7 +949,7 @@ esac
 surface_git_warnings "diff HEAD"
 
 set +e
-git diff --cached --quiet HEAD 2>"${git_err:-/dev/null}"
+git diff --cached --quiet --ignore-submodules=dirty HEAD 2>"${git_err:-/dev/null}"
 diff_cached_rc=$?
 set -e
 case "$diff_cached_rc" in
