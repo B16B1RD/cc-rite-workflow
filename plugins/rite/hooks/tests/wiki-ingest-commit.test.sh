@@ -508,11 +508,12 @@ run_noop_stash_push_case() {
   eq "$label: the other entry was not applied" "0" "$([ -e "$repo/other.txt" ] && echo 1 || echo 0)"
 }
 
-# run_dirty_submodule_case: the only change is dirty content inside a submodule. git stash
-# push -u does not save it, so the run must not treat it as work to stash; it commits the raw
-# source and leaves the stash stack alone.
+# run_dirty_submodule_case <label> <mode>: the only change is inside a submodule — dirty
+# content (dirty), a gitlink moved by a commit inside it (moved), or both (moved_dirty).
+# git stash push -u saves none of these, so the run must not treat them as work to stash; it
+# commits the raw source, leaves the stash stack alone and keeps the submodule state.
 run_dirty_submodule_case() {
-  local label="$1"
+  local label="$1" mode="$2"
   local -x GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
   local base repo tmpdir err rc=0
   make_fixture dev no
@@ -525,14 +526,24 @@ run_dirty_submodule_case() {
   git -C "$base/sub" -c user.email=t@e -c user.name=t commit -q -m f
   git -C "$repo" -c protocol.file.allow=always submodule add -q "$base/sub" sub
   git -C "$repo" commit -q -m addsub
-  printf 'dirty\n' >> "$repo/sub/f"
+  local moved_head=""
+  case "$mode" in moved|moved_dirty)
+    git -C "$repo/sub" -c user.email=t@e -c user.name=t commit -q --allow-empty -m moved
+    moved_head=$(git -C "$repo/sub" rev-parse HEAD) ;;
+  esac
+  case "$mode" in dirty|moved_dirty) printf 'dirty\n' >> "$repo/sub/f" ;; esac
 
   ( cd "$repo" && TMPDIR="$tmpdir" bash "$HOOK_SRC" ) >"$base/out" 2>"$err" || rc=$?
   eq "$label: exits 0" "0" "$rc"
   eq "$label: commits the raw source" "1" "$(grep -c 'committed=1' "$base/out" || true)"
   eq "$label: no new-entry ERROR" "0" "$(grep -c 'did not create a new entry' "$err" || true)"
   eq "$label: stash stack untouched" "0" "$(git -C "$repo" stash list | wc -l | tr -d ' ')"
-  eq "$label: submodule content still dirty" "1" "$(grep -c '^dirty$' "$repo/sub/f" || true)"
+  case "$mode" in dirty|moved_dirty)
+    eq "$label: submodule content still dirty" "1" "$(grep -c '^dirty$' "$repo/sub/f" || true)" ;;
+  esac
+  if [ -n "$moved_head" ]; then
+    eq "$label: submodule stays on its moved commit" "$moved_head" "$(git -C "$repo/sub" rev-parse HEAD)"
+  fi
 }
 
 # run_stash_pop_failure_case: the wiki commit fails and the stash pop in cleanup fails too,
@@ -657,7 +668,9 @@ run_unstage_failure_case "unstage failure from a linked worktree" worktree
 run_stash_pop_failure_case "stash pop failure"
 run_concurrent_stash_case "concurrent stash"
 run_noop_stash_push_case "no-op stash push"
-run_dirty_submodule_case "dirty submodule"
+run_dirty_submodule_case "dirty submodule" dirty
+run_dirty_submodule_case "moved submodule" moved
+run_dirty_submodule_case "moved and dirty submodule" moved_dirty
 run_push_failure_case "push failure"
 run_missing_wiki_branch_case "missing wiki branch"
 run_detached_head_case "detached main checkout from a linked worktree"
