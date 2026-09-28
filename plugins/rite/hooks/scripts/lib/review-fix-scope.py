@@ -454,8 +454,9 @@ _COMPOUND = {"if", "while", "until", "for", "case", "select", "{", "function", "
 # A parse the check cannot finish is refused; the message form below always parses.
 # Limits on the costs of one parse beyond reading its input once: each substitution level
 # scans its text again, and each cd / -C resolves the whole directory path built so far.
-# Only a cd / -C makes a new commit / merge target, so this also bounds the git processes
-# that resolve targets.
+# Past a limit the parse goes on without that work: a deeper substitution is not parsed,
+# and a later cd / -C leaves a dynamic target. Only a cd / -C makes a new commit / merge
+# target, so this also bounds the git processes that resolve targets.
 MAX_SUBSTITUTION_DEPTH = 64
 MAX_DIRECTORY_CHANGES = 16
 _PARSE_HINT = "; write the message to a file outside the work tree and commit with git commit -F <message-file>"
@@ -532,8 +533,12 @@ def shell_segments(command, level=0):
     (&>, >&, <&) stays in its word. A word whose first unquoted < or > has only an
     unquoted fd number or the & of &> before it comes back as a _Redirection.
     """
-    require(level <= MAX_SUBSTITUTION_DEPTH, "command substitutions are nested more than "
-            + str(MAX_SUBSTITUTION_DEPTH) + " deep to inspect; split the command")
+    if level > MAX_SUBSTITUTION_DEPTH:
+        # Unparsed text that could hold a git commit / merge is refused; other text holds none.
+        require("git" not in command or not any(name in command for name in _HEAD_MOVERS),
+                "command substitutions are nested more than " + str(MAX_SUBSTITUTION_DEPTH)
+                + " deep to inspect; split the command")
+        return []
     segments, words, word, quoted, quote, depth = [], [], [], False, None, 0
     index, length, pending, redirect, redirection, signed = 0, len(command), "", -2, False, False
 
@@ -673,10 +678,11 @@ def each_git_target(command, cwd):
     changes = 0
 
     def change(base, value):
+        """The resolved directory, or None when the limit is used up and it stays unknown."""
         nonlocal changes
+        if changes >= MAX_DIRECTORY_CHANGES:
+            return None
         changes += 1
-        require(changes <= MAX_DIRECTORY_CHANGES, "more than " + str(MAX_DIRECTORY_CHANGES)
-                + " cd / -C directory changes to inspect; split the command")
         return (base / value).resolve()
 
     for words, nested, before, after in segments:
@@ -700,7 +706,8 @@ def each_git_target(command, cwd):
                      and not any(c in words[1] for c in "$`~"))
             if plain and not structured and not alternative and after != "|" and before != "|":
                 if not unsure or Path(words[1]).is_absolute():
-                    here, unsure = change(here, words[1]), False
+                    moved_to = change(here, words[1])
+                    here, unsure = (here, True) if moved_to is None else (moved_to, False)
             else:
                 unsure = True
             if starts:
@@ -751,8 +758,12 @@ def each_git_target(command, cwd):
                     if any(c in value for c in "$`~"):
                         unknown = True
                     else:
-                        target = change(target, value)
-                        unknown = unknown and not Path(value).is_absolute()
+                        moved_to = change(target, value)
+                        if moved_to is None:
+                            unknown = True
+                        else:
+                            target = moved_to
+                            unknown = unknown and not Path(value).is_absolute()
                 index = index + 1 if joined else value_index + 1
             elif option.startswith("-c") or option in ("--no-pager", "--no-optional-locks"):
                 index += 1

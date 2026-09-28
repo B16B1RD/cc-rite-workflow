@@ -2427,7 +2427,8 @@ else
   fail "Pattern 7 on a ~120KB non-adjacent commit rc=$rc ms=$_ms decision=$decision reason=$reason"
 fi
 # At each limit the parser still finishes (the reason is its own) within 8s, under the
-# 10s hook timeout; one past a parser limit is refused.
+# 10s hook timeout. Past a parser limit, a commit that could hide there is refused and a
+# command that moves no HEAD is not.
 p7_max=$(sed -n 's/^_RITE_BTG_P7_PARSE_MAX_CHARS=//p' "$HOOK")
 p7_scope_py="$(dirname "$HOOK")/scripts/lib/review-fix-scope.py"
 p7_depth=$(sed -n 's/^MAX_SUBSTITUTION_DEPTH = //p' "$p7_scope_py")
@@ -2446,14 +2447,25 @@ p7_limit_case() {  # $1 label, $2 expected reason
     fail "Pattern 7 on $1 rc=$rc ms=$_ms decision=$decision reason=$reason"
   fi
 }
-p7_nested() {  # $1 depth, $2 length of the innermost word
-  { printf 'echo '; printf '$(%.0s' $(seq 1 "$1"); printf 'echo '; printf '%*s' "$2" '' | tr ' ' 'x'
-    printf ')%.0s' $(seq 1 "$1"); printf '%s' "$p7_tail"; } > "$p7_big"
+p7_allow_case() {  # $1 label
+  p7_timed "$p7_big"
+  if [ "$rc" = "0" ] && [ -z "$output" ] && [ "$_ms" -lt 8000 ]; then
+    pass "Pattern 7 allows $1 within 8s (${_ms}ms)"
+  else
+    fail "Pattern 7 on $1 rc=$rc ms=$_ms output=$output"
+  fi
+}
+p7_log_tail='; git log --allow-empty --grep commit'
+p7_nested() {  # $1 depth, $2 length of the innermost word, $3 innermost command (default echo), $4 tail
+  { printf 'echo '; printf '$(%.0s' $(seq 1 "$1"); printf '%s ' "${3:-echo}"; printf '%*s' "$2" '' | tr ' ' 'x'
+    printf ')%.0s' $(seq 1 "$1"); printf '%s' "${4:-$p7_tail}"; } > "$p7_big"
 }
 p7_nested "$p7_depth" $(( p7_max - 3 * p7_depth - 10 - ${#p7_tail} ))
 p7_limit_case "the deepest nesting of the longest command" "creates a commit with no file changes"
-p7_nested $(( p7_depth + 1 )) 10
-p7_limit_case "nesting one level too deep" "nested more than $p7_depth deep"
+p7_nested $(( p7_depth + 1 )) 10 'git -ca commit -m' "$p7_log_tail"
+p7_limit_case "a commit nested one level too deep" "nested more than $p7_depth deep"
+p7_nested $(( p7_depth + 1 )) 10 true "$p7_log_tail"
+p7_allow_case "a git log after nesting one level too deep"
 { for _i in $(seq 1 $(( (p7_max - ${#p7_tail}) / 10 ))); do printf 'git merge;'; done
   printf '%s' "$p7_tail"; } > "$p7_big"
 p7_limit_case "the most merges that fit" "creates a commit with no file changes"
@@ -2464,8 +2476,13 @@ p7_dirs() {  # $1 number of merge targets besides the commit's
 }
 p7_dirs "$p7_changes"
 p7_limit_case "the most cd / -C directory changes" "creates a commit with no file changes"
-p7_dirs $(( p7_changes + 1 ))
-p7_limit_case "one cd / -C directory change too many" "more than $p7_changes cd / -C"
+p7_moves() {  # $1 number of -C. options, $2 subcommand and arguments
+  { printf 'git'; for _i in $(seq 1 "$1"); do printf ' -C.'; done; printf ' %s' "$2"; } > "$p7_big"
+}
+p7_moves $(( p7_changes + 1 )) 'commit --allow-empty -m x'
+p7_limit_case "a commit after one cd / -C directory change too many" "target is dynamic"
+p7_moves $(( p7_changes + 1 )) 'log --allow-empty --grep commit'
+p7_allow_case "a git log after one cd / -C directory change too many"
 # The longest path those changes can build: every change adds as many components as fit.
 { printf 'git'; for _i in $(seq 1 "$p7_changes"); do
     printf ' -C'; printf 'x/%.0s' $(seq 1 $(( (p7_max - 40) / p7_changes / 2 - 2 ))); done
