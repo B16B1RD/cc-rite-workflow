@@ -338,7 +338,9 @@ _rite_btg_pattern6_command_surface() {
 # cost without parsing, in linear time: over the lines the parser sees (carriage
 # returns removed, continuations joined), the sum of each line's byte length
 # squared plus _RITE_BTG_SURFACE_LINE_COST. Bytes bound the cost of a multibyte
-# line from above. It succeeds only when the sum stays within
+# line from above. Heredoc body lines are counted too, although the parser does
+# not scan them, so a long heredoc body alone can exceed the budget: finding the
+# bodies is the parse being avoided. It succeeds only when the sum stays within
 # _RITE_BTG_SURFACE_MAX_COST (8192 squared), which keeps the three parses well
 # inside the hook timeout.
 _RITE_BTG_SURFACE_LINE_COST=16384
@@ -1284,13 +1286,15 @@ if [ -z "$BLOCKED_PATTERN" ]; then
   # substitutions preserves the existing large-command timeout invariant.
   # Past the parse budget the raw command is checked, heredoc bodies included:
   # a body that mentions gh issue create is then denied, but the hook does not
-  # run out of time.
+  # run out of time. Its lines are joined as the surface parser joins them, so a
+  # word split by a line continuation is still read whole.
   _p6_raw=""
   if [[ "$COMMAND" == *"<<"* ]]; then
     if _rite_btg_surface_within_budget "$COMMAND"; then
       P6_CHECK=$(_rite_btg_pattern6_command_surface "$COMMAND")
     else
-      P6_CHECK="$COMMAND"
+      P6_CHECK="${COMMAND//$'\r'/}"
+      P6_CHECK="${P6_CHECK//$'\\\n'/}"
       _p6_raw=1
     fi
   else
@@ -1306,7 +1310,7 @@ if [ -z "$BLOCKED_PATTERN" ]; then
     BLOCKED_ALTERNATIVE="Use create-issue-with-projects.sh or /rite:issue-create so the Issue is created through the approved helper."
     if [ -n "$_p6_raw" ]; then
       BLOCKED_REASON+=" This command is too long to separate its heredoc bodies from its commands within the hook time limit, so the bodies were checked too."
-      BLOCKED_ALTERNATIVE+=" Write long heredoc text to a file with the Write tool (a Bash heredoc holding the same text is checked the same way), then pass the file in a Bash call."
+      BLOCKED_ALTERNATIVE+=" Write long heredoc text to a file with a file-editing tool, not a Bash heredoc (one holding the same text is checked the same way), then pass the file in a Bash call."
     fi
   fi
   trap '_rite_btg_pattern13_fail_open' ERR
@@ -1353,7 +1357,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [[ "$COMMAND" == *git* && ( "$COMMAND" == *commi
   else
     BLOCKED_PATTERN="commit-guard-uninspectable"
     BLOCKED_REASON="This command mentions git and commit or merge, and its lines are too long for the commit checks to inspect within the hook time limit (${#COMMAND} characters). A check that runs out of time lets the command run, so it is denied without inspection."
-    BLOCKED_ALTERNATIVE="Write a long commit message to a file outside the work tree with the Write tool (a Bash heredoc holding the same text is estimated the same way), then run git commit -F <message-file> in its own Bash call. Run a long script in a separate Bash call from the commit."
+    BLOCKED_ALTERNATIVE="Write a long commit message to a file outside the work tree with a file-editing tool, not a Bash heredoc (one holding the same text is estimated the same way), then run git commit -F <message-file> in its own Bash call. Run a long script in a separate Bash call from the commit."
   fi
 fi
 

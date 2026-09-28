@@ -2563,11 +2563,11 @@ if [[ "$sb_line_cost" =~ ^[1-9][0-9]*$ && "$sb_max_cost" =~ ^[1-9][0-9]*$ ]]; th
   { printf 'git commit -m "'; sb_x 40960; printf '"'; } > "$p7_big"
   sb_case "a 40KB commit message" deny
   # The alternative must not lead back to the same denial: a Bash heredoc holding the
-  # message is estimated the same way, so it names the Write tool and git commit -F.
-  if [[ "$reason" == *"Write tool"* && "$reason" == *"git commit -F <message-file>"* ]]; then
-    pass "parse budget: the denial names the Write tool and git commit -F"
+  # message is estimated the same way, so it names a file-editing tool and git commit -F.
+  if [[ "$reason" == *"file-editing tool, not a Bash heredoc"* && "$reason" == *"git commit -F <message-file>"* ]]; then
+    pass "parse budget: the denial names a file-editing tool and git commit -F"
   else
-    fail "parse budget: the denial should name the Write tool and git commit -F: $reason"
+    fail "parse budget: the denial should name a file-editing tool and git commit -F: $reason"
   fi
   printf 'git commit -F /tmp/rite-commit-msg.txt' > "$p7_big"
   sb_case "the recovery command git commit -F <message-file>" other
@@ -2591,11 +2591,17 @@ if [[ "$sb_line_cost" =~ ^[1-9][0-9]*$ && "$sb_max_cost" =~ ^[1-9][0-9]*$ ]]; th
   sb_case "a Japanese message line just past the budget" deny
   { printf 'git commit -m '; sb_x 7960; printf '\n'; for _i in $(seq 1 150); do printf 'echo abcdefghij\n'; done; } > "$p7_big"
   sb_case "one long line followed by short lines" other
+  # The heaviest form: a heredoc makes Patterns 6, 8 and 9 each parse the surface, and
+  # the commit line after it is as long as the budget allows.
+  { printf "cat <<'EOF'\nx\nEOF\ngit commit -m "; sb_x $(( sb_len - 4 - 14 )); } > "$p7_big"
+  sb_case "a heredoc before a commit line of $(( sb_len - 4 )) bytes" other
   # Pattern 6 checks a heredoc past the budget as raw text: a gh issue create after the
-  # heredoc or in its body is denied, and a command with neither is allowed.
-  for sb_where in after body none; do
+  # heredoc, split by a line continuation, or in its body is denied, and a command with
+  # none of them is allowed.
+  for sb_where in after split body none; do
     case "$sb_where" in
       after) { printf "cat <<'EOF'\n"; sb_x 10240 q; printf '\nEOF\ngh issue create -t x'; } > "$p7_big" ;;
+      split) { printf "cat <<'EOF'\n"; sb_x 10240 q; printf '\nEOF\ngh issue cre\\\r\nate -t x'; } > "$p7_big" ;;
       body) { printf "cat <<'EOF'\ngh issue create "; sb_x 10240 q; printf '\nEOF'; } > "$p7_big" ;;
       none) { printf "cat <<'EOF'\n"; sb_x 10240 q; printf '\nEOF'; } > "$p7_big" ;;
     esac
@@ -2607,7 +2613,7 @@ if [[ "$sb_line_cost" =~ ^[1-9][0-9]*$ && "$sb_max_cost" =~ ^[1-9][0-9]*$ ]]; th
       else
         fail "parse budget: Pattern 6 on a long heredoc without gh issue create rc=$rc ms=$_ms output=$output"
       fi
-    elif [ "$rc" = "0" ] && [[ "$reason" == *direct-gh-issue-create* && "$reason" == *"bodies were checked"* && "$reason" == *"Write tool"* ]] && [ "$_ms" -lt 5000 ]; then
+    elif [ "$rc" = "0" ] && [[ "$reason" == *direct-gh-issue-create* && "$reason" == *"bodies were checked"* && "$reason" == *"file-editing tool, not a Bash heredoc"* ]] && [ "$_ms" -lt 5000 ]; then
       pass "parse budget: Pattern 6 denies gh issue create $sb_where a long heredoc (${_ms}ms)"
     else
       fail "parse budget: Pattern 6 on gh issue create $sb_where a long heredoc rc=$rc ms=$_ms reason=$reason"
