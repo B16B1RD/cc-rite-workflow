@@ -1037,7 +1037,7 @@ gout=$(printf '%s' "$many" | env -u CLAUDE_SESSION_ID -u CODEX_THREAD_ID -u GROK
 if grep -qF 'BLOCKED (wiki-apply-unresolved)' <<<"$gout" && grep -q 'cd / -C directory changes' <<<"$gout"; then
   pass "guard refuses a commit after more directory changes than it can inspect"
 else
-  fail "guard many targets rc=$grc out=$gout"
+  fail "guard many directory changes rc=$grc out=$gout"
 fi
 for _cmd in "git '' commit -m x" 'git log --grep commit' 'git $OPTS log --grep commit'; do
   nrc=0

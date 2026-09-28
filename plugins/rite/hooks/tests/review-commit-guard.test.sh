@@ -934,6 +934,7 @@ for closed_targets in (False, True):
         # More directory changes or deeper substitutions than one parse can inspect in time are refused.
         hook(''.join('git -C d%d merge --abort;' % i for i in range(17)) + 'git commit -m x',
              reason='cd / -C directory changes')
+        hook('cd . && ' * 16 + 'git commit -m x', reason='fix plan record missing')
         hook('cd . && ' * 17 + 'git commit -m x', reason='cd / -C directory changes')
         hook('echo ' + '$(' * 65 + 'true' + ')' * 65 + '; git commit -m x', reason='nested more than')
         # The everyday forms still target the reviewed worktree.

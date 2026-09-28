@@ -2470,7 +2470,13 @@ p7_limit_case "one cd / -C directory change too many" "more than $p7_changes cd 
 { printf 'git'; for _i in $(seq 1 "$p7_changes"); do
     printf ' -C'; printf 'x/%.0s' $(seq 1 $(( (p7_max - 40) / p7_changes / 2 - 2 ))); done
   printf ' commit --allow-empty -m x'; } > "$p7_big"
-p7_limit_case "the longest path built by cd / -C" "cannot be resolved to a repository"
+p7_limit_case "the longest path built by directory changes" "cannot be resolved to a repository"
+# The costliest use of those changes: the first builds the whole path and every other one
+# resolves it again.
+{ printf 'git -C'; printf 'x/%.0s' $(seq 1 $(( (p7_max - 40 - 4 * p7_changes) / 2 )))
+  for _i in $(seq 2 "$p7_changes"); do printf ' -C.'; done
+  printf ' commit --allow-empty -m x'; } > "$p7_big"
+p7_limit_case "the longest path resolved again by every directory change" "cannot be resolved to a repository"
 # The parser itself stays linear: a long word of > signs and a long run of wrapper options.
 p7_scope_check="$(dirname "$HOOK")/scripts/review-fix-scope-check.sh"
 for p7_shape in gt wrapper; do
