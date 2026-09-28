@@ -153,6 +153,16 @@
 * **Update**: [既存の正規化を新しい判定へ再利用すると、除外範囲の緩さまで持ち込む](pages/heuristics/reused-normalization-carries-its-exclusion-looseness.md) — raw/reviews/20260928T104839Z-pr-3376.md を統合（除外範囲を判定ごとに持つ案を、後の cycle で収束した 1 集合への統一へ改訂）
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=578, broken_refs=0
 
+* **Create**: [解析しない部分の近似判定は shell が読む語に正規化してから行い、上限超過は超えた部分だけを判定不能として扱う](pages/heuristics/approximate-parse-normalize-to-shell-words.md) — raw/fixes/20260928T111245Z-pr-3379.md と raw/fixes/20260928T115300Z-pr-3379.md と raw/reviews/20260928T114336Z-pr-3379.md を新規ページ化
+* **Create**: [exit 0 で終わる hook の stderr はモデルに届かない — 行動を促す失敗通知は stdout にも出す](pages/heuristics/exit0-hook-stderr-not-seen-notify-on-stdout.md) — raw/fixes/20260928T112849Z-pr-3397.md と raw/reviews/20260928T111422Z-pr-3397.md と raw/reviews/20260928T114443Z-pr-3397.md を新規ページ化
+* **Create**: [テストで「同じ行」を固定するなら行単位で判定し、否定条件は肯定側と同じ述語の否定で書く](pages/patterns/test-pin-same-line-and-negation-by-positive-predicate.md) — raw/fixes/20260928T115704Z-pr-3397.md と raw/reviews/20260928T121202Z-pr-3397.md を新規ページ化
+* **Create**: [state の書き込み失敗は別ディレクトリに state のバイト複製として記録し、読み手が cmp で照合する](pages/patterns/state-write-failure-record-as-byte-copy.md) — raw/fixes/20260928T123424Z-pr-3397.md を新規ページ化
+* **Create**: [コメントや文書の根拠は、実装が名指す範囲と測定の条件まで確かめて書く](pages/heuristics/claim-evidence-scope-and-measurement-conditions.md) — raw/reviews/20260928T121127Z-pr-3402.md と raw/fixes/20260928T121818Z-pr-3402.md と raw/reviews/20260928T122422Z-pr-3402.md と raw/reviews/20260928T122109Z-pr-3376.md を新規ページ化
+* **Create**: [比較が満たすべき不変条件をレビュー依頼に明示し、その反例を探させると、場当たりの指摘の連鎖が収束する](pages/heuristics/state-invariants-in-review-request-converge.md) — raw/reviews/20260928T114355Z-pr-3376.md を新規ページ化
+* **Update**: [保留（hold）を新設したら、寿命を state を消す全経路で揃え、解除の手段を保留の理由ごとに用意する](pages/heuristics/new-hold-state-lifecycle-across-all-purge-paths.md) — raw/fixes/20260928T111657Z-pr-3393.md と raw/reviews/20260928T113417Z-pr-3393.md と raw/fixes/20260928T120704Z-pr-3393.md と raw/reviews/20260928T122519Z-pr-3393.md で補強
+* **Skip**: [20260928T111304Z-pr-3388.md](raw/fixes/20260928T111304Z-pr-3388.md) — 既存の mutation testing ページと同内容で新しい経験則がない
+* **Skip**: [20260928T112647Z-pr-3388.md](raw/reviews/20260928T112647Z-pr-3388.md) — デッドコード削除の自明な事例で一般化できる経験則がない
+
 ## 2026-09-27
 
 * **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/reviews/20260927T160944Z-pr-3307.md を統合
