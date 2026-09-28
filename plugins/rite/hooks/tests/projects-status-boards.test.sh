@@ -181,8 +181,11 @@ option_id() { jq -r --arg name "$2" '.options[] | select(.name == $name) | .id' 
 ALLOW_RE='^gh (api graphql -f query=|project field-list |project item-edit |repo view)'
 # Prints every log line outside the allowlist (empty output = no unexpected call).
 unexpected_gh_lines() {
-  grep -vE "$ALLOW_RE" "$1"
-  grep -E '^gh api graphql .*mutation' "$1"
+  # Empty output means no unexpected call. Only a grep error (rc >= 2: the log is
+  # missing or unreadable) is returned, so a match or no match both stay rc 0.
+  local rc
+  grep -vE "$ALLOW_RE" "$1"; rc=$?; [ "$rc" -ge 2 ] && return "$rc"
+  grep -E '^gh api graphql .*mutation' "$1"; rc=$?; [ "$rc" -ge 2 ] && return "$rc"
   return 0
 }
 
@@ -290,7 +293,8 @@ printf '%s\n' \
   'gh project field-create 1 --owner o --name Status2' \
   > "$ctl_log"
 assert "T-05 control: two synthetic writes are the only unexpected lines" "2" "$(unexpected_gh_lines "$ctl_log" | wc -l | tr -d ' ')"
-if _gq_out=$(unexpected_gh_lines "$ctl_log") && grep -q 'updateProjectV2Field' <<< "$_gq_out"; then
+_gq_out=$(unexpected_gh_lines "$ctl_log") || fail "T-05 control: unexpected_gh_lines failed on the control log"
+if grep -q 'updateProjectV2Field' <<< "$_gq_out"; then
   pass "T-05 control: a GraphQL mutation collapsed onto one line is rejected"
 else
   fail "T-05 control: the GraphQL mutation slipped through the allowlist"

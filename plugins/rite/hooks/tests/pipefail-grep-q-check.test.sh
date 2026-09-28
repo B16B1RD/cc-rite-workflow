@@ -61,11 +61,28 @@ printf '%s\n' 'set -o pipefail' 'printf '"'"'%s|%s\n'"'"' "$pipe_a" "$pipe_b" | 
   'X=$HOME echo prefix_assign | grep -q x' 'echo redir_word 2>"$log" | grep -q x' \
   'printf '"'"'%s\n'"'"' brace_expand {1..3} | grep -q x' 'echo glob_word * | grep -q x' > "$fixture"
 out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
-assert "printf with a literal pipe in its format and an expansion is reported" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*pipe_a' || true)"
+assert "printf with a literal pipe in its format and an expansion is reported" "1" "$(printf '%s\n' "$out" | grep -cxF "[pipefail-grep-q] plugins/rite/hooks/fixture.sh:2: immediate producer before grep -q: printf '%s|%s\n' \"\$pipe_a\" \"\$pipe_b\"" || true)"
 assert "expansion in a prefix assignment is reported" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*prefix_assign' || true)"
 assert "expansion in a redirection is reported" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*redir_word' || true)"
 assert "printf of a brace expansion is reported" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*brace_expand' || true)"
 assert "echo of a glob is reported" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*glob_word' || true)"
+
+# Each producer holds one trigger and no other character of the exemption class,
+# so a finding can only come from that trigger. The last two are controls: a digit
+# in an argument is not a format width, and echo does not interpret a format.
+printf '%s\n' 'set -o pipefail' 'echo qmark_word ? | grep -q x' 'echo bracket_word [ab] | grep -q x' \
+  'printf '"'"'%300000s'"'"' width_word | grep -q x' 'printf '"'"'%.5000f'"'"' 1 | grep -q x' \
+  'printf '"'"'%-300000s'"'"' flag_minus | grep -q x' 'printf '"'"'%0300000d'"'"' 7 | grep -q x' \
+  'printf '"'"'%s\n'"'"' 300000 | grep -q x' 'echo width_echo %300000s | grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+finding() { printf '[pipefail-grep-q] plugins/rite/hooks/fixture.sh:%s: immediate producer before grep -q: %s' "$1" "$2"; }
+assert "echo of a question-mark glob is reported" "1" "$(printf '%s\n' "$out" | grep -cxF "$(finding 2 'echo qmark_word ?')" || true)"
+assert "echo of a bracket glob is reported" "1" "$(printf '%s\n' "$out" | grep -cxF "$(finding 3 'echo bracket_word [ab]')" || true)"
+assert "printf with a numeric field width is reported" "1" "$(printf '%s\n' "$out" | grep -cxF "$(finding 4 "printf '%300000s' width_word")" || true)"
+assert "printf with a numeric precision is reported" "1" "$(printf '%s\n' "$out" | grep -cxF "$(finding 5 "printf '%.5000f' 1")" || true)"
+assert "printf with a left-justify flag and a numeric width is reported" "1" "$(printf '%s\n' "$out" | grep -cxF "$(finding 6 "printf '%-300000s' flag_minus")" || true)"
+assert "printf with a zero flag and a numeric width is reported" "1" "$(printf '%s\n' "$out" | grep -cxF "$(finding 7 "printf '%0300000d' 7")" || true)"
+assert "a digit in a printf argument and a width-like echo word stay exempt" "6" "$(printf '%s\n' "$out" | grep -c '^\[pipefail-grep-q\]' || true)"
 
 printf '%s\n' 'stream_many | grep -q x' > "$fixture"
 out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
