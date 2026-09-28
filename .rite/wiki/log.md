@@ -142,6 +142,7 @@
 * **Update**: [セキュリティ境界 hook の timeout は fail-open — 評価コストは入力サイズで O(1) 上限を設けて bound する](pages/heuristics/security-hook-timeout-is-fail-open-bound-cost-by-input-size.md) — raw/reviews/20260928T095306Z-pr-3379.md を統合
 * **Update**: [セキュリティ境界 hook の timeout は fail-open — 評価コストは入力サイズで O(1) 上限を設けて bound する](pages/heuristics/security-hook-timeout-is-fail-open-bound-cost-by-input-size.md) — raw/fixes/20260928T100658Z-pr-3379.md を統合
 * **Create**: [既存の正規化を新しい判定へ再利用すると、除外範囲の緩さまで持ち込む](pages/heuristics/reused-normalization-carries-its-exclusion-looseness.md) — raw/reviews/20260928T101137Z-pr-3376.md を新規ページ化
+* **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=62, orphans=0, missing_concept=0, unregistered_raw=578, broken_refs=0
 
 ## 2026-09-27
 
