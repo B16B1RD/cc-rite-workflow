@@ -1293,17 +1293,15 @@ if [ -z "$BLOCKED_PATTERN" ]; then
     if _rite_btg_surface_within_budget "$COMMAND"; then
       P6_CHECK=$(_rite_btg_pattern6_command_surface "$COMMAND")
     else
-      P6_CHECK="${COMMAND//$'\r'/}"
-      P6_CHECK="${P6_CHECK//$'\\\n'/}"
+      P6_CHECK=$(LC_ALL=C; _c="${COMMAND//$'\r'/}"; printf '%s' "${_c//$'\\\n'/}")
       _p6_raw=1
     fi
   else
     P6_CHECK="$COMMAND"
   fi
-  P6_CHECK="${P6_CHECK//$'\t'/ }"
-  P6_CHECK="${P6_CHECK//$'\n'/ }"
-  P6_CHECK="${P6_CHECK//[\"\']/}"
-  P6_CHECK="${P6_CHECK//\\/}"
+  # Every replaced character is a single byte, and under a UTF-8 locale each
+  # replacement is quadratic in its match count, so they run byte-wise.
+  P6_CHECK=$(LC_ALL=C; _c="${P6_CHECK//$'\t'/ }"; _c="${_c//$'\n'/ }"; _c="${_c//[\"\']/}"; printf '%s' "${_c//\\/}")
   if [[ "$P6_CHECK" =~ (^|[^[:alnum:]_])gh[[:space:]]+issue[[:space:]]+create([[:space:]]|$) ]]; then
     BLOCKED_PATTERN="direct-gh-issue-create"
     BLOCKED_REASON="Direct gh issue create bypasses the required Issue format and Projects registration."

@@ -2573,6 +2573,10 @@ if [[ "$sb_line_cost" =~ ^[1-9][0-9]*$ && "$sb_max_cost" =~ ^[1-9][0-9]*$ ]]; th
   sb_case "the recovery command git commit -F <message-file>" other
   { printf 'git commit -m "'; sb_x 1048576; printf '"'; } > "$p7_big"
   sb_case "a 1MB commit message" deny
+  # Past the budget Pattern 6 checks the whole command, so a heredoc of many lines must
+  # not make its checks run out of time before this denial.
+  { printf "git commit -F - <<'EOF'\n"; printf 'xxxxxxxxxxxxxxx\n%.0s' $(seq 1 60000); printf 'EOF'; } > "$p7_big"
+  sb_case "a commit with a 60000-line heredoc" deny
   { printf 'git merge -m '; sb_x 10240; printf ' x'; } > "$p7_big"
   sb_case "a merge with a 10KB message" deny
   { printf 'echo '; sb_x 40960; } > "$p7_big"
