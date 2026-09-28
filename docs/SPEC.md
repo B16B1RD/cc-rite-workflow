@@ -214,6 +214,7 @@ rite-workflow/
 │ ├── pre-compact.sh / post-compact.sh
 │ ├── pre-tool-bash-guard.sh / pre-tool-edit-guard.sh / post-tool-wm-sync.sh
 │ ├── stop-loop-continuation.sh # Stop hook: review↔fix loop continuation + terminal finalize
+│ ├── stop-failure.sh # StopFailure hook: freeze the open review clock when a turn ends on an API error
 │ ├── hook-preamble.sh / state-path-resolve.sh / control-char-neutralize.sh / gitignore-ensure.sh # Shared helpers
 │ ├── _resolve-session-id.sh / _resolve-session-id-from-file.sh # Private session-id resolution helpers
 │ ├── _resolve-cross-session-guard.sh # Private legacy-state takeover classifier
@@ -1202,7 +1203,7 @@ iteration:
 
 ### Supported Hook Types
 
-> **Canonical SoT**: The authoritative list of registered hook events lives in [`plugins/rite/hooks/hooks.json`](../plugins/rite/hooks/hooks.json). This table mirrors that registration; if the two diverge, `hooks.json` wins. The table below is enumerated for reader convenience but MUST be regenerated from `hooks.json` keys (`jq '.hooks | keys[]' plugins/rite/hooks/hooks.json`) whenever the registration changes. One row = one hook **event**, and an event may bundle several scripts under different matchers, so the row count (7 events) is deliberately smaller than the registered entry count (9): `PreToolUse` and `PostToolUse` each register two scripts. A row whose event bundles more than one script must name every one of them in its Purpose, so that a reader can tell which script does what; single-script rows describe the behaviour without repeating the script name.
+> **Canonical SoT**: The authoritative list of registered hook events lives in [`plugins/rite/hooks/hooks.json`](../plugins/rite/hooks/hooks.json). This table mirrors that registration; if the two diverge, `hooks.json` wins. The table below is enumerated for reader convenience but MUST be regenerated from `hooks.json` keys (`jq '.hooks | keys[]' plugins/rite/hooks/hooks.json`) whenever the registration changes. One row = one hook **event**, and an event may bundle several scripts under different matchers, so the row count (8 events) is deliberately smaller than the registered entry count (10): `PreToolUse` and `PostToolUse` each register two scripts. A row whose event bundles more than one script must name every one of them in its Purpose, so that a reader can tell which script does what; single-script rows describe the behaviour without repeating the script name.
 
 | Type | Timing | Purpose |
 |------|--------|---------|
@@ -1212,6 +1213,7 @@ iteration:
 | SessionEnd | Session end | Save final state; mark the ending session's run-queue with `run-queue-{session_id}.ended` so other sessions can tell it ended |
 | PreToolUse | Before tool execution | Block known-bad Bash command patterns (`pre-tool-bash-guard.sh`); deny reviewer-subagent Edit/Write/MultiEdit/NotebookEdit writes into a parent working tree (`pre-tool-edit-guard.sh`) |
 | PostToolUse | After tool execution | Auto-recover local work memory and sync the Issue comment replica on phase change (`post-tool-wm-sync.sh`); block bang-backtick adjacency that bash would interpret as history expansion (`scripts/bang-backtick-edit-hook.sh`) |
+| StopFailure | Turn ends on an API error (usage limit, overload, …) | Write the failure time as `ended_at` on this session's open stagnation-diagnosis clock segment (`.rite/state/review-clock-{session_id}.json`), keeping `kind`, so the later close or recover does not count the pause as work time. Output and exit code are ignored by Claude Code |
 | Stop | Turn end | Re-inject the `/rite:iterate` review↔fix loop command or the `/rite:cleanup` wiki-chain continuation (`consume-handoff` → `decision:block`) so the loop / chain continues after a continuation sentinel; when handoff is empty, a session-scoped run-queue watchdog blocks stop if `/rite:batch-run` is still active |
 
 > **Note:** The legacy stop-prevention hook (`stop-guard.sh`) has been removed; workflow stop prevention itself is now handled by the per-session state structure (`.rite/sessions/{session_id}.flow-state`) and the orchestrator-level scaffolding contract (Pre-write + 🚨 Mandatory After). A **distinct** `Stop` hook (`stop-loop-continuation.sh`) is registered for a different purpose: it consumes the one-shot `handoff` marker and re-injects the next review↔fix loop command, or — for the `WIKICHAIN:` prefix set by `/rite:cleanup` Step 9 — the continuation of the cleanup → wiki-ingest → wiki-lint chain. When handoff is empty, the same hook reads this session's `run-queue-{session_id}.json` and blocks stop while `/rite:batch-run` is active (`active:true` and `cursor < issues.length`). See the [Multi-Session State Management](#multi-session-state-management) section for details.
@@ -1224,6 +1226,7 @@ SessionStart
 PreToolUse → Tool Execution → PostToolUse
  ↓
 Stop (on turn end — review↔fix loop / cleanup wiki-chain handoff continuation / batch-run watchdog)
+  or StopFailure (on turn end by an API error — freeze the open review clock)
  ↓
 PreCompact (on compact)
  ↓
@@ -1517,7 +1520,7 @@ Legacy state files (flat JSON without `schema_version`, or any file with `schema
 
 This feature uses GitHub's native Sub-Issues API to maintain the parent-child relation. `/rite:open` Step 1.2 (previously `start.md` Phase 0.3 before the decomposition) detects parent Issues via three OR-combined methods (trackedIssues API → body tasklist `- [ ] #N` → label-based `epic`/`parent`/`umbrella`). The child→parent Status promotion (Todo → In Progress) is propagated in the same OR-combined order (`## 親 Issue` body meta → Sub-Issues API `trackedInIssues` → tasklist search) by `/rite:open` Step 2.4 (`### 2.4 GitHub Projects Status 更新`, sub-step 2.4.7 — see [`references/projects-integration.md`](../plugins/rite/references/projects-integration.md) §2.4.7 Parent Issue Status Update for the SoT).
 
-> **Hook list canonical SoT**: Every rite hook — including the ones that read or write per-session state — is registered in [`plugins/rite/hooks/hooks.json`](../plugins/rite/hooks/hooks.json) — currently 7 events (`SessionStart` / `SessionEnd` / `PreCompact` / `PostCompact` / `PreToolUse` / `PostToolUse` / `Stop`) carrying 9 registered entries — `PreToolUse` and `PostToolUse` each register two scripts under different matchers. To re-enumerate the live registration, run `jq '.hooks | keys[]' plugins/rite/hooks/hooks.json`. The `Stop` event is registered to `stop-loop-continuation.sh` for review↔fix loop continuation; the legacy `stop-guard.sh` stop-prevention hook remains removed (see the retired-layers note below). The library script `session-ownership.sh` is sourced (not registered) and therefore does not appear in `hooks.json`.
+> **Hook list canonical SoT**: Every rite hook — including the ones that read or write per-session state — is registered in [`plugins/rite/hooks/hooks.json`](../plugins/rite/hooks/hooks.json) — currently 8 events (`SessionStart` / `SessionEnd` / `PreCompact` / `PostCompact` / `PreToolUse` / `PostToolUse` / `Stop` / `StopFailure`) carrying 10 registered entries — `PreToolUse` and `PostToolUse` each register two scripts under different matchers. To re-enumerate the live registration, run `jq '.hooks | keys[]' plugins/rite/hooks/hooks.json`. The `Stop` event is registered to `stop-loop-continuation.sh` for review↔fix loop continuation; the legacy `stop-guard.sh` stop-prevention hook remains removed (see the retired-layers note below). The library script `session-ownership.sh` is sourced (not registered) and therefore does not appear in `hooks.json`.
 
 #### Worktree Mode (session worktree isolation)
 
@@ -1598,6 +1601,7 @@ A test framework for ensuring Hook script quality. Located in `plugins/rite/hook
 | `pre-tool-bash-guard.sh` | Dangerous pattern detection, heredoc safety |
 | `post-tool-wm-sync.sh` | Work memory auto-recovery after Bash tool calls, phase-diff replica sync, `last_synced_phase` advancement gating |
 | `session-start.sh` / `session-end.sh` | Session lifecycle + ownership transitions; SessionStart(`source=compact`) recovery context emission; run-queue ended marker (SessionEnd creates it for the ending session's queue, SessionStart removes its own) |
+| `stop-failure.sh` | Open review-clock segment gets the failure time as `ended_at`; a later close submits that time (`review-clock-recipe-contract.test.sh`) |
 | `work-memory-lock.sh` | Lock acquire/release + stale detection |
 | `wiki-ingest-trigger.sh` | Raw-source write contract |
 | `parent-child-sync-static` | Parent/child Issue state synchronization |
