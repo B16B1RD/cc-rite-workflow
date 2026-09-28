@@ -586,9 +586,10 @@ okf_version: "0.2"
 | [件数を入れる変数を「存在し照合も通った」フラグとして兼用すると helper の非空契約に暗黙依存する](pages/anti-patterns/count-variable-doubling-as-existence-flag.md) | anti-patterns | helper が返す件数を入れた変数の非空を「対象が存在し照合も通った」判定に流用すると、helper が成功時に必ず非空を返すという明文化されていない契約へ依存する。case の各アームに複製した同じ判定を前へまとめるときも、前段の失敗経路を判定から外す条件を残さないと停止理由の名前が変わる。 | 2026-09-27T20:15:00Z | medium |
 | [awk の正規表現に区間表現 {m,n} を使うと mawk で範囲が黙って広がる](pages/anti-patterns/awk-interval-expression-widens-range-on-mawk.md) | anti-patterns | awk の正規表現で見出しの深さを `/^#{2,4} /` のような区間表現で限定すると、区間表現を解釈しない mawk では式が別の意味になり、節の終端が見つからず切り出し範囲が後続の節まで広がる。節の中身を固定する check は黙って緩む（fail-open）。区間表現ではなく選択表現 `/^(##\|###\|####) /` で書き、mawk と gawk の両方で同じ範囲を切り出すかを行数で比べる。 | 2026-09-27T21:32:57Z | high |
 | [完了レポートの「なし」行は、失敗経路ごとに WARNING を出して判定する](pages/heuristics/completion-report-none-line-needs-warning-per-failure-path.md) | heuristics | 完了レポートの「未完了事項: なし」を「WARNING を出していない」だけで判定すると、WARNING を出さずに終了コードだけで失敗する経路が「なし」に化ける。報告したい失敗経路ごとに WARNING を出し、終了コードは保ったまま返せば、新しい失敗経路に WARNING を足すだけで「なし」の誤判定も閉じる。 | 2026-09-27T21:52:19Z | medium |
+| [読み直しによる検証は操作の不発しか捕まえない — 対象の取り違えには独立した照合元が要る](pages/heuristics/readback-verification-misses-wrong-target.md) | heuristics | 操作と読み直しが同じ変数を対象にすると、検証が捕まえられるのは「効かなかった操作」だけになる。上流で渡された対象そのものが誤っていれば、誤った対象への成功を読み直しが確認してしまうため、取り違えを検出したいなら操作と独立した情報源との照合を入れる。 | 2026-09-28T00:16:01Z | medium |
 ## 統計
 
-- 総ページ数: 576
-- ドメイン別: patterns=127, heuristics=270, anti-patterns=179
-- 最終更新: 2026-09-27T22:02:06Z
+- 総ページ数: 577
+- ドメイン別: patterns=127, heuristics=271, anti-patterns=179
+- 最終更新: 2026-09-28T00:16:01Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |

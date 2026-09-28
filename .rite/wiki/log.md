@@ -44,6 +44,8 @@
 * **Update**: [mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる](pages/heuristics/mutation-axes-beyond-predicate.md) — raw/reviews/20260927T215520Z-pr-3353.md で補強
 
 * **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=63, orphans=0, missing_concept=0, unregistered_raw=571, broken_refs=0
+* **Create**: [読み直しによる検証は操作の不発しか捕まえない — 対象の取り違えには独立した照合元が要る](pages/heuristics/readback-verification-misses-wrong-target.md) — raw/reviews/20260927T220423Z-pr-3358.md を新規ページ化
+* **Skip**: [20260927T220912Z-pr-3355.md](raw/reviews/20260927T220912Z-pr-3355.md) — レビュー結果の要約のみで、再利用できる経験則を含まない
 
 ## 2026-09-27
 
