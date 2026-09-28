@@ -92,6 +92,18 @@ _resolve_session_id() {
   echo "ERROR: cannot resolve session_id" >&2; return 2
 }
 
+# reap-issue leaves this record when it cannot clear a suspended state's mark, and session-start
+# keeps that session's state inactive while it exists. Only a real write of the state (set,
+# deactivate) removes it; writes that keep the mark (SessionEnd, the worktree self-heal) do not.
+_reap_record_path() { printf '%s/.rite/state/reap-failed-%s.flow-state' "$STATE_ROOT" "$1"; }
+_clear_reap_record() {
+  local rec; rec=$(_reap_record_path "$1")
+  { [ -e "$rec" ] || [ -L "$rec" ]; } || return 0
+  rm -f "$rec" 2>/dev/null && return 0
+  echo "WARNING: could not remove the failed-reap record, so resume keeps this session's state inactive: $(printf '%s' "$rec" | neutralize_ctrl)" >&2
+  return 0
+}
+
 _state_path() {
   mkdir -p "$SESSION_DIR" 2>/dev/null || true
   if ! _ensure_rite_nested_gitignore "$STATE_ROOT/.rite"; then
@@ -467,6 +479,7 @@ cmd_set() {
   new=$(printf '%s' "$new" | python3 "$SCRIPT_DIR/scripts/lib/review-cycle.py" guard-set \
     --state "$path" --session "$sid" --results-dir "$STATE_ROOT/.rite/review-results") || return 1
   RITE_STATE_IF_MATCH="$expected_hash" _atomic_write "$path" "$new" || return 1
+  _clear_reap_record "$sid"
   # Record only after the write physically landed, so the log never claims a
   # transition that failed to persist. Reuses `$now` (the same timestamp the
   # state file's `updated_at` carries) so a record can be cross-referenced with
@@ -587,6 +600,7 @@ cmd_deactivate() {
      | del(.suspended_by_session_end)' "$path") || return 1
   # `_atomic_write` rc 伝播 (cmd_set / `_migrate_file` と対称、header 契約遵守)。
   _atomic_write "$path" "$updated" || return 1
+  _clear_reap_record "$sid"
 }
 
 # reap-issue: 指定 Issue に紐づく全セッションの flow-state / run-queue を非 active 化し、
@@ -641,9 +655,9 @@ cmd_reap_issue() {
         # A session that ended mid-flow on this Issue would come back active on resume.
         if ! cmd_deactivate --session "$sid" --next "none"; then
           echo "WARNING: reap-issue: deactivate failed: $(printf '%s' "$f" | neutralize_ctrl)" >&2
-          # The mark survived, so resume would turn this reaped state active again. When the state
-          # still equals this copy, the next resume's session-start clears the mark instead.
-          local rec="$STATE_ROOT/.rite/state/reap-failed-$sid.flow-state"
+          # The mark survived, so resume would turn this reaped state active again. While this
+          # record exists, session-start keeps the state inactive and clears the mark instead.
+          local rec; rec=$(_reap_record_path "$sid")
           if ! { mkdir -p "${rec%/*}" && cp "$f" "$rec.$$" && mv "$rec.$$" "$rec"; } 2>/dev/null; then
             rm -f "$rec.$$" 2>/dev/null
             echo "WARNING: reap-issue: could not record the failed reap, so resume may reactivate: $(printf '%s' "$f" | neutralize_ctrl)" >&2

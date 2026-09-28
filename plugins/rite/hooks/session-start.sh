@@ -573,21 +573,22 @@ if [ -z "$STATE_FILE" ] || [ ! -f "$STATE_FILE" ]; then
   exit 0
 fi
 
-# reap-issue が中断の印を消せなかったときは、複製に成功していれば state の複製が .rite/state/ に残る。
-# 複製と同一の state は回収済みなので、resume で作業中に戻さず、ここで印を消して回収を終える
-# （書き込みに失敗した state は中断として扱わない）。印を残したまま state を書き換える処理
-# （下の worktree 参照クリアや SessionEnd）を挟むと一致しなくなるため、最初の書き込みより前に行う。
+# reap-issue が中断の印を消せなかったときは、記録 .rite/state/reap-failed-{session_id}.flow-state が残る。
+# 記録は flow-state.sh の set / deactivate が成功したときにだけ消えるので、記録があり state が印付きの
+# inactive なら回収済みとして、resume で作業中に戻さずここで印を消す（書き込みに失敗した state は中断と
+# して扱わない）。消せなければ印と記録が残り、次の resume でも同じく戻さない。
 _reaped=0
 _reap_record="$STATE_ROOT/.rite/state/reap-failed-$(basename "$STATE_FILE" .flow-state).flow-state"
-if [ "$SOURCE" = "resume" ] && [ -f "$_reap_record" ] && cmp -s "$_reap_record" "$STATE_FILE"; then
+if [ "$SOURCE" = "resume" ] && [ -f "$_reap_record" ] \
+   && jq -e '.active != true and .suspended_by_session_end == true' "$STATE_FILE" >/dev/null 2>&1; then
   _reaped=1
   _state_file_shown=$(printf '%s' "$STATE_FILE" | neutralize_ctrl)
   if RITE_STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/flow-state.sh" deactivate --next none >/dev/null 2>&1; then
-    rm -f "$_reap_record"
+    echo "rite: 中断していた rite workflow は Issue の後片付けで回収済みのため、作業中に戻しません ($_state_file_shown)。"
   else
     echo "rite: session-start: WARNING: could not clear the suspended mark reap-issue left: $_state_file_shown" >&2
+    echo "rite: 中断していた rite workflow は Issue の後片付けで回収済みですが、その印を消せませんでした ($_state_file_shown)。状態を確かめるには /rite:recover を実行してください。"
   fi
-  echo "rite: 中断していた rite workflow は Issue の後片付けで回収済みのため、作業中に戻しません ($_state_file_shown)。"
 fi
 
 # --- Dangling session-worktree self-heal (multi-session §8) ---
