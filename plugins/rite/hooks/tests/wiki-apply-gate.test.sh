@@ -1395,6 +1395,168 @@ else
   fail "review after raw commit rc=$GRC out=$GOUT"
 fi
 
+echo "=== a direct fix commit moves head with the documented block ==="
+ADVANCE="$SCRIPT_DIR/../scripts/wiki-apply-advance-head.sh"
+FIX_MD="$SCRIPT_DIR/../../skills/fix/SKILL.md"
+adv_tag=$(grep -n '^# fix-wiki-apply-head$' "$FIX_MD" | cut -d: -f1)
+exec_tag=$(grep -n '^# fix-commit-execute$' "$FIX_MD" | cut -d: -f1)
+next_sec=$(grep -n '^### 3.3.1 ' "$FIX_MD" | cut -d: -f1)
+exec_block=$(awk '/^# fix-commit-execute$/ { copy=1; next } copy && /^```$/ { exit } copy { print }' "$FIX_MD")
+if [ "$(printf '%s\n' "$adv_tag" | grep -c .)" -eq 1 ] && [ -n "$exec_tag" ] && [ -n "$next_sec" ] \
+  && [ "$adv_tag" -gt "$exec_tag" ] && [ "$adv_tag" -lt "$next_sec" ] \
+  && [ -n "$exec_block" ] && ! grep -q 'wiki-apply-advance-head' <<<"$exec_block"; then
+  pass "the head block appears once, after the commit block and before 3.3.1, in its own call"
+else
+  fail "head block placement adv=$adv_tag exec=$exec_tag next=$next_sec"
+fi
+adv_block="$ROOT/fix-wiki-apply-head.sh"
+awk -v root="$PLUGIN_ROOT" '
+  /^# fix-wiki-apply-head$/ { copy=1; next }
+  copy && /^```$/ { exit }
+  copy { gsub(/\{plugin_root\}/, root); print }
+' "$FIX_MD" > "$adv_block"
+if [ -s "$adv_block" ] && ! grep -q '{' "$adv_block"; then
+  pass "the extracted head block is complete"
+else
+  fail "head block is empty or keeps a placeholder: $(cat "$adv_block")"
+fi
+fx=$(new_repo fix-direct)
+write_config "$fx" true true
+fx_flow="$ROOT/fix-direct.flow-state"
+write_flow "$fx_flow" fix 7 "$fx"
+# The state root of a checkout is the checkout itself, where the gate reads the memory.
+fx_mem="$fx/.rite/work-memory/issue-7.md"
+printf 'fix\n' >> "$fx/README"
+git -C "$fx" add README
+write_mem "$fx_mem" "$(fresh_header none fix-direct "$fx" 1 README)
+### 別の節
+head: 1111111111111111111111111111111111111111"
+fx_old=$(git -C "$fx" rev-parse HEAD)
+git -C "$fx" commit -qm 'fix: direct commit'
+fx_new=$(git -C "$fx" rev-parse HEAD)
+cp "$fx_mem" "$ROOT/fix-before.md"
+fx_env() { env -u WIKI_APPLY_MEMORY -u RITE_STATE_ROOT WIKI_APPLY_FLOW_STATE="$fx_flow" "$@"; }
+arc=0
+(cd "$fx" && fx_env bash "$adv_block") >"$ROOT/adv.out" 2>"$ROOT/adv.err" || arc=$?
+changed=$(diff "$ROOT/fix-before.md" "$fx_mem" | grep '^[<>]' || true)
+if [ "$arc" -eq 0 ] && grep -qx 'WIKI_APPLY_HEAD=advanced' "$ROOT/adv.out" && grep -qx "head=$fx_new" "$ROOT/adv.out" \
+  && [ "$changed" = "< head: $fx_old"$'\n'"> head: $fx_new" ] \
+  && grep -qx 'head: 1111111111111111111111111111111111111111' "$fx_mem"; then
+  pass "the block moves only the record's head line to the new HEAD in the default memory"
+else
+  fail "head block rc=$arc changed=$changed out=$(cat "$ROOT/adv.out") err=$(cat "$ROOT/adv.err")"
+fi
+GRC=0
+GOUT=$(cd "$fx" && fx_env bash "$GATE" --mode review 2>"$ROOT/gate.err") || GRC=$?
+if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT" && grep -qx "memory=$fx_mem" <<<"$GOUT"; then
+  pass "review after the direct commit allows on the same memory"
+else
+  fail "review after direct commit rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
+fi
+cp "$fx_mem" "$ROOT/fix-after.md"
+arc=0
+(cd "$fx" && fx_env bash "$adv_block") >"$ROOT/adv2.out" 2>&1 || arc=$?
+if [ "$arc" -eq 0 ] && grep -qx 'WIKI_APPLY_HEAD=current' "$ROOT/adv2.out" && cmp -s "$ROOT/fix-after.md" "$fx_mem"; then
+  pass "running the block again reports current and leaves the memory"
+else
+  fail "second head block rc=$arc out=$(cat "$ROOT/adv2.out")"
+fi
+arc=0
+bash "$ADVANCE" --worktree "$land" --memory "$land_mem" --from HEAD^ >"$ROOT/adv-land.out" 2>&1 || arc=$?
+if [ "$arc" -eq 0 ] && grep -qx 'WIKI_APPLY_HEAD=current' "$ROOT/adv-land.out"; then
+  pass "the block after a git-commit-file commit reports current"
+else
+  fail "head block after git-commit-file rc=$arc out=$(cat "$ROOT/adv-land.out")"
+fi
+if ! grep -q 'WIKI_APPLY_HEAD=\|^head=' "$ROOT/land.out"; then
+  pass "git-commit-file keeps the helper's lines out of its output"
+else
+  fail "git-commit-file output leaks helper lines: $(cat "$ROOT/land.out")"
+fi
+
+echo "=== a record that is not this commit's is left as it is ==="
+adv_case() {
+  local label="$1" from="$2" body="$3" mem="$ROOT/adv-case.md" rc=0
+  write_mem "$mem" "$body"
+  cp "$mem" "$ROOT/adv-case-before.md"
+  bash "$ADVANCE" --worktree "$fx" --memory "$mem" --from "$from" >"$ROOT/adv-case.out" 2>"$ROOT/adv-case.err" || rc=$?
+  if [ "$rc" -eq 1 ] && grep -q 'capture からやり直' "$ROOT/adv-case.err" && cmp -s "$ROOT/adv-case-before.md" "$mem" \
+    && [ ! -s "$ROOT/adv-case.out" ]; then
+    pass "$label"
+  else
+    fail "$label rc=$rc err=$(cat "$ROOT/adv-case.err")"
+  fi
+}
+adv_case "no record section fails" HEAD^ "### 別の節
+head: $fx_old"
+adv_case "a record without head fails" HEAD^ "### Wiki 適用証跡
+issue: 7"
+adv_case "a record naming another commit fails" HEAD^ "### Wiki 適用証跡
+head: 2222222222222222222222222222222222222222"
+adv_case "an unresolvable --from fails" no-such-rev "### Wiki 適用証跡
+head: $fx_old"
+
+echo "=== the default memory lookup and the write fail without touching the record ==="
+arc=0
+(cd "$fx" && env -u WIKI_APPLY_MEMORY WIKI_APPLY_FLOW_STATE="$ROOT/no-such.flow-state" bash "$adv_block") \
+  >"$ROOT/adv-noflow.out" 2>"$ROOT/adv-noflow.err" || arc=$?
+if [ "$arc" -eq 1 ] && grep -q 'flow-state を読めません' "$ROOT/adv-noflow.err" && [ ! -s "$ROOT/adv-noflow.out" ]; then
+  pass "a missing flow-state stops the block before any record is read"
+else
+  fail "missing flow-state rc=$arc err=$(cat "$ROOT/adv-noflow.err")"
+fi
+if [ "$(id -u)" != 0 ]; then
+  ro_dir="$ROOT/ro-memory"
+  mkdir -p "$ro_dir"
+  ro_mem="$ro_dir/issue-7.md"
+  write_mem "$ro_mem" "### Wiki 適用証跡
+head: $fx_old"
+  cp "$ro_mem" "$ROOT/ro-before.md"
+  chmod a-w "$ro_dir"
+  arc=0
+  bash "$ADVANCE" --worktree "$fx" --memory "$ro_mem" --from HEAD^ >"$ROOT/adv-ro.out" 2>"$ROOT/adv-ro.err" || arc=$?
+  chmod u+w "$ro_dir"
+  if [ "$arc" -eq 1 ] && grep -q 'capture からやり直' "$ROOT/adv-ro.err" && cmp -s "$ROOT/ro-before.md" "$ro_mem" \
+    && [ ! -e "$ro_mem.tmp" ] && [ ! -s "$ROOT/adv-ro.out" ]; then
+    pass "a memory that cannot be written fails and stays as it was"
+  else
+    fail "read-only memory rc=$arc err=$(cat "$ROOT/adv-ro.err")"
+  fi
+else
+  echo "  SKIP: read-only memory (root ignores mode bits)"
+fi
+
+echo "=== git-commit-file without the head helper does not commit ==="
+cp "$GATE" "$copy/hooks/scripts/wiki-apply-gate.sh"
+head_before=$(git -C "$repo" rev-parse HEAD)
+crc=0
+bash "$copy/hooks/scripts/git-commit-file.sh" --file "$msg" --worktree "$repo" >"$ROOT/copy2.out" 2>"$ROOT/copy2.err" || crc=$?
+if [ "$crc" -eq 1 ] && [ "$head_before" = "$(git -C "$repo" rev-parse HEAD)" ] && grep -q 'head 更新 helper が無い' "$ROOT/copy2.err"; then
+  pass "missing head helper does not commit"
+else
+  fail "missing head helper rc=$crc err=$(cat "$ROOT/copy2.err")"
+fi
+
+echo "=== git-commit-file stops when head cannot be moved after the commit ==="
+stuck=$(new_repo stuck)
+stuck_mem="$ROOT/stuck.md"
+write_mem "$stuck_mem" "### Wiki 適用証跡
+head: 3333333333333333333333333333333333333333"
+cp "$ADVANCE" "$copy/hooks/scripts/wiki-apply-advance-head.sh"
+printf '#!/bin/bash\necho WIKI_APPLY_GATE=allow\necho reason=ok\necho "memory=%s"\n' "$stuck_mem" > "$copy/hooks/scripts/wiki-apply-gate.sh"
+cp "$SCRIPT_DIR/../scripts/lib/"*.py "$copy/hooks/scripts/lib/"
+printf 'stuck\n' >> "$stuck/README"
+git -C "$stuck" add README
+crc=0
+bash "$copy/hooks/scripts/git-commit-file.sh" --file "$msg" --worktree "$stuck" >"$ROOT/stuck.out" 2>"$ROOT/stuck.err" || crc=$?
+if [ "$crc" -eq 1 ] && grep -q 'commit 後に Wiki 適用証跡の head を更新できません' "$ROOT/stuck.err" \
+  && grep -q 'capture からやり直' "$ROOT/stuck.err" \
+  && grep -qx 'head: 3333333333333333333333333333333333333333' "$stuck_mem"; then
+  pass "a record that does not name the old HEAD stops git-commit-file with its error"
+else
+  fail "stuck head rc=$crc err=$(cat "$ROOT/stuck.err")"
+fi
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
