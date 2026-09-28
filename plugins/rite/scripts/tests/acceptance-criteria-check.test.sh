@@ -4,8 +4,6 @@
 # Coverage:
 #   extract — テンプレート形式の AC 集合 / fenced block と別節の見出しを数えない / CRLF /
 #             日本語/英語見出しとcheckbox / AC 節なしだけ skipped / 不正形式・0件・重複は失敗
-#   items   — 見出し形式の継続行を本文に含む / 本文の差が出力に出る / 途中の空行は残し末尾の空行は除く /
-#             AC 節なしは出力なし / 重複は extract と同じ理由で失敗
 #   table   — 正常 / AC-ID 欠落・余分・重複 / 0 行 / 見出し欠落 / 判定値不正 / 根拠空 /
 #             未充足行に対応する [AC-N] 指摘の欠落・severity 不一致・scope 不一致 / 推奨対応列の raw pipe /
 #             全角空白の trim (先頭・末尾・ASCII 空白との交互) / jq 変換失敗
@@ -203,42 +201,6 @@ saved_path="$PATH"
 PATH="$TEST_DIR/awk-fail:$PATH"
 expect_failure "extract: awk実行失敗はACなしにしない" input_parse_failed extract --body-file "$TEST_DIR/body-target.md"
 PATH="$saved_path"
-
-echo "=== items ==="
-cat > "$TEST_DIR/items-heading.md" <<'EOF'
-## 5. 受入条件
-
-### AC-1: 入力を検証する
-- Given 空の入力
-- Then エラーで止まる
-
-### AC-2: 記録する
-- Then 記録が残る
-
-## 6. 次
-EOF
-run_check items --body-file "$TEST_DIR/items-heading.md"
-expected=$'AC-1\t### AC-1: 入力を検証する\nAC-1\t- Given 空の入力\nAC-1\t- Then エラーで止まる\nAC-2\t### AC-2: 記録する\nAC-2\t- Then 記録が残る'
-if [ "$CHECK_RC" -eq 0 ] && [ "$CHECK_STDOUT" = "$expected" ]; then
-  pass "items: 見出し形式の項目は続く Given/When/Then 行を本文に含む"
-else fail "items heading (rc=$CHECK_RC out=$CHECK_STDOUT)"; fi
-heading_out=$CHECK_STDOUT
-sed 's/エラーで止まる/警告して続ける/' "$TEST_DIR/items-heading.md" > "$TEST_DIR/items-heading-then.md"
-run_check items --body-file "$TEST_DIR/items-heading-then.md"
-if [ "$CHECK_RC" -eq 0 ] && [ "$CHECK_STDOUT" != "$heading_out" ]; then
-  pass "items: Then 行だけ違う本文は出力が変わる"
-else fail "items then-line (rc=$CHECK_RC out=$CHECK_STDOUT)"; fi
-printf '## 受入条件\n\n- [ ] AC-1: one\n\n  continued\n\n- [ ] AC-2: two\n\n\n## 次\n' > "$TEST_DIR/items-blank.md"
-run_check items --body-file "$TEST_DIR/items-blank.md"
-expected=$'AC-1\t- [ ] AC-1: one\nAC-1\t\nAC-1\t  continued\nAC-2\t- [ ] AC-2: two'
-if [ "$CHECK_RC" -eq 0 ] && [ "$CHECK_STDOUT" = "$expected" ]; then
-  pass "items: 項目の途中の空行は残し、項目と節の末尾の空行は除く"
-else fail "items blank lines (rc=$CHECK_RC out=$CHECK_STDOUT)"; fi
-run_check items --body-file "$TEST_DIR/body-none.md"
-if [ "$CHECK_RC" -eq 0 ] && [ -z "$CHECK_STDOUT" ]; then
-  pass "items: AC 節なしは出力なしで skipped"
-else fail "items skipped (rc=$CHECK_RC out=$CHECK_STDOUT)"; fi
-expect_failure "items: AC-ID 重複は extract と同じ理由で失敗" duplicate_ac_id items --body-file "$TEST_DIR/body-dup.md"
 
 echo "=== table ==="
 

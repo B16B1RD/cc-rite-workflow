@@ -641,45 +641,20 @@ def work_seconds(run):
                for item in run["clock"] if item["kind"] == "work")
 
 
-# The marker line the non-blocking record helper writes: a numeric id, with only
-# surrounding whitespace allowed (the CR of a CRLF body, indentation).
-RECORD_MARKER = re.compile(r"\s*<!-- rite:nbr:comment-id:[0-9]+ -->\s*")
-
-
-def criteria(body, purpose):
-    """Acceptance criteria of an Issue body as {ID: verbatim text}, in document order.
-
-    The body leaves out exactly what rite writes into it (Decision Log rows and
-    the record marker), as the specification check does, so what rite appends
-    does not reword a criterion. The check also ignores looser marker-shaped
-    lines; those stay in the text, so adding or removing one (the record helper
-    removes them when it rewrites its marker) counts as rewording, as does a
-    body the check compares verbatim because its Decision Log heading repeats.
-    """
-    script = Path(__file__).resolve().parents[3] / "scripts/acceptance-criteria-check.sh"
-    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".md") as stream:
-        stream.write(cycle.normalize_issue_body(body, RECORD_MARKER))
-        stream.flush()
-        result = subprocess.run(["bash", str(script), "items", "--body-file", stream.name],
-                                capture_output=True, text=True)
-    require(result.returncode == 0, "Issue acceptance criteria cannot be extracted; " + purpose + ": "
-            + result.stderr.strip())
-    texts = {}
-    # The helper ends records only at "\n"; splitlines() would also split at U+2028 inside a line.
-    for record in result.stdout.split("\n"):
-        if record:
-            key, line = record.split("\t", 1)
-            texts.setdefault(key, []).append(line)
-    return {key: "\n".join(lines) for key, lines in texts.items()}
-
-
 def check_skipped_scope(skipped, body):
     """A skipped acceptance table must agree with the Issue body it claims to describe."""
     # An observation always belongs to an Issue, so "no Issue" cannot describe it.
     require(skipped != "no_issue", "acceptance_criteria declares no_issue but the review belongs to an Issue")
-    ids = list(criteria(body, "skipped declaration unverifiable"))
-    require(not ids, "acceptance_criteria declares no_ac_section but the Issue has acceptance criteria: "
-            + ", ".join(ids))
+    script = Path(__file__).resolve().parents[3] / "scripts/acceptance-criteria-check.sh"
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".md") as stream:
+        stream.write(body)
+        stream.flush()
+        result = subprocess.run(["bash", str(script), "extract", "--body-file", stream.name],
+                                capture_output=True, text=True)
+    require(result.returncode == 0, "Issue acceptance criteria cannot be extracted; skipped declaration unverifiable: "
+            + result.stderr.strip())
+    require(not result.stdout.strip(), "acceptance_criteria declares no_ac_section but the Issue has acceptance criteria: "
+            + result.stdout.strip())
 
 
 def validate_input(state, args, data, receipt):
@@ -756,37 +731,6 @@ def recurrence(run, key, start=None):
     return bool(first and second and len(first | second) >= 2)
 
 
-def progressed_since(run, replan):
-    """Whether a criterion seen unmet since the replan was met later under the same wording.
-
-    A criterion is its ID and text, so one a revision adds or rewords counts only
-    after it has been observed unmet, and one removed and restored keeps its past.
-    A pair already met at the replan never counts, even after it lapses and returns.
-    IDs the Issue does not declare keep the replan's satisfied set as baseline.
-    """
-    start = replan["review_context"]["cycle_count"]
-    baseline = set(replan["acceptance_satisfied"])
-    stated = {}
-
-    def items(body):
-        if body not in stated:
-            stated[body] = criteria(body, "acceptance progress unverifiable")
-        return stated[body]
-
-    replanned = items(observation(run, replan["review_context"])["input"]["issue_body"])
-    settled = {(key, text) for key, text in replanned.items() if key in baseline}
-    unmet = set(replanned.items()) - settled
-    for obs in run["observations"]:
-        if obs["input"]["review_context"]["cycle_count"] < start:
-            continue
-        declared = items(obs["input"]["issue_body"])
-        met = set(obs["input"]["acceptance"]["satisfied"])
-        if any((key, declared[key]) in unmet if key in declared else key not in baseline for key in met):
-            return True
-        unmet |= {(key, text) for key, text in declared.items() if key not in met} - settled
-    return False
-
-
 def observe(state, args, directory):
     run, context = current(state, args.session, completed=True)
     receipt = cycle.matching_receipt(directory, state["review_cycle"])
@@ -841,8 +785,13 @@ def observe(state, args, directory):
     action = "continue"
     for replan in run["replans"]:
         start = replan["review_context"]["cycle_count"]
+        present = set(data["acceptance"]["satisfied"])
+        baseline = set(replan["acceptance_satisfied"])
+        intervening = [obs for obs in run["observations"]
+                       if obs["input"]["review_context"]["cycle_count"] >= start]
+        progressed = any(set(obs["input"]["acceptance"]["satisfied"]) - baseline for obs in intervening)
         unresolved = set(replan["roots"]) & set(repeated)
-        if not progressed_since(run, replan) and any(recurrence(run, key, start) for key in unresolved):
+        if not progressed and not (present - baseline) and any(recurrence(run, key, start) for key in unresolved):
             action, reasons = "stop", ["non-convergent-root"]
             break
     if action != "stop" and reasons:

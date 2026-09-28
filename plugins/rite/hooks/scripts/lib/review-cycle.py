@@ -80,11 +80,10 @@ NBR_MARKER_LINE = re.compile(r"^\s*<!-- rite:nbr:comment-id:.*-->\s*$")
 FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}(?=[^`]*$)|~{3,})")
 
 
-def normalize_issue_body(body, marker=NBR_MARKER_LINE):
+def normalize_issue_body(body):
     # Specification identity ignores what rite itself appends to the Issue body
     # during a run: Decision Log rows in the triage format (inside section 9 only,
-    # whatever wrote them) and the non-blocking record's comment-id marker line
-    # (a whole line matching `marker`).
+    # whatever wrote them) and the non-blocking record's comment-id marker line.
     # Everything else, including blank lines inside the specification sections
     # and anything inside a code fence, is compared verbatim; only the gaps left
     # by a removed line and trailing line breaks are closed. A body whose section
@@ -123,7 +122,7 @@ def normalize_issue_body(body, marker=NBR_MARKER_LINE):
                 removed_at = {i for i in removed_at if i < start} | {start}
         if DECISION_LOG_HEADING.match(line):
             section, start = True, len(keep)
-        elif (section and DECISION_LOG_ROW.match(line)) or marker.fullmatch(line):
+        elif (section and DECISION_LOG_ROW.match(line)) or NBR_MARKER_LINE.match(line):
             removed_at.add(len(keep))
             continue
         keep.append(line)

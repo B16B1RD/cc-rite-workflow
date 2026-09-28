@@ -221,8 +221,7 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
     mutant = private / 'mutant-hooks'
     shutil.copytree(plugin / 'hooks', mutant)
     lib = mutant / 'scripts/lib/review-cycle.py'
-    lib.write_text(lib.read_text().replace('def normalize_issue_body(body, marker=NBR_MARKER_LINE):\n',
-                                    'def normalize_issue_body(body, marker=NBR_MARKER_LINE):\n    return body\n', 1))
+    lib.write_text(lib.read_text().replace('def normalize_issue_body(body):\n', 'def normalize_issue_body(body):\n    return body\n', 1))
     mutation = run(['bash', str(mutant / 'scripts/review-fix-scope-check.sh'), 'check', '--plan', str(plan_file), '--issue', str(issue_file)], ok=False)
     check(mutation.returncode != 0 and 'specification' in mutation.stderr, 'identity normalization mutation rejects the triaged Issue')
     dump(issue_file, issue)
