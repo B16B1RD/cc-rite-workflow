@@ -823,10 +823,10 @@ leave_fail_probe() {
 git_tmp=$(mktemp -d)
 git -C "$git_tmp" init -q
 git_tmp_probe=$(leave_fail_probe "$git_tmp")
-if printf '%s\n' "$git_tmp_probe" | grep -qx 'leave_rc=1' \
-  && printf '%s\n' "$git_tmp_probe" | grep -qx 'cwd=/' \
-  && printf '%s\n' "$git_tmp_probe" | grep -qx 'hermetic_cwd_set=' \
-  && printf '%s\n' "$git_tmp_probe" | grep -q '^ERROR: hermetic_leave_checkout: .* is inside a git repository' \
+if grep -qx 'leave_rc=1' <<<"$git_tmp_probe" \
+  && grep -qx 'cwd=/' <<<"$git_tmp_probe" \
+  && grep -qx 'hermetic_cwd_set=' <<<"$git_tmp_probe" \
+  && grep -q '^ERROR: hermetic_leave_checkout: .* is inside a git repository' <<<"$git_tmp_probe" \
   && ! compgen -G "$git_tmp/rite-hermetic-cwd.*" >/dev/null; then
   outer_pass "TC-18.10: a TMPDIR inside a repository stops with ERROR, keeps the cwd, and leaves nothing behind"
 else
@@ -834,10 +834,10 @@ else
 fi
 rm -rf "$git_tmp"
 missing_tmp_probe=$(leave_fail_probe /nonexistent/rite-hermetic-tmp)
-if printf '%s\n' "$missing_tmp_probe" | grep -qx 'leave_rc=1' \
-  && printf '%s\n' "$missing_tmp_probe" | grep -qx 'cwd=/' \
-  && printf '%s\n' "$missing_tmp_probe" | grep -qx 'hermetic_cwd_set=' \
-  && printf '%s\n' "$missing_tmp_probe" | grep -q '^ERROR: hermetic_leave_checkout: cannot create a scratch directory'; then
+if grep -qx 'leave_rc=1' <<<"$missing_tmp_probe" \
+  && grep -qx 'cwd=/' <<<"$missing_tmp_probe" \
+  && grep -qx 'hermetic_cwd_set=' <<<"$missing_tmp_probe" \
+  && grep -q '^ERROR: hermetic_leave_checkout: cannot create a scratch directory' <<<"$missing_tmp_probe"; then
   outer_pass "TC-18.10: an unusable TMPDIR stops with ERROR and keeps the cwd"
 else
   outer_fail "TC-18.10: unusable TMPDIR not refused: $(printf '%s' "$missing_tmp_probe" | tr '\n' '|')"
