@@ -7,7 +7,7 @@
 #   1. gh pr diff --stat  (unsupported flag)
 #   2. gh pr diff -- <path>  (unsupported file filter)
 #   3. != null in jq/awk  (history expansion breaks !)
-#   4. Reviewer subagent .git-write gate — enforced only in subagent contexts.
+#   4. Reviewer subagent gate — enforced only in subagent contexts.
 #      Four sub-checks serving one guarantee (no writes into a .git directory):
 #        (L) oversized command → deny (timeout-based bypass prevention)
 #        (Z) shell-command wrapper (eval / sh -c / ...) → deny (opaque quoting
@@ -16,6 +16,9 @@
 #            remote / update-ref / symbolic-ref) → deny (writes .git/config or
 #            .git refs with no redirect or file verb for (H) to see)
 #        (H) WRITE into a .git dir via redirect / file-mutating verb → deny
+#      plus, for reviewer-classified subagents only:
+#        (S) state-changing command at command position — git push / git commit,
+#            a flow-state.sh write, or a skill step driver (*-step.sh) → deny
 #   5. Merge-point review-result positive gate — main-session
 #      (and any session) Bash that issues `gh pr merge` / REST pulls/{n}/merge /
 #      GraphQL mergePullRequest is denied unless `.rite/review-results/{pr}-*.json`
@@ -31,15 +34,19 @@
 #      commits are not this pattern. Alternative: leave file changes, or revisit
 #      the Issue. Do not create an empty commit.
 #
-# Reviewer working-tree mutations (git checkout / reset / commit / branch / ...)
+# Reviewer working-tree mutations (git checkout / reset / add / branch / stash ...)
 # are deliberately NOT machine-gated here. They are visible and
 # recoverable via `git status`; their guarantee is Layer 1 (the reviewer prompt
 # READ-ONLY contract, plugins/rite/agents/_reviewer-base.md) + Layer 3
-# (post-review-state-verify.sh drift detection after each review). Only the
-# .git-write path keeps a machine gate: it is invisible to `git status`,
+# (post-review-state-verify.sh drift detection after each review). Two classes
+# keep a machine gate. The .git-write path: it is invisible to `git status`,
 # effectively irreversible, and plants arbitrary code execution in the
 # non-sandboxed main session (.git/hooks/*, .git/config core.hooksPath /
-# alias.*=!sh / core.fsmonitor) — strictly worse than a source edit.
+# alias.*=!sh / core.fsmonitor) — strictly worse than a source edit. And the
+# closed set in (S): a push leaves the machine, a commit or a flow-state write
+# moves the history and workflow state the parent session continues from, and a
+# step driver can do either; reviewers have been observed running them despite
+# the prompt contract, so the prompt alone is not enough.
 #
 # Exit behavior: exit 0 — allow (no output); stdout JSON with
 # permissionDecision: "deny" — block.
@@ -147,6 +154,29 @@ if [ "$IS_SUBAGENT" = "0" ]; then
   fi
 fi
 
+# Reviewer classification — the same predicate as pre-tool-edit-guard.sh (keep the
+# two in sync). Only reviewers are read-only: an implementation subagent
+# (general-purpose, …) commits and pushes like the main session does. A reported type
+# ending in `reviewer` or naming `_reviewer-base` is a reviewer, and one reviewer-typed
+# field outweighs non-reviewer ones. A subagent that reports no type at all cannot be
+# told apart from a reviewer, so it is treated as one.
+IS_REVIEWER=0
+REVIEWER_TYPE_BASIS=""
+if [ "$IS_SUBAGENT" = "1" ]; then
+  _has_type=0
+  for _t in "$INPUT_SUBAGENT_TYPE" "$INPUT_AGENT_TYPE" "${CLAUDE_SUBAGENT_TYPE:-}" "${CLAUDE_AGENT_TYPE:-}"; do
+    [ -n "$_t" ] || continue
+    _has_type=1
+    case "$_t" in
+      *reviewer|*_reviewer-base) IS_REVIEWER=1; REVIEWER_TYPE_BASIS="type=$_t"; break ;;
+    esac
+  done
+  if [ "$_has_type" = "0" ]; then
+    IS_REVIEWER=1
+    REVIEWER_TYPE_BASIS="type unknown"
+  fi
+fi
+
 # Fail-open ERR trap for Patterns 1-3: if heredoc extraction or simple pattern
 # matching crashes on edge-case input, allow the command rather than blocking it.
 _rite_btg_pattern13_fail_open() {
@@ -166,13 +196,13 @@ _rite_btg_pattern13_fail_open() {
 _rite_btg_pattern4_fail_closed() {
   local _rc=$?
   trap - ERR  # prevent re-entrancy while emitting the deny
-  echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] pre-tool-bash-guard: WARNING Pattern 4 (reviewer .git-write guard) crashed (rc=$_rc) — command DENIED via fail-closed" >&2
+  echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] pre-tool-bash-guard: WARNING Pattern 4 (reviewer .git-write / state-change guard) crashed (rc=$_rc) — command DENIED via fail-closed" >&2
   if [ -n "${RITE_DEBUG:-}" ]; then
     printf '[%s] pre-tool-bash-guard: Pattern 4 ERR trap fired (rc=%s) — deny fail-closed\n' \
       "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$_rc" \
       >> "${STATE_ROOT:-/tmp}/.rite/logs/flow-debug.log" 2>/dev/null || true
   fi
-  local _reason="BLOCKED (reviewer-gitdir-write): Pattern 4 security-boundary evaluation crashed; denying fail-closed to avoid bypassing the reviewer .git-write guard. See the bash-guard stderr WARNING for the crash context."
+  local _reason="BLOCKED (reviewer-gitdir-write): Pattern 4 security-boundary evaluation crashed; denying fail-closed to avoid bypassing the reviewer .git-write and state-change guards. See the bash-guard stderr WARNING for the crash context."
   # Mirror the result-section emit contract: jq for the payload, printf fallback
   # via _bash_guard_escape_deny_reason so a jq failure still emits a valid deny.
   if ! jq -n --arg reason "$_reason" '{
@@ -364,9 +394,10 @@ fi
 # Pattern 4: Reviewer subagent .git-write gate.
 # Scope: only when IS_SUBAGENT=1. Main-session operations are never affected.
 # This block does NOT enumerate working-tree-mutating git verbs —
-# see the header. It holds one machine guarantee (no writes into .git) via the
+# see the header. It holds the no-writes-into-.git guarantee via the
 # (Z) wrapper check, the (N) native-subcommand gate, and the (H) write
-# detection below, inside a fail-CLOSED trap region.
+# detection below, and the reviewer-only (S) state-change gate, all inside a
+# fail-CLOSED trap region.
 if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   trap '_rite_btg_pattern4_fail_closed' ERR
   # Test-only fault injection for the fail-CLOSED region (no effect in
@@ -676,6 +707,138 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
     if [ "$BLOCKED_PATTERN" = "reviewer-gitdir-write" ]; then
       BLOCKED_REASON="Reviewer subagents must not WRITE into a Git internal (.git) directory. This command writes into a .git path via a shell redirect (> / >>) or a file-mutating command (tee / cp / mv / ln / install / rsync / truncate / dd of= / sponge / patch). Planting or altering .git/hooks/* or .git/config (core.hooksPath / alias.*=!sh / core.fsmonitor) executes arbitrary code in the non-sandboxed main session on the next git operation — strictly worse than a source edit and invisible to 'git status'. The Edit/Write path is already blocked by pre-tool-edit-guard.sh; this closes the Bash-tool gap."
       BLOCKED_ALTERNATIVE="Reviewers are strictly read-only — never write into .git. To INSPECT it, read instead: 'cat .git/config', 'git config --list', 'git cat-file -p <obj>', 'git show <ref>:<file>', 'git rev-parse'. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement)."
+    fi
+  fi
+
+  # --- (S) Reviewer state-changing commands ---
+  # A reviewer must not push, commit, rewrite the workflow state, or run a skill's
+  # step driver: those change state the parent session relies on, and a push
+  # leaves the machine. Reviewer-classified subagents only (IS_REVIEWER); an
+  # implementation subagent commits and pushes like the main session does.
+  # Closed set, judged only at COMMAND POSITION (the start, right after an
+  # unquoted `;` `&` `|` `(` `)` a backquote or a newline, or after a reserved word
+  # that leads a command), so a `git commit` that is an ARGUMENT —
+  # `grep -rn 'git commit' plugins/`, `git log -S'git push'`,
+  # `grep -rn 'x; git push' plugins/` — stays allowed:
+  #   - `git push` / `git commit` (global flags skipped, `/usr/bin/git` included);
+  #   - `flow-state.sh` with any subcommand but `get` / `path`;
+  #   - `*-step.sh`, the skills' step drivers (`iterate-step.sh`, …), whatever the
+  #     subcommand — they are the orchestrator's, and a subcommand can push.
+  # The scan runs on the Pattern 6 command surface (heredoc BODIES removed, the
+  # command lines after them kept), tracks single / double quotes so a separator
+  # inside a string does not start a command, removes quotes and backslashes the
+  # way the shell does (`'git' push` is `git push`), and treats `$(` and a
+  # backquote inside double quotes as the start of a command. Leading `X=y`
+  # assignments, reserved words (`if` `then` `elif` `else` `do` `while` `until`
+  # `!` `{` `}` `fi` `done` `esac`) and `command` / `exec` / `env` / `nohup` /
+  # `time` / `builtin` prefixes are skipped; a script is recognized by its
+  # basename, run directly or through `bash` / `sh` / `zsh` / `dash` / `ksh` /
+  # `source` / `.`. A push or commit made INSIDE another script is not visible
+  # here — that stays with the Layer 1 prompt contract plus Layer 3 drift
+  # detection, as before.
+  if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_REVIEWER" = "1" ] \
+     && [[ "$COMMAND" == *push* || "$COMMAND" == *commit* || "$COMMAND" == *flow-state* || "$COMMAND" == *-step.sh* ]]; then
+    _sc_src=$(_rite_btg_pattern6_command_surface "$COMMAND")
+    _sc_toks=()
+    _sc_word=""
+    _sc_state=plain
+    _sc_len=${#_sc_src}
+    _sc_i=0
+    while [ "$_sc_i" -lt "$_sc_len" ]; do
+      _sc_ch="${_sc_src:$_sc_i:1}"
+      case "$_sc_state" in
+        single)
+          if [ "$_sc_ch" = "'" ]; then _sc_state=plain; else _sc_word+="$_sc_ch"; fi ;;
+        double)
+          case "$_sc_ch" in
+            '"') _sc_state=plain ;;
+            '\') _sc_i=$((_sc_i + 1)); _sc_word+="${_sc_src:$_sc_i:1}" ;;
+            '`'|'$')
+              if [ "$_sc_ch" = '`' ] || [ "${_sc_src:$((_sc_i + 1)):1}" = "(" ]; then
+                # Command substitution inside a string still runs a command.
+                if [ -n "$_sc_word" ]; then _sc_toks+=("$_sc_word"); fi
+                _sc_word=""; _sc_toks+=(";"); _sc_state=plain
+                if [ "$_sc_ch" = '$' ]; then _sc_i=$((_sc_i + 1)); fi
+              else
+                _sc_word+="$_sc_ch"
+              fi ;;
+            *) _sc_word+="$_sc_ch" ;;
+          esac ;;
+        plain)
+          case "$_sc_ch" in
+            "'") _sc_state=single ;;
+            '"') _sc_state=double ;;
+            '\') _sc_i=$((_sc_i + 1)); _sc_word+="${_sc_src:$_sc_i:1}" ;;
+            ';'|'&'|'|'|'('|')'|'`'|$'\n')
+              if [ -n "$_sc_word" ]; then _sc_toks+=("$_sc_word"); fi
+              _sc_word=""; _sc_toks+=(";") ;;
+            ' '|$'\t')
+              if [ -n "$_sc_word" ]; then _sc_toks+=("$_sc_word"); fi
+              _sc_word="" ;;
+            '#')
+              if [ -z "$_sc_word" ]; then
+                # A comment runs to the end of the line.
+                while [ "$_sc_i" -lt "$_sc_len" ] && [ "${_sc_src:$_sc_i:1}" != $'\n' ]; do _sc_i=$((_sc_i + 1)); done
+                _sc_toks+=(";")
+              else
+                _sc_word+="$_sc_ch"
+              fi ;;
+            *) _sc_word+="$_sc_ch" ;;
+          esac ;;
+      esac
+      _sc_i=$((_sc_i + 1))
+    done
+    if [ -n "$_sc_word" ]; then _sc_toks+=("$_sc_word"); fi
+    _sc_hit=""
+    _sc_mode=cmd          # cmd | gitflags | interp | flowsub | args
+    _sc_skip_arg=0
+    for _sc_t in ${_sc_toks[@]+"${_sc_toks[@]}"}; do
+      if [ "$_sc_t" = ";" ]; then _sc_mode=cmd; _sc_skip_arg=0; continue; fi
+      if [ "$_sc_skip_arg" = "1" ]; then _sc_skip_arg=0; continue; fi
+      case "$_sc_mode" in
+        cmd)
+          case "$_sc_t" in
+            [A-Za-z_]*=*|-*|if|then|elif|else|do|while|until|'!'|'{'|'}'|fi|done|esac|command|exec|env|nohup|time|builtin) : ;;
+            git|*/git) _sc_mode=gitflags ;;
+            bash|sh|zsh|dash|ksh|*/bash|*/sh|*/zsh|*/dash|*/ksh|source|.) _sc_mode=interp ;;
+            *)
+              case "${_sc_t##*/}" in
+                flow-state.sh) _sc_mode=flowsub ;;
+                *-step.sh) _sc_hit="${_sc_t##*/}"; break ;;
+                *) _sc_mode=args ;;
+              esac ;;
+          esac ;;
+        gitflags)
+          case "$_sc_t" in
+            -C|--git-dir|--work-tree|--namespace|--exec-path|--attr-source|--super-prefix|--shallow-file|-c|--config-env)
+              _sc_skip_arg=1 ;;
+            -*) : ;;
+            push|commit) _sc_hit="git $_sc_t"; break ;;
+            *) _sc_mode=args ;;
+          esac ;;
+        interp)
+          case "$_sc_t" in
+            -*) : ;;
+            *)
+              case "${_sc_t##*/}" in
+                flow-state.sh) _sc_mode=flowsub ;;
+                *-step.sh) _sc_hit="${_sc_t##*/}"; break ;;
+                *) _sc_mode=args ;;
+              esac ;;
+          esac ;;
+        flowsub)
+          case "$_sc_t" in
+            get|path) _sc_mode=args ;;
+            *) _sc_hit="flow-state.sh $_sc_t"; break ;;
+          esac ;;
+      esac
+    done
+    # `flow-state.sh` with no subcommand at all is not a read either.
+    if [ -z "$_sc_hit" ] && [ "$_sc_mode" = flowsub ]; then _sc_hit="flow-state.sh (no subcommand)"; fi
+    if [ -n "$_sc_hit" ]; then
+      BLOCKED_PATTERN="reviewer-state-change"
+      BLOCKED_REASON="This subagent is treated as a reviewer (${REVIEWER_TYPE_BASIS}), and reviewers are read-only. This command runs '${_sc_hit}', which pushes, commits, rewrites the workflow state (flow-state), or runs a skill's step driver (*-step.sh) — state the parent session relies on, or that leaves the machine."
+      BLOCKED_ALTERNATIVE="Report the problem as a finding and leave the change to /rite:fix. Read-only inspection stays allowed: 'git diff', 'git log', 'git show', 'flow-state.sh get --field <f>', 'flow-state.sh path', and running tests ('bash <test>'). For a mutation experiment, use the isolated detached worktree in plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement / Mutation experiments)."
     fi
   fi
 

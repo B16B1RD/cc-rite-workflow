@@ -16,7 +16,8 @@ Any Bash invocation that matches the following patterns is forbidden inside a re
 | `git add` / `git rm` | index 変更 | 代替なし — reviewer は実行禁止 |
 | `git stash` (push/pop/apply/drop/clear) | working tree 退避・復元 | 代替なし — reviewer は実行禁止 |
 | `git restore` | working tree / index 復元 | 代替なし — reviewer は実行禁止 |
-| `git commit` / `git push` / `git pull` / `git fetch --prune` / `git fetch --force` | ref / remote 操作 | bare `git fetch` (flag なし) は読み取り許可、`--prune`/`--force` は remote tracking ref を削除するため禁止 |
+| `git commit` / `git push` / `git pull` / `git fetch --prune` / `git fetch --force` | ref / remote 操作 (`git commit` / `git push` は pre-tool-bash-guard.sh sub-block (S) が deny) | bare `git fetch` (flag なし) は読み取り許可、`--prune`/`--force` は remote tracking ref を削除するため禁止 |
+| `flow-state.sh` の `get` / `path` 以外のサブコマンド・skill のステップ駆動スクリプト (`*-step.sh`) | 親セッションが続きから使う workflow state の書き換え。ステップ駆動スクリプトは push や state の書き換えを内部で行う (pre-tool-bash-guard.sh sub-block (S) が deny) | 読み取りは `flow-state.sh get --field <f>` / `flow-state.sh path`。修正が要る問題は指摘として報告し、`/rite:fix` に委ねる |
 | `git merge` / `git rebase` / `git cherry-pick` / `git revert` | ref 操作 | 代替なし — reviewer は実行禁止 |
 | `git tag` (作成/削除) | ref 操作 | 代替なし — reviewer は実行禁止 |
 | `git clean` / `git gc` / `git reflog expire` | working tree / ref 操作 | 代替なし — reviewer は実行禁止 |
@@ -40,7 +41,7 @@ Reviewer subagents **may** use the following read-only commands for evidence gat
 - **Tag / stash / reflog (display only)**: `git tag -l`, `git tag --list`, `git stash list`, `git stash show`, `git reflog` (bare list), `git worktree list` (display-only sub-commands — `git tag -d/-a/--delete/--force`, `git stash push/pop/drop/apply/clear`, `git reflog expire/delete`, and `git worktree remove/prune` remain forbidden)
 - **Remote sync (bare fetch only)**: `git fetch` (bare form only — **`git fetch --prune` / `--force` は禁止**。reviewer コンテキストでは local tracking ref を削除する可能性があるため)
 - **Isolated worktree creation**: `git worktree add --detach <path> <ref>` または `git worktree add <path> <existing-branch>` (既存 ref のみを別ディレクトリに展開する形式に限定。`-b <newbranch>` および引数なし形式は新規 ref が leak する原因となるため禁止 — orchestrator 側の `hooks/scripts/pr-cycle-cleanup.sh` で残置回収するが、reviewer 側で named branch を作らないのが第一防御線。`<path>` は `rite-review-mutation-*` / `rite-revert-test-*` の名前空間に置く — `Edit` / `Write` はこの名前の worktree の中でしか許可されない。orchestrator が回収するのは `${TMPDIR:-/tmp}` 配下の worktree だけで、detached なら名前を問わず回収されるが、`<existing-branch>` の形は `${TMPDIR:-/tmp}` 直下で名前空間の名前を持つものしか回収されない。名前空間の外の `<existing-branch>` の形では、その branch が下記 Invariant の branch 一覧の drift として報告される)
-- **Workflow helpers**: `gh` CLI for reading PR/Issue metadata, plugin hook scripts, test runners (`bash <test>`, `pytest`, `npm test`, etc.)
+- **Workflow helpers**: `gh` CLI for reading PR/Issue metadata, plugin hook scripts (except the state-changing forms in the table above), test runners (`bash <test>`, `pytest`, `npm test`, etc.)
 
 rationale: ../skills/reviewers/references/reviewer-base-rationale.md#read-only-is-a-state-level-guarantee
 

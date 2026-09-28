@@ -6,7 +6,8 @@
 #
 # 一次防御: reviewer prompt の READ-ONLY 契約 (`plugins/rite/agents/_reviewer-base.md`,
 # Layer 1)。working-tree 変更 verb は網羅的な事前遮断が安全でないため機械ゲートから撤去され、
-# `pre-tool-bash-guard.sh` Pattern 4 が機械遮断するのは .git 書き込み経路のみになった。
+# `pre-tool-bash-guard.sh` Pattern 4 が機械遮断するのは .git 書き込み経路と、reviewer の
+# `git commit` / `git push` / flow-state の書き換え / skill のステップ駆動スクリプトだけになった。
 # 本スクリプト (Layer 3) は prompt 契約が破られた事故の検出と recovery を担う
 # post-condition gate であり、working-tree / branch / stash / branch-list drift の
 # 検出保証はここが正となる。
@@ -308,7 +309,7 @@ for drift_type in "${drift_types[@]}"; do
   echo "  type: $drift_type" >&2
   echo "  detail: ${drift_detail[$drift_type]}" >&2
   # 破られた防御層の案内は drift 軸で出し分ける: worktree drift は Edit/Write 経路なら
-  # pre-tool-edit-guard が block したはずだが、Bash 経由の state-changing git は機械ゲート
+  # pre-tool-edit-guard が block したはずだが、Bash 経由の working-tree git verb は機械ゲート
   # されない（verb 列挙では安全に網羅できないため、本スクリプトの事後検出を正とする）。それ以外の軸
   # (branch / stash / branch_list) も同様に prompt 契約 (Layer 1) violation であり、
   # 本スクリプトによる検出が想定どおりの動作となる。
