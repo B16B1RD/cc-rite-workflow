@@ -9,7 +9,9 @@
 #   (`*` `?` `[`) or brace-expansion (`{`) character is an exempt proxy for
 #   bounded literal output. The test covers the whole producer stage, so a
 #   prefix assignment (`X=$HOME echo literal`), a redirection (`2>"$log"`) and
-#   a literal `'$'` are also reported. A producer stage with an expansion has
+#   a literal `'$'` are also reported. A printf whose format has a numeric
+#   width or precision (`%300000s`, `%.5000f`) pads past its literal text and
+#   is reported too. A producer stage with an expansion has
 #   no size bound at the call site: rewrite it as a here-string.
 #   `drift-check-ignore` is the explicit audited escape hatch;
 # - `{ ...; } -> grep` is exempt whatever the group contains;
@@ -303,8 +305,11 @@ def exempt(prod, pipeline_len):
     # Only an echo or printf whose producer stage holds no `$`, backquote, glob
     # or brace-expansion character is bounded by its own text. `echo "$output"
     # | grep -q` has been observed to die of SIGPIPE on CI with a few lines, and
-    # `printf '%s\n' {1..300000}` expands without any `$`.
-    return cmd in ("echo","printf") and not re.search(r"[$`*?\[{]", p)
+    # `printf '%s\n' {1..300000}` expands without any `$`. A printf conversion
+    # with a numeric width or precision (`%300000s`, `%.5000f`) pads its output
+    # beyond the literal text, so it is not exempt either.
+    if cmd not in ("echo","printf") or re.search(r"[$`*?\[{]", p): return False
+    return cmd == "echo" or not re.search(r"%[-+ #0']*(?:[0-9]|\.[0-9])", p)
 
 findings=[]; errors=0
 def walk_error(err):

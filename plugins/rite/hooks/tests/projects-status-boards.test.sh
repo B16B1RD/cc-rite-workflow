@@ -181,8 +181,11 @@ option_id() { jq -r --arg name "$2" '.options[] | select(.name == $name) | .id' 
 ALLOW_RE='^gh (api graphql -f query=|project field-list |project item-edit |repo view)'
 # Prints every log line outside the allowlist (empty output = no unexpected call).
 unexpected_gh_lines() {
-  grep -vE "$ALLOW_RE" "$1"
-  grep -E '^gh api graphql .*mutation' "$1"
+  # Only a grep error (rc >= 2: the log is missing or unreadable) is returned,
+  # so a match or no match both stay rc 0.
+  local rc
+  grep -vE "$ALLOW_RE" "$1"; rc=$?; [ "$rc" -ge 2 ] && return "$rc"
+  grep -E '^gh api graphql .*mutation' "$1"; rc=$?; [ "$rc" -ge 2 ] && return "$rc"
   return 0
 }
 
@@ -290,16 +293,23 @@ printf '%s\n' \
   'gh project field-create 1 --owner o --name Status2' \
   > "$ctl_log"
 assert "T-05 control: two synthetic writes are the only unexpected lines" "2" "$(unexpected_gh_lines "$ctl_log" | wc -l | tr -d ' ')"
-if _gq_out=$(unexpected_gh_lines "$ctl_log") && grep -q 'updateProjectV2Field' <<< "$_gq_out"; then
-  pass "T-05 control: a GraphQL mutation collapsed onto one line is rejected"
+if _gq_out=$(unexpected_gh_lines "$ctl_log"); then
+  if grep -q 'updateProjectV2Field' <<< "$_gq_out"; then
+    pass "T-05 control: a GraphQL mutation collapsed onto one line is rejected"
+  else
+    fail "T-05 control: the GraphQL mutation slipped through the allowlist"
+  fi
+  if grep -q '^gh project field-create' <<< "$_gq_out"; then
+    pass "T-05 control: a write subcommand outside the allowlist is rejected"
+  else
+    fail "T-05 control: field-create slipped through the allowlist"
+  fi
 else
-  fail "T-05 control: the GraphQL mutation slipped through the allowlist"
+  fail "T-05 control: unexpected_gh_lines failed on the control log"
 fi
-if grep -q '^gh project field-create' <<< "$_gq_out"; then
-  pass "T-05 control: a write subcommand outside the allowlist is rejected"
-else
-  fail "T-05 control: field-create slipped through the allowlist"
-fi
+_gq_rc=0
+unexpected_gh_lines "$TEST_ROOT/missing-gh.log" >/dev/null 2>&1 || _gq_rc=$?
+assert "T-05 control: a missing log returns the grep error instead of an empty pass" "2" "$_gq_rc"
 # The shim itself must produce the one-line form the allowlist depends on.
 ctl_dir="$TEST_ROOT/shim-control"; mkdir -p "$ctl_dir"; write_gh_shim "$ctl_dir"; : > "$ctl_dir/gh.log"
 printf '{"field":"Status","options":[],"issues":{}}' > "$ctl_dir/board.json"
