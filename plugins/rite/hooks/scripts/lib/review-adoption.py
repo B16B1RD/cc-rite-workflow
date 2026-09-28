@@ -148,10 +148,12 @@ class Repo:
         return result.stdout
 
     def lines(self, path):
+        # None only when the path is not a file at the head; any other git failure is git_failed.
         if path not in self._files:
-            result = subprocess.run(["git", "-C", self.root, "show", f"{self.head}:{path}"],
-                                    capture_output=True, text=True)
-            self._files[path] = result.stdout.split("\n") if result.returncode == 0 else None
+            self.git("rev-parse", "--verify", "--quiet", f"{self.head}^{{commit}}")
+            entry = self.git("ls-tree", self.head, "--", path).split()
+            is_file = len(entry) >= 2 and entry[1] == "blob"
+            self._files[path] = self.git("show", f"{self.head}:{path}").split("\n") if is_file else None
         return self._files[path]
 
     def hunks(self):
@@ -159,17 +161,24 @@ class Repo:
         if self._hunks is None:
             self._hunks = {}
             old = new = None
+            in_hunk = False
             diff = self.git("-c", "core.quotePath=false", "diff", "-U0", "--no-color",
                             "--no-ext-diff", f"{self.base}...{self.head}")
+            # --- / +++ are file headers only between "diff --git" and the first @@: with -U0 a
+            # removed "-- x" or added "++ x" content line also starts with "--- " / "+++ ".
             for line in diff.split("\n"):
-                if line.startswith("--- "):
-                    old = line[6:].rstrip("\t") if line.startswith("--- a/") else None
-                elif line.startswith("+++ "):
-                    new = line[6:].rstrip("\t") if line.startswith("+++ b/") else None
+                if line.startswith("diff --git "):
+                    old = new = None
+                    in_hunk = False
+                elif not in_hunk and line.startswith("--- "):
+                    old = line[6:].split("\t")[0] if line.startswith("--- a/") else None
+                elif not in_hunk and line.startswith("+++ "):
+                    new = line[6:].split("\t")[0] if line.startswith("+++ b/") else None
                 else:
                     match = HUNK.match(line)
                     if not match:
                         continue
+                    in_hunk = True
                     for path, side, start, count in ((old, "-", match[1], match[2]),
                                                      (new, "+", match[3], match[4])):
                         size = 1 if count is None else int(count)

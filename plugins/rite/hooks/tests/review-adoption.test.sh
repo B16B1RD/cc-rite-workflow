@@ -41,6 +41,8 @@ BASE_FILES = {
     'docs/notes.md': ('# notes\n- 2026-01-01 D-01: keep the guard / Reason: r / Impact: i'
                       ' <!-- rite:deferred-defect pr=12 -->\n'
                       '- 2026-01-02 D-02: Usage stays stable / Reason: r / Impact: i\n'),
+    'db/q.sql': 'select 1;\n-- keep the index\na\nb\nc\nd\ne\nf\ndrop table t;\nend;\n',
+    'lib/inc.txt': ''.join(f'x{n}\n' for n in range(1, 11)),
 }
 for name, content in BASE_FILES.items():
     (repo / name).parent.mkdir(parents=True, exist_ok=True)
@@ -52,6 +54,9 @@ base = git(repo, 'rev-parse', 'HEAD').strip()
 (repo / 'src/tool.sh').write_text('#!/bin/bash\nguard_input() {\n  echo "ok: $1"\n}\n')
 (repo / 'src/caller.sh').write_text('#!/bin/bash\n. ./tool.sh\nguard_input "${NAME:-}"\n')
 (repo / 'docs/usage.md').write_text('# tool\nUsage: tool NAME\nExit: 2 when NAME is empty\n')
+# With -U0 the removed "-- keep the index" and the added "++ counter" lines start with "--- " / "+++ ".
+(repo / 'db/q.sql').write_text('select 1;\na\nb\nc\nd\ne\nf\nend;\n')
+(repo / 'lib/inc.txt').write_text('x1\nx2\n++ counter\nx3\nx4\nx5\nx6\nx7\nx8\nx9 changed\nx10\n')
 git(repo, 'commit', '-qam', 'head')
 head = git(repo, 'rev-parse', 'HEAD').strip()
 
@@ -97,7 +102,7 @@ def candidate(cid, severity='LOW', cls='B'):
     return {'id': cid, 'severity': severity, 'consequence_class': cls}
 
 
-def rec(ids=('F-01',), **fields):
+def rec(ids=['F-01'], **fields):
     record = {'ids': list(ids), 'V': True, 'C': False, 'T': False, 'contract': {'ref': 'AC-1'},
               'evidence': 'tool "" prints ok: and exits 0', 'origin': 'pre_existing', 'present': True,
               'tracker': None, 'prior': None, 'reason': '', 'proposition': None}
@@ -105,17 +110,17 @@ def rec(ids=('F-01',), **fields):
     return record
 
 
-def write_inputs(records, cands=None, head_value=None, cls='B', severity='LOW'):
+def write_inputs(records, cands=None, head_value=None, cls='B', severity='LOW', review_head=None):
     cands = cands if cands is not None else sorted({cid for r in records for cid in r['ids']})
     classification.write_text(json.dumps({
         'classifications': [{'id': cid, 'class': cls, 'scenario': 's'} for cid in cands],
         'adoption': {'head': head_value or head, 'records': records}}))
     candidates_file.write_text(json.dumps({'candidates': [candidate(cid, severity, cls) for cid in cands]}))
-    review.write_text(json.dumps({'commit_sha': head, 'findings': [], 'non_blocking_findings': [
+    review.write_text(json.dumps({'commit_sha': review_head or head, 'findings': [], 'non_blocking_findings': [
         dict(candidate(cid, severity, cls), scope='current-pr') for cid in cands]}))
 
 
-def invoke(args=None):
+def invoke(args=None, repo_root=None):
     gh_log.write_text('')
     before = {path: path.read_bytes() for path in INPUTS}
     state = (git(repo, 'status', '--porcelain'), git(repo, 'rev-parse', 'HEAD'))
@@ -123,7 +128,7 @@ def invoke(args=None):
         '--classification', str(classification), '--candidates', str(candidates_file),
         '--review-result', str(review), '--base', base, '--ac-ids', 'AC-1,AC-2',
         '--issue-body', str(issue_body), '--pr-body', str(pr_body), '--ledger', str(ledger),
-        '--repo-root', str(repo)]
+        '--repo-root', str(repo_root or repo)]
     result = subprocess.run(['bash', str(helper), *argv], capture_output=True, text=True, env=env, timeout=30)
     check(all(path.read_bytes() == data for path, data in before.items()), 'an input file changed')
     check((git(repo, 'status', '--porcelain'), git(repo, 'rev-parse', 'HEAD')) == state, 'the repository changed')
@@ -260,6 +265,11 @@ check(single(rec(origin='pr', origin_cause={'diff': ['src/caller.sh:-3'], 'path'
 check(single(rec(origin='pr', origin_cause={'contract': {'ref': 'AC-2'}}))['exit'] == 'ADOPT', 'accepted AC')
 check(single(rec(origin='pr', origin_cause={'contract': {'ref': 'pr', 'text': 'caller keeps an unset NAME'}}))
       ['action'] == 'fix_in_pr', 'a PR promise is an accepted requirement')
+# A content line that looks like a file header must not hide the later hunks of the same file.
+for position in ('db/q.sql:-9', 'db/q.sql:-2', 'lib/inc.txt:+10', 'lib/inc.txt:-9', 'lib/inc.txt:+3'):
+    check(single(rec(origin='pr', origin_cause={'diff': [position], 'path': 'p'}))['exit'] == 'ADOPT', position)
+for position in ('db/q.sql:-10', 'lib/inc.txt:+11'):
+    refused([rec(origin='pr', origin_cause={'diff': [position], 'path': 'p'})], 'origin_cause_not_found', 'F-01')
 for cause, reason in [
         ({'diff': ['src/tool.sh:+3'], 'path': 'p'}, 'origin_cause_not_found'),
         ({'diff': ['src/tool.sh:-2'], 'path': 'p'}, 'origin_cause_not_found'),
@@ -310,6 +320,15 @@ check((again.returncode, again.stdout, again.stderr) == (varied.returncode, vari
 
 # Malformed records and inputs stop.
 refused([rec()], 'head_mismatch', '', head_value=base)
+# A git failure is git_failed, not a missing citation; a path absent at the head stays contract_not_found.
+missing_head = '0' * 40
+cited = rec(contract={'ref': 'docs/usage.md:3', 'text': 'Exit: 2 when NAME is empty'})
+refused([cited], 'git_failed', 'F-01', head_value=missing_head, review_head=missing_head)
+write_inputs([cited])
+outside = invoke(repo_root=work)
+check(outside.returncode == 1 and outside.stderr.splitlines()[-1]
+      == '[CONTEXT] REVIEW_ADOPTION=error; reason=git_failed; ids=F-01', outside.stderr)
+refused([rec(contract={'ref': 'src:1', 'text': 'x'})], 'contract_not_found', 'F-01')
 refused([rec(C='unknown', reason='')], 'reason_missing', 'F-01')
 refused([rec(present=False, evidence='')], 'evidence_missing', 'F-01')
 for fields in ({'V': 1}, {'V': 'yes'}, {'V': None}):
