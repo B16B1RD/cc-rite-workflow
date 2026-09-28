@@ -157,6 +157,22 @@ else
 fi
 
 echo "=== T-12: initialization checks resolve the config instead of listing the cwd ==="
+# 停止の否定形を数える。空行とフェンス行で段落を切ってから行をつなぎ、強調記号を落とすので、
+# 改行や ** / _ を挟んだ否定も数える。否定語と stop の間に 2 語まで挟めるのは命令・助動詞の否定
+# （do not / must not / cannot / n't / never など）だけで、素の not は直後の stop だけを数える。
+# 「not initialized so stop」のように状態の否定に停止文が続く形は否定形にしない
+count_negated_stop() {
+  printf '%s\n' "$1" | sed -E 's/^[[:space:]]*(```.*)?$/ . /' | tr '\n' ' ' | tr -d '*_' \
+    | grep -Eci "((^|[^[:alpha:]])(do|does|did|must|should|shall|will|would|can|could|may|might|need)[[:space:]]+not|cannot|n't|(^|[^[:alpha:]])never)([[:space:]]+[[:alpha:]]+){0,2}[[:space:]]+stop|(^|[^[:alpha:]])not[[:space:]]+stop" || true
+}
+for neg_case in $'Do not\nstop here.' 'Do **NOT** stop here.' 'Do not **immediately** stop.' 'must not immediately stop' \
+  "don't stop" 'never stop' 'cannot stop' 'Do not ever stop'; do
+  assert "T-12 counts '${neg_case//$'\n'/\\n}' as a negated stop" "1" "$(count_negated_stop "$neg_case")"
+done
+for stop_case in 'Config not initialized so stop here.' $'The config does not exist\n\nStop here.' \
+  $'The config does not exist\n```\nStop here.' 'Show the message and stop.'; do
+  assert "T-12 counts '${stop_case//$'\n'/\\n}' as a stop" "0" "$(count_negated_stop "$stop_case")"
+done
 # $1 skill, $2 section start heading, $3 next heading, $4 text of the rc=1 message,
 # $5 whether rc=1 stops the skill (stop | guide),
 # $6 text only the If rc=0 paragraph shows, or - when the section has no If rc=0 paragraph
@@ -216,6 +232,13 @@ check_init_section() {
     *) pass "T-12 $1 does not show the not-initialized message under If rc=0" ;;
   esac
   if [ "$6" = "-" ]; then
+    # 見出しの書き方を問わず、表の外で rc=0 に触れる行があれば If rc=0 段落が足されている
+    rc0_outside=$(printf '%s\n' "$sec" | grep -v '^|' | grep -Eci 'rc[[:space:]]*=[[:space:]]*0' || true)
+    if [[ -z "$rc0_para" && "$rc0_outside" -eq 0 ]]; then
+      pass "T-12 $1 has no If rc=0 paragraph"
+    else
+      fail "T-12 $1 has no If rc=0 paragraph (declared -; rc=0 lines outside the table: $rc0_outside)"
+    fi
     # If rc=0 段落が無いので、0 行が下にある内容を指すだけで rc=0 に案内が混ざる
     if grep -Eiq 'show|display|below|message' <<< "$rc0_line"; then
       fail "T-12 $1 rc=0 row does not point to content below (line: '$rc0_line')"
@@ -236,11 +259,11 @@ check_init_section() {
     *stderr*) fail "T-12 $1 does not treat rc=1 as a resolver error (line: '$rc1_line')" ;;
     *) pass "T-12 $1 does not treat rc=1 as a resolver error" ;;
   esac
-  # stop 側は停止語があり、続行語 continue も、not / n't / never から 2 語以内に続く stop（停止の否定形）も無いときだけ停止とみなす
+  # stop 側は停止語があり、続行語 continue も停止の否定形も無いときだけ停止とみなす
   rc1_text=$(printf '%s\n%s\n' "$rc1_line" "$rc1_para")
   stop_n=$(printf '%s\n' "$rc1_text" | grep -ci 'stop' || true)
   cont_n=$(printf '%s\n' "$rc1_text" | grep -ci 'continue' || true)
-  neg_n=$(printf '%s\n' "$rc1_text" | grep -Eci "(not|n't|never)([[:space:]]+[[:alpha:]]+){0,2}[[:space:]]+stop" || true)
+  neg_n=$(count_negated_stop "$rc1_text")
   if { [ "$5" = stop ] && [ "$stop_n" -gt 0 ] && [ "$cont_n" -eq 0 ] && [ "$neg_n" -eq 0 ]; } \
      || { [ "$5" = guide ] && [ "$stop_n" -eq 0 ]; }; then
     pass "T-12 $1 rc=1 stop behavior is '$5'"
