@@ -137,9 +137,9 @@ Finding Quality Guardrail Category #2 で除外した候補を次の表へ必ず
 
 | 分類 | 意味 | 対応経路 |
 |------|------|---------|
-| `actionable` | 対応が妥当な改善提案。本 PR が追加した行の欠陥（誤ったコメント・到達しない分岐・テストの粗さ等）なら `ファイル:行` を併記する。本 PR の diff と無関係なものは `別 Issue` / `スコープ外` キーワードを含める | 本 PR の追加行を指し mergeable の cycle なら同じ PR で修正（ステップ 5.3.0.R。1 review run につき 1 回）。それ以外はステップ 7.2 で `AskUserQuestion` 必須起動 → Decision Log 記録または Issue 化（推奨機械決定表に従う） |
+| `actionable` | 対応が妥当な改善提案。本 PR が追加した行の欠陥（誤ったコメント・到達しない分岐・テストの粗さ等）なら `ファイル:行` を併記する。本 PR の diff と無関係なものは `別 Issue` / `スコープ外` キーワードを含める | 本 PR の追加行を指し mergeable の cycle なら同じ PR で修正（ステップ 5.3.0.R。1 review run につき 1 回）。それ以外はステップ 7.2 の採否ゲートの出口（file / record / hold）で処分 |
 | `design_confirmation` | reviewer 自身が「現状の判断は妥当」「対応不要」「informational 寄り」と結論しており、action 要求を伴わない観察事項 | ステップ 7 で起票・記録なし、completion report に件数のみ表示 |
-| `boundary` | reviewer が action 要否を judgement できず user 判断を要する境界事案 | ステップ 7.2 で `AskUserQuestion` 必須起動 → user が「Decision Log 記録/起票/対応/無視」を選択 |
+| `boundary` | reviewer が action 要否を判断できない境界事案 | ステップ 7.2 の採否ゲートの出口（file / record / hold）で処分 |
 
 **禁止**: 「推奨 N 件」「follow-up 候補 N 件」のような **件数のみの aggregate label** で報告を済ませること。各 item の分類を明示せずに集計するのは `aggregate-recommendation-label-evasion` anti-pattern であり、ステップ 7 の機械的 gate により block される。
 

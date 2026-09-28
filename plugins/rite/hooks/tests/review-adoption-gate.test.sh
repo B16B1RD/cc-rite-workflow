@@ -79,9 +79,10 @@ def rec(ids=['F-01'], **fields):
 
 
 REJECT = dict(V=False, contract=None, evidence='', reason='the guard is documented / reconsider when usage changes')
+unknown = dict(V='unknown', contract=None, evidence='', reason='not reproduced yet')
 
 
-def run(records, cands=CANDS, kind='sweep', write=True, at=None, context=None):
+def run(records, cands=CANDS, kind='sweep', write=True, at=None, context=None, with_pr_body=True):
     candidates.write_text(json.dumps({'candidates': cands}))
     adoption.parent.mkdir(parents=True, exist_ok=True)
     path = state / f'.rite/state/adoption-5-{kind}.json'
@@ -97,7 +98,7 @@ def run(records, cands=CANDS, kind='sweep', write=True, at=None, context=None):
     result = subprocess.run(
         ['bash', str(gate), '--pr', '5', '--kind', kind, '--state-root', str(state),
          '--candidates', str(candidates), '--review-result', str(reviewed), '--base', base,
-         '--issue-body', str(issue_body), '--pr-body', str(pr_body), '--ac-ids', 'AC-1',
+         '--issue-body', str(issue_body), *(['--pr-body', str(pr_body)] if with_pr_body else []), '--ac-ids', 'AC-1',
          '--repo-root', str(repo), *(['--ledger', str(ledger)] if context is None else context)],
         capture_output=True, text=True, env=env, timeout=60)
     after = candidates.read_bytes(), review.read_bytes(), (path.read_bytes() if path.exists() else None)
@@ -140,10 +141,20 @@ check(verdicts['F-02']['verdict'] == 'record' and verdicts['F-02']['exit'] == 'R
 check('[CONTEXT] ADOPTION_GATE=decided; kind=sweep; file=1; record=1; pr=5' in result.stderr, result.stderr)
 check(not hold_file.exists(), 'a decided run must remove the stale hold file')
 
-# Filing without an acceptance criterion is held, not filed.
+# Filing without an acceptance criterion is held, not filed; the hold keeps every candidate of the run.
 saved, _ = held([rec(acceptance=''), rec(['F-02'], **REJECT)], 'undecided')
-check(saved['held_ids'] == ['F-01'] and [c['id'] for c in saved['candidates']] == ['F-01'], saved)
+check(saved['held_ids'] == ['F-01'] and saved['candidates'] == CANDS, saved)
 check('acceptance' in saved['detail'], saved['detail'])
+
+# A held run writes nothing, so the candidates decided as file or record are saved in the hold as well.
+THREE = CANDS + [{'id': 'F-03', 'severity': 'LOW', 'description': 'no shebang check', 'file': 'tool.sh', 'line': 1}]
+saved, _ = held([rec(['F-01'], **REJECT), rec(['F-02']), rec(['F-03'], **unknown)], 'undecided', cands=THREE)
+check(saved['held_ids'] == ['F-03'] and saved['candidates'] == THREE, saved)
+# A same-commit rerun without the candidate decided as file keeps it in the hold with its full text.
+saved, _ = held([rec(['F-01'], **REJECT), rec(['F-03'], **unknown)], 'held_candidates_dropped', cands=[THREE[0], THREE[2]])
+check(THREE[1] in saved['candidates'] and 'F-02' in saved['held_ids'], saved)
+check('作り直して' in saved['resume'] and '戻して' not in saved['resume'], saved['resume'])
+hold_file.unlink()
 
 # RESOLVED and a pre-existing LINK record the disposition; a PR-origin LINK stays blocking and is held.
 resolved = dict(present=False, evidence='the guard is back at HEAD')
@@ -160,7 +171,6 @@ for fields in ({'origin': 'pr', 'origin_cause': removed}, {'origin': 'unknown'})
     check(saved['held_ids'] == ['F-01'], (fields, saved))
 
 # DIAGNOSE: held unless accepted as an investigation, which is filed with its acceptance criterion.
-unknown = dict(V='unknown', contract=None, evidence='', reason='not reproduced yet')
 proposition = {'claim': 'an empty NAME passes', 'reach': 'tool ""', 'reach_source': 'tool.sh:2', 'done': 'exit code observed'}
 held([rec(**unknown), rec(['F-02'], **REJECT)], 'undecided')
 held([rec(origin='pr', origin_cause=removed, proposition=proposition, investigate=True, **unknown),
@@ -197,7 +207,7 @@ check(saved['resume'] in result.stderr, result.stderr)
 saved, _ = held([rec(origin='pr', origin_cause=removed), rec(['F-02'], **unknown)], 'undecided')
 check('コードを直して push し' in saved['resume'] and '判定記録' in saved['resume'], saved['resume'])
 saved, _ = held([rec(origin='pr', origin_cause=removed), rec(['F-02'], **REJECT)], 'undecided', kind='followup')
-check('PM に返す' in saved['resume'] and 'push' not in saved['resume'], saved['resume'])
+check('人間に報告' in saved['resume'] and 'PM' not in saved['resume'] and 'push' not in saved['resume'], saved['resume'])
 decided([rec(), rec(['F-02'], **REJECT)])
 
 # A context that cannot be read is held without touching the records; the callee's diagnostic is kept.
@@ -208,6 +218,10 @@ check('adoption-5-sweep.json' not in saved['resume'], saved['resume'])
 saved, result = held([rec(), rec(['F-02'], **REJECT)], 'context_unavailable', context=['--owner-repo', 'o/r'])
 check('却下台帳の記録コメント' in saved['detail'] and 'ERROR' in saved['detail'], saved['detail'])
 check('NONBLOCKING_RECORD_BODY=failed' in result.stderr, result.stderr)
+saved, result = held([rec(), rec(['F-02'], **REJECT)], 'context_unavailable', with_pr_body=False,
+                     context=['--owner-repo', 'o/r', '--ledger', str(ledger)])
+check('PR 本文' in saved['detail'] and 'could not resolve' in saved['detail'], saved['detail'])
+check('could not resolve' in result.stderr.splitlines(), result.stderr)
 decided([rec(), rec(['F-02'], **REJECT)])
 
 # Triage renumbers ids on a rerun. A candidate held on the same commit that the rerun no longer
@@ -225,15 +239,27 @@ check(saved['resume'] in result.stderr, result.stderr)
 # Putting the dropped candidate back with its full text under a new id decides and clears the hold.
 decided([rec(['C-1'], **REJECT), rec(['C-2'])], kind='triage', cands=[dict(CANDS[1], id='C-1'), dict(CANDS[0], id='C-2')])
 check(not triage_hold.exists(), 'the decided rerun must clear the triage hold')
-# A new commit is reviewed afresh: the previous hold is not compared against it.
+# Triage candidates live nowhere else, so a new commit is still compared against the previous hold.
 held([], 'no_records', kind='triage', cands=first, write=False)
 (repo / 'notes.md').write_text('moved on\n')
 git(repo, 'add', '-A')
 git(repo, 'commit', '-qm', 'next')
 next_head = git(repo, 'rev-parse', 'HEAD').strip()
-decided([rec(['C-1'], **REJECT)], kind='triage', cands=[dict(CANDS[1], id='C-1')], at=next_head)
-check(not triage_hold.exists(), 'a decided run on a new commit must clear the triage hold')
-# No candidate at all: nothing to judge, unless a same-commit hold still has candidates.
+saved, _ = held([rec(['C-1'], **REJECT)], 'held_candidates_dropped', kind='triage', cands=[dict(CANDS[1], id='C-1')],
+                at=next_head)
+check(saved['head'] == next_head and saved['held_ids'] == ['C-1', 'held-C-1'], saved)
+check({k: v for k, v in saved['candidates'][1].items() if k != 'id'} == {k: v for k, v in CANDS[0].items() if k != 'id'},
+      saved['candidates'])
+check('候補へ戻して' in saved['resume'] and '作り直して' not in saved['resume'], saved['resume'])
+decided([rec(['C-1'], **REJECT), rec(['C-2'], **REJECT)], kind='triage',
+        cands=[dict(CANDS[1], id='C-1'), dict(CANDS[0], id='C-2')], at=next_head)
+check(not triage_hold.exists(), 'the decided run on the new commit must clear the triage hold')
+# Sweep rebuilds its candidates from the review results: a run on a new commit with no candidate
+# decides and retires the previous hold.
+held([], 'no_records', write=False)
+verdicts, _ = decided([], cands=[], write=False, at=next_head)
+check(verdicts == {} and not hold_file.exists(), 'a decided sweep run on a new commit must clear the sweep hold')
+# No candidate at all: nothing to judge, unless the triage hold still has candidates.
 verdicts, _ = decided([], kind='triage', cands=[], write=False)
 check(verdicts == {}, verdicts)
 held([], 'no_records', kind='triage', cands=first, write=False)
@@ -242,6 +268,17 @@ check(saved['held_ids'] == ['C-1', 'C-2'], saved)
 triage_hold.unlink()
 
 # A hold that cannot be saved or a previous hold that cannot be read stops the gate without writing.
+blocked = work / 'blocked'
+(blocked / '.rite').mkdir(parents=True)
+(blocked / '.rite/state').write_text('')
+candidates.write_text(json.dumps({'candidates': CANDS}))
+result = subprocess.run(
+    ['bash', str(gate), '--pr', '5', '--kind', 'sweep', '--state-root', str(blocked), '--candidates', str(candidates),
+     '--review-result', str(review), '--base', base, '--issue-body', str(issue_body), '--pr-body', str(pr_body),
+     '--ac-ids', 'AC-1', '--ledger', str(ledger)],
+    capture_output=True, text=True, env=env, timeout=60)
+check(result.returncode == 1 and result.stdout == '', (result.returncode, result.stdout))
+check('ADOPTION_GATE=error; kind=sweep; reason=hold_write_failed; pr=5' in result.stderr, result.stderr)
 hold_file.unlink(missing_ok=True)
 tmp_slot = Path(f'{hold_file}.tmp')
 tmp_slot.mkdir()

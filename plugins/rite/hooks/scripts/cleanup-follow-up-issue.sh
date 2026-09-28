@@ -70,7 +70,10 @@
 #                        その key は identity として曖昧なため除外せず全件転記する (他の key の除外は
 #                        継続する)。WARNING と marker で surface し過剰転記側へ倒す。
 #                        **除外が要求より少なく適用された経路はすべて FOLLOW_UP_EXCLUDE_AMBIGUOUS を
-#                        出す**（reason= で区別する。下記 Emitted markers 参照）
+#                        出す**（reason= で区別する。下記 Emitted markers 参照）。ただし採否ゲートが保留した
+#                        候補 (<state-root>/.rite/state/adoption-hold-<pr>-followup.json の candidates[].id) に
+#                        一致する key は除外せず候補に残し、INFO を 1 行出す (marker は出さない。判定記録の
+#                        RESOLVED で処分する)。hold ファイルがあって読めなければ除外に倒さず hold_unreadable で失敗する
 #
 # 機械同定 marker: 起票本文の先頭行 `<!-- [rite-follow-up-from-pr:<pr>:<根因 key>] -->`。根因 key は判定記録の
 #   ids を整列して `,` で連結した値。follow-up ラベルの Issue を先頭行で照合し、根因 key の ids が今回の記録の
@@ -87,6 +90,7 @@
 #     (--list-candidates のとき。0 件で終えたときは count=0 の後に reason=<下記 skipped / failed の reason>)
 #   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=list_write; pr=<n>   (一覧を --list-candidates のパスへ書けない)
 #   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=head_unresolved; pr=<n>   (対象 commit を決められない。一覧を書かない)
+#   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=hold_unreadable; pr=<n>   (--exclude-ids の照合に使う hold ファイルを読めない。一覧を書かない)
 #   [CONTEXT] FOLLOW_UP_ISSUE=held; reason=<r>; hold_file=<path>; pr=<n>
 #     採否の出口が出ていない候補がある (判定記録なし / ゲートの ERROR / 未処分の出口)。何も起票せず、
 #     判定済み記録も書かない。declined でも skipped でもない。reason はゲートの reason (no_records /
@@ -115,8 +119,9 @@
 #   書けなくても結果は変えず WARNING を出す。影響は再実行の報告が no_json に戻ることだけ。
 #   [CONTEXT] FOLLOW_UP_DEFERRED=unavailable; reason=issue_body_api; pr=<n>
 #     元 Issue の本文を取得できず先送り欠陥を読めなかった (ゲートが本文を読み直し、読めなければ保留する)
-#   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=lookup_api|create_api|create_script_missing|json_undecidable|head_unresolved|preview_write; pr=<n>
+#   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=lookup_api|create_api|create_script_missing|json_undecidable|head_unresolved|hold_unreadable|preview_write; pr=<n>
 #     head_unresolved: commit_sha を持つレビュー結果 JSON が無く、PR の head も取得できないか <state-root> の git で解決できない
+#     hold_unreadable: --exclude-ids があり、採否ゲートの hold ファイルがあるのに読めない (形がゲートの読み取り条件に合わない)
 #   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=create_api; issue=<起票できた番号の CSV>; pr=<n>
 #     根因の一部だけ起票できた。再実行すると起票済みの根因は増やさず残りだけを起票する
 #   [CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=<r>; count=<n|unknown>; pr=<n>
@@ -441,6 +446,30 @@ if [ -n "$EXCLUDE_IDS" ]; then
     # 要求件数は数えられない (解析に失敗した入力しか無い) ので count=unknown。
     echo "[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=parse_failed; count=unknown; pr=${PR_NUMBER}" >&2
   else
+    # 採否ゲートが保留した候補は、再検証で解消済みと判定されても候補に残す。除くとゲートの同じ head の
+    # 欠落照合が保留し続けて解けない。残した候補は判定記録の RESOLVED で処分する。hold ファイルの形の
+    # 検証はゲートの読み取りと同じ条件で、読めなければ除外に倒さず失敗で止める (列挙も起票も同じ位置)。
+    hold_file="$STATE_ROOT/.rite/state/adoption-hold-${PR_NUMBER}-followup.json"
+    if [ -e "$hold_file" ]; then
+      rite_tempfile_new hold_err "fu-hold" || exit 1
+      if ! held_keep=$(jq -nc --argjson ex "$exclude_json" --slurpfile h "$hold_file" '
+          if ($h | length) != 1 or ($h[0].head | type) != "string" or ($h[0].candidates | type) != "array"
+             or any($h[0].candidates[]; (.id | type) != "string") then error("malformed hold file")
+          else [$ex[] | select(. as $k | any($h[0].candidates[]; .id == $k))] end' 2>"$hold_err"); then
+        echo "WARNING: 採否ゲートの hold ファイルを読めないため、解消済みの除外を適用できません。follow-up を判定しません (PR #${PR_NUMBER}): $hold_file" >&2
+        [ -s "$hold_err" ] && head -3 "$hold_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+        if [ -n "$LIST_OUT" ]; then
+          echo "[CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=hold_unreadable; pr=${PR_NUMBER}" >&2
+        else
+          emit_failed hold_unreadable
+        fi
+        exit 0
+      fi
+      if [ "$held_keep" != '[]' ]; then
+        echo "INFO: 採否ゲートが保留した候補は解消済みでも除外せず候補に残します (判定記録の RESOLVED で処分する): $(jq -r 'join(", ")' <<< "$held_keep") (PR #${PR_NUMBER})" >&2
+        exclude_json=$(jq -c --argjson keep "$held_keep" '. - $keep' <<< "$exclude_json")
+      fi
+    fi
     unknown_ids=$(printf '%s' "$findings_json" | jq -r --argjson ex "$exclude_json" "$_key_def"'
       ([.[] | key]) as $known | $ex - $known | join(", ")')
     if [ -n "$unknown_ids" ]; then

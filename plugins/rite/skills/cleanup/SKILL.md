@@ -679,7 +679,7 @@ fi
 
 `FOLLOW_UP_REVERIFY=unavailable` を観測した場合、および本節を実行できなかった場合は**全件を `undecidable` 扱い**とし、`--exclude-ids` は空文字列のまま helper を呼ぶ（= 除外なし＝従来挙動）。
 
-出力に**同じ id が複数行**現れることがある（`id` は cycle 内の連番で cycle 跨ぎの identity を持たない）。各行は別の finding として独立に判定し、`key` で区別する。ただし同じ `key` が複数行に現れる場合（同一 JSON 内の id 重複）は、`resolved` と判定しても helper 側が除外を拒否して全件転記するため、`{n_resolved}` は実際に除外された件数と一致しないことがある。
+出力に**同じ id が複数行**現れることがある（`id` は cycle 内の連番で cycle 跨ぎの identity を持たない）。各行は別の finding として独立に判定し、`key` で区別する。ただし同じ `key` が複数行に現れる場合（同一 JSON 内の id 重複）は、`resolved` と判定しても helper 側が除外を拒否して全件転記するため、`{n_resolved}` は実際に除外された件数と一致しないことがある。採否ゲートが保留した候補の `key` も helper は除外せず候補に残す（6.0.A の判定記録で処分する）。
 rationale: references/rationale.md#follow-up-exclude-key
 
 `"key": null` の finding（書式外 id / id 欠落 / 出典ファイル名が `{pr_number}-{14 桁}.json` / `{pr_number}-{14 桁}~{4 桁小文字 hex}.json` のどちらの形でもない）は**必ず `undecidable`** とする。除外指定に載せられる key が無く、`{resolved_ids_csv}` へ入れられる値も無いため、判定の余地なく転記側へ倒れる。出力には現れるので `{n_undecidable}` には通常どおり数え上げられる。
@@ -716,17 +716,18 @@ bash {plugin_root}/hooks/scripts/cleanup-follow-up-issue.sh \
 |---|---|
 | `listed; count=0` | 判定記録を書かずに 6.0.C へ進む（helper は同じ 0 件の結果で終える） |
 | `listed; count=<n>`（n ≥ 1） | 一覧ファイルを Read し、下の規則で判定記録を書いてから 6.0.C へ進む |
-| `failed; reason=head_unresolved` | 判定記録を書かずに 6.0.C へ進む（対象 commit を決められないため、起票の実行も保留ではなく `FOLLOW_UP_ISSUE=failed; reason=head_unresolved` で止まる） |
+| `failed; reason=head_unresolved` / `failed; reason=hold_unreadable` | 判定記録を書かずに 6.0.C へ進む（対象 commit を決められない / 採否ゲートの hold ファイルを読めないため、起票の実行も保留ではなく同じ reason の `FOLLOW_UP_ISSUE=failed` で止まる） |
 | 上記以外の `failed` / marker なし | 判定記録を書かずに 6.0.C へ進む（helper は記録なしとして保留する） |
 
 判定記録の規則:
 
 - 書き先は一覧の `adoption`（`{state_root}/.rite/state/adoption-{pr_number}-followup.json`）。Write ツールで `{"adoption": {"head": <一覧の head>, "records": [...]}}` を書く。
 - `head` は一覧の `head`（レビュー結果 JSON の `commit_sha`、JSON が無ければマージ済み PR の head）をそのまま写す。マージ後もその commit と base は git に残っている前提で、根拠・引用はその commit で確かめる。head を決められないとき helper は一覧を書かず、上の表の `head_unresolved` で失敗する。
-- マージ後の候補を PR 起因（`origin=pr` / `unknown`）と判定したら、その判定のまま記録する（`pre_existing` や REJECT に書き換えて保留を解除しない）。マージ済み PR では同じ PR で直せず、この出口の扱いは仕様で未定義のため、ゲートが保留し resume が PM に返すよう案内する — 意図した保留である。
+- マージ後の候補を PR 起因（`origin=pr` / `unknown`）と判定したら、その判定のまま記録する（`pre_existing` や REJECT に書き換えて保留を解除しない）。マージ済み PR では同じ PR で直せず、この出口の扱いは仕様で未定義のため、ゲートは保留のまま止め、人間に報告する（再実行しても同じ保留になる） — 意図した保留である。
 - 全候補の `id` をちょうど 1 つの記録に入れる。1 記録 = 1 根因。重要度（CRITICAL〜LOW）と class A/B では決めない。
 - 起票になる記録（ADOPT・`origin=pre_existing`、調査として引き受けた DIAGNOSE）には `acceptance`（起票する Issue の受入条件の文）を必ず書く。調査は `proposition` の 4 項目と `investigate: true` も書く。
 - 前回の実行が書いた記録ファイルがあれば、同じ候補の記録（`ids`）はそのまま引き継ぎ、`head` を一覧の値に合わせ、新しい候補の記録だけを足す（起票済みかどうかは、記録の ids と起票済み Issue の marker の ids の重なりで決まる）。一覧に無くなった id は記録から除き、id が残らない記録は消す。
+- 採否ゲートが保留した候補は、6.0.V が `resolved` と判定しても一覧に残る。記録から除かず、6.0.V の再検証結果を根拠（`present: false` と `evidence`）にした RESOLVED の記録で処分する。
 rationale: references/rationale.md#follow-up-adoption-records
 
 #### 6.0.C 起票前の確認（単独実行のとき）
@@ -1102,7 +1103,7 @@ rationale: references/rationale.md#marker-data-delimiter
   | `FOLLOW_UP_ISSUE=held`（`hold_file=none`） | 未完了 | `⚠️ 採否ゲート自体が失敗したため follow-up を起票せず保留しました（{reason}）。候補は hold ファイルに保存されていません。直前の WARNING の原因を解消して /rite:cleanup {pr_number} を再実行してください（起票済みの根因は増えません）` |
   | `FOLLOW_UP_ISSUE=held` | 未完了 | `⚠️ 採否の出口が出ていない候補があるため follow-up を起票せず保留しました（{reason}）。候補の全文は {hold_file} に保存済みです。{hold_file} の resume（ゲートの WARNING にも出る）に従って再開してください（起票済みの根因は増えません）` |
   | `FOLLOW_UP_ISSUE=failed; reason=preview_write` | 未完了 | `⚠️ follow-up 起票の確認用の本文を書き出せず、起票を試みていません。書き出し先を確認して /rite:cleanup {pr_number} を再実行してください` |
-  | `FOLLOW_UP_ISSUE=failed`（reason 問わず。preview_write 以外。`helper_rc` / `lookup_api` / `create_api` / `create_script_missing` / `json_undecidable` / `head_unresolved` を含む） | 未完了 | `⚠️ follow-up Issue の起票に失敗しました（{reason}。`issue=` があればその番号は起票済み）。原因を解消して /rite:cleanup {pr_number} を再実行してください（起票済みの根因は増えず、残りだけを起票します）` |
+  | `FOLLOW_UP_ISSUE=failed`（reason 問わず。preview_write 以外。`helper_rc` / `lookup_api` / `create_api` / `create_script_missing` / `json_undecidable` / `head_unresolved` / `hold_unreadable` を含む） | 未完了 | `⚠️ follow-up Issue の起票に失敗しました（{reason}。`issue=` があればその番号は起票済み）。原因を解消して /rite:cleanup {pr_number} を再実行してください（起票済みの根因は増えず、残りだけを起票します）` |
   | `skipped; reason=no_json` | 未完了 | 同上（レビュー結果 JSON 不在） |
   | `skipped; reason=jq_missing` | 未完了 | `⚠️ jq が見つからず follow-up 起票を skip しました。jq を導入したうえで /rite:cleanup {pr_number} を再実行してください` |
   | `created` / `skipped; reason=no_findings` / `skipped; reason=already_exists` / `skipped; reason=all_issued` / `skipped; reason=already_processed` / `skipped; reason=all_resolved` / `skipped; reason=all_recorded` | x 相当 | — |

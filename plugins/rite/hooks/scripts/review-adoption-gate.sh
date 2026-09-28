@@ -11,12 +11,15 @@
 #   hold    anything else: pr_blocking decisions (RECONCILE, ADOPT pr/unknown, DIAGNOSE
 #           pr/unknown, LINK pr/unknown) and DIAGNOSE without investigation.
 # A missing record file, an unreadable context, or a helper ERROR holds every candidate.
-# When anything is held, nothing may be written: the full held candidates, the source,
-# the reviewed commit and how to resume are saved to the hold file and the gate
-# exits 3. A decided run removes a stale hold file of the same path. A rerun on the same
-# commit must still carry every candidate the previous hold saved (compared by full text
-# without id, since triage renumbers ids); otherwise the dropped ones are kept in the hold.
-# With no candidate and nothing dropped, the run decides with no verdict.
+# When anything is held, nothing may be written: every candidate of the run with its full
+# text (held_ids names the held ones), the source, the reviewed commit and how to resume
+# are saved to the hold file and the gate exits 3. A decided run removes a stale hold file
+# of the same path. The next run must still carry every candidate the previous hold saved
+# (compared by full text without id, since triage renumbers ids); otherwise the dropped
+# ones are kept in the hold. Triage compares on any commit, since its candidates live
+# nowhere else; sweep and followup compare only on the same commit, since they rebuild
+# their candidates from the review results. With no candidate and nothing dropped, the run
+# decides with no verdict (and so retires a sweep or followup hold of another commit).
 #
 # Usage:
 #   review-adoption-gate.sh --pr N --kind sweep|triage|followup --state-root DIR \
@@ -93,7 +96,11 @@ resume_for() {
       echo "detail に出ている取得失敗の原因（gh 認証・ネットワーク・本文の読み取りなど）を解消してから $cmd を再実行する（判定記録は直さない）"
       return ;;
     held_candidates_dropped)
-      echo "前回保留した候補（hold ファイルの candidates）が今回の候補に含まれていない。欠けた候補を全文のまま候補へ戻してから $cmd を再実行する"
+      if [ "$kind" = triage ]; then
+        echo "前回の hold ファイルの candidates にある候補が今回の候補に含まれていない。欠けた候補を全文のまま候補へ戻してから $cmd を再実行する（スコープ外処分の手順 1 が hold ファイルの候補を合流させる）"
+      else
+        echo "前回の hold ファイルの candidates にある候補が今回の候補に含まれていない。同じ入力（レビュー結果 JSON）で候補を作り直してから $cmd を再実行する"
+      fi
       return ;;
     undecided) ;;
     *) echo "$records"; return ;;
@@ -101,7 +108,7 @@ resume_for() {
   jq -e 'any(.[]; .verdict == "hold" and (.pr_blocking | not))' <<< "$verdicts" >/dev/null && ways+=("$records")
   if jq -e 'any(.[]; .verdict == "hold" and .pr_blocking)' <<< "$verdicts" >/dev/null; then
     if [ "$kind" = followup ]; then
-      ways+=("PR 起因の保留はマージ済み PR では同じ PR で直せず、この出口の扱いは仕様で未定義のため、保留のまま PM に返す（判定記録を pre_existing や REJECT に書き換えて解除しない）")
+      ways+=("PR 起因の保留はマージ済み PR では同じ PR で直せず、この出口の扱いは仕様で未定義のため、保留のまま止め、人間に報告する（再実行しても同じ保留になる。判定記録を pre_existing や REJECT に書き換えて解除しない）")
     else
       ways+=("PR 起因の保留は同じ PR で直す。コードを直して push し $cmd で再レビューする（HEAD が変わると新しいレビューで判定し直す）")
       jq -e 'any(.[]; .verdict == "hold" and .exit == "RECONCILE")' <<< "$verdicts" >/dev/null \
@@ -112,13 +119,17 @@ resume_for() {
   echo "$joined"
 }
 
-# Save every held candidate with its full text, then stop. $3 lists the held ids
+# Save every candidate of the run with its full text, then stop. $3 lists the held ids
 # (JSON array); without it every candidate is held. Candidates dropped from the previous
-# hold are appended, renamed when their id is taken by a current candidate.
+# hold are appended and held, renamed when their id is taken by a current candidate.
 hold() {
   local reason=$1 detail=$2 ids=${3:-null} resume
   resume=$(resume_for "$reason" "$verdicts")
-  mkdir -p "$state_root/.rite/state" || { echo "ERROR: cannot create $state_root/.rite/state" >&2; exit 1; }
+  if ! mkdir -p "$state_root/.rite/state"; then
+    echo "ERROR: cannot create $state_root/.rite/state; nothing may be written" >&2
+    echo "[CONTEXT] ADOPTION_GATE=error; kind=$kind; reason=hold_write_failed; pr=$pr" >&2
+    exit 1
+  fi
   if ! jq -n --arg kind "$kind" --argjson pr "$pr" --arg head "$head" --arg rr "$review_result" \
       --arg reason "$reason" --arg detail "$detail" --arg resume "$resume" --argjson ids "$ids" \
       --argjson dropped "$dropped" --slurpfile c "$candidates" '
@@ -128,7 +139,7 @@ hold() {
       | (if $ids == null then [$all[].id] else $ids end) as $held
       | {kind: $kind, pr: $pr, head: $head, review_result: $rr, reason: $reason, detail: $detail,
          held_ids: ($held + [$kept[].id]),
-         candidates: ([$all[] | select(.id as $i | $held | index($i))] + $kept), resume: $resume}
+         candidates: ($all + $kept), resume: $resume}
     ' > "$hold_file.tmp" || ! mv "$hold_file.tmp" "$hold_file"; then
     rm -f "$hold_file.tmp"
     echo "ERROR: the hold could not be saved to $hold_file; nothing may be written" >&2
@@ -150,13 +161,14 @@ jq -e '(.commit_sha | type) == "string"' "$review_result" >/dev/null 2>&1 \
   || { echo "ERROR: --review-result has no commit_sha: $review_result" >&2; exit 2; }
 head=$(jq -r '.commit_sha' "$review_result")
 
-# A rerun on the same commit keeps the previous hold's candidates. Triage renumbers ids,
-# so each saved candidate is looked up by its full text without id.
+# The next run keeps the previous hold's candidates: triage on any commit, sweep and
+# followup on the same commit. Triage renumbers ids, so each saved candidate is looked up
+# by its full text without id.
 if [ -e "$hold_file" ]; then
-  dropped=$(jq -nc --arg head "$head" --slurpfile h "$hold_file" --slurpfile c "$candidates" '
+  dropped=$(jq -nc --arg head "$head" --arg kind "$kind" --slurpfile h "$hold_file" --slurpfile c "$candidates" '
       if ($h | length) != 1 or ($h[0].head | type) != "string" or ($h[0].candidates | type) != "array"
          or any($h[0].candidates[]; (.id | type) != "string") then error("malformed hold file")
-      elif $h[0].head != $head then []
+      elif $h[0].head != $head and $kind != "triage" then []
       else [$c[0].candidates[] | del(.id)] as $now
         | [$h[0].candidates[] | select(del(.id) as $x | any($now[]; . == $x) | not)] end
     ' 2>"$work/err") || {
@@ -166,10 +178,10 @@ if [ -e "$hold_file" ]; then
     exit 1
   }
   [ "$dropped" = '[]' ] || hold held_candidates_dropped \
-    "前回保留した候補のうち $(jq 'length' <<< "$dropped") 件が今回の候補にありません: $(jq -r '[.[].id] | join(", ")' <<< "$dropped")"
+    "前回の hold ファイルの候補のうち $(jq 'length' <<< "$dropped") 件が今回の候補にありません: $(jq -r '[.[].id] | join(", ")' <<< "$dropped")"
 fi
 
-# With no candidate left (and none dropped from a same-commit hold) there is nothing to judge.
+# With no candidate left and none dropped from the previous hold there is nothing to judge.
 if [ "$(jq '.candidates | length' "$candidates")" -eq 0 ]; then
   rm -f "$hold_file"
   echo "[CONTEXT] ADOPTION_GATE=decided; kind=$kind; file=0; record=0; pr=$pr" >&2
@@ -192,16 +204,16 @@ fi
 if [ -z "$pr_body" ]; then
   pr_body="$work/pr.md"
   gh pr view "$pr" -R "$owner_repo" --json body --jq '.body' > "$pr_body" 2>"$work/err" \
-    || hold context_unavailable "PR 本文を取得できません: $(head -1 "$work/err")"
+    || hold context_unavailable "PR 本文を取得できません: $(callee_diag)"
 fi
 if [ -n "$issue" ] && [ -z "$issue_body" ]; then
   issue_body="$work/issue.md"
   gh issue view "$issue" -R "$owner_repo" --json body --jq '.body' > "$issue_body" 2>"$work/err" \
-    || hold context_unavailable "Issue 本文を取得できません: $(head -1 "$work/err")"
+    || hold context_unavailable "Issue 本文を取得できません: $(callee_diag)"
 fi
 if [ "$ac_ids_set" -eq 0 ] && [ -n "$issue_body" ]; then
   ac_ids=$(bash "$plugin_root/scripts/acceptance-criteria-check.sh" extract --body-file "$issue_body" 2>"$work/err") \
-    || hold context_unavailable "受入条件を読めません: $(grep -m1 ERROR "$work/err")"
+    || hold context_unavailable "受入条件を読めません: $(callee_diag)"
 fi
 if [ -z "$ledger" ]; then
   ledger="$work/ledger.md"

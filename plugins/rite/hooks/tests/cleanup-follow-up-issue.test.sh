@@ -160,6 +160,8 @@
 #   T-88 REJECT / RESOLVED / LINK は起票せず all_recorded と件数。CLOSED の追跡先は LINK にしない
 #   T-89 対象 commit は basename の降順で最初に読める commit_sha (archive/ を含む)
 #   T-90 cleanup SKILL.md の判定記録の節・呼び出し引数・held の配線
+#   T-91 採否ゲートが保留した候補は --exclude-ids で除かず列挙にも起票実行にも残し、RESOLVED の記録で処分すると
+#        保留が解ける。hold ファイルが無ければ従来どおり除外し、読めなければ列挙も起票実行も hold_unreadable で失敗する
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -3004,6 +3006,63 @@ assert "T-90 保留は state 削除の held で判定し、ステップ 7 を実
 assert "T-90 hold ファイルの無い保留では state 削除もステップ 7 も実行しない" "1" "$(printf '%s\n' "$t90_section" | grep -cF 'hold_file=none` を出したとき（ゲート自体が失敗し hold ファイルが無い）で、このときは state 削除もステップ 7 も実行しない')"
 assert "T-90 完了報告の held 行は未完了" "1" "$(grep -c '^  | `FOLLOW_UP_ISSUE=held` | 未完了 |' "$CLEANUP_MD")"
 assert "T-90 all_recorded は x 相当" "1" "$(grep -c '^  | `created` / .*`skipped; reason=all_recorded`.* | x 相当 | — |$' "$CLEANUP_MD")"
+
+echo "--- T-91: 採否ゲートが保留した候補は --exclude-ids で除かず、RESOLVED の記録で処分する ---"
+T91_INFO='^INFO: 採否ゲートが保留した候補は解消済みでも除外せず候補に残します'
+# 記録なしで保留した後、再検証がその 1 件を解消済みと判定しても、列挙にも起票実行にも残る
+reset_stubs
+ADOPT_MODE=manual
+adopt_root t91
+run_target "$r"
+assert_grep "T-91 前提: 記録が無ければ保留" "$ERR" 'FOLLOW_UP_ISSUE=held; reason=no_records;'
+assert_grep "T-91 前提: 保留した候補に解消済みにする指摘がある" "$r/$HOLD_REL" "$C_F01"
+PATH="$TMP_ROOT/bin:$PATH" bash "$TARGET" --state-root "$r" --pr 9 --owner acme --repo demo --source-issue 42 \
+  --exclude-ids "$C_F01" --list-candidates "$TMP_ROOT/t91-cands.json" >"$OUT" 2>"$ERR"
+assert "T-91 列挙: 保留した候補は除外指定があっても残る" "$C_F01 $C_F05 D-01 D-04" \
+  "$(jq -r '[.candidates[].id] | join(" ")' "$TMP_ROOT/t91-cands.json")"
+assert_grep "T-91 列挙: 残した id を INFO で出す" "$ERR" "${T91_INFO}.*${C_F01}"
+assert_not_grep "T-91 列挙: 除外拒否の marker は出さない" "$ERR" 'FOLLOW_UP_EXCLUDE_AMBIGUOUS'
+write_adoption "$r" "$(rec "[\"$C_F01\"]" "$RESOLVED_FIELDS")" "$(rec "[\"$C_F05\",\"D-01\",\"D-04\"]")"
+run_target "$r" --exclude-ids "$C_F01"
+assert_grep "T-91 起票: 残した候補は RESOLVED で処分し、保留が解けて残りを起票する" "$ERR" \
+  '^\[CONTEXT\] FOLLOW_UP_ISSUE=created; issue=99; existing=0; recorded=1; pr=9$'
+assert_grep "T-91 起票: 残した id を INFO で出す" "$ERR" "${T91_INFO}.*${C_F01}"
+assert "T-91 起票: 決定した実行は hold ファイルを消す" "no" "$([ -e "$r/$HOLD_REL" ] && echo yes || echo no)"
+# hold ファイルが無ければ従来どおり除外する
+reset_stubs
+adopt_root t91-nohold
+PATH="$TMP_ROOT/bin:$PATH" bash "$TARGET" --state-root "$r" --pr 9 --owner acme --repo demo --source-issue 42 \
+  --exclude-ids "$C_F01" --list-candidates "$TMP_ROOT/t91-cands.json" >"$OUT" 2>"$ERR"
+assert "T-91 hold なし: 除外指定の候補は列挙に無い" "$C_F05 D-01 D-04" \
+  "$(jq -r '[.candidates[].id] | join(" ")' "$TMP_ROOT/t91-cands.json")"
+assert_not_grep "T-91 hold なし: INFO を出さない" "$ERR" "$T91_INFO"
+write_adoption "$r" "$(rec "[\"$C_F05\",\"D-01\",\"D-04\"]")"
+run_target "$r" --exclude-ids "$C_F01"
+assert_grep "T-91 hold なし: 除外した候補の記録なしで起票する" "$ERR" '^\[CONTEXT\] FOLLOW_UP_ISSUE=created; issue=99; existing=0; recorded=0; pr=9$'
+# hold ファイルを読めなければ除外に倒さず、列挙も起票実行も失敗で止める
+for t91_bad in 'not-json{' '{"head": "x", "candidates": {}}'; do
+  reset_stubs
+  adopt_root t91-bad
+  mkdir -p "$r/.rite/state"
+  printf '%s\n' "$t91_bad" > "$r/$HOLD_REL"
+  rm -f "$TMP_ROOT/t91-bad-cands.json"
+  PATH="$TMP_ROOT/bin:$PATH" bash "$TARGET" --state-root "$r" --pr 9 --owner acme --repo demo --source-issue 42 \
+    --exclude-ids "$C_F01" --list-candidates "$TMP_ROOT/t91-bad-cands.json" >"$OUT" 2>"$ERR"
+  assert "T-91 壊れた hold ($t91_bad): 列挙 exit 0" "0" "$?"
+  assert_grep "T-91 壊れた hold ($t91_bad): 列挙は hold_unreadable で失敗" "$ERR" '^\[CONTEXT\] FOLLOW_UP_CANDIDATES=failed; reason=hold_unreadable; pr=9$'
+  assert "T-91 壊れた hold ($t91_bad): 列挙は一覧を書かない" "no" "$([ -e "$TMP_ROOT/t91-bad-cands.json" ] && echo yes || echo no)"
+  write_adoption "$r" "$(rec "[\"$C_F05\",\"D-01\",\"D-04\"]")"
+  run_target "$r" --exclude-ids "$C_F01"
+  assert_grep "T-91 壊れた hold ($t91_bad): 起票実行は hold_unreadable で失敗" "$ERR" '^\[CONTEXT\] FOLLOW_UP_ISSUE=failed; reason=hold_unreadable; pr=9$'
+  assert "T-91 壊れた hold ($t91_bad): 起票しない" "0" "$(create_count)"
+  assert "T-91 壊れた hold ($t91_bad): 判定済み記録を書かない" "no" "$([ -e "$r/$JUDGED_RECORD_REL" ] && echo yes || echo no)"
+  assert "T-91 壊れた hold ($t91_bad): hold ファイルを残す" "$t91_bad" "$(cat "$r/$HOLD_REL")"
+done
+assert "T-91 SKILL 6.0.A: 保留した候補は RESOLVED の記録で処分する" "1" \
+  "$(grep -cF '採否ゲートが保留した候補は、6.0.V が `resolved` と判定しても一覧に残る。' "$CLEANUP_MD")"
+assert "T-91 SKILL 6.0.A: PR 起因の保留は人間に報告する" "1" \
+  "$(grep -cF 'ゲートは保留のまま止め、人間に報告する（再実行しても同じ保留になる）' "$CLEANUP_MD")"
+assert "T-91 SKILL 6.0.A: PM に返す旧文が無い" "0" "$(grep -cF 'PM に返す' "$CLEANUP_MD")"
 
 echo "--- T-arg: 引数 gate ---"
 bash "$TARGET" --pr abc --state-root "$TMP_ROOT" --owner a --repo b >"$OUT" 2>"$ERR"; RC=$?

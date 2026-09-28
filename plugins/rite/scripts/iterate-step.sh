@@ -595,6 +595,10 @@ count=$(printf '%s' "$collect_out" | jq -r '.count // empty' 2>/dev/null) || cou
 if [ "$collect_rc:$status" = "0:empty" ] && [ -f "$nb_root/.rite/state/nb-sweep-entries-$pr_number.md" ]; then
   status=ok
 fi
+# sweep の保留ファイルが残っていれば、候補 0 件でも fix へ渡し、ゲートに古い保留を判定させる。
+if [ "$collect_rc:$status" = "0:empty" ] && [ -f "$nb_root/.rite/state/adoption-hold-$pr_number-sweep.json" ]; then
+  status=ok
+fi
 case "$collect_rc:$status" in
   0:empty)
     mkdir -p "$nb_root/.rite/state" || true

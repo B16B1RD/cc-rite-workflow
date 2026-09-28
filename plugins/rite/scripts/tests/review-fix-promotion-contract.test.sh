@@ -234,8 +234,44 @@ assert_grep 'held writes nothing and skips 7.4-7.7 and step 8' "$review" \
   '| `3`（held） | 7.4（Decision Log・先送りトークン・Issue 作成・申し送り）から 7.7 までを一切実行しない。sentinel も出さない。下の採否保留の停止を実行し、ステップ 8（8.0.2 を含む）へ進まない |'
 assert_grep 'the 7.7 gate does not run after a held gate' "$review" \
   '7.2 のゲートが held（`ADOPTION_GATE_RC=3`）を返したときは実行しない（採否保留の停止で終わる）'
-assert_grep 'held candidates of the same head rejoin verbatim with a new id' "$review" \
+assert_grep 'held candidates rejoin verbatim with a new id' "$review" \
   'その `candidates` の各候補を、id だけ次の `C-n` に振り直して内容は一字も変えずに候補集合へ加える（id を除く全欄が一致する候補が既にあれば加えない）'
+assert_grep 'held candidates rejoin regardless of the commit' "$review" \
+  'triage の hold ファイルがあれば、その `head` が本 cycle の review JSON の `commit_sha` と同じかどうかを問わず（commit を問わず）、その `candidates` の各候補を'
+assert_grep 'a new commit re-judges the held candidates' "$review" \
+  '新しい commit でも合流させて分類役が判定し直す（直っていれば `RESOLVED`）'
+if grep -Fq 'があり、その `head` が本 cycle の review JSON の `commit_sha` と同じなら、その `candidates`' "$review"; then
+  fail 'held candidates must not rejoin only on the same head'
+else
+  pass 'held candidates do not rejoin only on the same head'
+fi
+assert_grep 'the triage step skips only with no candidate and no hold file' "$review" \
+  '7.1 の候補が 0 件かつ triage の hold ファイル `{state_root}/.rite/state/adoption-hold-{pr_number}-triage.json` が無いときだけステップ 7 を skip する（**7.7 も skip**）。hold ファイルがあれば候補 0 件でも下の手順でゲートを呼ぶ。'
+assert_grep 'the triage state root is the resolver output' "$review" \
+  '`{state_root}` は `bash {plugin_root}/hooks/state-path-resolve.sh` の出力。'
+if grep -Fq '0 件: ステップ 7 を skip' "$review"; then
+  fail 'zero candidates alone must not skip the triage step'
+else
+  pass 'zero candidates alone do not skip the triage step'
+fi
+assert_grep 'candidate_count counts held candidates regardless of the commit' "$review_main" \
+  '`.rite/state/adoption-hold-{pr_number}-triage.json` があれば、commit（`head`）を問わず、その `candidates` のうち内容（`id` 以外の全欄）が一致する候補の無いものも数える'
+assert_grep 'candidate_count resolves the state root' "$review_main" \
+  '`{state_root}`（`bash {plugin_root}/hooks/state-path-resolve.sh` の出力）'
+if grep -Fq '`head` が `{current_commit_sha}` と同じなら、その `candidates`' "$review_main"; then
+  fail 'candidate_count must not count held candidates only on the same head'
+else
+  pass 'candidate_count does not count held candidates only on the same head'
+fi
+assert_grep 'step 7.2 skips only with no candidate and no hold file' "$review_main" \
+  '`candidate_count == 0`（hold の候補を含む）かつ triage の hold ファイルが無いときだけ 7.2〜7.7 をスキップする。'
+for stale in '推奨決定 + User Confirmation' 'モードに応じた確認' 'complete confirmation' 'ユーザー固有・不可逆'; do
+  if grep -Fq "$stale" "$review_main"; then
+    fail "per-candidate confirmation remains in pr-review: $stale"
+  else
+    pass "no per-candidate confirmation in pr-review: $stale"
+  fi
+done
 assert_grep 'the held stop points at the hold file resume' "$review" \
   '--next "採否の出口待ち。{hold_file} の resume（ゲートの WARNING にも出る）に従って再開"'
 assert_grep 'a held-then-corrected record set is resumed, not rewritten' "$review" \
