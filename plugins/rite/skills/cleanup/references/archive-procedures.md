@@ -260,7 +260,7 @@ Close the related Issue identified in `cleanup.md` ステップ 2.
 
 #### 3.6.1 Close and Verify
 
-Before closing, confirm that the Issue is one the PR itself references: a closing keyword (`Closes` / `Fixes` / `Resolves` and their forms) in the PR body, or `issue-N` in the head branch name. A number carried over from another Issue fails this check and is not closed. Close the Issue only while it is OPEN, then read the same Issue's state again. A successful `gh issue close` alone does not count as closed: the re-read catches a close that never took effect. `{issue_number}` is the Issue identified in `cleanup.md` ステップ 2; when none was identified, substitute an empty string. `{pr_number}` is empty when ステップ 1.3 continued without a PR; then there is no merged PR to close the Issue for, so the Issue is left open and reported as outstanding.
+Before closing, confirm that the Issue is one the PR itself references: a closing keyword (`Closes` / `Fixes` / `Resolves` and their forms) in the PR body, or `issue-N` in the head branch name. A number carried over from another Issue fails this check and is not closed. Close the Issue only while it is OPEN, then read the same Issue's state again. A successful `gh issue close` alone does not count as closed: the re-read catches a close that never took effect. `{issue_number}` is the Issue identified in `cleanup.md` ステップ 2; when none was identified, substitute an empty string. When ステップ 1.3 continued without a PR, substitute an empty string for `{pr_number}`; there is then no merged PR to close the Issue for, so the Issue is left open and reported as outstanding.
 
 ```bash
 # cleanup-issue-close

@@ -81,9 +81,9 @@ assert_not_grep "checklist no longer hard-codes the issue close as done" "$CLEAN
 assert_grep "issue-close check allows exactly closed / already_closed / not_identified as x" "$CLEANUP" \
   '^  - `ISSUE_CLOSE=closed` / `ISSUE_CLOSE=already_closed` / `ISSUE_CLOSE=not_identified` のいずれか: `x`（x とする値はこの 3 つに限る）$'
 assert_grep "issue-close check leaves failed values unchecked with an annotation" "$CLEANUP" \
-  '^  - 上記以外（`ISSUE_CLOSE=failed; reason=close_failed` / .*: ` ` \+ 「⚠️ Issue #\{issue_number\} のクローズを確認できませんでした'
+  '^  - 上記以外（`ISSUE_CLOSE=failed` かつ `reason=` が `close_failed` / .*: ` ` \+ 「⚠️ Issue #\{issue_number\} のクローズを確認できませんでした'
 assert_grep "issue-close check gives no_pr its own annotation without PR-number commands" "$CLEANUP" \
-  '^  - `ISSUE_CLOSE=failed; reason=no_pr`: ` ` \+ 「⚠️ 関連 PR が無いため Issue #\{issue_number\} をクローズしていません。`gh issue view \{issue_number\}'
+  '^  - `ISSUE_CLOSE=failed` かつ `reason=no_pr`: ` ` \+ 「⚠️ 関連 PR が無いため Issue #\{issue_number\} をクローズしていません。`gh issue view \{issue_number\}'
 assert_grep "Error Handling points issue-close recovery to the step 12 annotation" "$CLEANUP" \
   '^\| Issue Close Failure \| .*回復はステップ 12 の `\{issue_close_check\}` の付記に従う \|$'
 assert_grep "issue-close check leaves marker absence unchecked" "$CLEANUP" \
