@@ -144,11 +144,10 @@ assert_grep 'scope split uses debate for analysis' "$review_main" 'debate は論
 assert_grep 'scope split always escalates' "$review_main" 'consensus の有無にかかわらず treatment の最終決定は AskUserQuestion'
 assert_grep 'scope split records decision' "$review_main" '選択した disposition を Decision Log に記録する'
 assert_grep 'follow-up semantics preserved' "$review_main" 'durable な follow-up Issue / destination が作成または指定されるまで解決済みにしない'
-assert_grep 'assignee handoff is required with decision log' "$review" '既存 Issue #{N} を引き受け先とする場合は 7.4.4 を先に必須実行し、記録のみで完了扱いにしない'
-assert_grep 'skip is a result of 別 Issue 作成' "$review" '既存 Issue #{N} への見送りなら 7.4.4 の後に 7.4.3'
-assert_grep 'closed bounce re-asks 7.2 four options' "$review" '当該候補について 7.2 の既存 4 択を再掲'
+assert_grep 'LINK handoff is required with decision log' "$review" '| `record`（`LINK`） | 7.4.4（追跡先 `tracker` への申し送り）を先に必須実行し、記録のみで完了扱いにしない。その後 7.4.3（トークンなし）。'
+assert_grep 'closed tracker returns to the adoption gate' "$review" '判定記録の `tracker` を直して 7.2 のゲートからやり直す'
 assert_grep 'rejected skips 7.4.3 and 7.5' "$review" '`HANDOFF_COMMENT_REJECTED=1` のときは 7.4.3 / 7.5 へ進まない'
-assert_grep 'handoff placeholders are declared' "$review" '見送り先として確定した既存 Issue 番号'
+assert_grep 'handoff placeholders are declared' "$review" '`LINK` の判定の `tracker`（追跡先の既存 Issue 番号）'
 assert_grep 'assignee_issue is not source_issue_number' "$review" '`{source_issue_number}`（元 Issue）および 7.2 sentinel の `{N}`（candidate 総数）と混同しない'
 assert_grep 'assignee handoff posts via body-file' "$review" 'gh issue comment "$assignee_issue" -R "$owner_repo" --body-file "$tmpfile"'
 assert_grep 'assignee handoff posts summary' "$review" '### 指摘の要約'
@@ -207,6 +206,85 @@ else
   printf 'FAIL: rejection gate must remain in 2.1.A before mutation, reply, persistence, and trailer\n' >&2
   failures=$((failures + 1))
 fi
+
+# Scope triage (pr-review 7.2-7.4): the adoption exit decides each out-of-scope candidate.
+triage_table() { awk -v head="$1" '$0 == head { f = 1 } f && /^$/ { exit } f { print }' "$review"; }
+token_table=$(triage_table '| 候補 | `{deferred_token}` |')
+assert_eq 'deferred token table keeps two rows' 4 "$(printf '%s\n' "$token_table" | grep -c '^|' || true)"
+token_rows=$(printf '%s\n' "$token_table" | grep -F 'rite:deferred-defect' || true)
+assert_eq 'one row carries the deferred token' 1 "$(printf '%s\n' "$token_rows" | grep -c . || true)"
+if grep -Fq '| 採否ゲートの verdict が `file` |' <<< "$token_rows" && ! grep -Fq 'record' <<< "$token_rows"; then
+  pass 'the deferred token goes only to the file verdict'
+else
+  fail "the deferred token row must name only the file verdict: $token_rows"
+fi
+assert_eq 'the record verdict gets an empty token' '| それ以外（verdict が `record`） | 空文字列 |' \
+  "$(printf '%s\n' "$token_table" | grep -F '`record`' || true)"
+route_table=$(triage_table '| verdict / exit | Action |')
+assert_eq 'routing table has four rows' 6 "$(printf '%s\n' "$route_table" | grep -c '^|' || true)"
+assert_eq 'routing: the token is written only for a file verdict with a source Issue' \
+  '| `file`、`{source_issue_number}` あり | 7.4.3 を先送りトークン付きで実行する。起票は cleanup ステップ 6.0 の follow-up が行う（ここでは Issue を作らない） |' \
+  "$(printf '%s\n' "$route_table" | grep -F 'トークン付き' || true)"
+assert_eq 'routing: only a file verdict without a source Issue creates an Issue now' 1 \
+  "$(printf '%s\n' "$route_table" | grep -F '7.4.1-7.4.2' | grep -c '^| `file`、`{source_issue_number}` が空 |' || true)"
+assert_eq 'routing: no other row creates an Issue now' 1 "$(printf '%s\n' "$route_table" | grep -c '7.4.1-7.4.2' || true)"
+assert_eq 'routing: record rows write no token' 2 \
+  "$(printf '%s\n' "$route_table" | grep '^| `record`' | grep -c 'トークンなし' || true)"
+assert_grep 'held writes nothing and skips step 8' "$review" \
+  '| `3`（held） | 7.4（Decision Log・先送りトークン・Issue 作成・申し送り）を一切実行しない。sentinel も出さない。下の採否保留の停止を実行し、ステップ 8 へ進まない |'
+assert_grep 'a held-then-corrected record set is resumed, not rewritten' "$review" \
+  'その `head` が本 cycle の review JSON の `commit_sha` と同じなら、その記録（保留後に直された記録）から始める'
+assert_grep 'an Issue that already tracks the root cause becomes the tracker' "$review" \
+  '既存の Issue（前回この手順で作った Issue を含む）が同じ根因を追跡していれば `tracker` に入れる'
+assert_grep 'any other gate result stops with review error' "$review" '| それ以外 | `[review:error]` を出して停止する（ステップ 8 へ進まない） |'
+
+# Execute the real gate-call block with a stub gate: it must write the records under the reviewed
+# commit, pass the triage arguments and surface the gate's exit code.
+triage_dir="$state_dir/triage"
+mkdir -p "$triage_dir/plugin/hooks/scripts" "$triage_dir/root/.rite/review-results"
+awk '/^### 7\.2-7\.3 / { s=1 } s && /^```bash$/ { a=1; next } a && /^```$/ { exit } a { print }' "$review" > "$triage_dir/block.sh"
+assert_grep 'gate block calls the triage gate' "$triage_dir/block.sh" 'review-adoption-gate.sh --pr {pr_number} --kind triage'
+printf '#!/bin/bash\nprintf "%%s\\n" "$TRIAGE_ROOT"\n' > "$triage_dir/plugin/hooks/state-path-resolve.sh"
+cat > "$triage_dir/plugin/hooks/scripts/review-adoption-gate.sh" <<'STUB'
+#!/bin/bash
+printf '%s\n' "$@" > "$TRIAGE_ARGS"
+exit "$TRIAGE_GATE_RC"
+STUB
+printf '{"commit_sha": "c0ffee"}\n' > "$triage_dir/root/.rite/review-results/5-20260101T000000.json"
+triage_records='[{"ids": ["C-1"]}]'
+triage_candidates='{"candidates": [{"id": "C-1", "content": "full text"}]}'
+run_triage_block() {
+  local issue=$1 code
+  code=$(cat "$triage_dir/block.sh")
+  code=${code//\{plugin_root\}/$triage_dir/plugin}
+  code=${code//\{pr_number\}/5}
+  code=${code//\{base_branch\}/develop}
+  code=${code//\{source_issue_number\}/$issue}
+  code=${code//\{records\}/$triage_records}
+  code=${code//\{candidates\}/$triage_candidates}
+  rm -f "$triage_dir/args"
+  TRIAGE_ROOT="$triage_dir/root" TRIAGE_ARGS="$triage_dir/args" TRIAGE_GATE_RC="$TRIAGE_GATE_RC" \
+    bash -c "$code" 2>&1 || true
+}
+out=$(TRIAGE_GATE_RC=3 run_triage_block 7)
+assert_eq 'gate block surfaces the held exit code' '[CONTEXT] ADOPTION_GATE_RC=3' "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ADOPTION_GATE_RC=' || true)"
+assert_eq 'records are written under the reviewed commit' '{"adoption":{"head":"c0ffee","records":[{"ids":["C-1"]}]}}' \
+  "$(jq -c . "$triage_dir/root/.rite/state/adoption-5-triage.json" 2>/dev/null || true)"
+args=$(paste -sd ' ' "$triage_dir/args" 2>/dev/null || true)
+case "$args" in
+  *"--kind triage"*"--review-result $triage_dir/root/.rite/review-results/5-20260101T000000.json --base origin/develop --issue 7") pass 'gate receives the triage arguments' ;;
+  *) fail "gate arguments: $args" ;;
+esac
+out=$(TRIAGE_GATE_RC=0 run_triage_block '')
+assert_eq 'gate block surfaces the decided exit code' '[CONTEXT] ADOPTION_GATE_RC=0' "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ADOPTION_GATE_RC=' || true)"
+case "$(paste -sd ' ' "$triage_dir/args" 2>/dev/null)" in
+  *--issue*) fail 'an empty source Issue must not pass --issue' ;;
+  *) pass 'an empty source Issue passes no --issue' ;;
+esac
+rm -f "$triage_dir/root/.rite/review-results/"*.json
+out=$(TRIAGE_GATE_RC=0 run_triage_block 7)
+assert_eq 'a missing review JSON stops before the gate' '[CONTEXT] ADOPTION_GATE_RC=2' "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ADOPTION_GATE_RC=' || true)"
+if [ -e "$triage_dir/args" ]; then fail 'the gate must not run without a review JSON'; else pass 'the gate does not run without a review JSON'; fi
 
 if [ "$failures" -ne 0 ]; then
   printf '%s contract assertion(s) failed\n' "$failures" >&2

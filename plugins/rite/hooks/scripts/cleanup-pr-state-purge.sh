@@ -22,6 +22,14 @@
 # cleanup-follow-up-issue.sh が担っており、Issue 中止の経路では起票自体が不要なため、
 # ここへ引き込む理由がない。
 #
+# 採否ゲートの判定記録 (adoption-<pr>-sweep.json / adoption-<pr>-triage.json) と保留ファイル
+# (adoption-hold-<pr>-{sweep,triage,followup}.json) は消す。follow-up の保留が残っている間は cleanup が
+# 本 helper を呼ばないため、ここへ届くのは判定が決まった後か Issue 中止の経路だけである。
+# follow-up の判定記録 (adoption-<pr>-followup.json) は follow-up-judged-<pr>.txt と同じく残す: cleanup の
+# 再実行は archive/ の JSON から同じ候補を作り、同じ記録で同じ根因 key を得て起票済みの根因を増やさない。
+# pr-cycle-cleanup.sh の orphan 回収はこれらのファイルを消さない (本 helper だけが消す)。回収側は採否保留ファイルを
+# 読み、保留中の PR のレビュー結果を残す。
+#
 # exit code: 全運用経路 0（非ブロッキング。invalid pr_number も 0）。usage error のみ 2。
 #
 # `set -e` は使わない: rm の失敗を捕捉して marker に変換する構造に依存している。
@@ -127,5 +135,10 @@ rite_rm nb_sweep_done "$state_root/.rite/state/nb-sweep-done-${pr_number}.txt"
 rite_rm nb_sweep_origin "$state_root/.rite/state/nb-sweep-origin-${pr_number}.txt"
 rite_rm nb_sweep_entries "$state_root/.rite/state/nb-sweep-entries-${pr_number}.md"
 rite_rm pr_recommendations_done "$state_root/.rite/state/pr-recommendations-done-${pr_number}.txt"
+rite_rm adoption_records "$state_root/.rite/state/adoption-${pr_number}-sweep.json" \
+  "$state_root/.rite/state/adoption-${pr_number}-triage.json"
+rite_rm adoption_hold "$state_root/.rite/state/adoption-hold-${pr_number}-sweep.json" \
+  "$state_root/.rite/state/adoption-hold-${pr_number}-triage.json" \
+  "$state_root/.rite/state/adoption-hold-${pr_number}-followup.json"
 
 exit 0

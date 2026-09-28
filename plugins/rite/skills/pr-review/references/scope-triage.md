@@ -1,80 +1,89 @@
-### 7.2-7.3 推奨決定 + User Confirmation
+### 7.2-7.3 採否の出口による処分
 
-0 件: ステップ 7 を skip（**7.7 も skip**）。1+: 下記モード表で分岐する。
-**モード判定**: ステップ 3.3 の `PR_REVIEW_IN_E2E` を読む。欠落は `false`（確認を出す側）。
-rationale: design-rationale.md#phase7-askuser-evidence
+0 件: ステップ 7 を skip（**7.7 も skip**）。1+: 候補ごとの処分は採否ゲート（`review-adoption-gate.sh --kind triage`）の出口だけで決める。人間に候補ごとの処分を尋ねない。`PR_REVIEW_IN_E2E` で処分を変えない。
 
-| `PR_REVIEW_IN_E2E` | 分岐 |
+1. 7.1 の候補（Source A → Source B の抽出順、dedup 後）に `C-1`, `C-2`, … を振る。
+2. 分類役（本手順を実行する LLM）が全候補の判定記録を書く。1 根因 = 1 記録。欄は `review-adoption.py` の docstring に従い、起票（ADOPT pre_existing / 調査）になる記録には `acceptance`（起票する Issue の受入条件の文）を必ず入れる。既存の Issue（前回この手順で作った Issue を含む）が同じ根因を追跡していれば `tracker` に入れる（LINK になり、重ねて起票しない）。`{state_root}/.rite/state/adoption-{pr_number}-triage.json` があり、その `head` が本 cycle の review JSON の `commit_sha` と同じなら、その記録（保留後に直された記録）から始める。`C-n` は振り直すため、各記録の `ids` は `adoption-hold-{pr_number}-triage.json` の候補全文と照らして新しい id へ移す。`head` が違えば記録を新しく書く。
+3. 下の bash を**単一 Bash invocation** で実行する。`{records}` は記録の JSON 配列、`{candidates}` は `{"candidates": [{"id": "C-1", "source": "指摘" | "推奨", "file_line", "reviewer", "severity", "content": <全文>}, …]}`。`head` は `--review-result` に渡す review JSON（6.1.a が保存した本 cycle の結果）の `commit_sha` を bash が入れる。
+
+```bash
+state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) && [ -n "$state_root" ] \
+  || { echo "ERROR: state root を解決できません" >&2; echo "[CONTEXT] ADOPTION_GATE_RC=2"; exit 1; }
+review_json=$(ls -1 "$state_root/.rite/review-results/{pr_number}"-*.json 2>/dev/null | LC_ALL=C sort | tail -1)
+head_sha=$(jq -r '.commit_sha // empty' "$review_json" 2>/dev/null)
+[ -n "$head_sha" ] || { echo "ERROR: 本 cycle の review JSON を読めません: ${review_json:-なし}" >&2; echo "[CONTEXT] ADOPTION_GATE_RC=2"; exit 1; }
+work=$(mktemp -d) || exit 1
+trap 'rm -rf "$work"' EXIT
+cat <<'RECORDS_EOF' > "$work/records.json"
+{records}
+RECORDS_EOF
+cat <<'CANDIDATES_EOF' > "$work/candidates.json"
+{candidates}
+CANDIDATES_EOF
+adoption="$state_root/.rite/state/adoption-{pr_number}-triage.json"
+mkdir -p "$state_root/.rite/state" \
+  && jq --arg head "$head_sha" '{adoption: {head: $head, records: .}}' "$work/records.json" > "$adoption" \
+  || { echo "ERROR: 判定記録を書けません: $adoption" >&2; echo "[CONTEXT] ADOPTION_GATE_RC=2"; exit 1; }
+issue_args=()
+[ -z "{source_issue_number}" ] || issue_args=(--issue "{source_issue_number}")
+rc=0
+bash {plugin_root}/hooks/scripts/review-adoption-gate.sh --pr {pr_number} --kind triage \
+  --state-root "$state_root" --candidates "$work/candidates.json" \
+  --review-result "$review_json" --base "origin/{base_branch}" "${issue_args[@]}" || rc=$?
+echo "[CONTEXT] ADOPTION_GATE_RC=$rc"
+```
+
+| `ADOPTION_GATE_RC` | 処置 |
 |---|---|
-| `true` | E2E / batch。Decision Log への記録である候補は可逆なので質問せず推奨で処理する。別 Issue 作成・本 PR への scope 追加・無視だけ `AskUserQuestion` |
-| `false` | 対話。全候補を `AskUserQuestion` で確認する。**回答を得るまで 7.4（Decision Log 追記・Issue 作成）を実行しない** |
+| `0`（decided） | stdout の `verdicts[]` で 7.4 を実行する。7.4 の前に下の sentinel を emit する |
+| `3`（held） | 7.4（Decision Log・先送りトークン・Issue 作成・申し送り）を一切実行しない。sentinel も出さない。下の採否保留の停止を実行し、ステップ 8 へ進まない |
+| それ以外 | `[review:error]` を出して停止する（ステップ 8 へ進まない） |
 
-**推奨機械決定表**（裁量禁止）:
+**採否保留の停止**（`{hold_file}` はゲート stdout の `hold_file`）。FINALIZE などの handoff が残ると Stop hook が完了経路へ差し戻すため、受入条件未検証の停止と同じく `--handoff` なしで set してから止まる:
 
-| 候補の性質 | 推奨 |
-|-----------|------|
-| Source B（推奨事項）由来、または Source A で `内容` に `Likelihood-Evidence:` prefix が無い（Hypothetical） | Decision Log に記録 |
-| Source A かつ `内容` に `Likelihood-Evidence:` prefix がある（Observed / Demonstrable。MEDIUM+ は 7.1 の抽出条件で担保済み） | 別 Issue 作成 |
-
-`{source_issue_number}`（ステップ 7.1 で解決）が空の候補は「Decision Log に記録」選択肢自体を非表示にする（3 択: 別 Issue 作成 / 本 PR で対応 / 無視。この場合は推奨を付与しない）。
+```bash
+# 採否保留の停止 (--handoff を付けず、残存 handoff を default-clear する):
+if ! bash {plugin_root}/hooks/flow-state.sh set \
+ --phase "review" \
+ --active true \
+ --next "採否の出口待ち。判定記録 adoption-{pr_number}-triage.json を直して /rite:iterate {pr_number} を再実行（保留した候補: {hold_file}）" \
+ --if-exists; then
+  echo "WARNING: 採否保留の停止で handoff を消せませんでした" >&2
+fi
+echo "[review:error]"
+echo "[CONTEXT] REVIEW_STOP=adoption_held; kind=triage; hold_file={hold_file}"
+```
 
 **MANDATORY — ステップ 7.2 disposition-entry sentinel emit**:
 
-sentinel は **確認完了後**（対話: 選択値を得た後 / E2E 自動: 推奨機械決定表の判定を確定した後）に emit する。marker 名は変えない。`mode=` と `choice=` と `reason=` を必須とする（自動 Decision Log 経路でも emit する）。**7.4 は本 sentinel の後でのみ実行する**:
+sentinel は **ゲートが decided を返した後** に emit する。marker 名は変えない。`mode=` と `choice=` と `reason=` を必須とする。**7.4 は本 sentinel の後でのみ実行する**:
 
 ```bash
 # LLM (Claude) は以下を Bash tool で実行する前に literal 置換すること:
 # - {N} → ステップ 7.1 で抽出した candidate 総数 (Source A + Source B、dedup 後の正整数)
 # - {iteration_id} → ステップ 7.1 で生成した一意 ID (例: pr_number-$(date +%s) 形式)
-# - {mode} → ask | auto
-# - {choice} → 対話の選択値（自動は decision_log）。空禁止
-# - {reason} → user_answer | reversible_decision_log
+# - {mode} → auto
+# - {choice} → file:{A}/record:{B}（verdicts[] の verdict 別の件数）。空禁止
+# - {reason} → adoption_decided
 # Bash 変数 (${candidate_count} 等) は Bash tool 呼び出し間で継承されないため使用不可
 echo "[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={iteration_id}; mode={mode}; choice={choice}; reason={reason}" >&2
 ```
 
 `{N}` は 7.1 の合算。`{iteration_id}` は iteration 一意（推奨: `${pr_number}-$(date +%s)`）。7.7 / 8.0.2 が読む。stderr に MUST emit。
-- 対話: `mode=ask; choice={ユーザー選択}; reason=user_answer`
-- E2E 自動 Decision Log: `mode=auto; choice=decision_log; reason=reversible_decision_log`
-- E2E で質問した候補: `mode=ask; choice={ユーザー選択}; reason=user_answer`
-
-判定不能時は確認を出す側へ倒す。Issue 作成を自動決定しない。
-
-**AskUserQuestion prompt text**:
-
-```
-以下は PR #{N} の diff とは無関係と reviewer が判定した問題です。各候補について対応方針を選んでください: [Decision Log に記録 / 別 Issue 作成 / 本 PR で対応 / 無視]（先頭 = 推奨機械決定表による推奨。候補ごとに順序を入れ替え、推奨に "(Recommended)" を付与する）
-```
-
-**Candidate display format:**
-
-| # | Source | ファイル | 内容 | 重要度 | Priority | 推奨 |
-|---|--------|---------|------|--------|----------|------|
-| 1 | 指摘 | {file:line} | {content} | {severity} | {mapped_priority} | {推奨機械決定表より: Decision Log に記録 / 別 Issue 作成} |
-| 2 | 推奨 | {file:line or "—"} | {content} | — | Medium | Decision Log に記録 |
-
-**Default values for recommendation-based candidates** (Source B):
-- **Priority**: `Medium`
-- **Complexity**: `S`
-- **Severity in Issue body**: `推奨事項（重要度なし）`
-- **File:line**: Use mentioned path if available; otherwise `特定ファイルなし`
-
-**E2E**: Decision Log 推奨は自動。Issue 作成・scope 追加・無視は明示承認。Issue 作成を自動決定しない。対話は 7.2-7.3 モード表のとおり確認後にのみ 7.4 へ進む。
-
-「別 Issue 作成」で既存 Issue #{N} へ新規作成を見送る場合の実行は 7.4 表。CLOSED なら当該候補について 7.2 の既存 4 択を再掲する（新規の disposition 質問種別は出さない）。
-rationale: design-rationale.md#assignee-handoff-comment
 
 ### 7.4 Disposition Execution
 
-ステップ 7.2-7.3 で確定した候補ごとの選択に応じて分岐する:
+ゲートの `verdicts[]`（判定記録 1 件ごと）を上から評価し、最初に一致した行を実行する。`record` 欄（判定記録の全文）が本文の材料になる:
 
-| User selection | Action |
-|-----------------|--------|
-| 別 Issue 作成 | 新規作成なら 7.4.1-7.4.2。既存 Issue #{N} への見送りなら 7.4.4 の後に 7.4.3。CLOSED なら投稿せず当該候補について 7.2 の既存 4 択を再掲し、`HANDOFF_COMMENT_REJECTED=1` のときは 7.4.3 / 7.5 へ進まない |
-| Decision Log に記録 | 7.4.3（Decision Log Append）を実行。既存 Issue #{N} を引き受け先とする場合は 7.4.4 を先に必須実行し、記録のみで完了扱いにしない |
-| 本 PR で対応 / 無視 | 追加のアクションなし（既存動作を維持） |
+| verdict / exit | Action |
+|---|---|
+| `file`、`{source_issue_number}` あり | 7.4.3 を先送りトークン付きで実行する。起票は cleanup ステップ 6.0 の follow-up が行う（ここでは Issue を作らない） |
+| `file`、`{source_issue_number}` が空 | トークンの書き先が無いため 7.4.1-7.4.2 で Issue を 1 件作る |
+| `record`（`LINK`） | 7.4.4（追跡先 `tracker` への申し送り）を先に必須実行し、記録のみで完了扱いにしない。その後 7.4.3（トークンなし）。`HANDOFF_COMMENT_REJECTED=1` のときは 7.4.3 / 7.5 へ進まない |
+| `record`（`RESOLVED` / `REJECT`） | 7.4.3（トークンなし） |
 
-「別 Issue 作成」の新規作成枝は `gh issue create` + Projects 登録。`/rite:issue-create` Skill は使わない。見送りは 7.2 の 5 択ではなく「別 Issue 作成」の結果分岐である。
+`record` で `{source_issue_number}` が空なら 7.4.3 の書き先が無いため、7.5-7.6 の完了レポートに出口と reason を列挙する。
+7.4.1-7.4.2 は `gh issue create` + Projects 登録。`/rite:issue-create` Skill は使わない。
 Issue creation failure reasons: (`body_tmpfile_write_failure` / `empty_body_tmpfile` / `empty_script_result`)
 
 | reason | Description |
@@ -98,7 +107,8 @@ Issue creation failure reasons: (`body_tmpfile_write_failure` / `empty_body_tmpf
 
 > **Reference**: [Issue Creation with Projects Integration](../../../references/issue-create-with-projects.md)
 
-heredoc の `{placeholder}` はスクリプト生成前に埋める（shell 変数ではない）。**単一 Bash invocation**。
+heredoc の `{placeholder}` はスクリプト生成前に埋める（shell 変数ではない）。**判定記録ごとに単一 Bash invocation**（同じ記録の候補 `ids` は 1 件にまとめ、違う記録を混ぜない）。
+`{contract}` / `{evidence}` / `{acceptance}` はゲート出力の `record` の `contract`（ref と引用文）/ `evidence` / `acceptance` をそのまま入れる。調査（`action` が `investigate`）は `{evidence}` に `proposition` の claim / reach / reach_source / done も入れる。
 Priority: CRITICAL→High, HIGH→Medium, MEDIUM/LOW-MEDIUM/LOW→Low, Source B→Medium。
 Complexity: XS = 単箇所、S = 1–2 ファイル。
 
@@ -128,6 +138,10 @@ if ! cat <<'BODY_EOF' > "$tmpfile"
 ## 概要
 
 {description}
+
+- **契約**: {contract}
+- **根拠**: {evidence}
+- **受入条件**: {acceptance}
 
 ## 背景
 
@@ -197,21 +211,26 @@ printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do ec
 
 | Error Case | Response |
 |------------|----------|
-| Script returns `issue_url: ""` | Display warning with error details. If remaining candidates exist, continue creating others |
+| Script returns `issue_url: ""` | Display warning with error details. If remaining records exist, continue creating others |
 | `project_registration: "partial"` or `"failed"` | Display warnings from result. Issue creation itself succeeded |
 
 #### 7.4.3 Decision Log Append
 
-「Decision Log に記録」は元 Issue の Section 9 へ 1 行 append。番号は Section 9 の内側（見出しの次行から `## ` / `---` / `</details>` まで）の最大 D-NN に 1 を足す。無ければ本文に Section 9 を新設して `D-01` を記録する。
-`{decision}` / `{reason}` / `{impact}` / `{deferred_token}` を生成前に埋める。**候補ごとに単一 Bash invocation**。
+7.4 表が 7.4.3 へ送った判定記録を、元 Issue の Section 9 へ 1 行 append する。番号は Section 9 の内側（見出しの次行から `## ` / `---` / `</details>` まで）の最大 D-NN に 1 を足す。無ければ本文に Section 9 を新設して `D-01` を記録する。
+`{decision}` / `{reason}` / `{impact}` / `{deferred_token}` を生成前に埋める。**判定記録ごとに単一 Bash invocation**。
 rationale: design-rationale.md#decision-log-per-candidate
+
+| verdict | `{decision}` | `{reason}` | `{impact}` |
+|---|---|---|---|
+| `file` | `{exit} {ids}: {根因の要約}。契約: {contract の ref と引用文}` | `record.evidence`（根拠。調査は `proposition` の claim / reach / reach_source / done も） | `受入条件: {record.acceptance}` |
+| `record` | `{exit} {ids}: {根因の要約}` | `record.reason`（`LINK` は `追跡先 #{tracker}` を先頭に付ける。`RESOLVED` は解消の根拠） | 再検討する条件 |
 
 | 候補 | `{deferred_token}` |
 |---|---|
-| Source A、または Source B の `actionable`（先送りする欠陥）で、7.4.4 の引き受け先 Issue を持たない | ` <!-- rite:deferred-defect pr={pr_number} -->`（先頭に半角空白 1 つ。`{pr_number}` は本レビューの PR 番号） |
-| それ以外（Source B の `boundary`、引き受け先 Issue あり） | 空文字列 |
+| 採否ゲートの verdict が `file` | ` <!-- rite:deferred-defect pr={pr_number} -->`（先頭に半角空白 1 つ。`{pr_number}` は本レビューの PR 番号） |
+| それ以外（verdict が `record`） | 空文字列 |
 
-トークン付きの行は cleanup ステップ 6.0 が follow-up Issue へ転記する。
+トークン付きの行は cleanup ステップ 6.0 が follow-up Issue へ転記して起票する。
 rationale: design-rationale.md#deferred-defect-token
 
 ```bash
@@ -330,21 +349,21 @@ Decision Log append failure reasons: (`line_content_write_failure` / `body_fetch
 
 #### 7.4.4 引き受け先 Issue への申し送りコメント
 
-既存 Issue `{assignee_issue}` を引き受け先とする候補ごとに実行する。Decision Log のみでは完了にしない。
+出口が `LINK` の判定記録ごとに、追跡先 `{assignee_issue}` へ実行する。Decision Log のみでは完了にしない。
 rationale: design-rationale.md#assignee-handoff-comment
 
-heredoc の `{placeholder}` はスクリプト生成前に埋める（shell 変数ではない）。**候補ごとに単一 Bash invocation**。
+heredoc の `{placeholder}` はスクリプト生成前に埋める（shell 変数ではない）。**判定記録ごとに単一 Bash invocation**。
 
 | Placeholder | Source | Example |
 |-------------|--------|---------|
-| `{assignee_issue}` | 見送り先として確定した既存 Issue 番号。`{source_issue_number}`（元 Issue）および 7.2 sentinel の `{N}`（candidate 総数）と混同しない | `2340` |
+| `{assignee_issue}` | `LINK` の判定の `tracker`（追跡先の既存 Issue 番号）。`{source_issue_number}`（元 Issue）および 7.2 sentinel の `{N}`（candidate 総数）と混同しない | `12` |
 | `{owner_repo}` | [Owner/Repo Resolution](../../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) の slash 形式 | `owner/repo` |
 | `{pr_number}` | 本レビューの PR 番号 | `42` |
-| `{summary}` | 当該候補の指摘要約 | （1 段落） |
+| `{summary}` | 当該判定記録の根因の要約 | （1 段落） |
 | `{check_points}` | 引き受け先で着手するときの確認点 | （箇条書き） |
 
 1. `gh issue view {assignee_issue} -R {owner_repo} --json state --jq '.state'`
-2. `OPEN` 以外 → 投稿しない。`[CONTEXT] HANDOFF_COMMENT_REJECTED=1; issue={assignee_issue}; reason=closed` を emit し、当該候補について 7.2 の既存 4 択を再掲する（7.4.3 / 7.5 へ進まない）
+2. `OPEN` 以外 → 投稿しない。`[CONTEXT] HANDOFF_COMMENT_REJECTED=1; issue={assignee_issue}; reason=closed` を emit し、判定記録の `tracker` を直して 7.2 のゲートからやり直す（7.4.3 / 7.5 へ進まない）
 3. `OPEN` → `--body-file` で申し送りを投稿（指摘要約・元 PR・着手時確認点）。成功は `[CONTEXT] HANDOFF_COMMENT_POSTED=1; issue={assignee_issue}`。失敗は WARNING + `[CONTEXT] HANDOFF_COMMENT_FAILED=1; issue={assignee_issue}; reason=gh_comment_failure`（完了レポートに未投稿として列挙）
 
 ```bash
@@ -394,15 +413,15 @@ Handoff comment failure reasons: (`closed` / `body_write_failure` / `gh_comment_
 | `body_write_failure` | 申し送り本文の一時ファイル書き込みに失敗 |
 | `gh_comment_failure` | `gh issue comment` が非ゼロ終了（権限・ネットワーク） |
 
-`HANDOFF_COMMENT_REJECTED=1` を観測したら当該候補の 7.4.3 を実行せず 7.5 へ進まない。投稿失敗は non-blocking だが記録のみで完了扱いにせず、7.5-7.6 の完了レポートに未投稿として列挙する。
+`HANDOFF_COMMENT_REJECTED=1` を観測したら当該判定記録の 7.4.3 を実行せず 7.5 へ進まない。投稿失敗は non-blocking だが記録のみで完了扱いにせず、7.5-7.6 の完了レポートに未投稿として列挙する。
 
 ### 7.5-7.6 Append to PR & Report
 
-Issue 一覧を PR コメントへ（`mktemp` + `--body-file`）。`DECISION_LOG_APPENDED=1` の件数と、失敗があれば「手動追記してください」行を completion report に転記する。`HANDOFF_COMMENT_POSTED=1` / `HANDOFF_COMMENT_FAILED=1` も転記し、失敗分は未投稿の申し送りとして列挙する。
+7.4.1-7.4.2 で作った Issue の一覧を PR コメントへ（`mktemp` + `--body-file`）。verdict 別の件数（`file` は cleanup の follow-up で起票される件数）、元 Issue が無く記録できなかった `record` の出口と reason、`DECISION_LOG_APPENDED=1` の件数と、失敗があれば「手動追記してください」行を completion report に転記する。`HANDOFF_COMMENT_POSTED=1` / `HANDOFF_COMMENT_FAILED=1` も転記し、失敗分は未投稿の申し送りとして列挙する。
 
 ### 7.7 Post-condition Gate — Recommendation Disposition Enforcement
 
-本 gate は **mechanical gate**。`candidate_count >= 1` なのに 7.2 の disposition（自動 Decision Log または必要な `AskUserQuestion`）を飛ばして result を emit する silent skip を止める。
+本 gate は **mechanical gate**。`candidate_count >= 1` なのに 7.2 の採否ゲートを飛ばして result を emit する silent skip を止める。
 **Execution condition**: ステップ 7 に入ったとき（`candidate_count >= 1`）。0 件なら silent skip。
 
 **Step 1 — Determine candidate count**:
@@ -433,7 +452,7 @@ Search the conversation context (ステップ 7.2 emit site) for the following s
 ERROR: ステップ 7.7 post-condition gate failed.
 candidate_count = {N} (>= 1) but no [CONTEXT] PHASE_7_ASKUSER_INVOKED sentinel found.
 This means ステップ 7.2 disposition handling was NOT executed — silent skip of recommendation disposition.
-ACTION: Return to ステップ 7.2, complete confirmation (対話は回答後、E2E 自動は判定確定後), emit the sentinel with mode/choice/reason, then re-enter ステップ 7.7. Do not run 7.4 before that sentinel.
+ACTION: Return to ステップ 7.2, run the adoption gate, and only when it returns decided emit the sentinel with mode/choice/reason, then re-enter ステップ 7.7. Do not run 7.4 before that sentinel.
 ⚠️ LLM MUST NOT output [review:mergeable], [review:fix-needed:{n}], or the acceptance-unverified stop [review:error] (REVIEW_STOP=ac_unverified) until ステップ 7.2 has been executed and the sentinel is emitted.
 ANTI-PATTERN reference: This gate enforces the prohibition declared in
 .rite/wiki/pages/anti-patterns/aggregate-recommendation-label-evasion.md

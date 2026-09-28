@@ -5,7 +5,18 @@
 #   - all non_blocking_findings[]
 #   - findings[] with scope == "nit-noted" (blocking-out remainder)
 #   - guardrail_audit_log[] copied as already_rejected (record only, no re-judge)
-# --json is an offline transform; pass --pr as well to exclude persisted ledger rows.
+# Collect never decides adoption: severity and measurement do not change what it returns.
+# Each target carries `key` (its id, or anon:<file>:<line> when the id is empty): the
+# candidate id the adoption gate reads and the finding_id the sweep writes to the ledger.
+# --json is an offline transform; pass --pr as well to read the persisted ledger
+# (a row matches a target on [id or key, file:line]):
+#   - excluded: an `issued` row, or a REJECT / RESOLVED / LINK row whose 出典 is the
+#     review JSON read now (this sweep already recorded it). Legacy recorded / rejected
+#     rows never exclude a target.
+#   - prior: the last REJECT / ADOPT row becomes
+#     {finding_id, file_line, disposition, premise (= 判定文)} for the classifier to copy
+#     into its adoption record.
+#   - already_rejected is excluded by an issued / recorded / rejected row as before.
 #
 # Usage:
 #   bash nb-sweep-collect.sh --json <path>
@@ -67,7 +78,7 @@ fi
 
 # Ledger reads are mandatory in the live --pr path. A failed read must not
 # silently re-issue findings already handled by a prior sweep.
-ledger_keys='[]'
+ledger_rows='[]'
 collect_fail() {
   echo "ERROR: non-blocking ledger read failed: $1" >&2
   echo "[CONTEXT] NB_SWEEP_COLLECT=failed; count=0; record=$json; reason=$1" >&2
@@ -81,34 +92,52 @@ if [ -n "$pr" ]; then
   # 関連 Issue の解決・記録コメントの同定・CRLF の正規化は helper が行う (失敗の詳細は helper の stderr)。
   record_body=$(bash "$(dirname "${BASH_SOURCE[0]}")/../review-nonblocking-record.sh" \
     --print-record-body --pr "$pr" --owner-repo "$owner_repo") || collect_fail comments_unreadable
-  if ! ledger_keys=$(printf '%s' "$record_body" | jq -Rsce '
+  # 台帳の行をセルに分ける。セル内のエスケープ済みパイプ (\|) は区切りにしない。出典は 5 列目 (4 列の旧行は空)
+  if ! ledger_rows=$(printf '%s' "$record_body" | jq -Rsce '
     def trim: gsub("^\\s+|\\s+$"; "");
     [ split("### 却下台帳\n")[1:][]
         | split("📎 non_blocking_count:")[0] | split("\n### ")[0]
         | split("\n")[] | select(startswith("|"))
-        | split("|") | map(trim)
-        | select(.[3] == "rejected" or .[3] == "recorded" or .[3] == "issued")
-        | [.[1], .[2]] ] | unique
+        | gsub("\\\\\\|"; "") | split("|") | map(gsub(""; "\\|") | trim)
+        | select(length >= 6)
+        | {id: .[1], loc: .[2], disposition: .[3], premise: .[4], source: (if length >= 7 then .[5] else "" end)} ]
   '); then collect_fail ledger_invalid; fi
 fi
 
-if ! out=$(jq -c --arg record "$json" --argjson ledger_keys "$ledger_keys" '
-  def target:
-    {
-      id: (.id // ""),
-      source: .source,
-      file: (.file // ""),
-      line: (.line // null),
-      severity: (.severity // "UNKNOWN"),
-      scope: (.scope // ""),
-      description: (.description // ""),
-      suggestion: (.suggestion // ""),
-      verification: .verification,
-      route: (if .scope != "nit-noted" and .severity == "MEDIUM"
-        and (try .verification.measured catch null) == true then "issued" else "recorded" end)
-    };
-  def pending($id; $location):
-    ($ledger_keys | any(. == [$id, $location])) | not;
+if ! out=$(jq -c --arg record "$json" --argjson ledger "$ledger_rows" '
+  ($record | split("/") | last) as $record_base
+  | def target:
+    (.id // "") as $id
+    | {
+        id: $id,
+        key: (if ($id | tostring | length) > 0 then ($id | tostring)
+              else "anon:" + ((.file // "") | tostring) + ":" + ((.line // null) | tostring) end),
+        source: .source,
+        file: (.file // ""),
+        line: (.line // null),
+        severity: (.severity // "UNKNOWN"),
+        scope: (.scope // ""),
+        description: (.description // ""),
+        suggestion: (.suggestion // ""),
+        verification: .verification
+      };
+  def rows($t):
+    ($t.file + ":" + ($t.line | tostring)) as $loc
+    | $ledger | map(select(.loc == $loc and (.id == ($t.id | tostring) or .id == $t.key)));
+  def pending:
+    . as $t
+    | rows($t) | any(.disposition == "issued"
+        or ((.disposition == "REJECT" or .disposition == "RESOLVED" or .disposition == "LINK")
+            and .source == $record_base)) | not;
+  def with_prior:
+    . as $t
+    | (rows($t) | map(select(.disposition == "REJECT" or .disposition == "ADOPT")) | last) as $p
+    | if $p == null then .
+      else . + {prior: {finding_id: $p.id, file_line: $p.loc, disposition: $p.disposition, premise: $p.premise}}
+      end;
+  def transcribed($id; $location):
+    $ledger | any(.id == $id and .loc == $location
+      and (.disposition == "rejected" or .disposition == "recorded" or .disposition == "issued"));
   (.non_blocking_findings // []) as $nb
   | (.findings // []) as $findings
   | ($nb | map(. + {source: "non_blocking_findings"} | target)) as $from_nb
@@ -116,18 +145,10 @@ if ! out=$(jq -c --arg record "$json" --argjson ledger_keys "$ledger_keys" '
       | map(select(.scope == "nit-noted") | . + {source: "findings_nit_noted"} | target)
     ) as $from_nit
   | ($from_nb + $from_nit) as $all
-  | ($all | map(select(pending(.id; .file + ":" + (.line | tostring))))) as $pending
-  | (reduce $pending[] as $t ({};
-      if ($t.id | tostring | length) > 0 and (.[$t.id] | not)
-      then .[$t.id] = $t
-      elif ($t.id | tostring | length) == 0
-      then .["_anon_" + ($t.file|tostring) + ":" + ($t.line|tostring)] = $t
-      else .
-      end
-    ) | [.[]]) as $targets
+  | ($all | map(select(pending) | with_prior)) as $pending
+  | (reduce $pending[] as $t ({}; if has($t.key) then . else .[$t.key] = $t end) | [.[]]) as $targets
   | ((.guardrail_audit_log // []) | map({
         source: "guardrail_audit_log",
-        route: "recorded",
         severity: (.original_severity // ""),
         verification: {measured: false},
         reviewer: (.reviewer // ""),
@@ -135,7 +156,7 @@ if ! out=$(jq -c --arg record "$json" --argjson ledger_keys "$ledger_keys" '
         original_severity: (.original_severity // ""),
         description: (.description // ""),
         filter_reason: (.filter_reason // "")
-      }) | map(select(pending(.reviewer; .file_line)))) as $guardrails
+      }) | map(select(transcribed(.reviewer; .file_line) | not))) as $guardrails
   | (($targets | length) + ($guardrails | length)) as $count
   | {
       status: (if $count == 0 then "empty" else "ok" end),

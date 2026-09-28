@@ -14,6 +14,9 @@
 # extract  stdout: the ### 却下台帳 section (empty if absent). exit 0 when
 #          the body is readable even if no ledger exists.
 # append   appends table rows to a ledger file (creates header if missing).
+#          The sweep writes 判定 = issued (filed), REJECT / RESOLVED / LINK (the
+#          adoption exit recorded without filing) and recorded (already_rejected
+#          transcription); append does not check the value.
 #          Every appended row must end with a 出典 cell holding the basename of
 #          the review JSON the sweep read ({pr}-{14 digits}[~{4 hex}].json);
 #          otherwise nothing is appended (reason=entries_source_invalid).
@@ -23,7 +26,8 @@
 #          `📎 non_blocking_count:`. Replaces an existing ### 却下台帳.
 #          Empty ledger-file is a no-op (does not insert a heading).
 # tally    stdout: `issued=K; recorded=M` counted from the 判定 cell of the
-#          entries rows (escaped pipes inside a cell do not shift columns).
+#          entries rows (escaped pipes inside a cell do not shift columns):
+#          issued is K; REJECT / RESOLVED / LINK / recorded are M.
 #          With --record, every row's 出典 cell must equal that basename;
 #          otherwise nothing is printed (reason=entries_record_mismatch).
 #          Entries are what an interrupted sweep already filed, so a leftover
@@ -270,7 +274,7 @@ case "$cmd" in
             src = c[n - 1]; gsub(/^[ \t]+|[ \t]+$/, "", src)
             if (want != "" && src != want) bad = 1
             if (route == "issued") issued++
-            else if (route == "recorded") recorded++ }
+            else if (route == "REJECT" || route == "RESOLVED" || route == "LINK" || route == "recorded") recorded++ }
           END { if (bad) exit 3; printf "issued=%d; recorded=%d\n", issued, recorded }'); then
       echo "ERROR: entries rows do not all name the review JSON this sweep read (${record_base}): $entries_file" >&2
       echo "[CONTEXT] NB_SWEEP_LEDGER=failed; op=tally; reason=entries_record_mismatch" >&2

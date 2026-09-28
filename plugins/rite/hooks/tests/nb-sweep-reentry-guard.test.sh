@@ -31,6 +31,8 @@
 # T-16 fix の手順 4: entries の判定列から件数を数え（セル内のエスケープ済みパイプでずれない）、entries を消す
 # T-17 iterate SKILL の配線: 0.7 は 0.6 と 1 の間、resume は 5.S へ、collect に入口を単一引用で渡す。
 #      0.6（step_init_cycle）は入口記録と entries を消さない
+# T-18 採否ゲートが保留した sweep（done なし・入口記録あり）は 0.7 で resume、collect は pending で入口記録を残す。
+#      done を書く nb-sweep-record は [fix:sweep-done] の後だけで、[fix:error] の行は停止する
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -611,6 +613,31 @@ printf '7-20260202000000.json [review:mergeable]\n' > "$(origin_of "$r")"
 run_step "$r" nb-sweep-record --pr 7
 assert "T-14 record は done を書く" "done 7-20260202000000.json" "$(cat "$r/.rite/state/nb-sweep-done-7.txt")"
 assert "T-14 record は入口記録を消す" 0 "$([ -e "$(origin_of "$r")" ] && echo 1 || echo 0)"
+
+# 採否ゲートが保留 (held) した sweep: fix は起票も entries も done も書かずに止まる。入口記録は残り、
+# 再実行はステップ 0.7 から 5.S へ戻り、collect は skip せず fix へ渡す
+r=$(new_repo head); cleanup_dirs+=("$r")
+printf '7-20260202000000.json [fix:replied-only]\n' > "$(origin_of "$r")"
+printf '{"kind":"sweep","pr":7,"held_ids":["F-01"]}\n' > "$r/.rite/state/adoption-hold-7-sweep.json"
+run_step "$r" nb-sweep-resume --pr 7
+cp "$r/out" "$r/resume.out"
+run_step "$r" nb-sweep-collect --pr 7 --sweep-origin '[fix:replied-only]'
+assert "T-18 held の再開: 0.7 は resume" 1 "$(grep -c '^\[CONTEXT\] ITERATE_NB_SWEEP_RESUME=resume; origin=\[fix:replied-only\];' "$r/resume.out")"
+assert "T-18 held の再開: collect は skip せず pending" 1 "$(grep -c '^\[CONTEXT\] ITERATE_NB_SWEEP=pending;' "$r/out")"
+assert "T-18 held の再開: done を書かない" 0 "$([ -e "$r/.rite/state/nb-sweep-done-7.txt" ] && echo 1 || echo 0)"
+assert "T-18 held の再開: 入口記録を残す" "7-20260202000000.json [fix:replied-only]" "$(cat "$(origin_of "$r")")"
+# done を書く nb-sweep-record は [fix:sweep-done] の後だけ。[fix:error] の行は停止し、record を呼ばない
+t18_sec=$(awk '/^## ステップ 5\.S: NB digest sweep$/{s=1} /^### 5\.S 後の PR 内推奨の修正$/{s=0} s' "$ITERATE")
+t18_err=$(printf '%s\n' "$t18_sec" | grep -E '^\| `\[fix:error\]` / その他 / sentinel 不在 \|')
+assert "T-18 [fix:error] 行は停止し nb-sweep-record を呼ばない" 1 \
+  "$(printf '%s\n' "$t18_err" | grep -F '`[iterate:nb-sweep-error]` で停止' | grep -vcF 'nb-sweep-record')"
+t18_record=$(printf '%s\n' "$t18_sec" | grep -n 'iterate-step.sh nb-sweep-record' | cut -d: -f1)
+t18_done=$(printf '%s\n' "$t18_sec" | grep -n '^fix が emit した `\[CONTEXT\] NB_SWEEP_RESULT=done' | cut -d: -f1)
+if [ -n "$t18_record" ] && [ -n "$t18_done" ] && [ "$t18_done" -lt "$t18_record" ]; then
+  pass "T-18 nb-sweep-record は NB_SWEEP_RESULT=done を読んだ後の段落にある"
+else
+  fail "T-18 nb-sweep-record は NB_SWEEP_RESULT=done を読んだ後の段落にある (done=$t18_done record=$t18_record)"
+fi
 
 # --- fix 側の手順 1 / 手順 4 の bash を nb-sweep.md から抜き出して実行する ---
 # 手順 N の見出しから次の見出しまでの最初の ```bash ブロック

@@ -557,12 +557,12 @@ rationale: references/rationale.md#remote-delete-markers
 
 ### 6.0 残存 non-blocking 指摘から follow-up Issue を起票
 
-archive より前に実行する（JSON が元の場所にあるうちに読む）。先に orphan 回収が `archive/` へ移した JSON も読む。指摘も先送り欠陥も 0 件なら起票しない。同定不能は起票せず WARNING。cleanup は止めない。
+archive より前に実行する（JSON が元の場所にあるうちに読む）。先に orphan 回収が `archive/` へ移した JSON も読む。同定不能は起票せず WARNING。cleanup は止めない。
 rationale: references/rationale.md#follow-up-before-archive
 
-元 Issue の Decision Log（Section 9）で本 PR のレビューが先送りした欠陥（行末が `<!-- rite:deferred-defect pr={pr_number} -->` の行）も helper が読み、同じ follow-up Issue へ転記する。指摘が 0 件でも先送り欠陥があれば起票する。本文を取得できなければ `FOLLOW_UP_DEFERRED=unavailable` を出し、指摘側だけ起票する。
+候補は残存 non-blocking 指摘と、元 Issue の Decision Log（Section 9）で本 PR のレビューが先送りした欠陥（行末が `<!-- rite:deferred-defect pr={pr_number} -->` の行。旧い基準で書かれた行も終端にしない）。指摘が 0 件でも先送り欠陥があれば候補にする。指摘も先送り欠陥も 0 件なら判定も起票もしない。起票するかどうかは helper が採否ゲートの出口だけで決め、出口が `file` の判定記録（根因）ごとに 1 件起票する（同じ根因の候補は 1 件に束ね、違う根因は混ぜない）。出口が出ていない候補が 1 件でもあれば何も起票せず `FOLLOW_UP_ISSUE=held` で保留する。元 Issue の本文を取得できなければ `FOLLOW_UP_DEFERRED=unavailable` を出し、ゲートも本文を読めずに保留する。
 
-iterate の NB sweep で起票済みの指摘（関連 Issue 記録コメントの却下台帳で判定=`issued`）は helper が台帳を読んで転記から除く。照合は `[finding_id, file:line]` と、行の出典（sweep が読んだ JSON の basename）と指摘の出典 JSON の一致で行う。出典の無い旧形式の行は最新のレビュー結果 JSON 由来の指摘とだけ照合する。除外した指摘と再掲マーカー（括弧内の NOT_FIXED / 再掲 と、直前の cycle の同じ id・`file:line` を指す F-NN。PARTIAL / REGRESSION を含むものは除く）で結ばれる前後の cycle の指摘、出典と id だけが違う完全一致の指摘も除外する。台帳か最新のレビュー結果 JSON を読めなければ、sweep で Issue 化済みの指摘も転記対象とし（再検証による除外は適用済みのまま）、WARNING と `FOLLOW_UP_SWEEP_ISSUED=unavailable` を出す。
+iterate の NB sweep で起票済み・処分済みの指摘（関連 Issue 記録コメントの却下台帳で判定=`issued` / `REJECT` / `RESOLVED` / `LINK`）は helper が台帳を読んで候補から除く。旧形式の `recorded` / `rejected` 行は終端にしない。照合は `[finding_id, file:line]` と、行の出典（sweep が読んだ JSON の basename）と指摘の出典 JSON の一致で行う。出典の無い旧形式の行は最新のレビュー結果 JSON 由来の指摘とだけ照合する。除外した指摘と再掲マーカー（括弧内の NOT_FIXED / 再掲 と、直前の cycle の同じ id・`file:line` を指す F-NN。PARTIAL / REGRESSION を含むものは除く）で結ばれる前後の cycle の指摘、出典と id だけが違う完全一致の指摘も除外する。台帳か最新のレビュー結果 JSON を読めなければ、sweep で Issue 化済みの指摘も転記対象とし（再検証による除外は適用済みのまま）、WARNING と `FOLLOW_UP_SWEEP_ISSUED=unavailable` を出す。
 rationale: references/rationale.md#follow-up-sweep-issued-dedup
 
 #### 6.0.V helper 呼び出し前の再検証（マージ後 HEAD）
@@ -694,6 +694,39 @@ echo "[CONTEXT] FOLLOW_UP_REVERIFY=done; resolved={n_resolved}; remains={n_remai
 
 内訳はステップ 12 の完了報告に含める。
 
+#### 6.0.A 判定記録（採否ゲートの入力）
+
+本手順を実行する LLM が分類役として、helper が列挙した全候補の判定記録を書く。記録の欄と出口の正本は `{plugin_root}/hooks/scripts/lib/review-adoption.py` の docstring、ゲートの契約は `review-adoption-gate.sh` のヘッダ。列挙は下段の起票実行と同じ `--source-issue` / `--exclude-ids` で呼ぶ（候補がずれるとゲートは全候補を保留する）。`{resolved_ids_csv}` は 6.0.V の結果をリテラル置換する。
+
+```bash
+_state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
+[ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
+IFS=/ read -r _gh_owner _gh_repo <<< "{owner_repo}"
+bash {plugin_root}/hooks/scripts/cleanup-follow-up-issue.sh \
+  --state-root "$_state_root" \
+  --pr "{pr_number}" \
+  --source-issue "{issue_number}" \
+  --owner "${_gh_owner}" \
+  --repo "${_gh_repo}" \
+  --exclude-ids "{resolved_ids_csv}" \
+  --list-candidates "${TMPDIR:-/tmp}/rite-follow-up-candidates-{pr_number}.json"
+```
+
+| `[CONTEXT] FOLLOW_UP_CANDIDATES=` | 次の動作 |
+|---|---|
+| `listed; count=0` | 判定記録を書かずに 6.0.C へ進む（helper は同じ 0 件の結果で終える） |
+| `listed; count=<n>`（n ≥ 1） | 一覧ファイルを Read し、下の規則で判定記録を書いてから 6.0.C へ進む |
+| `failed` / marker なし | 判定記録を書かずに 6.0.C へ進む（helper は記録なしとして保留する） |
+
+判定記録の規則:
+
+- 書き先は一覧の `adoption`（`{state_root}/.rite/state/adoption-{pr_number}-followup.json`）。Write ツールで `{"adoption": {"head": <一覧の head>, "records": [...]}}` を書く。
+- `head` は一覧の `head`（最新の読めるレビュー結果 JSON の `commit_sha`）をそのまま写す。マージ後もレビュー対象 commit と base は git に残っている前提で、根拠・引用はその commit で確かめる。`head` が空なら記録を書かない（ゲートが全候補を保留する）。
+- 全候補の `id` をちょうど 1 つの記録に入れる。1 記録 = 1 根因。重要度（CRITICAL〜LOW）と class A/B では決めない。
+- 起票になる記録（ADOPT・`origin=pre_existing`、調査として引き受けた DIAGNOSE）には `acceptance`（起票する Issue の受入条件の文）を必ず書く。調査は `proposition` の 4 項目と `investigate: true` も書く。
+- 前回の実行が書いた記録ファイルがあれば、同じ候補の記録（`ids`）はそのまま引き継ぎ、`head` を一覧の値に合わせ、新しい候補の記録だけを足す（起票済みかどうかは、記録の ids と起票済み Issue の marker の ids の重なりで決まる）。一覧に無くなった id は記録から除き、id が残らない記録は消す。
+rationale: references/rationale.md#follow-up-adoption-records
+
 #### 6.0.C 起票前の確認（単独実行のとき）
 
 follow-up Issue の起票は外部公開なので、手動の `/rite:cleanup` では起票前に確認する。`/rite:batch-run --merge` から呼ばれたとき（自セッションの run-queue が `active: true` かつ `mode: merge` で、cursor の Issue が今回の `{issue_number}` と一致する）は、利用者が完全自律に同意済みなので確認しない。中断した batch のキューは `active: true` のまま残るため、cursor の照合を省かない（照合で確認に倒せるのは別 Issue を cleanup するときで、中断した Issue 自体の cleanup は `--merge` の同意の範囲として確認しない。この非確認は cursor が中断時点でまだ当該 Issue を指している run に限る — `/rite:batch-run` がステップ 6 のカーソル前進を終えてから停止し `/rite:recover` へ案内する経路では cursor は既に次の Issue に進んでいるため、同じ Issue を後から手動 cleanup すれば確認に倒れる。これは cursor 照合の設計どおりの挙動である）。判定できないときは確認する側に倒す:
@@ -719,8 +752,8 @@ fi
 ```
 
 - `skip` → 下の helper 呼び出しを `{preview_option}` を空にして実行する（従来どおり起票する）。
-- `ask` → `{preview_option}` を `--preview-body "${TMPDIR:-/tmp}/rite-follow-up-preview-{pr_number}.md"` にして実行する。helper は起票せず、`[CONTEXT] FOLLOW_UP_ISSUE=preview; count=<n>; deferred=<k>; body=<path>; pr={pr_number}` を出す。0 件・既存あり・失敗は通常どおりの marker で終わるので、そのときは質問しない。
-- `preview` のとき AskUserQuestion で「起票する / 起票しない / 本文を確認してから決める」を確認する。説明には転記件数 `{fu_count}`（preview marker の `count=` の値。指摘と先送り欠陥の合計）、うち先送り欠陥 `{fu_deferred}`（同 `deferred=` の値）と、6.0.V の内訳（`done` なら「残存 {n_remains} / 判定不能 {n_undecidable}」、`unavailable` なら「再検証未実施（全件を判定不能扱い）」）を入れる。6.0.V の marker が 1 つも出ていない場合も `unavailable` と同じ書き方にする。6.0.V の内訳は指摘だけを数え、件数は重複の集約と sweep 起票済みの除外の後の値なので、内訳の合計と一致しないことがある。
+- `ask` → `{preview_option}` を `--preview-body "${TMPDIR:-/tmp}/rite-follow-up-preview-{pr_number}.md"` にして実行する。helper は起票せず、`[CONTEXT] FOLLOW_UP_ISSUE=preview; count=<n>; deferred=<k>; issues=<m>; body=<path>; pr={pr_number}` を出す。0 件・既存あり・保留（`held`）・失敗は通常どおりの marker で終わるので、そのときは質問しない（保留を `declined` に変換しない）。
+- `preview` のとき AskUserQuestion で「起票する / 起票しない / 本文を確認してから決める」を確認する。説明には起票する Issue 数 `{fu_issues}`（preview marker の `issues=` の値。根因の数）、転記件数 `{fu_count}`（同 `count=` の値。指摘と先送り欠陥の合計）、うち先送り欠陥 `{fu_deferred}`（同 `deferred=` の値）と、6.0.V の内訳（`done` なら「残存 {n_remains} / 判定不能 {n_undecidable}」、`unavailable` なら「再検証未実施（全件を判定不能扱い）」）を入れる。6.0.V の marker が 1 つも出ていない場合も `unavailable` と同じ書き方にする。6.0.V の内訳は指摘だけを数え、件数は重複の集約と sweep 起票済みの除外の後の値なので、内訳の合計と一致しないことがある。
   - 「起票する」→ `{preview_option}` を空にして helper 呼び出しをもう一度実行する（入力が同じなのでプレビューと同じ本文で起票される）。
   - 「起票しない」→ `echo "[CONTEXT] FOLLOW_UP_ISSUE=declined; count={fu_count}; pr={pr_number}" >&2`（`{fu_count}` は preview marker の `count=` の値をリテラル置換する） を実行し、Issue は作らずに下の state 削除（archive）へ進む。
   - 「本文を確認してから決める」→ marker の `body=` のファイルを Read し、その本文を加工せず応答本文にそのまま出力する（Read の結果は利用者の画面に出ないことがある）。そのあと AskUserQuestion で「起票する / 起票しない」を確認して上と同じに進む。
@@ -742,13 +775,18 @@ bash {plugin_root}/hooks/scripts/cleanup-follow-up-issue.sh \
   --project-number "{project_number}" \
   --project-owner "{owner}" \
   --projects-enabled "{projects_enabled}" \
+  --base "origin/{base_branch}" \
+  --adoption "$_state_root/.rite/state/adoption-{pr_number}-followup.json" \
   --exclude-ids "{resolved_ids_csv}" {preview_option} || _fu_rc=$?
 if [ "$_fu_rc" -ne 0 ]; then
   echo "WARNING: follow-up Issue 起票 helper が rc=${_fu_rc} で失敗しました。cleanup は続行します" >&2
-  echo "  手動起票: 当該 PR の review-results JSON の non_blocking_findings[] を元に follow-up ラベル付き Issue を作成してください" >&2
+  echo "  再実行: 原因を解消して /rite:cleanup {pr_number} を再実行してください（起票済みの根因は増えません）" >&2
   echo "[CONTEXT] FOLLOW_UP_ISSUE=failed; reason=helper_rc; pr={pr_number}; rc=${_fu_rc}" >&2
 fi
 ```
+
+`FOLLOW_UP_ISSUE=held` のときは下の state 削除（`cleanup-pr-state-purge.sh`）とステップ 7 を実行しない（レビュー結果の退避・削除と orphan 回収を保留し、hold ファイルと判定記録を残す）。ステップ 8 以降は続け、ステップ 12 で未完了として報告する。
+rationale: references/rationale.md#follow-up-held-no-purge
 
 ```bash
 # 削除対象はリポジトリ共通の state ルート基準（state-path-resolve.sh）。書込側
@@ -780,7 +818,7 @@ rationale: references/rationale.md#wiki-worktree-persist
 
 ## ステップ 7: transient cycle ブランチを削除
 
-Reviewer subagent が作る `pr-{N}-cycle{X}` 命名の transient ブランチを回収する (reviewer は READ-ONLY 制約で自己クリーン不可)。同じ helper が消費済みの `.rite/release-promotions/{N}.json`（対応 PR が MERGED/CLOSED）も回収する。`.gitignore` は削除しない。non-blocking:
+Reviewer subagent が作る `pr-{N}-cycle{X}` 命名の transient ブランチを回収する (reviewer は READ-ONLY 制約で自己クリーン不可)。同じ helper が消費済みの `.rite/release-promotions/{N}.json`（対応 PR が MERGED/CLOSED）も回収する。`.gitignore` は削除しない。non-blocking。ステップ 6.0 が `FOLLOW_UP_ISSUE=held` のときは実行しない（保留中は state を片付ける工程に進まない。保留中の PR のレビュー結果は orphan 回収自体も採否保留ファイルを見て残す）:
 
 ```bash
 bash {plugin_root}/hooks/scripts/pr-cycle-cleanup.sh 2>&1 || true
@@ -1059,21 +1097,22 @@ rationale: references/rationale.md#marker-data-delimiter
 
   | 検出 | 側の判定 | 付記 |
   |---|---|---|
-  | `FOLLOW_UP_ISSUE=failed; reason=preview_write` | 未完了 | `⚠️ follow-up 起票の確認用の本文を書き出せず、起票を試みていません。残存 non-blocking 指摘があれば、元 Issue の Decision Log（Section 9）で行末に `<!-- rite:deferred-defect pr={pr_number} -->` を持つ行も含めて follow-up ラベル付き Issue を手動作成してください` |
-  | `FOLLOW_UP_ISSUE=failed`（reason 問わず。preview_write 以外。`helper_rc` / `lookup_api` / `create_api` / `create_script_missing` / `json_undecidable` を含む） | 未完了 | `⚠️ follow-up Issue の起票に失敗しました。review-results JSON の non_blocking_findings[] と、元 Issue の Decision Log（Section 9）で行末に `<!-- rite:deferred-defect pr={pr_number} -->` を持つ行を元に follow-up ラベル付き Issue を手動作成してください` |
+  | `FOLLOW_UP_ISSUE=held` | 未完了 | `⚠️ 採否の出口が出ていない候補があるため follow-up を起票せず保留しました（{reason}）。候補の全文は {hold_file} に保存済みで、レビュー結果の退避・削除も保留しています。判定記録 {state_root}/.rite/state/adoption-{pr_number}-followup.json を補って /rite:cleanup {pr_number} を再実行してください（ステップ 6.0 の判定から続き、起票済みの根因は増えません）` |
+  | `FOLLOW_UP_ISSUE=failed; reason=preview_write` | 未完了 | `⚠️ follow-up 起票の確認用の本文を書き出せず、起票を試みていません。書き出し先を確認して /rite:cleanup {pr_number} を再実行してください` |
+  | `FOLLOW_UP_ISSUE=failed`（reason 問わず。preview_write 以外。`helper_rc` / `lookup_api` / `create_api` / `create_script_missing` / `json_undecidable` を含む） | 未完了 | `⚠️ follow-up Issue の起票に失敗しました（{reason}。`issue=` があればその番号は起票済み）。原因を解消して /rite:cleanup {pr_number} を再実行してください（起票済みの根因は増えず、残りだけを起票します）` |
   | `skipped; reason=no_json` | 未完了 | 同上（レビュー結果 JSON 不在） |
-  | `skipped; reason=jq_missing` | 未完了 | `⚠️ jq が見つからず follow-up 起票を skip しました。jq を導入したうえで、残存 non-blocking 指摘があれば、元 Issue の Decision Log（Section 9）で行末に `<!-- rite:deferred-defect pr={pr_number} -->` を持つ行も含めて follow-up Issue を手動作成してください` |
-  | `created` / `skipped; reason=no_findings` / `skipped; reason=already_exists` / `skipped; reason=all_issued` / `skipped; reason=already_processed` / `skipped; reason=all_resolved` | x 相当 | — |
+  | `skipped; reason=jq_missing` | 未完了 | `⚠️ jq が見つからず follow-up 起票を skip しました。jq を導入したうえで /rite:cleanup {pr_number} を再実行してください` |
+  | `created` / `skipped; reason=no_findings` / `skipped; reason=already_exists` / `skipped; reason=all_issued` / `skipped; reason=already_processed` / `skipped; reason=all_resolved` / `skipped; reason=all_recorded` | x 相当 | — |
   | `declined`（ステップ 6.0.C で「起票しない」を選んだ） | x 相当 | `ℹ️ 確認のうえ follow-up Issue の起票を見送りました（{count} 件）。指摘の全文は review-results/archive/ の JSON に、先送り欠陥は元 Issue の Decision Log（Section 9）にあります` |
-  | `preview`（確認の回答前に止まった） | 未完了 | `⚠️ follow-up 起票の確認が完了していません。残存 non-blocking 指摘を起票する場合は、元 Issue の Decision Log（Section 9）で行末に `<!-- rite:deferred-defect pr={pr_number} -->` を持つ行も含めて follow-up ラベル付き Issue を手動作成してください` |
-  | `[CONTEXT] FOLLOW_UP_ISSUE=` かつ `pr={pr_number}` の行が無い | 未完了 | `⚠️ follow-up 起票の実行結果が確認できませんでした。残存 non-blocking 指摘があれば、元 Issue の Decision Log（Section 9）で行末に `<!-- rite:deferred-defect pr={pr_number} -->` を持つ行も含めて follow-up ラベル付き Issue を手動作成してください` |
+  | `preview`（確認の回答前に止まった） | 未完了 | `⚠️ follow-up 起票の確認が完了していません。起票する場合は /rite:cleanup {pr_number} を再実行して確認に答えてください` |
+  | `[CONTEXT] FOLLOW_UP_ISSUE=` かつ `pr={pr_number}` の行が無い | 未完了 | `⚠️ follow-up 起票の実行結果が確認できませんでした。/rite:cleanup {pr_number} を再実行してください（起票済みの根因は増えません）` |
 
   **FOLLOW_UP_ISSUE marker 不在を成功と読んではならない。**
 
-  `skipped; reason=all_resolved` を x 相当に置くのは、ステップ 6.0.V の再検証で残存 0 件が確定し、先送り欠陥も 0 件の**正常完了**だから（起票すべきものが無い。先送り欠陥があれば helper は skip せず起票する）。`no_findings` と同じ扱いであり「起票に失敗した」ではない。`skipped; reason=all_issued` も、残りが全件 sweep で起票済みの正常完了として同じ扱いにする。`skipped; reason=already_processed` は前回の cleanup で follow-up の判定を終え、その後に JSON が片付けられた PR の再実行で、判定は前回に済んでいる。
+  `skipped; reason=all_resolved` を x 相当に置くのは、ステップ 6.0.V の再検証で残存 0 件が確定し、先送り欠陥も 0 件の**正常完了**だから（起票すべきものが無い。先送り欠陥があれば helper は skip せず判定へ進む）。`skipped; reason=all_recorded` は採否の出口がすべて record（REJECT / RESOLVED / LINK）で、起票するものが無い正常完了。`no_findings` と同じ扱いであり「起票に失敗した」ではない。`skipped; reason=all_issued` も、残りが全件 sweep で起票済みの正常完了として同じ扱いにする。`skipped; reason=already_processed` は前回の cleanup で follow-up の判定を終え、その後に JSON が片付けられた PR の再実行で、判定は前回に済んでいる。
   rationale: references/rationale.md#review-cleanup-reasons
 
-  `declined` の付記の `{count}` は declined marker の `count=` の値。x 相当でもこの付記は `{review_cleanup_check}` の行に続けて出す。
+  `held` の付記の `{reason}` / `{hold_file}` は held marker の同名の値。`declined` の付記の `{count}` は declined marker の `count=` の値。x 相当でもこの付記は `{review_cleanup_check}` の行に続けて出す。
 
   **先送り欠陥側**（`[CONTEXT] FOLLOW_UP_DEFERRED=` + `pr={pr_number}`（直後が `;` または行末）に該当する行の最後の出現を採る）:
 
@@ -1102,7 +1141,7 @@ rationale: references/rationale.md#review-cleanup-reasons
   - 最終 `FOLLOW_UP_ISSUE=created` の場合だけ、上の note の「転記対象としました」を「転記しました」に置換する。失敗・未確認・`already_exists` を含むその他の結果では置換しない。
   - 本 note は除外結果の付記であり、起票結果と state 削除結果から決めた `{review_cleanup_check}` を変更しない。
 - `{follow_up_sweep_note}`: `[CONTEXT] FOLLOW_UP_SWEEP_ISSUED=unavailable; reason={r}; pr={pr_number}` のうち、`pr=` の直後が `;` または行末まで一致する最後の出現を採る。marker があれば ` — ⚠️ sweep 起票済みの除外を適用できなかったため（{reason}）、sweep で Issue 化済みの指摘も転記対象としました`（`{reason}` は marker の値）。marker が無ければ空文字列（除外の適用・起票の成功は推定しない）。`{review_cleanup_check}` を変更しない。
-- `{follow_up_deferred_note}`: `[CONTEXT] FOLLOW_UP_DEFERRED=unavailable; reason={r}; pr={pr_number}` のうち、`pr=` の直後が `;` または行末まで一致する最後の出現を採る。marker があれば ` — ⚠️ 元 Issue の本文を取得できず（{reason}）、Decision Log で先送りした欠陥を follow-up へ転記していません。元 Issue の Section 9 で行末に `<!-- rite:deferred-defect pr={pr_number} -->` を持つ行を follow-up Issue へ手動で転記してください`（`{reason}` は marker の値）。このとき先送り欠陥側は未完了で、`{review_cleanup_check}` は ` ` になる（未完了事項として `{outstanding_items_block}` にも載る）。marker が無ければ空文字列。
+- `{follow_up_deferred_note}`: `[CONTEXT] FOLLOW_UP_DEFERRED=unavailable; reason={r}; pr={pr_number}` のうち、`pr=` の直後が `;` または行末まで一致する最後の出現を採る。marker があれば ` — ⚠️ 元 Issue の本文を取得できず（{reason}）、Decision Log で先送りした欠陥を候補にできていません。本文を読める状態で /rite:cleanup {pr_number} を再実行してください`（`{reason}` は marker の値）。このとき先送り欠陥側は未完了で、`{review_cleanup_check}` は ` ` になる（未完了事項として `{outstanding_items_block}` にも載る）。marker が無ければ空文字列。
 - `{wiki_ingest_check}`: 以下の sentinel を上から評価し最初の一致を採用 (`WIKI_INGEST_DONE` + `WIKI_INGEST_PUSH_FAILED` が併存しうるため順序重要):
 
   | Sentinel | check | 表示 |
