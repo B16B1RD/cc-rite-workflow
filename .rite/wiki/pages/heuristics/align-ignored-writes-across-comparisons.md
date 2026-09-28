@@ -32,7 +32,7 @@ confidence: medium
 
 ## 関連ページ
 
-- （関連ページなし）
+- [既存の正規化を新しい判定へ再利用すると、除外範囲の緩さまで持ち込む](./reused-normalization-carries-its-exclusion-looseness.md)
 
 ## ソース
 

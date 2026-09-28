@@ -150,6 +150,8 @@
 * **Create**: [計時テストは上限いっぱいの形を複数計り、上限値そのものは境界テストに任せる](pages/patterns/timing-test-measure-several-upper-bound-shapes.md) — raw/reviews/20260928T103622Z-pr-3379.md を新規ページ化
 * **Create**: [同じ本文を比べる 2 つの比較は「無視してよい書き込み」を 1 つの集合に揃える](pages/heuristics/align-ignored-writes-across-comparisons.md) — raw/reviews/20260928T104839Z-pr-3376.md を新規ページ化
 * **Update**: [極小対称化 PR は sibling site Grep 照合で短時間・高確信レビューできる](pages/heuristics/small-symmetric-pr-sibling-site-grep-review.md) — raw/reviews/20260928T105649Z-pr-3396.md を統合
+* **Update**: [既存の正規化を新しい判定へ再利用すると、除外範囲の緩さまで持ち込む](pages/heuristics/reused-normalization-carries-its-exclusion-looseness.md) — raw/reviews/20260928T104839Z-pr-3376.md を統合（除外範囲を判定ごとに持つ案を、後の cycle で収束した 1 集合への統一へ改訂）
+* **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=578, broken_refs=0
 
 ## 2026-09-27
 
