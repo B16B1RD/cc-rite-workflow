@@ -230,8 +230,14 @@ assert_eq 'routing: only a file verdict without a source Issue creates an Issue 
 assert_eq 'routing: no other row creates an Issue now' 1 "$(printf '%s\n' "$route_table" | grep -c '7.4.1-7.4.2' || true)"
 assert_eq 'routing: record rows write no token' 2 \
   "$(printf '%s\n' "$route_table" | grep '^| `record`' | grep -c 'トークンなし' || true)"
-assert_grep 'held writes nothing and skips step 8' "$review" \
-  '| `3`（held） | 7.4（Decision Log・先送りトークン・Issue 作成・申し送り）を一切実行しない。sentinel も出さない。下の採否保留の停止を実行し、ステップ 8 へ進まない |'
+assert_grep 'held writes nothing and skips 7.4-7.7 and step 8' "$review" \
+  '| `3`（held） | 7.4（Decision Log・先送りトークン・Issue 作成・申し送り）から 7.7 までを一切実行しない。sentinel も出さない。下の採否保留の停止を実行し、ステップ 8（8.0.2 を含む）へ進まない |'
+assert_grep 'the 7.7 gate does not run after a held gate' "$review" \
+  '7.2 のゲートが held（`ADOPTION_GATE_RC=3`）を返したときは実行しない（採否保留の停止で終わる）'
+assert_grep 'held candidates of the same head rejoin verbatim with a new id' "$review" \
+  'その `candidates` の各候補を、id だけ次の `C-n` に振り直して内容は一字も変えずに候補集合へ加える（id を除く全欄が一致する候補が既にあれば加えない）'
+assert_grep 'the held stop points at the hold file resume' "$review" \
+  '--next "採否の出口待ち。{hold_file} の resume（ゲートの WARNING にも出る）に従って再開"'
 assert_grep 'a held-then-corrected record set is resumed, not rewritten' "$review" \
   'その `head` が本 cycle の review JSON の `commit_sha` と同じなら、その記録（保留後に直された記録）から始める'
 assert_grep 'an Issue that already tracks the root cause becomes the tracker' "$review" \

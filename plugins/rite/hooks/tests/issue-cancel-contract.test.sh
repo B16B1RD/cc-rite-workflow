@@ -219,7 +219,7 @@ assert_grep_in_section "T-02 (e) the reap residue consequence is pinned" "$SKILL
 # 行継続で書かれた捕捉層を素通しする。4.6 側と対称に 4.4 へも置く。
 assert_grep_in_section "T-02 (e) the state purge call passes its output through" "$SKILL" \
   '^### 4\.4 PR-specific state ファイルの削除' '^### 4\.5' \
-  '^bash \{plugin_root\}/hooks/scripts/cleanup-pr-state-purge\.sh --pr "\{pr_number\}" 2>&1'
+  '^bash \{plugin_root\}/hooks/scripts/cleanup-pr-state-purge\.sh --pr "\{pr_number\}" --drop-adoption-hold 2>&1'
 
 echo "=== T-03: gh pr close が Projects Status 更新より先に呼ばれる (AC-3) ==="
 # 順序 pin は**実行行**を見る。冒頭の「実行順序の不変条件」節は同じコマンド名を散文で引用するため、

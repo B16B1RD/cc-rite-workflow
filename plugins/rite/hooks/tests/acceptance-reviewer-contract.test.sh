@@ -288,7 +288,7 @@ in_order "iterate: REVIEW_STOP 行が汎用 [review:error] 行より前" \
 in_order "iterate: adoption_held 行が汎用 [review:error] 行より前" \
   "$(line_of "$ITERATE" '| `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=adoption_held; kind={kind}; hold_file={path}` |')" \
   "$(line_of "$ITERATE" '| `[review:error]` | 可逆な再試行を推奨として 1 回だけ自動実行')"
-pin "iterate: adoption_held は再試行せず hold ファイルと再開方法を示す" "$ITERATE" '採否の出口待ちの保留。再試行せず、`hold_file` と再開方法（判定記録を直して `/rite:iterate {pr_number}` を再実行）を示して終了する（成功 sentinel も新しい sentinel も出さない）'
+pin "iterate: adoption_held は再試行せず hold ファイルと再開方法を示す" "$ITERATE" '採否の出口待ちの保留。再試行せず、`hold_file` と、hold ファイルの resume（ゲートの WARNING にも出る）に従って再開することを示して終了する（成功 sentinel も新しい sentinel も出さない）'
 pin "iterate: 再試行せず sentinel を出さない" "$ITERATE" '再試行せず、下記の停止通知を出して終了する（成功 sentinel も新しい sentinel も出さない）'
 pin "iterate: 行頭 marker だけで判定" "$ITERATE" '`REVIEW_STOP` は行頭 `[CONTEXT] ` の marker だけを判定に使う'
 pin "iterate: 停止通知の見出し" "$ITERATE" '## /rite:iterate 停止（受入条件未検証）'

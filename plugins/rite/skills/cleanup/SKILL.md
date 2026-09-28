@@ -716,12 +716,14 @@ bash {plugin_root}/hooks/scripts/cleanup-follow-up-issue.sh \
 |---|---|
 | `listed; count=0` | 判定記録を書かずに 6.0.C へ進む（helper は同じ 0 件の結果で終える） |
 | `listed; count=<n>`（n ≥ 1） | 一覧ファイルを Read し、下の規則で判定記録を書いてから 6.0.C へ進む |
-| `failed` / marker なし | 判定記録を書かずに 6.0.C へ進む（helper は記録なしとして保留する） |
+| `failed; reason=head_unresolved` | 判定記録を書かずに 6.0.C へ進む（対象 commit を決められないため、起票の実行も保留ではなく `FOLLOW_UP_ISSUE=failed; reason=head_unresolved` で止まる） |
+| 上記以外の `failed` / marker なし | 判定記録を書かずに 6.0.C へ進む（helper は記録なしとして保留する） |
 
 判定記録の規則:
 
 - 書き先は一覧の `adoption`（`{state_root}/.rite/state/adoption-{pr_number}-followup.json`）。Write ツールで `{"adoption": {"head": <一覧の head>, "records": [...]}}` を書く。
-- `head` は一覧の `head`（最新の読めるレビュー結果 JSON の `commit_sha`）をそのまま写す。マージ後もレビュー対象 commit と base は git に残っている前提で、根拠・引用はその commit で確かめる。`head` が空なら記録を書かない（ゲートが全候補を保留する）。
+- `head` は一覧の `head`（レビュー結果 JSON の `commit_sha`、JSON が無ければマージ済み PR の head）をそのまま写す。マージ後もその commit と base は git に残っている前提で、根拠・引用はその commit で確かめる。head を決められないとき helper は一覧を書かず、上の表の `head_unresolved` で失敗する。
+- マージ後の候補を PR 起因（`origin=pr` / `unknown`）と判定したら、その判定のまま記録する（`pre_existing` や REJECT に書き換えて保留を解除しない）。マージ済み PR では同じ PR で直せず、この出口の扱いは仕様で未定義のため、ゲートが保留し resume が PM に返すよう案内する — 意図した保留である。
 - 全候補の `id` をちょうど 1 つの記録に入れる。1 記録 = 1 根因。重要度（CRITICAL〜LOW）と class A/B では決めない。
 - 起票になる記録（ADOPT・`origin=pre_existing`、調査として引き受けた DIAGNOSE）には `acceptance`（起票する Issue の受入条件の文）を必ず書く。調査は `proposition` の 4 項目と `investigate: true` も書く。
 - 前回の実行が書いた記録ファイルがあれば、同じ候補の記録（`ids`）はそのまま引き継ぎ、`head` を一覧の値に合わせ、新しい候補の記録だけを足す（起票済みかどうかは、記録の ids と起票済み Issue の marker の ids の重なりで決まる）。一覧に無くなった id は記録から除き、id が残らない記録は消す。
@@ -785,7 +787,7 @@ if [ "$_fu_rc" -ne 0 ]; then
 fi
 ```
 
-`FOLLOW_UP_ISSUE=held` のときは下の state 削除（`cleanup-pr-state-purge.sh`）とステップ 7 を実行しない（レビュー結果の退避・削除と orphan 回収を保留し、hold ファイルと判定記録を残す）。ステップ 8 以降は続け、ステップ 12 で未完了として報告する。
+下の state 削除（`cleanup-pr-state-purge.sh`）は常に呼ぶ。採否保留ファイル（follow-up に限らず sweep / triage の保留も）が残っていれば helper は何も削除・退避せず `[CONTEXT] PR_STATE_PURGE=held` を出す。このときはステップ 7 を実行せず、ステップ 8 以降は続け、ステップ 12 で未完了として報告する。保留の有無はこの marker だけで判定し、hold ファイルを別途調べない。例外は 6.0 が `FOLLOW_UP_ISSUE=held; ...; hold_file=none` を出したとき（ゲート自体が失敗し hold ファイルが無い）で、このときは state 削除もステップ 7 も実行しない。
 rationale: references/rationale.md#follow-up-held-no-purge
 
 ```bash
@@ -818,7 +820,7 @@ rationale: references/rationale.md#wiki-worktree-persist
 
 ## ステップ 7: transient cycle ブランチを削除
 
-Reviewer subagent が作る `pr-{N}-cycle{X}` 命名の transient ブランチを回収する (reviewer は READ-ONLY 制約で自己クリーン不可)。同じ helper が消費済みの `.rite/release-promotions/{N}.json`（対応 PR が MERGED/CLOSED）も回収する。`.gitignore` は削除しない。non-blocking。ステップ 6.0 が `FOLLOW_UP_ISSUE=held` のときは実行しない（保留中は state を片付ける工程に進まない。保留中の PR のレビュー結果は orphan 回収自体も採否保留ファイルを見て残す）:
+Reviewer subagent が作る `pr-{N}-cycle{X}` 命名の transient ブランチを回収する (reviewer は READ-ONLY 制約で自己クリーン不可)。同じ helper が消費済みの `.rite/release-promotions/{N}.json`（対応 PR が MERGED/CLOSED）も回収する。`.gitignore` は削除しない。non-blocking。ステップ 6 が `PR_STATE_PURGE=held` を出したとき、および 6.0 が `hold_file=none` の保留で state 削除を呼ばなかったときは実行しない（保留中は state を片付ける工程に進まない。保留中の PR のレビュー結果は orphan 回収自体も採否保留ファイルを見て残す）:
 
 ```bash
 bash {plugin_root}/hooks/scripts/pr-cycle-cleanup.sh 2>&1 || true
@@ -1091,15 +1093,16 @@ rationale: references/rationale.md#marker-data-delimiter
   - 上記 2 条件のいずれにも該当せず `[CONTEXT] PROJECTS_STATUS_UPDATED=true` が見つかったとき: `{projects_status_result}` = `Done`、`{projects_check}` = `x`
   - 上記 2 条件のいずれにも該当せず `[CONTEXT] PROJECTS_STATUS_UPDATED=skipped_terminal` が見つかったとき: `{projects_status_result}` = `Cancelled のため Done 上書きをスキップ`、`{projects_check}` = `x`（legitimate skip。`false` の outstanding「Done へ手動変更」に倒さない）
   - 上記条件のいずれにも該当せず `[CONTEXT] PROJECTS_STATUS_UPDATED=false` または sentinel 自体が見つからない（= ステップ8 が実行されるべきだったのに失敗/skip された）とき: `{projects_status_result}` = `⚠️ 更新失敗（手動確認が必要）`、`{projects_check}` = ` ` + 「GitHub Projects 画面で Issue #{issue_number} の Status を Done に変更」を付記
-- `{review_cleanup_check}`: **follow-up 起票（ステップ 6.0 の `FOLLOW_UP_ISSUE`）・先送り欠陥の読み取り（`FOLLOW_UP_DEFERRED`）・state 削除（`REVIEW_CLEANUP_PARTIAL_FAILURE`）の 3 側を独立に評価し、すべてが `x` 相当のときだけ `x`**（`{local_branch_check}` と同型。いずれか 1 側でも未完了なら ` ` にし、未完了だった側の付記を列挙する）。照合はいずれも `pr={pr_number}` まで含める（`invalid_pr_number` だけは `pr=` を持たないので marker 名のみ）。**`pr=` の値は直後が `;` または行末であることまで含めて一致させる**（`{local_branch_check}` の `branch=` と同文。`pr=9` が `pr=90` に prefix 一致してはならない）。follow-up 側で同一 marker family の複数行が一致したときは最後の出現（recency）を採る。この選択は**follow-up 側**の判定ルールを評価する前に行う。state 削除側は presence 検査で recency を使わない。helper は API 失敗でも exit 0 のため、起票失敗の一次信号は `FOLLOW_UP_ISSUE` だけである。
+- `{review_cleanup_check}`: **follow-up 起票（ステップ 6.0 の `FOLLOW_UP_ISSUE`）・先送り欠陥の読み取り（`FOLLOW_UP_DEFERRED`）・state 削除（`PR_STATE_PURGE` / `REVIEW_CLEANUP_PARTIAL_FAILURE`）の 3 側を独立に評価し、すべてが `x` 相当のときだけ `x`**（`{local_branch_check}` と同型。いずれか 1 側でも未完了なら ` ` にし、未完了だった側の付記を列挙する）。照合はいずれも `pr={pr_number}` まで含める（`invalid_pr_number` だけは `pr=` を持たないので marker 名のみ）。**`pr=` の値は直後が `;` または行末であることまで含めて一致させる**（`{local_branch_check}` の `branch=` と同文。`pr=9` が `pr=90` に prefix 一致してはならない）。follow-up 側で同一 marker family の複数行が一致したときは最後の出現（recency）を採る。この選択は**follow-up 側**の判定ルールを評価する前に行う。state 削除側は presence 検査で recency を使わない。helper は API 失敗でも exit 0 のため、起票失敗の一次信号は `FOLLOW_UP_ISSUE` だけである。
 
   **follow-up 側**（**2 段で判定する**: まず `[CONTEXT] ` 行頭一致 + marker family `FOLLOW_UP_ISSUE` + `pr={pr_number}`（直後が `;` または行末）に該当する行を集め、**その中の最後の出現 1 行だけを対象に選ぶ**。次にその 1 行に対して以下のルールを上から評価し最初に一致したものを採用する。段の順序を入れ替えてはならない）:
 
   | 検出 | 側の判定 | 付記 |
   |---|---|---|
-  | `FOLLOW_UP_ISSUE=held` | 未完了 | `⚠️ 採否の出口が出ていない候補があるため follow-up を起票せず保留しました（{reason}）。候補の全文は {hold_file} に保存済みで、レビュー結果の退避・削除も保留しています。判定記録 {state_root}/.rite/state/adoption-{pr_number}-followup.json を補って /rite:cleanup {pr_number} を再実行してください（ステップ 6.0 の判定から続き、起票済みの根因は増えません）` |
+  | `FOLLOW_UP_ISSUE=held`（`hold_file=none`） | 未完了 | `⚠️ 採否ゲート自体が失敗したため follow-up を起票せず保留しました（{reason}）。候補は hold ファイルに保存されていません。直前の WARNING の原因を解消して /rite:cleanup {pr_number} を再実行してください（起票済みの根因は増えません）` |
+  | `FOLLOW_UP_ISSUE=held` | 未完了 | `⚠️ 採否の出口が出ていない候補があるため follow-up を起票せず保留しました（{reason}）。候補の全文は {hold_file} に保存済みです。{hold_file} の resume（ゲートの WARNING にも出る）に従って再開してください（起票済みの根因は増えません）` |
   | `FOLLOW_UP_ISSUE=failed; reason=preview_write` | 未完了 | `⚠️ follow-up 起票の確認用の本文を書き出せず、起票を試みていません。書き出し先を確認して /rite:cleanup {pr_number} を再実行してください` |
-  | `FOLLOW_UP_ISSUE=failed`（reason 問わず。preview_write 以外。`helper_rc` / `lookup_api` / `create_api` / `create_script_missing` / `json_undecidable` を含む） | 未完了 | `⚠️ follow-up Issue の起票に失敗しました（{reason}。`issue=` があればその番号は起票済み）。原因を解消して /rite:cleanup {pr_number} を再実行してください（起票済みの根因は増えず、残りだけを起票します）` |
+  | `FOLLOW_UP_ISSUE=failed`（reason 問わず。preview_write 以外。`helper_rc` / `lookup_api` / `create_api` / `create_script_missing` / `json_undecidable` / `head_unresolved` を含む） | 未完了 | `⚠️ follow-up Issue の起票に失敗しました（{reason}。`issue=` があればその番号は起票済み）。原因を解消して /rite:cleanup {pr_number} を再実行してください（起票済みの根因は増えず、残りだけを起票します）` |
   | `skipped; reason=no_json` | 未完了 | 同上（レビュー結果 JSON 不在） |
   | `skipped; reason=jq_missing` | 未完了 | `⚠️ jq が見つからず follow-up 起票を skip しました。jq を導入したうえで /rite:cleanup {pr_number} を再実行してください` |
   | `created` / `skipped; reason=no_findings` / `skipped; reason=already_exists` / `skipped; reason=all_issued` / `skipped; reason=already_processed` / `skipped; reason=all_resolved` / `skipped; reason=all_recorded` | x 相当 | — |
@@ -1121,10 +1124,11 @@ rationale: references/rationale.md#marker-data-delimiter
   | `FOLLOW_UP_DEFERRED=unavailable` | 未完了 | `{follow_up_deferred_note}` と同文 |
   | 該当行なし | x 相当 | — |
 
-  **state 削除側**（`REVIEW_CLEANUP_PARTIAL_FAILURE=1` を上から評価し最初の一致。各行は presence 検査。こちら側に marker が 1 本も無ければ x 相当）:
+  **state 削除側**（`PR_STATE_PURGE=held` と `REVIEW_CLEANUP_PARTIAL_FAILURE=1` を上から評価し最初の一致。各行は presence 検査。こちら側に marker が 1 本も無ければ x 相当）:
 
   | 検出 | 側の判定 | 表示 |
   |---|---|---|
+  | `PR_STATE_PURGE=held` がある | 未完了 | `⚠️ 保留中の採否があるため、state とレビュー結果を削除・退避せずに残しました（{hold_files}）。各 hold ファイルの resume に従って再開してください`（`{hold_files}` は held marker の `hold_files=` の値） |
   | `reason=invalid_pr_number`、または `reason=` が `_rm_failure` / `_archive_mkdir_failure` / `_archive_mv_failure` / `_archive_name_collision` / `_gitignore_failure` / `_helper_failed` のいずれかで終わる marker がある | 未完了 | 警告付記 |
   | `reason=review_results_undecidable; cause=jq_missing` がある | 未完了 | `⚠️ jq が見つからず全レビュー結果 JSON を無判定で archive/ へ退避しました。jq を導入してください` |
   | `reason=review_results_undecidable` がある（`cause=jq_rc_<n>`） | x 相当 | `ℹ️ 一部のレビュー結果 JSON は中身を判定できず削除せず archive/ へ退避しました (本 cycle での対応は不要)` |

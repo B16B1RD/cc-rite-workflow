@@ -53,7 +53,8 @@
 #   T-28 再検証用一時ファイルの確保失敗を明示する
 #
 # Coverage (sweep 起票済み除外):
-#   T-29 全件が sweep で issued なら all_issued で起票しない (--exclude-ids との合成を含む)
+#   T-29 全件が sweep で issued なら all_issued で起票しない (--exclude-ids との合成を含む)。出典付き 5 列の
+#        REJECT 行は出典が一致するときだけ除外する
 #   T-30 issued だけを除き recorded は転記する / 記録コメント以外・issued 以外の行では除外しない
 #   T-31 台帳を読めない (記録コメントの取得失敗 / 解析不能 / 関連 Issue 無し) ときは WARNING + marker で全件転記
 #   T-32 台帳が無い PR は従来どおり全件転記
@@ -125,13 +126,15 @@
 #   T-67 指摘と先送り欠陥を 1 件に載せる
 #   T-68 元 Issue 本文の取得失敗は FOLLOW_UP_DEFERRED=unavailable を出し、採否ゲートも本文を読めず保留する
 #   T-69 all_resolved / all_issued でも先送り欠陥があれば候補にして起票し、already_exists / json_undecidable は従来どおり。
-#        JSON が無い (no_json) と対象 commit が無いので先送り欠陥だけの候補は保留する
+#        JSON が無い (no_json) ときは PR の head を対象 commit にして列挙・判定し (記録が無ければ no_records で保留、
+#        あれば起票)、PR の head を取れない / state root の git で解決できなければ head_unresolved で失敗する
 #   T-70 preview の件数は指摘と先送り欠陥の合計
 #   T-71 トークンと Section 9 の境界が pr-review 7.4.3 と helper で一致し、7.4.3 の {deferred_token} 付与条件表（2 行。トークンは採否ゲートの verdict が file の行だけ）が変わらない
 #   T-72 cleanup SKILL.md の完了報告の配線
 #   T-82 severity-levels / review-result-schema の follow-up 規則 (先送り欠陥も候補にする・採否ゲートの出口で
 #        根因ごとに起票・出口が無ければ held で起票も退避もしない) が 1 回ずつあり、PR ごとに 1 件とする旧文を
-#        持たず、周辺の節と正本 §6.0 の規則も残る
+#        持たず、周辺の節と正本 §6.0 の規則も残る。PR ごとに 1 件へ全文転記する旧契約の文は pr-review SKILL.md・
+#        設定テンプレート・docs の CONFIGURATION.md / SPEC.md にも無い
 #
 # Coverage (判定済み記録):
 #   T-77 判定後に purge が JSON を片付けた PR の再実行は already_processed で skip し no_json を出さない
@@ -146,6 +149,8 @@
 #        旧形式の先送り行も候補にし、記録が無ければ保留する (終端にしない)
 #   T-84 判定記録なし / ERROR / DIAGNOSE (preview 中も) は起票 helper を呼ばず held。判定済み記録を書かず、
 #        hold ファイルに候補の全文・出典・対象 commit・再開位置が残る
+#   T-84b ゲートが 0 / 3 以外で終わる (gate_failed_rc<n>) / ゲートの出力を読めない (gate_output_invalid) ときは
+#        hold_file=none の held で、保存されていないことと失敗理由を示し、起票も判定済み記録もしない
 #   T-85 根因ごとに 1 件起票し再実行で増えない。2 根因のうち 1 件が起票済みなら残り 1 件だけ。根因 key は ids の
 #        整列で、ids が減った再実行も重なる起票済みの根因は増やさない。本文に契約の引用・根拠・受入条件。
 #        一部の起票に失敗したら failed で、再実行は残りだけ
@@ -248,6 +253,16 @@ with_head() {
 }
 put_json() { with_head "$3" > "$1/.rite/review-results/$2"; }
 
+# $1=state_root。state root を git リポジトリにして commit を 1 つ作り、その commit id を出す。commit_sha を持つ
+# レビュー結果 JSON が無いとき、helper は PR の head をこの git で解決できる場合だけ対象 commit にする
+git_head_commit() {
+  local tree
+  git -C "$1" init -q >/dev/null 2>&1 || return 1
+  tree=$(git -C "$1" hash-object -w -t tree /dev/null) || return 1
+  git -C "$1" -c user.name=rite-test -c user.email=rite-test@example.invalid -c commit.gpgsign=false \
+    commit-tree "$tree" -m fixture
+}
+
 # gh shim: list / label create / issue comment
 cat > "$GH_BIN" <<'GH'
 #!/bin/bash
@@ -286,6 +301,15 @@ case "$cmd" in
     ;;
   # pr-cycle-cleanup.sh の orphan review 回収が見る PR の状態
   "pr view 9 -R acme/demo --json state --jq .state") echo MERGED; exit 0 ;;
+  # commit_sha を持つレビュー結果 JSON が無いときに helper が対象 commit にする PR の head。GH_HEAD_OID が無ければ失敗する
+  "pr view 9 -R acme/demo --json headRefOid --jq .headRefOid")
+    if [ -z "${GH_HEAD_OID:-}" ]; then
+      echo "gh: simulated pr view failure" >&2
+      exit 1
+    fi
+    echo "$GH_HEAD_OID"
+    exit 0
+    ;;
   # 記録 helper が PATCH 先と決めた 1 件の GET
   "api repos/acme/demo/issues/comments/"*)
     jq --argjson id "${cmd##*/}" '[.[][] | select(.id == $id)][0]' "${GH_API_JSON:-/dev/null}"
@@ -364,7 +388,7 @@ reset_stubs() {
   printf '%s\n' '[[]]' > "$GH_API_JSON"
   unset CREATE_RC
   unset CREATE_REG CREATE_SEQ
-  unset GH_ISSUE_BODY GH_ISSUE_BODY_RC GH_TRACKER_STATE
+  unset GH_ISSUE_BODY GH_ISSUE_BODY_RC GH_TRACKER_STATE GH_HEAD_OID
   unset RITE_TEST_JQ_FAIL
   ADOPT_MODE=auto
   : > "$STUB_DIR/jq-fail.log"
@@ -1243,6 +1267,21 @@ for t29_disp in recorded rejected; do
   jq -n --argjson c "$(comment_obj "$(record_body "| F-01 | plugins/rite/skills/cleanup/SKILL.md:12 | $t29_disp | 旧形式 |")")" '[[$c]]' > "$GH_API_JSON"
   run_target "$r"
   assert_not_grep "T-29 旧形式の $t29_disp 行は終端にしない" "$ERR" 'reason=all_issued'
+done
+# sweep が書く出典付きの 5 列の REJECT 行は、出典が finding の出典 JSON と一致するときだけ除外する
+for t29_src in 9-20260101120000.json 9-20251231120000.json; do
+  reset_stubs
+  r=$(new_root "t29-reject5-$t29_src")
+  put_json "$r" "9-20260101120000.json" "$FINDING_JSON"
+  jq -n --argjson c "$(comment_obj "$(record_body "| F-01 | plugins/rite/skills/cleanup/SKILL.md:12 | REJECT | 処分済み | $t29_src |")")" '[[$c]]' > "$GH_API_JSON"
+  run_target "$r"
+  if [ "$t29_src" = 9-20260101120000.json ]; then
+    assert "T-29 出典が一致する 5 列の REJECT 行は候補に戻さない" "skipped:0" \
+      "$(grep -q 'FOLLOW_UP_ISSUE=skipped; reason=all_issued; pr=9' "$ERR" && echo skipped):$(create_count)"
+  else
+    assert_grep "T-29 出典が一致しない 5 列の REJECT 行では除外しない" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; existing=0; recorded=0; pr=9'
+    assert_grep "T-29 出典が一致しない 5 列の REJECT 行の指摘は転記する" "$STUB_DIR/body.md" '実測なしの指摘本文'
+  fi
 done
 
 reset_stubs
@@ -2177,13 +2216,60 @@ reset_stubs
 r=$(new_root t69-nojson)
 deferred_body '' > "$STUB_DIR/issue-body.md"
 export GH_ISSUE_BODY="$STUB_DIR/issue-body.md"
-run_target "$r"
-assert "T-69 no_json + 先送り欠陥は対象 commit が無いので起票しない" "0" "$(create_count)"
-assert_grep "T-69 no_json + 先送り欠陥は保留" "$ERR" 'FOLLOW_UP_ISSUE=held; reason=adoption_error;'
-assert_grep "T-69 保留した候補に先送り行" "$r/.rite/state/adoption-hold-9-followup.json" 'D-04: second defect'
-assert_grep "T-69 対象 commit が無い WARNING" "$ERR" 'commit_sha を持つレビュー結果 JSON がありません'
+GH_HEAD_OID=$(git_head_commit "$r") || fail "T-69 fixture の commit を作れない"
+export GH_HEAD_OID
+# JSON が無ければ PR の head を対象 commit にして候補を列挙する
+PATH="$TMP_ROOT/bin:$PATH" bash "$TARGET" --state-root "$r" --pr 9 --owner acme --repo demo --source-issue 42 \
+  --list-candidates "$TMP_ROOT/t69-cands.json" >"$OUT" 2>"$ERR"
+assert "T-69 no_json + 先送り欠陥は PR の head で候補を列挙する" "$GH_HEAD_OID|D-01 D-04" \
+  "$(jq -r '"\(.head)|\([.candidates[].id] | join(" "))"' "$TMP_ROOT/t69-cands.json")"
+assert_grep "T-69 列挙 marker の head は PR の head" "$ERR" "^\[CONTEXT\] FOLLOW_UP_CANDIDATES=listed; count=2; deferred=2; head=${GH_HEAD_OID}; "
+assert_grep "T-69 PR の head を対象 commit にしたことを出す" "$ERR" "PR #9 の head ${GH_HEAD_OID} を対象 commit にします"
 assert_grep "T-69 no_json の WARNING" "$ERR" 'Decision Log で先送りした欠陥だけを転記します'
+# 記録が無ければ no_records で保留し、ゲートへ渡した対象 commit は列挙と同じ PR の head
+ADOPT_MODE=manual
+run_target "$r"
+assert_grep "T-69 no_json + 先送り欠陥は記録が無ければ no_records で保留" "$ERR" \
+  "^\[CONTEXT\] FOLLOW_UP_ISSUE=held; reason=no_records; hold_file=$r/.rite/state/adoption-hold-9-followup.json; pr=9$"
+assert "T-69 保留した対象 commit は列挙と同じ PR の head" "$GH_HEAD_OID" "$(jq -r '.head' "$r/.rite/state/adoption-hold-9-followup.json")"
+assert_grep "T-69 保留した候補に先送り行" "$r/.rite/state/adoption-hold-9-followup.json" 'D-04: second defect'
+assert "T-69 保留中は起票しない" "0" "$(create_count)"
+assert "T-69 保留中は判定済み記録を書かない" "no" "$([ -e "$r/.rite/state/follow-up-judged-9.txt" ] && echo yes || echo no)"
 assert_not_grep "T-69 no_json に倒さない" "$ERR" 'reason=no_json'
+# PR の head を head に持つ判定記録を書けば判定に進み、起票する
+jq -n --arg h "$GH_HEAD_OID" --arg c "$PR_CONTRACT_LINE" '{adoption: {head: $h, records: [
+  {ids: ["D-01", "D-04"], V: true, C: false, T: false, contract: {ref: "pr", text: $c},
+   evidence: "テストの根拠", origin: "pre_existing", present: true, tracker: null, prior: null,
+   reason: "", proposition: null, acceptance: "テストの受入条件"}]}}' > "$r/.rite/state/adoption-9-followup.json"
+run_target "$r"
+assert_grep "T-69 記録を書けば起票する" "$ERR" '^\[CONTEXT\] FOLLOW_UP_ISSUE=created; issue=99; existing=0; recorded=0; pr=9$'
+assert "T-69 起票は 1 回" "1" "$(create_count)"
+assert_grep "T-69 本文の対象 commit は PR の head" "$STUB_DIR/body.md" "^- 対象 commit: \`${GH_HEAD_OID}\`\$"
+assert "T-69 起票後は判定済み記録を書く" "pr=9" "$(cat "$r/.rite/state/follow-up-judged-9.txt" 2>/dev/null)"
+# PR の head を取れない / state root の git で解決できないときは、保留ではなく失敗で止める
+for t69_case in gh_failed unresolvable; do
+  reset_stubs
+  r=$(new_root "t69-$t69_case")
+  deferred_body '' > "$STUB_DIR/issue-body.md"
+  export GH_ISSUE_BODY="$STUB_DIR/issue-body.md"
+  case "$t69_case" in
+    gh_failed) t69_cause='PR の head を取得できません' ;;
+    unresolvable) export GH_HEAD_OID="fedcba9876543210fedcba9876543210fedcba98"; t69_cause='git で解決できません' ;;
+  esac
+  run_target "$r"
+  assert_grep "T-69 $t69_case: head_unresolved で失敗" "$ERR" '^\[CONTEXT\] FOLLOW_UP_ISSUE=failed; reason=head_unresolved; pr=9$'
+  assert "T-69 $t69_case: stdout は failed" "[cleanup-follow-up-issue] result=failed; reason=head_unresolved; pr=9" "$(cat "$OUT")"
+  assert_grep "T-69 $t69_case: 原因を WARNING に出す" "$ERR" "$t69_cause"
+  assert "T-69 $t69_case: 起票しない" "0" "$(create_count)"
+  assert "T-69 $t69_case: 判定済み記録を書かない" "no" "$([ -e "$r/.rite/state/follow-up-judged-9.txt" ] && echo yes || echo no)"
+  assert "T-69 $t69_case: 保留しない (hold ファイルを作らない)" "no" "$([ -e "$r/.rite/state/adoption-hold-9-followup.json" ] && echo yes || echo no)"
+  assert_not_grep "T-69 $t69_case: held に倒さない" "$ERR" 'FOLLOW_UP_ISSUE=held'
+  rm -f "$TMP_ROOT/t69-fail-cands.json"
+  PATH="$TMP_ROOT/bin:$PATH" bash "$TARGET" --state-root "$r" --pr 9 --owner acme --repo demo --source-issue 42 \
+    --list-candidates "$TMP_ROOT/t69-fail-cands.json" >"$OUT" 2>"$ERR"
+  assert_grep "T-69 $t69_case: 列挙も head_unresolved で失敗" "$ERR" '^\[CONTEXT\] FOLLOW_UP_CANDIDATES=failed; reason=head_unresolved; pr=9$'
+  assert "T-69 $t69_case: 列挙は一覧を書かない" "no" "$([ -e "$TMP_ROOT/t69-fail-cands.json" ] && echo yes || echo no)"
+done
 reset_stubs
 r=$(new_root t69-resolved)
 put_json "$r" "9-20260101120000.json" "$TWO_FINDING_JSON"
@@ -2476,9 +2562,10 @@ r=$(new_root t79-deferred)
 mkdir -p "$r/.rite/state"; printf 'pr=9\n' > "$r/$JUDGED_RECORD_REL"
 deferred_body '' > "$STUB_DIR/issue-body.md"
 export GH_ISSUE_BODY="$STUB_DIR/issue-body.md"
+GH_HEAD_OID=$(git_head_commit "$r") || fail "T-79 fixture の commit を作れない"
+export GH_HEAD_OID
 run_target "$r"
-assert "T-79 先送り欠陥があっても JSON が無ければ対象 commit が無く起票しない" "0" "$(create_count)"
-assert_grep "T-79 先送り欠陥ありは判定を保留する" "$ERR" 'FOLLOW_UP_ISSUE=held;'
+assert_grep "T-79 先送り欠陥は JSON が無くても PR の head で判定して起票する" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; existing=0; recorded=0; pr=9'
 assert_not_grep "T-79 先送り欠陥ありは already_processed にしない" "$ERR" 'already_processed'
 reset_stubs
 r=$(new_root t79-archive)
@@ -2551,10 +2638,19 @@ for _t82_md in "$PLUGIN_ROOT/references/severity-levels.md" "$PLUGIN_ROOT/refere
   assert "T-82 $_t82_name: 候補の規則文が 1 回" "1" "$(_t82_count "$_t82_rule" < "$_t82_md")"
   assert "T-82 $_t82_name: 起票は採否ゲートの出口で根因ごとに 1 件" "1" "$(_t82_count "$_t82_gate" < "$_t82_md")"
   assert "T-82 $_t82_name: 出口が出ていなければ held で起票も退避もしない" "1" "$(_t82_count "$_t82_held" < "$_t82_md")"
-  assert "T-82 $_t82_name: follow-up を PR ごとに 1 件とする旧文が無い" "0" "$(_t82_count 'follow-up Issue 1 件へ転記' < "$_t82_md")"
-  assert "T-82 $_t82_name: 先送り欠陥だけで起票すると読める旧文が無い" "0" "$(_t82_count '先送りした欠陥があれば follow-up Issue を起票し' < "$_t82_md")"
   assert "T-82 $_t82_name: 却下台帳を読めないときの節が残る" "1" \
     "$(_t82_count '却下台帳か最新のレビュー結果 JSON を読めなければ' < "$_t82_md")"
+done
+# follow-up を PR ごとに 1 件とする旧契約 (先送り欠陥だけで起票すると読める文を含む) を、利用者向けの文書・
+# 設定テンプレートにも残さない
+_t82_repo="$(cd "$PLUGIN_ROOT/../.." && pwd)"
+for _t82_name in plugins/rite/references/severity-levels.md plugins/rite/references/review-result-schema.md \
+    plugins/rite/skills/pr-review/SKILL.md plugins/rite/templates/config/rite-config.yml \
+    docs/CONFIGURATION.md docs/SPEC.md; do
+  for _t82_old in 'follow-up Issue 1 件へ転記' 'follow-up Issue 1 件へ全文転記' 'one follow-up Issue' \
+      '先送りした欠陥があれば follow-up Issue を起票し'; do
+    assert "T-82 ${_t82_name}: 旧契約「${_t82_old}」が無い" "0" "$(_t82_count "$_t82_old" < "$_t82_repo/$_t82_name")"
+  done
 done
 assert "T-82 severity-levels.md: 判定不能を転記側へ倒す節が残る" "1" \
   "$(_t82_count '判定不能なものは転記側へ倒す。' < "$PLUGIN_ROOT/references/severity-levels.md")"
@@ -2657,6 +2753,8 @@ for t84_case in no_records error diagnose preview; do
   assert "T-84 $t84_case stdout は held" "[cleanup-follow-up-issue] result=held; reason=${t84_reason}; hold_file=$r/$HOLD_REL; pr=9" "$(cat "$OUT")"
   assert "T-84 $t84_case 起票 helper を呼ばない" "0" "$(create_count)"
   assert "T-84 $t84_case 判定済み記録を書かない" "no" "$([ -e "$r/$JUDGED_RECORD_REL" ] && echo yes || echo no)"
+  assert_grep "T-84 $t84_case 再開は hold ファイルの resume に従うと案内する" "$ERR" "hold ファイル \(hold_file=$r/$HOLD_REL\) の resume"
+  assert_not_grep "T-84 $t84_case 判定記録を補う固定の案内を出さない" "$ERR" 'を補って /rite:cleanup 9 を再実行してください'
   assert_not_grep "T-84 $t84_case 既存 follow-up の検索もしない (ゲートが先)" "$GH_LOG" 'labels=follow-up'
   assert_not_grep "T-84 $t84_case label も作らない" "$GH_LOG" 'label create'
   assert_not_grep "T-84 $t84_case 元 Issue へコメントしない" "$GH_LOG" 'issue comment'
@@ -2673,6 +2771,47 @@ assert "T-84 保留した指摘の全文" "残存する指摘の本文|残存す
 assert "T-84 保留した先送り行の全文と出典" "- 2026-01-01 D-04: second defect / Reason: r4 / Impact: i4|Issue #42 Decision Log (Section 9)" \
   "$(jq -r '.candidates[] | select(.id == "D-04") | "\(.text)|\(.source)"' "$r/$HOLD_REL")"
 assert "T-84 diagnose は未処分の根因だけを保留" "$C_F01 D-01" "$(jq -r '.held_ids | join(" ")' "$TMP_ROOT/root-t84-diagnose/$HOLD_REL")"
+
+echo "--- T-84b: ゲート自体が失敗した / ゲートの出力を読めないときは hold_file=none で保留する ---"
+reset_stubs
+ADOPT_MODE=manual
+adopt_root t84b-gate-failed
+# hold ファイルの一時ファイルの位置をディレクトリにして、ゲートの hold 保存を失敗させる
+mkdir -p "$r/$HOLD_REL.tmp"
+run_target "$r"
+assert "T-84b gate_failed exit 0" "0" "$RC"
+assert_grep "T-84b ゲートが rc=1 で終われば gate_failed_rc1" "$ERR" '^\[CONTEXT\] FOLLOW_UP_ISSUE=held; reason=gate_failed_rc1; hold_file=none; pr=9$'
+assert "T-84b gate_failed stdout は held" "[cleanup-follow-up-issue] result=held; reason=gate_failed_rc1; hold_file=none; pr=9" "$(cat "$OUT")"
+assert_grep "T-84b gate_failed は hold ファイルが保存されていないことを示す" "$ERR" 'hold ファイルは保存されていません'
+assert_grep "T-84b gate_failed はゲートの失敗理由を示す" "$ERR" '採否ゲートが rc=1 で失敗しました'
+assert "T-84b gate_failed 起票しない" "0" "$(create_count)"
+assert "T-84b gate_failed 判定済み記録を書かない" "no" "$([ -e "$r/$JUDGED_RECORD_REL" ] && echo yes || echo no)"
+assert_not_grep "T-84b gate_failed 既存 follow-up を検索しない" "$GH_LOG" 'labels=follow-up'
+# ゲートを差し替えた配置 (helper の写しの隣に偽のゲートを置く) で、読めない出力を固定する
+T84B_FAKE="$TMP_ROOT/fake-plugin/hooks/scripts"
+mkdir -p "$T84B_FAKE"
+cp "$TARGET" "$T84B_FAKE/cleanup-follow-up-issue.sh"
+ln -s "$(cd "$SCRIPT_DIR/../scripts/lib" && pwd)" "$T84B_FAKE/lib"
+ln -s "$(cd "$SCRIPT_DIR/.." && pwd)/control-char-neutralize.sh" "$T84B_FAKE/../control-char-neutralize.sh"
+cat > "$T84B_FAKE/review-adoption-gate.sh" <<'GATE'
+#!/bin/bash
+printf '%s\n' "$FAKE_GATE_OUT"
+exit "$FAKE_GATE_RC"
+GATE
+for t84b_case in '0:{}' '3:not-json{'; do
+  reset_stubs
+  r=$(new_root "t84b-invalid-${t84b_case%%:*}")
+  put_json "$r" "9-20260101120000.json" "$FINDING_JSON"
+  FAKE_GATE_RC="${t84b_case%%:*}" FAKE_GATE_OUT="${t84b_case#*:}" PATH="$TMP_ROOT/bin:$PATH" \
+    bash "$T84B_FAKE/cleanup-follow-up-issue.sh" --state-root "$r" --pr 9 --owner acme --repo demo --base develop \
+    --create-script "$CREATE_STUB" >"$OUT" 2>"$ERR"
+  assert_grep "T-84b ゲート rc=${t84b_case%%:*} の読めない出力は gate_output_invalid" "$ERR" \
+    '^\[CONTEXT\] FOLLOW_UP_ISSUE=held; reason=gate_output_invalid; hold_file=none; pr=9$'
+  assert_grep "T-84b gate_output_invalid は出力を読めず hold ファイルを確認できないことを示す (rc=${t84b_case%%:*})" "$ERR" \
+    '採否ゲートの出力を読めません。hold ファイルが保存されたかを確認できません'
+  assert "T-84b gate_output_invalid 起票しない (rc=${t84b_case%%:*})" "0" "$(create_count)"
+  assert "T-84b gate_output_invalid 判定済み記録を書かない (rc=${t84b_case%%:*})" "no" "$([ -e "$r/$JUDGED_RECORD_REL" ] && echo yes || echo no)"
+done
 
 echo "--- T-85: 根因ごとに 1 件起票し、再実行で増えない (AC-1 / AC-4) ---"
 reset_stubs
@@ -2861,7 +3000,8 @@ assert "T-90 判定記録の節が 6.0.V と 6.0.C の間にある" "1" \
 assert "T-90 列挙は --list-candidates で呼ぶ" "1" "$(printf '%s\n' "$t90_section" | grep -c -- '--list-candidates "${TMPDIR:-/tmp}/rite-follow-up-candidates-{pr_number}.json"')"
 assert "T-90 起票の呼び出しは --base と --adoption を渡す" "2" "$(printf '%s\n' "$t90_section" | grep -cE -- '--base "origin/\{base_branch\}"|--adoption "\$_state_root/\.rite/state/adoption-\{pr_number\}-followup\.json"')"
 assert "T-90 列挙と起票に同じ --exclude-ids を渡す" "2" "$(printf '%s\n' "$t90_section" | grep -cF -- '--exclude-ids "{resolved_ids_csv}"')"
-assert "T-90 held では state purge を実行しない" "1" "$(printf '%s\n' "$t90_section" | grep -cF '`FOLLOW_UP_ISSUE=held` のときは下の state 削除（`cleanup-pr-state-purge.sh`）とステップ 7 を実行しない')"
+assert "T-90 保留は state 削除の held で判定し、ステップ 7 を実行しない" "1" "$(printf '%s\n' "$t90_section" | grep -cF '`[CONTEXT] PR_STATE_PURGE=held` を出す。このときはステップ 7 を実行せず')"
+assert "T-90 hold ファイルの無い保留では state 削除もステップ 7 も実行しない" "1" "$(printf '%s\n' "$t90_section" | grep -cF 'hold_file=none` を出したとき（ゲート自体が失敗し hold ファイルが無い）で、このときは state 削除もステップ 7 も実行しない')"
 assert "T-90 完了報告の held 行は未完了" "1" "$(grep -c '^  | `FOLLOW_UP_ISSUE=held` | 未完了 |' "$CLEANUP_MD")"
 assert "T-90 all_recorded は x 相当" "1" "$(grep -c '^  | `created` / .*`skipped; reason=all_recorded`.* | x 相当 | — |$' "$CLEANUP_MD")"
 

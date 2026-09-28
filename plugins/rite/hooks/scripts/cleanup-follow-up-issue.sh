@@ -22,7 +22,8 @@
 # 候補の id: 指摘は `<出典 JSON の basename>#<finding id>` (id の [A-Za-z0-9._-] 以外は `_`)、先送り行は
 #   行の `D-NN` (無ければ `deferred-<出現順>`)。同じ id が複数あれば 2 件目から `~2`, `~3` を付ける。
 # 対象 commit (head): 直下と archive/ の `<pr>-*.json` を basename の降順に見て、最初に読めた文字列の
-#   commit_sha。無ければ空の commit_sha をゲートへ渡し、ゲートが全候補を保留する。
+#   commit_sha。無ければマージ済み PR の head (headRefOid) を <state-root> の git で解決できたときに使い、
+#   ゲートへはその head を commit_sha に持つ review-result を渡す。どちらも決まらなければ head_unresolved で止める。
 #
 # Usage:
 #   cleanup-follow-up-issue.sh --state-root <dir> --pr <n> --owner <owner> --repo <repo> \
@@ -37,7 +38,8 @@
 #   --repo               repo name。必須
 #   --list-candidates    候補を列挙してこのパスへ書き、起票せずに終える。書く JSON は
 #                        {"candidates": [{"id", "kind": "finding"|"deferred", "source", "finding"|"text"}],
-#                         "head", "review_result", "adoption"}。0 件で終えるときは candidates が空で reason を持つ。
+#                         "head", "review_result", "adoption"}。review_result は head が PR の head のとき空。
+#                        0 件で終えるときは candidates が空で reason を持つ。
 #                        判定済み記録は書かない。同じ --source-issue / --exclude-ids の起票実行と同じ候補になる
 #   --base               PR の base ref。ゲートの --base (origin=pr の差分位置の照合) に渡す。起票実行では必須
 #   --adoption           判定記録 ({"adoption": {"head", "records"}})。省略時はゲートの既定
@@ -84,6 +86,7 @@
 #   [CONTEXT] FOLLOW_UP_CANDIDATES=listed; count=<n>; deferred=<k>; head=<sha>; file=<path>; pr=<n>
 #     (--list-candidates のとき。0 件で終えたときは count=0 の後に reason=<下記 skipped / failed の reason>)
 #   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=list_write; pr=<n>   (一覧を --list-candidates のパスへ書けない)
+#   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=head_unresolved; pr=<n>   (対象 commit を決められない。一覧を書かない)
 #   [CONTEXT] FOLLOW_UP_ISSUE=held; reason=<r>; hold_file=<path>; pr=<n>
 #     採否の出口が出ていない候補がある (判定記録なし / ゲートの ERROR / 未処分の出口)。何も起票せず、
 #     判定済み記録も書かない。declined でも skipped でもない。reason はゲートの reason (no_records /
@@ -112,7 +115,8 @@
 #   書けなくても結果は変えず WARNING を出す。影響は再実行の報告が no_json に戻ることだけ。
 #   [CONTEXT] FOLLOW_UP_DEFERRED=unavailable; reason=issue_body_api; pr=<n>
 #     元 Issue の本文を取得できず先送り欠陥を読めなかった (ゲートが本文を読み直し、読めなければ保留する)
-#   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=lookup_api|create_api|create_script_missing|json_undecidable|preview_write; pr=<n>
+#   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=lookup_api|create_api|create_script_missing|json_undecidable|head_unresolved|preview_write; pr=<n>
+#     head_unresolved: commit_sha を持つレビュー結果 JSON が無く、PR の head も取得できないか <state-root> の git で解決できない
 #   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=create_api; issue=<起票できた番号の CSV>; pr=<n>
 #     根因の一部だけ起票できた。再実行すると起票済みの根因は増やさず残りだけを起票する
 #   [CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=<r>; count=<n|unknown>; pr=<n>
@@ -688,6 +692,33 @@ while IFS= read -r f; do
   fi
 done < <(rite_review_results_sources "$results_dir" "$PR_NUMBER" '.json' | awk '{ l[NR] = $0 } END { for (i = NR; i > 0; i--) print l[i] }')
 
+# commit_sha を持つ JSON が無い (orphan 回収が指摘 0 件の JSON を消した後など) ときは、マージ済み PR の head を
+# 対象 commit にする。採否判定 helper はこの commit を git で読むので、ブランチ削除後も <state-root> の git で
+# 解決できることを確かめる。決まらない head で保留すると判定記録をどう書いても解けないので、失敗で止める。
+if [ -z "$head_sha" ]; then
+  rite_tempfile_new head_err "fu-head" || exit 1
+  head_cause=""
+  if ! pr_head=$(gh pr view "$PR_NUMBER" -R "${OWNER}/${REPO}" --json headRefOid --jq .headRefOid 2>"$head_err"); then
+    head_cause="PR の head を取得できません"
+  elif ! [[ "$pr_head" =~ ^[0-9a-f]{40}([0-9a-f]{24})?$ ]]; then
+    head_cause="PR の head が commit id の形ではありません ('$(printf '%s' "$pr_head" | neutralize_ctrl)')"
+  elif ! git -C "$STATE_ROOT" cat-file -e "${pr_head}^{commit}" 2>"$head_err"; then
+    head_cause="PR の head ${pr_head} を ${STATE_ROOT} の git で解決できません"
+  fi
+  if [ -n "$head_cause" ]; then
+    echo "WARNING: commit_sha を持つレビュー結果 JSON が無く、${head_cause}。対象 commit を決められないため follow-up を判定しません (PR #${PR_NUMBER})" >&2
+    [ -s "$head_err" ] && head -3 "$head_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    if [ -n "$LIST_OUT" ]; then
+      echo "[CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=head_unresolved; pr=${PR_NUMBER}" >&2
+    else
+      emit_failed head_unresolved
+    fi
+    exit 0
+  fi
+  head_sha="$pr_head"
+  echo "INFO: commit_sha を持つレビュー結果 JSON が無いため、PR #${PR_NUMBER} の head ${head_sha} を対象 commit にします" >&2
+fi
+
 adoption_path="${ADOPTION:-$STATE_ROOT/.rite/state/adoption-${PR_NUMBER}-followup.json}"
 if [ -n "$LIST_OUT" ]; then
   if ! jq --arg head "$head_sha" --arg rr "$review_result" --arg adoption "$adoption_path" \
@@ -696,7 +727,6 @@ if [ -n "$LIST_OUT" ]; then
     echo "[CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=list_write; pr=${PR_NUMBER}" >&2
     exit 0
   fi
-  [ -n "$head_sha" ] || echo "WARNING: commit_sha を持つレビュー結果 JSON がありません。判定記録の head を決められないため、起票実行は全候補を保留します (PR #${PR_NUMBER})" >&2
   echo "[CONTEXT] FOLLOW_UP_CANDIDATES=listed; count=$(jq '.candidates | length' "$cands_file"); deferred=$(jq '[.candidates[] | select(.kind == "deferred")] | length' "$cands_file"); head=${head_sha}; file=${LIST_OUT}; pr=${PR_NUMBER}" >&2
   exit 0
 fi
@@ -704,16 +734,23 @@ fi
 # 採否ゲート: 書く直前に出口を読む。出口が出ていない候補が 1 件でもあれば何も書かずに保留する。
 # 保留は declined でも skipped でもなく、判定済み記録も書かない (再実行で保留した判定から続ける)。
 emit_held() {
-  echo "WARNING: 採否の出口が出ていない候補があるため follow-up を起票せず保留しました (PR #${PR_NUMBER})。判定記録 ${adoption_path} を補って /rite:cleanup ${PR_NUMBER} を再実行してください" >&2
+  if [ "$2" = none ]; then
+    case "$1" in
+      gate_output_invalid) held_cause="採否ゲートの出力を読めません。hold ファイルが保存されたかを確認できません" ;;
+      *) held_cause="採否ゲートが rc=${1#gate_failed_rc} で失敗しました (上に出たゲートの ERROR を参照)。hold ファイルは保存されていません" ;;
+    esac
+    echo "WARNING: ${held_cause}。follow-up を起票せず保留しました (PR #${PR_NUMBER})。ゲートの失敗の原因を解消してから /rite:cleanup ${PR_NUMBER} を再実行してください" >&2
+  else
+    echo "WARNING: 採否の出口が出ていない候補があるため follow-up を起票せず保留しました (PR #${PR_NUMBER})。hold ファイル (hold_file=$2) の resume (ゲートの WARNING にも出る) に従って再開してください" >&2
+  fi
   echo "[CONTEXT] FOLLOW_UP_ISSUE=held; reason=$1; hold_file=$2; pr=${PR_NUMBER}" >&2
   echo "[cleanup-follow-up-issue] result=held; reason=$1; hold_file=$2; pr=${PR_NUMBER}"
   exit 0
 }
-if [ -z "$head_sha" ]; then
-  # 空の commit_sha を渡すと、ゲートは判定記録の head と一致しないものとして全候補を保留し hold ファイルを残す
-  echo "WARNING: commit_sha を持つレビュー結果 JSON がありません。判定記録の head を照合できないため全候補を保留します (PR #${PR_NUMBER})" >&2
-  rite_tempfile_new review_result "fu-no-head" || exit 1
-  printf '{"commit_sha": ""}\n' > "$review_result" || exit 1
+if [ -z "$review_result" ]; then
+  # 対象 commit が PR の head のときは、それを commit_sha に持つ review-result をゲートへ渡す
+  rite_tempfile_new review_result "fu-pr-head" || exit 1
+  jq -n --arg h "$head_sha" '{commit_sha: $h}' > "$review_result" || exit 1
 fi
 gate_args=(--pr "$PR_NUMBER" --kind followup --state-root "$STATE_ROOT" --candidates "$cands_file"
   --review-result "$review_result" --base "$BASE_REF" --owner-repo "${OWNER}/${REPO}" --repo-root "$STATE_ROOT"

@@ -280,7 +280,7 @@ args: "{pr_number}"
 | `[review:fix-needed:N]` | ステップ 3 (fix invoke) へ |
 | `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=ac_unverified; ac={ids}` | 受入条件未検証の停止。再試行せず、下記の停止通知を出して終了する（成功 sentinel も新しい sentinel も出さない） |
 | `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=purpose_unaligned` | 5.S 後の目的逸脱。再試行せず終了する（成功 sentinel も新しい sentinel も出さない） |
-| `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=adoption_held; kind={kind}; hold_file={path}` | 採否の出口待ちの保留。再試行せず、`hold_file` と再開方法（判定記録を直して `/rite:iterate {pr_number}` を再実行）を示して終了する（成功 sentinel も新しい sentinel も出さない） |
+| `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=adoption_held; kind={kind}; hold_file={path}` | 採否の出口待ちの保留。再試行せず、`hold_file` と、hold ファイルの resume（ゲートの WARNING にも出る）に従って再開することを示して終了する（成功 sentinel も新しい sentinel も出さない） |
 | `[review:error]` | 可逆な再試行を推奨として 1 回だけ自動実行し、work memory の既存決定事項へ理由を記録する。再失敗なら停止 |
 | sentinel 不在 | 可逆な再試行を推奨として 1 回だけ自動実行し、期待 sentinel と直近出力を既存 work memory へ記録する。再度不在なら停止 |
 
@@ -375,7 +375,7 @@ args: "--nb-sweep {pr_number}"
 | Sentinel | アクション |
 |---------|-----------|
 | `[fix:sweep-done]` | PR 内推奨の修正。ステップ 1 に戻らない |
-| `[fix:error]` / その他 / sentinel 不在 | `[iterate:nb-sweep-error]` で停止。完了通知へ進まない。手順 2 の起票後に台帳 persist（[nb-sweep.md 手順 3](../fix/references/nb-sweep.md)）で止まったときは、その戻り方で entries を直してから `/rite:iterate {pr_number}` を再実行する。同じ会話でも別の会話でも同じ経路で、ステップ 0.7 が再レビューを回さずに 5.S へ戻し、fix は起票をやり直さず手順 3 から続ける。`reason=nb_sweep_adoption_held` は起票も台帳も done も書かずに止まっている。判定記録（`.rite/state/adoption-{pr_number}-sweep.json`）を補ってから `/rite:iterate {pr_number}` を再実行すると、同じ経路で fix は手順 2 の判定記録から続く |
+| `[fix:error]` / その他 / sentinel 不在 | `[iterate:nb-sweep-error]` で停止。完了通知へ進まない。手順 2 の起票後に台帳 persist（[nb-sweep.md 手順 3](../fix/references/nb-sweep.md)）で止まったときは、その戻り方で entries を直してから `/rite:iterate {pr_number}` を再実行する。同じ会話でも別の会話でも同じ経路で、ステップ 0.7 が再レビューを回さずに 5.S へ戻し、fix は起票をやり直さず手順 3 から続ける。`reason=nb_sweep_adoption_held` は起票も台帳も done も書かずに止まっている。hold ファイルの resume（ゲートの WARNING にも出る）に従って再開する。HEAD が変わらない再開では、同じ経路で fix は手順 2 の判定記録から続く |
 
 fix が emit した `[CONTEXT] NB_SWEEP_RESULT=done; issued=K; recorded=M` を読み、`ITERATE_NB_SWEEP=done` を同カウントで emit する。記録した basename が最新 JSON と違う、またはファイルが無いときは、collect と同じ選び方（`LC_ALL=C` sort の末尾）で 1 行目を `done <basename>` にする。既存の 2 行目が SHA なら残し、新しい SHA は足さない。basename が取れないときは範囲なしの行を残さない:
 

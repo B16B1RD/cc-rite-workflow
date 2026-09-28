@@ -2623,7 +2623,7 @@ rationale: references/design-rationale.md#6.1d-always-eval
    |-----------|--------|------------|---------|
    | {reviewer_type} | {severity} | {file}:{line} | {demotion_label} |
 
-   > 各指摘の詳細 (description / suggestion) は、**cycle 中は**このレビューを実行した環境の `<main checkout の repo root>/.rite/review-results/{pr_number}-*.json` の `non_blocking_findings[]` にあります (session worktree で実行した場合も worktree 側ではなく main checkout 側。`state-path-resolve.sh` の解決先)。PR には含まれず、checkout でも取得できません。マージ時の残存分は `/rite:cleanup` が follow-up Issue 1 件へ全文転記し、同 JSON を `.rite/review-results/archive/` へ退避します。**`.gitignore` が `.rite/review-results/` を除外していることを確認してください** (`/rite:setup` が追加します。未除外だと退避した全文が `git add -A` で公開リポジトリへ入ります)。
+   > 各指摘の詳細 (description / suggestion) は、**cycle 中は**このレビューを実行した環境の `<main checkout の repo root>/.rite/review-results/{pr_number}-*.json` の `non_blocking_findings[]` にあります (session worktree で実行した場合も worktree 側ではなく main checkout 側。`state-path-resolve.sh` の解決先)。PR には含まれず、checkout でも取得できません。マージ時の残存分は `/rite:cleanup` が採否ゲートの出口が `file` の根因ごとに follow-up Issue を起票して全文を転記し、同 JSON を `.rite/review-results/archive/` へ退避します（出口の出ていない候補があれば保留し、起票も退避もしません）。**`.gitignore` が `.rite/review-results/` を除外していることを確認してください** (`/rite:setup` が追加します。未除外だと退避した全文が `git add -A` で公開リポジトリへ入ります)。
    📎 non_blocking_count: {non_blocking_count}
    📎 reviewed_commit: {current_commit_sha}
 
@@ -3044,7 +3044,7 @@ loop 内では pattern だけ出す。続きは `/rite:iterate` ステップ 1-4
 
 **`candidate_count` assignment**:
 
-dedup 後の合算を `candidate_count` として保持する。7.2 sentinel の `{N}` に使い（自動 Decision Log 経路でも emit する）、7.7 / 8.0.2 の trigger になる。
+dedup 後の合算を `candidate_count` として保持する。`{state_root}/.rite/state/adoption-hold-{pr_number}-triage.json` の `head` が `{current_commit_sha}` と同じなら、その `candidates` のうち内容（`id` 以外の全欄）が一致する候補の無いものも数える（保留中の候補を 0 件扱いで素通りさせない。合流は 7.2 手順 1）。7.2 sentinel の `{N}` に使い（自動 Decision Log 経路でも emit する）、7.7 / 8.0.2 の trigger になる。
 
 
 同一 file:line は Source A を残す。

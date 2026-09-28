@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 # cleanup-pr-state-purge.sh — PR-specific state ファイルの削除。
-# cleanup/SKILL.md ステップ 6 から抽出した後片付けロジック。振る舞いは抽出前と同一。
+# cleanup/SKILL.md ステップ 6 から抽出した後片付けロジック。
 # 引数はすべて名前付きオプションで受けるため、cleanup 以外の経路からも呼べる。
 #
 # 他 PR 誤削除防止のため glob は `<pr>-` prefix 固定。
 #
 # Usage:
-#   cleanup-pr-state-purge.sh --pr <N> [--state-root <path>] [--dry-run]
+#   cleanup-pr-state-purge.sh --pr <N> [--state-root <path>] [--dry-run] [--drop-adoption-hold]
 #
 # 出力 (stderr):
 #   ✅ <label> を削除: <path>                                    (削除成功ごと)
+#   [CONTEXT] PR_STATE_PURGE=held; hold_files=<カンマ区切りのパス>; pr=<N>
+#     採否保留ファイルがあり --drop-adoption-hold が無い。何も削除・退避していない（--dry-run でも同じ）
 #   [CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=<...>; pr=<N>
 #     reason ∈ { invalid_pr_number,          --pr が空 / 非数値（削除は一切行わない）
 #                <label>_rm_failure,         rite_rm の削除失敗（<label> は下記 rite_rm 呼び出しの第 1 引数）
@@ -22,9 +24,11 @@
 # cleanup-follow-up-issue.sh が担っており、Issue 中止の経路では起票自体が不要なため、
 # ここへ引き込む理由がない。
 #
-# 採否ゲートの判定記録 (adoption-<pr>-sweep.json / adoption-<pr>-triage.json) と保留ファイル
-# (adoption-hold-<pr>-{sweep,triage,followup}.json) は消す。follow-up の保留が残っている間は cleanup が
-# 本 helper を呼ばないため、ここへ届くのは判定が決まった後か Issue 中止の経路だけである。
+# 採否保留ファイル (adoption-hold-<pr>-*.json) が 1 つでもあれば何も削除しない (レビュー結果の退避・削除も、
+# 他の state も)。保留した候補の出典 (レビュー結果 JSON・判定記録) を残し、hold ファイルの resume で
+# 再開できるようにする。sweep / triage / followup のどの保留でも同じ。
+# --drop-adoption-hold は保留した候補の放棄が明示された経路 (Issue の中止) だけが渡す。そのときは保留
+# ファイルと判定記録 (adoption-<pr>-sweep.json / adoption-<pr>-triage.json) も消す。
 # follow-up の判定記録 (adoption-<pr>-followup.json) は follow-up-judged-<pr>.txt と同じく残す: cleanup の
 # 再実行は archive/ の JSON から同じ候補を作り、同じ記録で同じ根因 key を得て起票済みの根因を増やさない。
 # pr-cycle-cleanup.sh の orphan 回収はこれらのファイルを消さない (本 helper だけが消す)。回収側は採否保留ファイルを
@@ -40,10 +44,11 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 pr_number=""
 state_root=""
 dry_run=false
+drop_adoption_hold=false
 
 usage() {
   echo "ERROR: $1" >&2
-  echo "Usage: cleanup-pr-state-purge.sh --pr <N> [--state-root <path>] [--dry-run]" >&2
+  echo "Usage: cleanup-pr-state-purge.sh --pr <N> [--state-root <path>] [--dry-run] [--drop-adoption-hold]" >&2
   exit 2
 }
 
@@ -52,6 +57,7 @@ while [ "$#" -gt 0 ]; do
     --pr)         shift; [ "$#" -gt 0 ] || usage "--pr requires a value"; pr_number=$1; shift ;;
     --state-root) shift; [ "$#" -gt 0 ] || usage "--state-root requires a value"; state_root=$1; shift ;;
     --dry-run)    dry_run=true; shift ;;
+    --drop-adoption-hold) drop_adoption_hold=true; shift ;;
     *) usage "unknown option: $1" ;;
   esac
 done
@@ -71,6 +77,21 @@ esac
 if [ -z "$state_root" ]; then
   state_root=$(bash "$SCRIPT_DIR/../state-path-resolve.sh" 2>/dev/null) || state_root=""
   [ -n "$state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; state_root="$(pwd)"; }
+fi
+
+# 採否保留があれば何も削除しない（glob は `<pr>-` prefix 固定。別 PR の保留では止まらない）。
+if [ "$drop_adoption_hold" != "true" ]; then
+  _hold_files=""
+  for _hf in "$state_root/.rite/state/adoption-hold-${pr_number}-"*.json; do
+    { [ -e "$_hf" ] || [ -L "$_hf" ]; } || continue
+    _hold_files="${_hold_files:+${_hold_files},}${_hf}"
+  done
+  if [ -n "$_hold_files" ]; then
+    echo "WARNING: PR #${pr_number} に採否の保留が残っているため、state とレビュー結果を削除・退避しません: ${_hold_files}" >&2
+    echo "  再開: 各 hold ファイルの resume に従ってください" >&2
+    echo "[CONTEXT] PR_STATE_PURGE=held; hold_files=${_hold_files}; pr=${pr_number}" >&2
+    exit 0
+  fi
 fi
 
 rite_rm() {

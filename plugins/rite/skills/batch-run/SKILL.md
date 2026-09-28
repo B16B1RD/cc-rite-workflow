@@ -324,7 +324,7 @@ iterate の終了 sentinel を `{run_mode}`（ステップ 1 の `mode=` marker�
 | Sentinel + `{run_mode}` | アクション |
 |---------|-----------|
 | `[review:error]` + `REVIEW_STOP=purpose_unaligned`（両モード） | **失敗** → ステップ 8（段階=iterate）。内側の `[review:mergeable]` は iterate 終端ではない |
-| `[review:error]` + `REVIEW_STOP=adoption_held`（両モード） | **失敗** → ステップ 8（段階=iterate）。採否の出口待ちで外部へ何も書かずに止まっている。停止報告に `hold_file` と再開コマンド `/rite:iterate {pr_number}` を載せる |
+| `[review:error]` + `REVIEW_STOP=adoption_held`（両モード） | **失敗** → ステップ 8（段階=iterate）。採否の出口待ちで外部へ何も書かずに止まっている。停止報告に `hold_file` とその resume（再開方法。ゲートの WARNING にも出る）を載せる |
 | `[review:mergeable]` + `merge` | iterate 収束 → ステップ 4（ready）へ |
 | `[review:mergeable]` + `default` | iterate 収束。**ready/merge/cleanup はスキップ**し、draft PR を残したまま **ステップ 6 の cursor 前進 bash へ直行**（cleanup invoke はしない） |
 | `[fix:replied-only]` + `merge` | **非収束として失敗扱い** → ステップ 8（段階=iterate）。reply のみで mergeable 未到達のまま merge すると未解決指摘を握り潰すため。停止報告に続行コマンド `/rite:ready {pr_number} && /rite:merge {pr_number}` を案内 |

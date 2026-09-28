@@ -2,8 +2,8 @@
 
 0 件: ステップ 7 を skip（**7.7 も skip**）。1+: 候補ごとの処分は採否ゲート（`review-adoption-gate.sh --kind triage`）の出口だけで決める。人間に候補ごとの処分を尋ねない。`PR_REVIEW_IN_E2E` で処分を変えない。
 
-1. 7.1 の候補（Source A → Source B の抽出順、dedup 後）に `C-1`, `C-2`, … を振る。
-2. 分類役（本手順を実行する LLM）が全候補の判定記録を書く。1 根因 = 1 記録。欄は `review-adoption.py` の docstring に従い、起票（ADOPT pre_existing / 調査）になる記録には `acceptance`（起票する Issue の受入条件の文）を必ず入れる。既存の Issue（前回この手順で作った Issue を含む）が同じ根因を追跡していれば `tracker` に入れる（LINK になり、重ねて起票しない）。`{state_root}/.rite/state/adoption-{pr_number}-triage.json` があり、その `head` が本 cycle の review JSON の `commit_sha` と同じなら、その記録（保留後に直された記録）から始める。`C-n` は振り直すため、各記録の `ids` は `adoption-hold-{pr_number}-triage.json` の候補全文と照らして新しい id へ移す。`head` が違えば記録を新しく書く。
+1. 7.1 の候補（Source A → Source B の抽出順、dedup 後）に `C-1`, `C-2`, … を振る。`{state_root}/.rite/state/adoption-hold-{pr_number}-triage.json` があり、その `head` が本 cycle の review JSON の `commit_sha` と同じなら、その `candidates` の各候補を、id だけ次の `C-n` に振り直して内容は一字も変えずに候補集合へ加える（id を除く全欄が一致する候補が既にあれば加えない）。内容を言い換えるとゲートは同じ候補と認めず、保留が解けない（`held_candidates_dropped`）。
+2. 分類役（本手順を実行する LLM）が全候補の判定記録を書く。1 根因 = 1 記録。欄は `review-adoption.py` の docstring に従い、起票（ADOPT pre_existing / 調査）になる記録には `acceptance`（起票する Issue の受入条件の文）を必ず入れる。既存の Issue（前回この手順で作った Issue を含む）が同じ根因を追跡していれば `tracker` に入れる（LINK になり、重ねて起票しない）。`{state_root}/.rite/state/adoption-{pr_number}-triage.json` があり、その `head` が本 cycle の review JSON の `commit_sha` と同じなら、その記録（保留後に直された記録）から始める。`C-n` は振り直すため、各記録の `ids` は手順 1 で候補全文が一致した候補（合流させた hold の候補を含む）の新しい id へ移す。`head` が違えば記録を新しく書く。
 3. 下の bash を**単一 Bash invocation** で実行する。`{records}` は記録の JSON 配列、`{candidates}` は `{"candidates": [{"id": "C-1", "source": "指摘" | "推奨", "file_line", "reviewer", "severity", "content": <全文>}, …]}`。`head` は `--review-result` に渡す review JSON（6.1.a が保存した本 cycle の結果）の `commit_sha` を bash が入れる。
 
 ```bash
@@ -36,7 +36,7 @@ echo "[CONTEXT] ADOPTION_GATE_RC=$rc"
 | `ADOPTION_GATE_RC` | 処置 |
 |---|---|
 | `0`（decided） | stdout の `verdicts[]` で 7.4 を実行する。7.4 の前に下の sentinel を emit する |
-| `3`（held） | 7.4（Decision Log・先送りトークン・Issue 作成・申し送り）を一切実行しない。sentinel も出さない。下の採否保留の停止を実行し、ステップ 8 へ進まない |
+| `3`（held） | 7.4（Decision Log・先送りトークン・Issue 作成・申し送り）から 7.7 までを一切実行しない。sentinel も出さない。下の採否保留の停止を実行し、ステップ 8（8.0.2 を含む）へ進まない |
 | それ以外 | `[review:error]` を出して停止する（ステップ 8 へ進まない） |
 
 **採否保留の停止**（`{hold_file}` はゲート stdout の `hold_file`）。FINALIZE などの handoff が残ると Stop hook が完了経路へ差し戻すため、受入条件未検証の停止と同じく `--handoff` なしで set してから止まる:
@@ -46,7 +46,7 @@ echo "[CONTEXT] ADOPTION_GATE_RC=$rc"
 if ! bash {plugin_root}/hooks/flow-state.sh set \
  --phase "review" \
  --active true \
- --next "採否の出口待ち。判定記録 adoption-{pr_number}-triage.json を直して /rite:iterate {pr_number} を再実行（保留した候補: {hold_file}）" \
+ --next "採否の出口待ち。{hold_file} の resume（ゲートの WARNING にも出る）に従って再開" \
  --if-exists; then
   echo "WARNING: 採否保留の停止で handoff を消せませんでした" >&2
 fi
@@ -422,7 +422,7 @@ Handoff comment failure reasons: (`closed` / `body_write_failure` / `gh_comment_
 ### 7.7 Post-condition Gate — Recommendation Disposition Enforcement
 
 本 gate は **mechanical gate**。`candidate_count >= 1` なのに 7.2 の採否ゲートを飛ばして result を emit する silent skip を止める。
-**Execution condition**: ステップ 7 に入ったとき（`candidate_count >= 1`）。0 件なら silent skip。
+**Execution condition**: ステップ 7 に入ったとき（`candidate_count >= 1`）。0 件なら silent skip。7.2 のゲートが held（`ADOPTION_GATE_RC=3`）を返したときは実行しない（採否保留の停止で終わる）。
 
 **Step 1 — Determine candidate count**:
 

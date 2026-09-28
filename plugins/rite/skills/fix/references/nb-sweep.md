@@ -90,7 +90,7 @@ esac
 `already_rejected[]` はゲートに掛けず `recorded` として転記する。sweep はコードを変更せず、commit / push を行わない。
 rationale: design-rationale.md#nb-sweep-routing
 
-**判定記録**: 手順 1 の stdout の `targets[]` 全件について、本手順を実行する分類役が根因ごとに 1 件の判定記録を Write tool で state root（`state-path-resolve.sh` の出力）の `.rite/state/adoption-{pr_number}-sweep.json` に保存する（形式と欄は `hooks/scripts/review-adoption-gate.sh` と `hooks/scripts/lib/review-adoption.py` の docstring）。`head` は `record` の review JSON の `commit_sha`、`ids` は target の `key`。起票になる記録（ADOPT で origin=pre_existing、DIAGNOSE で調査として引き受ける記録）には `acceptance`（起票する Issue の受入条件）を書く。target に `prior` があれば記録の `prior` にそのまま写す（prior の違う target を 1 つの記録にまとめない）。同じ `head` の判定記録が既にあれば書き直さず、足りない記録だけを補う（起票が書き戻した `tracker` を消さない）。
+**判定記録**: 手順 1 の stdout の `targets[]` 全件について、本手順を実行する分類役が根因ごとに 1 件の判定記録を Write tool で state root（`state-path-resolve.sh` の出力）の `.rite/state/adoption-{pr_number}-sweep.json` に保存する（形式と欄は `hooks/scripts/review-adoption-gate.sh` と `hooks/scripts/lib/review-adoption.py` の docstring）。`head` は `record` の review JSON の `commit_sha`、`ids` は target の `key`。起票になる記録（ADOPT で origin=pre_existing、DIAGNOSE で調査として引き受ける記録）には `acceptance`（起票する Issue の受入条件）を書く。target に `prior` があれば記録の `prior` にそのまま写す（prior の違う target を 1 つの記録にまとめない）。同じ `head` の判定記録が既にあればそこから始め、足りない記録を補い、helper の ERROR で止まった記録は直す。起票が書き戻した `tracker` だけは書き換えない（消さない）。
 
 **ゲート**: 下の bash が collect をもう一度実行し、`targets[]` から候補ファイルを作ってゲートを呼ぶ。`{base_branch}` は rite-config `branch.base`、無ければステップ 1.1 の `.baseRefName`。
 
@@ -105,15 +105,12 @@ trap 'rm -f "$nb_candidates"' EXIT
 printf '%s' "$collect_out" | jq '{candidates: [.targets[] | . + {finding_id: .id, id: .key}]}' > "$nb_candidates" \
   || { echo "[fix:error]"; exit 1; }
 gate_rc=0
-if [ "$(jq '.candidates | length' "$nb_candidates")" = 0 ]; then
-  gate_out='{"held": false, "verdicts": []}'
-else
-  nb_issue=$(git branch --show-current 2>/dev/null | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+' | head -1)
-  gate_out=$(bash {plugin_root}/hooks/scripts/review-adoption-gate.sh --pr {pr_number} --kind sweep \
-    --state-root "$sweep_root" --candidates "$nb_candidates" \
-    --review-result "$(printf '%s' "$collect_out" | jq -r '.record')" \
-    --base "origin/{base_branch}" --owner-repo {owner_repo} ${nb_issue:+--issue "$nb_issue"}) || gate_rc=$?
-fi
+# 候補 0 件でもゲートを呼ぶ（同じ HEAD の保留候補が今回の候補から消えていれば保留する）
+nb_issue=$(git branch --show-current 2>/dev/null | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+' | head -1)
+gate_out=$(bash {plugin_root}/hooks/scripts/review-adoption-gate.sh --pr {pr_number} --kind sweep \
+  --state-root "$sweep_root" --candidates "$nb_candidates" \
+  --review-result "$(printf '%s' "$collect_out" | jq -r '.record')" \
+  --base "origin/{base_branch}" --owner-repo {owner_repo} ${nb_issue:+--issue "$nb_issue"}) || gate_rc=$?
 case "$gate_rc" in
   0) ;;
   3)
@@ -132,7 +129,7 @@ fi
 printf '%s\n' "$gate_out"
 ```
 
-`[fix:error]` のどれでも、起票も entries も台帳 persist も done の書込もしない。`reason=nb_sweep_adoption_held` は出口の出ていない候補がある（判定記録なし・helper の ERROR・hold の出口）。候補の全文・出典・対象 HEAD・再開位置はゲートが stderr の `hold_file=` に保存済み。保留を REJECT や処分済みに書き換えず、判定記録を補ってから `/rite:iterate {pr_number}` を再実行する（ステップ 0.7 が 5.S へ戻し、本手順から続く）。
+`[fix:error]` のどれでも、起票も entries も台帳 persist も done の書込もしない。`reason=nb_sweep_adoption_held` は出口の出ていない候補がある（判定記録なし・helper の ERROR・hold の出口）。候補の全文・出典・対象 HEAD・再開位置はゲートが stderr の `hold_file=` に保存済み。保留を REJECT や処分済みに書き換えず、hold ファイルの resume（ゲートの WARNING にも出る）に従って再開する（PR 起因の保留はコードを直して push し再レビューするなど、理由ごとの手段は resume が持つ）。HEAD が変わらない再開では、ステップ 0.7 が 5.S へ戻し本手順から続く。
 
 **起票**: stdout の `verdicts[]` のうち `verdict=file` の記録ごとに 1 件起票する（1 根因 = 1 Issue。違う記録を 1 件にまとめない）。`verdict=record` は起票しない。本文は記録（`verdicts[].record`）から作り、`/rite:open` が複雑度を読む Meta で始め、Projects に渡す `complexity` と同じ値を宣言する。`projects` は rite-config.yml の設定を反映する。起票ごとに次の 3 ブロックを連結して単一 Bash で実行し、成功時の `issue_number` と `issue_url` を当該記録に対応付けて entries に使う:
 

@@ -1710,7 +1710,9 @@ assert "T-24 tally counts REJECT / RESOLVED / LINK / recorded as recorded" "issu
 # --- T-25: 保留した sweep の戻り方と、起票番号の tracker への書き戻し ---
 t25_row=$(grep -E '^\| `\[fix:error\]` / その他 / sentinel 不在 \|' "$PLUGIN_ROOT/skills/iterate/SKILL.md")
 assert "T-25 iterate 5.S の停止行は保留 (held) の sweep の再開を示す" 1 \
-  "$(printf '%s\n' "$t25_row" | grep -F 'reason=nb_sweep_adoption_held' | grep -F '判定記録（`.rite/state/adoption-{pr_number}-sweep.json`）を補ってから `/rite:iterate {pr_number}` を再実行' | grep -cF '手順 2 の判定記録から続く')"
+  "$(printf '%s\n' "$t25_row" | grep -F 'reason=nb_sweep_adoption_held' | grep -F 'hold ファイルの resume（ゲートの WARNING にも出る）に従って再開する' | grep -cF 'HEAD が変わらない再開では、同じ経路で fix は手順 2 の判定記録から続く')"
+assert "T-25 nb-sweep.md の held は hold ファイルの resume に従って再開する" 1 \
+  "$(grep -F 'reason=nb_sweep_adoption_held` は出口の出ていない候補がある' "$FIX" | grep -cF '保留を REJECT や処分済みに書き換えず、hold ファイルの resume（ゲートの WARNING にも出る）に従って再開する')"
 t25_step2=$(awk '/^2\. \*\*採否ゲートと起票\*\*/{s=1} /^3\. \*\*台帳 persist\*\*/{s=0} s' "$FIX")
 t25_held=$(printf '%s\n' "$t25_step2" | grep -n 'reason=nb_sweep_adoption_held"' | head -1 | cut -d: -f1)
 t25_issue=$(printf '%s\n' "$t25_step2" | grep -n 'create-issue-with-projects.sh' | head -1 | cut -d: -f1)

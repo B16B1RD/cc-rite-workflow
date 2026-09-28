@@ -12,8 +12,11 @@
 #           pr/unknown, LINK pr/unknown) and DIAGNOSE without investigation.
 # A missing record file, an unreadable context, or a helper ERROR holds every candidate.
 # When anything is held, nothing may be written: the full held candidates, the source,
-# the reviewed commit and the resume position are saved to the hold file and the gate
-# exits 3. A decided run removes a stale hold file of the same path.
+# the reviewed commit and how to resume are saved to the hold file and the gate
+# exits 3. A decided run removes a stale hold file of the same path. A rerun on the same
+# commit must still carry every candidate the previous hold saved (compared by full text
+# without id, since triage renumbers ids); otherwise the dropped ones are kept in the hold.
+# With no candidate and nothing dropped, the run decides with no verdict.
 #
 # Usage:
 #   review-adoption-gate.sh --pr N --kind sweep|triage|followup --state-root DIR \
@@ -31,10 +34,12 @@
 #           "tracker", "verdict", "record"}]}; held {"held": true, "reason", "hold_file"}
 # stderr: [CONTEXT] ADOPTION_GATE=decided; kind=K; file=A; record=B; pr=N
 #         [CONTEXT] ADOPTION_GATE=held; kind=K; reason=R; held=H; hold_file=PATH; pr=N
+#         [CONTEXT] ADOPTION_GATE=error; kind=K; reason=hold_write_failed|hold_unreadable; pr=N
 # Hold file: STATE_ROOT/.rite/state/adoption-hold-PR-KIND.json
 #   {kind, pr, head, review_result, reason, detail, held_ids, candidates, resume}
+#   resume names how to get out of each held reason (also printed in the WARNING).
 #
-# Exit: 0 decided, 3 held, 1 the hold could not be saved, 2 usage.
+# Exit: 0 decided, 3 held, 1 the hold could not be saved or read, 2 usage.
 set -uo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -77,25 +82,53 @@ hold_file="$state_root/.rite/state/adoption-hold-$pr-$kind.json"
 work=$(mktemp -d "${TMPDIR:-/tmp}/rite-adoption-gate-XXXXXX") || { echo "ERROR: mktemp failed" >&2; exit 1; }
 trap 'rm -rf "$work"' EXIT
 
-case "$kind" in
-  sweep) resume="判定記録 $adoption を直してから /rite:iterate $pr を再実行する（ステップ 5.S の sweep から続く）" ;;
-  triage) resume="判定記録 $adoption を直してから /rite:iterate $pr を再実行する（レビューのスコープ外処分から続く）" ;;
-  followup) resume="判定記録 $adoption を直してから /rite:cleanup $pr を再実行する（ステップ 6.0 の follow-up 判定から続く）" ;;
-esac
+case "$kind" in followup) cmd="/rite:cleanup $pr" ;; *) cmd="/rite:iterate $pr" ;; esac
+dropped='[]' verdicts='[]'
+
+# How to get out of a hold: $1 reason, $2 the verdicts (an undecided hold reads the held ones).
+resume_for() {
+  local reason=$1 verdicts=$2 records="判定記録 $adoption を補う・直してから $cmd を再実行する" ways=() way joined=""
+  case "$reason" in
+    context_unavailable)
+      echo "detail に出ている取得失敗の原因（gh 認証・ネットワーク・本文の読み取りなど）を解消してから $cmd を再実行する（判定記録は直さない）"
+      return ;;
+    held_candidates_dropped)
+      echo "前回保留した候補（hold ファイルの candidates）が今回の候補に含まれていない。欠けた候補を全文のまま候補へ戻してから $cmd を再実行する"
+      return ;;
+    undecided) ;;
+    *) echo "$records"; return ;;
+  esac
+  jq -e 'any(.[]; .verdict == "hold" and (.pr_blocking | not))' <<< "$verdicts" >/dev/null && ways+=("$records")
+  if jq -e 'any(.[]; .verdict == "hold" and .pr_blocking)' <<< "$verdicts" >/dev/null; then
+    if [ "$kind" = followup ]; then
+      ways+=("PR 起因の保留はマージ済み PR では同じ PR で直せず、この出口の扱いは仕様で未定義のため、保留のまま PM に返す（判定記録を pre_existing や REJECT に書き換えて解除しない）")
+    else
+      ways+=("PR 起因の保留は同じ PR で直す。コードを直して push し $cmd で再レビューする（HEAD が変わると新しいレビューで判定し直す）")
+      jq -e 'any(.[]; .verdict == "hold" and .exit == "RECONCILE")' <<< "$verdicts" >/dev/null \
+        && ways+=("RECONCILE は矛盾する処分を裁定してから $cmd を再実行する")
+    fi
+  fi
+  for way in "${ways[@]}"; do joined+="${joined:+。}$way"; done
+  echo "$joined"
+}
 
 # Save every held candidate with its full text, then stop. $3 lists the held ids
-# (JSON array); without it every candidate is held.
+# (JSON array); without it every candidate is held. Candidates dropped from the previous
+# hold are appended, renamed when their id is taken by a current candidate.
 hold() {
-  local reason=$1 detail=$2 ids=${3:-null} head
-  head=$(jq -r '.commit_sha // ""' "$review_result" 2>/dev/null) || head=""
+  local reason=$1 detail=$2 ids=${3:-null} resume
+  resume=$(resume_for "$reason" "$verdicts")
   mkdir -p "$state_root/.rite/state" || { echo "ERROR: cannot create $state_root/.rite/state" >&2; exit 1; }
   if ! jq -n --arg kind "$kind" --argjson pr "$pr" --arg head "$head" --arg rr "$review_result" \
       --arg reason "$reason" --arg detail "$detail" --arg resume "$resume" --argjson ids "$ids" \
-      --slurpfile c "$candidates" '
+      --argjson dropped "$dropped" --slurpfile c "$candidates" '
       ($c[0].candidates // []) as $all
+      | [$all[].id] as $taken
+      | [$dropped[] | .id |= until(. as $i | $taken | index($i) | not; "held-" + .)] as $kept
       | (if $ids == null then [$all[].id] else $ids end) as $held
       | {kind: $kind, pr: $pr, head: $head, review_result: $rr, reason: $reason, detail: $detail,
-         held_ids: $held, candidates: [$all[] | select(.id as $i | $held | index($i))], resume: $resume}
+         held_ids: ($held + [$kept[].id]),
+         candidates: ([$all[] | select(.id as $i | $held | index($i))] + $kept), resume: $resume}
     ' > "$hold_file.tmp" || ! mv "$hold_file.tmp" "$hold_file"; then
     rm -f "$hold_file.tmp"
     echo "ERROR: the hold could not be saved to $hold_file; nothing may be written" >&2
@@ -115,13 +148,46 @@ jq -e '(.candidates | type) == "array" and all(.candidates[]; (.id | type) == "s
   "$candidates" >/dev/null 2>&1 || { echo "ERROR: --candidates is not {\"candidates\": [{\"id\": ...}]}: $candidates" >&2; exit 2; }
 jq -e '(.commit_sha | type) == "string"' "$review_result" >/dev/null 2>&1 \
   || { echo "ERROR: --review-result has no commit_sha: $review_result" >&2; exit 2; }
+head=$(jq -r '.commit_sha' "$review_result")
+
+# A rerun on the same commit keeps the previous hold's candidates. Triage renumbers ids,
+# so each saved candidate is looked up by its full text without id.
+if [ -e "$hold_file" ]; then
+  dropped=$(jq -nc --arg head "$head" --slurpfile h "$hold_file" --slurpfile c "$candidates" '
+      if ($h | length) != 1 or ($h[0].head | type) != "string" or ($h[0].candidates | type) != "array"
+         or any($h[0].candidates[]; (.id | type) != "string") then error("malformed hold file")
+      elif $h[0].head != $head then []
+      else [$c[0].candidates[] | del(.id)] as $now
+        | [$h[0].candidates[] | select(del(.id) as $x | any($now[]; . == $x) | not)] end
+    ' 2>"$work/err") || {
+    neutralize_ctrl --keep-newline < "$work/err" >&2
+    echo "ERROR: the previous hold $hold_file cannot be read; it is kept and nothing may be written" >&2
+    echo "[CONTEXT] ADOPTION_GATE=error; kind=$kind; reason=hold_unreadable; pr=$pr" >&2
+    exit 1
+  }
+  [ "$dropped" = '[]' ] || hold held_candidates_dropped \
+    "前回保留した候補のうち $(jq 'length' <<< "$dropped") 件が今回の候補にありません: $(jq -r '[.[].id] | join(", ")' <<< "$dropped")"
+fi
+
+# With no candidate left (and none dropped from a same-commit hold) there is nothing to judge.
+if [ "$(jq '.candidates | length' "$candidates")" -eq 0 ]; then
+  rm -f "$hold_file"
+  echo "[CONTEXT] ADOPTION_GATE=decided; kind=$kind; file=0; record=0; pr=$pr" >&2
+  jq -cn --arg head "$head" '{held: false, head: $head, verdicts: []}'
+  exit 0
+fi
 
 [ -f "$adoption" ] || hold no_records "判定記録がありません: $adoption"
 
 # Contexts the helper cites. Each gh read is replaced by its file option in tests.
+# callee_diag forwards the callee's stderr and prints its first diagnostic line.
+callee_diag() {
+  neutralize_ctrl --keep-newline < "$work/err" >&2
+  { grep -m1 -E 'ERROR|reason=' "$work/err" || head -1 "$work/err"; } | neutralize_ctrl --keep-newline
+}
 if [ -z "$owner_repo" ] && { [ -z "$pr_body" ] || { [ -n "$issue" ] && [ -z "$issue_body" ]; } || [ -z "$ledger" ]; }; then
-  owner_repo=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) || owner_repo=""
-  [ -n "$owner_repo" ] || hold context_unavailable "owner/repo を解決できません"
+  owner_repo=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>"$work/err") || owner_repo=""
+  [ -n "$owner_repo" ] || hold context_unavailable "owner/repo を解決できません: $(callee_diag)"
 fi
 if [ -z "$pr_body" ]; then
   pr_body="$work/pr.md"
@@ -142,13 +208,14 @@ if [ -z "$ledger" ]; then
   bash "$plugin_root/hooks/review-nonblocking-record.sh" --print-record-body --pr "$pr" \
     --owner-repo "$owner_repo" > "$work/record.md" 2>"$work/err"
   record_rc=$?
+  record_diag=$(callee_diag)
   if [ "$record_rc" -ne 0 ] && ! grep -q 'reason=related_issue_unresolved' "$work/err"; then
-    hold context_unavailable "却下台帳の記録コメントを取得できません"
+    hold context_unavailable "却下台帳の記録コメントを取得できません: $record_diag"
   fi
   : > "$ledger"
   if [ -s "$work/record.md" ]; then
-    bash "$plugin_root/hooks/scripts/nb-sweep-ledger.sh" extract --body-file "$work/record.md" > "$ledger" 2>/dev/null \
-      || hold context_unavailable "却下台帳を読めません"
+    bash "$plugin_root/hooks/scripts/nb-sweep-ledger.sh" extract --body-file "$work/record.md" > "$ledger" 2>"$work/err" \
+      || hold context_unavailable "却下台帳を読めません: $(callee_diag)"
   fi
 fi
 
