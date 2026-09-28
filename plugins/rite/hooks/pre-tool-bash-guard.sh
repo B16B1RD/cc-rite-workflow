@@ -31,7 +31,10 @@
 #      procedure-omission bypass of /rite:pr-review, not adversarial forgery.
 #   6. Direct `gh issue create` — denied unless Issue creation is delegated to
 #      create-issue-with-projects.sh or decompose-issues.sh.
-#   7. `git commit --allow-empty` — denied. `--allow-empty-message` and ordinary
+#   7. `git commit --allow-empty` — denied, also with global options or
+#      redirections between git and commit (`git -c k=v commit`,
+#      `git 2>/dev/null commit`), and when a variable between them may expand to
+#      nothing (`git $OPTS commit`). `--allow-empty-message` and ordinary
 #      commits are not this pattern. Alternative: leave file changes, or revisit
 #      the Issue. Do not create an empty commit.
 #
@@ -564,8 +567,8 @@ BLOCKED_ALTERNATIVE=""
 
 # --- (L) Reviewer command length guard (O(1), primary fail-closed bound) ---
 # Runs BEFORE the heredoc strip and every pattern check: that downstream work is
-# whole-string, and the `${COMMAND%%<<*}` strip / Pattern 2 regex are O(n²) on
-# MB-scale input (empirically ~45s / >2min). A timed-out PreToolUse hook fails
+# whole-string, and the Pattern 2 regex is O(n²) on MB-scale input (empirically
+# >2min). A timed-out PreToolUse hook fails
 # OPEN (Claude Code cancels it and lets the tool run), so a reviewer could pad a
 # .git write until parsing times out, dropping the deny. The ERR trap cannot
 # catch a timeout (the process is killed externally), so the bound must be
@@ -585,10 +588,22 @@ fi
 # PR descriptions, etc. Only check the command prefix before the first heredoc
 # marker. Known limitation: piped heredocs (`cat <<EOF | gh pr diff`) bypass the
 # strip (the pre-`<<` command is `cat`); rare in practice. Skipped for an
-# already-denied (oversized) command — the strip is O(n²) on huge input and
-# CMD_CHECK is unused in that case.
+# already-denied (oversized) command — CMD_CHECK is unused in that case.
+# The strip must stay linear in the command length: the prefix before the first
+# `<<` is taken with a byte-wise (C locale) regex rather than `${COMMAND%%<<*}`,
+# whose cost grows with the square of the length.
+# Without a match the whole command stays in CMD_CHECK.
+_rite_btg_strip_heredoc() {
+  local LC_ALL=C
+  if [[ "$COMMAND" =~ ^(([^<]|<[^<])*)'<<' ]]; then
+    CMD_CHECK="${BASH_REMATCH[1]}"
+  fi
+}
 if [ -z "$BLOCKED_PATTERN" ]; then
-  CMD_CHECK="${COMMAND%%<<*}"
+  CMD_CHECK="$COMMAND"
+  if [[ "$COMMAND" == *'<<'* ]]; then
+    _rite_btg_strip_heredoc
+  fi
 else
   CMD_CHECK=""
 fi
@@ -1252,11 +1267,32 @@ fi
 
 # Pattern 7: git commit --allow-empty. Token match so --allow-empty-message
 # is not denied. Detection is CMD_CHECK (heredoc-stripped).
-if [ -z "$BLOCKED_PATTERN" ]; then
-  if [[ "$CMD_CHECK" =~ (^|[^[:alnum:]_])git[[:space:]]+commit([^[:alnum:]_-]|$) ]] \
-     && [[ "$CMD_CHECK" =~ (^|[[:space:]])--allow-empty([^[:alnum:]_-]|$) ]]; then
+# When git and commit are not adjacent (global options, redirections or a
+# variable between them), the commit is found by the same parser as Patterns 8
+# and 9 (review-fix-scope-check.sh commit-target). A commit it cannot resolve (a
+# variable that may expand to nothing, an unfinished quote) is denied too.
+# Past the parser's limits on nested command substitutions and cd / -C directory
+# changes, a commit that could hide there is denied, and a longer input than
+# _RITE_BTG_P7_PARSE_MAX_CHARS is denied without parsing.
+_RITE_BTG_P7_PARSE_MAX_CHARS=32768
+if [ -z "$BLOCKED_PATTERN" ] && [[ "$CMD_CHECK" =~ (^|[[:space:]])--allow-empty([^[:alnum:]_-]|$) ]]; then
+  _p7_reason=""
+  if [[ "$CMD_CHECK" =~ (^|[^[:alnum:]_])git[[:space:]]+commit([^[:alnum:]_-]|$) ]]; then
+    _p7_reason="git commit --allow-empty creates a commit with no file changes."
+  elif [[ "$CMD_CHECK" == *git* && "$CMD_CHECK" == *commit* ]] && [ "${#CMD_CHECK}" -gt "$_RITE_BTG_P7_PARSE_MAX_CHARS" ]; then
+    _p7_reason="git commit --allow-empty cannot be ruled out: the command is too long to inspect (${#CMD_CHECK} characters, limit ${_RITE_BTG_P7_PARSE_MAX_CHARS}); run the commit as a shorter command."
+  elif [[ "$CMD_CHECK" == *git* && "$CMD_CHECK" == *commit* ]]; then
+    _p7_cwd=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || _p7_cwd=""
+    if _p7_targets=$(bash "$SCRIPT_DIR/scripts/review-fix-scope-check.sh" commit-target \
+         --command "$CMD_CHECK" --cwd "${_p7_cwd:-$PWD}" 2>&1); then
+      [ -z "$_p7_targets" ] || _p7_reason="git commit --allow-empty creates a commit with no file changes."
+    else
+      _p7_reason="git commit --allow-empty cannot be ruled out: ${_p7_targets:-cannot inspect command}"
+    fi
+  fi
+  if [ -n "$_p7_reason" ]; then
     BLOCKED_PATTERN="git-commit-allow-empty"
-    BLOCKED_REASON="git commit --allow-empty creates a commit with no file changes."
+    BLOCKED_REASON="$_p7_reason"
     BLOCKED_ALTERNATIVE="Leave the changes as files, or revisit the Issue. Do not create an empty commit."
   fi
 fi

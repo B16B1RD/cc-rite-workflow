@@ -1168,9 +1168,8 @@ echo ""
 
 echo "TC-124: oversized command → length-guard fail-closed deny WITHOUT the O(n²) paths"
 # The (L) length guard is the primary timeout-bypass bound: any reviewer command
-# over the byte ceiling is denied fail-closed BEFORE the O(n²) heredoc strip
-# (${COMMAND%%<<*}, ~45s on ~1.3MB) and the O(n²) Pattern 2 regex (>2min on a few
-# MB) — both of which would otherwise time out the fail-open hook and let a padded
+# over the byte ceiling is denied fail-closed BEFORE the O(n²) Pattern 2 regex
+# (>2min on a few MB), which would otherwise time out the fail-open hook and let a padded
 # .git write run. Build huge commands via temp file + --rawfile to avoid argv
 # limits, and pin that the deny is FAST (proves the O(n²) work is skipped).
 tc124_dir=$(mktemp -d)
@@ -1217,10 +1216,8 @@ fi
 # The length guard checks ${#COMMAND} over the WHOLE command (heredoc body included),
 # so it fires here. Non-vacuous (review F-06): the prefix `git status` is
 # read-only, so WITHOUT the length guard the heredoc strip yields `git status` and the
-# command is ALLOWED — WITH it the command is denied. (Note: the `<<` sits near the
-# front, so `${COMMAND%%<<*}` is itself fast here regardless — this case pins the
-# length guard's use of the full command length, not the O(n²) strip skip; the O(n²)
-# no-heredoc path is covered by (a).)
+# command is ALLOWED — WITH it the command is denied. This case pins the length
+# guard's use of the full command length.
 { printf 'git status <<EOF\n'; printf 'y%.0s' $(seq 1 200000); printf '\nEOF'; } > "$tc124_dir/hd.txt"
 jq -n --rawfile cmd "$tc124_dir/hd.txt" --arg tp "$SUBAGENT_TRANSCRIPT" \
   '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}' > "$tc124_dir/hdin.json"
@@ -2337,6 +2334,188 @@ if [ "$rc" = "0" ] && [ -z "$output" ] && [ -z "$decision" ]; then
 else
   fail "Expected allow for --allow-empty-message, got rc=$rc decision=$decision output=$output"
 fi
+# Global options and redirections between git and commit still leave commit as the subcommand.
+# Run from a repository, so the parser resolves the commit instead of failing on the target.
+p7_repo=$(mktemp -d)
+git -C "$p7_repo" init -q
+run_guard_in_repo() {
+  jq -n --arg cmd "$1" --arg cwd "$p7_repo" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: $cwd}' \
+    | bash "$HOOK" 2>"$STDERR_FILE"
+}
+while IFS= read -r p7_cmd; do
+  rc=0
+  output=$(run_guard_in_repo "$p7_cmd") || rc=$?
+  decision=$(extract_hook_field "$output" permissionDecision)
+  reason=$(extract_hook_field "$output" permissionDecisionReason)
+  if [ "$decision" = "deny" ] && [[ "$reason" == *"git-commit-allow-empty"* ]] \
+     && [[ "$reason" == *"creates a commit with no file changes"* ]]; then
+    pass "--allow-empty denied through words before commit: $p7_cmd"
+  else
+    fail "Expected git-commit-allow-empty deny for '$p7_cmd', got decision=$decision reason=$reason"
+  fi
+done <<'EOF'
+git -c a.b=c commit --allow-empty -m x
+git 2>/dev/null commit --allow-empty -m x
+git 2> /dev/null commit --allow-empty -m x
+git >/dev/null commit --allow-empty -m x
+git &>/dev/null commit --allow-empty -m x
+git <&- commit --allow-empty -m x
+git -c a.b=c 2>&1 commit --allow-empty -m x
+git -C . 2>/dev/null commit --allow-empty -m x
+git -C 2>/dev/null . commit --allow-empty -m x
+git -c 2>&1 a.b=c commit --allow-empty -m x
+git --no-pager commit --allow-empty -m x
+git 'commit' --allow-empty -m x
+EOF
+# A variable or command substitution between git and commit may expand to nothing, leaving a bare commit.
+while IFS= read -r p7_cmd; do
+  rc=0
+  output=$(run_guard_in_repo "$p7_cmd") || rc=$?
+  decision=$(extract_hook_field "$output" permissionDecision)
+  reason=$(extract_hook_field "$output" permissionDecisionReason)
+  if [ "$decision" = "deny" ] && [[ "$reason" == *"git-commit-allow-empty"* ]] && [[ "$reason" == *"dynamic"* ]]; then
+    pass "--allow-empty denied behind a word that may expand to nothing: $p7_cmd"
+  else
+    fail "Expected git-commit-allow-empty deny for '$p7_cmd', got decision=$decision reason=$reason"
+  fi
+done <<'EOF'
+git $OPTS commit --allow-empty -m x
+git $(true) commit --allow-empty -m x
+EOF
+# git '' fails as an unknown command without committing; a commit word in another subcommand's arguments is not a commit.
+while IFS= read -r p7_cmd; do
+  rc=0
+  output=$(run_guard_in_repo "$p7_cmd") || rc=$?
+  if [ "$rc" = "0" ] && [ -z "$output" ]; then
+    pass "not denied as git commit --allow-empty: $p7_cmd"
+  else
+    fail "Expected allow for '$p7_cmd', got rc=$rc output=$output"
+  fi
+done <<'EOF'
+git log --allow-empty commit
+git $OPTS log --allow-empty --grep commit
+git '' commit --allow-empty -m x
+git -c a.b=c commit --allow-empty-message -m ""
+git -c a.b=c commit-tree --allow-empty
+EOF
+# Pattern 7 and the heredoc strip before it stay linear in the command length, so a
+# command of a few hundred KB is judged well within the hook timeout.
+p7_timed() {
+  jq -n --rawfile cmd "$1" --arg cwd "$p7_repo" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: $cwd}' > "$p7_repo/big.json"
+  rc=0
+  _t0=$(date +%s%N)
+  output=$(_timeout 15 bash "$HOOK" < "$p7_repo/big.json" 2>"$STDERR_FILE") || rc=$?
+  _t1=$(date +%s%N)
+  _ms=$(( (_t1 - _t0) / 1000000 ))
+}
+p7_big="$p7_repo/big.txt"
+{ printf 'git '; for _i in $(seq 1 86000); do printf -- '-c git '; done; printf -- '--allow-empty'; } > "$p7_big"
+p7_timed "$p7_big"
+if [ "$rc" = "0" ] && [ -z "$output" ] && [ "$_ms" -lt 5000 ]; then
+  pass "Pattern 7 returns for a ~600KB git -c command within 5s (${_ms}ms)"
+else
+  fail "Pattern 7 on a ~600KB git -c command rc=$rc ms=$_ms output=$output"
+fi
+# A non-adjacent commit longer than the parser's input limit is denied without parsing.
+{ printf 'git -c a=b commit --allow-empty -m x a'; printf '%*s' 120000 '' | tr ' ' '>'; } > "$p7_big"
+p7_timed "$p7_big"
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"too long to inspect"* ]] && [ "$_ms" -lt 5000 ]; then
+  pass "Pattern 7 denies a ~120KB non-adjacent commit as too long to inspect (${_ms}ms)"
+else
+  fail "Pattern 7 on a ~120KB non-adjacent commit rc=$rc ms=$_ms decision=$decision reason=$reason"
+fi
+# At each limit the parser still finishes (the reason is its own) within 8s, under the
+# 10s hook timeout. Past a parser limit, a commit that could hide there is refused, and a
+# command that moves no HEAD outside an unparsed substitution is not.
+p7_max=$(sed -n 's/^_RITE_BTG_P7_PARSE_MAX_CHARS=//p' "$HOOK")
+p7_scope_py="$(dirname "$HOOK")/scripts/lib/review-fix-scope.py"
+p7_depth=$(sed -n 's/^MAX_SUBSTITUTION_DEPTH = //p' "$p7_scope_py")
+p7_changes=$(sed -n 's/^MAX_DIRECTORY_CHANGES = //p' "$p7_scope_py")
+for p7_limit in "$p7_max" "$p7_depth" "$p7_changes"; do
+  [[ "$p7_limit" =~ ^[0-9]+$ ]] || fail "Pattern 7 limit constants must be read as integers: '$p7_max' '$p7_depth' '$p7_changes'"
+done
+p7_tail='; git -ca commit --allow-empty -m x'
+p7_limit_case() {  # $1 label, $2 expected reason
+  p7_timed "$p7_big"
+  decision=$(extract_hook_field "$output" permissionDecision)
+  reason=$(extract_hook_field "$output" permissionDecisionReason)
+  if [ "$decision" = "deny" ] && [[ "$reason" == *"$2"* ]] && [ "$_ms" -lt 8000 ]; then
+    pass "Pattern 7 denies $1 within 8s ($(wc -c < "$p7_big") bytes, ${_ms}ms)"
+  else
+    fail "Pattern 7 on $1 rc=$rc ms=$_ms decision=$decision reason=$reason"
+  fi
+}
+p7_allow_case() {  # $1 label
+  p7_timed "$p7_big"
+  if [ "$rc" = "0" ] && [ -z "$output" ] && [ "$_ms" -lt 8000 ]; then
+    pass "Pattern 7 allows $1 within 8s (${_ms}ms)"
+  else
+    fail "Pattern 7 on $1 rc=$rc ms=$_ms output=$output"
+  fi
+}
+p7_log_tail='; git log --allow-empty --grep commit'
+p7_nested() {  # $1 depth, $2 length of the innermost word, $3 innermost command (default echo), $4 tail
+  { printf 'echo '; printf '$(%.0s' $(seq 1 "$1"); printf '%s ' "${3:-echo}"; printf '%*s' "$2" '' | tr ' ' 'x'
+    printf ')%.0s' $(seq 1 "$1"); printf '%s' "${4:-$p7_tail}"; } > "$p7_big"
+}
+p7_nested "$p7_depth" $(( p7_max - 3 * p7_depth - 10 - ${#p7_tail} ))
+p7_limit_case "the deepest nesting of the longest command" "creates a commit with no file changes"
+p7_nested $(( p7_depth + 1 )) 10 'git -ca commit -m' "$p7_log_tail"
+p7_limit_case "a commit nested one level too deep" "nested more than $p7_depth deep"
+p7_nested $(( p7_depth + 1 )) 10 "g''it commit -m" "$p7_log_tail"
+p7_limit_case "a quoted-apart commit nested one level too deep" "nested more than $p7_depth deep"
+p7_nested $(( p7_depth + 1 )) 10 true "$p7_log_tail"
+p7_allow_case "a git log after nesting one level too deep"
+{ for _i in $(seq 1 $(( (p7_max - ${#p7_tail}) / 10 ))); do printf 'git merge;'; done
+  printf '%s' "$p7_tail"; } > "$p7_big"
+p7_limit_case "the most merges that fit" "creates a commit with no file changes"
+# Each directory change here is a different merge target, resolved by its own git process.
+p7_dirs() {  # $1 number of merge targets besides the commit's
+  { for _i in $(seq 1 "$1"); do mkdir -p "$p7_repo/d$_i"; printf 'git -C d%s merge x;' "$_i"; done
+    printf '%s' "$p7_tail"; } > "$p7_big"
+}
+p7_dirs "$p7_changes"
+p7_limit_case "the most cd / -C directory changes" "creates a commit with no file changes"
+p7_moves() {  # $1 number of -C. options, $2 subcommand and arguments
+  { printf 'git'; for _i in $(seq 1 "$1"); do printf ' -C.'; done; printf ' %s' "$2"; } > "$p7_big"
+}
+p7_moves $(( p7_changes + 1 )) 'commit --allow-empty -m x'
+p7_limit_case "a commit after one cd / -C directory change too many" "target is dynamic"
+p7_moves $(( p7_changes + 1 )) 'log --allow-empty --grep commit'
+p7_allow_case "a git log after one cd / -C directory change too many"
+# The longest path those changes can build: every change adds as many components as fit.
+{ printf 'git'; for _i in $(seq 1 "$p7_changes"); do
+    printf ' -C'; printf 'x/%.0s' $(seq 1 $(( (p7_max - 40) / p7_changes / 2 - 2 ))); done
+  printf ' commit --allow-empty -m x'; } > "$p7_big"
+p7_limit_case "the longest path built by directory changes" "cannot be resolved to a repository"
+# The costliest use of those changes: the first builds the whole path and every other one
+# resolves it again.
+{ printf 'git -C'; printf 'x/%.0s' $(seq 1 $(( (p7_max - 40 - 4 * p7_changes) / 2 )))
+  for _i in $(seq 2 "$p7_changes"); do printf ' -C.'; done
+  printf ' commit --allow-empty -m x'; } > "$p7_big"
+p7_limit_case "the longest path resolved again by every directory change" "cannot be resolved to a repository"
+# The parser itself stays linear: a long word of > signs and a long run of wrapper options.
+p7_scope_check="$(dirname "$HOOK")/scripts/review-fix-scope-check.sh"
+for p7_shape in gt wrapper; do
+  if [ "$p7_shape" = gt ]; then
+    { printf 'git -c a=b commit --allow-empty -m x a'; printf '%*s' 120000 '' | tr ' ' '>'; } > "$p7_big"
+  else
+    { printf 'env '; printf -- '-i %.0s' $(seq 1 40000); printf 'git -c a=b commit --allow-empty -m x'; } > "$p7_big"
+  fi
+  rc=0
+  _t0=$(date +%s%N)
+  output=$(_timeout 15 bash "$p7_scope_check" commit-target --command "$(cat "$p7_big")" --cwd "$p7_repo" 2>&1) || rc=$?
+  _t1=$(date +%s%N)
+  _ms=$(( (_t1 - _t0) / 1000000 ))
+  if [ "$rc" = "0" ] && [[ "$output" == index* || "$output" == other* ]] && [ "$_ms" -lt 1000 ]; then
+    pass "commit-target parses a ~120KB $p7_shape command within 1s (${_ms}ms)"
+  else
+    fail "commit-target on a ~120KB $p7_shape command rc=$rc ms=$_ms output=$(printf '%s' "$output" | head -c 200)"
+  fi
+done
+rm -rf "$p7_repo"
 echo ""
 
 # --------------------------------------------------------------------------
