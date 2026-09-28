@@ -41,14 +41,27 @@ jobs:
     # the PR while its pass rate is being triaged (D-03). ubuntu stays
     # blocking. AC-5 (fail-fast: false) still lets both legs run to completion.
     continue-on-error: ${{ matrix.os == 'macos-latest' }}
-    # Twice the measured full-job maximum, rounded up to whole minutes.
-    timeout-minutes: 18
+    # Per-OS limit, at least twice the measured full-job maximum rounded up to
+    # whole minutes: macOS peaks at 17.7 minutes, ubuntu at 7. The same test set
+    # varies more than 2x across macOS runners, so the macOS limit carries the
+    # margin instead of tighter scheduling. "Report job duration" warns when a
+    # run passes 70% of its limit.
+    timeout-minutes: ${{ matrix.timeout_minutes }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            timeout_minutes: 18
+          - os: macos-latest
+            timeout_minutes: 36
 
     steps:
+      # First step, so the elapsed time reported at the end covers every step.
+      - name: Record job start time
+        run: echo "JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+
       # actions/checkout pinned by full SHA (v4.2.2) for supply-chain integrity —
       # same convention as the existing workflows.
       - name: Checkout repository
@@ -154,6 +167,52 @@ jobs:
               echo "</details>"
             done
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # Report the job duration against its timeout so drift toward the limit
+      # shows up as a warning before runs get cancelled, plus the slowest hook
+      # suite files as the first place to look. The ranking reads the TEST_END
+      # lines that run-tests.sh prints (format pinned by run-tests-accounting.test.sh).
+      # A missing input is reported as a warning and the step still exits 0, so a
+      # measurement fault never turns the blocking ubuntu leg red.
+      - name: Report job duration
+        if: always()
+        shell: bash
+        env:
+          TIMEOUT_MINUTES: ${{ matrix.timeout_minutes }}
+        run: |
+          set +e
+          summary() { printf '%s\n' "$@" >> "$GITHUB_STEP_SUMMARY"; }
+          summary "### ⏱ Job duration — ${{ matrix.os }}"
+          case "${JOB_STARTED_AT:-}:${TIMEOUT_MINUTES:-}" in
+            :*|*:|*[!0-9:]*)
+              msg="job duration unavailable: JOB_STARTED_AT='${JOB_STARTED_AT:-}' TIMEOUT_MINUTES='${TIMEOUT_MINUTES:-}'"
+              echo "::warning::$msg"
+              summary "$msg" ;;
+            *)
+              elapsed=$(( $(date +%s) - JOB_STARTED_AT ))
+              limit=$(( TIMEOUT_MINUTES * 60 ))
+              msg="job ran $((elapsed / 60))m$((elapsed % 60))s of its ${TIMEOUT_MINUTES}m timeout ($((elapsed * 100 / limit))%)"
+              summary "$msg"
+              if [ $((elapsed * 10)) -gt $((limit * 7)) ]; then
+                echo "::warning::$msg — above 70% of the limit; speed up the suite or raise timeout-minutes"
+              else
+                echo "::notice::$msg"
+              fi ;;
+          esac
+          if [ ! -f hooks-tests.log ]; then
+            msg="slowest hook suite files unavailable: hooks-tests.log not found"
+            echo "::warning::$msg"
+            summary "$msg"
+            exit 0
+          fi
+          slowest=$(sed -n 's/^TEST_END id=[0-9]* file=\([^ ]*\) rc=[0-9]* duration_s=\([0-9]*\)$/\2 \1/p' hooks-tests.log | sort -rn | head -5)
+          if [ -z "$slowest" ]; then
+            msg="slowest hook suite files unavailable: no TEST_END lines in hooks-tests.log"
+            echo "::warning::$msg"
+            summary "$msg"
+            exit 0
+          fi
+          summary "" "Slowest hook suite files (seconds):" '```' "$slowest" '```'
 
   shellcheck:
     name: shellcheck
