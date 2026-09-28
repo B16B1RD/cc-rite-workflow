@@ -273,13 +273,18 @@ for position in ('db/q.sql:-9', 'db/q.sql:-2', 'lib/inc.txt:+10', 'lib/inc.txt:-
     check(single(rec(origin='pr', origin_cause={'diff': [position], 'path': 'p'}))['exit'] == 'ADOPT', position)
 for position in ('db/q.sql:-10', 'lib/inc.txt:+11'):
     refused([rec(origin='pr', origin_cause={'diff': [position], 'path': 'p'})], 'origin_cause_not_found', 'F-01')
-# The user's prefix settings change the diff headers; positions are still found.
-for setting in ('diff.noprefix', 'diff.mnemonicPrefix'):
-    git(repo, 'config', setting, 'true')
+# The user's diff settings drop the header prefixes, merge nearby hunks with the unchanged lines between
+# them, or rewrite the text through a textconv driver that doubles every line; positions stay exact.
+(repo / '.git/info/attributes').write_text('* diff=double\n')
+for setting, value in (('diff.noprefix', 'true'), ('diff.interHunkContext', '6'), ('diff.double.textconv', 'sed p')):
+    git(repo, 'config', setting, value)
     for position in ('src/tool.sh:-3', 'lib/inc.txt:+10'):
         check(single(rec(origin='pr', origin_cause={'diff': [position], 'path': 'p'}))['exit'] == 'ADOPT',
               (setting, position))
+    for position in ('lib/inc.txt:+5', 'db/q.sql:-5'):
+        refused([rec(origin='pr', origin_cause={'diff': [position], 'path': 'p'})], 'origin_cause_not_found', 'F-01')
     git(repo, 'config', '--unset', setting)
+(repo / '.git/info/attributes').unlink()
 for cause, reason in [
         ({'diff': ['src/tool.sh:+3'], 'path': 'p'}, 'origin_cause_not_found'),
         ({'diff': ['src/tool.sh:-2'], 'path': 'p'}, 'origin_cause_not_found'),

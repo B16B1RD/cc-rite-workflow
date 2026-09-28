@@ -163,9 +163,11 @@ class Repo:
             self._hunks = {}
             old = new = None
             in_hunk = False
-            # The user's diff.noprefix / diff.mnemonicPrefix and textconv drivers change the output.
-            diff = self.git("-c", "core.quotePath=false", "diff", "-U0", "--no-color", "--no-ext-diff",
-                            "--no-textconv", "--src-prefix=a/", "--dst-prefix=b/", f"{self.base}...{self.head}")
+            # The user's diff.noprefix, diff.interHunkContext (merges nearby hunks with the unchanged
+            # lines between them) and textconv drivers change the output.
+            diff = self.git("-c", "core.quotePath=false", "diff", "-U0", "--inter-hunk-context=0", "--no-color",
+                            "--no-ext-diff", "--no-textconv", "--src-prefix=a/", "--dst-prefix=b/",
+                            f"{self.base}...{self.head}")
             # --- / +++ are file headers only between "diff --git" and the first @@: with -U0 a
             # removed "-- x" or added "++ x" content line also starts with "--- " / "+++ ".
             for line in diff.split("\n"):
