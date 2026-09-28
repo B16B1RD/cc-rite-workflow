@@ -348,10 +348,10 @@ assert_grep 'the token does not change the next number' "$work/deferred-next.out
 : > "$work/empty-body.md"
 DL_SCRIPT="$work/dl-deferred.sh" run_decision_log deferred-fetch-fail "$work/empty-body.md"
 assert_grep 'body fetch failure keeps the token in the pending line' "$work/deferred-fetch-fail.err" \
-  '手動追記してください: - 2026-01-02 D-NN: decided / Reason: why / Impact: what <!-- rite:deferred-defect pr=7 -->$'
+  '記録予定行（7.4.5 で止まった後の再実行が書くので、手で追記しない）: - 2026-01-02 D-NN: decided / Reason: why / Impact: what <!-- rite:deferred-defect pr=7 -->$'
 DL_SCRIPT="$work/dl-deferred.sh" AWK_FAIL_MODE=partial AWK_FAIL_AT=2 run_decision_log deferred-edit-fail "$work/footer-body.md" "$work/awk-fail"
 assert_grep 'edit failure keeps the token in the pending line' "$work/deferred-edit-fail.err" \
-  '手動追記してください: - 2026-01-02 D-01: decided / Reason: why / Impact: what <!-- rite:deferred-defect pr=7 -->$'
+  '記録予定行（7.4.5 で止まった後の再実行が書くので、手で追記しない）: - 2026-01-02 D-01: decided / Reason: why / Impact: what <!-- rite:deferred-defect pr=7 -->$'
 
 # The work-memory fallback is gone from the Decision Log contract.
 for gone in 'issue-comment-wm-sync' 'wm_sync_failure' 'fallback=work_memory' '決定事項・メモ'; do

@@ -331,6 +331,42 @@ case "$(paste -sd ' ' "$triage_dir/args" 2>/dev/null)" in
   *--issue*) fail 'an empty source Issue must not pass --issue' ;;
   *) pass 'an empty source Issue passes no --issue' ;;
 esac
+# A tracker 7.4.2 wrote back survives a rerun on a new HEAD: it moves to the record whose candidate has the
+# same full text as the previous hold's candidate, so the gate links it instead of filing it again.
+state="$triage_dir/root/.rite/state"
+printf '{"candidates": [{"id": "C-1", "content": "full text"}, {"id": "C-2", "content": "other"}]}\n' > "$state/adoption-hold-5-triage.json"
+printf '{"adoption": {"head": "old", "records": [{"ids": ["C-1"], "tracker": 77}, {"ids": ["C-2"], "tracker": 78}]}}\n' > "$state/adoption-5-triage.json"
+printf '{"commit_sha": "beef"}\n' > "$triage_dir/root/.rite/review-results/5-20260102000000.json"
+triage_candidates='{"candidates": [{"id": "C-3", "content": "full text"}, {"id": "C-4", "content": "new"}]}'
+triage_records='[{"ids": ["C-3"]}, {"ids": ["C-4"]}]'
+out=$(TRIAGE_GATE_RC=0 run_triage_block 7)
+assert_eq 'a written-back tracker moves to the same candidate on a new HEAD' 'beef|77|null' \
+  "$(jq -r '"\(.adoption.head)|\(.adoption.records[0].tracker)|\(.adoption.records[1].tracker)"' "$state/adoption-5-triage.json" 2>/dev/null || true)"
+# The classifier's own tracker is kept, and no hold means nothing to carry.
+printf '{"candidates": [{"id": "C-1", "content": "full text"}]}\n' > "$state/adoption-hold-5-triage.json"
+printf '{"adoption": {"head": "old", "records": [{"ids": ["C-1"], "tracker": 77}]}}\n' > "$state/adoption-5-triage.json"
+triage_records='[{"ids": ["C-3"], "tracker": 90}, {"ids": ["C-4"]}]'
+out=$(TRIAGE_GATE_RC=0 run_triage_block 7)
+assert_eq "the classifier's tracker is not overwritten" '90' "$(jq -r '.adoption.records[0].tracker' "$state/adoption-5-triage.json" 2>/dev/null || true)"
+rm -f "$state/adoption-hold-5-triage.json"
+triage_records='[{"ids": ["C-3"]}]'
+out=$(TRIAGE_GATE_RC=0 run_triage_block 7)
+assert_eq 'without a previous hold no tracker is carried' 'null' "$(jq -r '.adoption.records[0].tracker' "$state/adoption-5-triage.json" 2>/dev/null || true)"
+# Two different trackers for one record cannot be resolved: stop instead of picking one.
+printf '{"candidates": [{"id": "C-1", "content": "full text"}, {"id": "C-2", "content": "new"}]}\n' > "$state/adoption-hold-5-triage.json"
+printf '{"adoption": {"head": "old", "records": [{"ids": ["C-1"], "tracker": 77}, {"ids": ["C-2"], "tracker": 78}]}}\n' > "$state/adoption-5-triage.json"
+triage_records='[{"ids": ["C-3", "C-4"]}]'
+out=$(TRIAGE_GATE_RC=0 run_triage_block 7)
+assert_eq 'conflicting previous trackers stop before the gate' '[CONTEXT] ADOPTION_GATE_RC=2' "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ADOPTION_GATE_RC=' || true)"
+# A decided run that cannot keep its candidates in the hold stops instead of going on to 7.4.
+rm -f "$state/adoption-hold-5-triage.json" "$state/adoption-5-triage.json"
+triage_records='[{"ids": ["C-3"]}]'
+mkdir "$state/adoption-hold-5-triage.json.tmp"
+out=$(TRIAGE_GATE_RC=0 run_triage_block 7)
+assert_eq 'a decided run that cannot write the hold stops' '[CONTEXT] ADOPTION_GATE_RC=2' "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ADOPTION_GATE_RC=' || true)"
+rmdir "$state/adoption-hold-5-triage.json.tmp"
+triage_records='[{"ids": ["C-1"]}]'
+triage_candidates='{"candidates": [{"id": "C-1", "content": "full text"}]}'
 rm -f "$triage_dir/root/.rite/review-results/"*.json
 out=$(TRIAGE_GATE_RC=0 run_triage_block 7)
 assert_eq 'a missing review JSON stops before the gate' '[CONTEXT] ADOPTION_GATE_RC=2' "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ADOPTION_GATE_RC=' || true)"
@@ -368,8 +404,8 @@ while [ "$#" -gt 0 ]; do [ "$1" = --content-file ] && cp "$2" "$LEDGER_POSTED"; 
 echo "[CONTEXT] NONBLOCKING_RECORD_DONE=1; pr=5; outcome=$LEDGER_OUTCOME; count=0; iteration_id=triage-5; comment_id=1; degraded=0" >&2
 STUB
 # The row the next cycle's step 2 reads back is built from the 7.4.5 row format, so a changed key column fails the round trip.
-row_format=$(grep -o '行形式は `| {reviewer} | {file_line} | {exit} | {判定文} | {review_json_basename} |`' "$review" | head -1 \
-  | sed -e 's/^行形式は `//' -e 's/`$//')
+row_format=$(grep -oF '行形式は `| {reviewer} | {file_line} | {exit} | {判定文} | {review_json_basename} |`' "$review" | head -1 \
+  | sed -e 's/^行形式は `//' -e 's/`$//' || true)
 assert_eq '7.4.5 keys ledger rows by reviewer and file_line' '| {reviewer} | {file_line} | {exit} | {判定文} | {review_json_basename} |' "$row_format"
 ledger_row=$row_format
 ledger_row=${ledger_row//\{reviewer\}/code-quality-reviewer}
@@ -385,6 +421,7 @@ run_ledger_block() {
   code=${code//\{owner_repo\}/o/r}
   code=${code//\{rows\}/$ledger_row}
   code=${code//\{write_failures\}/${2:-0}}
+  code=${code//\{untracked_issues\}/${3:-}}
   printf '{"kind":"triage","pr":5,"candidates":[],"resume":"old"}\n' > "$ledger_dir/root/.rite/state/adoption-hold-5-triage.json"
   rm -f "$ledger_dir/posted.md"
   LEDGER_ROOT="$ledger_dir/root" LEDGER_POSTED="$ledger_dir/posted.md" LEDGER_OUTCOME="$1" bash -c "$code" 2>&1
@@ -414,6 +451,14 @@ assert_eq 'an incomplete 7.4 write stops the review' '[review:error]' "$(printf 
 if [ -e "$ledger_dir/posted.md" ]; then fail 'an incomplete 7.4 write must not record the ledger'; else pass 'an incomplete 7.4 write records no ledger'; fi
 assert_grep 'an incomplete 7.4 write keeps the hold with a resume for the writes' \
   "$ledger_dir/root/.rite/state/adoption-hold-5-triage.json" '7.4 の外部への書き込み（writes_incomplete）が済んでいない'
+if grep -qF 'tracker に書き戻せていない' "$ledger_dir/root/.rite/state/adoption-hold-5-triage.json"; then
+  fail 'a resume without untracked Issues must not name any'
+else
+  pass 'a resume without untracked Issues names none'
+fi
+out=$(run_ledger_block updated 1 '#77' || true)
+assert_grep 'a created Issue that was not written back is named in the resume' \
+  "$ledger_dir/root/.rite/state/adoption-hold-5-triage.json" 'ただし #77 は tracker に書き戻せていない'
 
 # 7.4.2: a failed Issue creation is counted for 7.4.5, and a created Issue is written back as the record's tracker.
 awk '/^#### 7\.4\.2 / { s=1 } s && /^```bash$/ { a=1; next } a && /^```$/ { exit } a { print }' "$review" > "$ledger_dir/create.sh"
@@ -433,7 +478,7 @@ run_create_block() {
   code=$(cat "$ledger_dir/create.sh")
   code=${code//\{plugin_root\}/$ledger_dir/plugin}
   code=${code//\{pr_number\}/5}
-  code=${code//\{record_ids\}/[\"C-1\"]}
+  code=${code//\{record_ids\}/${2:-[\"C-1\"]}}
   code=${code//\{projects_enabled\}/false}
   code=${code//\{project_number\}/1}
   for ph in acceptance complexity contract description evidence file iteration_mode line original_comment owner \
@@ -441,14 +486,29 @@ run_create_block() {
     code=${code//\{$ph\}/x}
   done
   printf '{"adoption":{"head":"c0ffee","records":[{"ids":["C-1"],"tracker":null}]}}\n' > "$ledger_dir/root/.rite/state/adoption-5-triage.json"
+  [ "${3:-}" != blocked ] || mkdir "$ledger_dir/root/.rite/state/adoption-5-triage.json.tmp"
   LEDGER_ROOT="$ledger_dir/root" CREATE_FAIL="$1" bash -c "$code" 2>&1
 }
 out=$(run_create_block 1 || true)
 assert_eq 'a failed Issue creation is counted for 7.4.5' '[CONTEXT] ISSUE_CREATE_FAILED=1; reason=create_failed' \
   "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ISSUE_CREATE_FAILED=' || true)"
-out=$(run_create_block 0)
+out=$(run_create_block 0 || true)
 assert_eq 'a created Issue is written back as the record tracker' '77' \
   "$(jq -r '.adoption.records[0].tracker' "$ledger_dir/root/.rite/state/adoption-5-triage.json")"
+out=$(run_create_block 0 '["C-9"]' || true)
+assert_eq 'a write-back that matches no record fails with the created number' \
+  '[CONTEXT] ISSUE_CREATE_FAILED=1; reason=tracker_write_failed; issue=77' \
+  "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ISSUE_CREATE_FAILED=' || true)"
+out=$(run_create_block 0 '["C-1"]' blocked || true)
+rmdir "$ledger_dir/root/.rite/state/adoption-5-triage.json.tmp"
+assert_eq 'a write-back that cannot be saved fails with the created number' \
+  '[CONTEXT] ISSUE_CREATE_FAILED=1; reason=tracker_write_failed; issue=77' \
+  "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ISSUE_CREATE_FAILED=' || true)"
+if grep -qF '手動追記してください' "$review"; then
+  fail '7.4.3 must not ask for a manual append the rerun would repeat'
+else
+  pass '7.4.3 asks for no manual append'
+fi
 
 # Step 2 reads the ledger the classifier copies priors from. No record comment yet is not a failure.
 awk '/^### 7\.2-7\.3 / { s=1 } s && /^```bash$/ { a=1; blk=""; next }
