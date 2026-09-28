@@ -2303,6 +2303,7 @@ for t76_variant in same_id renumbered other_reviewer; do
   run_target "$r"
   if [ "$t76_variant" = other_reviewer ]; then
     assert_grep "T-76 other_reviewer: reviewer だけが違う指摘は転記" "$STUB_DIR/body.md" '出典だけが違う同じ指摘'
+    assert_grep "T-76 other_reviewer: 転記したのは reviewer が違う写しの側" "$STUB_DIR/body.md" 'code-quality-reviewer'
     assert_grep "T-76 other_reviewer: 別の指摘は転記" "$STUB_DIR/body.md" 'cycle B の別の指摘'
     assert_grep "T-76 other_reviewer: 除外件数 1" "$ERR" '^\[cleanup-follow-up-issue\] sweep_issued: pr=9; excluded=1; possible_duplicates=0$'
     assert_not_grep "T-76 other_reviewer: 写しとして結ばない" "$ERR" 'sweep_issued_relinked:'
