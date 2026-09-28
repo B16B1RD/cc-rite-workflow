@@ -166,7 +166,7 @@ wiki_context=$(bash {plugin_root}/hooks/scripts/wiki-apply-capture.sh \
 printf '%s\n' "$wiki_context"
 ```
 
-status が ok の各ページは rev の本文を読み、excerpt、判断、applied なら evidence と result を証跡に書く。`body: read` だけでは commit しない。ゲートが deny なら commit しない。commit 後に head が現在の HEAD と違うとき、または blob がファイルと違うときは capture からやり直す。
+status が ok の各ページは rev の本文を読み、excerpt、判断、applied なら evidence と result を証跡に書く。`body: read` だけでは commit しない。ゲートが deny なら commit しない。commit 後の head はステップ 3.3 の `fix-wiki-apply-head` が新しい HEAD へ進める。進められないとき、または blob がファイルと違うときは capture からやり直す。
 
 ---
 
@@ -2080,6 +2080,15 @@ EOF
 git add {changed_files}
 git commit -F "{commit_message_file}"
 ```
+
+commit が成功したら、別の Bash 呼び出しで Wiki 適用証跡の head を commit 前の HEAD から新しい HEAD へ進める。進めないと次のレビューのゲートが `stale_head` で拒否する。
+
+```bash
+# fix-wiki-apply-head
+bash {plugin_root}/hooks/scripts/wiki-apply-advance-head.sh --from HEAD^
+```
+
+`WIKI_APPLY_HEAD=advanced` または `=current` なら 3.3.1 へ進む。非 0 終了では証跡は変わっていない。冒頭の Wiki 手順の capture からやり直し、証跡を書き直してから 3.3.1 へ進む。
 
 ### 3.3.1 Fix-Cycle State Persistence
 
