@@ -163,6 +163,16 @@
 * **Skip**: [20260928T111304Z-pr-3388.md](raw/fixes/20260928T111304Z-pr-3388.md) — 既存の mutation testing ページと同内容で新しい経験則がない
 * **Skip**: [20260928T112647Z-pr-3388.md](raw/reviews/20260928T112647Z-pr-3388.md) — デッドコード削除の自明な事例で一般化できる経験則がない
 * **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=61, orphans=0, missing_concept=0, unregistered_raw=580, broken_refs=0
+* **Create**: [語の閉集合で拒否する guard に語を足すときは、閉集合の写しと代替手段の案内を同じ変更で揃える](pages/heuristics/closed-set-guard-word-addition-align-copies-and-alternatives.md) — raw/reviews/20260928T141040Z-pr-3404.md を新規ページ化
+* **Create**: [列挙文の途中へ節を差し込むと後ろの指示語の指す先がずれる — 語を足すより節の順序を戻す](pages/heuristics/inserted-clause-shifts-later-referents.md) — raw/fixes/20260928T141818Z-pr-3404.md を新規ページ化
+* **Create**: [近似判定が parser の判定を包含することは境界の両側の差分検査で確かめ、正規化の選択肢ごとにテストで固定する](pages/heuristics/approximation-contains-parser-differential-boundary-test.md) — raw/reviews/20260928T123625Z-pr-3379.md を新規ページ化
+* **Create**: [base 取り込みはレビュー済みの HEAD で行い、検証からレビュー開始までは検証の入力を変えない](pages/heuristics/base-intake-on-reviewed-head-keep-verification-inputs-frozen.md) — raw/fixes/20260928T135415Z-pr-3379.md を新規ページ化
+* **Create**: [失敗の印との一致でその回だけ抑止する設計は後続の書き込みで崩れる — 抑止した時点で印を消して回収を完了させる](pages/anti-patterns/one-shot-suppression-by-failure-record-match-breaks-on-later-writes.md) — raw/reviews/20260928T135334Z-pr-3397.md を新規ページ化
+* **Update**: [語の閉集合で拒否する guard に語を足すときは、閉集合の写しと代替手段の案内を同じ変更で揃える](pages/heuristics/closed-set-guard-word-addition-align-copies-and-alternatives.md) — raw/reviews/20260928T142411Z-pr-3404.md を統合
+* **Update**: [失敗の印との一致でその回だけ抑止する設計は後続の書き込みで崩れる — 抑止した時点で印を消して回収を完了させる](pages/anti-patterns/one-shot-suppression-by-failure-record-match-breaks-on-later-writes.md) — raw/fixes/20260928T140840Z-pr-3397.md を統合
+* **Update**: [base 取り込み後の再レビューは、同じ差分の再確認ではなく取り込み側との契約整合の確認として指示する](pages/heuristics/rereview-after-base-intake-checks-contract-consistency.md) — raw/reviews/20260928T141210Z-pr-3379.md を統合
+* **Update**: [identity を持たない判定台帳で複数 cycle の和集合を重複除外すると、重複防止と欠落防止を同時には満たせない](pages/anti-patterns/identity-less-ledger-union-dedup-cannot-prevent-both-duplicate-and-loss.md) — raw/reviews/20260928T142335Z-pr-3393.md を統合
+* **Update**: [保留（hold）を新設したら、寿命を state を消す全経路で揃え、解除の手段を保留の理由ごとに用意する](pages/heuristics/new-hold-state-lifecycle-across-all-purge-paths.md) — raw/fixes/20260928T140208Z-pr-3393.md を統合
 
 ## 2026-09-27
 

@@ -4,12 +4,13 @@ title: "identity を持たない判定台帳で複数 cycle の和集合を重�
 domain: "anti-patterns"
 description: "判定台帳が最終回の id と位置しか持たないまま、複数 cycle の指摘を連結した集合から「既に処理済み」の指摘を除こうとすると、id や位置で推定した除外は別の指摘まで黙って落とす。除外は台帳が実際に判定した入力に由来する要素に限り、それ以外は転記して重複しうる件数を出す。"
 created: "2026-09-12T15:25:00+00:00"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:39:40Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T14:28:35Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T08:10:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:56:46Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:06:36Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:39:40Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T14:28:35Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260912T135538Z-pr-2741.md"
@@ -29,6 +30,8 @@ sources:
     resource: "raw/fixes/20260927T150018Z-pr-3290.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T153425Z-pr-3290.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T142335Z-pr-3393.md"
 tags: ["dedup", "identity", "union", "ledger", "fail-loud"]
 confidence: high
 ---
@@ -79,6 +82,12 @@ id も位置も cycle を跨ぐ identity ではないので、「同じ指摘の
 
 一致条件の根拠を文書で「テストで固定している」と書くと、レビューはその主張をテストの variant と 1 つずつ突き合わせる。主張が名指しする条件（例: file と line）の一方しか固定されていなければ、そこが次の指摘になる。許容の根拠文を範囲の説明だけに置き換えると、なぜ許容するかの理由が抜けて近くの方針文との両立が問われやすいため、理由の文は残す。
 
+**持ち越しでも同じ問題が起きる**: 次の実行へ候補を持ち越す仕組みで、候補の同定を cycle ごとに振り直される id だけで行うと、持ち越しが 1 回のうちは衝突しなくても、持ち越しが重なったときに別の候補と同じ id になる。持ち越した候補は出典と id を組にした安定したキーで同定する。
+
+**処分の再利用は全経路が同じ台帳に書くときだけ成り立つ**: 前の cycle の処分を台帳から再利用する規則は、処分を書く全経路が同じ台帳に書くことを前提にしている。ある経路だけが別の記録先（判断ログなど）に書くと、その経路の処分は次の cycle で再利用されず、同じ候補が改めて判定される。処分の記録先を 1 つに揃えるか、再利用の規則がその経路の記録も読むようにする。
+
+**中断点ごとの表を先に作る**: 持ち越しと台帳の設計では、中断しうる点ごとに「その時点のディスク上の状態・再開の手順・全候補がちょうど 1 回処分されるか」を表にしてから実装する。1 つの中断点を直すたびに次の中断点が見つかる反復は、状態の寿命が揃っていない徴候である。
+
 ## 関連ページ
 
 - [実装が Issue の MUST と原則の両方に挟まれたら、実装を戻さず契約側（Decision Log と AC の例外）を更新する](../heuristics/contract-update-over-revert-on-must-conflict.md)
@@ -95,3 +104,4 @@ id も位置も cycle を跨ぐ identity ではないので、「同じ指摘の
 - [再報告の一致条件を実データで確かめたレビュー結果](../../raw/reviews/20260927T145034Z-pr-3290.md)
 - [identity でないフィールドを比較から外した fix 結果](../../raw/fixes/20260927T150018Z-pr-3290.md)
 - [一致条件の根拠とテストの variant を突き合わせたレビュー結果](../../raw/reviews/20260927T153425Z-pr-3290.md)
+- [持ち越し候補の同定キーと処分の記録先を指摘したレビュー結果](../../raw/reviews/20260928T142335Z-pr-3393.md)
