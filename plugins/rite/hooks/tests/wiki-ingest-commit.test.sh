@@ -508,11 +508,13 @@ run_noop_stash_push_case() {
   eq "$label: the other entry was not applied" "0" "$([ -e "$repo/other.txt" ] && echo 1 || echo 0)"
 }
 
-# run_dirty_submodule_case <label> <mode>: the only change is inside a submodule — dirty
+# run_submodule_change_case <label> <mode>: the only change is inside a submodule — dirty
 # content (dirty), a gitlink moved by a commit inside it (moved), or both (moved_dirty).
 # git stash push -u saves none of these, so the run must not treat them as work to stash; it
 # commits the raw source, leaves the stash stack alone and keeps the submodule state.
-run_dirty_submodule_case() {
+# A moved gitlink that is staged (staged) cannot be carried across the wiki checkout: the run
+# stops there with git's own reason, restores the raw source and leaves the index as it was.
+run_submodule_change_case() {
   local label="$1" mode="$2"
   local -x GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
   local base repo tmpdir err rc=0
@@ -527,13 +529,26 @@ run_dirty_submodule_case() {
   git -C "$repo" -c protocol.file.allow=always submodule add -q "$base/sub" sub
   git -C "$repo" commit -q -m addsub
   local moved_head=""
-  case "$mode" in moved|moved_dirty)
+  case "$mode" in moved|moved_dirty|staged)
     git -C "$repo/sub" -c user.email=t@e -c user.name=t commit -q --allow-empty -m moved
     moved_head=$(git -C "$repo/sub" rev-parse HEAD) ;;
   esac
   case "$mode" in dirty|moved_dirty) printf 'dirty\n' >> "$repo/sub/f" ;; esac
+  [ "$mode" = staged ] && git -C "$repo" add sub
 
   ( cd "$repo" && TMPDIR="$tmpdir" bash "$HOOK_SRC" ) >"$base/out" 2>"$err" || rc=$?
+  if [ "$mode" = staged ]; then
+    eq "$label: exits 3" "3" "$rc"
+    eq "$label: stops at the wiki checkout" "1" "$(grep -cxF "ERROR: git checkout 'wiki' failed" "$err" || true)"
+    eq "$label: git names the submodule" "1" "$(grep -c 'overwritten by checkout' "$err" || true)"
+    eq "$label: no new-entry ERROR" "0" "$(grep -c 'did not create a new entry' "$err" || true)"
+    eq "$label: raw source is back untracked" ".rite/wiki/raw/reviews/pr-test.md" \
+      "$(git -C "$repo" ls-files --others --exclude-standard -- .rite/wiki/raw)"
+    eq "$label: staged gitlink still points at the moved commit" "$moved_head" \
+      "$(git -C "$repo" ls-files -s sub | awk '{print $2}')"
+    eq "$label: stash stack untouched" "0" "$(git -C "$repo" stash list | wc -l | tr -d ' ')"
+    return
+  fi
   eq "$label: exits 0" "0" "$rc"
   eq "$label: commits the raw source" "1" "$(grep -c 'committed=1' "$base/out" || true)"
   eq "$label: no new-entry ERROR" "0" "$(grep -c 'did not create a new entry' "$err" || true)"
@@ -668,9 +683,10 @@ run_unstage_failure_case "unstage failure from a linked worktree" worktree
 run_stash_pop_failure_case "stash pop failure"
 run_concurrent_stash_case "concurrent stash"
 run_noop_stash_push_case "no-op stash push"
-run_dirty_submodule_case "dirty submodule" dirty
-run_dirty_submodule_case "moved submodule" moved
-run_dirty_submodule_case "moved and dirty submodule" moved_dirty
+run_submodule_change_case "dirty submodule" dirty
+run_submodule_change_case "moved submodule" moved
+run_submodule_change_case "moved and dirty submodule" moved_dirty
+run_submodule_change_case "staged submodule" staged
 run_push_failure_case "push failure"
 run_missing_wiki_branch_case "missing wiki branch"
 run_detached_head_case "detached main checkout from a linked worktree"
