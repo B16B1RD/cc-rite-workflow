@@ -7,7 +7,7 @@
 # A session worktree entered natively isolates the host shell, and the host refuses
 # blocks that source files or mix command substitution, loops and git with other
 # statements. A single top-level `bash <file> <literal args>` passes
-# (see references/git-worktree-patterns.md#host-worktree-execution).
+# (see ../references/git-worktree-patterns.md#host-worktree-execution).
 #
 # The skill keeps the routing tables for every marker emitted here. This file only
 # moves where the shell text lives; marker names, values and exit codes are the
@@ -43,7 +43,7 @@
 #   bash pr-review-step.sh measured-gate --pr PR_NUMBER --input INPUT
 #   bash pr-review-step.sh recommendations-register --base BASE_BRANCH --input INPUT --items ITEMS
 #   bash pr-review-step.sh attribution-gate
-#   bash pr-review-step.sh attribution-files --pr PR_NUMBER --base BASE_BRANCH
+#   bash pr-review-step.sh attribution-files --base BASE_BRANCH
 #   bash pr-review-step.sh attribution-write --pr PR_NUMBER --total TOTAL --fix-introduced FIX_INTRODUCED --critical CRITICAL --high HIGH --medium MEDIUM --low-medium LOW_MEDIUM --low LOW
 #   bash pr-review-step.sh cycle-id --pr PR_NUMBER
 #   bash pr-review-step.sh review-finish --manifest MANIFEST --content-file CONTENT_FILE
@@ -88,8 +88,8 @@ step_parse_args() {
 # 本 block は Step 0 (bash 4+ compat guard) 〜 Step 4 ({post_comment_mode} 決定 + [CONTEXT] emit) を
 # 単一 Bash tool invocation で実行する。各 Step の責務は下記の `# --- Step N: ... ---` 見出しを参照。
 
-# --- Step 0: bash 4+ compat guard (C-3: inlined from ../../references/bash-compat-guard.md) ---
-# rationale: references/design-rationale.md#argument-parsing-notes
+# --- Step 0: bash 4+ compat guard (C-3: inlined from ../references/bash-compat-guard.md) ---
+# rationale: ../skills/pr-review/references/design-rationale.md#argument-parsing-notes
 if ! command -v mapfile >/dev/null 2>&1; then
  bash_version=$("$BASH" --version 2>/dev/null | head -1)
  echo "ERROR: bash 4.0+ が必要ですが、現在のシェルは mapfile builtin を持っていません" >&2
@@ -142,7 +142,7 @@ fi
 
 # --- Step 3: rite-config.yml の pr_review.post_comment 読取 (C-2: SIGPIPE-safe) ---
 # 多段 pipeline は禁止 (SIGPIPE rc=141 で config が silent false 化する)
-# rationale: references/design-rationale.md#argument-parsing-notes
+# rationale: ../skills/pr-review/references/design-rationale.md#argument-parsing-notes
 # config の場所は helper が決める（worktree 自身のもの、無ければ main checkout のもの）
 config_rc=0
 config_file=$(bash "$plugin_root"/hooks/scripts/lib/rite-config-path.sh 2>&1) || config_rc=$?
@@ -555,10 +555,10 @@ esac
 step_fingerprint_check() {
 # ステップ 5.1.2.A Step 2 per-finding fingerprint 計算 + 即時 emit (Step 2/3 統合)
 # file / category / description は --finding-file の JSON から jq -r で読む。fix 側の accept
-# (skills/fix/references/accept-finding.md) も同じ JSON を同じ jq で読むため、両側の fingerprint は
+# (../skills/fix/references/accept-finding.md) も同じ JSON を同じ jq で読むため、両側の fingerprint は
 # 同じ入力から計算される。finding_id / severity / pr_number は --finding-id / --severity / --pr で受け取る。
 #
-# Step 2/3 統合の理由 (cross-call shell 変数破綻の回避): references/design-rationale.md#fingerprint-suppression-notes
+# Step 2/3 統合の理由 (cross-call shell 変数破綻の回避): ../skills/pr-review/references/design-rationale.md#fingerprint-suppression-notes
 
 # ${pr_number} placeholder 残留 fail-fast (Step 1 と対称、per-finding 呼出でも安全)
 case "$pr_number" in
@@ -688,13 +688,13 @@ bash "$plugin_root"/scripts/review-measured-gate.sh \
   --reject-preset-verification
 _gate_rc=$?
 
-# save-pending marker 設置。rationale: references/measured-gate-record.md#save-pending-marker
+# save-pending marker 設置。rationale: ../skills/pr-review/references/measured-gate-record.md#save-pending-marker
 # 非ゼロ終了時は marker を張らない（orphan 防止）。
 if [ "$_gate_rc" -eq 0 ]; then
-  # rationale: references/design-rationale.md#save-pending-id-path-notes
+  # rationale: ../skills/pr-review/references/design-rationale.md#save-pending-id-path-notes
   save_pending_id="${pr_number}-$(date +%s)"
   save_pending_marker="${TMPDIR:-/tmp}/rite-p61a-pending-${save_pending_id}"
-  # rationale: references/design-rationale.md#noclobber-pending-marker-notes
+  # rationale: ../skills/pr-review/references/design-rationale.md#noclobber-pending-marker-notes
   if [ -e "$save_pending_marker" ] || [ -L "$save_pending_marker" ]; then
     echo "WARNING: save-pending marker path に既存エントリがあります ($save_pending_marker)。作成せず ステップ 8.0.4 を degraded に倒します" >&2
     echo "  原因候補: 同一秒の並行 review / 共有 TMPDIR での先置き (squat)" >&2
@@ -815,9 +815,9 @@ step_cycle_id() {
 review_cycle_id="${pr_number}-$(date +%s)"
 echo "[CONTEXT] REVIEW_TMP_DIR=${TMPDIR:-/tmp}" >&2
 echo "[CONTEXT] REVIEW_CYCLE_ID=$review_cycle_id" >&2
-# 8.0.3 用 pending marker。rationale: references/measured-gate-record.md#pending-marker
+# 8.0.3 用 pending marker。rationale: ../skills/pr-review/references/measured-gate-record.md#pending-marker
 pending_marker="${TMPDIR:-/tmp}/rite-nbr-pending-$review_cycle_id"
-# rationale: references/design-rationale.md#noclobber-pending-marker-notes
+# rationale: ../skills/pr-review/references/design-rationale.md#noclobber-pending-marker-notes
 if ( set -C; : > "$pending_marker" ) 2>/dev/null; then
   echo "[CONTEXT] NONBLOCKING_PENDING_MARKER=$pending_marker" >&2
 else
@@ -894,7 +894,7 @@ echo "[CONTEXT] REJECTED_LEDGER_PRESERVE=ok" >&2
 # --- wm-phase-local --------------------------------------------------------------
 step_wm_phase_local() {
 # hook stderr 退避 + lock/non-lock 分岐 (fix.md ステップ 4.5 と対称。silent suppress 禁止)
-# rationale: ../fix/references/design-rationale.md#output-pattern-notes と同根
+# rationale: ../skills/fix/references/design-rationale.md#output-pattern-notes と同根
 hook_err=$(mktemp "${TMPDIR:-/tmp}/rite-review-p62-hook-err-XXXXXX") || hook_err=""
 if [ -n "$hook_err" ]; then
  if WM_SOURCE="review" \
@@ -1352,7 +1352,7 @@ case "$subcommand" in
   measured-gate) require input pr_number; step_measured_gate ;;
   recommendations-register) require input items base_branch; step_recommendations_register ;;
   attribution-gate) step_attribution_gate ;;
-  attribution-files) require pr_number base_branch; step_attribution_files ;;
+  attribution-files) require base_branch; step_attribution_files ;;
   attribution-write) require pr_number total fix_introduced critical high medium low_medium low; step_attribution_write ;;
   cycle-id) require pr_number; step_cycle_id ;;
   review-finish) require manifest content_file; step_review_finish ;;

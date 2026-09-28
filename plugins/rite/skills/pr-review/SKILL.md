@@ -1804,7 +1804,7 @@ bash {plugin_root}/scripts/pr-review-step.sh attribution-gate
 **Step 2**: Identify files changed by the last fix commit vs original PR files:
 
 ```bash
-bash {plugin_root}/scripts/pr-review-step.sh attribution-files --pr {pr_number} --base {base_branch}
+bash {plugin_root}/scripts/pr-review-step.sh attribution-files --base {base_branch}
 ```
 
 **Step 3**: For each finding in the consolidated findings table, classify:

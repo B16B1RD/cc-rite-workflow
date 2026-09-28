@@ -35,7 +35,7 @@ fingerprint = sha1(normalize(file_path) + ":" + category + ":" + normalize(messa
 | `{finding_file}` | 当該 finding の `findings[].file` / `line` / `category` / `description` を、ステップ 1.2.2 の reload 済み JSON から finding ID で引いて `{"file": ..., "line": ..., "category": ..., "description": ...}` の JSON として Write tool で書いた絶対パス。`line` は `integer \| null`（null は anchor sentinel）。pr-review 5.1.2.A の `fingerprint-check` に渡す JSON と同じ形 |
 | `{pr_number}` | ステップ 1.0 正規化値。bash block 冒頭で literal substitute |
 
-**`{line}` が null の場合**: `Acknowledged-finding:` commit trailer / `[CONTEXT] ACCEPT_FINGERPRINT_PERSISTED` retained flag emit / fingerprint normalize すべてで `null` literal を避け、`anchor` sentinel (ステップ 1.3 の thread lookup 規約と統一) に正規化する。
+**finding JSON の `line` が null の場合**: `Acknowledged-finding:` commit trailer / `[CONTEXT] ACCEPT_FINGERPRINT_PERSISTED` retained flag emit / fingerprint normalize すべてで `null` literal を避け、`anchor` sentinel (ステップ 1.3 の thread lookup 規約と統一) に正規化する。
 
 **accept 永続化 bash block** (per accepted finding、単一 Bash tool invocation 内で実行 — `{finding_file}` / `{pr_number}` は Claude が事前 substitute):
 
