@@ -8,6 +8,7 @@
 * **Update**: [同じ判定規則を別言語で二重実装するときは、同一 fixture で SoT 実装の実行結果と突合する parity assert を置く](pages/patterns/dual-implementation-rule-parity-assert-against-sot-executable.md) — raw/reviews/20260928T150934Z-pr-3411.md と raw/fixes/20260928T151338Z-pr-3411.md と raw/reviews/20260928T153225Z-pr-3411.md で補強
 * **Update**: [仕様改訂の境界をまたいで観測を比べると停止判定が狂う — 各観測はその区間の基準と比べる](pages/anti-patterns/cross-boundary-comparison-after-spec-revision.md) — raw/reviews/20260928T150345Z-pr-3376.md で補強
 * **Update**: [語の閉集合で拒否する guard に語を足すときは、閉集合の写しと代替手段の案内を同じ変更で揃える](pages/heuristics/closed-set-guard-word-addition-align-copies-and-alternatives.md) — raw/reviews/20260928T153054Z-pr-3412.md で補強
+* **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=580, broken_refs=0
 
 ## 2026-09-28
 
