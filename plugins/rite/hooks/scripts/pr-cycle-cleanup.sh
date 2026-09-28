@@ -641,11 +641,12 @@ if [ -f "$manifest_path" ]; then
   fi
 fi
 
-# Liveness TTL. Both signals below used to protect an
-# active=true holder with NO time bound, which deadlocks this guard forever
-# when a session ends WITHOUT session-end.sh's SessionEnd hook firing (forced
-# quit / crash / terminal close — see session-end.sh header for which exits
-# skip it): its flow-state stays `active=true` and the worktree/branch it
+# Liveness TTL, shared by every liveness check in this script (Step 4-P's
+# mutation-worktree owner check and Step 5's session-worktree signals (A)/(B)).
+# Protecting an active=true holder with NO time bound deadlocks these checks
+# forever when a session ends WITHOUT session-end.sh's SessionEnd hook firing
+# (forced quit / crash / terminal close — see session-end.sh header for which
+# exits skip it): its flow-state stays `active=true` and the worktree/branch it
 # holds can never be lazily reaped. TTL_HOURS bounds that: an active=true
 # holder is protected only while its `updated_at` is within the TTL.
 # Overridable via env for ops/troubleshooting (no new rite-config.yml key —
@@ -719,8 +720,8 @@ _rite_epoch_of_ts() {
 #       silent) OR this host's `date` cannot parse a well-formed timestamp
 #       (4.5 fail-safe, WARNING emitted once per run — TTL enforcement
 # degrades to the pre- always-protect behavior on that host)
-#   1 = TTL exceeded -> not protected by this signal (still subject to the
-#       other liveness signal / Gates 1-3)
+#   1 = TTL exceeded -> this holder does not protect; the caller decides
+#       whether any other check still does
 # The boundary (age == TTL exactly) counts as "within" -> protect.
 _rite_date_incompat_warned=0
 _rite_ttl_protects() {

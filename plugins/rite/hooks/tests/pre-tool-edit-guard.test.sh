@@ -180,9 +180,9 @@ if [[ "$tca_reason" == *"'bash ${tca_hooks_dir}/session-identity.sh' on its own"
   && [[ "$tca_reason" == *"'mktemp -d -t rite-review-mutation-owner.<that session ID>.XXXXXX' on its own"* ]] \
   && [[ "$tca_reason" == *"'git worktree add --detach <that literal path> HEAD'"* ]] \
   && [[ "$tca_reason" != *'$(mktemp'* ]]; then
-  pass "deny reason suggests mktemp and worktree add as separate calls"
+  pass "deny reason names the hook's own session-identity.sh path and suggests mktemp and worktree add as separate calls"
 else
-  fail "deny reason does not suggest separate mktemp / worktree add calls: $tca_reason"
+  fail "deny reason does not name ${tca_hooks_dir}/session-identity.sh or suggest separate mktemp / worktree add calls: $tca_reason"
 fi
 echo ""
 
