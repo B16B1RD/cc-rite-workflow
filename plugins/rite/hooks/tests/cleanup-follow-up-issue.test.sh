@@ -115,9 +115,9 @@
 #   T-73 前後の cycle が再掲マーカー付きで id を変えて再報告した指摘も除外し、再掲として結んだ件数を出す
 #        (マーカーの 2 つの書き方、最新 cycle で起票した場合、reviewer の帰属が変わった / 無い場合を含む)
 #   T-74 同じ位置でもマーカーで結ばれない別の指摘は転記する (括弧外で id に触れる本文を含む)
-#   T-75 マーカーが直前の cycle の同じ id・位置を指さない / NOT_FIXED・再掲が無い / PARTIAL /
+#   T-75 マーカーが直前の cycle の同じ id・位置 (line・ファイル) を指さない / NOT_FIXED・再掲が無い / PARTIAL /
 #        直前の cycle が 0 件・parse 不能・別の指摘のときは結ばない
-#   T-76 起票済みの指摘と出典だけ、または出典と id だけが違う完全一致の指摘も除外する
+#   T-76 起票済みの指摘と出典だけ、または出典と id だけが違う完全一致の指摘も除外する (reviewer が違えば転記)
 #
 # Coverage (Decision Log で先送りした欠陥):
 #   T-65 指摘 0 件でも先送り欠陥があれば起票し、Section 9 内の本 PR のトークン行だけをトークンを除いて順に転記する
@@ -2256,13 +2256,15 @@ done
 echo "--- T-75: 再掲マーカーは直前の cycle の同じ id・同じ位置の指摘とだけ結ぶ ---"
 # どれか 1 つでも外れれば結ばず、後の cycle の指摘を転記する (欠落より重複)。
 # 各 variant は cycle A または B の起票済み指摘に対する cycle C の指摘 (と cycle B) だけを変える
-for t75_variant in other_line other_id no_verdict partial no_bracket skip_cycle empty_cycle broken_cycle; do
+for t75_variant in other_line other_file other_id no_verdict partial no_bracket skip_cycle empty_cycle broken_cycle; do
   reset_stubs
   r=$(new_root "t75-$t75_variant")
   t75_desc='【F-01 再掲・NOT_FIXED】cycle C の指摘'
-  t75_line=310; t75_prev="$CYCLE_B"
+  t75_file=t.sh; t75_line=310; t75_prev="$CYCLE_B"
   case "$t75_variant" in
     other_line)     t75_line=311 ;;
+    # 同じ id・同じ line でもファイルが違えば別の位置
+    other_file)     t75_file=u.sh ;;
     other_id)       t75_desc='【F-09 再掲・NOT_FIXED】cycle C の指摘' ;;
     no_verdict)     t75_desc='【前回 F-01】cycle C の指摘' ;;
     # 一部だけ直った指摘の本文は残りの問題を書き直しているので、起票済みの本文と同じ指摘ではない
@@ -2277,7 +2279,7 @@ for t75_variant in other_line other_id no_verdict partial no_bracket skip_cycle 
     empty_cycle)  put_json "$r" "$CYCLE_B" '{"non_blocking_findings":[]}' ;;
     broken_cycle) put_json "$r" "$CYCLE_B" '{broken' ;;
   esac
-  put_json "$r" "$CYCLE_C" "$(nb_json "$(nb_finding F-01 t.sh "$t75_line" test-reviewer "$t75_desc")")"
+  put_json "$r" "$CYCLE_C" "$(nb_json "$(nb_finding F-01 "$t75_file" "$t75_line" test-reviewer "$t75_desc")")"
   put_issued_ledger "$t75_prev"
   run_target "$r"
   assert_grep "T-75 $t75_variant: 後の cycle の指摘は転記" "$STUB_DIR/body.md" 'cycle C の指摘'
@@ -2288,15 +2290,24 @@ done
 
 echo "--- T-76: 起票済みの指摘と出典 (と id) だけが違う完全一致の指摘は転記しない ---"
 # renumbered: 後の cycle が id を振り直し、マーカーを付けずに同じ内容で再報告した場合
-for t76_variant in same_id renumbered; do
+# other_reviewer: 写しは reviewer も比べるので、reviewer だけが違う指摘は結ばずに転記する
+for t76_variant in same_id renumbered other_reviewer; do
   reset_stubs
   r=$(new_root "t76-$t76_variant")
-  t76_later_id=F-01
+  t76_later_id=F-01; t76_later_reviewer=test-reviewer
   [ "$t76_variant" = renumbered ] && t76_later_id=F-07
+  [ "$t76_variant" = other_reviewer ] && t76_later_reviewer=code-quality-reviewer
   put_json "$r" "$CYCLE_A" "$(nb_json "$(nb_finding F-01 a.md 3 test-reviewer '出典だけが違う同じ指摘')")"
-  put_json "$r" "$CYCLE_B" "$(nb_json "$(nb_finding "$t76_later_id" a.md 3 test-reviewer '出典だけが違う同じ指摘')" "$(nb_finding F-02 c.md 1 test-reviewer 'cycle B の別の指摘')")"
+  put_json "$r" "$CYCLE_B" "$(nb_json "$(nb_finding "$t76_later_id" a.md 3 "$t76_later_reviewer" '出典だけが違う同じ指摘')" "$(nb_finding F-02 c.md 1 test-reviewer 'cycle B の別の指摘')")"
   jq -n --argjson c "$(comment_obj "$(record_body "$(issued_row5 F-01 a.md:3 "$CYCLE_A")")")" '[[$c]]' > "$GH_API_JSON"
   run_target "$r"
+  if [ "$t76_variant" = other_reviewer ]; then
+    assert_grep "T-76 other_reviewer: reviewer だけが違う指摘は転記" "$STUB_DIR/body.md" '出典だけが違う同じ指摘'
+    assert_grep "T-76 other_reviewer: 別の指摘は転記" "$STUB_DIR/body.md" 'cycle B の別の指摘'
+    assert_grep "T-76 other_reviewer: 除外件数 1" "$ERR" '^\[cleanup-follow-up-issue\] sweep_issued: pr=9; excluded=1; possible_duplicates=0$'
+    assert_not_grep "T-76 other_reviewer: 写しとして結ばない" "$ERR" 'sweep_issued_relinked:'
+    continue
+  fi
   assert_not_grep "T-76 $t76_variant: 完全一致のコピーも転記しない" "$STUB_DIR/body.md" '出典だけが違う同じ指摘'
   assert_grep "T-76 $t76_variant: 別の指摘は転記" "$STUB_DIR/body.md" 'cycle B の別の指摘'
   assert_grep "T-76 $t76_variant: 除外件数 2" "$ERR" '^\[cleanup-follow-up-issue\] sweep_issued: pr=9; excluded=2; possible_duplicates=0$'
