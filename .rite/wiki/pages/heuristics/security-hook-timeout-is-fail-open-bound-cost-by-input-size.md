@@ -39,13 +39,18 @@ sources:
     resource: "raw/reviews/20260928T085952Z-pr-3379.md"
   - type: "fixes"
     resource: "raw/fixes/20260928T091402Z-pr-3379.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T095306Z-pr-3379.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260928T100658Z-pr-3379.md"
 tags: ["security", "hook", "timeout", "fail-open", "fail-closed", "dos", "input-size-bound", "pretooluse", "super-linear", "bypass", "noglob", "glob", "unquoted-loop"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T09:47:59Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T10:18:22Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T05:02:36Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T06:02:43Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T09:47:59Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T10:18:22Z" }
 ---
 
 # セキュリティ境界 hook の timeout は fail-open — 評価コストは入力サイズで O(1) 上限を設けて bound する
@@ -128,6 +133,12 @@ reviewer の状態変更を止める guard の字句解析に、1 文字ずつ `
 
 「timeout に十分収まる」というコメントを、Linux の手元と ubuntu の CI だけの実測で書くと、macOS の CI で反証される。別 OS の CI の完了を待たずに下した FIXED 判定も、次の cycle で覆った。
 
+### 最悪形は「最も長い入力」とは限らない — 上限の値は両側で固定する
+
+上限いっぱいの計時で最も長いパスを組む形を最悪形として選んだところ、長いパスを先に作り、残りの回数でそれを解決し直す形のほうが約 2 倍遅かった。コストは最終的なパスの長さではなく、解決し直す回数とパスの長さの積で決まる。計時テストの最悪形は、コストの式の各因子を最大にする組み合わせから選ぶ。
+
+上限の値を定数から読んで入力を組み立てるテストは、その値に追従する。値を下げる変更を入れても入力が一緒に縮むため、テストは通り続ける。上限の値は少なくとも 1 か所で、実装側とテスト側の両方を同じ値に固定する（共有 parser で読んで比べる等）。上限を差し替えたり改名したりしたときは、名前と説明文を grep して、hook のコメントやテストのラベルに残った旧上限の記述も追従させる。
+
 ## 関連ページ
 
 - [consume 操作 (read+delete+return) は delete-then-return 順で fail-closed にする](../patterns/consume-operation-delete-then-return-fail-closed.md)
@@ -155,3 +166,5 @@ reviewer の状態変更を止める guard の字句解析に、1 文字ずつ `
 - [fix 結果（コストの源ごとの上限、解決結果の使い回し）](../../raw/fixes/20260928T063605Z-pr-3379.md)
 - [レビュー結果（伸びたパスを解決し直す二乗が残る）](../../raw/reviews/20260928T085952Z-pr-3379.md)
 - [fix 結果（作業先の変更回数に上限を置く）](../../raw/fixes/20260928T091402Z-pr-3379.md)
+- [レビュー結果（旧上限の記述の残り、定数に追従するテスト、最悪形の選び方）](../../raw/reviews/20260928T095306Z-pr-3379.md)
+- [fix 結果（旧上限の記述の一掃、解決回数とパス長の積の計時、上限の値の両側固定）](../../raw/fixes/20260928T100658Z-pr-3379.md)

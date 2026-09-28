@@ -77,7 +77,7 @@ okf_version: "0.2"
 | [function 内 `local v=$(...)` と top-level `v=$(...)` の `set -e` 伝播差で writer/reader 非対称が偶然 mask される](pages/anti-patterns/bash-local-vs-toplevel-pipefail-asymmetry.md) | anti-patterns | `set -euo pipefail` 配下の同型コードでも、**function 内の `local v=$(cmd)` と top-level の `v=$(cmd)` は `set -e` 伝播の挙動が異なる**。 | 2026-09-13T10:12:00Z | high |
 | [`2>&1` と `2>&1 \| head -N` で sentinel/exit code が silent suppression される (self-defeating observability)](pages/anti-patterns/stderr-merge-silent-sentinel-suppression.md) | anti-patterns | `2>&1` で stderr を stdout に merge する pattern は、(a) `2>&1 \| head -N` 形式では pipeline 終端の `head` が前段の exit code を消す silent failure を生み、(b) helper の stderr 出力が caller 側で classification 文字列に混入し case arm が defensive `*)` 経路に落ちる silent sentinel suppression を生む。 | 2026-09-08T05:05:06Z | high |
 | [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) | patterns | test が **「正しい input で PASS する」だけでは不十分**で、**「実装を mutate (sed で改変 / 削除) すると確実に FAIL する」** ことを empirical に確認することで初めて regression detection power が保証される。 | 2026-09-27T17:27:12Z | high |
-| [セキュリティ境界 hook の timeout は fail-open — 評価コストは入力サイズで O(1) 上限を設けて bound する](pages/heuristics/security-hook-timeout-is-fail-open-bound-cost-by-input-size.md) | heuristics | PreToolUse 等の hook の timeout は **fail-open**（timeout に達すると Claude Code が hook を kill して tool 実行を許可する）である。 | 2026-09-28T09:47:59Z | high |
+| [セキュリティ境界 hook の timeout は fail-open — 評価コストは入力サイズで O(1) 上限を設けて bound する](pages/heuristics/security-hook-timeout-is-fail-open-bound-cost-by-input-size.md) | heuristics | PreToolUse 等の hook の timeout は **fail-open**（timeout に達すると Claude Code が hook を kill して tool 実行を許可する）である。 | 2026-09-28T10:18:22Z | high |
 | [「invariant は logic 上成立」を信頼せず empirical reproduction で verify する](pages/heuristics/empirical-reproduction-over-invariant-reasoning.md) | heuristics | review-fix loop が累積 28+ cycle に達した時点でも、「invariant は logic 上成立する」という reasoning ベースの reviewer 判断は silent regression を見逃す経路となる。 | 2026-08-30T08:52:00Z | high |
 | [`rejected(scope-creep)` judgment は cross-validation + empirical revert test で gate する](pages/heuristics/scope-creep-rejection-empirical-gate.md) | heuristics | review-fix loop で author が `rejected(scope-creep)` として承認した tradeoff が、後続 cycle reviewer の **empirical revert test** で CRITICAL silent corruption / data corruption と認定される事例が発生する。 | 2026-04-27T23:01:24+00:00 | high |
 | [SoT 文書の path 参照は本 PR マージ時点の origin/develop で existence check する](pages/heuristics/sot-path-reference-existence-check.md) | heuristics | 新規 SoT (Single Source of Truth) 文書を作成する際、文書内部から他リポジトリ要素 (file path / skill 名 / canonical 文書) への参照を含める場合は、参照先の存在を **本 PR がマージされる時点の origin/develop** で機械的に検証する。 | 2026-09-27T10:05:00Z | high |
@@ -601,9 +601,10 @@ okf_version: "0.2"
 | [改訂をまたぐ判定規則は、改訂なしの既存ケースも含むケース表から 1 つの規則で決める](pages/heuristics/revision-spanning-rule-from-full-case-table.md) | heuristics | 仕様の改訂をまたいで進展や同一性を判定する規則を、指摘された改訂パターンごとの場合分けで直すと、別のパターンで逆向きの誤りが出続ける。改訂ありと改訂なしの全ケースを表にし、全行を満たす 1 つの規則を選んでから実装すると収束する。 | 2026-09-28T09:47:59Z | high |
 | [state を削除せず無効化して残すと、無効化を完了の印として読む既存 consumer が中断を完了と読み違える](pages/anti-patterns/deactivate-instead-of-delete-misread-by-consumers.md) | anti-patterns | 作業途中の state を削除していた経路を、無効化して残す形に変えると、無効化された形を完了の印として読んでいた別の consumer が、中断を完了と誤読する。書き込み側を変えるときは、その形を読む consumer を全部洗い出し、完了と中断を区別できる既存のフィールドを判定に加える。 | 2026-09-28T09:47:59Z | high |
 | [シェル本体を別ディレクトリの helper へ移すと、相対パス・引数・出力元の記述が移設元を前提に残る](pages/anti-patterns/helper-relocation-leaves-origin-relative-references.md) | anti-patterns | 手順書のシェル処理を別ディレクトリの helper へ移すと、コメント中の相対パス、使われなくなった引数、出力元の記述が、移設元の場所を前提にしたまま残りやすい。移設時は、置き場所を基準にしたパス解決をスクリプトで全件確かめる。 | 2026-09-28T09:47:59Z | medium |
+| [既存の正規化を新しい判定へ再利用すると、除外範囲の緩さまで持ち込む](pages/heuristics/reused-normalization-carries-its-exclusion-looseness.md) | heuristics | 2 つの比較を揃えるために既存の正規化を再利用すると、その正規化が持つ除外の広さが新しい判定にも効く。再利用の前に、除外する行の形が新しい判定の目的に合うかを確かめる。 | 2026-09-28T10:18:22Z | medium |
 ## 統計
 
-- 総ページ数: 591
-- ドメイン別: patterns=127, heuristics=280, anti-patterns=184
-- 最終更新: 2026-09-28T09:47:59Z
+- 総ページ数: 592
+- ドメイン別: patterns=127, heuristics=281, anti-patterns=184
+- 最終更新: 2026-09-28T10:18:22Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |

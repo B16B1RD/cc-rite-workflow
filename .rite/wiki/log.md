@@ -139,6 +139,9 @@
 * **Update**: [state を削除せず無効化して残すと、無効化を完了の印として読む既存 consumer が中断を完了と読み違える](pages/anti-patterns/deactivate-instead-of-delete-misread-by-consumers.md) — raw/fixes/20260928T090234Z-pr-3391.md を統合
 * **Create**: [シェル本体を別ディレクトリの helper へ移すと、相対パス・引数・出力元の記述が移設元を前提に残る](pages/anti-patterns/helper-relocation-leaves-origin-relative-references.md) — raw/reviews/20260928T091213Z-pr-3366.md を新規ページ化
 * **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=62, orphans=0, missing_concept=0, unregistered_raw=578, broken_refs=0
+* **Update**: [セキュリティ境界 hook の timeout は fail-open — 評価コストは入力サイズで O(1) 上限を設けて bound する](pages/heuristics/security-hook-timeout-is-fail-open-bound-cost-by-input-size.md) — raw/reviews/20260928T095306Z-pr-3379.md を統合
+* **Update**: [セキュリティ境界 hook の timeout は fail-open — 評価コストは入力サイズで O(1) 上限を設けて bound する](pages/heuristics/security-hook-timeout-is-fail-open-bound-cost-by-input-size.md) — raw/fixes/20260928T100658Z-pr-3379.md を統合
+* **Create**: [既存の正規化を新しい判定へ再利用すると、除外範囲の緩さまで持ち込む](pages/heuristics/reused-normalization-carries-its-exclusion-looseness.md) — raw/reviews/20260928T101137Z-pr-3376.md を新規ページ化
 
 ## 2026-09-27
 
