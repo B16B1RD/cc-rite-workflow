@@ -776,9 +776,9 @@ _rite_ttl_protects() {
 
 # 自セッション ID。自セッションの残骸は所有者が live でも回収する。runtime context が
 # 無い (rc=2) ときは自セッション一致を判定しない。ID が不正・曖昧 (rc=1) なときも同じで、
-# 理由を 1 回 WARNING に出す。
+# session-identity.sh が stderr に出す理由とともに WARNING を 1 回出す。
 _rite_self_sid_rc=0
-_rite_self_sid=$(bash "$SCRIPT_DIR/../session-identity.sh" 2>/dev/null) || _rite_self_sid_rc=$?
+_rite_self_sid=$(bash "$SCRIPT_DIR/../session-identity.sh") || _rite_self_sid_rc=$?
 if [ "$_rite_self_sid_rc" -ne 0 ]; then
   _rite_self_sid=""
   if [ "$_rite_self_sid_rc" -ne 2 ]; then

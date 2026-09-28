@@ -53,7 +53,7 @@ rationale: ../skills/reviewers/references/reviewer-base-rationale.md#why-wrapper
 
 ### Mutation experiments and verification (worktree-only)
 
-Reviewer が **mutation testing / verification experiment** (例: 「ある line を `return 1` から `exit 1` に変えたら test が失敗するか」) を実行する必要がある場合、**parent repo の working tree / branch を絶対に変更してはならない**。正規経路は以下の worktree-only pattern に限定される:
+Reviewer が **mutation testing / verification experiment** (例: 「ある line を `return 1` から `exit 1` に変えたら test が失敗するか」) を実行する必要がある場合、**parent repo の working tree / branch を絶対に変更してはならない**。正規経路は以下の worktree-only pattern に限定される。`{plugin_root}` は、reviewer prompt が渡す本ファイルの絶対パスから末尾の `/agents/_reviewer-base.md` を除いたディレクトリ:
 
 ```bash
 # 0. 単独の Bash 呼び出しでセッション ID を得る

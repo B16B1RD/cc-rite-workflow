@@ -1524,18 +1524,19 @@ run_cleanup_as() {
   fi
 }
 
-# Write the owner's flow-state: $2 = active (true/false), $3 = updated_at ("" omits the key).
+# Write a session's flow-state: $2 = active (true/false), $3 = updated_at ("" omits the key),
+# $4 = session ID (default: the owner).
 write_owner_state() {
-  local repo="$1" active="$2" updated="$3"
+  local repo="$1" active="$2" updated="$3" sid="${4:-$OWNER_SID}"
   mkdir -p "$repo/.rite/sessions"
   if [ -n "$updated" ]; then
-    jq -n --arg sid "$OWNER_SID" --argjson a "$active" --arg u "$updated" \
+    jq -n --arg sid "$sid" --argjson a "$active" --arg u "$updated" \
       '{schema_version:3, session_id:$sid, phase:"review", active:$a, updated_at:$u}' \
-      > "$repo/.rite/sessions/$OWNER_SID.flow-state"
+      > "$repo/.rite/sessions/$sid.flow-state"
   else
-    jq -n --arg sid "$OWNER_SID" --argjson a "$active" \
+    jq -n --arg sid "$sid" --argjson a "$active" \
       '{schema_version:3, session_id:$sid, phase:"review", active:$a}' \
-      > "$repo/.rite/sessions/$OWNER_SID.flow-state"
+      > "$repo/.rite/sessions/$sid.flow-state"
   fi
 }
 
@@ -1608,7 +1609,14 @@ echo "T-62: 所有セッションの flow-state が無い一時 worktree は回�
 TEST_REPO=$(make_temp_repo)
 t62_wt=$(add_owner_wt "$TEST_REPO" "rite-review-mutation-owner.$OWNER_SID.Ef34Gh")
 t62_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO")
-assert_reaped "T-62: 所有セッションがいない一時 worktree を回収する" "$TEST_REPO" "$t62_wt" "$t62_out"
+assert_reaped "T-62a: セッション一覧が無いとき、所有者の一時 worktree を回収する" "$TEST_REPO" "$t62_wt" "$t62_out"
+drop_wt "$TEST_REPO" "$t62_wt"
+# In real use the session list holds at least the running session's own state, so an
+# absent owner is decided by the scan over that list, not by the missing directory.
+write_owner_state "$TEST_REPO" true "$(now_utc)" "$SELF_SID"
+t62_wt=$(add_owner_wt "$TEST_REPO" "rite-review-mutation-owner.$OWNER_SID.Ef56Gh")
+t62_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO")
+assert_reaped "T-62b: セッション一覧に所有者がいないとき、その一時 worktree を回収する" "$TEST_REPO" "$t62_wt" "$t62_out"
 drop_wt "$TEST_REPO" "$t62_wt"
 cleanup_temp_repo "$TEST_REPO"
 
@@ -1644,8 +1652,9 @@ else
 fi
 # An invalid runtime ID is reported once and also makes no self match.
 t64_out=$(run_cleanup_as "bad..id" "$TEST_REPO")
-if [ -d "$t64_wt" ] && [ "$(grep -c '自セッション ID を解決できません' <<< "$t64_out")" = 1 ]; then
-  pass "T-64c: 不正な自セッション ID は WARNING を 1 回出し、所有者の一時 worktree を残す"
+if [ -d "$t64_wt" ] && [ "$(grep -c '自セッション ID を解決できません' <<< "$t64_out")" = 1 ] \
+   && grep -q '^ERROR: invalid session_id' <<< "$t64_out"; then
+  pass "T-64c: 不正な自セッション ID は理由つきの WARNING を 1 回出し、所有者の一時 worktree を残す"
 else
   fail "T-64c: dir=$([ -d "$t64_wt" ] && echo present || echo gone). Output: $t64_out"
 fi

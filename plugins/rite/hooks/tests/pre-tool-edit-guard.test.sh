@@ -175,7 +175,8 @@ if grep -q "edit-guard: BLOCKED" "$STDERR_FILE"; then pass "stderr contains bloc
 # The suggested procedure runs mktemp on its own: a worktree-isolated session refuses the
 # worktree command when mktemp is embedded in it.
 tca_reason=$(reason_of "$out")
-if [[ "$tca_reason" == *"'bash <plugin root>/hooks/session-identity.sh' on its own"* ]] \
+tca_hooks_dir=$(cd "$SCRIPT_DIR/.." && pwd)
+if [[ "$tca_reason" == *"'bash ${tca_hooks_dir}/session-identity.sh' on its own"* ]] \
   && [[ "$tca_reason" == *"'mktemp -d -t rite-review-mutation-owner.<that session ID>.XXXXXX' on its own"* ]] \
   && [[ "$tca_reason" == *"'git worktree add --detach <that literal path> HEAD'"* ]] \
   && [[ "$tca_reason" != *'$(mktemp'* ]]; then
