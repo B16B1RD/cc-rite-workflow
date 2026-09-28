@@ -2264,6 +2264,30 @@ else
 fi
 echo ""
 
+echo "RQ-16: an own ended marker that cannot be removed warns with its path and SessionStart still exits 0"
+if [ "$(id -u)" -eq 0 ]; then
+  # root bypasses dir-permission bits, so a read-only state dir cannot force the removal failure.
+  pass "RQ-16: skipped under root (chmod cannot force a removal failure as uid 0)"
+else
+  dir_rq16="$TEST_DIR/rq-16"
+  mkdir -p "$dir_rq16"
+  create_state_file "$dir_rq16" '{"active":true,"issue_number":16,"phase":"review","next_action":"iterate","loop_count":1,"pr_number":16,"branch":"fix/issue-16-x","schema_version":3}' "own-sid"
+  write_queue_file "$dir_rq16" "own-sid" "$(jq -n --arg ts "$(iso8601_now -60)" '{issues:[16],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+  write_ended_marker "$dir_rq16" "own-sid"
+  chmod 555 "$dir_rq16/.rite/state"
+  rc_rq16=0
+  run_hook_with_session "$dir_rq16" "resume" "own-sid" >/dev/null || rc_rq16=$?
+  chmod 755 "$dir_rq16/.rite/state"   # restore so the EXIT trap can rm -rf
+  if [ "$rc_rq16" -eq 0 ] \
+    && grep -qF "WARNING: session-start.sh: cannot remove run-queue ended marker for this session; other sessions may reap its queue: $dir_rq16/.rite/state/run-queue-own-sid.ended" "$LAST_STDERR_FILE" \
+    && [ -f "$dir_rq16/.rite/state/run-queue-own-sid.ended" ]; then
+    pass "RQ-16: unremovable own marker warns with its path; rc=0"
+  else
+    fail "RQ-16: rc=$rc_rq16 stderr=$(cat "$LAST_STDERR_FILE")"
+  fi
+fi
+echo ""
+
 echo "RQ-02: other fresh queue remains even when active=true"
 dir_rq02="$TEST_DIR/rq-02"
 mkdir -p "$dir_rq02"

@@ -1111,8 +1111,10 @@ done
 # The resolver points at the live session's state; the payload names the ending one.
 printf '%s' "$live_sid" > "$dir_p10/.rite-session-id"
 printf '%s\n' '{"schema_version":3,"active":true,"phase":"review"}' > "$dir_p10/.rite/sessions/${live_sid}.flow-state"
+# The bad id resolves onto the live session's queue, so only the id check keeps its marker away.
+mkdir -p "$dir_p10/.rite/state/run-queue-x"
 ok_p10=1
-for sid in "$end_sid" "$noq_sid" "../x"; do
+for sid in "$end_sid" "$noq_sid" "x/../run-queue-$live_sid"; do
   LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
   jq -nc --arg cwd "$dir_p10" --arg sid "$sid" '{cwd:$cwd, session_id:$sid}' \
     | bash "$HOOK" 2>"$LAST_STDERR_FILE" >/dev/null || ok_p10=0
@@ -1125,6 +1127,59 @@ if [ "$ok_p10" = 1 ] \
   pass "T-10 ended marker only for the ending session's existing queue"
 else
   fail "T-10 markers=$(find "$dir_p10" -name '*.ended' | tr '\n' ' ') rc_ok=$ok_p10"
+fi
+echo ""
+
+echo "T-11: without a payload id the resolved session's queue is marked; an upper-case payload UUID marks the lower-case queue"
+dir_p11="$TEST_DIR/queue-ended-sid"
+mkdir -p "$dir_p11/.rite/state" "$dir_p11/.rite/sessions"
+fb_sid="abababab-abab-abab-abab-abababababab"
+up_sid="cdcdcdcd-cdcd-cdcd-cdcd-cdcdcdcdcdcd"
+for sid in "$fb_sid" "$up_sid"; do
+  printf '%s\n' '{"issues":[1],"cursor":0,"mode":"merge","failed":[],"outstanding":[],"active":true}' \
+    > "$dir_p11/.rite/state/run-queue-${sid}.json"
+done
+printf '%s' "$fb_sid" > "$dir_p11/.rite-session-id"
+ok_p11=1
+run_hook "$dir_p11" >/dev/null || ok_p11=0
+fb_marked=0
+[ -f "$dir_p11/.rite/state/run-queue-${fb_sid}.ended" ] && fb_marked=1
+rm -f "$dir_p11/.rite/state/run-queue-${fb_sid}.ended"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+jq -nc --arg cwd "$dir_p11" --arg sid "$(printf '%s' "$up_sid" | tr 'a-f' 'A-F')" '{cwd:$cwd, session_id:$sid}' \
+  | bash "$HOOK" 2>"$LAST_STDERR_FILE" >/dev/null || ok_p11=0
+if [ "$ok_p11" = 1 ] && [ "$fb_marked" = 1 ] \
+  && [ -f "$dir_p11/.rite/state/run-queue-${up_sid}.ended" ] \
+  && [ ! -e "$dir_p11/.rite/state/run-queue-${fb_sid}.ended" ]; then
+  pass "T-11 payload-less end marks the resolved session; upper-case payload marks the lower-case queue"
+else
+  fail "T-11 fb_marked=$fb_marked markers=$(find "$dir_p11" -name '*.ended' | tr '\n' ' ') rc_ok=$ok_p11"
+fi
+echo ""
+
+echo "T-12: a marker that cannot be written warns with its path and the hook still exits 0"
+if [ "$(id -u)" -eq 0 ]; then
+  # root bypasses dir-permission bits, so a read-only state dir cannot force the write failure.
+  pass "T-12: skipped under root (chmod cannot force a write failure as uid 0)"
+else
+  dir_p12="$TEST_DIR/queue-ended-ro"
+  mkdir -p "$dir_p12/.rite/state"
+  ro_sid="efefefef-efef-efef-efef-efefefefefef"
+  printf '%s\n' '{"issues":[1],"cursor":0,"mode":"merge","failed":[],"outstanding":[],"active":true}' \
+    > "$dir_p12/.rite/state/run-queue-${ro_sid}.json"
+  chmod 555 "$dir_p12/.rite/state"
+  LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+  rc_p12=0
+  jq -nc --arg cwd "$dir_p12" --arg sid "$ro_sid" '{cwd:$cwd, session_id:$sid}' \
+    | bash "$HOOK" 2>"$LAST_STDERR_FILE" >/dev/null || rc_p12=$?
+  chmod 755 "$dir_p12/.rite/state"   # restore so the EXIT trap can rm -rf
+  if [ "$rc_p12" -eq 0 ] \
+    && grep -qF "[rite] WARNING: session-end: failed to mark run-queue as ended: $dir_p12/.rite/state/run-queue-${ro_sid}.ended" "$LAST_STDERR_FILE" \
+    && [ ! -e "$dir_p12/.rite/state/run-queue-${ro_sid}.ended" ]; then
+    pass "T-12 unwritable marker warns with its path; rc=0"
+  else
+    fail "T-12 rc=$rc_p12 stderr=$(cat "$LAST_STDERR_FILE")"
+  fi
 fi
 echo ""
 

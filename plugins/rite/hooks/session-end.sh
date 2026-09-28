@@ -99,7 +99,7 @@ fi
 # ended owner from one paused by a usage limit by timestamps alone; only a
 # marked queue is reaped on the 2h rule. The payload names the session that is
 # ending; the resolved state file is used only when the payload has no id.
-_end_sid=$(extract_session_id "$INPUT" 2>/dev/null) || _end_sid=""
+_end_sid=$(extract_session_id "$INPUT") || _end_sid=""
 if [ -z "$_end_sid" ] && [[ "$STATE_FILE" == *"/.rite/sessions/"*".flow-state" ]]; then
     _end_sid=$(basename "$STATE_FILE" .flow-state)
 fi
@@ -108,7 +108,7 @@ if [ -n "$_end_sid" ] && validate_session_id_path "$_end_sid" "SessionEnd payloa
         _end_sid=$(printf '%s' "$_end_sid" | tr 'A-F' 'a-f')
     fi
     _run_queue="$STATE_ROOT/.rite/state/run-queue-${_end_sid}.json"
-    if [ -f "$_run_queue" ] && ! : > "${_run_queue%.json}.ended" 2>/dev/null; then
+    if [ -f "$_run_queue" ] && ! : > "${_run_queue%.json}.ended"; then
         echo "[rite] WARNING: session-end: failed to mark run-queue as ended: $(printf '%s' "${_run_queue%.json}.ended" | neutralize_ctrl)" >&2
     fi
 fi
