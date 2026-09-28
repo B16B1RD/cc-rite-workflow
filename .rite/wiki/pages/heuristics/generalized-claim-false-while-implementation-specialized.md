@@ -17,12 +17,17 @@ sources:
     resource: "raw/reviews/20260825T171132Z-pr-2362.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T043944Z-pr-3214.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T012347Z-pr-3372.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260928T012948Z-pr-3372.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T04:45:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T01:45:09Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-26T02:16:20+09:00" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T04:45:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T01:45:09Z" }
 ---
 
 # 一般化した断定は、実装が特殊化されている限り必ず偽になる — 同じ契約を書く複数サイトは最も限定的な表現に揃える
@@ -63,6 +68,8 @@ verified:
 
 既存文の因果句（「判別できないため」など）に新しいケースを接続するときは、その理由が新しいケースにも当てはまるかを確かめる。当てはまらないまま接続すると、新しいケースの本当の理由（例: 判定対象を最新の結果だけに限っていること）と文がずれる。
 
+一般規則を述べた説明に例外を足すときは、具体例だけで示すと冒頭の一般規則と字面上で矛盾して読める。例外を一般形で一度書き、具体例はその一例として添える。また、説明が特定の実装（tokenizer など）の読み方なのか、実際の実行環境（シェル）のセマンティクスなのかを文に明記する。主語を落とすと、実装の挙動の説明が環境の仕様についての断定として読まれる。確かめ方は、説明に書いた入力を実装に実際に通し、出力と文が一致するかを見ることである。
+
 ## 関連ページ
 
 - [修飾は主張単位ではなく同格の主張の集合単位でかける](./qualifier-applies-to-peer-claim-set.md)
@@ -75,3 +82,5 @@ verified:
 - [レビュー結果](../../raw/reviews/20260801T131235Z-pr-2081.md)
 - [fix 結果](../../raw/fixes/20260801T131540Z-pr-2081.md)
 - [判定範囲の説明を実装の条件式から書き起こしたレビュー結果](../../raw/reviews/20260927T043944Z-pr-3214.md)
+- [例外を具体例だけで示すと一般規則と緊張すると指摘したレビュー結果](../../raw/reviews/20260928T012347Z-pr-3372.md)
+- [例外を一般形で書き読み手の視点を明記した fix 結果](../../raw/fixes/20260928T012948Z-pr-3372.md)

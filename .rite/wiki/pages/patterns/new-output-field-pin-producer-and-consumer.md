@@ -17,9 +17,13 @@ sources:
     resource: "raw/reviews/20260805T104742Z-pr-2114.md"
   - type: "reviews"
     resource: "raw/reviews/20260906T125803Z-pr-2582.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260928T012538Z-pr-3366.md"
 tags: ["producer-consumer", "static-pin", "branch-table", "test-strength", "reason-vocabulary"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-06T16:10:23Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T01:45:09Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T01:45:09Z" }
 ---
 
 # 新設した出力フィールドは producer と consumer の両側を pin する — consumer が表なら行単位で pin する
@@ -83,6 +87,8 @@ helper の marker や JSON（第 1 節）は手厚くテストされる一方、
 
 加えて、静的 pin の grep を節限定にしないと、同じ literal が別節に増えた時点で assertion が名乗った対象を検証しなくなる。
 
+値を記録する側と照合する側が対になる場合（記録時に hash を取り、後で同じ hash を再計算して照合するなど）、片側だけ値の受け取り方を変えると両側の hash が一致しなくなる。片側を生値の読み取りに変えたら、もう片側も同じ入力を同じ方法で読む形へ移し、両側の値が一致することを実行テストで固定する。
+
 ## 関連ページ
 
 - [静的 parity テストには到達性 pin と emit pin を対で足す — 出現数 + 行順だけでは semantics を守れない](./static-parity-pin-needs-reachability-and-emit-pins.md)
@@ -97,3 +103,4 @@ helper の marker や JSON（第 1 節）は手厚くテストされる一方、
 - [fix 結果](../../raw/fixes/20260801T224211Z-pr-2070.md)
 - [新 reason と consumer 分岐表の同時更新](../../raw/reviews/20260805T104742Z-pr-2114.md)
 - [レビュー結果](../../raw/reviews/20260906T125803Z-pr-2582.md)
+- [記録側と照合側で値の受け取り方がずれた fix 結果](../../raw/fixes/20260928T012538Z-pr-3366.md)

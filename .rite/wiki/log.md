@@ -77,6 +77,11 @@
 * **Create**: [スキルのシェル処理を helper へ移すときは値の入力経路を対の処理と揃え、ファイル入力には存在と形式の検査を同時に入れる](pages/heuristics/helper-extraction-input-route-pairing-and-failure-paths.md) — raw/reviews/20260928T011608Z-pr-3366.md を新規ページ化
 * **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=62, orphans=0, missing_concept=0, unregistered_raw=576, broken_refs=0
 
+* **Update**: [修飾は主張単位ではなく同格の主張の集合単位でかける](pages/heuristics/qualifier-applies-to-peer-claim-set.md) — raw/reviews/20260928T012630Z-pr-3375.md ほかで補強
+* **Update**: [一般化した断定は、実装が特殊化されている限り必ず偽になる — 同じ契約を書く複数サイトは最も限定的な表現に揃える](pages/heuristics/generalized-claim-false-while-implementation-specialized.md) — raw/fixes/20260928T012948Z-pr-3372.md ほかで補強
+* **Update**: [新設した出力フィールドは producer と consumer の両側を pin する — consumer が表なら行単位で pin する](pages/patterns/new-output-field-pin-producer-and-consumer.md) — raw/fixes/20260928T012538Z-pr-3366.md ほかで補強
+* **Skip**: raw/reviews/20260928T013457Z-pr-3372.md — 同じ PR の別 raw から統合済み
+
 ## 2026-09-27
 
 * **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/reviews/20260927T160944Z-pr-3307.md を統合

@@ -332,8 +332,8 @@ okf_version: "0.2"
 | [修正案が「一方の失敗モードを他方と交換する」形に割れたら、その機構は測るべき量を測っていない](pages/heuristics/split-reviewer-recommendations-signal-removal.md) | heuristics | レビュー指摘に対する修正案が複数出て、どれも「誤発火を減らすと見逃しが増える／見逃しを減らすと誤発火が増える」形にしかならないとき、選ぶべきなのはどの案でもない。 | 2026-08-01T00:21:06+09:00 | high |
 | [散文修正の完了検査は「削除した旧表現」ではなく「主張した概念」で走査する（逆引き検査）](pages/heuristics/reverse-lookup-concept-sweep-for-prose-fixes.md) | heuristics | 散文の是正を終えたあと、削除・置換した旧表現を全文検索して残存 0 件を確認するのは自然な完了検査だが、**構造的に 4 クラスを取り逃す**。 | 2026-09-06T16:10:23Z | high |
 | [実装が分岐しているならテストも分岐の数だけ要る — 既定構成の経路こそ抜けやすい](pages/heuristics/implementation-branch-count-equals-test-branch-count.md) | heuristics | 同じ責務が設定値によって別実装に分かれているとき（`separate_branch` と `same_branch`、`git cat-file -e` と `[ -f ]` など）、片方のテストは他方を一切担保しない。 | 2026-08-01T00:21:06+09:00 | high |
-| [修飾は主張単位ではなく同格の主張の集合単位でかける](pages/heuristics/qualifier-applies-to-peer-claim-set.md) | heuristics | 同格の主張が並ぶ場所で片方だけに「これは未検証」「これは指示であって観測ではない」といった限定を付けると、**無修飾で残った他方が検証済み・観測事実として読まれる**。 | 2026-09-27T08:10:00Z | high |
-| [一般化した断定は、実装が特殊化されている限り必ず偽になる — 同じ契約を書く複数サイトは最も限定的な表現に揃える](pages/heuristics/generalized-claim-false-while-implementation-specialized.md) | heuristics | 同じ契約が複数箇所に書かれているとき、書き手は場所ごとに違う抽象度で表現しがちである。 | 2026-09-27T04:45:00Z | high |
+| [修飾は主張単位ではなく同格の主張の集合単位でかける](pages/heuristics/qualifier-applies-to-peer-claim-set.md) | heuristics | 同格の主張が並ぶ場所で片方だけに「これは未検証」「これは指示であって観測ではない」といった限定を付けると、**無修飾で残った他方が検証済み・観測事実として読まれる**。 | 2026-09-28T01:45:09Z | high |
+| [一般化した断定は、実装が特殊化されている限り必ず偽になる — 同じ契約を書く複数サイトは最も限定的な表現に揃える](pages/heuristics/generalized-claim-false-while-implementation-specialized.md) | heuristics | 同じ契約が複数箇所に書かれているとき、書き手は場所ごとに違う抽象度で表現しがちである。 | 2026-09-28T01:45:09Z | high |
 | [意図的除外と失敗を同じカウンタに載せると、そのカウンタの存在理由が消える](pages/heuristics/intentional-exclusion-not-counted-as-failure.md) | heuristics | 無音の欠損を可視化するために失敗カウンタを新設したら、そこに何を載せるかが設計判断になる。 | 2026-08-01T00:21:06+09:00 | high |
 | [実測アンカーの repro に書くパイプは U+00A6 へ置換する](pages/patterns/verification-anchor-pipe-substitution.md) | patterns | 実測必須ゲートは `Verification:` アンカーの full match に blocking を委ねる。パイプや空の左辺、値域外の種別ラベルは match を壊すか空振りさせ、機械カテゴリまで exclusion なし class B へ倒すと blocking が落ちる。 | 2026-09-13T09:12:00Z | high |
 | [テンプレート準拠の fixture では、生成器が実データで作る構造的逸脱を検出できない](pages/heuristics/template-fixture-misses-generator-real-data-deviation.md) | heuristics | 除外規則やパーサの fixture を「そのファイル種別のテンプレート」に合わせて作ると、テンプレートが持つ偶然の性質（当該見出しが最終節にある、など）によって**誤った実装と正しい実装が同じ結果を返す**。 | 2026-09-27T10:21:25Z | high |
@@ -346,7 +346,7 @@ okf_version: "0.2"
 | [行動指示と帰結記述を 1 文に混載しない — 帰結は SoT の表へのポインタに置き換える](pages/patterns/separate-directive-from-consequence-with-sot-pointer.md) | patterns | authoring 面（reviewer への指示、テンプレート、規約文書）の 1 文が「こう書け」という**行動指示**と「そう書かなかったらどうなるか」という**帰結記述**を同時に担っていると、判定ロジックの帰結が変わるたびに authoring 面の書き換えが必要になる。 | 2026-08-01T23:12:28+09:00 | medium |
 | [grep (BRE) と grep -E (ERE) のメタ文字反転で assert ヘルパーが常時緑の dead assertion になる](pages/anti-patterns/bre-ere-metachar-inversion-dead-assertion.md) | anti-patterns | `grep` と `grep -E` はメタ文字の意味が反転する。 | 2026-09-27T04:21:02Z | high |
 | [外部依存の挙動は hedge か断定かの二択ではない — 既定形は「断定 + 出典 + 確認日 + 再検証手順」](pages/heuristics/external-dependency-claim-hedge-vs-citation.md) | heuristics | 管理外の上流ツール・ライブラリの挙動をドキュメントに書くとき、「断定するか / 『要検証』と逃げるか」の二択で考えると、どちらを選んでも欠陥になる。 | 2026-08-02T09:53:11+09:00 | high |
-| [新設した出力フィールドは producer と consumer の両側を pin する — consumer が表なら行単位で pin する](pages/patterns/new-output-field-pin-producer-and-consumer.md) | patterns | stdout フィールド・sentinel・marker など「出力の契約」を新設したとき、producer 側の emit だけを assert するテストは **「値が出ること」しか保証せず、「値が使われること」は保証しない**。 | 2026-09-06T16:10:23Z | high |
+| [新設した出力フィールドは producer と consumer の両側を pin する — consumer が表なら行単位で pin する](pages/patterns/new-output-field-pin-producer-and-consumer.md) | patterns | stdout フィールド・sentinel・marker など「出力の契約」を新設したとき、producer 側の emit だけを assert するテストは **「値が出ること」しか保証せず、「値が使われること」は保証しない**。 | 2026-09-28T01:45:09Z | high |
 | [同じ処理を 2 経路で実装したら fixture の「意地悪さ」も 2 経路で揃える](pages/heuristics/dual-path-implementation-needs-matching-adversarial-fixture.md) | heuristics | 同じ処理を 2 つの入力形式・2 つの経路で実装したとき、新しく足した側の fixture が「素朴な形」しか持たないと、経路の**存在**は測れても経路の**正しさ**は測れない。 | 2026-09-26T04:05:00Z | high |
 | [増え続ける corpus の実測値は絶対値ではなく下限 + caveat で書く](pages/heuristics/growing-corpus-measurement-lower-bound-not-absolute.md) | heuristics | ドキュメントやコメントに実測値を書くとき、その値が **サイクルごとに増え続ける corpus** から取られたものなら、絶対値のまま書くと確実に陳腐化する。 | 2026-08-02T09:53:11+09:00 | high |
 | [「N 種を禁止し行き先を示す」規則は禁止列挙と行き先を 1 つの対リストに畳む](pages/patterns/deny-list-paired-with-destination.md) | patterns | 「A・B・C をここに書くな。 | 2026-08-02T11:59:42+09:00 | high |
@@ -595,5 +595,5 @@ okf_version: "0.2"
 
 - 総ページ数: 581
 - ドメイン別: patterns=127, heuristics=274, anti-patterns=180
-- 最終更新: 2026-09-28T01:30:00Z
+- 最終更新: 2026-09-28T01:45:09Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
