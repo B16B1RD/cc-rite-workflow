@@ -1562,7 +1562,8 @@ else
   out_p22=$(cat "$TEST_DIR/out-p22")
   if jq -e '.active == false and (has("suspended_by_session_end")|not)' "$sf_p22" >/dev/null \
     && [ ! -e "$rec_p22" ] \
-    && awk -v p="$sf_p22" 'index($0, p) && index($0, "回収済み") {f=1} END {exit !f}' <<< "$out_p22"; then
+    && awk -v p="$sf_p22" 'index($0, p) && index($0, "回収済み") {f=1} END {exit !f}' <<< "$out_p22" \
+    && ! grep -qF "/rite:recover" <<< "$out_p22"; then
     pass "T-22 resume finishes the reap: the state stays inactive, the mark and the record are gone, and stdout says it was reaped"
   else
     fail "T-22 resume state=$(jq -c '{active,suspended_by_session_end}' "$sf_p22") record=$([ -e "$rec_p22" ] && echo y || echo n) out=$out_p22"
@@ -1613,28 +1614,104 @@ else
     fail "T-22 resume after failure state=$(jq -c '{active,suspended_by_session_end}' "$sf_p22b") record=$([ -e "$rec_p22b" ] && echo y || echo n)"
   fi
 
-  # New work on a session whose record is still there: set removes the record, warning when it cannot.
+  # New work on a session whose record cannot be removed: set writes the state but fails with rc 3
+  # and names the record, so the work does not go on over a record that would end it at the next resume.
   dir_p22d="$TEST_DIR/reap-record-then-set"
   sf_p22d=$(state_file_path "$dir_p22d" "sid-p22d")
   rec_p22d="$dir_p22d/.rite/state/reap-failed-sid-p22d.flow-state"
   reap_fail_p22 "$dir_p22d" "sid-p22d" "$dir_p22d/.rite/sessions"
   chmod 555 "$dir_p22d/.rite/state"
-  (cd "$dir_p22d" && bash "$FLOW_STATE" set --phase review --issue 101 --branch fix/issue-101-x --pr 55 --next "continue") >/dev/null 2>"$TEST_DIR/err-p22" || true
+  rc_p22d=0
+  (cd "$dir_p22d" && bash "$FLOW_STATE" set --phase review --issue 101 --branch fix/issue-101-x --pr 55 --next "continue") >/dev/null 2>"$TEST_DIR/err-p22" || rc_p22d=$?
   chmod 755 "$dir_p22d/.rite/state"
   err_p22=$(cat "$TEST_DIR/err-p22")
-  # The record stayed, but the state is active again: a resume now must not treat it as reaped.
-  start_session "$dir_p22d" "sid-p22d" resume >/dev/null || true
-  active_p22d=$(jq -r '.active' "$sf_p22d")
-  (cd "$dir_p22d" && bash "$FLOW_STATE" set --phase review --issue 101 --branch fix/issue-101-x --pr 55 --next "continue" >/dev/null 2>&1) || true
-  end_session "$dir_p22d" "sid-p22d" || true
-  start_session "$dir_p22d" "sid-p22d" resume >/dev/null || true
-  if grep -qF "WARNING: could not remove the failed-reap record, so resume keeps this session's state inactive: $rec_p22d" <<< "$err_p22" \
-    && [ "$active_p22d" = "true" ] \
-    && [ ! -e "$rec_p22d" ] \
+  if [ "$rc_p22d" -eq 3 ] \
+    && grep -qF "ERROR: the state was written, but the failed-reap record could not be removed" <<< "$err_p22" \
+    && grep -qF "$rec_p22d" <<< "$err_p22" \
+    && [ -f "$rec_p22d" ] \
     && jq -e '.active == true and (has("suspended_by_session_end")|not)' "$sf_p22d" >/dev/null; then
-    pass "T-22 set removes the record (warning when it cannot), so later work is suspended and resumed as usual"
+    pass "T-22 a set that cannot remove the record fails with rc 3 and names the record"
   else
-    fail "T-22 set with record: active_with_record=$active_p22d record=$([ -e "$rec_p22d" ] && echo y || echo n) state=$(jq -c '{active,suspended_by_session_end}' "$sf_p22d") err=$err_p22"
+    fail "T-22 set with record: rc=$rc_p22d record=$([ -e "$rec_p22d" ] && echo y || echo n) state=$(jq -c '{active,suspended_by_session_end}' "$sf_p22d") err=$err_p22"
+  fi
+  # The record goes only after the state lands: a set that cannot write the state leaves it.
+  chmod 555 "$dir_p22d/.rite/sessions"
+  rc_p22d=0
+  (cd "$dir_p22d" && bash "$FLOW_STATE" set --phase review --issue 101 --branch fix/issue-101-x --pr 55 --next "continue") >/dev/null 2>&1 || rc_p22d=$?
+  chmod 755 "$dir_p22d/.rite/sessions"
+  if [ "$rc_p22d" -eq 1 ] && [ -f "$rec_p22d" ]; then
+    pass "T-22 a set that cannot write the state fails with rc 1 and keeps the record"
+  else
+    fail "T-22 set write failure: rc=$rc_p22d record=$([ -e "$rec_p22d" ] && echo y || echo n)"
+  fi
+  # The worktree self-heal keeps the record, and an active state is never taken as reaped.
+  start_session "$dir_p22d" "sid-p22d" resume > "$TEST_DIR/out-p22" || true
+  if [ -f "$rec_p22d" ] \
+    && jq -e '.active == true and (.worktree // null) == null' "$sf_p22d" >/dev/null \
+    && ! grep -qF "回収済み" "$TEST_DIR/out-p22"; then
+    pass "T-22 the worktree self-heal keeps the record, and an active state is not taken as reaped"
+  else
+    fail "T-22 self-heal with record: record=$([ -e "$rec_p22d" ] && echo y || echo n) state=$(jq -c '{active,worktree}' "$sf_p22d") out=$(cat "$TEST_DIR/out-p22")"
+  fi
+  (cd "$dir_p22d" && bash "$FLOW_STATE" set --phase review --issue 101 --branch fix/issue-101-x --pr 55 --next "continue" >/dev/null 2>&1) || true
+  if [ ! -e "$rec_p22d" ]; then
+    pass "T-22 once the record can be removed, set removes it"
+  else
+    fail "T-22 set did not remove the record"
+  fi
+
+  # A review-cycle write starts work too: it removes the record, and fails with rc 3 when it cannot.
+  dir_p22f="$TEST_DIR/reap-record-review-start"
+  rec_p22f="$dir_p22f/.rite/state/reap-failed-sid-p22f.flow-state"
+  mkdir -p "$dir_p22f/.rite/state"
+  (cd "$dir_p22f" && git init -q && git -c user.email=t@example.com -c user.name=t commit -q --allow-empty -m init)
+  printf '%s' "sid-p22f" > "$dir_p22f/.rite-session-id"
+  (cd "$dir_p22f" && bash "$FLOW_STATE" set --phase pr --issue 101 --branch fix/issue-101-x --pr 55 --next "review" >/dev/null 2>&1) || true
+  printf '["code-quality-reviewer"]' > "$TEST_DIR/selection-p22f.json"
+  printf '{}' > "$rec_p22f"
+  chmod 555 "$dir_p22f/.rite/state"
+  rc_p22f=0
+  (cd "$dir_p22f" && bash "$FLOW_STATE" review-start --selection "$TEST_DIR/selection-p22f.json") >/dev/null 2>"$TEST_DIR/err-p22" || rc_p22f=$?
+  chmod 755 "$dir_p22f/.rite/state"
+  if [ "$rc_p22f" -eq 3 ] && [ -f "$rec_p22f" ] && grep -qF "$rec_p22f" "$TEST_DIR/err-p22"; then
+    pass "T-22 a review-cycle write that cannot remove the record fails with rc 3 and names it"
+  else
+    fail "T-22 review-start with record: rc=$rc_p22f record=$([ -e "$rec_p22f" ] && echo y || echo n) err=$(cat "$TEST_DIR/err-p22")"
+  fi
+  printf '{}' > "$rec_p22f"
+  rc_p22f=0
+  (cd "$dir_p22f" && bash "$FLOW_STATE" review-start --selection "$TEST_DIR/selection-p22f.json") >/dev/null 2>"$TEST_DIR/err-p22" || rc_p22f=$?
+  if [ "$rc_p22f" -eq 0 ] && [ ! -e "$rec_p22f" ]; then
+    pass "T-22 a review-cycle write removes the record"
+  else
+    fail "T-22 review-start: rc=$rc_p22f record=$([ -e "$rec_p22f" ] && echo y || echo n) err=$(cat "$TEST_DIR/err-p22")"
+  fi
+
+  # The resume clears the mark but cannot remove the record: stdout still says it was reaped and
+  # names the record. The state left is inactive without the mark, so the next resume does not
+  # take it as reaped again.
+  dir_p22g="$TEST_DIR/reap-record-stays-on-resume"
+  sf_p22g=$(state_file_path "$dir_p22g" "sid-p22g")
+  rec_p22g="$dir_p22g/.rite/state/reap-failed-sid-p22g.flow-state"
+  reap_fail_p22 "$dir_p22g" "sid-p22g" "$dir_p22g/.rite/sessions"
+  chmod 555 "$dir_p22g/.rite/state"
+  start_session "$dir_p22g" "sid-p22g" resume > "$TEST_DIR/out-p22" || true
+  out_p22=$(cat "$TEST_DIR/out-p22")
+  if jq -e '.active == false and (has("suspended_by_session_end")|not)' "$sf_p22g" >/dev/null \
+    && [ -f "$rec_p22g" ] \
+    && grep -qF "rite: session-start: ERROR: the reaped state was deactivated, but its failed-reap record could not be removed: $rec_p22g" "$LAST_STDERR_FILE" \
+    && awk -v p="$rec_p22g" 'index($0, p) && index($0, "回収済み") {f=1} END {exit !f}' <<< "$out_p22" \
+    && ! grep -qF "/rite:recover" <<< "$out_p22"; then
+    pass "T-22 a resume that clears the mark but cannot remove the record says it was reaped and names the record"
+  else
+    fail "T-22 record left on resume: state=$(jq -c '{active,suspended_by_session_end}' "$sf_p22g") record=$([ -f "$rec_p22g" ] && echo y || echo n) out=$out_p22 err=$(cat "$LAST_STDERR_FILE")"
+  fi
+  start_session "$dir_p22g" "sid-p22g" resume > "$TEST_DIR/out-p22" || true
+  chmod 755 "$dir_p22g/.rite/state"
+  if jq -e '.active == false' "$sf_p22g" >/dev/null && ! grep -qF "回収済み" "$TEST_DIR/out-p22"; then
+    pass "T-22 a record next to an unmarked inactive state is not taken as a reap"
+  else
+    fail "T-22 unmarked state with record: state=$(jq -c '{active,suspended_by_session_end}' "$sf_p22g") out=$(cat "$TEST_DIR/out-p22")"
   fi
 
   # Neither the state nor the record can be written: the reap says resume may bring the state back.

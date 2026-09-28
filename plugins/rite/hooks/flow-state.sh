@@ -92,16 +92,19 @@ _resolve_session_id() {
   echo "ERROR: cannot resolve session_id" >&2; return 2
 }
 
-# reap-issue leaves this record when it cannot clear a suspended state's mark, and session-start
-# keeps that session's state inactive while it exists. Only a real write of the state (set,
-# deactivate) removes it; writes that keep the mark (SessionEnd, the worktree self-heal) do not.
+# reap-issue leaves this record when it cannot clear a suspended state's mark. While it exists,
+# session-start treats that session's marked inactive state as reaped. Writes that start or end
+# work (set, deactivate, review-cycle) remove it once the state has landed; writes that keep the
+# mark (SessionEnd, the worktree self-heal) do not. If it cannot be removed the write fails with
+# rc 3, so that work never goes on over a record that would end it at the next resume. rc 3 means
+# the state itself was written; a state that could not be written fails with rc 1.
 _reap_record_path() { printf '%s/.rite/state/reap-failed-%s.flow-state' "$STATE_ROOT" "$1"; }
 _clear_reap_record() {
   local rec; rec=$(_reap_record_path "$1")
   { [ -e "$rec" ] || [ -L "$rec" ]; } || return 0
   rm -f "$rec" 2>/dev/null && return 0
-  echo "WARNING: could not remove the failed-reap record, so resume keeps this session's state inactive: $(printf '%s' "$rec" | neutralize_ctrl)" >&2
-  return 0
+  echo "ERROR: the state was written, but the failed-reap record could not be removed; while it exists, a resume after the session ends treats this session's work as reaped and ends it. Remove it before continuing: $(printf '%s' "$rec" | neutralize_ctrl)" >&2
+  return 3
 }
 
 _state_path() {
@@ -479,17 +482,20 @@ cmd_set() {
   new=$(printf '%s' "$new" | python3 "$SCRIPT_DIR/scripts/lib/review-cycle.py" guard-set \
     --state "$path" --session "$sid" --results-dir "$STATE_ROOT/.rite/review-results") || return 1
   RITE_STATE_IF_MATCH="$expected_hash" _atomic_write "$path" "$new" || return 1
-  _clear_reap_record "$sid"
+  local reap_rc=0
+  _clear_reap_record "$sid" || reap_rc=$?
   # Record only after the write physically landed, so the log never claims a
   # transition that failed to persist. Reuses `$now` (the same timestamp the
   # state file's `updated_at` carries) so a record can be cross-referenced with
-  # the state file it describes. `|| true` keeps this trailing statement from
-  # becoming cmd_set's exit code under `set -e` (exit code unchanged) —
-  # belt-and-braces with the helper's own unconditional `return 0`.
+  # the state file it describes. `|| true` keeps a logging failure from failing
+  # the set under `set -e` — belt-and-braces with the helper's own unconditional
+  # `return 0`. The state has landed even when the record could not be removed,
+  # so the transition is recorded before that failure is returned.
   # Sets skipped by `--if-exists` return earlier and are correctly not recorded:
   # no write happened. A same-phase set (from == to) IS recorded — update
   # frequency inside a stage is part of what this log is for.
   _append_phase_transition "$cur_phase" "$phase" "$sid" "$issue" "$pr" "$now" || true
+  return "$reap_rc"
 }
 
 # clear-worktree: surgically remove the `worktree` field from a session's
@@ -629,7 +635,7 @@ cmd_reap_issue() {
     return 0
   }
 
-  local f sid issue_n active q has others now updated jq_err=""
+  local f sid issue_n active q has others now updated jq_err="" deact_rc
   # RETURN trap は使わない: ネストした _reap_lock の return で発火し loop 途中で消える。
   jq_err=$(mktemp 2>/dev/null) || jq_err=""
   if [ -d "$SESSION_DIR" ]; then
@@ -649,20 +655,31 @@ cmd_reap_issue() {
       fi
       if [ "$active" = "true" ]; then
         echo "WARNING: reap-issue: stale flow-state (active=true) for issue #${issue}: $(printf '%s' "$f" | neutralize_ctrl)" >&2
-        cmd_deactivate --session "$sid" --next "none" \
-          || echo "WARNING: reap-issue: deactivate failed: $(printf '%s' "$f" | neutralize_ctrl)" >&2
+        # rc 3: the state was deactivated and cmd_deactivate reported the record it could not remove.
+        deact_rc=0
+        cmd_deactivate --session "$sid" --next "none" || deact_rc=$?
+        case "$deact_rc" in
+          0|3) ;;
+          *) echo "WARNING: reap-issue: deactivate failed: $(printf '%s' "$f" | neutralize_ctrl)" >&2 ;;
+        esac
       elif jq -e '.suspended_by_session_end == true' "$f" >/dev/null 2>&1; then
         # A session that ended mid-flow on this Issue would come back active on resume.
-        if ! cmd_deactivate --session "$sid" --next "none"; then
-          echo "WARNING: reap-issue: deactivate failed: $(printf '%s' "$f" | neutralize_ctrl)" >&2
-          # The mark survived, so resume would turn this reaped state active again. While this
-          # record exists, session-start keeps the state inactive and clears the mark instead.
-          local rec; rec=$(_reap_record_path "$sid")
-          if ! { mkdir -p "${rec%/*}" && cp "$f" "$rec.$$" && mv "$rec.$$" "$rec"; } 2>/dev/null; then
-            rm -f "$rec.$$" 2>/dev/null
-            echo "WARNING: reap-issue: could not record the failed reap, so resume may reactivate: $(printf '%s' "$f" | neutralize_ctrl)" >&2
-          fi
-        fi
+        # rc 3 means the mark is already gone, so only a state that could not be written needs the record.
+        deact_rc=0
+        cmd_deactivate --session "$sid" --next "none" || deact_rc=$?
+        case "$deact_rc" in
+          0|3) ;;
+          *)
+            echo "WARNING: reap-issue: deactivate failed: $(printf '%s' "$f" | neutralize_ctrl)" >&2
+            # The mark survived, so resume would turn this reaped state active again. While this
+            # record exists, session-start keeps the state inactive and clears the mark instead.
+            local rec; rec=$(_reap_record_path "$sid")
+            if ! { mkdir -p "${rec%/*}" && cp "$f" "$rec.$$" && mv "$rec.$$" "$rec"; } 2>/dev/null; then
+              rm -f "$rec.$$" 2>/dev/null
+              echo "WARNING: reap-issue: could not record the failed reap, so resume may reactivate: $(printf '%s' "$f" | neutralize_ctrl)" >&2
+            fi
+            ;;
+        esac
       fi
       _reap_lock "${f}.lock"
     done
@@ -877,6 +894,7 @@ cmd_review_cycle() {
     abandon) printf '%s' "$updated" | jq '.review_cycle_abandoned[-1]' ;;
     *) printf '%s' "$updated" | jq '.review_cycle' ;;
   esac
+  _clear_reap_record "$sid"
 }
 
 # The last status line of issue-comment-wm-sync.sh; empty when it printed none.

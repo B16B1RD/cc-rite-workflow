@@ -574,21 +574,36 @@ if [ -z "$STATE_FILE" ] || [ ! -f "$STATE_FILE" ]; then
 fi
 
 # reap-issue が中断の印を消せなかったときは、記録 .rite/state/reap-failed-{session_id}.flow-state が残る。
-# 記録は flow-state.sh の set / deactivate が成功したときにだけ消えるので、記録があり state が印付きの
-# inactive なら回収済みとして、resume で作業中に戻さずここで印を消す（書き込みに失敗した state は中断と
-# して扱わない）。消せなければ印と記録が残り、次の resume でも同じく戻さない。
+# 作業を始める・終える書き込み（flow-state.sh の set / deactivate / review-cycle 系）は記録を消し、消せ
+# なければ失敗するので、記録があるまま新しい作業は始まらない。記録があり state が印付きの inactive なら
+# 回収済みとして、resume で作業中に戻さずここで印を消す（書き込みに失敗した state は中断として扱わない）。
+# deactivate の rc 3 は、印は消えたが記録を消せなかったことを表す（rc 1 は state を書けなかった）。
 _reaped=0
 _reap_record="$STATE_ROOT/.rite/state/reap-failed-$(basename "$STATE_FILE" .flow-state).flow-state"
 if [ "$SOURCE" = "resume" ] && [ -f "$_reap_record" ] \
    && jq -e '.active != true and .suspended_by_session_end == true' "$STATE_FILE" >/dev/null 2>&1; then
   _reaped=1
   _state_file_shown=$(printf '%s' "$STATE_FILE" | neutralize_ctrl)
-  if RITE_STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/flow-state.sh" deactivate --next none >/dev/null 2>&1; then
-    echo "rite: 中断していた rite workflow は Issue の後片付けで回収済みのため、作業中に戻しません ($_state_file_shown)。"
-  else
-    echo "rite: session-start: WARNING: could not clear the suspended mark reap-issue left: $_state_file_shown" >&2
-    echo "rite: 中断していた rite workflow は Issue の後片付けで回収済みですが、その印を消せませんでした ($_state_file_shown)。状態を確かめるには /rite:recover を実行してください。"
-  fi
+  _reap_err=$(mktemp 2>/dev/null) || _reap_err=""
+  _reap_rc=0
+  RITE_STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/flow-state.sh" deactivate --next none \
+    >/dev/null 2>"${_reap_err:-/dev/null}" || _reap_rc=$?
+  case "$_reap_rc" in
+    0)
+      echo "rite: 中断していた rite workflow は Issue の後片付けで回収済みのため、作業中に戻しません ($_state_file_shown)。"
+      ;;
+    3)
+      echo "rite: session-start: ERROR: the reaped state was deactivated, but its failed-reap record could not be removed: $(printf '%s' "$_reap_record" | neutralize_ctrl)" >&2
+      [ -n "$_reap_err" ] && [ -s "$_reap_err" ] && head -3 "$_reap_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+      echo "rite: 中断していた rite workflow は Issue の後片付けで回収済みのため、作業中に戻しません ($_state_file_shown)。ただし後片付けの記録を削除できませんでした ($(printf '%s' "$_reap_record" | neutralize_ctrl))。削除するまで、このセッションの rite workflow の状態の書き込みは失敗します。"
+      ;;
+    *)
+      echo "rite: session-start: WARNING: could not clear the suspended mark reap-issue left: $_state_file_shown" >&2
+      [ -n "$_reap_err" ] && [ -s "$_reap_err" ] && head -3 "$_reap_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+      echo "rite: 中断していた rite workflow は Issue の後片付けで回収済みですが、その印を消せませんでした ($_state_file_shown)。状態を確かめるには /rite:recover を実行してください。"
+      ;;
+  esac
+  [ -n "$_reap_err" ] && rm -f "$_reap_err"
 fi
 
 # --- Dangling session-worktree self-heal (multi-session §8) ---
