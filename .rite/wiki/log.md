@@ -66,6 +66,7 @@
 * **Create**: [fail-loud ガードの入口判定は、下流が実際に扱う範囲と同じ判定モードにそろえる](pages/heuristics/guard-entry-condition-matches-downstream-mode.md) — raw/fixes/20260928T005445Z-pr-3363.md を新規ページ化
 * **Skip**: [20260928T005853Z-pr-3364.md](raw/fixes/20260928T005853Z-pr-3364.md) — PR 内推奨の消化と手順の動作確認の記録で、Wiki 適用証跡の形式はゲートが既に機械的に強制しているため経験則化しない
 * **Update**: [fail し得る解決と本文の抽出を別関数に分け、fail はコマンド置換の外で呼ぶ](pages/patterns/test-helper-fail-outside-command-substitution.md) — raw/fixes/20260928T005952Z-pr-3365.md を統合
+* **lint:clean** — contradictions=0, stale=62, orphans=0, missing_concept=0, unregistered_raw=574, broken_refs=0
 
 ## 2026-09-27
 
