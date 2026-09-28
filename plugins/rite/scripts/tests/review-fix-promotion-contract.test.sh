@@ -335,6 +335,9 @@ if [ -e "$triage_dir/args" ]; then fail 'the gate must not run without a review 
 assert_grep 'step 2 copies the ledger prior keyed by reviewer and file_line' "$review" \
   '候補の `reviewer` と `file_line` が行の `finding_id` と `file:line` に一致する行のうち、最後の `REJECT` / `ADOPT` 行をその候補の記録の `prior`'
 assert_grep 'every disposition is followed by 7.4.5 once' "$review" '全判定記録の処分を終えたら 7.4.5（台帳への記録と保留の解除）を 1 回実行する。'
+# A candidate without file_line has no unique ledger key: it is neither written nor given a prior.
+assert_grep 'step 2 copies no prior to a candidate without file_line' "$review" '`file_line` が空の候補には prior を写さない'
+assert_grep '7.4.5 writes no row for a candidate without file_line' "$review" '`file_line` が空の候補は台帳のキーが一意にならないので書かない'
 ledger_dir="$triage_dir/ledger"
 mkdir -p "$ledger_dir/plugin/hooks/scripts" "$ledger_dir/root/.rite/state"
 awk '/^#### 7\.4\.5 / { s=1 } s && /^```bash$/ { a=1; next } a && /^```$/ { exit } a { print }' "$review" > "$ledger_dir/block.sh"
@@ -342,11 +345,17 @@ assert_grep '7.4.5 block releases the triage hold' "$ledger_dir/block.sh" 'adopt
 printf '#!/bin/bash\nprintf "%%s\\n" "$LEDGER_ROOT"\n' > "$ledger_dir/plugin/hooks/state-path-resolve.sh"
 ln -s "$ROOT/plugins/rite/hooks/scripts/nb-sweep-ledger.sh" "$ledger_dir/plugin/hooks/scripts/nb-sweep-ledger.sh"
 ln -s "$ROOT/plugins/rite/hooks/control-char-neutralize.sh" "$ledger_dir/plugin/hooks/control-char-neutralize.sh"
+printf '#!/bin/bash\nexit 0\n' > "$ledger_dir/plugin/hooks/flow-state.sh"
+# --print-record-body: LEDGER_BODY names the stored record comment (empty = no comment yet);
+# LEDGER_BODY_FAIL makes the read fail with that reason.
 cat > "$ledger_dir/plugin/hooks/review-nonblocking-record.sh" <<'STUB'
 #!/bin/bash
 if [ "$1" = --print-record-body ]; then
-  printf '%s\n\n%s\n\n%s\n%s\n\n%s\n' '## 📜 rite 非実測指摘の記録 (non-blocking)' '本 cycle の非実測指摘: 0 件' \
-    '📎 non_blocking_count: 0' '📎 reviewed_commit: c0ffee' '<!-- rite:nbr:v1 -->'
+  if [ -n "${LEDGER_BODY_FAIL:-}" ]; then
+    echo "[CONTEXT] NONBLOCKING_RECORD_BODY=failed; pr=5; reason=$LEDGER_BODY_FAIL" >&2
+    exit 1
+  fi
+  [ -n "${LEDGER_BODY:-}" ] && cat "$LEDGER_BODY"
   exit 0
 fi
 while [ "$#" -gt 0 ]; do [ "$1" = --content-file ] && cp "$2" "$LEDGER_POSTED"; shift; done
@@ -359,7 +368,8 @@ run_ledger_block() {
   code=${code//\{pr_number\}/5}
   code=${code//\{owner_repo\}/o/r}
   code=${code//\{rows\}/| code-quality-reviewer | tool.sh:3 | REJECT | the usage text is intentional | 5-20260101000000.json |}
-  printf '{"kind":"triage","pr":5,"candidates":[]}\n' > "$ledger_dir/root/.rite/state/adoption-hold-5-triage.json"
+  code=${code//\{write_failures\}/${2:-0}}
+  printf '{"kind":"triage","pr":5,"candidates":[],"resume":"old"}\n' > "$ledger_dir/root/.rite/state/adoption-hold-5-triage.json"
   rm -f "$ledger_dir/posted.md"
   LEDGER_ROOT="$ledger_dir/root" LEDGER_POSTED="$ledger_dir/posted.md" LEDGER_OUTCOME="$1" bash -c "$code" 2>&1
 }
@@ -378,6 +388,44 @@ if [ -e "$ledger_dir/root/.rite/state/adoption-hold-5-triage.json" ]; then
 else
   fail 'a failed ledger record must keep the triage hold'
 fi
+assert_eq 'a failed ledger record stops without the retried generic error' \
+  '[CONTEXT] REVIEW_STOP=adoption_held; kind=triage; hold_file='"$ledger_dir/root/.rite/state/adoption-hold-5-triage.json" \
+  "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] REVIEW_STOP=' || true)"
+# A failed Issue creation / Decision Log append / handoff earlier in 7.4 keeps the hold as well, writes no
+# ledger row, and rewrites the hold's resume to the failed writes instead of the records.
+out=$(run_ledger_block updated 1 || true)
+assert_eq 'an incomplete 7.4 write stops the review' '[review:error]' "$(printf '%s\n' "$out" | grep -x '\[review:error\]' || true)"
+if [ -e "$ledger_dir/posted.md" ]; then fail 'an incomplete 7.4 write must not record the ledger'; else pass 'an incomplete 7.4 write records no ledger'; fi
+assert_grep 'an incomplete 7.4 write keeps the hold with a resume for the writes' \
+  "$ledger_dir/root/.rite/state/adoption-hold-5-triage.json" '7.4 の外部への書き込み（writes_incomplete）が済んでいない'
+
+# Step 2 reads the ledger the classifier copies priors from. No record comment yet is not a failure.
+awk '/^### 7\.2-7\.3 / { s=1 } s && /^```bash$/ { a=1; blk=""; next }
+  a && /^```$/ { a=0; if (index(blk, "TRIAGE_LEDGER=absent")) { printf "%s", blk; exit } next }
+  a { blk = blk $0 "\n" }' "$review" > "$ledger_dir/step2.sh"
+assert_grep 'step 2 block reads the ledger' "$ledger_dir/step2.sh" 'nb-sweep-ledger.sh extract'
+run_step2() {
+  local code
+  code=$(cat "$ledger_dir/step2.sh")
+  code=${code//\{plugin_root\}/$ledger_dir/plugin}
+  code=${code//\{pr_number\}/5}
+  code=${code//\{owner_repo\}/o/r}
+  bash -c "$code" 2>&1
+}
+out=$(LEDGER_BODY= run_step2)
+assert_eq 'step 2 treats a missing record comment as no ledger' '[CONTEXT] TRIAGE_LEDGER=absent; reason=no_record_comment' \
+  "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] TRIAGE_LEDGER=' || true)"
+# Round trip: the body 7.4.5 recorded is what the next cycle's step 2 reads the REJECT from.
+run_ledger_block updated > /dev/null
+out=$(LEDGER_BODY="$ledger_dir/posted.md" run_step2)
+assert_eq 'step 2 reads the REJECT row 7.4.5 recorded' \
+  '| code-quality-reviewer | tool.sh:3 | REJECT | the usage text is intentional | 5-20260101000000.json |' \
+  "$(printf '%s\n' "$out" | grep -F '| code-quality-reviewer |' || true)"
+out=$(LEDGER_BODY_FAIL=comments_unreadable run_step2 || true)
+assert_eq 'step 2 stops on an unreadable ledger' '[review:error]' "$(printf '%s\n' "$out" | grep -x '\[review:error\]' || true)"
+out=$(LEDGER_BODY_FAIL=related_issue_unresolved run_step2)
+assert_eq 'step 2 goes on without a related Issue' '[CONTEXT] TRIAGE_LEDGER=absent; reason=related_issue_unresolved' \
+  "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] TRIAGE_LEDGER=' || true)"
 
 if [ "$failures" -ne 0 ]; then
   printf '%s contract assertion(s) failed\n' "$failures" >&2

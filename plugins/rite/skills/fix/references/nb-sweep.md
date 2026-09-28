@@ -299,7 +299,7 @@ else
 fi
 ```
 
-台帳の記録が成功すると、同じ bash が sweep の hold ファイルを消す。台帳の記録から hold を消すまでの間に止まると、再実行で持ち越した候補の REJECT / RESOLVED / LINK 行が台帳に重なりうる。起票済みの記録は tracker で LINK になるので、重ねて起票はしない。
+台帳の記録が成功すると、同じ bash が sweep の hold ファイルを消す。
 
 手順 3 が `[fix:error]` で止まったときは、手順 2 の起票をやり直さない。起票は済んでいるが台帳に行が無いため、sweep を最初から実行し直すと同じ指摘を再び起票する。起票済みの Issue は entries の issued 行が持つ。entries（`.rite/state/nb-sweep-entries-{pr_number}.md`）を stderr の理由に合わせて直し、手順 3 だけを再実行する。`reason=entries_source_invalid` の診断は不正行の先頭 3 行しか示さないので、entries の全行について最終列がその行の candidate の `record`（`already_rejected` は手順 1 の `record=` の basename）になっているかを確かめ、欠けた行には最終列として足す。別の record を名指す行は書き換えない（手順 1 の `reason=nb_sweep_entries_stale` の戻り方に従う）。成功したら手順 4 へ進む。この会話で続けられないときは entries を直したうえで `/rite:iterate {pr_number}` を再実行する（別の会話からでもよい）。iterate のステップ 0.7 が再レビューを回さずに 5.S へ戻し、手順 1 が `NB_SWEEP_ENTRIES=present` を出すので手順 2 を飛ばして手順 3 から続く。
 

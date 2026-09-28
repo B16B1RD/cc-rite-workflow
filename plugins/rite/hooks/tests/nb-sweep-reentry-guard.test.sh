@@ -709,8 +709,11 @@ run_fix() {  # $1=root $2=status $3=script
   echo $? > "$1/rc"
 }
 entries_of() { printf '%s\n' "$1/.rite/state/nb-sweep-entries-7.md"; }
+# entries の 1 行目は手順 3 が書かせる見出しをそのまま使う（手順書の書式が変われば再開のテストが落ちる）
+entries_head=$(grep -o '<!-- nb-sweep-record: {sweep_record} -->' "$FIX_SWEEP" | head -1)
+assert "T-15 手順 3 が entries の 1 行目の見出しを書かせる" '<!-- nb-sweep-record: {sweep_record} -->' "$entries_head"
 write_entries() {  # $1=root $2=record basename (1 行目の見出しと全行の出典)
-  printf '%s\n' "<!-- nb-sweep-record: $2 -->" "| A-1 | a.ts:1 | issued | #5 https://example.test/5 | $2 |" \
+  printf '%s\n' "${entries_head//\{sweep_record\}/$2}" "| A-1 | a.ts:1 | issued | #5 https://example.test/5 | $2 |" \
     "| A\\|2 | b.ts:2 | recorded | severity=LOW; measured=false | $2 |" \
     "| A-3 | c.ts:3 | issued | #6 x\\|y | $2 |" > "$(entries_of "$1")"
 }
@@ -761,7 +764,7 @@ run_fix "$d" empty "$step1"
 assert "T-15 合流候補の行を含む entries: 件数に数える" 1 "$(grep -c '^\[CONTEXT\] NB_SWEEP_RESULT=done; issued=2; recorded=2$' "$d/out")"
 d=$(fix_root); cleanup_dirs+=("$d")
 write_entries "$d" 7-20260202000000.json
-sed -i '1d' "$(entries_of "$d")"
+tail -n +2 "$(entries_of "$d")" > "$d/entries.tmp" && mv "$d/entries.tmp" "$(entries_of "$d")"
 run_fix "$d" ok "$step1"
 assert "T-15 1 行目の見出しを欠く entries: stale で止まる" 1 "$(grep -c '^\[fix:error\] reason=nb_sweep_entries_stale$' "$d/out")"
 
@@ -783,7 +786,7 @@ hold_root() {  # 保留は commit A、今回のレビュー結果は commit B
   echo "$d"
 }
 hold_of() { printf '%s\n' "$1/.rite/state/adoption-hold-7-sweep.json"; }
-for t19_case in "carried|[$(jq -c '.id = "held-F-01"' <<< "$t19_cand")]|no_records" "dropped|[]|held_candidates_dropped"; do
+for t19_case in "carried|[$(jq -c '.id = "7-20260101000000.json#F-01"' <<< "$t19_cand")]|no_records" "dropped|[]|held_candidates_dropped"; do
   IFS='|' read -r t19_label t19_cands t19_reason <<< "$t19_case"
   d=$(hold_root); cleanup_dirs+=("$d")
   NB_STUB_CANDIDATES="$t19_cands" run_fix "$d" ok "$step2"

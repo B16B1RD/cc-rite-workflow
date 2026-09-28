@@ -271,7 +271,7 @@ case "$cmd" in
     fi
     # entries がどの sweep のものかは先頭の見出し行で決める（合流した保留候補の行は元の出典を持つ）
     if [ -n "$record_base" ]; then
-      entries_head=$(sed -n '1{s/\r$//;p;}' "$entries_file")
+      entries_head=$(head -n 1 "$entries_file" | tr -d '\r')
       if [ "$entries_head" != "<!-- nb-sweep-record: $record_base -->" ]; then
         echo "ERROR: entries do not name the review JSON this sweep read (${record_base}) in their first line: $entries_file" >&2
         echo "[CONTEXT] NB_SWEEP_LEDGER=failed; op=tally; reason=entries_record_mismatch" >&2

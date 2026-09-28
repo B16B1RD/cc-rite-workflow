@@ -312,7 +312,7 @@ assert "candidates are the targets with id=key, finding_id and the record of the
   "$(printf '%s' "$live_out" | jq -c '.candidates')"
 
 # A sweep hold saved on another review JSON is carried into candidates on the JSON read now:
-# its candidates keep the record they came from (nit-noted ones included) and a taken id gets held-.
+# its candidates keep the record they came from (nit-noted ones included) under the id <record>#<key>.
 carry_root="$sandbox/carry"
 mkdir -p "$carry_root/.rite/state"
 carry_hold="$carry_root/.rite/state/adoption-hold-1-sweep.json"
