@@ -2431,7 +2431,10 @@ fi
 p7_max=$(sed -n 's/^_RITE_BTG_P7_PARSE_MAX_CHARS=//p' "$HOOK")
 p7_scope_py="$(dirname "$HOOK")/scripts/lib/review-fix-scope.py"
 p7_depth=$(sed -n 's/^MAX_SUBSTITUTION_DEPTH = //p' "$p7_scope_py")
-p7_targets=$(sed -n 's/^MAX_GIT_TARGETS = //p' "$p7_scope_py")
+p7_changes=$(sed -n 's/^MAX_DIRECTORY_CHANGES = //p' "$p7_scope_py")
+for p7_limit in "$p7_max" "$p7_depth" "$p7_changes"; do
+  [[ "$p7_limit" =~ ^[0-9]+$ ]] || fail "Pattern 7 limit constants must be read as integers: '$p7_max' '$p7_depth' '$p7_changes'"
+done
 p7_tail='; git -ca commit --allow-empty -m x'
 p7_limit_case() {  # $1 label, $2 expected reason
   p7_timed "$p7_big"
@@ -2454,14 +2457,20 @@ p7_limit_case "nesting one level too deep" "nested more than $p7_depth deep"
 { for _i in $(seq 1 $(( (p7_max - ${#p7_tail}) / 10 ))); do printf 'git merge;'; done
   printf '%s' "$p7_tail"; } > "$p7_big"
 p7_limit_case "the most merges that fit" "creates a commit with no file changes"
+# Each directory change here is a different merge target, resolved by its own git process.
 p7_dirs() {  # $1 number of merge targets besides the commit's
   { for _i in $(seq 1 "$1"); do mkdir -p "$p7_repo/d$_i"; printf 'git -C d%s merge x;' "$_i"; done
     printf '%s' "$p7_tail"; } > "$p7_big"
 }
-p7_dirs $(( p7_targets - 1 ))
-p7_limit_case "the most commit / merge targets" "creates a commit with no file changes"
-p7_dirs "$p7_targets"
-p7_limit_case "one commit / merge target too many" "more than $p7_targets different"
+p7_dirs "$p7_changes"
+p7_limit_case "the most cd / -C directory changes" "creates a commit with no file changes"
+p7_dirs $(( p7_changes + 1 ))
+p7_limit_case "one cd / -C directory change too many" "more than $p7_changes cd / -C"
+# The longest path those changes can build: every change adds as many components as fit.
+{ printf 'git'; for _i in $(seq 1 "$p7_changes"); do
+    printf ' -C'; printf 'x/%.0s' $(seq 1 $(( (p7_max - 40) / p7_changes / 2 - 2 ))); done
+  printf ' commit --allow-empty -m x'; } > "$p7_big"
+p7_limit_case "the longest path built by cd / -C" "cannot be resolved to a repository"
 # The parser itself stays linear: a long word of > signs and a long run of wrapper options.
 p7_scope_check="$(dirname "$HOOK")/scripts/review-fix-scope-check.sh"
 for p7_shape in gt wrapper; do

@@ -452,10 +452,12 @@ _COMPOUND = {"if", "while", "until", "for", "case", "select", "{", "function", "
 
 
 # A parse the check cannot finish is refused; the message form below always parses.
-# Limits that keep one parse well within the hook timeout: each substitution level scans
-# its text again, and each commit / merge target is resolved by a git process.
+# Limits on the costs of one parse beyond reading its input once: each substitution level
+# scans its text again, and each cd / -C resolves the whole directory path built so far.
+# Only a cd / -C makes a new commit / merge target, so this also bounds the git processes
+# that resolve targets.
 MAX_SUBSTITUTION_DEPTH = 64
-MAX_GIT_TARGETS = 64
+MAX_DIRECTORY_CHANGES = 16
 _PARSE_HINT = "; write the message to a file outside the work tree and commit with git commit -F <message-file>"
 # The standard message form: a substitution that is exactly cat of one heredoc.
 _MESSAGE = re.compile(r"\$\([ \t]*cat[ \t]+<<(-?)[ \t]*(?:'([^'\n]+)'|\"([^\"\n]+)\"|\\([A-Za-z_][A-Za-z0-9_]*)"
@@ -668,6 +670,15 @@ def each_git_target(command, cwd):
     cwd, dynamic = Path(cwd).resolve(), False  # where the next list starts
     here, unsure, first, alternative, moved = cwd, dynamic, True, False, False
     toplevels = {}  # target -> its toplevel, or None when it does not resolve
+    changes = 0
+
+    def change(base, value):
+        nonlocal changes
+        changes += 1
+        require(changes <= MAX_DIRECTORY_CHANGES, "more than " + str(MAX_DIRECTORY_CHANGES)
+                + " cd / -C directory changes to inspect; split the command")
+        return (base / value).resolve()
+
     for words, nested, before, after in segments:
         # A subshell keeps its cd, and its git is not direct.
         if not nested:
@@ -689,7 +700,7 @@ def each_git_target(command, cwd):
                      and not any(c in words[1] for c in "$`~"))
             if plain and not structured and not alternative and after != "|" and before != "|":
                 if not unsure or Path(words[1]).is_absolute():
-                    here, unsure = (here / words[1]).resolve(), False
+                    here, unsure = change(here, words[1]), False
             else:
                 unsure = True
             if starts:
@@ -740,7 +751,7 @@ def each_git_target(command, cwd):
                     if any(c in value for c in "$`~"):
                         unknown = True
                     else:
-                        target = (target / value).resolve()
+                        target = change(target, value)
                         unknown = unknown and not Path(value).is_absolute()
                 index = index + 1 if joined else value_index + 1
             elif option.startswith("-c") or option in ("--no-pager", "--no-optional-locks"):
@@ -768,8 +779,6 @@ def each_git_target(command, cwd):
         # a repository) cannot be matched to a worktree; a failed cd may even leave
         # bash in the reviewed one.
         if target not in toplevels:
-            require(len(toplevels) < MAX_GIT_TARGETS, "more than " + str(MAX_GIT_TARGETS)
-                    + " different git commit / merge targets to inspect; split the command")
             resolved = subprocess.run(["git", "-C", str(target), "rev-parse", "--show-toplevel"],
                                       capture_output=True, text=True)
             toplevels[target] = Path(resolved.stdout.strip()).resolve() if resolved.returncode == 0 else None

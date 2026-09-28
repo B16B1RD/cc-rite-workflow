@@ -1027,15 +1027,15 @@ for _cmd in 'git $OPTS commit -m x' 'git $(true) commit -m x'; do
     fail "guard $_cmd rc=$grc out=$gout"
   fi
 done
-# 1 回の解析で検査しきれない数の commit / merge の作業先は、作業先を特定できない commit として拒否する。
-_cmd=$(for _i in $(seq 1 64); do printf 'git -C d%s merge x;' "$_i"; done; printf 'git commit -m x')
+# 1 回の解析で検査しきれない回数の cd / -C は、作業先を特定できない commit として拒否する。
+_cmd=$(for _i in $(seq 1 17); do printf 'git -C d%s merge x;' "$_i"; done; printf 'git commit -m x')
 many=$(jq -n --arg cwd "$repo" --arg cmd "$_cmd" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
 grc=0
 gout=$(printf '%s' "$many" | env -u CLAUDE_SESSION_ID -u CODEX_THREAD_ID -u GROK_SESSION_ID RITE_HOST=claude \
   CLAUDE_CODE_SESSION_ID=550e8400-e29b-41d4-a716-446655440078 RITE_STATE_ROOT="$ROOT/dyn-state" \
   WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
-if grep -qF 'BLOCKED (wiki-apply-unresolved)' <<<"$gout" && grep -q 'different git commit / merge targets' <<<"$gout"; then
-  pass "guard refuses a commit among more merge targets than it can inspect"
+if grep -qF 'BLOCKED (wiki-apply-unresolved)' <<<"$gout" && grep -q 'cd / -C directory changes' <<<"$gout"; then
+  pass "guard refuses a commit after more directory changes than it can inspect"
 else
   fail "guard many targets rc=$grc out=$gout"
 fi
