@@ -2382,6 +2382,23 @@ for sc_cmd in \
   'echo "`date`" && git push' \
   'echo $(case x in *) git push;; esac)' \
   'printf %s "$(case x in a) bash plugins/rite/hooks/flow-state.sh set --phase fix;; esac)"' \
+  'x="$(case y in a) echo z;; esac)"; git push origin HEAD' \
+  'echo $(time -p case x in *) git push;; esac)' \
+  "echo \"\$('case' x)\"; git push" \
+  "echo \$(case x in a) 'esac';; *) git push;; esac)" \
+  '$(true) git push' \
+  "timeout 30 git push" \
+  "env -u X git push" \
+  "nice -n 5 git commit -m y" \
+  "time -p git push" \
+  "gh pr comment 1 --body x" \
+  "gh -R o/r issue create --title t --body b" \
+  "gh issue edit 1 --add-label x" \
+  "gh pr merge 1 --squash" \
+  "gh api -X POST repos/o/r/issues/1/comments -f body=x" \
+  "gh api repos/o/r/issues/1/comments -f body=x" \
+  "gh api --method=PATCH repos/o/r/pulls/1" \
+  "gh api graphql -f query='mutation { x }'" \
   ; do
   rc=0
   output=$(run_guard_typed "rite:test-reviewer" "$sc_cmd") || rc=$?
@@ -2466,6 +2483,13 @@ for ro_sc_cmd in \
   "git status # then git push" \
   'echo "$(date); git push is blocked"' \
   'x=$(case y in a) echo z;; esac); echo "$x git push"' \
+  "gh pr view 1 --json body" \
+  "gh pr diff 1" \
+  "gh issue view 1" \
+  "gh api repos/o/r/pulls/1" \
+  "gh api -X GET repos/o/r/issues -f state=open" \
+  "gh api graphql -f query='query { viewer { login } }'" \
+  "timeout 30 git status" \
   ; do
   rc=0
   output=$(run_guard_typed "rite:test-reviewer" "$ro_sc_cmd") || rc=$?

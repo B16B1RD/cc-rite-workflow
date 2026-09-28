@@ -18,7 +18,8 @@
 #        (H) WRITE into a .git dir via redirect / file-mutating verb → deny
 #      plus, for reviewer-classified subagents only:
 #        (S) state-changing command at command position — git push / git commit,
-#            a flow-state.sh write, or a skill step driver (*-step.sh) → deny
+#            a GitHub write (gh pr / issue writes, gh api writes), a flow-state.sh
+#            write, or a skill step driver (*-step.sh) → deny
 #   5. Merge-point review-result positive gate — main-session
 #      (and any session) Bash that issues `gh pr merge` / REST pulls/{n}/merge /
 #      GraphQL mergePullRequest is denied unless `.rite/review-results/{pr}-*.json`
@@ -43,9 +44,9 @@
 # effectively irreversible, and plants arbitrary code execution in the
 # non-sandboxed main session (.git/hooks/*, .git/config core.hooksPath /
 # alias.*=!sh / core.fsmonitor) — strictly worse than a source edit. And the
-# closed set in (S): a push leaves the machine, a commit or a flow-state write
-# moves the history and workflow state the parent session continues from, and a
-# step driver can do either; reviewers have been observed running them despite
+# closed set in (S): a push or a GitHub write leaves the machine, a commit or a
+# flow-state write moves the history and workflow state the parent session
+# continues from, and a step driver can do either; reviewers have been observed running them despite
 # the prompt contract, so the prompt alone is not enough.
 #
 # Exit behavior: exit 0 — allow (no output); stdout JSON with
@@ -327,20 +328,24 @@ _rite_btg_pattern6_command_surface() {
 # opens a level whose words form their own commands, and closing it returns to
 # the enclosing level's quote state and word — so `git -C "$(pwd)" push` is one
 # command whose -C argument is the substitution, and the `;` in
-# `echo "$(date); git push"` stays inside the string. Inside a level, a `case`
-# that starts a command stays open until its `esac`, so the `)` ending a pattern
-# (`$(case x in a) git push;; esac)`) separates commands instead of closing the
-# substitution.
+# `echo "$(date); git push"` stays inside the string.
+# A `)` inside `$(…)` is either the end of the substitution or the end of a case
+# pattern (`$(case x in a) git push;; esac)`), and telling them apart needs a
+# shell parser. The command is therefore read twice and denied if either reading
+# finds a state change: once with every such `)` closing the substitution, and
+# once with it only separating commands in a substitution where the word `case`
+# has appeared. A reading that misplaces the end can only add denials.
 # A command longer than $2 bytes is not scanned: _sc_oversized is set to its
 # byte length instead, since the scan grows faster than linearly.
 # The caller runs this with errtrace (set -E): the Pattern 4 ERR trap is not
-# inherited by a function otherwise, and a failure in here must still deny.
+# inherited by a function otherwise, and an ERR-class failure in here must
+# still deny.
 _rite_btg_state_change_scan() {
   # Byte indexing: under a UTF-8 locale `${s:i:1}` rescans the string from the
   # start. Every delimiter here is ASCII, so bytes are enough.
   local LC_ALL=C
-  local _src _len _i=0 _ch _d=0 _us=$'\x1f' _out="" _t _mode=cmd _skip=0
-  local -a _st=(plain) _cl=("") _par=(0) _cs=(0) _at=(1) _w=("") _buf=("") _toks
+  local _src _len _i _ch _d _view _us=$'\x1f' _ph=$'\x1e' _out
+  local -a _st _cl _par _case _w _buf _toks
   _sc_hit=""
   _sc_oversized=""
   # Test-only, fail-CLOSED-only fault injection, like the pattern4 one in the
@@ -351,123 +356,188 @@ _rite_btg_state_change_scan() {
   if [ "${#1}" -gt "$2" ]; then _sc_oversized=${#1}; return 0; fi
   _src=$(_rite_btg_pattern6_command_surface "$1")
   _len=${#_src}
-  while [ "$_i" -lt "$_len" ]; do
-    _ch="${_src:$_i:1}"
-    case "${_st[_d]}" in
-      single)
-        if [ "$_ch" = "'" ]; then _st[_d]=plain; else _w[_d]+="$_ch"; fi ;;
-      double)
-        case "$_ch" in
-          '"') _st[_d]=plain ;;
-          '\') _i=$((_i + 1)); _w[_d]+="${_src:$_i:1}" ;;
-          '`') _ch=open ;;
-          '$') if [ "${_src:$((_i + 1)):1}" = "(" ]; then _i=$((_i + 1)); _ch=open; else _w[_d]+="$_ch"; fi ;;
-          *) _w[_d]+="$_ch" ;;
-        esac ;;
-      plain)
-        case "$_ch" in
-          "'") _st[_d]=single ;;
-          '"') _st[_d]=double ;;
-          '\') _i=$((_i + 1)); _w[_d]+="${_src:$_i:1}" ;;
-          '$') if [ "${_src:$((_i + 1)):1}" = "(" ]; then _i=$((_i + 1)); _ch=open; else _w[_d]+="$_ch"; fi ;;
-          '`') if [ "${_cl[_d]}" = '`' ]; then _ch=close; else _ch=open; fi ;;
-          '(') _par[_d]=$((_par[_d] + 1)); _ch=sep ;;
-          ')')
-            if [ "${_par[_d]}" -gt 0 ]; then _par[_d]=$((_par[_d] - 1)); _ch=sep
-            elif [ "${_cl[_d]}" = ")" ] && [ "${_cs[_d]}" -eq 0 ]; then _ch=close
-            else _ch=sep; fi ;;
-          ';'|'&'|'|'|$'\n') _ch=sep ;;
-          ' '|$'\t') _ch=end ;;
-          '#')
-            if [ -z "${_w[_d]}" ]; then
-              # A comment runs to the end of the line.
-              while [ "$_i" -lt "$_len" ] && [ "${_src:$_i:1}" != $'\n' ]; do _i=$((_i + 1)); done
-              _ch=sep
-            else
-              _w[_d]+="$_ch"
-            fi ;;
-          *) _w[_d]+="$_ch" ;;
-        esac ;;
-    esac
-    case "$_ch" in
-      end|sep|close)
-        if [ -n "${_w[_d]}" ]; then
-          if [ "${_at[_d]}" = 1 ]; then
-            case "${_w[_d]}" in
-              'case') _cs[_d]=$((_cs[_d] + 1)); _at[_d]=0 ;;
-              'esac')
-                if [ "${_cs[_d]}" -gt 0 ]; then _cs[_d]=$((_cs[_d] - 1)); fi
-                _at[_d]=0 ;;
-              if|then|elif|else|do|while|until|'!'|'{'|'}'|time) : ;;
-              *) _at[_d]=0 ;;
-            esac
+  for _view in close case; do
+    _i=0; _d=0; _out=""
+    _st=(plain); _cl=(""); _par=(0); _case=(0); _w=(""); _buf=("")
+    while [ "$_i" -lt "$_len" ]; do
+      _ch="${_src:$_i:1}"
+      case "${_st[_d]}" in
+        single)
+          if [ "$_ch" = "'" ]; then _st[_d]=plain; else _w[_d]+="$_ch"; fi ;;
+        double)
+          case "$_ch" in
+            '"') _st[_d]=plain ;;
+            '\') _i=$((_i + 1)); _w[_d]+="${_src:$_i:1}" ;;
+            '`') _ch=open ;;
+            '$') if [ "${_src:$((_i + 1)):1}" = "(" ]; then _i=$((_i + 1)); _ch=open; else _w[_d]+="$_ch"; fi ;;
+            *) _w[_d]+="$_ch" ;;
+          esac ;;
+        plain)
+          case "$_ch" in
+            "'") _st[_d]=single ;;
+            '"') _st[_d]=double ;;
+            '\') _i=$((_i + 1)); _w[_d]+="${_src:$_i:1}" ;;
+            '$') if [ "${_src:$((_i + 1)):1}" = "(" ]; then _i=$((_i + 1)); _ch=open; else _w[_d]+="$_ch"; fi ;;
+            '`') if [ "${_cl[_d]}" = '`' ]; then _ch=close; else _ch=open; fi ;;
+            '(') _par[_d]=$((_par[_d] + 1)); _ch=sep ;;
+            ')')
+              if [ "${_par[_d]}" -gt 0 ]; then _par[_d]=$((_par[_d] - 1)); _ch=sep
+              elif [ "${_cl[_d]}" = ")" ] && { [ "$_view" = close ] || [ "${_case[_d]}" = 0 ]; }; then _ch=close
+              else _ch=sep; fi ;;
+            ';'|'&'|'|'|$'\n') _ch=sep ;;
+            ' '|$'\t') _ch=end ;;
+            '#')
+              if [ -z "${_w[_d]}" ]; then
+                # A comment runs to the end of the line.
+                while [ "$_i" -lt "$_len" ] && [ "${_src:$_i:1}" != $'\n' ]; do _i=$((_i + 1)); done
+                _ch=sep
+              else
+                _w[_d]+="$_ch"
+              fi ;;
+            *) _w[_d]+="$_ch" ;;
+          esac ;;
+      esac
+      case "$_ch" in
+        end|sep|close)
+          if [ -n "${_w[_d]}" ]; then
+            if [ "${_w[_d]}" = case ]; then _case[_d]=1; fi
+            _buf[_d]+="${_w[_d]}$_us"; _w[_d]=""
           fi
-          _buf[_d]+="${_w[_d]}$_us"; _w[_d]=""
-        fi
-        if [ "$_ch" = sep ]; then _buf[_d]+=";$_us"; _at[_d]=1; fi
-        if [ "$_ch" = close ]; then
-          _out+=";$_us${_buf[_d]};$_us"
-          _d=$((_d - 1))
-        fi ;;
-      open)
-        # The substitution is part of the enclosing word; its commands go to a
-        # new level, closed by `)` or by the matching backquote.
-        _w[_d]+="x"
-        if [ "${_src:$_i:1}" = '`' ]; then _cl[_d + 1]='`'; else _cl[_d + 1]=")"; fi
-        _d=$((_d + 1))
-        _st[_d]=plain; _par[_d]=0; _cs[_d]=0; _at[_d]=1; _w[_d]=""; _buf[_d]="" ;;
-    esac
-    _i=$((_i + 1))
+          if [ "$_ch" = sep ]; then _buf[_d]+=";$_us"; fi
+          if [ "$_ch" = close ]; then
+            _out+=";$_us${_buf[_d]};$_us"
+            _d=$((_d - 1))
+          fi ;;
+        open)
+          # The substitution is part of the enclosing word (as the marker $_ph,
+          # dropped again before a word is matched); its commands go to a new
+          # level, closed by `)` or by the matching backquote.
+          _w[_d]+="$_ph"
+          if [ "${_src:$_i:1}" = '`' ]; then _cl[_d + 1]='`'; else _cl[_d + 1]=")"; fi
+          _d=$((_d + 1))
+          _st[_d]=plain; _par[_d]=0; _case[_d]=0; _w[_d]=""; _buf[_d]="" ;;
+      esac
+      _i=$((_i + 1))
+    done
+    while [ "$_d" -ge 0 ]; do
+      if [ -n "${_w[_d]}" ]; then _buf[_d]+="${_w[_d]}$_us"; fi
+      _out+=";$_us${_buf[_d]};$_us"
+      _d=$((_d - 1))
+    done
+    _toks=()
+    IFS="$_us" read -r -d '' -a _toks <<< "$_out" || :
+    _rite_btg_state_change_match
+    if [ -n "$_sc_hit" ]; then return 0; fi
   done
-  while [ "$_d" -ge 0 ]; do
-    if [ -n "${_w[_d]}" ]; then _buf[_d]+="${_w[_d]}$_us"; fi
-    _out+=";$_us${_buf[_d]};$_us"
-    _d=$((_d - 1))
-  done
-  _toks=()
-  IFS="$_us" read -r -d '' -a _toks < <(printf '%s' "$_out") || :
+  return 0
+}
+
+# Match the word list _toks (";" separates commands) of _rite_btg_state_change_scan
+# and set _sc_hit to the first state-changing command at command position.
+# Wrapper commands (timeout / nice / env / time / command / builtin / exec /
+# nohup) are skipped with their options and option arguments, so the command
+# they run is matched. gh is a write when it runs a writing pr / issue
+# subcommand, or `gh api` with a writing method: an explicit POST / PATCH / PUT /
+# DELETE, or fields (-f / -F / --input) without a method, which gh sends as
+# POST — except a graphql call, which is a write only when it carries a mutation.
+_rite_btg_state_change_match() {
+  local _t _n _mode=cmd _skip=0 _wk="" _wneed=0 _grp="" _mnext=0 _method="" _field=0 _gql=0 _mut=0
   for _t in ${_toks[@]+"${_toks[@]}"}; do
     if [ "$_t" = ";" ]; then
       # `flow-state.sh` with no subcommand at all is not a read either.
       if [ "$_mode" = flowsub ]; then _sc_hit="flow-state.sh (no subcommand)"; return 0; fi
-      _mode=cmd; _skip=0; continue
+      if [ "$_mode" = ghapi ]; then
+        case "$_method" in
+          POST|PATCH|PUT|DELETE) _sc_hit="gh api -X $_method"; return 0 ;;
+          "")
+            if [ "$_field" = 1 ] && { [ "$_gql" = 0 ] || [ "$_mut" = 1 ]; }; then
+              _sc_hit="gh api (fields sent as POST)"; return 0
+            fi ;;
+        esac
+      fi
+      _mode=cmd; _skip=0; _mnext=0; continue
     fi
     if [ "$_skip" = "1" ]; then _skip=0; continue; fi
+    _n="${_t//$'\x1e'/}"
+    if [ "$_mode" = wrap ]; then
+      case "$_n" in
+        --*=*) continue ;;
+        -*)
+          case "$_wk:$_n" in
+            timeout:-s|timeout:--signal|timeout:-k|timeout:--kill-after|nice:-n|nice:--adjustment|env:-u|env:--unset|env:-C|env:--chdir|exec:-a)
+              _skip=1 ;;
+          esac
+          continue ;;
+      esac
+      if [ "$_wneed" = 1 ]; then _wneed=0; continue; fi
+      _mode=cmd
+    fi
     case "$_mode" in
       cmd)
-        case "$_t" in
-          [A-Za-z_]*=*|-*|if|then|elif|else|do|while|until|'!'|'{'|'}'|fi|done|esac|command|exec|env|nohup|time|builtin) : ;;
+        case "$_n" in
+          "") : ;;
+          [A-Za-z_]*=*|-*|if|then|elif|else|do|while|until|'!'|'{'|'}'|fi|done|esac) : ;;
+          timeout|nice|env|time|command|builtin|exec|nohup)
+            _mode=wrap; _wk="$_n"; _wneed=0
+            if [ "$_n" = timeout ]; then _wneed=1; fi ;;
           git|*/git) _mode=gitflags ;;
+          gh|*/gh) _mode=ghglob ;;
           bash|sh|zsh|dash|ksh|*/bash|*/sh|*/zsh|*/dash|*/ksh|source|.) _mode=interp ;;
           *)
-            case "${_t##*/}" in
+            case "${_n##*/}" in
               flow-state.sh) _mode=flowsub ;;
-              *-step.sh) _sc_hit="${_t##*/}"; return 0 ;;
+              *-step.sh) _sc_hit="${_n##*/}"; return 0 ;;
               *) _mode=args ;;
             esac ;;
         esac ;;
       gitflags)
-        case "$_t" in
+        case "$_n" in
           -C|--git-dir|--work-tree|--namespace|--exec-path|--attr-source|--super-prefix|--shallow-file|-c|--config-env)
             _skip=1 ;;
           -*) : ;;
-          push|commit) _sc_hit="git $_t"; return 0 ;;
+          push|commit) _sc_hit="git $_n"; return 0 ;;
           *) _mode=args ;;
         esac ;;
+      ghglob)
+        case "$_n" in
+          -R|--repo|--hostname) _skip=1 ;;
+          -*) : ;;
+          pr|issue) _grp="$_n"; _mode=ghsub ;;
+          api) _mode=ghapi; _mnext=0; _method=""; _field=0; _gql=0; _mut=0 ;;
+          *) _mode=args ;;
+        esac ;;
+      ghsub)
+        case "$_grp:$_n" in
+          pr:comment|pr:create|pr:edit|pr:merge|pr:close|pr:reopen|pr:ready|pr:review|pr:lock|pr:unlock|issue:create|issue:comment|issue:edit|issue:close|issue:reopen|issue:delete|issue:transfer|issue:lock|issue:unlock|issue:pin|issue:unpin|issue:develop)
+            _sc_hit="gh $_grp $_n"; return 0 ;;
+          *:-R|*:--repo) _skip=1 ;;
+          *:-*) : ;;
+          *) _mode=args ;;
+        esac ;;
+      ghapi)
+        if [ "$_mnext" = 1 ]; then _method="${_n^^}"; _mnext=0; continue; fi
+        case "$_n" in
+          -X|--method) _mnext=1 ;;
+          -X*) _method="${_n#-X}"; _method="${_method^^}" ;;
+          --method=*) _method="${_n#--method=}"; _method="${_method^^}" ;;
+          -f|-F|--field|--raw-field|--input|-f*|-F*|--field=*|--raw-field=*|--input=*) _field=1 ;;
+          graphql) _gql=1 ;;
+        esac
+        case "$_n" in *mutation*) _mut=1 ;; esac ;;
       interp)
-        case "$_t" in
+        case "$_n" in
           -*) : ;;
           *)
-            case "${_t##*/}" in
+            case "${_n##*/}" in
               flow-state.sh) _mode=flowsub ;;
-              *-step.sh) _sc_hit="${_t##*/}"; return 0 ;;
+              *-step.sh) _sc_hit="${_n##*/}"; return 0 ;;
               *) _mode=args ;;
             esac ;;
         esac ;;
       flowsub)
-        case "$_t" in
+        case "$_n" in
           get|path) _mode=args ;;
-          *) _sc_hit="flow-state.sh $_t"; return 0 ;;
+          *) _sc_hit="flow-state.sh $_n"; return 0 ;;
         esac ;;
     esac
   done
@@ -865,16 +935,20 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   fi
 
   # --- (S) Reviewer state-changing commands ---
-  # A reviewer must not push, commit, rewrite the workflow state, or run a skill's
-  # step driver: those change state the parent session relies on, and a push
-  # leaves the machine. Reviewer-classified subagents only (IS_REVIEWER); an
-  # implementation subagent commits and pushes like the main session does.
+  # A reviewer must not push, commit, write to GitHub, rewrite the workflow state,
+  # or run a skill's step driver: those change state the parent session relies
+  # on, and a push or a GitHub write leaves the machine. Reviewer-classified
+  # subagents only (IS_REVIEWER); an implementation subagent commits and pushes
+  # like the main session does.
   # Closed set, judged only at COMMAND POSITION (the start, right after an
   # unquoted `;` `&` `|` `(` `)` or a newline, the start of a command
   # substitution, or after a reserved word that leads a command), so a
   # `git commit` that is an ARGUMENT — `grep -rn 'git commit' plugins/`,
   # `git log -S'git push'`, `grep -rn 'x; git push' plugins/` — stays allowed:
   #   - `git push` / `git commit` (global flags skipped, `/usr/bin/git` included);
+  #   - `gh pr` / `gh issue` writing subcommands (comment / create / edit / merge
+  #     / close / …) and `gh api` with a writing method (see
+  #     _rite_btg_state_change_match);
   #   - `flow-state.sh` with any subcommand but `get` / `path`, or none;
   #   - `*-step.sh`, the skills' step drivers (`iterate-step.sh`, …), whatever the
   #     subcommand — they are the orchestrator's, and a subcommand can push.
@@ -883,30 +957,33 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   # double quotes so a separator inside a string does not start a command, and
   # removes quotes and backslashes the way the shell does (`'git' push` is
   # `git push`). Leading `X=y` assignments, reserved words (`if` `then` `elif`
-  # `else` `do` `while` `until` `!` `{` `}` `fi` `done` `esac`) and `command` /
-  # `exec` / `env` / `nohup` / `time` / `builtin` prefixes are skipped; a script
-  # is recognized by its basename, run directly or through `bash` / `sh` / `zsh`
-  # / `dash` / `ksh` / `source` / `.`. A push or commit made INSIDE another
-  # script is not visible here — that stays with the Layer 1 prompt contract
-  # plus Layer 3 drift detection, as before.
+  # `else` `do` `while` `until` `!` `{` `}` `fi` `done` `esac`) and the wrappers
+  # `timeout` / `nice` / `env` / `time` / `command` / `builtin` / `exec` /
+  # `nohup` with their options are skipped; a script is recognized by its
+  # basename, run directly or through `bash` / `sh` / `zsh` / `dash` / `ksh` /
+  # `source` / `.`. The set targets the forms a reviewer actually writes, not
+  # deliberately obscured ones. A push, commit or GitHub write made INSIDE
+  # another script is not visible here; only the Layer 1 prompt contract covers
+  # it (Layer 3 drift detection sees neither a push nor a commit that leaves the
+  # tracked tree clean).
   # The scan grows faster than linearly with the command, so (L)'s ceiling does
   # not keep it inside the hook timeout: a reviewer command that mentions a
   # trigger word and is longer than _RITE_BTG_MAX_STATE_SCAN_BYTES is denied
   # without scanning, the same fail-closed bound (L) applies to the whole guard.
   _RITE_BTG_MAX_STATE_SCAN_BYTES=8192
   if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_REVIEWER" = "1" ] \
-     && [[ "$COMMAND" == *push* || "$COMMAND" == *commit* || "$COMMAND" == *flow-state* || "$COMMAND" == *-step.sh* ]]; then
+     && [[ "$COMMAND" == *push* || "$COMMAND" == *commit* || "$COMMAND" == *flow-state* || "$COMMAND" == *-step.sh* || "$COMMAND" == *gh[[:space:]]* ]]; then
     set -E
     _rite_btg_state_change_scan "$COMMAND" "$_RITE_BTG_MAX_STATE_SCAN_BYTES"
     set +E
     if [ -n "$_sc_oversized" ]; then
       BLOCKED_PATTERN="reviewer-state-change"
-      BLOCKED_REASON="This subagent is treated as a reviewer (${REVIEWER_TYPE_BASIS}), and reviewers are read-only. This command is ${_sc_oversized} bytes (ceiling ${_RITE_BTG_MAX_STATE_SCAN_BYTES}) and mentions push / commit / flow-state / a step driver. A command that size is denied without scanning, because the scan could exceed the hook timeout and a timed-out hook lets the command run."
+      BLOCKED_REASON="This subagent is treated as a reviewer (${REVIEWER_TYPE_BASIS}), and reviewers are read-only. This command is ${_sc_oversized} bytes (ceiling ${_RITE_BTG_MAX_STATE_SCAN_BYTES}) and mentions push / commit / gh / flow-state / a step driver. A command that size is denied without scanning, because the scan could exceed the hook timeout and a timed-out hook lets the command run."
       BLOCKED_ALTERNATIVE="Split the command into shorter commands — reviewer operations are at most a few KB. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement) for the read-only command set."
     elif [ -n "$_sc_hit" ]; then
       BLOCKED_PATTERN="reviewer-state-change"
-      BLOCKED_REASON="This subagent is treated as a reviewer (${REVIEWER_TYPE_BASIS}), and reviewers are read-only. This command runs '${_sc_hit}', which pushes, commits, rewrites the workflow state (flow-state), or runs a skill's step driver (*-step.sh) — state the parent session relies on, or that leaves the machine."
-      BLOCKED_ALTERNATIVE="Report the problem as a finding and leave the change to /rite:fix. Read-only inspection stays allowed: 'git diff', 'git log', 'git show', 'flow-state.sh get --field <f>', 'flow-state.sh path', and running tests ('bash <test>'). For a mutation experiment, use the isolated detached worktree in plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement / Mutation experiments)."
+      BLOCKED_REASON="This subagent is treated as a reviewer (${REVIEWER_TYPE_BASIS}), and reviewers are read-only. This command runs '${_sc_hit}', which pushes, commits, writes to GitHub (gh pr / issue writes, gh api writes), rewrites the workflow state (flow-state), or runs a skill's step driver (*-step.sh) — state the parent session relies on, or that leaves the machine."
+      BLOCKED_ALTERNATIVE="Report the problem as a finding and leave the change to /rite:fix. Read-only inspection stays allowed: 'git diff', 'git log', 'git show', 'gh pr view', 'gh pr diff', 'gh issue view', 'gh api <endpoint>' (GET), 'flow-state.sh get --field <f>', 'flow-state.sh path', and running tests ('bash <test>'). For a mutation experiment, use the isolated detached worktree in plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement / Mutation experiments)."
     fi
   fi
 
