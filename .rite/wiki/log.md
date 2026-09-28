@@ -138,6 +138,7 @@
 * **Create**: [state を削除せず無効化して残すと、無効化を完了の印として読む既存 consumer が中断を完了と読み違える](pages/anti-patterns/deactivate-instead-of-delete-misread-by-consumers.md) — raw/reviews/20260928T084811Z-pr-3391.md を新規ページ化
 * **Update**: [state を削除せず無効化して残すと、無効化を完了の印として読む既存 consumer が中断を完了と読み違える](pages/anti-patterns/deactivate-instead-of-delete-misread-by-consumers.md) — raw/fixes/20260928T090234Z-pr-3391.md を統合
 * **Create**: [シェル本体を別ディレクトリの helper へ移すと、相対パス・引数・出力元の記述が移設元を前提に残る](pages/anti-patterns/helper-relocation-leaves-origin-relative-references.md) — raw/reviews/20260928T091213Z-pr-3366.md を新規ページ化
+* **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=62, orphans=0, missing_concept=0, unregistered_raw=578, broken_refs=0
 
 ## 2026-09-27
 
