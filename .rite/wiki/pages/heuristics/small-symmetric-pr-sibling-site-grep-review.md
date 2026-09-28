@@ -21,9 +21,13 @@ sources:
     resource: "raw/reviews/20260514T224021Z-pr-967.md"
   - type: "fixes"
     resource: "raw/fixes/20260526T154013Z-pr-1151.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T105649Z-pr-3396.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-10T00:54:18Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T11:07:18Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T11:07:18Z" }
 ---
 
 # 極小対称化 PR は sibling site Grep 照合で短時間・高確信レビューできる
@@ -76,6 +80,10 @@ review-comment-post.sh の post-condition awk sentinel を置換側と同じ `-v
 
 対称化 PR では「両 site の構造照合 + 等価性実機比較 + 検証ゲートの mutation」の 3 点セットが 1 cycle 収束の決め手になる。
 
+### 適用例: 診断 marker のキーを揃える修正（1 cycle mergeable）
+
+同じ関数が出す診断 marker の 1 つだけが、常に空になるキーを出していた不具合を、隣の marker と同じキーへ揃えた小さな修正で、3 reviewer が独立に同じ推奨を挙げた。同じ関数内に残る別の兄弟 marker 1 つが、まだ古いキーを出していたためである。値は空にならず実害は無かったが、推奨の処分に 1 手間かかった。診断 marker のキーを揃える修正では、同じ関数内の兄弟 marker をキー名で一度 grep し、揃っていない残りを修正に含めるか、揃えない理由を先に決めておくと後の指摘が減る。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -92,3 +100,4 @@ review-comment-post.sh の post-condition awk sentinel を置換側と同じ `-v
 - [レビュー結果](../../raw/reviews/20260514T224021Z-pr-967.md)
 - [cross-product grep hint](../../raw/fixes/20260526T154013Z-pr-1151.md)
 - [置換側↔検証側 sentinel 参照対称化を 3 reviewer が sibling 照合 + 等価性実機比較 + mutation で 1 cycle mergeable 判定](../../raw/reviews/20260610T005202Z-pr-1341.md)
+- [診断 marker のキーを揃える修正で、同じ関数内の兄弟 marker の残りを 3 reviewer が独立に指摘](../../raw/reviews/20260928T105649Z-pr-3396.md)

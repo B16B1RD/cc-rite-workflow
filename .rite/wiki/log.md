@@ -143,6 +143,13 @@
 * **Update**: [セキュリティ境界 hook の timeout は fail-open — 評価コストは入力サイズで O(1) 上限を設けて bound する](pages/heuristics/security-hook-timeout-is-fail-open-bound-cost-by-input-size.md) — raw/fixes/20260928T100658Z-pr-3379.md を統合
 * **Create**: [既存の正規化を新しい判定へ再利用すると、除外範囲の緩さまで持ち込む](pages/heuristics/reused-normalization-carries-its-exclusion-looseness.md) — raw/reviews/20260928T101137Z-pr-3376.md を新規ページ化
 * **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=62, orphans=0, missing_concept=0, unregistered_raw=578, broken_refs=0
+* **Create**: [コマンドの語で拒否する guard は拒否の確定を 1 語だけ遅らせ、過去の実コマンドを新旧 guard に再生して差分を確かめる](pages/heuristics/command-word-guard-defers-rejection-one-token.md) — raw/fixes/20260928T104954Z-pr-3388.md を新規ページ化
+* **Update**: [コマンドの語で拒否する guard は拒否の確定を 1 語だけ遅らせ、過去の実コマンドを新旧 guard に再生して差分を確かめる](pages/heuristics/command-word-guard-defers-rejection-one-token.md) — raw/reviews/20260928T104111Z-pr-3388.md を統合
+* **Update**: [コマンドの語で拒否する guard は拒否の確定を 1 語だけ遅らせ、過去の実コマンドを新旧 guard に再生して差分を確かめる](pages/heuristics/command-word-guard-defers-rejection-one-token.md) — raw/reviews/20260928T110544Z-pr-3388.md を統合
+* **Create**: [保留（hold）を新設したら、寿命を state を消す全経路で揃え、解除の手段を保留の理由ごとに用意する](pages/heuristics/new-hold-state-lifecycle-across-all-purge-paths.md) — raw/reviews/20260928T102657Z-pr-3393.md を新規ページ化
+* **Create**: [計時テストは上限いっぱいの形を複数計り、上限値そのものは境界テストに任せる](pages/patterns/timing-test-measure-several-upper-bound-shapes.md) — raw/reviews/20260928T103622Z-pr-3379.md を新規ページ化
+* **Create**: [同じ本文を比べる 2 つの比較は「無視してよい書き込み」を 1 つの集合に揃える](pages/heuristics/align-ignored-writes-across-comparisons.md) — raw/reviews/20260928T104839Z-pr-3376.md を新規ページ化
+* **Update**: [極小対称化 PR は sibling site Grep 照合で短時間・高確信レビューできる](pages/heuristics/small-symmetric-pr-sibling-site-grep-review.md) — raw/reviews/20260928T105649Z-pr-3396.md を統合
 
 ## 2026-09-27
 
