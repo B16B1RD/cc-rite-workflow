@@ -141,8 +141,9 @@ validate_wiki_branch_name "$wiki_branch" || exit 1
 # -----------------------------------------------------------------------
 if ! git show-ref --verify --quiet "refs/heads/${wiki_branch}"; then
   echo "[wiki-worktree-setup] status=skipped; path=-; branch=${wiki_branch}; reason=commit_branch_missing"
+  printf -v _q_repo_root '%q' "$repo_root"
   echo "  hint (run one of these, in order of preference):" >&2
-  echo "    1) git fetch origin ${wiki_branch}:${wiki_branch}" >&2
+  echo "    1) git -C $_q_repo_root fetch origin ${wiki_branch}:${wiki_branch}" >&2
   echo "    2) /rite:wiki-init" >&2
   exit 2
 fi
@@ -224,7 +225,7 @@ elif [[ -n "$existing_branch" ]]; then
   fi
   # Unexpected: worktree exists but on the wrong branch.
   echo "ERROR: worktree at '$target_path' is checked out to '$existing_branch', expected '$wiki_branch'" >&2
-  printf -v _q_target_path '%q' "$target_path"
+  printf -v _q_target_path '%q' "$abs_target"
   echo "  manual recovery: git worktree remove $_q_target_path && re-run this script" >&2
   exit 3
 fi

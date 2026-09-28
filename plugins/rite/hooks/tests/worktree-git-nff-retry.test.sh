@@ -162,7 +162,11 @@ assert "TC-5 rc 2 (HEAD unreadable)" "2" "$rc"
 assert "TC-5 exactly one 対処 line" "1" "$(grep -c '^ 対処: ' "$APOS_ROOT/vwb5.err" || true)"
 line=$(grep '^ 対処: ' "$APOS_ROOT/vwb5.err" || true)
 cmd=${line#" 対処: "}
-setup_tail=" && bash plugins/rite/hooks/scripts/wiki-worktree-setup.sh"
+# The setup script is named by its absolute path, so the hint works from any cwd.
+setup_sh="$(cd -P "$SCRIPT_DIR/../scripts" && pwd)/wiki-worktree-setup.sh"
+printf -v setup_q '%q' "$setup_sh"
+setup_tail=" && bash $setup_q"
+assert "TC-5 setup script path is absolute and exists" "1" "$([[ "$setup_sh" == /* ]] && [ -f "$setup_sh" ] && echo 1 || echo 0)"
 assert "TC-5 hint ends with the setup step" "$setup_tail" "${cmd: -${#setup_tail}}"
 assert_shell_words "TC-5 remove command" "${cmd%"$setup_tail"}" git worktree remove "$missing"
 
