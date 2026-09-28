@@ -14,12 +14,15 @@ sources:
     resource: "raw/reviews/20260915T132416Z-pr-2871.md"
   - type: "reviews"
     resource: "raw/reviews/20260926T090314Z-pr-3129.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T160552Z-pr-3412.md"
 tags: ["test", "hermeticity", "env-var-leak", "session-id", "flow-state", "sandbox"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T09:08:27Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T16:15:27Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-15T13:31:28Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T09:08:27Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T16:15:27Z" }
 ---
 
 # hook のテストスイートは ambient な session-id 環境変数 (CLAUDE_CODE_SESSION_ID 等) に依存させない (non-hermetic test)
@@ -77,6 +80,10 @@ fix-scope の検証コマンドは実行中のセッションから `bash -c` �
 - **検証コマンドは CI と同じ条件で書く**: 計画の検証コマンドに `env -u CLAUDE_CODE_SESSION_ID -u RITE_HOST -u RITE_PLUGIN_ROOT` を前置し、ランナー経由と同じ環境で走らせる。失敗を見たら、取り込んだ変更を疑う前にセッション変数を外した単体実行で再現するか確かめる。
 - **reviewer に渡すテスト実行手順にも同じ前置を付ける**: 付けないと reviewer がこの偽の失敗を指摘として報告する。
 
+### 前回の指摘の解消確認でも同じ切り分けが要る
+
+差分スコープの再レビューで、追加したテストが前回の指摘を捕まえることを変異（見積もりの単位を戻す、代替の案内文を旧文言に戻す）で確かめる場面でも、hook のテストは実行中のセッションの flow-state を読む。変異前のテストが環境由来で落ちていると、変異で落ちたのか元から落ちていたのかが区別できない。変異を当てる前に、セッション ID を外して CI と同じ条件で変異前の green を確かめる。
+
 ## 関連ページ
 
 - [owner/repo 解決テストは ambient な git remote 状態に依存させない (non-hermetic test)](./test-hermeticity-ambient-git-remote-dependency.md)
@@ -87,3 +94,4 @@ fix-scope の検証コマンドは実行中のセッションから `bash -c` �
 - [hooks/tests 全体の悉皆監査で7ファイルを修正](../../raw/reviews/20260720T142626Z-pr-1932.md)
 - [reap テストの単体実行でホスト選択の環境変数を除去するレビュー結果](../../raw/reviews/20260915T132416Z-pr-2871.md)
 - [base 取り込み後の検証でレビュー中のセッション状態がテストへ漏れたレビュー結果](../../raw/reviews/20260926T090314Z-pr-3129.md)
+- [hook のテストを CI と同じ条件で走らせて環境由来の失敗を切り分けたレビュー結果](../../raw/reviews/20260928T160552Z-pr-3412.md)

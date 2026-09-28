@@ -5,12 +5,13 @@ domain: "heuristics"
 description: "処理を止めて後で再開させる保留状態は、state を消すどれか 1 経路が保留を知らないだけで破壊的な整理へ流れる。purge・孤児回収・決着時の後片付けのすべてで保留の寿命を揃え、再開の案内は保留の理由ごとに実行できる手段を示す。案内が 1 種類だと、正しい記録のままでは解けない保留が行き止まりになり、処分済みへ書き換える動機を生む。"
 promote: rite-plugin
 created: "2026-09-28T11:07:18Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T15:38:14Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T16:15:27Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T12:36:22Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T14:28:35Z" }
   - by: "rite-wiki-ingest/claude-opus-5-5"
     at: "2026-09-28T15:38:14Z"
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T16:15:27Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260928T102657Z-pr-3393.md"
@@ -28,6 +29,12 @@ sources:
     resource: "raw/fixes/20260928T144931Z-pr-3393.md"
   - type: "reviews"
     resource: "raw/reviews/20260928T151448Z-pr-3393.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260928T154359Z-pr-3393.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T160221Z-pr-3393.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260928T161213Z-pr-3393.md"
 tags: []
 confidence: medium
 ---
@@ -72,6 +79,14 @@ confidence: medium
 - 同じ記録を読む処理を新しく足すときは、兄弟の読み手が空・欠落・失敗をどう分けているかをそろえる。記録がまだ無いことを正常とする扱いを落としやすい。
 - 書き手の出力を読み手に渡す往復を 1 本のテストで通す。fixture が生産側の出力を自分で用意すると、生産側の指示が消えても green のままになる。
 
+### 止まる時点で保留が存在することを保証する
+
+- 「保留を残して止まる」手順は、残すべき保留が既にある前提に立ちやすい。判定を通した直後の書き込み失敗では保留ファイルがまだ無いことがあるので、止まる前に候補の全文と再開位置を保存する側とセットで書く。
+- 失敗を marker で数えるなら、数える側が想定する失敗経路のすべてで marker が出るかを呼び出し先まで辿る。helper が失敗を JSON の空値と終了コードで返す経路で marker が出ないと、件数は 0 のまま成功扱いになる。外部書き込みの成否は終了コードだけでなく返り値の中身（番号が正・URL がある）で確かめ、兄弟の経路と同じ検査にそろえる。
+- 作成した成果物の識別子（Issue 番号）を判定記録に書き戻すと、途中で止まった再実行が同じものを二度作らない。
+- 保留を残して止まるときは、保留ファイルの再開案内を今の止まり方に合わせて書き換える。古い案内のままだと済んだ手順へ誘導する。停止の意味を変えたら、その停止を説明する他の手順書も同じ変更で直す。
+- 全体テストが自分の変更と無関係に落ちたら、並行する別セッションのテストが実リポジトリの state を書き換えていないかを疑う。汚染されたファイルは消さずに退避し、単独実行で原因を確かめてから再実行する。
+
 ## 関連ページ
 
 - [統合 refactor の追従は「実行テーブル → SoT/docs → references 例示 → 兄弟行」と層を降りる](./consolidation-refactor-layered-follow-up.md)
@@ -86,3 +101,6 @@ confidence: medium
 - [保留の退役を持ち越しに改めた fix 結果](../../raw/fixes/20260928T140208Z-pr-3393.md)
 - [fix 結果（持ち越し候補のキーと解放の時点）](../../raw/fixes/20260928T144931Z-pr-3393.md)
 - [レビュー結果（空のキー・解放の条件・往復テスト）](../../raw/reviews/20260928T151448Z-pr-3393.md)
+- [失敗件数を受け取ってから保留を解くようにした fix 結果](../../raw/fixes/20260928T154359Z-pr-3393.md)
+- [保留が存在する前提で止まる手順を指摘したレビュー結果](../../raw/reviews/20260928T160221Z-pr-3393.md)
+- [判定直後に候補を保存し作成物の番号を書き戻した fix 結果](../../raw/fixes/20260928T161213Z-pr-3393.md)

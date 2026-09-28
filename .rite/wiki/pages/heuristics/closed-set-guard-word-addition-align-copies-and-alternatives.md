@@ -4,11 +4,12 @@ title: "語の閉集合で拒否する guard に語を足すときは、閉集�
 domain: "heuristics"
 description: "状態変更を拒否する閉集合へ 1 語を足す変更は、既存の判定経路にそのまま乗るので小さく収束する。収束の条件は、閉集合の写し（hook 本体・テスト・禁止表・仕様・設計理由）を同じ変更で揃えることと、拒否時に案内する代替手段が新しい用途でも実際に動くことである。サブコマンド名で判定する閉集合は CLI の alias をすり抜けるので、個別の alias を足さず欠陥クラスとして扱う。"
 created: "2026-09-28T14:28:35Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T15:38:14Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T16:15:27Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T14:28:35Z" }
   - by: "rite-wiki-ingest/claude-opus-5-5"
     at: "2026-09-28T15:38:14Z"
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T16:15:27Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260928T141040Z-pr-3404.md"
@@ -16,6 +17,10 @@ sources:
     resource: "raw/reviews/20260928T142411Z-pr-3404.md"
   - type: "reviews"
     resource: "raw/reviews/20260928T153054Z-pr-3412.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260928T154405Z-pr-3412.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T160552Z-pr-3412.md"
 tags: ["guard", "closed-set", "deny-list", "alternative-command", "cli-alias"]
 confidence: medium
 ---
@@ -45,6 +50,10 @@ confidence: medium
 - 文字数とバイト数の取り違えのように見積もりの単位を固定する行は、マルチバイト入力で予算を超える側のテストが無いと、外しても suite が通る。境界テストは予算の内側と外側の両方をマルチバイトで置く。
 - hook の時間を固定するテストは、解析が最も多く走る形（heredoc を含み、複数の判定が表面を抽出する形）を最悪ケースとして選ぶ。
 
+### 代替の案内は判定の外にある手段を指し、ホストに依存しない語で書く
+
+見積もりが heredoc の本文も数えるガードでは、「別の Bash 呼び出しで本文をファイルに書く」は同じ本文を持つ限り同じ拒否に戻る。代替には判定の対象外にある手段（ツールでのファイル作成）を選ぶ。ただし拒否文にホスト固有のツール名を書くと、同じ hook を別のホストで動かしたときに案内が通じない。案内は「ファイルを作成するツールで本文を書き、そのファイルを渡す」のようにホストに依存しない表現にする。
+
 ## 関連ページ
 
 - [コマンドの語で拒否する guard は拒否の確定を 1 語だけ遅らせ、過去の実コマンドを新旧 guard に再生して差分を確かめる](./command-word-guard-defers-rejection-one-token.md)
@@ -54,3 +63,5 @@ confidence: medium
 - [閉集合へ 1 語を足して指摘ゼロで収束したレビュー結果](../../raw/reviews/20260928T141040Z-pr-3404.md)
 - [兄弟行に同種の欠陥が残っていたレビュー結果](../../raw/reviews/20260928T142411Z-pr-3404.md)
 - [レビュー結果（代替案が同じ拒否に戻る・マルチバイトの予算境界）](../../raw/reviews/20260928T153054Z-pr-3412.md)
+- [代替の案内を Write ツールでのファイル作成に改めた fix 結果](../../raw/fixes/20260928T154405Z-pr-3412.md)
+- [代替の案内にホスト固有のツール名を書かないことを確かめたレビュー結果](../../raw/reviews/20260928T160552Z-pr-3412.md)

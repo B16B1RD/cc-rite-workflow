@@ -57,9 +57,13 @@ sources:
     resource: "raw/reviews/20260927T192744Z-pr-3329.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T214812Z-pr-3355.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T160504Z-pr-3408.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260928T155121Z-pr-3408.md"
 tags: ["comment-rot", "cause-neutral", "exclusivity-claim", "doc-sync", "not-grep-pin", "quantifier-strengthening", "birth-defect"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:52:19Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T16:15:27Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:47:53Z" }
   - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
@@ -75,6 +79,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:54:08Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:38:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:52:19Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T16:15:27Z" }
 ---
 
 # 全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin
@@ -186,6 +191,10 @@ consumer ごとに読取り・書込み・同期という責務を確認して�
 
 仕様書の要約や sentinel 契約表のような文書の要約文は、新しい分岐手順を足したときに実装の限定条件を落としやすい。「停止しない」「CONFLICTING のとき」のように書くと、例外的に停止する経路や「再判定の後」という条件が消え、過大な主張になる。新しい手順では、失敗時の行き先（helper や git の非ゼロ終了で何が起きるか）と作業先（どの作業ツリーで実行するか）の明記も抜けやすい。要約を書いたら、実装の分岐表と一行ずつ突き合わせて、例外経路と前提条件が要約に残っているかを確かめる。
 
+### 呼び出し元を増やした helper の説明を直すときは列挙で書く
+
+共有 helper を新しい呼び出し元から使い始めたら、helper の説明が特定の呼び出し元（「下の 2 つの信号」「残りの Gate」など）を前提にしていないかを見直す。直すときに「このスクリプトのすべての判定が使う」のような全称へ言い換えると、同じスクリプトで別の閾値を使う判定まで含むように読め、次の言い過ぎになる。説明は実際の呼び出し元を列挙し、戻り値の説明は「この値では保護しない。他の判定が残るかは呼び出し側が決める」のように呼び出し元に依存しない形にする。
+
 ## 関連ページ
 
 - [実装の分岐を散文へ落とす前に、フラグの状態数と観測ラベルの値域を機械的に数える](./count-implementation-states-before-writing-prose.md)
@@ -216,3 +225,5 @@ consumer ごとに読取り・書込み・同期という責務を確認して�
 - [述語を helper の定義に書き写して排他性を数えたレビュー結果](../../raw/reviews/20260927T115824Z-pr-3279.md)
 - [方針変更が既存の設計理由の前提を崩したレビュー結果](../../raw/reviews/20260927T192744Z-pr-3329.md)
 - [新しい分岐手順の要約文が限定条件を落としたレビュー結果](../../raw/reviews/20260927T214812Z-pr-3355.md)
+- [限定された説明の書き直しに全称句が入ったレビュー結果](../../raw/reviews/20260928T160504Z-pr-3408.md)
+- [共有 helper の説明を呼び出し元に依存しない形へ直した fix 結果](../../raw/fixes/20260928T155121Z-pr-3408.md)

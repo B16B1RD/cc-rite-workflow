@@ -40,9 +40,13 @@ sources:
     resource: "raw/reviews/20260808T082654Z-pr-2150-cycle6.md"
   - type: "fixes"
     resource: "raw/fixes/20260808T081026Z-pr-2150-cycle5-fix.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T160833Z-pr-3376.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T17:40:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T16:15:27Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T16:15:27Z" }
 ---
 
 # 列挙・全称主張を持つ記述は書き直しでは収束しない — 撤去だけが指摘面を消す
@@ -142,6 +146,10 @@ Simplification-First の Escalation trigger は「前 cycle の fix が導入し
 
 **「X されます」型の断定を書く前に、その X が利用者に届く経路（surface）まで辿る。** 同 PR では次回セッション開始時の WARNING を案内先として書いたが、その stderr は session-start hook がログファイルへリダイレクトしており利用者には表示されない。存在しない可視シグナルを待たせると、無警告を「正常」と読ませる誤誘導になる。
 
+### 修正のたびに穴が反対側へ移るときは契約へ戻る
+
+同じ系統の穴が修正のたびに反対側へ移るときは、局所修正を重ねても収束しない。その保証が受入条件の契約に含まれるかを要件の判断へ戻し、契約外と決まった保証は実装ごと取り下げる。文書には「最善努力」であることと、その境界を書く。こうすると、以後のレビューでその系統の指摘が出なくなる。取り下げは merge-base の内容へ戻して行い、正味の差分に対象のハンクが残らないことと、削除した識別子への参照が残らないことで確かめる。
+
 ## 関連ページ
 
 - [cycle が進んでも findings が減らないときは点修正をやめて構造を疑う](../heuristics/non-converging-review-loop-suspect-structure.md)
@@ -158,3 +166,4 @@ Simplification-First の Escalation trigger は「前 cycle の fix が導入し
 - [条件列挙による膨張 3.6 倍](../../raw/reviews/20260808T080812Z-pr-2150-cycle5.md)
 - [条件ではなく案内先を書く](../../raw/fixes/20260808T081026Z-pr-2150-cycle5-fix.md)
 - [案内先も列挙できないなら書かない](../../raw/reviews/20260808T082654Z-pr-2150-cycle6.md)
+- [契約外の保証を実装ごと取り下げて収束したレビュー結果](../../raw/reviews/20260928T160833Z-pr-3376.md)
