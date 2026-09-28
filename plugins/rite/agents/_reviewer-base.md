@@ -56,15 +56,19 @@ rationale: ../skills/reviewers/references/reviewer-base-rationale.md#why-wrapper
 Reviewer が **mutation testing / verification experiment** (例: 「ある line を `return 1` から `exit 1` に変えたら test が失敗するか」) を実行する必要がある場合、**parent repo の working tree / branch を絶対に変更してはならない**。正規経路は以下の worktree-only pattern に限定される:
 
 ```bash
-# 1. 単独の Bash 呼び出しで path を得る (worktree のコマンドに埋め込むと作成先が見えず、
-#    worktree 隔離セッションでは拒否される)
-mktemp -d -t rite-review-mutation-XXXXXX
+# 0. 単独の Bash 呼び出しでセッション ID を得る
+bash {plugin_root}/hooks/session-identity.sh
+# 1. 別の Bash 呼び出しで、0 の出力をリテラルで埋めて path を得る (worktree のコマンドに埋め込むと
+#    作成先が見えず、worktree 隔離セッションでは拒否される)。0 が何も出力しなかったときは
+#    `mktemp -d -t rite-review-mutation-XXXXXX` を使う
+mktemp -d -t rite-review-mutation-owner.<0 で出力された ID>.XXXXXX
 # 2. 別の Bash 呼び出しで、1 の出力をリテラルで渡して detached HEAD のテンポラリ worktree を作成
 #    (named branch を leak させない)
 git worktree add --detach "<1 で出力された path>" HEAD  # または特定の ref
 # 3. その path で編集・テスト実行 (parent repo は完全に無影響)
 # 4. cleanup は orchestrator 側 (hooks/scripts/pr-cycle-cleanup.sh) が回収する
-#    (reviewer は `git worktree remove` を実行禁止)
+#    (reviewer は `git worktree remove` を実行禁止)。名前に入れたセッション ID は、
+#    並行する別セッションの cleanup が作業中の worktree を回収しないための所有者の記録
 ```
 
 - checkout / stash / `cp file file.bak` バックアップ等、parent working tree を経由する mutation は全経路禁止。過去 ref の blob が必要なときは `git show <ref>:<file>` で取得し worktree 内で適用する
@@ -311,7 +315,7 @@ A finding may be reported as a **指摘事項** (mandatory fix) only when **all 
 
    - **Diff-line inspection** (default, always applicable): Examine the `-` and `+` lines in the diff. If the buggy behavior depends on a line that appears only as `+` (introduced by this PR) or on a `-` → `+` replacement that changed semantics, the revert test passes. If the buggy behavior depends only on unchanged context lines (no leading `+`/`-`), the bug is pre-existing and the test fails.
    - **Git show comparison** (when the diff alone is ambiguous): `git show {base_branch}:path/to/file.ts` retrieves the pre-PR version of the file. Compare with the post-PR version to confirm whether the buggy behavior is present before the PR. This is a read-only operation and respects the [READ-ONLY RULE](#read-only-enforcement) (`git show` is explicitly allowed).
-   - **Runtime reproduction on the base branch** (rarely needed): run `mktemp -d -t rite-review-mutation-XXXXXX` on its own to get a path, then in a separate Bash call run `git worktree add --detach <that literal path> {base_branch}` and run the code under that path. Embedding the `mktemp` in the same command hides the created path and is refused in a worktree-isolated session. Keep the worktree in the `rite-review-mutation-*` namespace so the orchestrator's cleanup reaps it; `--detach` keeps it off the branch axes of the post-review state check and works even while another worktree has the base branch checked out. This respects the [READ-ONLY RULE](#read-only-enforcement).
+   - **Runtime reproduction on the base branch** (rarely needed): run `mktemp -d -t rite-review-mutation-owner.<session ID>.XXXXXX` on its own to get a path (the session ID is the output of a prior, separate `bash {plugin_root}/hooks/session-identity.sh` call, as in Mutation experiments above), then in a separate Bash call run `git worktree add --detach <that literal path> {base_branch}` and run the code under that path. Embedding the `mktemp` in the same command hides the created path and is refused in a worktree-isolated session. Keep the worktree in the `rite-review-mutation-*` namespace so the orchestrator's cleanup reaps it; `--detach` keeps it off the branch axes of the post-review state check and works even while another worktree has the base branch checked out. This respects the [READ-ONLY RULE](#read-only-enforcement).
 
    "Mental" revert (judging solely from memory of the diff without inspecting the diff hunks or the pre-PR file) is NOT sufficient and MUST NOT be recorded as a passed revert test.
 

@@ -32,7 +32,10 @@ TEST_REPO=$(mktemp -d)
 # Detached worktrees whose ROOT dir carries the sanctioned isolation prefixes.
 ISO_MUT_DIR=$(mktemp -u -t rite-review-mutation-XXXXXX)
 ISO_REV_DIR=$(mktemp -u -t rite-revert-test-XXXXXX)
+# The owner-recording name the reviewer procedure now creates must stay in the namespace.
+ISO_OWN_DIR=$(mktemp -u -t rite-review-mutation-owner.aaaaaaaa-1111-2222-3333-444444444444.XXXXXX)
 ( cd "$TEST_REPO" && git worktree add --detach -q "$ISO_MUT_DIR" HEAD )
+( cd "$TEST_REPO" && git worktree add --detach -q "$ISO_OWN_DIR" HEAD )
 ( cd "$TEST_REPO" && git worktree add --detach -q "$ISO_REV_DIR" HEAD )
 OUTSIDE_DIR=$(mktemp -d)   # a plain, non-repo scratch dir
 shimdir=""                 # set by TC-FAILCLOSED; cleaned here so an interrupt leaves no residue
@@ -43,7 +46,8 @@ cleanup() {
   rm -f "$STDERR_FILE"
   ( cd "$TEST_REPO" 2>/dev/null && git worktree remove --force "$ISO_MUT_DIR" 2>/dev/null ) || true
   ( cd "$TEST_REPO" 2>/dev/null && git worktree remove --force "$ISO_REV_DIR" 2>/dev/null ) || true
-  rm -rf "$TEST_REPO" "$ISO_MUT_DIR" "$ISO_REV_DIR" "$OUTSIDE_DIR" ${shimdir:+"$shimdir"} ${rp_shimdir:+"$rp_shimdir"} ${rl_shimdir:+"$rl_shimdir"}
+  ( cd "$TEST_REPO" 2>/dev/null && git worktree remove --force "$ISO_OWN_DIR" 2>/dev/null ) || true
+  rm -rf "$TEST_REPO" "$ISO_MUT_DIR" "$ISO_REV_DIR" "$ISO_OWN_DIR" "$OUTSIDE_DIR" ${shimdir:+"$shimdir"} ${rp_shimdir:+"$rp_shimdir"} ${rl_shimdir:+"$rl_shimdir"}
 }
 trap cleanup EXIT
 
@@ -171,7 +175,8 @@ if grep -q "edit-guard: BLOCKED" "$STDERR_FILE"; then pass "stderr contains bloc
 # The suggested procedure runs mktemp on its own: a worktree-isolated session refuses the
 # worktree command when mktemp is embedded in it.
 tca_reason=$(reason_of "$out")
-if [[ "$tca_reason" == *"'mktemp -d -t rite-review-mutation-XXXXXX' on its own"* ]] \
+if [[ "$tca_reason" == *"'bash <plugin root>/hooks/session-identity.sh' on its own"* ]] \
+  && [[ "$tca_reason" == *"'mktemp -d -t rite-review-mutation-owner.<that session ID>.XXXXXX' on its own"* ]] \
   && [[ "$tca_reason" == *"'git worktree add --detach <that literal path> HEAD'"* ]] \
   && [[ "$tca_reason" != *'$(mktemp'* ]]; then
   pass "deny reason suggests mktemp and worktree add as separate calls"
@@ -220,6 +225,11 @@ echo ""
 echo "TC-B: subagent Edit inside real rite-review-mutation-* worktree → allow"
 out=$(run_edit_guard "Edit" "some-file.sh" "$ISO_MUT_DIR" "$SUBAGENT_TRANSCRIPT") && rc=0 || rc=$?
 assert_allow "isolated mutation-worktree edit allowed (AC-4)" "$out" "$rc"
+echo ""
+
+echo "TC-B-OWNER: subagent Edit inside a real owner-recording rite-review-mutation-owner.* worktree → allow"
+out=$(run_edit_guard "Edit" "some-file.sh" "$ISO_OWN_DIR" "$SUBAGENT_TRANSCRIPT") && rc=0 || rc=$?
+assert_allow "owner-recording mutation-worktree edit allowed" "$out" "$rc"
 echo ""
 
 # (e) subagent Edit inside a REAL rite-revert-test-* worktree → allow

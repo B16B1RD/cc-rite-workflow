@@ -22,7 +22,15 @@
 # detached `rite-review-mutation-*` worktrees that the Step 1 branch sweep cannot
 # catch (they have no named branch):
 #   T-14 → Step 4: aged orphan mutation worktree reaped (mutation_worktrees=1)
-#   T-15 → Step 4: age guard protects a fresh mutation worktree (in-flight safety)
+#   T-15 → Step 4-P: a fresh worktree whose name records no owner is reaped at once
+#
+# Step 4-P owner record — a reviewer names its worktree
+# `rite-review-mutation-owner.<session_id>.<random>`:
+#   T-60 / T-61 / T-67 → a live owner in another session keeps it (GNU / BSD / documented names)
+#   T-62 / T-63        → no owner state, inactive owner, or owner past the TTL: reaped
+#   T-64               → the running session's own worktree is reaped; no / invalid self ID
+#   T-65               → an unreadable owner record is kept with a WARNING
+#   T-66               → a mutant without the owner check loses T-60's worktree
 #
 # Each test creates an isolated temp git repository, simulates branch /
 # worktree creation, runs the cleanup script, and asserts the result.
@@ -659,9 +667,9 @@ cleanup_temp_repo "$TEST_REPO"
 # Given: a freshly-created registered detached worktree under TMPDIR (mtime now)
 # When: Cleanup runs
 # Then: The worktree is reaped (porcelain path has no 24h age guard) and
-#       mutation_worktrees >= 1. In-flight protection is self-exclusion via
-#       worktree-foreign-cwd (別 live セッション), not age — cleanup only runs at
-#       review entry / iterate end, never mid-parallel-review.
+#       mutation_worktrees >= 1. Its name records no owner, so nothing protects
+#       it; in-flight protection comes from the owner record (T-60..) and
+#       worktree-foreign-cwd, not from age.
 # -----------------------------------------------------------------------
 echo "T-15: fresh detached TMPDIR worktree は Step 4-P で即回収"
 rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
@@ -1492,6 +1500,226 @@ else
   fi
   cleanup_temp_repo "$TEST_REPO"
 fi
+
+# -----------------------------------------------------------------------
+# T-60..: Step 4-P owner record. A reviewer names its temporary worktree
+# `rite-review-mutation-owner.<session_id>.<random>`. Cleanup run by another
+# session keeps it while that owner session is live, even with no process cwd
+# inside it, and still reaps it once the owner is gone or is the running session.
+# -----------------------------------------------------------------------
+OWNER_SID=aaaaaaaa-1111-2222-3333-444444444444
+SELF_SID=bbbbbbbb-1111-2222-3333-444444444444
+
+# Run cleanup as a session whose runtime ID is $1 (empty = no runtime context).
+# Every runtime identity variable is set or cleared so the result does not depend
+# on the caller's environment (a dogfooding shell carries its own session ID).
+run_cleanup_as() {
+  local sid="$1" repo="$2" script="${3:-$CLEANUP}"
+  if [ -n "$sid" ]; then
+    ( cd "$repo" && env -u CLAUDE_SESSION_ID -u CODEX_THREAD_ID -u GROK_SESSION_ID -u RITE_HOST \
+        CLAUDE_CODE_SESSION_ID="$sid" bash "$script" 2>&1 )
+  else
+    ( cd "$repo" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID -u CODEX_THREAD_ID \
+        -u GROK_SESSION_ID -u RITE_HOST bash "$script" 2>&1 )
+  fi
+}
+
+# Write the owner's flow-state: $2 = active (true/false), $3 = updated_at ("" omits the key).
+write_owner_state() {
+  local repo="$1" active="$2" updated="$3"
+  mkdir -p "$repo/.rite/sessions"
+  if [ -n "$updated" ]; then
+    jq -n --arg sid "$OWNER_SID" --argjson a "$active" --arg u "$updated" \
+      '{schema_version:3, session_id:$sid, phase:"review", active:$a, updated_at:$u}' \
+      > "$repo/.rite/sessions/$OWNER_SID.flow-state"
+  else
+    jq -n --arg sid "$OWNER_SID" --argjson a "$active" \
+      '{schema_version:3, session_id:$sid, phase:"review", active:$a}' \
+      > "$repo/.rite/sessions/$OWNER_SID.flow-state"
+  fi
+}
+
+now_utc() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+mut_count() { sed -n 's/.*mutation_worktrees=\([0-9]*\).*/\1/p' <<< "$1" | head -1; }
+status_of() { sed -n 's/.*\[pr-cycle-cleanup\] status=\([a-z]*\).*/\1/p' <<< "$1" | head -1; }
+registered() { grep -qxF "worktree $2" <<< "$(git -C "$1" worktree list --porcelain)"; }
+# A kept worktree must be kept by the owner check, not by the reachability / HEAD checks.
+no_other_keep_warning() { ! grep -qE '到達不能 commit|HEAD 判定に失敗|到達可能性判定に失敗' <<< "$1"; }
+
+# $1 = repo, $2 = worktree basename. Echoes the absolute worktree path.
+add_owner_wt() {
+  local wt="$WORKDIR_SCAN_TMP/$2"
+  ( cd "$1" && git worktree add --detach -q "$wt" HEAD )
+  wt=$(cd "$wt" && pwd -P)
+  echo "$wt"
+}
+
+drop_wt() {
+  ( cd "$1" && git worktree remove --force "$2" 2>/dev/null ) || true
+  rm -rf "$2"
+  ( cd "$1" && git worktree prune 2>/dev/null ) || true
+}
+
+# Assert the owner check kept $wt: dir and registration remain, the WARNING names
+# the owner and the path, no other keep reason fired, status is noop and nothing
+# was counted.
+assert_kept_by_owner() {
+  local label="$1" repo="$2" wt="$3" out="$4" warn="$5"
+  if [ -d "$wt" ] && registered "$repo" "$wt" \
+     && grep -qF "$wt" <<< "$(grep -F "$warn" <<< "$out")" \
+     && no_other_keep_warning "$out" \
+     && [ "$(status_of "$out")" = noop ] && [ "$(mut_count "$out")" = 0 ]; then
+    pass "$label"
+  else
+    fail "$label: dir=$([ -d "$wt" ] && echo present || echo gone) status=$(status_of "$out") mut=$(mut_count "$out"). Output: $out"
+  fi
+}
+
+# Assert $wt was reaped: dir and registration gone, one worktree counted, status cleaned.
+assert_reaped() {
+  local label="$1" repo="$2" wt="$3" out="$4"
+  if [ ! -e "$wt" ] && ! registered "$repo" "$wt" \
+     && [ "$(status_of "$out")" = cleaned ] && [ "$(mut_count "$out")" = 1 ]; then
+    pass "$label"
+  else
+    fail "$label: dir=$([ -e "$wt" ] && echo present || echo gone) status=$(status_of "$out") mut=$(mut_count "$out"). Output: $out"
+  fi
+}
+
+echo "T-60: 別の live セッションが所有する一時 worktree は cwd が無くても残る (AC-2)"
+TEST_REPO=$(make_temp_repo)
+write_owner_state "$TEST_REPO" true "$(now_utc)"
+t60_wt=$(add_owner_wt "$TEST_REPO" "rite-review-mutation-owner.$OWNER_SID.Ab12Cd")
+t60_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO")
+assert_kept_by_owner "T-60: live な別セッションの一時 worktree を残す" "$TEST_REPO" "$t60_wt" "$t60_out" "別セッション $OWNER_SID が使用中"
+drop_wt "$TEST_REPO" "$t60_wt"
+cleanup_temp_repo "$TEST_REPO"
+
+echo "T-61: BSD mktemp の形（末尾に .<random> が付く）でも所有者を読む (AC-2)"
+TEST_REPO=$(make_temp_repo)
+write_owner_state "$TEST_REPO" true "$(now_utc)"
+t61_wt=$(add_owner_wt "$TEST_REPO" "rite-revert-test-owner.$OWNER_SID.XXXXXX.k3J9pQ2a")
+t61_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO")
+assert_kept_by_owner "T-61: BSD 形の名前でも live な所有者の一時 worktree を残す" "$TEST_REPO" "$t61_wt" "$t61_out" "別セッション $OWNER_SID が使用中"
+drop_wt "$TEST_REPO" "$t61_wt"
+cleanup_temp_repo "$TEST_REPO"
+
+echo "T-62: 所有セッションの flow-state が無い一時 worktree は回収する (AC-3)"
+TEST_REPO=$(make_temp_repo)
+t62_wt=$(add_owner_wt "$TEST_REPO" "rite-review-mutation-owner.$OWNER_SID.Ef34Gh")
+t62_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO")
+assert_reaped "T-62: 所有セッションがいない一時 worktree を回収する" "$TEST_REPO" "$t62_wt" "$t62_out"
+drop_wt "$TEST_REPO" "$t62_wt"
+cleanup_temp_repo "$TEST_REPO"
+
+echo "T-63: 所有セッションが active でない、または TTL を超えた一時 worktree は回収する (AC-3)"
+TEST_REPO=$(make_temp_repo)
+write_owner_state "$TEST_REPO" false "$(now_utc)"
+t63_wt=$(add_owner_wt "$TEST_REPO" "rite-review-mutation-owner.$OWNER_SID.Ij56Kl")
+t63_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO")
+assert_reaped "T-63a: active=false の所有者の一時 worktree を回収する" "$TEST_REPO" "$t63_wt" "$t63_out"
+drop_wt "$TEST_REPO" "$t63_wt"
+write_owner_state "$TEST_REPO" true "2000-01-01T00:00:00Z"
+t63_wt=$(add_owner_wt "$TEST_REPO" "rite-review-mutation-owner.$OWNER_SID.Mn78Op")
+t63_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO")
+assert_reaped "T-63b: updated_at が TTL を超えた所有者の一時 worktree を回収する" "$TEST_REPO" "$t63_wt" "$t63_out"
+drop_wt "$TEST_REPO" "$t63_wt"
+cleanup_temp_repo "$TEST_REPO"
+
+echo "T-64: 自セッションが所有する作成直後の一時 worktree は回収する (AC-4)"
+TEST_REPO=$(make_temp_repo)
+write_owner_state "$TEST_REPO" true "$(now_utc)"
+t64_wt=$(add_owner_wt "$TEST_REPO" "rite-review-mutation-owner.$OWNER_SID.Qr90St")
+t64_out=$(run_cleanup_as "$OWNER_SID" "$TEST_REPO")
+assert_reaped "T-64a: 自セッションの一時 worktree は所有者が live でも回収する" "$TEST_REPO" "$t64_wt" "$t64_out"
+drop_wt "$TEST_REPO" "$t64_wt"
+# No runtime context: the self match is not made, so the live owner still protects it.
+t64_wt=$(add_owner_wt "$TEST_REPO" "rite-review-mutation-owner.$OWNER_SID.Uv12Wx")
+t64_out=$(run_cleanup_as "" "$TEST_REPO")
+assert_kept_by_owner "T-64b: 自セッション ID が無いときは live な所有者の一時 worktree を残す" "$TEST_REPO" "$t64_wt" "$t64_out" "別セッション $OWNER_SID が使用中"
+if ! grep -q '自セッション ID を解決できません' <<< "$t64_out"; then
+  pass "T-64b: runtime context が無いだけでは自セッション ID の WARNING を出さない"
+else
+  fail "T-64b: runtime context 不在で WARNING が出た. Output: $t64_out"
+fi
+# An invalid runtime ID is reported once and also makes no self match.
+t64_out=$(run_cleanup_as "bad..id" "$TEST_REPO")
+if [ -d "$t64_wt" ] && [ "$(grep -c '自セッション ID を解決できません' <<< "$t64_out")" = 1 ]; then
+  pass "T-64c: 不正な自セッション ID は WARNING を 1 回出し、所有者の一時 worktree を残す"
+else
+  fail "T-64c: dir=$([ -d "$t64_wt" ] && echo present || echo gone). Output: $t64_out"
+fi
+drop_wt "$TEST_REPO" "$t64_wt"
+cleanup_temp_repo "$TEST_REPO"
+
+echo "T-65: 所有者を判定できない一時 worktree は残して WARNING を出す (AC-5)"
+TEST_REPO=$(make_temp_repo)
+t65_wt=$(add_owner_wt "$TEST_REPO" "rite-review-mutation-owner..Yz34Ab")
+t65_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO")
+assert_kept_by_owner "T-65a: 名前の所有者を読めない一時 worktree を残す" "$TEST_REPO" "$t65_wt" "$t65_out" "名前の所有者を読めないため"
+drop_wt "$TEST_REPO" "$t65_wt"
+mkdir -p "$TEST_REPO/.rite/sessions"
+printf '{broken' > "$TEST_REPO/.rite/sessions/$OWNER_SID.flow-state"
+t65_wt=$(add_owner_wt "$TEST_REPO" "rite-review-mutation-owner.$OWNER_SID.Cd56Ef")
+t65_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO")
+assert_kept_by_owner "T-65b: 所有者の flow-state を読めない一時 worktree を残す" "$TEST_REPO" "$t65_wt" "$t65_out" "の flow-state を読めないため"
+drop_wt "$TEST_REPO" "$t65_wt"
+write_owner_state "$TEST_REPO" true ""
+t65_wt=$(add_owner_wt "$TEST_REPO" "rite-review-mutation-owner.$OWNER_SID.Gh78Ij")
+t65_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO")
+assert_kept_by_owner "T-65c: updated_at の無い live な所有者の一時 worktree を残す" "$TEST_REPO" "$t65_wt" "$t65_out" "の updated_at を読めないため"
+drop_wt "$TEST_REPO" "$t65_wt"
+write_owner_state "$TEST_REPO" true "yesterday"
+t65_wt=$(add_owner_wt "$TEST_REPO" "rite-review-mutation-owner.$OWNER_SID.Kl90Mn")
+t65_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO")
+assert_kept_by_owner "T-65d: updated_at が不正な形の所有者の一時 worktree を残す" "$TEST_REPO" "$t65_wt" "$t65_out" "の updated_at を読めないため"
+drop_wt "$TEST_REPO" "$t65_wt"
+cleanup_temp_repo "$TEST_REPO"
+
+echo "T-66: 所有者の保護を外した mutant では T-60 の一時 worktree が消える (AC-6)"
+t66_copy=$(mktemp -d "$HOST_TMPDIR/rite-pr-cleanup-mutant-XXXXXX")
+TEST_REPOS+=("$t66_copy")
+cp -R "$SCRIPT_DIR/.." "$t66_copy/hooks"
+t66_mutant="$t66_copy/hooks/scripts/pr-cycle-cleanup.sh"
+sed -i.bak 's/^      elif ! _rite_mutation_owner_allows_reap "\$_p_path"; then$/      elif false; then/' "$t66_mutant"
+if cmp -s "$CLEANUP" "$t66_mutant" || ! bash -n "$t66_mutant"; then
+  fail "T-66: mutant が原本と同じか、構文が壊れている"
+else
+  TEST_REPO=$(make_temp_repo)
+  write_owner_state "$TEST_REPO" true "$(now_utc)"
+  t66_wt=$(add_owner_wt "$TEST_REPO" "rite-review-mutation-owner.$OWNER_SID.Op12Qr")
+  t66_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO" "$t66_mutant")
+  if [ ! -e "$t66_wt" ] && ! registered "$TEST_REPO" "$t66_wt"; then
+    pass "T-66: 所有者の判定を外すと live な所有者の一時 worktree が回収される（T-60 はこの判定を固定している）"
+  else
+    fail "T-66: mutant でも残った. Output: $t66_out"
+  fi
+  drop_wt "$TEST_REPO" "$t66_wt"
+  cleanup_temp_repo "$TEST_REPO"
+fi
+rm -rf "$t66_copy"
+
+echo "T-67: reviewer 手順の名前のテンプレートを掃除側が所有者として読む (AC-2)"
+# The documented templates and the cleanup's name parser must agree; if either side
+# drifts, every reviewer worktree silently falls back to "no owner" and is reaped.
+t67_doc=$(grep -o 'mktemp -d -t rite-review-mutation-owner\.<[^>]*>\.XXXXXX' "$SCRIPT_DIR/../../agents/_reviewer-base.md" | head -1)
+t67_guard=$(grep -o "mktemp -d -t rite-review-mutation-owner\.<[^>]*>\.XXXXXX" "$SCRIPT_DIR/../pre-tool-edit-guard.sh" | head -1)
+TEST_REPO=$(make_temp_repo)
+write_owner_state "$TEST_REPO" true "$(now_utc)"
+for t67_src in "_reviewer-base.md:$t67_doc" "pre-tool-edit-guard.sh:$t67_guard"; do
+  t67_tpl="${t67_src#*:}"
+  if [ -z "$t67_tpl" ]; then
+    fail "T-67: ${t67_src%%:*} に所有者入りの mktemp テンプレートが無い"
+    continue
+  fi
+  t67_name="${t67_tpl#mktemp -d -t }"
+  t67_name=$(printf '%s' "$t67_name" | sed -E "s/<[^>]*>/$OWNER_SID/; s/XXXXXX\$/Tp34Uv/")
+  t67_wt=$(add_owner_wt "$TEST_REPO" "$t67_name")
+  t67_out=$(run_cleanup_as "$SELF_SID" "$TEST_REPO")
+  assert_kept_by_owner "T-67: ${t67_src%%:*} のテンプレートの名前を所有者つきとして読む" "$TEST_REPO" "$t67_wt" "$t67_out" "別セッション $OWNER_SID が使用中"
+  drop_wt "$TEST_REPO" "$t67_wt"
+done
+cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
 # Summary
