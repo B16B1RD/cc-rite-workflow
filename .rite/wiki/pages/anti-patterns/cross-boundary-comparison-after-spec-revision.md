@@ -4,7 +4,10 @@ title: "仕様改訂の境界をまたいで観測を比べると停止判定が
 domain: "anti-patterns"
 description: "途中で受入条件を改訂できるようにしたとき、改訂前の充足集合を改訂後の観測と比べると停止判定が弱まる。境界より後の最初の観測を基準にすると、その観測が修正後の HEAD 上にある経路で実際の進展を捨て、逆方向に厳しくなる。改訂で追加された受入条件の ID を記録し、進展の比較からその ID だけを除く規則にすると、観測の経路に依らず判定できる。"
 created: "2026-09-28T05:02:36Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T06:02:43Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T15:38:14Z" }
+verified:
+  - by: "rite-wiki-ingest/claude-opus-5-5"
+    at: "2026-09-28T15:38:14Z"
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260928T045921Z-pr-3376.md"
@@ -12,6 +15,8 @@ sources:
     resource: "raw/reviews/20260928T040457Z-pr-3376.md"
   - type: "fixes"
     resource: "raw/fixes/20260928T053745Z-pr-3376.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T150345Z-pr-3376.md"
 tags: ["state-machine", "spec-revision", "history-comparison", "fix-introduced"]
 confidence: medium
 ---
@@ -43,6 +48,12 @@ confidence: medium
 - Python モジュールに単独の `","` 定数があると、バイトコードに `,)` の並びとして残る。`__pycache__` まで走査するテキスト検査では、これが残骸パターンに一致しうる。テストが `__pycache__` を走査する間は、単独の `","` 定数を避けるか、検査側で `__pycache__` を除外する
 - verify の入力にディレクトリを指定すると、テスト実行で生成される `__pycache__` が入力を変える。先に一度テストを走らせてキャッシュを生成してから verify する（検証コマンドが検証入力を書き換える問題は関連ページ）
 
+
+### 判定の receipt は、どの仕様に対して判定したかを持つ
+
+- 判定の根拠を記録する receipt が、どの仕様（受入条件の版）に対して判定したかを持たないと、仕様の改訂後に古い判定が新しい仕様へ付け替わる。
+- 条件の本文を「満たしたか」の照合単位にすると、本文の同一性に 2 つの役割が生じる。未充足から充足への一致は細かい同一性で保守的になり、見直し時に満たしていた条件を除く判定は粗い同一性で保守的になる。本文と仕様照合の同一性に差があると、どちらかの向きで抜けが生じる。
+
 ## 関連ページ
 
 - [新しい state 操作は既存 state との組み合わせを実際の入口から試し、停止ヒントは案内先が受理する状態でだけ出す](../heuristics/stop-hint-predicate-matches-target-acceptance.md)
@@ -54,3 +65,4 @@ confidence: medium
 - [レビュー結果（区間の最初の観測を基準にする修正が進展を捨てる）](../../raw/reviews/20260928T045921Z-pr-3376.md)
 - [レビュー結果（改訂前の充足集合との比較が停止判定を弱める）](../../raw/reviews/20260928T040457Z-pr-3376.md)
 - [fix 結果（改訂で追加した受入条件の ID を進展から除く規則）](../../raw/fixes/20260928T053745Z-pr-3376.md)
+- [レビュー結果（条件本文の同一性と receipt が持つべき仕様の版）](../../raw/reviews/20260928T150345Z-pr-3376.md)

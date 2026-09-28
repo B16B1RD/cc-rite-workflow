@@ -4,14 +4,20 @@ title: "失敗の印との一致でその回だけ抑止する設計は後続の
 domain: "anti-patterns"
 description: "失敗の記録と現在の state がバイト単位で一致するときだけ抑止する設計は、「以後の書き込みは正当な作業の再開である」という前提に依存する。実際には印を残したまま state を書き換える処理があり、1 回目は抑止できても一致が崩れた後に回収済みの state が作業中へ戻る。抑止した時点で印そのものを消して回収を完了させると、後続の書き込みの種類に依存しなくなる。"
 created: "2026-09-28T14:28:35Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T14:28:35Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T15:38:14Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T14:28:35Z" }
+  - by: "rite-wiki-ingest/claude-opus-5-5"
+    at: "2026-09-28T15:38:14Z"
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260928T135334Z-pr-3397.md"
   - type: "fixes"
     resource: "raw/fixes/20260928T140840Z-pr-3397.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260928T144840Z-pr-3397.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T150912Z-pr-3397.md"
 tags: ["state", "resume", "suppression", "marker", "test-fixture"]
 confidence: medium
 ---
@@ -36,6 +42,16 @@ confidence: medium
 
 **テストの確かめ方**: 本番で普通に起きる状態を fixture に入れたうえで、修正前の実装でそのテストが落ちることを確かめた。fixture を足しただけでは、それが問題の経路に届いているかは分からない。
 
+
+### 印の寿命を書き込みに結びつけたら、消せなかったときに作業を止める
+
+一致による抑止をやめ、失敗の印を「実際の作業が行われるまで残る印」にして、寿命を state を本当に書き換える操作の成功に結びつけると、経路ごとの一致崩れは消えた。ただし次の 2 点を守らないと、同じ種類の誤動作が別の形で戻る。
+
+- 印を消す処理が失敗したときに WARNING を出して続行すると、印が残ったまま新しい作業が始まる。その作業は次の終了と再開で回収済みとして扱われ、継続先が失われる。印を消せなければ作業の書き込み自体を失敗させるか、印の対象を回収時点の state に限る。
+- 寿命を書き込みの種類に結びつけるなら、作業を始める書き込みをすべて列挙する。列挙から漏れた書き込み（別系統の state 更新）は、印を残したまま作業を始める経路になる。
+
+変更後は、抑止の分岐・state の条件・各記録の削除・一時ファイルの後始末・案内文のそれぞれを外す mutant がテストで落ちることを確かめる。
+
 ## 関連ページ
 
 - [Test が early exit 経路で silent pass する false-positive](./test-false-positive-early-exit.md)
@@ -44,3 +60,5 @@ confidence: medium
 
 - [一致による抑止が後続の書き込みで崩れることを実測したレビュー結果](../../raw/reviews/20260928T135334Z-pr-3397.md)
 - [抑止した時点で印を消すよう改めた fix 結果](../../raw/fixes/20260928T140840Z-pr-3397.md)
+- [fix 結果（印の寿命を実際の書き込みに結びつける）](../../raw/fixes/20260928T144840Z-pr-3397.md)
+- [レビュー結果（印を消す失敗を警告で流すと新しい誤動作になる）](../../raw/reviews/20260928T150912Z-pr-3397.md)

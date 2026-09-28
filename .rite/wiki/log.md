@@ -1,5 +1,14 @@
 # Directory Update Log
 
+## 2026-09-29
+
+* **Update**: [失敗の印との一致でその回だけ抑止する設計は後続の書き込みで崩れる — 抑止した時点で印を消して回収を完了させる](pages/anti-patterns/one-shot-suppression-by-failure-record-match-breaks-on-later-writes.md) — raw/fixes/20260928T144840Z-pr-3397.md と raw/reviews/20260928T150912Z-pr-3397.md で補強
+* **Update**: [保留（hold）を新設したら、寿命を state を消す全経路で揃え、解除の手段を保留の理由ごとに用意する](pages/heuristics/new-hold-state-lifecycle-across-all-purge-paths.md) — raw/fixes/20260928T144931Z-pr-3393.md と raw/reviews/20260928T151448Z-pr-3393.md で補強
+* **Update**: [テンプレート準拠の fixture では、生成器が実データで作る構造的逸脱を検出できない](pages/heuristics/template-fixture-misses-generator-real-data-deviation.md) — raw/fixes/20260928T150727Z-pr-3408.md と raw/reviews/20260928T153052Z-pr-3408.md で補強
+* **Update**: [同じ判定規則を別言語で二重実装するときは、同一 fixture で SoT 実装の実行結果と突合する parity assert を置く](pages/patterns/dual-implementation-rule-parity-assert-against-sot-executable.md) — raw/reviews/20260928T150934Z-pr-3411.md と raw/fixes/20260928T151338Z-pr-3411.md と raw/reviews/20260928T153225Z-pr-3411.md で補強
+* **Update**: [仕様改訂の境界をまたいで観測を比べると停止判定が狂う — 各観測はその区間の基準と比べる](pages/anti-patterns/cross-boundary-comparison-after-spec-revision.md) — raw/reviews/20260928T150345Z-pr-3376.md で補強
+* **Update**: [語の閉集合で拒否する guard に語を足すときは、閉集合の写しと代替手段の案内を同じ変更で揃える](pages/heuristics/closed-set-guard-word-addition-align-copies-and-alternatives.md) — raw/reviews/20260928T153054Z-pr-3412.md で補強
+
 ## 2026-09-28
 
 * **Update**: [`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) — raw/reviews/20260927T201202Z-pr-3334.md を統合

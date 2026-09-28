@@ -24,9 +24,13 @@ sources:
     resource: "raw/fixes/20260927T101452Z-pr-3259.md"
   - type: "reviews"
     resource: "raw/reviews/20260928T143920Z-pr-3408.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260928T150727Z-pr-3408.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T153052Z-pr-3408.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T14:40:40Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T15:38:14Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-30T12:50:00+09:00"
@@ -34,6 +38,8 @@ verified:
     at: "2026-09-27T10:21:25Z"
   - by: "rite-wiki-ingest/claude-opus-5-5"
     at: "2026-09-28T14:40:40Z"
+  - by: "rite-wiki-ingest/claude-opus-5-5"
+    at: "2026-09-28T15:38:14Z"
 ---
 
 # テンプレート準拠の fixture では、生成器が実データで作る構造的逸脱を検出できない
@@ -84,6 +90,11 @@ fixture が実データから逸脱する向きは 2 つある。上記は「fix
 
 掃除処理が「所有セッションの state が無い残骸だけを回収する」ように状態ディレクトリを参照して分岐するとき、fixture に状態ディレクトリそのもの（例: セッション一覧のディレクトリ）が無いと、判定は手前で別の経路へ倒れ、残骸を回収する分岐へ一度も到達しない。その分岐を壊した mutant は生き残り、テストは green のままになる。本番では掃除を呼び出すセッション自身の state が必ず存在するので、fixture にもそれを置いて本番と同じ形にしてから分岐ごとに assert する。
 
+
+### 本番と同じ形の fixture を足したら、その分岐を壊す mutant で落ちることを確かめる
+
+状態ディレクトリを見る判定のテストに、掃除を走らせるセッション自身の state だけを置いた本番と同じ形のケースを足したあとは、その分岐を壊す mutant で新しいケースが落ちることを実測してから完了にする。形を直しただけで、分岐を実際に通っているかは確かめられない。
+
 ## 関連ページ
 
 - [「規約を守っている印」を除外条件にすると、印を持つ違反が検査から消える](../anti-patterns/convention-compliance-marker-as-exclusion-blinds-checker.md)
@@ -99,3 +110,5 @@ fixture が実データから逸脱する向きは 2 つある。上記は「fix
 - [レビュー結果（架空の state を置いた fixture が到達不能な分岐を green にした）](../../raw/reviews/20260927T100751Z-pr-3259.md)
 - [fix 結果（早期 exit の前へ案内を移し fixture を実形へ直す）](../../raw/fixes/20260927T101452Z-pr-3259.md)
 - [レビュー結果（状態ディレクトリの無い fixture が残骸回収の分岐へ到達せず mutant が生き残った）](../../raw/reviews/20260928T143920Z-pr-3408.md)
+- [fix 結果（本番と同じ形の state を置いたケースを追加）](../../raw/fixes/20260928T150727Z-pr-3408.md)
+- [レビュー結果（追加テストが修正前の形の mutant で落ちることを実測）](../../raw/reviews/20260928T153052Z-pr-3408.md)

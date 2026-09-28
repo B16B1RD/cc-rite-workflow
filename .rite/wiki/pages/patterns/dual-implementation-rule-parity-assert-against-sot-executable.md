@@ -4,10 +4,19 @@ title: "同じ判定規則を別言語で二重実装するときは、同一 fi
 domain: "patterns"
 description: "bash の SoT helper と同じ除外規則を Python 側にも持たせる変更では、Python 側の期待値を手書きせず、同じ fixture tree に対して SoT helper を実際に実行し、その出力集合と Python 側が「残す」と判定した集合の一致を assert する。規則本文の複製は文書で「同時更新」と宣言するだけでは守れず、実行結果の突合だけが drift を検出する。"
 created: "2026-09-17T10:34:18Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-17T10:34:18Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T15:38:14Z" }
+verified:
+  - by: "rite-wiki-ingest/claude-opus-5-5"
+    at: "2026-09-28T15:38:14Z"
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260917T102546Z-pr-2933.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T150934Z-pr-3411.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260928T151338Z-pr-3411.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T153225Z-pr-3411.md"
 tags: []
 confidence: high
 ---
@@ -32,6 +41,15 @@ bash の SoT helper と同じ除外規則を Python 側にも持たせる変更�
 
 **一般化**: 「同じ規則を A 言語と B 言語で持つ」変更は、文書に「規則を変えるときは両方を同時に更新する」と書くだけでは drift を検出できない。同一 fixture に対する SoT 実装の実行結果との突合を suite に置き、そのうえで各言語固有の分岐（例外経路・型判定）には到達 fixture を別途足す。
 
+
+### 判定をテスト側に写すときは、ループの終了条件をすべて写す
+
+テストの前提を確かめるために hook の判定（祖先を辿って目印を探す処理）をテスト側に写したとき、終了条件のうち `/` に着いたときの判定だけを写し、親へ進めなくなったとき（相対パスの最上位）の判定を落とした。相対パスの TMPDIR ではループが終わらず、テストは失敗を出さずに止まった。
+
+- 写した判定は、元の実装と並べて終了条件・ガードを 1 つずつ突き合わせる。写し漏れた終了条件は、失敗ではなく無言の停止として現れるので気づきにくい。
+- テスト側の判定の正しさは「hook がどこまで見るか」と一致していることで決まる。相対パスでは両者とも最上位の要素で止まり、見ない範囲が一致するので判定がずれない。hook より広く・狭く見る写しは、テストが hook の実際の挙動を予測できなくなる。
+- 同じ判定を 2 か所に持つ以上、parity assert か、少なくとも両方を同じ入力で実行して結果を比べる確認を置く。
+
 ## 関連ページ
 
 - [sandbox 環境では raw な git status --porcelain が恒に非空になり clean 判定ガードが一度も発火しない](../anti-patterns/sandbox-bind-mount-makes-raw-git-status-always-dirty.md)
@@ -40,3 +58,6 @@ bash の SoT helper と同じ除外規則を Python 側にも持たせる変更�
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20260917T102546Z-pr-2933.md)
+- [レビュー結果（写した祖先探索の終了条件の漏れ）](../../raw/reviews/20260928T150934Z-pr-3411.md)
+- [fix 結果（hook と同じ終了条件にそろえる）](../../raw/fixes/20260928T151338Z-pr-3411.md)
+- [レビュー結果（見ない範囲が hook と一致することを確認）](../../raw/reviews/20260928T153225Z-pr-3411.md)
