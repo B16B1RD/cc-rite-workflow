@@ -1098,6 +1098,36 @@ else
 fi
 echo ""
 
+echo "T-10: the ending session's run-queue gets an ended marker; no queue, other sessions and bad ids get none"
+dir_p10="$TEST_DIR/queue-ended"
+mkdir -p "$dir_p10/.rite/state" "$dir_p10/.rite/sessions"
+end_sid="cccccccc-cccc-cccc-cccc-cccccccccccc"
+live_sid="dddddddd-dddd-dddd-dddd-dddddddddddd"
+noq_sid="eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
+for sid in "$end_sid" "$live_sid"; do
+  printf '%s\n' '{"issues":[1],"cursor":0,"mode":"merge","failed":[],"outstanding":[],"active":true}' \
+    > "$dir_p10/.rite/state/run-queue-${sid}.json"
+done
+# The resolver points at the live session's state; the payload names the ending one.
+printf '%s' "$live_sid" > "$dir_p10/.rite-session-id"
+printf '%s\n' '{"schema_version":3,"active":true,"phase":"review"}' > "$dir_p10/.rite/sessions/${live_sid}.flow-state"
+ok_p10=1
+for sid in "$end_sid" "$noq_sid" "../x"; do
+  LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+  jq -nc --arg cwd "$dir_p10" --arg sid "$sid" '{cwd:$cwd, session_id:$sid}' \
+    | bash "$HOOK" 2>"$LAST_STDERR_FILE" >/dev/null || ok_p10=0
+done
+if [ "$ok_p10" = 1 ] \
+  && [ -f "$dir_p10/.rite/state/run-queue-${end_sid}.ended" ] \
+  && [ ! -e "$dir_p10/.rite/state/run-queue-${live_sid}.ended" ] \
+  && [ ! -e "$dir_p10/.rite/state/run-queue-${noq_sid}.ended" ] \
+  && [ -z "$(find "$dir_p10" -name '*.ended' ! -name "run-queue-${end_sid}.ended")" ]; then
+  pass "T-10 ended marker only for the ending session's existing queue"
+else
+  fail "T-10 markers=$(find "$dir_p10" -name '*.ended' | tr '\n' ' ') rc_ok=$ok_p10"
+fi
+echo ""
+
 # --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------

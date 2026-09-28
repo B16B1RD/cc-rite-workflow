@@ -520,6 +520,11 @@ fi
 # worktree-rooted CWD as well — standing in a worktree does not make the
 # queue files unsafe to delete. stdout/stderr stay on the hook (not the
 # pr-cycle-cleanup log) so leftover failed/outstanding lines remain visible.
+# A session that starts again under its own id is no longer ended: drop the
+# marker session-end.sh left on its queue.
+if [ -n "$SESSION_ID" ] && ! rm -f "$STATE_ROOT/.rite/state/run-queue-${SESSION_ID}.ended" 2>/dev/null; then
+  echo "WARNING: session-start.sh: cannot remove run-queue ended marker for this session; other sessions may reap its queue" >&2
+fi
 STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/scripts/run-queue-reap.sh" --session "$SESSION_ID" || true
 
 # Resolve active flow-state file path.

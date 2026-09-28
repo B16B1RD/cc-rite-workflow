@@ -18,7 +18,8 @@
 # (`RITE_SESSION_LIVENESS_TTL_HOURS`, default 24h): an `active=true` holder is
 # protected only while its flow-state `updated_at` is within that TTL, so a
 # session whose termination skipped this hook eventually stops blocking reap
-# instead of doing so forever.
+# instead of doing so forever. run-queue-reap.sh relies on the same TTL for a
+# run-queue whose owner never got the ended marker this hook writes.
 set -euo pipefail
 
 # Double-execution guard (hooks.json + settings.local.json migration)
@@ -31,6 +32,8 @@ source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
 source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 # shellcheck source=control-char-neutralize.sh
 source "$SCRIPT_DIR/control-char-neutralize.sh"
+# shellcheck source=session-identity.sh
+source "$SCRIPT_DIR/session-identity.sh"
 # session-ownership.sh provides the ownership guard consumed below. Sourcing is
 # fail-open (2>/dev/null || true) so a missing or unparsable helper cannot block
 # session-end's main job: persisting / deactivating the flow state.
@@ -91,6 +94,24 @@ if [ "$_resolve_failed" -eq 1 ]; then
   echo "[rite] WARNING: flow-state.sh path resolution failed — skip" >&2
 fi
 [ -n "$_resolve_err" ] && rm -f "$_resolve_err"
+
+# Mark this session's run-queue as ended. run-queue-reap.sh cannot tell an
+# ended owner from one paused by a usage limit by timestamps alone; only a
+# marked queue is reaped on the 2h rule. The payload names the session that is
+# ending; the resolved state file is used only when the payload has no id.
+_end_sid=$(extract_session_id "$INPUT" 2>/dev/null) || _end_sid=""
+if [ -z "$_end_sid" ] && [[ "$STATE_FILE" == *"/.rite/sessions/"*".flow-state" ]]; then
+    _end_sid=$(basename "$STATE_FILE" .flow-state)
+fi
+if [ -n "$_end_sid" ] && validate_session_id_path "$_end_sid" "SessionEnd payload"; then
+    if [[ "$_end_sid" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+        _end_sid=$(printf '%s' "$_end_sid" | tr 'A-F' 'a-f')
+    fi
+    _run_queue="$STATE_ROOT/.rite/state/run-queue-${_end_sid}.json"
+    if [ -f "$_run_queue" ] && ! : > "${_run_queue%.json}.ended" 2>/dev/null; then
+        echo "[rite] WARNING: session-end: failed to mark run-queue as ended: $(printf '%s' "${_run_queue%.json}.ended" | neutralize_ctrl)" >&2
+    fi
+fi
 
 # Get current branch. Capture git stderr so that corrupt .git / permission denied
 # / missing git binary surface a WARNING instead of collapsing into an empty
