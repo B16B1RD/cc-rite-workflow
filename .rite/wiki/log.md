@@ -119,6 +119,25 @@
 * **Update**: [外部ツールの入力仕様は公式ドキュメントの原文で確かめ、テスト fixture は実際に届く形で組む](pages/heuristics/external-input-spec-verify-official-source-real-fixture.md) — raw/fixes/20260928T054820Z-pr-3390.md を統合
 * **Update**: [仕様改訂の境界をまたいで観測を比べると停止判定が狂う — 各観測はその区間の基準と比べる](pages/anti-patterns/cross-boundary-comparison-after-spec-revision.md) — raw/fixes/20260928T053745Z-pr-3376.md を統合
 * **lint:clean** — contradictions=0 (新規・更新ページと関連ページのみ評価), stale=62, orphans=0, missing_concept=0, unregistered_raw=578, broken_refs=0
+* **Update**: [検査用のシェル字句解析は判定対象を標準形に絞り、それ以外を fail-closed にする](pages/heuristics/inspection-parser-narrow-to-standard-form-fail-closed.md) — raw/fixes/20260928T055724Z-pr-3388.md を統合
+* **Update**: [検査用のシェル字句解析は判定対象を標準形に絞り、それ以外を fail-closed にする](pages/heuristics/inspection-parser-narrow-to-standard-form-fail-closed.md) — raw/fixes/20260928T062549Z-pr-3388.md を統合
+* **Update**: [検査用のシェル字句解析は判定対象を標準形に絞り、それ以外を fail-closed にする](pages/heuristics/inspection-parser-narrow-to-standard-form-fail-closed.md) — raw/reviews/20260928T084458Z-pr-3388.md を統合
+* **Update**: [検査用のシェル字句解析は判定対象を標準形に絞り、それ以外を fail-closed にする](pages/heuristics/inspection-parser-narrow-to-standard-form-fail-closed.md) — raw/fixes/20260928T085815Z-pr-3388.md を統合
+* **Update**: [セキュリティ境界 hook の timeout は fail-open — 評価コストは入力サイズで O(1) 上限を設けて bound する](pages/heuristics/security-hook-timeout-is-fail-open-bound-cost-by-input-size.md) — raw/reviews/20260928T061637Z-pr-3379.md を統合
+* **Update**: [セキュリティ境界 hook の timeout は fail-open — 評価コストは入力サイズで O(1) 上限を設けて bound する](pages/heuristics/security-hook-timeout-is-fail-open-bound-cost-by-input-size.md) — raw/fixes/20260928T063605Z-pr-3379.md を統合
+* **Update**: [セキュリティ境界 hook の timeout は fail-open — 評価コストは入力サイズで O(1) 上限を設けて bound する](pages/heuristics/security-hook-timeout-is-fail-open-bound-cost-by-input-size.md) — raw/reviews/20260928T085952Z-pr-3379.md を統合
+* **Update**: [セキュリティ境界 hook の timeout は fail-open — 評価コストは入力サイズで O(1) 上限を設けて bound する](pages/heuristics/security-hook-timeout-is-fail-open-bound-cost-by-input-size.md) — raw/fixes/20260928T091402Z-pr-3379.md を統合
+* **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — raw/reviews/20260928T091647Z-pr-3391.md を統合
+* **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — raw/fixes/20260928T092706Z-pr-3391.md を統合
+* **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — raw/reviews/20260928T094130Z-pr-3391.md を統合
+* **Update**: [ドキュメントが提示する解決策は上流ソース（公式ドキュメント・issue tracker）で機能を裏取りする](pages/heuristics/documentation-remedy-upstream-verification.md) — raw/reviews/20260928T055758Z-pr-3390.md を統合
+* **Create**: [改訂をまたぐ判定規則は、改訂なしの既存ケースも含むケース表から 1 つの規則で決める](pages/heuristics/revision-spanning-rule-from-full-case-table.md) — raw/reviews/20260928T055816Z-pr-3376.md を新規ページ化
+* **Update**: [改訂をまたぐ判定規則は、改訂なしの既存ケースも含むケース表から 1 つの規則で決める](pages/heuristics/revision-spanning-rule-from-full-case-table.md) — raw/fixes/20260928T062621Z-pr-3376.md を統合
+* **Update**: [改訂をまたぐ判定規則は、改訂なしの既存ケースも含むケース表から 1 つの規則で決める](pages/heuristics/revision-spanning-rule-from-full-case-table.md) — raw/reviews/20260928T085104Z-pr-3376.md を統合
+* **Update**: [改訂をまたぐ判定規則は、改訂なしの既存ケースも含むケース表から 1 つの規則で決める](pages/heuristics/revision-spanning-rule-from-full-case-table.md) — raw/reviews/20260928T093315Z-pr-3376.md を統合
+* **Create**: [state を削除せず無効化して残すと、無効化を完了の印として読む既存 consumer が中断を完了と読み違える](pages/anti-patterns/deactivate-instead-of-delete-misread-by-consumers.md) — raw/reviews/20260928T084811Z-pr-3391.md を新規ページ化
+* **Update**: [state を削除せず無効化して残すと、無効化を完了の印として読む既存 consumer が中断を完了と読み違える](pages/anti-patterns/deactivate-instead-of-delete-misread-by-consumers.md) — raw/fixes/20260928T090234Z-pr-3391.md を統合
+* **Create**: [シェル本体を別ディレクトリの helper へ移すと、相対パス・引数・出力元の記述が移設元を前提に残る](pages/anti-patterns/helper-relocation-leaves-origin-relative-references.md) — raw/reviews/20260928T091213Z-pr-3366.md を新規ページ化
 
 ## 2026-09-27
 

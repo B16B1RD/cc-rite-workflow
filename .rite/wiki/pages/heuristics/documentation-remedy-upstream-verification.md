@@ -15,9 +15,13 @@ sources:
     resource: "raw/fixes/20260720T155318Z-pr-1933.md"
   - type: "fixes"
     resource: "raw/fixes/20260720T163246Z-pr-1933-cycle2.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T055758Z-pr-3390.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-20T18:16:28+00:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T09:47:59Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T09:47:59Z" }
 ---
 
 # ドキュメントが提示する解決策は上流ソース（公式ドキュメント・issue tracker）で機能を裏取りする
@@ -39,6 +43,10 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-20T18:16:28+00:00" }
 - **外部ツールの挙動に関する記述は、その公式ドキュメントの一般論だけでなく、実際の issue tracker（bug report / not-planned の既知の制約）まで確認する。** 「公式にドキュメント化された設定」であっても、プラットフォーム固有の未修正の制約（今回は Linux/WSL2 でのネットワークサンドボックス回避不可）により、期待した効果を持たない場合がある。
 - **修正を急ぐあまり、周辺の構造的規約（見出しラベルの命名パターン等）を壊さないよう、修正内容を「本文」と「見出し」に適切に配分する。** 限定条件・例外事項は本文で説明し、見出しラベルは既存の命名慣習（短い名詞句等）を維持する。
 
+### 入力仕様は要約ではなく原文で照合する
+
+外部ツールの hook の入力フィールド名を、調査用の要約や要約モデルの回答をもとに書いたところ、実在しないフィールド名が文書とテスト fixture に入った。実装はそのフィールドを読まないため、テストは green のまま誤りを検出しなかった。外部ツールの入力仕様は、公式ドキュメントの原文（raw markdown の入力表と例の JSON）で照合する。解消を確かめるときは、旧フィールド名をリポジトリ全体で grep し、残りが 0 件であることも確かめる。
+
 ## 関連ページ
 
 - [Documentation review は対応する実装側 (commands/scripts/templates) の grep verify を必須 step とする](../heuristics/docs-review-implementation-grep-verification.md)
@@ -51,3 +59,4 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-20T18:16:28+00:00" }
 - [レビュー結果](../../raw/reviews/20260720T170155Z-pr-1933-cycle3-final.md)
 - [fix 結果](../../raw/fixes/20260720T155318Z-pr-1933.md)
 - [fix 結果](../../raw/fixes/20260720T163246Z-pr-1933-cycle2.md)
+- [hook の入力フィールド名を原文で確かめ直したレビュー結果](../../raw/reviews/20260928T055758Z-pr-3390.md)

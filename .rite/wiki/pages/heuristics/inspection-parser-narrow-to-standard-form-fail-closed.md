@@ -4,13 +4,14 @@ title: "検査用のシェル字句解析は判定対象を標準形に絞り、
 domain: "heuristics"
 description: "コマンドを検査する guard で bash の字句規則を近似する自前パーサを直し続けると、指摘は前回の修正の隣の形として増え続ける。理解すると主張する範囲を実運用の標準形に絞り、それ以外は分類したうえで止める方が収束する。"
 created: "2026-09-25T03:58:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T06:02:43Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T09:47:59Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T10:30:52Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T11:40:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:19:35Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T09:18:19Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T06:02:43Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T09:47:59Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260924T212015Z-pr-3060.md"
@@ -38,6 +39,14 @@ sources:
     resource: "raw/fixes/20260928T053213Z-pr-3388.md"
   - type: "reviews"
     resource: "raw/reviews/20260928T054838Z-pr-3388.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260928T055724Z-pr-3388.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260928T062549Z-pr-3388.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T084458Z-pr-3388.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260928T085815Z-pr-3388.md"
 tags: ["guard", "parser", "fail-closed", "heredoc", "divergence"]
 confidence: high
 ---
@@ -113,6 +122,20 @@ bash で `${s:i:1}` を回して 1 文字ずつ進む走査は、UTF-8 ロケー
 
 同じ変更では、時間切れを判定するテストが素の `timeout` を呼んでいたため、`timeout(1)` の無い macOS の CI レグで実装と無関係に失敗した。同じテストファイルが用意している移植用ラッパーを使う。
 
+関数へ切り出した処理を fail-closed の区間に残すには、呼び出しの間だけ `set -E` を有効にする。外し忘れの検出には、関数の中に試験専用の失敗注入を置き、拒否（rc=2）をテストで固定する。注入は if 文の本体に置く。`&&` や `||` の左辺に置いた失敗は、errexit も ERR trap も起動しないので、注入として働かない。また、case 文のパターンに `esac` や `case` の語を書くときは引用する（`'esac')`）。引用しないと予約語として case 文の終わりに解釈され、構文エラーになる。
+
+### 曖昧な記号は両方の読みで検査し、拒否側に倒す
+
+`$(…)` の中の `)` が置換の閉じなのか case パターンの終わりなのかを、計数で近似して判定し続けると、直すたびに別の構文で食い違い、レビューが収束しなかった。拒否側に倒す guard では、曖昧な記号を 2 通りに読み、どちらかの読みで禁止対象が見つかれば拒否する形にする。こうすると近似の誤りは見落としにはならず、誤拒否にしか働かない。
+
+あわせて、reviewer 向けの拒否 guard の脅威モデルを「敵対者」ではなく「LLM の書き方の揺れ」と先に決めておく。reviewer が実際に書かない構文による迂回の指摘は採用しない。これを決めておかないと、cycle ごとに新しい構文が指摘され続ける。
+
+### 前段の絞り込みは語の境界付きで書き、拒否集合の列挙はまとめて揃える
+
+重い判定の前段で、短いコマンド名（`gh` など）を部分文字列として探すと、`through ` や `high ` のような普通の語にも一致する。その結果、サイズ上限による拒否まで巻き込んでしまう。前段の条件も語の境界付きで書く。
+
+拒否集合を広げたときは、同じ集合を列挙している文書を grep で洗い出し、同じ commit で揃える。対象は禁止表・仕様・別レイヤーのヘッダ・テストのコメントなどである。列挙が複数箇所にあると、拡大のたびに取り残しが出る。
+
 ## 関連ページ
 
 - [同じ述語を 2 言語で並行実装すると受理集合が環境で割れる — 定義を 1 本に寄せるまで症状は再発し続ける](../anti-patterns/dual-language-predicate-divergence.md)
@@ -135,3 +158,7 @@ bash で `${s:i:1}` を回して 1 文字ずつ進む走査は、UTF-8 ロケー
 - [ラッパー直後の `--` が漏れたレビュー結果](../../raw/reviews/20260927T084856Z-pr-3250.md)
 - [fix 結果（コマンド置換を入れ子として扱う字句解析と、1 文字ずつの走査の計算量）](../../raw/fixes/20260928T053213Z-pr-3388.md)
 - [レビュー結果（関数化で ERR trap が届かない、置換内の case の閉じ括弧）](../../raw/reviews/20260928T054838Z-pr-3388.md)
+- [fix 結果（errtrace の失敗注入、case パターンの予約語の引用）](../../raw/fixes/20260928T055724Z-pr-3388.md)
+- [fix 結果（曖昧な記号を 2 通りに読む拒否、脅威モデルの固定）](../../raw/fixes/20260928T062549Z-pr-3388.md)
+- [レビュー結果（拒否集合の列挙の取り残し、前段の短い語の一致）](../../raw/reviews/20260928T084458Z-pr-3388.md)
+- [fix 結果（前段の語の境界、拒否集合の列挙の同時修正）](../../raw/fixes/20260928T085815Z-pr-3388.md)

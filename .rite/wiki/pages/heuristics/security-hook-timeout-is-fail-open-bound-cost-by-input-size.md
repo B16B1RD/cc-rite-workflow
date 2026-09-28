@@ -31,12 +31,21 @@ sources:
     resource: "raw/fixes/20260928T055141Z-pr-3379.md"
   - type: "reviews"
     resource: "raw/reviews/20260928T051919Z-pr-3388.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T061637Z-pr-3379.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260928T063605Z-pr-3379.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T085952Z-pr-3379.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260928T091402Z-pr-3379.md"
 tags: ["security", "hook", "timeout", "fail-open", "fail-closed", "dos", "input-size-bound", "pretooluse", "super-linear", "bypass", "noglob", "glob", "unquoted-loop"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T06:02:43Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T09:47:59Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T05:02:36Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T06:02:43Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T09:47:59Z" }
 ---
 
 # セキュリティ境界 hook の timeout は fail-open — 評価コストは入力サイズで O(1) 上限を設けて bound する
@@ -105,6 +114,20 @@ reviewer の状態変更を止める guard の字句解析に、1 文字ずつ `
 
 同じ guard の文書は、guard が止めない操作を他の層（事後のドリフト検出）が担うと書いていた。しかしその層が検出するのは branch 名・stash・tracked status などの変化で、push や作業ツリーを汚さない commit はどれにも現れず、検出の対象外だった。防御を別の層へ委ねると書くときは、委ねる操作がその層の検出軸に実際に現れるかを確かめる。
 
+### 上限は入力長ではなく、コストの源ごとに数えて置く
+
+入力長の上限で超線形を抑えた fix が、macOS の CI で崩れた。入力長を抑えても、語ごとの外部プロセスの起動回数は残り、処理時間は起動 1 回の速さに比例する。プロセス起動が遅い macOS では、上限以下の入力でも hook の timeout を超えた。時間の上限は、コストの源ごとに数えて置く。コストの源には、外部プロセスの起動回数・再帰の深さ・置換の段ごとの再走査がある。超えたら fail-loud で拒否し、同じ作業先の解決結果は 1 回の解析の中で使い回す。
+
+コストの源ごとに上限を置いた後も、別の源が残っていた。オプションや cd のたびに伸びるパスを毎回解決し直す処理が、二乗の時間になっていた。解決を使う直前の 1 回に遅らせても、使うたびに解決すれば二乗は残る。累積を生む操作（cd / `-C`）の回数に上限を置き、上限値は上限いっぱいで最悪の形（最も長いパスを組む形）の実測から決めた。新しい作業先は cd / `-C` でしか生まれないので、変更回数の上限が作業先数の上限を兼ね、上限を 1 つにまとめられた。上限を足す fix では、ループの中で入力の累積に比例する処理（パス解決・文字列の結合・再走査）を洗い出す。
+
+上限直下の計時テストは、次の 3 点がそろわないと性質を固定できない。
+
+- 最悪形の入力を定数から組み立てる。上限から導いた最も密な形を使う
+- 遅い経路を最後まで通ったことを、理由の assert で確かめる
+- 閾値は性質そのもの（hook の timeout）から決める
+
+「timeout に十分収まる」というコメントを、Linux の手元と ubuntu の CI だけの実測で書くと、macOS の CI で反証される。別 OS の CI の完了を待たずに下した FIXED 判定も、次の cycle で覆った。
+
 ## 関連ページ
 
 - [consume 操作 (read+delete+return) は delete-then-return 順で fail-closed にする](../patterns/consume-operation-delete-then-return-fail-closed.md)
@@ -128,3 +151,7 @@ reviewer の状態変更を止める guard の字句解析に、1 文字ずつ `
 - [レビュー結果（同じ呼び出し口の別の超線形と、プラットフォームの暗黙の上限）](../../raw/reviews/20260928T053742Z-pr-3379.md)
 - [fix 結果（呼び出し側の明示の入力長上限で超線形を抑える）](../../raw/fixes/20260928T055141Z-pr-3379.md)
 - [レビュー結果（1 文字ずつの走査が UTF-8 ロケールで二乗時間になる、他の層への委譲の主張）](../../raw/reviews/20260928T051919Z-pr-3388.md)
+- [レビュー結果（入力長の上限が macOS の CI で崩れた、計時テストの条件）](../../raw/reviews/20260928T061637Z-pr-3379.md)
+- [fix 結果（コストの源ごとの上限、解決結果の使い回し）](../../raw/fixes/20260928T063605Z-pr-3379.md)
+- [レビュー結果（伸びたパスを解決し直す二乗が残る）](../../raw/reviews/20260928T085952Z-pr-3379.md)
+- [fix 結果（作業先の変更回数に上限を置く）](../../raw/fixes/20260928T091402Z-pr-3379.md)

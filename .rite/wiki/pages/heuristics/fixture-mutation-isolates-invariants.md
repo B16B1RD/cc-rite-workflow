@@ -65,9 +65,15 @@ sources:
     resource: "raw/fixes/20260927T171357Z-pr-3318.md"
   - type: "reviews"
     resource: "raw/reviews/20260928T005008Z-pr-3365.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T091647Z-pr-3391.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260928T092706Z-pr-3391.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T094130Z-pr-3391.md"
 tags: ["test", "fixture", "mutation", "invariant", "coverage"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T01:02:34Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T09:47:59Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T18:43:00+00:00" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-12T23:20:00+00:00" }
@@ -87,6 +93,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:35:29Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T17:19:25Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T01:02:34Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T09:47:59Z" }
 ---
 
 # テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する
@@ -270,6 +277,16 @@ helper の docstring が「この場合に記録を書く」と分岐を列挙�
 
 正規表現の文字クラス（例: printf のフラグ）を固定するとき、fixture で使われていない要素は、クラスから外す変異を当てても生き残る。要素ごとに fixture を 1 つ持たせ、要素を外す変異で対応する assert だけが落ちることを確かめてから固定する。あわせて、検出器の走査範囲と文書の表現を一致させる。文書が「書式に…を持つ」と書く一方で実装が producer 段全体を走査していると、書式の外にある数字や `%%` の後の数字まで報告する（安全側だが、文書と実装の食い違いになる）。
 
+## 連言の片側だけが成り立つ組み合わせも fixture に置く
+
+2 項の連言（`A かつ B`）で分岐させるとき、実際の書き込み経路が A と B を必ずそろえて書くと、「B だけが成り立つ」fixture が作られない。すると、条件から A を外す変異が生き残る。今は到達しない組み合わせでも fixture を 1 つ置き、連言の両側を固定する。
+
+## 規則を足したら、既存 fixture がどの規則で結果に至っているかを確かめる
+
+保持規則を追加すると、既存テストの fixture が新しい規則で先に保持され、本来検証していた規則を外してもテストが通るようになる。追加した規則が効かない値（終端の状態など）に fixture を寄せ、テストごとに 1 つの規則だけで結果が決まるようにする。
+
+寄せるときは、寄せた後の fixture が通る判定経路をすべて列挙する。副次のデータが残っていると別の規則でも同じ結果になり、分離は成立しない。また、どの規則よりも先に必ず走る処理の失敗（例: 判定の前に行う書き込みの失敗）は、fixture の状態を変えても経路が変わらない。規則の順序を読まずに fixture を動かすと、挙動に影響しない差分が入る。コメントには、分離できた範囲だけを書く。
+
 ## 関連ページ
 
 - [位置依存の表パースには検査行数ガードを対にする（silent false-pass 遮断）](../patterns/positional-parse-row-count-guard.md)
@@ -309,3 +326,6 @@ helper の docstring が「この場合に記録を書く」と分岐を列挙�
 - [rc ごとの後始末をループで固定し、分岐単位の変異で検出力を確かめたレビュー結果](../../raw/reviews/20260927T162928Z-pr-3309.md)
 - [docstring の分岐列挙に合わせてテストを 1 件追加した fix 結果](../../raw/fixes/20260927T171357Z-pr-3318.md)
 - [レビュー結果](../../raw/reviews/20260928T005008Z-pr-3365.md)
+- [連言の片側を外す変異が生き残ることを示したレビュー結果](../../raw/reviews/20260928T091647Z-pr-3391.md)
+- [連言の片側の fixture と、規則ごとに寄せた fixture の fix 結果](../../raw/fixes/20260928T092706Z-pr-3391.md)
+- [寄せた fixture に副次のデータが残り分離が成立しないと確かめたレビュー結果](../../raw/reviews/20260928T094130Z-pr-3391.md)
