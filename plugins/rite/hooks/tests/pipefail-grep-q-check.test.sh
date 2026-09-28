@@ -73,7 +73,8 @@ assert "echo of a glob is reported" "1" "$(printf '%s\n' "$out" | grep -c 'produ
 printf '%s\n' 'set -o pipefail' 'echo qmark_word ? | grep -q x' 'echo bracket_word [ab] | grep -q x' \
   'printf '"'"'%300000s'"'"' width_word | grep -q x' 'printf '"'"'%.5000f'"'"' 1 | grep -q x' \
   'printf '"'"'%-300000s'"'"' flag_minus | grep -q x' 'printf '"'"'%0300000d'"'"' 7 | grep -q x' \
-  'printf '"'"'%s\n'"'"' 300000 | grep -q x' 'echo width_echo %300000s | grep -q x' > "$fixture"
+  'printf '"'"'%s\n'"'"' 300000 | grep -q x' 'echo width_echo %300000s | grep -q x' \
+  'printf '"'"'%+300000d'"'"' 1 | grep -q x' > "$fixture"
 out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
 finding() { printf '[pipefail-grep-q] plugins/rite/hooks/fixture.sh:%s: immediate producer before grep -q: %s' "$1" "$2"; }
 assert "echo of a question-mark glob is reported" "1" "$(printf '%s\n' "$out" | grep -cxF "$(finding 2 'echo qmark_word ?')" || true)"
@@ -82,7 +83,8 @@ assert "printf with a numeric field width is reported" "1" "$(printf '%s\n' "$ou
 assert "printf with a numeric precision is reported" "1" "$(printf '%s\n' "$out" | grep -cxF "$(finding 5 "printf '%.5000f' 1")" || true)"
 assert "printf with a left-justify flag and a numeric width is reported" "1" "$(printf '%s\n' "$out" | grep -cxF "$(finding 6 "printf '%-300000s' flag_minus")" || true)"
 assert "printf with a zero flag and a numeric width is reported" "1" "$(printf '%s\n' "$out" | grep -cxF "$(finding 7 "printf '%0300000d' 7")" || true)"
-assert "a digit in a printf argument and a width-like echo word stay exempt" "6" "$(printf '%s\n' "$out" | grep -c '^\[pipefail-grep-q\]' || true)"
+assert "printf with a plus flag and a numeric width is reported" "1" "$(printf '%s\n' "$out" | grep -cxF "$(finding 10 "printf '%+300000d' 1")" || true)"
+assert "a digit in a printf argument and a width-like echo word stay exempt" "7" "$(printf '%s\n' "$out" | grep -c '^\[pipefail-grep-q\]' || true)"
 
 printf '%s\n' 'stream_many | grep -q x' > "$fixture"
 out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
