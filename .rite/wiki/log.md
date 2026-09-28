@@ -68,6 +68,10 @@
 * **Update**: [fail し得る解決と本文の抽出を別関数に分け、fail はコマンド置換の外で呼ぶ](pages/patterns/test-helper-fail-outside-command-substitution.md) — raw/fixes/20260928T005952Z-pr-3365.md を統合
 * **lint:clean** — contradictions=0, stale=62, orphans=0, missing_concept=0, unregistered_raw=574, broken_refs=0
 
+* **Update**: [参照先が「将来編集される前提の行」なら行番号でなく構造（TC 名・見出し）で指す](pages/heuristics/doc-reference-structural-not-line-number.md) — raw/reviews/20260928T010648Z-pr-3365.md で補強
+* **Skip**: raw/reviews/20260928T010731Z-pr-3364.md — detector-candidate（Wiki 適用証跡の evidence 形式はゲートが既に拒否）
+* **Skip**: raw/reviews/20260928T010350Z-pr-3363.md — 既存ページを超える経験則なし
+
 ## 2026-09-27
 
 * **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/reviews/20260927T160944Z-pr-3307.md を統合

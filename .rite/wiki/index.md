@@ -254,7 +254,7 @@ okf_version: "0.2"
 | [プラットフォーム skip を増やすなら「緑の意味」を痩せさせない skip 会計をセットで入れる](pages/heuristics/skip-accounting-honest-green.md) | heuristics | クロスプラットフォーム対応は skip を増やす。 | 2026-08-30T15:15:33Z | high |
 | [degrade する対象をテストするときは判別子を probe と連動させる — 片側の値で固定すると degrade 環境が恒久 RED になる](pages/heuristics/degrade-discriminator-switched-by-probe.md) | heuristics | スクリプトが GNU ツール不在時に `n_stale=0` + rc 0 で短絡する設計だと、「0 件を期待する TC」は **degrade 経路でも PASS する**（vacuous green）。 | 2026-07-25T07:05:21Z | high |
 | [機械的制裁を伴う規約は「何をすると」「何がどこまで」落ちるかを書く — 予約グリフ・予約文字列も導入と同時に文書化する](pages/heuristics/mechanical-sanction-rule-documents-blast-radius.md) | heuristics | 規約に機械的な制裁（CI で落ちる）を伴わせるなら、**発火条件と制裁の範囲**を文書に書かなければ、規約どおりに従ったコントリビューターが blocking gate を落とす。 | 2026-07-25T07:05:21Z | high |
-| [参照先が「将来編集される前提の行」なら行番号でなく構造（TC 名・見出し）で指す](pages/heuristics/doc-reference-structural-not-line-number.md) | heuristics | 文書やコメントから他ファイルの特定行を指す参照は、コード変更で silent に腐る。 | 2026-07-25T07:05:21Z | high |
+| [参照先が「将来編集される前提の行」なら行番号でなく構造（TC 名・見出し）で指す](pages/heuristics/doc-reference-structural-not-line-number.md) | heuristics | 文書やコメントから他ファイルの特定行を指す参照は、コード変更で silent に腐る。 | 2026-09-28T01:11:03Z | high |
 | [移植性のための外部コマンド差し替えは分岐を消さず「別の層」へ移動させる](pages/anti-patterns/external-command-swap-relocates-platform-divergence.md) | anti-patterns | GNU/BSD で挙動が割れるコマンドを別コマンドへ置き換えるとき、比較するのは「解決セマンティクス（何を返すか）」に偏りがちである。 | 2026-07-25T14:18:43Z | high |
 | [sentinel でコマンド置換のバイト厳密性を守る](pages/patterns/sentinel-byte-exact-command-substitution-capture.md) | patterns | `var=$(cmd)` はコマンド出力の **末尾の改行を全て** 除去する。 | 2026-07-25T14:18:43Z | high |
 | [対象プラットフォーム挙動を shim して blocking gate 側で pin する](pages/heuristics/portability-fix-needs-target-platform-shim-on-blocking-gate.md) | heuristics | 移植性の修正は、対象プラットフォームで検証されて初めて意味を持つ。 | 2026-08-12T18:34:40Z | high |
@@ -594,5 +594,5 @@ okf_version: "0.2"
 
 - 総ページ数: 580
 - ドメイン別: patterns=127, heuristics=273, anti-patterns=180
-- 最終更新: 2026-09-28T01:02:34Z
+- 最終更新: 2026-09-28T01:11:03Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |

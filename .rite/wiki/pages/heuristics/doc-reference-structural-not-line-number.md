@@ -8,9 +8,13 @@ created: "2026-07-25T07:05:21Z"
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260725T041328Z-pr-2013.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260928T010648Z-pr-3365.md"
 tags: ["documentation", "reference-drift", "semantic-anchor", "line-number"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-25T07:05:21Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T01:11:03Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T01:11:03Z" }
 ---
 
 # 参照先が「将来編集される前提の行」なら行番号でなく構造（TC 名・見出し）で指す
@@ -61,6 +65,8 @@ TC 名・見出し・関数名・一意な識別子リテラルは、編集で�
 
 1 つでも当てはまるなら構造参照に置き換える。
 
+テストの fixture やヘルパーのコメントも同じように腐る。「最後の 2 行は control」のように位置で内容を説明するコメントの直後へ検出対象の行を足すと、コメントが事実と逆になる。位置に依存する説明の近くへ行を追加するときは、コメントの前提が保たれる位置に挿入するか、位置ではなく内容（どの行が control か）で指す表現に改める。
+
 ## 関連ページ
 
 - [機械的制裁を伴う規約は「何をすると」「何がどこまで」落ちるかを書く](./mechanical-sanction-rule-documents-blast-radius.md)
@@ -70,3 +76,4 @@ TC 名・見出し・関数名・一意な識別子リテラルは、編集で�
 ## ソース
 
 - [文書の行番号参照は「編集を促している行」ほど腐る（3 レビュアーが独立指摘）](../../raw/reviews/20260725T041328Z-pr-2013.md)
+- [位置で内容を説明する fixture コメントが行の追加で事実と逆になったレビュー結果](../../raw/reviews/20260928T010648Z-pr-3365.md)
