@@ -2610,6 +2610,8 @@ DISGUISED = [('AC-1', 'original one\n  <!-- rite:nbr:comment-id:1 --> but it nee
 # A footer after the criteria is where triage opens the Decision Log section.
 FOOTER = '\n---\n\n🤖 Generated with rite\n'
 LOG = '## 9. Decision Log\n\n- 2026-09-28 D-01: keep the scope / Reason: agreed / Impact: none\n\n'
+# Triage prefers the end of an Implementation Contract block when the Issue has one.
+CONTRACT = '\n\n<details>\n<summary>Implementation Contract</summary>'
 
 
 def with_criteria(f, base, items, tail=''):
@@ -2635,7 +2637,9 @@ def revision_case(case):
     try:
         base = f.issue['body']
         initial = dict(separator=SEPARATED, indented=NESTED).get(case, ORIGINAL)
-        with_criteria(f, base, initial, FOOTER if case == 'logged' else '')
+        if case == 'contract':
+            base += CONTRACT
+        with_criteria(f, base, initial, dict(logged=FOOTER, contract='\n</details>\n').get(case, ''))
         criteria_cycle(f, initial, roots=('input defect', 'secondary defect', 'third defect'))
         f.fix()
         criteria_cycle(f, initial, roots=('input defect', 'secondary defect'))
@@ -2669,6 +2673,7 @@ def revision_case(case):
                                         reworded=(REWORDED, [], ['AC-1']), fenced=(FENCED, [], ['AC-1']),
                                         indented=(FLATTENED, [], ['AC-1']), disguised=(DISGUISED, [], ['AC-1']),
                                         marked=(ORIGINAL, [], ['AC-2']), logged=(ORIGINAL, [], ['AC-2']),
+                                        contract=(ORIGINAL, [], ['AC-2']), broken=(ORIGINAL, [], ['AC-2']),
                                         refixed=(REWORDED, [], []))[case]
             criteria_cycle(f, initial, met=before)
             if case == 'disguised':
@@ -2680,6 +2685,12 @@ def revision_case(case):
                 # Triage opens the Decision Log section just before the footer.
                 head, rule, rest = f.issue['body'].rpartition('\n---\n')
                 f.with_issue(head + '\n' + LOG + rule.lstrip('\n') + rest)
+            elif case == 'contract':
+                head, rule, rest = f.issue['body'].rpartition('\n</details>\n')
+                f.with_issue(head + '\n' + LOG + rule.lstrip('\n') + rest)
+            elif case == 'broken':
+                # A marker the helper could not have written: the check ignores it, the criterion keeps it.
+                f.with_issue(f.issue['body'].rstrip('\n') + '\n\n<!-- rite:nbr:comment-id: -->\n')
             else:
                 revise(f, base, final)
             criteria_cycle(f, final, met=after)
@@ -2701,6 +2712,8 @@ for case, stops, label in (
         ('disguised', True, 'a marker-shaped line added to a criterion without a recorded revision rewords it'),
         ('marked', False, 'the record marker rite appends leaves the last criterion unchanged'),
         ('logged', False, 'a Decision Log section triage opens leaves the last criterion unchanged'),
+        ('contract', False, 'a Decision Log section opened inside the contract block leaves the last criterion unchanged'),
+        ('broken', True, 'a broken marker added to the last criterion without a recorded revision rewords it'),
         ('lapsed', True, 'a criterion met at the replan that lapses and returns is not progress'),
         ('separator', False, 'a Unicode line separator in a criterion does not break the progress check'),
         ('restored', False, 'a criterion removed and restored with its text keeps its earlier unmet observation'),

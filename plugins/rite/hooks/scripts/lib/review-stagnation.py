@@ -650,9 +650,11 @@ def criteria(body, purpose):
     """Acceptance criteria of an Issue body as {ID: verbatim text}, in document order.
 
     The body leaves out exactly what rite writes into it (Decision Log rows and
-    the record marker), as the specification check does, so rite's own writes
-    never reword a criterion. The check also ignores looser marker-shaped lines;
-    those stay in the text and count as rewording it.
+    the record marker), as the specification check does, so what rite appends
+    does not reword a criterion. The check also ignores looser marker-shaped
+    lines; those stay in the text, so adding or removing one (the record helper
+    removes them when it rewrites its marker) counts as rewording, as does a
+    body the check compares verbatim because its Decision Log heading repeats.
     """
     script = Path(__file__).resolve().parents[3] / "scripts/acceptance-criteria-check.sh"
     with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".md") as stream:
