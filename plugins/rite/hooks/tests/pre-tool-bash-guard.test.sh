@@ -2380,6 +2380,8 @@ for sc_cmd in \
   'cd "$(git rev-parse --show-toplevel)" && git push' \
   'bash "$(git rev-parse --show-toplevel)/plugins/rite/hooks/flow-state.sh" set --phase fix' \
   'echo "`date`" && git push' \
+  'echo $(case x in *) git push;; esac)' \
+  'printf %s "$(case x in a) bash plugins/rite/hooks/flow-state.sh set --phase fix;; esac)"' \
   ; do
   rc=0
   output=$(run_guard_typed "rite:test-reviewer" "$sc_cmd") || rc=$?
@@ -2463,6 +2465,7 @@ for ro_sc_cmd in \
   $'cat <<\'EOF\'\ngit push\nEOF' \
   "git status # then git push" \
   'echo "$(date); git push is blocked"' \
+  'x=$(case y in a) echo z;; esac); echo "$x git push"' \
   ; do
   rc=0
   output=$(run_guard_typed "rite:test-reviewer" "$ro_sc_cmd") || rc=$?
@@ -2472,8 +2475,9 @@ for ro_sc_cmd in \
     fail "Expected allow for reviewer '$ro_sc_cmd', got rc=$rc output=$output"
   fi
 done
-# The scan must finish inside the hook timeout: a command at the scan ceiling is
-# scanned and denied, a longer one is denied unscanned; neither may time out.
+# The scan must finish inside the hook timeout: a command just under the scan
+# ceiling is scanned and denied, a longer one is denied unscanned; neither may
+# time out.
 sc_pad=$(printf 'a b %.0s' $(seq 1 2040))
 for size_case in "scan|echo $sc_pad; git push|runs 'git push'" \
   "unscanned|echo $(printf 'aaaa bbbb %.0s' $(seq 1 6000)); git push|(ceiling 8192)"; do
@@ -2481,7 +2485,7 @@ for size_case in "scan|echo $sc_pad; git push|runs 'git push'" \
   size_cmd="${size_rest%|*}"; size_want="${size_rest##*|}"
   rc=0
   output=$(jq -n --arg cmd "$size_cmd" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", agent_type: "rite:test-reviewer"}' \
-    | timeout 10 bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+    | _timeout 10 bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
   reason=$(extract_hook_field "$output" permissionDecisionReason)
   if [ "$rc" != "124" ] && [[ "$reason" == "BLOCKED (reviewer-state-change):"* ]] && [[ "$reason" == *"$size_want"* ]]; then
     pass "reviewer ${#size_cmd}-byte git push denied within the hook timeout ($size_label)"
@@ -2489,6 +2493,16 @@ for size_case in "scan|echo $sc_pad; git push|runs 'git push'" \
     fail "Expected in-time reviewer-state-change deny for ${#size_cmd}-byte command ($size_label), got rc=$rc reason=$reason"
   fi
 done
+# A failure inside the scan function must still reach the fail-closed ERR trap.
+rc=0
+output=$(jq -n --arg cmd "git push" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", agent_type: "rite:test-reviewer"}' \
+  | RITE_BTG_TEST_CRASH=pattern4-scan bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+if [ "$rc" = "2" ] && [[ "$(extract_hook_field "$output" permissionDecisionReason)" == *"reviewer-gitdir-write"* ]] \
+  && grep -q 'WARNING Pattern 4' "$STDERR_FILE"; then
+  pass "crash inside the (S) scan function denies fail-closed (rc=2)"
+else
+  fail "Expected fail-closed deny for a crash inside the (S) scan, got rc=$rc output=$output"
+fi
 for other_type in "general-purpose" ""; do
   for other_cmd in "git push" "git commit -m x" "bash plugins/rite/hooks/flow-state.sh set --phase fix"; do
     rc=0

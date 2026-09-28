@@ -327,17 +327,27 @@ _rite_btg_pattern6_command_surface() {
 # opens a level whose words form their own commands, and closing it returns to
 # the enclosing level's quote state and word — so `git -C "$(pwd)" push` is one
 # command whose -C argument is the substitution, and the `;` in
-# `echo "$(date); git push"` stays inside the string.
+# `echo "$(date); git push"` stays inside the string. Inside a level, a `case`
+# that starts a command stays open until its `esac`, so the `)` ending a pattern
+# (`$(case x in a) git push;; esac)`) separates commands instead of closing the
+# substitution.
 # A command longer than $2 bytes is not scanned: _sc_oversized is set to its
 # byte length instead, since the scan grows faster than linearly.
+# The caller runs this with errtrace (set -E): the Pattern 4 ERR trap is not
+# inherited by a function otherwise, and a failure in here must still deny.
 _rite_btg_state_change_scan() {
   # Byte indexing: under a UTF-8 locale `${s:i:1}` rescans the string from the
   # start. Every delimiter here is ASCII, so bytes are enough.
   local LC_ALL=C
   local _src _len _i=0 _ch _d=0 _us=$'\x1f' _out="" _t _mode=cmd _skip=0
-  local -a _st=(plain) _cl=("") _par=(0) _w=("") _buf=("") _toks
+  local -a _st=(plain) _cl=("") _par=(0) _cs=(0) _at=(1) _w=("") _buf=("") _toks
   _sc_hit=""
   _sc_oversized=""
+  # Test-only, fail-CLOSED-only fault injection, like the pattern4 one in the
+  # Pattern 4 block: it proves a failure inside this function reaches the trap.
+  if [ "${RITE_BTG_TEST_CRASH:-}" = "pattern4-scan" ]; then
+    false
+  fi
   if [ "${#1}" -gt "$2" ]; then _sc_oversized=${#1}; return 0; fi
   _src=$(_rite_btg_pattern6_command_surface "$1")
   _len=${#_src}
@@ -364,7 +374,7 @@ _rite_btg_state_change_scan() {
           '(') _par[_d]=$((_par[_d] + 1)); _ch=sep ;;
           ')')
             if [ "${_par[_d]}" -gt 0 ]; then _par[_d]=$((_par[_d] - 1)); _ch=sep
-            elif [ "${_cl[_d]}" = ")" ]; then _ch=close
+            elif [ "${_cl[_d]}" = ")" ] && [ "${_cs[_d]}" -eq 0 ]; then _ch=close
             else _ch=sep; fi ;;
           ';'|'&'|'|'|$'\n') _ch=sep ;;
           ' '|$'\t') _ch=end ;;
@@ -381,8 +391,20 @@ _rite_btg_state_change_scan() {
     esac
     case "$_ch" in
       end|sep|close)
-        if [ -n "${_w[_d]}" ]; then _buf[_d]+="${_w[_d]}$_us"; _w[_d]=""; fi
-        [ "$_ch" = sep ] && _buf[_d]+=";$_us"
+        if [ -n "${_w[_d]}" ]; then
+          if [ "${_at[_d]}" = 1 ]; then
+            case "${_w[_d]}" in
+              'case') _cs[_d]=$((_cs[_d] + 1)); _at[_d]=0 ;;
+              'esac')
+                if [ "${_cs[_d]}" -gt 0 ]; then _cs[_d]=$((_cs[_d] - 1)); fi
+                _at[_d]=0 ;;
+              if|then|elif|else|do|while|until|'!'|'{'|'}'|time) : ;;
+              *) _at[_d]=0 ;;
+            esac
+          fi
+          _buf[_d]+="${_w[_d]}$_us"; _w[_d]=""
+        fi
+        if [ "$_ch" = sep ]; then _buf[_d]+=";$_us"; _at[_d]=1; fi
         if [ "$_ch" = close ]; then
           _out+=";$_us${_buf[_d]};$_us"
           _d=$((_d - 1))
@@ -393,7 +415,7 @@ _rite_btg_state_change_scan() {
         _w[_d]+="x"
         if [ "${_src:$_i:1}" = '`' ]; then _cl[_d + 1]='`'; else _cl[_d + 1]=")"; fi
         _d=$((_d + 1))
-        _st[_d]=plain; _par[_d]=0; _w[_d]=""; _buf[_d]="" ;;
+        _st[_d]=plain; _par[_d]=0; _cs[_d]=0; _at[_d]=1; _w[_d]=""; _buf[_d]="" ;;
     esac
     _i=$((_i + 1))
   done
@@ -874,7 +896,9 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   _RITE_BTG_MAX_STATE_SCAN_BYTES=8192
   if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_REVIEWER" = "1" ] \
      && [[ "$COMMAND" == *push* || "$COMMAND" == *commit* || "$COMMAND" == *flow-state* || "$COMMAND" == *-step.sh* ]]; then
+    set -E
     _rite_btg_state_change_scan "$COMMAND" "$_RITE_BTG_MAX_STATE_SCAN_BYTES"
+    set +E
     if [ -n "$_sc_oversized" ]; then
       BLOCKED_PATTERN="reviewer-state-change"
       BLOCKED_REASON="This subagent is treated as a reviewer (${REVIEWER_TYPE_BASIS}), and reviewers are read-only. This command is ${_sc_oversized} bytes (ceiling ${_RITE_BTG_MAX_STATE_SCAN_BYTES}) and mentions push / commit / flow-state / a step driver. A command that size is denied without scanning, because the scan could exceed the hook timeout and a timed-out hook lets the command run."
