@@ -590,9 +590,10 @@ okf_version: "0.2"
 | [本文を helper へ移すと、fenced block をコーパスにするテストの検査数が無言で減る](pages/anti-patterns/helper-relocation-silently-shrinks-corpus-tests.md) | anti-patterns | 手順書の bash ブロックを helper へ移設すると、手順書群から fenced block を抽出して検査するテストのコーパスが縮み、検査数が警告なしに減る。件数合わせではなく、減った検査が運んでいた契約を明示ケースとして固定し直す。 | 2026-09-28T01:02:34Z | medium |
 | [外部参照を読む手順を足すときは、値が空になる上流経路を外部コマンドの前に専用の理由で分岐する](pages/heuristics/external-ref-empty-upstream-path-branches-before-call.md) | heuristics | 手順に外部参照（PR 番号など）を読む段を足すと、その値が空のまま届く上流経路（「PR 未検出のまま続行」など）が既存の分岐に隠れていることがある。空値で外部コマンドを呼ぶと実態と違う失敗理由と実行できない復旧案内が出るため、呼ぶ前に空値を専用の理由で分岐する。 | 2026-09-28T01:02:34Z | medium |
 | [fail-loud ガードの入口判定は、下流が実際に扱う範囲と同じ判定モードにそろえる](pages/heuristics/guard-entry-condition-matches-downstream-mode.md) | heuristics | 「下流の処理が何も生まなければ停止する」ガードは、入口の判定（変更あり）と下流が実際に扱う範囲がずれていると正常系を止める。ずれを直すときはガードを弱めず、入口の判定を下流が内部で使う判定モードそのものにそろえ、欠陥クラスの隣のメンバーまで塞ぐ。 | 2026-09-28T01:02:34Z | high |
+| [スキルのシェル処理を helper へ移すときは値の入力経路を対の処理と揃え、ファイル入力には存在と形式の検査を同時に入れる](pages/heuristics/helper-extraction-input-route-pairing-and-failure-paths.md) | heuristics | fenced bash を helper へ移すついでに値の受け取り方（placeholder の文字どおり置換 → ファイルや引数の生値読み）を片側だけ変えると、同じ値を置換経由で扱う対の処理と入力が食い違い、ファイル入力は読み取り失敗という新しい無言の経路を生む。 | 2026-09-28T01:30:00Z | medium |
 ## 統計
 
-- 総ページ数: 580
-- ドメイン別: patterns=127, heuristics=273, anti-patterns=180
-- 最終更新: 2026-09-28T01:11:03Z
+- 総ページ数: 581
+- ドメイン別: patterns=127, heuristics=274, anti-patterns=180
+- 最終更新: 2026-09-28T01:30:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
