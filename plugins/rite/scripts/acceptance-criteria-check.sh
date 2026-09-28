@@ -3,6 +3,7 @@
 #
 # Responsibility: pr-review と issue-implement が受入条件の決定論的検査に使う。
 #   extract — 対応する AC 節から `### AC-N` / `- [ ] AC-N` の明示 ID 集合を抽出する
+#   items   — extract と同じ検査を通し、各 AC の ID と本文（checkbox を除き空白を詰めたもの）を返す
 #   table   — acceptance reviewer の raw 出力の `### 受入条件確認` 表を、抽出集合と照合する
 #   final   — 降格ゲート適用後のレビュー結果 JSON で、判定行の AC-ID 集合・受入条件確認の対象判定と
 #             reviewers[] の整合・未充足行の finding が blocking に残るかを検査する
@@ -11,9 +12,11 @@
 # Called from:
 #   - skills/pr-review/SKILL.md ステップ 1.3.1 (extract) / 5.1 (table) / 5.3 最終整合検査 (final)
 #   - skills/issue-implement/SKILL.md ステップ 5.1.0.6.1 (extract)
+#   - hooks/scripts/lib/review-stagnation.py（extract / items。停滞診断の受入条件の進展）
 #
 # Usage:
 #   acceptance-criteria-check.sh extract --body-file PATH
+#   acceptance-criteria-check.sh items --body-file PATH
 #   acceptance-criteria-check.sh table --expected AC_ID_LIST --input PATH
 #   acceptance-criteria-check.sh final --expected AC_ID_LIST --input PATH
 #     AC_ID_LIST は Issue に存在する数値 ID のカンマ区切りリストへ置き換える。
@@ -21,6 +24,7 @@
 #
 # stdout contract:
 #   extract — 成功 (target) 時に AC-ID のカンマ区切り 1 行。skipped / 失敗時は出力なし
+#   items   — 成功 (target) 時に AC ごとに `AC-N<TAB>本文` を 1 行ずつ文書順に。skipped / 失敗時は出力なし
 #   table   — 成功時に判定行の JSON 配列 [{id, status, evidence}] (status は satisfied / unmet / unverified)
 #   final   — なし
 #
@@ -33,7 +37,7 @@
 #   [CONTEXT] ACCEPTANCE_CHECK_FAILED=1; mode={mode}; reason={reason}[; detail]
 #
 # Reason SoT:
-#   extract: input_missing / input_parse_failed / unsupported_ac_section / no_ac_ids / malformed_ac_item / duplicate_ac_id
+#   extract / items: input_missing / input_parse_failed / unsupported_ac_section / no_ac_ids / malformed_ac_item / duplicate_ac_id
 #   table:   input_missing / expected_invalid / jq_missing / table_missing / table_malformed /
 #            table_empty / id_set_mismatch / status_invalid / evidence_missing /
 #            unmet_finding_missing / jq_transform_failed
@@ -62,6 +66,7 @@ usage() {
   cat <<'EOF'
 Usage:
   acceptance-criteria-check.sh extract --body-file PATH
+  acceptance-criteria-check.sh items --body-file PATH
   acceptance-criteria-check.sh table --expected AC_ID_LIST --input PATH
   acceptance-criteria-check.sh final --expected AC_ID_LIST --input PATH
   AC_ID_LIST is a comma-separated list of numeric acceptance-criteria IDs from the Issue.
@@ -111,12 +116,12 @@ _check_id_set() {
 }
 
 case "$mode" in
-  extract)
+  extract|items)
     [ -n "$body_file" ] || { usage >&2; exit 2; }
     [ -f "$body_file" ] || _fail input_missing "--body-file が存在しません: $body_file"
     # 有限の見出しと明示 ID だけを読む。フェンス内の例示から AC を作らない。
     if ! parsed=$(set -o pipefail; _read_lf "$body_file" | awk '
-      function end_section() { if (in_ac && !items) empty = 1; in_ac = 0; items = 0 }
+      function end_section() { if (in_ac && !items) empty = 1; in_ac = 0; items = 0; cur = "" }
       {
         n = 0
         while (n < 3 && substr($0, 1, 1) == " ") { $0 = substr($0, 2); n++ }
@@ -153,16 +158,22 @@ case "$mode" in
         else {
           if (item ~ /^[-*+][[:space:]]+(AC-|\[)/ ||
               item ~ /^#+[[:space:]]+AC-/ || item ~ /^[0-9]+[.)][[:space:]]+(AC-|\[)/) malformed = NR
+          if (cur != "") text[cur] = text[cur] " " $0
           next
         }
         if (match(item, /^AC-[0-9]+([:[:space:]]|$)/)) {
           id = substr(item, 1, RLENGTH); sub(/[:[:space:]]+$/, "", id)
           print "ID " id; items++
+          cur = id; order[++count] = id; text[id] = substr(item, RLENGTH + 1)
         } else malformed = NR
       }
       END {
         if (fence) malformed = NR
         end_section()
+        for (k = 1; k <= count; k++) {
+          t = text[order[k]]; gsub(/[[:space:]]+/, " ", t); sub(/^ /, "", t); sub(/ $/, "", t)
+          print "TEXT " order[k] "\t" t
+        }
         print "FOUND " (found ? 1 : 0); print "OTHER " other
         print "EMPTY " (empty ? 1 : 0); print "MALFORMED " malformed
       }
@@ -186,7 +197,11 @@ case "$mode" in
     [ -z "$dup" ] || _fail duplicate_ac_id "AC-ID が重複しています: $dup" "ids=$dup"
     joined=$(printf '%s\n' "$ids" | paste -sd, -)
     echo "[CONTEXT] ACCEPTANCE_SCOPE=target; ids=$joined" >&2
-    printf '%s\n' "$joined"
+    if [ "$mode" = items ]; then
+      printf '%s\n' "$parsed" | sed -n 's/^TEXT //p'
+    else
+      printf '%s\n' "$joined"
+    fi
     ;;
 
   table)

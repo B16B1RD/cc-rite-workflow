@@ -2408,6 +2408,10 @@ try:
     run_id, phase = f.state()['review_run']['run_id'], f.state()['phase']
     revised = old_spec.replace('repair', 'rewrite')
     f.reject(lambda: reconcile(f, ok=False), 'T-SC01: an unchanged Issue has nothing to reconcile', 'nothing to reconcile')
+    (f.root / 'source.txt').write_text('in-progress edit\n')
+    f.reject(lambda: reconcile(f, ok=False), 'T-SC01: with work in progress the missing revision is reported first',
+             'nothing to reconcile')
+    (f.root / 'source.txt').write_text('initial\n')
     f.with_issue(revised)
     plan_for(f, revised)
     refused_with_hint(f, lambda: f.scope(ok=False), 'T-SC02: a revised fix plan stops before reconcile',
@@ -2591,56 +2595,81 @@ finally:
     f.close()
 
 
-# Meeting a criterion the revision added is not progress; meeting one that existed at the replan is.
-def criteria_cycle(f, satisfied=(), seconds=0, roots=None, observe=True):
+# A criterion is its ID and text: meeting one only counts once it has been seen unmet since the replan.
+ORIGINAL = [('AC-1', 'original one'), ('AC-2', 'original two')]
+ADDED = ORIGINAL + [('AC-9', 'newly agreed')]
+REWORDED = [('AC-1', 'reworded one'), ('AC-2', 'original two')]
+
+
+def with_criteria(f, base, items):
+    f.with_issue(base + '\n\n## 受入条件\n\n' + ''.join('- [ ] ' + key + ': ' + text + '\n' for key, text in items))
+
+
+def criteria_cycle(f, items, met=(), seconds=0, roots=None, observe=True):
     f.start()
-    f.finish(roots, satisfied, unverified=[item for item in ('AC-1', 'AC-9') if item not in satisfied])
+    f.finish(roots, list(met), unverified=[key for key, _ in items if key not in met])
     f.clock(seconds)
     if observe:
         f.observe()
 
 
-def revised_non_convergence(added, earlier=[], unobserved=False):
+def revise(f, base, items):
+    with_criteria(f, base, items)
+    reconcile(f)
+
+
+def revision_case(case):
     f = Fixture()
     try:
-        f.with_issue(f.issue['body'] + '\n\n## 受入条件\n\n- [ ] AC-1: original criterion\n')
-        criteria_cycle(f, roots=('input defect', 'secondary defect', 'third defect'))
+        base = f.issue['body']
+        with_criteria(f, base, ORIGINAL)
+        criteria_cycle(f, ORIGINAL, roots=('input defect', 'secondary defect', 'third defect'))
         f.fix()
-        criteria_cycle(f, roots=('input defect', 'secondary defect'))
+        criteria_cycle(f, ORIGINAL, roots=('input defect', 'secondary defect'))
         f.fix()
-        criteria_cycle(f, seconds=1801)
+        criteria_cycle(f, ORIGINAL, seconds=1801)
         check(f.decision() == 'replan', 'T-SC14: fixture requires a replan')
         f.fix()
-        if unobserved:
+        if case == 'unobserved':
             # The revision arrives with the post-replan repair, whose observation it refuses.
-            f.with_issue(f.issue['body'] + '- [ ] AC-9: newly agreed criterion\n')
-            criteria_cycle(f, satisfied=earlier + added, observe=False)
-            f.observe(ok=False)
+            with_criteria(f, base, ADDED)
+            criteria_cycle(f, ADDED, met=['AC-1'], observe=False)
+            refused = f.observe(ok=False)
+            check('Issue specification changed within run' in refused.stderr,
+                  'T-SC14: the unobserved route starts from a refused observation')
             reconcile(f)
             f.observe()
+            final, met = ADDED, ['AC-1']
+        elif case == 'restored':
+            criteria_cycle(f, ORIGINAL)
+            revise(f, base, ORIGINAL[:1])
+            criteria_cycle(f, ORIGINAL[:1])
+            revise(f, base, ORIGINAL)
+            criteria_cycle(f, ORIGINAL)
+            final, met = ORIGINAL, ['AC-2']
         else:
-            criteria_cycle(f, satisfied=earlier)
-            check(f.decision() == 'continue', 'T-SC14: one post-replan repair is not non-convergence')
-            f.with_issue(f.issue['body'] + '- [ ] AC-9: newly agreed criterion\n')
-            reconcile(f)
-            check(f.state()['review_run']['reconciliations'][-1]['added_criteria'] == ['AC-9'],
-                  'T-SC14: the revision records the criteria it adds')
-            criteria_cycle(f, satisfied=earlier + added)
+            final, before, after = dict(added=(ADDED, [], ['AC-9']), earlier=(ADDED, ['AC-1'], ['AC-1']),
+                                        reworded=(REWORDED, [], ['AC-1']), refixed=(REWORDED, [], []))[case]
+            criteria_cycle(f, ORIGINAL, met=before)
+            revise(f, base, final)
+            criteria_cycle(f, final, met=after)
+            met = ['AC-1'] if case == 'refixed' else after
         f.fix()
-        criteria_cycle(f, satisfied=earlier + added)
+        criteria_cycle(f, final, met=met)
         return f.decision()
     finally:
         f.close()
 
 
-check(revised_non_convergence(['AC-9']) == 'stop',
-      'T-SC14: a criterion added by the revision is not progress that suppresses the stop')
-check(revised_non_convergence([], earlier=['AC-1']) != 'stop',
-      'T-SC14: progress made before the revision still suppresses the stop')
-check(revised_non_convergence(['AC-1'], unobserved=True) != 'stop',
-      'T-SC14: progress first observed after an unobserved-route revision still suppresses the stop')
-check(revised_non_convergence(['AC-9'], unobserved=True) == 'stop',
-      'T-SC14: an added criterion met after an unobserved-route revision is not progress')
+for case, stops, label in (
+        ('added', True, 'a criterion the revision added and met on re-review is not progress'),
+        ('earlier', False, 'progress made before the revision still suppresses the stop'),
+        ('unobserved', False, 'an unchanged criterion first met after an unobserved-route revision is progress'),
+        ('reworded', True, 'a reworded criterion met on the same HEAD is not progress'),
+        ('restored', False, 'a criterion removed and restored with its text keeps its earlier unmet observation'),
+        ('refixed', False, 'a reworded criterion seen unmet and met after a fix is progress')):
+    decision = revision_case(case)
+    check((decision == 'stop') == stops, 'T-SC14: ' + label + ' (decision=' + decision + ')')
 
 f = Fixture()
 try:

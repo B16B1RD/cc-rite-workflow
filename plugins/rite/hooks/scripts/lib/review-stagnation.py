@@ -531,10 +531,8 @@ def reconcile(state, args, directory):
     # The same predicate review-start applies, so a revision found mid-fix stops here.
     require(not subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=normal"]).strip(),
             "reconciling requires a clean tree; restore edits made under the old plan to the reviewed HEAD"
-            " (do not commit them), then record the revision")
-    # Criteria the revision adds were never unmet before it, so meeting them is no progress.
-    known = criteria(previous, "revision unverifiable")
-    added = [item for item in criteria(issue["body"], "revision unverifiable") if item not in known]
+            " and remove files it created until `git status --porcelain` is empty (do not commit them),"
+            " then record the revision")
     saved = observation(run, context)
     carried = []
     if saved is not None:
@@ -556,7 +554,6 @@ def reconcile(state, args, directory):
     run.pop("pending_fix", None)
     run["reconciliations"] = records + [dict(
         review_context=context.copy(), after_cycle=after, issue_body=issue["body"], replan_reasons=carried,
-        added_criteria=added,
         reason=approval["reason"], requested_at=approval["requested_at"], at=cycle.now())]
     state.update(next_action=next_action, updated_at=cycle.now())
     return state
@@ -645,23 +642,23 @@ def work_seconds(run):
 
 
 def criteria(body, purpose):
-    """Acceptance criterion IDs of an Issue body, in document order."""
+    """Acceptance criteria of an Issue body as {ID: normalized text}, in document order."""
     script = Path(__file__).resolve().parents[3] / "scripts/acceptance-criteria-check.sh"
     with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".md") as stream:
         stream.write(body)
         stream.flush()
-        result = subprocess.run(["bash", str(script), "extract", "--body-file", stream.name],
+        result = subprocess.run(["bash", str(script), "items", "--body-file", stream.name],
                                 capture_output=True, text=True)
     require(result.returncode == 0, "Issue acceptance criteria cannot be extracted; " + purpose + ": "
             + result.stderr.strip())
-    return re.findall(r"[^,\s]+", result.stdout)
+    return dict(line.split("\t", 1) for line in result.stdout.splitlines())
 
 
 def check_skipped_scope(skipped, body):
     """A skipped acceptance table must agree with the Issue body it claims to describe."""
     # An observation always belongs to an Issue, so "no Issue" cannot describe it.
     require(skipped != "no_issue", "acceptance_criteria declares no_issue but the review belongs to an Issue")
-    ids = criteria(body, "skipped declaration unverifiable")
+    ids = list(criteria(body, "skipped declaration unverifiable"))
     require(not ids, "acceptance_criteria declares no_ac_section but the Issue has acceptance criteria: "
             + ", ".join(ids))
 
@@ -740,6 +737,35 @@ def recurrence(run, key, start=None):
     return bool(first and second and len(first | second) >= 2)
 
 
+def progressed_since(run, replan):
+    """Whether a criterion seen unmet since the replan was met later under the same wording.
+
+    A criterion is its ID and text, so one a revision adds or rewords counts only
+    after it has been observed unmet, and one removed and restored keeps its past.
+    IDs the Issue does not declare keep the replan's satisfied set as baseline.
+    """
+    start = replan["review_context"]["cycle_count"]
+    baseline = set(replan["acceptance_satisfied"])
+    stated = {}
+
+    def items(body):
+        if body not in stated:
+            stated[body] = criteria(body, "acceptance progress unverifiable")
+        return stated[body]
+
+    replanned = items(observation(run, replan["review_context"])["input"]["issue_body"])
+    unmet = {(key, text) for key, text in replanned.items() if key not in baseline}
+    for obs in run["observations"]:
+        if obs["input"]["review_context"]["cycle_count"] < start:
+            continue
+        declared = items(obs["input"]["issue_body"])
+        met = set(obs["input"]["acceptance"]["satisfied"])
+        if any((key, declared[key]) in unmet if key in declared else key not in baseline for key in met):
+            return True
+        unmet |= {(key, text) for key, text in declared.items() if key not in met}
+    return False
+
+
 def observe(state, args, directory):
     run, context = current(state, args.session, completed=True)
     receipt = cycle.matching_receipt(directory, state["review_cycle"])
@@ -786,8 +812,7 @@ def observe(state, args, directory):
     reasons = (["work-time"] if elapsed - run["diagnosed_work_seconds"] > 1800 else [])
     if renewed:
         reasons.append("root-recurrence")
-    records = run.get("reconciliations", [])
-    for record in records:
+    for record in run.get("reconciliations", []):
         # A replan dropped by reconcile() is owed by the first observation under the new text.
         later = [obs for obs in run["observations"] if obs["input"]["review_context"]["cycle_count"] > record["after_cycle"]]
         if later == [entry]:
@@ -796,18 +821,7 @@ def observe(state, args, directory):
     for replan in run["replans"]:
         start = replan["review_context"]["cycle_count"]
         unresolved = set(replan["roots"]) & set(repeated)
-
-        def baseline(obs):
-            # Only criteria that existed at the replan count as progress; those a
-            # later revision added are measured as already met.
-            cycle_count = obs["input"]["review_context"]["cycle_count"]
-            added = {item for r in records if start <= r["after_cycle"] < cycle_count for item in r["added_criteria"]}
-            return set(replan["acceptance_satisfied"]) | added
-
-        intervening = [obs for obs in run["observations"]
-                       if obs["input"]["review_context"]["cycle_count"] >= start]
-        progressed = any(set(obs["input"]["acceptance"]["satisfied"]) - baseline(obs) for obs in intervening)
-        if not progressed and any(recurrence(run, key, start) for key in unresolved):
+        if not progressed_since(run, replan) and any(recurrence(run, key, start) for key in unresolved):
             action, reasons = "stop", ["non-convergent-root"]
             break
     if action != "stop" and reasons:
