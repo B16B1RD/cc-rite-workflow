@@ -247,15 +247,14 @@ echo ""
 # --------------------------------------------------------------------------
 # TC-005: State file exists → active set to false, updated_at updated
 # --------------------------------------------------------------------------
-echo "TC-005: State file exists → deactivated then removed (AC-10)"
+echo "TC-005: terminal state file exists → deactivated then removed (AC-10)"
 dir005="$TEST_DIR/tc005"
 mkdir -p "$dir005"
-create_state_file "$dir005" '{"active": true, "issue_number": 42, "phase": "implement"}'
+create_state_file "$dir005" '{"active": true, "issue_number": 42, "phase": "completed"}'
 
-# PR 2a refactor: under per-session model session-end.sh deactivates (.active=false +
-# updated_at) AND then removes the per-session file (AC-10). The legacy
-# assertion (file remains with .active=false) is no longer satisfiable; the
-# observable invariant is "file is gone after session-end".
+# Under the per-session model session-end.sh deactivates (.active=false +
+# updated_at) and then removes a finished per-session file. A mid-flow state
+# is kept instead (T-13), so this fixture uses the terminal phase.
 output=$(run_hook "$dir005")
 sf005=$(state_file_path "$dir005")
 if [ ! -f "$sf005" ]; then
@@ -537,7 +536,7 @@ sid680a="abcdef01-2345-6789-abcd-ef0123456789"
 echo "$sid680a" > "$dir680a/.rite-session-id"
 printf '# rite test sandbox config\n' > "$dir680a/rite-config.yml"
 per_session_file="$dir680a/.rite/sessions/${sid680a}.flow-state"
-echo '{"active": true, "phase": "phase5_review", "issue_number": 680, "branch": "refactor/issue-680-test"}' > "$per_session_file"
+echo '{"active": true, "phase": "completed", "issue_number": 680, "branch": "refactor/issue-680-test"}' > "$per_session_file"
 run_hook "$dir680a" >/dev/null || true
 if [ ! -f "$per_session_file" ]; then
   pass "TC-per-session-cleanup-A: per-session file removed after session-end (AC-10)"
@@ -945,7 +944,9 @@ echo ""
 echo "T-04: collecting review_cycle is kept"
 dir_p04="$TEST_DIR/preserve-collecting"
 mkdir -p "$dir_p04"
-create_state_file "$dir_p04" '{"schema_version":3,"active":true,"phase":"review","review_cycle":{"status":"collecting","review_context":{"cycle_count":2}}}'
+# active=false so that only the collecting cycle can keep it (an active state
+# in a non-terminal phase is kept on its own).
+create_state_file "$dir_p04" '{"schema_version":3,"active":false,"phase":"review","review_cycle":{"status":"collecting","review_context":{"cycle_count":2}}}'
 sf_p04=$(state_file_path "$dir_p04")
 cyc_p04=$(jq -c '.review_cycle' "$sf_p04")
 rc_p04=0
@@ -1180,6 +1181,122 @@ else
   else
     fail "T-12 rc=$rc_p12 stderr=$(cat "$LAST_STDERR_FILE")"
   fi
+fi
+echo ""
+
+FLOW_STATE="$SCRIPT_DIR/../flow-state.sh"
+SESSION_START="$SCRIPT_DIR/../session-start.sh"
+ITERATE_STEP="$SCRIPT_DIR/../../scripts/iterate-step.sh"
+
+echo "T-13: a mid-flow active state is kept; only active and updated_at change"
+ok_p13=1
+for phase in pr cleanup create_interview "<missing>"; do
+  dir_p13="$TEST_DIR/keep-midflow-${phase//[<>]/}"
+  mkdir -p "$dir_p13/.rite/worktrees/issue-7"
+  fixture_p13=$(jq -nc --arg wt "$dir_p13/.rite/worktrees/issue-7" \
+    '{schema_version:3,active:true,phase:"pr",issue_number:7,pr_number:8,branch:"fix/issue-7-x",worktree:$wt}')
+  if [ "$phase" = "<missing>" ]; then
+    fixture_p13=$(printf '%s' "$fixture_p13" | jq -c 'del(.phase)')
+  else
+    fixture_p13=$(printf '%s' "$fixture_p13" | jq -c --arg p "$phase" '.phase = $p')
+  fi
+  create_state_file "$dir_p13" "$fixture_p13"
+  sf_p13=$(state_file_path "$dir_p13")
+  rc_p13=0
+  run_hook "$dir_p13" >/dev/null || rc_p13=$?
+  if [ "$rc_p13" -ne 0 ] || [ ! -f "$sf_p13" ] \
+    || ! jq -e '.active == false and (.updated_at | type) == "string"' "$sf_p13" >/dev/null \
+    || [ "$(jq -cS 'del(.active, .updated_at)' "$sf_p13")" != "$(printf '%s' "$fixture_p13" | jq -cS 'del(.active, .updated_at)')" ]; then
+    ok_p13=0
+    fail "T-13 phase=$phase rc=$rc_p13 state=$(cat "$sf_p13" 2>/dev/null || echo '<removed>')"
+  fi
+done
+[ "$ok_p13" = 1 ] && pass "T-13 non-terminal phases (pr / cleanup / create_interview / missing) keep the file with active=false"
+echo ""
+
+echo "T-14: a finished state without review history is removed with its lock"
+ok_p14=1
+for fixture_p14 in \
+  '{"schema_version":3,"active":true,"phase":"completed","issue_number":1}' \
+  '{"schema_version":3,"active":true,"phase":"create_completed","issue_number":1}' \
+  '{"schema_version":3,"active":true,"phase":"cleanup_completed","issue_number":1}' \
+  '{"schema_version":3,"active":false,"phase":"cleanup","issue_number":1}'; do
+  dir_p14="$TEST_DIR/remove-finished-$(printf '%s' "$fixture_p14" | jq -r '"\(.phase)-\(.active)"')"
+  mkdir -p "$dir_p14"
+  create_state_file "$dir_p14" "$fixture_p14"
+  sf_p14=$(state_file_path "$dir_p14")
+  : > "${sf_p14}.lock"
+  if [ ! -f "${sf_p14}.lock" ]; then
+    ok_p14=0
+    fail "T-14 fixture lock was not created: ${sf_p14}.lock"
+    continue
+  fi
+  rc_p14=0
+  run_hook "$dir_p14" >/dev/null || rc_p14=$?
+  if [ "$rc_p14" -ne 0 ] || [ -e "$sf_p14" ] || [ -e "${sf_p14}.lock" ]; then
+    ok_p14=0
+    fail "T-14 $fixture_p14 rc=$rc_p14 state=$([ -e "$sf_p14" ] && echo kept || echo removed) lock=$([ -e "${sf_p14}.lock" ] && echo kept || echo removed)"
+  fi
+done
+[ "$ok_p14" = 1 ] && pass "T-14 completed / create_completed / cleanup_completed and an inactive cleanup state are removed together with the lock"
+echo ""
+
+echo "T-15: a kept state keeps its lock; a lock that cannot be removed warns with its path"
+dir_p15="$TEST_DIR/keep-lock"
+mkdir -p "$dir_p15"
+create_state_file "$dir_p15" '{"schema_version":3,"active":true,"phase":"pr","issue_number":7,"pr_number":8}'
+sf_p15=$(state_file_path "$dir_p15")
+: > "${sf_p15}.lock"
+rc_p15=0
+run_hook "$dir_p15" >/dev/null || rc_p15=$?
+dir_p15b="$TEST_DIR/lock-rm-fail"
+mkdir -p "$dir_p15b"
+create_state_file "$dir_p15b" '{"schema_version":3,"active":true,"phase":"completed","issue_number":1}'
+sf_p15b=$(state_file_path "$dir_p15b")
+# A non-empty directory at the lock path makes `rm -f` fail.
+mkdir -p "${sf_p15b}.lock/keep"
+rc_p15b=0
+run_hook "$dir_p15b" >/dev/null || rc_p15b=$?
+if [ "$rc_p15" -eq 0 ] && [ -f "$sf_p15" ] && [ -f "${sf_p15}.lock" ] \
+  && [ "$rc_p15b" -eq 0 ] && [ ! -e "$sf_p15b" ] \
+  && grep -qF "[rite] WARNING: session-end: failed to remove the state lock file: ${sf_p15b}.lock" "$LAST_STDERR_FILE"; then
+  pass "T-15 kept state keeps its lock; lock removal failure warns with the path and rc=0"
+else
+  fail "T-15 rc=$rc_p15/$rc_p15b kept_lock=$([ -f "${sf_p15}.lock" ] && echo y || echo n) stderr=$(cat "$LAST_STDERR_FILE")"
+fi
+echo ""
+
+echo "T-16: after SessionEnd, a resumed SessionStart leaves the state readable for /rite:iterate"
+dir_p16="$TEST_DIR/resume-after-end"
+sid_p16="f0e1d2c3-b4a5-9687-7869-5a4b3c2d1e0f"
+mkdir -p "$dir_p16/.rite/worktrees/issue-7"
+printf '# rite test sandbox config\n' > "$dir_p16/rite-config.yml"
+fixture_p16=$(jq -nc --arg wt "$dir_p16/.rite/worktrees/issue-7" \
+  '{schema_version:3,active:true,phase:"pr",issue_number:7,pr_number:8,branch:"fix/issue-7-resume",worktree:$wt}')
+create_state_file "$dir_p16" "$fixture_p16" "$sid_p16"
+sf_p16=$(state_file_path "$dir_p16" "$sid_p16")
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+rc_end_p16=0
+jq -nc --arg cwd "$dir_p16" --arg sid "$sid_p16" '{cwd:$cwd, session_id:$sid, hook_event_name:"SessionEnd", reason:"prompt_input_exit"}' \
+  | bash "$HOOK" 2>"$LAST_STDERR_FILE" >/dev/null || rc_end_p16=$?
+after_end_p16=$(digest_file "$sf_p16" 2>/dev/null || echo "")
+rc_start_p16=0
+jq -nc --arg cwd "$dir_p16" --arg sid "$sid_p16" '{cwd:$cwd, session_id:$sid, source:"resume"}' \
+  | RITE_HOST=claude bash "$SESSION_START" >/dev/null 2>&1 || rc_start_p16=$?
+after_start_p16=$(digest_file "$sf_p16" 2>/dev/null || echo "")
+got_p16=$(cd "$dir_p16" && printf '%s|%s|%s|%s' \
+  "$(bash "$FLOW_STATE" get --field phase --default '')" \
+  "$(bash "$FLOW_STATE" get --field pr_number --default '')" \
+  "$(bash "$FLOW_STATE" get --field issue_number --default '')" \
+  "$(bash "$FLOW_STATE" get --field branch --default '')")
+restore_p16=$(cd "$dir_p16" && bash "$ITERATE_STEP" restore 2>/dev/null || true)
+if [ "$rc_end_p16" -eq 0 ] && [ "$rc_start_p16" -eq 0 ] && [ -n "$after_end_p16" ] \
+  && [ "$after_start_p16" = "$after_end_p16" ] \
+  && [ "$got_p16" = "pr|8|7|fix/issue-7-resume" ] \
+  && grep -qE '^\[CONTEXT\] ITERATE_ISSUE=7; ITERATE_BRANCH=fix/issue-7-resume$' <<< "$restore_p16"; then
+  pass "T-16 resumed session reads phase=pr / pr=8 back and iterate restores issue and branch"
+else
+  fail "T-16 rc=$rc_end_p16/$rc_start_p16 unchanged_by_start=$([ "$after_start_p16" = "$after_end_p16" ] && echo y || echo n) got=$got_p16 restore=$restore_p16"
 fi
 echo ""
 
