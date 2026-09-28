@@ -25,6 +25,7 @@
 * **Update**: [失敗の印との一致でその回だけ抑止する設計は後続の書き込みで崩れる — 抑止した時点で印を消して回収を完了させる](pages/anti-patterns/one-shot-suppression-by-failure-record-match-breaks-on-later-writes.md) — raw/fixes/20260928T163712Z-pr-3397.md を統合
 * **Update**: [終了コードの契約は、その形を作る経路をすべて数え上げてから書く](pages/heuristics/exit-contract-enumerate-producing-paths.md) — raw/reviews/20260928T165800Z-pr-3397.md を統合
 * **Update**: [base 取り込み後の再レビューは、同じ差分の再確認ではなく取り込み側との契約整合の確認として指示する](pages/heuristics/rereview-after-base-intake-checks-contract-consistency.md) — raw/reviews/20260928T165339Z-pr-3376.md を統合
+* **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=580, broken_refs=0
 
 ## 2026-09-28
 
