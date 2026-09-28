@@ -1306,7 +1306,7 @@ if [ -z "$BLOCKED_PATTERN" ]; then
     BLOCKED_ALTERNATIVE="Use create-issue-with-projects.sh or /rite:issue-create so the Issue is created through the approved helper."
     if [ -n "$_p6_raw" ]; then
       BLOCKED_REASON+=" This command is too long to separate its heredoc bodies from its commands within the hook time limit, so the bodies were checked too."
-      BLOCKED_ALTERNATIVE+=" Write long heredoc text to a file in one Bash call and pass the file in another."
+      BLOCKED_ALTERNATIVE+=" Write long heredoc text to a file with the Write tool (a Bash heredoc holding the same text is checked the same way), then pass the file in a Bash call."
     fi
   fi
   trap '_rite_btg_pattern13_fail_open' ERR
@@ -1353,7 +1353,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [[ "$COMMAND" == *git* && ( "$COMMAND" == *commi
   else
     BLOCKED_PATTERN="commit-guard-uninspectable"
     BLOCKED_REASON="This command mentions git and commit or merge, and its lines are too long for the commit checks to inspect within the hook time limit (${#COMMAND} characters). A check that runs out of time lets the command run, so it is denied without inspection."
-    BLOCKED_ALTERNATIVE="Write a long commit message to a file outside the work tree and run git commit -F <message-file> in its own Bash call. Run a long script in a separate Bash call from the commit."
+    BLOCKED_ALTERNATIVE="Write a long commit message to a file outside the work tree with the Write tool (a Bash heredoc holding the same text is estimated the same way), then run git commit -F <message-file> in its own Bash call. Run a long script in a separate Bash call from the commit."
   fi
 fi
 

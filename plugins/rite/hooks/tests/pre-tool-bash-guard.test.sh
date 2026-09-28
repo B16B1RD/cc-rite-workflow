@@ -2562,6 +2562,15 @@ if [[ "$sb_line_cost" =~ ^[1-9][0-9]*$ && "$sb_max_cost" =~ ^[1-9][0-9]*$ ]]; th
   # Long commands past the budget, a merge among them; a command without git is not this denial.
   { printf 'git commit -m "'; sb_x 40960; printf '"'; } > "$p7_big"
   sb_case "a 40KB commit message" deny
+  # The alternative must not lead back to the same denial: a Bash heredoc holding the
+  # message is estimated the same way, so it names the Write tool and git commit -F.
+  if [[ "$reason" == *"Write tool"* && "$reason" == *"git commit -F <message-file>"* ]]; then
+    pass "parse budget: the denial names the Write tool and git commit -F"
+  else
+    fail "parse budget: the denial should name the Write tool and git commit -F: $reason"
+  fi
+  printf 'git commit -F /tmp/rite-commit-msg.txt' > "$p7_big"
+  sb_case "the recovery command git commit -F <message-file>" other
   { printf 'git commit -m "'; sb_x 1048576; printf '"'; } > "$p7_big"
   sb_case "a 1MB commit message" deny
   { printf 'git merge -m '; sb_x 10240; printf ' x'; } > "$p7_big"
@@ -2578,6 +2587,8 @@ if [[ "$sb_line_cost" =~ ^[1-9][0-9]*$ && "$sb_max_cost" =~ ^[1-9][0-9]*$ ]]; th
   sb_case "a 30KB heredoc message of short lines" other
   { printf 'git commit -m '; for _i in $(seq 1 $(( (sb_len - 14) / 3 ))); do printf 'あ'; done; } > "$p7_big"
   sb_case "a Japanese message line just within the budget" other
+  { printf 'git commit -m '; for _i in $(seq 1 $(( (sb_len - 14) / 3 + 1 ))); do printf 'あ'; done; } > "$p7_big"
+  sb_case "a Japanese message line just past the budget" deny
   { printf 'git commit -m '; sb_x 7960; printf '\n'; for _i in $(seq 1 150); do printf 'echo abcdefghij\n'; done; } > "$p7_big"
   sb_case "one long line followed by short lines" other
   # Pattern 6 checks a heredoc past the budget as raw text: a gh issue create after the
@@ -2596,7 +2607,7 @@ if [[ "$sb_line_cost" =~ ^[1-9][0-9]*$ && "$sb_max_cost" =~ ^[1-9][0-9]*$ ]]; th
       else
         fail "parse budget: Pattern 6 on a long heredoc without gh issue create rc=$rc ms=$_ms output=$output"
       fi
-    elif [ "$rc" = "0" ] && [[ "$reason" == *direct-gh-issue-create* && "$reason" == *"bodies were checked"* ]] && [ "$_ms" -lt 5000 ]; then
+    elif [ "$rc" = "0" ] && [[ "$reason" == *direct-gh-issue-create* && "$reason" == *"bodies were checked"* && "$reason" == *"Write tool"* ]] && [ "$_ms" -lt 5000 ]; then
       pass "parse budget: Pattern 6 denies gh issue create $sb_where a long heredoc (${_ms}ms)"
     else
       fail "parse budget: Pattern 6 on gh issue create $sb_where a long heredoc rc=$rc ms=$_ms reason=$reason"
