@@ -142,14 +142,15 @@ def same_specification(left, right):
 SPEC_CHANGE_SECTION = "仕様改訂の記録"
 
 
-def spec_change_hint(state):
-    """The recovery route for a specification mismatch, only where review-reconcile can accept it."""
+def spec_change_hint(state, body):
+    """The recovery route for a specification mismatch found on `body`, where review-reconcile can act on it."""
     run = state.get("review_run")
     if not (isinstance(run, dict) and run.get("status") == "active"
             and (run.get("observations") or run.get("reconciliations"))):
         return ""
     records = run.get("reconciliations") or []
-    if records and records[-1]["review_context"] == (state.get("review_cycle") or {}).get("review_context"):
+    if (records and records[-1]["review_context"] == (state.get("review_cycle") or {}).get("review_context")
+            and same_specification(records[-1]["issue_body"], body)):
         return ("; the revision is already recorded for this cycle: take the next step for it instead of"
                 " reconciling again (references/review-stagnation.md, section: " + SPEC_CHANGE_SECTION + ")")
     return ("; if the Issue was revised by agreement, record the revision with `flow-state.sh review-reconcile"

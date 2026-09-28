@@ -522,16 +522,19 @@ def reconcile(state, args, directory):
     require(approval.get("issue_number") == issue.get("number") == state.get("issue_number"),
             "approval issue does not match the run")
     require(approval.get("pr_number") == state.get("pr_number"), "approval PR does not match the run")
-    # The same predicate review-start applies, so a revision found mid-fix stops here.
-    require(not subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=normal"]).strip(),
-            "reconciling requires a clean tree; restore edits made under the old plan to the reviewed HEAD"
-            " (do not commit them), then record the revision")
     previous = records[-1]["issue_body"] if records else (
         run["observations"][-1]["input"]["issue_body"] if run["observations"] else None)
     require(previous is not None, "no observed specification in this run; rebuild the observation input"
             " from the latest Issue instead of reconciling")
     require(not cycle.same_specification(previous, issue["body"]),
             "Issue specification is unchanged in this run; nothing to reconcile")
+    # The same predicate review-start applies, so a revision found mid-fix stops here.
+    require(not subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=normal"]).strip(),
+            "reconciling requires a clean tree; restore edits made under the old plan to the reviewed HEAD"
+            " (do not commit them), then record the revision")
+    # Criteria the revision adds were never unmet before it, so meeting them is no progress.
+    known = criteria(previous, "revision unverifiable")
+    added = [item for item in criteria(issue["body"], "revision unverifiable") if item not in known]
     saved = observation(run, context)
     carried = []
     if saved is not None:
@@ -553,6 +556,7 @@ def reconcile(state, args, directory):
     run.pop("pending_fix", None)
     run["reconciliations"] = records + [dict(
         review_context=context.copy(), after_cycle=after, issue_body=issue["body"], replan_reasons=carried,
+        added_criteria=added,
         reason=approval["reason"], requested_at=approval["requested_at"], at=cycle.now())]
     state.update(next_action=next_action, updated_at=cycle.now())
     return state
@@ -640,20 +644,26 @@ def work_seconds(run):
                for item in run["clock"] if item["kind"] == "work")
 
 
-def check_skipped_scope(skipped, body):
-    """A skipped acceptance table must agree with the Issue body it claims to describe."""
-    # An observation always belongs to an Issue, so "no Issue" cannot describe it.
-    require(skipped != "no_issue", "acceptance_criteria declares no_issue but the review belongs to an Issue")
+def criteria(body, purpose):
+    """Acceptance criterion IDs of an Issue body, in document order."""
     script = Path(__file__).resolve().parents[3] / "scripts/acceptance-criteria-check.sh"
     with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".md") as stream:
         stream.write(body)
         stream.flush()
         result = subprocess.run(["bash", str(script), "extract", "--body-file", stream.name],
                                 capture_output=True, text=True)
-    require(result.returncode == 0, "Issue acceptance criteria cannot be extracted; skipped declaration unverifiable: "
+    require(result.returncode == 0, "Issue acceptance criteria cannot be extracted; " + purpose + ": "
             + result.stderr.strip())
-    require(not result.stdout.strip(), "acceptance_criteria declares no_ac_section but the Issue has acceptance criteria: "
-            + result.stdout.strip())
+    return re.findall(r"[^,\s]+", result.stdout)
+
+
+def check_skipped_scope(skipped, body):
+    """A skipped acceptance table must agree with the Issue body it claims to describe."""
+    # An observation always belongs to an Issue, so "no Issue" cannot describe it.
+    require(skipped != "no_issue", "acceptance_criteria declares no_issue but the review belongs to an Issue")
+    ids = criteria(body, "skipped declaration unverifiable")
+    require(not ids, "acceptance_criteria declares no_ac_section but the Issue has acceptance criteria: "
+            + ", ".join(ids))
 
 
 def validate_input(state, args, data, receipt):
@@ -662,7 +672,7 @@ def validate_input(state, args, data, receipt):
     require(issue.get("number") == data.get("issue_number") == state.get("issue_number")
             and text(issue.get("body")) and text(data.get("issue_body"))
             and cycle.same_specification(data["issue_body"], issue["body"]),
-            "latest Issue specification differs from observation" + cycle.spec_change_hint(state))
+            "latest Issue specification differs from observation" + cycle.spec_change_hint(state, issue.get("body") or ""))
     roots = data.get("roots")
     require(isinstance(roots, list), "root observations must be an array")
     findings = {f["id"]: f for f in receipt["findings"] + receipt.get("non_blocking_findings", [])}
@@ -738,7 +748,7 @@ def observe(state, args, directory):
     roots = validate_input(state, args, data, receipt[1])
     require(all(cycle.same_specification(body, data["issue_body"]) for body in specifications(run)),
             "Issue specification changed within run; retain history and reconcile before continuing"
-            + cycle.spec_change_hint(state))
+            + cycle.spec_change_hint(state, data["issue_body"]))
     previous = observation(run, context)
     if previous:
         require(same_observation(previous["input"], data) and unchanged_receipt(previous, receipt[1]),
@@ -781,22 +791,18 @@ def observe(state, args, directory):
         # A replan dropped by reconcile() is owed by the first observation under the new text.
         later = [obs for obs in run["observations"] if obs["input"]["review_context"]["cycle_count"] > record["after_cycle"]]
         if later == [entry]:
-            reasons += [reason for reason in record.get("replan_reasons", []) if reason not in reasons]
+            reasons += [reason for reason in record["replan_reasons"] if reason not in reasons]
     action = "continue"
     for replan in run["replans"]:
         start = replan["review_context"]["cycle_count"]
         unresolved = set(replan["roots"]) & set(repeated)
 
         def baseline(obs):
-            # Criteria are compared within one specification: across a revision
-            # the new segment is measured from its own first observation.
+            # Only criteria that existed at the replan count as progress; those a
+            # later revision added are measured as already met.
             cycle_count = obs["input"]["review_context"]["cycle_count"]
-            bounds = [r["after_cycle"] for r in records if start <= r["after_cycle"] < cycle_count]
-            if not bounds:
-                return set(replan["acceptance_satisfied"])
-            first = next(item for item in run["observations"]
-                         if item["input"]["review_context"]["cycle_count"] > max(bounds))
-            return set(first["input"]["acceptance"]["satisfied"])
+            added = {item for r in records if start <= r["after_cycle"] < cycle_count for item in r["added_criteria"]}
+            return set(replan["acceptance_satisfied"]) | added
 
         intervening = [obs for obs in run["observations"]
                        if obs["input"]["review_context"]["cycle_count"] >= start]
@@ -919,7 +925,7 @@ def replan(state, args, directory):
         require(text(plan.get("issue_body")) and text(issue.get("body"))
                 and cycle.same_specification(plan["issue_body"], issue["body"])
                 and issue.get("number") == state.get("issue_number"),
-                "latest Issue specification differs from replan" + cycle.spec_change_hint(state))
+                "latest Issue specification differs from replan" + cycle.spec_change_hint(state, issue.get("body") or ""))
         receipt = cycle.matching_receipt(directory, state["review_cycle"])
         require(receipt is not None, "saved receipt missing")
         require(unchanged_receipt(observation(run, context), receipt[1]), "observed review receipt is missing or changed")
@@ -990,7 +996,7 @@ def plan_specification(state, plan, allow_replan=False):
     observed = observation(run, plan["review_context"])
     require(observed is not None and text(plan.get("issue_body"))
             and cycle.same_specification(plan["issue_body"], observed["input"]["issue_body"]),
-            "fix specification differs from diagnosed observation" + cycle.spec_change_hint(state))
+            "fix specification differs from diagnosed observation" + cycle.spec_change_hint(state, plan.get("issue_body") or ""))
     if allow_replan:
         return
     for record in run["replans"]:

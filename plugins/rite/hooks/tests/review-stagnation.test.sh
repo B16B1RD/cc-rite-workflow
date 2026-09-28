@@ -2435,7 +2435,7 @@ try:
           'T-SC04: reconcile records the approval, context, boundary and revised body on the run')
     check(phase == 'review' and state['phase'] == 'fix' and state['next_action'] == '/rite:iterate 71'
           and state['review_run']['run_id'] == run_id and state['cycle_count'] == 1,
-          'T-SC04: reconcile keeps run and counter, leaves phase review and names the re-review')
+          'T-SC04: reconcile keeps run and counter, moves phase from review to fix and names the re-review')
     replay = f.state_path.read_bytes()
     reconcile(f, record)
     check(f.state_path.read_bytes() == replay, 'T-SC05: the same approval is a byte-identical no-op')
@@ -2493,6 +2493,17 @@ try:
     check(len(records) == 2 and records[1]['review_context'] == f.context() and records[1]['after_cycle'] == 1
           and records[1]['issue_body'] == second and state['next_action'] == '/rite:recover 42',
           'T-SC09: an unobserved cycle is reconciled with the boundary before it')
+    check(state['phase'] == 'review' and 'REVIEW_RESUME=1' in gate(f),
+          'T-SC09: the unobserved route keeps phase review so iterate resumes the cycle to save its observation')
+    third = second.replace('source.txt', 'the source file')
+    f.with_issue(third)
+    revised_again = copy.deepcopy(f.observed)
+    revised_again['issue_body'] = third
+    dump(f.input, revised_again)
+    refused = f.observe(ok=False)
+    check(refused.returncode != 0 and 'Issue specification changed within run' in refused.stderr
+          and HINT in refused.stderr and 'already recorded' not in refused.stderr,
+          'T-SC09: a further revision in the same cycle is pointed at reconcile, not at the recorded one')
     f.with_issue(first)
     dump(f.input, stale)
     f.reject(lambda: f.observe(ok=False), 'T-SC09: only the latest revision is the specification',
@@ -2534,6 +2545,13 @@ try:
     f.plan(replan=True)
     f.replan()
     check(len(f.state()['review_run']['replans']) == 1, 'T-SC10: the replan passes on the revised Issue')
+    f.scope()
+    (f.root / 'source.txt').write_text('repaired under the replan\n')
+    f.scope('verify')
+    f.commit()
+    f.cycle()
+    check(f.decision() == 'continue' and 'work-time' not in f.state()['review_run']['current_decision']['reasons'],
+          'T-SC10: the carried replan is owed only once')
 finally:
     f.close()
 
@@ -2546,6 +2564,10 @@ try:
     f.reject(lambda: reconcile(f, ok=False), 'T-SC12: uncommitted edits stop the revision before review-start',
              'restore edits made under the old plan')
     (f.root / 'source.txt').write_text('initial\n')
+    (f.root / 'added-under-old-plan.txt').write_text('new file\n')
+    f.reject(lambda: reconcile(f, ok=False), 'T-SC12: a file created under the old plan also stops the revision',
+             'restore edits made under the old plan')
+    (f.root / 'added-under-old-plan.txt').unlink()
     reconcile(f)
     f.start()
     check(f.state()['cycle_count'] == 2, 'T-SC12: restored edits let the re-review start')
@@ -2569,25 +2591,43 @@ finally:
     f.close()
 
 
-# Acceptance progress is not compared across a revision.
-def revised_non_convergence(added, earlier=[]):
+# Meeting a criterion the revision added is not progress; meeting one that existed at the replan is.
+def criteria_cycle(f, satisfied=(), seconds=0, roots=None, observe=True):
+    f.start()
+    f.finish(roots, satisfied, unverified=[item for item in ('AC-1', 'AC-9') if item not in satisfied])
+    f.clock(seconds)
+    if observe:
+        f.observe()
+
+
+def revised_non_convergence(added, earlier=[], unobserved=False):
     f = Fixture()
     try:
-        f.with_issue(f.issue['body'] + '\n- AC-1: original criterion\n')
-        f.cycle(roots=('input defect', 'secondary defect', 'third defect'))
+        f.with_issue(f.issue['body'] + '\n\n## 受入条件\n\n- [ ] AC-1: original criterion\n')
+        criteria_cycle(f, roots=('input defect', 'secondary defect', 'third defect'))
         f.fix()
-        f.cycle(roots=('input defect', 'secondary defect'))
+        criteria_cycle(f, roots=('input defect', 'secondary defect'))
         f.fix()
-        f.cycle(seconds=1801)
+        criteria_cycle(f, seconds=1801)
         check(f.decision() == 'replan', 'T-SC14: fixture requires a replan')
         f.fix()
-        f.cycle(satisfied=earlier)
-        check(f.decision() == 'continue', 'T-SC14: one post-replan repair is not non-convergence')
-        f.with_issue(f.issue['body'] + '- AC-9: newly agreed criterion\n')
-        reconcile(f)
-        f.cycle(satisfied=earlier + added)
+        if unobserved:
+            # The revision arrives with the post-replan repair, whose observation it refuses.
+            f.with_issue(f.issue['body'] + '- [ ] AC-9: newly agreed criterion\n')
+            criteria_cycle(f, satisfied=earlier + added, observe=False)
+            f.observe(ok=False)
+            reconcile(f)
+            f.observe()
+        else:
+            criteria_cycle(f, satisfied=earlier)
+            check(f.decision() == 'continue', 'T-SC14: one post-replan repair is not non-convergence')
+            f.with_issue(f.issue['body'] + '- [ ] AC-9: newly agreed criterion\n')
+            reconcile(f)
+            check(f.state()['review_run']['reconciliations'][-1]['added_criteria'] == ['AC-9'],
+                  'T-SC14: the revision records the criteria it adds')
+            criteria_cycle(f, satisfied=earlier + added)
         f.fix()
-        f.cycle(satisfied=earlier + added)
+        criteria_cycle(f, satisfied=earlier + added)
         return f.decision()
     finally:
         f.close()
@@ -2597,6 +2637,10 @@ check(revised_non_convergence(['AC-9']) == 'stop',
       'T-SC14: a criterion added by the revision is not progress that suppresses the stop')
 check(revised_non_convergence([], earlier=['AC-1']) != 'stop',
       'T-SC14: progress made before the revision still suppresses the stop')
+check(revised_non_convergence(['AC-1'], unobserved=True) != 'stop',
+      'T-SC14: progress first observed after an unobserved-route revision still suppresses the stop')
+check(revised_non_convergence(['AC-9'], unobserved=True) == 'stop',
+      'T-SC14: an added criterion met after an unobserved-route revision is not progress')
 
 f = Fixture()
 try:
