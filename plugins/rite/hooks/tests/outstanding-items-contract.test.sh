@@ -24,14 +24,16 @@ echo "=== cleanup.md ステップ 12: 未完了事項の集約セクション (T
 assert_grep "Step 12 report has a 未完了事項 section" "$CLEANUP" '^未完了事項:$'
 assert_grep "Step 12 has the {outstanding_items_block} placeholder" "$CLEANUP" '\{outstanding_items_block\}'
 assert_grep "outstanding_items_block rule aggregates the same per-check annotations" "$CLEANUP" '付記文をそのまま箇条書きで列挙する'
-# T-01/T-02 感度強化: 7 個の check 名が enumeration 行に「この順序で」列挙されていることを
+# T-01/T-02 感度強化: 8 個の check 名が enumeration 行に「この順序で」列挙されていることを
 # line-anchored pattern で pin する (各 check 名は checklist 本体・判定 prose にも独立に出現するため、
 # assert_grep_in_section によるセクションスコープは同一セクション内の別行にも同語が出現すると
 # 判別できない — mutation テストで {local_branch_check} を enumeration から削除しても
 # 別行の言及に一致し続けて green のままになることを確認済み。1 行内の順序付き列挙を
 # 直接 anchor する本方式はこの穴を持たない)。
-assert_grep "outstanding_items_block enumeration lists all 7 checks in order (T-01/T-02, AC-1/AC-2)" \
-  "$CLEANUP" '\{base_update_check\}.*\{session_worktree_check\}.*\{local_branch_check\}.*\{projects_check\}.*\{wiki_ingest_check\}.*\{review_cleanup_check\}` / `\{wm_final_update_check\}` のうち'
+assert_grep "outstanding_items_block enumeration lists all 8 checks in order (T-01/T-02, AC-1/AC-2)" \
+  "$CLEANUP" '\{base_update_check\}.*\{session_worktree_check\}.*\{local_branch_check\}.*\{projects_check\}.*\{wiki_ingest_check\}.*\{review_cleanup_check\}` / `\{wm_final_update_check\}` / `\{issue_close_check\}` のうち'
+assert_grep "check count prose names 8 checks across steps 4/5/6/8/9/10/11" "$CLEANUP" '8 個の check が steps 4/5/6/8/9/10/11 の'
+assert_not_grep "no stale 7-check count remains" "$CLEANUP" '7 個の check|7 check の判定ルール'
 
 echo "=== cleanup.md ステップ 11/12: 作業メモリ最終更新の失敗を未完了事項に数える ==="
 ARCHIVE="$SCRIPT_DIR/../../skills/cleanup/references/archive-procedures.md"
@@ -53,8 +55,10 @@ assert_grep "wm check scopes markers by issue and picks the last occurrence" "$C
   '`issue=\{issue_number\}`（値の直後が `;` または行末）に該当する行を集め、\*\*その中の最後の出現 1 行だけを選ぶ\*\*'
 assert_grep "wm check combines completion and progress like local_branch_check" "$CLEANUP" \
   '\*\*completion 側と progress 側を独立に評価し、両方が `x` 相当のときだけ `x`\*\*'
-assert_grep "delegation mode still judges the wm check individually" "$CLEANUP" \
-  '`\{wm_final_update_check\}` = ステップ 11 / 冒頭の'
+assert_grep "delegation mode still judges the wm and issue-close checks individually" "$CLEANUP" \
+  '`\{wm_final_update_check\}` = ステップ 11 / `\{issue_close_check\}` = ステップ 10 / 冒頭の'
+assert_grep "delegation mode counts 4 plus the individually unchecked items" "$CLEANUP" \
+  '`\{n\}` は \*\*`4` \+ 個別判定で空欄になった check の件数\*\*'
 # archive-procedures の §3.5.1 / §3.5.2 の bash がそれぞれ marker を 1 本だけ (実行行で) emit し、
 # その payload が同じ節で helper の出力を受けた変数である。payload を定数や別節の変数に
 # 差し替えると、helper の失敗がステップ 12 に届かず完了扱いに戻るため、行全体を固定する。
@@ -68,6 +72,93 @@ for part in "3.5.1:completion:wm_status" "3.5.2:progress:wm_progress_status"; do
     | grep -cF "${var}=\$(bash {plugin_root}/hooks/issue-comment-wm-sync.sh update" || true)
   assert "archive-procedures §${sec} marker status comes from the helper output in the same section" "1" "$count"
 done
+
+echo "=== cleanup.md ステップ 10/12: 関連 Issue のクローズを読み直しで確かめ、失敗を未完了事項に数える ==="
+# base が default branch でない PR では Closes #N の自動クローズが働かず、クローズは cleanup だけが担う。
+# チェックリストが無条件 x だと、クローズ失敗が完了報告にも outstanding 件数にも出ない。
+assert_grep "checklist carries the issue-close check" "$CLEANUP" '^- \[\{issue_close_check\}\] 関連 Issue をクローズ$'
+assert_not_grep "checklist no longer hard-codes the issue close as done" "$CLEANUP" '^- \[x\] 関連 Issue をクローズ$'
+assert_grep "issue-close check allows exactly closed / already_closed / not_identified as x" "$CLEANUP" \
+  '^  - `ISSUE_CLOSE=closed` / `ISSUE_CLOSE=already_closed` / `ISSUE_CLOSE=not_identified` のいずれか: `x`（x とする値はこの 3 つに限る）$'
+assert_grep "issue-close check leaves failed values unchecked with an annotation" "$CLEANUP" \
+  '^  - 上記以外（`ISSUE_CLOSE=failed` かつ `reason=` が `close_failed` / .*: ` ` \+ 「⚠️ Issue #\{issue_number\} のクローズを確認できませんでした'
+assert_grep "issue-close check gives no_pr its own annotation without PR-number commands" "$CLEANUP" \
+  '^  - `ISSUE_CLOSE=failed` かつ `reason=no_pr`: ` ` \+ 「⚠️ 関連 PR が無いため Issue #\{issue_number\} をクローズしていません。`gh issue view \{issue_number\}'
+assert_grep "Error Handling points issue-close recovery to the step 12 annotation" "$CLEANUP" \
+  '^\| Issue Close Failure \| .*回復はステップ 12 の `\{issue_close_check\}` の付記に従う \|$'
+assert_grep "issue-close check leaves marker absence unchecked" "$CLEANUP" \
+  '^  - 該当行が無いとき: ` ` \+ 「⚠️ Issue #\{issue_number\} のクローズの実行結果を確認できませんでした.*marker 不在を成功と読んではならない'
+assert_grep "issue-close check scopes markers by issue and picks the last occurrence" "$CLEANUP" \
+  '^- `\{issue_close_check\}`: .*`issue=\{issue_number\}`（値の直後が `;` または行末）に該当する行を集め、\*\*その中の最後の出現 1 行だけを選ぶ\*\*'
+
+# §3.6 の bash が marker を実行行で 1 本だけ出し、その値が close より後の読み直しで決まることを固定する。
+# 読み直しを close より前に置く・payload を close の終了コードだけで決める変更は、閉じていない Issue を
+# closed と報告する経路に戻る。
+issue_close_section=$(awk '/^### 3\.6 /{f=1; next} f && /^### 3\.6\.4 /{exit} f' "$ARCHIVE")
+[ -n "$issue_close_section" ] || fail "archive-procedures §3.6 section could not be extracted"
+count=$(printf '%s\n' "$issue_close_section" \
+  | grep -cxF 'echo "[CONTEXT] ISSUE_CLOSE=$result; issue=$issue${reason:+; reason=$reason}"' || true)
+assert "archive-procedures §3.6 emits exactly one ISSUE_CLOSE marker" "1" "$count"
+close_line=$(printf '%s\n' "$issue_close_section" | grep -n 'gh issue close "\$issue"' | head -1 | cut -d: -f1)
+reread_line=$(printf '%s\n' "$issue_close_section" | grep -n '^  after=\$(gh issue view "\$issue" -R {owner_repo} --json state' | head -1 | cut -d: -f1)
+if [ -n "$close_line" ] && [ -n "$reread_line" ] && [ "$close_line" -lt "$reread_line" ]; then
+  pass "archive-procedures §3.6 re-reads the state after gh issue close"
+else
+  fail "archive-procedures §3.6 re-reads the state after gh issue close (close=${close_line:-none} reread=${reread_line:-none})"
+fi
+
+# §3.6 の bash を抽出し、PATH 先頭の gh stub で実行して marker の値を観測する。
+IC_TMP=$(mktemp -d "${TMPDIR:-/tmp}/rite-issue-close-test-XXXXXX")
+trap 'rm -rf "$IC_TMP"' EXIT
+awk '/^```bash$/ {inside=1; block=""; next}
+     /^```$/ {if (inside && index(block, "# cleanup-issue-close")) {printf "%s", block; exit}; inside=0}
+     inside {block=block $0 "\n"}' "$ARCHIVE" > "$IC_TMP/block.sh"
+if [ ! -s "$IC_TMP/block.sh" ]; then
+  fail "archive-procedures §3.6 bash block (# cleanup-issue-close) could not be extracted"
+else
+  mkdir -p "$IC_TMP/bin"
+  # 1 回目の issue view は close 前、2 回目以降は close 後の読み直し。GH_AFTER=ERR は読み直しの失敗、
+  # GH_PR_REFS=ERR は PR 本文・ブランチ名の取得失敗。呼び出しはすべて calls に記録する
+  cat > "$IC_TMP/bin/gh" <<'STUB'
+#!/bin/bash
+echo "$1 $2" >> "$GH_STUB_DIR/calls"
+case "$1 $2" in
+  "pr view")
+    [ "$GH_PR_REFS" = ERR ] && exit 1
+    printf '%s\n' "$GH_PR_REFS" ;;
+  "issue view")
+    n=$(( $(cat "$GH_STUB_DIR/views" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$GH_STUB_DIR/views"
+    if [ "$n" -eq 1 ]; then echo "$GH_BEFORE"; else [ "$GH_AFTER" = ERR ] && exit 1; echo "$GH_AFTER"; fi ;;
+  "issue close") echo close >> "$GH_STUB_DIR/closes"; exit "${GH_CLOSE_RC:-0}" ;;
+  *) exit 99 ;;
+esac
+STUB
+  chmod +x "$IC_TMP/bin/gh"
+  # $1=issue $2=before $3=close rc $4=after $5=PR 本文とブランチ名（省略時は Issue 41 を閉じる PR）
+  # $6=PR 番号（省略時は 900。空文字は PR 無しで続行した cleanup）
+  # → ISSUE_CLOSE marker 行と、gh issue close / gh 全体の呼び出し回数
+  run_issue_close() {
+    local d; d=$(mktemp -d "$IC_TMP/case-XXXXXX")
+    sed -e "s|{issue_number}|$1|g" -e 's|{owner_repo}|owner/repo|g' -e "s|{pr_number}|${6-900}|g" "$IC_TMP/block.sh" > "$d/run.sh"
+    GH_STUB_DIR="$d" GH_BEFORE="$2" GH_CLOSE_RC="$3" GH_AFTER="$4" GH_PR_REFS="${5-Closes #41${nl}fix/issue-41-x}" \
+      PATH="$IC_TMP/bin:$PATH" bash "$d/run.sh" 2>/dev/null | grep '^\[CONTEXT\] ISSUE_CLOSE=' | tail -1
+    printf 'closes=%s calls=%s\n' "$(cat "$d/closes" 2>/dev/null | wc -l | tr -d ' ')" "$(cat "$d/calls" 2>/dev/null | wc -l | tr -d ' ')"
+  }
+  nl=$'\n'
+  assert "OPEN → close → re-read CLOSED is closed" "[CONTEXT] ISSUE_CLOSE=closed; issue=41${nl}closes=1 calls=4" "$(run_issue_close 41 OPEN 0 CLOSED)"
+  assert "close command failure is failed/close_failed" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=close_failed${nl}closes=1 calls=3" "$(run_issue_close 41 OPEN 1 CLOSED)"
+  assert "close succeeds but re-read stays OPEN is failed" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=state_OPEN${nl}closes=1 calls=4" "$(run_issue_close 41 OPEN 0 OPEN)"
+  assert "re-read failure after close is failed/verify_failed, not closed" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=verify_failed${nl}closes=1 calls=4" "$(run_issue_close 41 OPEN 0 ERR)"
+  assert "already CLOSED is already_closed without running gh issue close" "[CONTEXT] ISSUE_CLOSE=already_closed; issue=41${nl}closes=0 calls=2" "$(run_issue_close 41 CLOSED 0 CLOSED)"
+  assert "unidentified issue is not_identified without calling gh" "[CONTEXT] ISSUE_CLOSE=not_identified; issue=${nl}closes=0 calls=0" "$(run_issue_close '' OPEN 0 CLOSED)"
+  # 取り違え: PR が参照しない Issue は、OPEN でも既に CLOSED でも閉じずに failed にする
+  assert "issue the PR does not reference is target_mismatch without closing" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=target_mismatch${nl}closes=0 calls=1" "$(run_issue_close 41 OPEN 0 CLOSED "Closes #57${nl}fix/issue-57-x")"
+  assert "already CLOSED issue the PR does not reference is target_mismatch, not already_closed" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=target_mismatch${nl}closes=0 calls=1" "$(run_issue_close 41 CLOSED 0 CLOSED "Closes #57${nl}fix/issue-57-x")"
+  assert "a longer number sharing the prefix is not a reference" "[CONTEXT] ISSUE_CLOSE=failed; issue=4; reason=target_mismatch${nl}closes=0 calls=1" "$(run_issue_close 4 OPEN 0 CLOSED)"
+  assert "branch name issue-N alone is a reference" "[CONTEXT] ISSUE_CLOSE=closed; issue=41${nl}closes=1 calls=4" "$(run_issue_close 41 OPEN 0 CLOSED "body without keyword${nl}fix/issue-41-x")"
+  assert "cleanup without a PR is no_pr without calling gh" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=no_pr${nl}closes=0 calls=0" "$(run_issue_close 41 OPEN 0 CLOSED "Closes #41" "")"
+  assert "PR read failure is pr_view_failed without closing" "[CONTEXT] ISSUE_CLOSE=failed; issue=41; reason=pr_view_failed${nl}closes=0 calls=1" "$(run_issue_close 41 OPEN 0 CLOSED ERR)"
+fi
 # 判定基準は絵文字 prefix ではなくチェックボックスの空欄/x であることを pin する。
 # 絵文字 prefix 一致方式は {local_branch_check} の BRANCH_DELETE_FAILED/UNMERGED（prefix 無しの
 # bare-text 付記）を取りこぼし、まさに T-02 が守るべきシナリオ（ブランチ削除失敗）で
