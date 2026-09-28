@@ -72,7 +72,7 @@ stderr:
 Reason SoT:
   input_invalid          unreadable or malformed input, duplicate candidate id
   head_mismatch          adoption.head differs from the review's commit_sha
-  git_failed             git show / git diff failed for the head or base
+  git_failed             git ls-tree / show / diff failed for the head, base or cited path
   candidates_uncovered   candidates no record covers (ids lists them)
   unknown_candidate      a record id that is not a candidate
   record_invalid         ids / origin / present / tracker / prior field malformed
@@ -150,9 +150,10 @@ class Repo:
     def lines(self, path):
         # None only when the path is not a file at the head; any other git failure is git_failed.
         if path not in self._files:
-            self.git("rev-parse", "--verify", "--quiet", f"{self.head}^{{commit}}")
-            entry = self.git("ls-tree", self.head, "--", path).split()
-            is_file = len(entry) >= 2 and entry[1] == "blob"
+            # ls-tree lists the children of a directory path, so only an entry named exactly
+            # like the path counts: "mode type sha\tname" per NUL-separated entry.
+            entries = [e.split("\t", 1) for e in self.git("ls-tree", "-z", self.head, "--", path).split("\0") if e]
+            is_file = any(len(e) == 2 and e[1] == path and e[0].split()[1] == "blob" for e in entries)
             self._files[path] = self.git("show", f"{self.head}:{path}").split("\n") if is_file else None
         return self._files[path]
 
@@ -162,8 +163,9 @@ class Repo:
             self._hunks = {}
             old = new = None
             in_hunk = False
-            diff = self.git("-c", "core.quotePath=false", "diff", "-U0", "--no-color",
-                            "--no-ext-diff", f"{self.base}...{self.head}")
+            # The user's diff.noprefix / diff.mnemonicPrefix and textconv drivers change the output.
+            diff = self.git("-c", "core.quotePath=false", "diff", "-U0", "--no-color", "--no-ext-diff",
+                            "--no-textconv", "--src-prefix=a/", "--dst-prefix=b/", f"{self.base}...{self.head}")
             # --- / +++ are file headers only between "diff --git" and the first @@: with -U0 a
             # removed "-- x" or added "++ x" content line also starts with "--- " / "+++ ".
             for line in diff.split("\n"):

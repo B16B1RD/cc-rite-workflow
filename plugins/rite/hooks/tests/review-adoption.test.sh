@@ -191,6 +191,7 @@ for contract, reason in [
         ({'ref': 'AC-9'}, 'contract_not_found'),
         ({'ref': 'src/missing.sh:1', 'text': 'x'}, 'contract_not_found'),
         ({'ref': 'src/tool.sh:40', 'text': 'echo'}, 'contract_not_found'),
+        ({'ref': 'src/tool.sh:2', 'text': 'echo'}, 'contract_not_found'),
         ({'ref': 'src/tool.sh:3', 'text': 'exit 1'}, 'contract_not_found'),
         ({'ref': 'docs/usage.md:3', 'text': 'Exit: 1 when NAME is empty'}, 'contract_not_found'),
         ({'ref': 'docs/usage.md:3'}, 'contract_not_found'),
@@ -246,6 +247,8 @@ check(single(rec(prior=prior('F-11', 'src/tool.sh:3', 'recorded')))['exit'] == '
 check(single(rec(prior=prior('F-14', 'src/caller.sh:3', 'issued')))['exit'] == 'ADOPT', 'issued is not terminal')
 check(single(rec(V=False, contract=None, reason='r', prior=prior('F-15', 'src/tool.sh:2', 'rejected')))['exit']
       == 'REJECT', 'a legacy four-column rejected row is re-judged')
+check(single(rec(present=False, evidence='gone', prior=prior('F-12', 'docs/usage.md:3', 'REJECT')))['exit']
+      == 'RECONCILE', 'a contradicting prior beats resolved')
 refused([rec(prior=prior('F-99', 'src/tool.sh:3', 'recorded'))], 'prior_not_found', 'F-01')
 refused([rec(prior=prior('F-11', 'src/tool.sh:4', 'recorded'))], 'prior_not_found', 'F-01')
 refused([rec(prior=prior('F-11', 'src/tool.sh:3', 'recorded', premise=''))], 'prior_not_found', 'F-01')
@@ -270,6 +273,13 @@ for position in ('db/q.sql:-9', 'db/q.sql:-2', 'lib/inc.txt:+10', 'lib/inc.txt:-
     check(single(rec(origin='pr', origin_cause={'diff': [position], 'path': 'p'}))['exit'] == 'ADOPT', position)
 for position in ('db/q.sql:-10', 'lib/inc.txt:+11'):
     refused([rec(origin='pr', origin_cause={'diff': [position], 'path': 'p'})], 'origin_cause_not_found', 'F-01')
+# The user's prefix settings change the diff headers; positions are still found.
+for setting in ('diff.noprefix', 'diff.mnemonicPrefix'):
+    git(repo, 'config', setting, 'true')
+    for position in ('src/tool.sh:-3', 'lib/inc.txt:+10'):
+        check(single(rec(origin='pr', origin_cause={'diff': [position], 'path': 'p'}))['exit'] == 'ADOPT',
+              (setting, position))
+    git(repo, 'config', '--unset', setting)
 for cause, reason in [
         ({'diff': ['src/tool.sh:+3'], 'path': 'p'}, 'origin_cause_not_found'),
         ({'diff': ['src/tool.sh:-2'], 'path': 'p'}, 'origin_cause_not_found'),
@@ -287,6 +297,8 @@ suspect = single(rec(origin='unknown'))
 check((suspect['origin'], suspect['action'], suspect['file'], suspect['pr_blocking'])
       == ('unknown', 'hold_pr', False, True), suspect)
 check(single(rec(origin='unknown', tracker=7))['pr_blocking'] is True, 'a link keeps a suspected PR origin blocking')
+pr_link = single(rec(origin='pr', origin_cause=removed, tracker=7))
+check((pr_link['exit'], pr_link['pr_blocking']) == ('LINK', True), 'a link keeps a PR origin blocking')
 
 # An investigation is filed only with all four proposition items and the classifier's acceptance.
 full = {'claim': 'the stop interval closes as work', 'reach': 'usage limit during a batch run',
@@ -320,7 +332,7 @@ check((again.returncode, again.stdout, again.stderr) == (varied.returncode, vari
 
 # Malformed records and inputs stop.
 refused([rec()], 'head_mismatch', '', head_value=base)
-# A git failure is git_failed, not a missing citation; a path absent at the head stays contract_not_found.
+# A git failure is git_failed, not a missing citation; a directory path is not a citable file.
 missing_head = '0' * 40
 cited = rec(contract={'ref': 'docs/usage.md:3', 'text': 'Exit: 2 when NAME is empty'})
 refused([cited], 'git_failed', 'F-01', head_value=missing_head, review_head=missing_head)
@@ -328,13 +340,21 @@ write_inputs([cited])
 outside = invoke(repo_root=work)
 check(outside.returncode == 1 and outside.stderr.splitlines()[-1]
       == '[CONTEXT] REVIEW_ADOPTION=error; reason=git_failed; ids=F-01', outside.stderr)
-refused([rec(contract={'ref': 'src:1', 'text': 'x'})], 'contract_not_found', 'F-01')
+for ref in ('src:3', 'src/:3'):
+    refused([rec(contract={'ref': ref, 'text': 'caller.sh'})], 'contract_not_found', 'F-01')
 refused([rec(C='unknown', reason='')], 'reason_missing', 'F-01')
 refused([rec(present=False, evidence='')], 'evidence_missing', 'F-01')
 for fields in ({'V': 1}, {'V': 'yes'}, {'V': None}):
     refused([rec(**fields)], 'vct_invalid', 'F-01')
 for fields in ({'origin': 'pre-existing'}, {'present': 'no'}, {'tracker': 0}, {'tracker': True}):
     refused([rec(**fields)], 'record_invalid', 'F-01')
+refused([rec(['F-01']), rec([])], 'record_invalid', '', cands=['F-01'])
+for broken in ('{', json.dumps({'classifications': [], 'adoption': {'records': [rec()]}})):
+    write_inputs([rec()])
+    classification.write_text(broken)
+    result = invoke()
+    check(result.returncode == 1 and result.stderr.splitlines()[-1]
+          == '[CONTEXT] REVIEW_ADOPTION=error; reason=input_invalid; ids=', (broken, result.stderr))
 write_inputs([rec()])
 check(invoke(['--classification', str(classification)]).returncode == 2, 'missing arguments are a usage error')
 
