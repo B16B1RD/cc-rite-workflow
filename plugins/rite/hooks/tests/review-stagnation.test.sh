@@ -2424,7 +2424,9 @@ try:
                                  ('run_id', 'other-run', 'approval run id'),
                                  ('review_context', dict(context, cycle_count=9), 'approval review_context'),
                                  ('pr_number', 72, 'approval PR'),
-                                 ('reason', '  ', 'approval reason')):
+                                 ('issue_number', 43, 'approval issue'),
+                                 ('reason', '  ', 'approval reason'),
+                                 ('requested_at', '  ', 'approval requested_at')):
         bad = revision_record(f)
         bad[field] = value
         f.reject(lambda: reconcile(f, bad, ok=False), 'T-SC03: mismatched approval ' + field + ' is refused', reason)
@@ -2468,6 +2470,54 @@ try:
     advanced = f.state()
     reconcile(f, record)
     check(f.state() == advanced, 'T-SC05: replaying the approval after the context advanced changes nothing')
+finally:
+    f.close()
+
+# The other states a revision cannot be recorded in, and an approval reused for another body.
+f = Fixture()
+try:
+    f.start()
+    f.reject(lambda: reconcile(f, ok=False), 'T-SC15: a collecting cycle cannot be reconciled',
+             'all reviewers must be collected')
+    f.finish()
+    f.clock()
+    f.observe()
+    revised = f.issue['body'].replace('repair', 'rewrite')
+    f.with_issue(revised)
+    f.commit()
+    f.reject(lambda: reconcile(f, ok=False), 'T-SC15: a revision after HEAD moved is refused',
+             'HEAD differs from review context')
+    f.run(['git', 'reset', '-q', '--hard', 'HEAD~1'])
+    receipt = Path(f.state()['review_run']['observations'][-1]['result_path'])
+    saved = receipt.read_bytes()
+    document = json.loads(saved)
+    document['findings'][0]['description'] += ' (edited)'
+    dump(receipt, document)
+    f.reject(lambda: reconcile(f, ok=False), 'T-SC15: a changed review receipt is refused',
+             'observed review receipt is missing or changed')
+    receipt.write_bytes(saved)
+    record = revision_record(f)
+    reconcile(f, record)
+    f.with_issue(revised.replace('rewrite', 'rework'))
+    reconcile(f, record)
+    recorded = f.state()['review_run']['reconciliations']
+    check(len(recorded) == 2 and recorded[-1]['issue_body'] == f.issue['body'],
+          'T-SC15: an approval reused for another body is recorded again, not replayed')
+finally:
+    f.close()
+
+# A cycle refused for the revision still needs its saved receipt.
+f = Fixture()
+try:
+    f.cycle()
+    f.fix()
+    f.start()
+    f.finish()
+    f.with_issue(f.issue['body'].replace('repair', 'rewrite'))
+    receipts = sorted(Path(f.temp.name, '.rite/review-results').glob('71-*.json'))
+    receipts[-1].unlink()
+    f.reject(lambda: reconcile(f, ok=False), 'T-SC15: an unobserved cycle without its saved receipt is refused',
+             'saved review receipt missing')
 finally:
     f.close()
 
@@ -2644,7 +2694,7 @@ def revision_case(case):
         f.fix()
         criteria_cycle(f, initial, roots=('input defect', 'secondary defect'))
         f.fix()
-        criteria_cycle(f, initial, met=['AC-2'] if case == 'lapsed' else [], seconds=1801)
+        criteria_cycle(f, initial, met=dict(lapsed=['AC-2'], rewon=['AC-1']).get(case, []), seconds=1801)
         check(f.decision() == 'replan', 'T-SC14: fixture requires a replan')
         f.fix()
         if case in ('lapsed', 'separator'):
@@ -2674,6 +2724,8 @@ def revision_case(case):
                                         indented=(FLATTENED, [], ['AC-1']), disguised=(DISGUISED, [], ['AC-1']),
                                         marked=(ORIGINAL, [], ['AC-2']), logged=(ORIGINAL, [], ['AC-2']),
                                         contract=(ORIGINAL, [], ['AC-2']), broken=(ORIGINAL, [], ['AC-2']),
+                                        crlf=(ORIGINAL, [], ['AC-2']), spaced=(ORIGINAL, [], ['AC-2']),
+                                        rewon=(REWORDED, ['AC-1'], []),
                                         refixed=(REWORDED, [], []))[case]
             criteria_cycle(f, initial, met=before)
             if case == 'disguised':
@@ -2688,13 +2740,18 @@ def revision_case(case):
             elif case == 'contract':
                 head, rule, rest = f.issue['body'].rpartition('\n</details>\n')
                 f.with_issue(head + '\n' + LOG + rule.lstrip('\n') + rest)
+            elif case == 'crlf':
+                # The helper's marker keeps its shape inside indentation and a CRLF line end.
+                f.with_issue(f.issue['body'].rstrip('\n') + '\n\n  <!-- rite:nbr:comment-id:4242 -->\r\n')
+            elif case == 'spaced':
+                f.with_issue(f.issue['body'].rstrip('\n') + '\n\n<!-- rite:nbr:comment-id: 4242 -->\n')
             elif case == 'broken':
                 # A marker the helper could not have written: the check ignores it, the criterion keeps it.
                 f.with_issue(f.issue['body'].rstrip('\n') + '\n\n<!-- rite:nbr:comment-id: -->\n')
             else:
                 revise(f, base, final)
             criteria_cycle(f, final, met=after)
-            met = ['AC-1'] if case == 'refixed' else after
+            met = ['AC-1'] if case in ('refixed', 'rewon') else after
         f.fix()
         criteria_cycle(f, final, met=met)
         return f.decision()
@@ -2714,6 +2771,9 @@ for case, stops, label in (
         ('logged', False, 'a Decision Log section triage opens leaves the last criterion unchanged'),
         ('contract', False, 'a Decision Log section opened inside the contract block leaves the last criterion unchanged'),
         ('broken', True, 'a broken marker added to the last criterion without a recorded revision rewords it'),
+        ('crlf', False, 'the record marker indented or ending in CR leaves the last criterion unchanged'),
+        ('spaced', True, 'a marker with a space in its value added without a recorded revision rewords the criterion'),
+        ('rewon', False, 'a criterion met at the replan, reworded, seen unmet and met again is progress'),
         ('lapsed', True, 'a criterion met at the replan that lapses and returns is not progress'),
         ('separator', False, 'a Unicode line separator in a criterion does not break the progress check'),
         ('restored', False, 'a criterion removed and restored with its text keeps its earlier unmet observation'),
