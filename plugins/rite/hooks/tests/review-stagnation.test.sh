@@ -2367,5 +2367,170 @@ try:
 finally:
     f.close()
 
+# An agreed Issue revision continues the same run instead of opening a fresh budget.
+HINT = 'review-reconcile'
+
+
+def revision_record(fixture, reason='user agreed to revise the criterion', requested_at='2026-01-03T00:00:00Z'):
+    return dict(kind='specification-change', run_id=fixture.state()['review_run']['run_id'],
+                review_context=fixture.context(), issue_number=42, pr_number=71,
+                reason=reason, requested_at=requested_at)
+
+
+def reconcile(fixture, record=None, ok=True):
+    path = fixture.private / 'revision.json'
+    dump(path, record or revision_record(fixture))
+    return fixture.flow('review-reconcile', '--issue', fixture.issue_path, '--approval', path, ok=ok)
+
+
+def refused_with_hint(fixture, operation, label, message):
+    before = fixture.state_path.read_bytes()
+    result = operation()
+    check(result.returncode != 0 and message in result.stderr and HINT in result.stderr, label)
+    check(fixture.state_path.read_bytes() == before, label + ': last state retained')
+
+
+def plan_for(fixture, body):
+    plan = fixture.plan()
+    plan['issue_body'] = body
+    dump(fixture.plan_path, plan)
+
+
+hint_source = importlib.import_module('review-cycle')
+check(('## ' + hint_source.SPEC_CHANGE_SECTION + '\n') in (plugin / 'references/review-stagnation.md').read_text(),
+      'T-SC00: the recovery hint names a section that exists in the reference')
+
+# Revision recorded on an observed cycle, then the reviewed HEAD is re-reviewed.
+f = Fixture()
+try:
+    f.cycle(roots=['input defect'])
+    old_spec, context = f.issue['body'], f.context()
+    run_id, phase = f.state()['review_run']['run_id'], f.state()['phase']
+    revised = old_spec.replace('repair', 'rewrite')
+    f.reject(lambda: reconcile(f, ok=False), 'T-SC01: an unchanged Issue has nothing to reconcile', 'nothing to reconcile')
+    f.with_issue(revised)
+    plan_for(f, revised)
+    refused_with_hint(f, lambda: f.scope(ok=False), 'T-SC02: a revised fix plan stops before reconcile',
+                      'fix specification differs from diagnosed observation')
+    plan_for(f, old_spec)
+    refused_with_hint(f, lambda: f.scope(ok=False), 'T-SC02: an old fix plan stops against the latest Issue',
+                      'Issue specification changed or mismatched')
+    for field, value, reason in (('kind', 'explicit-fresh-entry', 'approval kind'),
+                                 ('run_id', 'other-run', 'approval run id'),
+                                 ('review_context', dict(context, cycle_count=9), 'approval review_context'),
+                                 ('pr_number', 72, 'approval PR'),
+                                 ('reason', '  ', 'approval reason')):
+        bad = revision_record(f)
+        bad[field] = value
+        f.reject(lambda: reconcile(f, bad, ok=False), 'T-SC03: mismatched approval ' + field + ' is refused', reason)
+    record = revision_record(f)
+    result = reconcile(f, record)
+    printed = json.loads(result.stdout)
+    state = f.state()
+    recorded = state['review_run']['reconciliations']
+    check(printed['reconciliations'] == recorded and len(recorded) == 1
+          and recorded[0]['review_context'] == context and recorded[0]['after_cycle'] == context['cycle_count']
+          and recorded[0]['issue_body'] == revised and recorded[0]['reason'] == record['reason']
+          and recorded[0]['requested_at'] == record['requested_at'],
+          'T-SC04: reconcile records the approval, context, boundary and revised body on the run')
+    check(state['phase'] == phase and state['next_action'] == '/rite:iterate 71'
+          and state['review_run']['run_id'] == run_id and state['cycle_count'] == 1,
+          'T-SC04: reconcile keeps phase, run and counter and names the re-review')
+    replay = f.state_path.read_bytes()
+    reconcile(f, record)
+    check(f.state_path.read_bytes() == replay, 'T-SC05: the same approval is a byte-identical no-op')
+    for body in (revised, old_spec):
+        plan_for(f, body)
+        f.reject(lambda: f.scope(ok=False), 'T-SC06: no fix plan passes before the revised re-review')
+    fixes = len(f.state()['review_run']['fixes'])
+    f.start()
+    f.finish(roots=['input defect'])
+    f.clock(1)
+    f.observe()
+    run = f.state()['review_run']
+    check(run['run_id'] == run_id and f.state()['cycle_count'] == 2 and len(run['fixes']) == fixes,
+          'T-SC07: the re-review stays in the run, advances the counter and counts no fix')
+    check([entry['input']['issue_body'] for entry in run['observations']] == [old_spec, revised],
+          'T-SC07: the old observation is retained and the new one carries the revised Issue')
+    check(run['current_decision']['action'] == 'continue' and run['trend'].get('TREND_DIVERGENCE') == 'insufficient',
+          'T-SC07: the revised observation is judged by the unchanged gates')
+    f.fix()
+    check('pending_fix' in f.state()['review_run'], 'T-SC07: the revised observation admits a checked and verified fix')
+    advanced = f.state()
+    reconcile(f, record)
+    check(f.state() == advanced, 'T-SC05: replaying the approval after the context advanced changes nothing')
+finally:
+    f.close()
+
+# Revision that makes the next observation fail, recorded twice.
+f = Fixture()
+try:
+    f.cycle(roots=['input defect'])
+    old_spec = f.issue['body']
+    first, second = old_spec.replace('repair', 'rewrite'), old_spec.replace('preserve', 'retain')
+    f.with_issue(first)
+    reconcile(f, revision_record(f))
+    f.with_issue(second)
+    f.start()
+    f.finish(roots=['input defect'])
+    f.clock(1)
+    refused_with_hint(f, lambda: f.observe(ok=False), 'T-SC08: a second unrecorded revision stops the observation',
+                      'Issue specification changed within run')
+    stale = copy.deepcopy(f.observed)
+    stale['issue_body'] = first
+    dump(f.input, stale)
+    refused_with_hint(f, lambda: f.observe(ok=False), 'T-SC08: an observation copied before the revision stops',
+                      'latest Issue specification differs from observation')
+    dump(f.input, f.observed)
+    later = revision_record(f, reason='second agreed revision', requested_at='2026-01-04T00:00:00Z')
+    reconcile(f, later)
+    state = f.state()
+    records = state['review_run']['reconciliations']
+    check(len(records) == 2 and records[1]['review_context'] == f.context() and records[1]['after_cycle'] == 1
+          and records[1]['issue_body'] == second and state['next_action'] == '/rite:recover 42',
+          'T-SC09: an unobserved cycle is reconciled with the boundary before it')
+    f.with_issue(first)
+    dump(f.input, stale)
+    f.reject(lambda: f.observe(ok=False), 'T-SC09: only the latest revision is the specification',
+             'Issue specification changed within run')
+    f.with_issue(second)
+    dump(f.input, f.observed)
+    f.observe()
+    check(len(f.state()['review_run']['observations']) == 2, 'T-SC09: the hinted route saves the revised observation')
+finally:
+    f.close()
+
+# States the revision cannot reopen.
+f = Fixture()
+try:
+    f.cycle(seconds=1801)
+    check(f.decision() == 'replan', 'T-SC10: fixture requires a replan')
+    f.plan(replan=True)
+    f.replan()
+    f.with_issue(f.issue['body'].replace('repair', 'rewrite'))
+    refused_with_hint(f, lambda: f.replan(ok=False), 'T-SC10: a registered replan stops on the revised Issue',
+                      'latest Issue specification differs from replan')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    f.cycle(seconds=1801)
+    f.with_issue(f.issue['body'].replace('repair', 'rewrite'))
+    f.reject(lambda: reconcile(f, ok=False), 'T-SC10: a pending replan cannot be reconciled away', 'review-replan')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    diverge(f)
+    f.with_issue(f.issue['body'].replace('repair', 'rewrite'))
+    f.reject(lambda: reconcile(f, ok=False), 'T-SC11: a stopped run cannot be reconciled', 'review run stopped')
+    f.plan()
+    refused = retry(f, ok=False)
+    check(refused.returncode != 0 and HINT not in refused.stderr, 'T-SC11: a stopped run is not pointed at reconcile')
+finally:
+    f.close()
+
 print('PASS: review stagnation: ' + str(checks) + ' assertions; real clocks, receipts, repairs and retained stops')
 PYTEST

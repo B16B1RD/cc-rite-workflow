@@ -860,6 +860,7 @@ rationale: references/rationale.md#resume-routes-no-state-read
   - `ERROR: rite-config.yml を読めません: <path>`: 表示されたパスの権限を直す
   - `main checkout root を解決できません (state-path-resolve.sh rc=…)`: `state-path-resolve.sh` を実行できなかった（`rc=127` は欠落、`rc=126` は読めない）。直前の `ERROR: bash: …` 行に出るファイルを確かめ、プラグインを取得し直す（プラグインの破損 / 版 skew）
 - `[fix:error]` 時: [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) に従い 1 回だけ自動再試行し、再失敗時は停止する
+- 合意して Issue を改訂したことで仕様不一致の停止が起きた場合: 同じ run のまま [仕様改訂の記録](../../references/review-stagnation.md#仕様改訂の記録) の手順で `review-reconcile` し、改訂後の仕様で再レビューしてから進む
 - reviewer が non-deterministic に振動する場合: 収束トレンドの発散または `safety.max_review_cycles`（既定 15）到達でステップ 6 に進み、人間に問わず停止する。batch は `[iterate:max-cycles-reached]` で当該 Issue を failed 扱いにしてバッチを停止し、対話は `[iterate:max-cycles-stopped]` で終了する。再開は `review_run` がない legacy state では `/rite:iterate {pr_number}` の明示的な再実行、`review_run` がある run ではステップ 6.2 の `{resume_routes}` が名指しする経路で行う。
 
 ---

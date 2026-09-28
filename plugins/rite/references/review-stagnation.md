@@ -96,7 +96,7 @@ rm "$clock_file"
 
 `acceptance.satisfied` は保存結果の `acceptance_criteria[]` のうち `status:satisfied`、または `status:human-verified` かつ `head` が保存結果の `commit_sha` と一致し `at` が文字列の行の `id` 集合に完全一致させる。各行の evidence は非空とする。受入条件表が `skipped:no_issue|no_ac_section` の場合は空配列、表の欠損は error とする。`skipped` は最新 Issue 本文を `acceptance-criteria-check.sh extract` にかけた結果と照合し、受入条件節があるのに `no_ac_section`、Issue に属するのに `no_issue`、抽出が失敗した場合は観測を保存しない。
 
-欠陥・再現条件・違反契約の組が同じものを同一根因とする。親は過去の根因記述と照合し、言い換えや指摘 ID の変化だけで別根因にしない。解消は全指摘・実測の再現結果から判断し、指摘数の減少だけで扱わない。受入条件の識別文は同じ意味なら維持し、保存済み充足集合と最新仕様を照合する。同一 run で Issue 本文が変わった場合は旧仕様の進展を流用せず error とする。本文の照合（観測・`check` / `verify`・見直し・修正計画の gate の全経路で共通）は、`## 9. Decision Log` 節内のトリアージ書式行（`- YYYY-MM-DD D-NN: … / Reason: … / Impact: …`）と、行全体が `<!-- rite:nbr:comment-id:… -->` の行（非実測記録 helper が自分の marker と認める形。CRLF 行末・値の空白を含む）を除いて行う。この 2 種は rite 自身が review 中に Issue へ追記する記録であり、誰が書いたかを問わず仕様変更とみなさない（追記と同様に、これらの行の削除・差し替えも検出しない）。節は見出し行の完全一致で始まり、次の `## ` 見出し・`---`・`</details>`・本文末のいずれかで終わる（トリアージの追記先と同じ境界）。除外行と空行だけになった節は見出しごと除外し、除去した行が残す空行と本文末尾の改行は照合しない（本文末尾の空白は照合する）。コードフェンス（行頭の空白 3 つまでに続く 3 つ以上の backtick（後続に backtick を含まない行）または `~` で開き、同じ文字が同数以上並ぶ行で閉じる。閉じなければ本文末まで続く）内の行は除外も見出しの計数もしない。フェンス外で見出しが 2 回以上現れる本文は境界を一意に決められないため、除外せず原文どおり比較し、その理由を stderr に出す。節外の同書式行・自由書式の Decision Log 行・それ以外の HTML コメント・Goal / 受入条件の変更は仕様変更として error になる。観測に保存する `issue_body` は原文のまま置く。書式変更やラベル追加を進展とせず、新たな充足の実測根拠を `acceptance.evidence` に保存する。
+欠陥・再現条件・違反契約の組が同じものを同一根因とする。親は過去の根因記述と照合し、言い換えや指摘 ID の変化だけで別根因にしない。解消は全指摘・実測の再現結果から判断し、指摘数の減少だけで扱わない。受入条件の識別文は同じ意味なら維持し、保存済み充足集合と最新仕様を照合する。同一 run で Issue 本文が変わった場合は旧仕様の進展を流用せず error とする（合意した改訂は下の「仕様改訂の記録」で受け入れる）。本文の照合（観測・`check` / `verify`・見直し・修正計画の gate の全経路で共通）は、`## 9. Decision Log` 節内のトリアージ書式行（`- YYYY-MM-DD D-NN: … / Reason: … / Impact: …`）と、行全体が `<!-- rite:nbr:comment-id:… -->` の行（非実測記録 helper が自分の marker と認める形。CRLF 行末・値の空白を含む）を除いて行う。この 2 種は rite 自身が review 中に Issue へ追記する記録であり、誰が書いたかを問わず仕様変更とみなさない（追記と同様に、これらの行の削除・差し替えも検出しない）。節は見出し行の完全一致で始まり、次の `## ` 見出し・`---`・`</details>`・本文末のいずれかで終わる（トリアージの追記先と同じ境界）。除外行と空行だけになった節は見出しごと除外し、除去した行が残す空行と本文末尾の改行は照合しない（本文末尾の空白は照合する）。コードフェンス（行頭の空白 3 つまでに続く 3 つ以上の backtick（後続に backtick を含まない行）または `~` で開き、同じ文字が同数以上並ぶ行で閉じる。閉じなければ本文末まで続く）内の行は除外も見出しの計数もしない。フェンス外で見出しが 2 回以上現れる本文は境界を一意に決められないため、除外せず原文どおり比較し、その理由を stderr に出す。節外の同書式行・自由書式の Decision Log 行・それ以外の HTML コメント・Goal / 受入条件の変更は仕様変更として error になる。観測に保存する `issue_body` は原文のまま置く。書式変更やラベル追加を進展とせず、新たな充足の実測根拠を `acceptance.evidence` に保存する。
 
 ## 見直し・修正・再開
 
@@ -115,6 +115,42 @@ rm "$clock_file"
 証跡を 1 つも持たない `collecting` cycle を `flow-state.sh review-abandon --reason <理由>` で放棄した run は、cycle を失っても継続する。放棄記録（`review_cycle_abandoned` のうち当該 `run_id` の最新要素。選択時は他 run の記録を除外し、最新要素が不正でも過去の要素へ戻らない）が session・PR・`run_id`・counter で run と一致する限り、cycle 不在の run を通常の `set` と `review-start` が受理する。再試行は同じ run・同じ counter・新しい HEAD で凍結し、`advance()` は呼ばない — 放棄された cycle は receipt も検証済み修正も持たないため計上する修正が無く、counter を進めると観測列に穴が開いて連続 cycle を要求する再発判定と矛盾する。一致しない記録や記録の無い cycle 不在は破損として全書き込みを拒否する。放棄後は検証済み receipt が無いため `fix` / `ready` への遷移も拒否し、別 Issue / PR へ切り替えるときは run を `review_run_history` へ退避する。退避の時点で live の counter は 0 に戻る（切替先に復元対象があればその counter を戻す）が、counter は退避する run に同梱されるため失われない。その PR へ戻ると同じ run が live に復元され、`run_id`・counter・観測・見直し履歴・再試行権の使用履歴をそのまま継続する。停止した run は過去の `close` / `defer` 記録にかかわらず復元する。停止していない run の除外は、退避した completed cycle の context と `close` / `defer` 記録が一致する場合に限る。過去 cycle の記録では除外せず、cycle 不在なら当該 run の最新放棄記録で検証する。
 
 停止は caller の既存失敗 sentinel へ返し、batch は cursor を当該 Issue に保ち `active=false` にする。PR・branch・作業差分・履歴・最後の検証済み状態を保持し、停止理由と復旧工程を報告する。同一 run の再開は保存済み判定と未完工程から続け、停止履歴を消して新しい見直し枠を作らない。
+
+## 仕様改訂の記録
+
+レビュー中にユーザーと合意して Issue 本文（受入条件など）を改訂した場合は、同じ run のまま `flow-state.sh review-reconcile --issue <最新 Issue JSON の絶対パス> --approval <承認 JSON の絶対パス>` で改訂を記録する。Issue JSON は `gh issue view --json number,body` で再取得する。記録しないまま fix / 観測 / 見直しへ進むと、観測・`check` / `verify`・見直し・修正計画の gate は従来どおり仕様不一致で停止する。active な run では、その停止メッセージがこの節を案内する。
+
+run_id・cycle counter・観測・修正・見直し・再試行権はそのまま残る。仕様を改訂しても cycle の予算は取り直さない（新しい run を作るのは停止 run 向けの `review-restart` だけ）。境界までの観測は旧仕様の記録として残り、仕様の照合対象になるのは境界より後の観測と記録した本文だけである。旧仕様で観測した指摘を、改訂後の修正計画の根拠にはしない。
+
+| 現在の completed cycle | 境界 | 次の操作 |
+|---|---|---|
+| 旧仕様で観測済み | この cycle | `/rite:iterate {pr_number}` を再実行する。レビュー済みの HEAD を改訂後の仕様で再レビューしてから fix へ進む。この cycle の修正計画は旧仕様にも最新 Issue にも一致しないため拒否される |
+| 改訂が原因で観測が拒否され、未観測 | 直前の cycle | `/rite:recover {issue_number}` で、pr-review の停滞観測保存へ戻る。この cycle を改訂後の仕様で観測する |
+
+拒否される状態:
+
+- 停止した run
+- 未完了（collecting）の cycle
+- HEAD がレビュー対象から動いている
+- 保存 receipt が欠けている、または変更されている
+- `action=replan` が未完了
+- 最新本文が run の現行仕様（直近の記録本文。記録が無ければ直近の観測本文）と同じ
+
+承認・理由・要求時刻・対象 context・境界は `review_run.reconciliations` に追記される。同じ承認と同じ本文での再実行は、context が進んだ後であっても何も変えない。さらに改訂したときは新しい承認で再び記録する。照合に使うのは最新の記録だけである。
+
+改訂後の同一 HEAD 再レビューは差分スコープが空になり full scope で回る。iterate の完了前確認（目的整合）の復帰節にある同一 HEAD 再 invoke の禁止は、目的逸脱の停止から戻る場合だけに適用され、この再レビューには適用しない。
+
+承認 JSON の必須フィールド:
+
+| フィールド | 内容 |
+|---|---|
+| `kind` | 必ず `specification-change` |
+| `run_id` | live run の ID |
+| `review_context` | 現在の `review_cycle.review_context` の完全コピー |
+| `issue_number` | 最新 Issue JSON の番号と同じ Issue 番号 |
+| `pr_number` | run の PR 番号 |
+| `reason` | 非空。改訂内容とユーザーの合意 |
+| `requested_at` | 今回の要求時刻（ISO 8601） |
 
 ## 停止後の退路と再開
 
