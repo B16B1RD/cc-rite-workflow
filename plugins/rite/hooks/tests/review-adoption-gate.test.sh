@@ -139,7 +139,9 @@ verdicts, result = decided([rec(), rec(['F-02'], **REJECT)])
 check(verdicts['F-01']['verdict'] == 'file' and verdicts['F-01']['record']['acceptance'], verdicts)
 check(verdicts['F-02']['verdict'] == 'record' and verdicts['F-02']['exit'] == 'REJECT', verdicts)
 check('[CONTEXT] ADOPTION_GATE=decided; kind=sweep; file=1; record=1; pr=5' in result.stderr, result.stderr)
-check(not hold_file.exists(), 'a decided run must remove the stale hold file')
+# A decided sweep run keeps the hold: the caller removes it after its external writes.
+check(hold_file.exists(), 'a decided sweep run keeps the hold for the caller to release')
+hold_file.unlink()
 
 # Filing without an acceptance criterion is held, not filed; the hold keeps every candidate of the run.
 saved, _ = held([rec(acceptance=''), rec(['F-02'], **REJECT)], 'undecided')
@@ -186,7 +188,8 @@ check(saved['held_ids'] == ['F-01', 'F-02'] and 'candidates_uncovered' in saved[
 held([rec(**unknown), rec(['F-02'], **REJECT)], 'undecided')
 check(hold_file.exists(), 'the hold must persist until the rerun')
 decided([rec(), rec(['F-02'], **REJECT)])
-check(not hold_file.exists(), 'the rerun must clear the hold')
+check(hold_file.exists(), 'the decided rerun leaves the hold for the caller')
+hold_file.unlink()
 
 # Severity never changes a verdict.
 first, _ = decided([rec(), rec(['F-02'], **REJECT)])
@@ -238,7 +241,8 @@ check('1 件' in saved['detail'] and 'C-1' in saved['detail'] and '候補へ戻�
 check(saved['resume'] in result.stderr, result.stderr)
 # Putting the dropped candidate back with its full text under a new id decides and clears the hold.
 decided([rec(['C-1'], **REJECT), rec(['C-2'])], kind='triage', cands=[dict(CANDS[1], id='C-1'), dict(CANDS[0], id='C-2')])
-check(not triage_hold.exists(), 'the decided rerun must clear the triage hold')
+check(triage_hold.exists(), 'the decided triage rerun leaves the hold for the caller')
+triage_hold.unlink()
 # Triage candidates live nowhere else, so a new commit is still compared against the previous hold.
 held([], 'no_records', kind='triage', cands=first, write=False)
 (repo / 'notes.md').write_text('moved on\n')
@@ -253,23 +257,52 @@ check({k: v for k, v in saved['candidates'][1].items() if k != 'id'} == {k: v fo
 check('候補へ戻して' in saved['resume'] and '作り直して' not in saved['resume'], saved['resume'])
 decided([rec(['C-1'], **REJECT), rec(['C-2'], **REJECT)], kind='triage',
         cands=[dict(CANDS[1], id='C-1'), dict(CANDS[0], id='C-2')], at=next_head)
-check(not triage_hold.exists(), 'the decided run on the new commit must clear the triage hold')
+check(triage_hold.exists(), 'the decided triage run on the new commit leaves the hold for the caller')
+triage_hold.unlink()
 # Sweep and followup keep their hold on any commit as well: a run on a new commit without the
 # held candidates is held again, never retired.
 held([], 'no_records', write=False)
 saved, _ = held([], 'held_candidates_dropped', cands=[], write=False, at=next_head)
 check(saved['head'] == next_head and saved['held_ids'] == ['F-01', 'F-02'], saved)
 check('nb-sweep-collect.sh' in saved['resume'], saved['resume'])
-# Carrying the held candidates under new ids and judging them on the new commit decides.
-carried = [dict(c, id='held-' + c['id']) for c in CANDS]
-verdicts, _ = decided([rec(['held-F-01'], **resolved), rec(['held-F-02'], **REJECT)], cands=carried, at=next_head)
-check(verdicts['held-F-01']['exit'] == 'RESOLVED' and verdicts['held-F-02']['exit'] == 'REJECT', verdicts)
-check(not hold_file.exists(), 'judging the carried candidates on the new commit must clear the sweep hold')
+# Carrying the held candidates under new ids and judging them on the new commit decides. The
+# hold stays until the sweep's ledger record releases it, so a stop before then carries them again.
+carried = [dict(c, id='5-20260101000000.json#' + c['id']) for c in CANDS]
+verdicts, _ = decided([rec([carried[0]['id']], **resolved), rec([carried[1]['id']], **REJECT)], cands=carried, at=next_head)
+check(verdicts[carried[0]['id']]['exit'] == 'RESOLVED' and verdicts[carried[1]['id']]['exit'] == 'REJECT', verdicts)
+check(hold_file.exists(), 'the decided sweep run leaves the carried candidates in the hold until the caller releases it')
+decided([rec([carried[0]['id']], **resolved), rec([carried[1]['id']], **REJECT)], cands=carried, at=next_head)
+hold_file.unlink()
+# A followup rebuilds its candidates, so its decided run removes the hold itself.
 followup_hold = state / '.rite/state/adoption-hold-5-followup.json'
 held([], 'no_records', kind='followup', write=False)
 saved, _ = held([], 'held_candidates_dropped', kind='followup', cands=[], write=False, at=next_head)
 check(saved['held_ids'] == ['F-01', 'F-02'] and 'follow-up' in saved['resume'], saved)
-followup_hold.unlink()
+decided([rec(), rec(['F-02'], **REJECT)], kind='followup')
+check(not followup_hold.exists(), 'a decided followup run removes its hold')
+# Dropped candidates are renamed one by one, so a hold that already carries held- ids keeps them unique.
+triage_hold.write_text(json.dumps({'kind': 'triage', 'pr': 5, 'head': head, 'review_result': str(review),
+    'reason': 'no_records', 'detail': '', 'held_ids': ['C-1', 'held-C-1'], 'resume': 'r',
+    'candidates': [dict(CANDS[0], id='C-1'), dict(CANDS[1], id='held-C-1')]}))
+other = {'id': 'C-1', 'severity': 'LOW', 'description': 'another finding', 'file': 'tool.sh', 'line': 9}
+saved, _ = held([], 'held_candidates_dropped', kind='triage', cands=[other], write=False)
+check(saved['held_ids'] == ['C-1', 'held-C-1', 'held-held-C-1'] and len({c['id'] for c in saved['candidates']}) == 3, saved)
+triage_hold.unlink()
+# A REJECT recorded in the ledger under [reviewer, file_line] is reused as the prior of the same
+# out-of-scope candidate in the next cycle; a contradicting judgement is arbitrated, not filed.
+ledger.write_text('### 却下台帳\n\n| finding_id | file:line | 判定 | 判定文 | 出典 |\n|------------|-----------|------|--------|------|\n'
+                  '| code-quality-reviewer | tool.sh:3 | REJECT | the usage text is intentional | 5-20260101000000.json |\n')
+rec_c = {'id': 'C-1', 'source': '推奨', 'reviewer': 'code-quality-reviewer', 'file_line': 'tool.sh:3', 'severity': 'LOW',
+         'content': 'usage text is stale'}
+prior = {'finding_id': 'code-quality-reviewer', 'file_line': 'tool.sh:3', 'disposition': 'REJECT',
+         'premise': 'the usage text is intentional'}
+verdicts, _ = decided([rec(['C-1'], prior=prior, **REJECT)], kind='triage', cands=[rec_c])
+check(verdicts['C-1']['exit'] == 'REJECT' and verdicts['C-1']['verdict'] == 'record', verdicts)
+triage_hold.unlink(missing_ok=True)
+saved, _ = held([rec(['C-1'], prior=prior)], 'undecided', kind='triage', cands=[rec_c])
+check('RECONCILE' in saved['detail'], saved['detail'])
+triage_hold.unlink()
+ledger.write_text('')
 # No candidate at all: nothing to judge, unless the triage hold still has candidates.
 verdicts, _ = decided([], kind='triage', cands=[], write=False)
 check(verdicts == {}, verdicts)

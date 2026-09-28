@@ -21,9 +21,10 @@
 # finding_id: id, record: <basename of the review JSON>} plus its fields. With --pr, the
 # candidates of the sweep hold file (STATE_ROOT/.rite/state/adoption-hold-PR-sweep.json)
 # that no target matches by full text without id are carried into candidates[] as saved,
-# keeping the record of the review JSON they came from (the ledger 出典 cleanup matches);
-# a carried id already taken is renamed with a held- prefix. They are judged again on the
-# review JSON read now, whatever commit the hold was saved on.
+# keeping the record of the review JSON they came from (the ledger 出典 cleanup matches).
+# A carried candidate's id is <record>#<key>: stable across cycles and never equal to a
+# target id (F-NN / anon:<file>:<line>), since review ids restart at F-01 in every JSON.
+# They are judged again on the review JSON read now, whatever commit the hold was saved on.
 #
 # Usage:
 #   bash nb-sweep-collect.sh --json <path>
@@ -114,11 +115,16 @@ fi
 
 hold='null'
 hold_file="$state_root/.rite/state/adoption-hold-$pr-sweep.json"
-if [ -n "$pr" ] && [ -e "$hold_file" ]; then
-  hold=$(jq -ce 'if type == "object" and (.candidates | type) == "array"
+if [ -n "$pr" ] && [ -n "$state_root" ] && [ -e "$hold_file" ]; then
+  if ! hold=$(jq -ce 'if type == "object" and (.candidates | type) == "array"
       and all(.candidates[]; type == "object" and (.id | type) == "string" and .id != ""
-        and (.record | type) == "string" and .record != "") then . else error("malformed") end' \
-    "$hold_file" 2>/dev/null) || collect_fail hold_unreadable
+        and (.key | type) == "string" and .key != "" and (.record | type) == "string" and .record != "")
+      then . else error("candidates need id, key and record") end' "$hold_file" 2>&1); then
+    echo "ERROR: the sweep hold file cannot be read; it is kept and nothing is collected: $hold_file" >&2
+    printf '  %s\n' "$(printf '%s' "$hold" | head -1)" >&2
+    echo "[CONTEXT] NB_SWEEP_COLLECT=failed; count=0; record=$json; reason=hold_unreadable" >&2
+    exit 1
+  fi
 fi
 
 if ! out=$(jq -c --arg record "$json" --argjson ledger "$ledger_rows" --argjson hold "$hold" '
@@ -176,9 +182,8 @@ if ! out=$(jq -c --arg record "$json" --argjson ledger "$ledger_rows" --argjson 
       }) | map(select(transcribed(.reviewer; .file_line) | not))) as $guardrails
   | [$targets[] | . + {finding_id: .id, id: .key, record: $record_base}] as $now
   | [$now[] | del(.id)] as $now_text
-  | [$now[].id] as $taken
   | [($hold.candidates // [])[] | select(del(.id) as $x | any($now_text[]; . == $x) | not)
-      | .id |= until(. as $i | $taken | index($i) | not; "held-" + .)] as $carried
+      | .id = .record + "#" + .key] as $carried
   | (($targets | length) + ($carried | length) + ($guardrails | length)) as $count
   | {
       status: (if $count == 0 then "empty" else "ok" end),

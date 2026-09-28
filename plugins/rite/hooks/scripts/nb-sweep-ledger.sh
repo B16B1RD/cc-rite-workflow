@@ -18,8 +18,9 @@
 #          adoption exit recorded without filing) and recorded (already_rejected
 #          transcription); append does not check the value.
 #          Every appended row must end with a 出典 cell holding the basename of
-#          the review JSON the sweep read ({pr}-{14 digits}[~{4 hex}].json);
+#          the review JSON the row's candidate came from ({pr}-{14 digits}[~{4 hex}].json);
 #          otherwise nothing is appended (reason=entries_source_invalid).
+#          Lines that are not table rows (the entries header below) are skipped.
 #          An existing 4-column header and its separator are upgraded to the
 #          5-column form; existing 4-column rows are kept as they are.
 # merge-into  splices --ledger-file into --body-file immediately before
@@ -28,11 +29,14 @@
 # tally    stdout: `issued=K; recorded=M` counted from the 判定 cell of the
 #          entries rows (escaped pipes inside a cell do not shift columns):
 #          issued is K; REJECT / RESOLVED / LINK / recorded are M.
-#          With --record, every row's 出典 cell must equal that basename;
-#          otherwise nothing is printed (reason=entries_record_mismatch).
+#          With --record, the entries must start with the header line
+#          `<!-- nb-sweep-record: <basename> -->` naming that basename (the review
+#          JSON the sweep read); otherwise nothing is printed
+#          (reason=entries_record_mismatch). Row 出典 cells are not compared: a
+#          candidate carried from a sweep hold keeps the review JSON it came from.
 #          Entries are what an interrupted sweep already filed, so a leftover
-#          from another review JSON must stop the sweep instead of standing in
-#          for this sweep's filing.
+#          from another sweep must stop the sweep instead of standing in for
+#          this sweep's filing.
 #
 # extract の出力は節末尾の空行を含まない。merge-into は台帳の前後を空行 1 行ずつに揃える。
 # このため同じ本文に extract → merge-into を繰り返しても本文は変わらず、空行も増えない。
@@ -265,19 +269,26 @@ case "$cmd" in
       echo "[CONTEXT] NB_SWEEP_LEDGER=failed; op=tally; reason=entries_missing" >&2
       exit 1
     fi
+    # entries がどの sweep のものかは先頭の見出し行で決める（合流した保留候補の行は元の出典を持つ）
+    if [ -n "$record_base" ]; then
+      entries_head=$(sed -n '1{s/\r$//;p;}' "$entries_file")
+      if [ "$entries_head" != "<!-- nb-sweep-record: $record_base -->" ]; then
+        echo "ERROR: entries do not name the review JSON this sweep read (${record_base}) in their first line: $entries_file" >&2
+        echo "[CONTEXT] NB_SWEEP_LEDGER=failed; op=tally; reason=entries_record_mismatch" >&2
+        exit 1
+      fi
+    fi
     # append と同じ行だけを数える。セル内のエスケープ済みパイプは区切りにしない
     if ! counts=$({ grep -E '^\| ' "$entries_file" || true; } | { grep -Ev '^\|[-: |]+\|$' || true; } \
       | { grep -Ev '^\| finding_id ' || true; } \
-      | awk -v want="$record_base" '
-          { line = $0; sub(/\r$/, "", line); gsub(/\\\|/, "", line); n = split(line, c, "|")
+      | awk '
+          { line = $0; sub(/\r$/, "", line); gsub(/\\\|/, "", line); split(line, c, "|")
             route = c[4]; gsub(/^[ \t]+|[ \t]+$/, "", route)
-            src = c[n - 1]; gsub(/^[ \t]+|[ \t]+$/, "", src)
-            if (want != "" && src != want) bad = 1
             if (route == "issued") issued++
             else if (route == "REJECT" || route == "RESOLVED" || route == "LINK" || route == "recorded") recorded++ }
-          END { if (bad) exit 3; printf "issued=%d; recorded=%d\n", issued, recorded }'); then
-      echo "ERROR: entries rows do not all name the review JSON this sweep read (${record_base}): $entries_file" >&2
-      echo "[CONTEXT] NB_SWEEP_LEDGER=failed; op=tally; reason=entries_record_mismatch" >&2
+          END { printf "issued=%d; recorded=%d\n", issued, recorded }'); then
+      echo "ERROR: entries rows cannot be counted: $entries_file" >&2
+      echo "[CONTEXT] NB_SWEEP_LEDGER=failed; op=tally; reason=entries_unreadable" >&2
       exit 1
     fi
     printf '%s\n' "$counts"

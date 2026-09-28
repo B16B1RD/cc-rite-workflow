@@ -13,13 +13,17 @@
 # A missing record file, an unreadable context, or a helper ERROR holds every candidate.
 # When anything is held, nothing may be written: every candidate of the run with its full
 # text (held_ids names the held ones), the source, the reviewed commit and how to resume
-# are saved to the hold file and the gate exits 3. A decided run removes a stale hold file
-# of the same path. The next run must still carry every candidate the previous hold saved,
-# on any commit (compared by full text without id, since ids are renumbered); otherwise the
-# dropped ones are kept in the hold. The callers carry them: triage and sweep merge the
+# are saved to the hold file and the gate exits 3. The next run must still carry every
+# candidate the previous hold saved, on any commit (compared by full text without id, since
+# ids are renumbered); otherwise the dropped ones are kept in the hold, each renamed with a
+# held- prefix until its id is free. The callers carry them: triage and sweep merge the
 # hold's candidates into the new candidates and judge them on the new commit, and the
 # followup keeps them out of its exclusions. With no candidate and nothing dropped, the run
 # decides with no verdict.
+# A decided followup run removes the hold, since the followup rebuilds its candidates. A
+# decided sweep or triage run keeps it: the carried candidates live only there, so the
+# caller removes it after its external writes (sweep: after the ledger record; triage: after
+# the dispositions), and a run stopped in between carries them again.
 #
 # Usage:
 #   review-adoption-gate.sh --pr N --kind sweep|triage|followup --state-root DIR \
@@ -136,7 +140,9 @@ hold() {
       --argjson dropped "$dropped" --slurpfile c "$candidates" '
       ($c[0].candidates // []) as $all
       | [$all[].id] as $taken
-      | [$dropped[] | .id |= until(. as $i | $taken | index($i) | not; "held-" + .)] as $kept
+      | (reduce $dropped[] as $d ({taken: $taken, out: []};
+          .taken as $t | ($d.id | until(. as $i | $t | index($i) | not; "held-" + .)) as $n
+          | .taken += [$n] | .out += [$d + {id: $n}])).out as $kept
       | (if $ids == null then [$all[].id] else $ids end) as $held
       | {kind: $kind, pr: $pr, head: $head, review_result: $rr, reason: $reason, detail: $detail,
          held_ids: ($held + [$kept[].id]),
@@ -182,7 +188,7 @@ fi
 
 # With no candidate left and none dropped from the previous hold there is nothing to judge.
 if [ "$(jq '.candidates | length' "$candidates")" -eq 0 ]; then
-  rm -f "$hold_file"
+  [ "$kind" = followup ] && rm -f "$hold_file"
   echo "[CONTEXT] ADOPTION_GATE=decided; kind=$kind; file=0; record=0; pr=$pr" >&2
   jq -cn --arg head "$head" '{held: false, head: $head, verdicts: []}'
   exit 0
@@ -261,7 +267,7 @@ if [ "$held_ids" != "[]" ]; then
   hold undecided "$detail" "$held_ids"
 fi
 
-rm -f "$hold_file"
+[ "$kind" = followup ] && rm -f "$hold_file"
 n_file=$(jq '[.[] | select(.verdict == "file")] | length' <<< "$verdicts")
 n_record=$(jq '[.[] | select(.verdict == "record")] | length' <<< "$verdicts")
 echo "[CONTEXT] ADOPTION_GATE=decided; kind=$kind; file=$n_file; record=$n_record; pr=$pr" >&2

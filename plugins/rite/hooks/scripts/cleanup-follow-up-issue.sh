@@ -446,8 +446,8 @@ if [ -n "$EXCLUDE_IDS" ]; then
     # 要求件数は数えられない (解析に失敗した入力しか無い) ので count=unknown。
     echo "[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=parse_failed; count=unknown; pr=${PR_NUMBER}" >&2
   else
-    # 採否ゲートが保留した候補は、再検証で解消済みと判定されても候補に残す。除くとゲートの同じ head の
-    # 欠落照合が保留し続けて解けない。残した候補は判定記録の RESOLVED で処分する。hold ファイルの形の
+    # 採否ゲートが保留した候補は、再検証で解消済みと判定されても候補に残す。除くとゲートの欠落照合
+    # (commit を問わない) が保留し続けて解けない。残した候補は判定記録の RESOLVED で処分する。hold ファイルの形の
     # 検証はゲートの読み取りと同じ条件で、読めなければ除外に倒さず失敗で止める (列挙も起票も同じ位置)。
     hold_file="$STATE_ROOT/.rite/state/adoption-hold-${PR_NUMBER}-followup.json"
     if [ -e "$hold_file" ]; then

@@ -284,7 +284,9 @@ assert_grep 'any other gate result stops with review error' "$review" '| それ�
 # commit, pass the triage arguments and surface the gate's exit code.
 triage_dir="$state_dir/triage"
 mkdir -p "$triage_dir/plugin/hooks/scripts" "$triage_dir/root/.rite/review-results"
-awk '/^### 7\.2-7\.3 / { s=1 } s && /^```bash$/ { a=1; next } a && /^```$/ { exit } a { print }' "$review" > "$triage_dir/block.sh"
+awk '/^### 7\.2-7\.3 / { s=1 } s && /^```bash$/ { a=1; blk=""; next }
+  a && /^```$/ { a=0; if (index(blk, "--kind triage")) { printf "%s", blk; exit } next }
+  a { blk = blk $0 "\n" }' "$review" > "$triage_dir/block.sh"
 assert_grep 'gate block calls the triage gate' "$triage_dir/block.sh" 'review-adoption-gate.sh --pr {pr_number} --kind triage'
 printf '#!/bin/bash\nprintf "%%s\\n" "$TRIAGE_ROOT"\n' > "$triage_dir/plugin/hooks/state-path-resolve.sh"
 cat > "$triage_dir/plugin/hooks/scripts/review-adoption-gate.sh" <<'STUB'
@@ -327,6 +329,55 @@ rm -f "$triage_dir/root/.rite/review-results/"*.json
 out=$(TRIAGE_GATE_RC=0 run_triage_block 7)
 assert_eq 'a missing review JSON stops before the gate' '[CONTEXT] ADOPTION_GATE_RC=2' "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ADOPTION_GATE_RC=' || true)"
 if [ -e "$triage_dir/args" ]; then fail 'the gate must not run without a review JSON'; else pass 'the gate does not run without a review JSON'; fi
+
+# 7.4.5: the record verdicts of triage go to the rejected ledger under [reviewer, file_line], and the
+# triage hold is released only after the ledger record succeeds.
+assert_grep 'step 2 copies the ledger prior keyed by reviewer and file_line' "$review" \
+  '候補の `reviewer` と `file_line` が行の `finding_id` と `file:line` に一致する行のうち、最後の `REJECT` / `ADOPT` 行をその候補の記録の `prior`'
+assert_grep 'every disposition is followed by 7.4.5 once' "$review" '全判定記録の処分を終えたら 7.4.5（台帳への記録と保留の解除）を 1 回実行する。'
+ledger_dir="$triage_dir/ledger"
+mkdir -p "$ledger_dir/plugin/hooks/scripts" "$ledger_dir/root/.rite/state"
+awk '/^#### 7\.4\.5 / { s=1 } s && /^```bash$/ { a=1; next } a && /^```$/ { exit } a { print }' "$review" > "$ledger_dir/block.sh"
+assert_grep '7.4.5 block releases the triage hold' "$ledger_dir/block.sh" 'adoption-hold-{pr_number}-triage.json'
+printf '#!/bin/bash\nprintf "%%s\\n" "$LEDGER_ROOT"\n' > "$ledger_dir/plugin/hooks/state-path-resolve.sh"
+ln -s "$ROOT/plugins/rite/hooks/scripts/nb-sweep-ledger.sh" "$ledger_dir/plugin/hooks/scripts/nb-sweep-ledger.sh"
+ln -s "$ROOT/plugins/rite/hooks/control-char-neutralize.sh" "$ledger_dir/plugin/hooks/control-char-neutralize.sh"
+cat > "$ledger_dir/plugin/hooks/review-nonblocking-record.sh" <<'STUB'
+#!/bin/bash
+if [ "$1" = --print-record-body ]; then
+  printf '%s\n\n%s\n\n%s\n%s\n\n%s\n' '## 📜 rite 非実測指摘の記録 (non-blocking)' '本 cycle の非実測指摘: 0 件' \
+    '📎 non_blocking_count: 0' '📎 reviewed_commit: c0ffee' '<!-- rite:nbr:v1 -->'
+  exit 0
+fi
+while [ "$#" -gt 0 ]; do [ "$1" = --content-file ] && cp "$2" "$LEDGER_POSTED"; shift; done
+echo "[CONTEXT] NONBLOCKING_RECORD_DONE=1; pr=5; outcome=$LEDGER_OUTCOME; count=0; iteration_id=triage-5; comment_id=1; degraded=0" >&2
+STUB
+run_ledger_block() {
+  local code
+  code=$(cat "$ledger_dir/block.sh")
+  code=${code//\{plugin_root\}/$ledger_dir/plugin}
+  code=${code//\{pr_number\}/5}
+  code=${code//\{owner_repo\}/o/r}
+  code=${code//\{rows\}/| code-quality-reviewer | tool.sh:3 | REJECT | the usage text is intentional | 5-20260101000000.json |}
+  printf '{"kind":"triage","pr":5,"candidates":[]}\n' > "$ledger_dir/root/.rite/state/adoption-hold-5-triage.json"
+  rm -f "$ledger_dir/posted.md"
+  LEDGER_ROOT="$ledger_dir/root" LEDGER_POSTED="$ledger_dir/posted.md" LEDGER_OUTCOME="$1" bash -c "$code" 2>&1
+}
+out=$(run_ledger_block updated)
+assert_grep 'the REJECT row reaches the ledger under [reviewer, file_line]' "$ledger_dir/posted.md" \
+  '| code-quality-reviewer | tool.sh:3 | REJECT | the usage text is intentional | 5-20260101000000.json |'
+if [ -e "$ledger_dir/root/.rite/state/adoption-hold-5-triage.json" ]; then
+  fail 'a recorded ledger must release the triage hold'
+else
+  pass 'a recorded ledger releases the triage hold'
+fi
+out=$(run_ledger_block skipped || true)
+assert_eq 'a failed ledger record stops the review' '[review:error]' "$(printf '%s\n' "$out" | grep -x '\[review:error\]' || true)"
+if [ -e "$ledger_dir/root/.rite/state/adoption-hold-5-triage.json" ]; then
+  pass 'a failed ledger record keeps the triage hold'
+else
+  fail 'a failed ledger record must keep the triage hold'
+fi
 
 if [ "$failures" -ne 0 ]; then
   printf '%s contract assertion(s) failed\n' "$failures" >&2

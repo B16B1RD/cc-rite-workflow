@@ -4,6 +4,21 @@
 
 1. 7.1 の候補（Source A → Source B の抽出順、dedup 後）に `C-1`, `C-2`, … を振る。triage の hold ファイルがあれば、その `head` が本 cycle の review JSON の `commit_sha` と同じかどうかを問わず（commit を問わず）、その `candidates` の各候補を、id だけ次の `C-n` に振り直して内容は一字も変えずに候補集合へ加える（id を除く全欄が一致する候補が既にあれば加えない）。triage の候補はほかのどこにも残らないため、新しい commit でも合流させて分類役が判定し直す（直っていれば `RESOLVED`）。内容を言い換えるとゲートは同じ候補と認めず、保留が解けない（`held_candidates_dropped`）。
 2. 分類役（本手順を実行する LLM）が全候補の判定記録を書く。1 根因 = 1 記録。欄は `review-adoption.py` の docstring に従い、起票（ADOPT pre_existing / 調査）になる記録には `acceptance`（起票する Issue の受入条件の文）を必ず入れる。既存の Issue（前回この手順で作った Issue を含む）が同じ根因を追跡していれば `tracker` に入れる（LINK になり、重ねて起票しない）。判定記録ファイル `{state_root}/.rite/state/adoption-{pr_number}-triage.json` があり、その `head` が本 cycle の review JSON の `commit_sha` と同じなら、その記録（保留後に直された記録）から始める（この head 条件は判定記録ファイルの再利用の条件で、手順 1 の合流の条件ではない）。`C-n` は振り直すため、各記録の `ids` は手順 1 で候補全文が一致した候補（合流させた hold の候補を含む）の新しい id へ移す。`head` が違えば記録を新しく書く。
+   台帳の処分を再利用するため、下の bash で却下台帳を読む。候補の `reviewer` と `file_line` が行の `finding_id` と `file:line` に一致する行のうち、最後の `REJECT` / `ADOPT` 行をその候補の記録の `prior`（`{finding_id, file_line, disposition, premise}`。premise は判定文）に写す（prior の違う候補を 1 つの記録にまとめない）。前提が有効なら REJECT を再利用し、前提と矛盾する判定は helper が RECONCILE にする。`C-n` は cycle ごとに振り直すので台帳のキーにしない。
+
+```bash
+body=$(mktemp) && err=$(mktemp) || exit 1
+trap 'rm -f "$body" "$err"' EXIT
+if bash {plugin_root}/hooks/review-nonblocking-record.sh --print-record-body --pr {pr_number} --owner-repo {owner_repo} > "$body" 2> "$err"; then
+  bash {plugin_root}/hooks/scripts/nb-sweep-ledger.sh extract --body-file "$body" || exit 1
+elif grep -q 'NONBLOCKING_RECORD_BODY=failed; pr=[0-9]*; reason=related_issue_unresolved' "$err"; then
+  echo "[CONTEXT] TRIAGE_LEDGER=absent; reason=related_issue_unresolved"
+else
+  cat "$err" >&2
+  echo "ERROR: 却下台帳を読めません。prior を写さずに判定すると台帳の処分を再利用できないため、判定記録を書かずに止まる" >&2
+  exit 1
+fi
+```
 3. 下の bash を**単一 Bash invocation** で実行する。`{records}` は記録の JSON 配列、`{candidates}` は `{"candidates": [{"id": "C-1", "source": "指摘" | "推奨", "file_line", "reviewer", "severity", "content": <全文>}, …]}`。`head` は `--review-result` に渡す review JSON（6.1.a が保存した本 cycle の結果）の `commit_sha` を bash が入れる。
 
 ```bash
@@ -81,6 +96,8 @@ echo "[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={iterati
 | `file`、`{source_issue_number}` が空 | トークンの書き先が無いため 7.4.1-7.4.2 で Issue を 1 件作る |
 | `record`（`LINK`） | 7.4.4（追跡先 `tracker` への申し送り）を先に必須実行し、記録のみで完了扱いにしない。その後 7.4.3（トークンなし）。`HANDOFF_COMMENT_REJECTED=1` のときは 7.4.3 / 7.5 へ進まない |
 | `record`（`RESOLVED` / `REJECT`） | 7.4.3（トークンなし） |
+
+全判定記録の処分を終えたら 7.4.5（台帳への記録と保留の解除）を 1 回実行する。
 
 `record` で `{source_issue_number}` が空なら 7.4.3 の書き先が無いため、7.5-7.6 の完了レポートに出口と reason を列挙する。
 7.4.1-7.4.2 は `gh issue create` + Projects 登録。`/rite:issue-create` Skill は使わない。
@@ -414,6 +431,52 @@ Handoff comment failure reasons: (`closed` / `body_write_failure` / `gh_comment_
 | `gh_comment_failure` | `gh issue comment` が非ゼロ終了（権限・ネットワーク） |
 
 `HANDOFF_COMMENT_REJECTED=1` を観測したら当該判定記録の 7.4.3 を実行せず 7.5 へ進まない。投稿失敗は non-blocking だが記録のみで完了扱いにせず、7.5-7.6 の完了レポートに未投稿として列挙する。
+
+#### 7.4.5 台帳への記録と保留の解除
+
+全判定記録の 7.4 を実行し終えたら 1 回だけ実行する（`HANDOFF_COMMENT_REJECTED=1` で 7.2 へ戻るときは実行しない）。verdict が `record`（`REJECT` / `RESOLVED` / `LINK`）の記録の候補を、却下台帳へ 1 候補 1 行で書く。行形式は `| {reviewer} | {file_line} | {exit} | {判定文} | {review_json_basename} |`。判定文は記録の `reason`（`RESOLVED` で reason が無ければ `evidence`、`LINK` は `追跡先 #{tracker}`）、`{review_json_basename}` は 7.2 の bash が読んだ review JSON の basename。セル内のパイプ・改行はエスケープする。`record` の候補が無ければ `{rows}` は空にする。最後に triage の hold ファイルを消す。外部への書き込み（Decision Log・先送りトークン・Issue・申し送り・台帳）がすべて済むまで hold を残すのは、途中で止まった再実行でも hold の候補を手順 1 が合流させるため。
+
+```bash
+state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) && [ -n "$state_root" ] \
+  || { echo "ERROR: state root を解決できません" >&2; echo "[review:error]"; exit 1; }
+work=$(mktemp -d) || { echo "[review:error]"; exit 1; }
+trap 'rm -rf "$work"' EXIT
+cat <<'ROWS_EOF' > "$work/rows.md"
+{rows}
+ROWS_EOF
+ledger_fail() { echo "[CONTEXT] TRIAGE_LEDGER=failed; reason=$1" >&2; echo "[review:error]"; exit 1; }
+if grep -q '^| ' "$work/rows.md"; then
+  if ! bash {plugin_root}/hooks/review-nonblocking-record.sh --print-record-body --pr {pr_number} \
+      --owner-repo {owner_repo} > "$work/body.md" 2> "$work/body.err"; then
+    cat "$work/body.err" >&2
+    grep -q 'reason=related_issue_unresolved' "$work/body.err" || ledger_fail fetch_failed
+    # 関連 Issue が無ければ台帳も無い。7.5-7.6 の完了レポートに記録できなかった出口として列挙する
+    echo "[CONTEXT] TRIAGE_LEDGER=skipped; reason=related_issue_unresolved" >&2
+  else
+    [ -s "$work/body.md" ] || printf '%s\n\n%s\n\n%s\n%s\n\n%s\n' \
+      '## 📜 rite 非実測指摘の記録 (non-blocking)' \
+      '本 cycle の非実測指摘: 0 件 (前 cycle の記録内容は本 cycle では再報告されていません)' \
+      '📎 non_blocking_count: 0' '📎 reviewed_commit: unknown' '<!-- rite:nbr:v1 -->' > "$work/body.md"
+    bash {plugin_root}/hooks/scripts/nb-sweep-ledger.sh extract --body-file "$work/body.md" > "$work/ledger.md" \
+      && bash {plugin_root}/hooks/scripts/nb-sweep-ledger.sh append --ledger-file "$work/ledger.md" --entries-file "$work/rows.md" \
+      && bash {plugin_root}/hooks/scripts/nb-sweep-ledger.sh merge-into --body-file "$work/body.md" --ledger-file "$work/ledger.md" \
+      || ledger_fail ledger_edit_failed
+    # 件数の抽出式は review-nonblocking-record.sh の count/body 整合検査と同じ（nb-sweep 手順 3 と同じ）
+    count=$(grep -E '^📎 non_blocking_count:[[:space:]]*[0-9]+[[:space:]]*$' "$work/body.md" | tail -1 | grep -oE '[0-9]+')
+    [ -n "$count" ] || ledger_fail count_unreadable
+    rc=0
+    bash {plugin_root}/hooks/review-nonblocking-record.sh --pr {pr_number} --owner-repo {owner_repo} --count "$count" \
+      --iteration-id "triage-{pr_number}" --content-file "$work/body.md" 2> "$work/record.err" || rc=$?
+    cat "$work/record.err" >&2
+    outcome=$(sed -n 's/^\[CONTEXT\] NONBLOCKING_RECORD_DONE=1; .*outcome=\([^;]*\);.*/\1/p' "$work/record.err" | tail -1)
+    case "$rc:$outcome" in 0:created|0:updated) ;; *) ledger_fail record_failed ;; esac
+    echo "[CONTEXT] TRIAGE_LEDGER=recorded" >&2
+  fi
+fi
+rm -f -- "$state_root/.rite/state/adoption-hold-{pr_number}-triage.json"
+```
+
+`TRIAGE_LEDGER=failed` は hold ファイルを残して止まる。7.4 までの書き込みは済んでいるので、再実行は 7.2 から始まり、手順 2 の `tracker`（前回作った Issue）で LINK になって重ねて起票しない。
 
 ### 7.5-7.6 Append to PR & Report
 

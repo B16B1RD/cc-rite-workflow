@@ -709,8 +709,8 @@ run_fix() {  # $1=root $2=status $3=script
   echo $? > "$1/rc"
 }
 entries_of() { printf '%s\n' "$1/.rite/state/nb-sweep-entries-7.md"; }
-write_entries() {  # $1=root $2=record basename
-  printf '%s\n' "| A-1 | a.ts:1 | issued | #5 https://example.test/5 | $2 |" \
+write_entries() {  # $1=root $2=record basename (1 行目の見出しと全行の出典)
+  printf '%s\n' "<!-- nb-sweep-record: $2 -->" "| A-1 | a.ts:1 | issued | #5 https://example.test/5 | $2 |" \
     "| A\\|2 | b.ts:2 | recorded | severity=LOW; measured=false | $2 |" \
     "| A-3 | c.ts:3 | issued | #6 x\\|y | $2 |" > "$(entries_of "$1")"
 }
@@ -748,6 +748,22 @@ run_fix "$d" empty "$step1"
 assert "T-15 empty で他の record の entries: [fix:error] で止まる" 1 "$(grep -c '^\[fix:error\] reason=nb_sweep_entries_stale$' "$d/out")"
 assert "T-15 empty で他の record の entries: 件数を出さない" 0 "$(grep -c 'NB_SWEEP_RESULT=' "$d/out")"
 assert "T-15 empty で他の record の entries: entries を消さない" 1 "$([ -e "$(entries_of "$d")" ] && echo 1 || echo 0)"
+
+# 合流した保留候補の行は元の review JSON を出典に持つ。どの sweep の entries かは 1 行目で決まるので、
+# 手順 3 で止まった sweep は手順 3 から続き、手順 4 が件数を出せる
+d=$(fix_root); cleanup_dirs+=("$d")
+write_entries "$d" 7-20260202000000.json
+printf '%s\n' "| F-01 | old.ts:4 | REJECT | 前提は不変 | 7-20260101000000.json |" >> "$(entries_of "$d")"
+run_fix "$d" ok "$step1"
+assert "T-15 合流候補の行を含む entries: present（手順 3 から続く）" 1 "$(grep -c '^\[CONTEXT\] NB_SWEEP_ENTRIES=present;' "$d/out")"
+assert "T-15 合流候補の行を含む entries: rc=0" 0 "$(cat "$d/rc")"
+run_fix "$d" empty "$step1"
+assert "T-15 合流候補の行を含む entries: 件数に数える" 1 "$(grep -c '^\[CONTEXT\] NB_SWEEP_RESULT=done; issued=2; recorded=2$' "$d/out")"
+d=$(fix_root); cleanup_dirs+=("$d")
+write_entries "$d" 7-20260202000000.json
+sed -i '1d' "$(entries_of "$d")"
+run_fix "$d" ok "$step1"
+assert "T-15 1 行目の見出しを欠く entries: stale で止まる" 1 "$(grep -c '^\[fix:error\] reason=nb_sweep_entries_stale$' "$d/out")"
 
 d=$(fix_root); cleanup_dirs+=("$d")
 run_fix "$d" empty "$step1"
