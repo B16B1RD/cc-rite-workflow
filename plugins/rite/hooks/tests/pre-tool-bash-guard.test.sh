@@ -3268,7 +3268,7 @@ p10_failgit=$(mktemp -d "${TMPDIR:-/tmp}/rite-p10-failgit.XXXXXX")
 printf '#!/bin/bash\nfor a; do [ "$a" = --path-format=absolute ] && { printf "fatal: cannot read\\n\\tgit config --global --add safe.directory %%s\\n" "%s" >&2; exit 128; }; done\nexec %s "$@"\n' \
   "$p10_main" "$(command -v git)" > "$p10_failgit/git"
 chmod +x "$p10_failgit/git"
-PATH="$p10_failgit:$PATH" p10_deny "a git that cannot read the checkout names its own error" outside-checkout-uninspectable \
+PATH="$p10_failgit:$PATH" p10_deny "a git that cannot read the state root names its own error" outside-checkout-uninspectable \
   "git cannot read the repository at $p10_main. git reports:"$'\n'"fatal: cannot read" "$p10_scratch" "cd $p10_scratch && gh api x"
 PATH="$p10_failgit:$PATH" p10_deny "a command git reports is left as is, with the fix on its own line" outside-checkout-uninspectable \
   $'\tgit config --global --add safe.directory '"$p10_main"$' \nFix why git cannot read the repository (the error git reports above)' \
@@ -3282,7 +3282,28 @@ PATH="$p10_failgit:$PATH" p10_deny "a worktree git cannot read names its own err
   "$p10_wt" "cd $p10_wt && gh api x"
 PATH="$p10_failgit:$PATH" p10_deny "a directory in no repository is still judged outside, not unreadable" outside-checkout \
   "runs 'gh' in $p10_scratch, which is outside" "$p10_wt" "cd $p10_scratch && gh api x"
-rm -rf "$p10_failgit"
+# The same for a directory below the worktree, and for a worktree placed outside the state root.
+mkdir -p "$p10_wt/sub"
+printf '#!/bin/bash\n[[ "$2" == %s* ]] && { echo "fatal: cannot read" >&2; exit 128; }\nexec %s "$@"\n' \
+  "$p10_wt" "$(command -v git)" > "$p10_failgit/git"
+PATH="$p10_failgit:$PATH" p10_deny "a directory below a worktree git cannot read names its own error" outside-checkout-uninspectable \
+  "git cannot read the repository at $p10_wt/sub. git reports:" "$p10_wt" "cd $p10_wt/sub && gh api x"
+p10_ext="$p10_scratch/ext-wt"
+git -C "$p10_main" worktree add -q --detach "$p10_ext" 2>/dev/null
+printf '#!/bin/bash\n[ "$2" = %s ] && { echo "fatal: cannot read" >&2; exit 128; }\nexec %s "$@"\n' \
+  "$p10_ext" "$(command -v git)" > "$p10_failgit/git"
+PATH="$p10_failgit:$PATH" p10_deny "a worktree outside the state root git cannot read names its own error" outside-checkout-uninspectable \
+  "git cannot read the repository at $p10_ext. git reports:" "$p10_wt" "cd $p10_ext && gh api x"
+git -C "$p10_main" worktree remove --force "$p10_ext"
+rm -rf "$p10_failgit" "$p10_wt/sub"
+# A directory made where a removed worktree was is outside, not an unreadable worktree.
+p10_gone="$p10_scratch/gone-wt"
+git -C "$p10_main" worktree add -q --detach "$p10_gone" 2>/dev/null
+rm -rf "$p10_gone" && mkdir "$p10_gone"
+p10_deny "a directory where a removed worktree was is outside" outside-checkout \
+  "runs 'gh' in $p10_gone, which is outside" "$p10_wt" "cd $p10_gone && gh api x"
+git -C "$p10_main" worktree prune
+rm -rf "$p10_gone"
 P10_ROOT="$p10_broken" p10_deny "a state root git cannot read names the git fix" outside-checkout-uninspectable \
   "Fix why git cannot read the repository" "$p10_wt" "cd $p10_scratch && gh api x"
 P10_ROOT="$p10_broken" p10_deny "a state root git cannot read" outside-checkout-uninspectable "git cannot read the repository at $p10_broken. git reports:"$'\n'"fatal" \

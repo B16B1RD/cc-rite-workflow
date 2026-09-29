@@ -490,7 +490,10 @@ def worktrees(root):
     result = subprocess.run(["git", "-C", root, "worktree", "list", "--porcelain"], capture_output=True, text=True)
     if result.returncode != 0:
         raise OSError("git cannot list the worktrees of " + root + ". git reports:\n" + result.stderr.strip())
-    return [Path(line[len("worktree "):]).resolve() for line in result.stdout.splitlines() if line.startswith("worktree ")]
+    # A prunable worktree is gone: a directory made at its path later is not in the checkout.
+    blocks = [block.splitlines() for block in result.stdout.split("\n\n")]
+    return [Path(block[0][len("worktree "):]).resolve() for block in blocks
+            if block and block[0].startswith("worktree ") and not any(line.startswith("prunable") for line in block)]
 
 
 def existing(directory):
