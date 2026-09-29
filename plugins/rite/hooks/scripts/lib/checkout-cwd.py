@@ -11,13 +11,11 @@ checkout, "<kind>\\t<directory>\\t<word>", with an empty directory when the dire
 cannot be known. A root without .git defines no checkout, so nothing is printed.
 Exit 1 when the command cannot be parsed or git cannot read a root that has .git.
 
-Heredocs and comments are removed before the command is read; the command
-substitutions of a body with an unquoted delimiter run where the heredoc
-starts, so they are kept at that place. A heredoc that does not end at its
-delimiter, and a case command in such a substitution, cannot be read and are
-an error. A script is
-judged by where it runs, not by what it runs: whether it calls gh cannot be seen
-from here. Not a shell interpreter.
+Heredocs and comments are removed before the command is read. Bodies are not
+read: one with an unquoted delimiter that runs a command substitution is an
+error, as are a heredoc that does not end at its delimiter and a case command
+inside $( ). A script is judged by where it runs, not by what it runs: whether
+it calls gh cannot be seen from here. Not a shell interpreter.
 """
 import argparse
 import importlib
@@ -107,58 +105,43 @@ def _heredoc_word(text, index):
     return "".join(word), index, quoted
 
 
-def _body_substitutions(body):
-    """The command substitutions bash runs when it expands an unquoted heredoc body,
-    each read as strip_heredocs reads one: in a body a backslash escapes only $, `,
-    \\ and a newline."""
-    found, index = [], 0
+UNREADABLE_BODY = ("the body of an unquoted heredoc runs a command substitution, which is not read"
+                   " here: quote its delimiter (<<'EOF') or run the command from inside the checkout")
+
+
+def _check_body(body):
+    """ValueError when bash would run a command in this unquoted heredoc body: an
+    unescaped $(, ` or $((. A backslash in a body escapes only $, `, \\ and a newline."""
+    index = 0
     while index < len(body):
         char = body[index]
         if char == "\\":
             index += 2
             continue
-        if body.startswith("$((", index):
-            index = _read(body, index + 3, "arith")[1]
-            continue
-        if body.startswith("$(", index):
-            text, index = _read(body, index + 2, "sub")
-            found.append(_no_case("$(" + text))
-            continue
-        if char == "`":
-            text, index = _read(body, index + 1, "bq")
-            found.append(_no_case("`" + text))
-            continue
+        if char == "`" or body.startswith("$(", index):
+            raise ValueError(UNREADABLE_BODY)
         index += 1
-    return found
 
 
-def _no_case(text):
-    """text, or ValueError when it runs a case command: its pattern ) would be read
-    here as the end of the substitution."""
-    if re.search(r"(^|[\s;&|(`])case\s+\S+\s+in(\s|$)", text):
-        raise ValueError("a case command in a heredoc body substitution cannot be read")
-    return text
+def _command_position(command, index):
+    """Whether the word at index starts a command: after (, ;, &, |, a newline, or a
+    keyword that a command follows."""
+    before = command[:index].rstrip(" \t")
+    if not before or before[-1] in "(;&|\n":
+        return True
+    return re.search(r"(^|[\s;&|(])(then|do|else|if|elif|while|until|!|\{)$", before) is not None
 
 
 def strip_heredocs(command):
     """The command with each heredoc removed: operator, delimiter and body. Quotes,
     parameter expansions, arithmetic and comments are followed so that a << inside
     them, or a <<<, starts no heredoc; command substitutions and backquotes are
-    followed to their end, and a heredoc inside them is removed like any other. The
-    body of an unquoted delimiter is expanded as in bash, so each command substitution
-    in it, read by the same rules, takes the operator's place, where it runs. A
+    followed to their end, and a heredoc inside them is removed like any other. A
     comment is blanked out, keeping its #, so that no quote or << in it is read.
     ValueError when a heredoc has no delimiter or does not end at its delimiter line,
-    a quote or substitution does not end, or a body's substitution runs a case
-    command."""
-    return _read(command, 0, "code")[0]
-
-
-def _read(command, index, kind):
-    """(text, end): what strip_heredocs makes of command from index, read as the inside
-    of kind ("code", or "sub" / "bq" / "arith" for an expansion whose opening is before index),
-    up to the end of the command or just past the substitution's close."""
-    out, stack, pending, length = [], [[kind, 0]], [], len(command)
+    a body with an unquoted delimiter runs a command substitution, a case command is
+    inside $( ), or a quote or substitution does not end."""
+    out, stack, pending, index, length = [], [["code", 0]], [], 0, len(command)
     escaped = -1  # the index of the last character a backslash escaped
     closed = -1  # the index of the last ) that closed a $( or $((
     while index < length:
@@ -222,6 +205,10 @@ def _read(command, index, kind):
         elif command.startswith("${", index):
             stack.append(["param", 0])
             step = 2
+        elif (kind == "sub" and command.startswith("case", index)
+              and command[index + 4:index + 5] in (" ", "\t", "\n") and _command_position(command, index)):
+            raise ValueError("a case command inside $( ) is not read here: its pattern ) would end the"
+                             " substitution; run the command from inside the checkout")
         elif char == "(" and kind == "sub":
             context[1] += 1
         elif char == ")" and kind == "sub":
@@ -249,13 +236,13 @@ def _read(command, index, kind):
             delimiter, index, quoted = _heredoc_word(command, start)
             if not delimiter:
                 raise ValueError("a heredoc has no delimiter")
-            pending.append((delimiter, tabs, quoted, len(out)))
+            pending.append((delimiter, tabs, quoted))
             out.append(" ")
             continue
         elif char == "\n" and pending:
             out.append(char)
             index += 1
-            for delimiter, tabs, quoted, slot in pending:
+            for delimiter, tabs, quoted in pending:
                 body = []
                 while True:
                     if index >= length:
@@ -267,18 +254,16 @@ def _read(command, index, kind):
                         break
                     body.append(line)
                 if not quoted:
-                    out[slot] = " " + " ".join(_body_substitutions("\n".join(body))) + " "
+                    _check_body("\n".join(body))
             pending = []
             continue
         out.append(command[index:index + step])
         index += step
-        if not stack:
-            break
     if pending:
         raise ValueError("a heredoc does not end at its delimiter " + pending[0][0])
-    if stack[1:] or (stack and stack[0][0] != "code"):
+    if len(stack) > 1:
         raise ValueError("a quote or substitution does not end")
-    return "".join(out), index
+    return "".join(out)
 
 
 def _move(directories, value):
@@ -428,7 +413,8 @@ def each_call(command, cwd):
         if substituted and not in_nested:
             # A substitution's commands come just ahead of the command containing it,
             # which runs in its own group's directory.
-            owner = next((n for _w, n, _b, _a in segments[position:] if n is not True), False)
+            owner = next((segments[j][1] for j in range(position, len(segments))
+                          if segments[j][1] is not True), False)
             nested_here = group_base(owner[1]) if isinstance(owner, tuple) else here
         in_nested = substituted
         base = nested_here if substituted else group_base(group) if group else here
@@ -505,8 +491,8 @@ def main():
     checkout = common_dir(args.root)
     if checkout is None:
         if (Path(args.root) / ".git").exists():
-            result = subprocess.run(["git", "-C", args.root, "rev-parse", "--git-common-dir"],
-                                    capture_output=True, text=True)
+            result = subprocess.run(["git", "-C", args.root, "rev-parse", "--path-format=absolute",
+                                     "--git-common-dir"], capture_output=True, text=True)
             raise OSError("git cannot read the checkout at " + args.root + ": " + result.stderr.strip())
         return
     inside = {}

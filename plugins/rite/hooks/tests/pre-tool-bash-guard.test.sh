@@ -3142,9 +3142,9 @@ p10_deny "a heredoc that does not end" outside-checkout-uninspectable "does not 
   "$p10_scratch" "$(printf 'cat > out.md <<EOF\nhello')"
 p10_deny "gh before a heredoc that does not end" outside-checkout-uninspectable "does not end" \
   "$p10_wt" "$(printf 'cd %s && gh api x && cat <<EOF\nhello' "$p10_scratch")"
-p10_deny "gh in a substitution of an unquoted heredoc body" outside-checkout "runs 'gh' $p10_out" \
+p10_deny "gh in a substitution of an unquoted heredoc body" outside-checkout-uninspectable "quote its delimiter" \
   "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\n$(gh api user)\nEOF' "$p10_scratch")"
-p10_deny "gh in an unquoted heredoc body of a message substitution" outside-checkout "runs 'gh' $p10_out" \
+p10_deny "gh in an unquoted heredoc body of a message substitution" outside-checkout-uninspectable "quote its delimiter" \
   "$p10_wt" "$(printf 'cd %s && echo "$(cat <<EOF\n$(gh api user)\nEOF\n)"' "$p10_scratch")"
 p10_allow "a substitution in a quoted heredoc body is text" "$p10_scratch" \
   "$(printf 'cat > n.md <<%s\n$(gh api user)\nEOF' "'EOF'")"
@@ -3152,14 +3152,8 @@ p10_allow "a substitution after a backslash-quoted delimiter is text" "$p10_scra
   "$(printf 'cat > n.md <<\\EOF\n$(gh api user)\nEOF')"
 p10_allow "escaped substitutions in an unquoted heredoc body are text" "$p10_scratch" \
   "$(printf 'cat > pr.md <<EOF\nRun \\`git status\\` and \\$(gh pr view).\nEOF')"
-p10_deny "a substitution after an escaped backslash in an unquoted body" outside-checkout "runs 'gh' $p10_out" \
-  "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\n\\\\$(gh api user)\nEOF' "$p10_scratch")"
-p10_deny "a quoted cd in an unquoted body substitution" outside-checkout "runs 'gh' $p10_out" \
-  "$p10_wt" "$(printf 'cat > n.md <<EOF\n$(cd "%s" && gh api user)\nEOF' "$p10_scratch")"
-p10_deny "a quoted ) in an unquoted body substitution" outside-checkout "runs 'gh' $p10_out" \
-  "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\n$(echo "a)b"; gh api user)\nEOF' "$p10_scratch")"
-p10_deny "a body substitution runs before a cd later on its line" outside-checkout "runs 'gh' $p10_out" \
-  "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF && cd %s\n$(gh api user)\nEOF' "$p10_scratch" "$p10_wt")"
+p10_deny "a substitution after an escaped backslash in an unquoted body" outside-checkout-uninspectable "quote its delimiter" \
+  "$p10_scratch" "$(printf 'cat > n.md <<EOF\n\\\\$(date)\nEOF')"
 p10_deny "gh after a << inside a parameter expansion" outside-checkout "runs 'gh' $p10_out" \
   "$p10_wt" "$(printf 's=a; echo ${s//<</x}\ncd %s && gh api x' "$p10_scratch")"
 p10_deny "gh after a comment right after a group" outside-checkout "runs 'gh' $p10_out" \
@@ -3172,24 +3166,19 @@ p10_allow "a # inside a word before a heredoc" "$p10_scratch" \
   "$(printf "echo a#b; cat > n.md <<'EOF'\ngh pr view\nEOF")"
 p10_deny "gh after a URL fragment" outside-checkout "runs 'gh' $p10_out" \
   "$p10_wt" "echo https://e/x#frag; cd $p10_scratch && gh api x"
-p10_deny "gh after a ) in a comment inside a body substitution" outside-checkout "runs 'gh' $p10_out" \
-  "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\n$(date # a)\ngh api x\n)\nEOF' "$p10_scratch")"
-p10_allow "a quote in a nested heredoc inside a body substitution" "$p10_scratch" \
-  "$(printf "cat > n.md <<EOF\n\$(cat <<X\ndon't\nX\n)\nEOF")"
-p10_allow "a quote in a comment inside a body substitution" "$p10_scratch" \
-  "$(printf "cat > n.md <<EOF\n\$(date # it's today\n)\nEOF")"
-p10_deny "a case command in a body substitution" outside-checkout-uninspectable "case command" \
-  "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\n$(case a in a) gh api x;; esac)\nEOF' "$p10_scratch")"
-p10_allow "the word case in a body substitution" "$p10_scratch" \
-  "$(printf 'cat > n.md <<EOF\n$(echo a test case here)\nEOF')"
-p10_deny "a body subshell written as \$((" outside-checkout-uninspectable "does not end" \
-  "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\n$((cd %s; gh api user) )\nEOF' "$p10_scratch" "$p10_scratch")"
-p10_allow "arithmetic in an unquoted heredoc body" "$p10_scratch" \
-  "$(printf 'cat > n.md <<EOF\n$((1+2)) items\nEOF')"
-p10_deny "gh in a backquote of an unquoted heredoc body" outside-checkout "runs 'gh' $p10_out" \
-  "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\n`gh api user`\nEOF' "$p10_scratch")"
-p10_deny "a substitution in a heredoc body that does not end" outside-checkout-uninspectable "does not end" \
-  "$p10_scratch" "$(printf 'cat > n.md <<EOF\n$(echo a\nEOF')"
+p10_deny "a case command inside a substitution" outside-checkout-uninspectable "case command" \
+  "$p10_wt" "cd $p10_scratch && echo \"\$(case \"\$k\" in pr) gh pr view 1;; esac)\""
+p10_allow "the word case inside a substitution" "$p10_scratch" "echo \$(echo a test case here)"
+p10_deny "arithmetic in an unquoted heredoc body" outside-checkout-uninspectable "quote its delimiter" \
+  "$p10_scratch" "$(printf 'cat > n.md <<EOF\n$((1+2)) items\nEOF')"
+p10_allow "an unquoted heredoc body without a substitution" "$p10_scratch" \
+  "$(printf 'cat > n.md <<EOF\nHome is $HOME, 100%%\nEOF')"
+p10_deny "a backquote in an unquoted heredoc body" outside-checkout-uninspectable "quote its delimiter" \
+  "$p10_scratch" "$(printf 'cat > n.md <<EOF\nnow `date`\nEOF')"
+p10_deny "the denial of an unquoted body names the quoted delimiter" outside-checkout-uninspectable "<<'EOF'" \
+  "$p10_scratch" "$(printf 'cat > n.md <<EOF\nnow $(date)\nEOF')"
+p10_allow "an unquoted body run in the checkout without a cd" "$p10_wt" \
+  "$(printf 'cat > n.md <<EOF\n$(git rev-parse HEAD)\nEOF')"
 p10_deny "a heredoc operator at the end of the command" outside-checkout-uninspectable "does not end" \
   "$p10_scratch" "cat > out.md <<EOF"
 p10_deny "gh after a # inside a word" outside-checkout "runs 'gh' $p10_out" \
@@ -3243,7 +3232,7 @@ p10_broken=$(mktemp -d "${TMPDIR:-/tmp}/rite-p10-broken.XXXXXX")
 printf 'gitdir: %s/missing\n' "$p10_broken" > "$p10_broken/.git"
 mkdir -p "$p10_broken/.rite/sessions"
 jq -n '{active: true}' > "$p10_broken/.rite/sessions/$p10_sid.flow-state"
-P10_ROOT="$p10_broken" p10_deny "a state root git cannot read" outside-checkout-uninspectable "git cannot read the checkout" \
+P10_ROOT="$p10_broken" p10_deny "a state root git cannot read" outside-checkout-uninspectable "git cannot read the checkout at $p10_broken: fatal" \
   "$p10_wt" "cd $p10_scratch && gh api x"
 rm -rf "$p10_main" "$p10_scratch" "$p10_plain" "$p10_broken"
 # The skills' own bash blocks run during a session, from the checkout. Placeholders

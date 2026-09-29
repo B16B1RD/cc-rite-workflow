@@ -1602,16 +1602,15 @@ if [ -z "$BLOCKED_PATTERN" ]; then
       _co_out=$(
         # Test-only, fail-CLOSED-only fault injection: a failed check must deny.
         [ "${RITE_BTG_TEST_CRASH:-}" != "pattern10-helper" ] || exit 3
-        # The helper removes heredoc bodies itself and reads a long command well
-        # within the time limit, so the command is passed as written, on stdin so
-        # that no argument length limit applies.
+        # The helper removes heredoc bodies itself, so the command is passed as
+        # written, on stdin so that no argument length limit applies.
         printf '%s' "$COMMAND" | python3 "$SCRIPT_DIR/scripts/lib/checkout-cwd.py" --command - --cwd "$_co_cwd" --root "$_co_root" 2>&1
       ) || _co_rc=$?
       _co_checkout="${_co_worktree:-$_co_root}"
       if [ "$_co_rc" -ne 0 ]; then
         BLOCKED_PATTERN="outside-checkout-uninspectable"
         BLOCKED_REASON="The directory each git, gh or script call in this command runs in cannot be checked (rc=${_co_rc}): ${_co_out:-no output}"
-        BLOCKED_ALTERNATIVE="Simplify the command and run git, gh and scripts from inside the checkout: cd ${_co_checkout} first."
+        BLOCKED_ALTERNATIVE="Simplify the command and run git, gh and scripts from inside the checkout: cd ${_co_checkout} first. For a heredoc whose body runs a command substitution, quote its delimiter (<<'EOF') or run the command from inside the checkout."
       elif [ -n "$_co_out" ]; then
         # The directory field is empty when unknown, which read would merge away.
         _co_line="${_co_out%%$'\n'*}"
