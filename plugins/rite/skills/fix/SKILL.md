@@ -397,13 +397,13 @@ bash {plugin_root}/scripts/fix-step.sh fallback-abort --reason user_file_path_in
 
 | reason | Description |
 |--------|-------------|
-| `overall_assessment_unknown_value` | Priority 0/2/3 で `overall_assessment` が受理値 (`mergeable` / `fix-needed`) 以外 (review-result-schema.md enum 違反、`REVIEW_SOURCE_ENUM_UNKNOWN` flag。P0: fallback、P2: Priority 3 routing、P3: legacy parser fallthrough) |
-| `pr_comment_raw_json_parse_failure` | Priority 3 で取得した PR コメント Raw JSON が `jq empty` で syntax invalid (legacy Markdown parser へ fallthrough) |
+| `overall_assessment_unknown_value` | Priority 0/2/3 で `overall_assessment` が受理値 (`mergeable` / `fix-needed`) 以外 (review-result-schema.md enum 違反、`REVIEW_SOURCE_ENUM_UNKNOWN` flag。P0: fallback、P2: Priority 3 routing、P3: `[fix:error]` で停止) |
+| `pr_comment_raw_json_parse_failure` | Priority 3 で取得した PR コメント Raw JSON が `jq empty` で syntax invalid (`[fix:error]` で停止) |
 | `pr_comment_raw_json_awk_failed` | Priority 3 で PR コメントからの Raw JSON 抽出 helper (`hooks/scripts/review-raw-json-extract.sh`) が失敗 (helper 解決不能 rc=127 / awk 異常 / OOM / SIGPIPE、`REVIEW_SOURCE_PARSE_FAILED` flag、legacy Markdown parser へ fallthrough)。reason 名の `awk` は helper 委譲前からの documented literal で、Eval-order enumeration の機械マッチ対象のため改名しない |
-| `pr_comment_schema_required_fields_missing` | Priority 3 で取得した PR コメント Raw JSON が parse 可能だが必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) が欠落 (legacy Markdown parser へ fallthrough) |
-| `pr_comment_cross_field_invariant_violated` | Priority 3 で取得した PR コメント Raw JSON の cross-field invariant 違反: `overall_assessment=="mergeable"` だが CRITICAL/HIGH かつ status==open の finding が存在 (legacy Markdown parser へ fallthrough、`REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED` flag) |
-| `pr_comment_critical_high_scope_nit_noted` | Priority 3 で取得した PR コメント Raw JSON の cross-field invariant #4 違反: `severity ∈ {CRITICAL, HIGH}` × `scope == "nit-noted"` の finding が存在 (legacy Markdown parser へ fallthrough、`REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED` flag) |
-| `pr_comment_schema_version_unknown` | Priority 3 で取得した PR コメント Raw JSON の schema_version が未知 (legacy Markdown parser へ fallthrough) |
+| `pr_comment_schema_required_fields_missing` | Priority 3 で取得した PR コメント Raw JSON が parse 可能だが必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) が欠落 (`[fix:error]` で停止) |
+| `pr_comment_cross_field_invariant_violated` | Priority 3 で取得した PR コメント Raw JSON の cross-field invariant 違反: `overall_assessment=="mergeable"` だが CRITICAL/HIGH かつ status==open の finding が存在 (`[fix:error]` で停止、`REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED` flag) |
+| `pr_comment_critical_high_scope_nit_noted` | Priority 3 で取得した PR コメント Raw JSON の cross-field invariant #4 違反: `severity ∈ {CRITICAL, HIGH}` × `scope == "nit-noted"` の finding が存在 (`[fix:error]` で停止、`REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED` flag) |
+| `pr_comment_schema_version_unknown` | Priority 3 で取得した PR コメント Raw JSON の schema_version が未知 (`[fix:error]` で停止) |
 | `user_cancelled` | Interactive fallback で「中止」option が選択された (ステップ 5.1 評価順 1 で `[fix:error]` に昇格) |
 | `user_file_path_invalid` | Interactive fallback の「ファイルパス指定」で再実行した path でもレビュー結果を取得できなかった (one-shot、retry ループなし、`[fix:error]` 昇格) |
 | `review_file_path_empty_value` | ステップ 1.0.1 で値を持たない `--review-file` が指定された。Pattern 1 (equals style: `--review-file=`) と Pattern 2 (space style: `--review-file <末尾>`) の両方で検出される。`flag_style=equals` / `flag_style=space` として retained flag に付記される |
@@ -420,7 +420,7 @@ bash {plugin_root}/scripts/fix-step.sh fallback-abort --reason user_file_path_in
 | `explicit_json_differs_from_saved` | ステップ 1.2.2 step 1 で、外部ファイルと HEAD の保存済み JSON の `findings` / `non_blocking_findings` / `measured_gate` が一致しなかった（保存済み JSON が既に triage 済みの場合を含む）。指定したファイルと違う内容を triage しないため `[fix:error]`。`--review-file` を外して再実行すると保存済み JSON が読まれる |
 | `explicit_json_compare_failed` | ステップ 1.2.2 step 1 の外部ファイルと保存済み JSON の比較で jq が失敗した（ファイルを読めない、JSON として解析できない）。一致とみなさず `[fix:error]` |
 | `fatal_triage_failed` | ステップ 1.2.2 helper の非ゼロ終了。原因と finding ID を保持して `[fix:error]`、legacy fallback 禁止 |
-| `pr_comment_schema_version_jq_failed` | Priority 3 で PR コメント Raw JSON の `schema_version` 抽出 jq が失敗 (jq バイナリ異常 / OOM / pipe write error、`schema_version="unknown"` で継続し legacy Markdown parser へ fallthrough、`REVIEW_SOURCE_PARSE_FAILED` flag) |
+| `pr_comment_schema_version_jq_failed` | Priority 3 で PR コメント Raw JSON の `schema_version` 抽出 jq が失敗 (jq バイナリ異常 / OOM / pipe write error、`schema_version="unknown"` で継続し未知の schema_version として `[fix:error]` で停止、`REVIEW_SOURCE_PARSE_FAILED` flag) |
 | `broad_retrieval_jq_extraction_failed` | ステップ 1.2.0 Priority 3 Broad Comment Retrieval で `pr_comments` からの rite review コメント抽出 jq が失敗 (jq バイナリ異常 / OOM / GitHub API レスポンスの JSON 破損、tempfile 不在として `BROAD_RETRIEVAL_SKIPPED_OR_NO_COMMENT` へ routing、`REVIEW_SOURCE_PARSE_FAILED` flag) |
 | `git_rev_parse_head_failed` | Priority 3 の commit_sha stale detection 用 `git rev-parse HEAD` が失敗 (stale 判定を skip し `head_sha=""` で継続、`REVIEW_SOURCE_STALE_CHECK_FAILED` flag。`jq_error_on_commit_sha` と同じ stale-check namespace) |
 

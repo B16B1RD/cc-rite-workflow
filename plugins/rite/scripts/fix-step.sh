@@ -576,7 +576,6 @@ else
       echo "[CONTEXT] REVIEW_SOURCE_SCHEMA_UNKNOWN=1; reason=pr_comment_schema_version_unknown" >&2
   echo "[fix:error] reason=pr_comment_schema_version_unknown"
   exit 1
-      # Legacy Markdown table parser (ステップ 1.2.1) に fallthrough
       ;;
   esac
 fi
