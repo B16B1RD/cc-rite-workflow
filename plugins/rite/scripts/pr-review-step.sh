@@ -42,7 +42,6 @@
 #   bash pr-review-step.sh number-ref-diff --base BASE_BRANCH
 #   bash pr-review-step.sh spawn-timings-check --file SPAWN_FILE
 #   bash pr-review-step.sh measured-gate --pr PR_NUMBER --input INPUT
-#   bash pr-review-step.sh recommendations-register --base BASE_BRANCH --input INPUT --items ITEMS
 #   bash pr-review-step.sh attribution-gate
 #   bash pr-review-step.sh attribution-files --base BASE_BRANCH
 #   bash pr-review-step.sh attribution-write --pr PR_NUMBER --total TOTAL --fix-introduced FIX_INTRODUCED --critical CRITICAL --high HIGH --medium MEDIUM --low-medium LOW_MEDIUM --low LOW
@@ -118,11 +117,17 @@ fi
 if [[ " $original_args " =~ [[:space:]]--post-comment[[:space:]] ]]; then
  flag_post="true"
 fi
+# /rite:iterate が review を呼ぶときだけ付ける。無ければ iterate の外の review として扱う
+from_iterate="false"
+if [[ " $original_args " =~ [[:space:]]--from-iterate[[:space:]] ]]; then
+ from_iterate="true"
+fi
 
 # フラグトークンを remaining_args から除去 (sed -E で `(^|space)--flag(space|$)` を空文字置換)
 remaining_args=$(printf '%s' "$original_args" \
  | sed -E 's/(^|[[:space:]])--no-post-comment([[:space:]]|$)/\1\2/g' \
  | sed -E 's/(^|[[:space:]])--post-comment([[:space:]]|$)/\1\2/g' \
+ | sed -E 's/(^|[[:space:]])--from-iterate([[:space:]]|$)/\1\2/g' \
  | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
 
 # --- Step 2: --post-comment / --no-post-comment conflict check ---
@@ -201,6 +206,7 @@ elif [ "$config_post_comment" = "true" ]; then
 fi
 
 echo "[CONTEXT] POST_COMMENT_MODE=$post_comment_mode" >&2
+echo "[CONTEXT] PR_REVIEW_FROM_ITERATE=$from_iterate" >&2
 echo "[CONTEXT] REMAINING_ARGS=$remaining_args" >&2
 }
 
@@ -744,14 +750,6 @@ fi
 exit "$_gate_rc"
 }
 
-# --- recommendations-register ----------------------------------------------------
-step_recommendations_register() {
-bash "$plugin_root"/scripts/review-pr-recommendations.sh register \
-  --input "$input" \
-  --items "$items" \
-  --base-ref "$(git rev-parse --verify -q "origin/${base_branch}^{commit}" >/dev/null && echo "origin/${base_branch}" || echo "${base_branch}")"
-}
-
 # --- attribution-gate ------------------------------------------------------------
 step_attribution_gate() {
 # `if ! var=$(cmd); then rc=$?` は bash 仕様上 `$?` が常に 0 になるため、capture と exit code を
@@ -1205,7 +1203,6 @@ reviewers=""
 gap=""
 spawn_file=""
 input=""
-items=""
 total=""
 fix_introduced=""
 critical=""
@@ -1260,7 +1257,6 @@ while [ "$#" -gt 0 ]; do
     --gap) gap=$2 ;;
     --file) spawn_file=$2 ;;
     --input) input=$2 ;;
-    --items) items=$2 ;;
     --total) total=$2 ;;
     --fix-introduced) fix_introduced=$2 ;;
     --critical) critical=$2 ;;
@@ -1326,7 +1322,6 @@ require() {
       gap) opt=--gap ;;
       spawn_file) opt=--file ;;
       input) opt=--input ;;
-      items) opt=--items ;;
       total) opt=--total ;;
       fix_introduced) opt=--fix-introduced ;;
       critical) opt=--critical ;;
@@ -1379,7 +1374,6 @@ case "$subcommand" in
   number-ref-diff) require base_branch; step_number_ref_diff ;;
   spawn-timings-check) require spawn_file; step_spawn_timings_check ;;
   measured-gate) require input pr_number; step_measured_gate ;;
-  recommendations-register) require input items base_branch; step_recommendations_register ;;
   attribution-gate) step_attribution_gate ;;
   attribution-files) require base_branch; step_attribution_files ;;
   attribution-write) require pr_number total fix_introduced critical high medium low_medium low; step_attribution_write ;;

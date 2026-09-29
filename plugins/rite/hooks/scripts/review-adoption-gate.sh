@@ -7,9 +7,17 @@
 #   file    the only verdict that may write externally (ADOPT pre_existing, DIAGNOSE
 #           investigate). The record must also carry a non-empty `acceptance` (the filed
 #           Issue's acceptance criterion); without it the decision is held.
-#   record  RESOLVED / REJECT / LINK without pr_blocking: record the disposition only.
+#   record  RESOLVED / REJECT / LINK without pr_blocking, and every LINK of a followup (the
+#           merged PR cannot take the fix, the OPEN tracker does): record the disposition only.
+#   fix     kind=triage only: ADOPT with origin=pr (fix_in_pr) when the caller passes
+#           --fix-loop yes (a mergeable review inside /rite:iterate, whose registration the same
+#           PR's fix reads) and `review-pr-recommendations.sh capacity` is open. Nothing is written
+#           outside the PR; the caller registers it as an in-PR recommendation for the same PR's
+#           fix. Nothing reads the registration at the stop on unverified acceptance criteria or
+#           in a standalone review, and at safety.max_review_cycles the fix could not be
+#           re-reviewed, so all three hold the candidate.
 #   hold    anything else: pr_blocking decisions (RECONCILE, ADOPT pr/unknown, DIAGNOSE
-#           pr/unknown, LINK pr/unknown) and DIAGNOSE without investigation.
+#           pr/unknown, LINK pr/unknown outside followup) and DIAGNOSE without investigation.
 # A missing record file, an unreadable context, or a helper ERROR holds every candidate.
 # When anything is held, nothing may be written: every candidate of the run with its full
 # text (held_ids names the held ones), the source, the reviewed commit and how to resume
@@ -34,13 +42,15 @@
 #   review-adoption-gate.sh --pr N --kind sweep|triage|followup --state-root DIR \
 #     --candidates FILE --review-result FILE --base REF [--adoption FILE] [--issue N] \
 #     [--owner-repo OWNER/REPO] [--issue-body FILE] [--pr-body FILE] [--ac-ids CSV] \
-#     [--ledger FILE] [--repo-root DIR]
+#     [--ledger FILE] [--repo-root DIR] [--fix-loop yes|no]
 #
 #   --candidates    {"candidates": [{"id": ..., <full candidate text>}, ...]}
 #   --adoption      the classifier's records ({"adoption": {"head", "records"}}).
 #                   Default: STATE_ROOT/.rite/state/adoption-PR-KIND.json
 #   --issue         related Issue; its body gives the AC ids and issue citations.
 #                   --issue-body / --pr-body / --ac-ids / --ledger replace the gh reads.
+#   --fix-loop      triage only: yes for a mergeable review inside /rite:iterate, no otherwise.
+#                   Default no.
 #
 # stdout: decided {"held": false, "head", "verdicts": [{"ids", "exit", "origin", "action",
 #           "tracker", "verdict", "record"}]}; held {"held": true, "reason", "hold_file"}
@@ -60,7 +70,7 @@ plugin_root="$(cd "$script_dir/../.." && pwd)"
 source "$script_dir/../control-char-neutralize.sh"
 
 pr="" kind="" state_root="" candidates="" review_result="" base="" adoption="" issue=""
-owner_repo="" issue_body="" pr_body="" ac_ids="" ac_ids_set=0 ledger="" repo_root=""
+owner_repo="" issue_body="" pr_body="" ac_ids="" ac_ids_set=0 ledger="" repo_root="" fix_loop=no
 while [ "$#" -gt 0 ]; do
   [ "$#" -ge 2 ] || { echo "ERROR: $1 needs a value" >&2; exit 2; }
   case "$1" in
@@ -78,12 +88,14 @@ while [ "$#" -gt 0 ]; do
     --ac-ids) ac_ids=$2; ac_ids_set=1 ;;
     --ledger) ledger=$2 ;;
     --repo-root) repo_root=$2 ;;
+    --fix-loop) fix_loop=$2 ;;
     *) echo "ERROR: unknown option: $1" >&2; exit 2 ;;
   esac
   shift 2
 done
 case "$pr" in ''|*[!0-9]*|0) echo "ERROR: --pr must be a positive integer" >&2; exit 2 ;; esac
 case "$kind" in sweep|triage|followup) ;; *) echo "ERROR: --kind must be sweep, triage or followup" >&2; exit 2 ;; esac
+case "$fix_loop" in yes|no) ;; *) echo "ERROR: --fix-loop must be yes or no" >&2; exit 2 ;; esac
 case "$issue" in ''|*[!0-9]*) [ -z "$issue" ] || { echo "ERROR: --issue must be a positive integer" >&2; exit 2; } ;; esac
 for v in state_root candidates review_result base; do
   [ -n "${!v}" ] || { echo "ERROR: --${v//_/-} is required" >&2; exit 2; }
@@ -108,7 +120,7 @@ resume_for() {
       case "$kind" in
         triage) way="スコープ外処分の手順 1 が hold ファイルの候補を合流させる" ;;
         sweep) way="nb-sweep-collect.sh が hold ファイルの候補を candidates に合流させる" ;;
-        followup) way="follow-up は hold ファイルの候補を再検証の除外から外す" ;;
+        followup) way="follow-up は台帳の処分が無い候補を毎回候補に含め、hold の held_ids を判定し直す側（judge）へ戻す" ;;
       esac
       echo "前回の hold ファイルの candidates にある候補が今回の候補に含まれていない。欠けた候補を全文のまま候補へ戻してから $cmd を再実行する（${way}）"
       return ;;
@@ -122,7 +134,7 @@ resume_for() {
   jq -e 'any(.[]; .verdict == "hold" and (.pr_blocking | not))' <<< "$verdicts" >/dev/null && ways+=("$records")
   if jq -e 'any(.[]; .verdict == "hold" and .pr_blocking)' <<< "$verdicts" >/dev/null; then
     if [ "$kind" = followup ]; then
-      ways+=("PR 起因の保留はマージ済み PR では同じ PR で直せず、この出口の扱いは仕様で未定義のため、保留のまま止め、人間に報告する（再実行しても同じ保留になる。判定記録を pre_existing や REJECT に書き換えて解除しない）")
+      ways+=("PR 起因の保留（LINK を除く）はマージ済み PR では同じ PR で直せず、この出口の扱いは仕様で未定義のため、保留のまま止め、人間に報告する（再実行しても同じ保留になる。判定記録を pre_existing や REJECT に書き換えて解除しない。同じ根因を追跡する OPEN の Issue があれば tracker に入れると LINK で決着する）")
     else
       ways+=("PR 起因の保留は同じ PR で直す。コードを直して push し $cmd で再レビューする（HEAD が変わると新しいレビューで判定し直す）")
       jq -e 'any(.[]; .verdict == "hold" and .exit == "RECONCILE")' <<< "$verdicts" >/dev/null \
@@ -268,11 +280,25 @@ if ! mkdir -p "$state_root/.rite/state" ||
   hold history_write_failed "処分記録を保存できません: $history_file"
 fi
 
+# A triage fix_in_pr (ADOPT, origin=pr) is fixed in the same PR as an in-PR recommendation when the
+# caller says the registration will be read (--fix-loop yes) and the fix can still be re-reviewed;
+# otherwise it is held.
+in_pr_fix=no
+if [ "$kind" = triage ] && [ "$fix_loop" = yes ] && jq -e 'any(.decisions[]; .action == "fix_in_pr")' <<< "$decisions" >/dev/null; then
+  capacity=$(bash "$plugin_root/scripts/review-pr-recommendations.sh" capacity --input "$review_result" 2>"$work/err") \
+    || hold adoption_error "PR 内推奨の登録可否を読めません: $(callee_diag)"
+  [ "$capacity" = "[CONTEXT] PR_RECOMMENDATIONS_CAPACITY=open" ] && in_pr_fix=yes
+fi
+
 # Decisions come in record order, so decision i belongs to record i.
-if ! verdicts=$(jq -c --slurpfile a "$adoption" --argjson d "$decisions" '
+# A merged PR cannot be fixed in the same PR, so a followup LINK (an OPEN tracker takes the root
+# cause) is recorded even when it is PR-origin.
+if ! verdicts=$(jq -c --slurpfile a "$adoption" --argjson d "$decisions" --arg kind "$kind" --arg fix "$in_pr_fix" '
     ($a[0].adoption.records) as $records
     | [$d.decisions | to_entries[] | .value + {record: $records[.key]}
        | . + {verdict: (if .file then (if ((.record.acceptance // "") | type == "string" and test("\\S")) then "file" else "hold" end)
+                        elif .exit == "LINK" and $kind == "followup" then "record"
+                        elif .action == "fix_in_pr" and $fix == "yes" then "fix"
                         elif .pr_blocking or .action == "hold" then "hold" else "record" end)}]
   ' <<< '{}'); then
   hold adoption_error "判定結果を読めません"

@@ -199,9 +199,9 @@ safety:
 # 非実測 CRITICAL の詳細（脆弱性の再現手順等）が修正前に public PR へ先行開示されるのを避ける。既定の
 # post_comment: false では cycle 中の全文の保存先は上記ローカル JSON だけで、そこはレビューを実行した環境に
 # しか存在せず gitignore 対象（PR のブランチを checkout しても取得できない）。マージ時の残存分は
-# /rite:cleanup が採否ゲートの出口が file の根因ごとに follow-up Issue を起票して全文を転記し（マージ後 HEAD の
-# 再検証で解消済みの指摘と、iterate の sweep で起票・処分済みの指摘は転記から外す。却下台帳か最新のレビュー結果
-# JSON を読めなければ sweep 起票済みの除外だけを行わず、再検証による除外は適用済みのまま WARNING を出す）、
+# /rite:cleanup が採否ゲートの出口が file の根因ごとに follow-up Issue を起票して全文を転記し（却下台帳で
+# 処分済みの指摘は転記から外し、解消済みの指摘は採否ゲートが RESOLVED として記録して起票しない。却下台帳を
+# 読めなければ全候補を保留し、最新のレビュー結果 JSON を読めなければ台帳による除外を行わずに WARNING を出す）、
 # non_blocking_findings[] が非空の JSON を削除せず archive/ へ退避する（出口の出ていない候補があれば保留し、
 # 起票も退避・削除もしない）。指摘への対応内容は fix コミットメッセージに書くが、squash merge
 # のため develop の git log には残らず、PR の Commits タブ経由で参照する。

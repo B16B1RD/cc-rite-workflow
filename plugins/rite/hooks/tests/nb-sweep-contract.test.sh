@@ -7,7 +7,7 @@
 # T-04 empty collect is no-op status (AC-4)
 # T-05 nit-noted in findings[] is a target; new class-B is not a second sweep (AC-5)
 # T-06 ledger write / merge fail-loud (AC-6)
-# T-07 class A findings[] stay out of sweep targets (AC-7); the rails also pin the in-PR recommendation wiring (iterate check / mark and their order before the fix invoke, pr-review 5.3.0.R register and its stop, 7.1 exclusion, fix 2.1 R-NN routing)
+# T-07 class A findings[] stay out of sweep targets (AC-7); the rails also pin the in-PR recommendation wiring (iterate check / mark and their order before the fix invoke, pr-review 7.2 registering the adoption verdict fix and its stop, fix 2.1 R-NN routing)
 # T-08 body_count extraction expression matches between the fix-step.sh nb-sweep-persist step (called from fix/references/nb-sweep.md) and the record helper (AC-1..AC-3)
 # T-09 a ledger-only body (0 findings, no existing comment) creates the record comment, including CRLF and degraded lookup
 # T-10 nb-sweep.md record step (its fix-step.sh nb-sweep-persist call run through the dispatcher) succeeds only on created / updated and never reaches the done write otherwise
@@ -496,21 +496,15 @@ rec_order=$(awk -v s="$REC_START" -v e="$REC_END" '
   { prev = $0 }' "$ITERATE" | tr '\n' '|')
 assert "T-07 iterate recommendation order check → mark → set → fix" "check|mark|set|fix|" "$rec_order"
 
-assert_grep_in_section "T-07 pr-review 5.3.0.R register" "$REVIEW" \
-  '^#### 5\.3\.0\.R PR 内推奨の登録$' '^### 5\.3\.8 ' \
-  '^bash \{plugin_root\}/scripts/pr-review-step\.sh recommendations-register '
-assert_grep "T-07 pr-review 5.3.0.R register helper" "$REVIEW_STEP" '"\$plugin_root"/scripts/review-pr-recommendations\.sh register'
-assert_grep_in_section "T-07 pr-review 5.3.0.R failure stops" "$REVIEW" \
-  '^#### 5\.3\.0\.R PR 内推奨の登録$' '^### 5\.3\.8 ' \
-  '^\| rc≠0 \| `\[review:error\]` を stdout に出力して停止する'
-rec_heads=$(grep -nE '^#### 5\.3\.0\.A |^#### 5\.3\.0\.R |^#### 6\.1\.a ' "$REVIEW" | cut -d' ' -f2 | tr '\n' '|')
-assert "T-07 pr-review 5.3.0.A → 5.3.0.R → 6.1.a order" "5.3.0.A|5.3.0.R|6.1.a|" "$rec_heads"
-assert_grep_in_section "T-07 pr-review 7.1 excludes registered recommendations" "$REVIEW" \
-  '^### 7\.1 Extract Separate Issue Candidates$' '^### 7\.2-7\.3 ' \
-  '`\{registered_recommendation_positions\}`.*も除外する'
+TRIAGE_MD="$PLUGIN_ROOT/skills/pr-review/references/scope-triage.md"
+assert_grep "T-07 pr-review 7.2 registers the adoption verdict fix after the gate decided" "$TRIAGE_MD" \
+  '^  bash \{plugin_root\}/scripts/review-pr-recommendations\.sh record --pr \{pr_number\} --review-result "\$review_json" \\$'
+assert_grep "T-07 pr-review 7.2 stops when the registration fails" "$TRIAGE_MD" \
+  '\|\| \{ echo "ERROR: PR 内推奨を登録できません（原因は直前の出力）" >&2; rc=2; \}'
+assert "T-07 pr-review no longer registers by position" "0" "$(grep -c '5\.3\.0\.R\|recommendations-register\|registered_recommendation_positions' "$REVIEW" "$REVIEW_STEP" | awk -F: '{ n += $2 } END { print n }')"
 assert_grep_in_section "T-07 fix 2.1 routes R-NN to the normal fix" "$FIX_SKILL" \
   '^### 2\.1 Confirm Fix Approach$' '^### 2\.1\.A ' \
-  '`pr_recommendations\[\]` の `R-NN`、現在の review context の `D-NN` だけが通常の修正'
+  '`fatal_map\[id\] == true`、PR 内推奨の `R-NN`、現在の review context の `D-NN` だけが通常の修正'
 
 # 採否ゲートと起票の停止を実行して確かめる。nb-sweep.md の 1 行呼び出しを fixture plugin の fix-step.sh で
 # dispatch 経由に実行する。fixture は fix-step.sh の写しと、それが読む hook (stub / symlink) を並べる。
@@ -1650,11 +1644,22 @@ t21_ok_rc=0
 "$LEDGER" append --ledger-file "$sandbox/t21-new.md" --entries-file "$sandbox/t21-entries-ok.md" 2>/dev/null || t21_ok_rc=$?
 assert "T-21 suffix 付き出典・末尾空白・エスケープ済みパイプを受理" 0 "$t21_ok_rc"
 assert "T-21 5 列台帳への追記で列ヘッダは変わらない" 1 "$(grep -c '^| finding_id | file:line | 判定 | 判定文 | 出典 |$' "$sandbox/t21-new.md")"
+# cleanup の follow-up が処分した先送り欠陥の行は出典 <pr>-deferred を持つ
+printf '%s\n' '| D-01 | - | LINK | 追跡先 #7 | 7-deferred |' > "$sandbox/t21-entries-deferred.md"
+t21_def_rc=0
+"$LEDGER" append --ledger-file "$sandbox/t21-new.md" --entries-file "$sandbox/t21-entries-deferred.md" 2>/dev/null || t21_def_rc=$?
+assert "T-21 先送り欠陥の出典 <pr>-deferred を受理" 0 "$t21_def_rc"
+# 壊れて改名されたレビュー結果に残る指摘の行は、その名前 (.json.corrupt-<epoch>) を出典に持つ
+printf '%s\n' '| NB-8 | src/h.ts:8 | REJECT | 前提 | 7-20260101120000.json.corrupt-1700000000 |' > "$sandbox/t21-entries-corrupt.md"
+t21_cor_rc=0
+"$LEDGER" append --ledger-file "$sandbox/t21-new.md" --entries-file "$sandbox/t21-entries-corrupt.md" 2>/dev/null || t21_cor_rc=$?
+assert "T-21 壊れて改名された JSON の名前の出典を受理" 0 "$t21_cor_rc"
 # 出典を欠く・形が合わない行を 1 行でも含む entries は何も書かない
 cp "$sandbox/t21-new.md" "$sandbox/t21-before.md"
 for t21_bad in '| NB-7 | src/g.ts:7 | recorded | severity=LOW; measured=false |' \
+               '| D-02 | - | LINK | 追跡先 #7 | deferred |' \
                '| NB-7 | src/g.ts:7 | recorded | severity=LOW; measured=false | review.json |' \
-               '| NB-7 | src/g.ts:7 | recorded | severity=LOW; measured=false | 7-20260101120000.json.corrupt-1 |'; do
+               '| NB-7 | src/g.ts:7 | recorded | severity=LOW; measured=false | 7-20260101120000.json.corrupt- |'; do
   printf '%s\n%s\n' "$t21_row" "$t21_bad" > "$sandbox/t21-entries-bad.md"
   t21_bad_rc=0
   "$LEDGER" append --ledger-file "$sandbox/t21-new.md" --entries-file "$sandbox/t21-entries-bad.md" 2>"$sandbox/t21-bad.err" || t21_bad_rc=$?

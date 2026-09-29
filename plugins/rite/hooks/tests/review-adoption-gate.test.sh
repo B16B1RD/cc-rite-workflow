@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The adoption gate turns helper decisions into file / record / hold and saves every hold.
+# The adoption gate turns helper decisions into file / record / fix / hold and saves every hold.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 python3 - "$SCRIPT_DIR/../.." <<'PYTEST'
@@ -82,7 +82,7 @@ REJECT = dict(V=False, contract=None, evidence='', reason='the guard is document
 unknown = dict(V='unknown', contract=None, evidence='', reason='not reproduced yet')
 
 
-def run(records, cands=CANDS, kind='sweep', write=True, at=None, context=None, with_pr_body=True, pr=5, issue=None):
+def run(records, cands=CANDS, kind='sweep', write=True, at=None, context=None, with_pr_body=True, pr=5, issue=None, fix_loop=None):
     candidates.write_text(json.dumps({'candidates': cands}))
     adoption.parent.mkdir(parents=True, exist_ok=True)
     path = state / f'.rite/state/adoption-{pr}-{kind}.json'
@@ -100,7 +100,8 @@ def run(records, cands=CANDS, kind='sweep', write=True, at=None, context=None, w
          '--candidates', str(candidates), '--review-result', str(reviewed), '--base', base,
          '--issue-body', str(issue_body), *(['--pr-body', str(pr_body)] if with_pr_body else []), '--ac-ids', 'AC-1',
          '--repo-root', str(repo), *(['--issue', str(issue)] if issue is not None else []),
-         *(['--ledger', str(ledger)] if context is None else context)],
+         *(['--ledger', str(ledger)] if context is None else context),
+         *(['--fix-loop', fix_loop] if fix_loop else [])],
         capture_output=True, text=True, env=env, timeout=60)
     after = candidates.read_bytes(), review.read_bytes(), (path.read_bytes() if path.exists() else None)
     check(before == after, 'the gate changed an input')
@@ -168,6 +169,60 @@ check(verdicts['F-02']['verdict'] == 'record' and verdicts['F-02']['exit'] == 'L
 removed = {'diff': ['tool.sh:-2'], 'path': 'removing the guard lets an empty NAME through'}
 saved, _ = held([rec(origin='pr', origin_cause=removed, tracker=7), rec(['F-02'], **REJECT)], 'undecided')
 check(saved['held_ids'] == ['F-01'], saved)
+hold_file.unlink()
+# After the merge the OPEN tracker takes a PR-origin or unknown-origin root cause: a followup LINK
+# is recorded (never filed, never held); a CLOSED tracker is not a LINK and stays held.
+for fields in ({'origin': 'pr', 'origin_cause': removed}, {'origin': 'unknown'}):
+    verdicts, result = decided([rec(tracker=7, **fields), rec(['F-02'], **REJECT)], kind='followup')
+    check((verdicts['F-01']['verdict'], verdicts['F-01']['exit'], verdicts['F-01']['tracker'], verdicts['F-01']['pr_blocking'])
+          == ('record', 'LINK', 7, True), (fields, verdicts))
+    check('kind=followup; file=0; record=2' in result.stderr, result.stderr)
+env['GH_STATES'] = '7=CLOSED'
+held([rec(origin='pr', origin_cause=removed, tracker=7), rec(['F-02'], **REJECT)], 'undecided', kind='followup')
+env['GH_STATES'] = '7=OPEN'
+(state / '.rite/state/adoption-hold-5-followup.json').unlink()
+
+# A triage PR-origin adoption is fixed in the same PR (verdict fix, nothing held) on a mergeable
+# review inside /rite:iterate (--fix-loop yes) until the cycle reaches safety.max_review_cycles
+# (default 15), where its fix could not be re-reviewed and it is held. At the stop on unverified
+# acceptance criteria and in a standalone review (--fix-loop no, or no flag) nothing would read the
+# registration: held.
+# A sweep PR-origin adoption stays held. An unknown-origin adoption is held in triage as well.
+plain_review = review.read_text()
+for cycle, expected in ((3, 'fix'), (15, 'hold')):
+    review.write_text(json.dumps({'commit_sha': head, 'review_context': {'cycle_count': cycle},
+                                  'findings': [], 'non_blocking_findings': []}))
+    records = [rec(origin='pr', origin_cause=removed), rec(['F-02'], **REJECT)]
+    if expected == 'fix':
+        verdicts, result = decided(records, kind='triage', fix_loop='yes')
+        check((verdicts['F-01']['verdict'], verdicts['F-01']['action']) == ('fix', 'fix_in_pr'), verdicts)
+        check(verdicts['F-02']['verdict'] == 'record', verdicts)
+        (state / '.rite/state/adoption-hold-5-triage.json').unlink()
+        for loop in (None, 'no'):
+            saved, _ = held(records, 'undecided', kind='triage', fix_loop=loop)
+            check(saved['held_ids'] == ['F-01'], (loop, saved))
+            (state / '.rite/state/adoption-hold-5-triage.json').unlink()
+    else:
+        saved, _ = held(records, 'undecided', kind='triage', fix_loop='yes')
+        check(saved['held_ids'] == ['F-01'], saved)
+        check('コードを直して push し' in saved['resume'], saved['resume'])
+        (state / '.rite/state/adoption-hold-5-triage.json').unlink()
+    saved, _ = held(records, 'undecided', kind='sweep')
+    check(saved['held_ids'] == ['F-01'], (cycle, saved))
+    hold_file.unlink()
+    saved, _ = held([rec(origin='unknown'), rec(['F-02'], **REJECT)], 'undecided', kind='triage')
+    check(saved['held_ids'] == ['F-01'], (cycle, saved))
+    (state / '.rite/state/adoption-hold-5-triage.json').unlink()
+# A --fix-loop value other than yes / no (an unsubstituted placeholder) stops the gate: exit 2, no hold.
+for bad in ('{fix_loop}', 'maybe'):
+    result = run([rec(origin='pr', origin_cause=removed), rec(['F-02'], **REJECT)], kind='triage', fix_loop=bad)
+    check(result.returncode == 2 and '--fix-loop must be yes or no' in result.stderr, (bad, result.returncode, result.stderr))
+    check(not (state / '.rite/state/adoption-hold-5-triage.json').exists(), bad)
+# Without a readable cycle the registration capacity is unknown: every candidate is held.
+review.write_text(plain_review)
+saved, _ = held([rec(origin='pr', origin_cause=removed), rec(['F-02'], **REJECT)], 'adoption_error', kind='triage', fix_loop='yes')
+check('cycle_count' in saved['detail'], saved['detail'])
+(state / '.rite/state/adoption-hold-5-triage.json').unlink()
 
 # PR-origin and unknown-origin adoptions keep the PR open: held, never filed or recorded.
 for fields in ({'origin': 'pr', 'origin_cause': removed}, {'origin': 'unknown'}):
@@ -430,14 +485,16 @@ check(verdicts['F-01']['exit'] == 'LINK' and verdicts['F-01']['verdict'] == 'rec
 persisted = json.loads((state / '.rite/state/adoption-history-205-followup.json').read_text())
 check(persisted['entries'][0]['decision']['tracker'] == 7 and
       persisted['entries'][0]['reconciliation'] == consolidation, persisted)
-# A PR-origin LINK still holds completion even after arbitration has finished.
+# A merged PR cannot take the fix, so after arbitration a PR-origin LINK of a followup is still
+# settled as a record under the OPEN tracker, without a hold.
 tracked = dict(tracked, origin='pr', origin_cause=removed)
 fresh = pending(tracked, pr=206, issue=None)
 consolidation = dict(answer(fresh, 'reversal', 'consolidate'),
                      observations='the same tracker owns the PR-origin defect')
-saved, _ = held([dict(tracked, reconciliation=consolidation)], 'undecided',
-                cands=CANDS[:1], pr=206, issue=None, kind='followup')
-check(saved['reconciliation'] == [] and saved['held_ids'] == ['F-01'], saved)
+verdicts, _ = decided([dict(tracked, reconciliation=consolidation)], cands=CANDS[:1],
+                      pr=206, issue=None, kind='followup')
+check(verdicts['F-01']['exit'] == 'LINK' and verdicts['F-01']['verdict'] == 'record', verdicts)
+check(not (state / '.rite/state/adoption-hold-206-followup.json').exists(), 'a recorded PR-origin LINK leaves no hold')
 persisted = json.loads((state / '.rite/state/adoption-history-206-followup.json').read_text())
 check(persisted['entries'][0]['decision']['exit'] == 'LINK' and
       persisted['entries'][0]['decision']['pr_blocking'] is True, persisted)

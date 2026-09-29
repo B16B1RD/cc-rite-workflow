@@ -333,16 +333,23 @@ marker 不在を `legacy` へ倒さないのは、`legacy` の行が counter リ
 reviewer の推奨事項は finding ではないので、mergeable の review JSON には fix が処置できる ID が無い。
 その状態で PR 自身が追加した行の欠陥を手で直して commit すると、fix の検証記録（`pending_fix`）の無い
 HEAD になり、次のレビューは「変更された HEAD には完了した fix 検証が要る」で開始できない。戻す手段は
-レビュー済み commit への巻き戻ししか残らない。そこで pr-review が mergeable の cycle で、actionable かつ
-PR の追加行を指す推奨事項を `pr_recommendations[]`（`R-NN`）として保存前の結果 JSON に登録し、fix の
-計画はその ID を blocking と同じく処置必須として受け付ける。修正は通常の fix を通るので、検証記録と
+レビュー済み commit への巻き戻ししか残らない。そこで pr-review のステップ 7.2 が、採否の出口が ADOPT・
+`origin=pr`（PR が持ち込んだ根因）の候補を PR 内推奨（`R-NN`）として state（`.rite/state/pr-recommendations-{pr}.json`、
+commit_sha キー）に登録し、fix の計画はその ID を blocking と同じく処置必須として受け付ける。登録を位置
+（追加行かどうか）ではなく採否の出口で決めるのは、PR 起因かどうかは分類役が差分の因果と契約で認定する
+もので、位置だけでは決まらないから。保存済みの結果 JSON は停滞判定の受領記録と照合されるため書き換えず、
+登録は state に置く。修正は通常の fix を通るので、検証記録と
 再レビューの経路は既存のまま使える。
 
 `non_blocking_findings[]` に入れないのは、そこが「降格された finding」の出口（非実測記録・NB sweep・
 follow-up 転記・完了通知の残件）だから。推奨事項を混ぜると、その出口が同じ PR で直すものまで起票・記録する。
-blocking に数えないので発散判定は空転を止めない。止めるのは「1 つの review run につき登録は 1 回」の
-上限で、以後の推奨事項はステップ 7 の Decision Log へ流れる。`safety.max_review_cycles` に達した cycle でも登録しない。その修正は次のレビューが max-cycles で止まるため、未レビューの HEAD を残すことになる。上限の判定から入力と同じ review_context の
-保存済み JSON を除くのは、同じ cycle の再実行で結果が変わると review-finish の一致検査で止まるため。
+登録に回数の上限を置かない。採用した PR 起因の根因を回数で先送りすると、同じ PR で直すべき欠陥が
+Decision Log や別 Issue へ流れ、品質を予算で縛ることになる。空転を止めるのは採否の判定そのもの（V=C=T が
+false の候補は REJECT で終端し、登録されない）と `safety.max_review_cycles` である。PR 内推奨は blocking に
+数えないので、発散判定はこの空転を止めない。
+登録するのは本スキル経由（pr-review を `--from-iterate` 付きで呼ぶ）の mergeable の review だけで、受入条件未検証の停止と pr-review の単独実行では
+登録せず採否保留にする（登録を読むのは 5.S 後の check だけで、この 2 つの経路ではそこへ進まない）。`safety.max_review_cycles` に達した cycle でも登録しない。その修正は次のレビューが max-cycles で止まるため、
+未レビューの HEAD を残すことになる。このときの根因は採否保留で止まる（先送りしない）。
 
 5.S の後に置くのは、修正後の差分再レビューが前の JSON の non-blocking を引き継がないため。先に sweep
 しておけば、落ちるものは無い。同じレビュー済み commit を fix へ二度渡さない記録
@@ -354,17 +361,17 @@ fix が同じレビューの複写を別名で保存することがあるから�
 ## purpose-deviation-reopen
 
 完了前確認は mergeable の後に走るので、そこで見つかった逸脱はどの保存済み finding にも無く、保存済みの
-結果 JSON（receipt）は書き換えられない。手で直して commit すると `pr_recommendations[]` と同じ理由で次の
+結果 JSON（receipt）は書き換えられない。手で直して commit すると PR 内推奨と同じ理由で次の
 レビューを開始できず、`review-restart` は停止した run しか受けない（完了した run は新しい run にする理由が
 無い）。そこで逸脱を同じ run の `deviations[]`（`D-NN`、記録時の review context 付き）に保存し、fix の計画は
 それを blocking と同じく処置必須にする。修正は通常の fix と検証記録を通り、再レビューは同じ run の次の
 cycle になるので、counter と発散判定はそのまま続く。
 
 origin=pr の判定は、逸脱の `file:line` が `origin/{branch.base}...HEAD` の追加行と重なることで機械的に行う
-（`pr_recommendations[]` の登録と同じ `lib/diff-hunks.sh`）。重ならない逸脱（base 由来や PR 外の欠陥）と、
+（`lib/diff-hunks.sh`）。重ならない逸脱（base 由来や PR 外の欠陥）と、
 blocking が残っている review、`safety.max_review_cycles` に達した cycle（修正を再レビューできない）は
 拒否し、従来の `purpose_unaligned` 停止に落とす。この review context の `D-NN` を fix の計画が処置した後の記録も
 拒否する。fix が commit せずに戻ると HEAD は変わらず、同じ commit を再び fix へ渡すと cycle を進めないまま
-空転する（`pr_recommendations[]` を一度だけ渡すのと同じ終端）。記録は完了記録（`completed_context` / `deferred_context`）
+空転する（PR 内推奨を同じレビュー済み commit につき一度だけ渡すのと同じ終端）。記録は完了記録（`completed_context` / `deferred_context`）
 を外す。残すと、逸脱が未処置のまま別の Issue へ切り替えられる。`D-NN` は記録した review context の
 計画だけが処置する。次の cycle の計画には要求しない（その cycle の完了前確認がまだ逸脱を見るなら、改めて記録する）。

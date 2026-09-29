@@ -27,7 +27,7 @@ argument-hint: "<pr_number>"
 2. review sentinel を判定（`[review:mergeable]` → ステップ 5.S / `[review:fix-needed:N]` → ステップ 3 / error・不在 → 1 回自動再試行、再失敗時は停止）
 3. `/rite:fix` を invoke
 4. fix sentinel を判定（通常ループ: `[fix:pushed]` → ステップ 1 に戻る / `[fix:non-fatal-only]` / `[fix:replied-only]` → ステップ 5.S / `[fix:cancelled-by-user]` → 終了 / error・不在 → 1 回自動再試行、再失敗時は停止。`--nb-sweep` 経由は 5.S 専用表 — ステップ 1 に戻らない。`[fix:sweep-done]` はこの経由でだけ返る）
-5.S. `[review:mergeable]` / `[fix:non-fatal-only]` / `[fix:replied-only]` 後の NB digest sweep（`noop` / `skipped` では fix を invoke しない。同一 review JSON で 2 回禁止。新しい JSON は再 sweep する）。成功後は PR 内推奨の修正（未着手の `pr_recommendations[]` があれば `/rite:fix` → ステップ 1）、無ければ完了前確認へ
+5.S. `[review:mergeable]` / `[fix:non-fatal-only]` / `[fix:replied-only]` 後の NB digest sweep（`noop` / `skipped` では fix を invoke しない。同一 review JSON で 2 回禁止。新しい JSON は再 sweep する）。成功後は PR 内推奨の修正（最新のレビュー済み commit に未着手の登録があれば `/rite:fix` → ステップ 1）、無ければ完了前確認へ
 5. 完了前確認のあと完了通知を出す（目的逸脱時は出さない）
 6. （発火時のみ）サーキットブレーカー: counter と停止理由を記録し、batch は `[iterate:max-cycles-reached]`、対話は `[iterate:max-cycles-stopped]` と停止通知を出して終了する
 
@@ -233,7 +233,7 @@ bash {plugin_root}/scripts/iterate-step.sh cycle-gate --pr {pr_number} --issue {
 | 分岐 | 条件 | アクション |
 |---------|-----------|
 | (a) | `ABANDON=done` ではなく、直前 cycle のレビュー結果がセッションコンテキストに残存 | 同一 cycle の固定名簿・manifest・review_context が揃う場合だけ pr-review ステップ 6.1.a の `review-finish` で保存・検証する（旧結果でこれらが無い場合は (b)）。**成立は `JSON_SAVED=true`（helper の値域。`=1` ではない）**。成立なら下の `ITERATE_LOST_REPAIR=saved` を emit して**ステップ 1 の bash を再実行**。失敗は (b) |
-| (b) | `ABANDON=done` / 残存しない / (a) 失敗 | 下の `ITERATE_LOST_REPAIR=rereview` を emit し、counter 不前進のまま `/rite:pr-review` を invoke。**保存成立の観測子は `JSON_SAVED=true` または `REVIEW_SAVE_JSON_OK=1`**（`[review:mergeable]` 素通しは batch が収束扱いするので使わない）。不成立は `ITERATE_LOST_REPAIR=failed` を emit し、iterate 失敗形で停止（新 CB sentinel は作らない。caller の既存「sentinel 不在 / `[review:error]` → 失敗停止」に倒す）。成立ならステップ 2 |
+| (b) | `ABANDON=done` / 残存しない / (a) 失敗 | 下の `ITERATE_LOST_REPAIR=rereview` を emit し、counter 不前進のまま `/rite:pr-review` を invoke（args は下の invoke ブロックと同じ `"{pr_number} --from-iterate"`）。**保存成立の観測子は `JSON_SAVED=true` または `REVIEW_SAVE_JSON_OK=1`**（`[review:mergeable]` 素通しは batch が収束扱いするので使わない）。不成立は `ITERATE_LOST_REPAIR=failed` を emit し、iterate 失敗形で停止（新 CB sentinel は作らない。caller の既存「sentinel 不在 / `[review:error]` → 失敗停止」に倒す）。成立ならステップ 2 |
 
 ```bash
 bash {plugin_root}/scripts/iterate-step.sh lost-repair --repair {repair} --cycle {cycle_count} --lost {lost}
@@ -265,7 +265,7 @@ bash {plugin_root}/scripts/iterate-step.sh lost-repair --repair {repair} --cycle
 
 ```text
 skill: rite:pr-review
-args: "{pr_number}"
+args: "{pr_number} --from-iterate"
 ```
 
 ---
@@ -389,7 +389,7 @@ MUST NOT: 同一 review JSON で 5.S を 2 回走らせる。sweep でコード�
 
 ### 5.S 後の PR 内推奨の修正
 
-5.S 成功後・完了前確認の前に、最新の保存済み review JSON に未着手の `pr_recommendations[]`（pr-review ステップ 5.3.0.R が mergeable の cycle で登録した、PR が追加した行への推奨事項）があるかを確かめる。先に 5.S を済ませるのは、修正後の差分再レビューの JSON にこの JSON の non-blocking が引き継がれないため。marker 既出でも bash を省略しない。
+5.S 成功後・完了前確認の前に、最新の保存済み review の commit に未着手の PR 内推奨（pr-review ステップ 7.2 が採否の出口 ADOPT・`origin=pr` の根因を `R-NN` として登録したもの）があるかを確かめる。先に 5.S を済ませるのは、修正後の差分再レビューの JSON にこの JSON の non-blocking が引き継がれないため。marker 既出でも bash を省略しない。
 
 ```bash
 bash {plugin_root}/scripts/review-pr-recommendations.sh check --pr {pr_number}
@@ -427,7 +427,7 @@ args: "{pr_number}"
 | `[fix:cancelled-by-user]` | ループ終了（ステップ 4 と同じ） |
 | `[fix:error]` / sentinel 不在 | ステップ 4 と同じく `iterate-step.sh stagnation-route` のあと 1 回だけ再試行。再失敗なら停止 |
 
-登録は 1 つの review run につき 1 回なので、修正後の再レビューが mergeable でも本ステップは `none` になる。そこで出た推奨事項は pr-review ステップ 7 の Decision Log へ流れる。
+登録に回数の上限は無い。修正後の再レビューで ADOPT・`origin=pr` になった根因も同じく登録され、本ステップが再び fix へ渡す。`safety.max_review_cycles` に達した cycle だけは登録せず（修正を再レビューできない）、採否保留で止まる。
 rationale: references/rationale.md#pr-recommendation-fix
 
 MUST NOT: mergeable の後に手で commit する（fix の検証記録が無い HEAD では次のレビューを開始できない）。

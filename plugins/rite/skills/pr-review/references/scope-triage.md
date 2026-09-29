@@ -2,7 +2,7 @@
 
 ゲートが `reconciliation[]` を返した場合は、親が [共通の裁定手順](../../../references/review-reconciliation.md) で既存候補だけを裁定し、当該 `adoption.records[]` に回答を付けて手順 3 のゲートへ戻る。`hold.detail` / `resume` が再開位置を示す。手順 2 の記録再利用とは別に、裁定は fingerprint の全入力が一致するときだけ再利用する。
 
-`{state_root}` は `bash {plugin_root}/hooks/state-path-resolve.sh` の出力。7.1 の候補が 0 件かつ triage の hold ファイル `{state_root}/.rite/state/adoption-hold-{pr_number}-triage.json` が無いときだけステップ 7 を skip する（**7.7 も skip**）。hold ファイルがあれば候補 0 件でも下の手順でゲートを呼ぶ。候補ごとの処分は採否ゲート（`review-adoption-gate.sh --kind triage`）の出口だけで決める。人間に候補ごとの処分を尋ねない。`PR_REVIEW_IN_E2E` で処分を変えない。
+`{state_root}` は `bash {plugin_root}/hooks/state-path-resolve.sh` の出力。7.1 の候補が 0 件かつ triage の hold ファイル `{state_root}/.rite/state/adoption-hold-{pr_number}-triage.json` が無いときだけステップ 7 を skip する（**7.7 も skip**）。hold ファイルがあれば候補 0 件でも下の手順でゲートを呼ぶ。候補ごとの処分は採否ゲート（`review-adoption-gate.sh --kind triage`）の出口だけで決める。人間に候補ごとの処分を尋ねない。`PR_REVIEW_IN_E2E` で処分を変えない（候補ごとの確認の有無も変えない）。例外は手順 3 の `{fix_loop}` だけで、`/rite:iterate` からの呼び出しかどうかで ADOPT・origin=pr の fix / hold が分かれる。
 
 1. 7.1 の候補（Source A → Source B の抽出順、dedup 後）に `C-1`, `C-2`, … を振る。triage の hold ファイルがあれば、その `head` が本 cycle の review JSON の `commit_sha` と同じかどうかを問わず（commit を問わず）、その `candidates` の各候補を、id だけ次の `C-n` に振り直して内容は一字も変えずに候補集合へ加える（id を除く全欄が一致する候補が既にあれば加えない）。triage の候補はほかのどこにも残らないため、新しい commit でも合流させて分類役が判定し直す（直っていれば `RESOLVED`）。内容を言い換えるとゲートは同じ候補と認めず、保留が解けない（`held_candidates_dropped`。前の `tracker` を持つ記録の候補がすべて今回の候補から消えたときは、ゲートより前に手順 3 が止める）。
 2. 分類役（本手順を実行する LLM）が全候補の判定記録を書く。1 根因 = 1 記録。欄は `review-adoption.py` の docstring に従い、起票（ADOPT pre_existing / 調査）になる記録には `acceptance`（起票する Issue の受入条件の文）を必ず入れる。既存の Issue（前回この手順で作った Issue を含む）が同じ根因を追跡していれば `tracker` に入れる（LINK になり、重ねて起票しない）。判定記録ファイル `{state_root}/.rite/state/adoption-{pr_number}-triage.json` があり、その `head` が本 cycle の review JSON の `commit_sha` と同じなら、その記録（保留後に直された記録）から始める（この head 条件は判定記録ファイルの再利用の条件で、手順 1 の合流の条件ではない）。`C-n` は振り直すため、各記録の `ids` は手順 1 で候補全文が一致した候補（合流させた hold の候補を含む）の新しい id へ移す（前の記録の `ids` が指す全文は判定記録ファイルの `candidates` で引き、hold からは引かない）。`head` が違えば記録を新しく書く。判定記録ファイルがあれば `head` を問わず、その `issued` と `tracker` を持つ記録（`ids` の全文は同じファイルの `candidates` で引く。記録の番号が `issued` の番号より新しい）を読み、既存の Issue が今回の候補と同じ根因を追跡していれば、文面・位置・id が変わっていても記録の `tracker` にその番号を入れる（閉じた Issue の番号は入れない）。手順 3 の bash は、`tracker` の無い記録のうち `issued` と全文（id を除く全欄）が一致する候補を含むものにだけ、その番号を持ち越す。7.4.2 が書き戻した `tracker` は消さない。前の run で異なる `tracker` を持った候補を 1 つの記録にまとめるなら、その記録の `tracker` を明示する（持ち越しは `tracker` の無い記録にだけ働き、複数の候補が衝突すると手順 3 が止まる）。
@@ -26,7 +26,7 @@ else
   echo "[review:error]"; exit 1
 fi
 ```
-3. 下の bash を**単一 Bash invocation** で実行する。`{records}` は記録の JSON 配列、`{candidates}` は `{"candidates": [{"id": "C-1", "source": "指摘" | "推奨", "file_line", "reviewer", "severity", "content": <全文>}, …]}`。`head` は `--review-result` に渡す review JSON（6.1.a が保存した本 cycle の結果）の `commit_sha` を bash が入れる。
+3. 下の bash を**単一 Bash invocation** で実行する。`{fix_loop}` は、`PR_REVIEW_FROM_ITERATE == true`（ステップ 1.0。`/rite:iterate` が `--from-iterate` を付けて呼んだ review）かつステップ 8.1 の出力表で `[review:mergeable]` に一致する review だけ `yes`（登録は `/rite:iterate` の 5.S 後の check が読み、同じ PR の `/rite:fix` が直す）。受入条件未検証の停止、単独実行、marker が見当たらないときは `no`（登録を読む工程が続かないため、ADOPT・origin=pr は hold になり、保留のまま止まる）。`PR_REVIEW_IN_E2E` は使わない（`/rite:open` の後や単独実行の review でも true になり、呼び出し元を区別できない）。`{records}` は記録の JSON 配列、`{candidates}` は `{"candidates": [{"id": "C-1", "source": "指摘" | "推奨", "file_line", "reviewer", "severity", "content": <全文>}, …]}`。`head` は `--review-result` に渡す review JSON（6.1.a が保存した本 cycle の結果）の `commit_sha` を bash が入れる。
 
 ```bash
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) && [ -n "$state_root" ] \
@@ -83,7 +83,14 @@ issue_args=()
 rc=0
 bash {plugin_root}/hooks/scripts/review-adoption-gate.sh --pr {pr_number} --kind triage \
   --state-root "$state_root" --candidates "$work/candidates.json" \
-  --review-result "$review_json" --base "origin/{base_branch}" "${issue_args[@]}" || rc=$?
+  --review-result "$review_json" --base "origin/{base_branch}" --fix-loop "{fix_loop}" "${issue_args[@]}" > "$work/gate.json" || rc=$?
+cat "$work/gate.json"
+# verdict が fix の根因（ADOPT・origin=pr）を PR 内推奨として登録する（fix が 0 件でもこの commit の登録を空で書き直す）
+if [ "$rc" = 0 ]; then
+  bash {plugin_root}/scripts/review-pr-recommendations.sh record --pr {pr_number} --review-result "$review_json" \
+    --verdicts "$work/gate.json" --candidates "$work/candidates.json" --state-root "$state_root" \
+    || { echo "ERROR: PR 内推奨を登録できません（原因は直前の出力）" >&2; rc=2; }
+fi
 # decided でも 7.4 の外部への書き込みが済むまで、この run の候補を hold に残す（7.4.5 だけが消す）
 if [ "$rc" = 0 ]; then
   jq --arg head "$head_sha" --arg rr "$review_json" --argjson pr {pr_number} \
@@ -126,7 +133,7 @@ sentinel は **ゲートが decided を返した後** に emit する。marker �
 # - {N} → ステップ 7.1 の candidate_count (Source A + Source B の dedup 後に、合流させた hold の候補を含む)
 # - {iteration_id} → ステップ 7.1 で生成した一意 ID (例: pr_number-$(date +%s) 形式)
 # - {mode} → auto
-# - {choice} → file:{A}/record:{B}（verdicts[] の verdict 別の件数）。空禁止
+# - {choice} → file:{A}/record:{B}/fix:{C}（verdicts[] の verdict 別の件数）。空禁止
 # - {reason} → adoption_decided
 # Bash 変数 (${candidate_count} 等) は Bash tool 呼び出し間で継承されないため使用不可
 echo "[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={iteration_id}; mode={mode}; choice={choice}; reason={reason}" >&2
@@ -140,6 +147,7 @@ echo "[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={iterati
 
 | verdict / exit | Action |
 |---|---|
+| `fix` | 外部へ書かない。7.2 の bash が PR 内推奨（`R-NN`）として登録済みで、同じ PR の `/rite:fix` が直す（`PR_RECOMMENDATIONS=registered`）。7.4.3 も 7.4.5 の台帳行も書かない |
 | `file`、`{source_issue_number}` あり | 7.4.3 を先送りトークン付きで実行する。起票は cleanup ステップ 6.0 の follow-up が行う（ここでは Issue を作らない） |
 | `file`、`{source_issue_number}` が空 | トークンの書き先が無いため 7.4.1-7.4.2 で Issue を 1 件作る |
 | `record`（`LINK`） | 7.4.4（追跡先 `tracker` への申し送り）を先に必須実行し、記録のみで完了扱いにしない。その後 7.4.3（トークンなし）。`HANDOFF_COMMENT_REJECTED=1` のときは 7.4.3 / 7.5 へ進まない |
@@ -568,7 +576,7 @@ rm -f -- "$hold_file"
 
 ### 7.5-7.6 Append to PR & Report
 
-7.4.1-7.4.2 で作った Issue の一覧を PR コメントへ（`mktemp` + `--body-file`）。verdict 別の件数（`file` は cleanup の follow-up で起票される件数）、元 Issue が無く記録できなかった `record` の出口と reason、`DECISION_LOG_APPENDED=1` の件数と `HANDOFF_COMMENT_POSTED=1` を completion report に転記する（7.4 の書き込みに失敗があれば 7.4.5 が止まり、ここへは来ない）。
+7.4.1-7.4.2 で作った Issue の一覧を PR コメントへ（`mktemp` + `--body-file`）。verdict 別の件数（`file` は cleanup の follow-up で起票される件数、`fix` は同じ PR で直す PR 内推奨の件数）、元 Issue が無く記録できなかった `record` の出口と reason、`DECISION_LOG_APPENDED=1` の件数と `HANDOFF_COMMENT_POSTED=1` を completion report に転記する（7.4 の書き込みに失敗があれば 7.4.5 が止まり、ここへは来ない）。
 
 ### 7.7 Post-condition Gate — Recommendation Disposition Enforcement
 

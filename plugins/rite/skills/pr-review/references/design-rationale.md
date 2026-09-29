@@ -69,7 +69,7 @@
 
 - **先延ばし動機**: エージェントには「指摘を先送りすれば fix ループが早く収束する」という構造的な先延ばし動機がある。処分をエージェント裁量や選択肢の並び順に任せると、保険的な follow-up Issue が増殖する。fix ループ側で skip → 別 Issue で loop 終了する経路は閉じており（`skills/iterate/SKILL.md`。残存 non-blocking の消化は機械 routing が担う）、ステップ 7 にも同じ動機を残さない。
 - **先延ばし禁止の設計原則**: 仮説的な将来リスクに先手を打つ Issue は大半が無駄に終わる。スコープ内の実指摘は本 PR で解決し（fix ループで強制済み）、スコープ外候補は「起票せず記録して終わり」をデフォルトにする方が、Issue の増殖を防ぎ実際に着手される確率を上げる。
-- **採否ゲートを裁量と候補ごとの確認の代わりに置く理由**: 候補ごとに人間へ尋ねると、工程の途中に人間の品質判断が常駐する。裁量に任せると上の動機で起票へ寄る。分類役が根因ごとに判定記録（契約・根拠・受入条件）を書き、ゲートが記録の欄だけから出口（file / record / hold）を決めるので、エージェントの意思も重要度も出口に入らない。出口の出ない候補が残れば何も書かずに保留して止める（fail-loud）。対話でも E2E でも処分は同じになる。
+- **採否ゲートを裁量と候補ごとの確認の代わりに置く理由**: 候補ごとに人間へ尋ねると、工程の途中に人間の品質判断が常駐する。裁量に任せると上の動機で起票へ寄る。分類役が根因ごとに判定記録（契約・根拠・受入条件）を書き、ゲートが記録の欄だけから出口（file / record / fix / hold）を決めるので、エージェントの意思も重要度も出口に入らない。出口の出ない候補が残れば何も書かずに保留して止める（fail-loud）。対話でも E2E でも処分は同じになる。例外は ADOPT・`origin=pr` だけで、`/rite:iterate` からの mergeable の review では fix、それ以外では hold になる（登録を読む工程が iterate にしか無いため。scope-triage.md 手順 3 の `{fix_loop}`）。
 - **Decision Log 記録を「追加」の経路とする理由**: fix ループの nit-noted 返信経路・acknowledged suppression（PR コメント / JSON ベースの再指摘抑制）は Decision Log 記録では代替されない。両者は別の目的（前者は次サイクルでの再指摘抑制、後者は仕様変更の記録）を持つため、置き換えではなく追加とした。
 - **元 Issue が特定できない PR**: 記録先を「Section 9」「PR コメント」の 2 種に増やすと「シンプルさを死守」原則に反するため、代替の記録先を作らない。verdict が `file` の記録は先送りトークンの書き先が無いためその場で Issue を作り、`record` の記録は完了レポートに出口と reason を列挙する。ブランチ命名規則（`{type}/issue-{number}-{slug}`）ではほぼ全 PR が issue 番号を含むため、この縮退経路は稀。
 
@@ -160,7 +160,7 @@ E2E で削るのはステップ 5–7 の人間向け表示だけ。ステップ
 
 AskUserQuestion を 2 種に分ける理由。
 
-ステップ 7 のトリアージは未解決指摘・スコープ外指摘の握り潰し防止なので E2E でも処理自体は skip 禁止。処分は採否ゲートの出口だけで決め、候補ごとに質問しないので、E2E と standalone で処分は変わらない。ステップ 3.3 の構成確認は iterate の自律ループと矛盾するため E2E で skip 可。サマリ行と省略 reviewer 表示は両経路で残す（silent capping 禁止）。
+ステップ 7 のトリアージは未解決指摘・スコープ外指摘の握り潰し防止なので E2E でも処理自体は skip 禁止。処分は採否ゲートの出口だけで決め、候補ごとに質問しないので、E2E と standalone で処分は変わらない（例外は ADOPT・`origin=pr` の fix / hold で、`/rite:iterate` からの呼び出しかどうかで分かれる。scope-triage.md 手順 3 の `{fix_loop}`）。ステップ 3.3 の構成確認は iterate の自律ループと矛盾するため E2E で skip 可。サマリ行と省略 reviewer 表示は両経路で残す（silent capping 禁止）。
 
 ## worktree-ensure-preamble
 
@@ -344,7 +344,7 @@ Decision Log append を候補ごとに単一 Bash invocation にする理由。
 
 Decision Log は「対応しない理由」の記録であって追跡ではない。起票すべき欠陥の行だけが残ると、誰も Issue を起こさないまま放置される。cleanup の follow-up 起票はレビュー結果 JSON の `non_blocking_findings[]` を読むため、推奨事項由来の欠陥はトークンが無いとそこに届かない。
 
-記録先を JSON ではなく Decision Log 行そのものにするのは、7.4 が JSON 保存（6.1.a）の後に走り、保存済み JSON は停滞判定の受領記録と照合されるため書き換えられないから。保存前の 5.3.0.R で推奨を JSON へ写すと、ゲートが `record` と決めた候補まで cleanup が起票する。Issue 本文は別環境の cleanup からも読めるが、JSON はそうとは限らない。
+記録先を JSON ではなく Decision Log 行そのものにするのは、7.4 が JSON 保存（6.1.a）の後に走り、保存済み JSON は停滞判定の受領記録と照合されるため書き換えられないから。同じ理由で、verdict が `fix` の候補（PR 内推奨）も JSON ではなく state の登録（`review-pr-recommendations.sh record`）に書く。Issue 本文は別環境の cleanup からも読めるが、JSON はそうとは限らない。
 
 トークンは HTML コメントにして表示を汚さず、PR 番号を含めて別 PR の cleanup が拾わないようにする。付けるのは verdict が `file` の記録だけで、トークン付きの行は cleanup 6.0 の follow-up が採否ゲート（`--kind followup`）で判定し直し、出口が `file` のものだけを起票する。`record` の記録（`LINK` / `RESOLVED` / `REJECT`）には付けない。`LINK` は追跡先の既存 Issue があり、付けると二重起票になる。`RESOLVED` / `REJECT` は起票する欠陥ではない。起票の自動可否は cleanup 6.0.C の確認ゲート（batch `--merge` は確認しない、単独実行は確認する）にそのまま従う。
 

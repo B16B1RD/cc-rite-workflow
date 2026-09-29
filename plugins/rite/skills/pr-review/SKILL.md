@@ -49,7 +49,7 @@ rationale: references/design-rationale.md#argument-parsing-notes
 
 `/rite:iterate` E2E ではステップ 4 は **full execution**、ステップ 5-7 の **人間向け出力** のみ minimize する。sub-agent 省略 / parallel 直列化 は identity 違反。
 rationale: references/design-rationale.md#e2e-minimization-scope
-**AskUserQuestion の扱いは 2 種を区別する**: ステップ 7 の recommendations トリアージは E2E でも処理自体の **skip 禁止**。候補の処分は採否ゲートの出口（file / record / hold）だけで決め、候補ごとに質問しない（standalone でも同じ）。ステップ 3.3 の pre-flight レビュアー構成確認は E2E で **skip 可**（詳細はステップ 3.3）。いずれの場合も `起動 reviewer {count} 名` サマリ行・省略された reviewer 表示・ステップ 4 のフルレビュー実行は省略しない。
+**AskUserQuestion の扱いは 2 種を区別する**: ステップ 7 の recommendations トリアージは E2E でも処理自体の **skip 禁止**。候補の処分は採否ゲートの出口（file / record / fix / hold）だけで決め、候補ごとに質問しない（standalone でも同じ）。ステップ 3.3 の pre-flight レビュアー構成確認は E2E で **skip 可**（詳細はステップ 3.3）。いずれの場合も `起動 reviewer {count} 名` サマリ行・省略された reviewer 表示・ステップ 4 のフルレビュー実行は省略しない。
 rationale: references/design-rationale.md#e2e-askuser-split
 
 | Phase | Standalone | E2E Flow |
@@ -58,7 +58,7 @@ rationale: references/design-rationale.md#e2e-askuser-split
 | ステップ 4 (Sub-Agent Execution) | Full execution | **Full execution** — sub-agents MUST run in parallel for every review cycle (including verification mode). No shortcut allowed. |
 | ステップ 5 (Consolidation) | Full findings table | Result pattern + summary counts only。**例外 1: ステップ 5.4 の `### レビュー範囲（cycle 2+ 差分スコープ）` section は `REVIEW_CYCLE_SCOPE == incremental` のとき E2E でも省略禁止** (cycle 2+ は E2E からしか発生しないため、ここを minimize すると「スキップした reviewer を記録する」要求が空文になる — SoT: [cycle-scope.md](references/cycle-scope.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 2: ステップ 5.4 の `### 実測なし指摘 (non-blocking)` section は `non_blocking_count > 0` のとき E2E でも省略禁止** (ステップ 7 のトリアージ（候補ごとの `AskUserQuestion` は出さないが処理は省略しない）と同じ identity 制約 — 関連 Issue 記録コメントはポインタのみで全文は載せない。既定 `post_comment: false` では統合レポートも PR に載らないため、この E2E 出力が非実測指摘の全文を人間が同期的に見る経路であり、省略は「非実測指摘を破棄しない」という記録契約の喪失に直結する)。**例外 3: ステップ 5.4 の `### レビューレーン（XS/S 軽量レーン）` section は `COMPLEXITY_LANE == light` のとき E2E でも省略禁止** (軽量レーンが動機づけられた Scenario 1「XS が 1 サイクル収束して自律マージされる」は E2E ループでしか起きず、そこを minimize すると観測性の MUST が主対象シナリオでだけ空文になる — SoT: [complexity-lane.md](references/complexity-lane.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 4: ステップ 5.4 の `### Guardrail 監査ログ` section は `guardrail_audit_count > 0` のとき E2E でも省略禁止** (既定 `post_comment: false` でも Category #2 の filter 判断を人間が確認できる同期経路を維持するため)。**例外 5: ステップ 5.4 の `### 総合評価` にある `**起動の直列化**` の 1 行は `SPAWN_SPREAD` が `serialized` / `undetermined` / 欠落を伴う `parallel` のとき E2E でも省略禁止** (直列化が起きるのは長時間 E2E セッションであり、そこを minimize すると本行が到達する経路が消える。既定 `post_comment: false` では統合レポートは PR にも載らないため、省略すると本行が主対象シナリオで空文になる。`serialized` / 欠落を伴う `parallel` では helper の stderr WARNING と結果 JSON のフラグが残るが、**`undetermined` では helper がフラグをキーごと書かない**ため、計測不能の**理由** (`reason=`) は揮発する stderr WARNING にしか残らない — 省略が最も高くつくのはこの条件。`reviewer_timings[]` はステップ 4.6 の timings ファイルが present のときだけ結果 JSON へ転記される)。**例外 6: ステップ 5.4 の `### 実測阻害` section は `measurement_blocked_count > 0` のとき E2E でも省略禁止** (既定 `post_comment: false` ではこの出力が実測阻害の件数・内訳を人間が見る同期経路であり、省略は無言の measured=false 降格を再導入する)。**例外 7: ステップ 5.4 の `### 受入条件確認` section は E2E でも省略禁止** (未検証 AC は人間が動作チェックする対象そのものであり、既定 `post_comment: false` ではこの出力が判定表を人間が同期的に見る唯一の経路)。**例外 8: ステップ 5.4 の `### 根拠と主張の不対応` section は `evidence_claim_rejected_count > 0` のとき E2E でも省略禁止** (既定 `post_comment: false` ではこの出力が不採用理由の人間同期経路。省略は記録契約の喪失) |
 | ステップ 6 (PR Comment) | Full comment + display | Post comment silently, output pattern only |
-| ステップ 7 (Triage) | Full report + guidance | **Recommendations only** — detect scope-irrelevant recommendations (findings/recommendations containing 別 Issue / スコープ外 keywords). 候補の処分は採否ゲートの出口（file / record / hold）だけで決め、候補ごとの `AskUserQuestion` は出さない。`[review:mergeable]` と受入条件未検証の停止のときに実行し、`[review:fix-needed:N]` では skip する。 |
+| ステップ 7 (Triage) | Full report + guidance | **Recommendations only** — detect scope-irrelevant recommendations (findings/recommendations containing 別 Issue / スコープ外 keywords). 候補の処分は採否ゲートの出口（file / record / fix / hold）だけで決め、候補ごとの `AskUserQuestion` は出さない。`[review:mergeable]` と受入条件未検証の停止のときに実行し、`[review:fix-needed:N]` では skip する。 |
 
 E2E output format (ステップ 6, replaces full display):
 
@@ -89,6 +89,7 @@ standalone と `/rite:iterate` ステップ 1 からの E2E の 2 経路。
 | Argument | Description |
 |------|------|
 | `[pr_number]` | PR number (省略時は現在のブランチの PR を auto-detect) |
+| `--from-iterate` | `/rite:iterate` が review を呼ぶときだけ付ける（ステップ 1.0） |
 
 ---
 
@@ -132,6 +133,7 @@ rationale: references/design-rationale.md#placeholder-legend
 | `<pr_number>` (integer) | PR number (same as existing behavior) |
 | `--post-comment` | Force PR comment posting (overrides config) |
 | `--no-post-comment` | Force skip PR comment posting (overrides config) |
+| `--from-iterate` | `/rite:iterate` からの呼び出し。`[CONTEXT] PR_REVIEW_FROM_ITERATE=true` を出す（無ければ `false`）。ステップ 7.2 の `{fix_loop}` だけが読む |
 | (no flag) | Use `rite-config.yml` `pr_review.post_comment` value (default: `false`) |
 
 **Parsing procedure**:
@@ -1586,9 +1588,8 @@ If reviewers have written items in the "仕様への疑問" section, prompt the 
 2. **5.3.0.M 実測必須ゲート** — **`scripts/review-measured-gate.sh` を実行する**。分類は helper。Claude は判定しない。SoT: [severity-levels.md §実測必須ゲート](../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) / [assessment-rules.md §5.3.0.M](../fix/references/assessment-rules.md)。
 3. **5.3.0.C 帰結クラス降格政策** — 分類 map の Write と `scripts/review-class-demotion-gate.sh`。`blocking=0` なら本ゲート全体を skip。A=0 で exclusion なし B を降格し、exclusion 付き B は blocking 維持。SoT: [severity-levels.md §帰結クラス軸](../../references/severity-levels.md#帰結クラス軸-consequence-class) / [assessment-rules.md §5.3.0.C](../fix/references/assessment-rules.md)。
 4. **5.3.0.A 受入条件の最終整合検査** — `scripts/acceptance-criteria-check.sh final` を実行する。判定行の AC-ID 集合・対象判定と reviewers[] の整合、未充足行の finding が降格後も blocking に残ることを検査し、未検証 AC を 8.0 / 8.1 へ渡す。
-5. **5.3.0.R PR 内推奨の登録** — `scripts/review-pr-recommendations.sh register` を実行する。mergeable かつ cycle が `safety.max_review_cycles` 未満のときだけ、actionable かつ PR の追加行を指す推奨事項を `pr_recommendations[]` へ登録する。
-6. **5.3.1-5.3.7** を降格後の `全指摘事項` に適用。件数は marker とゲート後 JSON から読む（再分類しない）。
-5.3.0 / 5.3.0.M / 5.3.0.C / 5.3.0.A / 5.3.0.R を 5.3.1 の前に飛ばすことは **禁止**。
+5. **5.3.1-5.3.7** を降格後の `全指摘事項` に適用。件数は marker とゲート後 JSON から読む（再分類しない）。
+5.3.0 / 5.3.0.M / 5.3.0.C / 5.3.0.A を 5.3.1 の前に飛ばすことは **禁止**。
 rationale: references/design-rationale.md#5.3-execution-order-why
 
 #### Number-reference `--diff` (every cycle)
@@ -1778,26 +1779,6 @@ bash {plugin_root}/scripts/acceptance-criteria-check.sh final \
 
 `acceptance_final_retry_count` は int、初期 0。reroll を始める直前に +1 する。reroll 内で再実行する 5.3.0.M / 5.3.0.C は、それぞれ既存の `measured_gate_retry_count` / `class_gate_retry_count` を引き継ぐ。
 rationale: references/design-rationale.md#acceptance-reviewer
-
-#### 5.3.0.R PR 内推奨の登録
-
-5.3.0.A の後・6.1.a の保存の前に、毎 cycle 実行する。5.1 の `recommendation_items` を Write tool で `{review_tmp_dir}/rite-review-recs-{pr_number}-{current_commit_sha}.json` に `{"recommendation_items": [...]}` の形で保存する（0 件でも空配列で書く）。
-
-```bash
-bash {plugin_root}/scripts/pr-review-step.sh recommendations-register --input {review_tmp_dir}/rite-review-result-{pr_number}.json --items {review_tmp_dir}/rite-review-recs-{pr_number}-{current_commit_sha}.json --base {base_branch}
-```
-
-| Result | Action |
-|---|---|
-| rc=0 + `PR_RECOMMENDATIONS=registered; count=N; ids=...; positions=...` | `positions=` を `{registered_recommendation_positions}` として retain し、ステップ 7.1 の Source B から除外する。登録した推奨事項は iterate が同じ PR で `/rite:fix` に渡す |
-| rc=0 + `PR_RECOMMENDATIONS=none; reason=...` | `{registered_recommendation_positions}` を空として進む |
-| rc≠0 | `[review:error]` を stdout に出力して停止する |
-
-marker 末尾の `unlocated=`（file:line を読めない actionable の位置）は Source B から除外しない。行き先はステップ 7 の処分で決まる（Decision Log に記録する場合は 7.4.3 の先送り欠陥トークン付きになり、cleanup が follow-up へ転記する）。
-
-登録は保存前の作業コピーだけに行う（保存済み JSON は停滞判定の受領記録と照合されるため書き換えない）。上限は 1 つの review run につき 1 回。cycle が `safety.max_review_cycles` に達したときは登録しない（修正を再レビューできないため）。
-rationale: ../iterate/references/rationale.md#pr-recommendation-fix
-
 
 ### 5.3.8 Fix-Introduced Finding Attribution
 
@@ -2229,7 +2210,7 @@ Wiki 記録が有効な場合だけ [Wiki 記録・raw commit 手順](references
 **Step 1: Process recommendation-based Issue candidates (ステップ 7)**
 result pattern の前に ステップ 7.1-7.4 を実行する:
 - 7.1 で候補抽出（Source A のスコープ外 + Source B。スコープ内 findings は fix loop）
-- 候補あり、または triage の hold ファイルあり: 7.2-7.3。処分は採否ゲートの出口（file / record / hold）だけで決める（候補ごとの `AskUserQuestion` は出さない）
+- 候補あり、または triage の hold ファイルあり: 7.2-7.3。処分は採否ゲートの出口（file / record / fix / hold）だけで決める（候補ごとの `AskUserQuestion` は出さない）
 - 候補 0 件かつ triage の hold ファイルなし: silent skip
 
 **Condition**: `[review:mergeable]` と、受入条件未検証の停止（ステップ 8.1 の受入条件未検証行に一致する `[review:error]`）のとき。`[review:fix-needed:N]` では ステップ 7 を skip する。
@@ -2260,7 +2241,7 @@ loop 内では pattern だけ出す。続きは `/rite:iterate` ステップ 1-4
 
 候補は **2 source**:
 **Source A**: MEDIUM+ かつキーワード（`スコープ外` / `別 Issue` / `out of scope` / `separate issue` 等）。
-**Source B**: `recommendation_items` の `actionable` または `boundary`。`design_confirmation` は除外。5.3.0.R が登録した `{registered_recommendation_positions}`（`recommendation_items` の 0 始まり位置）も除外する（同じ PR で修正するため。判定を再計算しない）。
+**Source B**: `recommendation_items` の `actionable` または `boundary`。`design_confirmation` は除外。PR が持ち込んだ根因（採否の出口 ADOPT・`origin=pr`）は、`/rite:iterate` 経由の mergeable の review では 7.2 の採否ゲートが `fix` にして PR 内推奨として登録し、同じ PR で直す（受入条件未検証の停止と単独実行では hold。scope-triage.md 手順 3 の `{fix_loop}`）。
 
 **`candidate_count` assignment**:
 

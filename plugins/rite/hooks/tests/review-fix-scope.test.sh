@@ -188,6 +188,22 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
         candidate = copy.deepcopy(plan)
         mutation(candidate)
         reject_plan(candidate, label)
+    # An in-PR recommendation registered on the reviewed commit of a fix-needed review needs a
+    # disposition like a blocking finding; one registered on another commit is not this review's.
+    registration = private / 'state/pr-recommendations-71.json'
+    dump(registration, dict(commit_sha=context['commit_sha'], recommendations=[dict(id='R-01', candidates=['C-1'])]))
+    reject_plan(copy.deepcopy(plan), 'missing in-PR recommendation disposition')
+    with_recommendation = copy.deepcopy(plan)
+    with_recommendation['groups'][0]['finding_ids'] = ['F-01', 'F-02', 'R-01']
+    save_plan(with_recommendation)
+    invoke()
+    dump(registration, dict(commit_sha='another-commit', recommendations=[dict(id='R-01', candidates=['C-1'])]))
+    reject_plan(with_recommendation, 'in-PR recommendation of another commit')
+    registration.write_text('{broken')
+    reject_plan(copy.deepcopy(plan), 'unreadable in-PR recommendations')
+    registration.unlink()
+    save_plan()
+    invoke()
     with tempfile.TemporaryDirectory(prefix='rite-fix-outside-') as outside:
         (root / 'src/escape').symlink_to(outside, target_is_directory=True)
         candidate = copy.deepcopy(plan)

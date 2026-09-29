@@ -9,12 +9,21 @@
 # json_undecidable は先送り欠陥があっても failed のまま止める。
 #
 # 候補の集合は**同一 PR の全 JSON の `non_blocking_findings[]` の和集合**。各 JSON はその cycle の
-# 観測にすぎず、最新 1 本は残存集合ではない (先行 cycle にのみ載る指摘を取りこぼす)。解消済みの
-# 除外は cleanup ステップ 6.0.V の再検証が `--exclude-ids` で担う。iterate の NB sweep で起票済みの
-# 指摘と sweep が採否の出口で処分した指摘 (関連 Issue 記録コメントの却下台帳で判定=issued / REJECT /
-# RESOLVED / LINK) は本 helper が台帳を読み、行の出典 JSON と
-# 照合して除外する。起票した指摘と再掲マーカーで結ばれる前後の cycle の指摘、出典と id だけが違う
-# 完全一致の指摘も同じ指摘として除外する。
+# 観測にすぎず、最新 1 本は残存集合ではない (先行 cycle にのみ載る指摘を取りこぼす)。解消済みかどうかは
+# 分類役が判定記録の present で判定する。処分済みの候補は判定し直さない: iterate の NB sweep と前回の
+# follow-up が採否の出口で処分した指摘 (関連 Issue 記録コメントの却下台帳で判定=issued / REJECT /
+# RESOLVED / LINK) は本 helper が台帳を読み、行の出典 JSON と照合して除外する。ただし REJECT / RESOLVED は
+# 前提が変わっていないときだけ除外する (下記「処分の再利用」)。起票した指摘と再掲マーカーで結ばれる前後の
+# cycle の指摘、出典と id だけが違う完全一致の指摘も同じ指摘として除外する。
+#
+# 処分の再利用 (--list-candidates の reuse / judge):
+#   - 台帳の REJECT / RESOLVED 行は、前提の起点 (判定文末尾の `@<commit>`、無ければ行の出典 JSON — 出典の
+#     無い行は最新 JSON — の commit_sha) から対象 commit までに指摘のファイルが変わっていなければ除外する。変わった・commit を git で解決できない行は除外せず候補に戻す (判定し直す)。
+#     issued / LINK 行は追跡先があるので前提によらず除外する (追跡の冪等性)。出典 <pr>-deferred の行は
+#     対象 commit で処分したものなので常に除外する
+#   - 前回の実行の判定記録 (--adoption の既定の置き場) は、head が今回の対象 commit と同じで、ids がすべて
+#     今回の候補にあり、採否ゲートが保留した候補 (hold ファイルの held_ids) を含まない記録を reuse に写す。
+#     それ以外の候補の id を judge に並べる。分類役は judge の候補だけ記録を書く
 #
 # 転記元は直下と archive/ の JSON。cleanup の archive helper は本スクリプトの後に走る (D-04) が、
 # pr-cycle-cleanup.sh の orphan 回収が cleanup より先に archive/ へ移した JSON もここで読む。
@@ -27,7 +36,7 @@
 #
 # Usage:
 #   cleanup-follow-up-issue.sh --state-root <dir> --pr <n> --owner <owner> --repo <repo> \
-#     --list-candidates <file> [--source-issue <n>] [--exclude-ids <csv>]
+#     --list-candidates <file> [--source-issue <n>]
 #   cleanup-follow-up-issue.sh --state-root <dir> --pr <n> --owner <owner> --repo <repo> \
 #     --base <ref> [--adoption <file>] [options]
 #
@@ -38,12 +47,13 @@
 #   --repo               repo name。必須
 #   --list-candidates    候補を列挙してこのパスへ書き、起票せずに終える。書く JSON は
 #                        {"candidates": [{"id", "kind": "finding"|"deferred", "source", "finding"|"text"}],
-#                         "head", "review_result", "adoption", "ledger"}。review_result は head が PR の head のとき空。
+#                         "head", "review_result", "adoption", "ledger", "reuse", "judge"}。review_result は head が PR の head のとき空。
+#                        reuse は再利用する前回の判定記録、judge は記録を書く候補の id (上記「処分の再利用」)。
 #                        ledger は関連 Issue の台帳の issued / LINK / REJECT 行 ({id, loc, disposition, premise, source})。
 #                        関連 Issue があれば指摘の有無にかかわらず読む。読めないときは空で、その旨は
 #                        FOLLOW_UP_SWEEP_ISSUED=unavailable で出る (関連 Issue が無いときも空)。
 #                        0 件で終えるときは candidates が空で reason を持つ。
-#                        判定済み記録は書かない。同じ --source-issue / --exclude-ids の起票実行と同じ候補になる
+#                        判定済み記録は書かない。同じ --source-issue の起票実行と同じ候補になる
 #   --base               PR の base ref。ゲートの --base (origin=pr の差分位置の照合) に渡す。起票実行では必須
 #   --adoption           判定記録 ({"adoption": {"head", "records"}})。省略時はゲートの既定
 #                        (<state-root>/.rite/state/adoption-<pr>-followup.json)
@@ -61,22 +71,6 @@
 #   --preview-body       起票せずに本文を書き出すパス。ゲートと既存 follow-up の確認までは通常と同じに行い、
 #                        起票する根因ごとの本文を `---` 行で区切ってこのパスへ書いて終える（label 作成・起票・
 #                        元 Issue へのコメントはしない）。0 件・既存あり・保留は通常と同じ結果で終える
-#   --exclude-ids        転記から除外する finding の key の CSV。key は出典 JSON の basename と id を
-#                        `#` で連結した値 (例: "9-20260101120000.json#F-01,9-20260102120000~1a2b.json#F-05")。
-#                        cleanup ステップ 6.0 がマージ後 HEAD で再検証し `resolved` と判定した key だけを
-#                        渡す。各トークンは `^[0-9]+-[0-9]{14}(~[0-9a-f]{4})?\.json#F-[0-9]{2,}$` に一致しなければならず
-#                        (`~xxxx` は保存 helper が同秒衝突時に付ける suffix)、
-#                        1 つでも外れれば除外を 1 件も適用しない (reason=parse_failed)。空文字列 / 省略は
-#                        「除外なし」であり引数不正ではない。和集合と一致しない key は WARNING のうえ
-#                        無視し、残りの除外を適用して続行する。
-#                        同じ key が和集合内の複数 finding に一致する場合 (同一 JSON 内の id 重複)、
-#                        その key は identity として曖昧なため除外せず全件転記する (他の key の除外は
-#                        継続する)。WARNING と marker で surface し過剰転記側へ倒す。
-#                        **除外が要求より少なく適用された経路はすべて FOLLOW_UP_EXCLUDE_AMBIGUOUS を
-#                        出す**（reason= で区別する。下記 Emitted markers 参照）。ただし採否ゲートが保留した
-#                        候補 (<state-root>/.rite/state/adoption-hold-<pr>-followup.json の candidates[].id) に
-#                        一致する key は除外せず候補に残し、INFO を 1 行出す (marker は出さない。判定記録の
-#                        RESOLVED で処分する)。hold ファイルがあって読めなければ除外に倒さず hold_unreadable で失敗する
 #
 # 機械同定 marker: 起票本文の先頭行 `<!-- [rite-follow-up-from-pr:<pr>:<根因 key>] -->`。根因 key は判定記録の
 #   ids を整列して `,` で連結した値。follow-up ラベルの Issue を先頭行で照合し、根因 key の ids が今回の記録の
@@ -89,24 +83,29 @@
 #   1: 引数不正
 #
 # Emitted markers (stderr):
-#   [CONTEXT] FOLLOW_UP_CANDIDATES=listed; count=<n>; deferred=<k>; head=<sha>; file=<path>; pr=<n>
+#   [CONTEXT] FOLLOW_UP_CANDIDATES=listed; count=<n>; deferred=<k>; judge=<j>; head=<sha>; file=<path>; pr=<n>
 #     (--list-candidates のとき。0 件で終えたときは count=0 の後に reason=<下記 skipped / failed の reason>)
 #   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=list_write; pr=<n>   (一覧を --list-candidates のパスへ書けない)
 #   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=head_unresolved; pr=<n>   (対象 commit を決められない。一覧を書かない)
-#   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=hold_unreadable; pr=<n>   (--exclude-ids の照合に使う hold ファイルを読めない。一覧を書かない)
+#   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=hold_unreadable; pr=<n>   (採否ゲートの hold ファイルがあるのに読めず、
+#     前回の判定記録を再利用する候補を決められない。一覧を書かない。起票実行ではゲートが同じ hold を読めず
+#     FOLLOW_UP_ISSUE=held; reason=gate_failed_rc1; hold_file=none で止まる)
 #   [CONTEXT] FOLLOW_UP_ISSUE=held; reason=<r>; hold_file=<path>; pr=<n>
 #     採否の出口が出ていない候補がある (判定記録なし / ゲートの ERROR / 未処分の出口)。何も起票せず、
 #     判定済み記録も書かない。declined でも skipped でもない。reason はゲートの reason (no_records /
 #     context_unavailable / adoption_error / undecided)。ゲート自体が失敗したら reason=gate_failed_rc<n>、
 #     ゲートの出力を読めなければ reason=gate_output_invalid で、どちらも hold_file=none
+#   [CONTEXT] FOLLOW_UP_LEDGER=recorded; rows=<n>; pr=<n>   (record の出口の候補を関連 Issue の却下台帳へ書いた。
+#     指摘は出典 JSON の basename、先送り欠陥は <pr>-deferred を出典にする。再実行はこの行で候補から除く。
+#     LINK は追跡先 #N を判定文に持つ。--preview-body の実行は起票せずに終わる all_recorded / already_exists でだけ書く)
+#   [CONTEXT] FOLLOW_UP_LEDGER=failed; pr=<n>   (台帳へ書けなかった。起票の判断は変えない)
 #   [CONTEXT] FOLLOW_UP_ISSUE=created; issue=<起票した番号の CSV>; existing=<起票済みだった根因数>; recorded=<k>; pr=<n>
 #   [CONTEXT] FOLLOW_UP_ISSUE=preview; count=<n>; deferred=<k>; issues=<m>; body=<path>; pr=<n>   (--preview-body のとき。
 #     count は起票する根因に束ねた候補の件数、deferred はそのうち先送り欠陥の件数、issues は起票する Issue の数)
-#   [CONTEXT] FOLLOW_UP_ISSUE=skipped; reason=no_findings|all_resolved|all_issued|no_json|already_processed|jq_missing; pr=<n>
+#   [CONTEXT] FOLLOW_UP_ISSUE=skipped; reason=no_findings|all_issued|no_json|already_processed|jq_missing; pr=<n>
 #   [CONTEXT] FOLLOW_UP_ISSUE=skipped; reason=already_exists; issue=<n の CSV>; pr=<n>
 #   [CONTEXT] FOLLOW_UP_ISSUE=skipped; reason=all_recorded; recorded=<k>; pr=<n>
-#     no_findings  : parse できた JSON の和集合が、除外を適用する前から 0 件 (先送り欠陥も 0 件)
-#     all_resolved : 除外**後**に 0 件になった (再検証で全件が解消済みと判定された。先送り欠陥も 0 件)
+#     no_findings  : parse できた JSON の和集合が 0 件 (先送り欠陥も 0 件)
 #     all_issued   : sweep 起票済みの除外**後**に 0 件になった (残りが全件 sweep で Issue 化済み。先送り欠陥も 0 件)
 #     no_json      : レビュー結果 JSON が無い (先送り欠陥も 0 件。判定済み記録も無いか、読めない・内容が一致しない)
 #     already_processed : JSON が無く先送り欠陥も 0 件で、前回の本 helper が判定を終えた記録
@@ -114,31 +113,20 @@
 #     already_exists : 起票する根因がすべて起票済み、または旧形式の PR 単位の follow-up がある
 #     all_recorded : 出口がすべて record (REJECT / RESOLVED / LINK) で、起票するものが無い
 #
-# 判定済み記録: created / no_findings / all_resolved / all_issued / already_exists / all_recorded で終えるとき、
+# 判定済み記録: created / no_findings / all_issued / already_exists / all_recorded で終えるとき、
 #   `.rite/state/follow-up-judged-<pr>.txt` に `pr=<pr>` の 1 行を書く。cleanup の後段が JSON を
 #   片付けた後の再実行で、JSON 不在を no_json と区別するため。
-#   --preview-body 指定時も上記の skip 系 (no_findings / all_resolved / all_issued / already_exists / all_recorded) では書く。
+#   --preview-body 指定時も上記の skip 系 (no_findings / all_issued / already_exists / all_recorded) では書く。
 #   result=held・preview・failed・skipped の他の reason では書かない (held の再実行を already_processed にしない)。
 #   書けなくても結果は変えず WARNING を出す。影響は再実行の報告が no_json に戻ることだけ。
 #   [CONTEXT] FOLLOW_UP_DEFERRED=unavailable; reason=issue_body_api; pr=<n>
 #     元 Issue の本文を取得できず先送り欠陥を読めなかった (ゲートが本文を読み直し、読めなければ保留する)
-#   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=lookup_api|create_api|create_script_missing|json_undecidable|head_unresolved|hold_unreadable|preview_write; pr=<n>
+#   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=lookup_api|create_api|create_script_missing|json_undecidable|head_unresolved|preview_write; pr=<n>
 #     head_unresolved: commit_sha を持つレビュー結果 JSON が無く、PR の head も取得できないか <state-root> の git で解決できない
-#     hold_unreadable: --exclude-ids があり、採否ゲートの hold ファイルがあるのに読めない (形がゲートの読み取り条件に合わない)
 #   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=create_api; issue=<起票できた番号の CSV>; pr=<n>
 #     根因の一部だけ起票できた。再実行すると起票済みの根因は増やさず残りだけを起票する
-#   [CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=<r>; count=<n|unknown>; pr=<n>
-#     除外要求どおりに除外できなかったことを cleanup ステップ 12 へ通知する。
-#     marker 不在から除外適用・起票の成功を推定しない。起票結果は FOLLOW_UP_ISSUE で判定する。
-#       reason=ambiguous    : 和集合内で複数 finding に一致した key だけを除外拒否した。
-#                             count = 拒否した key の異なり数 (他の key の除外は適用済み)
-#       reason=undecidable  : 曖昧判定 / 除外解除の jq が失敗し除外を全破棄した。
-#                             count = 除外要求 key の総数 (適用された除外は 0 件)
-#       reason=parse_failed : --exclude-ids が key 形式でない / 解析できず除外を全破棄した。count=unknown
-#       reason=apply_failed : 除外適用の jq が失敗し除外を全破棄した。count = 要求 key 総数
 #   [CONTEXT] FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=<r>; pr=<n>
-#     sweep 起票済みの除外を適用できなかった。指摘があれば sweep 起票済みの指摘を除外せず候補に残す
-#     (再検証による除外は適用済みのまま)。reason が no_source_issue / comments_api / ledger_invalid の
+#     sweep 起票済みの除外を適用できなかった。指摘があれば sweep 起票済みの指摘を除外せず候補に残す。reason が no_source_issue / comments_api / ledger_invalid の
 #     ときは関連 Issue の却下台帳を読めておらず、一覧の ledger も空になる。apply_failed のときは台帳を
 #     読めており、一覧の ledger は台帳の行を運ぶ。成功経路では出さない。
 #       reason=no_source_issue : --source-issue が空
@@ -172,7 +160,6 @@ PROJECT_NUMBER=""
 PROJECT_OWNER=""
 PROJECTS_ENABLED="false"
 CREATE_SCRIPT=""
-EXCLUDE_IDS=""
 PREVIEW_BODY=""
 LIST_OUT=""
 BASE_REF=""
@@ -200,10 +187,6 @@ while [ $# -gt 0 ]; do
     --list-candidates)  _require_option_value "$1" "${2:-}"; LIST_OUT="$2"; shift 2 ;;
     --base)             _require_option_value "$1" "${2:-}"; BASE_REF="$2"; shift 2 ;;
     --adoption)         _require_option_value "$1" "${2:-}"; ADOPTION="$2"; shift 2 ;;
-    # 空値許容 option。`_require_option_value` を使わないのは、空文字列が「除外なし」という
-    # 正当な入力であり引数不正ではないため (再検証が undecidable / skip の呼び出し側は空で渡す)。
-    # ここを exit 1 にすると呼び出し側が helper_rc 失敗に落ち、完了報告で「未完了」に倒れる。
-    --exclude-ids)      EXCLUDE_IDS="${2:-}"; shift 2 ;;
     *)
       echo "ERROR: cleanup-follow-up-issue: unknown option: $1" >&2
       exit 1 ;;
@@ -344,7 +327,7 @@ skip_unless_deferred() {
 # `non_blocking_findings[]` は**その cycle の観測**であり、最終 cycle の JSON は「その PR の
 # 残存集合」ではない。最新 1 本だけを読むと、先行 cycle にのみ載る指摘が HEAD に残存していても
 # follow-up に載らず機械経路から黙って消える。残存判定 (解消済みの除外) は cleanup ステップ
-# 6.0.V の再検証が `--exclude-ids` で担い、本 helper は「全 cycle で記録された集合」を作る。
+# 判定記録の present (分類役) が担い、本 helper は「全 cycle で記録された集合」を作る。
 #
 # **id では畳まない**。`id` は各 JSON 内で振り直される連番であり cycle を跨いだ identity を持たない
 # (cycle 間の同一性判断は pr-review の semantic 判断が担い、本配列に機械的 identity キーは無い。
@@ -369,7 +352,7 @@ while IFS= read -r f; do
   [ -n "$f" ] || continue
   matched=$((matched + 1))
   : > "$union_err"
-  # 各 finding に出典 JSON のパス (`_src`) を持たせる。再検証による除外の key (basename + id) と、
+  # 各 finding に出典 JSON のパス (`_src`) を持たせる。候補の id (basename + id) と、
   # sweep 起票済みの除外 (台帳行の出典 basename との一致、出典の無い行は最新 JSON とのフルパス一致) の両方が使う。
   # 本文の生成は明示したフィールドだけを読むので転記には出ない。
   if ! part=$(jq -c --arg src "$f" 'if (.non_blocking_findings | type) == "array" then .non_blocking_findings | map(if type == "object" then . + {_src: $src} else . end) else error("non_blocking_findings is not an array") end' "$f" 2>"$union_err"); then
@@ -425,124 +408,41 @@ if ! printf '%s' "$findings_json" | jq -e 'length > 0' >/dev/null; then
   skip_unless_deferred no_findings
 fi
 
-# 再検証による除外は上の JSON 判定層とは独立の層なので `case` の arm 内に入れない
-# (arm 内へ入れると JSON 判定が degraded に降りた経路で一度も走らない)。
-# 0 件判定は 2 段に分ける: 除外**前** 0 件は従来どおり no_findings (記録時点で指摘が無い)、
-# 除外**後** 0 件だけが all_resolved (再検証で全件が解消済みと判定された)。両者を潰すと
-# 既存の no_findings 契約が回帰する。どちらも既存 follow-up の検索より前に exit する。
-if [ -n "$EXCLUDE_IDS" ]; then
-  # 除外 key は「出典 JSON の basename + `#` + id」。`id` は各 JSON 内の連番で cycle 跨ぎの identity を
-  # 持たないため、出典と組にして初めて 1 件を指せる。`_src` はフルパスのまま保ち (sweep 起票済みの
-  # 照合がフルパス一致に依存する)、basename への変換は key の中だけで行う。
-  _key_def='def key: ((._src // "") | split("/") | last) + "#" + (.id // "");'
-  # `-s` で入力全体を 1 文字列として読む。行単位 (`jq -R` 単体) だと改行入りの入力が
-  # JSON 配列の複数連結になり、非空判定を通過した後で `--argjson` が rc=2 で落ちて
-  # unknown key の WARNING が無言で消える。改行も区切りとして畳めばその経路自体が無くなる。
-  # 値はリテラル置換で二重引用符内へ渡されるため、許す文字を rite が付けるファイル名の形と id 書式に
-  # 限る。形が合わないトークンを 1 つでも含めば部分適用せず、除外を全破棄する。
-  exclude_json=$(printf '%s' "$EXCLUDE_IDS" | jq -Rsc '
-    split("\n") | join(",") | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0)) | unique
-    | if all(.[]; test("^[0-9]+-[0-9]{14}(~[0-9a-f]{4})?\\.json#F-[0-9]{2,}$")) then . else error("exclude key format") end') || exclude_json=""
-  if [ -z "$exclude_json" ]; then
-    # 入力は形の検証に落ちた値そのものなので、制御文字を潰してから載せる
-    _exclude_safe=$(printf '%s' "$EXCLUDE_IDS" | neutralize_ctrl)
-    echo "WARNING: --exclude-ids を解析できませんでした ('${_exclude_safe}')。各トークンは {出典 JSON 名}#F-NN の形でなければなりません。除外を適用せず全件を転記します (PR #${PR_NUMBER})" >&2
-    # 除外を 1 件も適用していないので marker を出す (下記「除外ゼロなら必ず marker」参照)。
-    # 要求件数は数えられない (解析に失敗した入力しか無い) ので count=unknown。
-    echo "[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=parse_failed; count=unknown; pr=${PR_NUMBER}" >&2
-  else
-    # 採否ゲートが保留した候補は、再検証で解消済みと判定されても候補に残す。除くとゲートの欠落照合
-    # (commit を問わない) が保留し続けて解けない。残した候補は判定記録の RESOLVED で処分する。hold ファイルの形の
-    # 検証はゲートの読み取りと同じ条件で、読めなければ除外に倒さず失敗で止める (列挙も起票も同じ位置)。
-    hold_file="$STATE_ROOT/.rite/state/adoption-hold-${PR_NUMBER}-followup.json"
-    if [ -e "$hold_file" ]; then
-      rite_tempfile_new hold_err "fu-hold" || exit 1
-      if ! held_keep=$(jq -nc --argjson ex "$exclude_json" --slurpfile h "$hold_file" '
-          if ($h | length) != 1 or ($h[0].head | type) != "string" or ($h[0].candidates | type) != "array"
-             or any($h[0].candidates[]; (.id | type) != "string") then error("malformed hold file")
-          else [$ex[] | select(. as $k | any($h[0].candidates[]; .id == $k))] end' 2>"$hold_err"); then
-        echo "WARNING: 採否ゲートの hold ファイルを読めないため、解消済みの除外を適用できません。follow-up を判定しません (PR #${PR_NUMBER}): $hold_file" >&2
-        [ -s "$hold_err" ] && head -3 "$hold_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-        if [ -n "$LIST_OUT" ]; then
-          echo "[CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=hold_unreadable; pr=${PR_NUMBER}" >&2
-        else
-          emit_failed hold_unreadable
-        fi
-        exit 0
-      fi
-      if [ "$held_keep" != '[]' ]; then
-        echo "INFO: 採否ゲートが保留した候補は解消済みでも除外せず候補に残します (判定記録の RESOLVED で処分する): $(jq -r 'join(", ")' <<< "$held_keep") (PR #${PR_NUMBER})" >&2
-        exclude_json=$(jq -c --argjson keep "$held_keep" '. - $keep' <<< "$exclude_json")
-      fi
-    fi
-    unknown_ids=$(printf '%s' "$findings_json" | jq -r --argjson ex "$exclude_json" "$_key_def"'
-      ([.[] | key]) as $known | $ex - $known | join(", ")')
-    if [ -n "$unknown_ids" ]; then
-      # fail-loud: 一致しない key を silent に無視しない。転記自体は続行する (非ブロッキング)
-      echo "WARNING: --exclude-ids に non_blocking_findings[] と一致しない key が含まれます: ${unknown_ids} (PR #${PR_NUMBER})。一致した key のみ除外して続行します" >&2
-    fi
-    # 和集合内で**同じ key が複数の finding に付いている** (同一 JSON 内の id 重複) 場合、その key は
-    # 1 件を指せない。6.0.V が片方だけを resolved と判定しても key 一致で両方を落とすため、残存して
-    # いる側が黙って消える。よって曖昧な key は**除外せず全件を残し**、WARNING で surface する
-    # (過剰転記側へ倒す。`undecidable` は転記する / `key: null` は必ず `undecidable` と同じ方針)。
-    # 判定 jq が失敗したら、除外をそのまま適用する側 (未解消の指摘が落ちうる危険側) ではなく
-    # 除外なしで全件転記する側へ倒す。下の除外解除 jq の失敗ハンドラと同じ向きに揃えてある。
-    ambiguous_json=$(printf '%s' "$findings_json" | jq -c --argjson ex "$exclude_json" "$_key_def"'
-      [ .[] | key ] | group_by(.) | map(select(length > 1) | .[0])
-      | map(select(. as $i | $ex | index($i))) | unique') \
-      || {
-        # 除外要求を全件拒否したので marker を出す。ここで落とすと「除外が 1 件も効いていないのに
-        # 完了報告は解消済み N と出す」報告乖離になる。
-        # count は**除外要求 key の総数**で、成功経路の「曖昧 key の異なり数」とは母集団が違う。
-        # reason= で区別し、消費側 (cleanup ステップ 12) が文面を出し分ける。
-        # ここへ到達している時点で上流の jq -Rsc は成功しており exclude_json は妥当な JSON 配列
-        # なので、length が入力理由で落ちることはない (到達不能な fallback を置かない)。
-        _amb_req=$(printf '%s' "$exclude_json" | jq -r 'length')
-        echo "WARNING: 曖昧 key の判定に失敗しました。除外なしで全件を転記します (PR #${PR_NUMBER})" >&2
-        echo "[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=undecidable; count=${_amb_req}; pr=${PR_NUMBER}" >&2
-        ambiguous_json="[]"; exclude_json='[]'
-      }
-    if printf '%s' "$ambiguous_json" | jq -e 'length > 0' >/dev/null 2>&1; then
-      # key の id 部はレビュアーが書く JSON 由来なので、素の値は neutralize_ctrl を通す。
-      # 件数サフィックスは bash 側で付ける。default 範囲は C0 + DEL + 0x80-0x9F を**バイト単位**で
-      # 潰すため、文字列全体を通すと WARNING 本文の日本語 (例 `和` = E5 92 8C) が巻き込まれる。
-      ambiguous_detail=""
-      while IFS=$'\t' read -r _amb_id _amb_n; do
-        [ -n "$_amb_id" ] || continue
-        _amb_safe=$(printf '%s' "$_amb_id" | neutralize_ctrl)
-        ambiguous_detail="${ambiguous_detail:+${ambiguous_detail}, }${_amb_safe} (${_amb_n} 件)"
-      done < <(printf '%s' "$findings_json" | jq -r --argjson amb "$ambiguous_json" "$_key_def"'
-        [ .[] | key ] | group_by(.)
-        | .[] | select(.[0] as $i | $amb | index($i)) | [.[0], (length | tostring)] | @tsv')
-      ambiguous_count=$(printf '%s' "$ambiguous_json" | jq -r 'length')
-      echo "WARNING: --exclude-ids の key が和集合内で複数の finding に一致するため除外しません: ${ambiguous_detail} (PR #${PR_NUMBER})。同じ JSON 内で id が重複しており、片方だけが解消済みでも両方を落とすと残存指摘が消えます。全件を転記します" >&2
-      # 起票結果とは独立に、除外を拒否したことを完了報告へ渡す。
-      # count は除外を拒否した key の異なり数 (転記された finding 件数ではない)。
-      echo "[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=ambiguous; count=${ambiguous_count}; pr=${PR_NUMBER}" >&2
-      if remaining_excludes=$(printf '%s' "$exclude_json" | jq -c --argjson amb "$ambiguous_json" '. - $amb'); then
-        exclude_json="$remaining_excludes"
-      else
-          # 直前に reason=ambiguous の marker を出しているが、そちらは「一部の key を除外できない」
-          # 意味で、こちらは「除外を全破棄した」意味。件数も母集団が違うので改めて出す。
-          _amb_req=$(printf '%s' "$exclude_json" | jq -r 'length')
-          echo "WARNING: 曖昧 key の除外解除に失敗しました。除外なしで全件を転記します (PR #${PR_NUMBER})" >&2
-          echo "[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=undecidable; count=${_amb_req}; pr=${PR_NUMBER}" >&2
-          exclude_json='[]'
-      fi
-    fi
-    if filtered_json=$(printf '%s' "$findings_json" | jq -c --argjson ex "$exclude_json" "$_key_def"'
-      [.[] | select(key as $k | ($ex | index($k)) | not)]'); then
-      findings_json="$filtered_json"
+# 対象 commit: basename の降順で最初に読める commit_sha。判定記録の head はこの値と一致しなければならない。
+review_result=""
+head_sha=""
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  if h=$(jq -er '.commit_sha | select(type == "string" and . != "")' "$f" 2>/dev/null); then
+    review_result="$f"; head_sha="$h"; break
+  fi
+done < <(rite_review_results_sources "$results_dir" "$PR_NUMBER" '.json' | awk '{ l[NR] = $0 } END { for (i = NR; i > 0; i--) print l[i] }')
+
+# commit_sha を持つ JSON が無い (orphan 回収が指摘 0 件の JSON を消した後など) ときは、マージ済み PR の head を
+# 対象 commit にする。採否判定 helper はこの commit を git で読むので、ブランチ削除後も <state-root> の git で
+# 解決できることを確かめる。決まらない head で保留すると判定記録をどう書いても解けないので、失敗で止める。
+if [ -z "$head_sha" ]; then
+  rite_tempfile_new head_err "fu-head" || exit 1
+  head_cause=""
+  if ! pr_head=$(gh pr view "$PR_NUMBER" -R "${OWNER}/${REPO}" --json headRefOid --jq .headRefOid 2>"$head_err"); then
+    head_cause="PR の head を取得できません"
+  elif ! [[ "$pr_head" =~ ^[0-9a-f]{40}([0-9a-f]{24})?$ ]]; then
+    head_cause="PR の head が commit id の形ではありません ('$(printf '%s' "$pr_head" | neutralize_ctrl)')"
+  elif ! git -C "$STATE_ROOT" cat-file -e "${pr_head}^{commit}" 2>"$head_err"; then
+    head_cause="PR の head ${pr_head} を ${STATE_ROOT} の git で解決できません"
+  fi
+  if [ -n "$head_cause" ]; then
+    echo "WARNING: commit_sha を持つレビュー結果 JSON が無く、${head_cause}。対象 commit を決められないため follow-up を判定しません (PR #${PR_NUMBER})" >&2
+    [ -s "$head_err" ] && head -3 "$head_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    if [ -n "$LIST_OUT" ]; then
+      echo "[CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=head_unresolved; pr=${PR_NUMBER}" >&2
     else
-      # 除外を 1 件も適用できていないので marker を出す (「除外ゼロなら必ず marker」)。
-      _amb_req=$(printf '%s' "$exclude_json" | jq -r 'length' 2>/dev/null) || _amb_req=unknown
-      echo "WARNING: 除外適用に失敗しました。除外なしで全件を転記します (PR #${PR_NUMBER})" >&2
-      echo "[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=apply_failed; count=${_amb_req}; pr=${PR_NUMBER}" >&2
+      emit_failed head_unresolved
     fi
+    exit 0
   fi
-  if ! printf '%s' "$findings_json" | jq -e 'length > 0' >/dev/null; then
-    skip_unless_deferred all_resolved
-  fi
+  head_sha="$pr_head"
+  echo "INFO: commit_sha を持つレビュー結果 JSON が無いため、PR #${PR_NUMBER} の head ${head_sha} を対象 commit にします" >&2
 fi
 
 # iterate の NB sweep が既に Issue 化した指摘 (関連 Issue 記録コメントの却下台帳で判定=issued) を
@@ -571,8 +471,30 @@ fi
 # 最新 JSON 由来の指摘と同じ file:line に残る先行 cycle の指摘だけを重複候補として WARNING に出す。
 # マーカーの無い行ずれした再報告と、それ以外の除外 (最新 JSON 以外を出典とする除外、結びつきによる
 # 除外) と同じ位置に残る指摘は、WARNING なしで sweep の Issue と重複しうる。
-# 台帳や最新 JSON を読めないときは sweep 起票済みの除外だけを適用せずに転記し (上の再検証による除外は
-# 適用済みのまま)、WARNING と marker で surface する (sweep 起票済みを黙って全件除外にも全件転記にも倒さない)。
+# 台帳や最新 JSON を読めないときは sweep 起票済みの除外を適用せずに転記し、WARNING と marker で surface する (sweep 起票済みを黙って全件除外にも全件転記にも倒さない)。
+# 処分の前提: REJECT / RESOLVED 行は、前提の起点から対象 commit までに指摘のファイルが変わっていないときだけ
+# 除外に使う。起点は判定文の末尾の `@<commit>` (follow-up が判定した commit。write_ledger が付ける)、無ければ
+# 行の出典 JSON (出典の無い行は最新 JSON) の commit_sha。変わった・commit を解決できない行は外し (候補に戻して
+# 判定し直す)、外した件数を出す。issued / LINK 行は追跡先があるので前提によらず残す。
+# $1 は [id, loc, 出典, 判定, 判定 commit] の配列。対象 commit と sources / latest_json は呼び出し前に決まっている。
+drop_stale_dispositions() {
+  local keys="$1" stale='[]' k_id k_loc k_src k_at src sha
+  # 出典と判定 commit はどちらも空になりうる。タブは IFS 空白で連続が 1 つに潰れるので、空欄を保つ \x1f で区切る
+  while IFS=$'\x1f' read -r k_id k_loc k_src k_at; do
+    src="$latest_json"
+    [ -z "$k_src" ] || src=$(printf '%s\n' "$sources" | awk -v b="$k_src" '{ n = split($0, p, "/") } p[n] == b { print; exit }')
+    sha="$k_at"
+    [ -z "$sha" ] && [ -n "$src" ] && sha=$(jq -r '.commit_sha // empty' "$src" 2>/dev/null)
+    if [ -n "$sha" ] && { [ "$sha" = "$head_sha" ] || git -C "$STATE_ROOT" diff --quiet --end-of-options "$sha" "$head_sha" -- "${k_loc%:*}" 2>/dev/null; }; then
+      continue
+    fi
+    stale=$(jq -c --arg i "$k_id" --arg l "$k_loc" --arg s "$k_src" --arg a "$k_at" '. + [[$i, $l, $s, $a]]' <<< "$stale") || return 1
+  done < <(jq -r '.[] | select(.[3] == "REJECT" or .[3] == "RESOLVED") | [.[0], .[1], .[2], .[4]] | join("\u001f")' <<< "$keys")
+  if [ "$stale" != '[]' ]; then
+    echo "[cleanup-follow-up-issue] disposition_stale: pr=${PR_NUMBER}; count=$(jq 'length' <<< "$stale")" >&2
+  fi
+  jq -c --argjson stale "$stale" '[.[] | select([.[0], .[1], .[2], .[4]] as $k | $stale | index([$k]) | not)]' <<< "$keys"
+}
 sweep_issued_unavailable() {
   echo "WARNING: $2。sweep 起票済みの指摘を除外せず転記します (PR #${PR_NUMBER})" >&2
   echo "[CONTEXT] FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=$1; pr=${PR_NUMBER}" >&2
@@ -583,7 +505,8 @@ sweep_issued_unavailable() {
 # 台帳行の分解は nb-sweep-collect.sh と同じ式 (セル内のエスケープ済みパイプを区切りにしない)。
 ledger_hint='[]'
 ledger_unread=""
-if [ -n "$SOURCE_ISSUE" ] && { [ -n "$LIST_OUT" ] || printf '%s' "$findings_json" | jq -e 'length > 0' >/dev/null; }; then
+deferred_done='[]'
+if [ -n "$SOURCE_ISSUE" ] && { [ -n "$LIST_OUT" ] || [ "$deferred_n" -gt 0 ] || printf '%s' "$findings_json" | jq -e 'length > 0' >/dev/null; }; then
   rite_tempfile_new comments_err "fu-comments" || exit 1
   if ! record_body=$(bash "$SCRIPT_DIR/../review-nonblocking-record.sh" --print-record-body \
       --pr "$PR_NUMBER" --owner-repo "${OWNER}/${REPO}"); then
@@ -596,10 +519,13 @@ if [ -n "$SOURCE_ISSUE" ] && { [ -n "$LIST_OUT" ] || printf '%s' "$findings_json
         | gsub("\\\\\\|"; "\ue000") | split("|") | map(gsub("\ue000"; "\\|") | trim)
         | select(length >= 6)
         | {id: .[1], loc: .[2], disposition: .[3], premise: .[4], source: (if length >= 7 then .[5] else "" end)}
-        | select(.disposition == "issued" or .disposition == "LINK" or .disposition == "REJECT") ]' 2>"$comments_err"); then
+        | select(.disposition == "issued" or .disposition == "LINK" or .disposition == "REJECT" or .disposition == "RESOLVED") ]' 2>"$comments_err"); then
     ledger_hint='[]'
     ledger_unread=ledger_invalid
   fi
+  # 前回の follow-up が record の出口で処分した先送り欠陥 (出典 <pr>-deferred の行) は候補に戻さない
+  deferred_done=$(jq -c --arg src "${PR_NUMBER}-deferred" '[.[] | select(.source == $src and .disposition != "issued") | .id]' <<< "$ledger_hint")
+  ledger_hint=$(jq -c '[.[] | select(.disposition != "RESOLVED")]' <<< "$ledger_hint")
 fi
 if ! printf '%s' "$findings_json" | jq -e 'length > 0' >/dev/null; then
   # 先送り欠陥だけで起票する経路。台帳と照合する指摘は無いが、読めなかった ledger は分類役に空と区別させる
@@ -621,7 +547,9 @@ else
         | select(.[3] == "issued" or .[3] == "REJECT" or .[3] == "RESOLVED" or .[3] == "LINK")
         | [.[1], .[2],
            (.[-2] as $s
-            | if length >= 7 and ($s | test("^[0-9]+-[0-9]{14}(~[0-9a-f]{4})?\\.json$")) then $s else "" end)] ]
+            | if length >= 7 and ($s | test("^[0-9]+-[0-9]{14}(~[0-9a-f]{4})?\\.json(\\.corrupt-[0-9]+)?$")) then $s else "" end),
+           .[3],
+           (if length >= 7 then (.[-3] | capture("@(?<c>[0-9a-f]{7,64})$").c // "") else "" end)] ]
     | unique' 2>"$comments_err"); then
     sweep_issued_unavailable ledger_invalid "関連 Issue の却下台帳を解析できません"
     [ -s "$comments_err" ] && head -3 "$comments_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
@@ -636,6 +564,8 @@ else
       "$latest_json" >/dev/null 2>"$comments_err"; then
     sweep_issued_unavailable apply_failed "sweep 起票済みの指摘を最新のレビュー結果 JSON と照合できません"
     [ -s "$comments_err" ] && head -3 "$comments_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+  elif ! issued_keys=$(drop_stale_dispositions "$issued_keys"); then
+    sweep_issued_unavailable apply_failed "処分の前提を照合できません"
   elif ! issued_split=$(printf '%s' "$findings_json" | jq -c --arg latest "$latest_json" --argjson keys "$issued_keys" \
       --argjson cycles "$cycles_json" '
     def loc: (.file // "") + ":" + (.line | tostring);
@@ -726,7 +656,7 @@ fi
 rite_tempfile_new cands_file "fu-cands" || exit 1
 deferred_source=""
 [ -n "$SOURCE_ISSUE" ] && deferred_source="Issue #${SOURCE_ISSUE} Decision Log (Section 9)"
-if ! printf '%s' "$findings_json" | jq -c --arg dmd "$deferred_md" --arg dsrc "$deferred_source" '
+if ! printf '%s' "$findings_json" | jq -c --arg dmd "$deferred_md" --arg dsrc "$deferred_source" --argjson ddone "$deferred_done" '
   def safe: tostring | gsub("[^A-Za-z0-9._-]"; "_");
   [ .[] | ((._src // "") | split("/") | last) as $b
       | {id: ($b + "#" + ((.id // "") | safe)), kind: "finding", source: $b, finding: del(._src)} ]
@@ -736,58 +666,41 @@ if ! printf '%s' "$findings_json" | jq -c --arg dmd "$deferred_md" --arg dsrc "$
   | reduce .[] as $c ({out: [], seen: {}};
       (.seen[$c.id] // 0) as $n | .seen[$c.id] = $n + 1
       | .out += [if $n == 0 then $c else $c + {id: "\($c.id)~\($n + 1)"} end])
-  | {candidates: .out}' > "$cands_file"; then
+  | {candidates: [.out[] | select(.kind == "finding" or (.id as $i | $ddone | index($i) | not))]}' > "$cands_file"; then
   echo "WARNING: 候補の一覧を作れません (non_blocking_findings[] に object でない要素がある可能性)。follow-up を起票しません (PR #${PR_NUMBER})" >&2
   emit_failed json_undecidable
   exit 0
 fi
 
-# 対象 commit: basename の降順で最初に読める commit_sha。判定記録の head はこの値と一致しなければならない。
-review_result=""
-head_sha=""
-while IFS= read -r f; do
-  [ -n "$f" ] || continue
-  if h=$(jq -er '.commit_sha | select(type == "string" and . != "")' "$f" 2>/dev/null); then
-    review_result="$f"; head_sha="$h"; break
-  fi
-done < <(rite_review_results_sources "$results_dir" "$PR_NUMBER" '.json' | awk '{ l[NR] = $0 } END { for (i = NR; i > 0; i--) print l[i] }')
-
-# commit_sha を持つ JSON が無い (orphan 回収が指摘 0 件の JSON を消した後など) ときは、マージ済み PR の head を
-# 対象 commit にする。採否判定 helper はこの commit を git で読むので、ブランチ削除後も <state-root> の git で
-# 解決できることを確かめる。決まらない head で保留すると判定記録をどう書いても解けないので、失敗で止める。
-if [ -z "$head_sha" ]; then
-  rite_tempfile_new head_err "fu-head" || exit 1
-  head_cause=""
-  if ! pr_head=$(gh pr view "$PR_NUMBER" -R "${OWNER}/${REPO}" --json headRefOid --jq .headRefOid 2>"$head_err"); then
-    head_cause="PR の head を取得できません"
-  elif ! [[ "$pr_head" =~ ^[0-9a-f]{40}([0-9a-f]{24})?$ ]]; then
-    head_cause="PR の head が commit id の形ではありません ('$(printf '%s' "$pr_head" | neutralize_ctrl)')"
-  elif ! git -C "$STATE_ROOT" cat-file -e "${pr_head}^{commit}" 2>"$head_err"; then
-    head_cause="PR の head ${pr_head} を ${STATE_ROOT} の git で解決できません"
-  fi
-  if [ -n "$head_cause" ]; then
-    echo "WARNING: commit_sha を持つレビュー結果 JSON が無く、${head_cause}。対象 commit を決められないため follow-up を判定しません (PR #${PR_NUMBER})" >&2
-    [ -s "$head_err" ] && head -3 "$head_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-    if [ -n "$LIST_OUT" ]; then
-      echo "[CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=head_unresolved; pr=${PR_NUMBER}" >&2
-    else
-      emit_failed head_unresolved
-    fi
-    exit 0
-  fi
-  head_sha="$pr_head"
-  echo "INFO: commit_sha を持つレビュー結果 JSON が無いため、PR #${PR_NUMBER} の head ${head_sha} を対象 commit にします" >&2
-fi
-
 adoption_path="${ADOPTION:-$STATE_ROOT/.rite/state/adoption-${PR_NUMBER}-followup.json}"
 if [ -n "$LIST_OUT" ]; then
+  # 前回の判定記録の再利用: head が同じで、ids がすべて今回の候補にあり、ゲートが保留した候補を含まない記録。
+  # 保留した候補 (hold ファイルの held_ids) は未処分なので判定し直す。hold ファイルを読めなければ一覧を書かない。
+  held_ids='[]'
+  hold_file="$STATE_ROOT/.rite/state/adoption-hold-${PR_NUMBER}-followup.json"
+  if [ -e "$hold_file" ] && ! held_ids=$(jq -ce 'if (.held_ids | type) == "array" then .held_ids else error("held_ids") end' "$hold_file" 2>/dev/null); then
+    echo "WARNING: 採否ゲートの hold ファイルを読めないため、前回の判定記録を再利用できる候補を決められません (PR #${PR_NUMBER}): $hold_file" >&2
+    echo "[CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=hold_unreadable; pr=${PR_NUMBER}" >&2
+    exit 0
+  fi
+  reuse='[]'
+  if [ -e "$adoption_path" ] && ! reuse=$(jq -c --arg head "$head_sha" --argjson held "$held_ids" --slurpfile c "$cands_file" '
+      [$c[0].candidates[].id] as $ids
+      | if .adoption.head == $head
+        then [.adoption.records[] | select(all(.ids[]; . as $i | $ids | index($i)) and (any(.ids[]; . as $i | $held | index($i)) | not))]
+        else [] end' "$adoption_path" 2>/dev/null); then
+    echo "WARNING: 前回の判定記録を読めないため再利用しません。全候補を判定し直します (PR #${PR_NUMBER}): $adoption_path" >&2
+    reuse='[]'
+  fi
   if ! jq --arg head "$head_sha" --arg rr "$review_result" --arg adoption "$adoption_path" --argjson ledger "$ledger_hint" \
-      '. + {head: $head, review_result: $rr, adoption: $adoption, ledger: $ledger}' "$cands_file" > "$LIST_OUT"; then
+      --argjson reuse "$reuse" \
+      '. + {head: $head, review_result: $rr, adoption: $adoption, ledger: $ledger, reuse: $reuse,
+            judge: [.candidates[].id | select(. as $i | [$reuse[].ids[]] | index($i) | not)]}' "$cands_file" > "$LIST_OUT"; then
     echo "WARNING: 候補一覧を ${LIST_OUT} に書けません (PR #${PR_NUMBER})" >&2
     echo "[CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=list_write; pr=${PR_NUMBER}" >&2
     exit 0
   fi
-  echo "[CONTEXT] FOLLOW_UP_CANDIDATES=listed; count=$(jq '.candidates | length' "$cands_file"); deferred=$(jq '[.candidates[] | select(.kind == "deferred")] | length' "$cands_file"); head=${head_sha}; file=${LIST_OUT}; pr=${PR_NUMBER}" >&2
+  echo "[CONTEXT] FOLLOW_UP_CANDIDATES=listed; count=$(jq '.candidates | length' "$cands_file"); deferred=$(jq '[.candidates[] | select(.kind == "deferred")] | length' "$cands_file"); judge=$(jq '.judge | length' "$LIST_OUT"); head=${head_sha}; file=${LIST_OUT}; pr=${PR_NUMBER}" >&2
   exit 0
 fi
 
@@ -831,9 +744,79 @@ case "$gate_rc" in
 esac
 
 n_record=$(jq '[.verdicts[] | select(.verdict == "record")] | length' <<< "$gate_out")
+
+# record の出口 (REJECT / RESOLVED / LINK) を関連 Issue の却下台帳へ書く。再実行ではこの行が候補を除くので、
+# 同じ候補を判定し直さず保留もしない。REJECT / RESOLVED の判定文の末尾には判定した commit (`@<head>`) を付け、
+# 再実行の前提の起点にする (出典 JSON の commit では、判定前の fix cycle の変更だけで自分の行が失効する)。
+# 書き込みは sweep の台帳 persist と同じ経路 (extract → append → merge-into → 記録 helper)。先送り欠陥の行は
+# 出典を <pr>-deferred とする。失敗しても起票は止めない
+# (再実行は判定記録を再利用して同じ出口に至り、行を書き直す)。
+# プレビュー付きの実行は、起票せずに終わる分岐 (all_recorded / already_exists) でだけ書く。プレビューを作る実行で
+# 書くと、「起票する」の再実行で候補が減り、判定記録の ids が候補に無い (unknown_candidate) で保留する。
+# 確認で「起票しない」を選んだ run は書かない (記録は残るので、次の cleanup が再利用して同じ出口に至る)。
+write_ledger() {
+  local entries body ledger rec_err rc outcome count
+  rite_tempfile_new entries "fu-ledger-entries" || return 1
+  jq -r --argjson cands "$(jq -c '.candidates' "$cands_file")" --arg pr "$PR_NUMBER" --arg head "$head_sha" '
+    def cell: tostring | gsub("\r?\n"; " ") | gsub("\\|"; "\\|");
+    .verdicts[] | select(.verdict == "record") as $v
+    | ($v.record.reason // "") as $reason
+    | ((if $v.exit == "LINK" then "追跡先 #\($v.tracker)" + (if $reason != "" then " / " + $reason else "" end)
+        elif $v.exit == "RESOLVED" and $reason == "" then ($v.record.evidence // "")
+        else $reason end)
+       + (if $v.exit == "REJECT" or $v.exit == "RESOLVED" then " @\($head)" else "" end)) as $premise
+    | $v.ids[] as $i | $cands[] | select(.id == $i)
+    | if .kind == "finding"
+      then "| \(.finding.id // $i | cell) | \(.finding.file // "" | cell):\(.finding.line | cell) | \($v.exit) | \($premise | cell) | \(.source) |"
+      else "| \(.id | cell) | - | \($v.exit) | \($premise | cell) | \($pr)-deferred |" end' <<< "$gate_out" > "$entries" || return 1
+  [ -s "$entries" ] || return 0
+  # 本文は上で台帳を読んだときの記録コメント (同じ run の中なので読み直さない)
+  if [ -z "$SOURCE_ISSUE" ] || [ "$ledger_unread" = comments_api ]; then
+    echo "WARNING: 記録コメントを読めていないため却下台帳へ書けません" >&2
+    return 1
+  fi
+  rite_tempfile_new body "fu-ledger-body" || return 1
+  rite_tempfile_new ledger "fu-ledger" || return 1
+  rite_tempfile_new rec_err "fu-ledger-err" || return 1
+  printf '%s' "$record_body" > "$body" || return 1
+  if [ ! -s "$body" ]; then
+    printf '%s\n\n%s\n\n%s\n%s\n\n%s\n' \
+      '## 📜 rite 非実測指摘の記録 (non-blocking)' \
+      '本 cycle の非実測指摘: 0 件 (前 cycle の記録内容は本 cycle では再報告されていません)' \
+      '📎 non_blocking_count: 0' \
+      '📎 reviewed_commit: unknown' \
+      '<!-- rite:nbr:v1 -->' > "$body"
+  fi
+  bash "$SCRIPT_DIR/nb-sweep-ledger.sh" extract --body-file "$body" > "$ledger" \
+    && bash "$SCRIPT_DIR/nb-sweep-ledger.sh" append --ledger-file "$ledger" --entries-file "$entries" \
+    && bash "$SCRIPT_DIR/nb-sweep-ledger.sh" merge-into --body-file "$body" --ledger-file "$ledger" || return 1
+  count=$(grep -E '^📎 non_blocking_count:[[:space:]]*[0-9]+[[:space:]]*$' "$body" | tail -1 | grep -oE '[0-9]+')
+  [ -n "$count" ] || return 1
+  bash "$SCRIPT_DIR/../review-nonblocking-record.sh" --pr "$PR_NUMBER" --owner-repo "${OWNER}/${REPO}" \
+    --count "$count" --iteration-id "follow-up-${PR_NUMBER}" --content-file "$body" 2>"$rec_err"
+  rc=$?
+  outcome=$(sed -n 's/^\[CONTEXT\] NONBLOCKING_RECORD_DONE=1; .*outcome=\([^;]*\);.*/\1/p' "$rec_err" | tail -1)
+  case "$rc:$outcome" in
+    0:created|0:updated) ledger_rows=$(grep -c '^| ' "$entries") ;;
+    *) neutralize_ctrl --keep-newline < "$rec_err" | sed 's/^/  /' >&2; return 1 ;;
+  esac
+}
+record_ledger() {
+  [ "$n_record" -gt 0 ] || return 0
+  ledger_rows=0
+  if write_ledger; then
+    echo "[CONTEXT] FOLLOW_UP_LEDGER=recorded; rows=${ledger_rows}; pr=${PR_NUMBER}" >&2
+  else
+    echo "WARNING: record の出口を却下台帳へ書けませんでした (PR #${PR_NUMBER})。起票は続けます。/rite:cleanup ${PR_NUMBER} を再実行すると判定記録を再利用して書き直します" >&2
+    echo "[CONTEXT] FOLLOW_UP_LEDGER=failed; pr=${PR_NUMBER}" >&2
+  fi
+}
+[ -n "$PREVIEW_BODY" ] || record_ledger
+
 file_json=$(jq -c --arg p "${MARKER_PREFIX}${PR_NUMBER}:" '
   [.verdicts[] | select(.verdict == "file") | . + {key: (.ids | sort | join(","))} | . + {marker: ($p + .key + "]")}]' <<< "$gate_out")
 if [ "$(jq 'length' <<< "$file_json")" -eq 0 ]; then
+  [ -z "$PREVIEW_BODY" ] || record_ledger
   record_judged
   echo "INFO: 採否の出口がすべて record (REJECT / RESOLVED / LINK) のため follow-up を起票しません (PR #${PR_NUMBER}, ${n_record} 件)" >&2
   echo "[CONTEXT] FOLLOW_UP_ISSUE=skipped; reason=all_recorded; recorded=${n_record}; pr=${PR_NUMBER}" >&2
@@ -868,6 +851,7 @@ existing_json=$(printf '%s' "$list_json" | jq -cs '
 # 旧形式 (PR 単位) の follow-up がある PR は、その PR の候補を起票済みとして扱い根因ごとに起票し直さない
 legacy_n=$(jq -r --arg m "<!-- ${MARKER} -->" '[.[] | select(.first == $m) | .number] | first // empty' <<< "$existing_json")
 if [ -n "$legacy_n" ]; then
+  [ -z "$PREVIEW_BODY" ] || record_ledger
   record_judged
   echo "INFO: PR #${PR_NUMBER} には旧形式 (PR 単位) の follow-up #${legacy_n} があるため、根因ごとの起票をしません" >&2
   echo "[CONTEXT] FOLLOW_UP_ISSUE=skipped; reason=already_exists; issue=${legacy_n}; pr=${PR_NUMBER}" >&2
@@ -886,6 +870,7 @@ existing_csv=$(jq -r '[.[] | select(.existing != null) | .existing | tostring] |
 n_existing=$(jq '[.[] | select(.existing != null)] | length' <<< "$roots_json")
 to_create=$(jq -c '[.[] | select(.existing == null)]' <<< "$roots_json")
 if [ "$(jq 'length' <<< "$to_create")" -eq 0 ]; then
+  [ -z "$PREVIEW_BODY" ] || record_ledger
   record_judged
   echo "[CONTEXT] FOLLOW_UP_ISSUE=skipped; reason=already_exists; issue=${existing_csv}; pr=${PR_NUMBER}" >&2
   echo "[cleanup-follow-up-issue] result=skipped; reason=already_exists; issue=${existing_csv}; pr=${PR_NUMBER}"

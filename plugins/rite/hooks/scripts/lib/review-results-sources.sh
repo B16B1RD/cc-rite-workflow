@@ -3,7 +3,7 @@
 #
 # Responsibility: list the review-results JSON files of one PR from both
 # `<results_dir>/` and `<results_dir>/archive/`. Consumers that run after the
-# merge (cleanup step 6.0 helper and its 6.0.V re-verification) must read the
+# merge (the cleanup step 6.0 follow-up helper) must read the
 # archive too: the orphan review reap in pr-cycle-cleanup.sh moves a MERGED
 # PR's JSON to archive/ when it runs before /rite:cleanup (session start, a
 # later cleanup of another PR). Reading only the top level turns that order
