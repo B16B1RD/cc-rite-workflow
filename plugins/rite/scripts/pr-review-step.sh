@@ -20,6 +20,7 @@
 #   bash pr-review-step.sh pr-view --owner-repo OWNER_REPO --pr PR_NUMBER
 #   bash pr-review-step.sh pr-view-current --owner-repo OWNER_REPO
 #   bash pr-review-step.sh ensure-worktree --head-ref HEAD_REF
+#   bash pr-review-step.sh review-head-check --owner-repo OWNER_REPO --pr PR_NUMBER
 #   bash pr-review-step.sh prev-review-comment --owner-repo OWNER_REPO --pr PR_NUMBER
 #   bash pr-review-step.sh head-sha
 #   bash pr-review-step.sh ci-snapshot --owner-repo OWNER_REPO --pr PR_NUMBER --commit-sha COMMIT_SHA
@@ -62,6 +63,8 @@
 # Issue number. Options whose step reports its own residue or empty value
 # (--args, --orig-*, --pending-marker, --save-pending-marker, and --pr of the two
 # fingerprint steps) skip this check so that step keeps its documented reason.
+# review-head-check exits 1 with [review:error] when either HEAD cannot be read or
+# the SHAs differ; it does not change the working tree or save a review result.
 
 plugin_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -235,9 +238,34 @@ if [ -n "$issue_number" ]; then
   fi
   bash "$plugin_root"/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --issue "$issue_number" --branch "${head_ref}"
 else
-  # head_ref が issue ブランチでない（session worktree の対象外）→ 従来どおり単一ツリーで続行
+  # session worktree 対象外。レビューを始める前に caller が HEAD を照合する。
   echo "[CONTEXT] WT_ENSURE=skip (head_ref が issue ブランチでないため worktree 対象外: ${head_ref})"
 fi
+}
+
+# --- review-head-check -----------------------------------------------------------
+step_review_head_check() {
+local local_head="" pr_head="" pr_data="" reason=""
+if ! local_head=$(git rev-parse HEAD); then
+  reason="作業ツリーの HEAD を取得できません"
+elif [[ ! "$local_head" =~ ^[0-9a-fA-F]{40}$ ]]; then
+  reason="作業ツリーの HEAD が有効な SHA ではありません"
+fi
+if ! pr_data=$(gh pr view "${pr_number}" -R "${owner_repo}" --json headRefOid); then
+  reason="PR の headRefOid を取得できません"
+elif ! pr_head=$(printf '%s' "$pr_data" | jq -er '.headRefOid | select(type == "string")') || [[ ! "$pr_head" =~ ^[0-9a-fA-F]{40}$ ]]; then
+  reason="PR の headRefOid が空または有効な SHA ではありません"
+fi
+if [ -z "$reason" ] && [ "$local_head" != "$pr_head" ]; then
+  reason="作業ツリーの HEAD と PR の headRefOid が一致しません"
+fi
+if [ -n "$reason" ]; then
+  printf 'ERROR: %s; local HEAD=%s; PR headRefOid=%s\n' "$reason" "${local_head:-<unavailable>}" "${pr_head:-<unavailable>}" | neutralize_ctrl --keep-newline >&2
+  printf '復旧: 作業中の変更を保持し、別の未使用ディレクトリへ gh repo clone %s <new-directory> を実行してください。そのディレクトリへ移動し gh pr checkout %s -R %s で PR の head を用意してからレビューを再実行してください。取得失敗時は GitHub 接続・認証も確認してください。\n' "$owner_repo" "$pr_number" "$owner_repo" | neutralize_ctrl --keep-newline >&2
+  echo "[review:error]"
+  return 1
+fi
+printf '[CONTEXT] REVIEW_HEAD=ok; sha=%s\n' "$local_head"
 }
 
 # --- prev-review-comment ---------------------------------------------------------
@@ -1329,6 +1357,7 @@ case "$subcommand" in
   pr-view) require pr_number owner_repo; step_pr_view ;;
   pr-view-current) require owner_repo; step_pr_view_current ;;
   ensure-worktree) require head_ref; step_ensure_worktree ;;
+  review-head-check) require owner_repo pr_number; step_review_head_check ;;
   prev-review-comment) require owner_repo pr_number; step_prev_review_comment ;;
   head-sha) step_head_sha ;;
   ci-snapshot) require pr_number owner_repo commit_sha; step_ci_snapshot ;;
