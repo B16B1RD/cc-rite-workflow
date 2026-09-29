@@ -1084,11 +1084,12 @@ bash {plugin_root}/scripts/fix-step.sh show-changes
 bash {plugin_root}/scripts/fix-step.sh number-ref-check --base-branch {base_branch} --changed-files '{changed_files}'
 ```
 
-| Exit | Action |
-|------|--------|
-| `0` | 3.1.1 へ |
-| `1` | コミットしない。2.3 に戻り追加行を書き直す。書き直しでもヒットが残るなら `[fix:error]`。番号付き行をコミットする fallback は禁止 |
-| `2` | `[fix:error]`（git / usage 失敗） |
+| Marker | Action |
+|--------|--------|
+| `NUMBER_REF_CHECK=clean` | 3.1.1 へ |
+| `NUMBER_REF_CHECK=hits` | コミットしない。2.3 に戻り追加行を書き直す。書き直しでもヒットが残るなら `[fix:error]`。番号付き行をコミットする fallback は禁止 |
+| `[fix:error]` | 停止（checker / intent-to-add の失敗） |
+| いずれも無い（usage 失敗など） | `[fix:error]` |
 
 ### 3.1.1 Pre-Commit Schema Version Check
 
