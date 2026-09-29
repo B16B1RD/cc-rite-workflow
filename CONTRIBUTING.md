@@ -374,7 +374,11 @@ expected words. See the header of that file for the full API.
    source `_test-helpers.sh` and get them for free), write test cases. A test that reads ambient
    runtime identity and does not source `_test-helpers.sh` must
    `source "$SCRIPT_DIR/_hermetic-env.sh"` right after defining `SCRIPT_DIR`; otherwise a
-   standalone run inherits the launching session's identity
+   standalone run inherits the launching session's identity. A test that runs a hook from its
+   own cwd (so the hook resolves the state root from that cwd) must also call
+   `hermetic_leave_checkout || exit 1` right after that source and remove `"$HERMETIC_CWD"` in
+   its cleanup; otherwise a run started inside a checkout reads that checkout's live session
+   through `.rite/session-id`
 3. Use `mktemp -d` for isolated test environments, then canonicalize the root with
    `pwd -P` as the structure above does — anything that compares the sandbox path
    against a path the code under test resolved breaks on macOS otherwise

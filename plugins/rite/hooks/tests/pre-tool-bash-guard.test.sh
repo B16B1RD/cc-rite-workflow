@@ -62,6 +62,7 @@ unset CLAUDE_SUBAGENT_TYPE CLAUDE_AGENT_TYPE
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=_hermetic-env.sh
 source "$SCRIPT_DIR/_hermetic-env.sh" || { echo "ERROR: cannot source _hermetic-env.sh" >&2; exit 1; }
+hermetic_leave_checkout || exit 1
 HOOK="$SCRIPT_DIR/../pre-tool-bash-guard.sh"
 PASS=0
 FAIL=0
@@ -69,6 +70,7 @@ STDERR_FILE=$(mktemp)
 
 cleanup() {
   rm -f "$STDERR_FILE"
+  rm -rf "$HERMETIC_CWD"
 }
 trap cleanup EXIT
 
