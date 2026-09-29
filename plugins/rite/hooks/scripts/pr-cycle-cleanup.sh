@@ -1047,59 +1047,39 @@ _rite_dir_is_self() {
 rite_self_dir="${RITE_WORKTREE:-$rite_invocation_pwd}"
 rite_self_canon=$(_rite_canonical_dir "$rite_self_dir")
 
-# Worktree liveness guard. The 4th protection layer:
-# extend Gate 0 self-exclusion to ALL sessions that may still resume into this
-# worktree. Two independent signals, either of which protects (skip reap):
-#   (A) flow-state.worktree scan — a session's per-session flow-state records
-#       this worktree as its `active` `worktree`, protected
-#       while `updated_at` is within the liveness TTL above (
-#       previously unbounded — "no time bound: an active session protects
-#       its tree regardless of idle time").
-#   (B) claim-join — the issue's claim file records this worktree
-#       and its holder session is still `active=true`, EVEN IF the claim's
-#       heartbeat (flow-state `updated_at`) has aged past the 2h staleness window
-#       used by issue-claim.sh `check` — but, like (A), only while that SAME
-#       `updated_at` is within the liveness TTL. A session that
-#       is active=true but idle >2h (and <TTL) has a `stale` claim, which
-#       Gate 2 alone would treat as reapable — reaping a worktree the harness
-#       can still resume into and restore as cwd, breaking `/clear` with
-#       `Path does not exist`. (B) closes that window for sessions whose
-#       flow-state.worktree drifted empty/mismatched so (A) misses them,
-#       since the claim reliably records the worktree↔holder binding.
-# Both signals protect ONLY active=true holders WITHIN the TTL:
-# a deactivated/abandoned holder (active=false) stays reapable as before, and
-# an active=true holder whose `updated_at` has aged past the TTL also stops
-# being protected — bounding the worktree/branch leak from sessions that end
-# without SessionEnd ever clearing `active`. Returns:
-#   0 = an active=true session references $2 (canonical wt_path) AND its
-#       updated_at is within the TTL (or TTL calc unavailable, fail-safe) → protect
-#   2 = the sessions dir cannot be enumerated, or a flow-state cannot be parsed
-#       → caller skips conservatively: cannot prove no live session needs it
-#   1 = no active session references it, or the referencing holder's TTL has
-#       exceeded → reap may proceed (subject to other gates)
-# Reads the shared-root sessions dir + issue-claims dir ($repo_root/.rite/...).
+# A stopped review or SessionEnd suspension can resume without being active.
+# Keep that distinction local to worktree retention: claim ownership and review
+# restart authorization must continue to use their own stricter contracts.
+_rite_worktree_liveness_row() {
+  jq -r '[
+    ((.active == true or
+      ((.phase != "completed" and .phase != "create_completed" and .phase != "cleanup_completed") and
+       (.suspended_by_session_end == true or .review_run.status == "stopped"))) | tostring),
+    (.worktree // ""), (.updated_at // "")
+  ] | join("\u001f")' "$1" 2>/dev/null
+}
+
+# Either the claim holder or a flow-state reference protects a resumable tree
+# within the existing liveness TTL. Claim-join also covers a drifted worktree
+# reference. Return 0 to protect, 1 to allow other gates, or 2 on a failed scan
+# so the caller conservatively skips a tree whose ownership cannot be established.
 _rite_worktree_protected_by_flow_state() {
   local issue_num="$1" target_canon="$2"
-  # (B) claim-join: protect when the issue's claim holder is still active=true,
-  # regardless of the claim's 2h heartbeat staleness. Independent of the sessions
-  # dir (the claim lives under .rite/state/issue-claims), so it runs first. A
-  # missing/unreadable/corrupt claim simply yields no protection here (the (A)
-  # scan and the downstream gates still apply) — NOT a conservative-skip, to avoid
-  # over-protecting on a stray claim read error.
+  # A claim read failure leaves the independent scan and downstream gates
+  # in charge; it must not turn a stray claim into permanent protection.
   local cfile="$repo_root/.rite/state/issue-claims/issue-${issue_num}.json"
   if [ -f "$cfile" ] && [ -r "$cfile" ]; then
-    local _holder _cwt _hactive _hupdated
+    local _holder _cwt _hfile _hrow _hresumable _hwt _hupdated
     _holder=$(jq -r '.session_id // ""' "$cfile" 2>/dev/null) || _holder=""
     _cwt=$(jq -r '.worktree // ""' "$cfile" 2>/dev/null) || _cwt=""
     if [ -n "$_holder" ] && [ -n "$_cwt" ] && { [ "$_cwt" = "$target_canon" ] || [ "$(_rite_canonical_dir "$_cwt")" = "$target_canon" ]; }; then
-      _hactive=$(RITE_STATE_ROOT="$repo_root" bash "$SCRIPT_DIR/../flow-state.sh" \
-                 get --session "$_holder" --field active --default "false" 2>/dev/null) || _hactive="false"
-      if [ "$_hactive" = "true" ]; then
-        # TTL gate: active=true alone no longer protects — the
-        # holder's updated_at must also be within the liveness TTL.
-        _hupdated=$(RITE_STATE_ROOT="$repo_root" bash "$SCRIPT_DIR/../flow-state.sh" \
-                   get --session "$_holder" --field updated_at --default "" 2>/dev/null) || _hupdated=""
-        _rite_ttl_protects "$_hupdated" && return 0
+      _hfile=$(RITE_STATE_ROOT="$repo_root" bash "$SCRIPT_DIR/../flow-state.sh" \
+                 path --session "$_holder" 2>/dev/null) || _hfile=""
+      if [ -n "$_hfile" ] && _hrow=$(_rite_worktree_liveness_row "$_hfile"); then
+        IFS=$'\x1f' read -r _hresumable _hwt _hupdated <<< "$_hrow"
+        if [ "$_hresumable" = "true" ]; then
+          _rite_ttl_protects "$_hupdated" && return 0
+        fi
       fi
     fi
   fi
@@ -1111,16 +1091,14 @@ _rite_worktree_protected_by_flow_state() {
   local f parse_failed=0
   for f in "$sdir"/*.flow-state; do
     [ -f "$f" ] || continue   # literal glob (no matches) or non-file → skip
-    local _row _active _wt _updated
+    local _row _resumable _wt _updated
     # Single composite read so a corrupt flow-state is caught as a parse failure
     # (→ conservative skip) rather than silently degrading active/worktree to empty.
-    _row=$(jq -r '[(.active // false | tostring), (.worktree // ""), (.updated_at // "")] | join("")' "$f" 2>/dev/null) || { parse_failed=1; continue; }
-    IFS=$'\x1f' read -r _active _wt _updated <<< "$_row"
-    [ "$_active" = "true" ] || continue
+    _row=$(_rite_worktree_liveness_row "$f") || { parse_failed=1; continue; }
+    IFS=$'\x1f' read -r _resumable _wt _updated <<< "$_row"
+    [ "$_resumable" = "true" ] || continue
     [ -n "$_wt" ] || continue
     if [ "$_wt" = "$target_canon" ] || [ "$(_rite_canonical_dir "$_wt")" = "$target_canon" ]; then
-      # TTL gate: active=true + worktree match alone no longer
-      # protects — this holder's updated_at must also be within the TTL.
       _rite_ttl_protects "$_updated" && return 0
     fi
   done
@@ -1189,20 +1167,12 @@ if [ -d "$session_wt_root" ]; then
     # pre-removal canonical form — a deleted dir no longer canonicalizes).
     _wt_canon=$(_rite_canonical_dir "$wt_path")
 
-    # Gate (worktree liveness + claim-join): never reap a worktree that a
-    # session may still resume into — either a session records it as its active
-    # `worktree`, OR the issue's claim holder is still active=true even
-    # though its claim heartbeat aged past the 2h staleness window (an
-    # active-but-idle session whose `stale` claim Gate 2 would otherwise reap).
-    # Evaluated before Gate 3/Gate 2, like Gate 0, so a clean+stale+aged worktree
-    # still owned by an active session is preserved. Enumeration/parse failure of
-    # `.rite/sessions/` → conservative skip. Skip is logged (not silent).
-    # `func || rc=$?` (not `func; rc=$?`): under `set -e` a bare non-zero return
-    # (rc=1 no active ref / rc=2 enum failure) would abort the whole reap loop.
+    # Check resumable owners before claim staleness or cleanliness can allow
+    # reaping. Capture non-zero status explicitly under set -e.
     _live_rc=0
     _rite_worktree_protected_by_flow_state "$issue_num" "$_wt_canon" || _live_rc=$?
     if [ "$_live_rc" -eq 0 ]; then
-      echo "WARNING: session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' は所有セッションが active（resume 可能）のため reap をスキップします (worktree liveness)。" >&2
+      echo "WARNING: session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' は所有セッションが保護期間内で再開可能なため reap をスキップします (worktree liveness)。" >&2
       continue
     elif [ "$_live_rc" -eq 2 ]; then
       echo "WARNING: session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' の保護判定に必要な flow-state の列挙/parse に失敗したため、安全側で reap をスキップします。" >&2

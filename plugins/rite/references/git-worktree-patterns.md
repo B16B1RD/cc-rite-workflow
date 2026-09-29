@@ -587,10 +587,18 @@ Two helper-driven patterns bracket the session-worktree lifecycle:
   `other` claim is surfaced via AskUserQuestion — never an unattended steal.
 - **Lazy reap** (`pr-cycle-cleanup.sh` Step 5): normal cleanup removes the worktree
   immediately; reap only collects **abnormally-orphaned** worktrees, and only when a
-  self-exclusion guard plus all 3 gates pass — the guard (Gate 0) never reaps the
+  self-exclusion and resumable-owner guards plus all 3 gates pass — the guard (Gate 0) never reaps the
   worktree the cleanup is itself running in (invocation cwd or `RITE_WORKTREE` matching
   or nested under the candidate), so a long-lived session cannot delete its own active
-  worktree mid-flight; then strict `^issue-[0-9]+$` name under
+  worktree mid-flight. Independently, a flow-state worktree reference or matching claim
+  holder protects the tree while its `updated_at` is within the liveness TTL
+  (`RITE_SESSION_LIVENESS_TTL_HOURS`, default 24h) when the owner is active, or
+  non-terminal and marked `suspended_by_session_end=true` or
+  `review_run.status=stopped`. Terminal phases are `completed`,
+  `create_completed` and `cleanup_completed`. This retention does not reactivate
+  the owner or authorize a stopped review to restart. Missing/unparseable timestamps
+  and unreadable flow-state scans retain the existing conservative protection;
+  live process cwd protection also applies. Then strict `^issue-[0-9]+$` name under
   `worktree_base`, claim not live (or absent + mtime > 24h — except a worktree whose
   checked-out branch is **reap-manifest-recorded**, i.e. cleanup already verified the
   PR merged and deferred the removal: that explicit "reap me" record bypasses the age
