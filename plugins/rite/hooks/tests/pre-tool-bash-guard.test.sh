@@ -2740,6 +2740,8 @@ for sc_cmd in \
   "echo 'a<'& gh pr comment 1 --body x" \
   "sleep 1 & git push" \
   "true&git push" \
+  'echo a\>& git push origin HEAD' \
+  'echo a\<& gh pr comment 1 --body x' \
   ; do
   rc=0
   output=$(run_guard_typed "rite:test-reviewer" "$sc_cmd") || rc=$?
@@ -2848,6 +2850,8 @@ for ro_sc_cmd in \
   "git log -- plugins/rite/scripts/iterate-step.sh" \
   "git show HEAD:plugins/rite/hooks/flow-state.sh" \
   "git log 2>&1 | grep commit" \
+  "git log&>/dev/null" \
+  "git log >&2" \
   ; do
   rc=0
   output=$(run_guard_typed "rite:test-reviewer" "$ro_sc_cmd") || rc=$?

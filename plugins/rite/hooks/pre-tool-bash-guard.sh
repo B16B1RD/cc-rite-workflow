@@ -385,7 +385,7 @@ _rite_btg_state_change_scan() {
   # Byte indexing: under a UTF-8 locale `${s:i:1}` rescans the string from the
   # start. Every delimiter here is ASCII, so bytes are enough.
   local LC_ALL=C
-  local _src _len _i _ch _d _view _us=$'\x1f' _ph=$'\x1e' _out
+  local _src _len _i _ch _d _view _us=$'\x1f' _ph=$'\x1e' _out _rop
   local -a _st _cl _par _case _w _buf _toks
   _sc_hit=""
   _sc_oversized=""
@@ -400,7 +400,7 @@ _rite_btg_state_change_scan() {
   _src=$(_rite_btg_pattern6_command_surface "$1")
   _len=${#_src}
   for _view in close case; do
-    _i=0; _d=0; _out=""
+    _i=0; _d=0; _out=""; _rop=-2
     _st=(plain); _cl=(""); _par=(0); _case=(0); _w=(""); _buf=("")
     while [ "$_i" -lt "$_len" ]; do
       _ch="${_src:$_i:1}"
@@ -427,10 +427,11 @@ _rite_btg_state_change_scan() {
               if [ "${_par[_d]}" -gt 0 ]; then _par[_d]=$((_par[_d] - 1)); _ch=sep
               elif [ "${_cl[_d]}" = ")" ] && { [ "$_view" = close ] || [ "${_case[_d]}" = 0 ]; }; then _ch=close
               else _ch=sep; fi ;;
+            '<'|'>') _w[_d]+="$_ch"; _rop=$_i ;;
             '&')
-              # Judged on the source text, not the dequoted word, so a quoted `>` before a
-              # background `&` does not make it part of a redirection.
-              if [[ -n "${_w[_d]}" && "${_src:$((_i - 1)):1}" == [\<\>] ]] \
+              # Only a `<` / `>` read just before, unquoted and unescaped, makes the `&` part
+              # of a redirection; a quoted or escaped one leaves it a background separator.
+              if [[ -n "${_w[_d]}" && "$_rop" = "$((_i - 1))" ]] \
                  || { [ -z "${_w[_d]}" ] && [ "${_src:$((_i + 1)):1}" = ">" ]; }; then
                 _w[_d]+="$_ch"
               elif [ "${_src:$((_i + 1)):1}" = ">" ]; then
