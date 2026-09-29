@@ -7,9 +7,10 @@
 # 例外は commit の 1 ブロックだけ。PreToolUse の commit ガードは Bash コマンド文字列に現れる
 # `git commit` を検査するため、commit を helper の中へ移すとガードが掛からなくなる。
 #
-# 検査対象は fix/SKILL.md だけ。fix が途中で読む skills/fix/references/ 配下の手順
-# （対象コメント・NB sweep・Wiki 記録・accept・非 fatal 記録）のブロックはまだこの形に移しておらず、
-# worktree 内ではそれらの経路が退路を要する。
+# 検査対象は fix/SKILL.md と、fix が途中で読む skills/fix/references/ 配下の手順
+# （対象コメント・NB sweep・Wiki 記録・accept・非 fatal 記録）の ```bash ブロック。
+# 散文の中に書かれたコマンド（target-comment.md の confidence override ファイルへの追記）は
+# ```bash ブロックではないので対象外。
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,6 +22,13 @@ STEP="$PLUGIN_ROOT/scripts/fix-step.sh"
 
 assert_file_exists_or_fail "fix/SKILL.md exists" "$FIX" || exit 1
 assert_file_exists_or_fail "fix-step.sh exists" "$STEP" || exit 1
+
+# fix が読む reference と、それぞれの ```bash ブロック数（移設時点の数。抽出の空振りと削除を fail にする）。
+REF_DIR="$PLUGIN_ROOT/skills/fix/references"
+REF_BLOCKS="target-comment.md:3 nb-sweep.md:5 wiki-recording.md:4 accept-finding.md:1 non-fatal-record.md:1"
+for entry in $REF_BLOCKS; do
+  assert_file_exists_or_fail "${entry%%:*} exists" "$REF_DIR/${entry%%:*}" || exit 1
+done
 
 # ```bash ブロック（リスト内のインデントされたものを含む）ごとに、コメント行を除き `\` 継続を
 # 連結した 1 論理行を出す（ブロック間は空行）。
@@ -68,7 +76,12 @@ block_count() {
 }
 
 skill_subcommands() {
-  grep -oE '^[[:space:]]*bash \{plugin_root\}/scripts/fix-step\.sh [a-z0-9-]+' "$1" | awk '{ print $3 }' | sort -u
+  grep -hoE '^[[:space:]]*bash \{plugin_root\}/scripts/fix-step\.sh [a-z0-9-]+' "$@" | awk '{ print $3 }' | sort -u
+}
+
+ref_paths() {
+  local entry
+  for entry in $REF_BLOCKS; do printf '%s\n' "$REF_DIR/${entry%%:*}"; done
 }
 
 step_subcommands() {
@@ -107,14 +120,25 @@ assert "every fix bash block is a single top-level bash call" "" "$violations"
 # commit は literal のまま 1 ブロックだけ残る。helper 経由にするとガードが素通りし、0 件になる。
 assert "the commit block stays a literal git commit (exactly one)" "1" "$(commit_exception_count "$FIX")"
 
-skill_subs=$(skill_subcommands "$FIX")
+# reference のブロックも同じ形に留まる。commit の例外は SKILL.md の 1 ブロックだけで、reference には無い。
+for entry in $REF_BLOCKS; do
+  ref="${entry%%:*}"
+  assert "$ref has all bash blocks" "${entry##*:}" "$(block_count "$REF_DIR/$ref")"
+  assert "every $ref bash block is a single top-level bash call" "" "$(shape_violations "$REF_DIR/$ref")"
+  assert "$ref has no literal commit block" "0" "$(commit_exception_count "$REF_DIR/$ref")"
+  # ```sh / ```shell の fence に移したシェルは形の検査から外れる。
+  assert "$ref has no sh / shell fence" "0" "$(grep -cE '^[[:space:]]*```(sh|shell)$' "$REF_DIR/$ref" || true)"
+done
+
+mapfile -t REF_PATHS < <(ref_paths)
+skill_subs=$(skill_subcommands "$FIX" "${REF_PATHS[@]}")
 step_subs=$(step_subcommands "$STEP")
 if [ -n "$step_subs" ]; then
   pass "fix-step.sh dispatch lists subcommands"
 else
   fail "fix-step.sh dispatch lists subcommands (case \"\$subcommand\" の抽出が空)"
 fi
-assert "SKILL.md calls exactly the subcommands fix-step.sh dispatches" "$step_subs" "$skill_subs"
+assert "SKILL.md and its references call exactly the subcommands fix-step.sh dispatches" "$step_subs" "$skill_subs"
 
 assert "fix-step.sh runs no git commit / git merge" "0" "$(helper_commit_calls "$STEP")"
 
@@ -176,11 +200,35 @@ if [ -n "$MUT_DIR" ]; then
     fi
   fi
 
+  # reference のブロックに文を足すと、reference 側でも形の違反になる。
+  awk '{ print } /^bash \{plugin_root\}\/scripts\/fix-step\.sh nb-sweep-finish / { print "rm -f \"$entries_file\"" }' \
+    "$REF_DIR/nb-sweep.md" > "$MUT_DIR/ref-two-statements.md"
+  if assert_mutant_changed "reference two-statement block" "$REF_DIR/nb-sweep.md" "$MUT_DIR/ref-two-statements.md"; then
+    if [ -n "$(shape_violations "$MUT_DIR/ref-two-statements.md")" ]; then
+      pass "a two-statement block in a reference is reported"
+    else
+      fail "a two-statement block in a reference is reported"
+    fi
+  fi
+
+  # reference のブロックを ```sh に移すと、ブロック数が減って検出される。
+  sed 's#^```bash$#```sh#' "$REF_DIR/accept-finding.md" > "$MUT_DIR/ref-sh-fence.md"
+  if assert_mutant_changed "reference sh fence" "$REF_DIR/accept-finding.md" "$MUT_DIR/ref-sh-fence.md"; then
+    assert "a block moved to a sh fence drops the bash block count" "0" "$(block_count "$MUT_DIR/ref-sh-fence.md")"
+  fi
+
+  # reference だけが呼ぶサブコマンドを消すと集合が一致しない（SKILL.md だけでは dispatch を覆えない）。
+  if [ "$(skill_subcommands "$FIX")" != "$step_subs" ]; then
+    pass "SKILL.md alone does not cover the subcommands its references call"
+  else
+    fail "SKILL.md alone does not cover the subcommands its references call"
+  fi
+
   # dispatch に無いサブコマンドを呼ぶと集合が一致しない。
   sed 's#^bash {plugin_root}/scripts/fix-step\.sh commit-guard$#bash {plugin_root}/scripts/fix-step.sh commit-guard-typo#' \
     "$FIX" > "$MUT_DIR/unknown-sub.md"
   if assert_mutant_changed "unknown subcommand" "$FIX" "$MUT_DIR/unknown-sub.md"; then
-    if [ "$(skill_subcommands "$MUT_DIR/unknown-sub.md")" != "$step_subs" ]; then
+    if [ "$(skill_subcommands "$MUT_DIR/unknown-sub.md" "${REF_PATHS[@]}")" != "$step_subs" ]; then
       pass "an unregistered subcommand is reported"
     else
       fail "an unregistered subcommand is reported"

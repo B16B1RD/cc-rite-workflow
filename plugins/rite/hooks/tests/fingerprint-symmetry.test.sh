@@ -1,5 +1,5 @@
 #!/bin/bash
-# fix 側の accept（skills/fix/references/accept-finding.md の永続化 block）が記録した fingerprint を、
+# fix 側の accept（skills/fix/references/accept-finding.md が呼ぶ scripts/fix-step.sh accept-persist）が記録した fingerprint を、
 # pr-review 側の scripts/pr-review-step.sh fingerprint-check が同じ finding JSON から再計算して
 # 一致させることを固定する。description にバッククォート・$・二重引用符を含めても一致し、
 # どちらの側もシェル展開を起こさない。finding JSON の読み取り失敗は両側とも理由付きで報告する。
@@ -11,6 +11,7 @@ source "$SCRIPT_DIR/_test-helpers.sh"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ACCEPT="$PLUGIN_ROOT/skills/fix/references/accept-finding.md"
 STEP="$PLUGIN_ROOT/scripts/pr-review-step.sh"
+FIX_STEP="$PLUGIN_ROOT/scripts/fix-step.sh"
 
 assert_file_exists_or_fail "accept-finding.md exists" "$ACCEPT" || exit 1
 assert_file_exists_or_fail "pr-review-step.sh exists" "$STEP" || exit 1
@@ -18,22 +19,18 @@ assert_file_exists_or_fail "pr-review-step.sh exists" "$STEP" || exit 1
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/rite-fp-symmetry-XXXXXX") || { fail "mktemp -d failed"; exit 1; }
 trap 'rm -rf "$WORK"' EXIT
 
-# 永続化 block（字下げ fence を含む ```bash の中で「accept fingerprint 永続化」を含むもの）を取り出す
-awk '
-  /^[[:space:]]*```bash$/ { inb = 1; block = ""; next }
-  inb && /^[[:space:]]*```$/ { if (index(block, "accept fingerprint 永続化")) { printf "%s", block; exit } inb = 0; next }
-  inb { block = block $0 "\n" }
-' "$ACCEPT" > "$WORK/accept-block.sh"
-if [ -s "$WORK/accept-block.sh" ]; then
-  pass "the accept persistence block is extracted"
+# accept-finding.md の永続化呼び出し（fix-step.sh accept-persist の 1 行）を取り出し、同じ行を実行する
+grep -xF 'bash {plugin_root}/scripts/fix-step.sh accept-persist --pr {pr_number} --finding-file {finding_file}' \
+  "$ACCEPT" > "$WORK/accept-block.sh"
+if [ "$(grep -c . "$WORK/accept-block.sh")" = 1 ] && [ -f "$FIX_STEP" ]; then
+  pass "the accept persistence call is extracted"
 else
-  fail "the accept persistence block is extracted"
+  fail "the accept persistence call is extracted"
 fi
 
 # state root は非 git の作業ディレクトリ（state-path-resolve.sh は cwd を返す）
 run_accept() {  # $1=finding JSON path
-  # placeholder だけを置換し、${pr_number} のような変数展開には触れない
-  sed -e "s|{plugin_root}|$PLUGIN_ROOT|g" -e 's|\([^$]\){pr_number}|\191|g' -e "s|{finding_file}|$1|g" \
+  sed -e "s|{plugin_root}|$PLUGIN_ROOT|g" -e 's|{pr_number}|91|g' -e "s|{finding_file}|$1|g" \
     "$WORK/accept-block.sh" > "$WORK/accept-run.sh"
   (cd "$WORK" && bash "$WORK/accept-run.sh") 2>&1
 }
@@ -109,6 +106,6 @@ esac
 assert "accept does not record a fingerprint from an invalid JSON" "1" "$(grep -c . "$WORK/.rite/state/accepted-fingerprints-91.txt" 2>/dev/null)"
 
 if ! print_summary "$(basename "$0")" \
-  "fix の accept（skills/fix/references/accept-finding.md）と pr-review の fingerprint-check（scripts/pr-review-step.sh）は同じ finding JSON を同じ jq で読む。"; then
+  "fix の accept（scripts/fix-step.sh accept-persist）と pr-review の fingerprint-check（scripts/pr-review-step.sh）は同じ finding JSON を同じ jq で読む。"; then
   exit 1
 fi

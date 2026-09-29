@@ -8,15 +8,15 @@
 # T-05 nit-noted in findings[] is a target; new class-B is not a second sweep (AC-5)
 # T-06 ledger write / merge fail-loud (AC-6)
 # T-07 class A findings[] stay out of sweep targets (AC-7); the rails also pin the in-PR recommendation wiring (iterate check / mark and their order before the fix invoke, pr-review 5.3.0.R register and its stop, 7.1 exclusion, fix 2.1 R-NN routing)
-# T-08 body_count extraction expression matches between fix/references/nb-sweep.md and the record helper (AC-1..AC-3)
+# T-08 body_count extraction expression matches between the fix-step.sh nb-sweep-persist step (called from fix/references/nb-sweep.md) and the record helper (AC-1..AC-3)
 # T-09 a ledger-only body (0 findings, no existing comment) creates the record comment, including CRLF and degraded lookup
-# T-10 nb-sweep.md record step succeeds only on created / updated and never reaches the done write otherwise
+# T-10 nb-sweep.md record step (its fix-step.sh nb-sweep-persist call run through the dispatcher) succeeds only on created / updated and never reaches the done write otherwise
 # T-11 a body without ledger entries keeps the no-op skip; count mismatch and uncountable ledger fail instead (the awk diagnostic surfaces with the awk: prefix above the awk-specific guidance, the pending marker is removed; an unknown _gh_err_detail label warns and falls back to the gh: prefix)
 # T-12 an existing record comment is updated in place even when the body carries a ledger
 # T-13 the record helper and nb-sweep-ledger.sh read the same ledger range (row counts agree on LF / CRLF / trailing-section bodies; extract and merge-into ignore a trailing CR, skip rows outside the section, splice before the count line; predicates pinned statically)
 # T-14 extract → merge-into is idempotent: the first pass leaves one ledger section right before the count line with one blank line on each side, and the second pass is byte-identical; extract output never ends in a blank line; an in-place extract → merge-into leaves no consecutive blank lines
 # T-15 --print-record-body: prints only the comment the write path would PATCH (CRLF → LF; durable id first); no record → empty stdout + absent; argument gates / resolution / lookup / body fetch / own login failures → rc=1, signal aborts → 128+n, each with a NONBLOCKING_RECORD_BODY=failed reason (pr_view_failed is never folded into related_issue_unresolved, including a headRefName read failure; a control character in pr= never forges a second marker line); never writes, never emits the terminal sentinel or NONBLOCKING_RECORD_FAILED, never touches pending markers
-# T-16 with two record comments, collect excludes only the ledger of the comment the helper PATCHes; the four readers (two pr-review-step.sh steps, the fix SKILL and its reference) read through --print-record-body once per site and never prefix-match the record heading
+# T-16 with two record comments, collect excludes only the ledger of the comment the helper PATCHes; the four readers (two pr-review-step.sh steps, the two fix-step.sh steps the fix references call) read through --print-record-body once per site and never prefix-match the record heading
 # T-17 6.1.d step 1.5 stops before the record helper when extract fails, the PR or its headRefName cannot be read, or the new body's first line is indented (merge-into body_marker_missing) (REJECTED_LEDGER_PRESERVE=failed, nothing written); an unresolvable related Issue continues with no ledger, but a pr= value carrying a forged reason=related_issue_unresolved does not (the helper's argument check stops it with exit 2 before any reader runs)
 # T-18 step 1.5 / step 3 / 8.0.3 agree on what follows REJECTED_LEDGER_PRESERVE=failed (judged by the last emitted value): no step 2; a merge-into body_* reason rewrites the body in step 1; any other failure re-runs step 1.5 once, then [review:error] shown in the same response; every re-run goes step 1 → step 1.5 → step 2 (output-diagnostics.md included)
 # T-19 the {rejected_ledger} call line run with the real helpers: ok prints the rows; lookup / PR read / headRefName read / extract failures → REJECTED_LEDGER=failed + WARNING; an unresolvable related Issue → empty, but a pr= value carrying a forged reason=related_issue_unresolved stops at the helper's argument check (exit 2, never empty)
@@ -398,6 +398,35 @@ ITERATE="$PLUGIN_ROOT/skills/iterate/SKILL.md"
 # SKILL.md 側は分岐表・sentinel ルーティングの散文を持つ。
 ITERATE_STEP="$PLUGIN_ROOT/scripts/iterate-step.sh"
 FIX="$PLUGIN_ROOT/skills/fix/references/nb-sweep.md"
+# nb-sweep.md の各手順のシェル本体は fix-step.sh の nb-sweep-* サブコマンドにある。
+# nb-sweep.md 側は 1 行呼び出しと、停止・戻り方の散文を持つ。
+FIX_STEP="$PLUGIN_ROOT/scripts/fix-step.sh"
+# $1=関数名。fix-step.sh の関数本体を出す。本体の途中に列 0 の `}`（`|| {` の閉じ）があるため `^}` では切らず、
+# `step_xxx() {` の次の行から、次の `# --- ` 見出し行の直前までを本体とする
+fix_step_fn() {
+  awk -v head="$1() {" '$0 == head {f=1; next} f && /^# --- / {exit} f' "$FIX_STEP"
+}
+fn_gate="$sandbox/fn-nb-sweep-gate.sh"
+fn_file_issue="$sandbox/fn-nb-sweep-file-issue.sh"
+fn_persist="$sandbox/fn-nb-sweep-persist.sh"
+fix_step_fn step_nb_sweep_gate > "$fn_gate"
+fix_step_fn step_nb_sweep_file_issue > "$fn_file_issue"
+fix_step_fn step_nb_sweep_persist > "$fn_persist"
+# nb-sweep.md の本文と、それが呼ぶ nb-sweep-* の関数本体を合わせたもの (手順全体に対する否定 pin 用)
+fix_sweep_all="$sandbox/nb-sweep-with-steps.txt"
+{
+  cat "$FIX"
+  for fn in step_nb_sweep_collect step_nb_sweep_gate step_nb_sweep_file_issue step_nb_sweep_persist step_nb_sweep_finish; do
+    fix_step_fn "$fn"
+  done
+} > "$fix_sweep_all"
+# $1=subcommand。nb-sweep.md の fix-step.sh 呼び出し (行末 `\` の継続行を含む) を 1 行にして出す
+fix_call_of() {
+  awk -v head="bash {plugin_root}/scripts/fix-step.sh $1 " '
+    index($0, head) == 1 {f=1}
+    f {line = line $0; if ($0 !~ /\\$/) {print line; exit}; sub(/\\$/, "", line)}
+  ' "$FIX"
+}
 REVIEW="$PLUGIN_ROOT/skills/pr-review/SKILL.md"
 REVIEW_STEP="$PLUGIN_ROOT/scripts/pr-review-step.sh"
 PROMPT="$PLUGIN_ROOT/skills/pr-review/references/reviewer-prompt-generator.md"
@@ -420,13 +449,13 @@ assert_grep "T-07 iterate no second sweep" "$ITERATE" '同一 review JSON で 5\
 assert_grep "T-07 iterate sweep-done ステップ1禁止" "$ITERATE" 'ステップ 1 に戻らない'
 assert_grep "T-07 fix --nb-sweep" "$FIX" '\-\-nb-sweep'
 assert_grep "T-07 fix sweep-done sentinel" "$FIX" '\[fix:sweep-done\]'
-assert_grep "T-07 fix persist uses body count" "$FIX" '\-\-count "\$body_count"'
-assert_grep "T-07 fix record reads the terminal outcome" "$FIX" 'record_outcome=.*NONBLOCKING_RECORD_DONE=1; \.\*outcome='
-assert_grep "T-07 fix record succeeds only on created / updated" "$FIX" '^[[:space:]]*0:created[|]0:updated\) ;;$'
-assert_not_grep "T-07 fix record drops the failed-only check" "$FIX" 'NONBLOCKING_RECORD_FAILED=1[|]outcome=failed'
-assert_grep "T-07 fix gates the sweep on the adoption exit" "$FIX" 'review-adoption-gate\.sh --pr \{pr_number\} --kind sweep'
+assert_grep "T-07 fix persist uses body count" "$fn_persist" '\-\-count "\$body_count"'
+assert_grep "T-07 fix record reads the terminal outcome" "$fn_persist" 'record_outcome=.*NONBLOCKING_RECORD_DONE=1; \.\*outcome='
+assert_grep "T-07 fix record succeeds only on created / updated" "$fn_persist" '^[[:space:]]*0:created[|]0:updated\) ;;$'
+assert_not_grep "T-07 fix record drops the failed-only check" "$fn_persist" 'NONBLOCKING_RECORD_FAILED=1[|]outcome=failed'
+assert_grep "T-07 fix gates the sweep on the adoption exit" "$fn_gate" 'review-adoption-gate\.sh --pr "\$\{pr_number\}" --kind sweep'
 assert_grep "T-07 fix files only verdict=file" "$FIX" '`verdict=file` の記録ごとに 1 件起票する'
-assert_not_grep "T-07 fix has no severity route" "$FIX" 'route=issued'
+assert_not_grep "T-07 fix has no severity route" "$fix_sweep_all" 'route=issued'
 assert_grep "T-07 fix recorded machine rationale" "$FIX" 'severity=\{sev\}; measured=\{bool\}'
 assert_grep "T-07 sweep forbids commits" "$FIX" 'コードを変更せず、commit / push を行わない'
 assert_grep "T-07 pr-review rejected_ledger" "$REVIEW" '{rejected_ledger}'
@@ -483,27 +512,34 @@ assert_grep_in_section "T-07 fix 2.1 routes R-NN to the normal fix" "$FIX_SKILL"
   '^### 2\.1 Confirm Fix Approach$' '^### 2\.1\.A ' \
   '`pr_recommendations\[\]` の `R-NN` だけが通常の修正'
 
-# Execute the actual skill error guards, with local stubs for mutations.
-extract_fix_block() {
-  awk -v needle="$1" '
-    /^```bash$/ {inside=1; block=""; next}
-    /^```$/ {if (inside && index(block, needle)) {printf "%s", block; exit}; inside=0}
-    inside {block=block $0 "\n"}
-  ' "$FIX"
+# 採否ゲートと起票の停止を実行して確かめる。nb-sweep.md の 1 行呼び出しを fixture plugin の fix-step.sh で
+# dispatch 経由に実行する。fixture は fix-step.sh の写しと、それが読む hook (stub / symlink) を並べる。
+# 手順の停止は 1 行呼び出しの非ゼロ終了なので、止まる実行を `|| exit $?` で表す。
+gate_call=$(fix_call_of nb-sweep-gate)
+issue_call=$(fix_call_of nb-sweep-file-issue)
+assert "gate guard extracted (nb-sweep.md calls the gate step once)" 1 \
+  "$(grep -c '^bash {plugin_root}/scripts/fix-step\.sh nb-sweep-gate ' "$FIX")"
+assert_grep "gate guard holds the held stop" "$fn_gate" 'nb_sweep_adoption_held'
+assert_grep "gate guard holds the verdict check" "$fn_gate" 'nb_sweep_verdict_invalid'
+assert "issue guard extracted (nb-sweep.md calls the filing step once)" 1 \
+  "$(grep -c '^bash {plugin_root}/scripts/fix-step\.sh nb-sweep-file-issue ' "$FIX")"
+assert_grep "issue guard holds the filing failure stop" "$fn_file_issue" 'nb_sweep_issue_failed'
+# $1=fixture plugin。fix-step.sh の写しと、起動時に読む control-char-neutralize.sh を置く
+fixture_fix_step() {
+  mkdir -p "$1/scripts" "$1/hooks"
+  cp "$FIX_STEP" "$1/scripts/fix-step.sh"
+  ln -sf "$PLUGIN_ROOT/hooks/control-char-neutralize.sh" "$1/hooks/control-char-neutralize.sh"
 }
-gate_guard="$sandbox/gate-guard.sh"
-issue_guard="$sandbox/issue-guard.sh"
-extract_fix_block 'reason=nb_sweep_adoption_held' > "$gate_guard"
-extract_fix_block 'reason=nb_sweep_issue_failed' > "$issue_guard"
-assert_grep "gate guard extracted" "$gate_guard" 'nb_sweep_adoption_held'
-assert_grep "gate guard holds the verdict check" "$gate_guard" 'nb_sweep_verdict_invalid'
-assert_grep "issue guard extracted" "$issue_guard" 'nb_sweep_issue_failed'
 stub_plugin="$sandbox/plugin"
 mkdir -p "$stub_plugin/scripts" "$stub_plugin/hooks/scripts"
+fixture_fix_step "$stub_plugin"
+# 起票 stub: 呼ばれたことと引数を残す。NB_TEST_ISSUE_RESULT があればそれを起票結果として返し、無ければ失敗する
 cat > "$stub_plugin/scripts/create-issue-with-projects.sh" <<'SH'
 #!/usr/bin/env bash
 printf 'called\n' >> "$NB_TEST_ISSUE_LOG"
-exit 1
+printf '%s\n' "$1" > "$NB_TEST_ISSUE_LOG.args"
+[ -n "${NB_TEST_ISSUE_RESULT:-}" ] || exit 1
+printf '%s\n' "$NB_TEST_ISSUE_RESULT"
 SH
 cat > "$stub_plugin/hooks/state-path-resolve.sh" <<'SH'
 #!/usr/bin/env bash
@@ -529,6 +565,7 @@ esac
 SH
 real_gate_plugin="$sandbox/plugin-real-gate"
 mkdir -p "$real_gate_plugin/hooks/scripts"
+fixture_fix_step "$real_gate_plugin"
 cp "$stub_plugin/hooks/state-path-resolve.sh" "$real_gate_plugin/hooks/"
 cp "$stub_plugin/hooks/scripts/nb-sweep-collect.sh" "$real_gate_plugin/hooks/scripts/"
 ln -s "$PLUGIN_ROOT/hooks/scripts/review-adoption-gate.sh" "$real_gate_plugin/hooks/scripts/review-adoption-gate.sh"
@@ -536,23 +573,26 @@ export NB_TEST_ISSUE_LOG="$sandbox/issue.log"
 export NB_TEST_STATE="$sandbox/gate-state"
 mkdir -p "$NB_TEST_STATE/.rite/review-results" "$NB_TEST_STATE/.rite/state"
 printf '{"commit_sha": "0123456789abcdef0123456789abcdef01234567"}\n' > "$NB_TEST_STATE/.rite/review-results/7-20260101120000.json"
-sed "s|{plugin_root}|$stub_plugin|g" "$issue_guard" > "$sandbox/issue-guard-resolved.sh"
-mv "$sandbox/issue-guard-resolved.sh" "$issue_guard"
 # The tail stands for everything after the gate (filing, entries, ledger persist, done marker):
 # a stop must never reach it.
 export NB_TEST_LEDGER="$ledger"
 ledger_before=$(cksum "$ledger")
 head_before=$(git -C "$PLUGIN_ROOT" rev-parse HEAD)
-cat >> "$gate_guard" <<'SH'
+gate_tail="$sandbox/gate-tail.sh"
+cat > "$gate_tail" <<'SH'
 bash "$NB_TEST_PLUGIN/scripts/create-issue-with-projects.sh" '{}'
 printf 'unexpected persist\n' >> "$NB_TEST_LEDGER"
 printf '| F-01 | src/a.ts:1 | issued | #1 | 7-20260101120000.json |\n' > "$NB_TEST_STATE/.rite/state/nb-sweep-entries-7.md"
 printf 'done 7-20260101120000.json\n' > "$NB_TEST_STATE/.rite/state/nb-sweep-done-7.txt"
 SH
 run_gate_guard() {  # $1=plugin $2=gate mode $3=label
-  sed -e "s|{plugin_root}|$1|g" -e 's|{pr_number}|7|g' -e 's|{base_branch}|develop|g' -e 's|{owner_repo}|test/repo|g' \
-    "$gate_guard" > "$sandbox/gate-$3.sh"
-  ( cd "$sandbox" && NB_TEST_PLUGIN="$stub_plugin" NB_TEST_GATE="$2" bash "$sandbox/gate-$3.sh" ) > "$sandbox/gate-$3.out" 2>&1
+  {
+    printf '%s || exit $?\n' "$gate_call" \
+      | sed -e "s|{plugin_root}|$1|g" -e 's|{pr_number}|7|g' -e 's|{base_branch}|develop|g' -e 's|{owner_repo}|test/repo|g'
+    cat "$gate_tail"
+  } > "$sandbox/gate-$3.sh"
+  ( cd "$sandbox" && NB_TEST_PLUGIN="$stub_plugin" NB_TEST_GATE="$2" bash "$sandbox/gate-$3.sh" ) \
+    > "$sandbox/gate-$3.out" 2> "$sandbox/gate-$3.err"
   echo $? > "$sandbox/gate-$3.rc"
 }
 for gate_case in "$stub_plugin|held|held|nb_sweep_adoption_held" "$real_gate_plugin||real-held|nb_sweep_adoption_held" \
@@ -561,13 +601,16 @@ for gate_case in "$stub_plugin|held|held|nb_sweep_adoption_held" "$real_gate_plu
   IFS='|' read -r gate_plugin gate_mode gate_label gate_reason <<< "$gate_case"
   run_gate_guard "$gate_plugin" "$gate_mode" "$gate_label"
   assert "gate $gate_label stops" 1 "$(cat "$sandbox/gate-$gate_label.rc")"
-  assert "gate $gate_label emits [fix:error] with its reason" 1 "$(grep -cx "\[fix:error\] reason=$gate_reason" "$sandbox/gate-$gate_label.out")"
+  # stdout の [fix:error] 行はその reason の 1 行だけ (別の停止へ落ちて 2 行目が出る経路を通さない)
+  assert "gate $gate_label emits [fix:error] with its reason" "[fix:error] reason=$gate_reason" \
+    "$(grep '\[fix:error\]' "$sandbox/gate-$gate_label.out")"
+  assert "gate $gate_label prints no gate JSON on stdout" 0 "$(grep -cE '"(held|verdicts)"' "$sandbox/gate-$gate_label.out")"
   assert "gate $gate_label never calls the issue helper" "no" "$([ -e "$NB_TEST_ISSUE_LOG" ] && echo yes || echo no)"
   assert "gate $gate_label writes no entries" "no" "$([ -e "$NB_TEST_STATE/.rite/state/nb-sweep-entries-7.md" ] && echo yes || echo no)"
   assert "gate $gate_label writes no done marker" "no" "$([ -e "$NB_TEST_STATE/.rite/state/nb-sweep-done-7.txt" ] && echo yes || echo no)"
 done
 assert "held / invalid verdicts leave the ledger unchanged" "$ledger_before" "$(cksum "$ledger")"
-assert_grep "real gate without records holds with no_records" "$sandbox/gate-real-held.out" 'ADOPTION_GATE=held; kind=sweep; reason=no_records; held=1'
+assert_grep "real gate without records holds with no_records" "$sandbox/gate-real-held.err" 'ADOPTION_GATE=held; kind=sweep; reason=no_records; held=1'
 assert "real gate saves the held candidate in full" "src/a.ts:d" \
   "$(jq -r '.candidates[0] | "\(.file):\(.description)"' "$NB_TEST_STATE/.rite/state/adoption-hold-7-sweep.json" 2>/dev/null)"
 # The same tail is reached once the gate decides, so the stops above are observations, not a dead tail.
@@ -577,37 +620,54 @@ assert "decided gate continues" 0 "$(grep -c '\[fix:error\]' "$sandbox/gate-deci
 assert_grep "decided gate prints the verdicts" "$sandbox/gate-decided.out" '"verdict": "file"'
 assert_grep "decided gate reaches the filing tail" "$NB_TEST_ISSUE_LOG" '^called$'
 cp "$sandbox/ledger-before-decided.md" "$ledger"
-rm -f "$NB_TEST_ISSUE_LOG" "$NB_TEST_STATE/.rite/state/nb-sweep-entries-7.md" "$NB_TEST_STATE/.rite/state/nb-sweep-done-7.txt"
-printf '\nprintf "unexpected persist\\n" >> "$NB_TEST_LEDGER"\n' >> "$issue_guard"
-issue_args='{"options":{"source":"pr_review"}}' bash "$issue_guard" > "$sandbox/issue-guard.out" 2>&1
+rm -f "$NB_TEST_ISSUE_LOG" "$NB_TEST_ISSUE_LOG.args" "$NB_TEST_STATE/.rite/state/nb-sweep-entries-7.md" "$NB_TEST_STATE/.rite/state/nb-sweep-done-7.txt"
+# 起票の 1 行呼び出し。タイトルは 2 行のファイル (1 行目だけがタイトル)、本文は Write tool が書く本文ファイルに当たる
+issue_title_file="$sandbox/issue-title.md"
+issue_body_file="$sandbox/issue-body.md"
+printf '%s\n' 'fix: write the tracker back' 'second line is not the title' > "$issue_title_file"
+printf '%s\n' '**Type**: fix' '**Complexity**: S' '' '## 概要' '' 'overview' > "$issue_body_file"
+render_issue_call() {  # $1=plugin
+  printf '%s || exit $?\n' "$issue_call" | sed -e "s|{plugin_root}|$1|g" -e 's|{pr_number}|7|g' \
+    -e "s|{issue_title_file}|$issue_title_file|g" -e "s|{issue_body_file}|$issue_body_file|g" \
+    -e 's|{record_ids}|["F-01","F-02"]|g' -e 's|{projects_enabled}|false|g' -e 's|{project_number}|0|g' \
+    -e 's|{owner}|test|g'
+}
+issue_guard="$sandbox/issue-guard.sh"
+{
+  render_issue_call "$stub_plugin"
+  printf 'printf "unexpected persist\\n" >> "$NB_TEST_LEDGER"\n'
+} > "$issue_guard"
+assert "issue call placeholders are all substituted" 0 "$(grep -cE '\{[a-z_]+\}' "$issue_guard")"
+bash "$issue_guard" > "$sandbox/issue-guard.out" 2> "$sandbox/issue-guard.err"
 assert "issue helper failure exits" "1" "$?"
 assert_grep "issue failure fix:error" "$sandbox/issue-guard.out" '\[fix:error\]'
+assert_grep "issue failure names its reason" "$sandbox/issue-guard.err" 'reason=nb_sweep_issue_failed'
 assert_grep "issue stub was called" "$NB_TEST_ISSUE_LOG" '^called$'
 assert "failure paths leave ledger unchanged" "$ledger_before" "$(cksum "$ledger")"
 assert "failure paths leave HEAD unchanged" "$head_before" "$(git -C "$PLUGIN_ROOT" rev-parse HEAD)"
 
-# --- T-08 (AC-1..AC-3): body_count の抽出式が producer (nb-sweep.md) と validator (helper) で一致する ---
-# nb-sweep.md 1.3.S の手順 3（台帳 persist）は抽出した値を helper へ `--count` として渡し、helper は
+# --- T-08 (AC-1..AC-3): body_count の抽出式が producer (fix-step.sh nb-sweep-persist) と validator (helper) で一致する ---
+# nb-sweep.md 1.3.S の手順 3（台帳 persist）が呼ぶ fix-step.sh nb-sweep-persist は抽出した値を helper へ `--count` として渡し、helper は
 # 同じ行を自前の式で再検査する。片側だけを書き換えると producer が通した body を validator が
 # count_body_mismatch で落とす。この不一致は実行時にしか現れないため、両者の式を突き合わせて
 # 固定する。期待値はテスト内にハードコードせず helper 側から抽出する。
 NBR_SH="$PLUGIN_ROOT/hooks/review-nonblocking-record.sh"
 assert_file_exists_or_fail "T-08 nonblocking record helper exists" "$NBR_SH" || true
 
-# 右辺の被演算子はファイル変数名だけが異なる (helper=$CONTENT_FILE / nb-sweep.md=$body)。
+# 右辺の被演算子はファイル変数名だけが異なる (helper=$CONTENT_FILE / nb-sweep-persist=$body)。
 # 共通プレースホルダへ正規化してから突合する (TC-5b の __CYCLE__ 正規化と同型)。
 # 被演算子の手前で needle を切り詰めると `| tail -1 | grep -oE '[0-9]+'` が pin から外れ、
 # パイプライン後段の drift を取り逃す空振り経路が残るため、右辺は全体を対象にする。
 _t08_helper_lines=$(grep -cE '^body_count=' "$NBR_SH" || true)
-_t08_skill_lines=$(grep -cE '^[[:space:]]*body_count=' "$FIX" || true)
+_t08_skill_lines=$(grep -cE '^[[:space:]]*body_count=' "$fn_persist" || true)
 assert "T-08 helper の body_count= 代入は 1 行 (head -1 による黙殺を防ぐ)" "1" "$_t08_helper_lines"
-assert "T-08 nb-sweep.md の body_count= 代入は 1 行" "1" "$_t08_skill_lines"
+assert "T-08 fix-step.sh nb-sweep-persist の body_count= 代入は 1 行" "1" "$_t08_skill_lines"
 
 # 上の 2 assert が代入 1 行を保証するため、以下の head -1 は値の選択ではなく、行数が崩れた
 # 実行でも診断値を 1 つに定めるための保険。fail() は加算のみで停止しないので後続まで進む。
 _t08_helper_rhs=$(sed -n 's/^body_count=\(.*\)$/\1/p' "$NBR_SH" | head -1 \
   | sed 's/"\$CONTENT_FILE"/__BODY_FILE__/')
-_t08_skill_rhs=$(sed -n 's/^[[:space:]]*body_count=\(.*\)$/\1/p' "$FIX" | head -1 \
+_t08_skill_rhs=$(sed -n 's/^[[:space:]]*body_count=\(.*\)$/\1/p' "$fn_persist" | head -1 \
   | sed 's/"\$body"/__BODY_FILE__/')
 
 if [ -z "$_t08_helper_rhs" ] || [ -z "$_t08_skill_rhs" ]; then
@@ -617,7 +677,7 @@ else
   # 本 assert は symmetry pin であって value pin ではない。両側を同時に同じ形へ書き換えた
   # drift は等値が保たれるため検出できない (それを検出するには期待式をテスト内へ
   # ハードコードする必要があり、helper 側から抽出する方針と衝突する)。
-  assert "T-08 body_count 抽出式が producer (nb-sweep.md) と validator (helper) で一致" \
+  assert "T-08 body_count 抽出式が producer (fix-step.sh nb-sweep-persist) と validator (helper) で一致" \
     "$_t08_helper_rhs" "$_t08_skill_rhs"
 fi
 
@@ -625,7 +685,7 @@ fi
 # 抽出式の比較では確かめられないため、producer が数えた本文をそのまま helper へ渡していることを
 # 別途固定する。ここが外れると producer は $body から数え helper は別ファイルを検査するため、
 # 式が完全に一致していても production では count_body_mismatch が出る。
-assert_grep "T-08 fix が数えた本文をそのまま helper へ渡す" "$FIX" '\-\-content-file "\$body"'
+assert_grep "T-08 fix が数えた本文をそのまま helper へ渡す" "$fn_persist" '\-\-content-file "\$body"'
 
 # measured class B MEDIUM is moved by the real triage helper and consumed by the existing sweep.
 FIX_SKILL="$PLUGIN_ROOT/skills/fix/SKILL.md"
@@ -1039,13 +1099,16 @@ assert "T-13 記録 helper の行末 CR 除去は 1 か所" 1 "$(grep -cF 'sub(/
 assert "T-13 記録 helper の見出し判定式は ledger helper と同じ式で 1 か所" 1 "$(grep -cF 'index($0, head) == 1 && length($0) == length(head)' "$NBR_SH")"
 
 # T-10: nb-sweep.md 手順 3 の成否判定。created / updated 以外で後続（done 書込）へ進まない
+# 手順 3 は fix-step.sh nb-sweep-persist の 1 行呼び出し。fixture plugin の fix-step.sh で dispatch 経由に実行し、
+# 非ゼロ終了で止まる実行を `|| exit $?` で表す
+persist_call=$(fix_call_of nb-sweep-persist)
 record_block="$sandbox/record-block.sh"
-extract_fix_block 'reason=nb_sweep_ledger_record_failed' > "$record_block"
-if [ ! -s "$record_block" ] || ! grep -q 'review-nonblocking-record.sh' "$record_block"; then
-  fail "T-10 nb-sweep.md から記録ブロックを抽出できない"
+if [ -z "$persist_call" ] || ! grep -q 'review-nonblocking-record.sh' "$fn_persist"; then
+  fail "T-10 nb-sweep.md の手順 3 の呼び出しか、fix-step.sh の記録の本体を抽出できない"
 else
   sweep_plugin="$sandbox/sweep-plugin"
   mkdir -p "$sweep_plugin/hooks/scripts" "$sandbox/sweep-tmp"
+  fixture_fix_step "$sweep_plugin"
   ln -sf "$LEDGER" "$sweep_plugin/hooks/scripts/nb-sweep-ledger.sh"
   cat > "$sweep_plugin/hooks/review-nonblocking-record.sh" <<'SH'
 #!/usr/bin/env bash
@@ -1058,9 +1121,9 @@ fi
   echo "[CONTEXT] NONBLOCKING_RECORD_DONE=1; pr=7; outcome=$SWEEP_STUB_OUTCOME; count=0; iteration_id=nb-sweep-7; comment_id=; degraded=0" >&2
 exit "$SWEEP_STUB_RC"
 SH
-  sed -e "s|{plugin_root}|$sweep_plugin|g" -e 's|{pr_number}|7|g' -e 's|{issue_number}|42|g' \
-    -e 's|{owner_repo}|test/repo|g' "$record_block" > "$record_block.resolved"
-  printf '\nprintf "REACHED\\n"\n' >> "$record_block.resolved"
+  printf '%s || exit $?\n' "$persist_call" | sed -e "s|{plugin_root}|$sweep_plugin|g" -e 's|{pr_number}|7|g' \
+    -e 's|{owner_repo}|test/repo|g' > "$record_block.resolved"
+  printf 'printf "REACHED\\n"\n' >> "$record_block.resolved"
   # 手順 3 は entries を state root の .rite/state/ から読む。resolver だけ sandbox を指す stub にする
   mkdir -p "$sandbox/sweep-state/.rite/state"
   printf '#!/usr/bin/env bash\nprintf "%%s\\n" "%s"\n' "$sandbox/sweep-state" > "$sweep_plugin/hooks/state-path-resolve.sh"
@@ -1299,14 +1362,6 @@ assert "T-15 signal: stderr の一時ファイルを残さない" 0 "$(find "$t1
 assert_print_readonly "signal"
 
 # --- T-16 (静的): SKILL / reference の読み手は site ごとに --print-record-body を 1 回呼び、前方一致で読まない ---
-# $1=file $2=needle。needle を含む bash fence (字下げ付きを含む) を 1 つ取り出す
-extract_block_of() {
-  awk -v needle="$2" '
-    /^[[:space:]]*```bash$/ {inside=1; block=""; next}
-    /^[[:space:]]*```$/ {if (inside && index(block, needle)) {printf "%s", block; exit}; inside=0}
-    inside {block=block $0 "\n"}
-  ' "$1"
-}
 # $1=file $2=needle。needle を含む helper の関数本体 (`step_*() {` から列 0 の `}` まで) を 1 つ取り出す
 extract_fn_of() {
   awk -v needle="$2" '
@@ -1316,22 +1371,31 @@ extract_fn_of() {
   ' "$1"
 }
 NFR="$PLUGIN_ROOT/skills/fix/references/non-fatal-record.md"
-for t16_file in "$REVIEW" "$REVIEW_STEP" "$NFR" "$FIX"; do
+for t16_file in "$REVIEW" "$REVIEW_STEP" "$NFR" "$FIX" "$FIX_STEP"; do
   assert "T-16 ${t16_file#"$PLUGIN_ROOT"/} は記録見出しを前方一致で読まない" 0 \
     "$(grep -cF 'startswith("## 📜 rite 非実測指摘の記録")' "$t16_file")"
 done
-for t16_site in "$REVIEW_STEP|rite-rejected-src" "$REVIEW_STEP|rite-nb-existing" "$NFR|nonblocking_record_ledger_fetch_failed" "$FIX|nb_sweep_ledger_fetch_failed"; do
+# fix の 2 つの読み手は reference の 1 行呼び出しが dispatch する fix-step.sh の関数にある
+assert "T-16 non-fatal-record.md は fix-step.sh non-fatal-record を 1 回呼ぶ" 1 \
+  "$(grep -c '^bash {plugin_root}/scripts/fix-step\.sh non-fatal-record ' "$NFR")"
+assert "T-16 nb-sweep.md は手順 3 で fix-step.sh nb-sweep-persist を 1 回呼ぶ" 1 \
+  "$(grep -c '^bash {plugin_root}/scripts/fix-step\.sh nb-sweep-persist ' "$FIX")"
+for t16_site in "$REVIEW_STEP|rite-rejected-src" "$REVIEW_STEP|rite-nb-existing" \
+                "step_non_fatal_record|nonblocking_record_ledger_fetch_failed" "step_nb_sweep_persist|nb_sweep_ledger_fetch_failed"; do
+  t16_needle="${t16_site##*|}"
   case "${t16_site%%|*}" in
-    *.sh) t16_block=$(extract_fn_of "${t16_site%%|*}" "${t16_site##*|}") ;;
-    *) t16_block=$(extract_block_of "${t16_site%%|*}" "${t16_site##*|}") ;;
+    step_*)
+      t16_block=$(fix_step_fn "${t16_site%%|*}")
+      grep -qF -- "$t16_needle" <<< "$t16_block" || t16_block="" ;;
+    *) t16_block=$(extract_fn_of "${t16_site%%|*}" "$t16_needle") ;;
   esac
   if [ -z "$t16_block" ]; then
-    fail "T-16 ${t16_site##*|} の bash block を抽出できない"
+    fail "T-16 $t16_needle の関数本体を抽出できない"
     continue
   fi
-  assert "T-16 ${t16_site##*|} の block は --print-record-body を 1 回呼ぶ" 1 \
+  assert "T-16 $t16_needle の block は --print-record-body を 1 回呼ぶ" 1 \
     "$(printf '%s' "$t16_block" | grep -cF 'review-nonblocking-record.sh --print-record-body')"
-  assert "T-16 ${t16_site##*|} の block はコメント一覧を直接読まない" 0 \
+  assert "T-16 $t16_needle の block はコメント一覧を直接読まない" 0 \
     "$(printf '%s' "$t16_block" | grep -cE 'issues/[^ ]*/comments')"
 done
 
@@ -1539,9 +1603,11 @@ assert "T-19 pr の偽 reason: gh を呼ばない" 0 "$(wc -l < "$NBR_GH_LOG" | 
 # 古い記録 (id 41, 台帳 OLD-1) → 新しい記録 (id 43, 台帳 NEW-1 = PATCH 先) → 他人の同 marker コメント (id 49, 台帳 FOR-1)
 t20_tmp="$sandbox/t20-tmp"
 mkdir -p "$t20_tmp"
-sed -e "s|{plugin_root}|$t17_plugin|g" -e 's|{pr_number}|7|g' -e 's|{issue_number}|42|g' \
-  -e 's|{owner_repo}|test/repo|g' "$record_block" > "$sandbox/t20.sh"
-printf '\nprintf "REACHED\\n"\n' >> "$sandbox/t20.sh"
+# 手順 3 の 1 行呼び出しを、実 helper を並べた fixture plugin の fix-step.sh で dispatch 経由に実行する
+fixture_fix_step "$t17_plugin"
+printf '%s || exit $?\n' "$persist_call" | sed -e "s|{plugin_root}|$t17_plugin|g" -e 's|{pr_number}|7|g' \
+  -e 's|{owner_repo}|test/repo|g' > "$sandbox/t20.sh"
+printf 'printf "REACHED\\n"\n' >> "$sandbox/t20.sh"
 assert "T-20 手順 3 の placeholder をすべて置換できる" 0 "$(grep -c '{[a-z_]*}' "$sandbox/t20.sh")"
 mkdir -p "$sandbox/t20-state/.rite/state"
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "%s"\n' "$sandbox/t20-state" > "$t17_plugin/hooks/state-path-resolve.sh"
@@ -1792,32 +1858,45 @@ assert "T-25 iterate 5.S の停止行は保留 (held) の sweep の再開を示�
 assert "T-25 nb-sweep.md の held は hold ファイルの resume に従って再開する" 1 \
   "$(grep -F 'reason=nb_sweep_adoption_held` は出口の出ていない候補がある' "$FIX" | grep -cF '保留を REJECT や処分済みに書き換えず、hold ファイルの resume（ゲートの WARNING にも出る）に従って再開する')"
 t25_step2=$(awk '/^2\. \*\*採否ゲートと起票\*\*/{s=1} /^3\. \*\*台帳 persist\*\*/{s=0} s' "$FIX")
-t25_held=$(printf '%s\n' "$t25_step2" | grep -n 'reason=nb_sweep_adoption_held"' | head -1 | cut -d: -f1)
-t25_issue=$(printf '%s\n' "$t25_step2" | grep -n 'create-issue-with-projects.sh' | head -1 | cut -d: -f1)
-if [ -n "$t25_held" ] && [ -n "$t25_issue" ] && [ "$t25_held" -lt "$t25_issue" ]; then
+# 手順 2 の中で、ゲートの呼び出し → held で止まる指示 → 起票の呼び出し の順に並ぶ
+t25_gate=$(printf '%s\n' "$t25_step2" | grep -n '^bash {plugin_root}/scripts/fix-step\.sh nb-sweep-gate ' | head -1 | cut -d: -f1)
+t25_held=$(printf '%s\n' "$t25_step2" | grep -n 'reason=nb_sweep_adoption_held` は出口の出ていない候補がある' | head -1 | cut -d: -f1)
+t25_issue=$(printf '%s\n' "$t25_step2" | grep -n '^bash {plugin_root}/scripts/fix-step\.sh nb-sweep-file-issue ' | head -1 | cut -d: -f1)
+if [ -n "$t25_gate" ] && [ -n "$t25_held" ] && [ -n "$t25_issue" ] && [ "$t25_gate" -lt "$t25_held" ] && [ "$t25_held" -lt "$t25_issue" ]; then
   pass "T-25 held の停止は起票より前"
 else
-  fail "T-25 held の停止は起票より前 (held=$t25_held issue=$t25_issue)"
+  fail "T-25 held の停止は起票より前 (gate=$t25_gate held=$t25_held issue=$t25_issue)"
 fi
-t25_tracker="$sandbox/t25-tracker.sh"
-extract_fix_block 'reason=nb_sweep_tracker_write_failed' > "$t25_tracker"
+# 起票の 1 行呼び出しを、起票結果を返す stub と判定記録の state root を並べた fixture plugin で実行する
 t25_state="$sandbox/t25-state"
-mkdir -p "$t25_state/.rite/state" "$sandbox/t25-plugin/hooks"
-printf '#!/usr/bin/env bash\nprintf "%%s\\n" "%s"\n' "$t25_state" > "$sandbox/t25-plugin/hooks/state-path-resolve.sh"
+t25_plugin="$sandbox/t25-plugin"
+mkdir -p "$t25_state/.rite/state"
+fixture_fix_step "$t25_plugin"
+cp "$stub_plugin/scripts/create-issue-with-projects.sh" "$t25_plugin/scripts/"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "%s"\n' "$t25_state" > "$t25_plugin/hooks/state-path-resolve.sh"
+t25_tracker="$sandbox/t25-tracker.sh"
+render_issue_call "$t25_plugin" > "$t25_tracker"
+assert "T-25 起票の呼び出しの placeholder をすべて置換できる" 0 "$(grep -cE '\{[a-z_]+\}' "$t25_tracker")"
+t25_result='{"issue_number":12,"issue_url":"https://x/12"}'
+run_t25() {  # $1=out 名
+  NB_TEST_ISSUE_RESULT="$t25_result" bash "$t25_tracker" > "$sandbox/$1.out" 2> "$sandbox/$1.err"
+}
 jq -n '{adoption: {head: "h", records: [{ids: ["F-01", "F-02"], tracker: null}, {ids: ["F-03"], tracker: null}]}}' > "$t25_state/.rite/state/adoption-7-sweep.json"
-sed -e "s|{plugin_root}|$sandbox/t25-plugin|g" -e 's|{pr_number}|7|g' -e "s|{record_ids}|[\"F-01\",\"F-02\"]|g" "$t25_tracker" > "$t25_tracker.run"
-issue_result='{"issue_number": 12, "issue_url": "https://example.test/12"}' bash "$t25_tracker.run" > "$sandbox/t25.out" 2>&1
+run_t25 t25
 assert "T-25 書き戻しは成功する" 0 "$?"
 assert "T-25 起票した番号はその記録の tracker に書かれ、他の記録は変わらない" '[12,null]' \
   "$(jq -c '[.adoption.records[].tracker]' "$t25_state/.rite/state/adoption-7-sweep.json")"
+assert "T-25 成功時の stdout は起票結果の JSON" "$t25_result" "$(jq -c . "$sandbox/t25.out" 2>/dev/null)"
+assert "T-25 起票にはタイトルファイルの 1 行目と本文ファイルのパスを渡す" "fix: write the tracker back|$issue_body_file" \
+  "$(jq -r '"\(.issue.title)|\(.issue.body_file)"' "$NB_TEST_ISSUE_LOG.args" 2>/dev/null)"
 rm -f "$t25_state/.rite/state/adoption-7-sweep.json"
-issue_result='{"issue_number": 12, "issue_url": "https://example.test/12"}' bash "$t25_tracker.run" > "$sandbox/t25-fail.out" 2>&1
+run_t25 t25-fail
 assert "T-25 書き戻せなければ止まる" 1 "$?"
-assert_grep "T-25 書き戻せなければ理由を出す" "$sandbox/t25-fail.out" 'reason=nb_sweep_tracker_write_failed'
+assert_grep "T-25 書き戻せなければ理由を出す" "$sandbox/t25-fail.err" 'reason=nb_sweep_tracker_write_failed'
 jq -n '{adoption: {head: "h", records: [{ids: ["F-03"], tracker: null}]}}' > "$t25_state/.rite/state/adoption-7-sweep.json"
-issue_result='{"issue_number": 12, "issue_url": "https://example.test/12"}' bash "$t25_tracker.run" > "$sandbox/t25-nomatch.out" 2>&1
+run_t25 t25-nomatch
 assert "T-25 一致する記録が無い書き戻しは止まる" 1 "$?"
-assert_grep "T-25 一致する記録が無い書き戻しも理由を出す" "$sandbox/t25-nomatch.out" 'reason=nb_sweep_tracker_write_failed'
+assert_grep "T-25 一致する記録が無い書き戻しも理由を出す" "$sandbox/t25-nomatch.err" 'reason=nb_sweep_tracker_write_failed'
 
 if ! print_summary "$(basename "$0")" "nb-sweep helper contract drift — check iterate SKILL.md / iterate-step.sh 5.S / 6.1.d preserve"; then
   exit 1
