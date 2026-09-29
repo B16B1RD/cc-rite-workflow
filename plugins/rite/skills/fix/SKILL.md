@@ -1627,6 +1627,12 @@ The `fix` flow-state write below records the v3 phase so a `/rite:recover` start
 
 > `[fix:error]` 早期 exit では pr-review がセットした `/rite:fix` handoff を消さない。default-clear は iterate ステップ 3 の `--handoff` なし set。
 
+行 1.5/1.6 の `NB_SWEEP_DONE_FILE` は会話 marker 欠落時の代替。`-f` 単独は成功にしない。1 行目の第 2 フィールドが、collect と同じ選び方（`LC_ALL=C` sort の末尾）の最新 review JSON basename と一致するときだけ `1`（通常ループは行 1.5 が `NB_SWEEP=1` を要求するため本 marker だけでは分岐しない）。handoff はこの判定入力を使うため、`output-handoff` より先に実行する:
+
+```bash
+bash {plugin_root}/scripts/fix-step.sh nb-sweep-done-file --pr {pr_number}
+```
+
 `{fix_result}` は下表で選んだ出力 pattern の角括弧内から `fix:` を除いた値（`pushed` / `pushed-wm-stale` / `non-fatal-only` / `replied-only` / `sweep-done` / `error`）。`pushed` と `pushed-wm-stale` は同じ継続 handoff をセットする。
 
 ```bash
@@ -1645,12 +1651,6 @@ bash {plugin_root}/scripts/fix-step.sh local-wm-sync --issue '{issue_number}'
 ```
 
 lock failure は WARNING で継続。non-lock は WARNING + stderr 5 行で継続。分岐は exact phrase ([common-error-handling.md](../../references/common-error-handling.md#hook-lock-contention-classification-canonical))。
-
-行 1.5/1.6 の `NB_SWEEP_DONE_FILE` は会話 marker 欠落時の代替。`-f` 単独は成功にしない。1 行目の第 2 フィールドが、collect と同じ選び方（`LC_ALL=C` sort の末尾）の最新 review JSON basename と一致するときだけ `1`（通常ループは行 1.5 が `NB_SWEEP=1` を要求するため本 marker だけでは分岐しない）:
-
-```bash
-bash {plugin_root}/scripts/fix-step.sh nb-sweep-done-file --pr {pr_number}
-```
 
 Then, based on the ステップ 4.6 completion report content **and the WM_UPDATE_FAILED context flag**, output the corresponding machine-readable pattern:
 
