@@ -1627,7 +1627,7 @@ The `fix` flow-state write below records the v3 phase so a `/rite:recover` start
 
 > `[fix:error]` 早期 exit では pr-review がセットした `/rite:fix` handoff を消さない。default-clear は iterate ステップ 3 の `--handoff` なし set。
 
-行 1.5/1.6 の `NB_SWEEP_DONE_FILE` は会話 marker 欠落時の代替。`-f` 単独は成功にしない。1 行目の第 2 フィールドが、collect と同じ選び方（`LC_ALL=C` sort の末尾）の最新 review JSON basename と一致するときだけ `1`（通常ループは行 1.5 が `NB_SWEEP=1` を要求するため本 marker だけでは分岐しない）。handoff はこの判定入力を使うため、`output-handoff` より先に実行する:
+行 1.5/1.6 の `NB_SWEEP_DONE_FILE` は会話 marker 欠落時の代替。`-f` 単独は成功にしない。1 行目の第 2 フィールドが、collect と同じ選び方（`LC_ALL=C` sort の末尾）の最新 review JSON basename と一致するときだけ `1`（通常ループは行 1.5 が `NB_SWEEP=1` を要求するため本 marker だけでは分岐しない）:
 
 ```bash
 bash {plugin_root}/scripts/fix-step.sh nb-sweep-done-file --pr {pr_number}

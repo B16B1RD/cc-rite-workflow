@@ -36,8 +36,8 @@
 # T-18 採否ゲートが保留した sweep（done なし・入口記録あり）は 0.7 で resume、collect は pending で入口記録を残す。
 #      done を書く nb-sweep-record は [fix:sweep-done] の後だけで、[fix:error] の行は停止する
 # T-20 fix 5.1 は done ファイル判定を output-handoff より前に置く（入れ替えた変異で失敗する）
-# T-21 fix 5.1 の呼び出し行を順に実行すると、done ファイルだけの sweep 完了でも sweep-done の handoff が付き、
-#      他の結果の handoff は変わらない
+# T-21 fix 5.1 の呼び出し行を fixture で実行すると、done ファイルだけの sweep 完了でも sweep-done の handoff が付き、
+#      他の結果の handoff は変わらない。判定値から結果を選ぶ行 1.5/1.6 の条件と出力の対も固定する
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -476,7 +476,7 @@ else
 fi
 rm -f -- "$swapped_fix"
 
-# --- T-21: 5.1 の呼び出し行を順に実行し、flow-state に渡る handoff を固定する ---
+# --- T-21: 5.1 の 2 つの呼び出し行を fixture で実行し、done ファイルの判定から選んだ結果の handoff を固定する（呼び出し順は T-20） ---
 # stub は set の呼び出しごとに 1 行記録する。error は「呼ばれて handoff が空」で判定する（未呼び出しと区別する）。
 cat > "$fix51_plugin/hooks/flow-state.sh" <<'STUB'
 #!/bin/bash
@@ -500,7 +500,13 @@ assert_handoff() {  # $1=label $2=result $3=期待 handoff
   assert "$1 calls flow-state once" "1" "$(printf '%s\n' "$rec" | grep -c '^called ')"
   assert "$1 handoff" "called handoff=$3" "$rec"
 }
-# 5.1 行 1.5/1.6（NB_SWEEP=1 で会話 marker なし）の対応。行の文言は T-06 が pin する
+# 5.1 行 1.5/1.6（NB_SWEEP=1 で会話 marker なし）の判定値と出力の対応。この写しの元の行を下の 2 本が固定する
+assert_grep_in_section "T-21 row 1.5 done file selects sweep-done" "$FIX" \
+  '### 5.1 Output Pattern' '### 5.2 Standalone Execution Behavior' \
+  '^\| 1\.5 \|.*NB_SWEEP_DONE_FILE=1.*\| `\[fix:sweep-done\]`'
+assert_grep_in_section "T-21 row 1.6 no done file selects error" "$FIX" \
+  '### 5.1 Output Pattern' '### 5.2 Standalone Execution Behavior' \
+  '^\| 1\.6 \|.*NB_SWEEP_DONE_FILE` 非 1 \| `\[fix:error\]` \|$'
 sweep_result_from_done_file() {  # $1=done ファイル 1 行目
   case "$(fix51_run "$1")" in
     1) echo sweep-done ;;
