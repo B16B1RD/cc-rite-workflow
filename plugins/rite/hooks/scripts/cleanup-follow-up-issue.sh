@@ -137,8 +137,8 @@
 #       reason=parse_failed : --exclude-ids が key 形式でない / 解析できず除外を全破棄した。count=unknown
 #       reason=apply_failed : 除外適用の jq が失敗し除外を全破棄した。count = 要求 key 総数
 #   [CONTEXT] FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=<r>; pr=<n>
-#     sweep 起票済みの除外を適用できず、sweep で Issue 化済みの指摘も転記対象にした
-#     (再検証による除外は適用済みのまま。成功経路では出さない)。
+#     関連 Issue の却下台帳を読めなかった。指摘があれば sweep 起票済みの除外を適用せず候補に残し
+#     (再検証による除外は適用済みのまま)、一覧の ledger は空になる。成功経路では出さない。
 #       reason=no_source_issue : --source-issue が空
 #       reason=comments_api    : 記録コメントを取得できない (review-nonblocking-record.sh --print-record-body の失敗。
 #                                関連 Issue の解決・記録コメントの同定は同 helper の書き込み経路と同じ)
@@ -581,7 +581,7 @@ sweep_issued_unavailable() {
 # 台帳行の分解は nb-sweep-collect.sh と同じ式 (セル内のエスケープ済みパイプを区切りにしない)。
 ledger_hint='[]'
 ledger_unread=""
-if [ -n "$SOURCE_ISSUE" ]; then
+if [ -n "$SOURCE_ISSUE" ] && { [ -n "$LIST_OUT" ] || printf '%s' "$findings_json" | jq -e 'length > 0' >/dev/null; }; then
   rite_tempfile_new comments_err "fu-comments" || exit 1
   if ! record_body=$(bash "$SCRIPT_DIR/../review-nonblocking-record.sh" --print-record-body \
       --pr "$PR_NUMBER" --owner-repo "${OWNER}/${REPO}"); then
@@ -602,7 +602,7 @@ fi
 if ! printf '%s' "$findings_json" | jq -e 'length > 0' >/dev/null; then
   # 先送り欠陥だけで起票する経路。台帳と照合する指摘は無いが、読めなかった ledger は分類役に空と区別させる
   if [ -n "$ledger_unread" ]; then
-    echo "WARNING: 関連 Issue の却下台帳を読めないため、候補一覧の ledger は空です (PR #${PR_NUMBER})" >&2
+    echo "WARNING: 関連 Issue の却下台帳を読めないため、既存 Issue / REJECT への紐づけの材料 (ledger) がありません (PR #${PR_NUMBER})" >&2
     echo "[CONTEXT] FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=${ledger_unread}; pr=${PR_NUMBER}" >&2
   fi
 elif [ -z "$SOURCE_ISSUE" ]; then

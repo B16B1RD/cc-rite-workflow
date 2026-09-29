@@ -460,8 +460,9 @@ assert_grep 'step 2 copies the ledger prior keyed by reviewer and file_line' "$r
   '候補の `reviewer` と `file_line` が行の `finding_id` と `file:line` に一致する行のうち、最後の `REJECT` / `ADOPT` 行をその候補の記録の `prior`'
 assert_grep 'every disposition is followed by 7.4.5 once' "$review" '全判定記録の処分を終えたら 7.4.5（台帳への記録と保留の解除）を 1 回実行する。'
 # A candidate without file_line has no unique ledger key: it is neither written nor given a prior.
-assert_grep 'step 2 copies no prior to a candidate without file_line' "$review" '`file_line` が空の候補には prior を写さない'
-assert_grep '7.4.5 writes no row for a candidate without file_line' "$review" '`file_line` が空の候補は台帳のキーが一意にならないので書かない'
+assert_grep 'step 2 copies no prior to a candidate without file_line by key' "$review" '`file_line` が空の候補には、`reviewer` と `file_line` の一致では prior を写さない'
+assert_grep 'step 2 links a REJECT row to a candidate without file_line by root cause' "$review" '同じ根因・同じ前提の `REJECT` 行は、位置の無い候補にも上の規則で写す'
+assert_grep '7.4.5 writes only the REJECT row of a candidate without file_line, at -' "$review" '`file_line` が空の候補は `REJECT` の行だけを `{file_line}` に `-` を入れて書く'
 ledger_dir="$triage_dir/ledger"
 mkdir -p "$ledger_dir/plugin/hooks/scripts" "$ledger_dir/root/.rite/state"
 awk '/^#### 7\.4\.5 / { s=1 } s && /^```bash$/ { a=1; next } a && /^```$/ { exit } a { print }' "$review" > "$ledger_dir/block.sh"

@@ -1307,6 +1307,14 @@ run_target "$r" --list-candidates "$TMP_ROOT/t29-ledger-deferred.json"
 assert "T-29 先送り欠陥だけの一覧も ledger に issued 行を運ぶ" "deferred|F-07:issued" \
   "$(jq -r '"\([.candidates[].kind] | unique | join(","))|\([.ledger[] | "\(.id):\(.disposition)"] | join(","))"' "$TMP_ROOT/t29-ledger-deferred.json")"
 assert_not_grep "T-29 台帳を読めたときは unavailable を出さない" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable'
+# 先送り欠陥だけの一覧で台帳を読めないときは、空の ledger を「行が無い」と区別できるよう WARNING と marker を出す
+export GH_API_RC=1
+ADOPT_MODE=manual
+run_target "$r" --list-candidates "$TMP_ROOT/t29-ledger-unread.json"
+assert "T-29 台帳を読めない一覧の ledger は空" "0" "$(jq '.ledger | length' "$TMP_ROOT/t29-ledger-unread.json")"
+assert_grep "T-29 台帳を読めない一覧は unavailable を出す" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=comments_api; pr=9'
+assert_grep "T-29 台帳を読めない一覧は WARNING を出す" "$ERR" 'WARNING: 関連 Issue の却下台帳を読めないため'
+unset GH_API_RC
 # sweep が書く出典付きの 5 列の REJECT 行は、出典が finding の出典 JSON と一致するときだけ除外する
 for t29_src in 9-20260101120000.json 9-20251231120000.json; do
   reset_stubs

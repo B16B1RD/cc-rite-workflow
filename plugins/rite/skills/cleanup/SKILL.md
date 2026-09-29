@@ -562,7 +562,7 @@ rationale: references/rationale.md#follow-up-before-archive
 
 候補は残存 non-blocking 指摘と、元 Issue の Decision Log（Section 9）で本 PR のレビューが先送りした欠陥（行末が `<!-- rite:deferred-defect pr={pr_number} -->` の行。旧い基準で書かれた行も終端にしない）。指摘が 0 件でも先送り欠陥があれば候補にする。指摘も先送り欠陥も 0 件なら判定も起票もしない。起票するかどうかは helper が採否ゲートの出口だけで決め、出口が `file` の判定記録（根因）ごとに 1 件起票する（同じ根因の候補は 1 件に束ね、違う根因は混ぜない）。出口が出ていない候補が 1 件でもあれば何も起票せず `FOLLOW_UP_ISSUE=held` で保留する。元 Issue の本文を取得できなければ `FOLLOW_UP_DEFERRED=unavailable` を出し、ゲートも本文を読めずに保留する。
 
-iterate の NB sweep で起票済み・処分済みの指摘（関連 Issue 記録コメントの却下台帳で判定=`issued` / `REJECT` / `RESOLVED` / `LINK`）は helper が台帳を読んで候補から除く。旧形式の `recorded` / `rejected` 行は終端にしない。照合は `[finding_id, file:line]` と、行の出典（sweep が読んだ JSON の basename）と指摘の出典 JSON の一致で行う。出典の無い旧形式の行は最新のレビュー結果 JSON 由来の指摘とだけ照合する。除外した指摘と再掲マーカー（括弧内の NOT_FIXED / 再掲 と、直前の cycle の同じ id・`file:line` を指す F-NN。PARTIAL / REGRESSION を含むものは除く）で結ばれる前後の cycle の指摘、出典と id だけが違う完全一致の指摘も除外する。台帳か最新のレビュー結果 JSON を読めなければ、sweep で Issue 化済みの指摘も転記対象とし（再検証による除外は適用済みのまま）、WARNING と `FOLLOW_UP_SWEEP_ISSUED=unavailable` を出す。
+iterate の NB sweep で起票済み・処分済みの指摘（関連 Issue 記録コメントの却下台帳で判定=`issued` / `REJECT` / `RESOLVED` / `LINK`）は helper が台帳を読んで候補から除く。旧形式の `recorded` / `rejected` 行は終端にしない。照合は `[finding_id, file:line]` と、行の出典（sweep が読んだ JSON の basename）と指摘の出典 JSON の一致で行う。出典の無い旧形式の行は最新のレビュー結果 JSON 由来の指摘とだけ照合する。除外した指摘と再掲マーカー（括弧内の NOT_FIXED / 再掲 と、直前の cycle の同じ id・`file:line` を指す F-NN。PARTIAL / REGRESSION を含むものは除く）で結ばれる前後の cycle の指摘、出典と id だけが違う完全一致の指摘も除外する。台帳か最新のレビュー結果 JSON を読めなければ、sweep で Issue 化済みの指摘も候補から除かず（再検証による除外は適用済みのまま）、WARNING と `FOLLOW_UP_SWEEP_ISSUED=unavailable` を出す。
 rationale: references/rationale.md#follow-up-sweep-issued-dedup
 
 #### 6.0.V helper 呼び出し前の再検証（マージ後 HEAD）
@@ -1146,7 +1146,7 @@ rationale: references/rationale.md#review-cleanup-reasons
   - それ以外の `reason` のとき: ` — ⚠️ 除外を適用できなかったため（{reason}）、除外要求分もすべて転記対象としました（「follow-up 再検証」の「解消済み」は実際には除外されていません）`
   - 最終 `FOLLOW_UP_ISSUE=created` の場合だけ、上の note の「転記対象としました」を「転記しました」に置換する。失敗・未確認・`already_exists` を含むその他の結果では置換しない。
   - 本 note は除外結果の付記であり、起票結果と state 削除結果から決めた `{review_cleanup_check}` を変更しない。
-- `{follow_up_sweep_note}`: `[CONTEXT] FOLLOW_UP_SWEEP_ISSUED=unavailable; reason={r}; pr={pr_number}` のうち、`pr=` の直後が `;` または行末まで一致する最後の出現を採る。marker があれば ` — ⚠️ sweep 起票済みの除外を適用できなかったため（{reason}）、sweep で Issue 化済みの指摘も転記対象としました`（`{reason}` は marker の値）。marker が無ければ空文字列（除外の適用・起票の成功は推定しない）。`{review_cleanup_check}` を変更しない。
+- `{follow_up_sweep_note}`: `[CONTEXT] FOLLOW_UP_SWEEP_ISSUED=unavailable; reason={r}; pr={pr_number}` のうち、`pr=` の直後が `;` または行末まで一致する最後の出現を採る。marker があれば ` — ⚠️ 関連 Issue の却下台帳を読めなかったため（{reason}）、sweep 起票済みの除外と既存 Issue への紐づけを行えていません`（`{reason}` は marker の値）。marker が無ければ空文字列（除外の適用・起票の成功は推定しない）。`{review_cleanup_check}` を変更しない。
 - `{follow_up_deferred_note}`: `[CONTEXT] FOLLOW_UP_DEFERRED=unavailable; reason={r}; pr={pr_number}` のうち、`pr=` の直後が `;` または行末まで一致する最後の出現を採る。marker があれば ` — ⚠️ 元 Issue の本文を取得できず（{reason}）、Decision Log で先送りした欠陥を候補にできていません。本文を読める状態で /rite:cleanup {pr_number} を再実行してください`（`{reason}` は marker の値）。このとき先送り欠陥側は未完了で、`{review_cleanup_check}` は ` ` になる（未完了事項として `{outstanding_items_block}` にも載る）。marker が無ければ空文字列。
 - `{wiki_ingest_check}`: 以下の sentinel を上から評価し最初の一致を採用 (`WIKI_INGEST_DONE` + `WIKI_INGEST_PUSH_FAILED` が併存しうるため順序重要):
 
