@@ -1597,38 +1597,14 @@ if [ -z "$BLOCKED_PATTERN" ]; then
        && [[ "$COMMAND" != *cd* && "$COMMAND" != *pushd* && "$COMMAND" != *popd* \
              && "$COMMAND" != *-C* && "$COMMAND" != *chdir* && "$COMMAND" != *sudo* ]]; then
       :
-    elif ! _rite_btg_surface_within_budget "$COMMAND"; then
-      # A command too long to parse is denied only when its text may run git, gh
-      # or a script: a git / gh / interpreter word anywhere, or at a command
-      # position (after a separator and any keywords or assignments, as
-      # checkout-cwd.py skips them) a wrapper word, a `. `, a path or a variable.
-      # The text is matched coarsely, as the commit checks do. Heredoc bodies are
-      # dropped line by line, which stays within the time limit; when a body does
-      # not end before the command does, its delimiter was misread (a `<<` in a
-      # string, for example), so the whole text is matched instead.
-      _co_text=$(printf '%s\n' "$COMMAND" | LC_ALL=C awk -v q="'" '
-        delim != "" { line = $0; if (tabs) sub(/^\t+/, "", line); if (line == delim) delim = ""; next }
-        { print
-          if (match($0, "(^|[^<])<<-?[ \t]*(\"[^\"]*\"|" q "[^" q "]*" q "|[^ \t;&|()<>\"" q "]+)")) {
-            head = substr($0, RSTART, RLENGTH); tabs = (head ~ "^[^<]*<<-")
-            sub("^[^<]*<<-?[ \t]*", "", head); gsub("[\"" q "]", "", head); delim = head } }
-        END { exit delim != "" }') || _co_text="$COMMAND"
-      _co_nl=$'\n'
-      _co_at='(^|[;&|(`]|'"$_co_nl"')[[:space:]]*((if|then|elif|else|do|while|until|!|\{|[[:alpha:]_][[:alnum:]_]*=[^[:space:];&|]*)[[:space:]]+)*'
-      _co_runs='(^|[^[:alnum:]_.-])(git|gh|bash|sh|zsh|dash|ksh|fish|python[0-9.]*|node|perl|ruby|source|eval)([^[:alnum:]_-]|$)'
-      _co_runs+='|'"$_co_at"'((timeout|xargs|sudo|nice|stdbuf|nohup|env|exec|command|builtin|time)([^[:alnum:]_-]|$)|\.[[:space:]]|["'"'"']?[~/$`]|[^[:space:];&|()<>"'"'"']*/)'
-      if [[ "$_co_text" =~ $_co_runs ]]; then
-        BLOCKED_PATTERN="outside-checkout-uninspectable"
-        BLOCKED_REASON="This command is too long to check the directory each call runs in within the hook time limit (${#COMMAND} characters), and its text, leaving out the heredoc bodies that end before the command does, mentions git, gh or a way to run a script. A check that runs out of time lets the command run, so it is denied without inspection."
-        BLOCKED_ALTERNATIVE="Split the command, or write long text to a file with a file-editing tool, and run git, gh and scripts from inside the checkout."
-      fi
     else
       _co_rc=0
       _co_out=$(
         # Test-only, fail-CLOSED-only fault injection: a failed check must deny.
         [ "${RITE_BTG_TEST_CRASH:-}" != "pattern10-helper" ] || exit 3
-        _co_surface=$(_rite_btg_pattern6_command_surface "$COMMAND") || exit $?
-        python3 "$SCRIPT_DIR/scripts/lib/checkout-cwd.py" --command "$_co_surface" --cwd "$_co_cwd" --root "$_co_root" 2>&1
+        # The helper removes heredoc bodies itself and reads a long command well
+        # within the time limit, so the command is passed as written.
+        python3 "$SCRIPT_DIR/scripts/lib/checkout-cwd.py" --command "$COMMAND" --cwd "$_co_cwd" --root "$_co_root" 2>&1
       ) || _co_rc=$?
       _co_checkout="${_co_worktree:-$_co_root}"
       if [ "$_co_rc" -ne 0 ]; then

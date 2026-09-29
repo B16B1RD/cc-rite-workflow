@@ -11,8 +11,9 @@ checkout, "<kind>\\t<directory>\\t<word>", with an empty directory when the dire
 cannot be known. A root without .git defines no checkout, so nothing is printed.
 Exit 1 when the command cannot be parsed or git cannot read a root that has .git.
 
-A script is judged by where it runs, not by what it runs: whether it calls gh
-cannot be seen from here. Not a shell interpreter.
+Heredoc bodies are data and are removed before the command is read. A script is
+judged by where it runs, not by what it runs: whether it calls gh cannot be seen
+from here. Not a shell interpreter.
 """
 import argparse
 import importlib
@@ -75,6 +76,127 @@ def _assigned_once(segments):
             elif re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", word):
                 bare.add(word)
     return {name for name, count in assigned.items() if count == 1 and name not in bare}
+
+
+def _heredoc_word(text, index):
+    """(delimiter, end): the heredoc word at index, with its quotes and backslashes removed."""
+    word, quote = [], None
+    while index < len(text):
+        char = text[index]
+        if quote:
+            if char == quote:
+                quote = None
+            else:
+                word.append(char)
+        elif char in "'\"":
+            quote = char
+        elif char == "\\" and index + 1 < len(text):
+            index += 1
+            word.append(text[index])
+        elif char in " \t\n;&|()<>":
+            break
+        else:
+            word.append(char)
+        index += 1
+    return "".join(word), index
+
+
+def strip_heredocs(command):
+    """The command with each heredoc body removed and everything else kept as written.
+    Quotes, command substitutions, backquotes, arithmetic and comments are followed, so
+    a << inside them, or a <<<, starts no heredoc. ValueError when a heredoc, quote or
+    substitution does not end."""
+    out, stack, pending, index, length = [], [["code", 0]], [], 0, len(command)
+    while index < length:
+        char, context = command[index], stack[-1]
+        kind = context[0]
+        step = 1
+        if kind == "sq":
+            if char == "'":
+                stack.pop()
+        elif kind == "dq":
+            if char == "\\":
+                step = 2
+            elif char == '"':
+                stack.pop()
+            elif command.startswith("$((", index):
+                stack.append(["arith", 0])
+                step = 3
+            elif command.startswith("$(", index):
+                stack.append(["sub", 0])
+                step = 2
+            elif char == "`":
+                stack.append(["bq", 0])
+        elif kind == "arith":
+            if command.startswith("))", index) and context[1] == 0:
+                stack.pop()
+                step = 2
+            elif char == "(":
+                context[1] += 1
+            elif char == ")":
+                context[1] -= 1
+        elif char == "\\":
+            step = 2
+        elif char in "'\"":
+            stack.append(["sq" if char == "'" else "dq", 0])
+        elif char == "`":
+            if kind == "bq":
+                stack.pop()
+            else:
+                stack.append(["bq", 0])
+        elif command.startswith("$((", index) or command.startswith("((", index):
+            stack.append(["arith", 0])
+            step = 3 if char == "$" else 2
+        elif command.startswith("$(", index):
+            stack.append(["sub", 0])
+            step = 2
+        elif char == "(" and kind == "sub":
+            context[1] += 1
+        elif char == ")" and kind == "sub":
+            if context[1] == 0:
+                stack.pop()
+            else:
+                context[1] -= 1
+        elif char == "#" and (index == 0 or command[index - 1] in " \t\n;&|()"):
+            end = command.find("\n", index)
+            index = length if end < 0 else end
+            continue
+        elif command.startswith("<<<", index):
+            step = 3
+        elif command.startswith("<<", index):
+            start = index + 2
+            tabs = command.startswith("-", start)
+            start += tabs
+            while start < length and command[start] in " \t":
+                start += 1
+            delimiter, end = _heredoc_word(command, start)
+            if not delimiter:
+                raise ValueError("a heredoc has no delimiter")
+            pending.append((delimiter, tabs))
+            out.append(command[index:end])
+            index = end
+            continue
+        elif char == "\n" and pending:
+            out.append(char)
+            index += 1
+            for delimiter, tabs in pending:
+                while True:
+                    if index >= length:
+                        raise ValueError("a heredoc does not end at its delimiter " + delimiter)
+                    end = command.find("\n", index)
+                    end = length if end < 0 else end
+                    line, index = command[index:end], end + 1
+                    if (line.lstrip("\t") if tabs else line) == delimiter:
+                        break
+            pending = []
+            continue
+        out.append(command[index:index + step])
+        index += step
+    if pending:
+        raise ValueError("a heredoc does not end at its delimiter " + pending[0][0])
+    if len(stack) > 1:
+        raise ValueError("a quote or substitution does not end")
+    return "".join(out)
 
 
 def _move(directories, value):
@@ -143,7 +265,7 @@ def kind_of(word, directories, path_dirs):
     name = Path(word).name
     if name in ("git", "gh"):
         return name
-    if name in _INTERPRETERS or _PYTHON.fullmatch(name):
+    if word == "." or name in _INTERPRETERS or _PYTHON.fullmatch(name):
         return "script"
     if "/" in word:
         # A command named by a path outside the PATH directories is a script.
@@ -216,7 +338,7 @@ def each_call(command, cwd):
                 return group_dirs[ids[:end]]
         return here
 
-    segments = scope.shell_segments(command, group_ids=True)
+    segments = scope.shell_segments(strip_heredocs(command), group_ids=True)
     trusted = _assigned_once(segments)
     for position, (words, nested, before, after) in enumerate(segments):
         group = nested[1] if isinstance(nested, tuple) else None
