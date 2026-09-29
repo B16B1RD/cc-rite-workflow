@@ -112,6 +112,7 @@
 * **Create**: [シェルブロックを helper へ移したら、散文が旧コマンドを指していた箇所を grep で洗い、所在記述の書き方を揃える](pages/heuristics/helper-migration-leaves-dangling-prose-pointers.md) — 移設のレビューと fix の結果を新規ページ化
 * **Update**: [base 取り込みはレビュー済みの HEAD で行い、検証からレビュー開始までは検証の入力を変えない](pages/heuristics/base-intake-on-reviewed-head-keep-verification-inputs-frozen.md) — 検証器の版と、取り込みと修正を 1 つの計画にまとめる点を統合
 * **Update**: [base 取り込みの競合は base 側の正本を基準にし、PR の変更意図だけを載せ直す](pages/heuristics/base-intake-conflict-reapply-pr-intent-on-base-canonical.md) — 末尾追記どうしの競合の解消と確認方法を統合
+* **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=585, broken_refs=0
 
 ## 2026-09-28
 
