@@ -79,6 +79,7 @@
 * **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/reviews/20260929T212356Z-pr-3446.md を統合
 * **Create**: [git worktree list --porcelain はブロック単位で読み、prunable の worktree を除く](pages/heuristics/git-worktree-list-porcelain-exclude-prunable.md) — raw/fixes/20260929T213239Z-pr-3446.md を新規ページ化
 * **Skip**: [20260929T214950Z-pr-3446.md](raw/reviews/20260929T214950Z-pr-3446.md) — rite workflow 自体のトリアージ方針に関する知見で、Wiki ではなくプラグイン本体に置く対象
+* **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=596, broken_refs=0
 
 ## 2026-09-29
 
