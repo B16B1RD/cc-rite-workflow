@@ -200,6 +200,11 @@ owner=""; repo=""
   owner=$(gh repo view --json owner --jq '.owner.login')
   repo=$(gh repo view --json name --jq '.name')
 }
+# 空の値を marker として渡すと、後続の gh 呼び出しが解決失敗とは別の形式エラーで止まる。
+[ -n "$owner" ] && [ -n "$repo" ] || {
+  echo "ERROR: fix-step.sh: owner/repo を解決できませんでした (git-remote.sh と gh repo view の両方が失敗)" >&2
+  exit 1
+}
 echo "[CONTEXT] FIX_OWNER_REPO=$owner/$repo"
 
 # 作業メモリを取得
@@ -319,6 +324,11 @@ owner=""; repo=""
 [ -n "$owner" ] && [ -n "$repo" ] || {
   owner=$(gh repo view --json owner --jq '.owner.login')
   repo=$(gh repo view --json name --jq '.name')
+}
+# 空の値を marker として渡すと、後続の gh 呼び出しが解決失敗とは別の形式エラーで止まる。
+[ -n "$owner" ] && [ -n "$repo" ] || {
+  echo "ERROR: fix-step.sh: owner/repo を解決できませんでした (git-remote.sh と gh repo view の両方が失敗)" >&2
+  exit 1
 }
 echo "[CONTEXT] FIX_OWNER_REPO=$owner/$repo"
 }

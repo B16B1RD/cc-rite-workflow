@@ -284,6 +284,20 @@ if [ -n "$MUT_DIR" ]; then
     *"PRE_COMMIT_DRIFT_CHECK exit=1"*) pass "schema-drift-check reports the drift exit" ;;
     *) fail "schema-drift-check reports the drift exit (output: $drift_out)" ;;
   esac
+
+  # owner/repo を解決できないときは止める。空の値の marker を成功として渡すと、
+  # 後続の gh 呼び出しが解決失敗とは別の形式エラーで止まる。
+  mkdir -p "$FIXTURE/hooks/scripts/lib" "$MUT_DIR/bin"
+  printf '%s\n' '#!/bin/bash' 'exit 1' > "$FIXTURE/hooks/scripts/lib/git-remote.sh"
+  printf '%s\n' '#!/bin/bash' 'exit 1' > "$MUT_DIR/bin/gh"
+  chmod +x "$MUT_DIR/bin/gh"
+  owner_out=$(PATH="$MUT_DIR/bin:$PATH" bash "$FIXTURE/scripts/fix-step.sh" resolve-owner-repo 2>&1)
+  assert "resolve-owner-repo stops when owner/repo cannot be resolved" "1" "$?"
+  case "$owner_out" in
+    *"FIX_OWNER_REPO="*) fail "no owner/repo marker is emitted on failure (output: $owner_out)" ;;
+    *"owner/repo を解決できませんでした"*) pass "no owner/repo marker is emitted on failure" ;;
+    *) fail "the failure names the unresolved owner/repo (output: $owner_out)" ;;
+  esac
 fi
 
 if ! print_summary "$(basename "$0")" \

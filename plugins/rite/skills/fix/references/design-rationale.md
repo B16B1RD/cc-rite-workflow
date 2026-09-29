@@ -2,8 +2,8 @@
 
 > **Charter**: Subject to [Simplification Charter](../../../skills/rite-workflow/references/simplification-charter.md).
 > 本ファイルは `skills/fix/SKILL.md` 本体から退避した**設計理由 (Why)** の受け皿。実行手順・分岐表・sentinel 表・
-> エラー処理指示は SKILL.md 本体に残る。本体の該当箇所には `rationale: references/design-rationale.md#<anchor>`
-> 形式のポインタがあり、逆引きできる。ここに書いてよいのは「なぜこの実装形なのか」「変更するなら何が壊れるか」
+> エラー処理指示は SKILL.md 本体に残る。本体（およびステップのシェル本体を移した `scripts/fix-step.sh`）の該当箇所には
+> `rationale: references/design-rationale.md#<anchor>` 形式のポインタがあり、逆引きできる。ここに書いてよいのは「なぜこの実装形なのか」「変更するなら何が壊れるか」
 > の説明のみで、手順そのものを書いてはならない (二重管理防止)。
 
 ## inline-annotation-convention
@@ -173,7 +173,7 @@ silent に行うと `[ -s "$commit_err" ]` guard が no-op 化し、/tmp が壊�
   - **hard fail-fast**: 即座に exit 1 で fix loop を kill する失敗 (引数 parse 失敗 / mktemp 失敗等)。`exit 1` だけでは Claude のフロー制御にならないため retained flag も併用する。
 - **local-wm-update hook の stderr 退避 + lock/non-lock 分岐の理由**: `2>/dev/null || true` は lock contention だけでなく permission denied / script 不在 / bash syntax error / 内部致命的エラーもすべて silent suppress する。lock 判定の exact phrase pattern (`file is locked|lock contention|resource busy`) は、`lock|contention|busy` の緩い pattern が permission denied / device busy 等まで silent suppress する欠陥を避けるため (canonical: common-error-handling.md#hook-lock-contention-classification-canonical)。mktemp 失敗時も silent skip に戻さず、`2>&1` + `head -5` の簡易 fallback で可視化する。
 - **WM_UPDATE_FAILED 網羅性 DoD 検証スクリプトの設計上の要点** (スクリプト本体は `hooks/scripts/fix-reason-coverage-check.sh`、呼び出しは SKILL.md ステップ 5.1):
-  - 本体と `scripts/fix-work-memory-update.sh` の各 emit 元が非空であることを確認し、集合を統合して表と突合する。
+  - 本体・`scripts/fix-step.sh`・`scripts/fix-work-memory-update.sh` の各 emit 元がそれぞれ非空であることを確認し、集合を統合して表と突合する。
   - `grep` 側は `WM_UPDATE_FAILED=1; reason=` で prefix を絞り、`CONFIDENCE_OVERRIDE_READ_FAILED` / `REPLY_POST_FAILED` / `ISSUE_CREATE_FAILED` の別 context flag を前方一致で自動除外する。
   - `awk` 側は `| reason | 発生 Phase | 発生条件 |` の table header 行を起点に `in_table=1` を開始し、非 `|` 行で戻すことで reason 表のみを対象とする。他テーブルや周辺段落を起点/終点トリガーにしないため、blockquote が `**` 強調に格上げされても in_table 範囲を壊さない。
   - `sed 's/\$.*//'` は表側 reason に shell 変数展開 suffix が含まれる場合に備えた defensive 正規化 (現状該当なし、将来の drift 誤検出防止のため残置)。

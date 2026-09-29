@@ -53,7 +53,7 @@
 
 - `scripts/review-source-resolve.sh` Priority 0 (`--review-file` case 文。`fix.md` ステップ 1.2.0 が呼ぶ helper 側に在る)
 - `scripts/review-source-resolve.sh` Priority 2 (local file case 文。同上)
-- `fix.md` ステップ 1.2.0 Priority 3 (PR comment Raw JSON case 文)
+- `scripts/fix-step.sh` の `p3-raw-json` (PR comment Raw JSON case 文。`fix.md` ステップ 1.2.0 Priority 3 が呼ぶ helper 側に在る)
 - `hooks/scripts/review-trend-divergence.sh` (収束トレンド判定の入力として `findings[]` を読む case 文)
 
 上記 4 箇所の `case "$schema_version" in "1.0.0"|"1.0"|"1.1.0")` は常に同じ accept list を持つ。将来 `"1.2.0"` 追加 / legacy `"1.0"` 廃止時は 4 箇所を同時更新すること。
@@ -605,7 +605,7 @@ emit の目的は observability — 「どの review-result file が 1.0 schema 
 - Priority 2 mismatch → **Priority 3 (PR コメント)** へ routing
 - Priority 3 mismatch → **WARNING のみで continue** (Raw JSON の severity_map 構築を続行、legacy Markdown parser への fallthrough はしない)。**注意: Priority 2 も stale で Priority 3 に routing された場合、Priority 3 の stale データが WARNING のみで消費されるカスケードが発生しうる** (WARNING には P2 stale 経由であることを明示する文言を含む)
 
-retained flag: `[CONTEXT] REVIEW_SOURCE_STALE=1; reason={explicit_file|local_file|pr_comment}_commit_sha_mismatch` を stderr に emit。これは「review した時点の commit と現 HEAD が異なる場合、findings は既に修正済み / 意味を失っている可能性がある」という invariant を守るための defense-in-depth。`fix.md` ステップ 1.2.0 の bash block 内の各 Priority success 経路にある `commit_sha stale detection` コメントアンカーを参照。
+retained flag: `[CONTEXT] REVIEW_SOURCE_STALE=1; reason={explicit_file|local_file|pr_comment}_commit_sha_mismatch` を stderr に emit。これは「review した時点の commit と現 HEAD が異なる場合、findings は既に修正済み / 意味を失っている可能性がある」という invariant を守るための defense-in-depth。`fix.md` ステップ 1.2.0 が呼ぶ `scripts/review-source-resolve.sh`（Priority 0 / 2）と `scripts/fix-step.sh` の `p3-raw-json`（Priority 3）にある `commit_sha stale detection` コメントアンカーを参照。
 
 ## 明示的ファイル指定
 
