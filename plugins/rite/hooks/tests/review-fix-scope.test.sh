@@ -218,6 +218,7 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
     dump(plan_file, dict(plan, issue_body=issue['body'].replace('\n', '\r\n')))
     check(invoke().returncode == 0, 'record marker on a CRLF body passes the specification check')
     save_plan()
+    dump(issue_file, dict(issue, body=triaged))
     mutant = private / 'mutant-hooks'
     shutil.copytree(plugin / 'hooks', mutant)
     lib = mutant / 'scripts/lib/review-cycle.py'
