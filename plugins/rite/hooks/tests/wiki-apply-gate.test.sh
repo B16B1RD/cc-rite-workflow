@@ -730,15 +730,19 @@ if grep -q 'wiki-apply-missing' <<<"$gout"; then
 else
   fail "guard missing rc=$grc out=$gout"
 fi
-grc=0
-gout=$(printf '%s' "$gin" | RITE_BTG_TEST_CRASH=pattern9-surface WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
-if grep -q '"permissionDecision": *"deny"' <<<"$gout" && grep -q 'wiki-apply-uninspectable' <<<"$gout" \
-   && grep -q 'rc=3' <<<"$gout" && ! grep -q 'review-commit-evidence' <<<"$gout" \
-   && ! grep -q 'wiki-apply-gate' <<<"$gout" && ! grep -q 'fail-open' "$ROOT/guard.err"; then
-  pass "guard denies an implement commit whose surface cannot be extracted"
-else
-  fail "guard surface implement rc=$grc out=$gout err=$(cat "$ROOT/guard.err")"
-fi
+fixsurf="$ROOT/fixsurf.flow-state"
+write_flow "$fixsurf" fix 7 "$repo"
+for deny_case in "$flow:implement" "$fixsurf:fix"; do
+  grc=0
+  gout=$(printf '%s' "$gin" | RITE_BTG_TEST_CRASH=pattern9-surface WIKI_APPLY_FLOW_STATE="${deny_case%%:*}" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+  if grep -q '"permissionDecision": *"deny"' <<<"$gout" && grep -q 'wiki-apply-uninspectable' <<<"$gout" \
+     && grep -q 'rc=3' <<<"$gout" && ! grep -q 'review-commit-evidence' <<<"$gout" \
+     && ! grep -q 'wiki-apply-gate' <<<"$gout" && ! grep -q 'fail-open' "$ROOT/guard.err"; then
+    pass "guard denies an uninspectable commit in the ${deny_case#*:} phase"
+  else
+    fail "guard surface ${deny_case#*:} rc=$grc out=$gout err=$(cat "$ROOT/guard.err")"
+  fi
+done
 grc=0
 gout=$(printf '%s' "$gin" | RITE_BTG_TEST_CRASH=pattern9-surface WIKI_APPLY_FLOW_STATE="$bad" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
 if grep -q '"permissionDecision": *"deny"' <<<"$gout" && grep -q 'wiki-apply-uninspectable' <<<"$gout"; then
