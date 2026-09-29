@@ -111,6 +111,18 @@ jq 'del(.commit_sha)' "$WORK/r3.json" > "$WORK/nosha.json"
 record "$WORK/nosha.json"
 check "a review without commit_sha fails" '[ $RC -eq 1 ] && [[ "$ERR" == *"reason=json_invalid"* ]]'
 
+echo "=== list: the registrations of the review's commit ==="
+record "$WORK/r1.json"
+run list --pr 7 --review-result "$WORK/r1.json" --state-root "$STATE"
+check "lists the review commit's registrations for the fix plan" \
+  '[ $RC -eq 0 ] && [ "$(printf "%s\n" "$OUT" | head -1)" = "[CONTEXT] PR_RECOMMENDATIONS_LIST=count=2; ids=R-01,R-02" ] && [ "$(printf "%s\n" "$OUT" | sed -n 2p | jq -r "[.[].id] | join(\",\")")" = "R-01,R-02" ]'
+run list --pr 7 --review-result "$WORK/r3.json" --state-root "$STATE"
+check "a registration of another commit lists nothing" \
+  '[ $RC -eq 0 ] && [ "$OUT" = "$(printf "%s\n%s" "[CONTEXT] PR_RECOMMENDATIONS_LIST=count=0; ids=" "[]")" ]'
+printf '{broken' > "$REG"
+run list --pr 7 --review-result "$WORK/r1.json" --state-root "$STATE"
+check "an unreadable registration fails" '[ $RC -eq 1 ] && [[ "$ERR" == *"reason=json_invalid"* ]] && [[ "$OUT" != *"LIST="* ]]'
+
 echo "=== check / mark ==="
 R="$STATE/.rite/review-results"
 rm -f "$REG"

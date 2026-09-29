@@ -11,6 +11,7 @@
 # Usage:
 #   bash review-pr-recommendations.sh capacity --input <review JSON>
 #   bash review-pr-recommendations.sh record --pr <n> --review-result <review JSON> --verdicts <gate stdout> --candidates <file> [--state-root <dir>]
+#   bash review-pr-recommendations.sh list --pr <n> --review-result <review JSON> [--state-root <dir>]
 #   bash review-pr-recommendations.sh check --pr <n> [--state-root <dir>]
 #   bash review-pr-recommendations.sh mark --pr <n> [--state-root <dir>]
 #
@@ -33,6 +34,11 @@
 #   --candidates is the gate's {"candidates": [{id, reviewer, file_line, content, ...}]}.
 #     [CONTEXT] PR_RECOMMENDATIONS=registered; count=N; ids=R-01,...
 #     [CONTEXT] PR_RECOMMENDATIONS=none
+#
+# list (fix, before the plan): prints the registrations recorded on the review's
+#   commit as one JSON array line (empty array when none), for the fix plan to give
+#   each R-NN a disposition. The scope gate reads the same file with the same commit rule.
+#     [CONTEXT] PR_RECOMMENDATIONS_LIST=count=N; ids=R-01,...
 #
 # check (iterate, after the 5.S sweep): reads the latest saved result for the PR
 # (LC_ALL=C sort, last). Registrations are pending only when they were recorded
@@ -64,7 +70,7 @@ fail() {
 }
 
 usage() {
-  sed -n '11,15p' "${BASH_SOURCE[0]}" >&2
+  sed -n '11,16p' "${BASH_SOURCE[0]}" >&2
   exit 2
 }
 
@@ -140,6 +146,22 @@ case "$mode" in
     else
       echo "[CONTEXT] PR_RECOMMENDATIONS=registered; count=$count; ids=$(jq -r '[.recommendations[].id] | join(",")' "$out")"
     fi
+    ;;
+  list)
+    case "$pr" in ''|*[!0-9]*|0) usage ;; esac
+    [ -n "$review_result" ] || usage
+    sha=$(jq -r '.commit_sha // empty' "$review_result" 2>/dev/null)
+    [ -n "$sha" ] || fail json_invalid "commit_sha missing: $review_result"
+    resolve_state_root
+    registered="$state_root/.rite/state/pr-recommendations-$pr.json"
+    recs='[]'
+    if [ -f "$registered" ]; then
+      recs=$(jq -c --arg sha "$sha" 'if (.recommendations | type) != "array" then error("recommendations")
+        elif .commit_sha == $sha then .recommendations else [] end' "$registered" 2>/dev/null) \
+        || fail json_invalid "registrations unreadable: $registered"
+    fi
+    echo "[CONTEXT] PR_RECOMMENDATIONS_LIST=count=$(jq 'length' <<< "$recs"); ids=$(jq -r '[.[].id] | join(",")' <<< "$recs")"
+    printf '%s\n' "$recs"
     ;;
   check|mark)
     case "$pr" in ''|*[!0-9]*|0) usage ;; esac

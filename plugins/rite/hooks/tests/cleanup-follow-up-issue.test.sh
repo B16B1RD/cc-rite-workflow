@@ -2536,7 +2536,15 @@ ADOPT_MODE=manual
 adopt_root t92-preview
 write_adoption "$r" "$(rec "[\"$C_F01\"]")" "$(rec "[\"$C_F05\",\"D-01\",\"D-04\"]" "$REJECT_FIELDS")"
 run_target "$r" --preview-body "$TMP_ROOT/t92-preview.md"
-assert_not_grep "T-92 プレビューは台帳へ書かない" "$ERR" 'FOLLOW_UP_LEDGER='
+assert_not_grep "T-92 プレビューを作る実行は台帳へ書かない" "$ERR" 'FOLLOW_UP_LEDGER='
+# 手動 cleanup は常にプレビュー付きで呼ぶ。起票せずに終わる実行 (all_recorded) はプレビューを作らず確認もしないので、ここで書く
+reset_stubs
+ADOPT_MODE=manual
+adopt_root t92-preview-recorded
+write_adoption "$r" "$(rec "[\"$C_F01\",\"D-01\"]" '{"origin": "unknown", "tracker": 7}')" "$(rec "[\"$C_F05\",\"D-04\"]" "$REJECT_FIELDS")"
+run_target "$r" --preview-body "$TMP_ROOT/t92-preview-recorded.md"
+assert_grep "T-92 プレビュー付きでも record だけなら all_recorded" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=all_recorded; recorded=2; pr=9'
+assert_grep "T-92 プレビュー付きでも起票せずに終わる実行は台帳へ書く" "$ERR" '^\[CONTEXT\] FOLLOW_UP_LEDGER=recorded; rows=4; pr=9$'
 
 echo "--- T-93: 処分の再利用 (前提が変わっていない処分は判定し直さず、失効した分と未処分だけを判定する) ---"
 # $1=state_root $2=2 つ目の commit で変えるファイル。a.md / b.md を持つ commit を 2 つ作り、1 つ目の commit を

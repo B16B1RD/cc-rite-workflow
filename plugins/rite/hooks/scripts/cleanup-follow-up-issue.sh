@@ -83,10 +83,13 @@
 #   1: 引数不正
 #
 # Emitted markers (stderr):
-#   [CONTEXT] FOLLOW_UP_CANDIDATES=listed; count=<n>; deferred=<k>; head=<sha>; file=<path>; pr=<n>
+#   [CONTEXT] FOLLOW_UP_CANDIDATES=listed; count=<n>; deferred=<k>; judge=<j>; head=<sha>; file=<path>; pr=<n>
 #     (--list-candidates のとき。0 件で終えたときは count=0 の後に reason=<下記 skipped / failed の reason>)
 #   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=list_write; pr=<n>   (一覧を --list-candidates のパスへ書けない)
 #   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=head_unresolved; pr=<n>   (対象 commit を決められない。一覧を書かない)
+#   [CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=hold_unreadable; pr=<n>   (採否ゲートの hold ファイルがあるのに読めず、
+#     前回の判定記録を再利用する候補を決められない。一覧を書かない。起票実行ではゲートが同じ hold を読めず
+#     FOLLOW_UP_ISSUE=held; reason=gate_failed_rc1; hold_file=none で止まる)
 #   [CONTEXT] FOLLOW_UP_ISSUE=held; reason=<r>; hold_file=<path>; pr=<n>
 #     採否の出口が出ていない候補がある (判定記録なし / ゲートの ERROR / 未処分の出口)。何も起票せず、
 #     判定済み記録も書かない。declined でも skipped でもない。reason はゲートの reason (no_records /
@@ -94,7 +97,7 @@
 #     ゲートの出力を読めなければ reason=gate_output_invalid で、どちらも hold_file=none
 #   [CONTEXT] FOLLOW_UP_LEDGER=recorded; rows=<n>; pr=<n>   (record の出口の候補を関連 Issue の却下台帳へ書いた。
 #     指摘は出典 JSON の basename、先送り欠陥は <pr>-deferred を出典にする。再実行はこの行で候補から除く。
-#     LINK は追跡先 #N を判定文に持つ。--preview-body では書かない)
+#     LINK は追跡先 #N を判定文に持つ。--preview-body の実行は起票せずに終わる all_recorded / already_exists でだけ書く)
 #   [CONTEXT] FOLLOW_UP_LEDGER=failed; pr=<n>   (台帳へ書けなかった。起票の判断は変えない)
 #   [CONTEXT] FOLLOW_UP_ISSUE=created; issue=<起票した番号の CSV>; existing=<起票済みだった根因数>; recorded=<k>; pr=<n>
 #   [CONTEXT] FOLLOW_UP_ISSUE=preview; count=<n>; deferred=<k>; issues=<m>; body=<path>; pr=<n>   (--preview-body のとき。
@@ -118,9 +121,8 @@
 #   書けなくても結果は変えず WARNING を出す。影響は再実行の報告が no_json に戻ることだけ。
 #   [CONTEXT] FOLLOW_UP_DEFERRED=unavailable; reason=issue_body_api; pr=<n>
 #     元 Issue の本文を取得できず先送り欠陥を読めなかった (ゲートが本文を読み直し、読めなければ保留する)
-#   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=lookup_api|create_api|create_script_missing|json_undecidable|head_unresolved|hold_unreadable|preview_write; pr=<n>
+#   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=lookup_api|create_api|create_script_missing|json_undecidable|head_unresolved|preview_write; pr=<n>
 #     head_unresolved: commit_sha を持つレビュー結果 JSON が無く、PR の head も取得できないか <state-root> の git で解決できない
-#     hold_unreadable: 採否ゲートの hold ファイルがあるのに読めない (前回の判定記録を再利用する候補を決められない)
 #   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=create_api; issue=<起票できた番号の CSV>; pr=<n>
 #     根因の一部だけ起票できた。再実行すると起票済みの根因は増やさず残りだけを起票する
 #   [CONTEXT] FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=<r>; pr=<n>
@@ -743,7 +745,10 @@ n_record=$(jq '[.verdicts[] | select(.verdict == "record")] | length' <<< "$gate
 # record の出口 (REJECT / RESOLVED / LINK) を関連 Issue の却下台帳へ書く。再実行ではこの行が候補を除くので、
 # 同じ候補を判定し直さず保留もしない。書き込みは sweep の台帳 persist と同じ経路 (extract → append →
 # merge-into → 記録 helper)。先送り欠陥の行は出典を <pr>-deferred とする。失敗しても起票は止めない
-# (再実行は判定記録を再利用して同じ出口に至り、行を書き直す)。プレビューでは書かない。
+# (再実行は判定記録を再利用して同じ出口に至り、行を書き直す)。
+# プレビュー付きの実行は、起票せずに終わる分岐 (all_recorded / already_exists) でだけ書く。プレビューを作る実行で
+# 書くと、「起票する」の再実行で候補が減り、判定記録の ids が候補に無い (unknown_candidate) で保留する。
+# 確認で「起票しない」を選んだ run は書かない (記録は残るので、次の cleanup が再利用して同じ出口に至る)。
 write_ledger() {
   local entries body ledger rec_err rc outcome count
   rite_tempfile_new entries "fu-ledger-entries" || return 1
@@ -790,7 +795,8 @@ write_ledger() {
     *) neutralize_ctrl --keep-newline < "$rec_err" | sed 's/^/  /' >&2; return 1 ;;
   esac
 }
-if [ "$n_record" -gt 0 ] && [ -z "$PREVIEW_BODY" ]; then
+record_ledger() {
+  [ "$n_record" -gt 0 ] || return 0
   ledger_rows=0
   if write_ledger; then
     echo "[CONTEXT] FOLLOW_UP_LEDGER=recorded; rows=${ledger_rows}; pr=${PR_NUMBER}" >&2
@@ -798,11 +804,13 @@ if [ "$n_record" -gt 0 ] && [ -z "$PREVIEW_BODY" ]; then
     echo "WARNING: record の出口を却下台帳へ書けませんでした (PR #${PR_NUMBER})。起票は続けます。/rite:cleanup ${PR_NUMBER} を再実行すると判定記録を再利用して書き直します" >&2
     echo "[CONTEXT] FOLLOW_UP_LEDGER=failed; pr=${PR_NUMBER}" >&2
   fi
-fi
+}
+[ -n "$PREVIEW_BODY" ] || record_ledger
 
 file_json=$(jq -c --arg p "${MARKER_PREFIX}${PR_NUMBER}:" '
   [.verdicts[] | select(.verdict == "file") | . + {key: (.ids | sort | join(","))} | . + {marker: ($p + .key + "]")}]' <<< "$gate_out")
 if [ "$(jq 'length' <<< "$file_json")" -eq 0 ]; then
+  [ -z "$PREVIEW_BODY" ] || record_ledger
   record_judged
   echo "INFO: 採否の出口がすべて record (REJECT / RESOLVED / LINK) のため follow-up を起票しません (PR #${PR_NUMBER}, ${n_record} 件)" >&2
   echo "[CONTEXT] FOLLOW_UP_ISSUE=skipped; reason=all_recorded; recorded=${n_record}; pr=${PR_NUMBER}" >&2
@@ -837,6 +845,7 @@ existing_json=$(printf '%s' "$list_json" | jq -cs '
 # 旧形式 (PR 単位) の follow-up がある PR は、その PR の候補を起票済みとして扱い根因ごとに起票し直さない
 legacy_n=$(jq -r --arg m "<!-- ${MARKER} -->" '[.[] | select(.first == $m) | .number] | first // empty' <<< "$existing_json")
 if [ -n "$legacy_n" ]; then
+  [ -z "$PREVIEW_BODY" ] || record_ledger
   record_judged
   echo "INFO: PR #${PR_NUMBER} には旧形式 (PR 単位) の follow-up #${legacy_n} があるため、根因ごとの起票をしません" >&2
   echo "[CONTEXT] FOLLOW_UP_ISSUE=skipped; reason=already_exists; issue=${legacy_n}; pr=${PR_NUMBER}" >&2
@@ -855,6 +864,7 @@ existing_csv=$(jq -r '[.[] | select(.existing != null) | .existing | tostring] |
 n_existing=$(jq '[.[] | select(.existing != null)] | length' <<< "$roots_json")
 to_create=$(jq -c '[.[] | select(.existing == null)]' <<< "$roots_json")
 if [ "$(jq 'length' <<< "$to_create")" -eq 0 ]; then
+  [ -z "$PREVIEW_BODY" ] || record_ledger
   record_judged
   echo "[CONTEXT] FOLLOW_UP_ISSUE=skipped; reason=already_exists; issue=${existing_csv}; pr=${PR_NUMBER}" >&2
   echo "[cleanup-follow-up-issue] result=skipped; reason=already_exists; issue=${existing_csv}; pr=${PR_NUMBER}"

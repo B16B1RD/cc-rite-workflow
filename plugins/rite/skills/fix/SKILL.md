@@ -538,12 +538,16 @@ bash {plugin_root}/scripts/fix-step.sh triage-state --pr {pr_number} --non-fatal
 
 ### 1.3 Classify Comments
 
-helper の ID-keyed `fatal_map` / `severity_map` / `scope_map` と reload 済み JSON を参照する。
+helper の ID-keyed `fatal_map` / `severity_map` / `scope_map` と reload 済み JSON を参照する。PR 内推奨は review JSON に載らないので、次の出力（2 行目の JSON 配列）を読む。非ゼロ終了なら `[fix:error]` で停止する。
+
+```bash
+bash {plugin_root}/scripts/review-pr-recommendations.sh list --pr {pr_number} --review-result '{triage_review_path}'
+```
 
 | Classification | Criteria | Action |
 |---------------|----------|--------|
 | **Required fix** | `fatal_map[id] == true` | 修正対象 |
-| **PR 内推奨** | `.rite/state/pr-recommendations-{pr_number}.json` の `recommendations[]`（`R-NN`。pr-review 7.2 が採否の出口 ADOPT・`origin=pr` の根因をレビュー済み commit に登録。`commit_sha` が違う登録は対象外） | 修正対象。map には載らないので ID で直接扱う |
+| **PR 内推奨** | 上の `list` の `R-NN`（pr-review 7.2 が採否の出口 ADOPT・`origin=pr` の根因をレビュー済み commit に登録したもの。mergeable でない cycle の登録も含む） | 修正対象。map には載らないので ID で直接扱う |
 | **nit (認知のみ)** | `scope_map[id] == "nit-noted"` | PR reply / fix 対象外。`acknowledged_nit_count` に算入 |
 | **non-blocking（fix 対象外）** | 永続 JSON の `non_blocking_findings[]`（nit 除外） | 記録・表示のみ。修正選択肢に出さない |
 | **External review** | 未解決の人間・外部ツールのコメント | Action required |
