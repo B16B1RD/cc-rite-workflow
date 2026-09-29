@@ -373,8 +373,8 @@ if [ -n "$MUT_DIR" ]; then
     pass "a missing content file does not run the trigger"
   fi
 
-  # wiki-raw-commit はメッセージファイルが無い・空なら commit せずに理由を出す。この経路では一時ファイルを
-  # 作らないので、理由は一時ファイル作成の失敗ではなくファイルの不在を名指す。
+  # wiki-raw-commit はメッセージファイルが無い・空なら commit せずに理由を出す。この経路ではメッセージを
+  # 一時ファイルへ書かないので、理由は一時ファイル作成の失敗ではなくファイルの不在を名指す。
   printf '%s\n' '#!/bin/bash' "printf '%s\n' \"\$@\" > \"$MUT_DIR/commit-args\"" \
     'echo "[wiki-ingest-commit] committed=1; branch=wiki; head=stub; push=ok"' > "$FIXTURE/hooks/scripts/wiki-ingest-commit.sh"
   printf '%s\n' 'docs(wiki): raw source を記録する' > "$MUT_DIR/wic-message.txt"
