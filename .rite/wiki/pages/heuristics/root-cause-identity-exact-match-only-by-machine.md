@@ -4,9 +4,13 @@ title: "根因の同一性は機械では一字一句の一致だけを判定し
 domain: "heuristics"
 description: "根因が同じかどうかは機械の照合では決めきれない。機械は一字一句一致の再実行だけを受け持ち、言い換えの判定は既存の番号を見せた分類役に任せる。機械側で言い換えを推測する警告を足すと、誤警告と見逃しの両方が出る。"
 created: "2026-09-29T04:05:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T04:05:00Z" }
+generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-09-29T05:09:59.094345+00:00" }
 promote: rite-plugin
+verified:
+  - { by: "rite-wiki-ingest/gpt-6", at: "2026-09-29T05:09:59.094345+00:00" }
 sources:
+  - type: "reviews"
+    resource: "raw/reviews/20260929T044842Z-pr-3393.md"
   - type: "reviews"
     resource: "raw/reviews/20260929T034133Z-pr-3393.md"
 tags: ["root-cause", "identity", "classification", "ledger"]
@@ -30,6 +34,8 @@ confidence: medium
 
 同じ対象に振る番号が付け替わりうる記録は、履歴を積み上げず、最新の対応で上書きする対応表にする。積み上げると古い対応と新しい対応が並び、どれが現在の同一性かを読み手が判定し直す必要が出る。
 
+cycle ごとに振り直される finding id は、cycle をまたぐ根因の同定キーにはならない。分類役に既存の根因を渡すときは、直前の run が書き戻した tracker まで反映した対応表を読み、派生欄が古い記録のままでないことを確認する。
+
 ## 関連ページ
 
 - [id の意味を引く対応表は、その id を使う記録と同じファイルに原子的に同梱する](../patterns/id-mapping-bundled-atomically-with-record.md)
@@ -37,3 +43,5 @@ confidence: medium
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20260929T034133Z-pr-3393.md)
+
+- [レビュー結果](../../raw/reviews/20260929T044842Z-pr-3393.md)

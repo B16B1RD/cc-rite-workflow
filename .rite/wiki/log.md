@@ -82,6 +82,11 @@
 * **Update**: [文書中の全箇所を対象にする検査や grep は、書き方の種類を先に列挙してから書く](pages/heuristics/enumerate-notations-before-scanning-all-occurrences.md) — raw/reviews/20260929T042643Z-pr-3426.md を統合
 * **Update**: [実装が分岐しているならテストも分岐の数だけ要る — 既定構成の経路こそ抜けやすい](pages/heuristics/implementation-branch-count-equals-test-branch-count.md) — raw/reviews/20260929T042617Z-pr-3349.md を統合
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=582, broken_refs=0
+* **Update**: [並行セッションが作るブランチは、レビュー前後のブランチ一覧比較に偽のずれを出す](pages/heuristics/concurrent-session-branches-false-branch-list-drift.md) — [レビュー結果](raw/reviews/20260929T044754Z-pr-3432.md) を統合
+* **Update**: [根因の同一性は機械では一字一句の一致だけを判定し、それ以外は分類役に既存の番号を見せて決めさせる](pages/heuristics/root-cause-identity-exact-match-only-by-machine.md) — [レビュー結果](raw/reviews/20260929T044842Z-pr-3393.md) を統合
+* **Create**: [共有 helper に位置を渡すときは、呼び出し元ごとの数え始めをそろえる](pages/heuristics/shared-helper-position-needs-caller-origin.md) — [レビュー結果](raw/reviews/20260929T044958Z-pr-3431.md) を統合
+* **Create**: [処理量で決まる判定のテストでは、入力の境界と実行時間の上限を分ける](pages/heuristics/behavior-tests-use-input-boundary-and-configured-timeout.md) — [レビュー結果](raw/reviews/20260929T045942Z-pr-3435.md) を統合
+
 
 ## 2026-09-28
 
