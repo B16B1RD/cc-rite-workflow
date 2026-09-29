@@ -96,8 +96,8 @@ _resolve_session_id() {
 # session-start treats that session's marked inactive state as reaped. Writes that start or end
 # work (set, deactivate, review-cycle) remove it once the state has landed; writes that keep the
 # mark (SessionEnd, the worktree self-heal) do not. If it cannot be removed the write fails with
-# rc 3, so that work never goes on over a record that would end it at the next resume. rc 3 means
-# the state itself was written; a state that could not be written fails with rc 1.
+# rc 3, so the caller can stop before work goes on over a record that would end it at the next
+# resume. rc 3 means the state itself was written and only the record was left.
 _reap_record_path() { printf '%s/.rite/state/reap-failed-%s.flow-state' "$STATE_ROOT" "$1"; }
 _clear_reap_record() {
   local rec; rec=$(_reap_record_path "$1")
@@ -875,6 +875,9 @@ cmd_review_cycle() {
     echo "ERROR: review-cycle $operation persistence failed; retain evidence and retry the same operation" >&2
     return 1
   }
+  # Right after the write, so a failure in the steps below cannot skip the record.
+  local reap_rc=0
+  _clear_reap_record "$sid" || reap_rc=$?
   if [ "$operation" = restart ]; then
     pr_number=$(printf '%s' "$updated" | jq -r '.pr_number // empty')
     case "$pr_number" in
@@ -894,7 +897,7 @@ cmd_review_cycle() {
     abandon) printf '%s' "$updated" | jq '.review_cycle_abandoned[-1]' ;;
     *) printf '%s' "$updated" | jq '.review_cycle' ;;
   esac
-  _clear_reap_record "$sid"
+  return "$reap_rc"
 }
 
 # The last status line of issue-comment-wm-sync.sh; empty when it printed none.

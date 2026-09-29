@@ -1600,6 +1600,7 @@ else
   if jq -e '.active == false and .suspended_by_session_end == true' "$sf_p22b" >/dev/null \
     && [ -f "$rec_p22b" ] \
     && grep -qF "rite: session-start: WARNING: could not clear the suspended mark reap-issue left: $sf_p22b" "$LAST_STDERR_FILE" \
+    && awk 'f && /^  [^ ]/ {ok=1} {f = index($0, "could not clear the suspended mark") > 0} END {exit !ok}' "$LAST_STDERR_FILE" \
     && awk -v p="$sf_p22b" 'index($0, p) && index($0, "/rite:recover") {f=1} END {exit !f}' <<< "$out_p22" \
     && ! grep -qF "作業中に戻せませんでした" <<< "$out_p22"; then
     pass "T-22 a resume that cannot clear the mark warns, points to /rite:recover with the path on stdout, and does not try to reactivate"
@@ -1662,6 +1663,7 @@ else
 
   # A review-cycle write starts work too: it removes the record, and fails with rc 3 when it cannot.
   dir_p22f="$TEST_DIR/reap-record-review-start"
+  sf_p22f=$(state_file_path "$dir_p22f" "sid-p22f")
   rec_p22f="$dir_p22f/.rite/state/reap-failed-sid-p22f.flow-state"
   mkdir -p "$dir_p22f/.rite/state"
   (cd "$dir_p22f" && git init -q && git -c user.email=t@example.com -c user.name=t commit -q --allow-empty -m init)
@@ -1673,12 +1675,22 @@ else
   rc_p22f=0
   (cd "$dir_p22f" && bash "$FLOW_STATE" review-start --selection "$TEST_DIR/selection-p22f.json") >/dev/null 2>"$TEST_DIR/err-p22" || rc_p22f=$?
   chmod 755 "$dir_p22f/.rite/state"
-  if [ "$rc_p22f" -eq 3 ] && [ -f "$rec_p22f" ] && grep -qF "$rec_p22f" "$TEST_DIR/err-p22"; then
-    pass "T-22 a review-cycle write that cannot remove the record fails with rc 3 and names it"
+  if [ "$rc_p22f" -eq 3 ] && [ -f "$rec_p22f" ] && grep -qF "$rec_p22f" "$TEST_DIR/err-p22" \
+    && jq -e '.review_cycle.status == "collecting"' "$sf_p22f" >/dev/null; then
+    pass "T-22 a review-cycle write that cannot remove the record writes the state, fails with rc 3 and names the record"
   else
-    fail "T-22 review-start with record: rc=$rc_p22f record=$([ -e "$rec_p22f" ] && echo y || echo n) err=$(cat "$TEST_DIR/err-p22")"
+    fail "T-22 review-start with record: rc=$rc_p22f record=$([ -e "$rec_p22f" ] && echo y || echo n) cycle=$(jq -c '.review_cycle.status' "$sf_p22f") err=$(cat "$TEST_DIR/err-p22")"
   fi
-  printf '{}' > "$rec_p22f"
+  # The record goes only after the state lands: a review-cycle write that cannot write the state leaves it.
+  chmod 555 "$dir_p22f/.rite/sessions"
+  rc_p22f=0
+  (cd "$dir_p22f" && bash "$FLOW_STATE" review-abandon --reason test) >/dev/null 2>&1 || rc_p22f=$?
+  chmod 755 "$dir_p22f/.rite/sessions"
+  if [ "$rc_p22f" -eq 1 ] && [ -f "$rec_p22f" ]; then
+    pass "T-22 a review-cycle write that cannot write the state fails with rc 1 and keeps the record"
+  else
+    fail "T-22 review-abandon write failure: rc=$rc_p22f record=$([ -e "$rec_p22f" ] && echo y || echo n)"
+  fi
   rc_p22f=0
   (cd "$dir_p22f" && bash "$FLOW_STATE" review-start --selection "$TEST_DIR/selection-p22f.json") >/dev/null 2>"$TEST_DIR/err-p22" || rc_p22f=$?
   if [ "$rc_p22f" -eq 0 ] && [ ! -e "$rec_p22f" ]; then
@@ -1700,7 +1712,8 @@ else
   if jq -e '.active == false and (has("suspended_by_session_end")|not)' "$sf_p22g" >/dev/null \
     && [ -f "$rec_p22g" ] \
     && grep -qF "rite: session-start: ERROR: the reaped state was deactivated, but its failed-reap record could not be removed: $rec_p22g" "$LAST_STDERR_FILE" \
-    && awk -v p="$rec_p22g" 'index($0, p) && index($0, "回収済み") {f=1} END {exit !f}' <<< "$out_p22" \
+    && grep -q '^  ERROR: the state was written' "$LAST_STDERR_FILE" \
+    && awk -v p="$rec_p22g" 'index($0, p) && index($0, "回収済み") && index($0, "exit 3") {f=1} END {exit !f}' <<< "$out_p22" \
     && ! grep -qF "/rite:recover" <<< "$out_p22"; then
     pass "T-22 a resume that clears the mark but cannot remove the record says it was reaped and names the record"
   else

@@ -595,7 +595,7 @@ if [ "$SOURCE" = "resume" ] && [ -f "$_reap_record" ] \
     3)
       echo "rite: session-start: ERROR: the reaped state was deactivated, but its failed-reap record could not be removed: $(printf '%s' "$_reap_record" | neutralize_ctrl)" >&2
       [ -n "$_reap_err" ] && [ -s "$_reap_err" ] && head -3 "$_reap_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-      echo "rite: 中断していた rite workflow は Issue の後片付けで回収済みのため、作業中に戻しません ($_state_file_shown)。ただし後片付けの記録を削除できませんでした ($(printf '%s' "$_reap_record" | neutralize_ctrl))。削除するまで、このセッションの rite workflow の状態の書き込みは失敗します。"
+      echo "rite: 中断していた rite workflow は Issue の後片付けで回収済みのため、作業中に戻しません ($_state_file_shown)。ただし後片付けの記録を削除できませんでした ($(printf '%s' "$_reap_record" | neutralize_ctrl))。削除するまで、このセッションの flow-state.sh の set / deactivate / review 系の書き込みは、状態を書いたうえで失敗 (exit 3) を返します。記録を残したまま作業を続けてセッションを終えると、次の resume でその作業は回収済みとして終わります。"
       ;;
     *)
       echo "rite: session-start: WARNING: could not clear the suspended mark reap-issue left: $_state_file_shown" >&2
