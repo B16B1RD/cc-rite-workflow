@@ -494,7 +494,7 @@ def main():
         if (Path(args.root) / ".git").exists():
             result = subprocess.run(["git", "-C", args.root, "rev-parse", "--path-format=absolute",
                                      "--git-common-dir"], capture_output=True, text=True)
-            raise OSError("git cannot read the checkout at " + args.root + ": " + result.stderr.strip())
+            raise OSError("git cannot read the checkout at " + args.root + ": " + result.stderr.strip().rstrip(".") + ".")
         return
     inside = {}
     for kind, directories, word in each_call(command, args.cwd):

@@ -3206,8 +3206,12 @@ if [[ "$p10_unfinished" == *"delimiter EOF. Fix the command"* && "$p10_unfinishe
 else
   fail "a heredoc that does not end ends its reason and does not advise a cd first: got $p10_unfinished"
 fi
-p10_deny "a heredoc operator at the end of the command" outside-checkout-uninspectable "does not end" \
-  "$p10_scratch" "cat > out.md <<EOF"
+p10_deny "a heredoc operator at the end of the command ends its reason" outside-checkout-uninspectable \
+  "delimiter EOF. Fix the command" "$p10_scratch" "cat > out.md <<EOF"
+p10_deny "a heredoc without a delimiter ends its reason" outside-checkout-uninspectable \
+  "a heredoc has no delimiter. Fix the command" "$p10_scratch" "cat > out.md <<"
+p10_deny "a quote that does not end ends its reason" outside-checkout-uninspectable \
+  "a quote or substitution does not end. Fix the command" "$p10_scratch" "cd $p10_scratch && echo \"abc"
 p10_deny "gh after a # inside a word" outside-checkout "runs 'gh' $p10_out" \
   "$p10_wt" "x=abc; echo \${#x}; cd $p10_scratch && gh api x"
 p10_deny "gh after a # right after a substitution" outside-checkout "runs 'gh' $p10_out" \
@@ -3264,7 +3268,7 @@ printf '#!/bin/bash\nfor a; do [ "$a" = --path-format=absolute ] && { echo "fata
   "$(command -v git)" > "$p10_oldgit/git"
 chmod +x "$p10_oldgit/git"
 PATH="$p10_oldgit:$PATH" p10_deny "a git that cannot read the checkout names its own error" outside-checkout-uninspectable \
-  "git cannot read the checkout at $p10_main: fatal: old git" "$p10_scratch" "cd $p10_scratch && gh api x"
+  "git cannot read the checkout at $p10_main: fatal: old git. Fix why git cannot read the checkout (the error in this reason)" "$p10_scratch" "cd $p10_scratch && gh api x"
 rm -rf "$p10_oldgit"
 P10_ROOT="$p10_broken" p10_deny "a state root git cannot read names the git fix" outside-checkout-uninspectable \
   "Fix why git cannot read the checkout" "$p10_wt" "cd $p10_scratch && gh api x"
