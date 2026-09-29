@@ -9,9 +9,11 @@ fixture=$(mktemp -d) || exit 1
 trap 'rm -rf "$fixture"' EXIT
 git init -q "$fixture" || exit 1
 mkdir -p "$fixture/tests" "$fixture/tmp"
-printf 'scan_target() { :; }\nscan_target\n' > "$fixture/caller.sh"
-printf 'scan_target\n' > "$fixture/tests/caller.test.sh"
-printf '# scan_target\n' > "$fixture/usage.md"
+# Keep four matching lines whether the native ERE treats \b as a word
+# boundary or a literal b; this test covers output, not regex portability.
+printf 'scan_target() { :; } # bscan_targetb\nscan_target # bscan_targetb\n' > "$fixture/caller.sh"
+printf 'scan_target # bscan_targetb\n' > "$fixture/tests/caller.test.sh"
+printf '# scan_target bscan_targetb\n' > "$fixture/usage.md"
 git -C "$fixture" add caller.sh tests/caller.test.sh usage.md || exit 1
 cd "$fixture" || exit 1
 export TMPDIR="$fixture/tmp"
