@@ -1147,6 +1147,66 @@ chmod u+w "$d/.rite/state"
 assert "T-12: 2nd still blocks (K cannot fire)" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
 rm -f "$err" "$err2"
 
-if ! print_summary "$(basename "$0")" "stop-loop-continuation.sh (review↔fix loop continuation + FINALIZE terminal backstop + skip bounce when iterate notice already present + remaining-field inspect on mergeable + WIKICHAIN cleanup-chain gate + C1 8-bit coverage via shared neutralize_ctrl + JSON emit fallback C0 neutralization + neutralize-failure placeholder degradation + notice missing/inspect-fail isolation + SIGPIPE-safe heading scan + batch run-queue watchdog)"; then
+# --- P-xx: a recorded pause lets the turn stop without re-injection or watchdog ---
+# The record is always written by `flow-state.sh pause` (never placed by hand), so a writer/reader
+# path mismatch fails these cases instead of hiding behind a hand-made file.
+pause_for() { RITE_STATE_ROOT="$1" bash "$FS" pause --session "${2:-$SID}" >/dev/null; }
+resume_for() { RITE_STATE_ROOT="$1" bash "$FS" resume --session "${2:-$SID}" >/dev/null; }
+handoff_of() { RITE_STATE_ROOT="$1" bash "$FS" get --field handoff --default NONE --session "$SID"; }
+block_of() { printf '%s' "$1" | jq -r '.decision // "NONE"'; }
+
+echo ""
+echo "=== P-01: pause + pending handoff → stop allowed, handoff kept, resume restores the re-injection ==="
+d=$(new_sandbox)
+RITE_STATE_ROOT="$d" bash "$FS" set --phase review --issue 1168 --branch b --pr 99 \
+  --next n --handoff "/rite:fix 99" --session "$SID" >/dev/null
+pause_for "$d"
+err=$(mktemp)
+out=$(run_stop "$d" "$err") || true
+assert "P-01: paused stop prints no decision" "" "$out"
+assert "P-01: pending handoff is not consumed" "/rite:fix 99" "$(handoff_of "$d")"
+assert_grep "P-01: stderr tells how to resume" "$err" "flow-state.sh resume"
+resume_for "$d"
+out=$(run_stop "$d") || true
+assert "P-01: after resume the handoff blocks again" "block" "$(block_of "$out")"
+assert "P-01: resume left no pause record" "0" "$(find "$d/.rite/state" -name 'pause-*.json' 2>/dev/null | wc -l | tr -d ' ')"
+rm -f "$err"
+
+echo ""
+echo "=== P-02: pause + active run-queue → stop allowed without evaluating the watchdog ==="
+d=$(new_sandbox)
+setup_watchdog_fs "$d" review 99
+pause_for "$d"
+err=$(mktemp)
+out=$(run_stop "$d" "$err") || true
+assert "P-02: paused stop prints no decision" "" "$out"
+assert "P-02: watchdog sidecar is not created" "absent" "$([ -e "$(sidecar_for "$d")" ] && echo present || echo absent)"
+if grep -q "batch-run が" "$err"; then fail "P-02: watchdog ran while paused: $(cat "$err")"; else pass "P-02: no watchdog diagnostics while paused"; fi
+resume_for "$d"
+out=$(run_stop "$d") || true
+assert "P-02: after resume the watchdog blocks again" "block" "$(block_of "$out")"
+rm -f "$err"
+
+echo ""
+echo "=== P-03: an empty or unreadable pause record still counts as paused ==="
+d=$(new_sandbox)
+setup_watchdog_fs "$d" review 99
+pause_for "$d"
+: > "$d/.rite/state/pause-${SID}.json"
+out=$(run_stop "$d") || true
+assert "P-03: empty record allows stop" "" "$out"
+printf '{not-json' > "$d/.rite/state/pause-${SID}.json"
+out=$(run_stop "$d") || true
+assert "P-03: corrupt record allows stop" "" "$out"
+
+echo ""
+echo "=== P-04: another session's pause does not affect this session ==="
+d=$(new_sandbox)
+setup_watchdog_fs "$d" review 99
+pause_for "$d" "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
+out=$(run_stop "$d") || true
+assert "P-04: the watchdog still blocks this session" "block" "$(block_of "$out")"
+
+if ! print_summary "$(basename "$0")" "stop-loop-continuation.sh (pause record allows stop without re-injection or watchdog + review↔fix loop continuation + FINALIZE terminal backstop + skip bounce when iterate notice already present + remaining-field inspect on mergeable + WIKICHAIN cleanup-chain gate + C1 8-bit coverage via shared neutralize_ctrl + JSON emit fallback C0 neutralization + neutralize-failure placeholder degradation + notice missing/inspect-fail isolation + SIGPIPE-safe heading scan + batch run-queue watchdog)"; then
   exit 1
 fi

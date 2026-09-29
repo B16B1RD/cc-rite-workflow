@@ -21,7 +21,7 @@ rationale: references/rationale.md#default-draft
 rationale: references/rationale.md#breaker-stop
 rationale: references/rationale.md#no-handoff
 
-途中停止: 処理中 Issue は `/rite:recover {issue}`、残りキューは引数省略 `/rite:batch-run` で再開（モードも永続化）。キューが `active=true` で中断が直近（`updated_at` から 2 時間以内）かつ cursor 一致なら recover 単体でも残りキューへ自動継続（[recover Phase 5.5](../recover/SKILL.md)）。再開は**同一セッション内**前提。
+途中停止: 処理中 Issue は `/rite:recover {issue}`、残りキューは引数省略 `/rite:batch-run` で再開（モードも永続化）。キューが `active=true` で中断が直近（`updated_at` から 2 時間以内）かつ cursor 一致なら recover 単体でも残りキューへ自動継続（[recover Phase 5.5](../recover/SKILL.md)）。再開は**同一セッション内**前提。利用者の求めで一時停止するときは `flow-state.sh pause`、続けるときは `flow-state.sh resume`（記録があるあいだ Stop hook は差し戻さない。位置は run-queue と flow-state が保つ）。
 rationale: references/rationale.md#session-scoped-queue
 
 `{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version)。run-queue は **`run-queue-{session_id}.json`**（`flow-state.sh path` の basename、`state-path-resolve.sh` の state root）。sandbox で worktree cwd からの書込が拒否された当該 bash のみ `dangerouslyDisableSandbox: true` で再実行してよい（確認不要。[git-worktree-patterns.md](../../references/git-worktree-patterns.md#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる)）。
