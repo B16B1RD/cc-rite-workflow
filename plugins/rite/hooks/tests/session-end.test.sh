@@ -1616,7 +1616,7 @@ else
   fi
 
   # New work on a session whose record cannot be removed: set writes the state but fails with rc 3
-  # and names the record, so the work does not go on over a record that would end it at the next resume.
+  # and names the record, so the caller can stop before work goes on over a record that would end it at the next resume.
   dir_p22d="$TEST_DIR/reap-record-then-set"
   sf_p22d=$(state_file_path "$dir_p22d" "sid-p22d")
   rec_p22d="$dir_p22d/.rite/state/reap-failed-sid-p22d.flow-state"

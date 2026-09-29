@@ -575,7 +575,7 @@ fi
 
 # reap-issue が中断の印を消せなかったときは、記録 .rite/state/reap-failed-{session_id}.flow-state が残る。
 # 作業を始める・終える書き込み（flow-state.sh の set / deactivate / review-cycle 系）は記録を消し、消せ
-# なければ失敗するので、記録があるまま新しい作業は始まらない。記録があり state が印付きの inactive なら
+# なければ state を書いたうえで exit 3 を返すので、呼び出し元は記録があるまま作業を続ける前に止まれる。記録があり state が印付きの inactive なら
 # 回収済みとして、resume で作業中に戻さずここで印を消す（書き込みに失敗した state は中断として扱わない）。
 # deactivate の rc 3 は、印は消えたが記録を消せなかったことを表す（rc 1 は state を書けなかった）。
 _reaped=0
