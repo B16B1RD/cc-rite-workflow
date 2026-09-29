@@ -1787,6 +1787,10 @@ rm -f "$t25_state/.rite/state/adoption-7-sweep.json"
 issue_result='{"issue_number": 12, "issue_url": "https://example.test/12"}' bash "$t25_tracker.run" > "$sandbox/t25-fail.out" 2>&1
 assert "T-25 書き戻せなければ止まる" 1 "$?"
 assert_grep "T-25 書き戻せなければ理由を出す" "$sandbox/t25-fail.out" 'reason=nb_sweep_tracker_write_failed'
+jq -n '{adoption: {head: "h", records: [{ids: ["F-03"], tracker: null}]}}' > "$t25_state/.rite/state/adoption-7-sweep.json"
+issue_result='{"issue_number": 12, "issue_url": "https://example.test/12"}' bash "$t25_tracker.run" > "$sandbox/t25-nomatch.out" 2>&1
+assert "T-25 一致する記録が無い書き戻しは止まる" 1 "$?"
+assert_grep "T-25 一致する記録が無い書き戻しも理由を出す" "$sandbox/t25-nomatch.out" 'reason=nb_sweep_tracker_write_failed'
 
 if ! print_summary "$(basename "$0")" "nb-sweep helper contract drift — check iterate SKILL.md / iterate-step.sh 5.S / 6.1.d preserve"; then
   exit 1

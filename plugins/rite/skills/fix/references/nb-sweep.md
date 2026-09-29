@@ -212,7 +212,8 @@ fi
 nb_adoption="$(bash {plugin_root}/hooks/state-path-resolve.sh)/.rite/state/adoption-{pr_number}-sweep.json"
 nb_issue_number=$(printf '%s' "$issue_result" | jq '.issue_number')
 if ! jq --argjson ids '{record_ids}' --argjson n "$nb_issue_number" \
-     '(.adoption.records[] | select(.ids == $ids) | .tracker) = $n' "$nb_adoption" > "$nb_adoption.tmp" ||
+     'if any(.adoption.records[]; .ids == $ids) then (.adoption.records[] | select(.ids == $ids) | .tracker) = $n
+      else error("ids \($ids) の記録がありません") end' "$nb_adoption" > "$nb_adoption.tmp" ||
    ! mv -- "$nb_adoption.tmp" "$nb_adoption"; then
   rm -f -- "$nb_adoption.tmp"
   echo "ERROR: 起票した #$nb_issue_number を $nb_adoption の記録の tracker に書き戻せません。書き戻してから再実行する（書かずに再実行すると同じ根因を二度起票する）" >&2
