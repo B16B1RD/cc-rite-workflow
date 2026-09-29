@@ -49,9 +49,11 @@ sources:
     resource: "raw/reviews/20260926T105711Z-pr-3149.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T214221Z-pr-3345.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T041949Z-pr-3428.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:52:19Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T04:35:00Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T20:30:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:47:53Z" }
@@ -60,6 +62,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T07:45:50Z" }
   - { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T11:20:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:52:19Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T04:35:00Z" }
 ---
 
 # `set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる
@@ -234,6 +237,14 @@ bash helper.sh --stdin --label "$excluded_path" --quiet <<< "$body"
 
 `printf '%s\n' "$v" | grep -q ...` を `grep -q ... <<< "$v"` に書き換えても、grep が受け取る入力は同じになる。here-string も末尾に改行を 1 つ付けて渡すので、空文字列でも両形とも改行 1 つの 1 行になる。判定は変わらず、変わるのは producer が SIGPIPE を受けて if が偽になる偽陰性の経路が消えることだけである。書き換えのレビューでは、空文字列・一致する行・一致しない行を新旧両形に流して判定が一致することを確かめれば足りる。
 
+### 入力を読まずに終わる読み手へパイプで渡すと、書き込み側が落ちる
+
+早期終了するのは `grep -q` に限らない。検査対象のスクリプトが、引数によっては標準入力を 1 バイトも読まずに終わる場合（除外対象のラベルを渡したときに走査を省く、など）も同じ形になる。テストが `printf … | bash 対象 --stdin` で入力を渡していると、読み手が先に終わった回だけ printf が SIGPIPE を受け、`pipefail` 下でパイプライン全体が rc=141 になる。対象スクリプトの挙動は正しく、壊れているのはテストの入力の渡し方である。負荷が高いとき（テストの並列実行など）にだけ現れるので、単独実行では再現しない。
+
+直し方は here-string（`bash 対象 --stdin <<< '…'`）で、書き込み側のプロセスが無くなる。複数引数の printf で入力を組み立てているケースは、先に変数へ入れてから `<<< "$v"` で渡す。here-string が末尾に改行を 1 つ付けるので、printf 側の末尾の `\n` は外す。期待する rc を 141 まで許容する形で直すと失敗を隠すことになる。
+
+flaky 修正の確認では、修正後の green だけでなく、修正前の版でも同じ並列実行を回して失敗が再現することを対照として示す。そうして初めて、失敗が消えたのは修正の効果だと言える。
+
 ## 関連ページ
 
 - [function 内 `local v=$(...)` と top-level `v=$(...)` の `set -e` 伝播差で writer/reader 非対称が偶然 mask される](./bash-local-vs-toplevel-pipefail-asymmetry.md)
@@ -268,3 +279,4 @@ bash helper.sh --stdin --label "$excluded_path" --quiet <<< "$body"
 - [診断用の printf と head の組み合わせで reason marker が消える経路を指摘したレビュー結果](../../raw/reviews/20260926T134206Z-pr-3160.md)
 - [lint の免除規則と文書の範囲の食い違いを指摘したレビュー結果](../../raw/reviews/20260927T201202Z-pr-3334.md)
 - [here-string への書き換えで判定が変わらないことを確かめたレビュー結果](../../raw/reviews/20260927T214221Z-pr-3345.md)
+- [入力を読まない読み手へのパイプを here-string に直したレビュー結果](../../raw/reviews/20260929T041949Z-pr-3428.md)

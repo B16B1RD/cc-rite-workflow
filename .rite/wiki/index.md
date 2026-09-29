@@ -368,7 +368,7 @@ okf_version: "0.2"
 | [fail-closed ガードは「異常を検出したら止める」ではなく「正常を確認できなければ止める」で書く](pages/patterns/fail-closed-confirms-normal-not-detects-abnormal.md) | patterns | cross-Issue の値転写を遮断する fail-closed ガードが、「identity が**食い違う**」ときにしか発火しない実装になっていた。 | 2026-08-03T07:46:56Z | high |
 | [特定の 1 バイト・1 条件で書いた防御は、defect class 全体を覆うか修正直後に自問する](pages/heuristics/single-condition-defense-vs-defect-class.md) | heuristics | レビュー指摘は具体的な 1 ケースで届く。 | 2026-08-03T07:46:56Z | high |
 | [bash の算術比較は非数値入力で rc=2 を返し、fail-closed の意図が else 側へ倒れる](pages/anti-patterns/bash-numeric-test-fail-open-on-nonnumeric.md) | anti-patterns | `[ "$x" -eq 0 ]` は `$x` が非数値のとき「偽」ではなく **rc=2（エラー）** を返す。 | 2026-08-03T07:46:56Z | high |
-| [`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) | anti-patterns | `grep -q` は最初の一致で即座に終了する。 | 2026-09-27T21:52:19Z | high |
+| [`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) | anti-patterns | `grep -q` は最初の一致で即座に終了する。 | 2026-09-29T04:35:00Z | high |
 | [mutation は適用前に一致件数を、適用後に構文を検証してから結論に使う](pages/heuristics/mutation-validate-before-and-after-application.md) | heuristics | mutation テストの結論（「このアサーションは守れている / 守れていない」）は、mutation 自体が正しく適用されて初めて意味を持つ。 | 2026-09-12T12:57:28Z | high |
 | [自身の検出を避けるために崩した書式は、読者に「こう書け」と読まれる](pages/anti-patterns/self-detection-evasion-format-read-as-prescription.md) | anti-patterns | 検出ゲートの仕様を記述する文書は、その仕様が検出する文字列を本文に書いた瞬間に自分自身が検出対象になる。 | 2026-08-03T23:41:26+09:00 | medium |
 | [テストの gate 条件がプラットフォーム事実を環境 capability の代理にすると恒常 red 化する](pages/anti-patterns/test-gate-proxy-indicator-drift.md) | anti-patterns | テストの floor（skip を禁じて fail させるガード）が、守りたい性質そのものではなく「プラットフォーム事実」を代理指標にしていると、代理の成立しない環境で恒常的に赤くなりスイート全体の signal を劣化させる。 | 2026-08-04T00:55:00+09:00 | medium |
@@ -628,9 +628,10 @@ okf_version: "0.2"
 | [HTML コメントの閉じ記号を `-->` だけで判定すると、`--!>` で閉じた後に続く本文を見逃す](pages/anti-patterns/html-comment-end-bang-missed-by-arrow-only-regex.md) | anti-patterns | HTML コメントは `-->` だけでなく `--!>` でも閉じる。「コメント 1 つだけの行」を正規表現で判定するときに `-->` だけを閉じ記号にすると、`--!>` で閉じた後に見える本文を続ける行を、コメントだけの行と誤判定する。閉じ記号は HTML の定義どおり 2 種類とも扱い、複数言語で同じ判定を持つなら同じ行集合を受理する形にそろえる。 | 2026-09-29T03:24:18Z | high |
 | [根因の同一性は機械では一字一句の一致だけを判定し、それ以外は分類役に既存の番号を見せて決めさせる](pages/heuristics/root-cause-identity-exact-match-only-by-machine.md) | heuristics | 根因が同じかどうかは機械の照合では決めきれない。機械は一字一句一致の再実行だけを受け持ち、言い換えの判定は既存の番号を見せた分類役に任せる。機械側で言い換えを推測する警告を足すと、誤警告と見逃しの両方が出る。 | 2026-09-29T04:05:00Z | medium |
 | [同じ対象の識別子を積み上げる台帳は、キーごとに最新だけ残す対応表にする](pages/patterns/identifier-ledger-latest-per-key-normalized-json.md) | patterns | 同じ対象に付く識別子を追記し続ける台帳は、古い値と新しい値の衝突で処理が止まりやすい。キーごとに最新だけを残す対応表にし、JSON 全文をキーにするときは欄の順序を正規化し、機械照合で拾えない言い換えは分類役に台帳を読ませて紐づける。 | 2026-09-29 | medium |
+| [文書中の全箇所を対象にする検査や grep は、書き方の種類を先に列挙してから書く](pages/heuristics/enumerate-notations-before-scanning-all-occurrences.md) | heuristics | 「すべての箇所」を検査するテストや、同じ規範の記述を探す grep は、表記の 1 種類だけを見ると別の書き方の箇所を取りこぼす。inline code と fenced code、言い回しの揺れなど、同じ内容が現れうる書き方を先に列挙してから抽出条件を決める。 | 2026-09-29T04:35:00Z | medium |
 ## 統計
 
-- 総ページ数: 618
-- ドメイン別: patterns=133, heuristics=299, anti-patterns=186
-- 最終更新: 2026-09-29
+- 総ページ数: 619
+- ドメイン別: patterns=133, heuristics=300, anti-patterns=186
+- 最終更新: 2026-09-29T04:35:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |

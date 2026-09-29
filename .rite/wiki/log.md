@@ -74,6 +74,8 @@
 * **Update**: [シェル本体を別ディレクトリの helper へ移すと、相対パス・引数・出力元の記述が移設元を前提に残る](pages/anti-patterns/helper-relocation-leaves-origin-relative-references.md) — raw/fixes/20260929T033917Z-pr-3349.md で補強
 * **Create**: [根因の同一性は機械では一字一句の一致だけを判定し、それ以外は分類役に既存の番号を見せて決めさせる](pages/heuristics/root-cause-identity-exact-match-only-by-machine.md) — raw/reviews/20260929T034133Z-pr-3393.md を新規ページ化
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=582, broken_refs=0
+* **Update**: [`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) — raw/reviews/20260929T041949Z-pr-3428.md で補強
+* **Create**: [文書中の全箇所を対象にする検査や grep は、書き方の種類を先に列挙してから書く](pages/heuristics/enumerate-notations-before-scanning-all-occurrences.md) — raw/reviews/20260929T041314Z-pr-3425.md と raw/fixes/20260929T042136Z-pr-3426.md を新規ページ化
 
 ## 2026-09-28
 
