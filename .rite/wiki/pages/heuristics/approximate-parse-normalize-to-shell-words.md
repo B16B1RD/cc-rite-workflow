@@ -5,7 +5,9 @@ domain: "heuristics"
 description: "コマンド検査で parser が解析しない部分を部分文字列で近似判定すると、引用やバックスラッシュで語を分割した綴りがそのまま素通りする。近似判定は shell が実際に読む語へ正規化してから行う。処理時間や入れ子の深さに上限を設けるときも、上限を超えたら全体を拒否するのではなく、超えた部分だけを判定できないものとして扱い、そこに隠れうる危険な操作だけを拒否する。"
 promote: rite-plugin
 created: "2026-09-28T12:36:22Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T12:36:22Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T18:04:11Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T18:04:11Z" }
 sources:
   - type: "fixes"
     resource: "raw/fixes/20260928T111245Z-pr-3379.md"
@@ -13,6 +15,8 @@ sources:
     resource: "raw/fixes/20260928T115300Z-pr-3379.md"
   - type: "reviews"
     resource: "raw/reviews/20260928T114336Z-pr-3379.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T175438Z-pr-3446.md"
 tags: []
 confidence: medium
 ---
@@ -33,6 +37,10 @@ confidence: medium
 
 **主張の範囲を実装にそろえる**: 仕様に「どちらの上限でも拒否されない」と例外なく書くと、自分で定めた拒否条件（解析しない置換の中の危険な操作）と矛盾する。主張は実装が拒否する集合を除いた範囲に限る。
 
+**解析を積み増しても収束しない部分は、読むのをやめて判定不能として拒否する（fix 結果）**: bash が展開する heredoc 本文（区切りを引用しない heredoc）は、中に置換や変数展開を含みうるため、解析を足すたびに隣の形が見つかって収束しなかった。この部分は読むのをやめて判定不能として拒否し、利用者には回避手段（区切りを引用して展開させない書き方）を示す。拒否範囲を広げる前に、実際に使われているスクリプト群（skill の bash ブロックなど）へ当て、日常の書き方が拒否されないことを先に確かめる。
+
+**cwd を変えると CLI の認証先が変わる環境がある**: ディレクトリごとに使うアカウントを切り替える gh のラッパーの下では、スクリプトがチェックアウトの外へ `cd` してから gh を呼ぶと、別アカウントで書き込む。gh を呼ぶスクリプトはチェックアウトの中で実行する。
+
 ## 関連ページ
 
 - [検出層の表記ゆれ対応は「列挙」ではなく「正規化」で吸収する](../patterns/normalize-instead-of-enumerate-in-detection-layer.md)
@@ -42,3 +50,4 @@ confidence: medium
 - [fix 結果](../../raw/fixes/20260928T111245Z-pr-3379.md)
 - [fix 結果](../../raw/fixes/20260928T115300Z-pr-3379.md)
 - [レビュー結果](../../raw/reviews/20260928T114336Z-pr-3379.md)
+- [fix 結果（展開される heredoc 本文を判定不能として拒否した）](../../raw/fixes/20260929T175438Z-pr-3446.md)

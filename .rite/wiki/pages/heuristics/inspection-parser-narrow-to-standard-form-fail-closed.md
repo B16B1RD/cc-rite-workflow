@@ -4,7 +4,7 @@ title: "検査用のシェル字句解析は判定対象を標準形に絞り、
 domain: "heuristics"
 description: "コマンドを検査する guard で bash の字句規則を近似する自前パーサを直し続けると、指摘は前回の修正の隣の形として増え続ける。理解すると主張する範囲を実運用の標準形に絞り、それ以外は分類したうえで止める方が収束する。"
 created: "2026-09-25T03:58:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T04:05:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T18:04:11Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T10:30:52Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T11:40:00Z" }
@@ -14,6 +14,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T09:47:59Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:45:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T04:05:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T18:04:11Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260924T212015Z-pr-3060.md"
@@ -55,6 +56,8 @@ sources:
     resource: "raw/fixes/20260929T033457Z-pr-3423.md"
   - type: "reviews"
     resource: "raw/reviews/20260929T034159Z-pr-3423.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T170054Z-pr-3446.md"
 tags: ["guard", "parser", "fail-closed", "heredoc", "divergence"]
 confidence: high
 ---
@@ -154,6 +157,15 @@ bash と別言語の解析器の間で語を受け渡すときは、区切りに
 
 「ソース上の直前の文字が `<` / `>` か」で判定する形も、クォートは除外できるがエスケープは除外できない。`echo a\>& git push` では、エスケープされてリテラルになった `>` の直後の背景実行 `&` を語に連結し、push を見落とした。直前の文字の種類ではなく、その文字を字句解析がどの状態で読んだか（引用の外で、エスケープなしに読んだか）を記録して判定する。1 つの形（クォート）だけを直す修正は、同じ欠陥クラスの別の形（エスケープ）を残しやすい。直すときは、その文字がリテラルになる経路（クォート・エスケープなど）を列挙してそれぞれ確かめる。
 
+### 字句器を再利用するときは、読み飛ばす部分に置換が無いかを確かめる（レビュー結果）
+
+作業先の外で動く git / gh 操作を拒否する guard で、既存の字句器を再利用した際、算術展開の中身を「読み飛ばす」扱いに変えた。算術の中にもコマンド置換は書けるので、読み飛ばすとそこに置いた操作を見落とす。読み飛ばすのではなく、読んだ中身を後段の判定へ渡す。
+
+同じ guard では次の 2 点も指摘された。
+
+- `case WORD in` のような構文を字面の正規表現で見つける検出は、WORD に引用や置換を含む普通の書き方で一致しない形がある。検出を足すときは、引用・置換を含む日常的な書き方で一致するかを確かめる
+- 最上位のコマンドと置換の中の本文で、同じ構文（置換の中の `case`）の扱いをそろえる。片方だけ fail-closed にすると、もう片方に同じ見落としが残る
+
 ## 関連ページ
 
 - [同じ述語を 2 言語で並行実装すると受理集合が環境で割れる — 定義を 1 本に寄せるまで症状は再発し続ける](../anti-patterns/dual-language-predicate-divergence.md)
@@ -183,3 +195,4 @@ bash と別言語の解析器の間で語を受け渡すときは、区切りに
 - [レビュー結果（区切りの `&` を語に吸収した退行）](../../raw/reviews/20260929T032715Z-pr-3423.md)
 - [fix 結果（ソース上の位置で取り込みを判定する）](../../raw/fixes/20260929T033457Z-pr-3423.md)
 - [レビュー結果（エスケープした `>` の直後の `&` を語に連結した）](../../raw/reviews/20260929T034159Z-pr-3423.md)
+- [レビュー結果（字句器の再利用で算術の中の置換を読み飛ばした）](../../raw/reviews/20260929T170054Z-pr-3446.md)

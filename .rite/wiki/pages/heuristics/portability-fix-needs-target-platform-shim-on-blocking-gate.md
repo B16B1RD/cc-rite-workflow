@@ -9,9 +9,13 @@ sources:
     resource: "raw/reviews/20260725T100748Z-pr-2017-cycle2.md"
   - type: "fixes"
     resource: "raw/fixes/20260812T133631Z-pr-2278.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T165753Z-pr-3452.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-12T18:34:40Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T18:04:11Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T18:04:11Z" }
 ---
 
 # 対象プラットフォーム挙動を shim して blocking gate 側で pin する
@@ -76,6 +80,12 @@ shim は対象挙動を再現する薄いラッパにとどめ、それ以外は
 
 > **規則**: CI が赤いとき、失敗したテスト名だけでなく**実行されたテスト件数**を確認する。期待件数より少なければ、失敗ではなく中断を疑う。テスト本体で使うプラットフォーム依存コマンドは、被テスト対象と同じ移植性の審査対象に含める — テストが走らなければ、そのテストが証明するはずだった不変量はすべて未検証になる。
 
+### 標準入力を読むコマンドはオペランドの要否まで GNU / BSD で割れる（レビュー結果）
+
+テストの assert で `head -5 file | paste -sd ' '` のようにパイプで渡した行を 1 行へ畳んでいたところ、Linux では通り、macOS の CI だけで空文字になって落ちた。GNU の `paste` はファイル引数が無ければ標準入力を読むが、BSD の `paste` は入力ファイルのオペランドを必須とするため、`-`（標準入力）を明示しないと失敗する。`paste -sd ' ' -` と書けば両方で同じ値を返す。
+
+この差はローカルの Linux 検証では観測できず、複数サイクルのレビューを通過して merge の直前に CI の macOS job で初めて見つかった。標準入力を読むコマンドをテストで使うときは、「オペランドを省略したときの既定」が実装ごとに違いうることを前提に、`-` を明示して書く。レビュー後に CI で見つかった欠陥でも、PR が追加した行にあるなら、その run の中で直して再レビューまで通す。
+
 ## 関連ページ
 
 - [移植性のための外部コマンド差し替えは分岐を消さず「別の層」へ移動させる](../anti-patterns/external-command-swap-relocates-platform-divergence.md)
@@ -86,3 +96,4 @@ shim は対象挙動を再現する薄いラッパにとどめ、それ以外は
 
 - [レビュー結果](../../raw/reviews/20260725T100748Z-pr-2017-cycle2.md)
 - [GNU 専用 sed -i が macOS で 6 ケースを未実行のまま中断させた](../../raw/fixes/20260812T133631Z-pr-2278.md)
+- [BSD paste のオペランド必須で macOS の CI だけが落ちたレビュー結果](../../raw/reviews/20260929T165753Z-pr-3452.md)

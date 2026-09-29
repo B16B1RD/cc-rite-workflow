@@ -30,6 +30,10 @@
 * **Create**: [PR 起因と判定した非 blocking の候補は、同じ PR の fix の計画に入れて直す](pages/heuristics/pr-origin-nonblocking-fixed-in-same-pr-plan.md) — raw/fixes/20260929T153014Z-pr-3452.md を新規ページ化（呼び出し元の引数の項は隣のページへ統合）
 * **Skip**: [20260929T164137Z-pr-3452.md](raw/fixes/20260929T164137Z-pr-3452.md) — detector-candidate: 標準入力を読む paste はオペランド - を明示する（BSD paste はオペランド無しで失敗する）
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=592, broken_refs=0（矛盾の意味比較は今回統合した 10 ページと同じテーマの既存ページに限る）
+* **Update**: [対象プラットフォーム挙動を shim して blocking gate 側で pin する](pages/heuristics/portability-fix-needs-target-platform-shim-on-blocking-gate.md) — raw/reviews/20260929T165753Z-pr-3452.md を統合
+* **Update**: [base 取り込みの競合は base 側の正本を基準にし、PR の変更意図だけを載せ直す](pages/heuristics/base-intake-conflict-reapply-pr-intent-on-base-canonical.md) — raw/reviews/20260929T173243Z-pr-3452.md を統合
+* **Update**: [検査用のシェル字句解析は判定対象を標準形に絞り、それ以外を fail-closed にする](pages/heuristics/inspection-parser-narrow-to-standard-form-fail-closed.md) — raw/reviews/20260929T170054Z-pr-3446.md を統合
+* **Update**: [解析しない部分の近似判定は shell が読む語に正規化してから行い、上限超過は超えた部分だけを判定不能として扱う](pages/heuristics/approximate-parse-normalize-to-shell-words.md) — raw/fixes/20260929T175438Z-pr-3446.md を統合
 
 ## 2026-09-29
 

@@ -4,10 +4,11 @@ title: "base 取り込みの競合は base 側の正本を基準にし、PR の�
 domain: "heuristics"
 description: "base を取り込んだとき同じ表の行を base と PR の両側が書き換えていたら、base 側の正本の式をそのまま採り、PR が変えたかった点だけを差し替えて解消する。PR の base に対する差分が最小になり、再レビューが確かめる面も最小になる。"
 created: "2026-09-27T04:21:02Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T16:54:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T18:04:11Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T10:30:31Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T16:54:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T18:04:11Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260927T041232Z-pr-3204.md"
@@ -19,6 +20,8 @@ sources:
     resource: "raw/reviews/20260929T162531Z-pr-3452.md"
   - type: "reviews"
     resource: "raw/reviews/20260929T164142Z-pr-3451.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T173243Z-pr-3452.md"
 tags: []
 confidence: medium
 ---
@@ -45,6 +48,10 @@ PR の作業中に base 側で、PR が触れている表の同じ行を別の�
 
 **移設した手順の鮮度を 1 回の比較で確かめる**: PR が手順書の bash ブロックを helper の関数へ移していて、base 側がその手順書の散文に新しい手順を足していた場合、競合は散文だけで解ける。移設が古くなっていないかは、base 側の bash ブロックに placeholder の置換を当てたものと helper の関数本体の diff を取れば 1 回の比較で確かめられる。base が bash 本体を変えていなければ移設は古くならない。
 
+**説明行だけの競合は 3-way の結果と突き合わせる**: テストファイルのヘッダにある各ケースの説明行だけが競合したときは、PR 側と base 側の説明を、それぞれの本文の検査が実際に確かめている内容に合わせて採る（PR の登録方式を説明する行は PR 側、base が移した手順を説明する行は base 側）。解消後は、merge-base・PR 側の親・base 側の親を 3-way で機械的にマージした結果と HEAD を比べ、差分が解消した行だけであることを確かめる。これで、競合しなかった部分の検査が欠落・重複していないことを 1 回の比較で示せる。
+
+**base が検査先を移したら否定の pin を読み直す**: base 側がテストの検査先（抽出元の関数やファイル）を別の場所へ移していた場合、PR 側が足した「ある記述が無いこと」を確かめる pin が、移設後の対象を読んでいるかを確かめる。読む対象が空や別物になった否定の pin は、何を書いても通る（空振りする）ため、取り込みで壊れても気付けない。
+
 ## 関連ページ
 
 - [base 取り込み後の再レビューは、同じ差分の再確認ではなく取り込み側との契約整合の確認として指示する](./rereview-after-base-intake-checks-contract-consistency.md)
@@ -57,3 +64,4 @@ PR の作業中に base 側で、PR が触れている表の同じ行を別の�
 - [mergeable 判定後の merge で見つかった競合を解消したレビュー結果](../../raw/reviews/20260929T101550Z-pr-3440.md)
 - [仕様衝突を人間の判断へ渡したレビュー結果](../../raw/reviews/20260929T162531Z-pr-3452.md)
 - [移設した手順の鮮度を diff で確かめたレビュー結果](../../raw/reviews/20260929T164142Z-pr-3451.md)
+- [説明行だけの競合を 3-way の結果と突き合わせたレビュー結果](../../raw/reviews/20260929T173243Z-pr-3452.md)
