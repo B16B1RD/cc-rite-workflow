@@ -129,6 +129,7 @@
 * **Create**: [拒否ガードの前段フィルタが本判定より狭いと、本判定が fail-closed でも全体は fail-open になる](pages/anti-patterns/prefilter-narrower-than-judge-makes-guard-fail-open.md) — raw/reviews/20260929T092646Z-pr-3446.md を新規ページ化
 * **Skip**: [20260929T095002Z-pr-3377.md](raw/reviews/20260929T095002Z-pr-3377.md) — 指摘 0 件で、再利用できる経験則を含まない
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=586, broken_refs=0
+* **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=587, broken_refs=0
 
 ## 2026-09-28
 
