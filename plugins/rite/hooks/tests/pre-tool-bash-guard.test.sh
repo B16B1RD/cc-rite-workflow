@@ -3191,12 +3191,21 @@ p10_deny "a denied body names the variable rewrite and that a cd does not help" 
   'write $v in the body. Rewrite the command' "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\n$(date)\nEOF' "$p10_wt")"
 p10_deny "the rewrite alternative says a cd is denied the same way" outside-checkout-uninspectable \
   "adding a cd into the checkout, or running it from outside" "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\n$(date)\nEOF' "$p10_wt")"
-p10_deny "a denied case names the rewrite" outside-checkout-uninspectable "move the case out of" \
+p10_deny "a denied case names the rewrite and that a cd does not help" outside-checkout-uninspectable \
+  "set the variable in its branches. Rewrite the command" \
   "$p10_wt" "cd $p10_scratch && echo \"\$(case \"\$k\" in pr) gh pr view 1;; esac)\""
 p10_allow "a case moved out of the substitution, as the denial advises" "$p10_wt" \
   "cd $p10_wt && case \"\$k\" in pr) v=\$(git rev-parse HEAD);; esac; echo \"\$v\""
 p10_deny "a heredoc that does not end names the fix, not a cd" outside-checkout-uninspectable \
   "end each heredoc at its delimiter line" "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\nhello' "$p10_wt")"
+p10_unfinished=$(p10_run "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\nhello' "$p10_wt")") || true
+p10_unfinished=$(extract_hook_field "$p10_unfinished" permissionDecisionReason)
+if [[ "$p10_unfinished" == *"delimiter EOF. Fix the command"* && "$p10_unfinished" == *"adding a cd into the checkout is denied the same way."* \
+  && "$p10_unfinished" != *"first."* ]]; then
+  pass "a heredoc that does not end ends its reason and does not advise a cd first"
+else
+  fail "a heredoc that does not end ends its reason and does not advise a cd first: got $p10_unfinished"
+fi
 p10_deny "a heredoc operator at the end of the command" outside-checkout-uninspectable "does not end" \
   "$p10_scratch" "cat > out.md <<EOF"
 p10_deny "gh after a # inside a word" outside-checkout "runs 'gh' $p10_out" \

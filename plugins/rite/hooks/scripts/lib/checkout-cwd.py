@@ -236,7 +236,7 @@ def strip_heredocs(command):
                 start += 1
             delimiter, index, quoted = _heredoc_word(command, start)
             if not delimiter:
-                raise ValueError("a heredoc has no delimiter")
+                raise ValueError("a heredoc has no delimiter.")
             pending.append((delimiter, tabs, quoted))
             out.append(" ")
             continue
@@ -247,7 +247,7 @@ def strip_heredocs(command):
                 body = []
                 while True:
                     if index >= length:
-                        raise ValueError("a heredoc does not end at its delimiter " + delimiter)
+                        raise ValueError("a heredoc does not end at its delimiter " + delimiter + ".")
                     end = command.find("\n", index)
                     end = length if end < 0 else end
                     line, index = command[index:end], end + 1
@@ -261,9 +261,9 @@ def strip_heredocs(command):
         out.append(command[index:index + step])
         index += step
     if pending:
-        raise ValueError("a heredoc does not end at its delimiter " + pending[0][0])
+        raise ValueError("a heredoc does not end at its delimiter " + pending[0][0] + ".")
     if len(stack) > 1:
-        raise ValueError("a quote or substitution does not end")
+        raise ValueError("a quote or substitution does not end.")
     return "".join(out)
 
 
