@@ -473,7 +473,7 @@ def record(state, args, directory):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("operation", choices=("start", "finish", "guard-set", "clock", "observe", "replan", "retry", "restart", "reconcile", "close", "defer", "abandon", "record"))
+    parser.add_argument("operation", choices=("start", "finish", "guard-set", "clock", "observe", "replan", "retry", "restart", "reconcile", "close", "defer", "deviate", "abandon", "record"))
     parser.add_argument("--state", required=True)
     parser.add_argument("--session", required=True)
     parser.add_argument("--results-dir", required=True)
@@ -498,7 +498,7 @@ def main():
     required = dict(start=["selection"], finish=["manifest", "content_file"],
                     clock=["input"], observe=["input", "issue"], replan=["plan", "issue"],
                     retry=["plan", "issue"], restart=["selection", "approval"], reconcile=["issue", "approval"],
-                    close=[], defer=[], abandon=[], record=[])
+                    close=[], defer=[], deviate=["input"], abandon=[], record=[])
     for name in required[args.operation]:
         value = getattr(args, name)
         require(value and Path(value).is_absolute(), name + " must be an absolute file path")

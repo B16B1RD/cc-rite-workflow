@@ -350,3 +350,19 @@ blocking に数えないので発散判定は空転を止めない。止める�
 書くのは、再入（Stop hook / recover）で同じ修正を繰り返さないため。ファイル名ではなく commit で比べるのは、
 fix が同じレビューの複写を別名で保存することがあるから。寿命は nb-sweep-done と同じで、0.6 の
 `fresh || cur_cc == 0`（pin 書換と同条件）で消し、`review-restart` と cleanup でも消す。
+
+## purpose-deviation-reopen
+
+完了前確認は mergeable の後に走るので、そこで見つかった逸脱はどの保存済み finding にも無く、保存済みの
+結果 JSON（receipt）は書き換えられない。手で直して commit すると `pr_recommendations[]` と同じ理由で次の
+レビューを開始できず、`review-restart` は停止した run しか受けない（完了した run は新しい run にする理由が
+無い）。そこで逸脱を同じ run の `deviations[]`（`D-NN`、記録時の review context 付き）に保存し、fix の計画は
+それを blocking と同じく処置必須にする。修正は通常の fix と検証記録を通り、再レビューは同じ run の次の
+cycle になるので、counter と発散判定はそのまま続く。
+
+origin=pr の判定は、逸脱の `file:line` が `origin/{branch.base}...HEAD` の追加行と重なることで機械的に行う
+（`pr_recommendations[]` の登録と同じ `lib/diff-hunks.sh`）。重ならない逸脱（base 由来や PR 外の欠陥）と、
+blocking が残っている review、`safety.max_review_cycles` に達した cycle（修正を再レビューできない）は
+拒否し、従来の `purpose_unaligned` 停止に落とす。記録は完了記録（`completed_context` / `deferred_context`）
+を外す。残すと、逸脱が未処置のまま別の Issue へ切り替えられる。`D-NN` は記録した review context の
+計画だけが処置する。次の cycle の計画には要求しない（その cycle の完了前確認がまだ逸脱を見るなら、改めて記録する）。
