@@ -1038,7 +1038,8 @@ else
   pass "T-11: inactive cleanup does not use in-progress hint"
 fi
 
-# SessionEnd keeps a mid-cleanup state as active=false; the resumed session must finish cleanup
+# SessionEnd keeps a mid-cleanup state as active=false and the resume turns it active again;
+# the resumed session must finish cleanup
 echo ""
 echo "=== T-11b: cleanup kept by SessionEnd mid-flow continues cleanup after resume ==="
 d=$(new_sandbox)
@@ -1049,8 +1050,8 @@ jq -nc --arg c "$d" --arg s "$SID" '{cwd:$c, session_id:$s, hook_event_name:"Ses
   | bash "$PLUGIN_ROOT/hooks/session-end.sh" >/dev/null 2>&1
 jq -nc --arg c "$d" --arg s "$SID" '{cwd:$c, session_id:$s, source:"resume"}' \
   | RITE_HOST=claude bash "$PLUGIN_ROOT/hooks/session-start.sh" >/dev/null 2>&1
-kept=$(jq -r '"\(.phase)|\(.active)"' "$(state_file_for "$d")" 2>/dev/null || echo "<removed>")
-assert "T-11b: SessionEnd kept the cleanup state inactive" "cleanup|false" "$kept"
+kept=$(jq -r '"\(.phase)|\(.active)|\(has("suspended_by_session_end"))"' "$(state_file_for "$d")" 2>/dev/null || echo "<removed>")
+assert "T-11b: the resume turned the kept cleanup state active and cleared the mark" "cleanup|true|false" "$kept"
 out=$(run_stop "$d")
 _r=$(printf '%s' "$out" | jq -r '.reason // ""')
 if grep -qF "$CLEANUP_IN_PROGRESS" <<< "$_r"; then

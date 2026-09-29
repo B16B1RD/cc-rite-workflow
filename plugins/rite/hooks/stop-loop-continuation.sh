@@ -177,7 +177,8 @@ _rite_batch_watchdog() {
           merge) hint="/rite:cleanup ${fs_branch}" ;;
           cleanup|ingest|completed)
             # A finished cleanup writes next_action=none with active=false. SessionEnd
-            # also leaves an interrupted cleanup inactive, but keeps its next_action.
+            # also leaves an interrupted cleanup inactive until a resume turns it active
+            # again, and keeps its next_action either way.
             if [ "$fs_active" = "false" ] && [ "$fs_next" = "none" ]; then
               hint="batch-run ステップ 6（cursor 前進）"
             else
