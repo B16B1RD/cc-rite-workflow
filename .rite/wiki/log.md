@@ -160,6 +160,7 @@
 * **Update**: [精密判定の前に置いた粗い照合は字句状態を持たない限り退行し続ける — 代替を足す前に精密判定の実コストを測る](pages/heuristics/coarse-prefilter-drift-measure-precise-parser-cost.md) — raw/fixes/20260929T122226Z-pr-3446.md を統合
 * **Create**: [機構の新設・移設・撤去では、全ての停止経路と文書から消費者を列挙して確かめる](pages/heuristics/mechanism-add-move-remove-enumerate-consumers.md) — raw/reviews/20260929T112830Z-pr-3452.md を新規ページ化
 * **Update**: [機構の新設・移設・撤去では、全ての停止経路と文書から消費者を列挙して確かめる](pages/heuristics/mechanism-add-move-remove-enumerate-consumers.md) — raw/fixes/20260929T121639Z-pr-3452.md を統合
+* **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=590, broken_refs=0
 
 ## 2026-09-28
 
