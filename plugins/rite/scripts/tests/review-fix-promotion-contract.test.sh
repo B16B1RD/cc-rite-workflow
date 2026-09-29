@@ -738,6 +738,8 @@ assert_eq 'keys: records splitting one earlier record stop the gate block' '[CON
 assert_eq 'keys: records splitting one earlier record print no key line' 0 "$(printf '%s\n' "$out" | grep -c 'TRIAGE_WRITE_KEY=' || true)"
 assert_grep 'the classifier keeps the record units of the earlier run' "$review" \
   '別々の key の候補を 1 つの記録に束ねず、同じ key の候補を複数の記録に分けない'
+assert_grep 'the record unit rule wins over the rule that keeps candidates of different priors apart' "$review" \
+  '下の prior の違う候補をまとめない規則より優先し'
 # The same candidate renumbered on a rerun, with its fields in another order, keeps its key.
 out=$(run_keys '[{"ids": ["C-5"]}]' '{"candidates": [{"reviewer": "r", "content": "a", "id": "C-5"}]}' \
   '{"held": false, "verdicts": [{"ids": ["C-5"], "exit": "REJECT", "verdict": "record"}]}')
