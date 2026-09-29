@@ -428,7 +428,17 @@ _rite_btg_state_change_scan() {
               elif [ "${_cl[_d]}" = ")" ] && { [ "$_view" = close ] || [ "${_case[_d]}" = 0 ]; }; then _ch=close
               else _ch=sep; fi ;;
             '&')
-              if [ "${_src:$((_i + 1)):1}" = ">" ] || [[ "${_w[_d]}" == *[\<\>] ]]; then _w[_d]+="$_ch"; else _ch=sep; fi ;;
+              # Judged on the source text, not the dequoted word, so a quoted `>` before a
+              # background `&` does not make it part of a redirection.
+              if [[ -n "${_w[_d]}" && "${_src:$((_i - 1)):1}" == [\<\>] ]] \
+                 || { [ -z "${_w[_d]}" ] && [ "${_src:$((_i + 1)):1}" = ">" ]; }; then
+                _w[_d]+="$_ch"
+              elif [ "${_src:$((_i + 1)):1}" = ">" ]; then
+                # `word&>log`: end the word, then read the `&` again as the start of `&>log`.
+                _ch=end; _i=$((_i - 1))
+              else
+                _ch=sep
+              fi ;;
             ';'|'|'|$'\n') _ch=sep ;;
             ' '|$'\t') _ch=end ;;
             '#')

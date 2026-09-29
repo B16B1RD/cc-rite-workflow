@@ -2733,6 +2733,13 @@ for sc_cmd in \
   'git $(echo) push' \
   "git 2>/dev/null push origin --help" \
   "git >/dev/null push && git log --help" \
+  "git push&>/dev/null" \
+  "gh pr merge 1&>/dev/null" \
+  "bash plugins/rite/scripts/iterate-step.sh&>/dev/null" \
+  "echo '->'& git push origin HEAD" \
+  "echo 'a<'& gh pr comment 1 --body x" \
+  "sleep 1 & git push" \
+  "true&git push" \
   ; do
   rc=0
   output=$(run_guard_typed "rite:test-reviewer" "$sc_cmd") || rc=$?
