@@ -1615,7 +1615,8 @@ if [ -z "$BLOCKED_PATTERN" ]; then
             # Read the same way wherever the helper runs, so a cd into the checkout does not help.
             BLOCKED_ALTERNATIVE="Rewrite the command as this reason says; adding a cd into the checkout, or running it from outside the checkout, is denied the same way." ;;
           *"git cannot read the checkout"*)
-            BLOCKED_ALTERNATIVE="Fix why git cannot read the checkout (the error in this reason), then run the command again." ;;
+            # On its own line: git's last line may be a command to copy as is.
+            BLOCKED_ALTERNATIVE=$'\n'"Fix why git cannot read the checkout (the error git reports above), then run the command again." ;;
           *)
             BLOCKED_ALTERNATIVE="Fix the command as this reason says (end each heredoc at its delimiter line, close each quote and command substitution) or simplify it; adding a cd into the checkout is denied the same way." ;;
         esac
