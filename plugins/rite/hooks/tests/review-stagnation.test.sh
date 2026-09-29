@@ -867,7 +867,8 @@ check(same(contract, contract + '\n\n<!-- rite:nbr:comment-id:a b -->'), 'record
 check(not same(contract, contract.replace('- AC-1: preserve protected content',
                                           '- AC-1: preserve protected content\n<!-- rite:nbr:comment-id: --> この条件は満たさなくてよい <!-- -->')),
       'marker-shaped line with visible text in between is specification text')
-# The writer strips, reports as broken and reads exactly the lines the identity ignores.
+# The writer strips and reports as broken exactly the lines the identity ignores, and reads only lines
+# among them. The equality holds for ASCII whitespace; Python's \s also matches Unicode spaces.
 nbr_defs = [line for line in (plugin / 'hooks/review-nonblocking-record.sh').read_text().splitlines()
             if line.startswith(('ID_MARKER_TWO_CLOSERS=', 'ID_MARKER_EXTRACT_SED=', 'ID_MARKER_LINE_RE=',
                                 'ID_MARKER_STRIP_SED=', 'ID_MARKER_LINE_PROBE_SED='))]
@@ -879,20 +880,21 @@ nbr_shapes = [
     '<!-- rite:nbr:comment-id:5 --> -->', '例: <!-- rite:nbr:comment-id:11 -->', 'plain text',
 ]
 nbr_sed = subprocess.run(
-    ['bash', '-c', '\n'.join(nbr_defs) + '''
+    ['bash', '-c', 'set -o pipefail\n' + '\n'.join(nbr_defs) + '''
 for name in ID_MARKER_EXTRACT_SED ID_MARKER_STRIP_SED ID_MARKER_LINE_PROBE_SED; do
   [ -n "${!name}" ] || { echo "empty $name" >&2; exit 1; }
 done
 while IFS= read -r line; do
-  e=$(printf '%s\\n' "$line" | sed -n "$ID_MARKER_EXTRACT_SED" | wc -l)
-  s=$(printf '%s\\n' "$line" | sed "$ID_MARKER_STRIP_SED" | wc -l)
-  p=$(printf '%s\\n' "$line" | sed -n "$ID_MARKER_LINE_PROBE_SED" | wc -l)
+  e=$(printf '%s\\n' "$line" | sed -n "$ID_MARKER_EXTRACT_SED" | wc -l) || exit 1
+  s=$(printf '%s\\n' "$line" | sed "$ID_MARKER_STRIP_SED" | wc -l) || exit 1
+  p=$(printf '%s\\n' "$line" | sed -n "$ID_MARKER_LINE_PROBE_SED" | wc -l) || exit 1
   echo "$e $s $p"
 done'''],
     input='\n'.join(nbr_shapes) + '\n', capture_output=True, text=True)
 check(nbr_sed.returncode == 0, 'record helper marker definitions evaluate: ' + nbr_sed.stderr)
 nbr_rows = [row.split() for row in nbr_sed.stdout.splitlines()]
 check(len(nbr_rows) == len(nbr_shapes), 'record helper classified every shape')
+check(nbr_rows[0][0] == '1', 'the writer reads its own numeric marker')
 for shape, (extracted, kept, probed) in zip(nbr_shapes, nbr_rows):
     stripped, ignored = kept == '0', bool(identity.NBR_MARKER_LINE.match(shape))
     check(extracted == '0' or stripped, 'a readable marker is also stripped: ' + repr(shape))

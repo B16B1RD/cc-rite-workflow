@@ -194,7 +194,7 @@ ID_MARKER_SUFFIX=' -->'
 # marker 行はコメント 1 つだけから成る: 値は `-->` を含まず、行の `-->` は末尾の 1 つだけ。
 # `<!-- rite:nbr:comment-id: --> 本文 <!-- -->` のように途中で閉じて見える本文を続ける行は marker ではない —
 # 除去すると人間の書いた本文を無音で消す。仕様照合 (review-cycle.py の NBR_MARKER_LINE) も同じ行だけを
-# 無視するため、ここを緩めると照合が本文の変更を見逃す。BSD sed の BRE は選択 (`\|`) も否定先読みも
+# 無視する (ASCII 空白の範囲で。Python の \s は Unicode の空白にも一致する) ため、ここを緩めると照合が本文の変更を見逃す。BSD sed の BRE は選択 (`\|`) も否定先読みも
 # 持たないため、`-->` を 2 つ以上含む行を別のアドレスで外し、抽出・除去・破損検出の 3 式すべてに掛ける。
 ID_MARKER_TWO_CLOSERS='-->.*-->'
 ID_MARKER_EXTRACT_SED="/$ID_MARKER_TWO_CLOSERS/!"'s/^[[:space:]]*<!-- rite:nbr:comment-id:\([^ ]*\) -->[[:space:]]*$/\1/p'

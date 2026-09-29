@@ -2305,6 +2305,7 @@ GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_VISIBLE_ONLY" \
   run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-428 --content-file "$NBR_BODY_C2"
 assert "TC-4.16v' 見える本文を挟む行だけ: exit 0" "0" "$RC"
 assert_not_grep "TC-4.16v' 破損と誤報しない" "$ERR" 'reason=id_malformed'
+assert_grep "TC-4.16v' marker 不在として fallback で記録は継続する" "$ERR" 'outcome=updated; count=2; iteration_id=9-428; comment_id=13; degraded=0'
 
 # TC-4.16o [cycle 2 F-16 対応] marker 行が CRLF / 字下げ / 末尾空白を伴っても durable id 経路が
 # 成立する。両式の行頭・行末が空白を許容しないと 3 形とも「marker 不在」に畳まれ、本 Issue の
