@@ -32,6 +32,11 @@
 #   T-65               → an unreadable owner record is kept with a WARNING
 #   T-66               → a mutant without the owner check loses T-60's worktree
 #
+# Reviewer worktree guidance — _reviewer-base.md is where reviewers learn how to
+# create the worktrees this cleanup reaps:
+#   T-68 → every recommended `git worktree add` form is detached and works on a
+#          branch another worktree has checked out; the branch-naming form is gone
+#
 # Each test creates an isolated temp git repository, simulates branch /
 # worktree creation, runs the cleanup script, and asserts the result.
 
@@ -1729,6 +1734,66 @@ for t67_src in "_reviewer-base.md:$t67_doc" "pre-tool-edit-guard.sh:$t67_guard";
   drop_wt "$TEST_REPO" "$t67_wt"
 done
 cleanup_temp_repo "$TEST_REPO"
+
+echo "T-68: reviewer 手順の worktree 作成の案内は、別の worktree が使用中の branch でも成功する detached 形だけ"
+# The review head is checked out in the session worktree, so a form that names the
+# branch fails there. Forbidden forms (`-b`, and `git worktree add <path>` with no ref)
+# are listed in the same file and are excluded span by span, not line by line: one
+# table row holds a forbidden form and its replacement.
+t68_doc="$SCRIPT_DIR/../../agents/_reviewer-base.md"
+t68_spans=$(grep -o '`git worktree add[^`]*`' "$t68_doc" | grep -v -- ' -b' | grep -vx '`git worktree add <path>`' || true)
+t68_count=$(printf '%s\n' "$t68_spans" | grep -c . || true)
+t68_undetached=$(printf '%s\n' "$t68_spans" | grep -v -- '--detach' || true)
+if [ "$t68_count" -ge 5 ] && [ -z "$t68_undetached" ]; then
+  pass "T-68a: 案内する $t68_count 件の worktree 作成の形がすべて --detach を含む"
+else
+  fail "T-68a: --detach を含まない案内がある、または検査した件数が足りない (count=$t68_count): $t68_undetached"
+fi
+if ! grep -q 'existing-branch' "$t68_doc"; then
+  pass "T-68b: branch を名指しする <existing-branch> の形を案内しない"
+else
+  fail "T-68b: <existing-branch> の形が残っている: $(grep -n 'existing-branch' "$t68_doc")"
+fi
+t68_row=$(grep '^| `git checkout <branch>` |' "$t68_doc" || true)
+t68_span=$(printf '%s\n' "$t68_row" | grep -o '`git worktree add[^`]*`' || true)
+if [ "$(printf '%s\n' "$t68_span" | grep -c . || true)" != 1 ] || [[ "$t68_span" != *' --detach <'* ]] \
+  || [[ "$t68_row" != *'rite-review-mutation-*'* ]]; then
+  fail "T-68c: git checkout <branch> 行の代替が detached 形 1 件と名前空間の案内になっていない: $t68_row"
+else
+  t68_cmd=${t68_span//\`/}
+  TEST_REPO=$(make_temp_repo)
+  git -C "$TEST_REPO" branch feat
+  t68_used="$HOST_TMPDIR/rite-review-mutation-t68-used.$$"
+  git -C "$TEST_REPO" worktree add --quiet "$t68_used" feat
+  t68_ok="$HOST_TMPDIR/rite-review-mutation-t68-ok.$$"
+  t68_old="$HOST_TMPDIR/rite-review-mutation-t68-old.$$"
+  t68_ok_cmd=${t68_cmd/<path>/$t68_ok}
+  t68_ok_cmd=${t68_ok_cmd/<ref>/feat}
+  read -r -a t68_ok_argv <<< "$t68_ok_cmd"
+  t68_old_cmd=${t68_cmd/--detach /}
+  t68_old_cmd=${t68_old_cmd/<path>/$t68_old}
+  t68_old_cmd=${t68_old_cmd/<ref>/feat}
+  read -r -a t68_old_argv <<< "$t68_old_cmd"
+  t68_ok_rc=0
+  t68_ok_out=$(cd "$TEST_REPO" && "${t68_ok_argv[@]}" 2>&1) || t68_ok_rc=$?
+  t68_old_rc=0
+  t68_old_out=$(cd "$TEST_REPO" && "${t68_old_argv[@]}" 2>&1) || t68_old_rc=$?
+  if [ "$t68_ok_rc" -eq 0 ] && [ -z "$(git -C "$t68_ok" symbolic-ref -q HEAD || true)" ]; then
+    pass "T-68c: 案内の形は別の worktree が使用中の branch でも detached worktree を作る"
+  else
+    fail "T-68c: 案内の形が使用中の branch で失敗した (rc=$t68_ok_rc): $t68_ok_out"
+  fi
+  if [ "$t68_old_rc" -ne 0 ]; then
+    pass "T-68d: --detach を外した形は同じ branch で失敗する（T-68c は --detach の効果を見ている）"
+  else
+    fail "T-68d: --detach を外した形も成功した。T-68c は旧形式を区別できていない"
+  fi
+  git -C "$TEST_REPO" worktree remove --force "$t68_ok" 2>/dev/null || true
+  git -C "$TEST_REPO" worktree remove --force "$t68_old" 2>/dev/null || true
+  git -C "$TEST_REPO" worktree remove --force "$t68_used" 2>/dev/null || true
+  rm -rf "$t68_ok" "$t68_old" "$t68_used"
+  cleanup_temp_repo "$TEST_REPO"
+fi
 
 # -----------------------------------------------------------------------
 # Summary

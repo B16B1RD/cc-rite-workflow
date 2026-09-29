@@ -11,7 +11,7 @@ Any Bash invocation that matches the following patterns is forbidden inside a re
 | 禁止コマンド | 理由 | 代替手段 |
 |---------|------|----------|
 | `git checkout <ref> -- <file>` | index + working tree 書き換え | `git show <ref>:<file>` (stdout 出力のみ) |
-| `git checkout <branch>` | HEAD 切り替え | `git worktree add <path> <ref>` で別ディレクトリに展開 (`<path>` は `rite-review-mutation-*` / `rite-revert-test-*` の名前空間) |
+| `git checkout <branch>` | HEAD 切り替え | `git worktree add --detach <path> <ref>` で別ディレクトリに展開 (`<path>` は `rite-review-mutation-*` / `rite-revert-test-*` の名前空間) |
 | `gh pr checkout <N>` | PR の head を local branch へ取り込み HEAD を切り替える。その作業ツリーを使うセッションが止まる (pre-tool-bash-guard.sh sub-block (S) が deny) | 差分は `gh pr diff <N>`、PR の情報は `gh pr view <N>` で読む。レビュー対象の PR の head は作業ツリーに checkout 済みなので、テストはその場で実行する。別の ref で実行が要るときは下の § Mutation experiments の detached worktree 手順に従う |
 | `git reset` (あらゆる形式) | index / HEAD 変更 | 代替なし — reviewer は実行禁止 |
 | `git add` / `git rm` | index 変更 | 代替なし — reviewer は実行禁止 |
@@ -26,7 +26,7 @@ Any Bash invocation that matches the following patterns is forbidden inside a re
 | `git worktree remove` / `git worktree prune` | worktree 削除 | 代替なし — reviewer は実行禁止 |
 | `git branch -D` / `-d` / `-f` / `-m` / `-M` / `--delete` / `--force` / `--move` / `--copy` | ブランチ ref の削除/強制移動 | 代替なし — reviewer は実行禁止。`git branch --list` / `--show-current` / `-a` は read-only として許可 |
 | `git branch <new-branch>` (flag なしでの新規ブランチ作成) | 新規 ref 作成 | `git worktree add --detach <path> <ref>` を使って隔離ディレクトリで検証する (detached HEAD で named branch を作らない。`<path>` は `rite-review-mutation-*` / `rite-revert-test-*` の名前空間) |
-| `git worktree add -b <newbranch> <path> [<ref>]` / 引数なし `git worktree add <path>` (新規 named branch 作成を伴う形式) | worktree 作成と同時に新規 ref が leak する (cleanup は reviewer 自身が実行禁止のため再発する) | `git worktree add --detach <path> <ref>` または `git worktree add <path> <existing-branch>` (既存 branch を別ディレクトリに展開、新規 ref を作らない。`<path>` は `rite-review-mutation-*` / `rite-revert-test-*` の名前空間) |
+| `git worktree add -b <newbranch> <path> [<ref>]` / 引数なし `git worktree add <path>` (新規 named branch 作成を伴う形式) | worktree 作成と同時に新規 ref が leak する (cleanup は reviewer 自身が実行禁止のため再発する) | `git worktree add --detach <path> <ref>` (既存 ref を detached HEAD で別ディレクトリに展開し、新規 ref を作らない。`<path>` は `rite-review-mutation-*` / `rite-revert-test-*` の名前空間) |
 | `git update-ref` / `git symbolic-ref` | 低レベル ref 操作 | 代替なし — reviewer は実行禁止 |
 | `git reflog expire` / `git reflog delete` | reflog 改変 | 代替なし — reviewer は実行禁止。`git reflog` の単純な display は read-only として許可 |
 | `git am` / `git apply` | patch 適用 (index 書き換え) | `git show <ref>` で patch 内容のみを参照する |
@@ -42,7 +42,7 @@ Reviewer subagents **may** use the following read-only commands for evidence gat
 - **Branch display (read-only)**: `git branch --list`, `git branch --show-current`, `git branch -a`, `git branch -r`, `git branch -v` (list/display sub-commands only — `-D/-d/-f/-m/-M` and flag-less new-branch creation are forbidden per the table above)
 - **Tag / stash / reflog (display only)**: `git tag -l`, `git tag --list`, `git stash list`, `git stash show`, `git reflog` (bare list), `git worktree list` (display-only sub-commands — `git tag -d/-a/--delete/--force`, `git stash push/pop/drop/apply/clear`, `git reflog expire/delete`, and `git worktree remove/prune` remain forbidden)
 - **Remote sync (bare fetch only)**: `git fetch` (bare form only — **`git fetch --prune` / `--force` は禁止**。reviewer コンテキストでは local tracking ref を削除する可能性があるため)
-- **Isolated worktree creation**: `git worktree add --detach <path> <ref>` または `git worktree add <path> <existing-branch>` (既存 ref のみを別ディレクトリに展開する形式に限定。`-b <newbranch>` および引数なし形式は新規 ref が leak する原因となるため禁止 — orchestrator 側の `hooks/scripts/pr-cycle-cleanup.sh` で残置回収するが、reviewer 側で named branch を作らないのが第一防御線。`<path>` は `rite-review-mutation-*` / `rite-revert-test-*` の名前空間に置く — `Edit` / `Write` はこの名前の worktree の中でしか許可されない。orchestrator が回収するのは `${TMPDIR:-/tmp}` 配下の worktree だけで、detached なら名前を問わず回収されるが、`<existing-branch>` の形は `${TMPDIR:-/tmp}` 直下で名前空間の名前を持つものしか回収されない。名前空間の外の `<existing-branch>` の形では、その branch が下記 Invariant の branch 一覧の drift として報告される)
+- **Isolated worktree creation**: `git worktree add --detach <path> <ref>` (既存 ref を detached HEAD で別ディレクトリに展開する形式に限定。branch を名指しして展開する形は、その branch を別の worktree が checkout 中だと git が拒否する — レビュー対象の head はセッション worktree で checkout 中である。`-b <newbranch>` および引数なし形式は新規 ref が leak する原因となるため禁止 — orchestrator 側の `hooks/scripts/pr-cycle-cleanup.sh` で残置回収するが、reviewer 側で named branch を作らないのが第一防御線。`<path>` は `rite-review-mutation-*` / `rite-revert-test-*` の名前空間に置く — `Edit` / `Write` はこの名前の worktree の中でしか許可されない。orchestrator が回収するのは `${TMPDIR:-/tmp}` 配下の worktree だけで、detached なら名前を問わず回収される)
 - **Workflow helpers**: `gh` CLI for reading PR/Issue metadata (writes are in the table above), plugin hook scripts (except the state-changing forms in the table above), test runners (`bash <test>`, `pytest`, `npm test`, etc.)
 
 rationale: ../skills/reviewers/references/reviewer-base-rationale.md#read-only-is-a-state-level-guarantee
