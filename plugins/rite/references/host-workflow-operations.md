@@ -8,7 +8,7 @@
 
 ## チェックアウト外の git / gh
 
-flow-state が active なセッションで、実効 cwd（cwd に `cd` を、git ではさらに `-C` を反映したもの）がチェックアウト（main checkout とその worktree）の外にある git / gh 呼び出しとスクリプト実行は、Claude の PreToolUse（`pre-tool-bash-guard.sh`）が拒否する。Codex と Grok の明示実行にはこの検査が無いため、git / gh とスクリプトはチェックアウトの中から実行し、外のファイルは絶対パスで渡す。
+flow-state が active なセッションで、実効 cwd（cwd に `cd` と `env -C` / `sudo -D`（`--chdir`）を、git ではさらに `-C` を反映したもの）がチェックアウト（main checkout とその worktree）の外にある git / gh 呼び出しとスクリプト実行は、Claude の PreToolUse（`pre-tool-bash-guard.sh`）が拒否する。Codex と Grok の明示実行にはこの検査が無いため、git / gh とスクリプトはチェックアウトの中から実行し、外のファイルは絶対パスで渡す。
 
 ## Skill と caller
 

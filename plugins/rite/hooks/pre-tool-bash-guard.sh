@@ -38,7 +38,8 @@
 #      commits are not this pattern. Alternative: leave file changes, or revisit
 #      the Issue. Do not create an empty commit.
 #  10. While a rite session is active, git / gh calls and script runs whose
-#      effective directory (the hook cwd moved by cd, and for git by -C) is
+#      effective directory (the hook cwd moved by cd and env -C / sudo -D
+#      (--chdir), and for git by -C) is
 #      outside the checkout — the main checkout and its worktrees — are denied.
 #      Alternative: cd into the checkout and pass outside paths as absolute paths.
 #
@@ -1592,17 +1593,28 @@ if [ -z "$BLOCKED_PATTERN" ]; then
     # stays there, so the parse is skipped for the common case. The words cover
     # every directory change checkout-cwd.py follows (cd, pushd, popd, git -C,
     # env -C / --chdir, sudo -D / --chdir).
-    # A command too long to parse is denied only when its text may run git, gh or
-    # a script; the words are matched coarsely, as the commit checks do.
-    _co_runs='(^|[^[:alnum:]_.-])(git|gh|bash|sh|zsh|dash|ksh|fish|python[0-9.]*|node|perl|ruby|source|eval)([^[:alnum:]_-]|$)|(^|[[:space:];&|(])\.\.?/|\.(sh|bash|py|js|pl|rb)([^[:alnum:]_]|$)'
     if [ -n "$_co_root_p" ] && [[ "$_co_cwd_p" == "$_co_root_p" || "$_co_cwd_p" == "$_co_root_p"/* ]] \
        && [[ "$COMMAND" != *cd* && "$COMMAND" != *pushd* && "$COMMAND" != *popd* \
              && "$COMMAND" != *-C* && "$COMMAND" != *chdir* && "$COMMAND" != *sudo* ]]; then
       :
     elif ! _rite_btg_surface_within_budget "$COMMAND"; then
-      if [[ "$COMMAND" =~ $_co_runs ]]; then
+      # A command too long to parse is denied only when its text outside heredoc
+      # bodies may run git, gh or a script: a git / gh / interpreter / wrapper word,
+      # or at a command position a `. `, a path or a variable (what checkout-cwd.py
+      # counts as a script). The text is matched coarsely, as the commit checks do;
+      # the bodies are dropped line by line, which stays within the time limit.
+      _co_text=$(printf '%s\n' "$COMMAND" | LC_ALL=C awk -v q="'" '
+        delim != "" { line = $0; if (tabs) sub(/^\t+/, "", line); if (line == delim) delim = ""; next }
+        { print
+          if (match($0, "(^|[^<])<<-?[ \t]*[\"" q "]?[A-Za-z_][A-Za-z0-9_]*")) {
+            head = substr($0, RSTART, RLENGTH); tabs = (head ~ "^[^<]*<<-")
+            sub("^[^<]*<<-?[ \t]*[\"" q "]?", "", head); delim = head } }') || _co_text="$COMMAND"
+      _co_nl=$'\n'
+      _co_runs='(^|[^[:alnum:]_.-])(git|gh|bash|sh|zsh|dash|ksh|fish|python[0-9.]*|node|perl|ruby|source|eval|timeout|xargs|sudo|nice|stdbuf|nohup|env|exec|command|builtin|time)([^[:alnum:]_-]|$)'
+      _co_runs+='|(^|[;&|(]|'"$_co_nl"')[[:space:]]*(\.[[:space:]]|["'"'"']?[~/$`]|[^[:space:];&|()<>"'"'"']*/)'
+      if [[ "$_co_text" =~ $_co_runs ]]; then
         BLOCKED_PATTERN="outside-checkout-uninspectable"
-        BLOCKED_REASON="The directory each git, gh or script call in this command runs in cannot be checked within the hook time limit (${#COMMAND} characters). A check that runs out of time lets the command run, so it is denied without inspection."
+        BLOCKED_REASON="This command is too long to check the directory each call runs in within the hook time limit (${#COMMAND} characters), and its text outside heredoc bodies mentions git, gh or a way to run a script. A check that runs out of time lets the command run, so it is denied without inspection."
         BLOCKED_ALTERNATIVE="Split the command, or write long text to a file with a file-editing tool, and run git, gh and scripts from inside the checkout."
       fi
     else
@@ -1627,7 +1639,7 @@ if [ -z "$BLOCKED_PATTERN" ]; then
         if [ -n "$_co_dir" ]; then
           _co_where="in ${_co_dir}, which is outside the checkout"
         else
-          _co_where="in a directory that cannot be determined (a cd to a variable set outside this command, cd -, pushd / popd, or more directory changes than are followed)"
+          _co_where="in a directory that cannot be determined (a directory given by a variable that this command does not assign exactly once to a literal, cd -, pushd / popd, env -S, or more directory changes than are followed)"
         fi
         BLOCKED_PATTERN="outside-checkout"
         BLOCKED_REASON="While a rite session is active, git, gh and scripts run only inside the checkout (${_co_root} or one of its worktrees). This command runs '${_co_word}' ${_co_where}. A credential chosen by directory, such as a gh wrapper that picks the account by cwd, would act as another account there, and whether a script calls gh cannot be seen."

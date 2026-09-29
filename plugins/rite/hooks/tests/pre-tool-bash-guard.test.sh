@@ -3094,6 +3094,35 @@ p10_allow "a cd kept inside the first of two subshells" "$p10_wt" "(cd $p10_scra
 p10_allow "a cd kept inside an inner subshell" "$p10_wt" "( (cd $p10_scratch); gh api x )"
 p10_allow "a long command that runs no git, gh or script" "$p10_scratch" \
   "echo $(printf 'x%.0s' $(seq 1 9000)) > out.txt"
+p10_deny "gh in a substitution after a cd in its subshell" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "(cd $p10_scratch && echo \$(gh api x))"
+p10_deny "script in a substitution after a cd in its subshell" outside-checkout "runs 'bash' in $p10_scratch" \
+  "$p10_wt" "(cd $p10_scratch; x=\$(bash rec.sh))"
+p10_allow "a substitution after a closed subshell" "$p10_wt" "(cd $p10_scratch); echo \$(gh api x)"
+p10_deny "gh in an inner subshell after the outer subshell's cd" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "(cd $p10_scratch; (gh api x))"
+p10_deny "gh after a cd that may fail" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_scratch" "cd $p10_wt/missing; gh api x"
+p10_deny "a command behind env -S" outside-checkout "cannot be determined" \
+  "$p10_wt" "env -S '-C $p10_scratch gh api x'"
+p10_deny "gh behind sudo -D" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "sudo -D $p10_scratch gh api x"
+p10_deny "gh behind xargs -I" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "cd $p10_scratch && xargs -I {} gh api {}"
+p10_deny "gh behind a joined env -u" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "cd $p10_scratch && env -uHOME gh api x"
+p10_deny "gh after popd" outside-checkout "cannot be determined" "$p10_wt" "popd; gh api x"
+p10_deny "a variable reassigned by read" outside-checkout "cannot be determined" \
+  "$p10_wt" "d=$p10_wt; read d; cd \"\$d\" && gh api x"
+p10_deny "a variable reassigned by for" outside-checkout "cannot be determined" \
+  "$p10_wt" "d=$p10_wt; for d in $p10_scratch; do cd \"\$d\" && gh api x; done"
+p10_long=$(printf 'x%.0s' $(seq 1 9000))
+p10_deny "a long command that runs a script by path" outside-checkout-uninspectable "a way to run a script" \
+  "$p10_wt" "echo $p10_long > $p10_scratch/body.txt; cd $p10_scratch && $p10_scratch/record"
+p10_deny "a long command that runs a script by variable" outside-checkout-uninspectable "a way to run a script" \
+  "$p10_wt" "echo $p10_long > $p10_scratch/body.txt; cd $p10_scratch && \"\$runner\""
+p10_allow "a long heredoc that mentions git and gh" "$p10_scratch" \
+  "$(printf 'cat > out.md <<%s\n%s\nEOF' "'EOF'" "$(printf 'Run git status then gh pr view. %.0s' $(seq 1 300))")"
 p10_broken=$(mktemp -d "${TMPDIR:-/tmp}/rite-p10-broken.XXXXXX")
 printf 'gitdir: %s/missing\n' "$p10_broken" > "$p10_broken/.git"
 mkdir -p "$p10_broken/.rite/sessions"

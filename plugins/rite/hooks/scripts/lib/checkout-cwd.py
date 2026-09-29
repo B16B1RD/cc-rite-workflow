@@ -5,8 +5,8 @@ Usage: checkout-cwd.py --command <command> --cwd <hook cwd> --root <main checkou
 
 The checkout is the root's repository: the main checkout and every worktree of it,
 told apart from other directories by their common git dir. Each call is judged in
-the directories it may run in: the hook cwd, moved by each cd before it and, for
-git, by its -C options. One line is printed per call and directory outside the
+the directories it may run in: the hook cwd, moved by each cd before it and by
+env -C / sudo -D (--chdir), and for git by its -C options. One line is printed per call and directory outside the
 checkout, "<kind>\\t<directory>\\t<word>", with an empty directory when the directory
 cannot be known. A root without .git defines no checkout, so nothing is printed.
 Exit 1 when the command cannot be parsed or git cannot read a root that has .git.
@@ -116,7 +116,8 @@ def command_index(words, directories, variables):
             if joined is None and not option.startswith("--") and option[:2] in valued and len(option) > 2:
                 option, joined = option[:2], option[2:]
             if option in opaque:
-                return index, directories, True
+                # The split string can carry its own -C, so the directory is unknown too.
+                return index, None, True
             if option not in valued:
                 # A flag without a value.
                 index += 1
@@ -195,14 +196,15 @@ def each_call(command, cwd):
     """Yield (kind, directories, word) for each git / gh call and script run, in order.
     directories is the set it may run in, or None when that cannot be known.
 
-    A literal cd moves the calls after it; one after || may not run, so the calls
-    after it may run in either directory. A cd in a pipeline or in the background
-    runs in a subshell and moves nothing. A variable counts as literal when this
-    command assigned it a literal value once and changes it nowhere else. A cd to any
-    other variable, cd -, pushd / popd, and a cd with options or wrappers make the
-    directory unknown. A cd in a ( ) group moves only the calls in that group and the
-    groups inside it; a cd in a command substitution moves only the calls in that run
-    of substituted commands.
+    A literal cd moves the calls after it. One after ||, or to a directory that does
+    not exist yet, may not take effect, so the calls after it may run in either
+    directory. A cd in a pipeline or in the background runs in a subshell and moves
+    nothing. A variable counts as literal when this command assigned it a literal
+    value once and changes it nowhere else. A cd to any other variable, cd -,
+    pushd / popd, and a cd with options or wrappers make the directory unknown. A cd
+    in a ( ) group moves only the calls in that group, the groups inside it and the
+    command substitutions of its commands; a cd in a command substitution moves only
+    the calls in that run of substituted commands.
     """
     path_dirs = {Path(p).resolve() for p in os.environ.get("PATH", "").split(os.pathsep) if p}
     here, nested_here, in_nested, changes, variables = {Path(cwd).resolve()}, None, False, 0, {}
@@ -216,11 +218,14 @@ def each_call(command, cwd):
 
     segments = scope.shell_segments(command, group_ids=True)
     trusted = _assigned_once(segments)
-    for words, nested, before, after in segments:
+    for position, (words, nested, before, after) in enumerate(segments):
         group = nested[1] if isinstance(nested, tuple) else None
         substituted = nested is True
         if substituted and not in_nested:
-            nested_here = here
+            # A substitution's commands come just ahead of the command containing it,
+            # which runs in its own group's directory.
+            owner = next((n for _w, n, _b, _a in segments[position:] if n is not True), False)
+            nested_here = group_base(owner[1]) if isinstance(owner, tuple) else here
         in_nested = substituted
         base = nested_here if substituted else group_base(group) if group else here
         if not nested and all(_ASSIGNMENT.fullmatch(word) for word in words):
@@ -248,9 +253,10 @@ def each_call(command, cwd):
             else:
                 changes += 1
                 moved = _move(base, target)
-            if before == "||" and moved is not None and base is not None:
+            may_fail = before == "||" or (moved is not None and any(not path.is_dir() for path in moved))
+            if may_fail and moved is not None and base is not None:
                 moved = moved | base
-            elif before == "||":
+            elif may_fail:
                 moved = None
             if substituted:
                 nested_here = moved
