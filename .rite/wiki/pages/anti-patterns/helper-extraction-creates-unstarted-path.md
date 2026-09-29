@@ -17,12 +17,15 @@ sources:
     resource: "raw/reviews/20260924T163426Z-pr-3058.md"
   - type: "fixes"
     resource: "raw/fixes/20260924T164422Z-pr-3058.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T033128Z-pr-3349.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-24T17:20:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:45:00Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-24T17:20:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:45:00Z" }
 ---
 
 # インライン処理の helper 抽出は「helper が起動しない」経路を新設し、marker 不在＝成功の消費規則を破る
@@ -63,6 +66,10 @@ fi
 
 **「失敗も marker で返す」契約の helper に `return N` 型の失敗経路を足すと、同じ罠を helper の内側で作る。** 失敗時も marker（`unknown` 等）を出して rc=0 で返す契約の検出関数に、新しい前提（設定ファイルの所在解決など）の失敗を `|| return 2` の形で足したところ、dispatcher がその関数の rc を捨てていたため、marker 0 本・rc=0 で終わった。消費側は「marker 不在＝成功」と読むので、呼び出し側の委譲ガードはこの失敗に反応しない。新しい失敗経路は rc で表さず、既存の失敗経路と同じ marker 形（分類不能を表す `unknown` と reason）へ寄せる。rc で返したくなったら、まずその rc を誰が読むかを dispatcher まで辿って確かめる。
 
+**移設で helper の末尾に marker の echo を足すと、最後のコマンドの失敗が「空の値で成功」に変わる。** 移設元のブロックは最後のコマンドの失敗で止まっていたが、helper へ移して値を marker として echo する行を末尾に足すと、その echo が成功して rc=0 で終わる。値を取るコマンドが失敗しても、消費側には空の値を持つ正常な marker が届く。marker を出す前に値が空でないことを検査し、空なら失敗として止める。
+
+**移設したら、移設先を参照する文書を全部 grep して直す。** 移設したコードを説明する SoT や rationale（同期義務を書いた一覧、逆引きの説明など）は複数ファイルに散っていることが多い。helper へ移したら、旧位置を指す記述を全文書から grep で探して参照先を直す。
+
 ## 関連ページ
 
 - [Exit code semantic preservation: caller は case で語彙を保持する](../patterns/exit-code-semantic-preservation.md)
@@ -77,3 +84,4 @@ fi
 - [fix 結果](../../raw/fixes/20260901T162955Z-pr-2500.md)
 - [レビュー結果](../../raw/reviews/20260924T163426Z-pr-3058.md)
 - [fix 結果](../../raw/fixes/20260924T164422Z-pr-3058.md)
+- [レビュー結果](../../raw/reviews/20260929T033128Z-pr-3349.md)

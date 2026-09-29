@@ -4,12 +4,16 @@ title: "文言直後を前方一致で固定する pin は、接頭辞が短い�
 domain: "anti-patterns"
 description: "固定した接頭辞が短い箇所（閉じ括弧 1 文字など）ほど、その後ろへの付け足しで意味を反転させる変異を通す。行末まで続く箇所は完全一致（行末まで）で固定し、後続文がある箇所だけ前方一致にする。"
 created: "2026-09-26T10:20:00+09:00"
-generated: { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T10:20:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:45:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260926T093421Z-pr-3138.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T033133Z-pr-3424.md"
 tags: ["test-fixation", "mutation-testing", "pin", "prefix-match", "default-arm"]
 confidence: high
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:45:00Z" }
 ---
 
 # 文言直後を前方一致で固定する pin は、接頭辞が短いほど後続の付け足しで意味を反転させる変異を通す
@@ -35,6 +39,14 @@ confidence: high
 
 対策は既定腕を必ず書き、「対応する期待値が無い」ことをテストの fail-fast として扱う（黙って前の値を使い回さない）。
 
+### 分岐ごとの案内文を固定するときは、もう一方の文言が無いことも固定する
+
+原因の違う 2 つの失敗を 1 つの分岐がまとめて受けていると、どちらにも同じ対処文が出る。検査自体が完了できなかった失敗に、検査の hit 行を探させる案内を出すと、存在しない行を探すことになり原因の解消が遅れる。原因が違えば分岐も案内も分ける。
+
+分けた案内文をテストで固定するときは、期待する文字列が出ることに加えて、もう一方の分岐の文字列が出ないことも同時に固定する。期待文字列だけの pin は、両方の文言を出す変異や分岐の取り違えを通す。
+
+分岐の条件を完全一致で固定するには、接頭辞が同じで末尾に文字を足した似た値のケースを加える。これが無いと、完全一致が前方一致へ退行しても検出できない。
+
 ## 関連ページ
 
 - [prefix 分岐 case の `*)` catch-all は未知の将来 prefix を silent に default 動作へ吸収する](./catch-all-case-arm-absorbs-future-prefix.md)
@@ -42,3 +54,4 @@ confidence: high
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20260926T093421Z-pr-3138.md)
+- [レビュー結果](../../raw/reviews/20260929T033133Z-pr-3424.md)

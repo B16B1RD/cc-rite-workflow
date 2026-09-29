@@ -25,9 +25,13 @@ sources:
     resource: "raw/fixes/20260813T081923Z-pr-2304.md"
   - type: "reviews"
     resource: "raw/reviews/20260813T102011Z-pr-2308.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T033107Z-pr-3419.md"
 tags: [config-bump, inline-comment, drift, rollout-strategy, order-emphasis-consistency, delegation-refactor, terminology-table, byte-unchanged-stale]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-13T10:27:46Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:45:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:45:00Z" }
 ---
 
 # 状態変化後も未来形 / 旧値前提のインラインコメントが残置する (stale historical comment drift)
@@ -139,6 +143,10 @@ control-flow 分類を変える refactor (hard-fail-fast → soft-failure、Pyth
 
 鏡像形（完了形の先書き）を直したあと、本形（状態が進んだのに宣言が旧値）が同じファイルに残る。片方を直したら、もう片方の時制も同じ sweep に入れる。
 
+### 判定の述語を変えると、離れた呼び出し箇所の説明コメントも古くなる
+
+判定の述語を変える fix では、定義のそばのコメントだけでなく、同じ判定を別の場所で説明しているコメントも古くなりうる。呼び出し箇所のコメントが判定の中身を言い換えて複製していると、述語の変更から取り残される。呼び出し箇所のコメントは判定の中身を書かず、定義を指すだけにすると、述語を変えても drift しない。
+
 ### 関連 anti-pattern との区別
 
 | pattern | scope | 検出 timing |
@@ -166,3 +174,4 @@ control-flow 分類を変える refactor (hard-fail-fast → soft-failure、Pyth
 - [恒久記録簿へ未了工程を完了形で書いた形を検出](../../raw/reviews/20260813T081206Z-pr-2304.md)
 - [来歴記述を範囲宣言へ書き換え、公開手順を 5 ステップで明示](../../raw/fixes/20260813T081923Z-pr-2304.md)
 - [差し替え後も出典ファイルの冒頭宣言が旧実態のまま残っていた形](../../raw/reviews/20260813T102011Z-pr-2308.md)
+- [判定の述語を変えた fix で、離れた呼び出し箇所の説明コメントが古くなったレビュー結果](../../raw/reviews/20260929T033107Z-pr-3419.md)

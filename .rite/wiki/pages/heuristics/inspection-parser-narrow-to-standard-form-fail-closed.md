@@ -4,7 +4,7 @@ title: "検査用のシェル字句解析は判定対象を標準形に絞り、
 domain: "heuristics"
 description: "コマンドを検査する guard で bash の字句規則を近似する自前パーサを直し続けると、指摘は前回の修正の隣の形として増え続ける。理解すると主張する範囲を実運用の標準形に絞り、それ以外は分類したうえで止める方が収束する。"
 created: "2026-09-25T03:58:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T09:47:59Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:45:00Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T10:30:52Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T11:40:00Z" }
@@ -12,6 +12,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T09:18:19Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T06:02:43Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T09:47:59Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:45:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260924T212015Z-pr-3060.md"
@@ -47,6 +48,10 @@ sources:
     resource: "raw/reviews/20260928T084458Z-pr-3388.md"
   - type: "fixes"
     resource: "raw/fixes/20260928T085815Z-pr-3388.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T032715Z-pr-3423.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T033457Z-pr-3423.md"
 tags: ["guard", "parser", "fail-closed", "heredoc", "divergence"]
 confidence: high
 ---
@@ -136,6 +141,14 @@ bash で `${s:i:1}` を回して 1 文字ずつ進む走査は、UTF-8 ロケー
 
 拒否集合を広げたときは、同じ集合を列挙している文書を grep で洗い出し、同じ commit で揃える。対象は禁止表・仕様・別レイヤーのヘッダ・テストのコメントなどである。列挙が複数箇所にあると、拡大のたびに取り残しが出る。
 
+### 区切り文字を語に取り込む条件は、ソース上の位置で判定する
+
+`2>&1` や `&>log` を 1 語として扱うために `&` を語へ取り込む条件を広げると、区切りとして働くべき背景実行の `&` まで吸収しやすい。「`&` の次が `>` なら直前の語が何でも連結する」とした条件は、`git push&>/dev/null` の `push&>/dev/null` を 1 語にし、後続コマンドがコマンド位置から外れて検査を素通りした。クォートを外した後の語の末尾で `<` / `>` を見る条件も、`echo '->'& git push` のようにクォート内の `>` で終わる語の直後の `&` を取り込んでしまう。
+
+取り込みは「リダイレクトの形がソース上で成立しているとき」に限る。直前の文字がソース上の `<` / `>` のとき（`2>&1`）と、語が空で次が `>` のとき（`&>log`）だけに絞り、語の途中で `&>` が始まったら語を閉じてから `&` を読み直す。検査を緩める方向の規則変更には、背景実行の `&` のように「区切りとして働くべき形」を拒否側のケースとして固定しておくと、条件を広げすぎる変異を検出できる。base の hook と同じ入力を流し、deny から allow に変わる形を列挙すると回帰が見つかる。
+
+bash と別言語の解析器の間で語を受け渡すときは、区切りに改行を使わない。語の中の改行で行数がずれる。NUL など語に現れない区切りを使う。
+
 ## 関連ページ
 
 - [同じ述語を 2 言語で並行実装すると受理集合が環境で割れる — 定義を 1 本に寄せるまで症状は再発し続ける](../anti-patterns/dual-language-predicate-divergence.md)
@@ -162,3 +175,5 @@ bash で `${s:i:1}` を回して 1 文字ずつ進む走査は、UTF-8 ロケー
 - [fix 結果（曖昧な記号を 2 通りに読む拒否、脅威モデルの固定）](../../raw/fixes/20260928T062549Z-pr-3388.md)
 - [レビュー結果（拒否集合の列挙の取り残し、前段の短い語の一致）](../../raw/reviews/20260928T084458Z-pr-3388.md)
 - [fix 結果（前段の語の境界、拒否集合の列挙の同時修正）](../../raw/fixes/20260928T085815Z-pr-3388.md)
+- [レビュー結果（区切りの `&` を語に吸収した退行）](../../raw/reviews/20260929T032715Z-pr-3423.md)
+- [fix 結果（ソース上の位置で取り込みを判定する）](../../raw/fixes/20260929T033457Z-pr-3423.md)

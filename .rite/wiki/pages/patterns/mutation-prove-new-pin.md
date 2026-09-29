@@ -41,9 +41,13 @@ sources:
     resource: "raw/reviews/20260927T110720Z-pr-3259.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T110746Z-pr-3265.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T032053Z-pr-3422.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T033128Z-pr-3422.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:13:23Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:45:00Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T04:58:47Z" }
@@ -52,6 +56,7 @@ verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-04T13:54:13Z" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T09:12:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:13:23Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:45:00Z" }
 ---
 
 # 追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない
@@ -105,6 +110,10 @@ assert "Step 12 wiki_ingest_check has an unchecked marker-absence row" "1" \
 
 **括弧の中に足した条件は、括弧の外だけを照合する pin では守られない**: 限定句の括弧内に新しい停止条件を足しても、既存の pin が括弧の外の文字列だけを見ていれば、その条件はどのテストにも固定されない。条件を足したら、その条件の文字列まで含む pin があるかを確かめる。
 
+**OR でつないだ拒否条件は、項を 1 つずつ外す変異で確かめる**: 「phase が implement または fix のとき拒否する」分岐に implement の拒否ケースしか置かないと、fix の項を外す変異がスイートを通り、fix phase の入力が素通りする。各項について、その項だけで拒否に入る入力のケースを置く。既存の単一ケースを、項を並べたリストで回すループへ一般化すると、新しい構造を足さずに済む。
+
+**修正が穴を塞いだかは、前に生き残った変異が今は落ちることで確かめる**: 前 cycle で生存した変異を修正後のテストへ同じ形で当て直し、当該ケースだけが赤くなることを見る。修正後にスイートが green であることは、修正が穴を塞いだ根拠にならない。
+
 ## 関連ページ
 
 - [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](./absence-pin-base-present-head-absent-single-line.md)
@@ -130,3 +139,5 @@ assert "Step 12 wiki_ingest_check has an unchecked marker-absence row" "1" \
 - [途中終了防止の空値分岐が変異で固定されていないと指摘されたレビュー結果](../../raw/reviews/20260913T090150Z-pr-2776.md)
 - [起動元の条件を外す変異を修正前後のテストへ流したレビュー結果](../../raw/reviews/20260927T110720Z-pr-3259.md)
 - [広げた検出分岐と括弧内の条件が固定されていないことを示したレビュー結果](../../raw/reviews/20260927T110746Z-pr-3265.md)
+- [拒否条件の片方の phase を固定するケースを足した fix 結果](../../raw/fixes/20260929T032053Z-pr-3422.md)
+- [生き残った変異を当て直して修正を確かめたレビュー結果](../../raw/reviews/20260929T033128Z-pr-3422.md)

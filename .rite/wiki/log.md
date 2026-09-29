@@ -58,6 +58,12 @@
 * **Update**: [実装が分岐しているならテストも分岐の数だけ要る — 既定構成の経路こそ抜けやすい](pages/heuristics/implementation-branch-count-equals-test-branch-count.md) — OR で書いた拒否条件の片側が未固定だったことを示したレビュー結果で補強
 * **Update**: [シェル本体を別ディレクトリの helper へ移すと、相対パス・引数・出力元の記述が移設元を前提に残る](pages/anti-patterns/helper-relocation-leaves-origin-relative-references.md) — 参照記述の更新漏れが別ファイルで再発見されたレビュー結果で補強
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=582, broken_refs=0
+* **Update**: [追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない](pages/patterns/mutation-prove-new-pin.md) — raw/fixes/20260929T032053Z-pr-3422.md と raw/reviews/20260929T033128Z-pr-3422.md を統合
+* **Update**: [検査用のシェル字句解析は判定対象を標準形に絞り、それ以外を fail-closed にする](pages/heuristics/inspection-parser-narrow-to-standard-form-fail-closed.md) — raw/reviews/20260929T032715Z-pr-3423.md と raw/fixes/20260929T033457Z-pr-3423.md を統合
+* **Update**: [状態変化後も未来形 / 旧値前提のインラインコメントが残置する (stale historical comment drift)](pages/anti-patterns/stale-historical-comment-after-state-change.md) — raw/reviews/20260929T033107Z-pr-3419.md を統合
+* **Update**: [インライン処理の helper 抽出は「helper が起動しない」経路を新設し、marker 不在＝成功の消費規則を破る](pages/anti-patterns/helper-extraction-creates-unstarted-path.md) — raw/reviews/20260929T033128Z-pr-3349.md を統合
+* **Update**: [文言直後を前方一致で固定する pin は、接頭辞が短いほど後続の付け足しで意味を反転させる変異を通す](pages/anti-patterns/short-prefix-pin-vulnerable-to-suffix-append.md) — raw/reviews/20260929T033133Z-pr-3424.md を統合
+* **Update**: [冪等のキーは毎 run 書き直す記録ではなく、run をまたいで積み上げる台帳に残す](pages/heuristics/idempotency-key-must-survive-record-rewrite.md) — raw/reviews/20260929T032130Z-pr-3393.md と raw/fixes/20260929T032906Z-pr-3393.md を統合
 
 ## 2026-09-28
 
