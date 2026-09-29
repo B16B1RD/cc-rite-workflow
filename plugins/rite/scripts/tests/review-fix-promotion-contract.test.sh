@@ -364,11 +364,13 @@ out=$(TRIAGE_GATE_RC=0 run_triage_block 7)
 assert_eq 'a tracker whose held candidate was dropped stops before the gate' '[CONTEXT] ADOPTION_GATE_RC=2' \
   "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ADOPTION_GATE_RC=' || true)"
 assert_eq 'the dropped tracker stays in the record file' '77' "$(jq -r '.adoption.records[0].tracker' "$state/adoption-5-triage.json" 2>/dev/null || true)"
-# A record file without candidates cannot carry a tracker: stop instead of guessing.
-printf '{"adoption": {"head": "old", "records": [{"ids": ["C-1"], "tracker": 77}]}}\n' > "$state/adoption-5-triage.json"
+# A tracker on a candidate the hold does not have (the classifier linked an existing Issue) does not stop
+# the run when that candidate is gone: only held candidates are merged verbatim.
+prev_records '[{"id": "C-1", "content": "full text"}, {"id": "C-2", "content": "not held"}]' '[{"ids": ["C-2"], "tracker": 90}]'
 triage_candidates='{"candidates": [{"id": "C-3", "content": "full text"}]}'
+triage_records='[{"ids": ["C-3"]}]'
 out=$(TRIAGE_GATE_RC=0 run_triage_block 7)
-assert_eq 'a record file without candidates stops before the gate' '[CONTEXT] ADOPTION_GATE_RC=2' \
+assert_eq 'a tracker on a candidate the hold does not have does not stop the run' '[CONTEXT] ADOPTION_GATE_RC=0' \
   "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ADOPTION_GATE_RC=' || true)"
 # The classifier's own tracker is kept.
 prev_records '[{"id": "C-1", "content": "full text"}]' '[{"ids": ["C-1"], "tracker": 77}]'
@@ -417,7 +419,7 @@ assert_grep '7.4.5 block releases the triage hold' "$ledger_dir/block.sh" 'adopt
 printf '#!/bin/bash\nprintf "%%s\\n" "$LEDGER_ROOT"\n' > "$ledger_dir/plugin/hooks/state-path-resolve.sh"
 ln -s "$ROOT/plugins/rite/hooks/scripts/nb-sweep-ledger.sh" "$ledger_dir/plugin/hooks/scripts/nb-sweep-ledger.sh"
 ln -s "$ROOT/plugins/rite/hooks/control-char-neutralize.sh" "$ledger_dir/plugin/hooks/control-char-neutralize.sh"
-printf '#!/bin/bash\nexit 0\n' > "$ledger_dir/plugin/hooks/flow-state.sh"
+printf '#!/bin/bash\nprintf "%%s\\n" "$@" > "$LEDGER_ROOT/flow-args"\n' > "$ledger_dir/plugin/hooks/flow-state.sh"
 # --print-record-body: LEDGER_BODY names the stored record comment (empty = no comment yet);
 # LEDGER_BODY_FAIL makes the read fail with that reason.
 cat > "$ledger_dir/plugin/hooks/review-nonblocking-record.sh" <<'STUB'
@@ -497,6 +499,8 @@ case "$out" in
   *'再開方法: '*'ただし #77 は tracker に書き戻せていない'*) pass 'an unwritable hold still prints the resume with the untracked Issue' ;;
   *) fail "an unwritable hold must print the resume: $out" ;;
 esac
+assert_grep 'an unwritable hold puts the resume in the next action' "$ledger_dir/root/flow-args" '採否の出口は出たが外部への書き込みが済んでいない。再開方法: 7.4 の外部への書き込み'
+assert_grep 'the next action names the untracked Issue' "$ledger_dir/root/flow-args" 'ただし #77 は tracker に書き戻せていない'
 
 # 7.4.2: a failed Issue creation is counted for 7.4.5, and a created Issue is written back as the record's tracker.
 awk '/^#### 7\.4\.2 / { s=1 } s && /^```bash$/ { a=1; next } a && /^```$/ { exit } a { print }' "$review" > "$ledger_dir/create.sh"
