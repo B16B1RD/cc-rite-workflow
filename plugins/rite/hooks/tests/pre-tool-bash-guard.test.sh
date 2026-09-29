@@ -3123,6 +3123,31 @@ p10_deny "a long command that runs a script by variable" outside-checkout-uninsp
   "$p10_wt" "echo $p10_long > $p10_scratch/body.txt; cd $p10_scratch && \"\$runner\""
 p10_allow "a long heredoc that mentions git and gh" "$p10_scratch" \
   "$(printf 'cat > out.md <<%s\n%s\nEOF' "'EOF'" "$(printf 'Run git status then gh pr view. %.0s' $(seq 1 300))")"
+p10_prose=$(printf 'Run git status then gh pr view. %.0s' $(seq 1 300))
+p10_deny "gh after a long heredoc" outside-checkout-uninspectable "a way to run a script" \
+  "$p10_wt" "$(printf 'cat > %s/o.md <<%s\n%s\nEOF\ncd %s && gh api x' "$p10_scratch" "'EOF'" "$p10_prose" "$p10_scratch")"
+p10_deny "a script after a long heredoc with a hyphenated delimiter" outside-checkout-uninspectable "a way to run a script" \
+  "$p10_wt" "$(printf 'cat > %s/o.md <<%s\n%s\nPR-BODY\ncd %s && ./rec.sh' "$p10_scratch" "'PR-BODY'" "$p10_long" "$p10_scratch")"
+p10_deny "gh after a tab-indented heredoc delimiter" outside-checkout-uninspectable "a way to run a script" \
+  "$p10_wt" "$(printf 'cat > %s/o.md <<-%s\n\t%s\n\tEOF\ncd %s && gh api x' "$p10_scratch" "'EOF'" "$p10_long" "$p10_scratch")"
+p10_deny "gh after a << inside a string" outside-checkout-uninspectable "a way to run a script" \
+  "$p10_wt" "$(printf 'printf %s > %s/a.c\necho %s\ncd %s && gh api x' "'mask = 1 << bit'" "$p10_scratch" "$p10_long" "$p10_scratch")"
+p10_deny "a long command that runs a script after then" outside-checkout-uninspectable "a way to run a script" \
+  "$p10_wt" "echo $p10_long > $p10_scratch/b; cd $p10_scratch && if true; then ./rec.sh; fi"
+p10_deny "a long command that runs a variable after do" outside-checkout-uninspectable "a way to run a script" \
+  "$p10_wt" "echo $p10_long > $p10_scratch/b; cd $p10_scratch && for f in a; do \"\$runner\"; done"
+p10_deny "a long command that runs a script in braces" outside-checkout-uninspectable "a way to run a script" \
+  "$p10_wt" "echo $p10_long > $p10_scratch/b; cd $p10_scratch && { ./rec.sh; }"
+p10_deny "a long command that runs a variable behind timeout" outside-checkout-uninspectable "a way to run a script" \
+  "$p10_wt" "echo $p10_long > $p10_scratch/b; cd $p10_scratch && timeout 5 \"\$runner\""
+p10_deny "a long command that runs a variable behind env" outside-checkout-uninspectable "a way to run a script" \
+  "$p10_wt" "echo $p10_long > $p10_scratch/b; cd $p10_scratch && env \"\$runner\""
+p10_deny "a long command that sources a file" outside-checkout-uninspectable "a way to run a script" \
+  "$p10_wt" "echo $p10_long > $p10_scratch/b; cd $p10_scratch && . rec"
+p10_deny "a long command that runs a script on a later line" outside-checkout-uninspectable "a way to run a script" \
+  "$p10_wt" "$(printf 'echo %s > %s/b\ncd %s\n%s/record' "$p10_long" "$p10_scratch" "$p10_scratch" "$p10_scratch")"
+p10_allow "a long prose line with wrapper words" "$p10_scratch" \
+  "echo \"$p10_long the time is now; run this command with env set\" > out.txt"
 p10_broken=$(mktemp -d "${TMPDIR:-/tmp}/rite-p10-broken.XXXXXX")
 printf 'gitdir: %s/missing\n' "$p10_broken" > "$p10_broken/.git"
 mkdir -p "$p10_broken/.rite/sessions"
