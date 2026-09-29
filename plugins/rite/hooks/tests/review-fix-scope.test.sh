@@ -104,7 +104,9 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
     review_path = Path(cycle['result_path'])
     issue_file, plan_file = private / 'issue.json', private / 'plan.json'
     issue = {'number': 42, 'body': '## 4. 対象範囲\n### 4.1 対象\n- `src/a.py`\n'
-             '### 4.2 対象外\n- `protected`\n## 5. 受入条件\n- 全指摘を一括修正する\n'}
+             '### 4.2 対象外\n- `protected`\n'
+             '- オプション `--detach`、コマンド `git worktree add`、識別子 `non_targets`\n'
+             '## 5. 受入条件\n- 全指摘を一括修正する\n'}
     dump(issue_file, issue)
     related_command = "printf 'related\\n' >> .rite/related.log; if test -f .rite/fail; then exit 7; fi"
     plan = dict(review_context=context, issue_number=42, issue_body=issue['body'],
@@ -150,6 +152,21 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
           saved['mechanical'] and saved['checked_at'], 'canonical scope receipt separates semantic and mechanical evidence')
     invoke()  # Interrupted callers may repeat the check without starting another review.
     check(json.loads(state_path.read_text())['cycle_count'] == 1, 'idempotent check preserves cycle')
+    file_issue = dict(issue, body=issue['body'].replace('`protected`', '`protected/secret.py`'))
+    file_plan = copy.deepcopy(plan)
+    file_plan['issue_body'] = file_issue['body']
+    file_plan['constraints']['non_targets'] = ['protected/secret.py']
+    dump(issue_file, file_issue)
+    save_plan(file_plan)
+    invoke()
+    file_plan['constraints']['non_targets'] = []
+    save_plan(file_plan)
+    omitted_file = invoke(ok=False)
+    check(omitted_file.returncode != 0 and 'explicit Non-Target omitted' in omitted_file.stderr,
+          'existing file still requires a non-target constraint')
+    dump(issue_file, issue)
+    save_plan()
+    invoke()
     save_plan(dict(plan, issue_body=issue['body'] + '\n- 追加の受入条件\n'))
     mismatch = invoke(ok=False)
     check('Issue specification changed or mismatched' in mismatch.stderr
@@ -591,6 +608,56 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
             os.chdir(cwd_before)
         check(leaked != 'wrong',
               'base_branch() does not leak base: from a non-alpha top-level key section (got %r)' % leaked)
+
+    # A directory input leaves out the Python bytecode cache found beneath it, and
+    # only that: source, untracked and ignored files still change the key, a cache
+    # named as an input is checked in full, and a .pyc symlink still cannot escape.
+    with tempfile.TemporaryDirectory(prefix='rite-fix-scope-pyc-') as fp_tmp:
+        fp_root = Path(fp_tmp)
+        subprocess.run(['git', 'init', '-q'], cwd=fp_root, check=True)
+        (fp_root / '.git/info/exclude').write_text('__pycache__/\nbuild.log\n')
+        pkg = fp_root / 'pkg'
+        (pkg / 'sub').mkdir(parents=True)
+        (pkg / 'm.py').write_text('x = 1\n')
+        subprocess.run(['git', 'add', 'pkg/m.py'], cwd=fp_root, check=True)
+        cwd_before = os.getcwd()
+        os.chdir(fp_root)
+        try:
+            def key(*inputs):
+                return review_fix_scope.fingerprint(dict(id='t', kind='related', command='true',
+                                                         inputs=list(inputs), environment=[]))
+            base = key('pkg')
+            (pkg / '__pycache__').mkdir()
+            (pkg / '__pycache__/m.cpython-312.pyc').write_bytes(b'first')
+            (pkg / 'sub/n.pyc').write_bytes(b'first')
+            check(key('pkg') == base, 'new bytecode beneath a directory input keeps its key')
+            (pkg / '__pycache__/m.cpython-312.pyc').write_bytes(b'second')
+            check(key('pkg') == base, 'rewritten bytecode beneath a directory input keeps its key')
+            cache = key('pkg/__pycache__')
+            single = key('pkg/sub/n.pyc')
+            (pkg / '__pycache__/m.cpython-312.pyc').write_bytes(b'third')
+            (pkg / 'sub/n.pyc').write_bytes(b'third')
+            check(key('pkg/__pycache__') != cache, 'a cache directory named as an input is checked in full')
+            check(key('pkg/sub/n.pyc') != single, 'a .pyc file named as an input is checked in full')
+            for label, change in (('tracked source', lambda: (pkg / 'm.py').write_text('x = 2\n')),
+                                  ('untracked file', lambda: (pkg / 'new.py').write_text('y = 1\n')),
+                                  ('ignored non-bytecode file', lambda: (pkg / 'build.log').write_text('log\n')),
+                                  ('regular file named __pycache__', lambda: (pkg / 'sub/__pycache__').write_text('f\n')),
+                                  ('directory named like bytecode', lambda: (pkg / 'd.pyc').mkdir())):
+                before = key('pkg')
+                change()
+                check(key('pkg') != before, 'a changed ' + label + ' changes the directory key')
+            with tempfile.TemporaryDirectory(prefix='rite-fix-scope-pyc-outside-') as fp_outside:
+                (Path(fp_outside) / 'x.pyc').write_bytes(b'outside')
+                (pkg / 'x.pyc').symlink_to(Path(fp_outside) / 'x.pyc')
+                try:
+                    key('pkg')
+                    escaped = False
+                except Exception as error:
+                    escaped = 'path escapes worktree' in str(error)
+                check(escaped, 'a .pyc symlink out of the worktree still stops the key')
+        finally:
+            os.chdir(cwd_before)
 
     # git-subcommand answers each git, in order, with its subcommand and the next word;
     # it reads no session or state, so it runs outside a repository with no session.

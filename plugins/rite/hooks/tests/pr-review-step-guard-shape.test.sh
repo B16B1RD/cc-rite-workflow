@@ -184,6 +184,77 @@ case "$empty_err" in
   *) fail "the step reports the empty value itself (stderr: $empty_err)" ;;
 esac
 
+# worktree を準備しない両経路にも、変更ファイルを読む前の照合が必要。
+head_gate_section=$(sed -n '/^### 1.1.5 /,/^### 1.2 /p' "$REVIEW")
+for required in \
+  '`disabled` / `skip` → 下記の HEAD 照合を実行する' \
+  'bash {plugin_root}/scripts/pr-review-step.sh review-head-check --owner-repo {owner_repo} --pr {pr_number}' \
+  '`[CONTEXT] REVIEW_HEAD=ok`（exit 0）の場合のみステップ 1.2 へ進む' \
+  '`[review:error]`（exit 1）で停止する' \
+  '失敗時はレビュー結果を保存せず'; do
+  if [[ "$head_gate_section" == *"$required"* ]]; then
+    pass "no-worktree review routing: $required"
+  else
+    fail "no-worktree review routing: $required"
+  fi
+done
+
+if [ -n "$MUT_DIR" ]; then
+  mkdir -p "$MUT_DIR/bin"
+  cat > "$MUT_DIR/bin/git" <<'SH'
+#!/bin/bash
+[ "$*" = 'rev-parse HEAD' ] || exit 90
+printf '%s\n' "$LOCAL_HEAD"
+exit "${GIT_RC:-0}"
+SH
+  cat > "$MUT_DIR/bin/gh" <<'SH'
+#!/bin/bash
+[ "$*" = 'pr view 7 -R owner/repo --json headRefOid' ] || exit 90
+printf '%s\n' "$PR_JSON"
+exit "${GH_RC:-0}"
+SH
+  chmod +x "$MUT_DIR/bin/git" "$MUT_DIR/bin/gh"
+  LOCAL_HEAD=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  other_head=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  PR_JSON='{"headRefOid":"'"$LOCAL_HEAD"'"}'
+  GIT_RC=0 GH_RC=0
+  export LOCAL_HEAD PR_JSON GIT_RC GH_RC
+  check_head() {
+    head_output=$(PATH="$MUT_DIR/bin:$PATH" bash "$STEP" review-head-check --owner-repo owner/repo --pr 7 2>&1)
+    head_rc=$?
+    assert "$1 exit" "$2" "$head_rc"
+    if [ "$2" = 0 ]; then
+      assert "$1 success" "[CONTEXT] REVIEW_HEAD=ok; sha=$LOCAL_HEAD" "$head_output"
+    else
+      if [[ "$head_output" == *'[review:error]'* && "$head_output" != *'REVIEW_HEAD=ok'* && "$head_output" == *'gh pr checkout 7 -R owner/repo'* ]]; then
+        pass "$1 stops with recovery instructions"
+      else
+        fail "$1 stops with recovery instructions: $head_output"
+      fi
+    fi
+  }
+  check_head "matching HEAD for skip and disabled" 0
+  PR_JSON='{"headRefOid":"'"$other_head"'"}'
+  check_head "mismatching HEAD for skip and disabled" 1
+  if [[ "$head_output" == *"local HEAD=$LOCAL_HEAD; PR headRefOid=$other_head"* ]]; then
+    pass "mismatch reports both SHAs"
+  else
+    fail "mismatch reports both SHAs"
+  fi
+  GH_RC=1
+  check_head "PR retrieval failure" 1
+  GH_RC=0 PR_JSON='{"headRefOid":""}'
+  check_head "empty PR head" 1
+  PR_JSON='{"headRefOid":"invalid"}'
+  check_head "invalid PR head" 1
+  [[ "$head_output" == *'PR headRefOid=invalid'* ]] && pass "invalid PR head is diagnosed" || fail "invalid PR head is diagnosed"
+  PR_JSON='{"headRefOid":"'"$LOCAL_HEAD"'"}' GIT_RC=1
+  check_head "local HEAD retrieval failure" 1
+  GIT_RC=0 LOCAL_HEAD=invalid
+  check_head "invalid local HEAD" 1
+  [[ "$head_output" == *'local HEAD=invalid'* ]] && pass "invalid local HEAD is diagnosed" || fail "invalid local HEAD is diagnosed"
+fi
+
 if ! print_summary "$(basename "$0")" \
   "pr-review のシェルブロック形の契約。ステップ本体は plugins/rite/scripts/pr-review-step.sh、形の規則は plugins/rite/references/git-worktree-patterns.md が SoT。"; then
   exit 1

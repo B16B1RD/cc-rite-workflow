@@ -200,7 +200,7 @@ run_id・cycle counter・観測・修正・見直し・再試行権はそのま�
 
 発行は条件をすべて検証したあとに一度だけ書き込む。1 つでも崩れていれば権利を発行せず、run は `stopped` のまま残る。人間の承認は条件に含めない。
 
-発行すると `stop_reason` は run 直下から `review_run.retry.stop_reason` へ移り、`status` が `active` に戻る。権利が買えるのは fix → 検証 → review の 1 巡だけで、その review に blocking 指摘が残っていれば `retry.outcome=unresolved` を記録して元の停止理由で再停止する。残っていなければ `retry.outcome=resolved` として通常の run に戻る。いずれの場合も権利は再発行されない。決着は観測が行うため、観測を経ずに閉じた run や別経路で再停止した run では `outcome` は未確定のまま残る。
+発行すると `stop_reason` は run 直下から `review_run.retry.stop_reason` へ移り、`status` が `active` に戻る。権利が買えるのは fix → 検証 → review の 1 巡だけで、その review に blocking 指摘が残っていれば `retry.outcome=unresolved` を記録して元の停止理由で再停止する。残っていなければ `retry.outcome=resolved` として通常の run に戻る。resolved の run では、再試行で越えた停止 cycle までを以後の発散判定（iterate の cycle-gate と観測の両方）の発火点から外し、再試行のあとに新たに発散した場合だけ発火する。いずれの場合も権利は再発行されない。決着は観測が行うため、観測を経ずに閉じた run や別経路で再停止した run では `outcome` は未確定のまま残る。
 
 再試行権が未決着の間は、権利を発行した cycle（次の `review-start` が counter を進める前）に限り、iterate の cycle-gate が発散判定を保留して review へ進む。停止時と同じ推移のままでも再試行の review に届くようにするためで、cycle 上限（`max_review_cycles`）と lost 修復ゲートは保留しない。発行後は同じ計画と Issue JSON で `review-fix-scope-check.sh check` を実行してから計画どおりに修正し、`review-fix-scope-check.sh verify --kind all` が通ってから commit・push して `/rite:iterate {pr}` を再実行する。check / verify を経ない commit は検証済み修正として記録されず、`review-start` が拒否する。
 

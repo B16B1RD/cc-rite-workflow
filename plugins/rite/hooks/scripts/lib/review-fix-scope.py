@@ -269,7 +269,7 @@ def validate_plan(plan, issue, state, receipt):
     # prose restrictions remain an explicit semantic judgment by the caller.
     section = re.search(r"^### 4\.2 .*?\n(.*?)(?=^#{1,3} |\Z)", issue["body"], re.M | re.S)
     if section:
-        explicit = re.findall(r"`([^`\n]+)`", section[1])
+        explicit = [p for p in re.findall(r"`([^`\n]+)`", section[1]) if Path(p).exists()]
         require(all(any(within(path(p), n) for n in excluded) for p in explicit), "explicit Non-Target omitted from constraints")
     tests = plan["verifications"]
     require(isinstance(tests, list) and tests, "verification plan required")
@@ -333,10 +333,19 @@ def validate_plan(plan, issue, state, receipt):
     return receipt[1], sorted(set(paths))
 
 
+def bytecode_cache(entry):
+    # Running the tests rewrites these, so hashing them would make every later
+    # test run look like an input change. A symlink is never skipped: it still
+    # goes through the worktree-escape check.
+    if entry.is_symlink():
+        return False
+    return (entry.name == "__pycache__" and entry.is_dir()) or (entry.suffix == ".pyc" and entry.is_file())
+
+
 def fingerprint(test):
     contents = {}
 
-    def visit(entry, ancestors):
+    def visit(entry, ancestors, skip_cache):
         path(entry.as_posix())
         link = os.readlink(entry) if entry.is_symlink() else None
         if entry.is_dir():
@@ -344,14 +353,17 @@ def fingerprint(test):
             require(resolved not in ancestors, "cyclic verification input: " + str(entry))
             contents[str(entry)] = [entry.stat().st_mode, "directory", link]
             for child in sorted(entry.iterdir()):
-                visit(child, ancestors | {resolved})
+                if not (skip_cache and bytecode_cache(child)):
+                    visit(child, ancestors | {resolved}, skip_cache)
         elif entry.is_file():
             contents[str(entry)] = [entry.stat().st_mode, hashlib.sha256(entry.read_bytes()).hexdigest(), link]
         else:
             contents[str(entry)] = ["missing", link]
 
     for name in test["inputs"]:
-        visit(Path(path(name)), set())
+        entry = Path(path(name))
+        # A cache named as an input is checked in full.
+        visit(entry, set(), not bytecode_cache(entry))
     environment = {name: os.environ.get(name) for name in test["environment"]}
     runtime = [platform.platform(), sys.version, subprocess.check_output(["bash", "--version"], text=True).splitlines()[0]]
     return digest([test, contents, environment, runtime, str(Path.cwd().resolve())])

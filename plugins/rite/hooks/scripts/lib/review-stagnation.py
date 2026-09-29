@@ -823,8 +823,15 @@ def existing_breaker(state, run):
                     and unchanged_receipt(item, saved), "saved historical receipt is missing or changed")
             Path(temporary, str(state["pr_number"]) + "-" + str(index).zfill(8) + ".json").write_text(json.dumps(saved))
         helper = Path(__file__).resolve().parent.parent / "review-trend-divergence.sh"
+        # A retry that cleared every blocking finding moved the run past its stop;
+        # that divergence point is not fired on again. Positions count from first_cycle.
+        resolved = []
+        grant = run.get("retry")
+        if grant and grant["outcome"] == "resolved":
+            resolved = ["--resolved-through",
+                        str(grant["stop_context"]["cycle_count"] - run["first_cycle"] + 1)]
         result = subprocess.run(["bash", str(helper), "--pr", str(state["pr_number"]),
-                                 "--cycle-count", str(len(records)), "--results-dir", temporary],
+                                 "--cycle-count", str(len(records)), "--results-dir", temporary] + resolved,
                                 check=True, text=True, capture_output=True)
     marker = dict(re.findall(r"(?:^|; )([A-Za-z_]+)=([^;\n]*)", result.stdout.replace("[CONTEXT] ", "")))
     require(marker.get("TREND_DIVERGENCE") in ("ok", "fire")
