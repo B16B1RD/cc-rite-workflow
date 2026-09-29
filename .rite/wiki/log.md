@@ -34,6 +34,7 @@
 * **Update**: [base 取り込みの競合は base 側の正本を基準にし、PR の変更意図だけを載せ直す](pages/heuristics/base-intake-conflict-reapply-pr-intent-on-base-canonical.md) — raw/reviews/20260929T173243Z-pr-3452.md を統合
 * **Update**: [検査用のシェル字句解析は判定対象を標準形に絞り、それ以外を fail-closed にする](pages/heuristics/inspection-parser-narrow-to-standard-form-fail-closed.md) — raw/reviews/20260929T170054Z-pr-3446.md を統合
 * **Update**: [解析しない部分の近似判定は shell が読む語に正規化してから行い、上限超過は超えた部分だけを判定不能として扱う](pages/heuristics/approximate-parse-normalize-to-shell-words.md) — raw/fixes/20260929T175438Z-pr-3446.md を統合
+* **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=592, broken_refs=0
 
 ## 2026-09-29
 
