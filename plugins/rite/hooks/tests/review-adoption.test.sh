@@ -520,5 +520,25 @@ overlap = json.loads(result.stdout)
 check(len(overlap['reconciliation']) == 2 and
       all(r['reason'] == 'records_overlap' for r in overlap['reconciliation']), overlap)
 
+
+# A body quote can stay identical while its surrounding applicability changes.
+for source, body_path in (('issue', issue_body), ('pr', pr_body)):
+    original = body_path.read_text()
+    quote = 'tool rejects an empty NAME'
+    body_path.write_text('## Contract\n\n' + quote + '.\n')
+    record = dict(conflict, contract={'ref': source, 'text': quote})
+    initial = request_of(reconcile(record))
+    recorded = dict(record, reconciliation=answer(initial))
+    check(reconcile(recorded)['decisions'][0]['exit'] == 'ADOPT', source)
+    check(reconcile(recorded)['reconciliation'] == [], 'unchanged body reuses the answer')
+    for changed_body in (quote + ' only in strict mode.\n',
+                         quote + '.\nThis guarantee applies only in strict mode.\n'):
+        body_path.write_text('## Contract\n\n' + changed_body)
+        stale = request_of(reconcile(recorded), 'stale')
+        check(stale['fingerprint'] != initial['fingerprint'], source)
+        fresh = reconcile(dict(record, reconciliation=answer(stale)))
+        check(fresh['decisions'][0]['exit'] == 'ADOPT' and fresh['reconciliation'] == [], fresh)
+    body_path.write_text(original)
+
 print(f'review-adoption: {checks} checks passed')
 PYTEST

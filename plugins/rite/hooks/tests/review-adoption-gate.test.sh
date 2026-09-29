@@ -535,5 +535,40 @@ for linked_axis in (True, False):
     verdicts, _ = decided([dict(repeated, reconciliation=answer(fresh, 'none', 'normal'))],
                           cands=CANDS[:1], pr=302, issue=700, kind='followup')
     check(verdicts['F-01']['exit'] == 'REJECT', 'an unrelated guarantee returns to normal adoption rules')
+
+# Retaining a body quotation does not keep an answer valid after its source changes.
+ledger.write_text('### 却下台帳\n\n| finding_id | file:line | 判定 | 判定文 | 出典 |\n'
+                  '|------------|-----------|------|--------|------|\n'
+                  '| code-quality-reviewer | tool.sh:3 | REJECT | guard was present | old-review.json |\n')
+for source, body_path in (('issue', issue_body), ('pr', pr_body)):
+    state = work / f'body-quotation-{source}'
+    adoption = state / '.rite/state/adoption-601-followup.json'
+    original = body_path.read_text()
+    quote = 'tool rejects an empty NAME'
+    body_path.write_text('## Contract\n\n' + quote + '.\n')
+    record = rec(contract={'ref': source, 'text': quote}, prior=prior)
+    initial = pending(record, pr=601)
+    recorded = dict(record, reconciliation=answer(initial, 'conflict'))
+    verdicts, _ = decided([recorded], cands=CANDS[:1], pr=601, issue=100, kind='followup')
+    check(verdicts['F-01']['exit'] == 'ADOPT', verdicts)
+    repeated, _ = decided([recorded], cands=CANDS[:1], pr=601, issue=100, kind='followup')
+    check(repeated == verdicts, 'unchanged body reuses the answer')
+    history_path = state / '.rite/state/adoption-history-601-followup.json'
+    for changed_body in (quote + ' only in strict mode.\n',
+                         quote + '.\nThis guarantee applies only in strict mode.\n'):
+        before_history = history_path.read_bytes()
+        body_path.write_text('## Contract\n\n' + changed_body)
+        stale = pending(recorded, pr=601, reason='stale')
+        check(stale['fingerprint'] != initial['fingerprint'], stale)
+        check(history_path.read_bytes() == before_history, 'stale answer must not change history')
+        fresh_answer = answer(stale, 'conflict')
+        verdicts, _ = decided([dict(record, reconciliation=fresh_answer)], cands=CANDS[:1],
+                              pr=601, issue=100, kind='followup')
+        check(verdicts['F-01']['exit'] == 'ADOPT', verdicts)
+        persisted = json.loads(history_path.read_text())
+        check(persisted['entries'][0]['reconciliation'] == fresh_answer, persisted)
+    body_path.write_text(original)
+ledger.write_text('')
+
 print(f'review-adoption-gate: {checks} checks passed')
 PYTEST

@@ -47,4 +47,4 @@ helper は同じ契約の過去 PR の履歴、または既存の `RECONCILE` �
 
 未裁定・入力変更・契約変更はゲートが held にする。`hold.detail` / `hold.resume` が本書へ戻る入口、`hold.reconciliation[]` が request 本文になる。保留中は起票や完了通知へ進まず、元の caller の停止手順を守る。
 
-fingerprint は HEAD、候補、`reconciliation` 以外の判定記録、現在の契約、照合した履歴に結び付く。同じ入力でのみ回答を再利用できる。HEAD は無関係な変更でも再確認し、契約や履歴が変わった場合も新しい request に裁定を書き直す。過去履歴自体を書き換えて回答を一致させてはならない。
+fingerprint は HEAD、候補、`reconciliation` 以外の判定記録、現在の契約、照合した履歴に結び付く。Issue / PR 本文の引用では、引用片を保持した適用条件の変更も検出するため、引用元本文全体を fingerprint に含める。同じ入力でのみ回答を再利用できる。HEAD は無関係な変更でも再確認し、契約や履歴が変わった場合も新しい request に裁定を書き直す。過去履歴自体を書き換えて回答を一致させてはならない。

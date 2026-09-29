@@ -468,8 +468,10 @@ def reconcile(records, decisions, candidates, context, args, head):
                    and any(h["record"].get(axis) is True for axis in "VCT") for h in matches):
                 signals.append("completed_contract")
         if signals or answer is not None:
+            # Body quotations may keep their text while surrounding requirements change.
+            source_body = context["bodies"].get((record.get("contract") or {}).get("ref"))
             fingerprint = digest({"head": head, "record": clean, "candidates": selected,
-                                  "contract": key, "history": matches})
+                                  "contract": key, "source_body": source_body, "history": matches})
             reason = "pending"
             if answer is not None:
                 reason = "stale" if answer["fingerprint"] != fingerprint else ""
