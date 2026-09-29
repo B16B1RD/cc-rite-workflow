@@ -13,12 +13,17 @@ sources:
     resource: "raw/reviews/20260926T045233Z-pr-3112.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T032308Z-pr-3204.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T051504Z-pr-3434.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T053524Z-pr-3431.md"
 tags: ["guard", "discriminating-power", "diagnostic-literal", "fixture-design", "sibling-tc-transcription"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:27:52Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T05:45:52Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T05:05:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:27:52Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T05:45:52Z" }
 ---
 
 # ガードの識別力は「そのガード単独で発火する形状」の fixture とガード固有文言 assert で担保する
@@ -60,6 +65,10 @@ cycle 1 で TC-13b（読み取り不能）にガード固有文言 assert の ra
 
 受入条件をすべて満たして blocking 0 件で通った PR でも、推奨事項には同じ型が繰り返し現れる。新設した fail-loud 分岐（例: producer 側の jq 読み取り失敗で止める分岐）を踏むテストが無い。実装方式を変えた後も、テストのヘルパー名が旧方式（copy など）を名乗り続ける。新しい停止 reason に復旧手順が添えられていない。どれも「正常経路のテストが通る」ことでは検出できない。分岐を足したら、その分岐単独で発火する fixture と reason 固有の文言 assert を同じ PR で揃える。方式を変えたらテスト側の名前も追従させ、停止 reason には利用者が次に取る行動を添える。
 
+**ガードの有無で行き先が変わらない入力はガードを固定しない**: symlink を特別扱いするガードを壊れた symlink だけで検査すると、壊れた symlink は手前の種別判定で弾かれるため、ガードを消しても同じ結果になる。指す先を実在させた symlink を置いて初めて、ガードの有無で挙動が分かれる。
+
+**検証対象より前段のフィルタを通過する fixture を作る**: run 境界の選別を検証するつもりで前 run の結果を仕込んでも、その結果が現在の run の識別子を持たなければ、手前の識別子フィルタが先に落として選別そのものに届かない。選別を無視する変異でもテストは緑のまま残る。境界を検証する fixture は上流のフィルタをすべて通し、検証したい判定だけが結果を分ける形にする。テストが名乗る保証の真偽は「そのテストは名乗った挙動を壊す変異で落ちるか」で分ける。一部の変異でしか落ちないなら誤りではなく網羅性の問題として扱う。
+
 ## 関連ページ
 
 - [HINT-specific 文言 pin で case arm 削除 regression を検知する](../patterns/hint-specific-assertion-pin.md)
@@ -71,3 +80,5 @@ cycle 1 で TC-13b（読み取り不能）にガード固有文言 assert の ra
 - [fix 結果](../../raw/fixes/20260804T175004Z-pr-2111.md)
 - [レビュー結果](../../raw/reviews/20260926T045233Z-pr-3112.md)
 - [新設 fail-loud 分岐のテスト不足を指摘したレビュー](../../raw/reviews/20260927T032308Z-pr-3204.md)
+- [symlink ガードの検査を扱ったレビュー結果](../../raw/reviews/20260929T051504Z-pr-3434.md)
+- [run 境界の選別を検査したレビュー結果](../../raw/reviews/20260929T053524Z-pr-3431.md)

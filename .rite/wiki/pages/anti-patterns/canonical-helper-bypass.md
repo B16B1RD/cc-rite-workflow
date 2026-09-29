@@ -17,9 +17,13 @@ sources:
     resource: "raw/fixes/20260729T035608Z-pr-2044.md"
   - type: "fixes"
     resource: "raw/fixes/20260729T073316Z-pr-2044.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T053623Z-pr-3393.md"
 tags: ["dry-violation", "helper-bypass", "doctrine-drift", "filter-symmetry", "stderr-passthrough", "test-helper-symmetry"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-29T21:32:36+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T05:45:52Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T05:45:52Z" }
 ---
 
 # Canonical helper bypass: 既存集約 helper を bypass して inline 再実装する
@@ -101,6 +105,8 @@ grep -nE "'\\^WARNING:|filter.*pass-through" plugins/rite/hooks/state-read.sh
 3. **inline 再実装が必要な場合の justification**: helper を意図的に bypass する場合は commit message / PR body で「なぜ helper 経由でなく inline か」を明示する。reviewer が cross-validation で判断可能にする
 4. **filter literal の SoT pin**: stderr filter / regex literal は canonical site (`state-read.sh:148` 等) からコピーし、PR review で「literal 一致」を確認する
 
+**同じ台帳を読むパーサを増やすときも既存のものを呼ぶ**: 台帳を読むパーサを別の経路へ写すと、エスケープ済みパイプの扱いのような細部が片方だけ壊れる。既存のパーサをそのまま使う。同じ規則を複数の経路に置くときは全経路に同じ文型で置き、分類役に行を記録へ写させるときは行のキーと記録のキーの対応まで書く（helper はキー名で照合する）。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](./asymmetric-fix-transcription.md)
@@ -136,3 +142,4 @@ helper の呼び出しを bypass する形だけでなく、**canonical パタ�
 - [参照先の失敗経路まで写す](../../raw/fixes/20260729T004628Z-pr-2044.md)
 - [新設 capture が canonical idiom を参照しない](../../raw/fixes/20260729T035608Z-pr-2044.md)
 - [SoT helper を同等品に置き換えない](../../raw/fixes/20260729T073316Z-pr-2044.md)
+- [台帳のパーサを増やしたレビュー結果](../../raw/reviews/20260929T053623Z-pr-3393.md)

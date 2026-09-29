@@ -4,10 +4,14 @@ title: "ソース全体を走査する検査は、gitignore 対象の生成物�
 domain: "heuristics"
 description: "ソース全体を find で走査する検査は、gitignore 対象の生成物（Python の __pycache__ 配下のバイナリなど）まで拾い、そのバイト列が検査の型に偶然一致して失敗することがある。生成物のディレクトリを走査から外し、除外を外すと落ちる検査を足して固定する。"
 created: "2026-09-29T01:07:27Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T01:07:27Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T05:45:52Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T05:45:52Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260929T005539Z-pr-3420.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T052814Z-pr-3434.md"
 tags: ["lint", "find", "gitignore", "test"]
 confidence: medium
 ---
@@ -22,6 +26,8 @@ confidence: medium
 
 作業ツリーを find で走査する検査は、テストや import の副産物として生まれる生成物も対象にする。バイナリのバイト列は検査が探す文字列の型に偶然一致しうるため、ローカルでだけ失敗する不安定な検査になる。生成物のディレクトリを走査から除外し、除外を外すと落ちる検査を既存の検査群に足す。除外がパス断片の一致で配下の任意のファイルを外す点と、追跡ファイルだけを走査する代替案との比較は、設計判断として残しておく。
 
+**変異テストの退避と復元も生成物を作り直させる**: 実装ファイルを退避して戻すと mtime が変わり、次のテスト実行で Python のバイトコードキャッシュが再生成される。入力ディレクトリの指紋を実行前後で比べる検証は、この再生成を入力の変化と取り違える。復元後に一度テストを流してキャッシュを最新にしてから比べるか、キャッシュを指紋の対象から外す。
+
 ## 関連ページ
 
 - （関連ページなし）
@@ -29,3 +35,4 @@ confidence: medium
 ## ソース
 
 - [生成物の走査で検査が失敗していたことを直したレビュー結果](../../raw/reviews/20260929T005539Z-pr-3420.md)
+- [変異テスト後の指紋比較を扱った fix 結果](../../raw/fixes/20260929T052814Z-pr-3434.md)

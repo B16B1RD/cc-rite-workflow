@@ -9,9 +9,13 @@ sources:
     resource: "raw/reviews/20260729T150808Z-pr-2051-c2.md"
   - type: "fixes"
     resource: "raw/fixes/20260729T151517Z-pr-2051-c2.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T051220Z-pr-3431.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T01:20:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T05:45:52Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T05:45:52Z" }
 ---
 
 # `$( )` でコマンド置換したヘルパーの `exit` は呼び出し元を止めない
@@ -84,6 +88,8 @@ grep -rn '\$(\s*helper_name' path/to/callers/
 
 `exit` を持つ関数が `$( )` から呼ばれていたら、その caller は全数チェックの対象になる。
 
+**条件式に埋め込んだコマンド置換は終了コードを捨てる**: `if [ "$(jq -r '.x' <<<"$state")" = resolved ]` のように条件の中で読むと、壊れた state で jq が失敗しても空文字との比較になり、壊れた入力が別の分岐として静かに処理される。値は一度変数へ受け、隣接する読み取りと同じく `v=$(jq ...) || exit 1` の形で止める。
+
 ## 関連ページ
 
 - [`if ! cmd; then rc=$?` は常に 0 を捕捉する](./bash-if-bang-rc-capture.md)
@@ -95,3 +101,4 @@ grep -rn '\$(\s*helper_name' path/to/callers/
 
 - [レビュー結果](../../raw/reviews/20260729T150808Z-pr-2051-c2.md)
 - [fix 結果](../../raw/fixes/20260729T151517Z-pr-2051-c2.md)
+- [条件式の中の読み取りを直した fix 結果](../../raw/fixes/20260929T051220Z-pr-3431.md)

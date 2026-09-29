@@ -17,13 +17,16 @@ sources:
     resource: "raw/reviews/20260913T060046Z-pr-2772.md"
   - type: "reviews"
     resource: "raw/reviews/20260913T090150Z-pr-2776.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T050521Z-pr-3435-fix.md"
 tags: ["bash", "rc-capture", "set-e", "silent-failure", "dead-code"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T09:12:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T05:45:52Z" }
 verified:
   - { by: "rite-wiki-ingest/gpt-6", at: "2026-09-08T09:16:17Z" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T06:20:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T09:12:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T05:45:52Z" }
 ---
 
 # set -euo pipefail 下の外部コマンド単独文は後続 rc 分岐を dead code 化する
@@ -122,6 +125,8 @@ parser が失敗の理由・対象パスを stdout JSON に出し、stderr に�
 
 読み込みエラー（rc=2）の握りつぶしは、同じファイルに対する先行の pin 検査が名前付きで失敗することで補われる。先行検査が同じ入力を読んでいない場合は、この補償が成り立たないので別途確認する。
 
+**設定ファイルから値を読む素の代入も同じ落とし穴を持つ**: `set -euo pipefail` 下で `v=$(jq ... "$cfg")` と素の代入で書くと、設定ファイルが壊れて jq が失敗した時点でスクリプトごと中断し、fail 行も結果行も出ない。同じ塊の他の代入が空文字へ倒して「読めなければ fail を 1 行出す」経路に乗っているなら、その書き方に揃えて既存の経路へ流す。確認は、読めない状態を再現した検証用コピーで fail が 1 行だけ出て、結果行まで出力されることを見る。
+
 ## 関連ページ
 
 - [`if ! cmd; then rc=$?` は常に 0 を捕捉する](./bash-if-bang-rc-capture.md)
@@ -137,3 +142,4 @@ parser が失敗の理由・対象パスを stdout JSON に出し、stderr に�
 - [追加観測](../../raw/reviews/20260908T090455Z-pr-2628.md)
 - [変異ファイル生成の grep に || true を付けた修正のレビュー結果](../../raw/reviews/20260913T060046Z-pr-2772.md)
 - [抜き出し代入の grep に || true と空値の名前付き FAIL を足した修正のレビュー結果](../../raw/reviews/20260913T090150Z-pr-2776.md)
+- [設定ファイルの読み取りを素の代入で書いた fix 結果](../../raw/fixes/20260929T050521Z-pr-3435-fix.md)

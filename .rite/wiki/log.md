@@ -87,6 +87,16 @@
 * **Create**: [共有 helper に位置を渡すときは、呼び出し元ごとの数え始めをそろえる](pages/heuristics/shared-helper-position-needs-caller-origin.md) — [レビュー結果](raw/reviews/20260929T044958Z-pr-3431.md) を統合
 * **Create**: [処理量で決まる判定のテストでは、入力の境界と実行時間の上限を分ける](pages/heuristics/behavior-tests-use-input-boundary-and-configured-timeout.md) — [レビュー結果](raw/reviews/20260929T045942Z-pr-3435.md) を統合
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=582, broken_refs=0
+* **Update**: [set -euo pipefail 下の外部コマンド単独文は後続 rc 分岐を dead code 化する](pages/anti-patterns/bare-statement-under-set-e-dead-code-rc-branch.md) — [fix 結果](raw/fixes/20260929T050521Z-pr-3435-fix.md) を統合
+* **Update**: [`$( )` でコマンド置換したヘルパーの `exit` は呼び出し元を止めない](pages/anti-patterns/command-substitution-helper-exit-does-not-stop-caller.md) — [fix 結果](raw/fixes/20260929T051220Z-pr-3431.md) を統合
+* **Update**: [ソース全体を走査する検査は、gitignore 対象の生成物を走査から外す](pages/heuristics/source-scan-excludes-generated-artifacts.md) — [fix 結果](raw/fixes/20260929T052814Z-pr-3434.md) を統合
+* **Create**: [冪等ガードの pin は時刻を過去へ書き換えた fixture で 2 回目を比べ、終了コードも別に固定する](pages/heuristics/idempotence-pin-needs-past-timestamp-fixture.md) — [fix 結果](raw/fixes/20260929T054023Z-pr-3438.md) を新規ページ化
+* **Update**: [ガードの識別力は「そのガード単独で発火する形状」の fixture とガード固有文言 assert で担保する](pages/heuristics/guard-discriminating-power-requires-solo-firing-fixture.md) — [レビュー結果](raw/reviews/20260929T051504Z-pr-3434.md) を統合
+* **Update**: [テンプレート流用の新規スクリプトは最新兄弟の防御を継承する](pages/heuristics/new-script-inherits-latest-sibling-defenses.md) — [レビュー結果](raw/reviews/20260929T052828Z-pr-3438.md) を統合
+* **Update**: [ガードの識別力は「そのガード単独で発火する形状」の fixture とガード固有文言 assert で担保する](pages/heuristics/guard-discriminating-power-requires-solo-firing-fixture.md) — [レビュー結果](raw/reviews/20260929T053524Z-pr-3431.md) を統合
+* **Update**: [Canonical helper bypass: 既存集約 helper を bypass して inline 再実装する](pages/anti-patterns/canonical-helper-bypass.md) — [レビュー結果](raw/reviews/20260929T053623Z-pr-3393.md) を統合
+* **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — [レビュー結果](raw/reviews/20260929T054229Z-pr-3434.md) を統合
+* **Skip**: [20260929T051125Z-pr-3393.md](raw/fixes/20260929T051125Z-pr-3393.md) — 検出器化候補: 手順書内の bash で変数の直後に全角文字が続く箇所は波括弧で変数名を区切る
 
 
 ## 2026-09-28
