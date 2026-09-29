@@ -4,7 +4,7 @@ title: "理由と代替手順をつなげるメッセージは自分の文を句
 domain: "heuristics"
 description: "拒否理由と代替手順を 1 行につなげると、理由が句点で終わらないものから境目が読めなくなる。外部コマンドの出力で終わる理由は利用者がそのままコピーする文字列で終わることがあるので、出力の末尾へ句点を直付けせず、自分の文を先に閉じて出力は別行で引用する。"
 created: "2026-09-29T20:45:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T20:45:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T22:00:05Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260929T194552Z-pr-3446.md"
@@ -16,6 +16,8 @@ sources:
     resource: "raw/fixes/20260929T202027Z-pr-3446.md"
   - type: "reviews"
     resource: "raw/reviews/20260929T203537Z-pr-3446.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T204423Z-pr-3446.md"
 tags: ["error-message", "output-format", "external-command", "copy-paste"]
 confidence: high
 ---
@@ -36,6 +38,10 @@ confidence: high
 
 外部コマンドの出力はコマンドやパスで終わることがあり、利用者はそれをそのままコピーして実行する。整形のために末尾へ句点を付けると、コピーした文字列が壊れる（出力側の句点を落としてから付ける対処でも、出力の末尾が句点でない場合の崩れは残る）。自分の文を先に句点で閉じ、外部の出力は別行で引用する。
 
+### 外部の出力の末尾へ句点を足すのも加工である
+
+拒否理由の読み分けのために、外部コマンドの出力の末尾へ句点を足す直し方がある。これも出力の加工で、同じ事故を起こす。git が信頼しないリポジトリで返すメッセージは、最終行が `git config --global --add safe.directory <root>` のようなコピー用のコマンドになる。末尾に句点を付けると、表示どおりに実行した利用者は `<root>.` を登録してしまい、再実行しても同じ拒否が返る。末尾の句点を落としてから付け直す処理も、`..` で終わるパスを別のパスへ変えてしまう。自分の文を「… git reports:」で閉じ、外部の出力は次の行から一切加工せずに引用する。後に続ける案内は改行の後に置く。テストでは、最終行がコマンドで終わる偽のコマンドを使い、そのコマンドが句点なしで残ることを固定する。
+
 ## 関連ページ
 
 - [doc の例示語彙は定義元 (SoT) と突合してから書く](./illustrative-example-vocabulary-sot-check.md)
@@ -47,3 +53,4 @@ confidence: high
 - [レビュー結果](../../raw/reviews/20260929T200946Z-pr-3446.md)
 - [fix 結果](../../raw/fixes/20260929T202027Z-pr-3446.md)
 - [レビュー結果](../../raw/reviews/20260929T203537Z-pr-3446.md)
+- [fix 結果](../../raw/fixes/20260929T204423Z-pr-3446.md)

@@ -161,9 +161,11 @@ sources:
     resource: "raw/reviews/20260927T161319Z-pr-3292.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T172042Z-pr-3318.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T212356Z-pr-3446.md"
 tags: ["test", "mutation-testing", "false-positive", "dead-code", "verification", "bytes-exact-pin", "trailing-newline-strip", "self-grep-tautology", "count-threshold-mutation-evasion", "path-filter-coverage-gap", "load-bearing-whitespace-pin", "regex-alternation-per-branch-coverage", "regex-quantifier-semantic-coverage", "symmetry-claim-bidirectional-pin", "negative-assert", "non-blocking-contract-mutation"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T17:27:12Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T22:00:05Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T10:05:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:06:36Z" }
@@ -955,6 +957,10 @@ base の取り込みで両側が同じテスト番号を追加したときは、
 
 新しいテストケースを兄弟ケースに倣って足すときは、兄弟ケースが持つ否定側の assert（「起票が 0 回であること」など）も揃える。肯定側の assert だけを写すと、余計な副作用が起きる変異がそのケースでは検出されない。
 
+### `or` でつないだ判定は項ごとにテストを置く
+
+`a or b` の判定は、fixture がすべての項を同時に満たすと、片方の項を消す変異がスイートを通ったまま生き残る。たとえば、worktree の中かどうかを `tree == resolved or tree in resolved.parents` で判定する場合を考える。fixture の worktree がメインのチェックアウトの中にあり、しかも最上位へちょうど cd すると、どちらの項を残しても結果が同じになる。a だけが成り立つケース（状態ルートの外に置いた worktree の最上位）と、b だけが成り立つケース（worktree の下のサブディレクトリ）をそれぞれ置けば、両方の変異が 1 件ずつのテストで落ちる。
+
 ## 関連ページ
 
 - [否定形の assert は前提条件が崩れると fail-silent になる](../anti-patterns/negative-assertion-vacuous-without-precondition-floor.md)
@@ -1042,3 +1048,4 @@ base の取り込みで両側が同じテスト番号を追加したときは、
 - [実運用の命名形式を入力に足して過剰一致の変異を検出したレビュー結果](../../raw/reviews/20260927T160944Z-pr-3307.md)
 - [取り込み後のテスト番号の振り直しを機械的に確かめたレビュー結果](../../raw/reviews/20260927T161319Z-pr-3292.md)
 - [兄弟テストケースとの否定側 assert の揃えを推奨したレビュー結果](../../raw/reviews/20260927T172042Z-pr-3318.md)
+- [or でつないだ判定の変異](../../raw/reviews/20260929T212356Z-pr-3446.md)

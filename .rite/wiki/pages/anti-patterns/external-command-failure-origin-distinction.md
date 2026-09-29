@@ -21,9 +21,11 @@ sources:
     resource: "raw/reviews/20260730T081603Z-pr-2056.md"
   - type: "fixes"
     resource: "raw/fixes/20260730T081940Z-pr-2056.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T210423Z-pr-3446.md"
 tags: ["gh-cli", "error-handling", "silent-failure"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T22:00:05Z" }
 ---
 
 # 外部コマンド (gh) 失敗時に not-found と一時障害を区別せず別経路へ落とすのは silent failure
@@ -61,6 +63,10 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
 
 修正が SoT reference 1 箇所で完結したのは、consumer 3 箇所が表を参照するのみで条件を複製していなかったため — **SoT 委譲設計は fix コストを 1/3 にする**。
 
+### 失敗を「対象外」と同じ値に丸めない
+
+ディレクトリがチェックアウトに属するかを `git rev-parse` で判定する関数が、失敗を「リポジトリではない」と同じ `None` で返していた。その結果、git が worktree を読めないとき（信頼しない所有者など）でも「チェックアウトの外」と判定されていた。拒否理由が勧める `cd <worktree>` も同じ理由で拒否され、本当の原因（git のエラー）はどこにも出なかった。失敗しうる範囲をはっきり列挙し、その中での失敗はエラーとして出す。範囲の決め方は、`.git` が上位にあるかといったファイルの有無による推測にしない。`/tmp/.git` のような無関係な残骸があると、リポジトリの外のディレクトリまで「読めないリポジトリ」と誤判定する。git 自身が返す一覧（`git worktree list`）で範囲を決める。
+
 ## 関連ページ
 
 - [gh api graphql は HTTP 200 + .errors[] で partial failure を返す (exit code では検知できない)](./gh-api-graphql-http200-partial-errors.md)
@@ -81,3 +87,4 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
 - [権威性を分類軸に引き上げる](../../raw/fixes/20260730T075954Z-pr-2056.md)
 - [行の分離 / 文言の狭窄 / 意味論の分離の 3 操作](../../raw/reviews/20260730T081603Z-pr-2056.md)
 - [元 catch-all 行の全要件を新行へ明示転記](../../raw/fixes/20260730T081940Z-pr-2056.md)
+- [失敗を範囲外と同じ値に丸めない](../../raw/fixes/20260929T210423Z-pr-3446.md)

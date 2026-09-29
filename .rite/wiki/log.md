@@ -74,6 +74,11 @@
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=595, broken_refs=0（矛盾は今回の ingest で更新した 5 ページについて判定）
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=595, broken_refs=0（矛盾は今回の ingest で作成した 1 ページと関連ページについて判定）
 * **Lint incomplete** — 機械検査の報告値は contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=595, broken_refs=0, descriptive_number_ref=0。ヘルパーはすべて成功した。矛盾の意味比較は今回作成・更新したページとその関連ページに限り、既存ページ全件の比較は未完了。
+* **Update**: [理由と代替手順をつなげるメッセージは自分の文を句点で閉じ、外部コマンドの出力は別行で引用する](pages/heuristics/close-own-sentence-before-quoting-external-output.md) — raw/fixes/20260929T204423Z-pr-3446.md を統合
+* **Update**: [外部コマンド (gh) 失敗時に not-found と一時障害を区別せず別経路へ落とすのは silent failure](pages/anti-patterns/external-command-failure-origin-distinction.md) — raw/fixes/20260929T210423Z-pr-3446.md を統合
+* **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/reviews/20260929T212356Z-pr-3446.md を統合
+* **Create**: [git worktree list --porcelain はブロック単位で読み、prunable の worktree を除く](pages/heuristics/git-worktree-list-porcelain-exclude-prunable.md) — raw/fixes/20260929T213239Z-pr-3446.md を新規ページ化
+* **Skip**: [20260929T214950Z-pr-3446.md](raw/reviews/20260929T214950Z-pr-3446.md) — rite workflow 自体のトリアージ方針に関する知見で、Wiki ではなくプラグイン本体に置く対象
 
 ## 2026-09-29
 
