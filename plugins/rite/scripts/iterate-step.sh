@@ -486,7 +486,7 @@ if [ "$lost_gate" = fire ]; then
     "TREND=$trend_series" "TREND_VERDICT=$trend_verdict" "TREND_REASON=$trend_reason" \
     "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "INC=held"
 elif [ -n "$cb_reason" ]; then
-  # 直前の [fix:pushed] が fix.md ステップ5.1 で set した継続 handoff (`/rite:pr-review {pr}`) を
+  # 直前の [fix:pushed] が fix.md ステップ5.1 で set した継続 handoff (`/rite:pr-review {pr} --from-iterate`) を
   # default-clear する（`--handoff` を伴わない set は handoff を消す）。これをしないと、fire 後に
   # turn が終わったとき stop-loop-continuation.sh が残存 handoff を consume して `/rite:pr-review` を
   # 再注入し、サーキットブレーカーを無視してループが継続する。`[fix:error]` が set で handoff を

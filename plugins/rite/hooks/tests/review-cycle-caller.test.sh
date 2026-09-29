@@ -133,7 +133,7 @@ with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
     for args, from_iterate in (('{pr_number}', 'false'), (iterate_args, 'true')):
         parsed = execute(parse_call.replace("'$ARGUMENTS'", "'" + args + "'"))
         assert 'PR_REVIEW_FROM_ITERATE=' + from_iterate in parsed.stderr, (args, parsed.stderr)
-        assert 'REMAINING_ARGS=4242' in parsed.stderr, (args, parsed.stderr)
+        assert re.search(r'^\[CONTEXT\] REMAINING_ARGS=4242$', parsed.stderr, re.M), (args, parsed.stderr)
     # Standalone pr-review must also initialize without iterate or a worktree.
     state_path = Path(flow('path').stdout.strip())
     state_path.unlink()

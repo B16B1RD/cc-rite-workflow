@@ -233,7 +233,7 @@ bash {plugin_root}/scripts/iterate-step.sh cycle-gate --pr {pr_number} --issue {
 | 分岐 | 条件 | アクション |
 |---------|-----------|
 | (a) | `ABANDON=done` ではなく、直前 cycle のレビュー結果がセッションコンテキストに残存 | 同一 cycle の固定名簿・manifest・review_context が揃う場合だけ pr-review ステップ 6.1.a の `review-finish` で保存・検証する（旧結果でこれらが無い場合は (b)）。**成立は `JSON_SAVED=true`（helper の値域。`=1` ではない）**。成立なら下の `ITERATE_LOST_REPAIR=saved` を emit して**ステップ 1 の bash を再実行**。失敗は (b) |
-| (b) | `ABANDON=done` / 残存しない / (a) 失敗 | 下の `ITERATE_LOST_REPAIR=rereview` を emit し、counter 不前進のまま `/rite:pr-review` を invoke。**保存成立の観測子は `JSON_SAVED=true` または `REVIEW_SAVE_JSON_OK=1`**（`[review:mergeable]` 素通しは batch が収束扱いするので使わない）。不成立は `ITERATE_LOST_REPAIR=failed` を emit し、iterate 失敗形で停止（新 CB sentinel は作らない。caller の既存「sentinel 不在 / `[review:error]` → 失敗停止」に倒す）。成立ならステップ 2 |
+| (b) | `ABANDON=done` / 残存しない / (a) 失敗 | 下の `ITERATE_LOST_REPAIR=rereview` を emit し、counter 不前進のまま `/rite:pr-review` を invoke（args は下の invoke ブロックと同じ `"{pr_number} --from-iterate"`）。**保存成立の観測子は `JSON_SAVED=true` または `REVIEW_SAVE_JSON_OK=1`**（`[review:mergeable]` 素通しは batch が収束扱いするので使わない）。不成立は `ITERATE_LOST_REPAIR=failed` を emit し、iterate 失敗形で停止（新 CB sentinel は作らない。caller の既存「sentinel 不在 / `[review:error]` → 失敗停止」に倒す）。成立ならステップ 2 |
 
 ```bash
 bash {plugin_root}/scripts/iterate-step.sh lost-repair --repair {repair} --cycle {cycle_count} --lost {lost}

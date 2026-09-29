@@ -163,6 +163,8 @@ assert_not_grep 'review triage fix loop does not read e2e-detect' \
   "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" 'PR_REVIEW_IN_E2E == true'
 assert_grep 'iterate invokes review with the caller flag' \
   "$ROOT/plugins/rite/skills/iterate/SKILL.md" 'args: "{pr_number} --from-iterate"'
+assert_grep 'iterate lost-repair re-review carries the caller flag' \
+  "$ROOT/plugins/rite/skills/iterate/SKILL.md" 'counter 不前進のまま `/rite:pr-review` を invoke（args は下の invoke ブロックと同じ `"{pr_number} --from-iterate"`）'
 assert_grep 'fix continuation handoff keeps the caller flag' \
   "$ROOT/plugins/rite/scripts/fix-step.sh" '--handoff "/rite:pr-review ${pr_number} --from-iterate"'
 assert_grep 'review triage disposition comes from the adoption exit' \
