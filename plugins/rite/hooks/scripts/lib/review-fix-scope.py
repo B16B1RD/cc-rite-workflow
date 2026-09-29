@@ -269,7 +269,7 @@ def validate_plan(plan, issue, state, receipt):
     # prose restrictions remain an explicit semantic judgment by the caller.
     section = re.search(r"^### 4\.2 .*?\n(.*?)(?=^#{1,3} |\Z)", issue["body"], re.M | re.S)
     if section:
-        explicit = re.findall(r"`([^`\n]+)`", section[1])
+        explicit = [p for p in re.findall(r"`([^`\n]+)`", section[1]) if Path(p).exists()]
         require(all(any(within(path(p), n) for n in excluded) for p in explicit), "explicit Non-Target omitted from constraints")
     tests = plan["verifications"]
     require(isinstance(tests, list) and tests, "verification plan required")

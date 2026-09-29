@@ -104,7 +104,9 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
     review_path = Path(cycle['result_path'])
     issue_file, plan_file = private / 'issue.json', private / 'plan.json'
     issue = {'number': 42, 'body': '## 4. 対象範囲\n### 4.1 対象\n- `src/a.py`\n'
-             '### 4.2 対象外\n- `protected`\n## 5. 受入条件\n- 全指摘を一括修正する\n'}
+             '### 4.2 対象外\n- `protected`\n'
+             '- オプション `--detach`、コマンド `git worktree add`、識別子 `non_targets`\n'
+             '## 5. 受入条件\n- 全指摘を一括修正する\n'}
     dump(issue_file, issue)
     related_command = "printf 'related\\n' >> .rite/related.log; if test -f .rite/fail; then exit 7; fi"
     plan = dict(review_context=context, issue_number=42, issue_body=issue['body'],
@@ -150,6 +152,21 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
           saved['mechanical'] and saved['checked_at'], 'canonical scope receipt separates semantic and mechanical evidence')
     invoke()  # Interrupted callers may repeat the check without starting another review.
     check(json.loads(state_path.read_text())['cycle_count'] == 1, 'idempotent check preserves cycle')
+    file_issue = dict(issue, body=issue['body'].replace('`protected`', '`protected/secret.py`'))
+    file_plan = copy.deepcopy(plan)
+    file_plan['issue_body'] = file_issue['body']
+    file_plan['constraints']['non_targets'] = ['protected/secret.py']
+    dump(issue_file, file_issue)
+    save_plan(file_plan)
+    invoke()
+    file_plan['constraints']['non_targets'] = []
+    save_plan(file_plan)
+    omitted_file = invoke(ok=False)
+    check(omitted_file.returncode != 0 and 'explicit Non-Target omitted' in omitted_file.stderr,
+          'existing file still requires a non-target constraint')
+    dump(issue_file, issue)
+    save_plan()
+    invoke()
     save_plan(dict(plan, issue_body=issue['body'] + '\n- 追加の受入条件\n'))
     mismatch = invoke(ok=False)
     check('Issue specification changed or mismatched' in mismatch.stderr

@@ -17,7 +17,7 @@
 
 `action` は `fix` / `reply` / `accept` / `nit-noted` と、base 取り込み専用の `base-intake`（下記「base 取り込み」）。全 blocking finding ID と、保存済み結果の `pr_recommendations[]` の ID（`R-NN`）を重複なく処置へ対応付ける。fix は予定パスを持ち、全処置は検証 ID と根拠を持つ。全体検証 (`kind:full`) を最低1件定める。未解決の人間由来指摘は `external_findings` に `id`・元の `thread_id`・`description` を記録し、同じグループと検証に対応付ける。
 
-helper は標準 `### 4.2` 節内の backtick パスが `non_targets` に含まれることを確認する。それ以外の書式や散文制約は caller が全件抽出し根拠を記録する。パス検査は意味判断を代行しない。予定パスは相対表記とし親参照を含めない。Non-Target に達する symlink も対象外と扱う。
+helper は標準 `### 4.2` 節内の backtick 語のうち、作業ツリーに実在するパスが `non_targets` に含まれることを確認する。コマンド片やオプションはパスとして要求しない。まだ存在しないパスを含むそれ以外の書式や散文制約は caller が全件抽出し根拠を記録する。パス検査は意味判断を代行しない。予定パスは相対表記とし親参照を含めない。Non-Target に達する symlink も対象外と扱う。
 
 関連テストの `inputs` は実装・テスト・設定・依存lockfileを含め、影響するディレクトリを漏らさない。`environment` は必要な変数名を指定する。ツール版など環境変数にない関連環境は計画時にファイルへ実測出力し inputs に含め、再利用前に更新する。外部状態を固定できない検証は `full` として再実行する。stdout/stderr に秘密を出すコマンドは使わない。
 
