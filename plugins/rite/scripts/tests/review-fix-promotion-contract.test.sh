@@ -292,7 +292,7 @@ printf '#!/bin/bash\nprintf "%%s\\n" "$TRIAGE_ROOT"\n' > "$triage_dir/plugin/hoo
 cat > "$triage_dir/plugin/hooks/scripts/review-adoption-gate.sh" <<'STUB'
 #!/bin/bash
 printf '%s\n' "$@" > "$TRIAGE_ARGS"
-printf '{"held": false, "verdicts": []}\n'
+if [ -n "${TRIAGE_GATE_OUT:-}" ]; then printf '%s\n' "$TRIAGE_GATE_OUT"; else printf '{"held": false, "verdicts": []}\n'; fi
 exit "$TRIAGE_GATE_RC"
 STUB
 # The decided gate output is handed to the in-PR recommendation registration with the run's candidates.
@@ -317,7 +317,7 @@ run_triage_block() {
   code=${code//\{candidates\}/$triage_candidates}
   rm -f "$triage_dir/args" "$triage_dir/args.record" "$triage_dir/args.verdicts"
   TRIAGE_ROOT="$triage_dir/root" TRIAGE_ARGS="$triage_dir/args" TRIAGE_GATE_RC="$TRIAGE_GATE_RC" \
-    bash -c "$code" 2>&1 || true
+    PATH="${TRIAGE_PATH_PREFIX:+$TRIAGE_PATH_PREFIX:}$PATH" bash -c "$code" 2>&1 || true
 }
 out=$(TRIAGE_GATE_RC=3 run_triage_block 7)
 assert_eq 'gate block surfaces the held exit code' '[CONTEXT] ADOPTION_GATE_RC=3' "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ADOPTION_GATE_RC=' || true)"
@@ -673,6 +673,183 @@ assert_eq 'step 2 stops on an unreadable ledger' '[review:error]' "$(printf '%s\
 out=$(LEDGER_BODY_FAIL=related_issue_unresolved run_step2)
 assert_eq 'step 2 goes on without a related Issue' '[CONTEXT] TRIAGE_LEDGER=absent; reason=related_issue_unresolved' \
   "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] TRIAGE_LEDGER=' || true)"
+
+# A rerun of a stopped disposition writes each Decision Log line and handoff comment once: 7.2 keys every
+# record verdict by its exit and its candidates' full text, and 7.4.3 / 7.4.4 skip a write whose mark is there.
+key_state="$triage_dir/root/.rite/state"
+run_keys() {
+  rm -f "$key_state/adoption-5-triage.json" "$key_state/adoption-hold-5-triage.json"
+  printf '{"commit_sha": "c0ffee"}\n' > "$triage_dir/root/.rite/review-results/5-20260101T000000.json"
+  rm -f "$triage_dir/root/.rite/review-results/5-20260102000000.json"
+  triage_records=$1 triage_candidates=$2 TRIAGE_GATE_OUT=$3 TRIAGE_GATE_RC=0 run_triage_block 7
+}
+key_of() { printf '%s\n' "$1" | sed -n "s/^\[CONTEXT\] TRIAGE_WRITE_KEY=\([^;]*\); ids=$2\$/\1/p"; }
+three='{"candidates": [{"id": "C-1", "content": "a", "reviewer": "r"}, {"id": "C-2", "content": "b"}, {"id": "C-3", "content": "c"}]}'
+three_out='{"held": false, "verdicts": [{"ids": ["C-1"], "exit": "REJECT", "verdict": "record"}, {"ids": ["C-2"], "exit": "LINK", "verdict": "record"}, {"ids": ["C-3"], "exit": "ADOPT", "verdict": "fix"}]}'
+out=$(run_keys '[{"ids": ["C-1"]}, {"ids": ["C-2"]}, {"ids": ["C-3"]}]' "$three" "$three_out")
+assert_eq 'keys: one key per record verdict and none for fix' 'C-1|C-2' \
+  "$(printf '%s\n' "$out" | sed -n 's/^\[CONTEXT\] TRIAGE_WRITE_KEY=[0-9a-f]\{16\}; ids=//p' | paste -sd'|' -)"
+key_a=$(key_of "$out" C-1)
+# The same candidate renumbered on a rerun, with its fields in another order, keeps its key.
+out=$(run_keys '[{"ids": ["C-5"]}]' '{"candidates": [{"reviewer": "r", "content": "a", "id": "C-5"}]}' \
+  '{"held": false, "verdicts": [{"ids": ["C-5"], "exit": "REJECT", "verdict": "record"}]}')
+assert_eq 'keys: a renumbered candidate with the same full text keeps its key' "$key_a" "$(key_of "$out" C-5)"
+out=$(run_keys '[{"ids": ["C-5"]}]' '{"candidates": [{"reviewer": "r", "content": "a", "id": "C-5"}]}' \
+  '{"held": false, "verdicts": [{"ids": ["C-5"], "exit": "LINK", "verdict": "record"}]}')
+case "$(key_of "$out" C-5)" in "$key_a"|'') fail 'keys: another exit must give another key' ;; *) pass 'keys: another exit gives another key' ;; esac
+out=$(run_keys '[{"ids": ["C-5"]}]' '{"candidates": [{"reviewer": "r", "content": "a2", "id": "C-5"}]}' \
+  '{"held": false, "verdicts": [{"ids": ["C-5"], "exit": "REJECT", "verdict": "record"}]}')
+case "$(key_of "$out" C-5)" in "$key_a"|'') fail 'keys: another full text must give another key' ;; *) pass 'keys: another full text gives another key' ;; esac
+# A two-candidate record keys the same whichever order its ids and candidates come in.
+out=$(run_keys '[{"ids": ["C-1", "C-2"]}]' "$three" '{"held": false, "verdicts": [{"ids": ["C-1", "C-2"], "exit": "REJECT", "verdict": "record"}]}')
+key_ab=$(key_of "$out" C-1,C-2)
+out=$(run_keys '[{"ids": ["C-2", "C-1"]}]' '{"candidates": [{"id": "C-1", "content": "b"}, {"id": "C-2", "content": "a", "reviewer": "r"}]}' \
+  '{"held": false, "verdicts": [{"ids": ["C-2", "C-1"], "exit": "REJECT", "verdict": "record"}]}')
+assert_eq 'keys: the order of a record ids does not change its key' "$key_ab" "$(key_of "$out" C-2,C-1)"
+mkdir -p "$triage_dir/nohash"
+printf '#!/bin/bash\nexit 1\n' > "$triage_dir/nohash/sha256sum"
+chmod +x "$triage_dir/nohash/sha256sum"
+out=$(TRIAGE_PATH_PREFIX="$triage_dir/nohash" run_keys '[{"ids": ["C-1"]}]' "$three" \
+  '{"held": false, "verdicts": [{"ids": ["C-1"], "exit": "REJECT", "verdict": "record"}]}')
+assert_eq 'keys: a key that cannot be made stops the gate block' '[CONTEXT] ADOPTION_GATE_RC=2' \
+  "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ADOPTION_GATE_RC=' || true)"
+assert_eq 'keys: a failed key prints no key line' 0 "$(printf '%s\n' "$out" | grep -c 'TRIAGE_WRITE_KEY=' || true)"
+assert_eq 'keys: a failed key keeps no hold for 7.4' 'no' "$([ -e "$key_state/adoption-hold-5-triage.json" ] && echo yes || echo no)"
+
+# 7.4.3 against an Issue body that the gh mock reads back after each edit.
+mark_dir="$triage_dir/mark"
+mkdir -p "$mark_dir/bin"
+awk '/^#### 7\.4\.3 / { s=1 } s && /^```bash$/ { a=1; next } a && /^```$/ { exit } a { print }' "$review" > "$mark_dir/dl.sh"
+cat > "$mark_dir/bin/gh" <<'MOCK'
+#!/bin/bash
+printf '%s\n' "$*" >> "$MARK_LOG"
+case "$1 $2" in
+  'issue view') [ -z "${MARK_VIEW_FAIL:-}" ] || exit 1; cat "$MARK_BODY" ;;
+  'issue edit') while [ $# -gt 0 ]; do [ "$1" = --body-file ] && cp "$2" "$MARK_BODY"; shift; done ;;
+  'issue comment') while [ $# -gt 0 ]; do [ "$1" = --body-file ] && cp "$2" "$MARK_POSTED"; shift; done
+    jq --rawfile b "$MARK_POSTED" '.[-1] += [{body: $b}]' "$MARK_COMMENTS" > "$MARK_COMMENTS.tmp" && mv "$MARK_COMMENTS.tmp" "$MARK_COMMENTS" ;;
+  'api --paginate') [ -z "${MARK_API_FAIL:-}" ] || exit 1; cat "$MARK_COMMENTS" ;;
+esac
+MOCK
+chmod +x "$mark_dir/bin/gh"
+run_dl() {
+  local code
+  code=$(cat "$mark_dir/dl.sh")
+  code=${code//\{decision\}/decided}
+  code=${code//\{reason\}/why}
+  code=${code//\{impact\}/what}
+  code=${code//\{deferred_token\}/${2:-}}
+  code=${code//\{write_key\}/$1}
+  code=${code//\{pr_number\}/5}
+  code=${code//\{source_issue_number\}/7}
+  code=${code//\{owner_repo\}/o/r}
+  MARK_LOG="$mark_dir/log" MARK_BODY="$mark_dir/body.md" PATH="$mark_dir/bin:$PATH" bash -c "$code" 2>&1
+}
+edits() { grep -c '^issue edit' "$mark_dir/log" 2>/dev/null || true; }
+mark_a=0123456789abcdef
+mark_b=fedcba9876543210
+for start in created existing; do
+  if [ "$start" = created ]; then printf '**Type**: fix\n\n## 概要\n\ntext\n' > "$mark_dir/body.md"
+  else printf '## 概要\n\ntext\n\n## 9. Decision Log\n\n- 2026-01-01 D-01: older\n' > "$mark_dir/body.md"; fi
+  : > "$mark_dir/log"
+  run_dl "$mark_a" > /dev/null
+  out=$(run_dl "$mark_a")
+  assert_eq "T-01 ($start): the rerun reports the line as written" "[CONTEXT] DECISION_LOG_ALREADY_WRITTEN=1; issue=7; key=$mark_a" \
+    "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] DECISION_LOG_' || true)"
+  assert_eq "T-01 ($start): the rerun edits nothing" 1 "$(edits)"
+  assert_eq "T-01 ($start): the line is in Section 9 once" 1 "$(grep -cF "<!-- rite:triage-write pr=5 key=$mark_a -->" "$mark_dir/body.md" || true)"
+done
+# A deferred line keeps the token at the end, right after the mark; a rerun still finds the mark.
+printf '## 9. Decision Log\n\n- 2026-01-01 D-01: older\n' > "$mark_dir/body.md"
+: > "$mark_dir/log"
+run_dl "$mark_a" ' <!-- rite:deferred-defect pr=5 -->' > /dev/null
+run_dl "$mark_a" ' <!-- rite:deferred-defect pr=5 -->' > /dev/null
+assert_eq 'T-01 (deferred): the token ends the line right after the mark' 1 \
+  "$(grep -c "<!-- rite:triage-write pr=5 key=$mark_a --> <!-- rite:deferred-defect pr=5 -->\$" "$mark_dir/body.md" || true)"
+assert_eq 'T-01 (deferred): the rerun edits nothing' 1 "$(edits)"
+# T-03: with one record written, the rerun writes only the other one, under the next number.
+printf '## 9. Decision Log\n\n- 2026-01-01 D-01: older\n' > "$mark_dir/body.md"
+: > "$mark_dir/log"
+run_dl "$mark_a" > /dev/null
+out_a=$(run_dl "$mark_a")
+out_b=$(run_dl "$mark_b")
+assert_grep 'T-03: the written record is skipped' <(printf '%s\n' "$out_a") "DECISION_LOG_ALREADY_WRITTEN=1; issue=7; key=$mark_a"
+assert_grep 'T-03: the unwritten record is appended' <(printf '%s\n' "$out_b") 'DECISION_LOG_APPENDED=1; issue=7; entry=D-03'
+assert_eq 'T-03: each record has one line' '1|1' \
+  "$(grep -cF "key=$mark_a -->" "$mark_dir/body.md")|$(grep -cF "key=$mark_b -->" "$mark_dir/body.md")"
+# The mark of another PR with the same key is not this disposition.
+printf '## 9. Decision Log\n\n- 2026-01-01 D-01: other <!-- rite:triage-write pr=6 key=%s -->\n' "$mark_a" > "$mark_dir/body.md"
+out=$(run_dl "$mark_a")
+assert_grep 'the mark of another PR does not skip the write' <(printf '%s\n' "$out") 'DECISION_LOG_APPENDED=1; issue=7; entry=D-02'
+# T-04: an unreadable body or a key that is not one writes nothing and counts as a failed write.
+: > "$mark_dir/log"
+out=$(MARK_VIEW_FAIL=1 run_dl "$mark_a")
+assert_grep 'T-04: an unreadable body counts as a failed write' <(printf '%s\n' "$out") 'DECISION_LOG_APPEND_FAILED=1; reason=body_fetch_failure; issue=7'
+assert_eq 'T-04: an unreadable body edits nothing' 0 "$(edits)"
+for bad in '' '{write_key}' 0123; do
+  : > "$mark_dir/log"
+  out=$(run_dl "$bad")
+  assert_grep "T-04: key '$bad' counts as a failed write" <(printf '%s\n' "$out") 'DECISION_LOG_APPEND_FAILED=1; reason=write_key_invalid; issue=7'
+  assert_eq "T-04: key '$bad' calls no gh" 0 "$(grep -c . "$mark_dir/log" || true)"
+done
+
+# 7.4.4 against comments the gh mock returns page by page and extends with each post.
+awk '/^#### 7\.4\.4 / { s=1 } s && /^```bash$/ { a=1; next } a && /^```$/ { exit } a { print }' "$review" > "$mark_dir/handoff.sh"
+run_handoff() {
+  local code
+  code=$(cat "$mark_dir/handoff.sh")
+  code=${code//\{assignee_issue\}/12}
+  code=${code//\{owner_repo\}/o/r}
+  code=${code//\{write_key\}/$1}
+  code=${code//\{pr_number\}/5}
+  code=${code//\{summary\}/summary}
+  code=${code//\{check_points\}/- check}
+  MARK_LOG="$mark_dir/log" MARK_POSTED="$mark_dir/posted.md" MARK_COMMENTS="$mark_dir/comments.json" \
+    PATH="$mark_dir/bin:$PATH" bash -c "$code" 2>&1
+}
+posts() { grep -c '^issue comment' "$mark_dir/log" 2>/dev/null || true; }
+# `issue view` answers the state query with the mock body.
+printf 'OPEN\n' > "$mark_dir/body.md"
+export MARK_BODY="$mark_dir/body.md"
+printf '[[{"body": "earlier"}]]\n' > "$mark_dir/comments.json"
+: > "$mark_dir/log"
+out=$(run_handoff "$mark_a")
+assert_grep 'T-02: the first run posts' <(printf '%s\n' "$out") 'HANDOFF_COMMENT_POSTED=1; issue=12'
+assert_eq 'T-02: the posted comment ends with the mark' "<!-- rite:triage-write pr=5 key=$mark_a -->" "$(grep -v '^$' "$mark_dir/posted.md" | tail -1)"
+out=$(run_handoff "$mark_a")
+assert_eq 'T-02: the rerun reports the comment as posted' "[CONTEXT] HANDOFF_COMMENT_ALREADY_POSTED=1; issue=12; key=$mark_a" \
+  "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] HANDOFF_' || true)"
+assert_eq 'T-02: the rerun posts nothing' 1 "$(posts)"
+# The posted comment on a later page is still found.
+printf '[[{"body": "earlier"}], [{"body": "text\\n<!-- rite:triage-write pr=5 key=%s -->\\n"}]]\n' "$mark_b" > "$mark_dir/comments.json"
+: > "$mark_dir/log"
+out=$(run_handoff "$mark_b")
+assert_grep 'T-02: a comment on a later page counts as posted' <(printf '%s\n' "$out") 'HANDOFF_COMMENT_ALREADY_POSTED=1; issue=12'
+assert_eq 'T-02: a comment on a later page is not posted again' 0 "$(posts)"
+# T-04: unreadable comments or a key that is not one post nothing and count as a failed write.
+: > "$mark_dir/log"
+out=$(MARK_API_FAIL=1 run_handoff "$mark_a")
+assert_eq 'T-04: unreadable comments count as a failed write' '[CONTEXT] HANDOFF_COMMENT_FAILED=1; issue=12; reason=comments_fetch_failure' \
+  "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] HANDOFF_' || true)"
+assert_eq 'T-04: unreadable comments post nothing' 0 "$(posts)"
+printf 'not json\n' > "$mark_dir/comments.json"
+out=$(run_handoff "$mark_a")
+assert_eq 'T-04: comments that do not parse count as a failed write' '[CONTEXT] HANDOFF_COMMENT_FAILED=1; issue=12; reason=comments_fetch_failure' \
+  "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] HANDOFF_' || true)"
+assert_eq 'T-04: comments that do not parse post nothing' 0 "$(posts)"
+out=$(run_handoff '{write_key}')
+assert_eq 'T-04: a handoff key that is not one counts as a failed write' '[CONTEXT] HANDOFF_COMMENT_FAILED=1; issue=12; reason=write_key_invalid' \
+  "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] HANDOFF_' || true)"
+unset MARK_BODY
+# The failed write stops at 7.4.5 with the hold kept; skipped writes are not failures, so the rerun completes.
+out=$(run_ledger_block updated 1 || true)
+if [ -e "$ledger_dir/root/.rite/state/adoption-hold-5-triage.json" ]; then pass 'T-04: a failed write keeps the hold at 7.4.5'; else fail 'T-04: a failed write must keep the hold'; fi
+assert_grep 'T-03: written marks are not counted as failed writes' "$review" \
+  '書き込み済みの印を見つけた `DECISION_LOG_ALREADY_WRITTEN=1` / `HANDOFF_COMMENT_ALREADY_POSTED=1` は数えない。'
+assert_grep 'T-03: a posted handoff goes on to 7.4.3' "$review" '`HANDOFF_COMMENT_ALREADY_POSTED=1` は投稿済みとして 7.4.3 へ進む。'
+out=$(run_ledger_block updated 0)
+if [ -e "$ledger_dir/root/.rite/state/adoption-hold-5-triage.json" ]; then fail 'T-03: a rerun with every write done must release the hold'; else pass 'T-03: a rerun with every write done releases the hold'; fi
+if grep -qF '重ねて書かれうる' "$review"; then fail 'the resume must not say the rerun writes twice'; else pass 'the resume no longer says the rerun writes twice'; fi
 
 if [ "$failures" -ne 0 ]; then
   printf '%s contract assertion(s) failed\n' "$failures" >&2

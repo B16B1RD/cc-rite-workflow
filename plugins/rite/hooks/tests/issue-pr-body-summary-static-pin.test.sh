@@ -177,9 +177,14 @@ dl_code=${dl_code//\{reason\}/why}
 dl_code=${dl_code//\{impact\}/what}
 dl_code=${dl_code//\{source_issue_number\}/7}
 dl_code=${dl_code//\{owner_repo\}/example\/repo}
+dl_code=${dl_code//\{pr_number\}/7}
+dl_code=${dl_code//\{write_key\}/0123456789abcdef}
 # 先送り欠陥トークンは候補ごとに空 / 付与の 2 通り。既定の dl.sh は空で、dl-deferred.sh は付与
 printf '%s\n' "${dl_code//\{deferred_token\}/}" > "$work/dl.sh"
 printf '%s\n' "${dl_code//\{deferred_token\}/ <!-- rite:deferred-defect pr=7 -->}" > "$work/dl-deferred.sh"
+# 2 件目の追記は別の判定記録（別の key）。同じ key の再実行は書き込み済みとして飛ばされる
+sed 's/0123456789abcdef/fedcba9876543210/g' "$work/dl.sh" > "$work/dl-next.sh"
+sed 's/0123456789abcdef/fedcba9876543210/g' "$work/dl-deferred.sh" > "$work/dl-deferred-next.sh"
 assert_not_grep 'Decision Log deferred block has no placeholder residue' "$work/dl-deferred.sh" '(^|[^$])\{[a-z_]+\}'
 assert_not_grep 'Decision Log block has no placeholder residue' "$work/dl.sh" '(^|[^$])\{[a-z_]+\}'
 mkdir "$work/dl-bin" "$work/awk-fail"
@@ -204,7 +209,7 @@ MOCK
 chmod +x "$work/dl-bin/gh" "$work/dl-bin/date" "$work/awk-fail/awk"
 REAL_AWK=$(command -v awk)
 export REAL_AWK
-dl_line='- 2026-01-02 D-01: decided / Reason: why / Impact: what'
+dl_line='- 2026-01-02 D-01: decided / Reason: why / Impact: what <!-- rite:triage-write pr=7 key=0123456789abcdef -->'
 run_decision_log() {
   local name="$1" body="$2" extra_path="${3:-}" rc=0
   : > "$work/$name.argv"; : > "$work/$name.awklog"
@@ -271,7 +276,7 @@ if cmp -s "$work/freetext-expected.md" "$work/freetext.edited"; then pass 'free-
 assert 'free-text body heading appears once' 1 "$(heading_count freetext)"
 
 # The created section is the Section 9 of the next append.
-run_decision_log existing "$work/contract.edited"
+DL_SCRIPT="$work/dl-next.sh" run_decision_log existing "$work/contract.edited"
 assert_grep 'existing section appends D-02' "$work/existing.out" 'DECISION_LOG_APPENDED=1; issue=7; entry=D-02$'
 assert_not_grep 'existing section is not reported as created' "$work/existing.out" 'section=created'
 assert 'existing section heading stays single' 1 "$(heading_count existing)"
@@ -300,7 +305,7 @@ cat > "$work/prose-body.md" <<'BODY'
 BODY
 run_decision_log prose-created "$work/prose-body.md"
 assert_grep 'prose body creates D-01' "$work/prose-created.out" 'entry=D-01; section=created'
-run_decision_log prose-appended "$work/prose-created.edited"
+DL_SCRIPT="$work/dl-next.sh" run_decision_log prose-appended "$work/prose-created.edited"
 assert_grep 'prose body appends D-02' "$work/prose-appended.out" 'entry=D-02$'
 assert_grep 'prose body records D-02' "$work/prose-appended.edited" ' D-02: decided'
 assert_not_grep 'prose body skips no number' "$work/prose-appended.edited" ' D-(05|10): '
@@ -316,7 +321,7 @@ assert_grep 'digit before D-NN still appends D-05' "$work/digit.out" 'entry=D-05
 for fail in partial:1 partial:2; do
   at=${fail##*:}
   name="existing-awk-$at"
-  AWK_FAIL_MODE=partial AWK_FAIL_AT=$at run_decision_log "$name" "$work/contract.edited" "$work/awk-fail"
+  DL_SCRIPT="$work/dl-next.sh" AWK_FAIL_MODE=partial AWK_FAIL_AT=$at run_decision_log "$name" "$work/contract.edited" "$work/awk-fail"
   if [ "$(wc -l < "$work/$name.awklog" | tr -d ' ')" -ge "$at" ]; then pass "$name mock reached the failing call"; else fail "$name mock did not reach the failing call"; fi
   assert "$name does not edit" 0 "$(edit_count "$name")"
   assert_not_grep "$name reports no append" "$work/$name.out" 'DECISION_LOG_APPENDED'
@@ -343,15 +348,15 @@ dl_deferred_line="$dl_line <!-- rite:deferred-defect pr=7 -->"
 DL_SCRIPT="$work/dl-deferred.sh" run_decision_log deferred "$work/footer-body.md"
 assert_grep 'deferred line is created as D-01' "$work/deferred.out" 'entry=D-01; section=created'
 assert 'deferred line is appended exactly as one line' 1 "$(grep -cxF -- "$dl_deferred_line" "$work/deferred.edited")"
-DL_SCRIPT="$work/dl-deferred.sh" run_decision_log deferred-next "$work/deferred.edited"
+DL_SCRIPT="$work/dl-deferred-next.sh" run_decision_log deferred-next "$work/deferred.edited"
 assert_grep 'the token does not change the next number' "$work/deferred-next.out" 'entry=D-02$'
 : > "$work/empty-body.md"
 DL_SCRIPT="$work/dl-deferred.sh" run_decision_log deferred-fetch-fail "$work/empty-body.md"
 assert_grep 'body fetch failure keeps the token in the pending line' "$work/deferred-fetch-fail.err" \
-  '記録予定行（7.4.5 で止まった後の再実行が書くので、手で追記しない）: - 2026-01-02 D-NN: decided / Reason: why / Impact: what <!-- rite:deferred-defect pr=7 -->$'
+  '記録予定行（7.4.5 で止まった後の再実行が書くので、手で追記しない）: - 2026-01-02 D-NN: decided / Reason: why / Impact: what <!-- rite:triage-write pr=7 key=0123456789abcdef --> <!-- rite:deferred-defect pr=7 -->$'
 DL_SCRIPT="$work/dl-deferred.sh" AWK_FAIL_MODE=partial AWK_FAIL_AT=2 run_decision_log deferred-edit-fail "$work/footer-body.md" "$work/awk-fail"
 assert_grep 'edit failure keeps the token in the pending line' "$work/deferred-edit-fail.err" \
-  '記録予定行（7.4.5 で止まった後の再実行が書くので、手で追記しない）: - 2026-01-02 D-01: decided / Reason: why / Impact: what <!-- rite:deferred-defect pr=7 -->$'
+  '記録予定行（7.4.5 で止まった後の再実行が書くので、手で追記しない）: - 2026-01-02 D-01: decided / Reason: why / Impact: what <!-- rite:triage-write pr=7 key=0123456789abcdef --> <!-- rite:deferred-defect pr=7 -->$'
 
 # The work-memory fallback is gone from the Decision Log contract.
 for gone in 'issue-comment-wm-sync' 'wm_sync_failure' 'fallback=work_memory' '決定事項・メモ'; do

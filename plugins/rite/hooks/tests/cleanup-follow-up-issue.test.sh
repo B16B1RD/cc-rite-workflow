@@ -1815,7 +1815,7 @@ assert "T-70 起票しない" "0" "$(create_count)"
 echo "--- T-71: トークンと Section 9 の境界は pr-review 7.4.3 と helper で一致する ---"
 SCOPE_TRIAGE_MD="$PLUGIN_ROOT/skills/pr-review/references/scope-triage.md"
 TEMPLATE_STRUCTURE_MD="$PLUGIN_ROOT/templates/issue/template-structure.md"
-assert_grep "T-71 7.4.3 は行末に {deferred_token} を置く" "$SCOPE_TRIAGE_MD" '^\{decision\} / Reason: \{reason\} / Impact: \{impact\}\{deferred_token\}$'
+assert_grep "T-71 7.4.3 は行末に {deferred_token} を置く（書き込み済みの印はその直前）" "$SCOPE_TRIAGE_MD" '^\{decision\} / Reason: \{reason\} / Impact: \{impact\} <!-- rite:triage-write pr=\{pr_number\} key=\{write_key\} -->\{deferred_token\}$'
 assert_grep "T-71 7.4.3 のトークン値" "$SCOPE_TRIAGE_MD" '` <!-- rite:deferred-defect pr=\{pr_number\} -->`'
 assert_grep "T-71 helper のトークン" "$TARGET" '^DEFERRED_TOKEN="<!-- rite:deferred-defect pr=\$\{PR_NUMBER\} -->"$'
 _boundary='in_section && (/^## / || /^---[[:space:]]*$/ || /^<\/details>/)'
