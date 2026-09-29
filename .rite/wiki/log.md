@@ -106,6 +106,12 @@
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=584, broken_refs=0
 * **Lint scope note** — 機械検査は全ページを走査。矛盾の検出数はタイトル候補抽出と更新テーマの読解の範囲であり、全ページ間の意味比較は未完了。全体の無矛盾を保証する結果ではない。
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=585, broken_refs=0
+* **Create**: [marker の意味と、それを読む報告文は、発行するすべての経路で成り立つ文にする](pages/heuristics/marker-wording-must-hold-for-every-issuing-path.md) — 規則追加のレビューと fix の結果を新規ページ化
+* **Create**: [規則を足したら、同じ段落の既存の禁止文がその規則の対象を打ち消していないかを確かめる](pages/heuristics/new-rule-must-not-be-cancelled-by-existing-prohibition.md) — 規則追加のレビューと fix の結果を新規ページ化
+* **Create**: [失敗経路のテストは、対象の 1 経路だけを失敗させる差し替えで強制し、差し替えなしの対照実行で空振りでないことを確かめる](pages/patterns/failure-path-test-forced-by-narrow-stub-with-control-run.md) — 失敗経路のテストのレビュー結果を新規ページ化
+* **Create**: [シェルブロックを helper へ移したら、散文が旧コマンドを指していた箇所を grep で洗い、所在記述の書き方を揃える](pages/heuristics/helper-migration-leaves-dangling-prose-pointers.md) — 移設のレビューと fix の結果を新規ページ化
+* **Update**: [base 取り込みはレビュー済みの HEAD で行い、検証からレビュー開始までは検証の入力を変えない](pages/heuristics/base-intake-on-reviewed-head-keep-verification-inputs-frozen.md) — 検証器の版と、取り込みと修正を 1 つの計画にまとめる点を統合
+* **Update**: [base 取り込みの競合は base 側の正本を基準にし、PR の変更意図だけを載せ直す](pages/heuristics/base-intake-conflict-reapply-pr-intent-on-base-canonical.md) — 末尾追記どうしの競合の解消と確認方法を統合
 
 ## 2026-09-28
 

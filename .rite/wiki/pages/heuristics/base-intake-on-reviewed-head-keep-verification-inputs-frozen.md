@@ -5,10 +5,14 @@ domain: "heuristics"
 description: "修正計画の検査はレビュー済みの HEAD でしか通らないので、未レビューの修正がある間は base を取り込めない。先にその修正をレビューしてから取り込み、同じ HEAD のレビューで採用した非実測指摘の修正は取り込みの計画に同じ根因のグループとして含める。検証記録の指紋は作業ツリーの全ファイル（Python のバイトコードキャッシュを含む）から作られるので、検証の後はレビュー開始までテストや import を走らせない。"
 promote: rite-plugin
 created: "2026-09-28T14:28:35Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T14:28:35Z" }
+generated: { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-09-29T08:28:00Z" }
 sources:
   - type: "fixes"
     resource: "raw/fixes/20260928T135415Z-pr-3379.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T082122Z-pr-3349.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T055448Z-pr-3393.md"
 tags: ["base-intake", "fix-plan", "verification-fingerprint", "wiki-apply-evidence"]
 confidence: medium
 ---
@@ -29,6 +33,10 @@ confidence: medium
 
 **検証の後は入力を変えない**: 次のレビューの開始は、検証を記録したときの入力の指紋と現在の作業ツリーが一致することを要求する。指紋は追跡されていないファイルも含めて作られ、Python のバイトコードキャッシュも対象になる。検証の後にテストを流すと、import がキャッシュを作り直して指紋が変わり、レビューの開始が拒否される。検証とレビュー開始の間ではテストも import も実行しない。キャッシュを作り直してしまった場合は、元の更新時刻を戻してキャッシュを作り直すことで指紋を一致させられるが、その操作は報告に明記する。
 
+**検証器の版**: 検証の指紋は検証器の版で変わる。session worktree の helper で検証した結果を main checkout の hook が照合するときは、hook と同じ版の検証器で check / verify を実行する。版が違うと、検証済みの内容でも指紋が一致せず次のレビューの開始が拒否される。
+
+**取り込みと修正を 1 つの計画にまとめる**: base の取り込みは `merge --no-commit` のまま、同じ HEAD のレビューで採用した修正と同じ計画・同じ検証にまとめて確定する。取り込みと修正の検証記録を分けると、検証済み修正の記録が 2 つに割れ、次のレビューが片方の記録を見失う。
+
 ## 関連ページ
 
 - [base 取り込みの競合は base 側の正本を基準にし、PR の変更意図だけを載せ直す](./base-intake-conflict-reapply-pr-intent-on-base-canonical.md)
@@ -36,3 +44,5 @@ confidence: medium
 ## ソース
 
 - [レビュー済み HEAD で base を取り込んだ fix 結果](../../raw/fixes/20260928T135415Z-pr-3379.md)
+- [fix 結果（検証器の版と計画の統合）](../../raw/fixes/20260929T082122Z-pr-3349.md)
+- [fix 結果（取り込みと修正を 1 つの計画に）](../../raw/fixes/20260929T055448Z-pr-3393.md)
