@@ -313,7 +313,7 @@ run_triage_block() {
 out=$(TRIAGE_GATE_RC=3 run_triage_block 7)
 assert_eq 'gate block surfaces the held exit code' '[CONTEXT] ADOPTION_GATE_RC=3' "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ADOPTION_GATE_RC=' || true)"
 assert_eq 'records are written with their candidates under the reviewed commit' \
-  '{"adoption":{"head":"c0ffee","candidates":[{"id":"C-1","content":"full text"}],"issued":[],"records":[{"ids":["C-1"]}]}}' \
+  '{"adoption":{"head":"c0ffee","candidates":[{"id":"C-1","content":"full text"}],"issued":{},"records":[{"ids":["C-1"]}]}}' \
   "$(jq -c . "$triage_dir/root/.rite/state/adoption-5-triage.json" 2>/dev/null || true)"
 args=$(paste -sd ' ' "$triage_dir/args" 2>/dev/null || true)
 case "$args" in
@@ -336,7 +336,7 @@ esac
 # same full text as the candidate the previous record's ids named (kept in the record file itself), so the
 # gate links it instead of filing it again.
 state="$triage_dir/root/.rite/state"
-prev_records() { printf '{"adoption": {"head": "old", "candidates": %s, "issued": [], "records": %s}}\n' "$1" "$2" > "$state/adoption-5-triage.json"; }
+prev_records() { printf '{"adoption": {"head": "old", "candidates": %s, "issued": %s, "records": %s}}\n' "$1" "${3:-{\}}" "$2" > "$state/adoption-5-triage.json"; }
 printf '{"candidates": [{"id": "C-1", "content": "full text"}, {"id": "C-2", "content": "other"}]}\n' > "$state/adoption-hold-5-triage.json"
 prev_records '[{"id": "C-1", "content": "full text"}, {"id": "C-2", "content": "other"}]' '[{"ids": ["C-1"], "tracker": 77}, {"ids": ["C-2"]}]'
 printf '{"commit_sha": "beef"}\n' > "$triage_dir/root/.rite/review-results/5-20260102000000.json"
@@ -387,25 +387,51 @@ out=$(TRIAGE_GATE_RC=0 run_triage_block 7)
 assert_eq 'a tracker is carried after the hold is released' 'beef|77' \
   "$(jq -r '"\(.adoption.head)|\(.adoption.records[0].tracker)"' "$state/adoption-5-triage.json" 2>/dev/null || true)"
 # A run that reports only other candidates keeps the Issue in issued, so the next run that reports the
-# candidate again still links it.
+# candidate again still links it. 7.4.5 releases the hold after each run, so no hold is left between them.
+rm -f "$state/adoption-hold-5-triage.json"
 triage_candidates='{"candidates": [{"id": "C-1", "content": "unrelated"}]}'
 triage_records='[{"ids": ["C-1"]}]'
 out=$(TRIAGE_GATE_RC=0 run_triage_block 7)
+rm -f "$state/adoption-hold-5-triage.json"
+assert_eq 'the intervening run is decided, drops the tracker from its records and keeps it in issued' '0|null|77' \
+  "$(printf '%s\n' "$out" | sed -n 's/^\[CONTEXT\] ADOPTION_GATE_RC=//p')|$(jq -r '"\(.adoption.records[0].tracker)|\(.adoption.issued[{content: "full text"} | tojson])"' "$state/adoption-5-triage.json" 2>/dev/null || true)"
 triage_candidates='{"candidates": [{"id": "C-1", "content": "full text"}]}'
 out=$(TRIAGE_GATE_RC=0 run_triage_block 7)
+rm -f "$state/adoption-hold-5-triage.json"
 assert_eq 'a tracker survives a run that did not report its candidate' '0|77' \
   "$(printf '%s\n' "$out" | sed -n 's/^\[CONTEXT\] ADOPTION_GATE_RC=//p')|$(jq -r '.adoption.records[0].tracker' "$state/adoption-5-triage.json" 2>/dev/null || true)"
-# A reworded candidate at the same place is not linked, and the run warns instead of dropping the Issue silently.
+# A later tracker for the same candidate replaces the older one (the Issue was closed and filed again), so
+# the run links the new Issue instead of stopping on two trackers.
+prev_records '[{"id": "C-1", "content": "full text"}]' '[{"ids": ["C-1"], "tracker": 78}]' '{"{\"content\":\"full text\"}": 77}'
+triage_records='[{"ids": ["C-3"]}]'
+triage_candidates='{"candidates": [{"id": "C-3", "content": "full text"}]}'
+out=$(TRIAGE_GATE_RC=0 run_triage_block 7)
+assert_eq 'a later tracker for the same candidate replaces the older one' '0|78' \
+  "$(printf '%s\n' "$out" | sed -n 's/^\[CONTEXT\] ADOPTION_GATE_RC=//p')|$(jq -r '.adoption.records[0].tracker' "$state/adoption-5-triage.json" 2>/dev/null || true)"
+# The same candidate written with its fields in another order still links the Issue.
+prev_records '[{"id": "C-1", "content": "full text", "reviewer": "r"}]' '[{"ids": ["C-1"], "tracker": 77}]'
+triage_candidates='{"candidates": [{"reviewer": "r", "id": "C-3", "content": "full text"}]}'
+triage_records='[{"ids": ["C-3"]}]'
+out=$(TRIAGE_GATE_RC=0 run_triage_block 7)
+assert_eq 'a candidate with reordered fields still links the Issue' '0|77' \
+  "$(printf '%s\n' "$out" | sed -n 's/^\[CONTEXT\] ADOPTION_GATE_RC=//p')|$(jq -r '.adoption.records[0].tracker' "$state/adoption-5-triage.json" 2>/dev/null || true)"
+# Candidates the classifier merged under one explicit tracker map to that tracker in the next run.
+prev_records '[{"id": "C-1", "content": "full text"}, {"id": "C-2", "content": "new"}]' '[{"ids": ["C-1", "C-2"], "tracker": 78}]' '{"{\"content\":\"full text\"}": 77, "{\"content\":\"new\"}": 78}'
+triage_candidates='{"candidates": [{"id": "C-3", "content": "full text"}, {"id": "C-4", "content": "new"}]}'
+triage_records='[{"ids": ["C-3", "C-4"]}]'
+out=$(TRIAGE_GATE_RC=0 run_triage_block 7)
+assert_eq 'merged candidates follow the tracker the classifier gave them' '0|78' \
+  "$(printf '%s\n' "$out" | sed -n 's/^\[CONTEXT\] ADOPTION_GATE_RC=//p')|$(jq -r '.adoption.records[0].tracker' "$state/adoption-5-triage.json" 2>/dev/null || true)"
+# A reworded candidate is not linked by the bash (the classifier links it from issued in step 2), and the
+# Issue stays in issued for the classifier to find.
 prev_records '[{"id": "C-1", "content": "full text", "reviewer": "r", "file_line": "a.sh:3"}]' '[{"ids": ["C-1"], "tracker": 77}]'
-triage_candidates='{"candidates": [{"id": "C-2", "content": "reworded", "reviewer": "r", "file_line": "a.sh:3"}]}'
+triage_candidates='{"candidates": [{"id": "C-2", "content": "reworded", "reviewer": "r", "file_line": "a.sh:4"}]}'
 triage_records='[{"ids": ["C-2"]}]'
 out=$(TRIAGE_GATE_RC=0 run_triage_block 7)
-assert_eq 'a reworded candidate is not linked and does not stop the run' '0|null' \
-  "$(printf '%s\n' "$out" | sed -n 's/^\[CONTEXT\] ADOPTION_GATE_RC=//p')|$(jq -r '.adoption.records[0].tracker' "$state/adoption-5-triage.json" 2>/dev/null || true)"
-case "$out" in
-  *'WARNING: 追跡先 #77 の候補と同じ位置の候補が全文の違う形で出ています'*) pass 'a reworded candidate at the same place warns about the Issue' ;;
-  *) fail "a reworded candidate must warn about the Issue: $out" ;;
-esac
+assert_eq 'a reworded candidate is not linked by the bash and the Issue stays in issued' '0|null|[77]' \
+  "$(printf '%s\n' "$out" | sed -n 's/^\[CONTEXT\] ADOPTION_GATE_RC=//p')|$(jq -r '"\(.adoption.records[0].tracker)|\([.adoption.issued[]] | tojson)"' "$state/adoption-5-triage.json" 2>/dev/null || true)"
+assert_grep 'step 2 has the classifier read issued for the same root cause' "$review" \
+  '判定記録ファイルがあれば `head` を問わずその `issued`（候補の全文ごとに最後に付いた `tracker`）を読み、同じ根因の今回の候補を含む記録にはその `tracker` を入れる'
 triage_candidates='{"candidates": [{"id": "C-1", "content": "full text"}]}'
 # Two different trackers for one record cannot be resolved: stop instead of picking one.
 printf '{"candidates": [{"id": "C-1", "content": "full text"}, {"id": "C-2", "content": "new"}]}\n' > "$state/adoption-hold-5-triage.json"

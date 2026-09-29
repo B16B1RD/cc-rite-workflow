@@ -3,7 +3,7 @@
 `{state_root}` は `bash {plugin_root}/hooks/state-path-resolve.sh` の出力。7.1 の候補が 0 件かつ triage の hold ファイル `{state_root}/.rite/state/adoption-hold-{pr_number}-triage.json` が無いときだけステップ 7 を skip する（**7.7 も skip**）。hold ファイルがあれば候補 0 件でも下の手順でゲートを呼ぶ。候補ごとの処分は採否ゲート（`review-adoption-gate.sh --kind triage`）の出口だけで決める。人間に候補ごとの処分を尋ねない。`PR_REVIEW_IN_E2E` で処分を変えない。
 
 1. 7.1 の候補（Source A → Source B の抽出順、dedup 後）に `C-1`, `C-2`, … を振る。triage の hold ファイルがあれば、その `head` が本 cycle の review JSON の `commit_sha` と同じかどうかを問わず（commit を問わず）、その `candidates` の各候補を、id だけ次の `C-n` に振り直して内容は一字も変えずに候補集合へ加える（id を除く全欄が一致する候補が既にあれば加えない）。triage の候補はほかのどこにも残らないため、新しい commit でも合流させて分類役が判定し直す（直っていれば `RESOLVED`）。内容を言い換えるとゲートは同じ候補と認めず、保留が解けない（`held_candidates_dropped`。前の `tracker` を持つ記録の候補がすべて今回の候補から消えたときは、ゲートより前に手順 3 が止める）。
-2. 分類役（本手順を実行する LLM）が全候補の判定記録を書く。1 根因 = 1 記録。欄は `review-adoption.py` の docstring に従い、起票（ADOPT pre_existing / 調査）になる記録には `acceptance`（起票する Issue の受入条件の文）を必ず入れる。既存の Issue（前回この手順で作った Issue を含む）が同じ根因を追跡していれば `tracker` に入れる（LINK になり、重ねて起票しない）。判定記録ファイル `{state_root}/.rite/state/adoption-{pr_number}-triage.json` があり、その `head` が本 cycle の review JSON の `commit_sha` と同じなら、その記録（保留後に直された記録）から始める（この head 条件は判定記録ファイルの再利用の条件で、手順 1 の合流の条件ではない）。`C-n` は振り直すため、各記録の `ids` は手順 1 で候補全文が一致した候補（合流させた hold の候補を含む）の新しい id へ移す（前の記録の `ids` が指す全文は判定記録ファイルの `candidates` で引き、hold からは引かない）。`head` が違えば記録を新しく書く。7.4.2 が書き戻した `tracker` は消さない（`head` が違っても、途中に別の候補だけの run を挟んでも、手順 3 の bash が判定記録の `issued` に残した候補と全文の一致する今回の記録へ持ち越す。全文が違う（言い換えられた）候補には持ち越さないので、同じ根因なら `tracker` を明示する。手順 3 は同じ `reviewer` と `file_line` の候補に持ち越せなかった `tracker` を WARNING で示す）。前の run で異なる `tracker` を持った候補を 1 つの記録にまとめるなら、その記録の `tracker` を明示する（持ち越しは `tracker` の無い記録にだけ働き、複数の候補が衝突すると手順 3 が止まる）。
+2. 分類役（本手順を実行する LLM）が全候補の判定記録を書く。1 根因 = 1 記録。欄は `review-adoption.py` の docstring に従い、起票（ADOPT pre_existing / 調査）になる記録には `acceptance`（起票する Issue の受入条件の文）を必ず入れる。既存の Issue（前回この手順で作った Issue を含む）が同じ根因を追跡していれば `tracker` に入れる（LINK になり、重ねて起票しない）。判定記録ファイル `{state_root}/.rite/state/adoption-{pr_number}-triage.json` があり、その `head` が本 cycle の review JSON の `commit_sha` と同じなら、その記録（保留後に直された記録）から始める（この head 条件は判定記録ファイルの再利用の条件で、手順 1 の合流の条件ではない）。`C-n` は振り直すため、各記録の `ids` は手順 1 で候補全文が一致した候補（合流させた hold の候補を含む）の新しい id へ移す（前の記録の `ids` が指す全文は判定記録ファイルの `candidates` で引き、hold からは引かない）。`head` が違えば記録を新しく書く。判定記録ファイルがあれば `head` を問わずその `issued`（候補の全文ごとに最後に付いた `tracker`）を読み、同じ根因の今回の候補を含む記録にはその `tracker` を入れる（文面や `file_line` が変わっていても、位置が無くても。閉じた Issue の番号は入れない）。手順 3 の bash は、`tracker` の無い記録のうち `issued` と全文（id を除く全欄）が一致する候補を含むものにだけ、その番号を持ち越す。7.4.2 が書き戻した `tracker` は消さない。前の run で異なる `tracker` を持った候補を 1 つの記録にまとめるなら、その記録の `tracker` を明示する（持ち越しは `tracker` の無い記録にだけ働き、複数の候補が衝突すると手順 3 が止まる）。
    台帳の処分を再利用するため、下の bash で却下台帳を読む。候補の `reviewer` と `file_line` が行の `finding_id` と `file:line` に一致する行のうち、最後の `REJECT` / `ADOPT` 行をその候補の記録の `prior`（`{finding_id, file_line, disposition, premise}`。premise は判定文）に写す（prior の違う候補を 1 つの記録にまとめない）。前提が有効なら REJECT を再利用し、前提と矛盾する判定は helper が RECONCILE にする。`C-n` は cycle ごとに振り直すので台帳のキーにしない。`file_line` が空の候補には prior を写さない（位置の無い候補どうしはキーが一意にならず、無関係な処分が写る）。下の bash が非ゼロで終わったら、判定記録を書かず手順 3 へ進まない。`[review:error]` で止まる（台帳を読めないまま判定すると処分を再利用できない）。
 
 ```bash
@@ -44,19 +44,20 @@ CANDIDATES_EOF
 adoption="$state_root/.rite/state/adoption-{pr_number}-triage.json"
 hold_file="$state_root/.rite/state/adoption-hold-{pr_number}-triage.json"
 # 判定記録にはその ids が指す候補の全文を同梱する（hold とは別に書かれるので、id の意味を hold から引かない）。
-# issued は tracker とその候補の全文を run をまたいで積み上げる（今回の候補に無い run を挟んでも消さない）。
-# 7.4.2 が書き戻した tracker を、issued の候補と全文（id 以外）が一致する今回の記録へ持ち越す。
-# 全文が違う候補には持ち越さない。写せない tracker で止まるのは hold にある候補（手順 1 が一字も変えずに合流させる候補）だけ
+# issued は候補の全文（id 以外）ごとに最後に付いた tracker を run をまたいで残す（今回の候補に無い run を挟んでも消さない。
+# 前の run の記録が付けた番号が古い番号を上書きする。キーは欄の順序によらない）。tracker の無い記録へは、全文が一致する候補の番号だけを持ち越す。
+# 写せない tracker で止まるのは hold にある候補（手順 1 が一字も変えずに合流させる候補）だけ
 prev_a=/dev/null; prev_h=/dev/null
 [ -e "$adoption" ] && prev_a=$adoption
 [ -e "$hold_file" ] && prev_h=$hold_file
 mkdir -p "$state_root/.rite/state" \
   && jq --arg head "$head_sha" --slurpfile a "$prev_a" --slurpfile h "$prev_h" --slurpfile c "$work/candidates.json" '
+      def canon: walk(if type == "object" then to_entries | sort_by(.key) | from_entries else . end) | tojson;
       . as $records
-      | (if ($a | length) > 0 then $a[0].adoption else {records: [], candidates: [], issued: []} end) as $p
+      | (if ($a | length) > 0 then $a[0].adoption else {records: [], candidates: [], issued: {}} end) as $p
       | ([$p.candidates[] | {key: .id, value: del(.id)}] | from_entries) as $old
-      | ($p.issued + [$p.records[] | select(.tracker) | {tracker, candidates: [.ids[] | $old[.] | select(.)]}]
-          | unique) as $issued
+      | ($p.issued + ([$p.records[] | select(.tracker) | .tracker as $n
+          | .ids[] | $old[.] | select(.) | {key: canon, value: $n}] | from_entries)) as $issued
       | ([$c[0].candidates[] | {key: .id, value: del(.id)}] | from_entries) as $new
       | [$c[0].candidates[] | del(.id)] as $now
       | [$h[].candidates[] | del(.id)] as $held
@@ -68,21 +69,13 @@ mkdir -p "$state_root/.rite/state" \
         then error("前の tracker \($lost) の候補が今回の候補にありません。hold の候補を一字も変えずに合流させて（手順 1）記録を書き直す") else . end
       | {adoption: {head: $head, candidates: $c[0].candidates, issued: $issued, records: ($records | map(. as $r
           | if .tracker then . else
-              ([$issued[] | select(any(.candidates[]; . as $o | any($r.ids[]; $new[.] == $o)))
-                | .tracker] | unique) as $t
+              ([$r.ids[] | $new[.] | select(.) | $issued[canon] | select(.)] | unique) as $t
               | if ($t | length) > 1
                 then error("記録 \($r.ids) の候補に前の tracker が複数あります: \($t)。手順 2 でこの記録の tracker を明示するか、記録を分けて書き直す")
                 elif ($t | length) == 1 then .tracker = $t[0] else . end
             end))}}' "$work/records.json" > "$adoption.tmp" \
   && mv -- "$adoption.tmp" "$adoption" \
   || { rm -f -- "$adoption.tmp"; echo "ERROR: 判定記録を書けません（原因は直前の出力）: $adoption" >&2; echo "[CONTEXT] ADOPTION_GATE_RC=2"; exit 1; }
-# 持ち越せなかった tracker のうち、同じ reviewer と file_line の候補が今回ある（言い換えの疑い）ものを示す。止めない
-jq -r '.adoption as $d | ([$d.records[].tracker | select(.)]) as $used
-  | $d.issued[] | select(.tracker as $n | $used | index($n) | not) | . as $i
-  | select(any($i.candidates[]; . as $o | ($o.file_line // "") != ""
-      and any($d.candidates[]; .reviewer == $o.reviewer and .file_line == $o.file_line)))
-  | "WARNING: 追跡先 #\($i.tracker) の候補と同じ位置の候補が全文の違う形で出ています。同じ根因なら手順 2 でその記録の tracker に #\($i.tracker) を入れて書き直す"' \
-  "$adoption" >&2
 issue_args=()
 [ -z "{source_issue_number}" ] || issue_args=(--issue "{source_issue_number}")
 rc=0
@@ -569,7 +562,7 @@ fi
 rm -f -- "$hold_file"
 ```
 
-`TRIAGE_LEDGER=failed`（`writes_incomplete` / `fetch_failed` / `ledger_edit_failed` / `count_unreadable` / `record_failed`）は hold ファイルを残し、その resume を書き換えてから、7.2 と同じ採否保留の停止（`REVIEW_STOP=adoption_held; kind=triage`）で止まる。iterate はこの停止を再試行しない。再実行は 7.2 から始まり、同じ候補で 7.4 を最初からやり直す。成功済みの Decision Log 行と申し送りコメントは重ねて書かれうる。7.4.1-7.4.2 で作った Issue は判定記録の `tracker` に書き戻してあり、7.2 手順 3 が（HEAD が変わって記録を新しく書いても）前の判定記録に同梱した候補と全文の一致する記録へ持ち越すので、再実行でゲートが LINK にし、重ねて起票しない。書き戻せなかった番号（`{untracked_issues}`）は resume（hold に書けなければ stderr の WARNING と flow-state の次アクション）が名指しし、再実行の前に `tracker` へ入れるよう案内する。
+`TRIAGE_LEDGER=failed`（`writes_incomplete` / `fetch_failed` / `ledger_edit_failed` / `count_unreadable` / `record_failed`）は hold ファイルを残し、その resume を書き換えてから、7.2 と同じ採否保留の停止（`REVIEW_STOP=adoption_held; kind=triage`）で止まる。iterate はこの停止を再試行しない。再実行は 7.2 から始まり、同じ候補で 7.4 を最初からやり直す。成功済みの Decision Log 行と申し送りコメントは重ねて書かれうる。7.4.1-7.4.2 で作った Issue は判定記録の `tracker` に書き戻してあり、7.2 手順 3 が（HEAD が変わって記録を新しく書いても）判定記録の `issued` から全文の一致する記録へ持ち越すので、再実行でゲートが LINK にし、重ねて起票しない。書き戻せなかった番号（`{untracked_issues}`）は resume（hold に書けなければ stderr の WARNING と flow-state の次アクション）が名指しし、再実行の前に `tracker` へ入れるよう案内する。
 
 ### 7.5-7.6 Append to PR & Report
 
