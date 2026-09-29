@@ -2,6 +2,8 @@
 
 ## 2026-09-30
 
+* **Lint incomplete** — 機械検査の報告値は stale=61, orphans=0, missing_concept=0, unregistered_raw=595, broken_refs=0, descriptive_number_ref=0。既存ヘルパーが Broken pipe を出力したため全体の成功とは扱わない。既存ページ全件の意味比較は未完了。
+
 * **Skip**: [影響走査のレビュー結果](raw/reviews/20260929T182831Z-pr-3456.md) — 作業固有の検証記録であり、新規のドメイン経験則はない
 * **Skip**: [影響走査の fixture 修正結果](raw/fixes/20260929T183333Z-pr-3456.md) — 作業固有の検証記録であり、新規のドメイン経験則はない
 * **Skip**: [影響走査の再レビュー結果](raw/reviews/20260929T184604Z-pr-3456.md) — 作業固有の検証記録であり、新規のドメイン経験則はない
