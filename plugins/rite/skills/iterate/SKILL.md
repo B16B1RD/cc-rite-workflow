@@ -338,7 +338,7 @@ args: "{pr_number}"
 
 ## ステップ 5.S: NB digest sweep
 
-`[review:mergeable]` / `[fix:non-fatal-only]` / `[fix:replied-only]` 到達後・完了通知前に、未 sweep の最新 review JSON につき **1 回**。対象 0 件は no-op（fix を invoke しない）。同一 review JSON では 2 回 invoke しない。新しい JSON では再 sweep する。silent skip 禁止。Stop hook が `review:mergeable` / `fix:non-fatal-only` / `fix:replied-only` の FINALIZE で完了通知を求めても、5.S 未実施なら先に本ステップを実行する。成功後は PR 内推奨の修正と完了前確認を経てからステップ 5 へ。Stop hook がステップ 5 を求めてもこの 2 つを飛ばさない。
+`[review:mergeable]` / `[fix:non-fatal-only]` / `[fix:replied-only]` 到達後・完了通知前に、未 sweep の最新 review JSON につき **1 回**。`noop` / `skipped` では fix を invoke しない（下表）。同一 review JSON では 2 回 invoke しない。新しい JSON では再 sweep する。silent skip 禁止。Stop hook が `review:mergeable` / `fix:non-fatal-only` / `fix:replied-only` の FINALIZE で完了通知を求めても、5.S 未実施なら先に本ステップを実行する。成功後は PR 内推奨の修正と完了前確認を経てからステップ 5 へ。Stop hook がステップ 5 を求めてもこの 2 つを飛ばさない。
 rationale: references/rationale.md#nb-sweep-step
 
 入口の通常ループ sentinel（ステップ 0.7 から入ったときは `origin=`）を `{sweep_origin}` として保持する。collect は `pending` のときこの値を入口記録に書く。5.S 再入時も保持値を使い、内部の `[fix:sweep-done]` や handoff で上書きしない。
