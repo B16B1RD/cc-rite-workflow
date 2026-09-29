@@ -475,7 +475,7 @@ assert_grep "T-07 pr-review 7.2 stops when the registration fails" "$TRIAGE_MD" 
 assert "T-07 pr-review no longer registers by position" "0" "$(grep -c '5\.3\.0\.R\|recommendations-register\|registered_recommendation_positions' "$REVIEW" "$REVIEW_STEP" | awk -F: '{ n += $2 } END { print n }')"
 assert_grep_in_section "T-07 fix 2.1 routes R-NN to the normal fix" "$FIX_SKILL" \
   '^### 2\.1 Confirm Fix Approach$' '^### 2\.1\.A ' \
-  '`fatal_map\[id\] == true` と PR 内推奨の `R-NN` だけが通常の修正'
+  '`fatal_map\[id\] == true`、PR 内推奨の `R-NN`、現在の review context の `D-NN` だけが通常の修正'
 
 # Execute the actual skill error guards, with local stubs for mutations.
 extract_fix_block() {

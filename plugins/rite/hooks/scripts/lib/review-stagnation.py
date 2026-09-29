@@ -608,6 +608,80 @@ def defer(state, args, directory):
     return state
 
 
+def deviations(state, context):
+    """Purpose deviations recorded against this review; the fix plan disposes each like a blocking finding."""
+    run = state.get("review_run")
+    records = run.get("deviations", []) if isinstance(run, dict) else []
+    return [entry for entry in records if entry["review_context"] == context]
+
+
+def pr_added(file, start, end):
+    """Whether file:start-end overlaps a line this PR added against origin/<branch.base>."""
+    base = importlib.import_module("review-fix-scope").base_branch()
+    remote = "refs/remotes/origin/" + base
+    require(subprocess.run(["git", "rev-parse", "-q", "--verify", remote], capture_output=True).returncode == 0,
+            "recording a deviation needs origin/" + base + "; run git fetch origin " + base)
+    script = ('source "$1"; diff_out=$(git diff -U0 "$2...HEAD") || exit 2; '
+              'diff_hunks_parse <<< "$diff_out"; range_overlaps "$plus_hunks" "$3" "$4" "$5"')
+    result = subprocess.run(["bash", "-c", script, "pr-added", str(Path(__file__).with_name("diff-hunks.sh")),
+                             remote, file, str(start), str(end)], capture_output=True, text=True)
+    require(result.returncode in (0, 1), "git diff against origin/" + base + " failed: " + result.stderr.strip())
+    return result.returncode == 0
+
+
+def deviate(state, args, directory):
+    """Reopen a mergeable review for a purpose deviation on a line the PR itself added.
+
+    The purpose check runs after mergeable, so what it finds is in no saved
+    finding, and the receipt cannot change. Recording it on the run makes it a
+    saved obligation the fix plan must dispose; the review of the fix commit is
+    an ordinary next cycle of the same run.
+    """
+    record = read(args.input)
+    require(isinstance(record, dict), "deviation must be a JSON object")
+    for name in ("requirement", "file", "description"):
+        require(text(record.get(name)), "deviation " + name + " required")
+    line = record.get("line")
+    end = record.get("end", line)
+    require(type(line) is int and line > 0 and type(end) is int and end >= line,
+            "deviation line must be a positive line or range")
+    run, context = current(state, args.session, completed=True)
+    gate(state, args.session)
+    receipt = cycle.matching_receipt(directory, state["review_cycle"])
+    require(receipt is not None, "saved review receipt missing")
+    require(not any(f.get("scope") in ("current-pr", "follow-up") for f in receipt[1]["findings"]),
+            "the review still has blocking findings; fix them through the ordinary fix path")
+    # The fix of this cycle could not be re-reviewed: the next review would trip max-cycles.
+    require(state["cycle_count"] < review_cycle_cap(),
+            "the review is at safety.max_review_cycles; its fix could not be re-reviewed")
+    require(pr_added(record["file"], line, end),
+            "deviation does not point at a line this PR added")
+    # A fix that disposed this review's deviations without a new commit returns to
+    # the same HEAD; handing it over again would loop without advancing a cycle.
+    checked = directory.parent / "state" / ("fix-plan-" + args.session + ".json")
+    if checked.is_file():
+        plan = read(checked)["plan"]
+        require(plan["review_context"] != context
+                or not any(i.startswith("D-") for group in plan["groups"] for i in group["finding_ids"]),
+                "a fix already disposed this review's deviations; the same commit is not handed over again")
+    entry = dict(requirement=record["requirement"], file=record["file"], line=line, end=end,
+                 description=record["description"])
+    mine = deviations(state, context)
+    if not any({key: known[key] for key in entry} == entry for known in mine):
+        run.setdefault("deviations", []).append(
+            dict(entry, id="D-" + str(len(mine) + 1).zfill(2), review_context=context.copy(), at=cycle.now()))
+    # A closed record would let the session switch away with the deviation unfixed.
+    if run.get("completed_context") == context:
+        run.pop("completed_context")
+    if run.get("deferred_context") == context:
+        run.pop("deferred_context")
+        run.pop("deferred_reason", None)
+    state.update(phase="fix", active=True, updated_at=cycle.now(),
+                 next_action="/rite:fix " + str(state["pr_number"]))
+    state.pop("handoff", None)
+    return state
+
+
 def instant(value):
     require(text(value), "clock timestamp required")
     parsed = datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -842,9 +916,23 @@ def existing_breaker(state, run):
     # A completed mergeable review proceeds to the unchanged quality gates.
     if state["review_cycle"]["verdict"] == "mergeable":
         return None
+    if state["cycle_count"] >= review_cycle_cap():
+        return "max-cycles"
+    return "divergence" if marker["TREND_DIVERGENCE"] == "fire" else None
+
+
+def review_cycle_cap():
+    """safety.max_review_cycles, or 15 when unset or invalid.
+
+    The config is located like the loop's own breaker: the worktree's file, else
+    the main checkout's untracked one.
+    """
     maximum = 15
-    config = Path("rite-config.yml")
-    if config.exists():
+    located = subprocess.run(["bash", str(Path(__file__).with_name("rite-config-path.sh"))],
+                             capture_output=True, text=True)
+    require(located.returncode in (0, 1), "cannot read rite-config.yml: " + located.stderr.strip())
+    if located.returncode == 0:
+        config = Path(located.stdout.strip())
         # 節は空白と # 以外で始まる次の行で終える（数字や _ で始まるキーでも終え、列 0 のコメント行では終えない）
         section = re.search(r"^safety:\s*\n(.*?)(?=^[^\s#]|\Z)", config.read_text(), re.M | re.S)
         if section:
@@ -853,9 +941,7 @@ def existing_breaker(state, run):
                 value = re.sub(r"\s+#.*", "", setting[1]).strip().strip("\"'")
                 if value.isdecimal() and int(value) > 0:
                     maximum = int(value)
-    if state["cycle_count"] >= maximum:
-        return "max-cycles"
-    return "divergence" if marker["TREND_DIVERGENCE"] == "fire" else None
+    return maximum
 
 
 def amend_replan(state, args, directory, run, context, plan, issue, previous):

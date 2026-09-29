@@ -3,6 +3,7 @@ name: batch-run
 description: |
   rite workflow のバッチ実行スキル: 複数 Issue に対し /rite:open → /rite:iterate を
   順次・自律実行して draft PR を残す（--merge 指定時のみ ready→merge→cleanup まで完走）。
+  完了時に /rite:issue-audit を 1 回実行し、完了報告に監査レポートへの参照を載せる。
   ユーザーが明示的に /rite:batch-run で起動する meta-orchestrator。auto-activate しない。
   起動: /rite:batch-run [--merge] <issue_number>...
 argument-hint: "[--merge] <issue_number>..."
@@ -29,7 +30,7 @@ rationale: references/rationale.md#session-scoped-queue
 ## Contract
 
 **Input**: `[--merge]` + Issue number(s) — 1 個以上、空白区切り（省略時は自セッションの run-queue からモードごと再開）
-**Output**: 全 Issue 処理完了の完了通知（ステップ 7。デフォルトは draft PR 群、`--merge` は merge/cleanup 完走）、または最初の失敗での停止報告（残り Issue 含む、ステップ 8）
+**Output**: 全 Issue 処理完了の完了通知（ステップ 7。デフォルトは draft PR 群、`--merge` は merge/cleanup 完走。どちらも監査レポートへの参照を含む）、または最初の失敗での停止報告（残り Issue 含む、ステップ 8）
 **自律度**: 完全自律（無確認）。デフォルトは draft PR まで、`--merge` 時は merge を含め確認を挟まない。失敗時のみ停止。
 
 ## E2E Output Minimization
@@ -59,6 +60,7 @@ rationale: references/rationale.md#session-scoped-queue
 | `{failed_issues}` | ステップ 7 bash の `failed=`（サーキットブレーカー `[iterate:max-cycles-reached]` で非収束となった Issue 一覧。空 `[]` のとき完了通知の該当行を省略） |
 | `{outstanding_n}` | ステップ 6 で cleanup 完了報告から読む `[cleanup:outstanding:N]` sentinel の `N` に実際に埋め込まれた数値 |
 | `{action_items}` | 本 run の bash 出力に残った、ユーザーの操作が必要な WARNING / ERROR。ステップ 7 完了通知 / ステップ 8 停止報告の `要対応:` 欄へ転記する（0 件なら欄ごと省略） |
+| `{audit_report}` | ステップ 7 の `/rite:issue-audit` 完了報告の `監査レポート:` 行の path |
 | `{outstanding_issues}` | ステップ 7 bash の `outstanding=`（未完了事項が残った Issue 一覧。空 `[]` のとき完了通知の該当行を省略） |
 | `{done_issues}` / `{remaining_issues}` | ステップ 8 bash の `done=` / `remaining=`（停止時の処理済み / 未処理 Issue） |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
@@ -464,6 +466,20 @@ rm -f "$queue_file"
 echo "[CONTEXT] RUN_DONE; processed=$processed; failed=$failed; outstanding=$outstanding; mode=$mode"
 ```
 
+続けて Issue 監査を 1 回実行する:
+
+```text
+skill: rite:issue-audit
+```
+
+| Sentinel | 次のアクション |
+|---------|--------------|
+| `[issue-audit:returned-to-caller]` | `監査レポート:` 行の path を `{audit_report}` として retain し、完了通知へ |
+| `[issue-audit:failed]` | `監査レポート:` 行があれば `{audit_report}` に retain する（無ければ `なし`）。失敗理由を `{action_items}` に 1 行載せて完了通知へ（再 invoke しない） |
+| sentinel 不在 | `{audit_report}` を `なし` とし、`issue-audit が完了報告を返しませんでした — /rite:issue-audit を手動で実行してください` を `{action_items}` に載せて完了通知へ |
+
+<!-- run orchestration: after issue-audit returns, do NOT stop — retain {audit_report} and emit the ステップ 7 完了通知 below. -->
+
 `mode=`（`{run_mode}`）に応じて、`processed=` の Issue 一覧を `{processed_issues}`、`failed=` の非収束 Issue 一覧を `{failed_issues}` として完了通知を出し分ける。`failed=` が空配列 `[]` でない場合は、完了通知にサーキットブレーカーで failed 扱いとなった Issue を明示する（`[]` のときは該当行を省略する）。`outstanding=` の Issue 一覧を `{outstanding_issues}` として使う（cleanup 完了報告の「未完了事項」をロールアップする。`mode=merge` のときのみ意味を持つ — デフォルトモードは cleanup を invoke しないため `outstanding` は常に空）。
 
 `{action_items}`（ステップ 7 の 2 テンプレとステップ 8 停止報告に共通）: 本 run の bash 出力に残った WARNING / ERROR のうち、ユーザーが操作しない限り残り続ける行を 1 行ずつ列挙する。最終試行と重複の判定は [Autonomous Execution](../rite-workflow/references/autonomous-execution.md) に従う。成功した迂回・リトライは載せない。**0 件なら `要対応:` 行ごと省略する**。cleanup 由来の非ブロッキング失敗をロールアップする `未完了事項:` 行とは別欄で、0 件時の扱いも異なる（`未完了事項:` は常に出す）。
@@ -479,6 +495,7 @@ echo "[CONTEXT] RUN_DONE; processed=$processed; failed=$failed; outstanding=$out
 または最初からまとめて完走させるなら `/rite:batch-run --merge {processed_issues}` を実行してください。
 （未解決指摘ありで通過した draft PR があれば、上記処理中にその旨を明示しています。）
 （旧キューの `failed=` が非空のときのみ）サーキットブレーカーで非収束（failed）となった Issue: {failed_issues} — draft/open PR をレビュー待ちで残しています。
+監査レポート: {audit_report}
 
 （転記すべき行があるときのみ、以下 2 行）
 要対応:
@@ -496,6 +513,7 @@ echo "[CONTEXT] RUN_DONE; processed=$processed; failed=$failed; outstanding=$out
 全 Issue を処理しました（open→iterate→ready→merge→cleanup を完走）。
 （旧キューの `failed=` が非空のときのみ）サーキットブレーカーで非収束（failed）となり merge/cleanup をスキップした Issue: {failed_issues} — draft/open PR をレビュー待ちで残しています。`/rite:iterate <pr>` で再開できます。
 未完了事項: （`outstanding=` が空のとき）なし（全 Issue） / （非空のとき）{outstanding_issues} の cleanup で非ブロッキング失敗が残っています — 各 Issue の cleanup 完了報告（本セッションのログ）を参照するか、`/rite:recover <issue>` で確認してください。
+監査レポート: {audit_report}
 
 （転記すべき行があるときのみ、以下 2 行）
 要対応:

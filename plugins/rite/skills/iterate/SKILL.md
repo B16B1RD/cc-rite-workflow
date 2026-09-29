@@ -439,9 +439,19 @@ MUST NOT: mergeable の後に手で commit する（fix の検証記録が無い
 | 結果 | 処置 |
 |------|------|
 | 整合 | ステップ 5（5.0 → 5.0.1）へ |
-| 逸脱（親の発見。findings[] に無い、または未実測） | 5.0.1 を呼ばない。完了を未確認とする。受入条件未検証と同型で `flow-state.sh set` を `--handoff` なしで実行し FINALIZE を消す。`[CONTEXT] REVIEW_STOP=purpose_unaligned` と `[review:error]` で未完了停止。逸脱箇所・元要求・反証条件を既存 PR details に書く（新キーなし）。`/rite:iterate` 再実行だけで回復したとしない |
+| 逸脱が PR の追加した行にある（origin=pr） | 下の `review-deviate` で同じ run に記録し、`/rite:fix {pr_number}` を invoke する。戻りは「5.S 後の PR 内推奨の修正」の sentinel 表に従う（`[fix:pushed]` → ステップ 1 で再レビュー）。`review-deviate` が拒否したら次の行へ |
+| 上記以外の逸脱（親の発見。findings[] に無い、または未実測） | 5.0.1 を呼ばない。完了を未確認とする。受入条件未検証と同型で `flow-state.sh set` を `--handoff` なしで実行し FINALIZE を消す。`[CONTEXT] REVIEW_STOP=purpose_unaligned` と `[review:error]` で未完了停止。逸脱箇所・元要求・反証条件を既存 PR details に書く（新キーなし）。`/rite:iterate` 再実行だけで回復したとしない |
 
-逸脱時は CB fire と同型の fenced bash を実行する（`--handoff` なし。新 sentinel は出さない）:
+PR が追加した行の逸脱は、作業ツリー外の絶対パス `{deviation_file}` に `{"requirement": 破った Issue の要求の原文, "file": リポジトリルートからの相対パス（git diff の表記）, "line": 行, "end": 終了行（任意）, "description": 逸脱の説明}` を書いてから記録する。完了記録（5.0.1 の後）でも同じ手順で戻れる:
+
+```bash
+bash {plugin_root}/hooks/flow-state.sh review-deviate --input "{deviation_file}"
+```
+
+記録は mergeable の review・未停止・blocking 0・`safety.max_review_cycles` 未満・`file:line` が `origin/{branch.base}...HEAD` の追加行と重なること・この review の `D-NN` を fix がまだ処置していないことを要求し、満たさなければ state を変えずに拒否する。記録した `D-NN` は fix の計画が blocking と同じく処置する。
+rationale: references/rationale.md#purpose-deviation-reopen
+
+上記以外の逸脱時は CB fire と同型の fenced bash を実行する（`--handoff` なし。新 sentinel は出さない）:
 
 ```bash
 bash {plugin_root}/scripts/iterate-step.sh purpose-unaligned --pr {pr_number} --issue {issue_number} --branch {branch_name}
@@ -449,7 +459,7 @@ bash {plugin_root}/scripts/iterate-step.sh purpose-unaligned --pr {pr_number} --
 
 復帰は、保存済み実測 finding が既存 scope を満たすときだけ通常 `/rite:fix`。それ以外は次の統合担当が PR details の逸脱記録を全差分確認の入力にする（pr-review ステップ 5 の `### 仕様との整合性`）。同一 HEAD で pr-review を再 invoke して empty_diff→full の全員再起動にしない。`phase=pr` への set は一般回復に使わない。
 
-MUST NOT: 親発見を finding ID として `/rite:fix` 2.1 へ足す。8.1 を上書きしない。ステップ 2 の汎用 `[review:error]` 再試行行にこの終端を載せない。成功を偽らない。同一 invoke の pr-review `[review:mergeable]` と `FINALIZE:review:mergeable` を iterate 成功と読まない。
+MUST NOT: 親発見を finding ID として `/rite:fix` 2.1 へ足す（`review-deviate` が記録した `D-NN` だけが例外）。8.1 を上書きしない。ステップ 2 の汎用 `[review:error]` 再試行行にこの終端を載せない。成功を偽らない。同一 invoke の pr-review `[review:mergeable]` と `FINALIZE:review:mergeable` を iterate 成功と読まない。
 
 ---
 

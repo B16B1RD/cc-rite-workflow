@@ -328,7 +328,7 @@ case "$HANDOFF" in
       fix:cancelled-by-user:*) ;;
       *)
         _purpose_mid="の完了前確認（目的整合）を経てからステップ5 の完了通知 (終了理由 + 次ステップ案内) を必ず出力してください。"
-        _purpose_extra="目的逸脱なら完了通知は出さず REVIEW_STOP=purpose_unaligned で停止してください。"
+        _purpose_extra="目的逸脱なら完了通知は出さず、PR の追加行の逸脱は review-deviate で記録して /rite:fix へ、それ以外は REVIEW_STOP=purpose_unaligned で停止してください。"
         ;;
     esac
     _reason="rite の review↔fix ループ (/rite:iterate) が終了 sentinel (${_result}) に到達しました。停止する前に /rite:iterate ${_purpose_mid}${_purpose_extra}${_text_note:+

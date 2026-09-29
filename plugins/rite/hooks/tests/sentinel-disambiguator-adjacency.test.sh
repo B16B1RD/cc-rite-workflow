@@ -9,7 +9,7 @@
 #   disambiguator marker を併記する契約を導入した。`create-md-invocation-symmetry.test.sh`
 #   の TC-7a/7b は create.md 専用の adjacency 検証として既に機能している。
 #
-#   一方で他 5 producer (cleanup.md / merge.md / ready.md / wiki/lint.md / wiki/ingest.md)
+#   一方で create.md 以外の producer（一覧は下記 PRODUCERS が唯一の列挙）
 #   には同等の自動検査が存在せず、wiki/lint.md ステップ 1.1/1.3 早期 return path で echo 順序が
 #   sentinel → disambiguator に swap されても既存 test 群は通過する非対称 gap があった。
 #   本 meta-test は全 producer 横断で 2 つの検査を機械化する:
@@ -40,7 +40,7 @@
 #     検出する
 #
 # 対応する 3 emit format:
-#   (1) Multi-line markdown (ready.md / merge.md ステップ 3 / lint.md ステップ 9.2 / ingest.md):
+#   (1) Multi-line markdown (ready.md / merge.md ステップ 3 / lint.md ステップ 9.2 / ingest.md / issue-audit の返却ブロック):
 #         <!-- skill return signal: caller must continue next step -->
 #         <!-- [skill:returned-to-caller] -->
 #   (2) Bash echo (lint.md ステップ 1.1/1.3 / merge.md ステップ 2):
@@ -62,7 +62,7 @@ source "$SCRIPT_DIR/_test-helpers.sh"
 PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 
 # Producers under test (create.md は create-md-invocation-symmetry.test.sh の TC-7a/7b で
-# 別途 covered のため除外。本 test は残り 5 producer の cross-producer 非対称 gap を埋める)
+# 別途 covered のため除外。本 test は残りの全 producer の cross-producer 非対称 gap を埋める)
 # Format: "skill_name:relative_path"
 PRODUCERS=(
   "cleanup:skills/cleanup/SKILL.md"
@@ -70,6 +70,7 @@ PRODUCERS=(
   "ready:skills/ready/SKILL.md"
   "lint:skills/wiki-lint/SKILL.md"
   "ingest:skills/wiki-ingest/SKILL.md"
+  "issue-audit:skills/issue-audit/SKILL.md"
 )
 
 # ──────────────────────────────────────────────────────────────────────

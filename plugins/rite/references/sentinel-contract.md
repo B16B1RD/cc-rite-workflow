@@ -50,6 +50,8 @@ rite workflow のスキル間連携は、各 sub-skill が bash 出力に埋め�
 | `[run:stopped]` | batch-run | (batch-run 内部完結、最終出力) | サーキットブレーカー等でバッチ処理を中断 |
 | `[projects:fetch-failed]` | issue-list | (issue-list 内部完結) | GitHub Projects からのフィールド取得に失敗 |
 | `[learn:complete]` | learn | (learn 内部完結) | 学習セッション完了 |
+| `[issue-audit:returned-to-caller]` | issue-audit | batch-run | Issue 監査が完了し、同じ返却ブロックの `監査レポート:` 行にレポートの path がある。caller へ制御を返す |
+| `[issue-audit:failed]` | issue-audit | batch-run | 集計または処分に失敗。batch-run は完了通知の `要対応:` に載せて続行する |
 
 ## Non-Sentinel な類似記法（検証対象外）
 
