@@ -2961,6 +2961,157 @@ done
 echo ""
 
 # --------------------------------------------------------------------------
+# Pattern 10: git / gh / script outside the checkout during a rite session
+# --------------------------------------------------------------------------
+echo "TC-P10: git / gh / script run outside the checkout while a rite session is active"
+p10_main=$(mktemp -d "${TMPDIR:-/tmp}/rite-p10-main.XXXXXX")
+p10_scratch=$(mktemp -d "${TMPDIR:-/tmp}/rite-p10-scratch.XXXXXX")
+p10_plain=$(mktemp -d "${TMPDIR:-/tmp}/rite-p10-plain.XXXXXX")
+p10_main=$(cd "$p10_main" && pwd -P)
+p10_scratch=$(cd "$p10_scratch" && pwd -P)
+p10_plain=$(cd "$p10_plain" && pwd -P)
+p10_wt="$p10_main/.rite/worktrees/issue-1"
+p10_sid="p10-session"
+git -C "$p10_main" init -q
+git -C "$p10_main" -c user.name=t -c user.email=t@example.com commit -q --allow-empty -m init
+git -C "$p10_main" worktree add -q --detach "$p10_wt" 2>/dev/null
+mkdir -p "$p10_main/.rite/sessions" "$p10_plain/.rite/sessions"
+jq -n --arg wt "$p10_wt" '{active: true, worktree: $wt}' > "$p10_main/.rite/sessions/$p10_sid.flow-state"
+jq -n '{active: false}' > "$p10_main/.rite/sessions/p10-inactive.flow-state"
+printf 'not json\n' > "$p10_main/.rite/sessions/p10-broken.flow-state"
+jq -n '{active: true}' > "$p10_plain/.rite/sessions/$p10_sid.flow-state"
+
+# p10_run <cwd> <command> [session] — the hook with the fixture state root.
+p10_run() {
+  jq -n --arg cmd "$2" --arg cwd "$1" --arg sid "${3:-$p10_sid}" \
+    '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: $cwd, session_id: $sid}' \
+    | RITE_STATE_ROOT="${P10_ROOT:-$p10_main}" bash "$HOOK" 2>"$STDERR_FILE"
+}
+# p10_deny <label> <pattern> <reason substring> <cwd> <command> [session]
+p10_deny() {
+  local rc=0 output reason
+  output=$(p10_run "$4" "$5" "${6:-}") || rc=$?
+  reason=$(extract_hook_field "$output" permissionDecisionReason)
+  if [ "$(extract_hook_field "$output" permissionDecision)" = "deny" ] \
+    && [[ "$reason" == "BLOCKED ($2): "* && "$reason" == *"$3"* ]]; then
+    pass "$1"
+  else
+    fail "$1: expected BLOCKED ($2) with '$3', got rc=$rc reason=$reason"
+  fi
+}
+# p10_allow <label> <cwd> <command> [session]
+p10_allow() {
+  local rc=0 output
+  output=$(p10_run "$2" "$3" "${4:-}") || rc=$?
+  if [ "$rc" = "0" ] && [ -z "$output" ]; then
+    pass "$1"
+  else
+    fail "$1: expected allow, got rc=$rc output=$output"
+  fi
+}
+
+p10_deny "gh after cd to a scratch dir" outside-checkout "runs 'gh' in $p10_scratch, which is outside" \
+  "$p10_wt" "cd $p10_scratch && gh api repos/x/y"
+p10_deny "deny names the way back into the worktree" outside-checkout "cd $p10_wt && <command>" \
+  "$p10_wt" "cd $p10_scratch && gh api repos/x/y"
+p10_deny "script run in a scratch dir" outside-checkout "runs 'bash' in $p10_scratch" \
+  "$p10_wt" "cd $p10_scratch && bash x.sh"
+p10_deny "git -C to a dir outside the checkout" outside-checkout "runs 'git' in $p10_scratch/foo" \
+  "$p10_wt" "git -C $p10_scratch/foo status"
+p10_deny "cd to a variable before gh" outside-checkout "cannot be determined" \
+  "$p10_wt" 'cd "$D" && gh api x'
+p10_deny "gh from a hook cwd left in a scratch dir" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_scratch" "gh api repos/x/y"
+p10_deny "script from a hook cwd left in a scratch dir" outside-checkout "runs 'bash' in $p10_scratch" \
+  "$p10_scratch" "bash x.sh"
+p10_deny "script behind timeout" outside-checkout "runs 'bash' in $p10_scratch" \
+  "$p10_wt" "cd $p10_scratch && timeout 5 bash x.sh"
+p10_deny "script by path behind env" outside-checkout "runs './x.sh' in $p10_scratch" \
+  "$p10_wt" "cd $p10_scratch && env A=1 ./x.sh"
+p10_deny "gh in a subshell after its cd" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "(cd $p10_scratch && gh api x)"
+p10_deny "git -C to a variable after cd to a scratch dir" outside-checkout "runs 'git' in $p10_scratch" \
+  "$p10_wt" "cd $p10_scratch && git -C \"\$X\" status"
+p10_deny "a literal variable cd to a scratch dir" outside-checkout "runs 'git' in $p10_scratch" \
+  "$p10_wt" "d=$p10_scratch; if [ -z \"\$d\" ] || ! cd \"\$d\" 2>/dev/null; then echo no; else git status; fi"
+p10_deny "more cd than the parser follows" outside-checkout "cannot be determined" \
+  "$p10_wt" "$(printf 'cd . && %.0s' $(seq 1 17))git status"
+p10_deny "unreadable flow-state is checked as active" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "cd $p10_scratch && gh api x" p10-broken
+p10_allow "script in a scratch dir run from the worktree" "$p10_wt" "cd $p10_wt && bash $p10_scratch/x.sh"
+p10_allow "script in a scratch dir, hook cwd in the worktree" "$p10_wt" "bash $p10_scratch/x.sh"
+p10_allow "git in the worktree" "$p10_wt" "git status"
+p10_allow "cd into the worktree then git" "$p10_wt" "cd $p10_wt && git status"
+p10_allow "git -C the worktree" "$p10_scratch" "git -C $p10_wt status"
+p10_allow "cd into the main checkout then gh" "$p10_scratch" "cd $p10_main && gh api x"
+p10_allow "git -C a variable from the worktree" "$p10_wt" 'git -C "$X" status'
+p10_allow "a literal variable cd into the main checkout" "$p10_wt" \
+  "d=$p10_main; if [ -z \"\$d\" ] || ! cd \"\$d\" 2>/dev/null; then echo no; else git status; fi"
+p10_allow "no git, gh or script in a scratch dir" "$p10_wt" "cd $p10_scratch && ls && cat a > b"
+p10_allow "a cd kept inside its subshell" "$p10_wt" "(cd $p10_scratch && ls); gh api x"
+p10_allow "heredoc text is not a command" "$p10_wt" \
+  "$(printf 'cat > %s/b.md <<%s\ncd /tmp && gh api x\nEOF' "$p10_scratch" "'EOF'")"
+p10_allow "no flow-state for the session" "$p10_wt" "cd $p10_scratch && gh api x" p10-none
+p10_allow "an inactive flow-state" "$p10_wt" "cd $p10_scratch && gh api x" p10-inactive
+P10_ROOT="$p10_plain" p10_allow "a state root that is not a repository" "$p10_scratch" "gh api x"
+# The state root comes from CLAUDE_PROJECT_DIR when RITE_STATE_ROOT is unset.
+rc=0
+output=$(jq -n --arg cmd "gh api x" --arg cwd "$p10_scratch" --arg sid "$p10_sid" \
+  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: $cwd, session_id: $sid}' \
+  | CLAUDE_PROJECT_DIR="$p10_wt" bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+if [[ "$(extract_hook_field "$output" permissionDecisionReason)" == "BLOCKED (outside-checkout): "* ]]; then
+  pass "state root resolved from CLAUDE_PROJECT_DIR"
+else
+  fail "state root resolved from CLAUDE_PROJECT_DIR: got rc=$rc output=$output"
+fi
+p10_deny "an earlier pattern keeps its reason" gh-pr-diff-stat "--stat" \
+  "$p10_wt" "cd $p10_scratch && gh pr diff 1 --stat"
+p10_deny "a command past the parse budget" outside-checkout-uninspectable "hook time limit" \
+  "$p10_wt" "echo $(printf 'x%.0s' $(seq 1 9000)) && cd $p10_scratch && gh api x"
+RITE_BTG_TEST_CRASH=pattern10-helper p10_deny "a failed check denies" outside-checkout-uninspectable "rc=3" \
+  "$p10_wt" "cd $p10_scratch && ls"
+rm -rf "$p10_main" "$p10_scratch" "$p10_plain"
+# The skills' own bash blocks run during a session, from the checkout. Placeholders
+# stand for paths in the checkout, so none of them may be denied.
+p10_repo=$(cd "$SCRIPT_DIR/../../../.." && pwd -P)
+rc=0
+p10_corpus=$(python3 - "$SCRIPT_DIR/../scripts/lib" "$p10_repo" <<'EOF'
+import importlib, re, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+cwd = importlib.import_module("checkout-cwd")
+repo = Path(sys.argv[2])
+checkout = cwd.common_dir(repo)
+fence = re.compile(r"^(\s*)```(?:bash|sh)\s*$")
+blocks = 0
+for md in sorted([*repo.glob("plugins/rite/skills/**/*.md"), *repo.glob("plugins/rite/references/**/*.md")]):
+    lines = md.read_text().splitlines()
+    index = 0
+    while index < len(lines):
+        opened = fence.match(lines[index])
+        index += 1
+        if not opened:
+            continue
+        start, body = index, []
+        while index < len(lines) and not re.match(r"^\s*```\s*$", lines[index]):
+            body.append(lines[index][len(opened.group(1)):])
+            index += 1
+        blocks += 1
+        command = re.sub(r"\{[a-z_0-9]+\}", str(repo), "\n".join(body))
+        for kind, directories, word in cwd.each_call(command, repo):
+            if directories is None or any(cwd.common_dir(d) != checkout for d in directories):
+                print(f"{md.relative_to(repo)}:{start}: {word} in {directories}")
+print(f"blocks={blocks}")
+EOF
+) || rc=$?
+if [ "$rc" = "0" ] && [[ "$p10_corpus" =~ ^blocks=[1-9][0-9]*$ ]]; then
+  pass "no skill or reference bash block is denied ($p10_corpus)"
+else
+  fail "skill or reference bash blocks denied (rc=$rc): $p10_corpus"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="
