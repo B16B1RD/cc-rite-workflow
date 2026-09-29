@@ -32,13 +32,15 @@
 #   - 削除済みのため、進捗 (次コマンド実行 / 完了通知出力) の後に再度停止すれば handoff は空
 #     → block しない (無限 block ループ防止)。handoff が空でも、自セッションの
 #     run-queue が active で未完了なら batch watchdog が停止を差し戻す（handoff は読まない）。
+#   - 利用者の求めによる一時停止の記録（flow-state.sh pause）があるあいだは、handoff の consume より前に
+#     停止を許可する（handoff は消費せず残し、batch watchdog も評価しない）。
 #   - 各継続点で継続 handoff が再セットされるため複数サイクル継続する。
 #     終了点では、同一ターンの最終 assistant に完了通知が既にあれば block せず、未出力 /
 #     検査不能のときだけ 1 回 block する。WIKICHAIN handoff も 1 回だけ block する one-shot で、
 #     チェーン再開後の再停止は許可される（ただし batch 稼働中は watchdog が別軸で差し戻す）。
 #
 # Exit behavior:
-#   exit 0 (no stdout)        — allow stop (handoff 不在かつ batch 非稼働 / loop 外 / 解決失敗 = fail-open)
+#   exit 0 (no stdout)        — allow stop (handoff 不在かつ batch 非稼働 / loop 外 / 解決失敗 = fail-open / 一時停止の記録あり)
 #   stdout {"decision":"block"} — block stop and re-inject the continuation command, finalize directive, or batch-run 続行先
 set -euo pipefail
 
@@ -70,6 +72,14 @@ IFS=$'\x1f' read -r SESSION_ID CWD <<< "$_jq_out"
 
 # Resolve state root (git root or CWD) — post-tool-wm-sync.sh と同じ解決経路。
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
+
+# 利用者の求めによる一時停止の記録（`flow-state.sh pause` が書く）があるあいだは、handoff の再注入も
+# batch watchdog も行わず停止を許可する。handoff は消費せず残すので、再開後の最初の停止で従来どおり効く。
+# 記録は存在だけを見る（中身が空・壊れていても一時停止として扱う）。許可のたびに解除方法を stderr に出す。
+if [ -e "$STATE_ROOT/.rite/state/pause-${SESSION_ID}.json" ]; then
+  echo "rite: 一時停止中のため継続ガードは無効です。再開するときは flow-state.sh resume を実行してください" >&2
+  exit 0
+fi
 
 # Read + clear the one-shot handoff marker. 通常は stderr を握る (loop 外セッションでは
 # state file 不在が常態で diagnostic がノイズになるため)。RITE_DEBUG set 時のみ consume-handoff の

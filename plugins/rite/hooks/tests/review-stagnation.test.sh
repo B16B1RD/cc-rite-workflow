@@ -2832,6 +2832,62 @@ try:
 finally:
     f.close()
 
+# A user-requested pause closes the open clock segment at the pause and resume opens a new one,
+# so the paused time is not counted as work time.
+f = Fixture()
+try:
+    f.start()
+    state_dir = f.root / '.rite/state'
+    state_dir.mkdir(parents=True, exist_ok=True)
+    clock_file = state_dir / ('review-clock-' + f.session + '.json')
+    pause_file = state_dir / ('pause-' + f.session + '.json')
+    opened = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=600)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    dump(clock_file, dict(review_context=f.context(), segment_id='paused-segment', kind='work', started_at=opened))
+    f.flow('pause')
+    frozen = json.loads(clock_file.read_text())
+    check(pause_file.exists() and frozen.get('ended_at') and frozen['segment_id'] == 'paused-segment',
+          'pause records the pause and closes the open clock segment')
+    f.flow('resume')
+    reopened = json.loads(clock_file.read_text())
+    saved = [entry for entry in f.state()['review_run']['clock'] if entry['segment_id'] == 'paused-segment']
+    check(not pause_file.exists() and len(saved) == 1 and saved[0]['ended_at'] == frozen['ended_at']
+          and saved[0]['started_at'] == opened,
+          'resume removes the pause record and saves the paused segment with its pause-time end')
+    check('ended_at' not in reopened and reopened['segment_id'] != 'paused-segment' and reopened['kind'] == 'work'
+          and reopened['review_context'] == f.context() and reopened['started_at'] >= frozen['ended_at'],
+          'resume opens a new segment for the same context, starting after the pause')
+finally:
+    f.close()
+
+# A new segment that cannot be opened on resume still records the paused one, warns, and clears the pause.
+f = Fixture()
+try:
+    f.start()
+    state_dir = f.root / '.rite/state'
+    state_dir.mkdir(parents=True, exist_ok=True)
+    clock_file = state_dir / ('review-clock-' + f.session + '.json')
+    pause_file = state_dir / ('pause-' + f.session + '.json')
+    opened = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=600)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    dump(clock_file, dict(review_context=f.context(), segment_id='failing-segment', kind='work', started_at=opened))
+    f.flow('pause')
+    stub = f.private / 'mktemp-bin'
+    stub.mkdir()
+    real_mktemp = shutil.which('mktemp')
+    (stub / 'mktemp').write_text('#!/bin/bash\ncase "$*" in *review-clock-*) echo "mktemp: forced failure" >&2; exit 1 ;; esac\nexec ' + real_mktemp + ' "$@"\n')
+    (stub / 'mktemp').chmod(0o755)
+    saved_path = f.env['PATH']
+    f.env['PATH'] = str(stub) + os.pathsep + saved_path
+    try:
+        result = f.flow('resume')
+    finally:
+        f.env['PATH'] = saved_path
+    saved = [entry for entry in f.state()['review_run']['clock'] if entry['segment_id'] == 'failing-segment']
+    check(len(saved) == 1 and not pause_file.exists() and not clock_file.exists()
+          and 'could not open a new one' in result.stderr,
+          'resume that cannot open a new segment still records the paused one, warns and clears the pause')
+finally:
+    f.close()
+
 # Python bytecode rewritten by a test run after verification does not stop the
 # commit or the next review; an ignored non-bytecode file in the same input
 # directory still does.
