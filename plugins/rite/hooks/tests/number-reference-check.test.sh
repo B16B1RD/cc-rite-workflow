@@ -363,9 +363,9 @@ else
   fail "word-char skip failed rc=$rc: $out"
 fi
 
-rc=0; out=$(printf 'link to assessment-rules.md#%s-class\ncolor #%s\nreal token (#%s)\n' \
-  "$heading_id" "$hex_color" "$bare_token" \
-  | bash "$TARGET" --stdin --label probe.md --quiet 2>&1) || rc=$?
+probe_input=$(printf 'link to assessment-rules.md#%s-class\ncolor #%s\nreal token (#%s)' \
+  "$heading_id" "$hex_color" "$bare_token")
+rc=0; out=$(bash "$TARGET" --stdin --label probe.md --quiet <<< "$probe_input" 2>&1) || rc=$?
 if [ "$rc" -eq 1 ] \
    && printf '%s' "$out" | grep -cE >/dev/null "^probe.md:3: real token \\(#${bare_token}\\)$" \
    && ! printf '%s' "$out" | grep -c >/dev/null 'probe.md:1:' \
@@ -454,8 +454,8 @@ for excluded_path in \
   plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh \
   plugins/rite/hooks/tests/wiki-numref-precommit.test.sh \
   plugins/rite/hooks/tests/wiki-worktree-commit.test.sh; do
-  rc=0; out=$(printf 'excluded token (#2106)\n' \
-    | bash "$TARGET" --stdin --label "$excluded_path" --quiet 2>&1) || rc=$?
+  rc=0; out=$(bash "$TARGET" --stdin --label "$excluded_path" --quiet \
+    <<< 'excluded token (#2106)' 2>&1) || rc=$?
   if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -c >/dev/null 'Total number-ref findings: 0'; then
     pass "T-04 --stdin excludes $excluded_path"
   else
@@ -463,8 +463,8 @@ for excluded_path in \
   fi
 done
 
-rc=0; out=$(printf 'sibling token (#2107)\n' \
-  | bash "$TARGET" --stdin --label plugins/rite/hooks/tests/other.test.sh --quiet 2>&1) || rc=$?
+rc=0; out=$(bash "$TARGET" --stdin --label plugins/rite/hooks/tests/other.test.sh --quiet \
+  <<< 'sibling token (#2107)' 2>&1) || rc=$?
 if [ "$rc" -eq 1 ] \
    && printf '%s' "$out" | grep -c >/dev/null '^plugins/rite/hooks/tests/other.test.sh:1:' \
    && printf '%s' "$out" | grep -c >/dev/null 'Total number-ref findings: 1'; then
@@ -474,8 +474,8 @@ else
 fi
 
 for sibling_path in .rite/wiki/raw-notes/x.md plugins/rite/scripts/tests/fixtures-other/x.md; do
-  rc=0; out=$(printf 'directory sibling token (#2113)\n' \
-    | bash "$TARGET" --stdin --label "$sibling_path" --quiet 2>&1) || rc=$?
+  rc=0; out=$(bash "$TARGET" --stdin --label "$sibling_path" --quiet \
+    <<< 'directory sibling token (#2113)' 2>&1) || rc=$?
   if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -c >/dev/null "^$sibling_path:1:" \
      && printf '%s' "$out" | grep -c >/dev/null 'Total number-ref findings: 1'; then
     pass "T-04 --stdin scans directory sibling $sibling_path"
@@ -487,12 +487,12 @@ done
 # Directory prefixes are boundaries: the root and descendants are excluded,
 # while merely similar prefixes remain in scope.
 for excluded_label in .rite/wiki/raw .rite/wiki/raw/child.md; do
-  rc=0; out=$(printf 'excluded token (#2108)\n' \
-    | bash "$TARGET" --stdin --label "$excluded_label" --quiet 2>&1) || rc=$?
+  rc=0; out=$(bash "$TARGET" --stdin --label "$excluded_label" --quiet \
+    <<< 'excluded token (#2108)' 2>&1) || rc=$?
   assert "T-04 directory boundary excludes $excluded_label" "0" "$rc"
 done
-rc=0; out=$(printf 'prefix sibling (#2109)\n' \
-  | bash "$TARGET" --stdin --label .rite/wiki/raw-notes/x.md --quiet 2>&1) || rc=$?
+rc=0; out=$(bash "$TARGET" --stdin --label .rite/wiki/raw-notes/x.md --quiet \
+  <<< 'prefix sibling (#2109)' 2>&1) || rc=$?
 assert "T-04 similar directory prefix remains in scope" "1" "$rc"
 
 # Both chunk orders pin that an excluded file cannot leak skip state into the
@@ -676,7 +676,7 @@ fi
 # --------------------------------------------------------------------------
 # --stdin --label
 # --------------------------------------------------------------------------
-rc=0; out=$(printf 'stdin token (#2400)\n' | bash "$TARGET" --stdin --label docs/in.md --quiet 2>&1) || rc=$?
+rc=0; out=$(bash "$TARGET" --stdin --label docs/in.md --quiet <<< 'stdin token (#2400)' 2>&1) || rc=$?
 if [ "$rc" -eq 1 ] \
    && printf '%s' "$out" | grep -cE >/dev/null '^docs/in.md:1: stdin token \(#2400\)$' \
    && printf '%s' "$out" | grep -c >/dev/null 'Total number-ref findings: 1'; then
@@ -685,10 +685,10 @@ else
   fail "--stdin expected labeled finding, got rc=$rc: $out"
 fi
 
-rc=0; out=$(printf 'raw (#2500)\n' | bash "$TARGET" --stdin --label .rite/wiki/raw/x.md --quiet 2>&1) || rc=$?
+rc=0; out=$(bash "$TARGET" --stdin --label .rite/wiki/raw/x.md --quiet <<< 'raw (#2500)' 2>&1) || rc=$?
 assert "--stdin excluded label is not scanned" "0" "$rc"
 
-rc=0; out=$(printf 'placeholder #123 only\n' | bash "$TARGET" --stdin --label docs/p.md --quiet 2>&1) || rc=$?
+rc=0; out=$(bash "$TARGET" --stdin --label docs/p.md --quiet <<< 'placeholder #123 only' 2>&1) || rc=$?
 assert "--stdin #123 placeholder is excluded" "0" "$rc"
 
 # --------------------------------------------------------------------------
