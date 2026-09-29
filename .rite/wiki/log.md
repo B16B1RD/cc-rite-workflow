@@ -86,6 +86,7 @@
 * **Update**: [根因の同一性は機械では一字一句の一致だけを判定し、それ以外は分類役に既存の番号を見せて決めさせる](pages/heuristics/root-cause-identity-exact-match-only-by-machine.md) — [レビュー結果](raw/reviews/20260929T044842Z-pr-3393.md) を統合
 * **Create**: [共有 helper に位置を渡すときは、呼び出し元ごとの数え始めをそろえる](pages/heuristics/shared-helper-position-needs-caller-origin.md) — [レビュー結果](raw/reviews/20260929T044958Z-pr-3431.md) を統合
 * **Create**: [処理量で決まる判定のテストでは、入力の境界と実行時間の上限を分ける](pages/heuristics/behavior-tests-use-input-boundary-and-configured-timeout.md) — [レビュー結果](raw/reviews/20260929T045942Z-pr-3435.md) を統合
+* **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=582, broken_refs=0
 
 
 ## 2026-09-28
