@@ -210,11 +210,27 @@ run_step() {
 
 run_step; assert "no subcommand exits 2" "2" "$?"
 run_step no-such-step; assert "unknown subcommand exits 2" "2" "$?"
-run_step triage-state; assert "missing required --pr exits 2" "2" "$?"
 run_step triage-state --pr; assert "option without a value exits 2" "2" "$?"
 run_step triage-state --pr '{pr_number}' --non-fatal-moved-count 0 --triage-review-path /x; assert "unsubstituted placeholder exits 2" "2" "$?"
 run_step triage-state --pr 12a --non-fatal-moved-count 0 --triage-review-path /x; assert "non-numeric --pr exits 2" "2" "$?"
-run_step triage-state --pr 1 --bogus x; assert "unknown option exits 2" "2" "$?"
+
+# 拒否の理由まで確かめる。exit 2 だけでは、別の必須オプションの不足で止まった場合と区別できない。
+# 他の必須を満たした呼び出し（または必須を持たないサブコマンド）で、名乗る理由の stderr を検査する。
+assert_rejects() {
+  local name=$1 want=$2 err
+  shift 2
+  err=$(bash "$STEP" "$@" 2>&1 >/dev/null)
+  assert "$name exits 2" "2" "$?"
+  case "$err" in
+    *"$want"*) pass "$name names the reason" ;;
+    *) fail "$name names the reason (stderr: $err)" ;;
+  esac
+}
+assert_rejects "missing required --pr" "triage-state requires --pr" \
+  triage-state --non-fatal-moved-count 0 --triage-review-path /x
+assert_rejects "unknown option" "unknown option: --bogus" cancelled-by-user --bogus x
+# 空の issue は受け付けるが、--issue 自体を省いた呼び出しは止める。
+assert_rejects "missing --issue for local-wm-sync" "local-wm-sync requires --issue" local-wm-sync
 # 数値検査の対象外の値は placeholder 検査だけが止める。
 placeholder_err=$(bash "$STEP" scope-check --fix-plan-file '{fix_plan_file}' --fix-issue-file /x 2>&1 >/dev/null)
 assert "unsubstituted placeholder in a non-numeric option exits 2" "2" "$?"

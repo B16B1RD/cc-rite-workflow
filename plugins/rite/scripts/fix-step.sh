@@ -359,8 +359,6 @@ bash "$plugin_root"/scripts/review-source-resolve.sh \
 
 # --- gate-receipt ---------------------------------------------------------------
 step_gate_receipt() {
-review_source="${review_source}"
-review_source_path="${review_source_path}"
 case "$review_source" in
   explicit_file|local_file)
     if ! jq -e '
@@ -777,7 +775,6 @@ esac
 
 # --- triage ---------------------------------------------------------------------
 step_triage() {
-triage_review_path="${triage_review_path}"
 if triage_maps=$(bash "$plugin_root"/scripts/review-findings-maps.sh \
   --review-source "${triage_helper_source}" \
   --review-source-path "$triage_review_path"); then
@@ -1261,8 +1258,6 @@ mutation($threadId: ID!) {
 
 # --- wm-update ------------------------------------------------------------------
 step_wm_update() {
-pr_body_file="${pr_body_file}"
-history_file="${history_file}"
 trap 'rc=$?; rm -f "$pr_body_file" "$history_file"; exit "$rc"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
