@@ -1734,6 +1734,17 @@ assert "T-24 a REJECT row from an earlier cycle becomes the prior (the last row 
 assert "T-24 the premise keeps an escaped pipe" 'a \| b の間は不要' "$(printf '%s' "$t24_out" | jq -r '.targets[] | select(.key == "R-3") | .prior.premise')"
 assert "T-24 an ADOPT row becomes the prior" "ADOPT" "$(printf '%s' "$t24_out" | jq -r '.targets[] | select(.key == "A-1") | .prior.disposition')"
 assert "T-24 RESOLVED gives no prior" "false" "$(printf '%s' "$t24_out" | jq -r '.targets[] | select(.key == "S-2") | has("prior")')"
+assert "T-24 ledger[] carries the issued / LINK / REJECT rows as read (for a candidate whose id or position changed)" \
+  "I-1:issued,L-1:LINK,R-1:REJECT,R-1:REJECT,R-2:REJECT,R-3:REJECT,anon:src/n.ts:7:issued" \
+  "$(printf '%s' "$t24_out" | jq -r '[.ledger[] | "\(.id):\(.disposition)"] | sort | join(",")')"
+assert "T-24 an issued row in ledger[] keeps the Issue number" "#9 https://example.test/issues/9" \
+  "$(printf '%s' "$t24_out" | jq -r '.ledger[] | select(.id == "I-1") | .premise')"
+if grep -qF '既存の Issue が今回の候補と同じ根因を追跡していれば、文面・位置・id が変わっていても記録の `tracker` にその番号を入れる' "$FIX" \
+  && grep -qF '`REJECT` 行が同じ根因・同じ前提の候補を処分していれば、その行を記録の `prior`' "$FIX"; then
+  pass "T-24 step 2 has the classifier link changed candidates from ledger[]"
+else
+  fail "T-24 step 2 must have the classifier link changed candidates from ledger[]"
+fi
 # prior は採否判定 helper が照合する台帳行と同じ (finding_id, file:line, 判定) を指す
 "$LEDGER" extract --body-file "$t24_body" > "$sandbox/t24-ledger.md" 2>/dev/null
 printf '%s' "$t24_out" | jq -c '[.targets[] | select(has("prior")) | .prior]' > "$sandbox/t24-priors.json"

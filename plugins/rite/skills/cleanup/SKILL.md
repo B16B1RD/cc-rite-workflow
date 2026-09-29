@@ -725,6 +725,7 @@ bash {plugin_root}/hooks/scripts/cleanup-follow-up-issue.sh \
 - `head` は一覧の `head`（レビュー結果 JSON の `commit_sha`、JSON が無ければマージ済み PR の head）をそのまま写す。マージ後もその commit と base は git に残っている前提で、根拠・引用はその commit で確かめる。head を決められないとき helper は一覧を書かず、上の表の `head_unresolved` で失敗する。
 - マージ後の候補を PR 起因（`origin=pr` / `unknown`）と判定したら、その判定のまま記録する（`pre_existing` や REJECT に書き換えて保留を解除しない）。マージ済み PR では同じ PR で直せず、この出口の扱いは仕様で未定義のため、ゲートは保留のまま止め、人間に報告する（再実行しても同じ保留になる） — 意図した保留である。
 - 全候補の `id` をちょうど 1 つの記録に入れる。1 記録 = 1 根因。重要度（CRITICAL〜LOW）と class A/B では決めない。
+- 一覧の `ledger`（関連 Issue の台帳の `issued` / `LINK` / `REJECT` 行。`issued` と `LINK` の判定文に起票先・追跡先の `#N` がある）を読み、既存の Issue が候補と同じ根因を追跡していれば、文面・位置・id が変わっていても記録の `tracker` にその番号を入れる（閉じた Issue の番号は入れない）。`REJECT` 行が同じ根因・同じ前提の候補を処分していれば、その行を記録の `prior` に写す。helper が除外するのは id・位置・出典が一致する行だけなので、id・文面・位置が変わった候補はここで紐づける。
 - 起票になる記録（ADOPT・`origin=pre_existing`、調査として引き受けた DIAGNOSE）には `acceptance`（起票する Issue の受入条件の文）を必ず書く。調査は `proposition` の 4 項目と `investigate: true` も書く。
 - 前回の実行が書いた記録ファイルがあれば、同じ候補の記録（`ids`）はそのまま引き継ぎ、`head` を一覧の値に合わせ、新しい候補の記録だけを足す（起票済みかどうかは、記録の ids と起票済み Issue の marker の ids の重なりで決まる）。一覧に無くなった id は記録から除き、id が残らない記録は消す。
 - 採否ゲートが保留した候補は、6.0.V が `resolved` と判定しても一覧に残る。記録から除かず、6.0.V の再検証結果を根拠（`present: false` と `evidence`）にした RESOLVED の記録で処分する。

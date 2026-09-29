@@ -1270,6 +1270,18 @@ for t29_disp in recorded rejected; do
   run_target "$r"
   assert_not_grep "T-29 旧形式の $t29_disp 行は終端にしない" "$ERR" 'reason=all_issued'
 done
+# 一覧は台帳の issued / LINK / REJECT 行を運び、id・位置が変わった候補を分類役が既存 Issue へ紐づけられる
+reset_stubs
+r=$(new_root t29-ledger)
+put_json "$r" "9-20260101120000.json" "$FINDING_JSON"
+jq -n --argjson c "$(comment_obj "$(record_body "$(printf '%s\n' '| F-01 | plugins/rite/skills/cleanup/SKILL.md:12 | recorded | 旧形式 |' '| F-07 | other.md:5 | issued | #77 https://example.test/issues/77 |')")")" '[[$c]]' > "$GH_API_JSON"
+ADOPT_MODE=manual
+run_target "$r" --list-candidates "$TMP_ROOT/t29-ledger.json"
+assert "T-29 一覧の ledger は issued / LINK / REJECT 行だけを運ぶ" "F-07|other.md:5|issued|#77 https://example.test/issues/77" \
+  "$(jq -r '[.ledger[] | "\(.id)|\(.loc)|\(.disposition)|\(.premise)"] | join(",")' "$TMP_ROOT/t29-ledger.json")"
+assert "T-29 位置の違う issued 行では候補を除外しない" "1" "$(jq '.candidates | length' "$TMP_ROOT/t29-ledger.json")"
+assert_grep "T-29 6.0.A は ledger から既存 Issue へ紐づける" "$PLUGIN_ROOT/skills/cleanup/SKILL.md" \
+  '既存の Issue が候補と同じ根因を追跡していれば、文面・位置・id が変わっていても記録の `tracker` にその番号を入れる'
 # sweep が書く出典付きの 5 列の REJECT 行は、出典が finding の出典 JSON と一致するときだけ除外する
 for t29_src in 9-20260101120000.json 9-20251231120000.json; do
   reset_stubs
@@ -2654,10 +2666,10 @@ for _t82_name in plugins/rite/references/severity-levels.md plugins/rite/referen
     assert "T-82 ${_t82_name}: 旧契約「${_t82_old}」が無い" "0" "$(_t82_count "$_t82_old" < "$_t82_repo/$_t82_name")"
   done
 done
-assert "T-82 severity-levels.md: 判定不能を転記側へ倒す節が残る" "1" \
-  "$(_t82_count '判定不能なものは転記側へ倒す。' < "$PLUGIN_ROOT/references/severity-levels.md")"
-assert "T-82 review-result-schema.md: 判定不能を転記側へ倒す節が太字の中に残る" "1" \
-  "$(_t82_count '解消済みと判定された指摘は除外する（判定不能は転記側へ倒す）**' < "$PLUGIN_ROOT/references/review-result-schema.md")"
+assert "T-82 severity-levels.md: 判定不能を候補側へ倒す節が残る" "1" \
+  "$(_t82_count '判定不能なものは候補側へ倒す。' < "$PLUGIN_ROOT/references/severity-levels.md")"
+assert "T-82 review-result-schema.md: 判定不能を候補側へ倒す節が太字の中に残る" "1" \
+  "$(_t82_count '解消済みと判定された指摘は除外する（判定不能は候補側へ倒す）**' < "$PLUGIN_ROOT/references/review-result-schema.md")"
 assert "T-82 review-result-schema.md: read 側の扱いから実測必須ゲートへのリンクが残る" "1" \
   "$(grep -F -- '**read 側の扱い**' "$PLUGIN_ROOT/references/review-result-schema.md" | _t82_count '](./severity-levels.md#実測必須ゲート-measured-confirmed-gate)')"
 assert "T-82 正本 §6.0 の規則が残る" "1" \

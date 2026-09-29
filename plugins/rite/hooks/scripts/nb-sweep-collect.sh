@@ -30,7 +30,9 @@
 #   bash nb-sweep-collect.sh --json <path>
 #   bash nb-sweep-collect.sh --pr <n> --state-root <path>
 #
-# stdout: JSON {status, count, record, targets[], candidates[], already_rejected[]}
+# stdout: JSON {status, count, record, targets[], candidates[], already_rejected[], ledger[]}
+#         ledger[] is the ledger rows judged issued / LINK / REJECT ({id, loc, disposition, premise, source})
+#         as read, for the classifier to link a candidate whose id, wording or position changed.
 #         count is targets + carried hold candidates + already_rejected.
 # stderr: [CONTEXT] NB_SWEEP_COLLECT=ok|empty|failed; count=N; record=PATH
 #
@@ -191,7 +193,8 @@ if ! out=$(jq -c --arg record "$json" --argjson ledger "$ledger_rows" --argjson 
       record: $record,
       targets: $targets,
       candidates: ($now + $carried),
-      already_rejected: $guardrails
+      already_rejected: $guardrails,
+      ledger: [$ledger[] | select(.disposition == "issued" or .disposition == "LINK" or .disposition == "REJECT")]
     }
 ' "$json"); then
   echo "ERROR: review JSON collect transform failed: $json" >&2

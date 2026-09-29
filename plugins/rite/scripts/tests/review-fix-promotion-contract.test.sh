@@ -431,7 +431,7 @@ out=$(TRIAGE_GATE_RC=0 run_triage_block 7)
 assert_eq 'a reworded candidate is not linked by the bash and the Issue stays in issued' '0|null|[77]' \
   "$(printf '%s\n' "$out" | sed -n 's/^\[CONTEXT\] ADOPTION_GATE_RC=//p')|$(jq -r '"\(.adoption.records[0].tracker)|\([.adoption.issued[]] | tojson)"' "$state/adoption-5-triage.json" 2>/dev/null || true)"
 assert_grep 'step 2 has the classifier read issued for the same root cause' "$review" \
-  '判定記録ファイルがあれば `head` を問わずその `issued`（候補の全文ごとに最後に付いた `tracker`）を読み、同じ根因の今回の候補を含む記録にはその `tracker` を入れる'
+  '判定記録ファイルがあれば `head` を問わず、その `issued` と `tracker` を持つ記録（`ids` の全文は同じファイルの `candidates` で引く。記録の番号が `issued` の番号より新しい）を読み、既存の Issue が今回の候補と同じ根因を追跡していれば、文面・位置・id が変わっていても記録の `tracker` にその番号を入れる'
 triage_candidates='{"candidates": [{"id": "C-1", "content": "full text"}]}'
 # Two different trackers for one record cannot be resolved: stop instead of picking one.
 printf '{"candidates": [{"id": "C-1", "content": "full text"}, {"id": "C-2", "content": "new"}]}\n' > "$state/adoption-hold-5-triage.json"
@@ -541,6 +541,8 @@ fi
 out=$(run_ledger_block updated 1 '#77' || true)
 assert_grep 'a created Issue that was not written back is named in the resume' \
   "$ledger_dir/root/.rite/state/adoption-hold-5-triage.json" 'ただし #77 は tracker に書き戻せていない'
+assert_eq 'the resume that names an untracked Issue keeps the write that failed' '7.4 の外部への書き込み（writes_incomplete）が済んでいない' \
+  "$(jq -r '.resume | split("。")[0]' "$ledger_dir/root/.rite/state/adoption-hold-5-triage.json")"
 # When the hold cannot take the new resume either, the resume still reaches the stop's stderr.
 mkdir "$ledger_dir/root/.rite/state/adoption-hold-5-triage.json.tmp"
 out=$(run_ledger_block updated 1 '#77' || true)
@@ -562,7 +564,8 @@ assert_grep '7.4.2 block creates the Issue' "$ledger_dir/create.sh" 'create-issu
 mkdir -p "$ledger_dir/plugin/scripts"
 cat > "$ledger_dir/plugin/scripts/create-issue-with-projects.sh" <<'STUB'
 #!/bin/bash
-cat > /dev/null
+args=$(cat)
+cp "$(printf '%s' "$args" | jq -r '.issue.body_file')" "$LEDGER_ROOT/created-body.md"
 if [ "$CREATE_FAIL" = 1 ]; then
   echo '{"issue_url":"","issue_number":0,"project_registration":"failed","warnings":["gh issue create failed: HTTP 502"]}'
   exit 1
@@ -577,7 +580,10 @@ run_create_block() {
   code=${code//\{record_ids\}/${2:-[\"C-1\"]}}
   code=${code//\{projects_enabled\}/false}
   code=${code//\{project_number\}/1}
-  for ph in acceptance complexity contract description evidence file iteration_mode line original_comment owner \
+  code=${code//\{contract\}/CONTRACT-QUOTE}
+  code=${code//\{evidence\}/EVIDENCE-TEXT}
+  code=${code//\{acceptance\}/ACCEPTANCE-TEXT}
+  for ph in complexity description file iteration_mode line original_comment owner \
             priority reviewer_type severity source_label summary type; do
     code=${code//\{$ph\}/x}
   done
@@ -591,6 +597,9 @@ assert_eq 'a failed Issue creation is counted for 7.4.5' '[CONTEXT] ISSUE_CREATE
 out=$(run_create_block 0)
 assert_eq 'a created Issue is written back as the record tracker' '77' \
   "$(jq -r '.adoption.records[0].tracker' "$ledger_dir/root/.rite/state/adoption-5-triage.json")"
+assert_eq 'the created Issue body carries the contract, the evidence and the acceptance' \
+  '- **契約**: CONTRACT-QUOTE|- **根拠**: EVIDENCE-TEXT|- **受入条件**: ACCEPTANCE-TEXT' \
+  "$(grep -E '^- \*\*(契約|根拠|受入条件)\*\*: ' "$ledger_dir/root/created-body.md" | paste -sd'|' -)"
 out=$(run_create_block 0 '["C-9"]' || true)
 assert_eq 'a write-back that matches no record fails with the created number' \
   '[CONTEXT] ISSUE_CREATE_FAILED=1; reason=tracker_write_failed; issue=77' \

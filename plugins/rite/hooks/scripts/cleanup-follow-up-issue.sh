@@ -38,7 +38,9 @@
 #   --repo               repo name。必須
 #   --list-candidates    候補を列挙してこのパスへ書き、起票せずに終える。書く JSON は
 #                        {"candidates": [{"id", "kind": "finding"|"deferred", "source", "finding"|"text"}],
-#                         "head", "review_result", "adoption"}。review_result は head が PR の head のとき空。
+#                         "head", "review_result", "adoption", "ledger"}。review_result は head が PR の head のとき空。
+#                        ledger は関連 Issue の台帳の issued / LINK / REJECT 行 ({id, loc, disposition, premise, source})。
+#                        台帳を読めないときは空 (その旨は FOLLOW_UP_SWEEP_ISSUED=unavailable で出る)。
 #                        0 件で終えるときは candidates が空で reason を持つ。
 #                        判定済み記録は書かない。同じ --source-issue / --exclude-ids の起票実行と同じ候補になる
 #   --base               PR の base ref。ゲートの --base (origin=pr の差分位置の照合) に渡す。起票実行では必須
@@ -572,6 +574,7 @@ sweep_issued_unavailable() {
   echo "WARNING: $2。sweep 起票済みの指摘を除外せず転記します (PR #${PR_NUMBER})" >&2
   echo "[CONTEXT] FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=$1; pr=${PR_NUMBER}" >&2
 }
+ledger_hint='[]'
 if ! printf '%s' "$findings_json" | jq -e 'length > 0' >/dev/null; then
   :  # 先送り欠陥だけで起票する経路。台帳と照合する指摘が無い
 elif [ -z "$SOURCE_ISSUE" ]; then
@@ -595,6 +598,17 @@ else
            (.[-2] as $s
             | if length >= 7 and ($s | test("^[0-9]+-[0-9]{14}(~[0-9a-f]{4})?\\.json$")) then $s else "" end)] ]
     | unique' 2>"$comments_err"); then
+    sweep_issued_unavailable ledger_invalid "関連 Issue の却下台帳を解析できません"
+    [ -s "$comments_err" ] && head -3 "$comments_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+  elif ! ledger_hint=$(printf '%s' "$record_body" | jq -Rsce '
+    def trim: gsub("^\\s+|\\s+$"; "");
+    [ split("### 却下台帳\n")[1:][]
+        | split("📎 non_blocking_count:")[0] | split("\n### ")[0]
+        | split("\n")[] | select(startswith("|"))
+        | split("|") | map(trim) | select(length >= 6)
+        | select(.[3] == "issued" or .[3] == "LINK" or .[3] == "REJECT")
+        | {id: .[1], loc: .[2], disposition: .[3], premise: .[4], source: (if length >= 7 then .[5] else "" end)} ]' 2>"$comments_err"); then
+    ledger_hint='[]'
     sweep_issued_unavailable ledger_invalid "関連 Issue の却下台帳を解析できません"
     [ -s "$comments_err" ] && head -3 "$comments_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   elif ! cycle_sources=$(rite_review_results_sources "$results_dir" "$PR_NUMBER" '.json') \
@@ -750,8 +764,8 @@ fi
 
 adoption_path="${ADOPTION:-$STATE_ROOT/.rite/state/adoption-${PR_NUMBER}-followup.json}"
 if [ -n "$LIST_OUT" ]; then
-  if ! jq --arg head "$head_sha" --arg rr "$review_result" --arg adoption "$adoption_path" \
-      '. + {head: $head, review_result: $rr, adoption: $adoption}' "$cands_file" > "$LIST_OUT"; then
+  if ! jq --arg head "$head_sha" --arg rr "$review_result" --arg adoption "$adoption_path" --argjson ledger "$ledger_hint" \
+      '. + {head: $head, review_result: $rr, adoption: $adoption, ledger: $ledger}' "$cands_file" > "$LIST_OUT"; then
     echo "WARNING: 候補一覧を ${LIST_OUT} に書けません (PR #${PR_NUMBER})" >&2
     echo "[CONTEXT] FOLLOW_UP_CANDIDATES=failed; reason=list_write; pr=${PR_NUMBER}" >&2
     exit 0
