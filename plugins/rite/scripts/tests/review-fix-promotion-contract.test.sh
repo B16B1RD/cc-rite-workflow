@@ -366,6 +366,7 @@ assert_eq 'a tracker whose held candidate was dropped stops before the gate' '[C
 assert_eq 'the dropped tracker stays in the record file' '77' "$(jq -r '.adoption.records[0].tracker' "$state/adoption-5-triage.json" 2>/dev/null || true)"
 # A tracker on a candidate the hold does not have (the classifier linked an existing Issue) does not stop
 # the run when that candidate is gone: only held candidates are merged verbatim.
+printf '{"candidates": [{"id": "C-1", "content": "full text"}]}\n' > "$state/adoption-hold-5-triage.json"
 prev_records '[{"id": "C-1", "content": "full text"}, {"id": "C-2", "content": "not held"}]' '[{"ids": ["C-2"], "tracker": 90}]'
 triage_candidates='{"candidates": [{"id": "C-3", "content": "full text"}]}'
 triage_records='[{"ids": ["C-3"]}]'
@@ -377,12 +378,13 @@ prev_records '[{"id": "C-1", "content": "full text"}]' '[{"ids": ["C-1"], "track
 triage_records='[{"ids": ["C-3"], "tracker": 90}]'
 out=$(TRIAGE_GATE_RC=0 run_triage_block 7)
 assert_eq "the classifier's tracker is not overwritten" '90' "$(jq -r '.adoption.records[0].tracker' "$state/adoption-5-triage.json" 2>/dev/null || true)"
-# No hold means nothing to carry.
+# After 7.4.5 released the hold, the same candidate reported again in a later cycle still links the Issue
+# 7.4.2 created: the record file keeps the tracker and the candidates it named.
 rm -f "$state/adoption-hold-5-triage.json"
 prev_records '[{"id": "C-1", "content": "full text"}]' '[{"ids": ["C-1"], "tracker": 77}]'
 triage_records='[{"ids": ["C-3"]}]'
 out=$(TRIAGE_GATE_RC=0 run_triage_block 7)
-assert_eq 'without a previous hold no tracker is carried' 'null' "$(jq -r '.adoption.records[0].tracker' "$state/adoption-5-triage.json" 2>/dev/null || true)"
+assert_eq 'a tracker is carried after the hold is released' '77' "$(jq -r '.adoption.records[0].tracker' "$state/adoption-5-triage.json" 2>/dev/null || true)"
 # Two different trackers for one record cannot be resolved: stop instead of picking one.
 printf '{"candidates": [{"id": "C-1", "content": "full text"}, {"id": "C-2", "content": "new"}]}\n' > "$state/adoption-hold-5-triage.json"
 prev_records '[{"id": "C-1", "content": "full text"}, {"id": "C-2", "content": "new"}]' '[{"ids": ["C-1"], "tracker": 77}, {"ids": ["C-2"], "tracker": 78}]'
@@ -419,7 +421,7 @@ assert_grep '7.4.5 block releases the triage hold' "$ledger_dir/block.sh" 'adopt
 printf '#!/bin/bash\nprintf "%%s\\n" "$LEDGER_ROOT"\n' > "$ledger_dir/plugin/hooks/state-path-resolve.sh"
 ln -s "$ROOT/plugins/rite/hooks/scripts/nb-sweep-ledger.sh" "$ledger_dir/plugin/hooks/scripts/nb-sweep-ledger.sh"
 ln -s "$ROOT/plugins/rite/hooks/control-char-neutralize.sh" "$ledger_dir/plugin/hooks/control-char-neutralize.sh"
-printf '#!/bin/bash\nprintf "%%s\\n" "$@" > "$LEDGER_ROOT/flow-args"\n' > "$ledger_dir/plugin/hooks/flow-state.sh"
+printf '#!/bin/bash\nprintf "FLOW_ARG: %%s\\n" "$@"\n' > "$ledger_dir/plugin/hooks/flow-state.sh"
 # --print-record-body: LEDGER_BODY names the stored record comment (empty = no comment yet);
 # LEDGER_BODY_FAIL makes the read fail with that reason.
 cat > "$ledger_dir/plugin/hooks/review-nonblocking-record.sh" <<'STUB'
@@ -499,8 +501,11 @@ case "$out" in
   *'再開方法: '*'ただし #77 は tracker に書き戻せていない'*) pass 'an unwritable hold still prints the resume with the untracked Issue' ;;
   *) fail "an unwritable hold must print the resume: $out" ;;
 esac
-assert_grep 'an unwritable hold puts the resume in the next action' "$ledger_dir/root/flow-args" '採否の出口は出たが外部への書き込みが済んでいない。再開方法: 7.4 の外部への書き込み'
-assert_grep 'the next action names the untracked Issue' "$ledger_dir/root/flow-args" 'ただし #77 は tracker に書き戻せていない'
+next_arg=$(printf '%s\n' "$out" | grep '^FLOW_ARG: 採否の出口は出たが外部への書き込みが済んでいない。' || true)
+case "$next_arg" in
+  *'再開方法: 7.4 の外部への書き込み'*'ただし #77 は tracker に書き戻せていない'*) pass 'an unwritable hold puts the resume with the untracked Issue in the next action' ;;
+  *) fail "an unwritable hold must put the resume in the next action: $out" ;;
+esac
 
 # 7.4.2: a failed Issue creation is counted for 7.4.5, and a created Issue is written back as the record's tracker.
 awk '/^#### 7\.4\.2 / { s=1 } s && /^```bash$/ { a=1; next } a && /^```$/ { exit } a { print }' "$review" > "$ledger_dir/create.sh"

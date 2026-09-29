@@ -280,7 +280,7 @@ args: "{pr_number}"
 | `[review:fix-needed:N]` | ステップ 3 (fix invoke) へ |
 | `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=ac_unverified; ac={ids}` | 受入条件未検証の停止。再試行せず、下記の停止通知を出して終了する（成功 sentinel も新しい sentinel も出さない） |
 | `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=purpose_unaligned` | 5.S 後の目的逸脱。再試行せず終了する（成功 sentinel も新しい sentinel も出さない） |
-| `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=adoption_held; kind={kind}; hold_file={path}` | 採否の出口待ちの保留、またはスコープ外処分の外部への書き込みが途中で失敗した停止（後者は一部が書き込み済み）。再試行せず、`hold_file` と、hold ファイルの resume（出口待ちのときはゲートの WARNING にも出る。書き込み途中の停止で hold に書けなかったときは、再開方法は stderr の WARNING と flow-state の次アクションに出る）に従って再開することを示して終了する（成功 sentinel も新しい sentinel も出さない） |
+| `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=adoption_held; kind={kind}; hold_file={path}` | 採否の出口待ちの保留、またはスコープ外処分の外部への書き込みが途中で失敗した停止（後者は一部が書き込み済み）。再試行せず、`hold_file` と、hold ファイルの resume（出口待ちのときはゲートの WARNING にも出る）に従って再開することを示して終了する。書き込み途中の停止で hold に書けなかったときは、hold の resume ではなく stderr の WARNING と flow-state の次アクションにある再開方法に従う（成功 sentinel も新しい sentinel も出さない） |
 | `[review:error]` | 可逆な再試行を推奨として 1 回だけ自動実行し、work memory の既存決定事項へ理由を記録する。再失敗なら停止 |
 | sentinel 不在 | 可逆な再試行を推奨として 1 回だけ自動実行し、期待 sentinel と直近出力を既存 work memory へ記録する。再度不在なら停止 |
 
