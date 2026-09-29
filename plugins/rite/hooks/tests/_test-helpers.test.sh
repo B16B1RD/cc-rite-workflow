@@ -782,7 +782,9 @@ live_probe=$(cd "$live_repo" && bash -c '
   hermetic_leave_checkout; printf "leave_rc=%s\n" "$?"
   printf "hermetic_cwd=%s\n" "$HERMETIC_CWD"
   printf "cwd=%s\n" "$(pwd -P)"
-  printf "resolve=%s\n" "$(bash "$4")"
+  # HERMETIC_CWD is a physical path, while the state root outside git is the logical cwd;
+  # compare physical paths so a symlinked TMPDIR (macOS /var/folders) does not break the match.
+  printf "resolve=%s\n" "$(root=$(bash "$4") && [ -n "$root" ] && cd "$root" && pwd -P)"
   path_rc=0; path_out=$(bash "$3" path 2>/dev/null) || path_rc=$?
   printf "after_path_rc=%s\n" "$path_rc"
   printf "after_path=%s\n" "$path_out"
