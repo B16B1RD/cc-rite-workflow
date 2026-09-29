@@ -485,7 +485,7 @@ def reconcile(records, decisions, candidates, context, args, head):
                 if (decision["exit"] == "REJECT"
                         and ((record.get("prior") or {}).get("disposition") == "ADOPT"
                              or answer["trigger"] != "none" and any(
-                                 h["decision"].get("exit") == "ADOPT" and h["record"].get("present") is True
+                                 h["decision"].get("exit") in ("ADOPT", "LINK") and h["record"].get("present") is True
                                  for h in matches))):
                     reason = "unresolved_adoption"
             if reason:

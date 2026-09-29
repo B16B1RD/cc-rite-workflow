@@ -503,5 +503,37 @@ try:
 finally:
     adoption.parent.chmod(0o700)
 
+
+# LINK replaces the same candidate's ADOPT history, but the requirement remains accepted.
+for linked_axis in (True, False):
+    state = work / f'linked-requirement-{linked_axis}'
+    adoption = state / '.rite/state/adoption-301-followup.json'
+    decided([rec()], cands=CANDS[:1], pr=301, issue=700, kind='followup')
+    verdicts, _ = decided([rec(V=linked_axis, tracker=7, reason='existing tracker owns the requirement')],
+                          cands=CANDS[:1], pr=301, issue=700, kind='followup')
+    linked_path = state / '.rite/state/adoption-history-301-followup.json'
+    linked_history = json.loads(linked_path.read_text())
+    check(len(linked_history['entries']) == 1 and verdicts['F-01']['exit'] == 'LINK', linked_history)
+    check(linked_history['entries'][0]['record']['present'] is True, linked_history)
+    repeated = rec(V=False, reason='the same accepted requirement is still unresolved')
+    fresh = pending(repeated, pr=302, issue=700)
+    consolidation = dict(answer(fresh, 'reversal', 'consolidate'),
+                         observations='the repeated requirement remains unsatisfied')
+    pending(dict(repeated, reconciliation=consolidation), pr=302, issue=700, reason='unresolved_adoption')
+    check(json.loads(linked_path.read_text()) == linked_history, 'a held repetition preserves the LINK history')
+    # Reuse the existing tracker or verified resolution; neither is a rejection.
+    for fields, expected in (({'tracker': 7}, 'LINK'),
+                              ({'present': False, 'evidence': 'the requirement is now satisfied'}, 'RESOLVED')):
+        current = dict(repeated, **fields)
+        fresh = pending(current, pr=302, issue=700)
+        consolidation = dict(answer(fresh, 'reversal', 'consolidate'),
+                             observations='the repeated requirement has a verified disposition')
+        verdicts, _ = decided([dict(current, reconciliation=consolidation)], cands=CANDS[:1],
+                              pr=302, issue=700, kind='followup')
+        check(verdicts['F-01']['exit'] == expected, verdicts)
+    fresh = pending(repeated, pr=302, issue=700)
+    verdicts, _ = decided([dict(repeated, reconciliation=answer(fresh, 'none', 'normal'))],
+                          cands=CANDS[:1], pr=302, issue=700, kind='followup')
+    check(verdicts['F-01']['exit'] == 'REJECT', 'an unrelated guarantee returns to normal adoption rules')
 print(f'review-adoption-gate: {checks} checks passed')
 PYTEST

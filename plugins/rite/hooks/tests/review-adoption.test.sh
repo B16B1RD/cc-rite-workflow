@@ -495,6 +495,23 @@ for fields in ({'observations': ''}, {'trigger': 'none'}, {'resolution': 'normal
     result = invoke(extra=history_args)
     check(result.returncode == 1 and json.loads(result.stdout)['errors'][0]['reason'] == 'record_invalid',
           (fields, result.stdout, result.stderr))
+
+# An accepted requirement remains unresolved when its history becomes LINK.
+for linked_axis in (True, False):
+    history_args[history_args.index('--pr') + 1] = '21'
+    adopted = reconcile(rec())
+    path = history_dir / 'adoption-history-21-sweep.json'
+    path.write_text(json.dumps(adopted['history']))
+    linked = reconcile(rec(V=linked_axis, tracker=7, reason='existing tracker owns the accepted requirement'))
+    path.write_text(json.dumps(linked['history']))
+    check(len(linked['history']['entries']) == 1 and linked['decisions'][0]['exit'] == 'LINK', linked)
+    history_args[history_args.index('--pr') + 1] = '20'
+    repeated = rec(V=False, reason='the same accepted requirement is still unresolved')
+    pending = request_of(reconcile(repeated))
+    consolidation = answer(pending, 'reversal', 'consolidate', observations='the same requirement is still unmet')
+    request_of(reconcile(dict(repeated, reconciliation=consolidation)), 'unresolved_adoption')
+    path.unlink()
+
 # Overlapping root-cause records require merging the records before adjudication.
 write_inputs([conflict, dict(conflict, present=False, evidence='gone')])
 result = invoke(extra=history_args)
