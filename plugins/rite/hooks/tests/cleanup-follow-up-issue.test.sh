@@ -2173,6 +2173,12 @@ run_target "$r"
 assert_grep "T-64 最新 JSON を読めなければ apply_failed" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=apply_failed; pr=9'
 assert_grep "T-64 最新 JSON を読めなければ除外せず転記" "$STUB_DIR/body.md" 'cycle A の指摘'
 assert_not_grep "T-64 最新 JSON を読めなければ除外件数を出さない" "$ERR" 'sweep_issued:'
+# apply_failed は台帳を読めた後の失敗なので、一覧の ledger は台帳の行を運ぶ
+ADOPT_MODE=manual
+run_target "$r" --list-candidates "$TMP_ROOT/t64-latest-list.json"
+assert_grep "T-64 最新 JSON を読めない一覧も apply_failed" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=apply_failed; pr=9'
+assert "T-64 apply_failed の一覧の ledger は台帳の行を運ぶ" "F-01:issued" \
+  "$(jq -r '[.ledger[] | "\(.id):\(.disposition)"] | join(",")' "$TMP_ROOT/t64-latest-list.json")"
 
 echo "--- T-65: 指摘 0 件でも Decision Log で先送りした欠陥があれば起票し、本 PR のトークン行だけを転記する ---"
 # $1=Section 9 の後に続ける行 (終端の検証用)。Section 9 の外・別 PR・トークンなしの行は転記しない

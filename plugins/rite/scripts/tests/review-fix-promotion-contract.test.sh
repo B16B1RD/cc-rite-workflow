@@ -464,7 +464,8 @@ assert_grep 'step 2 copies no prior to a candidate without file_line by key' "$r
 assert_grep 'step 2 links a REJECT row to a candidate without file_line by root cause' "$review" '同じ根因・同じ前提の `REJECT` 行は、位置の無い候補にも上の規則で写す'
 assert_grep '7.4.5 writes only the REJECT row of a candidate without file_line, at -' "$review" '`file_line` が空の候補は `REJECT` の行だけを `{file_line}` に `-` を入れて書く'
 schema_doc="$ROOT/plugins/rite/references/review-result-schema.md"
-for old in '`file_line` が空の候補には prior を写さない' '台帳のキーが一意にならないので書かず'; do
+for old in '`file_line` が空の候補には prior を写さない' '台帳のキーが一意にならないので書かない' \
+  'キーが一意にならないので書かず、prior にも使わない'; do
   if grep -qF -- "$old" "$review" "$schema_doc"; then fail "the old rule for a candidate without file_line remains: $old"
   else pass "the old rule for a candidate without file_line is gone: $old"; fi
 done
