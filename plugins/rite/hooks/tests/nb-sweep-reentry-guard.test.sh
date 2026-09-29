@@ -35,6 +35,9 @@
 #      0.6（step_init_cycle）は入口記録と entries を消さない
 # T-18 採否ゲートが保留した sweep（done なし・入口記録あり）は 0.7 で resume、collect は pending で入口記録を残す。
 #      done を書く nb-sweep-record は [fix:sweep-done] の後だけで、[fix:error] の行は停止する
+# T-20 fix 5.1 は done ファイル判定を output-handoff より前に置く（入れ替えた変異で失敗する）
+# T-21 fix 5.1 の呼び出し行を fixture で実行すると、done ファイルだけの sweep 完了でも sweep-done の handoff が付き、
+#      他の結果の handoff は変わらない。行 1.5 の条件の選言と出力、行 1.6 の出力も固定する
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -443,6 +446,81 @@ fix51_run() {
 }
 assert "T-12 fix 5.1 done on lexical tail" "1" "$(fix51_run "done $lexical_tail")"
 assert "T-12 fix 5.1 not done on mtime max" "0" "$(fix51_run "done $mtime_max")"
+
+# --- T-20: fix 5.1 は done ファイル判定を output-handoff より前に置く（handoff の判定入力を先に確定する） ---
+handoff_call=$(one_line_call "$FIX" 'bash {plugin_root}/scripts/fix-step.sh output-handoff --pr {pr_number} --result {fix_result}') \
+  || { echo "FAIL: T-20 fix 5.1 output-handoff one-line call is missing or duplicated in SKILL.md"; exit 1; }
+fix51_line() {  # $1=file $2=呼び出し行。5.1 節内でちょうど 1 行のときだけ行番号を出す
+  local n
+  n=$(awk -v c="$2" '/^### 5\.1 /{s=1; next} s && /^###? /{exit} s && $0 == c {print NR}' "$1")
+  [[ "$n" =~ ^[0-9]+$ ]] || return 1
+  printf '%s\n' "$n"
+}
+done_precedes_handoff() {  # $1=file
+  local d h
+  d=$(fix51_line "$1" "$fix51_call") && h=$(fix51_line "$1" "$handoff_call") && [ "$d" -lt "$h" ]
+}
+if done_precedes_handoff "$FIX"; then
+  pass "T-20 done-file check precedes output-handoff in fix 5.1"
+else
+  fail "T-20 done-file check precedes output-handoff in fix 5.1"
+fi
+swapped_fix=$(mktemp)
+awk -v a="$fix51_call" -v b="$handoff_call" '$0 == a {print b; next} $0 == b {print a; next} {print}' "$FIX" > "$swapped_fix"
+if cmp -s "$FIX" "$swapped_fix"; then
+  fail "T-20 mutation swapped the two calls"
+elif done_precedes_handoff "$swapped_fix"; then
+  fail "T-20 swapped order is rejected"
+else
+  pass "T-20 swapped order is rejected"
+fi
+rm -f -- "$swapped_fix"
+
+# --- T-21: 5.1 の 2 つの呼び出し行を fixture で実行し、done ファイルの判定から選んだ結果の handoff を固定する（呼び出し順は T-20） ---
+# stub は set の呼び出しごとに 1 行記録する。error は「呼ばれて handoff が空」で判定する（未呼び出しと区別する）。
+cat > "$fix51_plugin/hooks/flow-state.sh" <<'STUB'
+#!/bin/bash
+h=""
+while [ $# -gt 0 ]; do
+  [ "$1" = "--handoff" ] && h="$2"
+  shift
+done
+printf 'called handoff=%s\n' "$h" >> "${NB_FLOW_LOG:?}"
+STUB
+handoff_run() {  # $1=result。stub の記録を出す
+  local log
+  log=$(mktemp)
+  NB_FLOW_LOG="$log" bash -c "$(render_call "$handoff_call" | sed "s#{fix_result}#$1#g")" >/dev/null 2>&1 || true
+  cat "$log"
+  rm -f -- "$log"
+}
+assert_handoff() {  # $1=label $2=result $3=期待 handoff
+  local rec
+  rec=$(handoff_run "$2")
+  assert "$1 calls flow-state once" "1" "$(printf '%s\n' "$rec" | grep -c '^called ')"
+  assert "$1 handoff" "called handoff=$3" "$rec"
+}
+# 5.1 行 1.5/1.6（NB_SWEEP=1 で会話 marker なし）の判定値と出力の対応。元の行のうち、行 1.5 は条件の選言と出力を、
+# 行 1.6 は出力を下の 2 本が固定する
+assert_grep_in_section "T-21 row 1.5 done file selects sweep-done" "$FIX" \
+  '### 5.1 Output Pattern' '### 5.2 Standalone Execution Behavior' \
+  '^\| 1\.5 \|.*（`\[CONTEXT\] NB_SWEEP_RESULT=done` または `\[CONTEXT\] NB_SWEEP_DONE_FILE=1`） \| `\[fix:sweep-done\]`'
+assert_grep_in_section "T-21 row 1.6 no done file selects error" "$FIX" \
+  '### 5.1 Output Pattern' '### 5.2 Standalone Execution Behavior' \
+  '^\| 1\.6 \|.*NB_SWEEP_DONE_FILE` 非 1 \| `\[fix:error\]` \|$'
+sweep_result_from_done_file() {  # $1=done ファイル 1 行目
+  case "$(fix51_run "$1")" in
+    1) echo sweep-done ;;
+    0) echo error ;;
+  esac
+}
+assert_handoff "T-21 done file on latest review" "$(sweep_result_from_done_file "done $lexical_tail")" "FINALIZE:fix:sweep-done:42"
+assert_handoff "T-21 done file on stale review" "$(sweep_result_from_done_file "done $mtime_max")" ""
+assert_handoff "T-21 pushed" pushed "/rite:pr-review 42 --from-iterate"
+assert_handoff "T-21 pushed-wm-stale" pushed-wm-stale "/rite:pr-review 42 --from-iterate"
+assert_handoff "T-21 replied-only" replied-only "FINALIZE:fix:replied-only:42"
+assert_handoff "T-21 non-fatal-only" non-fatal-only "FINALIZE:fix:non-fatal-only:42"
+assert_handoff "T-21 error" error ""
 
 digest_run() {
   local root
