@@ -3070,7 +3070,37 @@ p10_deny "a command past the parse budget" outside-checkout-uninspectable "hook 
   "$p10_wt" "echo $(printf 'x%.0s' $(seq 1 9000)) && cd $p10_scratch && gh api x"
 RITE_BTG_TEST_CRASH=pattern10-helper p10_deny "a failed check denies" outside-checkout-uninspectable "rc=3" \
   "$p10_wt" "cd $p10_scratch && ls"
-rm -rf "$p10_main" "$p10_scratch" "$p10_plain"
+p10_deny "gh after pushd to a scratch dir" outside-checkout "cannot be determined" \
+  "$p10_wt" "pushd $p10_scratch && gh api x"
+p10_deny "script after pushd to a scratch dir" outside-checkout "cannot be determined" \
+  "$p10_wt" "pushd $p10_scratch >/dev/null; bash x.sh"
+p10_deny "gh behind env --chdir" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "env --chdir=$p10_scratch gh api x"
+p10_deny "gh behind env -C" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "env -C $p10_scratch gh api x"
+p10_deny "gh behind timeout with a signal option" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "cd $p10_scratch && timeout -s KILL 5 gh api x"
+p10_deny "gh behind env -u" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "cd $p10_scratch && env -u HOME gh api x"
+p10_deny "git -C after another global option" outside-checkout "runs 'git' in $p10_scratch" \
+  "$p10_wt" "git -P -C $p10_scratch status"
+p10_deny "a variable reassigned inside if" outside-checkout "cannot be determined" \
+  "$p10_wt" "d=$p10_wt; if true; then d=$p10_scratch; fi; cd \"\$d\" && gh api x"
+p10_deny "a variable reassigned by export" outside-checkout "cannot be determined" \
+  "$p10_wt" "d=$p10_wt; export d=$p10_scratch; cd \"\$d\" && gh api x"
+p10_allow "cd into a directory made in the same command" "$p10_wt" \
+  "mkdir -p $p10_wt/new && cd $p10_wt/new && git status"
+p10_allow "a cd kept inside the first of two subshells" "$p10_wt" "(cd $p10_scratch && ls); (gh api x)"
+p10_allow "a cd kept inside an inner subshell" "$p10_wt" "( (cd $p10_scratch); gh api x )"
+p10_allow "a long command that runs no git, gh or script" "$p10_scratch" \
+  "echo $(printf 'x%.0s' $(seq 1 9000)) > out.txt"
+p10_broken=$(mktemp -d "${TMPDIR:-/tmp}/rite-p10-broken.XXXXXX")
+printf 'gitdir: %s/missing\n' "$p10_broken" > "$p10_broken/.git"
+mkdir -p "$p10_broken/.rite/sessions"
+jq -n '{active: true}' > "$p10_broken/.rite/sessions/$p10_sid.flow-state"
+P10_ROOT="$p10_broken" p10_deny "a state root git cannot read" outside-checkout-uninspectable "git cannot read the checkout" \
+  "$p10_wt" "cd $p10_scratch && gh api x"
+rm -rf "$p10_main" "$p10_scratch" "$p10_plain" "$p10_broken"
 # The skills' own bash blocks run during a session, from the checkout. Placeholders
 # stand for paths in the checkout, so none of them may be denied.
 p10_repo=$(cd "$SCRIPT_DIR/../../../.." && pwd -P)

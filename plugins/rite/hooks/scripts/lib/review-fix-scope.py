@@ -533,7 +533,7 @@ def _substitution_end(command, start):
     require(False, "unfinished command substitution" + _PARSE_HINT)
 
 
-def shell_segments(command, level=0):
+def shell_segments(command, level=0, group_ids=False):
     """Split a command into (words, nested, before, after) simple commands of dequoted words.
     Not a shell interpreter.
 
@@ -541,7 +541,9 @@ def shell_segments(command, level=0):
     NAME="a (b) c") stays in its word, and a quote may open in the middle of a word.
     A command substitution or a ( ) group runs in a subshell, so its commands come back
     marked nested (True for a substitution, "group" for a group); a substitution's commands
-    come ahead of the command that contains it.
+    come ahead of the command that contains it. With group_ids, a group's commands come
+    back marked ("group", ids) instead, ids naming each enclosing group from the outermost,
+    so separate groups can be told apart.
     The standard message form $(cat <<DELIM ... DELIM) is data and stays in its word.
     before / after are the control operators around a command: ";" (also a newline),
     "&&", "||", "|" (also |&), "&", or "" at the start, the end and around a substitution.
@@ -559,6 +561,7 @@ def shell_segments(command, level=0):
         return []
     segments, words, word, quoted, quote, depth = [], [], [], False, None, 0
     index, length, pending, redirect, redirection, signed = 0, len(command), "", -2, False, False
+    groups, opened = [], 0
 
     def end_word():
         nonlocal word, quoted, redirection, signed
@@ -570,7 +573,8 @@ def shell_segments(command, level=0):
         nonlocal words, pending
         end_word()
         if words:
-            segments.append((words, "group" if depth else False, pending, operator))
+            marker = ("group", tuple(groups)) if group_ids and groups else "group"
+            segments.append((words, marker if depth else False, pending, operator))
             pending = operator
         elif operator and pending not in ("&&", "||", "|"):
             # A newline right after && / || / | continues the list.
@@ -625,9 +629,12 @@ def shell_segments(command, level=0):
         elif ch == "(":
             end_segment()
             depth += 1
+            opened += 1
+            groups.append(opened)
         elif ch == ")":
             end_segment()
             depth = max(depth - 1, 0)
+            groups = groups[:depth]
         elif ch == "&" and (command.startswith(">", index + 1) or redirect == index - 1):
             word.append(ch)
         elif ch in _SEPARATORS:

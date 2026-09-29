@@ -1589,14 +1589,22 @@ if [ -z "$BLOCKED_PATTERN" ]; then
     _co_cwd_p=$(CDPATH= cd -- "$_co_cwd" 2>/dev/null && pwd -P) || _co_cwd_p=""
     _co_root_p=$(CDPATH= cd -- "$_co_root" 2>/dev/null && pwd -P) || _co_root_p=""
     # A command run from under the state root that cannot change its directory
-    # stays there, so the parse is skipped for the common case.
+    # stays there, so the parse is skipped for the common case. The words cover
+    # every directory change checkout-cwd.py follows (cd, pushd, popd, git -C,
+    # env -C / --chdir, sudo -D / --chdir).
+    # A command too long to parse is denied only when its text may run git, gh or
+    # a script; the words are matched coarsely, as the commit checks do.
+    _co_runs='(^|[^[:alnum:]_.-])(git|gh|bash|sh|zsh|dash|ksh|fish|python[0-9.]*|node|perl|ruby|source|eval)([^[:alnum:]_-]|$)|(^|[[:space:];&|(])\.\.?/|\.(sh|bash|py|js|pl|rb)([^[:alnum:]_]|$)'
     if [ -n "$_co_root_p" ] && [[ "$_co_cwd_p" == "$_co_root_p" || "$_co_cwd_p" == "$_co_root_p"/* ]] \
-       && [[ "$COMMAND" != *cd* && "$COMMAND" != *-C* ]]; then
+       && [[ "$COMMAND" != *cd* && "$COMMAND" != *pushd* && "$COMMAND" != *popd* \
+             && "$COMMAND" != *-C* && "$COMMAND" != *chdir* && "$COMMAND" != *sudo* ]]; then
       :
     elif ! _rite_btg_surface_within_budget "$COMMAND"; then
-      BLOCKED_PATTERN="outside-checkout-uninspectable"
-      BLOCKED_REASON="The directory each git, gh or script call in this command runs in cannot be checked within the hook time limit (${#COMMAND} characters). A check that runs out of time lets the command run, so it is denied without inspection."
-      BLOCKED_ALTERNATIVE="Split the command, or write long text to a file with a file-editing tool, and run git, gh and scripts from inside the checkout."
+      if [[ "$COMMAND" =~ $_co_runs ]]; then
+        BLOCKED_PATTERN="outside-checkout-uninspectable"
+        BLOCKED_REASON="The directory each git, gh or script call in this command runs in cannot be checked within the hook time limit (${#COMMAND} characters). A check that runs out of time lets the command run, so it is denied without inspection."
+        BLOCKED_ALTERNATIVE="Split the command, or write long text to a file with a file-editing tool, and run git, gh and scripts from inside the checkout."
+      fi
     else
       _co_rc=0
       _co_out=$(
