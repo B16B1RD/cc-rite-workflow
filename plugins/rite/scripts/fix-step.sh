@@ -64,7 +64,7 @@
 #   bash fix-step.sh accept-count --pr N
 #   bash fix-step.sh wiki-ingest-check
 #   bash fix-step.sh output-handoff --pr N --result pushed|pushed-wm-stale|non-fatal-only|replied-only|sweep-done|error
-#   bash fix-step.sh local-wm-sync --issue N
+#   bash fix-step.sh local-wm-sync --issue N   (空可: hook が branch から解決し、解決できなければ WARNING で続ける)
 #   bash fix-step.sh nb-sweep-done-file --pr N
 #   bash fix-step.sh override-cleanup --pr N
 #
@@ -1126,7 +1126,7 @@ esac
 
 # --- schema-drift-check ---------------------------------------------------------
 step_schema_drift_check() {
-bash "$plugin_root"/hooks/scripts/review-schema-version-check.sh --all --quiet
+bash "$plugin_root"/hooks/scripts/review-schema-version-check.sh --all
 drift_exit=$?
 printf '[CONTEXT] PRE_COMMIT_DRIFT_CHECK exit=%d\n' "$drift_exit"
 }
@@ -1539,7 +1539,7 @@ case "$subcommand" in
     require pr result
     one_of "$result" result pushed pushed-wm-stale non-fatal-only replied-only sweep-done error
     step_output_handoff ;;
-  local-wm-sync) require issue; step_local_wm_sync ;;
+  local-wm-sync) require_given issue; step_local_wm_sync ;;
   nb-sweep-done-file) require pr; step_nb_sweep_done_file ;;
   override-cleanup) require pr; step_override_cleanup ;;
   *) usage_error "unknown subcommand: $subcommand" ;;

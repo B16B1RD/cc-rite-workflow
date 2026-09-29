@@ -202,7 +202,7 @@ assert "local bare origin/wiki advanced (push landed, no network)" \
   "advanced" \
   "$([ "$origin_before" != "$origin_after" ] && echo advanced || echo unchanged)"
 # The committed page is now tracked on the wiki branch.
-if git -C "$commit_repo" ls-tree -r --name-only wiki | grep -q '.rite/wiki/pages/test.md'; then
+if _gq_out=$(git -C "$commit_repo" ls-tree -r --name-only wiki) && grep -q '.rite/wiki/pages/test.md' <<< "$_gq_out"; then
   pass "committed page is tracked on the wiki branch"
 else
   fail "committed page not found on wiki branch"
@@ -300,6 +300,16 @@ fi
 wiki_head_after_push="$(git -C "$pushfail_repo" rev-parse wiki)"
 assert "local wiki commit survives a failed deferred push" \
   "$wiki_head_before_push" "$wiki_head_after_push"
+# The push hint names the wiki worktree by its absolute path, also when started from a subdirectory.
+mkdir -p "$pushfail_repo/sub"
+( cd "$pushfail_repo/sub" && bash "$SCRIPT" --push-only ) >/dev/null 2>"$pushfail_repo/pf_err.txt" || true
+pf_wt="$(cd "$pushfail_repo" && pwd -P)/.rite/wiki-worktree"
+printf -v pf_wt_q '%q' "$pf_wt"
+if grep -qF " manual recovery: git -C $pf_wt_q push origin wiki" "$pushfail_repo/pf_err.txt"; then
+  pass "--push-only failure hint names the wiki worktree by its absolute path"
+else
+  fail "expected push hint with git -C $pf_wt_q; got: $(grep 'manual recovery' "$pushfail_repo/pf_err.txt" || true)"
+fi
 
 # --- --commit-only / --push-only mutual exclusivity + --dry-run guard --------
 assert "--commit-only and --push-only together exits 1" "1" \
@@ -328,7 +338,7 @@ else
 fi
 wiki_after_nr="$(git -C "$numref_repo" rev-parse wiki)"
 assert "numref pending does not advance wiki HEAD" "$wiki_before_nr" "$wiki_after_nr"
-if git -C "$numref_repo" ls-tree -r --name-only wiki | grep -q 'numref.md'; then
+if _gq_out=$(git -C "$numref_repo" ls-tree -r --name-only wiki) && grep -q 'numref.md' <<< "$_gq_out"; then
   fail "numref page must not be tracked on wiki after a refused commit"
 else
   pass "numref page is not tracked on wiki after a refused commit"
@@ -348,7 +358,7 @@ else
 fi
 assert "numref --commit-only does not advance wiki HEAD" \
   "$wiki_before_co_nr" "$(git -C "$numref_co_repo" rev-parse wiki)"
-if git -C "$numref_co_repo" ls-tree -r --name-only wiki | grep -q 'page-co.md'; then
+if _gq_out=$(git -C "$numref_co_repo" ls-tree -r --name-only wiki) && grep -q 'page-co.md' <<< "$_gq_out"; then
   fail "numref --commit-only must not land the page on wiki"
 else
   pass "numref --commit-only does not land the page on wiki"

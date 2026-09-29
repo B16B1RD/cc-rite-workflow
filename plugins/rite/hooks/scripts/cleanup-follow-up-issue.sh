@@ -2,7 +2,7 @@
 # cleanup-follow-up-issue.sh — /rite:cleanup ステップ 6.0
 #
 # マージ済み PR の review-results JSON から残存 non-blocking 指摘 (non_blocking_findings[]) を読み、
-# follow-up Issue を 1 件起票する。0 件なら起票しない。同一 PR 由来の既存 follow-up があれば
+# follow-up Issue を 1 件起票する。指摘も先送り欠陥も 0 件なら起票しない。同一 PR 由来の既存 follow-up があれば
 # 重複起票しない。cleanup 全体は止めない (引数不正のみ exit 1)。
 #
 # 元 Issue の Decision Log (Section 9) で本 PR のレビューが先送りした欠陥 (行末が

@@ -56,7 +56,7 @@ _resolve_sid() { resolve_strict_session_id "$STATE_ROOT" "${1:-}"; }
 # Is the lock live (holder recorded ∧ acquired_at within 2h)? The current time is
 # read before parsing acquired_at (which also calls date), so a broken clock stops
 # the command instead of turning a live lock into a stale one.
-_holder_is_live() {
+_lock_is_live() {
   local holder at epoch now
   holder=$(cat "$LOCKDIR/session_id" 2>/dev/null) || return 1
   [ -n "$holder" ] || return 1
@@ -103,7 +103,7 @@ cmd_acquire() {
     echo "acquired"
     return 0
   fi
-  if _holder_is_live; then
+  if _lock_is_live; then
     echo "concurrent_ingest"
     return 11
   fi
@@ -141,7 +141,7 @@ cmd_check() {
   [ -d "$LOCKDIR" ] || { echo "free"; return 0; }
   local holder; holder=$(cat "$LOCKDIR/session_id" 2>/dev/null || printf '')
   if [ -n "$holder" ] && [ -n "$sid" ] && [ "$holder" = "$sid" ]; then echo "own"; return 0; fi
-  if _holder_is_live; then echo "held"; else echo "stale"; fi
+  if _lock_is_live; then echo "held"; else echo "stale"; fi
   return 0
 }
 

@@ -227,6 +227,49 @@ run_step parse-args --arguments '$ARGUMENTS'; assert "unexpanded \$ARGUMENTS exi
 run_step fallback-abort --reason bogus; assert "unknown fallback-abort reason exits 2" "2" "$?"
 run_step output-handoff --pr 1 --result bogus; assert "unknown output-handoff result exits 2" "2" "$?"
 
+# --- 空値・出力を失わない経路 -----------------------------------------------------
+# fixture の plugin_root で hook を stub にし、実環境の作業メモリや review 結果に触れない。
+
+if [ -n "$MUT_DIR" ]; then
+  FIXTURE="$MUT_DIR/plugin"
+  mkdir -p "$FIXTURE/scripts" "$FIXTURE/hooks/scripts"
+  cp "$STEP" "$FIXTURE/scripts/fix-step.sh"
+  ln -s "$(cd "$PLUGIN_ROOT/hooks" && pwd)/control-char-neutralize.sh" "$FIXTURE/hooks/control-char-neutralize.sh"
+  ln -s "$(cd "$PLUGIN_ROOT/hooks/scripts" && pwd)/review-schema-version-check.sh" "$FIXTURE/hooks/scripts/review-schema-version-check.sh"
+
+  # Issue 番号を特定できない PR では issue が空で届く。hook が branch から解決し、
+  # 解決できなければ WARNING で続けるため、dispatcher で止めると結果 marker が出ないまま fix が止まる。
+  printf '%s\n' '#!/bin/bash' 'echo "WM_ISSUE_NUMBER=[$WM_ISSUE_NUMBER]"' > "$FIXTURE/hooks/local-wm-update.sh"
+  wm_out=$(bash "$FIXTURE/scripts/fix-step.sh" local-wm-sync --issue '' 2>/dev/null)
+  assert "local-wm-sync accepts an empty --issue" "0" "$?"
+  assert "an empty --issue reaches the work memory hook" "WM_ISSUE_NUMBER=[]" "$wm_out"
+  # 空値でも 1 引数として届くよう、SKILL.md は placeholder を引用符で囲んで渡す。
+  if grep -qxF "bash {plugin_root}/scripts/fix-step.sh local-wm-sync --issue '{issue_number}'" "$FIX"; then
+    pass "SKILL.md quotes the issue number passed to local-wm-sync"
+  else
+    fail "SKILL.md quotes the issue number passed to local-wm-sync"
+  fi
+
+  # drift を検出したら対象ファイルを出力する。SKILL.md の Exit 表はこの行から直す対象を読む。
+  DRIFT_ROOT="$MUT_DIR/drift-root"
+  mkdir -p "$DRIFT_ROOT/.rite/review-results"
+  git init -q "$DRIFT_ROOT"
+  printf '%s\n' '{"schema_version":"9.9","pr_number":1,"findings":[]}' > "$DRIFT_ROOT/.rite/review-results/1-20260101000000.json"
+  # checker は state-path-resolve.sh を直接実行するので実行権が要る。
+  printf '%s\n' '#!/bin/bash' "echo \"$DRIFT_ROOT\"" > "$FIXTURE/hooks/state-path-resolve.sh"
+  chmod +x "$FIXTURE/hooks/state-path-resolve.sh"
+  drift_out=$(cd "$DRIFT_ROOT" && bash "$FIXTURE/scripts/fix-step.sh" schema-drift-check 2>&1)
+  case "$drift_out" in
+    *"REVIEW_SCHEMA_VERSION_DRIFT=1; file=$DRIFT_ROOT/.rite/review-results/1-20260101000000.json"*)
+      pass "schema-drift-check names the drifted file" ;;
+    *) fail "schema-drift-check names the drifted file (output: $drift_out)" ;;
+  esac
+  case "$drift_out" in
+    *"PRE_COMMIT_DRIFT_CHECK exit=1"*) pass "schema-drift-check reports the drift exit" ;;
+    *) fail "schema-drift-check reports the drift exit (output: $drift_out)" ;;
+  esac
+fi
+
 if ! print_summary "$(basename "$0")" \
   "fix のシェルブロック形の契約。ステップ本体は plugins/rite/scripts/fix-step.sh、形の規則は plugins/rite/references/git-worktree-patterns.md が SoT。"; then
   exit 1

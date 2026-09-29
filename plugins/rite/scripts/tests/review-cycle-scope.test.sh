@@ -600,7 +600,7 @@ else
   echo "     実際:   '$actual_files'"
 fi
 # 大文字と小文字のパスが混ざっても、照合順の違うロケールで積を取りこぼさない
-if locale -a 2>/dev/null | grep -qiE '^en_US\.utf-?8$'; then
+if _gq_out=$(locale -a 2>/dev/null) && grep -qiE '^en_US\.utf-?8$' <<< "$_gq_out"; then
   SCOPE_STDERR=$(LC_ALL=en_US.UTF-8 bash "$TARGET" --pr 42 --results-dir "$MRESULTS" 2>&1) || true
   actual_files=$(LC_ALL=C sort "$scope_list" 2>/dev/null | paste -sd, -)
   if [ "$actual_files" = "$expected_files" ]; then

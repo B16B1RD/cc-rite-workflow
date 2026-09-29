@@ -248,7 +248,7 @@ if grep -q '件名は日本語' "$repo/CLAUDE.md" && ! grep -q 'must be English'
 else
   fail "T-09 rewrite did not stick: $(cat "$repo/CLAUDE.md")"
 fi
-if find "$repo/.rite" -name '*.flow-state' 2>/dev/null | grep -q .; then
+if _gq_out=$(find "$repo/.rite" -name '*.flow-state' 2>/dev/null) && grep -q . <<< "$_gq_out"; then
   fail "T-09 flow-state cache appeared under the fixture"
 else
   pass "T-09 no flow-state convention cache"
@@ -375,7 +375,7 @@ pass_rc=0
 (cd "$pass_repo" && bash "$WIKI_INIT" --branch-strategy same_branch --wiki-branch wiki --message-file "$passed") >/dev/null || pass_rc=$?
 assert "T-03 wiki-init --message-file with CLAUDE.md exits 0" "0" "$pass_rc"
 assert "T-03 wiki-init uses passed subject" "feat(wiki): custom with \`date\`" "$(git -C "$pass_repo" log -1 --format=%s)"
-if git -C "$pass_repo" log -1 --format=%B | grep -q '`date`'; then
+if _gq_out=$(git -C "$pass_repo" log -1 --format=%B) && grep -q '`date`' <<< "$_gq_out"; then
   pass "T-10 wiki-init --message-file keeps backtick text"
 else
   fail "T-10 wiki-init lost backticks: $(git -C "$pass_repo" log -1 --format=%B)"
@@ -444,7 +444,7 @@ ing3_rc=0
 (cd "$ing3" && bash "$WIKI_INGEST" --message-file "$ing3_msg") >/dev/null || ing3_rc=$?
 assert "T-03 wiki-ingest-commit --message-file rc 0" "0" "$ing3_rc"
 assert "T-03 wiki-ingest-commit uses passed subject" "docs(wiki): ingest with \`tick\`" "$(git -C "$ing3" log -1 --format=%s)"
-if git -C "$ing3" log -1 --format=%b | grep -q '$(whoami) stays literal'; then
+if _gq_out=$(git -C "$ing3" log -1 --format=%b) && grep -q '$(whoami) stays literal' <<< "$_gq_out"; then
   pass "T-10 wiki-ingest-commit --message-file keeps command-like text"
 else
   fail "T-10 wiki-ingest-commit mutated body: $(git -C "$ing3" log -1 --format=%b)"

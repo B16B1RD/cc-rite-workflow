@@ -6,6 +6,7 @@ FIX="$ROOT/plugins/rite/skills/fix/SKILL.md"
 # fix の検査・停止のコード片は scripts/fix-step.sh にあり、SKILL.md はその 1 行呼び出しを持つ
 FIX_STEP="$ROOT/plugins/rite/scripts/fix-step.sh"
 REVIEW="$ROOT/plugins/rite/skills/pr-review/SKILL.md"
+REVIEW_STEP="$ROOT/plugins/rite/scripts/pr-review-step.sh"
 pass=0
 fail=0
 
@@ -27,8 +28,10 @@ else
   echo "  ❌ fix の non-blocking 表示は実測なしと断定しない"; fail=$((fail + 1))
 fi
 check "pr-review は incremental も連続レール" 'full / incremental を問わない単一の連続レール' "$REVIEW"
-check "pr-review は gate helper を実行" 'bash {plugin_root}/scripts/review-measured-gate.sh' "$REVIEW"
-check "pr-review は検証済み終了操作を実行" 'bash {plugin_root}/hooks/flow-state.sh review-finish' "$REVIEW"
+check "pr-review は gate helper を実行" 'bash {plugin_root}/scripts/pr-review-step.sh measured-gate ' "$REVIEW"
+check "pr-review の手順 helper は gate helper を実行" 'bash "$plugin_root"/scripts/review-measured-gate.sh' "$REVIEW_STEP"
+check "pr-review は検証済み終了操作を実行" 'bash {plugin_root}/scripts/pr-review-step.sh review-finish ' "$REVIEW"
+check "pr-review の手順 helper は検証済み終了操作を実行" 'bash "$plugin_root"/hooks/flow-state.sh review-finish' "$REVIEW_STEP"
 check "終了操作は既存 saver を再利用" 'str(hooks / "review-result-save.sh")' "$ROOT/plugins/rite/hooks/scripts/lib/review-cycle.py"
 if bash "$ROOT/plugins/rite/hooks/tests/review-cycle-caller.test.sh"; then
   echo '  ✅ documented review-finish saves through the real saver'; pass=$((pass + 1))

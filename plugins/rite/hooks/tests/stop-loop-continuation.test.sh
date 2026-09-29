@@ -49,14 +49,14 @@ RITE_STATE_ROOT="$d" bash "$FS" set --phase review --issue 1168 --branch b --pr 
   --next n --handoff "/rite:fix 99" --session "$SID" >/dev/null
 out=$(stop_payload "$d" | bash "$HOOK")
 assert "TC-1: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
-if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "/rite:fix 99"; then
+if _gq_out=$(jq -r '.reason // ""' <<< "$out") && grep -q "/rite:fix 99" <<< "$_gq_out"; then
   pass "TC-1: reason contains the handoff command"
 else
   fail "TC-1: reason missing handoff command: $out"
 fi
 # Symmetric to TC-7 (AC-3 bidirectional): the continuation branch must NOT use the
 # FINALIZE completion-notice phrasing — pins both sides of the prefix split.
-if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "完了通知"; then
+if _gq_out=$(jq -r '.reason // ""' <<< "$out") && grep -q "完了通知" <<< "$_gq_out"; then
   fail "TC-1: continuation reason wrongly used the FINALIZE completion-notice phrasing: $out"
 else
   pass "TC-1: continuation reason is distinct from the FINALIZE branch"
@@ -103,14 +103,14 @@ RITE_STATE_ROOT="$d6" bash "$FS" set --phase fix --issue 1168 --branch b --pr 99
   --next n --handoff "/rite:pr-review 99" --session "$SID" >/dev/null
 out=$(stop_payload "$d6" | bash "$HOOK")
 assert "TC-6: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
-if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "/rite:pr-review 99"; then
+if _gq_out=$(jq -r '.reason // ""' <<< "$out") && grep -q "/rite:pr-review 99" <<< "$_gq_out"; then
   pass "TC-6: reason contains the review command"
 else
   fail "TC-6: reason missing review command: $out"
 fi
 # Symmetric to TC-7 (AC-3 bidirectional): the fix→review continuation branch must NOT
 # use the FINALIZE completion-notice phrasing.
-if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "完了通知"; then
+if _gq_out=$(jq -r '.reason // ""' <<< "$out") && grep -q "完了通知" <<< "$_gq_out"; then
   fail "TC-6: continuation reason wrongly used the FINALIZE completion-notice phrasing: $out"
 else
   pass "TC-6: continuation reason is distinct from the FINALIZE branch"
@@ -200,7 +200,7 @@ RITE_STATE_ROOT="$d10" bash "$FS" set --phase review --issue 1176 --branch b --p
   --next n --handoff "FINALIZE:" --session "$SID" >/dev/null
 out=$(stop_payload "$d10" | bash "$HOOK" 2>/dev/null)
 assert "TC-10: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
-if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "完了通知"; then
+if _gq_out=$(jq -r '.reason // ""' <<< "$out") && grep -q "完了通知" <<< "$_gq_out"; then
   pass "TC-10: empty-result FINALIZE still requests the completion notice"
 else
   fail "TC-10: empty-result FINALIZE missing completion-notice directive: $out"
@@ -266,7 +266,7 @@ RITE_STATE_ROOT="$d13" bash "$FS" set --phase cleanup --issue 1245 --branch b --
 err13=$(mktemp)
 out=$(stop_payload "$d13" | bash "$HOOK" 2>"$err13")
 assert "TC-13: decision=block (handoff non-empty axis preserved)" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
-if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "FUTUREPREFIX:something:99"; then
+if _gq_out=$(jq -r '.reason // ""' <<< "$out") && grep -q "FUTUREPREFIX:something:99" <<< "$_gq_out"; then
   pass "TC-13: reason re-injects the handoff verbatim"
 else
   fail "TC-13: reason missing the verbatim handoff: $out"
@@ -277,7 +277,7 @@ else
   fail "TC-13: missing unknown-prefix WARNING on stderr: $(cat "$err13")"
 fi
 # The unknown-prefix branch must not claim the review↔fix loop identity.
-if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "review↔fix"; then
+if _gq_out=$(jq -r '.reason // ""' <<< "$out") && grep -q "review↔fix" <<< "$_gq_out"; then
   fail "TC-13: unknown-prefix reason wrongly claimed the review↔fix loop identity: $out"
 else
   pass "TC-13: unknown-prefix reason avoids the review↔fix loop phrasing"
@@ -313,7 +313,7 @@ else
 fi
 # Scope pin: the reason keeps the raw handoff verbatim (re-injection contract). If the
 # neutralize scope is ever widened to the reason, update this pin deliberately.
-if printf '%s' "$out14" | jq -r '.reason // ""' | grep -q $'\x1b'; then
+if _gq_out=$(jq -r '.reason // ""' <<< "$out14") && grep -q $'\x1b' <<< "$_gq_out"; then
   pass "TC-14: reason keeps the handoff verbatim (neutralize does not widen to re-injection)"
 else
   fail "TC-14: reason lost the verbatim handoff bytes: $out14"
@@ -642,7 +642,7 @@ jq -nc '{type:"assistant",message:{content:"## /rite:iterate 完了\n- 未処理
 out=$(jq -nc --arg c "$d24" --arg s "$SID" --arg tp "$tp24" \
   '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:false, last_assistant_message:["x"]}' | bash "$HOOK" 2>/dev/null)
 assert "TC-24: decision=block (transcript notice is not used)" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
-if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "payload に最終テキスト"; then
+if _gq_out=$(jq -r '.reason // ""' <<< "$out") && grep -q "payload に最終テキスト" <<< "$_gq_out"; then
   pass "TC-24: reason names the missing payload text"
 else
   fail "TC-24: reason does not name the missing payload text: $out"
@@ -657,7 +657,7 @@ RITE_STATE_ROOT="$d25" bash "$FS" set --phase review --issue 2349 --branch b --p
   --next n --handoff "/rite:fix 99" --session "$SID" >/dev/null
 out=$(final_payload "$d25" $'## /rite:iterate 完了\n' | bash "$HOOK")
 assert "TC-25: decision=block (notice does not suppress continuation)" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
-if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "/rite:fix 99"; then
+if _gq_out=$(jq -r '.reason // ""' <<< "$out") && grep -q "/rite:fix 99" <<< "$_gq_out"; then
   pass "TC-25: continuation reason still re-injects /rite:fix"
 else
   fail "TC-25: continuation reason lost the command: $out"
@@ -999,7 +999,8 @@ assert_hint "merge" merge "" "/rite:cleanup fix/issue-2502-x" "/rite:iterate"
 assert_hint "init" init "" "/rite:open 2502" "/rite:iterate"
 assert_hint "lint" lint "" "/rite:open 2502" "ステップ 6"
 assert_hint "ingest-active" ingest "" "$CLEANUP_IN_PROGRESS" "ステップ 6"
-assert_hint "completed-inactive" completed ".active=false" "batch-run ステップ 6（cursor 前進）" "/rite:iterate"
+assert_hint "completed-inactive" completed '.active=false | .next_action="none"' "batch-run ステップ 6（cursor 前進）" "/rite:iterate"
+assert_hint "cleanup-active-none" cleanup '.next_action="none"' "$CLEANUP_IN_PROGRESS" "ステップ 6（cursor 前進）"
 assert_hint "unknown-phase" unknown_phase "" "batch-run ステップ 1 から再判定" "/rite:iterate"
 assert_hint "cb-fire" review '.stop_reason="circuit-breaker:max-cycles"' "batch-run ステップ 8（breaker_failed=true で failed 記録 + 停止、cursor は保持）" "/rite:iterate"
 assert_hint "cb-divergence" review '.stop_reason="circuit-breaker:divergence"' "batch-run ステップ 8（breaker_failed=true で failed 記録 + 停止、cursor は保持）" "cursor 前進"
@@ -1019,10 +1020,10 @@ fi
 
 # --- T-11: cleanup + flow-state active=false → step 6 ---
 echo ""
-echo "=== T-11: phase=cleanup and flow-state active=false routes to step 6 ==="
+echo "=== T-11: finished cleanup (active=false, next_action=none) routes to step 6 ==="
 d=$(new_sandbox)
 setup_watchdog_fs "$d" cleanup 99
-jq '.active=false' "$(state_file_for "$d")" > "$(state_file_for "$d").tmp" \
+jq '.active=false | .next_action="none"' "$(state_file_for "$d")" > "$(state_file_for "$d").tmp" \
   && mv "$(state_file_for "$d").tmp" "$(state_file_for "$d")"
 out=$(run_stop "$d")
 _r=$(printf '%s' "$out" | jq -r '.reason // ""')
@@ -1035,6 +1036,32 @@ if grep -qF "$CLEANUP_IN_PROGRESS" <<< "$_r"; then
   fail "T-11: inactive cleanup used in-progress hint: $out"
 else
   pass "T-11: inactive cleanup does not use in-progress hint"
+fi
+
+# SessionEnd keeps a mid-cleanup state as active=false; the resumed session must finish cleanup
+echo ""
+echo "=== T-11b: cleanup kept by SessionEnd mid-flow continues cleanup after resume ==="
+d=$(new_sandbox)
+setup_watchdog_fs "$d" cleanup 99
+# session-end.sh and session-start.sh resolve the session from .rite-session-id, not the payload
+printf '%s' "$SID" > "$d/.rite-session-id"
+jq -nc --arg c "$d" --arg s "$SID" '{cwd:$c, session_id:$s, hook_event_name:"SessionEnd", reason:"prompt_input_exit"}' \
+  | bash "$PLUGIN_ROOT/hooks/session-end.sh" >/dev/null 2>&1
+jq -nc --arg c "$d" --arg s "$SID" '{cwd:$c, session_id:$s, source:"resume"}' \
+  | RITE_HOST=claude bash "$PLUGIN_ROOT/hooks/session-start.sh" >/dev/null 2>&1
+kept=$(jq -r '"\(.phase)|\(.active)"' "$(state_file_for "$d")" 2>/dev/null || echo "<removed>")
+assert "T-11b: SessionEnd kept the cleanup state inactive" "cleanup|false" "$kept"
+out=$(run_stop "$d")
+_r=$(printf '%s' "$out" | jq -r '.reason // ""')
+if grep -qF "$CLEANUP_IN_PROGRESS" <<< "$_r"; then
+  pass "T-11b: continues the unfinished cleanup"
+else
+  fail "T-11b: $out"
+fi
+if grep -q "ステップ 6（cursor 前進）" <<< "$_r"; then
+  fail "T-11b: advanced the cursor past an unfinished cleanup: $out"
+else
+  pass "T-11b: does not advance the cursor"
 fi
 
 # WIKICHAIN consumed + 2nd stop with active cleanup must not jump to cursor advance

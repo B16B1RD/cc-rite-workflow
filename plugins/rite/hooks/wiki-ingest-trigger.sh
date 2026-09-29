@@ -175,7 +175,7 @@ if [[ -n "$TITLE" ]]; then
     echo "ERROR: --title must be valid UTF-8" >&2
     exit 1
   fi
-  if contains_ctrl "$TITLE" --c0-only || printf '%s' "$TITLE" | LC_ALL=C grep -q $'\302[\200-\237]'; then
+  if contains_ctrl "$TITLE" --c0-only || LC_ALL=C grep -q $'\302[\200-\237]' <<< "$TITLE"; then
     echo "ERROR: --title must not contain control characters (C0/DEL/C1 code points)" >&2
     exit 1
   fi

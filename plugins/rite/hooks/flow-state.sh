@@ -809,7 +809,7 @@ cmd_review_cycle() {
   while [ $# -gt 0 ]; do
     case "$operation:$1" in
       start:--stagnation|replan:--amend) args+=("$1"); shift ;;
-      start:--selection|finish:--manifest|finish:--content-file|finish:--pending-id|clock:--input|observe:--input|observe:--issue|replan:--plan|replan:--issue|replan:--reason|retry:--plan|retry:--issue|restart:--selection|restart:--approval|restart:--expected-run-id|abandon:--reason)
+      start:--selection|finish:--manifest|finish:--content-file|finish:--pending-id|clock:--input|observe:--input|observe:--issue|replan:--plan|replan:--issue|replan:--reason|retry:--plan|retry:--issue|restart:--selection|restart:--approval|restart:--expected-run-id|reconcile:--issue|reconcile:--approval|abandon:--reason)
         [ $# -ge 2 ] || { echo "ERROR: missing value for $1" >&2; return 1; }
         args+=("$1" "$2"); shift 2 ;;
       *) echo "ERROR: unknown review-cycle option: $1" >&2; return 1 ;;
@@ -841,7 +841,7 @@ cmd_review_cycle() {
     printf '%s' "$updated" | jq -r '.review_cycle | "[CONTEXT] REVIEW_CYCLE=completed; verdict=\(.verdict); result=\(.result_path)"' >&2
   fi
   case "$operation" in
-    clock|observe|replan|retry|restart|close) printf '%s' "$updated" | jq '.review_run' ;;
+    clock|observe|replan|retry|restart|reconcile|close) printf '%s' "$updated" | jq '.review_run' ;;
     # After abandon `.review_cycle` is gone; the appended record is the outcome.
     # A no-op prints the last record, or null if none; REVIEW_ABANDON=noop
     # on stderr distinguishes it from a new abandonment.
@@ -943,6 +943,7 @@ case "${1:-}" in
   review-replan) shift; cmd_review_cycle replan "$@" ;;
   review-retry) shift; cmd_review_cycle retry "$@" ;;
   review-restart) shift; cmd_review_cycle restart "$@" ;;
+  review-reconcile) shift; cmd_review_cycle reconcile "$@" ;;
   review-record) shift; cmd_review_record "$@" ;;
   review-close) shift; cmd_review_close "$@" ;;
   review-defer) shift; cmd_review_cycle defer "$@" ;;
@@ -956,7 +957,7 @@ case "${1:-}" in
   path) shift; cmd_path "$@" ;;
   *)
     cat >&2 <<EOF
-Usage: $0 {set|get|review-start|review-finish|review-retry|review-restart|review-abandon|deactivate|reap-issue|clear-worktree|consume-handoff|migrate|path} [options]
+Usage: $0 {set|get|review-start|review-finish|review-retry|review-restart|review-reconcile|review-abandon|deactivate|reap-issue|clear-worktree|consume-handoff|migrate|path} [options]
   set --phase <P> --next <T> [--issue N] [--branch S] [--pr N] [--parent-issue N]
       [--active true|false] [--handoff CMD] [--session UUID] [--if-exists] [--preserve-error-count]
       [--worktree PATH] [--require-worktree]   # --require-worktree: warn + emit WORKTREE_INVARIANT marker when worktree empty (non-blocking)
@@ -969,6 +970,7 @@ Usage: $0 {set|get|review-start|review-finish|review-retry|review-restart|review
   review-replan --plan /absolute/fix-plan.json --issue /absolute/issue.json [--amend --reason TEXT]
   review-retry --plan /absolute/fix-plan.json --issue /absolute/issue.json
   review-restart --selection /absolute/selection.json --expected-run-id UUID --approval /absolute/approval.json
+  review-reconcile --issue /absolute/issue.json --approval /absolute/approval.json   # record an agreed Issue revision in the same run
   review-record                      # append this review's record to the Issue work memory if absent
   review-close                       # requires that record (written first when absent)
   review-defer

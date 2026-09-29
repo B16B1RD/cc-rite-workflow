@@ -131,7 +131,7 @@ bash {plugin_root}/scripts/fix-step.sh wiki-query-config
 bash {plugin_root}/scripts/fix-step.sh wiki-capture --keywords '{keywords}' --changed-paths '{changed_paths}'
 ```
 
-status が ok の各ページは rev の本文を読み、excerpt、判断、applied なら evidence と result を証跡に書く。`body: read` だけでは commit しない。ゲートが deny なら commit しない。commit 後に head が現在の HEAD と違うとき、または blob がファイルと違うときは capture からやり直す。
+status が ok の各ページは rev の本文を読み、excerpt、判断、applied なら evidence と result を証跡に書く。`body: read` だけでは commit しない。ゲートが deny なら commit しない。commit 後の head はステップ 3.3 の `fix-wiki-apply-head` が新しい HEAD へ進める。進められないとき、または blob がファイルと違うときは capture からやり直す。
 
 ---
 
@@ -1106,7 +1106,7 @@ bash {plugin_root}/scripts/fix-step.sh schema-drift-check
 | Exit Code | Action |
 |-----------|--------|
 | `0` (clean) | Proceed to ステップ 3.2. |
-| `1` (drift detected) | Re-run **without** `--quiet` to display findings. Return to ステップ 2 to fix the detected drifts. This is an **automated self-correction** — NOT a new review cycle. Do not increment `loop_count`. |
+| `1` (drift detected) | Read the `[CONTEXT] REVIEW_SCHEMA_VERSION_DRIFT=1; file=` lines printed above for the drifted files. Return to ステップ 2 to fix the detected drifts. This is an **automated self-correction** — NOT a new review cycle. Do not increment `loop_count`. |
 | `2` (invocation error) | Emit `[CONTEXT] PRE_COMMIT_DRIFT_CHECK_ERROR=1` as WARNING and proceed to ステップ 3.2. Do not block the commit. |
 
 
@@ -1253,6 +1253,15 @@ cosmetic は option 2 可。bypass は記録必須。
 git add {changed_files}
 git commit -F "{commit_message_file}"
 ```
+
+各 commit が成功するたびに、別の Bash 呼び出しで Wiki 適用証跡の head を commit 前の HEAD から新しい HEAD へ進める（3.2 で分割コミットを選んだときも 1 本ごと）。進めないと次の commit と次のレビューのゲートが `stale_head` で拒否する。
+
+```bash
+# fix-wiki-apply-head
+bash {plugin_root}/hooks/scripts/wiki-apply-advance-head.sh --from HEAD^
+```
+
+`WIKI_APPLY_HEAD=advanced` または `=current` なら 3.3.1 へ進む。非 0 終了では証跡は変わっていない。冒頭の Wiki 手順の capture からやり直し、証跡を書き直してから 3.3.1 へ進む。
 
 ### 3.3.1 Fix-Cycle State Persistence
 
@@ -1626,7 +1635,7 @@ rationale: references/design-rationale.md#output-pattern-notes
 Use the self-resolving wrapper. See [Work Memory Format - Usage in Commands](../../skills/rite-workflow/references/work-memory-format.md) for details and marketplace install notes.
 
 ```bash
-bash {plugin_root}/scripts/fix-step.sh local-wm-sync --issue {issue_number}
+bash {plugin_root}/scripts/fix-step.sh local-wm-sync --issue '{issue_number}'
 ```
 
 lock failure は WARNING で継続。non-lock は WARNING + stderr 5 行で継続。分岐は exact phrase ([common-error-handling.md](../../references/common-error-handling.md#hook-lock-contention-classification-canonical))。

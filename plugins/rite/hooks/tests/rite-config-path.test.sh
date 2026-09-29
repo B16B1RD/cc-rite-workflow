@@ -119,22 +119,25 @@ rm -f "$MAIN/rite-config.yml" "$errf"
 echo "=== T-10: pr-review post_comment read uses the main checkout config from a worktree ==="
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 PR_SKILL="$PLUGIN_ROOT/skills/pr-review/SKILL.md"
-block=$(awk '/^# --- Step 3: rite-config.yml の pr_review.post_comment 読取/{f=1} /^# --- Step 4:/{f=0} f' "$PR_SKILL" \
-  | sed "s|{plugin_root}|$PLUGIN_ROOT|g")
+PR_STEP="$PLUGIN_ROOT/scripts/pr-review-step.sh"
+block=$(awk '/^# --- Step 3: rite-config.yml の pr_review.post_comment 読取/{f=1} /^# --- Step 4:/{f=0} f' "$PR_STEP")
 case "$block" in
   *rite-config-path.sh*) pass "T-10 block extracted and calls the resolver" ;;
   *) fail "T-10 block extracted and calls the resolver" ;;
 esac
+# SKILL.md の 1 行呼び出しをそのまま実行する（loader が置換する引数は空にする）
+call=$(grep -m1 -E '^bash \{plugin_root\}/scripts/pr-review-step\.sh parse-args ' "$PR_SKILL" \
+  | sed -e "s|{plugin_root}|$PLUGIN_ROOT|g" -e "s|'\$ARGUMENTS'|''|")
 printf 'pr_review:\n  post_comment: true\n' > "$MAIN/rite-config.yml"
-got=$(cd "$WT" && bash -c "$block"$'\necho "post=$config_post_comment"' 2>&1)
+got=$(cd "$WT" && bash -c "$call" 2>&1)
 case "$got" in
-  *"post=true"*) pass "T-10 worktree reads post_comment=true from main" ;;
+  *"POST_COMMENT_MODE=true"*) pass "T-10 worktree reads post_comment=true from main" ;;
   *) fail "T-10 worktree reads post_comment=true from main (got '$got')" ;;
 esac
 rm -f "$MAIN/rite-config.yml"
-got=$(cd "$WT" && bash -c "$block"$'\necho "post=$config_post_comment"' 2>&1)
+got=$(cd "$WT" && bash -c "$call" 2>&1)
 case "$got" in
-  *"WARNING:"*"$MAIN/rite-config.yml"*"post=false"*) pass "T-10 missing config warns with tried path and defaults to false" ;;
+  *"WARNING:"*"$MAIN/rite-config.yml"*"POST_COMMENT_MODE=false"*) pass "T-10 missing config warns with tried path and defaults to false" ;;
   *) fail "T-10 missing config warns with tried path and defaults to false (got '$got')" ;;
 esac
 if [ "$(id -u)" -eq 0 ]; then
@@ -142,7 +145,7 @@ if [ "$(id -u)" -eq 0 ]; then
 else
   printf 'pr_review:\n  post_comment: true\n' > "$MAIN/rite-config.yml"
   chmod 000 "$MAIN/rite-config.yml"
-  rc=0; got=$(cd "$WT" && bash -c "$block"$'\necho "post=$config_post_comment"' 2>&1) || rc=$?
+  rc=0; got=$(cd "$WT" && bash -c "$call" 2>&1) || rc=$?
   chmod 644 "$MAIN/rite-config.yml"
   assert "T-10 unreadable config exits 1" "1" "$rc"
   case "$got" in
@@ -150,7 +153,7 @@ else
     *) fail "T-10 unreadable config stops with review:error (got '$got')" ;;
   esac
   case "$got" in
-    *"post="*) fail "T-10 unreadable config does not continue with a default (got '$got')" ;;
+    *"POST_COMMENT_MODE="*) fail "T-10 unreadable config does not continue with a default (got '$got')" ;;
     *) pass "T-10 unreadable config does not continue with a default" ;;
   esac
   rm -f "$MAIN/rite-config.yml"
@@ -158,9 +161,11 @@ fi
 
 echo "=== T-12: initialization checks resolve the config instead of listing the cwd ==="
 # $1 skill, $2 section start heading, $3 next heading, $4 text of the rc=1 message,
-# $5 whether rc=1 stops the skill (stop | guide)
+# $5 whether rc=1 stops the skill (stop | guide),
+# $6 text only the If rc=0 paragraph shows, or - when the section has no If rc=0 paragraph
 check_init_section() {
-  local skill_md="$PLUGIN_ROOT/skills/$1/SKILL.md" sec blk rc out rc0_line rc1_line rc1_para rows
+  local skill_md="$PLUGIN_ROOT/skills/$1/SKILL.md" sec blk rc out rc0_line rc1_line rc0_para rc1_para rows
+  local rc1_text stop_n cont_n neg_n
   sec=$(awk -v s="$2" -v e="$3" 'index($0, s) == 1 {f = 1; next} f && index($0, e) == 1 {exit} f' "$skill_md")
   blk=$(printf '%s\n' "$sec" | awk '/^```bash$/ {b = 1; next} b && /^```$/ {exit} b' | sed "s|{plugin_root}|$PLUGIN_ROOT|g")
   case "$blk" in
@@ -208,40 +213,73 @@ check_init_section() {
     *"$4"*) pass "T-12 $1 shows the not-initialized message under If rc=1" ;;
     *) fail "T-12 $1 shows the not-initialized message under If rc=1" ;;
   esac
-  case "$(printf '%s\n' "$sec" | awk '/^\**If rc=/ {f = /^\**If rc=0/; next} f')" in
+  rc0_para=$(printf '%s\n' "$sec" | awk '/^\**If rc=/ {f = /^\**If rc=0/; next} f')
+  case "$rc0_para" in
     *"$4"*) fail "T-12 $1 does not show the not-initialized message under If rc=0" ;;
     *) pass "T-12 $1 does not show the not-initialized message under If rc=0" ;;
   esac
+  if [ "$6" = "-" ]; then
+    # If rc=0 段落が無いので、0 行が下にある内容を指すだけで rc=0 に案内が混ざる
+    if grep -Eiq 'show|display|below|message' <<< "$rc0_line"; then
+      fail "T-12 $1 rc=0 row does not point to content below (line: '$rc0_line')"
+    else
+      pass "T-12 $1 rc=0 row does not point to content below"
+    fi
+  else
+    case "$rc0_para" in
+      *"$6"*) pass "T-12 $1 shows the found message under If rc=0" ;;
+      *) fail "T-12 $1 shows the found message under If rc=0" ;;
+    esac
+    case "$rc1_para" in
+      *"$6"*) fail "T-12 $1 does not show the found message under If rc=1" ;;
+      *) pass "T-12 $1 does not show the found message under If rc=1" ;;
+    esac
+  fi
   case "$rc1_line" in
     *stderr*) fail "T-12 $1 does not treat rc=1 as a resolver error (line: '$rc1_line')" ;;
     *) pass "T-12 $1 does not treat rc=1 as a resolver error" ;;
   esac
-  # 否定形（"do not stop ... continue"）で停止語だけが残る書き換えを通さないため、stop 側は続行語の不在も見る
-  case "$5:$(printf '%s\n%s\n' "$rc1_line" "$rc1_para" | grep -ci 'stop' || true):$(printf '%s\n%s\n' "$rc1_line" "$rc1_para" | grep -ci 'continue' || true)" in
-    stop:0:*|stop:*:[1-9]*|guide:[1-9]*) fail "T-12 $1 rc=1 stop behavior is '$5'" ;;
-    stop:*:0|guide:0:*) pass "T-12 $1 rc=1 stop behavior is '$5'" ;;
-    *) fail "T-12 $1 rc=1 stop behavior is '$5' (unknown kind)" ;;
-  esac
+  # stop 側は停止語があり、続行語 continue も、not / n't / never から 2 語以内に続く stop（停止の否定形）も無いときだけ停止とみなす
+  rc1_text=$(printf '%s\n%s\n' "$rc1_line" "$rc1_para")
+  stop_n=$(printf '%s\n' "$rc1_text" | grep -ci 'stop' || true)
+  cont_n=$(printf '%s\n' "$rc1_text" | grep -ci 'continue' || true)
+  neg_n=$(printf '%s\n' "$rc1_text" | grep -Eci "(not|n't|never)([[:space:]]+[[:alpha:]]+){0,2}[[:space:]]+stop" || true)
+  if { [ "$5" = stop ] && [ "$stop_n" -gt 0 ] && [ "$cont_n" -eq 0 ] && [ "$neg_n" -eq 0 ]; } \
+     || { [ "$5" = guide ] && [ "$stop_n" -eq 0 ]; }; then
+    pass "T-12 $1 rc=1 stop behavior is '$5'"
+  else
+    fail "T-12 $1 rc=1 stop behavior is '$5' (stop=$stop_n; continue=$cont_n; negated=$neg_n)"
+  fi
   if grep -nE '(ls( -la)?|cp) rite-config\.yml' "$skill_md"; then
     fail "T-12 $1 does not list or copy rite-config.yml relative to the cwd"
   else
     pass "T-12 $1 does not list or copy rite-config.yml relative to the cwd"
   fi
 }
-check_init_section workflow '### 1.1 Check Initialization Status' '### 1.2' '初期化されていません' stop
-check_init_section getting-started '### 3.2 Step 1: Initial Setup' '### 3.3' 'Action Required' guide
-check_init_section template-reset '### 1.1 Read rite-config.yml' '## Phase 2' '見つかりません' stop
-if awk '/^## Language Support/ {f = 1} f' "$PLUGIN_ROOT/skills/workflow/SKILL.md" | grep -qF '{rite_config_path}'; then
+check_init_section workflow '### 1.1 Check Initialization Status' '### 1.2' '初期化されていません' stop -
+check_init_section getting-started '### 3.2 Step 1: Initial Setup' '### 3.3' 'Action Required' guide 'Already initialized'
+check_init_section template-reset '### 1.1 Read rite-config.yml' '## Phase 2' '見つかりません' stop -
+if _gq_out=$(awk '/^## Language Support/ {f = 1} f' "$PLUGIN_ROOT/skills/workflow/SKILL.md") && grep -qF '{rite_config_path}' <<< "$_gq_out"; then
   pass "T-12 workflow reads language from the resolved path"
 else
   fail "T-12 workflow reads language from the resolved path"
 fi
 reset_md="$PLUGIN_ROOT/skills/template-reset/SKILL.md"
-if grep -qF 'ls -la "{rite_config_path}"' "$reset_md" \
-   && grep -qF 'cp "{rite_config_path}" "{rite_config_path}.backup.' "$reset_md"; then
-  pass "T-12 template-reset detects and backs up the resolved path"
+# 再生成はバックアップの後に同じパスへ書く。上書きしてから退避する順序も落とす
+reset_regen=$(awk 'index($0, "### 3.3 Regenerate Configuration File") == 1 {f = 1; next} f && index($0, "## Phase 4") == 1 {exit} f' "$reset_md")
+backup_at=$(printf '%s\n' "$reset_regen" | grep -nF 'cp "{rite_config_path}" "{rite_config_path}.backup.' | head -n 1 | cut -d: -f1) || backup_at=""
+write_at=$(printf '%s\n' "$reset_regen" | grep -nF 'write it to `{rite_config_path}`' | head -n 1 | cut -d: -f1) || write_at=""
+reset_missing=""
+grep -qF 'ls -la "{rite_config_path}"' "$reset_md" || reset_missing="$reset_missing ls"
+[[ -n "$backup_at" ]] || reset_missing="$reset_missing backup"
+[[ -n "$write_at" ]] || reset_missing="$reset_missing write"
+if [[ -z "$reset_missing" && "$backup_at" -ge "$write_at" ]]; then
+  reset_missing=" backup-before-write"
+fi
+if [[ -z "$reset_missing" ]]; then
+  pass "T-12 template-reset detects, backs up and regenerates the resolved path"
 else
-  fail "T-12 template-reset detects and backs up the resolved path"
+  fail "T-12 template-reset detects, backs up and regenerates the resolved path (missing:$reset_missing)"
 fi
 
 print_summary "$(basename "$0")" \

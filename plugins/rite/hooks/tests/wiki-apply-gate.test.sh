@@ -866,7 +866,8 @@ if grep -q 'wiki-apply-gate' <<<"$gout" && ! grep -q 'wiki-apply-index' <<<"$gou
 else
   fail "guard -qm rc=$grc out=$gout"
 fi
-# 引用符なしのリダイレクトとその先は commit の引数ではない。引用符付きの語と、先のない演算子は数える。
+# 引用符なしのリダイレクト語（最初の < / > の前が fd 番号か &> の & だけ）と、（省略可の）fd 番号か & に続く < > & だけの語の次の語は
+# commit の引数ではない。引用符付きの語、先のない演算子、>| / {fd}>out は数える。
 SCOPE_CHECK="$SCRIPT_DIR/../scripts/review-fix-scope-check.sh"
 expect_target() {
   local want="$1" cmd="$2" out rc=0
@@ -886,6 +887,7 @@ git commit -m x > out.log
 git commit -m x 2>/dev/null
 git commit -m x &>log
 git commit -m x 2> err.log
+git commit -m x 10> err.log
 git commit -m x >> out.log
 git commit -F - < msg.txt
 git commit -m x >&2
@@ -909,6 +911,8 @@ git commit -m x ">out"
 git commit -m x >
 git commit -m x file.txt>out
 git commit -m x "2">out
+git commit -m x >| out.log
+git commit -m x {fd}>out
 EOF
 drc=0
 dout=$(bash "$SCOPE_CHECK" commit-target --command "git commit --dry-run >/dev/null" --cwd "$repo" 2>"$ROOT/target.err") || drc=$?
@@ -944,6 +948,131 @@ for _cmd in "git commit -F f file.txt 2>&1" "git commit -F f 2>&1 file.txt"; do
     pass "guard still denies a pathspec beside a redirection: $_cmd"
   else
     fail "guard redirection pathspec $_cmd rc=$grc out=$gout"
+  fi
+done
+# git とサブコマンドの間にあるリダイレクト語（先のない演算子はその次の語も）とグローバルオプションは
+# 読み飛ばしてサブコマンドを特定する。-C / -c とその値の間のリダイレクト語も同じ。
+while IFS= read -r _cmd; do
+  expect_target index "$_cmd"
+done <<'EOF'
+git 2>/dev/null commit -m x
+git 2> /dev/null commit -m x
+git >/dev/null commit -m x
+git &>/dev/null commit -m x
+git <&- commit -m x
+git -c a.b=c 2>&1 commit -m x
+git -C . 2>/dev/null commit -m x
+git -C 2>/dev/null . commit -m x
+git -c 2>&1 a.b=c commit -m x
+git commit -m x
+git -c a.b=c commit -m x
+git --no-pager commit -m x
+git commit -m x 2>&1
+EOF
+brc=0
+bout=$(bash "$SCOPE_CHECK" commit-target --command "2>/dev/null git commit -m x" --cwd "$repo" 2>"$ROOT/target.err") || brc=$?
+if [ "$brc" -ne 0 ] && [ -z "$bout" ] && grep -q 'run commit as a direct command' "$ROOT/target.err"; then
+  pass "commit-target still refuses a redirection before git"
+else
+  fail "commit-target redirection before git rc=$brc out=$bout err=$(cat "$ROOT/target.err")"
+fi
+if python3 - "$SCRIPT_DIR/../scripts/lib/review-fix-scope.py" "$repo" <<'PY'
+import importlib.util, sys
+from pathlib import Path
+sys.path.insert(0, str(Path(sys.argv[1]).parent))
+spec = importlib.util.spec_from_file_location("review_fix_scope", sys.argv[1])
+scope = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(scope)
+targets = list(scope.each_git_target("git 2>/dev/null merge --continue", sys.argv[2]))
+assert len(targets) == 1, targets
+name, toplevel, args, problem = targets[0]
+assert name == "merge" and problem is None, targets
+assert toplevel == Path(sys.argv[2]).resolve(), toplevel
+assert scope.head_move(name, args) == "commit", args
+PY
+then
+  pass "each_git_target reads git 2>/dev/null merge --continue as a commit in the repository"
+else
+  fail "each_git_target merge --continue behind a redirection"
+fi
+redir=$(jq -n --arg cwd "$repo" '{tool_name:"Bash", tool_input:{command:"git 2>/dev/null commit -m x"}, cwd:$cwd}')
+grc=0
+gout=$(printf '%s' "$redir" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+if grep -qF 'BLOCKED (wiki-apply-gate)' <<<"$gout" \
+   && ! grep -qE 'wiki-apply-(unresolved|index|missing)' <<<"$gout"; then
+  pass "guard checks a commit behind a redirection at the wiki gate"
+else
+  fail "guard redirection before commit rc=$grc out=$gout"
+fi
+# 未設定の変数や空のコマンド置換は空に展開されて素の commit になりうるので、作業先を特定できない commit として拒否する。
+# git '' は git が「コマンドではない」で失敗して commit しない。非更新サブコマンドの引数にある commit は commit ではない。
+for _cmd in 'git $OPTS commit -m x' 'git $(true) commit -m x'; do
+  drc=0
+  dout=$(bash "$SCOPE_CHECK" commit-target --command "$_cmd" --cwd "$repo" 2>"$ROOT/target.err") || drc=$?
+  if [ "$drc" -ne 0 ] && [ -z "$dout" ] && grep -q 'commit target is dynamic' "$ROOT/target.err"; then
+    pass "commit-target refuses a commit behind a word that may expand to nothing: $_cmd"
+  else
+    fail "commit-target $_cmd rc=$drc out=$dout err=$(cat "$ROOT/target.err")"
+  fi
+  dyn=$(jq -n --arg cwd "$repo" --arg cmd "$_cmd" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
+  grc=0
+  # 実行中のセッションにレビュー中の cycle があると Pattern 8 が先に拒否するので、session state から切り離す。
+  mkdir -p "$ROOT/dyn-state"
+  gout=$(printf '%s' "$dyn" | env -u CLAUDE_SESSION_ID -u CODEX_THREAD_ID -u GROK_SESSION_ID RITE_HOST=claude \
+    CLAUDE_CODE_SESSION_ID=550e8400-e29b-41d4-a716-446655440078 RITE_STATE_ROOT="$ROOT/dyn-state" \
+    WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+  if grep -qF 'BLOCKED (wiki-apply-unresolved)' <<<"$gout" && grep -q 'dynamic' <<<"$gout"; then
+    pass "guard refuses a commit behind a word that may expand to nothing: $_cmd"
+  else
+    fail "guard $_cmd rc=$grc out=$gout"
+  fi
+done
+# 1 回の解析で検査しきれない回数の cd / -C の後の作業先は動的になり、そこへの commit は作業先を特定できない commit として拒否する。
+_cd17=$(printf 'cd . && %.0s' $(seq 1 17))
+_deep65="echo $(printf '$(%.0s' $(seq 1 65))true$(printf ')%.0s' $(seq 1 65)); "
+_cmd="${_cd17}git commit -m x"
+many=$(jq -n --arg cwd "$repo" --arg cmd "$_cmd" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
+grc=0
+gout=$(printf '%s' "$many" | env -u CLAUDE_SESSION_ID -u CODEX_THREAD_ID -u GROK_SESSION_ID RITE_HOST=claude \
+  CLAUDE_CODE_SESSION_ID=550e8400-e29b-41d4-a716-446655440078 RITE_STATE_ROOT="$ROOT/dyn-state" \
+  WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+if grep -qF 'BLOCKED (wiki-apply-unresolved)' <<<"$gout" && grep -q 'target is dynamic' <<<"$gout"; then
+  pass "guard refuses a commit after more directory changes than it can inspect"
+else
+  fail "guard many directory changes rc=$grc out=$gout"
+fi
+# 解析しない深さ（65 段以上）の置換は、中身を引用・バックスラッシュ・行継続を外して読み、git と commit / merge を含むときだけ拒否する。
+_deep() { printf 'echo %s%s%s' "$(printf '$(%.0s' $(seq 1 "$1"))" "$2" "$(printf ')%.0s' $(seq 1 "$1"))"; }
+_nl=$'\n'
+for _inner in 'git merge x' "g''it co\\mmit -m y" 'g"i"t commit -m y' "gi\\${_nl}t commit -m y"; do
+  _cmd=$(_deep 65 "$_inner")
+  drc=0
+  dout=$(bash "$SCOPE_CHECK" commit-target --command "$_cmd" --cwd "$repo" 2>"$ROOT/target.err") || drc=$?
+  if [ "$drc" -ne 0 ] && [ -z "$dout" ] && grep -q 'nested more than 64 deep' "$ROOT/target.err"; then
+    pass "commit-target refuses a HEAD mover in an unparsed substitution: ${_inner//$_nl/\\n}"
+  else
+    fail "commit-target deep ${_inner//$_nl/\\n} rc=$drc out=$dout err=$(cat "$ROOT/target.err")"
+  fi
+done
+# 上限を超えた後でも、解析しない置換の外にある HEAD を動かさないコマンドの引数の commit では拒否しない。
+# 深さ 64 の置換は解析し、65 段以上の置換は中身が git と commit / merge を含まなければ拒否しない。
+for _cmd in "git '' commit -m x" 'git log --grep commit' 'git $OPTS log --grep commit' \
+            "${_cd17}git log --grep commit" "${_deep65}git log --grep commit" \
+            "$(_deep 64 'git log --grep commit')" "$(_deep 65 'git status')" "$(_deep 65 'echo commit')"; do
+  nrc=0
+  nout=$(bash "$SCOPE_CHECK" commit-target --command "$_cmd" --cwd "$repo" 2>"$ROOT/target.err") || nrc=$?
+  if [ "$nrc" -eq 0 ] && [ -z "$nout" ]; then
+    pass "commit-target finds no commit in: $_cmd"
+  else
+    fail "commit-target $_cmd rc=$nrc out=$nout err=$(cat "$ROOT/target.err")"
+  fi
+  none=$(jq -n --arg cwd "$repo" --arg cmd "$_cmd" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
+  grc=0
+  gout=$(printf '%s' "$none" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+  if [ "$grc" -eq 0 ] && [ -z "$gout" ]; then
+    pass "guard does not deny: $_cmd"
+  else
+    fail "guard $_cmd rc=$grc out=$gout"
   fi
 done
 crc=0
@@ -1389,6 +1518,168 @@ if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT" && grep -q 're
   pass "review after the refused raw-source commit allows"
 else
   fail "review after raw commit rc=$GRC out=$GOUT"
+fi
+
+echo "=== a direct fix commit moves head with the documented block ==="
+ADVANCE="$SCRIPT_DIR/../scripts/wiki-apply-advance-head.sh"
+FIX_MD="$SCRIPT_DIR/../../skills/fix/SKILL.md"
+adv_tag=$(grep -n '^# fix-wiki-apply-head$' "$FIX_MD" | cut -d: -f1)
+exec_tag=$(grep -n '^# fix-commit-execute$' "$FIX_MD" | cut -d: -f1)
+next_sec=$(grep -n '^### 3.3.1 ' "$FIX_MD" | cut -d: -f1)
+exec_block=$(awk '/^# fix-commit-execute$/ { copy=1; next } copy && /^```$/ { exit } copy { print }' "$FIX_MD")
+if [ "$(printf '%s\n' "$adv_tag" | grep -c .)" -eq 1 ] && [ -n "$exec_tag" ] && [ -n "$next_sec" ] \
+  && [ "$adv_tag" -gt "$exec_tag" ] && [ "$adv_tag" -lt "$next_sec" ] \
+  && [ -n "$exec_block" ] && ! grep -q 'wiki-apply-advance-head' <<<"$exec_block"; then
+  pass "the head block appears once, after the commit block and before 3.3.1, in its own call"
+else
+  fail "head block placement adv=$adv_tag exec=$exec_tag next=$next_sec"
+fi
+adv_block="$ROOT/fix-wiki-apply-head.sh"
+awk -v root="$PLUGIN_ROOT" '
+  /^# fix-wiki-apply-head$/ { copy=1; next }
+  copy && /^```$/ { exit }
+  copy { gsub(/\{plugin_root\}/, root); print }
+' "$FIX_MD" > "$adv_block"
+if [ -s "$adv_block" ] && ! grep -q '{' "$adv_block"; then
+  pass "the extracted head block is complete"
+else
+  fail "head block is empty or keeps a placeholder: $(cat "$adv_block")"
+fi
+fx=$(new_repo fix-direct)
+write_config "$fx" true true
+fx_flow="$ROOT/fix-direct.flow-state"
+write_flow "$fx_flow" fix 7 "$fx"
+# The state root of a checkout is the checkout itself, where the gate reads the memory.
+fx_mem="$fx/.rite/work-memory/issue-7.md"
+printf 'fix\n' >> "$fx/README"
+git -C "$fx" add README
+write_mem "$fx_mem" "$(fresh_header none fix-direct "$fx" 1 README)
+### 別の節
+head: 1111111111111111111111111111111111111111"
+fx_old=$(git -C "$fx" rev-parse HEAD)
+git -C "$fx" commit -qm 'fix: direct commit'
+fx_new=$(git -C "$fx" rev-parse HEAD)
+cp "$fx_mem" "$ROOT/fix-before.md"
+fx_env() { env -u WIKI_APPLY_MEMORY -u RITE_STATE_ROOT WIKI_APPLY_FLOW_STATE="$fx_flow" "$@"; }
+arc=0
+(cd "$fx" && fx_env bash "$adv_block") >"$ROOT/adv.out" 2>"$ROOT/adv.err" || arc=$?
+changed=$(diff "$ROOT/fix-before.md" "$fx_mem" | grep '^[<>]' || true)
+if [ "$arc" -eq 0 ] && grep -qx 'WIKI_APPLY_HEAD=advanced' "$ROOT/adv.out" && grep -qx "head=$fx_new" "$ROOT/adv.out" \
+  && [ "$changed" = "< head: $fx_old"$'\n'"> head: $fx_new" ] \
+  && grep -qx 'head: 1111111111111111111111111111111111111111' "$fx_mem"; then
+  pass "the block moves only the record's head line to the new HEAD in the default memory"
+else
+  fail "head block rc=$arc changed=$changed out=$(cat "$ROOT/adv.out") err=$(cat "$ROOT/adv.err")"
+fi
+GRC=0
+GOUT=$(cd "$fx" && fx_env bash "$GATE" --mode review 2>"$ROOT/gate.err") || GRC=$?
+if [ "$GRC" -eq 0 ] && grep -q 'WIKI_APPLY_GATE=allow' <<<"$GOUT" && grep -qx "memory=$fx_mem" <<<"$GOUT"; then
+  pass "review after the direct commit allows on the same memory"
+else
+  fail "review after direct commit rc=$GRC out=$GOUT err=$(cat "$ROOT/gate.err")"
+fi
+cp "$fx_mem" "$ROOT/fix-after.md"
+arc=0
+(cd "$fx" && fx_env bash "$adv_block") >"$ROOT/adv2.out" 2>&1 || arc=$?
+if [ "$arc" -eq 0 ] && grep -qx 'WIKI_APPLY_HEAD=current' "$ROOT/adv2.out" && cmp -s "$ROOT/fix-after.md" "$fx_mem"; then
+  pass "running the block again reports current and leaves the memory"
+else
+  fail "second head block rc=$arc out=$(cat "$ROOT/adv2.out")"
+fi
+arc=0
+bash "$ADVANCE" --worktree "$land" --memory "$land_mem" --from HEAD^ >"$ROOT/adv-land.out" 2>&1 || arc=$?
+if [ "$arc" -eq 0 ] && grep -qx 'WIKI_APPLY_HEAD=current' "$ROOT/adv-land.out"; then
+  pass "the block after a git-commit-file commit reports current"
+else
+  fail "head block after git-commit-file rc=$arc out=$(cat "$ROOT/adv-land.out")"
+fi
+if ! grep -q 'WIKI_APPLY_HEAD=\|^head=' "$ROOT/land.out"; then
+  pass "git-commit-file keeps the helper's lines out of its output"
+else
+  fail "git-commit-file output leaks helper lines: $(cat "$ROOT/land.out")"
+fi
+
+echo "=== a record that is not this commit's is left as it is ==="
+adv_case() {
+  local label="$1" from="$2" body="$3" mem="$ROOT/adv-case.md" rc=0
+  write_mem "$mem" "$body"
+  cp "$mem" "$ROOT/adv-case-before.md"
+  bash "$ADVANCE" --worktree "$fx" --memory "$mem" --from "$from" >"$ROOT/adv-case.out" 2>"$ROOT/adv-case.err" || rc=$?
+  if [ "$rc" -eq 1 ] && grep -q 'capture からやり直' "$ROOT/adv-case.err" && cmp -s "$ROOT/adv-case-before.md" "$mem" \
+    && [ ! -s "$ROOT/adv-case.out" ]; then
+    pass "$label"
+  else
+    fail "$label rc=$rc err=$(cat "$ROOT/adv-case.err")"
+  fi
+}
+adv_case "no record section fails" HEAD^ "### 別の節
+head: $fx_old"
+adv_case "a record without head fails" HEAD^ "### Wiki 適用証跡
+issue: 7"
+adv_case "a record naming another commit fails" HEAD^ "### Wiki 適用証跡
+head: 2222222222222222222222222222222222222222"
+adv_case "an unresolvable --from fails" no-such-rev "### Wiki 適用証跡
+head: $fx_old"
+
+echo "=== the default memory lookup and the write fail without touching the record ==="
+arc=0
+(cd "$fx" && env -u WIKI_APPLY_MEMORY WIKI_APPLY_FLOW_STATE="$ROOT/no-such.flow-state" bash "$adv_block") \
+  >"$ROOT/adv-noflow.out" 2>"$ROOT/adv-noflow.err" || arc=$?
+if [ "$arc" -eq 1 ] && grep -q 'flow-state を読めません' "$ROOT/adv-noflow.err" && [ ! -s "$ROOT/adv-noflow.out" ]; then
+  pass "a missing flow-state stops the block before any record is read"
+else
+  fail "missing flow-state rc=$arc err=$(cat "$ROOT/adv-noflow.err")"
+fi
+if [ "$(id -u)" != 0 ]; then
+  ro_dir="$ROOT/ro-memory"
+  mkdir -p "$ro_dir"
+  ro_mem="$ro_dir/issue-7.md"
+  write_mem "$ro_mem" "### Wiki 適用証跡
+head: $fx_old"
+  cp "$ro_mem" "$ROOT/ro-before.md"
+  chmod a-w "$ro_dir"
+  arc=0
+  bash "$ADVANCE" --worktree "$fx" --memory "$ro_mem" --from HEAD^ >"$ROOT/adv-ro.out" 2>"$ROOT/adv-ro.err" || arc=$?
+  chmod u+w "$ro_dir"
+  if [ "$arc" -eq 1 ] && grep -q 'capture からやり直' "$ROOT/adv-ro.err" && cmp -s "$ROOT/ro-before.md" "$ro_mem" \
+    && [ ! -e "$ro_mem.tmp" ] && [ ! -s "$ROOT/adv-ro.out" ]; then
+    pass "a memory that cannot be written fails and stays as it was"
+  else
+    fail "read-only memory rc=$arc err=$(cat "$ROOT/adv-ro.err")"
+  fi
+else
+  echo "  SKIP: read-only memory (root ignores mode bits)"
+fi
+
+echo "=== git-commit-file without the head helper does not commit ==="
+cp "$GATE" "$copy/hooks/scripts/wiki-apply-gate.sh"
+head_before=$(git -C "$repo" rev-parse HEAD)
+crc=0
+bash "$copy/hooks/scripts/git-commit-file.sh" --file "$msg" --worktree "$repo" >"$ROOT/copy2.out" 2>"$ROOT/copy2.err" || crc=$?
+if [ "$crc" -eq 1 ] && [ "$head_before" = "$(git -C "$repo" rev-parse HEAD)" ] && grep -q 'head 更新 helper が無い' "$ROOT/copy2.err"; then
+  pass "missing head helper does not commit"
+else
+  fail "missing head helper rc=$crc err=$(cat "$ROOT/copy2.err")"
+fi
+
+echo "=== git-commit-file stops when head cannot be moved after the commit ==="
+stuck=$(new_repo stuck)
+stuck_mem="$ROOT/stuck.md"
+write_mem "$stuck_mem" "### Wiki 適用証跡
+head: 3333333333333333333333333333333333333333"
+cp "$ADVANCE" "$copy/hooks/scripts/wiki-apply-advance-head.sh"
+printf '#!/bin/bash\necho WIKI_APPLY_GATE=allow\necho reason=ok\necho "memory=%s"\n' "$stuck_mem" > "$copy/hooks/scripts/wiki-apply-gate.sh"
+cp "$SCRIPT_DIR/../scripts/lib/"*.py "$copy/hooks/scripts/lib/"
+printf 'stuck\n' >> "$stuck/README"
+git -C "$stuck" add README
+crc=0
+bash "$copy/hooks/scripts/git-commit-file.sh" --file "$msg" --worktree "$stuck" >"$ROOT/stuck.out" 2>"$ROOT/stuck.err" || crc=$?
+if [ "$crc" -eq 1 ] && grep -q 'commit 後に Wiki 適用証跡の head を更新できません' "$ROOT/stuck.err" \
+  && grep -q 'capture からやり直' "$ROOT/stuck.err" \
+  && grep -qx 'head: 3333333333333333333333333333333333333333' "$stuck_mem"; then
+  pass "a record that does not name the old HEAD stops git-commit-file with its error"
+else
+  fail "stuck head rc=$crc err=$(cat "$ROOT/stuck.err")"
 fi
 
 echo ""

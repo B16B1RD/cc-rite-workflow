@@ -131,7 +131,7 @@ case "$bang_rc" in
     # in a consumer repo (rite used as a marketplace plugin only — no plugins/rite/
     # in this working tree, hence --skip-if-no-target above). Surface a one-line
     # informational note for the skip case so the gate pass is not silent.
-    if printf '%s' "$bang_output" | grep -q '\[bang-backtick\] not applicable'; then
+    if grep -q '\[bang-backtick\] not applicable' <<< "$bang_output"; then
       echo "ℹ️ Bang-backtick gate: 本リポジトリは plugins/rite/ を self-host していないため N/A（clean skip）。" >&2
     fi
     ;;

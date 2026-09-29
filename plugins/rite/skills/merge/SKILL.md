@@ -18,7 +18,7 @@ argument-hint: "[--force-ci] <pr_number>"
 ## Contract
 
 **Input**: `[--force-ci]` + PR number (required)
-**Output**: `[merge:returned-to-caller]` / `[merge:not-ready]` / `[merge:error]`
+**Output**: `[merge:returned-to-caller]` / `[merge:not-ready]` / `[merge:error]`（競合による not-ready だけ `[CONTEXT] MERGE_NOT_READY=conflicting` を併記）
 
 `gh pr merge --squash` を叩いて PR をマージするだけ。**cleanup は走らせない**。マージ後の cleanup は `/rite:cleanup` を別途実行する。
 
@@ -167,7 +167,7 @@ bash "{plugin_root}/hooks/scripts/ready-reviewed-head-gate.sh" \
 | 状態 | アクション |
 |------|-----------|
 | `isDraft == true` | `[merge:not-ready]` emit + 「先に `/rite:ready {pr_number}` を実行してください」案内 + 終了 |
-| `mergeable != "MERGEABLE"` | 再判定は可逆なので、原因 (`mergeStateStatus`) を表示・既存 work memory に記録して 1 回だけ自動再判定する。再度非 MERGEABLE なら `[merge:not-ready]` を emit して終了。`CONFLICTING` の解消は [base 取り込み](../fix/references/fix-plan.md#base-取り込み) の手順で行う |
+| `mergeable != "MERGEABLE"` | 再判定は可逆なので、原因 (`mergeStateStatus`) を表示・既存 work memory に記録して、下記「非 MERGEABLE の再判定」の bash で 1 回だけ自動再判定する。再度非 MERGEABLE なら bash が `[merge:not-ready]` を emit して終了する（`CONFLICTING` のときだけ理由 marker を併記）。`MERGEABLE` に戻れば以降の行で判定を続ける。`CONFLICTING` の解消は [base 取り込み](../fix/references/fix-plan.md#base-取り込み) の手順で行う |
 | `mergeable == "MERGEABLE"` + checks 0 件 | CI 未設定リポジトリとして従来どおりステップ 2 へ |
 | `mergeable == "MERGEABLE"` + checks が pending + `force_ci == false` | 上の bash が待ち loop を実行済み。`MERGE_CHECKS_STATE` の**最終行**で既存分類へ合流する。最終行がまだ `pending`（上限到達）なら `[merge:not-ready]` emit + 「checks の完了を待って再実行」と表示して終了（未完了 check 名は bash が stderr 済み） |
 | checks が pending + `force_ci == true` | 待ち loop に入らない。未完了 check の一覧を表示した後、ステップ 2 へ |
@@ -179,6 +179,26 @@ bash "{plugin_root}/hooks/scripts/ready-reviewed-head-gate.sh" \
 > **「再判定」option の挙動**: 再判定は **1 回のみ**（mergeable 再計算遅延向け。CI 待ち loop の `sleep 15` とは別）。再判定後も `MERGEABLE` でなければ `[merge:not-ready]` で確定終了する。mergeable 再判定に自動 sleep は提供しない。
 > rationale: references/rationale.md#rematch-once
 > rationale: references/rationale.md#ci-wait-bounded
+
+### 非 MERGEABLE の再判定
+
+`[CONTEXT] MERGE_NOT_READY=conflicting` は、再判定後も `mergeable == "CONFLICTING"` のときだけ出す。`UNKNOWN` など他の非 MERGEABLE、および本表の他の `[merge:not-ready]` 行では出さない。caller はこの marker の有無で、base 取り込みで解消できる競合と、それ以外の未マージを区別する。
+
+```bash
+# merge-rematch
+rematch_json=$(gh pr view {pr_number} -R {owner_repo} --json mergeable,mergeStateStatus,isDraft,headRefName,statusCheckRollup) \
+  || { echo "[merge:not-ready]"; echo "ERROR: 再判定で PR 状態を取得できないためマージしません" >&2; exit 1; }
+rematch_mergeable=$(printf '%s' "$rematch_json" | jq -r '.mergeable // ""')
+rematch_state=$(printf '%s' "$rematch_json" | jq -r '.mergeStateStatus // ""')
+echo "[CONTEXT] MERGE_REMATCH; mergeable=$rematch_mergeable; state=$rematch_state"
+if [ "$rematch_mergeable" != "MERGEABLE" ]; then
+  echo "[merge:not-ready]"
+  if [ "$rematch_mergeable" = "CONFLICTING" ]; then
+    echo "[CONTEXT] MERGE_NOT_READY=conflicting; pr={pr_number}"
+  fi
+  exit 1
+fi
+```
 
 ### CI red の分類
 

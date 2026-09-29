@@ -7,7 +7,7 @@
 #   1. gh pr diff --stat  (unsupported flag)
 #   2. gh pr diff -- <path>  (unsupported file filter)
 #   3. != null in jq/awk  (history expansion breaks !)
-#   4. Reviewer subagent .git-write gate — enforced only in subagent contexts.
+#   4. Reviewer subagent gate — enforced only in subagent contexts.
 #      Four sub-checks serving one guarantee (no writes into a .git directory):
 #        (L) oversized command → deny (timeout-based bypass prevention)
 #        (Z) shell-command wrapper (eval / sh -c / ...) → deny (opaque quoting
@@ -16,6 +16,10 @@
 #            remote / update-ref / symbolic-ref) → deny (writes .git/config or
 #            .git refs with no redirect or file verb for (H) to see)
 #        (H) WRITE into a .git dir via redirect / file-mutating verb → deny
+#      plus, for reviewer-classified subagents only:
+#        (S) state-changing command at command position — git push / git commit,
+#            a GitHub write (gh pr / issue writes, gh api writes), gh pr checkout,
+#            a flow-state.sh write, or a skill step driver (*-step.sh) → deny
 #   5. Merge-point review-result positive gate — main-session
 #      (and any session) Bash that issues `gh pr merge` / REST pulls/{n}/merge /
 #      GraphQL mergePullRequest is denied unless `.rite/review-results/{pr}-*.json`
@@ -27,19 +31,30 @@
 #      procedure-omission bypass of /rite:pr-review, not adversarial forgery.
 #   6. Direct `gh issue create` — denied unless Issue creation is delegated to
 #      create-issue-with-projects.sh or decompose-issues.sh.
-#   7. `git commit --allow-empty` — denied. `--allow-empty-message` and ordinary
+#   7. `git commit --allow-empty` — denied, also with global options or
+#      redirections between git and commit (`git -c k=v commit`,
+#      `git 2>/dev/null commit`), and when a variable between them may expand to
+#      nothing (`git $OPTS commit`). `--allow-empty-message` and ordinary
 #      commits are not this pattern. Alternative: leave file changes, or revisit
 #      the Issue. Do not create an empty commit.
 #
-# Reviewer working-tree mutations (git checkout / reset / commit / branch / ...)
+# Reviewer working-tree mutations (git checkout / reset / add / branch / stash ...)
 # are deliberately NOT machine-gated here. They are visible and
 # recoverable via `git status`; their guarantee is Layer 1 (the reviewer prompt
 # READ-ONLY contract, plugins/rite/agents/_reviewer-base.md) + Layer 3
-# (post-review-state-verify.sh drift detection after each review). Only the
-# .git-write path keeps a machine gate: it is invisible to `git status`,
+# (post-review-state-verify.sh drift detection after each review). Two classes
+# keep a machine gate. The .git-write path: it is invisible to `git status`,
 # effectively irreversible, and plants arbitrary code execution in the
 # non-sandboxed main session (.git/hooks/*, .git/config core.hooksPath /
-# alias.*=!sh / core.fsmonitor) — strictly worse than a source edit.
+# alias.*=!sh / core.fsmonitor) — strictly worse than a source edit. And the
+# closed set in (S): a push or a GitHub write leaves the machine, a commit or a
+# flow-state write moves the history and workflow state the parent session
+# continues from, and a step driver can do either; reviewers have been observed running them despite
+# the prompt contract, so the prompt alone is not enough. `gh pr checkout` is in
+# (S) although `git checkout` is not: it sits next to the read-only `gh pr view`
+# / `gh pr diff` a reviewer uses to inspect a PR, and besides switching the
+# branch it fetches the PR head into a local branch (reset with --force), which
+# stops whichever session is working in that tree.
 #
 # Exit behavior: exit 0 — allow (no output); stdout JSON with
 # permissionDecision: "deny" — block.
@@ -147,6 +162,29 @@ if [ "$IS_SUBAGENT" = "0" ]; then
   fi
 fi
 
+# Reviewer classification — the same predicate as pre-tool-edit-guard.sh (keep the
+# two in sync). Only reviewers are read-only: an implementation subagent
+# (general-purpose, …) commits and pushes like the main session does. A reported type
+# ending in `reviewer` or naming `_reviewer-base` is a reviewer, and one reviewer-typed
+# field outweighs non-reviewer ones. A subagent that reports no type at all cannot be
+# told apart from a reviewer, so it is treated as one.
+IS_REVIEWER=0
+REVIEWER_TYPE_BASIS=""
+if [ "$IS_SUBAGENT" = "1" ]; then
+  _has_type=0
+  for _t in "$INPUT_SUBAGENT_TYPE" "$INPUT_AGENT_TYPE" "${CLAUDE_SUBAGENT_TYPE:-}" "${CLAUDE_AGENT_TYPE:-}"; do
+    [ -n "$_t" ] || continue
+    _has_type=1
+    case "$_t" in
+      *reviewer|*_reviewer-base) IS_REVIEWER=1; REVIEWER_TYPE_BASIS="type=$_t"; break ;;
+    esac
+  done
+  if [ "$_has_type" = "0" ]; then
+    IS_REVIEWER=1
+    REVIEWER_TYPE_BASIS="type unknown"
+  fi
+fi
+
 # Fail-open ERR trap for Patterns 1-3: if heredoc extraction or simple pattern
 # matching crashes on edge-case input, allow the command rather than blocking it.
 _rite_btg_pattern13_fail_open() {
@@ -166,13 +204,13 @@ _rite_btg_pattern13_fail_open() {
 _rite_btg_pattern4_fail_closed() {
   local _rc=$?
   trap - ERR  # prevent re-entrancy while emitting the deny
-  echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] pre-tool-bash-guard: WARNING Pattern 4 (reviewer .git-write guard) crashed (rc=$_rc) — command DENIED via fail-closed" >&2
+  echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] pre-tool-bash-guard: WARNING Pattern 4 (reviewer .git-write / state-change guard) crashed (rc=$_rc) — command DENIED via fail-closed" >&2
   if [ -n "${RITE_DEBUG:-}" ]; then
     printf '[%s] pre-tool-bash-guard: Pattern 4 ERR trap fired (rc=%s) — deny fail-closed\n' \
       "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$_rc" \
       >> "${STATE_ROOT:-/tmp}/.rite/logs/flow-debug.log" 2>/dev/null || true
   fi
-  local _reason="BLOCKED (reviewer-gitdir-write): Pattern 4 security-boundary evaluation crashed; denying fail-closed to avoid bypassing the reviewer .git-write guard. See the bash-guard stderr WARNING for the crash context."
+  local _reason="BLOCKED (reviewer-gitdir-write): Pattern 4 security-boundary evaluation crashed; denying fail-closed to avoid bypassing the reviewer .git-write and state-change guards. See the bash-guard stderr WARNING for the crash context."
   # Mirror the result-section emit contract: jq for the payload, printf fallback
   # via _bash_guard_escape_deny_reason so a jq failure still emits a valid deny.
   if ! jq -n --arg reason "$_reason" '{
@@ -289,6 +327,240 @@ _rite_btg_pattern6_command_surface() {
   done <<< "$_source"
   printf '%s' "$_surface"
 }
+
+# Scan a command for sub-block (S) and set _sc_hit to the state-changing command
+# found at command position (empty when none). The lexer splits the Pattern 6
+# surface into words and command separators, tracking quotes per nesting level:
+# a command substitution (`$(…)` or a backquote, inside double quotes or not)
+# opens a level whose words form their own commands, and closing it returns to
+# the enclosing level's quote state and word — so `git -C "$(pwd)" push` is one
+# command whose -C argument is the substitution, and the `;` in
+# `echo "$(date); git push"` stays inside the string.
+# A `)` inside `$(…)` is either the end of the substitution or the end of a case
+# pattern (`$(case x in a) git push;; esac)`), and telling them apart needs a
+# shell parser. The command is therefore read twice and denied if either reading
+# finds a state change: once with every such `)` closing the substitution, and
+# once with it only separating commands in a substitution where the word `case`
+# has appeared. Both readings can still miss a push when a case pattern holds
+# quotes; the check targets the forms a reviewer writes.
+# A command longer than $2 bytes is not scanned: _sc_oversized is set to its
+# byte length instead, since the scan grows faster than linearly.
+# The caller runs this with errtrace (set -E): the Pattern 4 ERR trap is not
+# inherited by a function otherwise, and an ERR-class failure in here must
+# still deny.
+_rite_btg_state_change_scan() {
+  # Byte indexing: under a UTF-8 locale `${s:i:1}` rescans the string from the
+  # start. Every delimiter here is ASCII, so bytes are enough.
+  local LC_ALL=C
+  local _src _len _i _ch _d _view _us=$'\x1f' _ph=$'\x1e' _out
+  local -a _st _cl _par _case _w _buf _toks
+  _sc_hit=""
+  _sc_oversized=""
+  # Test-only, fail-CLOSED-only fault injection, like the pattern4 one in the
+  # Pattern 4 block: it proves a failure inside this function reaches the trap.
+  if [ "${RITE_BTG_TEST_CRASH:-}" = "pattern4-scan" ]; then
+    false
+  fi
+  if [ "${#1}" -gt "$2" ]; then _sc_oversized=${#1}; return 0; fi
+  _src=$(_rite_btg_pattern6_command_surface "$1")
+  _len=${#_src}
+  for _view in close case; do
+    _i=0; _d=0; _out=""
+    _st=(plain); _cl=(""); _par=(0); _case=(0); _w=(""); _buf=("")
+    while [ "$_i" -lt "$_len" ]; do
+      _ch="${_src:$_i:1}"
+      case "${_st[_d]}" in
+        single)
+          if [ "$_ch" = "'" ]; then _st[_d]=plain; else _w[_d]+="$_ch"; fi ;;
+        double)
+          case "$_ch" in
+            '"') _st[_d]=plain ;;
+            '\') _i=$((_i + 1)); _w[_d]+="${_src:$_i:1}" ;;
+            '`') _ch=open ;;
+            '$') if [ "${_src:$((_i + 1)):1}" = "(" ]; then _i=$((_i + 1)); _ch=open; else _w[_d]+="$_ch"; fi ;;
+            *) _w[_d]+="$_ch" ;;
+          esac ;;
+        plain)
+          case "$_ch" in
+            "'") _st[_d]=single ;;
+            '"') _st[_d]=double ;;
+            '\') _i=$((_i + 1)); _w[_d]+="${_src:$_i:1}" ;;
+            '$') if [ "${_src:$((_i + 1)):1}" = "(" ]; then _i=$((_i + 1)); _ch=open; else _w[_d]+="$_ch"; fi ;;
+            '`') if [ "${_cl[_d]}" = '`' ]; then _ch=close; else _ch=open; fi ;;
+            '(') _par[_d]=$((_par[_d] + 1)); _ch=sep ;;
+            ')')
+              if [ "${_par[_d]}" -gt 0 ]; then _par[_d]=$((_par[_d] - 1)); _ch=sep
+              elif [ "${_cl[_d]}" = ")" ] && { [ "$_view" = close ] || [ "${_case[_d]}" = 0 ]; }; then _ch=close
+              else _ch=sep; fi ;;
+            ';'|'&'|'|'|$'\n') _ch=sep ;;
+            ' '|$'\t') _ch=end ;;
+            '#')
+              if [ -z "${_w[_d]}" ]; then
+                # A comment runs to the end of the line.
+                while [ "$_i" -lt "$_len" ] && [ "${_src:$_i:1}" != $'\n' ]; do _i=$((_i + 1)); done
+                _ch=sep
+              else
+                _w[_d]+="$_ch"
+              fi ;;
+            *) _w[_d]+="$_ch" ;;
+          esac ;;
+      esac
+      case "$_ch" in
+        end|sep|close)
+          if [ -n "${_w[_d]}" ]; then
+            if [ "${_w[_d]}" = case ]; then _case[_d]=1; fi
+            _buf[_d]+="${_w[_d]}$_us"; _w[_d]=""
+          fi
+          if [ "$_ch" = sep ]; then _buf[_d]+=";$_us"; fi
+          if [ "$_ch" = close ]; then
+            _out+=";$_us${_buf[_d]};$_us"
+            _d=$((_d - 1))
+          fi ;;
+        open)
+          # The substitution is part of the enclosing word (as the marker $_ph,
+          # dropped again before a word is matched); its commands go to a new
+          # level, closed by `)` or by the matching backquote.
+          _w[_d]+="$_ph"
+          if [ "${_src:$_i:1}" = '`' ]; then _cl[_d + 1]='`'; else _cl[_d + 1]=")"; fi
+          _d=$((_d + 1))
+          _st[_d]=plain; _par[_d]=0; _case[_d]=0; _w[_d]=""; _buf[_d]="" ;;
+      esac
+      _i=$((_i + 1))
+    done
+    while [ "$_d" -ge 0 ]; do
+      if [ -n "${_w[_d]}" ]; then _buf[_d]+="${_w[_d]}$_us"; fi
+      _out+=";$_us${_buf[_d]};$_us"
+      _d=$((_d - 1))
+    done
+    _toks=()
+    IFS="$_us" read -r -d '' -a _toks <<< "$_out" || :
+    _rite_btg_state_change_match
+    if [ -n "$_sc_hit" ]; then return 0; fi
+  done
+  return 0
+}
+
+# Match the word list _toks (";" separates commands) of _rite_btg_state_change_scan
+# and set _sc_hit to the first state-changing command at command position.
+# Wrapper commands (timeout / nice / env / time / command / builtin / exec /
+# nohup) are skipped with their options and option arguments, so the command
+# they run is matched. gh is a write when it runs a writing pr / issue
+# subcommand, or `gh api` with a writing method: an explicit POST / PATCH / PUT /
+# DELETE, or fields (-f / -F / --input) without a method, which gh sends as
+# POST — except a graphql call, which is a write only when it carries a mutation.
+# A write word followed directly by --help / -h only prints help, and `bash -n`
+# only checks syntax, so neither is a hit.
+_rite_btg_state_change_match() {
+  local _t _n _mode=cmd _skip=0 _wk="" _wneed=0 _grp="" _mnext=0 _method="" _field=0 _gql=0 _mut=0 _pend=""
+  for _t in ${_toks[@]+"${_toks[@]}"}; do
+    if [ "$_t" = ";" ]; then
+      if [ "$_mode" = help ]; then _sc_hit="$_pend"; return 0; fi
+      # `flow-state.sh` with no subcommand at all is not a read either.
+      if [ "$_mode" = flowsub ]; then _sc_hit="flow-state.sh (no subcommand)"; return 0; fi
+      if [ "$_mode" = ghapi ]; then
+        case "$_method" in
+          POST|PATCH|PUT|DELETE) _sc_hit="gh api -X $_method"; return 0 ;;
+          "")
+            if [ "$_field" = 1 ] && { [ "$_gql" = 0 ] || [ "$_mut" = 1 ]; }; then
+              _sc_hit="gh api (fields sent as POST)"; return 0
+            fi ;;
+        esac
+      fi
+      _mode=cmd; _skip=0; _mnext=0; continue
+    fi
+    if [ "$_skip" = "1" ]; then _skip=0; continue; fi
+    _n="${_t//$'\x1e'/}"
+    if [ "$_mode" = wrap ]; then
+      case "$_n" in
+        --*=*) continue ;;
+        -*)
+          case "$_wk:$_n" in
+            timeout:-s|timeout:--signal|timeout:-k|timeout:--kill-after|nice:-n|nice:--adjustment|env:-u|env:--unset|env:-C|env:--chdir|exec:-a)
+              _skip=1 ;;
+          esac
+          continue ;;
+      esac
+      if [ "$_wneed" = 1 ]; then _wneed=0; continue; fi
+      _mode=cmd
+    fi
+    case "$_mode" in
+      cmd)
+        case "$_n" in
+          "") : ;;
+          [A-Za-z_]*=*|-*|if|then|elif|else|do|while|until|'!'|'{'|'}'|fi|done|esac) : ;;
+          timeout|nice|env|time|command|builtin|exec|nohup)
+            _mode=wrap; _wk="$_n"; _wneed=0
+            if [ "$_n" = timeout ]; then _wneed=1; fi ;;
+          git|*/git) _mode=gitflags ;;
+          gh|*/gh) _mode=ghglob ;;
+          bash|sh|zsh|dash|ksh|*/bash|*/sh|*/zsh|*/dash|*/ksh|source|.) _mode=interp ;;
+          *)
+            case "${_n##*/}" in
+              flow-state.sh) _mode=flowsub ;;
+              *-step.sh) _sc_hit="${_n##*/}"; return 0 ;;
+              *) _mode=args ;;
+            esac ;;
+        esac ;;
+      gitflags)
+        case "$_n" in
+          -C|--git-dir|--work-tree|--namespace|--exec-path|--attr-source|--super-prefix|--shallow-file|-c|--config-env)
+            _skip=1 ;;
+          -*) : ;;
+          push|commit) _pend="git $_n"; _mode=help ;;
+          *) _mode=args ;;
+        esac ;;
+      ghglob)
+        case "$_n" in
+          -R|--repo|--hostname) _skip=1 ;;
+          -*) : ;;
+          pr|issue) _grp="$_n"; _mode=ghsub ;;
+          api) _mode=ghapi; _mnext=0; _method=""; _field=0; _gql=0; _mut=0 ;;
+          *) _mode=args ;;
+        esac ;;
+      ghsub)
+        case "$_grp:$_n" in
+          pr:comment|pr:create|pr:edit|pr:merge|pr:close|pr:reopen|pr:ready|pr:review|pr:lock|pr:unlock|pr:update-branch|pr:revert|pr:checkout|issue:create|issue:comment|issue:edit|issue:close|issue:reopen|issue:delete|issue:transfer|issue:lock|issue:unlock|issue:pin|issue:unpin|issue:develop)
+            _pend="gh $_grp $_n"; _mode=help ;;
+          *:-R|*:--repo) _skip=1 ;;
+          *:-*) : ;;
+          *) _mode=args ;;
+        esac ;;
+      ghapi)
+        if [ "$_mnext" = 1 ]; then _method="${_n^^}"; _mnext=0; continue; fi
+        case "$_n" in
+          -X|--method) _mnext=1 ;;
+          -X*) _method="${_n#-X}"; _method="${_method^^}" ;;
+          --method=*) _method="${_n#--method=}"; _method="${_method^^}" ;;
+          -f|-F|--field|--raw-field|--input|-f*|-F*|--field=*|--raw-field=*|--input=*) _field=1 ;;
+          graphql) _gql=1 ;;
+        esac
+        case "$_n" in *mutation*) _mut=1 ;; esac ;;
+      help)
+        case "$_n" in
+          --help|-h) _mode=args ;;
+          *) _sc_hit="$_pend"; return 0 ;;
+        esac ;;
+      interp)
+        case "$_n" in
+          --*) : ;;
+          -*n*) _mode=args ;;
+          -*) : ;;
+          *)
+            case "${_n##*/}" in
+              flow-state.sh) _mode=flowsub ;;
+              *-step.sh) _sc_hit="${_n##*/}"; return 0 ;;
+              *) _mode=args ;;
+            esac ;;
+        esac ;;
+      flowsub)
+        case "$_n" in
+          get|path) _mode=args ;;
+          *) _sc_hit="flow-state.sh $_n"; return 0 ;;
+        esac ;;
+    esac
+  done
+  return 0
+}
 trap '_rite_btg_pattern13_fail_open' ERR
 
 # --- Denylist check (Bash built-ins only) ---
@@ -299,8 +571,8 @@ BLOCKED_ALTERNATIVE=""
 
 # --- (L) Reviewer command length guard (O(1), primary fail-closed bound) ---
 # Runs BEFORE the heredoc strip and every pattern check: that downstream work is
-# whole-string, and the `${COMMAND%%<<*}` strip / Pattern 2 regex are O(n²) on
-# MB-scale input (empirically ~45s / >2min). A timed-out PreToolUse hook fails
+# whole-string, and the Pattern 2 regex is O(n²) on MB-scale input (empirically
+# >2min). A timed-out PreToolUse hook fails
 # OPEN (Claude Code cancels it and lets the tool run), so a reviewer could pad a
 # .git write until parsing times out, dropping the deny. The ERR trap cannot
 # catch a timeout (the process is killed externally), so the bound must be
@@ -320,10 +592,22 @@ fi
 # PR descriptions, etc. Only check the command prefix before the first heredoc
 # marker. Known limitation: piped heredocs (`cat <<EOF | gh pr diff`) bypass the
 # strip (the pre-`<<` command is `cat`); rare in practice. Skipped for an
-# already-denied (oversized) command — the strip is O(n²) on huge input and
-# CMD_CHECK is unused in that case.
+# already-denied (oversized) command — CMD_CHECK is unused in that case.
+# The strip must stay linear in the command length: the prefix before the first
+# `<<` is taken with a byte-wise (C locale) regex rather than `${COMMAND%%<<*}`,
+# whose cost grows with the square of the length.
+# Without a match the whole command stays in CMD_CHECK.
+_rite_btg_strip_heredoc() {
+  local LC_ALL=C
+  if [[ "$COMMAND" =~ ^(([^<]|<[^<])*)'<<' ]]; then
+    CMD_CHECK="${BASH_REMATCH[1]}"
+  fi
+}
 if [ -z "$BLOCKED_PATTERN" ]; then
-  CMD_CHECK="${COMMAND%%<<*}"
+  CMD_CHECK="$COMMAND"
+  if [[ "$COMMAND" == *'<<'* ]]; then
+    _rite_btg_strip_heredoc
+  fi
 else
   CMD_CHECK=""
 fi
@@ -364,9 +648,10 @@ fi
 # Pattern 4: Reviewer subagent .git-write gate.
 # Scope: only when IS_SUBAGENT=1. Main-session operations are never affected.
 # This block does NOT enumerate working-tree-mutating git verbs —
-# see the header. It holds one machine guarantee (no writes into .git) via the
+# see the header. It holds the no-writes-into-.git guarantee via the
 # (Z) wrapper check, the (N) native-subcommand gate, and the (H) write
-# detection below, inside a fail-CLOSED trap region.
+# detection below, and the reviewer-only (S) state-change gate, all inside a
+# fail-CLOSED trap region.
 if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   trap '_rite_btg_pattern4_fail_closed' ERR
   # Test-only fault injection for the fail-CLOSED region (no effect in
@@ -679,6 +964,63 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
     fi
   fi
 
+  # --- (S) Reviewer state-changing commands ---
+  # A reviewer must not push, commit, write to GitHub, rewrite the workflow state,
+  # or run a skill's step driver: those change state the parent session relies
+  # on, and a push or a GitHub write leaves the machine. Reviewer-classified
+  # subagents only (IS_REVIEWER); an implementation subagent commits and pushes
+  # like the main session does.
+  # Closed set, judged only at COMMAND POSITION (the start, right after an
+  # unquoted `;` `&` `|` `(` `)` or a newline, the start of a command
+  # substitution, or after a reserved word that leads a command), so a
+  # `git commit` that is an ARGUMENT — `grep -rn 'git commit' plugins/`,
+  # `git log -S'git push'`, `grep -rn 'x; git push' plugins/` — stays allowed:
+  #   - `git push` / `git commit` (global flags skipped, `/usr/bin/git` included);
+  #   - `gh pr` / `gh issue` writing subcommands (comment / create / edit / merge
+  #     / close / …) and `gh api` with a writing method (see
+  #     _rite_btg_state_change_match);
+  #   - `gh pr checkout`: it switches the branch of a working tree the parent
+  #     session (or a parallel session sharing that worktree) is using;
+  #   - `flow-state.sh` with any subcommand but `get` / `path`, or none;
+  #   - `*-step.sh`, the skills' step drivers (`iterate-step.sh`, …), whatever the
+  #     subcommand — they are the orchestrator's, and a subcommand can push.
+  # The scan (_rite_btg_state_change_scan) runs on the Pattern 6 command surface
+  # (heredoc BODIES removed, the command lines after them kept), tracks single /
+  # double quotes so a separator inside a string does not start a command, and
+  # removes quotes and backslashes the way the shell does (`'git' push` is
+  # `git push`). Leading `X=y` assignments, reserved words (`if` `then` `elif`
+  # `else` `do` `while` `until` `!` `{` `}` `fi` `done` `esac`) and the wrappers
+  # `timeout` / `nice` / `env` / `time` / `command` / `builtin` / `exec` /
+  # `nohup` with their options are skipped; a script is recognized by its
+  # basename, run directly or through `bash` / `sh` / `zsh` / `dash` / `ksh` /
+  # `source` / `.`. The set targets the forms a reviewer actually writes, not
+  # deliberately obscured ones. A push, commit or GitHub write made INSIDE
+  # another script is not visible here; only the Layer 1 prompt contract covers
+  # it (Layer 3 drift detection sees neither a push nor a commit that leaves the
+  # tracked tree clean).
+  # The scan grows faster than linearly with the command, so (L)'s ceiling does
+  # not keep it inside the hook timeout: a reviewer command that mentions a
+  # trigger word and is longer than _RITE_BTG_MAX_STATE_SCAN_BYTES is denied
+  # without scanning, the same fail-closed bound (L) applies to the whole guard.
+  _RITE_BTG_MAX_STATE_SCAN_BYTES=8192
+  # gh as a word, so `through ` / `high ` do not trigger the scan or the size deny.
+  _RITE_BTG_GH_WORD_RE='(^|[^[:alnum:]_-])gh[[:space:]]'
+  if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_REVIEWER" = "1" ] \
+     && [[ "$COMMAND" == *push* || "$COMMAND" == *commit* || "$COMMAND" == *flow-state* || "$COMMAND" == *-step.sh* || "$COMMAND" =~ $_RITE_BTG_GH_WORD_RE ]]; then
+    set -E
+    _rite_btg_state_change_scan "$COMMAND" "$_RITE_BTG_MAX_STATE_SCAN_BYTES"
+    set +E
+    if [ -n "$_sc_oversized" ]; then
+      BLOCKED_PATTERN="reviewer-state-change"
+      BLOCKED_REASON="This subagent is treated as a reviewer (${REVIEWER_TYPE_BASIS}), and reviewers are read-only. This command is ${_sc_oversized} bytes (ceiling ${_RITE_BTG_MAX_STATE_SCAN_BYTES}) and mentions push / commit / gh / flow-state / a step driver. A command that size is denied without scanning, because the scan could exceed the hook timeout and a timed-out hook lets the command run."
+      BLOCKED_ALTERNATIVE="Split the command into shorter commands — reviewer operations are at most a few KB. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement) for the read-only command set."
+    elif [ -n "$_sc_hit" ]; then
+      BLOCKED_PATTERN="reviewer-state-change"
+      BLOCKED_REASON="This subagent is treated as a reviewer (${REVIEWER_TYPE_BASIS}), and reviewers are read-only. This command runs '${_sc_hit}', which pushes, commits, writes to GitHub (gh pr / issue writes, gh api writes), switches the working tree's branch (gh pr checkout), rewrites the workflow state (flow-state), or runs a skill's step driver (*-step.sh) — state the parent session relies on, or that leaves the machine."
+      BLOCKED_ALTERNATIVE="Report the problem as a finding and leave the change to /rite:fix. Read-only inspection stays allowed: 'git diff', 'git log', 'git show', 'gh pr view', 'gh pr diff', 'gh issue view', 'gh api <endpoint>' (GET; add '-X GET' when passing fields), a graphql query, 'flow-state.sh get --field <f>', 'flow-state.sh path', and running tests ('bash <test>'). For a mutation experiment, use the isolated detached worktree in plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement / Mutation experiments)."
+    fi
+  fi
+
   # Restore the Patterns 1-3 fail-open trap for the shared result-emit section
   # below (it has its own fail-closed fallback for the deny-emit path).
   trap '_rite_btg_pattern13_fail_open' ERR
@@ -931,11 +1273,32 @@ fi
 
 # Pattern 7: git commit --allow-empty. Token match so --allow-empty-message
 # is not denied. Detection is CMD_CHECK (heredoc-stripped).
-if [ -z "$BLOCKED_PATTERN" ]; then
-  if [[ "$CMD_CHECK" =~ (^|[^[:alnum:]_])git[[:space:]]+commit([^[:alnum:]_-]|$) ]] \
-     && [[ "$CMD_CHECK" =~ (^|[[:space:]])--allow-empty([^[:alnum:]_-]|$) ]]; then
+# When git and commit are not adjacent (global options, redirections or a
+# variable between them), the commit is found by the same parser as Patterns 8
+# and 9 (review-fix-scope-check.sh commit-target). A commit it cannot resolve (a
+# variable that may expand to nothing, an unfinished quote) is denied too.
+# Past the parser's limits on nested command substitutions and cd / -C directory
+# changes, a commit that could hide there is denied, and a longer input than
+# _RITE_BTG_P7_PARSE_MAX_CHARS is denied without parsing.
+_RITE_BTG_P7_PARSE_MAX_CHARS=32768
+if [ -z "$BLOCKED_PATTERN" ] && [[ "$CMD_CHECK" =~ (^|[[:space:]])--allow-empty([^[:alnum:]_-]|$) ]]; then
+  _p7_reason=""
+  if [[ "$CMD_CHECK" =~ (^|[^[:alnum:]_])git[[:space:]]+commit([^[:alnum:]_-]|$) ]]; then
+    _p7_reason="git commit --allow-empty creates a commit with no file changes."
+  elif [[ "$CMD_CHECK" == *git* && "$CMD_CHECK" == *commit* ]] && [ "${#CMD_CHECK}" -gt "$_RITE_BTG_P7_PARSE_MAX_CHARS" ]; then
+    _p7_reason="git commit --allow-empty cannot be ruled out: the command is too long to inspect (${#CMD_CHECK} characters, limit ${_RITE_BTG_P7_PARSE_MAX_CHARS}); run the commit as a shorter command."
+  elif [[ "$CMD_CHECK" == *git* && "$CMD_CHECK" == *commit* ]]; then
+    _p7_cwd=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || _p7_cwd=""
+    if _p7_targets=$(bash "$SCRIPT_DIR/scripts/review-fix-scope-check.sh" commit-target \
+         --command "$CMD_CHECK" --cwd "${_p7_cwd:-$PWD}" 2>&1); then
+      [ -z "$_p7_targets" ] || _p7_reason="git commit --allow-empty creates a commit with no file changes."
+    else
+      _p7_reason="git commit --allow-empty cannot be ruled out: ${_p7_targets:-cannot inspect command}"
+    fi
+  fi
+  if [ -n "$_p7_reason" ]; then
     BLOCKED_PATTERN="git-commit-allow-empty"
-    BLOCKED_REASON="git commit --allow-empty creates a commit with no file changes."
+    BLOCKED_REASON="$_p7_reason"
     BLOCKED_ALTERNATIVE="Leave the changes as files, or revisit the Issue. Do not create an empty commit."
   fi
 fi

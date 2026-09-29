@@ -150,6 +150,12 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
           saved['mechanical'] and saved['checked_at'], 'canonical scope receipt separates semantic and mechanical evidence')
     invoke()  # Interrupted callers may repeat the check without starting another review.
     check(json.loads(state_path.read_text())['cycle_count'] == 1, 'idempotent check preserves cycle')
+    save_plan(dict(plan, issue_body=issue['body'] + '\n- 追加の受入条件\n'))
+    mismatch = invoke(ok=False)
+    check('Issue specification changed or mismatched' in mismatch.stderr
+          and 'review-reconcile' not in mismatch.stderr,
+          'a review without a diagnostic run is not pointed at review-reconcile')
+    save_plan()
     for mutation, label in (
             (lambda p: p['groups'][0].update(finding_ids=['F-01']), 'missing blocking disposition'),
             (lambda p: p['groups'][0].update(finding_ids=['F-01', 'F-02', 'invented']), 'unknown finding'),
@@ -212,6 +218,7 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
     dump(plan_file, dict(plan, issue_body=issue['body'].replace('\n', '\r\n')))
     check(invoke().returncode == 0, 'record marker on a CRLF body passes the specification check')
     save_plan()
+    dump(issue_file, dict(issue, body=triaged))
     mutant = private / 'mutant-hooks'
     shutil.copytree(plugin / 'hooks', mutant)
     lib = mutant / 'scripts/lib/review-cycle.py'

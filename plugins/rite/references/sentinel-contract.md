@@ -35,7 +35,7 @@ rite workflow のスキル間連携は、各 sub-skill が bash 出力に埋め�
 | `[ready:returned-to-caller]` | ready | batch-run | Ready for review 化完了、caller へ制御を返す |
 | `[ready:error]` | ready | batch-run | Ready 化中にエラー発生 |
 | `[merge:returned-to-caller]` | merge | batch-run | マージ完了、caller へ制御を返す |
-| `[merge:not-ready]` | merge | batch-run | PR が draft または mergeable でないため merge 不可 |
+| `[merge:not-ready]` | merge | batch-run | PR が draft または mergeable でないため merge 不可。再判定後も `mergeable == CONFLICTING` のときだけ `[CONTEXT] MERGE_NOT_READY=conflicting; pr=N` を併記し、batch-run は base 取り込みから iterate へ戻る。併記がなければ停止 |
 | `[merge:error]` | merge | batch-run | merge 実行中にエラー発生 |
 | `[cleanup:returned-to-caller]` | cleanup | batch-run | クリーンアップ完了、caller へ制御を返す |
 | `[cleanup:outstanding:N]` | cleanup | batch-run | 完了報告の「未完了事項」件数（N 件、0 も明示）。batch-run は N>0 のとき run-queue の `outstanding[]` に記録する |

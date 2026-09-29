@@ -1136,20 +1136,32 @@ fi
 
 ### 9.0 Ingest セッション lock の解放
 
-ステップ 1.4 で取得した ingest セッション lock がまだ自分のものかを確かめてから解放する。`own` 以外（奪われた・消えた・確認に失敗した）なら WARNING を出し、解放は必ず実行する:
+ステップ 1.4 で取得した ingest セッション lock がまだ自分のものかを確かめてから解放する。`own` 以外（奪われた・消えた・確認に失敗した）なら WARNING を出し、解放は必ず実行する。`own` 以外でも、解放に失敗しても、ingest は完了扱いとして完了レポートへ進み、WARNING は `{ingest_outstanding_line}` のロック系統の行に載せる。block の終了コードは解放の終了コードをそのまま返す:
 rationale: references/rationale.md#lock-release-failsafe
 
 ```bash
 lock_state=$(bash "{plugin_root}/hooks/scripts/wiki-ingest-lock.sh" check) || lock_state=""
 case "$lock_state" in
   own) ;;
-  "") echo "WARNING: ingest 終了時に wiki ingest のロックの状態を確認できませんでした（直前の ERROR を参照）" >&2 ;;
+  "")
+    echo "WARNING: ingest 終了時に wiki ingest のロックの状態を確認できませんでした（直前の ERROR を参照）" >&2
+    echo "  同じ原因でロックが解放されていない可能性があります。解放されなかったロックは取得から最長 2 時間後に回収され、それまで他セッションの ingest は skip されます" >&2
+    ;;
   *) echo "WARNING: ingest 中に wiki ingest のロックを失っていました (check=$lock_state)。別のセッションが同じ wiki worktree へ並行して書き込んだ可能性があります" >&2 ;;
 esac
 if [ "$lock_state" != "own" ]; then
-  echo "  対処: 直近の wiki の commit を確認し（separate_branch: git -C {wiki_worktree_abs} log --oneline -n 20 / same_branch: git log --oneline -n 20 -- .rite/wiki/）、重複や上書きがあれば手で直してください" >&2
+  wiki_wt_abs="{wiki_worktree_abs}"; wiki_wt_abs="${wiki_wt_abs:-.rite/wiki-worktree}"
+  case "{branch_strategy}" in
+    separate_branch) echo "  対処: 直近の wiki の commit を確認し（git -C \"$wiki_wt_abs\" log --oneline -n 20）、重複や上書きがあれば手で直してください" >&2 ;;
+    same_branch) echo "  対処: 直近の wiki の commit を確認し（git log --oneline -n 20 -- .rite/wiki/）、重複や上書きがあれば手で直してください" >&2 ;;
+    *) echo "  対処: 直近の wiki の commit を確認し（separate_branch: git -C \"$wiki_wt_abs\" log --oneline -n 20 / same_branch: git log --oneline -n 20 -- .rite/wiki/）、重複や上書きがあれば手で直してください" >&2 ;;
+  esac
 fi
-bash "{plugin_root}/hooks/scripts/wiki-ingest-lock.sh" release
+bash "{plugin_root}/hooks/scripts/wiki-ingest-lock.sh" release || {
+  rc=$?
+  echo "WARNING: ingest 終了時に wiki ingest のロックを解放できませんでした（直前の ERROR を参照）。取得から最長 2 時間後に回収され、それまで他セッションの ingest は skip されます" >&2
+  exit "$rc"
+}
 ```
 
 ```
@@ -1206,7 +1218,7 @@ Wiki Ingest が完了しました。
 | `skipped; reason=same_branch` | `Wiki push: 対象外 (same_branch 戦略。通常の PR push に含まれる)` |
 | marker なし（ステップ 8.6 未到達などの想定外経路） | `⚠️ Wiki push: 実行結果が確認できませんでした。git -C {wiki_worktree_abs} status で確認してください` |
 
-`{ingest_outstanding_line}`（非ブロッキング失敗の集約欄。Wiki push については `{wiki_push_line}` と同じ `WIKI_INGEST_PUSH=` marker を再評価するだけで新しい記録先は持たない）。**ステップ 6 の index 更新と Wiki push の 2 系統を評価し、該当するものをすべて列挙する**:
+`{ingest_outstanding_line}`（非ブロッキング失敗の集約欄。Wiki push については `{wiki_push_line}` と同じ `WIKI_INGEST_PUSH=` marker を、ロックについてはステップ 9.0 が stderr に出した WARNING の文面を再評価するだけで新しい記録先は持たない）。**ステップ 6 の index 更新・Wiki push・ステップ 9.0 のロックの 3 系統を評価し、該当するものをすべて列挙する**:
 rationale: references/rationale.md#outstanding-no-new-store
 
 | 系統 | 条件 | 展開 |
@@ -1216,7 +1228,10 @@ rationale: references/rationale.md#outstanding-no-new-store
 | index 更新 | `{n_dedup_removed}` が 1 以上 | `- ℹ️ index 重複行を {n_dedup_removed} 件回収しました` |
 | Wiki push | `WIKI_INGEST_PUSH=failed` | `- ⚠️ Wiki push: commit は local wiki branch に landed しましたが origin への push に失敗しました。手動回復: git -C {wiki_worktree_abs} push origin {wiki_branch}（次回 /rite:wiki-ingest 実行時にも自動で flush を試みます）` |
 | Wiki push | marker なし（ステップ 8.6 未到達などの想定外経路） | `- ⚠️ Wiki push: 実行結果が確認できませんでした。git -C {wiki_worktree_abs} status で確認してください`（`{wiki_push_line}` の同ケースと同じ扱い — 未確認を「失敗なし」と断定しない） |
-| （両系統） | 上記のいずれにも該当しない（index 更新が全件成功し、回収した重複行が 0 件で、push も `ok` / `skipped; reason=same_branch`） | `- なし（非ブロッキングで継続した失敗はありませんでした）` |
+| ロック | ステップ 9.0 の stderr に `ロックを失っていました` を含む WARNING がある | `- ⚠️ ingest 中に wiki ingest のロックを失っていました（{WARNING 行の check= の値}）。直近の wiki の commit に重複や上書きが無いか確認してください` |
+| ロック | ステップ 9.0 の stderr に `ロックの状態を確認できませんでした` を含む WARNING がある | `- ⚠️ ingest 終了時に wiki ingest のロックの状態を確認できませんでした。ロックが解放されていない可能性があり、その場合は取得から最長 2 時間後に回収されます（直後の解放の出力を参照）` |
+| ロック | ステップ 9.0 の stderr に `ロックを解放できませんでした` を含む WARNING がある | `- ⚠️ ingest 終了時に wiki ingest のロックを解放できませんでした。取得から最長 2 時間後に回収され、それまで他セッションの ingest は skip されます` |
+| （全系統） | 上記のいずれにも該当しない（index 更新が全件成功し、回収した重複行が 0 件で、push も `ok` / `skipped; reason=same_branch` で、ステップ 9.0 がロックの WARNING を出していない） | `- なし（非ブロッキングで継続した失敗はありませんでした）` |
 
 ### 9.1 Return-to-Caller Signal
 
