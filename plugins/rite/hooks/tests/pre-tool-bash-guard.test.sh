@@ -3166,10 +3166,32 @@ p10_deny "gh after a comment right after a group" outside-checkout "runs 'gh' $p
   "$p10_wt" "$(printf '(true)# use <<EOF\ncd %s && gh api x' "$p10_scratch")"
 p10_deny "gh after a comment behind an escaped backslash" outside-checkout "runs 'gh' $p10_out" \
   "$p10_wt" "$(printf 'echo a\\\\ #note <<EOF\ncd %s && gh api x' "$p10_scratch")"
-p10_allow "a comment with a quote inside a multi-line substitution" "$p10_wt" \
-  "$(printf "x=\$(\n  # don't\n  echo a\n)\ngit status")"
+p10_allow "a comment with a quote inside a multi-line substitution" "$p10_scratch" \
+  "$(printf "x=\$(\n  # don't\n  echo a\n)\nls")"
 p10_allow "a # inside a word before a heredoc" "$p10_scratch" \
-  "$(printf "echo a#b; cat > n.md <<'EOF'\nRun gh pr view.\nEOF")"
+  "$(printf "echo a#b; cat > n.md <<'EOF'\ngh pr view\nEOF")"
+p10_deny "gh after a URL fragment" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "echo https://e/x#frag; cd $p10_scratch && gh api x"
+p10_deny "gh after a ) in a comment inside a body substitution" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\n$(date # a)\ngh api x\n)\nEOF' "$p10_scratch")"
+p10_allow "a quote in a nested heredoc inside a body substitution" "$p10_scratch" \
+  "$(printf "cat > n.md <<EOF\n\$(cat <<X\ndon't\nX\n)\nEOF")"
+p10_allow "a quote in a comment inside a body substitution" "$p10_scratch" \
+  "$(printf "cat > n.md <<EOF\n\$(date # it's today\n)\nEOF")"
+p10_deny "a case command in a body substitution" outside-checkout-uninspectable "case command" \
+  "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\n$(case a in a) gh api x;; esac)\nEOF' "$p10_scratch")"
+p10_allow "the word case in a body substitution" "$p10_scratch" \
+  "$(printf 'cat > n.md <<EOF\n$(echo a test case here)\nEOF')"
+p10_deny "a body subshell written as \$((" outside-checkout-uninspectable "does not end" \
+  "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\n$((cd %s; gh api user) )\nEOF' "$p10_scratch" "$p10_scratch")"
+p10_allow "arithmetic in an unquoted heredoc body" "$p10_scratch" \
+  "$(printf 'cat > n.md <<EOF\n$((1+2)) items\nEOF')"
+p10_deny "gh in a backquote of an unquoted heredoc body" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\n`gh api user`\nEOF' "$p10_scratch")"
+p10_deny "a substitution in a heredoc body that does not end" outside-checkout-uninspectable "does not end" \
+  "$p10_scratch" "$(printf 'cat > n.md <<EOF\n$(echo a\nEOF')"
+p10_deny "a heredoc operator at the end of the command" outside-checkout-uninspectable "does not end" \
+  "$p10_scratch" "cat > out.md <<EOF"
 p10_deny "gh after a # inside a word" outside-checkout "runs 'gh' $p10_out" \
   "$p10_wt" "x=abc; echo \${#x}; cd $p10_scratch && gh api x"
 p10_deny "gh after a # right after a substitution" outside-checkout "runs 'gh' $p10_out" \

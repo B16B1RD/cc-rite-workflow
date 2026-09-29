@@ -14,7 +14,8 @@ Exit 1 when the command cannot be parsed or git cannot read a root that has .git
 Heredocs and comments are removed before the command is read; the command
 substitutions of a body with an unquoted delimiter run where the heredoc
 starts, so they are kept at that place. A heredoc that does not end at its
-delimiter cannot be read and is an error. A script is
+delimiter, and a case command in such a substitution, cannot be read and are
+an error. A script is
 judged by where it runs, not by what it runs: whether it calls gh cannot be seen
 from here. Not a shell interpreter.
 """
@@ -106,46 +107,10 @@ def _heredoc_word(text, index):
     return "".join(word), index, quoted
 
 
-def _substitution_end(text, index):
-    """The index just past the ) closing the $( that ends before index, or None."""
-    depth, quote = 0, None
-    while index < len(text):
-        char = text[index]
-        if quote == "'":
-            if char == "'":
-                quote = None
-        elif char == "\\":
-            index += 1
-        elif quote == '"':
-            if char == '"':
-                quote = None
-            elif text.startswith("$(", index):
-                end = _substitution_end(text, index + 2)
-                if end is None:
-                    return None
-                index = end
-                continue
-        elif char in "'\"":
-            quote = char
-        elif text.startswith("$(", index):
-            end = _substitution_end(text, index + 2)
-            if end is None:
-                return None
-            index = end
-            continue
-        elif char == "(":
-            depth += 1
-        elif char == ")":
-            if depth == 0:
-                return index + 1
-            depth -= 1
-        index += 1
-    return None
-
-
 def _body_substitutions(body):
-    """The command substitutions bash runs when it expands an unquoted heredoc body:
-    in a body a backslash escapes only $, `, \\ and a newline."""
+    """The command substitutions bash runs when it expands an unquoted heredoc body,
+    each read as strip_heredocs reads one: in a body a backslash escapes only $, `,
+    \\ and a newline."""
     found, index = [], 0
     while index < len(body):
         char = body[index]
@@ -153,26 +118,26 @@ def _body_substitutions(body):
             index += 2
             continue
         if body.startswith("$((", index):
-            index += 3
+            index = _read(body, index + 3, "arith")[1]
             continue
         if body.startswith("$(", index):
-            end = _substitution_end(body, index + 2)
-            if end is None:
-                raise ValueError("a command substitution in a heredoc body does not end")
-            found.append(body[index:end])
-            index = end
+            text, index = _read(body, index + 2, "sub")
+            found.append(_no_case("$(" + text))
             continue
         if char == "`":
-            end = index + 1
-            while end < len(body) and body[end] != "`":
-                end += 2 if body[end] == "\\" else 1
-            if end >= len(body):
-                raise ValueError("a backquote in a heredoc body does not end")
-            found.append(body[index:end + 1])
-            index = end + 1
+            text, index = _read(body, index + 1, "bq")
+            found.append(_no_case("`" + text))
             continue
         index += 1
     return found
+
+
+def _no_case(text):
+    """text, or ValueError when it runs a case command: its pattern ) would be read
+    here as the end of the substitution."""
+    if re.search(r"(^|[\s;&|(`])case\s+\S+\s+in(\s|$)", text):
+        raise ValueError("a case command in a heredoc body substitution cannot be read")
+    return text
 
 
 def strip_heredocs(command):
@@ -181,11 +146,19 @@ def strip_heredocs(command):
     them, or a <<<, starts no heredoc; command substitutions and backquotes are
     followed to their end, and a heredoc inside them is removed like any other. The
     body of an unquoted delimiter is expanded as in bash, so each command substitution
-    in it takes the operator's place, where it runs. A comment is blanked out, keeping
-    its #, so that no quote or << in it is read. ValueError when a heredoc has no
-    delimiter or does not end at its delimiter line, or a quote or substitution does
-    not end."""
-    out, stack, pending, index, length = [], [["code", 0]], [], 0, len(command)
+    in it, read by the same rules, takes the operator's place, where it runs. A
+    comment is blanked out, keeping its #, so that no quote or << in it is read.
+    ValueError when a heredoc has no delimiter or does not end at its delimiter line,
+    a quote or substitution does not end, or a body's substitution runs a case
+    command."""
+    return _read(command, 0, "code")[0]
+
+
+def _read(command, index, kind):
+    """(text, end): what strip_heredocs makes of command from index, read as the inside
+    of kind ("code", or "sub" / "bq" / "arith" for an expansion whose opening is before index),
+    up to the end of the command or just past the substitution's close."""
+    out, stack, pending, length = [], [[kind, 0]], [], len(command)
     escaped = -1  # the index of the last character a backslash escaped
     closed = -1  # the index of the last ) that closed a $( or $((
     while index < length:
@@ -299,11 +272,13 @@ def strip_heredocs(command):
             continue
         out.append(command[index:index + step])
         index += step
+        if not stack:
+            break
     if pending:
         raise ValueError("a heredoc does not end at its delimiter " + pending[0][0])
-    if len(stack) > 1:
+    if stack[1:] or (stack and stack[0][0] != "code"):
         raise ValueError("a quote or substitution does not end")
-    return "".join(out)
+    return "".join(out), index
 
 
 def _move(directories, value):
