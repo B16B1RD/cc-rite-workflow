@@ -2,6 +2,8 @@
 
 ## 2026-09-29
 
+* **Skip**: [抽出境界のレビュー結果](raw/reviews/20260929T054547Z-pr-3439.md) — 実装済みの境界と検証結果の記録であり、新たな経験則はない
+* **Update**: [追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない](pages/patterns/mutation-prove-new-pin.md) — [失敗経路の検出力を確認したレビュー](raw/reviews/20260929T055012Z-pr-3438.md)を補強として統合
 * **Create**: [同じ対象の識別子を積み上げる台帳は、キーごとに最新だけ残す対応表にする](pages/patterns/identifier-ledger-latest-per-key-normalized-json.md) — raw/fixes/20260929T040729Z-pr-3393.md から新規作成
 * **Update**: [過剰マッチ防止の精緻化修正は、実装が許容する全形状を再確認しないと過小マッチという別の欠陥を生む (振り子現象)](pages/anti-patterns/precision-tightening-pendulum-regression.md) — raw/fixes/20260929T034937Z-pr-3423.md と raw/reviews/20260929T040716Z-pr-3423.md で補強
 * **Update**: [accept fixture と reject fixture は設計目的が逆 — 安全側の形状を両方に適用すると順序契約が pin できなくなる](pages/heuristics/accept-vs-reject-fixture-design-inversion.md) — raw/reviews/20260929T040716Z-pr-3423.md で補強

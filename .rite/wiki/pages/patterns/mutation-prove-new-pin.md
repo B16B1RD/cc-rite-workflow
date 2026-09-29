@@ -45,9 +45,11 @@ sources:
     resource: "raw/fixes/20260929T032053Z-pr-3422.md"
   - type: "reviews"
     resource: "raw/reviews/20260929T033128Z-pr-3422.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T055012Z-pr-3438.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:45:00Z" }
+generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-09-29T05:53:09Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T04:58:47Z" }
@@ -57,6 +59,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-13T09:12:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T11:13:23Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:45:00Z" }
+  - { by: "rite-wiki-ingest/gpt-6", at: "2026-09-29T05:53:09Z" }
 ---
 
 # 追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない
@@ -66,6 +69,8 @@ verified:
 非回帰 pin を足した直後に、当の欠陥へ戻す変異を一時コピーへ当てて当該 assert だけが赤くなることを確かめる。prefix 一致・行の存在だけ・単一 CLI モードだけの pin は、変異を当てるまで無害に見え、当てた瞬間に無力だと分かる。
 
 ## 詳細
+
+失敗経路を書き直したあとも、その経路を壊す変異を追加したテストへ当てて確かめる。修正後の再レビューで、前回指摘された各経路の変異が落ちることを確認した事例がある。通常実行の成功だけでは、修正時に失われた失敗経路の検査を見分けられない。
 
 **素通りする pin の 2 類型**（いずれも実際に生存した変異）:
 
@@ -141,3 +146,4 @@ assert "Step 12 wiki_ingest_check has an unchecked marker-absence row" "1" \
 - [広げた検出分岐と括弧内の条件が固定されていないことを示したレビュー結果](../../raw/reviews/20260927T110746Z-pr-3265.md)
 - [拒否条件の片方の phase を固定するケースを足した fix 結果](../../raw/fixes/20260929T032053Z-pr-3422.md)
 - [生き残った変異を当て直して修正を確かめたレビュー結果](../../raw/reviews/20260929T033128Z-pr-3422.md)
+- [失敗経路を含む追加テストの検出力を再レビューで確認した結果](../../raw/reviews/20260929T055012Z-pr-3438.md)

@@ -452,7 +452,7 @@ okf_version: "0.2"
 | [契約が誤った前提の上に書かれていたときは dispatch を契約どおり保ち、前提の訂正と未決判断を別チャネルへ出す](pages/patterns/contract-literalism-false-premise-third-exit.md) | patterns | Issue の契約が事実誤認の上に建っていると分かったとき、実装を「正しい方」へ勝手に寄せるのでも黙って契約に従うのでもない第三の出口がある: dispatch は契約どおりに保ち、誤った前提は Decision Log に訂正として記録し、未決の設計判断は WARNING で可視化して判断待ちにする。 | 2026-08-31T14:09:34Z | medium |
 | [インライン処理の helper 抽出は「helper が起動しない」経路を新設し、marker 不在＝成功の消費規則を破る](pages/anti-patterns/helper-extraction-creates-unstarted-path.md) | anti-patterns | インライン bash を helper へ切り出すと、抽出前には存在しなかった「呼び出しに到達したが helper が走らなかった」経路（rc=127 の欠落・rc=126 の非可読・usage error・path placeholder の未解決置換）が新たに生まれる。呼び出し側が rc を捨てると marker が 1 本も出ず、消費側が marker 不在を成功と読む設計なら未実行が完了として報告される。 | 2026-09-29T03:45:00Z | high |
 | [実装が Issue の MUST と原則の両方に挟まれたら、実装を戻さず契約側（Decision Log と AC の例外）を更新する](pages/heuristics/contract-update-over-revert-on-must-conflict.md) | heuristics | 純粋抽出リファクタの「振る舞い不変」MUST と fail-loud 原則のように、実装を直すことが別の MUST 違反になる衝突では、実装を機械的に復元しても同じ reviewer が同じ指摘を再発行する往復になる。契約側へ例外を明記して閉じるほうが収束する。 | 2026-09-28T01:02:34Z | high |
-| [追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない](pages/patterns/mutation-prove-new-pin.md) | patterns | 非回帰 pin を足した直後に、当の欠陥へ戻す変異を一時コピーへ当てて当該 assert だけが赤くなることを確かめる。prefix 一致・行の存在だけ・単一 CLI モードだけの pin は、変異を当てるまで無害に見え、当てた瞬間に無力だと分かる。 | 2026-09-29T03:45:00Z | high |
+| [追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない](pages/patterns/mutation-prove-new-pin.md) | patterns | 非回帰 pin を足した直後に、当の欠陥へ戻す変異を一時コピーへ当てて当該 assert だけが赤くなることを確かめる。prefix 一致・行の存在だけ・単一 CLI モードだけの pin は、変異を当てるまで無害に見え、当てた瞬間に無力だと分かる。 | 2026-09-29T05:53:09Z | high |
 | [静的検査 regex の行頭アンカーは `if` / `\|\|` / 代入位置にある実行行を見落とす](pages/anti-patterns/line-anchored-regex-misses-inline-execution.md) | anti-patterns | `^[[:space:]]*git branch -d` のように行頭からアンカーした検査パターンは、`if cmd; then` / `\|\| cmd` / `elif x=$(cmd)` の位置にある実行行に一致しない。ゲートは通るが、検査したつもりの対象を最初から見ていない。 | 2026-09-01T20:28:00+09:00 | high |
 | [git のパス出力を assert するテストは fixture の mktemp 値を `pwd -P` で実体パスへ正規化する](pages/patterns/normalize-tmpdir-symlink-in-path-asserting-tests.md) | patterns | macOS の `$TMPDIR` は `/var/folders/...` という symlink で、git は `rev-parse --show-toplevel` でも `worktree list` でも実体側 `/private/var/folders/...` を返す。mktemp の値をそのまま期待値に使うと Linux では緑・macOS CI だけ赤になる。 | 2026-09-29T03:24:18Z | high |
 | [レビューループを止めるのは reviewer を減らすことではなく disposition 規則を変えること](pages/heuristics/review-loop-stopped-by-disposition-not-fewer-reviewers.md) | heuristics | 非実測の文言指摘を毎 cycle 先回りで直すと、その修正が次 cycle のレビュー対象になりループの燃料になる。止める操作は reviewer 数の削減ではなく、「本 PR が既に複数回書き換えた行の文言推敲はスコープ外」と disposition を宣言し、指摘を designated home へ流すこと。 | 2026-09-01T20:30:00+09:00 | high |
@@ -636,5 +636,5 @@ okf_version: "0.2"
 
 - 総ページ数: 622
 - ドメイン別: patterns=133, heuristics=303, anti-patterns=186
-- 最終更新: 2026-09-29T05:45:52Z
+- 最終更新: 2026-09-29T05:53:09Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
