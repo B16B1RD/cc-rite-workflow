@@ -3,6 +3,7 @@
 ## 2026-09-30
 
 * **Skip**: [再開待ち worktree 保護のレビュー結果](raw/reviews/20260929T162804Z-pr-3454.md) — 独立レビューと回帰検証の完了記録のみで、新たなドメイン経験則はない
+* **Lint incomplete** — 機械検査の報告値は stale=61, orphans=0, missing_concept=0, unregistered_raw=591, broken_refs=0, descriptive_number_ref=0。helper が Broken pipe を出力したため全体の成功とは扱わない。既存ページ全件の意味比較は未実施。
 
 ## 2026-09-29
 
