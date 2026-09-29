@@ -1803,6 +1803,134 @@ try:
 finally:
     f.close()
 
+
+# T-26: a retry that cleared every blocking finding moved the run past the point
+# it stopped at. Neither the cycle gate nor the observation fires on that point
+# again; only a divergence after the retry does.
+def diverged_and_retried(fixture):
+    for roots in (['input defect'], ('input defect', 'second defect')):
+        fixture.cycle(roots=roots)
+        fixture.fix()
+        time.sleep(1.1)
+    fixture.cycle(roots=('input defect', 'second defect', 'third defect'), seconds=1801)
+    check(fixture.state()['stop_reason'] == 'circuit-breaker:divergence', 'T-26: fixture reached divergence stop')
+    fixture.plan()
+    retry(fixture)
+    fixture.fix()
+    time.sleep(1.1)
+
+
+def advanced_gate(fixture):
+    (fixture.root / 'source.txt').write_text('after cycle ' + str(fixture.state()['cycle_count']) + '\n')
+    fixture.commit()
+    return gate(fixture)
+
+
+def passes_gate(output, trend, label):
+    cb = marker(output, 'ITERATE_CB')
+    check(cb.startswith('[CONTEXT] ITERATE_CB=ok;') and 'TREND=' + trend + ';' in cb
+          and 'TREND_VERDICT=ok;' in cb and 'RETRY_HOLD=0' in cb
+          and 'ITERATE_RESUME_HEAD=changed' in output and 'REVIEW_RESUME=1' not in output
+          and 'CB_REASON=' not in output, label + ':\n' + output)
+
+
+def recommendation_fix(fixture):
+    plan = fixture.plan()
+    plan['groups'][0]['finding_ids'] = ['R-01']
+    dump(fixture.plan_path, plan)
+    fixture.scope()
+    (fixture.root / 'source.txt').write_text('recommendation applied\n')
+    fixture.scope('verify')
+    fixture.commit()
+
+
+f = Fixture()
+try:
+    diverged_and_retried(f)
+    # The retry review is mergeable and registers a recommendation, whose fix
+    # needs the next review.
+    f.start()
+    f.finish(roots=[], recommendations=[dict(id='R-01', reviewer='code-quality-reviewer', file='source.txt',
+                                             line=1, description='comment contradicts the code')])
+    f.clock(1)
+    f.observe()
+    check(f.state()['review_run']['retry']['outcome'] == 'resolved', 'T-26: the retry review cleared every finding')
+    recommendation_fix(f)
+    passes_gate(gate(f), '1,2,3,0', 'T-26: the gate does not fire on the point the retry moved past')
+
+    time.sleep(1.1)
+    f.cycle(roots=('input defect', 'second defect'))
+    check(f.state()['review_run']['status'] == 'active',
+          'T-26: blocking findings after the retry do not stop the run on the old point')
+    f.fix()
+    passes_gate(gate(f), '1,2,3,0,2', 'T-26: a rise that has not diverged yet passes the gate')
+
+    time.sleep(1.1)
+    f.cycle(roots=('input defect', 'second defect', 'third defect'))
+    check(f.state()['review_run']['status'] == 'stopped'
+          and f.state()['stop_reason'] == 'circuit-breaker:divergence',
+          'T-26: a divergence after the retry stops the run')
+    output = advanced_gate(f)
+    cb = marker(output, 'ITERATE_CB')
+    check(cb.startswith('[CONTEXT] ITERATE_CB=fire;') and 'CB_REASON=divergence' in cb
+          and 'TREND=1,2,3,0,2,3;' in cb, 'T-26: a divergence after the retry fires the gate:\n' + output)
+finally:
+    f.close()
+
+# With a run start pin and a previous run's result beside this run's, the gate reads
+# only this run's results, so the stop cycle still names the point the retry passed.
+f = Fixture()
+try:
+    (f.root / '.rite/review-results').mkdir(parents=True, exist_ok=True)
+    dump(f.root / '.rite/review-results/71-19990101000000.json',
+         dict(schema_version='1.1.0', pr_number=71, findings=[]))
+    (f.root / '.rite/state').mkdir(parents=True, exist_ok=True)
+    (f.root / '.rite/state/review-run-since-71.txt').write_text('71-19990101000000.json\n')
+    diverged_and_retried(f)
+    f.start()
+    f.finish(roots=[], recommendations=[dict(id='R-01', reviewer='code-quality-reviewer', file='source.txt',
+                                             line=1, description='comment contradicts the code')])
+    f.clock(1)
+    f.observe()
+    recommendation_fix(f)
+    output = gate(f)
+    passes_gate(output, '1,2,3,0', 'T-26: with a run start pin the gate does not fire on the point the retry moved past')
+    check('RUN_SINCE_USED=pin' in marker(output, 'ITERATE_CB'), 'T-26: the gate read the run start pin:\n' + output)
+finally:
+    f.close()
+
+# An unresolved retry keeps the old point. 1,2,3,1 fires only at cycle 3, so the
+# gate would pass if the stop cycle were handed to the helper here.
+f = Fixture()
+try:
+    diverged_and_retried(f)
+    f.cycle(roots=['input defect'])
+    check(f.state()['review_run']['retry']['outcome'] == 'unresolved', 'T-26: the retry review left a finding')
+    output = advanced_gate(f)
+    cb = marker(output, 'ITERATE_CB')
+    check(cb.startswith('[CONTEXT] ITERATE_CB=fire;') and 'CB_REASON=divergence' in cb
+          and 'TREND=1,2,3,1;' in cb, 'T-26: an unresolved retry keeps the old divergence point:\n' + output)
+finally:
+    f.close()
+
+# A resolved grant without its stop cycle cannot bound the check; the gate stops.
+f = Fixture()
+try:
+    diverged_and_retried(f)
+    f.cycle(roots=())
+    state = f.state()
+    del state['review_run']['retry']['stop_context']['cycle_count']
+    dump(f.state_path, state)
+    (f.root / 'source.txt').write_text('after the retry\n')
+    f.commit()
+    result = f.run(['bash', str(plugin / 'scripts/iterate-step.sh'), 'cycle-gate',
+                    '--pr', '71', '--issue', '42', '--branch', 'fix/issue-42'], ok=False)
+    check(result.returncode != 0 and 'ITERATE_CB=' not in result.stdout
+          and 'review_run.retry.stop_context.cycle_count' in result.stderr,
+          'T-26: a resolved grant without its stop cycle stops the gate:\n' + result.stdout + result.stderr)
+finally:
+    f.close()
+
 iterate = (plugin / 'skills/iterate/SKILL.md').read_text()
 back = iterate.split('「戻る」の行（`divergence` のみ）:', 1)[1].split('```', 2)[1]
 # The way back must name the only path the retry review accepts: the fix-scope check
