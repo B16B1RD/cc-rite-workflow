@@ -2515,6 +2515,125 @@ for p7_shape in gt wrapper; do
     fail "commit-target on a ~120KB $p7_shape command rc=$rc ms=$_ms output=$(printf '%s' "$output" | head -c 200)"
   fi
 done
+# The heredoc surface parser that Patterns 6, 8 and 9 run costs about the square of each
+# line's length plus a fixed amount per line. A git commit / merge command past the parse
+# budget is denied without parsing, so a hook killed for its timeout cannot let it run.
+# The cost is quadratic only under a UTF-8 locale, so the timed cases run under one.
+sb_utf8=$(locale -a 2>/dev/null | grep -ixE 'c\.utf-?8|en_us\.utf-?8' | head -1) || sb_utf8=""
+[ -n "$sb_utf8" ] || fail "parse budget timings need a C.UTF-8 or en_US.UTF-8 locale"
+sb_line_cost=$(sed -n 's/^_RITE_BTG_SURFACE_LINE_COST=//p' "$HOOK")
+sb_max_cost=$(sed -n 's/^_RITE_BTG_SURFACE_MAX_COST=//p' "$HOOK")
+if [[ "$sb_line_cost" =~ ^[1-9][0-9]*$ && "$sb_max_cost" =~ ^[1-9][0-9]*$ ]]; then
+  sb_case() {  # $1 label, $2 "deny" when commit-guard-uninspectable is expected, "other" when not
+    LC_ALL="$sb_utf8" p7_timed "$p7_big"
+    reason=$(extract_hook_field "$output" permissionDecisionReason)
+    local got=other
+    [[ "$reason" == *commit-guard-uninspectable* ]] && got=deny
+    if [ "$rc" = "0" ] && [ "$_ms" -lt 5000 ] && [ "$got" = "$2" ]; then
+      pass "parse budget: $1 → $2 (${_ms}ms)"
+    else
+      fail "parse budget: $1 expected $2, rc=$rc ms=$_ms reason=$reason"
+    fi
+  }
+  sb_x() { printf '%*s' "$1" '' | tr ' ' "${2:-x}"; }
+  # One line: the longest that fits, and one byte more.
+  sb_len=$(awk -v m="$sb_max_cost" -v c="$sb_line_cost" 'BEGIN { printf "%d", int(sqrt(m - c)) }')
+  for sb_n in "$sb_len" $(( sb_len + 1 )); do
+    { printf 'git commit -m '; sb_x $(( sb_n - 14 )); } > "$p7_big"
+    if [ "$sb_n" = "$sb_len" ]; then sb_case "one line of $sb_n bytes" other; else sb_case "one line of $sb_n bytes" deny; fi
+  done
+  # Two lines add up: each is within a one-line budget, and together they are not.
+  sb_half=$(awk -v m="$sb_max_cost" -v c="$sb_line_cost" 'BEGIN { printf "%d", int(sqrt(m / 2 - c)) }')
+  for sb_n in "$sb_half" $(( sb_half + 1 )); do
+    { printf 'git commit -m '; sb_x $(( sb_n - 14 )); printf '\necho '; sb_x $(( sb_n - 5 )) y; } > "$p7_big"
+    if [ "$sb_n" = "$sb_half" ]; then sb_case "two lines of $sb_n bytes" other; else sb_case "two lines of $sb_n bytes" deny; fi
+  done
+  # Short lines cost their fixed amount: the most 15-byte lines that fit, and one more.
+  sb_lines=$(( sb_max_cost / (225 + sb_line_cost) ))
+  for sb_n in "$sb_lines" $(( sb_lines + 1 )); do
+    { for _i in $(seq 2 "$sb_n"); do printf 'echo abcdefghij\n'; done; printf 'git commit -m y'; } > "$p7_big"
+    if [ "$sb_n" = "$sb_lines" ]; then sb_case "$sb_n short lines" other; else sb_case "$sb_n short lines" deny; fi
+  done
+  # Lines joined by a continuation are measured joined, with carriage returns removed first.
+  { printf 'git commit -m '; sb_x $(( sb_len / 2 - 4 )); printf '\\\n'; sb_x $(( sb_len / 2 + 10 )); } > "$p7_big"
+  sb_case "a line joined by a continuation" deny
+  { printf 'git commit -m '; sb_x $(( sb_len / 2 - 4 )); printf '\\\r\n'; sb_x $(( sb_len / 2 + 10 )); } > "$p7_big"
+  sb_case "a line joined by a continuation before a carriage return" deny
+  # Long commands past the budget, a merge among them; a command without git is not this denial.
+  { printf 'git commit -m "'; sb_x 40960; printf '"'; } > "$p7_big"
+  sb_case "a 40KB commit message" deny
+  # The alternative must not lead back to the same denial: a Bash heredoc holding the
+  # message is estimated the same way, so it names a file-editing tool and git commit -F.
+  if [[ "$reason" == *"file-editing tool, not a Bash heredoc"* && "$reason" == *"git commit -F <message-file>"* ]]; then
+    pass "parse budget: the denial names a file-editing tool and git commit -F"
+  else
+    fail "parse budget: the denial should name a file-editing tool and git commit -F: $reason"
+  fi
+  printf 'git commit -F /tmp/rite-commit-msg.txt' > "$p7_big"
+  sb_case "the recovery command git commit -F <message-file>" other
+  { printf 'git commit -m "'; sb_x 1048576; printf '"'; } > "$p7_big"
+  sb_case "a 1MB commit message" deny
+  # Past the budget Pattern 6 checks the whole command, so a heredoc of many lines must
+  # not make its checks run out of time before this denial.
+  { printf "git commit -F - <<'EOF'\n"; printf 'xxxxxxxxxxxxxxx\n%.0s' $(seq 1 60000); printf 'EOF'; } > "$p7_big"
+  sb_case "a commit with a 60000-line heredoc" deny
+  # Each character Pattern 6 replaces, crowded into a heredoc of about 1MB.
+  { printf "git commit -F - <<'EOF'\r\n"; printf 'xxxxxxxxxxxxxx\r\n%.0s' $(seq 1 60000); printf 'EOF'; } > "$p7_big"
+  sb_case "a commit with a 60000-line CRLF heredoc" deny
+  for sb_char in '\' $'\t'; do
+    sb_line="$(printf '%*s' 32 '' | tr ' ' "$sb_char")y"
+    { printf "git commit -F - <<'EOF'\n"; for _i in $(seq 1 30800); do printf '%s\n' "$sb_line"; done; printf 'EOF'; } > "$p7_big"
+    sb_case "a commit with a heredoc of 30800 lines of 32 $([ "$sb_char" = '\' ] && echo backslashes || echo tabs)" deny
+  done
+  { printf 'git merge -m '; sb_x 10240; printf ' x'; } > "$p7_big"
+  sb_case "a merge with a 10KB message" deny
+  { printf 'echo '; sb_x 40960; } > "$p7_big"
+  sb_case "a 40KB command without git" other
+  # A failed estimate denies.
+  printf 'git commit -m y' > "$p7_big"
+  RITE_BTG_TEST_CRASH=surface-budget sb_case "a commit whose estimate fails" deny
+  # Everyday and heavy commands within the budget are judged as before.
+  printf 'git commit -m "fix: x"' > "$p7_big"
+  sb_case "an everyday commit" other
+  { printf "git commit -F - <<'EOF'\n"; for _i in $(seq 1 420); do sb_x 71; printf '\n'; done; printf 'EOF'; } > "$p7_big"
+  sb_case "a 30KB heredoc message of short lines" other
+  { printf 'git commit -m '; for _i in $(seq 1 $(( (sb_len - 14) / 3 ))); do printf 'あ'; done; } > "$p7_big"
+  sb_case "a Japanese message line just within the budget" other
+  { printf 'git commit -m '; for _i in $(seq 1 $(( (sb_len - 14) / 3 + 1 ))); do printf 'あ'; done; } > "$p7_big"
+  sb_case "a Japanese message line just past the budget" deny
+  { printf 'git commit -m '; sb_x 7960; printf '\n'; for _i in $(seq 1 150); do printf 'echo abcdefghij\n'; done; } > "$p7_big"
+  sb_case "one long line followed by short lines" other
+  # The heaviest form: a heredoc makes Patterns 6, 8 and 9 each parse the surface, and
+  # the commit line after it is as long as the budget allows.
+  { printf "cat <<'EOF'\nx\nEOF\ngit commit -m "; sb_x $(( sb_len - 4 - 14 )); } > "$p7_big"
+  sb_case "a heredoc before a commit line of $(( sb_len - 4 )) bytes" other
+  # Pattern 6 checks a heredoc past the budget as raw text: a gh issue create after the
+  # heredoc, split by a line continuation, or in its body is denied, and a command with
+  # none of them is allowed.
+  for sb_where in after split body none; do
+    case "$sb_where" in
+      after) { printf "cat <<'EOF'\n"; sb_x 10240 q; printf '\nEOF\ngh issue create -t x'; } > "$p7_big" ;;
+      split) { printf "cat <<'EOF'\n"; sb_x 10240 q; printf '\nEOF\ngh issue cre\\\r\nate -t x'; } > "$p7_big" ;;
+      body) { printf "cat <<'EOF'\ngh issue create "; sb_x 10240 q; printf '\nEOF'; } > "$p7_big" ;;
+      none) { printf "cat <<'EOF'\n"; sb_x 10240 q; printf '\nEOF'; } > "$p7_big" ;;
+    esac
+    LC_ALL="$sb_utf8" p7_timed "$p7_big"
+    reason=$(extract_hook_field "$output" permissionDecisionReason)
+    if [ "$sb_where" = none ]; then
+      if [ "$rc" = "0" ] && [ -z "$output" ] && [ "$_ms" -lt 5000 ]; then
+        pass "parse budget: Pattern 6 allows a long heredoc without gh issue create (${_ms}ms)"
+      else
+        fail "parse budget: Pattern 6 on a long heredoc without gh issue create rc=$rc ms=$_ms output=$output"
+      fi
+    elif [ "$rc" = "0" ] && [[ "$reason" == *direct-gh-issue-create* && "$reason" == *"bodies were checked"* && "$reason" == *"file-editing tool, not a Bash heredoc"* ]] && [ "$_ms" -lt 5000 ]; then
+      pass "parse budget: Pattern 6 denies gh issue create $sb_where a long heredoc (${_ms}ms)"
+    else
+      fail "parse budget: Pattern 6 on gh issue create $sb_where a long heredoc rc=$rc ms=$_ms reason=$reason"
+    fi
+  done
+else
+  fail "parse budget constants must be read as positive integers: '$sb_line_cost' '$sb_max_cost'"
+fi
 rm -rf "$p7_repo"
 echo ""
 
