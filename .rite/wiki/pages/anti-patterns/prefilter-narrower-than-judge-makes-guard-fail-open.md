@@ -4,10 +4,14 @@ title: "拒否ガードの前段フィルタが本判定より狭いと、本判
 domain: "anti-patterns"
 description: "コマンドを静的解析で拒否するガードで、高速化のための前段フィルタ（部分文字列の一致）が本判定の対象集合より狭いと、前段で素通りしたコマンドは本判定に届かない。本判定が判定不能を拒否に倒していても、全体は fail-open になる。前段の語彙は本判定の集合と揃える。"
 created: "2026-09-29T09:38:37Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T09:38:37Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T10:30:31Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T10:30:31Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260929T092646Z-pr-3446.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T094158Z-pr-3446.md"
 tags: ["security-hook", "fail-open", "static-analysis", "prefilter"]
 confidence: high
 ---
@@ -29,6 +33,14 @@ confidence: high
 - 解析の予算を超えたときに止める範囲は、対象（git / gh / スクリプト）を含むコマンドに限る。対象を含まないコマンドまで止めると、受入条件の「止めてはならない」に反する。予算判定の前に粗い存在検査を置く。
 - 手順書のシェルブロックを集めてテストするとき、プレースホルダを一律にチェックアウト内のパスへ置き換えると、チェックアウト外を指すプレースホルダのブロックを検出できない。
 
+### 修正で採った形
+
+- 前段の除外語彙を、本判定が追跡する語彙（cd / pushd / popd / chdir / sudo）と同じ集合にした。
+- 共有パーサにグループ（サブシェル）境界の情報が無かったので、新しいパーサを作らず、既定で無効の任意引数を足して再利用した。既存の呼び出し元の挙動は変わらない。
+- 変数の値を信用するのは、代入がちょうど 1 回で、for / read / export などで素の語として現れない名前だけに限った。数えるのはパース済みの語で、生テキストではない（コメント中の名前で誤判定しない）。
+- 「リポジトリでない」と「git が読めない」は .git の有無で区別し、後者は拒否する。
+- ラッパー（timeout / env / xargs / sudo など）は値を取るオプションの表で値を読み飛ばし、env -C と sudo -D は実行ディレクトリの移動として扱う。
+
 ## 関連ページ
 
 - [セキュリティ境界 hook の timeout は fail-open — 評価コストは入力サイズで O(1) 上限を設ける](../heuristics/security-hook-timeout-is-fail-open-bound-cost-by-input-size.md)
@@ -36,3 +48,4 @@ confidence: high
 ## ソース
 
 - [前段フィルタの語彙が本判定より狭いことを複数のレビュアーが検出したレビュー結果](../../raw/reviews/20260929T092646Z-pr-3446.md)
+- [前段フィルタの語彙を本判定と揃えた fix 結果](../../raw/fixes/20260929T094158Z-pr-3446.md)

@@ -130,6 +130,12 @@
 * **Skip**: [20260929T095002Z-pr-3377.md](raw/reviews/20260929T095002Z-pr-3377.md) — 指摘 0 件で、再利用できる経験則を含まない
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=586, broken_refs=0
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=587, broken_refs=0
+* **Update**: [pin を足す「前」に mutation を当てると、pin の要否と有効性を分離して判定できる](pages/patterns/mutation-before-pin-separates-necessity-from-efficacy.md) — raw/reviews/20260929T095536Z-pr-3440.md を統合
+* **Create**: [連言の拒否条件の受理側テストは、拒否の根拠となる記録が残った状態で受理させる](pages/heuristics/conjunctive-refusal-accept-test-keeps-prior-record.md) — raw/fixes/20260929T093950Z-pr-3440.md を新規ページ化
+* **Update**: [base 取り込みの競合は base 側の正本を基準にし、PR の変更意図だけを載せ直す](pages/heuristics/base-intake-conflict-reapply-pr-intent-on-base-canonical.md) — raw/reviews/20260929T101550Z-pr-3440.md を統合
+* **Update**: [reviewer の regression 主張は revert test (git show / git diff) で PR 由来か pre-existing かを独立検証する](pages/heuristics/reviewer-regression-claim-revert-test-attribution.md) — raw/reviews/20260929T102124Z-pr-3446.md を統合
+* **Update**: [拒否ガードの前段フィルタが本判定より狭いと、本判定が fail-closed でも全体は fail-open になる](pages/anti-patterns/prefilter-narrower-than-judge-makes-guard-fail-open.md) — raw/fixes/20260929T094158Z-pr-3446.md を統合
+* **Update**: [新規 file 命名と既存 find glob が collision して silent 削除を起こす](pages/anti-patterns/find-glob-naming-collision-silent-removal.md) — raw/reviews/20260929T102208Z-pr-3448.md を統合
 
 ## 2026-09-28
 

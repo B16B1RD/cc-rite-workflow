@@ -9,9 +9,13 @@ sources:
     resource: "raw/fixes/20260728T100957Z-pr-2038.md"
   - type: "fixes"
     resource: "raw/fixes/20260728T122258Z-pr-2038.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T095536Z-pr-3440.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-28T21:30:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T10:30:31Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T10:30:31Z" }
 ---
 
 # pin を足す「前」に mutation を当てると、pin の要否と有効性を分離して判定できる
@@ -75,6 +79,10 @@ TC-4.11l は「日本語がそのまま出る」ことだけを assert してい
 
 mutation は必ず**隔離コピー**で当て、無害な変更で落ちないこと（negative control）を併置する。
 
+### fix の前後 2 点で同じ変異を回す
+
+追加したテストが空振りでないことは、fix 前のテストと fix 後のテストの 2 点に同じ変異を当てると確かめられる。fix 前のテストでは変異が生き残り、fix 後のテストでは検出されれば、その検出力は追加したテストが持ち込んだものだと言える。fix 後だけを見ると、既存の assert が元から検出していた可能性を排除できない（本ページの順序の規則と同じ理由）。受理側の assert が退行したときに汎用の失敗として出て検査名が表示されない、という読みやすさの差は検出力を変えないので、別の改善として扱う。
+
 ## 関連ページ
 
 - [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](./absence-pin-base-present-head-absent-single-line.md)
@@ -85,3 +93,4 @@ mutation は必ず**隔離コピー**で当て、無害な変更で落ちない�
 
 - [fix 結果](../../raw/fixes/20260728T100957Z-pr-2038.md)
 - [fix 結果](../../raw/fixes/20260728T122258Z-pr-2038.md)
+- [fix 前後の 2 点で変異を回して追加テストの検出力を確かめたレビュー結果](../../raw/reviews/20260929T095536Z-pr-3440.md)

@@ -11,9 +11,13 @@ sources:
     resource: "raw/reviews/20260602T012648Z-pr-1240.md"
   - type: "reviews"
     resource: "raw/reviews/20260702T070751Z-pr-1721.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T102124Z-pr-3446.md"
 tags: ["verification-protocol", "regression-attribution", "revert-test", "reviewer-claim", "git-show", "pre-existing", "delegation-refactor", "acceptance-criteria-override"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-22T13:15:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T10:30:31Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T10:30:31Z" }
 ---
 
 # reviewer の regression 主張は revert test (git show / git diff) で PR 由来か pre-existing かを独立検証する
@@ -99,6 +103,17 @@ reap manifest からの branch エントリ消費処理を追加した PR で、
 
 **教訓**: revert test を「変更された行だけを diff で比較する」狭い意味で実施すると、pre-existing な行が **本 PR の他の変更によって不活性から活性状態に遷移した**ケースを見逃す。正しい revert test は「行単位の diff 有無」ではなく「PR 全体を revert したときに現象が再現するか」を基準にする。同一 PR 内に同じファミリーの silent 経路（今回は best-effort ブロックの兄弟失敗経路、[[asymmetric-fix-transcription]] 参照）が複数存在する場合、活性化した pre-existing 行を発見したら、それを起点に PR 内で同型の経路を全対称化して収束させる方が手戻りが少ない。
 
+### 修正が生んだ退行を revert test で確定する
+
+前の cycle の指摘をすべて解消した修正が、新しい fail-open や誤拒否を生むことがある。このとき複数のレビュアーが、修正前の helper を作業用ディレクトリに取り出して同じ入力を与え、修正前後の判定を並べて比べることで、退行が修正由来であることを確定した。帰属の検証は pre-existing の切り分けだけでなく、修正による退行の確定にも同じ手順で使える。
+
+同じレビューで見つかった退行の形:
+
+- サブシェル単位で cd を追跡するように変えると、コマンド置換の基点を置換を含むコマンドのグループから取らない限り、グループ内の置換が元の cwd に戻る。
+- 存在しないディレクトリを祖先で判定する規則は、cd 自体が失敗して元の場所に残る経路を落とす。cd の成否が決まらないときは、移動前と移動後の両方を判定対象にする。
+- 解析予算を超えたときの粗い語照合は、helper が判定する対象（パス指定や変数のコマンド語）を包含しないと退行し、heredoc の本文まで含めると過剰に拒否する。
+- 用語の定義（実効 cwd など）を広げたら、仕様書・参照文書・docstring・ヘッダの定義箇所と拒否理由の列挙を同時に直す。
+
 ## 関連ページ
 
 - [operational-bash-heaviness の exempt / pipe-refactor レビューは claim を信用せず empirical 検証で gate する](./bash-heaviness-exempt-refactor-review-verification.md)
@@ -111,3 +126,4 @@ reap manifest からの branch エントリ消費処理を追加した PR で、
 
 - [pre-existing 行が本 PR の意味論変更で活性化、revert test が PR 由来と判定](../../raw/fixes/20260722T025804Z-pr-1967.md)
 - [レビュー結果](../../raw/reviews/20260602T012648Z-pr-1240.md)
+- [修正による退行を revert test で確定したレビュー結果](../../raw/reviews/20260929T102124Z-pr-3446.md)

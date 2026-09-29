@@ -7,9 +7,13 @@ created: "2026-04-30T03:50:00+00:00"
 sources:
   - type: "fixes"
     resource: "raw/fixes/20260430T031013Z-pr-747.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T102208Z-pr-3448.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T10:30:31Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T10:30:31Z" }
 ---
 
 # 新規 file 命名と既存 find glob が collision して silent 削除を起こす
@@ -50,6 +54,19 @@ cycle 3 で `session-start.sh` のみに `-not -name '.rite-flow-state.legacy.*'
 
 いずれも「文字数 wildcard」または「任意文字 wildcard」の位置と新規命名 token の長さがちょうど一致する偶発で、テスト時には reproduce しにくい (timing-dependent: `-mmin +1` 経過後にのみ顕現する) のが特徴。
 
+### state を読む glob が別の helper の保留ファイルを拾う
+
+同じ衝突は削除以外でも起きる。新しい helper が state ディレクトリを接頭辞と接尾辞だけの glob で読んだところ、同じ接頭辞と接尾辞を持つ別ゲートの保留ファイルまで拾い、スキーマの違いで全体が停止した。state を読む helper は、読む対象のファイル名を完全な命名規則（識別子部分の形まで）で絞る。
+
+同じレビューで並んだ指摘:
+
+- 同じ記録の意味を 2 つの helper が別々に判定すると（評価順の違いなど）、同じ記録に食い違う処分を出す。判定は片方に寄せ、もう片方はその結果を読む。
+- 自前の YAML パーサが null を文字列 "null" として読み、外部 helper に渡していた。
+- 外部 helper が返す warnings を捨てていた（既存の呼び出し側は stderr に出す規約）。
+- nested skill の返却 sentinel に `completed` の語を使うと caller の turn が閉じる。
+- 公開リポジトリで Issue 本文の HTML コメント marker を信頼境界なしに処分の根拠にすると、第三者が処分を誘発できる。
+- テストの stub が read 系のフラグ（`--state` など）を無視しており、否定側の fixture も無いため、条件の除去を検出できなかった。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -57,3 +74,4 @@ cycle 3 で `session-start.sh` のみに `-not -name '.rite-flow-state.legacy.*'
 ## ソース
 
 - [fix 結果](../../raw/fixes/20260430T031013Z-pr-747.md)
+- [state を読む glob が別ゲートの保留ファイルを拾ったレビュー結果](../../raw/reviews/20260929T102208Z-pr-3448.md)
