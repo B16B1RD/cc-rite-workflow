@@ -528,9 +528,9 @@ fi
 # **書式違反は和集合で hard fail、一意性違反は `findings[]` 側に限って hard fail**。
 #
 # 書式 (`^F-[0-9]{2,}$`) は id が identity として使えるかどうかそのものであり、`non_blocking_findings[]`
-# 側の書式外 id は advisory な記録の瑕疵では済まない — cleanup ステップ 6.0.V は id を除外指定
-# (`--exclude-ids` の key `{出典 JSON 名}#{id}`) の一部として使うため、書式外 id は再検証層で key が null になり、
-# 全件が undecidable へ倒れて解消済みの指摘まで follow-up に転記される。発生源を止めないと
+# 側の書式外 id は advisory な記録の瑕疵では済まない — cleanup ステップ 6.0 の follow-up は id を候補の id
+# (`{出典 JSON 名}#{id}`) と却下台帳の行 ([finding_id, file:line]) の照合に使うため、書式外 id は処分済みの
+# 候補と結び付かず、同じ候補を判定し直すことになる。発生源を止めないと
 # 読み側の回避策が増え続けるので fail-loud にする (書式外 id の永続化を止める)。
 #
 # 一方 `non_blocking_findings[]` 側に閉じた**一意性**違反 (独立採番による和集合重複) は id 自体が
@@ -543,8 +543,7 @@ fi
 # 既存経路と同じく `exit 0` + `JSON_SAVED=false` で「保存せずに止める」= 本 codebase の hard fail。
 # `contains("\n") | not` は必須。jq (Oniguruma) の `$` は「文字列末尾**または末尾改行の直前**」に
 # 一致するため、`test("^F-[0-9]{2,}$")` 単体では "F-05\n" が書式検査を通り、書式外 id を発生源で
-# 止めるという本 gate の存在理由が成立しない。read 側 (cleanup 6.0.V の射影) と同一述語に保つこと —
-# 片側だけ緩いと write を通った値が read で null へ写り、恒久的に undecidable の過剰転記が生まれる。
+# 止めるという本 gate の存在理由が成立しない。
 if ! jq -e '
   ((if (.non_blocking_findings | type) == "array" then .non_blocking_findings else [] end)) as $nb
   | (((.findings | length) + ($nb | length)) == 0)

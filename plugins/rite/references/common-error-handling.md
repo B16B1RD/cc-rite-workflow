@@ -181,7 +181,7 @@ and (.findings | type == "array")
 
 **Finding ID validation (ステップ 6.1.a のみ追加検証)**: 本 canonical snippet に加えて ステップ 6.1.a では finding id の書式 (`^F-[0-9]{2,}$`) と一意性も検証する。これは write 側 (pr-review.md) でのみ enforce される「生成規則」であり、read 側 (fix.md) では既に書き込まれた JSON を信頼するため検証不要。
 
-検証は **2 段**に分かれる。**書式は 2 配列の和集合で hard fail** (`JSON_SAVED=false`)、**一意性は `findings[]` 側のみ hard fail** で和集合に閉じた重複は非ブロッキング marker に落とす — 書式外 id は cleanup 6.0.V の `--exclude-ids` 経路そのものを壊すため発生源で止めるが、advisory な重複を理由に blocking findings ごと保存を失う fail-unsafe は避ける (review-result-schema.md §non_blocking_findings 配列)。
+検証は **2 段**に分かれる。**書式は 2 配列の和集合で hard fail** (`JSON_SAVED=false`)、**一意性は `findings[]` 側のみ hard fail** で和集合に閉じた重複は非ブロッキング marker に落とす — 書式外 id は cleanup の follow-up が候補と台帳行を照合する identity を壊すため発生源で止めるが、advisory な重複を理由に blocking findings ごと保存を失う fail-unsafe は避ける (review-result-schema.md §non_blocking_findings 配列)。
 
 ```jq
 # (1) 書式 (和集合) + 一意性 (findings[] のみ) — hard fail
