@@ -1,5 +1,9 @@
 # Directory Update Log
 
+## 2026-09-30
+
+* **Skip**: [再開待ち worktree 保護のレビュー結果](raw/reviews/20260929T162804Z-pr-3454.md) — 独立レビューと回帰検証の完了記録のみで、新たなドメイン経験則はない
+
 ## 2026-09-29
 
 * **Update**: [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](pages/anti-patterns/consumer-allowlist-wedges-producer-value-range.md) — raw/reviews/20260929T104700Z-pr-3448.md で補強
