@@ -3138,8 +3138,9 @@ p10_deny "gh between a << in a string and a heredoc it names" outside-checkout "
   "$p10_wt" "$(printf 'echo %s\ncd %s && gh api x\ncat > %s/o.md <<%s\n%s\nEOF' "'Use cat <<EOF for long text'" "$p10_scratch" "$p10_scratch" "'EOF'" "$p10_prose")"
 p10_deny "gh after a shift in arithmetic" outside-checkout "runs 'gh' $p10_out" \
   "$p10_wt" "echo \$((1<<2)) && cd $p10_scratch && gh api x"
-p10_allow "a heredoc that does not end runs to the end" "$p10_scratch" "$(printf 'cat > out.md <<EOF\nhello')"
-p10_deny "gh before a heredoc that does not end" outside-checkout "runs 'gh' $p10_out" \
+p10_deny "a heredoc that does not end" outside-checkout-uninspectable "does not end" \
+  "$p10_scratch" "$(printf 'cat > out.md <<EOF\nhello')"
+p10_deny "gh before a heredoc that does not end" outside-checkout-uninspectable "does not end" \
   "$p10_wt" "$(printf 'cd %s && gh api x && cat <<EOF\nhello' "$p10_scratch")"
 p10_deny "gh in a substitution of an unquoted heredoc body" outside-checkout "runs 'gh' $p10_out" \
   "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\n$(gh api user)\nEOF' "$p10_scratch")"
@@ -3147,6 +3148,28 @@ p10_deny "gh in an unquoted heredoc body of a message substitution" outside-chec
   "$p10_wt" "$(printf 'cd %s && echo "$(cat <<EOF\n$(gh api user)\nEOF\n)"' "$p10_scratch")"
 p10_allow "a substitution in a quoted heredoc body is text" "$p10_scratch" \
   "$(printf 'cat > n.md <<%s\n$(gh api user)\nEOF' "'EOF'")"
+p10_allow "a substitution after a backslash-quoted delimiter is text" "$p10_scratch" \
+  "$(printf 'cat > n.md <<\\EOF\n$(gh api user)\nEOF')"
+p10_allow "escaped substitutions in an unquoted heredoc body are text" "$p10_scratch" \
+  "$(printf 'cat > pr.md <<EOF\nRun \\`git status\\` and \\$(gh pr view).\nEOF')"
+p10_deny "a substitution after an escaped backslash in an unquoted body" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\n\\\\$(gh api user)\nEOF' "$p10_scratch")"
+p10_deny "a quoted cd in an unquoted body substitution" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf 'cat > n.md <<EOF\n$(cd "%s" && gh api user)\nEOF' "$p10_scratch")"
+p10_deny "a quoted ) in an unquoted body substitution" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\n$(echo "a)b"; gh api user)\nEOF' "$p10_scratch")"
+p10_deny "a body substitution runs before a cd later on its line" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF && cd %s\n$(gh api user)\nEOF' "$p10_scratch" "$p10_wt")"
+p10_deny "gh after a << inside a parameter expansion" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf 's=a; echo ${s//<</x}\ncd %s && gh api x' "$p10_scratch")"
+p10_deny "gh after a comment right after a group" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf '(true)# use <<EOF\ncd %s && gh api x' "$p10_scratch")"
+p10_deny "gh after a comment behind an escaped backslash" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf 'echo a\\\\ #note <<EOF\ncd %s && gh api x' "$p10_scratch")"
+p10_allow "a comment with a quote inside a multi-line substitution" "$p10_wt" \
+  "$(printf "x=\$(\n  # don't\n  echo a\n)\ngit status")"
+p10_allow "a # inside a word before a heredoc" "$p10_scratch" \
+  "$(printf "echo a#b; cat > n.md <<'EOF'\nRun gh pr view.\nEOF")"
 p10_deny "gh after a # inside a word" outside-checkout "runs 'gh' $p10_out" \
   "$p10_wt" "x=abc; echo \${#x}; cd $p10_scratch && gh api x"
 p10_deny "gh after a # right after a substitution" outside-checkout "runs 'gh' $p10_out" \

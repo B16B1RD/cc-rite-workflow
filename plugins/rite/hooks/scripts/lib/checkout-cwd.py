@@ -11,7 +11,10 @@ checkout, "<kind>\\t<directory>\\t<word>", with an empty directory when the dire
 cannot be known. A root without .git defines no checkout, so nothing is printed.
 Exit 1 when the command cannot be parsed or git cannot read a root that has .git.
 
-Heredoc bodies are data and are removed before the command is read. A script is
+Heredocs and comments are removed before the command is read; the command
+substitutions of a body with an unquoted delimiter run where the heredoc
+starts, so they are kept at that place. A heredoc that does not end at its
+delimiter cannot be read and is an error. A script is
 judged by where it runs, not by what it runs: whether it calls gh cannot be seen
 from here. Not a shell interpreter.
 """
@@ -103,17 +106,88 @@ def _heredoc_word(text, index):
     return "".join(word), index, quoted
 
 
+def _substitution_end(text, index):
+    """The index just past the ) closing the $( that ends before index, or None."""
+    depth, quote = 0, None
+    while index < len(text):
+        char = text[index]
+        if quote == "'":
+            if char == "'":
+                quote = None
+        elif char == "\\":
+            index += 1
+        elif quote == '"':
+            if char == '"':
+                quote = None
+            elif text.startswith("$(", index):
+                end = _substitution_end(text, index + 2)
+                if end is None:
+                    return None
+                index = end
+                continue
+        elif char in "'\"":
+            quote = char
+        elif text.startswith("$(", index):
+            end = _substitution_end(text, index + 2)
+            if end is None:
+                return None
+            index = end
+            continue
+        elif char == "(":
+            depth += 1
+        elif char == ")":
+            if depth == 0:
+                return index + 1
+            depth -= 1
+        index += 1
+    return None
+
+
+def _body_substitutions(body):
+    """The command substitutions bash runs when it expands an unquoted heredoc body:
+    in a body a backslash escapes only $, `, \\ and a newline."""
+    found, index = [], 0
+    while index < len(body):
+        char = body[index]
+        if char == "\\":
+            index += 2
+            continue
+        if body.startswith("$((", index):
+            index += 3
+            continue
+        if body.startswith("$(", index):
+            end = _substitution_end(body, index + 2)
+            if end is None:
+                raise ValueError("a command substitution in a heredoc body does not end")
+            found.append(body[index:end])
+            index = end
+            continue
+        if char == "`":
+            end = index + 1
+            while end < len(body) and body[end] != "`":
+                end += 2 if body[end] == "\\" else 1
+            if end >= len(body):
+                raise ValueError("a backquote in a heredoc body does not end")
+            found.append(body[index:end + 1])
+            index = end + 1
+            continue
+        index += 1
+    return found
+
+
 def strip_heredocs(command):
-    """The command with each heredoc operator, delimiter and body removed. Quotes,
-    arithmetic and comments are followed so that a << inside them, or a <<<, starts no
-    heredoc; command substitutions and backquotes are followed to their end, and a
-    heredoc inside them is removed like any other. As in bash, a body without its
-    delimiter line runs to the end of the command, and the body of an unquoted
-    delimiter is expanded, so when it holds a command substitution it is kept as one
-    double-quoted word for the substitution to be read. Comments are kept for the
-    parser. ValueError when a heredoc has no delimiter, or a quote or substitution
-    does not end."""
+    """The command with each heredoc removed: operator, delimiter and body. Quotes,
+    parameter expansions, arithmetic and comments are followed so that a << inside
+    them, or a <<<, starts no heredoc; command substitutions and backquotes are
+    followed to their end, and a heredoc inside them is removed like any other. The
+    body of an unquoted delimiter is expanded as in bash, so each command substitution
+    in it takes the operator's place, where it runs. A comment is blanked out, keeping
+    its #, so that no quote or << in it is read. ValueError when a heredoc has no
+    delimiter or does not end at its delimiter line, or a quote or substitution does
+    not end."""
     out, stack, pending, index, length = [], [["code", 0]], [], 0, len(command)
+    escaped = -1  # the index of the last character a backslash escaped
+    closed = -1  # the index of the last ) that closed a $( or $((
     while index < length:
         char, context = command[index], stack[-1]
         kind = context[0]
@@ -132,17 +206,32 @@ def strip_heredocs(command):
             elif command.startswith("$(", index):
                 stack.append(["sub", 0])
                 step = 2
+            elif command.startswith("${", index):
+                stack.append(["param", 0])
+                step = 2
             elif char == "`":
                 stack.append(["bq", 0])
-        elif kind == "arith":
-            if command.startswith("))", index) and context[1] == 0:
-                stack.pop()
+        elif kind in ("arith", "param"):
+            if char == "\\":
                 step = 2
-            elif char == "(":
+            elif kind == "param" and char in "'\"":
+                stack.append(["sq" if char == "'" else "dq", 0])
+            elif kind == "param" and command.startswith("$(", index):
+                stack.append(["sub", 0])
+                step = 2
+            elif kind == "arith" and command.startswith("))", index) and context[1] == 0:
+                stack.pop()
+                closed = index + 1
+                step = 2
+            elif char == ("(" if kind == "arith" else "{"):
                 context[1] += 1
-            elif char == ")":
-                context[1] -= 1
+            elif char == (")" if kind == "arith" else "}"):
+                if kind == "param" and context[1] == 0:
+                    stack.pop()
+                else:
+                    context[1] -= 1
         elif char == "\\":
+            escaped = index + 1
             step = 2
         elif char in "'\"":
             stack.append(["sq" if char == "'" else "dq", 0])
@@ -157,19 +246,23 @@ def strip_heredocs(command):
         elif command.startswith("$(", index):
             stack.append(["sub", 0])
             step = 2
+        elif command.startswith("${", index):
+            stack.append(["param", 0])
+            step = 2
         elif char == "(" and kind == "sub":
             context[1] += 1
         elif char == ")" and kind == "sub":
             if context[1] == 0:
                 stack.pop()
+                closed = index
             else:
                 context[1] -= 1
-        elif char == "#" and (index == 0 or (command[index - 1] in " \t\n;&|("
-                                             and not command.startswith("\\", index - 2))):
-            # The rest of the line is a comment: kept, but no quote or << in it counts.
+        elif char == "#" and (index == 0 or (command[index - 1] in " \t\n;&|()"
+                                             and escaped != index - 1 and closed != index - 1)):
+            # A comment runs to the end of the line; blanked so no quote or << in it counts.
             end = command.find("\n", index)
             end = length if end < 0 else end
-            out.append(command[index:end])
+            out.append("#" + " " * (end - index - 1))
             index = end
             continue
         elif command.startswith("<<<", index):
@@ -183,27 +276,31 @@ def strip_heredocs(command):
             delimiter, index, quoted = _heredoc_word(command, start)
             if not delimiter:
                 raise ValueError("a heredoc has no delimiter")
-            pending.append((delimiter, tabs, quoted))
+            pending.append((delimiter, tabs, quoted, len(out)))
+            out.append(" ")
             continue
         elif char == "\n" and pending:
             out.append(char)
             index += 1
-            for delimiter, tabs, quoted in pending:
+            for delimiter, tabs, quoted, slot in pending:
                 body = []
-                while index < length:
+                while True:
+                    if index >= length:
+                        raise ValueError("a heredoc does not end at its delimiter " + delimiter)
                     end = command.find("\n", index)
                     end = length if end < 0 else end
                     line, index = command[index:end], end + 1
                     if (line.lstrip("\t") if tabs else line) == delimiter:
                         break
                     body.append(line)
-                text = "\n".join(body)
-                if not quoted and ("$(" in text or "`" in text):
-                    out.append(': "' + text.replace("\\", "\\\\").replace('"', '\\"') + '"\n')
+                if not quoted:
+                    out[slot] = " " + " ".join(_body_substitutions("\n".join(body))) + " "
             pending = []
             continue
         out.append(command[index:index + step])
         index += step
+    if pending:
+        raise ValueError("a heredoc does not end at its delimiter " + pending[0][0])
     if len(stack) > 1:
         raise ValueError("a quote or substitution does not end")
     return "".join(out)
