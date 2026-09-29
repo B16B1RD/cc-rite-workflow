@@ -59,6 +59,7 @@
 * **Update**: [コメントや文書の根拠は、実装が名指す範囲と測定の条件まで確かめて書く](pages/heuristics/claim-evidence-scope-and-measurement-conditions.md) — [レビュー結果](raw/reviews/20260929T191948Z-pr-3457.md) を統合
 * **Update**: [無音失敗を可視化する防御コードには、その防御コード自体を守る失敗パステストを追加する](pages/heuristics/defensive-code-needs-its-own-failure-path-test.md) — [レビュー結果](raw/reviews/20260929T183927Z-pr-3458.md) の stderr の診断の指摘を統合
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=595, broken_refs=0（矛盾は今回の ingest で更新した 5 ページについて判定）
+* **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=595, broken_refs=0（矛盾は今回の ingest で作成した 1 ページと関連ページについて判定）
 
 ## 2026-09-29
 
