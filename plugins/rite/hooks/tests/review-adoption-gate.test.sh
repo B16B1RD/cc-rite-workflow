@@ -438,5 +438,48 @@ check(verdicts['F-01']['exit'] == 'ADOPT', 'a quote from a different Issue is a 
 same = pending(body_record, pr=303, issue=777)
 check([h['source']['pr'] for h in same['history']] == [301], same)
 
+
+# History-only arbitration must stay bound to its inputs after a contract stops matching.
+state = work / 'stale-contract-state'
+adoption = state / '.rite/state/adoption-5-sweep.json'
+original_issue = issue_body.read_text()
+decided([rec(**resolved)], cands=CANDS[:1], pr=401, issue=100, kind='followup')
+fresh = pending(rec(), pr=402)
+check('prior_conflict' not in fresh['signals'], fresh)
+for resolution in ('fix_implementation', 'change_contract'):
+    old_answer = rec(reconciliation=answer(fresh, resolution=resolution))
+    issue_body.write_text(original_issue.replace('empty NAME', 'empty or missing NAME'))
+    stale = pending(old_answer, pr=402, reason='stale')
+    check(stale['signals'] == [] and stale['fingerprint'] != fresh['fingerprint'], stale)
+    new_answer = rec(reconciliation=answer(stale, resolution=resolution))
+    if resolution == 'change_contract':
+        pending(new_answer, pr=402, reason='contract_change')
+    else:
+        verdicts, _ = decided([new_answer], cands=CANDS[:1], pr=402, issue=100, kind='followup')
+        check(verdicts['F-01']['exit'] == 'ADOPT', verdicts)
+        persisted = json.loads((state / '.rite/state/adoption-history-402-followup.json').read_text())
+        check(persisted['entries'][-1]['reconciliation'] == new_answer['reconciliation'], persisted)
+    issue_body.write_text(original_issue)
+
+# An unreadable history directory is an input error, never an empty history set.
+state = work / 'unreadable-history-state'
+adoption = state / '.rite/state/adoption-5-sweep.json'
+decided([rec(**resolved)], cands=CANDS[:1], pr=501, issue=100, kind='followup')
+decided([rec(['F-02'], **REJECT)], cands=CANDS[1:], pr=502, issue=100, kind='followup')
+history_files = {p: p.read_bytes() for p in adoption.parent.glob('adoption-history-*.json')}
+adoption.parent.chmod(0o300)
+try:
+    try:
+        list(adoption.parent.iterdir())
+    except PermissionError:
+        result = run([rec(**REJECT)], cands=CANDS[:1], pr=502, issue=100, kind='followup')
+        check(result.returncode != 0 and 'input_invalid' in result.stderr, result)
+        check(all(p.read_bytes() == content for p, content in history_files.items()),
+              'history listing failure must preserve every prior disposition')
+    else:
+        print('unreadable history permission case skipped: process can bypass directory permissions')
+finally:
+    adoption.parent.chmod(0o700)
+
 print(f'review-adoption-gate: {checks} checks passed')
 PYTEST

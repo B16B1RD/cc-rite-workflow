@@ -13,8 +13,8 @@ Usage:
     --base REF [--ac-ids AC-1,AC-2] [--issue-body FILE] [--pr-body FILE] [--ledger FILE] \
     [--repo-root DIR] [--history-dir DIR --pr N --kind sweep|triage|followup [--issue N]]
 
-  --candidates    {"candidates": [{"id": "F-03", ...}, ...]}. Keys other than id are
-                  ignored, so severity and consequence class never change an exit.
+  --candidates    {"candidates": [{"id": "F-03", ...}, ...]}. Severity and consequence
+                  class never decide an exit; the full candidate binds reconciliation.
   --review-result the saved review JSON; its commit_sha must equal adoption.head.
   --base          the PR base ref; origin=pr diff positions are looked up in
                   `git diff -U0 BASE...HEAD`.
@@ -427,7 +427,14 @@ def reconcile(records, decisions, candidates, context, args, head):
     directory = Path(args.history_dir)
     histories = []
     own_entries = []
-    for path in sorted(directory.glob("adoption-history-*-*.json")):
+    try:
+        paths = sorted(path for path in directory.iterdir()
+                       if path.match("adoption-history-*-*.json"))
+    except FileNotFoundError:
+        paths = []
+    except OSError as error:
+        raise Stop("input_invalid", detail=f"adoption history directory: {error}") from None
+    for path in paths:
         history = load(path, "adoption history")
         if (not isinstance(history, dict) or type(history.get("pr")) is not int
                 or history["pr"] < 1 or history.get("kind") not in ("sweep", "triage", "followup")
@@ -460,7 +467,7 @@ def reconcile(records, decisions, candidates, context, args, head):
             if any(h["decision"].get("exit") == "RESOLVED"
                    and any(h["record"].get(axis) is True for axis in "VCT") for h in matches):
                 signals.append("completed_contract")
-        if signals:
+        if signals or answer is not None:
             fingerprint = digest({"head": head, "record": clean, "candidates": selected,
                                   "contract": key, "history": matches})
             reason = "pending"
@@ -492,7 +499,7 @@ def reconcile(records, decisions, candidates, context, args, head):
             identity = lambda e: digest({"contract": e["contract_key"],
                 "candidates": [{k: v for k, v in c.items() if k != "id"} for c in e["candidates"]]})
             entries = [e for e in entries if identity(e) != identity(entry)]
-            if answer is not None and signals:
+            if answer is not None:
                 entry["reconciliation"] = answer
             entries.append(entry)
     return {"reconciliation": requests,
