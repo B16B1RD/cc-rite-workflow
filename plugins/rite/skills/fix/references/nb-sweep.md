@@ -77,7 +77,7 @@ bash {plugin_root}/scripts/fix-step.sh nb-sweep-gate --pr {pr_number} --base-bra
 
 ```bash
 bash {plugin_root}/scripts/fix-step.sh nb-sweep-file-issue --pr {pr_number} \
-  --issue-title-file {issue_title_file} --issue-body-file {issue_body_file} --record-ids '{record_ids}' \
+  --issue-title-file '{issue_title_file}' --issue-body-file '{issue_body_file}' --record-ids '{record_ids}' \
   --projects-enabled {projects_enabled} --project-number {project_number} --project-owner {owner}
 ```
 

@@ -20,7 +20,7 @@ WORK=$(mktemp -d "${TMPDIR:-/tmp}/rite-fp-symmetry-XXXXXX") || { fail "mktemp -d
 trap 'rm -rf "$WORK"' EXIT
 
 # accept-finding.md の永続化呼び出し（fix-step.sh accept-persist の 1 行）を取り出し、同じ行を実行する
-grep -xF 'bash {plugin_root}/scripts/fix-step.sh accept-persist --pr {pr_number} --finding-file {finding_file}' \
+grep -xF "bash {plugin_root}/scripts/fix-step.sh accept-persist --pr {pr_number} --finding-file '{finding_file}'" \
   "$ACCEPT" > "$WORK/accept-block.sh"
 if [ "$(grep -c . "$WORK/accept-block.sh")" = 1 ] && [ -f "$FIX_STEP" ]; then
   pass "the accept persistence call is extracted"

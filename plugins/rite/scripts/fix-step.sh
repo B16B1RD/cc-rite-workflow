@@ -1938,22 +1938,19 @@ fi
 # --- wiki-trigger ---------------------------------------------------------------
 step_wiki_trigger() {
 # fix の Raw Source を生成して wiki-ingest-trigger.sh へ渡す（非ブロッキング）。
-# 本文とタイトルは caller が Write tool で作業ツリー外に置いたファイル。
-# ⚠️ wiki-ingest-trigger.sh は --content-file に $PWD 配下・/tmp/rite-*・$TMPDIR/rite-* prefix のみを受容する
-# mktemp デフォルトの ${TMPDIR:-/tmp}/tmp.* では trigger が exit 1 で silent fail するため、rite- 接頭辞の一時ファイルへ写す
-tmpfile=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-content-XXXXXX")
+# 本文とタイトルは caller が Write tool で書いたファイル。本文は写さずに trigger へ渡し、
+# trigger 自身の symlink 拒否とパス allowlist ($PWD 配下・/tmp/rite-*・$TMPDIR/rite-*) を caller のパスに効かせる。
 trigger_stderr=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-trigger-err-XXXXXX") || trigger_stderr=/dev/null
 # rm -f /dev/null は EPERM (exit 1) を返すため trap で条件分岐する
-trap 'rm -f "$tmpfile"; [ "$trigger_stderr" != "/dev/null" ] && rm -f "$trigger_stderr"' EXIT
-content_write_failed=0  # 本文の写し失敗フラグ (wiki-trigger-result で genuine trigger 失敗と区別するため carry-forward)
+trap '[ "$trigger_stderr" != "/dev/null" ] && rm -f "$trigger_stderr"' EXIT
+content_write_failed=0  # 入力不在フラグ (wiki-trigger-result で genuine trigger 失敗と区別するため carry-forward)
 wiki_title=""
 [ -r "$title_file" ] && wiki_title=$(head -n 1 -- "$title_file")
 
-# 写しの exit code を捕捉 (disk full / permission 拒否 / 入力の不在で truncated content が
-# silent に ingest される regression を防ぐ。wiki ingest は非ブロッキングのため失敗時は ingest をスキップ)
-if [ -z "$wiki_title" ] || [ ! -s "$content_file" ] || ! cat -- "$content_file" > "$tmpfile"; then
-  echo "[CONTEXT] WIKI_CONTENT_WRITE_FAILED=1; reason=cat_redirection_failed" >&2
-  echo "WARNING: fix ステップ 4.6.W: tmpfile への本文の書き込みに失敗 (/tmp full / permission 拒否 / inode 枯渇 / 入力ファイルの不在)。wiki ingest を非ブロッキングにスキップ。" >&2
+# 入力の不在・空で空の raw source が ingest されるのを防ぐ。wiki ingest は非ブロッキングのため ingest をスキップ
+if [ -z "$wiki_title" ] || [ ! -s "$content_file" ]; then
+  echo "[CONTEXT] WIKI_CONTENT_WRITE_FAILED=1; reason=input_file_missing" >&2
+  echo "WARNING: fix ステップ 4.6.W: 本文またはタイトルのファイルが無いか空 (content=$content_file, title=$title_file)。wiki ingest を非ブロッキングにスキップ。" >&2
   trigger_exit=1
   content_write_failed=1
   echo "trigger_exit=$trigger_exit"
@@ -1961,7 +1958,7 @@ else
   bash "$plugin_root"/hooks/wiki-ingest-trigger.sh \
     --type fixes \
     --source-ref "pr-${pr_number}" \
-    --content-file "$tmpfile" \
+    --content-file "$content_file" \
     --pr-number "${pr_number}" \
     --title "${wiki_title}（修正結果）" \
     2>"$trigger_stderr"

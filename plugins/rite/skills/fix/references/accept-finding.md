@@ -40,7 +40,7 @@ fingerprint = sha1(normalize(file_path) + ":" + category + ":" + normalize(messa
 **accept 永続化** (per accepted finding。`{finding_file}` / `{pr_number}` は Claude が事前 substitute):
 
 ```bash
-bash {plugin_root}/scripts/fix-step.sh accept-persist --pr {pr_number} --finding-file {finding_file}
+bash {plugin_root}/scripts/fix-step.sh accept-persist --pr {pr_number} --finding-file '{finding_file}'
 ```
 
 accept は **revocable** (state file の行削除)。`acknowledged` は ステップ 3 の commit 対象外。trailer は 3.2。

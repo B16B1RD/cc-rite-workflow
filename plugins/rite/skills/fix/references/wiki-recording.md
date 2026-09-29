@@ -4,7 +4,7 @@
 
 **Step 2**: Generate a fix Raw Source from the fix results:
 
-The fix content includes: findings addressed, fix strategies used, and patterns of overcorrection or effective approaches. 下のテンプレートの本文を Write tool で作業ツリー外の絶対パス `{wiki_content_file}` に書き、ステップ 1.1 の PR title を 1 行で `{wiki_title_file}` に書いてから、次の 1 行を実行する。helper は本文を `wiki-ingest-trigger.sh` が受け付ける一時ファイルへ写してから trigger を呼ぶ。
+The fix content includes: findings addressed, fix strategies used, and patterns of overcorrection or effective approaches. 下のテンプレートの本文を Write tool で `{wiki_content_file}` に書き、ステップ 1.1 の PR title を 1 行で作業ツリー外の絶対パス `{wiki_title_file}` に書いてから、次の 1 行を実行する。`{wiki_content_file}` は `$TMPDIR`（未設定なら `/tmp`）直下の `rite-` で始まる絶対パス（例: `rite-fix-wiki-content-{pr_number}.md`）にする。helper は本文を写さずに `wiki-ingest-trigger.sh` へ渡すため、trigger の symlink 拒否とパス allowlist がこのパスに効き、外れたパスは trigger が exit 1 で拒否する。
 
 ```markdown
 ## Fix Results
@@ -23,7 +23,7 @@ The fix content includes: findings addressed, fix strategies used, and patterns 
 ```
 
 ```bash
-bash {plugin_root}/scripts/fix-step.sh wiki-trigger --pr {pr_number} --content-file {wiki_content_file} --title-file {wiki_title_file}
+bash {plugin_root}/scripts/fix-step.sh wiki-trigger --pr {pr_number} --content-file '{wiki_content_file}' --title-file '{wiki_title_file}'
 ```
 
 **Non-blocking**。非ゼロなら 4.6.W.2 を skip。`content_write_failed` も Step 2 stdout から再注入して Step 3 で使う (Bash 呼び出し間でシェル状態は消える)。
@@ -43,7 +43,7 @@ bash {plugin_root}/scripts/fix-step.sh wiki-trigger-result --content-write-faile
 
 | reason | Description |
 |--------|-------------|
-| `content_write_failed` | 本文の一時ファイルへの写しの失敗。入力ファイル・タイトルの不在や空を含む (`content_write_failed=1`)。trigger は未起動。root cause の `WIKI_CONTENT_WRITE_FAILED` とは別に、gate-visible な `WIKI_INGEST_FAILED` を accurate reason で surface する (`trigger_exit_*` への誤帰属を防ぐ) |
+| `content_write_failed` | 本文またはタイトルのファイルの不在・空 (`content_write_failed=1`)。trigger は未起動。root cause の `WIKI_CONTENT_WRITE_FAILED` とは別に、gate-visible な `WIKI_INGEST_FAILED` を accurate reason で surface する (`trigger_exit_*` への誤帰属を防ぐ) |
 | `trigger_exit_<n>` | `wiki-ingest-trigger.sh` が exit `<n>` (≠0, ≠2) で終了した genuine trigger 失敗 |
 
 ### 4.6.W.2 Wiki Raw Commit (Shell — deterministic path)
@@ -62,7 +62,7 @@ When the condition is not satisfied, skip this block.
 コミットメッセージ `{wic_commit_message}`（[commit-convention.md](../../../references/commit-convention.md) 適用後の全文）を Write tool で作業ツリー外の絶対パス `{wic_message_file}` に書いてから、次の 1 行を実行する。ファイルが無い・空なら `WIKI_INGEST_FAILED=1; reason=msg_file_mktemp_failed` を出して commit をスキップし（非ブロッキング）、中身が未置換の `{...}` なら `reason=msg_placeholder_residue` を出して exit 1 で止まる。
 
 ```bash
-bash {plugin_root}/scripts/fix-step.sh wiki-raw-commit --pr {pr_number} --message-file {wic_message_file}
+bash {plugin_root}/scripts/fix-step.sh wiki-raw-commit --pr {pr_number} --message-file '{wic_message_file}'
 ```
 
 `wiki_ingest_commit_rc=4` を観測した場合（`WIKI_INGEST_PUSH_FAILED=1; reason=commit_rc_4; exit_code=4`）は、上の Bash block とは**別の Bash tool call**で次を 1 回だけ再試行する。`{wiki_push_attempt}` は直前の `WIKI_PUSH_ATTEMPT` marker の値へリテラル置換する。tool call には `dangerouslyDisableSandbox: true` を指定する（ユーザー確認不要。`/rite:open` ステップ 6.1 と同じ既知の SSH host-key / network sandbox 制約）。通常 sandbox のまま同じ push を繰り返してはならない。

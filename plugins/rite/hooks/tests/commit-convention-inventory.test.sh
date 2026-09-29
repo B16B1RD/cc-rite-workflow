@@ -105,7 +105,7 @@ assert_grep "T-03 squash passes --subject and --body-file" "$MERGE" \
 assert_grep "T-03 review wiki-recording passes --message-file" "$PR_WIKI" \
   'wiki-ingest-commit.sh --message-file'
 assert_grep "T-03 fix wiki-recording passes the message file to its helper" "$FIX_WIKI" \
-  'fix-step\.sh wiki-raw-commit --pr \{pr_number\} --message-file \{wic_message_file\}'
+  'fix-step\.sh wiki-raw-commit --pr \{pr_number\} --message-file '"'"'\{wic_message_file\}'"'"
 assert_grep "T-03 fix wiki-raw-commit passes --message-file" "$FIX_STEP" \
   'wiki-ingest-commit.sh --message-file'
 assert_grep "T-03 issue-close passes --message-file" "$CLOSE" \

@@ -6,7 +6,7 @@
 
 ```bash
 bash {plugin_root}/scripts/fix-step.sh non-fatal-record --pr {pr_number} --owner-repo {owner_repo} \
-  --triage-review-path {triage_review_path} --non-fatal-moved-count {non_fatal_moved_count} --review-cycle-id {review_cycle_id}
+  --triage-review-path '{triage_review_path}' --non-fatal-moved-count {non_fatal_moved_count} --review-cycle-id {review_cycle_id}
 ```
 
 成功後、ステップ 1.4 / 4.6 の non-blocking section と E2E 1 行に件数・今回の移送件数・同じ JSON pointer を表示する。移送指摘を破棄したり、Issue 記録を `/rite:pr-review` 任せにしたりしない。
