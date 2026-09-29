@@ -105,6 +105,7 @@
 
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=584, broken_refs=0
 * **Lint scope note** — 機械検査は全ページを走査。矛盾の検出数はタイトル候補抽出と更新テーマの読解の範囲であり、全ページ間の意味比較は未完了。全体の無矛盾を保証する結果ではない。
+* **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=585, broken_refs=0
 
 ## 2026-09-28
 
