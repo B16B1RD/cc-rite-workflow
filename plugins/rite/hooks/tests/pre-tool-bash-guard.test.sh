@@ -2528,7 +2528,7 @@ sb_max_cost=$(sed -n 's/^_RITE_BTG_SURFACE_MAX_COST=//p' "$HOOK")
 # Where a case falls is fixed by the cost constants, not by the clock. The clock only has to
 # show the hook is not killed: the ceiling is the timeout the harness enforces, so a slow
 # runner cannot turn a correct verdict into a failure.
-sb_timeout_s=$(jq -r '[.. | objects | select((.command // "") | contains("pre-tool-bash-guard.sh")) | .timeout] | if length == 1 then .[0] else empty end' "$(dirname "$HOOK")/hooks.json")
+sb_timeout_s=$(jq -r '[.. | objects | select((.command // "") | contains("pre-tool-bash-guard.sh")) | .timeout] | if length == 1 then .[0] else empty end' "$(dirname "$HOOK")/hooks.json") || sb_timeout_s=""
 if [[ "$sb_timeout_s" =~ ^[1-9][0-9]*$ ]]; then sb_timeout_ms=$(( sb_timeout_s * 1000 )); else sb_timeout_ms=""; fi
 if [[ "$sb_line_cost" =~ ^[1-9][0-9]*$ && "$sb_max_cost" =~ ^[1-9][0-9]*$ && -n "$sb_timeout_ms" ]]; then
   sb_case() {  # $1 label, $2 "deny" when commit-guard-uninspectable is expected, "other" when not
