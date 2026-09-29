@@ -2525,13 +2525,18 @@ sb_utf8=$(locale -a 2>/dev/null | grep -ixE 'c\.utf-?8|en_us\.utf-?8' | head -1)
 [ -n "$sb_utf8" ] || fail "parse budget timings need a C.UTF-8 or en_US.UTF-8 locale"
 sb_line_cost=$(sed -n 's/^_RITE_BTG_SURFACE_LINE_COST=//p' "$HOOK")
 sb_max_cost=$(sed -n 's/^_RITE_BTG_SURFACE_MAX_COST=//p' "$HOOK")
-if [[ "$sb_line_cost" =~ ^[1-9][0-9]*$ && "$sb_max_cost" =~ ^[1-9][0-9]*$ ]]; then
+# Where a case falls is fixed by the cost constants, not by the clock. The clock only has to
+# show the hook is not killed: the ceiling is the timeout the harness enforces, so a slow
+# runner cannot turn a correct verdict into a failure.
+sb_timeout_s=$(jq -r '[.. | objects | select((.command // "") | contains("pre-tool-bash-guard.sh")) | .timeout] | if length == 1 then .[0] else empty end' "$(dirname "$HOOK")/hooks.json")
+if [[ "$sb_timeout_s" =~ ^[1-9][0-9]*$ ]]; then sb_timeout_ms=$(( sb_timeout_s * 1000 )); else sb_timeout_ms=""; fi
+if [[ "$sb_line_cost" =~ ^[1-9][0-9]*$ && "$sb_max_cost" =~ ^[1-9][0-9]*$ && -n "$sb_timeout_ms" ]]; then
   sb_case() {  # $1 label, $2 "deny" when commit-guard-uninspectable is expected, "other" when not
     LC_ALL="$sb_utf8" p7_timed "$p7_big"
     reason=$(extract_hook_field "$output" permissionDecisionReason)
     local got=other
     [[ "$reason" == *commit-guard-uninspectable* ]] && got=deny
-    if [ "$rc" = "0" ] && [ "$_ms" -lt 5000 ] && [ "$got" = "$2" ]; then
+    if [ "$rc" = "0" ] && [ "$_ms" -lt "$sb_timeout_ms" ] && [ "$got" = "$2" ]; then
       pass "parse budget: $1 → $2 (${_ms}ms)"
     else
       fail "parse budget: $1 expected $2, rc=$rc ms=$_ms reason=$reason"
@@ -2622,19 +2627,19 @@ if [[ "$sb_line_cost" =~ ^[1-9][0-9]*$ && "$sb_max_cost" =~ ^[1-9][0-9]*$ ]]; th
     LC_ALL="$sb_utf8" p7_timed "$p7_big"
     reason=$(extract_hook_field "$output" permissionDecisionReason)
     if [ "$sb_where" = none ]; then
-      if [ "$rc" = "0" ] && [ -z "$output" ] && [ "$_ms" -lt 5000 ]; then
+      if [ "$rc" = "0" ] && [ -z "$output" ] && [ "$_ms" -lt "$sb_timeout_ms" ]; then
         pass "parse budget: Pattern 6 allows a long heredoc without gh issue create (${_ms}ms)"
       else
         fail "parse budget: Pattern 6 on a long heredoc without gh issue create rc=$rc ms=$_ms output=$output"
       fi
-    elif [ "$rc" = "0" ] && [[ "$reason" == *direct-gh-issue-create* && "$reason" == *"bodies were checked"* && "$reason" == *"file-editing tool, not a Bash heredoc"* ]] && [ "$_ms" -lt 5000 ]; then
+    elif [ "$rc" = "0" ] && [[ "$reason" == *direct-gh-issue-create* && "$reason" == *"bodies were checked"* && "$reason" == *"file-editing tool, not a Bash heredoc"* ]] && [ "$_ms" -lt "$sb_timeout_ms" ]; then
       pass "parse budget: Pattern 6 denies gh issue create $sb_where a long heredoc (${_ms}ms)"
     else
       fail "parse budget: Pattern 6 on gh issue create $sb_where a long heredoc rc=$rc ms=$_ms reason=$reason"
     fi
   done
 else
-  fail "parse budget constants must be read as positive integers: '$sb_line_cost' '$sb_max_cost'"
+  fail "parse budget constants and the hook timeout must be read as positive integers: '$sb_line_cost' '$sb_max_cost' '$sb_timeout_s'"
 fi
 rm -rf "$p7_repo"
 echo ""
