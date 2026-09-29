@@ -4,9 +4,10 @@ title: "文書中の全箇所を対象にする検査や grep は、書き方の
 domain: "heuristics"
 description: "「すべての箇所」を検査するテストや、同じ規範の記述を探す grep は、表記の 1 種類だけを見ると別の書き方の箇所を取りこぼす。inline code と fenced code、言い回しの揺れなど、同じ内容が現れうる書き方を先に列挙してから抽出条件を決める。"
 created: "2026-09-29T04:35:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T04:44:52Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T16:54:00Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T04:44:52Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T16:54:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260929T041314Z-pr-3425.md"
@@ -16,6 +17,10 @@ sources:
     resource: "raw/fixes/20260929T042705Z-pr-3425.md"
   - type: "reviews"
     resource: "raw/reviews/20260929T042643Z-pr-3426.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T150753Z-pr-3451.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T155401Z-pr-3451.md"
 tags: ["grep", "pin", "fence", "notation"]
 confidence: medium
 ---
@@ -48,6 +53,10 @@ fenced code の取りこぼしを直すときは、抽出を inline code とコ�
 
 旧表記が無いことを確かめる否定 pin は、修正前の版に対して grep が 1 件ヒットし、HEAD で 0 件になることを実測すると、pin が空振りしていない（非 vacuous である）ことを強く示せる。ただし否定 pin は 1 つの語形しか禁じないので、別の語形で同じ規範が書き戻されても捕まえない。語形を足し続けるより、規範文そのものが存在することを見る正の pin を主にし、否定 pin の語形拡張は補助にとどめる。別語形の混入が実際に観測されるまでは、否定 pin の拡張に手を広げない。
 
+### リスト項目の中のインデントされた fence
+
+Markdown の fence を正規表現で抜き出すテストは、開き・閉じの fence が行頭にある前提で書かれがちで、リスト項目の中でインデントされたブロックを黙って取りこぼす。抽出の件数下限を「今取れた件数」に合わせていると、取りこぼしは表に出ない。抽出だけインデントを許して（開き fence のインデントを閉じ fence にも要求する形にして）本文を dedent し、下限は別の形検査が数える対象の実数に合わせる。取りこぼしていた位置への変異で fail することを確かめる。
+
 ## 関連ページ
 
 - [検出文法が一部の表記だけを見るとき、同じ画面の別表記が検査外に残って整合が壊れたままゲートは通る](../anti-patterns/partial-format-detector-leaves-sibling-tokens-inconsistent.md)
@@ -61,3 +70,5 @@ fenced code の取りこぼしを直すときは、抽出を inline code とコ�
 - [fix 結果](../../raw/fixes/20260929T042136Z-pr-3426.md)
 - [抽出を和集合にし陽性対照を理由まで照合した fix 結果](../../raw/fixes/20260929T042705Z-pr-3425.md)
 - [否定 pin の解消検証と正の pin を主にする判断のレビュー結果](../../raw/reviews/20260929T042643Z-pr-3426.md)
+- [インデントされた fence の取りこぼしを指摘したレビュー結果](../../raw/reviews/20260929T150753Z-pr-3451.md)
+- [抽出をインデント対応にし下限を実数へ合わせた fix 結果](../../raw/fixes/20260929T155401Z-pr-3451.md)

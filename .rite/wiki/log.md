@@ -4,6 +4,31 @@
 
 * **Skip**: [再開待ち worktree 保護のレビュー結果](raw/reviews/20260929T162804Z-pr-3454.md) — 独立レビューと回帰検証の完了記録のみで、新たなドメイン経験則はない
 * **Lint incomplete** — 機械検査の報告値は stale=61, orphans=0, missing_concept=0, unregistered_raw=591, broken_refs=0, descriptive_number_ref=0。helper が Broken pipe を出力したため全体の成功とは扱わない。既存ページ全件の意味比較は未実施。
+* **Update**: [スキルのシェル処理を helper へ移すときは値の入力経路を対の処理と揃え、ファイル入力には存在と形式の検査を同時に入れる](pages/heuristics/helper-extraction-input-route-pairing-and-failure-paths.md) — raw/reviews/20260929T134719Z-pr-3451.md を統合
+* **Update**: [スキルのシェル処理を helper へ移すときは値の入力経路を対の処理と揃え、ファイル入力には存在と形式の検査を同時に入れる](pages/heuristics/helper-extraction-input-route-pairing-and-failure-paths.md) — raw/fixes/20260929T140123Z-pr-3451.md を統合
+* **Update**: [本文を helper へ移すと、fenced block をコーパスにするテストの検査数が無言で減る](pages/anti-patterns/helper-relocation-silently-shrinks-corpus-tests.md) — raw/reviews/20260929T143733Z-pr-3451.md を統合
+* **Update**: [本文を helper へ移すと、fenced block をコーパスにするテストの検査数が無言で減る](pages/anti-patterns/helper-relocation-silently-shrinks-corpus-tests.md) — raw/fixes/20260929T145123Z-pr-3451.md を統合
+* **Update**: [文書中の全箇所を対象にする検査や grep は、書き方の種類を先に列挙してから書く](pages/heuristics/enumerate-notations-before-scanning-all-occurrences.md) — raw/reviews/20260929T150753Z-pr-3451.md を統合
+* **Update**: [文書中の全箇所を対象にする検査や grep は、書き方の種類を先に列挙してから書く](pages/heuristics/enumerate-notations-before-scanning-all-occurrences.md) — raw/fixes/20260929T155401Z-pr-3451.md を統合
+* **Update**: [base 取り込みの競合は base 側の正本を基準にし、PR の変更意図だけを載せ直す](pages/heuristics/base-intake-conflict-reapply-pr-intent-on-base-canonical.md) — raw/reviews/20260929T162531Z-pr-3452.md を統合
+* **Update**: [base 取り込みの競合は base 側の正本を基準にし、PR の変更意図だけを載せ直す](pages/heuristics/base-intake-conflict-reapply-pr-intent-on-base-canonical.md) — raw/reviews/20260929T164142Z-pr-3451.md を統合
+* **Update**: [@tsv+IFS read の field-shift hazard 横断監査は cut-f免除と空フィールド可否の2条件で判定する](pages/heuristics/tsv-ifs-field-shift-hazard-audit-criteria.md) — raw/reviews/20260929T134642Z-pr-3452.md を統合
+* **Update**: [@tsv+IFS read の field-shift hazard 横断監査は cut-f免除と空フィールド可否の2条件で判定する](pages/heuristics/tsv-ifs-field-shift-hazard-audit-criteria.md) — raw/fixes/20260929T134642Z-pr-3452.md を統合
+* **Create**: [reviewer が実行できない受入条件の実測記録は、修正のたびに最終 HEAD で全件取り直す](pages/heuristics/author-measurement-record-refreshed-at-final-head.md) — raw/reviews/20260929T161338Z-pr-3451.md を新規ページ化
+* **Create**: [コマンド文字列の判定器には入力を stdin で渡し、前処理は bash がデータとして扱う部分だけを除く](pages/heuristics/command-judge-input-via-stdin-and-strip-only-bash-data.md) — raw/reviews/20260929T135408Z-pr-3446.md を新規ページ化
+* **Update**: [コマンド文字列の判定器には入力を stdin で渡し、前処理は bash がデータとして扱う部分だけを除く](pages/heuristics/command-judge-input-via-stdin-and-strip-only-bash-data.md) — raw/fixes/20260929T140715Z-pr-3446.md を統合
+* **Create**: [シェル字句の判定器は bash を実際に実行する差分検証で規則を合わせ、字句器を 1 つに集める](pages/patterns/shell-lexer-bash-oracle-differential-validation.md) — raw/reviews/20260929T144536Z-pr-3446.md を新規ページ化
+* **Update**: [シェル字句の判定器は bash を実際に実行する差分検証で規則を合わせ、字句器を 1 つに集める](pages/patterns/shell-lexer-bash-oracle-differential-validation.md) — raw/fixes/20260929T150344Z-pr-3446.md を統合
+* **Update**: [シェル字句の判定器は bash を実際に実行する差分検証で規則を合わせ、字句器を 1 つに集める](pages/patterns/shell-lexer-bash-oracle-differential-validation.md) — raw/reviews/20260929T153846Z-pr-3446.md を統合
+* **Update**: [シェル字句の判定器は bash を実際に実行する差分検証で規則を合わせ、字句器を 1 つに集める](pages/patterns/shell-lexer-bash-oracle-differential-validation.md) — raw/fixes/20260929T160855Z-pr-3446.md を統合
+* **Create**: [呼び出し元で挙動を分ける規則は、永続状態から推定せず呼び出し元が渡す明示の引数で分ける](pages/heuristics/caller-context-branch-uses-explicit-flag-not-persisted-state.md) — raw/reviews/20260929T140253Z-pr-3452.md を新規ページ化（join 区切りの項は @tsv のページへ統合）
+* **Update**: [呼び出し元で挙動を分ける規則は、永続状態から推定せず呼び出し元が渡す明示の引数で分ける](pages/heuristics/caller-context-branch-uses-explicit-flag-not-persisted-state.md) — raw/fixes/20260929T141430Z-pr-3452.md を統合
+* **Update**: [呼び出し元で挙動を分ける規則は、永続状態から推定せず呼び出し元が渡す明示の引数で分ける](pages/heuristics/caller-context-branch-uses-explicit-flag-not-persisted-state.md) — raw/reviews/20260929T143234Z-pr-3452.md を統合
+* **Update**: [呼び出し元で挙動を分ける規則は、永続状態から推定せず呼び出し元が渡す明示の引数で分ける](pages/heuristics/caller-context-branch-uses-explicit-flag-not-persisted-state.md) — raw/fixes/20260929T144856Z-pr-3452.md を統合
+* **Update**: [呼び出し元で挙動を分ける規則は、永続状態から推定せず呼び出し元が渡す明示の引数で分ける](pages/heuristics/caller-context-branch-uses-explicit-flag-not-persisted-state.md) — raw/reviews/20260929T151059Z-pr-3452.md を統合
+* **Update**: [呼び出し元で挙動を分ける規則は、永続状態から推定せず呼び出し元が渡す明示の引数で分ける](pages/heuristics/caller-context-branch-uses-explicit-flag-not-persisted-state.md) — raw/reviews/20260929T154417Z-pr-3452.md を統合
+* **Create**: [PR 起因と判定した非 blocking の候補は、同じ PR の fix の計画に入れて直す](pages/heuristics/pr-origin-nonblocking-fixed-in-same-pr-plan.md) — raw/fixes/20260929T153014Z-pr-3452.md を新規ページ化（呼び出し元の引数の項は隣のページへ統合）
+* **Skip**: [20260929T164137Z-pr-3452.md](raw/fixes/20260929T164137Z-pr-3452.md) — detector-candidate: 標準入力を読む paste はオペランド - を明示する（BSD paste はオペランド無しで失敗する）
 
 ## 2026-09-29
 

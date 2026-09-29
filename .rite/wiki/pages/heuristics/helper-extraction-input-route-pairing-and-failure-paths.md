@@ -4,10 +4,16 @@ title: "スキルのシェル処理を helper へ移すときは値の入力経�
 domain: "heuristics"
 description: "fenced bash を helper へ移すついでに値の受け取り方（placeholder の文字どおり置換 → ファイルや引数の生値読み）を片側だけ変えると、同じ値を置換経由で扱う対の処理と入力が食い違い、ファイル入力は読み取り失敗という新しい無言の経路を生む。"
 created: "2026-09-28T01:30:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T01:30:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T16:54:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T16:54:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260928T011608Z-pr-3366.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T134719Z-pr-3451.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T140123Z-pr-3451.md"
 tags: ["helper-extraction", "placeholder", "fail-loud", "refactor"]
 confidence: medium
 ---
@@ -26,6 +32,15 @@ fenced bash を helper へ移すついでに値の受け取り方（placeholder 
 
 移設にはほかにも置き場所に依存する記述が付いてくる。コメントの相対パス（rationale ポインタ等）と「Claude が literal substitute する」のような入力経路の説明は、移設先の実態に合わせて書き直す。関数本体の終わりを列 0 の `}` で判定して抜き出すテストは、関数内で列 0 に閉じ括弧を置く書き方（`|| {` のブロック等）で途中で切れるため、移設後の関数の形で抽出が成り立つかも確かめる。
 
+### ファイル受け取りへ変えたときに見落としやすい 4 つ
+
+自由文を caller が書いたファイルで受け取る形に変えた移設では、次の 4 つが続けて見つかった。
+
+- **写しが下流の防御を外す**: 下流 helper が入力パスに symlink 拒否やパスの allowlist を持つとき、上流で一時ファイルへ写してから渡すと、防御は caller のファイルではなく写しに対して評価され、実質的に効かなくなる。写しを足して防御を補うのではなく写しを消し、caller の書き先を下流の allowlist の内側に指定する。コードが減ったうえで防御が戻る。
+- **パスの placeholder は引用符で囲む**: 1 行呼び出しに置いたファイルパスの placeholder を引用符なしにすると、空白を含むパスで単語分割される。同じ skill の既存の呼び出しと同じく単一引用符で囲み、呼び出し行を字句で固定しているテストも同時に直す。
+- **新しい条件に古い reason を流用しない**: 「ファイルが無い・空」という新しい条件を、移設前に環境障害（一時ファイルの作成失敗など）を表していた reason に流し込むと、reason が起きていない原因を名指しし、調査を誤った方向へ誘導する。新しい条件には、その条件を表す reason を割り当てる。
+- **オプション名の対応は名前の集合一致では固定されない**: 呼び出し行と dispatcher の突き合わせをサブコマンド名の集合一致だけで行うと、オプション名の書き違いや必須オプションの欠落で dispatcher が拒否する状態でもテストは通る。オプション名と必須オプションまで照合するか、呼び出しを実際に実行して marker を確かめる。
+
 ## 関連ページ
 
 - [判定手段を差し替えるときは、旧手段が暗黙に提供していた失敗条件を列挙してから移す](./replacing-a-judgment-mechanism-drops-its-implicit-failure-conditions.md)
@@ -34,3 +49,5 @@ fenced bash を helper へ移すついでに値の受け取り方（placeholder 
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20260928T011608Z-pr-3366.md)
+- [ファイル受け取りへの移設で見つかった 4 つの失敗経路のレビュー結果](../../raw/reviews/20260929T134719Z-pr-3451.md)
+- [写しを消して下流の防御を戻した fix 結果](../../raw/fixes/20260929T140123Z-pr-3451.md)

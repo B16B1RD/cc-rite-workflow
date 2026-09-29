@@ -10,11 +10,18 @@ sources:
     resource: "raw/reviews/20260706T141300Z-pr-1767.md"
   - type: "reviews"
     resource: "raw/reviews/20260924T033414Z-pr-3018.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T134642Z-pr-3452.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T134642Z-pr-3452.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T140253Z-pr-3452.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-24T12:45:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T16:54:00Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-24T12:45:00+09:00" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T16:54:00Z" }
 ---
 
 # @tsv+IFS read の field-shift hazard 横断監査は cut-f免除と空フィールド可否の2条件で判定する
@@ -59,6 +66,12 @@ hazard ありと判定した箇所のみ、`jq` 側を `@tsv` → `join("")`、
 
 既存の読取箇所を一度そろえても、あとから新しく書いた hook が `@tsv` と tab の IFS で同じ flow-state を読むと、同じ欠陥がそのまま戻る。Wiki 適用ゲートでは phase / worktree / issue_number の 3 列を tab で読み、worktree を記録しないセッション（キーが無い場合を含む）で Issue 番号が worktree 欄にずれて、作業メモリを見つけられずにレビューが毎回拒否された。空欄が構造的に起こる列（記録されないことがある worktree など）を中間に置いた読取は、書いた時点で本ページの 2 条件にかける。回帰テストは、空欄の列を持つ入力で後続の値が正しい変数に入ったことを観測できる形にする（例: 後続の値の食い違いを示す拒否理由が出る。空欄時の失敗理由が出ない）。
 
+### フィールドを 1 つ足す変更で前提が崩れる
+
+既存の受け渡しに空になりうるフィールドを 1 つ足しただけで、tab の IFS で読んでいた後続のフィールドが左へずれた例がもう 1 件ある。足す前は全フィールドが非空で hazard が顕在化しなかったため、区切りの選択が見直されなかった。フィールドを足す変更は本ページの 2 条件にかけ直し、空になりうるなら `\x1f` のような IFS 空白でない区切りへ移す。
+
+区切りを join 形式へ変えると、`@tsv` が行っていた区切り文字のエスケープは失われる。受け取った値（台帳など外部から戻る値）を git の位置引数へ渡すなら、`--end-of-options` で閉じるか値を検証して、`-` で始まる値がオプションとして読まれないようにする。
+
 ## 関連ページ
 
 - （関連ページなし）
@@ -67,3 +80,6 @@ hazard ありと判定した箇所のみ、`jq` 側を `@tsv` → `join("")`、
 
 - [レビュー結果](../../raw/reviews/20260706T141300Z-pr-1767.md)
 - [レビュー結果](../../raw/reviews/20260924T033414Z-pr-3018.md)
+- [フィールド追加で後続が左へずれたレビュー結果](../../raw/reviews/20260929T134642Z-pr-3452.md)
+- [区切りを非空白へ移した fix 結果](../../raw/fixes/20260929T134642Z-pr-3452.md)
+- [join 区切りでエスケープを失う点を指摘したレビュー結果](../../raw/reviews/20260929T140253Z-pr-3452.md)
