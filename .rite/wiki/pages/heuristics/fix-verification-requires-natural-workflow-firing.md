@@ -6,9 +6,13 @@ created: "2026-04-17T00:15:00+00:00"
 sources:
   - type: "retrospectives"
     resource: "raw/retrospectives/20260416T094137Z-issue-532.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T013454Z-pr-3393.md"
 tags: ["verification", "workflow", "silent-regression", "testing"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:24:18Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:24:18Z" }
 ---
 
 # Fix の完成判定は shell script 単体動作ではなく実ワークフロー発火実績で行う
@@ -55,6 +59,10 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
 - Unit test とは別に「E2E firing trace」をチェックリスト化する
 - 監視スクリプト（例: `wiki-growth-check.sh`）で「直近 N 件の PR に対応する artifact が存在するか」を自動判定できるようにしておく
 
+### レビューループでは、修正を reviewer の再現スクリプトで先に流す
+
+同じ構図はレビューと修正の反復の中でも起きる。修正を自作の fixture だけで通すと、次の cycle で実物の経路の穴が reviewer に見つかる。観測された事例では、各 cycle の修正を reviewer の再現スクリプト（実物のゲートにつなぐ e2e）で先に流すことが収束の決め手になった。
+
 ## 関連ページ
 
 - （関連ページなし）
@@ -62,3 +70,4 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
 ## ソース
 
 - [close retrospective](../../raw/retrospectives/20260416T094137Z-issue-532.md)
+- [reviewer の再現スクリプトで修正を先に流して収束したレビュー結果](../../raw/reviews/20260929T013454Z-pr-3393.md)

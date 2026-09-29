@@ -42,6 +42,21 @@
 * **Update**: [git のパス出力を assert するテストは fixture の mktemp 値を `pwd -P` で実体パスへ正規化する](pages/patterns/normalize-tmpdir-symlink-in-path-asserting-tests.md) — raw/reviews/20260929T012747Z-pr-3421.md と raw/fixes/20260929T013237Z-pr-3421.md で補強
 * **Skip**: [20260929T013737Z-pr-3421.md](raw/reviews/20260929T013737Z-pr-3421.md) — 指摘 0 件の差分スコープ再レビューで、既存の経験則に加える観測がない
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=582, broken_refs=0
+* **Update**: [手順を helper へ移して入口検証を足すと、未定義 placeholder で流れていた終端経路が停止に変わる](pages/anti-patterns/entry-validation-on-extraction-stops-undefined-placeholder-paths.md) — 移設で加わった厳格化を外して元の挙動へ戻した fix 結果で補強
+* **Update**: [git のパス出力を assert するテストは fixture の mktemp 値を `pwd -P` で実体パスへ正規化する](pages/patterns/normalize-tmpdir-symlink-in-path-asserting-tests.md) — git を介さない helper の出力側も実パスへそろえた fix 結果で補強
+* **Update**: [新しい state 操作は既存 state との組み合わせを実際の入口から試し、停止ヒントは案内先が受理する状態でだけ出す](pages/heuristics/stop-hint-predicate-matches-target-acceptance.md) — 停止案内の退路を全ての面にそろえた fix 結果で補強
+* **Update**: [同じ判定規則を別言語で二重実装するときは、同一 fixture で SoT 実装の実行結果と突合する parity assert を置く](pages/patterns/dual-implementation-rule-parity-assert-against-sot-executable.md) — 一致確認テストに肯定側の確認と pipefail を足した fix 結果で補強
+* **Update**: [検出器が正規表現を probe するときは実際の評価文脈を再現し、停止を固定する自己テストは理由まで assert する](pages/heuristics/detector-regex-probe-reproduces-evaluation-context.md) — 引数検査の probe に拒否理由の assert を足した fix 結果で補強
+* **Update**: [冪等のキーを次の run で書き直される記録に置くなら、書き直す側が内容の一致で前の値を持ち越す](pages/heuristics/idempotency-key-must-survive-record-rewrite.md) — 持ち越しを記録の寿命へ結び付けた fix 結果で補強
+* **Create**: [HTML コメントの閉じ記号を `-->` だけで判定すると、`--!>` で閉じた後に続く本文を見逃す](pages/anti-patterns/html-comment-end-bang-missed-by-arrow-only-regex.md) — 閉じ記号を 2 種類とも扱うよう直した fix 結果を新規ページ化
+* **Update**: [後始末の存在をテストで固定するときは、終了時に実行される位置に限って照合する](pages/patterns/test-cleanup-pinned-at-exit-registration.md) — 登録行と関数名を最後の EXIT 登録 1 つから取り出すよう指摘したレビュー結果で補強
+* **Update**: [新しい state 操作は既存 state との組み合わせを実際の入口から試し、停止ヒントは案内先が受理する状態でだけ出す](pages/heuristics/stop-hint-predicate-matches-target-acceptance.md) — 停止を運ぶ面の間で退路の案内がずれたことを指摘したレビュー結果で補強
+* **Update**: [「実測を記録する」型の受入条件は対象全件の実測で満たす — 形の検査や類推で代わりにしない](pages/heuristics/measured-record-ac-needs-every-target-measured.md) — 実測記録の鮮度と reviewer が検証できない受入条件を示したレビュー結果で補強
+* **Update**: [Fix の完成判定は shell script 単体動作ではなく実ワークフロー発火実績で行う](pages/heuristics/fix-verification-requires-natural-workflow-firing.md) — reviewer の再現スクリプトで修正を先に流して収束したレビュー結果で補強
+* **Update**: [HTML コメントの閉じ記号を `-->` だけで判定すると、`--!>` で閉じた後に続く本文を見逃す](pages/anti-patterns/html-comment-end-bang-missed-by-arrow-only-regex.md) — `--!>` の後ろが本文として描画されることを示したレビュー結果を統合
+* **Update**: [CI の観測をレビューへ渡し、失敗の帰属と採否を分ける](pages/heuristics/review-loop-has-no-ci-result-input.md) — macOS でだけ落ちる回帰を CI ログで捕まえることを示したレビュー結果で補強
+* **Update**: [実装が分岐しているならテストも分岐の数だけ要る — 既定構成の経路こそ抜けやすい](pages/heuristics/implementation-branch-count-equals-test-branch-count.md) — OR で書いた拒否条件の片側が未固定だったことを示したレビュー結果で補強
+* **Update**: [シェル本体を別ディレクトリの helper へ移すと、相対パス・引数・出力元の記述が移設元を前提に残る](pages/anti-patterns/helper-relocation-leaves-origin-relative-references.md) — 参照記述の更新漏れが別ファイルで再発見されたレビュー結果で補強
 
 ## 2026-09-28
 

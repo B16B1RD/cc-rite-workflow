@@ -4,13 +4,17 @@ title: "CI の観測をレビューへ渡し、失敗の帰属と採否を分け
 domain: "heuristics"
 description: "レビュー対象コミットの CI check を入力とレポートに含めることで、ローカルと異なる環境での失敗を早期に確認できる。赤い check だけでは原因を断定せず、変更との対応と失敗出力を確認して既存の実測基準で採否する。"
 created: "2026-09-06T16:10:23Z"
-generated: { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-07T11:07:42Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:24:18Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:24:18Z" }
 promote: rite-plugin
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260906T155431Z-pr-2582.md"
   - type: "reviews"
     resource: "raw/reviews/20260907T110021Z-pr-2606.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T014249Z-pr-3416.md"
 tags: ["review-loop", "ci", "blind-spot", "merge-gate"]
 confidence: high
 ---
@@ -36,6 +40,12 @@ CI はローカルと異なるホストやツールで動くため、ローカ�
 - 無関係な flaky や allowed failure を、赤い check だけを根拠に一律 blocking にしない。
 - 状態の snapshot は取得時点の観測であり、CI 完了やその後のマージ可否を保証しない。
 
+### 特定 OS でだけ起きる回帰は、受入条件の確認で CI ログを根拠にする
+
+複数の reviewer が全員 Linux でテストを走らせても、macOS でだけ起きるパスの不一致は見つからない。受入条件に「CI で全件 passed」があるときは、受入条件の確認で CI ログ（macOS のジョブを含む）を根拠にすると、macOS でだけ落ちる回帰を捕まえられる。
+
+比較の片側だけを実パスにそろえるような修正は、解決先を元の checkout に戻す変異を当てて検出力が落ちていないかを確かめると、正規化で問題が隠れていないことを示せる。
+
 ## 関連ページ
 
 - [GNU 形式の sed に依存する fixture は BSD 環境で失敗する](../anti-patterns/gnu-sed-inplace-silently-noop-on-bsd.md)
@@ -45,3 +55,4 @@ CI はローカルと異なるホストやツールで動くため、ローカ�
 
 - [CI 失敗の発見が遅れるレビューの観測](../../raw/reviews/20260906T155431Z-pr-2582.md)
 - [CI 入力とレポートの接続の検証](../../raw/reviews/20260907T110021Z-pr-2606.md)
+- [macOS でだけ落ちる回帰を CI ログで捕まえることを示したレビュー結果](../../raw/reviews/20260929T014249Z-pr-3416.md)

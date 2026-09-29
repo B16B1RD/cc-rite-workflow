@@ -13,9 +13,13 @@ sources:
     resource: "raw/fixes/20260731T065426Z-pr-2070.md"
   - type: "fixes"
     resource: "raw/fixes/20260731T073514Z-pr-2070.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T031252Z-pr-3422.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:24:18Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:24:18Z" }
 ---
 
 # 実装が分岐しているならテストも分岐の数だけ要る — 既定構成の経路こそ抜けやすい
@@ -39,6 +43,13 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 
 **適用条件**: 設定値・戦略で実装が分岐する機能にテストを書くとき。既定構成側から先に書く。
 
+### 拒否条件を複数 phase の OR で書いた分岐も、phase ごとに固定する
+
+拒否条件を複数 phase の OR で書いた分岐では、各 phase のケースを個別にテストで固定しないと、片方の条件を外す変異が生き残る。観測された事例では implement phase のケースだけを拒否側に置き、fix phase のケースを欠いたため、fix の条件を外しても suite が緑のままだった。
+
+- 故障注入でしか通らない fail-closed 分岐は、注入を分岐に固有の位置（共通関数ではなく当該パターンの呼び出し）に置く。共通関数に置くと、先行する同じ処理のパターンが先に拒否し、対象の分岐まで届かない
+- stderr に何も出さない fail-open の trap に対して `! grep 'fail-open' stderr` と書いても、構造上落ちない assert になる。trap の発火は deny 出力の有無で検出する
+
 ## 関連ページ
 
 - [アサーションの検証強度は「該当行を壊して赤くなるか」でしか測れない](./mutation-testing-measures-assertion-strength.md)
@@ -50,3 +61,4 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 - [レビュー結果](../../raw/reviews/20260731T072309Z-pr-2070.md)
 - [fix 結果](../../raw/fixes/20260731T065426Z-pr-2070.md)
 - [fix 結果](../../raw/fixes/20260731T073514Z-pr-2070.md)
+- [OR で書いた拒否条件の片側が未固定だったことを示したレビュー結果](../../raw/reviews/20260929T031252Z-pr-3422.md)

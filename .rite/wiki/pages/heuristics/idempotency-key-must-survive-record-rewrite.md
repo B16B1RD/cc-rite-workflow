@@ -4,12 +4,16 @@ title: "冪等のキーを次の run で書き直される記録に置くなら�
 domain: "heuristics"
 description: "作成済みの成果物の番号を判定記録に書き戻して再実行を冪等にしても、その記録が HEAD の変化などで書き直されると番号が消え、再実行の典型経路で重複作成が起きる。書き直す側が内容の一致で前の値を持ち越し、持ち越し先が複数にまたがるときは止める。やり直す手順では外部への書き込みを「既にあれば書かない」形にし、停止時の再開案内は失敗の種類ごとに事実と合う文にする。"
 created: "2026-09-28T17:00:11Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T17:00:11Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:24:18Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:24:18Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260928T163430Z-pr-3393.md"
   - type: "fixes"
     resource: "raw/fixes/20260928T165232Z-pr-3393.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T014454Z-pr-3393.md"
 tags: ["idempotency", "resume", "external-write", "jq"]
 confidence: medium
 ---
@@ -30,6 +34,10 @@ confidence: medium
 
 **再開の案内は失敗の種類ごとに事実と合わせる。** 書き戻しに失敗した経路で「書き戻してある」と断定すると、案内どおりの再実行が重複を生む。書き戻せなかった番号は marker に載せて案内まで運ぶ。
 
+**持ち越しは記録の寿命に結び付ける。** 冪等のキーを持ち越すかどうかを、書き込みの途中だけ存在する状態（保留ファイルなど）の有無で決めると、その状態が消えた後の書き直しで値を失う。持ち越しは記録そのものの寿命に合わせる。
+
+**テストのスタブは stdout で結果を返す。** スタブがファイル経由で結果を返すと、環境差で失敗したときに原因が出力に残らない。stdout で返せば、失敗時の出力に原因が残る。
+
 ## 関連ページ
 
 - [保留（hold）を新設したら、寿命を state を消す全経路で揃え、解除の手段を保留の理由ごとに用意する](./new-hold-state-lifecycle-across-all-purge-paths.md)
@@ -38,3 +46,4 @@ confidence: medium
 
 - [冪等キーが記録の書き直しで消えることを指摘したレビュー結果](../../raw/reviews/20260928T163430Z-pr-3393.md)
 - [前の値を内容の一致で持ち越すよう改めた fix 結果](../../raw/fixes/20260928T165232Z-pr-3393.md)
+- [持ち越しを記録の寿命へ結び付けた fix 結果](../../raw/fixes/20260929T014454Z-pr-3393.md)

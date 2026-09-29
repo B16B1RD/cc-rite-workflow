@@ -4,10 +4,14 @@ title: "後始末の存在をテストで固定するときは、終了時に実
 domain: "patterns"
 description: "後始末の存在をテストで固定するときに、ファイル全体への文字列一致で確かめると、実行されない位置に書かれた後始末でも通ってしまう。最後の EXIT 登録そのもの、またはその登録が呼ぶ関数の本体に限って照合する。テストが作る一時ディレクトリは、作った直後に EXIT 登録へ加える。"
 created: "2026-09-29T01:07:27Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T01:07:27Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:24:18Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:24:18Z" }
 sources:
   - type: "fixes"
     resource: "raw/fixes/20260929T004520Z-pr-3416.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T010533Z-pr-3416.md"
 tags: ["bash", "test", "trap", "cleanup"]
 confidence: medium
 ---
@@ -22,6 +26,8 @@ confidence: medium
 
 `rm -rf "$tmp"` がファイルのどこかにあることを確かめるだけでは、正常終了の経路にしか書かれていない後始末や、上書きされて効かない trap を見逃す。照合は最後に登録された EXIT trap の文字列、またはその trap が呼ぶ関数の本体に範囲を絞る。テストが作る一時ディレクトリは正常終了の経路だけで消さず、作った直後に EXIT 登録へ加える。`set -u` 下では未代入の変数を `${var:-}` で参照する。
 
+登録行と、その登録が呼ぶ関数名を別々に探してはならない。別々に探すと、後から別の trap で EXIT を上書きした形でも、古い登録行と関数本体がそれぞれ見つかって通ってしまう。最後の EXIT 登録 1 つから、登録の文字列と呼び出す関数名の両方を取り出して照合する。
+
 ## 関連ページ
 
 - （関連ページなし）
@@ -29,3 +35,4 @@ confidence: medium
 ## ソース
 
 - [後始末の照合を EXIT 登録の位置に限った fix 結果](../../raw/fixes/20260929T004520Z-pr-3416.md)
+- [登録行と関数名を別々に探すと上書きされた trap を見逃すと指摘したレビュー結果](../../raw/reviews/20260929T010533Z-pr-3416.md)

@@ -4,7 +4,7 @@ title: "git のパス出力を assert するテストは fixture の mktemp 値�
 domain: "patterns"
 description: "macOS の `$TMPDIR` は `/var/folders/...` という symlink で、git は `rev-parse --show-toplevel` でも `worktree list` でも実体側 `/private/var/folders/...` を返す。mktemp の値をそのまま期待値に使うと Linux では緑・macOS CI だけ赤になる。"
 created: "2026-09-01T20:29:00+09:00"
-generated: { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-09-29T02:10:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:24:18Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260908T090455Z-pr-2628.md"
@@ -22,12 +22,15 @@ sources:
     resource: "raw/reviews/20260929T012747Z-pr-3421.md"
   - type: "fixes"
     resource: "raw/fixes/20260929T013237Z-pr-3421.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T011536Z-pr-3416.md"
 tags: []
 confidence: high
 verified:
   - { by: "rite-wiki-ingest/gpt-6", at: "2026-09-08T09:16:17Z" }
   - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-09T15:44:58Z" }
   - { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-09-29T02:10:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:24:18Z" }
 ---
 
 # git のパス出力を assert するテストは fixture の mktemp 値を `pwd -P` で実体パスへ正規化する
@@ -80,6 +83,10 @@ fixture の一時ディレクトリだけでなく、テストが被テストス
 
 直す方向は、被テスト側の解決方式と同じファイルの既存検査（`pwd -P` を使っているか）を先に確かめれば一意に決まる。修正は既存 1 コマンドのフラグ変更で足り、検査の内容や被テスト側は変えない。CI とローカルは symlink を挟まないため通り続け、レビュアーが全員同じ環境でも見つかりにくいので、レビューでは推奨事項として挙がった段階で先に直しておく。
 
+### 比較の相手が git を介さない helper の出力でも、両辺を実パスにそろえる
+
+片辺が `pwd -P` の実パスで、もう片辺が git 管理外で論理パスの `$(pwd)` を返す helper の出力であるときも、同じ不一致が起きる。helper の出力も、比べる前に `cd … && pwd -P` で実パスへ直す。helper の解決に失敗したときは結果が空になるようにして、比較が偽のまま止まる形を保つ。修正前に落ちることと修正後に通ることの両方を、symlink にした `TMPDIR` で確かめる。
+
 ## 関連ページ
 
 - [エラーメッセージ文字列の grep assert は locale 依存で dead assertion 化する](../anti-patterns/locale-dependent-error-message-grep-assertion.md)
@@ -96,3 +103,4 @@ fixture の一時ディレクトリだけでなく、テストが被テストス
 - [差分レビュー結果](../../raw/reviews/20260909T153857Z-pr-2635.md)
 - [追加観測（スクリプト位置から組み立てる期待パス）](../../raw/reviews/20260929T012747Z-pr-3421.md)
 - [fix 結果（期待パスの解決方式を実装に揃える）](../../raw/fixes/20260929T013237Z-pr-3421.md)
+- [fix 結果（git を介さない helper の出力側も実パスへそろえる）](../../raw/fixes/20260929T011536Z-pr-3416.md)

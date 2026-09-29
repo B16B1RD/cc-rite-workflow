@@ -5,7 +5,9 @@ domain: "heuristics"
 promote: rite-plugin
 description: "受入条件が各対象を実際に動かした記録を求めるとき、一部だけ動かして残りを「形が同じだから通る」で埋めると、別の条件（形の検査）の根拠を流用しただけになり未充足と判定される。通常経路で通らない分岐は、同じ実行の中で直接呼び出して記録を補う。"
 created: "2026-09-28T05:02:36Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T05:02:36Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:24:18Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:24:18Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260928T014704Z-pr-3366.md"
@@ -13,6 +15,8 @@ sources:
     resource: "raw/reviews/20260928T042449Z-pr-3366.md"
   - type: "fixes"
     resource: "raw/fixes/20260928T043245Z-pr-3366.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T012734Z-pr-3349.md"
 tags: ["acceptance-criteria", "measurement", "review-loop"]
 confidence: high
 ---
@@ -42,6 +46,14 @@ confidence: high
 - helper に新しい exit 原因を足したら、helper ヘッダの exit 契約と手順書の対処表も更新する
 - placeholder を sed で一括置換すると、`${var}` 形の変数参照まで書き換わり、別のファイルへ書き込む事故が起きる。置換対象は `"{var}"` の形に限定する
 
+### 実測の記録は最後の修正 commit の後に取り直す
+
+受入条件が「PR 本文に実測を記録する」ことを証拠にするとき、実測の後にコードが変わると、reviewer は記録の鮮度を理由に未検証と判定する。実測は最後の修正 commit の後に取り直す。
+
+step helper を実行できない契約の reviewer には、隔離ガード下での実測を求める受入条件を自分で確かめる手段がない。その条件の充足は PR 本文の記録に依存するので、実測を誰が行い、reviewer が何と突き合わせるかを受入条件の側で決めておく。
+
+一方、base の取り込みを含む merge commit でも、差分スコープの reviewer は base 由来の hunk を context 行として正しく除外し、修正の解消を実行経路で確認できた。
+
 ## 関連ページ
 
 - [機械的一括置換は同一リテラルの役割差を無視すると load-bearing fixture を壊す](../anti-patterns/bulk-substitution-ignores-literal-role.md)
@@ -51,3 +63,4 @@ confidence: high
 - [レビュー結果（受入条件の実測記録の網羅）](../../raw/reviews/20260928T014704Z-pr-3366.md)
 - [レビュー結果（形の検査は実測記録の代わりにならない）](../../raw/reviews/20260928T042449Z-pr-3366.md)
 - [fix 結果（全サブコマンドの実測を集め直す）](../../raw/fixes/20260928T043245Z-pr-3366.md)
+- [実測記録の鮮度と reviewer が検証できない受入条件を示したレビュー結果](../../raw/reviews/20260929T012734Z-pr-3349.md)

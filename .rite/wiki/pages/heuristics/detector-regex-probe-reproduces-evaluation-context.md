@@ -4,12 +4,16 @@ title: "検出器が正規表現を probe するときは実際の評価文脈�
 domain: "heuristics"
 description: "正規表現の終端を検査する検出器が、実際の reader と違う文脈（改行なし・フラグなし）で probe すると、`\\s` や `$` を含む終端の判定が実挙動とずれる。検出経路をエンジン別に持つなら自己テストもエンジンごとに置き、停止を固定するテストは rc だけでなく止まった理由まで固定する。"
 created: "2026-09-27T14:20:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:20:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:24:18Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:24:18Z" }
 sources:
   - type: "fixes"
     resource: "raw/fixes/20260927T115323Z-pr-3277.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T141348Z-pr-3277.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T013748Z-pr-3349.md"
 tags: []
 confidence: medium
 ---
@@ -38,6 +42,10 @@ regex の構文エラーなどで検出器が止まることを許容した挙�
 
 停止を確かめる fixture は、他の assert と同じツリーに置くと検査全体を巻き込んで止めるため、別ツリーに置く。
 
+### 引数検査の probe も拒否理由まで assert する
+
+helper の引数検査を probe するテストも同じ形になる。exit 2 だけを見ると、目的の検査（未知オプションの拒否、特定の必須引数の欠落）で止まったのか、他の必須オプションが足りずに止まったのかを区別できない。名乗っている挙動を外しても緑のまま残る。stderr の拒否理由まで assert し、probe は必須を持たないサブコマンドか、他の必須を満たした呼び出しで行う。
+
 ### 変異で検出力を確かめる
 
 変更を戻す変異（probe から改行を除く、見出し行の probe を外す、例外の握りつぶしを戻す）を入れて、新しい assert が落ちることを確かめる。落ちない assert は、主張している挙動を固定していない。
@@ -51,3 +59,4 @@ regex の構文エラーなどで検出器が止まることを許容した挙�
 
 - [probe の評価文脈とエンジン別自己テストを直した fix 結果](../../raw/fixes/20260927T115323Z-pr-3277.md)
 - [停止理由の assert と効かないフラグを指摘したレビュー結果](../../raw/reviews/20260927T141348Z-pr-3277.md)
+- [引数検査の probe に拒否理由の assert を足した fix 結果](../../raw/fixes/20260929T013748Z-pr-3349.md)

@@ -4,12 +4,18 @@ title: "新しい state 操作は既存 state との組み合わせを実際の�
 domain: "heuristics"
 description: "新しい state 操作を足すと、保留中の見直しや検証途中の未コミット編集など既存 state との組み合わせで前進できなくなる経路が生まれる。helper を直接呼ぶ単体テストは入口の gate を通らないため、この行き止まりを検出できない。停止メッセージのヒントを出す条件が案内先操作の受理条件より広いと、案内が循環する。"
 created: "2026-09-28T05:02:36Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T05:02:36Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:24:18Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:24:18Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260928T040457Z-pr-3376.md"
   - type: "fixes"
     resource: "raw/fixes/20260928T043924Z-pr-3376.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T010734Z-pr-3393.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T011605Z-pr-3393.md"
 tags: ["state-machine", "dead-end", "hint", "integration-test"]
 confidence: high
 ---
@@ -43,6 +49,12 @@ helper の単体テストはレビュー開始操作を直接呼ぶため、cycl
 - 保留中の義務（見直し）を新しい操作で消さない。次の観測へ持ち越し、通常の規則で再評価する
 - テストは helper を直接呼ぶだけでなく、cycle の gate など実際の入口を通して行き止まりを固定する
 
+### 停止案内に退路を足したら、同じ停止を人間へ運ぶ面を同じ commit でそろえる
+
+停止案内を state に書けなかったときの退路（stderr への出力）を足した変更で、同じ停止を人間へ運ぶ他の面（次アクション欄・停止報告の表）が旧い案内を指したままだった。1 か所だけ直すと、別セッションで再開したときに古い案内が渡る。退路を足したら、その停止を運ぶ面を列挙し、同じ commit で同じ退路を指すようにそろえる。
+
+同じ修正では、配布先に存在しない形式のための検査は足さなかった。到達しない分岐は、抜け方の無い停止になりやすい。
+
 ## 関連ページ
 
 - [仕様改訂の境界をまたいで観測を比べると停止判定が狂う — 各観測はその区間の基準と比べる](../anti-patterns/cross-boundary-comparison-after-spec-revision.md)
@@ -52,3 +64,5 @@ helper の単体テストはレビュー開始操作を直接呼ぶため、cycl
 
 - [レビュー結果（新しい state 操作と既存 state の組み合わせによる行き止まり）](../../raw/reviews/20260928T040457Z-pr-3376.md)
 - [fix 結果（受理条件・後続工程・ヒント述語をそろえる）](../../raw/fixes/20260928T043924Z-pr-3376.md)
+- [停止を運ぶ面の間で退路の案内がずれたことを指摘したレビュー結果](../../raw/reviews/20260929T010734Z-pr-3393.md)
+- [退路をすべての面にそろえた fix 結果](../../raw/fixes/20260929T011605Z-pr-3393.md)

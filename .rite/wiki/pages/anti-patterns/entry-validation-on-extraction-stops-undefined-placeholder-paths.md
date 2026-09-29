@@ -4,7 +4,7 @@ title: "手順を helper へ移して入口検証を足すと、未定義 placeh
 domain: "anti-patterns"
 description: "手順書のシェルブロックを helper のサブコマンドへ移し、入口に必須・数値・未置換検査を足すと、旧ブロックでは空値のまま既定分岐へ落ちていた経路が exit 2 で止まる。移設時は placeholder を読む全経路で値が決まるかを列挙し、関数内に残る旧 guard とそれを前提にした文書・テストも入口の出力へ寄せる。"
 created: "2026-09-25T00:50:10+09:00"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:52:19Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:24:18Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260924T152559Z-pr-3055.md"
@@ -16,11 +16,14 @@ sources:
     resource: "raw/reviews/20260927T213306Z-pr-3349.md"
   - type: "fixes"
     resource: "raw/fixes/20260927T214525Z-pr-3349.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T010548Z-pr-3349.md"
 tags: []
 confidence: high
 promote: rite-plugin
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:52:19Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:24:18Z" }
 ---
 
 # 手順を helper へ移して入口検証を足すと、未定義 placeholder で流れていた終端経路が停止に変わる
@@ -57,6 +60,13 @@ verified:
 
 テストの参照先を「helper の関数本体を抜き出して直接実行」に置き換えると、手順書の 1 行呼び出しから dispatch arm を経る経路が検査されなくなる。dispatch arm を壊す変異が全スイートを通過した。fixture の plugin に helper の複製と resolver の stub を置き、手順書の呼び出し行そのものを実行する形にすれば、同じ観測を保ったまま arm の変異で失敗させられる。
 
+### 移設で加わる厳格化は、追加ではなく除去で直す
+
+ステップ本体を helper へ移すと、引数検査や呼び出しの flag が移設元より厳しくなりやすい。移設元が空値を許して best-effort で続けていた経路や、再実行すれば表示が得られた経路が、helper の固定動作で塞がれる。直し方は検査や分岐を足して帳尻を合わせることではなく、移設で加わった厳格化を外して移設元の挙動へ戻すことである。
+
+- 空値が正常経路で来る引数は、dispatch 側で「引数が渡されたこと」だけを要求し、値が空でないことは要求しない。手順書側は placeholder を引用符で囲み、空でも 1 引数として届ける
+- 回帰テストは fixture の plugin root に stub の hook を置いて実行経路を通し、実環境の作業メモリやレビュー結果に触れない。呼び出し元が stub を直接実行するなら stub に実行権を付ける。付け忘れると別のフォールバック経路で通ってしまい、テストが目的の経路を検査しない
+
 ## 関連ページ
 
 - [LLM substitute placeholder は bash residue gate で fail-fast 化する](../patterns/placeholder-residue-gate-bash-fail-fast.md)
@@ -70,3 +80,4 @@ verified:
 - [レビュー結果](../../raw/reviews/20260924T154135Z-pr-3055.md)
 - [移設で CI の静的検査・停止経路・テスト経路が変わったレビュー結果](../../raw/reviews/20260927T213306Z-pr-3349.md)
 - [移設先の静的検査と SKILL 呼び出し行の実行テストを足した fix 結果](../../raw/fixes/20260927T214525Z-pr-3349.md)
+- [移設で加わった厳格化を外して元の挙動へ戻した fix 結果](../../raw/fixes/20260929T010548Z-pr-3349.md)

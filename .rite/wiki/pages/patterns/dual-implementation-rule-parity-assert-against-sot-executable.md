@@ -4,11 +4,11 @@ title: "同じ判定規則を別言語で二重実装するときは、同一 fi
 domain: "patterns"
 description: "bash の SoT helper と同じ除外規則を Python 側にも持たせる変更では、Python 側の期待値を手書きせず、同じ fixture tree に対して SoT helper を実際に実行し、その出力集合と Python 側が「残す」と判定した集合の一致を assert する。規則本文の複製は文書で「同時更新」と宣言するだけでは守れず、実行結果の突合だけが drift を検出する。"
 created: "2026-09-17T10:34:18Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T01:07:27Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:24:18Z" }
 verified:
-  - by: "rite-wiki-ingest/claude-opus-5-5"
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T15:38:14Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T01:07:27Z" }
-    at: "2026-09-28T15:38:14Z"
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:24:18Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260917T102546Z-pr-2933.md"
@@ -20,6 +20,8 @@ sources:
     resource: "raw/reviews/20260928T153225Z-pr-3411.md"
   - type: "reviews"
     resource: "raw/reviews/20260929T005731Z-pr-3419.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T012006Z-pr-3419.md"
 tags: []
 confidence: high
 ---
@@ -57,6 +59,12 @@ bash の SoT helper と同じ除外規則を Python 側にも持たせる変更�
 
 行の受理判定を Python の正規表現と BRE の sed で並行して持つ場合も同じ形を取る。テスト側で helper の定義行を実ファイルから抜き出して実物の sed で評価し、Python 側の実物の正規表現と同じ入力行の集合で突き合わせる。BRE は否定先読みを持たないが、Python 側の `(?:(?!X).)*` は、X が自分自身と重ならない文字列なら、行の形を判定するアドレスと区切り記号の個数を判定するアドレスの組み合わせで同じ行集合を表せる。等価性が成り立つ文字の範囲（ASCII の空白など）は、テストのコメントに前提として書いておく。
 
+### 一致確認テストには肯定側の 1 件を置く
+
+2 言語で同じ受理集合を持つ判定の一致確認テストで、否定側（除去されない・誤報しない）と両者の一致だけを検査すると、helper の sed が失敗したときや抽出が常に空になったときに素通りする。両方が空でも一致は成り立つからである。埋め込みシェルに `pipefail` を置いて各コマンドの失敗を非ゼロ終了にし、正しい入力が「読める」ことを肯定側で 1 件確かめる。
+
+コメントやテスト名で等価性を主張するときは、実装が満たす範囲に限って書く。Python の `\s` は Unicode の空白にも一致し、sed の `[[:space:]]` は locale に依存するため、両者の一致を言えるのは ASCII の空白までである。挙動を広げて主張に合わせるより、主張を狭める方が差分が小さく、変更の範囲も越えない。
+
 ## 関連ページ
 
 - [sandbox 環境では raw な git status --porcelain が恒に非空になり clean 判定ガードが一度も発火しない](../anti-patterns/sandbox-bind-mount-makes-raw-git-status-always-dirty.md)
@@ -69,3 +77,4 @@ bash の SoT helper と同じ除外規則を Python 側にも持たせる変更�
 - [fix 結果（hook と同じ終了条件にそろえる）](../../raw/fixes/20260928T151338Z-pr-3411.md)
 - [レビュー結果（見ない範囲が hook と一致することを確認）](../../raw/reviews/20260928T153225Z-pr-3411.md)
 - [行の受理判定を Python と sed の実物同士で突き合わせたレビュー結果](../../raw/reviews/20260929T005731Z-pr-3419.md)
+- [一致確認テストに肯定側の確認と pipefail を足した fix 結果](../../raw/fixes/20260929T012006Z-pr-3419.md)
