@@ -62,7 +62,7 @@ source "$SCRIPT_DIR/_test-helpers.sh"
 PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 
 # Producers under test (create.md は create-md-invocation-symmetry.test.sh の TC-7a/7b で
-# 別途 covered のため除外。本 test は残り 5 producer の cross-producer 非対称 gap を埋める)
+# 別途 covered のため除外。本 test は残りの全 producer の cross-producer 非対称 gap を埋める)
 # Format: "skill_name:relative_path"
 PRODUCERS=(
   "cleanup:skills/cleanup/SKILL.md"
@@ -70,6 +70,7 @@ PRODUCERS=(
   "ready:skills/ready/SKILL.md"
   "lint:skills/wiki-lint/SKILL.md"
   "ingest:skills/wiki-ingest/SKILL.md"
+  "issue-audit:skills/issue-audit/SKILL.md"
 )
 
 # ──────────────────────────────────────────────────────────────────────

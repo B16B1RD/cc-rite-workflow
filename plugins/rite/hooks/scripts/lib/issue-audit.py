@@ -12,7 +12,8 @@ Usage:
   issue-audit.sh dispose --repo OWNER/REPO --base BRANCH
 
 Snapshot (collect stdout):
-  open_issues    [{number, title, updated_at, stale}] — stale: not updated for STALE_DAYS
+  open_issues    [{number, title, updated_at, stale, files}] — stale: not updated for
+                 STALE_DAYS; files: the file paths the body names
   lineage        {"edges": [{child, parent, via}], "chains": [[root, ..., leaf], ...]}
                  via is "issue" (`- 元 Issue: #N`) or "pr:N" (follow-up marker or
                  `- 元 PR: #N` / `- 元の PR: #N`, resolved to the Issues that PR closes).
@@ -283,7 +284,8 @@ def snapshot(repo, base):
     for row in open_rows:
         updated = datetime.datetime.fromisoformat(row["updatedAt"].replace("Z", "+00:00"))
         issues.append({"number": row["number"], "title": row["title"], "updated_at": row["updatedAt"],
-                       "stale": (now - updated).days >= STALE_DAYS})
+                       "stale": (now - updated).days >= STALE_DAYS,
+                       "files": sorted(set(FILE_PATH.findall(row.get("body") or "")))})
     disp, excluded = dispositions(open_rows, merged, followup_records())
     return {"repo": repo, "base": base, "open_issues": issues, "lineage": lineage(open_rows, source),
             "concentration": concentration(open_rows), "dispositions": disp, "excluded": excluded}

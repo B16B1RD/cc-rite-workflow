@@ -106,10 +106,16 @@ ISSUES = [
     issue(52, '<!-- [rite-follow-up-from-pr:32:32-20260101120000.json#F-07] -->', labels=['follow-up']),
     # The older per-PR marker carries no root-cause ids, so it never identifies a duplicate.
     issue(55, '<!-- [rite-follow-up-from-pr:32] -->', labels=['follow-up']),
+    # The filer adds ~N when the same id repeats; the suffix is part of the key.
+    issue(57, '<!-- [rite-follow-up-from-pr:33:33-20260101120000.json#F-01~2] -->', labels=['follow-up']),
+    issue(58, '<!-- [rite-follow-up-from-pr:33:33-20260101120000.json#F-01~2] -->', labels=['follow-up']),
     issue(56, '<!-- [rite-follow-up-from-pr:32] -->', labels=['follow-up']),
     issue(60), issue(61), issue(62, reason='REOPENED'), issue(63), issue(64),
     issue(70), issue(71), issue(72), issue(73), issue(74), issue(75), issue(76), issue(77),
     issue(80, days=31), issue(81, days=29), issue(82, days=30),
+    issue(84, '- 元 PR: #31'),
+    # 91-93 are all open, so 92's chain is a prefix of 93's and only the longer one is listed.
+    issue(90, state='CLOSED'), issue(91, '- 元 Issue: #90'), issue(92, '- 元 Issue: #91'), issue(93, '- 元 Issue: #92'),
 ]
 PRS = [
     {'number': 31, 'body': 'Closes #22', 'baseRefName': 'develop', 'state': 'MERGED'},
@@ -168,16 +174,21 @@ ran = run('collect')
 check(ran.returncode == 0, ran.stderr)
 snap = json.loads(ran.stdout)
 check('[CONTEXT] ISSUE_AUDIT=ok;' in ran.stderr, ran.stderr)
-check(snap['lineage']['chains'] == [[21, 22, 23]], snap['lineage'])            # 3 generations listed
+check(snap['lineage']['chains'] == [[21, 22, 23], [21, 22, 84], [90, 91, 92, 93]], snap['lineage'])  # prefixes dropped
 check(not any(41 in c for c in snap['lineage']['chains']), snap['lineage'])   # 2 generations not listed
 check({'child': 23, 'parent': 22, 'via': 'pr:31'} in snap['lineage']['edges'], snap['lineage'])
+check({'child': 84, 'parent': 22, 'via': 'pr:31'} in snap['lineage']['edges'], snap['lineage'])  # 元 PR line
+check({'kind': 'origin_pr', 'key': '31', 'issues': [23, 84]} in snap['concentration'], snap['concentration'])
 check({'kind': 'file', 'key': 'plugins/x/a.sh', 'issues': [23, 42]} in snap['concentration'], snap['concentration'])
 check({'kind': 'origin_pr', 'key': '32', 'issues': [45, 46, 50, 51, 52, 55, 56]} in snap['concentration'], snap['concentration'])
 stale = {i['number']: i['stale'] for i in snap['open_issues']}
+files = {i['number']: i['files'] for i in snap['open_issues']}
+check(files[42] == ['plugins/x/a.sh'] and files[60] == [], files)             # redirection input
 check(stale[80] is True and stale[81] is False and stale[82] is True, stale)  # STALE_DAYS = 30 is stale
 disp = {d['issue']: d for d in snap['dispositions']}
-check(sorted(disp) == [51, 60, 70, 72, 76], disp)
+check(sorted(disp) == [51, 58, 60, 70, 72, 76], disp)
 check(disp[51]['reason'] == 'duplicate' and disp[51]['duplicate_of'] == 50, disp[51])
+check(disp[58]['duplicate_of'] == 57, disp[58])
 check(disp[60]['rule'] == 'merged_closing_pr' and disp[72]['rule'] == 'record_resolved', disp)
 check(disp[70]['reason'] == 'not_planned' and 'reason: not a defect' in disp[70]['evidence'][0], disp[70])
 check(61 not in disp and 71 not in disp, 'other-base PR and reason-less record are not disposed')
@@ -192,10 +203,11 @@ check(writes() == [], 'collect never writes')
 # --- dispose: exact write sequence and evidence left on the Issue (AC-4) ---
 ran = run('dispose')
 check(ran.returncode == 0, ran.stderr)
-check('[CONTEXT] ISSUE_AUDIT_DISPOSE=ok; closed=5; failed=0' in ran.stderr, ran.stderr)
+check('[CONTEXT] ISSUE_AUDIT_DISPOSE=ok; closed=6; failed=0' in ran.stderr, ran.stderr)
 S = 'status {{"issue_number":{},"owner":"{}","status_role":"{}","auto_add":false}}'
 check(writes() == [
     'issue close 51 -R o/r --comment --duplicate-of 50', S.format(51, 'board', 'cancelled'),
+    'issue close 58 -R o/r --comment --duplicate-of 57', S.format(58, 'board', 'cancelled'),
     'issue close 60 -R o/r --comment --reason completed', S.format(60, 'board', 'done'),
     'issue close 70 -R o/r --comment --reason not planned', S.format(70, 'board', 'cancelled'),
     'issue close 72 -R o/r --comment --reason completed', S.format(72, 'board', 'done'),
@@ -213,8 +225,8 @@ check(ran.returncode == 0 and writes() == [], (ran.stderr, writes()))
 # --- a Status refused by the terminal-conflict guard fails loudly ---
 reset()
 ran = run('dispose', CONFLICT='70')
-check(ran.returncode == 1 and 'ISSUE_AUDIT_DISPOSE=failed; closed=5; failed=1' in ran.stderr, ran.stderr)
-check(json.loads(ran.stdout)['results'][2]['status'] == 'skipped_terminal_conflict', ran.stdout)
+check(ran.returncode == 1 and 'ISSUE_AUDIT_DISPOSE=failed; closed=6; failed=1' in ran.stderr, ran.stderr)
+check({r['issue']: r for r in json.loads(ran.stdout)['results']}[70]['status'] == 'skipped_terminal_conflict', ran.stdout)
 
 # --- a failed Status update surfaces its cause ---
 reset()
@@ -226,7 +238,7 @@ check(ran.returncode == 1 and 'WARNING: #60 の Status を更新できません:
 reset()
 ran = run('dispose', FAIL_CLOSE='60')
 res = {r['issue']: r for r in json.loads(ran.stdout)['results']}
-check(ran.returncode == 1 and 'ISSUE_AUDIT_DISPOSE=failed; closed=4; failed=1' in ran.stderr
+check(ran.returncode == 1 and 'ISSUE_AUDIT_DISPOSE=failed; closed=5; failed=1' in ran.stderr
       and 'WARNING: #60 を close できません: close refused' in ran.stderr, ran.stderr)
 check(res[60]['closed'] is False and res[60]['status'] == 'not_attempted'
       and not any(l.startswith('status {"issue_number":60,') for l in writes()), (res[60], writes()))

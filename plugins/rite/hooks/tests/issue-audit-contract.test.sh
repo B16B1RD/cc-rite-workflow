@@ -56,6 +56,10 @@ disposals = re.findall(r'^bash \{plugin_root\}/hooks/scripts/issue-audit\.sh dis
 check(disposals == ['--repo {owner_repo} --base {base_branch}'], disposals)
 check(not re.search(r'gh issue (close|edit)|gh issue create', skill), 'no direct Issue writes')
 
+# Redirection covers every open Issue that names files, not only lineage / concentration members.
+redirect = next(l for l in skill.splitlines() if l.startswith('| 方向修正 |'))
+check('`open_issues`' in redirect and '`files`' in redirect and 'lineage.chains' not in redirect, redirect)
+
 # Report layout: fixed sections in a fixed order.
 report = skill[skill.index('# Issue 監査レポート'):]
 heads = re.findall(r'^## (\S+)$', report, re.M)
