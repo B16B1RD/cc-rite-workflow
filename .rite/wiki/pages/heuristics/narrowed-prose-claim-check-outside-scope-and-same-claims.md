@@ -4,12 +4,13 @@ title: "散文の主張を実装に合わせて絞るときは、限定の外側
 domain: "heuristics"
 description: "散文の主張を実装の範囲へ絞ると、絞った外側の扱いや、指示語の参照先、別言語の要約・テストのコメント・配布物に残る同じ主張の言い過ぎが見落とされやすい。実装の分岐ごとに突き合わせ、同じ主張を横断で探してから直す。"
 created: "2026-09-27T08:00:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:05:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T09:38:37Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:56:46Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:25:53Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:35:29Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:05:00Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T09:38:37Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260927T074341Z-pr-3242.md"
@@ -29,6 +30,14 @@ sources:
     resource: "raw/fixes/20260927T162209Z-pr-3305.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T204401Z-pr-3334.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T084737Z-pr-3349.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T090755Z-pr-3349.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T090128Z-pr-3349.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T092220Z-pr-3349.md"
 tags: ["prose", "docs", "scope", "sweep"]
 confidence: medium
 ---
@@ -66,6 +75,12 @@ confidence: medium
 文書の主張が実装の判定範囲より広いと指摘されたとき、主張を広げて実装に合わせるのではなく、実装の判定規則そのものに限定して書き直す。書き直す前に、主張が名指しする入力の形（リダイレクトの各記法など）を 1 つずつ実装に通して結果を実測し、例示と例外はその結果から書く。代表例から規則を一般化して書くと、実装が除外しない形まで主張に含まれる。規則は「どの語をその種類とみなすか」「いつ次の語を対象として扱うか」という実装の判定条件で書く。
 
 
+### 失敗時の遷移を経路ごとに書く
+
+失敗したときに次の経路へ進むのか、そこで止まるのかを述べる仕様書と reason 表は、実装で停止へ改めた経路ごとに書き直す。「入力が無い・抽出できない」ときに次の経路へ進む条件と、「入力はあるが壊れている」ときに止まる条件を分けて書くと、実装と食い違わない。経路ごとに帰結が違う記述は、実装の分岐をそのまま並べて書く（ある経路は既定値へ、別の経路は次の優先度へ、残りは停止）と突き合わせやすい。停止へ改めたときは、exit の後に残った「次へ進む」旨のコメントも消す。到達しない行の説明は、読む人に誤った挙動を教える。
+
+名指しされた 1 行だけを直すと、同じ主張がファイルの別の行や rationale 文書に残り、参照元と参照先が逆のことを言う状態になる。実測では、この掃き残しが次の差分レビューで再指摘された。主張の核になる語句（「legacy parser へ流す」など）でファイル全体と rationale 文書を grep して一度に直すと、次の再レビューでは新しい指摘が出ずに収束した。
+
 ## 関連ページ
 
 - [変更・削除の掃き出しは旧語彙・置換した条件式・別記法トークンまで広げる](./change-sweep-spans-old-vocabulary-and-notations.md)
@@ -82,3 +97,7 @@ confidence: medium
 - [規則の変更後に残った要約コメントと根拠文を直した fix 結果](../../raw/fixes/20260927T152300Z-pr-3290.md)
 - [主張を実装の判定規則に限定し、名指しする入力を実測してから書き直した fix 結果](../../raw/fixes/20260927T162209Z-pr-3305.md)
 - [移した手順と別の節の断定文の食い違いが再指摘されたレビュー結果](../../raw/reviews/20260927T204401Z-pr-3334.md)
+- [失敗時の遷移を停止へ改めた経路ごとに書き直した fix 結果](../../raw/fixes/20260929T084737Z-pr-3349.md)
+- [同じ主張をファイル全体と rationale で直した fix 結果](../../raw/fixes/20260929T090755Z-pr-3349.md)
+- [参照元と参照先の片方だけを直した掃き残しを指摘したレビュー結果](../../raw/reviews/20260929T090128Z-pr-3349.md)
+- [同じ主張を横断で直して収束したレビュー結果](../../raw/reviews/20260929T092220Z-pr-3349.md)

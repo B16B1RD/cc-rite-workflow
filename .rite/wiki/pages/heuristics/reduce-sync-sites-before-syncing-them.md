@@ -14,11 +14,14 @@ sources:
     resource: "raw/fixes/20260729T073316Z-pr-2044.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T031113Z-pr-3202.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T092320Z-pr-3440.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:16:22Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T09:38:37Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T03:16:22Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T09:38:37Z" }
 ---
 
 # 「N 箇所で同期が必要」と指摘されたら、同期する前に N を減らせないか検討する
@@ -44,6 +47,10 @@ revert を選んだ根拠は 3 つ:
 3 つのうち「動いていない」「revert で消える」が成り立つなら、同期ではなく revert を選ぶ。同期は「両側が実際に動く」段階（write 側配線 PR）まで待ち、そのとき初めて 1 回で行う。
 
 **関連する判断**: 同 PR では、read 側の型ガード追加が SoT の「ここには型ガードを置かない」という記述と衝突した指摘についても、型ガードごと revert して SoT 記述を真のまま保つ選択をした。reason 表・eval-order からも関連エントリを削除し、revert が中途半端に残らないようにしている。
+
+### 受理条件の列挙は rationale から漏れる
+
+受理条件を手順書・参照文書・rationale の 3 箇所に列挙していると、条件を足す修正で rationale だけが同期から漏れやすい。列挙を 1 箇所へ寄せられないか先に検討する。受理条件を連言で追加するときは、連言の各項を落とす変異が検出されるかを、受理側と拒否側の両方のテストで確かめる。拒否側だけを固定すると、「別の文脈なら受理」側を壊す変異が通る。
 
 ## 関連ページ
 
@@ -76,3 +83,4 @@ revert を選んだ根拠は 3 つ:
 - [同じ条件を 2 箇所で書き下し 3 cycle 連続で壊す](../../raw/fixes/20260729T051956Z-pr-2044.md)
 - [SoT 委譲チェーンの終端ノード](../../raw/fixes/20260729T073316Z-pr-2044.md)
 - [再掲した式が正本の改訂から取り残されたレビュー結果](../../raw/reviews/20260927T031113Z-pr-3202.md)
+- [受理条件の列挙が rationale だけ漏れ、受理側の pin が無いと指摘したレビュー結果](../../raw/reviews/20260929T092320Z-pr-3440.md)

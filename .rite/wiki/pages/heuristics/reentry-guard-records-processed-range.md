@@ -4,11 +4,12 @@ title: "再入ガードは「実行したか」ではなく「何を対象に実
 description: "完了済みを示すだけの再入ガードは、同じ run の途中で処理対象が増えたときに古い完了記録で新しい対象を覆い隠し、未処理のまま素通りさせる。ガードには処理本体が読む対象と同じ単位で範囲を記録し、最新の対象と一致するときだけ skip する。"
 domain: "heuristics"
 created: "2026-09-24T05:30:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:03:50Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T09:38:37Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:06:36Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:25:53Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:03:50Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T09:38:37Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260924T044346Z-pr-3017.md"
@@ -18,6 +19,10 @@ sources:
     resource: "raw/fixes/20260927T151743Z-pr-3292.md"
   - type: "fixes"
     resource: "raw/fixes/20260927T154455Z-pr-3292.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T082844Z-pr-3440.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T090329Z-pr-3440.md"
 tags: ["reentry-guard", "idempotency", "state-file", "test-fixture"]
 confidence: high
 promote: rite-plugin
@@ -45,6 +50,12 @@ promote: rite-plugin
 
 書き手を移したら、記録を書く結果と書かない結果の両側を、既存のテストケースへ 1 行ずつ assert して固定する。新しいケースを増やすより既存の fixture を再利用するほうが、どの分岐をどの assert が押さえているかをレビューで追いやすい。設計を変えて意味が変わった識別子（「片付け側が書く」前提のテスト変数名など）は、同じ変更の中で新しい語彙へ改名し、旧設計のまま読まれるのを防ぐ。
 
+### 新しい再入経路には、兄弟経路の再入防止を移植する
+
+完了済みの処理を前段へ戻す経路を新しく足すとき、倣った兄弟経路が持つ「一度渡した対象は再び渡さない」記録を移植し忘れると、同じ対象が繰り返し戻される。修正では兄弟経路の終端条件を移植し、判別には既存の検査記録を使って新しい記録キーは足さなかった。途中で中断してから再入した場合（検査の前の再実行）は、従来どおり受理する。
+
+戻った先が状態を変えずに返る場合（push せずに返る結果）、同じ入力で同じ判定が繰り返される。カウンタを進めない戻り経路には、明示的な終端条件が要る。
+
 ## 関連ページ
 
 - [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](./fixture-mutation-isolates-invariants.md)
@@ -56,3 +67,5 @@ promote: rite-plugin
 - [完了記録を判定の結果に結び付けるべきことを指摘したレビュー結果](../../raw/reviews/20260927T145506Z-pr-3292.md)
 - [記録の書き手を判定側の helper へ移した fix 結果](../../raw/fixes/20260927T151743Z-pr-3292.md)
 - [記録の有無を既存ケースへ assert し、テスト変数を改名した fix 結果](../../raw/fixes/20260927T154455Z-pr-3292.md)
+- [新しい再入経路に再投入を止める記録が無いと指摘したレビュー結果](../../raw/reviews/20260929T082844Z-pr-3440.md)
+- [兄弟経路の終端条件を既存の検査記録で移植した fix 結果](../../raw/fixes/20260929T090329Z-pr-3440.md)

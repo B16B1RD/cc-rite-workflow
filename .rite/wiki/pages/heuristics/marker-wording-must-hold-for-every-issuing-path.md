@@ -4,7 +4,9 @@ title: "marker の意味と、それを読む報告文は、発行するすべ�
 domain: "heuristics"
 description: "marker に新しい発行元を足すと、1 つの経路に合わせて書いた marker の定義や完了報告の文言が、新しい経路では事実に反する。marker の定義と読み手の文は、発行元ごとに成り立つかを確かめてから共通の場所に置く。"
 created: "2026-09-29T08:26:00Z"
-generated: { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-09-29T08:26:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T09:38:37Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T09:38:37Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260929T062546Z-pr-3393.md"
@@ -12,6 +14,8 @@ sources:
     resource: "raw/reviews/20260929T082333Z-pr-3393.md"
   - type: "fixes"
     resource: "raw/fixes/20260929T080249Z-pr-3393.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T085249Z-pr-3393.md"
 tags: ["marker", "review-scope", "cross-file-impact"]
 confidence: medium
 ---
@@ -30,6 +34,8 @@ marker は複数の経路から出せるようになるほど、定義文が「�
 
 修正側も同じ規律で書く。marker の意味と、それを読む報告文をどちらも「発行するすべての経路で成り立つ文」に直し、直した後にもう一度、全経路を読み直す。
 
+修正でも同じ確認で収まった。marker に発行元を足したあと、定義文と報告文を reason ごとに事実か確かめ、1 つの reason にしか当てはまらない節は条件付きの文に書き換えた。
+
 ## 関連ページ
 
 - [新設した出力フィールドは producer と consumer の両側を pin する — consumer が表なら行単位で pin する](../patterns/new-output-field-pin-producer-and-consumer.md)
@@ -39,3 +45,4 @@ marker は複数の経路から出せるようになるほど、定義文が「�
 - [レビュー結果（規則追加と marker の新しい発行元）](../../raw/reviews/20260929T062546Z-pr-3393.md)
 - [レビュー結果（marker の文言が全経路で成り立つか）](../../raw/reviews/20260929T082333Z-pr-3393.md)
 - [fix 結果（marker の意味と報告文の修正）](../../raw/fixes/20260929T080249Z-pr-3393.md)
+- [fix 結果（reason ごとに事実か確かめ、1 経路だけの節を条件付きにした）](../../raw/fixes/20260929T085249Z-pr-3393.md)

@@ -33,9 +33,13 @@ sources:
     resource: "raw/reviews/20260927T195056Z-pr-3331.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T194735Z-pr-3332.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T090453Z-pr-3393.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T091604Z-pr-3393.md"
 tags: ["assert-not-grep", "vacuous-pin", "ere-portability", "test-pin", "fixture-scope", "count-zero-assertion"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:57:39Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T09:38:37Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-28T13:10:00+09:00"
@@ -47,6 +51,8 @@ verified:
     at: "2026-09-27T10:47:38Z"
   - by: "rite-wiki-ingest/claude-opus-5-5"
     at: "2026-09-27T19:57:39Z"
+  - by: "rite-wiki-ingest/claude-opus-5-5"
+    at: "2026-09-29T09:38:37Z"
 ---
 
 # absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する
@@ -134,6 +140,10 @@ mutation の実施者は**主張する側と独立**であることが望まし�
 - **境界は行頭の見出しだけで決める**: 「見出しの文字列を含む行」で区切ると、同じ文字列を含む表の行が境界になり、区間が途中で切れる。
 - **終わりは次の見出しの一般形にする**: 終わりを特定の見出し文字列に固定すると、その見出しの表記が揺れたときに区間が黙って広がり、次の節まで検査対象に入る。終わりは「次の同レベル見出し」の一般形にし、切り出した区間が次節の本体（コードフェンス等）を飲み込んでいないことを件数で確かめる。飲み込んでいれば失敗させると、表記揺れが fail-loud になる。
 
+### needle は消した旧文の実際の字句から取る
+
+消した旧文の不在を pin するとき、needle を記憶や要約から書くと、旧文と一字違いで一度も一致しない pin になる。needle は実際に消した旧文の部分文字列から取り、旧文を書き戻すとテストが落ちることを確かめる。上の「base に単一行トークンとして存在する」を確かめる具体的なやり方である。
+
 ## 関連ページ
 
 - [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](../anti-patterns/test-pin-protection-theater.md)
@@ -158,3 +168,5 @@ mutation の実施者は**主張する側と独立**であることが望まし�
 - [反対側の不在と続行語の不在を assert に足した fix 結果](../../raw/fixes/20260927T194334Z-pr-3331.md)
 - [表の行で表す B 側に段落の不在検査が空振りすると指摘したレビュー結果](../../raw/reviews/20260927T195056Z-pr-3331.md)
 - [区間の終わりを固定見出しで決めると表記揺れで黙って広がると指摘したレビュー結果](../../raw/reviews/20260927T194735Z-pr-3332.md)
+- [旧文の字句から取っていない不在 pin を指摘したレビュー結果](../../raw/reviews/20260929T090453Z-pr-3393.md)
+- [needle を旧文の字句から取り、書き戻しで落ちることを確かめた fix 結果](../../raw/fixes/20260929T091604Z-pr-3393.md)

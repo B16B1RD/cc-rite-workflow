@@ -113,6 +113,20 @@
 * **Update**: [base 取り込みはレビュー済みの HEAD で行い、検証からレビュー開始までは検証の入力を変えない](pages/heuristics/base-intake-on-reviewed-head-keep-verification-inputs-frozen.md) — 検証器の版と、取り込みと修正を 1 つの計画にまとめる点を統合
 * **Update**: [base 取り込みの競合は base 側の正本を基準にし、PR の変更意図だけを載せ直す](pages/heuristics/base-intake-conflict-reapply-pr-intent-on-base-canonical.md) — 末尾追記どうしの競合の解消と確認方法を統合
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=585, broken_refs=0
+* **Update**: [散文の主張を実装に合わせて絞るときは、限定の外側・指示語・同じ主張の別箇所まで突き合わせる](pages/heuristics/narrowed-prose-claim-check-outside-scope-and-same-claims.md) — raw/fixes/20260929T084737Z-pr-3349.md を統合
+* **Update**: [marker の意味と、それを読む報告文は、発行するすべての経路で成り立つ文にする](pages/heuristics/marker-wording-must-hold-for-every-issuing-path.md) — raw/fixes/20260929T085249Z-pr-3393.md を統合
+* **Update**: [再入ガードは「実行したか」ではなく「何を対象に実行したか」を記録する](pages/heuristics/reentry-guard-records-processed-range.md) — raw/fixes/20260929T090329Z-pr-3440.md を統合
+* **Create**: [設定の読み込み位置は、同じ設定を読むすべての箇所で同じ解決手段に揃える](pages/heuristics/config-read-location-same-resolver-everywhere.md) — raw/fixes/20260929T090329Z-pr-3440.md と raw/reviews/20260929T082844Z-pr-3440.md を新規ページ化
+* **Update**: [散文の主張を実装に合わせて絞るときは、限定の外側・指示語・同じ主張の別箇所まで突き合わせる](pages/heuristics/narrowed-prose-claim-check-outside-scope-and-same-claims.md) — raw/fixes/20260929T090755Z-pr-3349.md を統合
+* **Update**: [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](pages/patterns/absence-pin-base-present-head-absent-single-line.md) — raw/fixes/20260929T091604Z-pr-3393.md を統合
+* **Update**: [再入ガードは「実行したか」ではなく「何を対象に実行したか」を記録する](pages/heuristics/reentry-guard-records-processed-range.md) — raw/reviews/20260929T082844Z-pr-3440.md を統合
+* **Update**: [シェル本体を別ディレクトリの helper へ移すと、相対パス・引数・出力元の記述が移設元を前提に残る](pages/anti-patterns/helper-relocation-leaves-origin-relative-references.md) — raw/reviews/20260929T083131Z-pr-3349.md を統合
+* **Update**: [散文の主張を実装に合わせて絞るときは、限定の外側・指示語・同じ主張の別箇所まで突き合わせる](pages/heuristics/narrowed-prose-claim-check-outside-scope-and-same-claims.md) — raw/reviews/20260929T090128Z-pr-3349.md を統合
+* **Update**: [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](pages/patterns/absence-pin-base-present-head-absent-single-line.md) — raw/reviews/20260929T090453Z-pr-3393.md を統合
+* **Update**: [散文の主張を実装に合わせて絞るときは、限定の外側・指示語・同じ主張の別箇所まで突き合わせる](pages/heuristics/narrowed-prose-claim-check-outside-scope-and-same-claims.md) — raw/reviews/20260929T092220Z-pr-3349.md を統合
+* **Update**: [「N 箇所で同期が必要」と指摘されたら、同期する前に N を減らせないか検討する](pages/heuristics/reduce-sync-sites-before-syncing-them.md) — raw/reviews/20260929T092320Z-pr-3440.md を統合
+* **Skip**: [20260929T092328Z-pr-3393.md](raw/reviews/20260929T092328Z-pr-3393.md) — 採否ゲートの運用手順の再確認で、手順書の規定を超える経験則を含まない
+* **Create**: [拒否ガードの前段フィルタが本判定より狭いと、本判定が fail-closed でも全体は fail-open になる](pages/anti-patterns/prefilter-narrower-than-judge-makes-guard-fail-open.md) — raw/reviews/20260929T092646Z-pr-3446.md を新規ページ化
 
 ## 2026-09-28
 
