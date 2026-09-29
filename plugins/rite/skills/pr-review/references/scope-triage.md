@@ -24,7 +24,7 @@ else
   echo "[review:error]"; exit 1
 fi
 ```
-3. 下の bash を**単一 Bash invocation** で実行する。`{fix_loop}` は、`/rite:iterate` から呼ばれ結果が `[review:mergeable]` になる review（同じ PR の fix が PR 内推奨を直す）のときだけ `yes`、受入条件未検証の停止と単独実行では `no`（修正ループが続かず登録を読む者がいないため、ADOPT・origin=pr は hold になる）。`{records}` は記録の JSON 配列、`{candidates}` は `{"candidates": [{"id": "C-1", "source": "指摘" | "推奨", "file_line", "reviewer", "severity", "content": <全文>}, …]}`。`head` は `--review-result` に渡す review JSON（6.1.a が保存した本 cycle の結果）の `commit_sha` を bash が入れる。
+3. 下の bash を**単一 Bash invocation** で実行する。`{fix_loop}` はレビュー結果で決め、呼び出し元（`PR_REVIEW_IN_E2E`）では変えない。ステップ 8.1 の出力表で `[review:mergeable]` に一致する review は `yes`（登録は `/rite:iterate` の 5.S 後の check、または `/rite:fix` の 1.3 が読んで同じ PR で直す）、受入条件未検証の停止は `no`（次の工程が人間の動作確認で、登録を読む工程が続かないため、ADOPT・origin=pr は hold になる）。`{records}` は記録の JSON 配列、`{candidates}` は `{"candidates": [{"id": "C-1", "source": "指摘" | "推奨", "file_line", "reviewer", "severity", "content": <全文>}, …]}`。`head` は `--review-result` に渡す review JSON（6.1.a が保存した本 cycle の結果）の `commit_sha` を bash が入れる。
 
 ```bash
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) && [ -n "$state_root" ] \

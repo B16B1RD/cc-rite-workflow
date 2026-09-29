@@ -10,10 +10,10 @@
 #   record  RESOLVED / REJECT / LINK without pr_blocking, and every LINK of a followup (the
 #           merged PR cannot take the fix, the OPEN tracker does): record the disposition only.
 #   fix     kind=triage only: ADOPT with origin=pr (fix_in_pr) when the caller passes
-#           --fix-loop yes (the review hands its result to the same PR's fix loop) and
+#           --fix-loop yes (a mergeable review, whose registration the same PR's fix reads) and
 #           `review-pr-recommendations.sh capacity` is open. Nothing is written outside the PR;
-#           the caller registers it as an in-PR recommendation for the same PR's fix. Without
-#           a following fix loop nothing would read the registration, and at
+#           the caller registers it as an in-PR recommendation for the same PR's fix. At the stop
+#           on unverified acceptance criteria nothing would read the registration, and at
 #           safety.max_review_cycles the fix could not be re-reviewed, so both are held.
 #   hold    anything else: pr_blocking decisions (RECONCILE, ADOPT pr/unknown, DIAGNOSE
 #           pr/unknown, LINK pr/unknown outside followup) and DIAGNOSE without investigation.
@@ -42,8 +42,8 @@
 #   --adoption      the classifier's records ({"adoption": {"head", "records"}}).
 #                   Default: STATE_ROOT/.rite/state/adoption-PR-KIND.json
 #   --issue         related Issue; its body gives the AC ids and issue citations.
-#   --fix-loop      triage only: yes when the same PR's fix loop follows this review. Default no.
 #                   --issue-body / --pr-body / --ac-ids / --ledger replace the gh reads.
+#   --fix-loop      triage only: yes for a mergeable review, no otherwise. Default no.
 #
 # stdout: decided {"held": false, "head", "verdicts": [{"ids", "exit", "origin", "action",
 #           "tracker", "verdict", "record"}]}; held {"held": true, "reason", "hold_file"}

@@ -145,10 +145,11 @@
 #        候補を列挙せず、追跡先も読み直さず保留もしない。壊れて改名された JSON の名前の出典も書けて再実行で
 #        除外する。台帳へ書けなくても出口は変えず FOLLOW_UP_LEDGER=failed。プレビューでは書かない
 #   T-93 処分の再利用: 台帳の REJECT / RESOLVED 行は出典 JSON の commit から対象 commit までに指摘ファイルが
-#        変わっていれば除外せず候補に戻し、変わっていなければ除外する。issued 行は変わっても除外する。
+#        変わっていれば除外せず候補に戻し、変わっていなければ除外する。issued / LINK 行は変わっても除外する。
 #        follow-up 自身が書いた行は判定した commit を起点にし、再実行で候補に戻さず行を重ねない。
 #        前回の判定記録は head が同じで ids がすべて候補にあり保留した候補を含まない記録だけを reuse に写し、
-#        残りの候補を judge に並べる。hold ファイルを読めなければ hold_unreadable で一覧を書かない
+#        残りの候補を judge に並べる。判定記録を読めなければ WARNING を出して全候補を judge に並べる。
+#        hold ファイルを読めなければ hold_unreadable で一覧を書かない
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -2535,6 +2536,7 @@ jq -n --argjson c "$(comment_obj "$(cat "$GH_PATCH_OUT")")" '[[$c]]' > "$GH_API_
 PATH="$TMP_ROOT/bin:$PATH" bash "$TARGET" --state-root "$r" --pr 9 --owner acme --repo demo --source-issue 42 \
   --list-candidates "$TMP_ROOT/t92-cands.json" >"$OUT" 2>"$ERR"
 assert "T-92 再実行の列挙は処分済みの候補を含まない" "0" "$(jq '.candidates | length' "$TMP_ROOT/t92-cands.json")"
+assert_not_grep "T-92 自身が書いた先送り欠陥の行で失効を数えない" "$ERR" 'disposition_stale'
 run_target "$r"
 assert_not_grep "T-92 再実行は保留しない" "$ERR" 'FOLLOW_UP_ISSUE=held'
 assert_not_grep "T-92 再実行は追跡先の状態を読み直さない" "$GH_LOG" 'issue view 7'
@@ -2610,13 +2612,13 @@ t93_list() {
     --list-candidates "$TMP_ROOT/t93-cands.json" >"$OUT" 2>"$ERR"
   jq -r '[.candidates[].id] | join(" ")' "$TMP_ROOT/t93-cands.json"
 }
-for t93_disp in REJECT RESOLVED issued; do
+for t93_disp in REJECT RESOLVED issued LINK; do
   for t93_changed in a.md b.md; do
     reset_stubs
     t93_root "t93-$t93_disp-$t93_changed" "$t93_changed"
     jq -n --argjson c "$(comment_obj "$(record_body "| F-01 | a.md:3 | $t93_disp | 前提 | 9-20260101120000.json |")")" '[[$c]]' > "$GH_API_JSON"
     t93_got=$(t93_list)
-    if [ "$t93_disp" != issued ] && [ "$t93_changed" = a.md ]; then
+    if [ "$t93_disp" != issued ] && [ "$t93_disp" != LINK ] && [ "$t93_changed" = a.md ]; then
       assert "T-93 $t93_disp: 指摘のファイルが変わった処分は候補に戻す" "9-20260101120000.json#F-01" "$t93_got"
       assert_grep "T-93 $t93_disp: 失効した処分の件数を出す" "$ERR" '^\[cleanup-follow-up-issue\] disposition_stale: pr=9; count=1$'
     else
@@ -2625,6 +2627,15 @@ for t93_disp in REJECT RESOLVED issued; do
     fi
   done
 done
+# 前回の判定記録を読めなければ再利用せず、WARNING を出して全候補を判定し直す
+reset_stubs
+adopt_root t93-broken
+mkdir -p "$r/.rite/state"
+printf '%s\n' 'not-json{' > "$r/.rite/state/adoption-9-followup.json"
+t93_list >/dev/null
+assert_grep "T-93 判定記録を読めなければ WARNING を出す" "$ERR" '^WARNING: 前回の判定記録を読めないため再利用しません'
+assert "T-93 判定記録を読めなければ reuse は空" "0" "$(jq '.reuse | length' "$TMP_ROOT/t93-cands.json")"
+assert "T-93 判定記録を読めなければ全候補を judge に並べる" "$C_F01 $C_F05 D-01 D-04" "$(jq -r '.judge | join(" ")' "$TMP_ROOT/t93-cands.json")"
 # follow-up が書いた REJECT 行は判定した commit を前提の起点にする。判定前の fix cycle で指摘のファイルが
 # 変わっていても、再実行で候補に戻さず、同じ行を重ねて書かない
 reset_stubs

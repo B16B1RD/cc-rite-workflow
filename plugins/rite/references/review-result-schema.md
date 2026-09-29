@@ -337,7 +337,7 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 <a id="pr_recommendations-配列"></a>
 
-review JSON には書かない（保存済み結果は停滞判定の受領記録と照合されるため書き換えない。旧版が書いた `pr_recommendations` キーは読まない）。登録は `.rite/state/pr-recommendations-{pr_number}.json` の `{commit_sha, review_result, recommendations: [{id, candidates, reviewer, file_line, description, contract, evidence}]}`。書き手は `scripts/review-pr-recommendations.sh record` のみで、pr-review ステップ 7.2 が採否ゲートの verdict `fix`（出口 ADOPT・`origin=pr`）の判定記録ごとに 1 件、`R-NN`（`R-01` から verdict 順）で書く。登録に回数の上限は無い。`review_context.cycle_count` が `safety.max_review_cycles` に達した cycle ではゲートが `fix` にせず保留する（修正後の再レビューを開始できないため）。
+review JSON には書かない（保存済み結果は停滞判定の受領記録と照合されるため書き換えない。旧版が書いた `pr_recommendations` キーは読まない）。登録は `.rite/state/pr-recommendations-{pr_number}.json` の `{commit_sha, review_result, recommendations: [{id, candidates, reviewer, file_line, description, contract, evidence}]}`。書き手は `scripts/review-pr-recommendations.sh record` のみで、pr-review ステップ 7.2 が採否ゲートの verdict `fix`（出口 ADOPT・`origin=pr`）の判定記録ごとに 1 件、`R-NN`（`R-01` から verdict 順）で書く。登録に回数の上限は無い。受入条件未検証の停止になる review（登録を読む工程が続かない）と、`review_context.cycle_count` が `safety.max_review_cycles` に達した cycle（修正後の再レビューを開始できない）では、ゲートが `fix` にせず保留する。
 
 finding ではないので `findings[]` / `non_blocking_findings[]` の契約と件数には入らない。fix の scope gate は、受領記録と `commit_sha` が一致する登録の各 ID に処置を 1 つ要求し（blocking と同じ）、`/rite:iterate` は未着手の登録があれば 5.S の後に `/rite:fix` を invoke する。同じレビュー済み commit を二度渡さない記録は `.rite/state/pr-recommendations-done-{pr_number}.txt`（1 行目は basename と commit_sha）。ファイル欠落・`commit_sha` の不一致は「登録なし」と同じ。
 

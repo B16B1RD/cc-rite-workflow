@@ -17,8 +17,8 @@
 # cycle の指摘、出典と id だけが違う完全一致の指摘も同じ指摘として除外する。
 #
 # 処分の再利用 (--list-candidates の reuse / judge):
-#   - 台帳の REJECT / RESOLVED 行は、行の出典 JSON の commit_sha から対象 commit までに指摘のファイルが
-#     変わっていなければ除外する。変わった・commit を git で解決できない行は除外せず候補に戻す (判定し直す)。
+#   - 台帳の REJECT / RESOLVED 行は、前提の起点 (判定文末尾の `@<commit>`、無ければ行の出典 JSON — 出典の
+#     無い行は最新 JSON — の commit_sha) から対象 commit までに指摘のファイルが変わっていなければ除外する。変わった・commit を git で解決できない行は除外せず候補に戻す (判定し直す)。
 #     issued / LINK 行は追跡先があるので前提によらず除外する (追跡の冪等性)。出典 <pr>-deferred の行は
 #     対象 commit で処分したものなので常に除外する
 #   - 前回の実行の判定記録 (--adoption の既定の置き場) は、head が今回の対象 commit と同じで、ids がすべて
@@ -479,7 +479,8 @@ fi
 # $1 は [id, loc, 出典, 判定, 判定 commit] の配列。対象 commit と sources / latest_json は呼び出し前に決まっている。
 drop_stale_dispositions() {
   local keys="$1" stale='[]' k_id k_loc k_src k_at src sha
-  while IFS=$'\t' read -r k_id k_loc k_src k_at; do
+  # 出典と判定 commit はどちらも空になりうる。タブは IFS 空白で連続が 1 つに潰れるので、空欄を保つ \x1f で区切る
+  while IFS=$'\x1f' read -r k_id k_loc k_src k_at; do
     src="$latest_json"
     [ -z "$k_src" ] || src=$(printf '%s\n' "$sources" | awk -v b="$k_src" '{ n = split($0, p, "/") } p[n] == b { print; exit }')
     sha="$k_at"
@@ -488,7 +489,7 @@ drop_stale_dispositions() {
       continue
     fi
     stale=$(jq -c --arg i "$k_id" --arg l "$k_loc" --arg s "$k_src" --arg a "$k_at" '. + [[$i, $l, $s, $a]]' <<< "$stale") || return 1
-  done < <(jq -r '.[] | select(.[3] == "REJECT" or .[3] == "RESOLVED") | [.[0], .[1], .[2], .[4]] | @tsv' <<< "$keys")
+  done < <(jq -r '.[] | select(.[3] == "REJECT" or .[3] == "RESOLVED") | [.[0], .[1], .[2], .[4]] | join("\u001f")' <<< "$keys")
   if [ "$stale" != '[]' ]; then
     echo "[cleanup-follow-up-issue] disposition_stale: pr=${PR_NUMBER}; count=$(jq 'length' <<< "$stale")" >&2
   fi

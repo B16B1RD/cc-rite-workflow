@@ -129,7 +129,7 @@ Finding Quality Guardrail Category #2 で除外した候補を次の表へ必ず
 
 
 ### 推奨事項
-[改善提案があれば（任意の改善、スタイル提案、本 PR の diff と無関係な気になる点など）。各推奨事項を箇条書きで記載すること。本 PR の diff と無関係でトリアージが妥当な場合は `別 Issue` または `スコープ外` キーワードを含めること（ステップ 7.2 の採否ゲートの出口（file / record / hold）で処分される）]
+[改善提案があれば（任意の改善、スタイル提案、本 PR の diff と無関係な気になる点など）。各推奨事項を箇条書きで記載すること。本 PR の diff と無関係でトリアージが妥当な場合は `別 Issue` または `スコープ外` キーワードを含めること（ステップ 7.2 の採否ゲートの出口（file / record / fix / hold）で処分される）]
 
 **⚠️ 各推奨事項に 3 分類を必ず明示すること** (`aggregate label` 禁止規定):
 
@@ -139,7 +139,7 @@ Finding Quality Guardrail Category #2 で除外した候補を次の表へ必ず
 |------|------|---------|
 | `actionable` | 対応が妥当な改善提案。本 PR が追加した行の欠陥（誤ったコメント・到達しない分岐・テストの粗さ等）なら `ファイル:行` を併記する。本 PR の diff と無関係なものは `別 Issue` / `スコープ外` キーワードを含める | ステップ 7.2 の採否ゲートの出口で処分する。PR が持ち込んだ根因（ADOPT・`origin=pr`）は同じ PR で修正し（fix）、それ以外は file / record / hold |
 | `design_confirmation` | reviewer 自身が「現状の判断は妥当」「対応不要」「informational 寄り」と結論しており、action 要求を伴わない観察事項 | ステップ 7 で起票・記録なし、completion report に件数のみ表示 |
-| `boundary` | reviewer が action 要否を判断できない境界事案 | ステップ 7.2 の採否ゲートの出口（file / record / hold）で処分 |
+| `boundary` | reviewer が action 要否を判断できない境界事案 | ステップ 7.2 の採否ゲートの出口（file / record / fix / hold）で処分 |
 
 **禁止**: 「推奨 N 件」「follow-up 候補 N 件」のような **件数のみの aggregate label** で報告を済ませること。各 item の分類を明示せずに集計するのは `aggregate-recommendation-label-evasion` anti-pattern であり、ステップ 7 の機械的 gate により block される。
 

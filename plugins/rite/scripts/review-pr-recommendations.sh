@@ -22,7 +22,7 @@
 #   PR-origin root cause is never deferred by a count.
 #     [CONTEXT] PR_RECOMMENDATIONS_CAPACITY=open|cycle_cap
 #
-# record (pr-review step 7.4, after the adoption gate decided): writes every
+# record (pr-review step 7.2, after the adoption gate decided): writes every
 #   verdict "fix" of the gate output, in verdict order, to
 #   .rite/state/pr-recommendations-<pr>.json as
 #   {commit_sha, review_result: <basename>, recommendations: [{id: "R-NN",

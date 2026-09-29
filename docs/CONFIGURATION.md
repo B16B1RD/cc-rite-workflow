@@ -156,7 +156,8 @@ parallel:
 # commit), and the adoption gate's classifier records a finding already resolved at the target commit
 # (the latest review result's commit) as `RESOLVED` instead of filing it (if the rejection ledger
 # cannot be read, the adoption gate holds every candidate and nothing is filed; if the latest review
-# result cannot be read, the ledger exclusion is skipped and a warning is surfaced); whatever remains, together with review defects deferred to the related Issue's
+# result cannot be read, the ledger exclusion is skipped and a warning is surfaced); whatever remains,
+# together with review defects deferred to the related Issue's
 # Decision Log, becomes follow-up candidates, and a follow-up Issue for each root cause whose
 # adoption-gate verdict is `file` gets the full text (public on a public repository). While any
 # candidate has no exit, nothing is filed and the JSON is neither archived nor deleted.

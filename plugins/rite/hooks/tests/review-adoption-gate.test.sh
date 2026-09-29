@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The adoption gate turns helper decisions into file / record / hold and saves every hold.
+# The adoption gate turns helper decisions into file / record / fix / hold and saves every hold.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 python3 - "$SCRIPT_DIR/../.." <<'PYTEST'
@@ -180,10 +180,10 @@ held([rec(origin='pr', origin_cause=removed, tracker=7), rec(['F-02'], **REJECT)
 env['GH_STATES'] = '7=OPEN'
 (state / '.rite/state/adoption-hold-5-followup.json').unlink()
 
-# A triage PR-origin adoption is fixed in the same PR (verdict fix, nothing held) when a fix loop
-# follows the review (--fix-loop yes) until the cycle reaches safety.max_review_cycles (default 15),
-# where its fix could not be re-reviewed and it is held. Without a following fix loop (the stop on
-# unverified acceptance criteria, a standalone review) nothing would read the registration: held.
+# A triage PR-origin adoption is fixed in the same PR (verdict fix, nothing held) on a mergeable
+# review (--fix-loop yes) until the cycle reaches safety.max_review_cycles (default 15), where its
+# fix could not be re-reviewed and it is held. At the stop on unverified acceptance criteria
+# (--fix-loop no, or no flag) nothing would read the registration: held.
 # A sweep PR-origin adoption stays held. An unknown-origin adoption is held in triage as well.
 plain_review = review.read_text()
 for cycle, expected in ((3, 'fix'), (15, 'hold')):
@@ -210,6 +210,11 @@ for cycle, expected in ((3, 'fix'), (15, 'hold')):
     saved, _ = held([rec(origin='unknown'), rec(['F-02'], **REJECT)], 'undecided', kind='triage')
     check(saved['held_ids'] == ['F-01'], (cycle, saved))
     (state / '.rite/state/adoption-hold-5-triage.json').unlink()
+# A --fix-loop value other than yes / no (an unsubstituted placeholder) stops the gate: exit 2, no hold.
+for bad in ('{fix_loop}', 'maybe'):
+    result = run([rec(origin='pr', origin_cause=removed), rec(['F-02'], **REJECT)], kind='triage', fix_loop=bad)
+    check(result.returncode == 2 and '--fix-loop must be yes or no' in result.stderr, (bad, result.returncode, result.stderr))
+    check(not (state / '.rite/state/adoption-hold-5-triage.json').exists(), bad)
 # Without a readable cycle the registration capacity is unknown: every candidate is held.
 review.write_text(plain_review)
 saved, _ = held([rec(origin='pr', origin_cause=removed), rec(['F-02'], **REJECT)], 'adoption_error', kind='triage', fix_loop='yes')
