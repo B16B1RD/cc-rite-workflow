@@ -2577,6 +2577,14 @@ if [[ "$sb_line_cost" =~ ^[1-9][0-9]*$ && "$sb_max_cost" =~ ^[1-9][0-9]*$ ]]; th
   # not make its checks run out of time before this denial.
   { printf "git commit -F - <<'EOF'\n"; printf 'xxxxxxxxxxxxxxx\n%.0s' $(seq 1 60000); printf 'EOF'; } > "$p7_big"
   sb_case "a commit with a 60000-line heredoc" deny
+  # Each character Pattern 6 replaces, crowded into a heredoc of about 1MB.
+  { printf "git commit -F - <<'EOF'\r\n"; printf 'xxxxxxxxxxxxxx\r\n%.0s' $(seq 1 60000); printf 'EOF'; } > "$p7_big"
+  sb_case "a commit with a 60000-line CRLF heredoc" deny
+  for sb_char in '\' $'\t'; do
+    sb_line="$(printf '%*s' 32 '' | tr ' ' "$sb_char")y"
+    { printf "git commit -F - <<'EOF'\n"; for _i in $(seq 1 30800); do printf '%s\n' "$sb_line"; done; printf 'EOF'; } > "$p7_big"
+    sb_case "a commit with a heredoc of 30800 lines of 32 $([ "$sb_char" = '\' ] && echo backslashes || echo tabs)" deny
+  done
   { printf 'git merge -m '; sb_x 10240; printf ' x'; } > "$p7_big"
   sb_case "a merge with a 10KB message" deny
   { printf 'echo '; sb_x 40960; } > "$p7_big"

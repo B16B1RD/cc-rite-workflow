@@ -346,16 +346,14 @@ _rite_btg_pattern6_command_surface() {
 _RITE_BTG_SURFACE_LINE_COST=16384
 _RITE_BTG_SURFACE_MAX_COST=67108864
 _rite_btg_surface_within_budget() {
-  local LC_ALL=C _s _l _cost=0
   # Test-only, fail-CLOSED-only fault injection: a failed estimate must deny.
   [ "${RITE_BTG_TEST_CRASH:-}" != "surface-budget" ] || return 2
-  _s="${1//$'\r'/}"
-  _s="${_s//$'\\\n'/}"
-  while IFS= read -r _l || [ -n "$_l" ]; do
-    _cost=$(( _cost + ${#_l} * ${#_l} + _RITE_BTG_SURFACE_LINE_COST ))
-    [ "$_cost" -le "$_RITE_BTG_SURFACE_MAX_COST" ] || return 1
-  done <<< "$_s"
-  [ "$_cost" -le "$_RITE_BTG_SURFACE_MAX_COST" ]
+  printf '%s' "$1" | LC_ALL=C tr -d '\r' | LC_ALL=C awk \
+    -v unit="$_RITE_BTG_SURFACE_LINE_COST" -v max="$_RITE_BTG_SURFACE_MAX_COST" '
+    { joined = sub(/\\$/, ""); len += length($0) }
+    joined { next }
+    { cost += len * len + unit; len = 0; if (cost > max) exit 1 }
+    END { if (len) cost += len * len + unit; exit cost > max }'
 }
 
 # Scan a command for sub-block (S) and set _sc_hit to the state-changing command
@@ -1282,8 +1280,8 @@ if [ -z "$BLOCKED_PATTERN" ]; then
   if [ "${RITE_BTG_TEST_CRASH:-}" = "pattern6" ]; then
     false
   fi
-  # The common no-heredoc path needs no line parser. Keeping it on built-in
-  # substitutions preserves the existing large-command timeout invariant.
+  # The common no-heredoc path needs no line parser, which preserves the
+  # existing large-command timeout invariant.
   # Past the parse budget the raw command is checked, heredoc bodies included:
   # a body that mentions gh issue create is then denied, but the hook does not
   # run out of time. Its lines are joined as the surface parser joins them, so a
@@ -1293,15 +1291,16 @@ if [ -z "$BLOCKED_PATTERN" ]; then
     if _rite_btg_surface_within_budget "$COMMAND"; then
       P6_CHECK=$(_rite_btg_pattern6_command_surface "$COMMAND")
     else
-      P6_CHECK=$(LC_ALL=C; _c="${COMMAND//$'\r'/}"; printf '%s' "${_c//$'\\\n'/}")
+      P6_CHECK=$(printf '%s' "$COMMAND" | LC_ALL=C tr -d '\r' |
+        LC_ALL=C awk '{ if (sub(/\\$/, "")) printf "%s", $0; else print }')
       _p6_raw=1
     fi
   else
     P6_CHECK="$COMMAND"
   fi
-  # Every replaced character is a single byte, and under a UTF-8 locale each
-  # replacement is quadratic in its match count, so they run byte-wise.
-  P6_CHECK=$(LC_ALL=C; _c="${P6_CHECK//$'\t'/ }"; _c="${_c//$'\n'/ }"; _c="${_c//[\"\']/}"; printf '%s' "${_c//\\/}")
+  # A built-in ${var//x/y} is quadratic in its match count, in any locale, so the
+  # characters are replaced with tr, which is linear.
+  P6_CHECK=$(printf '%s' "$P6_CHECK" | LC_ALL=C tr '\t\n' '  ' | LC_ALL=C tr -d "\"'\\\\")
   if [[ "$P6_CHECK" =~ (^|[^[:alnum:]_])gh[[:space:]]+issue[[:space:]]+create([[:space:]]|$) ]]; then
     BLOCKED_PATTERN="direct-gh-issue-create"
     BLOCKED_REASON="Direct gh issue create bypasses the required Issue format and Projects registration."
