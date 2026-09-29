@@ -27,6 +27,7 @@
 * **Update**: [base 取り込み後の再レビューは、同じ差分の再確認ではなく取り込み側との契約整合の確認として指示する](pages/heuristics/rereview-after-base-intake-checks-contract-consistency.md) — raw/reviews/20260928T165339Z-pr-3376.md を統合
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=580, broken_refs=0
 * **Skip**: [20260929T003352Z-pr-3417.md](raw/reviews/20260929T003352Z-pr-3417.md) — 指摘 0 件で、一般化できる経験則を含まない（テスト fixture を明示的に戻す 1 行修正の記録のみ）
+* **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=581, broken_refs=0
 
 ## 2026-09-28
 
