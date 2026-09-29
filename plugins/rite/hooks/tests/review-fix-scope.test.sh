@@ -592,6 +592,56 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
         check(leaked != 'wrong',
               'base_branch() does not leak base: from a non-alpha top-level key section (got %r)' % leaked)
 
+    # A directory input leaves out the Python bytecode cache found beneath it, and
+    # only that: source, untracked and ignored files still change the key, a cache
+    # named as an input is checked in full, and a .pyc symlink still cannot escape.
+    with tempfile.TemporaryDirectory(prefix='rite-fix-scope-pyc-') as fp_tmp:
+        fp_root = Path(fp_tmp)
+        subprocess.run(['git', 'init', '-q'], cwd=fp_root, check=True)
+        (fp_root / '.git/info/exclude').write_text('__pycache__/\nbuild.log\n')
+        pkg = fp_root / 'pkg'
+        (pkg / 'sub').mkdir(parents=True)
+        (pkg / 'm.py').write_text('x = 1\n')
+        subprocess.run(['git', 'add', 'pkg/m.py'], cwd=fp_root, check=True)
+        cwd_before = os.getcwd()
+        os.chdir(fp_root)
+        try:
+            def key(*inputs):
+                return review_fix_scope.fingerprint(dict(id='t', kind='related', command='true',
+                                                         inputs=list(inputs), environment=[]))
+            base = key('pkg')
+            (pkg / '__pycache__').mkdir()
+            (pkg / '__pycache__/m.cpython-312.pyc').write_bytes(b'first')
+            (pkg / 'sub/n.pyc').write_bytes(b'first')
+            check(key('pkg') == base, 'new bytecode beneath a directory input keeps its key')
+            (pkg / '__pycache__/m.cpython-312.pyc').write_bytes(b'second')
+            check(key('pkg') == base, 'rewritten bytecode beneath a directory input keeps its key')
+            cache = key('pkg/__pycache__')
+            single = key('pkg/sub/n.pyc')
+            (pkg / '__pycache__/m.cpython-312.pyc').write_bytes(b'third')
+            (pkg / 'sub/n.pyc').write_bytes(b'third')
+            check(key('pkg/__pycache__') != cache, 'a cache directory named as an input is checked in full')
+            check(key('pkg/sub/n.pyc') != single, 'a .pyc file named as an input is checked in full')
+            for label, change in (('tracked source', lambda: (pkg / 'm.py').write_text('x = 2\n')),
+                                  ('untracked file', lambda: (pkg / 'new.py').write_text('y = 1\n')),
+                                  ('ignored non-bytecode file', lambda: (pkg / 'build.log').write_text('log\n')),
+                                  ('regular file named __pycache__', lambda: (pkg / 'sub/__pycache__').write_text('f\n')),
+                                  ('directory named like bytecode', lambda: (pkg / 'd.pyc').mkdir())):
+                before = key('pkg')
+                change()
+                check(key('pkg') != before, 'a changed ' + label + ' changes the directory key')
+            with tempfile.TemporaryDirectory(prefix='rite-fix-scope-pyc-outside-') as fp_outside:
+                (Path(fp_outside) / 'x.pyc').write_bytes(b'outside')
+                (pkg / 'x.pyc').symlink_to(Path(fp_outside) / 'x.pyc')
+                try:
+                    key('pkg')
+                    escaped = False
+                except Exception as error:
+                    escaped = 'path escapes worktree' in str(error)
+                check(escaped, 'a .pyc symlink out of the worktree still stops the key')
+        finally:
+            os.chdir(cwd_before)
+
     # git-subcommand answers each git, in order, with its subcommand and the next word;
     # it reads no session or state, so it runs outside a repository with no session.
     bare_env = {key: value for key, value in env.items()
