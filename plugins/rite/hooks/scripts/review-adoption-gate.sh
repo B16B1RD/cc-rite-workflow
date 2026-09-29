@@ -7,9 +7,10 @@
 #   file    the only verdict that may write externally (ADOPT pre_existing, DIAGNOSE
 #           investigate). The record must also carry a non-empty `acceptance` (the filed
 #           Issue's acceptance criterion); without it the decision is held.
-#   record  RESOLVED / REJECT / LINK without pr_blocking: record the disposition only.
+#   record  RESOLVED / REJECT / LINK without pr_blocking, and every LINK of a followup (the
+#           merged PR cannot take the fix, the OPEN tracker does): record the disposition only.
 #   hold    anything else: pr_blocking decisions (RECONCILE, ADOPT pr/unknown, DIAGNOSE
-#           pr/unknown, LINK pr/unknown) and DIAGNOSE without investigation.
+#           pr/unknown, LINK pr/unknown outside followup) and DIAGNOSE without investigation.
 # A missing record file, an unreadable context, or a helper ERROR holds every candidate.
 # When anything is held, nothing may be written: every candidate of the run with its full
 # text (held_ids names the held ones), the source, the reviewed commit and how to resume
@@ -113,7 +114,7 @@ resume_for() {
   jq -e 'any(.[]; .verdict == "hold" and (.pr_blocking | not))' <<< "$verdicts" >/dev/null && ways+=("$records")
   if jq -e 'any(.[]; .verdict == "hold" and .pr_blocking)' <<< "$verdicts" >/dev/null; then
     if [ "$kind" = followup ]; then
-      ways+=("PR 起因の保留はマージ済み PR では同じ PR で直せず、この出口の扱いは仕様で未定義のため、保留のまま止め、人間に報告する（再実行しても同じ保留になる。判定記録を pre_existing や REJECT に書き換えて解除しない）")
+      ways+=("PR 起因の保留（LINK を除く）はマージ済み PR では同じ PR で直せず、この出口の扱いは仕様で未定義のため、保留のまま止め、人間に報告する（再実行しても同じ保留になる。判定記録を pre_existing や REJECT に書き換えて解除しない。同じ根因を追跡する OPEN の Issue があれば tracker に入れると LINK で決着する）")
     else
       ways+=("PR 起因の保留は同じ PR で直す。コードを直して push し $cmd で再レビューする（HEAD が変わると新しいレビューで判定し直す）")
       jq -e 'any(.[]; .verdict == "hold" and .exit == "RECONCILE")' <<< "$verdicts" >/dev/null \
@@ -251,10 +252,13 @@ case "$rc" in
 esac
 
 # Decisions come in record order, so decision i belongs to record i.
-if ! verdicts=$(jq -c --slurpfile a "$adoption" --argjson d "$decisions" '
+# A merged PR cannot be fixed in the same PR, so a followup LINK (an OPEN tracker takes the root
+# cause) is recorded even when it is PR-origin.
+if ! verdicts=$(jq -c --slurpfile a "$adoption" --argjson d "$decisions" --arg kind "$kind" '
     ($a[0].adoption.records) as $records
     | [$d.decisions | to_entries[] | .value + {record: $records[.key]}
        | . + {verdict: (if .file then (if ((.record.acceptance // "") | type == "string" and test("\\S")) then "file" else "hold" end)
+                        elif .exit == "LINK" and $kind == "followup" then "record"
                         elif .pr_blocking or .action == "hold" then "hold" else "record" end)}]
   ' <<< '{}'); then
   hold adoption_error "判定結果を読めません"

@@ -16,10 +16,12 @@
 # append   appends table rows to a ledger file (creates header if missing).
 #          The sweep writes 判定 = issued (filed), REJECT / RESOLVED / LINK (the
 #          adoption exit recorded without filing) and recorded (already_rejected
-#          transcription); append does not check the value.
+#          transcription); cleanup's follow-up writes REJECT / RESOLVED / LINK.
+#          append does not check the value.
 #          Every appended row must end with a 出典 cell holding the basename of
-#          the review JSON the row's candidate came from ({pr}-{14 digits}[~{4 hex}].json);
-#          otherwise nothing is appended (reason=entries_source_invalid).
+#          the review JSON the row's candidate came from ({pr}-{14 digits}[~{4 hex}].json),
+#          or {pr}-deferred for a Decision Log deferred defect that cleanup's follow-up
+#          disposed of; otherwise nothing is appended (reason=entries_source_invalid).
 #          Lines that are not table rows (the entries header below) are skipped.
 #          An existing 4-column header and its separator are upgraded to the
 #          5-column form; existing 4-column rows are kept as they are.
@@ -141,7 +143,8 @@ case "$cmd" in
     grep -E '^\| ' "$entries_file" | grep -Ev '^\|[-: |]+\|$' | grep -Ev '^\| finding_id ' > "$rows" || true
     # cleanup の follow-up 起票は出典セルで起票済みの指摘を同定する。出典を欠いた行を書くと、
     # その行は最新 JSON とだけ照合される旧形式に黙って戻るため、1 行でも欠ければ何も書かない。
-    if bad=$(grep -Ev '^\|.*\|.*\|.*\|.*\|[[:space:]]*[0-9]+-[0-9]{14}(~[0-9a-f]{4})?\.json[[:space:]]*\|[[:space:]]*$' "$rows"); then
+    # 先送り欠陥 (Decision Log の行) にはレビュー結果 JSON が無いので、出典は <pr>-deferred と書く。
+    if bad=$(grep -Ev '^\|.*\|.*\|.*\|.*\|[[:space:]]*([0-9]+-[0-9]{14}(~[0-9a-f]{4})?\.json|[0-9]+-deferred)[[:space:]]*\|[[:space:]]*$' "$rows"); then
       echo "ERROR: entries row lacks a 出典 cell (review JSON basename) as its last column:" >&2
       # shellcheck source=../control-char-neutralize.sh
       source "$(dirname "${BASH_SOURCE[0]}")/../control-char-neutralize.sh"

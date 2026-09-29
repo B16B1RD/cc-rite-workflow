@@ -166,6 +166,18 @@ check(verdicts['F-02']['verdict'] == 'record' and verdicts['F-02']['exit'] == 'L
 removed = {'diff': ['tool.sh:-2'], 'path': 'removing the guard lets an empty NAME through'}
 saved, _ = held([rec(origin='pr', origin_cause=removed, tracker=7), rec(['F-02'], **REJECT)], 'undecided')
 check(saved['held_ids'] == ['F-01'], saved)
+hold_file.unlink()
+# After the merge the OPEN tracker takes a PR-origin or unknown-origin root cause: a followup LINK
+# is recorded (never filed, never held); a CLOSED tracker is not a LINK and stays held.
+for fields in ({'origin': 'pr', 'origin_cause': removed}, {'origin': 'unknown'}):
+    verdicts, result = decided([rec(tracker=7, **fields), rec(['F-02'], **REJECT)], kind='followup')
+    check((verdicts['F-01']['verdict'], verdicts['F-01']['exit'], verdicts['F-01']['tracker'], verdicts['F-01']['pr_blocking'])
+          == ('record', 'LINK', 7, True), (fields, verdicts))
+    check('kind=followup; file=0; record=2' in result.stderr, result.stderr)
+env['GH_STATES'] = '7=CLOSED'
+held([rec(origin='pr', origin_cause=removed, tracker=7), rec(['F-02'], **REJECT)], 'undecided', kind='followup')
+env['GH_STATES'] = '7=OPEN'
+(state / '.rite/state/adoption-hold-5-followup.json').unlink()
 
 # PR-origin and unknown-origin adoptions keep the PR open: held, never filed or recorded.
 for fields in ({'origin': 'pr', 'origin_cause': removed}, {'origin': 'unknown'}):

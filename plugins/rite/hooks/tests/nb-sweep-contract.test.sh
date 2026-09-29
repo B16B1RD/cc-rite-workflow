@@ -1584,9 +1584,15 @@ t21_ok_rc=0
 "$LEDGER" append --ledger-file "$sandbox/t21-new.md" --entries-file "$sandbox/t21-entries-ok.md" 2>/dev/null || t21_ok_rc=$?
 assert "T-21 suffix 付き出典・末尾空白・エスケープ済みパイプを受理" 0 "$t21_ok_rc"
 assert "T-21 5 列台帳への追記で列ヘッダは変わらない" 1 "$(grep -c '^| finding_id | file:line | 判定 | 判定文 | 出典 |$' "$sandbox/t21-new.md")"
+# cleanup の follow-up が処分した先送り欠陥の行は出典 <pr>-deferred を持つ
+printf '%s\n' '| D-01 | - | LINK | 追跡先 #7 | 7-deferred |' > "$sandbox/t21-entries-deferred.md"
+t21_def_rc=0
+"$LEDGER" append --ledger-file "$sandbox/t21-new.md" --entries-file "$sandbox/t21-entries-deferred.md" 2>/dev/null || t21_def_rc=$?
+assert "T-21 先送り欠陥の出典 <pr>-deferred を受理" 0 "$t21_def_rc"
 # 出典を欠く・形が合わない行を 1 行でも含む entries は何も書かない
 cp "$sandbox/t21-new.md" "$sandbox/t21-before.md"
 for t21_bad in '| NB-7 | src/g.ts:7 | recorded | severity=LOW; measured=false |' \
+               '| D-02 | - | LINK | 追跡先 #7 | deferred |' \
                '| NB-7 | src/g.ts:7 | recorded | severity=LOW; measured=false | review.json |' \
                '| NB-7 | src/g.ts:7 | recorded | severity=LOW; measured=false | 7-20260101120000.json.corrupt-1 |'; do
   printf '%s\n%s\n' "$t21_row" "$t21_bad" > "$sandbox/t21-entries-bad.md"

@@ -312,6 +312,11 @@ case "$cmd" in
     echo "$GH_HEAD_OID"
     exit 0
     ;;
+  # 記録 helper が却下台帳を書いた本文で記録コメントを更新する (本文を GH_PATCH_OUT へ保存する)
+  "api repos/acme/demo/issues/comments/"*" -X PATCH --input -")
+    jq -r '.body' > "${GH_PATCH_OUT:-/dev/null}"
+    exit "${GH_PATCH_RC:-0}"
+    ;;
   # 記録 helper が PATCH 先と決めた 1 件の GET
   "api repos/acme/demo/issues/comments/"*)
     jq --argjson id "${cmd##*/}" '[.[][] | select(.id == $id)][0]' "${GH_API_JSON:-/dev/null}"
@@ -1316,10 +1321,10 @@ run_target "$r" --list-candidates "$TMP_ROOT/t29-ledger-unread.json"
 assert "T-29 台帳を読めない一覧の ledger は空" "0" "$(jq '.ledger | length' "$TMP_ROOT/t29-ledger-unread.json")"
 assert_grep "T-29 台帳を読めない一覧は unavailable を出す" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=comments_api; pr=9'
 assert_grep "T-29 台帳を読めない一覧は WARNING を出す" "$ERR" 'WARNING: 関連 Issue の却下台帳を読めないため'
-# 一覧でない実行で指摘が無いときは台帳を読まないので、読めなくても unavailable を出さない
+# 先送り欠陥がある起票実行も、前回処分した先送り欠陥を除くために台帳を読む。読めなければ unavailable を出す
 ADOPT_MODE=manual
 run_target "$r"
-assert_not_grep "T-29 指摘の無い起票実行は台帳を読まず unavailable を出さない" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable'
+assert_grep "T-29 先送り欠陥の起票実行は台帳を読み、読めなければ unavailable を出す" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=comments_api; pr=9'
 unset GH_API_RC
 # sweep が書く出典付きの 5 列の REJECT 行は、出典が finding の出典 JSON と一致するときだけ除外する
 for t29_src in 9-20260101120000.json 9-20251231120000.json; do
@@ -3120,6 +3125,57 @@ assert "T-91 SKILL 6.0.A: 保留した候補は RESOLVED の記録で処分す�
 assert "T-91 SKILL 6.0.A: PR 起因の保留は人間に報告する" "1" \
   "$(grep -cF 'ゲートは保留のまま止め、人間に報告する（再実行しても同じ保留になる）' "$CLEANUP_MD")"
 assert "T-91 SKILL 6.0.A: PM に返す旧文が無い" "0" "$(grep -cF 'PM に返す' "$CLEANUP_MD")"
+
+echo "--- T-92: PR 起因の LINK は追跡先への処分で決着し、record の出口は台帳に残って再実行で判定し直さない ---"
+reset_stubs
+ADOPT_MODE=manual
+adopt_root t92
+export GH_PATCH_OUT="$STUB_DIR/t92-patched.md"
+rm -f "$GH_PATCH_OUT"
+jq -n --argjson c "$(comment_obj "$(record_body '| F-77 | other.md:1 | issued | #77 https://example.test/issues/77 | 9-20251231120000.json |')")" '[[$c]]' > "$GH_API_JSON"
+for t92_origin in unknown pr; do
+  t92_link='{"origin": "unknown", "tracker": 7}'
+  [ "$t92_origin" = pr ] && t92_link='{"origin": "pr", "origin_cause": {"contract": {"ref": "pr", "text": "契約: マージ時の残存指摘は follow-up で扱う"}}, "tracker": 7}'
+  write_adoption "$r" "$(rec "[\"$C_F01\",\"D-01\"]" "$t92_link")" "$(rec "[\"$C_F05\"]" "$REJECT_FIELDS")" "$(rec '["D-04"]' "$RESOLVED_FIELDS")"
+  run_target "$r"
+  assert_grep "T-92 origin=$t92_origin の LINK は保留せず all_recorded" "$ERR" '^\[CONTEXT\] FOLLOW_UP_ISSUE=skipped; reason=all_recorded; recorded=3; pr=9$'
+  assert "T-92 origin=$t92_origin の LINK は起票しない" "0" "$(create_count)"
+  assert "T-92 origin=$t92_origin の LINK は hold を残さない" "no" "$([ -e "$r/$HOLD_REL" ] && echo yes || echo no)"
+  assert_grep "T-92 origin=$t92_origin の出口を台帳へ書く" "$ERR" '^\[CONTEXT\] FOLLOW_UP_LEDGER=recorded; rows=4; pr=9$'
+done
+assert_grep "T-92 LINK 行は追跡先の番号と指摘の出典を持つ" "$GH_PATCH_OUT" '^| F-01 | a.md:3 | LINK | 追跡先 #7 | 9-20260101120000.json |$'
+assert_grep "T-92 先送り欠陥の LINK 行は出典 <pr>-deferred" "$GH_PATCH_OUT" '^| D-01 | - | LINK | 追跡先 #7 | 9-deferred |$'
+assert_grep "T-92 REJECT 行は reason を判定文にする" "$GH_PATCH_OUT" '^| F-05 | b.md:9 | REJECT | 文書化された挙動 / 仕様が変わったら再検討 | 9-20260101120000.json |$'
+assert_grep "T-92 reason の無い RESOLVED 行は evidence を判定文にする" "$GH_PATCH_OUT" '^| D-04 | - | RESOLVED | マージ後 HEAD で修正済み | 9-deferred |$'
+assert_grep "T-92 既存の台帳行を残す" "$GH_PATCH_OUT" '^| F-77 | other.md:1 | issued |'
+# 書いた台帳で再実行すると、処分済みの候補は候補に戻らず、追跡先も読み直さず、保留もしない
+jq -n --argjson c "$(comment_obj "$(cat "$GH_PATCH_OUT")")" '[[$c]]' > "$GH_API_JSON"
+: > "$GH_LOG"
+PATH="$TMP_ROOT/bin:$PATH" bash "$TARGET" --state-root "$r" --pr 9 --owner acme --repo demo --source-issue 42 \
+  --list-candidates "$TMP_ROOT/t92-cands.json" >"$OUT" 2>"$ERR"
+assert "T-92 再実行の列挙は処分済みの候補を含まない" "0" "$(jq '.candidates | length' "$TMP_ROOT/t92-cands.json")"
+run_target "$r"
+assert_not_grep "T-92 再実行は保留しない" "$ERR" 'FOLLOW_UP_ISSUE=held'
+assert_not_grep "T-92 再実行は追跡先の状態を読み直さない" "$GH_LOG" 'issue view 7'
+assert "T-92 再実行も起票しない" "0" "$(create_count)"
+# 台帳へ書けなくても起票の判断は変えず、失敗を marker で出す
+reset_stubs
+ADOPT_MODE=manual
+adopt_root t92-fail
+export GH_PATCH_RC=1
+jq -n --argjson c "$(comment_obj "$(record_body '| F-77 | other.md:1 | issued | #77 | 9-20251231120000.json |')")" '[[$c]]' > "$GH_API_JSON"
+write_adoption "$r" "$(rec "[\"$C_F01\",\"D-01\"]" '{"origin": "unknown", "tracker": 7}')" "$(rec "[\"$C_F05\",\"D-04\"]" "$REJECT_FIELDS")"
+run_target "$r"
+assert_grep "T-92 台帳へ書けなければ FOLLOW_UP_LEDGER=failed" "$ERR" '^\[CONTEXT\] FOLLOW_UP_LEDGER=failed; pr=9$'
+assert_grep "T-92 台帳へ書けなくても all_recorded" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=all_recorded; recorded=2; pr=9'
+unset GH_PATCH_RC GH_PATCH_OUT
+# プレビューでは台帳へ書かない
+reset_stubs
+ADOPT_MODE=manual
+adopt_root t92-preview
+write_adoption "$r" "$(rec "[\"$C_F01\"]")" "$(rec "[\"$C_F05\",\"D-01\",\"D-04\"]" "$REJECT_FIELDS")"
+run_target "$r" --preview-body "$TMP_ROOT/t92-preview.md"
+assert_not_grep "T-92 プレビューは台帳へ書かない" "$ERR" 'FOLLOW_UP_LEDGER='
 
 echo "--- T-arg: 引数 gate ---"
 bash "$TARGET" --pr abc --state-root "$TMP_ROOT" --owner a --repo b >"$OUT" 2>"$ERR"; RC=$?

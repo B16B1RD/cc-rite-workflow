@@ -99,6 +99,10 @@
 #     判定済み記録も書かない。declined でも skipped でもない。reason はゲートの reason (no_records /
 #     context_unavailable / adoption_error / undecided)。ゲート自体が失敗したら reason=gate_failed_rc<n>、
 #     ゲートの出力を読めなければ reason=gate_output_invalid で、どちらも hold_file=none
+#   [CONTEXT] FOLLOW_UP_LEDGER=recorded; rows=<n>; pr=<n>   (record の出口の候補を関連 Issue の却下台帳へ書いた。
+#     指摘は出典 JSON の basename、先送り欠陥は <pr>-deferred を出典にする。再実行はこの行で候補から除く。
+#     LINK は追跡先 #N を判定文に持つ。--preview-body では書かない)
+#   [CONTEXT] FOLLOW_UP_LEDGER=failed; pr=<n>   (台帳へ書けなかった。起票の判断は変えない)
 #   [CONTEXT] FOLLOW_UP_ISSUE=created; issue=<起票した番号の CSV>; existing=<起票済みだった根因数>; recorded=<k>; pr=<n>
 #   [CONTEXT] FOLLOW_UP_ISSUE=preview; count=<n>; deferred=<k>; issues=<m>; body=<path>; pr=<n>   (--preview-body のとき。
 #     count は起票する根因に束ねた候補の件数、deferred はそのうち先送り欠陥の件数、issues は起票する Issue の数)
@@ -583,7 +587,8 @@ sweep_issued_unavailable() {
 # 台帳行の分解は nb-sweep-collect.sh と同じ式 (セル内のエスケープ済みパイプを区切りにしない)。
 ledger_hint='[]'
 ledger_unread=""
-if [ -n "$SOURCE_ISSUE" ] && { [ -n "$LIST_OUT" ] || printf '%s' "$findings_json" | jq -e 'length > 0' >/dev/null; }; then
+deferred_done='[]'
+if [ -n "$SOURCE_ISSUE" ] && { [ -n "$LIST_OUT" ] || [ "$deferred_n" -gt 0 ] || printf '%s' "$findings_json" | jq -e 'length > 0' >/dev/null; }; then
   rite_tempfile_new comments_err "fu-comments" || exit 1
   if ! record_body=$(bash "$SCRIPT_DIR/../review-nonblocking-record.sh" --print-record-body \
       --pr "$PR_NUMBER" --owner-repo "${OWNER}/${REPO}"); then
@@ -596,10 +601,13 @@ if [ -n "$SOURCE_ISSUE" ] && { [ -n "$LIST_OUT" ] || printf '%s' "$findings_json
         | gsub("\\\\\\|"; "\ue000") | split("|") | map(gsub("\ue000"; "\\|") | trim)
         | select(length >= 6)
         | {id: .[1], loc: .[2], disposition: .[3], premise: .[4], source: (if length >= 7 then .[5] else "" end)}
-        | select(.disposition == "issued" or .disposition == "LINK" or .disposition == "REJECT") ]' 2>"$comments_err"); then
+        | select(.disposition == "issued" or .disposition == "LINK" or .disposition == "REJECT" or .disposition == "RESOLVED") ]' 2>"$comments_err"); then
     ledger_hint='[]'
     ledger_unread=ledger_invalid
   fi
+  # 前回の follow-up が record の出口で処分した先送り欠陥 (出典 <pr>-deferred の行) は候補に戻さない
+  deferred_done=$(jq -c --arg src "${PR_NUMBER}-deferred" '[.[] | select(.source == $src and .disposition != "issued") | .id]' <<< "$ledger_hint")
+  ledger_hint=$(jq -c '[.[] | select(.disposition != "RESOLVED")]' <<< "$ledger_hint")
 fi
 if ! printf '%s' "$findings_json" | jq -e 'length > 0' >/dev/null; then
   # 先送り欠陥だけで起票する経路。台帳と照合する指摘は無いが、読めなかった ledger は分類役に空と区別させる
@@ -726,7 +734,7 @@ fi
 rite_tempfile_new cands_file "fu-cands" || exit 1
 deferred_source=""
 [ -n "$SOURCE_ISSUE" ] && deferred_source="Issue #${SOURCE_ISSUE} Decision Log (Section 9)"
-if ! printf '%s' "$findings_json" | jq -c --arg dmd "$deferred_md" --arg dsrc "$deferred_source" '
+if ! printf '%s' "$findings_json" | jq -c --arg dmd "$deferred_md" --arg dsrc "$deferred_source" --argjson ddone "$deferred_done" '
   def safe: tostring | gsub("[^A-Za-z0-9._-]"; "_");
   [ .[] | ((._src // "") | split("/") | last) as $b
       | {id: ($b + "#" + ((.id // "") | safe)), kind: "finding", source: $b, finding: del(._src)} ]
@@ -736,7 +744,7 @@ if ! printf '%s' "$findings_json" | jq -c --arg dmd "$deferred_md" --arg dsrc "$
   | reduce .[] as $c ({out: [], seen: {}};
       (.seen[$c.id] // 0) as $n | .seen[$c.id] = $n + 1
       | .out += [if $n == 0 then $c else $c + {id: "\($c.id)~\($n + 1)"} end])
-  | {candidates: .out}' > "$cands_file"; then
+  | {candidates: [.out[] | select(.kind == "finding" or (.id as $i | $ddone | index($i) | not))]}' > "$cands_file"; then
   echo "WARNING: 候補の一覧を作れません (non_blocking_findings[] に object でない要素がある可能性)。follow-up を起票しません (PR #${PR_NUMBER})" >&2
   emit_failed json_undecidable
   exit 0
@@ -831,6 +839,67 @@ case "$gate_rc" in
 esac
 
 n_record=$(jq '[.verdicts[] | select(.verdict == "record")] | length' <<< "$gate_out")
+
+# record の出口 (REJECT / RESOLVED / LINK) を関連 Issue の却下台帳へ書く。再実行ではこの行が候補を除くので、
+# 同じ候補を判定し直さず保留もしない。書き込みは sweep の台帳 persist と同じ経路 (extract → append →
+# merge-into → 記録 helper)。先送り欠陥の行は出典を <pr>-deferred とする。失敗しても起票は止めない
+# (再実行は判定記録を再利用して同じ出口に至り、行を書き直す)。プレビューでは書かない。
+write_ledger() {
+  local entries body ledger rec_err rc outcome count
+  rite_tempfile_new entries "fu-ledger-entries" || return 1
+  jq -r --argjson cands "$(jq -c '.candidates' "$cands_file")" --arg pr "$PR_NUMBER" '
+    def cell: tostring | gsub("\r?\n"; " ") | gsub("\\|"; "\\|");
+    .verdicts[] | select(.verdict == "record") as $v
+    | ($v.record.reason // "") as $reason
+    | (if $v.exit == "LINK" then "追跡先 #\($v.tracker)" + (if $reason != "" then " / " + $reason else "" end)
+       elif $v.exit == "RESOLVED" and $reason == "" then ($v.record.evidence // "")
+       else $reason end) as $premise
+    | $v.ids[] as $i | $cands[] | select(.id == $i)
+    | if .kind == "finding"
+      then "| \(.finding.id // $i | cell) | \(.finding.file // "" | cell):\(.finding.line | cell) | \($v.exit) | \($premise | cell) | \(.source) |"
+      else "| \(.id | cell) | - | \($v.exit) | \($premise | cell) | \($pr)-deferred |" end' <<< "$gate_out" > "$entries" || return 1
+  [ -s "$entries" ] || return 0
+  # 本文は上で台帳を読んだときの記録コメント (同じ run の中なので読み直さない)
+  if [ -z "$SOURCE_ISSUE" ] || [ "$ledger_unread" = comments_api ]; then
+    echo "WARNING: 記録コメントを読めていないため却下台帳へ書けません" >&2
+    return 1
+  fi
+  rite_tempfile_new body "fu-ledger-body" || return 1
+  rite_tempfile_new ledger "fu-ledger" || return 1
+  rite_tempfile_new rec_err "fu-ledger-err" || return 1
+  printf '%s' "$record_body" > "$body" || return 1
+  if [ ! -s "$body" ]; then
+    printf '%s\n\n%s\n\n%s\n%s\n\n%s\n' \
+      '## 📜 rite 非実測指摘の記録 (non-blocking)' \
+      '本 cycle の非実測指摘: 0 件 (前 cycle の記録内容は本 cycle では再報告されていません)' \
+      '📎 non_blocking_count: 0' \
+      '📎 reviewed_commit: unknown' \
+      '<!-- rite:nbr:v1 -->' > "$body"
+  fi
+  bash "$SCRIPT_DIR/nb-sweep-ledger.sh" extract --body-file "$body" > "$ledger" \
+    && bash "$SCRIPT_DIR/nb-sweep-ledger.sh" append --ledger-file "$ledger" --entries-file "$entries" \
+    && bash "$SCRIPT_DIR/nb-sweep-ledger.sh" merge-into --body-file "$body" --ledger-file "$ledger" || return 1
+  count=$(grep -E '^📎 non_blocking_count:[[:space:]]*[0-9]+[[:space:]]*$' "$body" | tail -1 | grep -oE '[0-9]+')
+  [ -n "$count" ] || return 1
+  bash "$SCRIPT_DIR/../review-nonblocking-record.sh" --pr "$PR_NUMBER" --owner-repo "${OWNER}/${REPO}" \
+    --count "$count" --iteration-id "follow-up-${PR_NUMBER}" --content-file "$body" 2>"$rec_err"
+  rc=$?
+  outcome=$(sed -n 's/^\[CONTEXT\] NONBLOCKING_RECORD_DONE=1; .*outcome=\([^;]*\);.*/\1/p' "$rec_err" | tail -1)
+  case "$rc:$outcome" in
+    0:created|0:updated) ledger_rows=$(grep -c '^| ' "$entries") ;;
+    *) neutralize_ctrl --keep-newline < "$rec_err" | sed 's/^/  /' >&2; return 1 ;;
+  esac
+}
+if [ "$n_record" -gt 0 ] && [ -z "$PREVIEW_BODY" ]; then
+  ledger_rows=0
+  if write_ledger; then
+    echo "[CONTEXT] FOLLOW_UP_LEDGER=recorded; rows=${ledger_rows}; pr=${PR_NUMBER}" >&2
+  else
+    echo "WARNING: record の出口を却下台帳へ書けませんでした (PR #${PR_NUMBER})。起票は続けます。/rite:cleanup ${PR_NUMBER} を再実行すると判定記録を再利用して書き直します" >&2
+    echo "[CONTEXT] FOLLOW_UP_LEDGER=failed; pr=${PR_NUMBER}" >&2
+  fi
+fi
+
 file_json=$(jq -c --arg p "${MARKER_PREFIX}${PR_NUMBER}:" '
   [.verdicts[] | select(.verdict == "file") | . + {key: (.ids | sort | join(","))} | . + {marker: ($p + .key + "]")}]' <<< "$gate_out")
 if [ "$(jq 'length' <<< "$file_json")" -eq 0 ]; then
