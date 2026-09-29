@@ -102,6 +102,9 @@
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=583, broken_refs=0
 
 
+* **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=584, broken_refs=0
+* **Lint scope note** — 機械検査は全ページを走査。矛盾の検出数はタイトル候補抽出と更新テーマの読解の範囲であり、全ページ間の意味比較は未完了。全体の無矛盾を保証する結果ではない。
+
 ## 2026-09-28
 
 * **Update**: [`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) — raw/reviews/20260927T201202Z-pr-3334.md を統合
