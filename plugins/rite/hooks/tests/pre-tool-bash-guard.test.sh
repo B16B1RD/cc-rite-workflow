@@ -2714,6 +2714,25 @@ for sc_cmd in \
   "git push --help && git push origin HEAD" \
   "bash -n plugins/rite/hooks/flow-state.sh && bash plugins/rite/hooks/flow-state.sh set --phase fix" \
   "bash -x plugins/rite/hooks/flow-state.sh set --phase fix" \
+  "git >/dev/null push" \
+  "git 2>/dev/null commit -m x" \
+  'git $OPTS commit -m x' \
+  "git > /dev/null push" \
+  "git 2>&1 push" \
+  "git &>/dev/null push" \
+  "timeout 30 git 2>/dev/null push" \
+  "git --git-dir .git push" \
+  "git --work-tree=. commit -m x" \
+  "git --no-pager push" \
+  "git -p push" \
+  "git -C x 2>/dev/null push" \
+  "git --namespace n push" \
+  "git --super-prefix p/ push" \
+  "git --attr-source HEAD push" \
+  "git --shallow-file f push" \
+  'git $(echo) push' \
+  "git 2>/dev/null push origin --help" \
+  "git >/dev/null push && git log --help" \
   ; do
   rc=0
   output=$(run_guard_typed "rite:test-reviewer" "$sc_cmd") || rc=$?
@@ -2812,6 +2831,16 @@ for ro_sc_cmd in \
   "git commit -h" \
   "bash -n plugins/rite/hooks/flow-state.sh" \
   "bash -n plugins/rite/scripts/iterate-step.sh" \
+  "git log --grep push" \
+  "git 2>/dev/null log --grep push" \
+  "git -C push status" \
+  "git --git-dir push log" \
+  "git --namespace commit log" \
+  "git 2>/dev/null push --help" \
+  "git -C x commit -h" \
+  "git log -- plugins/rite/scripts/iterate-step.sh" \
+  "git show HEAD:plugins/rite/hooks/flow-state.sh" \
+  "git log 2>&1 | grep commit" \
   ; do
   rc=0
   output=$(run_guard_typed "rite:test-reviewer" "$ro_sc_cmd") || rc=$?
@@ -2821,6 +2850,47 @@ for ro_sc_cmd in \
     fail "Expected allow for reviewer '$ro_sc_cmd', got rc=$rc output=$output"
   fi
 done
+# A git subcommand that the parser does not report is denied: a python3 that
+# fails, and one that answers no line. A git with no push / commit does not run
+# the parser, so the broken python3 does not deny it.
+sc_stub_dir=$(mktemp -d)
+for sc_stub in "fail|exit 1|parser failed" "silent|exit 0|answered 0 of 1"; do
+  sc_stub_label="${sc_stub%%|*}"; sc_stub_rest="${sc_stub#*|}"
+  sc_stub_body="${sc_stub_rest%|*}"; sc_stub_want="${sc_stub_rest##*|}"
+  printf '#!/bin/sh\ncat >/dev/null\n%s\n' "$sc_stub_body" > "$sc_stub_dir/python3"
+  chmod +x "$sc_stub_dir/python3"
+  rc=0
+  output=$(jq -n --arg cmd "git >/dev/null log" '{tool_name: "Bash", tool_input: {command: ($cmd + "; git 2>/dev/null push")}, cwd: "/tmp", agent_type: "rite:test-reviewer"}' \
+    | PATH="$sc_stub_dir:$PATH" bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+  reason=$(extract_hook_field "$output" permissionDecisionReason)
+  if [ "$(extract_hook_field "$output" permissionDecision)" = "deny" ] \
+    && [[ "$reason" == "BLOCKED (reviewer-state-change):"* ]] && [[ "$reason" == *"could not be determined"*"$sc_stub_want"* ]] \
+    && grep -q 'bash-guard: BLOCKED pattern=reviewer-state-change' "$STDERR_FILE"; then
+    pass "reviewer git push denied when the subcommand parser is unusable ($sc_stub_label)"
+  else
+    fail "Expected parser-unusable deny ($sc_stub_label), got output=$output"
+  fi
+  for sc_ro in "git status" "git diff"; do
+    rc=0
+    output=$(jq -n --arg cmd "$sc_ro" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", agent_type: "rite:test-reviewer"}' \
+      | PATH="$sc_stub_dir:$PATH" bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+    if [ "$rc" = "0" ] && [ -z "$output" ]; then
+      pass "reviewer '$sc_ro' allowed without the subcommand parser ($sc_stub_label)"
+    else
+      fail "Expected allow for reviewer '$sc_ro' with an unusable parser ($sc_stub_label), got rc=$rc output=$output"
+    fi
+  done
+done
+rm -rf "$sc_stub_dir"
+# The subcommand is found in one place: the reviewer scan keeps no git
+# subcommand branch, and the commit guard's parser walks global options once.
+sc_match_body=$(awk '/^_rite_btg_state_change_match\(\) \{/,/^}/' "$HOOK")
+if [ -n "$sc_match_body" ] && ! grep -qE 'push\|commit' <<< "$sc_match_body" \
+  && [ "$(grep -c 'while index < len(words) and (words\[index\].startswith("-")' "$SCRIPT_DIR/../scripts/lib/review-fix-scope.py")" = "1" ]; then
+  pass "git subcommand identification is shared with the commit guard's parser"
+else
+  fail "Expected no git subcommand branch in the reviewer scan and one global-option walk in review-fix-scope.py"
+fi
 # The scan must finish inside the hook timeout: a command just under the scan
 # ceiling is scanned and denied, a longer one is denied unscanned; neither may
 # time out.

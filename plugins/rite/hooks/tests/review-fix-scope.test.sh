@@ -592,5 +592,28 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
         check(leaked != 'wrong',
               'base_branch() does not leak base: from a non-alpha top-level key section (got %r)' % leaked)
 
+    # git-subcommand answers each git, in order, with its subcommand and the next word;
+    # it reads no session or state, so it runs outside a repository with no session.
+    bare_env = {key: value for key, value in env.items()
+                if key not in ('CLAUDE_CODE_SESSION_ID', 'RITE_SESSION_ID', 'RITE_STATE_ROOT')}
+    git_lines = [
+        ['>/dev/null', 'push'], ['2>/dev/null', 'commit', '-m', 'x'], ['$OPTS', 'commit'],
+        ['>', '/dev/null', 'push'], ['2>&1', 'push'], ['&>/dev/null', 'push'],
+        ['-C', 'x', 'push'], ['-Cx', 'push'], ['-c', 'k=v', '2>', '/dev/null', 'push'],
+        ['--git-dir', 'push', 'log'], ['--work-tree', 'push', 'log'], ['--namespace', 'push', 'log'],
+        ['--config-env', 'k=push', 'log'], ['--super-prefix', 'push', 'log'],
+        ['--attr-source', 'push', 'log'], ['--shallow-file', 'push', 'log'],
+        ['--exec-path', 'push'], ['--git-dir=x', 'push', '--help'], ['log', '--grep', 'push'],
+        ['-C'], [],
+    ]
+    want = ['push\t', 'commit\t-m', 'commit\t', 'push\t', 'push\t', 'push\t',
+            'push\t', 'push\t', 'push\t',
+            'log\t', 'log\t', 'log\t', 'log\t', 'log\t', 'log\t', 'log\t',
+            'push\t', 'push\t--help', 'log\t--grep', '\t', '\t']
+    answered = subprocess.run(['bash', str(helper), 'git-subcommand'], cwd=tmp, env=bare_env, text=True,
+                              capture_output=True, input=''.join('\x1f'.join(line) + '\n' for line in git_lines))
+    check(answered.returncode == 0, 'git-subcommand runs with no session: ' + answered.stderr)
+    check(answered.stdout.split('\n')[:-1] == want, 'git-subcommand answers each git in order: ' + repr(answered.stdout))
+
     print('PASS: review fix scope: ' + str(checks) + ' assertions; real receipts, cache, failures and documented callers')
 PYTEST

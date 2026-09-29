@@ -371,6 +371,11 @@ _rite_btg_surface_within_budget() {
 # once with it only separating commands in a substitution where the word `case`
 # has appeared. Both readings can still miss a push when a case pattern holds
 # quotes; the check targets the forms a reviewer writes.
+# The & of a redirection (`2>&1`, `&>log`) stays in its word, as in the commit
+# guard's parser. The words after each git at command position are handed, once
+# for both readings, to that parser (review-fix-scope-check.sh git-subcommand),
+# which skips redirections, variables and global options to find the subcommand.
+# When it fails or its output does not answer every git, _sc_unparsed holds why.
 # A command longer than $2 bytes is not scanned: _sc_oversized is set to its
 # byte length instead, since the scan grows faster than linearly.
 # The caller runs this with errtrace (set -E): the Pattern 4 ERR trap is not
@@ -384,6 +389,8 @@ _rite_btg_state_change_scan() {
   local -a _st _cl _par _case _w _buf _toks
   _sc_hit=""
   _sc_oversized=""
+  _sc_unparsed=""
+  _sc_git_lines=()
   # Test-only, fail-CLOSED-only fault injection, like the pattern4 one in the
   # Pattern 4 block: it proves a failure inside this function reaches the trap.
   if [ "${RITE_BTG_TEST_CRASH:-}" = "pattern4-scan" ]; then
@@ -420,7 +427,9 @@ _rite_btg_state_change_scan() {
               if [ "${_par[_d]}" -gt 0 ]; then _par[_d]=$((_par[_d] - 1)); _ch=sep
               elif [ "${_cl[_d]}" = ")" ] && { [ "$_view" = close ] || [ "${_case[_d]}" = 0 ]; }; then _ch=close
               else _ch=sep; fi ;;
-            ';'|'&'|'|'|$'\n') _ch=sep ;;
+            '&')
+              if [ "${_src:$((_i + 1)):1}" = ">" ] || [[ "${_w[_d]}" == *[\<\>] ]]; then _w[_d]+="$_ch"; else _ch=sep; fi ;;
+            ';'|'|'|$'\n') _ch=sep ;;
             ' '|$'\t') _ch=end ;;
             '#')
               if [ -z "${_w[_d]}" ]; then
@@ -465,6 +474,35 @@ _rite_btg_state_change_scan() {
     _rite_btg_state_change_match
     if [ -n "$_sc_hit" ]; then return 0; fi
   done
+  local -a _gl=() _res_lines=()
+  local _l _res _sub _next _seen=$'\n'
+  # Both readings usually collect the same git; each is sent once.
+  for _l in ${_sc_git_lines[@]+"${_sc_git_lines[@]}"}; do
+    if [[ "$_l" == *push* || "$_l" == *commit* ]] && [[ "$_seen" != *$'\n'"$_l"$'\n'* ]]; then
+      _gl+=("$_l"); _seen+="$_l"$'\n'
+    fi
+  done
+  if [ "${#_gl[@]}" -eq 0 ]; then return 0; fi
+  if ! _res=$(printf '%s\n' "${_gl[@]}" | bash "$SCRIPT_DIR/scripts/review-fix-scope-check.sh" git-subcommand 2>&1); then
+    _sc_unparsed="the git subcommand parser failed: ${_res:-no output}"
+    return 0
+  fi
+  if [ -n "$_res" ]; then mapfile -t _res_lines <<< "$_res"; fi
+  if [ "${#_res_lines[@]}" -ne "${#_gl[@]}" ]; then
+    _sc_unparsed="the git subcommand parser answered ${#_res_lines[@]} of ${#_gl[@]} git commands"
+    return 0
+  fi
+  for _l in "${_res_lines[@]}"; do
+    _sub=${_l%%$'\t'*}
+    _next=${_l#*$'\t'}
+    case "$_sub" in
+      push|commit)
+        case "$_next" in
+          --help|-h) : ;;
+          *) _sc_hit="git $_sub"; return 0 ;;
+        esac ;;
+    esac
+  done
   return 0
 }
 
@@ -472,14 +510,15 @@ _rite_btg_state_change_scan() {
 # and set _sc_hit to the first state-changing command at command position.
 # Wrapper commands (timeout / nice / env / time / command / builtin / exec /
 # nohup) are skipped with their options and option arguments, so the command
-# they run is matched. gh is a write when it runs a writing pr / issue
+# they run is matched. A git at command position is not judged here: its words
+# are appended to _sc_git_lines for the subcommand parser. gh is a write when it runs a writing pr / issue
 # subcommand, or `gh api` with a writing method: an explicit POST / PATCH / PUT /
 # DELETE, or fields (-f / -F / --input) without a method, which gh sends as
 # POST — except a graphql call, which is a write only when it carries a mutation.
 # A write word followed directly by --help / -h only prints help, and `bash -n`
 # only checks syntax, so neither is a hit.
 _rite_btg_state_change_match() {
-  local _t _n _mode=cmd _skip=0 _wk="" _wneed=0 _grp="" _mnext=0 _method="" _field=0 _gql=0 _mut=0 _pend=""
+  local _t _n _mode=cmd _skip=0 _wk="" _wneed=0 _grp="" _mnext=0 _method="" _field=0 _gql=0 _mut=0 _pend="" _gw=""
   for _t in ${_toks[@]+"${_toks[@]}"}; do
     if [ "$_t" = ";" ]; then
       if [ "$_mode" = help ]; then _sc_hit="$_pend"; return 0; fi
@@ -494,8 +533,12 @@ _rite_btg_state_change_match() {
             fi ;;
         esac
       fi
+      if [ "$_mode" = git ]; then _sc_git_lines+=("$_gw"); fi
       _mode=cmd; _skip=0; _mnext=0; continue
     fi
+    # A git's words, up to the end of its command, go to the subcommand parser;
+    # a substitution in one stays visible to it as `$`.
+    if [ "$_mode" = git ]; then _gw+="${_t//$'\x1e'/\$}"$'\x1f'; continue; fi
     if [ "$_skip" = "1" ]; then _skip=0; continue; fi
     _n="${_t//$'\x1e'/}"
     if [ "$_mode" = wrap ]; then
@@ -519,7 +562,7 @@ _rite_btg_state_change_match() {
           timeout|nice|env|time|command|builtin|exec|nohup)
             _mode=wrap; _wk="$_n"; _wneed=0
             if [ "$_n" = timeout ]; then _wneed=1; fi ;;
-          git|*/git) _mode=gitflags ;;
+          git|*/git) _mode=git; _gw="" ;;
           gh|*/gh) _mode=ghglob ;;
           bash|sh|zsh|dash|ksh|*/bash|*/sh|*/zsh|*/dash|*/ksh|source|.) _mode=interp ;;
           *)
@@ -528,14 +571,6 @@ _rite_btg_state_change_match() {
               *-step.sh) _sc_hit="${_n##*/}"; return 0 ;;
               *) _mode=args ;;
             esac ;;
-        esac ;;
-      gitflags)
-        case "$_n" in
-          -C|--git-dir|--work-tree|--namespace|--exec-path|--attr-source|--super-prefix|--shallow-file|-c|--config-env)
-            _skip=1 ;;
-          -*) : ;;
-          push|commit) _pend="git $_n"; _mode=help ;;
-          *) _mode=args ;;
         esac ;;
       ghglob)
         case "$_n" in
@@ -1003,7 +1038,10 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   # substitution, or after a reserved word that leads a command), so a
   # `git commit` that is an ARGUMENT — `grep -rn 'git commit' plugins/`,
   # `git log -S'git push'`, `grep -rn 'x; git push' plugins/` — stays allowed:
-  #   - `git push` / `git commit` (global flags skipped, `/usr/bin/git` included);
+  #   - `git push` / `git commit` (`/usr/bin/git` included), found by the commit
+  #     guard's parser, which skips global options, redirections and variables
+  #     between git and the subcommand; a git whose subcommand that parser cannot
+  #     report is denied;
   #   - `gh pr` / `gh issue` writing subcommands (comment / create / edit / merge
   #     / close / …) and `gh api` with a writing method (see
   #     _rite_btg_state_change_match);
@@ -1046,6 +1084,10 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
       BLOCKED_PATTERN="reviewer-state-change"
       BLOCKED_REASON="This subagent is treated as a reviewer (${REVIEWER_TYPE_BASIS}), and reviewers are read-only. This command runs '${_sc_hit}', which pushes, commits, writes to GitHub (gh pr / issue writes, gh api writes), switches the working tree's branch (gh pr checkout), rewrites the workflow state (flow-state), or runs a skill's step driver (*-step.sh) — state the parent session relies on, or that leaves the machine."
       BLOCKED_ALTERNATIVE="Report the problem as a finding and leave the change to /rite:fix. Read-only inspection stays allowed: 'git diff', 'git log', 'git show', 'gh pr view', 'gh pr diff', 'gh issue view', 'gh api <endpoint>' (GET; add '-X GET' when passing fields), a graphql query, 'flow-state.sh get --field <f>', 'flow-state.sh path', and running tests ('bash <test>'). For a mutation experiment, use the isolated detached worktree in plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement / Mutation experiments)."
+    elif [ -n "$_sc_unparsed" ]; then
+      BLOCKED_PATTERN="reviewer-state-change"
+      BLOCKED_REASON="This subagent is treated as a reviewer (${REVIEWER_TYPE_BASIS}), and reviewers are read-only. This command runs git and mentions push or commit, but whether git pushes or commits could not be determined: ${_sc_unparsed}. A git whose subcommand cannot be determined is denied, so a push or commit cannot pass unchecked."
+      BLOCKED_ALTERNATIVE="Run the read-only git command on its own. If it keeps being denied, report the problem as a finding. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement) for the read-only command set."
     fi
   fi
 

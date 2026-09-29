@@ -642,22 +642,60 @@ def shell_segments(command, level=0):
     return segments
 
 
-def git_subcommand_index(words, git_index):
-    """Advance past the same git global options the direct path skips."""
-    index = git_index + 1
-    while index < len(words) and words[index].startswith("-"):
+# The git global options that take their value as the next word.
+_GIT_VALUE_OPTIONS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env",
+                      "--super-prefix", "--attr-source", "--shallow-file"}
+
+
+def git_global_options(words, git_index=0):
+    """Walk the global options after the git at words[git_index]: (index, steps, alternate).
+
+    index is the subcommand word (len(words) when nothing follows), or None when an option
+    that takes the next word as its value has none. steps lists, in order, ("-C", directory)
+    for each -C and ("dynamic", word) for each variable or command substitution, which may
+    expand to nothing or to global options, so the next word may still be the subcommand.
+    alternate is the index of the first option other than -C / -c / --no-pager /
+    --no-optional-locks (an alternate git dir or work tree, or any other), or None; steps
+    after it are not listed.
+    The shell removes redirections before git sees its arguments, so one between git and
+    the subcommand, or between an option and its value, is skipped.
+    """
+    steps, alternate, index = [], None, git_index + 1
+    while index < len(words) and (words[index].startswith("-") or isinstance(words[index], _Redirection)
+                                  or any(c in words[index] for c in "$`")):
         option = words[index]
-        if option in ("-C", "-c"):
-            if index + 1 >= len(words):
-                return None
-            index += 2
-        elif option.startswith("-C"):
+        if isinstance(option, _Redirection):
+            index = _redirection_end(words, index)
+            continue
+        if not option.startswith("-"):
+            if alternate is None:
+                steps.append(("dynamic", option))
             index += 1
-        elif option.startswith("-c") or option in ("--no-pager", "--no-optional-locks"):
-            index += 1
+            continue
+        if option not in ("-C", "-c", "--no-pager", "--no-optional-locks") \
+                and not option.startswith(("-C", "-c")) and alternate is None:
+            alternate = index
+        if option in _GIT_VALUE_OPTIONS:
+            value_index = index + 1
+            while value_index < len(words) and isinstance(words[value_index], _Redirection):
+                value_index = _redirection_end(words, value_index)
+            if value_index >= len(words):
+                return None, steps, alternate
+            value, index = words[value_index], value_index + 1
         else:
-            return index if any(name in words[index:] for name in _HEAD_MOVERS) else None
-    return index if index < len(words) else None
+            value, index = option[2:], index + 1
+        if option.startswith("-C") and not option.startswith("--") and alternate is None:
+            steps.append(("-C", value))
+    return index, steps, alternate
+
+
+def git_subcommand_index(words, git_index):
+    """The subcommand index of a git that is not the command itself, or None when it has none.
+    Past an alternate option, the option's own index when a commit / merge follows it."""
+    index, _steps, alternate = git_global_options(words, git_index)
+    if alternate is not None:
+        return alternate if any(name in words[alternate:] for name in _HEAD_MOVERS) else None
+    return index if index is not None and index < len(words) else None
 
 
 def each_git_target(command, cwd):
@@ -737,49 +775,25 @@ def each_git_target(command, cwd):
                             "run " + name + " as a direct command in its own Bash call"
             continue
         # After ||, a git runs only when something before it failed, perhaps the cd.
-        target, unknown, index, alternate = here, unsure or (alternative and moved), 1, False
-        # The shell removes redirections before git sees its arguments, so one between git and
-        # the subcommand, or between -C / -c and its value, is skipped.
-        while index < len(words) and (words[index].startswith("-") or isinstance(words[index], _Redirection)
-                                      or any(c in words[index] for c in "$`")):
-            option = words[index]
-            if isinstance(option, _Redirection):
-                index = _redirection_end(words, index)
-                continue
-            if not option.startswith("-"):
-                # A variable or command substitution may expand to nothing or to global options,
-                # so the next word may be the subcommand, run from a target that cannot be known.
+        target, unknown = here, unsure or (alternative and moved)
+        index, steps, alternate = git_global_options(words)
+        require(alternate is not None or index is not None, "incomplete git global option")
+        for kind, value in steps:
+            # A variable or command substitution may expand to global options, so the target
+            # cannot be known.
+            if kind == "dynamic" or any(c in value for c in "$`~"):
                 unknown = True
-                index += 1
                 continue
-            if option in ("-C", "-c") or option.startswith("-C"):
-                joined = option.startswith("-C") and option != "-C"
-                value_index = index + 1
-                if not joined:
-                    while value_index < len(words) and isinstance(words[value_index], _Redirection):
-                        value_index = _redirection_end(words, value_index)
-                    require(value_index < len(words), "incomplete git global option")
-                value = option[2:] if joined else words[value_index]
-                if option.startswith("-C"):
-                    if any(c in value for c in "$`~"):
-                        unknown = True
-                    else:
-                        moved_to = change(target, value)
-                        if moved_to is None:
-                            unknown = True
-                        else:
-                            target = moved_to
-                            unknown = unknown and not Path(value).is_absolute()
-                index = index + 1 if joined else value_index + 1
-            elif option.startswith("-c") or option in ("--no-pager", "--no-optional-locks"):
-                index += 1
+            moved_to = change(target, value)
+            if moved_to is None:
+                unknown = True
             else:
-                alternate = True
-                break
-        if alternate:
+                target = moved_to
+                unknown = unknown and not Path(value).is_absolute()
+        if alternate is not None:
             for name in _HEAD_MOVERS:
-                if name in words[index:]:
-                    yield name, None, words[words.index(name, index) + 1:], \
+                if name in words[alternate:]:
+                    yield name, None, words[words.index(name, alternate) + 1:], \
                         "use git -C <worktree> " + name + " without alternate git-dir/work-tree options"
             continue
         if index >= len(words) or words[index] not in _HEAD_MOVERS:
@@ -973,9 +987,30 @@ def commit_target_main(argv):
         print(("index" if index_only else "other") + "\t" + str(actual))
 
 
+# A word that starts a redirection once quotes are gone: an optional fd number or &, then < or >.
+_REDIRECTION_WORD = re.compile(r"(?:[0-9]*|&)[<>]")
+
+
+def git_subcommand_main():
+    """For each stdin line (the words after one git, separated by \\x1f, quotes already
+    removed), print its subcommand and the word after it, separated by a tab, in input
+    order; both fields are empty when no subcommand follows."""
+    for line in sys.stdin.read().splitlines():
+        words = ["git"] + [_Redirection(word) if _REDIRECTION_WORD.match(word) else word
+                           for word in line.split("\x1f") if word]
+        index, _steps, _alternate = git_global_options(words)
+        if index is None or index >= len(words):
+            print("\t")
+        else:
+            print(words[index] + "\t" + (words[index + 1] if index + 1 < len(words) else ""))
+
+
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "commit-target":
         commit_target_main(sys.argv[2:])
+        return
+    if len(sys.argv) > 1 and sys.argv[1] == "git-subcommand":
+        git_subcommand_main()
         return
     if len(sys.argv) > 1 and sys.argv[1] == "classify-extras":
         extras = sys.argv[2:]
