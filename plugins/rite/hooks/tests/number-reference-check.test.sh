@@ -866,9 +866,9 @@ rc=0; out=$(run_fix_nref "$nref_mk" --base-branch base --changed-files docs/note
 if [ "$rc" -eq 0 ] \
    && [ "$(printf '%s\n' "$out" | grep -cx '\[CONTEXT\] NUMBER_REF_CHECK=clean')" -eq 1 ] \
    && ! printf '%s' "$out" | grep -c >/dev/null -e 'NUMBER_REF_CHECK=hits' -e '\[fix:error\]'; then
-  pass "T-12 fix number-ref-check emits exactly one clean marker for a clean diff"
+  pass "T-13 fix number-ref-check emits exactly one clean marker for a clean diff"
 else
-  fail "T-12 expected rc=0 with one clean marker only, got rc=$rc: $out"
+  fail "T-13 expected rc=0 with one clean marker only, got rc=$rc: $out"
 fi
 
 printf 'hit token (#2800)\n' > "$nref_mk/docs/note.md"
@@ -877,9 +877,9 @@ if [ "$rc" -eq 0 ] \
    && [ "$(printf '%s\n' "$out" | grep -cx '\[CONTEXT\] NUMBER_REF_CHECK=hits')" -eq 1 ] \
    && printf '%s' "$out" | grep -cE >/dev/null '^docs/note.md:[0-9]+: hit token' \
    && ! printf '%s' "$out" | grep -c >/dev/null -e 'NUMBER_REF_CHECK=clean' -e '\[fix:error\]'; then
-  pass "T-12 fix number-ref-check emits the hits marker and no clean marker for an untracked hit"
+  pass "T-13 fix number-ref-check emits the hits marker and no clean marker for an untracked hit"
 else
-  fail "T-12 expected one hits marker with file:line and no clean marker, got rc=$rc: $out"
+  fail "T-13 expected one hits marker with file:line and no clean marker, got rc=$rc: $out"
 fi
 
 rc=0; out=$(run_fix_nref "$nref_mk" --base-branch no-such-base --changed-files docs/note.md) || rc=$?
@@ -887,33 +887,34 @@ if [ "$rc" -eq 1 ] \
    && printf '%s' "$out" | grep -c >/dev/null 'number-reference-check.sh failed (rc=2)' \
    && printf '%s\n' "$out" | grep -cx >/dev/null '\[fix:error\]' \
    && ! printf '%s' "$out" | grep -c >/dev/null 'NUMBER_REF_CHECK='; then
-  pass "T-12 fix number-ref-check stops with [fix:error] and no marker when the checker fails"
+  pass "T-13 fix number-ref-check stops with [fix:error] and no marker when the checker fails"
 else
-  fail "T-12 expected rc=1 with [fix:error] and no marker on checker failure, got rc=$rc: $out"
+  fail "T-13 expected rc=1 with [fix:error] and no marker on checker failure, got rc=$rc: $out"
 fi
 
 rc=0; out=$(run_fix_nref "$nref_mk" --changed-files docs/note.md) || rc=$?
 if [ "$rc" -eq 2 ] && ! printf '%s' "$out" | grep -c >/dev/null 'NUMBER_REF_CHECK='; then
-  pass "T-12 fix number-ref-check usage failure exits 2 without a marker"
+  pass "T-13 fix number-ref-check usage failure exits 2 without a marker"
 else
-  fail "T-12 expected rc=2 without marker on usage failure, got rc=$rc: $out"
+  fail "T-13 expected rc=2 without marker on usage failure, got rc=$rc: $out"
 fi
 
 # 表は marker と行き先を同じ行で結ぶ。旧 Exit 表の行が残っていないことも固定する。
 nref_sec_start='### 3.1 Verify Changes'
 nref_sec_end='### 3.1.1 '
-assert_grep_in_section "T-12 fix 3.1 table maps clean to 3.1.1" "$FIX_SKILL" \
+assert_grep_in_section "T-13 fix 3.1 table maps clean to 3.1.1" "$FIX_SKILL" \
   "$nref_sec_start" "$nref_sec_end" \
   '^\| `NUMBER_REF_CHECK=clean` \| 3\.1\.1 へ \|$'
-assert_grep_in_section "T-12 fix 3.1 table maps hits to a rewrite without a commit fallback" "$FIX_SKILL" \
+assert_grep_in_section "T-13 fix 3.1 table maps hits to a rewrite without a commit fallback" "$FIX_SKILL" \
   "$nref_sec_start" "$nref_sec_end" \
   '^\| `NUMBER_REF_CHECK=hits` \| コミットしない。2\.3 に戻り.*番号付き行をコミットする fallback は禁止 \|$'
-assert_grep_in_section "T-12 fix 3.1 table maps [fix:error] to a stop" "$FIX_SKILL" \
+assert_grep_in_section "T-13 fix 3.1 table maps [fix:error] to a stop" "$FIX_SKILL" \
   "$nref_sec_start" "$nref_sec_end" \
   '^\| `\[fix:error\]` \| 停止'
-assert_grep_in_section "T-12 fix 3.1 table maps no marker to [fix:error]" "$FIX_SKILL" \
+assert_grep_in_section "T-13 fix 3.1 table maps no marker to [fix:error]" "$FIX_SKILL" \
   "$nref_sec_start" "$nref_sec_end" \
   '^\| いずれも無い.* \| `\[fix:error\]` \|$'
+# 共有の assert_grep_in_section は正規表現の範囲指定で節を切り出すが、こちらは見出しの前置一致で切り出す（1 箇所でしか使わないため共有 helper へは移さない）。
 assert_not_grep_in_section() {
   local label="$1" file="$2" start="$3" end="$4" pattern="$5" body
   body=$(awk -v s="$start" -v e="$end" 'index($0, s) == 1 { on = 1; next } on && index($0, e) == 1 { exit } on' "$file")
@@ -923,7 +924,7 @@ assert_not_grep_in_section() {
     fail "$label (section empty or pattern present: $pattern)"
   fi
 }
-assert_not_grep_in_section "T-12 fix 3.1 no longer branches on helper exit codes" "$FIX_SKILL" \
+assert_not_grep_in_section "T-13 fix 3.1 no longer branches on helper exit codes" "$FIX_SKILL" \
   "$nref_sec_start" "$nref_sec_end" '^\| `[0-9]` \|'
 
 assert_grep "T-11 issue-implement forbids number/AC tokens in generated prose" "$IMPLEMENT_SKILL" \
