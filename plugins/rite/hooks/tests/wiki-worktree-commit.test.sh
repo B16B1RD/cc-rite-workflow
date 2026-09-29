@@ -128,7 +128,7 @@ assert "worktree missing exits 1" "1" "$(rc_in "$missing_wt_repo")"
 mkdir -p "$missing_wt_repo/sub"
 mw_rc=0
 ( cd "$missing_wt_repo/sub" && bash "$SCRIPT" ) >/dev/null 2>"$missing_wt_repo/mw_err.txt" || mw_rc=$?
-printf -v mw_setup_q '%q' "$(cd "$(dirname "$SCRIPT")" && pwd)/wiki-worktree-setup.sh"
+printf -v mw_setup_q '%q' "$(cd -P "$(dirname "$SCRIPT")" && pwd)/wiki-worktree-setup.sh"
 assert "worktree missing from a subdirectory exits 1" "1" "$mw_rc"
 assert "worktree missing hint runs the setup script by its absolute path" "1" \
   "$(grep -cxF " hint: run 'bash $mw_setup_q' first" "$missing_wt_repo/mw_err.txt" || true)"
