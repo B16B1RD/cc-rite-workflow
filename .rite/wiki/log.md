@@ -39,6 +39,8 @@
 * **Create**: [ソース全体を走査する検査は、gitignore 対象の生成物を走査から外す](pages/heuristics/source-scan-excludes-generated-artifacts.md) — 新規ページ化
 * **Update**: [同じ判定規則を別言語で二重実装するときは、同一 fixture で SoT 実装の実行結果と突合する parity assert を置く](pages/patterns/dual-implementation-rule-parity-assert-against-sot-executable.md) — raw/reviews/20260929T005731Z-pr-3419.md を統合
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=581, broken_refs=0
+* **Update**: [git のパス出力を assert するテストは fixture の mktemp 値を `pwd -P` で実体パスへ正規化する](pages/patterns/normalize-tmpdir-symlink-in-path-asserting-tests.md) — raw/reviews/20260929T012747Z-pr-3421.md と raw/fixes/20260929T013237Z-pr-3421.md で補強
+* **Skip**: [20260929T013737Z-pr-3421.md](raw/reviews/20260929T013737Z-pr-3421.md) — 指摘 0 件の差分スコープ再レビューで、既存の経験則に加える観測がない
 
 ## 2026-09-28
 

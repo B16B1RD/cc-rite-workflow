@@ -4,7 +4,7 @@ title: "git のパス出力を assert するテストは fixture の mktemp 値�
 domain: "patterns"
 description: "macOS の `$TMPDIR` は `/var/folders/...` という symlink で、git は `rev-parse --show-toplevel` でも `worktree list` でも実体側 `/private/var/folders/...` を返す。mktemp の値をそのまま期待値に使うと Linux では緑・macOS CI だけ赤になる。"
 created: "2026-09-01T20:29:00+09:00"
-generated: { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-09T15:44:58Z" }
+generated: { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-09-29T02:10:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260908T090455Z-pr-2628.md"
@@ -18,11 +18,16 @@ sources:
     resource: "raw/fixes/20260909T152539Z-pr-2635.md"
   - type: "reviews"
     resource: "raw/reviews/20260909T153857Z-pr-2635.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T012747Z-pr-3421.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T013237Z-pr-3421.md"
 tags: []
 confidence: high
 verified:
   - { by: "rite-wiki-ingest/gpt-6", at: "2026-09-08T09:16:17Z" }
   - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-09T15:44:58Z" }
+  - { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-09-29T02:10:00Z" }
 ---
 
 # git のパス出力を assert するテストは fixture の mktemp 値を `pwd -P` で実体パスへ正規化する
@@ -69,6 +74,12 @@ git のパス出力に限らない。fixture 内の symlink を検証する Pyth
 
 **最小差分の修正は実体解決を両辺に足すことではなく、契約が相対 link なら link 文字列そのものを検査すること**。`os.readlink(p / '.grok/plugins/rite') == '../../plugins/rite'` は生成側（`symlink_to('../../plugins/rite')`）と同じリテラルを比較するため、temp ディレクトリの symlink 有無に依存しない。対象が symlink でなければ `OSError` で fail-loud に止まる。両辺 `resolve()` や `os.path.samefile` でも通るが、契約（相対 link）を直接 pin できる分 `readlink` が強い。同じ heredoc の bare `assert` にはメッセージを添え、CI ログだけで失敗箇所が読めるようにする。
 
+### スクリプトの位置から期待パスを組み立てるときは、被テスト側と同じ解決方式にそろえる
+
+fixture の一時ディレクトリだけでなく、テストが被テストスクリプトの置き場所から期待値を作る場合（ヒントに出る setup スクリプトの絶対パスなど）も同じ罠になる。被テスト側が `cd -P` で物理パスに解決してからパスを出力するなら、テスト側の期待値も `cd -P "$(dirname "$SCRIPT")" && pwd` で作る。論理パス（`cd … && pwd`）のままだと、プラグインや作業ツリーの配置経路に symlink があるときだけ、実装が正しくても期待値とずれて落ちる。
+
+直す方向は、被テスト側の解決方式と同じファイルの既存検査（`pwd -P` を使っているか）を先に確かめれば一意に決まる。修正は既存 1 コマンドのフラグ変更で足り、検査の内容や被テスト側は変えない。CI とローカルは symlink を挟まないため通り続け、レビュアーが全員同じ環境でも見つかりにくいので、レビューでは推奨事項として挙がった段階で先に直しておく。
+
 ## 関連ページ
 
 - [エラーメッセージ文字列の grep assert は locale 依存で dead assertion 化する](../anti-patterns/locale-dependent-error-message-grep-assertion.md)
@@ -83,3 +94,5 @@ git のパス出力に限らない。fixture 内の symlink を検証する Pyth
 - [レビュー結果](../../raw/reviews/20260909T152156Z-pr-2635.md)
 - [fix 結果](../../raw/fixes/20260909T152539Z-pr-2635.md)
 - [差分レビュー結果](../../raw/reviews/20260909T153857Z-pr-2635.md)
+- [追加観測（スクリプト位置から組み立てる期待パス）](../../raw/reviews/20260929T012747Z-pr-3421.md)
+- [fix 結果（期待パスの解決方式を実装に揃える）](../../raw/fixes/20260929T013237Z-pr-3421.md)

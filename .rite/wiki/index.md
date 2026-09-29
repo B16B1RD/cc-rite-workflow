@@ -454,7 +454,7 @@ okf_version: "0.2"
 | [実装が Issue の MUST と原則の両方に挟まれたら、実装を戻さず契約側（Decision Log と AC の例外）を更新する](pages/heuristics/contract-update-over-revert-on-must-conflict.md) | heuristics | 純粋抽出リファクタの「振る舞い不変」MUST と fail-loud 原則のように、実装を直すことが別の MUST 違反になる衝突では、実装を機械的に復元しても同じ reviewer が同じ指摘を再発行する往復になる。契約側へ例外を明記して閉じるほうが収束する。 | 2026-09-28T01:02:34Z | high |
 | [追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない](pages/patterns/mutation-prove-new-pin.md) | patterns | 非回帰 pin を足した直後に、当の欠陥へ戻す変異を一時コピーへ当てて当該 assert だけが赤くなることを確かめる。prefix 一致・行の存在だけ・単一 CLI モードだけの pin は、変異を当てるまで無害に見え、当てた瞬間に無力だと分かる。 | 2026-09-27T11:13:23Z | high |
 | [静的検査 regex の行頭アンカーは `if` / `\|\|` / 代入位置にある実行行を見落とす](pages/anti-patterns/line-anchored-regex-misses-inline-execution.md) | anti-patterns | `^[[:space:]]*git branch -d` のように行頭からアンカーした検査パターンは、`if cmd; then` / `\|\| cmd` / `elif x=$(cmd)` の位置にある実行行に一致しない。ゲートは通るが、検査したつもりの対象を最初から見ていない。 | 2026-09-01T20:28:00+09:00 | high |
-| [git のパス出力を assert するテストは fixture の mktemp 値を `pwd -P` で実体パスへ正規化する](pages/patterns/normalize-tmpdir-symlink-in-path-asserting-tests.md) | patterns | macOS の `$TMPDIR` は `/var/folders/...` という symlink で、git は `rev-parse --show-toplevel` でも `worktree list` でも実体側 `/private/var/folders/...` を返す。mktemp の値をそのまま期待値に使うと Linux では緑・macOS CI だけ赤になる。 | 2026-09-09T15:44:58Z | high |
+| [git のパス出力を assert するテストは fixture の mktemp 値を `pwd -P` で実体パスへ正規化する](pages/patterns/normalize-tmpdir-symlink-in-path-asserting-tests.md) | patterns | macOS の `$TMPDIR` は `/var/folders/...` という symlink で、git は `rev-parse --show-toplevel` でも `worktree list` でも実体側 `/private/var/folders/...` を返す。mktemp の値をそのまま期待値に使うと Linux では緑・macOS CI だけ赤になる。 | 2026-09-29T02:10:00Z | high |
 | [レビューループを止めるのは reviewer を減らすことではなく disposition 規則を変えること](pages/heuristics/review-loop-stopped-by-disposition-not-fewer-reviewers.md) | heuristics | 非実測の文言指摘を毎 cycle 先回りで直すと、その修正が次 cycle のレビュー対象になりループの燃料になる。止める操作は reviewer 数の削減ではなく、「本 PR が既に複数回書き換えた行の文言推敲はスコープ外」と disposition を宣言し、指摘を designated home へ流すこと。 | 2026-09-01T20:30:00+09:00 | high |
 | [gh のフィルタオプションは絞り込めていないのに成功して見える](pages/anti-patterns/gh-filter-succeeds-without-filtering.md) | anti-patterns | gh の検索・一覧オプションは exit 0 と JSON を返す一方で、呼び出し側が期待した絞り込みを静かに捨てる。boolean qualifier への番号付与、exact-match オプションへの glob、件数 limit の窓いっぱいは、いずれも「絞り込めていないのに成功して見える」同じ欠陥クラスである。 | 2026-09-03T01:10:00Z | high |
 | [二重引用符と -- は argv 分割にしか効かず、展開はパース時に終わっている](pages/anti-patterns/quotes-do-not-stop-expansion.md) | anti-patterns | テンプレートへ値を埋める設計では、二重引用符は単語分割とグロブを止めるだけで、コマンド置換とバッククォートはその内側でも展開される。`--` も argv 分割にしか効かない。git check-ref-format はシェルメタ文字を弾かないため、上流バリデータを防波堤と見なせない。 | 2026-09-06T16:10:23Z | high |
@@ -629,5 +629,5 @@ okf_version: "0.2"
 
 - 総ページ数: 615
 - ドメイン別: patterns=132, heuristics=298, anti-patterns=185
-- 最終更新: 2026-09-29
+- 最終更新: 2026-09-29T02:10:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
