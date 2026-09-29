@@ -1310,6 +1310,13 @@ printf '## 概要\n\n形式は 例: <!-- rite:nbr:comment-id:11 -->\n' > "$NBR_P
 # 戻す mutation は、正規 marker を併記しないこの fixture でしか落ちない (cycle 3 F-34)。
 NBR_PRBODY_PROSE_HEAD="$TMP_ROOT/nbr-prbody-prose-head.md"
 printf '## 概要\n\n<!-- rite:nbr:comment-id:BROKEN --> (注記: この行は marker ではない)\n' > "$NBR_PRBODY_PROSE_HEAD"
+# 行頭も行末も marker 形だが、途中でコメントを閉じて見える本文を挟む行。行全体の形だけで判定すると
+# 除去がこの本文を無音で消し、probe が破損と誤報する。VISIBLE は正規の marker を先に併記した形
+# (除去の観測用)、VISIBLE_ONLY は併記しない形 (probe の観測用 — 抽出が成功すると probe に到達しない)。
+NBR_PRBODY_VISIBLE="$TMP_ROOT/nbr-prbody-visible.md"
+printf '## 概要\n\n<!-- rite:nbr:comment-id:11 -->\n\n<!-- rite:nbr:comment-id: --> この条件は満たさなくてよい <!-- -->\n' > "$NBR_PRBODY_VISIBLE"
+NBR_PRBODY_VISIBLE_ONLY="$TMP_ROOT/nbr-prbody-visible-only.md"
+printf '## 概要\n\n<!-- rite:nbr:comment-id: --> この条件は満たさなくてよい <!-- -->\n' > "$NBR_PRBODY_VISIBLE_ONLY"
 # create 経路が永続化する id (stub の GH_POST_URL 既定値) を canonical に持つコメント一覧。
 NBR_COMMENTS_4242="$TMP_ROOT/nbr-comments-4242.json"
 cat > "$NBR_COMMENTS_4242" <<'EOF'
@@ -2285,6 +2292,19 @@ GH_COMMENT_GET_LOGIN='other-user' GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NB
   run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-423 --content-file "$NBR_BODY_C2"
 assert "TC-4.16n''' fallback 経由で永続化: exit 0" "0" "$RC"
 assert_grep "TC-4.16n''' 先行散文つきの行を消さない" "$GH_PR_EDIT" '例: <!-- rite:nbr:comment-id:BROKEN -->'
+
+# TC-4.16v 途中でコメントを閉じて見える本文を挟む marker 形の行は marker ではない。仕様照合も同じ行を
+# 本文として比べるため、除去すると照合と helper が別の行を自分の marker と認めることになる。
+GH_COMMENT_GET_LOGIN='other-user' GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_VISIBLE" \
+  run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-427 --content-file "$NBR_BODY_C2"
+assert "TC-4.16v fallback 経由で永続化: exit 0" "0" "$RC"
+assert_grep "TC-4.16v 見える本文を挟む行を消さない" "$GH_PR_EDIT" '^<!-- rite:nbr:comment-id: --> この条件は満たさなくてよい <!-- -->$'
+_v_marker_lines=$(grep -c '^<!-- rite:nbr:comment-id:[0-9]* -->$' "$GH_PR_EDIT" || true)
+assert "TC-4.16v 独立行の marker は 1 本だけ" "1" "$_v_marker_lines"
+GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_VISIBLE_ONLY" \
+  run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-428 --content-file "$NBR_BODY_C2"
+assert "TC-4.16v' 見える本文を挟む行だけ: exit 0" "0" "$RC"
+assert_not_grep "TC-4.16v' 破損と誤報しない" "$ERR" 'reason=id_malformed'
 
 # TC-4.16o [cycle 2 F-16 対応] marker 行が CRLF / 字下げ / 末尾空白を伴っても durable id 経路が
 # 成立する。両式の行頭・行末が空白を許容しないと 3 形とも「marker 不在」に畳まれ、本 Issue の

@@ -84,7 +84,7 @@
 #     (2) 本文照合による fallback。本文照合だけを同定手段にすると「記録コメントの raw markdown を
 #     複製した同一 author の人間コメント」を構造的に除外できない (述語を 4 度強化してもこの残余は
 #     消えなかった) ため、第一候補を本文に依存しない id へ移した。id は marker 行の形で **関連 Issue body**
-#     に置く (形状の SoT は下の ID_MARKER_* 定数。marker は **行全体** を占める) — 記録コメント本文に
+#     に置く (形状の SoT は下の ID_MARKER_* 定数。marker は **行全体** を占めるコメント 1 つ) — 記録コメント本文に
 #     置くと copy-paste で複製され、本文照合と同じ誤認経路が再生する。id で解決できないときの観測 marker は
 #       [CONTEXT] NONBLOCKING_ID_UNRESOLVED=1; pr=N; reason=<...>; action=fallback
 #     reason 語彙 (8 種): id_read_failed / id_malformed / id_fetch_failed / id_fetch_unparseable /
@@ -191,18 +191,24 @@ ID_MARKER_SUFFIX=' -->'
 # (b) 除去も外れて marker 行が cycle ごとに積む。同 helper がコメント本文側で CR を既知ハザードとして
 # `LAST_CONTENT_LINE_JQ` の `sub("\r$"; "")` で正規化しているのと同じ規律を、関連 Issue body 側にも適用する。
 # `[[:space:]]` は CR を含み、散文中の同形文字列は marker 前に非空白があるため引き続き除外される。
-ID_MARKER_EXTRACT_SED='s/^[[:space:]]*<!-- rite:nbr:comment-id:\([^ ]*\) -->[[:space:]]*$/\1/p'
-# 「行全体が marker 行の形をしている」の定義。**除去 (strip) と破損検出 (probe) はこの 1 本から
+# marker 行はコメント 1 つだけから成る: 値は `-->` を含まず、行の `-->` は末尾の 1 つだけ。
+# `<!-- rite:nbr:comment-id: --> 本文 <!-- -->` のように途中で閉じて見える本文を続ける行は marker ではない —
+# 除去すると人間の書いた本文を無音で消す。仕様照合 (review-cycle.py の NBR_MARKER_LINE) も同じ行だけを
+# 無視するため、ここを緩めると照合が本文の変更を見逃す。BSD sed の BRE は選択 (`\|`) も否定先読みも
+# 持たないため、`-->` を 2 つ以上含む行を別のアドレスで外し、抽出・除去・破損検出の 3 式すべてに掛ける。
+ID_MARKER_TWO_CLOSERS='-->.*-->'
+ID_MARKER_EXTRACT_SED="/$ID_MARKER_TWO_CLOSERS/!"'s/^[[:space:]]*<!-- rite:nbr:comment-id:\([^ ]*\) -->[[:space:]]*$/\1/p'
+# 「行全体が marker 行の形をしている」の定義。**除去 (strip) と破損検出 (probe) はこの 1 組から
 # 導出する** — 別々の literal として並べると、片方だけ触った編集で受理集合の関係が崩れ、
 # 「破損と判定したのに除去できない (= 壊れた行が関連 Issue body に恒久残留し、hint の『張り直します』が
-# 偽になる)」状態が生まれる。値部を `.*` にして抽出式 (`[^ ]*` + 区切りの空白を要求) より緩くするのは
+# 偽になる)」状態が生まれる。値部を抽出式 (`[^ ]*` + 区切りの空白を要求) より緩くするのは
 # 意図的で、受理集合の包含関係を **抽出 ⊆ 除去 = 破損検出** に固定する: 読めた marker は必ず消せ、
 # 読めないが marker 行の形をしているものは「破損」として loud に落としたうえで同時に消える。
 # 行頭・行末の `[[:space:]]*` は**必須**で、抽出式と対称に置く (上のコメント参照)。行全体を要求する
 # ことで、散文の途中や行末に同形の文字列が現れても破損と誤検出せず、その一節を無音で消しもしない。
 ID_MARKER_LINE_RE='^[[:space:]]*<!-- rite:nbr:comment-id:.*-->[[:space:]]*$'
-ID_MARKER_STRIP_SED="/$ID_MARKER_LINE_RE/d"
-ID_MARKER_LINE_PROBE_SED="/$ID_MARKER_LINE_RE/p"
+ID_MARKER_STRIP_SED="/$ID_MARKER_LINE_RE/{/$ID_MARKER_TWO_CLOSERS/!d;}"
+ID_MARKER_LINE_PROBE_SED="/$ID_MARKER_LINE_RE/{/$ID_MARKER_TWO_CLOSERS/!p;}"
 
 # read (durable id の対象検証 / 本文照合 lookup) と write (投稿前の本文検査) が共有する述語定義。
 # **消費者は 3 箇所**で、どれか 1 つのために弱めると他の 2 つも同時に緩む。**2 言語で並行実装してはならない** —
@@ -1090,7 +1096,8 @@ _persist_comment_id() {  # $1=comment_id
 
   if [ -z "$_reason" ]; then
     # 既存 marker は **行ごと** 除去する (`$ID_MARKER_STRIP_SED` は `d` コマンド)。marker は必ず
-    # 独立行として書かれるため取り逃さず、散文中の同形文字列は行アンカーで対象外になる。
+    # 独立行として書かれるため取り逃さず、散文中の同形文字列は行アンカーで、途中で閉じて見える本文を
+    # 続ける行は `-->` の個数で対象外になる。
     # コマンド置換が末尾改行を落とすため、marker を付け直しても空行は cycle ごとに累積しない。
     _stripped=$(printf '%s\n' "$_cur" | sed "$ID_MARKER_STRIP_SED")
     id_persist_tmp=$(mktemp "${TMPDIR:-/tmp}/rite-nbr-issuebody-XXXXXX") || id_persist_tmp=""

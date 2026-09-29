@@ -75,8 +75,10 @@ def same_json(left, right):
 DECISION_LOG_HEADING = re.compile(r"^## 9\. Decision Log\s*$")
 DECISION_LOG_END = re.compile(r"^(## |---\s*$|</details>)")
 DECISION_LOG_ROW = re.compile(r"^- \d{4}-\d{2}-\d{2} D-\d{2,}: .+ / Reason: .+ / Impact: .+$")
-# Same line shape the non-blocking record helper accepts as its own marker.
-NBR_MARKER_LINE = re.compile(r"^\s*<!-- rite:nbr:comment-id:.*-->\s*$")
+# Same lines the non-blocking record helper strips as its own marker: one comment
+# alone on the line, so a value never contains `-->`. A line that closes the
+# comment early and continues with visible text is specification text.
+NBR_MARKER_LINE = re.compile(r"^\s*<!-- rite:nbr:comment-id:(?:(?!-->).)*-->\s*$")
 FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}(?=[^`]*$)|~{3,})")
 
 
