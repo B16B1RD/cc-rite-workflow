@@ -656,6 +656,14 @@ def deviate(state, args, directory):
             "the review is at safety.max_review_cycles; its fix could not be re-reviewed")
     require(pr_added(record["file"], line, end),
             "deviation does not point at a line this PR added")
+    # A fix that disposed this review's deviations without a new commit returns to
+    # the same HEAD; handing it over again would loop without advancing a cycle.
+    checked = directory.parent / "state" / ("fix-plan-" + args.session + ".json")
+    if checked.is_file():
+        plan = read(checked)["plan"]
+        require(plan["review_context"] != context
+                or not any(i.startswith("D-") for group in plan["groups"] for i in group["finding_ids"]),
+                "a fix already disposed this review's deviations; the same commit is not handed over again")
     entry = dict(requirement=record["requirement"], file=record["file"], line=line, end=end,
                  description=record["description"])
     mine = deviations(state, context)
@@ -914,10 +922,17 @@ def existing_breaker(state, run):
 
 
 def review_cycle_cap():
-    """safety.max_review_cycles, or 15 when unset or invalid."""
+    """safety.max_review_cycles, or 15 when unset or invalid.
+
+    The config is located like the loop's own breaker: the worktree's file, else
+    the main checkout's untracked one.
+    """
     maximum = 15
-    config = Path("rite-config.yml")
-    if config.exists():
+    located = subprocess.run(["bash", str(Path(__file__).with_name("rite-config-path.sh"))],
+                             capture_output=True, text=True)
+    require(located.returncode in (0, 1), "cannot read rite-config.yml: " + located.stderr.strip())
+    if located.returncode == 0:
+        config = Path(located.stdout.strip())
         # 節は空白と # 以外で始まる次の行で終える（数字や _ で始まるキーでも終え、列 0 のコメント行では終えない）
         section = re.search(r"^safety:\s*\n(.*?)(?=^[^\s#]|\Z)", config.read_text(), re.M | re.S)
         if section:

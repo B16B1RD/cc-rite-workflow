@@ -2944,9 +2944,9 @@ def deviate(f, ok=True, relative=False, **fields):
     return f.flow('review-deviate', '--input', path.relative_to(f.root) if relative else path, ok=ok)
 
 
-def external_plan(f, ids=('E-01',)):
+def external_plan(f, *ids):
     plan = f.plan()
-    plan['groups'][0]['finding_ids'] = list(ids)
+    plan['groups'][0]['finding_ids'] = list(ids) or ['E-01']
     plan['external_findings'] = [dict(id='E-01', thread_id='thread-1', description='human review thread')]
     dump(f.plan_path, plan)
 
@@ -2982,9 +2982,14 @@ try:
           'T-27: a plan that leaves the deviations undisposed is refused:\n' + result.stderr)
     f.reject(lambda: f.flow('set', '--phase', 'init', '--next', 'x', '--issue', 43, '--pr', 0, ok=False),
              'T-27: the session cannot switch away with the deviation unfixed', 'requires completed or deferred review')
-    external_plan(f, ids=('D-01', 'D-02'))
+    external_plan(f, 'D-01', 'D-02')
     dump(f.plan_path, dict(json.loads(f.plan_path.read_text()), external_findings=[]))
     f.scope()
+    # A fix that returns without a commit leaves the same HEAD; it is not handed over again.
+    f.reject(lambda: deviate(f, ok=False, line=4, description='found again'),
+             'T-27: a review whose deviations a fix plan disposed is not reopened', 'not handed over again')
+    check([d['id'] for d in f.state()['review_run']['deviations']] == ['D-01', 'D-02'],
+          'T-27: the refused deviation records nothing')
     (f.root / 'source.txt').write_text('initial\nkeep\nrestored\n')
     f.scope('verify')
     f.commit()
@@ -3019,7 +3024,7 @@ finally:
     f.close()
 
 for label, fixture, reason in (
-        ('blocking findings', lambda: deviation_review(roots=('input defect',)), 'still has blocking findings'),
+        ('blocking findings', lambda: deviation_review(roots=['input defect']), 'still has blocking findings'),
         ('the max-cycles review', lambda: deviation_review(cap=1), 'max_review_cycles')):
     f = fixture()
     try:
@@ -3027,12 +3032,30 @@ for label, fixture, reason in (
     finally:
         f.close()
 
+# A linked worktree has no copy of the untracked config; the cap comes from the main checkout's.
+f = deviation_review(cap=1)
+try:
+    linked = f.root / '.rite/linked'
+    f.run(['git', 'worktree', 'add', '-q', '--detach', str(linked), 'HEAD'])
+    record = f.private / 'deviation.json'
+    dump(record, dict(requirement='MUST NOT: rewrite protected content', file='source.txt', line=3,
+                      description='the PR rewrote protected content'))
+    result = subprocess.run(['bash', str(plugin / 'hooks/flow-state.sh'), 'review-deviate', '--input', str(record)],
+                            cwd=linked, env=f.env, text=True, capture_output=True)
+    check(result.returncode != 0 and 'max_review_cycles' in result.stderr,
+          'T-27: a linked worktree reads the cap from the main checkout config:\n' + result.stdout + result.stderr)
+    check('deviations' not in f.state()['review_run'], 'T-27: the refused deviation in a linked worktree records nothing')
+finally:
+    f.close()
+
 check_section = iterate.split('### 5.S 後の完了前確認（目的整合）', 1)[1].split('\n---\n', 1)[0]
 check(check_section.index('review-deviate') < check_section.index('/rite:fix {pr_number}')
       < check_section.index('ステップ 1 で再レビュー'),
       'T-27: a deviation on a PR-added line is recorded, fixed, then re-reviewed')
 check('iterate-step.sh purpose-unaligned' in check_section and '`D-NN` だけが例外' in check_section,
       'T-27: any other deviation still stops, and only recorded D-NN reach the fix plan')
+check('"file": リポジトリルートからの相対パス（git diff の表記）' in check_section,
+      'T-27: the deviation file is written the way the helper matches it against the diff')
 
 f = deviation_review()
 try:
