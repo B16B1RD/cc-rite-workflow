@@ -13,6 +13,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import textwrap
 
 plugin = Path(sys.argv[1]).resolve()
 helper = plugin / 'hooks/scripts/review-fix-scope-check.sh'
@@ -839,6 +840,16 @@ for closed_targets in (False, True):
         for block in blocks:
             parsed = run(['bash', str(helper), 'commit-target', '--command', block, '--cwd', str(root)], ok=False)
             check(parsed.returncode == 0, 'plugin block parses: ' + block[:80] + '\n' + parsed.stderr)
+        # The fix references call fix-step.sh in one line; the guard reads each call as a command with no commit target.
+        # Fences inside list items are indented, so the fence indent is matched and removed from the body.
+        calls = [textwrap.dedent(body) for path in sorted((plugin / 'skills/fix/references').glob('*.md'))
+                 for _, body in re.findall(r'^([ \t]*)```bash\n(.*?)\n\1```', path.read_text(encoding='utf-8'), re.S | re.M)
+                 if 'scripts/fix-step.sh' in body]
+        check(len(calls) >= 14, 'the corpus finds the fix reference helper calls')
+        for block in calls:
+            parsed = run(['bash', str(helper), 'commit-target', '--command', block, '--cwd', str(root)], ok=False)
+            check(parsed.returncode == 0, 'fix reference call parses: ' + block[:80] + '\n' + parsed.stderr)
+            check(parsed.stdout == '', 'fix reference call has no commit target: ' + block[:80] + '\n' + parsed.stdout)
         # A `^{commit}` peel names a revision, not a commit: it parses and reports no commit target.
         for peel in ('git rev-parse --verify "${nref_base}^{commit}" >/dev/null 2>&1 || nref_base="{base_branch}"',
                      'git cat-file -e "${commit_sha_before}^{commit}" 2>/dev/null'):

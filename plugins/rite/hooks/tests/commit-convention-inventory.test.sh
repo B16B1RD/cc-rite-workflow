@@ -28,6 +28,8 @@ WIKI_LINT_SKILL="$PLUGIN_ROOT/skills/wiki-lint/SKILL.md"
 MERGE="$PLUGIN_ROOT/skills/merge/SKILL.md"
 PR_WIKI="$PLUGIN_ROOT/skills/pr-review/references/wiki-recording.md"
 FIX_WIKI="$PLUGIN_ROOT/skills/fix/references/wiki-recording.md"
+# fix の raw commit の本体は fix-step.sh wiki-raw-commit にあり、wiki-recording.md はその 1 行呼び出しを持つ
+FIX_STEP="$PLUGIN_ROOT/scripts/fix-step.sh"
 CLOSE="$PLUGIN_ROOT/skills/issue-close/SKILL.md"
 
 echo "=== commit-convention inventory (T-01..T-10) ==="
@@ -102,7 +104,9 @@ assert_grep "T-03 squash passes --subject and --body-file" "$MERGE" \
   'subject "\$squash_subject" --body-file "\{squash_body_file\}"'
 assert_grep "T-03 review wiki-recording passes --message-file" "$PR_WIKI" \
   'wiki-ingest-commit.sh --message-file'
-assert_grep "T-03 fix wiki-recording passes --message-file" "$FIX_WIKI" \
+assert_grep "T-03 fix wiki-recording passes the message file to its helper" "$FIX_WIKI" \
+  'fix-step\.sh wiki-raw-commit --pr \{pr_number\} --message-file '"'"'\{wic_message_file\}'"'"
+assert_grep "T-03 fix wiki-raw-commit passes --message-file" "$FIX_STEP" \
   'wiki-ingest-commit.sh --message-file'
 assert_grep "T-03 issue-close passes --message-file" "$CLOSE" \
   'wiki-ingest-commit.sh --message-file'
@@ -114,7 +118,7 @@ assert_grep "T-03 wiki-lint uses applied-message placeholder" "$WIKI_LINT_SKILL"
   '{wiki_lint_commit_message}'
 assert_grep "T-03 wiki-recording rejects leftover placeholder" "$PR_WIKI" \
   'msg_placeholder_residue'
-assert_grep "T-03 fix wiki-recording rejects leftover placeholder" "$FIX_WIKI" \
+assert_grep "T-03 fix wiki-raw-commit rejects leftover placeholder" "$FIX_STEP" \
   'msg_placeholder_residue'
 assert_grep "T-03 issue-close rejects leftover placeholder" "$CLOSE" \
   'msg_placeholder_residue'

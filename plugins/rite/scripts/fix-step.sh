@@ -2,7 +2,8 @@
 # rite workflow - /rite:fix step bodies
 #
 # Responsibility: hold the shell body of every multi-statement step in
-# skills/fix/SKILL.md so that the skill calls each step as one top-level
+# skills/fix/SKILL.md and the procedures it reads from skills/fix/references/,
+# so that the skill calls each step as one top-level
 # `bash {plugin_root}/scripts/fix-step.sh <subcommand> --opt value ...`.
 # A session worktree entered natively isolates the host shell, and the host
 # refuses blocks that source files or mix command substitution, loops and git
@@ -16,8 +17,10 @@
 # The fix commit itself is not here. The PreToolUse guard inspects `git commit`
 # in the Bash command text, so the skill runs the commit as a literal command.
 #
-# Free text written by the caller (reply body, findings_addressed JSON) arrives
-# as a file the caller wrote with its Write tool, never as an argument value.
+# Free text written by the caller (reply body, findings_addressed JSON, the
+# issue title and body filed by the NB sweep, the wiki raw source body and title,
+# the wiki commit message, the accepted finding JSON) arrives as a file the caller
+# wrote with its Write tool, never as an argument value.
 #
 # Usage:
 #   bash fix-step.sh load-work-memory
@@ -67,6 +70,22 @@
 #   bash fix-step.sh local-wm-sync --issue N   (空可: hook が branch から解決し、解決できなければ WARNING で続ける)
 #   bash fix-step.sh nb-sweep-done-file --pr N
 #   bash fix-step.sh override-cleanup --pr N
+#   bash fix-step.sh target-comment-fetch --owner-repo O/R --pr N --target-comment-id C
+#   bash fix-step.sh override-read --pr N
+#   bash fix-step.sh accept-persist --pr N --finding-file F
+#   bash fix-step.sh non-fatal-record --pr N --owner-repo O/R --triage-review-path P
+#                    --non-fatal-moved-count N --review-cycle-id ID
+#   bash fix-step.sh nb-sweep-collect --pr N
+#   bash fix-step.sh nb-sweep-gate --pr N --base-branch B --owner-repo O/R
+#   bash fix-step.sh nb-sweep-file-issue --pr N --issue-title-file F --issue-body-file F
+#                    --record-ids JSON --projects-enabled true|false --project-number N
+#                    --project-owner O
+#   bash fix-step.sh nb-sweep-persist --pr N --owner-repo O/R
+#   bash fix-step.sh nb-sweep-finish --pr N
+#   bash fix-step.sh wiki-trigger --pr N --content-file F --title-file F
+#   bash fix-step.sh wiki-trigger-result --content-write-failed 0|1 --trigger-exit N
+#   bash fix-step.sh wiki-raw-commit --pr N --message-file F
+#   bash fix-step.sh wiki-push-retry --pr N --attempt A
 #
 # Exit 2: unknown subcommand, unknown option, missing required argument, an
 # argument value still carrying an unsubstituted `{placeholder}` or an
@@ -1414,6 +1433,649 @@ rm -f "${TMPDIR:-/tmp}/rite-fix-confidence-override-${pr_number}.txt" \
       "${TMPDIR:-/tmp}/rite-fix-pr-comment-${pr_number}.txt"
 }
 
+# --- target-comment-fetch ------------------------------------------------------
+step_target_comment_fetch() {
+# 取得・所属 PR 検証・handoff の生成は helper が順番に実行する。非ゼロ終了後は解析へ進まない。
+bash "$plugin_root"/scripts/review-target-comment-fetch.sh \
+  --owner-repo "${owner_repo}" --pr "${pr_number}" --comment-id "${target_comment_id}" || {
+  echo "[fix:error]"
+  exit 1
+}
+}
+
+# --- override-read --------------------------------------------------------------
+step_override_read() {
+# confidence override の件数と一覧をファイルから読む（会話履歴の grep に依存しない）。
+# 値は stdout の confidence_override_count= / confidence_override_findings= で渡す。
+override_path="${TMPDIR:-/tmp}/rite-fix-confidence-override-${pr_number}.txt"
+if [ -f "$override_path" ]; then
+  # wc -l の stderr を独立退避 (IO エラーの silent count=0 化で監査トレースが drop するのを防ぐ)
+  override_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-confidence-override-err-XXXXXX") || {
+    echo "ERROR: override_err mktemp 失敗" >&2
+    echo "[CONTEXT] CONFIDENCE_OVERRIDE_READ_FAILED=1; reason=mktemp_failed_override_err" >&2
+    exit 1
+  }
+  if ! confidence_override_count_raw=$(wc -l < "$override_path" 2>"$override_err"); then
+    echo "ERROR: wc -l による override_path 読み出し失敗: $(cat "$override_err")" >&2
+    echo "[CONTEXT] CONFIDENCE_OVERRIDE_READ_FAILED=1; reason=wc_io_error; path=$override_path" >&2
+    rm -f "$override_err"
+    exit 1
+  fi
+  confidence_override_count=$(printf '%s' "$confidence_override_count_raw" | tr -d ' ')
+  # findings 一覧 (1 行 1 finding) は paste で "; " 区切りに変換
+  if ! confidence_override_findings_raw=$(paste -sd ';' "$override_path" 2>"$override_err"); then
+    echo "ERROR: paste による override_path 読み出し失敗: $(cat "$override_err")" >&2
+    echo "[CONTEXT] CONFIDENCE_OVERRIDE_READ_FAILED=1; reason=paste_io_error; path=$override_path" >&2
+    rm -f "$override_err"
+    exit 1
+  fi
+  confidence_override_findings_str=$(printf '%s' "$confidence_override_findings_raw" | sed 's/;/; /g')
+  rm -f "$override_err"
+else
+  confidence_override_count=0
+  confidence_override_findings_str=""
+fi
+echo "confidence_override_count=$confidence_override_count"
+echo "confidence_override_findings=$confidence_override_findings_str"
+}
+
+# --- accept-persist -------------------------------------------------------------
+step_accept_persist() {
+# ステップ 2.1.A accept fingerprint 永続化
+# canonical trap pattern は references/bash-trap-patterns.md#signal-specific-trap-template 参照
+# (rationale: パス先行宣言 → trap 先行設定 → mktemp の順序、signal 別 exit code、関数契約)
+# pr_number の空値・placeholder 残留・非数値は dispatcher が exit 2 で先に止める。
+
+# 自由文を二重引用符へ置換するとシェル展開された値を hash してしまうため、JSON から生のまま読む
+# (pr-review-step.sh fingerprint-check と同じ述語・同じ jq)
+if [ ! -r "$finding_file" ] || ! jq -e 'type == "object" and (.file | type) == "string" and (.category | type) == "string" and (.category | length) > 0 and (.description | type) == "string"' "$finding_file" >/dev/null 2>&1; then
+  echo "WARNING: ステップ 2.1.A の finding ファイルが file / category / description を文字列で持つ JSON ではありません ($finding_file) — fingerprint 永続化を skip します" >&2
+  echo "[CONTEXT] ACCEPT_FINGERPRINT_PERSIST_FAILED=1; reason=finding_file_invalid" >&2
+  exit 0
+fi
+file_path=$(jq -r '.file' "$finding_file") || exit 1
+line_no=$(jq -r '.line // ""' "$finding_file") || exit 1
+category=$(jq -r '.category' "$finding_file") || exit 1
+description=$(jq -r '.description' "$finding_file") || exit 1
+# line=null → anchor sentinel に正規化 (ステップ 1.3 の thread lookup 規約と統一)
+case "$line_no" in
+  ''|null|0) line_no="anchor" ;;
+esac
+
+# パス先行宣言 → cleanup 関数定義 → 4 行 trap 設置 → mktemp の順 (canonical pattern)
+tmpfile=""
+# state ファイルはリポジトリ共通の state ルート基準 (state-path-resolve.sh)。セッション worktree /
+# main checkout のどちらから実行しても同一パスに解決される (pr-review ステップ 5.1.2.A の
+# 読取側と同一解決。解決失敗時は cwd fallback)
+_state_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
+[ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
+state_dir="$_state_root/.rite/state"
+state_file="${state_dir}/accepted-fingerprints-${pr_number}.txt"
+_rite_fix_phase21A_cleanup() {
+  rm -f "${tmpfile:-}"
+}
+trap 'rc=$?; _rite_fix_phase21A_cleanup; exit $rc' EXIT
+trap '_rite_fix_phase21A_cleanup; exit 130' INT
+trap '_rite_fix_phase21A_cleanup; exit 143' TERM
+trap '_rite_fix_phase21A_cleanup; exit 129' HUP
+
+# fingerprint 計算 (ステップ 2.1.A 独自 simplified normalize — accept 抑止専用)
+# normalize(file_path): `./` prefix のみ collapse、case-sensitive path 保護のため lowercase 化しない
+# normalize(message): trim + whitespace collapse、identifier mask しない (audit log の human readability 重視)
+norm_file=$(printf '%s' "$file_path" | sed 's@^\./@@')
+norm_cat="$category"
+norm_msg=$(printf '%s' "$description" | tr -s '[:space:]' ' ' | sed 's/^ *//;s/ *$//')
+
+# portable SHA-1 helper (BSD shasum / GNU sha1sum 両対応)
+if command -v sha1sum >/dev/null 2>&1; then
+  fingerprint=$(printf '%s:%s:%s' "$norm_file" "$norm_cat" "$norm_msg" | sha1sum | awk '{print $1}')
+elif command -v shasum >/dev/null 2>&1; then
+  fingerprint=$(printf '%s:%s:%s' "$norm_file" "$norm_cat" "$norm_msg" | shasum -a 1 | awk '{print $1}')
+else
+  echo "WARNING: sha1sum / shasum が見つかりません — fingerprint 永続化を skip します" >&2
+  echo "[CONTEXT] ACCEPT_FINGERPRINT_PERSIST_FAILED=1; reason=sha1_helper_missing" >&2
+  exit 0  # non-blocking: accept reply 投稿は完了済、suppression は諦めるだけ
+fi
+
+# state directory + tempfile
+if ! mkdir -p "$state_dir" 2>/dev/null; then
+  echo "WARNING: .rite/state/ ディレクトリ作成に失敗しました — fingerprint 永続化を skip します" >&2
+  echo "[CONTEXT] ACCEPT_FINGERPRINT_PERSIST_FAILED=1; reason=mkdir_failed" >&2
+  exit 0
+fi
+
+if ! tmpfile=$(mktemp "${TMPDIR:-/tmp}/rite-fix-accept-fp-${pr_number}-XXXXXX" 2>/dev/null); then
+  echo "[CONTEXT] ACCEPT_FINGERPRINT_PERSIST_FAILED=1; reason=mktemp_failed" >&2
+  exit 0
+fi
+
+# idempotent append (sort -u で重複排除) + atomic mv
+{ [ -f "$state_file" ] && cat "$state_file"; printf '%s\n' "$fingerprint"; } | sort -u > "$tmpfile"
+if ! mv "$tmpfile" "$state_file" 2>/dev/null; then
+  echo "WARNING: accepted-fingerprints state file の atomic mv に失敗しました ($state_file)" >&2
+  echo "[CONTEXT] ACCEPT_FINGERPRINT_PERSIST_FAILED=1; reason=mv_failed" >&2
+  exit 0
+fi
+tmpfile=""  # mv 成功後は trap cleanup 対象から外す (二重 rm 回避)
+
+# 成功時 retained flag (bash 変数経由で placeholder 残留を防ぐ)
+echo "[CONTEXT] ACCEPT_FINGERPRINT_PERSISTED=1; fingerprint=$fingerprint; pr=$pr_number; file=$file_path; line=$line_no" >&2
+
+# accept ≥5 件警告
+# wc -l 出力に platform 依存の空白が含まれるため tr -d で剥がす (BSD wc は 先頭に空白を付ける)
+accept_count=$(wc -l < "$state_file" 2>/dev/null | tr -d '[:space:]')
+case "$accept_count" in ''|*[!0-9]*) accept_count=0 ;; esac
+if [ "$accept_count" -ge 5 ]; then
+  echo "⚠️ WARNING: 本 PR で accept (認知のみ) 累計件数が 5 件以上 (${accept_count} 件) に達しました。reviewer の精度を疑うべき水準です。" >&2
+  echo "  対処: reviewer agent の prompt / scope assignment / pattern check ロジックを見直すか、本 PR を別 Issue に分割することを検討してください。" >&2
+  echo "[CONTEXT] ACCEPT_LIMIT_EXCEEDED=1; pr=$pr_number; accept_count=$accept_count" >&2
+fi
+}
+
+# --- non-fatal-record -----------------------------------------------------------
+step_non_fatal_record() {
+# 共通 triage が永続化した JSON から既存の関連 Issue 記録を更新する。終端 outcome の確認を終えるまで成功を返さない。
+record_body=$(mktemp "${TMPDIR:-/tmp}/rite-fix-nbr-body-XXXXXX") || {
+  echo "[fix:error] reason=nonblocking_record_tempfile_failed"
+  exit 1
+}
+record_log=$(mktemp "${TMPDIR:-/tmp}/rite-fix-nbr-log-XXXXXX") || {
+  rm -f "$record_body"
+  echo "[fix:error] reason=nonblocking_record_tempfile_failed"
+  exit 1
+}
+if ! non_blocking_count=$(jq '[.non_blocking_findings[]? | select(.scope != "nit-noted")] | length' "$triage_review_path"); then
+  rm -f "$record_body" "$record_log"
+  echo "[fix:error] reason=nonblocking_record_read_failed"
+  exit 1
+fi
+# 既存 marker / count / 最終行 sentinel を維持し、pointer と降格理由を記録する（全文・証跡は永続 JSON のみに保持）。
+# 非 fatal の移送は実測済みの指摘も運ぶため、見出しは実測の有無を断定せず、行ごとの理由で区別する。
+if ! jq -r --arg pr "${pr_number}" --arg pointer "$triage_review_path" \
+  --arg moved "${non_fatal_moved_count}" --arg count "$non_blocking_count" '
+  "## 📜 rite 非実測指摘の記録",
+  "", "PR #" + $pr, "",
+  "### non-blocking（fix 対象外）",
+  "今回の移送: " + $moved + "件", "記録 JSON: " + $pointer,
+  "", "📎 non_blocking_count: " + $count, "",
+  (.non_blocking_findings[]? | select(.scope != "nit-noted")
+    | [.id, (.reviewer // ""), .severity, (.file + ":" + ((.line // "anchor") | tostring)),
+       (if has("demotion") then "class B 降格: " + (.demotion.reason | tostring)
+        elif (.verification | if type == "object" then .measured else null end) == true then "実測済み（非 fatal）"
+        else "実測なし" end)] | @tsv),
+  "", "<!-- rite:nbr:v1 -->"
+' "$triage_review_path" > "$record_body"; then
+  rm -f "$record_body" "$record_log"
+  echo "[fix:error] reason=nonblocking_record_body_failed"
+  exit 1
+fi
+# helper は既存の記録を全文 PATCH で置き換えるので、その却下台帳を新本文へ引き継ぐ。
+# 既存本文は helper が PATCH する 1 件を、同じ helper の読み取り専用モードで読む（関連 Issue の解決も helper が行う）。
+ledger_existing=$(mktemp "${TMPDIR:-/tmp}/rite-fix-nbr-existing-XXXXXX") \
+  && ledger_file=$(mktemp "${TMPDIR:-/tmp}/rite-fix-nbr-ledger-XXXXXX") || {
+  rm -f "$record_body" "$record_log" "${ledger_existing:-}"
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nonblocking_record_tempfile_failed" >&2
+  echo "[fix:error] reason=nonblocking_record_tempfile_failed"
+  exit 1
+}
+if ! bash "$plugin_root"/hooks/review-nonblocking-record.sh --print-record-body \
+  --pr "${pr_number}" --owner-repo "${owner_repo}" > "$ledger_existing"; then
+  rm -f "$record_body" "$record_log" "$ledger_existing" "$ledger_file"
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nonblocking_record_ledger_fetch_failed" >&2
+  echo "[fix:error] reason=nonblocking_record_ledger_fetch_failed"
+  exit 1
+fi
+if [ -s "$ledger_existing" ] \
+  && ! bash "$plugin_root"/hooks/scripts/nb-sweep-ledger.sh extract --body-file "$ledger_existing" > "$ledger_file"; then
+  rm -f "$record_body" "$record_log" "$ledger_existing" "$ledger_file"
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nonblocking_record_ledger_extract_failed" >&2
+  echo "[fix:error] reason=nonblocking_record_ledger_extract_failed"
+  exit 1
+fi
+if ! bash "$plugin_root"/hooks/scripts/nb-sweep-ledger.sh merge-into --body-file "$record_body" --ledger-file "$ledger_file"; then
+  rm -f "$record_body" "$record_log" "$ledger_existing" "$ledger_file"
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nonblocking_record_ledger_merge_failed" >&2
+  echo "[fix:error] reason=nonblocking_record_ledger_merge_failed"
+  exit 1
+fi
+rm -f "$ledger_existing" "$ledger_file"
+echo "[CONTEXT] REJECTED_LEDGER_PRESERVE=ok" >&2
+record_rc=0
+bash "$plugin_root"/hooks/review-nonblocking-record.sh \
+  --pr "${pr_number}" --owner-repo "${owner_repo}" \
+  --count "$non_blocking_count" --iteration-id "${review_cycle_id}" \
+  --content-file "$record_body" 2> "$record_log" || record_rc=$?
+neutralize_ctrl --keep-newline < "$record_log" >&2
+# helper は failed でも rc=0 を返しうる。終端 outcome を必ず検査する。
+record_done=$(sed -n 's/^\[CONTEXT\] NONBLOCKING_RECORD_DONE=1; .*outcome=\([^;]*\);.*/\1/p' "$record_log" | tail -1)
+record_ok=0
+if [ "$record_rc" -eq 0 ]; then
+  case "$record_done" in
+    created|updated) record_ok=1 ;;
+    skipped) [ "$non_blocking_count" -eq 0 ] && record_ok=1 ;;
+  esac
+fi
+rm -f "$record_body" "$record_log"
+if [ "$record_ok" -ne 1 ]; then
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nonblocking_record_failed" >&2
+  echo "[fix:error] reason=nonblocking_record_failed"
+  exit 1
+fi
+}
+
+# --- nb-sweep-collect -----------------------------------------------------------
+step_nb_sweep_collect() {
+# iterate 5.S と同じ collect helper（冪等）
+source "$plugin_root"/hooks/scripts/lib/context-marker.sh || { echo "ERROR: context-marker.sh を読み込めませんでした" >&2; echo "[fix:error]"; exit 1; }
+sweep_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh) || sweep_root=""
+if [ -z "$sweep_root" ]; then
+  echo "ERROR: state-path-resolve が空。NB sweep 対象を取得できない" >&2
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_state_root_unresolved" >&2
+  echo "[fix:error]"
+  exit 1
+fi
+collect_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-nb-collect-XXXXXX") || { echo "[fix:error]"; exit 1; }
+collect_out=$(bash "$plugin_root"/hooks/scripts/nb-sweep-collect.sh --pr "${pr_number}" --state-root "$sweep_root" 2>"$collect_err") || collect_rc=$?
+collect_rc=${collect_rc:-0}
+neutralize_ctrl --keep-newline < "$collect_err" >&2
+rm -f -- "$collect_err"
+sweep_status=$(printf '%s' "$collect_out" | jq -r '.status // empty') || sweep_status=""
+nb_record=$(printf '%s' "$collect_out" | jq -r '.record // empty')
+nb_record_base=""
+[ -n "$nb_record" ] && nb_record_base=$(basename "$nb_record")
+# 残っている entries は台帳 persist で止まった sweep のもので、起票済みの件数を持つ。
+# 今回読んだ review JSON の sweep のものでなければ、起票済みの代わりにも今回の件数にもせずに止まる。
+nb_entries_file="$sweep_root/.rite/state/nb-sweep-entries-${pr_number}.md"
+nb_counts=""
+if [ "$collect_rc" -eq 0 ] && [ -f "$nb_entries_file" ]; then
+  nb_counts=$(bash "$plugin_root"/hooks/scripts/nb-sweep-ledger.sh tally --entries-file "$nb_entries_file" \
+    --record "$nb_record_base") || {
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_entries_stale" >&2
+    echo "[fix:error] reason=nb_sweep_entries_stale"; exit 1
+  }
+fi
+case "$collect_rc:$sweep_status" in
+  0:empty)
+    nb_kind=noop
+    [ -n "$nb_counts" ] && nb_kind=done
+    echo "[CONTEXT] NB_SWEEP_RESULT=done; ${nb_counts:-issued=0; recorded=0}" >&2
+    mkdir -p "$sweep_root/.rite/state" || true
+    source "$plugin_root"/hooks/gitignore-ensure.sh
+    if ! _ensure_dir_gitignore "$sweep_root/.rite/state"; then
+      echo "WARNING: $sweep_root/.rite/state/.gitignore を作成できませんでした。nb-sweep-done が git の追跡対象になる恐れがあります" >&2
+      [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
+    fi
+    nb_done_file="$sweep_root/.rite/state/nb-sweep-done-${pr_number}.txt"
+    # 台帳に全件載っている。前回の sweep の entries は戻り先として不要
+    rm -f "$nb_entries_file"
+    nb_keep=""
+    if [ -f "$nb_done_file" ]; then
+      nb_keep=$(sed -n '2p' "$nb_done_file" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+      case "$nb_keep" in ''|*[!0-9a-f]*) nb_keep="" ;; esac
+      [ "${#nb_keep}" -ge 7 ] || nb_keep=""
+    fi
+    if [ -n "$nb_keep" ]; then
+      nb_write_ok=$(printf '%s %s\n%s\n' "$nb_kind" "$nb_record_base" "$nb_keep" > "$nb_done_file" && echo ok || true)
+    else
+      nb_write_ok=$(printf '%s %s\n' "$nb_kind" "$nb_record_base" > "$nb_done_file" && echo ok || true)
+    fi
+    if [ -z "$nb_record_base" ] || [ "$nb_write_ok" != ok ]; then
+      echo "WARNING: nb-sweep-done marker を書けませんでした" >&2
+      rm -f "$sweep_root/.rite/state/nb-sweep-done-${pr_number}.txt"
+    fi
+    ;;
+  0:ok)
+    if [ -n "$nb_counts" ]; then
+      echo "[CONTEXT] NB_SWEEP_ENTRIES=present; path=$nb_entries_file" >&2
+    else
+      echo "[CONTEXT] NB_SWEEP_ENTRIES=absent; path=$nb_entries_file" >&2
+    fi
+    printf '%s\n' "$collect_out"
+    ;;
+  *)
+    echo "ERROR: NB sweep collect failed (rc=$collect_rc status=${sweep_status:-})" >&2
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_collect_failed" >&2
+    echo "[fix:error]"
+    exit 1
+    ;;
+esac
+}
+
+# --- nb-sweep-gate --------------------------------------------------------------
+step_nb_sweep_gate() {
+# collect をもう一度実行し、candidates[] から候補ファイルを作って採否ゲートを呼ぶ
+sweep_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh) || sweep_root=""
+if [ -z "$sweep_root" ] || ! collect_out=$(bash "$plugin_root"/hooks/scripts/nb-sweep-collect.sh --pr "${pr_number}" --state-root "$sweep_root"); then
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_collect_failed" >&2
+  echo "[fix:error]"; exit 1
+fi
+nb_candidates=$(mktemp "${TMPDIR:-/tmp}/rite-nb-candidates-XXXXXX") || { echo "[fix:error]"; exit 1; }
+trap 'rm -f "$nb_candidates"' EXIT
+printf '%s' "$collect_out" | jq '{candidates: .candidates}' > "$nb_candidates" \
+  || { echo "[fix:error]"; exit 1; }
+gate_rc=0
+# 候補 0 件（already_rejected だけ）でもゲートを呼ぶ（前回の保留候補が今回の候補から消えていれば保留する）
+nb_issue=$(git branch --show-current 2>/dev/null | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+' | head -1)
+gate_out=$(bash "$plugin_root"/hooks/scripts/review-adoption-gate.sh --pr "${pr_number}" --kind sweep \
+  --state-root "$sweep_root" --candidates "$nb_candidates" \
+  --review-result "$(printf '%s' "$collect_out" | jq -r '.record')" \
+  --base "origin/${base_branch}" --owner-repo "${owner_repo}" ${nb_issue:+--issue "$nb_issue"}) || gate_rc=$?
+case "$gate_rc" in
+  0) ;;
+  3)
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_adoption_held" >&2
+    echo "[fix:error] reason=nb_sweep_adoption_held"; exit 1 ;;
+  *)
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_adoption_gate_failed" >&2
+    echo "[fix:error] reason=nb_sweep_adoption_gate_failed"; exit 1 ;;
+esac
+# verdict が欠落・未知値なら、起票も台帳 persist も始めない
+if ! printf '%s' "$gate_out" | jq -e '.held == false and (.verdicts | type) == "array"
+    and all(.verdicts[]; .verdict == "file" or .verdict == "record")' >/dev/null 2>&1; then
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_verdict_invalid" >&2
+  echo "[fix:error] reason=nb_sweep_verdict_invalid"; exit 1
+fi
+printf '%s\n' "$gate_out"
+}
+
+# --- nb-sweep-file-issue --------------------------------------------------------
+step_nb_sweep_file_issue() {
+# verdict=file の記録 1 件を起票し、起票した番号を判定記録の tracker に書き戻す。
+# タイトルと本文は caller が Write tool で作業ツリー外に置いたファイル。
+issue_title=""
+[ -r "$issue_title_file" ] && issue_title=$(head -n 1 -- "$issue_title_file")
+if [ -z "$issue_title" ] || [ ! -s "$issue_body_file" ]; then
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_issue_body_failed" >&2
+  echo "[fix:error]"
+  exit 1
+fi
+issue_args=$(jq -n \
+  --arg title "$issue_title" \
+  --arg body_file "$issue_body_file" \
+  --argjson projects_enabled "${projects_enabled}" \
+  --argjson project_number "${project_number}" \
+  --arg owner "${project_owner}" \
+  --arg complexity "S" \
+  '{
+    issue: { title: $title, body_file: $body_file },
+    projects: { enabled: $projects_enabled, project_number: $project_number, owner: $owner, status: "todo", complexity: $complexity, iteration: { mode: "none" } },
+    options: { source: "pr_review", non_blocking_projects: true }
+  }') || { echo "[fix:error]"; exit 1; }
+if ! issue_result=$(bash "$plugin_root"/scripts/create-issue-with-projects.sh "$issue_args") ||
+   ! printf '%s' "$issue_result" | jq -e '.issue_number > 0 and (.issue_url | type == "string" and length > 0)' >/dev/null; then
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_issue_failed" >&2
+  echo "[fix:error]"
+  exit 1
+fi
+# 起票した番号を判定記録の tracker に書き戻す。途中で止まって再実行すると、ゲートはこの記録を LINK にし、同じ根因を二度起票しない
+nb_adoption="$(bash "$plugin_root"/hooks/state-path-resolve.sh)/.rite/state/adoption-${pr_number}-sweep.json"
+nb_issue_number=$(printf '%s' "$issue_result" | jq '.issue_number')
+if ! jq --argjson ids "$record_ids" --argjson n "$nb_issue_number" \
+     'if any(.adoption.records[]; .ids == $ids) then (.adoption.records[] | select(.ids == $ids) | .tracker) = $n
+      else error("ids \($ids) の記録がありません") end' "$nb_adoption" > "$nb_adoption.tmp" ||
+   ! mv -- "$nb_adoption.tmp" "$nb_adoption"; then
+  rm -f -- "$nb_adoption.tmp"
+  echo "ERROR: 起票した #$nb_issue_number を $nb_adoption の記録の tracker に書き戻せません。書き戻してから再実行する（書かずに再実行すると同じ根因を二度起票する）" >&2
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_tracker_write_failed" >&2
+  echo "[fix:error]"; exit 1
+fi
+printf '%s\n' "$issue_result"
+}
+
+# --- nb-sweep-persist -----------------------------------------------------------
+step_nb_sweep_persist() {
+# 全 target と already_rejected を却下台帳へ記録する
+sweep_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh) || sweep_root=""
+entries_file="$sweep_root/.rite/state/nb-sweep-entries-${pr_number}.md"
+if [ -z "$sweep_root" ] || [ ! -s "$entries_file" ]; then
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_entries_missing" >&2
+  echo "[fix:error]"; exit 1
+else
+  ledger=$(mktemp "${TMPDIR:-/tmp}/rite-nb-ledger-XXXXXX") || { echo "[fix:error]"; exit 1; }
+  body=$(mktemp "${TMPDIR:-/tmp}/rite-nb-body-XXXXXX") || { echo "[fix:error]"; exit 1; }
+  # 既存本文は記録 helper が PATCH する 1 件を、同じ helper の読み取り専用モードで読む（関連 Issue の解決も helper が行う）
+  bash "$plugin_root"/hooks/review-nonblocking-record.sh --print-record-body \
+    --pr "${pr_number}" --owner-repo "${owner_repo}" > "$body" || {
+    echo "ERROR: 6.1.d コメント取得失敗" >&2
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_fetch_failed" >&2
+    echo "[fix:error]"; exit 1
+  }
+  if [ ! -s "$body" ]; then
+    printf '%s\n\n%s\n\n%s\n%s\n\n%s\n' \
+      '## 📜 rite 非実測指摘の記録 (non-blocking)' \
+      '本 cycle の非実測指摘: 0 件 (前 cycle の記録内容は本 cycle では再報告されていません)' \
+      '📎 non_blocking_count: 0' \
+      '📎 reviewed_commit: unknown' \
+      '<!-- rite:nbr:v1 -->' > "$body"
+  fi
+  bash "$plugin_root"/hooks/scripts/nb-sweep-ledger.sh extract --body-file "$body" > "$ledger" || {
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_extract_failed" >&2
+    echo "[fix:error]"; exit 1
+  }
+  bash "$plugin_root"/hooks/scripts/nb-sweep-ledger.sh append --ledger-file "$ledger" --entries-file "$entries_file" || {
+    echo "ERROR: 却下台帳 append 失敗" >&2
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_append_failed" >&2
+    echo "[fix:error]"; exit 1
+  }
+  bash "$plugin_root"/hooks/scripts/nb-sweep-ledger.sh merge-into --body-file "$body" --ledger-file "$ledger" || {
+    echo "ERROR: 却下台帳 merge-into 失敗" >&2
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_merge_failed" >&2
+    echo "[fix:error]"; exit 1
+  }
+  # 抽出式は review-nonblocking-record.sh の count/body 整合検査と同一にする。この値は直下で
+  # 同 helper へ `--count` として渡され、helper が同じ行を再検証するため、述語がずれると
+  # producer が通した body を validator が count_body_mismatch で落とす経路が生まれる。
+  # awk のフィールド番号で取ってはならない — 行頭の 📎 が第 1 フィールドを占める。
+  body_count=$(grep -E '^📎 non_blocking_count:[[:space:]]*[0-9]+[[:space:]]*$' "$body" | tail -1 | grep -oE '[0-9]+')
+  case "$body_count" in ''|*[!0-9]*)
+    echo "ERROR: merge-into 後の non_blocking_count が読めない" >&2
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_count_unreadable" >&2
+    echo "[fix:error]"; exit 1
+    ;;
+  esac
+  record_err=$(mktemp "${TMPDIR:-/tmp}/rite-nb-record-XXXXXX") || { echo "[fix:error]"; exit 1; }
+  bash "$plugin_root"/hooks/review-nonblocking-record.sh \
+    --pr "${pr_number}" --owner-repo "${owner_repo}" --count "$body_count" \
+    --iteration-id "nb-sweep-${pr_number}" --content-file "$body" 2>"$record_err"
+  record_rc=$?
+  neutralize_ctrl --keep-newline < "$record_err" >&2
+  record_outcome=$(sed -n 's/^\[CONTEXT\] NONBLOCKING_RECORD_DONE=1; .*outcome=\([^;]*\);.*/\1/p' "$record_err" | tail -1)
+  # entries は常に 1 件以上あるため、skipped は台帳が投稿されなかったことを意味する
+  case "$record_rc:$record_outcome" in
+    0:created|0:updated) ;;
+    *)
+      echo "ERROR: 却下台帳 記録失敗 (rc=$record_rc outcome=${record_outcome:-<欠落>})" >&2
+      echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_record_failed" >&2
+      echo "[fix:error]"; exit 1
+      ;;
+  esac
+  rm -f -- "$record_err"
+  # 外部への書き込みはすべて済んだ。持ち越した保留候補はもう要らないので sweep の hold を消す
+  rm -f -- "$sweep_root/.rite/state/adoption-hold-${pr_number}-sweep.json"
+fi
+}
+
+# --- nb-sweep-finish ------------------------------------------------------------
+step_nb_sweep_finish() {
+# entries の判定列から件数を数え、done の 1 行目を最新 review JSON の basename で書く
+sweep_root=$(bash "$plugin_root"/hooks/state-path-resolve.sh) || sweep_root=""
+if [ -n "$sweep_root" ]; then
+  mkdir -p "$sweep_root/.rite/state" || true
+  source "$plugin_root"/hooks/gitignore-ensure.sh
+  if ! _ensure_dir_gitignore "$sweep_root/.rite/state"; then
+    echo "WARNING: $sweep_root/.rite/state/.gitignore を作成できませんでした。nb-sweep-done が git の追跡対象になる恐れがあります" >&2
+    [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
+  fi
+  sweep_done_file="$sweep_root/.rite/state/nb-sweep-done-${pr_number}.txt"
+  nb_record=$(find "$sweep_root/.rite/review-results" -maxdepth 1 -type f -name "${pr_number}-*.json" 2>/dev/null | LC_ALL=C sort | tail -1)
+  nb_record_base=""
+  [ -n "$nb_record" ] && nb_record_base=$(basename "$nb_record")
+  nb_keep=""
+  if [ -f "$sweep_done_file" ]; then
+    nb_keep=$(sed -n '2p' "$sweep_done_file" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+    case "$nb_keep" in ''|*[!0-9a-f]*) nb_keep="" ;; esac
+    [ "${#nb_keep}" -ge 7 ] || nb_keep=""
+  fi
+  if [ -n "$nb_keep" ]; then
+    nb_write_ok=$(printf 'done %s\n%s\n' "$nb_record_base" "$nb_keep" > "$sweep_done_file" && echo ok || true)
+  else
+    nb_write_ok=$(printf 'done %s\n' "$nb_record_base" > "$sweep_done_file" && echo ok || true)
+  fi
+  if [ -z "$nb_record_base" ] || [ "$nb_write_ok" != ok ]; then
+    echo "WARNING: nb-sweep-done marker を書けませんでした" >&2
+    rm -f "$sweep_done_file"
+  fi
+  entries_file="$sweep_root/.rite/state/nb-sweep-entries-${pr_number}.md"
+  if nb_counts=$(bash "$plugin_root"/hooks/scripts/nb-sweep-ledger.sh tally --entries-file "$entries_file"); then
+    echo "[CONTEXT] NB_SWEEP_RESULT=done; $nb_counts" >&2
+    rm -f "$entries_file"
+  else
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_entries_tally_failed" >&2
+  fi
+fi
+}
+
+# --- wiki-trigger ---------------------------------------------------------------
+step_wiki_trigger() {
+# fix の Raw Source を生成して wiki-ingest-trigger.sh へ渡す（非ブロッキング）。
+# 本文とタイトルは caller が Write tool で書いたファイル。本文は写さずに trigger へ渡し、
+# trigger 自身の symlink 拒否とパス allowlist ($PWD 配下・/tmp/rite-*・$TMPDIR/rite-*) を caller のパスに効かせる。
+trigger_stderr=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-trigger-err-XXXXXX") || trigger_stderr=/dev/null
+# rm -f /dev/null は EPERM (exit 1) を返すため trap で条件分岐する
+trap '[ "$trigger_stderr" != "/dev/null" ] && rm -f "$trigger_stderr"' EXIT
+content_write_failed=0  # 入力不在フラグ (wiki-trigger-result で genuine trigger 失敗と区別するため carry-forward)
+wiki_title=""
+[ -r "$title_file" ] && wiki_title=$(head -n 1 -- "$title_file")
+
+# 入力の不在・空で空の raw source が ingest されるのを防ぐ。wiki ingest は非ブロッキングのため ingest をスキップ
+if [ -z "$wiki_title" ] || [ ! -s "$content_file" ]; then
+  echo "[CONTEXT] WIKI_CONTENT_WRITE_FAILED=1; reason=input_file_missing" >&2
+  echo "WARNING: fix ステップ 4.6.W: 本文またはタイトルのファイルが無いか空 (content=$content_file, title=$title_file)。wiki ingest を非ブロッキングにスキップ。" >&2
+  trigger_exit=1
+  content_write_failed=1
+  echo "trigger_exit=$trigger_exit"
+else
+  bash "$plugin_root"/hooks/wiki-ingest-trigger.sh \
+    --type fixes \
+    --source-ref "pr-${pr_number}" \
+    --content-file "$content_file" \
+    --pr-number "${pr_number}" \
+    --title "${wiki_title}（修正結果）" \
+    2>"$trigger_stderr"
+  trigger_exit=$?
+  echo "trigger_exit=$trigger_exit"
+  if [ "$trigger_exit" -ne 0 ] && [ "$trigger_stderr" != "/dev/null" ] && [ -s "$trigger_stderr" ]; then
+    # UTF-8 multi-byte 境界を safe にする (head -c 500 で切れた invalid sequence を drop)
+    # iconv 不在環境 (Alpine 等) では LC_ALL=C tr で ASCII-only fallback
+    # 制御文字は --keep-newline で中和する (UTF-8 の文字を ? に潰さないため。改行は tr で空白化済み)
+    if command -v iconv >/dev/null 2>&1; then
+      _wiki_err_snippet=$(tr '\n' ' ' < "$trigger_stderr" | head -c 500 | iconv -c -f UTF-8 -t UTF-8 2>/dev/null | neutralize_ctrl --keep-newline)
+    else
+      _wiki_err_snippet=$(tr '\n' ' ' < "$trigger_stderr" | head -c 500 | LC_ALL=C tr -cd '\11\12\15\40-\176' | neutralize_ctrl --keep-newline)
+    fi
+    echo "[CONTEXT] WIKI_TRIGGER_STDERR=${_wiki_err_snippet}" >&2
+  fi
+fi
+echo "content_write_failed=$content_write_failed"
+}
+
+# --- wiki-trigger-result --------------------------------------------------------
+step_wiki_trigger_result() {
+if [ "${content_write_failed:-0}" -eq 1 ]; then
+  # write 失敗経路: trigger は未起動。gate (ステップ 5.0) は WIKI_INGEST_* のみ認識するため
+  # accurate な reason を付けて WIKI_INGEST_FAILED を emit する (trigger_exit_1 への誤帰属を防ぐ)。
+  echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=content_write_failed; exit_code=1"
+  echo "WARNING: fix ステップ 4.6.W: content write 失敗のため wiki ingest をスキップ (trigger は未起動)。" >&2
+elif [ "${trigger_exit:-1}" -ne 0 ] && [ "${trigger_exit:-1}" -ne 2 ]; then
+  echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=trigger_exit_$trigger_exit; exit_code=$trigger_exit"
+  echo "WARNING: wiki-ingest-trigger.sh exited $trigger_exit during skills/fix/SKILL.md ステップ 4.6.W" >&2
+fi
+}
+
+# --- wiki-raw-commit ------------------------------------------------------------
+step_wiki_raw_commit() {
+# raw source だけを wiki ブランチへ commit する（page 統合は /rite:wiki-ingest）。
+# コミットメッセージは caller が Write tool で作業ツリー外に置いたファイル。
+commit_err=""
+_rite_wic_commit_cleanup() {
+  rm -f "${commit_err:-}"
+}
+trap '_rite_wic_commit_cleanup' EXIT INT TERM HUP
+
+# mktemp failure must NOT silently swallow wiki-ingest-commit.sh stderr (review / fix / close で対称)。
+# rc 捕捉は `if cmd; then :; else rc=$?; fi` 形式 (「!」否定は $? を反転するため使用禁止)
+# rationale: skills/fix/references/design-rationale.md#wiki-ingest-notes
+if commit_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-commit-err-XXXXXX" 2>/dev/null); then
+  : # mktemp 成功 — commit_err は valid path
+else
+  mktemp_commit_err_rc=$?
+  echo "WARNING: mktemp failed for wiki-ingest-commit stderr capture (rc=$mktemp_commit_err_rc) — script stderr will be suppressed" >&2
+  echo "  hint: check /tmp permission / disk space / inode exhaustion" >&2
+  commit_err="/dev/null"
+fi
+wiki_ingest_commit_rc=0
+wiki_push_attempt="fix-${pr_number}-$(date +%s)-$$-$RANDOM"
+echo "[CONTEXT] WIKI_PUSH_ATTEMPT=$wiki_push_attempt; source=fix; pr=${pr_number}"
+if [ ! -s "$message_file" ]; then
+  echo "WARNING: コミットメッセージのファイルを読めません ($message_file)。wiki ingest commit をスキップします" >&2
+  echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=msg_file_mktemp_failed; exit_code=1"
+else
+case "$(cat -- "$message_file")" in
+  "{"*"}")
+    echo "ERROR: Wiki コミットメッセージの placeholder が未置換です" >&2
+    echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=msg_placeholder_residue; exit_code=1"
+    exit 1
+    ;;
+esac
+if commit_out=$(bash "$plugin_root"/hooks/scripts/wiki-ingest-commit.sh --message-file "$message_file" 2>"${commit_err}"); then
+  # Success — the script prints exactly one status line to stdout, e.g.
+  #   [wiki-ingest-commit] committed=1; branch=wiki; head=<sha>; push=ok
+  #   [wiki-ingest-commit] committed=0; branch=wiki; reason=no-pending
+  echo "$commit_out"
+  echo "[CONTEXT] WIKI_INGEST_DONE=1; pr=${pr_number}; type=fixes; attempt=$wiki_push_attempt"
+else
+  wiki_ingest_commit_rc=$?
+  if [ "$commit_err" != "/dev/null" ] && [ -s "$commit_err" ]; then
+    head -5 "$commit_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+  fi
+  # exit 2 = legitimate skip / exit 4 = commit landed but push failed (observable に surface する)
+  case "$wiki_ingest_commit_rc" in
+    2)
+      echo "[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=commit_branch_missing; exit_code=$wiki_ingest_commit_rc"
+      echo "WARNING: wiki-ingest-commit.sh exited 2 (wiki branch missing / disabled) during skills/fix/references/wiki-recording.md ステップ 4.6.W.2" >&2
+      ;;
+    4)
+      echo "[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=commit_rc_4; exit_code=$wiki_ingest_commit_rc; pr=${pr_number}; attempt=$wiki_push_attempt"
+      if [ -n "${commit_out:-}" ]; then
+        echo "$commit_out"
+      fi
+      echo "WARNING: wiki-ingest-commit.sh exited 4 (commit landed locally, push failed) during skills/fix/references/wiki-recording.md ステップ 4.6.W.2" >&2
+      ;;
+    *)
+      echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=commit_rc_$wiki_ingest_commit_rc; exit_code=$wiki_ingest_commit_rc"
+      echo "WARNING: wiki-ingest-commit.sh exited $wiki_ingest_commit_rc during skills/fix/references/wiki-recording.md ステップ 4.6.W.2" >&2
+      ;;
+  esac
+fi
+fi
+[ "$commit_err" != "/dev/null" ] && rm -f "$commit_err"
+commit_err=""
+trap - EXIT INT TERM HUP
+}
+
+# --- wiki-push-retry ------------------------------------------------------------
+step_wiki_push_retry() {
+# caller は直前の wiki-raw-commit が exit 4 のときだけ、dangerouslyDisableSandbox で 1 回呼ぶ
+if retry_out=$(bash "$plugin_root"/hooks/scripts/wiki-ingest-commit.sh --push-only 2>&1); then
+  echo "$retry_out"
+  echo "[CONTEXT] WIKI_INGEST_PUSH_RETRY=ok; source=fix; pr=${pr_number}; attempt=${attempt}"
+else
+  retry_rc=$?
+  printf '%s\n' "$retry_out" | head -5 | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+  echo "[CONTEXT] WIKI_INGEST_PUSH_RETRY=failed; source=fix; pr=${pr_number}; attempt=${attempt}; exit_code=$retry_rc"
+fi
+}
+
 # --- dispatch ----------------------------------------------------------------
 [ "$#" -ge 1 ] || usage_error "subcommand is required"
 subcommand=$1
@@ -1425,7 +2087,10 @@ options=" pr issue owner repo owner-repo keywords changed-paths arguments head-r
   reviewed-commit-sha materialized-json triage-review-path triage-helper-source non-fatal-moved-count
   fix-plan-file fix-issue-file symbol comment-id reply-body-file findings-addressed-file base-branch
   changed-files fix-cycle-base-sha findings-fixed-count propagation-applied-count thread-id
-  pr-body-file history-file impl-status test-status doc-status reason status result "
+  pr-body-file history-file impl-status test-status doc-status reason status result
+  finding-file review-cycle-id issue-title-file issue-body-file record-ids projects-enabled
+  project-number project-owner content-file title-file content-write-failed trigger-exit
+  message-file attempt "
 option_var() {
   case "$1" in
     pr) echo pr_number ;;
@@ -1452,7 +2117,8 @@ while [ "$#" -gt 0 ]; do
   given="$given$name "
   shift 2
 done
-for opt in pr issue non-fatal-moved-count comment-id findings-fixed-count propagation-applied-count; do
+for opt in pr issue non-fatal-moved-count comment-id findings-fixed-count propagation-applied-count \
+  trigger-exit; do
   var=$(option_var "$opt")
   case "${!var}" in
     ''|*[!0-9]*) [ -z "${!var}" ] || usage_error "--$opt must be a number: ${!var}" ;;
@@ -1546,5 +2212,27 @@ case "$subcommand" in
   local-wm-sync) require_given issue; step_local_wm_sync ;;
   nb-sweep-done-file) require pr; step_nb_sweep_done_file ;;
   override-cleanup) require pr; step_override_cleanup ;;
+  target-comment-fetch) require owner-repo pr target-comment-id; step_target_comment_fetch ;;
+  override-read) require pr; step_override_read ;;
+  accept-persist) require pr finding-file; step_accept_persist ;;
+  non-fatal-record)
+    require pr owner-repo triage-review-path non-fatal-moved-count review-cycle-id
+    step_non_fatal_record ;;
+  nb-sweep-collect) require pr; step_nb_sweep_collect ;;
+  nb-sweep-gate) require pr base-branch owner-repo; step_nb_sweep_gate ;;
+  nb-sweep-file-issue)
+    require pr issue-title-file issue-body-file record-ids projects-enabled project-number project-owner
+    one_of "$projects_enabled" projects-enabled true false
+    jq -e 'type == "array"' <<< "$record_ids" >/dev/null 2>&1 || usage_error "--record-ids must be a JSON array: $record_ids"
+    step_nb_sweep_file_issue ;;
+  nb-sweep-persist) require pr owner-repo; step_nb_sweep_persist ;;
+  nb-sweep-finish) require pr; step_nb_sweep_finish ;;
+  wiki-trigger) require pr content-file title-file; step_wiki_trigger ;;
+  wiki-trigger-result)
+    require content-write-failed trigger-exit
+    one_of "$content_write_failed" content-write-failed 0 1
+    step_wiki_trigger_result ;;
+  wiki-raw-commit) require pr message-file; step_wiki_raw_commit ;;
+  wiki-push-retry) require pr attempt; step_wiki_push_retry ;;
   *) usage_error "unknown subcommand: $subcommand" ;;
 esac

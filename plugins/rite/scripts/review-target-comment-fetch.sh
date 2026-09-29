@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Fetch and validate one PR issue comment, then write the fix handoff files.
-# Called only by skills/fix/references/target-comment.md. The three phases retain
+# Called only by scripts/fix-step.sh target-comment-fetch (skills/fix/references/
+# target-comment.md). The three phases retain
 # their own traps and existing BLOCK_A/B/C_COMPLETE and FASTPATH_FETCH_FAILED
 # markers. No later phase runs after failure; only the final handoff files survive.
 # Usage: review-target-comment-fetch.sh --owner-repo OWNER/REPO --pr N --comment-id N

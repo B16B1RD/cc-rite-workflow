@@ -298,7 +298,7 @@ rite-workflow/
 │ ├── backfill-sub-issues.sh / link-sub-issue.sh
 │ ├── projects-status-update.sh / projects-items-fetch.sh
 │ ├── issue-complexity-lane.sh # pr-review 1.3.2 / issue-implement 5.0.C XS/S 軽量レーンの決定
-│ ├── fix-step.sh # fix の各ステップのシェル本体（サブコマンド式。SKILL.md からは 1 行で呼ぶ。`git add` と `git commit` の commit ブロックだけは SKILL.md に literal で残る）
+│ ├── fix-step.sh # fix の各ステップのシェル本体（サブコマンド式。SKILL.md と skills/fix/references/ の手順からは 1 行で呼ぶ。`git add` と `git commit` の commit ブロックだけは SKILL.md に literal で残る）
 │ ├── fix-work-memory-update.sh # fix 4.5 の Issue 特定・変更一覧・作業メモリ更新
 │ ├── iterate-step.sh # iterate の各ステップのシェル本体（サブコマンド式。SKILL.md からは 1 行で呼ぶ）
 │ ├── pr-review-step.sh # pr-review の各ステップのシェル本体（サブコマンド式。SKILL.md からは 1 行で呼ぶ）

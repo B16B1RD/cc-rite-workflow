@@ -80,11 +80,14 @@ def link_fix_step(plugin_dir):
     (plugin_dir / 'hooks').mkdir(parents=True, exist_ok=True)
     (plugin_dir / 'scripts/fix-step.sh').symlink_to(root / 'plugins/rite/scripts/fix-step.sh')
     (plugin_dir / 'hooks/control-char-neutralize.sh').symlink_to(root / 'plugins/rite/hooks/control-char-neutralize.sh')
+# non-fatal-record.md の caller は fix-step.sh non-fatal-record の 1 行呼び出し。記録の本体は helper の関数にある。
 record = re.search(r'```bash\n(.*?)\n```', (root / 'plugins/rite/skills/fix/references/non-fatal-record.md').read_text(), re.S).group(1)
+assert 'scripts/fix-step.sh non-fatal-record ' in record
+record_src = (root / 'plugins/rite/scripts/fix-step.sh').read_text().split('\nstep_non_fatal_record() {\n', 1)[1].split('\n# --- ', 1)[0]
 # The ledger splice must stop on failure, not fall through to an unspliced PATCH.
-assert 'reason=nonblocking_record_ledger_extract_failed' in record
-assert 'reason=nonblocking_record_ledger_merge_failed' in record
-assert not [l for l in record.splitlines() if 'nb-sweep-ledger.sh' in l and '|| true' in l]
+assert 'reason=nonblocking_record_ledger_extract_failed' in record_src
+assert 'reason=nonblocking_record_ledger_merge_failed' in record_src
+assert not [l for l in record_src.splitlines() if 'nb-sweep-ledger.sh' in l and '|| true' in l]
 with tempfile.TemporaryDirectory() as temp:
     temp = Path(temp)
     plugin = temp / 'plugin'

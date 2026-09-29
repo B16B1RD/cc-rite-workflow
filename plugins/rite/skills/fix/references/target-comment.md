@@ -3,14 +3,10 @@
 When `{target_comment_id}` has been extracted from a comment URL argument, retrieve that specific comment directly and skip the broad comment retrieval below:
 
 
-取得・所属 PR 検証・handoff の生成は helper が順番に実行する。`BLOCK_A_COMPLETE` / `BLOCK_B_COMPLETE` / `BLOCK_C_COMPLETE` と既存の failure reason は維持される。非ゼロ終了後は解析へ進まない。
+取得・所属 PR 検証・handoff の生成は helper が順番に実行する。`BLOCK_A_COMPLETE` / `BLOCK_B_COMPLETE` / `BLOCK_C_COMPLETE` と既存の failure reason は維持される。helper が非ゼロで終わると `[fix:error]` を出して止まり、解析へ進まない。
 
 ```bash
-bash "{plugin_root}/scripts/review-target-comment-fetch.sh" \
-  --owner-repo "{owner}/{repo}" --pr "{pr_number}" --comment-id "{target_comment_id}" || {
-  echo "[fix:error]"
-  exit 1
-}
+bash {plugin_root}/scripts/fix-step.sh target-comment-fetch --owner-repo {owner}/{repo} --pr {pr_number} --target-comment-id '{target_comment_id}'
 ```
 
 **Parsing rule**:
@@ -91,18 +87,8 @@ rationale: design-rationale.md#external-tool-title-case
    `[fix:cancelled-by-user]` exit 0 / `[fix:error]` exit 1 / ステップ 1.0 再実行のいずれかへ進む直前に、Fast Path で作成した一時ファイル (ハンドオフ 3 + raw_json + intermediate 3 + confidence_override、合計 8 本) を **明示的に削除する** bash 呼び出しを必ず実行する。これは ステップ 1.5 cleanup を経由しないすべての終了経路における defense-in-depth であり、ステップ 1.4 末尾の ステップ 1.5 cleanup から到達しない経路をカバーする:
 
    ```bash
-   # Cancel / Re-run / Step C error 共通: ハンドオフ 3 + raw_json + intermediate 3 + confidence_override + pr-comment tempfile (合計 9 本) を削除してから exit する
-   # Fast Path bash block 外なので変数は失われている → specific path で直接削除する
-   # (wildcard glob は並列セッション破壊のため絶対禁止。rm -f は idempotent なので二重削除でも副作用なし)
-   rm -f "${TMPDIR:-/tmp}/rite-fix-target-body-{pr_number}-{target_comment_id}.txt" \
-         "${TMPDIR:-/tmp}/rite-fix-target-author-{pr_number}-{target_comment_id}.txt" \
-         "${TMPDIR:-/tmp}/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt" \
-         "${TMPDIR:-/tmp}/rite-fix-confidence-override-{pr_number}.txt" \
-         "${TMPDIR:-/tmp}/rite-fix-raw-{pr_number}-{target_comment_id}.json" \
-         "${TMPDIR:-/tmp}/rite-fix-intermediate-body-{pr_number}-{target_comment_id}.txt" \
-         "${TMPDIR:-/tmp}/rite-fix-intermediate-author-{pr_number}-{target_comment_id}.txt" \
-         "${TMPDIR:-/tmp}/rite-fix-intermediate-skip-{pr_number}-{target_comment_id}.txt" \
-         "${TMPDIR:-/tmp}/rite-fix-pr-comment-{pr_number}.txt"
+   # Cancel / Re-run / Step C error 共通: ハンドオフ 3 + raw_json + intermediate 3 + confidence_override + pr-comment tempfile (合計 9 本) を specific path で削除する
+   bash {plugin_root}/scripts/fix-step.sh cancel-cleanup --pr {pr_number} --target-comment-id '{target_comment_id}'
    ```
 
    この cleanup を実行する 3 つの経路:
@@ -205,42 +191,17 @@ rationale: design-rationale.md#external-tool-title-case
 
 **Claude による retain と再注入の手順** (data flow の具体化、ファイル永続化版):
 
-1. **H-1 修正**: ステップ 1.2 進入時 (Fast Path / Broad Retrieval bash block 冒頭の両方) で `: > ${TMPDIR:-/tmp}/rite-fix-confidence-override-{pr_number}.txt` を **無条件 truncate** する。これにより、SIGINT/SIGTERM/SIGHUP で前セッションの override file が orphan として残った場合でも、次回起動時の混入を決定論的に防ぐ。また、ステップ 1.2 best-effort parse で最初の override 候補が出現した時点でも追加で truncate してよい (defense-in-depth、害なし)
+1. **H-1 修正**: ステップ 1.2 進入時に、Fast Path（`target-comment-fetch`）と Broad Retrieval（`broad-retrieval`）の helper が冒頭で `${TMPDIR:-/tmp}/rite-fix-confidence-override-{pr_number}.txt` を **無条件 truncate** する。これにより、SIGINT/SIGTERM/SIGHUP で前セッションの override file が orphan として残った場合でも、次回起動時の混入を決定論的に防ぐ。また、ステップ 1.2 best-effort parse で最初の override 候補が出現した時点でも追加で truncate してよい (defense-in-depth、害なし)
 2. AskUserQuestion で「Confidence 70 のままバイパス」が選択されるたびに、bash block 内で `printf '%s\n' "{file}:{line}" >> ${TMPDIR:-/tmp}/rite-fix-confidence-override-{pr_number}.txt` を実行 (追記、`>>` で append)
-3. ステップ 4.6 / 4.5.3 / 4.3.4 の placeholder 展開時、bash block で以下を実行して値を取得 (会話履歴 grep に依存しない、`2>/dev/null` の silent IO suppression も撤廃):
+3. ステップ 4.6 / 4.5.3 / 4.3.4 の placeholder 展開時、次の 1 行で値を取得する (会話履歴 grep に依存しない、`2>/dev/null` の silent IO suppression も撤廃):
    ```bash
-   override_path="${TMPDIR:-/tmp}/rite-fix-confidence-override-{pr_number}.txt"
-   if [ -f "$override_path" ]; then
-     # wc -l の stderr を独立退避 (IO エラーの silent count=0 化で監査トレースが drop するのを防ぐ)
-     override_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-confidence-override-err-XXXXXX") || {
-       echo "ERROR: override_err mktemp 失敗" >&2
-       echo "[CONTEXT] CONFIDENCE_OVERRIDE_READ_FAILED=1; reason=mktemp_failed_override_err" >&2
-       exit 1
-     }
-     if ! confidence_override_count_raw=$(wc -l < "$override_path" 2>"$override_err"); then
-       echo "ERROR: wc -l による override_path 読み出し失敗: $(cat "$override_err")" >&2
-       echo "[CONTEXT] CONFIDENCE_OVERRIDE_READ_FAILED=1; reason=wc_io_error; path=$override_path" >&2
-       rm -f "$override_err"
-       exit 1
-     fi
-     confidence_override_count=$(printf '%s' "$confidence_override_count_raw" | tr -d ' ')
-     # findings 一覧 (1 行 1 finding) は paste で "; " 区切りに変換
-     if ! confidence_override_findings_raw=$(paste -sd ';' "$override_path" 2>"$override_err"); then
-       echo "ERROR: paste による override_path 読み出し失敗: $(cat "$override_err")" >&2
-       echo "[CONTEXT] CONFIDENCE_OVERRIDE_READ_FAILED=1; reason=paste_io_error; path=$override_path" >&2
-       rm -f "$override_err"
-       exit 1
-     fi
-     confidence_override_findings_str=$(printf '%s' "$confidence_override_findings_raw" | sed 's/;/; /g')
-     rm -f "$override_err"
-   else
-     confidence_override_count=0
-     confidence_override_findings_str=""
-   fi
+   bash {plugin_root}/scripts/fix-step.sh override-read --pr {pr_number}
    ```
+
+   stdout の `confidence_override_count=` と `confidence_override_findings=`（`; ` 区切り）の値を使う。ファイルが無ければ `0` と空。読み出しに失敗すると `[CONTEXT] CONFIDENCE_OVERRIDE_READ_FAILED=1; reason=...` を stderr に出して exit 1 で止まる。
 4. fix ループ中に他のフェーズから上記ファイルを上書きしない (append-only)
 5. 終了経路の明示的削除:
-   - **E2E flow (ステップ 5.1)**: `rm -f ${TMPDIR:-/tmp}/rite-fix-confidence-override-{pr_number}.txt`
+   - **E2E flow (ステップ 5.1)**: `bash {plugin_root}/scripts/fix-step.sh override-cleanup --pr {pr_number}`
    - **Standalone flow (ステップ 5.2)**: ステップ 4.6 の completion report 出力後に明示的 cleanup bash block で削除
    - **ステップ 1.4 cancel 経路**: Fast Path ハンドオフ cleanup bash block 内で同時に削除 (下記 Cancel cleanup block 参照)
    - **ステップ 1.2 best-effort parse cancel/error 経路**: 「Cancel/Re-run 経路でのハンドオフ cleanup 義務」bash block 内で同時に削除
