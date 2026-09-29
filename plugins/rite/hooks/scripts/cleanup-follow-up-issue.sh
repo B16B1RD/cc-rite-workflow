@@ -137,8 +137,10 @@
 #       reason=parse_failed : --exclude-ids が key 形式でない / 解析できず除外を全破棄した。count=unknown
 #       reason=apply_failed : 除外適用の jq が失敗し除外を全破棄した。count = 要求 key 総数
 #   [CONTEXT] FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=<r>; pr=<n>
-#     関連 Issue の却下台帳を読めなかった。指摘があれば sweep 起票済みの除外を適用せず候補に残し
-#     (再検証による除外は適用済みのまま)、一覧の ledger は空になる。成功経路では出さない。
+#     sweep 起票済みの除外を適用できなかった。指摘があれば sweep 起票済みの指摘を除外せず候補に残す
+#     (再検証による除外は適用済みのまま)。reason が no_source_issue / comments_api / ledger_invalid の
+#     ときは関連 Issue の却下台帳を読めておらず、一覧の ledger も空になる。apply_failed のときは台帳を
+#     読めており、一覧の ledger は台帳の行を運ぶ。成功経路では出さない。
 #       reason=no_source_issue : --source-issue が空
 #       reason=comments_api    : 記録コメントを取得できない (review-nonblocking-record.sh --print-record-body の失敗。
 #                                関連 Issue の解決・記録コメントの同定は同 helper の書き込み経路と同じ)

@@ -1292,6 +1292,8 @@ assert "T-29 ledger の REJECT 行はエスケープ済みパイプを判定文�
 assert "T-29 id も位置も違う issued 行では候補を除外しない" "1" "$(jq '.candidates | length' "$TMP_ROOT/t29-ledger.json")"
 assert_grep "T-29 6.0.A は ledger から既存 Issue へ紐づける" "$PLUGIN_ROOT/skills/cleanup/SKILL.md" \
   '既存の Issue が候補と同じ根因を追跡していれば、文面・位置・id が変わっていても記録の `tracker` にその番号を入れる'
+assert_grep "T-29 6.0 の note は apply_failed で台帳を読めなかったと言わない" "$PLUGIN_ROOT/skills/cleanup/SKILL.md" \
+  '（`apply_failed` は台帳を読めているので付けない）'
 assert_grep "T-29 6.0.A は ledger 行のキーを prior のキーへ写す" "$PLUGIN_ROOT/skills/cleanup/SKILL.md" \
   '行の `id` を `finding_id`、`loc` を `file_line` に写し、`source` は写さない'
 # 候補が先送り欠陥だけでも、一覧は台帳の行を運ぶ (指摘が無くても sweep 起票済みの根因へ紐づけられる)
@@ -1314,6 +1316,10 @@ run_target "$r" --list-candidates "$TMP_ROOT/t29-ledger-unread.json"
 assert "T-29 台帳を読めない一覧の ledger は空" "0" "$(jq '.ledger | length' "$TMP_ROOT/t29-ledger-unread.json")"
 assert_grep "T-29 台帳を読めない一覧は unavailable を出す" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=comments_api; pr=9'
 assert_grep "T-29 台帳を読めない一覧は WARNING を出す" "$ERR" 'WARNING: 関連 Issue の却下台帳を読めないため'
+# 一覧でない実行で指摘が無いときは台帳を読まないので、読めなくても unavailable を出さない
+ADOPT_MODE=manual
+run_target "$r"
+assert_not_grep "T-29 指摘の無い起票実行は台帳を読まず unavailable を出さない" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable'
 unset GH_API_RC
 # sweep が書く出典付きの 5 列の REJECT 行は、出典が finding の出典 JSON と一致するときだけ除外する
 for t29_src in 9-20260101120000.json 9-20251231120000.json; do
