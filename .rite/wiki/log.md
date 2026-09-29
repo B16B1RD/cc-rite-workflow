@@ -2,6 +2,10 @@
 
 ## 2026-09-30
 
+* **Skip**: [影響走査のレビュー結果](raw/reviews/20260929T182831Z-pr-3456.md) — 作業固有の検証記録であり、新規のドメイン経験則はない
+* **Skip**: [影響走査の fixture 修正結果](raw/fixes/20260929T183333Z-pr-3456.md) — 作業固有の検証記録であり、新規のドメイン経験則はない
+* **Skip**: [影響走査の再レビュー結果](raw/reviews/20260929T184604Z-pr-3456.md) — 作業固有の検証記録であり、新規のドメイン経験則はない
+
 * **Skip**: [再開待ち worktree 保護のレビュー結果](raw/reviews/20260929T162804Z-pr-3454.md) — 独立レビューと回帰検証の完了記録のみで、新たなドメイン経験則はない
 * **Lint incomplete** — 機械検査の報告値は stale=61, orphans=0, missing_concept=0, unregistered_raw=591, broken_refs=0, descriptive_number_ref=0。helper が Broken pipe を出力したため全体の成功とは扱わない。既存ページ全件の意味比較は未実施。
 * **Update**: [スキルのシェル処理を helper へ移すときは値の入力経路を対の処理と揃え、ファイル入力には存在と形式の検査を同時に入れる](pages/heuristics/helper-extraction-input-route-pairing-and-failure-paths.md) — raw/reviews/20260929T134719Z-pr-3451.md を統合
