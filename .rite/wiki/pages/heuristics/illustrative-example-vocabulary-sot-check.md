@@ -8,9 +8,15 @@ created: "2026-07-13T02:50:00+09:00"
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260712T174329Z-pr-1838.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T200946Z-pr-3446.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T202027Z-pr-3446.md"
 tags: ["doc-accuracy", "sot-verification", "illustrative-example", "attribution"]
 confidence: medium
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-13T02:50:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T20:45:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T20:45:00Z" }
 ---
 
 # doc の例示語彙は定義元 (SoT) と突合してから書く
@@ -29,6 +35,10 @@ docstring / SPEC / コメントの「例示」(e.g. 〜等) に使う語彙が�
 2. **writer 経路の grep で実在を確認する**: 「X が Y に蓄積される」と書くなら、X を Y に書き込むコードが実在するかを grep する。0 件なら例示ではなく誤帰属
 3. **mechanism と例示を分離して修正する**: 誤帰属が見つかっても、保持・変換などの機構記述が generic に正しければ例示だけを定義元語彙に差し替える最小修正で済む
 
+### 例示する挙動は分岐に入ることを確かめる
+
+語彙だけでなく、例示する挙動（「古い git など」がこの分岐に入る）も、実際にその分岐に入ることを確かめてから書く。確かめられない例示は外す。例示は読み手が自分の環境を当てはめる材料なので、入らない例は誤った予測を固定する。
+
 ## 関連ページ
 
 - [Fix 修正コメント自身が canonical convention を破る self-drift](../anti-patterns/fix-comment-self-drift.md)
@@ -38,3 +48,5 @@ docstring / SPEC / コメントの「例示」(e.g. 〜等) に使う語彙が�
 ## ソース
 
 - [F-05: 「決定事項・メモ」(replica 節) を local ## Detail の例として誤帰属。writer grep 0 件で demonstrable に確定](../../raw/reviews/20260712T174329Z-pr-1838.md)
+- [レビュー結果](../../raw/reviews/20260929T200946Z-pr-3446.md)
+- [fix 結果](../../raw/fixes/20260929T202027Z-pr-3446.md)

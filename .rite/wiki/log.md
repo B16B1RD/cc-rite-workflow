@@ -2,6 +2,19 @@
 
 ## 2026-09-30
 
+* **Update**: [冪等化の key を前の run が残した状態から毎回作り直すと、2 回目の再実行で key がずれる](pages/anti-patterns/idempotency-key-rebuilt-from-previous-run-state-drifts.md) — raw/fixes/20260929T193322Z-pr-3459.md を統合
+* **Update**: [冪等化の key を前の run が残した状態から毎回作り直すと、2 回目の再実行で key がずれる](pages/anti-patterns/idempotency-key-rebuilt-from-previous-run-state-drifts.md) — raw/reviews/20260929T194655Z-pr-3459.md を統合
+* **Create**: [持ち越した識別子の単位の変化は束ねと分けの両方向で止め、同じ規則を書き手の手順に優先順位付きで書く](pages/patterns/carried-identifier-unit-change-stops-both-ways.md) — raw/reviews/20260929T194655Z-pr-3459.md を新規ページ化
+* **Update**: [持ち越した識別子の単位の変化は束ねと分けの両方向で止め、同じ規則を書き手の手順に優先順位付きで書く](pages/patterns/carried-identifier-unit-change-stops-both-ways.md) — raw/fixes/20260929T195602Z-pr-3459.md を統合
+* **Update**: [持ち越した識別子の単位の変化は束ねと分けの両方向で止め、同じ規則を書き手の手順に優先順位付きで書く](pages/patterns/carried-identifier-unit-change-stops-both-ways.md) — raw/reviews/20260929T200710Z-pr-3459.md を統合
+* **Update**: [持ち越した識別子の単位の変化は束ねと分けの両方向で止め、同じ規則を書き手の手順に優先順位付きで書く](pages/patterns/carried-identifier-unit-change-stops-both-ways.md) — raw/fixes/20260929T201839Z-pr-3459.md を統合
+* **Update**: [持ち越した識別子の単位の変化は束ねと分けの両方向で止め、同じ規則を書き手の手順に優先順位付きで書く](pages/patterns/carried-identifier-unit-change-stops-both-ways.md) — raw/reviews/20260929T202650Z-pr-3459.md を統合
+* **Create**: [理由と代替手順をつなげるメッセージは自分の文を句点で閉じ、外部コマンドの出力は別行で引用する](pages/heuristics/close-own-sentence-before-quoting-external-output.md) — raw/reviews/20260929T194552Z-pr-3446.md を新規ページ化
+* **Update**: [規約の主文は、実行者が観測できる単位で書く](pages/heuristics/rule-stated-in-units-the-executor-observes.md) — raw/fixes/20260929T195655Z-pr-3446.md を統合
+* **Update**: [doc の例示語彙は定義元 (SoT) と突合してから書く](pages/heuristics/illustrative-example-vocabulary-sot-check.md) — raw/reviews/20260929T200946Z-pr-3446.md を統合
+* **Update**: [doc の例示語彙は定義元 (SoT) と突合してから書く](pages/heuristics/illustrative-example-vocabulary-sot-check.md) — raw/fixes/20260929T202027Z-pr-3446.md を統合
+* **Update**: [理由と代替手順をつなげるメッセージは自分の文を句点で閉じ、外部コマンドの出力は別行で引用する](pages/heuristics/close-own-sentence-before-quoting-external-output.md) — raw/reviews/20260929T203537Z-pr-3446.md を統合
+
 * **Create**: [冪等化の key を前の run が残した状態から毎回作り直すと、2 回目の再実行で key がずれる](pages/anti-patterns/idempotency-key-rebuilt-from-previous-run-state-drifts.md) — raw/reviews/20260929T192200Z-pr-3459.md を新規ページ化
 
 * **Lint incomplete** — 機械検査の報告値は stale=61, orphans=0, missing_concept=0, unregistered_raw=595, broken_refs=0, descriptive_number_ref=0。既存ヘルパーが Broken pipe を出力したため全体の成功とは扱わない。既存ページ全件の意味比較は未完了。

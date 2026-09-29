@@ -5,10 +5,16 @@ domain: "anti-patterns"
 description: "再実行で書き込みを重ねないための key を、前の run が残した状態から毎回組み立て直すと、同じ処理がその状態を今回の入力で書き換えるため、次の run では材料が変わって key もずれる。再実行 1 回では一致しても 2 回目で崩れるので、一度作った key を run をまたいで持ち越し、テストは状態を消さずに 3 回連続で実行して 2 回目と 3 回目の一致まで固定する。"
 promote: rite-plugin
 created: "2026-09-29T19:40:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T19:40:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T20:45:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T20:45:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260929T192200Z-pr-3459.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T193322Z-pr-3459.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T194655Z-pr-3459.md"
 tags: ["idempotency", "rerun", "testing", "state"]
 confidence: high
 ---
@@ -29,11 +35,16 @@ confidence: high
 
 同じ系統の取りこぼしとして、「初回の処分」を「保留ファイルが無い」と同一視すると、ゲートが保留（held）したために保留ファイルが残った状態から始まる初回を初回と認識できない。初回かどうかは、状態ファイルの有無ではなく、処分の記録そのものが既にあるかで判定する。
 
+持ち越した key の保存先は、同じ run が作り直さないものを選ぶ。保留ファイルはゲートが一から作り直すので、足したフィールドは保留の run を挟むと消える。ここでは tracker 番号を run をまたいで持ち越している判定記録ファイルに「出口と候補全文 → key」として残し、次の run では記録の候補が持つ key を使った（無ければ全候補から作る）。key は出口ごとに分けて持つ。出口が変わった再実行まで同じ key を使うと、新しい判定の書き込みを書き込み済みとして飛ばしてしまう。
+
 ## 関連ページ
 
 - [記録の同定キーが文脈の一部しか含まないと、同じ HEAD の再実行で前回の記録を今回のものと誤認する](./record-identity-must-cover-every-context-key.md)
 - [ガードの述語は「守りたい状態」そのものを測る — 存在ではなく内容を測る](../heuristics/guard-predicate-measures-the-protected-state.md)
+- [持ち越した識別子の単位の変化は束ねと分けの両方向で止め、同じ規則を書き手の手順に優先順位付きで書く](../patterns/carried-identifier-unit-change-stops-both-ways.md)
 
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20260929T192200Z-pr-3459.md)
+- [fix 結果](../../raw/fixes/20260929T193322Z-pr-3459.md)
+- [レビュー結果](../../raw/reviews/20260929T194655Z-pr-3459.md)

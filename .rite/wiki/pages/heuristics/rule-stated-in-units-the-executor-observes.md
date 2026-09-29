@@ -4,10 +4,16 @@ title: "規約の主文は、実行者が観測できる単位で書く"
 domain: "heuristics"
 description: "編集の単位で書かれた規約は、機械が hunk 単位でしか観測できない場面で字義どおり適用すると判定と食い違う。正しく直した対応が「未対応」に落ち、ループが空転する。"
 created: "2026-09-06T16:10:23Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-06T16:10:23Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T20:45:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T20:45:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260906T141001Z-pr-2582.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T194552Z-pr-3446.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T195655Z-pr-3446.md"
 tags: ["prose-rule", "observability", "mechanical-gate", "convention"]
 confidence: high
 ---
@@ -32,6 +38,10 @@ confidence: high
 
 「規約どおりに直したのにゲートが通らない」が繰り返し起きるとき、疑うのはまず実装ではなく規約の記述単位である。
 
+### 実行条件の記述にも当てはまる
+
+文書に書く実行条件（どこから実行すると拒否されるか等）も、概念上の範囲（「チェックアウト内」）ではなく、実装が実際に比べる値（「状態ルートのパスの下かどうか」）で書く。概念と実装の比較対象がずれる部分で、読み手の予測が外れる。
+
 ## 関連ページ
 
 - [行番号の名前空間を 2 つ混ぜた突合は、偽陽性と偽陰性を同時に生む](../anti-patterns/mixed-line-number-namespaces-in-diff-matching.md)
@@ -40,3 +50,5 @@ confidence: high
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20260906T141001Z-pr-2582.md)
+- [レビュー結果](../../raw/reviews/20260929T194552Z-pr-3446.md)
+- [fix 結果](../../raw/fixes/20260929T195655Z-pr-3446.md)
