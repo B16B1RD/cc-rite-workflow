@@ -967,7 +967,7 @@ scan_deletion_residue() {
   local manifest
   manifest=$(mktemp)
   local file grep_rc grep_bin="${DELETION_GREP_BIN:-grep}"
-  if ! find "$@" -type f ! -path '*/fixtures/*' \
+  if ! find "$@" -type f ! -path '*/fixtures/*' ! -path '*/__pycache__/*' \
     ! -name 'number-reference-check.test.sh' -print0 > "$manifest"; then
     rm -f "$manifest"
     return 2
@@ -1043,6 +1043,16 @@ if [ "$scan_rc" -eq 0 ]; then
   pass "deletion-damage scan reports residue found through the scan helper"
 else
   fail "deletion-damage scan missed helper-level residue (rc=$scan_rc)"
+fi
+pycache_fixture="$sb/deletion-scan-pycache-fixture"
+mkdir -p "$pycache_fixture/__pycache__"
+printf '%s\n' "${deletion_residue_samples[0]}" > "$pycache_fixture/__pycache__/generated.pyc"
+scan_rc=0
+scan_deletion_residue "$pycache_fixture" || scan_rc=$?
+if [ "$scan_rc" -eq 1 ]; then
+  pass "deletion-damage scan ignores generated __pycache__ files"
+else
+  fail "deletion-damage scan flagged a generated __pycache__ file (rc=$scan_rc)"
 fi
 grep_fail_shim="$sb/grep-fail"
 printf '%s\n' '#!/bin/bash' 'exit 2' > "$grep_fail_shim"
