@@ -15,11 +15,14 @@ sources:
     resource: "raw/fixes/20260731T073514Z-pr-2070.md"
   - type: "reviews"
     resource: "raw/reviews/20260929T031252Z-pr-3422.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T042617Z-pr-3349.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:24:18Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T04:44:52Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:24:18Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T04:44:52Z" }
 ---
 
 # 実装が分岐しているならテストも分岐の数だけ要る — 既定構成の経路こそ抜けやすい
@@ -50,10 +53,15 @@ verified:
 - 故障注入でしか通らない fail-closed 分岐は、注入を分岐に固有の位置（共通関数ではなく当該パターンの呼び出し）に置く。共通関数に置くと、先行する同じ処理のパターンが先に拒否し、対象の分岐まで届かない
 - stderr に何も出さない fail-open の trap に対して `! grep 'fail-open' stderr` と書いても、構造上落ちない assert になる。trap の発火は deny 出力の有無で検出する
 
+### 同じ停止処理を 2 つの関数に足したら、両方の分岐に入り、marker で区別する
+
+同じ停止処理を 2 つの関数に足すと、回帰テストは片方の関数の分岐にしか入らないことが多い。さらに停止処理の後ろに別の失敗経路（外部コマンドの失敗など）が続く構造では、停止処理を外しても後続の失敗で同じ非ゼロの rc が返るため、rc だけでは停止処理が働いたかを区別できない。観測された事例では、片方の関数から停止処理を除去した変異が生き残った。関数ごとに分岐へ入るテストを置き、停止処理が出す marker の有無（停止すべきでない側では marker が無いこと）まで検査して初めて、両方の停止処理が固定される。
+
 ## 関連ページ
 
 - [アサーションの検証強度は「該当行を壊して赤くなるか」でしか測れない](./mutation-testing-measures-assertion-strength.md)
 - [却下理由が採用案にも等しく当てはまる — differentiator でない根拠をコメントに残す](../anti-patterns/rejected-rationale-applies-to-adopted-option.md)
+- [失敗経路の ERROR 文を段ごとに分けたら、分割後の各分岐に入るテストを 1 つずつ用意し、文面で照合する](./split-error-message-needs-test-per-branch.md)
 
 ## ソース
 
@@ -62,3 +70,4 @@ verified:
 - [fix 結果](../../raw/fixes/20260731T065426Z-pr-2070.md)
 - [fix 結果](../../raw/fixes/20260731T073514Z-pr-2070.md)
 - [OR で書いた拒否条件の片側が未固定だったことを示したレビュー結果](../../raw/reviews/20260929T031252Z-pr-3422.md)
+- [2 つの関数に足した停止処理の片方が未固定だったことを示したレビュー結果](../../raw/reviews/20260929T042617Z-pr-3349.md)
