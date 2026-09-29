@@ -1877,6 +1877,28 @@ try:
 finally:
     f.close()
 
+# With a run start pin and a previous run's result beside this run's, the gate reads
+# only this run's results, so the stop cycle still names the point the retry passed.
+f = Fixture()
+try:
+    (f.root / '.rite/review-results').mkdir(parents=True, exist_ok=True)
+    dump(f.root / '.rite/review-results/71-19990101000000.json',
+         dict(schema_version='1.1.0', pr_number=71, findings=[]))
+    (f.root / '.rite/state').mkdir(parents=True, exist_ok=True)
+    (f.root / '.rite/state/review-run-since-71.txt').write_text('71-19990101000000.json\n')
+    diverged_and_retried(f)
+    f.start()
+    f.finish(roots=[], recommendations=[dict(id='R-01', reviewer='code-quality-reviewer', file='source.txt',
+                                             line=1, description='comment contradicts the code')])
+    f.clock(1)
+    f.observe()
+    recommendation_fix(f)
+    output = gate(f)
+    passes_gate(output, '1,2,3,0', 'T-26: with a run start pin the gate does not fire on the point the retry moved past')
+    check('RUN_SINCE_USED=pin' in marker(output, 'ITERATE_CB'), 'T-26: the gate read the run start pin:\n' + output)
+finally:
+    f.close()
+
 # An unresolved retry keeps the old point. 1,2,3,1 fires only at cycle 3, so the
 # gate would pass if the stop cycle were handed to the helper here.
 f = Fixture()

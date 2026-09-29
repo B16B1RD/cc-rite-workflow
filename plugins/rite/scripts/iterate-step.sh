@@ -390,7 +390,8 @@ fi
 # 再試行が blocking 0 で決着した run は、越えた発散点を以後の発散判定から外す。停止 cycle は
 # outcome=resolved のときだけ渡し、未決着・unresolved・再試行なしでは渡さない。
 resolved_args=()
-if [ "$(printf '%s' "$review_state" | jq -r '.review_run.retry.outcome // empty')" = resolved ]; then
+retry_outcome=$(printf '%s' "$review_state" | jq -r '.review_run.retry.outcome // empty') || exit 1
+if [ "$retry_outcome" = resolved ]; then
   resolved_through=$(printf '%s' "$review_state" | jq -er '.review_run.retry.stop_context.cycle_count | select(type == "number" and . >= 0 and floor == .)') || {
     echo "ERROR: 解決済みの再試行に停止 cycle (review_run.retry.stop_context.cycle_count) が非負整数で記録されていません。発散判定の範囲を決められないため中止します" >&2
     exit 1

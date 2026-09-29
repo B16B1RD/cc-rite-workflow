@@ -95,7 +95,11 @@ make_result() {
 
 # トラジェクトリを 1 ディレクトリに展開し、判定結果を $OUT へ書く。
 run_trend() {
-  # $1 = pr, $2.. = counts
+  # 先頭の `--opt value` の組は helper へそのまま渡す。続く $1 = pr, $2.. = counts
+  local opts=()
+  while [ "${1#--}" != "$1" ]; do
+    opts+=("$1" "$2"); shift 2
+  done
   local pr="$1"; shift
   local dir="$SANDBOX/pr-$pr"
   rm -rf "$dir"; mkdir -p "$dir"
@@ -105,7 +109,7 @@ run_trend() {
     make_result "$dir" "$pr" "$(printf '%02d' "$i")" "$n"
   done
   # pin を渡さない = 単一 run のディレクトリ (全件を 1 本の列として読む)
-  bash "$SCRIPT" --pr "$pr" --cycle-count "$#" --results-dir "$dir" > "$OUT" 2>/dev/null
+  bash "$SCRIPT" --pr "$pr" --cycle-count "$#" ${opts[@]+"${opts[@]}"} --results-dir "$dir" > "$OUT" 2>/dev/null
 }
 
 # fix の記録が各 review の後ろに並ぶ通常の Priority 1 保存列。
@@ -251,40 +255,26 @@ assert_grep "T-03g: 最良水準到達後に上で平坦化した 9,1,5,5 は cy
 # ---------------------------------------------------------------------------
 echo "--- T-07: 解決済み再試行の停止 cycle (--resolved-through) ---"
 
-# run_trend と同じ列に --resolved-through を足す。$1 = N, $2 = pr, $3.. = counts
-run_trend_resolved() {
-  local through="$1"; shift
-  local pr="$1"; shift
-  local dir="$SANDBOX/pr-$pr"
-  rm -rf "$dir"; mkdir -p "$dir"
-  local i=0 n
-  for n in "$@"; do
-    i=$((i + 1))
-    make_result "$dir" "$pr" "$(printf '%02d' "$i")" "$n"
-  done
-  bash "$SCRIPT" --pr "$pr" --cycle-count "$#" --resolved-through "$through" --results-dir "$dir" > "$OUT" 2>/dev/null
-}
-
 run_trend 400 2 3 3 0
 assert_grep "T-07a: オプションなしの 2,3,3,0 は越えた発散点 cycle 3 で発火する (現行)" "$OUT" \
   "TREND_DIVERGENCE=fire; trend=2,3,3,0; cycles=4; lost=0; fire_at=3; reason=no_new_minimum_and_not_descending"
-run_trend_resolved 3 401 2 3 3 0
+run_trend --resolved-through 3 401 2 3 3 0
 assert_grep "T-07b: 停止 cycle 3 を越えて 0 に達した 2,3,3,0 は発火しない" "$OUT" \
   "TREND_DIVERGENCE=ok; trend=2,3,3,0; cycles=4; lost=0; reason=converging_or_descending"
-run_trend_resolved 3 402 2 3 3 0 2 3
+run_trend --resolved-through 3 402 2 3 3 0 2 3
 assert_grep "T-07c: 解決後に新たに発散した 2,3,3,0,2,3 は cycle 6 で発火する" "$OUT" \
   "TREND_DIVERGENCE=fire; trend=2,3,3,0,2,3; cycles=6; lost=0; fire_at=6; reason=no_new_minimum_and_not_descending"
 for through in 0 2; do
-  run_trend_resolved "$through" 403 2 3 3
+  run_trend --resolved-through "$through" 403 2 3 3
   assert_grep "T-07d: 走査開始 3 以下の N=$through はオプションなしと同じく cycle 3 で発火する" "$OUT" \
     "TREND_DIVERGENCE=fire; trend=2,3,3; cycles=3; lost=0; fire_at=3; reason=no_new_minimum_and_not_descending"
 done
-run_trend_resolved 3 404 2 3 3
+run_trend --resolved-through 3 404 2 3 3
 assert_grep "T-07e: N が列長以上なら発火点が無い" "$OUT" \
   "TREND_DIVERGENCE=ok; trend=2,3,3; cycles=3; lost=0; reason=converging_or_descending"
 # 1,4,4 の発散点を越えても、最良水準 1 は N 以下の位置にある。min を N より後ろだけで取ると
 # 2,3 は最良水準 2 を超えず発火しない。
-run_trend_resolved 3 405 1 4 4 2 3
+run_trend --resolved-through 3 405 1 4 4 2 3
 assert_grep "T-07f: N 以下の位置も最良水準に入り 1,4,4,2,3 は cycle 5 で発火する" "$OUT" \
   "TREND_DIVERGENCE=fire; trend=1,4,4,2,3; cycles=5; lost=0; fire_at=5; reason=no_new_minimum_and_not_descending"
 
