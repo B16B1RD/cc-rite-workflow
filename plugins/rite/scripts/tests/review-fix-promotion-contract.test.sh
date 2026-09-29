@@ -313,7 +313,7 @@ run_triage_block() {
 out=$(TRIAGE_GATE_RC=3 run_triage_block 7)
 assert_eq 'gate block surfaces the held exit code' '[CONTEXT] ADOPTION_GATE_RC=3' "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ADOPTION_GATE_RC=' || true)"
 assert_eq 'records are written with their candidates under the reviewed commit' \
-  '{"adoption":{"head":"c0ffee","candidates":[{"id":"C-1","content":"full text"}],"records":[{"ids":["C-1"]}]}}' \
+  '{"adoption":{"head":"c0ffee","candidates":[{"id":"C-1","content":"full text"}],"issued":[],"records":[{"ids":["C-1"]}]}}' \
   "$(jq -c . "$triage_dir/root/.rite/state/adoption-5-triage.json" 2>/dev/null || true)"
 args=$(paste -sd ' ' "$triage_dir/args" 2>/dev/null || true)
 case "$args" in
@@ -336,7 +336,7 @@ esac
 # same full text as the candidate the previous record's ids named (kept in the record file itself), so the
 # gate links it instead of filing it again.
 state="$triage_dir/root/.rite/state"
-prev_records() { printf '{"adoption": {"head": "old", "candidates": %s, "records": %s}}\n' "$1" "$2" > "$state/adoption-5-triage.json"; }
+prev_records() { printf '{"adoption": {"head": "old", "candidates": %s, "issued": [], "records": %s}}\n' "$1" "$2" > "$state/adoption-5-triage.json"; }
 printf '{"candidates": [{"id": "C-1", "content": "full text"}, {"id": "C-2", "content": "other"}]}\n' > "$state/adoption-hold-5-triage.json"
 prev_records '[{"id": "C-1", "content": "full text"}, {"id": "C-2", "content": "other"}]' '[{"ids": ["C-1"], "tracker": 77}, {"ids": ["C-2"]}]'
 printf '{"commit_sha": "beef"}\n' > "$triage_dir/root/.rite/review-results/5-20260102000000.json"
@@ -384,7 +384,29 @@ rm -f "$state/adoption-hold-5-triage.json"
 prev_records '[{"id": "C-1", "content": "full text"}]' '[{"ids": ["C-1"], "tracker": 77}]'
 triage_records='[{"ids": ["C-3"]}]'
 out=$(TRIAGE_GATE_RC=0 run_triage_block 7)
-assert_eq 'a tracker is carried after the hold is released' '77' "$(jq -r '.adoption.records[0].tracker' "$state/adoption-5-triage.json" 2>/dev/null || true)"
+assert_eq 'a tracker is carried after the hold is released' 'beef|77' \
+  "$(jq -r '"\(.adoption.head)|\(.adoption.records[0].tracker)"' "$state/adoption-5-triage.json" 2>/dev/null || true)"
+# A run that reports only other candidates keeps the Issue in issued, so the next run that reports the
+# candidate again still links it.
+triage_candidates='{"candidates": [{"id": "C-1", "content": "unrelated"}]}'
+triage_records='[{"ids": ["C-1"]}]'
+out=$(TRIAGE_GATE_RC=0 run_triage_block 7)
+triage_candidates='{"candidates": [{"id": "C-1", "content": "full text"}]}'
+out=$(TRIAGE_GATE_RC=0 run_triage_block 7)
+assert_eq 'a tracker survives a run that did not report its candidate' '0|77' \
+  "$(printf '%s\n' "$out" | sed -n 's/^\[CONTEXT\] ADOPTION_GATE_RC=//p')|$(jq -r '.adoption.records[0].tracker' "$state/adoption-5-triage.json" 2>/dev/null || true)"
+# A reworded candidate at the same place is not linked, and the run warns instead of dropping the Issue silently.
+prev_records '[{"id": "C-1", "content": "full text", "reviewer": "r", "file_line": "a.sh:3"}]' '[{"ids": ["C-1"], "tracker": 77}]'
+triage_candidates='{"candidates": [{"id": "C-2", "content": "reworded", "reviewer": "r", "file_line": "a.sh:3"}]}'
+triage_records='[{"ids": ["C-2"]}]'
+out=$(TRIAGE_GATE_RC=0 run_triage_block 7)
+assert_eq 'a reworded candidate is not linked and does not stop the run' '0|null' \
+  "$(printf '%s\n' "$out" | sed -n 's/^\[CONTEXT\] ADOPTION_GATE_RC=//p')|$(jq -r '.adoption.records[0].tracker' "$state/adoption-5-triage.json" 2>/dev/null || true)"
+case "$out" in
+  *'WARNING: 追跡先 #77 の候補と同じ位置の候補が全文の違う形で出ています'*) pass 'a reworded candidate at the same place warns about the Issue' ;;
+  *) fail "a reworded candidate must warn about the Issue: $out" ;;
+esac
+triage_candidates='{"candidates": [{"id": "C-1", "content": "full text"}]}'
 # Two different trackers for one record cannot be resolved: stop instead of picking one.
 printf '{"candidates": [{"id": "C-1", "content": "full text"}, {"id": "C-2", "content": "new"}]}\n' > "$state/adoption-hold-5-triage.json"
 prev_records '[{"id": "C-1", "content": "full text"}, {"id": "C-2", "content": "new"}]' '[{"ids": ["C-1"], "tracker": 77}, {"ids": ["C-2"], "tracker": 78}]'
@@ -497,7 +519,8 @@ assert_grep 'a created Issue that was not written back is named in the resume' \
 mkdir "$ledger_dir/root/.rite/state/adoption-hold-5-triage.json.tmp"
 out=$(run_ledger_block updated 1 '#77' || true)
 rmdir "$ledger_dir/root/.rite/state/adoption-hold-5-triage.json.tmp"
-case "$out" in
+warn_line=$(printf '%s\n' "$out" | grep '^WARNING: hold ファイルの resume を書き換えられませんでした' || true)
+case "$warn_line" in
   *'再開方法: '*'ただし #77 は tracker に書き戻せていない'*) pass 'an unwritable hold still prints the resume with the untracked Issue' ;;
   *) fail "an unwritable hold must print the resume: $out" ;;
 esac
