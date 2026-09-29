@@ -4,10 +4,11 @@ title: "終了コードの契約は、その形を作る経路をすべて数え
 description: "スクリプト冒頭の終了コード契約を「exit 1 は引数エラー」のように特定の値と原因で書くと、埋め込みインタプリタの例外、インタプリタの欠落（127）、pipefail 経由の外部コマンドの終了コード（2）など、同じ出力の形を作る別の経路が漏れる。経路を実装から数え上げ、入力を壊して一つずつ実行してから、呼び出し元の扱い（非 0 はすべて拒否など）に合わせた粒度で書く。"
 domain: "heuristics"
 created: "2026-09-24T09:40:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T17:00:11Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T01:07:27Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:42:57Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T17:00:11Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T01:07:27Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260924T091612Z-pr-3042.md"
@@ -17,6 +18,10 @@ sources:
     resource: "raw/reviews/20260927T163905Z-pr-3312.md"
   - type: "reviews"
     resource: "raw/reviews/20260928T165800Z-pr-3397.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T002142Z-pr-3397.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T003742Z-pr-3397.md"
 tags: ["exit-code", "contract", "documentation", "pipefail", "set-e"]
 confidence: medium
 promote: rite-plugin
@@ -48,6 +53,8 @@ promote: rite-plugin
 
 **付随処理は状態の書き込み直後に済ませ、結果を保持して最後に返す。** 関数の末尾に置くと、途中の後始末（`set -e` 下の `rm`）の失敗でその処理に届かない。
 
+**新しく割り当てた意味だけを保証として書く。** 既存の失敗コード（1）に「書けなかった」ことまで保証させると、後始末や別経路で書いた後に失敗する既存の経路と矛盾する。モデルに届く唯一の面（hook の stdout）は終了コードの意味と同じことを、帰結まで含めて書く（「状態を書いたうえで exit 3 を返す」）。付随処理の位置を変える修正は、後続手順を失敗させる手段（stdout を閉じる、/dev/full に向ける）で位置を固定するテストを置かないと、元に戻す変異が生き残る。
+
 ## 関連ページ
 
 - [分岐を足したら、後ろのアームの出力がまだ使われるかを確かめる](./new-branch-leaves-later-arm-output-discarded.md)
@@ -58,3 +65,5 @@ promote: rite-plugin
 - [契約を非 0 に一般化したレビュー結果](../../raw/reviews/20260924T105539Z-pr-3044.md)
 - [分岐表の想定外終了コード行と、案内文の配置を固定するテストを求めたレビュー結果](../../raw/reviews/20260927T163905Z-pr-3312.md)
 - [新しい終了コードの意味が hook の stdout で逆に伝わっていたレビュー結果](../../raw/reviews/20260928T165800Z-pr-3397.md)
+- [付随処理を書き込み直後へ移し、新しい終了コードの保証を絞った fix 結果](../../raw/fixes/20260929T002142Z-pr-3397.md)
+- [付随処理の位置を固定するテストを求めたレビュー結果](../../raw/reviews/20260929T003742Z-pr-3397.md)

@@ -9,9 +9,11 @@ sources:
     resource: "raw/reviews/20260506T162735Z-pr-868.md"
   - type: "fixes"
     resource: "raw/fixes/20260506T163131Z-pr-868.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T002811Z-pr-3416.md"
 tags: ["bash", "pipefail", "set-euo-pipefail", "process-substitution", "mapfile", "grep-no-match"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T13:37:28Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T01:07:27Z" }
 ---
 
 # `mapfile -t < <(...)` で pipefail safe な iteration を書く
@@ -76,6 +78,10 @@ v=$(grep -E '^\s+schema_version:' rite-config.yml | head -1 || true) || v=""
 - **検出**: `set -euo pipefail` 配下で `grep ... | head -1` / `grep ... | wc -l` / `find ... | head` 等 pipeline で grep no-match が混入しうる箇所を grep し、後段の空チェックが unreachable な経路を発見する
 - **命名**: `mapfile -t arr < <(...)` を「pipefail-safe iteration pattern」と総称する (process substitution は手段、mapfile は格納先)
 
+### テストの行番号取得と隔離
+
+テストで `grep ... | head | cut` の結果を代入すると、一致なしで errexit し、直後の fail-loud 分岐（診断出力）に届かない。行番号の取得は一致なしでも rc=0 の awk にそろえる。同じ pipefail 下の `printf | grep -q` は here-string で grep に渡す。hook は state root をプロセスの cwd から決めるため、環境変数を外すだけではテストの隔離にならない。hook を自分の cwd で呼ぶテストは git 管理外の一時ディレクトリへ cwd を移す。
+
 ## 関連ページ
 
 - [function 内 `local v=$(...)` と top-level `v=$(...)` の `set -e` 伝播差で writer/reader 非対称が偶然 mask される](../anti-patterns/bash-local-vs-toplevel-pipefail-asymmetry.md)
@@ -86,3 +92,4 @@ v=$(grep -E '^\s+schema_version:' rite-config.yml | head -1 || true) || v=""
 
 - [レビュー結果](../../raw/reviews/20260506T162735Z-pr-868.md)
 - [fix 結果](../../raw/fixes/20260506T163131Z-pr-868.md)
+- [テストの行番号取得が一致なしで errexit したレビュー結果](../../raw/reviews/20260929T002811Z-pr-3416.md)
