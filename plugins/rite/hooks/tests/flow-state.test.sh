@@ -1916,6 +1916,16 @@ assert "T-04: corrupt flow-state is left in place" "present" \
 rm -f "$stderr_reap04"
 
 # --- pause / resume ---
+assert_neq() { if [ "$2" != "$3" ]; then pass "$1"; else fail "$1: got '$3'"; fi; }
+iso_ago() { jq -nr --argjson s "$1" '(now - $s) | floor | todate'; }
+same_bytes() { cmp -s "$1" "$2" && echo same || echo changed; }
+# A closed / open review clock segment in the shape review-clock-open writes.
+write_clock() {
+  mkdir -p "$(dirname "$1")"
+  jq -n --arg start "$2" \
+    '{review_context:{session_id:"ctx",run_id:"r1",pr_number:1,cycle:1,head:"abc"},segment_id:"seg.1",kind:"work",started_at:$start}' > "$1"
+}
+
 echo ""
 echo "=== PZ-01: pause records once; a second pause changes nothing; resume removes it ==="
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
@@ -1923,11 +1933,14 @@ rec="$d/.rite/state/pause-${sid}.json"
 rc_pz=0; (cd "$d" && bash "$HOOK" pause) || rc_pz=$?
 assert "PZ-01: pause exits 0" "0" "$rc_pz"
 assert "PZ-01: record carries paused_at" "true" "$(jq -r '(.paused_at // "") | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z$")' "$rec")"
+# Age the record so a second pause that rewrote it would show a newer time (timestamps have 1 s resolution).
+jq --arg t "$(iso_ago 600)" '.paused_at = $t' "$rec" > "$rec.tmp" && mv "$rec.tmp" "$rec"
 cp "$rec" "$d/pz01.before"
 rc_pz=0; (cd "$d" && bash "$HOOK" pause) || rc_pz=$?
 assert "PZ-01: second pause exits 0" "0" "$rc_pz"
-assert "PZ-01: second pause leaves the record byte-identical" "same" "$(cmp -s "$rec" "$d/pz01.before" && echo same || echo changed)"
+assert "PZ-01: second pause leaves the aged record byte-identical" "same" "$(same_bytes "$rec" "$d/pz01.before")"
 assert "PZ-01: exactly one pause record" "1" "$(find "$d/.rite/state" -name 'pause-*.json' | wc -l | tr -d ' ')"
+assert "PZ-01: pause leaves no lock file behind" "0" "$(find "$d/.rite/state" -name 'pause-*.lock' | wc -l | tr -d ' ')"
 rc_pz=0; (cd "$d" && bash "$HOOK" resume) || rc_pz=$?
 assert "PZ-01: resume exits 0" "0" "$rc_pz"
 assert "PZ-01: resume removes the record" "absent" "$([ -e "$rec" ] && echo present || echo absent)"
@@ -1940,7 +1953,6 @@ assert "PZ-02: resume without a record exits 0" "0" "$rc_pz"
 assert "PZ-02: resume creates nothing" "0" "$(find "$d/.rite" -name 'pause-*' 2>/dev/null | wc -l | tr -d ' ')"
 rm -f "$d/.rite-session-id"
 rc_pz=0; (cd "$d" && bash "$HOOK" pause) 2>/dev/null || rc_pz=$?
-assert_neq() { if [ "$2" != "$3" ]; then pass "$1"; else fail "$1: got '$3'"; fi; }
 assert_neq "PZ-02: pause without a session exits non-zero" "0" "$rc_pz"
 assert "PZ-02: no record without a session" "0" "$(find "$d/.rite" -name 'pause-*' 2>/dev/null | wc -l | tr -d ' ')"
 
@@ -1956,11 +1968,11 @@ jq -n '{issues:[42], cursor:0, mode:"default", failed:[], outstanding:[], active
   > "$d/.rite/state/run-queue-${sid}.json"
 cp "$d/.rite/sessions/${sid}.flow-state" "$d/pz03.fs"; cp "$d/.rite/state/run-queue-${sid}.json" "$d/pz03.q"
 (cd "$d" && bash "$HOOK" pause)
-assert "PZ-03: flow-state unchanged while paused" "same" "$(cmp -s "$d/.rite/sessions/${sid}.flow-state" "$d/pz03.fs" && echo same || echo changed)"
-assert "PZ-03: run-queue unchanged while paused" "same" "$(cmp -s "$d/.rite/state/run-queue-${sid}.json" "$d/pz03.q" && echo same || echo changed)"
+assert "PZ-03: flow-state unchanged while paused" "same" "$(same_bytes "$d/.rite/sessions/${sid}.flow-state" "$d/pz03.fs")"
+assert "PZ-03: run-queue unchanged while paused" "same" "$(same_bytes "$d/.rite/state/run-queue-${sid}.json" "$d/pz03.q")"
 (cd "$d" && bash "$HOOK" resume)
-assert "PZ-03: flow-state unchanged after resume" "same" "$(cmp -s "$d/.rite/sessions/${sid}.flow-state" "$d/pz03.fs" && echo same || echo changed)"
-assert "PZ-03: run-queue unchanged after resume" "same" "$(cmp -s "$d/.rite/state/run-queue-${sid}.json" "$d/pz03.q" && echo same || echo changed)"
+assert "PZ-03: flow-state unchanged after resume" "same" "$(same_bytes "$d/.rite/sessions/${sid}.flow-state" "$d/pz03.fs")"
+assert "PZ-03: run-queue unchanged after resume" "same" "$(same_bytes "$d/.rite/state/run-queue-${sid}.json" "$d/pz03.q")"
 
 echo ""
 echo "=== PZ-04: pause closes the open review clock segment once; no clock means no clock file ==="
@@ -1969,8 +1981,7 @@ clock="$d/.rite/state/review-clock-${sid}.json"
 (cd "$d" && bash "$HOOK" pause)
 assert "PZ-04: pause without a clock creates none" "absent" "$([ -e "$clock" ] && echo present || echo absent)"
 (cd "$d" && bash "$HOOK" resume)
-mkdir -p "$d/.rite/state"
-jq -n '{review_context:{session_id:"ctx",run_id:"r1",pr_number:1,cycle:1,head:"abc"},segment_id:"seg.1",kind:"work",started_at:"2026-01-01T00:00:00Z"}' > "$clock"
+write_clock "$clock" "$(iso_ago 600)"
 before_clock=$(jq -cS . "$clock")
 t0=$(jq -nr 'now | floor')
 (cd "$d" && bash "$HOOK" pause)
@@ -1982,18 +1993,53 @@ if [ "$ended_epoch" -ge "$t0" ] && [ "$ended_epoch" -le "$t1" ] && [ "$(jq -cS '
 else
   fail "PZ-04: ended_at='$ended' window=$t0..$t1 record=$(cat "$clock")"
 fi
-cp "$clock" "$d/pz04.before"
-(cd "$d" && bash "$HOOK" pause)
-assert "PZ-04: a second pause leaves the closed segment byte-identical" "same" "$(cmp -s "$clock" "$d/pz04.before" && echo same || echo changed)"
+assert "PZ-04: pause leaves no lock file behind for the clock" "0" "$(find "$d/.rite/state" -name 'review-clock-*.lock' | wc -l | tr -d ' ')"
 
 echo ""
-echo "=== PZ-05: resume that cannot save the paused segment warns, keeps it frozen and still clears the pause ==="
-stderr_pz05="$(mktemp)"
-(cd "$d" && bash "$HOOK" resume) 2>"$stderr_pz05" || true
-assert "PZ-05: pause record cleared" "absent" "$([ -e "$d/.rite/state/pause-${sid}.json" ] && echo present || echo absent)"
-assert "PZ-05: frozen segment left byte-identical" "same" "$(cmp -s "$clock" "$d/pz04.before" && echo same || echo changed)"
-assert_grep "PZ-05: WARNING says the paused segment could not be recorded" "$stderr_pz05" "could not record the paused review clock segment"
-rm -f "$stderr_pz05"
+echo "=== PZ-05: a segment that already has ended_at is left as it is (the usage-limit stop wrote it earlier) ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+clock="$d/.rite/state/review-clock-${sid}.json"
+write_clock "$clock" "$(iso_ago 900)"
+jq --arg e "$(iso_ago 300)" '.ended_at = $e' "$clock" > "$clock.tmp" && mv "$clock.tmp" "$clock"
+cp "$clock" "$d/pz05.before"
+(cd "$d" && bash "$HOOK" pause)
+assert "PZ-05: the earlier ended_at is not moved to the pause time" "same" "$(same_bytes "$clock" "$d/pz05.before")"
+
+echo ""
+echo "=== PZ-06: resume that cannot save the paused segment warns, keeps it frozen and still clears the pause ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+clock="$d/.rite/state/review-clock-${sid}.json"
+write_clock "$clock" "$(iso_ago 600)"
+(cd "$d" && bash "$HOOK" pause)
+cp "$clock" "$d/pz06.before"
+stderr_pz06="$(mktemp)"
+# No review run exists in this sandbox, so the paused segment cannot be recorded.
+(cd "$d" && bash "$HOOK" resume) 2>"$stderr_pz06" || true
+assert "PZ-06: pause record cleared" "absent" "$([ -e "$d/.rite/state/pause-${sid}.json" ] && echo present || echo absent)"
+assert "PZ-06: frozen segment left byte-identical" "same" "$(same_bytes "$clock" "$d/pz06.before")"
+assert_grep "PZ-06: WARNING says the paused segment could not be recorded" "$stderr_pz06" "could not record the paused review clock segment"
+rm -f "$stderr_pz06"
+
+echo ""
+echo "=== PZ-07: a clock record that is not a JSON object does not stop the pause; --session resume keeps the segment frozen ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+clock="$d/.rite/state/review-clock-${sid}.json"
+mkdir -p "$d/.rite/state"; printf '[1,2]\n' > "$clock"
+cp "$clock" "$d/pz07.before"
+stderr_pz07="$(mktemp)"
+rc_pz=0; (cd "$d" && bash "$HOOK" pause) 2>"$stderr_pz07" || rc_pz=$?
+assert "PZ-07: pause still exits 0" "0" "$rc_pz"
+assert "PZ-07: the pause record is written" "present" "$([ -e "$d/.rite/state/pause-${sid}.json" ] && echo present || echo absent)"
+assert "PZ-07: the malformed clock is left unchanged" "same" "$(same_bytes "$clock" "$d/pz07.before")"
+assert_grep "PZ-07: WARNING names the malformed clock" "$stderr_pz07" "not a JSON object"
+write_clock "$clock" "$(iso_ago 600)"
+jq --arg e "$(iso_ago 300)" '.ended_at = $e' "$clock" > "$clock.tmp" && mv "$clock.tmp" "$clock"
+cp "$clock" "$d/pz07.frozen"
+(cd "$d" && bash "$HOOK" resume --session "$sid") 2>"$stderr_pz07" || true
+assert "PZ-07: --session resume clears the record" "absent" "$([ -e "$d/.rite/state/pause-${sid}.json" ] && echo present || echo absent)"
+assert "PZ-07: --session resume leaves the frozen segment as it is" "same" "$(same_bytes "$clock" "$d/pz07.frozen")"
+assert_grep "PZ-07: WARNING says the segment stays frozen" "$stderr_pz07" "so the paused review clock segment is left frozen"
+rm -f "$stderr_pz07"
 
 if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + silent-failure fixes + security/observability hardening + handoff marker + consume-handoff corrupt-read WARNING + jq stderr snippet control-char neutralization + C1 8-bit coverage via shared neutralize_ctrl + --worktree merge-preserve field + clear-worktree surgical del + non-UUID acceptance (Layer 1 format-agnostic contract pin) + phase-transition append log + reap-issue cross-session deactivate"; then
   exit 1

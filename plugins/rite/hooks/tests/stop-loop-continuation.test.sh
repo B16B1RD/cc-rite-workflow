@@ -1162,7 +1162,8 @@ RITE_STATE_ROOT="$d" bash "$FS" set --phase review --issue 1168 --branch b --pr 
   --next n --handoff "/rite:fix 99" --session "$SID" >/dev/null
 pause_for "$d"
 err=$(mktemp)
-out=$(run_stop "$d" "$err") || true
+rc=0; out=$(run_stop "$d" "$err") || rc=$?
+assert "P-01: paused stop exits 0" "0" "$rc"
 assert "P-01: paused stop prints no decision" "" "$out"
 assert "P-01: pending handoff is not consumed" "/rite:fix 99" "$(handoff_of "$d")"
 assert_grep "P-01: stderr tells how to resume" "$err" "flow-state.sh resume"
@@ -1178,7 +1179,8 @@ d=$(new_sandbox)
 setup_watchdog_fs "$d" review 99
 pause_for "$d"
 err=$(mktemp)
-out=$(run_stop "$d" "$err") || true
+rc=0; out=$(run_stop "$d" "$err") || rc=$?
+assert "P-02: paused stop exits 0" "0" "$rc"
 assert "P-02: paused stop prints no decision" "" "$out"
 assert "P-02: watchdog sidecar is not created" "absent" "$([ -e "$(sidecar_for "$d")" ] && echo present || echo absent)"
 if grep -q "batch-run が" "$err"; then fail "P-02: watchdog ran while paused: $(cat "$err")"; else pass "P-02: no watchdog diagnostics while paused"; fi
@@ -1188,15 +1190,17 @@ assert "P-02: after resume the watchdog blocks again" "block" "$(block_of "$out"
 rm -f "$err"
 
 echo ""
-echo "=== P-03: an empty or unreadable pause record still counts as paused ==="
+echo "=== P-03: an empty or corrupt pause record still counts as paused ==="
 d=$(new_sandbox)
 setup_watchdog_fs "$d" review 99
 pause_for "$d"
 : > "$d/.rite/state/pause-${SID}.json"
-out=$(run_stop "$d") || true
+rc=0; out=$(run_stop "$d") || rc=$?
+assert "P-03: empty record exits 0" "0" "$rc"
 assert "P-03: empty record allows stop" "" "$out"
 printf '{not-json' > "$d/.rite/state/pause-${SID}.json"
-out=$(run_stop "$d") || true
+rc=0; out=$(run_stop "$d") || rc=$?
+assert "P-03: corrupt record exits 0" "0" "$rc"
 assert "P-03: corrupt record allows stop" "" "$out"
 
 echo ""
@@ -1204,6 +1208,7 @@ echo "=== P-04: another session's pause does not affect this session ==="
 d=$(new_sandbox)
 setup_watchdog_fs "$d" review 99
 pause_for "$d" "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
+assert "P-04: the other session's pause record exists" "present" "$([ -e "$d/.rite/state/pause-bbbbbbbb-cccc-dddd-eeee-ffffffffffff.json" ] && echo present || echo absent)"
 out=$(run_stop "$d") || true
 assert "P-04: the watchdog still blocks this session" "block" "$(block_of "$out")"
 

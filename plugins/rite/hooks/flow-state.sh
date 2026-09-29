@@ -993,10 +993,14 @@ _pause_freeze_clock() {
     return 0
   fi
   jq -e 'has("ended_at")' "$clock" >/dev/null && return 0
-  local frozen
-  frozen=$(jq --arg end "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" '.ended_at = $end' "$clock") \
-    && _atomic_write "$clock" "$frozen" \
-    || echo "WARNING: pause: failed to stamp ended_at on the review clock; the pause will count as work time: $(printf '%s' "$clock" | neutralize_ctrl)" >&2
+  local tmp
+  if tmp=$(mktemp "$clock.XXXXXX") \
+     && jq --arg end "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" '.ended_at = $end' "$clock" > "$tmp" \
+     && mv "$tmp" "$clock"; then
+    return 0
+  fi
+  [ -z "${tmp:-}" ] || rm -f "$tmp"
+  echo "WARNING: pause: failed to stamp ended_at on the review clock; the pause will count as work time: $(printf '%s' "$clock" | neutralize_ctrl)" >&2
   return 0
 }
 
@@ -1011,15 +1015,15 @@ _resume_reopen_clock() {
     echo "WARNING: resume: could not record the paused review clock segment; it is left frozen, and work until the next close will not be counted: $(printf '%s' "$clock" | neutralize_ctrl)" >&2
     return 0
   fi
-  tmp=$(mktemp "$clock.XXXXXX") || { rm -f "$clock"; echo "WARNING: resume: recorded the paused segment but could not open a new one; work until the next close will not be counted" >&2; return 0; }
-  if jq --arg id "$(basename "$tmp")" --arg start "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
-       '{review_context, segment_id:$id, kind, started_at:$start}' "$clock" > "$tmp" \
-     && rm -f "$clock" && ln "$tmp" "$clock"; then
-    rm -f "$tmp"
-  else
-    rm -f "$tmp" "$clock"
-    echo "WARNING: resume: recorded the paused segment but could not open a new one; work until the next close will not be counted" >&2
+  if tmp=$(mktemp "$clock.XXXXXX") \
+     && jq --arg id "$(basename "$tmp")" --arg start "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+          '{review_context, segment_id:$id, kind, started_at:$start}' "$clock" > "$tmp" \
+     && mv "$tmp" "$clock"; then
+    return 0
   fi
+  # The paused segment is already recorded, so the frozen file must not be submitted again.
+  rm -f "${tmp:-}" "$clock"
+  echo "WARNING: resume: recorded the paused segment but could not open a new one; work until the next close will not be counted" >&2
   return 0
 }
 
@@ -1033,7 +1037,10 @@ cmd_pause() {
   rec=$(_pause_record_path "$sid")
   mkdir -p "$(dirname "$rec")" || return 1
   if [ ! -e "$rec" ]; then
-    _atomic_write "$rec" "$(jq -n --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" '{paused_at:$ts}')" || return 1
+    # `_atomic_write` は `.lock` を残す。Stop hook は存在しか見ないので、mktemp + mv で足りる。
+    local tmp; tmp=$(mktemp "$rec.XXXXXX") || return 1
+    jq -n --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" '{paused_at:$ts}' > "$tmp" && mv "$tmp" "$rec" \
+      || { rm -f "$tmp"; return 1; }
   fi
   _pause_freeze_clock "$sid"
 }
