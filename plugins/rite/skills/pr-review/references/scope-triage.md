@@ -69,7 +69,7 @@ mkdir -p "$state_root/.rite/state" \
           | .tracker] as $lost
       | if ($lost | length) > 0
         then error("前の tracker \($lost) の候補が今回の候補にありません。hold の候補を一字も変えずに合流させて（手順 1）記録を書き直す") else . end
-      | {adoption: {head: $head, candidates: $c[0].candidates, issued: $issued, records: ($records | map(. as $r
+      | {adoption: {head: $head, candidates: $c[0].candidates, issued: $issued, write_keys: ($p.write_keys // {}), records: ($records | map(. as $r
           | if .tracker then . else
               ([$r.ids[] | $new[.] | select(.) | $issued[canon] | select(.)] | unique) as $t
               | if ($t | length) > 1
@@ -91,25 +91,34 @@ if [ "$rc" = 0 ]; then
     --verdicts "$work/gate.json" --candidates "$work/candidates.json" --state-root "$state_root" \
     || { echo "ERROR: PR 内推奨を登録できません（原因は直前の出力）" >&2; rc=2; }
 fi
-# 7.4.3 / 7.4.4 が書き込み済みかを照合する印の key。出口と候補全文（id 以外、欄の順序によらない）から作る。
-# C-n は run ごとに振り直すので使わない。材料は記録の候補のうち直前の hold の候補と全文が一致するもの（無ければ全候補）。
-# hold の候補は手順 1 が一字も変えずに合流させるので、再レビューが同じ根因を言い換えた候補を同じ記録に足しても key は変わらない
+# 7.4.3 / 7.4.4 が書き込み済みかを照合する印の key。C-n は run ごとに振り直すので使わない。
+# 前の run で key を付けた候補（出口と全文が一致。id 以外、欄の順序によらない）を含む記録はその key を使い、無ければ出口と全候補の全文から作る。
+# 付けた key は判定記録ファイルの write_keys に候補ごとに残す。再レビューが同じ根因を言い換えた候補を同じ記録に足しても、以後の run で key は変わらない
 if [ "$rc" = 0 ]; then
   sha256() { if command -v sha256sum >/dev/null 2>&1; then sha256sum; else shasum -a 256; fi; }
-  keys=""
-  materials=$(jq -r --slurpfile c "$work/candidates.json" --slurpfile h "$prev_h" '
+  keys="" written="{}"
+  materials=$(jq -r --slurpfile c "$work/candidates.json" --slurpfile a "$adoption" '
       def canon: walk(if type == "object" then to_entries | sort_by(.key) | from_entries else . end) | tojson;
       ([$c[0].candidates[] | {key: .id, value: del(.id)}] | from_entries) as $cand
-      | [$h[].candidates[] | del(.id) | canon] as $held
-      | .verdicts[] | select(.verdict != "fix")
+      | $a[0].adoption.write_keys as $saved
+      | .verdicts[] | select(.verdict != "fix") | .exit as $exit
       | [.ids[] | $cand[.] | canon] as $all
-      | ([$all[] | select(. as $t | any($held[]; . == $t))]) as $base
-      | "\(.ids | join(","))\t\([.exit, ((if ($base | length) > 0 then $base else $all end) | sort)] | tojson)"' "$work/gate.json") || rc=2
-  while [ "$rc" = 0 ] && IFS=$'\t' read -r ids material; do
+      | [$all[] | [$exit, .] | tojson] as $slots
+      | ([$slots[] | $saved[.] | select(.)] | unique) as $prior
+      | if ($prior | length) > 1
+        then error("記録 \(.ids) の候補に前の run の key が複数あります: \($prior)。前の run と同じ単位に記録を分けて書き直す") else . end
+      | "\(.ids | join(","))\t\($prior[0] // "-")\t\($slots | tojson)\t\([$exit, ($all | sort)] | tojson)"' "$work/gate.json") || rc=2
+  while [ "$rc" = 0 ] && IFS=$'\t' read -r ids key slots material; do
     [ -n "$ids" ] || continue
-    key=$(printf '%s' "$material" | sha256) && key=${key:0:16} && [[ "$key" =~ ^[0-9a-f]{16}$ ]] || { rc=2; break; }
+    if [ "$key" = - ]; then key=$(printf '%s' "$material" | sha256) && key=${key:0:16} || { rc=2; break; }; fi
+    [[ "$key" =~ ^[0-9a-f]{16}$ ]] || { rc=2; break; }
+    written=$(jq -c --arg k "$key" --argjson s "$slots" '. + ([$s[] | {key: ., value: $k}] | from_entries)' <<< "$written") || { rc=2; break; }
     keys+="[CONTEXT] TRIAGE_WRITE_KEY=$key; ids=$ids"$'\n'
   done <<< "$materials"
+  if [ "$rc" = 0 ]; then
+    jq --argjson w "$written" '.adoption.write_keys += $w' "$adoption" > "$adoption.tmp" && mv -- "$adoption.tmp" "$adoption" \
+      || { rm -f -- "$adoption.tmp"; rc=2; }
+  fi
   if [ "$rc" = 0 ]; then printf '%s' "$keys"; else echo "ERROR: 書き込み済みを照合する key を作れません（原因は直前の出力）" >&2; fi
 fi
 # decided でも 7.4 の外部への書き込みが済むまで、この run の候補を hold に残す（7.4.5 だけが消す）
@@ -176,7 +185,7 @@ echo "[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={iterati
 
 全判定記録の処分を終えたら 7.4.5（台帳への記録と保留の解除）を 1 回実行する。
 
-7.4.3 / 7.4.4 は、書いた行・コメントに印 `<!-- rite:triage-write pr={pr_number} key={write_key} -->` を付け、書く前に同じ印を探す。印があれば書かない。このため途中で止まった処分を 7.2 からやり直しても、同じ判定記録の Decision Log 行と申し送りコメントは 1 件のままになる（再レビューが同じ根因を言い換えて出し直し、hold 由来の記録に束ねた場合も、key は hold の候補から作るので変わらない）。`{write_key}` は、7.2 の bash が出した `[CONTEXT] TRIAGE_WRITE_KEY=<key>; ids=<ids>` のうち、その判定記録の `ids` の行の値である。
+7.4.3 / 7.4.4 は、書いた行・コメントに印 `<!-- rite:triage-write pr={pr_number} key={write_key} -->` を付け、書く前に同じ印を探す。印があれば書かない。このため途中で止まった処分を 7.2 からやり直しても、同じ判定記録の Decision Log 行と申し送りコメントは 1 件のままになる（再レビューが同じ根因を言い換えて出し直し、前の run の候補と同じ記録に束ねた場合も、7.2 はその候補に前の run で付けた key を使うので変わらない）。`{write_key}` は、7.2 の bash が出した `[CONTEXT] TRIAGE_WRITE_KEY=<key>; ids=<ids>` のうち、その判定記録の `ids` の行の値である。
 rationale: design-rationale.md#triage-write-mark
 
 `record` で `{source_issue_number}` が空なら 7.4.3 の書き先が無いため、7.5-7.6 の完了レポートに出口と reason を列挙する。

@@ -322,7 +322,7 @@ run_triage_block() {
 out=$(TRIAGE_GATE_RC=3 run_triage_block 7)
 assert_eq 'gate block surfaces the held exit code' '[CONTEXT] ADOPTION_GATE_RC=3' "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ADOPTION_GATE_RC=' || true)"
 assert_eq 'records are written with their candidates under the reviewed commit' \
-  '{"adoption":{"head":"c0ffee","candidates":[{"id":"C-1","content":"full text"}],"issued":{},"records":[{"ids":["C-1"]}]}}' \
+  '{"adoption":{"head":"c0ffee","candidates":[{"id":"C-1","content":"full text"}],"issued":{},"write_keys":{},"records":[{"ids":["C-1"]}]}}' \
   "$(jq -c . "$triage_dir/root/.rite/state/adoption-5-triage.json" 2>/dev/null || true)"
 args=$(paste -sd ' ' "$triage_dir/args" 2>/dev/null || true)
 case "$args" in
@@ -677,9 +677,14 @@ assert_eq 'step 2 goes on without a related Issue' '[CONTEXT] TRIAGE_LEDGER=abse
 # A rerun of a stopped disposition writes each Decision Log line and handoff comment once: 7.2 keys every
 # record and file verdict by its exit and its candidates' full text, and 7.4.3 / 7.4.4 skip a write whose mark is there.
 key_state="$triage_dir/root/.rite/state"
+# run_keys starts a disposition from no state (the 4th argument is a hold left by an earlier run);
+# run_rerun reruns it on the state the previous run left, as a rerun after a stop does.
 run_keys() {
   rm -f "$key_state/adoption-5-triage.json" "$key_state/adoption-hold-5-triage.json"
   [ -z "${4:-}" ] || printf '%s\n' "$4" > "$key_state/adoption-hold-5-triage.json"
+  run_rerun "$1" "$2" "$3"
+}
+run_rerun() {
   printf '{"commit_sha": "c0ffee"}\n' > "$triage_dir/root/.rite/review-results/5-20260101T000000.json"
   rm -f "$triage_dir/root/.rite/review-results/5-20260102000000.json"
   triage_records=$1 triage_candidates=$2 TRIAGE_GATE_OUT=$3 TRIAGE_GATE_RC=0 run_triage_block 7
@@ -692,13 +697,34 @@ assert_eq 'keys: every record that 7.4.3 writes (record and file verdicts) gets 
   "$(printf '%s\n' "$out" | sed -n 's/^\[CONTEXT\] TRIAGE_WRITE_KEY=[0-9a-f]\{16\}; ids=//p' | paste -sd'|' -)"
 key_a=$(key_of "$out" C-1)
 # A rerun whose review restates the same root cause in other words bundles the new candidate into the record of the
-# held one. The key comes from the held candidate, so the record keeps its key; without the hold it would change.
+# earlier one. The record keeps the key the earlier run gave, on this rerun and on every later one, although each run
+# rewrites the hold with all its candidates.
+one='{"candidates": [{"id": "C-1", "content": "a", "reviewer": "r"}]}'
+one_out='{"held": false, "verdicts": [{"ids": ["C-1"], "exit": "REJECT", "verdict": "record"}]}'
 bundled='{"candidates": [{"id": "C-5", "content": "a", "reviewer": "r"}, {"id": "C-6", "content": "a, said again"}]}'
 bundled_out='{"held": false, "verdicts": [{"ids": ["C-5", "C-6"], "exit": "REJECT", "verdict": "record"}]}'
+run_keys '[{"ids": ["C-1"]}]' "$one" "$one_out" >/dev/null
+out=$(run_rerun '[{"ids": ["C-5", "C-6"]}]' "$bundled" "$bundled_out")
+assert_eq 'keys: a restated candidate bundled with an earlier one keeps the earlier key' "$key_a" "$(key_of "$out" C-5,C-6)"
+out=$(run_rerun '[{"ids": ["C-5", "C-6"]}]' "$bundled" "$bundled_out")
+assert_eq 'keys: the bundled record keeps the earlier key on the next rerun too' "$key_a" "$(key_of "$out" C-5,C-6)"
+# A disposition that starts from a hold the gate left (no key given yet) keeps the key it gives on its reruns.
 out=$(run_keys '[{"ids": ["C-5", "C-6"]}]' "$bundled" "$bundled_out" '{"kind": "triage", "candidates": [{"id": "C-1", "content": "a", "reviewer": "r"}]}')
-assert_eq 'keys: a restated candidate bundled with the held one keeps the key of the held one' "$key_a" "$(key_of "$out" C-5,C-6)"
-out=$(run_keys '[{"ids": ["C-5", "C-6"]}]' "$bundled" "$bundled_out")
-case "$(key_of "$out" C-5,C-6)" in "$key_a"|'') fail 'keys: with no hold the bundled record must key on all its candidates' ;; *) pass 'keys: with no hold the bundled record keys on all its candidates' ;; esac
+key_bundled=$(key_of "$out" C-5,C-6)
+case "$key_bundled" in "$key_a"|'') fail 'keys: a bundled record with no earlier key must key on all its candidates' ;; *) pass 'keys: a bundled record with no earlier key keys on all its candidates' ;; esac
+out=$(run_rerun '[{"ids": ["C-5", "C-6"]}]' "$bundled" "$bundled_out")
+assert_eq 'keys: a disposition started from a held hold keeps its key on the rerun' "$key_bundled" "$(key_of "$out" C-5,C-6)"
+# The earlier key is kept per exit: a rerun whose exit changed writes another record.
+run_keys '[{"ids": ["C-1"]}]' "$one" "$one_out" >/dev/null
+out=$(run_rerun '[{"ids": ["C-1"]}]' "$one" '{"held": false, "verdicts": [{"ids": ["C-1"], "exit": "LINK", "verdict": "record"}]}')
+case "$(key_of "$out" C-1)" in "$key_a"|'') fail 'keys: a rerun with another exit must give another key' ;; *) pass 'keys: a rerun with another exit gives another key' ;; esac
+# Candidates that earlier runs keyed apart cannot share one record: it is not known which mark to check.
+run_keys '[{"ids": ["C-1"]}, {"ids": ["C-2"]}]' "$three" \
+  '{"held": false, "verdicts": [{"ids": ["C-1"], "exit": "REJECT", "verdict": "record"}, {"ids": ["C-2"], "exit": "REJECT", "verdict": "record"}]}' >/dev/null
+out=$(run_rerun '[{"ids": ["C-1", "C-2"]}]' "$three" '{"held": false, "verdicts": [{"ids": ["C-1", "C-2"], "exit": "REJECT", "verdict": "record"}]}')
+assert_eq 'keys: a record bundling candidates with two earlier keys stops the gate block' '[CONTEXT] ADOPTION_GATE_RC=2' \
+  "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ADOPTION_GATE_RC=' || true)"
+assert_eq 'keys: a record bundling two earlier keys prints no key line' 0 "$(printf '%s\n' "$out" | grep -c 'TRIAGE_WRITE_KEY=' || true)"
 # The same candidate renumbered on a rerun, with its fields in another order, keeps its key.
 out=$(run_keys '[{"ids": ["C-5"]}]' '{"candidates": [{"reviewer": "r", "content": "a", "id": "C-5"}]}' \
   '{"held": false, "verdicts": [{"ids": ["C-5"], "exit": "REJECT", "verdict": "record"}]}')
