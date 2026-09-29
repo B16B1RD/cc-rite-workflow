@@ -434,6 +434,28 @@ original_issue = issue_body.read_text()
 issue_body.write_text(original_issue.replace('tool rejects an empty NAME', 'tool rejects an empty or missing NAME'))
 request_of(reconcile(accepted), 'stale')
 issue_body.write_text(original_issue)
+# Supported AC items include multiline headings and checkbox continuations.
+# A different AC or an example outside the section is not this contract.
+for heading in ('### AC-1: reject empty input', '- [ ] AC-1: reject empty input'):
+    multiline = ('## 4. Acceptance Criteria\n\n' + heading + '\n'
+                 'Given: an empty NAME\nWhen: tool runs\nThen: exit 1\n'
+                 '\n### AC-2: independent caller\nThen: preserve NAME\n'
+                 '\n## Notes\nAC-1 is used by the caller\n')
+    issue_body.write_text(multiline)
+    ac_extract = subprocess.run(['bash', str(plugin / 'scripts/acceptance-criteria-check.sh'),
+                                 'extract', '--body-file', str(issue_body)], capture_output=True, text=True)
+    check(ac_extract.returncode == 0 and ac_extract.stdout.strip() == 'AC-1,AC-2', ac_extract)
+    pending = request_of(reconcile(conflict))
+    multiline_answer = dict(conflict, reconciliation=answer(pending))
+    check(reconcile(multiline_answer)['reconciliation'] == [], 'unchanged multiline AC reuses answer')
+    for before, after in (('an empty NAME', 'a missing NAME'), ('tool runs', 'caller runs'),
+                          ('exit 1', 'exit 2')):
+        issue_body.write_text(multiline.replace(before, after))
+        request_of(reconcile(multiline_answer), 'stale')
+    issue_body.write_text(multiline.replace('preserve NAME', 'normalize NAME')
+                         .replace('AC-1 is used by the caller', 'AC-1 has a separate note'))
+    check(reconcile(multiline_answer)['reconciliation'] == [], 'other AC and notes are independent')
+issue_body.write_text(original_issue)
 git(repo, 'commit', '--allow-empty', '-qm', 'unrelated new head')
 new_head = git(repo, 'rev-parse', 'HEAD').strip()
 request_of(reconcile(accepted, head_value=new_head, review_head=new_head), 'stale')

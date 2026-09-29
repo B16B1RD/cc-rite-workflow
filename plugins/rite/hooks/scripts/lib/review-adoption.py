@@ -355,6 +355,41 @@ def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
+def ac_contract(body, ref):
+    # Match the supported AC section/item forms, retaining their continuation
+    # lines: Given/When/Then often live below the ID in the shipped template.
+    section, selected, fence, lines = False, False, None, []
+    for line in body.splitlines():
+        token = re.sub(r"^ {0,3}", "", line)
+        marks = re.match(r"^\s*(`{3,}|~{3,})(.*)$", token)
+        if fence or marks:
+            if selected:
+                lines.append(line)
+            if fence:
+                if marks and marks[1][0] == fence[0] and len(marks[1]) >= len(fence) and not marks[2].strip():
+                    fence = None
+            else:
+                fence = marks[1]
+            continue
+        heading = re.match(r"^(#+)\s+(.+?)\s*$", token)
+        if heading and len(heading[1]) <= 2:
+            title = re.sub(r"^[0-9]+\.\s+", "", heading[2].lower())
+            section = len(heading[1]) == 2 and title in (
+                "acceptance criteria", "受入基準", "受入条件", "受け入れ条件")
+            selected = False
+        elif section:
+            item = re.match(r"^(?:###\s+|[-*+]\s+\[[ xX]\]\s+)(AC-[0-9]+)(?=[:\s]|$)", token)
+            if item:
+                selected = item[1] == ref
+            elif heading and len(heading[1]) == 3:
+                selected = False
+            if selected:
+                lines.append(line)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return lines
+
+
 def contract_key(record, context, args):
     contract = record.get("contract")
     if contract is None:
@@ -366,8 +401,7 @@ def contract_key(record, context, args):
     if ref.startswith("AC-"):
         # An AC number is local to its Issue; never join unrelated AC-1 records.
         body = context["bodies"].get("issue") or ""
-        lines = [line for line in body.splitlines() if re.search(rf"\b{re.escape(ref)}\b", line)]
-        return {"issue": args.issue or f"pr:{args.pr}", "ref": ref, "text": lines}
+        return {"issue": args.issue or f"pr:{args.pr}", "ref": ref, "text": ac_contract(body, ref)}
     return {"source": ref, "number": (args.issue or f"pr:{args.pr}") if ref == "issue" else args.pr,
             "text": contract["text"]}
 
