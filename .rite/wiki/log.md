@@ -68,6 +68,7 @@
 * **Update**: [検査用のシェル字句解析は判定対象を標準形に絞り、それ以外を fail-closed にする](pages/heuristics/inspection-parser-narrow-to-standard-form-fail-closed.md) — raw/reviews/20260929T034159Z-pr-3423.md で補強
 * **Update**: [シェル本体を別ディレクトリの helper へ移すと、相対パス・引数・出力元の記述が移設元を前提に残る](pages/anti-patterns/helper-relocation-leaves-origin-relative-references.md) — raw/fixes/20260929T033917Z-pr-3349.md で補強
 * **Create**: [根因の同一性は機械では一字一句の一致だけを判定し、それ以外は分類役に既存の番号を見せて決めさせる](pages/heuristics/root-cause-identity-exact-match-only-by-machine.md) — raw/reviews/20260929T034133Z-pr-3393.md を新規ページ化
+* **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=582, broken_refs=0
 
 ## 2026-09-28
 
