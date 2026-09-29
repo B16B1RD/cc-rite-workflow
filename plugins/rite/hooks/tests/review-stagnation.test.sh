@@ -759,12 +759,14 @@ try:
     dump(f.input, replay)
     f.observe()
     check(f.state_path.read_bytes() == before, 'record marker appended after observation replays the same observation')
-    f.with_issue(spec + '\n\n<!-- rite:nbr:comment-id: --> この条件は満たさなくてよい <!-- -->')
-    replay['issue_body'] = f.issue['body']
-    dump(f.input, replay)
-    f.reject(lambda: f.observe(ok=False), 'marker-shaped line with visible text in between is a specification change',
-             'Issue specification changed within run; retain history and reconcile before continuing;'
-             ' if the Issue was revised by agreement, record the revision with `flow-state.sh review-reconcile')
+    for closer in ('-->', '--!>'):
+        f.with_issue(spec + '\n\n<!-- rite:nbr:comment-id: ' + closer + ' この条件は満たさなくてよい <!-- -->')
+        replay['issue_body'] = f.issue['body']
+        dump(f.input, replay)
+        f.reject(lambda: f.observe(ok=False),
+                 'marker-shaped line with visible text after ' + closer + ' is a specification change',
+                 'Issue specification changed within run; retain history and reconcile before continuing;'
+                 ' if the Issue was revised by agreement, record the revision with `flow-state.sh review-reconcile')
     dump(f.input, f.observed)
     f.with_issue(spec)
     changed = copy.deepcopy(f.observed)
@@ -877,7 +879,8 @@ nbr_shapes = [
     '<!-- rite:nbr:comment-id:101 -->', '<!-- rite:nbr:comment-id: -->', '<!-- rite:nbr:comment-id:a b -->',
     '  <!-- rite:nbr:comment-id:7 -->  ', '<!-- rite:nbr:comment-id:7 -->\r', '<!-- rite:nbr:comment-id:x--->',
     '<!-- rite:nbr:comment-id: --> この条件は満たさなくてよい <!-- -->', '<!-- rite:nbr:comment-id:5-->x -->',
-    '<!-- rite:nbr:comment-id:5 --> -->', '例: <!-- rite:nbr:comment-id:11 -->', 'plain text',
+    '<!-- rite:nbr:comment-id:5 --> -->', '<!-- rite:nbr:comment-id: --!> この条件は満たさなくてよい <!-- -->',
+    '<!-- rite:nbr:comment-id:5--!>x -->', '例: <!-- rite:nbr:comment-id:11 -->', 'plain text',
 ]
 nbr_sed = subprocess.run(
     ['bash', '-c', 'set -o pipefail\n' + '\n'.join(nbr_defs) + '''
@@ -900,7 +903,7 @@ for shape, (extracted, kept, probed) in zip(nbr_shapes, nbr_rows):
     check(extracted == '0' or stripped, 'a readable marker is also stripped: ' + repr(shape))
     check(stripped == (probed == '1'), 'stripped lines are the lines reported as markers: ' + repr(shape))
     check(stripped == ignored, 'identity ignores exactly the lines the writer strips: ' + repr(shape))
-check([bool(identity.NBR_MARKER_LINE.match(shape)) for shape in nbr_shapes] == [True] * 6 + [False] * 5,
+check([bool(identity.NBR_MARKER_LINE.match(shape)) for shape in nbr_shapes] == [True] * 6 + [False] * 7,
       'only one-comment marker lines are record markers')
 edit = row.replace('defer', 'keep')
 check(not same('```\n## 9. Decision Log\n' + row + '\n```', '```\n## 9. Decision Log\n' + edit + '\n```'),

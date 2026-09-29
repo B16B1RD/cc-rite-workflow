@@ -1314,9 +1314,9 @@ printf '## 概要\n\n<!-- rite:nbr:comment-id:BROKEN --> (注記: この行は m
 # 除去がこの本文を無音で消し、probe が破損と誤報する。VISIBLE は正規の marker を先に併記した形
 # (除去の観測用)、VISIBLE_ONLY は併記しない形 (probe の観測用 — 抽出が成功すると probe に到達しない)。
 NBR_PRBODY_VISIBLE="$TMP_ROOT/nbr-prbody-visible.md"
-printf '## 概要\n\n<!-- rite:nbr:comment-id:11 -->\n\n<!-- rite:nbr:comment-id: --> この条件は満たさなくてよい <!-- -->\n' > "$NBR_PRBODY_VISIBLE"
+printf '## 概要\n\n<!-- rite:nbr:comment-id:11 -->\n\n<!-- rite:nbr:comment-id: --> この条件は満たさなくてよい <!-- -->\n\n<!-- rite:nbr:comment-id: --!> 閉じ記号が違っても本文 <!-- -->\n' > "$NBR_PRBODY_VISIBLE"
 NBR_PRBODY_VISIBLE_ONLY="$TMP_ROOT/nbr-prbody-visible-only.md"
-printf '## 概要\n\n<!-- rite:nbr:comment-id: --> この条件は満たさなくてよい <!-- -->\n' > "$NBR_PRBODY_VISIBLE_ONLY"
+printf '## 概要\n\n<!-- rite:nbr:comment-id: --> この条件は満たさなくてよい <!-- -->\n\n<!-- rite:nbr:comment-id: --!> 閉じ記号が違っても本文 <!-- -->\n' > "$NBR_PRBODY_VISIBLE_ONLY"
 # create 経路が永続化する id (stub の GH_POST_URL 既定値) を canonical に持つコメント一覧。
 NBR_COMMENTS_4242="$TMP_ROOT/nbr-comments-4242.json"
 cat > "$NBR_COMMENTS_4242" <<'EOF'
@@ -2299,6 +2299,7 @@ GH_COMMENT_GET_LOGIN='other-user' GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NB
   run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-427 --content-file "$NBR_BODY_C2"
 assert "TC-4.16v fallback 経由で永続化: exit 0" "0" "$RC"
 assert_grep "TC-4.16v 見える本文を挟む行を消さない" "$GH_PR_EDIT" '^<!-- rite:nbr:comment-id: --> この条件は満たさなくてよい <!-- -->$'
+assert_grep "TC-4.16v --!> で閉じて見える本文を挟む行を消さない" "$GH_PR_EDIT" '^<!-- rite:nbr:comment-id: --!> 閉じ記号が違っても本文 <!-- -->$'
 _v_marker_lines=$(grep -c '^<!-- rite:nbr:comment-id:[0-9]* -->$' "$GH_PR_EDIT" || true)
 assert "TC-4.16v 独立行の marker は 1 本だけ" "1" "$_v_marker_lines"
 GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_VISIBLE_ONLY" \
