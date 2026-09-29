@@ -5,7 +5,7 @@
 `{state_root}` は `bash {plugin_root}/hooks/state-path-resolve.sh` の出力。7.1 の候補が 0 件かつ triage の hold ファイル `{state_root}/.rite/state/adoption-hold-{pr_number}-triage.json` が無いときだけステップ 7 を skip する（**7.7 も skip**）。hold ファイルがあれば候補 0 件でも下の手順でゲートを呼ぶ。候補ごとの処分は採否ゲート（`review-adoption-gate.sh --kind triage`）の出口だけで決める。人間に候補ごとの処分を尋ねない。`PR_REVIEW_IN_E2E` で処分を変えない（候補ごとの確認の有無も変えない）。例外は手順 3 の `{fix_loop}` だけで、`/rite:iterate` からの呼び出しかどうかで ADOPT・origin=pr の fix / hold が分かれる。
 
 1. 7.1 の候補（Source A → Source B の抽出順、dedup 後）に `C-1`, `C-2`, … を振る。triage の hold ファイルがあれば、その `head` が本 cycle の review JSON の `commit_sha` と同じかどうかを問わず（commit を問わず）、その `candidates` の各候補を、id だけ次の `C-n` に振り直して内容は一字も変えずに候補集合へ加える（id を除く全欄が一致する候補が既にあれば加えない）。triage の候補はほかのどこにも残らないため、新しい commit でも合流させて分類役が判定し直す（直っていれば `RESOLVED`）。内容を言い換えるとゲートは同じ候補と認めず、保留が解けない（`held_candidates_dropped`。前の `tracker` を持つ記録の候補がすべて今回の候補から消えたときは、ゲートより前に手順 3 が止める）。
-2. 分類役（本手順を実行する LLM）が全候補の判定記録を書く。1 根因 = 1 記録。欄は `review-adoption.py` の docstring に従い、起票（ADOPT pre_existing / 調査）になる記録には `acceptance`（起票する Issue の受入条件の文）を必ず入れる。既存の Issue（前回この手順で作った Issue を含む）が同じ根因を追跡していれば `tracker` に入れる（LINK になり、重ねて起票しない）。判定記録ファイル `{state_root}/.rite/state/adoption-{pr_number}-triage.json` があり、その `head` が本 cycle の review JSON の `commit_sha` と同じなら、その記録（保留後に直された記録）から始める（この head 条件は判定記録ファイルの再利用の条件で、手順 1 の合流の条件ではない）。`C-n` は振り直すため、各記録の `ids` は手順 1 で候補全文が一致した候補（合流させた hold の候補を含む）の新しい id へ移す（前の記録の `ids` が指す全文は判定記録ファイルの `candidates` で引き、hold からは引かない）。`head` が違えば記録を新しく書く。判定記録ファイルがあれば `head` を問わず、その `issued` と `tracker` を持つ記録（`ids` の全文は同じファイルの `candidates` で引く。記録の番号が `issued` の番号より新しい）を読み、既存の Issue が今回の候補と同じ根因を追跡していれば、文面・位置・id が変わっていても記録の `tracker` にその番号を入れる（閉じた Issue の番号は入れない）。手順 3 の bash は、`tracker` の無い記録のうち `issued` と全文（id を除く全欄）が一致する候補を含むものにだけ、その番号を持ち越す。7.4.2 が書き戻した `tracker` は消さない。前の run で異なる `tracker` を持った候補を 1 つの記録にまとめるなら、その記録の `tracker` を明示する（持ち越しは `tracker` の無い記録にだけ働き、複数の候補が衝突すると手順 3 が止まる）。
+2. 分類役（本手順を実行する LLM）が全候補の判定記録を書く。1 根因 = 1 記録。欄は `review-adoption.py` の docstring に従い、起票（ADOPT pre_existing / 調査）になる記録には `acceptance`（起票する Issue の受入条件の文）を必ず入れる。既存の Issue（前回この手順で作った Issue を含む）が同じ根因を追跡していれば `tracker` に入れる（LINK になり、重ねて起票しない）。判定記録ファイル `{state_root}/.rite/state/adoption-{pr_number}-triage.json` があり、その `head` が本 cycle の review JSON の `commit_sha` と同じなら、その記録（保留後に直された記録）から始める（この head 条件は判定記録ファイルの再利用の条件で、手順 1 の合流の条件ではない）。`C-n` は振り直すため、各記録の `ids` は手順 1 で候補全文が一致した候補（合流させた hold の候補を含む）の新しい id へ移す（前の記録の `ids` が指す全文は判定記録ファイルの `candidates` で引き、hold からは引かない）。`head` が違えば記録を新しく書く。判定記録ファイルがあれば `head` を問わず、その `issued` と `tracker` を持つ記録（`ids` の全文は同じファイルの `candidates` で引く。記録の番号が `issued` の番号より新しい）を読み、既存の Issue が今回の候補と同じ根因を追跡していれば、文面・位置・id が変わっていても記録の `tracker` にその番号を入れる（閉じた Issue の番号は入れない）。手順 3 の bash は、`tracker` の無い記録のうち `issued` と全文（id を除く全欄）が一致する候補を含むものにだけ、その番号を持ち越す。7.4.2 が書き戻した `tracker` は消さない。前の run で異なる `tracker` を持った候補を 1 つの記録にまとめるなら、その記録の `tracker` を明示する（持ち越しは `tracker` の無い記録にだけ働き、複数の候補が衝突すると手順 3 が止まる）。判定記録ファイルの `write_keys` に key を持つ候補（出口と id 以外の全文が一致）は、前の run と同じ単位の記録に入れる。別々の key の候補を 1 つの記録に束ねず、同じ key の候補を複数の記録に分けない（どちらも手順 3 が止まり、候補ごとの前の key を示す）。この規則は 1 根因 = 1 記録と `tracker` の束ねより優先し、止まった run が書いた判定記録ファイルの記録から始めるときも、その単位に直してから書く。
    台帳の処分を再利用するため、下の bash で却下台帳を読む。候補の `reviewer` と `file_line` が行の `finding_id` と `file:line` に一致する行のうち、最後の `REJECT` / `ADOPT` 行をその候補の記録の `prior`（`{finding_id, file_line, disposition, premise}`。premise は判定文）に写す（prior の違う候補を 1 つの記録にまとめない）。台帳の `REJECT` 行が同じ根因・同じ前提の候補を処分していれば、`reviewer`・`file_line` が違っていてもその行を記録の `prior` に写す（機械的に一致するのは `reviewer` と `file_line` が同じ行だけなので、位置や reviewer が変わった候補はここで紐づける）。前提が有効なら REJECT を再利用し、前提と矛盾する判定は helper が RECONCILE にする。`C-n` は cycle ごとに振り直すので台帳のキーにしない。`file_line` が空の候補には、`reviewer` と `file_line` の一致では prior を写さない（位置の無い候補どうしはキーが一意にならず、無関係な処分が写る）。同じ根因・同じ前提の `REJECT` 行は、位置の無い候補にも上の規則で写す。下の bash が非ゼロで終わったら、判定記録を書かず手順 3 へ進まない。`[review:error]` で止まる（台帳を読めないまま判定すると処分を再利用できない）。
 
 ```bash
@@ -93,10 +93,12 @@ if [ "$rc" = 0 ]; then
 fi
 # 7.4.3 / 7.4.4 が書き込み済みかを照合する印の key。C-n は run ごとに振り直すので使わない。
 # 前の run で key を付けた候補（出口と全文が一致。id 以外、欄の順序によらない）を含む記録はその key を使い、無ければ出口と全候補の全文から作る。
-# 付けた key は判定記録ファイルの write_keys に候補ごとに残す。再レビューが同じ根因を言い換えた候補を同じ記録に足しても、以後の run で key は変わらない
+# 付けた key は判定記録ファイルの write_keys に候補ごとに残す。再レビューが同じ根因を言い換えた候補を同じ記録に足しても、以後の run で key は変わらない。
+# 記録の単位を前の run と変えると（別々の key を 1 記録に束ねる、1 つの key を複数記録に分ける）、どちらの印で照合するかを決められないので止める
 if [ "$rc" = 0 ]; then
   sha256() { if command -v sha256sum >/dev/null 2>&1; then sha256sum; else shasum -a 256; fi; }
   keys="" written="{}"
+  declare -A seen=()
   materials=$(jq -r --slurpfile c "$work/candidates.json" --slurpfile a "$adoption" '
       def canon: walk(if type == "object" then to_entries | sort_by(.key) | from_entries else . end) | tojson;
       ([$c[0].candidates[] | {key: .id, value: del(.id)}] | from_entries) as $cand
@@ -106,12 +108,17 @@ if [ "$rc" = 0 ]; then
       | [$all[] | [$exit, .] | tojson] as $slots
       | ([$slots[] | $saved[.] | select(.)] | unique) as $prior
       | if ($prior | length) > 1
-        then error("記録 \(.ids) の候補に前の run の key が複数あります: \($prior)。前の run と同じ単位に記録を分けて書き直す") else . end
+        then error("記録 \(.ids) の候補に前の run の key が複数あります（候補ごとの前の key: \([range(0; .ids | length) as $n | "\(.ids[$n])=\($saved[$slots[$n]] // "-")"] | join(", "))）。前の run と同じ単位に記録を分けて書き直す（手順 2）") else . end
       | "\(.ids | join(","))\t\($prior[0] // "-")\t\($slots | tojson)\t\([$exit, ($all | sort)] | tojson)"' "$work/gate.json") || rc=2
   while [ "$rc" = 0 ] && IFS=$'\t' read -r ids key slots material; do
     [ -n "$ids" ] || continue
     if [ "$key" = - ]; then key=$(printf '%s' "$material" | sha256) && key=${key:0:16} || { rc=2; break; }; fi
     [[ "$key" =~ ^[0-9a-f]{16}$ ]] || { rc=2; break; }
+    if [ -n "${seen[$key]:-}" ]; then
+      echo "ERROR: 記録 $ids と記録 ${seen[$key]} の候補は前の run で 1 つの記録でした（key $key）。前の run と同じ単位に記録を束ねて書き直す（手順 2）" >&2
+      rc=2; break
+    fi
+    seen[$key]=$ids
     written=$(jq -c --arg k "$key" --argjson s "$slots" '. + ([$s[] | {key: ., value: $k}] | from_entries)' <<< "$written") || { rc=2; break; }
     keys+="[CONTEXT] TRIAGE_WRITE_KEY=$key; ids=$ids"$'\n'
   done <<< "$materials"
@@ -119,7 +126,7 @@ if [ "$rc" = 0 ]; then
     jq --argjson w "$written" '.adoption.write_keys += $w' "$adoption" > "$adoption.tmp" && mv -- "$adoption.tmp" "$adoption" \
       || { rm -f -- "$adoption.tmp"; rc=2; }
   fi
-  if [ "$rc" = 0 ]; then printf '%s' "$keys"; else echo "ERROR: 書き込み済みを照合する key を作れません（原因は直前の出力）" >&2; fi
+  if [ "$rc" = 0 ]; then printf '%s' "$keys"; else echo "ERROR: 書き込み済みを照合する key を作れないか、判定記録ファイルに残せません（原因は直前の出力）" >&2; fi
 fi
 # decided でも 7.4 の外部への書き込みが済むまで、この run の候補を hold に残す（7.4.5 だけが消す）
 if [ "$rc" = 0 ]; then
@@ -185,7 +192,7 @@ echo "[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={iterati
 
 全判定記録の処分を終えたら 7.4.5（台帳への記録と保留の解除）を 1 回実行する。
 
-7.4.3 / 7.4.4 は、書いた行・コメントに印 `<!-- rite:triage-write pr={pr_number} key={write_key} -->` を付け、書く前に同じ印を探す。印があれば書かない。このため途中で止まった処分を 7.2 からやり直しても、同じ判定記録の Decision Log 行と申し送りコメントは 1 件のままになる（再レビューが同じ根因を言い換えて出し直し、前の run の候補と同じ記録に束ねた場合も、7.2 はその候補に前の run で付けた key を使うので変わらない）。`{write_key}` は、7.2 の bash が出した `[CONTEXT] TRIAGE_WRITE_KEY=<key>; ids=<ids>` のうち、その判定記録の `ids` の行の値である。
+7.4.3 / 7.4.4 は、書いた行・コメントに印 `<!-- rite:triage-write pr={pr_number} key={write_key} -->` を付け、書く前に同じ印を探す。印があれば書かない。このため途中で止まった処分を 7.2 からやり直しても、同じ判定記録の Decision Log 行と申し送りコメントは 1 件のままになる（再レビューが同じ根因を言い換えて出し直し、前の run の候補と同じ記録に束ねた場合も、7.2 はその候補に前の run で付けた key を使うので変わらない。記録の単位を前の run と変えると 7.2 が止まる）。`{write_key}` は、7.2 の bash が出した `[CONTEXT] TRIAGE_WRITE_KEY=<key>; ids=<ids>` のうち、その判定記録の `ids` の行の値である。
 rationale: design-rationale.md#triage-write-mark
 
 `record` で `{source_issue_number}` が空なら 7.4.3 の書き先が無いため、7.5-7.6 の完了レポートに出口と reason を列挙する。

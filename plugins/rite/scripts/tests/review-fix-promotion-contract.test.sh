@@ -708,6 +708,10 @@ out=$(run_rerun '[{"ids": ["C-5", "C-6"]}]' "$bundled" "$bundled_out")
 assert_eq 'keys: a restated candidate bundled with an earlier one keeps the earlier key' "$key_a" "$(key_of "$out" C-5,C-6)"
 out=$(run_rerun '[{"ids": ["C-5", "C-6"]}]' "$bundled" "$bundled_out")
 assert_eq 'keys: the bundled record keeps the earlier key on the next rerun too' "$key_a" "$(key_of "$out" C-5,C-6)"
+# The restated candidate keeps the key as well, so a later run that brings only it gives the same key.
+out=$(run_rerun '[{"ids": ["C-7"]}]' '{"candidates": [{"id": "C-7", "content": "a, said again"}]}' \
+  '{"held": false, "verdicts": [{"ids": ["C-7"], "exit": "REJECT", "verdict": "record"}]}')
+assert_eq 'keys: a candidate added to a keyed record keeps that key' "$key_a" "$(key_of "$out" C-7)"
 # A disposition that starts from a hold the gate left (no key given yet) keeps the key it gives on its reruns.
 out=$(run_keys '[{"ids": ["C-5", "C-6"]}]' "$bundled" "$bundled_out" '{"kind": "triage", "candidates": [{"id": "C-1", "content": "a", "reviewer": "r"}]}')
 key_bundled=$(key_of "$out" C-5,C-6)
@@ -725,6 +729,15 @@ out=$(run_rerun '[{"ids": ["C-1", "C-2"]}]' "$three" '{"held": false, "verdicts"
 assert_eq 'keys: a record bundling candidates with two earlier keys stops the gate block' '[CONTEXT] ADOPTION_GATE_RC=2' \
   "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ADOPTION_GATE_RC=' || true)"
 assert_eq 'keys: a record bundling two earlier keys prints no key line' 0 "$(printf '%s\n' "$out" | grep -c 'TRIAGE_WRITE_KEY=' || true)"
+# Nor can one earlier record be split: the second record would read the first one's mark as its own.
+run_keys '[{"ids": ["C-1", "C-2"]}]' "$three" '{"held": false, "verdicts": [{"ids": ["C-1", "C-2"], "exit": "REJECT", "verdict": "record"}]}' >/dev/null
+out=$(run_rerun '[{"ids": ["C-1"]}, {"ids": ["C-2"]}]' "$three" \
+  '{"held": false, "verdicts": [{"ids": ["C-1"], "exit": "REJECT", "verdict": "record"}, {"ids": ["C-2"], "exit": "REJECT", "verdict": "record"}]}')
+assert_eq 'keys: records splitting one earlier record stop the gate block' '[CONTEXT] ADOPTION_GATE_RC=2' \
+  "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ADOPTION_GATE_RC=' || true)"
+assert_eq 'keys: records splitting one earlier record print no key line' 0 "$(printf '%s\n' "$out" | grep -c 'TRIAGE_WRITE_KEY=' || true)"
+assert_grep 'the classifier keeps the record units of the earlier run' "$review" \
+  '別々の key の候補を 1 つの記録に束ねず、同じ key の候補を複数の記録に分けない'
 # The same candidate renumbered on a rerun, with its fields in another order, keeps its key.
 out=$(run_keys '[{"ids": ["C-5"]}]' '{"candidates": [{"reviewer": "r", "content": "a", "id": "C-5"}]}' \
   '{"held": false, "verdicts": [{"ids": ["C-5"], "exit": "REJECT", "verdict": "record"}]}')
