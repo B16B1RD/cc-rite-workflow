@@ -624,11 +624,14 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
             check(key('pkg/sub/n.pyc') != single, 'a .pyc file named as an input is checked in full')
             for label, change in (('tracked source', lambda: (pkg / 'm.py').write_text('x = 2\n')),
                                   ('untracked file', lambda: (pkg / 'new.py').write_text('y = 1\n')),
-                                  ('ignored non-bytecode file', lambda: (pkg / 'build.log').write_text('log\n'))):
+                                  ('ignored non-bytecode file', lambda: (pkg / 'build.log').write_text('log\n')),
+                                  ('regular file named __pycache__', lambda: (pkg / 'sub/__pycache__').write_text('f\n')),
+                                  ('directory named like bytecode', lambda: (pkg / 'd.pyc').mkdir())):
                 before = key('pkg')
                 change()
                 check(key('pkg') != before, 'a changed ' + label + ' changes the directory key')
             with tempfile.TemporaryDirectory(prefix='rite-fix-scope-pyc-outside-') as fp_outside:
+                (Path(fp_outside) / 'x.pyc').write_bytes(b'outside')
                 (pkg / 'x.pyc').symlink_to(Path(fp_outside) / 'x.pyc')
                 try:
                     key('pkg')
