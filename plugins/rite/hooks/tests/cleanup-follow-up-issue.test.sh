@@ -2632,6 +2632,7 @@ reset_stubs
 adopt_root t93-broken
 mkdir -p "$r/.rite/state"
 printf '%s\n' 'not-json{' > "$r/.rite/state/adoption-9-followup.json"
+rm -f "$TMP_ROOT/t93-cands.json"
 t93_list >/dev/null
 assert_grep "T-93 判定記録を読めなければ WARNING を出す" "$ERR" '^WARNING: 前回の判定記録を読めないため再利用しません'
 assert "T-93 判定記録を読めなければ reuse は空" "0" "$(jq '.reuse | length' "$TMP_ROOT/t93-cands.json")"

@@ -153,6 +153,11 @@ assert_grep 'merge preserves irreversible approval boundary' \
 assert_grep 'cleanup preserves destructive confirmation' \
   "$ROOT/plugins/rite/skills/cleanup/SKILL.md" '削除・close・新規 Issue 公開は不可逆操作として確認を維持する'
 # スコープ外候補の処分は採否ゲートの出口で決まり、候補ごとの質問もモードによる分岐も持たない。
+# 例外は登録を読む工程が続くかどうかで分かれる ADOPT・origin=pr の fix / hold だけ。
+assert_grep 'review triage mode exception is only the fix loop' \
+  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" '例外は手順 3 の `{fix_loop}` だけで、登録を読む工程が続くかどうかで ADOPT・origin=pr の fix / hold が分かれる'
+assert_grep 'review triage fix loop requires the iterate loop' \
+  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" '`PR_REVIEW_IN_E2E == true`（ステップ 3.3 の e2e-detect）かつステップ 8.1 の出力表で `[review:mergeable]` に一致する review だけ `yes`'
 assert_grep 'review triage disposition comes from the adoption exit' \
   "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" '候補ごとの処分は採否ゲート（`review-adoption-gate.sh --kind triage`）の出口だけで決める'
 assert_grep 'review triage asks no per-candidate question' \

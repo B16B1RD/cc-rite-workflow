@@ -181,9 +181,10 @@ env['GH_STATES'] = '7=OPEN'
 (state / '.rite/state/adoption-hold-5-followup.json').unlink()
 
 # A triage PR-origin adoption is fixed in the same PR (verdict fix, nothing held) on a mergeable
-# review (--fix-loop yes) until the cycle reaches safety.max_review_cycles (default 15), where its
-# fix could not be re-reviewed and it is held. At the stop on unverified acceptance criteria
-# (--fix-loop no, or no flag) nothing would read the registration: held.
+# review inside /rite:iterate (--fix-loop yes) until the cycle reaches safety.max_review_cycles
+# (default 15), where its fix could not be re-reviewed and it is held. At the stop on unverified
+# acceptance criteria and in a standalone review (--fix-loop no, or no flag) nothing would read the
+# registration: held.
 # A sweep PR-origin adoption stays held. An unknown-origin adoption is held in triage as well.
 plain_review = review.read_text()
 for cycle, expected in ((3, 'fix'), (15, 'hold')):

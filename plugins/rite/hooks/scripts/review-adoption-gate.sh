@@ -10,10 +10,12 @@
 #   record  RESOLVED / REJECT / LINK without pr_blocking, and every LINK of a followup (the
 #           merged PR cannot take the fix, the OPEN tracker does): record the disposition only.
 #   fix     kind=triage only: ADOPT with origin=pr (fix_in_pr) when the caller passes
-#           --fix-loop yes (a mergeable review, whose registration the same PR's fix reads) and
+#           --fix-loop yes (a mergeable review inside /rite:iterate, whose registration the same
+#           PR's fix reads) and
 #           `review-pr-recommendations.sh capacity` is open. Nothing is written outside the PR;
 #           the caller registers it as an in-PR recommendation for the same PR's fix. At the stop
-#           on unverified acceptance criteria nothing would read the registration, and at
+#           on unverified acceptance criteria and in a standalone review nothing would read the
+#           registration, and at
 #           safety.max_review_cycles the fix could not be re-reviewed, so both are held.
 #   hold    anything else: pr_blocking decisions (RECONCILE, ADOPT pr/unknown, DIAGNOSE
 #           pr/unknown, LINK pr/unknown outside followup) and DIAGNOSE without investigation.
@@ -43,7 +45,8 @@
 #                   Default: STATE_ROOT/.rite/state/adoption-PR-KIND.json
 #   --issue         related Issue; its body gives the AC ids and issue citations.
 #                   --issue-body / --pr-body / --ac-ids / --ledger replace the gh reads.
-#   --fix-loop      triage only: yes for a mergeable review, no otherwise. Default no.
+#   --fix-loop      triage only: yes for a mergeable review inside /rite:iterate, no otherwise.
+#                   Default no.
 #
 # stdout: decided {"held": false, "head", "verdicts": [{"ids", "exit", "origin", "action",
 #           "tracker", "verdict", "record"}]}; held {"held": true, "reason", "hold_file"}
@@ -260,8 +263,9 @@ case "$rc" in
   *) hold adoption_error "採否判定 helper が rc=$rc で終了しました" ;;
 esac
 
-# A triage fix_in_pr (ADOPT, origin=pr) is fixed in the same PR as an in-PR recommendation when a
-# fix loop follows the review and the fix can still be re-reviewed; otherwise it is held.
+# A triage fix_in_pr (ADOPT, origin=pr) is fixed in the same PR as an in-PR recommendation when the
+# caller says the registration will be read (--fix-loop yes) and the fix can still be re-reviewed;
+# otherwise it is held.
 in_pr_fix=no
 if [ "$kind" = triage ] && [ "$fix_loop" = yes ] && jq -e 'any(.decisions[]; .action == "fix_in_pr")' <<< "$decisions" >/dev/null; then
   capacity=$(bash "$plugin_root/scripts/review-pr-recommendations.sh" capacity --input "$review_result" 2>"$work/err") \

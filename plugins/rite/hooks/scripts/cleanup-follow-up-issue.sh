@@ -485,7 +485,7 @@ drop_stale_dispositions() {
     [ -z "$k_src" ] || src=$(printf '%s\n' "$sources" | awk -v b="$k_src" '{ n = split($0, p, "/") } p[n] == b { print; exit }')
     sha="$k_at"
     [ -z "$sha" ] && [ -n "$src" ] && sha=$(jq -r '.commit_sha // empty' "$src" 2>/dev/null)
-    if [ -n "$sha" ] && { [ "$sha" = "$head_sha" ] || git -C "$STATE_ROOT" diff --quiet "$sha" "$head_sha" -- "${k_loc%:*}" 2>/dev/null; }; then
+    if [ -n "$sha" ] && { [ "$sha" = "$head_sha" ] || git -C "$STATE_ROOT" diff --quiet --end-of-options "$sha" "$head_sha" -- "${k_loc%:*}" 2>/dev/null; }; then
       continue
     fi
     stale=$(jq -c --arg i "$k_id" --arg l "$k_loc" --arg s "$k_src" --arg a "$k_at" '. + [[$i, $l, $s, $a]]' <<< "$stale") || return 1
