@@ -647,9 +647,10 @@ okf_version: "0.2"
 | [シェル字句の判定器は bash を実際に実行する差分検証で規則を合わせ、字句器を 1 つに集める](pages/patterns/shell-lexer-bash-oracle-differential-validation.md) | patterns | シェルの字句処理を自前で書くと規則の 1 つずつが bash とずれ、規則を足す修正のたびに反対方向の退行が出る。偽のコマンドを PATH に置いて bash で実行した結果と判定器を突き合わせる差分検証を先に作り、同じ構文を読む経路は 1 つの字句器に集め、追えない構文は判定不能として拒否する。 | 2026-09-29T16:54:00Z | high |
 | [呼び出し元で挙動を分ける規則は、永続状態から推定せず呼び出し元が渡す明示の引数で分ける](pages/heuristics/caller-context-branch-uses-explicit-flag-not-persisted-state.md) | heuristics | 「誰が呼んだか」で分岐する規則を flow-state の phase や active から推定すると、直前の別コマンドや自分自身が同じ状態を書くため単独実行と区別できない。呼び出し元に明示の引数を渡させ、欠落は安全側に倒し、invoke するすべての分岐と継続 handoff に同じ引数を付ける。 | 2026-09-29T16:54:00Z | high |
 | [PR 起因と判定した非 blocking の候補は、同じ PR の fix の計画に入れて直す](pages/heuristics/pr-origin-nonblocking-fixed-in-same-pr-plan.md) | heuristics | 採否ゲートは PR 起因の候補を外部へ起票せず保留するため、非 blocking でも残すと完了やマージ後の cleanup で止まる。停滞診断の見直しを受けたら blocking と同じ PR 起因の非 blocking もまとめて計画に入れ、mergeable 後に見つかった欠陥も手で commit せず計画を通して直す。 | 2026-09-29T16:54:00Z | medium |
+| [冪等化の key を前の run が残した状態から毎回作り直すと、2 回目の再実行で key がずれる](pages/anti-patterns/idempotency-key-rebuilt-from-previous-run-state-drifts.md) | anti-patterns | 再実行で書き込みを重ねないための key を、前の run が残した状態から毎回組み立て直すと、同じ処理がその状態を今回の入力で書き換えるため、次の run では材料が変わって key もずれる。再実行 1 回では一致しても 2 回目で崩れるので、一度作った key を run をまたいで持ち越し、テストは状態を消さずに 3 回連続で実行して 2 回目と 3 回目の一致まで固定する。 | 2026-09-29T19:40:00Z | high |
 ## 統計
 
-- 総ページ数: 637
-- ドメイン別: patterns=135, heuristics=315, anti-patterns=187
-- 最終更新: 2026-09-29T19:21:37Z
+- 総ページ数: 638
+- ドメイン別: patterns=135, heuristics=315, anti-patterns=188
+- 最終更新: 2026-09-29T19:40:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |

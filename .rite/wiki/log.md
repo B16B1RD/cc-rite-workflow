@@ -2,6 +2,8 @@
 
 ## 2026-09-30
 
+* **Create**: [冪等化の key を前の run が残した状態から毎回作り直すと、2 回目の再実行で key がずれる](pages/anti-patterns/idempotency-key-rebuilt-from-previous-run-state-drifts.md) — raw/reviews/20260929T192200Z-pr-3459.md を新規ページ化
+
 * **Lint incomplete** — 機械検査の報告値は stale=61, orphans=0, missing_concept=0, unregistered_raw=595, broken_refs=0, descriptive_number_ref=0。既存ヘルパーが Broken pipe を出力したため全体の成功とは扱わない。既存ページ全件の意味比較は未完了。
 
 * **Skip**: [影響走査のレビュー結果](raw/reviews/20260929T182831Z-pr-3456.md) — 作業固有の検証記録であり、新規のドメイン経験則はない
