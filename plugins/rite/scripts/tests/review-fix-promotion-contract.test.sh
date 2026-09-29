@@ -675,21 +675,30 @@ assert_eq 'step 2 goes on without a related Issue' '[CONTEXT] TRIAGE_LEDGER=abse
   "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] TRIAGE_LEDGER=' || true)"
 
 # A rerun of a stopped disposition writes each Decision Log line and handoff comment once: 7.2 keys every
-# record verdict by its exit and its candidates' full text, and 7.4.3 / 7.4.4 skip a write whose mark is there.
+# record and file verdict by its exit and its candidates' full text, and 7.4.3 / 7.4.4 skip a write whose mark is there.
 key_state="$triage_dir/root/.rite/state"
 run_keys() {
   rm -f "$key_state/adoption-5-triage.json" "$key_state/adoption-hold-5-triage.json"
+  [ -z "${4:-}" ] || printf '%s\n' "$4" > "$key_state/adoption-hold-5-triage.json"
   printf '{"commit_sha": "c0ffee"}\n' > "$triage_dir/root/.rite/review-results/5-20260101T000000.json"
   rm -f "$triage_dir/root/.rite/review-results/5-20260102000000.json"
   triage_records=$1 triage_candidates=$2 TRIAGE_GATE_OUT=$3 TRIAGE_GATE_RC=0 run_triage_block 7
 }
 key_of() { printf '%s\n' "$1" | sed -n "s/^\[CONTEXT\] TRIAGE_WRITE_KEY=\([^;]*\); ids=$2\$/\1/p"; }
-three='{"candidates": [{"id": "C-1", "content": "a", "reviewer": "r"}, {"id": "C-2", "content": "b"}, {"id": "C-3", "content": "c"}]}'
-three_out='{"held": false, "verdicts": [{"ids": ["C-1"], "exit": "REJECT", "verdict": "record"}, {"ids": ["C-2"], "exit": "LINK", "verdict": "record"}, {"ids": ["C-3"], "exit": "ADOPT", "verdict": "fix"}]}'
-out=$(run_keys '[{"ids": ["C-1"]}, {"ids": ["C-2"]}, {"ids": ["C-3"]}]' "$three" "$three_out")
-assert_eq 'keys: one key per record verdict and none for fix' 'C-1|C-2' \
+three='{"candidates": [{"id": "C-1", "content": "a", "reviewer": "r"}, {"id": "C-2", "content": "b"}, {"id": "C-3", "content": "c"}, {"id": "C-4", "content": "d"}]}'
+three_out='{"held": false, "verdicts": [{"ids": ["C-1"], "exit": "REJECT", "verdict": "record"}, {"ids": ["C-2"], "exit": "LINK", "verdict": "record"}, {"ids": ["C-3"], "exit": "ADOPT", "verdict": "fix"}, {"ids": ["C-4"], "exit": "ADOPT", "verdict": "file"}]}'
+out=$(run_keys '[{"ids": ["C-1"]}, {"ids": ["C-2"]}, {"ids": ["C-3"]}, {"ids": ["C-4"]}]' "$three" "$three_out")
+assert_eq 'keys: every record that 7.4.3 writes (record and file verdicts) gets one key, and fix gets none' 'C-1|C-2|C-4' \
   "$(printf '%s\n' "$out" | sed -n 's/^\[CONTEXT\] TRIAGE_WRITE_KEY=[0-9a-f]\{16\}; ids=//p' | paste -sd'|' -)"
 key_a=$(key_of "$out" C-1)
+# A rerun whose review restates the same root cause in other words bundles the new candidate into the record of the
+# held one. The key comes from the held candidate, so the record keeps its key; without the hold it would change.
+bundled='{"candidates": [{"id": "C-5", "content": "a", "reviewer": "r"}, {"id": "C-6", "content": "a, said again"}]}'
+bundled_out='{"held": false, "verdicts": [{"ids": ["C-5", "C-6"], "exit": "REJECT", "verdict": "record"}]}'
+out=$(run_keys '[{"ids": ["C-5", "C-6"]}]' "$bundled" "$bundled_out" '{"kind": "triage", "candidates": [{"id": "C-1", "content": "a", "reviewer": "r"}]}')
+assert_eq 'keys: a restated candidate bundled with the held one keeps the key of the held one' "$key_a" "$(key_of "$out" C-5,C-6)"
+out=$(run_keys '[{"ids": ["C-5", "C-6"]}]' "$bundled" "$bundled_out")
+case "$(key_of "$out" C-5,C-6)" in "$key_a"|'') fail 'keys: with no hold the bundled record must key on all its candidates' ;; *) pass 'keys: with no hold the bundled record keys on all its candidates' ;; esac
 # The same candidate renumbered on a rerun, with its fields in another order, keeps its key.
 out=$(run_keys '[{"ids": ["C-5"]}]' '{"candidates": [{"reviewer": "r", "content": "a", "id": "C-5"}]}' \
   '{"held": false, "verdicts": [{"ids": ["C-5"], "exit": "REJECT", "verdict": "record"}]}')
@@ -826,6 +835,15 @@ printf '[[{"body": "earlier"}], [{"body": "text\\n<!-- rite:triage-write pr=5 ke
 out=$(run_handoff "$mark_b")
 assert_grep 'T-02: a comment on a later page counts as posted' <(printf '%s\n' "$out") 'HANDOFF_COMMENT_ALREADY_POSTED=1; issue=12'
 assert_eq 'T-02: a comment on a later page is not posted again' 0 "$(posts)"
+# T-03: another record's key, or the same key from another PR, is not this handoff, so it is posted.
+: > "$mark_dir/log"
+out=$(run_handoff "$mark_a")
+assert_grep 'T-03: a handoff whose key differs from the posted one is posted' <(printf '%s\n' "$out") 'HANDOFF_COMMENT_POSTED=1; issue=12'
+assert_eq 'T-03: the handoff of another key posts once' 1 "$(posts)"
+printf '[[{"body": "<!-- rite:triage-write pr=6 key=%s -->"}]]\n' "$mark_a" > "$mark_dir/comments.json"
+: > "$mark_dir/log"
+out=$(run_handoff "$mark_a")
+assert_grep 'the handoff mark of another PR does not skip the post' <(printf '%s\n' "$out") 'HANDOFF_COMMENT_POSTED=1; issue=12'
 # T-04: unreadable comments or a key that is not one post nothing and count as a failed write.
 : > "$mark_dir/log"
 out=$(MARK_API_FAIL=1 run_handoff "$mark_a")
