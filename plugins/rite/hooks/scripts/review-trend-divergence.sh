@@ -12,7 +12,7 @@
 # 優先し、見直しを理由に fire を無視したり入力列を切り直したりしない。
 #
 # Usage:
-#   bash review-trend-divergence.sh --pr N --cycle-count N [--since BASENAME] [--results-dir PATH]
+#   bash review-trend-divergence.sh --pr N --cycle-count N [--since BASENAME] [--resolved-through N] [--results-dir PATH]
 #
 # 出力 (stdout, 1 行):
 #   [CONTEXT] TREND_DIVERGENCE=fire|ok|insufficient; trend=<c1,c2,...>; cycles=N; lost=N; reason=<...>
@@ -36,6 +36,8 @@
 #
 #   (1) は「過去の最良水準へ戻れていない」、(2) は「それでもまだ下降中なら見逃す」という
 #   escape 節。両方が要る理由は下記 backtest が示す。
+#   `--resolved-through N` を受けたときは走査を max(3, N+1) から始める。min の範囲は従来どおり
+#   c[1..n-2] 全体で、N 以下の値も「過去の最良水準」に入る。
 #
 # Why 「窓 K サイクルで減っていない」型ではないか (実測較正の結論):
 #   窓幅ベースの式は **どの K を選んでも** 収束 run と発散 run を分離できない:
@@ -118,10 +120,12 @@ pr_number=""
 cycle_count=""
 results_dir=""
 since=""
+resolved_through=0
+resolved_through_set=0
 
 usage() {
   cat <<'EOF'
-Usage: review-trend-divergence.sh --pr N --cycle-count N [--since BASENAME] [--results-dir PATH]
+Usage: review-trend-divergence.sh --pr N --cycle-count N [--since BASENAME] [--resolved-through N] [--results-dir PATH]
 
 Options:
   --pr N            対象 PR 番号 (必須)
@@ -130,6 +134,9 @@ Options:
                     不足側は失われた件数を WARNING と marker の lost= に載せて判定を続行する
   --since BASENAME  run 開始点の pin。この basename より新しい結果ファイルだけを現 run とみなす。
                     空文字 / 省略時は全件を 1 本の列として読む (pin 導入前の run への後方互換)
+  --resolved-through N
+                    解決済みの再試行で越えた停止 cycle。N 以下の cycle 位置を発火点にしない
+                    (最良水準の計算には含める)。省略時は全位置を走査する
   --results-dir P   レビュー結果 JSON のディレクトリ (既定: state-path-resolve.sh 経由で解決)
   -h, --help        Show this help
 
@@ -144,6 +151,7 @@ while [ $# -gt 0 ]; do
     --pr) pr_number="${2:-}"; shift; shift ;;
     --cycle-count) cycle_count="${2:-}"; shift; shift ;;
     --since) since="${2:-}"; shift; shift ;;
+    --resolved-through) resolved_through="${2:-}"; resolved_through_set=1; shift; shift ;;
     --results-dir) results_dir="${2:-}"; shift; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "ERROR: unknown argument: $1" >&2; usage >&2; exit 2 ;;
@@ -156,6 +164,11 @@ esac
 case "$cycle_count" in
   ''|*[!0-9]*) echo "ERROR: --cycle-count は必須で、数値でなければなりません (受領: '${cycle_count}')" >&2; usage >&2; exit 2 ;;
 esac
+if [ "$resolved_through_set" = 1 ]; then
+  case "$resolved_through" in
+    ''|*[!0-9]*) echo "ERROR: --resolved-through は非負整数でなければなりません (受領: '${resolved_through}')" >&2; usage >&2; exit 2 ;;
+  esac
+fi
 
 # jq 不在を「データ異常」と誤ラベルしない。判定できない理由が環境要因なのかデータ要因なのかを
 # 取り違えると、運用者はレビュー結果を疑って空振りする (sibling scripts/review-measured-gate.sh と同型)。
@@ -468,8 +481,16 @@ fi
 # トレンド全体の純関数にすることで、resume や helper 導入前の run に対しても同一入力 →
 # 同一出力を保つ (決定論)。live なループでは前 cycle で既に停止しているため、
 # 走査結果は「最新時点だけを見た場合」と一致する。
+# この一致が崩れるのは、発散で停止した run が再試行で継続した場合だけである。再試行が
+# blocking 0 で決着すると、同じ run の後続 cycle でも走査は越えたはずの発散点で毎回発火する。
+# そこで caller は解決済み再試行の停止 cycle を `--resolved-through` で渡し、その位置までを
+# 発火点から外す。停止 cycle は counter の値であり、列の位置と一致するのは counter と実在数が
+# 揃っているときである。pin 有りで実在数が counter を超えると列の位置が後ろへずれ、越えた
+# 発散点を覆えずに再発火する。この場合は停止側に倒れるため、ずれの検出は持たない。
 _fire_at=0
-for ((_i = 3; _i <= _n_cycles; _i++)); do
+_scan_from=3
+[ "$resolved_through" -ge "$_scan_from" ] && _scan_from=$((resolved_through + 1))
+for ((_i = _scan_from; _i <= _n_cycles; _i++)); do
   _prefix_min=${_counts[0]}
   for ((_j = 0; _j < _i - 2; _j++)); do
     if [ "${_counts[_j]}" -lt "$_prefix_min" ]; then _prefix_min=${_counts[_j]}; fi
