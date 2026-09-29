@@ -20,6 +20,8 @@ rationale: design-rationale.md#nb-sweep-routing
 
 **判定記録**: 手順 1 の stdout の `candidates[]` 全件について、本手順を実行する分類役が根因ごとに 1 件の判定記録を Write tool で state root（`state-path-resolve.sh` の出力）の `.rite/state/adoption-{pr_number}-sweep.json` に保存する（形式と欄は `hooks/scripts/review-adoption-gate.sh` と `hooks/scripts/lib/review-adoption.py` の docstring）。`head` は手順 1 の出力のトップレベル `.record`（今回読んだ review JSON。ゲートの `--review-result`）の `commit_sha`（candidate の `record` ではない）、`ids` は candidate の `id`（target は `key`、合流した保留候補は `<record>#<key>`）。起票になる記録（ADOPT で origin=pre_existing、DIAGNOSE で調査として引き受ける記録）には `acceptance`（起票する Issue の受入条件）を書く。target に `prior` があれば記録の `prior` にそのまま写す（prior の違う target を 1 つの記録にまとめない）。手順 1 の出力の `ledger[]`（台帳の `issued` / `LINK` / `REJECT` 行。`issued` と `LINK` の判定文に起票先・追跡先の `#N` がある）と、判定記録ファイルの `tracker` を持つ記録（`head` を問わない）を読み、既存の Issue が今回の候補と同じ根因を追跡していれば、文面・位置・id が変わっていても記録の `tracker` にその番号を入れる（閉じた Issue の番号は入れない）。`REJECT` 行が同じ根因・同じ前提の候補を処分していれば、その行を記録の `prior`（`{finding_id, file_line, disposition, premise}`。行の `id` を `finding_id`、`loc` を `file_line` に写し、`source` は写さない）に写す。collect が写すのは id と位置が一致する行だけなので、id・文面・位置が変わった候補はここで紐づける。同じ `head` の判定記録が既にあればそこから始め、足りない記録を補い、helper の ERROR で止まった記録は直す。起票が書き戻した `tracker` だけは書き換えない（消さない）。
 
+**裁定が必要な場合**: ゲートが `reconciliation[]` を返したら、親が [共通の裁定手順](../../../references/review-reconciliation.md) に従い、当該記録の `reconciliation` に回答する。既存候補だけを扱い、未裁定・入力変更・契約変更の保留は `hold.detail` / `resume` から同手順へ戻る。HEAD が同じでも候補・判定記録・契約・履歴が変われば回答を流用しない。
+
 **ゲート**: 下の helper が collect をもう一度実行し、`candidates[]` から候補ファイルを作ってゲートを呼ぶ。`{base_branch}` は rite-config `branch.base`、無ければステップ 1.1 の `.baseRefName`。
 
 ```bash

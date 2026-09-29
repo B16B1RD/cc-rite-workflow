@@ -1136,7 +1136,7 @@ fi
 nref_rc=0
 bash "$plugin_root"/hooks/scripts/number-reference-check.sh --diff "$nref_base" || nref_rc=$?
 case "$nref_rc" in
-  0) ;;
+  0) echo "[CONTEXT] NUMBER_REF_CHECK=clean" ;;
   1)
     echo "ERROR: 追加行に Issue/PR 番号参照がある。コミットしない。ステップ 2.3 で書き直す。" >&2
     echo "[CONTEXT] NUMBER_REF_CHECK=hits" >&2

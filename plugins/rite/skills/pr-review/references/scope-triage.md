@@ -1,5 +1,7 @@
 ### 7.2-7.3 採否の出口による処分
 
+ゲートが `reconciliation[]` を返した場合は、親が [共通の裁定手順](../../../references/review-reconciliation.md) で既存候補だけを裁定し、当該 `adoption.records[]` に回答を付けて手順 3 のゲートへ戻る。`hold.detail` / `resume` が再開位置を示す。手順 2 の記録再利用とは別に、裁定は fingerprint の全入力が一致するときだけ再利用する。
+
 `{state_root}` は `bash {plugin_root}/hooks/state-path-resolve.sh` の出力。7.1 の候補が 0 件かつ triage の hold ファイル `{state_root}/.rite/state/adoption-hold-{pr_number}-triage.json` が無いときだけステップ 7 を skip する（**7.7 も skip**）。hold ファイルがあれば候補 0 件でも下の手順でゲートを呼ぶ。候補ごとの処分は採否ゲート（`review-adoption-gate.sh --kind triage`）の出口だけで決める。人間に候補ごとの処分を尋ねない。`PR_REVIEW_IN_E2E` で処分を変えない。
 
 1. 7.1 の候補（Source A → Source B の抽出順、dedup 後）に `C-1`, `C-2`, … を振る。triage の hold ファイルがあれば、その `head` が本 cycle の review JSON の `commit_sha` と同じかどうかを問わず（commit を問わず）、その `candidates` の各候補を、id だけ次の `C-n` に振り直して内容は一字も変えずに候補集合へ加える（id を除く全欄が一致する候補が既にあれば加えない）。triage の候補はほかのどこにも残らないため、新しい commit でも合流させて分類役が判定し直す（直っていれば `RESOLVED`）。内容を言い換えるとゲートは同じ候補と認めず、保留が解けない（`held_candidates_dropped`。前の `tracker` を持つ記録の候補がすべて今回の候補から消えたときは、ゲートより前に手順 3 が止める）。

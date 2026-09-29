@@ -24,6 +24,11 @@
 # decided sweep or triage run keeps it: the carried candidates live only there, so the
 # caller removes it after its external writes (sweep: after the ledger record; triage: after
 # the dispositions), and a run stopped in between carries them again.
+# Before writing, cross-PR contract matches and conflicting dispositions are checked.
+# The parent records arbitration per references/review-reconciliation.md. Requests are
+# saved in hold.reconciliation; contract changes wait for the user's requirement decision.
+# Disposition history survives cleanup in adoption-history-PR-KIND.json (same state dir).
+# These are classification/decision records, not proof that an external write succeeded.
 #
 # Usage:
 #   review-adoption-gate.sh --pr N --kind sweep|triage|followup --state-root DIR \
@@ -90,7 +95,7 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/rite-adoption-gate-XXXXXX") || { echo "ERROR: 
 trap 'rm -rf "$work"' EXIT
 
 case "$kind" in followup) cmd="/rite:cleanup $pr" ;; *) cmd="/rite:iterate $pr" ;; esac
-dropped='[]' verdicts='[]'
+dropped='[]' verdicts='[]' reconciliation='[]'
 
 # How to get out of a hold: $1 reason, $2 the verdicts (an undecided hold reads the held ones).
 resume_for() {
@@ -110,6 +115,10 @@ resume_for() {
     undecided) ;;
     *) echo "$records"; return ;;
   esac
+  if [ "$reconciliation" != '[]' ]; then
+    echo "hold ファイルの reconciliation を読み、references/review-reconciliation.md に従い既存の親が裁定する。契約変更は人間への要件確認で止め、それ以外は判定記録に裁定結果を書いて $cmd を再実行する"
+    return
+  fi
   jq -e 'any(.[]; .verdict == "hold" and (.pr_blocking | not))' <<< "$verdicts" >/dev/null && ways+=("$records")
   if jq -e 'any(.[]; .verdict == "hold" and .pr_blocking)' <<< "$verdicts" >/dev/null; then
     if [ "$kind" = followup ]; then
@@ -137,7 +146,7 @@ hold() {
   fi
   if ! jq -n --arg kind "$kind" --argjson pr "$pr" --arg head "$head" --arg rr "$review_result" \
       --arg reason "$reason" --arg detail "$detail" --arg resume "$resume" --argjson ids "$ids" \
-      --argjson dropped "$dropped" --slurpfile c "$candidates" '
+      --argjson dropped "$dropped" --argjson reconciliation "$reconciliation" --slurpfile c "$candidates" '
       ($c[0].candidates // []) as $all
       | [$all[].id] as $taken
       | (reduce $dropped[] as $d ({taken: $taken, out: []};
@@ -146,7 +155,7 @@ hold() {
       | (if $ids == null then [$all[].id] else $ids end) as $held
       | {kind: $kind, pr: $pr, head: $head, review_result: $rr, reason: $reason, detail: $detail,
          held_ids: ($held + [$kept[].id]),
-         candidates: ($all + $kept), resume: $resume}
+         candidates: ($all + $kept), reconciliation: $reconciliation, resume: $resume}
     ' > "$hold_file.tmp" || ! mv "$hold_file.tmp" "$hold_file"; then
     rm -f "$hold_file.tmp"
     echo "ERROR: the hold could not be saved to $hold_file; nothing may be written" >&2
@@ -237,7 +246,9 @@ if [ -z "$ledger" ]; then
 fi
 
 args=(--classification "$adoption" --candidates "$candidates" --review-result "$review_result"
-      --base "$base" --ac-ids "$ac_ids" --ledger "$ledger")
+      --base "$base" --ac-ids "$ac_ids" --ledger "$ledger"
+      --history-dir "$state_root/.rite/state" --pr "$pr" --kind "$kind")
+[ -n "$issue" ] && args+=(--issue "$issue")
 [ -n "$issue_body" ] && args+=(--issue-body "$issue_body")
 [ -n "$pr_body" ] && args+=(--pr-body "$pr_body")
 [ -n "$repo_root" ] && args+=(--repo-root "$repo_root")
@@ -249,6 +260,13 @@ case "$rc" in
   1) hold adoption_error "$(sed -n 's/^\[CONTEXT\] REVIEW_ADOPTION=error; //p' "$work/err" | head -1)" ;;
   *) hold adoption_error "採否判定 helper が rc=$rc で終了しました" ;;
 esac
+reconciliation=$(jq -c '.reconciliation' <<< "$decisions")
+history_file="$state_root/.rite/state/adoption-history-$pr-$kind.json"
+if ! mkdir -p "$state_root/.rite/state" ||
+   ! jq '.history' <<< "$decisions" > "$history_file.tmp" || ! mv "$history_file.tmp" "$history_file"; then
+  rm -f "$history_file.tmp"
+  hold history_write_failed "処分記録を保存できません: $history_file"
+fi
 
 # Decisions come in record order, so decision i belongs to record i.
 if ! verdicts=$(jq -c --slurpfile a "$adoption" --argjson d "$decisions" '

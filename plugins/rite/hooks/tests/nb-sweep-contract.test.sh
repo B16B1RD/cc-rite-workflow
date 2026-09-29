@@ -510,7 +510,7 @@ assert_grep_in_section "T-07 pr-review 7.1 excludes registered recommendations" 
   '`\{registered_recommendation_positions\}`.*も除外する'
 assert_grep_in_section "T-07 fix 2.1 routes R-NN to the normal fix" "$FIX_SKILL" \
   '^### 2\.1 Confirm Fix Approach$' '^### 2\.1\.A ' \
-  '`pr_recommendations\[\]` の `R-NN` だけが通常の修正'
+  '`pr_recommendations\[\]` の `R-NN`、現在の review context の `D-NN` だけが通常の修正'
 
 # 採否ゲートと起票の停止を実行して確かめる。nb-sweep.md の 1 行呼び出しを fixture plugin の fix-step.sh で
 # dispatch 経由に実行する。fixture は fix-step.sh の写しと、それが読む hook (stub / symlink) を並べる。
