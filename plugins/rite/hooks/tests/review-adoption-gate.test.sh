@@ -82,10 +82,10 @@ REJECT = dict(V=False, contract=None, evidence='', reason='the guard is document
 unknown = dict(V='unknown', contract=None, evidence='', reason='not reproduced yet')
 
 
-def run(records, cands=CANDS, kind='sweep', write=True, at=None, context=None, with_pr_body=True):
+def run(records, cands=CANDS, kind='sweep', write=True, at=None, context=None, with_pr_body=True, pr=5, issue=None):
     candidates.write_text(json.dumps({'candidates': cands}))
     adoption.parent.mkdir(parents=True, exist_ok=True)
-    path = state / f'.rite/state/adoption-5-{kind}.json'
+    path = state / f'.rite/state/adoption-{pr}-{kind}.json'
     if write:
         path.write_text(json.dumps({'adoption': {'head': (at or head), 'records': records}}))
     elif path.exists():
@@ -96,10 +96,11 @@ def run(records, cands=CANDS, kind='sweep', write=True, at=None, context=None, w
         reviewed.write_text(json.dumps({'commit_sha': at, 'findings': [], 'non_blocking_findings': []}))
     before = candidates.read_bytes(), review.read_bytes(), (path.read_bytes() if path.exists() else None)
     result = subprocess.run(
-        ['bash', str(gate), '--pr', '5', '--kind', kind, '--state-root', str(state),
+        ['bash', str(gate), '--pr', str(pr), '--kind', kind, '--state-root', str(state),
          '--candidates', str(candidates), '--review-result', str(reviewed), '--base', base,
          '--issue-body', str(issue_body), *(['--pr-body', str(pr_body)] if with_pr_body else []), '--ac-ids', 'AC-1',
-         '--repo-root', str(repo), *(['--ledger', str(ledger)] if context is None else context)],
+         '--repo-root', str(repo), *(['--issue', str(issue)] if issue is not None else []),
+         *(['--ledger', str(ledger)] if context is None else context)],
         capture_output=True, text=True, env=env, timeout=60)
     after = candidates.read_bytes(), review.read_bytes(), (path.read_bytes() if path.exists() else None)
     check(before == after, 'the gate changed an input')
@@ -116,7 +117,8 @@ def held(records, reason, **kwargs):
     result = run(records, **kwargs)
     check(result.returncode == 3, f'expected held {reason}: {result.stdout}{result.stderr}')
     out = json.loads(result.stdout)
-    check(out == {'held': True, 'reason': reason, 'hold_file': str(hold_file).replace('sweep', kwargs.get('kind', 'sweep'))},
+    expected_hold = state / f'.rite/state/adoption-hold-{kwargs.get("pr", 5)}-{kwargs.get("kind", "sweep")}.json'
+    check(out == {'held': True, 'reason': reason, 'hold_file': str(expected_hold)},
           out)
     marker = [l for l in result.stderr.splitlines() if l.startswith('[CONTEXT] ADOPTION_GATE=')]
     check(len(marker) == 1 and f'ADOPTION_GATE=held; kind={kwargs.get("kind", "sweep")}; reason={reason};' in marker[0],
@@ -337,6 +339,104 @@ check(result.returncode == 1 and result.stdout == '', (result.returncode, result
 check('ADOPTION_GATE=error; kind=sweep; reason=hold_unreadable' in result.stderr, result.stderr)
 check(hold_file.read_text() == '{"head": ', 'an unreadable hold must be kept')
 hold_file.unlink()
+
+# Cross-PR history comes from the gate itself and survives PR-specific cleanup.
+history_path = state / '.rite/state/adoption-history-101-followup.json'
+completed = rec(present=False, evidence='the empty NAME guard is restored')
+decided([completed], cands=CANDS[:1], pr=101, issue=100, kind='followup')
+history_before = history_path.read_bytes()
+history = json.loads(history_before)
+check((history['pr'], history['kind'], history['head']) == (101, 'followup', head), history)
+check(history['entries'][0]['record'] == completed and history['entries'][0]['decision']['exit'] == 'RESOLVED', history)
+
+
+def pending(record, pr=102, issue=100, reason='pending'):
+    saved, _ = held([record], 'undecided', cands=CANDS[:1], pr=pr, issue=issue, kind='followup')
+    check(len(saved['reconciliation']) == 1, saved)
+    request = saved['reconciliation'][0]
+    check(request['reason'] == reason and request['ids'] == ['F-01'], request)
+    check(saved['held_ids'] == ['F-01'] and saved['candidates'] == CANDS[:1], saved)
+    return request
+
+
+def answer(request, trigger='recurrence', resolution='fix_implementation'):
+    return {'fingerprint': request['fingerprint'], 'trigger': trigger, 'resolution': resolution,
+            'premise': 'empty NAME is still rejected by the interface',
+            'reason': 'the new caller reaches the same missing guard',
+            'evidence': 'tool "" prints ok again', 'observations': ''}
+
+
+request = pending(rec())
+check(set(request['signals']) == {'contract_match', 'completed_contract'}, request)
+check([h['source']['pr'] for h in request['history']] == [101], request)
+adjudicated = rec(reconciliation=answer(request))
+verdicts, _ = decided([adjudicated], cands=CANDS[:1], pr=102, issue=100, kind='followup')
+check(verdicts['F-01']['exit'] == 'ADOPT' and verdicts['F-01']['verdict'] == 'file', verdicts)
+repeated, _ = decided([adjudicated], cands=CANDS[:1], pr=102, issue=100, kind='followup')
+check(repeated == verdicts, 'same-PR saved history must not invalidate its own answer')
+saved_answer = json.loads((state / '.rite/state/adoption-history-102-followup.json').read_text())
+check(saved_answer['entries'][0]['reconciliation'] == adjudicated['reconciliation'], saved_answer)
+other_pr_files = {p: p.read_bytes() for p in (state / '.rite/state').glob('*102-*')}
+purged = subprocess.run(['bash', str(plugin / 'hooks/scripts/cleanup-pr-state-purge.sh'), '--pr', '101',
+                         '--state-root', str(state)], capture_output=True, text=True, env=env, timeout=30)
+check(purged.returncode == 0 and 'PARTIAL_FAILURE' not in purged.stderr, purged.stderr)
+check(history_path.read_bytes() == history_before, 'cleanup must preserve prior contract dispositions')
+check(all(p.read_bytes() == content for p, content in other_pr_files.items()), 'cleanup touched another PR')
+# Merely mentioning the same file does not match a different contract; AC text also belongs to an Issue.
+verdicts, _ = decided([rec()], cands=CANDS[:1], pr=103, issue=999, kind='followup')
+check(verdicts['F-01']['exit'] == 'ADOPT', verdicts)
+# Updating only the matched history makes a previously accepted answer stale.
+# PR 101 now also matches PR 102, so its parent explicitly disposes that request first.
+prior_update = dict(completed, evidence='a second run confirms the restored guard')
+prior_request = pending(prior_update, pr=101)
+decided([dict(prior_update, reconciliation=answer(prior_request, 'none', 'normal'))], cands=CANDS[:1],
+        pr=101, issue=100, kind='followup')
+pending(adjudicated, reason='stale')
+# A proposed contract change preserves the hold; the parent cannot authorize filing it.
+fresh = pending(rec())
+pending(rec(reconciliation=answer(fresh, resolution='change_contract')), reason='contract_change')
+# "none" resumes ordinary V/C/T when there is no conflicting prior adoption.
+for fields, expected in (({}, 'ADOPT'), ({'V': False, 'reason': 'the cited interface is satisfied'}, 'REJECT')):
+    record = rec(**fields)
+    fresh = pending(record)
+    verdicts, _ = decided([dict(record, reconciliation=answer(fresh, 'none', 'normal'))], cands=CANDS[:1],
+                          pr=102, issue=100, kind='followup')
+    check(verdicts['F-01']['exit'] == expected, verdicts)
+
+# File contracts match their cited text, not only their location or candidate filename.
+# Isolate this family from AC fixtures while still creating every history via the gate.
+state = work / 'file-contract-state'
+adoption = state / '.rite/state/adoption-5-sweep.json'
+contract = {'ref': 'tool.sh:2', 'text': 'echo "ok: $1"'}
+decided([rec(contract=contract, **resolved)], cands=CANDS[:1], pr=201, kind='followup')
+same = pending(rec(contract=contract), pr=202, issue=None)
+check('contract_match' in same['signals'], same)
+other = rec(contract={'ref': 'tool.sh:1', 'text': '#!/bin/bash'})
+verdicts, _ = decided([other], cands=CANDS[:1], pr=203, kind='followup')
+check(verdicts['F-01']['exit'] == 'ADOPT', 'same file with another contract must not request arbitration')
+# A still-present adoption in another PR cannot be reversed into a rejection by consolidation.
+unresolved = rec(contract=other['contract'], V=False, reason='the same defect is still present')
+fresh = pending(unresolved, pr=205, issue=None)
+reversal = dict(answer(fresh, 'reversal', 'consolidate'), observations='the new caller reaches the same defect')
+pending(dict(unresolved, reconciliation=reversal), pr=205, issue=None, reason='unresolved_adoption')
+# Moving the same cited text to another line still matches the completed contract.
+(repo / 'tool.sh').write_text('#!/bin/bash\n# relocated\necho "ok: $1"\n')
+git(repo, 'add', '-A')
+git(repo, 'commit', '-qm', 'move contract line')
+moved_head = git(repo, 'rev-parse', 'HEAD').strip()
+saved, _ = held([rec(contract=dict(contract, ref='tool.sh:3'))], 'undecided', cands=CANDS[:1],
+                 pr=204, kind='followup', at=moved_head)
+check('contract_match' in saved['reconciliation'][0]['signals'], saved)
+
+# Identical Issue-body quotes belong to their source Issue, not every Issue with those words.
+state = work / 'issue-contract-state'
+adoption = state / '.rite/state/adoption-5-sweep.json'
+body_record = rec(contract={'ref': 'issue', 'text': 'tool rejects an empty NAME'})
+decided([dict(body_record, **resolved)], cands=CANDS[:1], pr=301, issue=777, kind='followup')
+verdicts, _ = decided([body_record], cands=CANDS[:1], pr=302, issue=778, kind='followup')
+check(verdicts['F-01']['exit'] == 'ADOPT', 'a quote from a different Issue is a different contract')
+same = pending(body_record, pr=303, issue=777)
+check([h['source']['pr'] for h in same['history']] == [301], same)
 
 print(f'review-adoption-gate: {checks} checks passed')
 PYTEST

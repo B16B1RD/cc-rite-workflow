@@ -11,7 +11,7 @@ reviewed commit and the required fields exist.
 Usage:
   review-adoption-check.sh --classification MAP --candidates JSON --review-result JSON \
     --base REF [--ac-ids AC-1,AC-2] [--issue-body FILE] [--pr-body FILE] [--ledger FILE] \
-    [--repo-root DIR]
+    [--repo-root DIR] [--history-dir DIR --pr N --kind sweep|triage|followup [--issue N]]
 
   --candidates    {"candidates": [{"id": "F-03", ...}, ...]}. Keys other than id are
                   ignored, so severity and consequence class never change an exit.
@@ -20,6 +20,9 @@ Usage:
                   `git diff -U0 BASE...HEAD`.
   --ac-ids        the stdout of `acceptance-criteria-check.sh extract` (empty = no AC).
   --ledger        the 却下台帳 section (`nb-sweep-ledger.sh extract` output).
+  --history-dir   read adoption-history-*-*.json and narrow cross-PR comparisons to
+                  identical contracts. Never writes history; the caller saves history
+                  from stdout. --pr and --kind identify this run, --issue scopes AC ids.
 
 Record (classification map ``adoption.records[]``; ``adoption.head`` = reviewed commit):
   ids          non-empty list of candidate ids sharing one root cause
@@ -46,6 +49,9 @@ Record (classification map ``adoption.records[]``; ``adoption.head`` = reviewed 
                "unknown", and REJECT needs it
   proposition  {"claim", "reach", "reach_source", "done"} for an investigation
   investigate  true when the classifier accepts the record as an investigation
+  reconciliation  parent's disposition only: {fingerprint, trigger, resolution, premise,
+                  reason, evidence, observations}. The exact fields and parent procedure
+                  are in references/review-reconciliation.md. Input changes invalidate it.
 
 Exits, evaluated top-down per record (a record takes the first that applies):
   RECONCILE  a candidate id is in more than one record, or prior is REJECT while any of
@@ -66,6 +72,14 @@ stdout on success: {"head": SHA, "decisions": [{"ids", "exit", "origin", "action
   file is true only for file_issue and investigate: nothing else may be filed externally.
   pr_blocking is true for arbitrate, fix_in_pr and hold_pr, and for LINK when origin is pr
   or unknown: the PR must not be completed while any decision has it.
+With --history-dir, stdout also has reconciliation[] (ids, fingerprint, signals, history,
+  record, reason) and history (pr, kind, head, entries). Pending/stale arbitration,
+  overlapping records, a contract change or rejection of an unresolved prior adoption
+  returns RECONCILE/arbitrate. Only the parent decides whether a contract match is a
+  recurrence or reversal; matching a filename alone never requests arbitration.
+  history.entries contain the original record, resulting decision, contract_key and
+  candidates, plus an accepted reconciliation when present. Existing entries survive
+  until replaced by the same contract and candidate text (ignoring candidate ids).
 stdout on ERROR: {"errors": [{"reason", "ids", "detail"}, ...]}.
 stderr:
   [CONTEXT] REVIEW_ADOPTION=ok; decisions=N; file=K; pr_blocking=M
@@ -93,6 +107,7 @@ Reason SoT:
 Exit codes: 0 decided, 1 ERROR, 2 usage.
 """
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -336,6 +351,120 @@ def decide(record, contested, context):
             "tracker": tracker}
 
 
+def digest(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+def contract_key(record, context, args):
+    contract = record.get("contract")
+    if contract is None:
+        return None
+    ref = contract["ref"]
+    match = FILE_LINE.match(ref)
+    if match:
+        return {"file": match[1], "text": contract["text"]}
+    if ref.startswith("AC-"):
+        # An AC number is local to its Issue; never join unrelated AC-1 records.
+        body = context["bodies"].get("issue") or ""
+        lines = [line for line in body.splitlines() if re.search(rf"\b{re.escape(ref)}\b", line)]
+        return {"issue": args.issue or f"pr:{args.pr}", "ref": ref, "text": lines}
+    return {"source": ref, "number": (args.issue or f"pr:{args.pr}") if ref == "issue" else args.pr,
+            "text": contract["text"]}
+
+
+def reconciliation_answer(record):
+    answer = record.get("reconciliation")
+    if answer is None:
+        return None
+    fields = {"fingerprint", "trigger", "resolution", "premise", "reason", "evidence", "observations"}
+    allowed = {"none": {"normal"}, "recurrence": {"fix_implementation", "change_contract"},
+               "conflict": {"fix_implementation", "change_contract", "consolidate"},
+               "reversal": {"fix_implementation", "change_contract", "consolidate"}}
+    if (not isinstance(answer, dict) or set(answer) != fields
+            or any(not text(answer.get(k)) for k in fields - {"observations"})
+            or not isinstance(answer.get("observations"), str)
+            or answer["resolution"] not in allowed.get(answer["trigger"], set())
+            or answer["trigger"] == "reversal" and not text(answer["observations"])):
+        raise Stop("record_invalid", record["ids"], "invalid reconciliation disposition; no new findings are accepted")
+    return answer
+
+
+def reconcile(records, decisions, candidates, context, args, head):
+    directory = Path(args.history_dir)
+    histories = []
+    own_entries = []
+    for path in sorted(directory.glob("adoption-history-*-*.json")):
+        history = load(path, "adoption history")
+        if (not isinstance(history, dict) or type(history.get("pr")) is not int
+                or history["pr"] < 1 or history.get("kind") not in ("sweep", "triage", "followup")
+                or not text(history.get("head")) or not isinstance(history.get("entries"), list)):
+            raise Stop("input_invalid", detail=f"malformed adoption history: {path}")
+        for entry in history["entries"]:
+            if (not isinstance(entry, dict) or not isinstance(entry.get("record"), dict)
+                    or not isinstance(entry.get("decision"), dict)
+                    or not isinstance(entry.get("candidates"), list) or "contract_key" not in entry):
+                raise Stop("input_invalid", detail=f"malformed adoption history entry: {path}")
+            if history["pr"] != args.pr:
+                histories.append({"source": {"pr": history["pr"], "kind": history["kind"],
+                                             "head": entry.get("head", history["head"])}, **entry})
+        if history["pr"] == args.pr and history["kind"] == args.kind:
+            own_entries = history["entries"]
+
+    requests, entries = [], list(own_entries)
+    covered = [cid for record in records for cid in record["ids"]]
+    for record, decision in zip(records, decisions):
+        answer = reconciliation_answer(record)
+        clean = {k: v for k, v in record.items() if k != "reconciliation"}
+        selected = [c for c in candidates if c["id"] in record["ids"]]
+        key = contract_key(record, context, args)
+        matches = [h for h in histories if key is not None and h["contract_key"] == key]
+        signals = []
+        if decision["exit"] == "RECONCILE":
+            signals.append("prior_conflict")
+        if matches:
+            signals.append("contract_match")
+            if any(h["decision"].get("exit") == "RESOLVED"
+                   and any(h["record"].get(axis) is True for axis in "VCT") for h in matches):
+                signals.append("completed_contract")
+        if signals:
+            fingerprint = digest({"head": head, "record": clean, "candidates": selected,
+                                  "contract": key, "history": matches})
+            reason = "pending"
+            if answer is not None:
+                reason = "stale" if answer["fingerprint"] != fingerprint else ""
+            if any(covered.count(cid) > 1 for cid in record["ids"]):
+                reason = "records_overlap"
+            elif not reason and answer["resolution"] == "change_contract":
+                reason = "contract_change"
+            elif not reason and "prior_conflict" in signals and answer["trigger"] == "none":
+                raise Stop("record_invalid", record["ids"], "a conflicting disposition needs arbitration")
+            elif (not reason and record["present"] and all(record[axis] is False for axis in "VCT")
+                  and ((record.get("prior") or {}).get("disposition") == "ADOPT"
+                       or answer["trigger"] != "none" and any(
+                           h["decision"].get("exit") == "ADOPT" and h["record"].get("present") is True
+                           for h in matches))):
+                reason = "unresolved_adoption"
+            if reason:
+                decision.update(exit="RECONCILE", action="arbitrate", file=False, pr_blocking=True)
+                requests.append({"ids": record["ids"], "fingerprint": fingerprint, "signals": signals,
+                                 "history": matches, "record": clean, "reason": reason})
+            else:
+                # The parent resolved the prior conflict, not the V/C/T rules. Reuse the
+                # same exit function so arbitration cannot reject a still-true axis.
+                decision.update(decide({**record, "prior": None}, False, context))
+        if decision["exit"] != "RECONCILE":
+            entry = {"head": head, "record": clean, "decision": dict(decision), "contract_key": key,
+                     "candidates": selected}
+            identity = lambda e: digest({"contract": e["contract_key"],
+                "candidates": [{k: v for k, v in c.items() if k != "id"} for c in e["candidates"]]})
+            entries = [e for e in entries if identity(e) != identity(entry)]
+            if answer is not None and signals:
+                entry["reconciliation"] = answer
+            entries.append(entry)
+    return {"reconciliation": requests,
+            "history": {"pr": args.pr, "kind": args.kind, "head": head, "entries": entries}}
+
+
 def run(args):
     classification = load(args.classification, "classification")
     adoption = classification.get("adoption") if isinstance(classification, dict) else None
@@ -393,7 +522,10 @@ def run(args):
             errors.append(error)
     if errors:
         raise Errors(errors)
-    return {"head": adoption["head"], "decisions": decisions}
+    result = {"head": adoption["head"], "decisions": decisions}
+    if args.history_dir:
+        result.update(reconcile(records, decisions, candidates, context, args, adoption["head"]))
+    return result
 
 
 def main():
@@ -407,7 +539,13 @@ def main():
     parser.add_argument("--pr-body")
     parser.add_argument("--ledger")
     parser.add_argument("--repo-root", default=".")
+    parser.add_argument("--history-dir")
+    parser.add_argument("--pr", type=int)
+    parser.add_argument("--kind", choices=("sweep", "triage", "followup"))
+    parser.add_argument("--issue", type=int)
     args = parser.parse_args()
+    if any((args.history_dir, args.pr, args.kind)) and not (args.history_dir and args.pr and args.pr > 0 and args.kind):
+        parser.error("--history-dir, --pr and --kind must be supplied together")
     try:
         result = run(args)
     except Stop as error:

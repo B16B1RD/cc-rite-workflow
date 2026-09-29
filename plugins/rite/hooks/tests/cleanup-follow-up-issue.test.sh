@@ -2667,8 +2667,8 @@ for t81_variant in no_findings created; do
     t81_result='created; issue=99; existing=0; recorded=0; pr=9'
     t81_creates=1
   fi
-  # ディレクトリの位置に通常ファイルを置き、mkdir を権限に依らず失敗させる
-  printf 'x\n' > "$r/.rite/state"
+  # 採否履歴の保存先は使えるまま、判定済み記録だけを権限に依らず書込み不能にする
+  mkdir -p "$r/$JUDGED_RECORD_REL"
   run_target "$r"
   assert "T-81 $t81_variant: exit 0" "0" "$RC"
   assert_grep "T-81 $t81_variant: 結果 marker は変わらない" "$ERR" "FOLLOW_UP_ISSUE=${t81_result}\$"
@@ -2676,12 +2676,12 @@ for t81_variant in no_findings created; do
   assert "T-81 $t81_variant: stdout は結果行 1 行のみ" "[cleanup-follow-up-issue] result=${t81_result}" "$(cat "$OUT")"
   assert "T-81 $t81_variant: 起票回数は変わらない" "$t81_creates" "$(create_count)"
   assert_grep "T-81 $t81_variant: WARNING" "$ERR" '^WARNING: follow-up の判定済み記録を書けません \(PR #9\): '
-  assert_grep "T-81 $t81_variant: 原因行を indent 付きで出す" "$ERR" '^  mkdir: '
+  assert_grep "T-81 $t81_variant: 原因行を indent 付きで出す" "$ERR" '^  .*follow-up-judged-9\.txt: '
   assert_grep "T-81 $t81_variant: 影響行" "$ERR" '^  影響: レビュー結果 JSON を片付けた後に cleanup を再実行すると no_json'
   assert "T-81 $t81_variant: WARNING→原因→影響→結果 marker の順" "1" \
     "$(awk -v want="FOLLOW_UP_ISSUE=${t81_result}" '
       /^WARNING: follow-up の判定済み記録を書けません/ { w = NR; next }
-      w && NR == w + 1 && /^  mkdir: / { c = NR; next }
+      w && NR == w + 1 && /^  .*follow-up-judged-9[.]txt: / { c = NR; next }
       c && NR == c + 1 && /^  影響: / { i = NR; next }
       i && index($0, want) { print "ok"; exit }' "$ERR" | grep -c ok)"
 done

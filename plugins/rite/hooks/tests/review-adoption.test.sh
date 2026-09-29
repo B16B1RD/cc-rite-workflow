@@ -120,7 +120,7 @@ def write_inputs(records, cands=None, head_value=None, cls='B', severity='LOW', 
         dict(candidate(cid, severity, cls), scope='current-pr') for cid in cands]}))
 
 
-def invoke(args=None, repo_root=None):
+def invoke(args=None, repo_root=None, extra=()):
     gh_log.write_text('')
     before = {path: path.read_bytes() for path in INPUTS}
     state = (git(repo, 'status', '--porcelain'), git(repo, 'rev-parse', 'HEAD'))
@@ -129,7 +129,7 @@ def invoke(args=None, repo_root=None):
         '--review-result', str(review), '--base', base, '--ac-ids', 'AC-1,AC-2',
         '--issue-body', str(issue_body), '--pr-body', str(pr_body), '--ledger', str(ledger),
         '--repo-root', str(repo_root or repo)]
-    result = subprocess.run(['bash', str(helper), *argv], capture_output=True, text=True, env=env, timeout=30)
+    result = subprocess.run(['bash', str(helper), *argv, *extra], capture_output=True, text=True, env=env, timeout=30)
     check(all(path.read_bytes() == data for path, data in before.items()), 'an input file changed')
     check((git(repo, 'status', '--porcelain'), git(repo, 'rev-parse', 'HEAD')) == state, 'the repository changed')
     return result
@@ -379,6 +379,95 @@ for extra in ({}, {'adoption': {'head': head, 'records': [rec()]}}):
     outcomes.append((ran.returncode, ran.stderr, target.read_text()))
 check(outcomes[0] == outcomes[1] and outcomes[0][0] == 0, outcomes)
 check('CLASS_DEMOTION_GATE=applied' in outcomes[0][1], outcomes[0][1])
+
+# Reconciliation is a parent-authored answer to an exact request, never a new finding.
+history_dir = work / 'history'
+history_dir.mkdir()
+history_args = ['--history-dir', str(history_dir), '--pr', '20', '--kind', 'sweep', '--issue', '100']
+
+
+def reconcile(record, **kwargs):
+    write_inputs([record], **kwargs)
+    result = invoke(extra=history_args)
+    check(result.returncode == 0, f'reconciliation failed: {result.stdout}{result.stderr}')
+    return json.loads(result.stdout)
+
+
+def request_of(output, reason='pending'):
+    check(len(output['reconciliation']) == 1, output)
+    request = output['reconciliation'][0]
+    check(request['ids'] == ['F-01'] and request['reason'] == reason, request)
+    decision = output['decisions'][0]
+    check((decision['exit'], decision['action'], decision['file'], decision['pr_blocking'])
+          == ('RECONCILE', 'arbitrate', False, True), decision)
+    return request
+
+
+def answer(request, trigger='conflict', resolution='fix_implementation', **fields):
+    return dict({'fingerprint': request['fingerprint'], 'trigger': trigger, 'resolution': resolution,
+                 'premise': 'the interface still rejects an empty NAME',
+                 'reason': 'the prior rejection assumed a guard that is now absent',
+                 'evidence': 'tool "" exits 0 at the reviewed commit', 'observations': ''}, **fields)
+
+
+conflict = rec(prior=prior('F-12', 'docs/usage.md:3', 'REJECT'))
+request = request_of(reconcile(conflict))
+check('prior_conflict' in request['signals'], request)
+check(request['record'] == conflict and request['history'] == [], request)
+accepted = dict(conflict, reconciliation=answer(request))
+adjudicated = reconcile(accepted)
+check(adjudicated['decisions'][0]['exit'] == 'ADOPT' and adjudicated['reconciliation'] == [], adjudicated)
+check(reconcile(accepted) == adjudicated, 'identical conditions reuse the same parent answer')
+# Each single changed input invalidates the answer; the helper never mutates source inputs.
+for fields in ({'evidence': 'a second direct run exits 0'}, {'reason': 'updated adjudication context'},
+               {'contract': {'ref': 'AC-2'}}):
+    stale = request_of(reconcile(dict(accepted, **fields)), 'stale')
+    check(stale['fingerprint'] != request['fingerprint'], (fields, stale))
+write_inputs([accepted])
+data = json.loads(candidates_file.read_text())
+data['candidates'][0]['description'] = 'new complete candidate text'
+candidates_file.write_text(json.dumps(data))
+changed = invoke(extra=history_args)
+check(changed.returncode == 0, changed.stderr)
+request_of(json.loads(changed.stdout), 'stale')
+original_issue = issue_body.read_text()
+issue_body.write_text(original_issue.replace('tool rejects an empty NAME', 'tool rejects an empty or missing NAME'))
+request_of(reconcile(accepted), 'stale')
+issue_body.write_text(original_issue)
+git(repo, 'commit', '--allow-empty', '-qm', 'unrelated new head')
+new_head = git(repo, 'rev-parse', 'HEAD').strip()
+request_of(reconcile(accepted, head_value=new_head, review_head=new_head), 'stale')
+
+# A contract change always holds instead of silently changing the requirement.
+changed_contract = request_of(reconcile(dict(conflict, reconciliation=answer(request, resolution='change_contract'))),
+                              'contract_change')
+check(changed_contract['fingerprint'] == request['fingerprint'], changed_contract)
+# An unresolved prior adoption cannot be silently rejected, even with a parent answer.
+unresolved = rec(V=False, contract=None, reason='the defect is still present',
+                 prior=prior('F-13', 'src/caller.sh:3', 'ADOPT'))
+pending = request_of(reconcile(unresolved))
+request_of(reconcile(dict(unresolved, reconciliation=answer(pending))), 'unresolved_adoption')
+# A reversal needs a concrete observation and can consolidate onto an existing tracker.
+reversal = dict(conflict, tracker=7)
+pending = request_of(reconcile(reversal))
+linked = reconcile(dict(reversal, reconciliation=answer(pending, 'reversal', 'consolidate',
+                                                       observations='the new caller bypasses the old guard')))
+check(linked['decisions'][0]['exit'] == 'LINK' and linked['decisions'][0]['tracker'] == 7, linked)
+for fields in ({'observations': ''}, {'trigger': 'none'}, {'resolution': 'normal'},
+               {'new_findings': [{'id': 'F-99'}]}, {'premise': ''}, {'evidence': ''}):
+    bad = answer(pending, 'reversal', 'consolidate', observations='the changed caller reaches the path')
+    bad.update(fields)
+    write_inputs([dict(reversal, reconciliation=bad)])
+    result = invoke(extra=history_args)
+    check(result.returncode == 1 and json.loads(result.stdout)['errors'][0]['reason'] == 'record_invalid',
+          (fields, result.stdout, result.stderr))
+# Overlapping root-cause records require merging the records before adjudication.
+write_inputs([conflict, dict(conflict, present=False, evidence='gone')])
+result = invoke(extra=history_args)
+check(result.returncode == 0, result.stderr)
+overlap = json.loads(result.stdout)
+check(len(overlap['reconciliation']) == 2 and
+      all(r['reason'] == 'records_overlap' for r in overlap['reconciliation']), overlap)
 
 print(f'review-adoption: {checks} checks passed')
 PYTEST

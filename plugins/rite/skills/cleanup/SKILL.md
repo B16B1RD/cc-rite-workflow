@@ -696,6 +696,8 @@ echo "[CONTEXT] FOLLOW_UP_REVERIFY=done; resolved={n_resolved}; remains={n_remai
 
 #### 6.0.A 判定記録（採否ゲートの入力）
 
+ゲートが `reconciliation[]` を返した場合は、親が [共通の裁定手順](../../references/review-reconciliation.md) で既存候補だけを裁定し、当該記録の `reconciliation` に回答して再実行する。未裁定・入力変更・契約変更の保留は `hold.detail` / `resume` から同手順へ戻る。前回の判定記録を引き継ぐ場合も、裁定は fingerprint の全入力が一致するときだけ再利用する。`.rite/state/adoption-history-{pr}-{kind}.json` は PR 間の照合に使う永続履歴であり、後段の一時状態削除でも保持する。
+
 本手順を実行する LLM が分類役として、helper が列挙した全候補の判定記録を書く。記録の欄と出口の正本は `{plugin_root}/hooks/scripts/lib/review-adoption.py` の docstring、ゲートの契約は `review-adoption-gate.sh` のヘッダ。列挙は下段の起票実行と同じ `--source-issue` / `--exclude-ids` で呼ぶ（候補がずれるとゲートは全候補を保留する）。`{resolved_ids_csv}` は 6.0.V の結果をリテラル置換する。
 
 ```bash
