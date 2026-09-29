@@ -3,6 +3,8 @@
 #
 # 5.S / 0.6 のシェル本体は scripts/iterate-step.sh の step_nb_sweep_collect / step_nb_sweep_record /
 # step_init_cycle 関数にある。コード片はその関数範囲、分岐表・散文は SKILL.md の節を見る。
+# fix 1.3.S の手順 1–4 と 5.1 のシェル本体は scripts/fix-step.sh の step_nb_sweep_* 関数にあり、
+# references/nb-sweep.md には 1 行呼び出しと散文だけが残る。コード片は関数本体、散文は nb-sweep.md を見る。
 #
 # T-01 5.S entry: skipped only when line 1 field 2 equals the latest review JSON basename;
 #      the skip branch runs neither collect nor --nb-sweep, the other branch calls collect
@@ -43,7 +45,7 @@ PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 ITERATE="$PLUGIN_ROOT/skills/iterate/SKILL.md"
 ITERATE_STEP="$PLUGIN_ROOT/scripts/iterate-step.sh"
 FIX="$PLUGIN_ROOT/skills/fix/SKILL.md"
-# fix 5.1 の NB_SWEEP_DONE_FILE 判定のコード片は scripts/fix-step.sh の step_nb_sweep_done_file にある
+# fix 5.1 の NB_SWEEP_DONE_FILE 判定と 1.3.S の各手順のコード片は scripts/fix-step.sh の step_nb_sweep_* にある
 FIX_STEP="$PLUGIN_ROOT/scripts/fix-step.sh"
 FIX_SWEEP="$PLUGIN_ROOT/skills/fix/references/nb-sweep.md"
 SETUP="$PLUGIN_ROOT/skills/setup/SKILL.md"
@@ -62,6 +64,25 @@ assert_file_exists_or_fail "fix skill" "$FIX" || true
 assert_file_exists_or_fail "setup skill" "$SETUP" || true
 assert_file_exists_or_fail "cleanup skill" "$CLEANUP_SKILL" || true
 assert_file_exists_or_fail "pr-cycle-cleanup.sh" "$PR_CYCLE" || true
+assert_file_exists_or_fail "fix-step.sh" "$FIX_STEP" || true
+
+# fix-step.sh の関数本体: `^name() {` の次の行から次の `# --- ` 見出しの直前まで
+# （本体の途中に列 0 の `}` があっても切れない）
+fix_step_body() {
+  awk -v head="$1() {" '$0 == head { s=1; next } s && /^# --- / { exit } s { print }' "$FIX_STEP"
+}
+# 本体を変数に取ってから grep する（grep -q の早期終了で awk が SIGPIPE を受けて pipefail が偽陰性にならない）
+assert_fix_body_grep() {  # $1=label $2=関数名 $3=ERE
+  local body
+  body=$(fix_step_body "$2")
+  if [ -z "$body" ]; then
+    fail "$1 (function $2 not found in $FIX_STEP)"
+  elif grep -qE -- "$3" <<< "$body"; then
+    pass "$1"
+  else
+    fail "$1 (pattern not found in $2 of $FIX_STEP: $3)"
+  fi
+}
 
 # --- T-01: 5.S 入口は第 2 フィールドが最新 JSON の basename と一致するときだけ skipped。
 #     skip 分岐では collect/--nb-sweep に進まず、それ以外は collect を呼ぶ ---
@@ -153,14 +174,11 @@ assert_grep_in_section "T-04 iterate post-return writes done basename" "$ITERATE
   '^step_nb_sweep_record[(][)] [{]$' '^}$' \
   "printf 'done %s\\\\n"
 # 起票の無い sweep は noop、台帳 persist 後に止まった sweep は done（kind は変数で渡す。T-15 が両方を実行で確かめる）
-assert_grep_in_section "T-04 fix empty writes kind basename" "$FIX_SWEEP" \
-  '### 1.3.S `--nb-sweep` consume' '### 1.4 Display Comment List' \
+assert_fix_body_grep "T-04 fix empty writes kind basename" step_nb_sweep_collect \
   "printf '%s %s\\\\n' \"\\\$nb_kind\""
-assert_grep_in_section "T-04 fix empty uses collect record" "$FIX_SWEEP" \
-  '### 1.3.S `--nb-sweep` consume' '### 1.4 Display Comment List' \
+assert_fix_body_grep "T-04 fix empty uses collect record" step_nb_sweep_collect \
   'jq -r '"'"'.record // empty'"'"
-assert_grep_in_section "T-04 fix digest writes done basename" "$FIX_SWEEP" \
-  '### 1.3.S `--nb-sweep` consume' '### 1.4 Display Comment List' \
+assert_fix_body_grep "T-04 fix digest writes done basename" step_nb_sweep_finish \
   "printf 'done %s\\\\n"
 assert_grep_in_section "T-04 fix consume is not gated on missing file" "$FIX_SWEEP" \
   '### 1.3.S `--nb-sweep` consume' '### 1.4 Display Comment List' \
@@ -215,12 +233,14 @@ iter_ensure=$(iter_5s_bodies | grep -c '_ensure_dir_gitignore' || true)
 assert "T-08 5.S has three _ensure_dir_gitignore calls" "3" "$iter_ensure"
 iter_src=$(iter_5s_bodies | grep -c '^[[:space:]]*source .*gitignore-ensure.sh' || true)
 assert "T-08 5.S sources gitignore-ensure in each write block" "3" "$iter_src"
-fix_ensure=$(awk '/### 1.3.S `--nb-sweep` consume/,/### 1.4 Display Comment List/' "$FIX_SWEEP" \
-  | grep -c '_ensure_dir_gitignore' || true)
-assert "T-08 fix 1.3.S has two _ensure_dir_gitignore calls" "2" "$fix_ensure"
-fix_src=$(awk '/### 1.3.S `--nb-sweep` consume/,/### 1.4 Display Comment List/' "$FIX_SWEEP" \
-  | grep -c 'gitignore-ensure.sh' || true)
-assert "T-08 fix 1.3.S sources gitignore-ensure in each write block" "2" "$fix_src"
+# fix 1.3.S の書き込みブロックは手順 1 の empty（noop / done）と手順 4（done）の 2 箇所。関数ごとに 1 件ずつ数え、
+# 片方の関数へ寄った・取り違えたことも落とす
+for fix_writer in step_nb_sweep_collect step_nb_sweep_finish; do
+  fix_ensure=$(fix_step_body "$fix_writer" | grep -c '_ensure_dir_gitignore' || true)
+  assert "T-08 fix $fix_writer has one _ensure_dir_gitignore call" "1" "$fix_ensure"
+  fix_src=$(fix_step_body "$fix_writer" | grep -c '^[[:space:]]*source .*gitignore-ensure.sh' || true)
+  assert "T-08 fix $fix_writer sources gitignore-ensure once" "1" "$fix_src"
+done
 
 # shellcheck source=../gitignore-ensure.sh
 source "$PLUGIN_ROOT/hooks/gitignore-ensure.sh"
@@ -253,17 +273,21 @@ rm -rf -- "$gi_setup"
 assert_grep_in_section "T-09 iterate kind is field 1" "$ITERATE_STEP" \
   '^step_nb_sweep_collect[(][)] [{]$' '^}$' \
   'awk '"'"'NR==1 \{ print \$1 \}'"'"
-assert_grep_in_section "T-09 fix 1.5 matches recorded basename" "$FIX_STEP" \
-  '^step_nb_sweep_done_file[(][)] [{]$' '^}$' \
+assert_fix_body_grep "T-09 fix 1.5 matches recorded basename" step_nb_sweep_done_file \
   'if \[ -n "\$_nb_range" \] && \[ "\$_nb_range" = "\$_nb_latest_base" \]; then'
-fix_dash_f=$(awk '/^step_nb_sweep_done_file\(\) \{$/,/^}$/' "$FIX_STEP" | grep -c '\[ -f "\$_nb_done_root' || true)
+fix_dash_f=$(fix_step_body step_nb_sweep_done_file | grep -c '\[ -f "\$_nb_done_root' || true)
 assert "T-09 fix 5.1 no longer treats -f alone as done" "0" "$fix_dash_f"
 
 # New sweep writers keep a one-line done marker and never grant a new HEAD.
+# 1.3.S の散文と、手順 1–4 が呼ぶ fix-step.sh の関数本体の両方を見る
 sweep_section=$(awk '/^### 1.3.S `--nb-sweep` consume/,/^### 1.4 Display Comment List/' "$FIX_SWEEP")
+for fix_fn in step_nb_sweep_collect step_nb_sweep_gate step_nb_sweep_file_issue step_nb_sweep_persist step_nb_sweep_finish; do
+  fix_fn_body=$(fix_step_body "$fix_fn")
+  [ -n "$fix_fn_body" ] || { echo "FAIL: T-10 $fix_fn is missing from fix-step.sh"; exit 1; }
+  sweep_section+=$'\n'"$fix_fn_body"
+done
 assert "T-10 no fixed count or git command in sweep" "0" "$(printf '%s\n' "$sweep_section" | grep -cE 'nb_sweep_fixed|git (rev-parse|commit|push|add)' || true)"
-assert_grep_in_section "T-10 digest writes one-line done basename" "$FIX_SWEEP" \
-  '### 1.3.S `--nb-sweep` consume' '### 1.4 Display Comment List' \
+assert_fix_body_grep "T-10 digest writes one-line done basename" step_nb_sweep_finish \
   "printf 'done %s\\\\n"
 assert "T-10 no SHA printf in sweep" "0" "$(printf '%s\n' "$sweep_section" | grep -c 'done\\n%s' || true)"
 assert "T-10 digest write is not inside ! -f" "0" "$(printf '%s\n' "$sweep_section" | grep -c '! -f' || true)"
@@ -383,66 +407,47 @@ nb_fixture() {
   [ -n "${1:-}" ] && printf '%s\n' "$1" > "$root/.rite/state/nb-sweep-done-42.txt"
   echo "$root"
 }
-# fenced bash ブロックのうち、指定の行を含むものだけを取り出す。一致が 1 件でなければ空を返す。
-fenced_block_with() {
-  awk -v needle="$2" '
-    /^```bash$/ { inb=1; buf=""; hit=0; next }
-    inb && /^```$/ { if (hit) { n++; out=buf } inb=0; next }
-    inb { buf = buf $0 "\n"; if (index($0, needle)) hit=1 }
-    END { if (n == 1) printf "%s", out }
-  ' "$1"
+# fix 5.1 と手順 4 の digest writer は、SKILL.md / nb-sweep.md の 1 行呼び出しを fixture plugin の fix-step.sh で
+# dispatch 経由に実行する。fixture は state-path-resolve だけを fixture root を返す stub に差し替える。
+# placeholder の置換漏れは dispatcher が exit 2 で止め、何も書かれないので done の assert が落ちる。
+one_line_call() {  # $1=file $2=呼び出し行。ちょうど 1 行あるときだけ出す
+  local found
+  found=$(grep -xF -- "$2" "$1" || true)
+  [ "$(printf '%s\n' "$found" | grep -c .)" = "1" ] || return 1
+  printf '%s\n' "$found"
 }
-# state-path-resolve の呼び出しを fixture root へ差し替え、placeholder を置換する。
-# 置換漏れがあると本物の state root に書き込むか、find が 0 件になって判定 0 側が空振りするので止める。
-render_fenced() {
-  local rendered
-  rendered=$(printf '%s' "$1" | sed \
-    -e 's#bash {plugin_root}/hooks/state-path-resolve.sh#printf %s "$NB_FIX_ROOT"#g' \
-    -e "s#{plugin_root}#$PLUGIN_ROOT#g" \
-    -e 's#{pr_number}#42#g')
-  if grep -qE '\{(plugin_root|pr_number)\}|state-path-resolve\.sh' <<< "$rendered"; then
-    echo "FAIL: T-12 rendered block still has a placeholder or a real state-path-resolve call" >&2
-    return 1
-  fi
-  printf '%s\n' "$rendered"
-}
-fenced_ok() {
-  [ -n "$2" ] && [ "$(printf '%s\n' "$2" | wc -l | tr -d '[:space:]')" -le 60 ] \
-    || { echo "FAIL: T-12 $1 fence missing, ambiguous or overran"; exit 1; }
-}
-
-# fix 5.1 は SKILL.md の 1 行呼び出しを fixture plugin の fix-step.sh で dispatch 経由に実行する。
-# fixture は state-path-resolve だけを fixture root を返す stub に差し替える。
-fix51_call=$(grep -xF 'bash {plugin_root}/scripts/fix-step.sh nb-sweep-done-file --pr {pr_number}' "$FIX")
-[ "$(printf '%s\n' "$fix51_call" | grep -c .)" = "1" ] \
+fix51_call=$(one_line_call "$FIX" 'bash {plugin_root}/scripts/fix-step.sh nb-sweep-done-file --pr {pr_number}') \
   || { echo "FAIL: T-12 fix 5.1 one-line call is missing or duplicated in SKILL.md"; exit 1; }
+digest_call=$(one_line_call "$FIX_SWEEP" 'bash {plugin_root}/scripts/fix-step.sh nb-sweep-finish --pr {pr_number}') \
+  || { echo "FAIL: T-12 digest writer one-line call is missing or duplicated in nb-sweep.md"; exit 1; }
 fix51_plugin=$(mktemp -d)
-mkdir -p "$fix51_plugin/scripts" "$fix51_plugin/hooks"
+mkdir -p "$fix51_plugin/scripts" "$fix51_plugin/hooks/scripts"
 cp "$FIX_STEP" "$fix51_plugin/scripts/fix-step.sh"
-ln -s "$PLUGIN_ROOT/hooks/control-char-neutralize.sh" "$fix51_plugin/hooks/control-char-neutralize.sh"
+for dep in control-char-neutralize.sh gitignore-ensure.sh; do
+  ln -s "$PLUGIN_ROOT/hooks/$dep" "$fix51_plugin/hooks/$dep"
+done
+ln -s "$PLUGIN_ROOT/hooks/scripts/nb-sweep-ledger.sh" "$fix51_plugin/hooks/scripts/nb-sweep-ledger.sh"
 cat > "$fix51_plugin/hooks/state-path-resolve.sh" <<'STUB'
 #!/bin/bash
 printf '%s\n' "${NB_FIX_ROOT:?}"
 STUB
+render_call() {
+  printf '%s\n' "$1" | sed -e "s#{plugin_root}#$fix51_plugin#g" -e 's#{pr_number}#42#g'
+}
 fix51_run() {
   local root out
   root=$(nb_fixture "$1")
-  out=$(NB_FIX_ROOT="$root" bash -c "$(printf '%s\n' "$fix51_call" \
-    | sed -e "s#{plugin_root}#$fix51_plugin#g" -e 's#{pr_number}#42#g')" 2>&1) || true
+  out=$(NB_FIX_ROOT="$root" bash -c "$(render_call "$fix51_call")" 2>&1) || true
   rm -rf -- "$root"
   printf '%s\n' "$out" | sed -n 's/^\[CONTEXT\] NB_SWEEP_DONE_FILE=\([01]\)$/\1/p'
 }
 assert "T-12 fix 5.1 done on lexical tail" "1" "$(fix51_run "done $lexical_tail")"
 assert "T-12 fix 5.1 not done on mtime max" "0" "$(fix51_run "done $mtime_max")"
-rm -rf -- "$fix51_plugin"
 
-digest_block=$(fenced_block_with "$FIX_SWEEP" 'sweep_done_file="$sweep_root/.rite/state/nb-sweep-done-{pr_number}.txt"')
-fenced_ok "digest writer" "$digest_block"
-render_fenced "$digest_block" >/dev/null || exit 1
 digest_run() {
   local root
   root=$(nb_fixture "$1")
-  NB_FIX_ROOT="$root" bash -c "$(render_fenced "$digest_block")" >/dev/null 2>&1 || true
+  NB_FIX_ROOT="$root" bash -c "$(render_call "$digest_call")" >/dev/null 2>&1 || true
   echo "$root"
 }
 digest_root=$(digest_run "")
@@ -452,6 +457,7 @@ digest_root=$(digest_run "$(printf 'noop %s\n%s\n' "$mtime_max" "$sha_keep")")
 assert "T-12 digest rewrite records lexical tail" "done $lexical_tail" "$(awk 'NR==1{print}' "$digest_root/.rite/state/nb-sweep-done-42.txt" 2>/dev/null)"
 assert "T-12 digest rewrite keeps the legacy sha line" "$sha_keep" "$(sed -n '2p' "$digest_root/.rite/state/nb-sweep-done-42.txt" 2>/dev/null)"
 rm -rf -- "$digest_root"
+rm -rf -- "$fix51_plugin"
 
 # step_nb_sweep_record は関数なので T-11 と同じく関数範囲を抽出し、state-path-resolve だけを差し替える
 record_fence=$(awk '/^step_nb_sweep_record\(\) \{$/{f=1} f{print} f && /^}$/{exit}' "$ITERATE_STEP")
@@ -681,8 +687,9 @@ else
   fail "T-18 nb-sweep-record は NB_SWEEP_RESULT=done を読んだ後の段落にある (done=$t18_done record=$t18_record)"
 fi
 
-# --- fix 側の手順 1 / 手順 4 の bash を nb-sweep.md から抜き出して実行する ---
-# 手順 N の見出しから次の見出しまでの最初の ```bash ブロック
+# --- fix 側の手順 1 / 2 / 4 の 1 行呼び出しを nb-sweep.md から抜き出し、fixture plugin の fix-step.sh で
+#     dispatch 経由に実行する ---
+# 手順 N の見出しから次の見出しまでの最初の ```bash ブロック（見出しと呼び出しの対応を保つため節で絞る）
 sweep_block() {
   awk -v head="$1" '
     index($0, head) == 1 { s = 1; next }
@@ -692,7 +699,8 @@ sweep_block() {
   ' "$FIX_SWEEP"
 }
 fix_plugin=$(mktemp -d); cleanup_dirs+=("$fix_plugin")
-mkdir -p "$fix_plugin/hooks/scripts"
+mkdir -p "$fix_plugin/scripts" "$fix_plugin/hooks/scripts"
+cp "$FIX_STEP" "$fix_plugin/scripts/fix-step.sh"
 ln -s "$LEDGER" "$fix_plugin/hooks/scripts/nb-sweep-ledger.sh"
 ln -s "$PLUGIN_ROOT/hooks/gitignore-ensure.sh" "$fix_plugin/hooks/gitignore-ensure.sh"
 ln -s "$PLUGIN_ROOT/hooks/scripts/lib" "$fix_plugin/hooks/scripts/lib"
@@ -708,15 +716,25 @@ printf '{"status":"%s","count":1,"record":"%s/.rite/review-results/7-20260202000
   "${NB_STUB_STATUS:?}" "${FIX_STATE_ROOT:?}" "${NB_STUB_CANDIDATES:-[]}"
 STUB
 render() {
-  sweep_block "$1" | sed -e "s|{plugin_root}|$fix_plugin|g" -e 's|{pr_number}|7|g' \
+  printf '%s\n' "$1" | sed -e "s|{plugin_root}|$fix_plugin|g" -e 's|{pr_number}|7|g' \
     -e 's|{base_branch}|develop|g' -e 's|{owner_repo}|test/repo|g'
 }
-step1=$(render '1. **collect**')
-step2=$(render '2. **採否ゲートと起票**')
-step4=$(render '4. **完了**')
-assert "T-15 手順 1 の bash を抜き出せる" 1 "$(printf '%s\n' "$step1" | grep -c 'NB_SWEEP_ENTRIES=present')"
-assert "T-19 手順 2 のゲートの bash を抜き出せる" 1 "$(printf '%s\n' "$step2" | grep -c 'review-adoption-gate.sh --pr 7 --kind sweep')"
-assert "T-16 手順 4 の bash を抜き出せる" 1 "$(printf '%s\n' "$step4" | grep -c 'tally --entries-file')"
+raw1=$(sweep_block '1. **collect**')
+raw2=$(sweep_block '2. **採否ゲートと起票**')
+raw4=$(sweep_block '4. **完了**')
+assert "T-15 手順 1 は nb-sweep-collect の 1 行呼び出し" \
+  'bash {plugin_root}/scripts/fix-step.sh nb-sweep-collect --pr {pr_number}' "$raw1"
+assert "T-19 手順 2 のゲートは nb-sweep-gate の 1 行呼び出し" \
+  'bash {plugin_root}/scripts/fix-step.sh nb-sweep-gate --pr {pr_number} --base-branch {base_branch} --owner-repo {owner_repo}' "$raw2"
+assert "T-16 手順 4 は nb-sweep-finish の 1 行呼び出し" \
+  'bash {plugin_root}/scripts/fix-step.sh nb-sweep-finish --pr {pr_number}' "$raw4"
+# 呼び出し先の関数が、抜き出していた bash の目印をそのまま持つ（関数の取り違えを落とす）
+assert_fix_body_grep "T-15 nb-sweep-collect は NB_SWEEP_ENTRIES=present を出す" step_nb_sweep_collect 'NB_SWEEP_ENTRIES=present'
+assert_fix_body_grep "T-19 nb-sweep-gate は sweep のゲートを呼ぶ" step_nb_sweep_gate 'review-adoption-gate\.sh --pr "\$\{pr_number\}" --kind sweep'
+assert_fix_body_grep "T-16 nb-sweep-finish は entries を数える" step_nb_sweep_finish 'tally --entries-file'
+step1=$(render "$raw1")
+step2=$(render "$raw2")
+step4=$(render "$raw4")
 fix_root() {
   local d; d=$(mktemp -d)
   mkdir -p "$d/.rite/state" "$d/.rite/review-results"
@@ -818,9 +836,9 @@ for t19_case in "carried|[$(jq -c '.id = "7-20260101000000.json#F-01"' <<< "$t19
   assert "T-19 ($t19_label) done を書かない" 0 "$([ -e "$d/.rite/state/nb-sweep-done-7.txt" ] && echo 1 || echo 0)"
 done
 
-# 起票を飛ばす判定は手順 2 の起票より前に書かれている
+# 起票を飛ばす判定は手順 2 の起票（nb-sweep-file-issue の呼び出し）より前に書かれている
 skip_line=$(grep -n '`NB_SWEEP_ENTRIES=present` なら' "$FIX_SWEEP" | head -1 | cut -d: -f1)
-issue_line=$(grep -n 'create-issue-with-projects.sh' "$FIX_SWEEP" | head -1 | cut -d: -f1)
+issue_line=$(grep -n 'fix-step.sh nb-sweep-file-issue' "$FIX_SWEEP" | head -1 | cut -d: -f1)
 if [ -n "$skip_line" ] && [ -n "$issue_line" ] && [ "$skip_line" -lt "$issue_line" ]; then
   pass "T-15 起票を飛ばす判定は手順 2 の起票より前"
 else

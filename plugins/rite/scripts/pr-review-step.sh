@@ -589,7 +589,7 @@ esac
 step_fingerprint_check() {
 # ステップ 5.1.2.A Step 2 per-finding fingerprint 計算 + 即時 emit (Step 2/3 統合)
 # file / category / description は --finding-file の JSON から jq -r で読む。fix 側の accept
-# (../skills/fix/references/accept-finding.md) も同じ JSON を同じ jq で読むため、両側の fingerprint は
+# (fix-step.sh accept-persist) も同じ JSON を同じ jq で読むため、両側の fingerprint は
 # 同じ入力から計算される。finding_id / severity / pr_number は --finding-id / --severity / --pr で受け取る。
 #
 # Step 2/3 統合の理由 (cross-call shell 変数破綻の回避): ../skills/pr-review/references/design-rationale.md#fingerprint-suppression-notes
@@ -611,7 +611,7 @@ if [ -z "$finding_file" ] || [ ! -r "$finding_file" ]; then
  echo "[CONTEXT] FINGERPRINT_COMPUTE_FAILED=1; reason=finding_file_unreadable; finding_id=$finding_id" >&2
  exit 0
 fi
-# 空値から fingerprint を計算しないよう、読む前に形を検査する (accept-finding.md と同じ述語)
+# 空値から fingerprint を計算しないよう、読む前に形を検査する (fix-step.sh accept-persist と同じ述語)
 if ! jq -e 'type == "object" and (.file | type) == "string" and (.category | type) == "string" and (.category | length) > 0 and (.description | type) == "string"' "$finding_file" >/dev/null 2>&1; then
  echo "WARNING: ステップ 5.1.2.A Step 2 の finding ファイルが file / category / description を文字列で持つ JSON ではありません ($finding_file) — fingerprint 比較を skip します" >&2
  echo "[CONTEXT] FINGERPRINT_COMPUTE_FAILED=1; reason=finding_file_invalid; finding_id=$finding_id" >&2

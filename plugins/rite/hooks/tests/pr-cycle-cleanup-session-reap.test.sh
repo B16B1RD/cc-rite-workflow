@@ -307,6 +307,126 @@ age_flow_state() {
   jq --arg ts "$ts" '.updated_at = $ts' "$sf" > "$tmp" && mv "$tmp" "$sf"
 }
 
+
+echo "=== Stopped review preserves its clean worktree and its stop gate ==="
+R=$(make_repo 90); cleanup_dirs+=("$R")
+wt="$R/.rite/worktrees/issue-90"
+sf="$R/.rite/sessions/$SID_A.flow-state"
+printf 'committed work\n' > "$wt/feature"
+( cd "$wt" && $GIT add feature && $GIT commit -qm "test: pending work" )
+RITE_STATE_ROOT="$R" bash "$FS" set --session "$SID_A" --phase pr --issue 90 \
+  --pr 190 --branch feat/issue-90 --next review --worktree "$wt" >/dev/null
+printf '["code-quality-reviewer"]\n' > "$R/selection.json"
+( cd "$wt" && RITE_STATE_ROOT="$R" CLAUDE_CODE_SESSION_ID="$SID_A" bash "$FS" review-start \
+  --selection "$R/selection.json" --stagnation ) >/dev/null
+jq '.active = false | .stop_reason = "circuit-breaker:divergence" |
+    .review_run.status = "stopped" | .review_run.stop_reason = "circuit-breaker:divergence"' \
+  "$sf" > "$sf.tmp"
+mv "$sf.tmp" "$sf"
+cp "$sf" "$R/before.json"
+assert "Stopped review claim is stale before reap" "stale" \
+  "$(RITE_STATE_ROOT="$R" bash "$IC" check --issue 90 --session "$SID_B")"
+out=$(run_pcc "$R")
+assert "Stopped review worktree survives" "1" "$( [ -d "$wt" ] && echo 1 || echo 0 )"
+assert "Stopped review claim survives" "1" "$( [ -f "$R/.rite/state/issue-claims/issue-90.json" ] && echo 1 || echo 0 )"
+assert "Stopped review state remains unchanged" "0" "$(cmp -s "$sf" "$R/before.json"; echo $?)"
+assert_grep "Stopped review protection is visible" "$R/pcc.err" "worktree liveness"
+if [ -d "$wt" ]; then
+  restart_rc=0
+  ( cd "$wt" && RITE_STATE_ROOT="$R" CLAUDE_CODE_SESSION_ID="$SID_A" bash "$FS" review-start \
+    --selection "$R/selection.json" --stagnation ) > "$R/restart.out" 2>&1 || restart_rc=$?
+  assert "Normal review restart remains rejected" "1" "$restart_rc"
+  assert_grep "Original stop reason remains effective" "$R/restart.out" "circuit-breaker:divergence"
+  assert "Rejected restart preserves counters and run" "0" "$(cmp -s "$sf" "$R/before.json"; echo $?)"
+fi
+
+
+echo "=== Resumable owners honor TTL through each independent liveness signal ==="
+n=300
+for signal in scan claim; do
+  for kind in stopped suspended; do
+    for hours in 3 25; do
+      R=$(make_repo "$n"); cleanup_dirs+=("$R")
+      wt="$R/.rite/worktrees/issue-$n"
+      sf="$R/.rite/sessions/$SID_A.flow-state"
+      ts=$(date -u -d "$hours hours ago" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u -v-"$hours"H +"%Y-%m-%dT%H:%M:%SZ")
+      jq --arg wt "$wt" --arg kind "$kind" --arg ts "$ts" \
+        '.active = false | .worktree = $wt | .updated_at = $ts |
+         if $kind == "stopped" then .review_run = {status:"stopped"} |
+           .stop_reason = "stagnation:non-convergent"
+         else .suspended_by_session_end = true end' "$sf" > "$sf.tmp"
+      mv "$sf.tmp" "$sf"
+      if [ "$signal" = scan ]; then
+        cf="$R/.rite/state/issue-claims/issue-$n.json"
+        jq --arg sid "$SID_C" '.session_id = $sid' "$cf" > "$cf.tmp"
+        mv "$cf.tmp" "$cf"
+      else
+        jq 'del(.worktree)' "$sf" > "$sf.tmp"
+        mv "$sf.tmp" "$sf"
+      fi
+      assert "$signal/$kind/$hours claim permits reaping" stale \
+        "$(RITE_STATE_ROOT="$R" bash "$IC" check --issue "$n" --session "$SID_B")"
+      out=$(run_pcc "$R")
+      expected=0; [ "$hours" -eq 3 ] && expected=1
+      assert "$signal/$kind/$hours worktree retention" "$expected" "$( [ -d "$wt" ] && echo 1 || echo 0 )"
+      assert "$signal/$kind/$hours claim retention" "$expected" "$( [ -f "$R/.rite/state/issue-claims/issue-$n.json" ] && echo 1 || echo 0 )"
+      n=$((n + 1))
+    done
+  done
+done
+
+echo "=== Terminal states with leftover resume markers remain reapable ==="
+for phase in completed create_completed cleanup_completed; do
+  R=$(make_repo "$n"); cleanup_dirs+=("$R")
+  sf="$R/.rite/sessions/$SID_A.flow-state"
+  jq --arg phase "$phase" --arg wt "$R/.rite/worktrees/issue-$n" \
+    '.active = false | .phase = $phase | .worktree = $wt |
+     .suspended_by_session_end = true | .review_run = {status:"stopped"}' "$sf" > "$sf.tmp"
+  mv "$sf.tmp" "$sf"
+  out=$(run_pcc "$R")
+  assert "$phase remains reapable" "0" "$( [ -d "$R/.rite/worktrees/issue-$n" ] && echo 1 || echo 0 )"
+  n=$((n + 1))
+done
+
+echo "=== Claim handoff preserves the new owner's tree during third-session reap ==="
+R=$(make_repo 320); cleanup_dirs+=("$R")
+wt="$R/.rite/worktrees/issue-320"
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next handoff >/dev/null
+RITE_STATE_ROOT="$R" bash "$FS" set --session "$SID_C" --phase implement --issue 320 \
+  --branch feat/issue-320 --next implement --worktree "$wt" >/dev/null
+RITE_STATE_ROOT="$R" bash "$IC" claim --issue 320 --session "$SID_C" --worktree "$wt" >/dev/null
+age_flow_state "$R/.rite/sessions/$SID_C.flow-state"
+out=$(run_pcc "$R")
+assert "New owner's worktree survives" "1" "$( [ -d "$wt" ] && echo 1 || echo 0 )"
+assert "New claim owner is retained" "$SID_C" "$(jq -r .session_id "$R/.rite/state/issue-claims/issue-320.json")"
+
+echo "=== Real SessionEnd followed by other-session startup and root resume preserves work ==="
+R=$(make_repo 321); cleanup_dirs+=("$R")
+wt="$R/.rite/worktrees/issue-321"
+sf="$R/.rite/sessions/$SID_A.flow-state"
+RITE_STATE_ROOT="$R" bash "$FS" set --session "$SID_A" --phase implement --issue 321 \
+  --branch feat/issue-321 --next implement --worktree "$wt" >/dev/null
+printf '{"session_id":"%s","cwd":"%s","hook_event_name":"SessionEnd","reason":"prompt_input_exit"}' "$SID_A" "$wt" \
+  | RITE_HOST=claude CLAUDE_CODE_SESSION_ID="$SID_A" bash "$SCRIPT_DIR/../session-end.sh" > "$R/end.out" 2> "$R/end.err"
+assert "SessionEnd suspended the owner" "false true" "$(jq -r '[.active,.suspended_by_session_end] | map(tostring) | join(" ")' "$sf")"
+# A legitimate sibling orphan proves SessionStart actually invokes the reaper.
+( cd "$R" && $GIT worktree add -q -b feat/issue-322 .rite/worktrees/issue-322 )
+RITE_STATE_ROOT="$R" bash "$FS" set --session "$SID_C" --phase implement --issue 322 \
+  --branch feat/issue-322 --next abandon >/dev/null
+RITE_STATE_ROOT="$R" bash "$IC" claim --issue 322 --session "$SID_C" --worktree "$R/.rite/worktrees/issue-322" >/dev/null
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_C" --next abandoned >/dev/null
+printf '{"session_id":"%s","cwd":"%s","hook_event_name":"SessionStart","source":"startup"}' "$SID_B" "$R" \
+  | RITE_HOST=claude bash "$SS" > "$R/start.out" 2> "$R/start.err"
+assert "Other-session startup retains suspended worktree" "1" "$( [ -d "$wt" ] && echo 1 || echo 0 )"
+assert "Other-session startup reaps the abandoned sibling" "0" "$( [ -d "$R/.rite/worktrees/issue-322" ] && echo 1 || echo 0 )"
+assert "Suspended claim survives startup" "1" "$( [ -f "$R/.rite/state/issue-claims/issue-321.json" ] && echo 1 || echo 0 )"
+printf '{"session_id":"%s","cwd":"%s","hook_event_name":"SessionStart","source":"resume"}' "$SID_A" "$R" \
+  | RITE_HOST=claude bash "$SS" > "$R/resume.out" 2> "$R/resume.err"
+assert "Root resume retains the worktree" "1" "$( [ -d "$wt" ] && echo 1 || echo 0 )"
+assert "Root resume reactivates the suspended owner" true "$(jq -r .active "$sf")"
+assert "Root resume retains the usable reference" "$wt" "$(jq -r .worktree "$sf")"
+assert "Root resume clears the suspension marker" false "$(jq -r 'has("suspended_by_session_end")' "$sf")"
+
 echo "=== T-01 (AC-1): live-session flow-state worktree ref → NOT reaped even when claim stale ==="
 R=$(make_repo 70); cleanup_dirs+=("$R")
 # Record the worktree in SID_A's flow-state (the live-session reference), then age
