@@ -1032,8 +1032,8 @@ bash {plugin_root}/scripts/fix-step.sh scope-verify --fix-plan-file '{fix_plan_f
 コミットを直接実行する Bash 呼び出しも、実行前 hook が未完了 cycle と保存済み計画・全件検証の鮮度を確認する。拒否された場合は理由に従って次を行う。凍結 HEAD を戻して検査を通してはならない。
 
 - 未完了 cycle: `review-finish` で結果を保存してから commit を別 Bash 呼び出しで再実行する
-- 計画・検証の鮮度: 上記の `check --plan "{fix_plan_file}" --issue "{fix_issue_file}"` と `verify --plan "{fix_plan_file}" --issue "{fix_issue_file}" --kind all` を完了してから commit する
-- `unplanned changed path`: `review-finish` と `verify` では解消しない。不要なら削除する。必要なら `groups[].paths` へ追加して `check --plan "{fix_plan_file}" --issue "{fix_issue_file}"` と `verify --kind all` からやり直す。計画内の新規ファイルを明示パスで stage する手順は 3.1 にある。stage だけではこの拒否は消えない
+- 計画・検証の鮮度: 上記の `fix-step.sh scope-check` と `fix-step.sh scope-verify`（同じ `{fix_plan_file}` / `{fix_issue_file}`）を完了してから commit する
+- `unplanned changed path`: `review-finish` と `scope-verify` では解消しない。不要なら削除する。必要なら `groups[].paths` へ追加して `scope-check` と `scope-verify` からやり直す。計画内の新規ファイルを明示パスで stage する手順は 3.1 にある。stage だけではこの拒否は消えない
 
 commit は作業 worktree で `git commit`（必要なら literal な `git -C <path> commit`）を直接呼ぶ。検証・編集・commit を同じ Bash 呼び出しにまとめない。hook は直接コマンドと既存 heredoc 除去後の表面を検査し、スクリプト内部・alias・動的に組み立てた subcommand は解釈しない。これらの間接実行を commit 手順に使わない。メッセージファイル `{commit_message_file}` は作業 worktree 外の絶対パスにする。
 

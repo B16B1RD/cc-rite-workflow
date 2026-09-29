@@ -72,7 +72,7 @@
 - **Priority 2 (ローカルファイル)** 失敗時: WARNING を出して **Priority 3 (PR コメント)** へ routing (古い timestamp ファイルには fallback しない)
 - **Priority 3 (PR コメント Raw JSON)** 失敗時: legacy Markdown parser へ fallthrough (後方互換経路)
 
-詳細は fix.md ステップ 1.2.0 Hybrid Review Source Resolution の Priority 0 / Priority 2 / Priority 3 selection logic bash block を参照。
+詳細は `scripts/review-source-resolve.sh`（Priority 0 / Priority 2）と `scripts/fix-step.sh` の `p3-raw-json`（Priority 3）を参照（いずれも `fix.md` ステップ 1.2.0 Hybrid Review Source Resolution が呼ぶ helper 側に在る）。
 
 ## JSON Schema
 
@@ -578,7 +578,7 @@ emit の目的は observability — 「どの review-result file が 1.0 schema 
 
 - 既存の Markdown テーブル形式は保持 (後方互換、人間可読性)
 - 末尾に `### 📄 Raw JSON` セクションを追加し、code fence で JSON を埋め込む
-- `/rite:fix` ステップ 1.2.0 Priority 3 は code fence 内の JSON を `---` separator 以降の **最後** の `### 📄 Raw JSON` section に scope 限定して抽出する。awk パーサの対象は PR コメント本文 (`gh pr view --json comments` で取得した文字列) のみで、リポジトリ内の本ドキュメント (schema.md) を読むことはない。scope 限定の目的は、finding の `description` / `suggestion` 列内に literal `### 📄 Raw JSON` 文字列が含まれる場合 (本 PR 自身が該当) の誤捕捉を防ぐこと。POSIX awk のみで動作する 1-pass + END 逆方向スキャン実装は fix.md ステップ 1.2.0 の bash block を参照
+- `/rite:fix` ステップ 1.2.0 Priority 3 は code fence 内の JSON を `---` separator 以降の **最後** の `### 📄 Raw JSON` section に scope 限定して抽出する。awk パーサの対象は PR コメント本文 (`gh pr view --json comments` で取得した文字列) のみで、リポジトリ内の本ドキュメント (schema.md) を読むことはない。scope 限定の目的は、finding の `description` / `suggestion` 列内に literal `### 📄 Raw JSON` 文字列が含まれる場合 (本 PR 自身が該当) の誤捕捉を防ぐこと。POSIX awk のみで動作する 1-pass + END 逆方向スキャン実装は `hooks/scripts/review-raw-json-extract.sh`（`scripts/fix-step.sh` の `p3-raw-json` が呼ぶ）を参照
 
 ## 読取優先順位 (fix)
 
