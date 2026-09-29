@@ -127,6 +127,7 @@
 * **Update**: [「N 箇所で同期が必要」と指摘されたら、同期する前に N を減らせないか検討する](pages/heuristics/reduce-sync-sites-before-syncing-them.md) — raw/reviews/20260929T092320Z-pr-3440.md を統合
 * **Skip**: [20260929T092328Z-pr-3393.md](raw/reviews/20260929T092328Z-pr-3393.md) — 採否ゲートの運用手順の再確認で、手順書の規定を超える経験則を含まない
 * **Create**: [拒否ガードの前段フィルタが本判定より狭いと、本判定が fail-closed でも全体は fail-open になる](pages/anti-patterns/prefilter-narrower-than-judge-makes-guard-fail-open.md) — raw/reviews/20260929T092646Z-pr-3446.md を新規ページ化
+* **Skip**: [20260929T095002Z-pr-3377.md](raw/reviews/20260929T095002Z-pr-3377.md) — 指摘 0 件で、再利用できる経験則を含まない
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=586, broken_refs=0
 
 ## 2026-09-28
