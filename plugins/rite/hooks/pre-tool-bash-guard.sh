@@ -37,6 +37,11 @@
 #      nothing (`git $OPTS commit`). `--allow-empty-message` and ordinary
 #      commits are not this pattern. Alternative: leave file changes, or revisit
 #      the Issue. Do not create an empty commit.
+#  10. While a rite session is active, git / gh calls and script runs whose
+#      effective directory (the hook cwd moved by cd and env -C / sudo -D
+#      (--chdir), and for git by -C) is
+#      outside the checkout — the main checkout and its worktrees — are denied.
+#      Alternative: cd into the checkout and pass outside paths as absolute paths.
 #
 # Reviewer working-tree mutations (git checkout / reset / add / branch / stash ...)
 # are deliberately NOT machine-gated here. They are visible and
@@ -60,8 +65,8 @@
 # permissionDecision: "deny" — block.
 #
 # Fail direction is pattern-specific: Patterns 1-3 (convenience) fail OPEN so an
-# edge-case parse crash never false-blocks a legitimate command; Patterns 4 and
-# 6 enforce workflow boundaries and fail CLOSED so a parse crash never silently
+# edge-case parse crash never false-blocks a legitimate command; Patterns 4, 6 and
+# 10 enforce workflow boundaries and fail CLOSED so a parse crash never silently
 # bypasses the guard. See the ERR traps below. A git commit / merge command whose
 # heredoc surface would cost more than the parse budget is denied without parsing
 # (commit-guard-uninspectable): a hook the harness kills lets the command run.
@@ -1548,6 +1553,88 @@ if [ -z "$BLOCKED_PATTERN" ] && { [ "$_wiki_surface_rc" -ne 0 ] || [[ "$_wiki_su
           break
         fi
       done <<<"$_wiki_targets"
+    fi
+  fi
+fi
+
+# Pattern 10: while a rite session is active, git / gh and scripts run only inside
+# the checkout. A cwd-dependent credential (a gh wrapper that picks the account by
+# directory) resolves against the directory a call runs in, so a call from a
+# scratch directory can write to GitHub as another account. Whether a script calls
+# gh cannot be seen, so a script run outside the checkout is denied as well.
+# The state root is taken from RITE_STATE_ROOT, else CLAUDE_PROJECT_DIR, and only
+# then the hook cwd, which an earlier cd may have left outside the checkout. A
+# state root that is not a repository defines no checkout; checkout-cwd.py then
+# reports nothing. An unreadable flow-state is checked as active. Each failure is
+# taken as a deny in the same list as its command, so the fail-open ERR trap never
+# fires here.
+if [ -z "$BLOCKED_PATTERN" ]; then
+  _co_cwd=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || _co_cwd=""
+  [ -n "$_co_cwd" ] || _co_cwd="$PWD"
+  _co_session=$(printf '%s' "$INPUT" | jq -r '.session_id // empty' 2>/dev/null) || _co_session=""
+  _co_root="${RITE_STATE_ROOT:-}"
+  if [ -z "$_co_root" ]; then
+    _co_root=$(bash "$SCRIPT_DIR/state-path-resolve.sh" "${CLAUDE_PROJECT_DIR:-$_co_cwd}" 2>/dev/null) || _co_root=""
+  fi
+  _co_active=false
+  _co_worktree=""
+  _co_fs="$_co_root/.rite/sessions/$_co_session.flow-state"
+  if [ -n "$_co_root" ] && [[ "$_co_session" =~ ^[A-Za-z0-9_-]+$ ]] && [ -f "$_co_fs" ]; then
+    if _co_row=$(jq -r '[(.active // false | tostring), (.worktree // "")] | @tsv' "$_co_fs" 2>/dev/null); then
+      IFS=$'\t' read -r _co_active _co_worktree <<<"$_co_row"
+    else
+      _co_active=true
+    fi
+  fi
+  if [ "$_co_active" = "true" ]; then
+    _co_cwd_p=$(CDPATH= cd -- "$_co_cwd" 2>/dev/null && pwd -P) || _co_cwd_p=""
+    _co_root_p=$(CDPATH= cd -- "$_co_root" 2>/dev/null && pwd -P) || _co_root_p=""
+    # A command run from under the state root that cannot change its directory
+    # stays there, so the parse is skipped for the common case. The words cover
+    # every directory change checkout-cwd.py follows (cd, pushd, popd, git -C,
+    # env -C / --chdir, sudo -D / --chdir).
+    if [ -n "$_co_root_p" ] && [[ "$_co_cwd_p" == "$_co_root_p" || "$_co_cwd_p" == "$_co_root_p"/* ]] \
+       && [[ "$COMMAND" != *cd* && "$COMMAND" != *pushd* && "$COMMAND" != *popd* \
+             && "$COMMAND" != *-C* && "$COMMAND" != *chdir* && "$COMMAND" != *sudo* ]]; then
+      :
+    else
+      _co_rc=0
+      _co_out=$(
+        # Test-only, fail-CLOSED-only fault injection: a failed check must deny.
+        [ "${RITE_BTG_TEST_CRASH:-}" != "pattern10-helper" ] || exit 3
+        # The helper removes heredoc bodies itself, so the command is passed as
+        # written, on stdin so that no argument length limit applies.
+        printf '%s' "$COMMAND" | python3 "$SCRIPT_DIR/scripts/lib/checkout-cwd.py" --command - --cwd "$_co_cwd" --root "$_co_root" 2>&1
+      ) || _co_rc=$?
+      _co_checkout="${_co_worktree:-$_co_root}"
+      if [ "$_co_rc" -ne 0 ]; then
+        BLOCKED_PATTERN="outside-checkout-uninspectable"
+        BLOCKED_REASON="The directory each git, gh or script call in this command runs in cannot be checked (rc=${_co_rc}): ${_co_out:-no output}"
+        case "$_co_out" in
+          *"unquoted heredoc runs a command substitution"*|*"case command inside"*)
+            # Read the same way wherever the helper runs, so a cd into the checkout does not help.
+            BLOCKED_ALTERNATIVE="Rewrite the command as this reason says; adding a cd into the checkout, or running it from outside the checkout, is denied the same way." ;;
+          *"git cannot read the repository"*)
+            # On its own line: git's last line may be a command to copy as is.
+            BLOCKED_ALTERNATIVE=$'\n'"Fix why git cannot read the repository (the error git reports above), then run the command again." ;;
+          *)
+            BLOCKED_ALTERNATIVE="Fix the command as this reason says (end each heredoc at its delimiter line, close each quote and command substitution) or simplify it; adding a cd into the checkout is denied the same way." ;;
+        esac
+      elif [ -n "$_co_out" ]; then
+        # The directory field is empty when unknown, which read would merge away.
+        _co_line="${_co_out%%$'\n'*}"
+        _co_line="${_co_line#*$'\t'}"
+        _co_dir="${_co_line%%$'\t'*}"
+        _co_word="${_co_line#*$'\t'}"
+        if [ -n "$_co_dir" ]; then
+          _co_where="in ${_co_dir}, which is outside the checkout"
+        else
+          _co_where="in a directory that cannot be determined (for example a directory given by a command substitution or by a variable that this command does not assign exactly once to a literal, cd - or a cd with options, pushd / popd, env -S, or more directory changes than are followed)"
+        fi
+        BLOCKED_PATTERN="outside-checkout"
+        BLOCKED_REASON="While a rite session is active, git, gh and scripts run only inside the checkout (${_co_root} or one of its worktrees). This command runs '${_co_word}' ${_co_where}. A credential chosen by directory, such as a gh wrapper that picks the account by cwd, would act as another account there, and whether a script calls gh cannot be seen."
+        BLOCKED_ALTERNATIVE="Run it from inside the checkout, giving paths outside it as absolute paths: cd ${_co_checkout} && <command>, for example cd ${_co_checkout} && bash /tmp/x.sh. Reading and writing files outside the checkout without git, gh or a script is not affected."
+      fi
     fi
   fi
 fi

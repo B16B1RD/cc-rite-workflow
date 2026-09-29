@@ -2961,6 +2961,395 @@ done
 echo ""
 
 # --------------------------------------------------------------------------
+# Pattern 10: git / gh / script outside the checkout during a rite session
+# --------------------------------------------------------------------------
+echo "TC-P10: git / gh / script run outside the checkout while a rite session is active"
+p10_main=$(mktemp -d "${TMPDIR:-/tmp}/rite-p10-main.XXXXXX")
+p10_scratch=$(mktemp -d "${TMPDIR:-/tmp}/rite-p10-scratch.XXXXXX")
+p10_plain=$(mktemp -d "${TMPDIR:-/tmp}/rite-p10-plain.XXXXXX")
+p10_main=$(cd "$p10_main" && pwd -P)
+p10_scratch=$(cd "$p10_scratch" && pwd -P)
+p10_plain=$(cd "$p10_plain" && pwd -P)
+p10_wt="$p10_main/.rite/worktrees/issue-1"
+p10_sid="p10-session"
+git -C "$p10_main" init -q
+git -C "$p10_main" -c user.name=t -c user.email=t@example.com commit -q --allow-empty -m init
+git -C "$p10_main" worktree add -q --detach "$p10_wt" 2>/dev/null
+mkdir -p "$p10_main/.rite/sessions" "$p10_plain/.rite/sessions"
+jq -n --arg wt "$p10_wt" '{active: true, worktree: $wt}' > "$p10_main/.rite/sessions/$p10_sid.flow-state"
+jq -n '{active: false}' > "$p10_main/.rite/sessions/p10-inactive.flow-state"
+printf 'not json\n' > "$p10_main/.rite/sessions/p10-broken.flow-state"
+jq -n '{active: true}' > "$p10_plain/.rite/sessions/$p10_sid.flow-state"
+
+# p10_run <cwd> <command> [session] — the hook with the fixture state root.
+p10_run() {
+  # The command goes through stdin: a long one does not fit in an argument.
+  printf '%s' "$2" | jq -Rs --arg cwd "$1" --arg sid "${3:-$p10_sid}" \
+    '{tool_name: "Bash", tool_input: {command: .}, cwd: $cwd, session_id: $sid}' \
+    | RITE_STATE_ROOT="${P10_ROOT:-$p10_main}" bash "$HOOK" 2>"$STDERR_FILE"
+}
+# p10_deny <label> <pattern> <reason substring> <cwd> <command> [session]
+p10_deny() {
+  local rc=0 output reason
+  output=$(p10_run "$4" "$5" "${6:-}") || rc=$?
+  reason=$(extract_hook_field "$output" permissionDecisionReason)
+  if [ "$(extract_hook_field "$output" permissionDecision)" = "deny" ] \
+    && [[ "$reason" == "BLOCKED ($2): "* && "$reason" == *"$3"* ]]; then
+    pass "$1"
+  else
+    fail "$1: expected BLOCKED ($2) with '$3', got rc=$rc reason=$reason"
+  fi
+}
+# p10_allow <label> <cwd> <command> [session]
+p10_allow() {
+  local rc=0 output
+  output=$(p10_run "$2" "$3" "${4:-}") || rc=$?
+  if [ "$rc" = "0" ] && [ -z "$output" ]; then
+    pass "$1"
+  else
+    fail "$1: expected allow, got rc=$rc output=$output"
+  fi
+}
+
+p10_deny "gh after cd to a scratch dir" outside-checkout "runs 'gh' in $p10_scratch, which is outside" \
+  "$p10_wt" "cd $p10_scratch && gh api repos/x/y"
+p10_deny "deny names the way back into the worktree" outside-checkout "cd $p10_wt && <command>" \
+  "$p10_wt" "cd $p10_scratch && gh api repos/x/y"
+p10_deny "script run in a scratch dir" outside-checkout "runs 'bash' in $p10_scratch" \
+  "$p10_wt" "cd $p10_scratch && bash x.sh"
+p10_deny "git -C to a dir outside the checkout" outside-checkout "runs 'git' in $p10_scratch/foo" \
+  "$p10_wt" "git -C $p10_scratch/foo status"
+p10_deny "cd to a variable before gh" outside-checkout "cannot be determined" \
+  "$p10_wt" 'cd "$D" && gh api x'
+p10_deny "gh from a hook cwd left in a scratch dir" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_scratch" "gh api repos/x/y"
+p10_deny "script from a hook cwd left in a scratch dir" outside-checkout "runs 'bash' in $p10_scratch" \
+  "$p10_scratch" "bash x.sh"
+p10_deny "script behind timeout" outside-checkout "runs 'bash' in $p10_scratch" \
+  "$p10_wt" "cd $p10_scratch && timeout 5 bash x.sh"
+p10_deny "script by path behind env" outside-checkout "runs './x.sh' in $p10_scratch" \
+  "$p10_wt" "cd $p10_scratch && env A=1 ./x.sh"
+p10_deny "gh in a subshell after its cd" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "(cd $p10_scratch && gh api x)"
+p10_deny "git -C to a variable after cd to a scratch dir" outside-checkout "runs 'git' in $p10_scratch" \
+  "$p10_wt" "cd $p10_scratch && git -C \"\$X\" status"
+p10_deny "a literal variable cd to a scratch dir" outside-checkout "runs 'git' in $p10_scratch" \
+  "$p10_wt" "d=$p10_scratch; if [ -z \"\$d\" ] || ! cd \"\$d\" 2>/dev/null; then echo no; else git status; fi"
+p10_deny "more cd than the parser follows" outside-checkout "cannot be determined" \
+  "$p10_wt" "$(printf 'cd . && %.0s' $(seq 1 17))git status"
+p10_deny "unreadable flow-state is checked as active" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "cd $p10_scratch && gh api x" p10-broken
+p10_allow "script in a scratch dir run from the worktree" "$p10_wt" "cd $p10_wt && bash $p10_scratch/x.sh"
+p10_allow "script in a scratch dir, hook cwd in the worktree" "$p10_wt" "bash $p10_scratch/x.sh"
+p10_allow "git in the worktree" "$p10_wt" "git status"
+p10_allow "cd into the worktree then git" "$p10_wt" "cd $p10_wt && git status"
+p10_allow "git -C the worktree" "$p10_scratch" "git -C $p10_wt status"
+p10_allow "cd into the main checkout then gh" "$p10_scratch" "cd $p10_main && gh api x"
+p10_allow "git -C a variable from the worktree" "$p10_wt" 'git -C "$X" status'
+p10_allow "a literal variable cd into the main checkout" "$p10_wt" \
+  "d=$p10_main; if [ -z \"\$d\" ] || ! cd \"\$d\" 2>/dev/null; then echo no; else git status; fi"
+p10_allow "no git, gh or script in a scratch dir" "$p10_wt" "cd $p10_scratch && ls && cat a > b"
+p10_allow "a cd kept inside its subshell" "$p10_wt" "(cd $p10_scratch && ls); gh api x"
+p10_allow "heredoc text is not a command" "$p10_wt" \
+  "$(printf 'cat > %s/b.md <<%s\ncd /tmp && gh api x\nEOF' "$p10_scratch" "'EOF'")"
+p10_allow "no flow-state for the session" "$p10_wt" "cd $p10_scratch && gh api x" p10-none
+p10_allow "an inactive flow-state" "$p10_wt" "cd $p10_scratch && gh api x" p10-inactive
+P10_ROOT="$p10_plain" p10_allow "a state root that is not a repository" "$p10_scratch" "gh api x"
+# The state root comes from CLAUDE_PROJECT_DIR when RITE_STATE_ROOT is unset.
+rc=0
+output=$(jq -n --arg cmd "gh api x" --arg cwd "$p10_scratch" --arg sid "$p10_sid" \
+  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: $cwd, session_id: $sid}' \
+  | CLAUDE_PROJECT_DIR="$p10_wt" bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+if [[ "$(extract_hook_field "$output" permissionDecisionReason)" == "BLOCKED (outside-checkout): "* ]]; then
+  pass "state root resolved from CLAUDE_PROJECT_DIR"
+else
+  fail "state root resolved from CLAUDE_PROJECT_DIR: got rc=$rc output=$output"
+fi
+p10_deny "an earlier pattern keeps its reason" gh-pr-diff-stat "--stat" \
+  "$p10_wt" "cd $p10_scratch && gh pr diff 1 --stat"
+p10_deny "gh in a long command" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "echo $(printf 'x%.0s' $(seq 1 9000)) && cd $p10_scratch && gh api x"
+RITE_BTG_TEST_CRASH=pattern10-helper p10_deny "a failed check denies" outside-checkout-uninspectable "rc=3" \
+  "$p10_wt" "cd $p10_scratch && ls"
+p10_deny "gh after pushd to a scratch dir" outside-checkout "cannot be determined" \
+  "$p10_wt" "pushd $p10_scratch && gh api x"
+p10_deny "script after pushd to a scratch dir" outside-checkout "cannot be determined" \
+  "$p10_wt" "pushd $p10_scratch >/dev/null; bash x.sh"
+p10_deny "gh behind env --chdir" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "env --chdir=$p10_scratch gh api x"
+p10_deny "gh behind env -C" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "env -C $p10_scratch gh api x"
+p10_deny "gh behind timeout with a signal option" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "cd $p10_scratch && timeout -s KILL 5 gh api x"
+p10_deny "gh behind env -u" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "cd $p10_scratch && env -u HOME gh api x"
+p10_deny "git -C after another global option" outside-checkout "runs 'git' in $p10_scratch" \
+  "$p10_wt" "git -P -C $p10_scratch status"
+p10_deny "a variable reassigned inside if" outside-checkout "cannot be determined" \
+  "$p10_wt" "d=$p10_wt; if true; then d=$p10_scratch; fi; cd \"\$d\" && gh api x"
+p10_deny "a variable reassigned by export" outside-checkout "cannot be determined" \
+  "$p10_wt" "d=$p10_wt; export d=$p10_scratch; cd \"\$d\" && gh api x"
+p10_allow "cd into a directory made in the same command" "$p10_wt" \
+  "mkdir -p $p10_wt/new && cd $p10_wt/new && git status"
+p10_allow "a cd kept inside the first of two subshells" "$p10_wt" "(cd $p10_scratch && ls); (gh api x)"
+p10_allow "a cd kept inside an inner subshell" "$p10_wt" "( (cd $p10_scratch); gh api x )"
+p10_allow "a long command that runs no git, gh or script" "$p10_scratch" \
+  "echo $(printf 'x%.0s' $(seq 1 9000)) > out.txt"
+p10_deny "gh in a substitution after a cd in its subshell" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "(cd $p10_scratch && echo \$(gh api x))"
+p10_deny "script in a substitution after a cd in its subshell" outside-checkout "runs 'bash' in $p10_scratch" \
+  "$p10_wt" "(cd $p10_scratch; x=\$(bash rec.sh))"
+p10_allow "a substitution after a closed subshell" "$p10_wt" "(cd $p10_scratch); echo \$(gh api x)"
+p10_deny "gh in an inner subshell after the outer subshell's cd" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "(cd $p10_scratch; (gh api x))"
+p10_deny "gh after a cd that may fail" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_scratch" "cd $p10_wt/missing; gh api x"
+p10_deny "a command behind env -S" outside-checkout "cannot be determined" \
+  "$p10_wt" "env -S '-C $p10_scratch gh api x'"
+p10_deny "gh behind sudo -D" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "sudo -D $p10_scratch gh api x"
+p10_deny "gh behind xargs -I" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "cd $p10_scratch && xargs -I {} gh api {}"
+p10_deny "gh behind a joined env -u" outside-checkout "runs 'gh' in $p10_scratch" \
+  "$p10_wt" "cd $p10_scratch && env -uHOME gh api x"
+p10_deny "gh after popd" outside-checkout "cannot be determined" "$p10_wt" "popd; gh api x"
+p10_deny "a variable reassigned by read" outside-checkout "cannot be determined" \
+  "$p10_wt" "d=$p10_wt; read d; cd \"\$d\" && gh api x"
+p10_deny "a variable reassigned by for" outside-checkout "cannot be determined" \
+  "$p10_wt" "d=$p10_wt; for d in $p10_scratch; do cd \"\$d\" && gh api x; done"
+p10_long=$(printf 'x%.0s' $(seq 1 9000))
+p10_out="in $p10_scratch, which is outside the checkout"
+p10_deny "a long command that runs a script by path" outside-checkout "$p10_out" \
+  "$p10_wt" "echo $p10_long > $p10_scratch/body.txt; cd $p10_scratch && $p10_scratch/record"
+p10_deny "a long command that runs a script by variable" outside-checkout "$p10_out" \
+  "$p10_wt" "echo $p10_long > $p10_scratch/body.txt; cd $p10_scratch && \"\$runner\""
+p10_allow "a long heredoc that mentions git and gh" "$p10_scratch" \
+  "$(printf 'cat > out.md <<%s\n%s\nEOF' "'EOF'" "$(printf 'Run git status then gh pr view. %.0s' $(seq 1 300))")"
+p10_prose=$(printf "Don't run git status then gh pr view. %.0s" $(seq 1 300))
+p10_deny "gh after a long heredoc" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf 'cat > %s/o.md <<%s\n%s\nEOF\ncd %s && gh api x' "$p10_scratch" "'EOF'" "$p10_prose" "$p10_scratch")"
+p10_deny "a script after a heredoc with a hyphenated delimiter" outside-checkout "runs './rec.sh' $p10_out" \
+  "$p10_wt" "$(printf 'cat > %s/o.md <<%s\n%s\nPR-BODY\ncd %s && ./rec.sh' "$p10_scratch" "'PR-BODY'" "$p10_prose" "$p10_scratch")"
+p10_deny "gh after a tab-indented heredoc delimiter" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf 'cat > %s/o.md <<-%s\n\t%s\n\tEOF\ncd %s && gh api x' "$p10_scratch" "'EOF'" "$p10_prose" "$p10_scratch")"
+p10_deny "gh after a << inside a string" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf 'printf %s > %s/a.c\ncd %s && gh api x' "'mask = 1 << bit'" "$p10_scratch" "$p10_scratch")"
+p10_deny "gh between a << in a string and a heredoc it names" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf 'echo %s\ncd %s && gh api x\ncat > %s/o.md <<%s\n%s\nEOF' "'Use cat <<EOF for long text'" "$p10_scratch" "$p10_scratch" "'EOF'" "$p10_prose")"
+p10_deny "gh after a shift in arithmetic" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "echo \$((1<<2)) && cd $p10_scratch && gh api x"
+p10_deny "a heredoc that does not end" outside-checkout-uninspectable "does not end" \
+  "$p10_scratch" "$(printf 'cat > out.md <<EOF\nhello')"
+p10_deny "gh before a heredoc that does not end" outside-checkout-uninspectable "does not end" \
+  "$p10_wt" "$(printf 'cd %s && gh api x && cat <<EOF\nhello' "$p10_scratch")"
+p10_deny "gh in a substitution of an unquoted heredoc body" outside-checkout-uninspectable "runs a command substitution" \
+  "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\n$(gh api user)\nEOF' "$p10_scratch")"
+p10_deny "gh in an unquoted heredoc body of a message substitution" outside-checkout-uninspectable "runs a command substitution" \
+  "$p10_wt" "$(printf 'cd %s && echo "$(cat <<EOF\n$(gh api user)\nEOF\n)"' "$p10_scratch")"
+p10_allow "a substitution in a quoted heredoc body is text" "$p10_scratch" \
+  "$(printf 'cat > n.md <<%s\n$(gh api user)\nEOF' "'EOF'")"
+p10_allow "a substitution after a backslash-quoted delimiter is text" "$p10_scratch" \
+  "$(printf 'cat > n.md <<\\EOF\n$(gh api user)\nEOF')"
+p10_allow "escaped substitutions in an unquoted heredoc body are text" "$p10_scratch" \
+  "$(printf 'cat > pr.md <<EOF\nRun \\`git status\\` and \\$(gh pr view).\nEOF')"
+p10_deny "a substitution after an escaped backslash in an unquoted body" outside-checkout-uninspectable "runs a command substitution" \
+  "$p10_scratch" "$(printf 'cat > n.md <<EOF\n\\\\$(date)\nEOF')"
+p10_deny "gh after a << inside a parameter expansion" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf 's=a; echo ${s//<</x}\ncd %s && gh api x' "$p10_scratch")"
+p10_deny "gh after a comment right after a group" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf '(true)# use <<EOF\ncd %s && gh api x' "$p10_scratch")"
+p10_deny "gh after a comment behind an escaped backslash" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf 'echo a\\\\ #note <<EOF\ncd %s && gh api x' "$p10_scratch")"
+p10_allow "a comment with a quote inside a multi-line substitution" "$p10_scratch" \
+  "$(printf "x=\$(\n  # don't\n  echo a\n)\nls")"
+p10_allow "a # inside a word before a heredoc" "$p10_scratch" \
+  "$(printf "echo a#b; cat > n.md <<'EOF'\ngh pr view\nEOF")"
+p10_deny "gh after a URL fragment" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "echo https://e/x#frag; cd $p10_scratch && gh api x"
+p10_deny "a case command inside a substitution" outside-checkout-uninspectable "case command" \
+  "$p10_wt" "cd $p10_scratch && echo \"\$(case \"\$k\" in pr) gh pr view 1;; esac)\""
+p10_allow "the word case inside a substitution" "$p10_scratch" "echo \$(echo a test case here)"
+p10_deny "arithmetic in an unquoted heredoc body" outside-checkout-uninspectable "runs a command substitution" \
+  "$p10_scratch" "$(printf 'cat > n.md <<EOF\n$((1+2)) items\nEOF')"
+p10_allow "an unquoted heredoc body without a substitution" "$p10_scratch" \
+  "$(printf 'cat > n.md <<EOF\nHome is $HOME, 100%%\nEOF')"
+p10_deny "a backquote in an unquoted heredoc body" outside-checkout-uninspectable "runs a command substitution" \
+  "$p10_scratch" "$(printf 'cat > n.md <<EOF\nnow `date`\nEOF')"
+p10_deny "the denial of an unquoted body names the quoted delimiter" outside-checkout-uninspectable "<<'EOF'" \
+  "$p10_scratch" "$(printf 'cat > n.md <<EOF\nnow $(date)\nEOF')"
+p10_allow "an unquoted body run in the checkout without a cd" "$p10_wt" \
+  "$(printf 'cat > n.md <<EOF\n$(git rev-parse HEAD)\nEOF')"
+p10_deny "an unquoted body is denied with a cd into the checkout" outside-checkout-uninspectable "runs a command substitution" \
+  "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\n$(git rev-parse HEAD)\nEOF' "$p10_wt")"
+p10_allow "a value assigned before the heredoc, as the denial advises" "$p10_wt" \
+  "$(printf 'cd %s && v=$(date) && cat > n.md <<EOF\nnow $v\nEOF' "$p10_scratch")"
+p10_deny "a case command after ; inside a substitution" outside-checkout-uninspectable "case command" \
+  "$p10_wt" "cd $p10_scratch && echo \"\$(true; case \"\$k\" in pr) gh pr view 1;; esac)\""
+p10_deny "a case command after then inside a substitution" outside-checkout-uninspectable "case command" \
+  "$p10_wt" "cd $p10_scratch && echo \"\$(if true; then case \"\$k\" in pr) gh pr view 1;; esac; fi)\""
+p10_deny "a denied body names the variable rewrite and that a cd does not help" outside-checkout-uninspectable \
+  'write $v in the body. Rewrite the command' "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\n$(date)\nEOF' "$p10_wt")"
+p10_deny "the rewrite alternative says a cd is denied the same way" outside-checkout-uninspectable \
+  "adding a cd into the checkout, or running it from outside" "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\n$(date)\nEOF' "$p10_wt")"
+p10_deny "a denied case names the rewrite and that a cd does not help" outside-checkout-uninspectable \
+  "set the variable in its branches. Rewrite the command" \
+  "$p10_wt" "cd $p10_scratch && echo \"\$(case \"\$k\" in pr) gh pr view 1;; esac)\""
+p10_allow "a case moved out of the substitution, as the denial advises" "$p10_wt" \
+  "cd $p10_wt && case \"\$k\" in pr) v=\$(git rev-parse HEAD);; esac; echo \"\$v\""
+p10_deny "a heredoc that does not end names the fix, not a cd" outside-checkout-uninspectable \
+  "end each heredoc at its delimiter line" "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\nhello' "$p10_wt")"
+p10_unfinished=$(p10_run "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\nhello' "$p10_wt")") || true
+p10_unfinished=$(extract_hook_field "$p10_unfinished" permissionDecisionReason)
+if [[ "$p10_unfinished" == *"delimiter EOF. Fix the command"* && "$p10_unfinished" == *"adding a cd into the checkout is denied the same way."* \
+  && "$p10_unfinished" != *"first."* ]]; then
+  pass "a heredoc that does not end ends its reason and does not advise a cd first"
+else
+  fail "a heredoc that does not end ends its reason and does not advise a cd first: got $p10_unfinished"
+fi
+p10_deny "a heredoc operator at the end of the command ends its reason" outside-checkout-uninspectable \
+  "delimiter EOF. Fix the command" "$p10_scratch" "cat > out.md <<EOF"
+p10_deny "a heredoc without a delimiter ends its reason" outside-checkout-uninspectable \
+  "a heredoc has no delimiter. Fix the command" "$p10_scratch" "cat > out.md <<"
+p10_deny "a quote that does not end ends its reason" outside-checkout-uninspectable \
+  "a quote or substitution does not end. Fix the command" "$p10_scratch" "cd $p10_scratch && echo \"abc"
+p10_deny "gh after a # inside a word" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "x=abc; echo \${#x}; cd $p10_scratch && gh api x"
+p10_deny "gh after a # right after a substitution" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "echo \$(pwd)#x; cd $p10_scratch && gh api x"
+p10_deny "gh after an escaped space and #" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "cp notes\\ #1.md $p10_scratch/ && cd $p10_scratch && gh api x"
+p10_deny "gh after a comment that mentions a heredoc" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf '# use cat <<EOF here\ncd %s && gh api x' "$p10_scratch")"
+p10_deny "gh after a here-string" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "grep -q x <<< \"\$v\" && cd $p10_scratch && gh api x"
+p10_deny "gh after a << in a double-quoted string" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "echo \"a << b\"; cd $p10_scratch && gh api x"
+p10_deny "a script in a function body" outside-checkout "runs './rec.sh' $p10_out" \
+  "$p10_wt" "cd $p10_scratch && f() { ./rec.sh; }; f"
+p10_huge=$(printf 'Run cd into the worktree and write notes. %.0s' $(seq 1 3500))
+p10_allow "a heredoc longer than one argument may be" "$p10_scratch" \
+  "$(printf 'cat > big.md <<%s\n%s\nEOF' "'EOF'" "$p10_huge")"
+p10_deny "gh after a heredoc longer than one argument may be" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf 'cat > %s/big.md <<%s\n%s\nEOF\ncd %s && gh api x' "$p10_scratch" "'EOF'" "$p10_huge" "$p10_scratch")"
+p10_allow "a heredoc with a backslashed delimiter that mentions git and gh" "$p10_scratch" \
+  "$(printf 'cat > out.md <<\\EOF\n%s\nEOF' "$p10_prose")"
+p10_allow "a heredoc with a hyphenated delimiter that mentions git and gh" "$p10_scratch" \
+  "$(printf 'cat > out.md <<%s\n%s\nPR-BODY' "'PR-BODY'" "$p10_prose")"
+p10_allow "a tab-indented heredoc that mentions git and gh" "$p10_scratch" \
+  "$(printf 'cat > out.md <<-%s\n\t%s\n\tEOF' "'EOF'" "$p10_prose")"
+p10_deny "a script after then" outside-checkout "runs './rec.sh' $p10_out" \
+  "$p10_wt" "cd $p10_scratch && if true; then ./rec.sh; fi"
+p10_deny "a variable run after do" outside-checkout "$p10_out" \
+  "$p10_wt" "cd $p10_scratch && for f in a; do \"\$runner\"; done"
+p10_deny "a script in braces" outside-checkout "runs './rec.sh' $p10_out" \
+  "$p10_wt" "cd $p10_scratch && { ./rec.sh; }"
+p10_deny "a script in a case branch" outside-checkout "runs './rec.sh' $p10_out" \
+  "$p10_wt" "cd $p10_scratch && case x in x) ./rec.sh;; esac"
+p10_deny "a script after a quoted assignment" outside-checkout "runs './rec.sh' $p10_out" \
+  "$p10_wt" "cd $p10_scratch && MSG=\"two words\" ./rec.sh"
+p10_deny "a script after a redirection" outside-checkout "runs './rec.sh' $p10_out" \
+  "$p10_wt" "cd $p10_scratch && 2>/dev/null ./rec.sh"
+p10_deny "a variable run behind timeout" outside-checkout "$p10_out" \
+  "$p10_wt" "cd $p10_scratch && timeout 5 \"\$runner\""
+p10_deny "a sourced file" outside-checkout "runs '.' $p10_out" \
+  "$p10_wt" "cd $p10_scratch && . rec"
+p10_allow "a long prose line with wrapper words" "$p10_scratch" \
+  "echo \"$p10_long the time is now; run this command with env set (time permitting)\" > out.txt"
+p10_allow "a multi-line string with wrapper words at line starts" "$p10_scratch" \
+  "$(printf 'echo "%s\nenv var is set\ntime to go" > out.txt' "$p10_long")"
+p10_allow "backquotes in a single-quoted text" "$p10_wt" \
+  "printf '%s\n' '$p10_long see \`plugins/x.md\` then cd back' > $p10_scratch/notes.md"
+p10_broken=$(mktemp -d "${TMPDIR:-/tmp}/rite-p10-broken.XXXXXX")
+printf 'gitdir: %s/missing\n' "$p10_broken" > "$p10_broken/.git"
+mkdir -p "$p10_broken/.rite/sessions"
+jq -n '{active: true}' > "$p10_broken/.rite/sessions/$p10_sid.flow-state"
+# A git that fails with a command as its last line, as git does for a repository it does not trust.
+p10_failgit=$(mktemp -d "${TMPDIR:-/tmp}/rite-p10-failgit.XXXXXX")
+printf '#!/bin/bash\nfor a; do [ "$a" = --path-format=absolute ] && { printf "fatal: cannot read\\n\\tgit config --global --add safe.directory %%s\\n" "%s" >&2; exit 128; }; done\nexec %s "$@"\n' \
+  "$p10_main" "$(command -v git)" > "$p10_failgit/git"
+chmod +x "$p10_failgit/git"
+PATH="$p10_failgit:$PATH" p10_deny "a git that cannot read the state root names its own error" outside-checkout-uninspectable \
+  "git cannot read the repository at $p10_main. git reports:"$'\n'"fatal: cannot read" "$p10_scratch" "cd $p10_scratch && gh api x"
+PATH="$p10_failgit:$PATH" p10_deny "a command git reports is left as is, with the fix on its own line" outside-checkout-uninspectable \
+  $'\tgit config --global --add safe.directory '"$p10_main"$' \nFix why git cannot read the repository (the error git reports above)' \
+  "$p10_scratch" "cd $p10_scratch && gh api x"
+# git trusts the state root but not the worktree the command runs in: the worktree's error is shown,
+# not an outside-checkout denial whose cd advice is denied the same way.
+printf '#!/bin/bash\n[ "$2" = %s ] && { printf "fatal: cannot read\\n\\tgit config --global --add safe.directory %%s\\n" "%s" >&2; exit 128; }\nexec %s "$@"\n' \
+  "$p10_wt" "$p10_wt" "$(command -v git)" > "$p10_failgit/git"
+PATH="$p10_failgit:$PATH" p10_deny "a worktree git cannot read names its own error" outside-checkout-uninspectable \
+  "git cannot read the repository at $p10_wt. git reports:"$'\n'"fatal: cannot read"$'\n\t'"git config --global --add safe.directory $p10_wt" \
+  "$p10_wt" "cd $p10_wt && gh api x"
+PATH="$p10_failgit:$PATH" p10_deny "a directory in no repository is still judged outside, not unreadable" outside-checkout \
+  "runs 'gh' in $p10_scratch, which is outside" "$p10_wt" "cd $p10_scratch && gh api x"
+# The same for a directory below the worktree, and for a worktree placed outside the state root.
+mkdir -p "$p10_wt/sub"
+printf '#!/bin/bash\n[[ "$2" == %s* ]] && { echo "fatal: cannot read" >&2; exit 128; }\nexec %s "$@"\n' \
+  "$p10_wt" "$(command -v git)" > "$p10_failgit/git"
+PATH="$p10_failgit:$PATH" p10_deny "a directory below a worktree git cannot read names its own error" outside-checkout-uninspectable \
+  "git cannot read the repository at $p10_wt/sub. git reports:" "$p10_wt" "cd $p10_wt/sub && gh api x"
+p10_ext="$p10_scratch/ext-wt"
+git -C "$p10_main" worktree add -q --detach "$p10_ext" 2>/dev/null
+printf '#!/bin/bash\n[ "$2" = %s ] && { echo "fatal: cannot read" >&2; exit 128; }\nexec %s "$@"\n' \
+  "$p10_ext" "$(command -v git)" > "$p10_failgit/git"
+PATH="$p10_failgit:$PATH" p10_deny "a worktree outside the state root git cannot read names its own error" outside-checkout-uninspectable \
+  "git cannot read the repository at $p10_ext. git reports:" "$p10_wt" "cd $p10_ext && gh api x"
+git -C "$p10_main" worktree remove --force "$p10_ext"
+rm -rf "$p10_failgit" "$p10_wt/sub"
+# A directory made where a removed worktree was is outside, not an unreadable worktree.
+p10_gone="$p10_scratch/gone-wt"
+git -C "$p10_main" worktree add -q --detach "$p10_gone" 2>/dev/null
+rm -rf "$p10_gone" && mkdir "$p10_gone"
+p10_deny "a directory where a removed worktree was is outside" outside-checkout \
+  "runs 'gh' in $p10_gone, which is outside" "$p10_wt" "cd $p10_gone && gh api x"
+git -C "$p10_main" worktree prune
+rm -rf "$p10_gone"
+P10_ROOT="$p10_broken" p10_deny "a state root git cannot read names the git fix" outside-checkout-uninspectable \
+  "Fix why git cannot read the repository" "$p10_wt" "cd $p10_scratch && gh api x"
+P10_ROOT="$p10_broken" p10_deny "a state root git cannot read" outside-checkout-uninspectable "git cannot read the repository at $p10_broken. git reports:"$'\n'"fatal" \
+  "$p10_wt" "cd $p10_scratch && gh api x"
+rm -rf "$p10_main" "$p10_scratch" "$p10_plain" "$p10_broken"
+# The skills' own bash blocks run during a session, from the checkout. Placeholders
+# stand for paths in the checkout, so none of them may be denied.
+p10_repo=$(cd "$SCRIPT_DIR/../../../.." && pwd -P)
+rc=0
+p10_corpus=$(python3 - "$SCRIPT_DIR/../scripts/lib" "$p10_repo" <<'EOF'
+import importlib, re, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+cwd = importlib.import_module("checkout-cwd")
+repo = Path(sys.argv[2])
+checkout = cwd.common_dir(repo)
+fence = re.compile(r"^(\s*)```(?:bash|sh)\s*$")
+blocks = 0
+for md in sorted([*repo.glob("plugins/rite/skills/**/*.md"), *repo.glob("plugins/rite/references/**/*.md")]):
+    lines = md.read_text().splitlines()
+    index = 0
+    while index < len(lines):
+        opened = fence.match(lines[index])
+        index += 1
+        if not opened:
+            continue
+        start, body = index, []
+        while index < len(lines) and not re.match(r"^\s*```\s*$", lines[index]):
+            body.append(lines[index][len(opened.group(1)):])
+            index += 1
+        blocks += 1
+        command = re.sub(r"\{[a-z_0-9]+\}", str(repo), "\n".join(body))
+        for kind, directories, word in cwd.each_call(command, repo):
+            if directories is None or any(cwd.common_dir(d) != checkout for d in directories):
+                print(f"{md.relative_to(repo)}:{start}: {word} in {directories}")
+print(f"blocks={blocks}")
+EOF
+) || rc=$?
+if [ "$rc" = "0" ] && [[ "$p10_corpus" =~ ^blocks=[1-9][0-9]*$ ]]; then
+  pass "no skill or reference bash block is denied ($p10_corpus)"
+else
+  fail "skill or reference bash blocks denied (rc=$rc): $p10_corpus"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="
