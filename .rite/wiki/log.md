@@ -2,6 +2,11 @@
 
 ## 2026-09-29
 
+* **Create**: [同じ対象の識別子を積み上げる台帳は、キーごとに最新だけ残す対応表にする](pages/patterns/identifier-ledger-latest-per-key-normalized-json.md) — raw/fixes/20260929T040729Z-pr-3393.md から新規作成
+* **Update**: [過剰マッチ防止の精緻化修正は、実装が許容する全形状を再確認しないと過小マッチという別の欠陥を生む (振り子現象)](pages/anti-patterns/precision-tightening-pendulum-regression.md) — raw/fixes/20260929T034937Z-pr-3423.md と raw/reviews/20260929T040716Z-pr-3423.md で補強
+* **Update**: [accept fixture と reject fixture は設計目的が逆 — 安全側の形状を両方に適用すると順序契約が pin できなくなる](pages/heuristics/accept-vs-reject-fixture-design-inversion.md) — raw/reviews/20260929T040716Z-pr-3423.md で補強
+* **Update**: [汎用契約の表に経路固有の詳細を書かず下位節へ委譲する。ただし委譲は委譲先の網羅性を load-bearing にする](pages/heuristics/generic-contract-table-delegates-path-specific-detail.md) — raw/reviews/20260929T040545Z-pr-3426.md で補強
+* **Update**: [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) — raw/reviews/20260929T040545Z-pr-3426.md で補強
 * **Update**: [失敗の印との一致でその回だけ抑止する設計は後続の書き込みで崩れる — 抑止した時点で印を消して回収を完了させる](pages/anti-patterns/one-shot-suppression-by-failure-record-match-breaks-on-later-writes.md) — raw/fixes/20260928T144840Z-pr-3397.md と raw/reviews/20260928T150912Z-pr-3397.md で補強
 * **Update**: [保留（hold）を新設したら、寿命を state を消す全経路で揃え、解除の手段を保留の理由ごとに用意する](pages/heuristics/new-hold-state-lifecycle-across-all-purge-paths.md) — raw/fixes/20260928T144931Z-pr-3393.md と raw/reviews/20260928T151448Z-pr-3393.md で補強
 * **Update**: [テンプレート準拠の fixture では、生成器が実データで作る構造的逸脱を検出できない](pages/heuristics/template-fixture-misses-generator-real-data-deviation.md) — raw/fixes/20260928T150727Z-pr-3408.md と raw/reviews/20260928T153052Z-pr-3408.md で補強

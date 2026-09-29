@@ -11,9 +11,13 @@ sources:
     resource: "raw/fixes/20260727T002133Z-pr-2035.md"
   - type: "fixes"
     resource: "raw/fixes/20260727T004206Z-pr-2035.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T040716Z-pr-3423.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-27T10:57:51+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T04:14:57Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T04:14:57Z" }
 ---
 
 # accept fixture と reject fixture は設計目的が逆 — 安全側の形状を両方に適用すると順序契約が pin できなくなる
@@ -52,6 +56,10 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-27T10:57:51+09:00" }
 3. その fixture で「どちらの reason / marker が出たか」を positive に assert する
 4. 区間制約なら上下 2 つの fixture を用意する
 
+### 追記: 許可ケースは過剰拒否の回帰を防ぎ、拒否ケースは判定そのものを固定する
+
+ガードの判定を精緻化するとき、正当な形が拒否されないことを確かめる許可ケースを足すだけでは、判定の条件を外す変異（常に語に残す、常に区切りにする等）の一方しか検出できない。許可ケースは過剰拒否の回帰を防ぐが、判定の条件そのものを固定するのは、条件を外すと通ってしまう形を並べた拒否ケースである。レビューでは、追加したケースが FAIL する状態に修正を戻して確かめると（revert test）、どちらの役割のケースが足りないかが分かる。
+
 ## 関連ページ
 
 - [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](./fixture-mutation-isolates-invariants.md)
@@ -61,3 +69,4 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-27T10:57:51+09:00" }
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20260727T001018Z-pr-2035.md)
+- [許可ケースと拒否ケースの役割の違いを指摘したレビュー結果](../../raw/reviews/20260929T040716Z-pr-3423.md)

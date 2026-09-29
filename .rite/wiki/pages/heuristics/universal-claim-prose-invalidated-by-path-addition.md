@@ -67,9 +67,11 @@ sources:
     resource: "raw/reviews/20260929T003742Z-pr-3397.md"
   - type: "reviews"
     resource: "raw/reviews/20260929T005026Z-pr-3397.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T040545Z-pr-3426.md"
 tags: ["comment-rot", "cause-neutral", "exclusivity-claim", "doc-sync", "not-grep-pin", "quantifier-strengthening", "birth-defect"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T01:07:27Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T04:14:57Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T13:47:53Z" }
   - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
@@ -87,6 +89,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T19:38:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:52:19Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T16:15:27Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T04:14:57Z" }
 ---
 
 # 全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin
@@ -206,6 +209,10 @@ consumer ごとに読取り・書込み・同期という責務を確認して�
 
 契約の主張を絞る修正で主要な箇所（SPEC や関数冒頭のコメント）だけを直すと、別の言語で書かれたコード中コメントやテストのコメントに残った同じ主張が、次のレビューで指摘として戻る。修正の前に同じ主張の言い回しで grep して全箇所を一覧にし、まとめて直してから、その一覧を reviewer に示す。コメントだけの修正 cycle では、挙動が変わらないことと、同じ主張の残存が 0 件であることを grep と実行で確かめれば、指摘 0 件で収束しやすい。
 
+### 旧文言の不在を確かめる grep は表記の揺れに掛からない
+
+旧文言の除去を確かめる grep は、「0 件」と「0」のような表記の揺れを取りこぼす。同種の記述を探すときは表記を変えて複数回 grep する。テストでは、旧文言が無いことを確かめる否定 pin は補助にとどめ、新しい規範文が在ることを確かめる存在 pin を主にする。
+
 ## 関連ページ
 
 - [実装の分岐を散文へ落とす前に、フラグの状態数と観測ラベルの値域を機械的に数える](./count-implementation-states-before-writing-prose.md)
@@ -241,3 +248,4 @@ consumer ごとに読取り・書込み・同期という責務を確認して�
 - [主張を絞った箇所の残りを直した fix 結果](../../raw/fixes/20260929T004539Z-pr-3397.md)
 - [別言語のコメントに主張が残ったレビュー結果](../../raw/reviews/20260929T003742Z-pr-3397.md)
 - [コメントだけの修正で指摘 0 件に収束したレビュー結果](../../raw/reviews/20260929T005026Z-pr-3397.md)
+- [表記の揺れで旧文言の探索が漏れうることを指摘したレビュー結果](../../raw/reviews/20260929T040545Z-pr-3426.md)

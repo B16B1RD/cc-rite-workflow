@@ -13,12 +13,15 @@ sources:
     resource: "raw/reviews/20260830T043014Z-pr-2475.md"
   - type: "reviews"
     resource: "raw/reviews/20260830T044223Z-pr-2475.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T040545Z-pr-3426.md"
 tags: ["abstraction-level", "delegation", "canonical-contract", "sibling-parity", "defined-term", "spec-implementation-drift", "relative-reference", "causal-attribution", "intra-document-duplication"]
 confidence: medium
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-30T04:57:39Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T04:14:57Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-30T04:57:39Z"
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T04:14:57Z" }
 ---
 
 # 汎用契約の表に経路固有の詳細を書かず下位節へ委譲する。ただし委譲は委譲先の網羅性を load-bearing にする
@@ -77,6 +80,12 @@ verified:
 
 判定は「その概念の canonical な定義が同じ文書内に既にあるか」で行う。あるなら委譲、無いならその節が正典になるので書き切る。
 
+### 分岐表がある手順では、本文の規範文は表へ委ねる 1 文にする
+
+手順書の本文が「0 件なら何もしない」のような一般化を書くと、表の 1 行（件数 0 でも残りの状態によっては処理を続ける行）を数え落とし、実行者を誤らせる。実行するかどうかは表だけが決めるようにし、本文は表に委ねる 1 文にする。
+
+同じ規範が step 一覧と本文のように 2 箇所に書かれていると、片方だけの修正は矛盾を残す。直す前に同一規範の重複箇所を列挙し、すべて表への委譲に揃える。
+
 ## 関連ページ
 
 - [実装の分岐を散文へ落とす前に、フラグの状態数と観測ラベルの値域を機械的に数える](./count-implementation-states-before-writing-prose.md)
@@ -90,3 +99,4 @@ verified:
 - [レビュー結果](../../raw/reviews/20260804T113022Z-pr-2106.md)
 - [同一文書内の定義表と新規追記の断定が矛盾](../../raw/reviews/20260830T043014Z-pr-2475.md)
 - [所有の委譲による解消を確認](../../raw/reviews/20260830T044223Z-pr-2475.md)
+- [本文の規範文を分岐表への委譲に一本化したレビュー結果](../../raw/reviews/20260929T040545Z-pr-3426.md)
