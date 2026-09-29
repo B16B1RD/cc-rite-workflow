@@ -39,6 +39,7 @@ seed(){
     printf 'x\n' > "$root/.rite/state/review-run-since-${pr}.txt"
     printf 'x\n' > "$root/.rite/state/nb-sweep-done-${pr}.txt"
     printf 'x\n' > "$root/.rite/state/pr-recommendations-done-${pr}.txt"
+    printf '{}\n' > "$root/.rite/state/pr-recommendations-${pr}.json"
     for kind in sweep triage followup; do
       printf '{}\n' > "$root/.rite/state/adoption-${pr}-${kind}.json"
       [ "$pr" = 42 ] || printf '{}\n' > "$root/.rite/state/adoption-hold-${pr}-${kind}.json"
@@ -67,6 +68,8 @@ assert_absent "対象 PR の review_run_since を削除する" "$r/.rite/state/r
 assert_absent "対象 PR の nb_sweep_done を削除する" "$r/.rite/state/nb-sweep-done-42.txt"
 assert_absent "対象 PR の pr_recommendations_done を削除する" "$r/.rite/state/pr-recommendations-done-42.txt"
 assert_present "別 PR (4) の pr_recommendations_done を巻き込まない" "$r/.rite/state/pr-recommendations-done-4.txt"
+assert_absent "対象 PR の pr_recommendations を削除する" "$r/.rite/state/pr-recommendations-42.json"
+assert_present "別 PR (4) の pr_recommendations を巻き込まない" "$r/.rite/state/pr-recommendations-4.json"
 # 採否ゲートの判定記録: sweep / triage の記録は消し、follow-up の記録は cleanup の再実行が同じ根因 key
 # を得るために残す (follow-up-judged と同じ寿命)
 for kind in sweep triage; do

@@ -42,7 +42,6 @@
 #   bash pr-review-step.sh number-ref-diff --base BASE_BRANCH
 #   bash pr-review-step.sh spawn-timings-check --file SPAWN_FILE
 #   bash pr-review-step.sh measured-gate --pr PR_NUMBER --input INPUT
-#   bash pr-review-step.sh recommendations-register --base BASE_BRANCH --input INPUT --items ITEMS
 #   bash pr-review-step.sh attribution-gate
 #   bash pr-review-step.sh attribution-files --base BASE_BRANCH
 #   bash pr-review-step.sh attribution-write --pr PR_NUMBER --total TOTAL --fix-introduced FIX_INTRODUCED --critical CRITICAL --high HIGH --medium MEDIUM --low-medium LOW_MEDIUM --low LOW
@@ -744,14 +743,6 @@ fi
 exit "$_gate_rc"
 }
 
-# --- recommendations-register ----------------------------------------------------
-step_recommendations_register() {
-bash "$plugin_root"/scripts/review-pr-recommendations.sh register \
-  --input "$input" \
-  --items "$items" \
-  --base-ref "$(git rev-parse --verify -q "origin/${base_branch}^{commit}" >/dev/null && echo "origin/${base_branch}" || echo "${base_branch}")"
-}
-
 # --- attribution-gate ------------------------------------------------------------
 step_attribution_gate() {
 # `if ! var=$(cmd); then rc=$?` は bash 仕様上 `$?` が常に 0 になるため、capture と exit code を
@@ -1205,7 +1196,6 @@ reviewers=""
 gap=""
 spawn_file=""
 input=""
-items=""
 total=""
 fix_introduced=""
 critical=""
@@ -1260,7 +1250,6 @@ while [ "$#" -gt 0 ]; do
     --gap) gap=$2 ;;
     --file) spawn_file=$2 ;;
     --input) input=$2 ;;
-    --items) items=$2 ;;
     --total) total=$2 ;;
     --fix-introduced) fix_introduced=$2 ;;
     --critical) critical=$2 ;;
@@ -1326,7 +1315,6 @@ require() {
       gap) opt=--gap ;;
       spawn_file) opt=--file ;;
       input) opt=--input ;;
-      items) opt=--items ;;
       total) opt=--total ;;
       fix_introduced) opt=--fix-introduced ;;
       critical) opt=--critical ;;
@@ -1379,7 +1367,6 @@ case "$subcommand" in
   number-ref-diff) require base_branch; step_number_ref_diff ;;
   spawn-timings-check) require spawn_file; step_spawn_timings_check ;;
   measured-gate) require input pr_number; step_measured_gate ;;
-  recommendations-register) require input items base_branch; step_recommendations_register ;;
   attribution-gate) step_attribution_gate ;;
   attribution-files) require base_branch; step_attribution_files ;;
   attribution-write) require pr_number total fix_introduced critical high medium low_medium low; step_attribution_write ;;

@@ -344,7 +344,7 @@ Decision Log append を候補ごとに単一 Bash invocation にする理由。
 
 Decision Log は「対応しない理由」の記録であって追跡ではない。起票すべき欠陥の行だけが残ると、誰も Issue を起こさないまま放置される。cleanup の follow-up 起票はレビュー結果 JSON の `non_blocking_findings[]` を読むため、推奨事項由来の欠陥はトークンが無いとそこに届かない。
 
-記録先を JSON ではなく Decision Log 行そのものにするのは、7.4 が JSON 保存（6.1.a）の後に走り、保存済み JSON は停滞判定の受領記録と照合されるため書き換えられないから。保存前の 5.3.0.R で推奨を JSON へ写すと、ゲートが `record` と決めた候補まで cleanup が起票する。Issue 本文は別環境の cleanup からも読めるが、JSON はそうとは限らない。
+記録先を JSON ではなく Decision Log 行そのものにするのは、7.4 が JSON 保存（6.1.a）の後に走り、保存済み JSON は停滞判定の受領記録と照合されるため書き換えられないから。同じ理由で、verdict が `fix` の候補（PR 内推奨）も JSON ではなく state の登録（`review-pr-recommendations.sh record`）に書く。Issue 本文は別環境の cleanup からも読めるが、JSON はそうとは限らない。
 
 トークンは HTML コメントにして表示を汚さず、PR 番号を含めて別 PR の cleanup が拾わないようにする。付けるのは verdict が `file` の記録だけで、トークン付きの行は cleanup 6.0 の follow-up が採否ゲート（`--kind followup`）で判定し直し、出口が `file` のものだけを起票する。`record` の記録（`LINK` / `RESOLVED` / `REJECT`）には付けない。`LINK` は追跡先の既存 Issue があり、付けると二重起票になる。`RESOLVED` / `REJECT` は起票する欠陥ではない。起票の自動可否は cleanup 6.0.C の確認ゲート（batch `--merge` は確認しない、単独実行は確認する）にそのまま従う。
 

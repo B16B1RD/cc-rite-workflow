@@ -389,7 +389,7 @@ MUST NOT: 同一 review JSON で 5.S を 2 回走らせる。sweep でコード�
 
 ### 5.S 後の PR 内推奨の修正
 
-5.S 成功後・完了前確認の前に、最新の保存済み review JSON に未着手の `pr_recommendations[]`（pr-review ステップ 5.3.0.R が mergeable の cycle で登録した、PR が追加した行への推奨事項）があるかを確かめる。先に 5.S を済ませるのは、修正後の差分再レビューの JSON にこの JSON の non-blocking が引き継がれないため。marker 既出でも bash を省略しない。
+5.S 成功後・完了前確認の前に、最新の保存済み review の commit に未着手の PR 内推奨（pr-review ステップ 7.2 が採否の出口 ADOPT・`origin=pr` の根因を `R-NN` として登録したもの）があるかを確かめる。先に 5.S を済ませるのは、修正後の差分再レビューの JSON にこの JSON の non-blocking が引き継がれないため。marker 既出でも bash を省略しない。
 
 ```bash
 bash {plugin_root}/scripts/review-pr-recommendations.sh check --pr {pr_number}
@@ -427,7 +427,7 @@ args: "{pr_number}"
 | `[fix:cancelled-by-user]` | ループ終了（ステップ 4 と同じ） |
 | `[fix:error]` / sentinel 不在 | ステップ 4 と同じく `iterate-step.sh stagnation-route` のあと 1 回だけ再試行。再失敗なら停止 |
 
-登録は 1 つの review run につき 1 回なので、修正後の再レビューが mergeable でも本ステップは `none` になる。そこで出た推奨事項は pr-review ステップ 7 の Decision Log へ流れる。
+登録に回数の上限は無い。修正後の再レビューで ADOPT・`origin=pr` になった根因も同じく登録され、本ステップが再び fix へ渡す。`safety.max_review_cycles` に達した cycle だけは登録せず（修正を再レビューできない）、採否保留で止まる。
 rationale: references/rationale.md#pr-recommendation-fix
 
 MUST NOT: mergeable の後に手で commit する（fix の検証記録が無い HEAD では次のレビューを開始できない）。

@@ -226,9 +226,9 @@ class Fixture:
                            reviewers=['code-quality-reviewer'], findings=findings, non_blocking_findings=notes,
                            guardrail_audit_log=[], acceptance_criteria=table or dict(skipped=skipped)))
         if recommendations is not None:
-            document = json.loads(content.read_text())
-            document['pr_recommendations'] = recommendations
-            dump(content, document)
+            (self.root / '.rite/state').mkdir(parents=True, exist_ok=True)
+            dump(self.root / '.rite/state' / ('pr-recommendations-%s.json' % context['pr_number']),
+                 dict(commit_sha=context['commit_sha'], recommendations=recommendations))
         self.run(['bash', str(plugin / 'scripts/review-measured-gate.sh'), '--input', str(content),
                   '--reject-preset-verification'])
         self.flow('review-finish', '--manifest', manifest, '--content-file', content)

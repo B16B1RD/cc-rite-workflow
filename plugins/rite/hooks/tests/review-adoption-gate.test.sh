@@ -179,6 +179,36 @@ held([rec(origin='pr', origin_cause=removed, tracker=7), rec(['F-02'], **REJECT)
 env['GH_STATES'] = '7=OPEN'
 (state / '.rite/state/adoption-hold-5-followup.json').unlink()
 
+# A triage PR-origin adoption is fixed in the same PR (verdict fix, nothing held) until the cycle
+# reaches safety.max_review_cycles (default 15), where its fix could not be re-reviewed and it is held.
+# A sweep PR-origin adoption stays held. An unknown-origin adoption is held in triage as well.
+plain_review = review.read_text()
+for cycle, expected in ((3, 'fix'), (15, 'hold')):
+    review.write_text(json.dumps({'commit_sha': head, 'review_context': {'cycle_count': cycle},
+                                  'findings': [], 'non_blocking_findings': []}))
+    records = [rec(origin='pr', origin_cause=removed), rec(['F-02'], **REJECT)]
+    if expected == 'fix':
+        verdicts, result = decided(records, kind='triage')
+        check((verdicts['F-01']['verdict'], verdicts['F-01']['action']) == ('fix', 'fix_in_pr'), verdicts)
+        check(verdicts['F-02']['verdict'] == 'record', verdicts)
+        (state / '.rite/state/adoption-hold-5-triage.json').unlink()
+    else:
+        saved, _ = held(records, 'undecided', kind='triage')
+        check(saved['held_ids'] == ['F-01'], saved)
+        check('コードを直して push し' in saved['resume'], saved['resume'])
+        (state / '.rite/state/adoption-hold-5-triage.json').unlink()
+    saved, _ = held(records, 'undecided', kind='sweep')
+    check(saved['held_ids'] == ['F-01'], (cycle, saved))
+    hold_file.unlink()
+    saved, _ = held([rec(origin='unknown'), rec(['F-02'], **REJECT)], 'undecided', kind='triage')
+    check(saved['held_ids'] == ['F-01'], (cycle, saved))
+    (state / '.rite/state/adoption-hold-5-triage.json').unlink()
+# Without a readable cycle the registration capacity is unknown: every candidate is held.
+review.write_text(plain_review)
+saved, _ = held([rec(origin='pr', origin_cause=removed), rec(['F-02'], **REJECT)], 'adoption_error', kind='triage')
+check('cycle_count' in saved['detail'], saved['detail'])
+(state / '.rite/state/adoption-hold-5-triage.json').unlink()
+
 # PR-origin and unknown-origin adoptions keep the PR open: held, never filed or recorded.
 for fields in ({'origin': 'pr', 'origin_cause': removed}, {'origin': 'unknown'}):
     saved, _ = held([rec(**fields), rec(['F-02'], **REJECT)], 'undecided')

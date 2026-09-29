@@ -9,6 +9,10 @@
 #           Issue's acceptance criterion); without it the decision is held.
 #   record  RESOLVED / REJECT / LINK without pr_blocking, and every LINK of a followup (the
 #           merged PR cannot take the fix, the OPEN tracker does): record the disposition only.
+#   fix     kind=triage only: ADOPT with origin=pr (fix_in_pr) while
+#           `review-pr-recommendations.sh capacity` is open. Nothing is written outside the PR;
+#           the caller registers it as an in-PR recommendation for the same PR's fix. At
+#           safety.max_review_cycles the fix could not be re-reviewed, so it is held.
 #   hold    anything else: pr_blocking decisions (RECONCILE, ADOPT pr/unknown, DIAGNOSE
 #           pr/unknown, LINK pr/unknown outside followup) and DIAGNOSE without investigation.
 # A missing record file, an unreadable context, or a helper ERROR holds every candidate.
@@ -251,14 +255,24 @@ case "$rc" in
   *) hold adoption_error "採否判定 helper が rc=$rc で終了しました" ;;
 esac
 
+# A triage fix_in_pr (ADOPT, origin=pr) is fixed in the same PR as an in-PR recommendation while
+# the fix can still be re-reviewed; at safety.max_review_cycles it is held.
+in_pr_fix=no
+if [ "$kind" = triage ] && jq -e 'any(.decisions[]; .action == "fix_in_pr")' <<< "$decisions" >/dev/null; then
+  capacity=$(bash "$plugin_root/scripts/review-pr-recommendations.sh" capacity --input "$review_result" 2>"$work/err") \
+    || hold adoption_error "PR 内推奨の登録可否を読めません: $(callee_diag)"
+  [ "$capacity" = "[CONTEXT] PR_RECOMMENDATIONS_CAPACITY=open" ] && in_pr_fix=yes
+fi
+
 # Decisions come in record order, so decision i belongs to record i.
 # A merged PR cannot be fixed in the same PR, so a followup LINK (an OPEN tracker takes the root
 # cause) is recorded even when it is PR-origin.
-if ! verdicts=$(jq -c --slurpfile a "$adoption" --argjson d "$decisions" --arg kind "$kind" '
+if ! verdicts=$(jq -c --slurpfile a "$adoption" --argjson d "$decisions" --arg kind "$kind" --arg fix "$in_pr_fix" '
     ($a[0].adoption.records) as $records
     | [$d.decisions | to_entries[] | .value + {record: $records[.key]}
        | . + {verdict: (if .file then (if ((.record.acceptance // "") | type == "string" and test("\\S")) then "file" else "hold" end)
                         elif .exit == "LINK" and $kind == "followup" then "record"
+                        elif .action == "fix_in_pr" and $fix == "yes" then "fix"
                         elif .pr_blocking or .action == "hold" then "hold" else "record" end)}]
   ' <<< '{}'); then
   hold adoption_error "判定結果を読めません"

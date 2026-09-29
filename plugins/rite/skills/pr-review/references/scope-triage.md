@@ -81,7 +81,14 @@ issue_args=()
 rc=0
 bash {plugin_root}/hooks/scripts/review-adoption-gate.sh --pr {pr_number} --kind triage \
   --state-root "$state_root" --candidates "$work/candidates.json" \
-  --review-result "$review_json" --base "origin/{base_branch}" "${issue_args[@]}" || rc=$?
+  --review-result "$review_json" --base "origin/{base_branch}" "${issue_args[@]}" > "$work/gate.json" || rc=$?
+cat "$work/gate.json"
+# verdict が fix の根因（ADOPT・origin=pr）を PR 内推奨として登録する（fix が 0 件でもこの commit の登録を空で書き直す）
+if [ "$rc" = 0 ]; then
+  bash {plugin_root}/scripts/review-pr-recommendations.sh record --pr {pr_number} --review-result "$review_json" \
+    --verdicts "$work/gate.json" --candidates "$work/candidates.json" --state-root "$state_root" \
+    || { echo "ERROR: PR 内推奨を登録できません（原因は直前の出力）" >&2; rc=2; }
+fi
 # decided でも 7.4 の外部への書き込みが済むまで、この run の候補を hold に残す（7.4.5 だけが消す）
 if [ "$rc" = 0 ]; then
   jq --arg head "$head_sha" --arg rr "$review_json" --argjson pr {pr_number} \
@@ -124,7 +131,7 @@ sentinel は **ゲートが decided を返した後** に emit する。marker �
 # - {N} → ステップ 7.1 の candidate_count (Source A + Source B の dedup 後に、合流させた hold の候補を含む)
 # - {iteration_id} → ステップ 7.1 で生成した一意 ID (例: pr_number-$(date +%s) 形式)
 # - {mode} → auto
-# - {choice} → file:{A}/record:{B}（verdicts[] の verdict 別の件数）。空禁止
+# - {choice} → file:{A}/record:{B}/fix:{C}（verdicts[] の verdict 別の件数）。空禁止
 # - {reason} → adoption_decided
 # Bash 変数 (${candidate_count} 等) は Bash tool 呼び出し間で継承されないため使用不可
 echo "[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={iteration_id}; mode={mode}; choice={choice}; reason={reason}" >&2
@@ -138,6 +145,7 @@ echo "[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={iterati
 
 | verdict / exit | Action |
 |---|---|
+| `fix` | 外部へ書かない。7.2 の bash が PR 内推奨（`R-NN`）として登録済みで、同じ PR の `/rite:fix` が直す（`PR_RECOMMENDATIONS=registered`）。7.4.3 も 7.4.5 の台帳行も書かない |
 | `file`、`{source_issue_number}` あり | 7.4.3 を先送りトークン付きで実行する。起票は cleanup ステップ 6.0 の follow-up が行う（ここでは Issue を作らない） |
 | `file`、`{source_issue_number}` が空 | トークンの書き先が無いため 7.4.1-7.4.2 で Issue を 1 件作る |
 | `record`（`LINK`） | 7.4.4（追跡先 `tracker` への申し送り）を先に必須実行し、記録のみで完了扱いにしない。その後 7.4.3（トークンなし）。`HANDOFF_COMMENT_REJECTED=1` のときは 7.4.3 / 7.5 へ進まない |
@@ -566,7 +574,7 @@ rm -f -- "$hold_file"
 
 ### 7.5-7.6 Append to PR & Report
 
-7.4.1-7.4.2 で作った Issue の一覧を PR コメントへ（`mktemp` + `--body-file`）。verdict 別の件数（`file` は cleanup の follow-up で起票される件数）、元 Issue が無く記録できなかった `record` の出口と reason、`DECISION_LOG_APPENDED=1` の件数と `HANDOFF_COMMENT_POSTED=1` を completion report に転記する（7.4 の書き込みに失敗があれば 7.4.5 が止まり、ここへは来ない）。
+7.4.1-7.4.2 で作った Issue の一覧を PR コメントへ（`mktemp` + `--body-file`）。verdict 別の件数（`file` は cleanup の follow-up で起票される件数、`fix` は同じ PR で直す PR 内推奨の件数）、元 Issue が無く記録できなかった `record` の出口と reason、`DECISION_LOG_APPENDED=1` の件数と `HANDOFF_COMMENT_POSTED=1` を completion report に転記する（7.4 の書き込みに失敗があれば 7.4.5 が止まり、ここへは来ない）。
 
 ### 7.7 Post-condition Gate — Recommendation Disposition Enforcement
 

@@ -7,7 +7,7 @@
 # T-04 empty collect is no-op status (AC-4)
 # T-05 nit-noted in findings[] is a target; new class-B is not a second sweep (AC-5)
 # T-06 ledger write / merge fail-loud (AC-6)
-# T-07 class A findings[] stay out of sweep targets (AC-7); the rails also pin the in-PR recommendation wiring (iterate check / mark and their order before the fix invoke, pr-review 5.3.0.R register and its stop, 7.1 exclusion, fix 2.1 R-NN routing)
+# T-07 class A findings[] stay out of sweep targets (AC-7); the rails also pin the in-PR recommendation wiring (iterate check / mark and their order before the fix invoke, pr-review 7.2 registering the adoption verdict fix and its stop, fix 2.1 R-NN routing)
 # T-08 body_count extraction expression matches between fix/references/nb-sweep.md and the record helper (AC-1..AC-3)
 # T-09 a ledger-only body (0 findings, no existing comment) creates the record comment, including CRLF and degraded lookup
 # T-10 nb-sweep.md record step succeeds only on created / updated and never reaches the done write otherwise
@@ -467,21 +467,15 @@ rec_order=$(awk -v s="$REC_START" -v e="$REC_END" '
   { prev = $0 }' "$ITERATE" | tr '\n' '|')
 assert "T-07 iterate recommendation order check → mark → set → fix" "check|mark|set|fix|" "$rec_order"
 
-assert_grep_in_section "T-07 pr-review 5.3.0.R register" "$REVIEW" \
-  '^#### 5\.3\.0\.R PR 内推奨の登録$' '^### 5\.3\.8 ' \
-  '^bash \{plugin_root\}/scripts/pr-review-step\.sh recommendations-register '
-assert_grep "T-07 pr-review 5.3.0.R register helper" "$REVIEW_STEP" '"\$plugin_root"/scripts/review-pr-recommendations\.sh register'
-assert_grep_in_section "T-07 pr-review 5.3.0.R failure stops" "$REVIEW" \
-  '^#### 5\.3\.0\.R PR 内推奨の登録$' '^### 5\.3\.8 ' \
-  '^\| rc≠0 \| `\[review:error\]` を stdout に出力して停止する'
-rec_heads=$(grep -nE '^#### 5\.3\.0\.A |^#### 5\.3\.0\.R |^#### 6\.1\.a ' "$REVIEW" | cut -d' ' -f2 | tr '\n' '|')
-assert "T-07 pr-review 5.3.0.A → 5.3.0.R → 6.1.a order" "5.3.0.A|5.3.0.R|6.1.a|" "$rec_heads"
-assert_grep_in_section "T-07 pr-review 7.1 excludes registered recommendations" "$REVIEW" \
-  '^### 7\.1 Extract Separate Issue Candidates$' '^### 7\.2-7\.3 ' \
-  '`\{registered_recommendation_positions\}`.*も除外する'
+TRIAGE_MD="$PLUGIN_ROOT/skills/pr-review/references/scope-triage.md"
+assert_grep "T-07 pr-review 7.2 registers the adoption verdict fix after the gate decided" "$TRIAGE_MD" \
+  '^  bash \{plugin_root\}/scripts/review-pr-recommendations\.sh record --pr \{pr_number\} --review-result "\$review_json" \\$'
+assert_grep "T-07 pr-review 7.2 stops when the registration fails" "$TRIAGE_MD" \
+  '\|\| \{ echo "ERROR: PR 内推奨を登録できません（原因は直前の出力）" >&2; rc=2; \}'
+assert "T-07 pr-review no longer registers by position" "0" "$(grep -c '5\.3\.0\.R\|recommendations-register\|registered_recommendation_positions' "$REVIEW" "$REVIEW_STEP" | awk -F: '{ n += $2 } END { print n }')"
 assert_grep_in_section "T-07 fix 2.1 routes R-NN to the normal fix" "$FIX_SKILL" \
   '^### 2\.1 Confirm Fix Approach$' '^### 2\.1\.A ' \
-  '`pr_recommendations\[\]` の `R-NN` だけが通常の修正'
+  '`fatal_map\[id\] == true` と PR 内推奨の `R-NN` だけが通常の修正'
 
 # Execute the actual skill error guards, with local stubs for mutations.
 extract_fix_block() {

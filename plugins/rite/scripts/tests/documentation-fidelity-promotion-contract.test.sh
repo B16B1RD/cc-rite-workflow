@@ -161,7 +161,7 @@ assert_grep 'review triage disposition does not depend on the mode' \
   "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" '`PR_REVIEW_IN_E2E` で処分を変えない'
 assert_grep 'review phase7 sentinel follows a decided gate' \
   "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" 'sentinel は **ゲートが decided を返した後** に emit する'
-for field in '# - {mode} → auto' '# - {choice} → file:{A}/record:{B}（verdicts[] の verdict 別の件数）。空禁止' '# - {reason} → adoption_decided'; do
+for field in '# - {mode} → auto' '# - {choice} → file:{A}/record:{B}/fix:{C}（verdicts[] の verdict 別の件数）。空禁止' '# - {reason} → adoption_decided'; do
   assert_grep "review phase7 sentinel field: $field" \
     "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" "$field"
 done

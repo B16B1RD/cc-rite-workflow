@@ -156,6 +156,7 @@ rite_rm nb_sweep_done "$state_root/.rite/state/nb-sweep-done-${pr_number}.txt"
 rite_rm nb_sweep_origin "$state_root/.rite/state/nb-sweep-origin-${pr_number}.txt"
 rite_rm nb_sweep_entries "$state_root/.rite/state/nb-sweep-entries-${pr_number}.md"
 rite_rm pr_recommendations_done "$state_root/.rite/state/pr-recommendations-done-${pr_number}.txt"
+rite_rm pr_recommendations "$state_root/.rite/state/pr-recommendations-${pr_number}.json"
 rite_rm adoption_records "$state_root/.rite/state/adoption-${pr_number}-sweep.json" \
   "$state_root/.rite/state/adoption-${pr_number}-triage.json"
 rite_rm adoption_hold "$state_root/.rite/state/adoption-hold-${pr_number}-sweep.json" \

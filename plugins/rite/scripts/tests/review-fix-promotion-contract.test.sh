@@ -221,7 +221,7 @@ fi
 assert_eq 'the record verdict gets an empty token' '| それ以外（verdict が `record`） | 空文字列 |' \
   "$(printf '%s\n' "$token_table" | grep -F '`record`' || true)"
 route_table=$(triage_table '| verdict / exit | Action |')
-assert_eq 'routing table has four rows' 6 "$(printf '%s\n' "$route_table" | grep -c '^|' || true)"
+assert_eq 'routing table has five rows' 7 "$(printf '%s\n' "$route_table" | grep -c '^|' || true)"
 assert_eq 'routing: the token is written only for a file verdict with a source Issue' \
   '| `file`、`{source_issue_number}` あり | 7.4.3 を先送りトークン付きで実行する。起票は cleanup ステップ 6.0 の follow-up が行う（ここでは Issue を作らない） |' \
   "$(printf '%s\n' "$route_table" | grep -F 'トークン付き' || true)"
@@ -283,7 +283,7 @@ assert_grep 'any other gate result stops with review error' "$review" '| それ�
 # Execute the real gate-call block with a stub gate: it must write the records under the reviewed
 # commit, pass the triage arguments and surface the gate's exit code.
 triage_dir="$state_dir/triage"
-mkdir -p "$triage_dir/plugin/hooks/scripts" "$triage_dir/root/.rite/review-results"
+mkdir -p "$triage_dir/plugin/hooks/scripts" "$triage_dir/plugin/scripts" "$triage_dir/root/.rite/review-results"
 awk '/^### 7\.2-7\.3 / { s=1 } s && /^```bash$/ { a=1; blk=""; next }
   a && /^```$/ { a=0; if (index(blk, "--kind triage")) { printf "%s", blk; exit } next }
   a { blk = blk $0 "\n" }' "$review" > "$triage_dir/block.sh"
@@ -292,7 +292,15 @@ printf '#!/bin/bash\nprintf "%%s\\n" "$TRIAGE_ROOT"\n' > "$triage_dir/plugin/hoo
 cat > "$triage_dir/plugin/hooks/scripts/review-adoption-gate.sh" <<'STUB'
 #!/bin/bash
 printf '%s\n' "$@" > "$TRIAGE_ARGS"
+printf '{"held": false, "verdicts": []}\n'
 exit "$TRIAGE_GATE_RC"
+STUB
+# The decided gate output is handed to the in-PR recommendation registration with the run's candidates.
+cat > "$triage_dir/plugin/scripts/review-pr-recommendations.sh" <<'STUB'
+#!/bin/bash
+printf '%s\n' "$@" > "$TRIAGE_ARGS.record"
+while [ $# -gt 0 ]; do case "$1" in --verdicts) cp "$2" "$TRIAGE_ARGS.verdicts" ;; esac; shift; done
+exit "${TRIAGE_RECORD_RC:-0}"
 STUB
 printf '{"commit_sha": "c0ffee"}\n' > "$triage_dir/root/.rite/review-results/5-20260101T000000.json"
 triage_records='[{"ids": ["C-1"]}]'
@@ -306,7 +314,7 @@ run_triage_block() {
   code=${code//\{source_issue_number\}/$issue}
   code=${code//\{records\}/$triage_records}
   code=${code//\{candidates\}/$triage_candidates}
-  rm -f "$triage_dir/args"
+  rm -f "$triage_dir/args" "$triage_dir/args.record" "$triage_dir/args.verdicts"
   TRIAGE_ROOT="$triage_dir/root" TRIAGE_ARGS="$triage_dir/args" TRIAGE_GATE_RC="$TRIAGE_GATE_RC" \
     bash -c "$code" 2>&1 || true
 }
@@ -323,6 +331,17 @@ esac
 rm -f "$triage_dir/root/.rite/state/adoption-hold-5-triage.json"
 out=$(TRIAGE_GATE_RC=0 run_triage_block '')
 assert_eq 'gate block surfaces the decided exit code' '[CONTEXT] ADOPTION_GATE_RC=0' "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ADOPTION_GATE_RC=' || true)"
+assert_eq 'a decided run registers the gate output as in-PR recommendations' \
+  'record --pr 5 --review-result '"$triage_dir"'/root/.rite/review-results/5-20260101T000000.json|{"held": false, "verdicts": []}' \
+  "$(head -5 "$triage_dir/args.record" 2>/dev/null | paste -sd ' ' | sed 's/ --verdicts.*//')|$(cat "$triage_dir/args.verdicts" 2>/dev/null)"
+rm -f "$triage_dir/root/.rite/state/adoption-hold-5-triage.json"
+out=$(TRIAGE_GATE_RC=0 TRIAGE_RECORD_RC=1 run_triage_block '')
+assert_eq 'a registration failure stops the decided run' '[CONTEXT] ADOPTION_GATE_RC=2' "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ADOPTION_GATE_RC=' || true)"
+assert_eq 'a registration failure keeps no hold for 7.4' 'no' "$([ -e "$triage_dir/root/.rite/state/adoption-hold-5-triage.json" ] && echo yes || echo no)"
+out=$(TRIAGE_GATE_RC=3 run_triage_block '')
+assert_eq 'a held run registers nothing' 'no' "$([ -e "$triage_dir/args.record" ] && echo yes || echo no)"
+rm -f "$triage_dir/root/.rite/state/adoption-hold-5-triage.json"
+out=$(TRIAGE_GATE_RC=0 run_triage_block '')
 assert_eq 'the gate block names the review JSON 7.4.5 records as the source' '[CONTEXT] TRIAGE_REVIEW_JSON=5-20260101T000000.json' \
   "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] TRIAGE_REVIEW_JSON=' || true)"
 # A decided run keeps its candidates in the hold until 7.4.5 releases it, even with no earlier hold.

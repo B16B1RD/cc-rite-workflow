@@ -185,7 +185,17 @@ def validate_context(plan, state, session, directory):
     require(plan.get("review_context") == context and cycle.head() == context["commit_sha"], "stale or foreign review context / HEAD")
     receipt = cycle.matching_receipt(directory, current)
     require(receipt is not None, "saved review receipt missing")
-    return receipt
+    # The saved receipt is never rewritten, so the in-PR recommendations the review's triage
+    # registered on this commit (review-pr-recommendations.sh record) travel beside it.
+    registered = directory.parent / "state" / ("pr-recommendations-%s.json" % receipt[1]["pr_number"])
+    recommendations = []
+    if registered.exists():
+        data = read(registered)
+        require(isinstance(data, dict) and isinstance(data.get("recommendations"), list),
+                "in-PR recommendations are unreadable: " + str(registered))
+        if data.get("commit_sha") == receipt[1]["commit_sha"]:
+            recommendations = data["recommendations"]
+    return receipt[0], dict(receipt[1], pr_recommendations=recommendations)
 
 
 def validate(plan, issue, state, session, root, allow_replan=False):
@@ -285,9 +295,9 @@ def validate_plan(plan, issue, state, receipt):
     findings = receipt[1]["findings"]
     blocking = {f["id"] for f in findings if f.get("scope") in ("current-pr", "follow-up")}
     known = {f["id"] for f in findings + receipt[1].get("non_blocking_findings", [])}
-    # Recommendations registered for an in-PR fix after mergeable each need one
+    # In-PR recommendations (adopted PR-origin root causes) each need one
     # disposition, like a blocking finding, so none is silently dropped.
-    recommended = {r["id"] for r in receipt[1].get("pr_recommendations", [])}
+    recommended = {r["id"] for r in receipt[1]["pr_recommendations"]}
     known |= recommended
     blocking |= recommended
     external = plan.get("external_findings", [])

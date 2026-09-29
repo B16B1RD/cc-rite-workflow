@@ -543,7 +543,7 @@ helper の ID-keyed `fatal_map` / `severity_map` / `scope_map` と reload 済み
 | Classification | Criteria | Action |
 |---------------|----------|--------|
 | **Required fix** | `fatal_map[id] == true` | 修正対象 |
-| **PR 内推奨** | 永続 JSON の `pr_recommendations[]`（`R-NN`。pr-review 5.3.0.R が mergeable の cycle で登録） | 修正対象。map には載らないので ID で直接扱う |
+| **PR 内推奨** | `.rite/state/pr-recommendations-{pr_number}.json` の `recommendations[]`（`R-NN`。pr-review 7.2 が採否の出口 ADOPT・`origin=pr` の根因をレビュー済み commit に登録。`commit_sha` が違う登録は対象外） | 修正対象。map には載らないので ID で直接扱う |
 | **nit (認知のみ)** | `scope_map[id] == "nit-noted"` | PR reply / fix 対象外。`acknowledged_nit_count` に算入 |
 | **non-blocking（fix 対象外）** | 永続 JSON の `non_blocking_findings[]`（nit 除外） | 記録・表示のみ。修正選択肢に出さない |
 | **External review** | 未解決の人間・外部ツールのコメント | Action required |
@@ -753,7 +753,7 @@ reviewer の推奨対応（`recommendation` 列）は候補であって設計で
 
 1. 未解決の External review は通常通り対応する。rite finding の map で skip しない。
 2. rite finding の `scope_map[id] == "nit-noted"` は 2.1 / 2.4 を skip し、2.4.N で認知件数に算入する。
-3. `fatal_map[id] == true` と `pr_recommendations[]` の `R-NN` だけが通常の修正・accept/rejection 判断へ進む。
+3. `fatal_map[id] == true` と PR 内推奨の `R-NN` だけが通常の修正・accept/rejection 判断へ進む。
 4. `non_blocking_findings[]` は選択 UI / fix commit / reply の対象外。記録は 1.2.2 で完了済み。
 5. map 欠落を blocking の代替条件にしない。必要な triage 結果が無ければ `[fix:error]`。
 
