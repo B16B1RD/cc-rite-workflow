@@ -768,6 +768,7 @@ STATE_RESOLVE="$SCRIPT_DIR/../state-path-resolve.sh"
 live_repo=$(mktemp -d)
 git -C "$live_repo" init -q
 live_repo=$(cd "$live_repo" && pwd -P)
+trap 'rm -f "$tc13_existing" "$tc12_fixture" "$tmpfile"; rm -rf "${live_repo:-}" "${git_tmp:-}"' EXIT
 live_sid=11111111-2222-3333-4444-555555555555
 mkdir -p "$live_repo/.rite/sessions"
 printf '%s\n' "$live_sid" > "$live_repo/.rite/session-id"
@@ -858,7 +859,16 @@ for t in pre-tool-bash-guard wiki-apply-gate; do
   else
     outer_fail "TC-18.11: $t.test.sh must call hermetic_leave_checkout || exit 1 between the hermetic source and the first mktemp"
   fi
-  if grep -Eq 'rm -rf .*"\$HERMETIC_CWD"' "$test_file"; then
+  # The removal counts only where it runs on exit: the last EXIT registration
+  # itself, or the body of the function that registration names.
+  exit_line=$(awk '/^trap .* EXIT$/ {line = $0} END {print line}' "$test_file")
+  exit_handler=$(awk '/^trap [A-Za-z_]+ EXIT$/ {name = $2} END {print name}' "$test_file")
+  if [[ "$exit_line" == *'rm -rf '*'"$HERMETIC_CWD"'* ]] \
+    || { [ -n "$exit_handler" ] && awk -v h="$exit_handler" '
+      $0 == h "() {" {body = 1; next}
+      body && /^}/ {body = 0}
+      body && /rm -rf .*"\$HERMETIC_CWD"/ {found = 1}
+      END {exit !found}' "$test_file"; }; then
     outer_pass "TC-18.11: $t.test.sh removes \$HERMETIC_CWD on exit"
   else
     outer_fail "TC-18.11: $t.test.sh must remove \$HERMETIC_CWD on exit"
