@@ -29,6 +29,7 @@
 * **Update**: [呼び出し元で挙動を分ける規則は、永続状態から推定せず呼び出し元が渡す明示の引数で分ける](pages/heuristics/caller-context-branch-uses-explicit-flag-not-persisted-state.md) — raw/reviews/20260929T154417Z-pr-3452.md を統合
 * **Create**: [PR 起因と判定した非 blocking の候補は、同じ PR の fix の計画に入れて直す](pages/heuristics/pr-origin-nonblocking-fixed-in-same-pr-plan.md) — raw/fixes/20260929T153014Z-pr-3452.md を新規ページ化（呼び出し元の引数の項は隣のページへ統合）
 * **Skip**: [20260929T164137Z-pr-3452.md](raw/fixes/20260929T164137Z-pr-3452.md) — detector-candidate: 標準入力を読む paste はオペランド - を明示する（BSD paste はオペランド無しで失敗する）
+* **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=592, broken_refs=0（矛盾の意味比較は今回統合した 10 ページと同じテーマの既存ページに限る）
 
 ## 2026-09-29
 
