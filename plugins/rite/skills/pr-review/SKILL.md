@@ -253,7 +253,7 @@ bash {plugin_root}/scripts/pr-review-step.sh ensure-worktree --head-ref {head_re
 
 `[CONTEXT] WT_ENSURE=` の分岐は [skills/recover/SKILL.md](../recover/SKILL.md) Phase 3.1.5 の **WT_ENSURE 分岐表（SoT）** に従う（共通 case は SoT と同一。**終端の `branch_absent` / `failed` のみ caller 固有**で、recover の AskUserQuestion に対し review は `[review:error]` 停止）:
 
-- `disabled` / `skip` → no-op、ステップ 1.2 へ（`disabled` = `multi_session.enabled: false`。従来どおり単一ツリーで動作し挙動不変）。
+- `disabled` / `skip` → 下記の HEAD 照合を実行する（`disabled` = `multi_session.enabled: false`）。worktree を準備しない両経路で、変更ファイルを読む前に現在の HEAD と PR の `headRefOid` を比べる。
 共通作業先契約には `entry_phase=review` / `pr_number={pr_number}` を渡す。state 不在時は実体・claim の照合後に初回記録してから厳密検証する。既存 state の不一致は上書きせず停止する。
 
 - `already_in` → 共通作業先契約の所有権・branch・変更前検証を通し、同じ作業先で続行する。
@@ -264,6 +264,14 @@ bash {plugin_root}/scripts/pr-review-step.sh ensure-worktree --head-ref {head_re
 - `failed` → 再構築失敗（helper rc=1, stderr に原因 + 復旧手順）。**silent fallback せず `[review:error]` を emit して明示停止**する（review を mergeable / completed 扱いにしない）。
 
 > **silent fallback 禁止**: `branch_absent` / `failed` のとき develop 上で review を継続し完了扱いにしてはならない。
+
+`disabled` / `skip` のときだけ、同じ作業先で次を実行する:
+
+```bash
+bash {plugin_root}/scripts/pr-review-step.sh review-head-check --owner-repo {owner_repo} --pr {pr_number}
+```
+
+`[CONTEXT] REVIEW_HEAD=ok`（exit 0）の場合のみステップ 1.2 へ進む。不一致・取得失敗・空の SHA は `[review:error]`（exit 1）で停止する。診断には両 SHA（取得できない値は `<unavailable>`）と、別の未使用ディレクトリへ clone して PR を checkout する復旧手順が含まれる。失敗時はレビュー結果を保存せず、mergeable / completed と扱わない。marker 不在やその他の非ゼロ終了も停止し、照合を省略して続行しない。
 
 ### 1.2 Retrieve Changes
 
