@@ -32,12 +32,12 @@
 * **Update**: [終了コードの契約は、その形を作る経路をすべて数え上げてから書く](pages/heuristics/exit-contract-enumerate-producing-paths.md) — raw/fixes/20260929T002142Z-pr-3397.md、raw/reviews/20260929T003742Z-pr-3397.md を統合
 * **Update**: [`mapfile -t < <(...)` で pipefail safe な iteration を書く](pages/patterns/mapfile-process-substitution-pipefail-safe.md) — raw/reviews/20260929T002811Z-pr-3416.md を統合
 * **Create**: [並行セッションが作るブランチは、レビュー前後のブランチ一覧比較に偽のずれを出す](pages/heuristics/concurrent-session-branches-false-branch-list-drift.md) — 新規ページ化
-* **Create**: [契約の主張を絞る修正は、同じ主張を述べる全箇所を grep で洗い出してからまとめて直す](pages/heuristics/narrowing-contract-claim-grep-all-restatements.md) — 新規ページ化
+* **Update**: [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) — raw/fixes/20260929T004539Z-pr-3397.md、raw/reviews/20260929T003742Z-pr-3397.md、raw/reviews/20260929T005026Z-pr-3397.md を統合
 * **Create**: [後始末の存在をテストで固定するときは、終了時に実行される位置に限って照合する](pages/patterns/test-cleanup-pinned-at-exit-registration.md) — 新規ページ化
 * **Create**: [id の意味を引く対応表は、その id を使う記録と同じファイルに原子的に同梱する](pages/patterns/id-mapping-bundled-atomically-with-record.md) — 新規ページ化
 * **Create**: [SKILL.md のブロックを helper へ移すと、ブロック内コメントの手順情報が LLM から消える](pages/heuristics/skill-block-to-helper-keeps-comment-guidance.md) — 新規ページ化
 * **Create**: [ソース全体を走査する検査は、gitignore 対象の生成物を走査から外す](pages/heuristics/source-scan-excludes-generated-artifacts.md) — 新規ページ化
-* **Create**: [行の受理判定を 2 言語で並行して持つときは、実物同士を行ごとに突き合わせて一致を固定する](pages/patterns/dual-language-line-predicate-parity-test.md) — 新規ページ化
+* **Update**: [同じ判定規則を別言語で二重実装するときは、同一 fixture で SoT 実装の実行結果と突合する parity assert を置く](pages/patterns/dual-implementation-rule-parity-assert-against-sot-executable.md) — raw/reviews/20260929T005731Z-pr-3419.md を統合
 
 ## 2026-09-28
 
