@@ -481,6 +481,37 @@ run_concurrent_stash_case() {
   eq "$label: the other entry was not applied" "0" "$([ -e "$repo/other.txt" ] && echo 1 || echo 0)"
 }
 
+# run_own_entry_gone_case: another session removes the entry this run pushed and leaves a
+# different one on top. cleanup cannot find its own entry by SHA, so it must not pop the other one.
+run_own_entry_gone_case() {
+  local label="$1"
+  local -x GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+  local base repo tmpdir err rc=0 other_sha
+  make_fixture dev yes
+  tmpdir="$base/tmp"; err="$base/err"; mkdir "$tmpdir"
+  mkdir -p "$base/stub"
+  {
+    printf '%s\n' '#!/bin/bash'
+    printf 'if [ "$1" = commit ] && [ ! -e %q ]; then\n' "$base/pushed"
+    printf '  : > %q\n' "$base/pushed"
+    printf '  %q -C %q stash drop -q\n' "$real_git" "$repo"
+    printf '  printf "other session\\n" > %q\n' "$repo/other.txt"
+    printf '  %q -C %q stash push -q -u -m other -- other.txt\n' "$real_git" "$repo"
+    printf '  %q -C %q rev-parse refs/stash > %q\n' "$real_git" "$repo" "$base/other_sha"
+    printf 'fi\n'
+    printf 'exec %q "$@"\n' "$real_git"
+  } > "$base/stub/git"
+  chmod +x "$base/stub/git"
+
+  ( cd "$repo" && PATH="$base/stub:$PATH" TMPDIR="$tmpdir" bash "$HOOK_SRC" ) >/dev/null 2>"$err" || rc=$?
+  other_sha=$(cat "$base/other_sha" 2>/dev/null || true)
+  eq "$label: exits 3" "3" "$rc"
+  eq "$label: another entry was pushed during the run" "1" "$([ -n "$other_sha" ] && echo 1 || echo 0)"
+  eq "$label: stash pop WARNING appears once" "1" "$(grep -cxF 'WARNING: cleanup failed to pop stash' "$err" || true)"
+  eq "$label: only the other session's entry is left" "$other_sha" "$(git -C "$repo" stash list --format=%H)"
+  eq "$label: the other entry was not applied" "0" "$([ -e "$repo/other.txt" ] && echo 1 || echo 0)"
+}
+
 # run_noop_stash_push_case: git stash push exits 0 without saving anything while another
 # entry is on the stack. The run must stop before it could pop that entry as its own.
 run_noop_stash_push_case() {
@@ -682,6 +713,7 @@ run_unstage_failure_case "unstage failure"
 run_unstage_failure_case "unstage failure from a linked worktree" worktree
 run_stash_pop_failure_case "stash pop failure"
 run_concurrent_stash_case "concurrent stash"
+run_own_entry_gone_case "own entry gone"
 run_noop_stash_push_case "no-op stash push"
 run_submodule_change_case "dirty submodule" dirty
 run_submodule_change_case "moved submodule" moved
