@@ -9,7 +9,7 @@
 #   disambiguator marker を併記する契約を導入した。`create-md-invocation-symmetry.test.sh`
 #   の TC-7a/7b は create.md 専用の adjacency 検証として既に機能している。
 #
-#   一方で他 5 producer (cleanup.md / merge.md / ready.md / wiki/lint.md / wiki/ingest.md)
+#   一方で create.md 以外の producer（一覧は下記 PRODUCERS が唯一の列挙）
 #   には同等の自動検査が存在せず、wiki/lint.md ステップ 1.1/1.3 早期 return path で echo 順序が
 #   sentinel → disambiguator に swap されても既存 test 群は通過する非対称 gap があった。
 #   本 meta-test は全 producer 横断で 2 つの検査を機械化する:
@@ -40,7 +40,7 @@
 #     検出する
 #
 # 対応する 3 emit format:
-#   (1) Multi-line markdown (ready.md / merge.md ステップ 3 / lint.md ステップ 9.2 / ingest.md):
+#   (1) Multi-line markdown (ready.md / merge.md ステップ 3 / lint.md ステップ 9.2 / ingest.md / issue-audit の返却ブロック):
 #         <!-- skill return signal: caller must continue next step -->
 #         <!-- [skill:returned-to-caller] -->
 #   (2) Bash echo (lint.md ステップ 1.1/1.3 / merge.md ステップ 2):

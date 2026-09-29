@@ -13,7 +13,8 @@ Usage:
 
 Snapshot (collect stdout):
   open_issues    [{number, title, updated_at, stale, files}] — stale: not updated for
-                 STALE_DAYS; files: the file paths the body names
+                 STALE_DAYS; files: FILE_PATH matches in the body (directory-qualified
+                 paths only), a hint for redirection and never its candidate filter
   lineage        {"edges": [{child, parent, via}], "chains": [[root, ..., leaf], ...]}
                  via is "issue" (`- 元 Issue: #N`) or "pr:N" (follow-up marker or
                  `- 元 PR: #N` / `- 元の PR: #N`, resolved to the Issues that PR closes).

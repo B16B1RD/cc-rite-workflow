@@ -106,14 +106,16 @@ ISSUES = [
     issue(52, '<!-- [rite-follow-up-from-pr:32:32-20260101120000.json#F-07] -->', labels=['follow-up']),
     # The older per-PR marker carries no root-cause ids, so it never identifies a duplicate.
     issue(55, '<!-- [rite-follow-up-from-pr:32] -->', labels=['follow-up']),
-    # The filer adds ~N when the same id repeats; the suffix is part of the key.
-    issue(57, '<!-- [rite-follow-up-from-pr:33:33-20260101120000.json#F-01~2] -->', labels=['follow-up']),
-    issue(58, '<!-- [rite-follow-up-from-pr:33:33-20260101120000.json#F-01~2] -->', labels=['follow-up']),
+    # The filer adds ~N when the same id repeats; ids with ~N are accepted on either side of a comma.
+    issue(57, '<!-- [rite-follow-up-from-pr:33:33-20260101120000.json#F-01~2,F-02~2] -->', labels=['follow-up']),
+    issue(58, '<!-- [rite-follow-up-from-pr:33:33-20260101120000.json#F-01~2,F-02~2] -->', labels=['follow-up']),
     issue(56, '<!-- [rite-follow-up-from-pr:32] -->', labels=['follow-up']),
     issue(60), issue(61), issue(62, reason='REOPENED'), issue(63), issue(64),
     issue(70), issue(71), issue(72), issue(73), issue(74), issue(75), issue(76), issue(77),
     issue(80, days=31), issue(81, days=29), issue(82, days=30),
-    issue(84, '- 元 PR: #31'),
+    issue(84, '- 元 PR: #31'), issue(85, '- 元の PR: #31'),
+    # Names its implementation by file name only; redirection still covers it (every open Issue).
+    issue(86, 'fix review-fix-scope.py'),
     # 91-93 are all open, so 92's chain is a prefix of 93's and only the longer one is listed.
     issue(90, state='CLOSED'), issue(91, '- 元 Issue: #90'), issue(92, '- 元 Issue: #91'), issue(93, '- 元 Issue: #92'),
 ]
@@ -174,16 +176,17 @@ ran = run('collect')
 check(ran.returncode == 0, ran.stderr)
 snap = json.loads(ran.stdout)
 check('[CONTEXT] ISSUE_AUDIT=ok;' in ran.stderr, ran.stderr)
-check(snap['lineage']['chains'] == [[21, 22, 23], [21, 22, 84], [90, 91, 92, 93]], snap['lineage'])  # prefixes dropped
+check(snap['lineage']['chains'] == [[21, 22, 23], [21, 22, 84], [21, 22, 85], [90, 91, 92, 93]], snap['lineage'])  # prefixes dropped
 check(not any(41 in c for c in snap['lineage']['chains']), snap['lineage'])   # 2 generations not listed
 check({'child': 23, 'parent': 22, 'via': 'pr:31'} in snap['lineage']['edges'], snap['lineage'])
 check({'child': 84, 'parent': 22, 'via': 'pr:31'} in snap['lineage']['edges'], snap['lineage'])  # 元 PR line
-check({'kind': 'origin_pr', 'key': '31', 'issues': [23, 84]} in snap['concentration'], snap['concentration'])
+check({'child': 85, 'parent': 22, 'via': 'pr:31'} in snap['lineage']['edges'], snap['lineage'])  # 元の PR line
+check({'kind': 'origin_pr', 'key': '31', 'issues': [23, 84, 85]} in snap['concentration'], snap['concentration'])
 check({'kind': 'file', 'key': 'plugins/x/a.sh', 'issues': [23, 42]} in snap['concentration'], snap['concentration'])
 check({'kind': 'origin_pr', 'key': '32', 'issues': [45, 46, 50, 51, 52, 55, 56]} in snap['concentration'], snap['concentration'])
 stale = {i['number']: i['stale'] for i in snap['open_issues']}
 files = {i['number']: i['files'] for i in snap['open_issues']}
-check(files[42] == ['plugins/x/a.sh'] and files[60] == [], files)             # redirection input
+check(files[42] == ['plugins/x/a.sh'] and files[60] == [] and files[86] == [], files)  # hint only; 86 stays listed
 check(stale[80] is True and stale[81] is False and stale[82] is True, stale)  # STALE_DAYS = 30 is stale
 disp = {d['issue']: d for d in snap['dispositions']}
 check(sorted(disp) == [51, 58, 60, 70, 72, 76], disp)
