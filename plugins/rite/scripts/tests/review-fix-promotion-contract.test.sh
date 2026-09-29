@@ -334,7 +334,7 @@ out=$(TRIAGE_GATE_RC=0 run_triage_block '')
 assert_eq 'gate block surfaces the decided exit code' '[CONTEXT] ADOPTION_GATE_RC=0' "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ADOPTION_GATE_RC=' || true)"
 assert_eq 'a decided run registers the gate output as in-PR recommendations' \
   'record --pr 5 --review-result '"$triage_dir"'/root/.rite/review-results/5-20260101T000000.json|{"held": false, "verdicts": []}' \
-  "$(head -5 "$triage_dir/args.record" 2>/dev/null | paste -sd ' ' | sed 's/ --verdicts.*//')|$(cat "$triage_dir/args.verdicts" 2>/dev/null)"
+  "$(head -5 "$triage_dir/args.record" 2>/dev/null | paste -sd ' ' - | sed 's/ --verdicts.*//')|$(cat "$triage_dir/args.verdicts" 2>/dev/null)"
 rm -f "$triage_dir/root/.rite/state/adoption-hold-5-triage.json"
 out=$(TRIAGE_GATE_RC=0 TRIAGE_RECORD_RC=1 run_triage_block '')
 assert_eq 'a registration failure stops the decided run' '[CONTEXT] ADOPTION_GATE_RC=2' "$(printf '%s\n' "$out" | grep '^\[CONTEXT\] ADOPTION_GATE_RC=' || true)"
