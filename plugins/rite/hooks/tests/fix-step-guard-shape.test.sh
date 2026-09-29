@@ -353,8 +353,11 @@ if [ -n "$MUT_DIR" ]; then
   printf '%s\n' 'body' > "$MUT_DIR/rite-wiki-body.md"
   printf '%s\n' 'title' > "$MUT_DIR/wiki-title.txt"
   wiki_out=$(bash "$FIXTURE/scripts/fix-step.sh" wiki-trigger --pr 7 \
-    --content-file "$MUT_DIR/rite-wiki-body.md" --title-file "$MUT_DIR/wiki-title.txt" 2>/dev/null)
-  assert "wiki-trigger runs the trigger" "trigger_exit=0" "$(grep '^trigger_exit=' <<< "$wiki_out")"
+    --content-file "$MUT_DIR/rite-wiki-body.md" --title-file "$MUT_DIR/wiki-title.txt" 2>"$MUT_DIR/wiki-trigger.err")
+  case "$(grep '^trigger_exit=' <<< "$wiki_out")" in
+    trigger_exit=0) pass "wiki-trigger runs the trigger" ;;
+    *) fail "wiki-trigger runs the trigger (output: $wiki_out; stderr: $(cat "$MUT_DIR/wiki-trigger.err"))" ;;
+  esac
   assert "wiki-trigger hands the caller's content file to the trigger" "$MUT_DIR/rite-wiki-body.md" \
     "$(grep -A1 -xF -- '--content-file' "$MUT_DIR/trigger-args" | tail -n 1)"
   rm -f "$MUT_DIR/trigger-args"
