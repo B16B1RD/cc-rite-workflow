@@ -2731,5 +2731,34 @@ try:
 finally:
     f.close()
 
+# A new segment that cannot be opened on resume still records the paused one, warns, and clears the pause.
+f = Fixture()
+try:
+    f.start()
+    state_dir = f.root / '.rite/state'
+    state_dir.mkdir(parents=True, exist_ok=True)
+    clock_file = state_dir / ('review-clock-' + f.session + '.json')
+    pause_file = state_dir / ('pause-' + f.session + '.json')
+    opened = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=600)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    dump(clock_file, dict(review_context=f.context(), segment_id='failing-segment', kind='work', started_at=opened))
+    f.flow('pause')
+    stub = f.private / 'mktemp-bin'
+    stub.mkdir()
+    real_mktemp = shutil.which('mktemp')
+    (stub / 'mktemp').write_text('#!/bin/bash\ncase "$*" in *review-clock-*) echo "mktemp: forced failure" >&2; exit 1 ;; esac\nexec ' + real_mktemp + ' "$@"\n')
+    (stub / 'mktemp').chmod(0o755)
+    saved_path = f.env['PATH']
+    f.env['PATH'] = str(stub) + os.pathsep + saved_path
+    try:
+        result = f.flow('resume')
+    finally:
+        f.env['PATH'] = saved_path
+    saved = [entry for entry in f.state()['review_run']['clock'] if entry['segment_id'] == 'failing-segment']
+    check(len(saved) == 1 and not pause_file.exists() and not clock_file.exists()
+          and 'could not open a new one' in result.stderr,
+          'resume that cannot open a new segment still records the paused one, warns and clears the pause')
+finally:
+    f.close()
+
 print('PASS: review stagnation: ' + str(checks) + ' assertions; real clocks, receipts, repairs and retained stops')
 PYTEST

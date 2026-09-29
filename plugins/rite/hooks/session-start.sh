@@ -567,6 +567,13 @@ if [ "$_resolve_failed" -eq 1 ]; then
 fi
 [ -n "$_resolve_err" ] && rm -f "$_resolve_err"
 
+# 一時停止の記録（flow-state.sh pause）があるあいだ、Stop hook はこのセッションの停止を差し戻さない。
+# 再開を忘れると継続の保証が無音で外れたままになるため、記録があれば起動のたびに stdout（モデルと利用者に届く
+# 経路）で知らせる。flow-state の有無や source に依らない。
+if [ -n "$SESSION_ID" ] && [ -e "$STATE_ROOT/.rite/state/pause-${SESSION_ID}.json" ]; then
+  echo "rite: このセッションは一時停止中です。Stop hook は停止を差し戻さず、継続の保証は外れています。再開するには bash \"$SCRIPT_DIR/flow-state.sh\" resume を実行してください。"
+fi
+
 if [ -z "$STATE_FILE" ] || [ ! -f "$STATE_FILE" ]; then
   # Clean stale compact state on startup/clear when no flow state exists
   _cleanup_stale_compact

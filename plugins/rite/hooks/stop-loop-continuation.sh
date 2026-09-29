@@ -32,6 +32,8 @@
 #   - 削除済みのため、進捗 (次コマンド実行 / 完了通知出力) の後に再度停止すれば handoff は空
 #     → block しない (無限 block ループ防止)。handoff が空でも、自セッションの
 #     run-queue が active で未完了なら batch watchdog が停止を差し戻す（handoff は読まない）。
+#   - 利用者の求めによる一時停止の記録（flow-state.sh pause）があるあいだは、handoff の consume より前に
+#     停止を許可する（handoff は消費せず残し、batch watchdog も評価しない）。
 #   - 各継続点で継続 handoff が再セットされるため複数サイクル継続する。
 #     終了点では、同一ターンの最終 assistant に完了通知が既にあれば block せず、未出力 /
 #     検査不能のときだけ 1 回 block する。WIKICHAIN handoff も 1 回だけ block する one-shot で、

@@ -2041,6 +2041,39 @@ assert "PZ-07: --session resume leaves the frozen segment as it is" "same" "$(sa
 assert_grep "PZ-07: WARNING says the segment stays frozen" "$stderr_pz07" "so the paused review clock segment is left frozen"
 rm -f "$stderr_pz07"
 
+# A mktemp that fails only for paths containing $2, so one failure path can be forced without
+# breaking the other files the command writes.
+make_failing_mktemp() {
+  mkdir -p "$1"
+  printf '%s\n' '#!/bin/bash' "case \"\$*\" in *\"$2\"*) echo 'mktemp: forced failure' >&2; exit 1 ;; esac" \
+    "exec \"$(command -v mktemp)\" \"\$@\"" > "$1/mktemp"
+  chmod +x "$1/mktemp"
+}
+
+echo ""
+echo "=== PZ-08: a pause record that cannot be written fails loudly and leaves nothing behind ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+make_failing_mktemp "$d/stub" "pause-"
+rc_pz=0; (cd "$d" && PATH="$d/stub:$PATH" bash "$HOOK" pause) 2>/dev/null || rc_pz=$?
+assert_neq "PZ-08: pause exits non-zero" "0" "$rc_pz"
+assert "PZ-08: no pause record" "0" "$(find "$d/.rite/state" -name 'pause-*' 2>/dev/null | wc -l | tr -d ' ')"
+
+echo ""
+echo "=== PZ-09: a clock that cannot be stamped warns, keeps the pause record and leaves the segment open ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+clock="$d/.rite/state/review-clock-${sid}.json"
+(cd "$d" && bash "$HOOK" pause)
+write_clock "$clock" "$(iso_ago 600)"
+cp "$clock" "$d/pz09.before"
+make_failing_mktemp "$d/stub" "review-clock-"
+stderr_pz09="$(mktemp)"
+rc_pz=0; (cd "$d" && PATH="$d/stub:$PATH" bash "$HOOK" pause) 2>"$stderr_pz09" || rc_pz=$?
+assert "PZ-09: pause still exits 0" "0" "$rc_pz"
+assert "PZ-09: the pause record is kept" "present" "$([ -e "$d/.rite/state/pause-${sid}.json" ] && echo present || echo absent)"
+assert "PZ-09: the segment stays open and unchanged" "same" "$(same_bytes "$clock" "$d/pz09.before")"
+assert_grep "PZ-09: WARNING says the pause will count as work time" "$stderr_pz09" "failed to stamp ended_at"
+rm -f "$stderr_pz09"
+
 if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + silent-failure fixes + security/observability hardening + handoff marker + consume-handoff corrupt-read WARNING + jq stderr snippet control-char neutralization + C1 8-bit coverage via shared neutralize_ctrl + --worktree merge-preserve field + clear-worktree surgical del + non-UUID acceptance (Layer 1 format-agnostic contract pin) + phase-transition append log + reap-issue cross-session deactivate"; then
   exit 1
 fi
