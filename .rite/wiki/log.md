@@ -97,6 +97,7 @@
 * **Update**: [Canonical helper bypass: 既存集約 helper を bypass して inline 再実装する](pages/anti-patterns/canonical-helper-bypass.md) — [レビュー結果](raw/reviews/20260929T053623Z-pr-3393.md) を統合
 * **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — [レビュー結果](raw/reviews/20260929T054229Z-pr-3434.md) を統合
 * **Skip**: [20260929T051125Z-pr-3393.md](raw/fixes/20260929T051125Z-pr-3393.md) — 検出器化候補: 手順書内の bash で変数の直後に全角文字が続く箇所は波括弧で変数名を区切る
+* **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=583, broken_refs=0
 
 
 ## 2026-09-28
