@@ -37,7 +37,7 @@
 #      done を書く nb-sweep-record は [fix:sweep-done] の後だけで、[fix:error] の行は停止する
 # T-20 fix 5.1 は done ファイル判定を output-handoff より前に置く（入れ替えた変異で失敗する）
 # T-21 fix 5.1 の呼び出し行を fixture で実行すると、done ファイルだけの sweep 完了でも sweep-done の handoff が付き、
-#      他の結果の handoff は変わらない。判定値から結果を選ぶ行 1.5/1.6 の条件と出力の対も固定する
+#      他の結果の handoff は変わらない。行 1.5 の条件の選言と出力、行 1.6 の出力も固定する
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -500,10 +500,11 @@ assert_handoff() {  # $1=label $2=result $3=期待 handoff
   assert "$1 calls flow-state once" "1" "$(printf '%s\n' "$rec" | grep -c '^called ')"
   assert "$1 handoff" "called handoff=$3" "$rec"
 }
-# 5.1 行 1.5/1.6（NB_SWEEP=1 で会話 marker なし）の判定値と出力の対応。この写しの元の行を下の 2 本が固定する
+# 5.1 行 1.5/1.6（NB_SWEEP=1 で会話 marker なし）の判定値と出力の対応。元の行のうち、行 1.5 は条件の選言と出力を、
+# 行 1.6 は出力を下の 2 本が固定する
 assert_grep_in_section "T-21 row 1.5 done file selects sweep-done" "$FIX" \
   '### 5.1 Output Pattern' '### 5.2 Standalone Execution Behavior' \
-  '^\| 1\.5 \|.*NB_SWEEP_DONE_FILE=1.*\| `\[fix:sweep-done\]`'
+  '^\| 1\.5 \|.*（`\[CONTEXT\] NB_SWEEP_RESULT=done` または `\[CONTEXT\] NB_SWEEP_DONE_FILE=1`） \| `\[fix:sweep-done\]`'
 assert_grep_in_section "T-21 row 1.6 no done file selects error" "$FIX" \
   '### 5.1 Output Pattern' '### 5.2 Standalone Execution Behavior' \
   '^\| 1\.6 \|.*NB_SWEEP_DONE_FILE` 非 1 \| `\[fix:error\]` \|$'
