@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """List the git / gh calls and script runs in a Bash command that run outside the checkout.
 
-Usage: checkout-cwd.py --command <command> --cwd <hook cwd> --root <main checkout>
+Usage: checkout-cwd.py --command <command or - for stdin> --cwd <hook cwd> --root <main checkout>
 
 The checkout is the root's repository: the main checkout and every worktree of it,
 told apart from other directories by their common git dir. Each call is judged in
@@ -79,8 +79,9 @@ def _assigned_once(segments):
 
 
 def _heredoc_word(text, index):
-    """(delimiter, end): the heredoc word at index, with its quotes and backslashes removed."""
-    word, quote = [], None
+    """(delimiter, end, quoted): the heredoc word at index with its quotes and backslashes
+    removed, and whether it had any (a body is expanded only when it had none)."""
+    word, quote, quoted = [], None, False
     while index < len(text):
         char = text[index]
         if quote:
@@ -89,23 +90,29 @@ def _heredoc_word(text, index):
             else:
                 word.append(char)
         elif char in "'\"":
-            quote = char
+            quote, quoted = char, True
         elif char == "\\" and index + 1 < len(text):
             index += 1
+            quoted = True
             word.append(text[index])
         elif char in " \t\n;&|()<>":
             break
         else:
             word.append(char)
         index += 1
-    return "".join(word), index
+    return "".join(word), index, quoted
 
 
 def strip_heredocs(command):
-    """The command with each heredoc body removed and everything else kept as written.
-    Quotes, command substitutions, backquotes, arithmetic and comments are followed, so
-    a << inside them, or a <<<, starts no heredoc. ValueError when a heredoc, quote or
-    substitution does not end."""
+    """The command with each heredoc operator, delimiter and body removed. Quotes,
+    arithmetic and comments are followed so that a << inside them, or a <<<, starts no
+    heredoc; command substitutions and backquotes are followed to their end, and a
+    heredoc inside them is removed like any other. As in bash, a body without its
+    delimiter line runs to the end of the command, and the body of an unquoted
+    delimiter is expanded, so when it holds a command substitution it is kept as one
+    double-quoted word for the substitution to be read. Comments are kept for the
+    parser. ValueError when a heredoc has no delimiter, or a quote or substitution
+    does not end."""
     out, stack, pending, index, length = [], [["code", 0]], [], 0, len(command)
     while index < length:
         char, context = command[index], stack[-1]
@@ -157,9 +164,13 @@ def strip_heredocs(command):
                 stack.pop()
             else:
                 context[1] -= 1
-        elif char == "#" and (index == 0 or command[index - 1] in " \t\n;&|()"):
+        elif char == "#" and (index == 0 or (command[index - 1] in " \t\n;&|("
+                                             and not command.startswith("\\", index - 2))):
+            # The rest of the line is a comment: kept, but no quote or << in it counts.
             end = command.find("\n", index)
-            index = length if end < 0 else end
+            end = length if end < 0 else end
+            out.append(command[index:end])
+            index = end
             continue
         elif command.startswith("<<<", index):
             step = 3
@@ -169,31 +180,30 @@ def strip_heredocs(command):
             start += tabs
             while start < length and command[start] in " \t":
                 start += 1
-            delimiter, end = _heredoc_word(command, start)
+            delimiter, index, quoted = _heredoc_word(command, start)
             if not delimiter:
                 raise ValueError("a heredoc has no delimiter")
-            pending.append((delimiter, tabs))
-            out.append(command[index:end])
-            index = end
+            pending.append((delimiter, tabs, quoted))
             continue
         elif char == "\n" and pending:
             out.append(char)
             index += 1
-            for delimiter, tabs in pending:
-                while True:
-                    if index >= length:
-                        raise ValueError("a heredoc does not end at its delimiter " + delimiter)
+            for delimiter, tabs, quoted in pending:
+                body = []
+                while index < length:
                     end = command.find("\n", index)
                     end = length if end < 0 else end
                     line, index = command[index:end], end + 1
                     if (line.lstrip("\t") if tabs else line) == delimiter:
                         break
+                    body.append(line)
+                text = "\n".join(body)
+                if not quoted and ("$(" in text or "`" in text):
+                    out.append(': "' + text.replace("\\", "\\\\").replace('"', '\\"') + '"\n')
             pending = []
             continue
         out.append(command[index:index + step])
         index += step
-    if pending:
-        raise ValueError("a heredoc does not end at its delimiter " + pending[0][0])
     if len(stack) > 1:
         raise ValueError("a quote or substitution does not end")
     return "".join(out)
@@ -418,6 +428,8 @@ def main():
     for name in ("command", "cwd", "root"):
         parser.add_argument("--" + name, required=True)
     args = parser.parse_args()
+    # "-" reads the command from stdin, which a command of any length fits through.
+    command = sys.stdin.read() if args.command == "-" else args.command
     checkout = common_dir(args.root)
     if checkout is None:
         if (Path(args.root) / ".git").exists():
@@ -426,7 +438,7 @@ def main():
             raise OSError("git cannot read the checkout at " + args.root + ": " + result.stderr.strip())
         return
     inside = {}
-    for kind, directories, word in each_call(args.command, args.cwd):
+    for kind, directories, word in each_call(command, args.cwd):
         for directory in sorted(directories, key=str) if directories is not None else [None]:
             if directory is not None and directory not in inside:
                 inside[directory] = common_dir(existing(directory)) == checkout

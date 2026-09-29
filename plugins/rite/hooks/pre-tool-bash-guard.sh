@@ -1603,8 +1603,9 @@ if [ -z "$BLOCKED_PATTERN" ]; then
         # Test-only, fail-CLOSED-only fault injection: a failed check must deny.
         [ "${RITE_BTG_TEST_CRASH:-}" != "pattern10-helper" ] || exit 3
         # The helper removes heredoc bodies itself and reads a long command well
-        # within the time limit, so the command is passed as written.
-        python3 "$SCRIPT_DIR/scripts/lib/checkout-cwd.py" --command "$COMMAND" --cwd "$_co_cwd" --root "$_co_root" 2>&1
+        # within the time limit, so the command is passed as written, on stdin so
+        # that no argument length limit applies.
+        printf '%s' "$COMMAND" | python3 "$SCRIPT_DIR/scripts/lib/checkout-cwd.py" --command - --cwd "$_co_cwd" --root "$_co_root" 2>&1
       ) || _co_rc=$?
       _co_checkout="${_co_worktree:-$_co_root}"
       if [ "$_co_rc" -ne 0 ]; then

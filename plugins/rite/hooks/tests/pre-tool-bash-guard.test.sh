@@ -2983,8 +2983,9 @@ jq -n '{active: true}' > "$p10_plain/.rite/sessions/$p10_sid.flow-state"
 
 # p10_run <cwd> <command> [session] — the hook with the fixture state root.
 p10_run() {
-  jq -n --arg cmd "$2" --arg cwd "$1" --arg sid "${3:-$p10_sid}" \
-    '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: $cwd, session_id: $sid}' \
+  # The command goes through stdin: a long one does not fit in an argument.
+  printf '%s' "$2" | jq -Rs --arg cwd "$1" --arg sid "${3:-$p10_sid}" \
+    '{tool_name: "Bash", tool_input: {command: .}, cwd: $cwd, session_id: $sid}' \
     | RITE_STATE_ROOT="${P10_ROOT:-$p10_main}" bash "$HOOK" 2>"$STDERR_FILE"
 }
 # p10_deny <label> <pattern> <reason substring> <cwd> <command> [session]
@@ -3137,8 +3138,34 @@ p10_deny "gh between a << in a string and a heredoc it names" outside-checkout "
   "$p10_wt" "$(printf 'echo %s\ncd %s && gh api x\ncat > %s/o.md <<%s\n%s\nEOF' "'Use cat <<EOF for long text'" "$p10_scratch" "$p10_scratch" "'EOF'" "$p10_prose")"
 p10_deny "gh after a shift in arithmetic" outside-checkout "runs 'gh' $p10_out" \
   "$p10_wt" "echo \$((1<<2)) && cd $p10_scratch && gh api x"
-p10_deny "a heredoc that does not end" outside-checkout-uninspectable "does not end" \
-  "$p10_wt" "$(printf 'cd %s && cat <<EOF\nhello' "$p10_wt")"
+p10_allow "a heredoc that does not end runs to the end" "$p10_scratch" "$(printf 'cat > out.md <<EOF\nhello')"
+p10_deny "gh before a heredoc that does not end" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf 'cd %s && gh api x && cat <<EOF\nhello' "$p10_scratch")"
+p10_deny "gh in a substitution of an unquoted heredoc body" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\n$(gh api user)\nEOF' "$p10_scratch")"
+p10_deny "gh in an unquoted heredoc body of a message substitution" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf 'cd %s && echo "$(cat <<EOF\n$(gh api user)\nEOF\n)"' "$p10_scratch")"
+p10_allow "a substitution in a quoted heredoc body is text" "$p10_scratch" \
+  "$(printf 'cat > n.md <<%s\n$(gh api user)\nEOF' "'EOF'")"
+p10_deny "gh after a # inside a word" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "x=abc; echo \${#x}; cd $p10_scratch && gh api x"
+p10_deny "gh after a # right after a substitution" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "echo \$(pwd)#x; cd $p10_scratch && gh api x"
+p10_deny "gh after an escaped space and #" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "cp notes\\ #1.md $p10_scratch/ && cd $p10_scratch && gh api x"
+p10_deny "gh after a comment that mentions a heredoc" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf '# use cat <<EOF here\ncd %s && gh api x' "$p10_scratch")"
+p10_deny "gh after a here-string" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "grep -q x <<< \"\$v\" && cd $p10_scratch && gh api x"
+p10_deny "gh after a << in a double-quoted string" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "echo \"a << b\"; cd $p10_scratch && gh api x"
+p10_deny "a script in a function body" outside-checkout "runs './rec.sh' $p10_out" \
+  "$p10_wt" "cd $p10_scratch && f() { ./rec.sh; }; f"
+p10_huge=$(printf 'Run cd into the worktree and write notes. %.0s' $(seq 1 3500))
+p10_allow "a heredoc longer than one argument may be" "$p10_scratch" \
+  "$(printf 'cat > big.md <<%s\n%s\nEOF' "'EOF'" "$p10_huge")"
+p10_deny "gh after a heredoc longer than one argument may be" outside-checkout "runs 'gh' $p10_out" \
+  "$p10_wt" "$(printf 'cat > %s/big.md <<%s\n%s\nEOF\ncd %s && gh api x' "$p10_scratch" "'EOF'" "$p10_huge" "$p10_scratch")"
 p10_allow "a heredoc with a backslashed delimiter that mentions git and gh" "$p10_scratch" \
   "$(printf 'cat > out.md <<\\EOF\n%s\nEOF' "$p10_prose")"
 p10_allow "a heredoc with a hyphenated delimiter that mentions git and gh" "$p10_scratch" \
