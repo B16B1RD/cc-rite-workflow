@@ -113,6 +113,7 @@ Rite Workflow は 3 ステップでインストールします。マーケット
 | `/rite:issue-update` | 作業メモリを更新 |
 | `/rite:issue-close` | Issue の完了状態を確認 |
 | `/rite:issue-cancel` | Issue を中止（not planned でクローズ・board Status → `cancelled` role の列（設定時のみ）・PR / ブランチ / worktree を後片付け） |
+| `/rite:issue-audit` | Open Issue 群を横断監査（統合・系譜・方向修正を提案し、採否規則で決まる重複・解消済み・不採用だけをクローズ） |
 | `/rite:issue-edit` | 既存 Issue を対話的に編集 |
 | `/rite:open` | 作業を一気通貫で開始（ブランチ → 計画 → 実装 → lint → draft PR） |
 | `/rite:iterate` | mergeable になるまで review ⇄ fix をループ |

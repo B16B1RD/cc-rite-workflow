@@ -481,7 +481,7 @@ assert_grep_in_section "T-07 pr-review 7.1 excludes registered recommendations" 
   '`\{registered_recommendation_positions\}`.*も除外する'
 assert_grep_in_section "T-07 fix 2.1 routes R-NN to the normal fix" "$FIX_SKILL" \
   '^### 2\.1 Confirm Fix Approach$' '^### 2\.1\.A ' \
-  '`pr_recommendations\[\]` の `R-NN` だけが通常の修正'
+  '`pr_recommendations\[\]` の `R-NN`、現在の review context の `D-NN` だけが通常の修正'
 
 # Execute the actual skill error guards, with local stubs for mutations.
 extract_fix_block() {

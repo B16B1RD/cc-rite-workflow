@@ -544,6 +544,7 @@ helper の ID-keyed `fatal_map` / `severity_map` / `scope_map` と reload 済み
 |---------------|----------|--------|
 | **Required fix** | `fatal_map[id] == true` | 修正対象 |
 | **PR 内推奨** | 永続 JSON の `pr_recommendations[]`（`R-NN`。pr-review 5.3.0.R が mergeable の cycle で登録） | 修正対象。map には載らないので ID で直接扱う |
+| **完了前確認の逸脱** | flow-state の `review_run.deviations[]` のうち現在の review context のもの（`D-NN`。iterate の完了前確認が `review-deviate` で記録） | 修正対象。PR 内推奨と同じく ID で直接扱う |
 | **nit (認知のみ)** | `scope_map[id] == "nit-noted"` | PR reply / fix 対象外。`acknowledged_nit_count` に算入 |
 | **non-blocking（fix 対象外）** | 永続 JSON の `non_blocking_findings[]`（nit 除外） | 記録・表示のみ。修正選択肢に出さない |
 | **External review** | 未解決の人間・外部ツールのコメント | Action required |
@@ -564,7 +565,7 @@ helper の ID-keyed `fatal_map` / `severity_map` / `scope_map` と reload 済み
 
 | Caller | Option Selection | Target |
 |--------|-----------------|--------|
-| Within `/rite:iterate` review-fix loop | **Skip** (auto-select) | Fatal findings + PR 内推奨 + unresolved external reviews |
+| Within `/rite:iterate` review-fix loop | **Skip** (auto-select) | Fatal findings + PR 内推奨 + 完了前確認の逸脱 + unresolved external reviews |
 | Manual `/rite:fix` | Display | User-selected |
 
 
@@ -645,7 +646,7 @@ bash {plugin_root}/scripts/fix-step.sh cancelled-by-user
 
 **When there are no comments:**
 
-本分岐も 1.2.2 の記録と state persistence 完了後だけ実行する。fatal / PR 内推奨 / 外部レビューが 0 件のときだけ本分岐に入る。fatal / 外部レビューが 0 件で non-blocking が残る場合は「コメントなし」と表示せず、移送件数と JSON pointer を報告して 4.6 → 5.1 の通常完了へ進む。
+本分岐も 1.2.2 の記録と state persistence 完了後だけ実行する。fatal / PR 内推奨 / 完了前確認の逸脱 / 外部レビューが 0 件のときだけ本分岐に入る。fatal / 外部レビューが 0 件で non-blocking が残る場合は「コメントなし」と表示せず、移送件数と JSON pointer を報告して 4.6 → 5.1 の通常完了へ進む。
 
 ```
 PR #{number} にはレビューコメントがありません
@@ -723,7 +724,7 @@ rationale: references/design-rationale.md#simplification-first-rationale
 
 ### 2.1 Confirm Fix Approach
 
-全指摘の処置を編集前に一括で決める。個別指摘の読み取り・impact scan は先に行ってよいが、最初の編集前に [一括計画と検証](references/fix-plan.md) を読み、同一 HEAD の全員回収済み保存結果・最新 Issue 本文から `{fix_plan_file}` と `{fix_issue_file}`（絶対 JSON パス）を作る。root cause ごとに重複を関連付け、全 blocking 指摘へ処置と検証を割り当てる。人間由来の未解決指摘も計画へ記録し、既存の対応義務を維持する。対象は 1.3 の Required fix（`fatal_map[id] == true`）、PR 内推奨（`pr_recommendations[]` の `R-NN`。scope gate が各 ID に 1 つの処置を要求する）と未解決 External review。親の完了前発見を未保存 ID として計画へ足さない。`non_blocking_findings[]` が schema 上受理されていても 2.1 の修正対象ではない。各 `groups[].rationale`（または既存 PR details）に、初回 finding でも元要求との対応と、追加／削除／差し戻し／移動から選んだ処置の理由を短く書く。`simplification-first:` 段落は Escalation trigger 専用であり、この記録の代用にしない。新 schema は足さない。
+全指摘の処置を編集前に一括で決める。個別指摘の読み取り・impact scan は先に行ってよいが、最初の編集前に [一括計画と検証](references/fix-plan.md) を読み、同一 HEAD の全員回収済み保存結果・最新 Issue 本文から `{fix_plan_file}` と `{fix_issue_file}`（絶対 JSON パス）を作る。root cause ごとに重複を関連付け、全 blocking 指摘へ処置と検証を割り当てる。人間由来の未解決指摘も計画へ記録し、既存の対応義務を維持する。対象は 1.3 の Required fix（`fatal_map[id] == true`）、PR 内推奨（`pr_recommendations[]` の `R-NN`。scope gate が各 ID に 1 つの処置を要求する）、完了前確認の逸脱（現在の review context の `D-NN`。同じく処置を要求する）と未解決 External review。親の完了前発見を未保存 ID として計画へ足さない（`review-deviate` で記録した `D-NN` は保存済み）。`non_blocking_findings[]` が schema 上受理されていても 2.1 の修正対象ではない。各 `groups[].rationale`（または既存 PR details）に、初回 finding でも元要求との対応と、追加／削除／差し戻し／移動から選んだ処置の理由を短く書く。`simplification-first:` 段落は Escalation trigger 専用であり、この記録の代用にしない。新 schema は足さない。
 
 `review_run.current_decision.action=replan` なら、[停滞診断](../../references/review-stagnation.md) の契約で全指摘と仕様を再照合し、代替案・選択理由・棄却理由・再発防止検証を同じ計画の `replan` に記録する。範囲内の選択は通常の承認待ちを挟まない。以下の保存後に通常の scope gate を通す。時計は同参照の共有ブロック `review-clock-open`（Bash ブロック名。時計の CLI 動詞は `review-clock` だけ）を `clock_kind=work` で実行し、外部待機は別区分にする。
 
@@ -753,7 +754,7 @@ reviewer の推奨対応（`recommendation` 列）は候補であって設計で
 
 1. 未解決の External review は通常通り対応する。rite finding の map で skip しない。
 2. rite finding の `scope_map[id] == "nit-noted"` は 2.1 / 2.4 を skip し、2.4.N で認知件数に算入する。
-3. `fatal_map[id] == true` と `pr_recommendations[]` の `R-NN` だけが通常の修正・accept/rejection 判断へ進む。
+3. `fatal_map[id] == true`、`pr_recommendations[]` の `R-NN`、現在の review context の `D-NN` だけが通常の修正・accept/rejection 判断へ進む。
 4. `non_blocking_findings[]` は選択 UI / fix commit / reply の対象外。記録は 1.2.2 で完了済み。
 5. map 欠落を blocking の代替条件にしない。必要な triage 結果が無ければ `[fix:error]`。
 
@@ -1083,11 +1084,12 @@ bash {plugin_root}/scripts/fix-step.sh show-changes
 bash {plugin_root}/scripts/fix-step.sh number-ref-check --base-branch {base_branch} --changed-files '{changed_files}'
 ```
 
-| Exit | Action |
-|------|--------|
-| `0` | 3.1.1 へ |
-| `1` | コミットしない。2.3 に戻り追加行を書き直す。書き直しでもヒットが残るなら `[fix:error]`。番号付き行をコミットする fallback は禁止 |
-| `2` | `[fix:error]`（git / usage 失敗） |
+| Marker | Action |
+|--------|--------|
+| `NUMBER_REF_CHECK=clean` | 3.1.1 へ |
+| `NUMBER_REF_CHECK=hits` | コミットしない。2.3 に戻り追加行を書き直す。書き直しでもヒットが残るなら `[fix:error]`。番号付き行をコミットする fallback は禁止 |
+| `[fix:error]` | 停止（checker / intent-to-add の失敗） |
+| いずれも無い（usage 失敗など） | `[fix:error]` |
 
 ### 3.1.1 Pre-Commit Schema Version Check
 

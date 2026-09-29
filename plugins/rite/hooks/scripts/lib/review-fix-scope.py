@@ -288,6 +288,9 @@ def validate_plan(plan, issue, state, receipt):
     # Recommendations registered for an in-PR fix after mergeable each need one
     # disposition, like a blocking finding, so none is silently dropped.
     recommended = {r["id"] for r in receipt[1].get("pr_recommendations", [])}
+    # So do purpose deviations recorded against this review with review-deviate.
+    recommended |= {d["id"] for d in importlib.import_module("review-stagnation").deviations(
+        state, receipt[1]["review_context"])}
     known |= recommended
     blocking |= recommended
     external = plan.get("external_findings", [])
