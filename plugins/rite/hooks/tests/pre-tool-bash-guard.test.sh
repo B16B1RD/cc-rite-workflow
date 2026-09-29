@@ -3269,14 +3269,23 @@ printf '#!/bin/bash\nfor a; do [ "$a" = --path-format=absolute ] && { printf "fa
   "$p10_main" "$(command -v git)" > "$p10_failgit/git"
 chmod +x "$p10_failgit/git"
 PATH="$p10_failgit:$PATH" p10_deny "a git that cannot read the checkout names its own error" outside-checkout-uninspectable \
-  "git cannot read the checkout at $p10_main. git reports:"$'\n'"fatal: cannot read" "$p10_scratch" "cd $p10_scratch && gh api x"
+  "git cannot read the repository at $p10_main. git reports:"$'\n'"fatal: cannot read" "$p10_scratch" "cd $p10_scratch && gh api x"
 PATH="$p10_failgit:$PATH" p10_deny "a command git reports is left as is, with the fix on its own line" outside-checkout-uninspectable \
-  $'\tgit config --global --add safe.directory '"$p10_main"$' \nFix why git cannot read the checkout (the error git reports above)' \
+  $'\tgit config --global --add safe.directory '"$p10_main"$' \nFix why git cannot read the repository (the error git reports above)' \
   "$p10_scratch" "cd $p10_scratch && gh api x"
+# git trusts the state root but not the worktree the command runs in: the worktree's error is shown,
+# not an outside-checkout denial whose cd advice is denied the same way.
+printf '#!/bin/bash\n[ "$2" = %s ] && { printf "fatal: cannot read\\n\\tgit config --global --add safe.directory %%s\\n" "%s" >&2; exit 128; }\nexec %s "$@"\n' \
+  "$p10_wt" "$p10_wt" "$(command -v git)" > "$p10_failgit/git"
+PATH="$p10_failgit:$PATH" p10_deny "a worktree git cannot read names its own error" outside-checkout-uninspectable \
+  "git cannot read the repository at $p10_wt. git reports:"$'\n'"fatal: cannot read"$'\n\t'"git config --global --add safe.directory $p10_wt" \
+  "$p10_wt" "cd $p10_wt && gh api x"
+PATH="$p10_failgit:$PATH" p10_deny "a directory in no repository is still judged outside, not unreadable" outside-checkout \
+  "runs 'gh' in $p10_scratch, which is outside" "$p10_wt" "cd $p10_scratch && gh api x"
 rm -rf "$p10_failgit"
 P10_ROOT="$p10_broken" p10_deny "a state root git cannot read names the git fix" outside-checkout-uninspectable \
-  "Fix why git cannot read the checkout" "$p10_wt" "cd $p10_scratch && gh api x"
-P10_ROOT="$p10_broken" p10_deny "a state root git cannot read" outside-checkout-uninspectable "git cannot read the checkout at $p10_broken. git reports:"$'\n'"fatal" \
+  "Fix why git cannot read the repository" "$p10_wt" "cd $p10_scratch && gh api x"
+P10_ROOT="$p10_broken" p10_deny "a state root git cannot read" outside-checkout-uninspectable "git cannot read the repository at $p10_broken. git reports:"$'\n'"fatal" \
   "$p10_wt" "cd $p10_scratch && gh api x"
 rm -rf "$p10_main" "$p10_scratch" "$p10_plain" "$p10_broken"
 # The skills' own bash blocks run during a session, from the checkout. Placeholders

@@ -9,7 +9,8 @@ the directories it may run in: the hook cwd, moved by each cd before it and by
 env -C / sudo -D (--chdir), and for git by its -C options. One line is printed per call and directory outside the
 checkout, "<kind>\\t<directory>\\t<word>", with an empty directory when the directory
 cannot be known. A root without .git defines no checkout, so nothing is printed.
-Exit 1 when the command cannot be parsed or git cannot read a root that has .git.
+Exit 1 when the command cannot be parsed or git cannot read the root, or a worktree of it a call
+runs in.
 
 Heredocs and comments are removed before the command is read. Bodies are not
 read: one with an unquoted delimiter that runs a command substitution is an
@@ -470,10 +471,26 @@ def each_call(command, cwd):
         yield kind, directories, words[index]
 
 
+def rev_parse(directory, *options):
+    return subprocess.run(["git", "-C", str(directory), "rev-parse", *options], capture_output=True, text=True)
+
+
 def common_dir(directory):
-    result = subprocess.run(["git", "-C", str(directory), "rev-parse", "--path-format=absolute", "--git-common-dir"],
-                            capture_output=True, text=True)
+    """The directory's common git dir, or None when git cannot give one."""
+    result = rev_parse(directory, "--path-format=absolute", "--git-common-dir")
     return Path(result.stdout.strip()).resolve() if result.returncode == 0 else None
+
+
+def unreadable(directory):
+    return OSError("git cannot read the repository at " + str(directory) + ". git reports:\n"
+                   + rev_parse(directory, "--path-format=absolute", "--git-common-dir").stderr.strip())
+
+
+def worktrees(root):
+    result = subprocess.run(["git", "-C", root, "worktree", "list", "--porcelain"], capture_output=True, text=True)
+    if result.returncode != 0:
+        raise OSError("git cannot list the worktrees of " + root + ". git reports:\n" + result.stderr.strip())
+    return [Path(line[len("worktree "):]).resolve() for line in result.stdout.splitlines() if line.startswith("worktree ")]
 
 
 def existing(directory):
@@ -492,15 +509,23 @@ def main():
     checkout = common_dir(args.root)
     if checkout is None:
         if (Path(args.root) / ".git").exists():
-            result = subprocess.run(["git", "-C", args.root, "rev-parse", "--path-format=absolute",
-                                     "--git-common-dir"], capture_output=True, text=True)
-            raise OSError("git cannot read the checkout at " + args.root + ". git reports:\n" + result.stderr.strip())
+            raise unreadable(args.root)
         return
     inside = {}
+    trees = None
     for kind, directories, word in each_call(command, args.cwd):
         for directory in sorted(directories, key=str) if directories is not None else [None]:
             if directory is not None and directory not in inside:
-                inside[directory] = common_dir(existing(directory)) == checkout
+                here = existing(directory)
+                found = common_dir(here)
+                if found is None:
+                    # A git that fails in one of the checkout's own worktrees is an error, not
+                    # "outside": the outside advice would be denied the same way.
+                    trees = worktrees(args.root) if trees is None else trees
+                    resolved = here.resolve()
+                    if any(tree == resolved or tree in resolved.parents for tree in trees):
+                        raise unreadable(here)
+                inside[directory] = found == checkout
             if directory is None or not inside[directory]:
                 print(kind + "\t" + ("" if directory is None else str(directory)) + "\t" + word)
 
