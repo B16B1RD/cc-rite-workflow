@@ -107,7 +107,7 @@ def _heredoc_word(text, index):
 
 UNREADABLE_BODY = ("the body of an unquoted heredoc runs a command substitution, which is not read"
                    " here: quote its delimiter (<<'EOF'), which writes the substitution as text, or"
-                   " assign its value to a variable before the heredoc (v=$(...)) and write $v in the body")
+                   " assign its value to a variable before the heredoc (v=$(...)) and write $v in the body.")
 
 
 def _check_body(body):
@@ -209,7 +209,7 @@ def strip_heredocs(command):
         elif (kind == "sub" and command.startswith("case", index)
               and command[index + 4:index + 5] in (" ", "\t", "\n") and _command_position(command, index)):
             raise ValueError("a case command inside $( ) is not read here: its pattern ) would end the"
-                             " substitution; move the case out of $( ) and set the variable in its branches")
+                             " substitution; move the case out of $( ) and set the variable in its branches.")
         elif char == "(" and kind == "sub":
             context[1] += 1
         elif char == ")" and kind == "sub":

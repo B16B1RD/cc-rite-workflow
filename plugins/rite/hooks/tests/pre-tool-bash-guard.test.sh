@@ -3187,6 +3187,16 @@ p10_deny "a case command after ; inside a substitution" outside-checkout-uninspe
   "$p10_wt" "cd $p10_scratch && echo \"\$(true; case \"\$k\" in pr) gh pr view 1;; esac)\""
 p10_deny "a case command after then inside a substitution" outside-checkout-uninspectable "case command" \
   "$p10_wt" "cd $p10_scratch && echo \"\$(if true; then case \"\$k\" in pr) gh pr view 1;; esac; fi)\""
+p10_deny "a denied body names the variable rewrite and that a cd does not help" outside-checkout-uninspectable \
+  'write $v in the body. Rewrite the command' "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\n$(date)\nEOF' "$p10_wt")"
+p10_deny "the rewrite alternative says a cd is denied the same way" outside-checkout-uninspectable \
+  "adding a cd into the checkout, or running it from outside" "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\n$(date)\nEOF' "$p10_wt")"
+p10_deny "a denied case names the rewrite" outside-checkout-uninspectable "move the case out of" \
+  "$p10_wt" "cd $p10_scratch && echo \"\$(case \"\$k\" in pr) gh pr view 1;; esac)\""
+p10_allow "a case moved out of the substitution, as the denial advises" "$p10_wt" \
+  "cd $p10_wt && case \"\$k\" in pr) v=\$(git rev-parse HEAD);; esac; echo \"\$v\""
+p10_deny "a heredoc that does not end names the fix, not a cd" outside-checkout-uninspectable \
+  "end each heredoc at its delimiter line" "$p10_wt" "$(printf 'cd %s && cat > n.md <<EOF\nhello' "$p10_wt")"
 p10_deny "a heredoc operator at the end of the command" outside-checkout-uninspectable "does not end" \
   "$p10_scratch" "cat > out.md <<EOF"
 p10_deny "gh after a # inside a word" outside-checkout "runs 'gh' $p10_out" \
@@ -3247,6 +3257,8 @@ chmod +x "$p10_oldgit/git"
 PATH="$p10_oldgit:$PATH" p10_deny "a git that cannot read the checkout names its own error" outside-checkout-uninspectable \
   "git cannot read the checkout at $p10_main: fatal: old git" "$p10_scratch" "cd $p10_scratch && gh api x"
 rm -rf "$p10_oldgit"
+P10_ROOT="$p10_broken" p10_deny "a state root git cannot read names the git fix" outside-checkout-uninspectable \
+  "Fix why git cannot read the checkout" "$p10_wt" "cd $p10_scratch && gh api x"
 P10_ROOT="$p10_broken" p10_deny "a state root git cannot read" outside-checkout-uninspectable "git cannot read the checkout at $p10_broken: fatal" \
   "$p10_wt" "cd $p10_scratch && gh api x"
 rm -rf "$p10_main" "$p10_scratch" "$p10_plain" "$p10_broken"

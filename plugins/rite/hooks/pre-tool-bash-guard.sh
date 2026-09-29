@@ -1612,10 +1612,12 @@ if [ -z "$BLOCKED_PATTERN" ]; then
         BLOCKED_REASON="The directory each git, gh or script call in this command runs in cannot be checked (rc=${_co_rc}): ${_co_out:-no output}"
         case "$_co_out" in
           *"unquoted heredoc runs a command substitution"*|*"case command inside"*)
-            # Not read wherever the command runs, so a cd into the checkout does not help.
-            BLOCKED_ALTERNATIVE="Rewrite the command as the reason above says; the same command run from inside the checkout, or with a cd into it, is denied the same way." ;;
+            # Read the same way wherever the helper runs, so a cd into the checkout does not help.
+            BLOCKED_ALTERNATIVE="Rewrite the command as this reason says; adding a cd into the checkout, or running it from outside the checkout, is denied the same way." ;;
+          *"git cannot read the checkout"*)
+            BLOCKED_ALTERNATIVE="Fix why git cannot read the checkout (the error above), then run the command again." ;;
           *)
-            BLOCKED_ALTERNATIVE="Simplify the command and run git, gh and scripts from inside the checkout: cd ${_co_checkout} first." ;;
+            BLOCKED_ALTERNATIVE="Fix the command as this reason says (end each heredoc at its delimiter line, close each quote and command substitution) or simplify it; adding a cd into the checkout is denied the same way." ;;
         esac
       elif [ -n "$_co_out" ]; then
         # The directory field is empty when unknown, which read would merge away.
