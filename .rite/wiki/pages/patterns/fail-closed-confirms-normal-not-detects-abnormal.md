@@ -9,9 +9,13 @@ sources:
     resource: "raw/fixes/20260803T045324Z-pr-2094.md"
   - type: "reviews"
     resource: "raw/reviews/20260803T044103Z-pr-2094.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T103255Z-pr-3450.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-03T07:46:56Z" }
+generated: { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-09-29T10:58:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-09-29T10:58:00Z" }
 ---
 
 # fail-closed ガードは「異常を検出したら止める」ではなく「正常を確認できなければ止める」で書く
@@ -49,6 +53,10 @@ cross-Issue の値転写を遮断する fail-closed ガードが、「identity �
 
 正しい対処は join する前に値側から区切りを潰すこと（`map(tostring | gsub(sep; "?"))`）。**代替案の採否は実測で確認してから決める。**
 
+### 分岐表を marker 基準にするなら「どの marker も無い」行を停止にする
+
+手順書の分岐表を helper の終了コードから helper が出す marker へ改める修正では、正常を示す marker を明示的に出させ、表の最後に「どの marker も無い」行を置いて停止に倒す。この行が無いと、marker を出せなかった経路（引数不正など）が「異常を検出しなかった」ものとして次へ進む。正常を示す marker の確認を進行条件にするのが、この規律の手順書版である。テストでは、marker が出ない経路の出力と、表にその行があることの両方を固定する。
+
 ## 関連ページ
 
 - [特定の 1 バイト・1 条件で書いた防御は、defect class 全体を覆うか修正直後に自問する](../heuristics/single-condition-defense-vs-defect-class.md)
@@ -58,3 +66,4 @@ cross-Issue の値転写を遮断する fail-closed ガードが、「identity �
 ## ソース
 
 - [fix 結果](../../raw/fixes/20260803T045324Z-pr-2094.md)
+- [手順書の分岐表を marker 基準に改め、marker 皆無を停止に倒した](../../raw/reviews/20260929T103255Z-pr-3450.md)

@@ -13,9 +13,13 @@ sources:
     resource: "raw/reviews/20260805T033632Z-pr-2112.md"
   - type: "fixes"
     resource: "raw/fixes/20260805T040711Z-pr-2112.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T103432Z-pr-3446.md"
 tags: ["invariant", "refactor", "identity", "api", "security", "review-fix-loop"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-05T05:30:00+00:00" }
+generated: { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-09-29T10:58:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-09-29T10:58:00Z" }
 ---
 
 # 同定手段の取得経路を差し替えるときは、旧経路が構造的に保証していた述語を先に全部列挙する
@@ -61,6 +65,10 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-05T05:30:00+00:00" }
 2. 旧経路のコードが**検証していなかった**制約のうち、経路の構造が保証していたものは何か
 3. 補った制約は 1 つか、それとも「1 つ補ったから済んだ」と早期に打ち切っていないか
 
+### 判定の単位を変える修正にも同じ規律が要る
+
+経路の差し替えだけでなく、判定の単位を変える修正（グループ単位の移動、祖先での存在判定、粗い語照合への切り替え）でも、元の判定が前提にしていた不変条件を先に列挙する。例えば「置換はどのグループに属するか」「移動は必ず成功するか」「照合対象は helper の判定対象を包含するか」のような前提である。列挙せずに入れると退行になる。移動の成否が不確定な場合（`||` の後や、hook 時点で存在しない移動先）は、移動前後の和集合で判定すると、通せない入力を増やさずに fail-open を避けられる。
+
 ## 関連ページ
 
 - [同定に使う needle は位置まで固定し、人間が複製できる文字列を使わない](../anti-patterns/identity-needle-position-and-machine-only-sentinel.md)
@@ -73,3 +81,4 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-05T05:30:00+00:00" }
 - [旧経路の暗黙保証を列挙する再発防止策を記録](../../raw/fixes/20260805T025341Z-pr-2112.md)
 - [落ちた述語が 1 つではなかったことを検出](../../raw/reviews/20260805T033632Z-pr-2112.md)
 - [コメント述語を必要条件として追加](../../raw/fixes/20260805T040711Z-pr-2112.md)
+- [判定の単位を変える修正の前に元判定の不変条件を列挙する](../../raw/fixes/20260929T103432Z-pr-3446.md)

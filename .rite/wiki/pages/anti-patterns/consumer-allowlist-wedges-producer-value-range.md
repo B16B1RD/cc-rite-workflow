@@ -19,12 +19,15 @@ sources:
     resource: "raw/reviews/20260914T224913Z-pr-2826.md"
   - type: "reviews"
     resource: "raw/reviews/20260926T103101Z-pr-3148.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T104700Z-pr-3448.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T10:45:00Z" }
+generated: { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-09-29T10:58:00Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-14T23:10:01Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-26T10:45:00Z" }
+  - { by: "rite-wiki-ingest/claude-sonnet-5-5", at: "2026-09-29T10:58:00Z" }
 ---
 
 # 消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る
@@ -100,6 +103,10 @@ consumer 側に検証を足すときは、呼び出し元を 1 本ずつ辿り�
 
 既存テストの fixture に新フィールドを後付けして green に戻すと、本来の producer がその値を渡さない欠落がかえって隠れる。fixture を直す前に、その値を実際に作る producer がどこかを確認する。
 
+### 許可リストは producer の実出力とそのテストの fixture から決める
+
+信頼境界を狭める修正で、consumer 側の許可文字を reviewer の推奨どおりに決め、producer（起票 helper）が実際に出力する形式を確かめなかった例がある。許可リストが producer の実出力より狭かったため、正規の入力まで拒否した。許可リストの値域は、推奨や想像ではなく producer の実出力と、その実出力を写したテストの fixture から決める。fixture が producer の実形式ではなく合成した形式だと、この形式のずれをテストが検出できない。
+
 ## 関連ページ
 
 - [非収束の review ループは個別修正ではなく構造を疑う](../heuristics/non-converging-review-loop-suspect-structure.md)
@@ -114,3 +121,4 @@ consumer 側に検証を足すときは、呼び出し元を 1 本ずつ辿り�
 - [判定を helper 契約の値域へ揃え、保存観測を成功時 marker に限定](../../raw/fixes/20260813T093419Z-pr-2306.md)
 - [同秒衝突 suffix を受理形と射影の両方で同時に受け付けたレビュー結果](../../raw/reviews/20260914T224913Z-pr-2826.md)
 - [新しい必須入力を運べない producer 経路で停止が必ず発火したレビュー結果](../../raw/reviews/20260926T103101Z-pr-3148.md)
+- [許可文字を producer の実出力ではなく推奨から決めて正規の入力まで拒否した](../../raw/reviews/20260929T104700Z-pr-3448.md)

@@ -2,6 +2,12 @@
 
 ## 2026-09-29
 
+* **Update**: [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](pages/anti-patterns/consumer-allowlist-wedges-producer-value-range.md) — raw/reviews/20260929T104700Z-pr-3448.md で補強
+* **Update**: [同定手段の取得経路を差し替えるときは、旧経路が構造的に保証していた述語を先に全部列挙する](pages/heuristics/identity-path-swap-enumerate-old-invariants.md) — raw/fixes/20260929T103432Z-pr-3446.md で補強
+* **Update**: [fail-closed ガードは「異常を検出したら止める」ではなく「正常を確認できなければ止める」で書く](pages/patterns/fail-closed-confirms-normal-not-detects-abnormal.md) — raw/reviews/20260929T103255Z-pr-3450.md で補強
+* **Skip**: [監査スキルの修正結果](raw/fixes/20260929T103246Z-pr-3448.md) — 既存ページの範囲で、個別事例としての追記価値が低い
+* **Skip**: [番号参照テストの再レビュー結果](raw/reviews/20260929T104300Z-pr-3450.md) — detector-candidate: 同一テストファイル内の pass/fail ラベル ID の重複を機械検出する lint
+* **Skip**: [番号参照テストの修正結果](raw/fixes/20260929T103712Z-pr-3450.md) — detector-candidate: 同一テストファイル内の pass/fail ラベル ID の重複を機械検出する lint
 * **Skip**: [テスト時間上限の再レビュー結果](raw/reviews/20260929T060417Z-pr-3435-cycle2.md) — 一般化できる経験則を含まない通常の再レビュー記録
 * **Skip**: [抽出境界のレビュー結果](raw/reviews/20260929T054547Z-pr-3439.md) — 実装済みの境界と検証結果の記録であり、新たな経験則はない
 * **Update**: [追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない](pages/patterns/mutation-prove-new-pin.md) — [失敗経路の検出力を確認したレビュー](raw/reviews/20260929T055012Z-pr-3438.md)を補強として統合

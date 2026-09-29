@@ -338,7 +338,7 @@ okf_version: "0.2"
 | [実測アンカーの repro に書くパイプは U+00A6 へ置換する](pages/patterns/verification-anchor-pipe-substitution.md) | patterns | 実測必須ゲートは `Verification:` アンカーの full match に blocking を委ねる。パイプや空の左辺、値域外の種別ラベルは match を壊すか空振りさせ、機械カテゴリまで exclusion なし class B へ倒すと blocking が落ちる。 | 2026-09-13T09:12:00Z | high |
 | [テンプレート準拠の fixture では、生成器が実データで作る構造的逸脱を検出できない](pages/heuristics/template-fixture-misses-generator-real-data-deviation.md) | heuristics | 除外規則やパーサの fixture を「そのファイル種別のテンプレート」に合わせて作ると、テンプレートが持つ偶然の性質（当該見出しが最終節にある、など）によって**誤った実装と正しい実装が同じ結果を返す**。 | 2026-09-28T15:38:14Z | high |
 | [中断されうる処理の完了判定は、完了した処理だけが持つ不可逆な副作用を述語にする](pages/patterns/completion-predicate-uses-irreversible-side-effect.md) | patterns | signal で中断されうる処理について「完了したか」を判定するとき、成果物の**存在**（`[ -e "$dst" ]`）を証拠に使ってはならない。 | 2026-08-01T05:40:00Z | high |
-| [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](pages/anti-patterns/consumer-allowlist-wedges-producer-value-range.md) | anti-patterns | 「危険な入力を弾く」allowlist を**消費側だけ**に追加すると、生成側が正当に作れる値まで拒否する。 | 2026-09-26T10:45:00Z | high |
+| [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](pages/anti-patterns/consumer-allowlist-wedges-producer-value-range.md) | anti-patterns | 「危険な入力を弾く」allowlist を**消費側だけ**に追加すると、生成側が正当に作れる値まで拒否する。 | 2026-09-29T10:58:00Z | high |
 | [静的ガードを新設したら、走査面の限界と現存する未カバーサイトをテスト本体のコメントに書く](pages/heuristics/static-guard-declare-scan-scope-limits.md) | heuristics | 退行を機械的に止める静的ガード（find + 検出器で全ファイルを走査するテスト等）を追加するとき、**走査面が何を含まないか**と、**その盲点に現時点で違反が残っているか**をテスト本体のコメントと PASS 文言に書く。 | 2026-08-01T17:45:00+09:00 | medium |
 | [限界を説明する例は検出器に食わせ、「〜としてのみ使う」型の断定は grep で数えてから書く](pages/heuristics/verify-explanatory-examples-against-the-detector.md) | heuristics | コメントやドキュメントで機構の限界・用途を説明するとき、**主張は頭の中で検証できるが、それを支える具体例と数え方は実行しないと逆を書く**。 | 2026-08-03T23:41:26+09:00 | medium |
 | [判別述語を対象テキスト全体に広げると、その規則自体を論じる文書で自己言及的に誤発火する](pages/anti-patterns/predicate-scans-whole-text-in-self-describing-domain.md) | anti-patterns | 判別述語を「ある記号がテキスト中に存在するか」の形で書くと、その記号を論じる文書そのものが判定対象になった瞬間に崩れる。 | 2026-08-01T23:12:28+09:00 | high |
@@ -365,7 +365,7 @@ okf_version: "0.2"
 | [修正に添えるコメントは機構を語るほど次サイクルの検証対象面を広げる — 根拠はテストに置く](pages/heuristics/comment-rationale-widens-review-surface.md) | heuristics | コードの修正そのものより、その修正に添えたコメントのほうが次のレビューサイクルで指摘を生みやすい。 | 2026-08-06T02:49:27Z | high |
 | [診断メッセージの主語と射程は、その文が発火する条件が保証している対象に限る](pages/heuristics/diagnostic-claim-scoped-to-firing-condition.md) | heuristics | 縮退時の診断が誤情報になると、既に degraded な状況でのトリアージを誤らせる。 | 2026-09-14T07:50:03Z | high |
 | [rc 変数を 0 で初期化すると、未起動の段を「起動して成功した」と断定する](pages/patterns/rc-variable-not-started-sentinel.md) | patterns | 多段 pipeline（例: `python3 ... \| jq ...`）の各段の rc を診断メッセージへ載せる設計で、後段の rc 変数を `0` で初期化すると、**後段が一度も起動しない経路で「起動して成功した」と能動的に断定する**。 | 2026-08-03T07:46:56Z | high |
-| [fail-closed ガードは「異常を検出したら止める」ではなく「正常を確認できなければ止める」で書く](pages/patterns/fail-closed-confirms-normal-not-detects-abnormal.md) | patterns | cross-Issue の値転写を遮断する fail-closed ガードが、「identity が**食い違う**」ときにしか発火しない実装になっていた。 | 2026-08-03T07:46:56Z | high |
+| [fail-closed ガードは「異常を検出したら止める」ではなく「正常を確認できなければ止める」で書く](pages/patterns/fail-closed-confirms-normal-not-detects-abnormal.md) | patterns | cross-Issue の値転写を遮断する fail-closed ガードが、「identity が**食い違う**」ときにしか発火しない実装になっていた。 | 2026-09-29T10:58:00Z | high |
 | [特定の 1 バイト・1 条件で書いた防御は、defect class 全体を覆うか修正直後に自問する](pages/heuristics/single-condition-defense-vs-defect-class.md) | heuristics | レビュー指摘は具体的な 1 ケースで届く。 | 2026-08-03T07:46:56Z | high |
 | [bash の算術比較は非数値入力で rc=2 を返し、fail-closed の意図が else 側へ倒れる](pages/anti-patterns/bash-numeric-test-fail-open-on-nonnumeric.md) | anti-patterns | `[ "$x" -eq 0 ]` は `$x` が非数値のとき「偽」ではなく **rc=2（エラー）** を返す。 | 2026-08-03T07:46:56Z | high |
 | [`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) | anti-patterns | `grep -q` は最初の一致で即座に終了する。 | 2026-09-29T04:35:00Z | high |
@@ -381,7 +381,7 @@ okf_version: "0.2"
 | [ガードの識別力は「そのガード単独で発火する形状」の fixture とガード固有文言 assert で担保する](pages/heuristics/guard-discriminating-power-requires-solo-firing-fixture.md) | heuristics | エラーガードのテストが (a) rc の非ゼロ性と (b) 総称的な `grep -q 'ERROR'` しか assert していないと、**兄弟ガードが同じ rc・同じ総称文言で発火するため、対象ガードを削除してもテストは全緑で通る**。 | 2026-09-29T05:45:52Z | high |
 | [シェル層で閉じられない注入防御は値を substitute する側（LLM）の実行前ゲートとして書く](pages/heuristics/shell-unclosable-defense-goes-to-substituting-side.md) | heuristics | LLM が値を literal substitute する bash block では、**防御の層を 1 つ塞ぐたびに同じ機構の中の「次の層」が露出する**。 | 2026-08-05T09:26:00+09:00 | medium |
 | [抽出述語の厳格化は「壊れた入力」と「入力なし」を同一経路へ畳み、fail-loud を構造的に壊す](pages/anti-patterns/strict-predicate-collapses-broken-into-absent.md) | anti-patterns | 「散文中の同形文字列を誤検出しない」ために抽出述語へアンカーや厳密条件を足すと、**正規の入力でも表記の揺れ（行末 CR・字下げ・末尾空白）があれば不一致になる**。 | 2026-09-16T01:27:23Z | high |
-| [同定手段の取得経路を差し替えるときは、旧経路が構造的に保証していた述語を先に全部列挙する](pages/heuristics/identity-path-swap-enumerate-old-invariants.md) | heuristics | 同定子・キー・参照を取りに行く経路（API エンドポイント・クエリ・検索式）を差し替えると、**旧経路がパスやクエリの形で暗黙に保証していた制約が落ちる**。 | 2026-08-05T05:30:00+00:00 | high |
+| [同定手段の取得経路を差し替えるときは、旧経路が構造的に保証していた述語を先に全部列挙する](pages/heuristics/identity-path-swap-enumerate-old-invariants.md) | heuristics | 同定子・キー・参照を取りに行く経路（API エンドポイント・クエリ・検索式）を差し替えると、**旧経路がパスやクエリの形で暗黙に保証していた制約が落ちる**。 | 2026-09-29T10:58:00Z | high |
 | [静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く](pages/heuristics/static-pin-semantic-allowlist-not-notation-denylist.md) | heuristics | 静的 pin（ソースの文字列を grep して構造を固定するテスト）を「この表記が出現しないこと」として書くと、**同じ意味を持つ別表記が pin を素通りする**。 | 2026-09-27T21:32:57Z | high |
 | [診断退避用の tempfile は診断が最も要る場面でだけ消える — command substitution へ畳む](pages/heuristics/diagnostic-tempfile-fails-when-diagnosis-needed-most.md) | heuristics | stderr を退避して WARNING に載せるために tempfile を確保する定型（`err=$(mktemp ... 2>/dev/null) \|\| err=""` に続けて `cmd 2>"${err:-/dev/null}"`）は、mktemp が失敗したときに後続コマンドの診断を丸ごと `/dev/null` へ捨てる。 | 2026-08-06T00:40:00+09:00 | high |
 | [保護は「設定ファイルの内容」ではなく「保護対象と同じ場所」に置く](pages/heuristics/protection-colocated-with-target-not-config-state.md) | heuristics | 「機密を含むファイルが公開リポジトリに入らないようにする」ような保護を、セットアップが生成する設定ファイル（`.gitignore` など）へ 1 行追記する形で実装すると、その保護は 3 つの状態に同時に依存する — セットアップをいつ実行したか、アップグレード経路が追記ブロックに到達するか、ユーザーが設定を手で編集していないか。 | 2026-08-06T00:40:00+09:00 | high |
@@ -643,5 +643,5 @@ okf_version: "0.2"
 
 - 総ページ数: 629
 - ドメイン別: patterns=134, heuristics=308, anti-patterns=187
-- 最終更新: 2026-09-29T10:30:31Z
+- 最終更新: 2026-09-29T10:58:00Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
