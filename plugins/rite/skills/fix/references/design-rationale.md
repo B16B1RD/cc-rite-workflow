@@ -60,7 +60,7 @@ caller の `exit 1` 直前に emit が必要になる。
 - **awk が「`---` separator 後の最後の `### 📄 Raw JSON`」を採用する理由**: findings の description / suggestion 列内に `### 📄 Raw JSON` リテラル文字列が含まれる場合 (fix.md / pr-review.md 自身を扱う PR が該当)、最初のマッチで `in_section` を立てると本来の Raw JSON section より早く誤検出される。ステップ 6.1.b の Raw JSON section は必ず `---` separator の後にあるため、1-pass で末尾の section start を tracking し END 内で逆方向スキャンする。実装は POSIX awk のみで動作し、tac (GNU coreutils 専用) や 2-pass 読み込みを必要としない。
 - **here-string `<<<` を使う理由**: `printf | awk` 形式は awk の `exit` による stdin 早期終了で printf が SIGPIPE を受ける経路がある (bash-defensive-patterns.md Pattern 5)。
 - **awk exit code を明示検査する理由**: awk OOM / binary 異常の空出力が「Raw JSON section なし (legacy format)」と区別不能になり、legacy parser が新形式コメントを garble する silent regression を防ぐ。
-- **3 つの失敗ケースを else の no-op に融合させない理由**: `raw_json=""` だけが legitimate な legacy fallthrough であり、「jq empty 失敗」「必須 fields 欠落」は壊れた新形式 JSON として WARNING + reason emit してから legacy parser に流すべき。
+- **3 つの失敗ケースを else の no-op に融合させない理由**: `raw_json=""` だけが legitimate な legacy fallthrough であり、「jq empty 失敗」「必須 fields 欠落」は壊れた新形式 JSON として WARNING + reason emit してから `[fix:error]` で停止する (新形式の metadata を legacy 表で補完しない)。
 
 ## schema-normalization-mirror
 
