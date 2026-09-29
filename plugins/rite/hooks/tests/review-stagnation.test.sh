@@ -3000,8 +3000,13 @@ try:
     f.finish(roots=())
     f.clock(0)
     f.observe()
+    # The last plan record still disposes the first review's deviations; a new review is not refused by it.
+    deviate(f, line=3)
+    check([d['id'] for d in f.state()['review_run']['deviations'] if d['review_context'] == f.context()] == ['D-01'],
+          'T-27: a deviation of the next review is recorded and numbered from D-01')
     # Deviations bind to the review they were recorded against, not to later plans.
-    external_plan(f)
+    external_plan(f, 'D-01')
+    dump(f.plan_path, dict(json.loads(f.plan_path.read_text()), external_findings=[]))
     f.scope()
 finally:
     f.close()

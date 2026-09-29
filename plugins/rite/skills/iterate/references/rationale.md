@@ -363,6 +363,8 @@ cycle になるので、counter と発散判定はそのまま続く。
 origin=pr の判定は、逸脱の `file:line` が `origin/{branch.base}...HEAD` の追加行と重なることで機械的に行う
 （`pr_recommendations[]` の登録と同じ `lib/diff-hunks.sh`）。重ならない逸脱（base 由来や PR 外の欠陥）と、
 blocking が残っている review、`safety.max_review_cycles` に達した cycle（修正を再レビューできない）は
-拒否し、従来の `purpose_unaligned` 停止に落とす。記録は完了記録（`completed_context` / `deferred_context`）
+拒否し、従来の `purpose_unaligned` 停止に落とす。この review context の `D-NN` を fix の計画が処置した後の記録も
+拒否する。fix が commit せずに戻ると HEAD は変わらず、同じ commit を再び fix へ渡すと cycle を進めないまま
+空転する（`pr_recommendations[]` を一度だけ渡すのと同じ終端）。記録は完了記録（`completed_context` / `deferred_context`）
 を外す。残すと、逸脱が未処置のまま別の Issue へ切り替えられる。`D-NN` は記録した review context の
 計画だけが処置する。次の cycle の計画には要求しない（その cycle の完了前確認がまだ逸脱を見るなら、改めて記録する）。
