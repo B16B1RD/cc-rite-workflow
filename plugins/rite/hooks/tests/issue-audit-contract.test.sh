@@ -56,16 +56,17 @@ disposals = re.findall(r'^bash \{plugin_root\}/hooks/scripts/issue-audit\.sh dis
 check(disposals == ['--repo {owner_repo} --base {base_branch}'], disposals)
 check(not re.search(r'gh issue (close|edit)|gh issue create', skill), 'no direct Issue writes')
 
-# Merge and redirection proposals take every open Issue; snapshot fields are hints, never filters.
-rows = {l.split(' | ')[0][2:]: l.split(' | ')[1] for l in skill.splitlines() if l.startswith(('| 統合 |', '| 方向修正 |'))}
-for name, cell in rows.items():
-    check(cell.startswith('`open_issues` の全件。') and 'のうち' not in cell and '限る' not in cell, cell)
-check('同じ実装や契約を名指しする組' in rows['統合'] and 'ファイル名だけの名指し' in rows['統合'], rows['統合'])
-check('`concentration` のグループは手がかり' in rows['統合'], rows['統合'])
-redirect = rows['方向修正']
-check('本文の受入条件を照合する' in redirect and 'ファイル名だけの名指し' in redirect, redirect)
-check('`stale: true` のものは停滞も併記する' in redirect, redirect)
-check(not re.search(r'lineage\.chains|`concentration`|を持つもの', redirect), redirect)
+# The merge and redirection inputs are pinned verbatim: any narrowing of the candidates,
+# however it is worded, fails here. Update these strings when the step 2 table changes.
+rows = [l.split(' | ') for l in skill.splitlines() if l.startswith(('| 統合 |', '| 方向修正 |'))]
+check([r[0] for r in rows] == ['| 統合', '| 方向修正'], rows)
+check({r[0][2:]: r[1] for r in rows} == {
+    '統合': '`open_issues` の全件。本文・コメントが同じ実装や契約を名指しする組（パスの表記ゆれ・ファイル名だけの名指しも含む。'
+          '`concentration` のグループは手がかり）を同じ根因の候補として判定する',
+    '方向修正': '`open_issues` の全件。本文が名指しするリポジトリ内の実装（ファイル名だけの名指しも含む。'
+            '`files` は抽出できたパスの手がかり）の現状と本文の受入条件を照合する。'
+            '`stale: true` のものは、ずれが無くても停滞として出す',
+}, rows)
 
 # Report layout: fixed sections in a fixed order.
 report = skill[skill.index('# Issue 監査レポート'):]
