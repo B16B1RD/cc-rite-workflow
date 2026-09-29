@@ -105,7 +105,7 @@ assert_grep_in_section "T-01 skip authority is basename match" "$ITERATE" \
 assert_grep_in_section "T-01 fix is skipped only for noop / skipped (table decides)" "$ITERATE" \
   '## ステップ 5.S: NB digest sweep' '## ステップ 5: 完了通知' \
   '`noop` / `skipped` では fix を invoke しない（下表）'
-assert_not_grep "T-01 no count-zero no-op rule" "$ITERATE" '対象 0 件は no-op'
+assert_not_grep "T-01 no count-zero no-op rule" "$ITERATE" '対象 0 (件)?は no-op'
 
 # --- T-02: empty → noop ファイル write。失敗時はファイルを残さない（偽 skip 禁止） ---
 assert_grep_in_section "T-02 empty writes noop basename" "$ITERATE_STEP" \
