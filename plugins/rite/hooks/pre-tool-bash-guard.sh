@@ -1399,11 +1399,19 @@ _rite_btg_pattern9_fail_closed() {
 # Pattern 9: implement/fix commits in this session's work tree need a wiki record.
 # The command surface keeps a commit that follows a heredoc. literal git -C uses
 # that path. Another worktree is not checked. An unresolvable target is denied.
+# A command whose surface cannot be extracted is denied in the phases the gate
+# checks, since it cannot be shown not to commit there. The rc is taken in the
+# same list as the substitution so the fail-open ERR trap does not fire.
 _wiki_surface=""
+_wiki_surface_rc=0
 if [ -z "$BLOCKED_PATTERN" ] && [[ "$COMMAND" == *git* && "$COMMAND" == *commit* ]]; then
-  _wiki_surface=$(_rite_btg_pattern6_command_surface "$COMMAND" 2>/dev/null) || _wiki_surface=""
+  _wiki_surface=$(
+    # Test-only, fail-CLOSED-only fault injection: a failed extraction must deny.
+    [ "${RITE_BTG_TEST_CRASH:-}" != "pattern9-surface" ] || exit 3
+    _rite_btg_pattern6_command_surface "$COMMAND" 2>/dev/null
+  ) || _wiki_surface_rc=$?
 fi
-if [ -z "$BLOCKED_PATTERN" ] && [[ "$_wiki_surface" == *git* && "$_wiki_surface" == *commit* ]]; then
+if [ -z "$BLOCKED_PATTERN" ] && { [ "$_wiki_surface_rc" -ne 0 ] || [[ "$_wiki_surface" == *git* && "$_wiki_surface" == *commit* ]]; }; then
   _wiki_fs="${WIKI_APPLY_FLOW_STATE:-}"
   if [ -z "$_wiki_fs" ]; then
     _wiki_fs=$(bash "$SCRIPT_DIR/flow-state.sh" path 2>/dev/null) || _wiki_fs=""
@@ -1433,7 +1441,11 @@ if [ -z "$BLOCKED_PATTERN" ] && [[ "$_wiki_surface" == *git* && "$_wiki_surface"
   if [ -d "$_wiki_fswt" ]; then
     _wiki_fswt=$(CDPATH= cd -- "$_wiki_fswt" && pwd -P)
   fi
-  if [ "$_wiki_unreadable" -eq 1 ] || [ "$_wiki_phase" = "implement" ] || [ "$_wiki_phase" = "fix" ]; then
+  if [ "$_wiki_surface_rc" -ne 0 ] && { [ "$_wiki_unreadable" -eq 1 ] || [ "$_wiki_phase" = "implement" ] || [ "$_wiki_phase" = "fix" ]; }; then
+    BLOCKED_PATTERN="wiki-apply-uninspectable"
+    BLOCKED_REASON="Wiki apply gate could not extract this command's command lines (rc=${_wiki_surface_rc}), so it cannot tell whether the command commits without a wiki check."
+    BLOCKED_ALTERNATIVE="Retry the command. If it is denied again, run a literal git commit, or git -C <worktree> commit, in its own Bash call, with a long message written to a file and passed by git commit -F <message-file>."
+  elif [ "$_wiki_unreadable" -eq 1 ] || [ "$_wiki_phase" = "implement" ] || [ "$_wiki_phase" = "fix" ]; then
     trap '_rite_btg_pattern9_fail_closed' ERR
     _wiki_err=$(mktemp "${TMPDIR:-/tmp}/wiki-apply-target.XXXXXX")
     _wiki_rc=0

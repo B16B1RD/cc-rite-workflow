@@ -730,6 +730,47 @@ if grep -q 'wiki-apply-missing' <<<"$gout"; then
 else
   fail "guard missing rc=$grc out=$gout"
 fi
+grc=0
+gout=$(printf '%s' "$gin" | RITE_BTG_TEST_CRASH=pattern9-surface WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+if grep -q '"permissionDecision": *"deny"' <<<"$gout" && grep -q 'wiki-apply-uninspectable' <<<"$gout" \
+   && grep -q 'rc=3' <<<"$gout" && ! grep -q 'review-commit-evidence' <<<"$gout" \
+   && ! grep -q 'wiki-apply-gate' <<<"$gout" && ! grep -q 'fail-open' "$ROOT/guard.err"; then
+  pass "guard denies an implement commit whose surface cannot be extracted"
+else
+  fail "guard surface implement rc=$grc out=$gout err=$(cat "$ROOT/guard.err")"
+fi
+grc=0
+gout=$(printf '%s' "$gin" | RITE_BTG_TEST_CRASH=pattern9-surface WIKI_APPLY_FLOW_STATE="$bad" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+if grep -q '"permissionDecision": *"deny"' <<<"$gout" && grep -q 'wiki-apply-uninspectable' <<<"$gout"; then
+  pass "guard denies an uninspectable commit when flow-state is unreadable"
+else
+  fail "guard surface unreadable rc=$grc out=$gout"
+fi
+for surface_case in "$clean:cleanup phase" "$ROOT/no-such.flow-state:no session"; do
+  grc=0
+  gout=$(printf '%s' "$gin" | RITE_BTG_TEST_CRASH=pattern9-surface WIKI_APPLY_FLOW_STATE="${surface_case%%:*}" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+  if [ "$grc" -eq 0 ] && [ -z "$gout" ]; then
+    pass "guard allows an uninspectable commit outside the gated phases: ${surface_case#*:}"
+  else
+    fail "guard surface ${surface_case#*:} rc=$grc out=$gout"
+  fi
+done
+surface_status=$(jq -n --arg cwd "$repo" '{tool_name:"Bash", tool_input:{command:"git status"}, cwd:$cwd}')
+grc=0
+gout=$(printf '%s' "$surface_status" | RITE_BTG_TEST_CRASH=pattern9-surface WIKI_APPLY_FLOW_STATE="$flow" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+if [ "$grc" -eq 0 ] && [ -z "$gout" ]; then
+  pass "surface fault injection does not affect a command without git commit"
+else
+  fail "guard surface injection leak rc=$grc out=$gout"
+fi
+body_only=$(jq -n --arg cwd "$repo" --arg cmd $'cat <<\'EOF\'\ngit commit -m x\nEOF' '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
+grc=0
+gout=$(printf '%s' "$body_only" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+if [ "$grc" -eq 0 ] && [ -z "$gout" ]; then
+  pass "guard allows git commit that appears only in a heredoc body"
+else
+  fail "guard heredoc body rc=$grc out=$gout"
+fi
 dash_c=$(jq -n --arg cwd "/tmp" --arg cmd "git -C $repo commit -m x" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
 grc=0
 gout=$(printf '%s' "$dash_c" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
