@@ -855,7 +855,7 @@ cmd_review_cycle() {
   while [ $# -gt 0 ]; do
     case "$operation:$1" in
       start:--stagnation|replan:--amend) args+=("$1"); shift ;;
-      start:--selection|finish:--manifest|finish:--content-file|finish:--pending-id|clock:--input|observe:--input|observe:--issue|replan:--plan|replan:--issue|replan:--reason|retry:--plan|retry:--issue|restart:--selection|restart:--approval|restart:--expected-run-id|reconcile:--issue|reconcile:--approval|abandon:--reason)
+      start:--selection|finish:--manifest|finish:--content-file|finish:--pending-id|clock:--input|observe:--input|observe:--issue|replan:--plan|replan:--issue|replan:--reason|retry:--plan|retry:--issue|restart:--selection|restart:--approval|restart:--expected-run-id|reconcile:--issue|reconcile:--approval|deviate:--input|abandon:--reason)
         [ $# -ge 2 ] || { echo "ERROR: missing value for $1" >&2; return 1; }
         args+=("$1" "$2"); shift 2 ;;
       *) echo "ERROR: unknown review-cycle option: $1" >&2; return 1 ;;
@@ -1087,6 +1087,7 @@ case "${1:-}" in
   review-record) shift; cmd_review_record "$@" ;;
   review-close) shift; cmd_review_close "$@" ;;
   review-defer) shift; cmd_review_cycle defer "$@" ;;
+  review-deviate) shift; cmd_review_cycle deviate "$@" ;;
   review-abandon) shift; cmd_review_cycle abandon "$@" ;;
   get) shift; cmd_get "$@" ;;
   deactivate) shift; cmd_deactivate "$@" ;;
@@ -1099,7 +1100,7 @@ case "${1:-}" in
   resume) shift; cmd_resume "$@" ;;
   *)
     cat >&2 <<EOF
-Usage: $0 {set|get|review-start|review-finish|review-retry|review-restart|review-reconcile|review-abandon|deactivate|reap-issue|clear-worktree|consume-handoff|migrate|path|pause|resume} [options]
+Usage: $0 {set|get|review-start|review-finish|review-retry|review-restart|review-reconcile|review-deviate|review-abandon|deactivate|reap-issue|clear-worktree|consume-handoff|migrate|path|pause|resume} [options]
   set --phase <P> --next <T> [--issue N] [--branch S] [--pr N] [--parent-issue N]
       [--active true|false] [--handoff CMD] [--session UUID] [--if-exists] [--preserve-error-count]
       [--worktree PATH] [--require-worktree]   # --require-worktree: warn + emit WORKTREE_INVARIANT marker when worktree empty (non-blocking)
@@ -1116,6 +1117,7 @@ Usage: $0 {set|get|review-start|review-finish|review-retry|review-restart|review
   review-record                      # append this review's record to the Issue work memory if absent
   review-close                       # requires that record (written first when absent)
   review-defer
+  review-deviate --input /absolute/deviation.json   # reopen a mergeable review for a purpose deviation on a line the PR added
   review-abandon --reason TEXT       # drop an evidence-free collecting cycle; keeps counter and identity
   review-finish --manifest /absolute/completions.json --content-file /absolute/result.json [--pending-id TOKEN]
   deactivate [--next T] [--session UUID]
