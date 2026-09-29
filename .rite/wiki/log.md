@@ -42,6 +42,21 @@
 * **Update**: [解析しない部分の近似判定は shell が読む語に正規化してから行い、上限超過は超えた部分だけを判定不能として扱う](pages/heuristics/approximate-parse-normalize-to-shell-words.md) — raw/fixes/20260929T175438Z-pr-3446.md を統合
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=592, broken_refs=0
 
+* **Update**: [語の閉集合で拒否する guard に語を足すときは、閉集合の写しと代替手段の案内を同じ変更で揃える](pages/heuristics/closed-set-guard-word-addition-align-copies-and-alternatives.md) — [fix 結果](raw/fixes/20260929T184229Z-pr-3446.md) を統合
+* **Update**: [コメントや文書の根拠は、実装が名指す範囲と測定の条件まで確かめて書く](pages/heuristics/claim-evidence-scope-and-measurement-conditions.md) — [fix 結果](raw/fixes/20260929T184715Z-pr-3457.md) を統合
+* **Update**: [散文の主張を実装に合わせて絞るときは、限定の外側・指示語・同じ主張の別箇所まで突き合わせる](pages/heuristics/narrowed-prose-claim-check-outside-scope-and-same-claims.md) — [fix 結果](raw/fixes/20260929T185146Z-pr-3458.md) を統合
+* **Update**: [冪等のキーは毎 run 書き直す記録ではなく、run をまたいで積み上げる台帳に残す](pages/heuristics/idempotency-key-must-survive-record-rewrite.md) — [fix 結果](raw/fixes/20260929T190643Z-pr-3459.md) を統合
+* **Update**: [コメントや文書の根拠は、実装が名指す範囲と測定の条件まで確かめて書く](pages/heuristics/claim-evidence-scope-and-measurement-conditions.md) — [fix 結果](raw/fixes/20260929T190902Z-pr-3457.md) を統合
+* **Update**: [語の閉集合で拒否する guard に語を足すときは、閉集合の写しと代替手段の案内を同じ変更で揃える](pages/heuristics/closed-set-guard-word-addition-align-copies-and-alternatives.md) — [fix 結果](raw/fixes/20260929T191840Z-pr-3446.md) を統合
+* **Update**: [コメントや文書の根拠は、実装が名指す範囲と測定の条件まで確かめて書く](pages/heuristics/claim-evidence-scope-and-measurement-conditions.md) — [レビュー結果](raw/reviews/20260929T183222Z-pr-3457.md) を統合
+* **Update**: [散文の主張を実装に合わせて絞るときは、限定の外側・指示語・同じ主張の別箇所まで突き合わせる](pages/heuristics/narrowed-prose-claim-check-outside-scope-and-same-claims.md) — [レビュー結果](raw/reviews/20260929T183927Z-pr-3458.md) を統合
+* **Update**: [冪等のキーは毎 run 書き直す記録ではなく、run をまたいで積み上げる台帳に残す](pages/heuristics/idempotency-key-must-survive-record-rewrite.md) — [レビュー結果](raw/reviews/20260929T185341Z-pr-3459.md) を統合
+* **Update**: [コメントや文書の根拠は、実装が名指す範囲と測定の条件まで確かめて書く](pages/heuristics/claim-evidence-scope-and-measurement-conditions.md) — [レビュー結果](raw/reviews/20260929T190108Z-pr-3457.md) を統合
+* **Update**: [散文の主張を実装に合わせて絞るときは、限定の外側・指示語・同じ主張の別箇所まで突き合わせる](pages/heuristics/narrowed-prose-claim-check-outside-scope-and-same-claims.md) — [レビュー結果](raw/reviews/20260929T190258Z-pr-3458.md) を統合
+* **Update**: [語の閉集合で拒否する guard に語を足すときは、閉集合の写しと代替手段の案内を同じ変更で揃える](pages/heuristics/closed-set-guard-word-addition-align-copies-and-alternatives.md) — [レビュー結果](raw/reviews/20260929T190643Z-pr-3446.md) を統合
+* **Update**: [コメントや文書の根拠は、実装が名指す範囲と測定の条件まで確かめて書く](pages/heuristics/claim-evidence-scope-and-measurement-conditions.md) — [レビュー結果](raw/reviews/20260929T191948Z-pr-3457.md) を統合
+* **Update**: [無音失敗を可視化する防御コードには、その防御コード自体を守る失敗パステストを追加する](pages/heuristics/defensive-code-needs-its-own-failure-path-test.md) — [レビュー結果](raw/reviews/20260929T183927Z-pr-3458.md) の stderr の診断の指摘を統合
+
 ## 2026-09-29
 
 * **Update**: [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](pages/anti-patterns/consumer-allowlist-wedges-producer-value-range.md) — raw/reviews/20260929T104700Z-pr-3448.md で補強

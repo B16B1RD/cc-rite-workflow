@@ -4,9 +4,10 @@ title: "冪等のキーは毎 run 書き直す記録ではなく、run をまた
 domain: "heuristics"
 description: "作成済みの成果物の番号を毎 run 作り直す判定記録にだけ置くと、記録の書き直しや、キーを使う候補が出ない run を 1 回挟んだだけで番号が消え、再実行で重複作成が起きる。番号は次の run の候補に左右されない追記型の台帳に残す。やり直す手順では外部への書き込みを「既にあれば書かない」形にし、停止時の再開案内は失敗の種類ごとに事実と合う文にする。"
 created: "2026-09-28T17:00:11Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:45:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T19:21:37Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T03:24:18Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T19:21:37Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260928T163430Z-pr-3393.md"
@@ -18,6 +19,10 @@ sources:
     resource: "raw/reviews/20260929T032130Z-pr-3393.md"
   - type: "fixes"
     resource: "raw/fixes/20260929T032906Z-pr-3393.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T190643Z-pr-3459.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T185341Z-pr-3459.md"
 tags: ["idempotency", "resume", "external-write", "jq"]
 confidence: medium
 ---
@@ -42,6 +47,12 @@ confidence: medium
 
 **テストのスタブは stdout で結果を返す。** スタブがファイル経由で結果を返すと、環境差で失敗したときに原因が出力に残らない。stdout で返せば、失敗時の出力に原因が残る。 ただしスタブを stdout で返す形に変えるときは、同じ出力をまとめて検査している他の assert が、追加された出力で常に一致して空振りしないかを確かめる。
 
+### 冪等の印は再実行で一字も変わらない部分から作り、照合を 2 方向で固定する
+
+書き込み済みの印（判定記録ごとの key）を記録の全候補の集合から作ると、途中停止後の再実行で再レビューが同じ根因を言い換えて出し直し、分類役がそれを保留由来の記録へ束ねたときに key が変わって、同じ書き込みを重ねる。key の材料は、再実行で一字も変えずに合流する部分（直前の保留の候補）に限る。識別子の安定性を主張する文書は、主張が成り立つ入力の条件（記録の構成が変わらないこと等）まで書く。条件なしの言い切りは、停止時に人間が読む再開案内で実際より強い約束になる。
+
+照合のテストは「同じ key なら飛ばす」だけでなく「別の key・別の PR なら書く」側も固定する。片側だけだと、照合から key を落とした変異が生き残る。key を作る filter のテスト入力は、出口の種類をすべて含める。外部 CLI の出力形状（ページ配列の配列など）に依存する照合では、mock が引数に関係なく同じ形を返すとフラグを落とした変異が生き残るので、mock は argv を完全一致で受ける。
+
 ## 関連ページ
 
 - [保留（hold）を新設したら、寿命を state を消す全経路で揃え、解除の手段を保留の理由ごとに用意する](./new-hold-state-lifecycle-across-all-purge-paths.md)
@@ -53,3 +64,5 @@ confidence: medium
 - [持ち越しを記録の寿命へ結び付けた fix 結果](../../raw/fixes/20260929T014454Z-pr-3393.md)
 - [冪等キーが候補の出ない run で消えることを指摘したレビュー結果](../../raw/reviews/20260929T032130Z-pr-3393.md)
 - [番号を追記型の台帳へ移した fix 結果](../../raw/fixes/20260929T032906Z-pr-3393.md)
+- [冪等の key を再実行で変わらない部分から作り直した fix 結果](../../raw/fixes/20260929T190643Z-pr-3459.md)
+- [照合の片側だけのテストと引数を見ない mock を指摘したレビュー結果](../../raw/reviews/20260929T185341Z-pr-3459.md)

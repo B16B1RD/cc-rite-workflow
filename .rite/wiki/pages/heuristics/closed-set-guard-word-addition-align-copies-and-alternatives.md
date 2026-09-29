@@ -4,12 +4,13 @@ title: "語の閉集合で拒否する guard に語を足すときは、閉集�
 domain: "heuristics"
 description: "状態変更を拒否する閉集合へ 1 語を足す変更は、既存の判定経路にそのまま乗るので小さく収束する。収束の条件は、閉集合の写し（hook 本体・テスト・禁止表・仕様・設計理由）を同じ変更で揃えることと、拒否時に案内する代替手段が新しい用途でも実際に動くことである。サブコマンド名で判定する閉集合は CLI の alias をすり抜けるので、個別の alias を足さず欠陥クラスとして扱う。"
 created: "2026-09-28T14:28:35Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T16:15:27Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T19:21:37Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T14:28:35Z" }
   - by: "rite-wiki-ingest/claude-opus-5-5"
     at: "2026-09-28T15:38:14Z"
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T16:15:27Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T19:21:37Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260928T141040Z-pr-3404.md"
@@ -21,6 +22,12 @@ sources:
     resource: "raw/fixes/20260928T154405Z-pr-3412.md"
   - type: "reviews"
     resource: "raw/reviews/20260928T160552Z-pr-3412.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T184229Z-pr-3446.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T191840Z-pr-3446.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T190643Z-pr-3446.md"
 tags: ["guard", "closed-set", "deny-list", "alternative-command", "cli-alias"]
 confidence: medium
 ---
@@ -54,6 +61,12 @@ confidence: medium
 
 見積もりが heredoc の本文も数えるガードでは、「別の Bash 呼び出しで本文をファイルに書く」は同じ本文を持つ限り同じ拒否に戻る。代替には判定の対象外にある手段（ツールでのファイル作成）を選ぶ。ただし拒否文にホスト固有のツール名を書くと、同じ hook を別のホストで動かしたときに案内が通じない。案内は「ファイルを作成するツールで本文を書き、そのファイルを渡す」のようにホストに依存しない表現にする。
 
+### 代替の直し方は拒否理由の種類ごとに分け、同じ直し方の記載箇所をすべて揃える
+
+拒否メッセージの直し方は、拒否が発動する条件そのものに照らして、書き直したコマンドを実際に通して確かめる。直し方どおりに書き直すと同じ理由で再び拒否される案内は、自律実行のエージェントを行き止まりにする。拒否理由の種類（構文を読めない・git が読めない・判定の対象外など）によって通る直し方が違うときは、汎用の 1 文を全理由に付けず、理由ごとに書き分ける。
+
+直し方を変えたら、同じ直し方を書いた表・段落・参照文書・PR 本文をすべて同じ変更で揃える。1 か所でも古い直し方が残ると、表を引いた読み手は通らない手順へ導かれる。テストは拒否されることだけでなく、直し方どおりの形が通ることと、理由ごとの文言も固定する。条件を説明する文書は、照合の単位（語か部分文字列か）まで実装に合わせる。
+
 ## 関連ページ
 
 - [コマンドの語で拒否する guard は拒否の確定を 1 語だけ遅らせ、過去の実コマンドを新旧 guard に再生して差分を確かめる](./command-word-guard-defers-rejection-one-token.md)
@@ -65,3 +78,6 @@ confidence: medium
 - [レビュー結果（代替案が同じ拒否に戻る・マルチバイトの予算境界）](../../raw/reviews/20260928T153054Z-pr-3412.md)
 - [代替の案内を Write ツールでのファイル作成に改めた fix 結果](../../raw/fixes/20260928T154405Z-pr-3412.md)
 - [代替の案内にホスト固有のツール名を書かないことを確かめたレビュー結果](../../raw/reviews/20260928T160552Z-pr-3412.md)
+- [直し方どおりの形が通ることまで確かめた fix 結果](../../raw/fixes/20260929T184229Z-pr-3446.md)
+- [拒否理由ごとに代替の直し方を書き分けた fix 結果](../../raw/fixes/20260929T191840Z-pr-3446.md)
+- [古い直し方が残る記載箇所と文言の未固定を指摘したレビュー結果](../../raw/reviews/20260929T190643Z-pr-3446.md)

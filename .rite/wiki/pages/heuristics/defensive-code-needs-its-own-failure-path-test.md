@@ -28,14 +28,17 @@ sources:
     resource: "raw/reviews/20260924T163426Z-pr-3058.md"
   - type: "fixes"
     resource: "raw/fixes/20260928T044214Z-pr-3386.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T183927Z-pr-3458.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T05:02:36Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T19:21:37Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-25T14:36:47Z" }
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-11T06:35:19Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-24T17:20:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-28T05:02:36Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T19:21:37Z" }
 ---
 
 # 無音失敗を可視化する防御コードには、その防御コード自体を守る失敗パステストを追加する
@@ -100,6 +103,10 @@ verified:
 
 終了印の作成・削除に失敗したときの WARNING を足した変更で、その分岐へ入るテストが無いと指摘された。state ディレクトリを書き込み不可にして分岐へ入り、WARNING に対象パスが出ることと終了コードを確かめるテストを足した（root は書き込み不可にならないので skip する）。hook では `2>/dev/null` で helper の WARNING や失敗の原因を消さず、stderr へそのまま出す。実装は変えず、同じ変更で増えた分岐をテストと診断出力ですべて観測可能にする。
 
+### reason を直す fix でも、捕捉した stderr の診断を読まずに残さない
+
+失敗分岐の reason を直してその分岐を実行するテストを足すとき、stdout の marker だけを assert し、捕捉した stderr を読まずに残すと、同じ分岐の WARNING（読めなかったパスなど、人が原因に辿り着くための診断）は無防備のまま残る。捕捉した stderr には、診断の要素（対象パスなど）を 1 行で固定すると退行を検出できる。ただし受入条件がその WARNING の固定を求めていない場合、レビューではこの不足は検出網の欠落として non-blocking に扱われ、同じ PR では直さない判断もありうる。
+
 ## 関連ページ
 
 - [mkdir 成功のみの判定漏れと brace group 未使用によるリダイレクト診断メッセージ漏洩](../anti-patterns/mkdir-success-only-check-and-redirect-diagnostic-leak.md)
@@ -120,3 +127,4 @@ verified:
 - [レビュー結果](../../raw/reviews/20260911T061535Z-pr-2673.md)
 - [レビュー結果](../../raw/reviews/20260924T163426Z-pr-3058.md)
 - [fix 結果（WARNING 経路の回帰テストと診断出力）](../../raw/fixes/20260928T044214Z-pr-3386.md)
+- [stdout の marker だけを固定し stderr の WARNING を読まないテストを指摘したレビュー結果](../../raw/reviews/20260929T183927Z-pr-3458.md)

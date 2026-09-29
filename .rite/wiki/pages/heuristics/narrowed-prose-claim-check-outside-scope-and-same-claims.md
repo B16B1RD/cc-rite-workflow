@@ -4,13 +4,14 @@ title: "散文の主張を実装に合わせて絞るときは、限定の外側
 domain: "heuristics"
 description: "散文の主張を実装の範囲へ絞ると、絞った外側の扱いや、指示語の参照先、別言語の要約・テストのコメント・配布物に残る同じ主張の言い過ぎが見落とされやすい。実装の分岐ごとに突き合わせ、同じ主張を横断で探してから直す。"
 created: "2026-09-27T08:00:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T09:38:37Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T19:21:37Z" }
 verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T14:56:46Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T15:25:53Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T16:35:29Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:05:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T09:38:37Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T19:21:37Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260927T074341Z-pr-3242.md"
@@ -38,6 +39,12 @@ sources:
     resource: "raw/reviews/20260929T090128Z-pr-3349.md"
   - type: "reviews"
     resource: "raw/reviews/20260929T092220Z-pr-3349.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T185146Z-pr-3458.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T183927Z-pr-3458.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T190258Z-pr-3458.md"
 tags: ["prose", "docs", "scope", "sweep"]
 confidence: medium
 ---
@@ -81,6 +88,10 @@ confidence: medium
 
 名指しされた 1 行だけを直すと、同じ主張がファイルの別の行や rationale 文書に残り、参照元と参照先が逆のことを言う状態になる。実測では、この掃き残しが次の差分レビューで再指摘された。主張の核になる語句（「legacy parser へ流す」など）でファイル全体と rationale 文書を grep して一度に直すと、次の再レビューでは新しい指摘が出ずに収束した。
 
+### 否定の主張は、分岐より前に無条件で走る処理まで数えて限定する
+
+「この経路では一時ファイルを作らない」のような否定の主張は、同じ関数が分岐より前に無条件で実行する処理（stderr を捕まえるための mktemp など）と食い違いやすい。否定の対象は、実際に作らないもの（メッセージの一時ファイル）に絞って書く。絞った後は、同名の理由を出す兄弟の実装（実際にメッセージを一時ファイルへ書く経路）とも突き合わせると、「この経路では」という限定が兄弟との違いを正しく表しているかまで確かめられる。実測では、限定した書き直しを次の差分レビューの reviewer 全員が指摘なしで受け入れた。
+
 ## 関連ページ
 
 - [変更・削除の掃き出しは旧語彙・置換した条件式・別記法トークンまで広げる](./change-sweep-spans-old-vocabulary-and-notations.md)
@@ -101,3 +112,6 @@ confidence: medium
 - [同じ主張をファイル全体と rationale で直した fix 結果](../../raw/fixes/20260929T090755Z-pr-3349.md)
 - [参照元と参照先の片方だけを直した掃き残しを指摘したレビュー結果](../../raw/reviews/20260929T090128Z-pr-3349.md)
 - [同じ主張を横断で直して収束したレビュー結果](../../raw/reviews/20260929T092220Z-pr-3349.md)
+- [否定のコメントを実際に作らないものへ限定した fix 結果](../../raw/fixes/20260929T185146Z-pr-3458.md)
+- [否定のコメントと分岐前の mktemp の食い違いを指摘したレビュー結果](../../raw/reviews/20260929T183927Z-pr-3458.md)
+- [限定句を兄弟実装と突き合わせて確かめたレビュー結果](../../raw/reviews/20260929T190258Z-pr-3458.md)
