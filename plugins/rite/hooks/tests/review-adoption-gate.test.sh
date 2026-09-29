@@ -419,6 +419,28 @@ unresolved = rec(contract=other['contract'], V=False, reason='the same defect is
 fresh = pending(unresolved, pr=205, issue=None)
 reversal = dict(answer(fresh, 'reversal', 'consolidate'), observations='the new caller reaches the same defect')
 pending(dict(unresolved, reconciliation=reversal), pr=205, issue=None, reason='unresolved_adoption')
+# Consolidating the same adopted requirement onto an OPEN tracker records LINK.
+tracked = dict(unresolved, tracker=7)
+fresh = pending(tracked, pr=205, issue=None)
+consolidation = dict(answer(fresh, 'reversal', 'consolidate'),
+                     observations='the existing tracker owns the same requirement')
+verdicts, _ = decided([dict(tracked, reconciliation=consolidation)], cands=CANDS[:1],
+                      pr=205, issue=None, kind='followup')
+check(verdicts['F-01']['exit'] == 'LINK' and verdicts['F-01']['verdict'] == 'record', verdicts)
+persisted = json.loads((state / '.rite/state/adoption-history-205-followup.json').read_text())
+check(persisted['entries'][0]['decision']['tracker'] == 7 and
+      persisted['entries'][0]['reconciliation'] == consolidation, persisted)
+# A PR-origin LINK still holds completion even after arbitration has finished.
+tracked = dict(tracked, origin='pr', origin_cause=removed)
+fresh = pending(tracked, pr=206, issue=None)
+consolidation = dict(answer(fresh, 'reversal', 'consolidate'),
+                     observations='the same tracker owns the PR-origin defect')
+saved, _ = held([dict(tracked, reconciliation=consolidation)], 'undecided',
+                cands=CANDS[:1], pr=206, issue=None, kind='followup')
+check(saved['reconciliation'] == [] and saved['held_ids'] == ['F-01'], saved)
+persisted = json.loads((state / '.rite/state/adoption-history-206-followup.json').read_text())
+check(persisted['entries'][0]['decision']['exit'] == 'LINK' and
+      persisted['entries'][0]['decision']['pr_blocking'] is True, persisted)
 # Moving the same cited text to another line still matches the completed contract.
 (repo / 'tool.sh').write_text('#!/bin/bash\n# relocated\necho "ok: $1"\n')
 git(repo, 'add', '-A')

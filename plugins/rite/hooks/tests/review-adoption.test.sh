@@ -469,6 +469,18 @@ unresolved = rec(V=False, contract=None, reason='the defect is still present',
                  prior=prior('F-13', 'src/caller.sh:3', 'ADOPT'))
 pending = request_of(reconcile(unresolved))
 request_of(reconcile(dict(unresolved, reconciliation=answer(pending))), 'unresolved_adoption')
+# Consolidation keeps an unresolved adoption on its OPEN tracker, including PR blocking.
+for origin in ('pre_existing', 'pr'):
+    tracked = dict(unresolved, tracker=7, origin=origin, origin_cause=removed)
+    pending = request_of(reconcile(tracked))
+    linked = reconcile(dict(tracked, reconciliation=answer(pending, resolution='consolidate')))
+    decision = linked['decisions'][0]
+    check(decision['exit'] == 'LINK' and decision['tracker'] == 7, linked)
+    check(decision['pr_blocking'] == (origin == 'pr') and linked['reconciliation'] == [], linked)
+closed = dict(unresolved, tracker=8)
+pending = request_of(reconcile(closed))
+request_of(reconcile(dict(closed, reconciliation=answer(pending, resolution='consolidate'))),
+           'unresolved_adoption')
 # A reversal needs a concrete observation and can consolidate onto an existing tracker.
 reversal = dict(conflict, tracker=7)
 pending = request_of(reconcile(reversal))

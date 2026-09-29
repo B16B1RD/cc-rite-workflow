@@ -479,20 +479,19 @@ def reconcile(records, decisions, candidates, context, args, head):
                 reason = "contract_change"
             elif not reason and "prior_conflict" in signals and answer["trigger"] == "none":
                 raise Stop("record_invalid", record["ids"], "a conflicting disposition needs arbitration")
-            elif (not reason and record["present"] and all(record[axis] is False for axis in "VCT")
-                  and ((record.get("prior") or {}).get("disposition") == "ADOPT"
-                       or answer["trigger"] != "none" and any(
-                           h["decision"].get("exit") == "ADOPT" and h["record"].get("present") is True
-                           for h in matches))):
-                reason = "unresolved_adoption"
+            if not reason:
+                # Arbitration preserves normal exit precedence, including tracker links.
+                decision.update(decide({**record, "prior": None}, False, context))
+                if (decision["exit"] == "REJECT"
+                        and ((record.get("prior") or {}).get("disposition") == "ADOPT"
+                             or answer["trigger"] != "none" and any(
+                                 h["decision"].get("exit") == "ADOPT" and h["record"].get("present") is True
+                                 for h in matches))):
+                    reason = "unresolved_adoption"
             if reason:
                 decision.update(exit="RECONCILE", action="arbitrate", file=False, pr_blocking=True)
                 requests.append({"ids": record["ids"], "fingerprint": fingerprint, "signals": signals,
                                  "history": matches, "record": clean, "reason": reason})
-            else:
-                # The parent resolved the prior conflict, not the V/C/T rules. Reuse the
-                # same exit function so arbitration cannot reject a still-true axis.
-                decision.update(decide({**record, "prior": None}, False, context))
         if decision["exit"] != "RECONCILE":
             entry = {"head": head, "record": clean, "decision": dict(decision), "contract_key": key,
                      "candidates": selected}
