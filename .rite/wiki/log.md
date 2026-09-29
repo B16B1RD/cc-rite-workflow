@@ -136,6 +136,7 @@
 * **Update**: [reviewer の regression 主張は revert test (git show / git diff) で PR 由来か pre-existing かを独立検証する](pages/heuristics/reviewer-regression-claim-revert-test-attribution.md) — raw/reviews/20260929T102124Z-pr-3446.md を統合
 * **Update**: [拒否ガードの前段フィルタが本判定より狭いと、本判定が fail-closed でも全体は fail-open になる](pages/anti-patterns/prefilter-narrower-than-judge-makes-guard-fail-open.md) — raw/fixes/20260929T094158Z-pr-3446.md を統合
 * **Update**: [新規 file 命名と既存 find glob が collision して silent 削除を起こす](pages/anti-patterns/find-glob-naming-collision-silent-removal.md) — raw/reviews/20260929T102208Z-pr-3448.md を統合
+* **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=587, broken_refs=0
 
 ## 2026-09-28
 
