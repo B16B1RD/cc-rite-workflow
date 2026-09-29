@@ -145,7 +145,7 @@ case "$result" in
       --phase "fix" \
       --active true \
       --next "rite:fix completed. Check recent result pattern in context: [fix:pushed]->caller の review-fix loop (/rite:pr-review を起動。範囲は 1.2.4 が cycle に応じて決定し、指摘の採否基準の緩和は禁止). [fix:pushed-wm-stale]->caller の review-fix loop (同上) with WM stale warning (work memory was not updated, manual intervention recommended). [fix:replied-only]->caller の iterate ステップ 5.S、成功後も replied-only で完了通知（mergeable へ昇格しない）. Do NOT stop." \
-      --handoff "/rite:pr-review ${pr_number}" \
+      --handoff "/rite:pr-review ${pr_number} --from-iterate" \
       --if-exists
     ;;
   non-fatal-only)

@@ -347,7 +347,7 @@ follow-up 転記・完了通知の残件）だから。推奨事項を混ぜる�
 Decision Log や別 Issue へ流れ、品質を予算で縛ることになる。空転を止めるのは採否の判定そのもの（V=C=T が
 false の候補は REJECT で終端し、登録されない）と `safety.max_review_cycles` である。PR 内推奨は blocking に
 数えないので、発散判定はこの空転を止めない。
-登録するのは本スキル経由の mergeable の review だけで、受入条件未検証の停止と pr-review の単独実行では
+登録するのは本スキル経由（pr-review を `--from-iterate` 付きで呼ぶ）の mergeable の review だけで、受入条件未検証の停止と pr-review の単独実行では
 登録せず採否保留にする（登録を読むのは 5.S 後の check だけで、この 2 つの経路ではそこへ進まない）。`safety.max_review_cycles` に達した cycle でも登録しない。その修正は次のレビューが max-cycles で止まるため、
 未レビューの HEAD を残すことになる。このときの根因は採否保留で止まる（先送りしない）。
 

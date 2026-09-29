@@ -11,12 +11,11 @@
 #           merged PR cannot take the fix, the OPEN tracker does): record the disposition only.
 #   fix     kind=triage only: ADOPT with origin=pr (fix_in_pr) when the caller passes
 #           --fix-loop yes (a mergeable review inside /rite:iterate, whose registration the same
-#           PR's fix reads) and
-#           `review-pr-recommendations.sh capacity` is open. Nothing is written outside the PR;
-#           the caller registers it as an in-PR recommendation for the same PR's fix. At the stop
-#           on unverified acceptance criteria and in a standalone review nothing would read the
-#           registration, and at
-#           safety.max_review_cycles the fix could not be re-reviewed, so both are held.
+#           PR's fix reads) and `review-pr-recommendations.sh capacity` is open. Nothing is written
+#           outside the PR; the caller registers it as an in-PR recommendation for the same PR's
+#           fix. Nothing reads the registration at the stop on unverified acceptance criteria or
+#           in a standalone review, and at safety.max_review_cycles the fix could not be
+#           re-reviewed, so all three hold the candidate.
 #   hold    anything else: pr_blocking decisions (RECONCILE, ADOPT pr/unknown, DIAGNOSE
 #           pr/unknown, LINK pr/unknown outside followup) and DIAGNOSE without investigation.
 # A missing record file, an unreadable context, or a helper ERROR holds every candidate.

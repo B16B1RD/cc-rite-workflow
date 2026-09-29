@@ -117,11 +117,17 @@ fi
 if [[ " $original_args " =~ [[:space:]]--post-comment[[:space:]] ]]; then
  flag_post="true"
 fi
+# /rite:iterate が review を呼ぶときだけ付ける。無ければ iterate の外の review として扱う
+from_iterate="false"
+if [[ " $original_args " =~ [[:space:]]--from-iterate[[:space:]] ]]; then
+ from_iterate="true"
+fi
 
 # フラグトークンを remaining_args から除去 (sed -E で `(^|space)--flag(space|$)` を空文字置換)
 remaining_args=$(printf '%s' "$original_args" \
  | sed -E 's/(^|[[:space:]])--no-post-comment([[:space:]]|$)/\1\2/g' \
  | sed -E 's/(^|[[:space:]])--post-comment([[:space:]]|$)/\1\2/g' \
+ | sed -E 's/(^|[[:space:]])--from-iterate([[:space:]]|$)/\1\2/g' \
  | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
 
 # --- Step 2: --post-comment / --no-post-comment conflict check ---
@@ -200,6 +206,7 @@ elif [ "$config_post_comment" = "true" ]; then
 fi
 
 echo "[CONTEXT] POST_COMMENT_MODE=$post_comment_mode" >&2
+echo "[CONTEXT] PR_REVIEW_FROM_ITERATE=$from_iterate" >&2
 echo "[CONTEXT] REMAINING_ARGS=$remaining_args" >&2
 }
 

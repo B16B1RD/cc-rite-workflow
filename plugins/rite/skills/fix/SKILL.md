@@ -1615,7 +1615,7 @@ ACTION: Return to ステップ 4.6.W and execute the Wiki Ingest Trigger before 
 The `fix` flow-state write below records the v3 phase so a `/rite:recover` started after a fix iteration classifies the resume point correctly (`skills/recover/SKILL.md` Phase 5.3 の `fix` 行で `/rite:iterate {pr_number}` が invoke される):
 
 **Handoff マーカー**: 結果に応じて 5 種類に分岐する (Stop hook による consume・再注入の機構解説: [stop-loop-continuation-contract.md#mechanism](../../references/stop-loop-continuation-contract.md#mechanism))。
-- **継続** (`[fix:pushed]` / `[fix:pushed-wm-stale]`): `--handoff "/rite:pr-review {pr_number}"` で**ループ継続マーカー**をセットする。
+- **継続** (`[fix:pushed]` / `[fix:pushed-wm-stale]`): `--handoff "/rite:pr-review {pr_number} --from-iterate"` で**ループ継続マーカー**をセットする（再注入される review も iterate の内側として扱う）。
 - **正常終了** (`[fix:replied-only]`): `--handoff "FINALIZE:fix:replied-only:{pr_number}"` をセットする。caller の **5.S sweep 後も返信のみの終了理由を保持**する。
 - **非 fatal のみ** (`[fix:non-fatal-only]`): `--handoff "FINALIZE:fix:non-fatal-only:{pr_number}"` をセットする。caller の **5.S sweep を経てから**完了通知へ進む。
 - **sweep 完了** (`[fix:sweep-done]`): `--handoff "FINALIZE:fix:sweep-done:{pr_number}"` で**終了通知マーカー**をセットする。**ステップ 1 に戻らない**（再フルレビュー禁止）。

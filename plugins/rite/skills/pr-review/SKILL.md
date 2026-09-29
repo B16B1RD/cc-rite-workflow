@@ -89,6 +89,7 @@ standalone と `/rite:iterate` ステップ 1 からの E2E の 2 経路。
 | Argument | Description |
 |------|------|
 | `[pr_number]` | PR number (省略時は現在のブランチの PR を auto-detect) |
+| `--from-iterate` | `/rite:iterate` が review を呼ぶときだけ付ける（ステップ 1.0） |
 
 ---
 
@@ -132,6 +133,7 @@ rationale: references/design-rationale.md#placeholder-legend
 | `<pr_number>` (integer) | PR number (same as existing behavior) |
 | `--post-comment` | Force PR comment posting (overrides config) |
 | `--no-post-comment` | Force skip PR comment posting (overrides config) |
+| `--from-iterate` | `/rite:iterate` からの呼び出し。`[CONTEXT] PR_REVIEW_FROM_ITERATE=true` を出す（無ければ `false`）。ステップ 7.2 の `{fix_loop}` だけが読む |
 | (no flag) | Use `rite-config.yml` `pr_review.post_comment` value (default: `false`) |
 
 **Parsing procedure**:

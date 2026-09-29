@@ -126,6 +126,14 @@ with tempfile.TemporaryDirectory(prefix='rite-review-caller-') as temp:
     assert state()['pr_number'] == 4242 and state()['phase'] == 'pr'
     assert state()['issue_number'] == 4241
     assert 'PR_REVIEW_IN_E2E=true' in execute(entry_block).stdout
+    # e2e-detect is true here, yet a review is inside iterate only when iterate passes --from-iterate.
+    parse_call = next(line for line in review.splitlines()
+                      if line.startswith('bash {plugin_root}/scripts/pr-review-step.sh parse-args '))
+    iterate_args = re.search(r'skill: rite:pr-review\nargs: "([^"]*)"', iterate).group(1)
+    for args, from_iterate in (('{pr_number}', 'false'), (iterate_args, 'true')):
+        parsed = execute(parse_call.replace("'$ARGUMENTS'", "'" + args + "'"))
+        assert 'PR_REVIEW_FROM_ITERATE=' + from_iterate in parsed.stderr, (args, parsed.stderr)
+        assert 'REMAINING_ARGS=4242' in parsed.stderr, (args, parsed.stderr)
     # Standalone pr-review must also initialize without iterate or a worktree.
     state_path = Path(flow('path').stdout.strip())
     state_path.unlink()

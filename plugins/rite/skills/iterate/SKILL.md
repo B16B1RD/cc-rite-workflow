@@ -265,7 +265,7 @@ bash {plugin_root}/scripts/iterate-step.sh lost-repair --repair {repair} --cycle
 
 ```text
 skill: rite:pr-review
-args: "{pr_number}"
+args: "{pr_number} --from-iterate"
 ```
 
 ---
