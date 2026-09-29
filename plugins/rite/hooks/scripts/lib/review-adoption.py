@@ -37,9 +37,11 @@ Record (classification map ``adoption.records[]``; ``adoption.head`` = reviewed 
   present      whether the root cause remains at the reviewed commit (boolean)
   tracker      null or the number of an Issue already tracking this root cause
   prior        null or {"finding_id", "file_line", "disposition", "premise"}: a ledger row
-               whose 判定 cell equals disposition. Current ledger writers write issued /
-               recorded (older rows also rejected); none of these is terminal. REJECT and
-               ADOPT are the terminal dispositions this helper compares against.
+               whose 判定 cell equals disposition. REJECT and ADOPT are the terminal
+               dispositions this helper compares against. The sweep writes issued
+               (filed), REJECT / RESOLVED / LINK (exits recorded without filing) and
+               recorded (guardrail transcription); issued, recorded and the older
+               rejected rows are not terminal, and RESOLVED / LINK rows are never a prior.
   reason       why not adopted and when to reconsider; required when any of V/C/T is
                "unknown", and REJECT needs it
   proposition  {"claim", "reach", "reach_source", "done"} for an investigation

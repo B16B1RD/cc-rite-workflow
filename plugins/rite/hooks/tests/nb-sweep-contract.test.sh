@@ -24,6 +24,8 @@
 # T-21 ledger source column: append writes a 5-column header, accepts only rows ending with a review JSON basename (suffix / trailing blanks / escaped pipes ok; otherwise entries_source_invalid with the ledger untouched), upgrades a 4-column header and separator once while keeping old rows byte-identical and in order; mixed ledgers survive extract → merge-into unchanged; the record helper count, header-only skip and collect exclusion read 5-column ledgers like 4-column ones; nb-sweep.md step 3 names the source column and its value source
 # T-22 entries whose invalid rows exceed the pipe buffer still stop with rc=1, print the first three invalid rows in order and end stderr with exactly one reason=entries_source_invalid; the ledger is untouched
 # T-23 after a failed ledger append, nb-sweep.md step 3 says to check every entries row, re-run only step 3 (not the step 2 issuance) and continue from the iterate 5.S sweep-done row after step 4 instead of re-running iterate, and both places limit that continuation to the conversation that stopped and forbid it even there when either `{sweep_origin}` or the `NB_SWEEP_RESULT` count cannot be read from the conversation; step 2 separates that re-run from a fresh sweep; iterate 5.S points any post-issuance persist stop there without narrowing by reason name; and the schema rejects the whole entries when any row is invalid
+# T-24 the ledger as the sweep reads it after the adoption gate: an issued row excludes its target from any source, a REJECT / RESOLVED / LINK row only when its 出典 is the review JSON read now, legacy recorded / rejected rows never; the last REJECT / ADOPT row becomes the target's prior (premise = 判定文, escaped pipes kept) and matches the adoption helper's ledger row; an id-less target is matched by its anon key; tally counts REJECT / RESOLVED / LINK / recorded as recorded
+# T-25 iterate 5.S tells how to resume a held sweep; nb-sweep.md step 2 stops before filing on a held gate and writes the filed number back as the record's tracker
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -241,23 +243,31 @@ assert "T-01 --pr fixture: lexical tail is not the mtime max" "1" \
   "$([ "$(pr_mtime "$pr_dir/1-20260101T000000.json")" -gt "$(pr_mtime "$pr_dir/1-20260102T000000.json")" ] && echo 1 || echo 0)"
 assert "T-01 --pr record is the lexical tail" "1-20260102T000000.json" "$(printf '%s' "$pr_out" | jq -r '.record' | xargs basename)"
 
-# --- Routing preserves evidence and only issues boolean measured MEDIUM ---
+# --- collect never decides adoption: severity and measurement change neither the output keys nor the targets ---
 route_json="$sandbox/routes.json"
 jq -n '{non_blocking_findings: [
   {id:"M-true",severity:"MEDIUM",verification:{measured:true,detail:"observed"}},
   {id:"M-false",severity:"MEDIUM",verification:{measured:false}},
   {id:"M-missing",severity:"MEDIUM"},
-  {id:"M-string",severity:"MEDIUM",verification:{measured:"true"}},
-  {id:"M-number",severity:"MEDIUM",verification:{measured:1}},
-  {id:"M-scalar",severity:"MEDIUM",verification:"none"},
   {id:"L-true",severity:"LOW",verification:{measured:true}},
   {id:"H-true",severity:"HIGH",verification:{measured:true}},
-  {id:"N-true",severity:"MEDIUM",scope:"nit-noted",verification:{measured:true}}
+  {id:"N-true",severity:"MEDIUM",scope:"nit-noted",verification:{measured:true}},
+  {id:"",severity:"LOW",file:"src/anon.ts",line:4}
 ], findings:[{id:"nit",severity:"MEDIUM",scope:"nit-noted",verification:{measured:true}}]}' > "$route_json"
 route_out=$("$COLLECT" --json "$route_json")
-assert "only measured boolean MEDIUM issued" "M-true" "$(printf '%s' "$route_out" | jq -r '[.targets[] | select(.route=="issued") | .id] | join(",")')"
-assert "remaining routes recorded" "9" "$(printf '%s' "$route_out" | jq '[.targets[] | select(.route=="recorded")] | length')"
+assert "collect output has no route (adoption is the gate's)" 0 "$(printf '%s' "$route_out" | jq '[.. | objects | select(has("route"))] | length')"
+assert "every target is collected regardless of severity / measured" 8 "$(printf '%s' "$route_out" | jq '.targets | length')"
 assert "verification evidence preserved" "observed" "$(printf '%s' "$route_out" | jq -r '.targets[] | select(.id=="M-true") | .verification.detail')"
+assert "key is the id" "M-true" "$(printf '%s' "$route_out" | jq -r '.targets[] | select(.id=="M-true") | .key')"
+assert "key of an id-less target is anon:<file>:<line>" "anon:src/anon.ts:4" "$(printf '%s' "$route_out" | jq -r '.targets[] | select(.id=="") | .key')"
+# 重要度と実測だけを変えた同じ指摘は、重要度・実測以外の出力が変わらない
+route_flip="$sandbox/routes-flip.json"
+jq '.non_blocking_findings |= map(.severity = (if .severity == "MEDIUM" then "LOW" else "MEDIUM" end) | .verification = {measured: false})
+    | .findings |= map(.severity = "HIGH" | .verification = {measured: false})' "$route_json" > "$route_flip"
+flip_out=$("$COLLECT" --json "$route_flip")
+assert "flipping severity / measured leaves the targets and keys unchanged" \
+  "$(printf '%s' "$route_out" | jq -c '[.targets[] | del(.severity, .verification)]')" \
+  "$(printf '%s' "$flip_out" | jq -c '[.targets[] | del(.severity, .verification)]')"
 
 # Guardrail-only must not be mistaken for a completed/no-op sweep.
 guard_json="$sandbox/guard.json"
@@ -265,7 +275,7 @@ jq '{guardrail_audit_log}' "$mix_json" > "$guard_json"
 guard_out=$("$COLLECT" --json "$guard_json")
 assert "guardrail-only status ok" "ok" "$(printf '%s' "$guard_out" | jq -r '.status')"
 assert "guardrail-only count 1" "1" "$(printf '%s' "$guard_out" | jq -r '.count')"
-assert "guardrail route recorded" "recorded" "$(printf '%s' "$guard_out" | jq -r '.already_rejected[0].route')"
+assert "guardrail carries no route" "false" "$(printf '%s' "$guard_out" | jq -r '.already_rejected[0] | has("route")')"
 assert "guardrail measured false" "false" "$(printf '%s' "$guard_out" | jq -r '.already_rejected[0].verification.measured')"
 assert "guardrail severity original" "MEDIUM" "$(printf '%s' "$guard_out" | jq -r '.already_rejected[0].severity')"
 
@@ -293,9 +303,54 @@ jq -n --slurpfile guard "$guard_json" '{non_blocking_findings:[
 {id:"collision",file:"src/keep.ts",line:9}
 ],guardrail_audit_log:$guard[0].guardrail_audit_log}' > "$live_json"
 live_out=$("$COLLECT" --json "$live_json" --pr 1)
-assert "all three ledger dispositions excluded, id collision retained" "2" "$(printf '%s' "$live_out" | jq '.count')"
+assert "only the issued row excludes a target; legacy rejected / recorded rows do not (id collision retained)" "collision,old,rec" "$(printf '%s' "$live_out" | jq -r '[.targets[].id] | sort | join(",")')"
+assert "legacy rows keep their target at the same location" "src/old.ts" "$(printf '%s' "$live_out" | jq -r '.targets[] | select(.id=="old") | .file')"
+assert "legacy rows give no prior" 0 "$(printf '%s' "$live_out" | jq '[.targets[] | select(has("prior"))] | length')"
 assert "guardrail ledger excluded" "0" "$(printf '%s' "$live_out" | jq '.already_rejected | length')"
-assert "same id different location retained" "src/different.ts" "$(printf '%s' "$live_out" | jq -r '.targets[] | select(.id=="old") | .file')"
+assert "candidates are the targets with id=key, finding_id and the record of the JSON read" \
+  "$(printf '%s' "$live_out" | jq -c '[.targets[] | . + {finding_id: .id, id: .key, record: "live.json"}]')" \
+  "$(printf '%s' "$live_out" | jq -c '.candidates')"
+
+# A sweep hold saved on another review JSON is carried into candidates on the JSON read now:
+# its candidates keep the record they came from (nit-noted ones included) under the id <record>#<key>.
+carry_root="$sandbox/carry"
+mkdir -p "$carry_root/.rite/state"
+carry_hold="$carry_root/.rite/state/adoption-hold-1-sweep.json"
+printf '%s' "$live_out" | jq '{kind: "sweep", pr: 1, head: "aaaa", review_result: "/x/1-old.json", reason: "undecided",
+  detail: "", held_ids: ["old"],
+  candidates: ([.candidates[] | select(.id == "old")]
+    + [{id: "rec", key: "rec", finding_id: "rec", source: "findings_nit_noted", file: "src/nit.ts", line: 5,
+        severity: "LOW", scope: "nit-noted", description: "nit", suggestion: "", verification: null, record: "1-old.json"}]),
+  resume: "r"}' > "$carry_hold"
+carry_out=$("$COLLECT" --json "$live_json" --pr 1 --state-root "$carry_root")
+assert "carry: a held candidate the targets still have is not duplicated" 1 \
+  "$(printf '%s' "$carry_out" | jq '[.candidates[] | select(.file == "src/old.ts")] | length')"
+assert "carry: a held nit-noted candidate the targets lack is carried with its own record" "1-old.json#rec|1-old.json|findings_nit_noted" \
+  "$(printf '%s' "$carry_out" | jq -r '.candidates[] | select(.file == "src/nit.ts") | "\(.id)|\(.record)|\(.source)"')"
+assert "carry: count includes the carried candidate" "$(( $(printf '%s' "$live_out" | jq '.count') + 1 ))" "$(printf '%s' "$carry_out" | jq '.count')"
+assert "carry: targets are unchanged" "$(printf '%s' "$live_out" | jq -c '.targets')" "$(printf '%s' "$carry_out" | jq -c '.targets')"
+empty_json="$sandbox/empty-review.json"
+printf '{"non_blocking_findings": []}\n' > "$empty_json"
+carry_empty=$("$COLLECT" --json "$empty_json" --pr 1 --state-root "$carry_root")
+assert "carry: a hold makes a review JSON with no target ok, not empty" "ok|2" \
+  "$(printf '%s' "$carry_empty" | jq -r '"\(.status)|\(.candidates | length)"')"
+# The carried id is <record>#<key>: a hold that already carries candidates of two earlier JSONs next
+# to a target of the same F-01 keeps every id unique, and carrying it again gives the same ids.
+jq -n '{kind: "sweep", pr: 1, head: "b", review_result: "/x/1-b.json", reason: "undecided", detail: "", held_ids: [],
+  resume: "r", candidates: [
+    {id: "rec", key: "rec", finding_id: "rec", file: "src/b.ts", line: 1, description: "b", record: "1-b.json"},
+    {id: "1-a.json#rec", key: "rec", finding_id: "rec", file: "src/a.ts", line: 1, description: "a", record: "1-a.json"}]}' \
+  > "$carry_hold"
+chain_out=$("$COLLECT" --json "$live_json" --pr 1 --state-root "$carry_root")
+assert "carry: ids stay unique across chained holds" "true" \
+  "$(printf '%s' "$chain_out" | jq '[.candidates[].id] | length == (unique | length)')"
+assert "carry: chained carried ids are <record>#<key>" "1-a.json#rec,1-b.json#rec" \
+  "$(printf '%s' "$chain_out" | jq -r '[.candidates[] | select(.id | contains("#")) | .id] | sort | join(",")')"
+printf '{"candidates": [{"id": "x", "key": "x"}]}\n' > "$carry_hold"
+"$COLLECT" --json "$live_json" --pr 1 --state-root "$carry_root" > /dev/null 2> "$sandbox/carry-bad.err"
+assert "carry: a hold without the candidates' record stops the collect" 1 "$?"
+assert_grep "carry: the unreadable hold is named" "$sandbox/carry-bad.err" 'reason=hold_unreadable'
+assert_grep "carry: the unreadable hold's path is printed" "$sandbox/carry-bad.err" 'adoption-hold-1-sweep.json'
 
 # CRLF body: the ledger section must be read exactly as the LF body (same targets, same section boundary).
 crlf_ledger_body="$sandbox/live-ledger-crlf.md"
@@ -303,7 +358,7 @@ sed 's/$/\r/' "$ledger_body" > "$crlf_ledger_body"
 assert "CRLF fixture contains CR" "yes" "$(grep -q $'\r' "$crlf_ledger_body" && echo yes || echo no)"
 jq -n --rawfile body "$crlf_ledger_body" '[[{id:11,user:{login:"rite-bot"},body:$body}]]' > "$NB_TEST_COMMENTS"
 crlf_out=$("$COLLECT" --json "$live_json" --pr 1)
-assert "CRLF ledger excludes the same three dispositions" "2" "$(printf '%s' "$crlf_out" | jq '.count')"
+assert "CRLF ledger excludes the same rows" "3" "$(printf '%s' "$crlf_out" | jq '.count')"
 assert "CRLF targets equal LF targets" "$(printf '%s' "$live_out" | jq -cS '[.targets[] | {id, file, line}]')" "$(printf '%s' "$crlf_out" | jq -cS '[.targets[] | {id, file, line}]')"
 assert "CRLF keeps the collision row outside the ledger" "1" "$(printf '%s' "$crlf_out" | jq '[.targets[] | select(.id=="collision")] | length')"
 jq -n --rawfile body "$ledger_body" '[[{id:11,user:{login:"rite-bot"},body:$body}]]' > "$NB_TEST_COMMENTS"
@@ -369,7 +424,9 @@ assert_grep "T-07 fix persist uses body count" "$FIX" '\-\-count "\$body_count"'
 assert_grep "T-07 fix record reads the terminal outcome" "$FIX" 'record_outcome=.*NONBLOCKING_RECORD_DONE=1; \.\*outcome='
 assert_grep "T-07 fix record succeeds only on created / updated" "$FIX" '^[[:space:]]*0:created[|]0:updated\) ;;$'
 assert_not_grep "T-07 fix record drops the failed-only check" "$FIX" 'NONBLOCKING_RECORD_FAILED=1[|]outcome=failed'
-assert_grep "T-07 fix issued route" "$FIX" 'route=issued'
+assert_grep "T-07 fix gates the sweep on the adoption exit" "$FIX" 'review-adoption-gate\.sh --pr \{pr_number\} --kind sweep'
+assert_grep "T-07 fix files only verdict=file" "$FIX" '`verdict=file` の記録ごとに 1 件起票する'
+assert_not_grep "T-07 fix has no severity route" "$FIX" 'route=issued'
 assert_grep "T-07 fix recorded machine rationale" "$FIX" 'severity=\{sev\}; measured=\{bool\}'
 assert_grep "T-07 sweep forbids commits" "$FIX" 'コードを変更せず、commit / push を行わない'
 assert_grep "T-07 pr-review rejected_ledger" "$REVIEW" '{rejected_ledger}'
@@ -434,40 +491,94 @@ extract_fix_block() {
     inside {block=block $0 "\n"}
   ' "$FIX"
 }
-route_guard="$sandbox/route-guard.sh"
+gate_guard="$sandbox/gate-guard.sh"
 issue_guard="$sandbox/issue-guard.sh"
-extract_fix_block 'reason=nb_sweep_route_missing' > "$route_guard"
+extract_fix_block 'reason=nb_sweep_adoption_held' > "$gate_guard"
 extract_fix_block 'reason=nb_sweep_issue_failed' > "$issue_guard"
-assert_grep "route guard extracted" "$route_guard" 'nb_sweep_route_missing'
+assert_grep "gate guard extracted" "$gate_guard" 'nb_sweep_adoption_held'
+assert_grep "gate guard holds the verdict check" "$gate_guard" 'nb_sweep_verdict_invalid'
 assert_grep "issue guard extracted" "$issue_guard" 'nb_sweep_issue_failed'
 stub_plugin="$sandbox/plugin"
-mkdir -p "$stub_plugin/scripts"
+mkdir -p "$stub_plugin/scripts" "$stub_plugin/hooks/scripts"
 cat > "$stub_plugin/scripts/create-issue-with-projects.sh" <<'SH'
 #!/usr/bin/env bash
 printf 'called\n' >> "$NB_TEST_ISSUE_LOG"
 exit 1
 SH
+cat > "$stub_plugin/hooks/state-path-resolve.sh" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$NB_TEST_STATE"
+SH
+cat > "$stub_plugin/hooks/scripts/nb-sweep-collect.sh" <<'SH'
+#!/usr/bin/env bash
+jq -n --arg r "$NB_TEST_STATE/.rite/review-results/7-20260101120000.json" \
+  '{id:"F-01",key:"F-01",file:"src/a.ts",line:1,description:"d"} as $t
+   | {status:"ok",count:1,record:$r,targets:[$t],
+      candidates:[$t + {finding_id:"F-01",record:"7-20260101120000.json"}],already_rejected:[]}'
+SH
+# ゲートは stub (出口ごとの stdout と exit) と実物 (判定記録が無いと hold する) の両方で通す
+cat > "$stub_plugin/hooks/scripts/review-adoption-gate.sh" <<'SH'
+#!/usr/bin/env bash
+case "$NB_TEST_GATE" in
+  held) printf '{"held": true, "reason": "undecided", "hold_file": "x"}\n'; exit 3 ;;
+  missing) printf '{"held": false, "verdicts": [{"ids": ["F-01"]}]}\n' ;;
+  unknown) printf '{"held": false, "verdicts": [{"ids": ["F-01"], "verdict": "hold"}]}\n' ;;
+  error) exit 1 ;;
+  decided) printf '{"held": false, "head": "h", "verdicts": [{"ids": ["F-01"], "verdict": "file"}]}\n' ;;
+esac
+SH
+real_gate_plugin="$sandbox/plugin-real-gate"
+mkdir -p "$real_gate_plugin/hooks/scripts"
+cp "$stub_plugin/hooks/state-path-resolve.sh" "$real_gate_plugin/hooks/"
+cp "$stub_plugin/hooks/scripts/nb-sweep-collect.sh" "$real_gate_plugin/hooks/scripts/"
+ln -s "$PLUGIN_ROOT/hooks/scripts/review-adoption-gate.sh" "$real_gate_plugin/hooks/scripts/review-adoption-gate.sh"
 export NB_TEST_ISSUE_LOG="$sandbox/issue.log"
+export NB_TEST_STATE="$sandbox/gate-state"
+mkdir -p "$NB_TEST_STATE/.rite/review-results" "$NB_TEST_STATE/.rite/state"
+printf '{"commit_sha": "0123456789abcdef0123456789abcdef01234567"}\n' > "$NB_TEST_STATE/.rite/review-results/7-20260101120000.json"
 sed "s|{plugin_root}|$stub_plugin|g" "$issue_guard" > "$sandbox/issue-guard-resolved.sh"
 mv "$sandbox/issue-guard-resolved.sh" "$issue_guard"
-# A tail mutation represents subsequent persist: exits must prevent reaching it.
+# The tail stands for everything after the gate (filing, entries, ledger persist, done marker):
+# a stop must never reach it.
 export NB_TEST_LEDGER="$ledger"
 ledger_before=$(cksum "$ledger")
 head_before=$(git -C "$PLUGIN_ROOT" rev-parse HEAD)
-printf '\nprintf "unexpected persist\\n" >> "$NB_TEST_LEDGER"\n' >> "$route_guard"
-printf '\nprintf "unexpected persist\\n" >> "$NB_TEST_LEDGER"\n' >> "$issue_guard"
-for route_case in missing unknown; do
-  if [ "$route_case" = missing ]; then
-    collect_out='{"targets":[{"id":"x"}]}'
-  else
-    collect_out='{"targets":[{"id":"x","route":"fix"}]}'
-  fi
-  export collect_out
-  bash "$route_guard" > "$sandbox/route-$route_case.out" 2>&1
-  assert "route $route_case fails" "1" "$?"
-  assert_grep "route $route_case fix:error" "$sandbox/route-$route_case.out" '\[fix:error\]'
+cat >> "$gate_guard" <<'SH'
+bash "$NB_TEST_PLUGIN/scripts/create-issue-with-projects.sh" '{}'
+printf 'unexpected persist\n' >> "$NB_TEST_LEDGER"
+printf '| F-01 | src/a.ts:1 | issued | #1 | 7-20260101120000.json |\n' > "$NB_TEST_STATE/.rite/state/nb-sweep-entries-7.md"
+printf 'done 7-20260101120000.json\n' > "$NB_TEST_STATE/.rite/state/nb-sweep-done-7.txt"
+SH
+run_gate_guard() {  # $1=plugin $2=gate mode $3=label
+  sed -e "s|{plugin_root}|$1|g" -e 's|{pr_number}|7|g' -e 's|{base_branch}|develop|g' -e 's|{owner_repo}|test/repo|g' \
+    "$gate_guard" > "$sandbox/gate-$3.sh"
+  ( cd "$sandbox" && NB_TEST_PLUGIN="$stub_plugin" NB_TEST_GATE="$2" bash "$sandbox/gate-$3.sh" ) > "$sandbox/gate-$3.out" 2>&1
+  echo $? > "$sandbox/gate-$3.rc"
+}
+for gate_case in "$stub_plugin|held|held|nb_sweep_adoption_held" "$real_gate_plugin||real-held|nb_sweep_adoption_held" \
+                 "$stub_plugin|missing|missing|nb_sweep_verdict_invalid" "$stub_plugin|unknown|unknown|nb_sweep_verdict_invalid" \
+                 "$stub_plugin|error|error|nb_sweep_adoption_gate_failed"; do
+  IFS='|' read -r gate_plugin gate_mode gate_label gate_reason <<< "$gate_case"
+  run_gate_guard "$gate_plugin" "$gate_mode" "$gate_label"
+  assert "gate $gate_label stops" 1 "$(cat "$sandbox/gate-$gate_label.rc")"
+  assert "gate $gate_label emits [fix:error] with its reason" 1 "$(grep -cx "\[fix:error\] reason=$gate_reason" "$sandbox/gate-$gate_label.out")"
+  assert "gate $gate_label never calls the issue helper" "no" "$([ -e "$NB_TEST_ISSUE_LOG" ] && echo yes || echo no)"
+  assert "gate $gate_label writes no entries" "no" "$([ -e "$NB_TEST_STATE/.rite/state/nb-sweep-entries-7.md" ] && echo yes || echo no)"
+  assert "gate $gate_label writes no done marker" "no" "$([ -e "$NB_TEST_STATE/.rite/state/nb-sweep-done-7.txt" ] && echo yes || echo no)"
 done
-assert "invalid route never calls issue helper" "no" "$([ -e "$NB_TEST_ISSUE_LOG" ] && echo yes || echo no)"
+assert "held / invalid verdicts leave the ledger unchanged" "$ledger_before" "$(cksum "$ledger")"
+assert_grep "real gate without records holds with no_records" "$sandbox/gate-real-held.out" 'ADOPTION_GATE=held; kind=sweep; reason=no_records; held=1'
+assert "real gate saves the held candidate in full" "src/a.ts:d" \
+  "$(jq -r '.candidates[0] | "\(.file):\(.description)"' "$NB_TEST_STATE/.rite/state/adoption-hold-7-sweep.json" 2>/dev/null)"
+# The same tail is reached once the gate decides, so the stops above are observations, not a dead tail.
+cp "$ledger" "$sandbox/ledger-before-decided.md"
+run_gate_guard "$stub_plugin" decided decided
+assert "decided gate continues" 0 "$(grep -c '\[fix:error\]' "$sandbox/gate-decided.out")"
+assert_grep "decided gate prints the verdicts" "$sandbox/gate-decided.out" '"verdict": "file"'
+assert_grep "decided gate reaches the filing tail" "$NB_TEST_ISSUE_LOG" '^called$'
+cp "$sandbox/ledger-before-decided.md" "$ledger"
+rm -f "$NB_TEST_ISSUE_LOG" "$NB_TEST_STATE/.rite/state/nb-sweep-entries-7.md" "$NB_TEST_STATE/.rite/state/nb-sweep-done-7.txt"
+printf '\nprintf "unexpected persist\\n" >> "$NB_TEST_LEDGER"\n' >> "$issue_guard"
 issue_args='{"options":{"source":"pr_review"}}' bash "$issue_guard" > "$sandbox/issue-guard.out" 2>&1
 assert "issue helper failure exits" "1" "$?"
 assert_grep "issue failure fix:error" "$sandbox/issue-guard.out" '\[fix:error\]'
@@ -533,7 +644,7 @@ assert "triage removes blocking input" 0 "$(jq '.findings | length' "$medium_jso
 assert "triage preserves measured evidence" true "$(jq 'all(.non_blocking_findings[]; .verification.measured == true and .demotion_reason == "non_fatal")' "$medium_json")"
 medium_collect=$("$COLLECT" --json "$medium_json")
 assert "sweep sees both moved findings" 2 "$(jq '.count' <<< "$medium_collect")"
-assert "measured MEDIUM keeps existing issued route" true "$(jq 'all(.targets[]; .route == "issued")' <<< "$medium_collect")"
+assert "measured MEDIUM carries no route" false "$(jq 'any(.targets[]; has("route"))' <<< "$medium_collect")"
 medium_entries="$sandbox/medium-entries.md"
 jq -r '.targets[] | "| \(.id) | \(.file):\(.line) | issued | fixture issue for \(.id) | 7-20260101120000.json |"' \
   <<< "$medium_collect" > "$medium_entries"
@@ -956,6 +1067,7 @@ SH
   cp "$nbr_entries" "$sandbox/sweep-state/.rite/state/nb-sweep-entries-7.md"
   run_record_block() {  # $1=outcome (none = DONE 行なし) $2=rc
     : > "$NBR_GH_LOG"
+    printf '{"kind":"sweep","pr":7,"candidates":[]}\n' > "$sandbox/sweep-state/.rite/state/adoption-hold-7-sweep.json"
     SWEEP_STUB_OUTCOME="$1" SWEEP_STUB_RC="$2" TMPDIR="$sandbox/sweep-tmp" PATH="$nbr_bin:$PATH" \
       bash "$record_block.resolved" > "$sandbox/record-block.out" 2> "$sandbox/record-block.err"
   }
@@ -966,11 +1078,15 @@ SH
     assert_not_grep "T-10 $record_case は後続へ進まない" "$sandbox/record-block.out" '^REACHED$'
     assert "T-10 $record_case は entries を残す (起票済みの記録が戻り先になる)" 1 \
       "$([ -s "$sandbox/sweep-state/.rite/state/nb-sweep-entries-7.md" ] && echo 1 || echo 0)"
+    assert "T-10 $record_case は sweep の hold を残す (持ち越し候補が再実行の候補に戻る)" 1 \
+      "$([ -e "$sandbox/sweep-state/.rite/state/adoption-hold-7-sweep.json" ] && echo 1 || echo 0)"
   done
   for record_case in created:0 updated:0; do
     run_record_block "${record_case%%:*}" "${record_case##*:}"
     assert_grep "T-10 $record_case は後続へ進む" "$sandbox/record-block.out" '^REACHED$'
     assert_not_grep "T-10 $record_case は [fix:error] を出さない" "$sandbox/record-block.out" '\[fix:error\]'
+    assert "T-10 $record_case は台帳の記録の後に sweep の hold を消す" 0 \
+      "$([ -e "$sandbox/sweep-state/.rite/state/adoption-hold-7-sweep.json" ] && echo 1 || echo 0)"
   done
 fi
 
@@ -1531,7 +1647,7 @@ assert "T-21 collect は 5 列の台帳でも 4 列と同じ対象を返す" \
   "$(printf '%s' "$live_out" | jq -cS '[.targets[] | {id, file, line}]')" "$(printf '%s' "$t21_collect" | jq -cS '[.targets[] | {id, file, line}]')"
 assert "T-21 collect は 5 列の issued 行を除外する" 0 "$(printf '%s' "$t21_collect" | jq '[.targets[] | select(.id=="iss")] | length')"
 # 手順 3 の行形式は 5 セルで、最終セルが collect の record の basename
-assert "T-21 手順 3 の行形式は出典列で終わる" 1 "$(grep -cF '行形式 `| {id} | {file}:{line} | issued|recorded | {起票先 or 機械理由} | {record_basename} |`' "$FIX")"
+assert "T-21 手順 3 の行形式は出典列で終わる" 1 "$(grep -cF '行形式 `| {key} | {file}:{line} | {判定} | {判定文} | {record_basename} |`' "$FIX")"
 assert "T-21 手順 3 は出典の値源を collect の record= に置く" 1 "$(grep -cF '`[CONTEXT] NB_SWEEP_COLLECT=ok; ...; record=` の値の basename' "$FIX")"
 
 # --- T-22: パイプバッファを超える量の不正行でも、拒否理由を必ず出して台帳を変えない ---
@@ -1564,7 +1680,7 @@ fi
 t23_step3=$(awk '/^3\. \*\*台帳 persist\*\*/{s=1} /^4\. \*\*完了\*\*/{s=0} s && /^```/{f=!f; next} s && !f' "$FIX")
 for t23_phrase in 'entries（`.rite/state/nb-sweep-entries-{pr_number}.md`）を stderr の理由に合わせて直し' '手順 2 の起票をやり直さない' \
                   '手順 3 だけを再実行する' '起票済みの Issue は entries の issued 行が持つ' \
-                  'entries の全行について最終列が手順 1 の `record=` の basename（全行同じ値）になっているかを確かめ、欠けた行には最終列として足す。別の record を名指す行は書き換えない' \
+                  'entries の全行について最終列がその行の candidate の `record`（`already_rejected` は手順 1 の `record=` の basename）になっているかを確かめ、欠けた行には最終列として足す。別の record を名指す行は書き換えない' \
                   'この会話で続けられないときは entries を直したうえで `/rite:iterate {pr_number}` を再実行する（別の会話からでもよい）' \
                   'iterate のステップ 0.7 が再レビューを回さずに 5.S へ戻し、手順 1 が `NB_SWEEP_ENTRIES=present` を出すので手順 2 を飛ばして手順 3 から続く' \
                   '1 行でもあれば、append は entries 全体を `reason=entries_source_invalid` で拒否し、台帳を変更しない'; do
@@ -1575,9 +1691,9 @@ assert "T-23 手順 2 は手順 3 の再実行で同じ sweep の entries を直
 assert "T-23 手順 3 は別の record の出典を今回の record へ書き換えさせない" 0 \
   "$(printf '%s\n' "$t23_step3" | grep -cF '値の違う行はその値に直す')"
 assert "T-23 手順 1 の stale は別の record を名指す行を書き換えずに元の出典で台帳へ載せさせる" 1 \
-  "$(grep -F '別の record を名指す行は前回の sweep が起票したまま台帳に載せられなかった記録であり、出典を今回の record に書き換えてはならない' "$FIX" | grep -cF '書き換えずに手順 3 の bash だけを実行して元の出典のまま台帳へ載せ、成功したら entries を消して `/rite:iterate {pr_number}` を再実行する')"
+  "$(grep -F '1 行目が別の record を名指す entries の行は、前回の sweep が起票したまま台帳に載せられなかった記録であり、1 行目も行の出典も今回の record に書き換えてはならない' "$FIX" | grep -cF '書き換えずに手順 3 の bash だけを実行して元の出典のまま台帳へ載せ、成功したら entries を消して `/rite:iterate {pr_number}` を再実行する')"
 assert "T-23 手順 1 の stale は台帳に既に載っている行で手順 3 を再実行させない" 1 \
-  "$(grep -F '別の record を名指す行は' "$FIX" | grep -F '同じ id・位置・出典の行が既にあれば、手順 3 は成功済みなので再実行しない' | grep -cF 'entries を消して `/rite:iterate {pr_number}` を再実行する。無ければ書き換えずに')"
+  "$(grep -F '別の record を名指す entries の行は' "$FIX" | grep -F '同じ id・位置・出典の行が既にあれば、手順 3 は成功済みなので再実行しない' | grep -cF 'entries を消して `/rite:iterate {pr_number}` を再実行する。無ければ書き換えずに')"
 assert "T-23 手順 2 は前回の sweep の entries を今回の起票済みとして使わない" 1 \
   "$(grep -cF '前回の sweep の entries を今回の起票済みとして使わない' "$FIX")"
 assert "T-23 手順 1 は entries が残っていれば起票せず手順 3 から続けさせる" 1 \
@@ -1593,6 +1709,115 @@ assert "T-23 iterate 5.S の停止行は理由名の接頭辞で対象を絞ら�
 t23_schema=$(grep -F 'entries_source_invalid' "$PLUGIN_ROOT/references/review-result-schema.md")
 assert "T-23 schema は 1 行でも不正なら全体を拒否すると書く" 1 "$(printf '%s\n' "$t23_schema" | grep -F '1 行でも' | grep -cF '台帳を変更しない')"
 assert "T-23 schema に行単位の拒否と読める旧文言が無い" 0 "$(printf '%s\n' "$t23_schema" | grep -cF '出典を欠く行を `entries_source_invalid` で拒否し')"
+
+# --- T-24: 採否ゲート後の台帳の読み方 (除外 / prior / 旧行) と tally ---
+t24_cur="1-20260301000000.json"
+t24_json="$sandbox/$t24_cur"
+jq -n '{non_blocking_findings:[
+  {id:"R-1",file:"src/r.ts",line:1}, {id:"R-2",file:"src/r.ts",line:2}, {id:"R-3",file:"src/r.ts",line:3},
+  {id:"S-1",file:"src/s.ts",line:1}, {id:"S-2",file:"src/s.ts",line:2}, {id:"L-1",file:"src/l.ts",line:1},
+  {id:"I-1",file:"src/i.ts",line:1}, {id:"A-1",file:"src/a.ts",line:1}, {id:"O-1",file:"src/o.ts",line:1},
+  {id:"O-2",file:"src/o.ts",line:2}, {id:"",file:"src/n.ts",line:7}
+]}' > "$t24_json"
+t24_body="$sandbox/t24-body.md"
+{
+  printf '%s\n' "$MARKER" '' '### 却下台帳' '' '| finding_id | file:line | 判定 | 判定文 | 出典 |' '|------------|-----------|------|--------|------|'
+  printf '%s\n' \
+    '| R-1 | src/r.ts:1 | REJECT | 旧い前提 | 1-20260101000000.json |' \
+    '| R-1 | src/r.ts:1 | REJECT | X が真である間は不要 | 1-20260201000000.json |' \
+    "| R-2 | src/r.ts:2 | REJECT | 今回の sweep が記録済み | $t24_cur |" \
+    '| R-3 | src/r.ts:3 | REJECT | a \| b の間は不要 | 1-20260101000000.json |' \
+    "| S-1 | src/s.ts:1 | RESOLVED | 解消の根拠 | $t24_cur |" \
+    '| S-2 | src/s.ts:2 | RESOLVED | 前の cycle で解消 | 1-20260101000000.json |' \
+    "| L-1 | src/l.ts:1 | LINK | 追跡先 #5 | $t24_cur |" \
+    '| I-1 | src/i.ts:1 | issued | #9 https://example.test/issues/9 | 1-20260101000000.json |' \
+    '| A-1 | src/a.ts:1 | ADOPT | 採用の前提 | 1-20260101000000.json |' \
+    '| O-1 | src/o.ts:1 | recorded | severity=LOW; measured=false | 1-20260101000000.json |' \
+    "| O-2 | src/o.ts:2 | rejected | 旧形式の却下 | $t24_cur |" \
+    '| anon:src/n.ts:7 | src/n.ts:7 | issued | #3 https://example.test/issues/3 | 1-20260101000000.json |'
+  printf '%s\n' '' '📎 non_blocking_count: 0' '' "$SENTINEL"
+} > "$t24_body"
+jq -n --rawfile body "$t24_body" '[[{id:11,user:{login:"rite-bot"},body:$body}]]' > "$NB_TEST_COMMENTS"
+t24_out=$("$COLLECT" --json "$t24_json" --pr 1 2> "$sandbox/t24.err")
+assert "T-24 collect rc=0" 0 "$?"
+assert "T-24 targets: issued (any source) and this sweep's REJECT / RESOLVED / LINK are excluded; others remain" \
+  "A-1,O-1,O-2,R-1,R-3,S-2" "$(printf '%s' "$t24_out" | jq -r '[.targets[].key] | sort | join(",")')"
+assert "T-24 legacy recorded / rejected rows are not terminal and give no prior" 0 \
+  "$(printf '%s' "$t24_out" | jq '[.targets[] | select(.key == "O-1" or .key == "O-2") | select(has("prior"))] | length')"
+assert "T-24 a REJECT row from an earlier cycle becomes the prior (the last row wins)" \
+  '{"finding_id":"R-1","file_line":"src/r.ts:1","disposition":"REJECT","premise":"X が真である間は不要"}' \
+  "$(printf '%s' "$t24_out" | jq -c '.targets[] | select(.key == "R-1") | .prior')"
+assert "T-24 the premise keeps an escaped pipe" 'a \| b の間は不要' "$(printf '%s' "$t24_out" | jq -r '.targets[] | select(.key == "R-3") | .prior.premise')"
+assert "T-24 an ADOPT row becomes the prior" "ADOPT" "$(printf '%s' "$t24_out" | jq -r '.targets[] | select(.key == "A-1") | .prior.disposition')"
+assert "T-24 RESOLVED gives no prior" "false" "$(printf '%s' "$t24_out" | jq -r '.targets[] | select(.key == "S-2") | has("prior")')"
+assert "T-24 ledger[] carries the issued / LINK / REJECT rows as read (for a candidate whose id or position changed)" \
+  "I-1:issued,L-1:LINK,R-1:REJECT,R-1:REJECT,R-2:REJECT,R-3:REJECT,anon:src/n.ts:7:issued" \
+  "$(printf '%s' "$t24_out" | jq -r '[.ledger[] | "\(.id):\(.disposition)"] | sort | join(",")')"
+assert "T-24 an issued row in ledger[] keeps the Issue number" "#9 https://example.test/issues/9" \
+  "$(printf '%s' "$t24_out" | jq -r '.ledger[] | select(.id == "I-1") | .premise')"
+if grep -qF '既存の Issue が今回の候補と同じ根因を追跡していれば、文面・位置・id が変わっていても記録の `tracker` にその番号を入れる' "$FIX" \
+  && grep -qF '`REJECT` 行が同じ根因・同じ前提の候補を処分していれば、その行を記録の `prior`' "$FIX"; then
+  pass "T-24 step 2 has the classifier link changed candidates from ledger[]"
+else
+  fail "T-24 step 2 must have the classifier link changed candidates from ledger[]"
+fi
+# prior は採否判定 helper が照合する台帳行と同じ (finding_id, file:line, 判定) を指す
+"$LEDGER" extract --body-file "$t24_body" > "$sandbox/t24-ledger.md" 2>/dev/null
+printf '%s' "$t24_out" | jq -c '[.targets[] | select(has("prior")) | .prior]' > "$sandbox/t24-priors.json"
+t24_match=$(python3 - "$PLUGIN_ROOT/hooks/scripts/lib/review-adoption.py" "$sandbox/t24-ledger.md" "$sandbox/t24-priors.json" <<'PY'
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location("review_adoption", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+rows = module.ledger_rows(open(sys.argv[2], encoding="utf-8").read())
+priors = json.load(open(sys.argv[3], encoding="utf-8"))
+print(sum((p["finding_id"], p["file_line"], p["disposition"]) in rows and p["premise"].strip() != "" for p in priors), len(priors))
+PY
+)
+assert "T-24 every prior matches a helper ledger row with a premise" "3 3" "$t24_match"
+printf '%s\n' \
+  '| F-1 | src/a.ts:1 | issued | #5 https://example.test/5 | 7-20260101120000.json |' \
+  '| F-2 | src/b.ts:2 | issued | #5 https://example.test/5 | 7-20260101120000.json |' \
+  '| F-3 | src/c.ts:3 | REJECT | 前提 a \| b | 7-20260101120000.json |' \
+  '| F-4 | src/d.ts:4 | RESOLVED | 解消の根拠 | 7-20260101120000.json |' \
+  '| F-5 | src/e.ts:5 | LINK | 追跡先 #6 | 7-20260101120000.json |' \
+  '| code-quality-reviewer | src/g.ts:7 | recorded | severity=MEDIUM; measured=false | 7-20260101120000.json |' > "$sandbox/t24-entries.md"
+assert "T-24 tally counts REJECT / RESOLVED / LINK / recorded as recorded" "issued=2; recorded=4" \
+  "$("$LEDGER" tally --entries-file "$sandbox/t24-entries.md" 2>/dev/null)"
+
+# --- T-25: 保留した sweep の戻り方と、起票番号の tracker への書き戻し ---
+t25_row=$(grep -E '^\| `\[fix:error\]` / その他 / sentinel 不在 \|' "$PLUGIN_ROOT/skills/iterate/SKILL.md")
+assert "T-25 iterate 5.S の停止行は保留 (held) の sweep の再開を示す" 1 \
+  "$(printf '%s\n' "$t25_row" | grep -F 'reason=nb_sweep_adoption_held' | grep -F 'hold ファイルの resume（ゲートの WARNING にも出る）に従って再開する' | grep -cF 'HEAD が変わらない再開では、同じ経路で fix は手順 2 の判定記録から続く')"
+assert "T-25 nb-sweep.md の held は hold ファイルの resume に従って再開する" 1 \
+  "$(grep -F 'reason=nb_sweep_adoption_held` は出口の出ていない候補がある' "$FIX" | grep -cF '保留を REJECT や処分済みに書き換えず、hold ファイルの resume（ゲートの WARNING にも出る）に従って再開する')"
+t25_step2=$(awk '/^2\. \*\*採否ゲートと起票\*\*/{s=1} /^3\. \*\*台帳 persist\*\*/{s=0} s' "$FIX")
+t25_held=$(printf '%s\n' "$t25_step2" | grep -n 'reason=nb_sweep_adoption_held"' | head -1 | cut -d: -f1)
+t25_issue=$(printf '%s\n' "$t25_step2" | grep -n 'create-issue-with-projects.sh' | head -1 | cut -d: -f1)
+if [ -n "$t25_held" ] && [ -n "$t25_issue" ] && [ "$t25_held" -lt "$t25_issue" ]; then
+  pass "T-25 held の停止は起票より前"
+else
+  fail "T-25 held の停止は起票より前 (held=$t25_held issue=$t25_issue)"
+fi
+t25_tracker="$sandbox/t25-tracker.sh"
+extract_fix_block 'reason=nb_sweep_tracker_write_failed' > "$t25_tracker"
+t25_state="$sandbox/t25-state"
+mkdir -p "$t25_state/.rite/state" "$sandbox/t25-plugin/hooks"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "%s"\n' "$t25_state" > "$sandbox/t25-plugin/hooks/state-path-resolve.sh"
+jq -n '{adoption: {head: "h", records: [{ids: ["F-01", "F-02"], tracker: null}, {ids: ["F-03"], tracker: null}]}}' > "$t25_state/.rite/state/adoption-7-sweep.json"
+sed -e "s|{plugin_root}|$sandbox/t25-plugin|g" -e 's|{pr_number}|7|g' -e "s|{record_ids}|[\"F-01\",\"F-02\"]|g" "$t25_tracker" > "$t25_tracker.run"
+issue_result='{"issue_number": 12, "issue_url": "https://example.test/12"}' bash "$t25_tracker.run" > "$sandbox/t25.out" 2>&1
+assert "T-25 書き戻しは成功する" 0 "$?"
+assert "T-25 起票した番号はその記録の tracker に書かれ、他の記録は変わらない" '[12,null]' \
+  "$(jq -c '[.adoption.records[].tracker]' "$t25_state/.rite/state/adoption-7-sweep.json")"
+rm -f "$t25_state/.rite/state/adoption-7-sweep.json"
+issue_result='{"issue_number": 12, "issue_url": "https://example.test/12"}' bash "$t25_tracker.run" > "$sandbox/t25-fail.out" 2>&1
+assert "T-25 書き戻せなければ止まる" 1 "$?"
+assert_grep "T-25 書き戻せなければ理由を出す" "$sandbox/t25-fail.out" 'reason=nb_sweep_tracker_write_failed'
+jq -n '{adoption: {head: "h", records: [{ids: ["F-03"], tracker: null}]}}' > "$t25_state/.rite/state/adoption-7-sweep.json"
+issue_result='{"issue_number": 12, "issue_url": "https://example.test/12"}' bash "$t25_tracker.run" > "$sandbox/t25-nomatch.out" 2>&1
+assert "T-25 一致する記録が無い書き戻しは止まる" 1 "$?"
+assert_grep "T-25 一致する記録が無い書き戻しも理由を出す" "$sandbox/t25-nomatch.out" 'reason=nb_sweep_tracker_write_failed'
 
 if ! print_summary "$(basename "$0")" "nb-sweep helper contract drift — check iterate SKILL.md / iterate-step.sh 5.S / 6.1.d preserve"; then
   exit 1

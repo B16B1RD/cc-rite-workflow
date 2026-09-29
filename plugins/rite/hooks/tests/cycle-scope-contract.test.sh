@@ -178,6 +178,11 @@ pu_line=$(grep -nF 'REVIEW_STOP=purpose_unaligned' "$BATCH_RUN" | head -1 | cut 
 mg_line=$(grep -nF '[review:mergeable]` + `merge' "$BATCH_RUN" | head -1 | cut -d: -f1)
 assert "batch-run purpose_unaligned precedes mergeable" "true" \
   "$( [ -n "$pu_line" ] && [ -n "$mg_line" ] && [ "$pu_line" -lt "$mg_line" ] && echo true || echo "false pu=$pu_line mg=$mg_line" )"
+ah_line=$(grep -nF '| `[review:error]` + `REVIEW_STOP=adoption_held`（両モード） | **失敗** → ステップ 8（段階=iterate）' "$BATCH_RUN" | head -1 | cut -d: -f1)
+assert "batch-run adoption_held fails to step 8 before mergeable" "true" \
+  "$( [ -n "$ah_line" ] && [ -n "$mg_line" ] && [ "$ah_line" -lt "$mg_line" ] && echo true || echo "false ah=$ah_line mg=$mg_line" )"
+assert_grep "batch-run orchestration comment routes adoption_held to step 8" "$BATCH_RUN" \
+  'REVIEW_STOP=adoption_held \(both modes\) -> ステップ 8'
 assert_grep "parent discovery uses named 仕様との整合性 section" "$PR_REVIEW" \
   '`### 仕様との整合性` に 1 行で残す'
 

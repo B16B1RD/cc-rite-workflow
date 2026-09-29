@@ -152,16 +152,19 @@ assert_grep 'merge preserves irreversible approval boundary' \
   "$ROOT/plugins/rite/skills/merge/SKILL.md" 'merge 自体は不可逆操作として既存の承認境界を維持する'
 assert_grep 'cleanup preserves destructive confirmation' \
   "$ROOT/plugins/rite/skills/cleanup/SKILL.md" '削除・close・新規 Issue 公開は不可逆操作として確認を維持する'
-assert_grep 'review auto-records reversible recommendations' \
-  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" 'Decision Log への記録である候補は可逆なので質問せず推奨で処理'
-assert_grep 'review legacy gate covers automatic disposition' \
-  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" '自動 Decision Log 経路でも emit する'
-assert_grep 'review interactive triage waits for confirmation before write' \
-  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" '回答を得るまで 7.4（Decision Log 追記・Issue 作成）を実行しない'
-assert_grep 'review e2e missing marker fail-safes to ask' \
-  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" '欠落は `false`（確認を出す側）'
-assert_grep 'review undecidable triage fail-safes to ask' \
-  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" '判定不能時は確認を出す側へ倒す'
+# スコープ外候補の処分は採否ゲートの出口で決まり、候補ごとの質問もモードによる分岐も持たない。
+assert_grep 'review triage disposition comes from the adoption exit' \
+  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" '候補ごとの処分は採否ゲート（`review-adoption-gate.sh --kind triage`）の出口だけで決める'
+assert_grep 'review triage asks no per-candidate question' \
+  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" '人間に候補ごとの処分を尋ねない'
+assert_grep 'review triage disposition does not depend on the mode' \
+  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" '`PR_REVIEW_IN_E2E` で処分を変えない'
+assert_grep 'review phase7 sentinel follows a decided gate' \
+  "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" 'sentinel は **ゲートが decided を返した後** に emit する'
+for field in '# - {mode} → auto' '# - {choice} → file:{A}/record:{B}（verdicts[] の verdict 別の件数）。空禁止' '# - {reason} → adoption_decided'; do
+  assert_grep "review phase7 sentinel field: $field" \
+    "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" "$field"
+done
 assert_grep 'review phase7 producer echo records confirmation evidence' \
   "$ROOT/plugins/rite/skills/pr-review/references/scope-triage.md" \
   'echo "[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={iteration_id}; mode={mode}; choice={choice}; reason={reason}"'
@@ -204,7 +207,8 @@ assert_grep_count 'merge question inventory includes AC attestation' "$ROOT/plug
 assert_grep_count 'cleanup question inventory matches the approved set' "$ROOT/plugins/rite/skills/cleanup/SKILL.md" 'AskUserQuestion' 7
 # Reviewer resolution failures now stop with [review:error]; the three
 # references to bypassing missing reviewers through user confirmation are removed.
-assert_grep_count 'pr-review question inventory is unchanged' "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'AskUserQuestion' 32 \
+# The four scope-triage questions are gone: the adoption exit decides each out-of-scope candidate.
+assert_grep_count 'pr-review question inventory is unchanged' "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'AskUserQuestion' 28 \
   "$ROOT/plugins/rite/skills/pr-review/references/"{doc-heavy-reviewers,doc-heavy-validation,output-diagnostics,scope-triage,wiki-recording}.md
 
 if [ "$failures" -ne 0 ]; then

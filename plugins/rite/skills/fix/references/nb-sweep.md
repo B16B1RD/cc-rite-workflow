@@ -70,6 +70,7 @@ case "$collect_rc:$sweep_status" in
     else
       echo "[CONTEXT] NB_SWEEP_ENTRIES=absent; path=$nb_entries_file" >&2
     fi
+    printf '%s\n' "$collect_out"
     ;;
   *)
     echo "ERROR: NB sweep collect failed (rc=$collect_rc status=${sweep_status:-})" >&2
@@ -80,32 +81,67 @@ case "$collect_rc:$sweep_status" in
 esac
 ```
 
-`empty` なら route 適用・persist を skip して fix/SKILL.md の 5.1 へ。
+`empty` なら手順 2・3 を skip して fix/SKILL.md の 5.1 へ。collect は sweep の hold ファイル（state root の `.rite/state/adoption-hold-{pr_number}-sweep.json`）があれば、その候補のうち今回の target と内容の一致しないものを `candidates[]` に合流させる（元の review JSON の basename を `record` に持ち、id は `<record>#<key>`）。保留した commit を問わず、今回の review JSON の head で判定し直す（直っていれば RESOLVED、PR 起因が残れば保留のまま）。hold ファイルは手順 3 の台帳記録が成功するまで残る（手順 3 の bash が消す）。そのため起票や台帳 persist の途中で止まった再実行でも、持ち越した候補は候補に残る。
 
-`NB_SWEEP_ENTRIES=present` なら、この sweep の起票は前回済んでいて手順 3 で止まっている（entries は手順 2 の全件成功後にだけ作られ、手順 4 か `empty` で消える）。手順 2 を実行せず、手順 3 の後の戻り方で entries を直して手順 3 から続ける。`absent` なら手順 2 へ。`reason=nb_sweep_entries_stale` は、entries に今回の `record=` を出典に持たない行がある。起票も台帳 persist も始めずに止まる。出典列を欠く行だけなら、手順 3 の後の戻り方で最終列を足してから再実行する。別の record を名指す行は前回の sweep が起票したまま台帳に載せられなかった記録であり、出典を今回の record に書き換えてはならない（書き換えると手順 2 を飛ばし、今回の対象が起票も記録もされない）。記録コメントの `### 却下台帳` に同じ id・位置・出典の行が既にあれば、手順 3 は成功済みなので再実行しない（append は重複を除かず、同じ行が二重に載る）。entries を消して `/rite:iterate {pr_number}` を再実行する。無ければ書き換えずに手順 3 の bash だけを実行して元の出典のまま台帳へ載せ、成功したら entries を消して `/rite:iterate {pr_number}` を再実行する。台帳に載った指摘は collect が除外するので重複起票せず、今回の sweep は手順 2 から始まる。
+`NB_SWEEP_ENTRIES=present` なら、この sweep の起票は前回済んでいて手順 3 で止まっている（entries は手順 2 の全件成功後にだけ作られ、手順 4 か `empty` で消える）。手順 2 を実行せず、手順 3 の後の戻り方で entries を直して手順 3 から続ける。`absent` なら手順 2 へ。`reason=nb_sweep_entries_stale` は、entries の 1 行目（`<!-- nb-sweep-record: ... -->`）が今回の `record=` の basename を名指さない（別の sweep の entries が残っている）。起票も台帳 persist も始めずに止まる。行の出典は照合しない（合流した保留候補の行は元の review JSON を出典に持つ）。1 行目が別の record を名指す entries の行は、前回の sweep が起票したまま台帳に載せられなかった記録であり、1 行目も行の出典も今回の record に書き換えてはならない（書き換えると手順 2 を飛ばし、今回の対象が起票も記録もされない）。記録コメントの `### 却下台帳` に同じ id・位置・出典の行が既にあれば、手順 3 は成功済みなので再実行しない（append は重複を除かず、同じ行が二重に載る）。entries を消して `/rite:iterate {pr_number}` を再実行する。無ければ書き換えずに手順 3 の bash だけを実行して元の出典のまま台帳へ載せ、成功したら entries を消して `/rite:iterate {pr_number}` を再実行する。台帳に載った指摘は collect が除外するので重複起票せず、今回の sweep は手順 2 から始まる。
 
-2. **route 適用**（helper の判定を変更しない）:
+2. **採否ゲートと起票**（採否は採否判定 helper の出口で決め、重要度・実測で決めない）:
 
-`targets[]` の `route=issued` は `create-issue-with-projects.sh`（`options.source=pr_review`）で起票し、`route=recorded` は機械理由を記録する。`already_rejected[]` は `recorded` として転記する。sweep はコードを変更せず、commit / push を行わない。
+`already_rejected[]` はゲートに掛けず `recorded` として転記する。sweep はコードを変更せず、commit / push を行わない。
 rationale: design-rationale.md#nb-sweep-routing
 
-最初に全 target の route を検証する。欠落・未知値で停止し、起票も台帳 persist も開始しない:
+**判定記録**: 手順 1 の stdout の `candidates[]` 全件について、本手順を実行する分類役が根因ごとに 1 件の判定記録を Write tool で state root（`state-path-resolve.sh` の出力）の `.rite/state/adoption-{pr_number}-sweep.json` に保存する（形式と欄は `hooks/scripts/review-adoption-gate.sh` と `hooks/scripts/lib/review-adoption.py` の docstring）。`head` は手順 1 の出力のトップレベル `.record`（今回読んだ review JSON。ゲートの `--review-result`）の `commit_sha`（candidate の `record` ではない）、`ids` は candidate の `id`（target は `key`、合流した保留候補は `<record>#<key>`）。起票になる記録（ADOPT で origin=pre_existing、DIAGNOSE で調査として引き受ける記録）には `acceptance`（起票する Issue の受入条件）を書く。target に `prior` があれば記録の `prior` にそのまま写す（prior の違う target を 1 つの記録にまとめない）。手順 1 の出力の `ledger[]`（台帳の `issued` / `LINK` / `REJECT` 行。`issued` と `LINK` の判定文に起票先・追跡先の `#N` がある）と、判定記録ファイルの `tracker` を持つ記録（`head` を問わない）を読み、既存の Issue が今回の候補と同じ根因を追跡していれば、文面・位置・id が変わっていても記録の `tracker` にその番号を入れる（閉じた Issue の番号は入れない）。`REJECT` 行が同じ根因・同じ前提の候補を処分していれば、その行を記録の `prior`（`{finding_id, file_line, disposition, premise}`。行の `id` を `finding_id`、`loc` を `file_line` に写し、`source` は写さない）に写す。collect が写すのは id と位置が一致する行だけなので、id・文面・位置が変わった候補はここで紐づける。同じ `head` の判定記録が既にあればそこから始め、足りない記録を補い、helper の ERROR で止まった記録は直す。起票が書き戻した `tracker` だけは書き換えない（消さない）。
+
+**ゲート**: 下の bash が collect をもう一度実行し、`candidates[]` から候補ファイルを作ってゲートを呼ぶ。`{base_branch}` は rite-config `branch.base`、無ければステップ 1.1 の `.baseRefName`。
 
 ```bash
-if ! printf '%s' "$collect_out" | jq -e 'all(.targets[]; .route == "issued" or .route == "recorded")' >/dev/null; then
-  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_route_missing" >&2
-  echo "[fix:error] reason=nb_sweep_route_missing"
-  exit 1
+sweep_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || sweep_root=""
+if [ -z "$sweep_root" ] || ! collect_out=$(bash {plugin_root}/hooks/scripts/nb-sweep-collect.sh --pr {pr_number} --state-root "$sweep_root"); then
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_collect_failed" >&2
+  echo "[fix:error]"; exit 1
 fi
+nb_candidates=$(mktemp "${TMPDIR:-/tmp}/rite-nb-candidates-XXXXXX") || { echo "[fix:error]"; exit 1; }
+trap 'rm -f "$nb_candidates"' EXIT
+printf '%s' "$collect_out" | jq '{candidates: .candidates}' > "$nb_candidates" \
+  || { echo "[fix:error]"; exit 1; }
+gate_rc=0
+# 候補 0 件（already_rejected だけ）でもゲートを呼ぶ（前回の保留候補が今回の候補から消えていれば保留する）
+nb_issue=$(git branch --show-current 2>/dev/null | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+' | head -1)
+gate_out=$(bash {plugin_root}/hooks/scripts/review-adoption-gate.sh --pr {pr_number} --kind sweep \
+  --state-root "$sweep_root" --candidates "$nb_candidates" \
+  --review-result "$(printf '%s' "$collect_out" | jq -r '.record')" \
+  --base "origin/{base_branch}" --owner-repo {owner_repo} ${nb_issue:+--issue "$nb_issue"}) || gate_rc=$?
+case "$gate_rc" in
+  0) ;;
+  3)
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_adoption_held" >&2
+    echo "[fix:error] reason=nb_sweep_adoption_held"; exit 1 ;;
+  *)
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_adoption_gate_failed" >&2
+    echo "[fix:error] reason=nb_sweep_adoption_gate_failed"; exit 1 ;;
+esac
+# verdict が欠落・未知値なら、起票も台帳 persist も始めない
+if ! printf '%s' "$gate_out" | jq -e '.held == false and (.verdicts | type) == "array"
+    and all(.verdicts[]; .verdict == "file" or .verdict == "record")' >/dev/null 2>&1; then
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_verdict_invalid" >&2
+  echo "[fix:error] reason=nb_sweep_verdict_invalid"; exit 1
+fi
+printf '%s\n' "$gate_out"
 ```
 
-全 `issued` target について finding の description / suggestion / file:line を本文ファイルに保存する。本文は `/rite:open` が複雑度を読む Meta で始め、Projects に渡す `complexity` と同じ値を宣言する。`projects` は rite-config.yml の設定を反映する。起票ごとに次の 2 ブロックを連結して単一 Bash で実行し、成功時の `issue_number` と `issue_url` を当該 finding に対応付けて手順 3（台帳 persist）の台帳行に使う:
+`[fix:error]` のどれでも、起票も entries も台帳 persist も done の書込もしない。`reason=nb_sweep_adoption_held` は出口の出ていない候補がある（判定記録なし・helper の ERROR・hold の出口）。候補の全文・出典・対象 HEAD・再開位置はゲートが stderr の `hold_file=` に保存済み。保留を REJECT や処分済みに書き換えず、hold ファイルの resume（ゲートの WARNING にも出る）に従って再開する（PR 起因の保留はコードを直して push し再レビューするなど、理由ごとの手段は resume が持つ）。HEAD が変わらない再開では、ステップ 0.7 が 5.S へ戻し本手順から続く。
+
+**起票**: stdout の `verdicts[]` のうち `verdict=file` の記録ごとに 1 件起票する（1 根因 = 1 Issue。違う記録を 1 件にまとめない）。`verdict=record` は起票しない。本文は記録（`verdicts[].record`）から作り、`/rite:open` が複雑度を読む Meta で始め、Projects に渡す `complexity` と同じ値を宣言する。`projects` は rite-config.yml の設定を反映する。起票ごとに次の 3 ブロックを連結して単一 Bash で実行し、成功時の `issue_number` と `issue_url` を当該記録に対応付けて entries に使う:
 
 | Placeholder | Source |
 |-------------|--------|
-| `{type}` | finding の内容から推定（`fix` / `refactor` / `docs` 等） |
-| `{summary}` | finding の要約（動詞始まり、50 文字以内） |
-| `{description}` / `{suggestion}` / `{file}` / `{line}` | `targets[]` の同名フィールド |
+| `{type}` | 根因から推定（`fix` / `refactor` / `docs` 等） |
+| `{summary}` | 根因の要約（動詞始まり、50 文字以内） |
+| `{overview}` | 根因の説明（何が起きていて何が困るか） |
+| `{contract}` / `{evidence}` / `{acceptance}` | 記録の `contract`（`ref` と引用 `text`）/ `evidence` / `acceptance` |
+| `{proposition}` | `action=investigate` のとき記録の `proposition` の命題・到達条件・その出所・完了条件。それ以外は `## 調査` 節ごと消す |
+| `{observations}` | 記録の `ids` の candidate ごとに `- {file}:{line} {description}`（`suggestion` があれば続ける） |
+| `{record_ids}` | 記録の `ids`（JSON 配列） |
 | `{projects_enabled}` / `{project_number}` / `{owner}` | `rite-config.yml` → `github.projects.enabled` / `project_number` / `owner` |
 
 ```bash
@@ -117,16 +153,31 @@ if ! cat <<'BODY_EOF' > "$tmpfile"
 
 ## 概要
 
-{description}
+{overview}
 
-## 提案
+## 契約
 
-{suggestion}
+{contract}
+
+## 根拠
+
+{evidence}
+
+## 受入条件
+
+{acceptance}
+
+## 調査
+
+{proposition}
+
+## 観測した候補
+
+{observations}
 
 ## 関連
 
 - 元の PR: #{pr_number}
-- 位置: {file}:{line}
 BODY_EOF
 then
   echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_issue_body_failed" >&2
@@ -156,11 +207,27 @@ if ! issue_result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$i
 fi
 ```
 
-起票失敗時は台帳 persist・done ファイル書込・完了通知へ進まない。全件成功後に entries を生成する（手順 3 を再実行するときは、同じ sweep の entries を直して使う。前回の sweep の entries を今回の起票済みとして使わない）。`recorded` を silent に落とさない。
+```bash
+# 起票した番号を判定記録の tracker に書き戻す。途中で止まって再実行すると、ゲートはこの記録を LINK にし、同じ根因を二度起票しない
+nb_adoption="$(bash {plugin_root}/hooks/state-path-resolve.sh)/.rite/state/adoption-{pr_number}-sweep.json"
+nb_issue_number=$(printf '%s' "$issue_result" | jq '.issue_number')
+if ! jq --argjson ids '{record_ids}' --argjson n "$nb_issue_number" \
+     'if any(.adoption.records[]; .ids == $ids) then (.adoption.records[] | select(.ids == $ids) | .tracker) = $n
+      else error("ids \($ids) の記録がありません") end' "$nb_adoption" > "$nb_adoption.tmp" ||
+   ! mv -- "$nb_adoption.tmp" "$nb_adoption"; then
+  rm -f -- "$nb_adoption.tmp"
+  echo "ERROR: 起票した #$nb_issue_number を $nb_adoption の記録の tracker に書き戻せません。書き戻してから再実行する（書かずに再実行すると同じ根因を二度起票する）" >&2
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_tracker_write_failed" >&2
+  echo "[fix:error]"; exit 1
+fi
+printf '%s\n' "$issue_result"
+```
 
-3. **台帳 persist**（issued / recorded / already_rejected 全件）:
+起票失敗時は台帳 persist・done ファイル書込・完了通知へ進まない。全件成功後に entries を生成する（手順 3 を再実行するときは、同じ sweep の entries を直して使う。前回の sweep の entries を今回の起票済みとして使わない）。`verdict=record` の記録も `already_rejected` も silent に落とさない。起票の途中で止まったときも再実行は手順 2 の判定記録から続き、書き戻した `tracker` によりゲートは起票済みの記録を LINK にするので、同じ根因を二度起票しない。
 
-Write tool で entries を手順 1 の `NB_SWEEP_ENTRIES` の `path=`（`.rite/state/nb-sweep-entries-{pr_number}.md`。会話や再起動をまたいで起票済みの記録を残すため一時ディレクトリに置かない）に保存（列 0。行形式 `| {id} | {file}:{line} | issued|recorded | {起票先 or 機械理由} | {record_basename} |`）。`issued` は起票先 `#N` と URL、`recorded` は `severity={sev}; measured={bool}`。`{record_basename}` は手順 1 の stderr に出る `[CONTEXT] NB_SWEEP_COLLECT=ok; ...; record=` の値の basename（全行同じ値）。cleanup の follow-up 起票はこの出典で sweep 起票済みの指摘を同定するため、最終列を欠いた行が 1 行でもあれば、append は entries 全体を `reason=entries_source_invalid` で拒否し、台帳を変更しない。`already_rejected` は id=`reviewer`、位置=`file_line`、severity=`original_severity`、measured=false とする。セル内のパイプ・改行はエスケープする。
+3. **台帳 persist**（全 target と already_rejected）:
+
+Write tool で entries を手順 1 の `NB_SWEEP_ENTRIES` の `path=`（`.rite/state/nb-sweep-entries-{pr_number}.md`。会話や再起動をまたいで起票済みの記録を残すため一時ディレクトリに置かない）に保存（1 行目は `<!-- nb-sweep-record: {sweep_record} -->`。`{sweep_record}` は手順 1 の stderr に出る `record=` の値の basename で、手順 1 の tally はこの行でどの sweep の entries かを決める。続けて列 0。candidate 1 件に 1 行。行形式 `| {key} | {file}:{line} | {判定} | {判定文} | {record_basename} |`）。`verdict=file` の記録の candidate は判定 `issued`・判定文に起票先 `#N` と URL。`verdict=record` の記録の candidate は判定に出口名（`REJECT` / `RESOLVED` / `LINK`）、判定文に記録の `reason`（RESOLVED で reason が無ければ `evidence`、LINK は `追跡先 #{tracker}`）。hold は書かない（held なら手順 2 で止まっている）。`already_rejected` は判定 `recorded`・判定文 `severity={sev}; measured={bool}`。`{record_basename}` は candidate の `record`（今回の target は手順 1 の stderr に出る `[CONTEXT] NB_SWEEP_COLLECT=ok; ...; record=` の値の basename、合流した保留候補は元の review JSON の basename）、`already_rejected` は `record=` の値の basename。cleanup の follow-up 起票はこの出典で sweep 起票済みの指摘を同定するため、最終列を欠いた行が 1 行でもあれば、append は entries 全体を `reason=entries_source_invalid` で拒否し、台帳を変更しない。`already_rejected` は id=`reviewer`、位置=`file_line`、severity=`original_severity`、measured=false とする。セル内のパイプ・改行はエスケープする。
 
 ```bash
 sweep_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || sweep_root=""
@@ -228,14 +295,18 @@ else
       ;;
   esac
   rm -f -- "$record_err"
+  # 外部への書き込みはすべて済んだ。持ち越した保留候補はもう要らないので sweep の hold を消す
+  rm -f -- "$sweep_root/.rite/state/adoption-hold-{pr_number}-sweep.json"
 fi
 ```
 
-手順 3 が `[fix:error]` で止まったときは、手順 2 の起票をやり直さない。起票は済んでいるが台帳に行が無いため、sweep を最初から実行し直すと同じ指摘を再び起票する。起票済みの Issue は entries の issued 行が持つ。entries（`.rite/state/nb-sweep-entries-{pr_number}.md`）を stderr の理由に合わせて直し、手順 3 だけを再実行する。`reason=entries_source_invalid` の診断は不正行の先頭 3 行しか示さないので、entries の全行について最終列が手順 1 の `record=` の basename（全行同じ値）になっているかを確かめ、欠けた行には最終列として足す。別の record を名指す行は書き換えない（手順 1 の `reason=nb_sweep_entries_stale` の戻り方に従う）。成功したら手順 4 へ進む。この会話で続けられないときは entries を直したうえで `/rite:iterate {pr_number}` を再実行する（別の会話からでもよい）。iterate のステップ 0.7 が再レビューを回さずに 5.S へ戻し、手順 1 が `NB_SWEEP_ENTRIES=present` を出すので手順 2 を飛ばして手順 3 から続く。
+台帳の記録が成功すると、同じ bash が sweep の hold ファイルを消す。
+
+手順 3 が `[fix:error]` で止まったときは、手順 2 の起票をやり直さない。起票は済んでいるが台帳に行が無いため、sweep を最初から実行し直すと同じ指摘を再び起票する。起票済みの Issue は entries の issued 行が持つ。entries（`.rite/state/nb-sweep-entries-{pr_number}.md`）を stderr の理由に合わせて直し、手順 3 だけを再実行する。`reason=entries_source_invalid` の診断は不正行の先頭 3 行しか示さないので、entries の全行について最終列がその行の candidate の `record`（`already_rejected` は手順 1 の `record=` の basename）になっているかを確かめ、欠けた行には最終列として足す。別の record を名指す行は書き換えない（手順 1 の `reason=nb_sweep_entries_stale` の戻り方に従う）。成功したら手順 4 へ進む。この会話で続けられないときは entries を直したうえで `/rite:iterate {pr_number}` を再実行する（別の会話からでもよい）。iterate のステップ 0.7 が再レビューを回さずに 5.S へ戻し、手順 1 が `NB_SWEEP_ENTRIES=present` を出すので手順 2 を飛ばして手順 3 から続く。
 
 4. **完了**:
 
-下の bash が entries の判定列から件数を数えて `[CONTEXT] NB_SWEEP_RESULT=done; issued=K; recorded=M` を出し、台帳に載った entries を消す（別の会話から戻ったときも件数を会話に頼らない）。全件の台帳 persist 成功後に 1 行目を `done <basename>` にする。basename は collect が `--pr` で選ぶのと同じ最新 JSON（`LC_ALL=C` sort の末尾。collect 出力 `.record` の basename と同一）。この bash は別シェルなので `.record` を再計算する。既存の 2 行目が SHA なら残し、新しい SHA は足さない。既存ファイルでも 1 行目は上書きする（ファイルが無いときだけ書く形にはしない）。
+下の bash が entries の判定列から件数を数えて `[CONTEXT] NB_SWEEP_RESULT=done; issued=K; recorded=M` を出し（K は `issued` 行、M は `REJECT` / `RESOLVED` / `LINK` / `recorded` 行）、台帳に載った entries を消す（別の会話から戻ったときも件数を会話に頼らない）。全件の台帳 persist 成功後に 1 行目を `done <basename>` にする。basename は collect が `--pr` で選ぶのと同じ最新 JSON（`LC_ALL=C` sort の末尾。collect 出力 `.record` の basename と同一）。この bash は別シェルなので `.record` を再計算する。既存の 2 行目が SHA なら残し、新しい SHA は足さない。既存ファイルでも 1 行目は上書きする（ファイルが無いときだけ書く形にはしない）。
 
 ```bash
 sweep_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || sweep_root=""

@@ -46,7 +46,9 @@
 #     Step 4.5 deletes ONLY recorded entries, never by guessing names (D-05).
 #   - orphan review JSON under `.rite/review-results/` whose GitHub PR is
 #     MERGED/CLOSED (OPEN/draft is kept even without an active flow-state;
-#     undetermined GitHub state is kept).
+#     undetermined GitHub state is kept; a PR with an adoption hold file
+#     `.rite/state/adoption-hold-{N}-{sweep,triage,followup}.json` is kept with
+#     a WARNING).
 #   - consumed release-promotion attestations under
 #     `.rite/release-promotions/{N}.json` (MERGED/CLOSED GitHub PRs; OPEN
 #     and undetermined state are kept with an observable reason;
@@ -1675,7 +1677,8 @@ github_pr_lifecycle() {
 # active=true, so the next session-start reap would otherwise archive JSON
 # for a PR that is still being iterated. If any flow-state cannot be read,
 # skip this entire step. If GitHub state cannot be determined, keep the
-# file (fail-safe). MERGED/CLOSED PRs remain eligible for archive/delete.
+# file (fail-safe). MERGED/CLOSED PRs remain eligible for archive/delete
+# unless an adoption hold file names the PR.
 # -----------------------------------------------------------------------
 review_dir="$repo_root/.rite/review-results"
 session_dir="$repo_root/.rite/sessions"
@@ -1725,6 +1728,22 @@ if [ "$review_gc_safe" -eq 1 ] && [ -d "$review_dir" ]; then
     case "$_life" in
       open|unknown) continue ;;
     esac
+
+    # An adoption hold keeps the PR's review results (and pin / sweep markers):
+    # the held candidates are resumed from them, so a MERGED/CLOSED PR with a
+    # hold file is not reaped until the hold is decided.
+    _hold_file=""
+    for _hold_kind in sweep triage followup; do
+      _hold_path="$repo_root/.rite/state/adoption-hold-${review_pr}-${_hold_kind}.json"
+      if [ -e "$_hold_path" ] || [ -L "$_hold_path" ]; then
+        _hold_file="$_hold_path"
+        break
+      fi
+    done
+    if [ -n "$_hold_file" ]; then
+      echo "WARNING: orphan review JSON '$review_name' は採否保留中 ($(printf '%s' "$_hold_file" | neutralize_ctrl)) のため退避・削除せず保持します" >&2
+      continue
+    fi
 
     if [ "$DRY_RUN" = "1" ]; then
       if [ "$nb_count" -gt 0 ]; then
