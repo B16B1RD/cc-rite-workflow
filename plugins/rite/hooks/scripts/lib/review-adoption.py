@@ -406,6 +406,17 @@ def contract_key(record, context, args):
             "text": contract["text"]}
 
 
+def contract_identity(key):
+    # Completion is metadata; retain the raw key for history and answer freshness.
+    if isinstance(key, dict) and isinstance(key.get("text"), list) and key["text"]:
+        first, *rest = key["text"]
+        if isinstance(first, str):
+            first = re.sub(r"^( {0,3}[-*+]\s+\[)[ xX](\]\s+AC-[0-9]+(?=[:\s]|$))",
+                           r"\1 \2", first)
+            return {**key, "text": [first, *rest]}
+    return key
+
+
 def reconciliation_answer(record):
     answer = record.get("reconciliation")
     if answer is None:
@@ -458,7 +469,8 @@ def reconcile(records, decisions, candidates, context, args, head):
         clean = {k: v for k, v in record.items() if k != "reconciliation"}
         selected = [c for c in candidates if c["id"] in record["ids"]]
         key = contract_key(record, context, args)
-        matches = [h for h in histories if key is not None and h["contract_key"] == key]
+        matches = [h for h in histories if key is not None
+                   and contract_identity(h["contract_key"]) == contract_identity(key)]
         signals = []
         if decision["exit"] == "RECONCILE":
             signals.append("prior_conflict")
@@ -497,7 +509,7 @@ def reconcile(records, decisions, candidates, context, args, head):
         if decision["exit"] != "RECONCILE":
             entry = {"head": head, "record": clean, "decision": dict(decision), "contract_key": key,
                      "candidates": selected}
-            identity = lambda e: digest({"contract": e["contract_key"],
+            identity = lambda e: digest({"contract": contract_identity(e["contract_key"]),
                 "candidates": [{k: v for k, v in c.items() if k != "id"} for c in e["candidates"]]})
             entries = [e for e in entries if identity(e) != identity(entry)]
             if answer is not None:

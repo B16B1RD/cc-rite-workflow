@@ -8,6 +8,8 @@ NB sweep、スコープ外処分、cleanup follow-up は同じ採否ゲートを
 
 helper は同じ契約の過去 PR の履歴、または既存の `RECONCILE` を照合し、`reconciliation[]` に既存候補の `ids`、`fingerprint`、`signals`、`history`、`record`、`reason` を返す。ファイル名の一致だけでは裁定を起動しない。`signals` は照合の手がかりであり、意味上のトリガーを認定した結果ではない。
 
+AC の履歴照合では、項目先頭のチェック状態だけを比較から除く。同じ Issue・AC ID・保証本文なら完了チェックの更新後も照合し、保証本文や Given/When/Then の変更は区別する。保存するキーと fingerprint にはチェック状態を含む原文を残すため、入力変更後の古い裁定回答は再利用しない。
+
 ゲートは request を hold ファイルの `reconciliation[]` に保存する。親はここから対象を取得する。履歴は同じ契約かつ候補全文（id を除く）が同じ記録だけを置き換え、別の候補は保持する。各記録の元の HEAD は `entry.head`、受理した回答は `entry.reconciliation` に残る。履歴は採否記録であり、Issue 作成や台帳など外部への書き込みが成功した証拠ではない。
 
 ## 親の裁定

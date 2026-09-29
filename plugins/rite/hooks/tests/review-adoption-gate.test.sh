@@ -570,5 +570,37 @@ for source, body_path in (('issue', issue_body), ('pr', pr_body)):
     body_path.write_text(original)
 ledger.write_text('')
 
+
+# The real gate keeps completed contracts across checkbox-only Issue updates.
+original_issue = issue_body.read_text()
+for saved_mark in (' ', 'x', 'X'):
+    state = work / f'completion-state-{ord(saved_mark)}'
+    adoption = state / '.rite/state/adoption-701-followup.json'
+    body = original_issue.replace('- [ ] AC-1:', f'- [{saved_mark}] AC-1:', 1)
+    issue_body.write_text(body)
+    verdicts, _ = decided([rec(present=False)], cands=CANDS[:1], pr=701, issue=100, kind='followup')
+    check(verdicts['F-01']['exit'] == 'RESOLVED', verdicts)
+    history_path = state / '.rite/state/adoption-history-701-followup.json'
+    before_history = history_path.read_bytes()
+    for current_mark in (' ', 'x', 'X'):
+        current = body.replace(f'- [{saved_mark}] AC-1:', f'- [{current_mark}] AC-1:', 1)
+        issue_body.write_text(current)
+        request = pending(rec(), pr=702)
+        check('completed_contract' in request['signals'], request)
+        recorded = rec(reconciliation=answer(request))
+        verdicts, _ = decided([recorded], cands=CANDS[:1], pr=702, issue=100, kind='followup')
+        check(verdicts['F-01']['exit'] == 'ADOPT', verdicts)
+        issue_body.write_text(current.replace(f'- [{current_mark}] AC-1:',
+                                             f'- [{"x" if current_mark == " " else " "}] AC-1:', 1))
+        stale = pending(recorded, pr=702, reason='stale')
+        check('completed_contract' in stale['signals'], stale)
+        verdicts, _ = decided([rec(reconciliation=answer(stale))], cands=CANDS[:1],
+                              pr=702, issue=100, kind='followup')
+        check(verdicts['F-01']['exit'] == 'ADOPT', verdicts)
+        current_history = json.loads((state / '.rite/state/adoption-history-702-followup.json').read_text())
+        check(len(current_history['entries']) == 1, 'checkbox updates replace the same contract and candidate')
+    check(history_path.read_bytes() == before_history, 'the original completed history stays unchanged')
+issue_body.write_text(original_issue)
+
 print(f'review-adoption-gate: {checks} checks passed')
 PYTEST

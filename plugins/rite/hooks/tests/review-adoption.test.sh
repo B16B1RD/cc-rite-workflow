@@ -540,5 +540,50 @@ for source, body_path in (('issue', issue_body), ('pr', pr_body)):
         check(fresh['decisions'][0]['exit'] == 'ADOPT' and fresh['reconciliation'] == [], fresh)
     body_path.write_text(original)
 
+
+# Completion metadata does not change the guarantee matched across PRs.
+original_issue = issue_body.read_text()
+original_issue = original_issue.replace('- [ ] AC-2:',
+    'Given: an empty NAME\nWhen: tool runs\nThen: exit 1\n'
+    '\n```text\n- [ ] AC-1: literal example\n```\n- [ ] AC-2:')
+for saved_mark in (' ', 'x', 'X'):
+    history_dir = work / f'completion-history-{ord(saved_mark)}'
+    history_dir.mkdir()
+    history_args = ['--history-dir', str(history_dir), '--pr', '20', '--kind', 'sweep', '--issue', '100']
+    body = original_issue.replace('- [ ] AC-1:', f'- [{saved_mark}] AC-1:', 1)
+    issue_body.write_text(body)
+    completed = reconcile(rec(present=False))
+    check(completed['decisions'][0]['exit'] == 'RESOLVED', completed)
+    path = history_dir / 'adoption-history-20-sweep.json'
+    path.write_text(json.dumps(completed['history']))
+    before = path.read_bytes()
+    history_args[history_args.index('--pr') + 1] = '21'
+    for current_mark in (' ', 'x', 'X'):
+        current = body.replace(f'- [{saved_mark}] AC-1:', f'- [{current_mark}] AC-1:', 1)
+        issue_body.write_text(current)
+        pending = request_of(reconcile(rec()))
+        check('completed_contract' in pending['signals'], pending)
+        recorded = rec(reconciliation=answer(pending, 'recurrence'))
+        check(reconcile(recorded)['reconciliation'] == [], 'parent recurrence answer is reusable')
+        issue_body.write_text(current.replace(f'- [{current_mark}] AC-1:',
+                                             f'- [{"x" if current_mark == " " else " "}] AC-1:', 1))
+        stale = request_of(reconcile(recorded), 'stale')
+        check('completed_contract' in stale['signals'], stale)
+        check(reconcile(rec(reconciliation=answer(stale, 'recurrence')))['reconciliation'] == [],
+              'a fresh answer permits normal adoption')
+    issue_body.write_text(body)
+    history_args[history_args.index('--issue') + 1] = '101'
+    check(reconcile(rec())['reconciliation'] == [], 'different Issues remain independent')
+    history_args[history_args.index('--issue') + 1] = '100'
+    check(reconcile(rec(contract={'ref': 'AC-2'}))['reconciliation'] == [], 'different ACs remain independent')
+    issue_body.write_text(body.replace('tool rejects an empty NAME', 'tool rejects a missing NAME'))
+    check(reconcile(rec())['reconciliation'] == [], 'different guarantees remain independent')
+    for before_text, after_text in (('empty NAME', 'missing NAME'), ('tool runs', 'caller runs'),
+                                    ('exit 1', 'exit 2'), ('[ ] AC-1: literal', '[x] AC-1: literal')):
+        issue_body.write_text(body.replace(before_text, after_text))
+        check(reconcile(rec())['reconciliation'] == [], 'continuation text remains part of the guarantee')
+    check(path.read_bytes() == before, 'normalizing comparisons never rewrites prior history')
+issue_body.write_text(original_issue)
+
 print(f'review-adoption: {checks} checks passed')
 PYTEST
