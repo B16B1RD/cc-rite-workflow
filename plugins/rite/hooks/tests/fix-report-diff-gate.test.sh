@@ -412,6 +412,8 @@ assert "T-12 passed" \
 
 # --- T-05 / T-06 / 4.6 static pins ---
 FIX_SKILL="$PLUGIN_ROOT/skills/fix/SKILL.md"
+# fix の state 書き込みのコード片は scripts/fix-step.sh にあり、散文は SKILL.md に残る
+FIX_STEP="$PLUGIN_ROOT/scripts/fix-step.sh"
 PR_SKILL="$PLUGIN_ROOT/skills/pr-review/SKILL.md"
 PR_STEP="$PLUGIN_ROOT/scripts/pr-review-step.sh"
 VERIF="$PLUGIN_ROOT/skills/pr-review/references/reviewer-prompt-verification.md"
@@ -421,20 +423,20 @@ assert_file_exists_or_fail "T-05 pr-review SKILL" "$PR_SKILL" || true
 assert_file_exists_or_fail "T-06/4.6 fix SKILL" "$FIX_SKILL" || true
 
 # --- T-09 / T-10: atomic state-write lifecycle pins ---
-if [ -f "$FIX_SKILL" ]; then
-  fix_cleanup_line=$(grep -nF '_rite_fix_triage_state_cleanup() {' "$FIX_SKILL" | head -1 | cut -d: -f1)
-  fix_exit_trap_line=$(grep -nF "trap 'rc=\$?; _rite_fix_triage_state_cleanup; exit \$rc' EXIT" "$FIX_SKILL" | head -1 | cut -d: -f1)
-  fix_int_trap_line=$(grep -nF "trap '_rite_fix_triage_state_cleanup; exit 130' INT" "$FIX_SKILL" | head -1 | cut -d: -f1)
-  fix_term_trap_line=$(grep -nF "trap '_rite_fix_triage_state_cleanup; exit 143' TERM" "$FIX_SKILL" | head -1 | cut -d: -f1)
-  fix_hup_trap_line=$(grep -nF "trap '_rite_fix_triage_state_cleanup; exit 129' HUP" "$FIX_SKILL" | head -1 | cut -d: -f1)
-  fix_mktemp_line=$(grep -nF 'triage_state_tmp=$(mktemp "$triage_state_dir/.triage-XXXXXX")' "$FIX_SKILL" | head -1 | cut -d: -f1)
+if [ -f "$FIX_STEP" ]; then
+  fix_cleanup_line=$(grep -nF '_rite_fix_triage_state_cleanup() {' "$FIX_STEP" | head -1 | cut -d: -f1)
+  fix_exit_trap_line=$(grep -nF "trap 'rc=\$?; _rite_fix_triage_state_cleanup; exit \$rc' EXIT" "$FIX_STEP" | head -1 | cut -d: -f1)
+  fix_int_trap_line=$(grep -nF "trap '_rite_fix_triage_state_cleanup; exit 130' INT" "$FIX_STEP" | head -1 | cut -d: -f1)
+  fix_term_trap_line=$(grep -nF "trap '_rite_fix_triage_state_cleanup; exit 143' TERM" "$FIX_STEP" | head -1 | cut -d: -f1)
+  fix_hup_trap_line=$(grep -nF "trap '_rite_fix_triage_state_cleanup; exit 129' HUP" "$FIX_STEP" | head -1 | cut -d: -f1)
+  fix_mktemp_line=$(grep -nF 'triage_state_tmp=$(mktemp "$triage_state_dir/.triage-XXXXXX")' "$FIX_STEP" | head -1 | cut -d: -f1)
   if [ -n "$fix_cleanup_line" ] && [ -n "$fix_exit_trap_line" ] && [ -n "$fix_int_trap_line" ] && [ -n "$fix_term_trap_line" ] && [ -n "$fix_hup_trap_line" ] && [ -n "$fix_mktemp_line" ] && \
     [ "$fix_cleanup_line" -lt "$fix_exit_trap_line" ] && [ "$fix_exit_trap_line" -lt "$fix_int_trap_line" ] && [ "$fix_int_trap_line" -lt "$fix_term_trap_line" ] && [ "$fix_term_trap_line" -lt "$fix_hup_trap_line" ] && [ "$fix_hup_trap_line" -lt "$fix_mktemp_line" ]; then
     pass "T-09 fix triage cleanup and four traps precede mktemp"
   else
     fail "T-09 fix triage cleanup/trap ordering"
   fi
-  assert_grep "T-09 fix triage rejects empty jq output" "$FIX_SKILL" '\[ ! -s "\$triage_state_tmp" \]'
+  assert_grep "T-09 fix triage rejects empty jq output" "$FIX_STEP" '\[ ! -s "\$triage_state_tmp" \]'
 fi
 
 if [ -f "$PR_STEP" ]; then

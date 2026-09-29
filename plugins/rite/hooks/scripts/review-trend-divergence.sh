@@ -402,7 +402,8 @@ fi
 #
 # schema_version accept list は他の読取側と同期する義務がある — 本 script は 4 番目の読取側として
 # 同 SoT に登録済み (references/review-result-schema.md §Schema Version)。既存 3 サイトは
-# scripts/review-source-resolve.sh (Priority 0 / 2) と skills/fix/SKILL.md (Priority 3)。
+# scripts/review-source-resolve.sh (Priority 0 / 2) と scripts/fix-step.sh の p3-raw-json
+# (Priority 3。fix/SKILL.md ステップ 1.2.0 から呼ぶ)。
 _counts=()
 for _f in "${_run_files[@]+"${_run_files[@]}"}"; do
   if ! jq empty "$_f" >/dev/null 2>"${_diag:-/dev/null}"; then

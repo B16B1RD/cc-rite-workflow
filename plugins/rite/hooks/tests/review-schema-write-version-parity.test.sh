@@ -8,7 +8,7 @@ PLUGIN_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 PR_REVIEW="$PLUGIN_DIR/skills/pr-review/SKILL.md"
 SCHEMA="$PLUGIN_DIR/references/review-result-schema.md"
 SOURCE_RESOLVE="$PLUGIN_DIR/scripts/review-source-resolve.sh"
-FIX="$PLUGIN_DIR/skills/fix/SKILL.md"
+FIX_STEP="$PLUGIN_DIR/scripts/fix-step.sh"
 TREND="$PLUGIN_DIR/hooks/scripts/review-trend-divergence.sh"
 
 PASS=0
@@ -51,7 +51,7 @@ assert_count "required-field list explicitly omits pre_existing" 1 \
 # accept listを狭めたり増やしたりしない。
 accept='"1.0.0"|"1.0"|"1.1.0"'
 assert_count "review-source-resolve keeps two reader accept sites" 2 "$accept" "$SOURCE_RESOLVE"
-assert_count "fix keeps one reader accept site" 1 "$accept" "$FIX"
+assert_count "fix keeps one reader accept site" 1 "$accept" "$FIX_STEP"
 assert_count "trend keeps one reader accept site" 1 "$accept" "$TREND"
 
 echo "PASS: $PASS"

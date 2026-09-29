@@ -346,7 +346,7 @@ fi
 - `plugins/rite/skills/wiki-init/SKILL.md` (init 時の状態判定)
 - `plugins/rite/skills/setup/SKILL.md` Phase 4.7 (`/rite:setup` 内 Wiki 自動初期化判定、独自 inline 実装 + typo 検出 WARNING 付き)
 - `plugins/rite/skills/cleanup/SKILL.md` ステップ 9 (`parse_wiki_scalar` 委譲、auto_ingest 起動条件。helper 解決不可は skip reason `config_helper_unavailable`)
-- `plugins/rite/skills/fix/SKILL.md` ステップ 0.5.W / 4.6.W (Wiki query / ingest 起動条件)
+- `plugins/rite/scripts/fix-step.sh` の `wiki-query-config` / `wiki-ingest-check` (fix ステップ 0.5.W / 4.6.W の Wiki query / ingest 起動条件)
 - `plugins/rite/scripts/pr-review-step.sh` の `wiki-query-config` / `wiki-ingest-config` (pr-review ステップ 4.0.W / 6.5.W から呼ぶ Wiki query / ingest 起動条件)
 - `plugins/rite/skills/issue-implement/SKILL.md` (Wiki query 起動条件)
 - `plugins/rite/skills/issue-close/SKILL.md` Phase 4.4.W (`parse_wiki_scalar` 委譲、Wiki ingest 起動条件。helper 解決不可は skip reason `config_helper_unavailable`)

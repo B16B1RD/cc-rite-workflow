@@ -12,6 +12,7 @@ TARGET="$PLUGIN_ROOT/hooks/scripts/number-reference-check.sh"
 LINT_SKILL="$PLUGIN_ROOT/skills/lint/SKILL.md"
 PR_REVIEW_SKILL="$PLUGIN_ROOT/skills/pr-review/SKILL.md"
 FIX_SKILL="$PLUGIN_ROOT/skills/fix/SKILL.md"
+FIX_STEP="$PLUGIN_ROOT/scripts/fix-step.sh"
 IMPLEMENT_SKILL="$PLUGIN_ROOT/skills/issue-implement/SKILL.md"
 ISSUE_CLOSE_SKILL="$PLUGIN_ROOT/skills/issue-close/SKILL.md"
 
@@ -718,42 +719,47 @@ assert_grep "T-06 pr-review orchestrator reviewer id" "$PR_REVIEW_SKILL" \
   'reviewer: "pr-review"'
 assert_not_grep "T-06 pr-review does not skip on cycle-scope" "$PR_REVIEW_SKILL" \
   'number-reference-check.*cycle-scope'
-assert_grep "T-06 fix 3.1 self-check calls --diff" "$FIX_SKILL" \
+# fix 3.1 の self-check 本体は scripts/fix-step.sh の step_number_ref_check にある。SKILL.md は
+# 3.3 と同じ {changed_files} を helper へ渡す（渡し忘れると intent-to-add の母集合が空になる）。
+assert_grep_in_section "T-06 fix 3.1 passes {changed_files} to the helper" "$FIX_SKILL" \
+  '### 3.1 Verify Changes' '### 3.1.1 ' \
+  "number-ref-check --base-branch \\{base_branch\\} --changed-files '\\{changed_files\\}'"
+assert_grep "T-06 fix 3.1 self-check calls --diff" "$FIX_STEP" \
   'number-reference-check\.sh --diff'
-assert_grep "T-06 fix 3.1 self-check intent-to-add uses {changed_files}" "$FIX_SKILL" \
-  'for f in \{changed_files\}'
-assert_grep "T-06 fix 3.1 add -N uses existing-path subset" "$FIX_SKILL" \
+assert_grep "T-06 fix 3.1 self-check intent-to-add uses changed_files" "$FIX_STEP" \
+  'for f in \$\{changed_files\}'
+assert_grep "T-06 fix 3.1 add -N uses existing-path subset" "$FIX_STEP" \
   'git add -N -- \$nref_addn'
-assert_grep "T-06 fix 3.1 empty {changed_files} skips intent-to-add" "$FIX_SKILL" \
-  'if \[ -n "\{changed_files\}" \]'
-assert_grep "T-06 fix 3.1 skips missing paths before add -N" "$FIX_SKILL" \
+assert_grep "T-06 fix 3.1 empty changed_files skips intent-to-add" "$FIX_STEP" \
+  'if \[ -n "\$\{changed_files\}" \]'
+assert_grep "T-06 fix 3.1 skips missing paths before add -N" "$FIX_STEP" \
   '\[ -e "\$f" \] && nref_addn='
-assert_grep "T-06 fix 3.1 intent-to-add fail-loud ERROR" "$FIX_SKILL" \
+assert_grep "T-06 fix 3.1 intent-to-add fail-loud ERROR" "$FIX_STEP" \
   'ERROR: intent-to-add に失敗しました'
-assert_not_grep "T-06 fix 3.1 does not use add -N ." "$FIX_SKILL" \
+assert_not_grep "T-06 fix 3.1 does not use add -N ." "$FIX_STEP" \
   'add -N[[:space:]]+(\.[[:space:]]|$)'
-assert_not_grep "T-06 fix 3.1 does not use add -N -- ." "$FIX_SKILL" \
+assert_not_grep "T-06 fix 3.1 does not use add -N -- ." "$FIX_STEP" \
   'add -N[[:space:]]+--[[:space:]]+\.'
-assert_not_grep "T-06 fix 3.1 does not use add -A" "$FIX_SKILL" \
+assert_not_grep "T-06 fix 3.1 does not use add -A" "$FIX_STEP" \
   'add -A'
 
 # AC-4 / T-04: add -N 行 < --diff 行。AC-2 / T-02: その区間に固有 ERROR と [fix:error]
 # （既存 --diff rc 分岐の [fix:error] 一致では FAIL）。
 fix_skip_line=$(awk '
-  /^### 3\.1 Verify Changes/ { s=1 }
-  s && /^### 3\.1\.1 / { exit }
-  s && /^[[:space:]]*if \[ -n "\{changed_files\}" \]/ { print NR; exit }
-' "$FIX_SKILL")
+  /^step_number_ref_check\(\) \{$/ { s=1 }
+  s && /^}$/ { exit }
+  s && /^[[:space:]]*if \[ -n "\$\{changed_files\}" \]/ { print NR; exit }
+' "$FIX_STEP")
 fix_addn_line=$(awk '
-  /^### 3\.1 Verify Changes/ { s=1 }
-  s && /^### 3\.1\.1 / { exit }
+  /^step_number_ref_check\(\) \{$/ { s=1 }
+  s && /^}$/ { exit }
   s && /^[[:space:]]*git add -N -- \$nref_addn/ { print NR; exit }
-' "$FIX_SKILL")
+' "$FIX_STEP")
 fix_diff_line=$(awk '
-  /^### 3\.1 Verify Changes/ { s=1 }
-  s && /^### 3\.1\.1 / { exit }
-  s && /^[[:space:]]*bash \{plugin_root\}\/hooks\/scripts\/number-reference-check\.sh --diff/ { print NR; exit }
-' "$FIX_SKILL")
+  /^step_number_ref_check\(\) \{$/ { s=1 }
+  s && /^}$/ { exit }
+  s && /^[[:space:]]*bash "\$plugin_root"\/hooks\/scripts\/number-reference-check\.sh --diff/ { print NR; exit }
+' "$FIX_STEP")
 if [ -n "$fix_addn_line" ] && [ -n "$fix_diff_line" ] \
    && [ "$fix_addn_line" -lt "$fix_diff_line" ]; then
   pass "T-06 fix 3.1 add -N precedes --diff"
@@ -768,7 +774,7 @@ else
 fi
 fix_intent_arm=""
 if [ -n "$fix_addn_line" ] && [ -n "$fix_diff_line" ]; then
-  fix_intent_arm=$(awk -v a="$fix_addn_line" -v d="$fix_diff_line" 'NR > a && NR < d' "$FIX_SKILL")
+  fix_intent_arm=$(awk -v a="$fix_addn_line" -v d="$fix_diff_line" 'NR > a && NR < d' "$FIX_STEP")
 fi
 if printf '%s' "$fix_intent_arm" | grep -c >/dev/null 'ERROR: intent-to-add に失敗しました' \
    && printf '%s' "$fix_intent_arm" | grep -c >/dev/null '\[fix:error\]'; then

@@ -664,13 +664,18 @@ assert_stdout_empty "T13-g2"
 assert_no_fixerror_stdout "T13-g2"
 assert_err_lacks "[CONTEXT] REVIEW_SOURCE=" "T13-g2: 最終 marker を出さない (Priority 0 まで到達しない)"
 
-# (h) 呼び出し側の配線: fix SKILL.md ステップ 1.2.0 の helper 呼び出しがコメント ID を渡す
+# (h) 呼び出し側の配線: fix SKILL.md ステップ 1.2.0 は fix-step.sh 経由で helper を呼び、コメント ID を渡す
 FIX_SKILL="$(cd "$(dirname "$TARGET")/.." && pwd)/skills/fix/SKILL.md"
-call_block=$(awk '/^bash \{plugin_root\}\/scripts\/review-source-resolve\.sh/{f=1} f{print} f&&/\|\| \{$/{exit}' "$FIX_SKILL")
-n_wire=$(grep -cF -- '--target-comment-id "{target_comment_id}"' <<< "$call_block" || true)
-[ "$n_wire" = 1 ] && pass "T13-h: fix SKILL の helper 呼び出しが --target-comment-id を 1 回渡す" \
-  || fail "T13-h: fix SKILL の helper 呼び出しの --target-comment-id が $n_wire 回"
-grep -qF -- '--pr-number "{pr_number}"' <<< "$call_block" \
+FIX_STEP="$(cd "$(dirname "$TARGET")" && pwd)/fix-step.sh"
+skill_call=$(awk '/^bash \{plugin_root\}\/scripts\/fix-step\.sh resolve-review-source /{f=1} f{print} f&&!/\\$/{exit}' "$FIX_SKILL")
+n_skill_wire=$(grep -cF -- '--target-comment-id {target_comment_id}' <<< "$skill_call" || true)
+[ "$n_skill_wire" = 1 ] && pass "T13-h: fix SKILL の fix-step 呼び出しが --target-comment-id を 1 回渡す" \
+  || fail "T13-h: fix SKILL の fix-step 呼び出しの --target-comment-id が $n_skill_wire 回"
+call_block=$(awk '/^bash "\$plugin_root"\/scripts\/review-source-resolve\.sh/{f=1} f{print} f&&/\|\| \{$/{exit}' "$FIX_STEP")
+n_wire=$(grep -cF -- '--target-comment-id "${target_comment_id}"' <<< "$call_block" || true)
+[ "$n_wire" = 1 ] && pass "T13-h: fix-step の helper 呼び出しが --target-comment-id を 1 回渡す" \
+  || fail "T13-h: fix-step の helper 呼び出しの --target-comment-id が $n_wire 回"
+grep -qF -- '--pr-number "${pr_number}"' <<< "$call_block" \
   && pass "T13-h: 抽出した範囲が helper 呼び出しである (positive control)" \
   || fail "T13-h: helper 呼び出しを抽出できていない (pin が vacuous)"
 
