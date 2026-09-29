@@ -2574,6 +2574,45 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# PAUSE: a recorded pause is announced on stdout so a forgotten resume is not silent
+# --------------------------------------------------------------------------
+echo "PAUSE: session start announces this session's pause record and how to resume"
+pause_sid="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+other_sid="bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
+dir_p="$TEST_DIR/pause_notice"
+mkdir -p "$dir_p"
+output=$(run_hook_with_session "$dir_p" "startup" "$pause_sid")
+if ! grep -q "一時停止中" <<< "$output"; then
+  pass "PAUSE-1: no notice without a pause record"
+else
+  fail "PAUSE-1: unexpected notice without a record: $output"
+fi
+RITE_STATE_ROOT="$dir_p" bash "$SCRIPT_DIR/../flow-state.sh" pause --session "$other_sid" >/dev/null
+output=$(run_hook_with_session "$dir_p" "startup" "$pause_sid")
+if ! grep -q "一時停止中" <<< "$output"; then
+  pass "PAUSE-2: another session's pause record is not announced"
+else
+  fail "PAUSE-2: announced another session's record: $output"
+fi
+RITE_STATE_ROOT="$dir_p" bash "$SCRIPT_DIR/../flow-state.sh" pause --session "$pause_sid" >/dev/null
+for src in startup resume clear compact; do
+  output=$(run_hook_with_session "$dir_p" "$src" "$pause_sid")
+  if grep -q "一時停止中" <<< "$output" && grep -q "flow-state.sh\" resume" <<< "$output"; then
+    pass "PAUSE-3: source=$src announces the pause and the resume command"
+  else
+    fail "PAUSE-3: source=$src missing the notice: $output"
+  fi
+done
+RITE_STATE_ROOT="$dir_p" bash "$SCRIPT_DIR/../flow-state.sh" resume --session "$pause_sid" >/dev/null
+output=$(run_hook_with_session "$dir_p" "startup" "$pause_sid")
+if ! grep -q "一時停止中" <<< "$output"; then
+  pass "PAUSE-4: no notice after resume"
+else
+  fail "PAUSE-4: notice remained after resume: $output"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="

@@ -31,6 +31,8 @@
 # T-16 fix の手順 4: entries の判定列から件数を数え（セル内のエスケープ済みパイプでずれない）、entries を消す
 # T-17 iterate SKILL の配線: 0.7 は 0.6 と 1 の間、resume は 5.S へ、collect に入口を単一引用で渡す。
 #      0.6（step_init_cycle）は入口記録と entries を消さない
+# T-18 採否ゲートが保留した sweep（done なし・入口記録あり）は 0.7 で resume、collect は pending で入口記録を残す。
+#      done を書く nb-sweep-record は [fix:sweep-done] の後だけで、[fix:error] の行は停止する
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -41,6 +43,8 @@ PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 ITERATE="$PLUGIN_ROOT/skills/iterate/SKILL.md"
 ITERATE_STEP="$PLUGIN_ROOT/scripts/iterate-step.sh"
 FIX="$PLUGIN_ROOT/skills/fix/SKILL.md"
+# fix 5.1 の NB_SWEEP_DONE_FILE 判定のコード片は scripts/fix-step.sh の step_nb_sweep_done_file にある
+FIX_STEP="$PLUGIN_ROOT/scripts/fix-step.sh"
 FIX_SWEEP="$PLUGIN_ROOT/skills/fix/references/nb-sweep.md"
 SETUP="$PLUGIN_ROOT/skills/setup/SKILL.md"
 CLEANUP_SKILL="$PLUGIN_ROOT/skills/cleanup/SKILL.md"
@@ -78,7 +82,10 @@ assert_grep_in_section "T-01 skipped branch skips collect helper" "$ITERATE_STEP
   'nb-sweep-collect.sh'
 assert_grep_in_section "T-01 skip predicate is recorded basename" "$ITERATE_STEP" \
   '^step_nb_sweep_collect[(][)] [{]$' '^}$' \
-  'if \[ -n "\$nb_range" \] && \[ "\$nb_range" = "\$nb_latest_base" \]; then'
+  'if \[ -n "\$nb_range" \] && \[ "\$nb_range" = "\$nb_latest_base" \]'
+assert_grep_in_section "T-01 a sweep hold keeps the done JSON from being skipped" "$ITERATE_STEP" \
+  '^step_nb_sweep_collect[(][)] [{]$' '^}$' \
+  '&& \[ ! -e "\$nb_root/.rite/state/adoption-hold-\$pr_number-sweep.json" \]; then'
 then_collect=$(awk '
   /^step_nb_sweep_collect\(\) \{$/ {sec=1}
   sec && /^}$/ {exit}
@@ -100,7 +107,7 @@ assert "T-01 mismatch else calls collect helper" "1" "$else_collect"
 assert_not_grep "T-01 no conversation-marker skip" "$ITERATE" '既出ならステップ 5'
 assert_grep_in_section "T-01 skip authority is basename match" "$ITERATE" \
   '## ステップ 5.S: NB digest sweep' '## ステップ 5: 完了通知' \
-  '第 2 フィールドが最新 review JSON の basename と一致するときだけ'
+  '第 2 フィールドが最新 review JSON の basename と一致し、sweep の保留ファイルが無いときだけ'
 # fix を invoke するかは marker 表だけが決める。件数 0 の pending（止まった sweep の片付け）を no-op と読ませない
 assert_grep_in_section "T-01 fix is skipped only for noop / skipped (table decides)" "$ITERATE" \
   '## ステップ 5.S: NB digest sweep' '## ステップ 5: 完了通知' \
@@ -246,10 +253,10 @@ rm -rf -- "$gi_setup"
 assert_grep_in_section "T-09 iterate kind is field 1" "$ITERATE_STEP" \
   '^step_nb_sweep_collect[(][)] [{]$' '^}$' \
   'awk '"'"'NR==1 \{ print \$1 \}'"'"
-assert_grep_in_section "T-09 fix 1.5 matches recorded basename" "$FIX" \
-  '### 5.1 Output Pattern' '### 5.2 Standalone Execution Behavior' \
+assert_grep_in_section "T-09 fix 1.5 matches recorded basename" "$FIX_STEP" \
+  '^step_nb_sweep_done_file[(][)] [{]$' '^}$' \
   'if \[ -n "\$_nb_range" \] && \[ "\$_nb_range" = "\$_nb_latest_base" \]; then'
-fix_dash_f=$(awk '/^### 5.1 Output Pattern/,/^### 5.2 Standalone Execution Behavior/' "$FIX" | grep -c '\[ -f "\$_nb_done_root' || true)
+fix_dash_f=$(awk '/^step_nb_sweep_done_file\(\) \{$/,/^}$/' "$FIX_STEP" | grep -c '\[ -f "\$_nb_done_root' || true)
 assert "T-09 fix 5.1 no longer treats -f alone as done" "0" "$fix_dash_f"
 
 # New sweep writers keep a one-line done marker and never grant a new HEAD.
@@ -404,18 +411,30 @@ fenced_ok() {
     || { echo "FAIL: T-12 $1 fence missing, ambiguous or overran"; exit 1; }
 }
 
-fix51_block=$(fenced_block_with "$FIX" 'echo "[CONTEXT] NB_SWEEP_DONE_FILE=1"')
-fenced_ok "fix 5.1 NB_SWEEP_DONE_FILE" "$fix51_block"
-render_fenced "$fix51_block" >/dev/null || exit 1
+# fix 5.1 は SKILL.md の 1 行呼び出しを fixture plugin の fix-step.sh で dispatch 経由に実行する。
+# fixture は state-path-resolve だけを fixture root を返す stub に差し替える。
+fix51_call=$(grep -xF 'bash {plugin_root}/scripts/fix-step.sh nb-sweep-done-file --pr {pr_number}' "$FIX")
+[ "$(printf '%s\n' "$fix51_call" | grep -c .)" = "1" ] \
+  || { echo "FAIL: T-12 fix 5.1 one-line call is missing or duplicated in SKILL.md"; exit 1; }
+fix51_plugin=$(mktemp -d)
+mkdir -p "$fix51_plugin/scripts" "$fix51_plugin/hooks"
+cp "$FIX_STEP" "$fix51_plugin/scripts/fix-step.sh"
+ln -s "$PLUGIN_ROOT/hooks/control-char-neutralize.sh" "$fix51_plugin/hooks/control-char-neutralize.sh"
+cat > "$fix51_plugin/hooks/state-path-resolve.sh" <<'STUB'
+#!/bin/bash
+printf '%s\n' "${NB_FIX_ROOT:?}"
+STUB
 fix51_run() {
   local root out
   root=$(nb_fixture "$1")
-  out=$(NB_FIX_ROOT="$root" bash -c "$(render_fenced "$fix51_block")" 2>&1) || true
+  out=$(NB_FIX_ROOT="$root" bash -c "$(printf '%s\n' "$fix51_call" \
+    | sed -e "s#{plugin_root}#$fix51_plugin#g" -e 's#{pr_number}#42#g')" 2>&1) || true
   rm -rf -- "$root"
   printf '%s\n' "$out" | sed -n 's/^\[CONTEXT\] NB_SWEEP_DONE_FILE=\([01]\)$/\1/p'
 }
 assert "T-12 fix 5.1 done on lexical tail" "1" "$(fix51_run "done $lexical_tail")"
 assert "T-12 fix 5.1 not done on mtime max" "0" "$(fix51_run "done $mtime_max")"
+rm -rf -- "$fix51_plugin"
 
 digest_block=$(fenced_block_with "$FIX_SWEEP" 'sweep_done_file="$sweep_root/.rite/state/nb-sweep-done-{pr_number}.txt"')
 fenced_ok "digest writer" "$digest_block"
@@ -617,6 +636,51 @@ run_step "$r" nb-sweep-record --pr 7
 assert "T-14 record は done を書く" "done 7-20260202000000.json" "$(cat "$r/.rite/state/nb-sweep-done-7.txt")"
 assert "T-14 record は入口記録を消す" 0 "$([ -e "$(origin_of "$r")" ] && echo 1 || echo 0)"
 
+# 採否ゲートが保留 (held) した sweep: fix は起票も entries も done も書かずに止まる。入口記録は残り、
+# 再実行はステップ 0.7 から 5.S へ戻り、collect は skip せず fix へ渡す
+r=$(new_repo head); cleanup_dirs+=("$r")
+printf '7-20260202000000.json [fix:replied-only]\n' > "$(origin_of "$r")"
+printf '{"kind":"sweep","pr":7,"held_ids":["F-01"]}\n' > "$r/.rite/state/adoption-hold-7-sweep.json"
+run_step "$r" nb-sweep-resume --pr 7
+cp "$r/out" "$r/resume.out"
+run_step "$r" nb-sweep-collect --pr 7 --sweep-origin '[fix:replied-only]'
+assert "T-18 held の再開: 0.7 は resume" 1 "$(grep -c '^\[CONTEXT\] ITERATE_NB_SWEEP_RESUME=resume; origin=\[fix:replied-only\];' "$r/resume.out")"
+assert "T-18 held の再開: collect は skip せず pending" 1 "$(grep -c '^\[CONTEXT\] ITERATE_NB_SWEEP=pending;' "$r/out")"
+assert "T-18 held の再開: done を書かない" 0 "$([ -e "$r/.rite/state/nb-sweep-done-7.txt" ] && echo 1 || echo 0)"
+assert "T-18 held の再開: 入口記録を残す" "7-20260202000000.json [fix:replied-only]" "$(cat "$(origin_of "$r")")"
+# sweep の保留ファイルがあれば、最新 JSON の done があっても skip せず collect に候補を合流させる
+r=$(new_repo head); cleanup_dirs+=("$r")
+printf 'done 7-20260202000000.json\n' > "$r/.rite/state/nb-sweep-done-7.txt"
+printf '{"kind":"sweep","pr":7,"held_ids":["F-01"]}\n' > "$r/.rite/state/adoption-hold-7-sweep.json"
+run_step "$r" nb-sweep-collect --pr 7 --sweep-origin '[review:mergeable]'
+assert "T-18 done でも sweep の保留があれば skip しない" 0 "$(grep -c 'ITERATE_NB_SWEEP=skipped' "$r/out")"
+assert "T-18 done でも sweep の保留があれば fix へ渡す" 1 "$(grep -c '^\[CONTEXT\] ITERATE_NB_SWEEP=pending;' "$r/out")"
+# triage の保留が残っていれば、done の有無を問わず完了へ進まずに止まる
+for t18_done in yes no; do
+  r=$(new_repo head); cleanup_dirs+=("$r")
+  [ "$t18_done" = yes ] && printf 'done 7-20260202000000.json\n' > "$r/.rite/state/nb-sweep-done-7.txt"
+  printf '{"kind":"triage","pr":7,"held_ids":["C-1"]}\n' > "$r/.rite/state/adoption-hold-7-triage.json"
+  run_step "$r" nb-sweep-collect --pr 7 --sweep-origin '[fix:replied-only]'
+  assert "T-18 triage の保留 (done=$t18_done): failed で止まる" \
+    "[CONTEXT] ITERATE_NB_SWEEP=failed; reason=triage_adoption_held; hold_file=$r/.rite/state/adoption-hold-7-triage.json" \
+    "$(marker_line "$r" ITERATE_NB_SWEEP)"
+  assert "T-18 triage の保留 (done=$t18_done): [iterate:nb-sweep-error]" 1 "$(grep -cx '\[iterate:nb-sweep-error\]' "$r/out")"
+  assert "T-18 triage の保留 (done=$t18_done): 保留を残す" 1 "$([ -e "$r/.rite/state/adoption-hold-7-triage.json" ] && echo 1 || echo 0)"
+  assert "T-18 triage の保留 (done=$t18_done): 入口記録を書かない" 0 "$([ -e "$(origin_of "$r")" ] && echo 1 || echo 0)"
+done
+# done を書く nb-sweep-record は [fix:sweep-done] の後だけ。[fix:error] の行は停止し、record を呼ばない
+t18_sec=$(awk '/^## ステップ 5\.S: NB digest sweep$/{s=1} /^### 5\.S 後の PR 内推奨の修正$/{s=0} s' "$ITERATE")
+t18_err=$(printf '%s\n' "$t18_sec" | grep -E '^\| `\[fix:error\]` / その他 / sentinel 不在 \|')
+assert "T-18 [fix:error] 行は停止し nb-sweep-record を呼ばない" 1 \
+  "$(printf '%s\n' "$t18_err" | grep -F '`[iterate:nb-sweep-error]` で停止' | grep -vcF 'nb-sweep-record')"
+t18_record=$(printf '%s\n' "$t18_sec" | grep -n 'iterate-step.sh nb-sweep-record' | cut -d: -f1)
+t18_done=$(printf '%s\n' "$t18_sec" | grep -n '^fix が emit した `\[CONTEXT\] NB_SWEEP_RESULT=done' | cut -d: -f1)
+if [ -n "$t18_record" ] && [ -n "$t18_done" ] && [ "$t18_done" -lt "$t18_record" ]; then
+  pass "T-18 nb-sweep-record は NB_SWEEP_RESULT=done を読んだ後の段落にある"
+else
+  fail "T-18 nb-sweep-record は NB_SWEEP_RESULT=done を読んだ後の段落にある (done=$t18_done record=$t18_record)"
+fi
+
 # --- fix 側の手順 1 / 手順 4 の bash を nb-sweep.md から抜き出して実行する ---
 # 手順 N の見出しから次の見出しまでの最初の ```bash ブロック
 sweep_block() {
@@ -632,18 +696,26 @@ mkdir -p "$fix_plugin/hooks/scripts"
 ln -s "$LEDGER" "$fix_plugin/hooks/scripts/nb-sweep-ledger.sh"
 ln -s "$PLUGIN_ROOT/hooks/gitignore-ensure.sh" "$fix_plugin/hooks/gitignore-ensure.sh"
 ln -s "$PLUGIN_ROOT/hooks/scripts/lib" "$fix_plugin/hooks/scripts/lib"
+ln -s "$PLUGIN_ROOT/hooks/scripts/review-adoption-gate.sh" "$fix_plugin/hooks/scripts/review-adoption-gate.sh"
+ln -s "$PLUGIN_ROOT/hooks/control-char-neutralize.sh" "$fix_plugin/hooks/control-char-neutralize.sh"
 cat > "$fix_plugin/hooks/state-path-resolve.sh" <<'STUB'
 #!/bin/bash
 printf '%s\n' "${FIX_STATE_ROOT:?}"
 STUB
 cat > "$fix_plugin/hooks/scripts/nb-sweep-collect.sh" <<'STUB'
 #!/bin/bash
-printf '{"status":"%s","count":1,"record":"%s/.rite/review-results/7-20260202000000.json"}\n' "${NB_STUB_STATUS:?}" "${FIX_STATE_ROOT:?}"
+printf '{"status":"%s","count":1,"record":"%s/.rite/review-results/7-20260202000000.json","targets":[],"candidates":%s}\n' \
+  "${NB_STUB_STATUS:?}" "${FIX_STATE_ROOT:?}" "${NB_STUB_CANDIDATES:-[]}"
 STUB
-render() { sweep_block "$1" | sed -e "s|{plugin_root}|$fix_plugin|g" -e 's|{pr_number}|7|g'; }
+render() {
+  sweep_block "$1" | sed -e "s|{plugin_root}|$fix_plugin|g" -e 's|{pr_number}|7|g' \
+    -e 's|{base_branch}|develop|g' -e 's|{owner_repo}|test/repo|g'
+}
 step1=$(render '1. **collect**')
+step2=$(render '2. **採否ゲートと起票**')
 step4=$(render '4. **完了**')
 assert "T-15 手順 1 の bash を抜き出せる" 1 "$(printf '%s\n' "$step1" | grep -c 'NB_SWEEP_ENTRIES=present')"
+assert "T-19 手順 2 のゲートの bash を抜き出せる" 1 "$(printf '%s\n' "$step2" | grep -c 'review-adoption-gate.sh --pr 7 --kind sweep')"
 assert "T-16 手順 4 の bash を抜き出せる" 1 "$(printf '%s\n' "$step4" | grep -c 'tally --entries-file')"
 fix_root() {
   local d; d=$(mktemp -d)
@@ -656,8 +728,11 @@ run_fix() {  # $1=root $2=status $3=script
   echo $? > "$1/rc"
 }
 entries_of() { printf '%s\n' "$1/.rite/state/nb-sweep-entries-7.md"; }
-write_entries() {  # $1=root $2=record basename
-  printf '%s\n' "| A-1 | a.ts:1 | issued | #5 https://example.test/5 | $2 |" \
+# entries の 1 行目は手順 3 が書かせる見出しをそのまま使う（手順書の書式が変われば再開のテストが落ちる）
+entries_head=$(grep -o '<!-- nb-sweep-record: {sweep_record} -->' "$FIX_SWEEP" | head -1)
+assert "T-15 手順 3 が entries の 1 行目の見出しを書かせる" '<!-- nb-sweep-record: {sweep_record} -->' "$entries_head"
+write_entries() {  # $1=root $2=record basename (1 行目の見出しと全行の出典)
+  printf '%s\n' "${entries_head//\{sweep_record\}/$2}" "| A-1 | a.ts:1 | issued | #5 https://example.test/5 | $2 |" \
     "| A\\|2 | b.ts:2 | recorded | severity=LOW; measured=false | $2 |" \
     "| A-3 | c.ts:3 | issued | #6 x\\|y | $2 |" > "$(entries_of "$1")"
 }
@@ -696,10 +771,52 @@ assert "T-15 empty で他の record の entries: [fix:error] で止まる" 1 "$(
 assert "T-15 empty で他の record の entries: 件数を出さない" 0 "$(grep -c 'NB_SWEEP_RESULT=' "$d/out")"
 assert "T-15 empty で他の record の entries: entries を消さない" 1 "$([ -e "$(entries_of "$d")" ] && echo 1 || echo 0)"
 
+# 合流した保留候補の行は元の review JSON を出典に持つ。どの sweep の entries かは 1 行目で決まるので、
+# 手順 3 で止まった sweep は手順 3 から続き、手順 4 が件数を出せる
+d=$(fix_root); cleanup_dirs+=("$d")
+write_entries "$d" 7-20260202000000.json
+printf '%s\n' "| F-01 | old.ts:4 | REJECT | 前提は不変 | 7-20260101000000.json |" >> "$(entries_of "$d")"
+run_fix "$d" ok "$step1"
+assert "T-15 合流候補の行を含む entries: present（手順 3 から続く）" 1 "$(grep -c '^\[CONTEXT\] NB_SWEEP_ENTRIES=present;' "$d/out")"
+assert "T-15 合流候補の行を含む entries: rc=0" 0 "$(cat "$d/rc")"
+run_fix "$d" empty "$step1"
+assert "T-15 合流候補の行を含む entries: 件数に数える" 1 "$(grep -c '^\[CONTEXT\] NB_SWEEP_RESULT=done; issued=2; recorded=2$' "$d/out")"
+d=$(fix_root); cleanup_dirs+=("$d")
+write_entries "$d" 7-20260202000000.json
+tail -n +2 "$(entries_of "$d")" > "$d/entries.tmp" && mv "$d/entries.tmp" "$(entries_of "$d")"
+run_fix "$d" ok "$step1"
+assert "T-15 1 行目の見出しを欠く entries: stale で止まる" 1 "$(grep -c '^\[fix:error\] reason=nb_sweep_entries_stale$' "$d/out")"
+
 d=$(fix_root); cleanup_dirs+=("$d")
 run_fix "$d" empty "$step1"
 assert "T-15 empty で entries 無し: 0 件" 1 "$(grep -c '^\[CONTEXT\] NB_SWEEP_RESULT=done; issued=0; recorded=0$' "$d/out")"
 assert "T-15 empty で entries 無し: noop で記録する" "noop 7-20260202000000.json" "$(cat "$d/.rite/state/nb-sweep-done-7.txt")"
+
+# T-19 手順 2 はゲートへ collect の candidates[]（合流させた保留候補を含む）を渡す。
+# 別の commit で保存した保留でも、候補が欠ければ退役させずに held で止まる
+sha_a=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+sha_b=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+t19_cand='{"id":"F-01","key":"F-01","finding_id":"F-01","source":"findings_nit_noted","file":"a.ts","line":1,"description":"d","record":"7-20260101000000.json"}'
+hold_root() {  # 保留は commit A、今回のレビュー結果は commit B
+  local d; d=$(fix_root)
+  printf '{"commit_sha":"%s"}\n' "$sha_b" > "$d/.rite/review-results/7-20260202000000.json"
+  jq -n --arg head "$sha_a" --argjson c "$t19_cand" '{kind:"sweep",pr:7,head:$head,review_result:"x",reason:"no_records",
+    detail:"",held_ids:["F-01"],candidates:[$c],resume:"r"}' > "$d/.rite/state/adoption-hold-7-sweep.json"
+  echo "$d"
+}
+hold_of() { printf '%s\n' "$1/.rite/state/adoption-hold-7-sweep.json"; }
+for t19_case in "carried|[$(jq -c '.id = "7-20260101000000.json#F-01"' <<< "$t19_cand")]|no_records" "dropped|[]|held_candidates_dropped"; do
+  IFS='|' read -r t19_label t19_cands t19_reason <<< "$t19_case"
+  d=$(hold_root); cleanup_dirs+=("$d")
+  NB_STUB_CANDIDATES="$t19_cands" run_fix "$d" ok "$step2"
+  assert "T-19 ($t19_label) ゲートは退役させず held で止まる" 1 "$(grep -cx '\[fix:error\] reason=nb_sweep_adoption_held' "$d/out")"
+  assert "T-19 ($t19_label) held の理由" 1 "$(grep -c "ADOPTION_GATE=held; kind=sweep; reason=$t19_reason;" "$d/out")"
+  assert "T-19 ($t19_label) 保留を残す" 1 "$([ -e "$(hold_of "$d")" ] && echo 1 || echo 0)"
+  assert "T-19 ($t19_label) 保留候補の元の出典を保つ" "7-20260101000000.json" \
+    "$(jq -r '.candidates[] | select(.file == "a.ts") | .record' "$(hold_of "$d")")"
+  assert "T-19 ($t19_label) 完了の件数を出さない" 0 "$(grep -c 'NB_SWEEP_RESULT=' "$d/out")"
+  assert "T-19 ($t19_label) done を書かない" 0 "$([ -e "$d/.rite/state/nb-sweep-done-7.txt" ] && echo 1 || echo 0)"
+done
 
 # 起票を飛ばす判定は手順 2 の起票より前に書かれている
 skip_line=$(grep -n '`NB_SWEEP_ENTRIES=present` なら' "$FIX_SWEEP" | head -1 | cut -d: -f1)

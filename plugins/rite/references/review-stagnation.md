@@ -33,6 +33,8 @@ caller は以下の共有ブロックを工程境界で実行する。`review-cl
 
 ターンが API エラー（利用上限・過負荷など）で終わると、Claude Code の `StopFailure` hook（`hooks/stop-failure.sh`）が自セッションの未閉区間に、その時刻を `ended_at` として書き込む。`kind` は変えず、提出も削除もしない。同じ会話で再開して close へ進んでも、close は既存の `ended_at` を使うため、停止していた時間は実作業に入らない。再開から close までの作業は数えない。`StopFailure` を持たないホストでは区間は開いたまま残り、close の時刻まで数える。
 
+利用者の求めによる一時停止も同じ扱いにする。`flow-state.sh pause` は自セッションの未閉区間へ停止時刻を `ended_at` として書く（`kind` は変えず、既に `ended_at` があれば触らない）。`flow-state.sh resume` は凍結した区間を `review-clock` で保存し、同じ context・`kind` の新しい区間を再開時刻から開き直す。保存できないときは WARNING を出して凍結した区間を残し、再開後から次の close までの作業は数えない（`--session` で他セッションを再開した場合も、区間の保存が呼び出しセッションで行われるため同様）。
+
 recover は保存済み open があれば先に `recover` で close する。`ended_at` が未保存の区間全体は `interruption` として閉じ、不明な中断時刻を推測しない。`ended_at` がある区間は、保存再試行でも `StopFailure` hook が書いた場合でも時刻・種類を変更しない。open が無い未確定 gap を補って実作業へ算入しない。
 
 ```bash

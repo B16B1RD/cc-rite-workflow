@@ -1339,6 +1339,74 @@ fi
 cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
+# T-59..63: a MERGED PR with an adoption hold file keeps its review results
+# (held candidates are resumed from them). PR numbers 4 / 42 / 420 pin the
+# `{N}-` boundary: only 42 holds (followup) and 5 holds (triage).
+# -----------------------------------------------------------------------
+echo "T-59..63: adoption hold keeps orphan review JSON"
+TEST_REPO=$(make_temp_repo)
+write_gh_pr_mock "$TEST_REPO"
+mkdir -p "$TEST_REPO/.rite/review-results" "$TEST_REPO/.rite/sessions" "$TEST_REPO/.rite/state"
+printf '{"non_blocking_findings":[]}\n' > "$TEST_REPO/.rite/review-results/4-20260101000000.json"
+printf '{"non_blocking_findings":[{"id":"F-01"}]}\n' > "$TEST_REPO/.rite/review-results/42-20260101000000.json"
+printf '{"non_blocking_findings":[]}\n' > "$TEST_REPO/.rite/review-results/42-20260102000000.json"
+printf '{"non_blocking_findings":[{"id":"F-02"}]}\n' > "$TEST_REPO/.rite/review-results/420-20260101000000.json"
+printf '{"non_blocking_findings":[]}\n' > "$TEST_REPO/.rite/review-results/5-20260101000000.json"
+printf '4-pin\n' > "$TEST_REPO/.rite/state/review-run-since-4.txt"
+printf '42-pin\n' > "$TEST_REPO/.rite/state/review-run-since-42.txt"
+printf 'done 42-20260102000000.json\n' > "$TEST_REPO/.rite/state/nb-sweep-done-42.txt"
+printf '{"kind":"followup","pr":42}\n' > "$TEST_REPO/.rite/state/adoption-hold-42-followup.json"
+printf '{"kind":"triage","pr":5}\n' > "$TEST_REPO/.rite/state/adoption-hold-5-triage.json"
+t59_dry=$(cd "$TEST_REPO" && \
+  GH_PR_STATE_4=MERGED GH_PR_STATE_42=MERGED GH_PR_STATE_420=MERGED GH_PR_STATE_5=CLOSED \
+  PATH="$TEST_REPO/bin:$PATH" bash "$CLEANUP" --dry-run 2>&1)
+t59_output=$(cd "$TEST_REPO" && \
+  GH_PR_STATE_4=MERGED GH_PR_STATE_42=MERGED GH_PR_STATE_420=MERGED GH_PR_STATE_5=CLOSED \
+  PATH="$TEST_REPO/bin:$PATH" bash "$CLEANUP" 2>&1)
+if [ -e "$TEST_REPO/.rite/review-results/42-20260101000000.json" ] \
+  && [ -e "$TEST_REPO/.rite/review-results/42-20260102000000.json" ] \
+  && [ ! -e "$TEST_REPO/.rite/review-results/archive/42-20260101000000.json" ] \
+  && [ -e "$TEST_REPO/.rite/state/review-run-since-42.txt" ] \
+  && [ -e "$TEST_REPO/.rite/state/nb-sweep-done-42.txt" ] \
+  && [ -e "$TEST_REPO/.rite/review-results/5-20260101000000.json" ]; then
+  pass "T-59 held PR JSON (followup / triage hold) + pin + sweep-done kept"
+else
+  fail "T-59 held PR review results were archived or deleted: $t59_output"
+fi
+if [ ! -e "$TEST_REPO/.rite/review-results/4-20260101000000.json" ] \
+  && [ ! -e "$TEST_REPO/.rite/state/review-run-since-4.txt" ] \
+  && [ -e "$TEST_REPO/.rite/review-results/archive/420-20260101000000.json" ] \
+  && [ ! -e "$TEST_REPO/.rite/review-results/420-20260101000000.json" ]; then
+  pass "T-60 PRs 4 / 420 without a hold are reaped as before ({N}- boundary)"
+else
+  fail "T-60 PR 4 / 420 not reaped: $t59_output"
+fi
+if grep -qF "'42-20260101000000.json' は採否保留中" <<< "$t59_output" \
+  && grep -qF 'adoption-hold-42-followup.json' <<< "$t59_output" \
+  && grep -qF "'5-20260101000000.json' は採否保留中" <<< "$t59_output" \
+  && ! grep -qF "'4-20260101000000.json' は採否保留中" <<< "$t59_output" \
+  && ! grep -qF "'420-20260101000000.json' は採否保留中" <<< "$t59_output"; then
+  pass "T-61 kept held JSON is surfaced with a WARNING naming the hold file"
+else
+  fail "T-61 hold WARNING missing or misattributed: $t59_output"
+fi
+if grep -q 'orphan_reviews_deleted=1;' <<< "$t59_output" && grep -q 'orphan_reviews_archived=1;' <<< "$t59_output" \
+  && grep -q 'orphan_review_pins=1;' <<< "$t59_output" && ! grep -q 'status=failed' <<< "$t59_output" \
+  && [ -e "$TEST_REPO/.rite/state/adoption-hold-42-followup.json" ] && [ -e "$TEST_REPO/.rite/state/adoption-hold-5-triage.json" ]; then
+  pass "T-62 counters cover only unheld PRs; a hold is not an error and the hold files stay"
+else
+  fail "T-62 counters / status / hold files: $t59_output"
+fi
+if ! grep -qE 'would (archive|delete) orphan review JSON: (42|5)-' <<< "$t59_dry" \
+  && grep -qF 'would delete orphan review JSON: 4-20260101000000.json' <<< "$t59_dry" \
+  && grep -qF 'would archive orphan review JSON: 420-20260101000000.json' <<< "$t59_dry"; then
+  pass "T-63 dry-run does not list held PR JSON"
+else
+  fail "T-63 dry-run listed held JSON: $t59_dry"
+fi
+cleanup_temp_repo "$TEST_REPO"
+
+# -----------------------------------------------------------------------
 # T-49..: consumed release-promotion attestation sweep
 # Mixed fixture in one invocation: MERGED/CLOSED delete, OPEN/unknown keep,
 # .gitignore stays, non-{N}.json leftovers stay, counters + status.

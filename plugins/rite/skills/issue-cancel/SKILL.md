@@ -414,12 +414,14 @@ LC_ALL=C git branch -D -- "{branch_name}" && echo "[CONTEXT] BRANCH_DELETED=1; b
 helper は全運用経路で rc=0 を返し、部分失敗（rm 失敗・内側 helper 起動失敗）は `REVIEW_CLEANUP_PARTIAL_FAILURE=1` marker でのみ通知する。rc だけを見ると残置が完了として報告されるため、**marker を判定に使う**。判定は bash に持たせず `skills/cleanup/SKILL.md` の `{review_cleanup_check}` と同じく**出力に現れた marker を読んで**行う — 捕捉層を挟むと、その捕捉に失敗したときに marker ごと消えて「観測できていない」が「成功」に化ける。
 rationale: references/rationale.md#helper-marker-not-rc
 
+Issue の中止は保留した採否の候補も放棄するため、`--drop-adoption-hold` を渡して保留ファイルと判定記録も消す。
+
 ```bash
-bash {plugin_root}/hooks/scripts/cleanup-pr-state-purge.sh --pr "{pr_number}" 2>&1 \
+bash {plugin_root}/hooks/scripts/cleanup-pr-state-purge.sh --pr "{pr_number}" --drop-adoption-hold 2>&1 \
   || echo "WARNING: state purge helper が失敗しました。PR-specific state ファイルが残っています" >&2
 ```
 
-上記の出力を読んで分岐する（marker は本呼び出しの出力に限って照合すればよく、`{review_cleanup_check}` のような `pr=` 境界一致は不要 — 他 PR 分の marker が混ざらないため）:
+上記の出力を読んで分岐する（marker は本呼び出しの出力に限って照合すればよく、`{review_cleanup_check}` のような `pr=` 境界一致は不要 — 他 PR 分の marker が混ざらないため。`PR_STATE_PURGE=held` は `--drop-adoption-hold` を渡すので出ない）:
 
 | 観測 | アクション |
 |---|---|

@@ -268,12 +268,28 @@ in_order "6.5.1: standalone の受入条件未検証分岐は Merge OK 分岐よ
   "$(line_of "$PR_REVIEW" '**Merge OK**: Ready for review（推奨）')"
 pin "8.0: 2 variant だけが handoff を付ける" "$PR_REVIEW" 'mergeable / fix-needed は helper が表の handoff を付け、受入条件未検証の停止（`ac-unverified`）は付けない'
 pin "stop-loop contract: 受入条件未検証は handoff を持たない" "$STOP_CONTRACT" '**受入条件未検証の `[review:error]`（`REVIEW_STOP=ac_unverified`）も handoff を持たない**'
+# 採否保留の停止 (scope-triage 7.2 の held): handoff を消してから [review:error] と行頭 REVIEW_STOP を出す
+held_set=$(awk '/^# 採否保留の停止 \(--handoff を付けず/{s=1; next} s && /^```$/{exit} s' "$SCOPE_TRIAGE")
+if grep -q 'flow-state.sh set' <<<"$held_set" && ! grep -q -- '--handoff' <<<"$held_set"; then
+  pass "7.2 held: 停止の flow-state set は --handoff を付けない"
+else
+  fail "7.2 held: 停止の flow-state set (block=$held_set)"
+fi
+in_order "7.2 held: handoff を消してから [review:error] と REVIEW_STOP を出す" \
+  "$(grep -n 'flow-state.sh set' <<<"$held_set" | head -1 | cut -d: -f1)" \
+  "$(grep -nxF 'echo "[review:error]"' <<<"$held_set" | head -1 | cut -d: -f1)" \
+  "$(grep -nxF 'echo "[CONTEXT] REVIEW_STOP=adoption_held; kind=triage; hold_file={hold_file}"' <<<"$held_set" | head -1 | cut -d: -f1)"
+pin "stop-loop contract: 採否保留は handoff を持たない" "$STOP_CONTRACT" '**採否保留の `[review:error]`（`REVIEW_STOP=adoption_held`）も handoff を持たない**'
 
 echo ""
 echo "=== TC-6: iterate の停止分岐 (T-05) ==="
 in_order "iterate: REVIEW_STOP 行が汎用 [review:error] 行より前" \
   "$(line_of "$ITERATE" '| `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=ac_unverified; ac={ids}` |')" \
   "$(line_of "$ITERATE" '| `[review:error]` | 可逆な再試行を推奨として 1 回だけ自動実行')"
+in_order "iterate: adoption_held 行が汎用 [review:error] 行より前" \
+  "$(line_of "$ITERATE" '| `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=adoption_held; kind={kind}; hold_file={path}` |')" \
+  "$(line_of "$ITERATE" '| `[review:error]` | 可逆な再試行を推奨として 1 回だけ自動実行')"
+pin "iterate: adoption_held は再試行せず hold ファイルと再開方法を示す" "$ITERATE" '採否の出口待ちの保留、またはスコープ外処分の外部への書き込みが途中で失敗した停止（後者は一部が書き込み済み）。再試行せず、`hold_file` と、hold ファイルの resume（出口待ちのときはゲートの WARNING にも出る）に従って再開することを示して終了する。書き込み途中の停止で hold に書けなかったときは、hold の resume ではなく stderr の WARNING と flow-state の次アクションにある再開方法に従う（成功 sentinel も新しい sentinel も出さない）'
 pin "iterate: 再試行せず sentinel を出さない" "$ITERATE" '再試行せず、下記の停止通知を出して終了する（成功 sentinel も新しい sentinel も出さない）'
 pin "iterate: 行頭 marker だけで判定" "$ITERATE" '`REVIEW_STOP` は行頭 `[CONTEXT] ` の marker だけを判定に使う'
 pin "iterate: 停止通知の見出し" "$ITERATE" '## /rite:iterate 停止（受入条件未検証）'

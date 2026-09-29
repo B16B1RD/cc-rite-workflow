@@ -2,8 +2,8 @@
 # fix-reason-coverage-check.sh
 #
 # Verify that every `WM_UPDATE_FAILED=1; reason=<value>` emitted in
-# skills/fix/SKILL.md and scripts/fix-work-memory-update.sh also appears as a
-# row in the skill file's reason table.
+# skills/fix/SKILL.md, scripts/fix-step.sh and scripts/fix-work-memory-update.sh
+# also appears as a row in the skill file's reason table.
 #
 # The table is what a reader consults to interpret a `[fix:pushed-wm-stale]`
 # outcome. A reason emitted by the flow but missing from the table leaves that
@@ -38,7 +38,7 @@ set -uo pipefail
 
 REPO_ROOT=""
 TARGET="plugins/rite/skills/fix/SKILL.md"
-HELPER="plugins/rite/scripts/fix-work-memory-update.sh"
+HELPERS=("plugins/rite/scripts/fix-step.sh" "plugins/rite/scripts/fix-work-memory-update.sh")
 
 usage() {
   cat <<'EOF'
@@ -47,9 +47,10 @@ Usage: fix-reason-coverage-check.sh [options]
 Options:
   --repo-root DIR    Repository root (default: git rev-parse --show-toplevel)
   --target FILE      Skill emit source and reason table, relative to repo root
-                     (default: plugins/rite/skills/fix/SKILL.md). The helper
+                     (default: plugins/rite/skills/fix/SKILL.md). The helpers
+                     plugins/rite/scripts/fix-step.sh and
                      plugins/rite/scripts/fix-work-memory-update.sh under the
-                     same repo root is always checked as an additional source.
+                     same repo root are always checked as additional sources.
   -h, --help         Show this help
 
 Exit codes:
@@ -83,7 +84,7 @@ fi
 # Check each source separately: a surviving caller emit must not conceal a
 # missing helper or a changed marker format in either source.
 emitted=""
-for source in "$TARGET" "$HELPER"; do
+for source in "$TARGET" "${HELPERS[@]}"; do
   if [ ! -f "$source" ]; then
     echo "ERROR: emit source not found: $source (repo root: $REPO_ROOT)" >&2
     exit 2

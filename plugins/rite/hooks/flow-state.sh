@@ -974,6 +974,96 @@ cmd_review_close() {
   cmd_review_cycle close
 }
 
+# pause / resume: 利用者の求めによる一時停止の記録。Stop hook は記録があるあいだ、handoff の再注入も
+# batch watchdog も行わずに停止を許可する。記録は flow-state とは別ファイルに置く — `cmd_set` は
+# state を毎回作り直して未指定フィールドを default-clear するため、停止直前の `set` で記録が消えて
+# 再び差し戻されるのを避ける。flow-state / run-queue は書き換えないので、位置（phase・cursor・
+# review_cycle）は再開までそのまま残る。
+_pause_record_path() { printf '%s/.rite/state/pause-%s.json' "$STATE_ROOT" "$1"; }
+_review_clock_path() { printf '%s/.rite/state/review-clock-%s.json' "$STATE_ROOT" "$1"; }
+
+# 開いている review clock 区間に ended_at を刻み、一時停止の時間を作業時間に数えさせない
+# （usage limit 停止時の stop-failure.sh と同じ扱い）。区間が無い / 既に閉じていれば何もしない。
+# 失敗は WARNING にとどめる。記録済みの一時停止を取り消さない。
+_pause_freeze_clock() {
+  local clock; clock=$(_review_clock_path "$1")
+  [ -e "$clock" ] || return 0
+  if ! jq -e 'type == "object"' "$clock" >/dev/null 2>&1; then
+    echo "WARNING: pause: review clock record is not a JSON object; left unchanged: $(printf '%s' "$clock" | neutralize_ctrl)" >&2
+    return 0
+  fi
+  jq -e 'has("ended_at")' "$clock" >/dev/null && return 0
+  local tmp
+  if tmp=$(mktemp "$clock.XXXXXX") \
+     && jq --arg end "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" '.ended_at = $end' "$clock" > "$tmp" \
+     && mv "$tmp" "$clock"; then
+    return 0
+  fi
+  [ -z "${tmp:-}" ] || rm -f "$tmp"
+  echo "WARNING: pause: failed to stamp ended_at on the review clock; the pause will count as work time: $(printf '%s' "$clock" | neutralize_ctrl)" >&2
+  return 0
+}
+
+# 一時停止で凍結した区間を保存し、新しい区間を開き直す。保存できないときは凍結した区間を残す
+# （close / recover は既存の ended_at を保つ）。この場合、再開後から次の close までの作業は数えられない。
+_resume_reopen_clock() {
+  local clock; clock=$(_review_clock_path "$1")
+  [ -e "$clock" ] || return 0
+  jq -e 'type == "object" and has("ended_at")' "$clock" >/dev/null 2>&1 || return 0
+  local tmp
+  if ! cmd_review_cycle clock --input "$clock" >/dev/null; then
+    echo "WARNING: resume: could not record the paused review clock segment; it is left frozen, and work until the next close will not be counted: $(printf '%s' "$clock" | neutralize_ctrl)" >&2
+    return 0
+  fi
+  if tmp=$(mktemp "$clock.XXXXXX") \
+     && jq --arg id "$(basename "$tmp")" --arg start "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+          '{review_context, segment_id:$id, kind, started_at:$start}' "$clock" > "$tmp" \
+     && mv "$tmp" "$clock"; then
+    return 0
+  fi
+  # The paused segment is already recorded, so the frozen file must not be submitted again.
+  rm -f "${tmp:-}" "$clock"
+  echo "WARNING: resume: recorded the paused segment but could not open a new one; work until the next close will not be counted" >&2
+  return 0
+}
+
+cmd_pause() {
+  local session=""
+  while [ $# -gt 0 ]; do case "$1" in
+    --session) session="$2"; shift 2 ;;
+    *) echo "ERROR: unknown option: $1" >&2; return 1 ;;
+  esac; done
+  local sid rec; sid=$(_resolve_session_id "$session") || return 1
+  rec=$(_pause_record_path "$sid")
+  mkdir -p "$(dirname "$rec")" || return 1
+  if [ ! -e "$rec" ]; then
+    # `_atomic_write` は `.lock` を残す。Stop hook は存在しか見ないので、mktemp + mv で足りる。
+    local tmp; tmp=$(mktemp "$rec.XXXXXX") || return 1
+    jq -n --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" '{paused_at:$ts}' > "$tmp" && mv "$tmp" "$rec" \
+      || { rm -f "$tmp"; return 1; }
+  fi
+  _pause_freeze_clock "$sid"
+}
+
+# 記録が無ければ何もしない（冪等）。`--session` で他セッションを再開するときは、review clock の
+# 保存が呼び出しセッションの flow-state に対して行われるため、区間は開き直さず凍結のまま残す。
+cmd_resume() {
+  local session=""
+  while [ $# -gt 0 ]; do case "$1" in
+    --session) session="$2"; shift 2 ;;
+    *) echo "ERROR: unknown option: $1" >&2; return 1 ;;
+  esac; done
+  local sid rec; sid=$(_resolve_session_id "$session") || return 1
+  rec=$(_pause_record_path "$sid")
+  [ -e "$rec" ] || return 0
+  if [ -z "$session" ]; then
+    _resume_reopen_clock "$sid"
+  elif [ -e "$(_review_clock_path "$sid")" ]; then
+    echo "WARNING: resume: --session given, so the paused review clock segment is left frozen; run resume from that session to reopen it" >&2
+  fi
+  rm -f "$rec" || { echo "ERROR: resume: could not remove the pause record: $(printf '%s' "$rec" | neutralize_ctrl)" >&2; return 1; }
+}
+
 cmd_path() {
   local session=""
   while [ $# -gt 0 ]; do case "$1" in
@@ -1006,9 +1096,11 @@ case "${1:-}" in
   consume-handoff) shift; cmd_consume_handoff "$@" ;;
   migrate) shift; cmd_migrate "$@" ;;
   path) shift; cmd_path "$@" ;;
+  pause) shift; cmd_pause "$@" ;;
+  resume) shift; cmd_resume "$@" ;;
   *)
     cat >&2 <<EOF
-Usage: $0 {set|get|review-start|review-finish|review-retry|review-restart|review-reconcile|review-deviate|review-abandon|deactivate|reap-issue|clear-worktree|consume-handoff|migrate|path} [options]
+Usage: $0 {set|get|review-start|review-finish|review-retry|review-restart|review-reconcile|review-deviate|review-abandon|deactivate|reap-issue|clear-worktree|consume-handoff|migrate|path|pause|resume} [options]
   set --phase <P> --next <T> [--issue N] [--branch S] [--pr N] [--parent-issue N]
       [--active true|false] [--handoff CMD] [--session UUID] [--if-exists] [--preserve-error-count]
       [--worktree PATH] [--require-worktree]   # --require-worktree: warn + emit WORKTREE_INVARIANT marker when worktree empty (non-blocking)
@@ -1034,6 +1126,8 @@ Usage: $0 {set|get|review-start|review-finish|review-retry|review-restart|review
   consume-handoff [--session UUID]   # print + clear the one-shot handoff marker
   migrate [--dry-run] [--verbose]
   path [--session UUID]
+  pause [--session UUID]             # record a user-requested pause: the Stop hook stops re-injecting continuation while it exists; freezes the open review clock segment
+  resume [--session UUID]            # remove the pause record and reopen the review clock segment; no-op when not paused
 Phase enum (v3): $PHASE_ENUM_V3
 EOF
     exit 1
