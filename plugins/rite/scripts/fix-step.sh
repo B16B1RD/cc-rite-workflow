@@ -928,7 +928,7 @@ target_symbol="${symbol}"   # 例: "validate_input", "API_TIMEOUT", "UserRepo"
 if git grep -nE "\\b${target_symbol}\\b" -- \
   '*.ts' '*.tsx' '*.js' '*.jsx' '*.py' '*.rb' '*.go' '*.rs' \
   '*.sh' '*.bash' '*.md' '*.yml' '*.yaml' '*.json' > "${TMPDIR:-/tmp}/rite-fix-impact-scan-$$.txt" 2>"${TMPDIR:-/tmp}/rite-fix-impact-scan-err-$$.txt"; then
-  :  # match あり (rc=0) — 結果は tmpfile に展開済、Step 2 へ
+  cat "${TMPDIR:-/tmp}/rite-fix-impact-scan-$$.txt"
 else
   rc=$?
   case "$rc" in
