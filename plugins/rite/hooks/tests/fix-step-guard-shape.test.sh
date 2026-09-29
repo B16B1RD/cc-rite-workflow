@@ -372,6 +372,41 @@ if [ -n "$MUT_DIR" ]; then
   else
     pass "a missing content file does not run the trigger"
   fi
+
+  # wiki-raw-commit はメッセージファイルが無い・空なら commit せずに理由を出す。この経路ではメッセージを
+  # 一時ファイルへ書かないので、理由は一時ファイル作成の失敗ではなくファイルの不在を名指す。
+  printf '%s\n' '#!/bin/bash' "printf '%s\n' \"\$@\" > \"$MUT_DIR/commit-args\"" \
+    'echo "[wiki-ingest-commit] committed=1; branch=wiki; head=stub; push=ok"' > "$FIXTURE/hooks/scripts/wiki-ingest-commit.sh"
+  printf '%s\n' 'docs(wiki): raw source を記録する' > "$MUT_DIR/wic-message.txt"
+  : > "$MUT_DIR/wic-empty.txt"
+  wic_out=$(bash "$FIXTURE/scripts/fix-step.sh" wiki-raw-commit --pr 7 \
+    --message-file "$MUT_DIR/wic-message.txt" 2>"$MUT_DIR/wic.err")
+  case "$wic_out" in
+    *"WIKI_INGEST_DONE=1"*) pass "wiki-raw-commit runs the commit helper" ;;
+    *) fail "wiki-raw-commit runs the commit helper (output: $wic_out; stderr: $(cat "$MUT_DIR/wic.err"))" ;;
+  esac
+  assert "wiki-raw-commit hands the message file to the commit helper" "$MUT_DIR/wic-message.txt" \
+    "$(grep -A1 -xF -- '--message-file' "$MUT_DIR/commit-args" 2>/dev/null | tail -n 1)"
+  for wic_case in absent empty; do
+    rm -f "$MUT_DIR/commit-args"
+    case "$wic_case" in
+      absent) wic_file="$MUT_DIR/wic-absent.txt" ;;
+      empty) wic_file="$MUT_DIR/wic-empty.txt" ;;
+    esac
+    wic_out=$(bash "$FIXTURE/scripts/fix-step.sh" wiki-raw-commit --pr 7 \
+      --message-file "$wic_file" 2>"$MUT_DIR/wic.err")
+    assert "an $wic_case message file skips wiki-raw-commit without failing" "0" "$?"
+    assert "an $wic_case message file names the missing file as the reason" "1" \
+      "$(grep -cxF '[CONTEXT] WIKI_INGEST_FAILED=1; reason=msg_file_missing; exit_code=1' <<< "$wic_out")"
+    assert "an $wic_case message file reports exactly one failure" "1" "$(grep -c 'WIKI_INGEST_FAILED=' <<< "$wic_out")"
+    assert "an $wic_case message file reports neither a commit nor a temp file failure" "0" \
+      "$(grep -cE 'WIKI_INGEST_DONE|commit_rc_|msg_file_mktemp_failed' <<< "$wic_out")"
+    if [ -e "$MUT_DIR/commit-args" ]; then
+      fail "an $wic_case message file does not run the commit helper"
+    else
+      pass "an $wic_case message file does not run the commit helper"
+    fi
+  done
 fi
 
 if ! print_summary "$(basename "$0")" \

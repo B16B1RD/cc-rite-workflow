@@ -2018,7 +2018,7 @@ wiki_push_attempt="fix-${pr_number}-$(date +%s)-$$-$RANDOM"
 echo "[CONTEXT] WIKI_PUSH_ATTEMPT=$wiki_push_attempt; source=fix; pr=${pr_number}"
 if [ ! -s "$message_file" ]; then
   echo "WARNING: コミットメッセージのファイルを読めません ($message_file)。wiki ingest commit をスキップします" >&2
-  echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=msg_file_mktemp_failed; exit_code=1"
+  echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=msg_file_missing; exit_code=1"
 else
 case "$(cat -- "$message_file")" in
   "{"*"}")

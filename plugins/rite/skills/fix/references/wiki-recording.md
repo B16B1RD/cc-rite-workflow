@@ -59,7 +59,7 @@ bash {plugin_root}/scripts/fix-step.sh wiki-trigger-result --content-write-faile
 
 When the condition is not satisfied, skip this block.
 
-コミットメッセージ `{wic_commit_message}`（[commit-convention.md](../../../references/commit-convention.md) 適用後の全文）を Write tool で作業ツリー外の絶対パス `{wic_message_file}` に書いてから、次の 1 行を実行する。ファイルが無い・空なら `WIKI_INGEST_FAILED=1; reason=msg_file_mktemp_failed` を出して commit をスキップし（非ブロッキング）、中身が未置換の `{...}` なら `reason=msg_placeholder_residue` を出して exit 1 で止まる。
+コミットメッセージ `{wic_commit_message}`（[commit-convention.md](../../../references/commit-convention.md) 適用後の全文）を Write tool で作業ツリー外の絶対パス `{wic_message_file}` に書いてから、次の 1 行を実行する。ファイルが無い・空なら `WIKI_INGEST_FAILED=1; reason=msg_file_missing` を出して commit をスキップし（非ブロッキング）、中身が未置換の `{...}` なら `reason=msg_placeholder_residue` を出して exit 1 で止まる。
 
 ```bash
 bash {plugin_root}/scripts/fix-step.sh wiki-raw-commit --pr {pr_number} --message-file '{wic_message_file}'
