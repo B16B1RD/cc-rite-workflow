@@ -311,6 +311,7 @@ run_triage_block() {
   code=${code//\{plugin_root\}/$triage_dir/plugin}
   code=${code//\{pr_number\}/5}
   code=${code//\{base_branch\}/develop}
+  code=${code//\{fix_loop\}/yes}
   code=${code//\{source_issue_number\}/$issue}
   code=${code//\{records\}/$triage_records}
   code=${code//\{candidates\}/$triage_candidates}
@@ -325,7 +326,7 @@ assert_eq 'records are written with their candidates under the reviewed commit' 
   "$(jq -c . "$triage_dir/root/.rite/state/adoption-5-triage.json" 2>/dev/null || true)"
 args=$(paste -sd ' ' "$triage_dir/args" 2>/dev/null || true)
 case "$args" in
-  *"--kind triage"*"--review-result $triage_dir/root/.rite/review-results/5-20260101T000000.json --base origin/develop --issue 7") pass 'gate receives the triage arguments' ;;
+  *"--kind triage"*"--review-result $triage_dir/root/.rite/review-results/5-20260101T000000.json --base origin/develop --fix-loop yes --issue 7") pass 'gate receives the triage arguments' ;;
   *) fail "gate arguments: $args" ;;
 esac
 rm -f "$triage_dir/root/.rite/state/adoption-hold-5-triage.json"

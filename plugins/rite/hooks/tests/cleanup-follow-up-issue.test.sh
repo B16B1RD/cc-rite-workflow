@@ -85,7 +85,8 @@
 #   T-60 出典の無い 4 列行は最新 JSON とだけ照合し、判定文のエスケープ済みパイプを出典と読まない
 #   T-61 出典が一致しない再掲マーカーの無い finding は id・位置が同じでも転記し、出典で除外した先行 cycle 指摘の位置は
 #        重複候補に数えない。その位置に別の先行 cycle の指摘があっても重複候補に数えない（3 cycle）
-#   T-62 存在しない JSON を指す出典は除外しない / 形の合わない出典は出典無しとして扱う
+#   T-62 存在しない JSON を指す出典・壊れて改名された JSON の名前の出典は最新 JSON と照合しない /
+#        形の合わない出典は出典無しとして扱う
 #   T-63 末尾空白・エスケープ済みパイプ・CRLF の行からも出典を読む
 #   T-64 記録コメントの取得失敗・最新 JSON の照合失敗では出典付きの行でも除外しない
 #
@@ -110,8 +111,10 @@
 #   T-72 cleanup SKILL.md の完了報告の配線
 #   T-82 severity-levels / review-result-schema の follow-up 規則 (先送り欠陥も候補にする・採否ゲートの出口で
 #        根因ごとに起票・出口が無ければ held で起票も退避もしない) が 1 回ずつあり、PR ごとに 1 件とする旧文を
-#        持たず、周辺の節と正本 §6.0 の規則も残る。PR ごとに 1 件へ全文転記する旧契約の文は pr-review SKILL.md・
-#        設定テンプレート・docs の CONFIGURATION.md / SPEC.md にも無い
+#        持たず、周辺の節と正本 §6.0 の規則も残る。解消済みは分類役が RESOLVED として記録し、台帳の処分で
+#        決着済みの指摘を除く現行の起票条件の文を持つ。PR ごとに 1 件へ全文転記する旧契約の文と、撤去した
+#        マージ後 HEAD の再検証の記述は pr-review / cleanup SKILL.md・採否ゲート・設定テンプレート・
+#        docs の CONFIGURATION.md / SPEC.md にも無い
 #
 # Coverage (判定済み記録):
 #   T-77 判定後に purge が JSON を片付けた PR の再実行は already_processed で skip し no_json を出さない
@@ -139,10 +142,11 @@
 #   T-90 cleanup SKILL.md の判定記録の節・呼び出し引数・held の配線
 #   T-92 PR 起因でも OPEN の追跡先がある LINK は起票も保留もせず決着し、record の出口 (LINK / REJECT / RESOLVED) を
 #        指摘は出典 JSON、先送り欠陥は <pr>-deferred を出典にして台帳へ書く。書いた台帳での再実行は処分済みの
-#        候補を列挙せず、追跡先も読み直さず保留もしない。台帳へ書けなくても出口は変えず FOLLOW_UP_LEDGER=failed。
-#        プレビューでは書かない
+#        候補を列挙せず、追跡先も読み直さず保留もしない。壊れて改名された JSON の名前の出典も書けて再実行で
+#        除外する。台帳へ書けなくても出口は変えず FOLLOW_UP_LEDGER=failed。プレビューでは書かない
 #   T-93 処分の再利用: 台帳の REJECT / RESOLVED 行は出典 JSON の commit から対象 commit までに指摘ファイルが
 #        変わっていれば除外せず候補に戻し、変わっていなければ除外する。issued 行は変わっても除外する。
+#        follow-up 自身が書いた行は判定した commit を起点にし、再実行で候補に戻さず行を重ねない。
 #        前回の判定記録は head が同じで ids がすべて候補にあり保留した候補を含まない記録だけを reuse に写し、
 #        残りの候補を judge に並べる。hold ファイルを読めなければ hold_unreadable で一覧を書かない
 set -uo pipefail
@@ -1552,8 +1556,16 @@ run_target "$r"
 assert_grep "T-62 存在しない出典では除外しない" "$STUB_DIR/body.md" '最新 cycle の指摘'
 assert_grep "T-62 存在しない出典の除外件数 0" "$ERR" 'sweep_issued: pr=9; excluded=0; possible_duplicates=0$'
 assert_not_grep "T-62 存在しない出典で除外不能に倒さない" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable'
+# 壊れて改名された JSON の名前は正規の出典: 最新 JSON とは照合しない
+reset_stubs
+r=$(new_root t62-corrupt)
+put_json "$r" "$CYCLE_B" '{"non_blocking_findings":[{"id":"F-01","file":"a.md","line":3,"description":"最新 cycle の指摘"}]}'
+jq -n --argjson c "$(comment_obj "$(record_body "$(issued_row5 F-01 a.md:3 "$CYCLE_A.corrupt-1")")")" '[[$c]]' > "$GH_API_JSON"
+run_target "$r"
+assert_grep "T-62 corrupt 名の出典は最新 JSON 由来を除外しない" "$STUB_DIR/body.md" '最新 cycle の指摘'
+assert_grep "T-62 corrupt 名の出典の除外件数 0" "$ERR" 'sweep_issued: pr=9; excluded=0; possible_duplicates=0$'
 # 形の合わない出典: 出典無しの行として最新 JSON とだけ照合する
-for t62_src in review.json "$CYCLE_A.corrupt-1" ''; do
+for t62_src in review.json ''; do
   reset_stubs
   r=$(new_root "t62-invalid-${t62_src:-empty}")
   put_json "$r" "$CYCLE_A" '{"non_blocking_findings":[{"id":"F-01","file":"a.md","line":3,"description":"先行 cycle の指摘"}]}'
@@ -2118,24 +2130,27 @@ for _t82_md in "$PLUGIN_ROOT/references/severity-levels.md" "$PLUGIN_ROOT/refere
   assert "T-82 $_t82_name: 候補の規則文が 1 回" "1" "$(_t82_count "$_t82_rule" < "$_t82_md")"
   assert "T-82 $_t82_name: 起票は採否ゲートの出口で根因ごとに 1 件" "1" "$(_t82_count "$_t82_gate" < "$_t82_md")"
   assert "T-82 $_t82_name: 出口が出ていなければ held で起票も退避もしない" "1" "$(_t82_count "$_t82_held" < "$_t82_md")"
-  assert "T-82 $_t82_name: 却下台帳を読めないときの節が残る" "1" \
-    "$(_t82_count '却下台帳か最新のレビュー結果 JSON を読めなければ' < "$_t82_md")"
+  assert "T-82 $_t82_name: 解消済みは分類役が RESOLVED として記録し起票しない" "1" \
+    "$(_t82_count '解消済みかどうかは分類役が対象 commit（最新のレビュー結果の commit）で判定し、解消済みは `RESOLVED` として台帳に記録して起票しない**' < "$_t82_md")"
+  assert "T-82 $_t82_name: 台帳の処分で決着済みの指摘を除外する" "1" \
+    "$(_t82_count '却下台帳の処分（issued / LINK は常に、REJECT / RESOLVED は指摘のファイルが前提の起点から変わっていないときだけ）で決着済みの指摘も候補から除外する。' < "$_t82_md")"
+  assert "T-82 $_t82_name: 台帳・最新 JSON を読めないときの扱い" "1" \
+    "$(_t82_count '却下台帳を読めなければ採否ゲートが全候補を保留して何も起票せず、最新のレビュー結果 JSON を読めなければ台帳による除外を行わずに WARNING を出す' < "$_t82_md")"
 done
 # follow-up を PR ごとに 1 件とする旧契約 (先送り欠陥だけで起票すると読める文を含む) を、利用者向けの文書・
 # 設定テンプレートにも残さない
 _t82_repo="$(cd "$PLUGIN_ROOT/../.." && pwd)"
+# 撤去したマージ後 HEAD の再検証 (解消済みの除外・--exclude-ids・all_resolved) の記述も残さない
 for _t82_name in plugins/rite/references/severity-levels.md plugins/rite/references/review-result-schema.md \
     plugins/rite/skills/pr-review/SKILL.md plugins/rite/templates/config/rite-config.yml \
-    docs/CONFIGURATION.md docs/SPEC.md; do
+    docs/CONFIGURATION.md docs/SPEC.md plugins/rite/skills/cleanup/SKILL.md \
+    plugins/rite/hooks/scripts/review-adoption-gate.sh; do
   for _t82_old in 'follow-up Issue 1 件へ転記' 'follow-up Issue 1 件へ全文転記' 'one follow-up Issue' \
-      '先送りした欠陥があれば follow-up Issue を起票し'; do
+      '先送りした欠陥があれば follow-up Issue を起票し' 'マージ後 HEAD で再検証' 'マージ後 HEAD に対する再検証' \
+      '再検証による除外' '再検証の除外' 'against the merged HEAD' 're-verification' 'exclude-ids' 'all_resolved' '6.0.V'; do
     assert "T-82 ${_t82_name}: 旧契約「${_t82_old}」が無い" "0" "$(_t82_count "$_t82_old" < "$_t82_repo/$_t82_name")"
   done
 done
-assert "T-82 severity-levels.md: 判定不能を候補側へ倒す節が残る" "1" \
-  "$(_t82_count '判定不能なものは候補側へ倒す。' < "$PLUGIN_ROOT/references/severity-levels.md")"
-assert "T-82 review-result-schema.md: 判定不能を候補側へ倒す節が太字の中に残る" "1" \
-  "$(_t82_count '解消済みと判定された指摘は除外する（判定不能は候補側へ倒す）**' < "$PLUGIN_ROOT/references/review-result-schema.md")"
 assert "T-82 review-result-schema.md: read 側の扱いから実測必須ゲートへのリンクが残る" "1" \
   "$(grep -F -- '**read 側の扱い**' "$PLUGIN_ROOT/references/review-result-schema.md" | _t82_count '](./severity-levels.md#実測必須ゲート-measured-confirmed-gate)')"
 assert "T-82 正本 §6.0 の規則が残る" "1" \
@@ -2504,11 +2519,16 @@ for t92_origin in unknown pr; do
   assert "T-92 origin=$t92_origin の LINK は hold を残さない" "no" "$([ -e "$r/$HOLD_REL" ] && echo yes || echo no)"
   assert_grep "T-92 origin=$t92_origin の出口を台帳へ書く" "$ERR" '^\[CONTEXT\] FOLLOW_UP_LEDGER=recorded; rows=4; pr=9$'
 done
-assert_grep "T-92 LINK 行は追跡先の番号と指摘の出典を持つ" "$GH_PATCH_OUT" '^| F-01 | a.md:3 | LINK | 追跡先 #7 | 9-20260101120000.json |$'
-assert_grep "T-92 先送り欠陥の LINK 行は出典 <pr>-deferred" "$GH_PATCH_OUT" '^| D-01 | - | LINK | 追跡先 #7 | 9-deferred |$'
-assert_grep "T-92 REJECT 行は reason を判定文にする" "$GH_PATCH_OUT" '^| F-05 | b.md:9 | REJECT | 文書化された挙動 / 仕様が変わったら再検討 | 9-20260101120000.json |$'
-assert_grep "T-92 reason の無い RESOLVED 行は evidence を判定文にする" "$GH_PATCH_OUT" '^| D-04 | - | RESOLVED | マージ後 HEAD で修正済み | 9-deferred |$'
-assert_grep "T-92 既存の台帳行を残す" "$GH_PATCH_OUT" '^| F-77 | other.md:1 | issued |'
+# 台帳行は全行の固定文字列で照合する (grep -E に生のパイプを渡すと選言になり、どの行にも一致する)。
+# REJECT / RESOLVED の判定文の末尾は判定した commit (再実行で前提の起点にする)
+t92_row() { grep -cxF -- "$1" "$GH_PATCH_OUT"; }
+assert "T-92 LINK 行は追跡先の番号と指摘の出典を持つ" "1" "$(t92_row '| F-01 | a.md:3 | LINK | 追跡先 #7 | 9-20260101120000.json |')"
+assert "T-92 先送り欠陥の LINK 行は出典 <pr>-deferred" "1" "$(t92_row '| D-01 | - | LINK | 追跡先 #7 | 9-deferred |')"
+assert "T-92 REJECT 行は reason と判定 commit を判定文にする" "1" \
+  "$(t92_row "| F-05 | b.md:9 | REJECT | 文書化された挙動 / 仕様が変わったら再検討 @${TEST_HEAD} | 9-20260101120000.json |")"
+assert "T-92 reason の無い RESOLVED 行は evidence と判定 commit を判定文にする" "1" \
+  "$(t92_row "| D-04 | - | RESOLVED | マージ後 HEAD で修正済み @${TEST_HEAD} | 9-deferred |")"
+assert "T-92 既存の台帳行を残す" "1" "$(t92_row '| F-77 | other.md:1 | issued | #77 https://example.test/issues/77 | 9-20251231120000.json |')"
 # 書いた台帳で再実行すると、処分済みの候補は候補に戻らず、追跡先も読み直さず、保留もしない
 jq -n --argjson c "$(comment_obj "$(cat "$GH_PATCH_OUT")")" '[[$c]]' > "$GH_API_JSON"
 : > "$GH_LOG"
@@ -2519,6 +2539,26 @@ run_target "$r"
 assert_not_grep "T-92 再実行は保留しない" "$ERR" 'FOLLOW_UP_ISSUE=held'
 assert_not_grep "T-92 再実行は追跡先の状態を読み直さない" "$GH_LOG" 'issue view 7'
 assert "T-92 再実行も起票しない" "0" "$(create_count)"
+# 壊れて改名されたレビュー結果に残る指摘も、その名前を出典として台帳に書け、再実行で候補に戻らない
+reset_stubs
+ADOPT_MODE=manual
+adopt_root t92-corrupt
+T92_CORRUPT="9-20260102120000.json.corrupt-1700000000"
+put_json "$r" "$T92_CORRUPT" '{"non_blocking_findings":[{"id":"F-02","file":"c.md","line":5,"description":"改名された JSON に残る指摘"}]}'
+export GH_PATCH_OUT="$STUB_DIR/t92-corrupt-patched.md"
+rm -f "$GH_PATCH_OUT"
+jq -n --argjson c "$(comment_obj "$(record_body '| F-77 | other.md:1 | issued | #77 | 9-20251231120000.json |')")" '[[$c]]' > "$GH_API_JSON"
+write_adoption "$r" "$(rec "[\"$C_F01\",\"D-01\"]" '{"origin": "unknown", "tracker": 7}')" \
+  "$(rec "[\"$C_F05\",\"D-04\",\"${T92_CORRUPT}#F-02\"]" "$REJECT_FIELDS")"
+run_target "$r"
+assert_grep "T-92 corrupt 名の出典を含んでも台帳へ書く" "$ERR" '^\[CONTEXT\] FOLLOW_UP_LEDGER=recorded; rows=5; pr=9$'
+assert "T-92 corrupt 名の出典の REJECT 行" "1" \
+  "$(t92_row "| F-02 | c.md:5 | REJECT | 文書化された挙動 / 仕様が変わったら再検討 @${TEST_HEAD} | ${T92_CORRUPT} |")"
+jq -n --argjson c "$(comment_obj "$(cat "$GH_PATCH_OUT")")" '[[$c]]' > "$GH_API_JSON"
+PATH="$TMP_ROOT/bin:$PATH" bash "$TARGET" --state-root "$r" --pr 9 --owner acme --repo demo --source-issue 42 \
+  --list-candidates "$TMP_ROOT/t92-corrupt-cands.json" >"$OUT" 2>"$ERR"
+assert "T-92 corrupt 名の出典の処分も再実行で候補に戻らない" "0" "$(jq '.candidates | length' "$TMP_ROOT/t92-corrupt-cands.json")"
+unset GH_PATCH_OUT
 # 台帳へ書けなくても起票の判断は変えず、失敗を marker で出す
 reset_stubs
 ADOPT_MODE=manual
@@ -2585,6 +2625,25 @@ for t93_disp in REJECT RESOLVED issued; do
     fi
   done
 done
+# follow-up が書いた REJECT 行は判定した commit を前提の起点にする。判定前の fix cycle で指摘のファイルが
+# 変わっていても、再実行で候補に戻さず、同じ行を重ねて書かない
+reset_stubs
+ADOPT_MODE=manual
+t93_root t93-own a.md
+printf '%s\n' '## 概要' '' '## 9. Decision Log' > "$STUB_DIR/issue-body.md"
+export GH_ISSUE_BODY="$STUB_DIR/issue-body.md"
+export GH_PATCH_OUT="$STUB_DIR/t93-own-patched.md"
+rm -f "$GH_PATCH_OUT"
+jq -n --argjson c "$(comment_obj "$(record_body '| F-77 | other.md:1 | issued | #77 | 9-20251231120000.json |')")" '[[$c]]' > "$GH_API_JSON"
+ADOPT_HEAD=$(git -C "$r" rev-parse HEAD) write_adoption "$r" "$(rec '["9-20260101120000.json#F-01"]' "$REJECT_FIELDS")"
+run_target "$r"
+assert_grep "T-93 follow-up が REJECT 行を書く" "$ERR" '^\[CONTEXT\] FOLLOW_UP_LEDGER=recorded; rows=1; pr=9$'
+jq -n --argjson c "$(comment_obj "$(cat "$GH_PATCH_OUT")")" '[[$c]]' > "$GH_API_JSON"
+assert "T-93 follow-up 自身の REJECT 行は再実行で候補に戻らない" "" "$(t93_list)"
+assert_not_grep "T-93 follow-up 自身の REJECT 行は失効にしない" "$ERR" 'disposition_stale'
+run_target "$r"
+assert "T-93 再実行は同じ REJECT 行を重ねて書かない" "1" "$(grep -cF '| F-01 | a.md:3 | REJECT |' "$GH_PATCH_OUT")"
+unset GH_PATCH_OUT
 # commit を解決できない処分は前提を確かめられないので候補に戻す
 reset_stubs
 t93_root t93-unresolved b.md

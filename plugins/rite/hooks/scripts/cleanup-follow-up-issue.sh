@@ -472,26 +472,27 @@ fi
 # マーカーの無い行ずれした再報告と、それ以外の除外 (最新 JSON 以外を出典とする除外、結びつきによる
 # 除外) と同じ位置に残る指摘は、WARNING なしで sweep の Issue と重複しうる。
 # 台帳や最新 JSON を読めないときは sweep 起票済みの除外を適用せずに転記し、WARNING と marker で surface する (sweep 起票済みを黙って全件除外にも全件転記にも倒さない)。
-# 処分の前提: REJECT / RESOLVED 行は、行の出典 JSON (出典の無い行は最新 JSON) の commit_sha から対象 commit までに
-# 指摘のファイルが変わっていないときだけ除外に使う。変わった・commit を解決できない行は外し (候補に戻して判定し直す)、
-# 外した件数を出す。issued / LINK 行は追跡先があるので前提によらず残す。$1 は [id, loc, 出典, 判定] の配列。
-# 対象 commit と cycle_sources / latest_json は呼び出し前に決まっている。
+# 処分の前提: REJECT / RESOLVED 行は、前提の起点から対象 commit までに指摘のファイルが変わっていないときだけ
+# 除外に使う。起点は判定文の末尾の `@<commit>` (follow-up が判定した commit。write_ledger が付ける)、無ければ
+# 行の出典 JSON (出典の無い行は最新 JSON) の commit_sha。変わった・commit を解決できない行は外し (候補に戻して
+# 判定し直す)、外した件数を出す。issued / LINK 行は追跡先があるので前提によらず残す。
+# $1 は [id, loc, 出典, 判定, 判定 commit] の配列。対象 commit と sources / latest_json は呼び出し前に決まっている。
 drop_stale_dispositions() {
-  local keys="$1" stale='[]' k_id k_loc k_src src sha
-  while IFS=$'\t' read -r k_id k_loc k_src; do
+  local keys="$1" stale='[]' k_id k_loc k_src k_at src sha
+  while IFS=$'\t' read -r k_id k_loc k_src k_at; do
     src="$latest_json"
-    [ -z "$k_src" ] || src=$(printf '%s\n' "$cycle_sources" | awk -v b="$k_src" '{ n = split($0, p, "/") } p[n] == b { print; exit }')
-    sha=""
-    [ -n "$src" ] && sha=$(jq -r '.commit_sha // empty' "$src" 2>/dev/null)
+    [ -z "$k_src" ] || src=$(printf '%s\n' "$sources" | awk -v b="$k_src" '{ n = split($0, p, "/") } p[n] == b { print; exit }')
+    sha="$k_at"
+    [ -z "$sha" ] && [ -n "$src" ] && sha=$(jq -r '.commit_sha // empty' "$src" 2>/dev/null)
     if [ -n "$sha" ] && { [ "$sha" = "$head_sha" ] || git -C "$STATE_ROOT" diff --quiet "$sha" "$head_sha" -- "${k_loc%:*}" 2>/dev/null; }; then
       continue
     fi
-    stale=$(jq -c --arg i "$k_id" --arg l "$k_loc" --arg s "$k_src" '. + [[$i, $l, $s]]' <<< "$stale") || return 1
-  done < <(jq -r '.[] | select(.[3] == "REJECT" or .[3] == "RESOLVED") | [.[0], .[1], .[2]] | @tsv' <<< "$keys")
+    stale=$(jq -c --arg i "$k_id" --arg l "$k_loc" --arg s "$k_src" --arg a "$k_at" '. + [[$i, $l, $s, $a]]' <<< "$stale") || return 1
+  done < <(jq -r '.[] | select(.[3] == "REJECT" or .[3] == "RESOLVED") | [.[0], .[1], .[2], .[4]] | @tsv' <<< "$keys")
   if [ "$stale" != '[]' ]; then
     echo "[cleanup-follow-up-issue] disposition_stale: pr=${PR_NUMBER}; count=$(jq 'length' <<< "$stale")" >&2
   fi
-  jq -c --argjson stale "$stale" '[.[] | select(.[0:3] as $k | $stale | index([$k]) | not)]' <<< "$keys"
+  jq -c --argjson stale "$stale" '[.[] | select([.[0], .[1], .[2], .[4]] as $k | $stale | index([$k]) | not)]' <<< "$keys"
 }
 sweep_issued_unavailable() {
   echo "WARNING: $2。sweep 起票済みの指摘を除外せず転記します (PR #${PR_NUMBER})" >&2
@@ -545,8 +546,9 @@ else
         | select(.[3] == "issued" or .[3] == "REJECT" or .[3] == "RESOLVED" or .[3] == "LINK")
         | [.[1], .[2],
            (.[-2] as $s
-            | if length >= 7 and ($s | test("^[0-9]+-[0-9]{14}(~[0-9a-f]{4})?\\.json$")) then $s else "" end),
-           .[3]] ]
+            | if length >= 7 and ($s | test("^[0-9]+-[0-9]{14}(~[0-9a-f]{4})?\\.json(\\.corrupt-[0-9]+)?$")) then $s else "" end),
+           .[3],
+           (if length >= 7 then (.[-3] | capture("@(?<c>[0-9a-f]{7,64})$").c // "") else "" end)] ]
     | unique' 2>"$comments_err"); then
     sweep_issued_unavailable ledger_invalid "関連 Issue の却下台帳を解析できません"
     [ -s "$comments_err" ] && head -3 "$comments_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
@@ -743,8 +745,10 @@ esac
 n_record=$(jq '[.verdicts[] | select(.verdict == "record")] | length' <<< "$gate_out")
 
 # record の出口 (REJECT / RESOLVED / LINK) を関連 Issue の却下台帳へ書く。再実行ではこの行が候補を除くので、
-# 同じ候補を判定し直さず保留もしない。書き込みは sweep の台帳 persist と同じ経路 (extract → append →
-# merge-into → 記録 helper)。先送り欠陥の行は出典を <pr>-deferred とする。失敗しても起票は止めない
+# 同じ候補を判定し直さず保留もしない。REJECT / RESOLVED の判定文の末尾には判定した commit (`@<head>`) を付け、
+# 再実行の前提の起点にする (出典 JSON の commit では、判定前の fix cycle の変更だけで自分の行が失効する)。
+# 書き込みは sweep の台帳 persist と同じ経路 (extract → append → merge-into → 記録 helper)。先送り欠陥の行は
+# 出典を <pr>-deferred とする。失敗しても起票は止めない
 # (再実行は判定記録を再利用して同じ出口に至り、行を書き直す)。
 # プレビュー付きの実行は、起票せずに終わる分岐 (all_recorded / already_exists) でだけ書く。プレビューを作る実行で
 # 書くと、「起票する」の再実行で候補が減り、判定記録の ids が候補に無い (unknown_candidate) で保留する。
@@ -752,13 +756,14 @@ n_record=$(jq '[.verdicts[] | select(.verdict == "record")] | length' <<< "$gate
 write_ledger() {
   local entries body ledger rec_err rc outcome count
   rite_tempfile_new entries "fu-ledger-entries" || return 1
-  jq -r --argjson cands "$(jq -c '.candidates' "$cands_file")" --arg pr "$PR_NUMBER" '
+  jq -r --argjson cands "$(jq -c '.candidates' "$cands_file")" --arg pr "$PR_NUMBER" --arg head "$head_sha" '
     def cell: tostring | gsub("\r?\n"; " ") | gsub("\\|"; "\\|");
     .verdicts[] | select(.verdict == "record") as $v
     | ($v.record.reason // "") as $reason
-    | (if $v.exit == "LINK" then "追跡先 #\($v.tracker)" + (if $reason != "" then " / " + $reason else "" end)
-       elif $v.exit == "RESOLVED" and $reason == "" then ($v.record.evidence // "")
-       else $reason end) as $premise
+    | ((if $v.exit == "LINK" then "追跡先 #\($v.tracker)" + (if $reason != "" then " / " + $reason else "" end)
+        elif $v.exit == "RESOLVED" and $reason == "" then ($v.record.evidence // "")
+        else $reason end)
+       + (if $v.exit == "REJECT" or $v.exit == "RESOLVED" then " @\($head)" else "" end)) as $premise
     | $v.ids[] as $i | $cands[] | select(.id == $i)
     | if .kind == "finding"
       then "| \(.finding.id // $i | cell) | \(.finding.file // "" | cell):\(.finding.line | cell) | \($v.exit) | \($premise | cell) | \(.source) |"

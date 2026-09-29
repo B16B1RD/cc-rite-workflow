@@ -1583,12 +1583,17 @@ printf '%s\n' '| D-01 | - | LINK | 追跡先 #7 | 7-deferred |' > "$sandbox/t21-
 t21_def_rc=0
 "$LEDGER" append --ledger-file "$sandbox/t21-new.md" --entries-file "$sandbox/t21-entries-deferred.md" 2>/dev/null || t21_def_rc=$?
 assert "T-21 先送り欠陥の出典 <pr>-deferred を受理" 0 "$t21_def_rc"
+# 壊れて改名されたレビュー結果に残る指摘の行は、その名前 (.json.corrupt-<epoch>) を出典に持つ
+printf '%s\n' '| NB-8 | src/h.ts:8 | REJECT | 前提 | 7-20260101120000.json.corrupt-1700000000 |' > "$sandbox/t21-entries-corrupt.md"
+t21_cor_rc=0
+"$LEDGER" append --ledger-file "$sandbox/t21-new.md" --entries-file "$sandbox/t21-entries-corrupt.md" 2>/dev/null || t21_cor_rc=$?
+assert "T-21 壊れて改名された JSON の名前の出典を受理" 0 "$t21_cor_rc"
 # 出典を欠く・形が合わない行を 1 行でも含む entries は何も書かない
 cp "$sandbox/t21-new.md" "$sandbox/t21-before.md"
 for t21_bad in '| NB-7 | src/g.ts:7 | recorded | severity=LOW; measured=false |' \
                '| D-02 | - | LINK | 追跡先 #7 | deferred |' \
                '| NB-7 | src/g.ts:7 | recorded | severity=LOW; measured=false | review.json |' \
-               '| NB-7 | src/g.ts:7 | recorded | severity=LOW; measured=false | 7-20260101120000.json.corrupt-1 |'; do
+               '| NB-7 | src/g.ts:7 | recorded | severity=LOW; measured=false | 7-20260101120000.json.corrupt- |'; do
   printf '%s\n%s\n' "$t21_row" "$t21_bad" > "$sandbox/t21-entries-bad.md"
   t21_bad_rc=0
   "$LEDGER" append --ledger-file "$sandbox/t21-new.md" --entries-file "$sandbox/t21-entries-bad.md" 2>"$sandbox/t21-bad.err" || t21_bad_rc=$?

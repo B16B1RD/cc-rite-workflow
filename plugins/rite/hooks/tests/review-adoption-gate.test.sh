@@ -82,7 +82,7 @@ REJECT = dict(V=False, contract=None, evidence='', reason='the guard is document
 unknown = dict(V='unknown', contract=None, evidence='', reason='not reproduced yet')
 
 
-def run(records, cands=CANDS, kind='sweep', write=True, at=None, context=None, with_pr_body=True):
+def run(records, cands=CANDS, kind='sweep', write=True, at=None, context=None, with_pr_body=True, fix_loop=None):
     candidates.write_text(json.dumps({'candidates': cands}))
     adoption.parent.mkdir(parents=True, exist_ok=True)
     path = state / f'.rite/state/adoption-5-{kind}.json'
@@ -99,7 +99,8 @@ def run(records, cands=CANDS, kind='sweep', write=True, at=None, context=None, w
         ['bash', str(gate), '--pr', '5', '--kind', kind, '--state-root', str(state),
          '--candidates', str(candidates), '--review-result', str(reviewed), '--base', base,
          '--issue-body', str(issue_body), *(['--pr-body', str(pr_body)] if with_pr_body else []), '--ac-ids', 'AC-1',
-         '--repo-root', str(repo), *(['--ledger', str(ledger)] if context is None else context)],
+         '--repo-root', str(repo), *(['--ledger', str(ledger)] if context is None else context),
+         *(['--fix-loop', fix_loop] if fix_loop else [])],
         capture_output=True, text=True, env=env, timeout=60)
     after = candidates.read_bytes(), review.read_bytes(), (path.read_bytes() if path.exists() else None)
     check(before == after, 'the gate changed an input')
@@ -179,8 +180,10 @@ held([rec(origin='pr', origin_cause=removed, tracker=7), rec(['F-02'], **REJECT)
 env['GH_STATES'] = '7=OPEN'
 (state / '.rite/state/adoption-hold-5-followup.json').unlink()
 
-# A triage PR-origin adoption is fixed in the same PR (verdict fix, nothing held) until the cycle
-# reaches safety.max_review_cycles (default 15), where its fix could not be re-reviewed and it is held.
+# A triage PR-origin adoption is fixed in the same PR (verdict fix, nothing held) when a fix loop
+# follows the review (--fix-loop yes) until the cycle reaches safety.max_review_cycles (default 15),
+# where its fix could not be re-reviewed and it is held. Without a following fix loop (the stop on
+# unverified acceptance criteria, a standalone review) nothing would read the registration: held.
 # A sweep PR-origin adoption stays held. An unknown-origin adoption is held in triage as well.
 plain_review = review.read_text()
 for cycle, expected in ((3, 'fix'), (15, 'hold')):
@@ -188,12 +191,16 @@ for cycle, expected in ((3, 'fix'), (15, 'hold')):
                                   'findings': [], 'non_blocking_findings': []}))
     records = [rec(origin='pr', origin_cause=removed), rec(['F-02'], **REJECT)]
     if expected == 'fix':
-        verdicts, result = decided(records, kind='triage')
+        verdicts, result = decided(records, kind='triage', fix_loop='yes')
         check((verdicts['F-01']['verdict'], verdicts['F-01']['action']) == ('fix', 'fix_in_pr'), verdicts)
         check(verdicts['F-02']['verdict'] == 'record', verdicts)
         (state / '.rite/state/adoption-hold-5-triage.json').unlink()
+        for loop in (None, 'no'):
+            saved, _ = held(records, 'undecided', kind='triage', fix_loop=loop)
+            check(saved['held_ids'] == ['F-01'], (loop, saved))
+            (state / '.rite/state/adoption-hold-5-triage.json').unlink()
     else:
-        saved, _ = held(records, 'undecided', kind='triage')
+        saved, _ = held(records, 'undecided', kind='triage', fix_loop='yes')
         check(saved['held_ids'] == ['F-01'], saved)
         check('コードを直して push し' in saved['resume'], saved['resume'])
         (state / '.rite/state/adoption-hold-5-triage.json').unlink()
@@ -205,7 +212,7 @@ for cycle, expected in ((3, 'fix'), (15, 'hold')):
     (state / '.rite/state/adoption-hold-5-triage.json').unlink()
 # Without a readable cycle the registration capacity is unknown: every candidate is held.
 review.write_text(plain_review)
-saved, _ = held([rec(origin='pr', origin_cause=removed), rec(['F-02'], **REJECT)], 'adoption_error', kind='triage')
+saved, _ = held([rec(origin='pr', origin_cause=removed), rec(['F-02'], **REJECT)], 'adoption_error', kind='triage', fix_loop='yes')
 check('cycle_count' in saved['detail'], saved['detail'])
 (state / '.rite/state/adoption-hold-5-triage.json').unlink()
 

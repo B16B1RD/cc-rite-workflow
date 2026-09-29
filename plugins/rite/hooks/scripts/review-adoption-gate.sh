@@ -9,10 +9,12 @@
 #           Issue's acceptance criterion); without it the decision is held.
 #   record  RESOLVED / REJECT / LINK without pr_blocking, and every LINK of a followup (the
 #           merged PR cannot take the fix, the OPEN tracker does): record the disposition only.
-#   fix     kind=triage only: ADOPT with origin=pr (fix_in_pr) while
+#   fix     kind=triage only: ADOPT with origin=pr (fix_in_pr) when the caller passes
+#           --fix-loop yes (the review hands its result to the same PR's fix loop) and
 #           `review-pr-recommendations.sh capacity` is open. Nothing is written outside the PR;
-#           the caller registers it as an in-PR recommendation for the same PR's fix. At
-#           safety.max_review_cycles the fix could not be re-reviewed, so it is held.
+#           the caller registers it as an in-PR recommendation for the same PR's fix. Without
+#           a following fix loop nothing would read the registration, and at
+#           safety.max_review_cycles the fix could not be re-reviewed, so both are held.
 #   hold    anything else: pr_blocking decisions (RECONCILE, ADOPT pr/unknown, DIAGNOSE
 #           pr/unknown, LINK pr/unknown outside followup) and DIAGNOSE without investigation.
 # A missing record file, an unreadable context, or a helper ERROR holds every candidate.
@@ -34,12 +36,13 @@
 #   review-adoption-gate.sh --pr N --kind sweep|triage|followup --state-root DIR \
 #     --candidates FILE --review-result FILE --base REF [--adoption FILE] [--issue N] \
 #     [--owner-repo OWNER/REPO] [--issue-body FILE] [--pr-body FILE] [--ac-ids CSV] \
-#     [--ledger FILE] [--repo-root DIR]
+#     [--ledger FILE] [--repo-root DIR] [--fix-loop yes|no]
 #
 #   --candidates    {"candidates": [{"id": ..., <full candidate text>}, ...]}
 #   --adoption      the classifier's records ({"adoption": {"head", "records"}}).
 #                   Default: STATE_ROOT/.rite/state/adoption-PR-KIND.json
 #   --issue         related Issue; its body gives the AC ids and issue citations.
+#   --fix-loop      triage only: yes when the same PR's fix loop follows this review. Default no.
 #                   --issue-body / --pr-body / --ac-ids / --ledger replace the gh reads.
 #
 # stdout: decided {"held": false, "head", "verdicts": [{"ids", "exit", "origin", "action",
@@ -60,7 +63,7 @@ plugin_root="$(cd "$script_dir/../.." && pwd)"
 source "$script_dir/../control-char-neutralize.sh"
 
 pr="" kind="" state_root="" candidates="" review_result="" base="" adoption="" issue=""
-owner_repo="" issue_body="" pr_body="" ac_ids="" ac_ids_set=0 ledger="" repo_root=""
+owner_repo="" issue_body="" pr_body="" ac_ids="" ac_ids_set=0 ledger="" repo_root="" fix_loop=no
 while [ "$#" -gt 0 ]; do
   [ "$#" -ge 2 ] || { echo "ERROR: $1 needs a value" >&2; exit 2; }
   case "$1" in
@@ -78,12 +81,14 @@ while [ "$#" -gt 0 ]; do
     --ac-ids) ac_ids=$2; ac_ids_set=1 ;;
     --ledger) ledger=$2 ;;
     --repo-root) repo_root=$2 ;;
+    --fix-loop) fix_loop=$2 ;;
     *) echo "ERROR: unknown option: $1" >&2; exit 2 ;;
   esac
   shift 2
 done
 case "$pr" in ''|*[!0-9]*|0) echo "ERROR: --pr must be a positive integer" >&2; exit 2 ;; esac
 case "$kind" in sweep|triage|followup) ;; *) echo "ERROR: --kind must be sweep, triage or followup" >&2; exit 2 ;; esac
+case "$fix_loop" in yes|no) ;; *) echo "ERROR: --fix-loop must be yes or no" >&2; exit 2 ;; esac
 case "$issue" in ''|*[!0-9]*) [ -z "$issue" ] || { echo "ERROR: --issue must be a positive integer" >&2; exit 2; } ;; esac
 for v in state_root candidates review_result base; do
   [ -n "${!v}" ] || { echo "ERROR: --${v//_/-} is required" >&2; exit 2; }
@@ -108,7 +113,7 @@ resume_for() {
       case "$kind" in
         triage) way="スコープ外処分の手順 1 が hold ファイルの候補を合流させる" ;;
         sweep) way="nb-sweep-collect.sh が hold ファイルの候補を candidates に合流させる" ;;
-        followup) way="follow-up は hold ファイルの候補を再検証の除外から外す" ;;
+        followup) way="follow-up は台帳の処分が無い候補を毎回候補に含め、hold の held_ids を判定し直す側（judge）へ戻す" ;;
       esac
       echo "前回の hold ファイルの candidates にある候補が今回の候補に含まれていない。欠けた候補を全文のまま候補へ戻してから $cmd を再実行する（${way}）"
       return ;;
@@ -255,10 +260,10 @@ case "$rc" in
   *) hold adoption_error "採否判定 helper が rc=$rc で終了しました" ;;
 esac
 
-# A triage fix_in_pr (ADOPT, origin=pr) is fixed in the same PR as an in-PR recommendation while
-# the fix can still be re-reviewed; at safety.max_review_cycles it is held.
+# A triage fix_in_pr (ADOPT, origin=pr) is fixed in the same PR as an in-PR recommendation when a
+# fix loop follows the review and the fix can still be re-reviewed; otherwise it is held.
 in_pr_fix=no
-if [ "$kind" = triage ] && jq -e 'any(.decisions[]; .action == "fix_in_pr")' <<< "$decisions" >/dev/null; then
+if [ "$kind" = triage ] && [ "$fix_loop" = yes ] && jq -e 'any(.decisions[]; .action == "fix_in_pr")' <<< "$decisions" >/dev/null; then
   capacity=$(bash "$plugin_root/scripts/review-pr-recommendations.sh" capacity --input "$review_result" 2>"$work/err") \
     || hold adoption_error "PR 内推奨の登録可否を読めません: $(callee_diag)"
   [ "$capacity" = "[CONTEXT] PR_RECOMMENDATIONS_CAPACITY=open" ] && in_pr_fix=yes

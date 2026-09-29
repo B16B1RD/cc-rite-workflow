@@ -144,7 +144,8 @@ case "$cmd" in
     # cleanup の follow-up 起票は出典セルで起票済みの指摘を同定する。出典を欠いた行を書くと、
     # その行は最新 JSON とだけ照合される旧形式に黙って戻るため、1 行でも欠ければ何も書かない。
     # 先送り欠陥 (Decision Log の行) にはレビュー結果 JSON が無いので、出典は <pr>-deferred と書く。
-    if bad=$(grep -Ev '^\|.*\|.*\|.*\|.*\|[[:space:]]*([0-9]+-[0-9]{14}(~[0-9a-f]{4})?\.json|[0-9]+-deferred)[[:space:]]*\|[[:space:]]*$' "$rows"); then
+    # 壊れて改名されたレビュー結果 (.json.corrupt-<epoch>) も候補の出典になるので、その名前も受ける。
+    if bad=$(grep -Ev '^\|.*\|.*\|.*\|.*\|[[:space:]]*([0-9]+-[0-9]{14}(~[0-9a-f]{4})?\.json(\.corrupt-[0-9]+)?|[0-9]+-deferred)[[:space:]]*\|[[:space:]]*$' "$rows"); then
       echo "ERROR: entries row lacks a 出典 cell (review JSON basename) as its last column:" >&2
       # shellcheck source=../control-char-neutralize.sh
       source "$(dirname "${BASH_SOURCE[0]}")/../control-char-neutralize.sh"

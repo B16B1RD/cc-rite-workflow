@@ -24,7 +24,7 @@ else
   echo "[review:error]"; exit 1
 fi
 ```
-3. 下の bash を**単一 Bash invocation** で実行する。`{records}` は記録の JSON 配列、`{candidates}` は `{"candidates": [{"id": "C-1", "source": "指摘" | "推奨", "file_line", "reviewer", "severity", "content": <全文>}, …]}`。`head` は `--review-result` に渡す review JSON（6.1.a が保存した本 cycle の結果）の `commit_sha` を bash が入れる。
+3. 下の bash を**単一 Bash invocation** で実行する。`{fix_loop}` は、`/rite:iterate` から呼ばれ結果が `[review:mergeable]` になる review（同じ PR の fix が PR 内推奨を直す）のときだけ `yes`、受入条件未検証の停止と単独実行では `no`（修正ループが続かず登録を読む者がいないため、ADOPT・origin=pr は hold になる）。`{records}` は記録の JSON 配列、`{candidates}` は `{"candidates": [{"id": "C-1", "source": "指摘" | "推奨", "file_line", "reviewer", "severity", "content": <全文>}, …]}`。`head` は `--review-result` に渡す review JSON（6.1.a が保存した本 cycle の結果）の `commit_sha` を bash が入れる。
 
 ```bash
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) && [ -n "$state_root" ] \
@@ -81,7 +81,7 @@ issue_args=()
 rc=0
 bash {plugin_root}/hooks/scripts/review-adoption-gate.sh --pr {pr_number} --kind triage \
   --state-root "$state_root" --candidates "$work/candidates.json" \
-  --review-result "$review_json" --base "origin/{base_branch}" "${issue_args[@]}" > "$work/gate.json" || rc=$?
+  --review-result "$review_json" --base "origin/{base_branch}" --fix-loop "{fix_loop}" "${issue_args[@]}" > "$work/gate.json" || rc=$?
 cat "$work/gate.json"
 # verdict が fix の根因（ADOPT・origin=pr）を PR 内推奨として登録する（fix が 0 件でもこの commit の登録を空で書き直す）
 if [ "$rc" = 0 ]; then
