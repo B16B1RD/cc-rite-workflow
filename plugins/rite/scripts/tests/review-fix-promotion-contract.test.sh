@@ -597,6 +597,10 @@ assert_eq 'a failed Issue creation is counted for 7.4.5' '[CONTEXT] ISSUE_CREATE
 out=$(run_create_block 0)
 assert_eq 'a created Issue is written back as the record tracker' '77' \
   "$(jq -r '.adoption.records[0].tracker' "$ledger_dir/root/.rite/state/adoption-5-triage.json")"
+assert_grep 'an investigation carries the proposition in the evidence' "$review" \
+  '調査（`action` が `investigate`）は `{evidence}` に `proposition` の claim / reach / reach_source / done も入れる'
+assert_grep 'step 2 links a REJECT row to a candidate whose reviewer or position changed' "$review" \
+  '台帳の `REJECT` 行が同じ根因・同じ前提の候補を処分していれば、`reviewer`・`file_line` が違っていてもその行を記録の `prior` に写す'
 assert_eq 'the created Issue body carries the contract, the evidence and the acceptance' \
   '- **契約**: CONTRACT-QUOTE|- **根拠**: EVIDENCE-TEXT|- **受入条件**: ACCEPTANCE-TEXT' \
   "$(grep -E '^- \*\*(契約|根拠|受入条件)\*\*: ' "$ledger_dir/root/created-body.md" | paste -sd'|' -)"

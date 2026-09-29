@@ -62,6 +62,17 @@ class _Redirection(str):
     """A word shell_segments read as an unquoted redirection (>out, 2>&1, &>log, >)."""
 
 
+# A redirection word with no target in it (>, 2>, &>, <&); the shell takes the next word as its target.
+_BARE_REDIRECTION = re.compile(r"(?:[0-9]*|&)[<>&]+")
+
+
+def _redirection_end(words, index):
+    """Index past the redirection at index, together with the target a bare operator takes."""
+    if _BARE_REDIRECTION.fullmatch(words[index]) and index + 1 < len(words):
+        return index + 2
+    return index + 1
+
+
 def _without_redirections(args):
     """Drop the redirections; a bare operator (>, 2>, &>) also drops the target after it.
     A bare operator with nothing after it stays, so it is still read as a pathspec."""
@@ -69,7 +80,7 @@ def _without_redirections(args):
     while index < len(args):
         word = args[index]
         if isinstance(word, _Redirection):
-            if not re.fullmatch(r"(?:[0-9]*|&)[<>&]+", word):
+            if not _BARE_REDIRECTION.fullmatch(word):
                 index += 1
                 continue
             if index + 1 < len(args):
@@ -248,7 +259,8 @@ def validate_plan(plan, issue, state, receipt):
     """Everything a fix plan must say, independent of the transition it enables."""
     require(issue.get("number") == state.get("issue_number") == plan.get("issue_number")
             and text(issue.get("body")) and text(plan.get("issue_body"))
-            and cycle.same_specification(plan["issue_body"], issue["body"]), "Issue specification changed or mismatched")
+            and cycle.same_specification(plan["issue_body"], issue["body"]),
+            "Issue specification changed or mismatched" + cycle.spec_change_hint(state, issue.get("body") or ""))
     constraints = plan["constraints"]
     targets = [path(p) for p in constraints["targets"]]
     excluded = [path(p) for p in constraints["non_targets"]]
@@ -398,26 +410,26 @@ def verify(plan, paths, output, kind):
 _KEYWORDS = {"if", "then", "else", "elif", "fi", "do", "done", "for", "while", "until", "in", "!", "{", "}"}
 
 
-def peel_commit_prefixes(words):
-    """Strip a closed wrapper/keyword set. This is not a shell interpreter."""
+def _prefix_end(words, index=0):
+    """Index of the first word past assignments, keywords and a closed wrapper set."""
     prefixes = {"command", "env", "nohup", "time", "exec"}
-    words = list(words)
-    peeled = False
-    while words:
-        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", words[0]):
-            words, peeled = words[1:], True
+    while index < len(words):
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", words[index]) or words[index] in _KEYWORDS:
+            index += 1
             continue
-        if words[0] in prefixes:
-            words = words[1:]
-            while words and words[0].startswith("-"):
-                words = words[1:]
-            peeled = True
-            continue
-        if words[0] in _KEYWORDS:
-            words, peeled = words[1:], True
+        if words[index] in prefixes:
+            index += 1
+            while index < len(words) and words[index].startswith("-"):
+                index += 1
             continue
         break
-    return words, peeled
+    return index
+
+
+def peel_commit_prefixes(words):
+    """Strip a closed wrapper/keyword set. This is not a shell interpreter."""
+    index = _prefix_end(words)
+    return list(words[index:]), index > 0
 
 
 # The builtins that change the working directory.
@@ -426,13 +438,13 @@ _DIRECTORY_MOVERS = {"cd", "pushd", "popd"}
 
 def moves_directory(words):
     """True when words run a directory change, past assignments, keywords and wrappers."""
-    while True:
-        words = peel_commit_prefixes(words)[0]
-        if words[:1] != ["builtin"]:
-            return bool(words) and words[0] in _DIRECTORY_MOVERS
-        words = words[1:]
-        if words[:1] == ["--"]:
-            words = words[1:]
+    index = _prefix_end(words)
+    while index < len(words) and words[index] == "builtin":
+        index += 1
+        if index < len(words) and words[index] == "--":
+            index += 1
+        index = _prefix_end(words, index)
+    return index < len(words) and words[index] in _DIRECTORY_MOVERS
 
 
 # The git subcommands that move HEAD and are checked before they run.
@@ -443,6 +455,14 @@ _COMPOUND = {"if", "while", "until", "for", "case", "select", "{", "function", "
 
 
 # A parse the check cannot finish is refused; the message form below always parses.
+# Limits on the costs of one parse beyond reading its input once: each substitution level
+# scans its text again, and each cd / -C resolves the whole directory path built so far.
+# Past a limit the parse goes on without that work: a deeper substitution is not parsed
+# (and is refused when its text could spell git and commit / merge), and a later cd / -C
+# leaves a dynamic target. Only a cd / -C makes a new commit / merge
+# target, so this also bounds the git processes that resolve targets.
+MAX_SUBSTITUTION_DEPTH = 64
+MAX_DIRECTORY_CHANGES = 16
 _PARSE_HINT = "; write the message to a file outside the work tree and commit with git commit -F <message-file>"
 # The standard message form: a substitution that is exactly cat of one heredoc.
 _MESSAGE = re.compile(r"\$\([ \t]*cat[ \t]+<<(-?)[ \t]*(?:'([^'\n]+)'|\"([^\"\n]+)\"|\\([A-Za-z_][A-Za-z0-9_]*)"
@@ -501,7 +521,7 @@ def _substitution_end(command, start):
     require(False, "unfinished command substitution" + _PARSE_HINT)
 
 
-def shell_segments(command):
+def shell_segments(command, level=0):
     """Split a command into (words, nested, before, after) simple commands of dequoted words.
     Not a shell interpreter.
 
@@ -517,14 +537,22 @@ def shell_segments(command):
     (&>, >&, <&) stays in its word. A word whose first unquoted < or > has only an
     unquoted fd number or the & of &> before it comes back as a _Redirection.
     """
+    if level > MAX_SUBSTITUTION_DEPTH:
+        # The text is not parsed, so its words are read with quotes and backslashes (and line
+        # continuations) dropped; text whose words could spell git and commit / merge is refused.
+        flat = re.sub(r"\\\n|[\"'\\]", "", command)
+        require("git" not in flat or not any(name in flat for name in _HEAD_MOVERS),
+                "command substitutions are nested more than " + str(MAX_SUBSTITUTION_DEPTH)
+                + " deep to inspect; split the command")
+        return []
     segments, words, word, quoted, quote, depth = [], [], [], False, None, 0
-    index, length, pending, redirect, redirection = 0, len(command), "", -2, False
+    index, length, pending, redirect, redirection, signed = 0, len(command), "", -2, False, False
 
     def end_word():
-        nonlocal word, quoted, redirection
+        nonlocal word, quoted, redirection, signed
         if word or quoted:
             words.append((_Redirection if redirection else str)("".join(word)))
-        word, quoted, redirection = [], False, False
+        word, quoted, redirection, signed = [], False, False, False
 
     def end_segment(operator=""):
         nonlocal words, pending
@@ -548,7 +576,7 @@ def shell_segments(command):
             end = _message_end(command, index)
             if end is None:
                 end = _substitution_end(command, index + 2)
-                segments.extend((inner, True, "", "") for inner, *_rest in shell_segments(command[index + 2:end - 1]))
+                segments.extend((inner, True, "", "") for inner, *_rest in shell_segments(command[index + 2:end - 1], level + 1))
             word.append(command[index:end])
             quoted = True
             index = end
@@ -556,7 +584,7 @@ def shell_segments(command):
         elif ch == "`" and quote in (None, '"'):
             end = command.find("`", index + 1)
             require(end >= 0, "unfinished command substitution" + _PARSE_HINT)
-            segments.extend((inner, True, "", "") for inner, *_rest in shell_segments(command[index + 1:end]))
+            segments.extend((inner, True, "", "") for inner, *_rest in shell_segments(command[index + 1:end], level + 1))
             word.append(command[index:end + 1])
             quoted = True
             index = end + 1
@@ -602,7 +630,11 @@ def shell_segments(command):
             if ch in "<>":
                 redirect = index  # an unquoted, unescaped redirection sign
                 # Any other prefix (file>out, "2">out) stays unmarked and still counts as a pathspec.
-                redirection = redirection or (not quoted and re.fullmatch(r"[0-9]*|&", "".join(word)) is not None)
+                # Only the first sign decides: later prefixes hold a sign and cannot match, so the
+                # prefix is joined once per word.
+                if not signed:
+                    signed = True
+                    redirection = not quoted and re.fullmatch(r"[0-9]*|&", "".join(word)) is not None
             word.append(ch)
         index += 1
     require(quote is None, "unfinished quoted command" + _PARSE_HINT)
@@ -610,29 +642,67 @@ def shell_segments(command):
     return segments
 
 
-def git_subcommand_index(words, git_index):
-    """Advance past the same git global options the direct path skips."""
-    index = git_index + 1
-    while index < len(words) and words[index].startswith("-"):
+# The git global options that take their value as the next word.
+_GIT_VALUE_OPTIONS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env",
+                      "--super-prefix", "--attr-source", "--shallow-file"}
+
+
+def git_global_options(words, git_index=0):
+    """Walk the global options after the git at words[git_index]: (index, steps, alternate).
+
+    index is the subcommand word (len(words) when nothing follows), or None when an option
+    that takes the next word as its value has none. steps lists, in order, ("-C", directory)
+    for each -C and ("dynamic", word) for each variable or command substitution, which may
+    expand to nothing or to global options, so the next word may still be the subcommand.
+    alternate is the index of the first option other than -C / -c / --no-pager /
+    --no-optional-locks (an alternate git dir or work tree, or any other), or None; steps
+    after it are not listed.
+    The shell removes redirections before git sees its arguments, so one between git and
+    the subcommand, or between an option and its value, is skipped.
+    """
+    steps, alternate, index = [], None, git_index + 1
+    while index < len(words) and (words[index].startswith("-") or isinstance(words[index], _Redirection)
+                                  or any(c in words[index] for c in "$`")):
         option = words[index]
-        if option in ("-C", "-c"):
-            if index + 1 >= len(words):
-                return None
-            index += 2
-        elif option.startswith("-C"):
+        if isinstance(option, _Redirection):
+            index = _redirection_end(words, index)
+            continue
+        if not option.startswith("-"):
+            if alternate is None:
+                steps.append(("dynamic", option))
             index += 1
-        elif option.startswith("-c") or option in ("--no-pager", "--no-optional-locks"):
-            index += 1
+            continue
+        if option not in ("-C", "-c", "--no-pager", "--no-optional-locks") \
+                and not option.startswith(("-C", "-c")) and alternate is None:
+            alternate = index
+        if option in _GIT_VALUE_OPTIONS:
+            value_index = index + 1
+            while value_index < len(words) and isinstance(words[value_index], _Redirection):
+                value_index = _redirection_end(words, value_index)
+            if value_index >= len(words):
+                return None, steps, alternate
+            value, index = words[value_index], value_index + 1
         else:
-            return index if any(name in words[index:] for name in _HEAD_MOVERS) else None
-    return index if index < len(words) else None
+            value, index = option[2:], index + 1
+        if option.startswith("-C") and not option.startswith("--") and alternate is None:
+            steps.append(("-C", value))
+    return index, steps, alternate
+
+
+def git_subcommand_index(words, git_index):
+    """The subcommand index of a git that is not the command itself, or None when it has none.
+    Past an alternate option, the option's own index when a commit / merge follows it."""
+    index, _steps, alternate = git_global_options(words, git_index)
+    if alternate is not None:
+        return alternate if any(name in words[alternate:] for name in _HEAD_MOVERS) else None
+    return index if index is not None and index < len(words) else None
 
 
 def each_git_target(command, cwd):
     """Yield (subcommand, toplevel, arguments, problem) for each git commit / merge, in order.
 
     problem names why the target cannot be checked (a wrapper, a command substitution,
-    a dynamic cd / -C, a target that does not resolve to a repository, an alternate git dir); the caller
+    a dynamic cd / -C, a variable before the subcommand, a target that does not resolve to a repository, an alternate git dir); the caller
     refuses it only when the command would move HEAD. toplevel is None exactly when there is a problem.
 
     A cd moves the target only where the shell is known to run it: a plain cd <literal> that
@@ -648,6 +718,17 @@ def each_git_target(command, cwd):
                      for words, nested, _before, after in segments)
     cwd, dynamic = Path(cwd).resolve(), False  # where the next list starts
     here, unsure, first, alternative, moved = cwd, dynamic, True, False, False
+    toplevels = {}  # target -> its toplevel, or None when it does not resolve
+    changes = 0
+
+    def change(base, value):
+        """The resolved directory, or None when the limit is used up and it stays unknown."""
+        nonlocal changes
+        if changes >= MAX_DIRECTORY_CHANGES:
+            return None
+        changes += 1
+        return (base / value).resolve()
+
     for words, nested, before, after in segments:
         # A subshell keeps its cd, and its git is not direct.
         if not nested:
@@ -660,15 +741,17 @@ def each_git_target(command, cwd):
             first = False
         if structured and not nested and not _DIRECTORY_MOVERS.isdisjoint(words):
             unsure = dynamic = moved = True
-        bare = words
-        while not nested and bare and bare[0] in _KEYWORDS:
-            bare = bare[1:]
+        start = 0
+        while not nested and start < len(words) and words[start] in _KEYWORDS:
+            start += 1
+        bare = words[start:] if start else words
         if not nested and moves_directory(bare):
             plain = (bare is words and len(words) == 2 and words[0] == "cd" and words[1] != "-"
                      and not any(c in words[1] for c in "$`~"))
             if plain and not structured and not alternative and after != "|" and before != "|":
                 if not unsure or Path(words[1]).is_absolute():
-                    here, unsure = (here / words[1]).resolve(), False
+                    moved_to = change(here, words[1])
+                    here, unsure = (here, True) if moved_to is None else (moved_to, False)
             else:
                 unsure = True
             if starts:
@@ -692,30 +775,25 @@ def each_git_target(command, cwd):
                             "run " + name + " as a direct command in its own Bash call"
             continue
         # After ||, a git runs only when something before it failed, perhaps the cd.
-        target, unknown, index, alternate = here, unsure or (alternative and moved), 1, False
-        while index < len(words) and words[index].startswith("-"):
-            option = words[index]
-            if option in ("-C", "-c") or option.startswith("-C"):
-                joined = option.startswith("-C") and option != "-C"
-                if not joined:
-                    require(index + 1 < len(words), "incomplete git global option")
-                value = option[2:] if joined else words[index + 1]
-                if option.startswith("-C"):
-                    if any(c in value for c in "$`~"):
-                        unknown = True
-                    else:
-                        target = (target / value).resolve()
-                        unknown = unknown and not Path(value).is_absolute()
-                index += 1 if joined else 2
-            elif option.startswith("-c") or option in ("--no-pager", "--no-optional-locks"):
-                index += 1
+        target, unknown = here, unsure or (alternative and moved)
+        index, steps, alternate = git_global_options(words)
+        require(alternate is not None or index is not None, "incomplete git global option")
+        for kind, value in steps:
+            # A variable or command substitution may expand to global options, so the target
+            # cannot be known.
+            if kind == "dynamic" or any(c in value for c in "$`~"):
+                unknown = True
+                continue
+            moved_to = change(target, value)
+            if moved_to is None:
+                unknown = True
             else:
-                alternate = True
-                break
-        if alternate:
+                target = moved_to
+                unknown = unknown and not Path(value).is_absolute()
+        if alternate is not None:
             for name in _HEAD_MOVERS:
-                if name in words[index:]:
-                    yield name, None, words[words.index(name, index) + 1:], \
+                if name in words[alternate:]:
+                    yield name, None, words[words.index(name, alternate) + 1:], \
                         "use git -C <worktree> " + name + " without alternate git-dir/work-tree options"
             continue
         if index >= len(words) or words[index] not in _HEAD_MOVERS:
@@ -731,13 +809,15 @@ def each_git_target(command, cwd):
         # A target that does not resolve to a repository (missing, unenterable or not
         # a repository) cannot be matched to a worktree; a failed cd may even leave
         # bash in the reviewed one.
-        resolved = subprocess.run(["git", "-C", str(target), "rev-parse", "--show-toplevel"],
-                                  capture_output=True, text=True)
-        if resolved.returncode != 0:
+        if target not in toplevels:
+            resolved = subprocess.run(["git", "-C", str(target), "rev-parse", "--show-toplevel"],
+                                      capture_output=True, text=True)
+            toplevels[target] = Path(resolved.stdout.strip()).resolve() if resolved.returncode == 0 else None
+        if toplevels[target] is None:
             yield name, None, words[index + 1:], \
                 name + " target cannot be resolved to a repository: " + str(target) + "; run it from an existing worktree"
             continue
-        yield name, Path(resolved.stdout.strip()).resolve(), words[index + 1:], None
+        yield name, toplevels[target], words[index + 1:], None
 
 
 def head_move(name, args):
@@ -907,9 +987,30 @@ def commit_target_main(argv):
         print(("index" if index_only else "other") + "\t" + str(actual))
 
 
+# A word that starts a redirection once quotes are gone: an optional fd number or &, then < or >.
+_REDIRECTION_WORD = re.compile(r"(?:[0-9]*|&)[<>]")
+
+
+def git_subcommand_main():
+    """For each stdin line (the words after one git, separated by \\x1f, quotes already
+    removed), print its subcommand and the word after it, separated by a tab, in input
+    order; both fields are empty when no subcommand follows."""
+    for line in sys.stdin.read().splitlines():
+        words = ["git"] + [_Redirection(word) if _REDIRECTION_WORD.match(word) else word
+                           for word in line.split("\x1f") if word]
+        index, _steps, _alternate = git_global_options(words)
+        if index is None or index >= len(words):
+            print("\t")
+        else:
+            print(words[index] + "\t" + (words[index + 1] if index + 1 < len(words) else ""))
+
+
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "commit-target":
         commit_target_main(sys.argv[2:])
+        return
+    if len(sys.argv) > 1 and sys.argv[1] == "git-subcommand":
+        git_subcommand_main()
         return
     if len(sys.argv) > 1 and sys.argv[1] == "classify-extras":
         extras = sys.argv[2:]

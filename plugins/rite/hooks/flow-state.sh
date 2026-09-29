@@ -92,6 +92,21 @@ _resolve_session_id() {
   echo "ERROR: cannot resolve session_id" >&2; return 2
 }
 
+# reap-issue leaves this record when it cannot clear a suspended state's mark. While it exists,
+# session-start treats that session's marked inactive state as reaped. Writes that start or end
+# work (set, deactivate, review-cycle) remove it once the state has landed; writes that keep the
+# mark (SessionEnd, the worktree self-heal) do not. If it cannot be removed the write fails with
+# rc 3, so the caller can stop before work goes on over a record that would end it at the next
+# resume. rc 3 means the state itself was written and only the record was left.
+_reap_record_path() { printf '%s/.rite/state/reap-failed-%s.flow-state' "$STATE_ROOT" "$1"; }
+_clear_reap_record() {
+  local rec; rec=$(_reap_record_path "$1")
+  { [ -e "$rec" ] || [ -L "$rec" ]; } || return 0
+  rm -f "$rec" 2>/dev/null && return 0
+  echo "ERROR: the state was written, but the failed-reap record could not be removed; while it exists, a resume after the session ends treats this session's work as reaped and ends it. Remove it before continuing: $(printf '%s' "$rec" | neutralize_ctrl)" >&2
+  return 3
+}
+
 _state_path() {
   mkdir -p "$SESSION_DIR" 2>/dev/null || true
   if ! _ensure_rite_nested_gitignore "$STATE_ROOT/.rite"; then
@@ -467,16 +482,20 @@ cmd_set() {
   new=$(printf '%s' "$new" | python3 "$SCRIPT_DIR/scripts/lib/review-cycle.py" guard-set \
     --state "$path" --session "$sid" --results-dir "$STATE_ROOT/.rite/review-results") || return 1
   RITE_STATE_IF_MATCH="$expected_hash" _atomic_write "$path" "$new" || return 1
+  local reap_rc=0
+  _clear_reap_record "$sid" || reap_rc=$?
   # Record only after the write physically landed, so the log never claims a
   # transition that failed to persist. Reuses `$now` (the same timestamp the
   # state file's `updated_at` carries) so a record can be cross-referenced with
-  # the state file it describes. `|| true` keeps this trailing statement from
-  # becoming cmd_set's exit code under `set -e` (exit code unchanged) —
-  # belt-and-braces with the helper's own unconditional `return 0`.
+  # the state file it describes. `|| true` keeps a logging failure from failing
+  # the set under `set -e` — belt-and-braces with the helper's own unconditional
+  # `return 0`. The state has landed even when the record could not be removed,
+  # so the transition is recorded before that failure is returned.
   # Sets skipped by `--if-exists` return earlier and are correctly not recorded:
   # no write happened. A same-phase set (from == to) IS recorded — update
   # frequency inside a stage is part of what this log is for.
   _append_phase_transition "$cur_phase" "$phase" "$sid" "$issue" "$pr" "$now" || true
+  return "$reap_rc"
 }
 
 # clear-worktree: surgically remove the `worktree` field from a session's
@@ -580,10 +599,14 @@ cmd_deactivate() {
   local sid path; sid=$(_resolve_session_id "$session") || return 1
   path=$(_state_path "$sid"); [ ! -f "$path" ] && return 0
   local now updated; now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  # deactivate ends the work, so SessionEnd's suspended mark must not survive it:
+  # a resumed session would otherwise turn the ended state active again.
   updated=$(jq --argjson a false --arg n "$next" --arg ts "$now" \
-    '.active = $a | (if $n != "" then .next_action = $n else . end) | .updated_at = $ts' "$path") || return 1
+    '.active = $a | (if $n != "" then .next_action = $n else . end) | .updated_at = $ts
+     | del(.suspended_by_session_end)' "$path") || return 1
   # `_atomic_write` rc 伝播 (cmd_set / `_migrate_file` と対称、header 契約遵守)。
   _atomic_write "$path" "$updated" || return 1
+  _clear_reap_record "$sid"
 }
 
 # reap-issue: 指定 Issue に紐づく全セッションの flow-state / run-queue を非 active 化し、
@@ -612,7 +635,7 @@ cmd_reap_issue() {
     return 0
   }
 
-  local f sid issue_n active q has others now updated jq_err=""
+  local f sid issue_n active q has others now updated jq_err="" deact_rc
   # RETURN trap は使わない: ネストした _reap_lock の return で発火し loop 途中で消える。
   jq_err=$(mktemp 2>/dev/null) || jq_err=""
   if [ -d "$SESSION_DIR" ]; then
@@ -632,8 +655,31 @@ cmd_reap_issue() {
       fi
       if [ "$active" = "true" ]; then
         echo "WARNING: reap-issue: stale flow-state (active=true) for issue #${issue}: $(printf '%s' "$f" | neutralize_ctrl)" >&2
-        cmd_deactivate --session "$sid" --next "none" \
-          || echo "WARNING: reap-issue: deactivate failed: $(printf '%s' "$f" | neutralize_ctrl)" >&2
+        # rc 3: the state was deactivated and cmd_deactivate reported the record it could not remove.
+        deact_rc=0
+        cmd_deactivate --session "$sid" --next "none" || deact_rc=$?
+        case "$deact_rc" in
+          0|3) ;;
+          *) echo "WARNING: reap-issue: deactivate failed: $(printf '%s' "$f" | neutralize_ctrl)" >&2 ;;
+        esac
+      elif jq -e '.suspended_by_session_end == true' "$f" >/dev/null 2>&1; then
+        # A session that ended mid-flow on this Issue would come back active on resume.
+        # rc 3 means the mark is already gone, so only a state that could not be written needs the record.
+        deact_rc=0
+        cmd_deactivate --session "$sid" --next "none" || deact_rc=$?
+        case "$deact_rc" in
+          0|3) ;;
+          *)
+            echo "WARNING: reap-issue: deactivate failed: $(printf '%s' "$f" | neutralize_ctrl)" >&2
+            # The mark survived, so resume would turn this reaped state active again. While this
+            # record exists, session-start keeps the state inactive and clears the mark instead.
+            local rec; rec=$(_reap_record_path "$sid")
+            if ! { mkdir -p "${rec%/*}" && cp "$f" "$rec.$$" && mv "$rec.$$" "$rec"; } 2>/dev/null; then
+              rm -f "$rec.$$" 2>/dev/null
+              echo "WARNING: reap-issue: could not record the failed reap, so resume may reactivate: $(printf '%s' "$f" | neutralize_ctrl)" >&2
+            fi
+            ;;
+        esac
       fi
       _reap_lock "${f}.lock"
     done
@@ -809,7 +855,7 @@ cmd_review_cycle() {
   while [ $# -gt 0 ]; do
     case "$operation:$1" in
       start:--stagnation|replan:--amend) args+=("$1"); shift ;;
-      start:--selection|finish:--manifest|finish:--content-file|finish:--pending-id|clock:--input|observe:--input|observe:--issue|replan:--plan|replan:--issue|replan:--reason|retry:--plan|retry:--issue|restart:--selection|restart:--approval|restart:--expected-run-id|abandon:--reason)
+      start:--selection|finish:--manifest|finish:--content-file|finish:--pending-id|clock:--input|observe:--input|observe:--issue|replan:--plan|replan:--issue|replan:--reason|retry:--plan|retry:--issue|restart:--selection|restart:--approval|restart:--expected-run-id|reconcile:--issue|reconcile:--approval|abandon:--reason)
         [ $# -ge 2 ] || { echo "ERROR: missing value for $1" >&2; return 1; }
         args+=("$1" "$2"); shift 2 ;;
       *) echo "ERROR: unknown review-cycle option: $1" >&2; return 1 ;;
@@ -829,6 +875,9 @@ cmd_review_cycle() {
     echo "ERROR: review-cycle $operation persistence failed; retain evidence and retry the same operation" >&2
     return 1
   }
+  # Right after the write, so a failure in the steps below cannot skip the record.
+  local reap_rc=0
+  _clear_reap_record "$sid" || reap_rc=$?
   if [ "$operation" = restart ]; then
     pr_number=$(printf '%s' "$updated" | jq -r '.pr_number // empty')
     case "$pr_number" in
@@ -841,13 +890,14 @@ cmd_review_cycle() {
     printf '%s' "$updated" | jq -r '.review_cycle | "[CONTEXT] REVIEW_CYCLE=completed; verdict=\(.verdict); result=\(.result_path)"' >&2
   fi
   case "$operation" in
-    clock|observe|replan|retry|restart|close) printf '%s' "$updated" | jq '.review_run' ;;
+    clock|observe|replan|retry|restart|reconcile|close) printf '%s' "$updated" | jq '.review_run' ;;
     # After abandon `.review_cycle` is gone; the appended record is the outcome.
     # A no-op prints the last record, or null if none; REVIEW_ABANDON=noop
     # on stderr distinguishes it from a new abandonment.
     abandon) printf '%s' "$updated" | jq '.review_cycle_abandoned[-1]' ;;
     *) printf '%s' "$updated" | jq '.review_cycle' ;;
   esac
+  return "$reap_rc"
 }
 
 # The last status line of issue-comment-wm-sync.sh; empty when it printed none.
@@ -943,6 +993,7 @@ case "${1:-}" in
   review-replan) shift; cmd_review_cycle replan "$@" ;;
   review-retry) shift; cmd_review_cycle retry "$@" ;;
   review-restart) shift; cmd_review_cycle restart "$@" ;;
+  review-reconcile) shift; cmd_review_cycle reconcile "$@" ;;
   review-record) shift; cmd_review_record "$@" ;;
   review-close) shift; cmd_review_close "$@" ;;
   review-defer) shift; cmd_review_cycle defer "$@" ;;
@@ -956,7 +1007,7 @@ case "${1:-}" in
   path) shift; cmd_path "$@" ;;
   *)
     cat >&2 <<EOF
-Usage: $0 {set|get|review-start|review-finish|review-retry|review-restart|review-abandon|deactivate|reap-issue|clear-worktree|consume-handoff|migrate|path} [options]
+Usage: $0 {set|get|review-start|review-finish|review-retry|review-restart|review-reconcile|review-abandon|deactivate|reap-issue|clear-worktree|consume-handoff|migrate|path} [options]
   set --phase <P> --next <T> [--issue N] [--branch S] [--pr N] [--parent-issue N]
       [--active true|false] [--handoff CMD] [--session UUID] [--if-exists] [--preserve-error-count]
       [--worktree PATH] [--require-worktree]   # --require-worktree: warn + emit WORKTREE_INVARIANT marker when worktree empty (non-blocking)
@@ -969,6 +1020,7 @@ Usage: $0 {set|get|review-start|review-finish|review-retry|review-restart|review
   review-replan --plan /absolute/fix-plan.json --issue /absolute/issue.json [--amend --reason TEXT]
   review-retry --plan /absolute/fix-plan.json --issue /absolute/issue.json
   review-restart --selection /absolute/selection.json --expected-run-id UUID --approval /absolute/approval.json
+  review-reconcile --issue /absolute/issue.json --approval /absolute/approval.json   # record an agreed Issue revision in the same run
   review-record                      # append this review's record to the Issue work memory if absent
   review-close                       # requires that record (written first when absent)
   review-defer

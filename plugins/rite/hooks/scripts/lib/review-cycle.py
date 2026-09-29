@@ -75,8 +75,12 @@ def same_json(left, right):
 DECISION_LOG_HEADING = re.compile(r"^## 9\. Decision Log\s*$")
 DECISION_LOG_END = re.compile(r"^(## |---\s*$|</details>)")
 DECISION_LOG_ROW = re.compile(r"^- \d{4}-\d{2}-\d{2} D-\d{2,}: .+ / Reason: .+ / Impact: .+$")
-# Same line shape the non-blocking record helper accepts as its own marker.
-NBR_MARKER_LINE = re.compile(r"^\s*<!-- rite:nbr:comment-id:.*-->\s*$")
+# Same lines the non-blocking record helper strips as its own marker (equal for
+# ASCII whitespace; for other whitespace the helper's sed depends on the locale): one
+# comment alone on the line, so a value never contains a comment closer (`-->`, or
+# `--!>`, which HTML also accepts). A line that closes the comment early and continues
+# with visible text is specification text.
+NBR_MARKER_LINE = re.compile(r"^\s*<!-- rite:nbr:comment-id:(?:(?!--!?>).)*-->\s*$")
 FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}(?=[^`]*$)|~{3,})")
 
 
@@ -137,6 +141,25 @@ def normalize_issue_body(body):
 
 def same_specification(left, right):
     return normalize_issue_body(left) == normalize_issue_body(right)
+
+
+SPEC_CHANGE_SECTION = "仕様改訂の記録"
+
+
+def spec_change_hint(state, body):
+    """The recovery route for a specification mismatch found on `body`, where review-reconcile can act on it."""
+    run = state.get("review_run")
+    if not (isinstance(run, dict) and run.get("status") == "active"
+            and (run.get("observations") or run.get("reconciliations"))):
+        return ""
+    records = run.get("reconciliations") or []
+    if (records and records[-1]["review_context"] == (state.get("review_cycle") or {}).get("review_context")
+            and same_specification(records[-1]["issue_body"], body)):
+        return ("; the revision is already recorded for this cycle: take the next step for it instead of"
+                " reconciling again (references/review-stagnation.md, section: " + SPEC_CHANGE_SECTION + ")")
+    return ("; if the Issue was revised by agreement, record the revision with `flow-state.sh review-reconcile"
+            " --issue <latest Issue JSON> --approval <approval JSON>` and review under the revised specification"
+            " before fixing (references/review-stagnation.md, section: " + SPEC_CHANGE_SECTION + ")")
 
 
 def without_timestamp(result):
@@ -450,7 +473,7 @@ def record(state, args, directory):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("operation", choices=("start", "finish", "guard-set", "clock", "observe", "replan", "retry", "restart", "close", "defer", "abandon", "record"))
+    parser.add_argument("operation", choices=("start", "finish", "guard-set", "clock", "observe", "replan", "retry", "restart", "reconcile", "close", "defer", "abandon", "record"))
     parser.add_argument("--state", required=True)
     parser.add_argument("--session", required=True)
     parser.add_argument("--results-dir", required=True)
@@ -474,7 +497,7 @@ def main():
         return
     required = dict(start=["selection"], finish=["manifest", "content_file"],
                     clock=["input"], observe=["input", "issue"], replan=["plan", "issue"],
-                    retry=["plan", "issue"], restart=["selection", "approval"],
+                    retry=["plan", "issue"], restart=["selection", "approval"], reconcile=["issue", "approval"],
                     close=[], defer=[], abandon=[], record=[])
     for name in required[args.operation]:
         value = getattr(args, name)

@@ -527,21 +527,25 @@ echo "--- T-02': ステップ 8.0.4 からの呼び出し配線 ---"
 REVIEW_MD="$SCRIPT_DIR/../../skills/pr-review/SKILL.md"
 DIAGNOSTICS_MD="$SCRIPT_DIR/../../skills/pr-review/references/output-diagnostics.md"
 if [ -f "$REVIEW_MD" ]; then
-  _sec_804=$(awk '/^### 8\.0\.4 /{f=1} f&&/^### 8\.1 /{exit} f{print}' "$REVIEW_MD")
+  _sec_804_skill=$(awk '/^### 8\.0\.4 /{f=1} f&&/^### 8\.1 /{exit} f{print}' "$REVIEW_MD")
+  # 8.0.4 の gate 本体は scripts/pr-review-step.sh の save-gate。SKILL は本 cycle の値で 1 回だけ呼ぶ。
+  assert "T-02'a0: 8.0.4 区間は save-gate を --pr と --commit-sha 付きで 1 回呼ぶ" "1" \
+    "$(printf '%s\n' "$_sec_804_skill" | grep -cE '^bash \{plugin_root\}/scripts/pr-review-step\.sh save-gate .*--pr \{pr_number\} --commit-sha \{current_commit_sha\}$' || true)"
+  _sec_804=$(awk '/^step_save_gate\(\) \{$/{f=1; next} f&&/^}$/{exit} f{print}' "$SCRIPT_DIR/../../scripts/pr-review-step.sh")
   # 散文の言及 (設計説明) と実際の呼び出しを区別する — `-cF` で数えると散文が増えるたび件数が
   # ずれ、呼び出しを消しても散文が残っていれば緑のままになる。行頭 anchor + `bash` 起動形で絞る。
   assert "T-02'a: 8.0.4 区間から helper が 1 回だけ**実行**される" "1" \
-    "$(printf '%s\n' "$_sec_804" | grep -cE '^[[:space:]]*bash \{plugin_root\}/hooks/scripts/review-save-json-verify\.sh' || true)"
+    "$(printf '%s\n' "$_sec_804" | grep -cE '^[[:space:]]*bash "\$plugin_root"/hooks/scripts/review-save-json-verify\.sh' || true)"
   # 引数が欠けると helper は degraded に倒れ、gate が恒久的に機械強制を失う (silent no-op 化)。
   assert "T-02'b: --pr と --commit-sha の両方を渡している" "1" \
-    "$(printf '%s\n' "$_sec_804" | grep -cE 'review-save-json-verify\.sh --pr "\{pr_number\}" --commit-sha "\{current_commit_sha\}"' || true)"
+    "$(printf '%s\n' "$_sec_804" | grep -cE 'review-save-json-verify\.sh --pr "\$\{pr_number\}" --commit-sha "\$\{commit_sha\}"' || true)"
   # 非ゼロを握り潰すと fail が pass に化ける — 本 gate の load-bearing な 1 語。
   assert "T-02'c: helper の非ゼロを exit 1 へ伝播している" "1" \
-    "$(printf '%s\n' "$_sec_804" | grep -cF 'review-save-json-verify.sh --pr "{pr_number}" --commit-sha "{current_commit_sha}" || exit 1' || true)"
+    "$(printf '%s\n' "$_sec_804" | grep -cF 'review-save-json-verify.sh --pr "${pr_number}" --commit-sha "${commit_sha}" || exit 1' || true)"
   # marker 残存の判定を通過した **後** に呼ぶ (順序が逆だと marker 残存 cycle の reason が
   # save_result_json_absent に丸められ「6.1.a が途中で落ちた」原因情報が失われる)。
   _line_marker=$(printf '%s\n' "$_sec_804" | grep -nF 'REVIEW_SAVE_GATE_FAILED=1; reason=save_pending_marker_present' | head -1 | cut -d: -f1)
-  _line_helper=$(printf '%s\n' "$_sec_804" | grep -nE '^[[:space:]]*bash \{plugin_root\}/hooks/scripts/review-save-json-verify\.sh' | head -1 | cut -d: -f1)
+  _line_helper=$(printf '%s\n' "$_sec_804" | grep -nE '^[[:space:]]*bash "\$plugin_root"/hooks/scripts/review-save-json-verify\.sh' | head -1 | cut -d: -f1)
   if [ -n "$_line_marker" ] && [ -n "$_line_helper" ] && [ "$_line_marker" -lt "$_line_helper" ]; then
     pass "T-02'd: marker 残存検査の後に positive 検査を呼ぶ (reason の粒度を保つ)"
   else
@@ -551,7 +555,7 @@ if [ -f "$REVIEW_MD" ]; then
   # 空文字 / 未置換になる cycle — AC-2 の Given そのもの — では marker 層が degraded に降りて
   # positive 検査が一度も走らない。行頭 anchor (字下げなし) で `esac` の後に出ることを固定する。
   assert "T-02'e: helper 呼び出しが case の外 (行頭) にある" "1" \
-    "$(printf '%s\n' "$_sec_804" | grep -cE '^bash \{plugin_root\}/hooks/scripts/review-save-json-verify\.sh' || true)"
+    "$(printf '%s\n' "$_sec_804" | grep -cE '^bash "\$plugin_root"/hooks/scripts/review-save-json-verify\.sh' || true)"
   _line_esac=$(printf '%s\n' "$_sec_804" | grep -nE '^esac$' | head -1 | cut -d: -f1)
   if [ -n "$_line_esac" ] && [ -n "$_line_helper" ] && [ "$_line_esac" -lt "$_line_helper" ]; then
     pass "T-02'e2: helper 呼び出しが esac より後にある (3 arm すべてを通す)"

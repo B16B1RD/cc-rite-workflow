@@ -247,15 +247,14 @@ echo ""
 # --------------------------------------------------------------------------
 # TC-005: State file exists → active set to false, updated_at updated
 # --------------------------------------------------------------------------
-echo "TC-005: State file exists → deactivated then removed (AC-10)"
+echo "TC-005: terminal state file exists → deactivated then removed (AC-10)"
 dir005="$TEST_DIR/tc005"
 mkdir -p "$dir005"
-create_state_file "$dir005" '{"active": true, "issue_number": 42, "phase": "implement"}'
+create_state_file "$dir005" '{"active": true, "issue_number": 42, "phase": "completed"}'
 
-# PR 2a refactor: under per-session model session-end.sh deactivates (.active=false +
-# updated_at) AND then removes the per-session file (AC-10). The legacy
-# assertion (file remains with .active=false) is no longer satisfiable; the
-# observable invariant is "file is gone after session-end".
+# Under the per-session model session-end.sh deactivates (.active=false +
+# updated_at) and then removes a finished per-session file. A mid-flow state
+# is kept instead (T-13), so this fixture uses the terminal phase.
 output=$(run_hook "$dir005")
 sf005=$(state_file_path "$dir005")
 if [ ! -f "$sf005" ]; then
@@ -537,7 +536,7 @@ sid680a="abcdef01-2345-6789-abcd-ef0123456789"
 echo "$sid680a" > "$dir680a/.rite-session-id"
 printf '# rite test sandbox config\n' > "$dir680a/rite-config.yml"
 per_session_file="$dir680a/.rite/sessions/${sid680a}.flow-state"
-echo '{"active": true, "phase": "phase5_review", "issue_number": 680, "branch": "refactor/issue-680-test"}' > "$per_session_file"
+echo '{"active": true, "phase": "completed", "issue_number": 680, "branch": "refactor/issue-680-test"}' > "$per_session_file"
 run_hook "$dir680a" >/dev/null || true
 if [ ! -f "$per_session_file" ]; then
   pass "TC-per-session-cleanup-A: per-session file removed after session-end (AC-10)"
@@ -847,8 +846,10 @@ MV_SHIM
 chmod +x "$shim_mv/mv"
 mvfail_stderr=$(mktemp)
 echo "{\"cwd\": \"$dir_mvfail\"}" | PATH="$shim_mv:$PATH" bash "$HOOK" >/dev/null 2>"$mvfail_stderr" || true
-if grep -qE 'session-end: mv deactivation state failed \(rc=19\)' "$mvfail_stderr"; then
-  pass "TC-MV-FAIL: WARNING carries the real mv rc (19), not bash-! collapsed value"
+sf_mvfail=$(state_file_path "$dir_mvfail")
+if grep -qF "session-end: WARNING: mv deactivation state failed (rc=19): $sf_mvfail" "$mvfail_stderr" \
+  && jq -e '.active == true and (has("suspended_by_session_end")|not)' "$sf_mvfail" >/dev/null; then
+  pass "TC-MV-FAIL: WARNING carries the real mv rc (19) and the state path; the mid-flow state is left unmarked and active"
 else
   fail "TC-MV-FAIL: WARNING missing or rc collapsed. stderr: $(cat "$mvfail_stderr")"
 fi
@@ -886,8 +887,9 @@ rc_p01=0
 run_hook "$dir_p01" >/dev/null || rc_p01=$?
 if [ "$rc_p01" -eq 0 ] && [ -f "$sf_p01" ] \
   && [ "$(jq -c '.review_run' "$sf_p01")" = "$run_p01" ] \
-  && [ "$(jq -r '.stop_reason' "$sf_p01")" = "$stop_p01" ]; then
-  pass "T-01 stopped review_run kept"
+  && [ "$(jq -r '.stop_reason' "$sf_p01")" = "$stop_p01" ] \
+  && jq -e 'has("suspended_by_session_end")|not' "$sf_p01" >/dev/null; then
+  pass "T-01 stopped review_run kept without the suspended mark"
 else
   fail "T-01 stopped review_run missing or rewritten (rc=$rc_p01)"
 fi
@@ -896,14 +898,16 @@ echo ""
 echo "T-02: active live review_run is kept; only active flips"
 dir_p02="$TEST_DIR/preserve-active"
 mkdir -p "$dir_p02"
-create_state_file "$dir_p02" '{"schema_version":3,"active":true,"phase":"review","review_run":{"status":"active","run_id":"run-live","current_decision":{"action":"replan"},"observations":[{"id":1}]}}'
+# A terminal phase, so that only the review_run can keep it (an active state
+# in a non-terminal phase is kept on its own).
+create_state_file "$dir_p02" '{"schema_version":3,"active":true,"phase":"completed","review_run":{"status":"active","run_id":"run-live","current_decision":{"action":"replan"},"observations":[{"id":1}]}}'
 sf_p02=$(state_file_path "$dir_p02")
 run_p02=$(jq -c '.review_run' "$sf_p02")
 rc_p02=0
 run_hook "$dir_p02" >/dev/null || rc_p02=$?
 if [ "$rc_p02" -eq 0 ] && [ -f "$sf_p02" ] \
-  && jq -e --argjson run "$run_p02" '.active==false and .review_run==$run' "$sf_p02" >/dev/null; then
-  pass "T-02 live review_run kept with active=false"
+  && jq -e --argjson run "$run_p02" '.active==false and .review_run==$run and (has("suspended_by_session_end")|not)' "$sf_p02" >/dev/null; then
+  pass "T-02 live review_run kept with active=false and no suspended mark (terminal phase)"
 else
   fail "T-02 live review_run not preserved as required (rc=$rc_p02)"
 fi
@@ -919,7 +923,7 @@ rc_p03=0
 run_hook "$dir_p03" >/dev/null || rc_p03=$?
 if [ "$rc_p03" -eq 0 ] && [ -f "$sf_p03" ] \
   && [ "$(jq -c '.review_run_history' "$sf_p03")" = "$hist_p03" ] \
-  && jq -e 'has("review_run")|not' "$sf_p03" >/dev/null; then
+  && jq -e '(has("review_run")|not) and (has("suspended_by_session_end")|not)' "$sf_p03" >/dev/null; then
   pass "T-03 park history kept"
 else
   fail "T-03 park history missing or rewritten (rc=$rc_p03)"
@@ -935,7 +939,8 @@ abd_p03b=$(jq -c '.review_cycle_abandoned' "$sf_p03b")
 rc_p03b=0
 run_hook "$dir_p03b" >/dev/null || rc_p03b=$?
 if [ "$rc_p03b" -eq 0 ] && [ -f "$sf_p03b" ] \
-  && [ "$(jq -c '.review_cycle_abandoned' "$sf_p03b")" = "$abd_p03b" ]; then
+  && [ "$(jq -c '.review_cycle_abandoned' "$sf_p03b")" = "$abd_p03b" ] \
+  && jq -e 'has("suspended_by_session_end")|not' "$sf_p03b" >/dev/null; then
   pass "T-03b abandoned history kept"
 else
   fail "T-03b abandoned history missing or rewritten (rc=$rc_p03b)"
@@ -945,13 +950,16 @@ echo ""
 echo "T-04: collecting review_cycle is kept"
 dir_p04="$TEST_DIR/preserve-collecting"
 mkdir -p "$dir_p04"
-create_state_file "$dir_p04" '{"schema_version":3,"active":true,"phase":"review","review_cycle":{"status":"collecting","review_context":{"cycle_count":2}}}'
+# active=false so that only the collecting cycle can keep it (an active state
+# in a non-terminal phase is kept on its own).
+create_state_file "$dir_p04" '{"schema_version":3,"active":false,"phase":"review","review_cycle":{"status":"collecting","review_context":{"cycle_count":2}}}'
 sf_p04=$(state_file_path "$dir_p04")
 cyc_p04=$(jq -c '.review_cycle' "$sf_p04")
 rc_p04=0
 run_hook "$dir_p04" >/dev/null || rc_p04=$?
 if [ "$rc_p04" -eq 0 ] && [ -f "$sf_p04" ] \
-  && [ "$(jq -c '.review_cycle' "$sf_p04")" = "$cyc_p04" ]; then
+  && [ "$(jq -c '.review_cycle' "$sf_p04")" = "$cyc_p04" ] \
+  && jq -e 'has("suspended_by_session_end")|not' "$sf_p04" >/dev/null; then
   pass "T-04 collecting cycle kept"
 else
   fail "T-04 collecting cycle missing (rc=$rc_p04)"
@@ -961,7 +969,8 @@ echo ""
 echo "T-05: jq deactivate failure keeps original bytes (history present)"
 dir_p05="$TEST_DIR/preserve-jqfail"
 mkdir -p "$dir_p05"
-create_state_file "$dir_p05" '{"schema_version":3,"active":true,"phase":"review","review_run":{"status":"stopped","run_id":"run-jqfail"}}'
+# A terminal phase, so that the mid-flow rule does not keep it on its own.
+create_state_file "$dir_p05" '{"schema_version":3,"active":true,"phase":"completed","review_run":{"status":"stopped","run_id":"run-jqfail"}}'
 sf_p05=$(state_file_path "$dir_p05")
 before_p05=$(digest_file "$sf_p05")
 fake_jq_p05="$(mktemp -d "$TEST_DIR/fakejq-p05-XXXXXX")"
@@ -1179,6 +1188,568 @@ else
     pass "T-12 unwritable marker warns with its path; rc=0"
   else
     fail "T-12 rc=$rc_p12 stderr=$(cat "$LAST_STDERR_FILE")"
+  fi
+fi
+echo ""
+
+FLOW_STATE="$SCRIPT_DIR/../flow-state.sh"
+SESSION_START="$SCRIPT_DIR/../session-start.sh"
+ITERATE_STEP="$SCRIPT_DIR/../../scripts/iterate-step.sh"
+
+echo "T-13: a mid-flow active state is kept and marked; only active, updated_at and the mark change"
+ok_p13=1
+for phase in pr cleanup create_interview "<missing>"; do
+  dir_p13="$TEST_DIR/keep-midflow-${phase//[<>]/}"
+  mkdir -p "$dir_p13/.rite/worktrees/issue-7"
+  fixture_p13=$(jq -nc --arg wt "$dir_p13/.rite/worktrees/issue-7" \
+    '{schema_version:3,active:true,phase:"pr",issue_number:7,pr_number:8,branch:"fix/issue-7-x",worktree:$wt}')
+  if [ "$phase" = "<missing>" ]; then
+    fixture_p13=$(printf '%s' "$fixture_p13" | jq -c 'del(.phase)')
+  else
+    fixture_p13=$(printf '%s' "$fixture_p13" | jq -c --arg p "$phase" '.phase = $p')
+  fi
+  create_state_file "$dir_p13" "$fixture_p13"
+  sf_p13=$(state_file_path "$dir_p13")
+  rc_p13=0
+  run_hook "$dir_p13" >/dev/null || rc_p13=$?
+  if [ "$rc_p13" -ne 0 ] || [ ! -f "$sf_p13" ] \
+    || ! jq -e '.active == false and (.updated_at | type) == "string" and .suspended_by_session_end == true' "$sf_p13" >/dev/null \
+    || [ "$(jq -cS 'del(.active, .updated_at, .suspended_by_session_end)' "$sf_p13")" != "$(printf '%s' "$fixture_p13" | jq -cS 'del(.active, .updated_at)')" ]; then
+    ok_p13=0
+    fail "T-13 phase=$phase rc=$rc_p13 state=$(cat "$sf_p13" 2>/dev/null || echo '<removed>')"
+  fi
+done
+[ "$ok_p13" = 1 ] && pass "T-13 non-terminal phases (pr / cleanup / create_interview / missing) keep the file with active=false and the suspended mark"
+echo ""
+
+echo "T-14: a finished state without review history is removed with its lock"
+ok_p14=1
+for fixture_p14 in \
+  '{"schema_version":3,"active":true,"phase":"completed","issue_number":1}' \
+  '{"schema_version":3,"active":true,"phase":"create_completed","issue_number":1}' \
+  '{"schema_version":3,"active":true,"phase":"cleanup_completed","issue_number":1}' \
+  '{"schema_version":3,"active":false,"phase":"cleanup","issue_number":1}'; do
+  dir_p14="$TEST_DIR/remove-finished-$(printf '%s' "$fixture_p14" | jq -r '"\(.phase)-\(.active)"')"
+  mkdir -p "$dir_p14"
+  create_state_file "$dir_p14" "$fixture_p14"
+  sf_p14=$(state_file_path "$dir_p14")
+  : > "${sf_p14}.lock"
+  if [ ! -f "${sf_p14}.lock" ]; then
+    ok_p14=0
+    fail "T-14 fixture lock was not created: ${sf_p14}.lock"
+    continue
+  fi
+  rc_p14=0
+  run_hook "$dir_p14" >/dev/null || rc_p14=$?
+  if [ "$rc_p14" -ne 0 ] || [ -e "$sf_p14" ] || [ -e "${sf_p14}.lock" ]; then
+    ok_p14=0
+    fail "T-14 $fixture_p14 rc=$rc_p14 state=$([ -e "$sf_p14" ] && echo kept || echo removed) lock=$([ -e "${sf_p14}.lock" ] && echo kept || echo removed)"
+  fi
+done
+[ "$ok_p14" = 1 ] && pass "T-14 completed / create_completed / cleanup_completed and an inactive cleanup state are removed together with the lock"
+echo ""
+
+echo "T-15: a kept state keeps its lock; a lock that cannot be removed warns with its path"
+dir_p15="$TEST_DIR/keep-lock"
+mkdir -p "$dir_p15"
+create_state_file "$dir_p15" '{"schema_version":3,"active":true,"phase":"pr","issue_number":7,"pr_number":8}'
+sf_p15=$(state_file_path "$dir_p15")
+: > "${sf_p15}.lock"
+rc_p15=0
+run_hook "$dir_p15" >/dev/null || rc_p15=$?
+dir_p15b="$TEST_DIR/lock-rm-fail"
+mkdir -p "$dir_p15b"
+create_state_file "$dir_p15b" '{"schema_version":3,"active":true,"phase":"completed","issue_number":1}'
+sf_p15b=$(state_file_path "$dir_p15b")
+# A non-empty directory at the lock path makes `rm -f` fail.
+mkdir -p "${sf_p15b}.lock/keep"
+rc_p15b=0
+run_hook "$dir_p15b" >/dev/null || rc_p15b=$?
+if [ "$rc_p15" -eq 0 ] && [ -f "$sf_p15" ] && [ -f "${sf_p15}.lock" ] \
+  && [ "$rc_p15b" -eq 0 ] && [ ! -e "$sf_p15b" ] \
+  && grep -qF "[rite] WARNING: session-end: failed to remove the state lock file: ${sf_p15b}.lock" "$LAST_STDERR_FILE"; then
+  pass "T-15 kept state keeps its lock; lock removal failure warns with the path and rc=0"
+else
+  fail "T-15 rc=$rc_p15/$rc_p15b kept_lock=$([ -f "${sf_p15}.lock" ] && echo y || echo n) stderr=$(cat "$LAST_STDERR_FILE")"
+fi
+echo ""
+
+echo "T-16: after SessionEnd, a resumed SessionStart turns the state active again and /rite:iterate reads it"
+dir_p16="$TEST_DIR/resume-after-end"
+sid_p16="f0e1d2c3-b4a5-9687-7869-5a4b3c2d1e0f"
+mkdir -p "$dir_p16/.rite/worktrees/issue-7"
+printf '# rite test sandbox config\n' > "$dir_p16/rite-config.yml"
+fixture_p16=$(jq -nc --arg wt "$dir_p16/.rite/worktrees/issue-7" \
+  '{schema_version:3,active:true,phase:"pr",issue_number:7,pr_number:8,branch:"fix/issue-7-resume",worktree:$wt}')
+create_state_file "$dir_p16" "$fixture_p16" "$sid_p16"
+sf_p16=$(state_file_path "$dir_p16" "$sid_p16")
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+rc_end_p16=0
+jq -nc --arg cwd "$dir_p16" --arg sid "$sid_p16" '{cwd:$cwd, session_id:$sid, hook_event_name:"SessionEnd", reason:"prompt_input_exit"}' \
+  | bash "$HOOK" 2>"$LAST_STDERR_FILE" >/dev/null || rc_end_p16=$?
+marked_p16=$(jq -r '"\(.active)|\(.suspended_by_session_end)"' "$sf_p16" 2>/dev/null || echo "<removed>")
+rc_start_p16=0
+out_p16=$(jq -nc --arg cwd "$dir_p16" --arg sid "$sid_p16" '{cwd:$cwd, session_id:$sid, source:"resume"}' \
+  | RITE_HOST=claude bash "$SESSION_START" 2>/dev/null) || rc_start_p16=$?
+resumed_p16=$(jq -cS 'del(.updated_at)' "$sf_p16" 2>/dev/null || echo "<removed>")
+expected_p16=$(printf '%s' "$fixture_p16" | jq -cS 'del(.updated_at)')
+got_p16=$(cd "$dir_p16" && printf '%s|%s|%s|%s' \
+  "$(bash "$FLOW_STATE" get --field phase --default '')" \
+  "$(bash "$FLOW_STATE" get --field pr_number --default '')" \
+  "$(bash "$FLOW_STATE" get --field issue_number --default '')" \
+  "$(bash "$FLOW_STATE" get --field branch --default '')")
+restore_p16=$(cd "$dir_p16" && bash "$ITERATE_STEP" restore 2>/dev/null || true)
+if [ "$rc_end_p16" -eq 0 ] && [ "$rc_start_p16" -eq 0 ] \
+  && [ "$marked_p16" = "false|true" ] \
+  && [ "$resumed_p16" = "$expected_p16" ] \
+  && ! grep -qF "作業中に戻せませんでした" <<< "$out_p16" \
+  && [ "$got_p16" = "pr|8|7|fix/issue-7-resume" ] \
+  && grep -qE '^\[CONTEXT\] ITERATE_ISSUE=7; ITERATE_BRANCH=fix/issue-7-resume$' <<< "$restore_p16"; then
+  pass "T-16 resume turns the marked state active, drops the mark, keeps every other field, and iterate restores issue and branch"
+else
+  fail "T-16 rc=$rc_end_p16/$rc_start_p16 after_end=$marked_p16 resumed=$resumed_p16 got=$got_p16 restore=$restore_p16"
+fi
+echo ""
+
+PLUGIN_ROOT_P17="$(cd "$SCRIPT_DIR/../.." && pwd)"
+PR_REVIEW_STEP="$PLUGIN_ROOT_P17/scripts/pr-review-step.sh"
+STOP_HOOK="$PLUGIN_ROOT_P17/hooks/stop-loop-continuation.sh"
+RESUME_STAGE_BLOCK="$TEST_DIR/resume-stage-block.sh"
+# The batch-run resume-stage block is read from SKILL.md, so the test runs the shipped block.
+awk -v needle='# batch-run-resume-stage' '
+  /^```bash$/ {inside=1; block=""; next}
+  /^```$/ {if (inside && index(block, needle)) {printf "%s", block; exit}; inside=0}
+  inside {block=block $0 "\n"}
+' "$PLUGIN_ROOT_P17/skills/batch-run/SKILL.md" > "$RESUME_STAGE_BLOCK"
+
+# $1=dir $2=current issue → the RUN_RESUME_STAGE marker line of the shipped block (merge mode)
+resume_stage() {
+  sed -e "s|{plugin_root}|$PLUGIN_ROOT_P17|g" -e "s|{current_issue}|$2|g" -e "s|{run_mode}|merge|g" \
+    "$RESUME_STAGE_BLOCK" > "$1/resume-stage.sh"
+  (cd "$1" && bash resume-stage.sh 2>/dev/null) | grep '^\[CONTEXT\] RUN_RESUME_STAGE=' || true
+}
+# $1=dir $2=sid
+end_session() {
+  jq -nc --arg cwd "$1" --arg sid "$2" '{cwd:$cwd, session_id:$sid, hook_event_name:"SessionEnd", reason:"prompt_input_exit"}' \
+    | bash "$HOOK" >/dev/null 2>&1
+}
+# $1=dir $2=sid $3=source → SessionStart stdout; stderr goes to LAST_STDERR_FILE
+start_session() {
+  LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+  jq -nc --arg cwd "$1" --arg sid "$2" --arg src "$3" '{cwd:$cwd, session_id:$sid, source:$src}' \
+    | RITE_HOST=claude bash "$SESSION_START" 2>"$LAST_STDERR_FILE"
+}
+# $1=dir $2=sid → the watchdog's reason for an active merge-mode queue on Issue 101
+watchdog_reason() {
+  mkdir -p "$1/.rite/state"
+  jq -nc '{active:true,cursor:0,issues:[101],mode:"merge",failed:[],outstanding:[],updated_at:"2026-01-01T00:00:00Z"}' \
+    > "$1/.rite/state/run-queue-$2.json"
+  jq -nc --arg cwd "$1" --arg sid "$2" '{cwd:$cwd, session_id:$sid}' \
+    | PATH="$GH_FAIL_DIR:$PATH" bash "$STOP_HOOK" 2>/dev/null | jq -r '.reason // ""'
+}
+GH_FAIL_DIR="$TEST_DIR/gh-fail"
+mkdir -p "$GH_FAIL_DIR"
+printf '%s\n' '#!/bin/bash' 'exit 1' > "$GH_FAIL_DIR/gh"
+chmod +x "$GH_FAIL_DIR/gh"
+midflow_fixture() {
+  jq -nc --arg p "$1" '{schema_version:3,active:true,phase:$p,issue_number:101,pr_number:55,branch:"fix/issue-101-x",next_action:"continue"}'
+}
+
+echo "T-17: after SessionEnd and a resume, batch-run's resume stage and the watchdog agree on each mid-flow phase"
+if [ -s "$RESUME_STAGE_BLOCK" ]; then
+  ok_p17=1
+  for spec_p17 in "review|iterate|/rite:iterate 55" "fix|iterate|/rite:iterate 55" \
+    "ready|merge|/rite:merge 55" "cleanup|cleanup|batch-run の cleanup 未実行ステップを継続"; do
+    IFS='|' read -r phase_p17 stage_p17 hint_p17 <<< "$spec_p17"
+    dir_p17="$TEST_DIR/resume-agree-$phase_p17"
+    sid_p17="sid-p17-$phase_p17"
+    mkdir -p "$dir_p17"
+    create_state_file "$dir_p17" "$(midflow_fixture "$phase_p17")" "$sid_p17"
+    end_session "$dir_p17" "$sid_p17"
+    before_p17=$(resume_stage "$dir_p17" 101)
+    start_session "$dir_p17" "$sid_p17" resume >/dev/null || true
+    after_p17=$(resume_stage "$dir_p17" 101)
+    reason_p17=$(watchdog_reason "$dir_p17" "$sid_p17")
+    if [ "$before_p17" != "[CONTEXT] RUN_RESUME_STAGE=open; reason=fresh_or_mismatched; issue=101" ] \
+      || [ "$after_p17" != "[CONTEXT] RUN_RESUME_STAGE=$stage_p17; reason=phase_$phase_p17; issue=101; pr=55; branch=fix/issue-101-x" ] \
+      || ! grep -qF "続行してください: $hint_p17" <<< "$reason_p17"; then
+      ok_p17=0
+      fail "T-17 phase=$phase_p17 before=$before_p17 after=$after_p17 watchdog=$reason_p17"
+    fi
+  done
+  [ "$ok_p17" = 1 ] && pass "T-17 review/fix/ready/cleanup: open before the resume, the phase's stage after it, and the watchdog points to the same stage"
+else
+  fail "T-17 could not extract the batch-run-resume-stage block from SKILL.md"
+fi
+echo ""
+
+echo "T-18: a resumed iterate reaches pr-review as E2E; without the resume it does not"
+dir_p18="$TEST_DIR/resume-e2e"
+sid_p18="sid-p18"
+mkdir -p "$dir_p18"
+printf '# rite test sandbox config\n' > "$dir_p18/rite-config.yml"
+create_state_file "$dir_p18" "$(midflow_fixture review)" "$sid_p18"
+end_session "$dir_p18" "$sid_p18"
+before_p18=$(cd "$dir_p18" && bash "$PR_REVIEW_STEP" e2e-detect 2>/dev/null || true)
+start_session "$dir_p18" "$sid_p18" resume >/dev/null || true
+rc_restore_p18=0
+(cd "$dir_p18" && bash "$ITERATE_STEP" restore >/dev/null 2>&1) || rc_restore_p18=$?
+rc_init_p18=0
+(cd "$dir_p18" && bash "$ITERATE_STEP" init-cycle --pr 55 --issue 101 --branch fix/issue-101-x >/dev/null 2>&1) || rc_init_p18=$?
+after_p18=$(cd "$dir_p18" && bash "$PR_REVIEW_STEP" e2e-detect 2>/dev/null || true)
+if [ "$before_p18" = "[CONTEXT] PR_REVIEW_IN_E2E=false" ] && [ "$rc_restore_p18" -eq 0 ] && [ "$rc_init_p18" -eq 0 ] \
+  && [ "$after_p18" = "[CONTEXT] PR_REVIEW_IN_E2E=true" ]; then
+  pass "T-18 e2e-detect is false after SessionEnd and true after resume → restore → init-cycle"
+else
+  fail "T-18 before=$before_p18 restore_rc=$rc_restore_p18 init_rc=$rc_init_p18 after=$after_p18"
+fi
+echo ""
+
+echo "T-19: states that are not suspended mid-flow stay as they are on resume, startup and clear"
+ok_p19=1
+# A finished cleanup is removed by SessionEnd; the next Issue starts from open.
+dir_p19a="$TEST_DIR/no-resume-finished"
+mkdir -p "$dir_p19a"
+create_state_file "$dir_p19a" '{"schema_version":3,"active":false,"phase":"cleanup","issue_number":101,"pr_number":55,"branch":"fix/issue-101-x","next_action":"none"}' "sid-p19a"
+end_session "$dir_p19a" "sid-p19a"
+start_session "$dir_p19a" "sid-p19a" resume >/dev/null || true
+got_p19a=$(resume_stage "$dir_p19a" 102)
+if [ "$got_p19a" != "[CONTEXT] RUN_RESUME_STAGE=open; reason=fresh_or_mismatched; issue=102" ]; then
+  ok_p19=0; fail "T-19 finished cleanup: $got_p19a"
+fi
+# A stopped review run is inactive before SessionEnd, so it gets no mark and stays stopped.
+dir_p19b="$TEST_DIR/no-resume-stopped"
+mkdir -p "$dir_p19b"
+create_state_file "$dir_p19b" '{"schema_version":3,"active":false,"phase":"review","issue_number":101,"pr_number":55,"branch":"fix/issue-101-x","stop_reason":"stagnation:non-convergent","review_run":{"status":"stopped","run_id":"run-stopped"}}' "sid-p19b"
+end_session "$dir_p19b" "sid-p19b"
+start_session "$dir_p19b" "sid-p19b" resume >/dev/null || true
+got_p19b=$(resume_stage "$dir_p19b" 101)
+if ! jq -e '.active == false and (has("suspended_by_session_end")|not)' "$(state_file_path "$dir_p19b" "sid-p19b")" >/dev/null \
+  || [ "${got_p19b%%; pr=*}" != "[CONTEXT] RUN_RESUME_STAGE=stop; reason=stagnation_stopped; issue=101" ]; then
+  ok_p19=0; fail "T-19 stopped run: stage=$got_p19b state=$(cat "$(state_file_path "$dir_p19b" "sid-p19b")")"
+fi
+# A marked state that also carries a stop reason is not turned active; the stop notice is shown.
+dir_p19c="$TEST_DIR/no-resume-marked-stop"
+mkdir -p "$dir_p19c"
+create_state_file "$dir_p19c" '{"schema_version":3,"active":false,"phase":"review","issue_number":101,"pr_number":55,"branch":"fix/issue-101-x","stop_reason":"circuit-breaker:max-cycles","suspended_by_session_end":true}' "sid-p19c"
+out_p19c=$(start_session "$dir_p19c" "sid-p19c" resume || true)
+if ! jq -e '.active == false and .suspended_by_session_end == true' "$(state_file_path "$dir_p19c" "sid-p19c")" >/dev/null \
+  || ! grep -qF "失敗停止した rite workflow が残っています" <<< "$out_p19c"; then
+  ok_p19=0; fail "T-19 marked with stop reason: out=$out_p19c"
+fi
+# startup and clear are not resumes: the mark stays and no reset happens.
+for src_p19 in startup clear; do
+  dir_p19d="$TEST_DIR/no-resume-$src_p19"
+  mkdir -p "$dir_p19d"
+  create_state_file "$dir_p19d" '{"schema_version":3,"active":false,"phase":"review","issue_number":101,"pr_number":55,"branch":"fix/issue-101-x","suspended_by_session_end":true}' "sid-p19-$src_p19"
+  out_p19d=$(start_session "$dir_p19d" "sid-p19-$src_p19" "$src_p19" || true)
+  if ! jq -e '.active == false and .suspended_by_session_end == true' "$(state_file_path "$dir_p19d" "sid-p19-$src_p19")" >/dev/null \
+    || grep -qF "前回のセッション状態が残っていたためリセットしました" <<< "$out_p19d"; then
+    ok_p19=0; fail "T-19 source=$src_p19: out=$out_p19d state=$(cat "$(state_file_path "$dir_p19d" "sid-p19-$src_p19")")"
+  fi
+done
+# An inactive state without the mark (e.g. left by an older SessionEnd) is not rewritten on resume.
+dir_p19e="$TEST_DIR/no-resume-unmarked"
+mkdir -p "$dir_p19e"
+create_state_file "$dir_p19e" '{"schema_version":3,"active":false,"phase":"review","issue_number":101,"pr_number":55,"branch":"fix/issue-101-x"}' "sid-p19e"
+before_p19e=$(digest_file "$(state_file_path "$dir_p19e" "sid-p19e")")
+out_p19e=$(start_session "$dir_p19e" "sid-p19e" resume || true)
+after_p19e=$(digest_file "$(state_file_path "$dir_p19e" "sid-p19e")")
+if [ "$before_p19e" != "$after_p19e" ] || grep -qF "中断した rite workflow を検出" <<< "$out_p19e"; then
+  ok_p19=0; fail "T-19 unmarked inactive state: out=$out_p19e"
+fi
+[ "$ok_p19" = 1 ] && pass "T-19 finished cleanup, stopped run, marked-with-stop-reason, startup / clear and unmarked states are not turned active"
+echo ""
+
+echo "T-20: flow-state set, deactivate and reap-issue drop the suspended mark"
+ok_p20=1
+marked_p20='{"schema_version":3,"active":false,"phase":"review","issue_number":101,"pr_number":55,"branch":"fix/issue-101-x","next_action":"continue","suspended_by_session_end":true}'
+dir_p20a="$TEST_DIR/mark-set"
+mkdir -p "$dir_p20a"
+create_state_file "$dir_p20a" "$marked_p20" "sid-p20a"
+(cd "$dir_p20a" && bash "$FLOW_STATE" set --phase review --issue 101 --branch fix/issue-101-x --pr 55 --next "continue" >/dev/null 2>&1) || true
+dir_p20b="$TEST_DIR/mark-deactivate"
+mkdir -p "$dir_p20b"
+create_state_file "$dir_p20b" "$marked_p20" "sid-p20b"
+(cd "$dir_p20b" && bash "$FLOW_STATE" deactivate --next none >/dev/null 2>&1) || true
+for pair_p20 in "$dir_p20a|sid-p20a" "$dir_p20b|sid-p20b"; do
+  IFS='|' read -r d_p20 s_p20 <<< "$pair_p20"
+  if ! jq -e 'has("suspended_by_session_end")|not' "$(state_file_path "$d_p20" "$s_p20")" >/dev/null; then
+    ok_p20=0; fail "T-20 $s_p20 kept the mark: $(cat "$(state_file_path "$d_p20" "$s_p20")")"
+  fi
+done
+# Another session reaps the Issue while this one is suspended; resuming it must not bring the Issue back.
+dir_p20c="$TEST_DIR/mark-reap"
+mkdir -p "$dir_p20c"
+create_state_file "$dir_p20c" "$marked_p20" "sid-p20c-suspended"
+printf '%s' "sid-p20c-reaper" > "$dir_p20c/.rite-session-id"
+(cd "$dir_p20c" && bash "$FLOW_STATE" reap-issue --issue 101 >/dev/null 2>&1) || true
+printf '%s' "sid-p20c-suspended" > "$dir_p20c/.rite-session-id"
+start_session "$dir_p20c" "sid-p20c-suspended" resume >/dev/null || true
+if ! jq -e '.active == false and (has("suspended_by_session_end")|not)' "$(state_file_path "$dir_p20c" "sid-p20c-suspended")" >/dev/null; then
+  ok_p20=0; fail "T-20 reap-issue: $(cat "$(state_file_path "$dir_p20c" "sid-p20c-suspended")")"
+fi
+[ "$ok_p20" = 1 ] && pass "T-20 set / deactivate drop the mark, and a state reaped by another session stays inactive on resume"
+echo ""
+
+echo "T-21: a reactivation that cannot be written warns with the state path, tells the model on stdout, and leaves the state as it was"
+if [ "$(id -u)" -eq 0 ]; then
+  pass "T-21 skipped as root (a read-only directory does not stop root)"
+else
+  dir_p21="$TEST_DIR/resume-write-fail"
+  mkdir -p "$dir_p21"
+  create_state_file "$dir_p21" "$(midflow_fixture review)" "sid-p21"
+  end_session "$dir_p21" "sid-p21"
+  sf_p21=$(state_file_path "$dir_p21" "sid-p21")
+  before_p21=$(digest_file "$sf_p21")
+  chmod 555 "$dir_p21/.rite/sessions"
+  rc_p21=0
+  # Not in $(...): start_session sets LAST_STDERR_FILE, which a subshell would lose.
+  start_session "$dir_p21" "sid-p21" resume > "$TEST_DIR/out-p21" || rc_p21=$?
+  chmod 755 "$dir_p21/.rite/sessions"
+  out_p21=$(cat "$TEST_DIR/out-p21")
+  after_p21=$(digest_file "$sf_p21")
+  if [ "$rc_p21" -eq 0 ] && [ "$before_p21" = "$after_p21" ] \
+    && jq -e '.active == false and .suspended_by_session_end == true' "$sf_p21" >/dev/null \
+    && grep -qF "rite: session-start: WARNING: failed to reactivate the state SessionEnd suspended: $sf_p21" "$LAST_STDERR_FILE" \
+    && awk -v p="$sf_p21" 'index($0, p) && index($0, "/rite:recover") {f=1} END {exit !f}' <<< "$out_p21" \
+    && ! grep -qF "中断した rite workflow を検出" <<< "$out_p21"; then
+    pass "T-21 the failed write warns with the path on stderr, points to /rite:recover with the path on stdout, rc=0, and the marked state is unchanged"
+  else
+    fail "T-21 rc=$rc_p21 same=$([ "$before_p21" = "$after_p21" ] && echo y || echo n) out=$out_p21"
+  fi
+fi
+echo ""
+
+echo "T-22: a reap that cannot clear the suspended mark keeps the reaped state from coming back active"
+if [ "$(id -u)" -eq 0 ]; then
+  pass "T-22 skipped as root (a read-only directory does not stop root)"
+else
+  # Review history keeps the state through SessionEnd, and the worktree it points to is gone,
+  # so both writes that leave the mark in place (SessionEnd, the dangling-worktree self-heal) run.
+  reaped_p22=$(printf '%s' "$marked_p20" | jq -c --arg wt "$TEST_DIR/gone-worktree" '. + {review_run_history:[{run_id:"r1"}], worktree:$wt}')
+  # $1=dir $2=sid, then the directories to make read-only for the reap → rc in rc_p22, stderr in err_p22
+  reap_fail_p22() {
+    local d="$1" s="$2"; shift 2
+    mkdir -p "$d/.rite/sessions" "$d/.rite/state"
+    create_state_file "$d" "$reaped_p22" "$s"
+    printf '%s' "$s-reaper" > "$d/.rite-session-id"
+    chmod 555 "$@"
+    rc_p22=0
+    (cd "$d" && bash "$FLOW_STATE" reap-issue --issue 101) >/dev/null 2>"$TEST_DIR/err-p22" || rc_p22=$?
+    chmod 755 "$@"
+    err_p22=$(cat "$TEST_DIR/err-p22")
+    printf '%s' "$s" > "$d/.rite-session-id"
+  }
+
+  dir_p22="$TEST_DIR/reap-write-fail"
+  sf_p22=$(state_file_path "$dir_p22" "sid-p22")
+  rec_p22="$dir_p22/.rite/state/reap-failed-sid-p22.flow-state"
+  mkdir -p "$dir_p22"
+  create_state_file "$dir_p22" "$reaped_p22" "sid-p22"
+  before_p22=$(digest_file "$sf_p22")
+  reap_fail_p22 "$dir_p22" "sid-p22" "$dir_p22/.rite/sessions"
+  after_p22=$(digest_file "$sf_p22")
+  if [ "$rc_p22" -eq 0 ] && [ "$before_p22" = "$after_p22" ] \
+    && grep -qF "WARNING: reap-issue: deactivate failed: $sf_p22" <<< "$err_p22" \
+    && [ -f "$rec_p22" ]; then
+    pass "T-22 the failed reap warns with the path, leaves the state as it was, and leaves the record"
+  else
+    fail "T-22 reap rc=$rc_p22 record=$([ -f "$rec_p22" ] && echo y || echo n) err=$err_p22"
+  fi
+  # Not in $(...): start_session sets LAST_STDERR_FILE, which a subshell would lose.
+  start_session "$dir_p22" "sid-p22" resume > "$TEST_DIR/out-p22" || true
+  out_p22=$(cat "$TEST_DIR/out-p22")
+  if jq -e '.active == false and (has("suspended_by_session_end")|not)' "$sf_p22" >/dev/null \
+    && [ ! -e "$rec_p22" ] \
+    && awk -v p="$sf_p22" 'index($0, p) && index($0, "回収済み") {f=1} END {exit !f}' <<< "$out_p22" \
+    && ! grep -qF "/rite:recover" <<< "$out_p22"; then
+    pass "T-22 resume finishes the reap: the state stays inactive, the mark and the record are gone, and stdout says it was reaped"
+  else
+    fail "T-22 resume state=$(jq -c '{active,suspended_by_session_end}' "$sf_p22") record=$([ -e "$rec_p22" ] && echo y || echo n) out=$out_p22"
+  fi
+  end_session "$dir_p22" "sid-p22" || true
+  start_session "$dir_p22" "sid-p22" resume >/dev/null || true
+  if jq -e '.active == false' "$sf_p22" >/dev/null; then
+    pass "T-22 after the reaped session ends, the next resume still leaves the state inactive"
+  else
+    fail "T-22 second resume state=$(jq -c '{active,suspended_by_session_end}' "$sf_p22" 2>/dev/null || echo '<removed>')"
+  fi
+  (cd "$dir_p22" && bash "$FLOW_STATE" set --phase review --issue 101 --branch fix/issue-101-x --pr 55 --next "continue" >/dev/null 2>&1) || true
+  end_session "$dir_p22" "sid-p22" || true
+  marked_after_p22=$(jq -c '{active,suspended_by_session_end}' "$sf_p22")
+  start_session "$dir_p22" "sid-p22" resume > "$TEST_DIR/out-p22" || true
+  if [ "$marked_after_p22" = '{"active":false,"suspended_by_session_end":true}' ] \
+    && jq -e '.active == true and (has("suspended_by_session_end")|not)' "$sf_p22" >/dev/null \
+    && ! grep -qF "回収済み" "$TEST_DIR/out-p22"; then
+    pass "T-22 work started again later is suspended and resumed as usual"
+  else
+    fail "T-22 later suspend=$marked_after_p22 resume=$(jq -c '{active,suspended_by_session_end}' "$sf_p22") out=$(cat "$TEST_DIR/out-p22")"
+  fi
+
+  # The resume cannot clear the mark either: it says so on stdout with the path and /rite:recover,
+  # and neither a later SessionEnd nor the next resume brings the state back.
+  dir_p22b="$TEST_DIR/reap-write-fail-resume"
+  sf_p22b=$(state_file_path "$dir_p22b" "sid-p22b")
+  rec_p22b="$dir_p22b/.rite/state/reap-failed-sid-p22b.flow-state"
+  reap_fail_p22 "$dir_p22b" "sid-p22b" "$dir_p22b/.rite/sessions"
+  chmod 555 "$dir_p22b/.rite/sessions"
+  start_session "$dir_p22b" "sid-p22b" resume > "$TEST_DIR/out-p22" || true
+  chmod 755 "$dir_p22b/.rite/sessions"
+  out_p22=$(cat "$TEST_DIR/out-p22")
+  if jq -e '.active == false and .suspended_by_session_end == true' "$sf_p22b" >/dev/null \
+    && [ -f "$rec_p22b" ] \
+    && grep -qF "rite: session-start: WARNING: could not clear the suspended mark reap-issue left: $sf_p22b" "$LAST_STDERR_FILE" \
+    && awk 'f && /^  [^ ]/ {ok=1} {f = index($0, "could not clear the suspended mark") > 0} END {exit !ok}' "$LAST_STDERR_FILE" \
+    && awk -v p="$sf_p22b" 'index($0, p) && index($0, "/rite:recover") {f=1} END {exit !f}' <<< "$out_p22" \
+    && ! grep -qF "作業中に戻せませんでした" <<< "$out_p22"; then
+    pass "T-22 a resume that cannot clear the mark warns, points to /rite:recover with the path on stdout, and does not try to reactivate"
+  else
+    fail "T-22 resume write failure state=$(jq -c '{active,suspended_by_session_end}' "$sf_p22b") record=$([ -f "$rec_p22b" ] && echo y || echo n) out=$out_p22 err=$(cat "$LAST_STDERR_FILE")"
+  fi
+  end_session "$dir_p22b" "sid-p22b" || true
+  start_session "$dir_p22b" "sid-p22b" resume >/dev/null || true
+  if jq -e '.active == false and (has("suspended_by_session_end")|not)' "$sf_p22b" >/dev/null && [ ! -e "$rec_p22b" ]; then
+    pass "T-22 after the session ends, the next resume finishes the reap instead of reactivating"
+  else
+    fail "T-22 resume after failure state=$(jq -c '{active,suspended_by_session_end}' "$sf_p22b") record=$([ -e "$rec_p22b" ] && echo y || echo n)"
+  fi
+
+  # New work on a session whose record cannot be removed: set writes the state but fails with rc 3
+  # and names the record, so the caller can stop before work goes on over a record that would end it at the next resume.
+  dir_p22d="$TEST_DIR/reap-record-then-set"
+  sf_p22d=$(state_file_path "$dir_p22d" "sid-p22d")
+  rec_p22d="$dir_p22d/.rite/state/reap-failed-sid-p22d.flow-state"
+  reap_fail_p22 "$dir_p22d" "sid-p22d" "$dir_p22d/.rite/sessions"
+  chmod 555 "$dir_p22d/.rite/state"
+  rc_p22d=0
+  (cd "$dir_p22d" && bash "$FLOW_STATE" set --phase review --issue 101 --branch fix/issue-101-x --pr 55 --next "continue") >/dev/null 2>"$TEST_DIR/err-p22" || rc_p22d=$?
+  chmod 755 "$dir_p22d/.rite/state"
+  err_p22=$(cat "$TEST_DIR/err-p22")
+  if [ "$rc_p22d" -eq 3 ] \
+    && grep -qF "ERROR: the state was written, but the failed-reap record could not be removed" <<< "$err_p22" \
+    && grep -qF "$rec_p22d" <<< "$err_p22" \
+    && [ -f "$rec_p22d" ] \
+    && jq -e '.active == true and (has("suspended_by_session_end")|not)' "$sf_p22d" >/dev/null; then
+    pass "T-22 a set that cannot remove the record fails with rc 3 and names the record"
+  else
+    fail "T-22 set with record: rc=$rc_p22d record=$([ -e "$rec_p22d" ] && echo y || echo n) state=$(jq -c '{active,suspended_by_session_end}' "$sf_p22d") err=$err_p22"
+  fi
+  # The record goes only after the state lands: a set that cannot write the state leaves it.
+  chmod 555 "$dir_p22d/.rite/sessions"
+  rc_p22d=0
+  (cd "$dir_p22d" && bash "$FLOW_STATE" set --phase review --issue 101 --branch fix/issue-101-x --pr 55 --next "continue") >/dev/null 2>&1 || rc_p22d=$?
+  chmod 755 "$dir_p22d/.rite/sessions"
+  if [ "$rc_p22d" -eq 1 ] && [ -f "$rec_p22d" ]; then
+    pass "T-22 a set that cannot write the state fails with rc 1 and keeps the record"
+  else
+    fail "T-22 set write failure: rc=$rc_p22d record=$([ -e "$rec_p22d" ] && echo y || echo n)"
+  fi
+  # The worktree self-heal keeps the record, and an active state is never taken as reaped.
+  start_session "$dir_p22d" "sid-p22d" resume > "$TEST_DIR/out-p22" || true
+  if [ -f "$rec_p22d" ] \
+    && jq -e '.active == true and (.worktree // null) == null' "$sf_p22d" >/dev/null \
+    && ! grep -qF "回収済み" "$TEST_DIR/out-p22"; then
+    pass "T-22 the worktree self-heal keeps the record, and an active state is not taken as reaped"
+  else
+    fail "T-22 self-heal with record: record=$([ -e "$rec_p22d" ] && echo y || echo n) state=$(jq -c '{active,worktree}' "$sf_p22d") out=$(cat "$TEST_DIR/out-p22")"
+  fi
+  (cd "$dir_p22d" && bash "$FLOW_STATE" set --phase review --issue 101 --branch fix/issue-101-x --pr 55 --next "continue" >/dev/null 2>&1) || true
+  if [ ! -e "$rec_p22d" ]; then
+    pass "T-22 once the record can be removed, set removes it"
+  else
+    fail "T-22 set did not remove the record"
+  fi
+
+  # A review-cycle write starts work too: it removes the record, and fails with rc 3 when it cannot.
+  dir_p22f="$TEST_DIR/reap-record-review-start"
+  sf_p22f=$(state_file_path "$dir_p22f" "sid-p22f")
+  rec_p22f="$dir_p22f/.rite/state/reap-failed-sid-p22f.flow-state"
+  mkdir -p "$dir_p22f/.rite/state"
+  (cd "$dir_p22f" && git init -q && git -c user.email=t@example.com -c user.name=t commit -q --allow-empty -m init)
+  printf '%s' "sid-p22f" > "$dir_p22f/.rite-session-id"
+  (cd "$dir_p22f" && bash "$FLOW_STATE" set --phase pr --issue 101 --branch fix/issue-101-x --pr 55 --next "review" >/dev/null 2>&1) || true
+  printf '["code-quality-reviewer"]' > "$TEST_DIR/selection-p22f.json"
+  printf '{}' > "$rec_p22f"
+  chmod 555 "$dir_p22f/.rite/state"
+  rc_p22f=0
+  (cd "$dir_p22f" && bash "$FLOW_STATE" review-start --selection "$TEST_DIR/selection-p22f.json") >/dev/null 2>"$TEST_DIR/err-p22" || rc_p22f=$?
+  chmod 755 "$dir_p22f/.rite/state"
+  if [ "$rc_p22f" -eq 3 ] && [ -f "$rec_p22f" ] && grep -qF "$rec_p22f" "$TEST_DIR/err-p22" \
+    && jq -e '.review_cycle.status == "collecting"' "$sf_p22f" >/dev/null; then
+    pass "T-22 a review-cycle write that cannot remove the record writes the state, fails with rc 3 and names the record"
+  else
+    fail "T-22 review-start with record: rc=$rc_p22f record=$([ -e "$rec_p22f" ] && echo y || echo n) cycle=$(jq -c '.review_cycle.status' "$sf_p22f") err=$(cat "$TEST_DIR/err-p22")"
+  fi
+  # The record goes only after the state lands: a review-cycle write that cannot write the state leaves it.
+  chmod 555 "$dir_p22f/.rite/sessions"
+  rc_p22f=0
+  (cd "$dir_p22f" && bash "$FLOW_STATE" review-abandon --reason test) >/dev/null 2>&1 || rc_p22f=$?
+  chmod 755 "$dir_p22f/.rite/sessions"
+  if [ "$rc_p22f" -eq 1 ] && [ -f "$rec_p22f" ]; then
+    pass "T-22 a review-cycle write that cannot write the state fails with rc 1 and keeps the record"
+  else
+    fail "T-22 review-abandon write failure: rc=$rc_p22f record=$([ -e "$rec_p22f" ] && echo y || echo n)"
+  fi
+  rc_p22f=0
+  (cd "$dir_p22f" && bash "$FLOW_STATE" review-start --selection "$TEST_DIR/selection-p22f.json") >/dev/null 2>"$TEST_DIR/err-p22" || rc_p22f=$?
+  if [ "$rc_p22f" -eq 0 ] && [ ! -e "$rec_p22f" ]; then
+    pass "T-22 a review-cycle write removes the record"
+  else
+    fail "T-22 review-start: rc=$rc_p22f record=$([ -e "$rec_p22f" ] && echo y || echo n) err=$(cat "$TEST_DIR/err-p22")"
+  fi
+
+  # The resume clears the mark but cannot remove the record: stdout still says it was reaped and
+  # names the record. The state left is inactive without the mark, so the next resume does not
+  # take it as reaped again.
+  dir_p22g="$TEST_DIR/reap-record-stays-on-resume"
+  sf_p22g=$(state_file_path "$dir_p22g" "sid-p22g")
+  rec_p22g="$dir_p22g/.rite/state/reap-failed-sid-p22g.flow-state"
+  reap_fail_p22 "$dir_p22g" "sid-p22g" "$dir_p22g/.rite/sessions"
+  chmod 555 "$dir_p22g/.rite/state"
+  start_session "$dir_p22g" "sid-p22g" resume > "$TEST_DIR/out-p22" || true
+  out_p22=$(cat "$TEST_DIR/out-p22")
+  if jq -e '.active == false and (has("suspended_by_session_end")|not)' "$sf_p22g" >/dev/null \
+    && [ -f "$rec_p22g" ] \
+    && grep -qF "rite: session-start: ERROR: the reaped state was deactivated, but its failed-reap record could not be removed: $rec_p22g" "$LAST_STDERR_FILE" \
+    && grep -q '^  ERROR: the state was written' "$LAST_STDERR_FILE" \
+    && awk -v p="$rec_p22g" 'index($0, p) && index($0, "回収済み") && index($0, "exit 3") {f=1} END {exit !f}' <<< "$out_p22" \
+    && ! grep -qF "/rite:recover" <<< "$out_p22"; then
+    pass "T-22 a resume that clears the mark but cannot remove the record says it was reaped and names the record"
+  else
+    fail "T-22 record left on resume: state=$(jq -c '{active,suspended_by_session_end}' "$sf_p22g") record=$([ -f "$rec_p22g" ] && echo y || echo n) out=$out_p22 err=$(cat "$LAST_STDERR_FILE")"
+  fi
+  start_session "$dir_p22g" "sid-p22g" resume > "$TEST_DIR/out-p22" || true
+  chmod 755 "$dir_p22g/.rite/state"
+  if jq -e '.active == false' "$sf_p22g" >/dev/null && ! grep -qF "回収済み" "$TEST_DIR/out-p22"; then
+    pass "T-22 a record next to an unmarked inactive state is not taken as a reap"
+  else
+    fail "T-22 unmarked state with record: state=$(jq -c '{active,suspended_by_session_end}' "$sf_p22g") out=$(cat "$TEST_DIR/out-p22")"
+  fi
+
+  # Neither the state nor the record can be written: the reap says resume may bring the state back.
+  dir_p22c="$TEST_DIR/reap-record-fail"
+  sf_p22c=$(state_file_path "$dir_p22c" "sid-p22c")
+  mkdir -p "$dir_p22c/.rite/sessions" "$dir_p22c/.rite/state"
+  reap_fail_p22 "$dir_p22c" "sid-p22c" "$dir_p22c/.rite/sessions" "$dir_p22c/.rite/state"
+  if [ "$rc_p22" -eq 0 ] \
+    && grep -qF "WARNING: reap-issue: could not record the failed reap, so resume may reactivate: $sf_p22c" <<< "$err_p22"; then
+    pass "T-22 a reap that cannot write the record warns that resume may reactivate, rc=0"
+  else
+    fail "T-22 record failure rc=$rc_p22 err=$err_p22"
+  fi
+
+  # Only the final rename of the record fails (a read-only directory sits at its path):
+  # the copy made on the way is removed.
+  dir_p22e="$TEST_DIR/reap-record-rename-fail"
+  mkdir -p "$dir_p22e/.rite/state/reap-failed-sid-p22e.flow-state"
+  reap_fail_p22 "$dir_p22e" "sid-p22e" "$dir_p22e/.rite/sessions" "$dir_p22e/.rite/state/reap-failed-sid-p22e.flow-state"
+  left_p22e=$(ls -A "$dir_p22e/.rite/state" | grep -v '^\.gitignore$' || true)
+  if [ "$rc_p22" -eq 0 ] && [ "$left_p22e" = "reap-failed-sid-p22e.flow-state" ] \
+    && grep -qF "could not record the failed reap" <<< "$err_p22"; then
+    pass "T-22 when only the rename of the record fails, the temporary copy does not stay behind"
+  else
+    fail "T-22 rename failure rc=$rc_p22 left=$left_p22e err=$err_p22"
   fi
 fi
 echo ""

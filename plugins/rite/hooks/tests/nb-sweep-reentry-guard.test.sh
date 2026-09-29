@@ -106,6 +106,11 @@ assert_not_grep "T-01 no conversation-marker skip" "$ITERATE" '既出ならス�
 assert_grep_in_section "T-01 skip authority is basename match" "$ITERATE" \
   '## ステップ 5.S: NB digest sweep' '## ステップ 5: 完了通知' \
   '第 2 フィールドが最新 review JSON の basename と一致し、sweep の保留ファイルが無いときだけ'
+# fix を invoke するかは marker 表だけが決める。件数 0 の pending（止まった sweep の片付け）を no-op と読ませない
+assert_grep_in_section "T-01 fix is skipped only for noop / skipped (table decides)" "$ITERATE" \
+  '## ステップ 5.S: NB digest sweep' '## ステップ 5: 完了通知' \
+  '`noop` / `skipped` では fix を invoke しない（下表）'
+assert_not_grep "T-01 no count-zero no-op rule" "$ITERATE" '対象 0 (件)?は no-op'
 
 # --- T-02: empty → noop ファイル write。失敗時はファイルを残さない（偽 skip 禁止） ---
 assert_grep_in_section "T-02 empty writes noop basename" "$ITERATE_STEP" \
@@ -600,7 +605,7 @@ printf '| A-1 | a.ts:1 | issued | #5 | 7-20260202000000.json |\n' > "$r/.rite/st
   cp "$r/out" "$r/resume.out"
   run_step "$r" nb-sweep-collect --pr 7 --sweep-origin '[review:mergeable]' )
 assert "T-14 persist 後の再開: 0.7 は resume" 1 "$(grep -c '^\[CONTEXT\] ITERATE_NB_SWEEP_RESUME=resume;' "$r/resume.out")"
-assert "T-14 collect empty でも entries があれば pending（fix へ渡す）" 1 "$(grep -c '^\[CONTEXT\] ITERATE_NB_SWEEP=pending;' "$r/out")"
+assert "T-14 collect empty でも entries があれば pending（fix へ渡す）" 1 "$(grep -c '^\[CONTEXT\] ITERATE_NB_SWEEP=pending; count=0$' "$r/out")"
 assert "T-14 collect empty でも entries があれば noop を書かない" 0 "$([ -e "$r/.rite/state/nb-sweep-done-7.txt" ] && echo 1 || echo 0)"
 assert "T-14 collect empty でも entries があれば入口記録を残す" "7-20260202000000.json [review:mergeable]" "$(cat "$(origin_of "$r")")"
 

@@ -19,12 +19,14 @@
 #
 # Also reaps orphaned `rite-review-mutation-*` detached worktrees left in
 # `${TMPDIR:-/tmp}` by reviewer subagents. `_reviewer-base.md`'s
-# worktree-only mutation pattern (`mktemp -d -t rite-review-mutation-XXXXXX`
+# worktree-only mutation pattern (`mktemp -d -t rite-review-mutation-owner.<session_id>.XXXXXX`
 # + `git worktree add --detach`) lets reviewers run verification experiments
 # without mutating the parent working tree, but the reviewer's READ-ONLY
 # contract forbids `git worktree remove`, so these detached worktrees (no named
-# branch -> not matched by the Step 1 branch sweep) are swept here by path name
-# with the same 24h age guard.
+# branch -> not matched by the Step 1 branch sweep) are swept here: by path name
+# with the same 24h age guard (Step 4), and without an age guard from
+# `git worktree list --porcelain` (Step 4-P), which keeps a worktree whose name
+# records a different, still-live owner session.
 #
 # Strict regex `^pr-[0-9]+-(cycle[0-9]+|test|experiment|mutation|verify|check|sandbox)$`
 # protects unrelated branches (e.g. `pr-918-cycle4-feature`,
@@ -423,7 +425,7 @@ reap_orphan_dirs "orphan workdir" "$workdir_tmp_base" 'rite-pr-create-*' \
 # -----------------------------------------------------------------------
 # Step 4: Reap orphaned reviewer detached tmp worktrees (`rite-` namespace).
 # reviewer subagent の mutation/verification 検証は `_reviewer-base.md` の
-# worktree-only mutation pattern (`mktemp -d -t rite-review-mutation-XXXXXX`
+# worktree-only mutation pattern (`mktemp -d -t rite-review-mutation-owner.<session_id>.XXXXXX`
 # + `git worktree add --detach`) に従って detached worktree を作るが、reviewer は
 # READ-ONLY 契約で `git worktree remove` を実行禁止のため自己回収できず、
 # orchestrator 側の本 GC が回収する (doc と実装の drift 解消)。
@@ -440,9 +442,9 @@ reap_orphan_dirs "orphan workdir" "$workdir_tmp_base" 'rite-pr-create-*' \
 #
 # age ガード (mtime > WORKDIR_REAP_AGE_MINUTES) は Step 3 workdir reap と同一閾値
 # (24h) を共有する: 健全な検証は reviewer subagent の当該ターン (数分) で完結するため、
-# 閾値超過の worktree は確実に orphan。並行 session の in-flight worktree を誤回収しない
-# ための保守的マージン (D-04: 即時 0 残骸ではなく cross-session 安全と両立する
-# 確実な最終回収。即時回収は reviewer 側 session-scoped 記録を要し本 Issue の Non-Target)。
+# 閾値超過の worktree は確実に orphan。本ステップは所有者を見ない。閾値未満の worktree の
+# 即時回収は Step 4-P が受け持ち、所有セッションの記録（名前）で並行セッションの
+# in-flight worktree を守る。
 # 走査先は create.md / `mktemp -d -t` と同じ `${TMPDIR:-/tmp}` を尊重する。
 #
 # 回収は `git worktree remove --force` を第一手とする (worktree 登録メタデータと
@@ -641,6 +643,106 @@ if [ -f "$manifest_path" ]; then
   fi
 fi
 
+# Liveness TTL, shared by every liveness check in this script (Step 4-P's
+# mutation-worktree owner check and Step 5's session-worktree signals (A)/(B)).
+# Protecting an active=true holder with NO time bound deadlocks these checks
+# forever when a session ends WITHOUT session-end.sh's SessionEnd hook firing
+# (forced quit / crash / terminal close — see session-end.sh header for which
+# exits skip it): its flow-state stays `active=true` and the worktree/branch it
+# holds can never be lazily reaped. TTL_HOURS bounds that: an active=true
+# holder is protected only while its `updated_at` is within the TTL.
+# Overridable via env for ops/troubleshooting (no new rite-config.yml key —
+# CLAUDE.md シンプルさを死守する).
+readonly RITE_SESSION_LIVENESS_TTL_HOURS_RAW="${RITE_SESSION_LIVENESS_TTL_HOURS:-24}"
+# Validate the env override is a positive base-10 integer with no leading zero
+# (ops typo guard, e.g. "24h"): an invalid value must not silently corrupt the
+# `* 3600` arithmetic below with a raw bash error. A leading zero (e.g. "010")
+# would pass a laxer `^[0-9]+$` check yet be parsed as octal by bash arithmetic
+# (`$(( 010 * 3600 ))` = 8h, not 10h) — silently wrong TTL, or a hard arithmetic
+# error for octal-invalid digits like "08". `^[1-9][0-9]*$` rejects both "0"
+# and any leading-zero value outright, so the surviving values are always
+# valid decimal input to `$(( ... * 3600 ))` (this also makes a separate
+# `-gt 0` check redundant — the pattern alone guarantees a positive integer).
+# Falls back to the 24h default with a WARNING (fail-safe, same "protect on
+# anything we can't compute" posture as the rest of this guard).
+if [[ "$RITE_SESSION_LIVENESS_TTL_HOURS_RAW" =~ ^[1-9][0-9]*$ ]]; then
+  readonly RITE_SESSION_LIVENESS_TTL_HOURS="$RITE_SESSION_LIVENESS_TTL_HOURS_RAW"
+else
+  echo "WARNING: RITE_SESSION_LIVENESS_TTL_HOURS='$(printf '%s' "$RITE_SESSION_LIVENESS_TTL_HOURS_RAW" | neutralize_ctrl)' は正の整数ではありません（先頭ゼロも不可）。既定値 24 を使用します。" >&2
+  readonly RITE_SESSION_LIVENESS_TTL_HOURS=24
+fi
+
+# _rite_epoch_of_ts: best-effort ISO 8601 UTC (`Z` suffix OR `+HH:MM`/`-HH:MM`
+# offset) -> epoch seconds. Tries GNU `date -d` (Linux) then BSD/macOS
+# `date -j -f` — the same two-step technique as session-ownership.sh's
+# parse_iso8601_to_epoch — but, unlike that helper, reports failure via return
+# code instead of collapsing it to epoch 0. The caller (_rite_ttl_protects)
+# must tell "malformed input" and "this host's date binary can't parse a
+# well-formed timestamp" apart from "genuinely far in the past" — all three
+# would alias to the same huge diff if compared against a fixed epoch-0
+# fallback.
+# The offset alternation (not `Z`-only) matters: flow-state.sh (the canonical
+# writer) emits `Z`, but pre-compact.sh / session-start.sh / session-end.sh
+# emit `+00:00` for the same `updated_at` field — a `Z`-only regex would
+# silently fall into the "malformed" fail-safe (permanent protect, no WARNING)
+# for any session whose last heartbeat came from one of those, reintroducing
+# this Issue's own dead-lock.
+#
+# Single source of truth (cycle 2 review finding): this regex is
+# read by BOTH _rite_epoch_of_ts (below) and _rite_ttl_protects's
+# date-incompatible check, to tell "malformed timestamp" (no WARNING, silent
+# fail-safe) apart from "well-formed but this host's date can't parse it"
+# (WARNING). A prior version duplicated the literal in both places — exactly
+# the two-copies-diverge shape that produced this Issue's own cycle-1 CRITICAL
+# bug (a `Z`-only literal in one copy). One readonly variable, referenced by
+# `=~ $var`, makes that drift structurally impossible.
+readonly _RITE_ISO8601_UTC_RE='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$'
+# Returns 0 with epoch on stdout, 1 on any parse failure.
+_rite_epoch_of_ts() {
+  local ts="$1" epoch ts_norm ts_nocolon
+  [[ "$ts" =~ $_RITE_ISO8601_UTC_RE ]] || return 1
+  # Normalize `Z` to `+00:00` (same technique as session-ownership.sh's
+  # parse_iso8601_to_epoch) so both parse paths below only ever see an
+  # explicit numeric offset.
+  ts_norm="${ts/%Z/+00:00}"
+  if epoch=$(date -u -d "$ts_norm" +%s 2>/dev/null); then
+    printf '%s' "$epoch"; return 0
+  fi
+  # BSD/macOS date -j -f with %z needs the offset without a colon (+00:00 -> +0000).
+  ts_nocolon="${ts_norm%:*}${ts_norm##*:}"
+  if epoch=$(date -j -f '%Y-%m-%dT%H:%M:%S%z' "$ts_nocolon" +%s 2>/dev/null); then
+    printf '%s' "$epoch"; return 0
+  fi
+  return 1
+}
+
+# _rite_ttl_protects: whether an active=true holder last active at
+# `updated_at` (ISO 8601 UTC) is still within the liveness TTL.
+#   0 = protect: within TTL: OR updated_at missing/malformed (fail-safe,
+#       silent) OR this host's `date` cannot parse a well-formed timestamp
+#       (4.5 fail-safe, WARNING emitted once per run — TTL enforcement
+# degrades to the pre- always-protect behavior on that host)
+#   1 = TTL exceeded -> this holder does not protect; the caller decides
+#       whether any other check still does
+# The boundary (age == TTL exactly) counts as "within" -> protect.
+_rite_date_incompat_warned=0
+_rite_ttl_protects() {
+  local updated_at="$1" now_epoch upd_epoch age ttl_seconds
+  [ -n "$updated_at" ] || return 0
+  if ! upd_epoch=$(_rite_epoch_of_ts "$updated_at"); then
+    if [[ "$updated_at" =~ $_RITE_ISO8601_UTC_RE ]] \
+       && [ "$_rite_date_incompat_warned" != "1" ]; then
+      echo "WARNING: この環境の date コマンドで updated_at ($(printf '%s' "$updated_at" | neutralize_ctrl)) を解釈できません。worktree liveness の TTL 判定を skip し、従来どおり active=true holder を無期限に保護します。" >&2
+      _rite_date_incompat_warned=1
+    fi
+    return 0
+  fi
+  now_epoch=$(date -u +%s 2>/dev/null) || return 0
+  age=$(( now_epoch - upd_epoch ))
+  ttl_seconds=$(( RITE_SESSION_LIVENESS_TTL_HOURS * 3600 ))
+  [ "$age" -le "$ttl_seconds" ]
+}
+
 # -----------------------------------------------------------------------
 # Step 4-P: porcelain 走査による TMPDIR 配下 detached worktree 回収。
 #
@@ -655,11 +757,18 @@ fi
 #     macOS の `/var`→`/private/var` 等で porcelain が物理パスを返すケースを含む)
 #   - detached HEAD (porcelain の `detached` 行。`branch refs/heads/...` を持つものは除外)
 #   - リポジトリ配下 (`.rite/worktrees/*` / wiki-worktree / main) は除外
-#   - 自セッション live cwd は除外 (worktree-foreign-cwd.sh --self-root $PPID)
+#   - 別 live セッションの cwd が中にあるものは除外 (worktree-foreign-cwd.sh --self-root $PPID)
+#   - 名前が記録する所有セッションが別の live セッションなら除外
+#     (_rite_mutation_owner_allows_reap。判定できないときも見送る)
 #   - HEAD がどの ref からも到達不能な commit の worktree は除外
 # を満たす worktree を age ガード無しで回収する。reviewer は READ-ONLY で remove できず、
-# cleanup は review 入口 / iterate 終端でのみ走るため、並行 reviewer の in-flight を
-# age で守る必要は無い — 別セッション在席は foreign-cwd が塞ぐ。
+# 自セッションの残骸は次の review 入口 / iterate 終端ですぐ回収したい。ただし cleanup は
+# 別セッションの session start / review 入口 / iterate 終端でも走り、そのとき別セッションの
+# reviewer が一時 worktree を使っている最中でありうる。reviewer は cwd を worktree に置かず
+# `git -C` や短命のサブシェルで操作するため、foreign-cwd の検査ではこれを守れない。
+# そこで reviewer は所有セッション ID を名前に入れて作り（`_reviewer-base.md` の
+# Mutation experiments）、本ステップはその所有セッションが live な間は回収しない。
+# 所有者の記録が無い名前は従来どおり age ガード無しで回収する。
 #
 # dirty は見送り理由にしない: mutation worktree は tracked 書き換えと
 # 実験スクリプトが本質であり、status --porcelain 非空は回収対象の性質そのもの。
@@ -667,6 +776,80 @@ fi
 # 区別する）。判定コマンド失敗時は安全側で見送り + WARNING（silent skip しない）。
 # カウンタは既存 `mutation_worktrees_reaped` を共有する。
 # -----------------------------------------------------------------------
+
+# 自セッション ID。自セッションの残骸は所有者が live でも回収する。runtime context が
+# 無い (rc=2) ときは自セッション一致を判定しない。ID が不正・曖昧 (rc=1) なときも同じで、
+# session-identity.sh が stderr に出す理由とともに WARNING を 1 回出す。
+_rite_self_sid_rc=0
+_rite_self_sid=$(bash "$SCRIPT_DIR/../session-identity.sh") || _rite_self_sid_rc=$?
+if [ "$_rite_self_sid_rc" -ne 0 ]; then
+  _rite_self_sid=""
+  if [ "$_rite_self_sid_rc" -ne 2 ]; then
+    echo "WARNING: 自セッション ID を解決できません (session-identity.sh rc=$_rite_self_sid_rc)。自セッションの一時 worktree も、所有者が live な間は回収しません" >&2
+  fi
+fi
+
+# _rite_mutation_owner_allows_reap: 一時 worktree の名前が記録する所有セッションを見て、
+# 回収してよいかを返す。名前の形は `<prefix>-owner.<session_id>.<random>`
+# (BSD mktemp は末尾にさらに `.<random>` を足す)。
+#   0 = 回収してよい: 所有者の記録が無い / 自セッション / 所有セッションの flow-state が
+#       無い・active でない・updated_at が liveness TTL を超えた
+#   1 = 見送る: 所有セッションが別の live セッション、または判定できない (WARNING を出す)
+# session ID は `.` を含みうるため、名前から切り出さず、既存の flow-state の ID と
+# `owner.<id>.` の前方一致で照合する。
+_rite_mutation_owner_allows_reap() {
+  local wt="$1" base rest sdir f sid owner="" row active updated
+  base="${wt##*/}"
+  case "$base" in
+    rite-review-mutation-owner.*|rite-revert-test-owner.*) ;;
+    *) return 0 ;;
+  esac
+  rest="${base#*-owner.}"
+  case "$rest" in
+    ""|.*|*..*)
+      echo "WARNING: 一時 worktree ($(printf '%s' "$wt" | neutralize_ctrl)) の名前の所有者を読めないため回収を見送りました" >&2
+      return 1 ;;
+  esac
+  case "$rest" in
+    *.*) ;;
+    *)
+      echo "WARNING: 一時 worktree ($(printf '%s' "$wt" | neutralize_ctrl)) の名前の所有者を読めないため回収を見送りました" >&2
+      return 1 ;;
+  esac
+  if [ -n "$_rite_self_sid" ]; then
+    case "$rest" in "$_rite_self_sid".*) return 0 ;; esac
+  fi
+  sdir="$repo_root/.rite/sessions"
+  [ -d "$sdir" ] || return 0
+  if ! [ -r "$sdir" ] || ! [ -x "$sdir" ]; then
+    echo "WARNING: セッション一覧 ($(printf '%s' "$sdir" | neutralize_ctrl)) を読めないため、一時 worktree ($(printf '%s' "$wt" | neutralize_ctrl)) の回収を見送りました" >&2
+    return 1
+  fi
+  for f in "$sdir"/*.flow-state; do
+    [ -f "$f" ] || continue
+    sid="${f##*/}"; sid="${sid%.flow-state}"
+    case "$rest" in
+      "$sid".*) [ "${#sid}" -gt "${#owner}" ] && owner="$sid" ;;
+    esac
+  done
+  [ -n "$owner" ] || return 0
+  if ! row=$(jq -r '[(.active // false | tostring), (.updated_at // "")] | join("\u001f")' "$sdir/$owner.flow-state" 2>/dev/null); then
+    echo "WARNING: 所有セッション $(printf '%s' "$owner" | neutralize_ctrl) の flow-state を読めないため、一時 worktree ($(printf '%s' "$wt" | neutralize_ctrl)) の回収を見送りました" >&2
+    return 1
+  fi
+  IFS=$'\x1f' read -r active updated <<< "$row"
+  [ "$active" = "true" ] || return 0
+  if ! [[ "$updated" =~ $_RITE_ISO8601_UTC_RE ]]; then
+    echo "WARNING: 所有セッション $(printf '%s' "$owner" | neutralize_ctrl) の updated_at を読めないため、一時 worktree ($(printf '%s' "$wt" | neutralize_ctrl)) の回収を見送りました" >&2
+    return 1
+  fi
+  if _rite_ttl_protects "$updated"; then
+    echo "WARNING: 別セッション $(printf '%s' "$owner" | neutralize_ctrl) が使用中の一時 worktree ($(printf '%s' "$wt" | neutralize_ctrl)) の回収を見送りました" >&2
+    return 1
+  fi
+  return 0
+}
+
 _tmp_prefix="${TMPDIR:-/tmp}"
 _tmp_prefix="${_tmp_prefix%/}"
 # Physical (symlink-resolved) forms for macOS-safe prefix match. Git worktree
@@ -722,6 +905,8 @@ if _p_list=$(git worktree list --porcelain 2>"${_p_list_err:-/dev/null}"); then
       # rc=2 = 判定不能 → 回収 (Step 4-W と同規約の後方互換)
       if [ "$_p_fc_rc" -eq 0 ]; then
         echo "WARNING: 別セッションが detached worktree ($_p_path) を使用中のため回収を見送りました" >&2
+      elif ! _rite_mutation_owner_allows_reap "$_p_path"; then
+        :  # 見送りの WARNING は判定関数が出す
       else
         # 到達不能 commit 保護: mutation worktree は本質的に dirty なので
         # 未コミット変更は見送り理由にしない。保護するのは「どの named ref からも
@@ -861,105 +1046,6 @@ _rite_dir_is_self() {
 # when neither is resolvable, which disables the guard (no false skips).
 rite_self_dir="${RITE_WORKTREE:-$rite_invocation_pwd}"
 rite_self_canon=$(_rite_canonical_dir "$rite_self_dir")
-
-# Liveness TTL. Both signals below used to protect an
-# active=true holder with NO time bound, which deadlocks this guard forever
-# when a session ends WITHOUT session-end.sh's SessionEnd hook firing (forced
-# quit / crash / terminal close — see session-end.sh header for which exits
-# skip it): its flow-state stays `active=true` and the worktree/branch it
-# holds can never be lazily reaped. TTL_HOURS bounds that: an active=true
-# holder is protected only while its `updated_at` is within the TTL.
-# Overridable via env for ops/troubleshooting (no new rite-config.yml key —
-# CLAUDE.md シンプルさを死守する).
-readonly RITE_SESSION_LIVENESS_TTL_HOURS_RAW="${RITE_SESSION_LIVENESS_TTL_HOURS:-24}"
-# Validate the env override is a positive base-10 integer with no leading zero
-# (ops typo guard, e.g. "24h"): an invalid value must not silently corrupt the
-# `* 3600` arithmetic below with a raw bash error. A leading zero (e.g. "010")
-# would pass a laxer `^[0-9]+$` check yet be parsed as octal by bash arithmetic
-# (`$(( 010 * 3600 ))` = 8h, not 10h) — silently wrong TTL, or a hard arithmetic
-# error for octal-invalid digits like "08". `^[1-9][0-9]*$` rejects both "0"
-# and any leading-zero value outright, so the surviving values are always
-# valid decimal input to `$(( ... * 3600 ))` (this also makes a separate
-# `-gt 0` check redundant — the pattern alone guarantees a positive integer).
-# Falls back to the 24h default with a WARNING (fail-safe, same "protect on
-# anything we can't compute" posture as the rest of this guard).
-if [[ "$RITE_SESSION_LIVENESS_TTL_HOURS_RAW" =~ ^[1-9][0-9]*$ ]]; then
-  readonly RITE_SESSION_LIVENESS_TTL_HOURS="$RITE_SESSION_LIVENESS_TTL_HOURS_RAW"
-else
-  echo "WARNING: RITE_SESSION_LIVENESS_TTL_HOURS='$(printf '%s' "$RITE_SESSION_LIVENESS_TTL_HOURS_RAW" | neutralize_ctrl)' は正の整数ではありません（先頭ゼロも不可）。既定値 24 を使用します。" >&2
-  readonly RITE_SESSION_LIVENESS_TTL_HOURS=24
-fi
-
-# _rite_epoch_of_ts: best-effort ISO 8601 UTC (`Z` suffix OR `+HH:MM`/`-HH:MM`
-# offset) -> epoch seconds. Tries GNU `date -d` (Linux) then BSD/macOS
-# `date -j -f` — the same two-step technique as session-ownership.sh's
-# parse_iso8601_to_epoch — but, unlike that helper, reports failure via return
-# code instead of collapsing it to epoch 0. The caller (_rite_ttl_protects)
-# must tell "malformed input" and "this host's date binary can't parse a
-# well-formed timestamp" apart from "genuinely far in the past" — all three
-# would alias to the same huge diff if compared against a fixed epoch-0
-# fallback.
-# The offset alternation (not `Z`-only) matters: flow-state.sh (the canonical
-# writer) emits `Z`, but pre-compact.sh / session-start.sh / session-end.sh
-# emit `+00:00` for the same `updated_at` field — a `Z`-only regex would
-# silently fall into the "malformed" fail-safe (permanent protect, no WARNING)
-# for any session whose last heartbeat came from one of those, reintroducing
-# this Issue's own dead-lock.
-#
-# Single source of truth (cycle 2 review finding): this regex is
-# read by BOTH _rite_epoch_of_ts (below) and _rite_ttl_protects's
-# date-incompatible check, to tell "malformed timestamp" (no WARNING, silent
-# fail-safe) apart from "well-formed but this host's date can't parse it"
-# (WARNING). A prior version duplicated the literal in both places — exactly
-# the two-copies-diverge shape that produced this Issue's own cycle-1 CRITICAL
-# bug (a `Z`-only literal in one copy). One readonly variable, referenced by
-# `=~ $var`, makes that drift structurally impossible.
-readonly _RITE_ISO8601_UTC_RE='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$'
-# Returns 0 with epoch on stdout, 1 on any parse failure.
-_rite_epoch_of_ts() {
-  local ts="$1" epoch ts_norm ts_nocolon
-  [[ "$ts" =~ $_RITE_ISO8601_UTC_RE ]] || return 1
-  # Normalize `Z` to `+00:00` (same technique as session-ownership.sh's
-  # parse_iso8601_to_epoch) so both parse paths below only ever see an
-  # explicit numeric offset.
-  ts_norm="${ts/%Z/+00:00}"
-  if epoch=$(date -u -d "$ts_norm" +%s 2>/dev/null); then
-    printf '%s' "$epoch"; return 0
-  fi
-  # BSD/macOS date -j -f with %z needs the offset without a colon (+00:00 -> +0000).
-  ts_nocolon="${ts_norm%:*}${ts_norm##*:}"
-  if epoch=$(date -j -f '%Y-%m-%dT%H:%M:%S%z' "$ts_nocolon" +%s 2>/dev/null); then
-    printf '%s' "$epoch"; return 0
-  fi
-  return 1
-}
-
-# _rite_ttl_protects: whether an active=true holder last active at
-# `updated_at` (ISO 8601 UTC) is still within the liveness TTL.
-#   0 = protect: within TTL: OR updated_at missing/malformed (fail-safe,
-#       silent) OR this host's `date` cannot parse a well-formed timestamp
-#       (4.5 fail-safe, WARNING emitted once per run — TTL enforcement
-# degrades to the pre- always-protect behavior on that host)
-#   1 = TTL exceeded -> not protected by this signal (still subject to the
-#       other liveness signal / Gates 1-3)
-# The boundary (age == TTL exactly) counts as "within" -> protect.
-_rite_date_incompat_warned=0
-_rite_ttl_protects() {
-  local updated_at="$1" now_epoch upd_epoch age ttl_seconds
-  [ -n "$updated_at" ] || return 0
-  if ! upd_epoch=$(_rite_epoch_of_ts "$updated_at"); then
-    if [[ "$updated_at" =~ $_RITE_ISO8601_UTC_RE ]] \
-       && [ "$_rite_date_incompat_warned" != "1" ]; then
-      echo "WARNING: この環境の date コマンドで updated_at ($(printf '%s' "$updated_at" | neutralize_ctrl)) を解釈できません。worktree liveness の TTL 判定を skip し、従来どおり active=true holder を無期限に保護します。" >&2
-      _rite_date_incompat_warned=1
-    fi
-    return 0
-  fi
-  now_epoch=$(date -u +%s 2>/dev/null) || return 0
-  age=$(( now_epoch - upd_epoch ))
-  ttl_seconds=$(( RITE_SESSION_LIVENESS_TTL_HOURS * 3600 ))
-  [ "$age" -le "$ttl_seconds" ]
-}
 
 # Worktree liveness guard. The 4th protection layer:
 # extend Gate 0 self-exclusion to ALL sessions that may still resume into this

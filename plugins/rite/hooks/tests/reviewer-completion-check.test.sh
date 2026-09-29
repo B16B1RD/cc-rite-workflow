@@ -222,8 +222,11 @@ test_dir = pathlib.Path(sys.argv[3])
 skill = (plugin / "skills/pr-review/SKILL.md").read_text(encoding="utf-8")
 section = re.search(r"(?ms)^### 5\.1 Result Collection\n(.*?)(?=^### |\Z)", skill)
 assert section, "the caller's result-collection section must exist"
-blocks = re.findall(r"(?ms)^```bash\n(# reviewer-completion-gate\n.*?)^```", section.group(1))
+blocks = re.findall(r"(?ms)^```bash\n(bash \{plugin_root\}/scripts/pr-review-step\.sh completion-gate [^\n]*)\n^```", section.group(1))
 assert len(blocks) == 1, "one executable completion gate must precede consolidation"
+step = (plugin / "scripts/pr-review-step.sh").read_text(encoding="utf-8")
+gate = re.search(r"(?ms)^step_completion_gate\(\) \{\n(.*?)^\}$", step)
+assert gate and gate.group(1).startswith("# reviewer-completion-gate\n"), "the completion-gate step must run the gate"
 baseline_bytes = baseline.read_bytes()
 incomplete = json.loads(baseline_bytes)
 incomplete["reviewers"].pop()
@@ -232,9 +235,10 @@ missing_result.write_text(json.dumps(incomplete), encoding="utf-8")
 
 for path, expected in [(baseline, 0), (missing_result, 1), (test_dir / "absent.json", 1)]:
     script = blocks[0].replace("{plugin_root}", shlex.quote(str(plugin)))
-    script = script.replace('"{reviewer_completions_file}"', shlex.quote(str(path)))
+    script = script.replace("{reviewer_completions_file}", shlex.quote(str(path)))
     assert "{reviewer_completions_file}" not in script, "manifest placeholder must be substituted"
-    script += "\nprintf '%s\\n' '[review:mergeable]'\n"
+    # A non-zero call line returns to the caller's failure path instead of the next step.
+    script += " || exit $?\nprintf '%s\\n' '[review:mergeable]'\n"
     result = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
     assert result.returncode == expected, (path, result.returncode, result.stderr)
     if expected == 0:

@@ -1274,14 +1274,39 @@ done
 reset_stubs
 r=$(new_root t29-ledger)
 put_json "$r" "9-20260101120000.json" "$FINDING_JSON"
-jq -n --argjson c "$(comment_obj "$(record_body "$(printf '%s\n' '| F-01 | plugins/rite/skills/cleanup/SKILL.md:12 | recorded | 旧形式 |' '| F-07 | other.md:5 | issued | #77 https://example.test/issues/77 |')")")" '[[$c]]' > "$GH_API_JSON"
+jq -n --argjson c "$(comment_obj "$(record_body "$(printf '%s\n' \
+  '| F-01 | plugins/rite/skills/cleanup/SKILL.md:12 | recorded | 旧形式 |' \
+  '| F-07 | other.md:5 | issued | #77 https://example.test/issues/77 |' \
+  '| F-08 | x.md:2 | LINK | 追跡先 #5 |' \
+  '| F-09 | y.md:3 | REJECT | a \| b の間は不要 | 9-20251231120000.json |' \
+  '| F-10 | z.md:4 | RESOLVED | 解消の根拠 | 9-20251231120000.json |' \
+  '| F-11 | w.md:5 | ADOPT | 採用の前提 | 9-20251231120000.json |')")")" '[[$c]]' > "$GH_API_JSON"
 ADOPT_MODE=manual
 run_target "$r" --list-candidates "$TMP_ROOT/t29-ledger.json"
-assert "T-29 一覧の ledger は issued / LINK / REJECT 行だけを運ぶ" "F-07|other.md:5|issued|#77 https://example.test/issues/77" \
-  "$(jq -r '[.ledger[] | "\(.id)|\(.loc)|\(.disposition)|\(.premise)"] | join(",")' "$TMP_ROOT/t29-ledger.json")"
-assert "T-29 位置の違う issued 行では候補を除外しない" "1" "$(jq '.candidates | length' "$TMP_ROOT/t29-ledger.json")"
+assert "T-29 一覧の ledger は issued / LINK / REJECT 行だけを運ぶ" "F-07:issued,F-08:LINK,F-09:REJECT" \
+  "$(jq -r '[.ledger[] | "\(.id):\(.disposition)"] | join(",")' "$TMP_ROOT/t29-ledger.json")"
+assert "T-29 ledger の issued 行は起票先の番号を運ぶ" "other.md:5|#77 https://example.test/issues/77" \
+  "$(jq -r '.ledger[] | select(.id == "F-07") | "\(.loc)|\(.premise)"' "$TMP_ROOT/t29-ledger.json")"
+assert "T-29 ledger の REJECT 行はエスケープ済みパイプを判定文に保ち、出典を運ぶ" 'a \| b の間は不要|9-20251231120000.json' \
+  "$(jq -r '.ledger[] | select(.id == "F-09") | "\(.premise)|\(.source)"' "$TMP_ROOT/t29-ledger.json")"
+assert "T-29 id も位置も違う issued 行では候補を除外しない" "1" "$(jq '.candidates | length' "$TMP_ROOT/t29-ledger.json")"
 assert_grep "T-29 6.0.A は ledger から既存 Issue へ紐づける" "$PLUGIN_ROOT/skills/cleanup/SKILL.md" \
   '既存の Issue が候補と同じ根因を追跡していれば、文面・位置・id が変わっていても記録の `tracker` にその番号を入れる'
+assert_grep "T-29 6.0.A は ledger 行のキーを prior のキーへ写す" "$PLUGIN_ROOT/skills/cleanup/SKILL.md" \
+  '行の `id` を `finding_id`、`loc` を `file_line` に写し、`source` は写さない'
+# 候補が先送り欠陥だけでも、一覧は台帳の行を運ぶ (指摘が無くても sweep 起票済みの根因へ紐づけられる)
+reset_stubs
+r=$(new_root t29-ledger-deferred)
+printf '%s\n' '## 9. Decision Log' '' '- 2026-01-01 D-01: first defect / Reason: r1 / Impact: i1 <!-- rite:deferred-defect pr=9 -->' > "$STUB_DIR/issue-body.md"
+export GH_ISSUE_BODY="$STUB_DIR/issue-body.md"
+GH_HEAD_OID=$(git_head_commit "$r") || fail "T-29 fixture の commit を作れない"
+export GH_HEAD_OID
+jq -n --argjson c "$(comment_obj "$(record_body '| F-07 | other.md:5 | issued | #77 https://example.test/issues/77 |')")" '[[$c]]' > "$GH_API_JSON"
+ADOPT_MODE=manual
+run_target "$r" --list-candidates "$TMP_ROOT/t29-ledger-deferred.json"
+assert "T-29 先送り欠陥だけの一覧も ledger に issued 行を運ぶ" "deferred|F-07:issued" \
+  "$(jq -r '"\([.candidates[].kind] | unique | join(","))|\([.ledger[] | "\(.id):\(.disposition)"] | join(","))"' "$TMP_ROOT/t29-ledger-deferred.json")"
+assert_not_grep "T-29 台帳を読めたときは unavailable を出さない" "$ERR" 'FOLLOW_UP_SWEEP_ISSUED=unavailable'
 # sweep が書く出典付きの 5 列の REJECT 行は、出典が finding の出典 JSON と一致するときだけ除外する
 for t29_src in 9-20260101120000.json 9-20251231120000.json; do
   reset_stubs

@@ -27,7 +27,7 @@ argument-hint: "<pr_number>"
 2. review sentinel を判定（`[review:mergeable]` → ステップ 5.S / `[review:fix-needed:N]` → ステップ 3 / error・不在 → 1 回自動再試行、再失敗時は停止）
 3. `/rite:fix` を invoke
 4. fix sentinel を判定（通常ループ: `[fix:pushed]` → ステップ 1 に戻る / `[fix:non-fatal-only]` / `[fix:replied-only]` → ステップ 5.S / `[fix:cancelled-by-user]` → 終了 / error・不在 → 1 回自動再試行、再失敗時は停止。`--nb-sweep` 経由は 5.S 専用表 — ステップ 1 に戻らない。`[fix:sweep-done]` はこの経由でだけ返る）
-5.S. `[review:mergeable]` / `[fix:non-fatal-only]` / `[fix:replied-only]` 後の NB digest sweep（対象 0 は no-op。同一 review JSON で 2 回禁止。新しい JSON は再 sweep する）。成功後は PR 内推奨の修正（未着手の `pr_recommendations[]` があれば `/rite:fix` → ステップ 1）、無ければ完了前確認へ
+5.S. `[review:mergeable]` / `[fix:non-fatal-only]` / `[fix:replied-only]` 後の NB digest sweep（`noop` / `skipped` では fix を invoke しない。同一 review JSON で 2 回禁止。新しい JSON は再 sweep する）。成功後は PR 内推奨の修正（未着手の `pr_recommendations[]` があれば `/rite:fix` → ステップ 1）、無ければ完了前確認へ
 5. 完了前確認のあと完了通知を出す（目的逸脱時は出さない）
 6. （発火時のみ）サーキットブレーカー: counter と停止理由を記録し、batch は `[iterate:max-cycles-reached]`、対話は `[iterate:max-cycles-stopped]` と停止通知を出して終了する
 
@@ -339,7 +339,7 @@ args: "{pr_number}"
 
 ## ステップ 5.S: NB digest sweep
 
-`[review:mergeable]` / `[fix:non-fatal-only]` / `[fix:replied-only]` 到達後・完了通知前に、未 sweep の最新 review JSON につき **1 回**。対象 0 件は no-op（fix を invoke しない。sweep の保留ファイルの候補は collect が対象へ合流させるので、保留があれば対象は 0 件にならない）。スコープ外処分（triage）の保留ファイルがあれば、完了へ進まずに止まる。同一 review JSON では 2 回 invoke しない。新しい JSON では再 sweep する。silent skip 禁止。Stop hook が `review:mergeable` / `fix:non-fatal-only` / `fix:replied-only` の FINALIZE で完了通知を求めても、5.S 未実施なら先に本ステップを実行する。成功後は PR 内推奨の修正と完了前確認を経てからステップ 5 へ。Stop hook がステップ 5 を求めてもこの 2 つを飛ばさない。
+`[review:mergeable]` / `[fix:non-fatal-only]` / `[fix:replied-only]` 到達後・完了通知前に、未 sweep の最新 review JSON につき **1 回**。`noop` / `skipped` では fix を invoke しない（下表）。スコープ外処分（triage）の保留ファイルがあれば、完了へ進まずに止まる。同一 review JSON では 2 回 invoke しない。新しい JSON では再 sweep する。silent skip 禁止。Stop hook が `review:mergeable` / `fix:non-fatal-only` / `fix:replied-only` の FINALIZE で完了通知を求めても、5.S 未実施なら先に本ステップを実行する。成功後は PR 内推奨の修正と完了前確認を経てからステップ 5 へ。Stop hook がステップ 5 を求めてもこの 2 つを飛ばさない。
 rationale: references/rationale.md#nb-sweep-step
 
 入口の通常ループ sentinel（ステップ 0.7 から入ったときは `origin=`）を `{sweep_origin}` として保持する。collect は `pending` のときこの値を入口記録に書く。5.S 再入時も保持値を使い、内部の `[fix:sweep-done]` や handoff で上書きしない。
@@ -468,7 +468,7 @@ bash {plugin_root}/hooks/scripts/pr-cycle-cleanup.sh 2>&1 || true
 
 これは正常終了・ユーザー中断の**両経路**で実行する (どちらの出口でも残骸の累積を防ぐ)。出力 status 行 (`[pr-cycle-cleanup] status=...`) はそのまま表示し、何を回収したかを可視化する。
 
-> **24h age guard**: 直前に作った若い `rite-review-mutation-*` / `rite-revert-test-*` detached worktree はこの発火では消えず、次回 cleanup (24h 経過後) で回収される。即時 0 残骸ではなく **確実な最終回収**。
+> **所有者つきの一時 worktree**: 本ループの reviewer が作った `rite-review-mutation-*` / `rite-revert-test-*` detached worktree は、この発火で作成直後でも回収される。名前に別の live セッションを所有者として記録したものは、その所有者が live な間は残る。
 
 ### ステップ 5.0.1: run を閉じる (cycle counter のリセット)
 
@@ -861,6 +861,7 @@ rationale: references/rationale.md#resume-routes-no-state-read
   - `ERROR: rite-config.yml を読めません: <path>`: 表示されたパスの権限を直す
   - `main checkout root を解決できません (state-path-resolve.sh rc=…)`: `state-path-resolve.sh` を実行できなかった（`rc=127` は欠落、`rc=126` は読めない）。直前の `ERROR: bash: …` 行に出るファイルを確かめ、プラグインを取得し直す（プラグインの破損 / 版 skew）
 - `[fix:error]` 時: [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) に従い 1 回だけ自動再試行し、再失敗時は停止する
+- 合意して Issue を改訂したことで仕様不一致の停止が起きた場合: 同じ run のまま [仕様改訂の記録](../../references/review-stagnation.md#仕様改訂の記録) の手順で `review-reconcile` し、記録が `next_action` に書く操作（`/rite:iterate` または `/rite:recover`）で改訂後の仕様によるレビューへ進む
 - reviewer が non-deterministic に振動する場合: 収束トレンドの発散または `safety.max_review_cycles`（既定 15）到達でステップ 6 に進み、人間に問わず停止する。batch は `[iterate:max-cycles-reached]` で当該 Issue を failed 扱いにしてバッチを停止し、対話は `[iterate:max-cycles-stopped]` で終了する。再開は `review_run` がない legacy state では `/rite:iterate {pr_number}` の明示的な再実行、`review_run` がある run ではステップ 6.2 の `{resume_routes}` が名指しする経路で行う。
 
 ---

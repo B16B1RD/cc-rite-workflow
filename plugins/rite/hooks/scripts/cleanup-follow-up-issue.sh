@@ -40,7 +40,8 @@
 #                        {"candidates": [{"id", "kind": "finding"|"deferred", "source", "finding"|"text"}],
 #                         "head", "review_result", "adoption", "ledger"}。review_result は head が PR の head のとき空。
 #                        ledger は関連 Issue の台帳の issued / LINK / REJECT 行 ({id, loc, disposition, premise, source})。
-#                        台帳を読めないときは空 (その旨は FOLLOW_UP_SWEEP_ISSUED=unavailable で出る)。
+#                        関連 Issue があれば指摘の有無にかかわらず読む。読めないときは空で、その旨は
+#                        FOLLOW_UP_SWEEP_ISSUED=unavailable で出る (関連 Issue が無いときも空)。
 #                        0 件で終えるときは candidates が空で reason を持つ。
 #                        判定済み記録は書かない。同じ --source-issue / --exclude-ids の起票実行と同じ候補になる
 #   --base               PR の base ref。ゲートの --base (origin=pr の差分位置の照合) に渡す。起票実行では必須
@@ -574,18 +575,40 @@ sweep_issued_unavailable() {
   echo "WARNING: $2。sweep 起票済みの指摘を除外せず転記します (PR #${PR_NUMBER})" >&2
   echo "[CONTEXT] FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=$1; pr=${PR_NUMBER}" >&2
 }
+# 一覧の ledger (分類役が id・文面・位置の変わった候補を既存 Issue / REJECT へ紐づける材料) は、指摘の有無に
+# かかわらず関連 Issue があれば読む。記録コメントは書き込み経路 (review-nonblocking-record.sh) が PATCH する
+# 1 件だけを読み、関連 Issue の解決・記録コメントの同定・CRLF の正規化と診断は helper が行う。
+# 台帳行の分解は nb-sweep-collect.sh と同じ式 (セル内のエスケープ済みパイプを区切りにしない)。
 ledger_hint='[]'
+ledger_unread=""
+if [ -n "$SOURCE_ISSUE" ]; then
+  rite_tempfile_new comments_err "fu-comments" || exit 1
+  if ! record_body=$(bash "$SCRIPT_DIR/../review-nonblocking-record.sh" --print-record-body \
+      --pr "$PR_NUMBER" --owner-repo "${OWNER}/${REPO}"); then
+    ledger_unread=comments_api
+  elif ! ledger_hint=$(printf '%s' "$record_body" | jq -Rsce '
+    def trim: gsub("^\\s+|\\s+$"; "");
+    [ split("### 却下台帳\n")[1:][]
+        | split("📎 non_blocking_count:")[0] | split("\n### ")[0]
+        | split("\n")[] | select(startswith("|"))
+        | gsub("\\\\\\|"; "\ue000") | split("|") | map(gsub("\ue000"; "\\|") | trim)
+        | select(length >= 6)
+        | {id: .[1], loc: .[2], disposition: .[3], premise: .[4], source: (if length >= 7 then .[5] else "" end)}
+        | select(.disposition == "issued" or .disposition == "LINK" or .disposition == "REJECT") ]' 2>"$comments_err"); then
+    ledger_hint='[]'
+    ledger_unread=ledger_invalid
+  fi
+fi
 if ! printf '%s' "$findings_json" | jq -e 'length > 0' >/dev/null; then
-  :  # 先送り欠陥だけで起票する経路。台帳と照合する指摘が無い
+  # 先送り欠陥だけで起票する経路。台帳と照合する指摘は無いが、読めなかった ledger は分類役に空と区別させる
+  if [ -n "$ledger_unread" ]; then
+    echo "WARNING: 関連 Issue の却下台帳を読めないため、候補一覧の ledger は空です (PR #${PR_NUMBER})" >&2
+    echo "[CONTEXT] FOLLOW_UP_SWEEP_ISSUED=unavailable; reason=${ledger_unread}; pr=${PR_NUMBER}" >&2
+  fi
 elif [ -z "$SOURCE_ISSUE" ]; then
   sweep_issued_unavailable no_source_issue "関連 Issue が無いため却下台帳を読めません"
 else
-  rite_tempfile_new comments_err "fu-comments" || exit 1
-  # 記録コメントは書き込み経路 (review-nonblocking-record.sh) が PATCH する 1 件だけを読む。関連 Issue の解決・
-  # 記録コメントの同定・CRLF の正規化は helper が行い、その診断 (失敗理由・重複した記録コメントの WARNING) は
-  # helper が stderr へ直接出す。台帳行の分解は nb-sweep-collect.sh と同じ述語。
-  if ! record_body=$(bash "$SCRIPT_DIR/../review-nonblocking-record.sh" --print-record-body \
-      --pr "$PR_NUMBER" --owner-repo "${OWNER}/${REPO}"); then
+  if [ "$ledger_unread" = comments_api ]; then
     sweep_issued_unavailable comments_api "関連 Issue の記録コメントを取得できませんでした"
   elif ! issued_keys=$(printf '%s' "$record_body" | jq -Rsce '
     def trim: gsub("^\\s+|\\s+$"; "");
@@ -600,15 +623,7 @@ else
     | unique' 2>"$comments_err"); then
     sweep_issued_unavailable ledger_invalid "関連 Issue の却下台帳を解析できません"
     [ -s "$comments_err" ] && head -3 "$comments_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-  elif ! ledger_hint=$(printf '%s' "$record_body" | jq -Rsce '
-    def trim: gsub("^\\s+|\\s+$"; "");
-    [ split("### 却下台帳\n")[1:][]
-        | split("📎 non_blocking_count:")[0] | split("\n### ")[0]
-        | split("\n")[] | select(startswith("|"))
-        | split("|") | map(trim) | select(length >= 6)
-        | select(.[3] == "issued" or .[3] == "LINK" or .[3] == "REJECT")
-        | {id: .[1], loc: .[2], disposition: .[3], premise: .[4], source: (if length >= 7 then .[5] else "" end)} ]' 2>"$comments_err"); then
-    ledger_hint='[]'
+  elif [ "$ledger_unread" = ledger_invalid ]; then
     sweep_issued_unavailable ledger_invalid "関連 Issue の却下台帳を解析できません"
     [ -s "$comments_err" ] && head -3 "$comments_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   elif ! cycle_sources=$(rite_review_results_sources "$results_dir" "$PR_NUMBER" '.json') \
