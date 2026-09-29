@@ -474,9 +474,11 @@ skill: rite:issue-audit
 
 | Sentinel | 次のアクション |
 |---------|--------------|
-| `[issue-audit:completed]` | `監査レポート:` 行の path を `{audit_report}` として retain し、完了通知へ |
+| `[issue-audit:returned-to-caller]` | `監査レポート:` 行の path を `{audit_report}` として retain し、完了通知へ |
 | `[issue-audit:failed]` | `監査レポート:` 行があれば `{audit_report}` に retain する（無ければ `なし`）。失敗理由を `{action_items}` に 1 行載せて完了通知へ（再 invoke しない） |
 | sentinel 不在 | `{audit_report}` を `なし` とし、`issue-audit が完了報告を返しませんでした — /rite:issue-audit を手動で実行してください` を `{action_items}` に載せて完了通知へ |
+
+<!-- run orchestration: after issue-audit returns, do NOT stop — retain {audit_report} and emit the ステップ 7 完了通知 below. -->
 
 `mode=`（`{run_mode}`）に応じて、`processed=` の Issue 一覧を `{processed_issues}`、`failed=` の非収束 Issue 一覧を `{failed_issues}` として完了通知を出し分ける。`failed=` が空配列 `[]` でない場合は、完了通知にサーキットブレーカーで failed 扱いとなった Issue を明示する（`[]` のときは該当行を省略する）。`outstanding=` の Issue 一覧を `{outstanding_issues}` として使う（cleanup 完了報告の「未完了事項」をロールアップする。`mode=merge` のときのみ意味を持つ — デフォルトモードは cleanup を invoke しないため `outstanding` は常に空）。
 

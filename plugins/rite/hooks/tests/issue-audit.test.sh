@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # issue-audit.sh against a gh stub: snapshot fields, disposition rules and their exclusions,
-# the exact write sequence of dispose, idempotence and the refusal of Issue number arguments.
+# the exact write sequence of dispose, idempotence, Projects config handling and the refusal
+# of Issue number arguments.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_hermetic-env.sh"
@@ -36,10 +37,12 @@ shutil.copy(plugin / 'hooks/scripts/lib/issue-audit.py', fake / 'hooks/scripts/l
 (fake / 'hooks/scripts/lib/rite-config-path.sh').write_text(
     '[ -n "${CONFIG_PATH:-}" ] || { echo "no config" >&2; exit 1; }\necho "$CONFIG_PATH"\n')
 (fake / 'scripts/projects-status-update.sh').write_text(
-    'printf "status %s\\n" "$(printf "%s" "$1" | jq -c "{issue_number,status_role,auto_add}")" >> "$GH_LOG"\n'
+    'printf "status %s\\n" "$(printf "%s" "$1" | jq -c "{issue_number,owner,status_role,auto_add}")" >> "$GH_LOG"\n'
     'n=$(printf "%s" "$1" | jq -r .issue_number)\n'
-    'case " $CONFLICT " in *" $n "*) echo \'{"result":"skipped_terminal_conflict"}\' ;;'
-    ' *) echo \'{"result":"updated"}\' ;; esac\n')
+    'case " $CONFLICT " in *" $n "*) echo \'{"result":"skipped_terminal_conflict"}\'; exit 0 ;; esac\n'
+    'case " $STATUS_FAIL " in *" $n "*) echo \'{"result":"failed","warnings":["missing scope read:project"]}\';'
+    ' echo "gh project failed" >&2; exit 1 ;; esac\n'
+    'echo \'{"result":"updated"}\'\n')
 helper = fake / 'hooks/scripts/issue-audit.sh'
 
 # gh stub: serves fixtures, logs every call and fails on anything it does not know.
@@ -58,7 +61,7 @@ def val(flag):
 if a[:2] == ["issue", "list"]:
     print(json.dumps([i for i in data["issues"].values() if i["state"] == "OPEN"]))
 elif a[:2] == ["pr", "list"]:
-    print(json.dumps(list(data["prs"].values())))
+    print(json.dumps([p for p in data["prs"].values() if p["state"] == val("--state").upper()]))
 elif a[:2] == ["issue", "view"]:
     print(json.dumps(data["issues"][a[2]]))
 elif a[:2] == ["pr", "view"]:
@@ -80,9 +83,9 @@ def ago(days):
     return (now - datetime.timedelta(days=days)).strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
-def issue(n, body='', state='OPEN', days=0, reason=''):
+def issue(n, body='', state='OPEN', days=0, reason='', labels=()):
     return {'number': n, 'title': f't{n}', 'body': body, 'state': state, 'updatedAt': ago(days),
-            'stateReason': reason}
+            'stateReason': reason, 'labels': [{'name': l} for l in labels]}
 
 
 DUP = '<!-- [rite-follow-up-from-pr:32:F-01,F-02] -->'
@@ -90,16 +93,21 @@ ISSUES = [
     issue(21, state='CLOSED'), issue(22, '- 元 Issue: #21\nsee plugins/x/a.sh', state='CLOSED'),
     issue(23, '<!-- [rite-follow-up-from-pr:31:F-09] -->\nsee plugins/x/a.sh'),
     issue(41, state='CLOSED'), issue(42, '- 元 Issue: #41\nplugins/x/a.sh:3 again'),
-    issue(49, state='CLOSED'), issue(50, DUP), issue(51, DUP),
-    issue(60), issue(61), issue(62, reason='REOPENED'), issue(63),
-    issue(70), issue(71), issue(72), issue(73), issue(74),
+    # 45: same marker without the follow-up label; 46: labelled but the marker is not the first line.
+    # Both are lower numbers than 50, so either would steal the duplicate target if it counted.
+    issue(45, DUP), issue(46, 'text\n' + DUP, labels=['follow-up']),
+    issue(49, state='CLOSED'), issue(50, DUP, labels=['follow-up']), issue(51, DUP, labels=['follow-up']),
+    issue(52, '<!-- [rite-follow-up-from-pr:32:F-07] -->', labels=['follow-up']),
+    issue(60), issue(61), issue(62, reason='REOPENED'), issue(63), issue(64),
+    issue(70), issue(71), issue(72), issue(73), issue(74), issue(76),
     issue(80, days=31), issue(81, days=29),
 ]
 PRS = [
-    {'number': 31, 'body': 'Closes #22', 'baseRefName': 'develop'},
-    {'number': 32, 'body': 'Closes #49', 'baseRefName': 'develop'},
-    {'number': 33, 'body': 'Fixes #60\nFixes #62\nFixes #63\nCloses #74', 'baseRefName': 'develop'},
-    {'number': 34, 'body': 'Closes #61', 'baseRefName': 'main'},
+    {'number': 31, 'body': 'Closes #22', 'baseRefName': 'develop', 'state': 'MERGED'},
+    {'number': 32, 'body': 'Closes #49', 'baseRefName': 'develop', 'state': 'MERGED'},
+    {'number': 33, 'body': 'Fixes #60\nFixes #62\nFixes #63\nCloses #74', 'baseRefName': 'develop', 'state': 'MERGED'},
+    {'number': 34, 'body': 'Closes #61', 'baseRefName': 'main', 'state': 'MERGED'},
+    {'number': 36, 'body': 'Closes #64', 'baseRefName': 'develop', 'state': 'OPEN'},
 ]
 RECORDS = [
     {'ids': ['F-1'], 'V': False, 'C': False, 'T': False, 'reason': 'not a defect', 'present': True, 'tracker': 70},
@@ -108,13 +116,17 @@ RECORDS = [
     {'ids': ['F-4'], 'V': False, 'C': False, 'T': False, 'reason': 'x', 'present': True, 'tracker': 73},
     {'ids': ['F-5'], 'V': True, 'C': False, 'T': False, 'present': True, 'tracker': 73},
     {'ids': ['F-6'], 'V': False, 'C': False, 'T': False, 'reason': 'y', 'present': True, 'tracker': 74},
+    {'ids': ['F-9'], 'V': True, 'C': False, 'T': False, 'present': False, 'evidence': 'fixed', 'tracker': 76},
 ]
 state = work / 'state'
 (state / '.rite/state').mkdir(parents=True)
 (state / '.rite/state/adoption-35-followup.json').write_text(
     json.dumps({'adoption': {'head': 'abc', 'records': RECORDS}}))
+# A held adoption gate leaves this file next to the records; it is not a record.
+(state / '.rite/state/adoption-hold-35-followup.json').write_text(
+    json.dumps({'kind': 'followup', 'pr': 35, 'head': 'abc', 'held_ids': ['F-1'], 'candidates': []}))
 config = work / 'rite-config.yml'
-config.write_text('github:\n  projects:\n    enabled: true\n    project_number: 7\n    owner: "o"\n')
+config.write_text('github:\n  projects:\n    enabled: true\n    project_number: 7\n    owner: "board"\n')
 
 
 def reset():
@@ -126,7 +138,7 @@ def reset():
 def run(*args, **env):
     full = dict(os.environ, PATH=f'{bin_dir}:{os.environ["PATH"]}', GH_FIXTURE=str(work / 'gh.json'),
                 GH_LOG=str(work / 'gh.log'), RITE_STATE_ROOT=str(state), CLAIMED='63',
-                CONFIG_PATH=str(config), CONFLICT='')
+                CONFIG_PATH=str(config), CONFLICT='', STATUS_FAIL='')
     full.update(env)
     return subprocess.run(['bash', str(helper), *args, '--repo', 'o/r', '--base', 'develop'],
                           capture_output=True, text=True, env=full, cwd=work, timeout=60)
@@ -148,15 +160,18 @@ check(snap['lineage']['chains'] == [[21, 22, 23]], snap['lineage'])            #
 check(not any(41 in c for c in snap['lineage']['chains']), snap['lineage'])   # 2 generations not listed
 check({'child': 23, 'parent': 22, 'via': 'pr:31'} in snap['lineage']['edges'], snap['lineage'])
 check({'kind': 'file', 'key': 'plugins/x/a.sh', 'issues': [23, 42]} in snap['concentration'], snap['concentration'])
-check({'kind': 'origin_pr', 'key': '32', 'issues': [50, 51]} in snap['concentration'], snap['concentration'])
+check({'kind': 'origin_pr', 'key': '32', 'issues': [45, 46, 50, 51, 52]} in snap['concentration'], snap['concentration'])
 stale = {i['number']: i['stale'] for i in snap['open_issues']}
 check(stale[80] is True and stale[81] is False, stale)                         # threshold boundary
 disp = {d['issue']: d for d in snap['dispositions']}
-check(sorted(disp) == [51, 60, 70, 72], disp)
+check(sorted(disp) == [51, 60, 70, 72, 76], disp)
 check(disp[51]['reason'] == 'duplicate' and disp[51]['duplicate_of'] == 50, disp[51])
 check(disp[60]['rule'] == 'merged_closing_pr' and disp[72]['rule'] == 'record_resolved', disp)
 check(disp[70]['reason'] == 'not_planned' and 'reason: not a defect' in disp[70]['evidence'][0], disp[70])
 check(61 not in disp and 71 not in disp, 'other-base PR and reason-less record are not disposed')
+check(64 not in disp, 'an unmerged PR does not resolve its Issue')
+check(not {45, 46, 50, 52} & set(disp), 'only labelled first-line markers with the same ids are duplicates')
+check(disp[76]['rule'] == 'record_resolved', 'a resolved record with V=true is not its own conflict')
 excl = {e['issue']: e['why'] for e in snap['excluded']}
 check(excl == {62: 'reopened', 63: 'claimed_by_other_session', 73: 'conflicting_records',
                74: 'conflicting_rules'}, excl)
@@ -165,13 +180,14 @@ check(writes() == [], 'collect never writes')
 # --- dispose: exact write sequence and evidence left on the Issue (AC-4) ---
 ran = run('dispose')
 check(ran.returncode == 0, ran.stderr)
-check('[CONTEXT] ISSUE_AUDIT_DISPOSE=ok; closed=4; failed=0' in ran.stderr, ran.stderr)
-S = 'status {{"issue_number":{},"status_role":"{}","auto_add":false}}'
+check('[CONTEXT] ISSUE_AUDIT_DISPOSE=ok; closed=5; failed=0' in ran.stderr, ran.stderr)
+S = 'status {{"issue_number":{},"owner":"{}","status_role":"{}","auto_add":false}}'
 check(writes() == [
-    'issue close 51 -R o/r --comment --duplicate-of 50', S.format(51, 'cancelled'),
-    'issue close 60 -R o/r --comment --reason completed', S.format(60, 'done'),
-    'issue close 70 -R o/r --comment --reason not planned', S.format(70, 'cancelled'),
-    'issue close 72 -R o/r --comment --reason completed', S.format(72, 'done'),
+    'issue close 51 -R o/r --comment --duplicate-of 50', S.format(51, 'board', 'cancelled'),
+    'issue close 60 -R o/r --comment --reason completed', S.format(60, 'board', 'done'),
+    'issue close 70 -R o/r --comment --reason not planned', S.format(70, 'board', 'cancelled'),
+    'issue close 72 -R o/r --comment --reason completed', S.format(72, 'board', 'done'),
+    'issue close 76 -R o/r --comment --reason completed', S.format(76, 'board', 'done'),
 ], writes())
 comments = json.loads((work / 'gh.json').read_text())['comments']
 check('adoption-35-followup.json ids=F-1 V=C=T=false reason: not a defect' in comments['70'], comments['70'])
@@ -185,8 +201,28 @@ check(ran.returncode == 0 and writes() == [], (ran.stderr, writes()))
 # --- a Status refused by the terminal-conflict guard fails loudly ---
 reset()
 ran = run('dispose', CONFLICT='70')
-check(ran.returncode == 1 and 'ISSUE_AUDIT_DISPOSE=failed; closed=4; failed=1' in ran.stderr, ran.stderr)
+check(ran.returncode == 1 and 'ISSUE_AUDIT_DISPOSE=failed; closed=5; failed=1' in ran.stderr, ran.stderr)
 check(json.loads(ran.stdout)['results'][2]['status'] == 'skipped_terminal_conflict', ran.stdout)
+
+# --- a failed Status update surfaces its cause ---
+reset()
+ran = run('dispose', STATUS_FAIL='60')
+check(ran.returncode == 1 and 'WARNING: #60 の Status を更新できません: missing scope read:project' in ran.stderr
+      and 'gh project failed' in ran.stderr, ran.stderr)
+
+# --- owner: null resolves to the repository owner ---
+reset()
+null_owner = work / 'null-owner.yml'
+null_owner.write_text('github:\n  projects:\n    enabled: true\n    project_number: 7\n    owner: null\n')
+ran = run('dispose', CONFIG_PATH=str(null_owner))
+check(ran.returncode == 0 and S.format(51, 'o', 'cancelled') in writes(), writes())
+
+# --- Projects enabled without a project number stops before closing anything ---
+reset()
+no_number = work / 'no-number.yml'
+no_number.write_text('github:\n  projects:\n    enabled: true\n    project_number: null\n    owner: null\n')
+ran = run('dispose', CONFIG_PATH=str(no_number))
+check(ran.returncode == 1 and 'ISSUE_AUDIT=error' in ran.stderr and writes() == [], (ran.stderr, writes()))
 
 # --- Projects disabled: close only, no Status call ---
 reset()

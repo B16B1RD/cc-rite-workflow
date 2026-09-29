@@ -61,8 +61,12 @@ report = skill[skill.index('# Issue 監査レポート'):]
 heads = re.findall(r'^## (\S+)$', report, re.M)
 check(heads[:5] == ['処分結果', '統合提案', '系譜', '方向修正', '除外'], heads)
 
+# batch-run keeps going after the nested audit returns.
+check(line_of(r'^<!-- run orchestration: after issue-audit returns, do NOT stop', invoke) < first_template,
+      'batch-run continues after the audit returns')
+
 # Sentinels emitted by the skill are declared in the SoT.
-for sentinel in ('[issue-audit:completed]', '[issue-audit:failed]'):
+for sentinel in ('[issue-audit:returned-to-caller]', '[issue-audit:failed]'):
     check(sentinel in skill and f'| `{sentinel}` | issue-audit | batch-run |' in contract, sentinel)
 
 print(f'issue-audit-contract: {checks} checks passed')

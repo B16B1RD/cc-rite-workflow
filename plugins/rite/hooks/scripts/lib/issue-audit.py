@@ -24,21 +24,26 @@ Snapshot (collect stdout):
   excluded       [{issue, rule, why}] — a rule matched but the Issue is not disposed
 
 Rules (the only dispositions; reason is the `gh issue close` reason):
-  duplicate_key       two or more open Issues carry the same follow-up marker key
-                      (`rite-follow-up-from-pr:<pr>:<ids>`); the lowest number stays open
-                      and the others close as duplicate of it
+  duplicate_key       two or more open Issues labelled `follow-up` have the same marker
+                      `<!-- [rite-follow-up-from-pr:<pr>:<ids>] -->` as their first body line
+                      (the line the follow-up filer writes; ids are letters, digits, `_`, `-`
+                      joined by commas); the lowest number stays open and the others close
+                      as duplicate of it
   merged_closing_pr   a PR merged into the base branch says Closes / Fixes / Resolves #N
                       while #N is still open → completed
   record_resolved     a surviving follow-up record has present=false and tracker=N → completed
-  record_rejected     a surviving follow-up record has V=C=T=false, a reason and tracker=N
-                      → not planned
-  A record rule is skipped when another record with the same tracker has V, C or T true or
+  record_rejected     a surviving follow-up record has present not false, V=C=T=false, a
+                      reason and tracker=N → not planned
+  Surviving records are the files named adoption-<pr>-followup.json. A record rule is skipped
+  when another record with the same tracker matches neither rule and has V, C or T true or
   "unknown" (excluded as conflicting_records). An Issue matched by rules with different
   reasons is excluded as conflicting_rules; one reopened by hand (stateReason REOPENED) as
   reopened; one claimed by another live session as claimed_by_other_session.
 
 dispose stdout: {"results": [{issue, reason, rule, closed, status}]}; status is the
-  projects-status-update.sh result or "skipped_projects_disabled".
+  projects-status-update.sh result, "skipped_projects_disabled", or "not_attempted" when the
+  close failed. dispose stops before closing anything when github.projects.enabled is true
+  and project_number is not a number.
 stderr:
   [CONTEXT] ISSUE_AUDIT=ok; open=N; chains=N; concentration=N; dispositions=N; excluded=N
   [CONTEXT] ISSUE_AUDIT_DISPOSE=ok|failed; closed=N; failed=N
@@ -61,6 +66,9 @@ CHAIN_MIN = 3
 MERGED_PR_LIMIT = 200
 PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 
+DUP_MARKER = re.compile(r"<!-- \[rite-follow-up-from-pr:[0-9]+:[A-Za-z0-9_-]+(?:,[A-Za-z0-9_-]+)*\] -->")
+RECORD_FILE = re.compile(r"adoption-[0-9]+-followup\.json")
+UNSET = ("", "null", "~")
 FOLLOW_UP = re.compile(r"<!--\s*\[rite-follow-up-from-pr:([0-9]+)(?::([^\]]+))?\]\s*-->")
 ORIGIN_PR = re.compile(r"^\s*-\s*元の?\s*PR:\s*#([0-9]+)", re.M)
 ORIGIN_ISSUE = re.compile(r"^\s*-\s*元\s*Issue:\s*#([0-9]+)", re.M)
@@ -97,7 +105,7 @@ class Source:
 
     def open_issues(self):
         rows = gh_json("issue", "list", "-R", self.repo, "--state", "open", "--limit", "1000",
-                       "--json", "number,title,body,updatedAt,stateReason")
+                       "--json", "number,title,body,updatedAt,stateReason,labels")
         for row in rows:
             self.issues[row["number"]] = row
         return sorted(rows, key=lambda r: r["number"])
@@ -182,6 +190,8 @@ def state_root():
 def followup_records():
     records = []
     for path in sorted(glob.glob(os.path.join(state_root(), ".rite", "state", "adoption-*-followup.json"))):
+        if not RECORD_FILE.fullmatch(os.path.basename(path)):
+            continue
         try:
             data = json.loads(Path(path).read_text(encoding="utf-8"))
             rows = data["adoption"]["records"]
@@ -196,6 +206,16 @@ def claimed_by_other(number):
     return out.strip() == "other"
 
 
+def record_decision(name, rec):
+    """(reason, rule, evidence) of one record, or None when neither record rule applies."""
+    ids = ",".join(str(i) for i in rec.get("ids") or [])
+    if rec.get("present") is False:
+        return "completed", "record_resolved", f"{name} ids={ids} present=false evidence: {rec.get('evidence') or ''}"
+    if all(rec.get(k) is False for k in "VCT") and str(rec.get("reason") or "").strip():
+        return "not_planned", "record_rejected", f"{name} ids={ids} V=C=T=false reason: {rec['reason']}"
+    return None
+
+
 def record_rules(records):
     by_tracker = {}
     for name, rec in records:
@@ -203,18 +223,13 @@ def record_rules(records):
             by_tracker.setdefault(rec["tracker"], []).append((name, rec))
     found, excluded = [], []
     for tracker, recs in sorted(by_tracker.items()):
-        if any(rec.get(k) is True or rec.get(k) == "unknown" for _, rec in recs for k in "VCT"):
-            if any(rec.get("present") is False or all(rec.get(k) is False for k in "VCT") for _, rec in recs):
-                excluded.append({"issue": tracker, "rule": "record", "why": "conflicting_records"})
-            continue
-        for name, rec in recs:
-            ids = ",".join(str(i) for i in rec.get("ids") or [])
-            if rec.get("present") is False:
-                found.append((tracker, "completed", "record_resolved",
-                              f"{name} ids={ids} present=false evidence: {rec.get('evidence') or ''}"))
-            elif all(rec.get(k) is False for k in "VCT") and str(rec.get("reason") or "").strip():
-                found.append((tracker, "not_planned", "record_rejected",
-                              f"{name} ids={ids} V=C=T=false reason: {rec['reason']}"))
+        decided = [d for d in (record_decision(name, rec) for name, rec in recs) if d]
+        contested = any(record_decision(name, rec) is None and
+                        any(rec.get(k) is True or rec.get(k) == "unknown" for k in "VCT") for name, rec in recs)
+        if decided and contested:
+            excluded.append({"issue": tracker, "rule": "record", "why": "conflicting_records"})
+        elif decided:
+            found += [(tracker, *d) for d in decided]
     return found, excluded
 
 
@@ -223,9 +238,9 @@ def dispositions(open_rows, merged, records):
     found, dup_of = [], {}
     keys = {}
     for row in open_rows:
-        for m in FOLLOW_UP.finditer(row.get("body") or ""):
-            if m.group(2):
-                keys.setdefault(m.group(0), set()).add(row["number"])
+        first = (row.get("body") or "").split("\n", 1)[0].strip()
+        if DUP_MARKER.fullmatch(first) and "follow-up" in {l.get("name") for l in row.get("labels") or []}:
+            keys.setdefault(first, set()).add(row["number"])
     for marker, nums in sorted(keys.items()):
         keep = min(nums)
         for n in sorted(nums - {keep}):
@@ -289,10 +304,13 @@ def projects_config():
             section = "projects" if line.strip() == "projects:" else "github"
         elif section == "projects":
             m = re.match(r"^    (enabled|project_number|owner):\s*\"?([^\"#\s]*)", line)
-            if m:
+            if m and m.group(2) not in UNSET:
                 values.setdefault(m.group(1), m.group(2))
-    if values.get("enabled") != "true" or not values.get("project_number", "").isdigit():
+    if values.get("enabled") != "true":
         return None
+    if not values.get("project_number", "").isdigit():
+        raise Stop(f"rite-config.yml: github.projects.enabled is true but project_number is not a number "
+                   f"({values.get('project_number', 'unset')}); set it or disable Projects")
     return values
 
 
@@ -306,8 +324,8 @@ def close_comment(item):
 
 
 def dispose(repo, base):
-    snap = snapshot(repo, base)
     projects = projects_config()
+    snap = snapshot(repo, base)
     owner = (projects or {}).get("owner") or repo.split("/")[0]
     results, failed = [], 0
     for item in snap["dispositions"]:
@@ -328,9 +346,16 @@ def dispose(repo, base):
             out = subprocess.run(["bash", str(PLUGIN_ROOT / "scripts" / "projects-status-update.sh"), args],
                                  capture_output=True, text=True)
             try:
-                entry["status"] = json.loads(out.stdout).get("result", "failed")
+                payload = json.loads(out.stdout)
             except ValueError:
-                entry["status"] = "failed"
+                payload = {}
+            entry["status"] = payload.get("result", "failed")
+            if entry["status"] != "updated":
+                for w in payload.get("warnings") or []:
+                    print(f"WARNING: #{n} の Status を更新できません: {w}", file=sys.stderr)
+                if out.returncode != 0 or not payload:
+                    print(f"WARNING: #{n} projects-status-update.sh rc={out.returncode}: "
+                          f"{out.stderr.strip()[:300]}", file=sys.stderr)
         if not entry["closed"] or entry["status"] in ("failed", "skipped_terminal_conflict"):
             failed += 1
         results.append(entry)

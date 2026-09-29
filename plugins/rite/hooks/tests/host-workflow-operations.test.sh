@@ -186,7 +186,7 @@ class WorkflowContracts(unittest.TestCase):
             ("5", "[merge:returned-to-caller]", "ステップ 6"),
             ("5", "sentinel 不在", "ステップ 8"),
             ("6", "[cleanup:returned-to-caller]", "ステップ 1"),
-            ("7", "[issue-audit:completed]", "完了通知"),
+            ("7", "[issue-audit:returned-to-caller]", "完了通知"),
             ("7", "[issue-audit:failed]", "完了通知"),
         ]
         for step, sentinel, destination in expectations:

@@ -55,7 +55,7 @@ stdout の snapshot JSON をステップ 2・4 の入力として保持する。
 | stderr の marker | アクション |
 |---|---|
 | `[CONTEXT] ISSUE_AUDIT=ok; ...` | ステップ 2 へ |
-| `[CONTEXT] ISSUE_AUDIT=error; ...` / 非ゼロ終了 | stderr の `ERROR:` 行を表示し、`[issue-audit:failed]` を出して終了する（ステップ 3 の処分へ進まない） |
+| `[CONTEXT] ISSUE_AUDIT=error; ...` / 非ゼロ終了 | stderr の `ERROR:` 行を表示し、ステップ 4 末尾の失敗の返却（`[issue-audit:failed]`）で caller へ返す（ステップ 3 の処分へ進まず、レポートも書かない） |
 
 ## ステップ 2: 提案の組み立て（読むだけ）
 
@@ -82,8 +82,8 @@ helper は snapshot を自分で作り直し、採否規則で決まる Issue �
 | stderr の marker | アクション |
 |---|---|
 | `[CONTEXT] ISSUE_AUDIT_DISPOSE=ok; ...` | stdout の `results` を保持してステップ 4 へ |
-| `[CONTEXT] ISSUE_AUDIT_DISPOSE=failed; ...` | `results` の失敗行（`closed: false` / `status` が `failed` か `skipped_terminal_conflict`）と `WARNING:` 行を保持してステップ 4 へ。レポートを書いたあと `[issue-audit:failed]` で終える |
-| `[CONTEXT] ISSUE_AUDIT=error; ...` / marker 不在 | `ERROR:` 行を保持してステップ 4 へ。レポートを書いたあと `[issue-audit:failed]` で終える |
+| `[CONTEXT] ISSUE_AUDIT_DISPOSE=failed; ...` | `results` の失敗行（`closed: false` / `status` が `failed` か `skipped_terminal_conflict`）と `WARNING:` 行を保持してステップ 4 へ。レポートを書いたあと `[issue-audit:failed]` で caller へ返す |
+| `[CONTEXT] ISSUE_AUDIT=error; ...` / marker 不在 | `ERROR:` 行を保持してステップ 4 へ。レポートを書いたあと `[issue-audit:failed]` で caller へ返す |
 
 ## ステップ 4: レポート
 
@@ -124,9 +124,10 @@ Write ツールで `{state_root}/.rite/state/issue-audit-{timestamp}.md` に次�
 | Issue | 規則 | 理由 |
 ```
 
-書いたら次の 2 行を出力して終える（ステップ 3 が失敗していれば 2 行目は `[issue-audit:failed]`）:
+書いたら次の 3 行を出力して caller へ返す（ステップ 3 が失敗していれば 3 行目は `<!-- [issue-audit:failed] -->`。ステップ 1 で止まったときはレポートが無いので 1 行目を出さない）。batch-run から呼ばれたときはここで turn を終えず、caller が完了通知を出す:
 
 ```
 監査レポート: {state_root}/.rite/state/issue-audit-{timestamp}.md
-[issue-audit:completed]
+<!-- skill return signal: caller must continue next step -->
+<!-- [issue-audit:returned-to-caller] -->
 ```
