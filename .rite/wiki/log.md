@@ -41,6 +41,7 @@
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=581, broken_refs=0
 * **Update**: [git のパス出力を assert するテストは fixture の mktemp 値を `pwd -P` で実体パスへ正規化する](pages/patterns/normalize-tmpdir-symlink-in-path-asserting-tests.md) — raw/reviews/20260929T012747Z-pr-3421.md と raw/fixes/20260929T013237Z-pr-3421.md で補強
 * **Skip**: [20260929T013737Z-pr-3421.md](raw/reviews/20260929T013737Z-pr-3421.md) — 指摘 0 件の差分スコープ再レビューで、既存の経験則に加える観測がない
+* **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=582, broken_refs=0
 
 ## 2026-09-28
 
