@@ -38,7 +38,6 @@
 * **Create**: [SKILL.md のブロックを helper へ移すと、ブロック内コメントの手順情報が LLM から消える](pages/heuristics/skill-block-to-helper-keeps-comment-guidance.md) — 新規ページ化
 * **Create**: [ソース全体を走査する検査は、gitignore 対象の生成物を走査から外す](pages/heuristics/source-scan-excludes-generated-artifacts.md) — 新規ページ化
 * **Update**: [同じ判定規則を別言語で二重実装するときは、同一 fixture で SoT 実装の実行結果と突合する parity assert を置く](pages/patterns/dual-implementation-rule-parity-assert-against-sot-executable.md) — raw/reviews/20260929T005731Z-pr-3419.md を統合
-
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=581, broken_refs=0
 
 ## 2026-09-28
@@ -728,6 +727,7 @@
 * **Skip**: [実行記録](raw/reviews/20260916T060343Z-pr-2904.md) — rite workflow の原因と検証結果はプラグイン本体と回帰テストへ反映済み。raw を今回の経過・完了記録として保持する
 * **Skip**: [実行記録](raw/reviews/20260916T061402Z-pr-2904.md) — rite workflow の原因と検証結果はプラグイン本体と回帰テストへ反映済み。raw を今回の経過・完了記録として保持する
 
+
 * **Skip**: [レビュー結果](raw/reviews/20260915T155931Z-pr-2881.md) — 既存ページで同じ経験則を扱っているため
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=504, broken_refs=0
 * **Skip**: [fix 結果](raw/fixes/20260915T160221Z-pr-2881.md) — rite workflow 自体の triage 挙動の記録で、プラグイン本体に機構として組み込み済みのため Wiki に置く domain 知見がない
@@ -756,6 +756,7 @@
 * **Skip**: [実行記録](raw/reviews/20260916T072435Z-pr-2905.md) — rite workflow の原因と検証結果はプラグイン本体と回帰テストへ反映済み。残件は follow-up Issue として起票済み。raw を今回の経過・完了記録として保持する
 
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=515, broken_refs=0（ページ本文の変更なし。タイトル衝突の構造検査のみ実施し、全 504 ページ間の意味比較は再実行していない）
+
 
 * **Update**: [再開先の入口契約](pages/heuristics/resume-dispatch-target-must-satisfy-downstream-entry-contract.md)、[共有リソースの契約](pages/anti-patterns/shared-resource-type-reuse-without-consumer-contract-check.md)、[停止情報の保持](pages/patterns/clear-failure-state-after-recording-it.md) — [レビュー結果](raw/reviews/20260916T090121Z-pr-2909.md) を統合
 * **Update**: [再開先の入口契約](pages/heuristics/resume-dispatch-target-must-satisfy-downstream-entry-contract.md)、[共有リソースの契約](pages/anti-patterns/shared-resource-type-reuse-without-consumer-contract-check.md)、[停止情報の保持](pages/patterns/clear-failure-state-after-recording-it.md) — [修正結果](raw/fixes/20260916T092034Z-pr-2909.md) を統合
@@ -1155,10 +1156,12 @@
 * **lint:clean** — contradictions=0, stale=62, orphans=0, missing_concept=0, unregistered_raw=447, broken_refs=0
 * **Lint scope** — 構造検査は全ページと raw を再走査。ページと索引は直前の意味的検査から無変更のため、矛盾判定はその結果を継承。検索時の既存索引警告は別途報告。
 
+
 * **Update**: [CI の観測をレビューへ渡し、失敗の帰属と採否を分ける](pages/heuristics/review-loop-has-no-ci-result-input.md) — raw/reviews/20260907T110021Z-pr-2606.md を統合
 
 * **lint:clean** — contradictions=0, stale=62, orphans=0, missing_concept=0, unregistered_raw=447, broken_refs=0
 * **Lint scope** — 全ページと raw の構造検査を再実行。意味的検査は更新ページを CI・実測・レビュー範囲の関連ページと照合し、新しい矛盾は検出しなかった。既存ページ全文の総当たり意味監査は再実施していない。陳腐化・孤児・リンク検査 helper に既存の Broken pipe 診断が出たが、完了 marker は取得できた。
+
 
 * **lint:clean** — contradictions=0 stale=61 orphans=0 missing_concept=0 unregistered_raw=447 broken_refs=0
 * **Lint scope** — 全ページとrawの構造検査を実行。意味的検査は更新ページと関連する移植性・環境判定のページを照合し、新しい矛盾を検出しなかった。既存ページ全文の意味監査は再実施していない。陳腐化・孤児・リンク検査helperに既存のBroken pipe診断が出たが、各検査の完了markerと読取成功を確認した。
@@ -1246,6 +1249,7 @@
 
 * **Skip**: [レビュー結果](raw/reviews/20260905T135424Z-pr-2575-review.md) — 新しいドメイン経験則なし。形式エラーの契約はプラグインとテストに実装済み。
 * **Skip**: [レビュー結果](raw/reviews/20260905T140225Z-pr-2575-final.md) — 新しいドメイン経験則なし。形式エラーの契約はプラグインとテストに実装済み。
+
 
 ## 2026-09-03
 * **Skip**: [20260903T111103Z-pr-2539.md](raw/reviews/20260903T111103Z-pr-2539.md) — 既存ページ asymmetric-fix-transcription / state-machine-dual-location-sync / mutation-prove-new-pin が同一欠陥クラスをカバー済み。sentinel 契約の同一ファイル内三重指示と MUST 未 pin は同クラスの再演（nb-sweep で plugin へ適用済み）
@@ -3591,8 +3595,10 @@
 
 * **Lint**: contradictions=0（更新した経験則の方針整合を確認）, stale=55, orphans=0, missing_concept=0, unregistered_raw=436, broken_refs=0。
 
+
 * **Update**: [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) — [20260905T121410Z-pr-2573.md](raw/reviews/20260905T121410Z-pr-2573.md) を統合
 * **Update**: [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) — [20260905T121410Z-pr-2573.md](raw/fixes/20260905T121410Z-pr-2573.md) を統合
+
 
 * **Update**: [共有リソースの type/名前空間を再利用する新機能は、既存消費者のコード内契約（コメント明示の不変条件）を見落として生存中のリソースを破壊しうる](pages/anti-patterns/shared-resource-type-reuse-without-consumer-contract-check.md) — [20260904T232945Z-pr-2571.md](raw/reviews/20260904T232945Z-pr-2571.md) を統合
 * **Update**: [共有リソースの type/名前空間を再利用する新機能は、既存消費者のコード内契約（コメント明示の不変条件）を見落として生存中のリソースを破壊しうる](pages/anti-patterns/shared-resource-type-reuse-without-consumer-contract-check.md) — [20260904T234103Z-pr-2571.md](raw/fixes/20260904T234103Z-pr-2571.md) を統合
