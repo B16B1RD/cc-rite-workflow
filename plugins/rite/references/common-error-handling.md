@@ -171,7 +171,7 @@ and (.findings | type == "array")
 | `pr-review.md` ステップ 6.1.a | JSON tmpfile の post-condition 検証 | `schema_required_fields_missing` |
 | `fix.md` ステップ 1.2.0 Priority 0 (`--review-file`) | ユーザー明示ファイルの必須フィールド検証 | `explicit_file_schema_required_fields_missing` |
 | `fix.md` ステップ 1.2.0 Priority 2 (local file) | 最新 timestamp ファイルの必須フィールド検証 | `local_file_schema_required_fields_missing` |
-| `fix.md` ステップ 1.2.0 Priority 3 (PR comment Raw JSON) | PR コメント Raw JSON の必須フィールド検証 | `pr_comment_schema_required_fields_missing` |
+| `fix.md` ステップ 1.2.0 Priority 3 (PR comment Raw JSON。本体は `scripts/fix-step.sh p3-raw-json`) | PR コメント Raw JSON の必須フィールド検証 | `pr_comment_schema_required_fields_missing` |
 
 **Rationale for type-explicit validation**: jq の and / truthiness 仕様 (`false` / `null` のみが falsy、空文字列 `""` / `0` / `[]` / `{}` はすべて truthy) のため、旧実装の `.schema_version and .pr_number` は `schema_version: ""` や `pr_number: "123"` (文字列型) を silent pass させる抜け穴があった。明示的に `type == "string" and length > 0` / `type == "number"` / `type == "array"` を要求することで、型違反と空文字列のすべてを reject する。
 
@@ -230,7 +230,7 @@ grep -qiE '(file is locked|lock contention|resource busy)' "$err_file"
 |------|---------|
 | `pr-review.md` ステップ 6.2 Step 2 (`issue-comment-wm-sync`) | ステップ遷移時の backup sync |
 | `pr-review.md` ステップ 6.4 (`_rite_review_p64_run_sync` helper) | ステップ 6.4 の 3 step 全てで本 helper が参照 |
-| `fix.md` ステップ 5.1 (`local-wm-update.sh`) | E2E flow 経路の post-fix local work memory 更新 |
+| `fix.md` ステップ 5.1 (`local-wm-update.sh`。本体は `scripts/fix-step.sh local-wm-sync`) | E2E flow 経路の post-fix local work memory 更新 |
 
 **Rationale for exact phrase match**: 旧 loose pattern `grep -qiE 'lock|contention|busy'` は以下の silent suppression 問題を抱えていた:
 

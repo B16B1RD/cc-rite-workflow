@@ -88,18 +88,28 @@ assert_route() {
 
 assert_route "numref-hit" \
   '[wiki-worktree-commit] committed=0; branch=wiki; reason=numref-hit' \
-  '番号参照の commit 前検査で拒否' '環境または引数エラー'
+  '番号参照の commit 前検査で拒否.*(rc=1, reason=numref-hit)' '環境または引数エラー'
+assert_grep "numref-hit points to the hit lines" \
+  "$route_tmp/numref-hit.err" '対処: ステップ 5\.0\.n の hit 行を書き直してから再実行'
+assert_not_grep "numref-hit does not claim a failed check" "$route_tmp/numref-hit.err" '完了できなかった'
 assert_route "numref-error" \
   '[wiki-worktree-commit] committed=0; branch=wiki; reason=numref-error' \
-  '番号参照の commit 前検査で拒否' '環境または引数エラー'
+  '番号参照の commit 前検査が完了できなかった.*(rc=1, reason=numref-error)' '環境または引数エラー'
+assert_grep "numref-error points to the check error reason" \
+  "$route_tmp/numref-error.err" '対処: 直前の stderr（\[CONTEXT\] WIKI_INGEST_NUMREF=error; reason= または ERROR 行）'
+assert_not_grep "numref-error does not point to hit lines" "$route_tmp/numref-error.err" 'hit 行'
+assert_not_grep "numref-error does not claim a refusal" "$route_tmp/numref-error.err" '拒否'
 assert_route "reason missing" '' \
-  '環境または引数エラー' '番号参照の commit 前検査で拒否'
+  '環境または引数エラー' '番号参照の commit 前検査'
 assert_route "unknown reason" \
   '[wiki-worktree-commit] committed=0; branch=wiki; reason=other-error' \
-  '環境または引数エラー' '番号参照の commit 前検査で拒否'
+  '環境または引数エラー' '番号参照の commit 前検査'
 assert_route "similar numref token" \
   '[wiki-worktree-commit] committed=0; branch=wiki; reason=numref-hit-extra' \
-  '環境または引数エラー' '番号参照の commit 前検査で拒否'
+  '環境または引数エラー' '番号参照の commit 前検査'
+assert_route "similar numref-error token" \
+  '[wiki-worktree-commit] committed=0; branch=wiki; reason=numref-error-extra' \
+  '環境または引数エラー' '番号参照の commit 前検査'
 
 # rc=6 (admin dir not writable) must reach its own branch rather than the unknown-rc
 # fallback, and tell the agent to retry the block once outside the sandbox.
@@ -120,9 +130,16 @@ assert_grep_in_section "ingest.md error table routes exit 6 to the one-shot sand
   "$INGEST_MD" '^## エラーハンドリング' '^---$' \
   'exit 6.*reason=sandbox-mask.*dangerouslyDisableSandbox: true.*1 回だけ再実行'
 
-assert_grep_in_section "ingest.md error table limits numref recovery to matching stdout reason" \
+assert_grep_in_section "ingest.md error table sends numref-hit to the hit lines" \
   "$INGEST_MD" '^## エラーハンドリング' '^---$' \
-  'exit 1.*stdout `reason=numref-hit` / `numref-error`'
+  'exit 1 \+ stdout `reason=numref-hit`.*hit 行'
+assert_grep_in_section "ingest.md error table sends numref-error to the check error reason" \
+  "$INGEST_MD" '^## エラーハンドリング' '^---$' \
+  'exit 1 \+ stdout `reason=numref-error`.*WIKI_INGEST_NUMREF=error'
+assert_not_grep "ingest.md error table has no combined numref-hit / numref-error row" \
+  "$INGEST_MD" 'exit 1 \+ stdout `reason=numref-hit` / `numref-error`（ステップ 5\.1）'
+assert_not_grep "ingest.md error table numref-error row does not point to hit lines" \
+  "$INGEST_MD" 'exit 1 \+ stdout `reason=numref-error`.*hit 行'
 assert_grep_in_section "ingest.md error table routes other rc=1 failures to stderr diagnosis" \
   "$INGEST_MD" '^## エラーハンドリング' '^---$' \
   'exit 1.*stdout に `reason=numref-hit` / `numref-error` なし.*環境 / 引数エラー'

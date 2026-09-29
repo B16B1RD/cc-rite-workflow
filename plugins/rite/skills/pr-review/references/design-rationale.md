@@ -65,28 +65,21 @@
 
 ## step7-triage-redesign-notes
 
-ステップ 7 の名称・推奨決定方式の再設計（自動 Issue 化 → スコープ外指摘のトリアージ）の設計理由。
+ステップ 7（スコープ外指摘のトリアージ）が候補の処分を採否ゲートの出口だけで決める理由。
 
-- **3 つのバイアスの積み重ね**: 旧「自動 Issue 化」には (1) 起票をゴールとする命名、(2) `AskUserQuestion` の選択肢列挙で「別 Issue 作成」が先頭（本 tool の規約上、先頭 = 推奨と解釈されやすい）、(3) 推奨決定の指示不在（エージェント裁量）、の 3 バイアスが積み重なっていた。エージェントには「指摘を先送りすれば fix ループが早く収束する」という構造的な先延ばし動機があり、この 3 バイアスが揃うと保険的な follow-up Issue が増殖する。fix ループ側で人間が skip → 別 Issue で loop 終了する経路は「先延ばしの抜け穴」として閉じた（`skills/iterate/SKILL.md`。残存 non-blocking の消化は機械 routing が担う）。ステップ 7 だけが同じ先延ばし動機を残していた。
+- **先延ばし動機**: エージェントには「指摘を先送りすれば fix ループが早く収束する」という構造的な先延ばし動機がある。処分をエージェント裁量や選択肢の並び順に任せると、保険的な follow-up Issue が増殖する。fix ループ側で skip → 別 Issue で loop 終了する経路は閉じており（`skills/iterate/SKILL.md`。残存 non-blocking の消化は機械 routing が担う）、ステップ 7 にも同じ動機を残さない。
 - **先延ばし禁止の設計原則**: 仮説的な将来リスクに先手を打つ Issue は大半が無駄に終わる。スコープ内の実指摘は本 PR で解決し（fix ループで強制済み）、スコープ外候補は「起票せず記録して終わり」をデフォルトにする方が、Issue の増殖を防ぎ実際に着手される確率を上げる。
-- **推奨機械決定表を裁量の代わりに置く理由**: 「裁量で決めてよい」とすると上記の構造的動機により実質的に「別 Issue 作成」へ誘導される。Likelihood（Observed/Demonstrable vs Hypothetical）と Source（A/B）という機械的に判定可能な軸だけで推奨を決定することで、エージェントの意思が介在する余地を無くす。
+- **採否ゲートを裁量と候補ごとの確認の代わりに置く理由**: 候補ごとに人間へ尋ねると、工程の途中に人間の品質判断が常駐する。裁量に任せると上の動機で起票へ寄る。分類役が根因ごとに判定記録（契約・根拠・受入条件）を書き、ゲートが記録の欄だけから出口（file / record / hold）を決めるので、エージェントの意思も重要度も出口に入らない。出口の出ない候補が残れば何も書かずに保留して止める（fail-loud）。対話でも E2E でも処分は同じになる。
 - **Decision Log 記録を「追加」の経路とする理由**: fix ループの nit-noted 返信経路・acknowledged suppression（PR コメント / JSON ベースの再指摘抑制）は Decision Log 記録では代替されない。両者は別の目的（前者は次サイクルでの再指摘抑制、後者は仕様変更の記録）を持つため、置き換えではなく追加とした。
-- **元 Issue が特定できない PR での「選択肢非表示」**: PR コメント記録という代替スキーマを新設すると、記録先が「Section 9」「PR コメント」の 2 種に増え「シンプルさを死守」原則に反する。本リポジトリはブランチ命名規則上ほぼ全 PR が issue 番号を含むため、この縮退経路の実発生頻度は低いと判断し、選択肢非表示（3 択化）で単純に倒した（対象 Issue の Decision Log D-04 参照）。
+- **元 Issue が特定できない PR**: 記録先を「Section 9」「PR コメント」の 2 種に増やすと「シンプルさを死守」原則に反するため、代替の記録先を作らない。verdict が `file` の記録は先送りトークンの書き先が無いためその場で Issue を作り、`record` の記録は完了レポートに出口と reason を列挙する。ブランチ命名規則（`{type}/issue-{number}-{slug}`）ではほぼ全 PR が issue 番号を含むため、この縮退経路は稀。
 
 ## phase7-gate-notes
 
 ステップ 7.7 / 8.0.2 gate の設計理由。
 
-- **Defensive layering の全体像**: (a) ステップ 4.5 reviewer template が 3-classification を要求 → (b) ステップ 5.1 collection で classification を extract (default fallback あり) → (c) ステップ 7.1 で candidates を構築 → (d) ステップ 7.2 で確認完了後に証跡付き sentinel emit → (e) ステップ 7.7 で grep verify → (f) ステップ 8.0.2 で end-to-end gate continuity 参照。各層は個別に失敗しうるが、ステップ 7.7 は result emit 前の last-line-of-defense mechanical gate。ステップ 5/6 が abort-relevant findings を生成しても、ステップ 7.1 candidate extraction (recommendation_items) は独立しており ステップ 7.2 で user confirm が必須。
+- **Defensive layering の全体像**: (a) ステップ 4.5 reviewer template が 3-classification を要求 → (b) ステップ 5.1 collection で classification を extract (default fallback あり) → (c) ステップ 7.1 で candidates を構築 → (d) ステップ 7.2 で採否ゲートが decided を返した後に証跡付き sentinel emit → (e) ステップ 7.7 で grep verify → (f) ステップ 8.0.2 で end-to-end gate continuity 参照。各層は個別に失敗しうるが、ステップ 7.7 は result emit 前の last-line-of-defense mechanical gate。ステップ 5/6 が abort-relevant findings を生成しても、ステップ 7.1 candidate extraction (recommendation_items) は独立しており ステップ 7.2 で採否ゲートの decided が必須。
 - **dual placement (7.7 + 8.0.2) の理由**: ステップ 7.7 はステップ 7.1 → 7.2 → 7.7 の sequence で 7.7 が呼ばれた場合に 7.2 sentinel emit を verify する (procedure 内部の integrity check)。ステップ 8.0.2 はステップ 7 entire procedure (7.1-7.7) が skip された場合の最終 fallback で、`candidate_count >= 1` という trigger 条件が満たされている時点で「ステップ 7 が走るはずだった」と判定できる (ステップ 7.7 自体が呼ばれていない silent skip 経路でも catch する)。ステップ 8.0.1 W Phase gate と完全に対称的で、result-emit boundary における defense-in-depth pattern を構成する。
-
-## phase7-askuser-evidence
-
-ステップ 7.2 sentinel を「確認完了後」に移し `mode=` / `choice=` / `reason=` を必須にした理由。
-
-- **emit-before-evidence が空文になる**: 旧手順は `AskUserQuestion` 直前に `PHASE_7_ASKUSER_INVOKED=1` を出していた。7.7 / 8.0.2 は marker の有無しか見ないため、marker を出した直後に 7.4 へ短絡しても gate は pass する。配布先の実測では、対話セッションで marker 直後に AskUserQuestion の tool_use 0 件のまま Decision Log へ全件記録された。
-- **値が入る場所に証跡を置く**: marker 名は変えず、確認結果（対話の選択値 / E2E 自動の判定根拠）を同じ行に載せる。guard を 7.7 消費側だけに足しても、証跡の無い行を「確認済み」と読めてしまう。
-- **E2E 自動分岐は維持する**: Decision Log 記録は可逆なので E2E / batch では質問せず推奨で処理する既存分岐は残す。変えるのは対話経路と、自動経路でも `reason=reversible_decision_log` を残すこと。判定不能は確認を出す側へ倒す。
+- **sentinel を decided の後に出し `mode=` / `choice=` / `reason=` を必須にする理由**: 7.7 / 8.0.2 が marker の有無だけを見ると、marker を出した直後に 7.4 へ短絡しても gate は pass する。ゲートの結果（`choice=` の verdict 別の件数と `reason=adoption_decided`）を同じ行に載せ、欠けた行を処分済みと読まない。marker 名は消費側の grep を保つため変えない。
 
 ## reviewer-selection-notes
 
@@ -167,7 +160,7 @@ E2E で削るのはステップ 5–7 の人間向け表示だけ。ステップ
 
 AskUserQuestion を 2 種に分ける理由。
 
-ステップ 7 のトリアージは未解決指摘・スコープ外指摘の握り潰し防止なので E2E でも処理自体は skip 禁止。Decision Log への可逆記録は question_resolution の推奨自律処理。ステップ 3.3 の構成確認は iterate の自律ループと矛盾するため E2E で skip 可。サマリ行と省略 reviewer 表示は両経路で残す（silent capping 禁止）。
+ステップ 7 のトリアージは未解決指摘・スコープ外指摘の握り潰し防止なので E2E でも処理自体は skip 禁止。処分は採否ゲートの出口だけで決め、候補ごとに質問しないので、E2E と standalone で処分は変わらない。ステップ 3.3 の構成確認は iterate の自律ループと矛盾するため E2E で skip 可。サマリ行と省略 reviewer 表示は両経路で残す（silent capping 禁止）。
 
 ## worktree-ensure-preamble
 
@@ -231,7 +224,7 @@ named subagent の system prompt は各 agent ファイル本体だけで、別�
 
 最も保守的（対応不要・観察のみ）で、欠落を actionable 扱いして Issue 化する先延ばしを防ぐ。欠落は `[CONTEXT] RECOMMENDATION_CLASSIFICATION_MISSING` で観測する。
 
-`recommendation_items` は全推奨の canonical。`candidate_count` は Source A + Source B（actionable/boundary、user 採否後）の合算で、7.7 / 8.0.2 の trigger になる。
+`recommendation_items` は全推奨の canonical。`candidate_count` は Source A + Source B（actionable/boundary）の dedup 後の合算に triage の hold の候補を加えた数で、7.7 / 8.0.2 の trigger になる。
 
 ## likelihood-evidence-before-demotion
 
@@ -347,13 +340,13 @@ Decision Log append を候補ごとに単一 Bash invocation にする理由。
 
 ## deferred-defect-token
 
-先送りする欠陥の Decision Log 行に機械トークンを付ける理由。
+先送りトークンを、採否ゲートの verdict が `file` の判定記録の Decision Log 行にだけ付ける理由。
 
-Decision Log は「対応しない理由」の記録であって追跡ではない。欠陥を先送りした行だけが残ると、誰も Issue を起こさないまま放置される。cleanup の follow-up 起票はレビュー結果 JSON の `non_blocking_findings[]` しか読まないため、推奨事項由来の先送りはそこに届かない。
+Decision Log は「対応しない理由」の記録であって追跡ではない。起票すべき欠陥の行だけが残ると、誰も Issue を起こさないまま放置される。cleanup の follow-up 起票はレビュー結果 JSON の `non_blocking_findings[]` を読むため、推奨事項由来の欠陥はトークンが無いとそこに届かない。
 
-記録先を JSON ではなく Decision Log 行そのものにするのは、7.4 が JSON 保存（6.1.a）の後に走り、保存済み JSON は停滞判定の受領記録と照合されるため書き換えられないから。保存前の 5.3.0.R で推奨を JSON へ写すと、後で「別 Issue 作成」「本 PR で対応」を選んだ候補まで cleanup が起票する。Issue 本文は別環境の cleanup からも読めるが、JSON はそうとは限らない。
+記録先を JSON ではなく Decision Log 行そのものにするのは、7.4 が JSON 保存（6.1.a）の後に走り、保存済み JSON は停滞判定の受領記録と照合されるため書き換えられないから。保存前の 5.3.0.R で推奨を JSON へ写すと、ゲートが `record` と決めた候補まで cleanup が起票する。Issue 本文は別環境の cleanup からも読めるが、JSON はそうとは限らない。
 
-トークンは HTML コメントにして表示を汚さず、PR 番号を含めて別 PR の cleanup が拾わないようにする。対象は欠陥と判断された候補（Source A と Source B の `actionable`）に限り、要否を判断できていない `boundary` は付けない。引き受け先 Issue がある候補は既に追跡されているため付けない（付けると二重起票になる）。起票の自動可否は cleanup 6.0.C の確認ゲート（batch `--merge` は確認しない、単独実行は確認する）にそのまま従う。
+トークンは HTML コメントにして表示を汚さず、PR 番号を含めて別 PR の cleanup が拾わないようにする。付けるのは verdict が `file` の記録だけで、トークン付きの行は cleanup 6.0 の follow-up が採否ゲート（`--kind followup`）で判定し直し、出口が `file` のものだけを起票する。`record` の記録（`LINK` / `RESOLVED` / `REJECT`）には付けない。`LINK` は追跡先の既存 Issue があり、付けると二重起票になる。`RESOLVED` / `REJECT` は起票する欠陥ではない。起票の自動可否は cleanup 6.0.C の確認ゲート（batch `--merge` は確認しない、単独実行は確認する）にそのまま従う。
 
 ## 5.3-execution-order-why
 
@@ -365,7 +358,7 @@ Decision Log は「対応しない理由」の記録であって追跡ではな�
 
 既存 Issue を引き受け先にして新規作成を見送る経路に申し送りコメントを必須化した理由。
 
-「引き受け先が実在する」判定だけで triage を閉じると、#N 側に何も残らず、後から「フォローアップ Issue 化はありませんか」と問われて初めてコメントが投稿される。Decision Log は元 Issue の記録であり引き受け先への通知ではない。CLOSED Issue は着手対象にできないため投稿せず、当該候補について 7.2 の既存 4 択を再掲する。新規 AskUserQuestion を足さないのは既存 disposition 質問へ戻す方が inventory を増やさず、差し戻し先が既にあるため。見送りは 7.2 の 5 択ではなく「別 Issue 作成」の結果分岐である。`HANDOFF_COMMENT_REJECTED=1` のあとに 7.4.3 へ進むと申し送りコメントの必須化が空文になる。
+「引き受け先が実在する」判定だけで triage を閉じると、#N 側に何も残らず、後から「フォローアップ Issue 化はありませんか」と問われて初めてコメントが投稿される。Decision Log は元 Issue の記録であり引き受け先への通知ではない。CLOSED Issue は着手対象にできないため投稿せず、判定記録の `tracker` を直して 7.2 のゲートからやり直す。新しい質問を足さずゲートへ戻すのは、差し戻し先が既にあり inventory を増やさないため。`HANDOFF_COMMENT_REJECTED=1` のあとに 7.4.3 へ進むと申し送りコメントの必須化が空文になる。
 
 ## acceptance-reviewer
 

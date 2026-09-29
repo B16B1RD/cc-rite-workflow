@@ -387,8 +387,19 @@ else
     run_since_used=absent
   fi
 fi
+# 再試行が blocking 0 で決着した run は、越えた発散点を以後の発散判定から外す。停止 cycle は
+# outcome=resolved のときだけ渡し、未決着・unresolved・再試行なしでは渡さない。
+resolved_args=()
+retry_outcome=$(printf '%s' "$review_state" | jq -r '.review_run.retry.outcome // empty') || exit 1
+if [ "$retry_outcome" = resolved ]; then
+  resolved_through=$(printf '%s' "$review_state" | jq -er '.review_run.retry.stop_context.cycle_count | select(type == "number" and . >= 0 and floor == .)') || {
+    echo "ERROR: 解決済みの再試行に停止 cycle (review_run.retry.stop_context.cycle_count) が非負整数で記録されていません。発散判定の範囲を決められないため中止します" >&2
+    exit 1
+  }
+  resolved_args=(--resolved-through "$resolved_through")
+fi
 trend_out=$(bash "$plugin_root"/hooks/scripts/review-trend-divergence.sh \
-  --pr $pr_number --cycle-count "$cc" --since "$run_since"); trend_rc=$?
+  --pr $pr_number --cycle-count "$cc" --since "$run_since" "${resolved_args[@]+"${resolved_args[@]}"}"); trend_rc=$?
 # helper の出力から marker を読む。値の切り出しは marker_get が所有する — 行頭アンカー
 # （helper の WARNING が marker 文字列を引用しても拾わない）・複数行 stderr 混入への耐性・
 # 同一 KEY の recency・field 名のトークン完全一致は関数側の契約で、その SoT は
@@ -437,7 +448,8 @@ fi
 # 未決着の再試行権は fix → 検証 → review の 1 巡を買っている。その review は発散を止めた推移の
 # まま始まるので、発散判定をここで保留しないと権利を発行しても review に届かない。保留するのは
 # 権利を発行した cycle のうち（review-start が counter を進める前）だけで、上限判定は保留しない。
-# 決着（blocking が残れば同じ理由で再停止）は観測が行う。
+# 決着（blocking が残れば同じ理由で再停止）は観測が行う。決着が resolved なら、越えた発散点は
+# helper 呼び出しの `--resolved-through` で以後の判定から外れる。
 retry_pending=$(printf '%s' "$review_state" | jq -r '
   .review_run as $run
   | ($run.status == "active" and ($run.retry | type) == "object" and $run.retry.outcome == null
@@ -565,6 +577,15 @@ if [ -z "$nb_root" ]; then
   echo "[iterate:nb-sweep-error]"
   exit 1
 fi
+# スコープ外処分（triage）の保留を解くのは mergeable の review のステップ 7 だけ。
+# 保留が残ったまま完了へ進まない。
+nb_triage_hold="$nb_root/.rite/state/adoption-hold-$pr_number-triage.json"
+if [ -e "$nb_triage_hold" ]; then
+  echo "ERROR: スコープ外処分の採否が保留のままです。完了へ進みません。$nb_triage_hold の resume に従って再開してください（保留は mergeable のレビューのステップ 7 で解けます。解けなければこの停止のまま人間に報告してください）" >&2
+  marker_emit ITERATE_NB_SWEEP failed "reason=triage_adoption_held" "hold_file=$nb_triage_hold"
+  echo "[iterate:nb-sweep-error]"
+  exit 1
+fi
 nb_done_file="$nb_root/.rite/state/nb-sweep-done-$pr_number.txt"
 nb_latest=$(find "$nb_root/.rite/review-results" -maxdepth 1 -type f -name "$pr_number-*.json" 2>/dev/null | LC_ALL=C sort | tail -1)
 nb_latest_base=""
@@ -573,7 +594,9 @@ nb_range=""
 if [ -f "$nb_done_file" ]; then
   nb_range=$(awk 'NR==1 { print $2 }' "$nb_done_file")
 fi
-if [ -n "$nb_range" ] && [ "$nb_range" = "$nb_latest_base" ]; then
+# sweep の保留候補は collect が今回の候補へ合流させるので、保留があれば done でも skip しない
+if [ -n "$nb_range" ] && [ "$nb_range" = "$nb_latest_base" ] \
+   && [ ! -e "$nb_root/.rite/state/adoption-hold-$pr_number-sweep.json" ]; then
   skipped_kind=$(awk 'NR==1 { print $1 }' "$nb_done_file")
   case "$skipped_kind" in
     done|noop) ;;

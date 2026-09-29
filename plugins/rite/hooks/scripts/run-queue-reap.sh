@@ -11,6 +11,13 @@
 # liveness, so the queue's own staleness decides and the reason is printed.
 # Own-session files are never touched.
 #
+# Neither timestamp moves while the owner is paused (e.g. by a usage limit),
+# so 2h without an update does not mean the owner has ended. session-end.sh
+# marks an ended owner with `run-queue-{sid}.ended`; without that marker the
+# queue is kept until the newer of the two timestamps passes the liveness TTL
+# (`RITE_SESSION_LIVENESS_TTL_HOURS`, default 24h — the bound for owners
+# whose termination skipped SessionEnd).
+#
 # Stale failed[] / outstanding[] are printed to stderr one item per line
 # before deletion — the record must not vanish silently.
 set -euo pipefail
@@ -72,6 +79,13 @@ _emit_leftover_items() {
 }
 
 STALE_SECONDS=7200
+# Same liveness TTL and env override as the worktree reap in pr-cycle-cleanup.sh.
+if [[ "${RITE_SESSION_LIVENESS_TTL_HOURS:-24}" =~ ^[1-9][0-9]*$ ]]; then
+  LIVENESS_TTL_SECONDS=$(( ${RITE_SESSION_LIVENESS_TTL_HOURS:-24} * 3600 ))
+else
+  echo "WARNING: run-queue-reap: RITE_SESSION_LIVENESS_TTL_HOURS='$(printf '%s' "$RITE_SESSION_LIVENESS_TTL_HOURS" | neutralize_ctrl)' is not a positive integer (no leading zero); using 24" >&2
+  LIVENESS_TTL_SECONDS=$(( 24 * 3600 ))
+fi
 now_epoch=$(date +%s)
 shopt -s nullglob
 for q in "$queue_dir"/run-queue-*.json; do
@@ -87,19 +101,14 @@ for q in "$queue_dir"/run-queue-*.json; do
   fi
 
   updated_at=$(jq -r '.updated_at // empty' "$q")
-  stale=0
-  if [ -z "$updated_at" ]; then
-    stale=1
-  else
-    state_epoch=$(parse_iso8601_to_epoch "$updated_at")
-    diff_seconds=$((now_epoch - state_epoch))
-    if [ "$state_epoch" -eq 0 ] || [ "$diff_seconds" -gt "$STALE_SECONDS" ]; then
-      stale=1
-    fi
+  state_epoch=0
+  [ -n "$updated_at" ] && state_epoch=$(parse_iso8601_to_epoch "$updated_at")
+  if [ "$state_epoch" -ne 0 ] && [ $((now_epoch - state_epoch)) -le "$STALE_SECONDS" ]; then
+    continue
   fi
-  [ "$stale" -eq 1 ] || continue
 
   fs="$STATE_ROOT/.rite/sessions/${sid}.flow-state"
+  fs_epoch=0
   if [ -f "$fs" ]; then
     fs_disp=$(printf '%s' "$fs" | neutralize_ctrl)
     if ! jq -e 'type == "object"' "$fs" >/dev/null 2>&1; then
@@ -107,13 +116,22 @@ for q in "$queue_dir"/run-queue-*.json; do
       continue
     fi
     fs_updated=$(jq -r '.updated_at // empty' "$fs")
-    fs_epoch=0
     [ -n "$fs_updated" ] && fs_epoch=$(parse_iso8601_to_epoch "$fs_updated")
-    if [ "$fs_epoch" -eq 0 ]; then
-      echo "WARNING: run-queue-reap: owner flow-state updated_at missing or unparsable, reap stale queue: $q_disp (flow-state: $fs_disp)" >&2
-    elif [ $((now_epoch - fs_epoch)) -le "$STALE_SECONDS" ]; then
+    if [ "$fs_epoch" -ne 0 ] && [ $((now_epoch - fs_epoch)) -le "$STALE_SECONDS" ]; then
       continue
     fi
+  fi
+
+  ended="$queue_dir/run-queue-${sid}.ended"
+  if [ ! -e "$ended" ]; then
+    newest=$(( state_epoch > fs_epoch ? state_epoch : fs_epoch ))
+    if [ "$newest" -ne 0 ] && [ $((now_epoch - newest)) -le "$LIVENESS_TTL_SECONDS" ]; then
+      continue
+    fi
+  fi
+
+  if [ -f "$fs" ] && [ "$fs_epoch" -eq 0 ]; then
+    echo "WARNING: run-queue-reap: owner flow-state updated_at missing or unparsable, reap stale queue: $q_disp (flow-state: $fs_disp)" >&2
   fi
 
   failed_n=$(jq '(.failed // []) | length' "$q")
@@ -125,6 +143,6 @@ for q in "$queue_dir"/run-queue-*.json; do
   fi
 
   watchdog="$queue_dir/run-queue-${sid}.watchdog"
-  rm -f "$q" "$watchdog"
+  rm -f "$q" "$watchdog" "$ended"
 done
 exit 0

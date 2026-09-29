@@ -3,11 +3,14 @@
 #
 # Purpose:
 #   `session-end.sh` (Option A: 正常終了時の per-session file 削除) の cleanup が:
-#     (a) 当該 session の per-session file (`.rite/sessions/{sid}.flow-state`) を削除
+#     (a) 終端 phase の当該 session の per-session file (`.rite/sessions/{sid}.flow-state`) を削除
 #     (b) **兄弟 session** の file には影響なし (blast radius 0)
 #     (c) `.rite-flow-state.legacy.*` backup には影響なし (cycle 3/4 regression)
-#     (d) cleanup 後は flow-state.sh が ENOENT 経路 (default 値) を返し resume 不能
+#     (d) 削除後は flow-state.sh が ENOENT 経路 (default 値) を返す。作業途中
+#         (active=true かつ終端でない phase) の state は active=false で残り、resume 後も読める
 #     (e) 異なる cwd (別 repo) の per-session file には影響なし
+#   削除経路を検査する TC の自セッション fixture は終端 phase (completed) を使う
+#   (作業途中の state は削除されず、blast radius の検査が空振りするため)。
 #   を verify する。
 #
 # Differentiation from session-end.test.sh:
@@ -19,10 +22,10 @@
 #   しないことを mutation 視点でも verify する。
 #
 # Test cases:
-#   TC-1: 当該 session の per-session file 削除 (TC-per-session-cleanup-A 等価、再 pin)
+#   TC-1: 終端 phase の当該 session の per-session file 削除 (TC-per-session-cleanup-A 等価、再 pin)
 #   TC-2: 兄弟 session の file は影響なし (blast radius 0)
 #   TC-3: `.rite-flow-state.legacy.*` backup は影響なし (cycle 3/4 regression guard)
-#   TC-4: cleanup 後 flow-state.sh は default 値 (ENOENT 経路) を返す (resume 不能)
+#   TC-4: 終端 state の削除後は flow-state.sh が default 値 (ENOENT 経路) を返す。作業途中の state は phase を返す
 #   TC-5: 異なる cwd (別 repo) の per-session file は影響なし
 #   TC-6: cleanup 後 sessions ディレクトリ自体は残る (mkdir レース回避)
 #
@@ -100,7 +103,7 @@ SID="aaaaaaaa-1010-1010-1010-101010101010"
 echo "$SID" > "$TD/.rite-session-id"
 mkdir -p "$TD/.rite/sessions"
 target_file="$TD/.rite/sessions/${SID}.flow-state"
-echo "{\"active\":true,\"phase\":\"phase5_test\",\"issue_number\":684,\"branch\":\"feat/x\",\"session_id\":\"$SID\"}" > "$target_file"
+echo "{\"active\":true,\"phase\":\"completed\",\"issue_number\":684,\"branch\":\"feat/x\",\"session_id\":\"$SID\"}" > "$target_file"
 
 run_session_end "$TD" >/dev/null
 if [ ! -f "$target_file" ]; then
@@ -120,7 +123,7 @@ echo "$SID_OWN" > "$TD/.rite-session-id"
 mkdir -p "$TD/.rite/sessions"
 own_file="$TD/.rite/sessions/${SID_OWN}.flow-state"
 sib_file="$TD/.rite/sessions/${SID_SIB}.flow-state"
-echo "{\"active\":true,\"phase\":\"own_phase\",\"issue_number\":684,\"branch\":\"feat/own\",\"session_id\":\"$SID_OWN\"}" > "$own_file"
+echo "{\"active\":true,\"phase\":\"completed\",\"issue_number\":684,\"branch\":\"feat/own\",\"session_id\":\"$SID_OWN\"}" > "$own_file"
 echo "{\"active\":true,\"phase\":\"sib_phase\",\"issue_number\":684,\"branch\":\"feat/sib\",\"session_id\":\"$SID_SIB\"}" > "$sib_file"
 sib_hash_before=$(sha1sum "$sib_file" | awk '{print $1}')
 
@@ -150,7 +153,7 @@ TD=$(make_test_dir)
 SID="dddddddd-1010-1010-1010-101010101010"
 echo "$SID" > "$TD/.rite-session-id"
 mkdir -p "$TD/.rite/sessions"
-echo "{\"active\":true,\"phase\":\"phase5\",\"issue_number\":684,\"session_id\":\"$SID\"}" \
+echo "{\"active\":true,\"phase\":\"completed\",\"issue_number\":684,\"session_id\":\"$SID\"}" \
   > "$TD/.rite/sessions/${SID}.flow-state"
 # Pre-place a pre-v3 legacy backup file (`.rite-flow-state.legacy.*` naming).
 # The v3 in-place migrate no longer creates these, but cleanup must still
@@ -173,31 +176,49 @@ else
 fi
 
 # -------------------------------------------------------------------------
-# TC-4: cleanup 後 flow-state.sh は default 値を返す (resume 不能)
+# TC-4: 終端 state の削除後は default 値、作業途中の state は phase を返す
 # -------------------------------------------------------------------------
-echo "TC-4: cleanup 後 flow-state.sh は default 値を返す (ENOENT 経路)"
+echo "TC-4: 終端 state の削除後は flow-state.sh が default 値を返す (ENOENT 経路)"
 TD=$(make_test_dir)
 SID="eeeeeeee-1010-1010-1010-101010101010"
 echo "$SID" > "$TD/.rite-session-id"
 mkdir -p "$TD/.rite/sessions"
-echo "{\"active\":true,\"phase\":\"phase5_pre_cleanup\",\"issue_number\":684,\"session_id\":\"$SID\"}" \
+echo "{\"active\":true,\"phase\":\"completed\",\"issue_number\":684,\"session_id\":\"$SID\"}" \
   > "$TD/.rite/sessions/${SID}.flow-state"
 
 # Sanity check pre-cleanup
 phase_before=$(cd "$TD" && bash "$STATE_READ" get --field phase --default "default_unset")
-if [ "$phase_before" = "phase5_pre_cleanup" ]; then
+if [ "$phase_before" = "completed" ]; then
   pass "TC-4.0 (pre): state-read returns the live state before cleanup"
 else
-  fail "TC-4.0 (pre): expected phase5_pre_cleanup, got '$phase_before'"
+  fail "TC-4.0 (pre): expected completed, got '$phase_before'"
 fi
 
 run_session_end "$TD" >/dev/null
 
 phase_after=$(cd "$TD" && bash "$STATE_READ" get --field phase --default "default_unset")
 if [ "$phase_after" = "default_unset" ]; then
-  pass "TC-4.1: state-read returns default after cleanup (resume not possible)"
+  pass "TC-4.1: state-read returns default after a finished state is removed"
 else
   fail "TC-4.1: state-read returned '$phase_after' instead of default — cleanup incomplete"
+fi
+
+TD=$(make_test_dir)
+SID="eeeeeeee-2020-2020-2020-202020202020"
+echo "$SID" > "$TD/.rite-session-id"
+mkdir -p "$TD/.rite/sessions"
+echo "{\"active\":true,\"phase\":\"phase5_pre_cleanup\",\"issue_number\":684,\"session_id\":\"$SID\"}" \
+  > "$TD/.rite/sessions/${SID}.flow-state"
+
+run_session_end "$TD" >/dev/null
+
+phase_mid=$(cd "$TD" && bash "$STATE_READ" get --field phase --default "default_unset")
+# `get --field active` folds a stored false into the default, so read the file directly.
+active_mid=$(jq -r '.active' "$TD/.rite/sessions/${SID}.flow-state" 2>/dev/null || echo "missing")
+if [ "$phase_mid" = "phase5_pre_cleanup" ] && [ "$active_mid" = "false" ]; then
+  pass "TC-4.2: a mid-flow state stays readable after session end (phase kept, active=false)"
+else
+  fail "TC-4.2: expected phase5_pre_cleanup with active=false, got phase='$phase_mid' active='$active_mid'"
 fi
 
 # -------------------------------------------------------------------------
@@ -213,7 +234,7 @@ echo "$SID_B" > "$TD_B/.rite-session-id"
 mkdir -p "$TD_A/.rite/sessions" "$TD_B/.rite/sessions"
 file_a="$TD_A/.rite/sessions/${SID_A}.flow-state"
 file_b="$TD_B/.rite/sessions/${SID_B}.flow-state"
-echo "{\"active\":true,\"phase\":\"phase_a\",\"issue_number\":684,\"session_id\":\"$SID_A\"}" > "$file_a"
+echo "{\"active\":true,\"phase\":\"completed\",\"issue_number\":684,\"session_id\":\"$SID_A\"}" > "$file_a"
 echo "{\"active\":true,\"phase\":\"phase_b\",\"issue_number\":684,\"session_id\":\"$SID_B\"}" > "$file_b"
 b_hash_before=$(sha1sum "$file_b" | awk '{print $1}')
 
@@ -239,12 +260,12 @@ TD=$(make_test_dir)
 SID="ffffffff-1010-1010-1010-101010101010"
 echo "$SID" > "$TD/.rite-session-id"
 mkdir -p "$TD/.rite/sessions"
-echo "{\"active\":true,\"phase\":\"phase5\",\"issue_number\":684,\"session_id\":\"$SID\"}" \
+echo "{\"active\":true,\"phase\":\"completed\",\"issue_number\":684,\"session_id\":\"$SID\"}" \
   > "$TD/.rite/sessions/${SID}.flow-state"
 
 run_session_end "$TD" >/dev/null
 
-if [ -d "$TD/.rite/sessions" ]; then
+if [ ! -e "$TD/.rite/sessions/${SID}.flow-state" ] && [ -d "$TD/.rite/sessions" ]; then
   pass "TC-6.1: sessions ディレクトリは cleanup 後も存在 (subsequent session can mkdir-free)"
 else
   fail "TC-6.1: sessions ディレクトリが消失した — race window 発生の余地"

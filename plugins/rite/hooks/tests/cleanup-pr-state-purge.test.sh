@@ -3,7 +3,9 @@
 #
 # 対応 AC:
 #   AC-5 `<pr>-` prefix 固定で削除し、別 PR の state を巻き込まない
+#        (採否ゲートの判定記録と保留ファイルを含む。follow-up の判定記録は残す)
 #   AC-6 --dry-run が削除しない
+# 採否保留ファイルがあれば --drop-adoption-hold 無しでは何も削除しない (--dry-run でも同じ)。
 #
 # review-results の退避/削除そのものは review-results-archive-or-rm.test.sh が behavioral に
 # 固定する。本ファイルは purge helper が「どのファイルを対象にするか」と「失敗をどう surface
@@ -25,6 +27,8 @@ assert_present(){ if [ -e "$2" ]; then ok "$1"; else bad "$1 ($2 が消えた)";
 # 対象 PR (42) と別 PR (4) / prefix が伸びた PR (420) / suffix 一致 PR (142) の state を同居させる。
 # 4 と 420 は `42` への部分一致・prefix 伸長、142 は末尾一致で巻き込まれうる境界値。
 # 142 は glob の**先頭**アンカーを検証する（`*42-*` のように頭を緩める変異はこれでしか死なない）。
+# 採否保留ファイルは別 PR にだけ置く（別 PR の保留で対象 PR の purge が止まらないことも同時に見る）。
+# 対象 PR の保留は seed_hold で TC ごとに足す。
 seed(){
   local root="$1"
   mkdir -p "$root/.rite/state" "$root/.rite/fix-cycle-state" "$root/.rite/review-results"
@@ -35,9 +39,20 @@ seed(){
     printf 'x\n' > "$root/.rite/state/review-run-since-${pr}.txt"
     printf 'x\n' > "$root/.rite/state/nb-sweep-done-${pr}.txt"
     printf 'x\n' > "$root/.rite/state/pr-recommendations-done-${pr}.txt"
+    for kind in sweep triage followup; do
+      printf '{}\n' > "$root/.rite/state/adoption-${pr}-${kind}.json"
+      [ "$pr" = 42 ] || printf '{}\n' > "$root/.rite/state/adoption-hold-${pr}-${kind}.json"
+    done
     printf '{"non_blocking_findings":[]}\n' > "$root/.rite/review-results/${pr}-cycle1.json"
   done
   printf 'x\n' > "$root/.rite/fix-cycle-state.json"   # legacy（PR 非依存）
+}
+seed_hold(){   # <root> <kind>...
+  local root="$1"; shift
+  local kind
+  for kind in "$@"; do
+    printf '{}\n' > "$root/.rite/state/adoption-hold-42-${kind}.json"
+  done
 }
 
 echo "=== cleanup-pr-state-purge: prefix 固定（AC-5）==="
@@ -52,6 +67,19 @@ assert_absent "対象 PR の review_run_since を削除する" "$r/.rite/state/r
 assert_absent "対象 PR の nb_sweep_done を削除する" "$r/.rite/state/nb-sweep-done-42.txt"
 assert_absent "対象 PR の pr_recommendations_done を削除する" "$r/.rite/state/pr-recommendations-done-42.txt"
 assert_present "別 PR (4) の pr_recommendations_done を巻き込まない" "$r/.rite/state/pr-recommendations-done-4.txt"
+# 採否ゲートの判定記録: sweep / triage の記録は消し、follow-up の記録は cleanup の再実行が同じ根因 key
+# を得るために残す (follow-up-judged と同じ寿命)
+for kind in sweep triage; do
+  assert_absent "対象 PR の判定記録 ($kind) を削除する" "$r/.rite/state/adoption-42-${kind}.json"
+done
+assert_present "follow-up の判定記録は残す" "$r/.rite/state/adoption-42-followup.json"
+for pr in 4 420 142; do
+  for kind in sweep triage followup; do
+    assert_present "別 PR ($pr) の判定記録 ($kind) を巻き込まない" "$r/.rite/state/adoption-${pr}-${kind}.json"
+    assert_present "別 PR ($pr) の保留ファイル ($kind) を巻き込まない" "$r/.rite/state/adoption-hold-${pr}-${kind}.json"
+  done
+done
+assert_not_contains "別 PR の保留では held にしない" "$out" "PR_STATE_PURGE=held"
 assert_absent "legacy fix_cycle_state を削除する" "$r/.rite/fix-cycle-state.json"
 # 別 PR は残る（AC-5 の Then）。
 assert_present "別 PR (4) の state を巻き込まない" "$r/.rite/state/nb-sweep-done-4.txt"
@@ -62,12 +90,57 @@ assert_present "suffix 一致 PR (142) の review-results を巻き込まない"
 # 削除の実行報告は stderr（marker と同じストリーム。抽出前と同一）。
 assert_contains "削除ごとに ✅ 行を出す" "$out" "✅ nb_sweep_done を削除:"
 
+echo "=== cleanup-pr-state-purge: 採否保留があれば何も消さない ==="
+
+# 保留した候補の全文と出典を残すため、hold ファイルが 1 つでもあれば state もレビュー結果も触らない。
+for kind in sweep triage; do
+  r=$(mktemp -d "$TMP_ROOT/root.XXXXXX"); seed "$r"; seed_hold "$r" "$kind"
+  out=$(bash "$HELPER" --pr 42 --state-root "$r" 2>&1); rc=$?
+  assert_eq "held ($kind): exit 0" "$rc" "0"
+  assert_contains "held ($kind): marker を出す" "$out" \
+    "[CONTEXT] PR_STATE_PURGE=held; hold_files=$r/.rite/state/adoption-hold-42-${kind}.json; pr=42"
+  assert_present "held ($kind): 保留ファイルを残す" "$r/.rite/state/adoption-hold-42-${kind}.json"
+  for rec in sweep triage followup; do
+    assert_present "held ($kind): 判定記録 ($rec) を残す" "$r/.rite/state/adoption-42-${rec}.json"
+  done
+  assert_present "held ($kind): レビュー結果 JSON を残す" "$r/.rite/review-results/42-cycle1.json"
+  assert_present "held ($kind): 他の state を残す" "$r/.rite/state/nb-sweep-done-42.txt"
+  assert_present "held ($kind): fix_cycle_state を残す" "$r/.rite/fix-cycle-state/42.json"
+  assert_present "held ($kind): legacy fix_cycle_state を残す" "$r/.rite/fix-cycle-state.json"
+  assert_not_contains "held ($kind): 削除したと報告しない" "$out" "を削除: "
+done
+
+# 複数の保留は全部を hold_files に並べる。
+r=$(mktemp -d "$TMP_ROOT/root.XXXXXX"); seed "$r"; seed_hold "$r" sweep followup
+out=$(bash "$HELPER" --pr 42 --state-root "$r" 2>&1)
+assert_contains "held: 複数の保留をカンマ区切りで並べる" "$out" \
+  "hold_files=$r/.rite/state/adoption-hold-42-followup.json,$r/.rite/state/adoption-hold-42-sweep.json; pr=42"
+
+# 放棄が明示された経路（--drop-adoption-hold）は保留ファイルと判定記録も消す。
+r=$(mktemp -d "$TMP_ROOT/root.XXXXXX"); seed "$r"; seed_hold "$r" sweep triage followup
+out=$(bash "$HELPER" --pr 42 --state-root "$r" --drop-adoption-hold 2>&1); rc=$?
+assert_eq "drop: exit 0" "$rc" "0"
+assert_not_contains "drop: held にしない" "$out" "PR_STATE_PURGE=held"
+for kind in sweep triage followup; do
+  assert_absent "drop: 対象 PR の保留ファイル ($kind) を削除する" "$r/.rite/state/adoption-hold-42-${kind}.json"
+done
+for kind in sweep triage; do
+  assert_absent "drop: 対象 PR の判定記録 ($kind) を削除する" "$r/.rite/state/adoption-42-${kind}.json"
+done
+assert_present "drop: follow-up の判定記録は残す" "$r/.rite/state/adoption-42-followup.json"
+assert_contains "drop: 保留ファイルの削除も ✅ 行を出す" "$out" "✅ adoption_hold を削除:"
+assert_absent "drop: 他の state も削除する" "$r/.rite/state/nb-sweep-done-42.txt"
+for pr in 4 420 142; do
+  assert_present "drop: 別 PR ($pr) の保留ファイルを巻き込まない" "$r/.rite/state/adoption-hold-${pr}-sweep.json"
+done
+
 echo "=== cleanup-pr-state-purge: --dry-run（AC-6）==="
 
 r=$(mktemp -d "$TMP_ROOT/root.XXXXXX"); seed "$r"
 out=$(bash "$HELPER" --pr 42 --state-root "$r" --dry-run 2>/dev/null); rc=$?
 assert_eq "dry-run: exit 0" "$rc" "0"
 assert_present "dry-run: state ファイルを削除しない" "$r/.rite/state/nb-sweep-done-42.txt"
+assert_present "dry-run: 判定記録を削除しない" "$r/.rite/state/adoption-42-sweep.json"
 assert_present "dry-run: review-results を削除しない" "$r/.rite/review-results/42-cycle1.json"
 assert_contains "dry-run: 対象を stdout に列挙する" "$out" \
   "[DRY-RUN] nb_sweep_done を削除対象として検出: $r/.rite/state/nb-sweep-done-42.txt"
@@ -86,6 +159,15 @@ assert_not_contains "dry-run: suffix 一致 PR の review-results を列挙し�
 # どんな実装でも落ちない false positive になるため、両ストリームを結合して照合する。
 out_all=$(bash "$HELPER" --pr 42 --state-root "$r" --dry-run 2>&1)
 assert_not_contains "dry-run: 削除したと報告しない (stdout+stderr)" "$out_all" "を削除: "
+
+# dry-run でも保留の判定は同じに働く（対象を列挙せず held を出す）。marker は stderr なので結合して見る。
+r=$(mktemp -d "$TMP_ROOT/root.XXXXXX"); seed "$r"; seed_hold "$r" triage
+out_all=$(bash "$HELPER" --pr 42 --state-root "$r" --dry-run 2>&1); rc=$?
+assert_eq "dry-run held: exit 0" "$rc" "0"
+assert_contains "dry-run held: marker を出す" "$out_all" \
+  "[CONTEXT] PR_STATE_PURGE=held; hold_files=$r/.rite/state/adoption-hold-42-triage.json; pr=42"
+assert_not_contains "dry-run held: 対象を列挙しない" "$out_all" "[DRY-RUN]"
+assert_present "dry-run held: 保留ファイルを残す" "$r/.rite/state/adoption-hold-42-triage.json"
 
 echo "=== cleanup-pr-state-purge: 不正な PR 番号 ==="
 

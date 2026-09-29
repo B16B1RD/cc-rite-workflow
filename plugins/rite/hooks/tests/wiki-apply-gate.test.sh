@@ -3,13 +3,16 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_hermetic-env.sh
+source "$SCRIPT_DIR/_hermetic-env.sh" || { echo "ERROR: cannot source _hermetic-env.sh" >&2; exit 1; }
+hermetic_leave_checkout || exit 1
 GATE="$SCRIPT_DIR/../scripts/wiki-apply-gate.sh"
 CAPTURE="$SCRIPT_DIR/../scripts/wiki-apply-capture.sh"
 COMMIT="$SCRIPT_DIR/../scripts/git-commit-file.sh"
 INGEST_COMMIT="$SCRIPT_DIR/../scripts/wiki-ingest-commit.sh"
 GUARD="$SCRIPT_DIR/../pre-tool-bash-guard.sh"
 ROOT="$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-apply-XXXXXX")"
-trap 'rm -rf "$ROOT"' EXIT
+trap 'rm -rf "$ROOT" "$HERMETIC_CWD"' EXIT
 
 PASS=0
 FAIL=0
@@ -730,6 +733,51 @@ if grep -q 'wiki-apply-missing' <<<"$gout"; then
 else
   fail "guard missing rc=$grc out=$gout"
 fi
+fixsurf="$ROOT/fixsurf.flow-state"
+write_flow "$fixsurf" fix 7 "$repo"
+for deny_case in "$flow:implement" "$fixsurf:fix"; do
+  grc=0
+  gout=$(printf '%s' "$gin" | RITE_BTG_TEST_CRASH=pattern9-surface WIKI_APPLY_FLOW_STATE="${deny_case%%:*}" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+  if grep -q '"permissionDecision": *"deny"' <<<"$gout" && grep -q 'wiki-apply-uninspectable' <<<"$gout" \
+     && grep -q 'rc=3' <<<"$gout" && ! grep -q 'review-commit-evidence' <<<"$gout" \
+     && ! grep -q 'wiki-apply-gate' <<<"$gout" && ! grep -q 'fail-open' "$ROOT/guard.err"; then
+    pass "guard denies an uninspectable commit in the ${deny_case#*:} phase"
+  else
+    fail "guard surface ${deny_case#*:} rc=$grc out=$gout err=$(cat "$ROOT/guard.err")"
+  fi
+done
+grc=0
+gout=$(printf '%s' "$gin" | RITE_BTG_TEST_CRASH=pattern9-surface WIKI_APPLY_FLOW_STATE="$bad" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+if grep -q '"permissionDecision": *"deny"' <<<"$gout" && grep -q 'wiki-apply-uninspectable' <<<"$gout"; then
+  pass "guard denies an uninspectable commit when flow-state is unreadable"
+else
+  fail "guard surface unreadable rc=$grc out=$gout"
+fi
+for surface_case in "$clean:cleanup phase" "$ROOT/no-such.flow-state:no session"; do
+  grc=0
+  gout=$(printf '%s' "$gin" | RITE_BTG_TEST_CRASH=pattern9-surface WIKI_APPLY_FLOW_STATE="${surface_case%%:*}" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+  if [ "$grc" -eq 0 ] && [ -z "$gout" ]; then
+    pass "guard allows an uninspectable commit outside the gated phases: ${surface_case#*:}"
+  else
+    fail "guard surface ${surface_case#*:} rc=$grc out=$gout"
+  fi
+done
+surface_status=$(jq -n --arg cwd "$repo" '{tool_name:"Bash", tool_input:{command:"git status"}, cwd:$cwd}')
+grc=0
+gout=$(printf '%s' "$surface_status" | RITE_BTG_TEST_CRASH=pattern9-surface WIKI_APPLY_FLOW_STATE="$flow" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+if [ "$grc" -eq 0 ] && [ -z "$gout" ]; then
+  pass "surface fault injection does not affect a command without git commit"
+else
+  fail "guard surface injection leak rc=$grc out=$gout"
+fi
+body_only=$(jq -n --arg cwd "$repo" --arg cmd $'cat <<\'EOF\'\ngit commit -m x\nEOF' '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
+grc=0
+gout=$(printf '%s' "$body_only" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+if [ "$grc" -eq 0 ] && [ -z "$gout" ]; then
+  pass "guard allows git commit that appears only in a heredoc body"
+else
+  fail "guard heredoc body rc=$grc out=$gout"
+fi
 dash_c=$(jq -n --arg cwd "/tmp" --arg cmd "git -C $repo commit -m x" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
 grc=0
 gout=$(printf '%s' "$dash_c" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
@@ -948,6 +996,131 @@ for _cmd in "git commit -F f file.txt 2>&1" "git commit -F f 2>&1 file.txt"; do
     pass "guard still denies a pathspec beside a redirection: $_cmd"
   else
     fail "guard redirection pathspec $_cmd rc=$grc out=$gout"
+  fi
+done
+# git とサブコマンドの間にあるリダイレクト語（先のない演算子はその次の語も）とグローバルオプションは
+# 読み飛ばしてサブコマンドを特定する。-C / -c とその値の間のリダイレクト語も同じ。
+while IFS= read -r _cmd; do
+  expect_target index "$_cmd"
+done <<'EOF'
+git 2>/dev/null commit -m x
+git 2> /dev/null commit -m x
+git >/dev/null commit -m x
+git &>/dev/null commit -m x
+git <&- commit -m x
+git -c a.b=c 2>&1 commit -m x
+git -C . 2>/dev/null commit -m x
+git -C 2>/dev/null . commit -m x
+git -c 2>&1 a.b=c commit -m x
+git commit -m x
+git -c a.b=c commit -m x
+git --no-pager commit -m x
+git commit -m x 2>&1
+EOF
+brc=0
+bout=$(bash "$SCOPE_CHECK" commit-target --command "2>/dev/null git commit -m x" --cwd "$repo" 2>"$ROOT/target.err") || brc=$?
+if [ "$brc" -ne 0 ] && [ -z "$bout" ] && grep -q 'run commit as a direct command' "$ROOT/target.err"; then
+  pass "commit-target still refuses a redirection before git"
+else
+  fail "commit-target redirection before git rc=$brc out=$bout err=$(cat "$ROOT/target.err")"
+fi
+if python3 - "$SCRIPT_DIR/../scripts/lib/review-fix-scope.py" "$repo" <<'PY'
+import importlib.util, sys
+from pathlib import Path
+sys.path.insert(0, str(Path(sys.argv[1]).parent))
+spec = importlib.util.spec_from_file_location("review_fix_scope", sys.argv[1])
+scope = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(scope)
+targets = list(scope.each_git_target("git 2>/dev/null merge --continue", sys.argv[2]))
+assert len(targets) == 1, targets
+name, toplevel, args, problem = targets[0]
+assert name == "merge" and problem is None, targets
+assert toplevel == Path(sys.argv[2]).resolve(), toplevel
+assert scope.head_move(name, args) == "commit", args
+PY
+then
+  pass "each_git_target reads git 2>/dev/null merge --continue as a commit in the repository"
+else
+  fail "each_git_target merge --continue behind a redirection"
+fi
+redir=$(jq -n --arg cwd "$repo" '{tool_name:"Bash", tool_input:{command:"git 2>/dev/null commit -m x"}, cwd:$cwd}')
+grc=0
+gout=$(printf '%s' "$redir" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+if grep -qF 'BLOCKED (wiki-apply-gate)' <<<"$gout" \
+   && ! grep -qE 'wiki-apply-(unresolved|index|missing)' <<<"$gout"; then
+  pass "guard checks a commit behind a redirection at the wiki gate"
+else
+  fail "guard redirection before commit rc=$grc out=$gout"
+fi
+# 未設定の変数や空のコマンド置換は空に展開されて素の commit になりうるので、作業先を特定できない commit として拒否する。
+# git '' は git が「コマンドではない」で失敗して commit しない。非更新サブコマンドの引数にある commit は commit ではない。
+for _cmd in 'git $OPTS commit -m x' 'git $(true) commit -m x'; do
+  drc=0
+  dout=$(bash "$SCOPE_CHECK" commit-target --command "$_cmd" --cwd "$repo" 2>"$ROOT/target.err") || drc=$?
+  if [ "$drc" -ne 0 ] && [ -z "$dout" ] && grep -q 'commit target is dynamic' "$ROOT/target.err"; then
+    pass "commit-target refuses a commit behind a word that may expand to nothing: $_cmd"
+  else
+    fail "commit-target $_cmd rc=$drc out=$dout err=$(cat "$ROOT/target.err")"
+  fi
+  dyn=$(jq -n --arg cwd "$repo" --arg cmd "$_cmd" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
+  grc=0
+  # 実行中のセッションにレビュー中の cycle があると Pattern 8 が先に拒否するので、session state から切り離す。
+  mkdir -p "$ROOT/dyn-state"
+  gout=$(printf '%s' "$dyn" | env -u CLAUDE_SESSION_ID -u CODEX_THREAD_ID -u GROK_SESSION_ID RITE_HOST=claude \
+    CLAUDE_CODE_SESSION_ID=550e8400-e29b-41d4-a716-446655440078 RITE_STATE_ROOT="$ROOT/dyn-state" \
+    WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+  if grep -qF 'BLOCKED (wiki-apply-unresolved)' <<<"$gout" && grep -q 'dynamic' <<<"$gout"; then
+    pass "guard refuses a commit behind a word that may expand to nothing: $_cmd"
+  else
+    fail "guard $_cmd rc=$grc out=$gout"
+  fi
+done
+# 1 回の解析で検査しきれない回数の cd / -C の後の作業先は動的になり、そこへの commit は作業先を特定できない commit として拒否する。
+_cd17=$(printf 'cd . && %.0s' $(seq 1 17))
+_deep65="echo $(printf '$(%.0s' $(seq 1 65))true$(printf ')%.0s' $(seq 1 65)); "
+_cmd="${_cd17}git commit -m x"
+many=$(jq -n --arg cwd "$repo" --arg cmd "$_cmd" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
+grc=0
+gout=$(printf '%s' "$many" | env -u CLAUDE_SESSION_ID -u CODEX_THREAD_ID -u GROK_SESSION_ID RITE_HOST=claude \
+  CLAUDE_CODE_SESSION_ID=550e8400-e29b-41d4-a716-446655440078 RITE_STATE_ROOT="$ROOT/dyn-state" \
+  WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+if grep -qF 'BLOCKED (wiki-apply-unresolved)' <<<"$gout" && grep -q 'target is dynamic' <<<"$gout"; then
+  pass "guard refuses a commit after more directory changes than it can inspect"
+else
+  fail "guard many directory changes rc=$grc out=$gout"
+fi
+# 解析しない深さ（65 段以上）の置換は、中身を引用・バックスラッシュ・行継続を外して読み、git と commit / merge を含むときだけ拒否する。
+_deep() { printf 'echo %s%s%s' "$(printf '$(%.0s' $(seq 1 "$1"))" "$2" "$(printf ')%.0s' $(seq 1 "$1"))"; }
+_nl=$'\n'
+for _inner in 'git merge x' "g''it co\\mmit -m y" 'g"i"t commit -m y' "gi\\${_nl}t commit -m y"; do
+  _cmd=$(_deep 65 "$_inner")
+  drc=0
+  dout=$(bash "$SCOPE_CHECK" commit-target --command "$_cmd" --cwd "$repo" 2>"$ROOT/target.err") || drc=$?
+  if [ "$drc" -ne 0 ] && [ -z "$dout" ] && grep -q 'nested more than 64 deep' "$ROOT/target.err"; then
+    pass "commit-target refuses a HEAD mover in an unparsed substitution: ${_inner//$_nl/\\n}"
+  else
+    fail "commit-target deep ${_inner//$_nl/\\n} rc=$drc out=$dout err=$(cat "$ROOT/target.err")"
+  fi
+done
+# 上限を超えた後でも、解析しない置換の外にある HEAD を動かさないコマンドの引数の commit では拒否しない。
+# 深さ 64 の置換は解析し、65 段以上の置換は中身が git と commit / merge を含まなければ拒否しない。
+for _cmd in "git '' commit -m x" 'git log --grep commit' 'git $OPTS log --grep commit' \
+            "${_cd17}git log --grep commit" "${_deep65}git log --grep commit" \
+            "$(_deep 64 'git log --grep commit')" "$(_deep 65 'git status')" "$(_deep 65 'echo commit')"; do
+  nrc=0
+  nout=$(bash "$SCOPE_CHECK" commit-target --command "$_cmd" --cwd "$repo" 2>"$ROOT/target.err") || nrc=$?
+  if [ "$nrc" -eq 0 ] && [ -z "$nout" ]; then
+    pass "commit-target finds no commit in: $_cmd"
+  else
+    fail "commit-target $_cmd rc=$nrc out=$nout err=$(cat "$ROOT/target.err")"
+  fi
+  none=$(jq -n --arg cwd "$repo" --arg cmd "$_cmd" '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')
+  grc=0
+  gout=$(printf '%s' "$none" | WIKI_APPLY_FLOW_STATE="$flow" WIKI_APPLY_MEMORY="$ROOT/no-such.md" bash "$GUARD" 2>"$ROOT/guard.err") || grc=$?
+  if [ "$grc" -eq 0 ] && [ -z "$gout" ]; then
+    pass "guard does not deny: $_cmd"
+  else
+    fail "guard $_cmd rc=$grc out=$gout"
   fi
 done
 crc=0

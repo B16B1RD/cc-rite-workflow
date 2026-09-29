@@ -12,6 +12,7 @@ TARGET="$PLUGIN_ROOT/hooks/scripts/number-reference-check.sh"
 LINT_SKILL="$PLUGIN_ROOT/skills/lint/SKILL.md"
 PR_REVIEW_SKILL="$PLUGIN_ROOT/skills/pr-review/SKILL.md"
 FIX_SKILL="$PLUGIN_ROOT/skills/fix/SKILL.md"
+FIX_STEP="$PLUGIN_ROOT/scripts/fix-step.sh"
 IMPLEMENT_SKILL="$PLUGIN_ROOT/skills/issue-implement/SKILL.md"
 ISSUE_CLOSE_SKILL="$PLUGIN_ROOT/skills/issue-close/SKILL.md"
 
@@ -363,9 +364,9 @@ else
   fail "word-char skip failed rc=$rc: $out"
 fi
 
-rc=0; out=$(printf 'link to assessment-rules.md#%s-class\ncolor #%s\nreal token (#%s)\n' \
-  "$heading_id" "$hex_color" "$bare_token" \
-  | bash "$TARGET" --stdin --label probe.md --quiet 2>&1) || rc=$?
+probe_input=$(printf 'link to assessment-rules.md#%s-class\ncolor #%s\nreal token (#%s)' \
+  "$heading_id" "$hex_color" "$bare_token")
+rc=0; out=$(bash "$TARGET" --stdin --label probe.md --quiet <<< "$probe_input" 2>&1) || rc=$?
 if [ "$rc" -eq 1 ] \
    && printf '%s' "$out" | grep -cE >/dev/null "^probe.md:3: real token \\(#${bare_token}\\)$" \
    && ! printf '%s' "$out" | grep -c >/dev/null 'probe.md:1:' \
@@ -454,8 +455,8 @@ for excluded_path in \
   plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh \
   plugins/rite/hooks/tests/wiki-numref-precommit.test.sh \
   plugins/rite/hooks/tests/wiki-worktree-commit.test.sh; do
-  rc=0; out=$(printf 'excluded token (#2106)\n' \
-    | bash "$TARGET" --stdin --label "$excluded_path" --quiet 2>&1) || rc=$?
+  rc=0; out=$(bash "$TARGET" --stdin --label "$excluded_path" --quiet \
+    <<< 'excluded token (#2106)' 2>&1) || rc=$?
   if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -c >/dev/null 'Total number-ref findings: 0'; then
     pass "T-04 --stdin excludes $excluded_path"
   else
@@ -463,8 +464,8 @@ for excluded_path in \
   fi
 done
 
-rc=0; out=$(printf 'sibling token (#2107)\n' \
-  | bash "$TARGET" --stdin --label plugins/rite/hooks/tests/other.test.sh --quiet 2>&1) || rc=$?
+rc=0; out=$(bash "$TARGET" --stdin --label plugins/rite/hooks/tests/other.test.sh --quiet \
+  <<< 'sibling token (#2107)' 2>&1) || rc=$?
 if [ "$rc" -eq 1 ] \
    && printf '%s' "$out" | grep -c >/dev/null '^plugins/rite/hooks/tests/other.test.sh:1:' \
    && printf '%s' "$out" | grep -c >/dev/null 'Total number-ref findings: 1'; then
@@ -474,8 +475,8 @@ else
 fi
 
 for sibling_path in .rite/wiki/raw-notes/x.md plugins/rite/scripts/tests/fixtures-other/x.md; do
-  rc=0; out=$(printf 'directory sibling token (#2113)\n' \
-    | bash "$TARGET" --stdin --label "$sibling_path" --quiet 2>&1) || rc=$?
+  rc=0; out=$(bash "$TARGET" --stdin --label "$sibling_path" --quiet \
+    <<< 'directory sibling token (#2113)' 2>&1) || rc=$?
   if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -c >/dev/null "^$sibling_path:1:" \
      && printf '%s' "$out" | grep -c >/dev/null 'Total number-ref findings: 1'; then
     pass "T-04 --stdin scans directory sibling $sibling_path"
@@ -487,12 +488,12 @@ done
 # Directory prefixes are boundaries: the root and descendants are excluded,
 # while merely similar prefixes remain in scope.
 for excluded_label in .rite/wiki/raw .rite/wiki/raw/child.md; do
-  rc=0; out=$(printf 'excluded token (#2108)\n' \
-    | bash "$TARGET" --stdin --label "$excluded_label" --quiet 2>&1) || rc=$?
+  rc=0; out=$(bash "$TARGET" --stdin --label "$excluded_label" --quiet \
+    <<< 'excluded token (#2108)' 2>&1) || rc=$?
   assert "T-04 directory boundary excludes $excluded_label" "0" "$rc"
 done
-rc=0; out=$(printf 'prefix sibling (#2109)\n' \
-  | bash "$TARGET" --stdin --label .rite/wiki/raw-notes/x.md --quiet 2>&1) || rc=$?
+rc=0; out=$(bash "$TARGET" --stdin --label .rite/wiki/raw-notes/x.md --quiet \
+  <<< 'prefix sibling (#2109)' 2>&1) || rc=$?
 assert "T-04 similar directory prefix remains in scope" "1" "$rc"
 
 # Both chunk orders pin that an excluded file cannot leak skip state into the
@@ -676,7 +677,7 @@ fi
 # --------------------------------------------------------------------------
 # --stdin --label
 # --------------------------------------------------------------------------
-rc=0; out=$(printf 'stdin token (#2400)\n' | bash "$TARGET" --stdin --label docs/in.md --quiet 2>&1) || rc=$?
+rc=0; out=$(bash "$TARGET" --stdin --label docs/in.md --quiet <<< 'stdin token (#2400)' 2>&1) || rc=$?
 if [ "$rc" -eq 1 ] \
    && printf '%s' "$out" | grep -cE >/dev/null '^docs/in.md:1: stdin token \(#2400\)$' \
    && printf '%s' "$out" | grep -c >/dev/null 'Total number-ref findings: 1'; then
@@ -685,10 +686,10 @@ else
   fail "--stdin expected labeled finding, got rc=$rc: $out"
 fi
 
-rc=0; out=$(printf 'raw (#2500)\n' | bash "$TARGET" --stdin --label .rite/wiki/raw/x.md --quiet 2>&1) || rc=$?
+rc=0; out=$(bash "$TARGET" --stdin --label .rite/wiki/raw/x.md --quiet <<< 'raw (#2500)' 2>&1) || rc=$?
 assert "--stdin excluded label is not scanned" "0" "$rc"
 
-rc=0; out=$(printf 'placeholder #123 only\n' | bash "$TARGET" --stdin --label docs/p.md --quiet 2>&1) || rc=$?
+rc=0; out=$(bash "$TARGET" --stdin --label docs/p.md --quiet <<< 'placeholder #123 only' 2>&1) || rc=$?
 assert "--stdin #123 placeholder is excluded" "0" "$rc"
 
 # --------------------------------------------------------------------------
@@ -718,42 +719,47 @@ assert_grep "T-06 pr-review orchestrator reviewer id" "$PR_REVIEW_SKILL" \
   'reviewer: "pr-review"'
 assert_not_grep "T-06 pr-review does not skip on cycle-scope" "$PR_REVIEW_SKILL" \
   'number-reference-check.*cycle-scope'
-assert_grep "T-06 fix 3.1 self-check calls --diff" "$FIX_SKILL" \
+# fix 3.1 の self-check 本体は scripts/fix-step.sh の step_number_ref_check にある。SKILL.md は
+# 3.3 と同じ {changed_files} を helper へ渡す（渡し忘れると intent-to-add の母集合が空になる）。
+assert_grep_in_section "T-06 fix 3.1 passes {changed_files} to the helper" "$FIX_SKILL" \
+  '### 3.1 Verify Changes' '### 3.1.1 ' \
+  "number-ref-check --base-branch \\{base_branch\\} --changed-files '\\{changed_files\\}'"
+assert_grep "T-06 fix 3.1 self-check calls --diff" "$FIX_STEP" \
   'number-reference-check\.sh --diff'
-assert_grep "T-06 fix 3.1 self-check intent-to-add uses {changed_files}" "$FIX_SKILL" \
-  'for f in \{changed_files\}'
-assert_grep "T-06 fix 3.1 add -N uses existing-path subset" "$FIX_SKILL" \
+assert_grep "T-06 fix 3.1 self-check intent-to-add uses changed_files" "$FIX_STEP" \
+  'for f in \$\{changed_files\}'
+assert_grep "T-06 fix 3.1 add -N uses existing-path subset" "$FIX_STEP" \
   'git add -N -- \$nref_addn'
-assert_grep "T-06 fix 3.1 empty {changed_files} skips intent-to-add" "$FIX_SKILL" \
-  'if \[ -n "\{changed_files\}" \]'
-assert_grep "T-06 fix 3.1 skips missing paths before add -N" "$FIX_SKILL" \
+assert_grep "T-06 fix 3.1 empty changed_files skips intent-to-add" "$FIX_STEP" \
+  'if \[ -n "\$\{changed_files\}" \]'
+assert_grep "T-06 fix 3.1 skips missing paths before add -N" "$FIX_STEP" \
   '\[ -e "\$f" \] && nref_addn='
-assert_grep "T-06 fix 3.1 intent-to-add fail-loud ERROR" "$FIX_SKILL" \
+assert_grep "T-06 fix 3.1 intent-to-add fail-loud ERROR" "$FIX_STEP" \
   'ERROR: intent-to-add に失敗しました'
-assert_not_grep "T-06 fix 3.1 does not use add -N ." "$FIX_SKILL" \
+assert_not_grep "T-06 fix 3.1 does not use add -N ." "$FIX_STEP" \
   'add -N[[:space:]]+(\.[[:space:]]|$)'
-assert_not_grep "T-06 fix 3.1 does not use add -N -- ." "$FIX_SKILL" \
+assert_not_grep "T-06 fix 3.1 does not use add -N -- ." "$FIX_STEP" \
   'add -N[[:space:]]+--[[:space:]]+\.'
-assert_not_grep "T-06 fix 3.1 does not use add -A" "$FIX_SKILL" \
+assert_not_grep "T-06 fix 3.1 does not use add -A" "$FIX_STEP" \
   'add -A'
 
 # AC-4 / T-04: add -N 行 < --diff 行。AC-2 / T-02: その区間に固有 ERROR と [fix:error]
 # （既存 --diff rc 分岐の [fix:error] 一致では FAIL）。
 fix_skip_line=$(awk '
-  /^### 3\.1 Verify Changes/ { s=1 }
-  s && /^### 3\.1\.1 / { exit }
-  s && /^[[:space:]]*if \[ -n "\{changed_files\}" \]/ { print NR; exit }
-' "$FIX_SKILL")
+  /^step_number_ref_check\(\) \{$/ { s=1 }
+  s && /^}$/ { exit }
+  s && /^[[:space:]]*if \[ -n "\$\{changed_files\}" \]/ { print NR; exit }
+' "$FIX_STEP")
 fix_addn_line=$(awk '
-  /^### 3\.1 Verify Changes/ { s=1 }
-  s && /^### 3\.1\.1 / { exit }
+  /^step_number_ref_check\(\) \{$/ { s=1 }
+  s && /^}$/ { exit }
   s && /^[[:space:]]*git add -N -- \$nref_addn/ { print NR; exit }
-' "$FIX_SKILL")
+' "$FIX_STEP")
 fix_diff_line=$(awk '
-  /^### 3\.1 Verify Changes/ { s=1 }
-  s && /^### 3\.1\.1 / { exit }
-  s && /^[[:space:]]*bash \{plugin_root\}\/hooks\/scripts\/number-reference-check\.sh --diff/ { print NR; exit }
-' "$FIX_SKILL")
+  /^step_number_ref_check\(\) \{$/ { s=1 }
+  s && /^}$/ { exit }
+  s && /^[[:space:]]*bash "\$plugin_root"\/hooks\/scripts\/number-reference-check\.sh --diff/ { print NR; exit }
+' "$FIX_STEP")
 if [ -n "$fix_addn_line" ] && [ -n "$fix_diff_line" ] \
    && [ "$fix_addn_line" -lt "$fix_diff_line" ]; then
   pass "T-06 fix 3.1 add -N precedes --diff"
@@ -768,7 +774,7 @@ else
 fi
 fix_intent_arm=""
 if [ -n "$fix_addn_line" ] && [ -n "$fix_diff_line" ]; then
-  fix_intent_arm=$(awk -v a="$fix_addn_line" -v d="$fix_diff_line" 'NR > a && NR < d' "$FIX_SKILL")
+  fix_intent_arm=$(awk -v a="$fix_addn_line" -v d="$fix_diff_line" 'NR > a && NR < d' "$FIX_STEP")
 fi
 if printf '%s' "$fix_intent_arm" | grep -c >/dev/null 'ERROR: intent-to-add に失敗しました' \
    && printf '%s' "$fix_intent_arm" | grep -c >/dev/null '\[fix:error\]'; then
@@ -967,7 +973,7 @@ scan_deletion_residue() {
   local manifest
   manifest=$(mktemp)
   local file grep_rc grep_bin="${DELETION_GREP_BIN:-grep}"
-  if ! find "$@" -type f ! -path '*/fixtures/*' \
+  if ! find "$@" -type f ! -path '*/fixtures/*' ! -path '*/__pycache__/*' \
     ! -name 'number-reference-check.test.sh' -print0 > "$manifest"; then
     rm -f "$manifest"
     return 2
@@ -1043,6 +1049,16 @@ if [ "$scan_rc" -eq 0 ]; then
   pass "deletion-damage scan reports residue found through the scan helper"
 else
   fail "deletion-damage scan missed helper-level residue (rc=$scan_rc)"
+fi
+pycache_fixture="$sb/deletion-scan-pycache-fixture"
+mkdir -p "$pycache_fixture/__pycache__"
+printf '%s\n' "${deletion_residue_samples[0]}" > "$pycache_fixture/__pycache__/generated.pyc"
+scan_rc=0
+scan_deletion_residue "$pycache_fixture" || scan_rc=$?
+if [ "$scan_rc" -eq 1 ]; then
+  pass "deletion-damage scan ignores generated __pycache__ files"
+else
+  fail "deletion-damage scan flagged a generated __pycache__ file (rc=$scan_rc)"
 fi
 grep_fail_shim="$sb/grep-fail"
 printf '%s\n' '#!/bin/bash' 'exit 2' > "$grep_fail_shim"

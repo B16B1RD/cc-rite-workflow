@@ -4,6 +4,7 @@
 # source=compact: recovery text (Issue/Phase/Branch/Next/Loop/PR + auto continue)
 # is emitted here because SessionStart stdout is injected into model context.
 # startup/resume/clear keep the interruption / recover notice.
+# source=resume also turns a state SessionEnd suspended mid-flow active again.
 set -euo pipefail
 
 # Double-execution guard (hooks.json + settings.local.json migration)
@@ -520,6 +521,11 @@ fi
 # worktree-rooted CWD as well — standing in a worktree does not make the
 # queue files unsafe to delete. stdout/stderr stay on the hook (not the
 # pr-cycle-cleanup log) so leftover failed/outstanding lines remain visible.
+# A session that starts again under its own id is no longer ended: drop the
+# marker session-end.sh left on its queue.
+if [ -n "$SESSION_ID" ] && ! rm -f "$STATE_ROOT/.rite/state/run-queue-${SESSION_ID}.ended"; then
+  echo "WARNING: session-start.sh: cannot remove run-queue ended marker for this session; other sessions may reap its queue: $(printf '%s' "$STATE_ROOT/.rite/state/run-queue-${SESSION_ID}.ended" | neutralize_ctrl)" >&2
+fi
 STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/scripts/run-queue-reap.sh" --session "$SESSION_ID" || true
 
 # Resolve active flow-state file path.
@@ -561,10 +567,50 @@ if [ "$_resolve_failed" -eq 1 ]; then
 fi
 [ -n "$_resolve_err" ] && rm -f "$_resolve_err"
 
+# 一時停止の記録（flow-state.sh pause）があるあいだ、Stop hook はこのセッションの停止を差し戻さない。
+# 再開を忘れると継続の保証が無音で外れたままになるため、記録があれば起動のたびに stdout（モデルと利用者に届く
+# 経路）で知らせる。flow-state の有無や source に依らない。
+if [ -n "$SESSION_ID" ] && [ -e "$STATE_ROOT/.rite/state/pause-${SESSION_ID}.json" ]; then
+  echo "rite: このセッションは一時停止中です。Stop hook は停止を差し戻さず、継続の保証は外れています。再開するには bash \"$SCRIPT_DIR/flow-state.sh\" resume を実行してください。"
+fi
+
 if [ -z "$STATE_FILE" ] || [ ! -f "$STATE_FILE" ]; then
   # Clean stale compact state on startup/clear when no flow state exists
   _cleanup_stale_compact
   exit 0
+fi
+
+# reap-issue が中断の印を消せなかったときは、記録 .rite/state/reap-failed-{session_id}.flow-state が残る。
+# 作業を始める・終える書き込み（flow-state.sh の set / deactivate / review-cycle 系）は記録を消し、消せ
+# なければ state を書いたうえで exit 3 を返すので、呼び出し元は記録があるまま作業を続ける前に止まれる。記録があり state が印付きの inactive なら
+# 回収済みとして、resume で作業中に戻さずここで印を消す（書き込みに失敗した state は中断として扱わない）。
+# deactivate の rc 3 は、印は消えたが記録を消せなかったことを表す（rc 1 は state を書けなかった）。
+_reaped=0
+_reap_record="$STATE_ROOT/.rite/state/reap-failed-$(basename "$STATE_FILE" .flow-state).flow-state"
+if [ "$SOURCE" = "resume" ] && [ -f "$_reap_record" ] \
+   && jq -e '.active != true and .suspended_by_session_end == true' "$STATE_FILE" >/dev/null 2>&1; then
+  _reaped=1
+  _state_file_shown=$(printf '%s' "$STATE_FILE" | neutralize_ctrl)
+  _reap_err=$(mktemp 2>/dev/null) || _reap_err=""
+  _reap_rc=0
+  RITE_STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/flow-state.sh" deactivate --next none \
+    >/dev/null 2>"${_reap_err:-/dev/null}" || _reap_rc=$?
+  case "$_reap_rc" in
+    0)
+      echo "rite: 中断していた rite workflow は Issue の後片付けで回収済みのため、作業中に戻しません ($_state_file_shown)。"
+      ;;
+    3)
+      echo "rite: session-start: ERROR: the reaped state was deactivated, but its failed-reap record could not be removed: $(printf '%s' "$_reap_record" | neutralize_ctrl)" >&2
+      [ -n "$_reap_err" ] && [ -s "$_reap_err" ] && head -3 "$_reap_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+      echo "rite: 中断していた rite workflow は Issue の後片付けで回収済みのため、作業中に戻しません ($_state_file_shown)。ただし後片付けの記録を削除できませんでした ($(printf '%s' "$_reap_record" | neutralize_ctrl))。削除するまで、このセッションの flow-state.sh の set / deactivate / review 系の書き込みは、状態を書いたうえで失敗 (exit 3) を返します。記録を残したまま作業を続けてセッションを終えると、次の resume でその作業は回収済みとして終わります。"
+      ;;
+    *)
+      echo "rite: session-start: WARNING: could not clear the suspended mark reap-issue left: $_state_file_shown" >&2
+      [ -n "$_reap_err" ] && [ -s "$_reap_err" ] && head -3 "$_reap_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+      echo "rite: 中断していた rite workflow は Issue の後片付けで回収済みですが、その印を消せませんでした ($_state_file_shown)。状態を確かめるには /rite:recover を実行してください。"
+      ;;
+  esac
+  [ -n "$_reap_err" ] && rm -f "$_reap_err"
 fi
 
 # --- Dangling session-worktree self-heal (multi-session §8) ---
@@ -638,11 +684,35 @@ _rite_stop_reason_phrase() {
   esac
 }
 
+# SessionEnd は作業途中の state を active=false にし、同じ書き込みで suspended_by_session_end を付けて残す。
+# resume はその作業の続きなので、印のある state を active=true に戻して印を消す。戻さないと再開の入口
+# (batch-run の再開段階・iterate 経由の pr-review・Stop の watchdog) が作業途中の state を「作業していない」と
+# 読む。stop_reason 付きの state は停止のまま残す。flow-state.sh set は handoff / next_action を
+# 上書きするため使わず、active と印だけを書き換える。flow-state.sh set は印を引き継がないため、印は
+# SessionEnd から次の set までしか残らない。
+# 回収済みの state（上の _reaped）は戻さない。
+if [ "$SOURCE" = "resume" ] && [ "$ACTIVE" != "true" ] && [ "$_reaped" -eq 0 ] \
+   && jq -e '.suspended_by_session_end == true and ((.stop_reason // "") == "")' "$STATE_FILE" >/dev/null 2>&1; then
+  _resume_tmp=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || _resume_tmp="${STATE_FILE}.tmp.$$"
+  if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
+       '.active = true | .updated_at = $ts | del(.suspended_by_session_end)' \
+       "$STATE_FILE" > "$_resume_tmp" 2>/dev/null \
+     && mv "$_resume_tmp" "$STATE_FILE" 2>/dev/null; then
+    ACTIVE=true
+  else
+    rm -f "$_resume_tmp" 2>/dev/null
+    echo "rite: session-start: WARNING: failed to reactivate the state SessionEnd suspended: $STATE_FILE (/rite:recover で再開できます)" >&2
+    # exit 0 の hook の stderr はデバッグログにしか残らない。モデルに届くのは stdout だけ。
+    echo "rite: 中断した rite workflow を作業中に戻せませんでした ($STATE_FILE)。再開するには /rite:recover を実行してください。"
+  fi
+fi
+
 # 停止した review_run は active=false と stop_reason を同じ更新で書き、run が停止している間は
 # 以後の set でも理由が残る。inactive だからと無言で exit すると、その失敗停止は起動時に一度も
 # 案内されない。flow state はセッション単位で、停止した run の state を読めるのは同じ session_id の
 # 起動 (ホストが id を引き継ぐ resume を含む) だけ。startup / clear / resume では停止理由だけを案内し、
-# state は書き換えない (停止は停止のまま残す)。
+# stop_reason のある state は書き換えない (停止は停止のまま残す)。ここに来る inactive state は、上の
+# resume の再有効化に当たらなかったもの。
 if [ "$ACTIVE" != "true" ]; then
   if [ "$SOURCE" = "startup" ] || [ "$SOURCE" = "clear" ] || [ "$SOURCE" = "resume" ]; then
     _inactive_stop=""

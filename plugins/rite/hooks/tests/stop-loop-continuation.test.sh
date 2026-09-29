@@ -999,7 +999,8 @@ assert_hint "merge" merge "" "/rite:cleanup fix/issue-2502-x" "/rite:iterate"
 assert_hint "init" init "" "/rite:open 2502" "/rite:iterate"
 assert_hint "lint" lint "" "/rite:open 2502" "ステップ 6"
 assert_hint "ingest-active" ingest "" "$CLEANUP_IN_PROGRESS" "ステップ 6"
-assert_hint "completed-inactive" completed ".active=false" "batch-run ステップ 6（cursor 前進）" "/rite:iterate"
+assert_hint "completed-inactive" completed '.active=false | .next_action="none"' "batch-run ステップ 6（cursor 前進）" "/rite:iterate"
+assert_hint "cleanup-active-none" cleanup '.next_action="none"' "$CLEANUP_IN_PROGRESS" "ステップ 6（cursor 前進）"
 assert_hint "unknown-phase" unknown_phase "" "batch-run ステップ 1 から再判定" "/rite:iterate"
 assert_hint "cb-fire" review '.stop_reason="circuit-breaker:max-cycles"' "batch-run ステップ 8（breaker_failed=true で failed 記録 + 停止、cursor は保持）" "/rite:iterate"
 assert_hint "cb-divergence" review '.stop_reason="circuit-breaker:divergence"' "batch-run ステップ 8（breaker_failed=true で failed 記録 + 停止、cursor は保持）" "cursor 前進"
@@ -1019,10 +1020,10 @@ fi
 
 # --- T-11: cleanup + flow-state active=false → step 6 ---
 echo ""
-echo "=== T-11: phase=cleanup and flow-state active=false routes to step 6 ==="
+echo "=== T-11: finished cleanup (active=false, next_action=none) routes to step 6 ==="
 d=$(new_sandbox)
 setup_watchdog_fs "$d" cleanup 99
-jq '.active=false' "$(state_file_for "$d")" > "$(state_file_for "$d").tmp" \
+jq '.active=false | .next_action="none"' "$(state_file_for "$d")" > "$(state_file_for "$d").tmp" \
   && mv "$(state_file_for "$d").tmp" "$(state_file_for "$d")"
 out=$(run_stop "$d")
 _r=$(printf '%s' "$out" | jq -r '.reason // ""')
@@ -1035,6 +1036,33 @@ if grep -qF "$CLEANUP_IN_PROGRESS" <<< "$_r"; then
   fail "T-11: inactive cleanup used in-progress hint: $out"
 else
   pass "T-11: inactive cleanup does not use in-progress hint"
+fi
+
+# SessionEnd keeps a mid-cleanup state as active=false and the resume turns it active again;
+# the resumed session must finish cleanup
+echo ""
+echo "=== T-11b: cleanup kept by SessionEnd mid-flow continues cleanup after resume ==="
+d=$(new_sandbox)
+setup_watchdog_fs "$d" cleanup 99
+# session-end.sh and session-start.sh resolve the session from .rite-session-id, not the payload
+printf '%s' "$SID" > "$d/.rite-session-id"
+jq -nc --arg c "$d" --arg s "$SID" '{cwd:$c, session_id:$s, hook_event_name:"SessionEnd", reason:"prompt_input_exit"}' \
+  | bash "$PLUGIN_ROOT/hooks/session-end.sh" >/dev/null 2>&1
+jq -nc --arg c "$d" --arg s "$SID" '{cwd:$c, session_id:$s, source:"resume"}' \
+  | RITE_HOST=claude bash "$PLUGIN_ROOT/hooks/session-start.sh" >/dev/null 2>&1
+kept=$(jq -r '"\(.phase)|\(.active)|\(has("suspended_by_session_end"))"' "$(state_file_for "$d")" 2>/dev/null || echo "<removed>")
+assert "T-11b: the resume turned the kept cleanup state active and cleared the mark" "cleanup|true|false" "$kept"
+out=$(run_stop "$d")
+_r=$(printf '%s' "$out" | jq -r '.reason // ""')
+if grep -qF "$CLEANUP_IN_PROGRESS" <<< "$_r"; then
+  pass "T-11b: continues the unfinished cleanup"
+else
+  fail "T-11b: $out"
+fi
+if grep -q "ステップ 6（cursor 前進）" <<< "$_r"; then
+  fail "T-11b: advanced the cursor past an unfinished cleanup: $out"
+else
+  pass "T-11b: does not advance the cursor"
 fi
 
 # WIKICHAIN consumed + 2nd stop with active cleanup must not jump to cursor advance
@@ -1119,6 +1147,71 @@ chmod u+w "$d/.rite/state"
 assert "T-12: 2nd still blocks (K cannot fire)" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
 rm -f "$err" "$err2"
 
-if ! print_summary "$(basename "$0")" "stop-loop-continuation.sh (review↔fix loop continuation + FINALIZE terminal backstop + skip bounce when iterate notice already present + remaining-field inspect on mergeable + WIKICHAIN cleanup-chain gate + C1 8-bit coverage via shared neutralize_ctrl + JSON emit fallback C0 neutralization + neutralize-failure placeholder degradation + notice missing/inspect-fail isolation + SIGPIPE-safe heading scan + batch run-queue watchdog)"; then
+# --- P-xx: a recorded pause lets the turn stop without re-injection or watchdog ---
+# The record is always written by `flow-state.sh pause` (never placed by hand), so a writer/reader
+# path mismatch fails these cases instead of hiding behind a hand-made file.
+pause_for() { RITE_STATE_ROOT="$1" bash "$FS" pause --session "${2:-$SID}" >/dev/null; }
+resume_for() { RITE_STATE_ROOT="$1" bash "$FS" resume --session "${2:-$SID}" >/dev/null; }
+handoff_of() { RITE_STATE_ROOT="$1" bash "$FS" get --field handoff --default NONE --session "$SID"; }
+block_of() { printf '%s' "$1" | jq -r '.decision // "NONE"'; }
+
+echo ""
+echo "=== P-01: pause + pending handoff → stop allowed, handoff kept, resume restores the re-injection ==="
+d=$(new_sandbox)
+RITE_STATE_ROOT="$d" bash "$FS" set --phase review --issue 1168 --branch b --pr 99 \
+  --next n --handoff "/rite:fix 99" --session "$SID" >/dev/null
+pause_for "$d"
+err=$(mktemp)
+rc=0; out=$(run_stop "$d" "$err") || rc=$?
+assert "P-01: paused stop exits 0" "0" "$rc"
+assert "P-01: paused stop prints no decision" "" "$out"
+assert "P-01: pending handoff is not consumed" "/rite:fix 99" "$(handoff_of "$d")"
+assert_grep "P-01: stderr tells how to resume" "$err" "flow-state.sh resume"
+resume_for "$d"
+out=$(run_stop "$d") || true
+assert "P-01: after resume the handoff blocks again" "block" "$(block_of "$out")"
+assert "P-01: resume left no pause record" "0" "$(find "$d/.rite/state" -name 'pause-*.json' 2>/dev/null | wc -l | tr -d ' ')"
+rm -f "$err"
+
+echo ""
+echo "=== P-02: pause + active run-queue → stop allowed without evaluating the watchdog ==="
+d=$(new_sandbox)
+setup_watchdog_fs "$d" review 99
+pause_for "$d"
+err=$(mktemp)
+rc=0; out=$(run_stop "$d" "$err") || rc=$?
+assert "P-02: paused stop exits 0" "0" "$rc"
+assert "P-02: paused stop prints no decision" "" "$out"
+assert "P-02: watchdog sidecar is not created" "absent" "$([ -e "$(sidecar_for "$d")" ] && echo present || echo absent)"
+if grep -q "batch-run が" "$err"; then fail "P-02: watchdog ran while paused: $(cat "$err")"; else pass "P-02: no watchdog diagnostics while paused"; fi
+resume_for "$d"
+out=$(run_stop "$d") || true
+assert "P-02: after resume the watchdog blocks again" "block" "$(block_of "$out")"
+rm -f "$err"
+
+echo ""
+echo "=== P-03: an empty or corrupt pause record still counts as paused ==="
+d=$(new_sandbox)
+setup_watchdog_fs "$d" review 99
+pause_for "$d"
+: > "$d/.rite/state/pause-${SID}.json"
+rc=0; out=$(run_stop "$d") || rc=$?
+assert "P-03: empty record exits 0" "0" "$rc"
+assert "P-03: empty record allows stop" "" "$out"
+printf '{not-json' > "$d/.rite/state/pause-${SID}.json"
+rc=0; out=$(run_stop "$d") || rc=$?
+assert "P-03: corrupt record exits 0" "0" "$rc"
+assert "P-03: corrupt record allows stop" "" "$out"
+
+echo ""
+echo "=== P-04: another session's pause does not affect this session ==="
+d=$(new_sandbox)
+setup_watchdog_fs "$d" review 99
+pause_for "$d" "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
+assert "P-04: the other session's pause record exists" "present" "$([ -e "$d/.rite/state/pause-bbbbbbbb-cccc-dddd-eeee-ffffffffffff.json" ] && echo present || echo absent)"
+out=$(run_stop "$d") || true
+assert "P-04: the watchdog still blocks this session" "block" "$(block_of "$out")"
+
+if ! print_summary "$(basename "$0")" "stop-loop-continuation.sh (pause record allows stop without re-injection or watchdog + review↔fix loop continuation + FINALIZE terminal backstop + skip bounce when iterate notice already present + remaining-field inspect on mergeable + WIKICHAIN cleanup-chain gate + C1 8-bit coverage via shared neutralize_ctrl + JSON emit fallback C0 neutralization + neutralize-failure placeholder degradation + notice missing/inspect-fail isolation + SIGPIPE-safe heading scan + batch run-queue watchdog)"; then
   exit 1
 fi

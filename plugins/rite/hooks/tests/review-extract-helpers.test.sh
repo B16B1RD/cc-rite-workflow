@@ -170,8 +170,10 @@ assert "passing an argument exits 2 (stdin-only contract)" "2" \
 
 REASON_TARGET="plugins/rite/skills/fix/SKILL.md"
 REASON_HELPER="plugins/rite/scripts/fix-work-memory-update.sh"
+REASON_STEP="plugins/rite/scripts/fix-step.sh"
 mkdir -p "$SANDBOX/plugins/rite/skills/fix" "$SANDBOX/plugins/rite/scripts"
 printf 'echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=helper_failed"\n' > "$SANDBOX/$REASON_HELPER"
+printf 'echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=step_failed"\n' > "$SANDBOX/$REASON_STEP"
 
 # Every emitted reason present in the table.
 {
@@ -180,6 +182,7 @@ printf 'echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=helper_failed"\n' > "$SANDBOX
   printf '| reason | 発生 Phase | 発生条件 |\n|---|---|---|\n'
   printf '| `alpha_failed` | p1 | cond |\n'
   printf '| `helper_failed` | helper | cond |\n'
+  printf '| `step_failed` | step | cond |\n'
   printf '| `beta_failed` | p2 | cond |\n'
 } > "$SANDBOX/$REASON_TARGET"
 assert "full coverage exits 0" "0" \
@@ -194,6 +197,7 @@ assert "full coverage prints nothing" "" \
   printf '| reason | 発生 Phase | 発生条件 |\n|---|---|---|\n'
   printf '| `alpha_failed` | p1 | cond |\n'
   printf '| `helper_failed` | helper | cond |\n'
+  printf '| `step_failed` | step | cond |\n'
 } > "$SANDBOX/$REASON_TARGET"
 assert "undocumented reason exits 1" "1" \
   "$(bash "$REASON_COVERAGE" --repo-root "$SANDBOX" >/dev/null 2>&1; echo $?)"
@@ -207,6 +211,7 @@ assert "undocumented reason is named on stdout" "ghost_failed" \
   printf '| reason | 発生 Phase | 発生条件 |\n|---|---|---|\n'
   printf '| `alpha_failed` | p1 | cond |\n'
   printf '| `helper_failed` | helper | cond |\n'
+  printf '| `step_failed` | step | cond |\n'
   printf '| `documented_only` | p2 | cond |\n'
 } > "$SANDBOX/$REASON_TARGET"
 assert "extra table row alone is not a finding (exit 0)" "0" \
@@ -225,7 +230,18 @@ assert "--target retains table override and checks helper emits" "0" \
 cp "$SANDBOX/$REASON_TARGET" "$SANDBOX/uncovered.md"
 assert "--target cannot bypass helper reason coverage" "1" \
   "$(bash "$REASON_COVERAGE" --repo-root "$SANDBOX" --target uncovered.md >/dev/null 2>&1; echo $?)"
+# fix-step.sh の emit も同じ表で網羅される。step 固有の reason だけを表から消すと検出される。
+sed '/^| `step_failed` |/d' "$SANDBOX/covered.md" > "$SANDBOX/$REASON_TARGET"
+assert "undocumented fix-step reason exits 1" "1" \
+  "$(bash "$REASON_COVERAGE" --repo-root "$SANDBOX" >/dev/null 2>&1; echo $?)"
+assert "undocumented fix-step reason is named on stdout" "step_failed" \
+  "$(bash "$REASON_COVERAGE" --repo-root "$SANDBOX" 2>/dev/null)"
 cp "$SANDBOX/covered.md" "$SANDBOX/$REASON_TARGET"
+# fix-step.sh が無ければ emit 側を検査できないので、網羅の結果を出さず rc=2 で止まる。
+mv "$SANDBOX/$REASON_STEP" "$SANDBOX/step.sh"
+assert "missing fix-step exits 2" "2" \
+  "$(bash "$REASON_COVERAGE" --repo-root "$SANDBOX" >/dev/null 2>&1; echo $?)"
+mv "$SANDBOX/step.sh" "$SANDBOX/$REASON_STEP"
 
 # Valid caller emits cannot hide a missing/empty/unrecognized helper source.
 cp "$SANDBOX/$REASON_HELPER" "$SANDBOX/helper.sh"

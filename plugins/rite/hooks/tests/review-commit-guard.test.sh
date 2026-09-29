@@ -839,6 +839,12 @@ for closed_targets in (False, True):
         for block in blocks:
             parsed = run(['bash', str(helper), 'commit-target', '--command', block, '--cwd', str(root)], ok=False)
             check(parsed.returncode == 0, 'plugin block parses: ' + block[:80] + '\n' + parsed.stderr)
+        # A `^{commit}` peel names a revision, not a commit: it parses and reports no commit target.
+        for peel in ('git rev-parse --verify "${nref_base}^{commit}" >/dev/null 2>&1 || nref_base="{base_branch}"',
+                     'git cat-file -e "${commit_sha_before}^{commit}" 2>/dev/null'):
+            peeled = run(['bash', str(helper), 'commit-target', '--command', peel, '--cwd', str(root)], ok=False)
+            check(peeled.returncode == 0, 'commit peel parses: ' + peel + '\n' + peeled.stderr)
+            check(peeled.stdout.strip() == '', 'commit peel reports no commit target: ' + peel + '\n' + peeled.stdout)
         # Pattern 9 keeps reading only git commit: merges do not become wiki-gated commits.
         targets = run(['bash', str(helper), 'commit-target', '--command', 'git merge --continue',
                        '--cwd', str(root)])
@@ -924,6 +930,31 @@ for closed_targets in (False, True):
         for command in ('cd /tmp && cd - && git commit -m x', 'false && cd /tmp; git commit -m x',
                         'cd /tmp | true; git commit -m x', 'cd -; git commit -m x'):
             hook(command, reason='target is dynamic')
+        # A variable or command substitution between git and its subcommand may expand to nothing
+        # or to global options. git '' fails without committing, and a commit word in another
+        # subcommand's arguments is not a commit.
+        for command in ('git $OPTS commit -m x', 'git $(true) commit -m x', 'git $OPTS merge --continue'):
+            hook(command, reason='target is dynamic')
+        for command in ("git '' commit -m x", 'git log --grep commit', 'git $OPTS log --grep commit'):
+            hook(command, allowed=True)
+        # Past the directory-change limit the target is dynamic, and past the nesting limit a
+        # substitution is not parsed: a commit that could hide there is refused, and a command
+        # that moves no HEAD outside the unparsed substitution is not.
+        # The 17th -C merge --abort moves no HEAD, and the next list's commit resolves again.
+        hook(''.join('git -C d%d merge --abort;' % i for i in range(17)) + 'git commit -m x',
+             reason='fix plan record missing')
+        hook('cd . && ' * 16 + 'git commit -m x', reason='fix plan record missing')
+        hook('cd . && ' * 17 + 'git commit -m x', reason='target is dynamic')
+        hook('cd . && ' * 17 + 'git log --grep commit', allowed=True)
+        hook('echo ' + '$(' * 65 + 'true' + ')' * 65 + '; git commit -m x', reason='fix plan record missing')
+        hook('echo ' + '$(' * 65 + 'git commit -m y' + ')' * 65 + '; true', reason='nested more than')
+        hook('echo ' + '$(' * 65 + "g''it co\\mmit -m y" + ')' * 65 + '; git log --grep commit',
+             reason='nested more than')
+        hook('echo ' + '$(' * 65 + 'true' + ')' * 65 + '; git log --grep commit', allowed=True)
+        # Within the parse budget a long command still reaches the commit check: a heredoc
+        # message of many short lines, and one long line followed by short lines.
+        hook("git commit -F - <<'EOF'\n" + ('x' * 71 + '\n') * 420 + 'EOF', reason='fix plan record missing')
+        hook('git commit -m ' + 'x' * 7960 + '\n' + 'echo abcdefghij\n' * 150, reason='fix plan record missing')
         # The everyday forms still target the reviewed worktree.
         for command in ('cd ' + str(root) + ' && git add -A && git commit -m x',
                         'cd ' + str(root) + ' && git add -A; git commit -m x',

@@ -11,7 +11,7 @@
 # Any other value (including missing schema_version) is reported as drift via:
 #   [CONTEXT] REVIEW_SCHEMA_VERSION_DRIFT=1; file=<path>; schema_version=<value>
 #
-# Invoked directly from `fix/SKILL.md` ステップ 3.1.1 (pre-commit gate),
+# Invoked from `scripts/fix-step.sh schema-drift-check` (`fix/SKILL.md` ステップ 3.1.1 pre-commit gate),
 # and can be run standalone for ad-hoc inspection.
 #
 # Usage:

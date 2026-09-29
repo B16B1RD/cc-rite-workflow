@@ -348,10 +348,10 @@ assert_grep 'the token does not change the next number' "$work/deferred-next.out
 : > "$work/empty-body.md"
 DL_SCRIPT="$work/dl-deferred.sh" run_decision_log deferred-fetch-fail "$work/empty-body.md"
 assert_grep 'body fetch failure keeps the token in the pending line' "$work/deferred-fetch-fail.err" \
-  '手動追記してください: - 2026-01-02 D-NN: decided / Reason: why / Impact: what <!-- rite:deferred-defect pr=7 -->$'
+  '記録予定行（7.4.5 で止まった後の再実行が書くので、手で追記しない）: - 2026-01-02 D-NN: decided / Reason: why / Impact: what <!-- rite:deferred-defect pr=7 -->$'
 DL_SCRIPT="$work/dl-deferred.sh" AWK_FAIL_MODE=partial AWK_FAIL_AT=2 run_decision_log deferred-edit-fail "$work/footer-body.md" "$work/awk-fail"
 assert_grep 'edit failure keeps the token in the pending line' "$work/deferred-edit-fail.err" \
-  '手動追記してください: - 2026-01-02 D-01: decided / Reason: why / Impact: what <!-- rite:deferred-defect pr=7 -->$'
+  '記録予定行（7.4.5 で止まった後の再実行が書くので、手で追記しない）: - 2026-01-02 D-01: decided / Reason: why / Impact: what <!-- rite:deferred-defect pr=7 -->$'
 
 # The work-memory fallback is gone from the Decision Log contract.
 for gone in 'issue-comment-wm-sync' 'wm_sync_failure' 'fallback=work_memory' '決定事項・メモ'; do
@@ -426,7 +426,7 @@ route_section() {
     triage) awk '/^#### 7\.4\.2 / { s=1 } s && /^#### 7\.4\.3 / { exit } s { print }' "$2" ;;
     cleanup) awk '/^## ステップ 3:/ { s=1 } s && /^## ステップ 4:/ { exit } s { print }' "$2" ;;
     split) awk '/^## §4 / { s=1; print; next } s && /^## §/ { exit } s { print }' "$2" ;;
-    nb) awk '/^2\. \*\*route 適用\*\*/ { s=1 } s && /^3\. \*\*台帳 persist\*\*/ { exit } s { print }' "$2" ;;
+    nb) awk '/^2\. \*\*採否ゲートと起票\*\*/ { s=1 } s && /^3\. \*\*台帳 persist\*\*/ { exit } s { print }' "$2" ;;
   esac
 }
 # The readers drain their input instead of exiting at the end marker: route_section writes the
@@ -445,7 +445,7 @@ route_headings() {
     triage) printf '%s' '## 概要|## 背景|### 元のレビュー{source_label}|## 関連' ;;
     cleanup) printf '%s' '## 概要|## 背景・目的|## 関連|## 変更内容|## チェックリスト' ;;
     split) printf '%s' '## 概要|## 元の finding|## 関連' ;;
-    nb) printf '%s' '## 概要|## 提案|## 関連' ;;
+    nb) printf '%s' '## 概要|## 契約|## 根拠|## 受入条件|## 調査|## 観測した候補|## 関連' ;;
   esac
 }
 # Prints the first broken rule and returns 1; returns 0 when the Meta and headings hold.
@@ -463,7 +463,7 @@ route_meta_check() {
     [ "$(route_section "$1" "$2" | grep -c '^| `{type}` |' || true)" = 1 ] || { echo 'Placeholder table {type} row is outside the route section'; return 1; } ;;
   esac
   if [ "$1" = nb ]; then
-    for kept in '{description}' '{suggestion}' '{file}:{line}'; do
+    for kept in '{contract}' '{evidence}' '{acceptance}' '{observations}'; do
       [ "$(printf '%s\n' "$body" | grep -cF -- "$kept" || true)" = 1 ] || { echo "body does not keep $kept once"; return 1; }
     done
   fi
@@ -489,11 +489,12 @@ for route in "triage|$triage" "cleanup|$cleanup_skill" "split|$split" "nb|$nb_sw
     fi
   done
 done
-# The sweep body keeps the finding fields it has always saved.
+# The sweep body carries the record's contract, evidence and acceptance, and the observed candidates.
 for mutation in \
-  'deleted {description}|/^{description}$/d' \
-  'deleted {suggestion}|/^{suggestion}$/d' \
-  'deleted {file}:{line}|s/^- 位置: {file}:{line}$/- 位置:/'; do
+  'deleted {contract}|/^{contract}$/d' \
+  'deleted {evidence}|/^{evidence}$/d' \
+  'deleted {acceptance}|/^{acceptance}$/d' \
+  'deleted {observations}|/^{observations}$/d'; do
   label=${mutation%%|*}
   sed "${mutation#*|}" "$nb_sweep" > "$work/nb-kept-mutant.md"
   if assert_mutant_changed "nb $label" "$nb_sweep" "$work/nb-kept-mutant.md"; then
@@ -511,7 +512,7 @@ for route in "split|$split" "nb|$nb_sweep"; do
 done
 # complexity-lane.md names every auto-created route this test checks.
 lane_doc=$(grep -F 'body 先頭に記法 1 の Meta を持ち' "$PLUGIN_ROOT/skills/pr-review/references/complexity-lane.md" || true)
-for named in 'scope-triage.md](./scope-triage.md) 7.4.2' '`/rite:cleanup` ステップ 3' 'finding-cycling.md](./finding-cycling.md) §4' '`/rite:fix --nb-sweep`' 'nb-sweep.md](../../fix/references/nb-sweep.md) 1.3.S の route 適用'; do
+for named in 'scope-triage.md](./scope-triage.md) 7.4.2' '`/rite:cleanup` ステップ 3' 'finding-cycling.md](./finding-cycling.md) §4' '`/rite:fix --nb-sweep`' 'nb-sweep.md](../../fix/references/nb-sweep.md) 1.3.S の採否ゲートと起票'; do
   if printf '%s\n' "$lane_doc" | grep -cF >/dev/null -- "$named"; then pass "complexity-lane lists route: $named"; else fail "complexity-lane misses route: $named"; fi
 done
 

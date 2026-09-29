@@ -105,11 +105,11 @@ increment 失敗時に marker の counter を前進させないのは、永続 c
 **最後の** review/fix cycle が残した残骸を sweep する後続 review が存在しない。終端で明示発火
 させ、回収の到達性を担保する。
 
-`rite-review-mutation-*` / `rite-revert-test-*` detached worktree は cross-session in-flight
-保護のため mtime 24h 未満は保護される。よって本ループが直前に作った若い worktree はこの発火では
-消えず、次回 cleanup（24h 経過後）で確実に回収される。即時 0 残骸ではなく **確実な最終回収**
-を担保する設計。即時回収には reviewer 側の session-scoped 記録が必要だが reviewer
-（`agents/_reviewer-base.md`）は当時の Non-Target。
+`rite-review-mutation-*` / `rite-revert-test-*` detached worktree は、reviewer が名前に所有
+セッション ID を記録して作る（`agents/_reviewer-base.md`）。この発火は自セッションの残骸と
+所有者の記録が無いものを作成直後でも回収し、別の live セッションが所有するものは残す。age で
+守らないのは、本ループが直前に作った残骸をこの発火で回収するため。並行する別セッションの
+作業中の worktree は所有者の記録で守る。
 
 ## run-close-reset
 

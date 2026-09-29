@@ -31,6 +31,7 @@ REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
 AGENT="$PLUGIN_ROOT/agents/acceptance-reviewer.md"
 REVIEWERS="$PLUGIN_ROOT/skills/reviewers/SKILL.md"
 PR_REVIEW="$PLUGIN_ROOT/skills/pr-review/SKILL.md"
+PR_STEP="$PLUGIN_ROOT/scripts/pr-review-step.sh"
 GENERATOR="$PLUGIN_ROOT/skills/pr-review/references/reviewer-prompt-generator.md"
 TEMPLATES="$PLUGIN_ROOT/skills/pr-review/references/integrated-report-templates.md"
 ITERATE="$PLUGIN_ROOT/skills/iterate/SKILL.md"
@@ -102,15 +103,15 @@ echo ""
 echo "=== TC-2: 1.3.1 の対象判定と停止 (T-09 / T-10 / T-11) ==="
 pin "1.3.1: Issue 番号なしは no_issue の 1 行通知" "$PR_REVIEW" '`[CONTEXT] ACCEPTANCE_SCOPE=skipped; reason=no_issue` として `受入条件確認: 対象外（関連 Issue なし）` を 1 行表示し'
 pin "1.3.1: AC 節なしは 1 行通知" "$PR_REVIEW" '`受入条件確認: 対象外（AC 節なし）` を 1 行表示'
-pin "1.3.1: gh issue view 失敗は skip せず停止" "$PR_REVIEW" '受入条件確認を skip せず停止します'
-pin "1.3.1: extract の失敗を [review:error] へ" "$PR_REVIEW" 'acceptance-criteria-check.sh extract --body-file "$issue_body_file" || { rm -f "$issue_body_file"; echo "[review:error]"; exit 1; }'
+pin "1.3.1: gh issue view 失敗は skip せず停止" "$PR_STEP" '受入条件確認を skip せず停止します'
+pin "1.3.1: extract の失敗を [review:error] へ" "$PR_STEP" 'acceptance-criteria-check.sh extract --body-file "$issue_body_file" || { rm -f "$issue_body_file"; echo "[review:error]"; exit 1; }'
 pin "1.3.1: ids= を 5.1.0.AC が読む {acceptance_ids} として retain" "$PR_REVIEW" '| `target; ids=` | `ids=` を `{acceptance_ids}` として retain。'
 pin "1.3.1: 抽出後に一時ファイルを削除" "$PR_REVIEW" '抽出後に `rm -f "{issue_body_file}"`（`ISSUE_BODY_FILE=` の値）で一時ファイルを削除する'
 
 # 1.3.1 の bash を実際に実行し、gh 失敗 / 0 件 / 対象 / 対象外の終端を観測する
 block_131="$TMP_ROOT/block-131.sh"
 awk '/^### 1\.3\.1 Load Issue Specification/{s=1} s && /^ ```bash$/{b=1; next} s && b && /^ ```$/{exit} s && b {sub(/^ /, ""); print}' "$PR_REVIEW" > "$block_131"
-if [ -s "$block_131" ] && grep -q 'gh issue view' "$block_131"; then pass "1.3.1 の bash block を抽出できる"; else fail "1.3.1 の bash block を抽出できない"; fi
+if [ -s "$block_131" ] && grep -q 'pr-review-step\.sh issue-spec' "$block_131"; then pass "1.3.1 の bash block を抽出できる"; else fail "1.3.1 の bash block を抽出できない"; fi
 mkdir -p "$TMP_ROOT/bin"
 run_131() {
   # $1 = gh stub の本文ファイル (空なら gh を失敗させる)
@@ -207,7 +208,7 @@ pin "8.1: 停止行が同じ条件文言" "$PR_REVIEW" "| ${COND}（受入条件
 in_order "8.1: 停止行は mergeable 行より前 (上から評価)" \
   "$(line_of "$PR_REVIEW" "| ${COND}（受入条件未検証） |")" \
   "$(line_of "$PR_REVIEW" '| `total_findings == 0` (blocking findings ゼロ) | `[review:mergeable]` |')"
-stop_set=$(awk '/^# 受入条件未検証の停止 \(--handoff を付けず/{s=1; next} s && /^```$/{exit} s' "$PR_REVIEW")
+stop_set=$(awk '/^ ac-unverified\)$/{s=1; next} s && /^ ;;$/{exit} s && !/^[[:space:]]*#/' "$PR_STEP")
 if grep -q 'flow-state.sh set' <<<"$stop_set" && ! grep -q -- '--handoff' <<<"$stop_set"; then
   pass "8.0: 停止の flow-state set は --handoff を付けない"
 else
@@ -265,14 +266,30 @@ assert "rationale: 旧 anchor を参照しない" "0" "$(grep -cF 'step7-mergeab
 in_order "6.5.1: standalone の受入条件未検証分岐は Merge OK 分岐より前" \
   "$(line_of "$PR_REVIEW" '**受入条件未検証**（ステップ 8.1 の受入条件未検証行に一致）')" \
   "$(line_of "$PR_REVIEW" '**Merge OK**: Ready for review（推奨）')"
-pin "8.0: 2 variant だけが handoff を付ける" "$PR_REVIEW" 'mergeable / fix-needed の 2 variant は `--handoff` を付け、受入条件未検証の停止行は付けない'
+pin "8.0: 2 variant だけが handoff を付ける" "$PR_REVIEW" 'mergeable / fix-needed は helper が表の handoff を付け、受入条件未検証の停止（`ac-unverified`）は付けない'
 pin "stop-loop contract: 受入条件未検証は handoff を持たない" "$STOP_CONTRACT" '**受入条件未検証の `[review:error]`（`REVIEW_STOP=ac_unverified`）も handoff を持たない**'
+# 採否保留の停止 (scope-triage 7.2 の held): handoff を消してから [review:error] と行頭 REVIEW_STOP を出す
+held_set=$(awk '/^# 採否保留の停止 \(--handoff を付けず/{s=1; next} s && /^```$/{exit} s' "$SCOPE_TRIAGE")
+if grep -q 'flow-state.sh set' <<<"$held_set" && ! grep -q -- '--handoff' <<<"$held_set"; then
+  pass "7.2 held: 停止の flow-state set は --handoff を付けない"
+else
+  fail "7.2 held: 停止の flow-state set (block=$held_set)"
+fi
+in_order "7.2 held: handoff を消してから [review:error] と REVIEW_STOP を出す" \
+  "$(grep -n 'flow-state.sh set' <<<"$held_set" | head -1 | cut -d: -f1)" \
+  "$(grep -nxF 'echo "[review:error]"' <<<"$held_set" | head -1 | cut -d: -f1)" \
+  "$(grep -nxF 'echo "[CONTEXT] REVIEW_STOP=adoption_held; kind=triage; hold_file={hold_file}"' <<<"$held_set" | head -1 | cut -d: -f1)"
+pin "stop-loop contract: 採否保留は handoff を持たない" "$STOP_CONTRACT" '**採否保留の `[review:error]`（`REVIEW_STOP=adoption_held`）も handoff を持たない**'
 
 echo ""
 echo "=== TC-6: iterate の停止分岐 (T-05) ==="
 in_order "iterate: REVIEW_STOP 行が汎用 [review:error] 行より前" \
   "$(line_of "$ITERATE" '| `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=ac_unverified; ac={ids}` |')" \
   "$(line_of "$ITERATE" '| `[review:error]` | 可逆な再試行を推奨として 1 回だけ自動実行')"
+in_order "iterate: adoption_held 行が汎用 [review:error] 行より前" \
+  "$(line_of "$ITERATE" '| `[review:error]` + 行頭の `[CONTEXT] REVIEW_STOP=adoption_held; kind={kind}; hold_file={path}` |')" \
+  "$(line_of "$ITERATE" '| `[review:error]` | 可逆な再試行を推奨として 1 回だけ自動実行')"
+pin "iterate: adoption_held は再試行せず hold ファイルと再開方法を示す" "$ITERATE" '採否の出口待ちの保留、またはスコープ外処分の外部への書き込みが途中で失敗した停止（後者は一部が書き込み済み）。再試行せず、`hold_file` と、hold ファイルの resume（出口待ちのときはゲートの WARNING にも出る）に従って再開することを示して終了する。書き込み途中の停止で hold に書けなかったときは、hold の resume ではなく stderr の WARNING と flow-state の次アクションにある再開方法に従う（成功 sentinel も新しい sentinel も出さない）'
 pin "iterate: 再試行せず sentinel を出さない" "$ITERATE" '再試行せず、下記の停止通知を出して終了する（成功 sentinel も新しい sentinel も出さない）'
 pin "iterate: 行頭 marker だけで判定" "$ITERATE" '`REVIEW_STOP` は行頭 `[CONTEXT] ` の marker だけを判定に使う'
 pin "iterate: 停止通知の見出し" "$ITERATE" '## /rite:iterate 停止（受入条件未検証）'

@@ -2,7 +2,8 @@
 
 > **Charter**: Subject to [Simplification Charter](../skills/rite-workflow/references/simplification-charter.md). Runtime に効かない経緯記述は書かない。
 
-採用 site は `skills/fix/SKILL.md` / `skills/pr-review/SKILL.md` / `skills/open/SKILL.md` /
+採用 site は `scripts/fix-step.sh`（fix のステップ本体）/ `scripts/pr-review-step.sh` /
+`skills/pr-review/references/doc-heavy-reviewers.md` / `skills/open/SKILL.md` /
 `skills/merge/SKILL.md` / `skills/wiki-lint/SKILL.md` / `skills/wiki-ingest/SKILL.md` /
 `skills/cleanup/SKILL.md` ステップ 3。ステップ 5 の trap/cleanup 関数実体は
 `hooks/scripts/cleanup-branch-delete.sh` へ移設済みで、SKILL.md 側は helper を呼び出すだけ。

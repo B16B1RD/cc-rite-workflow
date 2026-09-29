@@ -104,7 +104,9 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
     review_path = Path(cycle['result_path'])
     issue_file, plan_file = private / 'issue.json', private / 'plan.json'
     issue = {'number': 42, 'body': '## 4. 対象範囲\n### 4.1 対象\n- `src/a.py`\n'
-             '### 4.2 対象外\n- `protected`\n## 5. 受入条件\n- 全指摘を一括修正する\n'}
+             '### 4.2 対象外\n- `protected`\n'
+             '- オプション `--detach`、コマンド `git worktree add`、識別子 `non_targets`\n'
+             '## 5. 受入条件\n- 全指摘を一括修正する\n'}
     dump(issue_file, issue)
     related_command = "printf 'related\\n' >> .rite/related.log; if test -f .rite/fail; then exit 7; fi"
     plan = dict(review_context=context, issue_number=42, issue_body=issue['body'],
@@ -150,6 +152,27 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
           saved['mechanical'] and saved['checked_at'], 'canonical scope receipt separates semantic and mechanical evidence')
     invoke()  # Interrupted callers may repeat the check without starting another review.
     check(json.loads(state_path.read_text())['cycle_count'] == 1, 'idempotent check preserves cycle')
+    file_issue = dict(issue, body=issue['body'].replace('`protected`', '`protected/secret.py`'))
+    file_plan = copy.deepcopy(plan)
+    file_plan['issue_body'] = file_issue['body']
+    file_plan['constraints']['non_targets'] = ['protected/secret.py']
+    dump(issue_file, file_issue)
+    save_plan(file_plan)
+    invoke()
+    file_plan['constraints']['non_targets'] = []
+    save_plan(file_plan)
+    omitted_file = invoke(ok=False)
+    check(omitted_file.returncode != 0 and 'explicit Non-Target omitted' in omitted_file.stderr,
+          'existing file still requires a non-target constraint')
+    dump(issue_file, issue)
+    save_plan()
+    invoke()
+    save_plan(dict(plan, issue_body=issue['body'] + '\n- 追加の受入条件\n'))
+    mismatch = invoke(ok=False)
+    check('Issue specification changed or mismatched' in mismatch.stderr
+          and 'review-reconcile' not in mismatch.stderr,
+          'a review without a diagnostic run is not pointed at review-reconcile')
+    save_plan()
     for mutation, label in (
             (lambda p: p['groups'][0].update(finding_ids=['F-01']), 'missing blocking disposition'),
             (lambda p: p['groups'][0].update(finding_ids=['F-01', 'F-02', 'invented']), 'unknown finding'),
@@ -212,6 +235,7 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
     dump(plan_file, dict(plan, issue_body=issue['body'].replace('\n', '\r\n')))
     check(invoke().returncode == 0, 'record marker on a CRLF body passes the specification check')
     save_plan()
+    dump(issue_file, dict(issue, body=triaged))
     mutant = private / 'mutant-hooks'
     shutil.copytree(plugin / 'hooks', mutant)
     lib = mutant / 'scripts/lib/review-cycle.py'
@@ -428,11 +452,13 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
     before_edit = caller_block(docs, '# fix-scope-before-edit')
     final_verify = caller_block(docs, '# fix-scope-final-verification')
 
+    # caller は helper の 1 行呼び出しなので、失敗は呼び出しの終了コードとして後続へ伝わる。
+    # 後続の操作は別の Bash 呼び出しで実行されるため、ここでは -e で「失敗した呼び出しの後へ進まない」を再現する。
     def execute(body):
         for key, value in {'plugin_root': str(plugin), 'fix_plan_file': str(plan_file),
                            'fix_issue_file': str(issue_file)}.items():
             body = body.replace('{' + key + '}', value)
-        return run(['bash', '-c', body + '\nprintf "REACHED_LATER_ACTION\\n"'], ok=False)
+        return run(['bash', '-e', '-c', body + '\nprintf "REACHED_LATER_ACTION\\n"'], ok=False)
 
     save_plan()
     result = execute(before_edit)
@@ -584,6 +610,79 @@ with tempfile.TemporaryDirectory(prefix='rite-fix-scope-') as tmp:
             os.chdir(cwd_before)
         check(leaked != 'wrong',
               'base_branch() does not leak base: from a non-alpha top-level key section (got %r)' % leaked)
+
+    # A directory input leaves out the Python bytecode cache found beneath it, and
+    # only that: source, untracked and ignored files still change the key, a cache
+    # named as an input is checked in full, and a .pyc symlink still cannot escape.
+    with tempfile.TemporaryDirectory(prefix='rite-fix-scope-pyc-') as fp_tmp:
+        fp_root = Path(fp_tmp)
+        subprocess.run(['git', 'init', '-q'], cwd=fp_root, check=True)
+        (fp_root / '.git/info/exclude').write_text('__pycache__/\nbuild.log\n')
+        pkg = fp_root / 'pkg'
+        (pkg / 'sub').mkdir(parents=True)
+        (pkg / 'm.py').write_text('x = 1\n')
+        subprocess.run(['git', 'add', 'pkg/m.py'], cwd=fp_root, check=True)
+        cwd_before = os.getcwd()
+        os.chdir(fp_root)
+        try:
+            def key(*inputs):
+                return review_fix_scope.fingerprint(dict(id='t', kind='related', command='true',
+                                                         inputs=list(inputs), environment=[]))
+            base = key('pkg')
+            (pkg / '__pycache__').mkdir()
+            (pkg / '__pycache__/m.cpython-312.pyc').write_bytes(b'first')
+            (pkg / 'sub/n.pyc').write_bytes(b'first')
+            check(key('pkg') == base, 'new bytecode beneath a directory input keeps its key')
+            (pkg / '__pycache__/m.cpython-312.pyc').write_bytes(b'second')
+            check(key('pkg') == base, 'rewritten bytecode beneath a directory input keeps its key')
+            cache = key('pkg/__pycache__')
+            single = key('pkg/sub/n.pyc')
+            (pkg / '__pycache__/m.cpython-312.pyc').write_bytes(b'third')
+            (pkg / 'sub/n.pyc').write_bytes(b'third')
+            check(key('pkg/__pycache__') != cache, 'a cache directory named as an input is checked in full')
+            check(key('pkg/sub/n.pyc') != single, 'a .pyc file named as an input is checked in full')
+            for label, change in (('tracked source', lambda: (pkg / 'm.py').write_text('x = 2\n')),
+                                  ('untracked file', lambda: (pkg / 'new.py').write_text('y = 1\n')),
+                                  ('ignored non-bytecode file', lambda: (pkg / 'build.log').write_text('log\n')),
+                                  ('regular file named __pycache__', lambda: (pkg / 'sub/__pycache__').write_text('f\n')),
+                                  ('directory named like bytecode', lambda: (pkg / 'd.pyc').mkdir())):
+                before = key('pkg')
+                change()
+                check(key('pkg') != before, 'a changed ' + label + ' changes the directory key')
+            with tempfile.TemporaryDirectory(prefix='rite-fix-scope-pyc-outside-') as fp_outside:
+                (Path(fp_outside) / 'x.pyc').write_bytes(b'outside')
+                (pkg / 'x.pyc').symlink_to(Path(fp_outside) / 'x.pyc')
+                try:
+                    key('pkg')
+                    escaped = False
+                except Exception as error:
+                    escaped = 'path escapes worktree' in str(error)
+                check(escaped, 'a .pyc symlink out of the worktree still stops the key')
+        finally:
+            os.chdir(cwd_before)
+
+    # git-subcommand answers each git, in order, with its subcommand and the next word;
+    # it reads no session or state, so it runs outside a repository with no session.
+    bare_env = {key: value for key, value in env.items()
+                if key not in ('CLAUDE_CODE_SESSION_ID', 'RITE_SESSION_ID', 'RITE_STATE_ROOT')}
+    git_lines = [
+        ['>/dev/null', 'push'], ['2>/dev/null', 'commit', '-m', 'x'], ['$OPTS', 'commit'],
+        ['>', '/dev/null', 'push'], ['2>&1', 'push'], ['&>/dev/null', 'push'],
+        ['-C', 'x', 'push'], ['-Cx', 'push'], ['-c', 'k=v', '2>', '/dev/null', 'push'],
+        ['--git-dir', 'push', 'log'], ['--work-tree', 'push', 'log'], ['--namespace', 'push', 'log'],
+        ['--config-env', 'k=push', 'log'], ['--super-prefix', 'push', 'log'],
+        ['--attr-source', 'push', 'log'], ['--shallow-file', 'push', 'log'],
+        ['--exec-path', 'push'], ['--git-dir=x', 'push', '--help'], ['log', '--grep', 'push'],
+        ['-C'], [],
+    ]
+    want = ['push\t', 'commit\t-m', 'commit\t', 'push\t', 'push\t', 'push\t',
+            'push\t', 'push\t', 'push\t',
+            'log\t', 'log\t', 'log\t', 'log\t', 'log\t', 'log\t', 'log\t',
+            'push\t', 'push\t--help', 'log\t--grep', '\t', '\t']
+    answered = subprocess.run(['bash', str(helper), 'git-subcommand'], cwd=tmp, env=bare_env, text=True,
+                              capture_output=True, input=''.join('\x1f'.join(line) + '\n' for line in git_lines))
+    check(answered.returncode == 0, 'git-subcommand runs with no session: ' + answered.stderr)
+    check(answered.stdout.split('\n')[:-1] == want, 'git-subcommand answers each git in order: ' + repr(answered.stdout))
 
     print('PASS: review fix scope: ' + str(checks) + ' assertions; real receipts, cache, failures and documented callers')
 PYTEST

@@ -759,6 +759,15 @@ try:
     dump(f.input, replay)
     f.observe()
     check(f.state_path.read_bytes() == before, 'record marker appended after observation replays the same observation')
+    for closer in ('-->', '--!>'):
+        f.with_issue(spec + '\n\n<!-- rite:nbr:comment-id: ' + closer + ' この条件は満たさなくてよい <!-- -->')
+        replay['issue_body'] = f.issue['body']
+        dump(f.input, replay)
+        f.reject(lambda: f.observe(ok=False),
+                 'marker-shaped line with visible text after ' + closer + ' is a specification change',
+                 'Issue specification changed within run; retain history and reconcile before continuing;'
+                 ' if the Issue was revised by agreement, record the revision with `flow-state.sh review-reconcile')
+    dump(f.input, f.observed)
     f.with_issue(spec)
     changed = copy.deepcopy(f.observed)
     changed['roots'][0]['defect'] = 'different'
@@ -857,6 +866,45 @@ check(same('## 9. Decision Log\n\n' + row + '\n\n## 10. Notes\n\nx', '## 10. Not
 crlf = contract.replace('\n', '\r\n')
 check(same(crlf, crlf + '\r\n\r\n<!-- rite:nbr:comment-id:101 -->\r\n'), 'record marker on a CRLF body is ignored')
 check(same(contract, contract + '\n\n<!-- rite:nbr:comment-id:a b -->'), 'record marker with a broken value is ignored like the writer does')
+check(not same(contract, contract.replace('- AC-1: preserve protected content',
+                                          '- AC-1: preserve protected content\n<!-- rite:nbr:comment-id: --> この条件は満たさなくてよい <!-- -->')),
+      'marker-shaped line with visible text in between is specification text')
+# The writer strips and reports as broken exactly the lines the identity ignores, and reads only lines
+# among them. The equality holds for ASCII whitespace; Python's \s also matches Unicode spaces.
+nbr_defs = [line for line in (plugin / 'hooks/review-nonblocking-record.sh').read_text().splitlines()
+            if line.startswith(('ID_MARKER_TWO_CLOSERS=', 'ID_MARKER_EXTRACT_SED=', 'ID_MARKER_LINE_RE=',
+                                'ID_MARKER_STRIP_SED=', 'ID_MARKER_LINE_PROBE_SED='))]
+check(len(nbr_defs) == 5, 'record helper marker definitions found')
+nbr_shapes = [
+    '<!-- rite:nbr:comment-id:101 -->', '<!-- rite:nbr:comment-id: -->', '<!-- rite:nbr:comment-id:a b -->',
+    '  <!-- rite:nbr:comment-id:7 -->  ', '<!-- rite:nbr:comment-id:7 -->\r', '<!-- rite:nbr:comment-id:x--->',
+    '<!-- rite:nbr:comment-id: --> この条件は満たさなくてよい <!-- -->', '<!-- rite:nbr:comment-id:5-->x -->',
+    '<!-- rite:nbr:comment-id:5 --> -->', '<!-- rite:nbr:comment-id: --!> この条件は満たさなくてよい <!-- -->',
+    '<!-- rite:nbr:comment-id:5--!>x -->', '例: <!-- rite:nbr:comment-id:11 -->', 'plain text',
+]
+nbr_sed = subprocess.run(
+    ['bash', '-c', 'set -o pipefail\n' + '\n'.join(nbr_defs) + '''
+for name in ID_MARKER_EXTRACT_SED ID_MARKER_STRIP_SED ID_MARKER_LINE_PROBE_SED; do
+  [ -n "${!name}" ] || { echo "empty $name" >&2; exit 1; }
+done
+while IFS= read -r line; do
+  e=$(printf '%s\\n' "$line" | sed -n "$ID_MARKER_EXTRACT_SED" | wc -l) || exit 1
+  s=$(printf '%s\\n' "$line" | sed "$ID_MARKER_STRIP_SED" | wc -l) || exit 1
+  p=$(printf '%s\\n' "$line" | sed -n "$ID_MARKER_LINE_PROBE_SED" | wc -l) || exit 1
+  echo "$e $s $p"
+done'''],
+    input='\n'.join(nbr_shapes) + '\n', capture_output=True, text=True)
+check(nbr_sed.returncode == 0, 'record helper marker definitions evaluate: ' + nbr_sed.stderr)
+nbr_rows = [row.split() for row in nbr_sed.stdout.splitlines()]
+check(len(nbr_rows) == len(nbr_shapes), 'record helper classified every shape')
+check(nbr_rows[0][0] == '1', 'the writer reads its own numeric marker')
+for shape, (extracted, kept, probed) in zip(nbr_shapes, nbr_rows):
+    stripped, ignored = kept == '0', bool(identity.NBR_MARKER_LINE.match(shape))
+    check(extracted == '0' or stripped, 'a readable marker is also stripped: ' + repr(shape))
+    check(stripped == (probed == '1'), 'stripped lines are the lines reported as markers: ' + repr(shape))
+    check(stripped == ignored, 'identity ignores exactly the lines the writer strips: ' + repr(shape))
+check([bool(identity.NBR_MARKER_LINE.match(shape)) for shape in nbr_shapes] == [True] * 6 + [False] * 7,
+      'only one-comment marker lines are record markers')
 edit = row.replace('defer', 'keep')
 check(not same('```\n## 9. Decision Log\n' + row + '\n```', '```\n## 9. Decision Log\n' + edit + '\n```'),
       'Decision Log example inside a code fence is specification text')
@@ -1755,6 +1803,134 @@ try:
 finally:
     f.close()
 
+
+# T-26: a retry that cleared every blocking finding moved the run past the point
+# it stopped at. Neither the cycle gate nor the observation fires on that point
+# again; only a divergence after the retry does.
+def diverged_and_retried(fixture):
+    for roots in (['input defect'], ('input defect', 'second defect')):
+        fixture.cycle(roots=roots)
+        fixture.fix()
+        time.sleep(1.1)
+    fixture.cycle(roots=('input defect', 'second defect', 'third defect'), seconds=1801)
+    check(fixture.state()['stop_reason'] == 'circuit-breaker:divergence', 'T-26: fixture reached divergence stop')
+    fixture.plan()
+    retry(fixture)
+    fixture.fix()
+    time.sleep(1.1)
+
+
+def advanced_gate(fixture):
+    (fixture.root / 'source.txt').write_text('after cycle ' + str(fixture.state()['cycle_count']) + '\n')
+    fixture.commit()
+    return gate(fixture)
+
+
+def passes_gate(output, trend, label):
+    cb = marker(output, 'ITERATE_CB')
+    check(cb.startswith('[CONTEXT] ITERATE_CB=ok;') and 'TREND=' + trend + ';' in cb
+          and 'TREND_VERDICT=ok;' in cb and 'RETRY_HOLD=0' in cb
+          and 'ITERATE_RESUME_HEAD=changed' in output and 'REVIEW_RESUME=1' not in output
+          and 'CB_REASON=' not in output, label + ':\n' + output)
+
+
+def recommendation_fix(fixture):
+    plan = fixture.plan()
+    plan['groups'][0]['finding_ids'] = ['R-01']
+    dump(fixture.plan_path, plan)
+    fixture.scope()
+    (fixture.root / 'source.txt').write_text('recommendation applied\n')
+    fixture.scope('verify')
+    fixture.commit()
+
+
+f = Fixture()
+try:
+    diverged_and_retried(f)
+    # The retry review is mergeable and registers a recommendation, whose fix
+    # needs the next review.
+    f.start()
+    f.finish(roots=[], recommendations=[dict(id='R-01', reviewer='code-quality-reviewer', file='source.txt',
+                                             line=1, description='comment contradicts the code')])
+    f.clock(1)
+    f.observe()
+    check(f.state()['review_run']['retry']['outcome'] == 'resolved', 'T-26: the retry review cleared every finding')
+    recommendation_fix(f)
+    passes_gate(gate(f), '1,2,3,0', 'T-26: the gate does not fire on the point the retry moved past')
+
+    time.sleep(1.1)
+    f.cycle(roots=('input defect', 'second defect'))
+    check(f.state()['review_run']['status'] == 'active',
+          'T-26: blocking findings after the retry do not stop the run on the old point')
+    f.fix()
+    passes_gate(gate(f), '1,2,3,0,2', 'T-26: a rise that has not diverged yet passes the gate')
+
+    time.sleep(1.1)
+    f.cycle(roots=('input defect', 'second defect', 'third defect'))
+    check(f.state()['review_run']['status'] == 'stopped'
+          and f.state()['stop_reason'] == 'circuit-breaker:divergence',
+          'T-26: a divergence after the retry stops the run')
+    output = advanced_gate(f)
+    cb = marker(output, 'ITERATE_CB')
+    check(cb.startswith('[CONTEXT] ITERATE_CB=fire;') and 'CB_REASON=divergence' in cb
+          and 'TREND=1,2,3,0,2,3;' in cb, 'T-26: a divergence after the retry fires the gate:\n' + output)
+finally:
+    f.close()
+
+# With a run start pin and a previous run's result beside this run's, the gate reads
+# only this run's results, so the stop cycle still names the point the retry passed.
+f = Fixture()
+try:
+    (f.root / '.rite/review-results').mkdir(parents=True, exist_ok=True)
+    dump(f.root / '.rite/review-results/71-19990101000000.json',
+         dict(schema_version='1.1.0', pr_number=71, findings=[]))
+    (f.root / '.rite/state').mkdir(parents=True, exist_ok=True)
+    (f.root / '.rite/state/review-run-since-71.txt').write_text('71-19990101000000.json\n')
+    diverged_and_retried(f)
+    f.start()
+    f.finish(roots=[], recommendations=[dict(id='R-01', reviewer='code-quality-reviewer', file='source.txt',
+                                             line=1, description='comment contradicts the code')])
+    f.clock(1)
+    f.observe()
+    recommendation_fix(f)
+    output = gate(f)
+    passes_gate(output, '1,2,3,0', 'T-26: with a run start pin the gate does not fire on the point the retry moved past')
+    check('RUN_SINCE_USED=pin' in marker(output, 'ITERATE_CB'), 'T-26: the gate read the run start pin:\n' + output)
+finally:
+    f.close()
+
+# An unresolved retry keeps the old point. 1,2,3,1 fires only at cycle 3, so the
+# gate would pass if the stop cycle were handed to the helper here.
+f = Fixture()
+try:
+    diverged_and_retried(f)
+    f.cycle(roots=['input defect'])
+    check(f.state()['review_run']['retry']['outcome'] == 'unresolved', 'T-26: the retry review left a finding')
+    output = advanced_gate(f)
+    cb = marker(output, 'ITERATE_CB')
+    check(cb.startswith('[CONTEXT] ITERATE_CB=fire;') and 'CB_REASON=divergence' in cb
+          and 'TREND=1,2,3,1;' in cb, 'T-26: an unresolved retry keeps the old divergence point:\n' + output)
+finally:
+    f.close()
+
+# A resolved grant without its stop cycle cannot bound the check; the gate stops.
+f = Fixture()
+try:
+    diverged_and_retried(f)
+    f.cycle(roots=())
+    state = f.state()
+    del state['review_run']['retry']['stop_context']['cycle_count']
+    dump(f.state_path, state)
+    (f.root / 'source.txt').write_text('after the retry\n')
+    f.commit()
+    result = f.run(['bash', str(plugin / 'scripts/iterate-step.sh'), 'cycle-gate',
+                    '--pr', '71', '--issue', '42', '--branch', 'fix/issue-42'], ok=False)
+    check(result.returncode != 0 and 'ITERATE_CB=' not in result.stdout
+          and 'review_run.retry.stop_context.cycle_count' in result.stderr,
+          'T-26: a resolved grant without its stop cycle stops the gate:\n' + result.stdout + result.stderr)
+finally:
+    f.close()
+
 iterate = (plugin / 'skills/iterate/SKILL.md').read_text()
 back = iterate.split('「戻る」の行（`divergence` のみ）:', 1)[1].split('```', 2)[1]
 # The way back must name the only path the retry review accepts: the fix-scope check
@@ -2364,6 +2540,430 @@ try:
     plan['groups'][0]['finding_ids'] = ['F-01', 'R-01']
     dump(f.plan_path, plan)
     f.scope()
+finally:
+    f.close()
+
+# An agreed Issue revision continues the same run instead of opening a fresh budget.
+HINT = 'review-reconcile'
+
+
+def revision_record(fixture, reason='user agreed to revise the criterion', requested_at='2026-01-03T00:00:00Z'):
+    return dict(kind='specification-change', run_id=fixture.state()['review_run']['run_id'],
+                review_context=fixture.context(), issue_number=42, pr_number=71,
+                reason=reason, requested_at=requested_at)
+
+
+def reconcile(fixture, record=None, ok=True):
+    path = fixture.private / 'revision.json'
+    dump(path, record or revision_record(fixture))
+    return fixture.flow('review-reconcile', '--issue', fixture.issue_path, '--approval', path, ok=ok)
+
+
+def refused_with_hint(fixture, operation, label, message):
+    before = fixture.state_path.read_bytes()
+    result = operation()
+    check(result.returncode != 0 and message in result.stderr and HINT in result.stderr, label)
+    check(fixture.state_path.read_bytes() == before, label + ': last state retained')
+
+
+def plan_for(fixture, body):
+    plan = fixture.plan()
+    plan['issue_body'] = body
+    dump(fixture.plan_path, plan)
+
+
+hint_source = importlib.import_module('review-cycle')
+check(('## ' + hint_source.SPEC_CHANGE_SECTION + '\n') in (plugin / 'references/review-stagnation.md').read_text(),
+      'T-SC00: the recovery hint names a section that exists in the reference')
+
+# Revision recorded on an observed cycle, then the reviewed HEAD is re-reviewed.
+f = Fixture()
+try:
+    f.cycle(roots=['input defect'])
+    old_spec, context = f.issue['body'], f.context()
+    run_id, phase = f.state()['review_run']['run_id'], f.state()['phase']
+    revised = old_spec.replace('repair', 'rewrite')
+    f.reject(lambda: reconcile(f, ok=False), 'T-SC01: an unchanged Issue has nothing to reconcile', 'nothing to reconcile')
+    (f.root / 'source.txt').write_text('in-progress edit\n')
+    f.reject(lambda: reconcile(f, ok=False), 'T-SC01: with work in progress the missing revision is reported first',
+             'nothing to reconcile')
+    (f.root / 'source.txt').write_text('initial\n')
+    f.with_issue(revised)
+    plan_for(f, revised)
+    refused_with_hint(f, lambda: f.scope(ok=False), 'T-SC02: a revised fix plan stops before reconcile',
+                      'fix specification differs from diagnosed observation')
+    plan_for(f, old_spec)
+    refused_with_hint(f, lambda: f.scope(ok=False), 'T-SC02: an old fix plan stops against the latest Issue',
+                      'Issue specification changed or mismatched')
+    for field, value, reason in (('kind', 'explicit-fresh-entry', 'approval kind'),
+                                 ('run_id', 'other-run', 'approval run id'),
+                                 ('review_context', dict(context, cycle_count=9), 'approval review_context'),
+                                 ('pr_number', 72, 'approval PR'),
+                                 ('issue_number', 43, 'approval issue'),
+                                 ('reason', '  ', 'approval reason'),
+                                 ('requested_at', '  ', 'approval requested_at')):
+        bad = revision_record(f)
+        bad[field] = value
+        f.reject(lambda: reconcile(f, bad, ok=False), 'T-SC03: mismatched approval ' + field + ' is refused', reason)
+    record = revision_record(f)
+    result = reconcile(f, record)
+    printed = json.loads(result.stdout)
+    state = f.state()
+    recorded = state['review_run']['reconciliations']
+    check(printed['reconciliations'] == recorded and len(recorded) == 1
+          and recorded[0]['review_context'] == context and recorded[0]['after_cycle'] == context['cycle_count']
+          and recorded[0]['issue_body'] == revised and recorded[0]['reason'] == record['reason']
+          and recorded[0]['requested_at'] == record['requested_at'],
+          'T-SC04: reconcile records the approval, context, boundary and revised body on the run')
+    check(phase == 'review' and state['phase'] == 'fix' and state['next_action'] == '/rite:iterate 71'
+          and state['review_run']['run_id'] == run_id and state['cycle_count'] == 1,
+          'T-SC04: reconcile keeps run and counter, moves phase from review to fix and names the re-review')
+    replay = f.state_path.read_bytes()
+    reconcile(f, record)
+    check(f.state_path.read_bytes() == replay, 'T-SC05: the same approval is a byte-identical no-op')
+    output = gate(f)
+    check('REVIEW_RESUME=1' not in output and 'ITERATE_RESUME_HEAD' not in output,
+          "T-SC04: iterate's cycle gate starts a new cycle instead of resuming the reviewed one:\n" + output)
+    for body in (revised, old_spec):
+        plan_for(f, body)
+        f.reject(lambda: f.scope(ok=False), 'T-SC06: no fix plan passes before the revised re-review',
+                 'already recorded')
+    fixes = len(f.state()['review_run']['fixes'])
+    f.start()
+    f.finish(roots=['input defect'])
+    f.clock(1)
+    f.observe()
+    run = f.state()['review_run']
+    check(run['run_id'] == run_id and f.state()['cycle_count'] == 2 and len(run['fixes']) == fixes,
+          'T-SC07: the re-review stays in the run, advances the counter and counts no fix')
+    check([entry['input']['issue_body'] for entry in run['observations']] == [old_spec, revised],
+          'T-SC07: the old observation is retained and the new one carries the revised Issue')
+    check(run['current_decision']['action'] == 'continue' and run['trend'].get('TREND_DIVERGENCE') == 'insufficient',
+          'T-SC07: the revised observation is judged by the unchanged gates')
+    f.fix()
+    check('pending_fix' in f.state()['review_run'], 'T-SC07: the revised observation admits a checked and verified fix')
+    advanced = f.state()
+    reconcile(f, record)
+    check(f.state() == advanced, 'T-SC05: replaying the approval after the context advanced changes nothing')
+finally:
+    f.close()
+
+# The other states a revision cannot be recorded in, and an approval reused for another body.
+f = Fixture()
+try:
+    f.start()
+    f.reject(lambda: reconcile(f, ok=False), 'T-SC15: a collecting cycle cannot be reconciled',
+             'all reviewers must be collected')
+    f.finish()
+    f.clock()
+    f.observe()
+    revised = f.issue['body'].replace('repair', 'rewrite')
+    f.with_issue(revised)
+    f.commit()
+    f.reject(lambda: reconcile(f, ok=False), 'T-SC15: a revision after HEAD moved is refused',
+             'HEAD differs from review context')
+    f.run(['git', 'reset', '-q', '--hard', 'HEAD~1'])
+    receipt = Path(f.state()['review_run']['observations'][-1]['result_path'])
+    saved = receipt.read_bytes()
+    document = json.loads(saved)
+    document['findings'][0]['description'] += ' (edited)'
+    dump(receipt, document)
+    f.reject(lambda: reconcile(f, ok=False), 'T-SC15: a changed review receipt is refused',
+             'observed review receipt is missing or changed')
+    receipt.write_bytes(saved)
+    record = revision_record(f)
+    reconcile(f, record)
+    f.with_issue(revised.replace('rewrite', 'rework'))
+    reconcile(f, record)
+    recorded = f.state()['review_run']['reconciliations']
+    check(len(recorded) == 2 and recorded[-1]['issue_body'] == f.issue['body'],
+          'T-SC15: an approval reused for another body is recorded again, not replayed')
+finally:
+    f.close()
+
+# A cycle refused for the revision still needs its saved receipt.
+f = Fixture()
+try:
+    f.cycle()
+    f.fix()
+    f.start()
+    f.finish()
+    f.with_issue(f.issue['body'].replace('repair', 'rewrite'))
+    receipts = sorted(Path(f.temp.name, '.rite/review-results').glob('71-*.json'))
+    receipts[-1].unlink()
+    f.reject(lambda: reconcile(f, ok=False), 'T-SC15: an unobserved cycle without its saved receipt is refused',
+             'saved review receipt missing')
+finally:
+    f.close()
+
+# Revision that makes the next observation fail, recorded twice.
+f = Fixture()
+try:
+    f.cycle(roots=['input defect'])
+    old_spec = f.issue['body']
+    first, second = old_spec.replace('repair', 'rewrite'), old_spec.replace('preserve', 'retain')
+    f.with_issue(first)
+    reconcile(f, revision_record(f))
+    f.with_issue(second)
+    f.start()
+    f.finish(roots=['input defect'])
+    f.clock(1)
+    refused_with_hint(f, lambda: f.observe(ok=False), 'T-SC08: a second unrecorded revision stops the observation',
+                      'Issue specification changed within run')
+    stale = copy.deepcopy(f.observed)
+    stale['issue_body'] = first
+    dump(f.input, stale)
+    refused_with_hint(f, lambda: f.observe(ok=False), 'T-SC08: an observation copied before the revision stops',
+                      'latest Issue specification differs from observation')
+    dump(f.input, f.observed)
+    later = revision_record(f, reason='second agreed revision', requested_at='2026-01-04T00:00:00Z')
+    reconcile(f, later)
+    state = f.state()
+    records = state['review_run']['reconciliations']
+    check(len(records) == 2 and records[1]['review_context'] == f.context() and records[1]['after_cycle'] == 1
+          and records[1]['issue_body'] == second and state['next_action'] == '/rite:recover 42',
+          'T-SC09: an unobserved cycle is reconciled with the boundary before it')
+    check(state['phase'] == 'review' and 'REVIEW_RESUME=1' in gate(f),
+          'T-SC09: the unobserved route keeps phase review so iterate resumes the cycle to save its observation')
+    third = second.replace('source.txt', 'the source file')
+    f.with_issue(third)
+    revised_again = copy.deepcopy(f.observed)
+    revised_again['issue_body'] = third
+    dump(f.input, revised_again)
+    refused = f.observe(ok=False)
+    check(refused.returncode != 0 and 'Issue specification changed within run' in refused.stderr
+          and HINT in refused.stderr and 'already recorded' not in refused.stderr,
+          'T-SC09: a further revision in the same cycle is pointed at reconcile, not at the recorded one')
+    f.with_issue(first)
+    dump(f.input, stale)
+    f.reject(lambda: f.observe(ok=False), 'T-SC09: only the latest revision is the specification',
+             'Issue specification changed within run')
+    f.with_issue(second)
+    dump(f.input, f.observed)
+    f.observe()
+    check(len(f.state()['review_run']['observations']) == 2, 'T-SC09: the hinted route saves the revised observation')
+finally:
+    f.close()
+
+# States the revision cannot reopen.
+f = Fixture()
+try:
+    f.cycle(seconds=1801)
+    check(f.decision() == 'replan', 'T-SC10: fixture requires a replan')
+    f.plan(replan=True)
+    f.replan()
+    f.with_issue(f.issue['body'].replace('repair', 'rewrite'))
+    refused_with_hint(f, lambda: f.replan(ok=False), 'T-SC10: a registered replan stops on the revised Issue',
+                      'latest Issue specification differs from replan')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    f.cycle(seconds=1801)
+    f.with_issue(f.issue['body'].replace('repair', 'rewrite'))
+    reconcile(f)
+    run = f.state()['review_run']
+    check(run['current_decision']['action'] == 'continue' and run['reconciliations'][0]['replan_reasons'] == ['work-time'],
+          'T-SC10: a pending replan is carried by the revision instead of blocking it')
+    f.start()
+    f.finish()
+    f.clock(1)
+    f.observe()
+    check(f.decision() == 'replan' and f.state()['review_run']['current_decision']['reasons'] == ['work-time'],
+          'T-SC10: the first observation under the revised Issue owes the carried replan')
+    f.plan(replan=True)
+    f.replan()
+    check(len(f.state()['review_run']['replans']) == 1, 'T-SC10: the replan passes on the revised Issue')
+    f.scope()
+    (f.root / 'source.txt').write_text('repaired under the replan\n')
+    f.scope('verify')
+    f.commit()
+    f.cycle()
+    check(f.decision() == 'continue' and 'work-time' not in f.state()['review_run']['current_decision']['reasons'],
+          'T-SC10: the carried replan is owed only once')
+finally:
+    f.close()
+
+# A revision found mid-fix, and a run with nothing observed yet.
+f = Fixture()
+try:
+    f.cycle()
+    f.with_issue(f.issue['body'].replace('repair', 'rewrite'))
+    (f.root / 'source.txt').write_text('edited under the old plan\n')
+    f.reject(lambda: reconcile(f, ok=False), 'T-SC12: uncommitted edits stop the revision before review-start',
+             'restore edits made under the old plan')
+    (f.root / 'source.txt').write_text('initial\n')
+    (f.root / 'added-under-old-plan.txt').write_text('new file\n')
+    f.reject(lambda: reconcile(f, ok=False), 'T-SC12: a file created under the old plan also stops the revision',
+             'restore edits made under the old plan')
+    (f.root / 'added-under-old-plan.txt').unlink()
+    reconcile(f)
+    f.start()
+    check(f.state()['cycle_count'] == 2, 'T-SC12: restored edits let the re-review start')
+finally:
+    f.close()
+
+f = Fixture()
+try:
+    f.start()
+    f.finish()
+    f.clock(1)
+    f.with_issue(f.issue['body'].replace('repair', 'rewrite'))
+    before = f.state_path.read_bytes()
+    result = f.observe(ok=False)
+    check(result.returncode != 0 and 'latest Issue specification differs from observation' in result.stderr
+          and HINT not in result.stderr, 'T-SC13: a run with no observation is not pointed at reconcile')
+    check(f.state_path.read_bytes() == before, 'T-SC13: last state retained')
+    f.reject(lambda: reconcile(f, ok=False), 'T-SC13: reconcile names the missing observation',
+             'rebuild the observation input')
+finally:
+    f.close()
+
+
+f = Fixture()
+try:
+    diverge(f)
+    f.with_issue(f.issue['body'].replace('repair', 'rewrite'))
+    f.reject(lambda: reconcile(f, ok=False), 'T-SC11: a stopped run cannot be reconciled', 'review run stopped')
+    f.plan()
+    refused = retry(f, ok=False)
+    check(refused.returncode != 0 and HINT not in refused.stderr, 'T-SC11: a stopped run is not pointed at reconcile')
+finally:
+    f.close()
+
+# A user-requested pause closes the open clock segment at the pause and resume opens a new one,
+# so the paused time is not counted as work time.
+f = Fixture()
+try:
+    f.start()
+    state_dir = f.root / '.rite/state'
+    state_dir.mkdir(parents=True, exist_ok=True)
+    clock_file = state_dir / ('review-clock-' + f.session + '.json')
+    pause_file = state_dir / ('pause-' + f.session + '.json')
+    opened = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=600)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    dump(clock_file, dict(review_context=f.context(), segment_id='paused-segment', kind='work', started_at=opened))
+    f.flow('pause')
+    frozen = json.loads(clock_file.read_text())
+    check(pause_file.exists() and frozen.get('ended_at') and frozen['segment_id'] == 'paused-segment',
+          'pause records the pause and closes the open clock segment')
+    f.flow('resume')
+    reopened = json.loads(clock_file.read_text())
+    saved = [entry for entry in f.state()['review_run']['clock'] if entry['segment_id'] == 'paused-segment']
+    check(not pause_file.exists() and len(saved) == 1 and saved[0]['ended_at'] == frozen['ended_at']
+          and saved[0]['started_at'] == opened,
+          'resume removes the pause record and saves the paused segment with its pause-time end')
+    check('ended_at' not in reopened and reopened['segment_id'] != 'paused-segment' and reopened['kind'] == 'work'
+          and reopened['review_context'] == f.context() and reopened['started_at'] >= frozen['ended_at'],
+          'resume opens a new segment for the same context, starting after the pause')
+finally:
+    f.close()
+
+# A new segment that cannot be opened on resume still records the paused one, warns, and clears the pause.
+f = Fixture()
+try:
+    f.start()
+    state_dir = f.root / '.rite/state'
+    state_dir.mkdir(parents=True, exist_ok=True)
+    clock_file = state_dir / ('review-clock-' + f.session + '.json')
+    pause_file = state_dir / ('pause-' + f.session + '.json')
+    opened = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=600)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    dump(clock_file, dict(review_context=f.context(), segment_id='failing-segment', kind='work', started_at=opened))
+    f.flow('pause')
+    stub = f.private / 'mktemp-bin'
+    stub.mkdir()
+    real_mktemp = shutil.which('mktemp')
+    (stub / 'mktemp').write_text('#!/bin/bash\ncase "$*" in *review-clock-*) echo "mktemp: forced failure" >&2; exit 1 ;; esac\nexec ' + real_mktemp + ' "$@"\n')
+    (stub / 'mktemp').chmod(0o755)
+    saved_path = f.env['PATH']
+    f.env['PATH'] = str(stub) + os.pathsep + saved_path
+    try:
+        result = f.flow('resume')
+    finally:
+        f.env['PATH'] = saved_path
+    saved = [entry for entry in f.state()['review_run']['clock'] if entry['segment_id'] == 'failing-segment']
+    check(len(saved) == 1 and not pause_file.exists() and not clock_file.exists()
+          and 'could not open a new one' in result.stderr,
+          'resume that cannot open a new segment still records the paused one, warns and clears the pause')
+finally:
+    f.close()
+
+# Python bytecode rewritten by a test run after verification does not stop the
+# commit or the next review; an ignored non-bytecode file in the same input
+# directory still does.
+def bytecode_fixture(command):
+    f = Fixture()
+    f.env.pop('PYTHONDONTWRITEBYTECODE', None)
+    with open(f.root / '.git/info/exclude', 'a') as exclude:
+        exclude.write('__pycache__/\nbuild.log\n')
+    (f.root / 'pkg').mkdir()
+    (f.root / 'pkg/m.py').write_text('x = 1\n')
+    f.run(['git', 'add', 'pkg/m.py'])
+    f.commit()
+    f.cycle()
+    plan = f.plan()
+    plan['groups'][0]['verification_ids'] = ['full', 'related']
+    plan['verifications'][0].update(command=command, inputs=['source.txt', 'pkg'])
+    plan['verifications'].append(dict(id='related', kind='related', command='test -s pkg/m.py',
+                                      inputs=['pkg'], environment=[]))
+    dump(f.plan_path, plan)
+    f.scope()
+    (f.root / 'source.txt').write_text('repaired\n')
+    return f
+
+
+def import_pkg(f):
+    f.run([sys.executable, '-c', 'import sys; sys.path.insert(0, "pkg"); import m'])
+
+
+def rewrite_bytecode(f, label):
+    caches = sorted((f.root / 'pkg/__pycache__').glob('*.pyc'))
+    check(caches, label + ': the test run left bytecode in the input directory')
+    before = [hashlib.sha256(p.read_bytes()).hexdigest() for p in caches]
+    for p in caches:
+        p.write_bytes(p.read_bytes() + b'rewritten')
+    check(before != [hashlib.sha256(p.read_bytes()).hexdigest() for p in caches], label + ': bytecode rewritten')
+
+
+GENERATE = 'python3 -c "import sys; sys.path.insert(0, \'pkg\'); import m" && test -s source.txt'
+f = bytecode_fixture(GENERATE)
+try:
+    verified_run = f.scope('verify')
+    check('FIX_VERIFICATION=executed; id=full' in verified_run.stdout,
+          'a verification that writes bytecode into its input directory passes')
+finally:
+    f.close()
+
+f = bytecode_fixture('test -s source.txt')
+try:
+    import_pkg(f)
+    f.scope('verify')
+    rewrite_bytecode(f, 'before commit')
+    f.run(['bash', str(plugin / 'hooks/scripts/review-fix-scope-check.sh'), 'commit-check',
+           '--command', 'git commit -m fixture', '--cwd', str(f.root)])
+    reused = f.run(['bash', str(plugin / 'hooks/scripts/review-fix-scope-check.sh'), 'verify',
+                    '--plan', str(f.plan_path), '--issue', str(f.issue_path), '--kind', 'related'])
+    check('FIX_VERIFICATION=reused; id=related' in reused.stdout, 'rewritten bytecode keeps the related result reusable')
+    f.commit()
+    rewrite_bytecode(f, 'after commit')
+    fixes = len(f.state()['review_run']['fixes'])
+    f.start()
+    run = f.state()['review_run']
+    head = f.run(['git', 'rev-parse', 'HEAD']).stdout.strip()
+    check(len(run['fixes']) == fixes + 1 and run['fixes'][-1]['commit_sha'] == head and 'pending_fix' not in run,
+          'review-start counts the verified fix after the bytecode changed')
+finally:
+    f.close()
+
+f = bytecode_fixture('test -s source.txt')
+try:
+    f.scope('verify')
+    f.commit()
+    (f.root / 'pkg/build.log').write_text('changed\n')
+    fixes = len(f.state()['review_run']['fixes'])
+    f.reject(lambda: f.start(ok=False), 'an ignored non-bytecode input file still stops review-start',
+             'fix verification inputs or receipt changed')
+    check(len(f.state()['review_run']['fixes']) == fixes, 'the rejected review-start counts no fix')
 finally:
     f.close()
 

@@ -4,8 +4,9 @@
 # Edit / Write / MultiEdit / NotebookEdit tools.
 #
 # Why this exists:
-#   The sibling `pre-tool-bash-guard.sh` guards only the Bash tool (since Issue
-# its machine gate is the.git-write path) — it does nothing about a
+#   The sibling `pre-tool-bash-guard.sh` guards only the Bash tool (its reviewer
+#   gates are the length guard (L) and Pattern 4, which includes sub-block (S))
+#   — it does nothing about a
 #   reviewer subagent that opens `Edit`/`Write` on a source file in the parent
 #   working tree (observed in production: a reviewer edited an implementation
 #   file in-place to run a mutation test, then hand-restored it). The prose ban
@@ -158,8 +159,8 @@ fi
 # suffix: any reported type ending in `reviewer` or naming the shared `_reviewer-base` is a
 # reviewer, and one reviewer-typed field outweighs non-reviewer ones. A subagent that reports
 # no type at all (Tier 1 transcript only) cannot be told apart from a reviewer, so it stays
-# guarded and the deny reason says the type was unknown. This classification is edit-guard
-# only; the detection above is what stays in sync with pre-tool-bash-guard.sh.
+# guarded and the deny reason says the type was unknown. pre-tool-bash-guard.sh uses the
+# same classification for its reviewer state-change gate; keep the two in sync.
 _has_type=0
 _reviewer_type=""
 for _t in "$INPUT_SUBAGENT_TYPE" "$INPUT_AGENT_TYPE" "${CLAUDE_SUBAGENT_TYPE:-}" "${CLAUDE_AGENT_TYPE:-}"; do
@@ -332,7 +333,7 @@ else
   TARGET_ROOT="${TARGET_ROOT%/}"
   # --- Isolation allowance: the target's OWN worktree is a sanctioned isolation worktree ---
   # Reviewers legitimately run mutation experiments in a detached worktree created via
-  # `mktemp -d -t rite-review-mutation-XXXXXX` + `git worktree add --detach` (or the
+  # `mktemp -d -t rite-review-mutation-owner.<session_id>.XXXXXX` + `git worktree add --detach` (or the
   # `rite-revert-test-*` sibling namespace — same prefixes swept by pr-cycle-cleanup.sh Step 4).
   # Matching on TARGET_ROOT (the target's resolved worktree root), not the raw path, means only a
   # genuine isolation worktree is allowed — closing the substring / `..` re-entry bypass.
@@ -362,7 +363,7 @@ echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] edit-guard: BLOCKED kind=$_deny_kind to
 if [ "$_deny_kind" = "git-dir" ]; then
   _deny_reason="BLOCKED (reviewer-edit-git-dir): This subagent is treated as a reviewer (${TYPE_BASIS}), and reviewer subagents must not write into a Git internal directory. The ${TOOL_NAME} tool targeted '${ABS_PATH}', which is inside a .git directory. Writing there — .git/hooks/*, .git/config (core.hooksPath / alias / core.fsmonitor), etc. — can execute arbitrary code in the non-sandboxed main session on the next git operation. Reviewers are strictly read-only: inspect refs/blobs with 'git show', 'git cat-file', 'git rev-parse' instead. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement)."
 else
-  _deny_reason="BLOCKED (reviewer-edit-parent-tree): This subagent is treated as a reviewer (${TYPE_BASIS}), and reviewer subagents must not mutate the parent working tree. The ${TOOL_NAME} tool targeted '${ABS_PATH}', which resolves inside the repository working tree (${TARGET_ROOT}). Reviewers are strictly read-only — inspect files with Read/Grep and compare historical content with 'git show <ref>:<file>'. If you need a mutation/verification experiment, do it in an isolated detached worktree under \$TMPDIR: run 'mktemp -d -t rite-review-mutation-XXXXXX' on its own, then in a separate Bash call run 'git worktree add --detach <that literal path> HEAD' and edit files THERE (a real worktree whose root is named rite-review-mutation-* / rite-revert-test-* is allowed). See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement / Mutation experiments)."
+  _deny_reason="BLOCKED (reviewer-edit-parent-tree): This subagent is treated as a reviewer (${TYPE_BASIS}), and reviewer subagents must not mutate the parent working tree. The ${TOOL_NAME} tool targeted '${ABS_PATH}', which resolves inside the repository working tree (${TARGET_ROOT}). Reviewers are strictly read-only — inspect files with Read/Grep and compare historical content with 'git show <ref>:<file>'. If you need a mutation/verification experiment, do it in an isolated detached worktree under \$TMPDIR: run 'bash ${SCRIPT_DIR}/session-identity.sh' on its own to get your session ID, then 'mktemp -d -t rite-review-mutation-owner.<that session ID>.XXXXXX' on its own, then in a separate Bash call run 'git worktree add --detach <that literal path> HEAD' and edit files THERE (a real worktree whose root is named rite-review-mutation-* / rite-revert-test-* is allowed). See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement / Mutation experiments)."
 fi
 # jq is required to emit the permission payload; an intermittent jq failure would
 # silently downgrade the deny to allow, so the fail-CLOSED trap catches a crash
