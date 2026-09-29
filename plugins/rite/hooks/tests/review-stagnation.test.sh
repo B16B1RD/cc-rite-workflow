@@ -2704,5 +2704,84 @@ try:
 finally:
     f.close()
 
+# Python bytecode rewritten by a test run after verification does not stop the
+# commit or the next review; an ignored non-bytecode file in the same input
+# directory still does.
+def bytecode_fixture(command):
+    f = Fixture()
+    f.env.pop('PYTHONDONTWRITEBYTECODE', None)
+    with open(f.root / '.git/info/exclude', 'a') as exclude:
+        exclude.write('__pycache__/\nbuild.log\n')
+    (f.root / 'pkg').mkdir()
+    (f.root / 'pkg/m.py').write_text('x = 1\n')
+    f.run(['git', 'add', 'pkg/m.py'])
+    f.commit()
+    f.cycle()
+    plan = f.plan()
+    plan['groups'][0]['verification_ids'] = ['full', 'related']
+    plan['verifications'][0].update(command=command, inputs=['source.txt', 'pkg'])
+    plan['verifications'].append(dict(id='related', kind='related', command='test -s pkg/m.py',
+                                      inputs=['pkg'], environment=[]))
+    dump(f.plan_path, plan)
+    f.scope()
+    (f.root / 'source.txt').write_text('repaired\n')
+    return f
+
+
+def import_pkg(f):
+    f.run([sys.executable, '-c', 'import sys; sys.path.insert(0, "pkg"); import m'])
+
+
+def rewrite_bytecode(f, label):
+    caches = sorted((f.root / 'pkg/__pycache__').glob('*.pyc'))
+    check(caches, label + ': the test run left bytecode in the input directory')
+    before = [hashlib.sha256(p.read_bytes()).hexdigest() for p in caches]
+    for p in caches:
+        p.write_bytes(p.read_bytes() + b'rewritten')
+    check(before != [hashlib.sha256(p.read_bytes()).hexdigest() for p in caches], label + ': bytecode rewritten')
+
+
+GENERATE = 'python3 -c "import sys; sys.path.insert(0, \'pkg\'); import m" && test -s source.txt'
+f = bytecode_fixture(GENERATE)
+try:
+    verified_run = f.scope('verify')
+    check('FIX_VERIFICATION=executed; id=full' in verified_run.stdout,
+          'a verification that writes bytecode into its input directory passes')
+finally:
+    f.close()
+
+f = bytecode_fixture('test -s source.txt')
+try:
+    import_pkg(f)
+    f.scope('verify')
+    rewrite_bytecode(f, 'before commit')
+    f.run(['bash', str(plugin / 'hooks/scripts/review-fix-scope-check.sh'), 'commit-check',
+           '--command', 'git commit -m fixture', '--cwd', str(f.root)])
+    reused = f.run(['bash', str(plugin / 'hooks/scripts/review-fix-scope-check.sh'), 'verify',
+                    '--plan', str(f.plan_path), '--issue', str(f.issue_path), '--kind', 'related'])
+    check('FIX_VERIFICATION=reused; id=related' in reused.stdout, 'rewritten bytecode keeps the related result reusable')
+    f.commit()
+    rewrite_bytecode(f, 'after commit')
+    fixes = len(f.state()['review_run']['fixes'])
+    f.start()
+    run = f.state()['review_run']
+    head = f.run(['git', 'rev-parse', 'HEAD']).stdout.strip()
+    check(len(run['fixes']) == fixes + 1 and run['fixes'][-1]['commit_sha'] == head and 'pending_fix' not in run,
+          'review-start counts the verified fix after the bytecode changed')
+finally:
+    f.close()
+
+f = bytecode_fixture('test -s source.txt')
+try:
+    f.scope('verify')
+    f.commit()
+    (f.root / 'pkg/build.log').write_text('changed\n')
+    fixes = len(f.state()['review_run']['fixes'])
+    f.reject(lambda: f.start(ok=False), 'an ignored non-bytecode input file still stops review-start',
+             'fix verification inputs or receipt changed')
+    check(len(f.state()['review_run']['fixes']) == fixes, 'the rejected review-start counts no fix')
+finally:
+    f.close()
+
 print('PASS: review stagnation: ' + str(checks) + ' assertions; real clocks, receipts, repairs and retained stops')
 PYTEST
