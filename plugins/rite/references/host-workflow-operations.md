@@ -8,7 +8,7 @@
 
 ## チェックアウト外の git / gh
 
-flow-state が active なセッションで、実効 cwd（cwd に `cd` と `env -C` / `sudo -D`（`--chdir`）を、git ではさらに `-C` を反映したもの）がチェックアウト（main checkout とその worktree）の外にある git / gh 呼び出しとスクリプト実行は、Claude の PreToolUse（`pre-tool-bash-guard.sh`）が拒否する。区切りを引用しない heredoc で本文にコマンド置換（`$(` / バッククォート / `$((`）を書いたコマンドも、チェックアウト外では判定できないとして拒否する（区切りを `<<'EOF'` と引用すれば通る）。Codex と Grok の明示実行にはこの検査が無いため、git / gh とスクリプトはチェックアウトの中から実行し、外のファイルは絶対パスで渡す。
+flow-state が active なセッションで、実効 cwd（cwd に `cd` と `env -C` / `sudo -D`（`--chdir`）を、git ではさらに `-C` を反映したもの）がチェックアウト（main checkout とその worktree）の外にある git / gh 呼び出しとスクリプト実行は、Claude の PreToolUse（`pre-tool-bash-guard.sh`）が拒否する。区切りを引用しない heredoc で本文にコマンド置換（`$(` / バッククォート / `$((`）を書いたコマンドは、チェックアウト外から実行するとき、またはディレクトリを変える語（`cd` / `pushd` / `popd` / `-C` / `chdir` / `sudo`。本文中の語も含む）を含むときは、チェックアウト内でも判定できないとして拒否する（区切りを `<<'EOF'` と引用するか、値を先に変数へ代入して本文で `$v` を使えば通る）。Codex と Grok の明示実行にはこの検査が無いため、git / gh とスクリプトはチェックアウトの中から実行し、外のファイルは絶対パスで渡す。
 
 ## Skill と caller
 
