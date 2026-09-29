@@ -358,6 +358,7 @@ Select ONE matching the Issue type. The type confirmed in `create.md` ステッ�
   - a fix rationale, a review response included → the commit body (`skills/fix/SKILL.md` ステップ 3.2 requires the chosen 対応方針 there, ステップ 3.2.1 the root cause)
 - This extends `knowledge_routing` (`skills/rite-workflow/references/coding-principles.md`) from code artifacts to this Issue section: each kind of knowledge is recorded once, in the medium where it survives
 - A line that defers a defect found in review ends with ` <!-- rite:deferred-defect pr=N -->` (added by `/rite:pr-review` step 7.4.3). `/rite:cleanup` step 6.0 takes these lines as follow-up candidates and files one follow-up Issue per root cause whose adoption exit is `file`; while any candidate has no exit it files nothing and holds. Removing the token drops the defect from the candidates
+- A line written by `/rite:pr-review` step 7.4.3 carries ` <!-- rite:triage-write pr=N key=K -->` before the deferred-defect token (at the end of the line when there is no token). A rerun of the same disposition finds this mark and does not write the line again; removing it lets the rerun write the same decision once more
 
 ---
 
