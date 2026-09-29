@@ -81,6 +81,7 @@
 * **Update**: [文書中の全箇所を対象にする検査や grep は、書き方の種類を先に列挙してから書く](pages/heuristics/enumerate-notations-before-scanning-all-occurrences.md) — raw/fixes/20260929T042705Z-pr-3425.md を統合
 * **Update**: [文書中の全箇所を対象にする検査や grep は、書き方の種類を先に列挙してから書く](pages/heuristics/enumerate-notations-before-scanning-all-occurrences.md) — raw/reviews/20260929T042643Z-pr-3426.md を統合
 * **Update**: [実装が分岐しているならテストも分岐の数だけ要る — 既定構成の経路こそ抜けやすい](pages/heuristics/implementation-branch-count-equals-test-branch-count.md) — raw/reviews/20260929T042617Z-pr-3349.md を統合
+* **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=582, broken_refs=0
 
 ## 2026-09-28
 
