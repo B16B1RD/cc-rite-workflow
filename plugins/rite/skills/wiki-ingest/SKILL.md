@@ -693,9 +693,14 @@ EOF
     1)
       commit_reason=$(printf '%s\n' "$commit_out" | sed -n 's/.*reason=\([^;[:space:]]*\).*/\1/p' | tail -1)
       case "$commit_reason" in
-        numref-hit|numref-error)
-          echo "ERROR: wiki-worktree-commit.sh が番号参照の commit 前検査で拒否しました (rc=1, reason=$commit_reason)" >&2
-          echo "  対処: stdout の reason= と ステップ 5.0.n の hit 行を確認し、書き直してから再実行" >&2
+        numref-hit)
+          echo "ERROR: wiki-worktree-commit.sh が番号参照の commit 前検査で拒否しました (rc=1, reason=numref-hit)" >&2
+          echo "  対処: ステップ 5.0.n の hit 行を書き直してから再実行" >&2
+          ;;
+        numref-error)
+          # 検査自体が完了できなかった（helper 不在・stage や gitignore の不備）。hit 行は出ない。
+          echo "ERROR: wiki-worktree-commit.sh の番号参照の commit 前検査が完了できなかったため commit しませんでした (rc=1, reason=numref-error)" >&2
+          echo "  対処: 直前の stderr（[CONTEXT] WIKI_INGEST_NUMREF=error; reason= または ERROR 行）が示す原因を解消してから再実行" >&2
           ;;
         *)
           echo "ERROR: wiki-worktree-commit.sh が環境または引数エラーで停止しました (rc=1)" >&2
@@ -1256,7 +1261,8 @@ rationale: references/rationale.md#returned-to-caller
 | `lib/wiki-config.sh` 読込失敗 (helper 不在 / 解決失敗) | exit 1 で fail-fast（`[CONTEXT] WIKI_CONFIG_HELPER_UNAVAILABLE=1`。設定を判定できないまま無効扱いへ倒さない。plugin のインストール状態を確認するか `/rite:setup` を再実行、ステップ 1.1） |
 | Wiki 未初期化 / worktree セットアップ失敗 | `/rite:wiki-init` を案内、または `wiki-worktree-setup.sh` のエラー出力を確認して `git worktree prune` / `git fetch origin wiki:wiki` で復旧 (ステップ 1.3) |
 | 処理対象 0 件 | 静かに終了し情報メッセージのみ表示（ステップ 2.3） |
-| `wiki-worktree-commit.sh --commit-only` exit 1 + stdout `reason=numref-hit` / `numref-error`（ステップ 5.1） | exit 1 で fail-fast。番号参照の commit 前検査が拒否した。5.0.n の hit 行を書き直すか、stderr の error reason を直して再実行 |
+| `wiki-worktree-commit.sh --commit-only` exit 1 + stdout `reason=numref-hit`（ステップ 5.1） | exit 1 で fail-fast。番号参照の commit 前検査が拒否した。5.0.n の hit 行を書き直して再実行 |
+| `wiki-worktree-commit.sh --commit-only` exit 1 + stdout `reason=numref-error`（ステップ 5.1） | exit 1 で fail-fast。検査自体が完了できなかった。直前の stderr の `WIKI_INGEST_NUMREF=error; reason=` または ERROR 行が示す原因を解消して再実行 |
 | `wiki-worktree-commit.sh --commit-only` exit 1 + stdout に `reason=numref-hit` / `numref-error` なし（ステップ 5.1） | exit 1 で fail-fast。環境 / 引数エラーとして、直前の stderr が示す worktree・設定・引数の原因を解消して再実行 |
 | `wiki-worktree-commit.sh --commit-only` exit 3 (git add/commit 失敗、ステップ 5.1) | exit 1 で fail-fast。`git -C .rite/wiki-worktree status` で worktree の状態を確認 |
 | `wiki-worktree-commit.sh --commit-only` exit 6 + stdout `reason=sandbox-mask`（管理ディレクトリ書込不可、ステップ 5.1） | exit 1 で停止。5.1 の bash block を `dangerouslyDisableSandbox: true` で 1 回だけ再実行する。再実行でも exit 6 なら管理ディレクトリの権限・容量を確認して停止 |
