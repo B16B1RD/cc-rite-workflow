@@ -65,7 +65,7 @@ snapshot の各候補について、`gh issue view <N> -R {owner_repo} --json ti
 |---|---|---|
 | 統合 | `concentration` の各グループ | 同じ根因かの判定。同じなら統合先と、共通の契約・証拠（本文・コメントの引用） |
 | 系譜 | `lineage.chains` の各連鎖 | 連鎖と、根の Issue の契約（受入条件）から見た各世代の必要性（必要 / 取り下げ提案 / 方向修正）と根拠 |
-| 方向修正 | `open_issues` のうち `stale: true` のもの、および本文の受入条件が名指しする実装と現状が食い違う Open Issue | 食い違い・停滞の事実（引用）と、修正後の方向 |
+| 方向修正 | `open_issues` のうち `stale: true` のもの、および `lineage.chains` / `concentration` に現れた Issue のうち本文の受入条件が名指しする実装と現状が食い違うもの | 食い違い・停滞の事実（引用）と、修正後の方向 |
 
 - 判定の根拠は、Issue・PR・コメント・名指しされたファイルの現状から引用する。引用できない推測は提案にしない
 - 新しい欠陥を見つけても指摘として書かない（MUST NOT）。既存 Issue の本文と現状のずれとして書ける範囲だけを扱う
@@ -124,7 +124,7 @@ Write ツールで `{state_root}/.rite/state/issue-audit-{timestamp}.md` に次�
 | Issue | 規則 | 理由 |
 ```
 
-書いたら次の 3 行を出力して caller へ返す（ステップ 3 が失敗していれば 3 行目は `<!-- [issue-audit:failed] -->`。ステップ 1 で止まったときはレポートが無いので 1 行目を出さない）。batch-run から呼ばれたときはここで turn を終えず、caller が完了通知を出す:
+書いたら次の 3 行を出力して caller へ返す（ステップ 1 または 3 が失敗していれば 3 行目は `<!-- [issue-audit:failed] -->`。ステップ 1 で止まったときはレポートが無いので 1 行目を出さない）。batch-run から呼ばれたときはここで turn を終えず、caller が完了通知を出す:
 
 ```
 監査レポート: {state_root}/.rite/state/issue-audit-{timestamp}.md

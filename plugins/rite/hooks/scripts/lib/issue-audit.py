@@ -26,9 +26,9 @@ Snapshot (collect stdout):
 Rules (the only dispositions; reason is the `gh issue close` reason):
   duplicate_key       two or more open Issues labelled `follow-up` have the same marker
                       `<!-- [rite-follow-up-from-pr:<pr>:<ids>] -->` as their first body line
-                      (the line the follow-up filer writes; ids are letters, digits, `_`, `-`
-                      joined by commas); the lowest number stays open and the others close
-                      as duplicate of it
+                      (the line the follow-up filer writes; ids use the filer's characters —
+                      letters, digits, `.`, `_`, `-`, `#`, `~` — joined by commas); the lowest
+                      number stays open and the others close as duplicate of it
   merged_closing_pr   a PR merged into the base branch says Closes / Fixes / Resolves #N
                       while #N is still open → completed
   record_resolved     a surviving follow-up record has present=false and tracker=N → completed
@@ -66,7 +66,7 @@ CHAIN_MIN = 3
 MERGED_PR_LIMIT = 200
 PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 
-DUP_MARKER = re.compile(r"<!-- \[rite-follow-up-from-pr:[0-9]+:[A-Za-z0-9_-]+(?:,[A-Za-z0-9_-]+)*\] -->")
+DUP_MARKER = re.compile(r"<!-- \[rite-follow-up-from-pr:[0-9]+:[A-Za-z0-9._#~-]+(?:,[A-Za-z0-9._#~-]+)*\] -->")
 RECORD_FILE = re.compile(r"adoption-[0-9]+-followup\.json")
 UNSET = ("", "null", "~")
 FOLLOW_UP = re.compile(r"<!--\s*\[rite-follow-up-from-pr:([0-9]+)(?::([^\]]+))?\]\s*-->")
