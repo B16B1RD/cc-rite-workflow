@@ -37,9 +37,15 @@ sources:
     resource: "raw/fixes/20260927T211246Z-pr-3345.md"
   - type: "reviews"
     resource: "raw/reviews/20260927T212257Z-pr-3345.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T115122Z-pr-3448.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T120147Z-pr-3448.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260929T120848Z-pr-3448.md"
 tags: ["test", "static-pin", "allowlist", "mutation", "bash"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:32:57Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T12:40:00Z" }
 verified:
   - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-16T10:24:00Z" }
   - { by: "rite-wiki-ingest/claude-fable-5-1", at: "2026-09-12T04:13:09Z" }
@@ -50,6 +56,7 @@ verified:
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T05:30:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T17:15:00Z" }
   - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-27T21:14:23Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T12:40:00Z" }
 ---
 
 # 静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く
@@ -158,6 +165,18 @@ ERE の交替を denylist に使うときは、各枝が非空で単独でも HE
 
 語の窓を `[[:alpha:]]+` で数える判定は、Markdown の強調記号で囲んだ否定語（`**NOT**`）や句読点を挟んだ形を 1 語と数えられず、そこで見逃す。数える前に強調記号を落とすと、この種の書き換えをまとめて閉じられる。
 
+### 自然文の手順セルは全文一致で固定する
+
+スキルの手順表のセル（LLM が読む自然文の入力条件）を契約テストで固定する場面で、次の順に強めても毎回言い換えで素通りされた。
+
+1. 禁止語 1 語の不在 → 隣の語による絞り込みが通る
+2. 禁止語の集合の不在 → 集合にない語（「だけ」「のみ」）による絞り込みが通る
+3. 先頭の句と条件ごとの句の陽性一致 → 先頭の句の後ろの文で絞り込むと通る。同じ見出しの行が 2 行あると前の行は検査されない
+
+セル全文の完全一致に切り替えると、どの言い回しの絞り込みも行の重複もまとめて検出でき、検査の行数も減った。文言を変えるときはテストの更新が必ず要るようになるが、手順の入力条件は受入条件に直結するので、変更のたびに意識的に更新させるのが妥当である。見出しの並びを先に完全一致で比べてからセルを比べると、行の重複と文言の変更が別のメッセージで報告される。
+
+逐語で固定したテストのコメントは、固定している範囲（どのセルか）だけを約束する。「どう書いても絞り込みはここで落ちる」のように範囲外（表の外の箇条）まで検出すると読める書き方は、保守者を誤らせる。
+
 ## 関連ページ
 
 - [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](./fixture-mutation-isolates-invariants.md)
@@ -183,3 +202,6 @@ ERE の交替を denylist に使うときは、各枝が非空で単独でも HE
 - [語のリストで判定する否定形検査が同種の書き換えを通すと指摘したレビュー結果](../../raw/reviews/20260927T210318Z-pr-3345.md)
 - [否定語から数語以内まで許して変異で確かめた fix 結果](../../raw/fixes/20260927T211246Z-pr-3345.md)
 - [否定語の窓を広げると状態の否定を誤検出すると指摘したレビュー結果](../../raw/reviews/20260927T212257Z-pr-3345.md)
+- [手順セルの禁止語検査が言い換えで素通りしたレビュー結果](../../raw/reviews/20260929T115122Z-pr-3448.md)
+- [手順セルを全文一致で固定した fix 結果](../../raw/fixes/20260929T120147Z-pr-3448.md)
+- [逐語固定のコメントが範囲より広く約束していたレビュー結果](../../raw/reviews/20260929T120848Z-pr-3448.md)

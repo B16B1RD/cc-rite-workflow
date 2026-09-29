@@ -4,7 +4,9 @@ title: "外部コマンドの stub が無視した引数は、その引数が担
 description: "引数の一部だけで分岐して固定出力を返す stub は、無視した引数（フィルタ式・クエリ・選択条件）が担う処理を丸ごとテスト対象から外す。stub は受け取った式を実物の処理系で fixture に適用し、fixture には選ばれてはいけないが選ばれると結果が変わる要素を混ぜる。"
 domain: "heuristics"
 created: "2026-09-24T05:40:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5-5[1m]", at: "2026-09-24T05:40:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T12:40:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-29T12:40:00Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260924T051109Z-pr-3025.md"
@@ -12,6 +14,8 @@ sources:
     resource: "raw/fixes/20260924T051654Z-pr-3025.md"
   - type: "reviews"
     resource: "raw/reviews/20260924T052324Z-pr-3025.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260929T105422Z-pr-3448.md"
 tags: ["test-stub", "fixture-design", "mutation-testing", "jq", "selection-logic"]
 confidence: high
 promote: rite-plugin
@@ -35,6 +39,8 @@ promote: rite-plugin
 
 **stub が引数の個数と順序を厳密に要求するのは意図どおりの厳格さである。** 呼び出し側が引数を足したり順序を変えたりするとテストが落ちるが、これは呼び出し形を契約として固定する効果を持つ。
 
+**絞り込みフラグは stub に守らせる。** `gh issue list --state` のような絞り込みフラグを stub が無視して常に同じ集合を返すと、helper 側で絞り込み条件を外す変異が検出できない。stub はフラグの値で fixture を絞り、fixture には絞り込まれるべき要素（閉じた Issue 等）を混ぜる。失敗経路（書き込みの失敗・非 JSON 応答・壊れた記録）は、stub に失敗を注入する環境変数を足して固定する。consumer の許可リスト（受理する識別子の文字クラス等）は、reviewer の推奨ではなく producer の実出力とそのテスト fixture から決める。
+
 ## 関連ページ
 
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
@@ -46,3 +52,4 @@ promote: rite-plugin
 - [レビュー結果（cycle 1）](../../raw/reviews/20260924T051109Z-pr-3025.md)
 - [fix 結果](../../raw/fixes/20260924T051654Z-pr-3025.md)
 - [レビュー結果（cycle 2）](../../raw/reviews/20260924T052324Z-pr-3025.md)
+- [stub に絞り込みフラグと失敗注入を持たせた fix 結果](../../raw/fixes/20260929T105422Z-pr-3448.md)
