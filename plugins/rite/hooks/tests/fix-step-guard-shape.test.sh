@@ -346,6 +346,29 @@ if [ -n "$MUT_DIR" ]; then
     *"owner/repo を解決できませんでした"*) pass "no owner/repo marker is emitted on failure" ;;
     *) fail "the failure names the unresolved owner/repo (output: $owner_out)" ;;
   esac
+
+  # wiki-trigger は caller の本文ファイルを写さずに trigger へ渡す。写しを挟むと trigger の
+  # symlink 拒否とパス allowlist が写しに対して評価され、caller のパスに効かなくなる。
+  printf '%s\n' '#!/bin/bash' "printf '%s\n' \"\$@\" > \"$MUT_DIR/trigger-args\"" > "$FIXTURE/hooks/wiki-ingest-trigger.sh"
+  printf '%s\n' 'body' > "$MUT_DIR/rite-wiki-body.md"
+  printf '%s\n' 'title' > "$MUT_DIR/wiki-title.txt"
+  wiki_out=$(bash "$FIXTURE/scripts/fix-step.sh" wiki-trigger --pr 7 \
+    --content-file "$MUT_DIR/rite-wiki-body.md" --title-file "$MUT_DIR/wiki-title.txt" 2>/dev/null)
+  assert "wiki-trigger runs the trigger" "trigger_exit=0" "$(grep '^trigger_exit=' <<< "$wiki_out")"
+  assert "wiki-trigger hands the caller's content file to the trigger" "$MUT_DIR/rite-wiki-body.md" \
+    "$(grep -A1 -xF -- '--content-file' "$MUT_DIR/trigger-args" | tail -n 1)"
+  rm -f "$MUT_DIR/trigger-args"
+  wiki_out=$(bash "$FIXTURE/scripts/fix-step.sh" wiki-trigger --pr 7 \
+    --content-file "$MUT_DIR/absent.md" --title-file "$MUT_DIR/wiki-title.txt" 2>&1)
+  case "$wiki_out" in
+    *"reason=input_file_missing"*"content_write_failed=1"*) pass "a missing content file skips the trigger with input_file_missing" ;;
+    *) fail "a missing content file skips the trigger with input_file_missing (output: $wiki_out)" ;;
+  esac
+  if [ -e "$MUT_DIR/trigger-args" ]; then
+    fail "a missing content file does not run the trigger"
+  else
+    pass "a missing content file does not run the trigger"
+  fi
 fi
 
 if ! print_summary "$(basename "$0")" \

@@ -839,6 +839,15 @@ for closed_targets in (False, True):
         for block in blocks:
             parsed = run(['bash', str(helper), 'commit-target', '--command', block, '--cwd', str(root)], ok=False)
             check(parsed.returncode == 0, 'plugin block parses: ' + block[:80] + '\n' + parsed.stderr)
+        # The fix references call fix-step.sh in one line; the guard reads each call as a command with no commit target.
+        calls = [block for path in sorted((plugin / 'skills/fix/references').glob('*.md'))
+                 for block in re.findall(r'```bash\n(.*?)\n```', path.read_text(encoding='utf-8'), re.S)
+                 if 'scripts/fix-step.sh' in block]
+        check(len(calls) >= 12, 'the corpus finds the fix reference helper calls')
+        for block in calls:
+            parsed = run(['bash', str(helper), 'commit-target', '--command', block, '--cwd', str(root)], ok=False)
+            check(parsed.returncode == 0 and parsed.stdout == '',
+                  'fix reference call has no commit target: ' + block[:80] + '\n' + parsed.stderr)
         # A `^{commit}` peel names a revision, not a commit: it parses and reports no commit target.
         for peel in ('git rev-parse --verify "${nref_base}^{commit}" >/dev/null 2>&1 || nref_base="{base_branch}"',
                      'git cat-file -e "${commit_sha_before}^{commit}" 2>/dev/null'):
