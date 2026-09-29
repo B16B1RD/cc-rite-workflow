@@ -57,6 +57,7 @@
 * **Update**: [CI の観測をレビューへ渡し、失敗の帰属と採否を分ける](pages/heuristics/review-loop-has-no-ci-result-input.md) — macOS でだけ落ちる回帰を CI ログで捕まえることを示したレビュー結果で補強
 * **Update**: [実装が分岐しているならテストも分岐の数だけ要る — 既定構成の経路こそ抜けやすい](pages/heuristics/implementation-branch-count-equals-test-branch-count.md) — OR で書いた拒否条件の片側が未固定だったことを示したレビュー結果で補強
 * **Update**: [シェル本体を別ディレクトリの helper へ移すと、相対パス・引数・出力元の記述が移設元を前提に残る](pages/anti-patterns/helper-relocation-leaves-origin-relative-references.md) — 参照記述の更新漏れが別ファイルで再発見されたレビュー結果で補強
+* **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=582, broken_refs=0
 
 ## 2026-09-28
 
