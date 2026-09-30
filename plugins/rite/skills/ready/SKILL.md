@@ -314,7 +314,7 @@ bash "$plugin_root/hooks/scripts/ready-reviewed-head-gate.sh" \
   --attest "$human_ac_ids" || { echo "[ready:error]"; exit 1; }
 ```
 
-確認できなかった ID は attest に含めない。1 件でも残るときは、下の Ready の確認を出さずに `[ready:error]` で停止し、残った ID を 4 要素とともに示す（確認済みの ID の attest は残る。残った未検証は `--enforce-ac` が通さない）。unmet / missing / malformed は standalone でも質問や attest に送らない。
+確認できた ID が 0 件（キャンセルを含む）なら、上の helper を呼ばずに `[ready:error]` で停止し、未検証の ID を 4 要素とともに示す（attest は作らない）。確認できなかった ID は attest に含めない。1 件でも残るときは、下の Ready の確認を出さずに `[ready:error]` で停止し、残った ID を 4 要素とともに示す（確認済みの ID の attest は残る。残った未検証は `--enforce-ac` が通さない）。unmet / missing / malformed は standalone でも質問や attest に送らない。
 
 ```
 PR #{number} を Ready for review に変更します。

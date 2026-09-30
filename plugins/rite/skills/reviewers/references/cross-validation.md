@@ -107,11 +107,11 @@ Escalate to user (via `AskUserQuestion`) when:
 **Escalation format:**
 
 ```
-⚠️ 実行しても決まらない仕様の判断があります
+⚠️ 実行しても決まらない判断があります
 
 ファイル: {file}:{line}
 
-何を決めるか: この箇所の挙動として、どちらを仕様とするか
+何を決めるか: {挙動の割れなら「この箇所の挙動として、どちらを仕様とするか」、scope の割れなら「この PR で直すか、別 Issue に回すか」}
   案 A（{Reviewer A}）: {revised_position_a}
     根拠: {evidence_a}
   案 B（{Reviewer B}）: {revised_position_b}
@@ -119,17 +119,17 @@ Escalate to user (via `AskUserQuestion`) when:
 
 なぜ AI では決められないか: {両案の再現コマンド・テストを実行した結果と、仕様に記載が無い点}
 どう判断するか: {案 A を採ったときの帰結} / {案 B を採ったときの帰結}
-期待する回答: 仕様とする案
+期待する回答: 採る案
 
 討論の経緯:
   - {Reviewer A} は {concession_a} を認めつつも、{claim_a} を主張
   - {Reviewer B} は {concession_b} を認めつつも、{claim_b} を主張
 
 オプション:
-- 案 A を仕様とする
-- 案 B を仕様とする
+- 案 A を採る
+- 案 B を採る
 - 両方を満たす形にする（最高 severity を採用）
-- どちらも仕様としない（指摘を取り下げる）
+- どちらも採らない（指摘を取り下げる）
 ```
 
 ### Configuration

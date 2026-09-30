@@ -1436,10 +1436,10 @@ Check `review.debate.enabled` in `rite-config.yml` (see [Configuration in cross-
 先に [cross-validation.md の Before any escalation](../../skills/reviewers/references/cross-validation.md#escalation-conditions) を当て、実行結果で決着する矛盾はユーザーに上げない。残った矛盾だけ AskUserQuestion で確認する（fallback: see ステップ 1.4 note）:
 
 ```
-⚠️ 実行しても決まらない仕様の判断があります
+⚠️ 実行しても決まらない判断があります
 ファイル: {file}:{line}
 
-何を決めるか: この箇所の挙動として、どちらを仕様とするか
+何を決めるか: {挙動の割れなら「この箇所の挙動として、どちらを仕様とするか」、scope の割れなら「この PR で直すか、別 Issue に回すか」}
  案 A（{Reviewer A}）: {assessment_A}
  根拠: {reason_A}
  案 B（{Reviewer B}）: {assessment_B}
@@ -1447,7 +1447,7 @@ Check `review.debate.enabled` in `rite-config.yml` (see [Configuration in cross-
 
 なぜ AI では決められないか: {両案の再現コマンド・テストを実行した結果と、仕様に記載が無い点}
 どう判断するか: {案 A を採ったときの帰結} / {案 B を採ったときの帰結}
-期待する回答: 仕様とする案
+期待する回答: 採る案
 ```
 
 ### 5.2.1 Debate Phase (Contradiction Deliberation)
