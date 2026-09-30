@@ -14,9 +14,10 @@
 # extract  stdout: the ### 却下台帳 section (empty if absent). exit 0 when
 #          the body is readable even if no ledger exists.
 # append   appends table rows to a ledger file (creates header if missing).
-#          The sweep writes 判定 = issued (filed), REJECT / RESOLVED / LINK (the
-#          adoption exit recorded without filing) and recorded (already_rejected
-#          transcription); cleanup's follow-up writes REJECT / RESOLVED / LINK.
+#          The sweep writes 判定 = issued (filed) and REJECT / RESOLVED / LINK (the
+#          adoption exit recorded without filing); cleanup's follow-up writes
+#          REJECT / RESOLVED / LINK. recorded is an older transcription of guardrail
+#          rows that no writer produces any more; tally still counts it.
 #          append does not check the value.
 #          Every appended row must end with a 出典 cell holding the basename of
 #          the review JSON the row's candidate came from ({pr}-{14 digits}[~{4 hex}].json),

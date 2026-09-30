@@ -546,7 +546,7 @@ def _substitution_end(command, start):
     require(False, "unfinished command substitution" + _PARSE_HINT)
 
 
-def shell_segments(command, level=0, group_ids=False):
+def shell_segments(command, level=0, group_ids=False, omit_case_patterns=False):
     """Split a command into (words, nested, before, after) simple commands of dequoted words.
     Not a shell interpreter.
 
@@ -563,6 +563,8 @@ def shell_segments(command, level=0, group_ids=False):
     A newline right after &&, || or | continues the list. The & of a redirection
     (&>, >&, <&) stays in its word. A word whose first unquoted < or > has only an
     unquoted fd number or the & of &> before it comes back as a _Redirection.
+    omit_case_patterns removes case pattern words and their delimiters while
+    retaining the case header, esac, arm commands and pattern substitutions.
     """
     if level > MAX_SUBSTITUTION_DEPTH:
         # The text is not parsed, so its words are read with quotes and backslashes (and line
@@ -575,12 +577,40 @@ def shell_segments(command, level=0, group_ids=False):
     segments, words, word, quoted, quote, depth = [], [], [], False, None, 0
     index, length, pending, redirect, redirection, signed = 0, len(command), "", -2, False, False
     groups, opened = [], 0
+    # The cwd reader needs pattern boundaries before dequoting loses them. Other
+    # users retain the existing segment representation unless they opt in.
+    cases = []
 
     def end_word():
         nonlocal word, quoted, redirection, signed
+        flush_header = False
         if word or quoted:
-            words.append((_Redirection if redirection else str)("".join(word)))
+            value = "".join(word)
+            keep = True
+            command_start = not words or all(w in _KEYWORDS for w in words)
+            if omit_case_patterns:
+                if cases and cases[-1][0] == "subject":
+                    cases[-1][0] = "in"
+                elif cases and cases[-1][0] == "in":
+                    if value == "in" and not quoted:
+                        cases[-1][0] = "pattern"
+                        flush_header = True
+                elif cases and cases[-1][0] == "pattern":
+                    if value == "esac" and not quoted and not cases[-1][1]:
+                        cases.pop()
+                    else:
+                        cases[-1][1] = True
+                        keep = False
+                elif not quoted and command_start:
+                    if value == "case":
+                        cases.append(["subject", False, 0])
+                    elif value == "esac" and cases:
+                        cases.pop()
+            if keep:
+                words.append((_Redirection if redirection else str)(value))
         word, quoted, redirection, signed = [], False, False, False
+        if flush_header:
+            end_segment()
 
     def end_segment(operator=""):
         nonlocal words, pending
@@ -605,7 +635,9 @@ def shell_segments(command, level=0, group_ids=False):
             end = _message_end(command, index)
             if end is None:
                 end = _substitution_end(command, index + 2)
-                segments.extend((inner, True, "", "") for inner, *_rest in shell_segments(command[index + 2:end - 1], level + 1))
+                segments.extend((inner, True, "", "") for inner, *_rest in
+                                shell_segments(command[index + 2:end - 1], level + 1,
+                                               omit_case_patterns=omit_case_patterns))
             word.append(command[index:end])
             quoted = True
             index = end
@@ -613,7 +645,9 @@ def shell_segments(command, level=0, group_ids=False):
         elif ch == "`" and quote in (None, '"'):
             end = command.find("`", index + 1)
             require(end >= 0, "unfinished command substitution" + _PARSE_HINT)
-            segments.extend((inner, True, "", "") for inner, *_rest in shell_segments(command[index + 1:end], level + 1))
+            segments.extend((inner, True, "", "") for inner, *_rest in
+                            shell_segments(command[index + 1:end], level + 1,
+                                           omit_case_patterns=omit_case_patterns))
             word.append(command[index:end + 1])
             quoted = True
             index = end + 1
@@ -639,6 +673,22 @@ def shell_segments(command, level=0, group_ids=False):
                 index += 1
         elif ch in " \t\r":
             end_word()
+        elif cases and cases[-1][0] == "pattern" and ch in "()|":
+            end_word()
+            if ch == "(":
+                # An optional leading '(' belongs to the pattern, as do extglob
+                # parentheses following its first word.
+                if cases[-1][1]:
+                    cases[-1][2] += 1
+                cases[-1][1] = True
+            elif ch == ")":
+                if cases[-1][2]:
+                    cases[-1][2] -= 1
+                else:
+                    cases[-1][0] = "body"
+                    end_segment()
+            else:
+                cases[-1][1] = True
         elif ch == "(":
             end_segment()
             depth += 1
@@ -658,6 +708,11 @@ def shell_segments(command, level=0, group_ids=False):
             elif ch == "|" and command.startswith("&", index + 1):
                 index += 1
             end_segment(operator)
+            if cases and cases[-1][0] == "body" and ch == ";" and (
+                    command[index - 1:index + 1] == ";;" or command[index:index + 2] == ";&"):
+                cases[-1] = ["pattern", False, 0]
+                if command[index + 1:index + 2] == "&":
+                    index += 1
         else:
             if ch in "<>":
                 redirect = index  # an unquoted, unescaped redirection sign

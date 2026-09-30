@@ -21,13 +21,15 @@
 # Exit codes:
 #   0  初期コミット完了
 #   1  git 操作失敗 / 未知の branch_strategy / 引数異常 (leading-`-` の wiki_branch 拒否を
-#      含む; 旧 inline block と同じ blocking 契約)
+#      含む; 旧 inline block と同じ blocking 契約) / stash push が新しい entry を作らない /
+#      自分の stash entry が見つからない・pop できない
 #
 # Notes:
 #   - 旧 inline block と同じく global `set -e` は使わない (各 git 操作の失敗を
 #     個別メッセージ + exit 1 で明示ハンドリングする)。
 #   - separate_branch の orphan 作成は untracked な `.rite/wiki/` がブランチ切替を
 #     生き延びる git の挙動に依存する (stash push は untracked を退避しない)。
+#   - stash は全 worktree で共有されるため、push 時に記録した SHA の entry だけを pop する。
 set -u
 
 export GIT_TERMINAL_PROMPT=0
@@ -117,13 +119,39 @@ if [ "$branch_strategy" = "separate_branch" ]; then
   fi
 
   current_branch=$(git branch --show-current)
+  stash_needed=false
+  # stash は全 worktree で共有され、並行セッションが上に積みうる。自分の entry は push 時の SHA で特定する
+  stash_sha=""
+
+  # SHA が一致する stash@{n} だけを pop する。見つからなければほかの entry に触れず失敗を返す
+  _rite_wiki_init_pop_own_stash() {
+    local ref
+    ref=$(git stash list --format='%gd %H' | awk -v s="$stash_sha" '$2 == s {print $1; exit}')
+    if [ -z "$ref" ]; then
+      echo "ERROR: 退避した変更 (stash $stash_sha) が stash に見つかりません。ほかの stash entry には触れずに停止します" >&2
+      echo "  確認: git stash list --format='%gd %H %gs'" >&2
+      return 1
+    fi
+    if ! git stash pop "$ref"; then
+      echo "ERROR: 退避した変更 ($ref, $stash_sha) を戻せませんでした — 手動で復旧してください" >&2
+      echo "  確認: git stash list --format='%gd %H %gs' で SHA が一致する entry を探し、衝突を解消してから pop します" >&2
+      return 1
+    fi
+  }
 
   # cleanup trap: 異常終了時に元のブランチに復帰を保証
   # canonical signal-specific trap パターン (references/bash-trap-patterns.md 準拠)
+  # pop は元のブランチへ戻れたときだけ行う (wiki ブランチ上に自分の変更を展開しない)。
+  # signal trap の exit で EXIT trap も走るため、pop の前に stash_needed を下ろして 2 回目を防ぐ
   _rite_wiki_init_cleanup() {
-    git checkout "$current_branch" 2>/dev/null || true
-    if [ "${stash_needed:-false}" = true ]; then
-      git stash pop 2>/dev/null || echo "WARNING: git stash pop failed in cleanup — manual recovery needed: git stash list" >&2
+    if git checkout "$current_branch" 2>/dev/null; then
+      if [ "$stash_needed" = true ]; then
+        stash_needed=false
+        _rite_wiki_init_pop_own_stash
+      fi
+    elif [ "$stash_needed" = true ]; then
+      echo "WARNING: '$current_branch' へ戻れなかったため、退避した変更 (stash $stash_sha) を戻していません" >&2
+      echo "  復旧: git checkout '$current_branch' のあと、git stash list --format='%gd %H %gs' で SHA が一致する entry を pop します" >&2
     fi
     _rite_wiki_init_msg_cleanup
   }
@@ -135,10 +163,23 @@ if [ "$branch_strategy" = "separate_branch" ]; then
   # dirty tree チェック（未コミットの変更を保護）
   if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet HEAD 2>/dev/null; then
     echo "WARNING: 未コミットの変更があります。git stash で退避します。"
-    git stash push -m "rite-wiki-init-stash"
+    stash_before=$(git rev-parse -q --verify refs/stash) || stash_before=""
+    git stash push -m "rite-wiki-init-stash" || {
+      echo "ERROR: git stash push failed" >&2
+      exit 1
+    }
+    stash_sha=$(git rev-parse -q --verify refs/stash) || stash_sha=""
+    # 何も退避しなかった push は refs/stash をほかの entry に残す。それを戻すと他人の変更を展開する
+    if [ -z "$stash_sha" ] || [ "$stash_sha" = "$stash_before" ]; then
+      echo "ERROR: git stash push が新しい entry を作りませんでした。自分の退避なしには続行しません" >&2
+      # stash は submodule の変更を退避しない。判定を submodule 抜きに狭めると orphan checkout が submodule の編集を消すため、止めたまま原因を示す
+      if git diff --quiet --ignore-submodules HEAD 2>/dev/null && git diff --cached --quiet --ignore-submodules HEAD 2>/dev/null; then
+        echo "  原因: 変更は submodule（中身または参照先の commit）だけです。git stash はこれを退避できません" >&2
+        echo "  対処: 変更を残すなら submodule の変更と親の新しい参照先を commit し、残さないなら submodule を記録済みの commit と中身に戻して、git status に submodule が表示されなくなってから再実行してください" >&2
+      fi
+      exit 1
+    fi
     stash_needed=true
-  else
-    stash_needed=false
   fi
 
   # orphan ブランチを作成
@@ -170,8 +211,8 @@ if [ "$branch_strategy" = "separate_branch" ]; then
 
   # stash した場合のみ pop
   if [ "$stash_needed" = true ]; then
-    git stash pop
-    stash_needed=false  # EXIT trap での二重 pop を防止
+    stash_needed=false  # 成否によらず EXIT trap での二重 pop を防止
+    _rite_wiki_init_pop_own_stash || exit 1
   fi
 
   _rite_wiki_init_msg_cleanup
