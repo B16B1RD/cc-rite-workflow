@@ -153,6 +153,12 @@
 * **Skip**: [再回収ゲートのレビュー結果](raw/reviews/20260930T072001Z-pr-3517.md) — 再回収経路の検証完了の記録のみで、新たなドメイン経験則はない
 
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=606, broken_refs=0
+* **Create**: [続きの行と項目を見分ける検査は、字面の列挙を足さず入力の文法を閉じ、出力指示が許す書き方を受理側の fixture に先に置く](pages/heuristics/input-grammar-close-not-enumerate-continuation-lines.md) — raw/fixes/20260930T073649Z-pr-3521.md、raw/reviews/20260930T074356Z-pr-3521.md、raw/fixes/20260930T075036Z-pr-3521.md、raw/reviews/20260930T075730Z-pr-3521.md を新規ページ化
+* **Create**: [「完了」を記録する手順が複数あるときは、同じマージ条件を全手順の先頭に同じ形で入れ、skip と置換漏れを marker で区別する](pages/heuristics/completion-records-share-merge-condition-at-every-step.md) — raw/fixes/20260930T073730Z-pr-3515.md、raw/reviews/20260930T074308Z-pr-3515.md を新規ページ化
+* **Create**: [複数のテストブロックが使う変数は、片方の分岐の中ではなく両ブロックより前で定義する](pages/heuristics/test-shared-variables-defined-before-branches.md) — raw/fixes/20260930T074546Z-pr-3515.md、raw/reviews/20260930T075119Z-pr-3515.md を新規ページ化
+* **Create**: [人への質問を減らす規則を共通手順へ当てるときは、不可逆操作の承認が残っているかを先に確かめる](pages/heuristics/question-reduction-must-keep-irreversible-approval.md) — raw/reviews/20260930T075247Z-pr-3516.md を新規ページ化
+* **Create**: [持ち主を名前に入れて回収から守る一時 worktree は、作成側のテンプレートから名前を作って判定側のテストで照合する](pages/heuristics/owner-named-temp-worktree-naming-drift-pinned-by-template-extraction.md) — raw/reviews/20260930T074532Z-pr-3511.md を新規ページ化
+* **Skip**: [レビュー結果](raw/reviews/20260930T072921Z-pr-3515.md) — 確認のみで新しい経験則を含まない
 
 ## 2026-09-29
 

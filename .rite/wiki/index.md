@@ -659,9 +659,14 @@ okf_version: "0.2"
 | [出力形式の gate を新設したら、producer 側にも同じ区切り規則を書く](pages/heuristics/output-format-gate-needs-producer-side-delimiter-rule.md) | heuristics | reviewer の出力のような形式を検査する gate を足すとき、gate 側だけで値の範囲を決めると、正しい内容の出力が付記行で落とされる。区切り規則は producer への指示と再生成の指示にも同じ形で書く。 | 2026-09-30T05:38:00Z | medium |
 | [値の切り詰めは、許す区切り文字を列挙して限定し、rc の振り分けは完全一致で固定する](pages/patterns/value-truncation-allows-listed-delimiters-only.md) | patterns | 先頭の語だけを値として取り出す切り詰めを「英字以外で切る」と書くと、区切り付きの複合値まで受理してしまう。一方、値の直後に来てよい区切り文字の列挙だけで判定すると、列挙の外の区切りを取りこぼし、列挙の外の注記を拒否する。複合値かどうかは、区切りと装飾だけを挟んで値の直後に 2 つ目の候補語が来るかで判定する。新しい失敗分岐のテストは rc の完全一致を固定する。 | 2026-09-30T07:27:00Z | high |
 | [ガードの復旧案内は状態ごとのコマンド列ではなく、ガードの解除条件で示す](pages/heuristics/guard-recovery-guidance-states-exit-condition.md) | heuristics | 処理を止めるガードの復旧案内を、原因の状態ごとのコマンド列で書くと、列挙していない状態がレビューのたびに見つかり続ける。ガードが見ている条件そのもの（例: git status に対象が表示されなくなったら再実行）を解除条件として示すと、案内とガードが同じ状態を見るので全状態で成り立つ。テストは原因の状態を列挙してループし、各状態で止まることと、解除条件を満たせば通ることを検査する。 | 2026-09-30T07:27:00Z | high |
+| [続きの行と項目を見分ける検査は、字面の列挙を足さず入力の文法を閉じ、出力指示が許す書き方を受理側の fixture に先に置く](pages/heuristics/input-grammar-close-not-enumerate-continuation-lines.md) | heuristics | 複合値と注記を字面の列挙で見分ける検査は、cycle ごとに取りこぼしと誤拒否を入れ替える。producer の出力指示が続きの行に許す書き方（字下げした散文）を受理側の fixture に先に置き、項目とみなす条件を箇条書き記号と固定の見出し語の両方に絞って文法を閉じる。 | 2026-09-30T07:59:11Z | medium |
+| [「完了」を記録する手順が複数あるときは、同じマージ条件を全手順の先頭に同じ形で入れ、skip と置換漏れを marker で区別する](pages/heuristics/completion-records-share-merge-condition-at-every-step.md) | heuristics | Issue クローズ・Projects Status・作業メモリ・親 Tasklist のように完了を記録する手順が複数あるとき、1 つだけをマージ状態で分岐させると残りが完了を示したままになる。同じ条件を全手順の先頭に同じ形で置き、条件による skip と値の置換漏れを marker で区別する。 | 2026-09-30T07:59:11Z | medium |
+| [複数のテストブロックが使う変数は、片方の分岐の中ではなく両ブロックより前で定義する](pages/heuristics/test-shared-variables-defined-before-branches.md) | heuristics | 追加した assert が別ブロックの分岐内で定義された変数に依存すると、抽出失敗時に unbound variable でテストが途中終了する。共有する変数は分岐の外、全ブロックより前で定義する。 | 2026-09-30T07:59:11Z | medium |
+| [人への質問を減らす規則を共通手順へ当てるときは、不可逆操作の承認が残っているかを先に確かめる](pages/heuristics/question-reduction-must-keep-irreversible-approval.md) | heuristics | 「AI で確かめられるなら質問を外す」規則を削除確認の共通手順へ当てた結果、空ディレクトリや変更なし worktree の削除が無確認になり、同じ変更が定めた「不可逆操作の承認は省かない」と衝突した。質問を減らす変更では、不可逆操作の承認が残るかを最初に確認する。 | 2026-09-30T07:59:11Z | medium |
+| [持ち主を名前に入れて回収から守る一時 worktree は、作成側のテンプレートから名前を作って判定側のテストで照合する](pages/heuristics/owner-named-temp-worktree-naming-drift-pinned-by-template-extraction.md) | heuristics | 一時 worktree の名前に持ち主セッションを入れて掃除処理から守る方式では、作成側の命名と判定側の読み取りが別々に変わると保護が黙って外れる。テストが作成側の mktemp テンプレートを取り出して名前を作り、判定側に渡せば、どちらのずれも落ちる。保護は持ち主が生きている間だけで、単独起動の実行は対象外という限界も記録する。 | 2026-09-30T07:59:11Z | medium |
 ## 統計
 
-- 総ページ数: 649
-- ドメイン別: patterns=138, heuristics=321, anti-patterns=190
-- 最終更新: 2026-09-30T07:27:00Z
+- 総ページ数: 654
+- ドメイン別: patterns=138, heuristics=326, anti-patterns=190
+- 最終更新: 2026-09-30T07:59:11Z
 | [並列テストのCI性能は同一実装の複数回計測と固定直列基準で判定する](pages/heuristics/measure-parallel-test-ci-against-fixed-serial-baseline.md) | heuristics | 並列化の速度目標を判定するときは、同じ実装SHAで複数回のCI完走値を取り、最遅値と平均値を固定した直列基準に照らす。timeout は実測後に算定し、設定変更後は通常CIで別に確認する。 | 2026-09-17T03:15:00Z | high |
