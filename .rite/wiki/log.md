@@ -18,6 +18,8 @@
 
 * **lint:clean** — contradictions=0, stale=64, orphans=0, missing_concept=0, unregistered_raw=638, broken_refs=0
 
+* **lint:clean** — contradictions=0, stale=64, orphans=0, missing_concept=0, unregistered_raw=638, broken_refs=0。矛盾の意味比較は今回更新したページと同じドメインの関連ページに限った
+
 ## 2026-09-30
 
 * **Lint incomplete** — 機械検査は stale=64、orphans=0、missing_concept=0、unregistered_raw=621、broken_refs=0、descriptive_number_ref=0。更新ページは出典と関連ページを照合した。全658ページの意味的な矛盾比較は未完了であり、Wiki 全体の品質検査成功とは扱わない。
