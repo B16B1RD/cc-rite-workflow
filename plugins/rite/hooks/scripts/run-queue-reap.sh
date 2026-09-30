@@ -13,10 +13,11 @@
 #
 # Neither timestamp moves while the owner is paused (e.g. by a usage limit),
 # so 2h without an update does not mean the owner has ended. session-end.sh
-# marks an ended owner with `run-queue-{sid}.ended`; without that marker the
-# queue is kept until the newer of the two timestamps passes the liveness TTL
-# (`RITE_SESSION_LIVENESS_TTL_HOURS`, default 24h — the bound for owners
-# whose termination skipped SessionEnd).
+# marks an ended owner with `run-queue-{sid}.ended`; only a marked queue is
+# reaped. A queue without the marker is never reaped, however long it has been
+# idle: a usage-limit pause can outlast any age bound. Such a queue that has
+# passed the checks above is announced on stdout (one line per queue) so it
+# does not linger unseen; the SessionStart hook passes that line to the model.
 #
 # Stale failed[] / outstanding[] are printed to stderr one item per line
 # before deletion — the record must not vanish silently.
@@ -79,13 +80,6 @@ _emit_leftover_items() {
 }
 
 STALE_SECONDS=7200
-# Same liveness TTL and env override as the worktree reap in pr-cycle-cleanup.sh.
-if [[ "${RITE_SESSION_LIVENESS_TTL_HOURS:-24}" =~ ^[1-9][0-9]*$ ]]; then
-  LIVENESS_TTL_SECONDS=$(( ${RITE_SESSION_LIVENESS_TTL_HOURS:-24} * 3600 ))
-else
-  echo "WARNING: run-queue-reap: RITE_SESSION_LIVENESS_TTL_HOURS='$(printf '%s' "$RITE_SESSION_LIVENESS_TTL_HOURS" | neutralize_ctrl)' is not a positive integer (no leading zero); using 24" >&2
-  LIVENESS_TTL_SECONDS=$(( 24 * 3600 ))
-fi
 now_epoch=$(date +%s)
 shopt -s nullglob
 for q in "$queue_dir"/run-queue-*.json; do
@@ -124,10 +118,10 @@ for q in "$queue_dir"/run-queue-*.json; do
 
   ended="$queue_dir/run-queue-${sid}.ended"
   if [ ! -e "$ended" ]; then
-    newest=$(( state_epoch > fs_epoch ? state_epoch : fs_epoch ))
-    if [ "$newest" -ne 0 ] && [ $((now_epoch - newest)) -le "$LIVENESS_TTL_SECONDS" ]; then
-      continue
-    fi
+    sid_disp=$(printf '%s' "$sid" | neutralize_ctrl)
+    progress=$(jq -r '"\(if (.cursor | type) == "number" then .cursor else 0 end)/\(if (.issues | type) == "array" then (.issues | length) else 0 end)"' "$q")
+    echo "[rite] Batch: 終了の印が無い他セッションの run-queue を回収せず残しています (cursor ${progress}): ${q_disp} — 持ち主のセッション ${sid_disp} を再開し、引数なしの /rite:batch-run で続行できます。不要なら run-queue-${sid_disp}.json と .watchdog を削除してください。"
+    continue
   fi
 
   if [ -f "$fs" ] && [ "$fs_epoch" -eq 0 ]; then

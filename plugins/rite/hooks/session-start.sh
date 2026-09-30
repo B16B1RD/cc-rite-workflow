@@ -521,6 +521,8 @@ fi
 # worktree-rooted CWD as well — standing in a worktree does not make the
 # queue files unsafe to delete. stdout/stderr stay on the hook (not the
 # pr-cycle-cleanup log) so leftover failed/outstanding lines remain visible.
+# A queue without an ended marker is never reaped; its announcement reaches the
+# model on this stdout, so the call's stdout must not be redirected.
 # A session that starts again under its own id is no longer ended: drop the
 # marker session-end.sh left on its queue.
 if [ -n "$SESSION_ID" ] && ! rm -f "$STATE_ROOT/.rite/state/run-queue-${SESSION_ID}.ended"; then
