@@ -3,7 +3,7 @@
 #
 # Coverage:
 #   extract — テンプレート形式の AC 集合 / fenced block と別節の見出しを数えない / CRLF /
-#             日本語/英語見出しとcheckbox / AC 節なしだけ skipped / 不正形式・0件・重複は失敗
+#             日本語/英語見出しとcheckbox / AC 節なしだけ skipped / 不正形式・0件・重複・節外の AC 項目は失敗
 #   table   — 正常 / AC-ID 欠落・余分・重複 / 0 行 / 見出し欠落 / 判定値不正 / 根拠空 /
 #             未充足行に対応する [AC-N] 指摘の欠落・severity 不一致・scope 不一致 / 推奨対応列の raw pipe /
 #             全角空白の trim (先頭・末尾・ASCII 空白との交互) / jq 変換失敗
@@ -62,7 +62,7 @@ echo "=== extract ==="
 cat > "$TEST_DIR/body-target.md" <<'EOF'
 ## 4. Implementation Details
 
-### AC-8: 4 節の見出しは数えない
+### 4 節の見出しは数えない
 
 ## 5. Acceptance Criteria
 
@@ -78,7 +78,7 @@ cat > "$TEST_DIR/body-target.md" <<'EOF'
 
 ## 6. Test Specification
 
-### AC-3: 6 節の見出しは数えない
+### 6 節の見出しは数えない
 EOF
 run_check extract --body-file "$TEST_DIR/body-target.md"
 if [ "$CHECK_RC" -eq 0 ] && [ "$CHECK_STDOUT" = "AC-1,AC-2" ] \
@@ -109,7 +109,7 @@ expect_failure "extract: AC-ID 重複は失敗" duplicate_ac_id extract --body-f
 
 # All supported headings use the same explicit numeric IDs and preserve order.
 for heading in '受入基準' '受入条件' '受け入れ条件' 'Acceptance Criteria' '5. Acceptance Criteria' '4. acceptance criteria'; do
-  printf '## %s\n- [ ] AC-2: 未確認\n- [x] AC-1: 確認済み\n- [X] AC-3\n## Notes\n- [ ] AC-99: 対象外\n' "$heading" > "$TEST_DIR/body-checkbox.md"
+  printf '## %s\n- [ ] AC-2: 未確認\n- [x] AC-1: 確認済み\n- [X] AC-3\n## Notes\n- [ ] 対象外の項目\n' "$heading" > "$TEST_DIR/body-checkbox.md"
   cp "$TEST_DIR/body-checkbox.md" "$TEST_DIR/body-checkbox.before"
   run_check extract --body-file "$TEST_DIR/body-checkbox.md"
   if [ "$CHECK_RC" -eq 0 ] && [ "$CHECK_STDOUT" = 'AC-2,AC-1,AC-3' ] \
@@ -147,7 +147,7 @@ cat > "$TEST_DIR/body-fences.md" <<'EOF'
 - [ ] AC-97: fenced item
 ~~~
 # Appendix
-- [ ] AC-96: outside section
+- [ ] outside section
 EOF
 run_check extract --body-file "$TEST_DIR/body-fences.md"
 if [ "$CHECK_RC" -eq 0 ] && [ "$CHECK_STDOUT" = 'AC-1' ]; then pass "extract: tilde/long fencesと上位見出しで範囲を保つ"; else fail "extract fences (rc=$CHECK_RC out=$CHECK_STDOUT err=$CHECK_STDERR)"; fi
@@ -192,6 +192,22 @@ run_check extract --body-file "$TEST_DIR/body-unrelated-heading.md"
 if [ "$CHECK_RC" -eq 0 ] && grep -Fq 'ACCEPTANCE_SCOPE=skipped' <<<"$CHECK_STDERR"; then
   pass "extract: acceptance単語だけの別見出しをAC節と推測しない"
 else fail "extract unrelated heading (rc=$CHECK_RC err=$CHECK_STDERR)"; fi
+
+# 受入条件節の外の AC 項目は黙って落とさず、最初の行番号つきで停止する
+printf '## 受入条件\n- [ ] AC-1: a\n\n## Decision Log\n- D-1: x\n\n- [ ] AC-2: b\n- [ ] AC-3: c\n' > "$TEST_DIR/body-outside.md"
+expect_failure "extract: 節の途中に挟んだ見出しの後ろの AC は節外として停止する" ac_item_outside_section extract --body-file "$TEST_DIR/body-outside.md"
+if [ -z "$CHECK_STDOUT" ] && grep -Fq '行 7' <<<"$CHECK_STDERR"; then pass "extract: 節外 AC は最初の行番号を示し、部分集合を出力しない"
+else fail "extract outside detail (out=$CHECK_STDOUT err=$CHECK_STDERR)"; fi
+printf '## 概要\n- [ ] AC-1: 節がない\n' > "$TEST_DIR/body-outside-nosection.md"
+expect_failure "extract: AC 節が無く AC 項目だけある本文は skipped にしない" ac_item_outside_section extract --body-file "$TEST_DIR/body-outside-nosection.md"
+printf '## 概要\n### AC-5: 節の前\n## 受入条件\n- [ ] AC-1: a\n' > "$TEST_DIR/body-outside-before.md"
+expect_failure "extract: 節より前の ### AC-N も節外として停止する" ac_item_outside_section extract --body-file "$TEST_DIR/body-outside-before.md"
+printf '## 受入条件\n- [ ] AC-1: a\n- [ ] IDなし\n## Notes\n- [ ] AC-2: b\n' > "$TEST_DIR/body-outside-malformed.md"
+expect_failure "extract: 不正形式と節外 AC が併存するときは不正形式を先に報告する" malformed_ac_item extract --body-file "$TEST_DIR/body-outside-malformed.md"
+printf '## 受入条件\n- [ ] AC-1: a\n- [ ] AC-2: b\n- [ ] AC-3: c\n\n## Notes\n```markdown\n- [ ] AC-9: fenced\n```\n' > "$TEST_DIR/body-outside-fenced.md"
+run_check extract --body-file "$TEST_DIR/body-outside-fenced.md"
+if [ "$CHECK_RC" -eq 0 ] && [ "$CHECK_STDOUT" = 'AC-1,AC-2,AC-3' ]; then pass "extract: 節外のフェンス内 AC 風の行では止まらない"
+else fail "extract outside fenced (rc=$CHECK_RC out=$CHECK_STDOUT err=$CHECK_STDERR)"; fi
 
 # A parser failure is not absence of AC (and must not emit a skipped marker).
 mkdir -p "$TEST_DIR/awk-fail"
