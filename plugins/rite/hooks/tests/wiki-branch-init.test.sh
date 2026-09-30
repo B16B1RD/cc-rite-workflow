@@ -638,21 +638,29 @@ if [ "$HELPER_RC" = "0" ] && git -C "$repo" rev-parse --verify -q wiki >/dev/nul
 else
   fail "rerun after remedy: rc=$HELPER_RC output=$HELPER_OUTPUT"
 fi
-# The discard remedy must undo both kinds of submodule-only change: a pointer change and a content edit
+# Every submodule-only state stops the helper, and once git status no longer shows the submodule
+# (the exit condition the message names) the rerun proceeds
 (cd "$sub" && echo b > a && git commit -qam s2)
-for kind in pointer content; do
+for kind in content pointer staged-pointer staged-in-sub; do
   repo=$(make_sandbox "tc16-$kind")
   (cd "$repo" && git -c protocol.file.allow=always submodule add -q "$sub" sub >/dev/null 2>&1 && git commit -qm sub && git push -q origin main 2>/dev/null)
-  if [ "$kind" = pointer ]; then git -C "$repo/sub" checkout -q HEAD~1; else echo edited > "$repo/sub/a"; fi
+  case "$kind" in
+    content) echo edited > "$repo/sub/a" ;;
+    pointer) git -C "$repo/sub" checkout -q HEAD~1 ;;
+    staged-pointer) git -C "$repo/sub" checkout -q HEAD~1; git -C "$repo" add sub ;;
+    staged-in-sub) echo edited > "$repo/sub/a"; git -C "$repo/sub" add a ;;
+  esac
   run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
   first_rc=$HELPER_RC first_output=$HELPER_OUTPUT
+  git -C "$repo" reset -q -- sub
   git -C "$repo" submodule update -q --force
+  status_sub=$(git -C "$repo" status --porcelain -- sub)
   run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
-  if [ "$first_rc" = "1" ] && [[ "$first_output" == *"git submodule update --force"* ]] \
+  if [ "$first_rc" = "1" ] && [[ "$first_output" == *"git status"* ]] && [ -z "$status_sub" ] \
      && [ "$HELPER_RC" = "0" ] && git -C "$repo" rev-parse --verify -q wiki >/dev/null; then
-    pass "$kind-only change: the printed git submodule update --force lets the rerun succeed"
+    pass "$kind: stops, and proceeds once git status no longer shows the submodule"
   else
-    fail "$kind-only: first rc=$first_rc rerun rc=$HELPER_RC output=$HELPER_OUTPUT"
+    fail "$kind: first rc=$first_rc status=[$status_sub] rerun rc=$HELPER_RC first_output=$first_output output=$HELPER_OUTPUT"
   fi
 done
 
