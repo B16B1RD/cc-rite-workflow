@@ -166,6 +166,28 @@
 * **Update**: [assert のラベルが述語より広い範囲を名乗ると「虚偽主張」クラスの欠陥になる](pages/anti-patterns/assert-label-overclaims-predicate-scope.md) — raw/reviews/20260930T083013Z-pr-3518-c2.md を統合
 
 * **lint:clean** — contradictions=0, stale=62, orphans=0, missing_concept=0, unregistered_raw=607, broken_refs=0
+* **Update**: [macOS の awk の == は UTF-8 ロケールで照合比較になり、別の日本語文字列を等しいと判定する](pages/anti-patterns/macos-awk-string-equality-uses-locale-collation.md) — raw/fixes/20260930T084924Z-pr-3521.md を統合
+* **Update**: [macOS の awk の == は UTF-8 ロケールで照合比較になり、別の日本語文字列を等しいと判定する](pages/anti-patterns/macos-awk-string-equality-uses-locale-collation.md) — raw/reviews/20260930T085300Z-pr-3521.md を統合
+* **Update**: [CI が pending のまま閉じたレビューは失敗 job を観測できない — 完了後に担当 reviewer を CI 状態付きで reroll する](pages/heuristics/ci-pending-at-review-close-reroll-finder-after-completion.md) — raw/fixes/20260930T084924Z-pr-3521.md を統合
+* **Update**: [CI が pending のまま閉じたレビューは失敗 job を観測できない — 完了後に担当 reviewer を CI 状態付きで reroll する](pages/heuristics/ci-pending-at-review-close-reroll-finder-after-completion.md) — raw/reviews/20260930T085300Z-pr-3521.md を統合
+* **Create**: [git の index から読んだ path を別のコマンドへ渡すときは -z の NUL 区切りで読む](pages/patterns/git-index-paths-read-nul-delimited-before-passing-on.md) — raw/reviews/20260930T080508Z-pr-3523.md を新規ページ化
+* **Update**: [git の index から読んだ path を別のコマンドへ渡すときは -z の NUL 区切りで読む](pages/patterns/git-index-paths-read-nul-delimited-before-passing-on.md) — raw/fixes/20260930T081802Z-pr-3523.md を統合
+* **Create**: [git update-index --force-remove は対象が無くても成功を返す — 破壊的な次の手の前に index を読み直す](pages/anti-patterns/git-update-index-force-remove-succeeds-when-entry-absent.md) — raw/reviews/20260930T080508Z-pr-3523.md を新規ページ化
+* **Update**: [git update-index --force-remove は対象が無くても成功を返す — 破壊的な次の手の前に index を読み直す](pages/anti-patterns/git-update-index-force-remove-succeeds-when-entry-absent.md) — raw/fixes/20260930T081802Z-pr-3523.md を統合
+* **Create**: [エラー文に書く確認コマンドは検出に使ったコマンドと同じ形にし、テストは出力から取り出して実行する](pages/patterns/error-message-check-command-mirrors-detection-command.md) — raw/reviews/20260930T083117Z-pr-3523.md を新規ページ化
+* **Update**: [エラー文に書く確認コマンドは検出に使ったコマンドと同じ形にし、テストは出力から取り出して実行する](pages/patterns/error-message-check-command-mirrors-detection-command.md) — raw/fixes/20260930T085102Z-pr-3523.md を統合
+* **Update**: [エラー文に書く確認コマンドは検出に使ったコマンドと同じ形にし、テストは出力から取り出して実行する](pages/patterns/error-message-check-command-mirrors-detection-command.md) — raw/reviews/20260930T090112Z-pr-3523.md を統合
+* **Create**: [受入条件が PR 本文を対象にするときは、本文の更新だけでは再レビューされない — 対応するファイルの修正と合わせて commit する](pages/heuristics/acceptance-on-pr-body-needs-a-commit-to-be-rereviewed.md) — raw/reviews/20260930T084327Z-pr-3516.md を新規ページ化
+* **Update**: [受入条件が PR 本文を対象にするときは、本文の更新だけでは再レビューされない — 対応するファイルの修正と合わせて commit する](pages/heuristics/acceptance-on-pr-body-needs-a-commit-to-be-rereviewed.md) — raw/fixes/20260930T085259Z-pr-3516.md を統合
+* **Skip**: [20260930T080202Z-pr-3516.md](raw/fixes/20260930T080202Z-pr-3516.md) — 特定の手順書の分岐の直し方の記録で、一般化できる経験則は既存ページが扱っている
+* **Skip**: [20260930T080355Z-pr-3521.md](raw/fixes/20260930T080355Z-pr-3521.md) — 条件を絞る修正に変異で落ちる fixture を付ける経験則は既存の mutation 系ページが扱っており、新しい観測がない
+* **Skip**: [20260930T083106Z-pr-3516.md](raw/fixes/20260930T083106Z-pr-3516.md) — 規則を変えたら同じ挙動を述べる箇所を洗う経験則は既存の網羅棚卸しのページが扱っており、新しい観測がない
+* **Skip**: [20260930T090848Z-pr-3516.md](raw/fixes/20260930T090848Z-pr-3516.md) — 特定の質問書式と helper 呼び出しの直し方の記録で、一般化できる経験則を取り出せない
+* **Skip**: [20260930T080801Z-pr-3521.md](raw/reviews/20260930T080801Z-pr-3521.md) — 指摘も推奨も 0 件で収束した記録のみで、経験則がない
+* **Skip**: [20260930T081301Z-pr-3516.md](raw/reviews/20260930T081301Z-pr-3516.md) — 前 cycle の指摘の解消確認が中心で、経験則は既存ページが扱っている
+* **Skip**: [20260930T082429Z-pr-3521.md](raw/reviews/20260930T082429Z-pr-3521.md) — 競合を両側の変更を併せて解消した記録で、経験則は既存の表セル競合のページが扱っている
+* **Skip**: [20260930T085932Z-pr-3516.md](raw/reviews/20260930T085932Z-pr-3516.md) — 指摘も推奨も 0 件で収束した記録のみで、経験則がない
+* **Skip**: [20260930T091030Z-pr-3526.md](raw/reviews/20260930T091030Z-pr-3526.md) — 指摘も推奨も 0 件の記録のみで、経験則がない
 
 ## 2026-09-29
 

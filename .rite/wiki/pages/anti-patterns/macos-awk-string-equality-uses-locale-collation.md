@@ -4,10 +4,12 @@ title: "macOS の awk の == は UTF-8 ロケールで照合比較になり、�
 domain: "anti-patterns"
 description: "macOS 標準の awk は UTF-8 ロケールで文字列の == をロケール照合で比較するため、別の日本語見出しを同じ見出しと判定し、Linux の gawk / mawk では再現しない誤判定を起こす。"
 created: "2026-09-14T06:55:00Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-16T12:07:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-30T09:18:44Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5"
     at: "2026-09-14T11:20:00Z"
+  - by: "rite-wiki-ingest/claude-opus-5-5"
+    at: "2026-09-30T09:18:44Z"
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260914T064706Z-pr-2803.md"
@@ -29,6 +31,10 @@ sources:
     resource: "raw/fixes/20260916T112742Z-pr-2910-fix.md"
   - type: "reviews"
     resource: "raw/reviews/20260916T114658Z-pr-2910.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260930T084924Z-pr-3521.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260930T085300Z-pr-3521.md"
 tags: ["portability", "awk", "macos", "locale", "diagnostics"]
 confidence: high
 ---
@@ -126,6 +132,12 @@ fence_after() { awk -v n="$1" 'NR == n {f=1; next} f && /^```/ {c++; if (c==2) e
 
 **修正の検証**: Linux ではこの欠陥を再現できないので、CI の macOS ログの失敗行（テスト名 + FAIL 行 + summary）を `failing_test` の実測アンカーにして blocking にし、修正後は同じ leg が PASS することで閉じる。移植性の修正はローカルの再実行では確認にならない。
 
+### 値の検査でも再発した — 列挙値との比較が日本語の注記付きの値で誤る
+
+入力から取り出した値を `value != "actionable"` のように列挙値と比べる検査でも、同じ誤判定が起きた。値に日本語の注記が付いた形（列挙値の直後に全角括弧の注記が続く、など）を規定外として拒否するはずの比較が、macOS の awk では ubuntu と違う結果になり、その検査のテストが macOS の job でだけ 55 件中 15 件失敗した。失敗は最初の commit から続いていたが、件数は値の比較を足すたびに増えていた。
+
+awk の呼び出しに `LC_ALL=C` を付けるだけで、macOS の job は全件成功に戻った。gawk / mawk / BWK awk の手元の実行では、`LC_ALL=C` を外しても全件成功する。この固定が外れた退行を検出できるのは macOS の job だけである。
+
 ## 関連ページ
 
 - [移植性の指摘は「環境分岐を足す」より先に「その正規表現機能が本当に要るか」を疑う](../heuristics/portability-fix-questions-the-regex-feature-first.md)
@@ -143,3 +155,5 @@ fence_after() { awk -v n="$1" 'NR == n {f=1; next} f && /^```/ {c++; if (c==2) e
 - [`awk -v` に渡した日本語見出しが別行に一致した再発を CI ログで実測したレビュー結果](../../raw/reviews/20260916T111808Z-pr-2910.md)
 - [見出しを grep で行番号に解決して awk へ整数で渡した fix 結果](../../raw/fixes/20260916T112742Z-pr-2910-fix.md)
 - [行番号渡しが 3 実装で同じ行に一致することを確認したレビュー結果](../../raw/reviews/20260916T114658Z-pr-2910.md)
+- [列挙値との比較を LC_ALL=C に固定して macOS の job を成功に戻した fix 結果](../../raw/fixes/20260930T084924Z-pr-3521.md)
+- [ロケール固定の退行は macOS の job でしか検出できないと確認したレビュー結果](../../raw/reviews/20260930T085300Z-pr-3521.md)

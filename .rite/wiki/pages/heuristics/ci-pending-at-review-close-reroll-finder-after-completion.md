@@ -4,7 +4,7 @@ title: "CI が pending のまま閉じたレビューは失敗 job を観測で�
 domain: "heuristics"
 description: "レビュー時点で CI が未完了だと reviewer は失敗 job のログを読めず、ローカル環境で通るテストだけを根拠に受入条件を充足と判定する。CI 完了後に失敗 job が本 PR の追加テストに対応するなら、その領域の reviewer を最新の CI 状態とログ付きで reroll し、失敗行を failing_test アンカーにして blocking へ戻す。advisory な CI leg でも降格理由にはならない。"
 created: "2026-09-16T12:08:00Z"
-generated: { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T06:12:43Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-30T09:18:44Z" }
 promote: rite-plugin
 sources:
   - type: "reviews"
@@ -13,10 +13,15 @@ sources:
     resource: "raw/fixes/20260916T112742Z-pr-2910-fix.md"
   - type: "reviews"
     resource: "raw/reviews/20260926T054854Z-pr-3060.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260930T084924Z-pr-3521.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260930T085300Z-pr-3521.md"
 tags: ["review-loop", "ci", "portability", "reroll", "acceptance-criteria"]
 confidence: high
 verified:
   - { by: "rite-wiki-ingest/claude-sonnet-5", at: "2026-09-26T06:12:43Z" }
+  - { by: "rite-wiki-ingest/claude-opus-5-5", at: "2026-09-30T09:18:44Z" }
 ---
 
 # CI が pending のまま閉じたレビューは失敗 job を観測できない — 完了後に担当 reviewer を CI 状態付きで reroll する
@@ -56,6 +61,12 @@ PR が新しい bash テストを追加し、Linux ではローカルでも CI �
 
 reviewer 全員が FIXED / 実測 PASS で mergeable 相当に収束しかけた別 cycle でも、レビュー開始時点で CI が pending だったケースが再確認された。統合前に CI を再取得してから結論を出す運用は、cycle・PR をまたいで繰り返し必要になる。
 
+### 再発: 複数 cycle を通して macOS の失敗に気付かず、merge の直前で止まった
+
+別の PR でも同じことが起きた。レビューは毎回 commit の直後に始まり、CI は pending だった。macOS の job は `continue-on-error` で、完了後も workflow 全体は success と表示された。その PR が追加したテストは macOS の job で最初の commit から失敗していたが、10 回を超える cycle のどれも失敗を指摘として拾わず、blocking 0 件の判定が続いた。止めたのは merge の直前の check 分類（job ごとの結果を見て unhealthy と判定する）だった。
+
+修正の後は、レビューの結論を出す前に全 OS の job の完了を待ち、macOS の job の結果を根拠に含めた。ロケールに依存する修正は Linux の awk では退行を検出できないため、macOS の job の結果だけが裏付けになる。
+
 ## 関連ページ
 
 - [macOS の awk の == は UTF-8 ロケールで照合比較になり、別の日本語文字列を等しいと判定する](../anti-patterns/macos-awk-string-equality-uses-locale-collation.md)
@@ -67,3 +78,5 @@ reviewer 全員が FIXED / 実測 PASS で mergeable 相当に収束しかけた
 - [CI 完了後に test reviewer を reroll して macOS の失敗を blocking にしたレビュー結果](../../raw/reviews/20260916T111808Z-pr-2910.md)
 - [CI ログを failing_test アンカーに使い、修正を CI の同 leg で確認した fix 結果](../../raw/fixes/20260916T112742Z-pr-2910-fix.md)
 - [レビュー開始時点で CI が pending だった cycle の再確認を記録したレビュー結果](../../raw/reviews/20260926T054854Z-pr-3060.md)
+- [macOS の job の失敗を merge の直前まで見落とした経緯を記録した fix 結果](../../raw/fixes/20260930T084924Z-pr-3521.md)
+- [全 OS の job の完了を待って判定を確定したレビュー結果](../../raw/reviews/20260930T085300Z-pr-3521.md)
