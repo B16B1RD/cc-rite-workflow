@@ -448,10 +448,11 @@ rationale: references/rationale.md#main-root-cd
 
 ```bash
 main_root="{main_root}"
-if [ -z "$main_root" ] || ! cd "$main_root" 2>/dev/null; then
+[ -n "$main_root" ] && cd "$main_root" 2>/dev/null || {
   echo "WARNING: main checkout ルート（${main_root:-<未解決>}）が解決できないか、そこへ cd できませんでした。base 更新を skip します。" >&2
   echo "[CONTEXT] BASE_UPDATE=main_root_unresolved"
-else
+  exit 0
+}
 cur_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || cur_branch=""
 if [ "$cur_branch" = "{base_branch}" ]; then
   # index.lock 競合 3 回リトライ
@@ -505,7 +506,6 @@ else
   echo "WARNING: main checkout が '{base_branch}' ではなく '$cur_branch' 上にあるため base 更新を skip しました。" >&2
   echo "  復旧手順: 別の作業が無いことを確認のうえ 'git switch {base_branch}' で main checkout を base に戻してから再実行してください（rite は multi_session モードで main checkout のカレントブランチを切り替えません）。" >&2
   echo "[CONTEXT] BASE_UPDATE=skipped_not_on_base"
-fi
 fi
 ```
 
