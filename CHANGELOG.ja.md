@@ -84,6 +84,7 @@ blocking gate として実行する。
 - **Wiki の失敗時の案内が、実際の原因と正しい場所を指す** — 手動復旧のヒントは絶対パスか `git -C <main checkout>` を使い、どのディレクトリからでも実行できる。`/rite:wiki-ingest` と `/rite:wiki-lint` は、番号参照の拒否と検査自体の失敗を分けて案内する。取り込みのロックを失った、または確認できなかったときは完了レポートに載る。
 - **日本語ロケールの診断が文字化けしない** — `neutralize_ctrl --keep-newline` は UTF-8 の継続バイトを `?` に置き換えていた。整形式の UTF-8 列は残し、単独の C1 バイトは引き続き置き換える。
 - **`/rite:lint` は、exit 0 で skip した検査の WARNING を表示する** — base 未設定による `wiki-growth-check` の skip は、単独実行で見えなかった。SIGPIPE の検出は、幅指定で出力が膨らむ `printf` も対象にする。
+- **post-compact hook が PR の見つからない失敗を見分ける grep が、GNU grep の `\s` に頼らない** — `gh pr view` が失敗すると、`post-compact.sh` は PR が見つからない失敗とそれ以外の失敗を grep で見分け、WARNING に原因を示す。このパターンは空白を `\s` と書いていたが、`\s` は POSIX の拡張正規表現では空白として決まっていない。`[[:space:]]` に置き換え、GNU grep で一致していた行と同じ行に一致する。
 - **テストが、固定していると名乗る変更を検出する** — 検出すべき変異を当てても通っていた assert を絞り、テスト名とコメントを実際の検査範囲に合わせ、実行環境に依存する失敗（セッションの環境変数、`TMPDIR` の場所、macOS、並列実行、遅い CI runner）を除いた。
 
 ### 削除
